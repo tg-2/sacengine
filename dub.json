@@ -1,0 +1,12 @@
+{
+	"name": "3d",
+	"authors": [
+		"tg"
+	],
+	"dependencies": {
+		"dagon": "~>0.8.3"
+	},
+	"description": "A minimal D application.",
+	"copyright": "Copyright © 2018, tg",
+	"license": "proprietary"
+}
