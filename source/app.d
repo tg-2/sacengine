@@ -2,7 +2,7 @@ import dagon;
 import std.math;
 import std.stdio;
 
-import mrmm,txtr;
+import sacobject;
 
 class TestScene: Scene{
 	//OBJAsset aOBJ;
@@ -33,9 +33,9 @@ class TestScene: Scene{
         obj.position = Vector3f(0, 1, 0);
         obj.rotation = rotationQuaternion(Axis.x,-cast(float)PI/2);+/
 
-        foreach(mrmmFile;args[1..$]){
-	        auto mrmm=New!MRMMObject(this, mrmmFile);
-	        mrmm.createEntities(this);
+        foreach(file;args[1..$]){
+	        auto sac=New!SacObject(this, file);
+	        sac.createEntities(this);
         }
 
         /+auto ePlane = createEntity3D();

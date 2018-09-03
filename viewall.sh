@@ -1,5 +1,6 @@
 #!/bin/bash
 
-for f in $@/*; do
-    ./3d $f/*.MRMM
+for f in $(ls $@/*/*.{MRMM,3DSM}); do
+    echo $f
+    ./3d $f
 done
