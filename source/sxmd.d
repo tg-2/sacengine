@@ -14,13 +14,15 @@ struct BoneData{
 static assert(BoneData.sizeof==140);
 
 struct TriangleStripsHeader{
-	uint num;
-	uint unknown0;
-	float[3] unknown1;
-	uint[4] unknown2;
+	ushort num;
+	ushort unknown0;
+	uint unknown1;
+	float[3] unknown2;
+	uint[4] unknown3;
 }
 struct TriangleStripsEntryHeader{
-	ushort num;
+	ubyte num;
+	ubyte unknown;
 	ushort texture;
 	uint offset;
 }
@@ -77,23 +79,16 @@ Model parseSXMD(ubyte[] data){
 	uint vertexOffset=*cast(uint*)data[36..40].ptr;
 	uint triangleStripsOffset=*cast(uint*)data[40..44].ptr;
 	uint numTriangleStrips=data[0];
-	if(numBones==16){
-		// manahoar
-		numBones=16,numTriangleStrips=5;
-	}else{
-		// sac doctor
-		numBones=19,numTriangleStrips=7;
-	}
 	auto bones=cast(BoneData[])data[boneOffset..boneOffset+numBones*BoneData.sizeof];
 	TriangleStrips[] triangleStrips;
-	uint offset=triangleStripsOffset;
 	uint numVertices=0;
-	for(int k=0;k<numTriangleStrips;k++){
+	for(int k=0,offset=triangleStripsOffset;k<numTriangleStrips;k++){
 		auto header=cast(TriangleStripsHeader*)&data[offset];
 		offset+=TriangleStripsHeader.sizeof;
 		assert(offset<data.length);
 		TriangleStripsEntry[] edata;
 		auto next = to!uint(offset+uint.sizeof*header.num);
+		writeln(*header);
 		auto offsets=cast(uint[])data[offset..next];
 		offset=next;
 		foreach(off;offsets){
@@ -102,25 +97,15 @@ Model parseSXMD(ubyte[] data){
 			TriangleStrip[] tdata2;
 			foreach(ref entry;tdata){
 				foreach(index;entry.indices){
-					//enforce(index==ushort.max||index==numVertices++);
 					if(index!=ushort.max&&index>=numVertices) numVertices=index+1;
 				}
 				tdata2~=TriangleStrip(&entry);
 			}
 			edata~=TriangleStripsEntry(eheader,tdata2);
-			//if(edata.length>1) enforce(edata[$-2].strips[0].data+edata[$-2].strips.length==edata[$-1].strips[0].data);
 		}
 		triangleStrips~=TriangleStrips(header,offsets,edata);
 	}
-	if(triangleStrips.length){
-		enforce(triangleStrips[0].entries.length);
-		//enforce(offset==cast(void*)triangleStrips[0].entries[0].header-cast(void*)data.ptr);
-		offset=to!uint(cast(void*)(triangleStrips[$-1].entries[$-1].strips[0].data+triangleStrips[$-1].entries[$-1].strips.length)-cast(void*)data.ptr);
-	}
 	auto vertices=cast(Vertex[])data[vertexOffset..vertexOffset+Vertex.sizeof*numVertices];
-	foreach(ref vertex;vertices){
-		writeln(vertex);
-	}
 	auto unknownDataOffset=vertexOffset+Vertex.sizeof*numVertices;
 	auto unknownData=data[unknownDataOffset..$];
 	return Model(bones,triangleStrips,vertices);
@@ -165,7 +150,6 @@ class SXMDObject: Owner{
 		foreach(i,vertex;m.vertices){
 			auto cpos=Vector3f(vertex.pos);
 			swap(cpos.y,cpos.z);
-			writeln(vertex.bone);
 			auto pos=(ap[vertex.bone-1]+cpos)*factor;
 			vertices[i]=pos;
 			//if(6<=vertex.bone&&vertex.bone<=9) continue; // ignore left leg
@@ -188,7 +172,7 @@ class SXMDObject: Owner{
 			e.material=mat;+/
 		}
 		auto faces=(uint[3][]).init;
-		foreach(i,tri;m.triangleStrips[0..1]){
+		/+foreach(i,tri;m.triangleStrips[0..1]){
 			foreach(j,entry;tri.entries[0..$-1]){
 				auto strips=entry.strips;
 				auto next=tri.entries[j+1].strips;
@@ -217,9 +201,17 @@ class SXMDObject: Owner{
 					faces~=indices;+/
 				}
 			}
+		}+/
+		foreach(i,tri;m.triangleStrips){
+			foreach(j,entry;tri.entries){
+				auto strips=entry.strips;
+				uint numEntries=to!uint(strips.length);
+				foreach(k;0..numEntries){
+					faces~=[strips[k].indices[0],strips[(k+1)%$].indices[0],strips[(k+2)%$].indices[0]];
+					faces~=[strips[(k+1)%$].indices[0],strips[k].indices[0],strips[(k+2)%$].indices[0]];
+				}
+			}
 		}
-		writeln(m.triangleStrips[0].entries[0].strips.length);
-		writeln(m.triangleStrips[0].entries[1].strips.length);
 		/+uint[] raw_indices=File("/home/tgehr/games/sac/Sacrifice/dump.txt")
 			.byLineCopy.map!strip.filter!(x=>!x.empty).map!(to!uint).array;
 		faces=cast(uint[3][])raw_indices;+/
