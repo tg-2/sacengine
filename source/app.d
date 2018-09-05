@@ -1,8 +1,9 @@
 import dagon;
 import std.math;
 import std.stdio;
+import std.string;
 
-import sacobject;
+import sacobject, sxmd;
 
 class TestScene: Scene{
 	//OBJAsset aOBJ;
@@ -34,8 +35,13 @@ class TestScene: Scene{
         obj.rotation = rotationQuaternion(Axis.x,-cast(float)PI/2);+/
 
         foreach(file;args[1..$]){
-	        auto sac=New!SacObject(this, file);
-	        sac.createEntities(this);
+	        if(file.endsWith(".SXMD")){
+		        auto sx=New!SXMDObject(this, file);
+		        sx.createEntities(this);
+	        }else{
+		        auto sac=New!SacObject(this, file);
+		        sac.createEntities(this);
+	        }
         }
 
         /+auto ePlane = createEntity3D();
