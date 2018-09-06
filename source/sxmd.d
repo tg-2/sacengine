@@ -14,8 +14,8 @@ struct BoneData{
 static assert(BoneData.sizeof==140);
 
 struct TriangleStripsHeader{
-	ushort num;
-	ushort unknown0;
+	ubyte num;
+	ubyte[3] unknown0;
 	uint unknown1;
 	float[3] unknown2;
 	uint[4] unknown3;
