@@ -129,18 +129,18 @@ class SXMDObject: Owner{
 	}
 	void createEntities(Scene s){
 		enum factor=0.005f;
-		auto ap = new Vector3f[](m.bones.length);
+		auto ap = new Vector3f[](m.bones.length+1);
+		ap[0]=Vector3f(0,0,0);
 		auto vertices = New!(Vector3f[])(m.vertices.length);
 		foreach(i,bone;m.bones){
-			if(bone.parent==0) ap[i]=Vector3f(0,0,0);
-			else ap[i]=ap[bone.parent-1];
+			ap[i+1]=ap[bone.parent];
 			auto cpos=Vector3f(bone.pos);
 			swap(cpos.y,cpos.z);
 			/+if(6<=i+1&&i+1<=9){
 				cpos.y=-100-cpos.y;
 				//cpos.z=-cpos.z;
 			}+/
-			ap[i]+=cpos;
+			ap[i+1]+=cpos;
 			/+auto e=s.createEntity3D();
 			e.drawable=New!ShapePlane(2,2,1,null);
 			e.position=ap[i];+/
@@ -150,7 +150,7 @@ class SXMDObject: Owner{
 		foreach(i,vertex;m.vertices){
 			auto cpos=Vector3f(vertex.pos);
 			swap(cpos.y,cpos.z);
-			auto pos=(ap[vertex.bone-1]+cpos)*factor;
+			auto pos=(ap[vertex.bone]+cpos)*factor;
 			vertices[i]=pos;
 			//if(6<=vertex.bone&&vertex.bone<=9) continue; // ignore left leg
 			//if(vertex.bone==11) continue;// ignore ??
