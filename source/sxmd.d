@@ -176,6 +176,11 @@ auto convertSXMDModel(string dir, Model m){
 			uv[$-1][0]=1.0f;
 		}
 		auto faces=(uint[3][]).init;
+		if(bodyPart.flags & BodyPartFlags.CLOSE_TOP){
+			foreach(j;1..vrt[0].length-1){
+				faces~=[vrt[0][0],vrt[0][j+1],vrt[0][j]];
+			}
+		}
 		auto maxScaleY=bodyPart.rings[$-1].texture;
 		foreach(j,ring;bodyPart.rings[0..$-1]){
 			auto entries=ring.entries;
@@ -188,6 +193,11 @@ auto convertSXMDModel(string dir, Model m){
 					faces~=[vrt[j+1][b],vrt[j][a],vrt[j+1][b+1]];
 					b++;
 				}
+			}
+		}
+		if(bodyPart.flags & BodyPartFlags.CLOSE_BOT){
+			foreach(j;1..vrt[$-1].length-1){
+				faces~=[vrt[$-1][0],vrt[$-1][j],vrt[$-1][j+1]];
 			}
 		}
 		meshes[i].vertices=New!(Vector3f[])(vertices.length);
