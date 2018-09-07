@@ -1,4 +1,5 @@
 import dagon;
+import util;
 import mrmm, _3dsm, txtr, sxmd;
 import std.typecons: Tuple, tuple;
 alias Tuple=std.typecons.Tuple;
@@ -75,7 +76,7 @@ auto convertModel(Model)(string dir, Model model){
 			auto nvertices=model.vertices.length;
 			mesh.vertices=New!(Vector3f[])(nvertices);
 			foreach(i,ref vertex;model.vertices){
-				mesh.vertices[i] = vertex.pos;
+				mesh.vertices[i] = fromSac(vertex.pos);
 			}
 			mesh.texcoords=New!(Vector2f[])(nvertices);
 			foreach(i,ref vertex;model.vertices){
@@ -83,7 +84,7 @@ auto convertModel(Model)(string dir, Model model){
 			}
 			mesh.normals=New!(Vector3f[])(nvertices);
 			foreach(i,ref vertex;model.vertices){
-				mesh.normals[i] = vertex.normal;
+				mesh.normals[i] = fromSac(vertex.normal);
 			}
 		}
 	}else{
@@ -91,7 +92,7 @@ auto convertModel(Model)(string dir, Model model){
 			auto nvertices=model.positions.length;
 			mesh.vertices=New!(Vector3f[])(nvertices);
 			foreach(i;0..mesh.vertices.length){
-				mesh.vertices[i]=Vector3f(model.positions[i]);
+				mesh.vertices[i]=Vector3f(fromSac(model.positions[i]));
 			}
 			mesh.texcoords=New!(Vector2f[])(nvertices);
 			foreach(i;0..mesh.texcoords.length){
@@ -99,7 +100,7 @@ auto convertModel(Model)(string dir, Model model){
 			}
 			mesh.normals=New!(Vector3f[])(nvertices);
 			foreach(i;0..mesh.normals.length){
-				mesh.normals[i]=Vector3f(model.normals[i]);
+				mesh.normals[i]=Vector3f(fromSac(model.normals[i]));
 			}
 		}
 	}
@@ -111,7 +112,7 @@ auto convertModel(Model)(string dir, Model model){
 	auto curs=new int[](meshes.length);
 	foreach(ref face;model.faces){
 		auto k=names[face.textureName];
-		meshes[k].indices[curs[k]++]=face.vertices;
+		meshes[k].indices[curs[k]++]=[face.vertices[0],face.vertices[2],face.vertices[1]];
 	}
 	foreach(mesh;meshes){
 		mesh.dataReady=true;

@@ -1,5 +1,4 @@
 import dagon;
-import util;
 import sacobject;
 import dlib.filesystem.filesystem;
 import dlib.filesystem.stdfs;
@@ -50,10 +49,6 @@ Model parseMRMM(ubyte[] data){
 		foreach(i;face.vertices){
 			enforce(0<=i&&i<vertices.length);
 		}
-	}
-	foreach(ref vertex;vertices){
-		vertex.pos=fromSac(vertex.pos);
-		vertex.normal=fromSac(vertex.normal);
 	}
 	return Model(vertices, faces);
 }
