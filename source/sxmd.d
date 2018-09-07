@@ -18,7 +18,7 @@ static assert(BoneData.sizeof==140);
 
 struct BodyPartHeader{
 	ubyte numRings;
-	ubyte unknown0;
+	ubyte additionalRingEntries;
 	ushort numExplicitFaces;
 	ubyte[16] unknown1;
 	uint flags;
@@ -95,12 +95,13 @@ Model parseSXMD(ubyte[] data){
 	for(int k=0;k<numBodyParts;k++){
 		uint offset=*cast(uint*)data[40+4*k..44+4*k].ptr;
 		auto header=cast(BodyPartHeader*)&data[offset];
+		//writeln(header.numRings," ",header.unknown0);
 		assert(offset<data.length);
 		Ring[] edata;
 		auto offsets=cast(uint[])data[offset+BodyPartHeader.sizeof..offset+BodyPartHeader.sizeof+uint.sizeof*header.numRings];
 		foreach(i,off;offsets){
 			auto ringHeader=cast(RingHeader*)&data[off];
-			auto entries=cast(RingEntry[])data[ringHeader.offset..ringHeader.offset+ringHeader.numEntries*RingEntry.sizeof];
+			auto entries=cast(RingEntry[])data[ringHeader.offset..ringHeader.offset+(ringHeader.numEntries+256*header.additionalRingEntries)*RingEntry.sizeof];
 			foreach(ref entry;entries){
 				foreach(index;entry.indices){
 					if(index!=ushort.max&&index>=numVertices) numVertices=index+1;
