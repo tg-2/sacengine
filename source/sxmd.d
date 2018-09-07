@@ -168,8 +168,8 @@ auto convertSXMDModel(string dir, Model m){
 				auto vertex=Vector3f(0,0,0);
 				foreach(v;components.map!(l=>vpos[l]*m.vertices[l].weight/tot)) vertex+=v;
 				vertices~=vertex;
-				uv~=Vector2f(entry.alignment/255.0f,ring.texture/textureMax);
-				if(bodyPart.explicitFaces.length) uv[$-1][1]=entry.textureV/255.0f;
+				uv~=Vector2f(entry.alignment/256.0f,ring.texture/textureMax);
+				if(bodyPart.explicitFaces.length) uv[$-1][1]=entry.textureV/256.0f;
 			}
 			vrt[j][ring.entries.length]=to!uint(vertices.length);
 			vertices~=vertices[vrt[j][0]];
