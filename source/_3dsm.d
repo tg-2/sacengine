@@ -1,4 +1,5 @@
 import dagon;
+import util;
 import sacobject;
 import std.stdio, std.math;
 import std.exception, std.conv, std.algorithm, std.format, std.string, std.path;
@@ -37,13 +38,17 @@ Model parse3DSM(ubyte[] data){
 	enforce(faceOff+Face.sizeof*numFaces==data.length);
 	auto faces=cast(Face[])data[faceOff..faceOff+Face.sizeof*numFaces];
 	auto uv=new float[2][](positions.length);
-	foreach(face;faces){
+	foreach(ref face;faces){
 		foreach(i;0..3){
 			auto vertex=face.vertices[i];
 			enforce(0 <= face.vertices[i] && face.vertices[i]<positions.length);
 			enforce(uv[vertex][].all!isNaN || uv[vertex]==face.uv[i]);
 			uv[vertex]=face.uv[i];
 		}
+	}
+	foreach(i;0..positions.length){
+		positions[i]=fromSac(positions[i]);
+		normals[i]=fromSac(normals[i]);
 	}
 	return Model(positions,normals,uv,faces);
 }

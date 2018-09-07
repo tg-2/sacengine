@@ -1,4 +1,5 @@
 import dagon;
+import util;
 import sacobject;
 import dlib.filesystem.filesystem;
 import dlib.filesystem.stdfs;
@@ -45,10 +46,14 @@ Model parseMRMM(ubyte[] data){
 	static assert(Vertex.sizeof==40);
 	auto vertices = cast(Vertex[])data[vertexOff..vertexOff+Vertex.sizeof*numVertices];
 	auto faces = cast(Face[])data[faceOff..faceOff+Face.sizeof*numFaces];
-	foreach(face;faces){
+	foreach(ref face;faces){
 		foreach(i;face.vertices){
 			enforce(0<=i&&i<vertices.length);
 		}
+	}
+	foreach(ref vertex;vertices){
+		vertex.pos=fromSac(vertex.pos);
+		vertex.normal=fromSac(vertex.normal);
 	}
 	return Model(vertices, faces);
 }
