@@ -52,7 +52,7 @@ struct Ring{
 struct RingEntry{
 	ushort[3] indices;
 	ubyte alignment;
-	ubyte unknown0;
+	ubyte textureV;
 	ushort unknown1;
 }
 static assert(RingEntry.sizeof==10);
@@ -168,7 +168,8 @@ auto convertSXMDModel(string dir, Model m){
 				auto vertex=Vector3f(0,0,0);
 				foreach(v;components.map!(l=>vpos[l]*m.vertices[l].weight/tot)) vertex+=v;
 				vertices~=vertex;
-				uv~=Vector2f(entry.alignment/256.0f,ring.texture/textureMax);
+				uv~=Vector2f(entry.alignment/255.0f,ring.texture/textureMax);
+				if(bodyPart.explicitFaces.length) uv[$-1][1]=entry.textureV/255.0f;
 			}
 			vrt[j][ring.entries.length]=to!uint(vertices.length);
 			vertices~=vertices[vrt[j][0]];
@@ -199,6 +200,11 @@ auto convertSXMDModel(string dir, Model m){
 			foreach(j;1..vrt[$-1].length-1){
 				faces~=[vrt[$-1][0],vrt[$-1][j+1],vrt[$-1][j]];
 			}
+		}
+		if(bodyPart.explicitFaces.length){
+			enforce(vrt.length==1);
+			foreach(eface;bodyPart.explicitFaces)
+				faces~=[vrt[0][eface[0]],vrt[0][eface[1]],vrt[0][eface[2]]];
 		}
 		meshes[i].vertices=New!(Vector3f[])(vertices.length);
 		meshes[i].vertices[]=vertices[];
