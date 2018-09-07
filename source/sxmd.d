@@ -1,236 +1,200 @@
 import dagon;
+import util;
 import std.stdio;
 import std.random;
 import std.conv, std.algorithm, std.string, std.exception, std.path;
 import std.array;
+import std.typecons: tuple, Tuple;
+import sxtx;
 
 struct BoneData{
 	float[3] pos;
-	ushort parent;
-	ushort unused0;
-	float[3][8] bbox;
-	uint[7] unused1;
+	ushort parent; // TODO: figure out how to use this (related to animation)
+	ushort unused0; // setting all those fields to 0 does not affect the ingame rendering
+	float[3][8] bbox; // TODO: figure out what this does exactly (it affects the bone shadow and the bounding box, but unclear how)
+	uint[7] unused1; // setting all those fields to 0 does not affect the ingame rendering
 }
 static assert(BoneData.sizeof==140);
 
-struct TriangleStripsHeader{
-	ubyte num;
-	ubyte[3] unknown0;
-	uint unknown1;
-	float[3] unknown2;
-	uint[4] unknown3;
+struct BodyPartHeader{
+	ubyte numRings;
+	ubyte unknown0;
+	ushort numExplicitFaces;
+	ubyte[16] unknown1;
+	uint flags;
+	uint explicitFaceOffset;
+	ubyte[8] unknown2;
 }
-struct TriangleStripsEntryHeader{
-	ubyte num;
-	ubyte unknown;
-	ushort texture;
-	uint offset;
+static assert(BodyPartHeader.sizeof==36);
+
+enum BodyPartFlags: uint{
+	CLOSE_TOP=1, // make triangles from first vertex to all other vertices, facing up
+	CLOSE_BOT=2, // make triangles from first vertex to all other vertices, facing down
 }
 
-struct TriangleStripsEntry{
-	TriangleStripsEntryHeader* header;
-	TriangleStrip[] strips;
+struct RingHeader{
+	ubyte numEntries; // number of RingEntries
+	ubyte unknown;
+	ushort texture; // this is some sort of offset into the texture data (multiplying by 2 duplicates textures).
+	uint offset; // offset of first data byte of first TriangleStrip
+}
+static assert(RingHeader.sizeof==8);
+
+struct Ring{
+	RingHeader* header;
+	alias header this;
+	RingEntry[] entries;
 	string toString(){
-		return text("TriangleStripsEntry(",*header,", ",strips,")");
+		return text("Ring(",*header,", ",entries,")");
 	}
 }
 
-struct TriangleStripData{
+struct RingEntry{
 	ushort[3] indices;
-	ushort unknown0;
+	ubyte alignment;
+	ubyte unknown0;
 	ushort unknown1;
 }
-static assert(TriangleStripData.sizeof==10);
+static assert(RingEntry.sizeof==10);
 
-struct TriangleStrip{
-	TriangleStripData* data;
-	alias data this;
-	string toString(){
-		return text("TriangleStrip(",*data,")");
-	}
-}
-
-struct TriangleStrips{
-	TriangleStripsHeader* header;
+struct BodyPart{
+	BodyPartHeader* header;
+	alias header this;
 	uint[] offsets;
-	TriangleStripsEntry[] entries;
-
+	Ring[] rings;
+	ushort[3][] explicitFaces;
 	string toString(){
-		return text("TriangleStrips(",*header,", ",entries,")");
+		return text("BodyPart(",*header,", ",rings,")");
 	}
 }
 
 struct Vertex{
 	short[3] pos;
 	ushort bone;
-	ushort[2] unknown1;
-	uint unknown2;
+	ubyte unknown0;
+	ubyte weight;
+	ubyte[6] unknown1;
 }
+static assert(Vertex.sizeof==16);
 
 struct Model{
 	BoneData[] bones;
-	TriangleStrips[] triangleStrips;
+	BodyPart[] bodyParts;
 	Vertex[] vertices;
 }
 
 Model parseSXMD(ubyte[] data){
+	uint numBodyParts=data[0];
+	float offsetY=*cast(float*)data[8..12].ptr;
 	uint numBones=*cast(uint*)data[28..32].ptr-1;
 	uint boneOffset=*cast(uint*)data[32..36].ptr+140;
 	uint vertexOffset=*cast(uint*)data[36..40].ptr;
-	uint triangleStripsOffset=*cast(uint*)data[40..44].ptr;
-	uint numTriangleStrips=data[0];
 	auto bones=cast(BoneData[])data[boneOffset..boneOffset+numBones*BoneData.sizeof];
-	TriangleStrips[] triangleStrips;
+	BodyPart[] bodyParts;
 	uint numVertices=0;
-	for(int k=0,offset=triangleStripsOffset;k<numTriangleStrips;k++){
-		auto header=cast(TriangleStripsHeader*)&data[offset];
-		offset+=TriangleStripsHeader.sizeof;
+	for(int k=0;k<numBodyParts;k++){
+		uint offset=*cast(uint*)data[40+4*k..44+4*k].ptr;
+		auto header=cast(BodyPartHeader*)&data[offset];
 		assert(offset<data.length);
-		TriangleStripsEntry[] edata;
-		auto next = to!uint(offset+uint.sizeof*header.num);
-		writeln(*header);
-		auto offsets=cast(uint[])data[offset..next];
-		offset=next;
-		foreach(off;offsets){
-			auto eheader=cast(TriangleStripsEntryHeader*)&data[off];
-			auto tdata=cast(TriangleStripData[])data[eheader.offset..eheader.offset+eheader.num*TriangleStripData.sizeof];
-			TriangleStrip[] tdata2;
-			foreach(ref entry;tdata){
+		Ring[] edata;
+		auto offsets=cast(uint[])data[offset+BodyPartHeader.sizeof..offset+BodyPartHeader.sizeof+uint.sizeof*header.numRings];
+		foreach(i,off;offsets){
+			auto ringHeader=cast(RingHeader*)&data[off];
+			auto entries=cast(RingEntry[])data[ringHeader.offset..ringHeader.offset+ringHeader.numEntries*RingEntry.sizeof];
+			foreach(ref entry;entries){
 				foreach(index;entry.indices){
 					if(index!=ushort.max&&index>=numVertices) numVertices=index+1;
 				}
-				tdata2~=TriangleStrip(&entry);
 			}
-			edata~=TriangleStripsEntry(eheader,tdata2);
+			version(change) eoffset=0;
+			edata~=Ring(ringHeader,entries);
 		}
-		triangleStrips~=TriangleStrips(header,offsets,edata);
+		ushort[3][] explicitFaces=[];
+		if(header.numExplicitFaces>0)
+			explicitFaces=cast(ushort[3][])data[header.explicitFaceOffset..header.explicitFaceOffset+(ushort[3]).sizeof*header.numExplicitFaces];
+		bodyParts~=BodyPart(header,offsets,edata,explicitFaces);
 	}
 	auto vertices=cast(Vertex[])data[vertexOffset..vertexOffset+Vertex.sizeof*numVertices];
-	auto unknownDataOffset=vertexOffset+Vertex.sizeof*numVertices;
-	auto unknownData=data[unknownDataOffset..$];
-	return Model(bones,triangleStrips,vertices);
+	auto remainingDataOffset=vertexOffset+Vertex.sizeof*numVertices;
+	return Model(bones,bodyParts,vertices);
 }
 
-Model loadSXMD(string filename){
+Tuple!(DynamicArray!Mesh, DynamicArray!Texture) loadSXMD(string filename){
 	enforce(filename.endsWith(".SXMD"));
 	auto dir=dirName(filename);
 	ubyte[] data;
 	foreach(ubyte[] chunk;chunks(File(filename,"rb"),4096)) data~=chunk;
 	auto model = parseSXMD(data);
-	return model;
+	return convertSXMDModel(dir,model);
 }
 
-class SXMDObject: Owner{
-	Model m;
-	this(Owner o, string filename){
-		super(o);
-		enforce(filename.endsWith(".SXMD"));
-		this.m=loadSXMD(filename);
+auto convertSXMDModel(string dir, Model m){
+	enum factor=0.005f;
+	DynamicArray!Mesh meshes;
+	DynamicArray!Texture textures;
+	foreach(i;0..m.bodyParts.length){
+		// TODO: improve dlib
+		meshes.insertBack(New!Mesh(null));
+		auto texture = New!Texture(null);
+		texture.image = loadSXTX(buildPath(dir,format(".%03d.SXTX",i+1)));
+		texture.createFromImage(texture.image);
+		textures.insertBack(texture);
 	}
-	void createEntities(Scene s){
-		enum factor=0.005f;
-		auto ap = new Vector3f[](m.bones.length+1);
-		ap[0]=Vector3f(0,0,0);
-		auto vertices = New!(Vector3f[])(m.vertices.length);
-		foreach(i,bone;m.bones){
-			ap[i+1]=ap[bone.parent];
-			auto cpos=Vector3f(bone.pos);
-			swap(cpos.y,cpos.z);
-			/+if(6<=i+1&&i+1<=9){
-				cpos.y=-100-cpos.y;
-				//cpos.z=-cpos.z;
-			}+/
-			ap[i+1]+=cpos;
-			/+auto e=s.createEntity3D();
-			e.drawable=New!ShapePlane(2,2,1,null);
-			e.position=ap[i];+/
-		}
-		Color4f[int] boneColor;
-		//auto plane=New!ShapePlane(0.1f,0.1f,1,null);
-		foreach(i,vertex;m.vertices){
-			auto cpos=Vector3f(vertex.pos);
-			swap(cpos.y,cpos.z);
-			auto pos=(ap[vertex.bone]+cpos)*factor;
-			vertices[i]=pos;
-			//if(6<=vertex.bone&&vertex.bone<=9) continue; // ignore left leg
-			//if(vertex.bone==11) continue;// ignore ??
-			//if(12<=vertex.bone) continue; // ignore ears
-			//if(vertex.bone!=10) continue; // main body
-			//if(vertex.bone!=11) continue; // main body
-			//if(vertex.bone!=6) continue; // right leg, upside down
-			//if(vertex.bone!=2&&vertex.bone!=6) continue; // left leg
-			/+if(vertex.bone !in boneColor) boneColor[vertex.bone]=Color4f(uniform(0.0,1.0),uniform(0.0,1.0),uniform(0.0,1.0));
-			auto e=s.createEntity3D();
-			e.drawable=plane;
-			/+if(6<=vertex.bone&&vertex.bone<=9){
-				cpos.y=-cpos.y;
-				cpos.z=-cpos.z;
-			}+/
-			e.position=pos;
-			auto mat=s.createMaterial();
-			mat.diffuse=boneColor[vertex.bone];
-			e.material=mat;+/
+	auto ap = new Vector3f[](m.bones.length+1);
+	ap[0]=Vector3f(0,0,0);
+	foreach(i,bone;m.bones){
+		ap[i+1]=ap[bone.parent];
+		auto cpos=Vector3f(fromSac(bone.pos));
+		ap[i+1]+=cpos;
+	}
+	auto vpos = new Vector3f[](m.vertices.length);
+	foreach(i,vertex;m.vertices){
+		auto cpos=fromSac(Vector3f(vertex.pos));
+		auto pos=(ap[vertex.bone]+cpos)*factor;
+		vpos[i]=pos;
+	}
+	foreach(i,bodyPart;m.bodyParts){
+		Vector3f[] vertices;
+		auto vrt=new uint[][](bodyPart.rings.length);
+		foreach(j,ring;bodyPart.rings){
+			vrt[j]=new uint[](ring.entries.length);
+			foreach(k,entry;ring.entries){
+				vrt[j][k]=to!uint(vertices.length);
+				auto components=entry.indices[].filter!(x=>x!=ushort.max);
+				import std.algorithm;
+				auto tot=std.algorithm.sum(components.map!(l=>m.vertices[l].weight));
+				auto vertex=Vector3f(0,0,0);
+				foreach(v;components.map!(l=>vpos[l]*m.vertices[l].weight/tot)) vertex+=v;
+				vertices~=vertex;
+			}
 		}
 		auto faces=(uint[3][]).init;
-		/+foreach(i,tri;m.triangleStrips[0..1]){
-			foreach(j,entry;tri.entries[0..$-1]){
-				auto strips=entry.strips;
-				auto next=tri.entries[j+1].strips;
-				if(next.length!=strips.length){
-					writeln(strips.length," ",next.length);
-					int countIndices(TriangleStrip[] strips){
-						int r=0;
-						foreach(strip;strips){
-							foreach(i;0..3) r+=strip.indices[i]!=ushort.max;
-						}
-						return r;
-					}
-					writeln(countIndices(strips)," ",countIndices(next));
-					writeln();
-					continue;
-				}
-				uint numEntries=to!uint(strips.length);
-				foreach(k;0..numEntries){
-					//faces~=[i,i+32,i+33];
-					//faces~=[i+1,i,i+32];
-					faces~=[strips[k].indices[0],next[k].indices[0],strips[(k+1)%$].indices[0]];
-					faces~=[next[(k+1)%$].indices[0],strips[(k+1)%$].indices[0],next[k].indices[0]];
-					/+uint[3] indices=[strips[k].indices[0],strips[k+1].indices[0],strips[k+2].indices[0]];
-					faces~=indices;
-					swap(indices[0],indices[1]);
-					faces~=indices;+/
-				}
-			}
-		}+/
-		foreach(i,tri;m.triangleStrips){
-			foreach(j,entry;tri.entries){
-				auto strips=entry.strips;
-				uint numEntries=to!uint(strips.length);
-				foreach(k;0..numEntries){
-					faces~=[strips[k].indices[0],strips[(k+1)%$].indices[0],strips[(k+2)%$].indices[0]];
-					faces~=[strips[(k+1)%$].indices[0],strips[k].indices[0],strips[(k+2)%$].indices[0]];
+		auto maxScaleY=bodyPart.rings[$-1].texture;
+		foreach(j,ring;bodyPart.rings[0..$-1]){
+			auto entries=ring.entries;
+			auto next=bodyPart.rings[j+1].entries;
+			for(int a=0,b=0;a<entries.length||b<next.length;){
+				if(b==next.length||a<entries.length&&entries[a].alignment<=next[b].alignment){
+					faces~=[vrt[j][a%$],vrt[j][(a+1)%$],vrt[j+1][b%$]];
+					a++;
+				}else{
+					faces~=[vrt[j+1][b%$],vrt[j][a%$],vrt[j+1][(b+1)%$]];
+					b++;
 				}
 			}
 		}
-		/+uint[] raw_indices=File("/home/tgehr/games/sac/Sacrifice/dump.txt")
-			.byLineCopy.map!strip.filter!(x=>!x.empty).map!(to!uint).array;
-		faces=cast(uint[3][])raw_indices;+/
-		auto entires=m.triangleStrips[0].entries;
-		/+foreach(entry;zip(m.strips[0],m.strips[1])){
-			
-		}+/
-		auto mesh = New!Mesh(null);
-		mesh.vertices=vertices;
-		mesh.indices=New!(uint[3][])(faces.length);
-		mesh.indices[]=faces[];
-		mesh.dataReady=true;
-		if(s){
-			mesh.prepareVAO();
-			auto e=s.createEntity3D();
-			e.drawable=mesh;
-			auto mat=s.createMaterial();
-			mat.diffuse=Color4f(0.2,0.2,0.2);
-			e.material=mat;
+		meshes[i].vertices=New!(Vector3f[])(vertices.length);
+		meshes[i].vertices[]=vertices[];
+		meshes[i].texcoords=New!(Vector2f[])(vertices.length);
+		foreach(j;0..vertices.length){
+			meshes[i].texcoords[j]=Vector2f(uniform(0.0f,1.0f),uniform(0.0f,1.0f));
 		}
+		meshes[i].indices=New!(uint[3][])(faces.length);
+		meshes[i].indices[]=faces[];
+		meshes[i].normals=New!(Vector3f[])(vertices.length);
+		meshes[i].generateNormals();
+		meshes[i].dataReady=true;
+		meshes[i].prepareVAO();
 	}
+	return tuple(move(meshes),move(textures));
 }

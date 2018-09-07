@@ -35,13 +35,8 @@ class TestScene: Scene{
         obj.rotation = rotationQuaternion(Axis.x,-cast(float)PI/2);+/
 
         foreach(file;args[1..$]){
-	        if(file.endsWith(".SXMD")){
-		        auto sx=New!SXMDObject(this, file);
-		        sx.createEntities(this);
-	        }else{
-		        auto sac=New!SacObject(this, file);
-		        sac.createEntities(this);
-	        }
+	        auto sac=New!SacObject(this, file);
+	        sac.createEntities(this);
         }
 
         /+auto ePlane = createEntity3D();

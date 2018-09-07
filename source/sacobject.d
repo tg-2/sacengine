@@ -1,5 +1,5 @@
 import dagon;
-import mrmm, _3dsm, txtr;
+import mrmm, _3dsm, txtr, sxmd;
 import std.typecons: Tuple, tuple;
 alias Tuple=std.typecons.Tuple;
 
@@ -11,7 +11,7 @@ class SacObject: Owner{
 	
 	this(Owner o, string filename){
 		super(o);
-		enforce(filename.endsWith(".MRMM")||filename.endsWith(".3DSM"));
+		enforce(filename.endsWith(".MRMM")||filename.endsWith(".3DSM")||filename.endsWith(".SXMD"));
 		switch(filename[$-4..$]){
 			case "MRMM":
 				auto mt=loadMRMM(filename);
@@ -20,6 +20,11 @@ class SacObject: Owner{
 				break;
 			case "3DSM":
 				auto mt=load3DSM(filename);
+				meshes=move(mt[0]);
+				textures=move(mt[1]);
+				break;
+			case "SXMD":
+				auto mt=loadSXMD(filename);
 				meshes=move(mt[0]);
 				textures=move(mt[1]);
 				break;
@@ -33,7 +38,6 @@ class SacObject: Owner{
 			auto obj=s.createEntity3D();
 			obj.drawable = meshes[i];
 			obj.position = Vector3f(0, 0, 0);
-			obj.rotation = rotationQuaternion(Axis.x,-cast(float)PI/2);
 			auto mat=s.createMaterial();
 			if(textures[i] !is null) mat.diffuse=textures[i];
 			mat.specular=Color4f(0,0,0,1);
