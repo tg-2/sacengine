@@ -4,7 +4,7 @@
 		"tg"
 	],
 	"dependencies": {
-		"dagon": "~>0.8.3"
+		"dagon": "~master"
 	},
 	"description": "A minimal D application.",
 	"copyright": "Copyright © 2018, tg",
