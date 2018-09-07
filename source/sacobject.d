@@ -112,7 +112,7 @@ auto convertModel(Model)(string dir, Model model){
 	auto curs=new int[](meshes.length);
 	foreach(ref face;model.faces){
 		auto k=names[face.textureName];
-		meshes[k].indices[curs[k]++]=[face.vertices[0],face.vertices[2],face.vertices[1]];
+		meshes[k].indices[curs[k]++]=face.vertices;
 	}
 	foreach(mesh;meshes){
 		mesh.dataReady=true;

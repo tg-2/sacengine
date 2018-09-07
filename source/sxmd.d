@@ -144,12 +144,12 @@ auto convertSXMDModel(string dir, Model m){
 	ap[0]=Vector3f(0,0,0);
 	foreach(i,bone;m.bones){
 		ap[i+1]=ap[bone.parent];
-		auto cpos=Vector3f(fromSac(bone.pos));
+		auto cpos=Vector3f(fromSXMD(bone.pos));
 		ap[i+1]+=cpos;
 	}
 	auto vpos = new Vector3f[](m.vertices.length);
 	foreach(i,vertex;m.vertices){
-		auto cpos=fromSac(Vector3f(vertex.pos));
+		auto cpos=fromSXMD(Vector3f(vertex.pos));
 		auto pos=(ap[vertex.bone]+cpos)*factor;
 		vpos[i]=pos;
 	}

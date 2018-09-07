@@ -9,9 +9,15 @@ uint parseLE(ubyte[] raw)in{
 }
 
 Vector3f fromSac(Vector3f v){
-	return Vector3f(v.x,v.z,v.y);
+	return Vector3f(-v.x,v.z,v.y);
+}
+float[3] fromSac(float[3] v){
+	return [-v[0],v[2],v[1]];
 }
 
-float[3] fromSac(float[3] v){
+Vector3f fromSXMD(Vector3f v){
+	return Vector3f(v.x,v.z,v.y);
+}
+float[3] fromSXMD(float[3] v){
 	return [v[0],v[2],v[1]];
 }
