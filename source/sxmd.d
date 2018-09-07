@@ -155,9 +155,11 @@ auto convertSXMDModel(string dir, Model m){
 	}
 	foreach(i,bodyPart;m.bodyParts){
 		Vector3f[] vertices;
+		Vector2f[] uv;
 		auto vrt=new uint[][](bodyPart.rings.length);
+		double textureMax=bodyPart.rings[$-1].texture;
 		foreach(j,ring;bodyPart.rings){
-			vrt[j]=new uint[](ring.entries.length);
+			vrt[j]=new uint[](ring.entries.length+1);
 			foreach(k,entry;ring.entries){
 				vrt[j][k]=to!uint(vertices.length);
 				auto components=entry.indices[].filter!(x=>x!=ushort.max);
@@ -166,7 +168,12 @@ auto convertSXMDModel(string dir, Model m){
 				auto vertex=Vector3f(0,0,0);
 				foreach(v;components.map!(l=>vpos[l]*m.vertices[l].weight/tot)) vertex+=v;
 				vertices~=vertex;
+				uv~=Vector2f(entry.alignment/256.0f,ring.texture/textureMax);
 			}
+			vrt[j][ring.entries.length]=to!uint(vertices.length);
+			vertices~=vertices[vrt[j][0]];
+			uv~=uv[vrt[j][0]];
+			uv[$-1][0]=1.0f;
 		}
 		auto faces=(uint[3][]).init;
 		auto maxScaleY=bodyPart.rings[$-1].texture;
@@ -175,10 +182,10 @@ auto convertSXMDModel(string dir, Model m){
 			auto next=bodyPart.rings[j+1].entries;
 			for(int a=0,b=0;a<entries.length||b<next.length;){
 				if(b==next.length||a<entries.length&&entries[a].alignment<=next[b].alignment){
-					faces~=[vrt[j][a%$],vrt[j][(a+1)%$],vrt[j+1][b%$]];
+					faces~=[vrt[j][a],vrt[j][a+1],vrt[j+1][b]];
 					a++;
 				}else{
-					faces~=[vrt[j+1][b%$],vrt[j][a%$],vrt[j+1][(b+1)%$]];
+					faces~=[vrt[j+1][b],vrt[j][a],vrt[j+1][b+1]];
 					b++;
 				}
 			}
@@ -186,9 +193,10 @@ auto convertSXMDModel(string dir, Model m){
 		meshes[i].vertices=New!(Vector3f[])(vertices.length);
 		meshes[i].vertices[]=vertices[];
 		meshes[i].texcoords=New!(Vector2f[])(vertices.length);
-		foreach(j;0..vertices.length){
+		/+foreach(j;0..vertices.length){
 			meshes[i].texcoords[j]=Vector2f(uniform(0.0f,1.0f),uniform(0.0f,1.0f));
-		}
+		}+/
+		meshes[i].texcoords=uv[];
 		meshes[i].indices=New!(uint[3][])(faces.length);
 		meshes[i].indices[]=faces[];
 		meshes[i].normals=New!(Vector3f[])(vertices.length);
