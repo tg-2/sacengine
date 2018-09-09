@@ -2,7 +2,7 @@ import dagon;
 import util;
 import sxmd,sxsk,sxtx;
 
-import std.stdio, std.path, std.string, std.exception, std.algorithm, std.range, std.conv;
+import std.stdio, std.path, std.string, std.exception, std.algorithm, std.range, std.conv, std.math;
 
 struct Bone{
 	Vector3f position;
@@ -55,6 +55,7 @@ Saxs loadSaxs(string filename){
 	foreach(ubyte[] chunk;chunks(File(filename,"rb"),4096)) data~=chunk;
 	auto model = parseSXMD(data);
 	auto bones=chain(only(Bone(Vector3f(0,0,0),0)),model.bones.map!(bone=>Bone(Vector3f(fromSXMD(bone.pos)),bone.parent))).array;
+	enforce(iota(1,bones.length).all!(i=>bones[i].parent<i));
 	auto convertPosition(ref sxmd.Position position){
 		return Position(position.bone,fromSXMD(Vector3f(position.pos)),position.weight/64.0f);
 	}
@@ -115,9 +116,7 @@ Saxs loadSaxs(string filename){
 	return Saxs(bones,positions,bodyParts);
 }
 
-
-Mesh[] createMeshes(Saxs saxs){
-	enum factor=0.005f;
+Mesh[] createMeshes(Saxs saxs,float scaleFactor=0.005){
 	auto ap = new Vector3f[](saxs.bones.length);
 	ap[0]=Vector3f(0,0,0);
 	foreach(i,ref bone;saxs.bones[1..$]){
@@ -133,7 +132,7 @@ Mesh[] createMeshes(Saxs saxs){
 			auto position=Vector3f(0,0,0);
 			foreach(v;vertex.indices.map!(k=>(ap[saxs.positions[k].bone]+saxs.positions[k].offset)*saxs.positions[k].weight))
 				position+=v;
-			meshes[i].vertices[j]=position*factor;
+			meshes[i].vertices[j]=position*scaleFactor;
 			meshes[i].texcoords[j]=vertex.uv;
 		}
 		meshes[i].indices=New!(uint[3][])(bodyPart.faces.length);
@@ -165,7 +164,43 @@ void createEntities(ref SaxsInstance saxsi, Scene s){
 		obj.material=mat;
 	}
 }
-	
-void setPose(ref SaxsInstance saxs, Quaternionf[] rotations){
-	
+
+struct Transformation{
+	Quaternionf rotation;
+	Vector3f offset;
+	this(Quaternionf rotation,Vector3f offset){
+		this.rotation=rotation;
+		this.offset=offset;
+	}
+	Vector3f opCall(Vector3f v){
+		auto quat=Quaternionf(v[0],v[1],v[2],0.0);
+		auto rotated=Vector3f((rotation*quat*rotation.conj())[0..3]);
+		return rotated+offset;
+	}
+	Transformation opBinary(string op:"*")(Transformation rhs){
+		return Transformation(rotation*rhs.rotation,opCall(rhs.offset));
+	}
+}
+
+void setPose(ref SaxsInstance saxsi, Pose pose, float scaleFactor=0.005){
+	auto saxs=saxsi.saxs;
+	auto transform = new Transformation[](saxs.bones.length);
+	transform[0]=Transformation(Quaternionf.identity,Vector3f(0,0,0));
+	enforce(pose.rotations.length==saxs.bones.length);
+	foreach(i,ref bone;saxs.bones){
+		transform[i]=transform[bone.parent]*Transformation(pose.rotations[i],bone.position);
+		if(i==0) transform[i].offset+=pose.displacement;
+	}
+	enforce(saxsi.meshes.length==saxs.bodyParts.length);
+	foreach(i,ref bodyPart;saxs.bodyParts){
+		enforce(saxsi.meshes[i].vertices.length==bodyPart.vertices.length);
+		foreach(j,ref vertex;bodyPart.vertices){
+			auto position=Vector3f(0,0,0);
+			foreach(k;vertex.indices)
+				position+=transform[saxs.positions[k].bone](saxs.positions[k].offset)*saxs.positions[k].weight;
+			saxsi.meshes[i].vertices[j]=position*scaleFactor;
+		}
+		saxsi.meshes[i].generateNormals();
+		saxsi.meshes[i].prepareVAO();
+	}
 }

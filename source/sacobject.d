@@ -1,6 +1,6 @@
 import dagon;
 import util;
-import mrmm, _3dsm, txtr, saxs;
+import mrmm, _3dsm, txtr, saxs, sxsk;
 import std.typecons: Tuple, tuple;
 alias Tuple=std.typecons.Tuple;
 
@@ -10,7 +10,7 @@ class SacObject: Owner{
 	DynamicArray!Mesh meshes;
 	DynamicArray!Texture textures;
 	
-	this(Owner o, string filename){
+	this(Owner o, string filename, string animation=""){
 		super(o);
 		enforce(filename.endsWith(".MRMM")||filename.endsWith(".3DSM")||filename.endsWith(".SXMD"));
 		switch(filename[$-4..$]){
@@ -25,8 +25,13 @@ class SacObject: Owner{
 				textures=move(mt[1]);
 				break;
 			case "SXMD":
-				auto saxs=loadSaxs(filename);
-				foreach(mesh;saxs.createMeshes()){
+				auto saxsi=SaxsInstance(loadSaxs(filename));
+				saxsi.createMeshes();
+				if(animation.length){
+					auto anim=loadSXSK(animation);
+					saxsi.setPose(anim.frames[0]);
+				}
+				foreach(mesh;saxsi.meshes){
 					auto nmesh=New!Mesh(null);
 					nmesh.vertices=New!(Vector3f[])(mesh.vertices.length);
 					nmesh.vertices[]=mesh.vertices[];
@@ -40,7 +45,7 @@ class SacObject: Owner{
 					nmesh.prepareVAO();
 					meshes.insertBack(nmesh);
 				}
-				foreach(ref bodyPart;saxs.bodyParts){
+				foreach(ref bodyPart;saxsi.saxs.bodyParts){
 					auto texture=New!Texture(null);
 					texture.image=bodyPart.texture.image;
 					texture.createFromImage(texture.image);

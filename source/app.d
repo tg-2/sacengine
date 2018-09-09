@@ -34,9 +34,14 @@ class TestScene: Scene{
         obj.position = Vector3f(0, 1, 0);
         obj.rotation = rotationQuaternion(Axis.x,-cast(float)PI/2);+/
 
-        foreach(file;args[1..$]){
-	        auto sac=New!SacObject(this, file);
+        foreach(ref i;1..args.length){
+	        string anim="";
+	        if(i+1<args.length&&args[i+1].endsWith(".SXSK"))
+		        anim=args[i+1];
+	        auto sac=New!SacObject(this, args[i], anim);
 	        sac.createEntities(this);
+	        if(i+1<args.length&&args[i+1].endsWith(".SXSK"))
+		        i+=1;
         }
 
         /+auto ePlane = createEntity3D();

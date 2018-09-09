@@ -19,7 +19,6 @@ struct Animation{
 }
 
 Animation parseSXSK(ubyte[] data){
-	alias T=float;
 	auto numFrames=*cast(ushort*)data[2..4].ptr;
 	double offsetY=*cast(float*)data[4..8].ptr;
 	auto numBones=*data[8..12].ptr;
@@ -28,7 +27,7 @@ Animation parseSXSK(ubyte[] data){
 	foreach(i,ref frameHeader;frameHeaders){
 		enforce(frameHeader.offset<=frameHeader.offset+numBones*(short[4]).sizeof && frameHeader.offset+numBones*(short[4]).sizeof<=data.length);
 		auto anim=cast(short[4][])data[frameHeader.offset..frameHeader.offset+numBones*(short[4]).sizeof];
-		auto rotations=anim.map!(x=>Quaternionf(cast(T)x[0]/short.max,cast(T)x[1]/short.max,cast(T)x[2]/short.max,cast(T)x[3]/short.max)).array;
+		auto rotations=anim.map!(x=>Quaternionf(Vector3f(fromSXMD([x[0],x[1],x[2]])),x[3]).normalized()).array;
 		frames~=Pose(Vector3f(frameHeader.disp[0],frameHeader.disp[1],0),rotations);
 	}
 	return Animation(frames);
