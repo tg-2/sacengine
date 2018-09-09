@@ -1,6 +1,6 @@
 import dagon;
 import util;
-import mrmm, _3dsm, txtr, sxmd;
+import mrmm, _3dsm, txtr, saxs;
 import std.typecons: Tuple, tuple;
 alias Tuple=std.typecons.Tuple;
 
@@ -25,9 +25,27 @@ class SacObject: Owner{
 				textures=move(mt[1]);
 				break;
 			case "SXMD":
-				auto mt=loadSXMD(filename);
-				meshes=move(mt[0]);
-				textures=move(mt[1]);
+				auto saxs=loadSaxs(filename);
+				foreach(mesh;saxs.createMeshes()){
+					auto nmesh=New!Mesh(null);
+					nmesh.vertices=New!(Vector3f[])(mesh.vertices.length);
+					nmesh.vertices[]=mesh.vertices[];
+					nmesh.texcoords=New!(Vector2f[])(mesh.texcoords.length);
+					nmesh.texcoords[]=mesh.texcoords[];
+					nmesh.indices=New!(uint[3][])(mesh.indices.length);
+					nmesh.indices[]=mesh.indices[];
+					nmesh.normals=New!(Vector3f[])(mesh.normals.length);
+					nmesh.normals[]=mesh.normals[];
+					nmesh.dataReady=true;
+					nmesh.prepareVAO();
+					meshes.insertBack(nmesh);
+				}
+				foreach(ref bodyPart;saxs.bodyParts){
+					auto texture=New!Texture(null);
+					texture.image=bodyPart.texture.image;
+					texture.createFromImage(texture.image);
+					textures.insertBack(texture);
+				}
 				break;
 			default:
 				assert(0);
@@ -39,6 +57,7 @@ class SacObject: Owner{
 			auto obj=s.createEntity3D();
 			obj.drawable = meshes[i];
 			obj.position = Vector3f(0, 0, 0);
+			obj.rotation = rotationQuaternion(Axis.y,cast(float)PI);
 			auto mat=s.createMaterial();
 			if(textures[i] !is null) mat.diffuse=textures[i];
 			mat.specular=Color4f(0,0,0,1);

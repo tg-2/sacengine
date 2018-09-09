@@ -68,19 +68,19 @@ struct BodyPart{
 	}
 }
 
-struct Vertex{
+struct Position{
 	short[3] pos;
 	ushort bone;
 	ubyte unknown0;
 	ubyte weight;
 	ubyte[6] unknown1;
 }
-static assert(Vertex.sizeof==16);
+static assert(Position.sizeof==16);
 
 struct Model{
 	BoneData[] bones;
 	BodyPart[] bodyParts;
-	Vertex[] vertices;
+	Position[] positions;
 }
 
 Model parseSXMD(ubyte[] data){
@@ -91,7 +91,7 @@ Model parseSXMD(ubyte[] data){
 	uint vertexOffset=*cast(uint*)data[36..40].ptr;
 	auto bones=cast(BoneData[])data[boneOffset..boneOffset+numBones*BoneData.sizeof];
 	BodyPart[] bodyParts;
-	uint numVertices=0;
+	uint numPositions=0;
 	for(int k=0;k<numBodyParts;k++){
 		uint offset=*cast(uint*)data[40+4*k..44+4*k].ptr;
 		auto header=cast(BodyPartHeader*)&data[offset];
@@ -104,7 +104,7 @@ Model parseSXMD(ubyte[] data){
 			auto entries=cast(RingEntry[])data[ringHeader.offset..ringHeader.offset+(ringHeader.numEntries+256*header.additionalRingEntries)*RingEntry.sizeof];
 			foreach(ref entry;entries){
 				foreach(index;entry.indices){
-					if(index!=ushort.max&&index>=numVertices) numVertices=index+1;
+					if(index!=ushort.max&&index>=numPositions) numPositions=index+1;
 				}
 			}
 			version(change) eoffset=0;
@@ -115,9 +115,9 @@ Model parseSXMD(ubyte[] data){
 			explicitFaces=cast(ushort[3][])data[header.explicitFaceOffset..header.explicitFaceOffset+(ushort[3]).sizeof*header.numExplicitFaces];
 		bodyParts~=BodyPart(header,offsets,edata,explicitFaces);
 	}
-	auto vertices=cast(Vertex[])data[vertexOffset..vertexOffset+Vertex.sizeof*numVertices];
-	auto remainingDataOffset=vertexOffset+Vertex.sizeof*numVertices;
-	return Model(bones,bodyParts,vertices);
+	auto positions=cast(Position[])data[vertexOffset..vertexOffset+Position.sizeof*numPositions];
+	auto remainingDataOffset=vertexOffset+Position.sizeof*numPositions;
+	return Model(bones,bodyParts,positions);
 }
 
 Tuple!(DynamicArray!Mesh, DynamicArray!Texture) loadSXMD(string filename){
@@ -148,8 +148,8 @@ auto convertSXMDModel(string dir, Model m){
 		auto cpos=Vector3f(fromSXMD(bone.pos));
 		ap[i+1]+=cpos;
 	}
-	auto vpos = new Vector3f[](m.vertices.length);
-	foreach(i,vertex;m.vertices){
+	auto vpos = new Vector3f[](m.positions.length);
+	foreach(i,vertex;m.positions){
 		auto cpos=fromSXMD(Vector3f(vertex.pos));
 		auto pos=(ap[vertex.bone]+cpos)*factor;
 		vpos[i]=pos;
@@ -165,9 +165,9 @@ auto convertSXMDModel(string dir, Model m){
 				vrt[j][k]=to!uint(vertices.length);
 				auto components=entry.indices[].filter!(x=>x!=ushort.max);
 				import std.algorithm;
-				auto tot=std.algorithm.sum(components.map!(l=>m.vertices[l].weight));
+				auto tot=std.algorithm.sum(components.map!(l=>m.positions[l].weight));
 				auto vertex=Vector3f(0,0,0);
-				foreach(v;components.map!(l=>vpos[l]*m.vertices[l].weight/tot)) vertex+=v;
+				foreach(v;components.map!(l=>vpos[l]*m.positions[l].weight/tot)) vertex+=v;
 				vertices~=vertex;
 				uv~=Vector2f(entry.alignment/256.0f,ring.texture/textureMax);
 				if(bodyPart.explicitFaces.length) uv[$-1][1]=entry.textureV/256.0f;
