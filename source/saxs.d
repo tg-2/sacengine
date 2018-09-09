@@ -84,7 +84,6 @@ Saxs loadSaxs(string filename){
 				faces~=[vrt[0][0],vrt[0][j],vrt[0][j+1]];
 			}
 		}
-		auto maxScaleY=bodyPart.rings[$-1].texture;
 		foreach(j,ring;bodyPart.rings[0..$-1]){
 			auto entries=ring.entries;
 			auto next=bodyPart.rings[j+1].entries;
