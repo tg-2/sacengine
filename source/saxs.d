@@ -121,7 +121,7 @@ Saxs loadSaxs(string filename){
 					auto idx1=vrt[strip1.bodyPart][strip1.ring][strip1.vertex];
 					auto strip2=bodyPart.strips[j+1];
 					auto idx2=vrt[strip2.bodyPart][strip2.ring][strip2.vertex];
-					writeln(bodyParts.length," ",bodyPart.strips[j+1].bodyPart);
+					//writeln(bodyParts.length," ",bodyPart.strips[j+1].bodyPart);
 					bodyParts[strip1.bodyPart].vertices[idx1].indices_=bodyParts[strip2.bodyPart].vertices[idx2].indices_;
 				}
 			}
@@ -139,8 +139,8 @@ Saxs loadSaxs(string filename){
 			}+/
 		}
 	}
-	writeln("numVertices: ",std.algorithm.sum(bodyParts.map!(bodyPart=>bodyPart.vertices.length)));
-	writeln("numFaces: ",std.algorithm.sum(bodyParts.map!(bodyPart=>bodyPart.vertices.length)));
+	//writeln("numVertices: ",std.algorithm.sum(bodyParts.map!(bodyPart=>bodyPart.vertices.length)));
+	//writeln("numFaces: ",std.algorithm.sum(bodyParts.map!(bodyPart=>bodyPart.vertices.length)));
 	return Saxs(bones,positions,bodyParts);
 }
 
