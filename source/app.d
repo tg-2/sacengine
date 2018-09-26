@@ -13,6 +13,7 @@ class TestScene: Scene{
         super(smngr);
         this.args=args;
     }
+	DynamicArray!SacObject sacs;
     override void onAssetsRequest(){
 	    //aOBJ = addOBJAsset("../jman.obj");
 	    //txta = New!Texture(null);// TODO: why?
@@ -42,6 +43,7 @@ class TestScene: Scene{
 	        sac.createEntities(this);
 	        if(i+1<args.length&&args[i+1].endsWith(".SXSK"))
 		        i+=1;
+	        sacs.insertBack(sac);
         }
 
         /+auto ePlane = createEntity3D();
@@ -50,6 +52,14 @@ class TestScene: Scene{
         //matGround.diffuse = ;
         ePlane.material=matGround;+/
     }
+	double totalTime=0;
+	override void onLogicsUpdate(double dt){
+		totalTime+=dt;
+		foreach(sac;sacs){
+			auto frame=totalTime*sac.animFPS;
+			sac.setFrame(cast(size_t)(frame%sac.numFrames));
+		}
+	}
 }
 
 class MyApplication: SceneApplication{

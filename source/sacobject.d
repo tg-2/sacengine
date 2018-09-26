@@ -9,7 +9,13 @@ import std.exception, std.algorithm, std.math, std.path;
 class SacObject: Owner{
 	DynamicArray!Mesh meshes;
 	DynamicArray!Texture textures;
-	
+
+	bool isSaxs=true;
+	SaxsInstance saxsi;
+	Animation anim;
+
+	DynamicArray!Entity entities;
+
 	this(Owner o, string filename, string animation=""){
 		super(o);
 		enforce(filename.endsWith(".MRMM")||filename.endsWith(".3DSM")||filename.endsWith(".SXMD"));
@@ -25,31 +31,12 @@ class SacObject: Owner{
 				textures=move(mt[1]);
 				break;
 			case "SXMD":
-				auto saxsi=SaxsInstance(loadSaxs(filename));
+				isSaxs=true;
+				saxsi=SaxsInstance(loadSaxs(filename));
 				saxsi.createMeshes();
 				if(animation.length){
-					auto anim=loadSXSK(animation);
+					anim=loadSXSK(animation);
 					saxsi.setPose(anim.frames[0]);
-				}
-				foreach(mesh;saxsi.meshes){
-					auto nmesh=New!Mesh(null);
-					nmesh.vertices=New!(Vector3f[])(mesh.vertices.length);
-					nmesh.vertices[]=mesh.vertices[];
-					nmesh.texcoords=New!(Vector2f[])(mesh.texcoords.length);
-					nmesh.texcoords[]=mesh.texcoords[];
-					nmesh.indices=New!(uint[3][])(mesh.indices.length);
-					nmesh.indices[]=mesh.indices[];
-					nmesh.normals=New!(Vector3f[])(mesh.normals.length);
-					nmesh.normals[]=mesh.normals[];
-					nmesh.dataReady=true;
-					nmesh.prepareVAO();
-					meshes.insertBack(nmesh);
-				}
-				foreach(ref bodyPart;saxsi.saxs.bodyParts){
-					auto texture=New!Texture(null);
-					texture.image=bodyPart.texture.image;
-					texture.createFromImage(texture.image);
-					textures.insertBack(texture);
 				}
 				break;
 			default:
@@ -58,15 +45,32 @@ class SacObject: Owner{
 	}
 
 	void createEntities(Scene s){
-		foreach(i;0..meshes.length){
+		foreach(i;0..isSaxs?saxsi.meshes.length:meshes.length){
 			auto obj=s.createEntity3D();
-			obj.drawable = meshes[i];
+			obj.drawable = isSaxs?saxsi.meshes[i]:meshes[i];
 			obj.position = Vector3f(0, 0, 0);
 			obj.rotation = rotationQuaternion(Axis.y,cast(float)PI);
 			auto mat=s.createMaterial();
-			if(textures[i] !is null) mat.diffuse=textures[i];
+			if((isSaxs?saxsi.saxs.bodyParts[i].texture:textures[i]) !is null) mat.diffuse=isSaxs?saxsi.saxs.bodyParts[i].texture:textures[i];
 			mat.specular=Color4f(0,0,0,1);
 			obj.material=mat;
+			entities.insertBack(obj);
+		}
+	}
+
+	size_t numFrames(){
+		return anim.frames.length?anim.frames.length:1;
+	}
+	double animFPS(){
+		return 32;
+	}
+
+	void setFrame(size_t frame)in{
+		assert(frame<numFrames());
+	}body{
+		if(isSaxs){
+			if(anim.frames.length==0) return;
+			saxsi.setPose(anim.frames[frame]);
 		}
 	}
 }
@@ -79,7 +83,7 @@ auto convertModel(Model)(string dir, Model model){
 	}
 	DynamicArray!Mesh meshes;
 	DynamicArray!Texture textures;
-	
+
 	foreach(i;0..names.length){
 		 // TODO: improve dlib
 		meshes.insertBack(New!Mesh(null));
