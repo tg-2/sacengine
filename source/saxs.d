@@ -61,57 +61,86 @@ Saxs loadSaxs(string filename){
 	}
 	auto positions=model.positions.map!convertPosition().array;
 	BodyPart[] bodyParts;
+	auto vrt=new uint[][][](model.bodyParts.length);
 	foreach(i,bodyPart;model.bodyParts){
 		Vertex[] vertices;
-		auto vrt=new uint[][](bodyPart.rings.length);
+		vrt[i]=new uint[][](bodyPart.rings.length);
 		double textureMax=bodyPart.rings[$-1].texture;
 		foreach(j,ring;bodyPart.rings){
-			vrt[j]=new uint[](ring.entries.length+1);
+			vrt[i][j]=new uint[](ring.entries.length+1);
 			foreach(k,entry;ring.entries){
-				vrt[j][k]=to!uint(vertices.length);
+				vrt[i][j][k]=to!uint(vertices.length);
 				auto indices=entry.indices[].map!(to!int).filter!(x=>x!=ushort.max);
 				auto uv=Vector2f(entry.alignment/256.0f,ring.texture/textureMax);
 				if(bodyPart.explicitFaces.length) uv[1]=entry.textureV/256.0f;
 				vertices~=Vertex(indices,uv);
 			}
-			vrt[j][ring.entries.length]=to!uint(vertices.length);
-			vertices~=vertices[vrt[j][0]];
+			vrt[i][j][ring.entries.length]=to!uint(vertices.length);
+			vertices~=vertices[vrt[i][j][0]];
 			vertices[$-1].uv[0]=1.0f;
 		}
 		uint[3][] faces;
 		if(bodyPart.flags & BodyPartFlags.CLOSE_TOP){
-			foreach(j;1..vrt[0].length-1){
-				faces~=[vrt[0][0],vrt[0][j],vrt[0][j+1]];
+			foreach(j;1..vrt[i][0].length-1){
+				faces~=[vrt[i][0][0],vrt[i][0][j],vrt[i][0][j+1]];
 			}
 		}
-		foreach(j,ring;bodyPart.rings[0..$-1]){
+		/+if(i!=0)+/ foreach(j,ring;bodyPart.rings[0..$-1]){
 			auto entries=ring.entries;
 			auto next=bodyPart.rings[j+1].entries;
 			for(int a=0,b=0;a<entries.length||b<next.length;){
 				if(b==next.length||a<entries.length&&entries[a].alignment<=next[b].alignment){
-					faces~=[vrt[j][a],vrt[j+1][b],vrt[j][a+1]];
+					faces~=[vrt[i][j][a],vrt[i][j+1][b],vrt[i][j][a+1]];
 					a++;
 				}else{
-					faces~=[vrt[j+1][b],vrt[j+1][b+1],vrt[j][a]];
+					faces~=[vrt[i][j+1][b],vrt[i][j+1][b+1],vrt[i][j][a]];
 					b++;
 				}
 			}
 		}
 		if(bodyPart.flags & BodyPartFlags.CLOSE_BOT){
-			foreach(j;1..vrt[$-1].length-1){
-				faces~=[vrt[$-1][0],vrt[$-1][j+1],vrt[$-1][j]];
+			foreach(j;1..vrt[i][$-1].length-1){
+				faces~=[vrt[i][$-1][0],vrt[i][$-1][j+1],vrt[i][$-1][j]];
 			}
 		}
 		if(bodyPart.explicitFaces.length){
-			enforce(vrt.length==1);
+			enforce(vrt[i].length==1);
 			foreach(eface;bodyPart.explicitFaces)
-				faces~=[vrt[0][eface[0]],vrt[0][eface[1]],vrt[0][eface[2]]];
+				faces~=[vrt[i][0][eface[0]],vrt[i][0][eface[1]],vrt[i][0][eface[2]]];
 		}
 		auto texture=New!Texture(null); // TODO: how not to leak this memory without crashing at shutdown?
 		texture.image = loadSXTX(buildPath(dir,format(".%03d.SXTX",i+1)));
 		texture.createFromImage(texture.image);
 		bodyParts~=BodyPart(vertices,faces,texture);
+		if(bodyPart.strips.length){
+			// TODO: enforce all in bounds
+			// TODO: this is not the right way to interpret this data:
+			for(int j=0;j<bodyPart.strips.length;j++){
+				if(bodyPart.strips[j].bodyPart==i&&j+1<bodyPart.strips.length){
+					auto strip1=bodyPart.strips[j];
+					auto idx1=vrt[strip1.bodyPart][strip1.ring][strip1.vertex];
+					auto strip2=bodyPart.strips[j+1];
+					auto idx2=vrt[strip2.bodyPart][strip2.ring][strip2.vertex];
+					writeln(bodyParts.length," ",bodyPart.strips[j+1].bodyPart);
+					bodyParts[strip1.bodyPart].vertices[idx1].indices_=bodyParts[strip2.bodyPart].vertices[idx2].indices_;
+				}
+			}
+			/+
+			auto vrts=bodyPart.strips.map!(strip=>bodyParts[strip.bodyPart].vertices[vrt[strip.bodyPart][strip.ring][strip.vertex]]);
+			bodyParts[$-1].vertices~=chain(vrts,vrts).array;
+			auto ind1=iota(to!uint(bodyParts[$-1].vertices.length-2*bodyPart.strips.length),to!uint(bodyParts[$-1].vertices.length-bodyPart.strips.length));
+			auto ind2=iota(to!uint(bodyParts[$-1].vertices.length-bodyPart.strips.length),to!uint(bodyParts[$-1].vertices.length));
+			foreach(j;0..bodyPart.strips.length){
+				// TODO: is there a way to figure out what the orientation should be?
+				bodyParts[$-1].faces~=[ind1[j],ind1[(j+1)%$],ind1[(j+2)%$]];
+				bodyParts[$-1].faces~=[ind2[j],ind2[(j+2)%$],ind2[(j+1)%$]];
+				//if(j&1) swap(bodyParts[$-1].faces[$-1][1],bodyParts[$-1].faces[$-1][2]);
+				//bodyParts[$-1].faces~=[ind[j],ind[(j+2)%$],ind[(j+1)%$]];
+			}+/
+		}
 	}
+	writeln("numVertices: ",std.algorithm.sum(bodyParts.map!(bodyPart=>bodyPart.vertices.length)));
+	writeln("numFaces: ",std.algorithm.sum(bodyParts.map!(bodyPart=>bodyPart.vertices.length)));
 	return Saxs(bones,positions,bodyParts);
 }
 

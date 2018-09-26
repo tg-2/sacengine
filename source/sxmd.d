@@ -23,7 +23,8 @@ struct BodyPartHeader{
 	ubyte[16] unknown1;
 	uint flags;
 	uint explicitFaceOffset;
-	ubyte[8] unknown2;
+	uint stripsOffset;
+	ubyte[4] unknown2;
 }
 static assert(BodyPartHeader.sizeof==36);
 
@@ -57,12 +58,30 @@ struct RingEntry{
 }
 static assert(RingEntry.sizeof==10);
 
+struct StripHeader{
+	ubyte[2] unknown0;
+	ushort numStrips;
+	ubyte[4] unknown1;
+}
+static assert(StripHeader.sizeof==8);
+
+static struct Strip{
+	ushort bodyPart;
+	ushort ring;
+	ushort vertex;
+	ubyte unknown; // setting to random data adds triangles that should not be there
+	ubyte texture; // unknown what it does exactly
+}
+static assert(Strip.sizeof==8);
+
 struct BodyPart{
 	BodyPartHeader* header;
 	alias header this;
 	uint[] offsets;
 	Ring[] rings;
 	ushort[3][] explicitFaces;
+	StripHeader* stripHeader;
+	Strip[] strips;
 	string toString(){
 		return text("BodyPart(",*header,", ",rings,")");
 	}
@@ -113,7 +132,13 @@ Model parseSXMD(ubyte[] data){
 		ushort[3][] explicitFaces=[];
 		if(header.numExplicitFaces>0)
 			explicitFaces=cast(ushort[3][])data[header.explicitFaceOffset..header.explicitFaceOffset+(ushort[3]).sizeof*header.numExplicitFaces];
-		bodyParts~=BodyPart(header,offsets,edata,explicitFaces);
+		StripHeader* stripHeader;
+		Strip[] strips;
+		if(header.stripsOffset){
+			stripHeader=cast(StripHeader*)data[header.stripsOffset..header.stripsOffset+StripHeader.sizeof];
+			strips=cast(Strip[])data[header.stripsOffset+StripHeader.sizeof..header.stripsOffset+StripHeader.sizeof+Strip.sizeof*stripHeader.numStrips];
+		}
+		bodyParts~=BodyPart(header,offsets,edata,explicitFaces,stripHeader,strips);
 	}
 	auto positions=cast(Position[])data[vertexOffset..vertexOffset+Position.sizeof*numPositions];
 	auto remainingDataOffset=vertexOffset+Position.sizeof*numPositions;
