@@ -3,7 +3,7 @@ import std.math;
 import std.stdio;
 import std.string;
 
-import sacobject, sxmd;
+import sacobject, sacmap;
 
 class TestScene: Scene{
 	//OBJAsset aOBJ;
@@ -14,6 +14,7 @@ class TestScene: Scene{
         this.args=args;
     }
 	DynamicArray!SacObject sacs;
+	FirstPersonView fpview;
     override void onAssetsRequest(){
 	    //aOBJ = addOBJAsset("../jman.obj");
 	    //txta = New!Texture(null);// TODO: why?
@@ -23,7 +24,12 @@ class TestScene: Scene{
     override void onAllocate(){
         super.onAllocate();
 
-        view = New!Freeview(eventManager, assetManager);
+        //view = New!Freeview(eventManager, assetManager);
+        auto eCamera = createEntity3D();
+        eCamera.position = Vector3f(5.0f, 2.0f, 0.0f);
+        fpview = New!FirstPersonView(eventManager, eCamera, assetManager);
+        fpview.active = true;
+        view = fpview;
         createSky();
         //auto mat = createMaterial();
         //mat.diffuse = Color4f(0.2, 0.2, 0.2, 0.2);
@@ -39,11 +45,16 @@ class TestScene: Scene{
 	        string anim="";
 	        if(i+1<args.length&&args[i+1].endsWith(".SXSK"))
 		        anim=args[i+1];
-	        auto sac=New!SacObject(this, args[i], anim);
-	        sac.createEntities(this);
+	        if(args[i].endsWith(".HMAP")){
+		        auto map=New!SacMap(args[i]);
+		        map.createEntities(this);
+	        }else{
+		        auto sac=New!SacObject(this, args[i], anim);
+		        sac.createEntities(this);
+		        sacs.insertBack(sac);
+	        }
 	        if(i+1<args.length&&args[i+1].endsWith(".SXSK"))
 		        i+=1;
-	        sacs.insertBack(sac);
         }
 
         /+auto ePlane = createEntity3D();
@@ -52,8 +63,21 @@ class TestScene: Scene{
         //matGround.diffuse = ;
         ePlane.material=matGround;+/
     }
+	void cameraControl(double dt){
+		Vector3f forward = fpview.camera.worldTrans.forward;
+		Vector3f right = fpview.camera.worldTrans.right;
+		float speed = 6.0f;
+		Vector3f dir = Vector3f(0, 0, 0);
+		if(eventManager.keyPressed[KEY_W]) dir += -forward;
+		if(eventManager.keyPressed[KEY_S]) dir += forward;
+		if(eventManager.keyPressed[KEY_A]) dir += -right;
+		if(eventManager.keyPressed[KEY_D]) dir += right;
+		fpview.camera.position += dir.normalized * speed * dt;
+	}
+
 	double totalTime=0;
 	override void onLogicsUpdate(double dt){
+		cameraControl(dt);
 		totalTime+=dt;
 		foreach(sac;sacs){
 			auto frame=totalTime*sac.animFPS;
