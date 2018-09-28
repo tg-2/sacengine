@@ -66,7 +66,7 @@ class TestScene: Scene{
 	void cameraControl(double dt){
 		Vector3f forward = fpview.camera.worldTrans.forward;
 		Vector3f right = fpview.camera.worldTrans.right;
-		float speed = 6.0f;
+		float speed = 100.0f;
 		Vector3f dir = Vector3f(0, 0, 0);
 		if(eventManager.keyPressed[KEY_W]) dir += -forward;
 		if(eventManager.keyPressed[KEY_S]) dir += forward;
