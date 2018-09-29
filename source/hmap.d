@@ -13,8 +13,8 @@ HMap parseHMap(ubyte[] data){
 	auto height=parseLE(data[0..2]);
 	data=data[2..$];
 	auto hmapData=cast(ushort[])data[0..2*width*height];
-	auto edges=new bool[][](height,width);
-	auto heights=new float[][](height,width);
+	auto edges=new bool[][](width,height);
+	auto heights=new float[][](width,height);
 	foreach(y;0..height){
 		foreach(x;0..width){
 			auto elevation=hmapData[(height-1-y)*width+x];

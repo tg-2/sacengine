@@ -21,3 +21,10 @@ Vector3f fromSXMD(Vector3f v){
 float[3] fromSXMD(float[3] v){
 	return [-v[0],v[1],v[2]];
 }
+
+ubyte[] readFile(string filename){
+	ubyte[] data;
+	import std.stdio;
+	foreach(ubyte[] chunk;chunks(File(filename,"rb"),4096)) data~=chunk;
+	return data;
+}
