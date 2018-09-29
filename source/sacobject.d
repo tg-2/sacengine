@@ -10,7 +10,7 @@ class SacObject: Owner{
 	DynamicArray!Mesh meshes;
 	DynamicArray!Texture textures;
 
-	bool isSaxs=true;
+	bool isSaxs=false;
 	SaxsInstance saxsi;
 	Animation anim;
 
