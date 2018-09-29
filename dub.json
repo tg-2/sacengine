@@ -4,7 +4,10 @@
 		"tg"
 	],
 	"dependencies": {
-		"dagon": "~master"
+		"dlib": "~master",
+        "derelict-sdl2": "~>3.1.0-alpha.2",
+        "derelict-gl3": "~>2.0.0-beta.5",
+        "derelict-ft": "~>2.0.0-beta.2"
 	},
 	"description": "A minimal D application.",
 	"copyright": "Copyright © 2018, tg",
