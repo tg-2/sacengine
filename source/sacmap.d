@@ -28,6 +28,7 @@ class SacMap{ // TODO: make this an entity
 			auto r=image(dt.width,dt.height);
 			foreach(j;0..256){
 				foreach(i;0..256){
+					// TODO: use proper interpolation here
 					auto cur=img[j/4,i/4];
 					auto up=j/4?img[j/4-1,i/4]:cur;
 					auto ri=i/4<63?img[j/4,i/4+1]:cur;
@@ -42,9 +43,9 @@ class SacMap{ // TODO: make this an entity
 		}
 		auto mapts=loadMAPTs(land);
 		auto bumps=loadDTs(land);
-		textures=iota(256).map!(i=>addDetail(mapts[i],bumps[dti[i]])).map!makeTexture.array;
-		bump=bumps.map!makeTexture.array;
+		textures=iota(256).map!(i=>meshes[i]?addDetail(mapts[i],bumps[dti[i]]):mapts[i]).map!makeTexture.array;
 		//textures=loadMAPTs(land).map!makeTexture.array;
+		bump=bumps.map!makeTexture.array;
 	}
 
 	void createEntities(Scene s){
