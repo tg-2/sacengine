@@ -73,3 +73,22 @@ DTIndex loadDTIndex(string dir){
 	}
 	return DTIndex(dts);
 }
+
+struct LMap{
+	ubyte[4][][] colors;
+}
+
+LMap parseLMap(ubyte[] data){
+	enforce(data.length==4*256*256);
+	auto colors=new ubyte[4][][](256);
+	foreach(y;0..256) colors[y]=cast(ubyte[4][])data[4*256*y..4*256*(y+1)];
+	return LMap(colors);
+}
+
+LMap loadLMap(string filename){
+	enforce(filename.endsWith(".LMAP"));
+	auto data=readFile(filename);
+	auto tiles=new ubyte[][](256);
+	foreach(y;0..256) tiles[y]=data[256*y..256*(y+1)];
+	return parseLMap(data);
+}

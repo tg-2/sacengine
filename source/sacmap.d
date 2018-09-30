@@ -9,6 +9,7 @@ class SacMap{ // TODO: make this an entity
 	Mesh[] meshes;
 	Texture[] textures;
 	Texture[] bump;
+	Texture colors;
 	ubyte[] dti;
 
 	this(string filename){
@@ -44,8 +45,10 @@ class SacMap{ // TODO: make this an entity
 		auto mapts=loadMAPTs(land);
 		auto bumps=loadDTs(land);
 		textures=iota(256).map!(i=>meshes[i]?addDetail(mapts[i],bumps[dti[i]]):mapts[i]).map!makeTexture.array;
-		//textures=loadMAPTs(land).map!makeTexture.array;
 		bump=bumps.map!makeTexture.array;
+		//textures=loadMAPTs(land).map!makeTexture.array;
+		auto lmap=loadLMap(filename[0..$-".HMAP".length]~".LMAP");
+		colors=makeTexture(lmap);
 	}
 
 	void createEntities(Scene s){
@@ -74,6 +77,20 @@ class SacMap{ // TODO: make this an entity
 			obj.material=mat;
 		}
 	}
+}
+
+SuperImage loadLMap(string filename){
+	enforce(filename.endsWith(".LMAP"));
+	auto colors=maps.loadLMap(filename).colors;
+	auto img=image(256,256);
+	assert(colors.length==256);
+	foreach(y;0..cast(int)colors.length){
+		assert(colors[y].length==256);
+		foreach(x;0..cast(int)colors[y].length){
+			img[x,y]=Color4f(Color4(colors[y][x][0],colors[y][x][1],colors[y][x][2]));
+		}
+	}
+	return img;
 }
 
 SuperImage[] loadDTs(string directory){
@@ -159,7 +176,7 @@ Mesh[] createMeshes(HMap hmap, TMap tmap, float scaleFactor=1){
 	auto numFaces=new uint[](256);
 	foreach(j;0..n-1){
 		foreach(i;0..m-1){
-			auto t=tiles[n-1-j][i];
+			auto t=tiles[n-2-j][i];
 			int faces=0;
 			struct FaceCounter{
 				void put(uint[3]){
@@ -178,7 +195,7 @@ Mesh[] createMeshes(HMap hmap, TMap tmap, float scaleFactor=1){
 	auto meshes=new Mesh[](256);
 	foreach(j;0..n-1){
 		foreach(i;0..m-1){
-			auto t=tiles[n-1-j][i];
+			auto t=tiles[n-2-j][i];
 			if(!meshes[t]){
 				if(!numFaces[t]) continue;
 				meshes[t]=new Mesh(null);
