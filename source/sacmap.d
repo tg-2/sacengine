@@ -1,6 +1,6 @@
 import dagon;
 import util;
-import hmap,tmap,txtr;
+import maps,txtr;
 import std.exception, std.string, std.algorithm, std.conv, std.range;
 import std.stdio, std.path, std.file;
 import std.typecons: tuple,Tuple;

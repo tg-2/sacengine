@@ -1,0 +1,75 @@
+import dagon;
+import util;
+import std.stdio, std.exception, std.string, std.path, std.file, std.conv;
+
+struct HMap{
+	bool[][] edges;
+	float[][] heights;
+}
+
+HMap parseHMap(ubyte[] data){
+	auto width=parseLE(data[0..2]);
+	data=data[2..$];
+	auto height=parseLE(data[0..2]);
+	data=data[2..$];
+	auto hmapData=cast(ushort[])data[0..2*width*height];
+	auto edges=new bool[][](width,height);
+	auto heights=new float[][](width,height);
+	foreach(y;0..height){
+		foreach(x;0..width){
+			auto elevation=hmapData[(height-1-y)*width+x];
+			auto isVoid=!!(elevation&(1<<15));
+			elevation&=~(1<<15);
+			edges[y][x]=isVoid;
+			heights[y][x]=elevation/0.1f;
+		}
+	}
+	return HMap(edges,heights);
+}
+
+HMap loadHMap(string filename){
+	enforce(filename.endsWith(".HMAP"));
+	ubyte[] data;
+	foreach(ubyte[] chunk;chunks(File(filename,"rb"),4096)) data~=chunk;
+	return parseHMap(data);
+}
+
+
+struct TMap{
+	ubyte[][] tiles;
+}
+TMap loadTMap(string filename){
+	enforce(filename.endsWith(".TMAP"));
+	auto data=readFile(filename);
+	data=data[512..$]; // TODO: what is this data?
+	auto tiles=new ubyte[][](256);
+	foreach(y;0..256) tiles[y]=data[256*y..256*(y+1)];
+	return TMap(tiles);
+}
+
+struct DTIndex{
+	ubyte[] dts; // texture index to detail texture
+}
+
+struct MapGroup{
+	ubyte[33] unknown0;
+	ubyte num;
+	ubyte[14] indices;
+	ubyte[7] unknown1;
+	ubyte dt;
+	ubyte[4] unknown2;
+}
+static assert(MapGroup.sizeof==60);
+
+DTIndex loadDTIndex(string dir){
+	auto dts=new ubyte[](256);
+	for(int i=0;exists(buildPath(dir,format("MG%02d.MAPG",i)));i++){
+		auto mapgData=readFile(buildPath(dir,format("MG%02d.MAPG",i)));
+		enforce(mapgData.length==MapGroup.sizeof);
+		auto mapg=cast(MapGroup*)mapgData.ptr;
+		foreach(j;0..mapg.num){
+			dts[mapg.indices[j]]=mapg.dt;
+		}
+	}
+	return DTIndex(dts);
+}
