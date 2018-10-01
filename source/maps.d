@@ -92,3 +92,34 @@ LMap loadLMap(string filename){
 	foreach(y;0..256) tiles[y]=data[256*y..256*(y+1)];
 	return parseLMap(data);
 }
+
+struct Levl{
+	ubyte[40] unknown;
+	char[4] retroTileset;
+}
+static assert(Levl.sizeof==44);
+
+enum Tileset{
+	ethereal,
+	persephone,
+	pyro,
+	james,
+	stratos,
+	charnel
+}
+
+Tileset detectTileset(string filename){
+	enforce(filename.endsWith(".LEVL"));
+	auto data=readFile(filename);
+	enforce(data.length==Levl.sizeof);
+	auto Levl=cast(Levl*)data.ptr;
+	switch(Levl.retroTileset) with(Tileset){
+		case "rhte": return ethereal;
+		case "csrp": return persephone;
+		case "A_YP": return pyro;
+		case "A_AJ": return james;
+		case "A_TS": return stratos;
+		case "rahc": return charnel;
+		default: enforce(0); assert(0);
+	}
+}

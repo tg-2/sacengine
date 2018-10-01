@@ -17,10 +17,15 @@ class SacMap{ // TODO: make this an entity
 		auto hmap=loadHMap(filename);
 		auto tmap=loadTMap(filename[0..$-".HMAP".length]~".TMAP");
 		meshes=createMeshes(hmap,tmap);
-		auto land="extracted/prsc/prsc.WAD!/prsc.LAND";
-		//auto land="extracted/james_a/JA_A.WAD!/JA_A.LAND";
-		//auto land="extracted/strato_a/ST_A.WAD!/ST_A.LAND";
-
+		string land;
+		final switch(detectTileset(filename[0..$-".HMAP".length]~".LEVL")) with(Tileset){
+			case ethereal: land="extracted/ethr/ethr.WAD!/ethr.LAND"; break; // TODO
+			case persephone: land="extracted/prsc/prsc.WAD!/prsc.LAND"; break;
+			case pyro: land="extracted/pyro_a/PY_A.WAD!/PY_A.LAND"; break;
+			case james: land="extracted/james_a/JA_A.WAD!/JA_A.LAND"; break;
+			case stratos: land="extracted/strato_a/ST_A.WAD!/ST_A.LAND"; break;
+			case charnel: land="extracted/char/char.WAD!/char.LAND"; break;
+		}
 		dti=loadDTIndex(land).dts;
 		static Texture makeTexture(SuperImage i){
 			auto texture=New!Texture(null); // TODO: set owner
@@ -71,7 +76,7 @@ SuperImage loadLMap(string filename){
 }
 
 SuperImage[] loadDTs(string directory){
-	auto r=iota(0,7).map!(i=>loadTXTR(buildPath(directory,format("DT%02d.TXTR",i)))).array;
+	auto r=iota(0,7).until!(i=>!exists(buildPath(directory,format("DT%02d.TXTR",i)))).map!(i=>loadTXTR(buildPath(directory,format("DT%02d.TXTR",i)))).array;
 	foreach(ref img;r){
 		foreach(j;0..256){
 			foreach(i;0..256){
