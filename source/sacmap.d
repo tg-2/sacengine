@@ -6,10 +6,10 @@ import std.stdio, std.path, std.file;
 import std.typecons: tuple,Tuple;
 
 class SacMap{ // TODO: make this an entity
-	Mesh[] meshes;
+	TerrainMesh[] meshes;
 	Texture[] textures;
-	Texture[] bump;
-	Texture colors;
+	Texture[] details;
+	Texture color;
 	ubyte[] dti;
 
 	this(string filename){
@@ -18,6 +18,9 @@ class SacMap{ // TODO: make this an entity
 		auto tmap=loadTMap(filename[0..$-".HMAP".length]~".TMAP");
 		meshes=createMeshes(hmap,tmap);
 		auto land="extracted/prsc/prsc.WAD!/prsc.LAND";
+		//auto land="extracted/james_a/JA_A.WAD!/JA_A.LAND";
+		//auto land="extracted/strato_a/ST_A.WAD!/ST_A.LAND";
+
 		dti=loadDTIndex(land).dts;
 		static Texture makeTexture(SuperImage i){
 			auto texture=New!Texture(null); // TODO: set owner
@@ -25,30 +28,12 @@ class SacMap{ // TODO: make this an entity
 			texture.createFromImage(texture.image);
 			return texture;
 		}
-		static SuperImage addDetail(ref SuperImage img,ref SuperImage dt){
-			auto r=image(dt.width,dt.height);
-			foreach(j;0..256){
-				foreach(i;0..256){
-					// TODO: use proper interpolation here
-					auto cur=img[j/4,i/4];
-					auto up=j/4?img[j/4-1,i/4]:cur;
-					auto ri=i/4<63?img[j/4,i/4+1]:cur;
-					auto lo=j/4<63?img[j/4+1,i/4]:cur;
-					auto le=i/4<63?img[j/4-1,i/4]:cur;
-					auto col=(cur+up+ri+lo+le)/5;
-					auto det=dt[j,i];
-					r[j,i]=0.5*col+0.5*Color4f(col.r*det.r,col.g*det.g,col.b*det.b);
-				}
-			}
-			return r;
-		}
 		auto mapts=loadMAPTs(land);
 		auto bumps=loadDTs(land);
-		textures=iota(256).map!(i=>meshes[i]?addDetail(mapts[i],bumps[dti[i]]):mapts[i]).map!makeTexture.array;
-		bump=bumps.map!makeTexture.array;
-		//textures=loadMAPTs(land).map!makeTexture.array;
+		textures=loadMAPTs(land).map!makeTexture.array;
+		details=bumps.map!makeTexture.array;
 		auto lmap=loadLMap(filename[0..$-".HMAP".length]~".LMAP");
-		colors=makeTexture(lmap);
+		color=makeTexture(lmap);
 	}
 
 	void createEntities(Scene s){
@@ -57,23 +42,15 @@ class SacMap{ // TODO: make this an entity
 			auto obj=s.createEntity3D();
 			obj.drawable = mesh;
 			obj.position = Vector3f(0, 0, 0);
-			//auto land="extracted/strato_a/ST_A.WAD!/ST_A.LAND";
-			//auto land="extracted/james_a/JA_A.WAD!/JA_A.LAND";
-			//auto dts=loadDTs(land);
-			//bump=New!Texture(null);
-			//texture.image=mapts;
-			//bump.image=dts;
-			//bump.createFromImage(texture.image);
-			auto mat=s.createMaterial();
+			auto mat=s.createMaterial(s.terrainMaterialBackend);
 			assert(!!textures[i]);
 			mat.diffuse=textures[i];
-			//mat.diffuse=bump[dti[i]];
-			assert(!!bump[dti[i]]);
-			//mat.height=bump[dti[i]];
-			//mat.parallax=ParallaxSimple;
-			mat.specular=0;
-			mat.roughness=0;
-			mat.metallic=0;
+			assert(!!details[dti[i]]);
+			mat.detail=details[dti[i]];
+			mat.color=color;
+			mat.specular=0.8;
+			mat.roughness=1;
+			mat.metallic=0.6;
 			obj.material=mat;
 		}
 	}
@@ -110,7 +87,6 @@ SuperImage[] loadMAPTs(string directory){
 	auto palt=readFile(palFile);
 	palt=palt[8..$]; // header bytes (TODO: figure out what they mean)
 	return iota(0,256).map!((i){
-			//auto maptFile=buildPath(directory,format("%04d.MAPT",i));
 			auto maptFile=buildPath(directory,format("%04d.MAPT",i));
 			auto img=image(64,64);
 			if(!exists(maptFile)) return img;
@@ -118,14 +94,14 @@ SuperImage[] loadMAPTs(string directory){
 			foreach(y;0..64){
 				foreach(x;0..64){
 					uint ccol=data[64*y+x];
-					img[x,y]=Color4f(Color4(palt[3*ccol],palt[3*ccol+1],palt[3*ccol+2]))*0.6;
+					img[x,y]=Color4f(Color4(palt[3*ccol],palt[3*ccol+1],palt[3*ccol+2]));
 				}
 			}
 			return img;
 		}).array;
 }
 
-Mesh[] createMeshes(HMap hmap, TMap tmap, float scaleFactor=1){
+TerrainMesh[] createMeshes(HMap hmap, TMap tmap, float scaleFactor=1){
 	auto edges=hmap.edges;
 	auto heights=hmap.heights.dup;
 	auto tiles=tmap.tiles;
@@ -192,16 +168,17 @@ Mesh[] createMeshes(HMap hmap, TMap tmap, float scaleFactor=1){
 	}
 	auto curVertex=new uint[](256);
 	auto curFace=new uint[](256);
-	auto meshes=new Mesh[](256);
+	auto meshes=new TerrainMesh[](256);
 	foreach(j;0..n-1){
 		foreach(i;0..m-1){
 			auto t=tiles[n-2-j][i];
 			if(!meshes[t]){
 				if(!numFaces[t]) continue;
-				meshes[t]=new Mesh(null);
+				meshes[t]=new TerrainMesh(null);
 				meshes[t].vertices=New!(Vector3f[])(numVertices[t]);
 				meshes[t].normals=New!(Vector3f[])(numVertices[t]);
 				meshes[t].texcoords=New!(Vector2f[])(numVertices[t]);
+				meshes[t].coords=New!(Vector2f[])(numVertices[t]);
 				meshes[t].indices=New!(uint[3][])(numFaces[t]);
 			}
 			int faces=0;
@@ -215,6 +192,7 @@ Mesh[] createMeshes(HMap hmap, TMap tmap, float scaleFactor=1){
 			foreach(k;0..4){
 				meshes[t].vertices[curVertex[t]+k]=getVertex(j+dj(k),i+di(k));
 				meshes[t].normals[curVertex[t]+k]=normals[j+dj(k)][i+di(k)];
+				meshes[t].coords[curVertex[t]+k]=Vector2f(i+di(k),n-1-(j+dj(k)))/256.0f;
 				meshes[t].texcoords[curVertex[t]+k]=Vector2f(di(k),!dj(k));
 			}
 			struct ProcessFaces2{
