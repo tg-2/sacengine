@@ -14,7 +14,7 @@ class TestScene: Scene{
         this.args=args;
     }
 	DynamicArray!SacObject sacs;
-	FirstPersonView fpview;
+	FirstPersonView2 fpview;
     override void onAssetsRequest(){
 	    //aOBJ = addOBJAsset("../jman.obj");
 	    //txta = New!Texture(null);// TODO: why?
@@ -27,7 +27,7 @@ class TestScene: Scene{
         //view = New!Freeview(eventManager, assetManager);
         auto eCamera = createEntity3D();
         eCamera.position = Vector3f(5.0f, 2.0f, 0.0f);
-        fpview = New!FirstPersonView(eventManager, eCamera, assetManager);
+        fpview = New!FirstPersonView2(eventManager, eCamera, assetManager);
         fpview.active = true;
         view = fpview;
         createSky();
@@ -63,15 +63,17 @@ class TestScene: Scene{
         //matGround.diffuse = ;
         ePlane.material=matGround;+/
     }
+	float speed = 100.0f;
 	void cameraControl(double dt){
 		Vector3f forward = fpview.camera.worldTrans.forward;
 		Vector3f right = fpview.camera.worldTrans.right;
-		float speed = 1000.0f;
 		Vector3f dir = Vector3f(0, 0, 0);
 		if(eventManager.keyPressed[KEY_W]) dir += -forward;
 		if(eventManager.keyPressed[KEY_S]) dir += forward;
 		if(eventManager.keyPressed[KEY_A]) dir += -right;
 		if(eventManager.keyPressed[KEY_D]) dir += right;
+		if(eventManager.keyPressed[KEY_O]) speed = 100.0f;
+		if(eventManager.keyPressed[KEY_P]) speed = 1000.0f;
 		fpview.camera.position += dir.normalized * speed * dt;
 	}
 
