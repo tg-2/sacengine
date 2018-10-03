@@ -35,7 +35,8 @@ class SacMap{ // TODO: make this an entity
 		}
 		auto mapts=loadMAPTs(land);
 		auto bumps=loadDTs(land);
-		textures=loadMAPTs(land).map!makeTexture.array;
+		auto edge=loadTXTR(buildPath(land,"EDGE.TXTR"));
+		textures=chain(mapts,only(edge)).map!makeTexture.array;
 		details=bumps.map!makeTexture.array;
 		auto lmap=loadLMap(filename[0..$-".HMAP".length]~".LMAP");
 		color=makeTexture(lmap);
@@ -50,12 +51,16 @@ class SacMap{ // TODO: make this an entity
 			auto mat=s.createMaterial(s.terrainMaterialBackend);
 			assert(!!textures[i]);
 			mat.diffuse=textures[i];
-			assert(!!details[dti[i]]);
-			mat.detail=details[dti[i]];
+			if(i<dti.length){
+				assert(!!details[dti[i]]);
+				mat.detail=details[dti[i]];
+			}else mat.detail=0;
 			mat.color=color;
 			mat.specular=0.8;
 			mat.roughness=1;
-			mat.metallic=0.6;
+			mat.metallic=0;
+			mat.emission=textures[i];
+			mat.energy=0.05;
 			obj.material=mat;
 		}
 	}
@@ -126,10 +131,12 @@ TerrainMesh[] createMeshes(HMap hmap, TMap tmap, float scaleFactor=1){
 	int di(int i){ return i==1||i==2; }
 	int dj(int i){ return i==2||i==3; }
 	auto getFaces(O)(int j,int i,O o){
-		if(!edges[j][i]&&!edges[j+1][i+1]&&!edges[j][i+1]) o.put([0,2,1]);
-		if(!edges[j+1][i+1]&&!edges[j][i]&&!edges[j+1][i]) o.put([2,0,3]);
-		if(edges[j][i]&&!edges[j][i+1]&&!edges[j+1][i+1]&&!edges[j+1][i]) o.put([1,3,2]);
-		if(edges[j+1][i+1]&&!edges[j][i]&&!edges[j][i+1]&&!edges[j+1][i]) o.put([0,3,1]);
+		if(!edges[j][i]){
+			if(!edges[j+1][i+1]&&!edges[j][i+1]) o.put([0,2,1]);
+		}else if(!edges[j][i+1]&&!edges[j+1][i+1]&&!edges[j+1][i]) o.put([1,3,2]);
+		if(!edges[j+1][i+1]){
+			if(!edges[j][i]&&!edges[j+1][i]) o.put([2,0,3]);
+		}else if(!edges[j][i]&&!edges[j][i+1]&&!edges[j+1][i]) o.put([0,3,1]);
 	}
 	auto normals=new Vector3f[][](n,m);
 	foreach(j;0..n) normals[j][]=Vector3f(0,0,0);
@@ -173,7 +180,7 @@ TerrainMesh[] createMeshes(HMap hmap, TMap tmap, float scaleFactor=1){
 	}
 	auto curVertex=new uint[](256);
 	auto curFace=new uint[](256);
-	auto meshes=new TerrainMesh[](256);
+	auto meshes=new TerrainMesh[](257);
 	foreach(j;0..n-1){
 		foreach(i;0..m-1){
 			auto t=tiles[n-2-j][i];
@@ -210,6 +217,46 @@ TerrainMesh[] createMeshes(HMap hmap, TMap tmap, float scaleFactor=1){
 		}
 	}
 	assert(curVertex==numVertices && curFace==numFaces);
+	Vector3f[] edgeVertices;
+	Vector3f[] edgeNormals;
+	Vector2f[] edgeCoords;
+	Vector2f[] edgeTexcoords;
+	uint[3][] edgeFaces;
+	enum mapDepth=50.0f;
+	foreach(j;0..n-1){
+		foreach(i;0..m-1){
+			void makeEdge(R,S)(int x1,int y1,int x2,int y2,R mustBeEdges,S someNonEdge){
+				if(!mustBeEdges.all!((k)=>edges[k[1]][k[0]])||
+				   edges[y1][x1]||edges[y2][x2]||!someNonEdge.any!((k)=>!edges[k[1]][k[0]])) return;
+				auto off=to!uint(edgeVertices.length);
+				edgeVertices~=[getVertex(y1,x1),getVertex(y2,x2),getVertex(y2,x2)+Vector3f(0,-mapDepth,0),getVertex(y1,x1)+Vector3f(0,-mapDepth,0)];
+				auto normal=cross(edgeVertices[$-3]-edgeVertices[$-1],edgeVertices[$-2]-edgeVertices[$-1]);
+				foreach(k;0..4) edgeNormals~=normal.normalized;
+				edgeCoords~=[Vector2f(x1,n-1-y1)/256.0,Vector2f(x2,n-1-y2)/256.0,Vector2f(x2,n-1-y2)/256.0,Vector2f(x1,n-1-y1)/256.0];
+				edgeTexcoords~=[Vector2f(0,0),Vector2f(1,0),Vector2f(1,1),Vector2f(0,1)];
+				edgeFaces~=[[off+0,off+1,off+2],[off+2,off+3,off+0]];
+			}
+			makeEdge(i,j,i+1,j,only(tuple(i,j-1),tuple(i+1,j-1)).filter!(x=>!!j),only(tuple(i,j+1),tuple(i+1,j+1)));
+			makeEdge(i+1,j+1,i,j+1,only(tuple(i+1,j+2),tuple(i,j+2)).filter!(x=>j+1!=n-1),only(tuple(i,j),tuple(i+1,j)));
+			makeEdge(i,j+1,i,j,only(tuple(i-1,j+1),tuple(i-1,j)).filter!(x=>!!i),only(tuple(i+1,j+1),tuple(i+1,j)));
+			makeEdge(i+1,j,i+1,j+1,only(tuple(i+2,j),tuple(i+2,j+1)).filter!(x=>i+1!=m-1),only(tuple(i,j),tuple(i,j+1)));
+			makeEdge(i,j,i+1,j+1,only(tuple(i+1,j)),only(tuple(i,j+1)));
+			makeEdge(i+1,j,i,j+1,only(tuple(i+1,j+1)),only(tuple(i,j)));
+			makeEdge(i+1,j+1,i,j,only(tuple(i,j+1)),only(tuple(i+1,j)));
+			makeEdge(i,j+1,i+1,j,only(tuple(i,j)),only(tuple(i+1,j+1)));
+		}
+	}
+	meshes[256]=new TerrainMesh(null);
+	meshes[256].vertices=New!(Vector3f[])(edgeVertices.length);
+	meshes[256].vertices[]=edgeVertices[];
+	meshes[256].normals=New!(Vector3f[])(edgeNormals.length);
+	meshes[256].normals[]=edgeNormals[];
+	meshes[256].coords=New!(Vector2f[])(edgeCoords.length);
+	meshes[256].coords[]=edgeCoords[];
+	meshes[256].texcoords=New!(Vector2f[])(edgeTexcoords.length);
+	meshes[256].texcoords[]=edgeTexcoords[];
+	meshes[256].indices=New!(uint[3][])(edgeFaces.length);
+	meshes[256].indices[]=edgeFaces[];
 	foreach(mesh;meshes){
 		if(!mesh) continue;
 		mesh.dataReady=true;
