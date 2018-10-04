@@ -17,6 +17,7 @@ SuperImage loadTXTR(string filename){ // TODO: maybe integrate with dagon's Text
 	reverse(tmp);
 	bool grayscale=false;
 	string pal=cast(string)tmp.idup;
+	txt=txt[$-width*height..$]; // remove further header bytes (TODO: figure out what they mean)
 	ubyte[] palt;
 	if(pal.toLower()=="gray"){
 		grayscale=true;
