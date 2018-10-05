@@ -26,7 +26,7 @@ SuperImage loadTXTR(string filename){ // TODO: maybe integrate with dagon's Text
 		foreach(ubyte[] chunk;chunks(File(palFile, "rb"),4096)) palt~=chunk;
 		palt=palt[8..$]; // header bytes (TODO: figure out what they mean)
 	}
-	auto img=image(width, height);
+	auto img=image(width, height, 3); // TODO: use 4 and add alpha channel if necessary
 	foreach(y;0..height){
 		foreach(x;0..width){
 			auto index = y*img.width+x;
