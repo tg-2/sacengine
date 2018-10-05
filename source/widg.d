@@ -29,10 +29,11 @@ struct Model{
 
 Model parseWIDG(ubyte[] data){
 	auto numVertices=*cast(uint*)data[0..4].ptr;
-	auto numFaces=*cast(uint*)data[4..8].ptr;
+	auto numFaces=*cast(short*)data[4..6].ptr;
 	auto retroTextureName=cast(char[])data[8..12];
 	auto vertices=cast(Vertex[])data[12..12+numVertices*Vertex.sizeof];
 	auto faces=cast(Face[])data[8+numVertices*Vertex.sizeof+4..$];
+	writeln(faces.length," ",numFaces);
 	enforce(faces.length==numFaces);
 	return Model(retroTextureName,vertices,faces);
 }
@@ -43,20 +44,23 @@ Tuple!(Mesh, Texture) loadWIDG(string filename){
 	Model model=parseWIDG(data);	
 	auto dir=dirName(filename);
 	auto mesh=New!Mesh(null);
-	auto nvertices=model.vertices.length;
-	mesh.vertices=New!(Vector3f[])(nvertices);
+	auto nvertices=to!int(model.vertices.length);
+	mesh.vertices=New!(Vector3f[])(2*nvertices);
 	foreach(i,ref vertex;model.vertices){
 		mesh.vertices[i] = fromSac(Vector3f(vertex.pos))*10;
+		mesh.vertices[i+nvertices] = fromSac(Vector3f(vertex.pos))*10;
 	}
-	mesh.texcoords=New!(Vector2f[])(nvertices);
+	mesh.texcoords=New!(Vector2f[])(2*nvertices);
 	foreach(i,ref vertex;model.vertices){
 		mesh.texcoords[i] = Vector2f(vertex.uv[0],-vertex.uv[1]);
+		mesh.texcoords[i+nvertices] = Vector2f(vertex.uv[0],-vertex.uv[1]);
 	}
-	mesh.normals=New!(Vector3f[])(nvertices);
-	mesh.indices=New!(uint[3][])(model.faces.length);
+	mesh.normals=New!(Vector3f[])(2*nvertices);
+	mesh.indices=New!(uint[3][])(2*model.faces.length);
 	foreach(i;0..model.faces.length){
 		auto indices=model.faces[i].indices;
 		mesh.indices[i]=[indices[0],indices[1],indices[2]];
+		mesh.indices[i+model.faces.length]=[nvertices+indices[0],nvertices+indices[2],nvertices+indices[1]];
 	}
 	mesh.generateNormals();
 	mesh.dataReady=true;
