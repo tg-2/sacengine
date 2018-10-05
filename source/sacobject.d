@@ -1,6 +1,6 @@
 import dagon;
 import util;
-import mrmm, _3dsm, txtr, saxs, sxsk;
+import mrmm, _3dsm, txtr, saxs, sxsk, widg;
 import std.typecons: Tuple, tuple;
 alias Tuple=std.typecons.Tuple;
 
@@ -18,7 +18,7 @@ class SacObject: Owner{
 
 	this(Owner o, string filename, string animation=""){
 		super(o);
-		enforce(filename.endsWith(".MRMM")||filename.endsWith(".3DSM")||filename.endsWith(".SXMD"));
+		enforce(filename.endsWith(".MRMM")||filename.endsWith(".3DSM")||filename.endsWith(".WIDG")||filename.endsWith(".SXMD"));
 		switch(filename[$-4..$]){
 			case "MRMM":
 				auto mt=loadMRMM(filename);
@@ -29,6 +29,11 @@ class SacObject: Owner{
 				auto mt=load3DSM(filename);
 				meshes=move(mt[0]);
 				textures=move(mt[1]);
+				break;
+			case "WIDG":
+				auto mt=loadWIDG(filename);
+				meshes.insertBack(mt[0]);
+				textures.insertBack(mt[1]);
 				break;
 			case "SXMD":
 				isSaxs=true;
@@ -104,15 +109,15 @@ auto convertModel(Model)(string dir, Model model){
 			auto nvertices=model.vertices.length;
 			mesh.vertices=New!(Vector3f[])(nvertices);
 			foreach(i,ref vertex;model.vertices){
-				mesh.vertices[i] = fromSac(vertex.pos);
+				mesh.vertices[i] = fromSac(Vector3f(vertex.pos));
 			}
 			mesh.texcoords=New!(Vector2f[])(nvertices);
 			foreach(i,ref vertex;model.vertices){
-				mesh.texcoords[i] = vertex.uv;
+				mesh.texcoords[i] = Vector2f(vertex.uv);
 			}
 			mesh.normals=New!(Vector3f[])(nvertices);
 			foreach(i,ref vertex;model.vertices){
-				mesh.normals[i] = fromSac(vertex.normal);
+				mesh.normals[i] = fromSac(Vector3f(vertex.normal));
 			}
 		}
 	}else{

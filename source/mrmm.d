@@ -1,18 +1,15 @@
 import dagon;
 import sacobject;
-import dlib.filesystem.filesystem;
-import dlib.filesystem.stdfs;
 import std.algorithm, std.exception;
 import std.stdio, std.path;
-import std.math;
 import std.typecons: Tuple, tuple;
 
 struct Vertex{
-	Vector3f pos;
-	Vector2f uv;
+	float[3] pos;
+	float[2] uv;
 	uint unknown1=0xffffffff;
 	uint unknown2=0;
-	Vector3f normal;
+	float[3] normal;
 }
 static assert(Vertex.sizeof==40);
 
@@ -25,7 +22,7 @@ struct Face{
 		reverse(tmp[]);
 		return cast(string)tmp[].dup;
 	}
-	Vector3f normal;
+	float[3] normal;
 	uint unknown2;
 }
 static assert(Face.sizeof==36);
