@@ -33,7 +33,6 @@ Model parseWIDG(ubyte[] data){
 	auto retroTextureName=cast(char[])data[8..12];
 	auto vertices=cast(Vertex[])data[12..12+numVertices*Vertex.sizeof];
 	auto faces=cast(Face[])data[8+numVertices*Vertex.sizeof+4..$];
-	writeln(faces.length," ",numFaces);
 	enforce(faces.length==numFaces);
 	return Model(retroTextureName,vertices,faces);
 }
@@ -47,8 +46,8 @@ Tuple!(Mesh, Texture) loadWIDG(string filename){
 	auto nvertices=to!int(model.vertices.length);
 	mesh.vertices=New!(Vector3f[])(2*nvertices);
 	foreach(i,ref vertex;model.vertices){
-		mesh.vertices[i] = fromSac(Vector3f(vertex.pos))*10;
-		mesh.vertices[i+nvertices] = fromSac(Vector3f(vertex.pos))*10;
+		mesh.vertices[i] = fromSac(Vector3f(vertex.pos));
+		mesh.vertices[i+nvertices] = fromSac(Vector3f(vertex.pos));
 	}
 	mesh.texcoords=New!(Vector2f[])(2*nvertices);
 	foreach(i,ref vertex;model.vertices){
@@ -65,8 +64,7 @@ Tuple!(Mesh, Texture) loadWIDG(string filename){
 	mesh.generateNormals();
 	mesh.dataReady=true;
 	mesh.prepareVAO();
-	auto txtr=loadTXTR(buildPath(dir,chain(retro(model.retroTextureName),".TXTR").to!string));
-	txtr.savePNG("widg.png");
+	auto txtr=loadTXTR(buildPath(dir,chain(retro(model.retroTextureName),".TXTR").to!string),true);
 	auto texture=New!Texture(null);
 	texture.image=txtr;
 	texture.createFromImage(texture.image);

@@ -16,6 +16,15 @@ class SacObject: Owner{
 
 	DynamicArray!Entity entities;
 
+	this(Owner o, SacObject rhs){
+		super(o);
+		this.meshes=rhs.meshes;
+		this.textures=rhs.textures;
+		this.isSaxs=rhs.isSaxs;
+		this.saxsi=rhs.saxsi;
+		this.anim=rhs.anim;
+	}
+
 	this(Owner o, string filename, string animation=""){
 		super(o);
 		enforce(filename.endsWith(".MRMM")||filename.endsWith(".3DSM")||filename.endsWith(".WIDG")||filename.endsWith(".SXMD"));
@@ -49,12 +58,15 @@ class SacObject: Owner{
 		}
 	}
 
+	Vector3f position = Vector3f(0,0,0); // TODO: make SacObject an entity
+	Quaternionf rotation = rotationQuaternion(Axis.y,cast(float)PI);
+
 	void createEntities(Scene s){
 		foreach(i;0..isSaxs?saxsi.meshes.length:meshes.length){
 			auto obj=s.createEntity3D();
 			obj.drawable = isSaxs?saxsi.meshes[i]:meshes[i];
-			obj.position = Vector3f(0, 0, 0);
-			obj.rotation = rotationQuaternion(Axis.y,cast(float)PI);
+			obj.position = position;
+			obj.rotation = rotation;
 			auto mat=s.createMaterial();
 			if((isSaxs?saxsi.saxs.bodyParts[i].texture:textures[i]) !is null) mat.diffuse=isSaxs?saxsi.saxs.bodyParts[i].texture:textures[i];
 			mat.specular=Color4f(0,0,0,1);

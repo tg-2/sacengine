@@ -62,6 +62,8 @@ class TestScene: Scene{
         auto matGround = createMaterial();
         //matGround.diffuse = ;
         ePlane.material=matGround;+/
+        //sortEntities(entities3D);
+        //sortEntities(entities2D);
     }
 	float speed = 100.0f;
 	void cameraControl(double dt){
@@ -90,10 +92,10 @@ class TestScene: Scene{
 
 class MyApplication: SceneApplication{
     this(string[] args){
-        super(1280, 720, false, "Dagon demo", args);
+        super(1280, 720, false, "SacEngine", args);
         TestScene test = New!TestScene(sceneManager, args);
-        sceneManager.addScene(test, "TestScene");
-        sceneManager.goToScene("TestScene");
+        sceneManager.addScene(test, "Sacrifice");
+        sceneManager.goToScene("Sacrifice");
     }
 }
 

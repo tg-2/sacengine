@@ -3,7 +3,7 @@ import util;
 import dlib.image,dlib.image.color;
 import std.stdio, std.string, std.algorithm, std.path, std.exception;
 
-SuperImage loadTXTR(string filename){ // TODO: maybe integrate with dagon's TextureAsset
+SuperImage loadTXTR(string filename,bool hasAlpha=0){ // TODO: maybe integrate with dagon's TextureAsset
 	enforce(filename.endsWith(".TXTR")||filename.endsWith(".ICON"));
 	auto base = filename[0..$-".TXTR".length];
 	ubyte[] txt;
@@ -25,16 +25,17 @@ SuperImage loadTXTR(string filename){ // TODO: maybe integrate with dagon's Text
 		auto palFile=buildPath(dirName(filename), pal~".PALT");
 		foreach(ubyte[] chunk;chunks(File(palFile, "rb"),4096)) palt~=chunk;
 		palt=palt[8..$]; // header bytes (TODO: figure out what they mean)
+		//writeln("palt header", palt[0..8]);
 	}
-	auto img=image(width, height, 3); // TODO: use 4 and add alpha channel if necessary
+	auto img=image(width, height, 3+hasAlpha);
 	foreach(y;0..height){
 		foreach(x;0..width){
 			auto index = y*img.width+x;
 			auto ccol = txt[index];
 			if(grayscale){
-				img[x,y]=Color4f(Color4(ccol,ccol,ccol));
+				img[x,y]=Color4f(Color4(ccol,ccol,ccol,hasAlpha&&ccol==255?0:255));
 			}else{
-				img[x,y]=Color4f(Color4(palt[3*ccol],palt[3*ccol+1],palt[3*ccol+2]));
+				img[x,y]=Color4f(Color4(palt[3*ccol],palt[3*ccol+1],palt[3*ccol+2],hasAlpha&&ccol==255?0:255));
 			}
 		}
 	}

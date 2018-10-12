@@ -1,9 +1,12 @@
 import dagon;
 import util;
-import maps,txtr;
+import maps,txtr,ntts;
 import std.exception, std.string, std.algorithm, std.conv, std.range;
 import std.stdio, std.path, std.file;
 import std.typecons: tuple,Tuple;
+import std.math;
+
+import sacobject;
 
 class SacMap{ // TODO: make this an entity
 	TerrainMesh[] meshes;
@@ -11,11 +14,23 @@ class SacMap{ // TODO: make this an entity
 	Texture[] details;
 	Texture color;
 	ubyte[] dti;
+	int n,m;
+	bool[][] edges;
+	float[][] heights;
+
+	SacObject[] ntts;
 
 	this(string filename){
 		enforce(filename.endsWith(".HMAP"));
 		auto hmap=loadHMap(filename);
 		auto tmap=loadTMap(filename[0..$-".HMAP".length]~".TMAP");
+		edges=hmap.edges;
+		heights=hmap.heights;
+		n=to!int(edges.length);
+		m=to!int(edges[1].length);
+		enforce(heights.length==n);
+		enforce(edges.all!(x=>x.length==m));
+		enforce(heights.all!(x=>x.length==m));
 		meshes=createMeshes(hmap,tmap);
 		string land;
 		final switch(detectTileset(filename[0..$-".HMAP".length]~".LEVL")) with(Tileset){
@@ -40,6 +55,9 @@ class SacMap{ // TODO: make this an entity
 		details=bumps.map!makeTexture.array;
 		auto lmap=loadLMap(filename[0..$-".HMAP".length]~".LMAP");
 		color=makeTexture(lmap);
+		auto ntts=loadNTTs(filename[0..$-".HMAP".length]~".NTTS");
+		foreach(widgets;ntts.widgetss)
+			placeWidgets(land,widgets);
 	}
 
 	void createEntities(Scene s){
@@ -63,6 +81,86 @@ class SacMap{ // TODO: make this an entity
 			mat.energy=0.05;
 			obj.material=mat;
 		}
+		foreach(i,ntt;ntts){
+			ntt.createEntities(s);
+		}
+	}
+
+	SacObject[string] widgetObjects;
+	private void placeWidgets(string land,Widgets w){
+		auto name=w.retroName[].retro.to!string;
+		auto file=buildPath(land,name~".WIDC",name~".WIDG");
+		if(file !in widgetObjects){
+			widgetObjects[file]=new SacObject(null,file);
+		}
+		auto curObj=widgetObjects[file];
+		foreach(pos;w.positions){
+			auto position=Vector3f(pos[1],0,pos[0]);
+			if(!isOnGround(position)) continue;
+			position.y=getGroundHeight(position);
+			auto obj=new SacObject(null,curObj);
+			// original engine screws up widget rotations
+			// values look like angles in degrees, but they are actually radians
+			obj.rotation=rotationQuaternion(Axis.y,cast(float)PI/2-pos[2]);
+			obj.position=position;
+			ntts~=obj;
+		}
+	}
+
+	Tuple!(int,"j",int,"i") getTile(Vector3f pos){
+		return tuple!("j","i")(cast(int)(n-1-pos.x/10),cast(int)(pos.z/10));
+	}
+	Vector3f getVertex(int j,int i){
+		return Vector3f(10*(n-1-j),heights[j][i]/100,10*i);
+	}
+
+	Tuple!(int,"j",int,"i")[3] getTriangle(Vector3f pos){
+		auto tile=getTile(pos);
+		int i=tile.i,j=tile.j;
+		Tuple!(int,"j",int,"i")[3][2] tri;
+		int nt=0;
+		int di(int i){ return i==1||i==2; }
+		int dj(int i){ return i==2||i==3; }
+		void makeTri(int[] indices)(){
+			foreach(k,ref x;tri[nt++]){
+				x=tuple!("j","i")(j+dj(indices[k]),i+di(indices[k]));
+			}
+		}
+		if(!edges[j][i]){
+			if(!edges[j+1][i+1]&&!edges[j][i+1]) makeTri!([0,2,1]);
+		}else if(!edges[j][i+1]&&!edges[j+1][i+1]&&!edges[j+1][i]) makeTri!([1,3,2]);
+		if(!edges[j+1][i+1]){
+			if(!edges[j][i]&&!edges[j+1][i]) makeTri!([2,0,3]);
+		}else if(!edges[j][i]&&!edges[j][i+1]&&!edges[j+1][i]) makeTri!([0,3,1]);
+		bool isInside(Tuple!(int,"j",int,"i")[3] tri){
+			Vector3f getV(int k){
+				auto v=getVertex(tri[k%$].j,tri[k%$].i)-pos;
+				v.y=0;
+				return v;
+			}
+			foreach(k;0..3){
+				if(cross(getV(k),getV(k+1)).y<0)
+					return false;
+			}
+			return true;
+		}
+		if(nt==0) return typeof(return).init;
+		if(isInside(tri[0])) return tri[0]; // TODO: fix precision issues, by using fixed-point and splitting at line
+		else if(nt==2) return tri[1];
+		else return typeof(return).init;
+	}
+
+	bool isOnGround(Vector3f pos){
+		auto triangle=getTriangle(pos);
+		return triangle[0]!=triangle[1];
+	}
+	float getGroundHeight(Vector3f pos){
+		auto triangle=getTriangle(pos);
+		static foreach(i;0..3)
+			mixin(text(`auto p`,i,`=getVertex(triangle[`,i,`].expand);`));
+		Plane plane;
+		plane.fromPoints(p0,p1,p2); // wtf.
+		return -(plane.a*pos.x+plane.c*pos.z+plane.d)/plane.b;
 	}
 }
 
@@ -113,21 +211,21 @@ SuperImage[] loadMAPTs(string directory){
 
 TerrainMesh[] createMeshes(HMap hmap, TMap tmap, float scaleFactor=1){
 	auto edges=hmap.edges;
-	auto heights=hmap.heights.dup;
+	auto heights=hmap.heights;
 	auto tiles=tmap.tiles;
 	auto minHeight=1e9;
 	foreach(h;heights) foreach(x;h) minHeight=min(minHeight,x);
 	foreach(h;heights) foreach(ref x;h) x-=minHeight;
 	//foreach(e;edges) e[]=false;
-	Vector3f getVertex(int z,int x){
-		return scaleFactor*Vector3f(10*x,heights[z][x]/100,10*z);
-	}
 	auto n=to!int(hmap.edges.length);
 	enforce(n);
 	auto m=to!int(hmap.edges[0].length);
 	enforce(heights.length==n);
 	enforce(edges.all!(x=>x.length==m));
 	enforce(heights.all!(x=>x.length==m));
+	Vector3f getVertex(int j,int i){
+		return scaleFactor*Vector3f(10*(n-1-j),heights[j][i]/100,10*i);
+	}
 	int di(int i){ return i==1||i==2; }
 	int dj(int i){ return i==2||i==3; }
 	auto getFaces(O)(int j,int i,O o){
