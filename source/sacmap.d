@@ -56,8 +56,10 @@ class SacMap{ // TODO: make this an entity
 		auto lmap=loadLMap(filename[0..$-".HMAP".length]~".LMAP");
 		color=makeTexture(lmap);
 		auto ntts=loadNTTs(filename[0..$-".HMAP".length]~".NTTS");
-		foreach(widgets;ntts.widgetss)
-			placeWidgets(land,widgets);
+		/+import std.algorithm;
+		writeln("#widgets: ",ntts.widgetss.map!(x=>x.num).sum);+/
+		/+foreach(widgets;ntts.widgetss) // TODO: improve engine to be able to handle this
+			placeWidgets(land,widgets);+/
 	}
 
 	void createEntities(Scene s){
@@ -117,6 +119,7 @@ class SacMap{ // TODO: make this an entity
 	Tuple!(int,"j",int,"i")[3] getTriangle(Vector3f pos){
 		auto tile=getTile(pos);
 		int i=tile.i,j=tile.j;
+		if(i<0||i>=n-1||j<0||j>=m-1) return typeof(return).init;
 		Tuple!(int,"j",int,"i")[3][2] tri;
 		int nt=0;
 		int di(int i){ return i==1||i==2; }
