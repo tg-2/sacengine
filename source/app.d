@@ -74,6 +74,9 @@ class TestScene: Scene{
 		Vector3f forward = fpview.camera.worldTrans.forward;
 		Vector3f right = fpview.camera.worldTrans.right;
 		Vector3f dir = Vector3f(0, 0, 0);
+		if(eventManager.keyPressed[KEY_X]) dir += Vector3f(1,0,0);
+		if(eventManager.keyPressed[KEY_Y]) dir += Vector3f(0,1,0);
+		if(eventManager.keyPressed[KEY_Z]) dir += Vector3f(0,0,1);
 		if(eventManager.keyPressed[KEY_E]) dir += -forward;
 		if(eventManager.keyPressed[KEY_D]) dir += forward;
 		if(eventManager.keyPressed[KEY_S]) dir += -right;
