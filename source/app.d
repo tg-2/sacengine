@@ -29,7 +29,7 @@ class TestScene: Scene{
 
 		//view = New!Freeview(eventManager, assetManager);
 		auto eCamera = createEntity3D();
-		eCamera.position = Vector3f(1270.0f, 2.0f, 1270.0f);
+		eCamera.position = Vector3f(1270.0f, 1270.0f, 2.0f);
 		fpview = New!FirstPersonView2(eventManager, eCamera, assetManager);
 		fpview.active = true;
 		view = fpview;
@@ -54,6 +54,9 @@ class TestScene: Scene{
 				map.createEntities(this);
 			}else{
 				auto sac=New!SacObject(this, args[i], anim);
+				sac.position=Vector3f(1270.0f, 1270.0f, 0.0f);
+				if(map && map.isOnGround(sac.position))
+					sac.position.z=map.getGroundHeight(sac.position);
 				sac.createEntities(this);
 				sacs.insertBack(sac);
 			}
@@ -85,7 +88,7 @@ class TestScene: Scene{
 		if(eventManager.keyPressed[KEY_P]) speed = 1000.0f;
 		fpview.camera.position += dir.normalized * speed * dt;
 		if(map && map.isOnGround(fpview.camera.position)){
-			fpview.camera.position.y=max(fpview.camera.position.y, map.getGroundHeight(fpview.camera.position));
+			fpview.camera.position.z=max(fpview.camera.position.z, map.getGroundHeight(fpview.camera.position));
 		}
 	}
 

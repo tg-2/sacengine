@@ -97,23 +97,23 @@ class SacMap{ // TODO: make this an entity
 		}
 		auto curObj=widgetObjects[file];
 		foreach(pos;w.positions){
-			auto position=Vector3f(pos[1],0,pos[0]);
+			auto position=Vector3f(pos[0],pos[1],0);
 			if(!isOnGround(position)) continue;
-			position.y=getGroundHeight(position);
+			position.z=getGroundHeight(position);
 			auto obj=new SacObject(null,curObj);
 			// original engine screws up widget rotations
 			// values look like angles in degrees, but they are actually radians
-			obj.rotation=rotationQuaternion(Axis.y,cast(float)PI/2-pos[2]);
+			obj.rotation=rotationQuaternion(Axis.z,cast(float)(-pos[2]));
 			obj.position=position;
 			ntts~=obj;
 		}
 	}
 
 	Tuple!(int,"j",int,"i") getTile(Vector3f pos){
-		return tuple!("j","i")(cast(int)(n-1-pos.x/10),cast(int)(pos.z/10));
+		return tuple!("j","i")(cast(int)(n-1-pos.y/10),cast(int)(pos.x/10));
 	}
 	Vector3f getVertex(int j,int i){
-		return Vector3f(10*(n-1-j),heights[j][i]/100,10*i);
+		return Vector3f(10*i,10*(n-1-j),heights[j][i]/100);
 	}
 
 	Tuple!(int,"j",int,"i")[3] getTriangle(Vector3f pos){
@@ -138,11 +138,11 @@ class SacMap{ // TODO: make this an entity
 		bool isInside(Tuple!(int,"j",int,"i")[3] tri){
 			Vector3f getV(int k){
 				auto v=getVertex(tri[k%$].j,tri[k%$].i)-pos;
-				v.y=0;
+				v.z=0;
 				return v;
 			}
 			foreach(k;0..3){
-				if(cross(getV(k),getV(k+1)).y<0)
+				if(cross(getV(k),getV(k+1)).z<0)
 					return false;
 			}
 			return true;
@@ -163,7 +163,7 @@ class SacMap{ // TODO: make this an entity
 			mixin(text(`auto p`,i,`=getVertex(triangle[`,i,`].expand);`));
 		Plane plane;
 		plane.fromPoints(p0,p1,p2); // wtf.
-		return -(plane.a*pos.x+plane.c*pos.z+plane.d)/plane.b;
+		return -(plane.a*pos.x+plane.b*pos.y+plane.d)/plane.c;
 	}
 }
 
@@ -227,7 +227,7 @@ TerrainMesh[] createMeshes(HMap hmap, TMap tmap, float scaleFactor=1){
 	enforce(edges.all!(x=>x.length==m));
 	enforce(heights.all!(x=>x.length==m));
 	Vector3f getVertex(int j,int i){
-		return scaleFactor*Vector3f(10*(n-1-j),heights[j][i]/100,10*i);
+		return scaleFactor*Vector3f(10*i,10*(n-1-j),heights[j][i]/100);
 	}
 	int di(int i){ return i==1||i==2; }
 	int dj(int i){ return i==2||i==3; }
@@ -330,7 +330,7 @@ TerrainMesh[] createMeshes(HMap hmap, TMap tmap, float scaleFactor=1){
 				if(!mustBeEdges.all!((k)=>edges[k[1]][k[0]])||
 				   edges[y1][x1]||edges[y2][x2]||!someNonEdge.any!((k)=>!edges[k[1]][k[0]])) return;
 				auto off=to!uint(edgeVertices.length);
-				edgeVertices~=[getVertex(y1,x1),getVertex(y2,x2),getVertex(y2,x2)+Vector3f(0,-mapDepth,0),getVertex(y1,x1)+Vector3f(0,-mapDepth,0)];
+				edgeVertices~=[getVertex(y1,x1),getVertex(y2,x2),getVertex(y2,x2)+Vector3f(0,0,-mapDepth),getVertex(y1,x1)+Vector3f(0,0,-mapDepth)];
 				auto normal=cross(edgeVertices[$-3]-edgeVertices[$-1],edgeVertices[$-2]-edgeVertices[$-1]);
 				foreach(k;0..4) edgeNormals~=normal.normalized;
 				edgeCoords~=[Vector2f(x1,n-1-y1)/256.0,Vector2f(x2,n-1-y2)/256.0,Vector2f(x2,n-1-y2)/256.0,Vector2f(x1,n-1-y1)/256.0];

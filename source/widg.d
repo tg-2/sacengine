@@ -46,8 +46,8 @@ Tuple!(Mesh, Texture) loadWIDG(string filename){
 	auto nvertices=to!int(model.vertices.length);
 	mesh.vertices=New!(Vector3f[])(2*nvertices);
 	foreach(i,ref vertex;model.vertices){
-		mesh.vertices[i] = fromSac(Vector3f(vertex.pos));
-		mesh.vertices[i+nvertices] = fromSac(Vector3f(vertex.pos));
+		mesh.vertices[i] = Vector3f(vertex.pos);
+		mesh.vertices[i+nvertices] = Vector3f(vertex.pos);
 	}
 	mesh.texcoords=New!(Vector2f[])(2*nvertices);
 	foreach(i,ref vertex;model.vertices){
