@@ -50,11 +50,11 @@ Model parseMRMM(ubyte[] data){
 	return Model(vertices, faces);
 }
 
-Tuple!(DynamicArray!Mesh, DynamicArray!Texture) loadMRMM(string filename){
+Tuple!(DynamicArray!Mesh, DynamicArray!Texture) loadMRMM(string filename, float scaling){
 	enforce(filename.endsWith(".MRMM"));
 	auto dir = dirName(filename);
 	ubyte[] data;
 	foreach(ubyte[] chunk;chunks(File(filename,"rb"),4096)) data~=chunk;
 	auto model = parseMRMM(data);
-	return convertModel(dir, model);
+	return convertModel(dir, model, scaling);
 }

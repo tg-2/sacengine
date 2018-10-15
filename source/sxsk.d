@@ -18,7 +18,7 @@ struct Animation{
 	Pose[] frames;
 }
 
-Animation parseSXSK(ubyte[] data){
+Animation parseSXSK(ubyte[] data,float scaling){
 	auto numFrames=*cast(ushort*)data[2..4].ptr;
 	double offsetY=*cast(float*)data[4..8].ptr;
 	auto numBones=*data[8..12].ptr;
@@ -28,14 +28,14 @@ Animation parseSXSK(ubyte[] data){
 		enforce(frameHeader.offset<=frameHeader.offset+numBones*(short[4]).sizeof && frameHeader.offset+numBones*(short[4]).sizeof<=data.length);
 		auto anim=cast(short[4][])data[frameHeader.offset..frameHeader.offset+numBones*(short[4]).sizeof];
 		auto rotations=anim.map!(x=>Quaternionf(Vector3f(fromSXMD([x[0],x[1],x[2]])),x[3]).normalized()).array;
-		frames~=Pose(Vector3f(frameHeader.disp[0],frameHeader.disp[1],0),rotations);
+		frames~=Pose(fromSXMD(Vector3f(frameHeader.disp[0],frameHeader.disp[1],0))*scaling,rotations);
 	}
 	return Animation(frames);
 }
 
-Animation loadSXSK(string filename){
-	enforce(filename.endsWith(".SXSK"));
+Animation loadSXSK(string filename,float scaling){
+	enforce(filename.endsWith(".SXSK"), filename);
 	ubyte[] data;
 	foreach(ubyte[] chunk;chunks(File(filename,"rb"),4096)) data~=chunk;
-	return parseSXSK(data);
+	return parseSXSK(data,scaling);
 }

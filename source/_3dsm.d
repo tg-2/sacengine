@@ -48,11 +48,11 @@ Model parse3DSM(ubyte[] data){
 	return Model(positions,normals,uv,faces);
 }
 
-Tuple!(DynamicArray!Mesh, DynamicArray!Texture) load3DSM(string filename){
+Tuple!(DynamicArray!Mesh, DynamicArray!Texture) load3DSM(string filename, float scaling){
 	enforce(filename.endsWith(".3DSM"));
 	auto dir = dirName(filename);
 	ubyte[] data;
 	foreach(ubyte[] chunk;chunks(File(filename,"rb"),4096)) data~=chunk;
 	auto model = parse3DSM(data);
-	return convertModel(dir, model);
+	return convertModel(dir, model, scaling);
 }

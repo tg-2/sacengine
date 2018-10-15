@@ -60,6 +60,11 @@ class SacMap{ // TODO: make this an entity
 		writeln("#widgets: ",ntts.widgetss.map!(x=>x.num).sum);+/
 		/+foreach(widgets;ntts.widgetss) // TODO: improve engine to be able to handle this
 			placeWidgets(land,widgets);+/
+		ntts.creatures.sort!"a.x<b.x"();
+		foreach(ref creature;ntts.creatures)
+			placeNTT(creature);
+		foreach(ref wizard;ntts.wizards)
+			placeNTT(wizard);
 	}
 
 	void createEntities(Scene s){
@@ -88,14 +93,17 @@ class SacMap{ // TODO: make this an entity
 		}
 	}
 
-	SacObject[string] widgetObjects;
+	static SacObject[string] objects;
+	SacObject loadObject(string filename, float scaling=1.0f, string animation=""){
+		if(filename !in objects){
+			objects[filename]=new SacObject(null, filename, scaling);
+		}
+		return objects[filename];
+	}
 	private void placeWidgets(string land,Widgets w){
 		auto name=w.retroName[].retro.to!string;
-		auto file=buildPath(land,name~".WIDC",name~".WIDG");
-		if(file !in widgetObjects){
-			widgetObjects[file]=new SacObject(null,file);
-		}
-		auto curObj=widgetObjects[file];
+		auto filename=buildPath(land,name~".WIDC",name~".WIDG");
+		auto curObj=loadObject(filename);
 		foreach(pos;w.positions){
 			auto position=Vector3f(pos[0],pos[1],0);
 			if(!isOnGround(position)) continue;
@@ -107,6 +115,21 @@ class SacMap{ // TODO: make this an entity
 			obj.position=position;
 			ntts~=obj;
 		}
+	}
+	private void placeNTT(T)(ref T ntt) if(__traits(compiles, (T t)=>t.retroKind)){
+		import nttData;
+		static if(is(T==Creature)||is(T==Wizard))
+			auto data=creatureDataByTag(ntt.retroKind);
+		if(!data) return;
+		auto curObj=loadObject(buildPath("extracted",data.model),data.scaling);
+		auto obj=new SacObject(null,curObj);
+		if(data.stance.length) obj.loadAnimation(buildPath("extracted",data.stance),data.scaling);
+		auto position=Vector3f(ntt.x,ntt.y,ntt.z);
+		if(!isOnGround(position)) return; // TODO
+		position.z=getGroundHeight(position);
+		obj.rotation=rotationQuaternion(Axis.z,cast(float)(2*PI/360*ntt.facing))*obj.rotation;
+		obj.position=position;
+		ntts~=obj;
 	}
 
 	Tuple!(int,"j",int,"i") getTile(Vector3f pos){

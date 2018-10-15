@@ -43,21 +43,22 @@ struct BodyPart{
 }
 
 struct Saxs{
+	float zfactor;
 	Bone[] bones;
 	Position[] positions;
 	BodyPart[] bodyParts;
 }
 
-Saxs loadSaxs(string filename){
+Saxs loadSaxs(string filename, float scaling=1.0f){
 	enforce(filename.endsWith(".SXMD"));
 	auto dir=dirName(filename);
 	ubyte[] data;
 	foreach(ubyte[] chunk;chunks(File(filename,"rb"),4096)) data~=chunk;
 	auto model = parseSXMD(data);
-	auto bones=chain(only(Bone(Vector3f(0,0,0),0)),model.bones.map!(bone=>Bone(Vector3f(fromSXMD(bone.pos)),bone.parent))).array;
+	auto bones=chain(only(Bone(Vector3f(0,0,0),0)),model.bones.map!(bone=>Bone(Vector3f(fromSXMD(bone.pos))*scaling,bone.parent))).array;
 	enforce(iota(1,bones.length).all!(i=>bones[i].parent<i));
 	auto convertPosition(ref sxmd.Position position){
-		return Position(position.bone,fromSXMD(Vector3f(position.pos)),position.weight/64.0f);
+		return Position(position.bone,fromSXMD(Vector3f(position.pos))*scaling,position.weight/64.0f);
 	}
 	auto positions=model.positions.map!convertPosition().array;
 	BodyPart[] bodyParts;
@@ -141,10 +142,10 @@ Saxs loadSaxs(string filename){
 	}
 	//writeln("numVertices: ",std.algorithm.sum(bodyParts.map!(bodyPart=>bodyPart.vertices.length)));
 	//writeln("numFaces: ",std.algorithm.sum(bodyParts.map!(bodyPart=>bodyPart.vertices.length)));
-	return Saxs(bones,positions,bodyParts);
+	return Saxs(model.zfactor,bones,positions,bodyParts);
 }
 
-Mesh[] createMeshes(Saxs saxs,float scaleFactor=0.005){
+Mesh[] createMeshes(Saxs saxs){
 	auto ap = new Vector3f[](saxs.bones.length);
 	ap[0]=Vector3f(0,0,0);
 	foreach(i,ref bone;saxs.bones[1..$]){
@@ -160,7 +161,7 @@ Mesh[] createMeshes(Saxs saxs,float scaleFactor=0.005){
 			auto position=Vector3f(0,0,0);
 			foreach(v;vertex.indices.map!(k=>(ap[saxs.positions[k].bone]+saxs.positions[k].offset)*saxs.positions[k].weight))
 				position+=v;
-			meshes[i].vertices[j]=position*scaleFactor;
+			meshes[i].vertices[j]=position;
 			meshes[i].texcoords[j]=vertex.uv;
 		}
 		meshes[i].indices=New!(uint[3][])(bodyPart.faces.length);
@@ -210,25 +211,33 @@ struct Transformation{
 	}
 }
 
-void setPose(ref SaxsInstance saxsi, Pose pose, float scaleFactor=0.005){
+Vector3f[2] setPose(ref SaxsInstance saxsi, Pose pose){ // TODO: do this in vertex shader
 	auto saxs=saxsi.saxs;
 	auto transform = new Transformation[](saxs.bones.length);
 	transform[0]=Transformation(Quaternionf.identity,Vector3f(0,0,0));
 	enforce(pose.rotations.length==saxs.bones.length);
 	foreach(i,ref bone;saxs.bones){
 		transform[i]=transform[bone.parent]*Transformation(pose.rotations[i],bone.position);
-		if(i==0) transform[i].offset+=pose.displacement;
+		if(i==0) transform[i].offset+=pose.displacement*saxsi.saxs.zfactor;
 	}
 	enforce(saxsi.meshes.length==saxs.bodyParts.length);
+	Vector3f low=Vector3f(1,1,1)/0.0f, high=-Vector3f(1,1,1)/0.0f;
 	foreach(i,ref bodyPart;saxs.bodyParts){
 		enforce(saxsi.meshes[i].vertices.length==bodyPart.vertices.length);
 		foreach(j,ref vertex;bodyPart.vertices){
 			auto position=Vector3f(0,0,0);
 			foreach(k;vertex.indices)
 				position+=transform[saxs.positions[k].bone](saxs.positions[k].offset)*saxs.positions[k].weight;
-			saxsi.meshes[i].vertices[j]=position*scaleFactor;
+			auto vrt=position;
+			saxsi.meshes[i].vertices[j]=vrt;
+			static foreach(k;0..3){
+				low.arrayof[k]=min(low.arrayof[k],vrt.arrayof[k]);
+				high.arrayof[k]=max(high.arrayof[k],vrt.arrayof[k]);
+			}
 		}
 		saxsi.meshes[i].generateNormals();
+		saxsi.meshes[i].dataReady=true;
 		saxsi.meshes[i].prepareVAO();
 	}
+	return [low,high];
 }

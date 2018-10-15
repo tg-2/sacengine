@@ -25,41 +25,48 @@ class SacObject: Owner{
 		this.anim=rhs.anim;
 	}
 
-	this(Owner o, string filename, string animation=""){
+	this(Owner o, string filename, float scaling=1.0, string animation=""){
 		super(o);
 		enforce(filename.endsWith(".MRMM")||filename.endsWith(".3DSM")||filename.endsWith(".WIDG")||filename.endsWith(".SXMD"));
 		switch(filename[$-4..$]){
 			case "MRMM":
-				auto mt=loadMRMM(filename);
+				auto mt=loadMRMM(filename, scaling);
 				meshes=move(mt[0]);
 				textures=move(mt[1]);
 				break;
 			case "3DSM":
-				auto mt=load3DSM(filename);
+				auto mt=load3DSM(filename, scaling);
 				meshes=move(mt[0]);
 				textures=move(mt[1]);
 				break;
 			case "WIDG":
+				enforce(scaling==1.0);
 				auto mt=loadWIDG(filename);
 				meshes.insertBack(mt[0]);
 				textures.insertBack(mt[1]);
 				break;
 			case "SXMD":
 				isSaxs=true;
-				saxsi=SaxsInstance(loadSaxs(filename));
+				saxsi=SaxsInstance(loadSaxs(filename,scaling));
 				saxsi.createMeshes();
-				if(animation.length){
-					anim=loadSXSK(animation);
-					saxsi.setPose(anim.frames[0]);
-				}
+				if(animation.length)
+					loadAnimation(animation,scaling);
 				break;
 			default:
 				assert(0);
 		}
 	}
 
+	void loadAnimation(string animation,float scaling){
+		anim=loadSXSK(animation,scaling);
+		bbox=saxsi.setPose(anim.frames[0]);
+	}
+
 	Vector3f position = Vector3f(0,0,0); // TODO: make SacObject an entity
-	Quaternionf rotation = rotationQuaternion(Axis.y,cast(float)PI);
+	Quaternionf rotation = rotationQuaternion(Axis.y,cast(float)0.0);
+	float scaling = 1.0;
+
+	Vector3f[2] bbox;
 
 	void createEntities(Scene s){
 		foreach(i;0..isSaxs?saxsi.meshes.length:meshes.length){
@@ -67,6 +74,7 @@ class SacObject: Owner{
 			obj.drawable = isSaxs?saxsi.meshes[i]:meshes[i];
 			obj.position = position;
 			obj.rotation = rotation;
+			obj.scaling = scaling*Vector3f(1,1,1);
 			auto mat=s.createMaterial();
 			if((isSaxs?saxsi.saxs.bodyParts[i].texture:textures[i]) !is null) mat.diffuse=isSaxs?saxsi.saxs.bodyParts[i].texture:textures[i];
 			mat.specular=Color4f(0,0,0,1);
@@ -79,7 +87,7 @@ class SacObject: Owner{
 		return anim.frames.length?anim.frames.length:1;
 	}
 	double animFPS(){
-		return 32;
+		return 30;
 	}
 
 	void setFrame(size_t frame)in{
@@ -87,12 +95,12 @@ class SacObject: Owner{
 	}body{
 		if(isSaxs){
 			if(anim.frames.length==0) return;
-			saxsi.setPose(anim.frames[frame]);
+			bbox=saxsi.setPose(anim.frames[frame]);
 		}
 	}
 }
 
-auto convertModel(Model)(string dir, Model model){
+auto convertModel(Model)(string dir, Model model, float scaling){
 	int[string] names;
 	int cur=0;
 	foreach(f;model.faces){
@@ -121,7 +129,7 @@ auto convertModel(Model)(string dir, Model model){
 			auto nvertices=model.vertices.length;
 			mesh.vertices=New!(Vector3f[])(nvertices);
 			foreach(i,ref vertex;model.vertices){
-				mesh.vertices[i] = fromSac(Vector3f(vertex.pos));
+				mesh.vertices[i] = fromSac(Vector3f(vertex.pos))*scaling;
 			}
 			mesh.texcoords=New!(Vector2f[])(nvertices);
 			foreach(i,ref vertex;model.vertices){
@@ -137,7 +145,7 @@ auto convertModel(Model)(string dir, Model model){
 			auto nvertices=model.positions.length;
 			mesh.vertices=New!(Vector3f[])(nvertices);
 			foreach(i;0..mesh.vertices.length){
-				mesh.vertices[i]=Vector3f(fromSac(model.positions[i]));
+				mesh.vertices[i]=Vector3f(fromSac(model.positions[i]))*scaling;
 			}
 			mesh.texcoords=New!(Vector2f[])(nvertices);
 			foreach(i;0..mesh.texcoords.length){

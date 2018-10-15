@@ -9,7 +9,7 @@ import sxtx;
 
 struct BoneData{
 	float[3] pos;
-	ushort parent; // TODO: figure out how to use this (related to animation)
+	ushort parent;
 	ushort unused0; // setting all those fields to 0 does not affect the ingame rendering
 	float[3][8] bbox; // TODO: figure out what this does exactly (it affects the bone shadow and the bounding box, but unclear how)
 	uint[7] unused1; // setting all those fields to 0 does not affect the ingame rendering
@@ -97,6 +97,7 @@ struct Position{
 static assert(Position.sizeof==16);
 
 struct Model{
+	float zfactor;
 	BoneData[] bones;
 	BodyPart[] bodyParts;
 	Position[] positions;
@@ -104,7 +105,7 @@ struct Model{
 
 Model parseSXMD(ubyte[] data){
 	uint numBodyParts=data[0];
-	float offsetY=*cast(float*)data[8..12].ptr;
+	float zfactor=*cast(float*)data[8..12].ptr;
 	uint numBones=*cast(uint*)data[28..32].ptr-1;
 	uint boneOffset=*cast(uint*)data[32..36].ptr+140;
 	uint vertexOffset=*cast(uint*)data[36..40].ptr;
@@ -142,5 +143,5 @@ Model parseSXMD(ubyte[] data){
 	}
 	auto positions=cast(Position[])data[vertexOffset..vertexOffset+Position.sizeof*numPositions];
 	auto remainingDataOffset=vertexOffset+Position.sizeof*numPositions;
-	return Model(bones,bodyParts,positions);
+	return Model(zfactor,bones,bodyParts,positions);
 }
