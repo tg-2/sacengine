@@ -33,7 +33,9 @@ class TestScene: Scene{
 		fpview = New!FirstPersonView2(eventManager, eCamera, assetManager);
 		fpview.active = true;
 		view = fpview;
-		createSky();
+		auto sky=createSky();
+		sky.rotation=rotationQuaternion(Axis.z,cast(float)PI)*
+			rotationQuaternion(Axis.x,cast(float)(PI/2));
 		//auto mat = createMaterial();
 		//mat.diffuse = Color4f(0.2, 0.2, 0.2, 0.2);
 		//mat.diffuse=txta;
