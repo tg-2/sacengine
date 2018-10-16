@@ -576,7 +576,126 @@ CreatureData zyzyx={
 	model: "saxs_r3/sxr3.WAD!/bugz.FLDR/FAmr.SAXC/FAmr.SXMD",
 	stance: "saxs_r3/sxr3.WAD!/bugz.FLDR/FAho.SXSK", // TODO: ok?
 	scaling: 1e-3,
+};
 
+CreatureData abraxus={
+	tag: "0ewc",
+	name: "Abraxus",
+	model: "saxs_wiz/sxwz.WAD!/abrx.FLDR/ABRX.SAXC/ABRX.SXMD",
+	stance: "saxs_wiz/sxwz.WAD!/abrx.FLDR/AXs1.SXSK", // TODO: AXs2
+	scaling: 1e-3,
+};
+
+CreatureData acheron={
+	tag: "1dwc",
+	name: "Acheron",
+	model: "saxs_wiz/sxwz.WAD!/quil.FLDR/quil.SAXC/quil.SXMD",
+	stance: "saxs_wiz/sxwz.WAD!/quil.FLDR/qust.SXSK",
+	scaling: 1e-3,
+};
+
+CreatureData ambassadorButa={
+	tag: "0fwc",
+	name: "Ambassador Buta",
+	model: "saxs_wiz/sxwz.WAD!/buta.FLDR/buta.SAXC/buta.SXMD",
+	stance: "saxs_wiz/sxwz.WAD!/buta.FLDR/BUs1.SXSK", // TODO: others
+	scaling: 1e-3,
+};
+
+CreatureData charlotte={
+	tag: "2fwc",
+	name: "Charlotte",
+	model: "saxs_wiz/sxwz.WAD!/spdr.FLDR/spdr.SAXC/spdr.SXMD",
+	stance: "saxs_wiz/sxwz.WAD!/spdr.FLDR/Sps1.SXSK", // TODO: others
+	scaling: 1e-3,
+};
+
+CreatureData eldred={
+	tag: "2ewc",
+	name: "Eldred",
+	model: "saxs_wiz/sxwz.WAD!/hero.FLDR/hero.SAXC/hero.SXMD",
+	stance: "saxs_wiz/sxwz.WAD!/hero.FLDR/hest.SXSK",
+	scaling: 1e-3,
+};
+
+CreatureData grakkus={
+	tag: "1fwc",
+	name: "Grakkus",
+	model: "saxs_wiz/sxwz.WAD!/xwiz.FLDR/rigl.SAXC/rigl.SXMD",
+	stance: "saxs_wiz/sxwz.WAD!/xwiz.FLDR/Wsta.SXSK", // TODO: correct?
+	scaling: 1e-3,
+};
+
+CreatureData hachimen={
+	tag: "2lwc",
+	name: "Hachimen",
+	model: "saxs_wiz/sxwz.WAD!/brod.FLDR/brod.SAXC/brod.SXMD",
+	stance: "saxs_wiz/sxwz.WAD!/brod.FLDR/brs1.SXSK",
+	scaling: 1e-3,
+};
+
+CreatureData jadugarr={
+	tag: "0awc",
+	name: "Jadugarr",
+	model: "saxs_wiz/sxwz.WAD!/jnwr.FLDR/jnwr.SAXC/jnwr.SXMD",
+	stance: "saxs_wiz/sxwz.WAD!/jnwr.FLDR/jwst.SXSK",
+	scaling: 1e-3
+};
+
+CreatureData marduk={
+	tag: "2awc",
+	name: "Marduk",
+	model: "saxs_wiz/sxwz.WAD!/mrdk.FLDR/mrdk.SAXC/mrdk.SXMD",
+	stance: "saxs_wiz/sxwz.WAD!/mrdk.FLDR/mdst.SXSK",
+	scaling: 1e-3
+};
+
+CreatureData mithras={
+	tag: "1ewc",
+	name: "Mithras",
+	model: "saxs_wiz/sxwz.WAD!/sage.FLDR/sage.SAXC/sage.SXMD",
+	stance: "saxs_wiz/sxwz.WAD!/sage.FLDR/sgst.SXSK",
+	scaling: 1e-3,
+};
+
+CreatureData seerix={
+	tag: "1awc",
+	name: "Seerix",
+	model: "saxs_wiz/sxwz.WAD!/serx.FLDR/serx.SAXC/serx.SXMD",
+	stance: "saxs_wiz/sxwz.WAD!/serx.FLDR/ses1.SXSK",
+	scaling: 1e-3,
+};
+
+CreatureData shakti={
+	tag: "0lwc",
+	name: "Shakti",
+	model: "saxs_wiz/sxwz.WAD!/shkt.FLDR/shkt.SAXC/shkt.SXMD",
+	stance: "saxs_wiz/sxwz.WAD!/shkt.FLDR/SHst.SXSK",
+	scaling: 1e-3
+};
+
+CreatureData sorcha={
+	tag: "2dwc",
+	name: "Sorcha",
+	model: "saxs_wiz/sxwz.WAD!/gret.FLDR/gret.SAXC/gret.SXMD",
+	stance: "saxs_wiz/sxwz.WAD!/gret.FLDR/grs1.SXSK",
+	scaling: 1e-3,
+};
+
+CreatureData theRagman={
+	tag: "0dwc",
+	name: "The Ragman",
+	model: "saxs_wiz/sxwz.WAD!/xwiz.FLDR/xwiz.SAXC/xwiz.SXMD",
+	stance: "saxs_wiz/sxwz.WAD!/xwiz.FLDR/Wsta.SXSK", // TODO: correct?
+	scaling: 1e-3,
+};
+
+CreatureData yogo={
+	tag: "1lwc",
+	name: "Yogo",
+	model: "saxs_wiz/sxwz.WAD!/yogo.FLDR/YOGO.SAXC/YOGO.SXMD",
+	stance: "saxs_wiz/sxwz.WAD!/yogo.FLDR/YOs1.SXSK",
+	scaling: 1e-3
 };
 
 CreatureData* creatureDataByTag(char[4] tag){
@@ -593,8 +712,7 @@ Lswitch: switch(tag){
 		}
 		default:
 			import std.stdio;
-			//stderr.writeln("WARNING: unknown tag '",tag,"'");
-			writeln(tag);
+			stderr.writeln("WARNING: unknown creature tag '",tag,"'");
 			return null;
 	}
 }

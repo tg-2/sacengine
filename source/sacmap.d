@@ -60,7 +60,6 @@ class SacMap{ // TODO: make this an entity
 		writeln("#widgets: ",ntts.widgetss.map!(x=>x.num).sum);+/
 		/+foreach(widgets;ntts.widgetss) // TODO: improve engine to be able to handle this
 			placeWidgets(land,widgets);+/
-		ntts.creatures.sort!"a.x<b.x"();
 		foreach(ref creature;ntts.creatures)
 			placeNTT(creature);
 		foreach(ref wizard;ntts.wizards)
