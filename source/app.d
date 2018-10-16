@@ -55,7 +55,7 @@ class TestScene: Scene{
 				map=New!SacMap(args[i]);
 				map.createEntities(this);
 			}else{
-				auto sac=New!SacObject(this, args[i], args[i].endsWith(".SXSK")?2e-3:1, anim);
+				auto sac=New!SacObject(this, args[i], args[i].endsWith(".SXMD")?2e-3:1, anim);
 				sac.position=Vector3f(1270.0f, 1270.0f, 0.0f);
 				if(map && map.isOnGround(sac.position))
 					sac.position.z=map.getGroundHeight(sac.position);
