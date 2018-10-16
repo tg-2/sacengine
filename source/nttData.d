@@ -6,6 +6,7 @@ immutable struct CreatureData{
 	string model;
 	string stance;
 	float scaling=2e-3;
+	float zfactorOverride=float.nan;
 }
 
 CreatureData abomination={
@@ -198,6 +199,7 @@ CreatureData frostwolf={ // TODO: this is screwed up, why?
 	model: "saxs_r1/sxr1.WAD!/gobl.FLDR/gobl.SAXC/gobl.SXMD",
 	stance: "saxs_r1/sxr1.WAD!/gobl.FLDR/GBst.SXSK",
 	scaling: 1e-3,
+	zfactorOverride: 1.0f,
 };
 
 CreatureData gammel={
@@ -422,6 +424,7 @@ CreatureData silverback={
 	model: "saxs_r11/sr11.WAD!/adrg.FLDR/adrg.SAXC/adrg.SXMD",
 	stance: "saxs_r11/sr11.WAD!/adrg.FLDR/ADst.SXSK",
 	scaling: 3e-3,
+	zfactorOverride: 1.0,
 };
 
 CreatureData sirocco={
@@ -495,6 +498,7 @@ CreatureData taurock={
 	model: "/home/tgehr/games/sac/SacrificeH/tools/3d/source/extracted/saxs_r5/sxr5.WAD!/bear.FLDR/eber.SAXC/eber.SXMD",
 	stance: "/home/tgehr/games/sac/SacrificeH/tools/3d/source/extracted/saxs_r5/sxr5.WAD!/bear.FLDR/BEst.SXSK",
 	scaling: 2e-3,
+	zfactorOverride: 0.8,
 };
 
 CreatureData thestor={

@@ -93,11 +93,14 @@ class SacMap{ // TODO: make this an entity
 	}
 
 	static SacObject[string] objects;
-	SacObject loadObject(string filename, float scaling=1.0f, string animation=""){
+	SacObject loadObject(string filename, float scaling=1.0f, float zfactorOverride=float.nan){
+		SacObject obj;
 		if(filename !in objects){
-			objects[filename]=new SacObject(null, filename, scaling);
-		}
-		return objects[filename];
+			obj=new SacObject(null, filename, scaling);
+			if(obj.isSaxs&&!isNaN(zfactorOverride)) obj.saxsi.saxs.zfactor=zfactorOverride;
+			objects[filename]=obj;
+		}else obj=objects[filename];
+		return obj;
 	}
 	private void placeWidgets(string land,Widgets w){
 		auto name=w.retroName[].retro.to!string;
@@ -120,7 +123,7 @@ class SacMap{ // TODO: make this an entity
 		static if(is(T==Creature)||is(T==Wizard))
 			auto data=creatureDataByTag(ntt.retroKind);
 		if(!data) return;
-		auto curObj=loadObject(buildPath("extracted",data.model),data.scaling);
+		auto curObj=loadObject(buildPath("extracted",data.model),data.scaling,data.zfactorOverride);
 		auto obj=new SacObject(null,curObj);
 		if(data.stance.length) obj.loadAnimation(buildPath("extracted",data.stance),data.scaling);
 		auto position=Vector3f(ntt.x,ntt.y,ntt.z);

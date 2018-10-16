@@ -216,23 +216,22 @@ Vector3f[2] setPose(ref SaxsInstance saxsi, Pose pose){ // TODO: do this in vert
 	auto transform = new Transformation[](saxs.bones.length);
 	transform[0]=Transformation(Quaternionf.identity,Vector3f(0,0,0));
 	enforce(pose.rotations.length==saxs.bones.length);
-	foreach(i,ref bone;saxs.bones){
+	foreach(i,ref bone;saxs.bones)
 		transform[i]=transform[bone.parent]*Transformation(pose.rotations[i],bone.position);
-		if(i==0) transform[i].offset+=pose.displacement*saxsi.saxs.zfactor;
-	}
+	auto displacement=pose.displacement;
+	displacement.z*=saxsi.saxs.zfactor;
 	enforce(saxsi.meshes.length==saxs.bodyParts.length);
 	Vector3f low=Vector3f(1,1,1)/0.0f, high=-Vector3f(1,1,1)/0.0f;
 	foreach(i,ref bodyPart;saxs.bodyParts){
 		enforce(saxsi.meshes[i].vertices.length==bodyPart.vertices.length);
 		foreach(j,ref vertex;bodyPart.vertices){
-			auto position=Vector3f(0,0,0);
+			auto position=displacement;
 			foreach(k;vertex.indices)
 				position+=transform[saxs.positions[k].bone](saxs.positions[k].offset)*saxs.positions[k].weight;
-			auto vrt=position;
-			saxsi.meshes[i].vertices[j]=vrt;
+			saxsi.meshes[i].vertices[j]=position;
 			static foreach(k;0..3){
-				low.arrayof[k]=min(low.arrayof[k],vrt.arrayof[k]);
-				high.arrayof[k]=max(high.arrayof[k],vrt.arrayof[k]);
+				low.arrayof[k]=min(low.arrayof[k],position.arrayof[k]);
+				high.arrayof[k]=max(high.arrayof[k],position.arrayof[k]);
 			}
 		}
 		saxsi.meshes[i].generateNormals();
