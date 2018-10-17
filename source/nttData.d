@@ -126,7 +126,7 @@ CreatureData faestus1={
 	name: "Faestus",
 	model: "saxshero/hero.WAD!/thes.FLDR/thes.SAXC/thes.SXMD",
 	stance: "saxs_r4/sxr4.WAD!/flop.FLDR/FGst.SXSK",
-	scaling: 2e-3,
+	scaling: 1.5e-3,
 };
 
 CreatureData faestus2={
@@ -134,7 +134,7 @@ CreatureData faestus2={
 	name: "Faestus",
 	model: "saxshero/hero.WAD!/the2.FLDR/the2.SAXC/the2.SXMD",
 	stance: "saxs_r4/sxr4.WAD!/flop.FLDR/FGst.SXSK",
-	scaling: 2e-3,
+	scaling: 1.5e-3,
 };
 
 CreatureData fallen={
@@ -506,7 +506,7 @@ CreatureData thestor={
 	name: "Thestor",
 	model: "/home/tgehr/games/sac/SacrificeH/tools/3d/source/extracted/saxshero/hero.WAD!/faes.FLDR/faez.SAXC/faez.SXMD",
 	stance: "saxs_r4/sxr4.WAD!/flop.FLDR/FGst.SXSK",
-	scaling: 2e-3,
+	scaling: 1.5e-3,
 };
 
 CreatureData tickferno={
@@ -523,7 +523,7 @@ CreatureData toldor={
 	name: "Toldor",
 	model: "/home/tgehr/games/sac/SacrificeH/tools/3d/source/extracted/saxshero/hero.WAD!/hoom.FLDR/hoom.SAXC/hoom.SXMD",
 	stance: "saxs_r10/sr10.WAD!/stmp.FLDR/STst.SXSK",
-	scaling: 3e-3,
+	scaling: 2.5e-3,
 };
 
 CreatureData trogg={
