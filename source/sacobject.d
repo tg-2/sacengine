@@ -59,26 +59,28 @@ class SacObject: Owner{
 
 	void loadAnimation(string animation,float scaling){
 		anim=loadSXSK(animation,scaling);
-		bbox=saxsi.setPose(anim.frames[0]);
+		static if(gpuSkinning)
+			anim.compile(saxsi.saxs);
+		saxsi.setPose(anim.frames[0]);
 	}
 
 	Vector3f position = Vector3f(0,0,0); // TODO: make SacObject an entity
 	Quaternionf rotation = rotationQuaternion(Axis.y,cast(float)0.0);
 	float scaling = 1.0;
 
-	Vector3f[2] bbox;
-
 	void createEntities(Scene s){
 		foreach(i;0..isSaxs?saxsi.meshes.length:meshes.length){
 			auto obj=s.createEntity3D();
-			obj.drawable = isSaxs?saxsi.meshes[i]:meshes[i];
+			obj.drawable = isSaxs?cast(Drawable)saxsi.meshes[i]:cast(Drawable)meshes[i];
 			obj.position = position;
 			obj.rotation = rotation;
 			obj.scaling = scaling*Vector3f(1,1,1);
-			auto mat=s.createMaterial();
+			auto mat=s.createMaterial(gpuSkinning&&isSaxs?s.boneMaterialBackend:s.defaultMaterialBackend);
 			if((isSaxs?saxsi.saxs.bodyParts[i].texture:textures[i]) !is null) mat.diffuse=isSaxs?saxsi.saxs.bodyParts[i].texture:textures[i];
 			mat.specular=Color4f(0,0,0,1);
 			obj.material=mat;
+			obj.shadowMaterial=gpuSkinning&&isSaxs?s.shadowMap.bsm:s.shadowMap.sm;
+			//obj.castShadow=false;
 			entities.insertBack(obj);
 		}
 	}
@@ -95,7 +97,7 @@ class SacObject: Owner{
 	}body{
 		if(isSaxs){
 			if(anim.frames.length==0) return;
-			bbox=saxsi.setPose(anim.frames[frame]);
+			saxsi.setPose(anim.frames[frame]);
 		}
 	}
 }
