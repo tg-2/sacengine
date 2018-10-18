@@ -86,6 +86,7 @@ class SacMap{ // TODO: make this an entity
 			mat.emission=textures[i];
 			mat.energy=0.05;
 			obj.material=mat;
+			obj.shadowMaterial=s.shadowMap.sm;
 		}
 		foreach(i,ntt;ntts){
 			ntt.createEntities(s);
