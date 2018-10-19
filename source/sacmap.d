@@ -49,7 +49,7 @@ class SacMap{ // TODO: make this an entity
 		static Texture makeTexture(SuperImage i){
 			auto texture=New!Texture(null); // TODO: set owner
 			texture.image=i;
-			texture.createFromImage(texture.image);
+			texture.createFromImage(texture.image,true,GL_MIRRORED_REPEAT);
 			return texture;
 		}
 		auto mapts=loadMAPTs(land);
