@@ -3,40 +3,6 @@ import util;
 
 import std.stdio, std.exception, std.algorithm, std.array;
 
-
-struct Transformation{
-	Quaternionf rotation;
-	Vector3f offset;
-	this(Quaternionf rotation,Vector3f offset){
-		this.rotation=rotation;
-		this.offset=offset;
-	}
-	Vector3f rotate(Vector3f v){
-		auto quat=Quaternionf(v[0],v[1],v[2],0.0);
-		return Vector3f((rotation*quat*rotation.conj())[0..3]);
-	}
-	Vector3f opCall(Vector3f v){
-		auto rotated=rotate(v);
-		return rotated+offset;
-	}
-	Transformation opBinary(string op:"*")(Transformation rhs){
-		return Transformation(rotation*rhs.rotation,opCall(rhs.offset));
-	}
-	Matrix4f getMatrix4f(){
-		auto id=Matrix3f.identity();
-		Matrix4f result;
-		result.arrayof[0..3]=rotate(Vector3f(id.arrayof[0..3])).arrayof[];
-		result.arrayof[3]=0.0f;
-		result.arrayof[4..7]=rotate(Vector3f(id.arrayof[3..6])).arrayof[];
-		result.arrayof[7]=0.0f;
-		result.arrayof[8..11]=rotate(Vector3f(id.arrayof[6..9])).arrayof[];
-		result.arrayof[11]=0.0f;
-		result.arrayof[12..15]=offset.arrayof[];
-		result.arrayof[15]=1.0f;
-		return result;
-	}
-}
-
 enum gpuSkinning=true;
 struct Pose{
 	Vector3f displacement;

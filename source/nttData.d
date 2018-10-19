@@ -1,4 +1,88 @@
 module nttData;
+import std.file, std.path, std.stdio, std.algorithm, std.string;
+import bldg;
+immutable string[] bldgFolders=["joby/joby.WAD!/ethr.FLDR",
+                                "joby/joby.WAD!/prsc.FLDR",
+                                "pyromod/PMOD.WAD!/bild.FLDR",
+                                "jamesmod/JMOD.WAD!/bild.FLDR",
+                                "stratmod/SMOD.WAD!/bild.FLDR",
+                                "joby/joby.WAD!/ch_a.FLDR",];
+
+immutable string[] bldgModlFolders=["joby/joby.WAD!/ethr.FLDR",
+                                     "joby/joby.WAD!/prsc.FLDR",
+                                     "pyromod/PMOD.WAD!/modl.FLDR",
+                                     "jamesmod/JMOD.WAD!/modl.FLDR",
+                                     "stratmod/SMOD.WAD!/modl.FLDR",
+                                     "joby/joby.WAD!/ch_a.FLDR"];
+
+immutable char[4][] manalithTags=["amac","namj","anam","amyp","mats"];
+
+import std.typecons;
+Bldg[char[4]] makeBldgByTag(){
+	Bldg[char[4]] result;
+	foreach(folder;bldgFolders){
+		auto path=buildPath("extracted",folder);
+		foreach(bldgFile;dirEntries(path,"*.BLDG",SpanMode.shallow)){
+			char[4] tag=bldgFile[$-9..$-5];
+			reverse(tag[]);
+			result[tag]=loadBldg(bldgFile);
+		}
+	}
+	return result;
+}
+
+string[char[4]] makeBldgModlByTag(){
+	string[char[4]] result;
+	foreach(folder;bldgModlFolders){
+		auto path=buildPath("extracted",folder);
+		foreach(bldgModlFile;dirEntries(path,"*.MRMC",SpanMode.shallow)){
+			char[4] tag=bldgModlFile[$-9..$-5];
+			reverse(tag[]);
+			result[tag]=buildPath(bldgModlFile,bldgModlFile[$-9..$-5]~".MRMM");
+		}
+	}
+	return result;
+}
+
+immutable Bldg[char[4]] bldgs;
+immutable string[char[4]] bldgModls;
+static this(){
+	bldgs=cast(immutable)makeBldgByTag();
+	bldgModls=cast(immutable)makeBldgModlByTag();
+}
+
+immutable struct StructureData{
+	char[4] tag;
+	string name;
+	string model;
+	string destroyed;
+}
+
+StructureData stratosManaFountain={
+	tag: "fmts",
+	name: "Mana Fountain",
+	model: "stratmod/SMOD.WAD!/modl.FLDR/stmf.MRMC/stmf.MRMM",
+};
+
+StructureData* structureDataByTag(char[4] tag){
+Lswitch: switch(tag){
+		static foreach(dataName;__traits(allMembers, nttData)){
+			static if(is(typeof(mixin(`nttData.`~dataName))==StructureData)){
+				static if(mixin(`nttData.`~dataName).tag!=(char[4]).init)
+				case mixin(`nttData.`~dataName).tag:{
+					if(!mixin(`nttData.`~dataName).name)
+						return null;
+					else return &mixin(`nttData.`~dataName);
+				}
+			}
+		}
+		default:
+			import std.stdio;
+			stderr.writeln("WARNING: unknown structure tag '",tag,"'");
+			return null;
+	}
+}
+
 
 immutable struct CreatureData{
 	char[4] tag;

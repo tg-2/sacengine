@@ -16,7 +16,7 @@ struct Structure{
 	Type type=Type.structure;
 	uint size=48;
 	float x,y,z;
-	uint facing;
+	float facing;
 	char[4] retroKind;
 	Flags flags;
 	uint side;

@@ -17,21 +17,25 @@ class SacMap{ // TODO: make this an entity
 	int n,m;
 	bool[][] edges;
 	float[][] heights;
+	ubyte[][] tiles;
 
 	SacObject[] ntts;
 
 	this(string filename){
 		enforce(filename.endsWith(".HMAP"));
 		auto hmap=loadHMap(filename);
+		auto minHeight=1e9;
+		foreach(h;hmap.heights) foreach(x;h) minHeight=min(minHeight,x);
+		foreach(h;hmap.heights) foreach(ref x;h) x-=minHeight;
 		auto tmap=loadTMap(filename[0..$-".HMAP".length]~".TMAP");
 		edges=hmap.edges;
 		heights=hmap.heights;
+		tiles=tmap.tiles;
 		n=to!int(edges.length);
 		m=to!int(edges[1].length);
 		enforce(heights.length==n);
 		enforce(edges.all!(x=>x.length==m));
 		enforce(heights.all!(x=>x.length==m));
-		meshes=createMeshes(hmap,tmap);
 		string land;
 		final switch(detectTileset(filename[0..$-".HMAP".length]~".LEVL")) with(Tileset){
 			case ethereal: land="extracted/ethr/ethr.WAD!/ethr.LAND"; break; // TODO
@@ -58,12 +62,15 @@ class SacMap{ // TODO: make this an entity
 		auto ntts=loadNTTs(filename[0..$-".HMAP".length]~".NTTS");
 		/+import std.algorithm;
 		writeln("#widgets: ",ntts.widgetss.map!(x=>x.num).sum);+/
-		/+foreach(widgets;ntts.widgetss) // TODO: improve engine to be able to handle this
-			placeWidgets(land,widgets);+/
-		foreach(ref creature;ntts.creatures)
-			placeNTT(creature);
+		foreach(ref structure;ntts.structures)
+			placeStructure(structure);
 		foreach(ref wizard;ntts.wizards)
 			placeNTT(wizard);
+		foreach(ref creature;ntts.creatures)
+			placeNTT(creature);
+		/+foreach(widgets;ntts.widgetss) // TODO: improve engine to be able to handle this
+			placeWidgets(land,widgets);+/
+		meshes=createMeshes(hmap,tmap);
 	}
 
 	void createEntities(Scene s){
@@ -103,6 +110,52 @@ class SacMap{ // TODO: make this an entity
 		}else obj=objects[filename];
 		return obj;
 	}
+	private void placeStructure(ref Structure ntt){
+		import nttData;
+		auto data=ntt.retroKind in bldgs;
+		enforce(!!data);
+		auto position=Vector3f(ntt.x,ntt.y,ntt.z);
+		auto ci=cast(int)(position.x/10+0.5);
+		auto cj=cast(int)(position.y/10+0.5);
+		auto ground=data.ground;
+		if(!manalithTags.canFind(ntt.retroKind)){
+			foreach(j;max(0,cj-4)..min(n,cj+4)){
+				foreach(i;max(0,ci-4)..min(m,ci+4)){
+					auto dj=j-(cj-4), di=i-(ci-4);
+					if(ground[dj][di])
+						tiles[j][i]=ground[dj][di];
+				}
+			}
+		}
+		foreach(ref component;data.components){
+			auto offset=Vector3f(component.x,component.y,component.z);
+			offset=rotate(facingQuaternion(ntt.facing), offset);
+			auto cposition=position+offset;
+			if(!isOnGround(cposition)) continue;
+			cposition.z=getGroundHeight(cposition);
+			auto curObj=loadObject(bldgModls[component.retroModel]);
+			auto obj=new SacObject(null,curObj);
+			obj.position=cposition;
+			obj.rotation=facingQuaternion(ntt.facing+component.facing);
+			ntts~=obj;
+		}
+	}
+
+	private void placeNTT(T)(ref T ntt) if(__traits(compiles, (T t)=>t.retroKind)){
+		import nttData;
+		static if(is(T==Creature)||is(T==Wizard))
+			auto data=creatureDataByTag(ntt.retroKind);
+		if(!data) return;
+		auto curObj=loadObject(buildPath("extracted",data.model),data.scaling,data.zfactorOverride);
+		auto obj=new SacObject(null,curObj);
+		if(data.stance.length) obj.loadAnimation(buildPath("extracted",data.stance),data.scaling);
+		auto position=Vector3f(ntt.x,ntt.y,ntt.z);
+		if(!isOnGround(position)) return; // TODO
+		position.z=getGroundHeight(position);
+		obj.rotation=rotationQuaternion(Axis.z,cast(float)(2*PI/360*ntt.facing))*obj.rotation;
+		obj.position=position;
+		ntts~=obj;
+	}
 	private void placeWidgets(string land,Widgets w){
 		auto name=w.retroName[].retro.to!string;
 		auto filename=buildPath(land,name~".WIDC",name~".WIDG");
@@ -118,21 +171,6 @@ class SacMap{ // TODO: make this an entity
 			obj.position=position;
 			ntts~=obj;
 		}
-	}
-	private void placeNTT(T)(ref T ntt) if(__traits(compiles, (T t)=>t.retroKind)){
-		import nttData;
-		static if(is(T==Creature)||is(T==Wizard))
-			auto data=creatureDataByTag(ntt.retroKind);
-		if(!data) return;
-		auto curObj=loadObject(buildPath("extracted",data.model),data.scaling,data.zfactorOverride);
-		auto obj=new SacObject(null,curObj);
-		if(data.stance.length) obj.loadAnimation(buildPath("extracted",data.stance),data.scaling);
-		auto position=Vector3f(ntt.x,ntt.y,ntt.z);
-		if(!isOnGround(position)) return; // TODO
-		position.z=getGroundHeight(position);
-		obj.rotation=rotationQuaternion(Axis.z,cast(float)(2*PI/360*ntt.facing))*obj.rotation;
-		obj.position=position;
-		ntts~=obj;
 	}
 
 	Tuple!(int,"j",int,"i") getTile(Vector3f pos){
@@ -242,9 +280,6 @@ TerrainMesh[] createMeshes(HMap hmap, TMap tmap, float scaleFactor=1){
 	auto edges=hmap.edges;
 	auto heights=hmap.heights;
 	auto tiles=tmap.tiles;
-	auto minHeight=1e9;
-	foreach(h;heights) foreach(x;h) minHeight=min(minHeight,x);
-	foreach(h;heights) foreach(ref x;h) x-=minHeight;
 	//foreach(e;edges) e[]=false;
 	auto n=to!int(hmap.edges.length);
 	enforce(n);
