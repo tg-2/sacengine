@@ -88,6 +88,8 @@ class TestScene: Scene{
 		if(eventManager.keyPressed[KEY_F]) dir += right;
 		if(eventManager.keyPressed[KEY_O]) speed = 100.0f;
 		if(eventManager.keyPressed[KEY_P]) speed = 1000.0f;
+		if(eventManager.keyPressed[KEY_K]) fpview.active=false;
+		if(eventManager.keyPressed[KEY_L]) fpview.active=true;
 		fpview.camera.position += dir.normalized * speed * dt;
 		if(map && map.isOnGround(fpview.camera.position)){
 			fpview.camera.position.z=max(fpview.camera.position.z, map.getGroundHeight(fpview.camera.position));
