@@ -64,7 +64,7 @@ Tuple!(Mesh, Texture) loadWIDG(string filename){
 	mesh.generateNormals();
 	mesh.dataReady=true;
 	mesh.prepareVAO();
-	auto txtr=loadTXTR(buildPath(dir,chain(retro(model.retroTextureName),".TXTR").to!string),true);
+	auto txtr=loadTXTR(buildPath(dir,chain(retro(model.retroTextureName),".TXTR").to!string));
 	auto texture=New!Texture(null);
 	texture.image=txtr;
 	texture.createFromImage(texture.image);

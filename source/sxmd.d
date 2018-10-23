@@ -20,11 +20,11 @@ struct BodyPartHeader{
 	ubyte numRings;
 	ubyte additionalRingEntries;
 	ushort numExplicitFaces;
-	ubyte[16] unknown1;
+	ubyte[16] unknown0;
 	uint flags;
 	uint explicitFaceOffset;
 	uint stripsOffset;
-	ubyte[4] unknown2;
+	ubyte[4] unknown1;
 }
 static assert(BodyPartHeader.sizeof==36);
 

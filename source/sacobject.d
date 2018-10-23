@@ -76,10 +76,13 @@ class SacObject: Owner{
 			obj.rotation = rotation;
 			obj.scaling = scaling*Vector3f(1,1,1);
 			auto mat=s.createMaterial(gpuSkinning&&isSaxs?s.boneMaterialBackend:s.defaultMaterialBackend);
-			if((isSaxs?saxsi.saxs.bodyParts[i].texture:textures[i]) !is null) mat.diffuse=isSaxs?saxsi.saxs.bodyParts[i].texture:textures[i];
+			auto diffuse=isSaxs?saxsi.saxs.bodyParts[i].texture:textures[i];
+			if(diffuse !is null) mat.diffuse=diffuse;
 			mat.specular=Color4f(0,0,0,1);
 			obj.material=mat;
-			obj.shadowMaterial=gpuSkinning&&isSaxs?s.shadowMap.bsm:s.shadowMap.sm;
+			auto shadowMat=s.createMaterial(gpuSkinning&&isSaxs?s.shadowMap.bsb:s.shadowMap.sb);
+			if(diffuse !is null) shadowMat.diffuse=diffuse;
+			obj.shadowMaterial=shadowMat;
 			//obj.castShadow=false;
 			entities.insertBack(obj);
 		}
