@@ -15,7 +15,7 @@ static assert(Vertex.sizeof==40);
 
 struct Face{
 	uint[3] vertices;
-	uint unknown1=0x00010001;
+	uint unknown0=0x00010001;
 	char[4] retroName;
 	string textureName(){
 		auto tmp=retroName;
@@ -23,7 +23,7 @@ struct Face{
 		return cast(string)tmp[].dup;
 	}
 	float[3] normal;
-	uint unknown2;
+	uint unknown1;
 }
 static assert(Face.sizeof==36);
 
