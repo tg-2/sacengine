@@ -162,13 +162,19 @@ auto convertModel(Model)(string dir, Model model, float scaling){
 			}
 		}
 	}
+	static if(is(typeof(model.faces[0].lod))){
+		auto maxLod=model.faces.map!(f=>f.lod).reduce!max;
+		auto faces=model.faces.filter!(f=>f.lod==maxLod);
+	}else{
+		auto faces=model.faces;
+	}
 	int[] sizes=new int[](names.length);
-	foreach(ref face;model.faces){
+	foreach(ref face;faces){
 		++sizes[names[face.textureName]];
 	}
 	foreach(k,mesh;meshes) meshes[k].indices = New!(uint[3][])(sizes[k]);
 	auto curs=new int[](meshes.length);
-	foreach(ref face;model.faces){
+	foreach(ref face;faces){
 		auto k=names[face.textureName];
 		meshes[k].indices[curs[k]++]=face.vertices;
 	}

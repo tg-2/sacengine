@@ -23,7 +23,7 @@ struct Face{
 		return cast(string)tmp[].dup;
 	}
 	float[3] normal;
-	uint unknown1;
+	uint lod;
 }
 static assert(Face.sizeof==36);
 
