@@ -28,7 +28,6 @@ SuperImage loadTXTR(string filename){ // TODO: maybe integrate with dagon's Text
 		foreach(ubyte[] chunk;chunks(File(palFile, "rb"),4096)) palt~=chunk;
 		palt=palt[8..$]; // header bytes (TODO: figure out what they mean)
 	}
-	hasAlpha=true;
 	auto img=image(width, height, 3+hasAlpha);
 	foreach(y;0..height){
 		foreach(x;0..width){
@@ -37,7 +36,7 @@ SuperImage loadTXTR(string filename){ // TODO: maybe integrate with dagon's Text
 			ubyte[3] tcol;
 			if(grayscale) tcol=[ccol,ccol,ccol];
 			else tcol=[palt[3*ccol+0],palt[3*ccol+1],palt[3*ccol+2]];
-			if(tcol!=alphaColor) img[x,y]=Color4f(Color4(tcol[2],tcol[1],tcol[0],255));
+			if(!hasAlpha||tcol!=alphaColor) img[x,y]=Color4f(Color4(tcol[2],tcol[1],tcol[0],255));
 			else img[x,y]=Color4f(Color4(tcol[2],tcol[1],tcol[0],0));
 		}
 	}
