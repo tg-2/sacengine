@@ -117,8 +117,9 @@ class SacMap{ // TODO: make this an entity
 		auto position=Vector3f(ntt.x,ntt.y,ntt.z);
 		auto ci=cast(int)(position.x/10+0.5);
 		auto cj=cast(int)(position.y/10+0.5);
-		auto ground=data.ground;
-		if(!manalithTags.canFind(ntt.retroKind)){
+		import bldg;
+		if(data.flags&BldgFlags.ground){
+			auto ground=data.ground;
 			foreach(j;max(0,cj-4)..min(n,cj+4)){
 				foreach(i;max(0,ci-4)..min(m,ci+4)){
 					auto dj=j-(cj-4), di=i-(ci-4);

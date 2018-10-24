@@ -1,8 +1,14 @@
 import std.exception, std.string;
 import util;
 
+enum BldgFlags:uint{
+	none=0,
+	unknown=1<<3,
+	ground=1<<31,
+}
+
 struct BldgHeader{
-	ubyte[4] unknown0;
+	BldgFlags flags;
 	ubyte[8][8] ground;
 	float x,y,z;
 	float facing;
