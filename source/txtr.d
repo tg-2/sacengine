@@ -36,8 +36,8 @@ SuperImage loadTXTR(string filename){ // TODO: maybe integrate with dagon's Text
 			ubyte[3] tcol;
 			if(grayscale) tcol=[ccol,ccol,ccol];
 			else tcol=[palt[3*ccol+0],palt[3*ccol+1],palt[3*ccol+2]];
-			if(!hasAlpha||tcol!=alphaColor) img[x,y]=Color4f(Color4(tcol[2],tcol[1],tcol[0],255));
-			else img[x,y]=Color4f(Color4(tcol[2],tcol[1],tcol[0],0));
+			if(!hasAlpha||tcol!=alphaColor) img[x,y]=Color4f(Color4(tcol[0],tcol[1],tcol[2],255));
+			else img[x,y]=Color4f(Color4(tcol[0],tcol[1],tcol[2],0));
 		}
 	}
 	return img;
