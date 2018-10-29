@@ -17,9 +17,18 @@ SuperImage loadTXTR(string filename){ // TODO: maybe integrate with dagon's Text
 	reverse(tmp);
 	bool grayscale=false;
 	string pal=cast(string)tmp.idup;
-	auto hasAlpha=!!(txt[0]&4);
+	auto hasAlphaColor=!!(txt[0]&4);
+	auto hasExplicitAlpha=!!(txt[2]&1);
 	ubyte[3] alphaColor=[txt[6],txt[5],txt[4]];
-	txt=txt[$-width*height..$]; // remove further header bytes (TODO: figure out what they mean)
+	txt=txt[8..$];
+	txt=txt[16..$]; // remove further header bytes (TODO: figure out what they mean)
+	ubyte[] alphaChannel;
+	if(hasExplicitAlpha){
+		enforce(txt.length==2*width*height);
+		alphaChannel=txt[$-width*height..$];
+		txt=txt[0..width*height];
+	}
+	enforce(txt.length==width*height);
 	ubyte[] palt;
 	if(pal.toLower()=="gray"){
 		grayscale=true;
@@ -28,7 +37,7 @@ SuperImage loadTXTR(string filename){ // TODO: maybe integrate with dagon's Text
 		foreach(ubyte[] chunk;chunks(File(palFile, "rb"),4096)) palt~=chunk;
 		palt=palt[8..$]; // header bytes (TODO: figure out what they mean)
 	}
-	auto img=image(width, height, 3+hasAlpha);
+	auto img=image(width, height, 3+(hasAlphaColor||hasExplicitAlpha));
 	foreach(y;0..height){
 		foreach(x;0..width){
 			auto index = y*img.width+x;
@@ -36,8 +45,9 @@ SuperImage loadTXTR(string filename){ // TODO: maybe integrate with dagon's Text
 			ubyte[3] tcol;
 			if(grayscale) tcol=[ccol,ccol,ccol];
 			else tcol=[palt[3*ccol+0],palt[3*ccol+1],palt[3*ccol+2]];
-			if(!hasAlpha||tcol!=alphaColor) img[x,y]=Color4f(Color4(tcol[0],tcol[1],tcol[2],255));
-			else img[x,y]=Color4f(Color4(tcol[0],tcol[1],tcol[2],0));
+			if(!hasAlphaColor||tcol!=alphaColor){
+				img[x,y]=Color4f(Color4(tcol[0],tcol[1],tcol[2],alphaChannel.length?alphaChannel[index]:255));
+			}else img[x,y]=Color4f(Color4(tcol[0],tcol[1],tcol[2],0));
 		}
 	}
 	return img;
