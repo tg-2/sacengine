@@ -83,121 +83,135 @@ class SacMap{ // TODO: make this an entity
 		/+auto eSky=s.createSky();
 		eSky.rotation=rotationQuaternion(Axis.z,cast(float)PI)*
 			rotationQuaternion(Axis.x,cast(float)(PI/2));+/
-		enum dZ=-0.05, undrZ=-0.7, skyZ=0.7;
-        enum numSegs=64, numTextureRepeats=8;
+		auto x=10.0f*n/2, y=10.0f*m/2;
+		auto scaling=4*10.0f*max(n,m);
+		enum dZ=-0.05, undrZ=-0.25, skyZ=0.25;
+		enum numSegs=64, numTextureRepeats=8;
+		enum energy=1.7f;
 
-		auto matSky = s.createMaterial(s.shadelessMaterialBackend);
-		matSky.diffuse=textures[257];
-        auto eSky = s.createEntity3D();
-        eSky.layer = 0;
-        eSky.attach = Attach.Camera;
-        eSky.castShadow = false;
-        eSky.material = matSky;
-        auto meshs=New!Mesh(s.assetManager);
-        meshs.vertices=New!(Vector3f[])(4);
-        meshs.texcoords=New!(Vector2f[])(4);
-        meshs.indices=New!(uint[3][])(2);
-        copy(iota(4).map!(i=>Vector3f(-0.5+(i==1||i==2),-0.5+(i==2||i==3),skyZ/2)),meshs.vertices);
-        copy(iota(4).map!(i=>Vector2f(4*(i==1||i==2),4*(i==2||i==3))),meshs.texcoords);
-        meshs.indices[0]=[0,2,1];
-        meshs.indices[1]=[0,3,2];
-        meshs.generateNormals();
-        meshs.dataReady=true;
-        meshs.prepareVAO();
-        eSky.drawable=meshs;
-        eSky.position=Vector3f(0,0,dZ+1);
+		//auto mesh=New!ShapeSphere(sqrt(0.5^^2+0.7^^2), 8, 4, true, s.assetManager);
 
-        auto matSkyb = s.createMaterial(s.shadelessMaterialBackend);
+		auto matSkyb = s.createMaterial(s.shadelessMaterialBackend);
 		matSkyb.diffuse=textures[258];
-        auto eSkyb = s.createEntity3D();
-        eSkyb.layer = 0;
-        eSkyb.attach = Attach.Camera;
-        eSkyb.castShadow = false;
-        eSkyb.material = matSkyb;
-        //auto mesh=New!ShapeSphere(sqrt(0.5^^2+0.7^^2), 8, 4, true, s.assetManager);
-        auto meshb=New!Mesh(s.assetManager);
-        meshb.vertices=New!(Vector3f[])(2*(numSegs+1));
-        meshb.texcoords=New!(Vector2f[])(2*(numSegs+1));
-        meshb.indices=New!(uint[3][])(2*numSegs);
-        foreach(i;0..numSegs+1){
-	        auto angle=2*PI*i/numSegs, ca=cos(angle), sa=sin(angle);
-	        meshb.vertices[2*i]=Vector3f(0.5*ca,0.5*sa,undrZ);
-	        meshb.vertices[2*i+1]=Vector3f(0.5*ca,0.5*sa,0);
-	        auto txc=cast(float)i*numTextureRepeats/numSegs;
-	        meshb.texcoords[2*i]=Vector3f(txc,0);
-	        meshb.texcoords[2*i+1]=Vector3f(txc,1);
-        }
-        foreach(i;0..numSegs){
-	        meshb.indices[2*i]=[2*i,2*i+1,2*(i+1)];
-	        meshb.indices[2*i+1]=[2*(i+1),2*i+1,2*(i+1)+1];
-        }
-        meshb.generateNormals();
-        meshb.dataReady=true;
-        meshb.prepareVAO();
-        eSkyb.drawable = meshb;
-        eSkyb.position=Vector3f(0,0,dZ+1);
+		matSkyb.blending=Transparent;
+		matSkyb.energy=energy;
+		auto eSkyb = s.createEntity3D();
+		eSkyb.castShadow = false;
+		eSkyb.material = matSkyb;
+		auto meshb=New!Mesh(s.assetManager);
+		meshb.vertices=New!(Vector3f[])(2*(numSegs+1));
+		meshb.texcoords=New!(Vector2f[])(2*(numSegs+1));
+		meshb.indices=New!(uint[3][])(2*numSegs);
+		foreach(i;0..numSegs+1){
+			auto angle=2*PI*i/numSegs, ca=cos(angle), sa=sin(angle);
+			meshb.vertices[2*i]=Vector3f(0.5*ca*0.8,0.5*sa*0.8,undrZ)*scaling;
+			meshb.vertices[2*i+1]=Vector3f(0.5*ca,0.5*sa,0)*scaling;
+			auto txc=cast(float)i*numTextureRepeats/numSegs;
+			meshb.texcoords[2*i]=Vector2f(txc,0);
+			meshb.texcoords[2*i+1]=Vector2f(txc,1);
+		}
+		foreach(i;0..numSegs){
+			meshb.indices[2*i]=[2*i,2*i+1,2*(i+1)];
+			meshb.indices[2*i+1]=[2*(i+1),2*i+1,2*(i+1)+1];
+		}
+		meshb.generateNormals();
+		meshb.dataReady=true;
+		meshb.prepareVAO();
+		eSkyb.drawable = meshb;
+		eSkyb.position=Vector3f(x,y,dZ*scaling+1);
 
 		auto matSkyt = s.createMaterial(s.shadelessMaterialBackend);
 		matSkyt.diffuse=textures[259];
-        auto eSkyt = s.createEntity3D();
-        eSkyt.layer = 0;
-        eSkyt.attach = Attach.Camera;
-        eSkyt.castShadow = false;
-        eSkyt.material = matSkyt;
-        auto mesht=New!Mesh(s.assetManager);
-        mesht.vertices=New!(Vector3f[])(2*(numSegs+1));
-        mesht.texcoords=New!(Vector2f[])(2*(numSegs+1));
-        mesht.indices=New!(uint[3][])(2*numSegs);
-        foreach(i;0..numSegs+1){
-	        auto angle=2*PI*i/numSegs, ca=cos(angle), sa=sin(angle);
-	        mesht.vertices[2*i]=Vector3f(0.5*ca,0.5*sa,0);
-	        mesht.vertices[2*i+1]=Vector3f(0.5*ca,0.5*sa,skyZ);
-	        auto txc=cast(float)i*numTextureRepeats/numSegs;
-	        mesht.texcoords[2*i]=Vector3f(txc,1);
-	        mesht.texcoords[2*i+1]=Vector3f(txc,0);
-        }
-        foreach(i;0..numSegs){
-	        mesht.indices[2*i]=[2*i,2*i+1,2*(i+1)];
-	        mesht.indices[2*i+1]=[2*(i+1),2*i+1,2*(i+1)+1];
-        }
-        mesht.generateNormals();
-        mesht.dataReady=true;
-        mesht.prepareVAO();
-        eSkyt.drawable = mesht;
-        eSkyt.position=Vector3f(0,0,dZ+1);
+		matSkyt.blending=Transparent;
+		matSkyt.energy=energy;
+		auto eSkyt = s.createEntity3D();
+		eSkyt.castShadow = false;
+		eSkyt.material = matSkyt;
+		auto mesht=New!Mesh(s.assetManager);
+		mesht.vertices=New!(Vector3f[])(2*(numSegs+1));
+		mesht.texcoords=New!(Vector2f[])(2*(numSegs+1));
+		mesht.indices=New!(uint[3][])(2*numSegs);
+		foreach(i;0..numSegs+1){
+			auto angle=2*PI*i/numSegs, ca=cos(angle), sa=sin(angle);
+			mesht.vertices[2*i]=Vector3f(0.5*ca,0.5*sa,0)*scaling;
+			mesht.vertices[2*i+1]=Vector3f(0.5*ca,0.5*sa,skyZ)*scaling;
+			auto txc=cast(float)i*numTextureRepeats/numSegs;
+			mesht.texcoords[2*i]=Vector2f(txc,1);
+			mesht.texcoords[2*i+1]=Vector2f(txc,0);
+		}
+		foreach(i;0..numSegs){
+			mesht.indices[2*i]=[2*i,2*i+1,2*(i+1)];
+			mesht.indices[2*i+1]=[2*(i+1),2*i+1,2*(i+1)+1];
+		}
+		mesht.generateNormals();
+		mesht.dataReady=true;
+		mesht.prepareVAO();
+		eSkyt.drawable = mesht;
+		eSkyt.position=Vector3f(x,y,dZ*scaling+1);
 
 		auto matSun = s.createMaterial(s.shadelessMaterialBackend);
 		matSun.diffuse=textures[260];
-        auto eSun = s.createEntity3D();
-        eSun.layer = 0;
-        eSun.attach = Attach.Camera;
-        eSun.castShadow = false;
-        eSun.material = matSun;
-        auto meshsu=New!Mesh(s.assetManager);
-        meshsu.vertices=New!(Vector3f[])(4);
-        meshsu.texcoords=New!(Vector2f[])(4);
-        meshsu.indices=New!(uint[3][])(2);
-        copy(iota(4).map!(i=>Vector3f((-0.5+(i==1||i==2))*0.25,(-0.5+(i==2||i==3))*0.25,skyZ)),meshsu.vertices);
-        copy(iota(4).map!(i=>Vector2f((i==1||i==2),(i==2||i==3))),meshsu.texcoords);
-        meshsu.indices[0]=[0,2,1];
-        meshsu.indices[1]=[0,3,2];
-        meshsu.generateNormals();
-        meshsu.dataReady=true;
-        meshsu.prepareVAO();
-        eSun.drawable=meshsu;
-        eSun.position=Vector3f(0,0,dZ+1);
+		matSun.blending=Additive;
+		matSun.energy=5.0f*energy;
+		auto eSun = s.createEntity3D();
+		eSun.castShadow = false;
+		eSun.material = matSun;
+		auto meshsu=New!Mesh(s.assetManager);
+		meshsu.vertices=New!(Vector3f[])(4);
+		meshsu.texcoords=New!(Vector2f[])(4);
+		meshsu.indices=New!(uint[3][])(2);
+		copy(iota(4).map!(i=>Vector3f((-0.5+(i==1||i==2))*0.25,(-0.5+(i==2||i==3))*0.25,skyZ)*scaling),meshsu.vertices);
+		copy(iota(4).map!(i=>Vector2f((i==1||i==2),(i==2||i==3))),meshsu.texcoords);
+		meshsu.indices[0]=[0,2,1];
+		meshsu.indices[1]=[0,3,2];
+		meshsu.generateNormals();
+		meshsu.dataReady=true;
+		meshsu.prepareVAO();
+		eSun.drawable=meshsu;
+		eSun.position=Vector3f(x,y,dZ*scaling+1);
 
-        auto matUndr = s.createMaterial(s.shadelessMaterialBackend);
+		auto matSky = s.createMaterial(s.shadelessMaterialBackend);
+		matSky.diffuse=textures[257];
+		matSky.blending=Transparent;
+		matSky.energy=energy;
+		matSky.transparency=0.75f;
+		auto eSky = s.createEntity3D();
+		eSky.castShadow = false;
+		eSky.material = matSky;
+		auto meshs=New!Mesh(s.assetManager);
+		meshs.vertices=New!(Vector3f[])(4);
+		meshs.texcoords=New!(Vector2f[])(4);
+		meshs.indices=New!(uint[3][])(2);
+		copy(iota(4).map!(i=>Vector3f(-0.5+(i==1||i==2),-0.5+(i==2||i==3),skyZ*0.7)*scaling),meshs.vertices);
+		copy(iota(4).map!(i=>Vector2f(8*(i==1||i==2),8*(i==2||i==3))),meshs.texcoords);
+		meshs.indices[0]=[0,2,1];
+		meshs.indices[1]=[0,3,2];
+		meshs.generateNormals();
+		meshs.dataReady=true;
+		meshs.prepareVAO();
+		eSky.drawable=meshs;
+		eSky.position=Vector3f(x,y,dZ*scaling+1);
+
+		auto matUndr = s.createMaterial(s.shadelessMaterialBackend);
 		matUndr.diffuse=textures[261];
-        auto eUndr = s.createEntity3D();
-        eUndr.layer = 0;
-        eUndr.attach = Attach.Camera;
-        eUndr.castShadow = false;
-        eUndr.material = matUndr;
-        eUndr.drawable=New!ShapePlane(1, 1, 1, s.assetManager);
-        eUndr.position=Vector3f(0,0,dZ+undrZ+1);
-        eUndr.rotation =rotationQuaternion(Axis.z,cast(float)PI)*
-	        rotationQuaternion(Axis.x,cast(float)(PI/2));
+		matUndr.blending=Transparent;
+		matUndr.energy=energy;
+		auto eUndr = s.createEntity3D();
+		eUndr.castShadow = false;
+		eUndr.material = matUndr;
+		auto meshu=New!Mesh(s.assetManager);
+		meshu.vertices=New!(Vector3f[])(4);
+		meshu.texcoords=New!(Vector2f[])(4);
+		meshu.indices=New!(uint[3][])(2);
+		copy(iota(4).map!(i=>Vector3f((-0.5+(i==1||i==2)),(-0.5+(i==2||i==3)),undrZ)*scaling),meshu.vertices);
+		copy(iota(4).map!(i=>Vector2f((i==1||i==2),(i==2||i==3))),meshu.texcoords);
+		meshu.indices[0]=[0,1,2];
+		meshu.indices[1]=[0,2,3];
+		meshu.generateNormals();
+		meshu.dataReady=true;
+		meshu.prepareVAO();
+		eUndr.drawable=meshu;
+		eUndr.position=Vector3f(x,y,dZ*scaling+1);
 	}
 
 	void createEntities(Scene s,bool sky=true){
