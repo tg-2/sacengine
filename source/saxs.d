@@ -86,7 +86,7 @@ Saxs loadSaxs(string filename, float scaling=1.0f){
 				faces~=[vrt[i][0][0],vrt[i][0][j],vrt[i][0][j+1]];
 			}
 		}
-		/+if(i!=0)+/ foreach(j,ring;bodyPart.rings[0..$-1]){
+		foreach(j,ring;bodyPart.rings[0..$-1]){
 			auto entries=ring.entries;
 			auto next=bodyPart.rings[j+1].entries;
 			for(int a=0,b=0;a<entries.length||b<next.length;){
@@ -112,6 +112,8 @@ Saxs loadSaxs(string filename, float scaling=1.0f){
 		auto texture=New!Texture(null); // TODO: how not to leak this memory without crashing at shutdown?
 		texture.image = loadSXTX(buildPath(dir,format(".%03d.SXTX",i+1)));
 		texture.createFromImage(texture.image);
+		//writeln(i,": ",bodyPart.flags," ",bodyPart.unknown0," ",bodyPart.unknown1);
+		//if(bodyPart.flags==0&&bodyPart.unknown0[].all!(x=>x==0)&&bodyPart.unknown1[].all!(x=>x==0)) faces=[];
 		bodyParts~=BodyPart(vertices,faces,texture);
 		if(bodyPart.strips.length){
 			// TODO: enforce all in bounds
