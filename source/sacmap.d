@@ -170,7 +170,7 @@ class SacMap{ // TODO: make this an entity
 		eSun.drawable=meshsu;
 		eSun.position=Vector3f(x,y,dZ*scaling+1);
 
-		auto matSky = s.createMaterial(s.shadelessMaterialBackend);
+		auto matSky = s.createMaterial(s.sacSkyMaterialBackend);
 		matSky.diffuse=textures[257];
 		matSky.blending=Transparent;
 		matSky.energy=energy;
