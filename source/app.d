@@ -14,6 +14,7 @@ class TestScene: Scene{
 	this(SceneManager smngr, string[] args){
 		super(smngr);
 		this.args=args;
+		this.shadowMapResolution=8192;
 	}
 	DynamicArray!SacObject sacs;
 	FirstPersonView2 fpview;
@@ -63,7 +64,7 @@ class TestScene: Scene{
 				i+=1;
 		}
 
-		if(!map){
+		if(!map||true){
 			auto sky=createSky();
 			sky.rotation=rotationQuaternion(Axis.z,cast(float)PI)*
 				rotationQuaternion(Axis.x,cast(float)(PI/2));
