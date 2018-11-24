@@ -149,10 +149,10 @@ class SacMap{ // TODO: make this an entity
 		eSkyt.drawable = mesht;
 		eSkyt.position=Vector3f(x,y,dZ*scaling+1);
 
-		auto matSun = s.createMaterial(s.shadelessMaterialBackend);
+		auto matSun = s.createMaterial(s.sacSunMaterialBackend);
 		matSun.diffuse=textures[260];
-		matSun.blending=Additive;
-		matSun.energy=5.0f*energy;
+		matSun.blending=Transparent;
+		matSun.energy=25.0f*energy;
 		auto eSun = s.createEntity3D();
 		eSun.castShadow = false;
 		eSun.material = matSun;
