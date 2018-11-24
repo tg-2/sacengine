@@ -1,6 +1,6 @@
 import dagon;
 import util;
-import maps,txtr,ntts;
+import maps,txtr,ntts,envi;
 import std.exception, std.string, std.algorithm, std.conv, std.range;
 import std.stdio, std.path, std.file;
 import std.typecons: tuple,Tuple;
@@ -18,6 +18,7 @@ class SacMap{ // TODO: make this an entity
 	bool[][] edges;
 	float[][] heights;
 	ubyte[][] tiles;
+	Envi envi;
 
 	SacObject[] ntts;
 
@@ -27,6 +28,7 @@ class SacMap{ // TODO: make this an entity
 		auto minHeight=1e9;
 		foreach(h;hmap.heights) foreach(x;h) minHeight=min(minHeight,x);
 		foreach(h;hmap.heights) foreach(ref x;h) x-=minHeight;
+		envi=loadENVI(filename[0..$-".HMAP".length]~".ENVI");
 		auto tmap=loadTMap(filename[0..$-".HMAP".length]~".TMAP");
 		edges=hmap.edges;
 		heights=hmap.heights;
@@ -54,12 +56,13 @@ class SacMap{ // TODO: make this an entity
 		}
 		auto mapts=loadMAPTs(land);
 		auto bumps=loadDTs(land);
-		auto edge=loadTXTR(buildPath(land,"EDGE.TXTR"));// TODO: read name from ENVI
-		auto sky_=loadTXTR(buildPath(land,"SKY_.TXTR"));// TODO: read name from ENVI
-		auto skyb=loadTXTR(buildPath(land,"SKYB.TXTR"));// TODO: read name from ENVI
-		auto skyt=loadTXTR(buildPath(land,"SKYT.TXTR"));// TODO: read name from ENVI
-		auto sun_=loadTXTR(buildPath(land,"SUN_.TXTR"));// TODO: read name from ENVI
-		auto undr=loadTXTR(buildPath(land,"UNDR.TXTR"));// TODO: read name from ENVI
+		auto edge=loadTXTR(buildPath(land,chain(retro(envi.edge[]),".TXTR").to!string));
+		//auto sky_=loadTXTR(buildPath(land,chain(retro(envi.sky_[]),".TXTR").to!string)); // TODO: smk files
+		auto sky_=loadTXTR(buildPath(land,"SKY_.TXTR"));
+		auto skyb=loadTXTR(buildPath(land,chain(retro(envi.skyb[]),".TXTR").to!string));
+		auto skyt=loadTXTR(buildPath(land,chain(retro(envi.skyt[]),".TXTR").to!string));
+		auto sun_=loadTXTR(buildPath(land,chain(retro(envi.sun_[]),".TXTR").to!string));
+		auto undr=loadTXTR(buildPath(land,chain(retro(envi.undr[]),".TXTR").to!string));
 		auto repeatMode=iota(256+6).map!(i=>i==257?GL_REPEAT:GL_MIRRORED_REPEAT);
 		textures=zip(chain(mapts,only(edge,sky_,skyb,skyt,sun_,undr)),repeatMode).map!(x=>makeTexture(x.expand)).array;
 		details=bumps.map!makeTexture.array;
@@ -79,38 +82,50 @@ class SacMap{ // TODO: make this an entity
 		meshes=createMeshes(hmap,tmap);
 	}
 
+	private struct Sky{
+		enum scaling=4*10.0f*256.0f;
+		enum dZ=-0.05, undrZ=-0.25, skyZ=0.25, relCloudLoc=0.7;
+		enum numSegs=64, numTextureRepeats=8;
+		enum energy=1.7f;
+	}
+
+	Vector2f sunSkyRelLoc(Vector3f cameraPos){
+		auto sunPos=Vector3f(0,0,Sky.skyZ*Sky.scaling);
+		auto adjCamPos=cameraPos-Vector3f(1280.0f,1280.0f,Sky.dZ*Sky.scaling+1);
+		float zDiff=sunPos.z-adjCamPos.z;
+		float tZDiff=Sky.scaling*Sky.skyZ*(1-Sky.relCloudLoc);
+		auto intersection=sunPos+(adjCamPos-sunPos)*tZDiff/zDiff;
+		return intersection.xy/(Sky.scaling/2);
+	}
+
 	void createSky(Scene s){
 		/+auto eSky=s.createSky();
 		eSky.rotation=rotationQuaternion(Axis.z,cast(float)PI)*
 			rotationQuaternion(Axis.x,cast(float)(PI/2));+/
 		auto x=10.0f*n/2, y=10.0f*m/2;
-		auto scaling=4*10.0f*max(n,m);
-		enum dZ=-0.05, undrZ=-0.25, skyZ=0.25;
-		enum numSegs=64, numTextureRepeats=8;
-		enum energy=1.7f;
 
 		//auto mesh=New!ShapeSphere(sqrt(0.5^^2+0.7^^2), 8, 4, true, s.assetManager);
 
 		auto matSkyb = s.createMaterial(s.shadelessMaterialBackend);
 		matSkyb.diffuse=textures[258];
 		matSkyb.blending=Transparent;
-		matSkyb.energy=energy;
+		matSkyb.energy=Sky.energy;
 		auto eSkyb = s.createEntity3D();
 		eSkyb.castShadow = false;
 		eSkyb.material = matSkyb;
 		auto meshb=New!Mesh(s.assetManager);
-		meshb.vertices=New!(Vector3f[])(2*(numSegs+1));
-		meshb.texcoords=New!(Vector2f[])(2*(numSegs+1));
-		meshb.indices=New!(uint[3][])(2*numSegs);
-		foreach(i;0..numSegs+1){
-			auto angle=2*PI*i/numSegs, ca=cos(angle), sa=sin(angle);
-			meshb.vertices[2*i]=Vector3f(0.5*ca*0.8,0.5*sa*0.8,undrZ)*scaling;
-			meshb.vertices[2*i+1]=Vector3f(0.5*ca,0.5*sa,0)*scaling;
-			auto txc=cast(float)i*numTextureRepeats/numSegs;
+		meshb.vertices=New!(Vector3f[])(2*(Sky.numSegs+1));
+		meshb.texcoords=New!(Vector2f[])(2*(Sky.numSegs+1));
+		meshb.indices=New!(uint[3][])(2*Sky.numSegs);
+		foreach(i;0..Sky.numSegs+1){
+			auto angle=2*PI*i/Sky.numSegs, ca=cos(angle), sa=sin(angle);
+			meshb.vertices[2*i]=Vector3f(0.5*ca*0.8,0.5*sa*0.8,Sky.undrZ)*Sky.scaling;
+			meshb.vertices[2*i+1]=Vector3f(0.5*ca,0.5*sa,0)*Sky.scaling;
+			auto txc=cast(float)i*Sky.numTextureRepeats/Sky.numSegs;
 			meshb.texcoords[2*i]=Vector2f(txc,0);
 			meshb.texcoords[2*i+1]=Vector2f(txc,1);
 		}
-		foreach(i;0..numSegs){
+		foreach(i;0..Sky.numSegs){
 			meshb.indices[2*i]=[2*i,2*i+1,2*(i+1)];
 			meshb.indices[2*i+1]=[2*(i+1),2*i+1,2*(i+1)+1];
 		}
@@ -118,28 +133,28 @@ class SacMap{ // TODO: make this an entity
 		meshb.dataReady=true;
 		meshb.prepareVAO();
 		eSkyb.drawable = meshb;
-		eSkyb.position=Vector3f(x,y,dZ*scaling+1);
+		eSkyb.position=Vector3f(x,y,Sky.dZ*Sky.scaling+1);
 
 		auto matSkyt = s.createMaterial(s.shadelessMaterialBackend);
 		matSkyt.diffuse=textures[259];
 		matSkyt.blending=Transparent;
-		matSkyt.energy=energy;
+		matSkyt.energy=Sky.energy;
 		auto eSkyt = s.createEntity3D();
 		eSkyt.castShadow = false;
 		eSkyt.material = matSkyt;
 		auto mesht=New!Mesh(s.assetManager);
-		mesht.vertices=New!(Vector3f[])(2*(numSegs+1));
-		mesht.texcoords=New!(Vector2f[])(2*(numSegs+1));
-		mesht.indices=New!(uint[3][])(2*numSegs);
-		foreach(i;0..numSegs+1){
-			auto angle=2*PI*i/numSegs, ca=cos(angle), sa=sin(angle);
-			mesht.vertices[2*i]=Vector3f(0.5*ca,0.5*sa,0)*scaling;
-			mesht.vertices[2*i+1]=Vector3f(0.5*ca,0.5*sa,skyZ)*scaling;
-			auto txc=cast(float)i*numTextureRepeats/numSegs;
+		mesht.vertices=New!(Vector3f[])(2*(Sky.numSegs+1));
+		mesht.texcoords=New!(Vector2f[])(2*(Sky.numSegs+1));
+		mesht.indices=New!(uint[3][])(2*Sky.numSegs);
+		foreach(i;0..Sky.numSegs+1){
+			auto angle=2*PI*i/Sky.numSegs, ca=cos(angle), sa=sin(angle);
+			mesht.vertices[2*i]=Vector3f(0.5*ca,0.5*sa,0)*Sky.scaling;
+			mesht.vertices[2*i+1]=Vector3f(0.5*ca,0.5*sa,Sky.skyZ)*Sky.scaling;
+			auto txc=cast(float)i*Sky.numTextureRepeats/Sky.numSegs;
 			mesht.texcoords[2*i]=Vector2f(txc,1);
 			mesht.texcoords[2*i+1]=Vector2f(txc,0);
 		}
-		foreach(i;0..numSegs){
+		foreach(i;0..Sky.numSegs){
 			mesht.indices[2*i]=[2*i,2*i+1,2*(i+1)];
 			mesht.indices[2*i+1]=[2*(i+1),2*i+1,2*(i+1)+1];
 		}
@@ -147,12 +162,12 @@ class SacMap{ // TODO: make this an entity
 		mesht.dataReady=true;
 		mesht.prepareVAO();
 		eSkyt.drawable = mesht;
-		eSkyt.position=Vector3f(x,y,dZ*scaling+1);
+		eSkyt.position=Vector3f(x,y,Sky.dZ*Sky.scaling+1);
 
 		auto matSun = s.createMaterial(s.sacSunMaterialBackend);
 		matSun.diffuse=textures[260];
 		matSun.blending=Transparent;
-		matSun.energy=25.0f*energy;
+		matSun.energy=25.0f*Sky.energy;
 		auto eSun = s.createEntity3D();
 		eSun.castShadow = false;
 		eSun.material = matSun;
@@ -160,7 +175,7 @@ class SacMap{ // TODO: make this an entity
 		meshsu.vertices=New!(Vector3f[])(4);
 		meshsu.texcoords=New!(Vector2f[])(4);
 		meshsu.indices=New!(uint[3][])(2);
-		copy(iota(4).map!(i=>Vector3f((-0.5+(i==1||i==2))*0.25,(-0.5+(i==2||i==3))*0.25,skyZ)*scaling),meshsu.vertices);
+		copy(iota(4).map!(i=>Vector3f((-0.5+(i==1||i==2))*0.25,(-0.5+(i==2||i==3))*0.25,Sky.skyZ)*Sky.scaling),meshsu.vertices);
 		copy(iota(4).map!(i=>Vector2f((i==1||i==2),(i==2||i==3))),meshsu.texcoords);
 		meshsu.indices[0]=[0,2,1];
 		meshsu.indices[1]=[0,3,2];
@@ -168,13 +183,13 @@ class SacMap{ // TODO: make this an entity
 		meshsu.dataReady=true;
 		meshsu.prepareVAO();
 		eSun.drawable=meshsu;
-		eSun.position=Vector3f(x,y,dZ*scaling+1);
+		eSun.position=Vector3f(x,y,Sky.dZ*Sky.scaling+1);
 
 		auto matSky = s.createMaterial(s.sacSkyMaterialBackend);
 		matSky.diffuse=textures[257];
 		matSky.blending=Transparent;
-		matSky.energy=energy;
-		matSky.transparency=0.75f;
+		matSky.energy=Sky.energy;
+		matSky.transparency=envi.maxAlphaFloat;
 		auto eSky = s.createEntity3D();
 		eSky.castShadow = false;
 		eSky.material = matSky;
@@ -182,7 +197,7 @@ class SacMap{ // TODO: make this an entity
 		meshs.vertices=New!(Vector3f[])(4);
 		meshs.texcoords=New!(Vector2f[])(4);
 		meshs.indices=New!(uint[3][])(2);
-		copy(iota(4).map!(i=>Vector3f(-0.5+(i==1||i==2),-0.5+(i==2||i==3),skyZ*0.7)*scaling),meshs.vertices);
+		copy(iota(4).map!(i=>Vector3f(-0.5+(i==1||i==2),-0.5+(i==2||i==3),Sky.skyZ*Sky.relCloudLoc)*Sky.scaling),meshs.vertices);
 		copy(iota(4).map!(i=>Vector2f(8*(i==1||i==2),8*(i==2||i==3))),meshs.texcoords);
 		meshs.indices[0]=[0,2,1];
 		meshs.indices[1]=[0,3,2];
@@ -190,12 +205,12 @@ class SacMap{ // TODO: make this an entity
 		meshs.dataReady=true;
 		meshs.prepareVAO();
 		eSky.drawable=meshs;
-		eSky.position=Vector3f(x,y,dZ*scaling+1);
+		eSky.position=Vector3f(x,y,Sky.dZ*Sky.scaling+1);
 
 		auto matUndr = s.createMaterial(s.shadelessMaterialBackend);
 		matUndr.diffuse=textures[261];
 		matUndr.blending=Transparent;
-		matUndr.energy=energy;
+		matUndr.energy=Sky.energy;
 		auto eUndr = s.createEntity3D();
 		eUndr.castShadow = false;
 		eUndr.material = matUndr;
@@ -203,7 +218,7 @@ class SacMap{ // TODO: make this an entity
 		meshu.vertices=New!(Vector3f[])(4);
 		meshu.texcoords=New!(Vector2f[])(4);
 		meshu.indices=New!(uint[3][])(2);
-		copy(iota(4).map!(i=>Vector3f((-0.5+(i==1||i==2)),(-0.5+(i==2||i==3)),undrZ)*scaling),meshu.vertices);
+		copy(iota(4).map!(i=>Vector3f((-0.5+(i==1||i==2)),(-0.5+(i==2||i==3)),Sky.undrZ)*Sky.scaling),meshu.vertices);
 		copy(iota(4).map!(i=>Vector2f((i==1||i==2),(i==2||i==3))),meshu.texcoords);
 		meshu.indices[0]=[0,1,2];
 		meshu.indices[1]=[0,2,3];
@@ -211,10 +226,27 @@ class SacMap{ // TODO: make this an entity
 		meshu.dataReady=true;
 		meshu.prepareVAO();
 		eUndr.drawable=meshu;
-		eUndr.position=Vector3f(x,y,dZ*scaling+1);
+		eUndr.position=Vector3f(x,y,Sky.dZ*Sky.scaling+1);
+	}
+
+	void setupEnvironment(Scene s){
+		auto env=s.environment;
+		env.sunEnergy=8.0f*envi.sunDirectStrength;
+		auto ambi=envi.sunAmbientStrength;
+		env.ambientConstant = Color4f(envi.ambientRed*ambi,envi.ambientGreen*ambi,envi.ambientBlue*ambi,1.0f);
+		env.backgroundColor = Color4f(envi.skyRed/255.0f,envi.skyGreen/255.0f,envi.skyBlue/255.0f,1.0f);
+		// envi.minAlphaInt, envi.maxAlphaInt, envi.minAlphaFloat ?
+		// envi.maxAlphaFloat used for sky alpha
+		// sky_, skyt, skyb, sun_, undr used above
+		// envi.shadowStrength ?
+		auto sunDirection=Vector3f(envi.sunDirectionX,envi.sunDirectionY,envi.sunDirectionZ);
+		sunDirection.z=max(0.7,sunDirection.z);
+		sunDirection=sunDirection.normalized();
+		env.sunRotation=rotationBetween(Vector3f(0, 0, 1), sunDirection);
 	}
 
 	void createEntities(Scene s,bool sky=true){
+		setupEnvironment(s);
 		if(sky) createSky(s);
 		foreach(i,mesh;meshes){
 			if(!mesh) continue;

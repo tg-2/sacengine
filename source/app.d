@@ -15,6 +15,7 @@ class TestScene: Scene{
 		super(smngr);
 		this.args=args;
 		this.shadowMapResolution=8192;
+		//this.shadowMapResolution=100;
 	}
 	DynamicArray!SacObject sacs;
 	FirstPersonView2 fpview;
@@ -64,7 +65,7 @@ class TestScene: Scene{
 				i+=1;
 		}
 
-		if(!map||true){
+		if(!map){
 			auto sky=createSky();
 			sky.rotation=rotationQuaternion(Axis.z,cast(float)PI)*
 				rotationQuaternion(Axis.x,cast(float)(PI/2));
@@ -103,6 +104,7 @@ class TestScene: Scene{
 	override void onLogicsUpdate(double dt){
 		cameraControl(dt);
 		totalTime+=dt;
+		if(map) sacSkyMaterialBackend.sunLoc = map.sunSkyRelLoc(fpview.camera.position);
 		foreach(sac;chain(sacs.data,map?map.ntts:[])){
 			auto frame=totalTime*sac.animFPS;
 			sac.setFrame(cast(size_t)(frame%sac.numFrames));
