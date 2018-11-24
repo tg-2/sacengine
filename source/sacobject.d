@@ -42,6 +42,7 @@ class SacObject: Owner{
 		// crystals
 		if(name.among("crpt","stc1","stc2","stc3","sfir","stst")) transparentShinyPart=0;
 		if(name.among("sfor")) transparentShinyPart=0;
+		if(name.among("SAW1","SAW2","SAW3","SAW4","SAW5")) transparentShinyPart=0;
 		// ethereal altar, ethereal sunbeams
 		if(name.among("ea_b","ea_r","esb1","esb2","esb_","etfn")) sunBeamPart=0;
 		// "eis1","eis2", "eis3", "eis4" ?
