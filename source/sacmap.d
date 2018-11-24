@@ -98,6 +98,7 @@ class SacMap{ // TODO: make this an entity
 		return intersection.xy/(Sky.scaling/2);
 	}
 
+	Entity[] skyEntities;
 	void createSky(Scene s){
 		/+auto eSky=s.createSky();
 		eSky.rotation=rotationQuaternion(Axis.z,cast(float)PI)*
@@ -198,7 +199,7 @@ class SacMap{ // TODO: make this an entity
 		meshs.texcoords=New!(Vector2f[])(4);
 		meshs.indices=New!(uint[3][])(2);
 		copy(iota(4).map!(i=>Vector3f(-0.5+(i==1||i==2),-0.5+(i==2||i==3),Sky.skyZ*Sky.relCloudLoc)*Sky.scaling),meshs.vertices);
-		copy(iota(4).map!(i=>Vector2f(8*(i==1||i==2),8*(i==2||i==3))),meshs.texcoords);
+		copy(iota(4).map!(i=>Vector2f(4*(i==1||i==2),4*(i==2||i==3))),meshs.texcoords);
 		meshs.indices[0]=[0,2,1];
 		meshs.indices[1]=[0,3,2];
 		meshs.generateNormals();
@@ -227,6 +228,12 @@ class SacMap{ // TODO: make this an entity
 		meshu.prepareVAO();
 		eUndr.drawable=meshu;
 		eUndr.position=Vector3f(x,y,Sky.dZ*Sky.scaling+1);
+		skyEntities=[eUndr,eSkyb,eSkyt,eSky,eSun];
+	}
+
+	void rotateSky(Quaternionf rotation){
+		foreach(e;skyEntities[0..3])
+			e.rotation=rotation;
 	}
 
 	void setupEnvironment(Scene s){
