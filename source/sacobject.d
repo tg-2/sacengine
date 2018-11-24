@@ -14,6 +14,9 @@ class SacObject: Owner{
 	SaxsInstance saxsi;
 	Animation anim;
 
+	int sunBeamPart=-1;
+	int transparentShinyPart=-1;
+	
 	DynamicArray!Entity entities;
 
 	this(Owner o, SacObject rhs){
@@ -23,11 +26,29 @@ class SacObject: Owner{
 		this.isSaxs=rhs.isSaxs;
 		this.saxsi=rhs.saxsi;
 		this.anim=rhs.anim;
+		this.sunBeamPart=rhs.sunBeamPart;
+		this.transparentShinyPart=rhs.transparentShinyPart;
 	}
 
 	this(Owner o, string filename, float scaling=1.0, string animation=""){
 		super(o);
 		enforce(filename.endsWith(".MRMM")||filename.endsWith(".3DSM")||filename.endsWith(".WIDG")||filename.endsWith(".SXMD"));
+		auto name=filename[$-9..$-5];
+		// TODO: this is a hack:
+		// manaliths
+		if(name.among("pcsb","casb")) sunBeamPart=0;
+		if(name.among("mana","cama")) transparentShinyPart=0;
+		if(name.among("jman","stam","pyma")) transparentShinyPart=1;
+		// crystals
+		if(name.among("crpt","stc1","stc2","stc3","sfir","stst")) transparentShinyPart=0;
+		if(name.among("sfor")) transparentShinyPart=0;
+		// ethereal altar, ethereal sunbeams
+		if(name.among("ea_b","ea_r","esb1","esb2","esb_","etfn")) sunBeamPart=0;
+		// "eis1","eis2", "eis3", "eis4" ?
+		if(name.among("st4a")){
+			transparentShinyPart=0;
+			sunBeamPart=1;
+		}
 		switch(filename[$-4..$]){
 			case "MRMM":
 				auto mt=loadMRMM(filename, scaling);
@@ -75,15 +96,30 @@ class SacObject: Owner{
 			obj.position = position;
 			obj.rotation = rotation;
 			obj.scaling = scaling*Vector3f(1,1,1);
-			auto mat=s.createMaterial(gpuSkinning&&isSaxs?s.boneMaterialBackend:s.defaultMaterialBackend);
+			GenericMaterial mat;
+			if(i==sunBeamPart){
+				assert(!isSaxs);
+				mat=s.createMaterial(s.shadelessMaterialBackend);
+				obj.castShadow=false;
+				mat.depthWrite=false;
+				mat.blending=Additive;
+				mat.energy=4.0f;				
+			}else if(i==transparentShinyPart){
+				mat=s.createMaterial(s.shadelessMaterialBackend);
+				mat.depthWrite=false;
+				mat.blending=Transparent;
+				mat.transparency=0.5f;
+				mat.energy=20.0f;
+			}else{
+				mat=s.createMaterial(gpuSkinning&&isSaxs?s.boneMaterialBackend:s.defaultMaterialBackend);
+			}
 			auto diffuse=isSaxs?saxsi.saxs.bodyParts[i].texture:textures[i];
 			if(diffuse !is null) mat.diffuse=diffuse;
 			mat.specular=Color4f(0,0,0,1);
 			obj.material=mat;
-			auto shadowMat=s.createMaterial(gpuSkinning&&isSaxs?s.shadowMap.bsb:s.shadowMap.sb);
+			/+auto shadowMat=s.createMaterial(gpuSkinning&&isSaxs?s.shadowMap.bsb:s.shadowMap.sb);
 			if(diffuse !is null) shadowMat.diffuse=diffuse;
-			obj.shadowMaterial=shadowMat;
-			//obj.castShadow=false;
+			obj.shadowMaterial=shadowMat;+/
 			entities.insertBack(obj);
 		}
 	}
