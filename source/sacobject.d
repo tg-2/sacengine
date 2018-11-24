@@ -35,8 +35,9 @@ class SacObject: Owner{
 		enforce(filename.endsWith(".MRMM")||filename.endsWith(".3DSM")||filename.endsWith(".WIDG")||filename.endsWith(".SXMD"));
 		auto name=filename[$-9..$-5];
 		// TODO: this is a hack:
-		// manaliths
+		// sunbeams
 		if(name.among("pcsb","casb")) sunBeamPart=0;
+		// manaliths
 		if(name.among("mana","cama")) transparentShinyPart=0;
 		if(name.among("jman","stam","pyma")) transparentShinyPart=1;
 		// crystals
