@@ -238,7 +238,8 @@ class SacMap{ // TODO: make this an entity
 
 	void setupEnvironment(Scene s){
 		auto env=s.environment;
-		env.sunEnergy=12.0f*(envi.sunDirectStrength+envi.sunAmbientStrength);
+		//writeln(envi.sunDirectStrength," ",envi.sunAmbientStrength);
+		env.sunEnergy=12.0f*(envi.sunDirectStrength+envi.sunAmbientStrength+max(0,7*log(envi.sunAmbientStrength)/log(2)));
 		Color4f fixColor(Color4f sacColor){
 			return Color4f(1,1,1,1)*0.2+sacColor*0.8;
 		}
@@ -251,6 +252,7 @@ class SacMap{ // TODO: make this an entity
 		// sky_, skyt, skyb, sun_, undr used above
 		// envi.shadowStrength ?
 		auto sunDirection=Vector3f(envi.sunDirectionX,envi.sunDirectionY,envi.sunDirectionZ);
+		sunDirection.z=abs(sunDirection.z); // TODO: support something like the effect you get in Sacrifice when setting sun direction from below
 		//sunDirection.z=max(0.7,sunDirection.z);
 		//sunDirection=sunDirection.normalized(); // TODO: why are sun directions in standard maps so extreme?
 		env.sunRotation=rotationBetween(Vector3f(0,0,1),sunDirection);
