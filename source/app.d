@@ -15,7 +15,8 @@ class TestScene: Scene{
 		super(smngr);
 		this.args=args;
 		this.shadowMapResolution=8192;
-		//this.shadowMapResolution=100;
+		//this.shadowMapResolution=2048;
+		//this.shadowMapResolution=512;
 	}
 	DynamicArray!SacObject sacs;
 	FirstPersonView2 fpview;
@@ -102,14 +103,15 @@ class TestScene: Scene{
 
 	double totalTime=0;
 	override void onLogicsUpdate(double dt){
+		writeln(eventManager.fps);
 		cameraControl(dt);
 		totalTime+=dt;
 		if(map){
 			sacSkyMaterialBackend.sunLoc = map.sunSkyRelLoc(fpview.camera.position);
-			sacSkyMaterialBackend.cloudOffset+=dt*1.0f/16.0f*Vector2f(1.0f,-1.0f);
+			sacSkyMaterialBackend.cloudOffset+=dt*1.0f/32.0f*Vector2f(1.0f,-1.0f);
 			sacSkyMaterialBackend.cloudOffset.x=fmod(sacSkyMaterialBackend.cloudOffset.x,1.0f);
 			sacSkyMaterialBackend.cloudOffset.y=fmod(sacSkyMaterialBackend.cloudOffset.y,1.0f);
-			map.rotateSky(rotationQuaternion(Axis.z,cast(float)(2*PI/256*dt))*map.skyEntities[0].rotation);
+			map.rotateSky(rotationQuaternion(Axis.z,cast(float)(2*PI/512.0f*totalTime)));
 		}
 		foreach(sac;chain(sacs.data,map?map.ntts:[])){
 			auto frame=totalTime*sac.animFPS;
