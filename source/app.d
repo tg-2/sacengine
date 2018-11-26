@@ -1,4 +1,5 @@
 import dagon;
+import util;
 import std.math;
 import std.stdio;
 import std.string;
@@ -103,6 +104,7 @@ class TestScene: Scene{
 
 	double totalTime=0;
 	override void onLogicsUpdate(double dt){
+		//writeln(getTotalGPUMemory()," ",getAvailableGPUMemory());
 		//writeln(eventManager.fps);
 		cameraControl(dt);
 		totalTime+=dt;

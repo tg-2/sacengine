@@ -71,3 +71,21 @@ struct Transformation{
 		return result;
 	}
 }
+
+
+enum GL_GPU_MEM_INFO_TOTAL_AVAILABLE_MEM_NVX=0x9048;
+enum GL_GPU_MEM_INFO_CURRENT_AVAILABLE_MEM_NVX=0x9049;
+
+GLint getTotalGPUMemory(){
+	GLint total_mem_kb = 0;
+	glGetIntegerv(GL_GPU_MEM_INFO_TOTAL_AVAILABLE_MEM_NVX, 
+	              &total_mem_kb);
+	return total_mem_kb;
+}
+
+GLint getAvailableGPUMemory(){
+	GLint cur_avail_mem_kb = 0;
+	glGetIntegerv(GL_GPU_MEM_INFO_CURRENT_AVAILABLE_MEM_NVX, 
+	              &cur_avail_mem_kb);
+	return cur_avail_mem_kb;
+}
