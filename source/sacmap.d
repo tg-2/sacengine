@@ -135,6 +135,7 @@ class SacMap{ // TODO: make this an entity
 		meshb.prepareVAO();
 		eSkyb.drawable = meshb;
 		eSkyb.position=Vector3f(x,y,Sky.dZ*Sky.scaling+1);
+		eSkyb.updateTransformation();
 
 		auto matSkyt = s.createMaterial(s.shadelessMaterialBackend);
 		matSkyt.diffuse=textures[259];
@@ -164,6 +165,7 @@ class SacMap{ // TODO: make this an entity
 		mesht.prepareVAO();
 		eSkyt.drawable = mesht;
 		eSkyt.position=Vector3f(x,y,Sky.dZ*Sky.scaling+1);
+		eSkyt.updateTransformation();
 
 		auto matSun = s.createMaterial(s.sacSunMaterialBackend);
 		matSun.diffuse=textures[260];
@@ -185,6 +187,7 @@ class SacMap{ // TODO: make this an entity
 		meshsu.prepareVAO();
 		eSun.drawable=meshsu;
 		eSun.position=Vector3f(x,y,Sky.dZ*Sky.scaling+1);
+		eSun.updateTransformation();
 
 		auto matSky = s.createMaterial(s.sacSkyMaterialBackend);
 		matSky.diffuse=textures[257];
@@ -207,6 +210,7 @@ class SacMap{ // TODO: make this an entity
 		meshs.prepareVAO();
 		eSky.drawable=meshs;
 		eSky.position=Vector3f(x,y,Sky.dZ*Sky.scaling+1);
+		eSky.updateTransformation();
 
 		auto matUndr = s.createMaterial(s.shadelessMaterialBackend);
 		matUndr.diffuse=textures[261];
@@ -228,12 +232,15 @@ class SacMap{ // TODO: make this an entity
 		meshu.prepareVAO();
 		eUndr.drawable=meshu;
 		eUndr.position=Vector3f(x,y,Sky.dZ*Sky.scaling+1);
+		eUndr.updateTransformation();
 		skyEntities=[eUndr,eSkyb,eSkyt,eSky,eSun];
 	}
 
 	void rotateSky(Quaternionf rotation){
-		foreach(e;skyEntities[0..3])
+		foreach(e;skyEntities[0..3]){
 			e.rotation=rotation;
+			e.updateTransformation();
+		}
 	}
 
 	void setupEnvironment(Scene s){
@@ -284,6 +291,7 @@ class SacMap{ // TODO: make this an entity
 			auto obj=s.createEntity3D();
 			obj.drawable = mesh;
 			obj.position = Vector3f(0, 0, 0);
+			obj.updateTransformation();
 			auto mat=s.createMaterial(s.terrainMaterialBackend);
 			assert(!!textures[i]);
 			mat.diffuse=textures[i];

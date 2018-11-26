@@ -98,6 +98,7 @@ class SacObject: Owner{
 			obj.position = position;
 			obj.rotation = rotation;
 			obj.scaling = scaling*Vector3f(1,1,1);
+			obj.updateTransformation();
 			GenericMaterial mat;
 			if(i==sunBeamPart){
 				assert(!isSaxs);

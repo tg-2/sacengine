@@ -103,7 +103,7 @@ class TestScene: Scene{
 
 	double totalTime=0;
 	override void onLogicsUpdate(double dt){
-		writeln(eventManager.fps);
+		//writeln(eventManager.fps);
 		cameraControl(dt);
 		totalTime+=dt;
 		if(map){
