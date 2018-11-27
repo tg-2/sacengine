@@ -1,4 +1,3 @@
-import dagon;
 import util;
 import dlib.image,dlib.image.color;
 import std.stdio, std.string, std.algorithm, std.path, std.exception;

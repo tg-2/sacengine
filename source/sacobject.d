@@ -1,4 +1,4 @@
-import dagon;
+import dlib.math;
 import util;
 import mrmm, _3dsm, txtr, saxs, sxsk, widg;
 import std.typecons: Tuple, tuple;
@@ -6,21 +6,18 @@ alias Tuple=std.typecons.Tuple;
 
 import std.exception, std.algorithm, std.math, std.path;
 
-class SacObject: Owner{
-	DynamicArray!Mesh meshes;
-	DynamicArray!Texture textures;
+class SacObject(B){
+	B.Mesh[] meshes;
+	B.Texture[] textures;
 
 	bool isSaxs=false;
-	SaxsInstance saxsi;
+	SaxsInstance!B saxsi;
 	Animation anim;
 
 	int sunBeamPart=-1;
 	int transparentShinyPart=-1;
-	
-	DynamicArray!Entity entities;
 
-	this(Owner o, SacObject rhs){
-		super(o);
+	this(SacObject rhs){
 		this.meshes=rhs.meshes;
 		this.textures=rhs.textures;
 		this.isSaxs=rhs.isSaxs;
@@ -30,8 +27,7 @@ class SacObject: Owner{
 		this.transparentShinyPart=rhs.transparentShinyPart;
 	}
 
-	this(Owner o, string filename, float scaling=1.0, string animation=""){
-		super(o);
+	this(string filename, float scaling=1.0, string animation=""){
 		enforce(filename.endsWith(".MRMM")||filename.endsWith(".3DSM")||filename.endsWith(".WIDG")||filename.endsWith(".SXMD"));
 		auto name=filename[$-9..$-5];
 		// TODO: this is a hack:
@@ -53,24 +49,24 @@ class SacObject: Owner{
 		}
 		switch(filename[$-4..$]){
 			case "MRMM":
-				auto mt=loadMRMM(filename, scaling);
-				meshes=move(mt[0]);
-				textures=move(mt[1]);
+				auto mt=loadMRMM!B(filename, scaling);
+				meshes=mt[0];
+				textures=mt[1];
 				break;
 			case "3DSM":
-				auto mt=load3DSM(filename, scaling);
-				meshes=move(mt[0]);
-				textures=move(mt[1]);
+				auto mt=load3DSM!B(filename, scaling);
+				meshes=mt[0];
+				textures=mt[1];
 				break;
 			case "WIDG":
 				enforce(scaling==1.0);
-				auto mt=loadWIDG(filename);
-				meshes.insertBack(mt[0]);
-				textures.insertBack(mt[1]);
+				auto mt=loadWIDG!B(filename);
+				meshes=[mt[0]];
+				textures=[mt[1]];
 				break;
 			case "SXMD":
 				isSaxs=true;
-				saxsi=SaxsInstance(loadSaxs(filename,scaling));
+				saxsi=SaxsInstance!B(loadSaxs!B(filename,scaling));
 				saxsi.createMeshes();
 				if(animation.length)
 					loadAnimation(animation,scaling);
@@ -91,42 +87,6 @@ class SacObject: Owner{
 	Quaternionf rotation = rotationQuaternion(Axis.y,cast(float)0.0);
 	float scaling = 1.0;
 
-	void createEntities(Scene s){
-		foreach(i;0..isSaxs?saxsi.meshes.length:meshes.length){
-			auto obj=s.createEntity3D();
-			obj.drawable = isSaxs?cast(Drawable)saxsi.meshes[i]:cast(Drawable)meshes[i];
-			obj.position = position;
-			obj.rotation = rotation;
-			obj.scaling = scaling*Vector3f(1,1,1);
-			obj.updateTransformation();
-			GenericMaterial mat;
-			if(i==sunBeamPart){
-				assert(!isSaxs);
-				mat=s.createMaterial(s.shadelessMaterialBackend);
-				obj.castShadow=false;
-				mat.depthWrite=false;
-				mat.blending=Additive;
-				mat.energy=4.0f;				
-			}else if(i==transparentShinyPart){
-				mat=s.createMaterial(s.shadelessMaterialBackend);
-				mat.depthWrite=false;
-				mat.blending=Transparent;
-				mat.transparency=0.5f;
-				mat.energy=20.0f;
-			}else{
-				mat=s.createMaterial(gpuSkinning&&isSaxs?s.boneMaterialBackend:s.defaultMaterialBackend);
-			}
-			auto diffuse=isSaxs?saxsi.saxs.bodyParts[i].texture:textures[i];
-			if(diffuse !is null) mat.diffuse=diffuse;
-			mat.specular=Color4f(0,0,0,1);
-			obj.material=mat;
-			/+auto shadowMat=s.createMaterial(gpuSkinning&&isSaxs?s.shadowMap.bsb:s.shadowMap.sb);
-			if(diffuse !is null) shadowMat.diffuse=diffuse;
-			obj.shadowMaterial=shadowMat;+/
-			entities.insertBack(obj);
-		}
-	}
-
 	size_t numFrames(){
 		return anim.frames.length?anim.frames.length:1;
 	}
@@ -144,63 +104,22 @@ class SacObject: Owner{
 	}
 }
 
-auto convertModel(Model)(string dir, Model model, float scaling){
+auto convertModel(B,Model)(string dir, Model model, float scaling){
 	int[string] names;
 	int cur=0;
 	foreach(f;model.faces){
 		if(f.textureName!in names) names[f.textureName]=cur++;
 	}
-	DynamicArray!Mesh meshes;
-	DynamicArray!Texture textures;
-
-	foreach(i;0..names.length){
-		 // TODO: improve dlib
-		meshes.insertBack(New!Mesh(null));
-		textures.insertBack(Texture.init);
-	}
+	auto meshes=new B.Mesh[](names.length);
+	auto textures=new B.Texture[](names.length);
 	auto namesRev=new string[](names.length);
 	foreach(k,v;names){
 		namesRev[v]=k;
 		if(k[0]==0) continue;
 		auto name=buildPath(dir, k~".TXTR");
-		auto t=New!Texture(null);
-		t.image=loadTXTR(name);
-		t.createFromImage(t.image);
-		textures[v]=t;
+		textures[v]=B.makeTexture(loadTXTR(name));
 	}
-	static if(is(typeof(model.vertices))){
-		foreach(mesh;meshes){
-			auto nvertices=model.vertices.length;
-			mesh.vertices=New!(Vector3f[])(nvertices);
-			foreach(i,ref vertex;model.vertices){
-				mesh.vertices[i] = fromSac(Vector3f(vertex.pos))*scaling;
-			}
-			mesh.texcoords=New!(Vector2f[])(nvertices);
-			foreach(i,ref vertex;model.vertices){
-				mesh.texcoords[i] = Vector2f(vertex.uv);
-			}
-			mesh.normals=New!(Vector3f[])(nvertices);
-			foreach(i,ref vertex;model.vertices){
-				mesh.normals[i] = fromSac(Vector3f(vertex.normal));
-			}
-		}
-	}else{
-		foreach(mesh;meshes){
-			auto nvertices=model.positions.length;
-			mesh.vertices=New!(Vector3f[])(nvertices);
-			foreach(i;0..mesh.vertices.length){
-				mesh.vertices[i]=Vector3f(fromSac(model.positions[i]))*scaling;
-			}
-			mesh.texcoords=New!(Vector2f[])(nvertices);
-			foreach(i;0..mesh.texcoords.length){
-				mesh.texcoords[i]=Vector2f(model.uv[i]);
-			}
-			mesh.normals=New!(Vector3f[])(nvertices);
-			foreach(i;0..mesh.normals.length){
-				mesh.normals[i]=Vector3f(fromSac(model.normals[i]));
-			}
-		}
-	}
+
 	static if(is(typeof(model.faces[0].lod))){
 		auto maxLod=model.faces.map!(f=>f.lod).reduce!max;
 		auto faces=model.faces.filter!(f=>f.lod==maxLod);
@@ -211,16 +130,42 @@ auto convertModel(Model)(string dir, Model model, float scaling){
 	foreach(ref face;faces){
 		++sizes[names[face.textureName]];
 	}
-	foreach(k,mesh;meshes) meshes[k].indices = New!(uint[3][])(sizes[k]);
+	
+	static if(is(typeof(model.vertices))){
+		foreach(k,ref mesh;meshes){
+			auto nvertices=model.vertices.length;
+			mesh=B.makeMesh(nvertices,sizes[k]);
+			foreach(i,ref vertex;model.vertices){
+				mesh.vertices[i] = fromSac(Vector3f(vertex.pos))*scaling;
+			}
+			foreach(i,ref vertex;model.vertices){
+				mesh.texcoords[i] = Vector2f(vertex.uv);
+			}
+			foreach(i,ref vertex;model.vertices){
+				mesh.normals[i] = fromSac(Vector3f(vertex.normal));
+			}
+		}
+	}else{
+		foreach(k,ref mesh;meshes){
+			auto nvertices=model.positions.length;
+			mesh=B.makeMesh(nvertices,sizes[k]);
+			foreach(i;0..mesh.vertices.length){
+				mesh.vertices[i]=Vector3f(fromSac(model.positions[i]))*scaling;
+			}
+			foreach(i;0..mesh.texcoords.length){
+				mesh.texcoords[i]=Vector2f(model.uv[i]);
+			}
+			foreach(i;0..mesh.normals.length){
+				mesh.normals[i]=Vector3f(fromSac(model.normals[i]));
+			}
+		}
+	}
 	auto curs=new int[](meshes.length);
 	foreach(ref face;faces){
 		auto k=names[face.textureName];
 		meshes[k].indices[curs[k]++]=face.vertices;
 	}
-	foreach(mesh;meshes){
-		mesh.dataReady=true;
-		mesh.prepareVAO();
-	}
+	foreach(mesh;meshes) B.finalizeMesh(mesh);
 	assert(curs==sizes);
-	return tuple(move(meshes), move(textures));
+	return tuple(meshes, textures);
 }

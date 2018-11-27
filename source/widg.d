@@ -1,7 +1,7 @@
-import dagon;
 import util;
 import sacobject;
 import txtr;
+import dlib.math;
 import std.algorithm, std.range, std.exception;
 import std.stdio, std.path, std.conv;
 import std.typecons: Tuple, tuple;
@@ -37,36 +37,29 @@ Model parseWIDG(ubyte[] data){
 	return Model(retroTextureName,vertices,faces);
 }
 
-Tuple!(Mesh, Texture) loadWIDG(string filename){
+Tuple!(B.Mesh, B.Texture) loadWIDG(B)(string filename){
 	enforce(filename.endsWith(".WIDG"));
 	auto data=readFile(filename);
 	Model model=parseWIDG(data);	
 	auto dir=dirName(filename);
-	auto mesh=New!Mesh(null);
 	auto nvertices=to!int(model.vertices.length);
-	mesh.vertices=New!(Vector3f[])(2*nvertices);
+	auto mesh=B.makeMesh(2*nvertices,2*model.faces.length);
 	foreach(i,ref vertex;model.vertices){
 		mesh.vertices[i] = Vector3f(vertex.pos);
 		mesh.vertices[i+nvertices] = Vector3f(vertex.pos);
 	}
-	mesh.texcoords=New!(Vector2f[])(2*nvertices);
 	foreach(i,ref vertex;model.vertices){
 		mesh.texcoords[i] = Vector2f(vertex.uv[0],-vertex.uv[1]);
 		mesh.texcoords[i+nvertices] = Vector2f(vertex.uv[0],-vertex.uv[1]);
 	}
-	mesh.normals=New!(Vector3f[])(2*nvertices);
-	mesh.indices=New!(uint[3][])(2*model.faces.length);
 	foreach(i;0..model.faces.length){
 		auto indices=model.faces[i].indices;
 		mesh.indices[i]=[indices[0],indices[1],indices[2]];
 		mesh.indices[i+model.faces.length]=[nvertices+indices[0],nvertices+indices[2],nvertices+indices[1]];
 	}
 	mesh.generateNormals();
-	mesh.dataReady=true;
-	mesh.prepareVAO();
+	B.finalizeMesh(mesh);
 	auto txtr=loadTXTR(buildPath(dir,chain(retro(model.retroTextureName),".TXTR").to!string));
-	auto texture=New!Texture(null);
-	texture.image=txtr;
-	texture.createFromImage(texture.image);
+	auto texture=B.makeTexture(txtr);
 	return tuple(mesh,texture);
 }

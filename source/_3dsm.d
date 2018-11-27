@@ -1,4 +1,3 @@
-import dagon;
 import sacobject;
 import std.stdio, std.math;
 import std.exception, std.conv, std.algorithm, std.format, std.string, std.path;
@@ -48,11 +47,11 @@ Model parse3DSM(ubyte[] data){
 	return Model(positions,normals,uv,faces);
 }
 
-Tuple!(DynamicArray!Mesh, DynamicArray!Texture) load3DSM(string filename, float scaling){
+Tuple!(B.Mesh[], B.Texture[]) load3DSM(B)(string filename, float scaling){
 	enforce(filename.endsWith(".3DSM"));
 	auto dir = dirName(filename);
 	ubyte[] data;
 	foreach(ubyte[] chunk;chunks(File(filename,"rb"),4096)) data~=chunk;
 	auto model = parse3DSM(data);
-	return convertModel(dir, model, scaling);
+	return convertModel!B(dir, model, scaling);
 }

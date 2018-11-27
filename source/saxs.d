@@ -1,4 +1,4 @@
-import dagon;
+import dlib.math;
 import util;
 import sxmd,sxsk,sxtx;
 
@@ -36,20 +36,20 @@ struct Vertex{
 	}
 }
 
-struct BodyPart{
+struct BodyPart(B){
 	Vertex[] vertices;
 	uint[3][] faces;
-	Texture texture;
+	B.Texture texture;
 }
 
-struct Saxs{
+struct Saxs(B){
 	float zfactor;
 	Bone[] bones;
 	Position[] positions;
-	BodyPart[] bodyParts;
+	BodyPart!B[] bodyParts;
 }
 
-Saxs loadSaxs(string filename, float scaling=1.0f){
+Saxs!B loadSaxs(B)(string filename, float scaling=1.0f){
 	enforce(filename.endsWith(".SXMD"));
 	auto dir=dirName(filename);
 	ubyte[] data;
@@ -61,7 +61,7 @@ Saxs loadSaxs(string filename, float scaling=1.0f){
 		return Position(position.bone,fromSXMD(Vector3f(position.pos))*scaling,position.weight/64.0f);
 	}
 	auto positions=model.positions.map!convertPosition().array;
-	BodyPart[] bodyParts;
+	BodyPart!B[] bodyParts;
 	auto vrt=new uint[][][](model.bodyParts.length);
 	foreach(i,bodyPart;model.bodyParts){
 		Vertex[] vertices;
@@ -109,12 +109,10 @@ Saxs loadSaxs(string filename, float scaling=1.0f){
 			foreach(eface;bodyPart.explicitFaces)
 				faces~=[vrt[i][0][eface[0]],vrt[i][0][eface[1]],vrt[i][0][eface[2]]];
 		}
-		auto texture=New!Texture(null); // TODO: how not to leak this memory without crashing at shutdown?
-		texture.image = loadSXTX(buildPath(dir,format(".%03d.SXTX",i+1)));
-		texture.createFromImage(texture.image);
+		auto texture=B.makeTexture(loadSXTX(buildPath(dir,format(".%03d.SXTX",i+1))));
 		//writeln(i,": ",bodyPart.flags," ",bodyPart.unknown0," ",bodyPart.unknown1);
 		//if(bodyPart.flags==0&&bodyPart.unknown0[].all!(x=>x==0)&&bodyPart.unknown1[].all!(x=>x==0)) faces=[];
-		bodyParts~=BodyPart(vertices,faces,texture);
+		bodyParts~=BodyPart!B(vertices,faces,texture);
 		if(bodyPart.strips.length){
 			// TODO: enforce all in bounds
 			// TODO: this is not the right way to interpret this data:
@@ -145,10 +143,10 @@ Saxs loadSaxs(string filename, float scaling=1.0f){
 	//writeln("numVertices: ",std.algorithm.sum(bodyParts.map!(bodyPart=>bodyPart.vertices.length)));
 	//writeln("numFaces: ",std.algorithm.sum(bodyParts.map!(bodyPart=>bodyPart.vertices.length)));
 	//writeln("numBones: ",bones.length);
-	return Saxs(model.zfactor,bones,positions,bodyParts);
+	return Saxs!B(model.zfactor,bones,positions,bodyParts);
 }
 
-Mesh[] createMeshes(Saxs saxs){
+B.Mesh[] createMeshes(B)(Saxs!B saxs){
 	auto ap = new Vector3f[](saxs.bones.length);
 	ap[0]=Vector3f(0,0,0);
 	foreach(i,ref bone;saxs.bones[1..$]){
@@ -177,24 +175,16 @@ Mesh[] createMeshes(Saxs saxs){
 	return meshes;
 }
 
-BoneMesh[] createBoneMeshes(Saxs saxs){
+B.BoneMesh[] createBoneMeshes(B)(Saxs!B saxs){
 	auto ap = new Vector3f[](saxs.bones.length);
 	ap[0]=Vector3f(0,0,0);
 	foreach(i,ref bone;saxs.bones[1..$]){
 		ap[i+1]=bone.position;
 		ap[i+1]+=ap[bone.parent];
 	}
-	auto meshes=new BoneMesh[](saxs.bodyParts.length);
+	auto meshes=new B.BoneMesh[](saxs.bodyParts.length);
 	foreach(i,ref bodyPart;saxs.bodyParts){
-		meshes[i]=new BoneMesh(null);
-		foreach(j;0..3){
-			meshes[i].vertices[j]=New!(Vector3f[])(bodyPart.vertices.length);
-			meshes[i].vertices[j][]=Vector3f(0,0,0);
-		}
-		meshes[i].texcoords=New!(Vector2f[])(bodyPart.vertices.length);
-		meshes[i].boneIndices=New!(uint[3][])(bodyPart.vertices.length);
-		meshes[i].weights=New!(Vector3f[])(bodyPart.vertices.length);
-		meshes[i].weights[]=Vector3f(0,0,0);
+		meshes[i]=B.makeBoneMesh(bodyPart.vertices.length,bodyPart.faces.length);
 		foreach(j,ref vertex;bodyPart.vertices){
 			foreach(k,index;vertex.indices){
 				meshes[i].vertices[k][j]=ap[saxs.positions[index].bone]+saxs.positions[index].offset;
@@ -203,9 +193,7 @@ BoneMesh[] createBoneMeshes(Saxs saxs){
 			}
 			meshes[i].texcoords[j]=vertex.uv;
 		}
-		meshes[i].indices=New!(uint[3][])(bodyPart.faces.length);
 		meshes[i].indices[]=bodyPart.faces[];
-		meshes[i].normals=New!(Vector3f[])(bodyPart.vertices.length);
 		meshes[i].generateNormals();
 		foreach(j,ref vertex;bodyPart.vertices)
 			foreach(k,index;vertex.indices)
@@ -216,29 +204,18 @@ BoneMesh[] createBoneMeshes(Saxs saxs){
 	return meshes;
 }
 
-struct SaxsInstance{
-	Saxs saxs;
-	static if(!gpuSkinning) Mesh[] meshes;
-	else BoneMesh[] meshes;
+struct SaxsInstance(B){
+	Saxs!B saxs;
+	static if(!gpuSkinning) B.Mesh[] meshes;
+	else B.BoneMesh[] meshes;
 }
 
-void createMeshes(ref SaxsInstance saxsi){
+void createMeshes(B)(ref SaxsInstance!B saxsi){
 	static if(!gpuSkinning) saxsi.meshes=createMeshes(saxsi.saxs);
-	else saxsi.meshes=createBoneMeshes(saxsi.saxs);
+	else saxsi.meshes=createBoneMeshes!B(saxsi.saxs);
 }
 
-void createEntities(ref SaxsInstance saxsi, Scene s){
-	foreach(i,ref bodyPart;saxsi.saxs.bodyParts){
-		auto obj=s.createEntity3D();
-		obj.drawable=saxsi.meshes[i];
-		auto mat=s.createMaterial();
-		if(bodyPart.texture !is null)
-			mat.diffuse=bodyPart.texture;
-		obj.material=mat;
-	}
-}
-
-void setPose(ref SaxsInstance saxsi, Pose pose){ // TODO: do this in vertex shader, https://www.khronos.org/opengl/wiki/Skeletal_Animation
+void setPose(B)(ref SaxsInstance!B saxsi, Pose pose){ // TODO: do this in vertex shader, https://www.khronos.org/opengl/wiki/Skeletal_Animation
 	auto saxs=saxsi.saxs;
 	static if(gpuSkinning){
 		foreach(i;0..saxs.bodyParts.length)

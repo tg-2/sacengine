@@ -1,6 +1,5 @@
-import dagon;
 import util;
-
+import dlib.math;
 import std.stdio, std.exception, std.algorithm, std.array;
 
 enum gpuSkinning=true;
@@ -47,7 +46,7 @@ Animation loadSXSK(string filename,float scaling){
 
 static if(gpuSkinning){
 	import saxs;
-	void compile(ref Animation anim, ref Saxs saxs){
+	void compile(B)(ref Animation anim, ref Saxs!B saxs){
 		enforce(saxs.bones.length<=32);
 		foreach(ref frame;anim.frames){
 			Transformation[32] transform;
