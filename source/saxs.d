@@ -153,11 +153,9 @@ B.Mesh[] createMeshes(B)(Saxs!B saxs){
 		ap[i+1]=bone.position;
 		ap[i+1]+=ap[bone.parent];
 	}
-	auto meshes=new Mesh[](saxs.bodyParts.length);
+	auto meshes=new B.Mesh[](saxs.bodyParts.length);
 	foreach(i,ref bodyPart;saxs.bodyParts){
-		meshes[i]=new Mesh(null);
-		meshes[i].vertices=New!(Vector3f[])(bodyPart.vertices.length);
-		meshes[i].texcoords=New!(Vector2f[])(bodyPart.vertices.length);
+		meshes[i]=B.makeMesh(bodyPart.vertices.length,bodyPart.faces.length);
 		foreach(j,ref vertex;bodyPart.vertices){
 			auto position=Vector3f(0,0,0);
 			foreach(v;vertex.indices.map!(k=>(ap[saxs.positions[k].bone]+saxs.positions[k].offset)*saxs.positions[k].weight))
@@ -165,12 +163,9 @@ B.Mesh[] createMeshes(B)(Saxs!B saxs){
 			meshes[i].vertices[j]=position;
 			meshes[i].texcoords[j]=vertex.uv;
 		}
-		meshes[i].indices=New!(uint[3][])(bodyPart.faces.length);
 		meshes[i].indices[]=bodyPart.faces[];
-		meshes[i].normals=New!(Vector3f[])(bodyPart.vertices.length);
 		meshes[i].generateNormals();
-		meshes[i].dataReady=true;
-		meshes[i].prepareVAO();
+		B.finalizeMesh(meshes[i]);
 	}
 	return meshes;
 }
@@ -215,14 +210,14 @@ void createMeshes(B)(ref SaxsInstance!B saxsi){
 	else saxsi.meshes=createBoneMeshes!B(saxsi.saxs);
 }
 
-void setPose(B)(ref SaxsInstance!B saxsi, Pose pose){ // TODO: do this in vertex shader, https://www.khronos.org/opengl/wiki/Skeletal_Animation
+void setPose(B)(ref SaxsInstance!B saxsi, Pose pose){
 	auto saxs=saxsi.saxs;
 	static if(gpuSkinning){
 		foreach(i;0..saxs.bodyParts.length)
 			saxsi.meshes[i].pose=pose.matrices;
 	}else{
-		auto transform = New!(Transformation[])(saxs.bones.length);
-		scope(exit) Delete(transform);
+		enforce(saxs.bones.length<=32);
+		Transformation[32] transform;
 		transform[0]=Transformation(Quaternionf.identity,Vector3f(0,0,0));
 		enforce(pose.rotations.length==saxs.bones.length);
 		foreach(i,ref bone;saxs.bones)
@@ -245,8 +240,7 @@ void setPose(B)(ref SaxsInstance!B saxsi, Pose pose){ // TODO: do this in vertex
 				}+/
 			}
 			saxsi.meshes[i].generateNormals();
-			saxsi.meshes[i].dataReady=true;
-			saxsi.meshes[i].prepareVAO();
+			B.finalizeMesh(saxsi.meshes[i]);
 		}
 		//return [low,high];
 	}
