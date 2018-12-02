@@ -555,32 +555,32 @@ CreatureData squall={
 CreatureData stormGiant={
 	tag: "rgos",
 	name: "Storm Giant",
-	model: "/home/tgehr/games/sac/SacrificeH/tools/3d/source/extracted/saxs_r1/sxr1.WAD!/humn.FLDR/sogr.SAXC/sogr.SXMD",
-	stance: "/home/tgehr/games/sac/SacrificeH/tools/3d/source/extracted/saxs_r1/sxr1.WAD!/humn.FLDR/HUst.SXSK",
+	model: "saxs_r1/sxr1.WAD!/humn.FLDR/sogr.SAXC/sogr.SXMD",
+	stance: "saxs_r1/sxr1.WAD!/humn.FLDR/HUst.SXSK",
 	scaling: 2e-3,
 };
 
 CreatureData styx={
 	tag: "nugd",
 	name: "Styx",
-	model: "/home/tgehr/games/sac/SacrificeH/tools/3d/source/extracted/saxs_r9/sxr9.WAD!/gunh.FLDR/gund.SAXC/gund.SXMD",
-	stance: "/home/tgehr/games/sac/SacrificeH/tools/3d/source/extracted/saxs_r9/sxr9.WAD!/gunh.FLDR/GUst.SXSK",
+	model: "saxs_r9/sxr9.WAD!/gunh.FLDR/gund.SAXC/gund.SXMD",
+	stance: "saxs_r9/sxr9.WAD!/gunh.FLDR/GUst.SXSK",
 	scaling: 2e-3,
 };
 
 CreatureData sylph={
 	tag: "ahcr",
 	name: "Sylph",
-	model: "/home/tgehr/games/sac/SacrificeH/tools/3d/source/extracted/saxs_r2/sxr2.WAD!/huma.FLDR/AArc.SAXC/AArc.SXMD",
-	stance: "/home/tgehr/games/sac/SacrificeH/tools/3d/source/extracted/saxs_r2/sxr2.WAD!/huma.FLDR/HAst.SXSK",
+	model: "saxs_r2/sxr2.WAD!/huma.FLDR/AArc.SAXC/AArc.SXMD",
+	stance: "saxs_r2/sxr2.WAD!/huma.FLDR/HAst.SXSK",
 	scaling: 1e-3,
 };
 
 CreatureData taurock={
 	tag: "raeb",
 	name: "Taurock",
-	model: "/home/tgehr/games/sac/SacrificeH/tools/3d/source/extracted/saxs_r5/sxr5.WAD!/bear.FLDR/eber.SAXC/eber.SXMD",
-	stance: "/home/tgehr/games/sac/SacrificeH/tools/3d/source/extracted/saxs_r5/sxr5.WAD!/bear.FLDR/BEst.SXSK",
+	model: "saxs_r5/sxr5.WAD!/bear.FLDR/eber.SAXC/eber.SXMD",
+	stance: "saxs_r5/sxr5.WAD!/bear.FLDR/BEst.SXSK",
 	scaling: 2e-3,
 	zfactorOverride: 0.8,
 };
@@ -588,7 +588,7 @@ CreatureData taurock={
 CreatureData thestor={
 	tag: "eafH",
 	name: "Thestor",
-	model: "/home/tgehr/games/sac/SacrificeH/tools/3d/source/extracted/saxshero/hero.WAD!/faes.FLDR/faez.SAXC/faez.SXMD",
+	model: "saxshero/hero.WAD!/faes.FLDR/faez.SAXC/faez.SXMD",
 	stance: "saxs_r4/sxr4.WAD!/flop.FLDR/FGst.SXSK",
 	scaling: 1.5e-3,
 };
@@ -605,7 +605,7 @@ CreatureData tickferno={
 CreatureData toldor={
 	tag: "oohH",
 	name: "Toldor",
-	model: "/home/tgehr/games/sac/SacrificeH/tools/3d/source/extracted/saxshero/hero.WAD!/hoom.FLDR/hoom.SAXC/hoom.SXMD",
+	model: "saxshero/hero.WAD!/hoom.FLDR/hoom.SAXC/hoom.SXMD",
 	stance: "saxs_r10/sr10.WAD!/stmp.FLDR/STst.SXSK",
 	scaling: 2.5e-3,
 };
@@ -613,8 +613,8 @@ CreatureData toldor={
 CreatureData trogg={
 	tag: "ycro",
 	name: "Trogg",
-	model: "/home/tgehr/games/sac/SacrificeH/tools/3d/source/extracted/saxs_r1/sxr1.WAD!/humn.FLDR/eorc.SAXC/eorc.SXMD",
-	stance: "/home/tgehr/games/sac/SacrificeH/tools/3d/source/extracted/saxs_r1/sxr1.WAD!/humn.FLDR/HUst.SXSK",
+	model: "saxs_r1/sxr1.WAD!/humn.FLDR/eorc.SAXC/eorc.SXMD",
+	stance: "saxs_r1/sxr1.WAD!/humn.FLDR/HUst.SXSK",
 	scaling: 1e-3,
 };
 
@@ -629,16 +629,16 @@ CreatureData troll={
 CreatureData vortick={
 	tag: "craa",
 	name: "Vortick",
-	model: "/home/tgehr/games/sac/SacrificeH/tools/3d/source/extracted/saxs_r6/sxr6.WAD!/buga.FLDR/buga.SAXC/buga.SXMD",
-	stance: "/home/tgehr/games/sac/SacrificeH/tools/3d/source/extracted/saxs_r6/sxr6.WAD!/buga.FLDR/BAst.SXSK",
+	model: "saxs_r6/sxr6.WAD!/buga.FLDR/buga.SAXC/buga.SXMD",
+	stance: "saxs_r6/sxr6.WAD!/buga.FLDR/BAst.SXSK",
 	scaling: 1e-3,
 };
 
 CreatureData warmonger={
 	tag: "nugf",
 	name: "Warmonger",
-	model: "/home/tgehr/games/sac/SacrificeH/tools/3d/source/extracted/saxs_r9/sxr9.WAD!/gunh.FLDR/gunf.SAXC/gunf.SXMD",
-	stance: "/home/tgehr/games/sac/SacrificeH/tools/3d/source/extracted/saxs_r9/sxr9.WAD!/gunh.FLDR/GUst.SXSK",
+	model: "saxs_r9/sxr9.WAD!/gunh.FLDR/gunf.SAXC/gunf.SXMD",
+	stance: "saxs_r9/sxr9.WAD!/gunh.FLDR/GUst.SXSK",
 	scaling: 2e-3,
 };
 
