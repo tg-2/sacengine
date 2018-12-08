@@ -1,6 +1,6 @@
 module nttData;
 import std.file, std.path, std.stdio, std.algorithm, std.string;
-import bldg;
+import bldg, spells;
 immutable string[] bldgFolders=["joby/joby.WAD!/ethr.FLDR",
                                 "joby/joby.WAD!/prsc.FLDR",
                                 "pyromod/PMOD.WAD!/bild.FLDR",
@@ -9,11 +9,11 @@ immutable string[] bldgFolders=["joby/joby.WAD!/ethr.FLDR",
                                 "joby/joby.WAD!/ch_a.FLDR",];
 
 immutable string[] bldgModlFolders=["joby/joby.WAD!/ethr.FLDR",
-                                     "joby/joby.WAD!/prsc.FLDR",
-                                     "pyromod/PMOD.WAD!/modl.FLDR",
-                                     "jamesmod/JMOD.WAD!/modl.FLDR",
-                                     "stratmod/SMOD.WAD!/modl.FLDR",
-                                     "joby/joby.WAD!/ch_a.FLDR"];
+                                    "joby/joby.WAD!/prsc.FLDR",
+                                    "pyromod/PMOD.WAD!/modl.FLDR",
+                                    "jamesmod/JMOD.WAD!/modl.FLDR",
+                                    "stratmod/SMOD.WAD!/modl.FLDR",
+                                    "joby/joby.WAD!/ch_a.FLDR"];
 
 immutable char[4][] manalithTags=["amac","namj","anam","amyp","mats"];
 
@@ -46,9 +46,79 @@ string[char[4]] makeBldgModlByTag(){
 
 immutable Bldg[char[4]] bldgs;
 immutable string[char[4]] bldgModls;
+
+immutable string spellsFolder="spells";
+
+T[char[4]] makeSpellByTag(T)(){
+	T[char[4]] result;
+	static immutable path=buildPath("extracted",spellsFolder);
+	static immutable ext=toUpper(T.stringof);
+	foreach(spellFile;dirEntries(path,"*."~ext,SpanMode.depth)){
+		char[4] tag=spellFile[$-9..$-5];
+		reverse(tag[]);
+		result[tag]=mixin(`load`~T.stringof)(spellFile);
+	}
+	return result;
+}
+
+immutable Cre8[char[4]] cre8s;
+immutable Wizd[char[4]] wizds;
+immutable Strc[char[4]] strcs;
+
+immutable string[] saxsModlFolders=["saxs/mrtd.WAD!",
+                                    "saxs_add/AADD.WAD!",
+                                    "saxs_odd/sxod.WAD!",
+                                    "saxs_r1/sxr1.WAD!",
+                                    "saxs_r2/sxr2.WAD!",
+                                    "saxs_r3/sxr3.WAD!",
+                                    "saxs_r4/sxr4.WAD!",
+                                    "saxs_r5/sxr5.WAD!",
+                                    "saxs_r6/sxr6.WAD!",
+                                    "saxs_r7/sxr7.WAD!",
+                                    "saxs_r8/sxr8.WAD!",
+                                    "saxs_r9/sxr9.WAD!",
+                                    "saxs_r10/sr10.WAD!",
+                                    "saxs_r11/sr11.WAD!",
+                                    "saxshero/hero.WAD!",
+                                    "saxs_wiz/sxwz.WAD!"];
+
+string[char[4]] makeSaxsModlByTag(){
+	string[char[4]] result;
+	foreach(folder;saxsModlFolders){
+		auto path=buildPath("extracted",folder);
+		foreach(saxsModlFile;dirEntries(path,"*.SXMD",SpanMode.depth)){
+			char[4] tag=saxsModlFile[$-9..$-5];
+			reverse(tag[]);
+			result[tag]=saxsModlFile;
+		}
+	}
+	return result;
+}
+string[char[4]] makeSaxsAnimByTag(){
+	string[char[4]] result;
+	foreach(folder;saxsModlFolders){
+		auto path=buildPath("extracted",folder);
+		foreach(saxsModlFile;dirEntries(path,"*.SXSK",SpanMode.depth)){
+			char[4] tag=saxsModlFile[$-9..$-5];
+			reverse(tag[]);
+			result[tag]=saxsModlFile;
+		}
+	}
+	return result;
+}
+immutable string[char[4]] saxsModls;
+immutable string[char[4]] saxsAnims;
+
 static this(){
 	bldgs=cast(immutable)makeBldgByTag();
 	bldgModls=cast(immutable)makeBldgModlByTag();
+
+	cre8s=cast(immutable)makeSpellByTag!Cre8();
+	wizds=cast(immutable)makeSpellByTag!Wizd();
+	strcs=cast(immutable)makeSpellByTag!Strc();
+
+	saxsModls=cast(immutable)makeSaxsModlByTag();
+	saxsAnims=cast(immutable)makeSaxsAnimByTag();
 }
 
 
@@ -500,7 +570,7 @@ CreatureData snowman={
 	name: "Snowman",
 	model: "saxs_odd/sxod.WAD!/peas.FLDR/apez.SAXC/apez.SXMD",
 	stance: "saxs_odd/sxod.WAD!/peas.FLDR/PEst.SXSK",
-	scaling: 1e-3,	
+	scaling: 1e-3,
 };
 
 CreatureData spitfire={
@@ -623,7 +693,7 @@ CreatureData zombie={
 	name: "Zombie",
 	model: "saxs_odd/sxod.WAD!/peas.FLDR/dpez.SAXC/dpez.SXMD",
 	stance: "saxs_odd/sxod.WAD!/peas.FLDR/PEst.SXSK",
-	scaling: 1e-3,		
+	scaling: 1e-3,
 };
 
 CreatureData zyzyx={

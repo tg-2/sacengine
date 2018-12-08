@@ -134,14 +134,19 @@ class SacMap(B){
 		}
 	}
 
-	private void placeNTT(T)(ref T ntt) if(__traits(compiles, (T t)=>t.retroKind)){
-		import nttData;
-		static if(is(T==Creature)||is(T==Wizard))
-			auto data=creatureDataByTag(ntt.retroKind);
-		if(!data) return;
-		auto curObj=loadObject(buildPath("extracted",data.model),data.scaling,data.zfactorOverride);
+	private void placeNTT(T)(ref T ntt) if(is(T==Creature)||is(T==Wizard)){
+		import nttData, animations;
+		auto data=creatureDataByTag(ntt.retroKind);
+		enforce(!!data, ntt.retroKind[]);
+		static if(is(T==Creature)) auto dat2=&cre8s[ntt.retroKind];
+		else static if(is(T==Wizard)) auto dat2=&wizds[ntt.retroKind];
+		else static assert(0);
+		auto model=saxsModls[dat2.saxsModel];
+		auto curObj=loadObject(model,data.scaling,data.zfactorOverride);
 		auto obj=new SacObject!B(curObj);
-		if(data.stance.length) obj.loadAnimation(buildPath("extracted",data.stance),data.scaling);
+		auto anims=&dat2.animations;
+		auto anim=saxsAnims[anims.stance1];
+		if(exists(anim)) obj.loadAnimation(anim,data.scaling);
 		auto position=Vector3f(ntt.x,ntt.y,ntt.z);
 		if(!isOnGround(position)) return; // TODO
 		position.z=getGroundHeight(position);

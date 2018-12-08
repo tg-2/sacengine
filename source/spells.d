@@ -160,7 +160,6 @@ Wizd loadWizd(string filename){
 	return parseWizd(readFile(filename));
 }
 
-
 enum SpelFlags:uint{
 	targetSelf=0,
 	targetWizards=1<<0,
@@ -260,7 +259,12 @@ struct Strc{
 	char[4][5] structure;
 }
 
-Spel loadStrc(string filename){
-	enforce(filename.endsWith("SPEL"));
-	return parseSpel(readFile(filename));
+Strc parseStrc(ubyte[] data){
+	enforce(data.length==Strc.sizeof);
+	return *cast(Strc*)data.ptr;
+}
+
+Strc loadStrc(string filename){
+	enforce(filename.endsWith("STRC"));
+	return parseStrc(readFile(filename));
 }
