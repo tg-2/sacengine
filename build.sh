@@ -1,0 +1,2 @@
+#!/bin/bash
+dub build
