@@ -51,38 +51,6 @@ static this(){
 	bldgModls=cast(immutable)makeBldgModlByTag();
 }
 
-immutable struct StructureData{
-	char[4] tag;
-	string name;
-	string model;
-	string destroyed;
-}
-
-StructureData stratosManaFountain={
-	tag: "fmts",
-	name: "Mana Fountain",
-	model: "stratmod/SMOD.WAD!/modl.FLDR/stmf.MRMC/stmf.MRMM",
-};
-
-StructureData* structureDataByTag(char[4] tag){
-Lswitch: switch(tag){
-		static foreach(dataName;__traits(allMembers, nttData)){
-			static if(is(typeof(mixin(`nttData.`~dataName))==StructureData)){
-				static if(mixin(`nttData.`~dataName).tag!=(char[4]).init)
-				case mixin(`nttData.`~dataName).tag:{
-					if(!mixin(`nttData.`~dataName).name)
-						return null;
-					else return &mixin(`nttData.`~dataName);
-				}
-			}
-		}
-		default:
-			import std.stdio;
-			stderr.writeln("WARNING: unknown structure tag '",tag,"'");
-			return null;
-	}
-}
-
 
 immutable struct CreatureData{
 	char[4] tag;
