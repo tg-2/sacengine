@@ -49,6 +49,7 @@ static if(gpuSkinning){
 	void compile(B)(ref Animation anim, ref Saxs!B saxs){
 		enforce(saxs.bones.length<=32);
 		foreach(ref frame;anim.frames){
+			enforce(frame.rotations.length==saxs.bones.length);
 			Transformation[32] transform;
 			transform[0]=Transformation(Quaternionf.identity,Vector3f(0,0,0));
 			foreach(j,ref bone;saxs.bones)
