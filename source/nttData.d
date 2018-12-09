@@ -1,5 +1,5 @@
 module nttData;
-import std.file, std.path, std.stdio, std.algorithm, std.string;
+import std.file, std.path, std.stdio, std.algorithm, std.range, std.string, std.exception;
 import bldg, spells;
 immutable string[] bldgFolders=["joby/joby.WAD!/ethr.FLDR",
                                 "joby/joby.WAD!/prsc.FLDR",
@@ -25,6 +25,8 @@ Bldg[char[4]] makeBldgByTag(){
 		foreach(bldgFile;dirEntries(path,"*.BLDG",SpanMode.shallow)){
 			char[4] tag=bldgFile[$-9..$-5];
 			reverse(tag[]);
+			enforce(tag !in result);
+			enforce(tag !in result);
 			result[tag]=loadBldg(bldgFile);
 		}
 	}
@@ -38,6 +40,7 @@ string[char[4]] makeBldgModlByTag(){
 		foreach(bldgModlFile;dirEntries(path,"*.MRMC",SpanMode.shallow)){
 			char[4] tag=bldgModlFile[$-9..$-5];
 			reverse(tag[]);
+			enforce(tag !in result);
 			result[tag]=buildPath(bldgModlFile,bldgModlFile[$-9..$-5]~".MRMM");
 		}
 	}
@@ -56,6 +59,7 @@ T[char[4]] makeSpellByTag(T)(){
 	foreach(spellFile;dirEntries(path,"*."~ext,SpanMode.depth)){
 		char[4] tag=spellFile[$-9..$-5];
 		reverse(tag[]);
+		enforce(tag !in result);
 		result[tag]=mixin(`load`~T.stringof)(spellFile);
 	}
 	return result;
@@ -89,25 +93,43 @@ string[char[4]] makeSaxsModlByTag(){
 		foreach(saxsModlFile;dirEntries(path,"*.SXMD",SpanMode.depth)){
 			char[4] tag=saxsModlFile[$-9..$-5];
 			reverse(tag[]);
+			enforce(tag !in result);
 			result[tag]=saxsModlFile;
 		}
 	}
 	return result;
 }
-string[char[4]] makeSaxsAnimByTag(){
-	string[char[4]] result;
+string[][char[4]] makeSaxsAnimByTag(){
+	string[][char[4]] result;
 	foreach(folder;saxsModlFolders){
 		auto path=buildPath("extracted",folder);
-		foreach(saxsModlFile;dirEntries(path,"*.SXSK",SpanMode.depth)){
-			char[4] tag=saxsModlFile[$-9..$-5];
+		foreach(saxsAnimFile;dirEntries(path,"*.SXSK",SpanMode.depth)){
+			char[4] tag=saxsAnimFile[$-9..$-5];
 			reverse(tag[]);
-			result[tag]=saxsModlFile;
+			import std.ascii: toLower;
+			foreach(ref x;tag) x=toLower(x);
+			result[tag]~=saxsAnimFile;
 		}
 	}
 	return result;
 }
 immutable string[char[4]] saxsModls;
-immutable string[char[4]] saxsAnims;
+immutable string[][char[4]] saxsAnims;
+
+string getSaxsAnim(string saxsModlFile, char[4] tag){
+	string r=null;
+	size_t best=0;
+	import std.ascii: toLower;
+	foreach(ref x;tag) x=toLower(x);
+	foreach(anim;saxsAnims.get(tag,[])){
+		size_t cur=zip(anim,saxsModlFile).until!"a[0]!=a[1]".walkLength;
+		if(cur>=best){
+			best=cur;
+			r=anim;
+		}
+	}
+	return r;
+}
 
 static this(){
 	bldgs=cast(immutable)makeBldgByTag();

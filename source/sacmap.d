@@ -145,8 +145,12 @@ class SacMap(B){
 		auto curObj=loadObject(model,data.scaling,data.zfactorOverride);
 		auto obj=new SacObject!B(curObj);
 		auto anims=&dat2.animations;
-		auto anim=saxsAnims[anims.stance1];
-		if(exists(anim)) obj.loadAnimation(anim,data.scaling);
+		auto animID=anims.stance1;
+		auto anim=getSaxsAnim(model,animID);
+		static immutable string[2][] bad=[["2fwc","oppx"],["pezH","tsZB"],["glsd","tsGB"],["ycrp","tsTS"],
+		                                  ["bobs","tsZB"],["guls","tsGB"],["craa","tsGB"],["crpd","tsTS"]];
+		if(!(animID=="rezW"||bad.any!(x=>x[0]==ntt.retroKind&&x[1]==animID))&&exists(anim))
+			obj.loadAnimation(anim,data.scaling);
 		auto position=Vector3f(ntt.x,ntt.y,ntt.z);
 		if(!isOnGround(position)) return; // TODO
 		position.z=getGroundHeight(position);

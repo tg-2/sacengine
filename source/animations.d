@@ -3,8 +3,8 @@ struct Animations{
 	char[4][4] idle;
 	char[4] tumble;
 	char[4] run;
-	char[4] falling;  // only for flying creatures
-	char[4] hitFloor; // only for flying creatures
+	char[4] falling; // for dying creatures that are in the air
+	char[4] hitFloor;
 	char[4] knocked2Floor; // only for walking creatures
 	char[4] getUp;         // only for walking creatures
 	char[4][3] attack;
@@ -15,7 +15,7 @@ struct Animations{
 	char[4] damageTop;
 	char[4][3] death;
 	char[4][2] shoot;
-	char[4] run2; // TODO: what is this actually?
+	char[4] walk; // only different from run for Eldred
 	char[4] thrash;
 	char[4] spellcastStart; // wizards only
 	char[4] spellcast; // wizards only
@@ -30,11 +30,13 @@ struct Animations{
 	char[4] flyDeath;
 	char[4] flyAttack;
 	char[4] hover;
-	char[4][3] unknown33; // unused?
-	char[4] carried;
+	char[4] pickUp;
+	char[4] badLanding;
+	char[4] carry;
+	char[4] carried; // special for hellmouth
 	char[4] fling;
 	char[4] notify;
-	char[4] stance2;
+	char[4] stance2; // stance when damaged
 	char[4] rise;
 	char[4] corpse;
 	char[4] float_;
@@ -51,5 +53,5 @@ struct Animations{
 	char[4] floatMove; // wizards only
 	char[4] float2Stance; // wizards only
 	char[4] talk;
-	char[4][2] unknown35; // unused?	
+	char[4][2] pulling; // peasants only
 }

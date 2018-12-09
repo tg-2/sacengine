@@ -2,3 +2,5 @@ extracted
 source/extracted
 .dub
 3d
+ldc2*
+dub_platform*
