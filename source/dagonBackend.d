@@ -25,7 +25,7 @@ class SacScene: Scene{
 	SacMap!DagonBackend map;
 	DynamicArray!(SacObject!DagonBackend) sacs;
 	Entity[] skyEntities;
-	alias createSky=super.createSky;
+	alias createSky=typeof(super).createSky;
 	void createSky(SacMap!DagonBackend map){
 		auto envi=&map.envi;
 		/+auto eSky=createSky();
