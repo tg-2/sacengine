@@ -250,7 +250,6 @@ class SacScene: Scene{
 			obj.drawable = sobj.isSaxs?cast(Drawable)sobj.saxsi.meshes[i]:cast(Drawable)sobj.meshes[i];
 			obj.position = sobj.position;
 			obj.rotation = sobj.rotation;
-			obj.scaling = sobj.scaling*Vector3f(1,1,1);
 			obj.updateTransformation();
 			GenericMaterial mat;
 			if(i==sobj.sunBeamPart){
@@ -438,7 +437,8 @@ static:
 		return m;
 	}
 	void finalizeBoneMesh(BoneMesh mesh){
-
+		mesh.dataReady=true;
+		mesh.prepareVAO();
 	}
 	TerrainMesh makeTerrainMesh(size_t numVertices, size_t numFaces){
 		auto m=new TerrainMesh(null); // TODO: set owner

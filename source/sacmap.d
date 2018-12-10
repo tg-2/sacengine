@@ -135,25 +135,11 @@ class SacMap(B){
 	}
 
 	private void placeNTT(T)(ref T ntt) if(is(T==Creature)||is(T==Wizard)){
-		import nttData, animations;
-		auto data=creatureDataByTag(ntt.retroKind);
-		enforce(!!data, ntt.retroKind[]);
-		static if(is(T==Creature)) auto dat2=&cre8s[ntt.retroKind];
-		else static if(is(T==Wizard)) auto dat2=&wizds[ntt.retroKind];
-		else static assert(0);
-		auto model=saxsModls[dat2.saxsModel];
-		auto curObj=loadObject(model,data.scaling,data.zfactorOverride);
-		auto obj=new SacObject!B(curObj);
-		auto anims=&dat2.animations;
-		auto animID=anims.stance1;
-		auto anim=getSaxsAnim(model,animID);
-		static immutable string[2][] bad=[["2fwc","oppx"],["pezH","tsZB"],["glsd","tsGB"],["ycrp","tsTS"],
-		                                  ["bobs","tsZB"],["guls","tsGB"],["craa","tsGB"],["crpd","tsTS"]];
-		if(!(animID=="rezW"||bad.any!(x=>x[0]==ntt.retroKind&&x[1]==animID))&&exists(anim))
-			obj.loadAnimation(anim,data.scaling);
+		auto curObj=SacObject!B.getSAXS!T(ntt.retroKind);
+		auto obj=new SacObject!B(curObj); // TODO: get rid of this
 		auto position=Vector3f(ntt.x,ntt.y,ntt.z);
-		if(!isOnGround(position)) return; // TODO
-		position.z=getGroundHeight(position);
+		if(isOnGround(position))
+			position.z=getGroundHeight(position);
 		obj.rotation=rotationQuaternion(Axis.z,cast(float)(2*PI/360*ntt.facing))*obj.rotation;
 		obj.position=position;
 		ntts~=obj;

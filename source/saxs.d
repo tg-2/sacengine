@@ -146,57 +146,50 @@ Saxs!B loadSaxs(B)(string filename, float scaling=1.0f){
 	return Saxs!B(model.zfactor,bones,positions,bodyParts);
 }
 
-B.Mesh[] createMeshes(B)(Saxs!B saxs){
-	auto ap = new Vector3f[](saxs.bones.length);
-	ap[0]=Vector3f(0,0,0);
-	foreach(i,ref bone;saxs.bones[1..$]){
-		ap[i+1]=bone.position;
-		ap[i+1]+=ap[bone.parent];
-	}
-	auto meshes=new B.Mesh[](saxs.bodyParts.length);
-	foreach(i,ref bodyPart;saxs.bodyParts){
-		meshes[i]=B.makeMesh(bodyPart.vertices.length,bodyPart.faces.length);
-		foreach(j,ref vertex;bodyPart.vertices){
-			auto position=Vector3f(0,0,0);
-			foreach(v;vertex.indices.map!(k=>(ap[saxs.positions[k].bone]+saxs.positions[k].offset)*saxs.positions[k].weight))
-				position+=v;
-			meshes[i].vertices[j]=position;
-			meshes[i].texcoords[j]=vertex.uv;
+static if(!gpuSkinning){
+	B.Mesh[] createMeshes(B)(Saxs!B saxs){
+		auto ap = new Vector3f[](saxs.bones.length);
+		ap[0]=Vector3f(0,0,0);
+		foreach(i,ref bone;saxs.bones[1..$]){
+			ap[i+1]=bone.position;
+			ap[i+1]+=ap[bone.parent];
 		}
-		meshes[i].indices[]=bodyPart.faces[];
-		meshes[i].generateNormals();
-		B.finalizeMesh(meshes[i]);
-	}
-	return meshes;
-}
-
-B.BoneMesh[] createBoneMeshes(B)(Saxs!B saxs){
-	auto ap = new Vector3f[](saxs.bones.length);
-	ap[0]=Vector3f(0,0,0);
-	foreach(i,ref bone;saxs.bones[1..$]){
-		ap[i+1]=bone.position;
-		ap[i+1]+=ap[bone.parent];
-	}
-	auto meshes=new B.BoneMesh[](saxs.bodyParts.length);
-	foreach(i,ref bodyPart;saxs.bodyParts){
-		meshes[i]=B.makeBoneMesh(bodyPart.vertices.length,bodyPart.faces.length);
-		foreach(j,ref vertex;bodyPart.vertices){
-			foreach(k,index;vertex.indices){
-				meshes[i].vertices[k][j]=ap[saxs.positions[index].bone]+saxs.positions[index].offset;
-				meshes[i].boneIndices[j][k]=to!uint(saxs.positions[index].bone);
-				meshes[i].weights[j].arrayof[k]=saxs.positions[index].weight;
+		auto meshes=new B.Mesh[](saxs.bodyParts.length);
+		foreach(i,ref bodyPart;saxs.bodyParts){
+			meshes[i]=B.makeMesh(bodyPart.vertices.length,bodyPart.faces.length);
+			foreach(j,ref vertex;bodyPart.vertices){
+				auto position=Vector3f(0,0,0);
+				foreach(v;vertex.indices.map!(k=>(ap[saxs.positions[k].bone]+saxs.positions[k].offset)*saxs.positions[k].weight))
+					position+=v;
+				meshes[i].vertices[j]=position;
+				meshes[i].texcoords[j]=vertex.uv;
 			}
-			meshes[i].texcoords[j]=vertex.uv;
+			meshes[i].indices[]=bodyPart.faces[];
+			meshes[i].generateNormals();
+			B.finalizeMesh(meshes[i]);
 		}
-		meshes[i].indices[]=bodyPart.faces[];
-		meshes[i].generateNormals();
-		foreach(j,ref vertex;bodyPart.vertices)
-			foreach(k,index;vertex.indices)
-				meshes[i].vertices[k][j]=saxs.positions[index].offset;
-		meshes[i].dataReady=true;
-		meshes[i].prepareVAO();
+		return meshes;
 	}
-	return meshes;
+}else{
+	B.BoneMesh[] createBoneMeshes(B)(Saxs!B saxs,Pose* normalPose=null){
+		auto meshes=new B.BoneMesh[](saxs.bodyParts.length);
+		foreach(i,ref bodyPart;saxs.bodyParts){
+			meshes[i]=B.makeBoneMesh(bodyPart.vertices.length,bodyPart.faces.length);
+			foreach(j,ref vertex;bodyPart.vertices){
+				foreach(k,index;vertex.indices){
+					meshes[i].vertices[k][j]=saxs.positions[index].offset;
+					meshes[i].boneIndices[j][k]=to!uint(saxs.positions[index].bone);
+					meshes[i].weights[j].arrayof[k]=saxs.positions[index].weight;
+				}
+				meshes[i].texcoords[j]=vertex.uv;
+			}
+			meshes[i].indices[]=bodyPart.faces[];
+			if(normalPose) meshes[i].pose=normalPose.matrices;
+			meshes[i].generateNormals();
+			B.finalizeBoneMesh(meshes[i]);
+		}
+		return meshes;
+	}
 }
 
 struct SaxsInstance(B){
@@ -209,6 +202,12 @@ void createMeshes(B)(ref SaxsInstance!B saxsi){
 	static if(!gpuSkinning) saxsi.meshes=createMeshes(saxsi.saxs);
 	else saxsi.meshes=createBoneMeshes!B(saxsi.saxs);
 }
+
+void createMeshes(B)(ref SaxsInstance!B saxsi,Pose normalPose){
+	static if(!gpuSkinning) saxsi.meshes=createMeshes(saxsi.saxs);
+	else saxsi.meshes=createBoneMeshes!B(saxsi.saxs,&normalPose);
+}
+
 
 void setPose(B)(ref SaxsInstance!B saxsi, Pose pose){
 	auto saxs=saxsi.saxs;

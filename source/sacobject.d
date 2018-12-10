@@ -1,6 +1,7 @@
 import dlib.math;
 import util;
 import mrmm, _3dsm, txtr, saxs, sxsk, widg;
+import animations, ntts;
 import std.typecons: Tuple, tuple;
 alias Tuple=std.typecons.Tuple;
 
@@ -12,41 +13,85 @@ class SacObject(B){
 
 	bool isSaxs=false;
 	SaxsInstance!B saxsi;
-	Animation anim;
+	Animation[] animations;
+	AnimationState animationState=AnimationState.stance1;
+	size_t frame; // TODO: move out of here
 
 	int sunBeamPart=-1;
 	int transparentShinyPart=-1;
 
-	this(SacObject rhs){
+	this(SacObject!B rhs){ // TODO: get rid of this
 		this.meshes=rhs.meshes;
 		this.textures=rhs.textures;
 		this.isSaxs=rhs.isSaxs;
 		this.saxsi=rhs.saxsi;
-		this.anim=rhs.anim;
+		this.animations=rhs.animations;
+		this.animationState=rhs.animationState;
+		this.frame=rhs.frame;
 		this.sunBeamPart=rhs.sunBeamPart;
 		this.transparentShinyPart=rhs.transparentShinyPart;
 	}
 
-	this(string filename, float scaling=1.0, string animation=""){
-		enforce(filename.endsWith(".MRMM")||filename.endsWith(".3DSM")||filename.endsWith(".WIDG")||filename.endsWith(".SXMD"));
-		auto name=filename[$-9..$-5];
+	private void setGraphicsProperties(char[4] retroKind){
 		// TODO: this is a hack:
 		// sunbeams
-		if(name.among("pcsb","casb")) sunBeamPart=0;
+		if(retroKind.among("pcsb","casb")) sunBeamPart=0;
 		// manaliths
-		if(name.among("mana","cama")) transparentShinyPart=0;
-		if(name.among("jman","stam","pyma")) transparentShinyPart=1;
+		if(retroKind.among("mana","cama")) transparentShinyPart=0;
+		if(retroKind.among("jman","stam","pyma")) transparentShinyPart=1;
 		// crystals
-		if(name.among("crpt","stc1","stc2","stc3","sfir","stst")) transparentShinyPart=0;
-		if(name.among("sfor")) transparentShinyPart=0;
-		if(name.among("SAW1","SAW2","SAW3","SAW4","SAW5")) transparentShinyPart=0;
+		if(retroKind.among("crpt","stc1","stc2","stc3","sfir","stst")) transparentShinyPart=0;
+		if(retroKind.among("sfor")) transparentShinyPart=0;
+		if(retroKind.among("SAW1","SAW2","SAW3","SAW4","SAW5")) transparentShinyPart=0;
 		// ethereal altar, ethereal sunbeams
-		if(name.among("ea_b","ea_r","esb1","esb2","esb_","etfn")) sunBeamPart=0;
+		if(retroKind.among("ea_b","ea_r","esb1","esb2","esb_","etfn")) sunBeamPart=0;
 		// "eis1","eis2", "eis3", "eis4" ?
-		if(name.among("st4a")){
+		if(retroKind.among("st4a")){
 			transparentShinyPart=0;
 			sunBeamPart=1;
 		}
+	}
+
+	private this(T)(char[4] retroKind,T* hack) if(is(T==Creature)||is(T==Wizard)){
+		import nttData;
+		isSaxs=true;
+		auto data=creatureDataByTag(retroKind);
+		enforce(!!data, retroKind[]);
+		static if(is(T==Creature)) auto dat2=&cre8s[retroKind];
+		else static if(is(T==Wizard)) auto dat2=&wizds[retroKind];
+		else static assert(0);
+		auto model=saxsModls[dat2.saxsModel];
+		saxsi=SaxsInstance!B(loadSaxs!B(model,data.scaling));
+		if(!isNaN(data.zfactorOverride)) saxsi.saxs.zfactor=data.zfactorOverride;
+		auto anims=&dat2.animations;
+		auto animIDs=dat2.animations.animations[];
+		foreach(animID;animIDs){
+			static immutable string[2][] bad=[["2fwc","oppx"],["pezH","tsZB"],["glsd","tsGB"],["ycrp","tsTS"],
+			                                  ["bobs","tsZB"],["guls","tsGB"],["craa","tsGB"],["crpd","tsTS"]];
+			if(!(animID=="rezW"||bad.any!(x=>x[0]==retroKind&&x[1]==animID))){
+				auto anim=getSaxsAnim(model,animID);
+				import std.file: exists;
+				if(exists(anim)){
+					auto animation=loadSXSK(anim,data.scaling);
+					static if(gpuSkinning)
+						animation.compile(saxsi.saxs);
+					animations~=animation;
+				}
+			}
+		}
+		saxsi.createMeshes(animations[animationState].frames[0]);
+		setGraphicsProperties(dat2.saxsModel);
+		saxsi.setPose(animations[animationState].frames[frame]);
+	}
+	static SacObject!B[char[4]] objects;
+	static SacObject!B getSAXS(T)(char[4] retroKind)if(is(T==Creature)||is(T==Wizard)){
+		if(auto r=retroKind in objects) return *r;
+		return objects[retroKind]=new SacObject!B(retroKind,(T*).init); // hack
+	}
+
+	this(string filename, float scaling=1.0, string animation=""){
+		enforce(filename.endsWith(".MRMM")||filename.endsWith(".3DSM")||filename.endsWith(".WIDG")||filename.endsWith(".SXMD"));
+		setGraphicsProperties(filename[$-9..$-5][0..4]);
 		switch(filename[$-4..$]){
 			case "MRMM":
 				auto mt=loadMRMM!B(filename, scaling);
@@ -67,28 +112,38 @@ class SacObject(B){
 			case "SXMD":
 				isSaxs=true;
 				saxsi=SaxsInstance!B(loadSaxs!B(filename,scaling));
-				saxsi.createMeshes();
 				if(animation.length)
 					loadAnimation(animation,scaling);
+				saxsi.createMeshes();
 				break;
 			default:
 				assert(0);
 		}
 	}
 
-	void loadAnimation(string animation,float scaling){
-		anim=loadSXSK(animation,scaling);
+	void loadAnimation(string animation,float scaling){ // (just for testing)
+		enforce(animations.length<=1);
+		auto anim=loadSXSK(animation,scaling);
 		static if(gpuSkinning)
 			anim.compile(saxsi.saxs);
-		saxsi.setPose(anim.frames[0]);
+		frame=0;
+		animations=[anim];
+		saxsi.setPose(anim.frames[frame]);
 	}
 
-	Vector3f position = Vector3f(0,0,0); // TODO: make SacObject an entity
-	Quaternionf rotation = rotationQuaternion(Axis.y,cast(float)0.0);
-	float scaling = 1.0;
+	void setAnimationState(AnimationState state){ // TODO: move out of here
+		animationState=state;
+		frame=0;
+		if(animations[state].frames.length)
+			saxsi.setPose(animations[state].frames[frame]);
+	}
+
+	Vector3f position = Vector3f(0,0,0); // TODO: move out of here
+	Quaternionf rotation = rotationQuaternion(Axis.y,cast(float)0.0); // TODO: move out of here
 
 	size_t numFrames(){
-		return anim.frames.length?anim.frames.length:1;
+		if(animationState>=animations.length) return 1;
+		return max(1,animations[animationState].frames.length);
 	}
 	double animFPS(){
 		return 30;
@@ -98,8 +153,9 @@ class SacObject(B){
 		assert(frame<numFrames());
 	}body{
 		if(isSaxs){
-			if(anim.frames.length==0) return;
-			saxsi.setPose(anim.frames[frame]);
+			this.frame=frame;
+			if(animationState>=animations.length||animations[animationState].frames.length==0) return;
+			saxsi.setPose(animations[animationState].frames[frame]);
 		}
 	}
 }
@@ -130,7 +186,7 @@ auto convertModel(B,Model)(string dir, Model model, float scaling){
 	foreach(ref face;faces){
 		++sizes[names[face.textureName]];
 	}
-	
+
 	static if(is(typeof(model.vertices))){
 		foreach(k,ref mesh;meshes){
 			auto nvertices=model.vertices.length;
