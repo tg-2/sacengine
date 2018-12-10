@@ -60,6 +60,6 @@ Tuple!(B.Mesh, B.Texture) loadWIDG(B)(string filename){
 	mesh.generateNormals();
 	B.finalizeMesh(mesh);
 	auto txtr=loadTXTR(buildPath(dir,chain(retro(model.retroTextureName),".TXTR").to!string));
-	auto texture=B.makeTexture(txtr);
+	auto texture=B.makeTexture(txtr,false);
 	return tuple(mesh,texture);
 }

@@ -1,13 +1,14 @@
 import dlib.math;
 import util;
 import mrmm, _3dsm, txtr, saxs, sxsk, widg;
-import animations, ntts;
+import animations, ntts, nttData;
 import std.typecons: Tuple, tuple;
 alias Tuple=std.typecons.Tuple;
 
 import std.exception, std.algorithm, std.math, std.path;
 
 class SacObject(B){
+	char[4] retroKind;
 	B.Mesh[] meshes;
 	B.Texture[] textures;
 
@@ -33,27 +34,30 @@ class SacObject(B){
 	}
 
 	private void setGraphicsProperties(char[4] retroKind){
+		this.retroKind=retroKind;
 		// TODO: this is a hack:
+		auto kind=retroKind;
+		reverse(kind[]);
 		// sunbeams
-		if(retroKind.among("pcsb","casb")) sunBeamPart=0;
+		if(kind.among("pcsb","casb")) sunBeamPart=0;
 		// manaliths
-		if(retroKind.among("mana","cama")) transparentShinyPart=0;
-		if(retroKind.among("jman","stam","pyma")) transparentShinyPart=1;
+		if(kind.among("mana","cama")) transparentShinyPart=0;
+		if(kind.among("jman","stam","pyma")) transparentShinyPart=1;
 		// crystals
-		if(retroKind.among("crpt","stc1","stc2","stc3","sfir","stst")) transparentShinyPart=0;
-		if(retroKind.among("sfor")) transparentShinyPart=0;
-		if(retroKind.among("SAW1","SAW2","SAW3","SAW4","SAW5")) transparentShinyPart=0;
+		if(kind.among("crpt","stc1","stc2","stc3","sfir","stst")) transparentShinyPart=0;
+		if(kind.among("sfor")) transparentShinyPart=0;
+		if(kind.among("SAW1","SAW2","SAW3","SAW4","SAW5")) transparentShinyPart=0;
+		if(kind.among("ST01","ST02","ST03")) transparentShinyPart=0;
 		// ethereal altar, ethereal sunbeams
-		if(retroKind.among("ea_b","ea_r","esb1","esb2","esb_","etfn")) sunBeamPart=0;
+		if(kind.among("ea_b","ea_r","esb1","esb2","esb_","etfn")) sunBeamPart=0;
 		// "eis1","eis2", "eis3", "eis4" ?
-		if(retroKind.among("st4a")){
+		if(kind.among("st4a")){
 			transparentShinyPart=0;
 			sunBeamPart=1;
 		}
 	}
 
 	private this(T)(char[4] retroKind,T* hack) if(is(T==Creature)||is(T==Wizard)){
-		import nttData;
 		isSaxs=true;
 		auto data=creatureDataByTag(retroKind);
 		enforce(!!data, retroKind[]);
@@ -71,7 +75,7 @@ class SacObject(B){
 			if(!(animID=="rezW"||animID[0..2]=="00"||bad.any!(x=>x[0]==retroKind&&x[1]==animID))){
 				auto anim=getSaxsAnim(model,animID);
 				import std.file: exists;
-				if(exists(anim)||&animID !is &dat2.animations.stance1 && animID==dat2.animations.stance1){
+				if(exists(anim)&&!(&animID !is &dat2.animations.stance1 && animID==dat2.animations.stance1)){
 					auto animation=loadSXSK(anim,data.scaling);
 					static if(gpuSkinning)
 						animation.compile(saxsi.saxs);
@@ -80,7 +84,7 @@ class SacObject(B){
 			}
 		}
 		saxsi.createMeshes(animations[animationState].frames[0]);
-		setGraphicsProperties(dat2.saxsModel);
+		setGraphicsProperties(retroKind);
 		setAnimationState(AnimationState.stance1); // TODO: get rid of this
 	}
 	static SacObject!B[char[4]] objects;
@@ -89,9 +93,22 @@ class SacObject(B){
 		return objects[retroKind]=new SacObject!B(retroKind,(T*).init); // hack
 	}
 
+	private this(T)(char[4] retroKind, T* hack) if(is(T==Widgets)){
+		auto mt=loadWIDG!B(widgModls[retroKind]);
+		meshes=[mt[0]];
+		textures=[mt[1]];
+		setGraphicsProperties(retroKind);
+	}
+	static SacObject!B getWIDG(char[4] retroKind){
+		if(auto r=retroKind in objects) return *r;
+		return objects[retroKind]=new SacObject!B(retroKind,(Widgets*).init); // hack
+	}
+
 	this(string filename, float scaling=1.0, string animation=""){
 		enforce(filename.endsWith(".MRMM")||filename.endsWith(".3DSM")||filename.endsWith(".WIDG")||filename.endsWith(".SXMD"));
-		setGraphicsProperties(filename[$-9..$-5][0..4]);
+		char[4] retroKind=filename[$-9..$-5][0..4];
+		reverse(retroKind[]);
+		setGraphicsProperties(retroKind);
 		switch(filename[$-4..$]){
 			case "MRMM":
 				auto mt=loadMRMM!B(filename, scaling);

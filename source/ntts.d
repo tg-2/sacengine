@@ -106,7 +106,7 @@ static assert(Marker.sizeof==52);
 struct WidgetHeader{
 	Type type=Type.widgets;
 	uint size;
-	char[4] retroName;
+	char[4] retroKind;
 	uint num;
 }
 static assert(WidgetHeader.sizeof==16);
@@ -115,7 +115,7 @@ struct Widgets{
 	alias header this;
 	float[3][] positions;
 	string toString(){
-		return text(`Widgets(`,type,", ",size,", ",retroName,", ",num,", ",positions.map!(to!string).join(`, `),`)`);
+		return text(`Widgets(`,type,", ",size,", ",retroKind,", ",num,", ",positions.map!(to!string).join(`, `),`)`);
 	}	
 }
 

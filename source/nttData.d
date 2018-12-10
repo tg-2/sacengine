@@ -50,6 +50,27 @@ string[char[4]] makeBldgModlByTag(){
 immutable Bldg[char[4]] bldgs;
 immutable string[char[4]] bldgModls;
 
+immutable landFolders=["extracted/ethr/ethr.WAD!/ethr.LAND",
+                       "extracted/prsc/prsc.WAD!/prsc.LAND",
+                       "extracted/pyro_a/PY_A.WAD!/PY_A.LAND",
+                       "extracted/james_a/JA_A.WAD!/JA_A.LAND",
+                       "extracted/strato_a/ST_A.WAD!/ST_A.LAND",
+                       "extracted/char/char.WAD!/char.LAND"];
+
+string[char[4]] makeWidgModlByTag(){
+	string[char[4]] result;
+	foreach(folder;landFolders){
+		foreach(widgModlFile;dirEntries(folder,"*.WIDG",SpanMode.depth)){
+			char[4] tag=widgModlFile[$-9..$-5];
+			reverse(tag[]);
+			enforce(tag !in result);
+			result[tag]=widgModlFile;
+		}
+	}
+	return result;
+}
+immutable string[char[4]] widgModls;
+
 immutable string spellsFolder="spells";
 
 T[char[4]] makeSpellByTag(T)(){
@@ -134,6 +155,8 @@ string getSaxsAnim(string saxsModlFile, char[4] tag){
 static this(){
 	bldgs=cast(immutable)makeBldgByTag();
 	bldgModls=cast(immutable)makeBldgModlByTag();
+
+	widgModls=cast(immutable)makeWidgModlByTag();
 
 	cre8s=cast(immutable)makeSpellByTag!Cre8();
 	wizds=cast(immutable)makeSpellByTag!Wizd();

@@ -38,15 +38,8 @@ class SacMap(B){
 		enforce(heights.length==n);
 		enforce(edges.all!(x=>x.length==m));
 		enforce(heights.all!(x=>x.length==m));
-		string land;
-		final switch(detectTileset(filename[0..$-".HMAP".length]~".LEVL")) with(Tileset){
-			case ethereal: land="extracted/ethr/ethr.WAD!/ethr.LAND"; break; // TODO
-			case persephone: land="extracted/prsc/prsc.WAD!/prsc.LAND"; break;
-			case pyro: land="extracted/pyro_a/PY_A.WAD!/PY_A.LAND"; break;
-			case james: land="extracted/james_a/JA_A.WAD!/JA_A.LAND"; break;
-			case stratos: land="extracted/strato_a/ST_A.WAD!/ST_A.LAND"; break;
-			case charnel: land="extracted/char/char.WAD!/char.LAND"; break;
-		}
+		import nttData: landFolders;
+		auto land=landFolders[detectTileset(filename[0..$-".HMAP".length]~".LEVL")];
 		dti=loadDTIndex(land).dts;
 		auto mapts=loadMAPTs(land);
 		auto bumps=loadDTs(land);
@@ -152,14 +145,12 @@ class SacMap(B){
 		ntts~=obj;
 	}
 	private void placeWidgets(string land,Widgets w){
-		auto name=w.retroName[].retro.to!string;
-		auto filename=buildPath(land,name~".WIDC",name~".WIDG");
-		auto curObj=loadObject(filename);
+		auto curObj=SacObject!B.getWIDG(w.retroKind);
 		foreach(pos;w.positions){
 			auto position=Vector3f(pos[0],pos[1],0);
 			if(!isOnGround(position)) continue;
 			position.z=getGroundHeight(position);
-			auto obj=new SacObject!B(curObj);
+			auto obj=new SacObject!B(curObj); // TODO: get rid of this
 			// original engine screws up widget rotations
 			// values look like angles in degrees, but they are actually radians
 			obj.rotation=rotationQuaternion(Axis.z,cast(float)(-pos[2]));
