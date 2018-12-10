@@ -17,7 +17,7 @@ struct Structure{
 	uint size=48;
 	float x,y,z;
 	float facing;
-	char[4] retroKind;
+	char[4] tag;
 	Flags flags;
 	uint side;
 	uint unknown1=0;
@@ -52,7 +52,7 @@ struct Wizard{
 	uint size=56;
 	float x,y,z;
 	float facing;
-	char[4] retroKind;
+	char[4] tag;
 	Flags flags;
 	uint side;
 	uint unknown0=0;
@@ -76,7 +76,7 @@ struct Creature{
 	uint size=48;
 	float x,y,z;
 	float facing;
-	char[4] retroKind;
+	char[4] tag;
 	Flags flags;
 	uint side;
 	uint unknown0=0;
@@ -106,7 +106,7 @@ static assert(Marker.sizeof==52);
 struct WidgetHeader{
 	Type type=Type.widgets;
 	uint size;
-	char[4] retroKind;
+	char[4] tag;
 	uint num;
 }
 static assert(WidgetHeader.sizeof==16);
@@ -115,7 +115,7 @@ struct Widgets{
 	alias header this;
 	float[3][] positions;
 	string toString(){
-		return text(`Widgets(`,type,", ",size,", ",retroKind,", ",num,", ",positions.map!(to!string).join(`, `),`)`);
+		return text(`Widgets(`,type,", ",size,", ",tag,", ",num,", ",positions.map!(to!string).join(`, `),`)`);
 	}	
 }
 

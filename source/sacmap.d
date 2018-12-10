@@ -97,7 +97,7 @@ class SacMap(B){
 	}
 	private void placeStructure(ref Structure ntt){
 		import nttData;
-		auto data=ntt.retroKind in bldgs;
+		auto data=ntt.tag in bldgs;
 		enforce(!!data);
 		auto position=Vector3f(ntt.x,ntt.y,ntt.z);
 		auto ci=cast(int)(position.x/10+0.5);
@@ -128,7 +128,7 @@ class SacMap(B){
 	}
 
 	private void placeNTT(T)(ref T ntt) if(is(T==Creature)||is(T==Wizard)){
-		auto curObj=SacObject!B.getSAXS!T(ntt.retroKind);
+		auto curObj=SacObject!B.getSAXS!T(ntt.tag);
 		auto obj=new SacObject!B(curObj); // TODO: get rid of this
 		auto position=Vector3f(ntt.x,ntt.y,ntt.z);
 		if(isOnGround(position))
@@ -145,7 +145,7 @@ class SacMap(B){
 		ntts~=obj;
 	}
 	private void placeWidgets(string land,Widgets w){
-		auto curObj=SacObject!B.getWIDG(w.retroKind);
+		auto curObj=SacObject!B.getWIDG(w.tag);
 		foreach(pos;w.positions){
 			auto position=Vector3f(pos[0],pos[1],0);
 			if(!isOnGround(position)) continue;
