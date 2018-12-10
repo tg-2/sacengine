@@ -64,8 +64,8 @@ class SacMap(B){
 			placeNTT(wizard);
 		foreach(ref creature;ntts.creatures)
 			placeNTT(creature);
-		/+foreach(widgets;ntts.widgetss) // TODO: improve engine to be able to handle this
-			placeWidgets(land,widgets);+/
+		foreach(widgets;ntts.widgetss) // TODO: improve engine to be able to handle this
+			placeWidgets(land,widgets);
 		meshes=createMeshes!B(hmap,tmap);
 	}
 
@@ -163,7 +163,7 @@ class SacMap(B){
 		return tuple!("j","i")(cast(int)(n-1-pos.y/10),cast(int)(pos.x/10));
 	}
 	Vector3f getVertex(int j,int i){
-		return Vector3f(10*i,10*(n-1-j),heights[j][i]/100);
+		return Vector3f(10*i,10*(n-1-j),heights[j][i]);
 	}
 
 	Tuple!(int,"j",int,"i")[3] getTriangle(Vector3f pos){
@@ -274,7 +274,7 @@ B.TerrainMesh[] createMeshes(B)(HMap hmap, TMap tmap, float scaleFactor=1){
 	enforce(edges.all!(x=>x.length==m));
 	enforce(heights.all!(x=>x.length==m));
 	Vector3f getVertex(int j,int i){
-		return scaleFactor*Vector3f(10*i,10*(n-1-j),heights[j][i]/100);
+		return scaleFactor*Vector3f(10*i,10*(n-1-j),heights[j][i]);
 	}
 	int di(int i){ return i==1||i==2; }
 	int dj(int i){ return i==2||i==3; }

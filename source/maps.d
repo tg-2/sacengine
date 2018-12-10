@@ -20,7 +20,7 @@ HMap parseHMap(ubyte[] data){
 			auto isVoid=!!(elevation&(1<<15));
 			elevation&=~(1<<15);
 			edges[y][x]=isVoid;
-			heights[y][x]=elevation/0.1f;
+			heights[y][x]=elevation*0.1f;
 		}
 	}
 	return HMap(edges,heights);
