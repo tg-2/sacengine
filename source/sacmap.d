@@ -142,6 +142,13 @@ class SacMap(B){
 			position.z=getGroundHeight(position);
 		obj.rotation=rotationQuaternion(Axis.z,cast(float)(2*PI/360*ntt.facing))*obj.rotation;
 		obj.position=position;
+		/+import animations;
+		AnimationState state;
+		do{
+			import std.random: uniform;
+			state=cast(AnimationState)uniform(0,64);
+		}while(!obj.hasAnimationState(state));
+		obj.setAnimationState(state);+/
 		ntts~=obj;
 	}
 	private void placeWidgets(string land,Widgets w){

@@ -65,13 +65,13 @@ class SacObject(B){
 		if(!isNaN(data.zfactorOverride)) saxsi.saxs.zfactor=data.zfactorOverride;
 		auto anims=&dat2.animations;
 		auto animIDs=dat2.animations.animations[];
-		foreach(animID;animIDs){
+		foreach(ref animID;animIDs){
 			static immutable string[2][] bad=[["2fwc","oppx"],["pezH","tsZB"],["glsd","tsGB"],["ycrp","tsTS"],
 			                                  ["bobs","tsZB"],["guls","tsGB"],["craa","tsGB"],["crpd","tsTS"]];
-			if(!(animID=="rezW"||bad.any!(x=>x[0]==retroKind&&x[1]==animID))){
+			if(!(animID=="rezW"||animID[0..2]=="00"||bad.any!(x=>x[0]==retroKind&&x[1]==animID))){
 				auto anim=getSaxsAnim(model,animID);
 				import std.file: exists;
-				if(exists(anim)){
+				if(exists(anim)||&animID !is &dat2.animations.stance1 && animID==dat2.animations.stance1){
 					auto animation=loadSXSK(anim,data.scaling);
 					static if(gpuSkinning)
 						animation.compile(saxsi.saxs);
@@ -81,7 +81,7 @@ class SacObject(B){
 		}
 		saxsi.createMeshes(animations[animationState].frames[0]);
 		setGraphicsProperties(dat2.saxsModel);
-		saxsi.setPose(animations[animationState].frames[frame]);
+		setAnimationState(AnimationState.stance1); // TODO: get rid of this
 	}
 	static SacObject!B[char[4]] objects;
 	static SacObject!B getSAXS(T)(char[4] retroKind)if(is(T==Creature)||is(T==Wizard)){
@@ -131,32 +131,34 @@ class SacObject(B){
 		saxsi.setPose(anim.frames[frame]);
 	}
 
-	void setAnimationState(AnimationState state){ // TODO: move out of here
+	final bool hasAnimationState(AnimationState state){
+		return state<animations.length&&animations[state].frames.length;
+	}
+
+	final void setAnimationState(AnimationState state)in{ // TODO: move out of here
+		assert(hasAnimationState(state));
+	}body{
 		animationState=state;
 		frame=0;
-		if(animations[state].frames.length)
-			saxsi.setPose(animations[state].frames[frame]);
+		// issue: saxs instance is shared between all objects, need to set pose during rendering
+		saxsi.setPose(animations[state].frames[frame]);
 	}
 
 	Vector3f position = Vector3f(0,0,0); // TODO: move out of here
 	Quaternionf rotation = rotationQuaternion(Axis.y,cast(float)0.0); // TODO: move out of here
 
-	size_t numFrames(){
-		if(animationState>=animations.length) return 1;
-		return max(1,animations[animationState].frames.length);
+	final size_t numFrames(){
+		return isSaxs?animations[animationState].frames.length:0;
 	}
-	double animFPS(){
+	final double animFPS(){
 		return 30;
 	}
 
 	void setFrame(size_t frame)in{
 		assert(frame<numFrames());
 	}body{
-		if(isSaxs){
-			this.frame=frame;
-			if(animationState>=animations.length||animations[animationState].frames.length==0) return;
-			saxsi.setPose(animations[animationState].frames[frame]);
-		}
+		this.frame=frame;
+		saxsi.setPose(animations[animationState].frames[frame]);
 	}
 }
 

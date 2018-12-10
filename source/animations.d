@@ -74,6 +74,6 @@ string generateAnimationState(){
 			}else names~=x;
 		}
 	}
-	return "enum AnimationState{ "~names.join(",")~"}";
+	return "enum AnimationState{"~names.join(",")~"}";
 }
 mixin(generateAnimationState);

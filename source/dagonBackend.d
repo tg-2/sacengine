@@ -362,7 +362,7 @@ class SacScene: Scene{
 		}
 		foreach(sac;chain(sacs.data,map?map.ntts:[])){
 			auto frame=totalTime*sac.animFPS;
-			sac.setFrame(cast(size_t)(frame%sac.numFrames));
+			if(sac.numFrames) sac.setFrame(cast(size_t)(frame%sac.numFrames));
 		}
 	}
 }
