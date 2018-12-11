@@ -64,8 +64,8 @@ class SacMap(B){
 			placeNTT(wizard);
 		foreach(ref creature;ntts.creatures)
 			placeNTT(creature);
-		foreach(widgets;ntts.widgetss) // TODO: improve engine to be able to handle this
-			placeWidgets(land,widgets);
+		/+foreach(widgets;ntts.widgetss) // TODO: improve engine to be able to handle this
+			placeWidgets(land,widgets);+/
 		meshes=createMeshes!B(hmap,tmap);
 	}
 
@@ -83,17 +83,6 @@ class SacMap(B){
 		float tZDiff=Sky.scaling*Sky.skyZ*(1-Sky.relCloudLoc);
 		auto intersection=sunPos+(adjCamPos-sunPos)*tZDiff/zDiff;
 		return intersection.xy/(Sky.scaling/2);
-	}
-
-	static SacObject!B[string] objects;
-	SacObject!B loadObject(string filename, float scaling=1.0f, float zfactorOverride=float.nan){
-		SacObject!B obj;
-		if(filename !in objects){
-			obj=new SacObject!B(filename, scaling);
-			if(obj.isSaxs&&!isNaN(zfactorOverride)) obj.saxsi.saxs.zfactor=zfactorOverride;
-			objects[filename]=obj;
-		}else obj=objects[filename];
-		return obj;
 	}
 	private void placeStructure(ref Structure ntt){
 		import nttData;
@@ -119,8 +108,8 @@ class SacMap(B){
 			auto cposition=position+offset;
 			if(!isOnGround(cposition)) continue;
 			cposition.z=getGroundHeight(cposition);
-			auto curObj=loadObject(bldgModls[component.retroModel]);
-			auto obj=new SacObject!B(curObj);
+			auto curObj=SacObject!B.getBLDG(component.tag);
+			auto obj=new SacObject!B(curObj); // TODO: get rid of this
 			obj.position=cposition;
 			obj.rotation=facingQuaternion(ntt.facing+component.facing);
 			ntts~=obj;

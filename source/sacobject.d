@@ -93,6 +93,17 @@ class SacObject(B){
 		return objects[tag]=new SacObject!B(tag,(T*).init); // hack
 	}
 
+	private this(T)(char[4] tag, T* hack) if(is(T==Structure)){
+		auto mt=loadMRMM!B(bldgModls[tag],1.0f);
+		meshes=mt[0];
+		textures=mt[1];
+		setGraphicsProperties(tag);
+	}
+	static SacObject!B getBLDG(char[4] tag){
+		if(auto r=tag in objects) return *r;
+		return objects[tag]=new SacObject!B(tag,(Structure*).init); // hack
+	}
+
 	private this(T)(char[4] tag, T* hack) if(is(T==Widgets)){
 		auto mt=loadWIDG!B(widgModls[tag]);
 		meshes=[mt[0]];

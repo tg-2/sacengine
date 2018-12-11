@@ -22,7 +22,7 @@ struct BldgHeader{
 static assert(BldgHeader.sizeof==128);
 struct BldgComponent{
 	char[4] kind;
-	char[4] retroModel;
+	char[4] tag;
 	char[4] unknown0;
 	char[4] destroyed;
 	float unknown1;
