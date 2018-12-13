@@ -17,7 +17,6 @@ class SacObject(B){
 	SaxsInstance!B saxsi;
 	Animation[] animations;
 	AnimationState animationState=AnimationState.stance1;
-	size_t frame; // TODO: move out of here
 
 	int sunBeamPart=-1;
 	int locustWingPart=-1;
@@ -30,7 +29,6 @@ class SacObject(B){
 		this.saxsi=rhs.saxsi;
 		this.animations=rhs.animations;
 		this.animationState=rhs.animationState;
-		this.frame=rhs.frame;
 		this.sunBeamPart=rhs.sunBeamPart;
 		this.locustWingPart=rhs.locustWingPart;
 		this.transparentShinyPart=rhs.transparentShinyPart;
@@ -189,9 +187,8 @@ class SacObject(B){
 		auto anim=loadSXSK(animation,scaling);
 		static if(gpuSkinning)
 			anim.compile(saxsi.saxs);
-		frame=0;
 		animations=[anim];
-		if(saxsi.meshes.length) saxsi.setPose(anim.frames[frame]);
+		if(saxsi.meshes.length) saxsi.setPose(anim.frames[0]);
 	}
 
 	final bool hasAnimationState(AnimationState state){
@@ -202,9 +199,8 @@ class SacObject(B){
 		assert(hasAnimationState(state));
 	}body{
 		animationState=state;
-		frame=0;
 		// issue: saxs instance is shared between all objects, need to set pose during rendering
-		saxsi.setPose(animations[state].frames[frame]);
+		saxsi.setPose(animations[state].frames[0]);
 	}
 
 	final size_t numFrames(){
@@ -217,7 +213,6 @@ class SacObject(B){
 	void setFrame(size_t frame)in{
 		assert(frame<numFrames());
 	}body{
-		this.frame=frame;
 		saxsi.setPose(animations[animationState].frames[frame]);
 	}
 }
