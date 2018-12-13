@@ -19,6 +19,7 @@ class SacObject(B){
 	size_t frame; // TODO: move out of here
 
 	int sunBeamPart=-1;
+	int locustWingPart=-1;
 	int transparentShinyPart=-1;
 
 	this(SacObject!B rhs){ // TODO: get rid of this
@@ -30,6 +31,7 @@ class SacObject(B){
 		this.animationState=rhs.animationState;
 		this.frame=rhs.frame;
 		this.sunBeamPart=rhs.sunBeamPart;
+		this.locustWingPart=rhs.locustWingPart;
 		this.transparentShinyPart=rhs.transparentShinyPart;
 	}
 
@@ -55,6 +57,31 @@ class SacObject(B){
 			transparentShinyPart=0;
 			sunBeamPart=1;
 		}
+		// locust wings
+		if(kind.among("bugz"))
+			locustWingPart=3;
+	}
+	final int alphaFlags(char[4] tag){
+		switch(tag){
+			case "zidd","enab","2nab": return 1<<5;
+			case "kacd": return 1<<5;
+			case "mmag": return 1<<6;
+			case "kacf": return 1<<7;
+			//case "lbog": return 8; // TODO: looks bad, why?
+			case "mrAF": return 1<<3;
+			case "tbhe": return 1<<6;
+			case "tbhf","tbsh","tbhl": return 1<<5;
+			case "bobs","aras": return 1<<2;
+			case "mwas": return 1<<6;
+			case "grps","lrps": return 1<<4|1<<5;
+			case "grda","nmdd": return 1<<9;
+			case "gard","ybab","cris": return 1<<8;
+			case "grdf": return 1<<5;
+			case "oreh": return 1<<6;
+			case "tkhs": return 1<<10;
+			case "lgir","ziwx": return 1<<7;
+			default: return 0;
+		}
 	}
 
 	private this(T)(char[4] tag,T* hack) if(is(T==Creature)||is(T==Wizard)){
@@ -65,7 +92,7 @@ class SacObject(B){
 		else static if(is(T==Wizard)) auto dat2=&wizds[tag];
 		else static assert(0);
 		auto model=saxsModls[dat2.saxsModel];
-		saxsi=SaxsInstance!B(loadSaxs!B(model,data.scaling));
+		saxsi=SaxsInstance!B(loadSaxs!B(model,data.scaling,alphaFlags(dat2.saxsModel)));
 		if(!isNaN(data.zfactorOverride)) saxsi.saxs.zfactor=data.zfactorOverride;
 		auto anims=&dat2.animations;
 		auto animIDs=dat2.animations.animations[];
@@ -84,7 +111,7 @@ class SacObject(B){
 			}
 		}
 		saxsi.createMeshes(animations[animationState].frames[0]);
-		setGraphicsProperties(tag);
+		setGraphicsProperties(dat2.saxsModel);
 		setAnimationState(AnimationState.stance1); // TODO: get rid of this
 	}
 	static SacObject!B[char[4]] objects;
@@ -139,10 +166,10 @@ class SacObject(B){
 				break;
 			case "SXMD":
 				isSaxs=true;
-				saxsi=SaxsInstance!B(loadSaxs!B(filename,scaling));
+				saxsi=SaxsInstance!B(loadSaxs!B(filename,scaling,alphaFlags(tag)));
+				saxsi.createMeshes();
 				if(animation.length)
 					loadAnimation(animation,scaling);
-				saxsi.createMeshes();
 				break;
 			default:
 				assert(0);

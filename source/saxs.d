@@ -49,7 +49,7 @@ struct Saxs(B){
 	BodyPart!B[] bodyParts;
 }
 
-Saxs!B loadSaxs(B)(string filename, float scaling=1.0f){
+Saxs!B loadSaxs(B)(string filename, float scaling=1.0f, int alphaFlags=0){
 	enforce(filename.endsWith(".SXMD"));
 	auto dir=dirName(filename);
 	ubyte[] data;
@@ -109,7 +109,7 @@ Saxs!B loadSaxs(B)(string filename, float scaling=1.0f){
 			foreach(eface;bodyPart.explicitFaces)
 				faces~=[vrt[i][0][eface[0]],vrt[i][0][eface[1]],vrt[i][0][eface[2]]];
 		}
-		auto texture=B.makeTexture(loadSXTX(buildPath(dir,format(".%03d.SXTX",i+1))));
+		auto texture=B.makeTexture(loadSXTX(buildPath(dir,format(".%03d.SXTX",i+1)),alphaFlags>>i&1));
 		//writeln(i,": ",bodyPart.flags," ",bodyPart.unknown0," ",bodyPart.unknown1);
 		//if(bodyPart.flags==0&&bodyPart.unknown0[].all!(x=>x==0)&&bodyPart.unknown1[].all!(x=>x==0)) faces=[];
 		bodyParts~=BodyPart!B(vertices,faces,texture);

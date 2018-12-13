@@ -253,14 +253,19 @@ class SacScene: Scene{
 			obj.updateTransformation();
 			GenericMaterial mat;
 			if(i==sobj.sunBeamPart){
-				assert(!sobj.isSaxs);
-				mat=createMaterial(shadelessMaterialBackend);
+				mat=createMaterial(gpuSkinning&&sobj.isSaxs?shadelessBoneMaterialBackend:shadelessMaterialBackend);
 				obj.castShadow=false;
 				mat.depthWrite=false;
 				mat.blending=Additive;
 				mat.energy=4.0f;				
+			}else if(i==sobj.locustWingPart){
+				mat=createMaterial(gpuSkinning&&sobj.isSaxs?shadelessBoneMaterialBackend:shadelessMaterialBackend);
+				obj.castShadow=false;
+				mat.depthWrite=false;
+				mat.blending=Additive;
+				mat.energy=20.0f;
 			}else if(i==sobj.transparentShinyPart){
-				mat=createMaterial(shadelessMaterialBackend);
+				mat=createMaterial(gpuSkinning&&sobj.isSaxs?shadelessBoneMaterialBackend:shadelessMaterialBackend);
 				mat.depthWrite=false;
 				mat.blending=Transparent;
 				mat.transparency=0.5f;
