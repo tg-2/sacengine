@@ -13,6 +13,7 @@ class SacMap(B){
 	B.Texture[] textures;
 	B.Texture[] details;
 	B.Texture color;
+	B.Material[] materials;
 	ubyte[] dti;
 	int n,m;
 	bool[][] edges;
@@ -54,6 +55,7 @@ class SacMap(B){
 		auto lmap=loadLMap(filename[0..$-".HMAP".length]~".LMAP");
 		color=B.makeTexture(lmap);
 		meshes=createMeshes!B(hmap,tmap);
+		materials=B.createMaterials(this);
 	}
 
 	struct Sky{

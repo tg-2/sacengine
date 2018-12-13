@@ -12,53 +12,45 @@ class SacObject(B){
 	int stateIndex=-1;
 	B.Mesh[] meshes;
 	B.Texture[] textures;
-
 	bool isSaxs=false;
 	SaxsInstance!B saxsi;
+	B.Material[] materials;
 	Animation[] animations;
 	AnimationState animationState=AnimationState.stance1;
 
-	int sunBeamPart=-1;
-	int locustWingPart=-1;
-	int transparentShinyPart=-1;
-
-	this(SacObject!B rhs){ // TODO: get rid of this
-		this.meshes=rhs.meshes;
-		this.textures=rhs.textures;
-		this.isSaxs=rhs.isSaxs;
-		this.saxsi=rhs.saxsi;
-		this.animations=rhs.animations;
-		this.animationState=rhs.animationState;
-		this.sunBeamPart=rhs.sunBeamPart;
-		this.locustWingPart=rhs.locustWingPart;
-		this.transparentShinyPart=rhs.transparentShinyPart;
+	struct MaterialConfig{
+		int sunBeamPart=-1;
+		int locustWingPart=-1;
+		int transparentShinyPart=-1;
 	}
 
-	private void setGraphicsProperties(char[4] tag){
+	private void createMaterials(char[4] tag){
 		this.tag=tag;
+		MaterialConfig conf;
 		// TODO: this is a hack:
 		auto kind=tag;
 		reverse(kind[]);
 		// sunbeams
-		if(kind.among("pcsb","casb")) sunBeamPart=0;
+		if(kind.among("pcsb","casb")) conf.sunBeamPart=0;
 		// manaliths
-		if(kind.among("mana","cama")) transparentShinyPart=0;
-		if(kind.among("jman","stam","pyma")) transparentShinyPart=1;
+		if(kind.among("mana","cama")) conf.transparentShinyPart=0;
+		if(kind.among("jman","stam","pyma")) conf.transparentShinyPart=1;
 		// crystals
-		if(kind.among("crpt","stc1","stc2","stc3","sfir","stst")) transparentShinyPart=0;
-		if(kind.among("sfor")) transparentShinyPart=0;
-		if(kind.among("SAW1","SAW2","SAW3","SAW4","SAW5")) transparentShinyPart=0;
-		if(kind.among("ST01","ST02","ST03")) transparentShinyPart=0;
+		if(kind.among("crpt","stc1","stc2","stc3","sfir","stst")) conf.transparentShinyPart=0;
+		if(kind.among("sfor")) conf.transparentShinyPart=0;
+		if(kind.among("SAW1","SAW2","SAW3","SAW4","SAW5")) conf.transparentShinyPart=0;
+		if(kind.among("ST01","ST02","ST03")) conf.transparentShinyPart=0;
 		// ethereal altar, ethereal sunbeams
-		if(kind.among("ea_b","ea_r","esb1","esb2","esb_","etfn")) sunBeamPart=0;
+		if(kind.among("ea_b","ea_r","esb1","esb2","esb_","etfn")) conf.sunBeamPart=0;
 		// "eis1","eis2", "eis3", "eis4" ?
 		if(kind.among("st4a")){
-			transparentShinyPart=0;
-			sunBeamPart=1;
+			conf.transparentShinyPart=0;
+			conf.sunBeamPart=1;
 		}
 		// locust wings
 		if(kind.among("bugz"))
-			locustWingPart=3;
+			conf.locustWingPart=3;
+		materials=B.createMaterials(this,conf);
 	}
 	final int alphaFlags(char[4] tag){
 		switch(tag){
@@ -110,7 +102,7 @@ class SacObject(B){
 			}
 		}
 		saxsi.createMeshes(animations[animationState].frames[0]);
-		setGraphicsProperties(dat2.saxsModel);
+		createMaterials(dat2.saxsModel);
 		setAnimationState(AnimationState.stance1); // TODO: get rid of this
 	}
 	static SacObject!B[char[4]] objects;
@@ -123,7 +115,7 @@ class SacObject(B){
 		auto mt=loadMRMM!B(bldgModls[tag],1.0f);
 		meshes=mt[0];
 		textures=mt[1];
-		setGraphicsProperties(tag);
+		createMaterials(tag);
 	}
 	static SacObject!B getBLDG(char[4] tag){
 		if(auto r=tag in objects) return *r;
@@ -134,7 +126,7 @@ class SacObject(B){
 		auto mt=loadWIDG!B(widgModls[tag]);
 		meshes=[mt[0]];
 		textures=[mt[1]];
-		setGraphicsProperties(tag);
+		createMaterials(tag);
 	}
 	static SacObject!B getWIDG(char[4] tag){
 		if(auto r=tag in objects) return *r;
@@ -145,7 +137,7 @@ class SacObject(B){
 		enforce(filename.endsWith(".MRMM")||filename.endsWith(".3DSM")||filename.endsWith(".WIDG")||filename.endsWith(".SXMD"));
 		char[4] tag=filename[$-9..$-5][0..4];
 		reverse(tag[]);
-		setGraphicsProperties(tag);
+		createMaterials(tag);
 		switch(filename[$-4..$]){
 			case "MRMM":
 				auto mt=loadMRMM!B(filename, scaling);

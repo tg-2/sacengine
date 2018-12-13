@@ -2,7 +2,7 @@ import dagon;
 import options,util;
 import std.math;
 import std.stdio;
-import std.algorithm, std.range;
+import std.algorithm, std.range, std.exception;
 
 import sacobject, sacmap, state;
 import sxsk : gpuSkinning;
@@ -225,25 +225,10 @@ class SacScene: Scene{
 		foreach(i,mesh;map.meshes){
 			if(!mesh) continue;
 			auto obj=createEntity3D();
-			obj.drawable = mesh;
-			obj.position = Vector3f(0, 0, 0);
+			obj.drawable=mesh;
+			obj.position=Vector3f(0, 0, 0);
 			obj.updateTransformation();
-			auto mat=createMaterial(terrainMaterialBackend);
-			assert(!!map.textures[i]);
-			mat.diffuse=map.textures[i];
-			if(i<map.dti.length){
-				assert(!!map.details[map.dti[i]]);
-				mat.detail=map.details[map.dti[i]];
-			}else mat.detail=0;
-			mat.color=map.color;
-			auto specu=map.envi.landscapeSpecularity;
-			mat.specular=Color4f(specu*map.envi.specularityRed/255.0f,specu*map.envi.specularityGreen/255.0f,specu*map.envi.specularityBlue/255.0f);
-			//mat.roughness=1.0f-envi.landscapeGlossiness;
-			mat.roughness=1.0f;
-			mat.metallic=0.0f;
-			mat.emission=map.textures[i];
-			mat.energy=0.05;
-			obj.material=mat;
+			obj.material=map.materials[i];
 			obj.shadowMaterial=shadowMap.sm;
 		}
 	}
@@ -255,35 +240,13 @@ class SacScene: Scene{
 			obj.position = position;
 			obj.rotation = rotation;
 			obj.updateTransformation();
-			GenericMaterial mat;
-			if(i==sobj.sunBeamPart){
-				mat=createMaterial(gpuSkinning&&sobj.isSaxs?shadelessBoneMaterialBackend:shadelessMaterialBackend);
-				obj.castShadow=false;
-				mat.depthWrite=false;
-				mat.blending=Additive;
-				mat.energy=4.0f;
-			}else if(i==sobj.locustWingPart){
-				mat=createMaterial(gpuSkinning&&sobj.isSaxs?shadelessBoneMaterialBackend:shadelessMaterialBackend);
-				obj.castShadow=false;
-				mat.depthWrite=false;
-				mat.blending=Additive;
-				mat.energy=20.0f;
-			}else if(i==sobj.transparentShinyPart){
-				mat=createMaterial(gpuSkinning&&sobj.isSaxs?shadelessBoneMaterialBackend:shadelessMaterialBackend);
-				mat.depthWrite=false;
-				mat.blending=Transparent;
-				mat.transparency=0.5f;
-				mat.energy=20.0f;
-			}else{
-				mat=createMaterial(gpuSkinning&&sobj.isSaxs?boneMaterialBackend:defaultMaterialBackend);
-			}
-			auto diffuse=sobj.isSaxs?sobj.saxsi.saxs.bodyParts[i].texture:sobj.textures[i];
-			if(diffuse !is null) mat.diffuse=diffuse;
-			mat.specular=Color4f(0,0,0,1);
+			auto mat=sobj.materials[i];
 			obj.material=mat;
+			auto blending=("blending" in mat.inputs).asInteger;
+			obj.castShadow=blending!=Additive;
 			if(obj.castShadow){
 				auto shadowMat=createMaterial(gpuSkinning&&sobj.isSaxs?shadowMap.bsb:shadowMap.sb);
-				if(diffuse !is null) shadowMat.diffuse=diffuse;
+				shadowMat.diffuse=("diffuse" in mat.inputs).texture;
 				obj.shadowMaterial=shadowMat;
 			}
 			//entities[sobj].insertBack(obj);
@@ -386,13 +349,15 @@ class MyApplication: SceneApplication{
 }
 
 struct DagonBackend{
-	MyApplication app;
-	@property SacScene scene(){
+	static MyApplication app;
+	static @property SacScene scene(){
+		enforce(!!app, "Dagon backend not running.");
 		auto r=cast(SacScene)app.sceneManager.currentScene;
 		assert(!!r);
 		return r;
 	}
 	this(Options options){
+		enforce(!app,"can only have one DagonBackend"); // TODO: fix?
 		app = New!MyApplication(options);
 	}
 	void setState(GameState!DagonBackend state){
@@ -407,6 +372,7 @@ struct DagonBackend{
 	~this(){ Delete(app); }
 static:
 	alias Texture=.Texture;
+	alias Material=.GenericMaterial;
 	alias Mesh=.Mesh;
 	alias BoneMesh=.BoneMesh;
 	alias TerrainMesh=.TerrainMesh;
@@ -461,6 +427,60 @@ static:
 	void finalizeTerrainMesh(TerrainMesh mesh){
 		mesh.dataReady=true;
 		mesh.prepareVAO();
+	}
+
+	Material[] createMaterials(SacObject!DagonBackend sobj,SacObject!DagonBackend.MaterialConfig config){
+		GenericMaterial[] materials;
+		foreach(i;0..sobj.isSaxs?sobj.saxsi.meshes.length:sobj.meshes.length){
+			GenericMaterial mat;
+			if(i==config.sunBeamPart){
+				mat=scene.createMaterial(gpuSkinning&&sobj.isSaxs?scene.shadelessBoneMaterialBackend:scene.shadelessMaterialBackend);
+				mat.depthWrite=false;
+				mat.blending=Additive;
+				mat.energy=4.0f;
+			}else if(i==config.locustWingPart){
+				mat=scene.createMaterial(gpuSkinning&&sobj.isSaxs?scene.shadelessBoneMaterialBackend:scene.shadelessMaterialBackend);
+				mat.depthWrite=false;
+				mat.blending=Additive;
+				mat.energy=20.0f;
+			}else if(i==config.transparentShinyPart){
+				mat=scene.createMaterial(gpuSkinning&&sobj.isSaxs?scene.shadelessBoneMaterialBackend:scene.shadelessMaterialBackend);
+				mat.depthWrite=false;
+				mat.blending=Transparent;
+				mat.transparency=0.5f;
+				mat.energy=20.0f;
+			}else{
+				mat=scene.createMaterial(gpuSkinning&&sobj.isSaxs?scene.boneMaterialBackend:scene.defaultMaterialBackend);
+			}
+			auto diffuse=sobj.isSaxs?sobj.saxsi.saxs.bodyParts[i].texture:sobj.textures[i];
+			if(diffuse !is null) mat.diffuse=diffuse;
+			mat.specular=Color4f(0,0,0,1);
+			materials~=mat;
+		}
+		return materials;
+	}
+
+	Material[] createMaterials(SacMap!DagonBackend map){
+		Material[] materials;
+		foreach(i,mesh;map.meshes){
+			auto mat=scene.createMaterial(scene.terrainMaterialBackend);
+			assert(!!map.textures[i]);
+			mat.diffuse=map.textures[i];
+			if(i<map.dti.length){
+				assert(!!map.details[map.dti[i]]);
+				mat.detail=map.details[map.dti[i]];
+			}else mat.detail=0;
+			mat.color=map.color;
+			auto specu=map.envi.landscapeSpecularity;
+			mat.specular=Color4f(specu*map.envi.specularityRed/255.0f,specu*map.envi.specularityGreen/255.0f,specu*map.envi.specularityBlue/255.0f);
+			//mat.roughness=1.0f-envi.landscapeGlossiness;
+			mat.roughness=1.0f;
+			mat.metallic=0.0f;
+			mat.emission=map.textures[i];
+			mat.energy=0.05;
+			materials~=mat;
+		}
+		return materials;
 	}
 
 	enum GL_GPU_MEM_INFO_TOTAL_AVAILABLE_MEM_NVX=0x9048;
