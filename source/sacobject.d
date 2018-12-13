@@ -230,7 +230,7 @@ auto convertModel(B,Model)(string dir, Model model, float scaling){
 		namesRev[v]=k;
 		if(k[0]==0) continue;
 		auto name=buildPath(dir, k~".TXTR");
-		textures[v]=B.makeTexture(loadTXTR(name));
+		textures[v]=B.makeTexture(loadTXTR(name),false);
 	}
 
 	static if(is(typeof(model.faces[0].lod))){
