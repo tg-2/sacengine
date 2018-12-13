@@ -171,7 +171,7 @@ static if(!gpuSkinning){
 		return meshes;
 	}
 }else{
-	B.BoneMesh[] createBoneMeshes(B)(Saxs!B saxs,Pose* normalPose=null){
+	B.BoneMesh[] createBoneMeshes(B)(Saxs!B saxs,Pose normalPose){
 		auto meshes=new B.BoneMesh[](saxs.bodyParts.length);
 		foreach(i,ref bodyPart;saxs.bodyParts){
 			meshes[i]=B.makeBoneMesh(bodyPart.vertices.length,bodyPart.faces.length);
@@ -184,7 +184,7 @@ static if(!gpuSkinning){
 				meshes[i].texcoords[j]=vertex.uv;
 			}
 			meshes[i].indices[]=bodyPart.faces[];
-			if(normalPose) meshes[i].pose=normalPose.matrices;
+			meshes[i].pose=normalPose.matrices;
 			meshes[i].generateNormals();
 			B.finalizeBoneMesh(meshes[i]);
 		}
@@ -198,14 +198,9 @@ struct SaxsInstance(B){
 	else B.BoneMesh[] meshes;
 }
 
-void createMeshes(B)(ref SaxsInstance!B saxsi){
-	static if(!gpuSkinning) saxsi.meshes=createMeshes(saxsi.saxs);
-	else saxsi.meshes=createBoneMeshes!B(saxsi.saxs);
-}
-
 void createMeshes(B)(ref SaxsInstance!B saxsi,Pose normalPose){
 	static if(!gpuSkinning) saxsi.meshes=createMeshes(saxsi.saxs);
-	else saxsi.meshes=createBoneMeshes!B(saxsi.saxs,&normalPose);
+	else saxsi.meshes=createBoneMeshes!B(saxsi.saxs,normalPose);
 }
 
 

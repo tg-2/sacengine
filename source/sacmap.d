@@ -1,6 +1,6 @@
 import dlib.image, dlib.math, dlib.geometry;
 import util;
-import maps,txtr,ntts,envi;
+import maps,txtr,envi;
 import std.exception, std.string, std.algorithm, std.conv, std.range;
 import std.stdio, std.path, std.file;
 import std.typecons: tuple,Tuple;
@@ -19,8 +19,6 @@ class SacMap(B){
 	float[][] heights;
 	ubyte[][] tiles;
 	Envi envi;
-
-	SacObject!B[] ntts;
 
 	this(string filename){
 		enforce(filename.endsWith(".HMAP"));
@@ -72,69 +70,6 @@ class SacMap(B){
 		float tZDiff=Sky.scaling*Sky.skyZ*(1-Sky.relCloudLoc);
 		auto intersection=sunPos+(adjCamPos-sunPos)*tZDiff/zDiff;
 		return intersection.xy/(Sky.scaling/2);
-	}
-	void placeStructure(ref Structure ntt){
-		import nttData;
-		auto data=ntt.tag in bldgs;
-		enforce(!!data);
-		auto position=Vector3f(ntt.x,ntt.y,ntt.z);
-		auto ci=cast(int)(position.x/10+0.5);
-		auto cj=cast(int)(position.y/10+0.5);
-		import bldg;
-		if(data.flags&BldgFlags.ground){
-			auto ground=data.ground;
-			foreach(j;max(0,cj-4)..min(n,cj+4)){
-				foreach(i;max(0,ci-4)..min(m,ci+4)){
-					auto dj=j-(cj-4), di=i-(ci-4);
-					if(ground[dj][di])
-						tiles[j][i]=ground[dj][di];
-				}
-			}
-		}
-		foreach(ref component;data.components){
-			auto offset=Vector3f(component.x,component.y,component.z);
-			offset=rotate(facingQuaternion(ntt.facing), offset);
-			auto cposition=position+offset;
-			if(!isOnGround(cposition)) continue;
-			cposition.z=getGroundHeight(cposition);
-			auto curObj=SacObject!B.getBLDG(component.tag);
-			auto obj=new SacObject!B(curObj); // TODO: get rid of this
-			obj.position=cposition;
-			obj.rotation=facingQuaternion(ntt.facing+component.facing);
-			ntts~=obj;
-		}
-	}
-
-	void placeNTT(T)(ref T ntt) if(is(T==Creature)||is(T==Wizard)){
-		auto curObj=SacObject!B.getSAXS!T(ntt.tag);
-		auto obj=new SacObject!B(curObj); // TODO: get rid of this
-		auto position=Vector3f(ntt.x,ntt.y,ntt.z);
-		if(isOnGround(position))
-			position.z=getGroundHeight(position);
-		obj.rotation=rotationQuaternion(Axis.z,cast(float)(2*PI/360*ntt.facing))*obj.rotation;
-		obj.position=position;
-		/+import animations;
-		AnimationState state;
-		do{
-			import std.random: uniform;
-			state=cast(AnimationState)uniform(0,64);
-		}while(!obj.hasAnimationState(state));
-		obj.setAnimationState(state);+/
-		ntts~=obj;
-	}
-	void placeWidgets(Widgets w){
-		auto curObj=SacObject!B.getWIDG(w.tag);
-		foreach(pos;w.positions){
-			auto position=Vector3f(pos[0],pos[1],0);
-			if(!isOnGround(position)) continue;
-			position.z=getGroundHeight(position);
-			auto obj=new SacObject!B(curObj); // TODO: get rid of this
-			// original engine screws up widget rotations
-			// values look like angles in degrees, but they are actually radians
-			obj.rotation=rotationQuaternion(Axis.z,cast(float)(-pos[2]));
-			obj.position=position;
-			ntts~=obj;
-		}
 	}
 
 	Tuple!(int,"j",int,"i") getTile(Vector3f pos){

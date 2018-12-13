@@ -1,6 +1,7 @@
 import options;
 import dagonBackend;
 import ntts, sacobject, sacmap, state;
+import util;
 import dlib.math;
 import std.string;
 import std.exception;
@@ -30,10 +31,10 @@ void main(string[] args){
 			backend.setState(state);
 		}else{
 			auto sac=new SacObject!DagonBackend(args[i], args[i].endsWith(".SXMD")?2e-3:1, anim);
-			sac.position=Vector3f(1270.0f, 1270.0f, 0.0f);
-			if(state && state.isOnGround(sac.position))
-				sac.position.z=state.getGroundHeight(sac.position);
-			backend.addObject(sac);
+			auto position=Vector3f(1270.0f, 1270.0f, 0.0f);
+			if(state && state.isOnGround(position))
+				position.z=state.getGroundHeight(position);
+			backend.addObject(sac,position,facingQuaternion(0));
 		}
 		if(i+1<args.length&&args[i+1].endsWith(".SXSK"))
 			i+=1;

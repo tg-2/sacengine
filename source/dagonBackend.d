@@ -212,6 +212,13 @@ class SacScene: Scene{
 		// fogDensity?
 	}
 
+	void createEntities(GameState!DagonBackend state,bool sky=true){
+		createEntities(state.map);
+		state.current.each!((obj){
+			createEntities(obj.sacObject,obj.position,obj.rotation);
+		});
+	}
+
 	void createEntities(SacMap!DagonBackend map,bool sky=true){
 		setupEnvironment(map);
 		if(sky) createSky(map);
@@ -239,17 +246,14 @@ class SacScene: Scene{
 			obj.material=mat;
 			obj.shadowMaterial=shadowMap.sm;
 		}
-		foreach(i,ntt;map.ntts){
-			createEntities(ntt);
-		}
 	}
 
-	void createEntities(SacObject!DagonBackend sobj){
+	void createEntities(SacObject!DagonBackend sobj,Vector3f position,Quaternionf rotation){
 		foreach(i;0..sobj.isSaxs?sobj.saxsi.meshes.length:sobj.meshes.length){
 			auto obj=createEntity3D();
 			obj.drawable = sobj.isSaxs?cast(Drawable)sobj.saxsi.meshes[i]:cast(Drawable)sobj.meshes[i];
-			obj.position = sobj.position;
-			obj.rotation = sobj.rotation;
+			obj.position = position;
+			obj.rotation = rotation;
 			obj.updateTransformation();
 			GenericMaterial mat;
 			if(i==sobj.sunBeamPart){
@@ -257,7 +261,7 @@ class SacScene: Scene{
 				obj.castShadow=false;
 				mat.depthWrite=false;
 				mat.blending=Additive;
-				mat.energy=4.0f;				
+				mat.energy=4.0f;
 			}else if(i==sobj.locustWingPart){
 				mat=createMaterial(gpuSkinning&&sobj.isSaxs?shadelessBoneMaterialBackend:shadelessMaterialBackend);
 				obj.castShadow=false;
@@ -290,14 +294,14 @@ class SacScene: Scene{
 		assert(this.state is null);
 	}do{
 		this.state=state;
-		createEntities(state.map);
+		createEntities(state);
 	}
 
-	void addObject(SacObject!DagonBackend obj){
-		createEntities(obj);
+	void addObject(SacObject!DagonBackend obj,Vector3f position,Quaternionf rotation){
+		createEntities(obj,position,rotation);
 		sacs.insertBack(obj);
 	}
-	
+
 	override void onAllocate(){
 		super.onAllocate();
 
@@ -365,7 +369,7 @@ class SacScene: Scene{
 			sacSkyMaterialBackend.cloudOffset.y=fmod(sacSkyMaterialBackend.cloudOffset.y,1.0f);
 			rotateSky(rotationQuaternion(Axis.z,cast(float)(2*PI/512.0f*totalTime)));
 		}
-		foreach(sac;chain(sacs.data,state?state.map.ntts:[])){
+		foreach(sac;sacs.data){
 			auto frame=totalTime*sac.animFPS;
 			if(sac.numFrames) sac.setFrame(cast(size_t)(frame%sac.numFrames));
 		}
@@ -394,8 +398,8 @@ struct DagonBackend{
 	void setState(GameState!DagonBackend state){
 		scene.setState(state);
 	}
-	void addObject(SacObject!DagonBackend obj){
-		scene.addObject(obj);
+	void addObject(SacObject!DagonBackend obj,Vector3f position,Quaternionf rotation){
+		scene.addObject(obj,position,rotation);
 	}
 	void run(){
 		app.run();
@@ -421,7 +425,7 @@ static:
 		m.normals=New!(Vector3f[])(numVertices);
 		m.texcoords=New!(Vector2f[])(numVertices);
 		m.indices=New!(uint[3][])(numFaces);
-		return m;		
+		return m;
 	}
 	void finalizeMesh(Mesh mesh){
 		mesh.dataReady=true;
@@ -464,14 +468,14 @@ static:
 
 	GLint getTotalGPUMemory(){
 		GLint total_mem_kb = 0;
-		glGetIntegerv(GL_GPU_MEM_INFO_TOTAL_AVAILABLE_MEM_NVX, 
+		glGetIntegerv(GL_GPU_MEM_INFO_TOTAL_AVAILABLE_MEM_NVX,
 		              &total_mem_kb);
 		return total_mem_kb;
 	}
 
 	GLint getAvailableGPUMemory(){
 		GLint cur_avail_mem_kb = 0;
-		glGetIntegerv(GL_GPU_MEM_INFO_CURRENT_AVAILABLE_MEM_NVX, 
+		glGetIntegerv(GL_GPU_MEM_INFO_CURRENT_AVAILABLE_MEM_NVX,
 		              &cur_avail_mem_kb);
 		return cur_avail_mem_kb;
 	}

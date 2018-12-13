@@ -9,6 +9,7 @@ import std.exception, std.algorithm, std.math, std.path;
 
 class SacObject(B){
 	char[4] tag;
+	int stateIndex=-1;
 	B.Mesh[] meshes;
 	B.Texture[] textures;
 
@@ -167,9 +168,16 @@ class SacObject(B){
 			case "SXMD":
 				isSaxs=true;
 				saxsi=SaxsInstance!B(loadSaxs!B(filename,scaling,alphaFlags(tag)));
-				saxsi.createMeshes();
+				import std.range, std.array;
 				if(animation.length)
 					loadAnimation(animation,scaling);
+				if(!animations.length){
+					auto anim=Animation([Pose(Vector3f(0,0,0),facingQuaternion(0).repeat(saxsi.saxs.bones.length).array)]);
+					if(gpuSkinning)
+						anim.compile(saxsi.saxs);
+					animations=[anim];
+				}
+				saxsi.createMeshes(animations[0].frames[0]);
 				break;
 			default:
 				assert(0);
@@ -183,7 +191,7 @@ class SacObject(B){
 			anim.compile(saxsi.saxs);
 		frame=0;
 		animations=[anim];
-		saxsi.setPose(anim.frames[frame]);
+		if(saxsi.meshes.length) saxsi.setPose(anim.frames[frame]);
 	}
 
 	final bool hasAnimationState(AnimationState state){
@@ -198,9 +206,6 @@ class SacObject(B){
 		// issue: saxs instance is shared between all objects, need to set pose during rendering
 		saxsi.setPose(animations[state].frames[frame]);
 	}
-
-	Vector3f position = Vector3f(0,0,0); // TODO: move out of here
-	Quaternionf rotation = rotationQuaternion(Axis.y,cast(float)0.0); // TODO: move out of here
 
 	final size_t numFrames(){
 		return isSaxs?animations[animationState].frames.length:0;
