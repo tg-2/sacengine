@@ -68,7 +68,7 @@ class SacObject(B){
 			case "mmag": return 1<<6;
 			case "kacf": return 1<<7;
 			//case "lbog": return 8; // TODO: looks bad, why?
-			case "mrAF": return 1<<3;
+			case "rmAF": return 1<<3;
 			case "tbhe": return 1<<6;
 			case "tbhf","tbsh","tbhl": return 1<<5;
 			case "bobs","aras": return 1<<2;
