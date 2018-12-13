@@ -20,11 +20,10 @@ SuperImage loadSXTX(string filename,bool alpha){
 	auto img=loadTGA(filename);
 	if(!alpha) return img;
 	auto nimg=image(img.width,img.height,4); // TODO: process data only once
-	foreach(y;0..img.height){
-		foreach(x;0..img.width){
-			auto color=img[x,y];
-			nimg[x,y]=Color4f(color.r,color.g,color.b,color==Color4f(0,0,0)?0.0f:1.0f);
-		}
+	auto data=img.data,ndata=nimg.data;
+	foreach(i;0..nimg.data.length/4){
+		ndata[4*i..4*i+3]=data[3*i..3*i+3];
+		ndata[4*i+3]=data[3*i]==0&&data[3*i+1]==0&&data[3*i+2]==0?0:255;
 	}
 	img.free();
 	return nimg;

@@ -36,18 +36,25 @@ SuperImage loadTXTR(string filename){ // TODO: maybe integrate with dagon's Text
 		foreach(ubyte[] chunk;chunks(File(palFile, "rb"),4096)) palt~=chunk;
 		palt=palt[8..$]; // header bytes (TODO: figure out what they mean)
 	}
-	auto img=image(width, height, 3+(hasAlphaColor||hasExplicitAlpha));
-	foreach(y;0..height){
-		foreach(x;0..width){
-			auto index = y*img.width+x;
-			auto ccol = txt[index];
-			ubyte[3] tcol;
-			if(grayscale) tcol=[ccol,ccol,ccol];
-			else tcol=[palt[3*ccol+0],palt[3*ccol+1],palt[3*ccol+2]];
-			if(!hasAlphaColor||tcol!=alphaColor){
-				img[x,y]=Color4f(Color4(tcol[0],tcol[1],tcol[2],alphaChannel.length?alphaChannel[index]:255));
-			}else img[x,y]=Color4f(Color4(tcol[0],tcol[1],tcol[2],0));
+	auto channels=3+(hasAlphaColor||hasExplicitAlpha);
+	auto img=image(width, height, channels);
+	auto data=img.data;
+	static foreach(schannels;3..5){
+		if(channels==schannels){
+			foreach(i;0..img.data.length/schannels){
+				auto ccol=txt[i];
+				ubyte[3] tcol;
+				if(grayscale) tcol=[ccol,ccol,ccol];
+				else tcol=[palt[3*ccol+0],palt[3*ccol+1],palt[3*ccol+2]];
+				data[schannels*i..schannels*i+3]=tcol[];
+				static if(schannels==4){
+					if(!(hasAlphaColor&&tcol==alphaColor))
+						data[schannels*i+3]=alphaChannel.length?alphaChannel[i]:255;
+				}
+			}
+			goto Lend;
 		}
 	}
+Lend:;
 	return img;
 }

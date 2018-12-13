@@ -208,15 +208,10 @@ class SacMap(B){
 
 SuperImage loadLMap(string filename){
 	enforce(filename.endsWith(".LMAP"));
-	auto colors=maps.loadLMap(filename).colors;
-	auto img=image(256,256);
-	assert(colors.length==256);
-	foreach(y;0..cast(int)colors.length){
-		assert(colors[y].length==256);
-		foreach(x;0..cast(int)colors[y].length){
-			img[x,y]=Color4f(Color4(colors[y][x][0],colors[y][x][1],colors[y][x][2]));
-		}
-	}
+	auto img=image(256,256,4);
+	auto idata=img.data,data=readFile(filename);
+	enforce(idata.length==data.length);
+	img.data[]=data[];
 	return img;
 }
 
