@@ -1,6 +1,6 @@
 import options;
 import dagonBackend;
-import sacobject, sacmap;
+import ntts, sacobject, sacmap, state;
 import dlib.math;
 import std.string;
 import std.exception;
@@ -17,20 +17,22 @@ void main(string[] args){
 		shadowMapResolution: 1024,
 	};
 	auto backend=DagonBackend(options);
-	SacMap!DagonBackend map;
+	GameState!DagonBackend state;
 	foreach(ref i;1..args.length){
 		string anim="";
 		if(i+1<args.length&&args[i+1].endsWith(".SXSK"))
 			anim=args[i+1];
 		if(args[i].endsWith(".HMAP")){
-			enforce(!map);
-			map=new SacMap!DagonBackend(args[i]);
-			backend.addMap(map);
+			enforce(!state);
+			auto map=new SacMap!DagonBackend(args[i]);
+			auto ntts=loadNTTs(args[i][0..$-".HMAP".length]~".NTTS");
+			state=new GameState!DagonBackend(map,ntts);
+			backend.setState(state);
 		}else{
 			auto sac=new SacObject!DagonBackend(args[i], args[i].endsWith(".SXMD")?2e-3:1, anim);
 			sac.position=Vector3f(1270.0f, 1270.0f, 0.0f);
-			if(map && map.isOnGround(sac.position))
-				sac.position.z=map.getGroundHeight(sac.position);
+			if(state && state.isOnGround(sac.position))
+				sac.position.z=state.getGroundHeight(sac.position);
 			backend.addObject(sac);
 		}
 		if(i+1<args.length&&args[i+1].endsWith(".SXSK"))

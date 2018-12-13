@@ -55,17 +55,6 @@ class SacMap(B){
 		details=bumps.map!(B.makeTexture).array;
 		auto lmap=loadLMap(filename[0..$-".HMAP".length]~".LMAP");
 		color=B.makeTexture(lmap);
-		auto ntts=loadNTTs(filename[0..$-".HMAP".length]~".NTTS");
-		/+import std.algorithm;
-		writeln("#widgets: ",ntts.widgetss.map!(x=>x.num).sum);+/
-		foreach(ref structure;ntts.structures)
-			placeStructure(structure);
-		foreach(ref wizard;ntts.wizards)
-			placeNTT(wizard);
-		foreach(ref creature;ntts.creatures)
-			placeNTT(creature);
-		/+foreach(widgets;ntts.widgetss) // TODO: improve engine to be able to handle this
-			placeWidgets(land,widgets);+/
 		meshes=createMeshes!B(hmap,tmap);
 	}
 
@@ -84,7 +73,7 @@ class SacMap(B){
 		auto intersection=sunPos+(adjCamPos-sunPos)*tZDiff/zDiff;
 		return intersection.xy/(Sky.scaling/2);
 	}
-	private void placeStructure(ref Structure ntt){
+	void placeStructure(ref Structure ntt){
 		import nttData;
 		auto data=ntt.tag in bldgs;
 		enforce(!!data);
@@ -116,7 +105,7 @@ class SacMap(B){
 		}
 	}
 
-	private void placeNTT(T)(ref T ntt) if(is(T==Creature)||is(T==Wizard)){
+	void placeNTT(T)(ref T ntt) if(is(T==Creature)||is(T==Wizard)){
 		auto curObj=SacObject!B.getSAXS!T(ntt.tag);
 		auto obj=new SacObject!B(curObj); // TODO: get rid of this
 		auto position=Vector3f(ntt.x,ntt.y,ntt.z);
@@ -133,7 +122,7 @@ class SacMap(B){
 		obj.setAnimationState(state);+/
 		ntts~=obj;
 	}
-	private void placeWidgets(string land,Widgets w){
+	void placeWidgets(Widgets w){
 		auto curObj=SacObject!B.getWIDG(w.tag);
 		foreach(pos;w.positions){
 			auto position=Vector3f(pos[0],pos[1],0);

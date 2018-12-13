@@ -4,7 +4,7 @@ import std.math;
 import std.stdio;
 import std.algorithm, std.range;
 
-import sacobject, sacmap;
+import sacobject, sacmap, state;
 import sxsk : gpuSkinning;
 
 
@@ -22,7 +22,7 @@ class SacScene: Scene{
 		//txta.image = loadTXTR("extracted/jamesmod/JMOD.WAD!/modl.FLDR/jman.MRMC/M001.TXTR");
 		//txta.createFromImage(txta.image);
 	}
-	SacMap!DagonBackend map;
+	GameState!DagonBackend state;
 	DynamicArray!(SacObject!DagonBackend) sacs;
 	Entity[] skyEntities;
 	alias createSky=typeof(super).createSky;
@@ -286,11 +286,11 @@ class SacScene: Scene{
 		}
 	}
 
-	void addMap(SacMap!DagonBackend map)in{
-		assert(this.map is null);
+	void setState(GameState!DagonBackend state)in{
+		assert(this.state is null);
 	}do{
-		this.map=map;
-		createEntities(map);
+		this.state=state;
+		createEntities(state.map);
 	}
 
 	void addObject(SacObject!DagonBackend obj){
@@ -317,7 +317,7 @@ class SacScene: Scene{
 		 obj.position = Vector3f(0, 1, 0);
 		 obj.rotation = rotationQuaternion(Axis.x,-cast(float)PI/2);+/
 
-		if(!map){
+		if(!state){
 			auto sky=createSky();
 			sky.rotation=rotationQuaternion(Axis.z,cast(float)PI)*
 				rotationQuaternion(Axis.x,cast(float)(PI/2));
@@ -347,8 +347,8 @@ class SacScene: Scene{
 		if(eventManager.keyPressed[KEY_K]) fpview.active=false;
 		if(eventManager.keyPressed[KEY_L]) fpview.active=true;
 		fpview.camera.position += dir.normalized * speed * dt;
-		if(map && map.isOnGround(fpview.camera.position)){
-			fpview.camera.position.z=max(fpview.camera.position.z, map.getGroundHeight(fpview.camera.position));
+		if(state && state.isOnGround(fpview.camera.position)){
+			fpview.camera.position.z=max(fpview.camera.position.z, state.getGroundHeight(fpview.camera.position));
 		}
 	}
 
@@ -359,13 +359,13 @@ class SacScene: Scene{
 		cameraControl(dt);
 		totalTime+=dt;
 		if(skyEntities.length){
-			sacSkyMaterialBackend.sunLoc = map.sunSkyRelLoc(fpview.camera.position);
+			sacSkyMaterialBackend.sunLoc = state.sunSkyRelLoc(fpview.camera.position);
 			sacSkyMaterialBackend.cloudOffset+=dt*1.0f/32.0f*Vector2f(1.0f,-1.0f);
 			sacSkyMaterialBackend.cloudOffset.x=fmod(sacSkyMaterialBackend.cloudOffset.x,1.0f);
 			sacSkyMaterialBackend.cloudOffset.y=fmod(sacSkyMaterialBackend.cloudOffset.y,1.0f);
 			rotateSky(rotationQuaternion(Axis.z,cast(float)(2*PI/512.0f*totalTime)));
 		}
-		foreach(sac;chain(sacs.data,map?map.ntts:[])){
+		foreach(sac;chain(sacs.data,state?state.map.ntts:[])){
 			auto frame=totalTime*sac.animFPS;
 			if(sac.numFrames) sac.setFrame(cast(size_t)(frame%sac.numFrames));
 		}
@@ -391,8 +391,8 @@ struct DagonBackend{
 	this(Options options){
 		app = New!MyApplication(options);
 	}
-	void addMap(SacMap!DagonBackend map){
-		scene.addMap(map);
+	void setState(GameState!DagonBackend state){
+		scene.setState(state);
 	}
 	void addObject(SacObject!DagonBackend obj){
 		scene.addObject(obj);
