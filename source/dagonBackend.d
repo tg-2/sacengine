@@ -8,7 +8,7 @@ import sacobject, sacmap, state;
 import sxsk : gpuSkinning;
 
 
-class SacScene: Scene{
+final class SacScene: Scene{
 	//OBJAsset aOBJ;
 	//Texture txta;
 	this(SceneManager smngr, Options options){
@@ -213,24 +213,46 @@ class SacScene: Scene{
 	}
 
 	void createEntities(GameState!DagonBackend state,bool sky=true){
-		createEntities(state.map);
 		state.current.each!((obj){
 			createEntities(obj.sacObject,obj.position,obj.rotation);
 		});
 	}
 
-	void createEntities(SacMap!DagonBackend map,bool sky=true){
-		setupEnvironment(map);
-		if(sky) createSky(map);
+	final void renderMap(RenderingContext* rc){
+		auto map=state.map;
+		rc.layer=1;
+		rc.modelMatrix=Matrix4x4f.identity();
+		rc.invModelMatrix=Matrix4x4f.identity();
+		rc.prevModelViewProjMatrix=Matrix4x4f.identity(); // TODO: get rid of this?
+		rc.modelViewMatrix=rc.viewMatrix*rc.modelMatrix;
+		rc.blurModelViewProjMatrix=rc.projectionMatrix*rc.modelViewMatrix;
+		GenericMaterial mat;
+		if(!rc.shadowMode){
+			mat=map.material; // TODO: get rid of this completely?
+			mat.bind(rc);
+			terrainMaterialBackend.bindColor(map.color);
+		}else{
+			mat=shadowMap.sm;
+			mat.bind(rc);
+		}
 		foreach(i,mesh;map.meshes){
 			if(!mesh) continue;
-			auto obj=createEntity3D();
-			obj.drawable=mesh;
-			obj.position=Vector3f(0, 0, 0);
-			obj.updateTransformation();
-			obj.material=map.materials[i];
-			obj.shadowMaterial=shadowMap.sm;
+			if(!rc.shadowMode){
+				terrainMaterialBackend.bindDiffuse(map.textures[i]);
+				if(i<map.dti.length){
+					assert(!!map.details[map.dti[i]]);
+					terrainMaterialBackend.bindDetail(map.details[map.dti[i]]);
+				}else terrainMaterialBackend.bindDetail(null);
+				terrainMaterialBackend.bindEmission(map.textures[i]);
+			}
+			mesh.render(rc);
 		}
+		//mat.unbind(rc); // TODO: needed?
+	}
+
+	override void renderOpaqueEntities3D(RenderingContext* rc){
+		renderMap(rc);
+		super.renderOpaqueEntities3D(rc);
 	}
 
 	void createEntities(SacObject!DagonBackend sobj,Vector3f position,Quaternionf rotation){
@@ -257,6 +279,8 @@ class SacScene: Scene{
 		assert(this.state is null);
 	}do{
 		this.state=state;
+		setupEnvironment(state.map);
+		createSky(state.map);
 		createEntities(state);
 	}
 
@@ -460,27 +484,15 @@ static:
 		return materials;
 	}
 
-	Material[] createMaterials(SacMap!DagonBackend map){
-		Material[] materials;
-		foreach(i;0..257){
-			auto mat=scene.createMaterial(scene.terrainMaterialBackend);
-			assert(!!map.textures[i]);
-			mat.diffuse=map.textures[i];
-			if(i<map.dti.length){
-				assert(!!map.details[map.dti[i]]);
-				mat.detail=map.details[map.dti[i]];
-			}else mat.detail=0;
-			mat.color=map.color;
-			auto specu=map.envi.landscapeSpecularity;
-			mat.specular=Color4f(specu*map.envi.specularityRed/255.0f,specu*map.envi.specularityGreen/255.0f,specu*map.envi.specularityBlue/255.0f);
-			//mat.roughness=1.0f-envi.landscapeGlossiness;
-			mat.roughness=1.0f;
-			mat.metallic=0.0f;
-			mat.emission=map.textures[i];
-			mat.energy=0.05;
-			materials~=mat;
-		}
-		return materials;
+	Material createMaterial(SacMap!DagonBackend map){
+		auto mat=scene.createMaterial(scene.terrainMaterialBackend);
+		auto specu=map.envi.landscapeSpecularity;
+		mat.specular=Color4f(specu*map.envi.specularityRed/255.0f,specu*map.envi.specularityGreen/255.0f,specu*map.envi.specularityBlue/255.0f);
+		//mat.roughness=1.0f-envi.landscapeGlossiness;
+		mat.roughness=1.0f;
+		mat.metallic=0.0f;
+		mat.energy=0.05;
+		return mat;
 	}
 
 	enum GL_GPU_MEM_INFO_TOTAL_AVAILABLE_MEM_NVX=0x9048;

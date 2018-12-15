@@ -13,7 +13,7 @@ class SacMap(B){
 	B.Texture[] textures;
 	B.Texture[] details;
 	B.Texture color;
-	B.Material[] materials;
+	B.Material material; // TODO: get rid of this completely?
 	ubyte[] dti;
 	int n,m;
 	bool[][] edges;
@@ -54,7 +54,7 @@ class SacMap(B){
 		details=bumps.map!(B.makeTexture).array;
 		auto lmap=loadLMap(filename[0..$-".HMAP".length]~".LMAP");
 		color=B.makeTexture(lmap);
-		materials=B.createMaterials(this);
+		material=B.createMaterial(this);
 	}
 
 	struct Sky{
