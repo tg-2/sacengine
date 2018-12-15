@@ -250,6 +250,11 @@ final class SacScene: Scene{
 		//mat.unbind(rc); // TODO: needed?
 	}
 
+	override void renderShadowCastingEntities3D(RenderingContext* rc){
+		renderMap(rc);
+		super.renderShadowCastingEntities3D(rc);
+	}
+
 	override void renderOpaqueEntities3D(RenderingContext* rc){
 		renderMap(rc);
 		super.renderOpaqueEntities3D(rc);
