@@ -5,7 +5,7 @@ import dlib.math, std.math;
 import ntts;
 import sacmap, sacobject, animations;
 import util;
-enum int updateFPS=30;
+enum int updateFPS=60;
 
 enum RenderMode{
 	opaque,
@@ -266,7 +266,7 @@ final class ObjectState(B){ // (update logic)
 		frame=rhs.frame;
 		obj=rhs.obj;
 	}
-	void updateFrom(ObjectState!B rhs,ref Array!Command frameCommands){
+	void updateFrom(ObjectState!B rhs,Command[] frameCommands){
 		copyFrom(rhs);
 		update();
 	}
@@ -332,6 +332,7 @@ final class GameState(B){
 		current=new ObjectState!B;
 		next=new ObjectState!B;
 		lastCommitted=new ObjectState!B;
+		commands.length=1;
 		foreach(ref structure;ntts.structures)
 			placeStructure(structure);
 		foreach(ref wizard;ntts.wizards)
@@ -403,7 +404,7 @@ final class GameState(B){
 	}
 
 	void step(){
-		next.updateFrom(current,commands[current.frame]);
+		next.updateFrom(current,commands[current.frame].data);
 		if(commands.length<=next.frame) commands~=Array!Command();
 		swap(current,next);
 		assert(current.frame<commands.length);
