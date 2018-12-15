@@ -7,7 +7,6 @@ import std.algorithm, std.range, std.exception;
 import sacobject, sacmap, state;
 import sxsk : gpuSkinning;
 
-
 final class SacScene: Scene{
 	//OBJAsset aOBJ;
 	//Texture txta;
@@ -348,12 +347,14 @@ final class SacScene: Scene{
 		}
 	}
 
-	double totalTime=0;
 	override void onLogicsUpdate(double dt){
+		assert(dt==1.0f/updateFPS);
 		//writeln(DagonBackend.getTotalGPUMemory()," ",DagonBackend.getAvailableGPUMemory());
 		//writeln(eventManager.fps);
 		cameraControl(dt);
-		totalTime+=dt;
+		state.step();
+		state.commit();
+		auto totalTime=state.current.frame*dt;
 		if(skyEntities.length){
 			sacSkyMaterialBackend.sunLoc = state.sunSkyRelLoc(fpview.camera.position);
 			sacSkyMaterialBackend.cloudOffset+=dt*1.0f/64.0f*Vector2f(1.0f,-1.0f);
