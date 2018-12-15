@@ -462,7 +462,7 @@ static:
 
 	Material[] createMaterials(SacMap!DagonBackend map){
 		Material[] materials;
-		foreach(i,mesh;map.meshes){
+		foreach(i;0..257){
 			auto mat=scene.createMaterial(scene.terrainMaterialBackend);
 			assert(!!map.textures[i]);
 			mat.diffuse=map.textures[i];

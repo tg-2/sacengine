@@ -54,7 +54,6 @@ class SacMap(B){
 		details=bumps.map!(B.makeTexture).array;
 		auto lmap=loadLMap(filename[0..$-".HMAP".length]~".LMAP");
 		color=B.makeTexture(lmap);
-		meshes=createMeshes!B(hmap,tmap);
 		materials=B.createMaterials(this);
 	}
 
@@ -172,14 +171,11 @@ SuperImage[] loadMAPTs(string directory){
 		}).array;
 }
 
-B.TerrainMesh[] createMeshes(B)(HMap hmap, TMap tmap, float scaleFactor=1){
-	auto edges=hmap.edges;
-	auto heights=hmap.heights;
-	auto tiles=tmap.tiles;
+B.TerrainMesh[] createMeshes(B)(bool[][] edges, float[][] heights, ubyte[][] tiles, float scaleFactor=1){
 	//foreach(e;edges) e[]=false;
-	auto n=to!int(hmap.edges.length);
+	auto n=to!int(edges.length);
 	enforce(n);
-	auto m=to!int(hmap.edges[0].length);
+	auto m=to!int(edges[0].length);
 	enforce(heights.length==n);
 	enforce(edges.all!(x=>x.length==m));
 	enforce(heights.all!(x=>x.length==m));

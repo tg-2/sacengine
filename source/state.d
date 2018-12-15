@@ -340,6 +340,7 @@ final class GameState(B){
 			placeNTT(creature);
 		/+foreach(widgets;ntts.widgetss) // TODO: improve engine to be able to handle this
 			placeWidgets(widgets);+/
+		map.meshes=createMeshes!B(map.edges,map.heights,map.tiles); // TODO: allow dynamic retexuring
 		commit();
 	}
 	void placeStructure(ref Structure ntt){
