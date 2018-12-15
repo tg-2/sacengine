@@ -351,7 +351,7 @@ final class SacScene: Scene{
 		totalTime+=dt;
 		if(skyEntities.length){
 			sacSkyMaterialBackend.sunLoc = state.sunSkyRelLoc(fpview.camera.position);
-			sacSkyMaterialBackend.cloudOffset+=dt*1.0f/32.0f*Vector2f(1.0f,-1.0f);
+			sacSkyMaterialBackend.cloudOffset+=dt*1.0f/64.0f*Vector2f(1.0f,-1.0f);
 			sacSkyMaterialBackend.cloudOffset.x=fmod(sacSkyMaterialBackend.cloudOffset.x,1.0f);
 			sacSkyMaterialBackend.cloudOffset.y=fmod(sacSkyMaterialBackend.cloudOffset.y,1.0f);
 			rotateSky(rotationQuaternion(Axis.z,cast(float)(2*PI/512.0f*totalTime)));
