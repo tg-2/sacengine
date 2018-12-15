@@ -15,6 +15,7 @@ class SacObject(B){
 	bool isSaxs=false;
 	SaxsInstance!B saxsi;
 	B.Material[] materials;
+	B.Material[] shadowMaterials;
 	Animation[] animations;
 	AnimationState animationState=AnimationState.stance1;
 
@@ -51,6 +52,7 @@ class SacObject(B){
 		if(kind.among("bugz"))
 			conf.locustWingPart=3;
 		materials=B.createMaterials(this,conf);
+		shadowMaterials=B.createShadowMaterials(this);
 	}
 	final int alphaFlags(char[4] tag){
 		switch(tag){
@@ -191,8 +193,6 @@ class SacObject(B){
 		assert(hasAnimationState(state));
 	}body{
 		animationState=state;
-		// issue: saxs instance is shared between all objects, need to set pose during rendering
-		saxsi.setPose(animations[state].frames[0]);
 	}
 
 	final size_t numFrames(){

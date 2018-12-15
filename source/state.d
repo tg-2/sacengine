@@ -69,13 +69,13 @@ void assignArray(T)(ref Array!T to, ref Array!T from){
 }
 
 struct MovingObjects(B,RenderMode mode){
+	enum renderMode=mode;
 	SacObject!B sacObject;
 	Array!int ids;
 	Array!Vector3f positions;
 	Array!Quaternionf rotations;
 	Array!AnimationState animationStates;
 	Array!int frames;
-
 	@property int length(){ assert(ids.length<=int.max); return cast(int)ids.length; }
 
 	void reserve(int reserveSize){
@@ -111,6 +111,7 @@ auto each(alias f,B,RenderMode mode)(ref MovingObjects!(B,mode) movingObjects){
 
 
 struct StaticObjects(B){
+	enum renderMode=RenderMode.opaque;
 	SacObject!B sacObject;
 	Array!int ids;
 	Array!Vector3f positions;
@@ -137,10 +138,10 @@ auto each(alias f,B)(ref StaticObjects!B staticObjects){
 }
 
 struct FixedObjects(B){
+	enum renderMode=RenderMode.opaque;
 	SacObject!B sacObject;
 	Array!Vector3f positions;
 	Array!Quaternionf rotations;
-
 	@property int length(){ assert(positions.length<=int.max); return cast(int)positions.length; }
 
 	void addFixed(FixedObject!B object)in{
@@ -227,6 +228,21 @@ auto each(alias f,B,RenderMode mode)(ref Objects!(B,mode) objects){
 	}
 }
 
+auto eachByType(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T args){
+	with(objects){
+		foreach(ref movingObject;movingObjects)
+			f(movingObject,args);
+		static if(mode == RenderMode.opaque){
+			foreach(ref staticObject;staticObjects)
+				f(staticObject,args);
+			foreach(ref fixedObject;fixedObjects)
+				f(fixedObject,args);
+		}
+	}
+}
+
+
+
 enum numMoving=100;
 enum numStatic=300;
 
@@ -259,6 +275,12 @@ auto each(alias f,B)(ref ObjectManager!B objectManager){
 		transparentObjects.each!f;
 	}
 }
+auto eachByType(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
+	with(objectManager){
+		opaqueObjects.eachByType!f(args);
+		transparentObjects.eachByType!f(args);
+	}
+}
 
 final class ObjectState(B){ // (update logic)
 	int frame=0;
@@ -283,6 +305,9 @@ final class ObjectState(B){ // (update logic)
 }
 auto each(alias f,B)(ref ObjectState!B objectState){
 	return objectState.obj.each!f;
+}
+auto eachByType(alias f,B,T...)(ref ObjectState!B objectState,T args){
+	return objectState.obj.eachByType!f(args);
 }
 
 enum TargetType{

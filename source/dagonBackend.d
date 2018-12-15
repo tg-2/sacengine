@@ -211,12 +211,6 @@ final class SacScene: Scene{
 		// fogDensity?
 	}
 
-	void createEntities(GameState!DagonBackend state,bool sky=true){
-		state.current.each!((obj){
-			createEntities(obj.sacObject,obj.position,obj.rotation);
-		});
-	}
-
 	final void renderMap(RenderingContext* rc){
 		auto map=state.map;
 		rc.layer=1;
@@ -249,34 +243,55 @@ final class SacScene: Scene{
 		//mat.unbind(rc); // TODO: needed?
 	}
 
+	final void renderNTTs(RenderMode mode)(RenderingContext* rc){
+		static void render(T)(ref T objects,RenderingContext* rc){ // TODO: why does this need to be static? DMD bug?
+			auto sacObject=objects.sacObject;
+			enum isMoving=is(T==MovingObjects!(DagonBackend, RenderMode.opaque))||is(T==MovingObjects!(DagonBackend, RenderMode.transparent));
+			static if(is(T==MovingObjects!(DagonBackend, RenderMode.opaque))){
+				auto materials=rc.shadowMode?sacObject.shadowMaterials:sacObject.materials;
+			}else{
+				auto materials=rc.shadowMode?sacObject.shadowMaterials:sacObject.materials; // TODO: add transparency here
+			}
+			foreach(i;0..materials.length){
+				auto material=materials[i];
+				auto blending=("blending" in material.inputs).asInteger;
+				if((mode==RenderMode.transparent)!=(blending==Additive||blending==Transparent)) continue;
+				if(rc.shadowMode&&blending==Additive) continue;
+				material.bind(rc);
+				static if(isMoving){
+					auto mesh=sacObject.saxsi.meshes[i];
+					foreach(j;0..objects.length){ // TODO: use instanced rendering instead
+						material.backend.setTransformation(objects.positions[j], objects.rotations[j], rc);
+						sacObject.setAnimationState(objects.animationStates[j]);
+						sacObject.setFrame(objects.frames[j]);
+						mesh.render(rc);
+					}
+				}else{
+					auto mesh=sacObject.meshes[i];
+					foreach(j;0..objects.length){
+						material.backend.setTransformation(objects.positions[j], objects.rotations[j], rc);
+						mesh.render(rc);
+					}
+				}
+			}
+		}
+		state.current.eachByType!render(rc);
+	}
+
 	override void renderShadowCastingEntities3D(RenderingContext* rc){
-		renderMap(rc);
 		super.renderShadowCastingEntities3D(rc);
+		renderMap(rc);
+		renderNTTs!(RenderMode.opaque)(rc);
 	}
 
 	override void renderOpaqueEntities3D(RenderingContext* rc){
-		renderMap(rc);
 		super.renderOpaqueEntities3D(rc);
+		renderMap(rc);
+		renderNTTs!(RenderMode.opaque)(rc);
 	}
-
-	void createEntities(SacObject!DagonBackend sobj,Vector3f position,Quaternionf rotation){
-		foreach(i;0..sobj.isSaxs?sobj.saxsi.meshes.length:sobj.meshes.length){
-			auto obj=createEntity3D();
-			obj.drawable = sobj.isSaxs?cast(Drawable)sobj.saxsi.meshes[i]:cast(Drawable)sobj.meshes[i];
-			obj.position = position;
-			obj.rotation = rotation;
-			obj.updateTransformation();
-			auto mat=sobj.materials[i];
-			obj.material=mat;
-			auto blending=("blending" in mat.inputs).asInteger;
-			obj.castShadow=blending!=Additive;
-			if(obj.castShadow){
-				auto shadowMat=createMaterial(gpuSkinning&&sobj.isSaxs?shadowMap.bsb:shadowMap.sb);
-				shadowMat.diffuse=("diffuse" in mat.inputs).texture;
-				obj.shadowMaterial=shadowMat;
-			}
-			//entities[sobj].insertBack(obj);
-		}
+	override void renderTransparentEntities3D(RenderingContext* rc){
+		super.renderTransparentEntities3D(rc);
+		renderNTTs!(RenderMode.transparent)(rc);
 	}
 
 	void setState(GameState!DagonBackend state)in{
@@ -285,12 +300,19 @@ final class SacScene: Scene{
 		this.state=state;
 		setupEnvironment(state.map);
 		createSky(state.map);
-		createEntities(state);
 	}
 
-	void addObject(SacObject!DagonBackend obj,Vector3f position,Quaternionf rotation){
-		createEntities(obj,position,rotation);
-		sacs.insertBack(obj);
+	void addObject(SacObject!DagonBackend sobj,Vector3f position,Quaternionf rotation){
+		foreach(i;0..sobj.isSaxs?sobj.saxsi.meshes.length:sobj.meshes.length){
+			auto obj=createEntity3D();
+			obj.drawable = sobj.isSaxs?cast(Drawable)sobj.saxsi.meshes[i]:cast(Drawable)sobj.meshes[i];
+			obj.position = position;
+			obj.rotation = rotation;
+			obj.updateTransformation();
+			obj.material=sobj.materials[i];
+			obj.shadowMaterial=sobj.shadowMaterials[i];
+		}
+		sacs.insertBack(sobj);
 	}
 
 	override void onAllocate(){
@@ -487,6 +509,19 @@ static:
 			mat.specular=sobj.isSaxs?Color4f(1,1,1,1):Color4f(0,0,0,1);
 			mat.roughness=0.8;
 			materials~=mat;
+		}
+		return materials;
+	}
+
+	Material[] createShadowMaterials(SacObject!DagonBackend sobj){
+		GenericMaterial[] materials;
+		foreach(mat;sobj.materials){
+			auto blending=("blending" in mat.inputs).asInteger;
+			if(blending!=Additive){
+				auto shadowMat=scene.createMaterial(gpuSkinning&&sobj.isSaxs?scene.shadowMap.bsb:scene.shadowMap.sb); // TODO: use shadowMap.sm if no alpha channel
+				shadowMat.diffuse=("diffuse" in mat.inputs).texture;
+				materials~=shadowMat;
+			}
 		}
 		return materials;
 	}
