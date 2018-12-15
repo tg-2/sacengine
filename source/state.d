@@ -405,9 +405,8 @@ final class GameState(B){
 
 	void step(){
 		next.updateFrom(current,commands[current.frame].data);
-		if(commands.length<=next.frame) commands~=Array!Command();
 		swap(current,next);
-		assert(current.frame<commands.length);
+		if(commands.length<=current.frame) commands~=Array!Command();
 	}
 	void commit(){
 		lastCommitted.copyFrom(current);
@@ -423,7 +422,10 @@ final class GameState(B){
 		while(current.frame<frame)
 			step();
 	}
-	void addCommand(int frame,Command command){
+	void addCommand(int frame,Command command)in{
+		assert(frame<=current.frame);
+	}body{
+		assert(frame<commands.length);
 		auto currentFrame=current.frame;
 		commands[frame]~=command;
 		rollback(frame);
