@@ -71,3 +71,17 @@ struct Transformation{
 		return result;
 	}
 }
+
+import std.container.array;
+T[] data(T)(ref Array!T array){
+	// std.container.array should just provide this functionality...
+	auto implPtr=array.tupleof[0]._refCounted.tupleof[0];
+	if(!implPtr) return [];
+	return implPtr._payload.tupleof[1];
+}
+
+
+void assignArray(T)(ref Array!T to, ref Array!T from){
+	to.length=from.length;
+	to.data[]=from.data[];
+}
