@@ -23,6 +23,7 @@ struct Id{
 
 enum CreatureMode{
 	idle,
+	dying,
 	dead,
 }
 
@@ -345,6 +346,73 @@ auto eachByType(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
 	}
 }
 
+void setInitialAnimation(B)(ref MovingObject!B object,ObjectState!B state){
+	auto sacObject=object.sacObject;
+	object.animationState=AnimationState.stance1; // TODO: check health, maybe put stance2
+	object.frame=0;
+	final switch(object.creatureState.mode){
+		case CreatureMode.idle:
+			object.animationState=AnimationState.stance1; // TODO: check health, maybe put stance2
+			if(object.creatureState.movement==CreatureMovement.flying){
+				assert(sacObject.canFly);
+				if(!sacObject.mustFly)
+					object.animationState=AnimationState.hover;
+			}
+			if(!state.uniform(5)){ // TODO: figure out the original rule for this
+				with(AnimationState) if(sacObject.mustFly){
+					static immutable candidates0=[hover,idle0,idle1,idle2,idle3]; // TODO: probably idleness animations depend on health
+					object.pickRandomAnimation(candidates0,state);
+				}else if(object.creatureState.movement!=CreatureMovement.flying){
+					static immutable candidates1=[idle0,idle1,idle2,idle3]; // TODO: probably idleness animations depend on health
+					object.pickRandomAnimation(candidates1,state);
+				}
+			}
+			break;
+		case CreatureMode.dying:
+			final switch(object.creatureState.movement) with(CreatureMovement) with(AnimationState){
+				case onGround:
+					assert(!object.sacObject.mustFly);
+					static immutable candidates2=[death0,death1,death2];
+					object.pickRandomAnimation(candidates2,state);
+					break;
+				case flying:
+					if(object.sacObject.mustFly){
+						static immutable candidates3=[flyDeath,death0,death1,death2];
+						object.pickRandomAnimation(candidates3,state);
+					}else object.animationState=flyDeath;
+					break;
+				case tumbling:
+					object.animationState=falling;
+					break;
+			}
+			break;
+		case CreatureMode.dead:
+			object.animationState=AnimationState.death0;
+			if(sacObject.mustFly)
+				object.animationState=AnimationState.hitFloor;
+			object.frame=sacObject.numFrames(object.animationState)*updateAnimFactor-1;
+			break;
+	}
+}
+
+void pickRandomAnimation(B)(ref MovingObject!B object,immutable(AnimationState)[] candidates,ObjectState!B state){
+	auto filtered=candidates.filter!(x=>object.sacObject.hasAnimationState(x));
+	object.animationState=filtered.drop(state.uniform(cast(int)filtered.walkLength)).front;
+}
+
+void kill(B)(ref MovingObject!B object, ObjectState!B state){
+	with(CreatureMode) if(object.creatureState.mode.among(dying,dead)) return;
+	object.creatureState.mode=CreatureMode.dying;
+	object.setInitialAnimation(state);
+}
+
+void immediateResurrect(B)(ref MovingObject!B object,ObjectState!B state){
+	with(CreatureMode) if(!object.creatureState.mode.among(dying,dead)) return;
+	object.creatureState.mode=CreatureMode.idle;
+	object.setInitialAnimation(state);
+}
+
+
 import std.random: MinstdRand0;
 final class ObjectState(B){ // (update logic)
 	int frame=0;
@@ -362,19 +430,6 @@ final class ObjectState(B){ // (update logic)
 		copyFrom(rhs);
 		update();
 	}
-	static Tuple!(AnimationState,"state",int,"frame") initialAnimationState(SacObject!B sacObject, CreatureMode mode, CreatureMovement movement){
-		auto state=AnimationState.stance1, frame=0; // TODO: check health, maybe put stance2
-		if(mode==CreatureMode.dead){
-			state=AnimationState.death0;
-			if(sacObject.mustFly)
-				state=AnimationState.hitFloor;
-			frame=sacObject.numFrames(state)*updateAnimFactor-1;
-		}else if(movement==CreatureMovement.flying){
-			if(!sacObject.mustFly)
-				state=AnimationState.hover;
-		}
-		return tuple!("state","frame")(state,frame);
-	}
 
 	static void updateCreature(ref MovingObject!B object, ObjectState!B state){
 		auto sacObject=object.sacObject;
@@ -383,22 +438,28 @@ final class ObjectState(B){ // (update logic)
 				object.frame+=1;
 				if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
 					object.frame=0;
-					object.animationState=AnimationState.stance1; // TODO: check health, maybe put stance2
-					if(object.creatureState.movement==CreatureMovement.flying){
-						assert(sacObject.canFly);
-						if(!sacObject.mustFly)
-							object.animationState=AnimationState.hover;
-					}
-					if(!state.uniform(5)){ // TODO: figure out the original rule for this
-						with(AnimationState) if(sacObject.mustFly){
-							static immutable candidates0=[hover,idle0,idle1,idle2,idle3]; // TODO: probably idleness animations depend on health
-							auto filtered=candidates0.filter!(x=>sacObject.hasAnimationState(x));
-							object.animationState=filtered.drop(state.uniform(cast(int)filtered.walkLength)).front;
-						}else if(object.creatureState.movement!=CreatureMovement.flying){
-							static immutable candidates1=[idle0,idle1,idle2,idle3]; // TODO: probably idleness animations depend on health
-							auto filtered=candidates1.filter!(x=>sacObject.hasAnimationState(x));
-							object.animationState=filtered.drop(state.uniform(cast(int)filtered.walkLength)).front;
-						}
+					object.setInitialAnimation(state);
+				}
+				break;
+			case CreatureMode.dying:
+				with(AnimationState) assert(object.animationState.among(flyDeath,death0,death1,death2,falling));
+				object.frame+=1;
+				if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
+					final switch(object.creatureState.movement){
+						object.frame=0;
+						case CreatureMovement.onGround:
+							object.frame=sacObject.numFrames(object.animationState)*updateAnimFactor-1;
+							object.creatureState.mode=CreatureMode.dead;
+							break;
+						case CreatureMovement.flying:
+							object.creatureState.movement=CreatureMovement.tumbling;
+							object.animationState=AnimationState.falling;
+							break;
+						case CreatureMovement.tumbling:
+							// TODO: add falling down
+							object.creatureState.movement=CreatureMovement.onGround;
+							object.animationState=AnimationState.hitFloor;
+							break;
 					}
 				}
 				break;
@@ -532,14 +593,14 @@ final class GameState(B){
 		if(movement==CreatureMovement.onGround && !onGround)
 			movement=curObj.canFly?CreatureMovement.flying:CreatureMovement.tumbling;
 		if(curObj.canFly) movement=CreatureMovement.flying;
-		auto stateFrame=ObjectState!B.initialAnimationState(curObj,mode,movement);
-		auto state=stateFrame.state, frame=stateFrame.frame;
 		auto creatureState=CreatureState(mode, movement);
+		auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState);
+		obj.setInitialAnimation(current);
 		/+do{
 			import std.random: uniform;
 			state=cast(AnimationState)uniform(0,64);
 		}while(!curObj.hasAnimationState(state));+/
-		current.addObject(MovingObject!B(curObj,position,rotation,state,frame,creatureState));
+		current.addObject(obj);
 	}
 	void placeWidgets(Widgets w){
 		auto curObj=SacObject!B.getWIDG(w.tag);

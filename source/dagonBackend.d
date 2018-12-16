@@ -373,12 +373,20 @@ final class SacScene: Scene{
 		}
 	}
 
+	void stateTestControl()in{
+		assert(!!state);
+	}do{
+		if(eventManager.keyPressed[KEY_SPACE]) state.current.eachMoving!kill(state.current);
+		if(eventManager.keyPressed[KEY_RETURN]) state.current.eachMoving!immediateResurrect(state.current);
+	}
+
 	override void onLogicsUpdate(double dt){
 		assert(dt==1.0f/updateFPS);
 		//writeln(DagonBackend.getTotalGPUMemory()," ",DagonBackend.getAvailableGPUMemory());
 		//writeln(eventManager.fps);
 		cameraControl(dt);
 		if(state){
+			stateTestControl();
 			state.step();
 			state.commit();
 			auto totalTime=state.current.frame*dt;
