@@ -1,7 +1,7 @@
 import dlib.math;
 import util;
 import mrmm, _3dsm, txtr, saxs, sxsk, widg;
-import animations, ntts, nttData;
+import animations, ntts, nttData, spells, bldg;
 import std.typecons: Tuple, tuple;
 alias Tuple=std.typecons.Tuple;
 
@@ -11,6 +11,7 @@ enum animFPS=30;
 
 class SacObject(B){
 	char[4] tag;
+	char[4] nttTag;
 	int stateIndex=-1;
 	B.Mesh[] meshes;
 	B.Texture[] textures;
@@ -19,6 +20,16 @@ class SacObject(B){
 	B.Material[] materials;
 	B.Material[] shadowMaterials;
 	Animation[] animations;
+	immutable(Cre8)* cre8;
+	immutable(Wizd)* wizd;
+	immutable(Strc)* strc;
+
+	@property bool mustFly(){
+		return cre8&&cre8.creatureType=="ylfo";
+	}
+	@property bool canFly(){
+		return hasAnimationState(AnimationState.fly);
+	}
 
 	struct MaterialConfig{
 		int sunBeamPart=-1;
@@ -26,8 +37,13 @@ class SacObject(B){
 		int transparentShinyPart=-1;
 	}
 
-	private void createMaterials(char[4] tag){
+	private void initializeNTTData(char[4] tag){
 		this.tag=tag;
+		this.nttTag=tag in tagsFromModel?tagsFromModel[tag]:tag;
+		cre8=nttTag in cre8s;
+		wizd=nttTag in wizds;
+		strc=nttTag in strcs;
+		assert((cre8 !is null)+(wizd !is null)+(strc !is null)<=1);
 		MaterialConfig conf;
 		// TODO: this is a hack:
 		auto kind=tag;
@@ -105,7 +121,7 @@ class SacObject(B){
 			}
 		}
 		saxsi.createMeshes(animations[AnimationState.stance1].frames[0]);
-		createMaterials(dat2.saxsModel);
+		initializeNTTData(dat2.saxsModel);
 	}
 	static SacObject!B[char[4]] objects;
 	static SacObject!B getSAXS(T)(char[4] tag)if(is(T==Creature)||is(T==Wizard)){
@@ -117,7 +133,7 @@ class SacObject(B){
 		auto mt=loadMRMM!B(bldgModls[tag],1.0f);
 		meshes=mt[0];
 		textures=mt[1];
-		createMaterials(tag);
+		initializeNTTData(tag);
 	}
 	static SacObject!B getBLDG(char[4] tag){
 		if(auto r=tag in objects) return *r;
@@ -128,7 +144,7 @@ class SacObject(B){
 		auto mt=loadWIDG!B(widgModls[tag]);
 		meshes=[mt[0]];
 		textures=[mt[1]];
-		createMaterials(tag);
+		initializeNTTData(tag);
 	}
 	static SacObject!B getWIDG(char[4] tag){
 		if(auto r=tag in objects) return *r;
@@ -137,9 +153,6 @@ class SacObject(B){
 
 	this(string filename, float scaling=1.0, string animation=""){
 		enforce(filename.endsWith(".MRMM")||filename.endsWith(".3DSM")||filename.endsWith(".WIDG")||filename.endsWith(".SXMD"));
-		char[4] tag=filename[$-9..$-5][0..4];
-		reverse(tag[]);
-		createMaterials(tag);
 		switch(filename[$-4..$]){
 			case "MRMM":
 				auto mt=loadMRMM!B(filename, scaling);
@@ -174,6 +187,9 @@ class SacObject(B){
 			default:
 				assert(0);
 		}
+		char[4] tag=filename[$-9..$-5][0..4];
+		reverse(tag[]);
+		initializeNTTData(tag);
 	}
 
 	void loadAnimation(string animation,float scaling){ // (just for testing)

@@ -1,6 +1,7 @@
 module nttData;
 import std.file, std.path, std.stdio, std.algorithm, std.range, std.string, std.exception;
 import bldg, spells;
+import util;
 immutable string[] bldgFolders=["joby/joby.WAD!/ethr.FLDR",
                                 "joby/joby.WAD!/prsc.FLDR",
                                 "pyromod/PMOD.WAD!/bild.FLDR",
@@ -86,9 +87,26 @@ T[char[4]] makeSpellByTag(T)(){
 	return result;
 }
 
+char[4][char[4]] makeTagBySaxsModelTag(){
+	char[4][char[4]] result;
+	static immutable path=buildPath("extracted",spellsFolder);
+	foreach(T;Seq!(Cre8,Wizd)){
+		enum ext=toUpper(T.stringof);
+		foreach(spellFile;dirEntries(path,"*."~ext,SpanMode.depth)){
+			char[4] tag=spellFile[$-9..$-5];
+			reverse(tag[]);
+			auto spell=mixin(`load`~T.stringof)(spellFile);
+			result[spell.saxsModel]=tag;
+		}
+	}
+	return result;
+}
+
 immutable Cre8[char[4]] cre8s;
 immutable Wizd[char[4]] wizds;
 immutable Strc[char[4]] strcs;
+
+immutable char[4][char[4]] tagsFromModel;
 
 immutable string[] saxsModlFolders=["saxs/mrtd.WAD!",
                                     "saxs_add/AADD.WAD!",
@@ -161,6 +179,8 @@ static this(){
 	cre8s=cast(immutable)makeSpellByTag!Cre8();
 	wizds=cast(immutable)makeSpellByTag!Wizd();
 	strcs=cast(immutable)makeSpellByTag!Strc();
+
+	tagsFromModel=cast(immutable)makeTagBySaxsModelTag();
 
 	saxsModls=cast(immutable)makeSaxsModlByTag();
 	saxsAnims=cast(immutable)makeSaxsAnimByTag();

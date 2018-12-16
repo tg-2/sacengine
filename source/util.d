@@ -1,5 +1,7 @@
 import dlib.math;
 
+alias Seq(T...)=T;
+
 uint parseLE(ubyte[] raw)in{
 	assert(raw.length<=4);
 }body{
