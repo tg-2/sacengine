@@ -10,7 +10,7 @@ import std.exception, std.algorithm, std.math, std.path;
 
 enum animFPS=30;
 
-class SacObject(B){
+final class SacObject(B){
 	char[4] tag;
 	char[4] nttTag;
 	int stateIndex=-1;
@@ -28,12 +28,38 @@ class SacObject(B){
 	@property bool mustFly(){
 		return cre8&&cre8.creatureType=="ylfo";
 	}
+	@property bool canRun(){
+		return hasAnimationState(AnimationState.run);
+	}
 	@property bool canFly(){
 		return hasAnimationState(AnimationState.fly);
+	}
+	@property bool canFlyBackward(){
+		return tag=="zgub";
 	}
 	@property bool canDie(){
 		return hasAnimationState(AnimationState.death0);
 	}
+
+	@property float rotationSpeed(){ // in degrees per second
+		return 180.0f;
+	}
+	@property float movementSpeed(bool isFlying){ // in meters per second
+		if(cre8) return (isFlying?cre8.flyingSpeed:cre8.runningSpeed)*0.01f;
+		if(wizd) return (isFlying?wizd.flyingSpeed:wizd.runningSpeed)*0.01f;
+		return 0.0f;
+	}
+
+	@property float maxDownwardSpeedFactor(){
+		return 2.0f;
+	}
+	@property float upwardFlyingSpeedFactor(){
+		return 0.5f;
+	}
+	@property float downwardFlyingSpeedFactor(){
+		return 2.0f;
+	}
+
 	struct MaterialConfig{
 		int sunBeamPart=-1;
 		int locustWingPart=-1;

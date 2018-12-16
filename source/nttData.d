@@ -102,6 +102,8 @@ T[char[4]] makeSpellByTag(T)(){
 			c.animations.death[0]=c.animations.death[1];
 			c.animations.death[1]=c.animations.death[2];
 			c.animations.death[2]=0;
+			assert(c.animations.run==c.animations.fly);
+			c.animations.run=0;
 		}
 		fixLocust(result["pazb"]);
 		void fixGammel(ref Cre8 c){

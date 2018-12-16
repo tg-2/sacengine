@@ -36,9 +36,24 @@ enum CreatureMovement{
 	tumbling,
 }
 
+enum MovementDirection{
+	none,
+	forward,
+	backward,
+}
+
+enum RotationDirection{
+	none,
+	left,
+	right,
+}
+
 struct CreatureState{
 	auto mode=CreatureMode.idle;
 	auto movement=CreatureMovement.onGround;
+	float facing, fallingSpeed;
+	auto movementDirection=MovementDirection.none;
+	auto rotationDirection=RotationDirection.none;
 }
 
 struct MovingObject(B){
@@ -349,7 +364,7 @@ auto eachByType(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
 	}
 }
 
-void setInitialAnimation(B)(ref MovingObject!B object,ObjectState!B state){
+void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 	auto sacObject=object.sacObject;
 	object.frame=0;
 	final switch(object.creatureState.mode){
@@ -381,6 +396,11 @@ void setInitialAnimation(B)(ref MovingObject!B object,ObjectState!B state){
 		case CreatureMode.moving:
 			final switch(object.creatureState.movement) with(CreatureMovement){
 				case onGround:
+					if(!object.sacObject.canRun){
+						if(object.sacObject.canFly) object.startFlying(state);
+						else object.startIdling(state);
+						return;
+					}
 					object.animationState=AnimationState.run;
 					break;
 				case flying:
@@ -447,17 +467,23 @@ void pickRandomAnimation(B)(ref MovingObject!B object,immutable(AnimationState)[
 	object.animationState=filtered.drop(state.uniform(len)).front;
 }
 
+void startIdling(B)(ref MovingObject!B object, ObjectState!B state){
+	if(!object.creatureState.mode!=CreatureMode.moving) return;
+	object.creatureState.mode=CreatureMode.idle;
+	object.setCreatureState(state);
+}
+
 void kill(B)(ref MovingObject!B object, ObjectState!B state){
 	with(CreatureMode) if(object.creatureState.mode.among(dying,dead)) return;
 	if(!object.sacObject.canDie()) return;
 	object.creatureState.mode=CreatureMode.dying;
-	object.setInitialAnimation(state);
+	object.setCreatureState(state);
 }
 
 void immediateResurrect(B)(ref MovingObject!B object,ObjectState!B state){
 	with(CreatureMode) if(!object.creatureState.mode.among(dying,dead)) return;
 	object.creatureState.mode=CreatureMode.idle;
-	object.setInitialAnimation(state);
+	object.setCreatureState(state);
 }
 
 void startFlying(B)(ref MovingObject!B object,ObjectState!B state){
@@ -466,7 +492,7 @@ void startFlying(B)(ref MovingObject!B object,ObjectState!B state){
 		   object.creatureState.movement!=CreatureMovement.onGround)
 			return;
 	object.creatureState.mode=CreatureMode.takeoff;
-	object.setInitialAnimation(state);
+	object.setCreatureState(state);
 }
 
 void land(B)(ref MovingObject!B object,ObjectState!B state){
@@ -475,11 +501,220 @@ void land(B)(ref MovingObject!B object,ObjectState!B state){
 		   object.creatureState.movement!=CreatureMovement.flying)
 			return;
 	object.creatureState.mode=CreatureMode.landing;
-	object.setInitialAnimation(state);
+	object.setCreatureState(state);
+}
+
+void setMovement(B)(ref MovingObject!B object,MovementDirection direction,ObjectState!B state){
+	// TODO: also check for conditions that immobilze a creature, such as vines or spell casting
+	with(CreatureMode)
+		if(!object.creatureState.mode.among(idle,moving))
+			return;
+	if(object.creatureState.movement==CreatureMovement.flying &&
+	   direction==MovementDirection.backward &&
+	   !object.sacObject.canFlyBackward)
+		return;
+	auto newMode=direction==MovementDirection.none?CreatureMode.idle:CreatureMode.moving;
+	if(object.creatureState.movementDirection==direction)
+		return;
+	object.creatureState.movementDirection=direction;
+	object.setCreatureState(state);
+}
+void stopMovement(B)(ref MovingObject!B object,ObjectState!B state){
+	object.setMovement(MovementDirection.none,state);
+}
+void startMovingForward(B)(ref MovingObject!B object,ObjectState!B state){
+	object.setMovement(MovementDirection.forward,state);
+}
+void startMovingBackward(B)(ref MovingObject!B object,ObjectState!B state){
+	object.setMovement(MovementDirection.backward,state);
+}
+
+void setTurning(B)(ref MovingObject!B object,RotationDirection direction,ObjectState!B state){
+	with(CreatureMode)
+		if(!object.creatureState.mode.among(idle,moving))
+			return;
+	// TODO: also check for conditions that immobilze a creature, such as vines or spell casting
+	object.creatureState.rotationDirection=direction;
+}
+void stopTurning(B)(ref MovingObject!B object,ObjectState!B state){
+	object.setTurning(RotationDirection.none,state);
+}
+void startTurningLeft(B)(ref MovingObject!B object,ObjectState!B state){
+	object.setTurning(RotationDirection.left,state);
+}
+void startTurningRight(B)(ref MovingObject!B object,ObjectState!B state){
+	object.setTurning(RotationDirection.right,state);
+}
+
+void updateCreatureAnimationState(B)(ref MovingObject!B object, ObjectState!B state){
+	auto sacObject=object.sacObject;
+	final switch(object.creatureState.mode){
+		case CreatureMode.idle, CreatureMode.moving:
+			object.frame+=1;
+			auto oldMode=object.creatureState.mode;
+			object.creatureState.mode=object.creatureState.movementDirection==MovementDirection.none?CreatureMode.idle:CreatureMode.moving;
+			if(object.creatureState.mode!=oldMode||object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
+				object.frame=0;
+				object.setCreatureState(state);
+			}
+			break;
+		case CreatureMode.dying:
+			with(AnimationState) assert(object.animationState.among(death0,death1,death2,flyDeath,falling,hitFloor),text(object.sacObject.tag," ",object.animationState));
+			object.frame+=1;
+			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
+				object.frame=0;
+				final switch(object.creatureState.movement){
+					case CreatureMovement.onGround:
+						object.frame=sacObject.numFrames(object.animationState)*updateAnimFactor-1;
+						object.creatureState.mode=CreatureMode.dead;
+						break;
+					case CreatureMovement.flying:
+						object.creatureState.movement=CreatureMovement.tumbling;
+						object.animationState=AnimationState.falling;
+						break;
+					case CreatureMovement.tumbling:
+						// TODO: add falling down
+						object.creatureState.movement=CreatureMovement.onGround;
+						object.animationState=AnimationState.hitFloor;
+						break;
+				}
+			}
+			break;
+		case CreatureMode.dead:
+			with(AnimationState) assert(object.animationState.among(hitFloor,death0,death1,death2));
+			assert(object.frame==sacObject.numFrames(object.animationState)*updateAnimFactor-1);
+			break;
+		case CreatureMode.takeoff:
+			assert(object.sacObject.canFly);
+			assert(object.creatureState.movement==CreatureMovement.onGround);
+			object.frame+=1;
+			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
+				object.frame=0;
+				object.creatureState.mode=CreatureMode.idle;
+				object.creatureState.movement=CreatureMovement.flying;
+				object.setCreatureState(state);
+			}
+			break;
+		case CreatureMode.landing:
+			assert(!object.sacObject.mustFly);
+			assert(object.creatureState.movement==CreatureMovement.flying);
+			object.frame+=1;
+			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
+				object.frame=0;
+				object.creatureState.mode=CreatureMode.idle;
+				object.creatureState.movement=CreatureMovement.onGround;
+				object.setCreatureState(state);
+			}
+			break;
+	}
+}
+
+void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
+	if(object.creatureState.mode==CreatureMode.idle && object.creatureState.movement!=CreatureMovement.tumbling||
+	   object.creatureState.mode==CreatureMode.moving
+	){
+		final switch(object.creatureState.rotationDirection){
+			case RotationDirection.none:
+				break;
+			case RotationDirection.left:
+				object.creatureState.facing+=object.sacObject.rotationSpeed/updateFPS;
+				break;
+			case RotationDirection.right:
+				object.creatureState.facing-=object.sacObject.rotationSpeed/updateFPS;
+				break;
+		}
+		object.rotation=facingQuaternion(object.creatureState.facing);
+	}
+	final switch(object.creatureState.movement){
+		case CreatureMovement.onGround:
+			if(object.creatureState.mode!=CreatureMode.moving) break;
+			void applyMovementOnGround(Vector3f direction){
+				auto speed=object.sacObject.movementSpeed(false)/updateFPS;
+				auto derivative=state.getGroundHeightDerivative(object.position,direction);
+				Vector3f newDirection=direction;
+				if(derivative>0.0f){
+					newDirection=Vector3f(direction.x,direction.y,derivative).normalized;
+				}else if(derivative<0.0f){
+					newDirection=Vector3f(direction.x,direction.y,derivative);
+					auto maxFactor=object.sacObject.maxDownwardSpeedFactor;
+					if(newDirection.lengthsqr>maxFactor*maxFactor) newDirection=maxFactor*newDirection.normalized;
+				}
+				auto newPosition=object.position+speed*newDirection;
+				if(state.isOnGround(newPosition)){
+					object.position=Vector3f(newPosition.x,newPosition.y,state.getGroundHeight(newPosition));
+				}else{
+					// TODO: slide along map border
+				}
+			}
+			final switch(object.creatureState.movementDirection){
+				case MovementDirection.none:
+					break;
+				case MovementDirection.forward:
+					applyMovementOnGround(rotate(object.rotation, Vector3f(0.0f,1.0f,0.0f)));
+					break;
+				case MovementDirection.backward:
+					applyMovementOnGround(rotate(object.rotation, Vector3f(0.0f,-1.0f,0.0f)));
+					break;
+			}
+			break;
+		case CreatureMovement.flying:
+			if(object.creatureState.mode!=CreatureMode.moving) break;
+			void applyMovementInAir(Vector3f direction){
+				auto speed=object.sacObject.movementSpeed(true)/updateFPS;
+				auto newPosition=object.position+speed*direction;
+				if(state.isOnGround(newPosition)){
+					auto newHeight=state.getGroundHeight(newPosition);
+					if(newHeight>newPosition.z){
+						// TODO: use derivative instead of subtracting?
+						auto upwardFactor=object.sacObject.upwardFlyingSpeedFactor;
+						auto newDirection=Vector3f(direction.x,direction.y,direction.z+(newHeight-newPosition.z)/upwardFactor).normalized;
+						newDirection.z*=upwardFactor;
+						newPosition=object.position+speed*newDirection;
+						if(state.isOnGround(newPosition)){
+							newPosition.z=min(newPosition.z,state.getGroundHeight(newPosition));
+						}
+					}
+				}
+				object.position=newPosition;
+			}
+			final switch(object.creatureState.movementDirection){
+				case MovementDirection.none:
+					break;
+				case MovementDirection.forward:
+					applyMovementInAir(rotate(object.rotation,Vector3f(0.0f,1.0f,0.0f)));
+					break;
+				case MovementDirection.backward:
+					assert(object.sacObject.canFlyBackward);
+					applyMovementInAir(rotate(object.rotation,Vector3f(0.0f,-1.0f,0.0f)));
+					break;
+			}
+			break;
+		case CreatureMovement.tumbling:
+			// TODO
+			break;
+	}
+}
+
+void updateCreature(B)(ref MovingObject!B object, ObjectState!B state){
+	object.updateCreatureAnimationState(state);
+	object.updateCreaturePosition(state);
 }
 
 import std.random: MinstdRand0;
 final class ObjectState(B){ // (update logic)
+	SacMap!B map;
+	bool isOnGround(Vector3f position){
+		return map.isOnGround(position);
+	}
+	float getGroundHeight(Vector3f position){
+		return map.getGroundHeight(position);
+	}
+	float getGroundHeightDerivative(Vector3f position,Vector3f direction){
+		return map.getGroundHeightDerivative(position,direction);
+	}
+	Vector2f sunSkyRelLoc(Vector3f cameraPos){
+		return map.sunSkyRelLoc(cameraPos);
+	}
 	int frame=0;
 	auto rng=MinstdRand0(1); // TODO: figure out what rng to use
 	int uniform(int n){
@@ -494,67 +729,6 @@ final class ObjectState(B){ // (update logic)
 	void updateFrom(ObjectState!B rhs,Command[] frameCommands){
 		copyFrom(rhs);
 		update();
-	}
-
-	static void updateCreature(ref MovingObject!B object, ObjectState!B state){
-		auto sacObject=object.sacObject;
-		final switch(object.creatureState.mode){
-			case CreatureMode.idle, CreatureMode.moving:
-				object.frame+=1;
-				if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
-					object.frame=0;
-					object.setInitialAnimation(state);
-				}
-				break;
-			case CreatureMode.dying:
-				with(AnimationState) assert(object.animationState.among(death0,death1,death2,flyDeath,falling,hitFloor),text(object.sacObject.tag," ",object.animationState));
-				object.frame+=1;
-				if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
-					object.frame=0;
-					final switch(object.creatureState.movement){
-						case CreatureMovement.onGround:
-							object.frame=sacObject.numFrames(object.animationState)*updateAnimFactor-1;
-							object.creatureState.mode=CreatureMode.dead;
-							break;
-						case CreatureMovement.flying:
-							object.creatureState.movement=CreatureMovement.tumbling;
-							object.animationState=AnimationState.falling;
-							break;
-						case CreatureMovement.tumbling:
-							// TODO: add falling down
-							object.creatureState.movement=CreatureMovement.onGround;
-							object.animationState=AnimationState.hitFloor;
-							break;
-					}
-				}
-				break;
-			case CreatureMode.dead:
-				with(AnimationState) assert(object.animationState.among(hitFloor,death0,death1,death2));
-				assert(object.frame==sacObject.numFrames(object.animationState)*updateAnimFactor-1);
-				break;
-			case CreatureMode.takeoff:
-				assert(object.sacObject.canFly);
-				assert(object.creatureState.movement==CreatureMovement.onGround);
-				object.frame+=1;
-				if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
-					object.frame=0;
-					object.creatureState.mode=CreatureMode.idle;
-					object.creatureState.movement=CreatureMovement.flying;
-					object.setInitialAnimation(state);
-				}
-				break;
-			case CreatureMode.landing:
-				assert(!object.sacObject.mustFly);
-				assert(object.creatureState.movement==CreatureMovement.flying);
-				object.frame+=1;
-				if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
-					object.frame=0;
-					object.creatureState.mode=CreatureMode.idle;
-					object.creatureState.movement=CreatureMovement.onGround;
-					object.setInitialAnimation(state);
-				}
-				break;
-		}
 	}
 	void update(){
 		frame+=1;
@@ -604,16 +778,6 @@ struct Command{
 }
 
 final class GameState(B){
-	SacMap!B map;
-	bool isOnGround(Vector3f position){
-		return map.isOnGround(position);
-	}
-	float getGroundHeight(Vector3f position){
-		return map.getGroundHeight(position);
-	}
-	Vector2f sunSkyRelLoc(Vector3f cameraPos){
-		return map.sunSkyRelLoc(cameraPos);
-	}
 	ObjectState!B lastCommitted;
 	ObjectState!B current;
 	ObjectState!B next;
@@ -621,10 +785,10 @@ final class GameState(B){
 	this(SacMap!B map,NTTs ntts)in{
 		assert(!!map);
 	}body{
-		this.map=map;
 		current=new ObjectState!B;
 		next=new ObjectState!B;
 		lastCommitted=new ObjectState!B;
+		current.map=next.map=lastCommitted.map=map;
 		commands.length=1;
 		foreach(ref structure;ntts.structures)
 			placeStructure(structure);
@@ -647,12 +811,12 @@ final class GameState(B){
 		import bldg;
 		if(data.flags&BldgFlags.ground){
 			auto ground=data.ground;
-			auto n=map.n,m=map.m;
+			auto n=current.map.n,m=current.map.m;
 			foreach(j;max(0,cj-4)..min(n,cj+4)){
 				foreach(i;max(0,ci-4)..min(m,ci+4)){
 					auto dj=j-(cj-4), di=i-(ci-4);
 					if(ground[dj][di])
-						map.tiles[j][i]=ground[dj][di];
+						current.map.tiles[j][i]=ground[dj][di];
 				}
 			}
 		}
@@ -661,8 +825,8 @@ final class GameState(B){
 			auto offset=Vector3f(component.x,component.y,component.z);
 			offset=rotate(facingQuaternion(ntt.facing), offset);
 			auto cposition=position+offset;
-			if(!isOnGround(cposition)) continue;
-			cposition.z=getGroundHeight(cposition);
+			if(!current.isOnGround(cposition)) continue;
+			cposition.z=current.getGroundHeight(cposition);
 			auto rotation=facingQuaternion(ntt.facing+component.facing);
 			current.addObject(StaticObject!B(curObj,cposition,rotation));
 		}
@@ -671,17 +835,17 @@ final class GameState(B){
 	void placeNTT(T)(ref T ntt) if(is(T==Creature)||is(T==Wizard)){
 		auto curObj=SacObject!B.getSAXS!T(ntt.tag);
 		auto position=Vector3f(ntt.x,ntt.y,ntt.z);
-		bool onGround=isOnGround(position);
+		bool onGround=current.isOnGround(position);
 		if(onGround)
-			position.z=getGroundHeight(position);
+			position.z=current.getGroundHeight(position);
 		auto rotation=facingQuaternion(ntt.facing);
 		auto mode=ntt.flags & Flags.corpse ? CreatureMode.dead : CreatureMode.idle;
 		auto movement=curObj.mustFly?CreatureMovement.flying:CreatureMovement.onGround;
 		if(movement==CreatureMovement.onGround && !onGround)
 			movement=curObj.canFly?CreatureMovement.flying:CreatureMovement.tumbling;
-		auto creatureState=CreatureState(mode, movement);
+		auto creatureState=CreatureState(mode, movement, ntt.facing);
 		auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState);
-		obj.setInitialAnimation(current);
+		obj.setCreatureState(current);
 		/+do{
 			import std.random: uniform;
 			state=cast(AnimationState)uniform(0,64);
@@ -692,8 +856,8 @@ final class GameState(B){
 		auto curObj=SacObject!B.getWIDG(w.tag);
 		foreach(pos;w.positions){
 			auto position=Vector3f(pos[0],pos[1],0);
-			if(!isOnGround(position)) continue;
-			position.z=getGroundHeight(position);
+			if(!current.isOnGround(position)) continue;
+			position.z=current.getGroundHeight(position);
 			// original engine screws up widget rotations
 			// values look like angles in degrees, but they are actually radians
 			auto rotation=rotationQuaternion(Axis.z,cast(float)(-pos[2]));

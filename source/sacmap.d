@@ -8,7 +8,7 @@ import std.math;
 
 import sacobject;
 
-class SacMap(B){
+final class SacMap(B){
 	B.TerrainMesh[] meshes;
 	B.Texture[] textures;
 	B.Texture[] details;
@@ -128,6 +128,14 @@ class SacMap(B){
 		Plane plane;
 		plane.fromPoints(p0,p1,p2); // wtf.
 		return -(plane.a*pos.x+plane.b*pos.y+plane.d)/plane.c;
+	}
+	float getGroundHeightDerivative(Vector3f pos,Vector3f direction){
+		auto triangle=getTriangle(pos);
+		static foreach(i;0..3)
+			mixin(text(`auto p`,i,`=getVertex(triangle[`,i,`].expand);`));
+		Plane plane;
+		plane.fromPoints(p0,p1,p2); // wtf.
+		return -(plane.a*direction.x+plane.b*direction.y)/plane.c;
 	}
 }
 

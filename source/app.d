@@ -32,8 +32,8 @@ void main(string[] args){
 		}else{
 			auto sac=new SacObject!DagonBackend(args[i], args[i].endsWith(".SXMD")?2e-3:1, anim);
 			auto position=Vector3f(1270.0f, 1270.0f, 0.0f);
-			if(state && state.isOnGround(position))
-				position.z=state.getGroundHeight(position);
+			if(state && state.current.isOnGround(position))
+				position.z=state.current.getGroundHeight(position);
 			backend.addObject(sac,position,facingQuaternion(0));
 		}
 		if(i+1<args.length&&args[i+1].endsWith(".SXSK"))

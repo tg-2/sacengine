@@ -26,7 +26,7 @@ struct Cre8{
 	ushort obedience0;// if 0, creatures ignore attack orders, unclear what it does exactly
 	ushort obedience1;// ?
 	ushort aggressiveness;// if 0, creatures don't attack automatically, unclear what else it does
-	ushort walkingSpeed;
+	ushort runningSpeed;
 	ushort flyingSpeed;
 	ushort health;
 	ushort regeneration;
@@ -88,7 +88,7 @@ struct Wizd{
 	ushort unknown2=1250;
 	ushort unknown3=1250;
 	ushort unknown4=1000;
-	ushort walkingSpeed=1000;
+	ushort runningSpeed=1000;
 	ushort flyingSpeed=0;
 	ushort health=1500;
 	ushort regeneration=1000;

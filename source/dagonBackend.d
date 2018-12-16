@@ -212,7 +212,7 @@ final class SacScene: Scene{
 	}
 
 	final void renderMap(RenderingContext* rc){
-		auto map=state.map;
+		auto map=state.current.map;
 		rc.layer=1;
 		rc.modelMatrix=Matrix4x4f.identity();
 		rc.invModelMatrix=Matrix4x4f.identity();
@@ -303,8 +303,8 @@ final class SacScene: Scene{
 		assert(this.state is null);
 	}do{
 		this.state=state;
-		setupEnvironment(state.map);
-		createSky(state.map);
+		setupEnvironment(state.current.map);
+		createSky(state.current.map);
 	}
 
 	void addObject(SacObject!DagonBackend sobj,Vector3f position,Quaternionf rotation){
@@ -369,8 +369,8 @@ final class SacScene: Scene{
 		if(eventManager.keyPressed[KEY_K]) fpview.active=false;
 		if(eventManager.keyPressed[KEY_L]) fpview.active=true;
 		fpview.camera.position += dir.normalized * speed * dt;
-		if(state && state.isOnGround(fpview.camera.position)){
-			fpview.camera.position.z=max(fpview.camera.position.z, state.getGroundHeight(fpview.camera.position));
+		if(state && state.current.isOnGround(fpview.camera.position)){
+			fpview.camera.position.z=max(fpview.camera.position.z, state.current.getGroundHeight(fpview.camera.position));
 		}
 	}
 
@@ -381,6 +381,17 @@ final class SacScene: Scene{
 		if(eventManager.keyPressed[KEY_RETURN]) state.current.eachMoving!immediateResurrect(state.current);
 		if(eventManager.keyPressed[KEY_G]) state.current.eachMoving!startFlying(state.current);
 		if(eventManager.keyPressed[KEY_V]) state.current.eachMoving!land(state.current);
+		// TODO: implement the following by sending commands to the game state!
+		if(eventManager.keyPressed[KEY_UP] && !eventManager.keyPressed[KEY_DOWN]){
+			state.current.eachMoving!startMovingForward(state.current);
+		}else if(eventManager.keyPressed[KEY_DOWN] && !eventManager.keyPressed[KEY_UP]){
+			state.current.eachMoving!startMovingBackward(state.current);
+		}else state.current.eachMoving!stopMovement(state.current);
+		if(eventManager.keyPressed[KEY_LEFT] && !eventManager.keyPressed[KEY_RIGHT]){
+			state.current.eachMoving!startTurningLeft(state.current);
+		}else if(eventManager.keyPressed[KEY_RIGHT] && !eventManager.keyPressed[KEY_LEFT]){
+			state.current.eachMoving!startTurningRight(state.current);
+		}else state.current.eachMoving!stopTurning(state.current);
 	}
 
 	override void onLogicsUpdate(double dt){
@@ -394,7 +405,7 @@ final class SacScene: Scene{
 			state.commit();
 			auto totalTime=state.current.frame*dt;
 			if(skyEntities.length){
-				sacSkyMaterialBackend.sunLoc = state.sunSkyRelLoc(fpview.camera.position);
+				sacSkyMaterialBackend.sunLoc = state.current.sunSkyRelLoc(fpview.camera.position);
 				sacSkyMaterialBackend.cloudOffset+=dt*1.0f/64.0f*Vector2f(1.0f,-1.0f);
 				sacSkyMaterialBackend.cloudOffset.x=fmod(sacSkyMaterialBackend.cloudOffset.x,1.0f);
 				sacSkyMaterialBackend.cloudOffset.y=fmod(sacSkyMaterialBackend.cloudOffset.y,1.0f);
