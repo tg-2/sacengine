@@ -106,7 +106,8 @@ class SacObject(B){
 		if(!isNaN(data.zfactorOverride)) saxsi.saxs.zfactor=data.zfactorOverride;
 		auto anims=&dat2.animations;
 		auto animIDs=dat2.animations.animations[];
-		foreach(ref animID;animIDs){
+		animations=new Animation[](animIDs.length);
+		foreach(i,ref animID;animIDs){
 			static immutable string[2][] bad=[["2fwc","oppx"],["pezH","tsZB"],["glsd","tsGB"],["ycrp","tsTS"],
 			                                  ["bobs","tsZB"],["guls","tsGB"],["craa","tsGB"],["crpd","tsTS"]];
 			if(!(animID=="rezW"||animID[0..2]=="00"||bad.any!(x=>x[0]==tag&&x[1]==animID))){
@@ -116,7 +117,7 @@ class SacObject(B){
 					auto animation=loadSXSK(anim,data.scaling);
 					static if(gpuSkinning)
 						animation.compile(saxsi.saxs);
-					animations~=animation;
+					animations[i]=animation;
 				}
 			}
 		}
