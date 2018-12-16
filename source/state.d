@@ -6,6 +6,8 @@ import ntts;
 import sacmap, sacobject, animations;
 import util;
 enum int updateFPS=60;
+static assert(updateFPS%animFPS==0);
+enum updateAnimFactor=updateFPS/animFPS;
 
 enum RenderMode{
 	opaque,
@@ -18,19 +20,30 @@ struct Id{
 	int index=-1;
 }
 
+enum CreatureMode{
+	idle,
+	dead,
+}
+
+struct CreatureState{
+	auto mode=CreatureMode.idle;
+}
+
 struct MovingObject(B){
 	SacObject!B sacObject;
 	Vector3f position;
 	Quaternionf rotation;
 	AnimationState animationState;
 	int frame;
+	CreatureState creatureState;
 
-	this(SacObject!B sacObject,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame){
+	this(SacObject!B sacObject,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame,CreatureState creatureState){
 		this.sacObject=sacObject;
 		this.position=position;
 		this.rotation=rotation;
 		this.animationState=animationState;
 		this.frame=frame;
+		this.creatureState=creatureState;
 	}
 }
 
@@ -76,6 +89,7 @@ struct MovingObjects(B,RenderMode mode){
 	Array!Quaternionf rotations;
 	Array!AnimationState animationStates;
 	Array!int frames;
+	Array!CreatureState creatureStates;
 	@property int length(){ assert(ids.length<=int.max); return cast(int)ids.length; }
 
 	void reserve(int reserveSize){
@@ -84,6 +98,7 @@ struct MovingObjects(B,RenderMode mode){
 		rotations.reserve(reserveSize);
 		animationStates.reserve(reserveSize);
 		frames.reserve(reserveSize);
+		creatureStates.reserve(reserveSize);
 	}
 
 	void addObject(int id,MovingObject!B object){
@@ -92,6 +107,7 @@ struct MovingObjects(B,RenderMode mode){
 		rotations~=object.rotation;
 		animationStates~=object.animationState;
 		frames~=object.frame;
+		creatureStates~=object.creatureState;
 	}
 	void opAssign(ref MovingObjects!(B,mode) rhs){
 		assert(sacObject is null || sacObject is rhs.sacObject);
@@ -101,12 +117,25 @@ struct MovingObjects(B,RenderMode mode){
 		assignArray(rotations,rhs.rotations);
 		assignArray(animationStates,rhs.animationStates);
 		assignArray(frames,rhs.frames);
+		assignArray(creatureStates,rhs.creatureStates);
 	}
 }
 auto each(alias f,B,RenderMode mode)(ref MovingObjects!(B,mode) movingObjects){
-	with(movingObjects)
-		foreach(i;0..length)
-			f(MovingObject!B(sacObject,positions[i],rotations[i],animationStates[i],frames[i]));
+	with(movingObjects){
+		foreach(i;0..length){
+			enum construct=q{MovingObject!B(sacObject,positions[i],rotations[i],animationStates[i],frames[i],creatureStates[i])};
+			static if(!is(typeof(f(mixin(construct))))){
+				// TODO: find a better way to check whether argument taken by reference
+				auto obj=mixin(construct);
+				f(obj);
+				positions[i]=obj.position;
+				rotations[i]=obj.rotation;
+				animationStates[i]=obj.animationState;
+				frames[i]=obj.frame;
+				creatureStates[i]=obj.creatureState;
+			}else f(mixin(construct));
+		}
+	}
 }
 
 
@@ -227,6 +256,12 @@ auto each(alias f,B,RenderMode mode)(ref Objects!(B,mode) objects){
 		}
 	}
 }
+auto eachMoving(alias f,B,RenderMode mode)(ref Objects!(B,mode) objects){
+	with(objects){
+		foreach(ref movingObject;movingObjects)
+			movingObject.each!f;
+	}
+}
 
 auto eachByType(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T args){
 	with(objects){
@@ -275,6 +310,12 @@ auto each(alias f,B)(ref ObjectManager!B objectManager){
 		transparentObjects.each!f;
 	}
 }
+auto eachMoving(alias f,B)(ref ObjectManager!B objectManager){
+	with(objectManager){
+		opaqueObjects.eachMoving!f;
+		transparentObjects.eachMoving!f;
+	}
+}
 auto eachByType(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
 	with(objectManager){
 		opaqueObjects.eachByType!f(args);
@@ -292,8 +333,16 @@ final class ObjectState(B){ // (update logic)
 		copyFrom(rhs);
 		update();
 	}
+	static void updateObject(ref MovingObject!B object){
+		auto sacObject=object.sacObject;
+		object.frame+=1;
+		if(object.frame>=sacObject.numFrames()*updateAnimFactor){
+			object.frame=0;
+		}
+	}
 	void update(){
 		frame+=1;
+		this.eachMoving!updateObject;
 	}
 	ObjectManager!B obj;
 	int addObject(T)(T object) if(is(T==MovingObject!B)||is(T==StaticObject!B)){
@@ -303,10 +352,13 @@ final class ObjectState(B){ // (update logic)
 		obj.addFixed(object);
 	}
 }
-auto each(alias f,B)(ref ObjectState!B objectState){
+auto each(alias f,B)(ObjectState!B objectState){
 	return objectState.obj.each!f;
 }
-auto eachByType(alias f,B,T...)(ref ObjectState!B objectState,T args){
+auto eachMoving(alias f,B)(ObjectState!B objectState){
+	return objectState.obj.eachMoving!f;
+}
+auto eachByType(alias f,B,T...)(ObjectState!B objectState,T args){
 	return objectState.obj.eachByType!f(args);
 }
 
@@ -413,7 +465,7 @@ final class GameState(B){
 			state=cast(AnimationState)uniform(0,64);
 		}while(!curObj.hasAnimationState(state));
 		curObj.setAnimationState(state);+/
-		current.addObject(MovingObject!B(curObj,position,rotation,state,frame));
+		current.addObject(MovingObject!B(curObj,position,rotation,state,frame,CreatureState.init));
 	}
 	void placeWidgets(Widgets w){
 		auto curObj=SacObject!B.getWIDG(w.tag);

@@ -263,7 +263,8 @@ final class SacScene: Scene{
 					foreach(j;0..objects.length){ // TODO: use instanced rendering instead
 						material.backend.setTransformation(objects.positions[j], objects.rotations[j], rc);
 						sacObject.setAnimationState(objects.animationStates[j]);
-						sacObject.setFrame(objects.frames[j]);
+						// TODO: interpolate animations to get 60 FPS?
+						sacObject.setFrame(objects.frames[j]/updateAnimFactor);
 						mesh.render(rc);
 					}
 				}else{
@@ -385,7 +386,7 @@ final class SacScene: Scene{
 			rotateSky(rotationQuaternion(Axis.z,cast(float)(2*PI/512.0f*totalTime)));
 		}
 		foreach(sac;sacs.data){
-			auto frame=totalTime*sac.animFPS;
+			auto frame=totalTime*animFPS;
 			if(sac.numFrames) sac.setFrame(cast(size_t)(frame%sac.numFrames));
 		}
 	}

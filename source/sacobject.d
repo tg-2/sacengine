@@ -7,6 +7,8 @@ alias Tuple=std.typecons.Tuple;
 
 import std.exception, std.algorithm, std.math, std.path;
 
+enum animFPS=30;
+
 class SacObject(B){
 	char[4] tag;
 	int stateIndex=-1;
@@ -197,9 +199,6 @@ class SacObject(B){
 
 	final size_t numFrames(){
 		return isSaxs?animations[animationState].frames.length:0;
-	}
-	final double animFPS(){
-		return 30;
 	}
 
 	void setFrame(size_t frame)in{
