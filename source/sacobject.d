@@ -183,7 +183,7 @@ final class SacObject(B){
 		return objects[tag]=new SacObject!B(tag,(Widgets*).init); // hack
 	}
 
-	this(string filename, float scaling=1.0, string animation=""){
+	this(string filename, float scaling=1.0,float zfactorOverride=float.nan,string animation=""){
 		enforce(filename.endsWith(".MRMM")||filename.endsWith(".3DSM")||filename.endsWith(".WIDG")||filename.endsWith(".SXMD"));
 		switch(filename[$-4..$]){
 			case "MRMM":
@@ -205,6 +205,7 @@ final class SacObject(B){
 			case "SXMD":
 				isSaxs=true;
 				saxsi=SaxsInstance!B(loadSaxs!B(filename,scaling,alphaFlags(tag)));
+				if(!isNaN(zfactorOverride)) saxsi.saxs.zfactor=zfactorOverride;
 				import std.range, std.array;
 				if(animation.length)
 					loadAnimation(animation,scaling);

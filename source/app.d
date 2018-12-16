@@ -30,7 +30,7 @@ void main(string[] args){
 			state=new GameState!DagonBackend(map,ntts);
 			backend.setState(state);
 		}else{
-			auto sac=new SacObject!DagonBackend(args[i], args[i].endsWith(".SXMD")?2e-3:1, anim);
+			auto sac=new SacObject!DagonBackend(args[i], args[i].endsWith(".SXMD")?2e-3f:1,1.0f,anim);
 			auto position=Vector3f(1270.0f, 1270.0f, 0.0f);
 			if(state && state.current.isOnGround(position))
 				position.z=state.current.getGroundHeight(position);
