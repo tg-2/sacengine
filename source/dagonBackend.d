@@ -254,6 +254,7 @@ final class SacScene: Scene{
 			}
 			foreach(i;0..materials.length){
 				auto material=materials[i];
+				if(!material) continue;
 				auto blending=("blending" in material.inputs).asInteger;
 				if((mode==RenderMode.transparent)!=(blending==Additive||blending==Transparent)) continue;
 				if(rc.shadowMode&&blending==Additive) continue;

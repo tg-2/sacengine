@@ -30,7 +30,9 @@ class SacObject(B){
 	@property bool canFly(){
 		return hasAnimationState(AnimationState.fly);
 	}
-
+	@property bool canDie(){
+		return hasAnimationState(AnimationState.death0);
+	}
 	struct MaterialConfig{
 		int sunBeamPart=-1;
 		int locustWingPart=-1;

@@ -1,6 +1,6 @@
 import std.algorithm, std.range;
 import std.container.array: Array;
-import std.exception, std.stdio;
+import std.exception, std.stdio, std.conv;
 import dlib.math, std.math;
 import std.typecons;
 import ntts;
@@ -348,11 +348,11 @@ auto eachByType(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
 
 void setInitialAnimation(B)(ref MovingObject!B object,ObjectState!B state){
 	auto sacObject=object.sacObject;
-	object.animationState=AnimationState.stance1; // TODO: check health, maybe put stance2
 	object.frame=0;
 	final switch(object.creatureState.mode){
 		case CreatureMode.idle:
 			object.animationState=AnimationState.stance1; // TODO: check health, maybe put stance2
+			if(sacObject.mustFly) object.creatureState.movement=CreatureMovement.flying;
 			if(object.creatureState.movement==CreatureMovement.flying){
 				assert(sacObject.canFly);
 				if(!sacObject.mustFly)
@@ -397,11 +397,14 @@ void setInitialAnimation(B)(ref MovingObject!B object,ObjectState!B state){
 
 void pickRandomAnimation(B)(ref MovingObject!B object,immutable(AnimationState)[] candidates,ObjectState!B state){
 	auto filtered=candidates.filter!(x=>object.sacObject.hasAnimationState(x));
-	object.animationState=filtered.drop(state.uniform(cast(int)filtered.walkLength)).front;
+	int len=cast(int)filtered.walkLength;
+	assert(!!len);
+	object.animationState=filtered.drop(state.uniform(len)).front;
 }
 
 void kill(B)(ref MovingObject!B object, ObjectState!B state){
 	with(CreatureMode) if(object.creatureState.mode.among(dying,dead)) return;
+	if(!object.sacObject.canDie()) return;
 	object.creatureState.mode=CreatureMode.dying;
 	object.setInitialAnimation(state);
 }
@@ -442,11 +445,11 @@ final class ObjectState(B){ // (update logic)
 				}
 				break;
 			case CreatureMode.dying:
-				with(AnimationState) assert(object.animationState.among(flyDeath,death0,death1,death2,falling));
+				with(AnimationState) assert(object.animationState.among(death0,death1,death2,flyDeath,falling,hitFloor),text(object.sacObject.tag," ",object.animationState));
 				object.frame+=1;
 				if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
+					object.frame=0;
 					final switch(object.creatureState.movement){
-						object.frame=0;
 						case CreatureMovement.onGround:
 							object.frame=sacObject.numFrames(object.animationState)*updateAnimFactor-1;
 							object.creatureState.mode=CreatureMode.dead;
@@ -592,7 +595,6 @@ final class GameState(B){
 		auto movement=curObj.mustFly?CreatureMovement.flying:CreatureMovement.onGround;
 		if(movement==CreatureMovement.onGround && !onGround)
 			movement=curObj.canFly?CreatureMovement.flying:CreatureMovement.tumbling;
-		if(curObj.canFly) movement=CreatureMovement.flying;
 		auto creatureState=CreatureState(mode, movement);
 		auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState);
 		obj.setInitialAnimation(current);
