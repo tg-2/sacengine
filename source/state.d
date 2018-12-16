@@ -416,8 +416,8 @@ final class GameState(B){
 			placeNTT(wizard);
 		foreach(ref creature;ntts.creatures)
 			placeNTT(creature);
-		/+foreach(widgets;ntts.widgetss) // TODO: improve engine to be able to handle this
-			placeWidgets(widgets);+/
+		foreach(widgets;ntts.widgetss) // TODO: improve engine to be able to handle this
+			placeWidgets(widgets);
 		map.meshes=createMeshes!B(map.edges,map.heights,map.tiles); // TODO: allow dynamic retexuring
 		commit();
 	}
@@ -459,8 +459,7 @@ final class GameState(B){
 			position.z=getGroundHeight(position);
 		auto rotation=facingQuaternion(ntt.facing);
 		auto state=AnimationState.stance1, frame=0;
-		/+import animations;
-		do{
+		/+do{
 			import std.random: uniform;
 			state=cast(AnimationState)uniform(0,64);
 		}while(!curObj.hasAnimationState(state));+/
