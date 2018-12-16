@@ -96,10 +96,14 @@ T[char[4]] makeSpellByTag(T)(){
 			}
 			fixAnimations(result[tag]);
 		}
-		void fixLocustAnimations(ref Cre8 c){
-			swap(c.animations.hover,c.animations.stance1);
+		void fixLocust(ref Cre8 c){
+			c.animations.stance1=c.animations.hover;
+			c.creatureType="mron";
+			c.animations.death[0]=c.animations.death[1];
+			c.animations.death[1]=c.animations.death[2];
+			c.animations.death[2]=0;
 		}
-		fixLocustAnimations(result["pazb"]);
+		fixLocust(result["pazb"]);
 	}
 	return result;
 }
