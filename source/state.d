@@ -366,6 +366,8 @@ final class ObjectState(B){ // (update logic)
 		auto state=AnimationState.stance1, frame=0; // TODO: check health, maybe put stance2
 		if(mode==CreatureMode.dead){
 			state=AnimationState.death0;
+			if(sacObject.mustFly)
+				state=AnimationState.hitFloor;
 			frame=sacObject.numFrames(state)*updateAnimFactor-1;
 		}else if(movement==CreatureMovement.flying){
 			if(!sacObject.mustFly)
