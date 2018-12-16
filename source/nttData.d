@@ -84,6 +84,19 @@ T[char[4]] makeSpellByTag(T)(){
 		enforce(tag !in result);
 		result[tag]=mixin(`load`~T.stringof)(spellFile);
 	}
+	static if(is(T==Cre8)){
+		// dragon hatchlings have flying animations, but cannot fly
+		// peasants have pulling animations stored in flying animations
+		static immutable nonFlyingTags=["rdbO","zepa","zepd","zepe","zepf","saep","tshg"];
+		foreach(char[4] tag;nonFlyingTags){
+			void fixAnimations(ref Cre8 c){
+				c.animations.takeoff=0;
+				c.animations.fly=0;
+				c.animations.land=0;
+			}
+			fixAnimations(result[tag]);
+		}
+	}
 	return result;
 }
 
