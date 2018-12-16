@@ -258,6 +258,7 @@ final class SacScene: Scene{
 				if((mode==RenderMode.transparent)!=(blending==Additive||blending==Transparent)) continue;
 				if(rc.shadowMode&&blending==Additive) continue;
 				material.bind(rc);
+				scope(success) material.unbind(rc);
 				static if(isMoving){
 					auto mesh=sacObject.saxsi.meshes[i];
 					foreach(j;0..objects.length){ // TODO: use instanced rendering instead
