@@ -3,20 +3,32 @@ import dagonBackend;
 import ntts, sacobject, sacmap, state;
 import util;
 import dlib.math;
-import std.string;
-import std.exception;
-import std.algorithm;
+import std.string, std.array, std.range, std.algorithm, std.stdio;
+import std.exception, std.conv;
 
-void main(string[] args){
+int main(string[] args){
 	import core.memory;
 	GC.disable(); // TODO: figure out where GC memory is used incorrectly
 	if(args.length==1) args~="extracted/jamesmod/JMOD.WAD!/modl.FLDR/jman.MRMC/jman.MRMM";
+	auto opts=args[1..$].filter!(x=>x.startsWith("--")).array;
+	args=chain(args[0..1],args[1..$].filter!(x=>!x.startsWith("--"))).array;
 	Options options={
 		//shadowMapResolution: 8192,
 		//shadowMapResolution: 4096,
 		//shadowMapResolution: 2048,
 		shadowMapResolution: 1024,
+		enableWidgets: true,
 	};
+	foreach(opt;opts){
+		if(opt.startsWith("--shadow-map-resolution=")){
+			options.shadowMapResolution=to!int(opt["--shadow-map-resolution=".length..$]);
+		}else if(opt=="--disable-widgets"){
+			options.enableWidgets=false;
+		}else{
+			stderr.writeln("unknown option: ",opt);
+			return 1;
+		}
+	}
 	auto backend=DagonBackend(options);
 	GameState!DagonBackend state;
 	foreach(ref i;1..args.length){
@@ -40,4 +52,5 @@ void main(string[] args){
 			i+=1;
 	}
 	backend.run();
+	return 0;
 }

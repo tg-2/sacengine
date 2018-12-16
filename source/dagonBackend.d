@@ -10,9 +10,11 @@ import sxsk : gpuSkinning;
 final class SacScene: Scene{
 	//OBJAsset aOBJ;
 	//Texture txta;
+	bool enableWidgets;
 	this(SceneManager smngr, Options options){
 		super(smngr);
 		this.shadowMapResolution=options.shadowMapResolution;
+		this.enableWidgets=options.enableWidgets;
 	}
 	FirstPersonView2 fpview;
 	override void onAssetsRequest(){
@@ -244,7 +246,7 @@ final class SacScene: Scene{
 	}
 
 	final void renderNTTs(RenderMode mode)(RenderingContext* rc){
-		static void render(T)(ref T objects,RenderingContext* rc){ // TODO: why does this need to be static? DMD bug?
+		static void render(T)(ref T objects,bool enableWidgets,RenderingContext* rc){ // TODO: why does this need to be static? DMD bug?
 			auto sacObject=objects.sacObject;
 			enum isMoving=is(T==MovingObjects!(DagonBackend, RenderMode.opaque))||is(T==MovingObjects!(DagonBackend, RenderMode.transparent));
 			static if(is(T==MovingObjects!(DagonBackend, RenderMode.opaque))){
@@ -269,6 +271,7 @@ final class SacScene: Scene{
 						mesh.render(rc);
 					}
 				}else{
+					static if(is(T==FixedObjects!DagonBackend)) if(!enableWidgets) return;
 					auto mesh=sacObject.meshes[i];
 					foreach(j;0..objects.length){
 						material.backend.setTransformation(objects.positions[j], objects.rotations[j], rc);
@@ -277,7 +280,7 @@ final class SacScene: Scene{
 				}
 			}
 		}
-		state.current.eachByType!render(rc);
+		state.current.eachByType!render(enableWidgets,rc);
 	}
 
 	override void renderShadowCastingEntities3D(RenderingContext* rc){
