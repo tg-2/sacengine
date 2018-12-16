@@ -189,8 +189,8 @@ class SacObject(B){
 		return state<animations.length&&animations[state].frames.length;
 	}
 
-	final size_t numFrames(AnimationState animationState){
-		return isSaxs?animations[animationState].frames.length:0;
+	final int numFrames(AnimationState animationState){
+		return isSaxs?cast(int)animations[animationState].frames.length:0;
 	}
 
 	void setFrame(AnimationState animationState,size_t frame)in{

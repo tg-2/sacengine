@@ -119,22 +119,26 @@ struct MovingObjects(B,RenderMode mode){
 		assignArray(frames,rhs.frames);
 		assignArray(creatureStates,rhs.creatureStates);
 	}
+	MovingObject!B opIndex(int i){
+		return MovingObject!B(sacObject,positions[i],rotations[i],animationStates[i],frames[i],creatureStates[i]);
+	}
+	void opIndexAssign(MovingObject!B obj,int i){
+		assert(obj.sacObject is sacObject);
+		positions[i]=obj.position;
+		rotations[i]=obj.rotation;
+		animationStates[i]=obj.animationState;
+		frames[i]=obj.frame;
+		creatureStates[i]=obj.creatureState;
+	}
 }
-auto each(alias f,B,RenderMode mode)(ref MovingObjects!(B,mode) movingObjects){
-	with(movingObjects){
-		foreach(i;0..length){
-			enum construct=q{MovingObject!B(sacObject,positions[i],rotations[i],animationStates[i],frames[i],creatureStates[i])};
-			static if(!is(typeof(f(mixin(construct))))){
-				// TODO: find a better way to check whether argument taken by reference
-				auto obj=mixin(construct);
-				f(obj);
-				positions[i]=obj.position;
-				rotations[i]=obj.rotation;
-				animationStates[i]=obj.animationState;
-				frames[i]=obj.frame;
-				creatureStates[i]=obj.creatureState;
-			}else f(mixin(construct));
-		}
+auto each(alias f,B,RenderMode mode,T...)(ref MovingObjects!(B,mode) movingObjects,T args){
+	foreach(i;0..movingObjects.length){
+		static if(!is(typeof(f(movingObjects[i],args)))){
+			// TODO: find a better way to check whether argument taken by reference
+			auto obj=movingObjects[i];
+			f(obj,args);
+			movingObjects[i]=obj;
+		}else f(movingObjects[i],args);
 	}
 }
 
@@ -159,11 +163,17 @@ struct StaticObjects(B){
 		assignArray(positions,rhs.positions);
 		assignArray(rotations,rhs.rotations);
 	}
+	StaticObject!B opIndex(int i){
+		return StaticObject!B(sacObject,positions[i],rotations[i]);
+	}
+	void opIndexAssign(StaticObject!B obj,int i){
+		positions[i]=obj.position;
+		rotations[i]=obj.rotation;
+	}
 }
-auto each(alias f,B)(ref StaticObjects!B staticObjects){
-	with(staticObjects)
-	foreach(i;0..length)
-		f(StaticObject!B(sacObject,positions[i],rotations[i]));
+auto each(alias f,B,T...)(ref StaticObjects!B staticObjects,T args){
+	foreach(i;0..staticObjects.length)
+		f(staticObjects[i],args);
 }
 
 struct FixedObjects(B){
@@ -185,11 +195,17 @@ struct FixedObjects(B){
 		assignArray(positions,rhs.positions);
 		assignArray(rotations,rhs.rotations);
 	}
+	FixedObject!B opIndex(int i){
+		return FixedObject!B(sacObject,positions[i],rotations[i]);
+	}
+	void opIndexAssign(StaticObject!B obj,int i){
+		positions[i]=obj.position;
+		rotations[i]=obj.rotation;
+	}
 }
-auto each(alias f,B)(ref FixedObjects!B fixedObjects){
-	with(fixedObjects)
-		foreach(i;0..length)
-			f(FixedObject!B(sacObject,positions[i],rotations[i]));
+auto each(alias f,B,T...)(ref FixedObjects!B fixedObjects,T args){
+	foreach(i;0..length)
+		f(fixedObjects[i],args);
 }
 
 
@@ -244,22 +260,22 @@ struct Objects(B,RenderMode mode){
 		}
 	}
 }
-auto each(alias f,B,RenderMode mode)(ref Objects!(B,mode) objects){
+auto each(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T args){
 	with(objects){
 		foreach(ref movingObject;movingObjects)
-			movingObject.each!f;
+			movingObject.each!f(args);
 		static if(mode == RenderMode.opaque){
 			foreach(ref staticObject;staticObjects)
-				staticObject.each!f;
+				staticObject.each!f(args);
 			foreach(ref fixedObject;fixedObjects)
-				fixedObject.each!f;
+				fixedObject.each!f(args);
 		}
 	}
 }
-auto eachMoving(alias f,B,RenderMode mode)(ref Objects!(B,mode) objects){
+auto eachMoving(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T args){
 	with(objects){
 		foreach(ref movingObject;movingObjects)
-			movingObject.each!f;
+			movingObject.each!f(args);
 	}
 }
 
@@ -275,8 +291,6 @@ auto eachByType(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T a
 		}
 	}
 }
-
-
 
 enum numMoving=100;
 enum numStatic=300;
@@ -304,16 +318,16 @@ struct ObjectManager(B){
 		transparentObjects=rhs.transparentObjects;
 	}
 }
-auto each(alias f,B)(ref ObjectManager!B objectManager){
+auto each(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
 	with(objectManager){
-		opaqueObjects.each!f;
-		transparentObjects.each!f;
+		opaqueObjects.each!f(args);
+		transparentObjects.each!f(args);
 	}
 }
-auto eachMoving(alias f,B)(ref ObjectManager!B objectManager){
+auto eachMoving(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
 	with(objectManager){
-		opaqueObjects.eachMoving!f;
-		transparentObjects.eachMoving!f;
+		opaqueObjects.eachMoving!f(args);
+		transparentObjects.eachMoving!f(args);
 	}
 }
 auto eachByType(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
@@ -333,16 +347,24 @@ final class ObjectState(B){ // (update logic)
 		copyFrom(rhs);
 		update();
 	}
-	static void updateObject(ref MovingObject!B object){
+	static void updateCreature(ref MovingObject!B object){
 		auto sacObject=object.sacObject;
-		object.frame+=1;
-		if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
-			object.frame=0;
+		final switch(object.creatureState.mode){
+			case CreatureMode.idle:
+				object.frame+=1;
+				if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
+					object.frame=0;
+				}
+				break;
+			case CreatureMode.dead:
+				with(AnimationState) assert(object.animationState.among(hitFloor,death0,death1,death2));
+				assert(object.frame==sacObject.numFrames(object.animationState)*updateAnimFactor-1);
+				break;
 		}
 	}
 	void update(){
 		frame+=1;
-		this.eachMoving!updateObject;
+		this.eachMoving!updateCreature;
 	}
 	ObjectManager!B obj;
 	int addObject(T)(T object) if(is(T==MovingObject!B)||is(T==StaticObject!B)){
@@ -352,11 +374,11 @@ final class ObjectState(B){ // (update logic)
 		obj.addFixed(object);
 	}
 }
-auto each(alias f,B)(ObjectState!B objectState){
-	return objectState.obj.each!f;
+auto each(alias f,B,T...)(ObjectState!B objectState,T args){
+	return objectState.obj.each!f(args);
 }
-auto eachMoving(alias f,B)(ObjectState!B objectState){
-	return objectState.obj.eachMoving!f;
+auto eachMoving(alias f,B,T...)(ObjectState!B objectState,T args){
+	return objectState.obj.eachMoving!f(args);
 }
 auto eachByType(alias f,B,T...)(ObjectState!B objectState,T args){
 	return objectState.obj.eachByType!f(args);
