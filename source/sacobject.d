@@ -210,7 +210,7 @@ final class SacObject(B){
 					loadAnimation(animation,scaling);
 				if(!animations.length){
 					auto anim=Animation([Pose(Vector3f(0,0,0),facingQuaternion(0).repeat(saxsi.saxs.bones.length).array)]);
-					if(gpuSkinning)
+					static if(gpuSkinning)
 						anim.compile(saxsi.saxs);
 					animations=[anim];
 				}
