@@ -96,6 +96,10 @@ T[char[4]] makeSpellByTag(T)(){
 			}
 			fixAnimations(result[tag]);
 		}
+		void fixLocustAnimations(ref Cre8 c){
+			swap(c.animations.hover,c.animations.stance1);
+		}
+		fixLocustAnimations(result["pazb"]);
 	}
 	return result;
 }
