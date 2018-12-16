@@ -3,6 +3,7 @@ import util;
 import mrmm, _3dsm, txtr, saxs, sxsk, widg;
 import animations, ntts, nttData, spells, bldg;
 import std.typecons: Tuple, tuple;
+import std.stdio, std.conv;
 alias Tuple=std.typecons.Tuple;
 
 import std.exception, std.algorithm, std.math, std.path;
@@ -115,7 +116,9 @@ class SacObject(B){
 			if(!(animID=="rezW"||animID[0..2]=="00"||bad.any!(x=>x[0]==tag&&x[1]==animID))){
 				auto anim=getSaxsAnim(model,animID);
 				import std.file: exists;
-				if(exists(anim)&&!(&animID !is &dat2.animations.stance1 && animID==dat2.animations.stance1)){
+				if(exists(anim)&&(!(&animID !is &dat2.animations.stance1 && animID==dat2.animations.stance1)
+				                  ||i==AnimationState.hover)
+				){
 					auto animation=loadSXSK(anim,data.scaling);
 					static if(gpuSkinning)
 						animation.compile(saxsi.saxs);
@@ -213,7 +216,7 @@ class SacObject(B){
 	}
 
 	void setFrame(AnimationState animationState,size_t frame)in{
-		assert(frame<numFrames(animationState));
+		assert(frame<numFrames(animationState),text(tag," ",animationState," ",frame," ",numFrames(animationState)));
 	}body{
 		saxsi.setPose(animations[animationState].frames[frame]);
 	}
