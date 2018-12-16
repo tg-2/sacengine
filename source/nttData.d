@@ -104,6 +104,10 @@ T[char[4]] makeSpellByTag(T)(){
 			c.animations.death[2]=0;
 		}
 		fixLocust(result["pazb"]);
+		void fixGammel(ref Cre8 c){
+			c.animations.falling=result["kace"].animations.falling;
+		}
+		fixGammel(result["magH"]);
 	}
 	return result;
 }
