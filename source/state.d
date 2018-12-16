@@ -336,7 +336,7 @@ final class ObjectState(B){ // (update logic)
 	static void updateObject(ref MovingObject!B object){
 		auto sacObject=object.sacObject;
 		object.frame+=1;
-		if(object.frame>=sacObject.numFrames()*updateAnimFactor){
+		if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
 			object.frame=0;
 		}
 	}
@@ -463,8 +463,7 @@ final class GameState(B){
 		do{
 			import std.random: uniform;
 			state=cast(AnimationState)uniform(0,64);
-		}while(!curObj.hasAnimationState(state));
-		curObj.setAnimationState(state);+/
+		}while(!curObj.hasAnimationState(state));+/
 		current.addObject(MovingObject!B(curObj,position,rotation,state,frame,CreatureState.init));
 	}
 	void placeWidgets(Widgets w){

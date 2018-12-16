@@ -19,7 +19,6 @@ class SacObject(B){
 	B.Material[] materials;
 	B.Material[] shadowMaterials;
 	Animation[] animations;
-	AnimationState animationState=AnimationState.stance1;
 
 	struct MaterialConfig{
 		int sunBeamPart=-1;
@@ -105,9 +104,8 @@ class SacObject(B){
 				}
 			}
 		}
-		saxsi.createMeshes(animations[animationState].frames[0]);
+		saxsi.createMeshes(animations[AnimationState.stance1].frames[0]);
 		createMaterials(dat2.saxsModel);
-		setAnimationState(AnimationState.stance1); // TODO: get rid of this
 	}
 	static SacObject!B[char[4]] objects;
 	static SacObject!B getSAXS(T)(char[4] tag)if(is(T==Creature)||is(T==Wizard)){
@@ -191,18 +189,12 @@ class SacObject(B){
 		return state<animations.length&&animations[state].frames.length;
 	}
 
-	final void setAnimationState(AnimationState state)in{ // TODO: move out of here
-		assert(hasAnimationState(state));
-	}body{
-		animationState=state;
-	}
-
-	final size_t numFrames(){
+	final size_t numFrames(AnimationState animationState){
 		return isSaxs?animations[animationState].frames.length:0;
 	}
 
-	void setFrame(size_t frame)in{
-		assert(frame<numFrames());
+	void setFrame(AnimationState animationState,size_t frame)in{
+		assert(frame<numFrames(animationState));
 	}body{
 		saxsi.setPose(animations[animationState].frames[frame]);
 	}

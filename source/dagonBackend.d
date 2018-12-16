@@ -263,9 +263,8 @@ final class SacScene: Scene{
 					auto mesh=sacObject.saxsi.meshes[i];
 					foreach(j;0..objects.length){ // TODO: use instanced rendering instead
 						material.backend.setTransformation(objects.positions[j], objects.rotations[j], rc);
-						sacObject.setAnimationState(objects.animationStates[j]);
 						// TODO: interpolate animations to get 60 FPS?
-						sacObject.setFrame(objects.frames[j]/updateAnimFactor);
+						sacObject.setFrame(objects.animationStates[j],objects.frames[j]/updateAnimFactor);
 						mesh.render(rc);
 					}
 				}else{
@@ -388,7 +387,8 @@ final class SacScene: Scene{
 		}
 		foreach(sac;sacs.data){
 			auto frame=totalTime*animFPS;
-			if(sac.numFrames) sac.setFrame(cast(size_t)(frame%sac.numFrames));
+			import animations;
+			if(sac.numFrames(cast(AnimationState)0)) sac.setFrame(cast(AnimationState)0,cast(size_t)(frame%sac.numFrames(cast(AnimationState)0)));
 		}
 	}
 }
