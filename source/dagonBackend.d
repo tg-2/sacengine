@@ -281,17 +281,20 @@ final class SacScene: Scene{
 
 	override void renderShadowCastingEntities3D(RenderingContext* rc){
 		super.renderShadowCastingEntities3D(rc);
+		if(!state) return;
 		renderMap(rc);
 		renderNTTs!(RenderMode.opaque)(rc);
 	}
 
 	override void renderOpaqueEntities3D(RenderingContext* rc){
 		super.renderOpaqueEntities3D(rc);
+		if(!state) return;
 		renderMap(rc);
 		renderNTTs!(RenderMode.opaque)(rc);
 	}
 	override void renderTransparentEntities3D(RenderingContext* rc){
 		super.renderTransparentEntities3D(rc);
+		if(!state) return;
 		renderNTTs!(RenderMode.transparent)(rc);
 	}
 
@@ -375,17 +378,21 @@ final class SacScene: Scene{
 		//writeln(DagonBackend.getTotalGPUMemory()," ",DagonBackend.getAvailableGPUMemory());
 		//writeln(eventManager.fps);
 		cameraControl(dt);
-		state.step();
-		state.commit();
-		auto totalTime=state.current.frame*dt;
-		if(skyEntities.length){
-			sacSkyMaterialBackend.sunLoc = state.sunSkyRelLoc(fpview.camera.position);
-			sacSkyMaterialBackend.cloudOffset+=dt*1.0f/64.0f*Vector2f(1.0f,-1.0f);
-			sacSkyMaterialBackend.cloudOffset.x=fmod(sacSkyMaterialBackend.cloudOffset.x,1.0f);
-			sacSkyMaterialBackend.cloudOffset.y=fmod(sacSkyMaterialBackend.cloudOffset.y,1.0f);
-			rotateSky(rotationQuaternion(Axis.z,cast(float)(2*PI/512.0f*totalTime)));
+		if(state){
+			state.step();
+			state.commit();
+			auto totalTime=state.current.frame*dt;
+			if(skyEntities.length){
+				sacSkyMaterialBackend.sunLoc = state.sunSkyRelLoc(fpview.camera.position);
+				sacSkyMaterialBackend.cloudOffset+=dt*1.0f/64.0f*Vector2f(1.0f,-1.0f);
+				sacSkyMaterialBackend.cloudOffset.x=fmod(sacSkyMaterialBackend.cloudOffset.x,1.0f);
+				sacSkyMaterialBackend.cloudOffset.y=fmod(sacSkyMaterialBackend.cloudOffset.y,1.0f);
+				rotateSky(rotationQuaternion(Axis.z,cast(float)(2*PI/512.0f*totalTime)));
+			}
 		}
 		foreach(sac;sacs.data){
+			static float totalTime=0.0f;
+			totalTime+=dt;
 			auto frame=totalTime*animFPS;
 			import animations;
 			if(sac.numFrames(cast(AnimationState)0)) sac.setFrame(cast(AnimationState)0,cast(size_t)(frame%sac.numFrames(cast(AnimationState)0)));
