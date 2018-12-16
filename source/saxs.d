@@ -210,8 +210,8 @@ void setPose(B)(ref SaxsInstance!B saxsi, Pose pose){
 		foreach(i;0..saxs.bodyParts.length)
 			saxsi.meshes[i].pose=pose.matrices;
 	}else{
-		enforce(saxs.bones.length<=32);
-		Transformation[32] transform;
+		enforce(saxs.bones.length<=maxNumBones);
+		Transformation[maxNumBones] transform;
 		transform[0]=Transformation(Quaternionf.identity,Vector3f(0,0,0));
 		enforce(pose.rotations.length==saxs.bones.length);
 		foreach(i,ref bone;saxs.bones)

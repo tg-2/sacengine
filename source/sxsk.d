@@ -2,7 +2,10 @@ import util;
 import dlib.math;
 import std.stdio, std.exception, std.algorithm, std.array;
 
+
+enum maxNumBones=32;
 enum gpuSkinning=true;
+
 struct Pose{
 	Vector3f displacement;
 	Quaternionf[] rotations;
@@ -24,7 +27,7 @@ Animation parseSXSK(ubyte[] data,float scaling){
 	auto numFrames=*cast(ushort*)data[2..4].ptr;
 	double offsetY=*cast(float*)data[4..8].ptr;
 	auto numBones=*data[8..12].ptr;
-	enforce(numBones<=32);
+	enforce(numBones<=maxNumBones);
 	auto frameHeaders=cast(FrameHeader[])data[12..12+numFrames*FrameHeader.sizeof];
 	Pose[] frames;
 	foreach(i,ref frameHeader;frameHeaders){
@@ -47,10 +50,10 @@ Animation loadSXSK(string filename,float scaling){
 static if(gpuSkinning){
 	import saxs;
 	void compile(B)(ref Animation anim, ref Saxs!B saxs){
-		enforce(saxs.bones.length<=32);
+		enforce(saxs.bones.length<=maxNumBones);
 		foreach(ref frame;anim.frames){
 			enforce(frame.rotations.length==saxs.bones.length);
-			Transformation[32] transform;
+			Transformation[maxNumBones] transform;
 			transform[0]=Transformation(Quaternionf.identity,Vector3f(0,0,0));
 			foreach(j,ref bone;saxs.bones)
 				transform[j]=transform[bone.parent]*Transformation(frame.rotations[j],bone.position);
