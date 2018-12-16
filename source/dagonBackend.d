@@ -532,12 +532,13 @@ static:
 
 	Material[] createShadowMaterials(SacObject!DagonBackend sobj){
 		GenericMaterial[] materials;
-		foreach(mat;sobj.materials){
+		materials=new GenericMaterial[](sobj.materials.length);
+		foreach(i,mat;sobj.materials){
 			auto blending=("blending" in mat.inputs).asInteger;
 			if(blending!=Additive){
 				auto shadowMat=scene.createMaterial(gpuSkinning&&sobj.isSaxs?scene.shadowMap.bsb:scene.shadowMap.sb); // TODO: use shadowMap.sm if no alpha channel
 				shadowMat.diffuse=("diffuse" in mat.inputs).texture;
-				materials~=shadowMat;
+				materials[i]=shadowMat;
 			}
 		}
 		return materials;
