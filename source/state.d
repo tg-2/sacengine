@@ -500,6 +500,8 @@ void land(B)(ref MovingObject!B object,ObjectState!B state){
 		if(object.sacObject.mustFly||!object.creatureState.mode.among(idle,moving)||
 		   object.creatureState.movement!=CreatureMovement.flying)
 			return;
+	if(!state.isOnGround(object.position))
+		return;
 	object.creatureState.mode=CreatureMode.landing;
 	object.setCreatureState(state);
 }
@@ -659,7 +661,10 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			break;
 		case CreatureMovement.flying:
 			if(object.creatureState.mode!=CreatureMode.moving) break;
-			void applyMovementInAir(Vector3f direction){
+			void applyMovementInAir(Vector3f direction)in{
+				// TODO: allow directions that are nonzero in z
+				assert(direction.z==0.0f);
+			}body{
 				auto speed=object.sacObject.movementSpeed(true)/updateFPS;
 				auto newPosition=object.position+speed*direction;
 				if(state.isOnGround(newPosition)){
