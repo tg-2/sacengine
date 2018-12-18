@@ -37,6 +37,9 @@ final class SacObject(B){
 	@property bool canFlyBackward(){
 		return tag=="zgub";
 	}
+	@property bool seamlessFlyAndHover(){
+		return tag=="zgub";
+	}
 	@property bool canDie(){
 		return hasAnimationState(AnimationState.death0);
 	}

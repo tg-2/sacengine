@@ -376,7 +376,7 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 					break;
 				case CreatureMovement.flying:
 					assert(sacObject.canFly);
-					if(!sacObject.mustFly && object.frame==0)
+					if(!sacObject.mustFly && (object.frame==0||object.animationState==AnimationState.fly&&object.sacObject.seamlessFlyAndHover))
 						object.animationState=AnimationState.hover;
 					break;
 				case CreatureMovement.tumbling:
@@ -406,7 +406,7 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 					object.animationState=AnimationState.run;
 					break;
 				case flying:
-					if(object.frame==0)
+					if(object.frame==0||object.animationState==AnimationState.hover&&object.sacObject.seamlessFlyAndHover)
 						object.animationState=AnimationState.fly;
 					break;
 				case tumbling:
