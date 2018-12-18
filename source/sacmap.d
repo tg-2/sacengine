@@ -154,6 +154,29 @@ final class SacMap(B){
 		plane.fromPoints(p0,p1,p2); // wtf.
 		return -(plane.a*direction.x+plane.b*direction.y)/plane.c;
 	}
+	Vector3f moveOnGround(Vector3f position,Vector3f direction)in{
+		assert(isOnGround(position));
+	}do{
+		auto newPosition=position+direction;
+		if(isOnGround(newPosition))
+			return newPosition;
+		static immutable Vector2f[8] directions=cartesianProduct([-1,0,1],[-1,0,1]).filter!(x=>x[0]||x[1]).map!(x=>Vector2f(x[0],x[1],0.0f).normalized).array;
+		Vector3f bestNewPosition=position;
+		float largestDotProduct=0.0f;
+		foreach(i;0..8){
+			auto dotProduct=dot(directions[i],direction.xy);
+			if(dotProduct>largestDotProduct){
+				auto newPosition2D=position.xy+dotProduct*directions[i];
+				newPosition=Vector3f(newPosition2D.x,newPosition2D.y,0.0f);
+				if(isOnGround(newPosition)){
+					bestNewPosition=newPosition;
+					largestDotProduct=0.0f;
+				}
+			}
+		}
+		bestNewPosition.z=getGroundHeight(bestNewPosition);
+		return bestNewPosition;
+	}
 }
 
 SuperImage loadLMap(string filename){

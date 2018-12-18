@@ -653,12 +653,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 					auto maxFactor=object.sacObject.maxDownwardSpeedFactor;
 					if(newDirection.lengthsqr>maxFactor*maxFactor) newDirection=maxFactor*newDirection.normalized;
 				}
-				auto newPosition=object.position+speed*newDirection;
-				if(state.isOnGround(newPosition)){
-					object.position=Vector3f(newPosition.x,newPosition.y,state.getGroundHeight(newPosition));
-				}else{
-					// TODO: slide along map border
-				}
+				object.position=state.moveOnGround(object.position,speed*newDirection);
 			}
 			final switch(object.creatureState.movementDirection){
 				case MovementDirection.none:
@@ -720,8 +715,12 @@ void updateCreature(B)(ref MovingObject!B object, ObjectState!B state){
 import std.random: MinstdRand0;
 final class ObjectState(B){ // (update logic)
 	SacMap!B map;
+	this(SacMap!B map){ this.map=map; }
 	bool isOnGround(Vector3f position){
 		return map.isOnGround(position);
+	}
+	Vector3f moveOnGround(Vector3f position,Vector3f direction){
+		return map.moveOnGround(position,direction);
 	}
 	float getGroundHeight(Vector3f position){
 		return map.getGroundHeight(position);
@@ -802,10 +801,9 @@ final class GameState(B){
 	this(SacMap!B map,NTTs ntts,Options options)in{
 		assert(!!map);
 	}body{
-		current=new ObjectState!B;
-		next=new ObjectState!B;
-		lastCommitted=new ObjectState!B;
-		current.map=next.map=lastCommitted.map=map;
+		current=new ObjectState!B(map);
+		next=new ObjectState!B(map);
+		lastCommitted=new ObjectState!B(map);
 		commands.length=1;
 		foreach(ref structure;ntts.structures)
 			placeStructure(structure);
