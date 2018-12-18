@@ -66,7 +66,7 @@ final class SacMap(B){
 		auto skyt=loadTXTR(buildPath(land,chain(retro(envi.skyt[]),".TXTR").to!string));
 		auto sun_=loadTXTR(buildPath(land,chain(retro(envi.sun_[]),".TXTR").to!string));
 		auto undr=loadTXTR(buildPath(land,chain(retro(envi.undr[]),".TXTR").to!string));
-		auto mirroredRepeat=iota(numSacMapTextures).map!(i=>i!=257);
+		auto mirroredRepeat=iota(numSacMapTextures).map!(i=>i!=skyIndex);
 		textures=zip(chain(mapts,only(edge,edge,sky_,skyb,skyt,sun_,undr)),mirroredRepeat).map!(x=>B.makeTexture(x.expand)).array;
 		details=bumps.map!(B.makeTexture).array;
 		auto lmap=loadLMap(filename[0..$-".HMAP".length]~".LMAP");
