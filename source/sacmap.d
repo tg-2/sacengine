@@ -8,6 +8,23 @@ import std.math;
 
 import sacobject;
 
+enum{
+	numMapTextures=256,
+	bottomIndex=numMapTextures,
+	edgeIndex,
+	numMapMeshes,
+
+	skyIndex=numMapMeshes,
+	skybIndex,
+	skytIndex,
+	sunIndex,
+	undrIndex,
+	numSacMapTextures,
+	numSkyMeshes=undrIndex+1-skyIndex,
+}
+enum mapDepth=50.0f;
+
+
 final class SacMap(B){
 	B.TerrainMesh[] meshes;
 	B.Texture[] textures;
@@ -49,8 +66,8 @@ final class SacMap(B){
 		auto skyt=loadTXTR(buildPath(land,chain(retro(envi.skyt[]),".TXTR").to!string));
 		auto sun_=loadTXTR(buildPath(land,chain(retro(envi.sun_[]),".TXTR").to!string));
 		auto undr=loadTXTR(buildPath(land,chain(retro(envi.undr[]),".TXTR").to!string));
-		auto mirroredRepeat=iota(256+6).map!(i=>i!=257);
-		textures=zip(chain(mapts,only(edge,sky_,skyb,skyt,sun_,undr)),mirroredRepeat).map!(x=>B.makeTexture(x.expand)).array;
+		auto mirroredRepeat=iota(numSacMapTextures).map!(i=>i!=257);
+		textures=zip(chain(mapts,only(edge,edge,sky_,skyb,skyt,sun_,undr)),mirroredRepeat).map!(x=>B.makeTexture(x.expand)).array;
 		details=bumps.map!(B.makeTexture).array;
 		auto lmap=loadLMap(filename[0..$-".HMAP".length]~".LMAP");
 		color=B.makeTexture(lmap);
@@ -179,7 +196,7 @@ SuperImage[] loadMAPTs(string directory){
 		}).array;
 }
 
-B.TerrainMesh[] createMeshes(B)(bool[][] edges, float[][] heights, ubyte[][] tiles, float scaleFactor=1){
+B.TerrainMesh[] createMeshes(B)(bool[][] edges, float[][] heights, ubyte[][] tiles, bool addBottom){
 	//foreach(e;edges) e[]=false;
 	auto n=to!int(edges.length);
 	enforce(n);
@@ -188,7 +205,7 @@ B.TerrainMesh[] createMeshes(B)(bool[][] edges, float[][] heights, ubyte[][] til
 	enforce(edges.all!(x=>x.length==m));
 	enforce(heights.all!(x=>x.length==m));
 	Vector3f getVertex(int j,int i){
-		return scaleFactor*Vector3f(10*i,10*(n-1-j),heights[j][i]);
+		return Vector3f(10*i,10*(n-1-j),heights[j][i]);
 	}
 	int di(int i){ return i==1||i==2; }
 	int dj(int i){ return i==2||i==3; }
@@ -222,8 +239,8 @@ B.TerrainMesh[] createMeshes(B)(bool[][] edges, float[][] heights, ubyte[][] til
 	foreach(j;0..n)
 		foreach(i;0..m)
 			normals[j][i]=normals[j][i].normalized;
-	auto numVertices=new uint[](256);
-	auto numFaces=new uint[](256);
+	auto numVertices=new uint[](257);
+	auto numFaces=new uint[](257);
 	foreach(j;0..n-1){
 		foreach(i;0..m-1){
 			auto t=tiles[n-2-j][i];
@@ -237,12 +254,16 @@ B.TerrainMesh[] createMeshes(B)(bool[][] edges, float[][] heights, ubyte[][] til
 			if(faces){
 				numVertices[t]+=4;
 				numFaces[t]+=faces;
+				if(addBottom){
+					numVertices[bottomIndex]+=4;
+					numFaces[bottomIndex]+=faces;
+				}
 			}
 		}
 	}
-	auto curVertex=new uint[](256);
-	auto curFace=new uint[](256);
-	auto meshes=new B.TerrainMesh[](257);
+	auto curVertex=new uint[](numMapMeshes-1);
+	auto curFace=new uint[](numMapMeshes-1);
+	auto meshes=new B.TerrainMesh[](numMapMeshes);
 	foreach(j;0..n-1){
 		foreach(i;0..m-1){
 			auto t=tiles[n-2-j][i];
@@ -250,6 +271,8 @@ B.TerrainMesh[] createMeshes(B)(bool[][] edges, float[][] heights, ubyte[][] til
 				if(!numFaces[t]) continue;
 				meshes[t]=B.makeTerrainMesh(numVertices[t], numFaces[t]);
 			}
+			if(!meshes[bottomIndex])
+				meshes[bottomIndex]=B.makeTerrainMesh(numVertices[bottomIndex], numFaces[bottomIndex]);
 			int faces=0;
 			struct FaceCounter2{
 				void put(uint[3]){
@@ -263,14 +286,24 @@ B.TerrainMesh[] createMeshes(B)(bool[][] edges, float[][] heights, ubyte[][] til
 				meshes[t].normals[curVertex[t]+k]=normals[j+dj(k)][i+di(k)];
 				meshes[t].coords[curVertex[t]+k]=Vector2f(i+di(k),n-1-(j+dj(k)))/256.0f;
 				meshes[t].texcoords[curVertex[t]+k]=Vector2f(di(k),!dj(k));
+				if(addBottom){
+					meshes[bottomIndex].vertices[curVertex[bottomIndex]+k]=getVertex(j+dj(k),i+di(k))+Vector3f(0,0,-mapDepth);
+					meshes[bottomIndex].normals[curVertex[bottomIndex]+k]=-normals[j+dj(k)][i+di(k)];
+					meshes[bottomIndex].coords[curVertex[bottomIndex]+k]=Vector2f(i+di(k),n-1-(j+dj(k)))/256.0f;
+					meshes[bottomIndex].texcoords[curVertex[bottomIndex]+k]=Vector2f(di(k),1);
+				}
 			}
 			struct ProcessFaces2{
 				void put(uint[3] f){
 					meshes[t].indices[curFace[t]++]=[curVertex[t]+f[0],curVertex[t]+f[1],curVertex[t]+f[2]];
+					if(addBottom){
+						meshes[bottomIndex].indices[curFace[bottomIndex]++]=[curVertex[bottomIndex]+f[0],curVertex[bottomIndex]+f[2],curVertex[bottomIndex]+f[1]];
+					}
 				}
 			}
 			getFaces(j,i,ProcessFaces2());
 			curVertex[t]+=4;
+			if(addBottom) curVertex[bottomIndex]+=4;
 		}
 	}
 	assert(curVertex==numVertices && curFace==numFaces);
@@ -279,7 +312,6 @@ B.TerrainMesh[] createMeshes(B)(bool[][] edges, float[][] heights, ubyte[][] til
 	Vector2f[] edgeCoords;
 	Vector2f[] edgeTexcoords;
 	uint[3][] edgeFaces;
-	enum mapDepth=50.0f;
 	foreach(j;0..n-1){
 		foreach(i;0..m-1){
 			void makeEdge(R,S)(int x1,int y1,int x2,int y2,R mustBeEdges,S someNonEdge){
@@ -303,12 +335,12 @@ B.TerrainMesh[] createMeshes(B)(bool[][] edges, float[][] heights, ubyte[][] til
 			makeEdge(i,j+1,i+1,j,only(tuple(i,j)),only(tuple(i+1,j+1)));
 		}
 	}
-	meshes[256]=B.makeTerrainMesh(edgeVertices.length,edgeFaces.length);
-	meshes[256].vertices[]=edgeVertices[];
-	meshes[256].normals[]=edgeNormals[];
-	meshes[256].coords[]=edgeCoords[];
-	meshes[256].texcoords[]=edgeTexcoords[];
-	meshes[256].indices[]=edgeFaces[];
+	meshes[edgeIndex]=B.makeTerrainMesh(edgeVertices.length,edgeFaces.length);
+	meshes[edgeIndex].vertices[]=edgeVertices[];
+	meshes[edgeIndex].normals[]=edgeNormals[];
+	meshes[edgeIndex].coords[]=edgeCoords[];
+	meshes[edgeIndex].texcoords[]=edgeTexcoords[];
+	meshes[edgeIndex].indices[]=edgeFaces[];
 	foreach(mesh;meshes){
 		if(!mesh) continue;
 		B.finalizeTerrainMesh(mesh);

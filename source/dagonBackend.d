@@ -10,11 +10,11 @@ import sxsk : gpuSkinning;
 final class SacScene: Scene{
 	//OBJAsset aOBJ;
 	//Texture txta;
-	bool enableWidgets;
+	Options options;
 	this(SceneManager smngr, Options options){
 		super(smngr);
 		this.shadowMapResolution=options.shadowMapResolution;
-		this.enableWidgets=options.enableWidgets;
+		this.options=options;
 	}
 	FirstPersonView2 fpview;
 	override void onAssetsRequest(){
@@ -37,7 +37,7 @@ final class SacScene: Scene{
 		//auto mesh=New!ShapeSphere(sqrt(0.5^^2+0.7^^2), 8, 4, true, assetManager);
 
 		auto matSkyb = createMaterial(shadelessMaterialBackend);
-		matSkyb.diffuse=map.textures[258];
+		matSkyb.diffuse=map.textures[skybIndex];
 		matSkyb.blending=Transparent;
 		matSkyb.energy=map.Sky.energy;
 		auto eSkyb = createEntity3D();
@@ -67,7 +67,7 @@ final class SacScene: Scene{
 		eSkyb.updateTransformation();
 
 		auto matSkyt = createMaterial(shadelessMaterialBackend);
-		matSkyt.diffuse=map.textures[259];
+		matSkyt.diffuse=map.textures[skytIndex];
 		matSkyt.blending=Transparent;
 		matSkyt.energy=map.Sky.energy;
 		auto eSkyt = createEntity3D();
@@ -97,7 +97,7 @@ final class SacScene: Scene{
 		eSkyt.updateTransformation();
 
 		auto matSun = createMaterial(sacSunMaterialBackend);
-		matSun.diffuse=map.textures[260];
+		matSun.diffuse=map.textures[sunIndex];
 		matSun.blending=Transparent;
 		matSun.energy=25.0f*map.Sky.energy;
 		auto eSun = createEntity3D();
@@ -119,7 +119,7 @@ final class SacScene: Scene{
 		eSun.updateTransformation();
 
 		auto matSky = createMaterial(sacSkyMaterialBackend);
-		matSky.diffuse=map.textures[257];
+		matSky.diffuse=map.textures[skyIndex];
 		matSky.blending=Transparent;
 		matSky.energy=map.Sky.energy;
 		matSky.transparency=envi.maxAlphaFloat;
@@ -142,7 +142,7 @@ final class SacScene: Scene{
 		eSky.updateTransformation();
 
 		auto matUndr = createMaterial(shadelessMaterialBackend);
-		matUndr.diffuse=map.textures[261];
+		matUndr.diffuse=map.textures[undrIndex];
 		matUndr.blending=Transparent;
 		matUndr.energy=map.Sky.energy;
 		auto eUndr = createEntity3D();
@@ -240,6 +240,7 @@ final class SacScene: Scene{
 				}else terrainMaterialBackend.bindDetail(null);
 				terrainMaterialBackend.bindEmission(map.textures[i]);
 			}
+			if(rc.shadowMode && i==bottomIndex) continue;
 			mesh.render(rc);
 		}
 		//mat.unbind(rc); // TODO: needed?
@@ -280,7 +281,7 @@ final class SacScene: Scene{
 				}
 			}
 		}
-		state.current.eachByType!render(enableWidgets,rc);
+		state.current.eachByType!render(options.enableWidgets,rc);
 	}
 
 	override void renderShadowCastingEntities3D(RenderingContext* rc){

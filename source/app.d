@@ -22,11 +22,33 @@ int main(string[] args){
 	foreach(opt;opts){
 		if(opt.startsWith("--shadow-map-resolution=")){
 			options.shadowMapResolution=to!int(opt["--shadow-map-resolution=".length..$]);
-		}else if(opt=="--disable-widgets"){
-			options.enableWidgets=false;
-		}else{
-			stderr.writeln("unknown option: ",opt);
-			return 1;
+		}else LoptSwitch: switch(opt){
+			static string getOptionName(string memberName){
+				import std.ascii;
+				auto m=memberName;
+				if(m.startsWith("enable")) m=m["enable".length..$];
+				else if(m.startsWith("disable")) m=m["disable".length..$];
+				string r;
+				foreach(char c;m){
+					if(isUpper(c)) r~="-"~toLower(c);
+					else r~=c;
+				}
+				if(r[0]=='-') r=r[1..$];
+				return r;
+			}
+			static foreach(member;__traits(allMembers,Options)){
+				static if(is(typeof(__traits(getMember,options,member))==bool)){
+					case "--disable-"~getOptionName(member):
+						__traits(getMember,options,member)=false;
+						break LoptSwitch;
+					case "--enable-"~getOptionName(member):
+						__traits(getMember,options,member)=true;
+						break LoptSwitch;
+				}
+			}
+			default:
+				stderr.writeln("unknown option: ",opt);
+				break;
 		}
 	}
 	auto backend=DagonBackend(options);
@@ -39,7 +61,7 @@ int main(string[] args){
 			enforce(!state);
 			auto map=new SacMap!DagonBackend(args[i]);
 			auto ntts=loadNTTs(args[i][0..$-".HMAP".length]~".NTTS");
-			state=new GameState!DagonBackend(map,ntts);
+			state=new GameState!DagonBackend(map,ntts,options);
 			backend.setState(state);
 		}else{
 			auto sac=new SacObject!DagonBackend(args[i], args[i].endsWith(".SXMD")?2e-3f:1,1.0f,anim);

@@ -5,7 +5,7 @@ import dlib.math, std.math;
 import std.typecons;
 import ntts;
 import sacmap, sacobject, animations;
-import util;
+import util,options;
 enum int updateFPS=60;
 static assert(updateFPS%animFPS==0);
 enum updateAnimFactor=updateFPS/animFPS;
@@ -366,24 +366,25 @@ auto eachByType(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
 
 void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 	auto sacObject=object.sacObject;
-	object.frame=0;
 	final switch(object.creatureState.mode){
 		case CreatureMode.idle:
-			object.animationState=AnimationState.stance1; // TODO: check health, maybe put stance2
+			if(!object.creatureState.movement==CreatureMovement.flying) object.frame=0;
+			if(object.frame==0) object.animationState=AnimationState.stance1; // TODO: check health, maybe put stance2
 			if(sacObject.mustFly) object.creatureState.movement=CreatureMovement.flying;
 			final switch(object.creatureState.movement){
 				case CreatureMovement.onGround:
 					break;
 				case CreatureMovement.flying:
 					assert(sacObject.canFly);
-					if(!sacObject.mustFly)
+					if(!sacObject.mustFly && object.frame==0)
 						object.animationState=AnimationState.hover;
 					break;
 				case CreatureMovement.tumbling:
+					object.frame=0;
 					object.animationState=AnimationState.tumble;
 					break;
 			}
-			if(!state.uniform(5)){ // TODO: figure out the original rule for this
+			if(object.frame==0&&object.creatureState.movement!=CreatureMovement.tumbling&&!state.uniform(5)){ // TODO: figure out the original rule for this
 				with(AnimationState) if(sacObject.mustFly){
 					static immutable candidates0=[hover,idle0,idle1,idle2,idle3]; // TODO: probably idleness animations depend on health
 					object.pickRandomAnimation(candidates0,state);
@@ -401,10 +402,12 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 						else object.startIdling(state);
 						return;
 					}
+					object.frame=0;
 					object.animationState=AnimationState.run;
 					break;
 				case flying:
-					object.animationState=AnimationState.fly;
+					if(object.frame==0)
+						object.animationState=AnimationState.fly;
 					break;
 				case tumbling:
 					object.creatureState.mode=CreatureMode.idle;
@@ -414,6 +417,7 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 				goto case CreatureMode.idle;
 			break;
 		case CreatureMode.dying:
+			object.frame=0;
 			final switch(object.creatureState.movement) with(CreatureMovement) with(AnimationState){
 				case onGround:
 					assert(!object.sacObject.mustFly);
@@ -432,12 +436,14 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 			}
 			break;
 		case CreatureMode.dead:
+			object.frame=0;
 			object.animationState=AnimationState.death0;
 			if(sacObject.mustFly)
 				object.animationState=AnimationState.hitFloor;
 			object.frame=sacObject.numFrames(object.animationState)*updateAnimFactor-1;
 			break;
 		case CreatureMode.takeoff:
+			object.frame=0;
 			assert(sacObject.canFly && object.creatureState.movement==CreatureMovement.onGround);
 			if(!sacObject.hasAnimationState(AnimationState.takeoff)){
 				object.creatureState.mode=CreatureMode.idle;
@@ -445,17 +451,17 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 				goto case CreatureMode.idle;
 			}
 			object.animationState=AnimationState.takeoff;
-			object.frame=0;
 			break;
 		case CreatureMode.landing:
-			assert(sacObject.canFly && !sacObject.mustFly && object.creatureState.movement==CreatureMovement.flying);
-			if(!sacObject.hasAnimationState(AnimationState.land)){
-				object.creatureState.mode=CreatureMode.idle;
-				object.creatureState.movement=CreatureMovement.onGround;
-				goto case CreatureMode.idle;
+			if(object.frame==0){
+				assert(sacObject.canFly && !sacObject.mustFly && object.creatureState.movement==CreatureMovement.flying);
+				if(!sacObject.hasAnimationState(AnimationState.land)){
+					object.creatureState.mode=CreatureMode.idle;
+					object.creatureState.movement=CreatureMovement.onGround;
+					goto case CreatureMode.idle;
+				}
+				object.animationState=AnimationState.land;
 			}
-			object.animationState=AnimationState.land;
-			object.frame=0;
 			break;
 	}
 }
@@ -463,7 +469,7 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 void pickRandomAnimation(B)(ref MovingObject!B object,immutable(AnimationState)[] candidates,ObjectState!B state){
 	auto filtered=candidates.filter!(x=>object.sacObject.hasAnimationState(x));
 	int len=cast(int)filtered.walkLength;
-	assert(!!len);
+	assert(!!len&&object.frame==0);
 	object.animationState=filtered.drop(state.uniform(len)).front;
 }
 
@@ -555,7 +561,9 @@ void updateCreatureAnimationState(B)(ref MovingObject!B object, ObjectState!B st
 			object.frame+=1;
 			auto oldMode=object.creatureState.mode;
 			object.creatureState.mode=object.creatureState.movementDirection==MovementDirection.none?CreatureMode.idle:CreatureMode.moving;
-			if(object.creatureState.mode!=oldMode||object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
+			if(object.creatureState.mode!=oldMode){
+				object.setCreatureState(state);
+			}else if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
 				object.frame=0;
 				object.setCreatureState(state);
 			}
@@ -592,8 +600,10 @@ void updateCreatureAnimationState(B)(ref MovingObject!B object, ObjectState!B st
 			object.frame+=1;
 			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
 				object.frame=0;
-				object.creatureState.mode=CreatureMode.idle;
-				object.creatureState.movement=CreatureMovement.flying;
+				if(object.animationState==AnimationState.takeoff){
+					object.creatureState.mode=CreatureMode.idle;
+					object.creatureState.movement=CreatureMovement.flying;
+				}
 				object.setCreatureState(state);
 			}
 			break;
@@ -603,8 +613,10 @@ void updateCreatureAnimationState(B)(ref MovingObject!B object, ObjectState!B st
 			object.frame+=1;
 			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
 				object.frame=0;
-				object.creatureState.mode=CreatureMode.idle;
-				object.creatureState.movement=CreatureMovement.onGround;
+				if(object.animationState==AnimationState.land){
+					object.creatureState.mode=CreatureMode.idle;
+					object.creatureState.movement=CreatureMovement.onGround;
+				}
 				object.setCreatureState(state);
 			}
 			break;
@@ -787,7 +799,7 @@ final class GameState(B){
 	ObjectState!B current;
 	ObjectState!B next;
 	Array!(Array!Command) commands;
-	this(SacMap!B map,NTTs ntts)in{
+	this(SacMap!B map,NTTs ntts,Options options)in{
 		assert(!!map);
 	}body{
 		current=new ObjectState!B;
@@ -803,7 +815,7 @@ final class GameState(B){
 			placeNTT(creature);
 		foreach(widgets;ntts.widgetss) // TODO: improve engine to be able to handle this
 			placeWidgets(widgets);
-		map.meshes=createMeshes!B(map.edges,map.heights,map.tiles); // TODO: allow dynamic retexuring
+		map.meshes=createMeshes!B(map.edges,map.heights,map.tiles,options.enableMapBottom); // TODO: allow dynamic retexuring
 		commit();
 	}
 	void placeStructure(ref Structure ntt){
@@ -898,9 +910,5 @@ final class GameState(B){
 		rollback(frame);
 		simulateTo(currentFrame);
 	}
-}
-
-State makeState(B)(int reserveSize){
-	return new State!B(reserveSize);
 }
 
