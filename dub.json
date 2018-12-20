@@ -7,9 +7,11 @@
 		"dlib": "~master",
         "derelict-sdl2": "~>3.1.0-alpha.2",
         "derelict-gl3": "~>2.0.0-beta.5",
-        "derelict-ft": "~>2.0.0-beta.2"
+        "derelict-ft": "~>2.0.0-beta.2",
+		"derelict-mpg123": "~>0.1.2",
+		"derelict-al": "~>2.0.0-beta.2",
 	},
-	"description": "A minimal D application.",
+	"description": "SacEngine.",
 	"copyright": "Copyright © 2018, tg",
 	"license": "proprietary"
 }

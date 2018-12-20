@@ -7,6 +7,10 @@ import std.string, std.array, std.range, std.algorithm, std.stdio;
 import std.exception, std.conv;
 
 int main(string[] args){
+	import derelict.openal.al;
+	DerelictAL.load();
+	import derelict.mpg123;
+	DerelictMPG123.load();
 	import core.memory;
 	GC.disable(); // TODO: figure out where GC memory is used incorrectly
 	if(args.length==1) args~="extracted/jamesmod/JMOD.WAD!/modl.FLDR/jman.MRMC/jman.MRMM";
