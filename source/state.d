@@ -677,7 +677,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			}
 		}
 		if(isRotating||object.creatureState.mode!=CreatureMode.idle){
-			auto diff=(newRotation*object.rotation.conj()).normalized();
+			auto diff=newRotation*object.rotation.conj();
 			if(!isRotating){
 				if(object.creatureState.movement==CreatureMovement.flying){
 					rotationSpeed/=5;
@@ -928,6 +928,7 @@ final class GameState(B){
 		auto creatureState=CreatureState(mode, movement, ntt.facing);
 		auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState);
 		obj.setCreatureState(current);
+		obj.updateCreaturePosition(current);
 		/+do{
 			import std.random: uniform;
 			state=cast(AnimationState)uniform(0,64);
