@@ -588,7 +588,6 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 						object.creatureState.movement=CreatureMovement.onGround;
 						object.animationState=AnimationState.hitFloor;
 						object.frame=0;
-						object.setCreatureState(state);
 						break;
 					}
 				}
@@ -684,32 +683,41 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			}
 			break;
 		case CreatureMovement.flying:
-			if(object.creatureState.mode==CreatureMode.landing){
-				object.position.z-=object.sacObject.landingSpeed/updateFPS;
-				auto height=state.getGroundHeight(object.position);
-				if(object.position.z<=height)
-					object.position.z=height;
+			if(object.creatureState.mode==CreatureMode.landing ||
+			   object.creatureState.mode==CreatureMode.idle&&object.animationState!=AnimationState.fly&&object.creatureState.flyingDisplacement>0.0f
+			){
+				auto downwardSpeed=object.creatureState.mode==CreatureMode.landing?object.sacObject.landingSpeed/updateFPS:object.sacObject.downwardHoverSpeed/updateFPS;
+				object.position.z-=downwardSpeed;
+				object.creatureState.flyingDisplacement=max(0.0f,object.creatureState.flyingDisplacement-downwardSpeed);
+				if(state.isOnGround(object.position)){
+					auto height=state.getGroundHeight(object.position);
+					if(object.position.z<=height)
+						object.position.z=height;
+					object.creatureState.flyingDisplacement=min(object.creatureState.flyingDisplacement,object.position.z-height);
+				}
 				break;
 			}
 			if(object.creatureState.mode!=CreatureMode.moving) break;
-			void applyMovementInAir(Vector3f direction)in{
-				// TODO: allow directions that are nonzero in z
-				assert(direction.z==0.0f);
-			}body{
+			void applyMovementInAir(Vector3f direction){
 				auto speed=object.sacObject.movementSpeed(true)/updateFPS;
 				auto newPosition=object.position+speed*direction;
-				if(state.isOnGround(newPosition)){
-					auto newHeight=state.getGroundHeight(newPosition);
-					if(newHeight>newPosition.z){
-						// TODO: use derivative instead of subtracting?
-						auto upwardFactor=object.sacObject.upwardFlyingSpeedFactor;
-						auto newDirection=Vector3f(direction.x,direction.y,direction.z+(newHeight-newPosition.z)/upwardFactor).normalized;
-						newDirection.z*=upwardFactor;
-						newPosition=object.position+speed*newDirection;
-						if(state.isOnGround(newPosition)){
-							newPosition.z=min(newPosition.z,state.getGroundHeight(newPosition));
-						}
-					}
+				auto upwardSpeed=max(0.0f,min(object.sacObject.takeoffSpeed/updateFPS,object.sacObject.flyingHeight-object.creatureState.flyingDisplacement));
+				auto onGround=state.isOnGround(newPosition), newHeight=float.nan;
+				if(onGround){
+					newHeight=state.getGroundHeight(newPosition);
+					if(newHeight>newPosition.z)
+						upwardSpeed+=newHeight-newPosition.z;
+				}
+				auto upwardFactor=object.sacObject.upwardFlyingSpeedFactor;
+				auto downwardFactor=object.sacObject.downwardFlyingSpeedFactor;
+				auto newDirection=Vector3f(direction.x,direction.y,direction.z+upwardSpeed).normalized;
+				speed*=sqrt(newDirection.x^^2+newDirection.y^^2+(newDirection.z*(newDirection.z>0?upwardFactor:downwardFactor))^^2);
+				auto velocity=speed*newDirection;
+				newPosition=object.position+velocity;
+				object.creatureState.flyingDisplacement+=velocity.z;
+				if(onGround){
+					object.creatureState.flyingDisplacement=min(object.creatureState.flyingDisplacement,newPosition.z-newHeight);
+					object.position.z=max(object.position.z,newHeight);
 				}
 				object.position=newPosition;
 			}

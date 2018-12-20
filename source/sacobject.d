@@ -73,6 +73,16 @@ final class SacObject(B){
 	@property float landingSpeed(){
 		return 0.5f*movementSpeed(true);
 	}
+	@property float downwardHoverSpeed(){
+		return 0.25f*landingSpeed;
+	}
+	@property float flyingHeight(){
+		return 3.0f;
+	}
+
+	@property float takeoffSpeed(){
+		return movementSpeed(true);
+	}
 
 	struct MaterialConfig{
 		int sunBeamPart=-1;
