@@ -40,6 +40,9 @@ final class SacObject(B){
 	@property bool seamlessFlyAndHover(){
 		return tag=="zgub";
 	}
+	@property bool movingAfterTakeoff(){
+		return tag=="nmdd";
+	}
 	@property bool canDie(){
 		return hasAnimationState(AnimationState.death0);
 	}
@@ -61,6 +64,14 @@ final class SacObject(B){
 	}
 	@property float downwardFlyingSpeedFactor(){
 		return 2.0f;
+	}
+
+	@property float fallingAcceleration(){
+		return 0.5f;
+	}
+
+	@property float landingSpeed(){
+		return 0.5f*movementSpeed(true);
 	}
 
 	struct MaterialConfig{
