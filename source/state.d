@@ -3,7 +3,7 @@ import std.container.array: Array;
 import std.exception, std.stdio, std.conv;
 import dlib.math, std.math;
 import std.typecons;
-import ntts;
+import ntts, nttData;
 import sacmap, sacobject, animations;
 import util,options;
 enum int updateFPS=60;
@@ -640,21 +640,53 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 }
 
 void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
-	if(object.creatureState.mode==CreatureMode.idle && object.creatureState.movement!=CreatureMovement.tumbling||
-	   object.creatureState.mode==CreatureMode.moving
-	){
-		final switch(object.creatureState.rotationDirection){
-			case RotationDirection.none:
+	if(object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving,CreatureMode.landing,CreatureMode.dying)){
+		auto rotationSpeed=object.sacObject.rotationSpeed/updateFPS;
+		bool isRotating=false;
+		if(object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving)&&
+		   object.creatureState.movement!=CreatureMovement.tumbling
+		){
+			final switch(object.creatureState.rotationDirection){
+				case RotationDirection.none:
+					break;
+				case RotationDirection.left:
+					isRotating=true;
+					object.creatureState.facing+=rotationSpeed;
+					break;
+				case RotationDirection.right:
+					isRotating=true;
+					object.creatureState.facing-=rotationSpeed;
 				break;
-			case RotationDirection.left:
-				object.creatureState.facing+=object.sacObject.rotationSpeed/updateFPS;
-				break;
-			case RotationDirection.right:
-				object.creatureState.facing-=object.sacObject.rotationSpeed/updateFPS;
-				break;
+			}
 		}
-		object.rotation=facingQuaternion(object.creatureState.facing);
+		auto facing=facingQuaternion(object.creatureState.facing);
+		auto newRotation=facing;
+		if(object.creatureState.movement==CreatureMovement.onGround||
+		   object.animationState==AnimationState.land
+		){
+			final switch(object.sacObject.rotateOnGround){
+				case RotateOnGround.no:
+					break;
+				case RotateOnGround.sideways:
+					newRotation=newRotation*rotationQuaternion(Axis.y,-atan(state.getGroundHeightDerivative(object.position, rotate(facing, Vector3f(1.0f,0.0f,0.0f)))));
+					break;
+				case RotateOnGround.completely:
+					newRotation=newRotation*rotationQuaternion(Axis.x,atan(state.getGroundHeightDerivative(object.position, rotate(facing, Vector3f(0.0f,1.0f,0.0f)))));
+					newRotation=newRotation*rotationQuaternion(Axis.y,-atan(state.getGroundHeightDerivative(object.position, rotate(facing, Vector3f(1.0f,0.0f,0.0f)))));
+					break;
+			}
+		}
+		if(isRotating||object.creatureState.mode!=CreatureMode.idle){
+			auto diff=(newRotation*object.rotation.conj()).normalized();
+			if(!isRotating){
+				if(object.creatureState.movement==CreatureMovement.flying){
+					rotationSpeed/=5;
+				}else rotationSpeed/=2;
+			}else rotationSpeed*=1.1f; // TODO: make rotation along z direction independent of remaining rotations?
+			object.rotation=(limitRotation(diff,rotationSpeed)*object.rotation).normalized;
+		}
 	}
+	auto facing=facingQuaternion(object.creatureState.facing);
 	final switch(object.creatureState.movement){
 		case CreatureMovement.onGround:
 			if(object.creatureState.mode!=CreatureMode.moving) break;
@@ -675,10 +707,10 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 				case MovementDirection.none:
 					break;
 				case MovementDirection.forward:
-					applyMovementOnGround(rotate(object.rotation, Vector3f(0.0f,1.0f,0.0f)));
+					applyMovementOnGround(rotate(facingQuaternion(object.creatureState.facing), Vector3f(0.0f,1.0f,0.0f)));
 					break;
 				case MovementDirection.backward:
-					applyMovementOnGround(rotate(object.rotation, Vector3f(0.0f,-1.0f,0.0f)));
+					applyMovementOnGround(rotate(facingQuaternion(object.creatureState.facing), Vector3f(0.0f,-1.0f,0.0f)));
 					break;
 			}
 			break;
@@ -873,11 +905,11 @@ final class GameState(B){
 		foreach(ref component;data.components){
 			auto curObj=SacObject!B.getBLDG(component.tag);
 			auto offset=Vector3f(component.x,component.y,component.z);
-			offset=rotate(facingQuaternion(ntt.facing), offset);
+			offset=rotate(facingQuaternion(2*PI/360.0f*ntt.facing), offset);
 			auto cposition=position+offset;
 			if(!current.isOnGround(cposition)) continue;
 			cposition.z=current.getGroundHeight(cposition);
-			auto rotation=facingQuaternion(ntt.facing+component.facing);
+			auto rotation=facingQuaternion(2*PI/360.0f*(ntt.facing+component.facing));
 			current.addObject(StaticObject!B(curObj,cposition,rotation));
 		}
 	}
@@ -910,7 +942,7 @@ final class GameState(B){
 			position.z=current.getGroundHeight(position);
 			// original engine screws up widget rotations
 			// values look like angles in degrees, but they are actually radians
-			auto rotation=rotationQuaternion(Axis.z,cast(float)(-pos[2]));
+			auto rotation=facingQuaternion(-pos[2]);
 			current.addFixed(FixedObject!B(curObj,position,rotation));
 		}
 	}

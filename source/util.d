@@ -32,14 +32,23 @@ ubyte[] readFile(string filename){
 }
 
 Quaternionf facingQuaternion(float facing){
-	import std.math: PI;
-	return rotationQuaternion(Axis.z,cast(float)(2*PI/360*facing));
+	return rotationQuaternion(Axis.z,facing);
 }
 
-
 Vector3f rotate(Quaternionf rotation, Vector3f v){
-	auto quat=Quaternionf(v[0],v[1],v[2],0.0);
-	return Vector3f((rotation*quat*rotation.conj())[0..3]);
+	return rotation.rotate(v);
+}
+
+Quaternionf limitRotation(Quaternionf q, float maxAbsAngle){
+	import std.math, std.algorithm;
+	auto len=q.xyz.length;
+	auto angle=atan2(len,q.w);
+	if(angle>PI) angle-=2*PI;
+	if(angle<-maxAbsAngle) angle=-maxAbsAngle;
+	if(angle>maxAbsAngle) angle=maxAbsAngle;
+	if(angle<0) angle+=2*PI;
+	if(angle==0.0f||len==0.0f) return Quaternionf.identity();
+	return rotationQuaternion(q.xyz/len,angle); // dlib's rotationAxis is wrong
 }
 
 struct Transformation{

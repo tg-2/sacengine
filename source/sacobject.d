@@ -22,6 +22,7 @@ final class SacObject(B){
 	B.Material[] shadowMaterials;
 	Animation[] animations;
 	immutable(Cre8)* cre8;
+	immutable(CreatureData)* data;
 	immutable(Wizd)* wizd;
 	immutable(Strc)* strc;
 
@@ -46,9 +47,12 @@ final class SacObject(B){
 	@property bool canDie(){
 		return hasAnimationState(AnimationState.death0);
 	}
-
-	@property float rotationSpeed(){ // in degrees per second
-		return 180.0f;
+	@property RotateOnGround rotateOnGround(){
+		if(!data) return RotateOnGround.no;
+		return data.rotateOnGround;
+	}
+	@property float rotationSpeed(){ // in radians per second
+		return PI;
 	}
 	@property float movementSpeed(bool isFlying){ // in meters per second
 		if(cre8) return (isFlying?cre8.flyingSpeed:cre8.runningSpeed)*0.01f;
@@ -96,6 +100,7 @@ final class SacObject(B){
 		cre8=nttTag in cre8s;
 		wizd=nttTag in wizds;
 		strc=nttTag in strcs;
+		if(cre8||wizd) data=creatureDataByTag(nttTag);
 		assert((cre8 !is null)+(wizd !is null)+(strc !is null)<=1);
 		MaterialConfig conf;
 		// TODO: this is a hack:
