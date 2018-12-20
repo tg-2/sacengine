@@ -158,8 +158,10 @@ final class SacMap(B){
 		assert(isOnGround(position));
 	}do{
 		auto newPosition=position+direction;
-		if(isOnGround(newPosition))
+		if(isOnGround(newPosition)){
+			newPosition.z=getGroundHeight(newPosition);
 			return newPosition;
+		}
 		static immutable Vector2f[8] directions=cartesianProduct([-1,0,1],[-1,0,1]).filter!(x=>x[0]||x[1]).map!(x=>Vector2f(x[0],x[1],0.0f).normalized).array;
 		Vector3f bestNewPosition=position;
 		float largestDotProduct=0.0f;
