@@ -214,6 +214,12 @@ static this(){
 }
 
 
+enum RotateOnGround{
+	no,
+	sideways,
+	completely,
+}
+
 immutable struct CreatureData{
 	char[4] tag;
 	string name; // TODO: internationalization
@@ -221,6 +227,7 @@ immutable struct CreatureData{
 	string stance;
 	float scaling=2e-3;
 	float zfactorOverride=float.nan;
+	auto rotateOnGround=RotateOnGround.no;
 }
 
 CreatureData abomination={
@@ -239,24 +246,28 @@ CreatureData basilisk={
 	tag: "guls",
 	name: "Basilisk",
 	scaling: 1e-3,
+	rotateOnGround: RotateOnGround.completely,
 };
 
 CreatureData blight={
 	tag: "kacd",
 	name: "Blight",
 	scaling: 1e-3,
+	rotateOnGround: RotateOnGround.sideways,
 };
 
 CreatureData bombard={
 	tag: "wlcf",
 	name: "Bombard",
 	scaling: 2e-3,
+	rotateOnGround: RotateOnGround.sideways,
 };
 
 CreatureData boulderdash={
 	tag: "llab",
 	name: "Boulderdash",
 	scaling: 2e-3,
+	rotateOnGround: RotateOnGround.sideways,
 };
 
 CreatureData brainiac={
@@ -281,12 +292,14 @@ CreatureData dragon={
 	tag: "grdg",
 	name: "Dragon",
 	scaling: 4e-3,
+	rotateOnGround: RotateOnGround.completely,
 };
 
 CreatureData dragonHatchling={
 	tag: "rdbO",
 	name: "Dragon Hatchling",
 	scaling: 1e-3,
+	rotateOnGround: RotateOnGround.completely,
 };
 
 CreatureData druid={
@@ -305,6 +318,7 @@ CreatureData ent={
 	tag: "mtsl",
 	name: "Ent",
 	scaling: 2e-3,
+	rotateOnGround: RotateOnGround.completely,
 };
 
 CreatureData faestus1={
@@ -353,12 +367,14 @@ CreatureData flummox={
 	tag: "wlce",
 	name: "Flummox",
 	scaling: 1.5e-3,
+	rotateOnGround: RotateOnGround.sideways,
 };
 
 CreatureData flurry={
 	tag: "wlca",
 	name: "Flurry",
 	scaling: 1.5e-3,
+	rotateOnGround: RotateOnGround.sideways,
 };
 
 CreatureData frostwolf={ // TODO: this is screwed up, why?
@@ -372,6 +388,7 @@ CreatureData gammel={
 	tag: "magH",
 	name: "Gammel",
 	scaling: 1.5e-3,
+	rotateOnGround: RotateOnGround.sideways,
 };
 
 CreatureData gangrel={
@@ -402,24 +419,28 @@ CreatureData gremlin={
 	tag: "lrps",
 	name: "Gremlin",
 	scaling: 1e-3,
+	rotateOnGround: RotateOnGround.sideways,
 };
 
 CreatureData hellmouth={
 	tag: "nomd",
 	name: "Hellmouth",
 	scaling: 3e-3,
+	rotateOnGround: RotateOnGround.completely,
 };
 
 CreatureData ikarus={
 	tag: "kace",
 	name: "Ikarus",
 	scaling: 1e-3,
+	rotateOnGround: RotateOnGround.sideways,
 };
 
 CreatureData jabberocky={
 	tag: "mtse",
 	name: "Jabberocky",
 	scaling: 2e-3,
+	rotateOnGround: RotateOnGround.completely,
 };
 
 CreatureData locust={
@@ -438,6 +459,7 @@ CreatureData manahoar={
 	tag: "oham",
 	name: "Manahoar",
 	scaling: 1e-3,
+	rotateOnGround: RotateOnGround.completely,
 };
 
 CreatureData mutant={
@@ -450,6 +472,7 @@ CreatureData necryl={
 	tag: "glsd",
 	name: "Necryl",
 	scaling: 1e-3,
+	rotateOnGround: RotateOnGround.completely,
 };
 
 CreatureData netherfiend={
@@ -474,6 +497,7 @@ CreatureData pyrodactyl={
 	tag: "kacf",
 	name: "Pyrodactyl",
 	scaling: 1e-3,
+	rotateOnGround: RotateOnGround.sideways,
 };
 
 CreatureData pyromaniac={
@@ -492,6 +516,7 @@ CreatureData rhinok={
 	tag: "gard",
 	name: "Rhinok",
 	scaling: 3e-3,
+	rotateOnGround: RotateOnGround.completely,
 };
 
 CreatureData sacDoctor={
@@ -510,6 +535,7 @@ CreatureData scarab={
 	tag: "cara",
 	name: "Scarab",
 	scaling: 1e-3,
+	rotateOnGround: RotateOnGround.completely,
 };
 
 CreatureData scythe={
@@ -522,6 +548,7 @@ CreatureData seraph={
 	tag: "grps",
 	name: "Seraph",
 	scaling: 1e-3,
+	rotateOnGround: RotateOnGround.sideways,
 };
 
 CreatureData shrike={
@@ -535,12 +562,14 @@ CreatureData silverback={
 	name: "Silverback",
 	scaling: 3e-3,
 	zfactorOverride: 1.0,
+	rotateOnGround: RotateOnGround.completely,
 };
 
 CreatureData sirocco={
 	tag: "risH",
 	name: "Sirocco",
 	scaling: 5e-3,
+	rotateOnGround: RotateOnGround.completely,
 };
 
 CreatureData slave={
@@ -565,6 +594,7 @@ CreatureData squall={
 	tag: "alab",
 	name: "Squall",
 	scaling: 1.5e-3,
+	rotateOnGround: RotateOnGround.sideways,
 };
 
 CreatureData stormGiant={
@@ -602,12 +632,14 @@ CreatureData tickferno={
 	tag: "craf",
 	name: "Tickferno",
 	scaling: 1e-3,
+	rotateOnGround: RotateOnGround.completely,
 };
 
 CreatureData toldor={
 	tag: "oohH",
 	name: "Toldor",
 	scaling: 2.5e-3,
+	rotateOnGround: RotateOnGround.completely,
 };
 
 CreatureData trogg={
@@ -626,6 +658,7 @@ CreatureData vortick={
 	tag: "craa",
 	name: "Vortick",
 	scaling: 1e-3,
+	rotateOnGround: RotateOnGround.completely,
 };
 
 CreatureData warmonger={
@@ -668,12 +701,14 @@ CreatureData ambassadorButa={
 	tag: "0fwc",
 	name: "Ambassador Buta",
 	scaling: 1e-3,
+	rotateOnGround: RotateOnGround.sideways,
 };
 
 CreatureData charlotte={
 	tag: "2fwc",
 	name: "Charlotte",
 	scaling: 1e-3,
+	rotateOnGround: RotateOnGround.completely,
 };
 
 CreatureData eldred={
@@ -692,12 +727,14 @@ CreatureData hachimen={
 	tag: "2lwc",
 	name: "Hachimen",
 	scaling: 1e-3,
+	rotateOnGround: RotateOnGround.sideways,
 };
 
 CreatureData jadugarr={
 	tag: "0awc",
 	name: "Jadugarr",
-	scaling: 1e-3
+	scaling: 1e-3,
+	rotateOnGround: RotateOnGround.completely,
 };
 
 CreatureData marduk={
@@ -710,12 +747,14 @@ CreatureData mithras={
 	tag: "1ewc",
 	name: "Mithras",
 	scaling: 1e-3,
+	rotateOnGround: RotateOnGround.completely,
 };
 
 CreatureData seerix={
 	tag: "1awc",
 	name: "Seerix",
 	scaling: 1e-3,
+	rotateOnGround: RotateOnGround.completely,
 };
 
 CreatureData shakti={
