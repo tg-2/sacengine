@@ -43,10 +43,8 @@ Quaternionf limitRotation(Quaternionf q, float maxAbsAngle){
 	import std.math, std.algorithm;
 	auto len=q.xyz.length;
 	auto angle=atan2(len,q.w);
-	if(angle>PI) angle-=2*PI;
 	if(angle<-maxAbsAngle) angle=-maxAbsAngle;
 	if(angle>maxAbsAngle) angle=maxAbsAngle;
-	if(angle<0) angle+=2*PI;
 	if(angle==0.0f||len==0.0f) return Quaternionf.identity();
 	return rotationQuaternion(q.xyz/len,angle); // dlib's rotationAxis is wrong
 }
