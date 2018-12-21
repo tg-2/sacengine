@@ -12,7 +12,7 @@ final class SacScene: Scene{
 	//Texture txta;
 	Options options;
 	this(SceneManager smngr, Options options){
-		super(smngr);
+		super(options.width, options.height, smngr);
 		this.shadowMapResolution=options.shadowMapResolution;
 		this.options=options;
 	}
@@ -431,7 +431,9 @@ final class SacScene: Scene{
 
 class MyApplication: SceneApplication{
 	this(Options options){
-		super(1280, 720, false, "SacEngine", []);
+		super(options.width==0?1280:options.width,
+		      options.height==0?1280:options.height,
+		      false, "SacEngine", []);
 		SacScene scene = New!SacScene(sceneManager, options);
 		sceneManager.addScene(scene, "Sacrifice");
 		sceneManager.goToScene("Sacrifice");

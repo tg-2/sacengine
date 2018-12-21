@@ -4,7 +4,7 @@ import ntts, sacobject, sacmap, state;
 import util;
 import dlib.math;
 import std.string, std.array, std.range, std.algorithm, std.stdio;
-import std.exception, std.conv;
+import std.exception, std.conv, std.typecons;
 
 int main(string[] args){
 	import derelict.openal.al;
@@ -23,8 +23,17 @@ int main(string[] args){
 		shadowMapResolution: 1024,
 		enableWidgets: true,
 	};
+	static Tuple!(int,"width",int,"height") parseResolution(string s){
+		auto t=s.split('x');
+		if(t.length==2) return tuple!("width","height")(to!int(t[0]),to!int(t[1]));
+		return tuple!("width","height")(16*to!int(s)/9,to!int(s));
+	}
 	foreach(opt;opts){
-		if(opt.startsWith("--shadow-map-resolution=")){
+		if(opt.startsWith("--resolution")){
+			auto resolution=parseResolution(opt["--resolution=".length..$]);
+			options.width=resolution.width;
+			options.height=resolution.height;
+		}else if(opt.startsWith("--shadow-map-resolution=")){
 			options.shadowMapResolution=to!int(opt["--shadow-map-resolution=".length..$]);
 		}else LoptSwitch: switch(opt){
 			static string getOptionName(string memberName){
