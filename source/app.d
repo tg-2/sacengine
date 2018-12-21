@@ -63,7 +63,7 @@ int main(string[] args){
 			}
 			default:
 				stderr.writeln("unknown option: ",opt);
-				break;
+				return 1;
 		}
 	}
 	auto backend=DagonBackend(options);
