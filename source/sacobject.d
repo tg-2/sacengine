@@ -32,6 +32,9 @@ final class SacObject(B){
 	@property bool canRun(){
 		return hasAnimationState(AnimationState.run);
 	}
+	@property bool canDie(){
+		return hasAnimationState(AnimationState.death0);
+	}
 	@property bool canFly(){
 		return hasAnimationState(AnimationState.fly);
 	}
@@ -44,8 +47,8 @@ final class SacObject(B){
 	@property bool movingAfterTakeoff(){
 		return tag=="nmdd";
 	}
-	@property bool canDie(){
-		return hasAnimationState(AnimationState.death0);
+	@property bool canAttack(){
+		return hasAnimationState(AnimationState.attack0);
 	}
 	@property RotateOnGround rotateOnGround(){
 		if(!data) return RotateOnGround.no;

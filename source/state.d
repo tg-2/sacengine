@@ -28,6 +28,7 @@ enum CreatureMode{
 	dead,
 	takeoff,
 	landing,
+	meleeAttacking,
 }
 
 enum CreatureMovement{
@@ -387,11 +388,11 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 			}
 			if(object.frame==0&&object.creatureState.movement!=CreatureMovement.tumbling&&!state.uniform(5)){ // TODO: figure out the original rule for this
 				with(AnimationState) if(sacObject.mustFly){
-					static immutable candidates0=[hover,idle0,idle1,idle2,idle3]; // TODO: probably idleness animations depend on health
-					object.pickRandomAnimation(candidates0,state);
+					static immutable idleCandidatesFlying=[hover,idle0,idle1,idle2,idle3]; // TODO: probably idleness animations depend on health
+					object.pickRandomAnimation(idleCandidatesFlying,state);
 				}else if(object.creatureState.movement==CreatureMovement.onGround){
-					static immutable candidates1=[idle0,idle1,idle2,idle3]; // TODO: probably idleness animations depend on health
-					object.pickRandomAnimation(candidates1,state);
+					static immutable idleCandidatesOnGround=[idle0,idle1,idle2,idle3]; // TODO: probably idleness animations depend on health
+					object.pickRandomAnimation(idleCandidatesOnGround,state);
 				}
 			}
 			break;
@@ -422,13 +423,13 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 			final switch(object.creatureState.movement) with(CreatureMovement) with(AnimationState){
 				case onGround:
 					assert(!object.sacObject.mustFly);
-					static immutable candidates2=[death0,death1,death2];
-					object.pickRandomAnimation(candidates2,state);
+					static immutable deathCandidatesOnGround=[death0,death1,death2];
+					object.pickRandomAnimation(deathCandidatesOnGround,state);
 					break;
 				case flying:
 					if(object.sacObject.mustFly){
-						static immutable candidates3=[flyDeath,death0,death1,death2];
-						object.pickRandomAnimation(candidates3,state);
+						static immutable deathCandidatesFlying=[flyDeath,death0,death1,death2];
+						object.pickRandomAnimation(deathCandidatesFlying,state);
 					}else object.animationState=flyDeath;
 					break;
 				case tumbling:
@@ -475,6 +476,20 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 				}else assert(object.animationState==AnimationState.hover);
 			}
 			break;
+		case CreatureMode.meleeAttacking:
+			final switch(object.creatureState.movement) with(CreatureMovement) with(AnimationState){
+				case onGround:
+					object.frame=0;
+					static immutable attackCandidatesOnGround=[attack0,attack1,attack2];
+					object.pickRandomAnimation(attackCandidatesOnGround,state);
+					break;
+				case flying:
+					object.frame=0;
+					object.animationState=flyAttack;
+					break;
+				case tumbling:
+					assert(0);
+			}
 	}
 }
 
@@ -521,6 +536,16 @@ void land(B)(ref MovingObject!B object,ObjectState!B state){
 	if(!state.isOnGround(object.position))
 		return;
 	object.creatureState.mode=CreatureMode.landing;
+	object.setCreatureState(state);
+}
+
+void startMeleeAttacking(B)(ref MovingObject!B object,ObjectState!B state){
+	with(CreatureMode) with(CreatureMovement)
+		if(!object.creatureState.mode.among(idle,moving)||
+		   !object.creatureState.movement.among(onGround,flying)||
+		   !object.sacObject.canAttack)
+			return;
+	object.creatureState.mode=CreatureMode.meleeAttacking;
 	object.setCreatureState(state);
 }
 
@@ -633,6 +658,14 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 			object.frame+=1;
 			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
 				object.frame=0;
+				object.setCreatureState(state);
+			}
+			break;
+		case CreatureMode.meleeAttacking:
+			object.frame+=1;
+			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
+				object.frame=0;
+				object.creatureState.mode=CreatureMode.idle;
 				object.setCreatureState(state);
 			}
 			break;

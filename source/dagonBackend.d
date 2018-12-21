@@ -383,10 +383,11 @@ final class SacScene: Scene{
 	void stateTestControl()in{
 		assert(!!state);
 	}do{
-		if(eventManager.keyPressed[KEY_SPACE]) state.current.eachMoving!kill(state.current);
+		if(eventManager.keyPressed[KEY_T]) state.current.eachMoving!kill(state.current);
 		if(eventManager.keyPressed[KEY_RETURN]) state.current.eachMoving!immediateResurrect(state.current);
 		if(eventManager.keyPressed[KEY_G]) state.current.eachMoving!startFlying(state.current);
 		if(eventManager.keyPressed[KEY_V]) state.current.eachMoving!land(state.current);
+		if(eventManager.keyPressed[KEY_SPACE]) state.current.eachMoving!startMeleeAttacking(state.current);
 		// TODO: implement the following by sending commands to the game state!
 		if(eventManager.keyPressed[KEY_UP] && !eventManager.keyPressed[KEY_DOWN]){
 			state.current.eachMoving!startMovingForward(state.current);
