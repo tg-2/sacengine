@@ -709,7 +709,8 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 					break;
 			}
 		}
-		if(isRotating||object.creatureState.mode!=CreatureMode.idle){
+		if(isRotating||object.creatureState.mode!=CreatureMode.idle||
+		   object.creatureState.movement==CreatureMovement.flying){
 			auto diff=newRotation*object.rotation.conj();
 			if(!isRotating){
 				if(object.creatureState.movement==CreatureMovement.flying){

@@ -620,6 +620,7 @@ CreatureData taurock={
 	name: "Taurock",
 	scaling: 2e-3,
 	zfactorOverride: 0.8,
+	rotateOnGround: RotateOnGround.completely,
 };
 
 CreatureData thestor={
