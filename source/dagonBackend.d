@@ -211,8 +211,10 @@ final class SacScene: Scene{
 		//env.atmosphericFog=true;
 		env.fogColor=Color4f(envi.fogRed/255.0f,envi.fogGreen/255.0f,envi.fogBlue/255.0f,1.0f);
 		// fogType ?
-		//env.fogStart=envi.fogNearZ;
-		//env.fogEnd=envi.fogFarZ;
+		if(options.enableFog){
+			env.fogStart=envi.fogNearZ;
+			env.fogEnd=envi.fogFarZ;
+		}
 		// fogDensity?
 	}
 
@@ -328,6 +330,11 @@ final class SacScene: Scene{
 
 	override void onAllocate(){
 		super.onAllocate();
+
+		ssao.enabled=options.enableSSAO;
+		glow.enabled=options.enableGlow;
+		glow.brightness=options.glowBrightness;
+		antiAliasing.enabled=options.enableAntialiasing;
 
 		//view = New!Freeview(eventManager, assetManager);
 		auto eCamera = createEntity3D();
