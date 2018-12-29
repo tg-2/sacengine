@@ -1,5 +1,6 @@
 import sacobject;
-import std.algorithm, std.exception;
+import dlib.math;
+import std.algorithm, std.range, std.exception;
 import std.stdio, std.path;
 import std.typecons: Tuple, tuple;
 import util;
@@ -12,6 +13,12 @@ struct Vertex{
 	float[3] normal;
 }
 static assert(Vertex.sizeof==40);
+
+struct Hitbox{
+	uint unknown0;
+	float[3][2] coords;
+}
+static assert(Hitbox.sizeof==28);
 
 struct Face{
 	uint[3] vertices;
@@ -30,6 +37,7 @@ static assert(Face.sizeof==36);
 struct Model{
 	Vertex[] vertices;
 	Face[] faces;
+	Hitbox[] hitboxes;
 }
 
 Model parseMRMM(ubyte[] data){
@@ -37,6 +45,8 @@ Model parseMRMM(ubyte[] data){
 	enforce(fileSize==data.length);
 	auto numVertices=*cast(uint*)&data[4];
 	auto numFaces=*cast(uint*)&data[12];
+	auto numHitboxes=*cast(uint*)&data[68];
+	auto hitboxes=cast(Hitbox[])data[72..72+Hitbox.sizeof*numHitboxes];
 	auto vertexOff=*cast(uint*)&data[184];
 	auto faceOff=*cast(uint*)&data[188];
 	static assert(Vertex.sizeof==40);
@@ -47,12 +57,12 @@ Model parseMRMM(ubyte[] data){
 			enforce(0<=i&&i<vertices.length);
 		}
 	}
-	return Model(vertices, faces);
+	return Model(vertices, faces, hitboxes);
 }
 
-Tuple!(B.Mesh[], B.Texture[]) loadMRMM(B)(string filename, float scaling){
+Tuple!(B.Mesh[], B.Texture[], Vector3f[2][]) loadMRMM(B)(string filename, float scaling){
 	enforce(filename.endsWith(".MRMM"));
 	auto dir = dirName(filename);
 	auto model = parseMRMM(readFile(filename));
-	return convertModel!B(dir, model, scaling);
+	return tuple(convertModel!B(dir, model, scaling).expand,model.hitboxes.map!(b=>[Vector3f(b.coords[0])*scaling,Vector3f(b.coords[1])*scaling].staticArray).array);
 }

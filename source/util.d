@@ -43,7 +43,7 @@ Vector3f rotate(Quaternionf rotation, Vector3f v){
 Quaternionf limitRotation(Quaternionf q, float maxAbsAngle){
 	import std.math, std.algorithm;
 	auto len=q.xyz.length;
-	auto angle=atan2(len,q.w);
+	auto angle=2*atan2(len,q.w);
 	if(angle<-maxAbsAngle) angle=-maxAbsAngle;
 	if(angle>maxAbsAngle) angle=maxAbsAngle;
 	if(angle==0.0f||len==0.0f) return Quaternionf.identity();
@@ -82,7 +82,7 @@ struct Transformation{
 	}
 }
 
-Tuple!(Vector3f,Vector3f) bbox(R)(R positions){
+Vector3f[2] bbox(R)(R positions){
 	auto small=Vector3f(float.max,float.max,float.max);
 	auto large=-small;
 	foreach(p;positions){
@@ -91,7 +91,7 @@ Tuple!(Vector3f,Vector3f) bbox(R)(R positions){
 			large[k]=max(large[k],p[k]);
 		}
 	}
-	return tuple(small,large);
+	return [small,large];
 }
 
 import std.container.array;

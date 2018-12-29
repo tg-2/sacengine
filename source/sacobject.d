@@ -6,7 +6,7 @@ import std.typecons: Tuple, tuple;
 import std.stdio, std.conv;
 alias Tuple=std.typecons.Tuple;
 
-import std.exception, std.algorithm, std.math, std.path;
+import std.exception, std.algorithm, std.range, std.math, std.path;
 
 enum animFPS=30;
 
@@ -16,6 +16,7 @@ final class SacObject(B){
 	int stateIndex=-1;
 	B.Mesh[] meshes;
 	B.Texture[] textures;
+	Vector3f[2][] hitboxes_;
 	bool isSaxs=false;
 	SaxsInstance!B saxsi;
 	B.Material[] materials;
@@ -91,7 +92,7 @@ final class SacObject(B){
 		return movementSpeed(true);
 	}
 
-	Tuple!(Vector3f,Vector3f) smallHitbox(Quaternionf rotation,AnimationState animationState,int frame)in{
+	Vector3f[2] smallHitbox(Quaternionf rotation,AnimationState animationState,int frame)in{
 		assert(isSaxs);
 	}do{
 		auto transforms=animations[animationState].frames[frame].matrices;
@@ -100,7 +101,7 @@ final class SacObject(B){
 			.map!(v=>rotate(rotation,v)).bbox;
 	}
 
-	Tuple!(Vector3f,Vector3f) largeHitbox(Quaternionf rotation,AnimationState animationState,int frame)in{
+	Vector3f[2] largeHitbox(Quaternionf rotation,AnimationState animationState,int frame)in{
 		assert(isSaxs);
 	}do{
 		auto transforms=animations[animationState].frames[frame].matrices;
@@ -109,7 +110,7 @@ final class SacObject(B){
 			.joiner.map!(v=>rotate(rotation,v)).bbox;
 	}
 
-	Tuple!(Vector3f,Vector3f) hitbox(Quaternionf rotation,AnimationState animationState,int frame)in{
+	Vector3f[2] hitbox(Quaternionf rotation,AnimationState animationState,int frame)in{
 		assert(isSaxs);
 	}do{
 		if(!data) return largeHitbox(rotation,animationState,frame);
@@ -130,6 +131,45 @@ final class SacObject(B){
 				sl[0][2]=sll[0][2];
 				return sl;
 		}
+	}
+	auto hitboxes(Quaternionf rotation)@nogc in{
+		assert(!isSaxs);
+	}do{
+		auto len=rotation.xyz.length;
+		auto angle=2*atan2(len,rotation.w);
+		auto aangle=abs(angle);
+		static enum HitboxRotation{
+			deg0,
+			deg90,
+			deg180,
+			deg270,
+		}
+		auto hitboxRotation=HitboxRotation.deg0;
+		if(aangle>2*PI/360.0f*45.0f){
+			if(aangle<2*PI/360.0f*135.0f){
+				if(angle>0) hitboxRotation=HitboxRotation.deg90;
+				else hitboxRotation=HitboxRotation.deg270;
+			}else hitboxRotation=HitboxRotation.deg180;
+		}
+		static Vector3f[2] rotateHitbox(HitboxRotation rotation,Vector3f[2] hitbox){
+			final switch(rotation){
+				case HitboxRotation.deg0:
+					return hitbox;
+				case HitboxRotation.deg90:
+					// [x,y,z] ↦ [-y,x,z]
+					return [Vector3f(-hitbox[1].y,hitbox[0].x,hitbox[0].z),
+					        Vector3f(-hitbox[0].y,hitbox[1].x,hitbox[1].z)];
+				case HitboxRotation.deg180:
+					// [x,y,z] ↦ [-x,-y,z]
+					return [Vector3f(-hitbox[1].x,-hitbox[1].y,hitbox[0].z),
+					        Vector3f(-hitbox[0].x,-hitbox[0].y,hitbox[1].z)];
+				case HitboxRotation.deg270:
+					// [x,y,z] ↦ [y,-x,z]
+					return [Vector3f(hitbox[0].y,-hitbox[1].x,hitbox[0].z),
+					        Vector3f(hitbox[1].y,-hitbox[0].x,hitbox[1].z)];
+			}
+		}
+		return zip(hitboxRotation.repeat,hitboxes_).map!(x=>rotateHitbox(x.expand));
 	}
 
 	struct MaterialConfig{
@@ -237,6 +277,7 @@ final class SacObject(B){
 		auto mt=loadMRMM!B(bldgModls[tag],1.0f);
 		meshes=mt[0];
 		textures=mt[1];
+		hitboxes_=mt[2];
 		initializeNTTData(tag);
 	}
 	static SacObject!B getBLDG(char[4] tag){
@@ -262,6 +303,7 @@ final class SacObject(B){
 				auto mt=loadMRMM!B(filename, 1.0f);
 				meshes=mt[0];
 				textures=mt[1];
+				hitboxes_=mt[2];
 				break;
 			case "3DSM":
 				auto mt=load3DSM!B(filename, 1.0f);

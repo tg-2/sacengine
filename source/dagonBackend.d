@@ -288,12 +288,16 @@ final class SacScene: Scene{
 		state.current.eachByType!render(options.enableWidgets,rc);
 	}
 
-	static void renderBox(Vector3f small,Vector3f large,bool wireframe,RenderingContext* rc){
+	static void renderBox(Vector3f[2] sl,bool wireframe,RenderingContext* rc){
+		auto small=sl[0],large=sl[1];
 		Vector3f[8] box=[Vector3f(small[0],small[1],small[2]),Vector3f(large[0],small[1],small[2]),
 		                 Vector3f(large[0],large[1],small[2]),Vector3f(small[0],large[1],small[2]),
 		                 Vector3f(small[0],small[1],large[2]),Vector3f(large[0],small[1],large[2]),
 		                 Vector3f(large[0],large[1],large[2]),Vector3f(small[0],large[1],large[2])];
-		if(wireframe) glPolygonMode(GL_FRONT_AND_BACK,GL_LINE);
+		if(wireframe){
+			glPolygonMode(GL_FRONT_AND_BACK,GL_LINE);
+			glDisable(GL_CULL_FACE);
+		}
 		auto mesh=New!Mesh(null);
 		scope(exit) Delete(mesh);
 		mesh.vertices=New!(Vector3f[])(8);
@@ -319,7 +323,10 @@ final class SacScene: Scene{
 		mesh.dataReady=true;
 		mesh.prepareVAO();
 		mesh.render(rc);
-		if(wireframe) glPolygonMode(GL_FRONT_AND_BACK,GL_FILL);
+		if(wireframe){
+			glPolygonMode(GL_FRONT_AND_BACK,GL_FILL);
+			glEnable(GL_CULL_FACE);
+		}
 	}
 	bool showHitboxes=false;
 	GenericMaterial hitboxMaterial=null;
@@ -330,9 +337,8 @@ final class SacScene: Scene{
 			static if(isMoving){
 				foreach(j;0..objects.length){
 					material.backend.setTransformation(objects.positions[j], Quaternionf.identity(), rc);
-					auto sl=sacObject.hitbox(objects.rotations[j],objects.animationStates[j],objects.frames[j]/updateAnimFactor);
-					auto small=sl[0],large=sl[1];
-					renderBox(small,large,true,rc);
+					auto hitbox=sacObject.hitbox(objects.rotations[j],objects.animationStates[j],objects.frames[j]/updateAnimFactor);
+					renderBox(hitbox,true,rc);
 					/+foreach(i;1..sacObject.saxsi.saxs.bones.length){
 						auto hitbox=sacObject.saxsi.saxs.bones[i].hitbox;
 						foreach(ref x;hitbox){
@@ -356,11 +362,17 @@ final class SacScene: Scene{
 						//renderBox(hitbox,rc);
 					}+/
 				}
+			}else static if(is(T==StaticObjects!DagonBackend)){
+				foreach(j;0..objects.length){
+					material.backend.setTransformation(objects.positions[j], Quaternionf.identity(), rc);
+					foreach(hitbox;sacObject.hitboxes(objects.rotations[j]))
+						renderBox(hitbox,true,rc);
+				}
 			}
 		}
 		if(!hitboxMaterial){
-			hitboxMaterial=createMaterial(defaultMaterialBackend);
-			hitboxMaterial.diffuse=Color4f(0,0,0,1);
+			hitboxMaterial=createMaterial(shadelessMaterialBackend);
+			hitboxMaterial.diffuse=Color4f(1.0f,1.0f,1.0f,1.0f);
 		}
 		hitboxMaterial.bind(rc); scope(exit) hitboxMaterial.unbind(rc);
 		state.current.eachByType!render(hitboxMaterial,rc);
