@@ -47,6 +47,7 @@ struct Saxs(B){
 	float zfactor;
 	float scaling;
 	Bone[] bones;
+	int[] bboxBones;
 	Position[] positions;
 	BodyPart!B[] bodyParts;
 }
@@ -67,6 +68,8 @@ Saxs!B loadSaxs(B)(string filename, int alphaFlags=0){
 	}
 	auto bones=chain(only(Bone(Vector3f(0,0,0),0)),model.bones.map!(bone=>Bone(Vector3f(fromSXMD(bone.pos))*scaling,bone.parent,translateBBox(bone.bbox)))).array;
 	enforce(iota(1,bones.length).all!(i=>bones[i].parent<i));
+	auto bboxBones=iota(cast(int)bones.length).filter!(i=>saxs.bboxBones[i]).array;
+	//enforce(saxs.bboxBones[bones.length..$].all!(x=>!x)); // TODO: why does this not hold?
 	auto convertPosition(ref sxmd.Position position){
 		return Position(position.bone,fromSXMD(Vector3f(position.pos))*scaling,position.weight/64.0f);
 	}
@@ -153,7 +156,7 @@ Saxs!B loadSaxs(B)(string filename, int alphaFlags=0){
 	//writeln("numVertices: ",std.algorithm.sum(bodyParts.map!(bodyPart=>bodyPart.vertices.length)));
 	//writeln("numFaces: ",std.algorithm.sum(bodyParts.map!(bodyPart=>bodyPart.vertices.length)));
 	//writeln("numBones: ",bones.length);
-	return Saxs!B(model.zfactor,scaling,bones,positions,bodyParts);
+	return Saxs!B(model.zfactor,scaling,bones,bboxBones,positions,bodyParts);
 }
 
 static if(!gpuSkinning){
