@@ -220,6 +220,13 @@ enum RotateOnGround{
 	completely,
 }
 
+enum HitboxType{
+	large,
+	small,
+	largeZ,
+	largeZbot,
+}
+
 immutable struct CreatureData{
 	char[4] tag;
 	string name; // TODO: internationalization
@@ -227,11 +234,13 @@ immutable struct CreatureData{
 	string stance;
 	float zfactorOverride=float.nan;
 	auto rotateOnGround=RotateOnGround.no;
+	auto hitboxType=HitboxType.large;
 }
 
 CreatureData abomination={
 	tag: "ctug",
 	name: "Abomination",
+	// hitboxType: ?
 };
 
 CreatureData astaroth={
@@ -276,18 +285,21 @@ CreatureData cog={
 CreatureData deadeye={
 	tag: "plfd",
 	name: "Deadeye",
+	// hitboxType: ?
 };
 
 CreatureData dragon={
 	tag: "grdg",
 	name: "Dragon",
 	rotateOnGround: RotateOnGround.completely,
+	hitboxType: HitboxType.largeZ,
 };
 
 CreatureData dragonHatchling={
 	tag: "rdbO",
 	name: "Dragon Hatchling",
 	rotateOnGround: RotateOnGround.completely,
+	hitboxType: HitboxType.largeZ, // ?
 };
 
 CreatureData druid={
@@ -304,6 +316,7 @@ CreatureData ent={
 	tag: "mtsl",
 	name: "Ent",
 	rotateOnGround: RotateOnGround.completely,
+	hitboxType: HitboxType.largeZ,
 };
 
 CreatureData faestus1={
@@ -329,6 +342,7 @@ CreatureData familiar={
 CreatureData farmer={
 	tag: "zepe",
 	name: "Farmer",
+	hitboxType: HitboxType.largeZ,
 };
 
 CreatureData firefist={
@@ -378,11 +392,13 @@ CreatureData gargoyle={
 CreatureData ghost={
 	tag: "tshg",
 	name: "Ghost",
+	hitboxType: HitboxType.largeZ,
 };
 
 CreatureData gnome={
 	tag: "plfl",
 	name: "Gnome",
+	// hitboxType: ?
 };
 
 CreatureData gremlin={
@@ -407,6 +423,7 @@ CreatureData jabberocky={
 	tag: "mtse",
 	name: "Jabberocky",
 	rotateOnGround: RotateOnGround.completely,
+	hitboxType: HitboxType.largeZ,
 };
 
 CreatureData locust={
@@ -428,6 +445,7 @@ CreatureData manahoar={
 CreatureData mutant={
 	tag: "cbab",
 	name: "Mutant",
+	// hitboxType: ?
 };
 
 CreatureData necryl={
@@ -439,11 +457,13 @@ CreatureData necryl={
 CreatureData netherfiend={
 	tag: "crpd",
 	name: "Netherfiend",
+	hitboxType: HitboxType.small,
 };
 
 CreatureData peasant={
 	tag: "saep",
 	name: "Peasant",
+	hitboxType: HitboxType.largeZ,
 };
 
 CreatureData phoenix={
@@ -471,6 +491,7 @@ CreatureData rhinok={
 	tag: "gard",
 	name: "Rhinok",
 	rotateOnGround: RotateOnGround.completely,
+	// hitboxType: ?
 };
 
 CreatureData sacDoctor={
@@ -516,16 +537,19 @@ CreatureData sirocco={
 	tag: "risH",
 	name: "Sirocco",
 	rotateOnGround: RotateOnGround.completely,
+	hitboxType: HitboxType.largeZ,
 };
 
 CreatureData slave={
 	tag: "zepf",
 	name: "Slave",
+	hitboxType: HitboxType.largeZ,
 };
 
 CreatureData snowman={
 	tag: "zepa",
 	name: "Snowman",
+	hitboxType: HitboxType.largeZ,
 };
 
 CreatureData spitfire={
@@ -547,6 +571,7 @@ CreatureData stormGiant={
 CreatureData styx={
 	tag: "nugd",
 	name: "Styx",
+	// hitboxType: ?
 };
 
 CreatureData sylph={
@@ -576,6 +601,7 @@ CreatureData toldor={
 	tag: "oohH",
 	name: "Toldor",
 	rotateOnGround: RotateOnGround.completely,
+	hitboxType: HitboxType.largeZ,
 };
 
 CreatureData trogg={
@@ -597,6 +623,7 @@ CreatureData vortick={
 CreatureData warmonger={
 	tag: "nugf",
 	name: "Warmonger",
+	// hitboxType: ?
 };
 
 CreatureData yeti={

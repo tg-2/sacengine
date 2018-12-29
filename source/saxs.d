@@ -7,7 +7,7 @@ import std.stdio, std.path, std.string, std.exception, std.algorithm, std.range,
 struct Bone{
 	Vector3f position;
 	size_t parent;
-	Vector3f[8] bbox;
+	Vector3f[8] hitbox;
 }
 
 struct Position{
@@ -47,7 +47,7 @@ struct Saxs(B){
 	float zfactor;
 	float scaling;
 	Bone[] bones;
-	int[] bboxBones;
+	int[] hitboxBones;
 	Position[] positions;
 	BodyPart!B[] bodyParts;
 }
@@ -61,15 +61,15 @@ Saxs!B loadSaxs(B)(string filename, int alphaFlags=0){
 	ubyte[] data;
 	foreach(ubyte[] chunk;chunks(File(filename,"rb"),4096)) data~=chunk;
 	auto model = parseSXMD(data);
-	Vector3f[8] translateBBox(float[3][8] bbox){
+	Vector3f[8] translateHitbox(float[3][8] hitbox){
 		Vector3f[8] result;
-		foreach(i;0..8) result[i]=Vector3f(fromSXMD(bbox[i]))*scaling;
+		foreach(i;0..8) result[i]=Vector3f(fromSXMD(hitbox[i]))*scaling;
 		return result;
 	}
-	auto bones=chain(only(Bone(Vector3f(0,0,0),0)),model.bones.map!(bone=>Bone(Vector3f(fromSXMD(bone.pos))*scaling,bone.parent,translateBBox(bone.bbox)))).array;
+	auto bones=chain(only(Bone(Vector3f(0,0,0),0)),model.bones.map!(bone=>Bone(Vector3f(fromSXMD(bone.pos))*scaling,bone.parent,translateHitbox(bone.hitbox)))).array;
 	enforce(iota(1,bones.length).all!(i=>bones[i].parent<i));
-	auto bboxBones=iota(cast(int)bones.length).filter!(i=>saxs.bboxBones[i]).array;
-	//enforce(saxs.bboxBones[bones.length..$].all!(x=>!x)); // TODO: why does this not hold?
+	auto hitboxBones=iota(cast(int)bones.length).filter!(i=>saxs.hitboxBones[i]).array;
+	//enforce(saxs.hitboxBones[bones.length..$].all!(x=>!x)); // TODO: why does this not hold?
 	auto convertPosition(ref sxmd.Position position){
 		return Position(position.bone,fromSXMD(Vector3f(position.pos))*scaling,position.weight/64.0f);
 	}
@@ -156,7 +156,7 @@ Saxs!B loadSaxs(B)(string filename, int alphaFlags=0){
 	//writeln("numVertices: ",std.algorithm.sum(bodyParts.map!(bodyPart=>bodyPart.vertices.length)));
 	//writeln("numFaces: ",std.algorithm.sum(bodyParts.map!(bodyPart=>bodyPart.vertices.length)));
 	//writeln("numBones: ",bones.length);
-	return Saxs!B(model.zfactor,scaling,bones,bboxBones,positions,bodyParts);
+	return Saxs!B(model.zfactor,scaling,bones,hitboxBones,positions,bodyParts);
 }
 
 static if(!gpuSkinning){

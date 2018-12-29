@@ -91,6 +91,47 @@ final class SacObject(B){
 		return movementSpeed(true);
 	}
 
+	Tuple!(Vector3f,Vector3f) smallHitbox(Quaternionf rotation,AnimationState animationState,int frame)in{
+		assert(isSaxs);
+	}do{
+		auto transforms=animations[animationState].frames[frame].matrices;
+		return saxsi.saxs.hitboxBones
+			.map!(i=>Vector3f(0,0,0)*transforms[i])
+			.map!(v=>rotate(rotation,v)).bbox;
+	}
+
+	Tuple!(Vector3f,Vector3f) largeHitbox(Quaternionf rotation,AnimationState animationState,int frame)in{
+		assert(isSaxs);
+	}do{
+		auto transforms=animations[animationState].frames[frame].matrices;
+		return saxsi.saxs.hitboxBones
+			.map!(i=>saxsi.saxs.bones[i].hitbox[].map!(x=>x*transforms[i]))
+			.joiner.map!(v=>rotate(rotation,v)).bbox;
+	}
+
+	Tuple!(Vector3f,Vector3f) hitbox(Quaternionf rotation,AnimationState animationState,int frame)in{
+		assert(isSaxs);
+	}do{
+		if(!data) return largeHitbox(rotation,animationState,frame);
+		final switch(data.hitboxType){
+			case HitboxType.small:
+				return smallHitbox(rotation,animationState,frame);
+			case HitboxType.large:
+				return largeHitbox(rotation,animationState,frame);
+			case HitboxType.largeZ:
+				auto sl=smallHitbox(rotation,animationState,frame);
+				auto sll=largeHitbox(rotation,animationState,frame);
+				sl[0][2]=sll[0][2];
+				sl[1][2]=sll[1][2];
+				return sl;
+			case HitboxType.largeZbot:
+				auto sl=smallHitbox(rotation,animationState,frame);
+				auto sll=largeHitbox(rotation,animationState,frame);
+				sl[0][2]=sll[0][2];
+				return sl;
+		}
+	}
+
 	struct MaterialConfig{
 		int sunBeamPart=-1;
 		int locustWingPart=-1;
@@ -178,8 +219,7 @@ final class SacObject(B){
 				                  ||i==AnimationState.hover)
 				){
 					auto animation=loadSXSK(anim,saxsi.saxs.scaling);
-					static if(gpuSkinning)
-						animation.compile(saxsi.saxs);
+					animation.compile(saxsi.saxs);
 					animations[i]=animation;
 				}
 			}

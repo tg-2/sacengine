@@ -4,7 +4,7 @@ import std.math;
 import std.stdio;
 import std.algorithm, std.range, std.exception;
 
-import sacobject, sacmap, state;
+import sacobject, nttData, sacmap, state;
 import sxsk : gpuSkinning;
 
 final class SacScene: Scene{
@@ -288,6 +288,84 @@ final class SacScene: Scene{
 		state.current.eachByType!render(options.enableWidgets,rc);
 	}
 
+	static void renderBox(Vector3f small,Vector3f large,bool wireframe,RenderingContext* rc){
+		Vector3f[8] box=[Vector3f(small[0],small[1],small[2]),Vector3f(large[0],small[1],small[2]),
+		                 Vector3f(large[0],large[1],small[2]),Vector3f(small[0],large[1],small[2]),
+		                 Vector3f(small[0],small[1],large[2]),Vector3f(large[0],small[1],large[2]),
+		                 Vector3f(large[0],large[1],large[2]),Vector3f(small[0],large[1],large[2])];
+		if(wireframe) glPolygonMode(GL_FRONT_AND_BACK,GL_LINE);
+		auto mesh=New!Mesh(null);
+		scope(exit) Delete(mesh);
+		mesh.vertices=New!(Vector3f[])(8);
+		mesh.vertices[]=box[];
+		//foreach(ref x;mesh.vertices) x*=10;
+		mesh.indices=New!(uint[3][])(6*2);
+		mesh.indices[0]=[0,2,1];
+		mesh.indices[1]=[2,0,3];
+		mesh.indices[2]=[4,5,6];
+		mesh.indices[3]=[6,7,4];
+		mesh.indices[4]=[0,1,5];
+		mesh.indices[5]=[0,5,4];
+		mesh.indices[6]=[1,2,6];
+		mesh.indices[7]=[6,5,1];
+		mesh.indices[8]=[2,3,7];
+		mesh.indices[9]=[7,6,2];
+		mesh.indices[10]=[3,0,4];
+		mesh.indices[11]=[4,7,3];
+		mesh.texcoords=New!(Vector2f[])(mesh.vertices.length);
+		mesh.texcoords[]=Vector2f(0,0);
+		mesh.normals=New!(Vector3f[])(mesh.vertices.length);
+		mesh.generateNormals();
+		mesh.dataReady=true;
+		mesh.prepareVAO();
+		mesh.render(rc);
+		if(wireframe) glPolygonMode(GL_FRONT_AND_BACK,GL_FILL);
+	}
+	bool showHitboxes=false;
+	GenericMaterial hitboxMaterial=null;
+	final void renderHitboxes(RenderingContext* rc){
+		static void render(T)(ref T objects,GenericMaterial material,RenderingContext* rc){
+			auto sacObject=objects.sacObject;
+			enum isMoving=is(T==MovingObjects!(DagonBackend, RenderMode.opaque))||is(T==MovingObjects!(DagonBackend, RenderMode.transparent));
+			static if(isMoving){
+				foreach(j;0..objects.length){
+					material.backend.setTransformation(objects.positions[j], Quaternionf.identity(), rc);
+					auto sl=sacObject.hitbox(objects.rotations[j],objects.animationStates[j],objects.frames[j]/updateAnimFactor);
+					auto small=sl[0],large=sl[1];
+					renderBox(small,large,true,rc);
+					/+foreach(i;1..sacObject.saxsi.saxs.bones.length){
+						auto hitbox=sacObject.saxsi.saxs.bones[i].hitbox;
+						foreach(ref x;hitbox){
+							x=x*sacObject.animations[objects.animationStates[j]].frames[objects.frames[j]/updateAnimFactor].matrices[i];
+						}
+						Vector3f[8] box=[Vector3f(-1,-1,-1),Vector3f(1,-1,-1),Vector3f(1,1,-1),Vector3f(-1,1,-1),Vector3f(-1,-1,1),Vector3f(1,-1,1),Vector3f(1,1,1),Vector3f(-1,1,1)];
+						foreach(curVert;/+0..8+/6..8){
+							Vector3f[8] nbox;
+							foreach(k;0..8)
+								nbox[k]=hitbox[curVert]+(0.05*box[k]);//*(curVert==3?2:1);
+							renderBox(nbox,rc);
+						}
+						/+Vector3f[8] hitbox=[Vector3f(-0.0730702, -0.0556806, 0),
+						 Vector3f(0.22243, -0.0556806, 0),
+						 Vector3f(-0.0730702, 0.0667194, 0),
+						 Vector3f(0.22243, 0.0667194, 0),
+						 Vector3f(0, -0.0556806, -0.247969),
+						 Vector3f(0, -0.0556806, -0.0355686),
+						 Vector3f(0, 0.0667194, -0.247969),
+						 Vector3f(0, 0.0667194, -0.0355686)];+/
+						//renderBox(hitbox,rc);
+					}+/
+				}
+			}
+		}
+		if(!hitboxMaterial){
+			hitboxMaterial=createMaterial(defaultMaterialBackend);
+			hitboxMaterial.diffuse=Color4f(0,0,0,1);
+		}
+		hitboxMaterial.bind(rc); scope(exit) hitboxMaterial.unbind(rc);
+		state.current.eachByType!render(hitboxMaterial,rc);
+	}
+
 	override void renderShadowCastingEntities3D(RenderingContext* rc){
 		super.renderShadowCastingEntities3D(rc);
 		if(!state) return;
@@ -300,6 +378,7 @@ final class SacScene: Scene{
 		if(!state) return;
 		renderMap(rc);
 		renderNTTs!(RenderMode.opaque)(rc);
+		if(showHitboxes) renderHitboxes(rc);
 	}
 	override void renderTransparentEntities3D(RenderingContext* rc){
 		super.renderTransparentEntities3D(rc);
@@ -352,11 +431,11 @@ final class SacScene: Scene{
 		 obj.position = Vector3f(0, 1, 0);
 		 obj.rotation = rotationQuaternion(Axis.x,-cast(float)PI/2);+/
 
-		if(!state){
+		/+if(!state){
 			auto sky=createSky();
 			sky.rotation=rotationQuaternion(Axis.z,cast(float)PI)*
 				rotationQuaternion(Axis.x,cast(float)(PI/2));
-		}
+		}+/
 		/+auto ePlane = createEntity3D();
 		 ePlane.drawable = New!ShapePlane(10, 10, 1, assetManager);
 		 auto matGround = createMaterial();
@@ -370,13 +449,14 @@ final class SacScene: Scene{
 		Vector3f forward = fpview.camera.worldTrans.forward;
 		Vector3f right = fpview.camera.worldTrans.right;
 		Vector3f dir = Vector3f(0, 0, 0);
-		if(eventManager.keyPressed[KEY_X]) dir += Vector3f(1,0,0);
-		if(eventManager.keyPressed[KEY_Y]) dir += Vector3f(0,1,0);
-		if(eventManager.keyPressed[KEY_Z]) dir += Vector3f(0,0,1);
+		//if(eventManager.keyPressed[KEY_X]) dir += Vector3f(1,0,0);
+		//if(eventManager.keyPressed[KEY_Y]) dir += Vector3f(0,1,0);
+		//if(eventManager.keyPressed[KEY_Z]) dir += Vector3f(0,0,1);
 		if(eventManager.keyPressed[KEY_E]) dir += -forward;
 		if(eventManager.keyPressed[KEY_D]) dir += forward;
 		if(eventManager.keyPressed[KEY_S]) dir += -right;
 		if(eventManager.keyPressed[KEY_F]) dir += right;
+		if(eventManager.keyPressed[KEY_I]) speed = 10.0f;
 		if(eventManager.keyPressed[KEY_O]) speed = 100.0f;
 		if(eventManager.keyPressed[KEY_P]) speed = 1000.0f;
 		if(eventManager.keyPressed[KEY_K]) fpview.active=false;
@@ -406,6 +486,9 @@ final class SacScene: Scene{
 		}else if(eventManager.keyPressed[KEY_RIGHT] && !eventManager.keyPressed[KEY_LEFT]){
 			state.current.eachMoving!startTurningRight(state.current);
 		}else state.current.eachMoving!stopTurning(state.current);
+
+		if(eventManager.keyPressed[KEY_Y]) showHitboxes=true;
+		if(eventManager.keyPressed[KEY_U]) showHitboxes=false;
 	}
 
 	override void onLogicsUpdate(double dt){
@@ -437,11 +520,12 @@ final class SacScene: Scene{
 }
 
 class MyApplication: SceneApplication{
+	SacScene scene;
 	this(Options options){
 		super(options.width==0?1280:options.width,
 		      options.height==0?1280:options.height,
 		      false, "SacEngine", []);
-		SacScene scene = New!SacScene(sceneManager, options);
+		scene = New!SacScene(sceneManager, options);
 		sceneManager.addScene(scene, "Sacrifice");
 		sceneManager.goToScene("Sacrifice");
 	}
@@ -451,9 +535,7 @@ struct DagonBackend{
 	static MyApplication app;
 	static @property SacScene scene(){
 		enforce(!!app, "Dagon backend not running.");
-		auto r=cast(SacScene)app.sceneManager.currentScene;
-		assert(!!r);
-		return r;
+		return app.scene;
 	}
 	this(Options options){
 		enforce(!app,"can only have one DagonBackend"); // TODO: fix?

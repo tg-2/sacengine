@@ -1,4 +1,5 @@
 import dlib.math;
+import std.typecons, std.algorithm;
 
 alias Seq(T...)=T;
 
@@ -79,6 +80,18 @@ struct Transformation{
 		result.arrayof[15]=1.0f;
 		return result;
 	}
+}
+
+Tuple!(Vector3f,Vector3f) bbox(R)(R positions){
+	auto small=Vector3f(float.max,float.max,float.max);
+	auto large=-small;
+	foreach(p;positions){
+		static foreach(k;0..3){
+			small[k]=min(small[k],p[k]);
+			large[k]=max(large[k],p[k]);
+		}
+	}
+	return tuple(small,large);
 }
 
 import std.container.array;

@@ -22,7 +22,7 @@ struct SAXS{
 	uint unknown14;
 	uint unknown15;
 	uint unknown16; // unused?
-	bool[32] bboxBones;
+	bool[32] hitboxBones;
 	uint unknown18;
 	uint unknown19; // unused?
 }

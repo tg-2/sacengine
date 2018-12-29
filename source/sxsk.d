@@ -9,8 +9,7 @@ enum gpuSkinning=true;
 struct Pose{
 	Vector3f displacement;
 	Quaternionf[] rotations;
-	static if(gpuSkinning)
-		Matrix4f[] matrices;
+	Matrix4f[] matrices;
 }
 private struct FrameHeader{
 	short unknown;
@@ -47,24 +46,22 @@ Animation loadSXSK(string filename,float scaling){
 	return parseSXSK(data,scaling);
 }
 
-static if(gpuSkinning){
-	import saxs;
-	void compile(B)(ref Animation anim, ref Saxs!B saxs){
-		enforce(saxs.bones.length<=maxNumBones);
-		foreach(ref frame;anim.frames){
-			enforce(frame.rotations.length==saxs.bones.length);
-			Transformation[maxNumBones] transform;
-			transform[0]=Transformation(Quaternionf.identity,Vector3f(0,0,0));
-			foreach(j,ref bone;saxs.bones)
-				transform[j]=transform[bone.parent]*Transformation(frame.rotations[j],bone.position);
-			auto displacement=frame.displacement;
-			displacement.z*=saxs.zfactor;
-			foreach(j;0..saxs.bones.length)
-				transform[j].offset+=displacement;
-			auto matrices=new Matrix4f[](saxs.bones.length);
-			foreach(j;0..saxs.bones.length)
-				matrices[j]=transform[j].getMatrix4f();
-			frame.matrices=matrices;
-		}
+import saxs;
+void compile(B)(ref Animation anim, ref Saxs!B saxs){
+	enforce(saxs.bones.length<=maxNumBones);
+	foreach(ref frame;anim.frames){
+		enforce(frame.rotations.length==saxs.bones.length);
+		Transformation[maxNumBones] transform;
+		transform[0]=Transformation(Quaternionf.identity,Vector3f(0,0,0));
+		foreach(j,ref bone;saxs.bones)
+			transform[j]=transform[bone.parent]*Transformation(frame.rotations[j],bone.position);
+		auto displacement=frame.displacement;
+		displacement.z*=saxs.zfactor;
+		foreach(j;0..saxs.bones.length)
+			transform[j].offset+=displacement;
+		auto matrices=new Matrix4f[](saxs.bones.length);
+		foreach(j;0..saxs.bones.length)
+			matrices[j]=transform[j].getMatrix4f();
+		frame.matrices=matrices;
 	}
 }
