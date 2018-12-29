@@ -2,6 +2,7 @@ import sacobject;
 import std.algorithm, std.exception;
 import std.stdio, std.path;
 import std.typecons: Tuple, tuple;
+import util;
 
 struct Vertex{
 	float[3] pos;
@@ -52,8 +53,6 @@ Model parseMRMM(ubyte[] data){
 Tuple!(B.Mesh[], B.Texture[]) loadMRMM(B)(string filename, float scaling){
 	enforce(filename.endsWith(".MRMM"));
 	auto dir = dirName(filename);
-	ubyte[] data;
-	foreach(ubyte[] chunk;chunks(File(filename,"rb"),4096)) data~=chunk;
-	auto model = parseMRMM(data);
+	auto model = parseMRMM(readFile(filename));
 	return convertModel!B(dir, model, scaling);
 }

@@ -163,7 +163,7 @@ final class SacObject(B){
 		else static if(is(T==Wizard)) auto dat2=&wizds[tag];
 		else static assert(0);
 		auto model=saxsModls[dat2.saxsModel];
-		saxsi=SaxsInstance!B(loadSaxs!B(model,data.scaling,alphaFlags(dat2.saxsModel)));
+		saxsi=SaxsInstance!B(loadSaxs!B(model,alphaFlags(dat2.saxsModel)));
 		if(!isNaN(data.zfactorOverride)) saxsi.saxs.zfactor=data.zfactorOverride;
 		auto anims=&dat2.animations;
 		auto animIDs=dat2.animations.animations[];
@@ -177,7 +177,7 @@ final class SacObject(B){
 				if(exists(anim)&&(!(&animID !is &dat2.animations.stance1 && animID==dat2.animations.stance1)
 				                  ||i==AnimationState.hover)
 				){
-					auto animation=loadSXSK(anim,data.scaling);
+					auto animation=loadSXSK(anim,saxsi.saxs.scaling);
 					static if(gpuSkinning)
 						animation.compile(saxsi.saxs);
 					animations[i]=animation;
@@ -215,32 +215,31 @@ final class SacObject(B){
 		return objects[tag]=new SacObject!B(tag,(Widgets*).init); // hack
 	}
 
-	this(string filename, float scaling=1.0,float zfactorOverride=float.nan,string animation=""){
+	this(string filename, float zfactorOverride=float.nan,string animation=""){
 		enforce(filename.endsWith(".MRMM")||filename.endsWith(".3DSM")||filename.endsWith(".WIDG")||filename.endsWith(".SXMD"));
 		switch(filename[$-4..$]){
 			case "MRMM":
-				auto mt=loadMRMM!B(filename, scaling);
+				auto mt=loadMRMM!B(filename, 1.0f);
 				meshes=mt[0];
 				textures=mt[1];
 				break;
 			case "3DSM":
-				auto mt=load3DSM!B(filename, scaling);
+				auto mt=load3DSM!B(filename, 1.0f);
 				meshes=mt[0];
 				textures=mt[1];
 				break;
 			case "WIDG":
-				enforce(scaling==1.0);
 				auto mt=loadWIDG!B(filename);
 				meshes=[mt[0]];
 				textures=[mt[1]];
 				break;
 			case "SXMD":
 				isSaxs=true;
-				saxsi=SaxsInstance!B(loadSaxs!B(filename,scaling,alphaFlags(tag)));
+				saxsi=SaxsInstance!B(loadSaxs!B(filename,alphaFlags(tag)));
 				if(!isNaN(zfactorOverride)) saxsi.saxs.zfactor=zfactorOverride;
 				import std.range, std.array;
 				if(animation.length)
-					loadAnimation(animation,scaling);
+					loadAnimation(animation);
 				if(!animations.length){
 					auto anim=Animation([Pose(Vector3f(0,0,0),facingQuaternion(0).repeat(saxsi.saxs.bones.length).array)]);
 					static if(gpuSkinning)
@@ -257,9 +256,9 @@ final class SacObject(B){
 		initializeNTTData(tag);
 	}
 
-	void loadAnimation(string animation,float scaling){ // (just for testing)
+	void loadAnimation(string animation){ // (just for testing)
 		enforce(animations.length<=1);
-		auto anim=loadSXSK(animation,scaling);
+		auto anim=loadSXSK(animation,saxsi.saxs.scaling);
 		static if(gpuSkinning)
 			anim.compile(saxsi.saxs);
 		animations=[anim];

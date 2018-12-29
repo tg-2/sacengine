@@ -11,7 +11,7 @@ struct BoneData{
 	ushort parent;
 	ushort unused0; // setting all those fields to 0 does not affect the ingame rendering
 	float[3][8] bbox; // TODO: figure out what this does exactly (it affects the bone shadow and the bounding box, but unclear how)
-	uint[7] unused1; // setting all those fields to 0 does not affect the ingame rendering
+	float[7] unused1; // setting all those fields to 0 does not affect the ingame rendering
 }
 static assert(BoneData.sizeof==140);
 

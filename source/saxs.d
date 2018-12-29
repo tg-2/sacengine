@@ -7,6 +7,7 @@ import std.stdio, std.path, std.string, std.exception, std.algorithm, std.range,
 struct Bone{
 	Vector3f position;
 	size_t parent;
+	Vector3f[8] bbox;
 }
 
 struct Position{
@@ -44,18 +45,27 @@ struct BodyPart(B){
 
 struct Saxs(B){
 	float zfactor;
+	float scaling;
 	Bone[] bones;
 	Position[] positions;
 	BodyPart!B[] bodyParts;
 }
 
-Saxs!B loadSaxs(B)(string filename, float scaling=1.0f, int alphaFlags=0){
+Saxs!B loadSaxs(B)(string filename, int alphaFlags=0){
 	enforce(filename.endsWith(".SXMD"));
+	import saxs_;
+	auto saxs=loadSAXS(filename[0..$-5]~".SAXS");
+	auto scaling=saxs.scaling;
 	auto dir=dirName(filename);
 	ubyte[] data;
 	foreach(ubyte[] chunk;chunks(File(filename,"rb"),4096)) data~=chunk;
 	auto model = parseSXMD(data);
-	auto bones=chain(only(Bone(Vector3f(0,0,0),0)),model.bones.map!(bone=>Bone(Vector3f(fromSXMD(bone.pos))*scaling,bone.parent))).array;
+	Vector3f[8] translateBBox(float[3][8] bbox){
+		Vector3f[8] result;
+		foreach(i;0..8) result[i]=Vector3f(fromSXMD(bbox[i]))*scaling;
+		return result;
+	}
+	auto bones=chain(only(Bone(Vector3f(0,0,0),0)),model.bones.map!(bone=>Bone(Vector3f(fromSXMD(bone.pos))*scaling,bone.parent,translateBBox(bone.bbox)))).array;
 	enforce(iota(1,bones.length).all!(i=>bones[i].parent<i));
 	auto convertPosition(ref sxmd.Position position){
 		return Position(position.bone,fromSXMD(Vector3f(position.pos))*scaling,position.weight/64.0f);
@@ -143,7 +153,7 @@ Saxs!B loadSaxs(B)(string filename, float scaling=1.0f, int alphaFlags=0){
 	//writeln("numVertices: ",std.algorithm.sum(bodyParts.map!(bodyPart=>bodyPart.vertices.length)));
 	//writeln("numFaces: ",std.algorithm.sum(bodyParts.map!(bodyPart=>bodyPart.vertices.length)));
 	//writeln("numBones: ",bones.length);
-	return Saxs!B(model.zfactor,bones,positions,bodyParts);
+	return Saxs!B(model.zfactor,scaling,bones,positions,bodyParts);
 }
 
 static if(!gpuSkinning){
