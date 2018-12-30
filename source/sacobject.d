@@ -140,6 +140,8 @@ final class SacObject(B){
 	}do{
 		auto len=rotation.xyz.length;
 		auto angle=2*atan2(len,rotation.w);
+		if(angle>PI) angle-=2*PI;
+		else if(angle<-PI) angle+=2*PI;
 		auto aangle=abs(angle);
 		static enum HitboxRotation{
 			deg0,
