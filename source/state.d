@@ -673,6 +673,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 }
 
 void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
+	auto newPosition=object.position;
 	if(object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving,CreatureMode.landing,CreatureMode.dying)){
 		auto rotationSpeed=object.sacObject.rotationSpeed/updateFPS;
 		bool isRotating=false;
@@ -735,7 +736,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 					auto maxFactor=object.sacObject.maxDownwardSpeedFactor;
 					if(newDirection.lengthsqr>maxFactor*maxFactor) newDirection=maxFactor*newDirection.normalized;
 				}
-				object.position=state.moveOnGround(object.position,speed*newDirection);
+				newPosition=state.moveOnGround(object.position,speed*newDirection);
 			}
 			final switch(object.creatureState.movementDirection){
 				case MovementDirection.none:
@@ -753,20 +754,20 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			   object.creatureState.mode==CreatureMode.idle&&object.animationState!=AnimationState.fly&&object.creatureState.flyingDisplacement>0.0f
 			){
 				auto downwardSpeed=object.creatureState.mode==CreatureMode.landing?object.sacObject.landingSpeed/updateFPS:object.sacObject.downwardHoverSpeed/updateFPS;
-				object.position.z-=downwardSpeed;
+				newPosition.z-=downwardSpeed;
 				object.creatureState.flyingDisplacement=max(0.0f,object.creatureState.flyingDisplacement-downwardSpeed);
 				if(state.isOnGround(object.position)){
-					auto height=state.getGroundHeight(object.position);
-					if(object.position.z<=height)
-						object.position.z=height;
-					object.creatureState.flyingDisplacement=min(object.creatureState.flyingDisplacement,object.position.z-height);
+					auto height=state.getGroundHeight(newPosition);
+					if(newPosition.z<=height)
+						newPosition.z=height;
+					object.creatureState.flyingDisplacement=min(object.creatureState.flyingDisplacement,newPosition.z-height);
 				}
 				break;
 			}
 			if(object.creatureState.mode!=CreatureMode.moving) break;
 			void applyMovementInAir(Vector3f direction){
 				auto speed=object.sacObject.movementSpeed(true)/updateFPS;
-				auto newPosition=object.position+speed*direction;
+				newPosition=object.position+speed*direction;
 				auto upwardSpeed=max(0.0f,min(object.sacObject.takeoffSpeed/updateFPS,object.sacObject.flyingHeight-object.creatureState.flyingDisplacement));
 				auto onGround=state.isOnGround(newPosition), newHeight=float.nan;
 				if(onGround){
@@ -783,9 +784,8 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 				object.creatureState.flyingDisplacement+=velocity.z;
 				if(onGround){
 					object.creatureState.flyingDisplacement=min(object.creatureState.flyingDisplacement,newPosition.z-newHeight);
-					object.position.z=max(object.position.z,newHeight);
+					//newPosition.z=max(newPosition.z,newHeight); // original engine does this, but maybe it is better not to
 				}
-				object.position=newPosition;
 			}
 			final switch(object.creatureState.movementDirection){
 				case MovementDirection.none:
@@ -801,11 +801,12 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			break;
 		case CreatureMovement.tumbling:
 			object.creatureState.fallingSpeed.z-=object.sacObject.fallingAcceleration/updateFPS;
-			object.position+=object.creatureState.fallingSpeed;
-			if(object.creatureState.fallingSpeed.z<0 && state.isOnGround(object.position))
-				object.position.z=max(object.position.z,state.getGroundHeight(object.position));
+			newPosition=object.position+object.creatureState.fallingSpeed;
+			if(object.creatureState.fallingSpeed.z<0 && state.isOnGround(newPosition))
+				newPosition.z=max(newPosition.z,state.getGroundHeight(object.position));
 			break;
 	}
+	object.position=newPosition;
 }
 
 void updateCreature(B)(ref MovingObject!B object, ObjectState!B state){
