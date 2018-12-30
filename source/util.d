@@ -94,6 +94,16 @@ Vector3f[2] bbox(R)(R positions){
 	return [small,large];
 }
 
+bool intervalsIntersect(float[2] a, float[2] b){
+	return a[0]<b[1] && b[0]<a[1];
+}
+
+bool boxesIntersect(Vector3f[2] a,Vector3f[2] b){
+	return intervalsIntersect([a[0].x,a[1].x], [b[0].x,b[1].x])
+		&& intervalsIntersect([a[0].y,a[1].y], [b[0].y,b[1].y])
+		&& intervalsIntersect([a[0].z,a[1].z], [b[0].z,b[1].z]);
+}
+
 import std.container.array;
 T[] data(T)(ref Array!T array){
 	// std.container.array should just provide this functionality...

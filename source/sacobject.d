@@ -91,6 +91,9 @@ final class SacObject(B){
 	@property float takeoffSpeed(){
 		return movementSpeed(true);
 	}
+	@property float collisionFixupSpeed(){
+		return 5.0f;
+	}
 
 	Vector3f[2] smallHitbox(Quaternionf rotation,AnimationState animationState,int frame)in{
 		assert(isSaxs);

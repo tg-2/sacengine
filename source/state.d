@@ -60,6 +60,7 @@ struct CreatureState{
 
 struct MovingObject(B){
 	SacObject!B sacObject;
+	int id=0;
 	Vector3f position;
 	Quaternionf rotation;
 	AnimationState animationState;
@@ -74,11 +75,16 @@ struct MovingObject(B){
 		this.frame=frame;
 		this.creatureState=creatureState;
 	}
+	this(SacObject!B sacObject,int id,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame,CreatureState creatureState){
+		this.id=id;
+		this(sacObject,position,rotation,animationState,frame,creatureState);
+	}
 }
 
 
 struct StaticObject(B){
 	SacObject!B sacObject;
+	int id=0;
 	Vector3f position;
 	Quaternionf rotation;
 
@@ -86,6 +92,10 @@ struct StaticObject(B){
 		this.sacObject=sacObject;
 		this.position=position;
 		this.rotation=rotation;
+	}
+	this(SacObject!B sacObject,int id,Vector3f position,Quaternionf rotation){
+		this.id=id;
+		this(sacObject,position,rotation);
 	}
 }
 
@@ -130,8 +140,10 @@ struct MovingObjects(B,RenderMode mode){
 		creatureStates.reserve(reserveSize);
 	}
 
-	void addObject(int id,MovingObject!B object){
-		ids~=id;
+	void addObject(MovingObject!B object)in{
+		assert(object.id!=0);
+	}do{
+		ids~=object.id;
 		positions~=object.position;
 		rotations~=object.rotation;
 		animationStates~=object.animationState;
@@ -149,10 +161,11 @@ struct MovingObjects(B,RenderMode mode){
 		assignArray(creatureStates,rhs.creatureStates);
 	}
 	MovingObject!B opIndex(int i){
-		return MovingObject!B(sacObject,positions[i],rotations[i],animationStates[i],frames[i],creatureStates[i]);
+		return MovingObject!B(sacObject,ids[i],positions[i],rotations[i],animationStates[i],frames[i],creatureStates[i]);
 	}
 	void opIndexAssign(MovingObject!B obj,int i){
 		assert(obj.sacObject is sacObject);
+		assert(ids[i]==obj.id);
 		positions[i]=obj.position;
 		rotations[i]=obj.rotation;
 		animationStates[i]=obj.animationState;
@@ -180,8 +193,10 @@ struct StaticObjects(B){
 	Array!Quaternionf rotations;
 
 	@property int length(){ assert(ids.length<=int.max); return cast(int)ids.length; }
-	void addObject(int id,StaticObject!B object){
-		ids~=id;
+	void addObject(StaticObject!B object)in{
+		assert(object.id!=0);
+	}do{
+		ids~=object.id;
 		positions~=object.position;
 		rotations~=object.rotation;
 	}
@@ -193,9 +208,11 @@ struct StaticObjects(B){
 		assignArray(rotations,rhs.rotations);
 	}
 	StaticObject!B opIndex(int i){
-		return StaticObject!B(sacObject,positions[i],rotations[i]);
+		return StaticObject!B(sacObject,ids[i],positions[i],rotations[i]);
 	}
 	void opIndexAssign(StaticObject!B obj,int i){
+		assert(sacObject is obj.sacObject);
+		assert(ids[i]==obj.id);
 		positions[i]=obj.position;
 		rotations[i]=obj.rotation;
 	}
@@ -245,7 +262,9 @@ struct Objects(B,RenderMode mode){
 		FixedObjects!B[] fixedObjects;
 	}
 	static if(mode==RenderMode.opaque){
-		Id addObject(T)(int id,T object) if(is(T==MovingObject!B)||is(T==StaticObject!B)){
+		Id addObject(T)(T object) if(is(T==MovingObject!B)||is(T==StaticObject!B))in{
+			assert(object.id!=0);
+		}do{
 			Id result;
 			auto type=object.sacObject.stateIndex; // TODO: support RenderMode.transparent
 			if(type==-1){
@@ -262,11 +281,11 @@ struct Objects(B,RenderMode mode){
 			static if(is(T==MovingObject!B)){
 				enforce(type<numMoving);
 				result=Id(mode,type,movingObjects[type].length);
-				movingObjects[type].addObject(id,object);
+				movingObjects[type].addObject(object);
 			}else{
 				enforce(numMoving<=type && type<numMoving+numStatic);
 				result=Id(mode,type,staticObjects[type-numMoving].length);
-				staticObjects[type-numMoving].addObject(id,object);
+				staticObjects[type-numMoving].addObject(object);
 			}
 			return result;
 		}
@@ -328,11 +347,13 @@ struct ObjectManager(B){
 	Array!Id ids;
 	Objects!(B,RenderMode.opaque) opaqueObjects;
 	Objects!(B,RenderMode.transparent) transparentObjects;
-	int addObject(T)(T object) if(is(T==MovingObject!B)||is(T==StaticObject!B)){
+	int addObject(T)(T object) if(is(T==MovingObject!B)||is(T==StaticObject!B))in{
+		assert(object.id==0);
+	}do{
 		if(ids.length>=int.max) return 0;
-		int id=cast(int)ids.length+1;
-		ids~=opaqueObjects.addObject(id,object);
-		return id;
+		object.id=cast(int)ids.length+1;
+		ids~=opaqueObjects.addObject(object);
+		return object.id;
 	}
 	void addTransparent(T)(T object, float alpha){
 		assert(0,"TODO");
@@ -784,7 +805,6 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 				object.creatureState.flyingDisplacement+=velocity.z;
 				if(onGround){
 					object.creatureState.flyingDisplacement=min(object.creatureState.flyingDisplacement,newPosition.z-newHeight);
-					//newPosition.z=max(newPosition.z,newHeight); // original engine does this, but maybe it is better not to
 				}
 			}
 			final switch(object.creatureState.movementDirection){
@@ -806,7 +826,122 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 				newPosition.z=max(newPosition.z,state.getGroundHeight(object.position));
 			break;
 	}
-	object.position=newPosition;
+	auto proximity=state.proximity;
+	auto relativeHitbox=object.sacObject.hitbox(object.rotation,object.animationState,object.frame/updateAnimFactor);
+	Vector3f[2] hitbox=[relativeHitbox[0]+newPosition,relativeHitbox[1]+newPosition];
+	bool posChanged=false, needsFixup=false;
+	auto fixupDirection=Vector3f(0.0f,0.0f,0.0f);
+	void handleCollision(bool fixup)(ProximityEntry entry){
+		if(entry.id==object.id) return;
+		enum CollisionDirection{ // which face of obstacle's hitbox was hit
+			left,
+			right,
+			back,
+			front,
+			bottom,
+			top,
+		}
+		auto collisionDirection=CollisionDirection.left;
+		auto minOverlap=hitbox[1].x-entry.hitbox[0].x;
+		auto cand=entry.hitbox[1].x-hitbox[0].x;
+		if(cand<minOverlap){
+			minOverlap=cand;
+			collisionDirection=CollisionDirection.right;
+		}
+		cand=hitbox[1].y-entry.hitbox[0].y;
+		if(cand<minOverlap){
+			minOverlap=cand;
+			collisionDirection=CollisionDirection.back;
+		}
+		cand=entry.hitbox[1].y-hitbox[0].y;
+		if(cand<minOverlap){
+			minOverlap=cand;
+			collisionDirection=CollisionDirection.front;
+		}
+		final switch(object.creatureState.movement){
+			case CreatureMovement.onGround:
+				break;
+			case CreatureMovement.flying:
+				cand=hitbox[1].z-entry.hitbox[0].z;
+				if(cand<minOverlap){
+					minOverlap=cand;
+					collisionDirection=CollisionDirection.bottom;
+				}
+				cand=entry.hitbox[1].z-hitbox[0].z;
+				if(cand<minOverlap){
+					minOverlap=cand;
+					collisionDirection=CollisionDirection.top;
+				}
+				break;
+			case CreatureMovement.tumbling:
+				static if(!fixup){
+					cand=entry.hitbox[1].z-hitbox[0].z;
+					if(cand<minOverlap)
+						object.creatureState.fallingSpeed.z=0.0f;
+				}
+				break;
+		}
+		final switch(collisionDirection){
+			case CollisionDirection.left:
+				static if(fixup) fixupDirection.x-=minOverlap;
+				else newPosition.x=min(newPosition.x,object.position.x);
+				break;
+			case CollisionDirection.right:
+				static if(fixup) fixupDirection.x+=minOverlap;
+				else newPosition.x=max(newPosition.x,object.position.x);
+				break;
+			case CollisionDirection.back:
+				static if(fixup) fixupDirection.y-=minOverlap;
+				else newPosition.y=min(newPosition.y,object.position.y);
+				break;
+			case CollisionDirection.front:
+				static if(fixup) fixupDirection.y+=minOverlap;
+				else newPosition.y=max(newPosition.y,object.position.y);
+				break;
+			case CollisionDirection.bottom:
+				static if(fixup) fixupDirection.z-=minOverlap;
+				else newPosition.z=min(newPosition.z,object.position.z);
+				break;
+			case CollisionDirection.top:
+				static if(fixup) fixupDirection.z+=minOverlap;
+				else newPosition.z=max(newPosition.z,object.position.z);
+				break;
+		}
+		static if(!fixup) posChanged=true;
+		else needsFixup=true;
+	}
+	proximity.collide!(handleCollision!false)(hitbox);
+	hitbox=[relativeHitbox[0]+newPosition,relativeHitbox[1]+newPosition];
+	proximity.collide!(handleCollision!true)(hitbox);
+	if(needsFixup){
+		auto fixupSpeed=object.sacObject.collisionFixupSpeed/updateFPS;
+		if(fixupDirection.length>fixupSpeed)
+			fixupDirection=fixupDirection.normalized*object.sacObject.collisionFixupSpeed/updateFPS;
+		final switch(object.creatureState.movement){
+			case CreatureMovement.onGround:
+				newPosition=state.moveOnGround(newPosition,fixupDirection);
+				break;
+			case CreatureMovement.flying, CreatureMovement.tumbling:
+				newPosition+=fixupDirection;
+				break;
+		}
+		posChanged=true;
+	}
+	bool onGround=state.isOnGround(newPosition);
+	if(object.creatureState.movement!=CreatureMovement.onGround||onGround){
+		if(posChanged){
+			// TODO: improve. original engine does this, but it can cause ultrafast ascending for flying creatures
+			final switch(object.creatureState.movement){
+				case CreatureMovement.onGround:
+					newPosition.z=state.getGroundHeight(newPosition);
+					break;
+				case CreatureMovement.flying, CreatureMovement.tumbling:
+					if(onGround) newPosition.z=max(newPosition.z,state.getGroundHeight(newPosition));
+					break;
+			}
+		}
+		object.position=newPosition;
+	}
 }
 
 void updateCreature(B)(ref MovingObject!B object, ObjectState!B state){
@@ -814,10 +949,104 @@ void updateCreature(B)(ref MovingObject!B object, ObjectState!B state){
 	object.updateCreaturePosition(state);
 }
 
+void addToProximity(T,B)(ref T objects, ObjectState!B state){
+	auto proximity=state.proximity;
+	enum isMoving=is(T==MovingObjects!(B, RenderMode.opaque))||is(T==MovingObjects!(B, RenderMode.transparent));
+	static if(isMoving){
+		foreach(j;0..objects.length){
+			auto hitbox=objects.sacObject.hitbox(objects.rotations[j],objects.animationStates[j],objects.frames[j]/updateAnimFactor);
+			auto position=objects.positions[j];
+			hitbox[0]+=position;
+			hitbox[1]+=position;
+			proximity.insert(ProximityEntry(objects.ids[j],hitbox));
+		}
+	}else static if(is(T==StaticObjects!B)){ // TODO: cache those?
+		foreach(j;0..objects.length){
+			foreach(hitbox;objects.sacObject.hitboxes(objects.rotations[j])){
+				auto position=objects.positions[j];
+				hitbox[0]+=position;
+				hitbox[1]+=position;
+				proximity.insert(ProximityEntry(objects.ids[j],hitbox));
+			}
+		}
+	}else static assert(is(T==FixedObjects!B));
+}
+
+struct ProximityEntry{
+	int id;
+	Vector3f[2] hitbox;
+}
+struct ProximityEntries{
+	int version_=0;
+	Array!ProximityEntry entries; // TODO: be more clever here if many entries
+	void insert(int version_,ProximityEntry entry){
+		if(this.version_!=version_){
+			entries.length=0;
+			this.version_=version_;
+		}
+		entries~=entry;
+	}
+}
+auto collide(alias f)(ref ProximityEntries proximityEntries,int version_,Vector3f[2] hitbox){
+	if(proximityEntries.version_!=version_){
+		proximityEntries.entries.length=0;
+		proximityEntries.version_=version_;
+	}
+	foreach(i;0..proximityEntries.entries.length){
+		if(boxesIntersect(proximityEntries.entries[i].hitbox,hitbox))
+			f(proximityEntries.entries[i]);
+	}
+}
+final class Proximity(B){
+	int version_=0;
+	bool active=false;
+	enum resolution=10;
+	enum offMapSlack=100/resolution;
+	enum size=(2560+resolution-1)/resolution+2*offMapSlack;
+	static Tuple!(int,"j",int,"i") getTile(Vector3f position){
+		return tuple!("j","i")(cast(int)(position.y/resolution),cast(int)(position.x/resolution)); // TODO: good resolution?
+	}
+	ProximityEntries[size][size] data;
+	ProximityEntries offMap;
+	void start()in{
+		assert(!active);
+	}do{
+		active=true;
+	}
+	void end()in{
+		assert(active);
+	}do{
+		active=false;
+		++version_;
+	}
+	void insert(ProximityEntry entry)in{
+		assert(active);
+	}do{
+		auto lowTile=getTile(entry.hitbox[0]), highTile=getTile(entry.hitbox[1]);
+		if(lowTile.j+offMapSlack<0||lowTile.i+offMapSlack<0||highTile.j+offMapSlack>=size||highTile.i+offMapSlack>=size)
+			offMap.insert(version_,entry);
+		foreach(j;max(0,lowTile.j+offMapSlack)..min(highTile.j+offMapSlack+1,size))
+			foreach(i;max(0,lowTile.i+offMapSlack)..min(highTile.i+offMapSlack+1,size))
+				data[j][i].insert(version_,entry);
+	}
+}
+auto collide(alias f,B)(Proximity!B proximity,Vector3f[2] hitbox){
+	auto lowTile=proximity.getTile(hitbox[0]), highTile=proximity.getTile(hitbox[1]);
+	if(lowTile.j+Proximity!B.offMapSlack<0||lowTile.i+Proximity!B.offMapSlack<0||highTile.j+Proximity!B.offMapSlack>=Proximity!B.size||highTile.i+Proximity!B.offMapSlack>=Proximity!B.size)
+		proximity.offMap.collide!f(proximity.version_,hitbox);
+	foreach(j;max(0,lowTile.j+Proximity!B.offMapSlack)..min(highTile.j+Proximity!B.offMapSlack+1,Proximity!B.size))
+		foreach(i;max(0,lowTile.i+Proximity!B.offMapSlack)..min(highTile.i+Proximity!B.offMapSlack+1,Proximity!B.size))
+			proximity.data[j][i].collide!f(proximity.version_,hitbox);
+}
+
 import std.random: MinstdRand0;
 final class ObjectState(B){ // (update logic)
 	SacMap!B map;
-	this(SacMap!B map){ this.map=map; }
+	Proximity!B proximity;
+	this(SacMap!B map, Proximity!B proximity){
+		this.map=map;
+		this.proximity=proximity;
+	}
 	bool isOnGround(Vector3f position){
 		return map.isOnGround(position);
 	}
@@ -850,7 +1079,10 @@ final class ObjectState(B){ // (update logic)
 	}
 	void update(){
 		frame+=1;
+		proximity.start();
+		this.eachByType!addToProximity(this);
 		this.eachMoving!updateCreature(this);
+		proximity.end();
 	}
 	ObjectManager!B obj;
 	int addObject(T)(T object) if(is(T==MovingObject!B)||is(T==StaticObject!B)){
@@ -903,9 +1135,10 @@ final class GameState(B){
 	this(SacMap!B map,NTTs ntts,Options options)in{
 		assert(!!map);
 	}body{
-		current=new ObjectState!B(map);
-		next=new ObjectState!B(map);
-		lastCommitted=new ObjectState!B(map);
+		auto proximity=new Proximity!B();
+		current=new ObjectState!B(map,proximity);
+		next=new ObjectState!B(map,proximity);
+		lastCommitted=new ObjectState!B(map,proximity);
 		commands.length=1;
 		foreach(ref structure;ntts.structures)
 			placeStructure(structure);
