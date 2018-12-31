@@ -504,6 +504,8 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 					object.pickRandomAnimation(attackCandidatesOnGround,state);
 					break;
 				case flying:
+					if(object.sacObject.mustFly)
+						goto case onGround; // (bug in original engine: it fails to do this.)
 					object.frame=0;
 					object.animationState=flyAttack;
 					break;
