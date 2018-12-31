@@ -95,6 +95,24 @@ final class SacObject(B){
 		return 5.0f;
 	}
 
+	@property bool hasKnockdown(){
+		return hasAnimationState(AnimationState.knocked2Floor);
+	}
+	@property bool hasFalling(){
+		return hasAnimationState(AnimationState.falling);
+	}
+	@property bool hasHitFloor(){
+		return hasAnimationState(AnimationState.hitFloor);
+	}
+	@property bool hasGetUp(){
+		return hasAnimationState(AnimationState.getUp);
+	}
+	@property bool hasFlyDamage(){
+		return hasAnimationState(AnimationState.flyDamage);
+	}
+	@property bool canTumble(){
+		return hasAnimationState(AnimationState.tumble);
+	}
 	Vector3f[2] smallHitbox(Quaternionf rotation,AnimationState animationState,int frame)in{
 		assert(isSaxs);
 	}do{

@@ -110,6 +110,16 @@ T[char[4]] makeSpellByTag(T)(){
 			c.animations.falling=result["kace"].animations.falling;
 		}
 		fixGammel(result["magH"]);
+		void fixFamiliar(ref Cre8 c){
+			c.creatureType="ylfo";
+			c.animations.flyDamage=c.animations.doubletake;
+			c.animations.stance1=c.animations.hover;
+			c.animations.takeoff=0;
+			c.animations.land=0;
+			c.animations.run=0;
+		}
+		fixFamiliar(result["imaf"]);
+		fixFamiliar(result["tnem"]);
 	}
 	return result;
 }

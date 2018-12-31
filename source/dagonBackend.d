@@ -483,6 +483,14 @@ final class SacScene: Scene{
 		assert(!!state);
 	}do{
 		if(eventManager.keyPressed[KEY_T]) state.current.eachMoving!kill(state.current);
+		if(eventManager.keyPressed[KEY_R]) state.current.eachMoving!stun(state.current);
+		static void catapultRandomly(B)(ref MovingObject!B object,ObjectState!B state){
+			import std.random;
+			auto velocity=Vector3f(uniform!"[]"(-20.0f,20.0f), uniform!"[]"(-20.0f,20.0f), uniform!"[]"(10.0f,25.0f));
+			//auto velocity=Vector3f(0.0f,0.0f,25.0f);
+			object.catapult(velocity,state);
+		}
+		if(eventManager.keyPressed[KEY_W]) state.current.eachMoving!catapultRandomly(state.current);
 		if(eventManager.keyPressed[KEY_RETURN]) state.current.eachMoving!immediateResurrect(state.current);
 		if(eventManager.keyPressed[KEY_G]) state.current.eachMoving!startFlying(state.current);
 		if(eventManager.keyPressed[KEY_V]) state.current.eachMoving!land(state.current);
