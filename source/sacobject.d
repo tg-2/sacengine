@@ -153,13 +153,14 @@ final class SacObject(B){
 				return sl;
 		}
 	}
-	auto hitboxes(Quaternionf rotation)@nogc in{
+	auto hitboxes(Quaternionf rotation)/+@nogc+/ in{
 		assert(!isSaxs);
 	}do{
 		auto len=rotation.xyz.length;
 		auto angle=2*atan2(len,rotation.w);
 		if(angle>PI) angle-=2*PI;
 		else if(angle<-PI) angle+=2*PI;
+		if(rotation.z<0) angle=-angle;
 		auto aangle=abs(angle);
 		static enum HitboxRotation{
 			deg0,
