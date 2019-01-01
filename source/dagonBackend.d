@@ -122,7 +122,7 @@ final class SacScene: Scene{
 		matSky.diffuse=map.textures[skyIndex];
 		matSky.blending=Transparent;
 		matSky.energy=map.Sky.energy;
-		matSky.transparency=envi.maxAlphaFloat;
+		matSky.transparency=min(envi.maxAlphaFloat,1.0f);
 		auto eSky = createEntity3D();
 		eSky.castShadow = false;
 		eSky.material = matSky;
@@ -176,7 +176,7 @@ final class SacScene: Scene{
 		auto env=environment;
 		auto envi=&map.envi;
 		//writeln(envi.sunDirectStrength," ",envi.sunAmbientStrength);
-		env.sunEnergy=12.0f*(envi.sunDirectStrength+envi.sunAmbientStrength+max(0,7*log(envi.sunAmbientStrength)/log(2)));
+		env.sunEnergy=6.0f*(envi.sunDirectStrength+envi.sunAmbientStrength+max(0,7*log(envi.sunAmbientStrength)/log(2)));
 		Color4f fixColor(Color4f sacColor){
 			return Color4f(1,1,1,1)*0.2+sacColor*0.8;
 		}
