@@ -14,11 +14,11 @@ struct Cre8{
 	SpellType spellType;
 	char[4] name;
 	char[4] icon;
-	uint unknown1; // unused?
+	uint unknown1; // unused
 	uint cooldown;
 	uint manaCost;
 	float range; // unused
-	uint unknown5; // it seems spell fails to cast if unknown5>5.
+	uint unknown5; // unused. but it seems spell fails to cast if unknown5>5.
 	ushort unknown6; // ?
 	ushort castingTime;
 	ushort spellOrder;
