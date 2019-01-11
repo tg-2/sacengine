@@ -176,7 +176,7 @@ struct MovingObjects(B,RenderMode mode){
 }
 auto each(alias f,B,RenderMode mode,T...)(ref MovingObjects!(B,mode) movingObjects,T args){
 	foreach(i;0..movingObjects.length){
-		static if(!is(typeof(f(movingObjects[i],args)))){
+		static if(!is(typeof(f(MovingObject.init,args)))){
 			// TODO: find a better way to check whether argument taken by reference
 			auto obj=movingObjects[i];
 			f(obj,args);
@@ -386,6 +386,57 @@ auto eachByType(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
 		opaqueObjects.eachByType!f(args);
 		transparentObjects.eachByType!f(args);
 	}
+}
+auto ref objectById(alias f,B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
+	assert(id>0);
+}do{
+	auto nid=objectManager.ids[id-1];
+	enum byRef=!is(typeof(f(MovingObject.init,args))); // TODO: find a better way to check whether argument taken by reference!
+	if(nid.type<numMoving){
+		final switch(nid.mode){
+			case RenderMode.opaque:
+				static if(byRef){
+					auto obj=objectManager.opaqueObjects.movingObjects[nid.type][nid.index];
+					scope(success) objectManager.opaqueObjects.movingObjects[nid.type][nid.index]=obj;
+					return f(obj,args);
+				}else return f(objectManager.opaqueObjects.movingObjects[nid.type][nid.index],args);
+			case RenderMode.transparent:
+				static if(byRef){
+					auto obj=objectManager.transparentObjects.movingObjects[nid.type][nid.index];
+					scope(success) objectManager.transparentObjects.movingObjects[nid.type][nid.index]=obj;
+					return f(obj,args);
+				}else return f(objectManager.transparentObjects.movingObjects[nid.type][nid.index],args);
+		}
+	}else{
+		assert(nid.mode==RenderMode.opaque);
+		static if(byRef){
+			auto obj=objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index];
+			scope(success) objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index]=obj;
+			return f(obj,args);
+		}else return f(objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index],args);
+	}
+}
+auto ref movingObjectById(alias f,alias nonMoving=(){},B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
+	assert(id>0);
+}do{
+	auto nid=objectManager.ids[id-1];
+	enum byRef=!is(typeof(f(MovingObject.init,args))); // TODO: find a better way to check whether argument taken by reference!
+	if(nid.type<numMoving){
+		final switch(nid.mode){ // TODO: get rid of code duplication
+			case RenderMode.opaque:
+				static if(byRef){
+					auto obj=objectManager.opaqueObjects.movingObjects[nid.type][nid.index];
+					scope(success) objectManager.opaqueObjects.movingObjects[nid.type][nid.index]=obj;
+					return f(obj,args);
+				}else return f(objectManager.opaqueObjects.movingObjects[nid.type][nid.index],args);
+			case RenderMode.transparent:
+				static if(byRef){
+					auto obj=objectManager.transparentObjects.movingObjects[nid.type][nid.index];
+					scope(success) objectManager.transparentObjects.movingObjects[nid.type][nid.index]=obj;
+					return f(obj,args);
+				}else return f(objectManager.transparentObjects.movingObjects[nid.type][nid.index],args);
+		}
+	}else return nonMoving();
 }
 
 void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
@@ -1058,14 +1109,14 @@ struct ProximityEntries{
 		entries~=entry;
 	}
 }
-auto collide(alias f)(ref ProximityEntries proximityEntries,int version_,Vector3f[2] hitbox){
+auto collide(alias f,T...)(ref ProximityEntries proximityEntries,int version_,Vector3f[2] hitbox,T args){
 	if(proximityEntries.version_!=version_){
 		proximityEntries.entries.length=0;
 		proximityEntries.version_=version_;
 	}
 	foreach(i;0..proximityEntries.entries.length){
 		if(boxesIntersect(proximityEntries.entries[i].hitbox,hitbox))
-			f(proximityEntries.entries[i]);
+			f(proximityEntries.entries[i],args);
 	}
 }
 final class Proximity(B){
@@ -1101,13 +1152,13 @@ final class Proximity(B){
 				data[j][i].insert(version_,entry);
 	}
 }
-auto collide(alias f,B)(Proximity!B proximity,Vector3f[2] hitbox){
+auto collide(alias f,B,T...)(Proximity!B proximity,Vector3f[2] hitbox,T args){
 	auto lowTile=proximity.getTile(hitbox[0]), highTile=proximity.getTile(hitbox[1]);
 	if(lowTile.j+Proximity!B.offMapSlack<0||lowTile.i+Proximity!B.offMapSlack<0||highTile.j+Proximity!B.offMapSlack>=Proximity!B.size||highTile.i+Proximity!B.offMapSlack>=Proximity!B.size)
-		proximity.offMap.collide!f(proximity.version_,hitbox);
+		proximity.offMap.collide!f(proximity.version_,hitbox,args);
 	foreach(j;max(0,lowTile.j+Proximity!B.offMapSlack)..min(highTile.j+Proximity!B.offMapSlack+1,Proximity!B.size))
 		foreach(i;max(0,lowTile.i+Proximity!B.offMapSlack)..min(highTile.i+Proximity!B.offMapSlack+1,Proximity!B.size))
-			proximity.data[j][i].collide!f(proximity.version_,hitbox);
+			proximity.data[j][i].collide!f(proximity.version_,hitbox,args);
 }
 
 import std.random: MinstdRand0;
@@ -1171,6 +1222,13 @@ auto eachMoving(alias f,B,T...)(ObjectState!B objectState,T args){
 }
 auto eachByType(alias f,B,T...)(ObjectState!B objectState,T args){
 	return objectState.obj.eachByType!f(args);
+}
+
+auto ref objectById(alias f,B,T...)(ObjectState!B objectState,int id,T args){
+	return objectState.obj.objectById!f(id,args);
+}
+auto ref movingObjectById(alias f,alias nonMoving=(){},B,T...)(ObjectState!B objectState,int id,T args){
+	return objectState.obj.movingObjectById!(f,nonMoving)(id,args);
 }
 
 enum TargetType{
