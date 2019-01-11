@@ -926,7 +926,9 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 				newPosition=object.position+velocity;
 				object.creatureState.flyingDisplacement+=velocity.z;
 				if(onGround){
-					object.creatureState.flyingDisplacement=min(object.creatureState.flyingDisplacement,newPosition.z-newHeight);
+					// TODO: improve? original engine does this, but it can cause ultrafast ascending for flying creatures
+					newPosition.z=max(newPosition.z,newHeight);
+					object.creatureState.flyingDisplacement=max(0.0f,min(object.creatureState.flyingDisplacement,newPosition.z-newHeight));
 				}
 			}
 			final switch(object.creatureState.movementDirection){
@@ -1052,7 +1054,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 	bool onGround=state.isOnGround(newPosition);
 	if(object.creatureState.movement!=CreatureMovement.onGround||onGround){
 		if(posChanged){
-			// TODO: improve. original engine does this, but it can cause ultrafast ascending for flying creatures
+			// TODO: improve? original engine does this, but it can cause ultrafast ascending for flying creatures
 			final switch(object.creatureState.movement){
 				case CreatureMovement.onGround:
 					newPosition.z=state.getGroundHeight(newPosition);
