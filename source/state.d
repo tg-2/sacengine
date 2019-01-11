@@ -1076,6 +1076,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 	enum isMoving=is(T==MovingObjects!(B, RenderMode.opaque))||is(T==MovingObjects!(B, RenderMode.transparent));
 	static if(isMoving){
 		foreach(j;0..objects.length){
+			if(objects[j].creatureState.mode==CreatureMode.dead) continue; // dead creatures are not obstacles (bad cache locality)
 			auto hitbox=objects.sacObject.hitbox(objects.rotations[j],objects.animationStates[j],objects.frames[j]/updateAnimFactor);
 			auto position=objects.positions[j];
 			hitbox[0]+=position;
