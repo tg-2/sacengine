@@ -653,6 +653,7 @@ void startIdling(B)(ref MovingObject!B object, ObjectState!B state){
 void kill(B)(ref MovingObject!B object, ObjectState!B state){
 	with(CreatureMode) if(object.creatureState.mode.among(dying,dead)) return;
 	if(!object.sacObject.canDie()) return;
+	object.creatureStats.health=0.0f;
 	object.creatureState.mode=CreatureMode.dying;
 	object.setCreatureState(state);
 }
@@ -674,6 +675,7 @@ void catapult(B)(ref MovingObject!B object, Vector3f velocity, ObjectState!B sta
 
 void immediateResurrect(B)(ref MovingObject!B object,ObjectState!B state){
 	with(CreatureMode) if(!object.creatureState.mode.among(dying,dead)) return;
+	object.creatureStats.health=object.creatureStats.maxHealth;
 	object.creatureState.mode=CreatureMode.idle;
 	object.setCreatureState(state);
 }
@@ -757,10 +759,8 @@ void damageAnimation(B)(ref MovingObject!B object,Vector3f attackDirection,Objec
 void dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B attacker,ObjectState!B state){
 	object.creatureStats.health-=damage;
 	// TODO: give xp to attacker
-	if(object.creatureStats.health<=0){
-		object.creatureStats.health=0;
+	if(object.creatureStats.health<=0)
 		object.kill(state);
-	}
 }
 
 void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,ObjectState!B state){
