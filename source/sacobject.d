@@ -2,6 +2,7 @@ import dlib.math;
 import util;
 import mrmm, _3dsm, txtr, saxs, sxsk, widg;
 import animations, ntts, nttData, spells, bldg;
+import stats;
 import std.typecons: Tuple, tuple;
 import std.stdio, std.conv;
 alias Tuple=std.typecons.Tuple;
@@ -55,44 +56,35 @@ final class SacObject(B){
 		if(!data) return RotateOnGround.no;
 		return data.rotateOnGround;
 	}
-	@property float rotationSpeed(){ // in radians per second
-		return PI;
-	}
-	@property float movementSpeed(bool isFlying){ // in meters per second
-		if(cre8) return (isFlying?cre8.flyingSpeed:cre8.runningSpeed)*0.01f;
-		if(wizd) return (isFlying?wizd.flyingSpeed:wizd.runningSpeed)*0.01f;
-		return 0.0f;
-	}
 
-	@property float maxDownwardSpeedFactor(){
-		return 2.0f;
-	}
-	@property float upwardFlyingSpeedFactor(){
-		return 0.5f;
-	}
-	@property float downwardFlyingSpeedFactor(){
-		return 2.0f;
-	}
-
-	@property float fallingAcceleration(){
-		return 0.5f;
-	}
-
-	@property float landingSpeed(){
-		return 0.5f*movementSpeed(true);
-	}
-	@property float downwardHoverSpeed(){
-		return 0.25f*landingSpeed;
-	}
-	@property float flyingHeight(){
-		return 3.0f;
-	}
-
-	@property float takeoffSpeed(){
-		return movementSpeed(true);
-	}
-	@property float collisionFixupSpeed(){
-		return 5.0f;
+	@property CreatureStats creatureStats(){
+		int souls;
+		float maxHealth=0.0f,regeneration=0.0f,drain=0.0f,maxMana=0.0f;
+		float runningSpeed=0.0f,flyingSpeed=0.0f,rangedAccuracy=0.0f,meleeResistance=0.0f;
+		float directSpellResistance=0.0f,splashSpellResistance=0.0f;
+		float directRangedResistance=0.0f,splashRangedResistance=0.0f;
+		static foreach(name;["cre8","wizd"]){{
+			mixin(`alias ntt=`~name~`;`);
+			if(ntt){
+				maxHealth=ntt.health;
+				regeneration=ntt.regeneration*1e3f*35.0f;
+				drain=ntt.drain;
+				maxMana=ntt.mana;
+				runningSpeed=ntt.runningSpeed;
+				flyingSpeed=ntt.flyingSpeed;
+				rangedAccuracy=ntt.rangedAccuracy;
+				meleeResistance=ntt.meleeResistance*1e-3f;
+				directSpellResistance=ntt.directSpellResistance*1e-3f;
+				splashRangedResistance=ntt.splashRangedResistance*1e-3f;
+				directRangedResistance=ntt.directRangedResistance*1e-3f;
+			}
+		}}
+		auto health=maxHealth;
+		auto mana=maxMana;
+		return CreatureStats(health,mana,souls,maxHealth,regeneration,drain,maxMana,
+		                     runningSpeed,flyingSpeed,rangedAccuracy,meleeResistance,
+		                     directSpellResistance,splashSpellResistance,
+		                     directRangedResistance,splashRangedResistance);
 	}
 
 	@property bool hasKnockdown(){

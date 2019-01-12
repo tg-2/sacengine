@@ -5,6 +5,7 @@ import dlib.math, std.math;
 import std.typecons;
 import ntts, nttData;
 import sacmap, sacobject, animations;
+import stats;
 import util,options;
 enum int updateFPS=60;
 static assert(updateFPS%animFPS==0);
@@ -67,18 +68,20 @@ struct MovingObject(B){
 	AnimationState animationState;
 	int frame;
 	CreatureState creatureState;
+	CreatureStats creatureStats;
 
-	this(SacObject!B sacObject,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame,CreatureState creatureState){
+	this(SacObject!B sacObject,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame,CreatureState creatureState,CreatureStats creatureStats){
 		this.sacObject=sacObject;
 		this.position=position;
 		this.rotation=rotation;
 		this.animationState=animationState;
 		this.frame=frame;
 		this.creatureState=creatureState;
+		this.creatureStats=creatureStats;
 	}
-	this(SacObject!B sacObject,int id,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame,CreatureState creatureState){
+	this(SacObject!B sacObject,int id,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame,CreatureState creatureState,CreatureStats creatureStats){
 		this.id=id;
-		this(sacObject,position,rotation,animationState,frame,creatureState);
+		this(sacObject,position,rotation,animationState,frame,creatureState,creatureStats);
 	}
 }
 
@@ -130,6 +133,7 @@ struct MovingObjects(B,RenderMode mode){
 	Array!AnimationState animationStates;
 	Array!int frames;
 	Array!CreatureState creatureStates;
+	Array!CreatureStats creatureStatss;
 	@property int length(){ assert(ids.length<=int.max); return cast(int)ids.length; }
 
 	void reserve(int reserveSize){
@@ -139,6 +143,7 @@ struct MovingObjects(B,RenderMode mode){
 		animationStates.reserve(reserveSize);
 		frames.reserve(reserveSize);
 		creatureStates.reserve(reserveSize);
+		creatureStatss.reserve(reserveSize);
 	}
 
 	void addObject(MovingObject!B object)in{
@@ -150,6 +155,7 @@ struct MovingObjects(B,RenderMode mode){
 		animationStates~=object.animationState;
 		frames~=object.frame;
 		creatureStates~=object.creatureState;
+		creatureStatss~=object.creatureStats;
 	}
 	void opAssign(ref MovingObjects!(B,mode) rhs){
 		assert(sacObject is null || sacObject is rhs.sacObject);
@@ -160,9 +166,10 @@ struct MovingObjects(B,RenderMode mode){
 		assignArray(animationStates,rhs.animationStates);
 		assignArray(frames,rhs.frames);
 		assignArray(creatureStates,rhs.creatureStates);
+		assignArray(creatureStatss,rhs.creatureStatss);
 	}
 	MovingObject!B opIndex(int i){
-		return MovingObject!B(sacObject,ids[i],positions[i],rotations[i],animationStates[i],frames[i],creatureStates[i]);
+		return MovingObject!B(sacObject,ids[i],positions[i],rotations[i],animationStates[i],frames[i],creatureStates[i],creatureStatss[i]);
 	}
 	void opIndexAssign(MovingObject!B obj,int i){
 		assert(obj.sacObject is sacObject);
@@ -172,6 +179,7 @@ struct MovingObjects(B,RenderMode mode){
 		animationStates[i]=obj.animationState;
 		frames[i]=obj.frame;
 		creatureStates[i]=obj.creatureState;
+		creatureStatss[i]=obj.creatureStats; // TODO: this might be a bit wasteful
 	}
 }
 auto each(alias f,B,RenderMode mode,T...)(ref MovingObjects!(B,mode) movingObjects,T args){
@@ -818,7 +826,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 	auto newPosition=object.position;
 	if(object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving,CreatureMode.landing,CreatureMode.dying)){
-		auto rotationSpeed=object.sacObject.rotationSpeed/updateFPS;
+		auto rotationSpeed=object.creatureStats.rotationSpeed/updateFPS;
 		bool isRotating=false;
 		if(object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving)&&
 		   object.creatureState.movement!=CreatureMovement.tumbling
@@ -869,14 +877,14 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 		case CreatureMovement.onGround:
 			if(object.creatureState.mode!=CreatureMode.moving) break;
 			void applyMovementOnGround(Vector3f direction){
-				auto speed=object.sacObject.movementSpeed(false)/updateFPS;
+				auto speed=object.creatureStats.movementSpeed(false)/updateFPS;
 				auto derivative=state.getGroundHeightDerivative(object.position,direction);
 				Vector3f newDirection=direction;
 				if(derivative>0.0f){
 					newDirection=Vector3f(direction.x,direction.y,derivative).normalized;
 				}else if(derivative<0.0f){
 					newDirection=Vector3f(direction.x,direction.y,derivative);
-					auto maxFactor=object.sacObject.maxDownwardSpeedFactor;
+					auto maxFactor=object.creatureStats.maxDownwardSpeedFactor;
 					if(newDirection.lengthsqr>maxFactor*maxFactor) newDirection=maxFactor*newDirection.normalized;
 				}
 				newPosition=state.moveOnGround(object.position,speed*newDirection);
@@ -896,7 +904,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			if(object.creatureState.mode==CreatureMode.landing ||
 			   object.creatureState.mode==CreatureMode.idle&&object.animationState!=AnimationState.fly&&object.creatureState.flyingDisplacement>0.0f
 			){
-				auto downwardSpeed=object.creatureState.mode==CreatureMode.landing?object.sacObject.landingSpeed/updateFPS:object.sacObject.downwardHoverSpeed/updateFPS;
+				auto downwardSpeed=object.creatureState.mode==CreatureMode.landing?object.creatureStats.landingSpeed/updateFPS:object.creatureStats.downwardHoverSpeed/updateFPS;
 				newPosition.z-=downwardSpeed;
 				object.creatureState.flyingDisplacement=max(0.0f,object.creatureState.flyingDisplacement-downwardSpeed);
 				if(state.isOnGround(object.position)){
@@ -909,17 +917,17 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			}
 			if(object.creatureState.mode!=CreatureMode.moving) break;
 			void applyMovementInAir(Vector3f direction){
-				auto speed=object.sacObject.movementSpeed(true)/updateFPS;
+				auto speed=object.creatureStats.movementSpeed(true)/updateFPS;
 				newPosition=object.position+speed*direction;
-				auto upwardSpeed=max(0.0f,min(object.sacObject.takeoffSpeed/updateFPS,object.sacObject.flyingHeight-object.creatureState.flyingDisplacement));
+				auto upwardSpeed=max(0.0f,min(object.creatureStats.takeoffSpeed/updateFPS,object.creatureStats.flyingHeight-object.creatureState.flyingDisplacement));
 				auto onGround=state.isOnGround(newPosition), newHeight=float.nan;
 				if(onGround){
 					newHeight=state.getGroundHeight(newPosition);
 					if(newHeight>newPosition.z)
 						upwardSpeed+=newHeight-newPosition.z;
 				}
-				auto upwardFactor=object.sacObject.upwardFlyingSpeedFactor;
-				auto downwardFactor=object.sacObject.downwardFlyingSpeedFactor;
+				auto upwardFactor=object.creatureStats.upwardFlyingSpeedFactor;
+				auto downwardFactor=object.creatureStats.downwardFlyingSpeedFactor;
 				auto newDirection=Vector3f(direction.x,direction.y,direction.z+upwardSpeed).normalized;
 				speed*=sqrt(newDirection.x^^2+newDirection.y^^2+(newDirection.z*(newDirection.z>0?upwardFactor:downwardFactor))^^2);
 				auto velocity=speed*newDirection;
@@ -944,7 +952,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			}
 			break;
 		case CreatureMovement.tumbling:
-			object.creatureState.fallingVelocity.z-=object.sacObject.fallingAcceleration;
+			object.creatureState.fallingVelocity.z-=object.creatureStats.fallingAcceleration;
 			newPosition=object.position+object.creatureState.fallingVelocity/updateFPS;
 			if(object.creatureState.fallingVelocity.z<=0.0f && state.isOnGround(newPosition))
 				newPosition.z=max(newPosition.z,state.getGroundHeight(newPosition));
@@ -1038,9 +1046,9 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 	hitbox=[relativeHitbox[0]+newPosition,relativeHitbox[1]+newPosition];
 	proximity.collide!(handleCollision!true)(hitbox);
 	if(needsFixup){
-		auto fixupSpeed=object.sacObject.collisionFixupSpeed/updateFPS;
+		auto fixupSpeed=object.creatureStats.collisionFixupSpeed/updateFPS;
 		if(fixupDirection.length>fixupSpeed)
-			fixupDirection=fixupDirection.normalized*object.sacObject.collisionFixupSpeed/updateFPS;
+			fixupDirection=fixupDirection.normalized*object.creatureStats.collisionFixupSpeed/updateFPS;
 		final switch(object.creatureState.movement){
 			case CreatureMovement.onGround:
 				if(state.isOnGround(newPosition)) newPosition=state.moveOnGround(newPosition,fixupDirection);
@@ -1078,7 +1086,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 	enum isMoving=is(T==MovingObjects!(B, RenderMode.opaque))||is(T==MovingObjects!(B, RenderMode.transparent));
 	static if(isMoving){
 		foreach(j;0..objects.length){
-			if(objects[j].creatureState.mode==CreatureMode.dead) continue; // dead creatures are not obstacles (bad cache locality)
+			if(objects.creatureStates[j].mode==CreatureMode.dead) continue; // dead creatures are not obstacles (bad cache locality)
 			auto hitbox=objects.sacObject.hitbox(objects.rotations[j],objects.animationStates[j],objects.frames[j]/updateAnimFactor);
 			auto position=objects.positions[j];
 			hitbox[0]+=position;
@@ -1326,7 +1334,9 @@ final class GameState(B){
 		if(movement==CreatureMovement.onGround && !onGround)
 			movement=curObj.canFly?CreatureMovement.flying:CreatureMovement.tumbling;
 		auto creatureState=CreatureState(mode, movement, ntt.facing);
-		auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState);
+		auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState,curObj.creatureStats);
+		if(ntt.flags & Flags.corpse) obj.creatureStats.health=0.0f;
+		else if(ntt.flags & Flags.damaged) obj.creatureStats.health/=10.0f;
 		obj.setCreatureState(current);
 		obj.updateCreaturePosition(current);
 		/+do{

@@ -31,12 +31,12 @@ struct Cre8{
 	ushort health;
 	ushort regeneration;
 	ushort drain;
-	ushort accuracy;
-	ushort meleeDamageMultiplier;
-	ushort directSpellDamageMultiplier;
-	ushort splashSpellDamageMultiplier;
-	ushort directRangedDamageMultiplier;
-	ushort splashRangedDamageMultiplier;
+	ushort rangedAccuracy;
+	ushort meleeResistance;
+	ushort directSpellResistance;
+	ushort splashSpellResistance;
+	ushort directRangedResistance;
+	ushort splashRangedResistance;
 	ushort unknown15; // seems to be 0 for everything but flying melee
 	ushort unknown16; // some multiplier?
 	ushort unknown17; // some multiplier?
@@ -92,13 +92,13 @@ struct Wizd{
 	ushort flyingSpeed=0;
 	ushort health=1500;
 	ushort regeneration=1000;
-	ushort drain=0; // does this belong to accuracy?
-	ushort accuracy=0;
-	ushort meleeDamageMultiplier;
-	ushort directSpellDamageMultiplier;
-	ushort splashSpellDamageMultiplier;
-	ushort directRangedDamageMultiplier;
-	ushort splashRangedDamageMultiplier;
+	ushort drain=0;
+	ushort rangedAccuracy=0;
+	ushort meleeResistance;
+	ushort directSpellResistance;
+	ushort splashSpellResistance;
+	ushort directRangedResistance;
+	ushort splashRangedResistance;
 	ushort unknown15; // seems to be 0 for everything but flying melee
 	ushort unknown16; // some multiplier?
 	ushort unknown17; // some multiplier?
