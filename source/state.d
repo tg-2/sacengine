@@ -777,9 +777,9 @@ void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,Ob
 		object.damageAnimation(attackDirection,state,false);
 		return;
 	}
+	object.damageAnimation(attackDirection,state);
 	final switch(object.stunnedBehavior){
 		case StunnedBehavior.normal:
-			object.damageAnimation(attackDirection,state);
 			break;
 		case StunnedBehavior.onMeleeDamage,StunnedBehavior.onDamage:
 			object.stun(state);
@@ -1209,6 +1209,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 		static if(!fixup) posChanged=true;
 		else needsFixup=true;
 	}
+	if(object.creatureState.mode==CreatureMode.dead) return; // dead creatures do not participate in collision handling
 	proximity.collide!(handleCollision!false)(hitbox);
 	hitbox=[relativeHitbox[0]+newPosition,relativeHitbox[1]+newPosition];
 	proximity.collide!(handleCollision!true)(hitbox);

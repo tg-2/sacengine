@@ -162,10 +162,11 @@ final class SacObject(B){
 	}
 
 	int numAttackTicks(AnimationState animationState){
-		return animations[animationState].numAttackTicks;
+		return max(1,animations[animationState].numAttackTicks);
 	}
 
 	bool hasAttackTick(AnimationState animationState,int frame){
+		if(animations[animationState].numAttackTicks==0) return frame+1==animations[animationState].frames.length;
 		return animations[animationState].frames[frame].event==AnimEvent.attack;
 	}
 
