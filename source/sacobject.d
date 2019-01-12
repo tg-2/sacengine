@@ -67,7 +67,7 @@ final class SacObject(B){
 			mixin(`alias ntt=`~name~`;`);
 			if(ntt){
 				maxHealth=ntt.health;
-				regeneration=ntt.regeneration*1e3f*35.0f;
+				regeneration=ntt.regeneration*1e-3f*35.0f;
 				drain=ntt.drain;
 				maxMana=ntt.mana;
 				runningSpeed=ntt.runningSpeed;
@@ -85,6 +85,21 @@ final class SacObject(B){
 		                     runningSpeed,flyingSpeed,rangedAccuracy,meleeResistance,
 		                     directSpellResistance,splashSpellResistance,
 		                     directRangedResistance,splashRangedResistance);
+	}
+
+	@property float meleeStrength(){
+		if(cre8) return cre8.meleeStrength;
+		return 0.0f;
+	}
+
+	@property StunBehavior stunBehavior(){
+		if(!data) return StunBehavior.none;
+		return data.stunBehavior;
+	}
+
+	@property StunnedBehavior stunnedBehavior(){
+		if(!data) return StunnedBehavior.normal;
+		return data.stunnedBehavior;
 	}
 
 	@property bool hasKnockdown(){
@@ -145,6 +160,34 @@ final class SacObject(B){
 				return sl;
 		}
 	}
+
+	int numAttackTicks(AnimationState animationState){
+		return animations[animationState].numAttackTicks;
+	}
+
+	bool hasAttackTick(AnimationState animationState,int frame){
+		return animations[animationState].frames[frame].event==AnimEvent.attack;
+	}
+
+	Vector3f[2] meleeHitbox(Quaternionf rotation,AnimationState animationState,int frame)in{
+		assert(isSaxs);
+	}do{
+		// TODO: this is a guess. what does the game actually do?
+		auto hbox=hitbox(rotation,animationState,frame);
+		auto center=0.5f*(hbox[0]+hbox[1]);
+		auto width=hbox[1].x-hbox[0].x;
+		auto depth=hbox[1].y-hbox[0].y;
+		auto height=hbox[1].z-hbox[0].z;
+		auto size=0.25*(width+height);
+		auto hitboxCenter=size*rotate(rotation,Vector3f(0.0f,1.0f,0.0f));
+		if(tag=="raeb") hitboxCenter*=3.0f;
+		else if(tag=="elab") hitboxCenter*=2.0f;
+		else hitboxCenter*=1.3f;
+		hitboxCenter+=center;
+		auto hitboxDimensions=Vector3f(size,size,height)*1.5f;
+		return [hitboxCenter-0.5f*hitboxDimensions,hitboxCenter+0.5f*hitboxDimensions];
+	}
+
 	auto hitboxes(Quaternionf rotation)/+@nogc+/ in{
 		assert(!isSaxs);
 	}do{
@@ -339,7 +382,7 @@ final class SacObject(B){
 				if(animation.length)
 					loadAnimation(animation);
 				if(!animations.length){
-					auto anim=Animation([Pose(Vector3f(0,0,0),AnimEvent.none,facingQuaternion(0).repeat(saxsi.saxs.bones.length).array)]);
+					auto anim=Animation(0,[Pose(Vector3f(0,0,0),AnimEvent.none,facingQuaternion(0).repeat(saxsi.saxs.bones.length).array)]);
 					static if(gpuSkinning)
 						anim.compile(saxsi.saxs);
 					animations=[anim];

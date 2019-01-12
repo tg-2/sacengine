@@ -339,6 +339,8 @@ final class SacScene: Scene{
 					material.backend.setTransformation(objects.positions[j], Quaternionf.identity(), rc);
 					auto hitbox=sacObject.hitbox(objects.rotations[j],objects.animationStates[j],objects.frames[j]/updateAnimFactor);
 					renderBox(hitbox,true,rc);
+					auto meleeHitbox=sacObject.meleeHitbox(objects.rotations[j],objects.animationStates[j],objects.frames[j]/updateAnimFactor);
+					renderBox(meleeHitbox,true,rc);
 					/+foreach(i;1..sacObject.saxsi.saxs.bones.length){
 						auto hitbox=sacObject.saxsi.saxs.bones[i].hitbox;
 						foreach(ref x;hitbox){

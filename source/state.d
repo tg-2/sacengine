@@ -29,6 +29,7 @@ enum CreatureMode{
 	dead,
 	takeoff,
 	landing,
+	meleeMoving,
 	meleeAttacking,
 	stunned,
 }
@@ -85,6 +86,50 @@ struct MovingObject(B){
 	}
 }
 
+Vector3f[2] relativeHitbox(B)(ref MovingObject!B object){
+	return object.sacObject.hitbox(object.rotation,object.animationState,object.frame/updateAnimFactor);
+}
+Vector3f[2] hitbox(B)(ref MovingObject!B object){
+	auto hitbox=object.relativeHitbox;
+	hitbox[0]+=object.position;
+	hitbox[1]+=object.position;
+	return hitbox;
+}
+
+Vector3f center(B)(ref MovingObject!B object){
+	auto hbox=object.hitbox;
+	return 0.5f*(hbox[0]+hbox[1]);
+}
+
+Vector3f[2] relativeMeleeHitbox(B)(ref MovingObject!B object){
+	return object.sacObject.meleeHitbox(object.rotation,object.animationState,object.frame/updateAnimFactor);
+}
+Vector3f[2] meleeHitbox(B)(ref MovingObject!B object){
+	auto hitbox=object.relativeMeleeHitbox;
+	hitbox[0]+=object.position;
+	hitbox[1]+=object.position;
+	return hitbox;
+}
+
+float meleeStrength(B)(ref MovingObject!B object){
+	return object.sacObject.meleeStrength;
+}
+
+int numAttackTicks(B)(ref MovingObject!B object,AnimationState animationState){
+	return object.sacObject.numAttackTicks(animationState);
+}
+
+bool hasAttackTick(B)(ref MovingObject!B object){
+	return object.frame%updateAnimFactor==0 && object.sacObject.hasAttackTick(object.animationState,object.frame/updateAnimFactor);
+}
+
+StunBehavior stunBehavior(B)(ref MovingObject!B object){
+	return object.sacObject.stunBehavior;
+}
+
+StunnedBehavior stunnedBehavior(B)(ref MovingObject!B object){
+	return object.sacObject.stunnedBehavior;
+}
 
 struct StaticObject(B){
 	SacObject!B sacObject;
@@ -555,7 +600,7 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 				}else object.animationState=AnimationState.hover;
 			}
 			break;
-		case CreatureMode.meleeAttacking:
+		case CreatureMode.meleeMoving,CreatureMode.meleeAttacking:
 			final switch(object.creatureState.movement) with(CreatureMovement) with(AnimationState){
 				case onGround:
 					object.frame=0;
@@ -599,7 +644,7 @@ void pickRandomAnimation(B)(ref MovingObject!B object,immutable(AnimationState)[
 }
 
 void startIdling(B)(ref MovingObject!B object, ObjectState!B state){
-	if(!object.creatureState.mode.among(CreatureMode.moving,CreatureMode.takeoff,CreatureMode.landing,CreatureMode.meleeAttacking,CreatureMode.stunned))
+	if(!object.creatureState.mode.among(CreatureMode.moving,CreatureMode.takeoff,CreatureMode.landing,CreatureMode.meleeMoving,CreatureMode.meleeAttacking,CreatureMode.stunned))
 		return;
 	object.creatureState.mode=CreatureMode.idle;
 	object.setCreatureState(state);
@@ -659,24 +704,104 @@ void startMeleeAttacking(B)(ref MovingObject!B object,ObjectState!B state){
 		   !object.creatureState.movement.among(onGround,flying)||
 		   !object.sacObject.canAttack)
 			return;
-	object.creatureState.mode=CreatureMode.meleeAttacking;
+	object.creatureState.mode=CreatureMode.meleeMoving;
 	object.setCreatureState(state);
 }
+
+
+enum DamageDirection{
+	front,
+	right,
+	back,
+	left,
+	top
+}
+DamageDirection getDamageDirection(B)(ref MovingObject!B object,Vector3f attackDirection,ObjectState!B state){
+	auto fromFront=rotate(object.rotation,Vector3f(0.0f,-1.0f,0.0f));
+	auto fromRight=rotate(object.rotation,Vector3f(-1.0f,0.0f,0.0f));
+	auto fromBack=rotate(object.rotation,Vector3f(0.0f,1.0f,0.0f));
+	auto fromLeft=rotate(object.rotation,Vector3f(1.0f,0.0f,0.0f));
+	auto fromTop=rotate(object.rotation,Vector3f(0.0f,0.0f,-1.0f));
+	auto best=dot(fromFront,attackDirection),bestDirection=DamageDirection.front;
+	foreach(i,alias dir;Seq!(fromRight,fromBack,fromLeft,fromTop)){
+		auto cand=dot(dir,attackDirection);
+		if(best<cand){
+			best=cand;
+			bestDirection=cast(DamageDirection)(i+1);
+		}
+	}
+	return bestDirection;
+}
+
+void damageAnimation(B)(ref MovingObject!B object,Vector3f attackDirection,ObjectState!B state,bool checkIdle=true){
+	if(checkIdle&&object.creatureState.mode!=CreatureMode.idle||!checkIdle&&object.creatureState.mode!=CreatureMode.stunned) return;
+	final switch(object.creatureState.movement){
+		case CreatureMovement.onGround:
+			break;
+		case CreatureMovement.flying:
+			object.animationState=AnimationState.flyDamage;
+			object.frame=0;
+			return;
+		case CreatureMovement.tumbling:
+			return;
+	}
+	if(object.creatureState.movement==CreatureMovement.tumbling) return;
+	auto damageDirection=getDamageDirection(object,attackDirection,state);
+	auto animationState=cast(AnimationState)(AnimationState.damageFront+damageDirection);
+	if(!object.sacObject.hasAnimationState(animationState))
+		animationState=animationState.stance1;
+	object.animationState=animationState;
+	object.frame=0;
+}
+
+void dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B attacker,ObjectState!B state){
+	object.creatureStats.health-=damage;
+	// TODO: give xp to attacker
+	if(object.creatureStats.health<=0){
+		object.creatureStats.health=0;
+		object.kill(state);
+	}
+}
+
+void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,ObjectState!B state){
+	auto damage=state.uniform(0.8f*attacker.meleeStrength,1.2f*attacker.meleeStrength)/attacker.numAttackTicks(attacker.animationState); // TODO: figure this out
+	auto actualDamage=damage*object.creatureStats.meleeResistance;
+	auto attackDirection=object.center-attacker.center; // TODO: good?
+	auto stunBehavior=attacker.stunBehavior;
+	bool fromBehind=getDamageDirection(object,attackDirection,state)==DamageDirection.back;
+	if(fromBehind) actualDamage*=2.0f;
+	if(actualDamage==0.0f) return;
+	object.dealDamage(actualDamage,attacker,state);
+	if(stunBehavior==StunBehavior.always || fromBehind && stunBehavior==StunBehavior.fromBehind){
+		object.stun(state);
+		object.damageAnimation(attackDirection,state,false);
+		return;
+	}
+	final switch(object.stunnedBehavior){
+		case StunnedBehavior.normal:
+			object.damageAnimation(attackDirection,state);
+			break;
+		case StunnedBehavior.onMeleeDamage,StunnedBehavior.onDamage:
+			object.stun(state);
+			break;
+	}
+}
+
 
 void setMovement(B)(ref MovingObject!B object,MovementDirection direction,ObjectState!B state){
 	// TODO: also check for conditions that immobilze a creature, such as vines or spell casting
 	with(CreatureMode)
-		if(!object.creatureState.mode.among(idle,moving))
+		if(!object.creatureState.mode.among(idle,moving,meleeMoving))
 			return;
 	if(object.creatureState.movement==CreatureMovement.flying &&
 	   direction==MovementDirection.backward &&
 	   !object.sacObject.canFlyBackward)
 		return;
-	auto newMode=direction==MovementDirection.none?CreatureMode.idle:CreatureMode.moving;
 	if(object.creatureState.movementDirection==direction)
 		return;
 	object.creatureState.movementDirection=direction;
-	object.setCreatureState(state);
+	if(object.creatureState.mode!=CreatureMode.meleeMoving)
+		object.setCreatureState(state);
 }
 void stopMovement(B)(ref MovingObject!B object,ObjectState!B state){
 	object.setMovement(MovementDirection.none,state);
@@ -690,7 +815,7 @@ void startMovingBackward(B)(ref MovingObject!B object,ObjectState!B state){
 
 void setTurning(B)(ref MovingObject!B object,RotationDirection direction,ObjectState!B state){
 	with(CreatureMode)
-		if(!object.creatureState.mode.among(idle,moving))
+		if(!object.creatureState.mode.among(idle,moving,meleeMoving))
 			return;
 	// TODO: also check for conditions that immobilze a creature, such as vines or spell casting
 	object.creatureState.rotationDirection=direction;
@@ -776,7 +901,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 				object.setCreatureState(state);
 			}
 			break;
-		case CreatureMode.meleeAttacking:
+		case CreatureMode.meleeMoving,CreatureMode.meleeAttacking:
 			object.frame+=1;
 			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
 				object.frame=0;
@@ -785,7 +910,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 			}
 			break;
 		case CreatureMode.stunned:
-			with(AnimationState) assert(object.animationState.among(stance1,knocked2Floor,tumble,hitFloor,getUp,flyDamage));
+			with(AnimationState) assert(object.animationState.among(stance1,knocked2Floor,tumble,hitFloor,getUp,damageFront,damageRight,damageBack,damageLeft,damageTop,flyDamage));
 			if(object.creatureState.movement==CreatureMovement.tumbling&&object.creatureState.fallingVelocity.z<=0.0f){
 				if(object.sacObject.canFly){
 					object.creatureState.movement=CreatureMovement.flying;
@@ -823,12 +948,54 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 	}
 }
 
+void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
+	if(object.creatureState.mode==CreatureMode.idle)
+		object.creatureStats.health=min(object.creatureStats.health+object.creatureStats.regeneration/updateFPS,object.creatureStats.maxHealth);
+	if(object.creatureState.mode.among(CreatureMode.meleeMoving,CreatureMode.meleeAttacking) && object.hasAttackTick){
+		object.creatureState.mode=CreatureMode.meleeAttacking;
+		struct CollisionState{
+			Vector3f[2] hitbox;
+			int ownId;
+			int target=0;
+			float distance=float.infinity;
+		}
+		static void handleCollision(ProximityEntry entry,CollisionState *collisionState){
+			if(entry.id==collisionState.ownId) return;
+			if(!collisionState.target){
+				collisionState.target=entry.id;
+				return;
+			}
+			auto center=0.5f*(entry.hitbox[0]+entry.hitbox[1]);
+			auto attackCenter=0.5f*(collisionState.hitbox[0]+collisionState.hitbox[1]);
+			auto distance=(center-attackCenter).length; // TODO: improve this calculation
+			if(distance<collisionState.distance){
+				collisionState.target=entry.id;
+				collisionState.distance=distance;
+			}
+		}
+		auto hitbox=object.hitbox,meleeHitbox=object.meleeHitbox;
+		auto collisionState=CollisionState(hitbox,object.id);
+		state.proximity.collide!handleCollision(meleeHitbox,&collisionState);
+		if(collisionState.target){
+			static void dealDamage(T)(ref T target,MovingObject!B* attacker,ObjectState!B state){
+				static if(is(T==MovingObject!B)){
+					target.dealMeleeDamage(*attacker,state);
+				}else{
+					static assert(is(T==StaticObject!B));
+					// TODO
+				}
+			}
+			state.objectById!dealDamage(collisionState.target,&object,state);
+		}
+	}
+}
+
 void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 	auto newPosition=object.position;
-	if(object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving,CreatureMode.landing,CreatureMode.dying)){
+	if(object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving,CreatureMode.landing,CreatureMode.dying,CreatureMode.meleeMoving)){
 		auto rotationSpeed=object.creatureStats.rotationSpeed/updateFPS;
 		bool isRotating=false;
-		if(object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving)&&
+		if(object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving,CreatureMode.meleeMoving)&&
 		   object.creatureState.movement!=CreatureMovement.tumbling
 		){
 			final switch(object.creatureState.rotationDirection){
@@ -875,7 +1042,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 	auto facing=facingQuaternion(object.creatureState.facing);
 	final switch(object.creatureState.movement){
 		case CreatureMovement.onGround:
-			if(object.creatureState.mode!=CreatureMode.moving) break;
+			if(!object.creatureState.mode.among(CreatureMode.moving,CreatureMode.meleeMoving)) break;
 			void applyMovementOnGround(Vector3f direction){
 				auto speed=object.creatureStats.movementSpeed(false)/updateFPS;
 				auto derivative=state.getGroundHeightDerivative(object.position,direction);
@@ -915,7 +1082,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 				}
 				break;
 			}
-			if(object.creatureState.mode!=CreatureMode.moving) break;
+			if(!object.creatureState.mode.among(CreatureMode.moving,CreatureMode.meleeMoving)) break;
 			void applyMovementInAir(Vector3f direction){
 				auto speed=object.creatureStats.movementSpeed(true)/updateFPS;
 				newPosition=object.position+speed*direction;
@@ -959,7 +1126,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			break;
 	}
 	auto proximity=state.proximity;
-	auto relativeHitbox=object.sacObject.hitbox(object.rotation,object.animationState,object.frame/updateAnimFactor);
+	auto relativeHitbox=object.relativeHitbox;
 	Vector3f[2] hitbox=[relativeHitbox[0]+newPosition,relativeHitbox[1]+newPosition];
 	bool posChanged=false, needsFixup=false;
 	auto fixupDirection=Vector3f(0.0f,0.0f,0.0f);
@@ -1079,6 +1246,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 void updateCreature(B)(ref MovingObject!B object, ObjectState!B state){
 	object.updateCreatureState(state);
 	object.updateCreaturePosition(state);
+	object.updateCreatureStats(state);
 }
 
 void addToProximity(T,B)(ref T objects, ObjectState!B state){
@@ -1200,6 +1368,10 @@ final class ObjectState(B){ // (update logic)
 	int uniform(int n){
 		import std.random: uniform;
 		return uniform(0,n,rng);
+	}
+	float uniform(string bounds="[]",T)(T a,T b){
+		import std.random: uniform;
+		return uniform!bounds(a,b,rng);
 	}
 	void copyFrom(ObjectState!B rhs){
 		frame=rhs.frame;

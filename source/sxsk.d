@@ -31,6 +31,7 @@ enum AnimEvent{
 }
 
 struct Animation{
+	int numAttackTicks=0;
 	Pose[] frames;
 }
 
@@ -48,7 +49,7 @@ Animation parseSXSK(ubyte[] data,float scaling){
 		auto rotations=anim.map!(x=>Quaternionf(Vector3f(fromSXMD([x[0],x[1],x[2]])),x[3]).normalized()).array;
 		frames~=Pose(displacement,AnimEvent.none,rotations);
 	}
-	return Animation(frames);
+	return Animation(0,frames);
 }
 
 AnimEvent translateAnimEvent(char[4] tag){
@@ -74,6 +75,7 @@ void setAnimEvents(ref Animation anim, Skel skel, string filename){
 		// TODO: some wizards have two attack events in the same frame. was this supposed to duplicate the damage tick?
 		enforce(anim.frames[frame].event.among(AnimEvent.none,aevent));
 		anim.frames[frame].event=aevent;
+		if(aevent==AnimEvent.attack) ++anim.numAttackTicks;
 	}
 }
 

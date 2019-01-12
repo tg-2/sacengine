@@ -237,6 +237,17 @@ enum HitboxType{
 	largeZbot,
 }
 
+enum StunBehavior{
+	none,
+	fromBehind,
+	always,
+}
+enum StunnedBehavior{
+	normal,
+	onMeleeDamage,
+	onDamage,
+}
+
 immutable struct CreatureData{
 	char[4] tag;
 	string name; // TODO: internationalization
@@ -245,6 +256,8 @@ immutable struct CreatureData{
 	float zfactorOverride=float.nan;
 	auto rotateOnGround=RotateOnGround.no;
 	auto hitboxType=HitboxType.large;
+	auto stunBehavior=StunBehavior.none;
+	auto stunnedBehavior=StunnedBehavior.normal;
 }
 
 CreatureData abomination={
@@ -256,6 +269,7 @@ CreatureData abomination={
 CreatureData astaroth={
 	tag: "RAMH",
 	name: "Astaroth",
+	stunBehavior: StunBehavior.fromBehind,
 };
 
 CreatureData basilisk={
@@ -268,6 +282,7 @@ CreatureData blight={
 	tag: "kacd",
 	name: "Blight",
 	rotateOnGround: RotateOnGround.sideways,
+	stunBehavior: StunBehavior.fromBehind,
 };
 
 CreatureData bombard={
@@ -296,6 +311,7 @@ CreatureData deadeye={
 	tag: "plfd",
 	name: "Deadeye",
 	// hitboxType: ?
+	stunnedBehavior: StunnedBehavior.onDamage,
 };
 
 CreatureData dragon={
@@ -303,6 +319,7 @@ CreatureData dragon={
 	name: "Dragon",
 	rotateOnGround: RotateOnGround.completely,
 	hitboxType: HitboxType.largeZ,
+	stunBehavior: StunBehavior.always,
 };
 
 CreatureData dragonHatchling={
@@ -310,6 +327,7 @@ CreatureData dragonHatchling={
 	name: "Dragon Hatchling",
 	rotateOnGround: RotateOnGround.completely,
 	hitboxType: HitboxType.largeZ, // ?
+	stunBehavior: StunBehavior.fromBehind,
 };
 
 CreatureData druid={
@@ -327,6 +345,7 @@ CreatureData ent={
 	name: "Ent",
 	rotateOnGround: RotateOnGround.completely,
 	hitboxType: HitboxType.largeZ,
+	stunBehavior: StunBehavior.fromBehind,
 };
 
 CreatureData faestus1={
@@ -387,11 +406,13 @@ CreatureData gammel={
 	tag: "magH",
 	name: "Gammel",
 	rotateOnGround: RotateOnGround.sideways,
+	stunBehavior: StunBehavior.fromBehind,
 };
 
 CreatureData gangrel={
 	tag: "ramH",
 	name: "Gangrel",
+	stunBehavior: StunBehavior.fromBehind,
 };
 
 CreatureData gargoyle={
@@ -409,6 +430,7 @@ CreatureData gnome={
 	tag: "plfl",
 	name: "Gnome",
 	// hitboxType: ?
+	stunnedBehavior: StunnedBehavior.onDamage,
 };
 
 CreatureData gremlin={
@@ -427,6 +449,7 @@ CreatureData ikarus={
 	tag: "kace",
 	name: "Ikarus",
 	rotateOnGround: RotateOnGround.sideways,
+	stunBehavior: StunBehavior.fromBehind,
 };
 
 CreatureData jabberocky={
@@ -434,6 +457,7 @@ CreatureData jabberocky={
 	name: "Jabberocky",
 	rotateOnGround: RotateOnGround.completely,
 	hitboxType: HitboxType.largeZ,
+	stunBehavior: StunBehavior.fromBehind,
 };
 
 CreatureData locust={
@@ -444,6 +468,7 @@ CreatureData locust={
 CreatureData lordSurtur={
 	tag: "uslH",
 	name: "Lord Surtur",
+	stunBehavior: StunBehavior.fromBehind,
 };
 
 CreatureData manahoar={
@@ -456,6 +481,7 @@ CreatureData mutant={
 	tag: "cbab",
 	name: "Mutant",
 	// hitboxType: ?
+	stunnedBehavior: StunnedBehavior.onDamage,
 };
 
 CreatureData necryl={
@@ -468,6 +494,7 @@ CreatureData netherfiend={
 	tag: "crpd",
 	name: "Netherfiend",
 	hitboxType: HitboxType.small,
+	stunBehavior: StunBehavior.fromBehind,
 };
 
 CreatureData peasant={
@@ -479,17 +506,20 @@ CreatureData peasant={
 CreatureData phoenix={
 	tag: "grdr",
 	name: "Phoenix",
+	stunBehavior: StunBehavior.always,
 };
 
 CreatureData pyrodactyl={
 	tag: "kacf",
 	name: "Pyrodactyl",
 	rotateOnGround: RotateOnGround.sideways,
+	stunBehavior: StunBehavior.fromBehind,
 };
 
 CreatureData pyromaniac={
 	tag: "plff",
 	name: "Pyromaniac",
+	stunnedBehavior: StunnedBehavior.onDamage,
 };
 
 CreatureData ranger={
@@ -502,6 +532,7 @@ CreatureData rhinok={
 	name: "Rhinok",
 	rotateOnGround: RotateOnGround.completely,
 	// hitboxType: ?
+	stunBehavior: StunBehavior.always,
 };
 
 CreatureData sacDoctor={
@@ -523,6 +554,7 @@ CreatureData scarab={
 CreatureData scythe={
 	tag: "dzid",
 	name: "Scythe",
+	stunBehavior: StunBehavior.fromBehind,
 };
 
 CreatureData seraph={
@@ -541,6 +573,7 @@ CreatureData silverback={
 	name: "Silverback",
 	zfactorOverride: 1.0,
 	rotateOnGround: RotateOnGround.completely,
+	stunBehavior: StunBehavior.always,
 };
 
 CreatureData sirocco={
@@ -548,6 +581,7 @@ CreatureData sirocco={
 	name: "Sirocco",
 	rotateOnGround: RotateOnGround.completely,
 	hitboxType: HitboxType.largeZ,
+	stunBehavior: StunBehavior.fromBehind,
 };
 
 CreatureData slave={
@@ -576,12 +610,14 @@ CreatureData squall={
 CreatureData stormGiant={
 	tag: "rgos",
 	name: "Storm Giant",
+	stunBehavior: StunBehavior.fromBehind,
 };
 
 CreatureData styx={
 	tag: "nugd",
 	name: "Styx",
 	// hitboxType: ?
+	stunnedBehavior: StunnedBehavior.onMeleeDamage,
 };
 
 CreatureData sylph={
@@ -612,6 +648,7 @@ CreatureData toldor={
 	name: "Toldor",
 	rotateOnGround: RotateOnGround.completely,
 	hitboxType: HitboxType.largeZ,
+	stunBehavior: StunBehavior.fromBehind,
 };
 
 CreatureData trogg={
@@ -634,11 +671,13 @@ CreatureData warmonger={
 	tag: "nugf",
 	name: "Warmonger",
 	// hitboxType: ?
+	stunnedBehavior: StunnedBehavior.onMeleeDamage,
 };
 
 CreatureData yeti={
 	tag: "ycrp",
 	name: "Yeti",
+	stunBehavior: StunBehavior.fromBehind,
 };
 
 CreatureData zombie={
