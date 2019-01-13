@@ -152,6 +152,33 @@ struct StaticObject(B){
 	}
 }
 
+enum SoulState{
+	normal,
+	emerging,
+	collected,
+}
+
+struct Soul(B){
+	int id=0;
+	int creatureId=0;
+	int number;
+	Vector3f position;
+	SoulState state;
+	int frame;
+
+	this(int creatureId,int number,Vector3f position,SoulState state,int frame){
+		this.number=number;
+		this.position=position;
+		this.state=state;
+		this.frame=frame;
+	}
+	this(int id,int creatureId,int number,Vector3f position,SoulState state,int frame){
+		this.id=id;
+		this(creatureId,number,position,state,frame);
+	}
+}
+
+
 struct FixedObject(B){
 	SacObject!B sacObject;
 	Vector3f position;
@@ -280,6 +307,33 @@ auto each(alias f,B,T...)(ref StaticObjects!B staticObjects,T args){
 		f(staticObjects[i],args);
 }
 
+struct Souls(B){
+	Array!(Soul!B) souls;
+	@property int length(){ return cast(int)souls.length; }
+	void addObject(Soul!B soul){
+		souls~=soul;
+	}
+	void opAssign(ref Souls!B rhs){
+		assignArray(souls,rhs.souls);
+	}
+	Soul!B opIndex(int i){
+		return souls[i];
+	}
+	void opIndexAssign(Soul!B soul,int i){
+		souls[i]=soul;
+	}
+}
+auto each(alias f,B,T...)(ref Souls!B souls,T args){
+	foreach(i;0..souls.length){
+		static if(!is(typeof(f(Soul.init,args)))){
+			// TODO: find a better way to check whether argument taken by reference
+			auto soul=souls[i];
+			f(soul,args);
+			souls[i]=soul;
+		}else f(souls[i],args);
+	}
+}
+
 struct FixedObjects(B){
 	enum renderMode=RenderMode.opaque;
 	SacObject!B sacObject;
@@ -316,6 +370,7 @@ auto each(alias f,B,T...)(ref FixedObjects!B fixedObjects,T args){
 struct Objects(B,RenderMode mode){
 	Array!(MovingObjects!(B,mode)) movingObjects;
 	static if(mode == RenderMode.opaque){
+		Souls!B souls;
 		Array!(StaticObjects!B) staticObjects;
 		FixedObjects!B[] fixedObjects;
 	}
@@ -357,10 +412,16 @@ struct Objects(B,RenderMode mode){
 			enforce(numMoving+numStatic<=type);
 			fixedObjects[type-(numMoving+numStatic)].addFixed(object);
 		}
+		Id addObject(Soul!B object){
+			auto result=Id(mode,ObjectType.soul,souls.length);
+			souls.addObject(object);
+			return result;
+		}
 	}
 	void opAssign(Objects!(B,mode) rhs){
 		assignArray(movingObjects,rhs.movingObjects);
 		static if(mode == RenderMode.opaque){
+			souls=rhs.souls;
 			assignArray(staticObjects,rhs.staticObjects);
 			fixedObjects=rhs.fixedObjects; // by reference
 		}
@@ -371,6 +432,7 @@ auto each(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T args){
 		foreach(ref movingObject;movingObjects)
 			movingObject.each!f(args);
 		static if(mode == RenderMode.opaque){
+			souls.each!f(args);
 			foreach(ref staticObject;staticObjects)
 				staticObject.each!f(args);
 			foreach(ref fixedObject;fixedObjects)
@@ -384,12 +446,15 @@ auto eachMoving(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T a
 			movingObject.each!f(args);
 	}
 }
-
+auto eachSoul(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T args){
+	objects.souls.each!f(args);
+}
 auto eachByType(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T args){
 	with(objects){
 		foreach(ref movingObject;movingObjects)
 			f(movingObject,args);
 		static if(mode == RenderMode.opaque){
+			f(souls,args);
 			foreach(ref staticObject;staticObjects)
 				f(staticObject,args);
 			foreach(ref fixedObject;fixedObjects)
@@ -400,12 +465,15 @@ auto eachByType(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T a
 
 enum numMoving=100;
 enum numStatic=300;
+enum ObjectType{
+	soul=numMoving+numStatic,
+}
 
 struct ObjectManager(B){
 	Array!Id ids;
 	Objects!(B,RenderMode.opaque) opaqueObjects;
 	Objects!(B,RenderMode.transparent) transparentObjects;
-	int addObject(T)(T object) if(is(T==MovingObject!B)||is(T==StaticObject!B))in{
+	int addObject(T)(T object) if(is(T==MovingObject!B)||is(T==Soul!B)||is(T==StaticObject!B))in{
 		assert(object.id==0);
 	}do{
 		if(ids.length>=int.max) return 0;
@@ -436,6 +504,11 @@ auto eachMoving(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
 	with(objectManager){
 		opaqueObjects.eachMoving!f(args);
 		transparentObjects.eachMoving!f(args);
+	}
+}
+auto eachSoul(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
+	with(objectManager){
+		opaqueObjects.eachSoul!f(args);
 	}
 }
 auto eachByType(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
@@ -1259,6 +1332,12 @@ void updateCreature(B)(ref MovingObject!B object, ObjectState!B state){
 	object.updateCreatureStats(state);
 }
 
+void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
+	soul.frame+=1;
+	if(soul.frame==SacSoul!B.numFrames*updateAnimFactor)
+		soul.frame=0;
+}
+
 void addToProximity(T,B)(ref T objects, ObjectState!B state){
 	auto proximity=state.proximity;
 	enum isMoving=is(T==MovingObjects!(B, RenderMode.opaque))||is(T==MovingObjects!(B, RenderMode.transparent));
@@ -1280,6 +1359,8 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 				proximity.insert(ProximityEntry(objects.ids[j],hitbox));
 			}
 		}
+	}else static if(is(T==Souls!B)){
+		// do nothing
 	}else static assert(is(T==FixedObjects!B));
 }
 
@@ -1397,10 +1478,11 @@ final class ObjectState(B){ // (update logic)
 		proximity.start();
 		this.eachByType!addToProximity(this);
 		this.eachMoving!updateCreature(this);
+		this.eachSoul!updateSoul(this);
 		proximity.end();
 	}
 	ObjectManager!B obj;
-	int addObject(T)(T object) if(is(T==MovingObject!B)||is(T==StaticObject!B)){
+	int addObject(T)(T object) if(is(T==MovingObject!B)||is(T==Soul!B)||is(T==StaticObject!B)){
 		return obj.addObject(object);
 	}
 	void addFixed(FixedObject!B object){
@@ -1412,6 +1494,9 @@ auto each(alias f,B,T...)(ObjectState!B objectState,T args){
 }
 auto eachMoving(alias f,B,T...)(ObjectState!B objectState,T args){
 	return objectState.obj.eachMoving!f(args);
+}
+auto eachSoul(alias f,B,T...)(ObjectState!B objectState,T args){
+	return objectState.obj.eachSoul!f(args);
 }
 auto eachByType(alias f,B,T...)(ObjectState!B objectState,T args){
 	return objectState.obj.eachByType!f(args);
@@ -1466,6 +1551,8 @@ final class GameState(B){
 			placeStructure(structure);
 		foreach(ref wizard;ntts.wizards)
 			placeNTT(wizard);
+		foreach(ref spirit;ntts.spirits)
+			placeSpirit(spirit);
 		foreach(ref creature;ntts.creatures)
 			placeNTT(creature);
 		foreach(widgets;ntts.widgetss) // TODO: improve engine to be able to handle this
@@ -1526,6 +1613,13 @@ final class GameState(B){
 			state=cast(AnimationState)uniform(0,64);
 		}while(!curObj.hasAnimationState(state));+/
 		current.addObject(obj);
+	}
+	void placeSpirit(ref Spirit spirit){
+		auto position=Vector3f(spirit.x,spirit.y,spirit.z);
+		bool onGround=current.isOnGround(position);
+		if(onGround)
+			position.z=current.getGroundHeight(position);
+		current.addObject(Soul!B(0,1,position,SoulState.normal,0));
 	}
 	void placeWidgets(Widgets w){
 		auto curObj=SacObject!B.getWIDG(w.tag);

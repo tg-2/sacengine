@@ -427,6 +427,42 @@ final class SacObject(B){
 	}
 }
 
+enum SoulColor{
+	blue,
+	red,
+	//green,
+}
+
+final class SacSoul(B){
+	B.Mesh[] meshes;
+	B.Texture texture;
+	B.Material material;
+
+	enum soulWidth=1.0f;
+	enum soulHeight=1.6f*soulWidth;
+
+	this(){
+		// TODO: extract soul meshes at all different frames from original game
+		meshes=new B.Mesh[](16);
+		foreach(int i,ref mesh;meshes){
+			mesh=B.makeMesh(4,2);
+			int u=i%4,v=i/4;
+			foreach(k;0..4) mesh.vertices[k]=Vector3f(-0.5f*soulWidth+soulWidth*(k==1||k==2),0.0f,-0.5f*soulHeight+soulHeight*(k==2||k==3));
+			foreach(k;0..4) mesh.texcoords[k]=Vector2f(0.25f*(u+(k==1||k==2)),0.25f*(v+(k==0||k==1)));
+			static immutable uint[3][] indices=[[0,1,2],[2,3,0]];
+			mesh.indices[]=indices[];
+			mesh.generateNormals();
+			B.finalizeMesh(mesh);
+		}
+		texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/spir.TXTR"));
+		material=B.createMaterial(this);
+	}
+	enum numFrames=16;
+	B.Mesh getMesh(SoulColor color,int frame){
+		return meshes[(color==SoulColor.red?8:0)+frame/2];
+	}
+}
+
 auto convertModel(B,Model)(string dir, Model model, float scaling){
 	int[string] names;
 	int cur=0;

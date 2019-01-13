@@ -164,6 +164,11 @@ final class SacScene: Scene{
 		eUndr.updateTransformation();
 		skyEntities=[eUndr,eSkyb,eSkyt,eSky,eSun];
 	}
+	SacSoul!DagonBackend sacSoul;
+	void createSouls(){
+		sacSoul=new SacSoul!DagonBackend();
+	}
+
 
 	void rotateSky(Quaternionf rotation){
 		foreach(e;skyEntities[0..3]){
@@ -251,41 +256,58 @@ final class SacScene: Scene{
 	}
 
 	final void renderNTTs(RenderMode mode)(RenderingContext* rc){
-		static void render(T)(ref T objects,bool enableWidgets,RenderingContext* rc){ // TODO: why does this need to be static? DMD bug?
-			auto sacObject=objects.sacObject;
-			enum isMoving=is(T==MovingObjects!(DagonBackend, RenderMode.opaque))||is(T==MovingObjects!(DagonBackend, RenderMode.transparent));
-			static if(is(T==MovingObjects!(DagonBackend, RenderMode.opaque))){
-				auto materials=rc.shadowMode?sacObject.shadowMaterials:sacObject.materials;
-			}else{
-				auto materials=rc.shadowMode?sacObject.shadowMaterials:sacObject.materials; // TODO: add transparency here
-			}
-			foreach(i;0..materials.length){
-				auto material=materials[i];
-				if(!material) continue;
-				auto blending=("blending" in material.inputs).asInteger;
-				if((mode==RenderMode.transparent)!=(blending==Additive||blending==Transparent)) continue;
-				if(rc.shadowMode&&blending==Additive) continue;
-				material.bind(rc);
-				scope(success) material.unbind(rc);
-				static if(isMoving){
-					auto mesh=sacObject.saxsi.meshes[i];
-					foreach(j;0..objects.length){ // TODO: use instanced rendering instead
-						material.backend.setTransformation(objects.positions[j], objects.rotations[j], rc);
-						// TODO: interpolate animations to get 60 FPS?
-						sacObject.setFrame(objects.animationStates[j],objects.frames[j]/updateAnimFactor);
-						mesh.render(rc);
-					}
+		static void render(T)(ref T objects,bool enableWidgets,SacScene scene,RenderingContext* rc){ // TODO: why does this need to be static? DMD bug?
+			static if(is(typeof(objects.sacObject))){
+				auto sacObject=objects.sacObject;
+				enum isMoving=is(T==MovingObjects!(DagonBackend, RenderMode.opaque))||is(T==MovingObjects!(DagonBackend, RenderMode.transparent));
+				static if(is(T==MovingObjects!(DagonBackend, RenderMode.opaque))){
+					auto materials=rc.shadowMode?sacObject.shadowMaterials:sacObject.materials;
 				}else{
-					static if(is(T==FixedObjects!DagonBackend)) if(!enableWidgets) return;
-					auto mesh=sacObject.meshes[i];
+					auto materials=rc.shadowMode?sacObject.shadowMaterials:sacObject.materials; // TODO: add transparency here
+				}
+				foreach(i;0..materials.length){
+					auto material=materials[i];
+					if(!material) continue;
+					auto blending=("blending" in material.inputs).asInteger;
+					if((mode==RenderMode.transparent)!=(blending==Additive||blending==Transparent)) continue;
+					if(rc.shadowMode&&blending==Additive) continue;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
+					static if(isMoving){
+						auto mesh=sacObject.saxsi.meshes[i];
+						foreach(j;0..objects.length){ // TODO: use instanced rendering instead
+							material.backend.setTransformation(objects.positions[j], objects.rotations[j], rc);
+							// TODO: interpolate animations to get 60 FPS?
+							sacObject.setFrame(objects.animationStates[j],objects.frames[j]/updateAnimFactor);
+							mesh.render(rc);
+						}
+					}else{
+						static if(is(T==FixedObjects!DagonBackend)) if(!enableWidgets) return;
+						auto mesh=sacObject.meshes[i];
+						foreach(j;0..objects.length){
+							material.backend.setTransformation(objects.positions[j], objects.rotations[j], rc);
+							mesh.render(rc);
+						}
+					}
+				}
+			}else static if(is(T==Souls!DagonBackend)){
+				static if(mode==RenderMode.transparent){
+					if(rc.shadowMode) return;
+					auto sacSoul=scene.sacSoul;
+					auto material=sacSoul.material;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
 					foreach(j;0..objects.length){
-						material.backend.setTransformation(objects.positions[j], objects.rotations[j], rc);
+						// TODO: determine soul color based on side
+						auto soul=objects[j];
+						auto mesh=sacSoul.getMesh(soul.creatureId==0?SoulColor.blue:SoulColor.red,soul.frame/updateAnimFactor); // TODO: do in shader?
+						material.backend.setSpriteTransformation(soul.position+Vector3f(0.0f,0.0f,1.25f*sacSoul.soulHeight),rc); // TODO: fix
 						mesh.render(rc);
 					}
 				}
-			}
+			}else static assert(0);
 		}
-		state.current.eachByType!render(options.enableWidgets,rc);
+		state.current.eachByType!render(options.enableWidgets,this,rc);
 	}
 
 	static void renderBox(Vector3f[2] sl,bool wireframe,RenderingContext* rc){
@@ -332,9 +354,9 @@ final class SacScene: Scene{
 	GenericMaterial hitboxMaterial=null;
 	final void renderHitboxes(RenderingContext* rc){
 		static void render(T)(ref T objects,GenericMaterial material,RenderingContext* rc){
-			auto sacObject=objects.sacObject;
 			enum isMoving=is(T==MovingObjects!(DagonBackend, RenderMode.opaque))||is(T==MovingObjects!(DagonBackend, RenderMode.transparent));
 			static if(isMoving){
+				auto sacObject=objects.sacObject;
 				foreach(j;0..objects.length){
 					material.backend.setTransformation(objects.positions[j], Quaternionf.identity(), rc);
 					auto hitbox=sacObject.hitbox(objects.rotations[j],objects.animationStates[j],objects.frames[j]/updateAnimFactor);
@@ -365,6 +387,7 @@ final class SacScene: Scene{
 					}+/
 				}
 			}else static if(is(T==StaticObjects!DagonBackend)){
+				auto sacObject=objects.sacObject;
 				foreach(j;0..objects.length){
 					material.backend.setTransformation(objects.positions[j], Quaternionf.identity(), rc);
 					foreach(hitbox;sacObject.hitboxes(objects.rotations[j]))
@@ -406,6 +429,7 @@ final class SacScene: Scene{
 		this.state=state;
 		setupEnvironment(state.current.map);
 		createSky(state.current.map);
+		createSouls();
 	}
 
 	void addObject(SacObject!DagonBackend sobj,Vector3f position,Quaternionf rotation){
@@ -686,6 +710,16 @@ static:
 		mat.roughness=1.0f;
 		mat.metallic=0.0f;
 		mat.energy=0.05;
+		return mat;
+	}
+
+	Material createMaterial(SacSoul!DagonBackend soul){
+		auto mat=scene.createMaterial(scene.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=Transparent;
+		mat.transparency=0.5f;
+		mat.energy=20.0f;
+		mat.diffuse=soul.texture;
 		return mat;
 	}
 
