@@ -68,7 +68,7 @@ final class SacObject(B){
 			if(ntt){
 				maxHealth=ntt.health;
 				regeneration=ntt.regeneration*1e-3f*35.0f;
-				drain=ntt.drain;
+				drain=ntt.drain*1e-3f;
 				maxMana=ntt.mana;
 				runningSpeed=ntt.runningSpeed;
 				flyingSpeed=ntt.flyingSpeed;
@@ -100,6 +100,11 @@ final class SacObject(B){
 	@property StunnedBehavior stunnedBehavior(){
 		if(!data) return StunnedBehavior.normal;
 		return data.stunnedBehavior;
+	}
+
+	@property bool continuousRegeneration(){
+		if(!data) return false;
+		return data.continuousRegeneration;
 	}
 
 	@property bool hasKnockdown(){

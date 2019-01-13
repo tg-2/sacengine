@@ -131,6 +131,10 @@ StunnedBehavior stunnedBehavior(B)(ref MovingObject!B object){
 	return object.sacObject.stunnedBehavior;
 }
 
+bool isRegenerating(B)(ref MovingObject!B object){
+	return object.creatureState.mode==CreatureMode.idle||object.sacObject.continuousRegeneration;
+}
+
 struct StaticObject(B){
 	SacObject!B sacObject;
 	int id=0;
@@ -761,6 +765,11 @@ void dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B att
 	// TODO: give xp to attacker
 	if(object.creatureStats.health<=0)
 		object.kill(state);
+	attacker.heal(damage*attacker.creatureStats.drain,state);
+}
+
+void heal(B)(ref MovingObject!B object,float amount,ObjectState!B state){
+	object.creatureStats.health=min(object.creatureStats.health+amount,object.creatureStats.maxHealth);
 }
 
 void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,ObjectState!B state){
@@ -949,8 +958,8 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 }
 
 void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
-	if(object.creatureState.mode==CreatureMode.idle)
-		object.creatureStats.health=min(object.creatureStats.health+object.creatureStats.regeneration/updateFPS,object.creatureStats.maxHealth);
+	if(object.isRegenerating)
+		object.heal(object.creatureStats.regeneration/updateFPS,state);
 	if(object.creatureState.mode.among(CreatureMode.meleeMoving,CreatureMode.meleeAttacking) && object.hasAttackTick){
 		object.creatureState.mode=CreatureMode.meleeAttacking;
 		struct CollisionState{

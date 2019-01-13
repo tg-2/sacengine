@@ -258,6 +258,7 @@ immutable struct CreatureData{
 	auto hitboxType=HitboxType.large;
 	auto stunBehavior=StunBehavior.none;
 	auto stunnedBehavior=StunnedBehavior.normal;
+	bool continuousRegeneration=false;
 }
 
 CreatureData abomination={
@@ -659,6 +660,7 @@ CreatureData trogg={
 CreatureData troll={
 	tag: "lort",
 	name: "Troll",
+	continuousRegeneration: true,
 };
 
 CreatureData vortick={
