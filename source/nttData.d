@@ -262,6 +262,7 @@ immutable struct CreatureData{
 	auto stunnedBehavior=StunnedBehavior.normal;
 	bool continuousRegeneration=false;
 	auto soulDisplacement=Vector3f(0.0f,0.0f,0.0f);
+	float buildingMeleeDamageMultiplier=1.0f; // TODO: is this in creature stats?
 }
 
 CreatureData abomination={
@@ -325,6 +326,7 @@ CreatureData dragon={
 	rotateOnGround: RotateOnGround.completely,
 	hitboxType: HitboxType.largeZ,
 	stunBehavior: StunBehavior.always,
+	buildingMeleeDamageMultiplier: 2.0f,
 };
 
 CreatureData dragonHatchling={
@@ -591,6 +593,7 @@ CreatureData sirocco={
 	rotateOnGround: RotateOnGround.completely,
 	hitboxType: HitboxType.largeZ,
 	stunBehavior: StunBehavior.fromBehind,
+	buildingMeleeDamageMultiplier: 2.0f,
 };
 
 CreatureData slave={

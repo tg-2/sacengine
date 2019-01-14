@@ -1133,7 +1133,7 @@ void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,Ob
 
 void dealMeleeDamage(B)(ref Building!B building,ref MovingObject!B attacker,ObjectState!B state){
 	auto damage=attacker.meleeStrength;
-	auto actualDamage=damage*building.meleeResistance;
+	auto actualDamage=damage*building.meleeResistance*attacker.sacObject.buildingMeleeDamageMultiplier;
 	building.dealDamage(actualDamage,attacker,state);
 }
 
@@ -1337,7 +1337,6 @@ void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 					assert(target.buildingId);
 					state.buildingById!((ref Building!B building,MovingObject!B* attacker,ObjectState!B state){
 						building.dealMeleeDamage(*attacker,state);
-						writeln(building.health);
 					})(target.buildingId,attacker,state);
 				}
 			}
