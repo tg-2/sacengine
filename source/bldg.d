@@ -6,16 +6,13 @@ enum BldgFlags:uint{
 	unknown=1<<3,
 	ground=1<<31,
 }
-
 struct BldgHeader{
 	BldgFlags flags;
 	ubyte[8][8] ground;
-	float x,y,z;
-	float facing;
-	float unknown1;
-	float[6] unknown2;
+	uint maxHealth;
+	float[10] unknown1;
 	char[4] tileset;
-	char[4] unknown3;
+	char[4] unknown2;
 	uint numComponents;
 	char[4] base;
 }
