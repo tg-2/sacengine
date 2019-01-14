@@ -118,6 +118,7 @@ T[char[4]] makeSpellByTag(T)(){
 			c.animations.takeoff=0;
 			c.animations.land=0;
 			c.animations.run=0;
+			c.animations.death[]="\0\0\0\0";
 		}
 		fixFamiliar(result["imaf"]);
 		fixFamiliar(result["tnem"]);
