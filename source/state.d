@@ -70,6 +70,7 @@ struct MovingObject(B){
 	int frame;
 	CreatureState creatureState;
 	CreatureStats creatureStats;
+	int soulId=0;
 
 	this(SacObject!B sacObject,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame,CreatureState creatureState,CreatureStats creatureStats){
 		this.sacObject=sacObject;
@@ -83,6 +84,10 @@ struct MovingObject(B){
 	this(SacObject!B sacObject,int id,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame,CreatureState creatureState,CreatureStats creatureStats){
 		this.id=id;
 		this(sacObject,position,rotation,animationState,frame,creatureState,creatureStats);
+	}
+	this(SacObject!B sacObject,int id,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame,CreatureState creatureState,CreatureStats creatureStats,int soulId){
+		this.soulId=soulId;
+		this(sacObject,id,position,rotation,animationState,frame,creatureState,creatureStats);
 	}
 }
 
@@ -109,6 +114,10 @@ Vector3f[2] meleeHitbox(B)(ref MovingObject!B object){
 	hitbox[0]+=object.position;
 	hitbox[1]+=object.position;
 	return hitbox;
+}
+
+Vector3f soulPosition(B)(ref MovingObject!B object){
+	return object.center+rotate(object.rotation,object.sacObject.soulDisplacement);
 }
 
 float meleeStrength(B)(ref MovingObject!B object){
@@ -155,26 +164,34 @@ struct StaticObject(B){
 enum SoulState{
 	normal,
 	emerging,
-	collected,
+	reviving,
+	collecting,
 }
 
 struct Soul(B){
 	int id=0;
 	int creatureId=0;
+	int collectorId=0;
 	int number;
 	Vector3f position;
 	SoulState state;
-	int frame;
+	int frame=0;
+	float facing=0.0f;
+	float scaling=1.0f;
 
-	this(int creatureId,int number,Vector3f position,SoulState state,int frame){
+	this(int number,Vector3f position,SoulState state){
 		this.number=number;
 		this.position=position;
 		this.state=state;
-		this.frame=frame;
+		if(state==SoulState.emerging) scaling=0.0f;
 	}
-	this(int id,int creatureId,int number,Vector3f position,SoulState state,int frame){
+	this(int creatureId,int number,Vector3f position,SoulState state){
+		this.creatureId=creatureId;
+		this(number,position,state);
+	}
+	this(int id,int creatureId,int number,Vector3f position,SoulState state){
 		this.id=id;
-		this(creatureId,number,position,state,frame);
+		this(creatureId,number,position,state);
 	}
 }
 
@@ -210,7 +227,18 @@ struct MovingObjects(B,RenderMode mode){
 	Array!int frames;
 	Array!CreatureState creatureStates;
 	Array!CreatureStats creatureStatss;
+	Array!int soulIds;
 	@property int length(){ assert(ids.length<=int.max); return cast(int)ids.length; }
+	@property void length(int l){
+		ids.length=l;
+		positions.length=l;
+		rotations.length=l;
+		animationStates.length=l;
+		frames.length=l;
+		creatureStates.length=l;
+		creatureStatss.length=l;
+		soulIds.length=l;
+	}
 
 	void reserve(int reserveSize){
 		ids.reserve(reserveSize);
@@ -220,6 +248,7 @@ struct MovingObjects(B,RenderMode mode){
 		frames.reserve(reserveSize);
 		creatureStates.reserve(reserveSize);
 		creatureStatss.reserve(reserveSize);
+		soulIds.reserve(reserveSize);
 	}
 
 	void addObject(MovingObject!B object)in{
@@ -232,6 +261,14 @@ struct MovingObjects(B,RenderMode mode){
 		frames~=object.frame;
 		creatureStates~=object.creatureState;
 		creatureStatss~=object.creatureStats;
+		soulIds~=object.soulId;
+	}
+	void removeObject(int index, ObjectManager!B manager){
+		if(length>1){
+			this[index]=this[length-1];
+			manager.ids[ids[index]-1].index=index;
+		}
+		length=length-1;
 	}
 	void opAssign(ref MovingObjects!(B,mode) rhs){
 		assert(sacObject is null || sacObject is rhs.sacObject);
@@ -243,9 +280,10 @@ struct MovingObjects(B,RenderMode mode){
 		assignArray(frames,rhs.frames);
 		assignArray(creatureStates,rhs.creatureStates);
 		assignArray(creatureStatss,rhs.creatureStatss);
+		assignArray(soulIds,rhs.soulIds);
 	}
 	MovingObject!B opIndex(int i){
-		return MovingObject!B(sacObject,ids[i],positions[i],rotations[i],animationStates[i],frames[i],creatureStates[i],creatureStatss[i]);
+		return MovingObject!B(sacObject,ids[i],positions[i],rotations[i],animationStates[i],frames[i],creatureStates[i],creatureStatss[i],soulIds[i]);
 	}
 	void opIndexAssign(MovingObject!B obj,int i){
 		assert(obj.sacObject is sacObject);
@@ -256,6 +294,7 @@ struct MovingObjects(B,RenderMode mode){
 		frames[i]=obj.frame;
 		creatureStates[i]=obj.creatureState;
 		creatureStatss[i]=obj.creatureStats; // TODO: this might be a bit wasteful
+		soulIds[i]=obj.soulId;
 	}
 }
 auto each(alias f,B,RenderMode mode,T...)(ref MovingObjects!(B,mode) movingObjects,T args){
@@ -278,12 +317,24 @@ struct StaticObjects(B){
 	Array!Quaternionf rotations;
 
 	@property int length(){ assert(ids.length<=int.max); return cast(int)ids.length; }
+	@property void length(int l){
+		ids.length=l;
+		positions.length=l;
+		rotations.length=l;
+	}
 	void addObject(StaticObject!B object)in{
 		assert(object.id!=0);
 	}do{
 		ids~=object.id;
 		positions~=object.position;
 		rotations~=object.rotation;
+	}
+	void removeObject(int index, ObjectManager!B manager){
+		if(length>1){
+			this[index]=this[length-1];
+			manager.ids[ids[index]-1].index=index;
+		}
+		length=length-1;
 	}
 	void opAssign(ref StaticObjects!B rhs){
 		assert(sacObject is null || sacObject is rhs.sacObject);
@@ -310,8 +361,16 @@ auto each(alias f,B,T...)(ref StaticObjects!B staticObjects,T args){
 struct Souls(B){
 	Array!(Soul!B) souls;
 	@property int length(){ return cast(int)souls.length; }
+	@property void length(int l){ souls.length=l; }
 	void addObject(Soul!B soul){
 		souls~=soul;
+	}
+	void removeObject(int index, ObjectManager!B manager){
+		if(length>1){
+			this[index]=this[length-1];
+			manager.ids[souls[index].id-1].index=index;
+		}
+		length=length-1;
 	}
 	void opAssign(ref Souls!B rhs){
 		assignArray(souls,rhs.souls);
@@ -417,6 +476,15 @@ struct Objects(B,RenderMode mode){
 			souls.addObject(object);
 			return result;
 		}
+		void removeObject(int type, int index, ref ObjectManager!B manager){
+			if(type<numMoving){
+				movingObjects[type].removeObject(index,manager);
+			}else if(type<numMoving+numStatic){
+				staticObjects[type].removeObject(index,manager);
+			}else final switch(cast(ObjectType)type){
+				case ObjectType.soul: souls.removeObject(index,manager);
+			}
+		}
 	}
 	void opAssign(Objects!(B,mode) rhs){
 		assignArray(movingObjects,rhs.movingObjects);
@@ -480,6 +548,15 @@ struct ObjectManager(B){
 		object.id=cast(int)ids.length+1;
 		ids~=opaqueObjects.addObject(object);
 		return object.id;
+	}
+	void removeObject(int id)in{
+		assert(0<id && id<=ids.length);
+	}do{
+		auto tid=ids[id-1];
+		final switch(tid.mode){
+			case RenderMode.opaque: opaqueObjects.removeObject(tid.type,tid.index,this); break;
+			case RenderMode.transparent: assert(0,"TODO");//transparentObjects.removeObject(tid.type,tid.index);
+		}
 	}
 	void addTransparent(T)(T object, float alpha){
 		assert(0,"TODO");
@@ -735,10 +812,28 @@ void kill(B)(ref MovingObject!B object, ObjectState!B state){
 	object.setCreatureState(state);
 }
 
+void spawnSoul(B)(ref MovingObject!B object, ObjectState!B state){
+	with(CreatureMode) if(object.creatureState.mode!=CreatureMode.dead||object.soulId!=0) return;
+	int numSouls=object.sacObject.numSouls;
+	if(!numSouls) return;
+	object.soulId=state.addObject(Soul!B(object.id,object.sacObject.numSouls,object.soulPosition,SoulState.emerging));
+}
+
+void createSoul(B)(ref MovingObject!B object, ObjectState!B state){
+	with(CreatureMode) if(object.creatureState.mode!=CreatureMode.dead||object.soulId!=0) return;
+	int numSouls=object.sacObject.numSouls;
+	if(!numSouls) return;
+	object.soulId=state.addObject(Soul!B(object.id,object.sacObject.numSouls,object.soulPosition,SoulState.normal));
+}
+
 void stun(B)(ref MovingObject!B object, ObjectState!B state){
 	with(CreatureMode) if(object.creatureState.mode.among(dying,dead,stunned)) return;
 	object.creatureState.mode=CreatureMode.stunned;
 	object.setCreatureState(state);
+}
+void damageStun(B)(ref MovingObject!B object, Vector3f attackDirection, ObjectState!B state){
+	object.stun(state);
+	object.damageAnimation(attackDirection,state,false);
 }
 
 void catapult(B)(ref MovingObject!B object, Vector3f velocity, ObjectState!B state){
@@ -752,6 +847,10 @@ void catapult(B)(ref MovingObject!B object, Vector3f velocity, ObjectState!B sta
 
 void immediateResurrect(B)(ref MovingObject!B object,ObjectState!B state){
 	with(CreatureMode) if(!object.creatureState.mode.among(dying,dead)) return;
+	if(object.soulId!=0){
+		state.removeObject(object.soulId);
+		object.soulId=0;
+	}
 	object.creatureStats.health=object.creatureStats.maxHealth;
 	object.creatureState.mode=CreatureMode.idle;
 	object.setCreatureState(state);
@@ -855,8 +954,7 @@ void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,Ob
 	if(actualDamage==0.0f) return;
 	object.dealDamage(actualDamage,attacker,state);
 	if(stunBehavior==StunBehavior.always || fromBehind && stunBehavior==StunBehavior.fromBehind){
-		object.stun(state);
-		object.damageAnimation(attackDirection,state,false);
+		object.damageStun(attackDirection,state);
 		return;
 	}
 	object.damageAnimation(attackDirection,state);
@@ -864,7 +962,7 @@ void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,Ob
 		case StunnedBehavior.normal:
 			break;
 		case StunnedBehavior.onMeleeDamage,StunnedBehavior.onDamage:
-			object.stun(state);
+			object.damageStun(attackDirection,state);
 			break;
 	}
 }
@@ -946,6 +1044,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 					case CreatureMovement.onGround:
 						object.frame=sacObject.numFrames(object.animationState)*updateAnimFactor-1;
 						object.creatureState.mode=CreatureMode.dead;
+						object.spawnSoul(state);
 						break;
 					case CreatureMovement.flying:
 						object.creatureState.movement=CreatureMovement.tumbling;
@@ -1334,8 +1433,40 @@ void updateCreature(B)(ref MovingObject!B object, ObjectState!B state){
 
 void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 	soul.frame+=1;
+	soul.facing+=2*PI/8.0f/updateFPS;
 	if(soul.frame==SacSoul!B.numFrames*updateAnimFactor)
 		soul.frame=0;
+	if(soul.creatureId)
+		soul.position=state.movingObjectById!(soulPosition,()=>Vector3f(float.nan,float.nan,float.nan))(soul.creatureId);
+	final switch(soul.state){
+		case SoulState.normal:
+			// TODO: add soul collecting
+			break;
+		case SoulState.emerging:
+			soul.scaling+=0.25f/updateFPS;
+			if(soul.scaling>=1.0f){
+				soul.scaling=1.0f;
+				soul.state=SoulState.normal;
+			}
+			break;
+		case SoulState.reviving:
+			assert(soul.creatureId!=0);
+			soul.scaling-=1.0f/updateFPS;
+			if(soul.scaling<=0.0f){
+				soul.scaling=0.0f;
+				// TODO: delete the soul
+			}
+			break;
+		case SoulState.collecting:
+			assert(soul.collectorId!=0);
+			soul.scaling-=1.0f/updateFPS;
+			if(soul.scaling<=0.0f){
+				soul.scaling=0.0f;
+				// TODO: delete the soul
+				// TODO: increase collector's soul count
+			}
+			break;
+	}
 }
 
 void addToProximity(T,B)(ref T objects, ObjectState!B state){
@@ -1485,6 +1616,11 @@ final class ObjectState(B){ // (update logic)
 	int addObject(T)(T object) if(is(T==MovingObject!B)||is(T==Soul!B)||is(T==StaticObject!B)){
 		return obj.addObject(object);
 	}
+	void removeObject(int id)in{
+		assert(id!=0);
+	}do{
+		obj.removeObject(id);
+	}
 	void addFixed(FixedObject!B object){
 		obj.addFixed(object);
 	}
@@ -1557,6 +1693,9 @@ final class GameState(B){
 			placeNTT(creature);
 		foreach(widgets;ntts.widgetss) // TODO: improve engine to be able to handle this
 			placeWidgets(widgets);
+		current.eachMoving!((ref MovingObject!B object, ObjectState!B state){
+			if(object.creatureState.mode==CreatureMode.dead) object.createSoul(state);
+		})(current);
 		map.meshes=createMeshes!B(map.edges,map.heights,map.tiles,options.enableMapBottom); // TODO: allow dynamic retexuring
 		commit();
 	}
@@ -1619,7 +1758,7 @@ final class GameState(B){
 		bool onGround=current.isOnGround(position);
 		if(onGround)
 			position.z=current.getGroundHeight(position);
-		current.addObject(Soul!B(0,1,position,SoulState.normal,0));
+		current.addObject(Soul!B(1,position,SoulState.normal));
 	}
 	void placeWidgets(Widgets w){
 		auto curObj=SacObject!B.getWIDG(w.tag);

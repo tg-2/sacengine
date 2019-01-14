@@ -301,8 +301,20 @@ final class SacScene: Scene{
 						// TODO: determine soul color based on side
 						auto soul=objects[j];
 						auto mesh=sacSoul.getMesh(soul.creatureId==0?SoulColor.blue:SoulColor.red,soul.frame/updateAnimFactor); // TODO: do in shader?
-						material.backend.setSpriteTransformation(soul.position+Vector3f(0.0f,0.0f,1.25f*sacSoul.soulHeight),rc); // TODO: fix
-						mesh.render(rc);
+						if(objects[j].number==1){
+							material.backend.setSpriteTransformationScaled(soul.position+soul.scaling*Vector3f(0.0f,0.0f,1.25f*sacSoul.soulHeight),soul.scaling,rc);
+							mesh.render(rc);
+						}else{
+							auto number=objects[j].number;
+							auto soulScaling=max(0.5f,1.0f-0.05f*number);
+							auto radius=soul.scaling*sacSoul.soulRadius;
+							if(number<=3) radius*=0.3*number;
+							foreach(k;0..number){
+								auto position=soul.position+rotate(facingQuaternion(objects[j].facing+2*PI*k/number), Vector3f(0.0f,radius,0.0f));
+								material.backend.setSpriteTransformationScaled(position+soul.scaling*Vector3f(0.0f,0.0f,1.25f*sacSoul.soulHeight),soul.scaling*soulScaling,rc);
+								mesh.render(rc);
+							}
+						}
 					}
 				}
 			}else static assert(0);
@@ -717,7 +729,6 @@ static:
 		auto mat=scene.createMaterial(scene.shadelessMaterialBackend);
 		mat.depthWrite=false;
 		mat.blending=Transparent;
-		mat.transparency=0.5f;
 		mat.energy=20.0f;
 		mat.diffuse=soul.texture;
 		return mat;

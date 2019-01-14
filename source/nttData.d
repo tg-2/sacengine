@@ -2,6 +2,7 @@ module nttData;
 import std.file, std.path, std.stdio, std.algorithm, std.range, std.string, std.exception;
 import bldg, spells;
 import util;
+import dlib.math.vector;
 immutable string[] bldgFolders=["joby/joby.WAD!/ethr.FLDR",
                                 "joby/joby.WAD!/prsc.FLDR",
                                 "pyromod/PMOD.WAD!/bild.FLDR",
@@ -259,6 +260,7 @@ immutable struct CreatureData{
 	auto stunBehavior=StunBehavior.none;
 	auto stunnedBehavior=StunnedBehavior.normal;
 	bool continuousRegeneration=false;
+	auto soulDisplacement=Vector3f(0.0f,0.0f,0.0f);
 }
 
 CreatureData abomination={
@@ -290,6 +292,7 @@ CreatureData bombard={
 	tag: "wlcf",
 	name: "Bombard",
 	rotateOnGround: RotateOnGround.sideways,
+	soulDisplacement: Vector3f(0.0f,-1.0f,0.0f),
 };
 
 CreatureData boulderdash={
@@ -347,6 +350,7 @@ CreatureData ent={
 	rotateOnGround: RotateOnGround.completely,
 	hitboxType: HitboxType.largeZ,
 	stunBehavior: StunBehavior.fromBehind,
+	soulDisplacement: Vector3f(0.0f,-1.0f,0.0f),
 };
 
 CreatureData faestus1={
@@ -395,6 +399,7 @@ CreatureData flurry={
 	tag: "wlca",
 	name: "Flurry",
 	rotateOnGround: RotateOnGround.sideways,
+	soulDisplacement: Vector3f(0.0f,0.6f,0.0f),
 };
 
 CreatureData frostwolf={ // TODO: this is screwed up, why?
@@ -459,6 +464,7 @@ CreatureData jabberocky={
 	rotateOnGround: RotateOnGround.completely,
 	hitboxType: HitboxType.largeZ,
 	stunBehavior: StunBehavior.fromBehind,
+	soulDisplacement: Vector3f(0.0f,-1.0f,0.0f),
 };
 
 CreatureData locust={
@@ -575,6 +581,7 @@ CreatureData silverback={
 	zfactorOverride: 1.0,
 	rotateOnGround: RotateOnGround.completely,
 	stunBehavior: StunBehavior.always,
+	soulDisplacement: Vector3f(0.0f,0.0f,2.0f),
 };
 
 CreatureData sirocco={
@@ -650,6 +657,7 @@ CreatureData toldor={
 	rotateOnGround: RotateOnGround.completely,
 	hitboxType: HitboxType.largeZ,
 	stunBehavior: StunBehavior.fromBehind,
+	soulDisplacement: Vector3f(0.0f,-1.2f,0.4f),
 };
 
 CreatureData trogg={

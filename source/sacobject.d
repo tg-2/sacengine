@@ -86,6 +86,15 @@ final class SacObject(B){
 		                     directSpellResistance,splashSpellResistance,
 		                     directRangedResistance,splashRangedResistance);
 	}
+	@property int numSouls(){
+		if(!cre8) return 0;
+		return cre8.souls;
+	}
+
+	@property Vector3f soulDisplacement(){
+		if(!data) return Vector3f(0.0f,0.0f,0.0f);
+		return data.soulDisplacement;
+	}
 
 	@property float meleeStrength(){
 		if(cre8) return cre8.meleeStrength;
@@ -440,6 +449,7 @@ final class SacSoul(B){
 
 	enum soulWidth=1.0f;
 	enum soulHeight=1.6f*soulWidth;
+	enum soulRadius=0.3f;
 
 	this(){
 		// TODO: extract soul meshes at all different frames from original game
