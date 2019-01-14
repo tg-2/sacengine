@@ -429,9 +429,9 @@ auto each(alias f,B,T...)(ref FixedObjects!B fixedObjects,T args){
 struct Objects(B,RenderMode mode){
 	Array!(MovingObjects!(B,mode)) movingObjects;
 	static if(mode == RenderMode.opaque){
-		Souls!B souls;
 		Array!(StaticObjects!B) staticObjects;
 		FixedObjects!B[] fixedObjects;
+		Souls!B souls;
 	}
 	static if(mode==RenderMode.opaque){
 		Id addObject(T)(T object) if(is(T==MovingObject!B)||is(T==StaticObject!B))in{
@@ -500,11 +500,11 @@ auto each(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T args){
 		foreach(ref movingObject;movingObjects)
 			movingObject.each!f(args);
 		static if(mode == RenderMode.opaque){
-			souls.each!f(args);
 			foreach(ref staticObject;staticObjects)
 				staticObject.each!f(args);
 			foreach(ref fixedObject;fixedObjects)
 				fixedObject.each!f(args);
+			souls.each!f(args);
 		}
 	}
 }
@@ -522,11 +522,11 @@ auto eachByType(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T a
 		foreach(ref movingObject;movingObjects)
 			f(movingObject,args);
 		static if(mode == RenderMode.opaque){
-			f(souls,args);
 			foreach(ref staticObject;staticObjects)
 				f(staticObject,args);
 			foreach(ref fixedObject;fixedObjects)
 				f(fixedObject,args);
+			f(souls,args);
 		}
 	}
 }
