@@ -13,7 +13,7 @@ struct BldgHeader{
 	float x,y,z;
 	float facing;
 	float unknown1;
-	ubyte[24] unknown2;
+	float[6] unknown2;
 	char[4] tileset;
 	char[4] unknown3;
 	uint numComponents;
@@ -29,7 +29,7 @@ struct BldgComponent{
 	float x,y,z;
 	float facing;
 	ubyte[8] unknown2;
-	char[4] unknown3;
+	char[4] destruction;
 }
 static assert(BldgComponent.sizeof==48);
 
