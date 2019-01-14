@@ -837,9 +837,12 @@ void damageStun(B)(ref MovingObject!B object, Vector3f attackDirection, ObjectSt
 }
 
 void catapult(B)(ref MovingObject!B object, Vector3f velocity, ObjectState!B state){
-	with(CreatureMode) if(object.creatureState.mode.among(dying,dead)) return;
+	with(CreatureMode) if(object.creatureState.mode==dead) return;
 	if(object.creatureState.movement==CreatureMovement.flying) return;
-	object.creatureState.mode=CreatureMode.stunned;
+	if(object.creatureState.mode!=CreatureMode.dying)
+		object.creatureState.mode=CreatureMode.stunned;
+	// TODO: in original engine, stunned creatures don't switch to the tumbling animation
+	// TODO: in original engine, dying creatures don't switch to the tumbling animation
 	object.creatureState.movement=CreatureMovement.tumbling;
 	object.creatureState.fallingVelocity=velocity;
 	object.setCreatureState(state);
