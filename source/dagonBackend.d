@@ -317,6 +317,8 @@ final class SacScene: Scene{
 						}
 					}
 				}
+			}else static if(is(T==Buildings!DagonBackend)){
+				// do nothing
 			}else static assert(0);
 		}
 		state.current.eachByType!render(options.enableWidgets,this,rc);

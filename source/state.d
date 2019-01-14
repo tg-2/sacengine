@@ -3,7 +3,7 @@ import std.container.array: Array;
 import std.exception, std.stdio, std.conv;
 import dlib.math, std.math;
 import std.typecons;
-import ntts, nttData;
+import ntts, nttData, bldg;
 import sacmap, sacobject, animations;
 import stats;
 import util,options;
@@ -147,6 +147,23 @@ bool isRegenerating(B)(ref MovingObject!B object){
 struct StaticObject(B){
 	SacObject!B sacObject;
 	int id=0;
+	int buildingId=0;
+	Vector3f position;
+	Quaternionf rotation;
+	this(SacObject!B sacObject,int buildingId,Vector3f position,Quaternionf rotation){
+		this.sacObject=sacObject;
+		this.buildingId=buildingId;
+		this.position=position;
+		this.rotation=rotation;
+	}
+	this(SacObject!B sacObject,int id,int buildingId,Vector3f position,Quaternionf rotation){
+		this.id=id;
+		this(sacObject,buildingId,position,rotation);
+	}
+}
+
+struct FixedObject(B){
+	SacObject!B sacObject;
 	Vector3f position;
 	Quaternionf rotation;
 
@@ -155,11 +172,8 @@ struct StaticObject(B){
 		this.position=position;
 		this.rotation=rotation;
 	}
-	this(SacObject!B sacObject,int id,Vector3f position,Quaternionf rotation){
-		this.id=id;
-		this(sacObject,position,rotation);
-	}
 }
+
 
 enum SoulState{
 	normal,
@@ -195,26 +209,34 @@ struct Soul(B){
 	}
 }
 
-
-struct FixedObject(B){
-	SacObject!B sacObject;
-	Vector3f position;
-	Quaternionf rotation;
-
-	this(SacObject!B sacObject,Vector3f position,Quaternionf rotation){
-		this.sacObject=sacObject;
-		this.position=position;
-		this.rotation=rotation;
+struct Building(B){
+	immutable(Bldg)* bldg;
+	int id=0;
+	Array!int componentIds;
+	float health=0.0f;
+	enum regeneration=80.0f;
+	enum meleeResistance=1.5f;
+	enum directSpellResistance=1.0f;
+	enum splashSpellResistance=1.0f;
+	enum directRangedResistance=1.0f;
+	enum splashRangedResistance=1.0f;
+	this(immutable(Bldg)* bldg){
+		this.bldg=bldg;
+		this.health=bldg.maxHealth;
+	}
+	this(immutable(Bldg)* bldg,int id){
+		this.id=id;
+		this(bldg);
+	}
+	void opAssign(ref Building!B rhs){
+		this.bldg=rhs.bldg;
+		this.id=rhs.id;
+		assignArray(componentIds,rhs.componentIds);
+		health=rhs.health;
 	}
 }
-
-void assignArray(T)(ref Array!T to, ref Array!T from){
-	to.length=from.length;
-	foreach(i;0..from.length){ // TODO: this is slow!
-		static if(is(T:Array!S,S))
-			assignArray(to[i],from[i]);
-		else to[i]=from[i];
-	}
+int maxHealth(B)(ref Building!B building,ObjectState!B state){
+	return building.bldg.maxHealth;
 }
 
 struct MovingObjects(B,RenderMode mode){
@@ -264,6 +286,7 @@ struct MovingObjects(B,RenderMode mode){
 		soulIds~=object.soulId;
 	}
 	void removeObject(int index, ObjectManager!B manager){
+		manager.ids[ids[index]-1]=Id.init;
 		if(length>1){
 			this[index]=this[length-1];
 			manager.ids[ids[index]-1].index=index;
@@ -313,12 +336,14 @@ struct StaticObjects(B){
 	enum renderMode=RenderMode.opaque;
 	SacObject!B sacObject;
 	Array!int ids;
+	Array!int buildingIds;
 	Array!Vector3f positions;
 	Array!Quaternionf rotations;
 
 	@property int length(){ assert(ids.length<=int.max); return cast(int)ids.length; }
 	@property void length(int l){
 		ids.length=l;
+		buildingIds.length=l;
 		positions.length=l;
 		rotations.length=l;
 	}
@@ -326,10 +351,12 @@ struct StaticObjects(B){
 		assert(object.id!=0);
 	}do{
 		ids~=object.id;
+		buildingIds~=object.buildingId;
 		positions~=object.position;
 		rotations~=object.rotation;
 	}
 	void removeObject(int index, ObjectManager!B manager){
+		manager.ids[ids[index]-1]=Id.init;
 		if(length>1){
 			this[index]=this[length-1];
 			manager.ids[ids[index]-1].index=index;
@@ -340,15 +367,17 @@ struct StaticObjects(B){
 		assert(sacObject is null || sacObject is rhs.sacObject);
 		sacObject=rhs.sacObject;
 		assignArray(ids,rhs.ids);
+		assignArray(buildingIds,rhs.buildingIds);
 		assignArray(positions,rhs.positions);
 		assignArray(rotations,rhs.rotations);
 	}
 	StaticObject!B opIndex(int i){
-		return StaticObject!B(sacObject,ids[i],positions[i],rotations[i]);
+		return StaticObject!B(sacObject,ids[i],buildingIds[i],positions[i],rotations[i]);
 	}
 	void opIndexAssign(StaticObject!B obj,int i){
 		assert(sacObject is obj.sacObject);
-		assert(ids[i]==obj.id);
+		ids[i]=obj.id;
+		buildingIds[i]=obj.buildingId;
 		positions[i]=obj.position;
 		rotations[i]=obj.rotation;
 	}
@@ -356,41 +385,6 @@ struct StaticObjects(B){
 auto each(alias f,B,T...)(ref StaticObjects!B staticObjects,T args){
 	foreach(i;0..staticObjects.length)
 		f(staticObjects[i],args);
-}
-
-struct Souls(B){
-	Array!(Soul!B) souls;
-	@property int length(){ return cast(int)souls.length; }
-	@property void length(int l){ souls.length=l; }
-	void addObject(Soul!B soul){
-		souls~=soul;
-	}
-	void removeObject(int index, ObjectManager!B manager){
-		if(length>1){
-			this[index]=this[length-1];
-			manager.ids[souls[index].id-1].index=index;
-		}
-		length=length-1;
-	}
-	void opAssign(ref Souls!B rhs){
-		assignArray(souls,rhs.souls);
-	}
-	Soul!B opIndex(int i){
-		return souls[i];
-	}
-	void opIndexAssign(Soul!B soul,int i){
-		souls[i]=soul;
-	}
-}
-auto each(alias f,B,T...)(ref Souls!B souls,T args){
-	foreach(i;0..souls.length){
-		static if(!is(typeof(f(Soul.init,args)))){
-			// TODO: find a better way to check whether argument taken by reference
-			auto soul=souls[i];
-			f(soul,args);
-			souls[i]=soul;
-		}else f(souls[i],args);
-	}
 }
 
 struct FixedObjects(B){
@@ -425,6 +419,80 @@ auto each(alias f,B,T...)(ref FixedObjects!B fixedObjects,T args){
 		f(fixedObjects[i],args);
 }
 
+struct Souls(B){
+	Array!(Soul!B) souls;
+	@property int length(){ return cast(int)souls.length; }
+	@property void length(int l){ souls.length=l; }
+	void addObject(Soul!B soul){
+		souls~=soul;
+	}
+	void removeObject(int index, ObjectManager!B manager){
+		manager.ids[souls[index].id-1]=Id.init;
+		if(length>1){
+			this[index]=this[length-1];
+			manager.ids[souls[index].id-1].index=index;
+		}
+		length=length-1;
+	}
+	void opAssign(ref Souls!B rhs){
+		assignArray(souls,rhs.souls);
+	}
+	Soul!B opIndex(int i){
+		return souls[i];
+	}
+	void opIndexAssign(Soul!B soul,int i){
+		souls[i]=soul;
+	}
+}
+auto each(alias f,B,T...)(ref Souls!B souls,T args){
+	foreach(i;0..souls.length){
+		static if(!is(typeof(f(Soul.init,args)))){
+			// TODO: find a better way to check whether argument taken by reference
+			auto soul=souls[i];
+			f(soul,args);
+			souls[i]=soul;
+		}else f(souls[i],args);
+	}
+}
+
+struct Buildings(B){
+	Array!(Building!B) buildings;
+	@property int length(){ return cast(int)buildings.length; }
+	@property void length(int l){ buildings.length=l; }
+	void addObject(Building!B building){
+		buildings~=building;
+	}
+	void removeObject(int index, ObjectManager!B manager){
+		manager.ids[buildings[index].id-1]=Id.init;
+		if(length>1){
+			this[index]=this[length-1];
+			manager.ids[buildings[index].id-1].index=index;
+		}
+		length=length-1;
+	}
+	void opAssign(ref Buildings!B rhs){
+		buildings.length=rhs.buildings.length;
+		foreach(i;0..buildings.length)
+			buildings[i]=rhs.buildings[i];
+	}
+	Building!B opIndex(int i){
+		return buildings[i];
+	}
+	void opIndexAssign(Building!B building,int i){
+		buildings[i]=building;
+	}
+}
+auto each(alias f,B,T...)(ref Buildings!B buildings,T args){
+	foreach(i;0..buildings.length){
+		static if(!is(typeof(f(Soul.init,args)))){
+			// TODO: find a better way to check whether argument taken by reference
+			auto soul=buildings[i];
+			f(soul,args);
+			buildings[i]=soul;
+		}else f(buildings[i],args);
+	}
+}
+
 
 struct Objects(B,RenderMode mode){
 	Array!(MovingObjects!(B,mode)) movingObjects;
@@ -432,6 +500,7 @@ struct Objects(B,RenderMode mode){
 		Array!(StaticObjects!B) staticObjects;
 		FixedObjects!B[] fixedObjects;
 		Souls!B souls;
+		Buildings!B buildings;
 	}
 	static if(mode==RenderMode.opaque){
 		Id addObject(T)(T object) if(is(T==MovingObject!B)||is(T==StaticObject!B))in{
@@ -476,22 +545,29 @@ struct Objects(B,RenderMode mode){
 			souls.addObject(object);
 			return result;
 		}
+		Id addObject(Building!B object){
+			auto result=Id(mode,ObjectType.building,buildings.length);
+			buildings.addObject(object);
+			return result;
+		}
 		void removeObject(int type, int index, ref ObjectManager!B manager){
 			if(type<numMoving){
 				movingObjects[type].removeObject(index,manager);
 			}else if(type<numMoving+numStatic){
-				staticObjects[type].removeObject(index,manager);
+				staticObjects[type-numMoving].removeObject(index,manager);
 			}else final switch(cast(ObjectType)type){
-				case ObjectType.soul: souls.removeObject(index,manager);
+				case ObjectType.soul: souls.removeObject(index,manager); break;
+				case ObjectType.building: buildings.removeObject(index,manager); break;
 			}
 		}
 	}
 	void opAssign(Objects!(B,mode) rhs){
 		assignArray(movingObjects,rhs.movingObjects);
 		static if(mode == RenderMode.opaque){
-			souls=rhs.souls;
 			assignArray(staticObjects,rhs.staticObjects);
 			fixedObjects=rhs.fixedObjects; // by reference
+			souls=rhs.souls;
+			buildings=rhs.buildings;
 		}
 	}
 }
@@ -514,8 +590,11 @@ auto eachMoving(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T a
 			movingObject.each!f(args);
 	}
 }
-auto eachSoul(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T args){
+auto eachSoul(alias f,B,T...)(ref Objects!(B,RenderMode.opaque) objects,T args){
 	objects.souls.each!f(args);
+}
+auto eachBuilding(alias f,B,T...)(ref Objects!(B,RenderMode.opaque) objects,T args){
+	objects.buildings.each!f(args);
 }
 auto eachByType(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T args){
 	with(objects){
@@ -527,6 +606,7 @@ auto eachByType(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T a
 			foreach(ref fixedObject;fixedObjects)
 				f(fixedObject,args);
 			f(souls,args);
+			f(buildings,args);
 		}
 	}
 }
@@ -535,13 +615,14 @@ enum numMoving=100;
 enum numStatic=300;
 enum ObjectType{
 	soul=numMoving+numStatic,
+	building,
 }
 
 struct ObjectManager(B){
 	Array!Id ids;
 	Objects!(B,RenderMode.opaque) opaqueObjects;
 	Objects!(B,RenderMode.transparent) transparentObjects;
-	int addObject(T)(T object) if(is(T==MovingObject!B)||is(T==Soul!B)||is(T==StaticObject!B))in{
+	int addObject(T)(T object) if(is(T==MovingObject!B)||is(T==StaticObject!B)||is(T==Soul!B)||is(T==Building!B))in{
 		assert(object.id==0);
 	}do{
 		if(ids.length>=int.max) return 0;
@@ -553,6 +634,7 @@ struct ObjectManager(B){
 		assert(0<id && id<=ids.length);
 	}do{
 		auto tid=ids[id-1];
+		if(tid==Id.init) return; // already deleted
 		final switch(tid.mode){
 			case RenderMode.opaque: opaqueObjects.removeObject(tid.type,tid.index,this); break;
 			case RenderMode.transparent: assert(0,"TODO");//transparentObjects.removeObject(tid.type,tid.index);
@@ -584,9 +666,10 @@ auto eachMoving(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
 	}
 }
 auto eachSoul(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
-	with(objectManager){
-		opaqueObjects.eachSoul!f(args);
-	}
+	with(objectManager) opaqueObjects.eachSoul!f(args);
+}
+auto eachBuilding(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
+	with(objectManager) opaqueObjects.eachBuilding!f(args);
 }
 auto eachByType(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
 	with(objectManager){
@@ -598,8 +681,8 @@ auto ref objectById(alias f,B,T...)(ref ObjectManager!B objectManager,int id,T a
 	assert(id>0);
 }do{
 	auto nid=objectManager.ids[id-1];
-	enum byRef=!is(typeof(f(MovingObject.init,args))); // TODO: find a better way to check whether argument taken by reference!
 	if(nid.type<numMoving){
+		enum byRef=!is(typeof(f(MovingObject!B.init,args))); // TODO: find a better way to check whether argument taken by reference!
 		final switch(nid.mode){
 			case RenderMode.opaque:
 				static if(byRef){
@@ -615,7 +698,9 @@ auto ref objectById(alias f,B,T...)(ref ObjectManager!B objectManager,int id,T a
 				}else return f(objectManager.transparentObjects.movingObjects[nid.type][nid.index],args);
 		}
 	}else{
+		enum byRef=!is(typeof(f(StaticObject!B.init,args))); // TODO: find a better way to check whether argument taken by reference!
 		assert(nid.mode==RenderMode.opaque);
+		assert(nid.type<numMoving+numStatic);
 		static if(byRef){
 			auto obj=objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index];
 			scope(success) objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index]=obj;
@@ -623,11 +708,11 @@ auto ref objectById(alias f,B,T...)(ref ObjectManager!B objectManager,int id,T a
 		}else return f(objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index],args);
 	}
 }
-auto ref movingObjectById(alias f,alias nonMoving=(){},B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
+auto ref movingObjectById(alias f,alias nonMoving=(){assert(0);},B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
 	assert(id>0);
 }do{
 	auto nid=objectManager.ids[id-1];
-	enum byRef=!is(typeof(f(MovingObject.init,args))); // TODO: find a better way to check whether argument taken by reference!
+	enum byRef=!is(typeof(f(MovingObject!B.init,args))); // TODO: find a better way to check whether argument taken by reference!
 	if(nid.type<numMoving){
 		final switch(nid.mode){ // TODO: get rid of code duplication
 			case RenderMode.opaque:
@@ -644,6 +729,63 @@ auto ref movingObjectById(alias f,alias nonMoving=(){},B,T...)(ref ObjectManager
 				}else return f(objectManager.transparentObjects.movingObjects[nid.type][nid.index],args);
 		}
 	}else return nonMoving();
+}
+auto ref staticObjectById(alias f,alias nonStatic=(){assert(0);},B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
+	assert(id>0);
+}do{
+	auto nid=objectManager.ids[id-1];
+	enum byRef=!is(typeof(f(StaticObject!B.init,args))); // TODO: find a better way to check whether argument taken by reference!
+	if(nid.type<numMoving) return nonStatic();
+	else if(nid.type<numMoving+numStatic){
+		assert(nid.mode==RenderMode.opaque);
+		assert(nid.type<numMoving+numStatic);
+		static if(byRef){
+			auto obj=objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index];
+			scope(success) objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index]=obj;
+			return f(obj,args);
+		}else return f(objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index],args);
+	}else return nonStatic();
+}
+auto ref soulById(alias f,alias noSoul=(){assert(0);})(ref ObjectManager!B objectManager,int id,T args)in{
+	assert(id>0);
+}do{
+	auto nid=objectManager.ids[id-1];
+	if(nid.type!=ObjectType.soul) return noSoul();
+	enum byRef=!is(typeof(f(Soul!B.init,args))); // TODO: find a better way to check whether argument taken by reference!
+	static if(byRef){
+		auto soul=objectManager.opaqueObjects.souls[nid.index];
+		scope(success) objectManager.opaqueObjets.souls[nid.index]=soul;
+		return f(obj,args);
+	}else return f(objectManager.opaqueObjects.souls[nid.index],args);
+}
+auto ref buildingById(alias f,alias noBuilding=(){assert(0);},B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
+	assert(id>0);
+}do{
+	auto nid=objectManager.ids[id-1];
+	if(nid.type!=ObjectType.building) return noBuilding();
+	enum byRef=!is(typeof(f(Building!B.init,args))); // TODO: find a better way to check whether argument taken by reference!
+	static if(byRef){
+		auto building=objectManager.opaqueObjects.buildings[nid.index];
+		scope(success) objectManager.opaqueObjects.buildings[nid.index]=building;
+		return f(building,args);
+	}else return f(objectManager.opaqueObjects.buildings[nid.index],args);
+}
+auto ref buildingByStaticObjectId(alias f,alias nonStatic=(){assert(0);},B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
+	assert(id>0);
+}do{
+	auto nid=objectManager.ids[id-1];
+	enum byRef=!is(typeof(f(StaticObject!B.init,args))); // TODO: find a better way to check whether argument taken by reference!
+	if(nid.type<numMoving) return nonStatic();
+	else if(nid.type<numMoving+numStatic){
+		assert(nid.mode==RenderMode.opaque);
+		assert(nid.type<numMoving+numStatic);
+		static if(byRef){
+			auto obj=objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index];
+			scope(success) objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index]=obj;
+			assert(obj.buildingId);
+			return objectManager.buildingById!(f,nonStatic)(obj.buildingId,args);
+		}else return f(objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index],args);
+	}else return nonStatic();
 }
 
 void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
@@ -812,6 +954,14 @@ void kill(B)(ref MovingObject!B object, ObjectState!B state){
 	object.setCreatureState(state);
 }
 
+void destroy(B)(ref Building!B building, ObjectState!B state){
+	if(building.maxHealth(state)==0.0f) return;
+	state.removeLater(building.id);
+	foreach(id;building.componentIds)
+		state.removeLater(id);
+	// if() // TODO
+}
+
 void spawnSoul(B)(ref MovingObject!B object, ObjectState!B state){
 	with(CreatureMode) if(object.creatureState.mode!=CreatureMode.dead||object.soulId!=0) return;
 	int numSouls=object.sacObject.numSouls;
@@ -943,8 +1093,19 @@ void dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B att
 	attacker.heal(damage*attacker.creatureStats.drain,state);
 }
 
+void dealDamage(B)(ref Building!B building,float damage,ref MovingObject!B attacker,ObjectState!B state){
+	if(building.maxHealth(state)==0.0f) return;
+	building.health-=damage;
+	// TODO: give xp to attacker
+	if(building.health<=0)
+		building.destroy(state);
+}
+
 void heal(B)(ref MovingObject!B object,float amount,ObjectState!B state){
 	object.creatureStats.health=min(object.creatureStats.health+amount,object.creatureStats.maxHealth);
+}
+void heal(B)(ref Building!B building,float amount,ObjectState!B state){
+	building.health=min(building.health+amount,building.maxHealth(state));
 }
 
 void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,ObjectState!B state){
@@ -968,6 +1129,12 @@ void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,Ob
 			object.damageStun(attackDirection,state);
 			break;
 	}
+}
+
+void dealMeleeDamage(B)(ref Building!B building,ref MovingObject!B attacker,ObjectState!B state){
+	auto damage=attacker.meleeStrength;
+	auto actualDamage=damage*building.meleeResistance;
+	building.dealDamage(actualDamage,attacker,state);
 }
 
 
@@ -1143,8 +1310,10 @@ void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 			int target=0;
 			float distance=float.infinity;
 		}
-		static void handleCollision(ProximityEntry entry,CollisionState *collisionState){
+		static void handleCollision(ProximityEntry entry,CollisionState *collisionState,ObjectState!B state){
 			if(entry.id==collisionState.ownId) return;
+			if(state.buildingByStaticObjectId!((ref Building!B building,ObjectState!B state)=>building.maxHealth(state)==0,()=>false)(entry.id,state))
+				return;
 			if(!collisionState.target){
 				collisionState.target=entry.id;
 				return;
@@ -1159,14 +1328,17 @@ void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 		}
 		auto hitbox=object.hitbox,meleeHitbox=object.meleeHitbox;
 		auto collisionState=CollisionState(hitbox,object.id);
-		state.proximity.collide!handleCollision(meleeHitbox,&collisionState);
+		state.proximity.collide!handleCollision(meleeHitbox,&collisionState,state);
 		if(collisionState.target){
 			static void dealDamage(T)(ref T target,MovingObject!B* attacker,ObjectState!B state){
 				static if(is(T==MovingObject!B)){
 					target.dealMeleeDamage(*attacker,state);
-				}else{
-					static assert(is(T==StaticObject!B));
-					// TODO
+				}else static if(is(T==StaticObject!B)){
+					assert(target.buildingId);
+					state.buildingById!((ref Building!B building,MovingObject!B* attacker,ObjectState!B state){
+						building.dealMeleeDamage(*attacker,state);
+						writeln(building.health);
+					})(target.buildingId,attacker,state);
 				}
 			}
 			state.objectById!dealDamage(collisionState.target,&object,state);
@@ -1472,6 +1644,10 @@ void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 	}
 }
 
+void updateBuilding(B)(ref Building!B building, ObjectState!B state){
+	building.heal(building.regeneration/updateFPS,state);
+}
+
 void addToProximity(T,B)(ref T objects, ObjectState!B state){
 	auto proximity=state.proximity;
 	enum isMoving=is(T==MovingObjects!(B, RenderMode.opaque))||is(T==MovingObjects!(B, RenderMode.transparent));
@@ -1493,7 +1669,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 				proximity.insert(ProximityEntry(objects.ids[j],hitbox));
 			}
 		}
-	}else static if(is(T==Souls!B)){
+	}else static if(is(T==Souls!B)||is(T==Buildings!B)){
 		// do nothing
 	}else static assert(is(T==FixedObjects!B));
 }
@@ -1613,16 +1789,28 @@ final class ObjectState(B){ // (update logic)
 		this.eachByType!addToProximity(this);
 		this.eachMoving!updateCreature(this);
 		this.eachSoul!updateSoul(this);
+		this.eachBuilding!updateBuilding(this);
+		this.performRemovals();
 		proximity.end();
 	}
 	ObjectManager!B obj;
-	int addObject(T)(T object) if(is(T==MovingObject!B)||is(T==Soul!B)||is(T==StaticObject!B)){
+	int addObject(T)(T object) if(is(T==MovingObject!B)||is(T==StaticObject!B)||is(T==Soul!B)||is(T==Building!B)){
 		return obj.addObject(object);
 	}
 	void removeObject(int id)in{
 		assert(id!=0);
 	}do{
 		obj.removeObject(id);
+	}
+	Array!int toRemove;
+	void removeLater(int id)in{
+		assert(id!=0);
+	}do{
+		toRemove~=id;
+	}
+	void performRemovals(){
+		foreach(id;toRemove.data) removeObject(id);
+		toRemove.length=0;
 	}
 	void addFixed(FixedObject!B object){
 		obj.addFixed(object);
@@ -1637,6 +1825,9 @@ auto eachMoving(alias f,B,T...)(ObjectState!B objectState,T args){
 auto eachSoul(alias f,B,T...)(ObjectState!B objectState,T args){
 	return objectState.obj.eachSoul!f(args);
 }
+auto eachBuilding(alias f,B,T...)(ObjectState!B objectState,T args){
+	return objectState.obj.eachBuilding!f(args);
+}
 auto eachByType(alias f,B,T...)(ObjectState!B objectState,T args){
 	return objectState.obj.eachByType!f(args);
 }
@@ -1644,9 +1835,22 @@ auto eachByType(alias f,B,T...)(ObjectState!B objectState,T args){
 auto ref objectById(alias f,B,T...)(ObjectState!B objectState,int id,T args){
 	return objectState.obj.objectById!f(id,args);
 }
-auto ref movingObjectById(alias f,alias nonMoving=(){},B,T...)(ObjectState!B objectState,int id,T args){
+auto ref movingObjectById(alias f,alias nonMoving=(){assert(0);},B,T...)(ObjectState!B objectState,int id,T args){
 	return objectState.obj.movingObjectById!(f,nonMoving)(id,args);
 }
+auto ref staticObjectById(alias f,alias nonStatic=(){assert(0);},B,T...)(ObjectState!B objectState,int id,T args){
+	return objectState.obj.staticObjectById!(f,nonStatic)(id,args);
+}
+auto ref soulById(alias f,alias noSoul=(){assert(0);},B,T...)(ObjectState!B objectState,int id,T args){
+	return objectState.obj.soulById!(f,noSoul)(id,args);
+}
+auto ref buildingById(alias f,alias noBuilding=(){assert(0);},B,T...)(ObjectState!B objectState,int id,T args){
+	return objectState.obj.buildingById!(f,noBuilding)(id,args);
+}
+auto ref buildingByStaticObjectId(alias f,alias noStatic=(){assert(0);},B,T...)(ObjectState!B objectState,int id,T args){
+	return objectState.obj.buildingByStaticObjectId!(f,noStatic)(id,args);
+}
+
 
 enum TargetType{
 	floor,
@@ -1705,6 +1909,7 @@ final class GameState(B){
 	void placeStructure(ref Structure ntt){
 		import nttData;
 		auto data=ntt.tag in bldgs;
+		auto buildingId=current.addObject(Building!B(data));
 		enforce(!!data);
 		auto position=Vector3f(ntt.x,ntt.y,ntt.z);
 		auto ci=cast(int)(position.x/10+0.5);
@@ -1721,16 +1926,18 @@ final class GameState(B){
 				}
 			}
 		}
-		foreach(ref component;data.components){
-			auto curObj=SacObject!B.getBLDG(component.tag);
-			auto offset=Vector3f(component.x,component.y,component.z);
-			offset=rotate(facingQuaternion(2*PI/360.0f*ntt.facing), offset);
-			auto cposition=position+offset;
-			if(!current.isOnGround(cposition)) continue;
-			cposition.z=current.getGroundHeight(cposition);
-			auto rotation=facingQuaternion(2*PI/360.0f*(ntt.facing+component.facing));
-			current.addObject(StaticObject!B(curObj,cposition,rotation));
-		}
+		current.buildingById!((ref Building!B building){
+			foreach(ref component;data.components){
+				auto curObj=SacObject!B.getBLDG(component.tag);
+				auto offset=Vector3f(component.x,component.y,component.z);
+				offset=rotate(facingQuaternion(2*PI/360.0f*ntt.facing), offset);
+				auto cposition=position+offset;
+				if(!current.isOnGround(cposition)) continue;
+				cposition.z=current.getGroundHeight(cposition);
+				auto rotation=facingQuaternion(2*PI/360.0f*(ntt.facing+component.facing));
+				building.componentIds~=current.addObject(StaticObject!B(curObj,building.id,cposition,rotation));
+			}
+		})(buildingId);
 	}
 
 	void placeNTT(T)(ref T ntt) if(is(T==Creature)||is(T==Wizard)){

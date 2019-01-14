@@ -117,5 +117,15 @@ T[] data(T)(ref Array!T array){
 
 void assignArray(T)(ref Array!T to, ref Array!T from){
 	to.length=from.length;
+	foreach(i;0..from.length){ // TODO: this is slow!
+		static if(is(T:Array!S,S)) // TODO: wrap array with different opAssign?
+			assignArray(to[i],from[i]);
+		else to[i]=from[i];
+	}
+}
+/+ // TODO: use this for structs that are not arrays and have no opAssign
+void assignArray(T)(ref Array!T to, ref Array!T from){
+	to.length=from.length;
 	to.data[]=from.data[];
 }
++/
