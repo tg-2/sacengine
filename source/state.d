@@ -1020,10 +1020,15 @@ void immediateResurrect(B)(ref MovingObject!B object,ObjectState!B state){
 }
 
 void startFlying(B)(ref MovingObject!B object,ObjectState!B state){
-	with(CreatureMode)
+	with(CreatureMode){
+		if(object.creatureState.mode==landing){
+			object.startIdling(state);
+			return;
+		}
 		if(!object.sacObject.canFly||!object.creatureState.mode.among(idle,moving)||
 		   object.creatureState.movement!=CreatureMovement.onGround)
 			return;
+	}
 	object.creatureState.mode=CreatureMode.takeoff;
 	object.setCreatureState(state);
 }
