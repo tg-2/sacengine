@@ -956,10 +956,20 @@ void kill(B)(ref MovingObject!B object, ObjectState!B state){
 
 void destroy(B)(ref Building!B building, ObjectState!B state){
 	if(building.maxHealth(state)==0.0f) return;
-	state.removeLater(building.id);
-	foreach(id;building.componentIds)
+	int newLength=0;
+	foreach(i,id;building.componentIds.data){
 		state.removeLater(id);
-	// if() // TODO
+		auto destroyed=building.bldg.components[i].destroyed;
+		if(destroyed!="\0\0\0\0"){
+			auto destObj=SacObject!B.getBLDG(destroyed);
+			state.staticObjectById!((ref StaticObject!B object){
+				building.componentIds[newLength++]=state.addObject(StaticObject!B(destObj,building.id,object.position,object.rotation));
+			})(id);
+		}
+	}
+	building.componentIds.length=newLength;
+	if(newLength==0)
+		state.removeLater(building.id);
 }
 
 void spawnSoul(B)(ref MovingObject!B object, ObjectState!B state){
@@ -1516,6 +1526,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			case CreatureMovement.onGround:
 				break;
 			case CreatureMovement.flying:
+				if(object.creatureState.mode==CreatureMode.landing) break;
 				cand=hitbox[1].z-entry.hitbox[0].z;
 				if(cand<minOverlap){
 					minOverlap=cand;
@@ -1850,6 +1861,7 @@ auto ref buildingByStaticObjectId(alias f,alias noStatic=(){assert(0);},B,T...)(
 	return objectState.obj.buildingByStaticObjectId!(f,noStatic)(id,args);
 }
 
+//void addBuilding(immutable(Bldg)* data,
 
 enum TargetType{
 	floor,
@@ -1908,8 +1920,8 @@ final class GameState(B){
 	void placeStructure(ref Structure ntt){
 		import nttData;
 		auto data=ntt.tag in bldgs;
-		auto buildingId=current.addObject(Building!B(data));
 		enforce(!!data);
+		auto buildingId=current.addObject(Building!B(data));
 		auto position=Vector3f(ntt.x,ntt.y,ntt.z);
 		auto ci=cast(int)(position.x/10+0.5);
 		auto cj=cast(int)(position.y/10+0.5);
@@ -1926,8 +1938,10 @@ final class GameState(B){
 			}
 		}
 		current.buildingById!((ref Building!B building){
+			if(ntt.flags&Flags.damaged) building.health/=10.0f;
+			if(ntt.flags&Flags.destroyed) building.health=0.0f;
 			foreach(ref component;data.components){
-				auto curObj=SacObject!B.getBLDG(component.tag);
+				auto curObj=SacObject!B.getBLDG(ntt.flags&Flags.destroyed&&component.destroyed!="\0\0\0\0"?component.destroyed:component.tag);
 				auto offset=Vector3f(component.x,component.y,component.z);
 				offset=rotate(facingQuaternion(2*PI/360.0f*ntt.facing), offset);
 				auto cposition=position+offset;
