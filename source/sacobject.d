@@ -197,13 +197,13 @@ final class SacObject(B){
 		auto width=hbox[1].x-hbox[0].x;
 		auto depth=hbox[1].y-hbox[0].y;
 		auto height=hbox[1].z-hbox[0].z;
-		auto size=0.25*(width+height);
+		auto size=0.25f*(width+depth);
 		auto hitboxCenter=size*rotate(rotation,Vector3f(0.0f,1.0f,0.0f));
 		if(tag=="raeb") hitboxCenter*=3.0f;
 		else if(tag=="elab") hitboxCenter*=2.0f;
 		else hitboxCenter*=1.3f;
 		hitboxCenter+=center;
-		auto hitboxDimensions=Vector3f(size,size,height)*1.5f;
+		auto hitboxDimensions=Vector3f(width,depth,height*1.5f);
 		return [hitboxCenter-0.5f*hitboxDimensions,hitboxCenter+0.5f*hitboxDimensions];
 	}
 
