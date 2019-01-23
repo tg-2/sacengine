@@ -144,6 +144,10 @@ bool isRegenerating(B)(ref MovingObject!B object){
 	return object.creatureState.mode==CreatureMode.idle||object.sacObject.continuousRegeneration;
 }
 
+bool isDamaged(B)(ref MovingObject!B object){
+	return object.creatureStats.health<=0.25f*object.creatureStats.maxHealth;
+}
+
 struct StaticObject(B){
 	SacObject!B sacObject;
 	int id=0;
@@ -792,8 +796,13 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 	auto sacObject=object.sacObject;
 	final switch(object.creatureState.mode){
 		case CreatureMode.idle:
+			bool isDamaged=object.isDamaged;
 			if(object.creatureState.movement!=CreatureMovement.flying) object.frame=0;
-			if(object.frame==0) object.animationState=AnimationState.stance1; // TODO: check health, maybe put stance2
+			if(object.frame==0){
+				if(isDamaged&&sacObject.hasAnimationState(AnimationState.stance2))
+					object.animationState=AnimationState.stance2;
+				else object.animationState=AnimationState.stance1;
+			}
 			if(sacObject.mustFly) object.creatureState.movement=CreatureMovement.flying;
 			final switch(object.creatureState.movement){
 				case CreatureMovement.onGround:
@@ -811,11 +820,19 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 				goto case CreatureMode.stunned;
 			if(object.frame==0&&!state.uniform(5)){ // TODO: figure out the original rule for this
 				with(AnimationState) if(sacObject.mustFly){
-					static immutable idleCandidatesFlying=[hover,idle0,idle1,idle2,idle3]; // TODO: probably idleness animations depend on health
-					object.pickRandomAnimation(idleCandidatesFlying,state);
+					if(isDamaged&&sacObject.hasAnimationState(idle2)){
+						object.animationState=idle2;
+					}else{
+						static immutable idleCandidatesFlying=[hover,idle0,idle1,idle3]; // TODO: maybe idle3 has a special precondition, like idle2?
+						object.pickRandomAnimation(idleCandidatesFlying,state);
+					}
 				}else if(object.creatureState.movement==CreatureMovement.onGround){
-					static immutable idleCandidatesOnGround=[idle0,idle1,idle2,idle3]; // TODO: probably idleness animations depend on health
-					object.pickRandomAnimation(idleCandidatesOnGround,state);
+					if(isDamaged&&sacObject.hasAnimationState(idle2)){
+						object.animationState=idle2;
+					}else{
+						static immutable idleCandidatesOnGround=[idle0,idle1,idle3]; // TODO: maybe idle3 has a special precondition, like idle2 ?
+						object.pickRandomAnimation(idleCandidatesOnGround,state);
+					}
 				}
 			}
 			break;
