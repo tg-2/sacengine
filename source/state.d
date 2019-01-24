@@ -1145,9 +1145,11 @@ void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,Ob
 	auto actualDamage=damage*object.creatureStats.meleeResistance;
 	auto attackDirection=object.center-attacker.center; // TODO: good?
 	auto stunBehavior=attacker.stunBehavior;
-	bool fromBehind=getDamageDirection(object,attackDirection,state)==DamageDirection.back;
-	if(fromBehind) actualDamage*=1.8f;
-	if(actualDamage==0.0f) return;
+	auto direction=getDamageDirection(object,attackDirection,state);
+	bool fromBehind=direction==DamageDirection.back;
+	bool fromSide=!!direction.among(DamageDirection.left,DamageDirection.right);
+	if(fromBehind) actualDamage*=2.0f;
+	else if(fromSide) actualDamage*=1.5f;
 	object.dealDamage(actualDamage,attacker,state);
 	if(stunBehavior==StunBehavior.always || fromBehind && stunBehavior==StunBehavior.fromBehind){
 		object.damageStun(attackDirection,state);
@@ -1165,7 +1167,7 @@ void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,Ob
 
 void dealMeleeDamage(B)(ref Building!B building,ref MovingObject!B attacker,ObjectState!B state){
 	auto damage=attacker.meleeStrength;
-	auto actualDamage=damage*building.meleeResistance*attacker.sacObject.buildingMeleeDamageMultiplier;
+	auto actualDamage=damage*building.meleeResistance*attacker.sacObject.buildingMeleeDamageMultiplier/attacker.numAttackTicks(attacker.animationState);
 	building.dealDamage(actualDamage,attacker,state);
 }
 
