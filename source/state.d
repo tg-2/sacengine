@@ -27,6 +27,7 @@ enum CreatureMode{
 	moving,
 	dying,
 	dead,
+	reviving,
 	takeoff,
 	landing,
 	meleeMoving,
@@ -750,7 +751,7 @@ auto ref staticObjectById(alias f,alias nonStatic=(){assert(0);},B,T...)(ref Obj
 		}else return f(objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index],args);
 	}else return nonStatic();
 }
-auto ref soulById(alias f,alias noSoul=(){assert(0);})(ref ObjectManager!B objectManager,int id,T args)in{
+auto ref soulById(alias f,alias noSoul=(){assert(0);},B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
 	assert(id>0);
 }do{
 	auto nid=objectManager.ids[id-1];
@@ -758,8 +759,8 @@ auto ref soulById(alias f,alias noSoul=(){assert(0);})(ref ObjectManager!B objec
 	enum byRef=!is(typeof(f(Soul!B.init,args))); // TODO: find a better way to check whether argument taken by reference!
 	static if(byRef){
 		auto soul=objectManager.opaqueObjects.souls[nid.index];
-		scope(success) objectManager.opaqueObjets.souls[nid.index]=soul;
-		return f(obj,args);
+		scope(success) objectManager.opaqueObjects.souls[nid.index]=soul;
+		return f(soul,args);
 	}else return f(objectManager.opaqueObjects.souls[nid.index],args);
 }
 auto ref buildingById(alias f,alias noBuilding=(){assert(0);},B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
@@ -883,6 +884,9 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 				object.animationState=AnimationState.hitFloor;
 			object.frame=sacObject.numFrames(object.animationState)*updateAnimFactor-1;
 			break;
+		case CreatureMode.reviving:
+			assert(object.frame==sacObject.numFrames(object.animationState)*updateAnimFactor-1);
+			break;
 		case CreatureMode.takeoff:
 			assert(sacObject.canFly && object.creatureState.movement==CreatureMovement.onGround);
 			if(!sacObject.hasAnimationState(AnimationState.takeoff)){
@@ -956,15 +960,24 @@ void pickRandomAnimation(B)(ref MovingObject!B object,immutable(AnimationState)[
 	object.animationState=filtered.drop(state.uniform(len)).front;
 }
 
+bool pickNextAnimation(B)(ref MovingObject!B object,immutable(AnimationState)[] sequence,ObjectState!B state){
+	auto filtered=sequence.filter!(x=>object.sacObject.hasAnimationState(x)).find!(x=>x==object.animationState);
+	if(filtered.empty) return false;
+	filtered.popFront();
+	if(filtered.empty) return false;
+	object.animationState=filtered.front;
+	return true;
+}
+
 void startIdling(B)(ref MovingObject!B object, ObjectState!B state){
-	if(!object.creatureState.mode.among(CreatureMode.moving,CreatureMode.takeoff,CreatureMode.landing,CreatureMode.meleeMoving,CreatureMode.meleeAttacking,CreatureMode.stunned))
+	if(!object.creatureState.mode.among(CreatureMode.moving,CreatureMode.reviving,CreatureMode.takeoff,CreatureMode.landing,CreatureMode.meleeMoving,CreatureMode.meleeAttacking,CreatureMode.stunned))
 		return;
 	object.creatureState.mode=CreatureMode.idle;
 	object.setCreatureState(state);
 }
 
 void kill(B)(ref MovingObject!B object, ObjectState!B state){
-	with(CreatureMode) if(object.creatureState.mode.among(dying,dead)) return;
+	with(CreatureMode) if(object.creatureState.mode.among(dying,dead,reviving)) return;
 	if(!object.sacObject.canDie()) return;
 	object.creatureStats.health=0.0f;
 	object.creatureState.mode=CreatureMode.dying;
@@ -1004,12 +1017,12 @@ void createSoul(B)(ref MovingObject!B object, ObjectState!B state){
 }
 
 void stun(B)(ref MovingObject!B object, ObjectState!B state){
-	with(CreatureMode) if(object.creatureState.mode.among(dying,dead,stunned)) return;
+	with(CreatureMode) if(!object.creatureState.mode.among(idle,moving,takeoff,landing,meleeMoving,meleeAttacking)) return;
 	object.creatureState.mode=CreatureMode.stunned;
 	object.setCreatureState(state);
 }
 void damageStun(B)(ref MovingObject!B object, Vector3f attackDirection, ObjectState!B state){
-	with(CreatureMode) if(object.creatureState.mode.among(dying,dead,stunned)) return;
+	with(CreatureMode) if(!object.creatureState.mode.among(idle,moving,takeoff,landing,meleeMoving,meleeAttacking)) return;
 	object.creatureState.mode=CreatureMode.stunned;
 	object.setCreatureState(state);
 	object.damageAnimation(attackDirection,state,false);
@@ -1027,7 +1040,7 @@ void catapult(B)(ref MovingObject!B object, Vector3f velocity, ObjectState!B sta
 	object.setCreatureState(state);
 }
 
-void immediateResurrect(B)(ref MovingObject!B object,ObjectState!B state){
+void immediateRevive(B)(ref MovingObject!B object,ObjectState!B state){
 	with(CreatureMode) if(!object.creatureState.mode.among(dying,dead)) return;
 	if(object.soulId!=0){
 		state.removeObject(object.soulId);
@@ -1035,6 +1048,22 @@ void immediateResurrect(B)(ref MovingObject!B object,ObjectState!B state){
 	}
 	object.creatureStats.health=object.creatureStats.maxHealth;
 	object.creatureState.mode=CreatureMode.idle;
+	object.setCreatureState(state);
+}
+
+void revive(B)(ref MovingObject!B object,ObjectState!B state){
+	with(CreatureMode) if(object.creatureState.mode!=dead) return;
+	if(object.soulId==0) return;
+	if(!state.soulById!((ref Soul!B s){
+		if(s.state.among(SoulState.normal,SoulState.emerging)){
+			s.state=SoulState.reviving;
+			return true;
+		}
+		return false;
+	},()=>false)(object.soulId))
+		return;
+	object.creatureStats.health=object.creatureStats.maxHealth;
+	object.creatureState.mode=CreatureMode.reviving;
 	object.setCreatureState(state);
 }
 
@@ -1266,6 +1295,29 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 		case CreatureMode.dead:
 			with(AnimationState) assert(object.animationState.among(hitFloor,death0,death1,death2));
 			assert(object.frame==sacObject.numFrames(object.animationState)*updateAnimFactor-1);
+			break;
+		case CreatureMode.reviving:
+			// TODO: figure out how the revive sequence works in detail
+			static immutable reviveSequence=[AnimationState.corpse,AnimationState.float_];
+			if(object.soulId){
+				if(state.soulById!((Soul!B s)=>s.scaling==0.0f,()=>false)(object.soulId)){
+					state.removeLater(object.soulId);
+					object.soulId=0;
+					object.frame=0;
+					object.animationState=AnimationState.corpse;
+					if(!object.sacObject.hasAnimationState(AnimationState.corpse)){
+						if(!object.pickNextAnimation(reviveSequence,state))
+						   object.startIdling(state);
+					}
+				}
+			}else{
+				object.frame+=1;
+				if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
+					object.frame=0;
+					if(!object.pickNextAnimation(reviveSequence,state))
+						object.startIdling(state);
+				}
+			}
 			break;
 		case CreatureMode.takeoff:
 			assert(object.sacObject.canFly);

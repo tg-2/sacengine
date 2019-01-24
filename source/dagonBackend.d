@@ -531,7 +531,8 @@ final class SacScene: Scene{
 			object.catapult(velocity,state);
 		}
 		if(eventManager.keyPressed[KEY_W]) state.current.eachMoving!catapultRandomly(state.current);
-		if(eventManager.keyPressed[KEY_RETURN]) state.current.eachMoving!immediateResurrect(state.current);
+		if(eventManager.keyPressed[KEY_RETURN]) state.current.eachMoving!immediateRevive(state.current);
+		if(eventManager.keyPressed[KEY_BACKSPACE]) state.current.eachMoving!revive(state.current);
 		if(eventManager.keyPressed[KEY_G]) state.current.eachMoving!startFlying(state.current);
 		if(eventManager.keyPressed[KEY_V]) state.current.eachMoving!land(state.current);
 		if(eventManager.keyPressed[KEY_SPACE]) state.current.eachMoving!startMeleeAttacking(state.current);
