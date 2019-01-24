@@ -1146,7 +1146,7 @@ void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,Ob
 	auto attackDirection=object.center-attacker.center; // TODO: good?
 	auto stunBehavior=attacker.stunBehavior;
 	bool fromBehind=getDamageDirection(object,attackDirection,state)==DamageDirection.back;
-	if(fromBehind) actualDamage*=2.0f;
+	if(fromBehind) actualDamage*=1.8f;
 	if(actualDamage==0.0f) return;
 	object.dealDamage(actualDamage,attacker,state);
 	if(stunBehavior==StunBehavior.always || fromBehind && stunBehavior==StunBehavior.fromBehind){
