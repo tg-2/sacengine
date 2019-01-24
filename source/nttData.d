@@ -623,6 +623,7 @@ CreatureData stormGiant={
 	tag: "rgos",
 	name: "Storm Giant",
 	stunBehavior: StunBehavior.fromBehind,
+	buildingMeleeDamageMultiplier: 0.5f,
 };
 
 CreatureData styx={
