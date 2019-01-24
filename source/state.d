@@ -1009,7 +1009,9 @@ void stun(B)(ref MovingObject!B object, ObjectState!B state){
 	object.setCreatureState(state);
 }
 void damageStun(B)(ref MovingObject!B object, Vector3f attackDirection, ObjectState!B state){
-	object.stun(state);
+	with(CreatureMode) if(object.creatureState.mode.among(dying,dead,stunned)) return;
+	object.creatureState.mode=CreatureMode.stunned;
+	object.setCreatureState(state);
 	object.damageAnimation(attackDirection,state,false);
 }
 
@@ -1652,7 +1654,7 @@ void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 			// TODO: add soul collecting
 			break;
 		case SoulState.emerging:
-			soul.scaling+=0.25f/updateFPS;
+			soul.scaling+=(1.0f/3.0f)/updateFPS;
 			if(soul.scaling>=1.0f){
 				soul.scaling=1.0f;
 				soul.state=SoulState.normal;
