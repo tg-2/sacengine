@@ -214,10 +214,17 @@ struct Soul(B){
 	}
 }
 
+enum BuildingFlags{
+	none=0,
+}
+
 struct Building(B){
-	immutable(Bldg)* bldg;
+	immutable(Bldg)* bldg; // TODO: replace by SacBuilding class
 	int id=0;
 	Array!int componentIds;
+	int flags=0;
+	int top=0;
+	int base=0;
 	float health=0.0f;
 	enum regeneration=80.0f;
 	enum meleeResistance=1.5f;
@@ -238,10 +245,49 @@ struct Building(B){
 		this.id=rhs.id;
 		assignArray(componentIds,rhs.componentIds);
 		health=rhs.health;
+		flags=rhs.flags;
+		top=rhs.top;
+		base=rhs.base;
 	}
 }
 int maxHealth(B)(ref Building!B building,ObjectState!B state){
 	return building.bldg.maxHealth;
+}
+bool isManafount(immutable(Bldg)* bldg){ // TODO: store in SacBuilding class
+	return bldg.header.numComponents==1&&manafountTags.canFind(bldg.components[0].tag);
+}
+bool isManafount(B)(ref Building!B building){
+	return building.bldg.isManafount;
+}
+void putOnManafount(B)(ref Building!B building,ref Building!B manafount,ObjectState!B state)in{
+	assert(manafount.isManafount);
+	assert(manafount.top==0 && building.base==0);
+}do{
+	manafount.top=building.id;
+	building.base=manafount.id;
+}
+void freeManafount(B)(ref Building!B manafount,ObjectState!B state)in{
+	assert(manafount.isManafount);
+	assert(manafount.top!=0);
+}do{
+	state.buildingById!((ref obj){ assert(obj.base==manafount.id); obj.base=0; })(manafount.top);
+	manafount.top=0;
+}
+
+
+struct Particle(B){
+	SacParticle!B sacParticle;
+	Vector3f position;
+	Vector3f velocity;
+	int lifetime;
+	int frame;
+	this(SacParticle!B sacParticle,Vector3f position,Vector3f velocity,int lifetime,int frame){
+		this.sacParticle=sacParticle;
+		this.position=position;
+		this.velocity=velocity;
+		this.lifetime=lifetime;
+		this.frame=frame;
+	}
 }
 
 struct MovingObjects(B,RenderMode mode){
@@ -498,6 +544,56 @@ auto each(alias f,B,T...)(ref Buildings!B buildings,T args){
 	}
 }
 
+struct Particles(B){
+	SacParticle!B sacParticle;
+	Array!Vector3f positions;
+	Array!Vector3f velocities;
+	Array!int lifetimes;
+	Array!int frames;
+	@property int length(){ assert(positions.length<=int.max); return cast(int)positions.length; }
+	@property void length(int l){
+		positions.length=l;
+		velocities.length=l;
+		lifetimes.length=l;
+		frames.length=l;
+	}
+	void reserve(int reserveSize){
+		positions.reserve(reserveSize);
+		velocities.reserve(reserveSize);
+		lifetimes.reserve(reserveSize);
+		frames.reserve(reserveSize);
+	}
+	void addParticle(Particle!B particle){
+		assert(sacParticle is null || sacParticle is particle.sacParticle);
+		sacParticle=particle.sacParticle; // TODO: get rid of this?
+		positions~=particle.position;
+		velocities~=particle.velocity;
+		lifetimes~=particle.lifetime;
+		frames~=particle.frame;
+	}
+	void removeParticle(int index){
+		if(length>1) this[index]=this[length-1];
+		length=length-1;
+	}
+	void opAssign(ref Particles!B rhs){
+		assert(sacParticle is null || sacParticle is rhs.sacParticle);
+		sacParticle = rhs.sacParticle;
+		assignArray(positions,rhs.positions);
+		assignArray(velocities,rhs.velocities);
+		assignArray(lifetimes,rhs.lifetimes);
+		assignArray(frames,rhs.frames);
+	}
+	Particle!B opIndex(int i){
+		return Particle!B(sacParticle,positions[i],velocities[i],lifetimes[i],frames[i]);
+	}
+	void opIndexAssign(Particle!B particle,int i){
+		assert(particle.sacParticle is sacParticle);
+		positions[i]=particle.position;
+		velocities[i]=particle.velocity;
+		lifetimes[i]=particle.lifetime;
+		frames[i]=particle.frame;
+	}
+}
 
 struct Objects(B,RenderMode mode){
 	Array!(MovingObjects!(B,mode)) movingObjects;
@@ -506,6 +602,7 @@ struct Objects(B,RenderMode mode){
 		FixedObjects!B[] fixedObjects;
 		Souls!B souls;
 		Buildings!B buildings;
+		Array!(Particles!B) particles;
 	}
 	static if(mode==RenderMode.opaque){
 		Id addObject(T)(T object) if(is(T==MovingObject!B)||is(T==StaticObject!B))in{
@@ -555,6 +652,11 @@ struct Objects(B,RenderMode mode){
 			buildings.addObject(object);
 			return result;
 		}
+		void addParticle(Particle!B particle){
+			auto type=particle.sacParticle.type;
+			if(particles.length<=type) particles.length=type+1; // TODO: good?
+			particles[type].addParticle(particle);
+		}
 		void removeObject(int type, int index, ref ObjectManager!B manager){
 			if(type<numMoving){
 				movingObjects[type].removeObject(index,manager);
@@ -573,6 +675,7 @@ struct Objects(B,RenderMode mode){
 			fixedObjects=rhs.fixedObjects; // by reference
 			souls=rhs.souls;
 			buildings=rhs.buildings;
+			assignArray(particles,rhs.particles);
 		}
 	}
 }
@@ -601,6 +704,12 @@ auto eachSoul(alias f,B,T...)(ref Objects!(B,RenderMode.opaque) objects,T args){
 auto eachBuilding(alias f,B,T...)(ref Objects!(B,RenderMode.opaque) objects,T args){
 	objects.buildings.each!f(args);
 }
+auto eachParticles(alias f,B,T...)(ref Objects!(B,RenderMode.opaque) objects,T args){
+	with(objects){
+		foreach(ref particle;particles)
+			f(particle,args);
+	}
+}
 auto eachByType(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T args){
 	with(objects){
 		foreach(ref movingObject;movingObjects)
@@ -612,6 +721,8 @@ auto eachByType(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T a
 				f(fixedObject,args);
 			f(souls,args);
 			f(buildings,args);
+			foreach(ref particle;particles)
+				f(particle,args);
 		}
 	}
 }
@@ -651,6 +762,9 @@ struct ObjectManager(B){
 	void addFixed(FixedObject!B object){
 		opaqueObjects.addFixed(object);
 	}
+	void addParticle(Particle!B particle){
+		opaqueObjects.addParticle(particle);
+	}
 
 	void opAssign(ObjectManager!B rhs){
 		assignArray(ids,rhs.ids);
@@ -675,6 +789,9 @@ auto eachSoul(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
 }
 auto eachBuilding(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
 	with(objectManager) opaqueObjects.eachBuilding!f(args);
+}
+auto eachParticles(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
+	with(objectManager) opaqueObjects.eachParticles!f(args);
 }
 auto eachByType(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
 	with(objectManager){
@@ -998,6 +1115,9 @@ void destroy(B)(ref Building!B building, ObjectState!B state){
 		}
 	}
 	building.componentIds.length=newLength;
+	if(building.base){
+		state.buildingById!freeManafount(building.base,state);
+	}
 	if(newLength==0)
 		state.removeLater(building.id);
 }
@@ -1562,7 +1682,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			}
 			break;
 		case CreatureMovement.tumbling:
-			object.creatureState.fallingVelocity.z-=object.creatureStats.fallingAcceleration;
+			object.creatureState.fallingVelocity.z-=object.creatureStats.fallingAcceleration/updateFPS;
 			newPosition=object.position+object.creatureState.fallingVelocity/updateFPS;
 			if(object.creatureState.fallingVelocity.z<=0.0f && state.isOnGround(newPosition))
 				newPosition.z=max(newPosition.z,state.getGroundHeight(newPosition));
@@ -1732,8 +1852,58 @@ void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 	}
 }
 
+void updateParticles(B)(ref Particles!B particles, ObjectState!B state){
+	auto sacParticle=particles.sacParticle;
+	auto gravity=sacParticle.gravity;
+	for(int j=0;j<particles.length;){
+		if(particles.lifetimes[j]<=0){
+			particles.removeParticle(j);
+			continue;
+		}
+		scope(success) j++;
+		particles.lifetimes[j]-=1;
+		particles.frames[j]+=1;
+		if(particles.frames[j]>=sacParticle.numFrames){
+			particles.frames[j]=0;
+		}
+		particles.positions[j]+=particles.velocities[j]/updateFPS;
+		if(gravity) particles.velocities[j].z-=15.0f/updateFPS;
+	}
+}
+
+void animateManafount(B)(Vector3f location, ObjectState!B state){
+	auto sacParticle=SacParticle!B.get(ParticleType.manafount);
+	auto globalAngle=1.5f*2*PI/updateFPS*state.frame;
+	auto globalMagnitude=0.25f;
+	auto globalDisplacement=globalMagnitude*Vector3f(cos(globalAngle),sin(globalAngle),0.0f);
+	auto center=location+globalDisplacement;
+	static assert(updateFPS==60); // TODO: fix
+	foreach(j;0..2){
+		auto displacementAngle=state.uniform(-PI,PI);
+		auto displacementMagnitude=state.uniform(0.0f,0.5f);
+		auto displacement=displacementMagnitude*Vector3f(cos(displacementAngle),sin(displacementAngle),0.0f);
+		foreach(k;0..2){
+			auto position=center+displacement;
+			auto angle=state.uniform(-PI,PI);
+			auto velocity=(20.0f+state.uniform(-5.0f,5.0f))*Vector3f(cos(angle),sin(angle),state.uniform(2.0f,4.0f)).normalized;
+			auto lifetime=cast(int)(sqrt(sacParticle.numFrames*5.0f)*state.uniform(0.0f,1.0f))^^2;
+			auto frame=0;
+			state.addParticle(Particle!B(sacParticle,position,velocity,lifetime,frame));
+		}
+	}
+}
+
 void updateBuilding(B)(ref Building!B building, ObjectState!B state){
 	building.heal(building.regeneration/updateFPS,state);
+	if(building.isManafount && building.top==0){
+		Vector3f getTop(StaticObject!B obj){
+			auto hitbox=obj.sacObject.hitboxes(obj.rotation)[0];
+			auto center=0.5f*(hitbox[0]+hitbox[1]);
+			return obj.position+center+Vector3f(0.0f,0.0f,0.75f);
+		}
+		auto position=state.staticObjectById!(getTop,function Vector3f(){ assert(0); })(building.componentIds[0]);
+		animateManafount(position,state);
+	}
 }
 
 void addToProximity(T,B)(ref T objects, ObjectState!B state){
@@ -1757,7 +1927,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 				proximity.insert(ProximityEntry(objects.ids[j],hitbox));
 			}
 		}
-	}else static if(is(T==Souls!B)||is(T==Buildings!B)){
+	}else static if(is(T==Souls!B)||is(T==Buildings!B)||is(T==Particles!B)){
 		// do nothing
 	}else static assert(is(T==FixedObjects!B));
 }
@@ -1878,6 +2048,7 @@ final class ObjectState(B){ // (update logic)
 		this.eachMoving!updateCreature(this);
 		this.eachSoul!updateSoul(this);
 		this.eachBuilding!updateBuilding(this);
+		this.eachParticles!updateParticles(this);
 		this.performRemovals();
 		proximity.end();
 	}
@@ -1903,6 +2074,9 @@ final class ObjectState(B){ // (update logic)
 	void addFixed(FixedObject!B object){
 		obj.addFixed(object);
 	}
+	void addParticle(Particle!B particle){
+		obj.addParticle(particle);
+	}
 }
 auto each(alias f,B,T...)(ObjectState!B objectState,T args){
 	return objectState.obj.each!f(args);
@@ -1915,6 +2089,9 @@ auto eachSoul(alias f,B,T...)(ObjectState!B objectState,T args){
 }
 auto eachBuilding(alias f,B,T...)(ObjectState!B objectState,T args){
 	return objectState.obj.eachBuilding!f(args);
+}
+auto eachParticles(alias f,B,T...)(ObjectState!B objectState,T args){
+	return objectState.obj.eachParticles!f(args);
 }
 auto eachByType(alias f,B,T...)(ObjectState!B objectState,T args){
 	return objectState.obj.eachByType!f(args);
@@ -1966,10 +2143,20 @@ struct Command{
 	Target target;
 }
 
+final class Triggers(B){
+	int[int] objectIds;
+	void associateId(int triggerId,int objectId)in{
+		assert(triggerId !in objectIds);
+	}do{
+		objectIds[triggerId]=objectId;
+	}
+}
+
 final class GameState(B){
 	ObjectState!B lastCommitted;
 	ObjectState!B current;
 	ObjectState!B next;
+	Triggers!B triggers;
 	Array!(Array!Command) commands;
 	this(SacMap!B map,NTTs ntts,Options options)in{
 		assert(!!map);
@@ -1978,6 +2165,7 @@ final class GameState(B){
 		current=new ObjectState!B(map,proximity);
 		next=new ObjectState!B(map,proximity);
 		lastCommitted=new ObjectState!B(map,proximity);
+		triggers=new Triggers!B();
 		commands.length=1;
 		foreach(ref structure;ntts.structures)
 			placeStructure(structure);
@@ -1999,7 +2187,10 @@ final class GameState(B){
 		import nttData;
 		auto data=ntt.tag in bldgs;
 		enforce(!!data);
-		auto buildingId=current.addObject(Building!B(data));
+		int flags=0; // TODO
+		auto buildingId=current.addObject(Building!B(data,flags));
+		if(ntt.id !in triggers.objectIds) // e.g. for some reason, the two altars on ferry have the same id
+			triggers.associateId(ntt.id,buildingId);
 		auto position=Vector3f(ntt.x,ntt.y,ntt.z);
 		auto ci=cast(int)(position.x/10+0.5);
 		auto cj=cast(int)(position.y/10+0.5);
@@ -2028,6 +2219,10 @@ final class GameState(B){
 				auto rotation=facingQuaternion(2*PI/360.0f*(ntt.facing+component.facing));
 				building.componentIds~=current.addObject(StaticObject!B(curObj,building.id,cposition,rotation));
 			}
+			if(ntt.base){
+				enforce(ntt.base in triggers.objectIds);
+				current.buildingById!((ref manafount,state){ putOnManafount(building,manafount,state); })(triggers.objectIds[ntt.base],current);
+			}
 		})(buildingId);
 	}
 
@@ -2052,7 +2247,8 @@ final class GameState(B){
 			import std.random: uniform;
 			state=cast(AnimationState)uniform(0,64);
 		}while(!curObj.hasAnimationState(state));+/
-		current.addObject(obj);
+		auto id=current.addObject(obj);
+		triggers.associateId(ntt.id,id);
 	}
 	void placeSpirit(ref Spirit spirit){
 		auto position=Vector3f(spirit.x,spirit.y,spirit.z);

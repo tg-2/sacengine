@@ -18,6 +18,7 @@ immutable string[] bldgModlFolders=["joby/joby.WAD!/ethr.FLDR",
                                     "joby/joby.WAD!/ch_a.FLDR"];
 
 immutable char[4][] manalithTags=["amac","namj","anam","amyp","mats"];
+immutable char[4][] manafountTags=["nfcp","tnfj","nfac","nofp","fmts"];
 
 import std.typecons;
 Bldg[char[4]] makeBldgByTag(){

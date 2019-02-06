@@ -22,7 +22,7 @@ struct Structure{
 	uint side;
 	uint unknown1=0;
 	uint id; // 1-based id (0 is nothing)
-	uint basis=0; // for manaliths: id of manafount
+	uint base=0; // for manaliths: id of manafount
 }
 static assert(Structure.sizeof==48);
 

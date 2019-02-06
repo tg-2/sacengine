@@ -319,7 +319,22 @@ final class SacScene: Scene{
 				}
 			}else static if(is(T==Buildings!DagonBackend)){
 				// do nothing
-			}else static assert(0);
+			}else static if(is(T==Particles!DagonBackend)){
+				static if(mode==RenderMode.transparent){
+					if(rc.shadowMode) return; // TODO: particle shadows?
+					auto sacParticle=objects.sacParticle;
+					if(!sacParticle) return; // TODO: get rid of this?
+					auto material=sacParticle.material;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
+					foreach(j;0..objects.length){
+						auto mesh=sacParticle.getMesh(objects.frames[j]/updateAnimFactor); // TODO: do in shader?
+						material.backend.setSpriteTransformationScaled(objects.positions[j],1.0f,rc);
+						material.backend.setAlpha(sacParticle.getAlpha(objects.lifetimes[j]));
+						mesh.render(rc);
+					}
+				}
+			}
 		}
 		state.current.eachByType!render(options.enableWidgets,this,rc);
 	}
@@ -735,6 +750,18 @@ static:
 		mat.energy=20.0f;
 		mat.diffuse=soul.texture;
 		return mat;
+	}
+
+	Material createMaterial(SacParticle!DagonBackend particle){
+		final switch(particle.type){
+			case ParticleType.manafount:
+				auto mat=scene.createMaterial(scene.shadelessMaterialBackend);
+				mat.depthWrite=false;
+				mat.blending=Additive;
+				mat.energy=20.0f;
+				mat.diffuse=particle.texture;
+				return mat;
+		}
 	}
 
 	enum GL_GPU_MEM_INFO_TOTAL_AVAILABLE_MEM_NVX=0x9048;

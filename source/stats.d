@@ -33,7 +33,7 @@ struct CreatureStats{
 	return 2.0f;
 }
 @property float fallingAcceleration(ref CreatureStats stats){
-	return 0.5f;
+	return 30.0f;
 }
 @property float landingSpeed(ref CreatureStats stats){
 	return 0.5f*stats.movementSpeed(true);
