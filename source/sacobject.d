@@ -8,6 +8,7 @@ import std.stdio, std.conv;
 alias Tuple=std.typecons.Tuple;
 
 import std.exception, std.algorithm, std.range, std.math, std.path;
+import state:updateAnimFactor;
 
 enum animFPS=30;
 
@@ -476,15 +477,16 @@ final class SacSoul(B){
 		texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/spir.TXTR"));
 		material=B.createMaterial(this);
 	}
-	enum numFrames=16;
+	enum numFrames=8*updateAnimFactor;
 	B.Mesh getMesh(SoulColor color,int frame){
-		return meshes[(color==SoulColor.red?8:0)+frame/2];
+		return meshes[(color==SoulColor.red?8:0)+frame/updateAnimFactor];
 	}
 }
 
 enum ParticleType{
 	manafount,
 	manalith,
+	shrine,
 }
 
 final class SacParticle(B){
@@ -497,7 +499,7 @@ final class SacParticle(B){
 		final switch(type){
 			case ParticleType.manafount:
 				return true;
-			case ParticleType.manalith:
+			case ParticleType.manalith,ParticleType.shrine:
 				return false;
 		}
 	}
@@ -515,6 +517,10 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/fb_g.TXTR"));
 				meshes=makeSpriteMeshes!B(3,3,width,height);
 				break;
+			case ParticleType.shrine:
+				width=height=4.0f;
+				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/fb_g.TXTR"));
+				meshes=makeSpriteMeshes!B(3,3,width,height);
 		}
 		material=B.createMaterial(this);
 	}
@@ -524,16 +530,16 @@ final class SacParticle(B){
 		return particles[type];
 	}
 	@property int numFrames(){
-		return cast(int)meshes.length*2;
+		return cast(int)meshes.length*updateAnimFactor;
 	}
 	B.Mesh getMesh(int frame){
-		return meshes[frame/2];
+		return meshes[frame/updateAnimFactor];
 	}
 	float getAlpha(int lifetime){
 		final switch(type){
 			case ParticleType.manafount:
 				return min(1.0f,(lifetime/(3.0f*numFrames))^^2);
-			case ParticleType.manalith:
+			case ParticleType.manalith,ParticleType.shrine:
 				return min(0.07f,(lifetime/(4.0f*numFrames))^^2);
 		}
 	}
@@ -543,6 +549,8 @@ final class SacParticle(B){
 				return 1.0f;
 			case ParticleType.manalith:
 				return min(1.0f,lifetime/(4.0f*numFrames));
+			case ParticleType.shrine:
+				return min(1.0f,lifetime/(3.0f*numFrames));
 		}
 	}
 }

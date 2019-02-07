@@ -265,6 +265,18 @@ bool isManalith(immutable(Bldg)* bldg){ // TODO: store in SacBuilding class
 bool isManalith(B)(ref Building!B building){
 	return building.bldg.isManalith;
 }
+bool isShrine(immutable(Bldg)* bldg){ // TODO: store in SacBuilding class
+	return bldg.header.numComponents==1&&shrineTags.canFind(bldg.components[0].tag);
+}
+bool isShrine(B)(ref Building!B building){
+	return building.bldg.isShrine;
+}
+bool isAltar(immutable(Bldg)* bldg){ // TODO: store in SacBuilding class
+	return bldg.header.numComponents>=1&&altarBaseTags.canFind(bldg.components[0].tag);
+}
+bool isAltar(B)(ref Building!B building){
+	return building.bldg.isAltar;
+}
 void putOnManafount(B)(ref Building!B building,ref Building!B manafount,ObjectState!B state)in{
 	assert(manafount.isManafount);
 	assert(manafount.top==0 && building.base==0);
@@ -1901,7 +1913,6 @@ void animateManafount(B)(Vector3f location, ObjectState!B state){
 }
 
 void animateManalith(B)(Vector3f location, ObjectState!B state){
-	//auto sacParticle=SacParticle!B.get(ParticleType.manalith);
 	auto sacParticle=SacParticle!B.get(ParticleType.manalith);
 	auto globalAngle=2*PI/updateFPS*(state.frame+1000*location.x+location.y);
 	auto globalMagnitude=0.5f;
@@ -1915,8 +1926,27 @@ void animateManalith(B)(Vector3f location, ObjectState!B state){
 		auto position=center+displacement;
 		auto angle=state.uniform(-PI,PI);
 		auto velocity=(15.0f+state.uniform(-5.0f,5.0f))*Vector3f(0.0f,0.0f,state.uniform(2.0f,4.0f)).normalized;
-		//auto lifetime=cast(int)(sqrt(sacParticle.numFrames*5.0f-0.25*sacParticle.numFrames*displacement.length)*state.uniform(0.0f,1.0f))^^2;
 		auto lifetime=cast(int)(sacParticle.numFrames*5.0f-0.7*sacParticle.numFrames*displacement.length*state.uniform(0.0f,1.0f)^^2);
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle,position,velocity,lifetime,frame));
+	}
+}
+
+void animateShrine(B)(Vector3f location, ObjectState!B state){
+	auto sacParticle=SacParticle!B.get(ParticleType.shrine);
+	auto globalAngle=2*PI/updateFPS*(state.frame+1000*location.x+location.y);
+	auto globalMagnitude=0.1f;
+	auto globalDisplacement=globalMagnitude*Vector3f(cos(globalAngle),sin(globalAngle),0.0f);
+	auto center=location+globalDisplacement;
+	static assert(updateFPS==60); // TODO: fix
+	foreach(j;0..2){
+		auto displacementAngle=state.uniform(-PI,PI);
+		auto displacementMagnitude=1.0f*state.uniform(0.0f,1.0f)^^2;
+		auto displacement=displacementMagnitude*Vector3f(cos(displacementAngle),sin(displacementAngle),0.0f);
+		auto position=center+displacement;
+		auto angle=state.uniform(-PI,PI);
+		auto velocity=(1.5f+state.uniform(-0.5f,0.5f))*Vector3f(0.0f,0.0f,state.uniform(2.0f,4.0f)).normalized;
+		auto lifetime=cast(int)((sacParticle.numFrames*5.0f)*(1.0f+state.uniform(0.0f,1.0f)^^10));
 		auto frame=0;
 		state.addParticle(Particle!B(sacParticle,position,velocity,lifetime,frame));
 	}
@@ -1926,19 +1956,25 @@ void updateBuilding(B)(ref Building!B building, ObjectState!B state){
 	if(building.componentIds.length==0) return;
 	building.heal(building.regeneration/updateFPS,state);
 	if(building.isManafount && building.top==0){
-		Vector3f getTop(StaticObject!B obj){
+		Vector3f getManafountTop(StaticObject!B obj){
 			auto hitbox=obj.sacObject.hitboxes(obj.rotation)[0];
 			auto center=0.5f*(hitbox[0]+hitbox[1]);
 			return obj.position+center+Vector3f(0.0f,0.0f,0.75f);
 		}
-		auto position=state.staticObjectById!(getTop,function Vector3f(){ assert(0); })(building.componentIds[0]);
+		auto position=state.staticObjectById!(getManafountTop,function Vector3f(){ assert(0); })(building.componentIds[0]);
 		animateManafount(position,state);
 	}else if(building.isManalith){
 		Vector3f getCenter(StaticObject!B obj){
-			return obj.position+Vector3f(0.0f,0.0f,15);
+			return obj.position+Vector3f(0.0f,0.0f,15.0f);
 		}
 		auto position=state.staticObjectById!(getCenter,function Vector3f(){ assert(0); })(building.componentIds[0]);
 		animateManalith(position,state);
+	}else if(building.isShrine||building.isAltar){
+		Vector3f getShrineTop(StaticObject!B obj){
+			return obj.position+Vector3f(0.0f,0.0f,3.0f);
+		}
+		auto position=state.staticObjectById!(getShrineTop,function Vector3f(){ assert(0); })(building.componentIds[0]);
+		animateShrine(position,state);
 	}
 }
 

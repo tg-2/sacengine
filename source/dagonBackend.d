@@ -759,7 +759,7 @@ static:
 
 	Material createMaterial(SacParticle!DagonBackend particle){
 		final switch(particle.type){
-			case ParticleType.manafount, ParticleType.manalith:
+			case ParticleType.manafount, ParticleType.manalith, ParticleType.shrine:
 				auto mat=scene.createMaterial(scene.shadelessMaterialBackend);
 				mat.depthWrite=false;
 				mat.blending=Additive;

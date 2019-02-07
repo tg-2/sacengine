@@ -17,8 +17,14 @@ immutable string[] bldgModlFolders=["joby/joby.WAD!/ethr.FLDR",
                                     "stratmod/SMOD.WAD!/modl.FLDR",
                                     "joby/joby.WAD!/ch_a.FLDR"];
 
-immutable char[4][] manalithTags=["amac","namj","anam","amyp","mats"];
 immutable char[4][] manafountTags=["nfcp","tnfj","nfac","nofp","fmts"];
+immutable char[4][] manalithTags=["amac","namj","anam","amyp","mats"];
+immutable char[4][] shrineTags=["hscp","rhsj","psac","hsyp","rhss"];
+immutable char[4][] altarTags=["1tla","laaj","a_ac","layp","lats",
+                               "_aup","auaj","_auc","auyp","auts"];
+immutable char[4][] altarBaseTags=["abla","tipj","baac","tpyp","tprc",
+                                   "caup",       "bauc",             ];
+
 
 import std.typecons;
 Bldg[char[4]] makeBldgByTag(){
