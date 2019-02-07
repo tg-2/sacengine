@@ -484,6 +484,7 @@ final class SacSoul(B){
 
 enum ParticleType{
 	manafount,
+	manalith,
 }
 
 final class SacParticle(B){
@@ -496,6 +497,8 @@ final class SacParticle(B){
 		final switch(type){
 			case ParticleType.manafount:
 				return true;
+			case ParticleType.manalith:
+				return false;
 		}
 	}
 	private this(ParticleType type){
@@ -505,9 +508,14 @@ final class SacParticle(B){
 			case ParticleType.manafount:
 				width=height=6.0f;
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/elec.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
+			case ParticleType.manalith:
+				width=height=12.0f;
+				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/fb_g.TXTR"));
+				meshes=makeSpriteMeshes!B(3,3,width,height);
 				break;
 		}
-		meshes=makeSpriteMeshes!B(4,4,width,height);
 		material=B.createMaterial(this);
 	}
 	static SacParticle!B[ParticleType.max+1] particles;
@@ -525,6 +533,16 @@ final class SacParticle(B){
 		final switch(type){
 			case ParticleType.manafount:
 				return min(1.0f,(lifetime/(3.0f*numFrames))^^2);
+			case ParticleType.manalith:
+				return min(0.07f,(lifetime/(4.0f*numFrames))^^2);
+		}
+	}
+	float getScale(int lifetime){
+		final switch(type){
+			case ParticleType.manafount:
+				return 1.0f;
+			case ParticleType.manalith:
+				return min(1.0f,lifetime/(4.0f*numFrames));
 		}
 	}
 }

@@ -259,6 +259,12 @@ bool isManafount(immutable(Bldg)* bldg){ // TODO: store in SacBuilding class
 bool isManafount(B)(ref Building!B building){
 	return building.bldg.isManafount;
 }
+bool isManalith(immutable(Bldg)* bldg){ // TODO: store in SacBuilding class
+	return bldg.header.numComponents==1&&manalithTags.canFind(bldg.components[0].tag);
+}
+bool isManalith(B)(ref Building!B building){
+	return building.bldg.isManalith;
+}
 void putOnManafount(B)(ref Building!B building,ref Building!B manafount,ObjectState!B state)in{
 	assert(manafount.isManafount);
 	assert(manafount.top==0 && building.base==0);
@@ -1853,6 +1859,7 @@ void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 }
 
 void updateParticles(B)(ref Particles!B particles, ObjectState!B state){
+	if(!particles.sacParticle) return;
 	auto sacParticle=particles.sacParticle;
 	auto gravity=sacParticle.gravity;
 	for(int j=0;j<particles.length;){
@@ -1873,7 +1880,7 @@ void updateParticles(B)(ref Particles!B particles, ObjectState!B state){
 
 void animateManafount(B)(Vector3f location, ObjectState!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.manafount);
-	auto globalAngle=1.5f*2*PI/updateFPS*state.frame;
+	auto globalAngle=1.5f*2*PI/updateFPS*(state.frame+1000*location.x+location.y);
 	auto globalMagnitude=0.25f;
 	auto globalDisplacement=globalMagnitude*Vector3f(cos(globalAngle),sin(globalAngle),0.0f);
 	auto center=location+globalDisplacement;
@@ -1893,7 +1900,30 @@ void animateManafount(B)(Vector3f location, ObjectState!B state){
 	}
 }
 
+void animateManalith(B)(Vector3f location, ObjectState!B state){
+	//auto sacParticle=SacParticle!B.get(ParticleType.manalith);
+	auto sacParticle=SacParticle!B.get(ParticleType.manalith);
+	auto globalAngle=2*PI/updateFPS*(state.frame+1000*location.x+location.y);
+	auto globalMagnitude=0.5f;
+	auto globalDisplacement=globalMagnitude*Vector3f(cos(globalAngle),sin(globalAngle),0.0f);
+	auto center=location+globalDisplacement;
+	static assert(updateFPS==60); // TODO: fix
+	foreach(j;0..4){
+		auto displacementAngle=state.uniform(-PI,PI);
+		auto displacementMagnitude=3.5f*state.uniform(0.0f,1.0f)^^2;
+		auto displacement=displacementMagnitude*Vector3f(cos(displacementAngle),sin(displacementAngle),0.0f);
+		auto position=center+displacement;
+		auto angle=state.uniform(-PI,PI);
+		auto velocity=(15.0f+state.uniform(-5.0f,5.0f))*Vector3f(0.0f,0.0f,state.uniform(2.0f,4.0f)).normalized;
+		//auto lifetime=cast(int)(sqrt(sacParticle.numFrames*5.0f-0.25*sacParticle.numFrames*displacement.length)*state.uniform(0.0f,1.0f))^^2;
+		auto lifetime=cast(int)(sacParticle.numFrames*5.0f-0.7*sacParticle.numFrames*displacement.length*state.uniform(0.0f,1.0f)^^2);
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle,position,velocity,lifetime,frame));
+	}
+}
+
 void updateBuilding(B)(ref Building!B building, ObjectState!B state){
+	if(building.componentIds.length==0) return;
 	building.heal(building.regeneration/updateFPS,state);
 	if(building.isManafount && building.top==0){
 		Vector3f getTop(StaticObject!B obj){
@@ -1903,6 +1933,12 @@ void updateBuilding(B)(ref Building!B building, ObjectState!B state){
 		}
 		auto position=state.staticObjectById!(getTop,function Vector3f(){ assert(0); })(building.componentIds[0]);
 		animateManafount(position,state);
+	}else if(building.isManalith){
+		Vector3f getCenter(StaticObject!B obj){
+			return obj.position+Vector3f(0.0f,0.0f,15);
+		}
+		auto position=state.staticObjectById!(getCenter,function Vector3f(){ assert(0); })(building.componentIds[0]);
+		animateManalith(position,state);
 	}
 }
 

@@ -334,7 +334,7 @@ final class SacScene: Scene{
 					scope(success) material.unbind(rc);
 					foreach(j;0..objects.length){
 						auto mesh=sacParticle.getMesh(objects.frames[j]/updateAnimFactor); // TODO: do in shader?
-						material.backend.setSpriteTransformationScaled(objects.positions[j],1.0f,rc);
+						material.backend.setSpriteTransformationScaled(objects.positions[j],sacParticle.getScale(objects.lifetimes[j]),rc);
 						material.backend.setAlpha(sacParticle.getAlpha(objects.lifetimes[j]));
 						mesh.render(rc);
 					}
@@ -759,7 +759,7 @@ static:
 
 	Material createMaterial(SacParticle!DagonBackend particle){
 		final switch(particle.type){
-			case ParticleType.manafount:
+			case ParticleType.manafount, ParticleType.manalith:
 				auto mat=scene.createMaterial(scene.shadelessMaterialBackend);
 				mat.depthWrite=false;
 				mat.blending=Additive;
