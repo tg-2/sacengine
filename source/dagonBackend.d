@@ -180,12 +180,13 @@ final class SacScene: Scene{
 		auto env=environment;
 		auto envi=&map.envi;
 		//writeln(envi.sunDirectStrength," ",envi.sunAmbientStrength);
-		env.sunEnergy=10.0f*envi.sunDirectStrength;
+		env.sunEnergy=12.0f*envi.sunDirectStrength;
 		Color4f fixColor(Color4f sacColor){
-			return Color4f(1,1,1,1)*0.2+sacColor*0.8;
+			return Color4f(0,0.3,1,1)*0.2+sacColor*0.8;
 		}
 		//env.ambientConstant = fixColor(Color4f(envi.ambientRed*ambi,envi.ambientGreen*ambi,envi.ambientBlue*ambi,1.0f));
 		auto ambi=envi.sunAmbientStrength;
+		//auto ambi=1.5f*envi.sunAmbientStrength;
 		//env.ambientConstant = fixColor(Color4f(envi.sunColorRed/255.0f*ambi,envi.sunColorGreen/255.0f*ambi,envi.sunColorBlue/255.0f*ambi,1.0f));
 		env.ambientConstant = ambi*Color4f(envi.ambientRed/255.0f,envi.ambientGreen/255.0f,envi.ambientBlue/255.0f,1.0f);
 		env.backgroundColor = Color4f(envi.skyRed/255.0f,envi.skyGreen/255.0f,envi.skyBlue/255.0f,1.0f);
@@ -199,12 +200,14 @@ final class SacScene: Scene{
 		env.sunRotation=rotationBetween(Vector3f(0,0,1),sunDirection);
 		//env.sunColor=fixColor(Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f));
 		//env.sunColor=Color4f(envi.ambientRed/255.0f,envi.ambientGreen/255.0f,envi.ambientBlue/255.0f,1.0f);
+		//env.sunColor=fixColor(Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f));
+		env.sunColor=Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f);
 		// TODO: figure this out
-		if(exp(envi.sunDirectStrength)==float.infinity)
+		/+if(exp(envi.sunDirectStrength)==float.infinity)
 			env.sunColor=Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f);
 		else
 			//env.sunColor=(exp(envi.sunDirectStrength)*Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f)+exp(4*min(10,envi.sunAmbientStrength^^10))*Color4f(envi.ambientRed/255.0f,envi.ambientGreen/255.0f,envi.ambientBlue/255.0f,1.0f))/(exp(envi.sunDirectStrength)+exp(4*min(10,envi.sunAmbientStrength^^10)));
-			env.sunColor=(exp(envi.sunDirectStrength)*Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f)+0.5f*exp(envi.sunAmbientStrength)*Color4f(envi.ambientRed/255.0f,envi.ambientGreen/255.0f,envi.ambientBlue/255.0f,1.0f))/(exp(envi.sunDirectStrength)+0.5f*exp(envi.sunAmbientStrength));
+			env.sunColor=(exp(envi.sunDirectStrength)*Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f)+0.5f*exp(envi.sunAmbientStrength)*Color4f(envi.ambientRed/255.0f,envi.ambientGreen/255.0f,envi.ambientBlue/255.0f,1.0f))/(exp(envi.sunDirectStrength)+0.5f*exp(envi.sunAmbientStrength));+/
 		/+if(envi.sunAmbientStrength>=envi.sunDirectStrength){
 			env.sunColor=(exp(envi.sunDirectStrength)*Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f)+exp(4*envi.sunAmbientStrength)*Color4f(envi.ambientRed/255.0f,envi.ambientGreen/255.0f,envi.ambientBlue/255.0f,1.0f))/(exp(envi.sunDirectStrength)+exp(4*envi.sunAmbientStrength));
 		}else{
@@ -738,7 +741,7 @@ static:
 		auto mat=scene.createMaterial(scene.terrainMaterialBackend);
 		auto specu=map.envi.landscapeSpecularity;
 		mat.specular=Color4f(specu*map.envi.specularityRed/255.0f,specu*map.envi.specularityGreen/255.0f,specu*map.envi.specularityBlue/255.0f);
-		//mat.roughness=1.0f-envi.landscapeGlossiness;
+		//mat.roughness=1.0f-map.envi.landscapeGlossiness;
 		mat.roughness=1.0f;
 		mat.metallic=0.0f;
 		mat.energy=0.05;
