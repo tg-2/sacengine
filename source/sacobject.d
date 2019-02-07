@@ -1,4 +1,4 @@
-import dlib.math;
+import dlib.math, dlib.image.color;
 import util;
 import mrmm, _3dsm, txtr, saxs, sxsk, widg;
 import animations, ntts, nttData, spells, bldg;
@@ -490,10 +490,13 @@ enum ParticleType{
 }
 
 final class SacParticle(B){
+	int stateIndex=-1;
 	B.Mesh[] meshes;
 	B.Texture texture;
 	B.Material material;
 	ParticleType type;
+	Color4f color;
+	float energy=20.0f;
 	float width,height;
 	@property bool gravity(){
 		final switch(type){
@@ -503,8 +506,10 @@ final class SacParticle(B){
 				return false;
 		}
 	}
-	private this(ParticleType type){
+	this(ParticleType type,Color4f color=Color4f(1.0f,1.0f,1.0f,1.0f),float energy=20.0f){
 		this.type=type;
+		this.color=color;
+		this.energy=energy;
 		// TODO: extract soul meshes at all different frames from original game
 		final switch(type){
 			case ParticleType.manafount:

@@ -763,8 +763,9 @@ static:
 				auto mat=scene.createMaterial(scene.shadelessMaterialBackend);
 				mat.depthWrite=false;
 				mat.blending=Additive;
-				mat.energy=20.0f;
+				mat.energy=particle.energy;
 				mat.diffuse=particle.texture;
+				mat.color=particle.color;
 				return mat;
 		}
 	}

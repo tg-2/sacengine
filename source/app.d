@@ -1,6 +1,6 @@
 import options;
 import dagonBackend;
-import ntts, sacobject, sacmap, state;
+import sids, ntts, sacobject, sacmap, state;
 import util;
 import dlib.math;
 import std.string, std.array, std.range, std.algorithm, std.stdio;
@@ -75,8 +75,9 @@ int main(string[] args){
 		if(args[i].endsWith(".HMAP")){
 			enforce(!state);
 			auto map=new SacMap!DagonBackend(args[i]);
+			auto sids=loadSids(args[i][0..$-".HMAP".length]~".SIDS");
 			auto ntts=loadNTTs(args[i][0..$-".HMAP".length]~".NTTS");
-			state=new GameState!DagonBackend(map,ntts,options);
+			state=new GameState!DagonBackend(map,sids,ntts,options);
 			backend.setState(state);
 		}else{
 			auto sac=new SacObject!DagonBackend(args[i],float.nan,anim);

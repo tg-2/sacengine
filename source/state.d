@@ -1,9 +1,9 @@
 import std.algorithm, std.range;
 import std.container.array: Array;
-import std.exception, std.stdio, std.conv;
-import dlib.math, std.math;
+import std.exception, std.stdio, std.conv, std.math;
+import dlib.math, dlib.image.color;
 import std.typecons;
-import ntts, nttData, bldg;
+import sids, ntts, nttData, bldg;
 import sacmap, sacobject, animations;
 import stats;
 import util,options;
@@ -71,9 +71,10 @@ struct MovingObject(B){
 	int frame;
 	CreatureState creatureState;
 	CreatureStats creatureStats;
+	int side=0;
 	int soulId=0;
 
-	this(SacObject!B sacObject,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame,CreatureState creatureState,CreatureStats creatureStats){
+	this(SacObject!B sacObject,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame,CreatureState creatureState,CreatureStats creatureStats,int side){
 		this.sacObject=sacObject;
 		this.position=position;
 		this.rotation=rotation;
@@ -81,14 +82,15 @@ struct MovingObject(B){
 		this.frame=frame;
 		this.creatureState=creatureState;
 		this.creatureStats=creatureStats;
+		this.side=side;
 	}
-	this(SacObject!B sacObject,int id,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame,CreatureState creatureState,CreatureStats creatureStats){
+	this(SacObject!B sacObject,int id,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame,CreatureState creatureState,CreatureStats creatureStats,int side){
 		this.id=id;
-		this(sacObject,position,rotation,animationState,frame,creatureState,creatureStats);
+		this(sacObject,position,rotation,animationState,frame,creatureState,creatureStats,side);
 	}
-	this(SacObject!B sacObject,int id,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame,CreatureState creatureState,CreatureStats creatureStats,int soulId){
+	this(SacObject!B sacObject,int id,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame,CreatureState creatureState,CreatureStats creatureStats,int side,int soulId){
 		this.soulId=soulId;
-		this(sacObject,id,position,rotation,animationState,frame,creatureState,creatureStats);
+		this(sacObject,id,position,rotation,animationState,frame,creatureState,creatureStats,side);
 	}
 }
 
@@ -221,6 +223,7 @@ enum BuildingFlags{
 struct Building(B){
 	immutable(Bldg)* bldg; // TODO: replace by SacBuilding class
 	int id=0;
+	int side;
 	Array!int componentIds;
 	int flags=0;
 	int top=0;
@@ -232,17 +235,16 @@ struct Building(B){
 	enum splashSpellResistance=1.0f;
 	enum directRangedResistance=1.0f;
 	enum splashRangedResistance=1.0f;
-	this(immutable(Bldg)* bldg){
+	this(immutable(Bldg)* bldg,int side,int flags){
 		this.bldg=bldg;
+		this.side=side;
+		this.flags=flags;
 		this.health=bldg.maxHealth;
-	}
-	this(immutable(Bldg)* bldg,int id){
-		this.id=id;
-		this(bldg);
 	}
 	void opAssign(ref Building!B rhs){
 		this.bldg=rhs.bldg;
 		this.id=rhs.id;
+		this.side=rhs.side;
 		assignArray(componentIds,rhs.componentIds);
 		health=rhs.health;
 		flags=rhs.flags;
@@ -318,6 +320,7 @@ struct MovingObjects(B,RenderMode mode){
 	Array!int frames;
 	Array!CreatureState creatureStates;
 	Array!CreatureStats creatureStatss;
+	Array!int sides;
 	Array!int soulIds;
 	@property int length(){ assert(ids.length<=int.max); return cast(int)ids.length; }
 	@property void length(int l){
@@ -328,6 +331,7 @@ struct MovingObjects(B,RenderMode mode){
 		frames.length=l;
 		creatureStates.length=l;
 		creatureStatss.length=l;
+		sides.length=l;
 		soulIds.length=l;
 	}
 
@@ -339,6 +343,7 @@ struct MovingObjects(B,RenderMode mode){
 		frames.reserve(reserveSize);
 		creatureStates.reserve(reserveSize);
 		creatureStatss.reserve(reserveSize);
+		sides.reserve(reserveSize);
 		soulIds.reserve(reserveSize);
 	}
 
@@ -352,6 +357,7 @@ struct MovingObjects(B,RenderMode mode){
 		frames~=object.frame;
 		creatureStates~=object.creatureState;
 		creatureStatss~=object.creatureStats;
+		sides~=object.side;
 		soulIds~=object.soulId;
 	}
 	void removeObject(int index, ObjectManager!B manager){
@@ -372,10 +378,11 @@ struct MovingObjects(B,RenderMode mode){
 		assignArray(frames,rhs.frames);
 		assignArray(creatureStates,rhs.creatureStates);
 		assignArray(creatureStatss,rhs.creatureStatss);
+		assignArray(sides,rhs.sides);
 		assignArray(soulIds,rhs.soulIds);
 	}
 	MovingObject!B opIndex(int i){
-		return MovingObject!B(sacObject,ids[i],positions[i],rotations[i],animationStates[i],frames[i],creatureStates[i],creatureStatss[i],soulIds[i]);
+		return MovingObject!B(sacObject,ids[i],positions[i],rotations[i],animationStates[i],frames[i],creatureStates[i],creatureStatss[i],sides[i],soulIds[i]);
 	}
 	void opIndexAssign(MovingObject!B obj,int i){
 		assert(obj.sacObject is sacObject);
@@ -386,6 +393,7 @@ struct MovingObjects(B,RenderMode mode){
 		frames[i]=obj.frame;
 		creatureStates[i]=obj.creatureState;
 		creatureStatss[i]=obj.creatureStats; // TODO: this might be a bit wasteful
+		sides[i]=obj.side;
 		soulIds[i]=obj.soulId;
 	}
 }
@@ -671,8 +679,12 @@ struct Objects(B,RenderMode mode){
 			return result;
 		}
 		void addParticle(Particle!B particle){
-			auto type=particle.sacParticle.type;
-			if(particles.length<=type) particles.length=type+1; // TODO: good?
+			auto type=particle.sacParticle.stateIndex;
+			if(type==-1){
+				type=particle.sacParticle.stateIndex=cast(int)particles.length;
+				particles.length=particles.length+1;
+				particles[$-1].sacParticle=particle.sacParticle;
+			}
 			particles[type].addParticle(particle);
 		}
 		void removeObject(int type, int index, ref ObjectManager!B manager){
@@ -1912,8 +1924,8 @@ void animateManafount(B)(Vector3f location, ObjectState!B state){
 	}
 }
 
-void animateManalith(B)(Vector3f location, ObjectState!B state){
-	auto sacParticle=SacParticle!B.get(ParticleType.manalith);
+void animateManalith(B)(Vector3f location, int side, ObjectState!B state){
+	auto sacParticle=state.sides.manaParticle(side);
 	auto globalAngle=2*PI/updateFPS*(state.frame+1000*location.x+location.y);
 	auto globalMagnitude=0.5f;
 	auto globalDisplacement=globalMagnitude*Vector3f(cos(globalAngle),sin(globalAngle),0.0f);
@@ -1932,8 +1944,8 @@ void animateManalith(B)(Vector3f location, ObjectState!B state){
 	}
 }
 
-void animateShrine(B)(Vector3f location, ObjectState!B state){
-	auto sacParticle=SacParticle!B.get(ParticleType.shrine);
+void animateShrine(B)(Vector3f location, int side, ObjectState!B state){
+	auto sacParticle=state.sides.shrineParticle(side);
 	auto globalAngle=2*PI/updateFPS*(state.frame+1000*location.x+location.y);
 	auto globalMagnitude=0.1f;
 	auto globalDisplacement=globalMagnitude*Vector3f(cos(globalAngle),sin(globalAngle),0.0f);
@@ -1968,13 +1980,13 @@ void updateBuilding(B)(ref Building!B building, ObjectState!B state){
 			return obj.position+Vector3f(0.0f,0.0f,15.0f);
 		}
 		auto position=state.staticObjectById!(getCenter,function Vector3f(){ assert(0); })(building.componentIds[0]);
-		animateManalith(position,state);
+		animateManalith(position,building.side,state);
 	}else if(building.isShrine||building.isAltar){
 		Vector3f getShrineTop(StaticObject!B obj){
 			return obj.position+Vector3f(0.0f,0.0f,3.0f);
 		}
 		auto position=state.staticObjectById!(getShrineTop,function Vector3f(){ assert(0); })(building.componentIds[0]);
-		animateShrine(position,state);
+		animateShrine(position,building.side,state);
 	}
 }
 
@@ -2074,9 +2086,11 @@ auto collide(alias f,B,T...)(Proximity!B proximity,Vector3f[2] hitbox,T args){
 import std.random: MinstdRand0;
 final class ObjectState(B){ // (update logic)
 	SacMap!B map;
+	Sides!B sides;
 	Proximity!B proximity;
-	this(SacMap!B map, Proximity!B proximity){
+	this(SacMap!B map, Sides!B sides, Proximity!B proximity){
 		this.map=map;
+		this.sides=sides;
 		this.proximity=proximity;
 	}
 	bool isOnGround(Vector3f position){
@@ -2190,6 +2204,63 @@ auto ref buildingByStaticObjectId(alias f,alias noStatic=(){assert(0);},B,T...)(
 
 //void addBuilding(immutable(Bldg)* data,
 
+enum Stance{
+	neutral,
+	ally,
+	enemy,
+}
+
+final class Sides(B){
+	private Side[32] sides;
+	private SacParticle!B[32] manaParticles;
+	private SacParticle!B[32] shrineParticles;;
+	this(Side[] sids...){
+		foreach(ref side;sids){
+			enforce(0<=side.id&&side.id<32);
+			sides[side.id]=side;
+		}
+		foreach(i;0..32){
+			sides[i].allies|=(1<<i); // allied to themselves
+			sides[i].enemies&=~(1<<i); // not enemies of themselves
+		}
+	}
+	Color4f sideColor(int side){
+		return sideColors[sides[side].color];
+	}
+	Color4f manaColor(int side){
+		auto color=0.8f*Vector3f(sideColor(side).rgb)+0.2f*Vector3f(1.0f,1.0f,1.0f);
+		auto total=color.r+color.g+color.b;
+		return Color4f((3.0f/total)*color);
+	}
+	float manaEnergy(int side){
+		auto color=sideColor(side);
+		if(color.g<0.15f) return 160.0f;
+		return 20.0f;
+	}
+	SacParticle!B manaParticle(int side){
+		if(!manaParticles[side]) manaParticles[side]=new SacParticle!B(ParticleType.manalith, manaColor(side), manaEnergy(side));
+		return manaParticles[side];
+	}
+	SacParticle!B shrineParticle(int side){
+		if(!shrineParticles[side]) shrineParticles[side]=new SacParticle!B(ParticleType.shrine, manaColor(side), manaEnergy(side));
+		return shrineParticles[side];
+	}
+	Stance getStance(int from,int towards){
+		if(sides[from].allies&(1<<towards)) return Stance.ally;
+		if(sides[from].enemies&(1<<towards)) return Stance.enemy;
+		return Stance.neutral;
+	}
+}
+
+final class Triggers(B){
+	int[int] objectIds;
+	void associateId(int triggerId,int objectId)in{
+		assert(triggerId !in objectIds);
+	}do{
+		objectIds[triggerId]=objectId;
+	}
+}
+
 enum TargetType{
 	floor,
 	creature,
@@ -2215,28 +2286,20 @@ struct Command{
 	Target target;
 }
 
-final class Triggers(B){
-	int[int] objectIds;
-	void associateId(int triggerId,int objectId)in{
-		assert(triggerId !in objectIds);
-	}do{
-		objectIds[triggerId]=objectId;
-	}
-}
-
 final class GameState(B){
 	ObjectState!B lastCommitted;
 	ObjectState!B current;
 	ObjectState!B next;
 	Triggers!B triggers;
 	Array!(Array!Command) commands;
-	this(SacMap!B map,NTTs ntts,Options options)in{
+	this(SacMap!B map,Side[] sids,NTTs ntts,Options options)in{
 		assert(!!map);
 	}body{
+		auto sides=new Sides!B(sids);
 		auto proximity=new Proximity!B();
-		current=new ObjectState!B(map,proximity);
-		next=new ObjectState!B(map,proximity);
-		lastCommitted=new ObjectState!B(map,proximity);
+		current=new ObjectState!B(map,sides,proximity);
+		next=new ObjectState!B(map,sides,proximity);
+		lastCommitted=new ObjectState!B(map,sides,proximity);
 		triggers=new Triggers!B();
 		commands.length=1;
 		foreach(ref structure;ntts.structures)
@@ -2260,7 +2323,7 @@ final class GameState(B){
 		auto data=ntt.tag in bldgs;
 		enforce(!!data);
 		int flags=0; // TODO
-		auto buildingId=current.addObject(Building!B(data,flags));
+		auto buildingId=current.addObject(Building!B(data,ntt.side,flags));
 		if(ntt.id !in triggers.objectIds) // e.g. for some reason, the two altars on ferry have the same id
 			triggers.associateId(ntt.id,buildingId);
 		auto position=Vector3f(ntt.x,ntt.y,ntt.z);
@@ -2310,7 +2373,7 @@ final class GameState(B){
 		if(movement==CreatureMovement.onGround && !onGround)
 			movement=curObj.canFly?CreatureMovement.flying:CreatureMovement.tumbling;
 		auto creatureState=CreatureState(mode, movement, ntt.facing);
-		auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState,curObj.creatureStats);
+		auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState,curObj.creatureStats,ntt.side);
 		if(ntt.flags & Flags.corpse) obj.creatureStats.health=0.0f;
 		else if(ntt.flags & Flags.damaged) obj.creatureStats.health/=10.0f;
 		obj.setCreatureState(current);
