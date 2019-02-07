@@ -169,7 +169,6 @@ final class SacScene: Scene{
 		sacSoul=new SacSoul!DagonBackend();
 	}
 
-
 	void rotateSky(Quaternionf rotation){
 		foreach(e;skyEntities[0..3]){
 			e.rotation=rotation;
@@ -181,20 +180,20 @@ final class SacScene: Scene{
 		auto env=environment;
 		auto envi=&map.envi;
 		//writeln(envi.sunDirectStrength," ",envi.sunAmbientStrength);
-		env.sunEnergy=6.0f*(envi.sunDirectStrength+envi.sunAmbientStrength+max(0,7*log(envi.sunAmbientStrength)/log(2)));
+		env.sunEnergy=10.0f*envi.sunDirectStrength;
 		Color4f fixColor(Color4f sacColor){
 			return Color4f(1,1,1,1)*0.2+sacColor*0.8;
 		}
 		//env.ambientConstant = fixColor(Color4f(envi.ambientRed*ambi,envi.ambientGreen*ambi,envi.ambientBlue*ambi,1.0f));
 		auto ambi=envi.sunAmbientStrength;
-		env.ambientConstant = fixColor(Color4f(envi.sunColorRed/255.0f*ambi,envi.sunColorGreen/255.0f*ambi,envi.sunColorBlue/255.0f*ambi,1.0f));
+		//env.ambientConstant = fixColor(Color4f(envi.sunColorRed/255.0f*ambi,envi.sunColorGreen/255.0f*ambi,envi.sunColorBlue/255.0f*ambi,1.0f));
+		env.ambientConstant = ambi*Color4f(envi.ambientRed/255.0f,envi.ambientGreen/255.0f,envi.ambientBlue/255.0f,1.0f);
 		env.backgroundColor = Color4f(envi.skyRed/255.0f,envi.skyGreen/255.0f,envi.skyBlue/255.0f,1.0f);
 		// envi.minAlphaInt, envi.maxAlphaInt, envi.minAlphaFloat ?
 		// envi.maxAlphaFloat used for sky alpha
 		// sky_, skyt, skyb, sun_, undr used above
-		// envi.shadowStrength ?
 		auto sunDirection=Vector3f(envi.sunDirectionX,envi.sunDirectionY,envi.sunDirectionZ);
-		sunDirection.z=abs(sunDirection.z); // TODO: support something like the effect you get in Sacrifice when setting sun direction from below
+		//sunDirection.z=abs(sunDirection.z);
 		//sunDirection.z=max(0.7,sunDirection.z);
 		//sunDirection=sunDirection.normalized(); // TODO: why are sun directions in standard maps so extreme?
 		env.sunRotation=rotationBetween(Vector3f(0,0,1),sunDirection);
@@ -204,7 +203,8 @@ final class SacScene: Scene{
 		if(exp(envi.sunDirectStrength)==float.infinity)
 			env.sunColor=Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f);
 		else
-			env.sunColor=(exp(envi.sunDirectStrength)*Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f)+exp(4*min(10,envi.sunAmbientStrength^^10))*Color4f(envi.ambientRed/255.0f,envi.ambientGreen/255.0f,envi.ambientBlue/255.0f,1.0f))/(exp(envi.sunDirectStrength)+exp(4*min(10,envi.sunAmbientStrength^^10)));
+			//env.sunColor=(exp(envi.sunDirectStrength)*Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f)+exp(4*min(10,envi.sunAmbientStrength^^10))*Color4f(envi.ambientRed/255.0f,envi.ambientGreen/255.0f,envi.ambientBlue/255.0f,1.0f))/(exp(envi.sunDirectStrength)+exp(4*min(10,envi.sunAmbientStrength^^10)));
+			env.sunColor=(exp(envi.sunDirectStrength)*Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f)+0.5f*exp(envi.sunAmbientStrength)*Color4f(envi.ambientRed/255.0f,envi.ambientGreen/255.0f,envi.ambientBlue/255.0f,1.0f))/(exp(envi.sunDirectStrength)+0.5f*exp(envi.sunAmbientStrength));
 		/+if(envi.sunAmbientStrength>=envi.sunDirectStrength){
 			env.sunColor=(exp(envi.sunDirectStrength)*Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f)+exp(4*envi.sunAmbientStrength)*Color4f(envi.ambientRed/255.0f,envi.ambientGreen/255.0f,envi.ambientBlue/255.0f,1.0f))/(exp(envi.sunDirectStrength)+exp(4*envi.sunAmbientStrength));
 		}else{
@@ -214,6 +214,8 @@ final class SacScene: Scene{
 		// landscapeSpecularity, specularityRed, specularityGreen, specularityBlue and
 		// landscapeGlossiness used for terrain material.
 		//env.atmosphericFog=true;
+		shadowMap.shadowColor=Color4f(envi.ambientRed/255.0f,envi.ambientGreen/255.0f,envi.ambientBlue/255.0f,1.0f);
+		shadowMap.shadowBrightness=1.0f-envi.shadowStrength;
 		env.fogColor=Color4f(envi.fogRed/255.0f,envi.fogGreen/255.0f,envi.fogBlue/255.0f,1.0f);
 		// fogType ?
 		if(options.enableFog){
