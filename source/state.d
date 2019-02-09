@@ -281,8 +281,9 @@ bool isAltar(B)(ref Building!B building){
 }
 void putOnManafount(B)(ref Building!B building,ref Building!B manafount,ObjectState!B state)in{
 	assert(manafount.isManafount);
-	assert(manafount.top==0 && building.base==0);
+	assert(building.base==0);
 }do{
+	if(manafount.top!=0) freeManafount(manafount,state); // original engine associates last building with the fountain
 	manafount.top=building.id;
 	building.base=manafount.id;
 }
