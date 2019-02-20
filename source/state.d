@@ -2033,11 +2033,8 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 		}
 		if(objects.sacObject.isManahoar){
 			foreach(j;0..objects.length){
-				auto rate=proximity.addManahoar(objects.sides[j],objects.ids[j],objects.positions[j],state);
-				//writeln(j," ",rate);
-				//auto flameLocation=objects.positions[j]+Vector3f(0.0f,0.0f,1.5f); // TODO!
 				auto flameLocation=objects.positions[j]+rotate(objects.rotations[j],objects.sacObject.manahoarManaOffset(objects.animationStates[j],objects.frames[j]/updateAnimFactor));
-				//rate=20.0f; // !!!
+				auto rate=proximity.addManahoar(objects.sides[j],objects.ids[j],objects.positions[j],state);
 				animateManahoar(flameLocation,objects.sides[j],rate,state);
 			}
 		}
