@@ -1325,6 +1325,9 @@ void heal(B)(ref MovingObject!B object,float amount,ObjectState!B state){
 void heal(B)(ref Building!B building,float amount,ObjectState!B state){
 	building.health=min(building.health+amount,building.maxHealth(state));
 }
+void giveMana(B)(ref MovingObject!B object,float amount,ObjectState!B state){
+	object.creatureStats.mana=min(object.creatureStats.mana+amount,object.creatureStats.maxMana);
+}
 
 void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,ObjectState!B state){
 	auto damage=state.uniform(0.8f*attacker.meleeStrength,1.2f*attacker.meleeStrength)/attacker.numAttackTicks(attacker.animationState); // TODO: figure this out
@@ -1546,7 +1549,7 @@ void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.isRegenerating)
 		object.heal(object.creatureStats.regeneration/updateFPS,state);
 	if(object.creatureStats.mana<object.creatureStats.maxMana)
-		object.creatureStats.mana+=state.manaRegenAt(object.side,object.position)/updateFPS;
+		object.giveMana(state.manaRegenAt(object.side,object.position)/updateFPS,state);
 	if(object.creatureState.mode.among(CreatureMode.meleeMoving,CreatureMode.meleeAttacking) && object.hasAttackTick){
 		object.creatureState.mode=CreatureMode.meleeAttacking;
 		struct CollisionState{
@@ -2203,7 +2206,7 @@ struct ManaProximity(B){
 		foreach(ref manalith;manaliths){
 			if(sides.getStance(manalith.side,side)!=Stance.ally) continue;
 			auto distance=(position.xy-manalith.position.xy).length;
-			rate+=max(0.0f,min(20.0f*distance/50.0f,21.0f*(1-distance/1000.0f)));
+			rate+=max(0.0f,min((20.0f/50.0f)*distance,(20.0f/(1000.0f-50.0f))*(1000.0f-distance)));
 		}
 		addEntry(version_,ManaEntry(false,side,position,40.0f,rate));
 		return rate;
