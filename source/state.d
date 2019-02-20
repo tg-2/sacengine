@@ -168,6 +168,9 @@ struct StaticObject(B){
 		this(sacObject,buildingId,position,rotation);
 	}
 }
+int sideFromBuildingId(B)(int buildingId,ObjectState!B state){
+	return state.buildingById!((ref b)=>b.side,function int(){ assert(0); })(buildingId);
+}
 
 struct FixedObject(B){
 	SacObject!B sacObject;
@@ -255,6 +258,7 @@ struct Building(B){
 int maxHealth(B)(ref Building!B building,ObjectState!B state){
 	return building.bldg.maxHealth;
 }
+// TODO: the following functionality is duplicated in SacObject
 bool isManafount(immutable(Bldg)* bldg){ // TODO: store in SacBuilding class
 	return bldg.header.numComponents==1&&manafountTags.canFind(bldg.components[0].tag);
 }
@@ -712,8 +716,6 @@ struct Objects(B,RenderMode mode){
 }
 auto each(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T args){
 	with(objects){
-		foreach(ref movingObject;movingObjects)
-			movingObject.each!f(args);
 		static if(mode == RenderMode.opaque){
 			foreach(ref staticObject;staticObjects)
 				staticObject.each!f(args);
@@ -721,6 +723,8 @@ auto each(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T args){
 				fixedObject.each!f(args);
 			souls.each!f(args);
 		}
+		foreach(ref movingObject;movingObjects)
+			movingObject.each!f(args);
 	}
 }
 auto eachMoving(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T args){
@@ -743,8 +747,6 @@ auto eachParticles(alias f,B,T...)(ref Objects!(B,RenderMode.opaque) objects,T a
 }
 auto eachByType(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T args){
 	with(objects){
-		foreach(ref movingObject;movingObjects)
-			f(movingObject,args);
 		static if(mode == RenderMode.opaque){
 			foreach(ref staticObject;staticObjects)
 				f(staticObject,args);
@@ -755,6 +757,8 @@ auto eachByType(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T a
 			foreach(ref particle;particles)
 				f(particle,args);
 		}
+		foreach(ref movingObject;movingObjects)
+			f(movingObject,args);
 	}
 }
 
@@ -1541,6 +1545,8 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.isRegenerating)
 		object.heal(object.creatureStats.regeneration/updateFPS,state);
+	if(object.creatureStats.mana<object.creatureStats.maxMana)
+		object.creatureStats.mana+=state.manaRegenAt(object.side,object.position)/updateFPS;
 	if(object.creatureState.mode.among(CreatureMode.meleeMoving,CreatureMode.meleeAttacking) && object.hasAttackTick){
 		object.creatureState.mode=CreatureMode.meleeAttacking;
 		struct CollisionState{
@@ -1991,6 +1997,28 @@ void updateBuilding(B)(ref Building!B building, ObjectState!B state){
 	}
 }
 
+void animateManahoar(B)(Vector3f location, int side, float rate, ObjectState!B state){
+	auto sacParticle=state.sides.manahoarParticle(side);
+	auto globalAngle=2*PI/updateFPS*state.frame;
+	auto globalMagnitude=0.05f;
+	auto globalDisplacement=globalMagnitude*Vector3f(cos(globalAngle),sin(globalAngle),0.0f);
+	auto center=location+globalDisplacement;
+	auto perFrame=rate/updateFPS;
+	auto fractional=cast(int)(1.0f/fmod(perFrame,1.0f));
+	foreach(j;0..cast(int)perFrame+(fractional!=0&&state.frame%fractional==0?1:0)){
+		auto displacementAngle=state.uniform(-PI,PI);
+		auto displacementMagnitude=0.15f*state.uniform(0.0f,1.0f)^^2;
+		auto displacement=displacementMagnitude*Vector3f(cos(displacementAngle),sin(displacementAngle),0.0f);
+		auto position=center+displacement;
+		auto angle=state.uniform(-PI,PI);
+		auto velocity=(1.5f+state.uniform(-0.5f,0.5f))*Vector3f(0.0f,0.0f,state.uniform(2.0f,4.0f)).normalized;
+		auto lifetime=cast(int)(sacParticle.numFrames*5.0f-7.0f*sacParticle.numFrames*displacement.length*state.uniform(0.0f,1.0f)^^2);
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle,position,velocity,lifetime,frame));
+	}
+}
+
+
 void addToProximity(T,B)(ref T objects, ObjectState!B state){
 	auto proximity=state.proximity;
 	enum isMoving=is(T==MovingObjects!(B, RenderMode.opaque))||is(T==MovingObjects!(B, RenderMode.transparent));
@@ -2003,6 +2031,16 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 			hitbox[1]+=position;
 			proximity.insert(ProximityEntry(objects.ids[j],hitbox));
 		}
+		if(objects.sacObject.isManahoar){
+			foreach(j;0..objects.length){
+				auto rate=proximity.addManahoar(objects.sides[j],objects.ids[j],objects.positions[j],state);
+				//writeln(j," ",rate);
+				//auto flameLocation=objects.positions[j]+Vector3f(0.0f,0.0f,1.5f); // TODO!
+				auto flameLocation=objects.positions[j]+rotate(objects.rotations[j],objects.sacObject.manahoarManaOffset(objects.animationStates[j],objects.frames[j]/updateAnimFactor));
+				//rate=20.0f; // !!!
+				animateManahoar(flameLocation,objects.sides[j],rate,state);
+			}
+		}
 	}else static if(is(T==StaticObjects!B)){ // TODO: cache those?
 		foreach(j;0..objects.length){
 			foreach(hitbox;objects.sacObject.hitboxes(objects.rotations[j])){
@@ -2011,6 +2049,20 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 				hitbox[1]+=position;
 				proximity.insert(ProximityEntry(objects.ids[j],hitbox));
 			}
+		}
+		// TODO: get rid of duplication here
+		if(objects.sacObject.isManafount){
+			foreach(j;0..objects.length)
+				proximity.addManafount(sideFromBuildingId(objects.buildingIds[j],state),objects.positions[j]);
+		}else if(objects.sacObject.isManalith){
+			foreach(j;0..objects.length)
+				proximity.addManalith(sideFromBuildingId(objects.buildingIds[j],state),objects.positions[j]);
+		}else if(objects.sacObject.isShrine){
+			foreach(j;0..objects.length)
+				proximity.addShrine(sideFromBuildingId(objects.buildingIds[j],state),objects.positions[j]);
+		}else if(objects.sacObject.isAltar){
+			foreach(j;0..objects.length)
+				proximity.addAltar(sideFromBuildingId(objects.buildingIds[j],state),objects.positions[j]);
 		}
 	}else static if(is(T==Souls!B)||is(T==Buildings!B)||is(T==Particles!B)){
 		// do nothing
@@ -2068,14 +2120,113 @@ auto collide(alias f,B,T...)(ref HitboxProximity!B proximity,int version_,Vector
 			offMap.collide!f(version_,hitbox,args);
 		foreach(j;max(0,lowTile.j+offMapSlack)..min(highTile.j+offMapSlack+1,size))
 			foreach(i;max(0,lowTile.i+offMapSlack)..min(highTile.i+offMapSlack+1,size))
-				proximity.data[j][i].collide!f(version_,hitbox,args);
+				data[j][i].collide!f(version_,hitbox,args);
+	}
+}
+
+struct ManaEntry{
+	bool allies;
+	int side;
+	Vector3f position;
+	float radius;
+	float rate;
+}
+struct ManaEntries{
+	int version_=0;
+	Array!ManaEntry entries; // TODO: be more clever here if many entries
+	void insert(int version_,ManaEntry entry){
+		if(this.version_!=version_){
+			entries.length=0;
+			this.version_=version_;
+		}
+		entries~=entry;
+	}
+	float manaRegenAt(B)(int version_,int side,Vector3f position,ObjectState!B state){
+		if(this.version_!=version_){
+			entries.length=0;
+			this.version_=version_;
+		}
+		auto sides=state.sides;
+		float rate=0.0f;
+		foreach(ref entry;entries){
+			auto distance=(position.xy-entry.position.xy).length;
+			if(distance>=entry.radius) continue;
+			if(entry.side==-1||(!entry.allies?entry.side!=side:sides.getStance(entry.side,side)!=Stance.ally)) continue;
+			rate+=entry.rate;
+		}
+		return rate;
+	}
+}
+
+
+struct ManaProximity(B){
+	enum resolution=50;
+	enum offMapSlack=100/resolution;
+	enum size=(2560+resolution-1)/resolution+2*offMapSlack;
+	static Tuple!(int,"j",int,"i") getTile(Vector3f position){
+		return tuple!("j","i")(cast(int)(position.y/resolution),cast(int)(position.x/resolution)); // TODO: good resolution?
+	}
+	ManaEntries[size][size] data;
+	ManaEntries offMap;
+	struct ManalithEntry{
+		int side;
+		Vector3f position;
+	}
+	int manalithVersion;
+	Array!ManalithEntry manaliths;
+	void addEntry(int version_,ManaEntry entry){
+		auto tile=getTile(entry.position);
+		if(tile.j+offMapSlack<0||tile.i+offMapSlack<0||tile.j+offMapSlack>=size||tile.i+offMapSlack>=size) offMap.insert(version_,entry);
+		else data[tile.j+offMapSlack][tile.i+offMapSlack].insert(version_,entry);
+	}
+	void addManafount(int version_,Vector3f position){
+		addEntry(version_,ManaEntry(true,-1,position,50.0f,1000.0f/30.0f));
+	}
+	void addManalith(int version_,int side,Vector3f position){
+		if(manalithVersion!=version_){
+			manaliths.length=0;
+			manalithVersion=version_;
+		}
+		manaliths~=ManalithEntry(side,position);
+		addEntry(version_,ManaEntry(true,side,position,50.0f,1000.0f/30.0f));
+	}
+	void addAltar(int version_,int side,Vector3f position){
+		addEntry(version_,ManaEntry(true,side,position,50.0f,1000.0f/60.0f));
+	}
+	void addShrine(int version_,int side,Vector3f position){
+		addEntry(version_,ManaEntry(true,side,position,50.0f,1000.0f/120.0f));
+	}
+	float addManahoar(int version_,int side,Vector3f position,ObjectState!B state){
+		if(manalithVersion!=version_){
+			manaliths.length=0;
+			manalithVersion=version_;
+		}
+		float rate=0.0f;
+		auto sides=state.sides;
+		foreach(ref manalith;manaliths){
+			if(sides.getStance(manalith.side,side)!=Stance.ally) continue;
+			auto distance=(position.xy-manalith.position.xy).length;
+			rate+=max(0.0f,min(20.0f*distance/50.0f,21.0f*(1-distance/1000.0f)));
+		}
+		addEntry(version_,ManaEntry(false,side,position,40.0f,rate));
+		return rate;
+	}
+	float manaRegenAt(int version_,int side,Vector3f position,ObjectState!B state){
+		auto offset=Vector3f(50.0f,0.0f,50.0f);
+		auto lowTile=getTile(position-offset), highTile=getTile(position+offset);
+		float rate=0.0f;
+		if(lowTile.j+offMapSlack<0||lowTile.i+offMapSlack<0||highTile.j+offMapSlack>=size||highTile.i+offMapSlack>=size)
+			rate+=offMap.manaRegenAt(version_,side,position,state);
+		foreach(j;max(0,lowTile.j+offMapSlack)..min(highTile.j+offMapSlack+1,size))
+			foreach(i;max(0,lowTile.i+offMapSlack)..min(highTile.i+offMapSlack+1,size))
+				rate+=data[j][i].manaRegenAt(version_,side,position,state);
+		return rate;
 	}
 }
 
 final class Proximity(B){
 	int version_=0;
 	bool active=false;
-	HitboxProximity!B hitboxes;
 	void start()in{
 		assert(!active);
 	}do{
@@ -2087,10 +2238,30 @@ final class Proximity(B){
 		active=false;
 		++version_;
 	}
+	HitboxProximity!B hitboxes;
 	void insert(ProximityEntry entry)in{
 		assert(active);
 	}do{
 		hitboxes.insert(version_,entry);
+	}
+	ManaProximity!B mana;
+	void addManafount(int side,Vector3f position){
+		mana.addManalith(version_,side,position);
+	}
+	void addManalith(int side,Vector3f position){
+		mana.addManalith(version_,side,position);
+	}
+	void addShrine(int side,Vector3f position){
+		mana.addShrine(version_,side,position);
+	}
+	void addAltar(int side,Vector3f position){
+		mana.addAltar(version_,side,position);
+	}
+	float addManahoar(int side,int id,Vector3f position,ObjectState!B state){
+		return mana.addManahoar(version_,side,position,state);
+	}
+	float manaRegenAt(int side,Vector3f position,ObjectState!B state){
+		return mana.manaRegenAt(version_,side,position,state);
 	}
 }
 auto collide(alias f,B,T...)(Proximity!B proximity,Vector3f[2] hitbox,T args){
@@ -2102,6 +2273,9 @@ final class ObjectState(B){ // (update logic)
 	SacMap!B map;
 	Sides!B sides;
 	Proximity!B proximity;
+	float manaRegenAt(int side,Vector3f position){
+		return proximity.manaRegenAt(side,position,this);
+	}
 	this(SacMap!B map, Sides!B sides, Proximity!B proximity){
 		this.map=map;
 		this.sides=sides;
@@ -2228,6 +2402,7 @@ final class Sides(B){
 	private Side[32] sides;
 	private SacParticle!B[32] manaParticles;
 	private SacParticle!B[32] shrineParticles;;
+	private SacParticle!B[32] manahoarParticles;
 	this(Side[] sids...){
 		foreach(ref side;sids){
 			enforce(0<=side.id&&side.id<32);
@@ -2258,6 +2433,10 @@ final class Sides(B){
 	SacParticle!B shrineParticle(int side){
 		if(!shrineParticles[side]) shrineParticles[side]=new SacParticle!B(ParticleType.shrine, manaColor(side), manaEnergy(side));
 		return shrineParticles[side];
+	}
+	SacParticle!B manahoarParticle(int side){
+		if(!manahoarParticles[side]) manahoarParticles[side]=new SacParticle!B(ParticleType.manahoar, manaColor(side), manaEnergy(side));
+		return manahoarParticles[side];
 	}
 	Stance getStance(int from,int towards){
 		if(sides[from].allies&(1<<towards)) return Stance.ally;

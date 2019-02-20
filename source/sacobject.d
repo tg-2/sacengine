@@ -139,6 +139,30 @@ final class SacObject(B){
 	@property bool canTumble(){
 		return hasAnimationState(AnimationState.tumble);
 	}
+
+	@property bool isManahoar(){
+		return tag=="oham";
+	}
+	@property Vector3f manahoarManaOffset(AnimationState animationState,int frame)in{
+		assert(isManahoar);
+	}do{
+		// return Vector3f(0.0f,0.0f,1.5f); // TODO!
+		return Vector3f(-0.004f, -0.568f, 0.285f)*animations[animationState].frames[frame].matrices[10];
+	}
+	// TODO: the following logic is duplicated for buildings
+	@property bool isManafount(){
+		return manafountTags.canFind(tag);
+	}
+	@property bool isManalith(){
+		return manalithTags.canFind(tag);
+	}
+	@property bool isShrine(){
+		return shrineTags.canFind(tag);
+	}
+	@property bool isAltar(){
+		return altarBaseTags.canFind(tag);
+	}
+
 	Vector3f[2] smallHitbox(Quaternionf rotation,AnimationState animationState,int frame)in{
 		assert(isSaxs);
 	}do{
@@ -487,6 +511,7 @@ enum ParticleType{
 	manafount,
 	manalith,
 	shrine,
+	manahoar,
 }
 
 final class SacParticle(B){
@@ -502,7 +527,7 @@ final class SacParticle(B){
 		final switch(type){
 			case ParticleType.manafount:
 				return true;
-			case ParticleType.manalith,ParticleType.shrine:
+			case ParticleType.manalith,ParticleType.shrine,ParticleType.manahoar:
 				return false;
 		}
 	}
@@ -526,6 +551,12 @@ final class SacParticle(B){
 				width=height=4.0f;
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/fb_g.TXTR"));
 				meshes=makeSpriteMeshes!B(3,3,width,height);
+				break;
+			case ParticleType.manahoar:
+				width=height=1.2f;
+				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/fb_g.TXTR"));
+				meshes=makeSpriteMeshes!B(3,3,width,height);
+				break;
 		}
 		material=B.createMaterial(this);
 	}
@@ -544,7 +575,7 @@ final class SacParticle(B){
 		final switch(type){
 			case ParticleType.manafount:
 				return min(1.0f,(lifetime/(3.0f*numFrames))^^2);
-			case ParticleType.manalith,ParticleType.shrine:
+			case ParticleType.manalith,ParticleType.shrine,ParticleType.manahoar:
 				return min(0.07f,(lifetime/(4.0f*numFrames))^^2);
 		}
 	}
@@ -552,7 +583,7 @@ final class SacParticle(B){
 		final switch(type){
 			case ParticleType.manafount:
 				return 1.0f;
-			case ParticleType.manalith:
+			case ParticleType.manalith,ParticleType.manahoar:
 				return min(1.0f,lifetime/(4.0f*numFrames));
 			case ParticleType.shrine:
 				return min(1.0f,lifetime/(3.0f*numFrames));
