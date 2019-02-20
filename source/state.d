@@ -2042,9 +2042,8 @@ auto collide(alias f,T...)(ref ProximityEntries proximityEntries,int version_,Ve
 			f(proximityEntries.entries[i],args);
 	}
 }
-final class Proximity(B){
-	int version_=0;
-	bool active=false;
+
+struct HitboxProximity(B){
 	enum resolution=10;
 	enum offMapSlack=100/resolution;
 	enum size=(2560+resolution-1)/resolution+2*offMapSlack;
@@ -2053,6 +2052,30 @@ final class Proximity(B){
 	}
 	ProximityEntries[size][size] data;
 	ProximityEntries offMap;
+	void insert(int version_,ProximityEntry entry){
+		auto lowTile=getTile(entry.hitbox[0]), highTile=getTile(entry.hitbox[1]);
+		if(lowTile.j+offMapSlack<0||lowTile.i+offMapSlack<0||highTile.j+offMapSlack>=size||highTile.i+offMapSlack>=size)
+			offMap.insert(version_,entry);
+		foreach(j;max(0,lowTile.j+offMapSlack)..min(highTile.j+offMapSlack+1,size))
+			foreach(i;max(0,lowTile.i+offMapSlack)..min(highTile.i+offMapSlack+1,size))
+				data[j][i].insert(version_,entry);
+	}
+}
+auto collide(alias f,B,T...)(ref HitboxProximity!B proximity,int version_,Vector3f[2] hitbox,T args){
+	with(proximity){
+		auto lowTile=getTile(hitbox[0]), highTile=getTile(hitbox[1]);
+		if(lowTile.j+offMapSlack<0||lowTile.i+offMapSlack<0||highTile.j+offMapSlack>=size||highTile.i+offMapSlack>=size)
+			offMap.collide!f(version_,hitbox,args);
+		foreach(j;max(0,lowTile.j+offMapSlack)..min(highTile.j+offMapSlack+1,size))
+			foreach(i;max(0,lowTile.i+offMapSlack)..min(highTile.i+offMapSlack+1,size))
+				proximity.data[j][i].collide!f(version_,hitbox,args);
+	}
+}
+
+final class Proximity(B){
+	int version_=0;
+	bool active=false;
+	HitboxProximity!B hitboxes;
 	void start()in{
 		assert(!active);
 	}do{
@@ -2067,21 +2090,11 @@ final class Proximity(B){
 	void insert(ProximityEntry entry)in{
 		assert(active);
 	}do{
-		auto lowTile=getTile(entry.hitbox[0]), highTile=getTile(entry.hitbox[1]);
-		if(lowTile.j+offMapSlack<0||lowTile.i+offMapSlack<0||highTile.j+offMapSlack>=size||highTile.i+offMapSlack>=size)
-			offMap.insert(version_,entry);
-		foreach(j;max(0,lowTile.j+offMapSlack)..min(highTile.j+offMapSlack+1,size))
-			foreach(i;max(0,lowTile.i+offMapSlack)..min(highTile.i+offMapSlack+1,size))
-				data[j][i].insert(version_,entry);
+		hitboxes.insert(version_,entry);
 	}
 }
 auto collide(alias f,B,T...)(Proximity!B proximity,Vector3f[2] hitbox,T args){
-	auto lowTile=proximity.getTile(hitbox[0]), highTile=proximity.getTile(hitbox[1]);
-	if(lowTile.j+Proximity!B.offMapSlack<0||lowTile.i+Proximity!B.offMapSlack<0||highTile.j+Proximity!B.offMapSlack>=Proximity!B.size||highTile.i+Proximity!B.offMapSlack>=Proximity!B.size)
-		proximity.offMap.collide!f(proximity.version_,hitbox,args);
-	foreach(j;max(0,lowTile.j+Proximity!B.offMapSlack)..min(highTile.j+Proximity!B.offMapSlack+1,Proximity!B.size))
-		foreach(i;max(0,lowTile.i+Proximity!B.offMapSlack)..min(highTile.i+Proximity!B.offMapSlack+1,Proximity!B.size))
-			proximity.data[j][i].collide!f(proximity.version_,hitbox,args);
+	return proximity.hitboxes.collide!(f,B,T)(proximity.version_,hitbox,args);
 }
 
 import std.random: MinstdRand0;
