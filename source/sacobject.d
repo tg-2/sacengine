@@ -146,8 +146,7 @@ final class SacObject(B){
 	@property Vector3f manahoarManaOffset(AnimationState animationState,int frame)in{
 		assert(isManahoar);
 	}do{
-		// return Vector3f(0.0f,0.0f,1.5f); // TODO!
-		return Vector3f(-0.004f, -0.568f, 0.285f)*animations[animationState].frames[frame].matrices[10];
+		return saxsi.saxs.positions[0].offset*animations[animationState].frames[frame].matrices[saxsi.saxs.positions[0].bone];
 	}
 	// TODO: the following logic is duplicated for buildings
 	@property bool isManafount(){
