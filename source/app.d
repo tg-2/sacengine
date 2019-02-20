@@ -37,6 +37,8 @@ int main(string[] args){
 			options.shadowMapResolution=to!int(opt["--shadow-map-resolution=".length..$]);
 		}else if(opt.startsWith("--glow-brightness=")){
 			options.glowBrightness=to!float(opt["--glow-brightness=".length..$]);
+		}else if(opt.startsWith("--replicate-creatures=")){
+			options.replicateCreatures=to!int(opt["--replicate-creatures=".length..$]);
 		}else LoptSwitch: switch(opt){
 			static string getOptionName(string memberName){
 				import std.ascii;

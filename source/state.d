@@ -2006,16 +2006,18 @@ void animateManahoar(B)(Vector3f location, int side, float rate, ObjectState!B s
 	auto globalMagnitude=0.05f;
 	auto globalDisplacement=globalMagnitude*Vector3f(cos(globalAngle),sin(globalAngle),0.0f);
 	auto center=location+globalDisplacement;
-	auto perFrame=rate/updateFPS;
+	auto noisyRate=rate*state.uniform(0.91f,1.09f);
+	auto perFrame=noisyRate/updateFPS;
 	auto fractional=cast(int)(1.0f/fmod(perFrame,1.0f));
-	foreach(j;0..cast(int)perFrame+(fractional!=0&&state.frame%fractional==0?1:0)){
+	auto numParticles=cast(int)perFrame+(fractional!=0&&state.frame%fractional==0?1:0);
+	foreach(j;0..numParticles){
 		auto displacementAngle=state.uniform(-PI,PI);
 		auto displacementMagnitude=0.15f*state.uniform(0.0f,1.0f)^^2;
 		auto displacement=displacementMagnitude*Vector3f(cos(displacementAngle),sin(displacementAngle),0.0f);
 		auto position=center+displacement;
 		auto angle=state.uniform(-PI,PI);
 		auto velocity=(1.5f+state.uniform(-0.5f,0.5f))*Vector3f(0.0f,0.0f,state.uniform(2.0f,4.0f)).normalized;
-		auto lifetime=cast(int)(sacParticle.numFrames*5.0f-7.0f*sacParticle.numFrames*displacement.length*state.uniform(0.0f,1.0f)^^2);
+		auto lifetime=cast(int)(0.7f*(sacParticle.numFrames*5.0f-7.0f*sacParticle.numFrames*displacement.length*state.uniform(0.0f,1.0f)^^2));
 		auto frame=0;
 		state.addParticle(Particle!B(sacParticle,position,velocity,lifetime,frame));
 	}
@@ -2035,7 +2037,14 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 			proximity.insert(ProximityEntry(objects.ids[j],hitbox));
 		}
 		if(objects.sacObject.isManahoar){
+			static bool manahoarAbilityEnabled(CreatureMode mode){
+				final switch(mode) with(CreatureMode){
+					case idle,moving,dying,takeoff,landing,meleeMoving,meleeAttacking,stunned: return true;
+					case dead,reviving: return false;
+				}
+			}
 			foreach(j;0..objects.length){
+				if(!manahoarAbilityEnabled(objects.creatureStates[j].mode)) continue;
 				auto flameLocation=objects.positions[j]+rotate(objects.rotations[j],objects.sacObject.manahoarManaOffset(objects.animationStates[j],objects.frames[j]/updateAnimFactor));
 				auto rate=proximity.addManahoar(objects.sides[j],objects.ids[j],objects.positions[j],state);
 				animateManahoar(flameLocation,objects.sides[j],rate,state);
@@ -2502,7 +2511,7 @@ final class GameState(B){
 		foreach(ref spirit;ntts.spirits)
 			placeSpirit(spirit);
 		foreach(ref creature;ntts.creatures)
-			placeNTT(creature);
+			foreach(k;0..options.replicateCreatures) placeNTT(creature);
 		foreach(widgets;ntts.widgetss) // TODO: improve engine to be able to handle this
 			placeWidgets(widgets);
 		current.eachMoving!((ref MovingObject!B object, ObjectState!B state){
@@ -2576,7 +2585,8 @@ final class GameState(B){
 			state=cast(AnimationState)uniform(0,64);
 		}while(!curObj.hasAnimationState(state));+/
 		auto id=current.addObject(obj);
-		triggers.associateId(ntt.id,id);
+		if(ntt.id !in triggers.objectIds) // e.g. for some reason, the two altars on ferry have the same id
+			triggers.associateId(ntt.id,id);
 	}
 	void placeSpirit(ref Spirit spirit){
 		auto position=Vector3f(spirit.x,spirit.y,spirit.z);

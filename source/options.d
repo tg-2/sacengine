@@ -8,4 +8,5 @@ struct Options{
 	bool enableGlow=true;
 	float glowBrightness=0.5;
 	bool enableAntialiasing=true;
+	int replicateCreatures=1;
 }
