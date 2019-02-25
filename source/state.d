@@ -1328,18 +1328,18 @@ void damageAnimation(B)(ref MovingObject!B object,Vector3f attackDirection,Objec
 }
 
 void dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B attacker,ObjectState!B state){
-	object.creatureStats.health-=damage;
+	object.creatureStats.health=max(0.0f,object.creatureStats.health-damage);
 	// TODO: give xp to attacker
-	if(object.creatureStats.health<=0)
+	if(object.creatureStats.health==0.0f)
 		object.kill(state);
 	attacker.heal(damage*attacker.creatureStats.drain,state);
 }
 
 void dealDamage(B)(ref Building!B building,float damage,ref MovingObject!B attacker,ObjectState!B state){
-	if(building.maxHealth(state)==0.0f) return;
-	building.health-=damage;
+	if(building.health==0.0f) return;
+	building.health=max(0.0f,building.health-damage);
 	// TODO: give xp to attacker
-	if(building.health<=0)
+	if(building.health==0.0f)
 		building.destroy(state);
 }
 
@@ -2000,7 +2000,7 @@ void animateShrine(B)(Vector3f location, int side, ObjectState!B state){
 
 void updateBuilding(B)(ref Building!B building, ObjectState!B state){
 	if(building.componentIds.length==0) return;
-	building.heal(building.regeneration/updateFPS,state);
+	if(building.health!=0.0f) building.heal(building.regeneration/updateFPS,state);
 	if(building.isManafount && building.top==0){
 		Vector3f getManafountTop(StaticObject!B obj){
 			auto hitbox=obj.sacObject.hitboxes(obj.rotation)[0];
