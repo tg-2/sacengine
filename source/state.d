@@ -103,6 +103,9 @@ Vector3f[2] hitbox(B)(ref MovingObject!B object){
 	hitbox[1]+=object.position;
 	return hitbox;
 }
+Vector3f[2] hitbox2d(B)(ref MovingObject!B object,Matrix4f modelViewProjectionMatrix){
+	return object.sacObject.hitbox2d(object.animationState,object.frame/updateAnimFactor,modelViewProjectionMatrix);
+}
 
 Vector3f center(B)(ref MovingObject!B object){
 	auto hbox=object.hitbox;
@@ -171,6 +174,9 @@ struct StaticObject(B){
 int sideFromBuildingId(B)(int buildingId,ObjectState!B state){
 	return state.buildingById!((ref b)=>b.side,function int(){ assert(0); })(buildingId);
 }
+Vector3f[2] hitbox2d(B)(ref StaticObject!B object,Matrix4f modelViewProjectionMatrix){
+	return object.sacObject.hitbox2d(object.rotation,modelViewProjectionMatrix);
+}
 
 struct FixedObject(B){
 	SacObject!B sacObject;
@@ -223,6 +229,12 @@ SoulColor color(B)(ref Soul!B soul, int side, ObjectState!B state){
 	if(soul.creatureId==0 || state.movingObjectById!((obj)=>obj.side==side,function bool(){ assert(0); })(soul.creatureId))
 		return SoulColor.blue;
 	return SoulColor.red;
+}
+
+Vector3f[2] hitbox2d(B)(ref Soul!B soul,Matrix4f modelViewProjectionMatrix){
+	auto topLeft=Vector3f(-SacSoul!B.soulWidth/2,-SacSoul!B.soulHeight/2,0.0f)*soul.scaling;
+	auto bottomRight=-topLeft;
+	return [transform(modelViewProjectionMatrix,topLeft),transform(modelViewProjectionMatrix,bottomRight)];
 }
 
 enum BuildingFlags{
@@ -792,10 +804,16 @@ struct ObjectManager(B){
 	}do{
 		auto tid=ids[id-1];
 		if(tid==Id.init) return; // already deleted
+		ids[id-1]=Id.init;
 		final switch(tid.mode){
 			case RenderMode.opaque: opaqueObjects.removeObject(tid.type,tid.index,this); break;
 			case RenderMode.transparent: assert(0,"TODO");//transparentObjects.removeObject(tid.type,tid.index);
 		}
+	}
+	bool isValidId(int id){
+		if(0<id && id<=ids.length)
+			return ids[id-1]!=Id.init;
+		return false;
 	}
 	void addTransparent(T)(T object, float alpha){
 		assert(0,"TODO");
@@ -2360,6 +2378,9 @@ final class ObjectState(B){ // (update logic)
 		foreach(id;toRemove.data) removeObject(id);
 		toRemove.length=0;
 	}
+	bool isValidId(int id){
+		return obj.isValidId(id);
+	}
 	void addFixed(FixedObject!B object){
 		obj.addFixed(object);
 	}
@@ -2490,15 +2511,20 @@ Cursor cursor(B)(ref Target target,int renderSide,ObjectState!B state){
 				enum isMoving=is(T==MovingObject!B);
 				static if(isMoving) if(obj.creatureState.mode==CreatureMode.dead) return Cursor.normal;
 				static if(isMoving) auto objSide=obj.side;
-				else auto objSide=sideFromBuildingId(obj.buildingId,state);
+				else{
+					auto objSide=sideFromBuildingId(obj.buildingId,state);
+					auto buildingInteresting=state.buildingById!((bldg,state)=>bldg.maxHealth(state)!=0||bldg.isAltar,()=>false)(obj.buildingId,state);
+				}
 				if(objSide==renderSide){
 					static if(isMoving) return Cursor.friendlyUnit;
-					else return Cursor.friendlyBuilding;
+					else if(buildingInteresting) return Cursor.friendlyBuilding;
+					else return Cursor.normal;
 				}
 				bool isNeutral=state.sides.getStance(renderSide,objSide)!=Stance.enemy;
 				// TODO: some buildings (e.g. mana fountains) have a normal cursor
 				static if(isMoving) return isNeutral?Cursor.neutralUnit:Cursor.enemyUnit;
-				else return isNeutral?Cursor.neutralBuilding:Cursor.enemyBuilding;
+				else if(buildingInteresting) return isNeutral?Cursor.neutralBuilding:Cursor.enemyBuilding;
+				else return Cursor.normal;
 			}
 			return state.objectById!handle(target.id,renderSide,state);
 		case soul:

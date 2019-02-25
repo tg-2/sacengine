@@ -40,6 +40,11 @@ Vector3f rotate(Quaternionf rotation, Vector3f v){
 	return rotation.rotate(v);
 }
 
+Vector3f transform(Matrix4f m, Vector3f v){
+	auto w=Vector4f(v.x,v.y,v.z,1.0f)*m;
+	return w.xyz/w.w;
+}
+
 Quaternionf limitRotation(Quaternionf q, float maxAbsAngle){
 	import std.math, std.algorithm;
 	auto len=q.xyz.length;
@@ -88,6 +93,7 @@ Vector3f[2] bbox(R)(R positions){
 	auto small=Vector3f(float.max,float.max,float.max);
 	auto large=-small;
 	foreach(p;positions){
+		static assert(is(typeof(p)==Vector3f));
 		static foreach(k;0..3){
 			small[k]=min(small[k],p[k]);
 			large[k]=max(large[k],p[k]);

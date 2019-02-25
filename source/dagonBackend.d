@@ -447,7 +447,65 @@ final class SacScene: Scene{
 		state.current.eachByType!render(hitboxMaterial,rc);
 	}
 
+	void renderBorder(Vector2f position,Vector2f size,Color4f color,RenderingContext* rc){
+		colorHUDMaterialBackend.bind(null,rc);
+		scope(success) colorHUDMaterialBackend.unbind(null, rc);
+		auto scaling=Vector3f(size.x,size.y,1.0f);
+		colorHUDMaterialBackend.setTransformationScaled(Vector3f(position.x,position.y,0.0f), Quaternionf.identity(), scaling, rc);
+		colorHUDMaterialBackend.setColor(color);
+		border.render(rc);
+	}
+
+	static Vector2f[2] fixHitbox2dSize(Vector2f[2] position){
+		auto center=0.5f*(position[0]+position[1]);
+		auto size=position[1]-position[0];
+		foreach(k;0..2) size[k]=max(size[k],64.0f);
+		return [center-0.5f*size,center+0.5f*size];
+	}
+
+	void renderBorder(Vector3f[2] hitbox2d,Color4f color,RenderingContext* rc){
+		if(hitbox2d[0].z>1.0f) return;
+		Vector2f[2] position=[Vector2f(0.5f*(hitbox2d[0].x+1.0f)*width,0.5f*(1.0f-hitbox2d[1].y)*height),
+		                      Vector2f(0.5f*(hitbox2d[1].x+1.0f)*width,0.5f*(1.0f-hitbox2d[0].y)*height)];
+		position=fixHitbox2dSize(position);
+		auto size=position[1]-position[0];
+		renderBorder(position[0],size,color,rc);
+	}
+
+	Matrix4f getModelViewProjectionMatrix(Vector3f position,Quaternionf rotation){
+		auto modelMatrix=translationMatrix(position)*rotation.toMatrix4x4;
+		auto modelViewMatrix=rc3d.viewMatrix*modelMatrix;
+		auto modelViewProjectionMatrix=rc3d.projectionMatrix*modelViewMatrix;
+		return modelViewProjectionMatrix;
+	}
+
+	Matrix4f getSpriteModelViewProjectionMatrix(Vector3f position){
+		auto modelViewMatrix=rc3d.viewMatrix*translationMatrix(position)*rc3d.invViewRotationMatrix;
+		auto modelViewProjectionMatrix=rc3d.projectionMatrix*modelViewMatrix;
+		return modelViewProjectionMatrix;
+	}
+
 	void renderCursor(RenderingContext* rc){
+		if(mouse.showBorder){
+			if(mouse.target.type.among(TargetType.creature,TargetType.building)){
+			   static void renderHitbox(T)(T obj,SacScene scene,RenderingContext* rc){
+				   alias B=DagonBackend;
+				   auto hitbox2d=obj.hitbox2d(scene.getModelViewProjectionMatrix(obj.position,obj.rotation));
+				   static if(is(T==MovingObject!B)) auto objSide=obj.side;
+				   else auto objSide=sideFromBuildingId!B(obj.buildingId,scene.state.current);
+				   auto color=scene.state.current.sides.sideColor(objSide);
+				   scene.renderBorder(hitbox2d,color,rc);
+			   }
+			   state.current.objectById!renderHitbox(mouse.target.id,this,rc);
+			   }else if(mouse.target.type==TargetType.soul){
+					static void renderHitbox(B)(Soul!B soul,SacScene scene,RenderingContext* rc){
+						auto hitbox2d=soul.hitbox2d(scene.getSpriteModelViewProjectionMatrix(soul.position+soul.scaling*Vector3f(0.0f,0.0f,1.25f*sacSoul.soulHeight)));
+						auto color=soul.color(scene.renderSide,scene.state.current)==SoulColor.blue?blueSoulBorderColor:redSoulBorderColor;
+						scene.renderBorder(hitbox2d,color,rc);
+					}
+					state.current.soulById!renderHitbox(mouse.target.id,this,rc);
+				}
+		}
 		auto material=sacCursor.materials[mouse.cursor];
 		material.bind(rc);
 		scope(success) material.unbind(rc);
@@ -632,13 +690,16 @@ final class SacScene: Scene{
 		}
 	}
 	ShapeQuad quad;
+	ShapeSacCreatureBorder border;
 	void initializeHUD(){
 		quad=New!ShapeQuad(assetManager);
+		border=New!ShapeSacCreatureBorder(assetManager);
 	}
 	struct Mouse{
 		float x,y;
-		bool visible;
+		bool visible,showBorder;
 		auto cursor=Cursor.normal;
+		Target target;
 	}
 	Mouse mouse;
 	SacCursor!DagonBackend sacCursor;
@@ -657,11 +718,12 @@ final class SacScene: Scene{
 		auto cur=state.current;
 		if(information.x==1){
 			Vector3f position=2560.0f*information.yz;
-			if(!cur.isOnGround(position)) return Target(TargetType.none);
+			if(!cur.isOnGround(position)) return Target.init;
 			position.z=cur.getGroundHeight(position);
 			return Target(TargetType.terrain,0,position);
 		}else if(information.x==2){
 			auto id=(cast(int)information.y)<<16|cast(int)information.z;
+			if(!cur.isValidId(id)) return Target.init;
 			static Target handle(B,T)(T obj,int renderSide,ObjectState!B state){
 				enum isMoving=is(T==MovingObject!B);
 				static if(isMoving) return Target(TargetType.creature,obj.id,obj.position);
@@ -670,8 +732,9 @@ final class SacScene: Scene{
 			return cur.objectById!handle(id,renderSide,cur);
 		}else if(information.x==3){
 			auto id=(cast(int)information.y)<<16|cast(int)information.z;
+			if(!cur.isValidId(id)) return Target.init;
 			return Target(TargetType.soul,id,cur.soulById!((soul)=>soul.position,function Vector3f(){ assert(0); })(id));
-		}else return Target(TargetType.none);
+		}else return Target.init;
 	}
 	Target cachedTarget;
 	float cachedTargetX,cachedTargetY;
@@ -680,20 +743,22 @@ final class SacScene: Scene{
 	enum targetCacheDuration=1.2f*updateFPS;
 	Target mouseCursorTarget(){
 		auto target=mouseCursorTargetImpl();
-		if(target.type.among(TargetType.none,TargetType.terrain)){
+		static immutable importantTargets=[TargetType.creature,TargetType.soul];
+		if(cachedTarget.id!=0&&!state.current.isValidId(cachedTarget.id)) cachedTarget=Target.init;
+		if(!importantTargets.canFind(target.type)){
 			if(cachedTarget.type!=TargetType.none){
 				if(abs(cachedTargetX-mouse.x)<targetCacheDelta &&
 				   abs(cachedTargetY-mouse.y)<targetCacheDelta &&
 				   cachedTargetFrame+targetCacheDuration>state.current.frame){
 					target=cachedTarget;
-				}else cachedTarget=Target(TargetType.none);
+				}else cachedTarget=Target.init;
 			}
-		}else if(target.type==TargetType.creature){
+		}else{
 			cachedTarget=target;
 			cachedTargetX=mouse.x;
 			cachedTargetY=mouse.y;
 			cachedTargetFrame=state.current.frame;
-		}else cachedTarget=Target(TargetType.none);
+		}
 		return target;
 	}
 	void animateTarget(Target target){
@@ -705,9 +770,11 @@ final class SacScene: Scene{
 		}
 	}
 	void updateCursor(double dt){
-		auto target=mouseCursorTarget();
-		mouse.cursor=target.cursor(renderSide,state.current);
-		// animateTarget(target);
+		mouse.target=mouseCursorTarget();
+		mouse.cursor=mouse.target.cursor(renderSide,state.current);
+		with(Cursor) // TODO: with icons, show border only if spell is applicable to target
+			mouse.showBorder=mouse.target.type==TargetType.soul||
+				mouse.cursor.among(friendlyUnit,neutralUnit,rescuableUnit,talkingUnit,enemyUnit,iconFriendly,iconNeutral,iconEnemy);
 	}
 	override void startGBufferInformationDownload(){
 		static int i=0;
@@ -926,4 +993,114 @@ static:
 		              &cur_avail_mem_kb);
 		return cur_avail_mem_kb;
 	}
+}
+
+class ShapeSacCreatureBorder: Owner, Drawable{
+    Vector2f[20] vertices;
+    float[20] alpha;
+    uint[3][16] indices;
+
+    GLuint vao = 0;
+    GLuint vbo = 0;
+    GLuint abo = 0;
+    GLuint eao = 0;
+
+    this(Owner o){
+        super(o);
+
+        enum size=0.2f;
+        enum border=0.5f*size;
+        enum gap=0.01f;
+        enum left=-border,right=1.0f+border;
+        enum bottom=1.0f+border,top=-border;
+        vertices[0]=Vector2f(left+gap,top);
+        vertices[1]=Vector2f(left+gap+size,top);
+        vertices[2]=Vector2f(left+gap+size,top-size);
+        vertices[3]=Vector2f(right,top);
+        vertices[4]=Vector2f(left+gap+size,top+size);
+
+        vertices[5]=Vector2f(left,top+gap);
+        vertices[6]=Vector2f(left+size,top+gap+size);
+        vertices[7]=Vector2f(left,top+gap+size);
+        vertices[8]=Vector2f(left-size,top+gap+size);
+        vertices[9]=Vector2f(left,bottom-gap);
+
+        enum largeAlpha=1.0f;
+        enum smallAlpha=0.0f;
+
+        alpha[0]=smallAlpha;
+        alpha[1]=largeAlpha;
+        alpha[2]=smallAlpha;
+        alpha[3]=smallAlpha;
+        alpha[4]=smallAlpha;
+
+        alpha[5]=smallAlpha;
+        alpha[6]=smallAlpha;
+        alpha[7]=largeAlpha;
+        alpha[8]=smallAlpha;
+        alpha[9]=smallAlpha;
+
+        indices[0]=[0,1,2];
+        indices[1]=[1,3,2];
+        indices[2]=[0,4,1];
+        indices[3]=[4,3,1];
+
+        indices[4]=[5,6,7];
+        indices[5]=[8,5,7];
+        indices[6]=[7,9,6];
+        indices[7]=[8,9,7];
+
+        foreach(i;10..20){
+	        vertices[i]=Vector2f(1.0f,1.0f)-vertices[i-10];
+	        alpha[i]=alpha[i-10];
+        }
+        foreach(i;8..16){
+	        indices[i]=indices[i-8][]+10;
+	        import std.algorithm: swap;
+	        swap(indices[i][1],indices[i][2]);
+        }
+
+        glGenBuffers(1, &vbo);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(GL_ARRAY_BUFFER, vertices.length * float.sizeof * 2, vertices.ptr, GL_STATIC_DRAW);
+
+        glGenBuffers(1, &abo);
+        glBindBuffer(GL_ARRAY_BUFFER, abo);
+        glBufferData(GL_ARRAY_BUFFER, alpha.length * float.sizeof, alpha.ptr, GL_STATIC_DRAW);
+
+        glGenBuffers(1, &eao);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, eao);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.length * uint.sizeof * 3, indices.ptr, GL_STATIC_DRAW);
+
+        glGenVertexArrays(1, &vao);
+        glBindVertexArray(vao);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, eao);
+
+        glEnableVertexAttribArray(0);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, null);
+
+        glEnableVertexAttribArray(1);
+        glBindBuffer(GL_ARRAY_BUFFER, abo);
+        glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, 0, null);
+
+        glBindVertexArray(0);
+    }
+
+    ~this(){
+        glDeleteVertexArrays(1, &vao);
+        glDeleteBuffers(1, &vbo);
+        glDeleteBuffers(1, &abo);
+        glDeleteBuffers(1, &eao);
+    }
+
+    void update(double dt){}
+
+    void render(RenderingContext* rc){
+        glDepthMask(0);
+        glBindVertexArray(vao);
+        glDrawElements(GL_TRIANGLES, cast(uint)indices.length * 3, GL_UNSIGNED_INT, cast(void*)0);
+        glBindVertexArray(0);
+        glDepthMask(1);
+    }
 }

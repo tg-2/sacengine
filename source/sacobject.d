@@ -203,6 +203,22 @@ final class SacObject(B){
 		}
 	}
 
+	Vector3f[2] hitbox2d(AnimationState animationState,int frame,Matrix4f modelViewProjectionMatrix)in{
+		assert(isSaxs);
+	}do{
+		auto transforms=animations[animationState].frames[frame].matrices;
+		return iota(saxsi.saxs.bones.length)
+			.map!(i=>saxsi.saxs.bones[i].hitbox[].map!(x=>x*transforms[i]))
+			.joiner.map!(v=>transform(modelViewProjectionMatrix,v)).bbox;
+	}
+
+	Vector3f[2] hitbox2d(Quaternionf rotation,Matrix4f modelViewProjectionMatrix)in{
+		assert(!isSaxs);
+	}do{
+		return hitboxes(rotation).map!(hbox=>cartesianProduct(only(0,1),only(0,1),only(0,1)).map!(x=>Vector3f(hbox[x[0]].x,hbox[x[1]].y,hbox[x[2]].z)))
+			.joiner.map!(v=>transform(modelViewProjectionMatrix,v)).bbox;
+	}
+
 	int numAttackTicks(AnimationState animationState){
 		return max(1,animations[animationState].numAttackTicks);
 	}
@@ -484,6 +500,9 @@ B.Mesh[] makeSpriteMeshes(B)(int nU,int nV,float width,float height){ // TODO: r
 	}
 	return meshes;
 }
+
+auto blueSoulBorderColor=Color4f(0,182.0f/256.0f,1.0f);
+auto redSoulBorderColor=Color4f(1.0f,0.0f,0.0f);
 
 final class SacSoul(B){
 	B.Mesh[] meshes;
