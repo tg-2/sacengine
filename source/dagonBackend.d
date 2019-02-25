@@ -282,15 +282,22 @@ final class SacScene: Scene{
 						auto mesh=sacObject.saxsi.meshes[i];
 						foreach(j;0..objects.length){ // TODO: use instanced rendering instead
 							material.backend.setTransformation(objects.positions[j], objects.rotations[j], rc);
+							auto id=objects.ids[j];
+							material.backend.setInformation(Vector4f(2.0f,id>>16,id&((1<<16)-1),1.0f));
 							// TODO: interpolate animations to get 60 FPS?
 							sacObject.setFrame(objects.animationStates[j],objects.frames[j]/updateAnimFactor);
 							mesh.render(rc);
 						}
 					}else{
 						static if(is(T==FixedObjects!DagonBackend)) if(!enableWidgets) return;
+						material.backend.setInformation(Vector4f(0.0f,0.0f,0.0f,0.0f));
 						auto mesh=sacObject.meshes[i];
 						foreach(j;0..objects.length){
 							material.backend.setTransformation(objects.positions[j], objects.rotations[j], rc);
+							static if(is(T==StaticObjects!DagonBackend)){
+								auto id=objects.ids[j];
+								material.backend.setInformation(Vector4f(2.0f,id>>16,id&((1<<16)-1),1.0f));
+							}
 							mesh.render(rc);
 						}
 					}
@@ -305,7 +312,9 @@ final class SacScene: Scene{
 					foreach(j;0..objects.length){
 						// TODO: determine soul color based on side
 						auto soul=objects[j];
-						auto mesh=sacSoul.getMesh(soul.creatureId==0?SoulColor.blue:SoulColor.red,soul.frame/updateAnimFactor); // TODO: do in shader?
+						auto mesh=sacSoul.getMesh(soul.color(scene.renderSide,scene.state.current),soul.frame/updateAnimFactor); // TODO: do in shader?
+						auto id=soul.id;
+						material.backend.setInformation(Vector4f(3.0f,id>>16,id&((1<<16)-1),1.0f));
 						if(objects[j].number==1){
 							material.backend.setSpriteTransformationScaled(soul.position+soul.scaling*Vector3f(0.0f,0.0f,1.25f*sacSoul.soulHeight),soul.scaling,rc);
 							mesh.render(rc);
@@ -331,6 +340,7 @@ final class SacScene: Scene{
 					if(!sacParticle) return; // TODO: get rid of this?
 					auto material=sacParticle.material;
 					material.bind(rc);
+					material.backend.setInformation(Vector4f(0.0f,0.0f,0.0f,0.0f));
 					scope(success) material.unbind(rc);
 					foreach(j;0..objects.length){
 						auto mesh=sacParticle.getMesh(objects.frames[j]/updateAnimFactor); // TODO: do in shader?
@@ -437,6 +447,16 @@ final class SacScene: Scene{
 		state.current.eachByType!render(hitboxMaterial,rc);
 	}
 
+	void renderCursor(RenderingContext* rc){
+		auto material=sacCursor.materials[mouse.cursor];
+		material.bind(rc);
+		scope(success) material.unbind(rc);
+		auto position=Vector3f(mouse.x-sacCursor.width/2,mouse.y,0);
+		auto scaling=Vector3f(sacCursor.width,sacCursor.height,1.0f);
+		material.backend.setTransformationScaled(position, Quaternionf.identity(), scaling, rc);
+		quad.render(rc);
+	}
+
 	override void renderShadowCastingEntities3D(RenderingContext* rc){
 		super.renderShadowCastingEntities3D(rc);
 		if(!state) return;
@@ -456,6 +476,10 @@ final class SacScene: Scene{
 		if(!state) return;
 		renderNTTs!(RenderMode.transparent)(rc);
 	}
+	override void renderEntities2D(RenderingContext* rc){
+		super.renderEntities2D(rc);
+		if(mouse.visible) renderCursor(rc);
+	}
 
 	void setState(GameState!DagonBackend state)in{
 		assert(this.state is null);
@@ -464,6 +488,8 @@ final class SacScene: Scene{
 		setupEnvironment(state.current.map);
 		createSky(state.current.map);
 		createSouls();
+		initializeHUD();
+		initializeMouse();
 	}
 
 	void addObject(SacObject!DagonBackend sobj,Vector3f position,Quaternionf rotation){
@@ -531,8 +557,14 @@ final class SacScene: Scene{
 		if(eventManager.keyPressed[KEY_I]) speed = 10.0f;
 		if(eventManager.keyPressed[KEY_O]) speed = 100.0f;
 		if(eventManager.keyPressed[KEY_P]) speed = 1000.0f;
-		if(eventManager.keyPressed[KEY_K]) fpview.active=false;
-		if(eventManager.keyPressed[KEY_L]) fpview.active=true;
+		if(eventManager.keyPressed[KEY_K]){
+			fpview.active=false;
+			mouse.visible=true;
+		}
+		if(eventManager.keyPressed[KEY_L]){
+			fpview.active=true;
+			mouse.visible=false;
+		}
 		fpview.camera.position += dir.normalized * speed * dt;
 		if(state && state.current.isOnGround(fpview.camera.position)){
 			fpview.camera.position.z=max(fpview.camera.position.z, state.current.getGroundHeight(fpview.camera.position));
@@ -597,6 +629,102 @@ final class SacScene: Scene{
 			import animations;
 			if(sac.numFrames(cast(AnimationState)0)) sac.setFrame(cast(AnimationState)0,cast(size_t)(frame%sac.numFrames(cast(AnimationState)0)));
 		}
+	}
+	ShapeQuad quad;
+	void initializeHUD(){
+		quad=New!ShapeQuad(assetManager);
+	}
+	struct Mouse{
+		float x,y;
+		bool visible;
+		auto cursor=Cursor.normal;
+	}
+	Mouse mouse;
+	SacCursor!DagonBackend sacCursor;
+	int renderSide=0; // TODO
+	void initializeMouse(){
+		sacCursor=new SacCursor!DagonBackend();
+		SDL_ShowCursor(SDL_DISABLE);
+		mouse.x=width/2;
+		mouse.y=height/2;
+		fpview.oldMouseX=cast(int)mouse.x;
+		fpview.oldMouseY=cast(int)mouse.y;
+		eventManager.setMouse(cast(int)mouse.x, cast(int)mouse.y);
+	}
+	Target mouseCursorTargetImpl(){
+		auto information=gbuffer.getInformation();
+		auto cur=state.current;
+		if(information.x==1){
+			Vector3f position=2560.0f*information.yz;
+			if(!cur.isOnGround(position)) return Target(TargetType.none);
+			position.z=cur.getGroundHeight(position);
+			return Target(TargetType.terrain,0,position);
+		}else if(information.x==2){
+			auto id=(cast(int)information.y)<<16|cast(int)information.z;
+			static Target handle(B,T)(T obj,int renderSide,ObjectState!B state){
+				enum isMoving=is(T==MovingObject!B);
+				static if(isMoving) return Target(TargetType.creature,obj.id,obj.position);
+				else return Target(TargetType.building,obj.id,obj.position);
+			}
+			return cur.objectById!handle(id,renderSide,cur);
+		}else if(information.x==3){
+			auto id=(cast(int)information.y)<<16|cast(int)information.z;
+			return Target(TargetType.soul,id,cur.soulById!((soul)=>soul.position,function Vector3f(){ assert(0); })(id));
+		}else return Target(TargetType.none);
+	}
+	Target cachedTarget;
+	float cachedTargetX,cachedTargetY;
+	int cachedTargetFrame;
+	enum targetCacheDelta=50.0f;
+	enum targetCacheDuration=1.2f*updateFPS;
+	Target mouseCursorTarget(){
+		auto target=mouseCursorTargetImpl();
+		if(target.type.among(TargetType.none,TargetType.terrain)){
+			if(cachedTarget.type!=TargetType.none){
+				if(abs(cachedTargetX-mouse.x)<targetCacheDelta &&
+				   abs(cachedTargetY-mouse.y)<targetCacheDelta &&
+				   cachedTargetFrame+targetCacheDuration>state.current.frame){
+					target=cachedTarget;
+				}else cachedTarget=Target(TargetType.none);
+			}
+		}else if(target.type==TargetType.creature){
+			cachedTarget=target;
+			cachedTargetX=mouse.x;
+			cachedTargetY=mouse.y;
+			cachedTargetFrame=state.current.frame;
+		}else cachedTarget=Target(TargetType.none);
+		return target;
+	}
+	void animateTarget(Target target){
+		final switch(target.type){
+			case TargetType.none: return;
+			case TargetType.terrain: animateManalith(target.position, renderSide, state.current); break;
+			case TargetType.creature, TargetType.building: animateManafount(target.position, state.current); break;
+			case TargetType.soul: animateManahoar(target.position, renderSide, 30.0f, state.current); break;
+		}
+	}
+	void updateCursor(double dt){
+		auto target=mouseCursorTarget();
+		mouse.cursor=target.cursor(renderSide,state.current);
+		// animateTarget(target);
+	}
+	override void startGBufferInformationDownload(){
+		static int i=0;
+		if(((++i)%=2)==0) writeln(eventManager.fps);
+		if(!fpview.active){
+			mouse.x=eventManager.mouseX;
+			mouse.y=eventManager.mouseY;
+		}
+		auto x=cast(int)(mouse.x+0.5f), y=cast(int)(height-1-mouse.y+0.5f);
+		if(x<0) x=0;
+		if(x>=width) x=width-1;
+		if(y<0) y=0;
+		if(y>=height) y=height-1;
+		gbuffer.startInformationDownload(x,y);
+	}
+	override void onUpdate(double dt){
+		super.onUpdate(dt);
+		updateCursor(dt);
 	}
 }
 
@@ -768,6 +896,17 @@ static:
 				mat.color=particle.color;
 				return mat;
 		}
+	}
+
+	Material[] createMaterials(SacCursor!DagonBackend sacCursor){
+		auto materials=new Material[](sacCursor.textures.length);
+		foreach(i;0..materials.length){
+			auto mat=scene.createMaterial(scene.hudMaterialBackend);
+			mat.blending=Transparent;
+			mat.diffuse=sacCursor.textures[i];
+			materials[i]=mat;
+		}
+		return materials;
 	}
 
 	enum GL_GPU_MEM_INFO_TOTAL_AVAILABLE_MEM_NVX=0x9048;

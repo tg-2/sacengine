@@ -219,6 +219,12 @@ struct Soul(B){
 	}
 }
 
+SoulColor color(B)(ref Soul!B soul, int side, ObjectState!B state){
+	if(soul.creatureId==0 || state.movingObjectById!((obj)=>obj.side==side,function bool(){ assert(0); })(soul.creatureId))
+		return SoulColor.blue;
+	return SoulColor.red;
+}
+
 enum BuildingFlags{
 	none=0,
 }
@@ -2464,16 +2470,44 @@ final class Triggers(B){
 }
 
 enum TargetType{
-	floor,
+	none,
+	terrain,
 	creature,
-	structure,
+	building,
+	soul,
 }
 
 struct Target{
 	TargetType type;
-	int targetId;
-
+	int id;
+	Vector3f position;
 }
+Cursor cursor(B)(ref Target target,int renderSide,ObjectState!B state){
+	final switch(target.type) with(TargetType) with(Cursor){
+		case none,terrain: return normal;
+			case creature,building:
+			static Cursor handle(B,T)(T obj,int renderSide,ObjectState!B state){
+				enum isMoving=is(T==MovingObject!B);
+				static if(isMoving) if(obj.creatureState.mode==CreatureMode.dead) return Cursor.normal;
+				static if(isMoving) auto objSide=obj.side;
+				else auto objSide=sideFromBuildingId(obj.buildingId,state);
+				if(objSide==renderSide){
+					static if(isMoving) return Cursor.friendlyUnit;
+					else return Cursor.friendlyBuilding;
+				}
+				bool isNeutral=state.sides.getStance(renderSide,objSide)!=Stance.enemy;
+				// TODO: some buildings (e.g. mana fountains) have a normal cursor
+				static if(isMoving) return isNeutral?Cursor.neutralUnit:Cursor.enemyUnit;
+				else return isNeutral?Cursor.neutralBuilding:Cursor.enemyBuilding;
+			}
+			return state.objectById!handle(target.id,renderSide,state);
+		case soul:
+			if(state.soulById!(color, function SoulColor(){ assert(0); })(target.id,renderSide,state)==SoulColor.blue)
+				return Cursor.blueSoul;
+			return Cursor.normal;
+	}
+}
+
 
 enum CommandType{
 	moveForward,

@@ -475,7 +475,7 @@ B.Mesh[] makeSpriteMeshes(B)(int nU,int nV,float width,float height){ // TODO: r
 	foreach(int i,ref mesh;meshes){
 		mesh=B.makeMesh(4,2);
 		int u=i%nU,v=i/nU;
-		foreach(k;0..4) mesh.vertices[k]=Vector3f(-0.5f*width+width*(k==1||k==2),0.0f,-0.5f*height+height*(k==2||k==3));
+		foreach(k;0..4) mesh.vertices[k]=Vector3f(-0.5f*width+width*(k==1||k==2),-0.5f*height+height*(k==2||k==3),0.0f);
 		foreach(k;0..4) mesh.texcoords[k]=Vector2f(1.0f/nU*(u+(k==1||k==2)),1.0f/nV*(v+(k==0||k==1)));
 		static immutable uint[3][] indices=[[0,1,2],[2,3,0]];
 		mesh.indices[]=indices[];
@@ -590,6 +590,54 @@ final class SacParticle(B){
 	}
 }
 
+enum Cursor{
+	normal,
+	friendlyUnit,
+	neutralUnit,
+	rescuableUnit,
+	talkingUnit,
+	enemyUnit,
+	friendlyBuilding,
+	neutralBuilding,
+	enemyBuilding,
+	blueSoul,
+	rectangleSelect,
+	drag,
+	slide,
+
+	iconFriendly,
+	iconNeutral,
+	iconEnemy,
+	iconNone,
+}
+
+final class SacCursor(B){
+	B.Texture[Cursor.max+1] textures;
+	B.Material[] materials;
+	enum width=64.0f, height=64.0f;
+	this(){
+		textures[Cursor.normal]=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/curs.FLDR/Cnor.ICON"));
+		textures[Cursor.friendlyUnit]=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/curs.FLDR/Cfun.ICON"));
+		textures[Cursor.neutralUnit]=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/curs.FLDR/Cnun.ICON"));
+		textures[Cursor.rescuableUnit]=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/curs.FLDR/Crun.ICON"));
+		textures[Cursor.talkingUnit]=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/curs.FLDR/Ctlk.ICON"));
+		textures[Cursor.enemyUnit]=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/curs.FLDR/Ceun.ICON"));
+		textures[Cursor.friendlyBuilding]=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/curs.FLDR/Cfbg.ICON"));
+		textures[Cursor.neutralBuilding]=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/curs.FLDR/Cnbg.ICON"));
+		textures[Cursor.enemyBuilding]=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/curs.FLDR/Cebg.ICON"));
+		textures[Cursor.blueSoul]=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/curs.FLDR/Cspr.ICON"));
+		textures[Cursor.rectangleSelect]=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/curs.FLDR/Cdbx.ICON"));
+		textures[Cursor.drag]=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/curs.FLDR/Cdrg.ICON"));
+		textures[Cursor.slide]=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/curs.FLDR/Csld.ICON"));
+
+		textures[Cursor.iconFriendly]=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/curs.FLDR/Tfrn.ICON"));
+		textures[Cursor.iconNeutral]=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/curs.FLDR/Tntr.ICON"));
+		textures[Cursor.iconEnemy]=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/curs.FLDR/Tnme.ICON"));
+		textures[Cursor.iconNone]=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/curs.FLDR/Tnon.ICON"));
+		assert(textures[].all!(t=>t!is null));
+		materials=B.createMaterials(this);
+	}
+}
 
 auto convertModel(B,Model)(string dir, Model model, float scaling){
 	int[string] names;
