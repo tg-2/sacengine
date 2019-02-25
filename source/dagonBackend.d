@@ -486,6 +486,7 @@ final class SacScene: Scene{
 	}
 
 	void renderCursor(RenderingContext* rc){
+		if(mouse.target.id&&!state.current.isValidId(mouse.target.id)) mouse.target=Target.init;
 		if(mouse.showBorder){
 			if(mouse.target.type.among(TargetType.creature,TargetType.building)){
 			   static void renderHitbox(T)(T obj,SacScene scene,RenderingContext* rc){
@@ -497,14 +498,14 @@ final class SacScene: Scene{
 				   scene.renderBorder(hitbox2d,color,rc);
 			   }
 			   state.current.objectById!renderHitbox(mouse.target.id,this,rc);
-			   }else if(mouse.target.type==TargetType.soul){
-					static void renderHitbox(B)(Soul!B soul,SacScene scene,RenderingContext* rc){
-						auto hitbox2d=soul.hitbox2d(scene.getSpriteModelViewProjectionMatrix(soul.position+soul.scaling*Vector3f(0.0f,0.0f,1.25f*sacSoul.soulHeight)));
-						auto color=soul.color(scene.renderSide,scene.state.current)==SoulColor.blue?blueSoulBorderColor:redSoulBorderColor;
-						scene.renderBorder(hitbox2d,color,rc);
-					}
-					state.current.soulById!renderHitbox(mouse.target.id,this,rc);
+			}else if(mouse.target.type==TargetType.soul){
+				static void renderHitbox(B)(Soul!B soul,SacScene scene,RenderingContext* rc){
+					auto hitbox2d=soul.hitbox2d(scene.getSpriteModelViewProjectionMatrix(soul.position+soul.scaling*Vector3f(0.0f,0.0f,1.25f*sacSoul.soulHeight)));
+					auto color=soul.color(scene.renderSide,scene.state.current)==SoulColor.blue?blueSoulBorderColor:redSoulBorderColor;
+					scene.renderBorder(hitbox2d,color,rc);
 				}
+				state.current.soulById!renderHitbox(mouse.target.id,this,rc);
+			}
 		}
 		auto material=sacCursor.materials[mouse.cursor];
 		material.bind(rc);
@@ -778,7 +779,7 @@ final class SacScene: Scene{
 	}
 	override void startGBufferInformationDownload(){
 		static int i=0;
-		if(((++i)%=2)==0) writeln(eventManager.fps);
+		if(options.printFPS && ((++i)%=2)==0) writeln(eventManager.fps);
 		if(!fpview.active){
 			mouse.x=eventManager.mouseX;
 			mouse.y=eventManager.mouseY;

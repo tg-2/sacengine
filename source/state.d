@@ -385,7 +385,7 @@ struct MovingObjects(B,RenderMode mode){
 	}
 	void removeObject(int index, ObjectManager!B manager){
 		manager.ids[ids[index]-1]=Id.init;
-		if(length>1){
+		if(index+1<length){
 			this[index]=this[length-1];
 			manager.ids[ids[index]-1].index=index;
 		}
@@ -457,7 +457,7 @@ struct StaticObjects(B){
 	}
 	void removeObject(int index, ObjectManager!B manager){
 		manager.ids[ids[index]-1]=Id.init;
-		if(length>1){
+		if(index+1<length){
 			this[index]=this[length-1];
 			manager.ids[ids[index]-1].index=index;
 		}
@@ -528,7 +528,7 @@ struct Souls(B){
 	}
 	void removeObject(int index, ObjectManager!B manager){
 		manager.ids[souls[index].id-1]=Id.init;
-		if(length>1){
+		if(index+1<length){
 			this[index]=this[length-1];
 			manager.ids[souls[index].id-1].index=index;
 		}
@@ -564,7 +564,7 @@ struct Buildings(B){
 	}
 	void removeObject(int index, ObjectManager!B manager){
 		manager.ids[buildings[index].id-1]=Id.init;
-		if(length>1){
+		if(index+1<length){
 			this[index]=this[length-1];
 			manager.ids[buildings[index].id-1].index=index;
 		}
@@ -804,7 +804,7 @@ struct ObjectManager(B){
 	}do{
 		auto tid=ids[id-1];
 		if(tid==Id.init) return; // already deleted
-		ids[id-1]=Id.init;
+		scope(success) assert(ids[id-1]==Id.init);
 		final switch(tid.mode){
 			case RenderMode.opaque: opaqueObjects.removeObject(tid.type,tid.index,this); break;
 			case RenderMode.transparent: assert(0,"TODO");//transparentObjects.removeObject(tid.type,tid.index);
@@ -2513,7 +2513,7 @@ Cursor cursor(B)(ref Target target,int renderSide,ObjectState!B state){
 				static if(isMoving) auto objSide=obj.side;
 				else{
 					auto objSide=sideFromBuildingId(obj.buildingId,state);
-					auto buildingInteresting=state.buildingById!((bldg,state)=>bldg.maxHealth(state)!=0||bldg.isAltar,()=>false)(obj.buildingId,state);
+					auto buildingInteresting=state.buildingById!(bldg=>bldg.health!=0||bldg.isAltar,()=>false)(obj.buildingId);
 				}
 				if(objSide==renderSide){
 					static if(isMoving) return Cursor.friendlyUnit;

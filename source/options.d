@@ -10,4 +10,5 @@ struct Options{
 	bool enableAntialiasing=true;
 	int replicateCreatures=1;
 	int cursorSize=32;
+	bool printFPS=false;
 }
