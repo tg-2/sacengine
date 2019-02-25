@@ -621,7 +621,7 @@ struct Particles(B){
 		frames~=particle.frame;
 	}
 	void removeParticle(int index){
-		if(length>1) this[index]=this[length-1];
+		if(index+1<length) this[index]=this[length-1];
 		length=length-1;
 	}
 	void opAssign(ref Particles!B rhs){
