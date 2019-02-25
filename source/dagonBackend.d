@@ -577,8 +577,8 @@ final class SacScene: Scene{
 		auto eCamera = createEntity3D();
 		eCamera.position = Vector3f(1270.0f, 1270.0f, 2.0f);
 		fpview = New!FirstPersonView2(eventManager, eCamera, assetManager);
-		fpview.active = true;
 		view = fpview;
+		mouse.visible=true;
 		//auto mat = createMaterial();
 		//mat.diffuse = Color4f(0.2, 0.2, 0.2, 0.2);
 		//mat.diffuse=txta;
@@ -617,6 +617,30 @@ final class SacScene: Scene{
 		if(eventManager.keyPressed[KEY_I]) speed = 10.0f;
 		if(eventManager.keyPressed[KEY_O]) speed = 100.0f;
 		if(eventManager.keyPressed[KEY_P]) speed = 1000.0f;
+		if(mouse.visible){
+			if(((eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK])
+			    && eventManager.mouseButtonPressed[MB_LEFT])||
+			   eventManager.mouseButtonPressed[MB_MIDDLE]
+			){
+				if(fpview.active){
+					mouse.x+=eventManager.mouseRelX;
+					mouse.y+=eventManager.mouseRelY;
+					if(eventManager.mouseRelX||eventManager.mouseRelY)
+						mouse.dragging=true;
+					mouse.x=max(0,min(mouse.x,width-1));
+					mouse.y=max(0,min(mouse.x,height-1));
+				}
+				fpview.active=true;
+				fpview.mouseFactor=-0.25f;
+			}else{
+				mouse.dragging=false;
+				if(fpview.active){
+					fpview.active=false;
+					fpview.mouseFactor=1.0f;
+					eventManager.setMouse(cast(int)mouse.x,cast(int)mouse.y);
+				}
+			}
+		}
 		if(eventManager.keyPressed[KEY_K]){
 			fpview.active=false;
 			mouse.visible=true;
@@ -624,6 +648,7 @@ final class SacScene: Scene{
 		if(eventManager.keyPressed[KEY_L]){
 			fpview.active=true;
 			mouse.visible=false;
+			fpview.mouseFactor=2.0f;
 		}
 		fpview.camera.position += dir.normalized * speed * dt;
 		if(state && state.current.isOnGround(fpview.camera.position)){
@@ -698,7 +723,7 @@ final class SacScene: Scene{
 	}
 	struct Mouse{
 		float x,y;
-		bool visible,showBorder;
+		bool visible,showBorder,dragging;
 		auto cursor=Cursor.normal;
 		Target target;
 	}
@@ -772,23 +797,26 @@ final class SacScene: Scene{
 	}
 	void updateCursor(double dt){
 		mouse.target=mouseCursorTarget();
-		mouse.cursor=mouse.target.cursor(renderSide,state.current);
-		with(Cursor) // TODO: with icons, show border only if spell is applicable to target
-			mouse.showBorder=mouse.target.type==TargetType.soul||
-				mouse.cursor.among(friendlyUnit,neutralUnit,rescuableUnit,talkingUnit,enemyUnit,iconFriendly,iconNeutral,iconEnemy);
+		if(mouse.dragging){
+			mouse.cursor=Cursor.drag;
+			mouse.showBorder=false;
+		}else{
+			mouse.cursor=mouse.target.cursor(renderSide,state.current);
+			with(Cursor) // TODO: with icons, show border only if spell is applicable to target
+				mouse.showBorder=mouse.target.type==TargetType.soul||
+					mouse.cursor.among(friendlyUnit,neutralUnit,rescuableUnit,talkingUnit,enemyUnit,iconFriendly,iconNeutral,iconEnemy);
+		}
 	}
 	override void startGBufferInformationDownload(){
 		static int i=0;
 		if(options.printFPS && ((++i)%=2)==0) writeln(eventManager.fps);
-		if(!fpview.active){
+		//if(!fpview.active){
 			mouse.x=eventManager.mouseX;
 			mouse.y=eventManager.mouseY;
-		}
+			//}
 		auto x=cast(int)(mouse.x+0.5f), y=cast(int)(height-1-mouse.y+0.5f);
-		if(x<0) x=0;
-		if(x>=width) x=width-1;
-		if(y<0) y=0;
-		if(y>=height) y=height-1;
+		x=max(0,min(x,width-1));
+		y=max(0,min(y,height-1));
 		gbuffer.startInformationDownload(x,y);
 	}
 	override void onUpdate(double dt){
