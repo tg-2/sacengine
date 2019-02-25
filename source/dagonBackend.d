@@ -451,8 +451,9 @@ final class SacScene: Scene{
 		auto material=sacCursor.materials[mouse.cursor];
 		material.bind(rc);
 		scope(success) material.unbind(rc);
-		auto position=Vector3f(mouse.x-sacCursor.width/2,mouse.y,0);
-		auto scaling=Vector3f(sacCursor.width,sacCursor.height,1.0f);
+		auto size=options.cursorSize;
+		auto position=Vector3f(mouse.x-0.5f*size,mouse.y,0);
+		auto scaling=Vector3f(size,size,1.0f);
 		material.backend.setTransformationScaled(position, Quaternionf.identity(), scaling, rc);
 		quad.render(rc);
 	}

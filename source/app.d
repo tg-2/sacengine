@@ -39,6 +39,8 @@ int main(string[] args){
 			options.glowBrightness=to!float(opt["--glow-brightness=".length..$]);
 		}else if(opt.startsWith("--replicate-creatures=")){
 			options.replicateCreatures=to!int(opt["--replicate-creatures=".length..$]);
+		}else if(opt.startsWith("--cursor-size=")){
+			options.cursorSize=to!int(opt["--cursor-size=".length..$]);
 		}else LoptSwitch: switch(opt){
 			static string getOptionName(string memberName){
 				import std.ascii;

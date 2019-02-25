@@ -614,7 +614,6 @@ enum Cursor{
 final class SacCursor(B){
 	B.Texture[Cursor.max+1] textures;
 	B.Material[] materials;
-	enum width=64.0f, height=64.0f;
 	this(){
 		textures[Cursor.normal]=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/curs.FLDR/Cnor.ICON"));
 		textures[Cursor.friendlyUnit]=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/curs.FLDR/Cfun.ICON"));
