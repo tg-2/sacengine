@@ -1,4 +1,5 @@
 struct CreatureStats{
+	int flags;
 	float health;
 	float mana;
 	int souls;

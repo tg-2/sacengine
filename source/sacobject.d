@@ -58,7 +58,7 @@ final class SacObject(B){
 		return data.rotateOnGround;
 	}
 
-	@property CreatureStats creatureStats(){
+	@property CreatureStats creatureStats(int flags){
 		int souls;
 		float maxHealth=0.0f,regeneration=0.0f,drain=0.0f,maxMana=0.0f;
 		float runningSpeed=0.0f,flyingSpeed=0.0f,rangedAccuracy=0.0f,meleeResistance=0.0f;
@@ -82,7 +82,10 @@ final class SacObject(B){
 		}}
 		auto health=maxHealth;
 		auto mana=maxMana;
-		return CreatureStats(health,mana,souls,maxHealth,regeneration,drain,maxMana,
+		if(flags & Flags.corpse) health=0.0f;
+		else if(flags & Flags.damaged) health/=10.0f;
+		flags&=~Flags.corpse&~Flags.damaged;
+		return CreatureStats(flags,health,mana,souls,maxHealth,regeneration,drain,maxMana,
 		                     runningSpeed,flyingSpeed,rangedAccuracy,meleeResistance,
 		                     directSpellResistance,splashSpellResistance,
 		                     directRangedResistance,splashRangedResistance);

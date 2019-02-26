@@ -1153,6 +1153,7 @@ void startIdling(B)(ref MovingObject!B object, ObjectState!B state){
 }
 
 void kill(B)(ref MovingObject!B object, ObjectState!B state){
+	if(object.creatureStats.flags&Flags.cannotDestroyKill) return;
 	with(CreatureMode) if(object.creatureState.mode.among(dying,dead,reviving)) return;
 	if(!object.sacObject.canDie()) return;
 	object.creatureStats.health=0.0f;
@@ -1161,6 +1162,7 @@ void kill(B)(ref MovingObject!B object, ObjectState!B state){
 }
 
 void destroy(B)(ref Building!B building, ObjectState!B state){
+	if(building.flags&Flags.cannotDestroyKill) return;
 	if(building.maxHealth(state)==0.0f) return;
 	int newLength=0;
 	foreach(i,id;building.componentIds.data){
@@ -1328,7 +1330,10 @@ void damageAnimation(B)(ref MovingObject!B object,Vector3f attackDirection,Objec
 }
 
 void dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B attacker,ObjectState!B state){
+	if(object.creatureStats.flags&Flags.cannotDamage) return;
 	object.creatureStats.health=max(0.0f,object.creatureStats.health-damage);
+	if(object.creatureStats.flags&Flags.cannotDestroyKill)
+		object.creatureStats.health=max(object.creatureStats.health,1.0f);
 	// TODO: give xp to attacker
 	if(object.creatureStats.health==0.0f)
 		object.kill(state);
@@ -1336,8 +1341,11 @@ void dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B att
 }
 
 void dealDamage(B)(ref Building!B building,float damage,ref MovingObject!B attacker,ObjectState!B state){
+	if(building.flags&Flags.cannotDamage) return;
 	if(building.health==0.0f) return;
 	building.health=max(0.0f,building.health-damage);
+	if(building.flags&Flags.cannotDestroyKill)
+		building.health=max(building.health,1.0f);
 	// TODO: give xp to attacker
 	if(building.health==0.0f)
 		building.destroy(state);
@@ -2522,7 +2530,7 @@ Cursor cursor(B)(ref Target target,int renderSide,ObjectState!B state){
 				}
 				bool isNeutral=state.sides.getStance(renderSide,objSide)!=Stance.enemy;
 				// TODO: some buildings (e.g. mana fountains) have a normal cursor
-				static if(isMoving) return isNeutral?Cursor.neutralUnit:Cursor.enemyUnit;
+				static if(isMoving) return isNeutral?(obj.creatureStats.flags&Flags.rescuable?Cursor.rescuableUnit:Cursor.neutralUnit):Cursor.enemyUnit;
 				else if(buildingInteresting) return isNeutral?Cursor.neutralBuilding:Cursor.enemyBuilding;
 				else return Cursor.normal;
 			}
@@ -2584,7 +2592,7 @@ final class GameState(B){
 		import nttData;
 		auto data=ntt.tag in bldgs;
 		enforce(!!data);
-		int flags=0; // TODO
+		auto flags=ntt.flags&~Flags.damaged&~ntt.flags.destroyed;
 		auto buildingId=current.addObject(Building!B(data,ntt.side,flags));
 		if(ntt.id !in triggers.objectIds) // e.g. for some reason, the two altars on ferry have the same id
 			triggers.associateId(ntt.id,buildingId);
@@ -2635,9 +2643,7 @@ final class GameState(B){
 		if(movement==CreatureMovement.onGround && !onGround)
 			movement=curObj.canFly?CreatureMovement.flying:CreatureMovement.tumbling;
 		auto creatureState=CreatureState(mode, movement, ntt.facing);
-		auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState,curObj.creatureStats,ntt.side);
-		if(ntt.flags & Flags.corpse) obj.creatureStats.health=0.0f;
-		else if(ntt.flags & Flags.damaged) obj.creatureStats.health/=10.0f;
+		auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState,curObj.creatureStats(ntt.flags),ntt.side);
 		obj.setCreatureState(current);
 		obj.updateCreaturePosition(current);
 		/+do{
