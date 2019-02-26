@@ -659,31 +659,38 @@ final class SacScene: Scene{
 	void stateTestControl()in{
 		assert(!!state);
 	}do{
-		if(eventManager.keyPressed[KEY_T]) state.current.eachMoving!kill(state.current);
-		if(eventManager.keyPressed[KEY_R]) state.current.eachMoving!stun(state.current);
+		static void applyToMoving(alias f,B)(ObjectState!B state,Target target){
+			if(!state.isValidId(target.id)) target=Target.init;
+			if(target.type.among(TargetType.none,TargetType.terrain))
+				state.eachMoving!f(state);
+			else if(target.type==TargetType.creature)
+				state.movingObjectById!f(target.id,state);
+		}
+		if(eventManager.keyPressed[KEY_T]) applyToMoving!kill(state.current,mouse.target);
+		if(eventManager.keyPressed[KEY_R]) applyToMoving!stun(state.current,mouse.target);
 		static void catapultRandomly(B)(ref MovingObject!B object,ObjectState!B state){
 			import std.random;
 			auto velocity=Vector3f(uniform!"[]"(-20.0f,20.0f), uniform!"[]"(-20.0f,20.0f), uniform!"[]"(10.0f,25.0f));
 			//auto velocity=Vector3f(0.0f,0.0f,25.0f);
 			object.catapult(velocity,state);
 		}
-		if(eventManager.keyPressed[KEY_W]) state.current.eachMoving!catapultRandomly(state.current);
-		if(eventManager.keyPressed[KEY_RETURN]) state.current.eachMoving!immediateRevive(state.current);
-		if(eventManager.keyPressed[KEY_BACKSPACE]) state.current.eachMoving!revive(state.current);
-		if(eventManager.keyPressed[KEY_G]) state.current.eachMoving!startFlying(state.current);
-		if(eventManager.keyPressed[KEY_V]) state.current.eachMoving!land(state.current);
-		if(eventManager.keyPressed[KEY_SPACE]) state.current.eachMoving!startMeleeAttacking(state.current);
+		if(eventManager.keyPressed[KEY_W]) applyToMoving!catapultRandomly(state.current,mouse.target);
+		if(eventManager.keyPressed[KEY_RETURN]) applyToMoving!immediateRevive(state.current,mouse.target);
+		if(eventManager.keyPressed[KEY_BACKSPACE]) applyToMoving!revive(state.current,mouse.target);
+		if(eventManager.keyPressed[KEY_G]) applyToMoving!startFlying(state.current,mouse.target);
+		if(eventManager.keyPressed[KEY_V]) applyToMoving!land(state.current,mouse.target);
+		if(eventManager.keyPressed[KEY_SPACE]) applyToMoving!startMeleeAttacking(state.current,mouse.target);
 		// TODO: implement the following by sending commands to the game state!
 		if(eventManager.keyPressed[KEY_UP] && !eventManager.keyPressed[KEY_DOWN]){
-			state.current.eachMoving!startMovingForward(state.current);
+			applyToMoving!startMovingForward(state.current,mouse.target);
 		}else if(eventManager.keyPressed[KEY_DOWN] && !eventManager.keyPressed[KEY_UP]){
-			state.current.eachMoving!startMovingBackward(state.current);
-		}else state.current.eachMoving!stopMovement(state.current);
+			applyToMoving!startMovingBackward(state.current,mouse.target);
+		}else applyToMoving!stopMovement(state.current,mouse.target);
 		if(eventManager.keyPressed[KEY_LEFT] && !eventManager.keyPressed[KEY_RIGHT]){
-			state.current.eachMoving!startTurningLeft(state.current);
+			applyToMoving!startTurningLeft(state.current,mouse.target);
 		}else if(eventManager.keyPressed[KEY_RIGHT] && !eventManager.keyPressed[KEY_LEFT]){
-			state.current.eachMoving!startTurningRight(state.current);
-		}else state.current.eachMoving!stopTurning(state.current);
+			applyToMoving!startTurningRight(state.current,mouse.target);
+		}else applyToMoving!stopTurning(state.current,mouse.target);
 
 		if(eventManager.keyPressed[KEY_Y]) showHitboxes=true;
 		if(eventManager.keyPressed[KEY_U]) showHitboxes=false;
