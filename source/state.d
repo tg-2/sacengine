@@ -1940,11 +1940,9 @@ void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 			break;
 		case SoulState.reviving:
 			assert(soul.creatureId!=0);
-			soul.scaling-=1.0f/updateFPS;
-			if(soul.scaling<=0.0f){
+			soul.scaling-=2.0f/updateFPS;
+			if(soul.scaling<=0.0f)
 				soul.scaling=0.0f;
-				// TODO: delete the soul
-			}
 			break;
 		case SoulState.collecting:
 			assert(soul.collectorId!=0);
@@ -2364,6 +2362,9 @@ final class ObjectState(B){ // (update logic)
 	}
 	float getGroundHeight(Vector3f position){
 		return map.getGroundHeight(position);
+	}
+	float getHeight(Vector3f position){
+		return map.getHeight(position);
 	}
 	float getGroundHeightDerivative(Vector3f position,Vector3f direction){
 		return map.getGroundHeightDerivative(position,direction);

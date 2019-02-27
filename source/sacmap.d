@@ -97,7 +97,7 @@ final class SacMap(B){
 		return Vector3f(10*i,10*(n-1-j),heights[j][i]);
 	}
 
-	Tuple!(int,"j",int,"i")[3] getTriangle(Vector3f pos){
+	Tuple!(int,"j",int,"i")[3] getTriangle(bool invert=false)(Vector3f pos){
 		auto tile=getTile(pos);
 		int i=tile.i,j=tile.j;
 		if(i<0||i>=n-1||j<0||j>=m-1) return typeof(return).init;
@@ -110,12 +110,25 @@ final class SacMap(B){
 				x=tuple!("j","i")(j+dj(indices[k]),i+di(indices[k]));
 			}
 		}
-		if(!edges[j][i]){
-			if(!edges[j+1][i+1]&&!edges[j][i+1]) makeTri!([0,2,1]);
-		}else if(!edges[j][i+1]&&!edges[j+1][i+1]&&!edges[j+1][i]) makeTri!([1,3,2]);
-		if(!edges[j+1][i+1]){
-			if(!edges[j][i]&&!edges[j+1][i]) makeTri!([2,0,3]);
-		}else if(!edges[j][i]&&!edges[j][i+1]&&!edges[j+1][i]) makeTri!([0,3,1]);
+		static if(!invert){
+			if(!edges[j][i]){
+				if(!edges[j+1][i+1]&&!edges[j][i+1]) makeTri!([0,2,1]);
+			}else if(!edges[j][i+1]&&!edges[j+1][i+1]&&!edges[j+1][i]) makeTri!([1,3,2]);
+			if(!edges[j+1][i+1]){
+				if(!edges[j][i]&&!edges[j+1][i]) makeTri!([2,0,3]);
+			}else if(!edges[j][i]&&!edges[j][i+1]&&!edges[j+1][i]) makeTri!([0,3,1]);
+		}else{
+			if(edges[j][i]){
+				if(!edges[j+1][i+1]&&!edges[j][i+1]) makeTri!([2,0,3]);
+			}else if(!edges[j][i+1]&&!edges[j+1][i+1]&&!edges[j+1][i]) makeTri!([0,3,1]);
+			if(!edges[j+1][i+1]){
+				if(!edges[j][i]&&!edges[j+1][i]) makeTri!([0,2,1]);
+			}else if(!edges[j][i]&&!edges[j][i+1]&&!edges[j+1][i]) makeTri!([1,3,2]);
+			if(nt==0){
+				makeTri!([0,2,1]);
+				makeTri!([2,0,3]);
+			}
+		}
 		bool isInside(Tuple!(int,"j",int,"i")[3] tri){
 			Vector3f getV(int k){
 				auto v=getVertex(tri[k%$].j,tri[k%$].i)-pos;
@@ -129,22 +142,36 @@ final class SacMap(B){
 			return true;
 		}
 		if(nt==0) return typeof(return).init;
-		if(isInside(tri[0])) return tri[0]; // TODO: fix precision issues, by using fixed-point and splitting at line
-		else if(nt==2) return tri[1];
-		else return typeof(return).init;
+		if(!invert){
+			if(isInside(tri[0])) return tri[0]; // TODO: fix precision issues, by using fixed-point and splitting at line
+			else if(nt==2) return tri[1];
+			else return typeof(return).init;
+		}else{
+			if(nt==1||!isInside(tri[1])) return tri[0];
+			else return tri[1];
+		}
 	}
 
 	bool isOnGround(Vector3f pos){
 		auto triangle=getTriangle(pos);
 		return triangle[0]!=triangle[1];
 	}
-	float getGroundHeight(Vector3f pos){
-		auto triangle=getTriangle(pos);
+	private float getHeightImpl(Tuple!(int,"j",int,"i")[3] triangle,Vector3f pos){
 		static foreach(i;0..3)
 			mixin(text(`auto p`,i,`=getVertex(triangle[`,i,`].expand);`));
 		Plane plane;
 		plane.fromPoints(p0,p1,p2); // wtf.
 		return -(plane.a*pos.x+plane.b*pos.y+plane.d)/plane.c;
+	}
+	float getHeight(Vector3f pos){
+		auto triangle=getTriangle(pos);
+		if(triangle[0]==triangle[1]) triangle=getTriangle!true(pos);
+		assert(triangle[0]!=triangle[1]);
+		return getHeightImpl(triangle,pos);
+	}
+	float getGroundHeight(Vector3f pos){
+		auto triangle=getTriangle(pos);
+		return getHeightImpl(triangle,pos);
 	}
 	float getGroundHeightDerivative(Vector3f pos,Vector3f direction){
 		auto triangle=getTriangle(pos);
