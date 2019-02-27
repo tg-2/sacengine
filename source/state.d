@@ -1344,8 +1344,16 @@ void damageAnimation(B)(ref MovingObject!B object,Vector3f attackDirection,Objec
 	object.frame=0;
 }
 
+bool canDamage(B)(ref MovingObject!B object,ObjectState!B state){
+	if(object.creatureStats.flags&Flags.cannotDamage) return false;
+	final switch(object.creatureState.mode) with(CreatureMode){
+		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,stunned: return true;
+		case dying,dead,reviving,fastReviving: return false;
+	}
+}
+
 void dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B attacker,ObjectState!B state){
-	if(object.creatureStats.flags&Flags.cannotDamage) return;
+	if(!object.canDamage(state)) return;
 	object.creatureStats.health=max(0.0f,object.creatureStats.health-damage);
 	if(object.creatureStats.flags&Flags.cannotDestroyKill)
 		object.creatureStats.health=max(object.creatureStats.health,1.0f);
@@ -1355,9 +1363,14 @@ void dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B att
 	attacker.heal(damage*attacker.creatureStats.drain,state);
 }
 
+bool canDamage(B)(ref Building!B building,ObjectState!B state){
+	if(building.flags&Flags.cannotDamage) return false;
+	if(building.health==0.0f) return false;
+	return true;
+}
+
 void dealDamage(B)(ref Building!B building,float damage,ref MovingObject!B attacker,ObjectState!B state){
-	if(building.flags&Flags.cannotDamage) return;
-	if(building.health==0.0f) return;
+	if(!building.canDamage(state)) return;
 	building.health=max(0.0f,building.health-damage);
 	if(building.flags&Flags.cannotDestroyKill)
 		building.health=max(building.health,1.0f);
