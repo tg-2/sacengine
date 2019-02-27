@@ -52,3 +52,10 @@ struct CreatureStats{
 @property float collisionFixupSpeed(ref CreatureStats stats){
 	return 5.0f;
 }
+
+@property float reviveTime(ref CreatureStats stats){
+	return 5.0f;
+}
+@property float reviveHeight(ref CreatureStats stats){
+	return 2.0f;
+}

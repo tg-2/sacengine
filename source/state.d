@@ -28,6 +28,7 @@ enum CreatureMode{
 	dying,
 	dead,
 	reviving,
+	fastReviving,
 	takeoff,
 	landing,
 	meleeMoving,
@@ -60,6 +61,7 @@ struct CreatureState{
 	auto movementDirection=MovementDirection.none;
 	auto rotationDirection=RotationDirection.none;
 	auto fallingVelocity=Vector3f(0.0f,0.0f,0.0f);
+	int timer; // used for: constraining revive time to be at least 5s
 }
 
 struct MovingObject(B){
@@ -1060,8 +1062,17 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 				object.animationState=AnimationState.hitFloor;
 			object.frame=sacObject.numFrames(object.animationState)*updateAnimFactor-1;
 			break;
-		case CreatureMode.reviving:
+		case CreatureMode.reviving, CreatureMode.fastReviving:
 			assert(object.frame==sacObject.numFrames(object.animationState)*updateAnimFactor-1);
+			static immutable reviveSequence=[AnimationState.corpse,AnimationState.float_];
+			object.creatureState.timer=0;
+			if(object.sacObject.hasAnimationState(AnimationState.corpse)){
+				object.frame=0;
+				object.animationState=AnimationState.corpse;
+			}else if(object.sacObject.hasAnimationState(AnimationState.float_)){
+				object.frame=0;
+				object.animationState=AnimationState.float_;
+			}
 			break;
 		case CreatureMode.takeoff:
 			assert(sacObject.canFly && object.creatureState.movement==CreatureMovement.onGround);
@@ -1146,7 +1157,7 @@ bool pickNextAnimation(B)(ref MovingObject!B object,immutable(AnimationState)[] 
 }
 
 void startIdling(B)(ref MovingObject!B object, ObjectState!B state){
-	if(!object.creatureState.mode.among(CreatureMode.moving,CreatureMode.reviving,CreatureMode.takeoff,CreatureMode.landing,CreatureMode.meleeMoving,CreatureMode.meleeAttacking,CreatureMode.stunned))
+	if(!object.creatureState.mode.among(CreatureMode.moving,CreatureMode.reviving,CreatureMode.fastReviving,CreatureMode.takeoff,CreatureMode.landing,CreatureMode.meleeMoving,CreatureMode.meleeAttacking,CreatureMode.stunned))
 		return;
 	object.creatureState.mode=CreatureMode.idle;
 	object.setCreatureState(state);
@@ -1154,7 +1165,7 @@ void startIdling(B)(ref MovingObject!B object, ObjectState!B state){
 
 void kill(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.creatureStats.flags&Flags.cannotDestroyKill) return;
-	with(CreatureMode) if(object.creatureState.mode.among(dying,dead,reviving)) return;
+	with(CreatureMode) if(object.creatureState.mode.among(dying,dead,reviving,fastReviving)) return;
 	if(!object.sacObject.canDie()) return;
 	object.creatureStats.health=0.0f;
 	object.creatureState.mode=CreatureMode.dying;
@@ -1232,7 +1243,11 @@ void immediateRevive(B)(ref MovingObject!B object,ObjectState!B state){
 	object.setCreatureState(state);
 }
 
-void revive(B)(ref MovingObject!B object,ObjectState!B state){
+void fastRevive(B)(ref MovingObject!B object,ObjectState!B state){
+	object.revive(state,true);
+}
+
+void revive(B)(ref MovingObject!B object,ObjectState!B state,bool fast=false){
 	with(CreatureMode) if(object.creatureState.mode!=dead) return;
 	if(object.soulId==0) return;
 	if(!state.soulById!((ref Soul!B s){
@@ -1244,7 +1259,7 @@ void revive(B)(ref MovingObject!B object,ObjectState!B state){
 	},()=>false)(object.soulId))
 		return;
 	object.creatureStats.health=object.creatureStats.maxHealth;
-	object.creatureState.mode=CreatureMode.reviving;
+	object.creatureState.mode=fast?CreatureMode.fastReviving:CreatureMode.reviving;
 	object.setCreatureState(state);
 }
 
@@ -1486,27 +1501,46 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 			with(AnimationState) assert(object.animationState.among(hitFloor,death0,death1,death2));
 			assert(object.frame==sacObject.numFrames(object.animationState)*updateAnimFactor-1);
 			break;
-		case CreatureMode.reviving:
-			// TODO: figure out how the revive sequence works in detail
+		case CreatureMode.reviving, CreatureMode.fastReviving:
 			static immutable reviveSequence=[AnimationState.corpse,AnimationState.float_];
-			if(object.soulId){
-				if(state.soulById!((Soul!B s)=>s.scaling==0.0f,()=>false)(object.soulId)){
+			auto reviveTime=cast(int)(object.creatureStats.reviveTime*updateFPS);
+			if(object.creatureState.mode==CreatureMode.fastReviving) reviveTime/=2;
+			auto totalNumFrames=0;
+			foreach(i,animationState;reviveSequence)
+				if(sacObject.hasAnimationState(animationState))
+					while(totalNumFrames<reviveTime){
+						totalNumFrames+=sacObject.numFrames(animationState)*updateAnimFactor;
+						if(i+1!=reviveSequence.length) break;
+					}
+
+			if(totalNumFrames==0) totalNumFrames=reviveTime;
+			assert(totalNumFrames!=0);
+			object.creatureState.timer+=1;
+			object.creatureState.facing+=(object.creatureState.mode==CreatureMode.fastReviving?2.0f*PI:4.0f*PI)/totalNumFrames;
+			if(object.creatureState.timer<totalNumFrames/2){
+				object.creatureState.movement=CreatureMovement.flying;
+				object.position.z+=object.creatureStats.reviveHeight/(totalNumFrames/2);
+			}
+			object.rotation=facingQuaternion(object.creatureState.facing);
+			void finish(){
+				if(object.soulId){
 					state.removeLater(object.soulId);
 					object.soulId=0;
-					object.frame=0;
-					object.animationState=AnimationState.corpse;
-					if(!object.sacObject.hasAnimationState(AnimationState.corpse)){
-						if(!object.pickNextAnimation(reviveSequence,state))
-						   object.startIdling(state);
-					}
 				}
-			}else{
+				if(object.sacObject.canFly) object.creatureState.flyingDisplacement=object.creatureStats.reviveHeight;
+				object.creatureState.movement=CreatureMovement.tumbling;
+				object.startIdling(state);
+			}
+			if(reviveSequence.canFind(object.animationState)){
 				object.frame+=1;
 				if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
 					object.frame=0;
-					if(!object.pickNextAnimation(reviveSequence,state))
-						object.startIdling(state);
+					if(!object.pickNextAnimation(reviveSequence,state) && object.creatureState.timer>=totalNumFrames)
+						finish();
 				}
+			}else if(object.creatureState.timer>=totalNumFrames){
+				object.frame=0;
+				finish();
 			}
 			break;
 		case CreatureMode.takeoff:
@@ -2072,7 +2106,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 			static bool manahoarAbilityEnabled(CreatureMode mode){
 				final switch(mode) with(CreatureMode){
 					case idle,moving,dying,takeoff,landing,meleeMoving,meleeAttacking,stunned: return true;
-					case dead,reviving: return false;
+					case dead,reviving,fastReviving: return false;
 				}
 			}
 			foreach(j;0..objects.length){

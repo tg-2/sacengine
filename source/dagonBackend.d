@@ -676,7 +676,11 @@ final class SacScene: Scene{
 		}
 		if(eventManager.keyPressed[KEY_W]) applyToMoving!catapultRandomly(state.current,mouse.target);
 		if(eventManager.keyPressed[KEY_RETURN]) applyToMoving!immediateRevive(state.current,mouse.target);
-		if(eventManager.keyPressed[KEY_BACKSPACE]) applyToMoving!revive(state.current,mouse.target);
+		if(eventManager.keyPressed[KEY_BACKSPACE]){
+			if(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK]){
+				applyToMoving!fastRevive(state.current,mouse.target);
+			}else applyToMoving!revive(state.current,mouse.target);
+		}
 		if(eventManager.keyPressed[KEY_G]) applyToMoving!startFlying(state.current,mouse.target);
 		if(eventManager.keyPressed[KEY_V]) applyToMoving!land(state.current,mouse.target);
 		if(eventManager.keyPressed[KEY_SPACE]) applyToMoving!startMeleeAttacking(state.current,mouse.target);
