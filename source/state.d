@@ -891,7 +891,7 @@ auto ref objectById(alias f,B,T...)(ref ObjectManager!B objectManager,int id,T a
 		}else return f(objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index],args);
 	}
 }
-auto ref movingObjectById(alias f,alias nonMoving=(){assert(0);},B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
+auto ref movingObjectById(alias f,alias nonMoving=fail,B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
 	assert(id>0);
 }do{
 	auto nid=objectManager.ids[id-1];
@@ -913,7 +913,7 @@ auto ref movingObjectById(alias f,alias nonMoving=(){assert(0);},B,T...)(ref Obj
 		}
 	}else return nonMoving();
 }
-auto ref staticObjectById(alias f,alias nonStatic=(){assert(0);},B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
+auto ref staticObjectById(alias f,alias nonStatic=fail,B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
 	assert(id>0);
 }do{
 	auto nid=objectManager.ids[id-1];
@@ -929,7 +929,7 @@ auto ref staticObjectById(alias f,alias nonStatic=(){assert(0);},B,T...)(ref Obj
 		}else return f(objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index],args);
 	}else return nonStatic();
 }
-auto ref soulById(alias f,alias noSoul=(){assert(0);},B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
+auto ref soulById(alias f,alias noSoul=fail,B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
 	assert(id>0);
 }do{
 	auto nid=objectManager.ids[id-1];
@@ -941,7 +941,7 @@ auto ref soulById(alias f,alias noSoul=(){assert(0);},B,T...)(ref ObjectManager!
 		return f(soul,args);
 	}else return f(objectManager.opaqueObjects.souls[nid.index],args);
 }
-auto ref buildingById(alias f,alias noBuilding=(){assert(0);},B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
+auto ref buildingById(alias f,alias noBuilding=fail,B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
 	assert(id>0);
 }do{
 	auto nid=objectManager.ids[id-1];
@@ -953,7 +953,7 @@ auto ref buildingById(alias f,alias noBuilding=(){assert(0);},B,T...)(ref Object
 		return f(building,args);
 	}else return f(objectManager.opaqueObjects.buildings[nid.index],args);
 }
-auto ref buildingByStaticObjectId(alias f,alias nonStatic=(){assert(0);},B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
+auto ref buildingByStaticObjectId(alias f,alias nonStatic=fail,B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
 	assert(id>0);
 }do{
 	auto nid=objectManager.ids[id-1];
@@ -2492,19 +2492,19 @@ auto eachByType(alias f,B,T...)(ObjectState!B objectState,T args){
 auto ref objectById(alias f,B,T...)(ObjectState!B objectState,int id,T args){
 	return objectState.obj.objectById!f(id,args);
 }
-auto ref movingObjectById(alias f,alias nonMoving=(){assert(0);},B,T...)(ObjectState!B objectState,int id,T args){
+auto ref movingObjectById(alias f,alias nonMoving=fail,B,T...)(ObjectState!B objectState,int id,T args){
 	return objectState.obj.movingObjectById!(f,nonMoving)(id,args);
 }
-auto ref staticObjectById(alias f,alias nonStatic=(){assert(0);},B,T...)(ObjectState!B objectState,int id,T args){
+auto ref staticObjectById(alias f,alias nonStatic=fail,B,T...)(ObjectState!B objectState,int id,T args){
 	return objectState.obj.staticObjectById!(f,nonStatic)(id,args);
 }
-auto ref soulById(alias f,alias noSoul=(){assert(0);},B,T...)(ObjectState!B objectState,int id,T args){
+auto ref soulById(alias f,alias noSoul=fail,B,T...)(ObjectState!B objectState,int id,T args){
 	return objectState.obj.soulById!(f,noSoul)(id,args);
 }
-auto ref buildingById(alias f,alias noBuilding=(){assert(0);},B,T...)(ObjectState!B objectState,int id,T args){
+auto ref buildingById(alias f,alias noBuilding=fail,B,T...)(ObjectState!B objectState,int id,T args){
 	return objectState.obj.buildingById!(f,noBuilding)(id,args);
 }
-auto ref buildingByStaticObjectId(alias f,alias noStatic=(){assert(0);},B,T...)(ObjectState!B objectState,int id,T args){
+auto ref buildingByStaticObjectId(alias f,alias noStatic=fail,B,T...)(ObjectState!B objectState,int id,T args){
 	return objectState.obj.buildingByStaticObjectId!(f,noStatic)(id,args);
 }
 

@@ -135,3 +135,5 @@ void assignArray(T)(ref Array!T to, ref Array!T from){
 	to.data[]=from.data[];
 }
 +/
+
+void fail(){ assert(0); }
