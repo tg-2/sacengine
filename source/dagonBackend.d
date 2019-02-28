@@ -602,6 +602,33 @@ final class SacScene: Scene{
 		//sortEntities(entities3D);
 		//sortEntities(entities2D);
 	}
+	struct Camera{
+		int target=0;
+		float distance=10.0f;
+		float height=5.0f;
+	}
+	Camera camera;
+	void positionCamera(bool center){
+		if(!state.current.isValidId(camera.target)) camera.target=0;
+		if(camera.target==0) return;
+		if(center){
+			fpview.camera.turn=state.current.movingObjectById!(
+				(obj)=>-radtodeg(obj.creatureState.facing),
+				function float(){ assert(0); }
+			)(camera.target);
+		}
+		static Vector3f computePosition(B)(MovingObject!B obj,float turn,Camera camera,ObjectState!B state){
+			auto position=obj.position+rotate(rotationQuaternion(Axis.z,-degtorad(turn)),Vector3f(0.0f,-1.0f,0.0f))*camera.distance;
+			if(obj.creatureState.movement==CreatureMovement.onGround) position.z=state.getHeight(position);
+			else if(state.isOnGround(position)) position.z=max(position.z,state.getGroundHeight(position));
+			position.z+=camera.height;
+			return position;
+		}
+		fpview.camera.position=state.current.movingObjectById!(
+			computePosition,function Vector3f(){ assert(0); }
+		)(camera.target,fpview.camera.turn,camera,state.current);
+	}
+	Quaternionf lastTargetRotation;
 	float speed = 100.0f;
 	void cameraControl(double dt){
 		Vector3f forward = fpview.camera.worldTrans.forward;
@@ -610,13 +637,7 @@ final class SacScene: Scene{
 		//if(eventManager.keyPressed[KEY_X]) dir += Vector3f(1,0,0);
 		//if(eventManager.keyPressed[KEY_Y]) dir += Vector3f(0,1,0);
 		//if(eventManager.keyPressed[KEY_Z]) dir += Vector3f(0,0,1);
-		if(eventManager.keyPressed[KEY_E]) dir += -forward;
-		if(eventManager.keyPressed[KEY_D]) dir += forward;
-		if(eventManager.keyPressed[KEY_S]) dir += -right;
-		if(eventManager.keyPressed[KEY_F]) dir += right;
-		if(eventManager.keyPressed[KEY_I]) speed = 10.0f;
-		if(eventManager.keyPressed[KEY_O]) speed = 100.0f;
-		if(eventManager.keyPressed[KEY_P]) speed = 1000.0f;
+		fpview.control();
 		if(mouse.visible){
 			if(((eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK])
 			    && eventManager.mouseButtonPressed[MB_LEFT])||
@@ -641,6 +662,36 @@ final class SacScene: Scene{
 				}
 			}
 		}
+		if(camera.target!=0&&!state.current.isValidId(camera.target)) camera.target=0;
+		if(camera.target==0){
+			if(eventManager.keyPressed[KEY_E]) dir += -forward;
+			if(eventManager.keyPressed[KEY_D]) dir += forward;
+			if(eventManager.keyPressed[KEY_S]) dir += -right;
+			if(eventManager.keyPressed[KEY_F]) dir += right;
+			if(eventManager.keyPressed[KEY_I]) speed = 10.0f;
+			if(eventManager.keyPressed[KEY_O]) speed = 100.0f;
+			if(eventManager.keyPressed[KEY_P]) speed = 1000.0f;
+			fpview.camera.position += dir.normalized * speed * dt;
+			if(state) fpview.camera.position.z=max(fpview.camera.position.z, state.current.getHeight(fpview.camera.position));
+			/+if(state && state.current.isOnGround(fpview.camera.position)){
+			 fpview.camera.position.z=max(fpview.camera.position.z, state.current.getGroundHeight(fpview.camera.position));
+			 }+/
+		}else{
+			TODO: implement the following by sending commands to the game state!
+			if(eventManager.keyPressed[KEY_E] && !eventManager.keyPressed[KEY_D]){
+				state.current.movingObjectById!startMovingForward(camera.target,state.current);
+			}else if(eventManager.keyPressed[KEY_D] && !eventManager.keyPressed[KEY_E]){
+				state.current.movingObjectById!startMovingBackward(camera.target,state.current);
+			}else state.current.movingObjectById!stopMovement(camera.target,state.current);
+			if(eventManager.keyPressed[KEY_S] && !eventManager.keyPressed[KEY_F]){
+				state.current.movingObjectById!startTurningLeft(camera.target,state.current);
+			}else if(eventManager.keyPressed[KEY_F] && !eventManager.keyPressed[KEY_S]){
+				state.current.movingObjectById!startTurningRight(camera.target,state.current);
+			}else state.current.movingObjectById!stopTurning(camera.target,state.current);
+			auto targetRotation=state.current.movingObjectById!((obj)=>obj.rotation, function Quaternionf(){ assert(0); })(camera.target);
+			positionCamera(targetRotation!=lastTargetRotation && !mouse.dragging);
+			lastTargetRotation=targetRotation;
+		}
 		if(eventManager.keyPressed[KEY_K]){
 			fpview.active=false;
 			mouse.visible=true;
@@ -650,63 +701,72 @@ final class SacScene: Scene{
 			mouse.visible=false;
 			fpview.mouseFactor=2.0f;
 		}
-		fpview.camera.position += dir.normalized * speed * dt;
-		if(state && state.current.isOnGround(fpview.camera.position)){
-			fpview.camera.position.z=max(fpview.camera.position.z, state.current.getGroundHeight(fpview.camera.position));
-		}
 	}
 
 	void stateTestControl()in{
 		assert(!!state);
 	}do{
-		static void applyToMoving(alias f,B)(ObjectState!B state,Target target){
-			if(!state.isValidId(target.id)) target=Target.init;
-			if(target.type.among(TargetType.none,TargetType.terrain))
-				state.eachMoving!f(state);
-			else if(target.type==TargetType.creature)
-				state.movingObjectById!f(target.id,state);
+		static void applyToMoving(alias f,B)(ObjectState!B state,Camera camera,Target target){
+			if(!state.isValidId(camera.target)) camera.target=0;
+			if(camera.target==0){
+				if(!state.isValidId(target.id)) target=Target.init;
+				if(target.type.among(TargetType.none,TargetType.terrain))
+					state.eachMoving!f(state);
+				else if(target.type==TargetType.creature)
+					state.movingObjectById!f(target.id,state);
+			}else state.movingObjectById!f(camera.target,state);
 		}
-		if(eventManager.keyPressed[KEY_T]) applyToMoving!kill(state.current,mouse.target);
-		if(eventManager.keyPressed[KEY_R]) applyToMoving!stun(state.current,mouse.target);
+		if(eventManager.keyPressed[KEY_T]) applyToMoving!kill(state.current,camera,mouse.target);
+		if(eventManager.keyPressed[KEY_R]) applyToMoving!stun(state.current,camera,mouse.target);
 		static void catapultRandomly(B)(ref MovingObject!B object,ObjectState!B state){
 			import std.random;
 			auto velocity=Vector3f(uniform!"[]"(-20.0f,20.0f), uniform!"[]"(-20.0f,20.0f), uniform!"[]"(10.0f,25.0f));
 			//auto velocity=Vector3f(0.0f,0.0f,25.0f);
 			object.catapult(velocity,state);
 		}
-		if(eventManager.keyPressed[KEY_W]) applyToMoving!catapultRandomly(state.current,mouse.target);
-		if(eventManager.keyPressed[KEY_RETURN]) applyToMoving!immediateRevive(state.current,mouse.target);
+		if(eventManager.keyPressed[KEY_W]) applyToMoving!catapultRandomly(state.current,camera,mouse.target);
+		if(eventManager.keyPressed[KEY_RETURN]) applyToMoving!immediateRevive(state.current,camera,mouse.target);
 		if(eventManager.keyPressed[KEY_BACKSPACE]){
 			if(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK]){
-				applyToMoving!fastRevive(state.current,mouse.target);
-			}else applyToMoving!revive(state.current,mouse.target);
+				applyToMoving!fastRevive(state.current,camera,mouse.target);
+			}else applyToMoving!revive(state.current,camera,mouse.target);
 		}
-		if(eventManager.keyPressed[KEY_G]) applyToMoving!startFlying(state.current,mouse.target);
-		if(eventManager.keyPressed[KEY_V]) applyToMoving!land(state.current,mouse.target);
-		if(eventManager.keyPressed[KEY_SPACE]) applyToMoving!startMeleeAttacking(state.current,mouse.target);
-		// TODO: implement the following by sending commands to the game state!
-		if(eventManager.keyPressed[KEY_UP] && !eventManager.keyPressed[KEY_DOWN]){
-			applyToMoving!startMovingForward(state.current,mouse.target);
+		if(eventManager.keyPressed[KEY_G]) applyToMoving!startFlying(state.current,camera,mouse.target);
+		if(eventManager.keyPressed[KEY_V]) applyToMoving!land(state.current,camera,mouse.target);
+		if(eventManager.keyPressed[KEY_SPACE]) applyToMoving!startMeleeAttacking(state.current,camera,mouse.target);
+		// TODO: enabling the following destroys ESDF controls. Template-related compiler bug?
+		/+if(eventManager.keyPressed[KEY_UP] && !eventManager.keyPressed[KEY_DOWN]){
+			applyToMoving!startMovingForward(state.current,camera,mouse.target);
 		}else if(eventManager.keyPressed[KEY_DOWN] && !eventManager.keyPressed[KEY_UP]){
-			applyToMoving!startMovingBackward(state.current,mouse.target);
-		}else applyToMoving!stopMovement(state.current,mouse.target);
+			applyToMoving!startMovingBackward(state.current,camera,mouse.target);
+		}else applyToMoving!stopMovement(state.current,camera,mouse.target);
 		if(eventManager.keyPressed[KEY_LEFT] && !eventManager.keyPressed[KEY_RIGHT]){
-			applyToMoving!startTurningLeft(state.current,mouse.target);
+			applyToMoving!startTurningLeft(state.current,camera,mouse.target);
 		}else if(eventManager.keyPressed[KEY_RIGHT] && !eventManager.keyPressed[KEY_LEFT]){
-			applyToMoving!startTurningRight(state.current,mouse.target);
-		}else applyToMoving!stopTurning(state.current,mouse.target);
+			applyToMoving!startTurningRight(state.current,camera,mouse.target);
+		}else applyToMoving!stopTurning(state.current,camera,mouse.target);+/
+
+		if(eventManager.keyPressed[KEY_M]&&mouse.target.type==TargetType.creature&&mouse.target.id){
+			camera.target=mouse.target.id;
+			positionCamera(true);
+		}
+		if(eventManager.keyPressed[KEY_N]) camera.target=0;
 
 		if(eventManager.keyPressed[KEY_Y]) showHitboxes=true;
 		if(eventManager.keyPressed[KEY_U]) showHitboxes=false;
+	}
+
+	override void onViewUpdate(double dt){
+		stateTestControl();
+		cameraControl(dt);
+		super.onViewUpdate(dt);
 	}
 
 	override void onLogicsUpdate(double dt){
 		assert(dt==1.0f/updateFPS);
 		//writeln(DagonBackend.getTotalGPUMemory()," ",DagonBackend.getAvailableGPUMemory());
 		//writeln(eventManager.fps);
-		cameraControl(dt);
 		if(state){
-			stateTestControl();
 			state.step();
 			state.commit();
 			auto totalTime=state.current.frame*dt;
