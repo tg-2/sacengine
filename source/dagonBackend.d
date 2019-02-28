@@ -677,7 +677,7 @@ final class SacScene: Scene{
 			 fpview.camera.position.z=max(fpview.camera.position.z, state.current.getGroundHeight(fpview.camera.position));
 			 }+/
 		}else{
-			TODO: implement the following by sending commands to the game state!
+			// TODO: implement the following by sending commands to the game state!
 			if(eventManager.keyPressed[KEY_E] && !eventManager.keyPressed[KEY_D]){
 				state.current.movingObjectById!startMovingForward(camera.target,state.current);
 			}else if(eventManager.keyPressed[KEY_D] && !eventManager.keyPressed[KEY_E]){
