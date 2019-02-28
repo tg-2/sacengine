@@ -1126,22 +1126,26 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 			}
 			break;
 		case CreatureMode.stunned:
-			object.frame=0;
 			final switch(object.creatureState.movement){
 				case CreatureMovement.onGround:
+					object.frame=0;
 					object.animationState=sacObject.hasKnockdown?AnimationState.knocked2Floor
 						:sacObject.hasGetUp?AnimationState.getUp:AnimationState.stance1;
 					break;
 				case CreatureMovement.flying:
+					object.frame=0;
 					assert(sacObject.canFly);
 					object.animationState=sacObject.hasFlyDamage?AnimationState.flyDamage:AnimationState.hover;
 					break;
 				case CreatureMovement.tumbling:
-					object.animationState=AnimationState.stance1;
-					bool hasFalling=sacObject.hasFalling;
-					if(hasFalling&&object.creatureState.fallingVelocity.xy==Vector2f(0.0f,0.0f)) object.animationState=AnimationState.falling;
-					else if(sacObject.canTumble) object.animationState=AnimationState.tumble;
-					else if(hasFalling) object.animationState=AnimationState.falling;
+					if(object.animationState!=AnimationState.knocked2Floor){
+						object.frame=0;
+						object.animationState=AnimationState.stance1;
+						bool hasFalling=sacObject.hasFalling;
+						if(hasFalling&&object.creatureState.fallingVelocity.xy==Vector2f(0.0f,0.0f)) object.animationState=AnimationState.falling;
+						else if(sacObject.canTumble) object.animationState=AnimationState.tumble;
+						else if(hasFalling) object.animationState=AnimationState.falling;
+					}
 					break;
 			}
 			break;
@@ -1613,10 +1617,12 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 					break;
 				}else if(state.isOnGround(object.position)&&object.position.z<=state.getGroundHeight(object.position)){
 					object.creatureState.movement=CreatureMovement.onGround;
-					if(sacObject.hasHitFloor){
-						object.frame=0;
-						object.animationState=AnimationState.hitFloor;
-					}else object.startIdling(state);
+					if(object.animationState.among(AnimationState.falling,AnimationState.tumble)){
+						if(sacObject.hasHitFloor){
+							object.frame=0;
+							object.animationState=AnimationState.hitFloor;
+						}else object.startIdling(state);
+					}
 					break;
 				}
 			}
@@ -1633,6 +1639,8 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 						object.startIdling(state);
 						break;
 					case CreatureMovement.tumbling:
+						if(object.animationState.among(AnimationState.knocked2Floor,AnimationState.getUp))
+							goto case CreatureMovement.onGround;
 						// continue tumbling
 						break;
 				}
