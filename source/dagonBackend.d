@@ -608,6 +608,12 @@ final class SacScene: Scene{
 		float height=5.0f;
 	}
 	Camera camera;
+	void focusCamera(int target){
+		camera.target=target;
+		camera.distance=5.0f;
+		camera.height=2.0f;
+		positionCamera(true);
+	}
 	void positionCamera(bool center){
 		if(!state.current.isValidId(camera.target)) camera.target=0;
 		if(camera.target==0) return;
@@ -617,16 +623,18 @@ final class SacScene: Scene{
 				function float(){ assert(0); }
 			)(camera.target);
 		}
-		static Vector3f computePosition(B)(MovingObject!B obj,float turn,Camera camera,ObjectState!B state){
+		import std.typecons: Tuple, tuple;
+		static Tuple!(Vector3f,float) computePosition(B)(MovingObject!B obj,float turn,Camera camera,ObjectState!B state){
 			auto position=obj.position+rotate(rotationQuaternion(Axis.z,-degtorad(turn)),Vector3f(0.0f,-1.0f,0.0f))*camera.distance;
-			if(obj.creatureState.movement==CreatureMovement.onGround) position.z=state.getHeight(position);
-			else if(state.isOnGround(position)) position.z=max(position.z,state.getGroundHeight(position));
-			position.z+=camera.height;
-			return position;
+			position.z=(obj.position.z-state.getHeight(obj.position)+state.getHeight(position))+camera.height;
+			auto pitchOffset=atan2(position.z-(obj.position.z+2.0f),(obj.position.xy-position.xy).length);
+			return tuple(position,pitchOffset);
 		}
-		fpview.camera.position=state.current.movingObjectById!(
-			computePosition,function Vector3f(){ assert(0); }
+		auto posPitch=state.current.movingObjectById!(
+			computePosition,function Tuple!(Vector3f,float)(){ assert(0); }
 		)(camera.target,fpview.camera.turn,camera,state.current);
+		fpview.camera.position=posPitch[0];
+		fpview.camera.pitchOffset=radtodeg(posPitch[1]);
 	}
 	Quaternionf lastTargetRotation;
 	float speed = 100.0f;
@@ -746,10 +754,8 @@ final class SacScene: Scene{
 			applyToMoving!startTurningRight(state.current,camera,mouse.target);
 		}else applyToMoving!stopTurning(state.current,camera,mouse.target);+/
 
-		if(eventManager.keyPressed[KEY_M]&&mouse.target.type==TargetType.creature&&mouse.target.id){
-			camera.target=mouse.target.id;
-			positionCamera(true);
-		}
+		if(eventManager.keyPressed[KEY_M]&&mouse.target.type==TargetType.creature&&mouse.target.id)
+			focusCamera(mouse.target.id);
 		if(eventManager.keyPressed[KEY_N]) camera.target=0;
 
 		if(eventManager.keyPressed[KEY_Y]) showHitboxes=true;
