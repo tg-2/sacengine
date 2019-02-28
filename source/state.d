@@ -988,7 +988,7 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 					break;
 				case CreatureMovement.flying:
 					assert(sacObject.canFly);
-					if(!sacObject.mustFly && (object.frame==0||object.animationState==AnimationState.fly&&object.sacObject.seamlessFlyAndHover))
+					if(!sacObject.mustFly && (object.frame==0||object.animationState==AnimationState.fly&&sacObject.seamlessFlyAndHover))
 						object.animationState=AnimationState.hover;
 					break;
 				case CreatureMovement.tumbling:
@@ -1018,8 +1018,8 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 		case CreatureMode.moving:
 			final switch(object.creatureState.movement) with(CreatureMovement){
 				case onGround:
-					if(!object.sacObject.canRun){
-						if(object.sacObject.canFly) object.startFlying(state);
+					if(!sacObject.canRun){
+						if(sacObject.canFly) object.startFlying(state);
 						else object.startIdling(state);
 						return;
 					}
@@ -1027,7 +1027,7 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 					object.animationState=AnimationState.run;
 					break;
 				case flying:
-					if(object.frame==0||object.animationState==AnimationState.hover&&object.sacObject.seamlessFlyAndHover)
+					if(object.frame==0||object.animationState==AnimationState.hover&&sacObject.seamlessFlyAndHover)
 						object.animationState=AnimationState.fly;
 					break;
 				case tumbling:
@@ -1038,22 +1038,26 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 				goto case CreatureMode.stunned;
 			break;
 		case CreatureMode.dying:
-			object.frame=0;
-			final switch(object.creatureState.movement) with(CreatureMovement) with(AnimationState){
-				case onGround:
-					assert(!object.sacObject.mustFly);
-					static immutable deathCandidatesOnGround=[death0,death1,death2];
-					object.pickRandomAnimation(deathCandidatesOnGround,state);
-					break;
-				case flying:
-					if(object.sacObject.mustFly){
-						static immutable deathCandidatesFlying=[flyDeath,death0,death1,death2];
-						object.pickRandomAnimation(deathCandidatesFlying,state);
-					}else object.animationState=flyDeath;
-					break;
-				case tumbling:
-					object.animationState=object.sacObject.hasFalling?falling:object.sacObject.canTumble?tumble:stance1;
-					break;
+			with(AnimationState){
+				static immutable deathCandidatesOnGround=[death0,death1,death2];
+				static immutable deathCandidatesFlying=[flyDeath,death0,death1,death2];
+				if(sacObject.mustFly||!deathCandidatesOnGround.canFind(object.animationState)){
+					object.frame=0;
+					final switch(object.creatureState.movement) with(CreatureMovement){
+						case onGround:
+							assert(!sacObject.mustFly);
+							object.pickRandomAnimation(deathCandidatesOnGround,state);
+							break;
+						case flying:
+							if(sacObject.mustFly){
+								object.pickRandomAnimation(deathCandidatesFlying,state);
+							}else object.animationState=flyDeath;
+							break;
+						case tumbling:
+							object.animationState=sacObject.hasFalling?falling:sacObject.canTumble?tumble:stance1;
+							break;
+					}
+				}
 			}
 			break;
 		case CreatureMode.dead:
@@ -1066,10 +1070,10 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 			assert(object.frame==sacObject.numFrames(object.animationState)*updateAnimFactor-1);
 			static immutable reviveSequence=[AnimationState.corpse,AnimationState.float_];
 			object.creatureState.timer=0;
-			if(object.sacObject.hasAnimationState(AnimationState.corpse)){
+			if(sacObject.hasAnimationState(AnimationState.corpse)){
 				object.frame=0;
 				object.animationState=AnimationState.corpse;
-			}else if(object.sacObject.hasAnimationState(AnimationState.float_)){
+			}else if(sacObject.hasAnimationState(AnimationState.float_)){
 				object.frame=0;
 				object.animationState=AnimationState.float_;
 			}
@@ -1096,7 +1100,7 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 					goto case CreatureMode.idle;
 				}else if(object.position.z<=state.getGroundHeight(object.position)){
 					object.creatureState.movement=CreatureMovement.onGround;
-					if(!object.sacObject.hasAnimationState(AnimationState.land)){
+					if(!sacObject.hasAnimationState(AnimationState.land)){
 						object.creatureState.mode=CreatureMode.idle;
 						goto case CreatureMode.idle;
 					}
@@ -1112,7 +1116,7 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 					object.pickRandomAnimation(attackCandidatesOnGround,state);
 					break;
 				case flying:
-					if(object.sacObject.mustFly)
+					if(sacObject.mustFly)
 						goto case onGround; // (bug in original engine: it fails to do this.)
 					object.frame=0;
 					object.animationState=flyAttack;
@@ -1125,15 +1129,19 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 			object.frame=0;
 			final switch(object.creatureState.movement){
 				case CreatureMovement.onGround:
-					object.animationState=object.sacObject.hasKnockdown?AnimationState.knocked2Floor
-						:object.sacObject.hasGetUp?AnimationState.getUp:AnimationState.stance1;
+					object.animationState=sacObject.hasKnockdown?AnimationState.knocked2Floor
+						:sacObject.hasGetUp?AnimationState.getUp:AnimationState.stance1;
 					break;
 				case CreatureMovement.flying:
 					assert(sacObject.canFly);
-					object.animationState=object.sacObject.hasFlyDamage?AnimationState.flyDamage:AnimationState.hover;
+					object.animationState=sacObject.hasFlyDamage?AnimationState.flyDamage:AnimationState.hover;
 					break;
 				case CreatureMovement.tumbling:
-					object.animationState=object.sacObject.canTumble?AnimationState.tumble:AnimationState.stance1;
+					object.animationState=AnimationState.stance1;
+					bool hasFalling=sacObject.hasFalling;
+					if(hasFalling&&object.creatureState.fallingVelocity.xy==Vector2f(0.0f,0.0f)) object.animationState=AnimationState.falling;
+					else if(sacObject.canTumble) object.animationState=AnimationState.tumble;
+					else if(hasFalling) object.animationState=AnimationState.falling;
 					break;
 			}
 			break;
@@ -1226,7 +1234,6 @@ void catapult(B)(ref MovingObject!B object, Vector3f velocity, ObjectState!B sta
 	if(object.creatureState.mode!=CreatureMode.dying)
 		object.creatureState.mode=CreatureMode.stunned;
 	// TODO: in original engine, stunned creatures don't switch to the tumbling animation
-	// TODO: in original engine, dying creatures don't switch to the tumbling animation
 	object.creatureState.movement=CreatureMovement.tumbling;
 	object.creatureState.fallingVelocity=velocity;
 	object.setCreatureState(state);
@@ -1478,14 +1485,16 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 			}
 			break;
 		case CreatureMode.dying:
-			with(AnimationState) assert(object.animationState.among(death0,death1,death2,flyDeath,falling,tumble,hitFloor),text(object.sacObject.tag," ",object.animationState));
+			with(AnimationState) assert(object.animationState.among(death0,death1,death2,flyDeath,falling,tumble,hitFloor),text(sacObject.tag," ",object.animationState));
 			if(object.creatureState.movement==CreatureMovement.tumbling){
 				if(state.isOnGround(object.position)){
 					if(object.creatureState.fallingVelocity.z<=0.0f&&object.position.z<=state.getGroundHeight(object.position)){
 						object.creatureState.movement=CreatureMovement.onGround;
-						object.frame=0;
-						if(object.sacObject.canFly) object.animationState=AnimationState.hitFloor;
-						else object.setCreatureState(state);
+						with(AnimationState)
+						if(sacObject.canFly && !object.animationState.among(hitFloor,death0,death1,death2)){
+							object.frame=0;
+							object.animationState=AnimationState.hitFloor;
+						}else object.setCreatureState(state);
 						break;
 					}
 				}
@@ -1505,6 +1514,9 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 						object.setCreatureState(state);
 						break;
 					case CreatureMovement.tumbling:
+						with(AnimationState)
+						if(!sacObject.mustFly&&object.animationState.among(death0,death1,death2))
+							goto case CreatureMovement.onGround;
 						// continue tumbling
 						break;
 				}
@@ -1513,6 +1525,10 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 		case CreatureMode.dead:
 			with(AnimationState) assert(object.animationState.among(hitFloor,death0,death1,death2));
 			assert(object.frame==sacObject.numFrames(object.animationState)*updateAnimFactor-1);
+			if(object.creatureState.movement==CreatureMovement.tumbling&&object.creatureState.fallingVelocity.z<=0.0f){
+				if(state.isOnGround(object.position)&&object.position.z<=state.getGroundHeight(object.position))
+					object.creatureState.movement=CreatureMovement.onGround;
+			}
 			break;
 		case CreatureMode.reviving, CreatureMode.fastReviving:
 			static immutable reviveSequence=[AnimationState.corpse,AnimationState.float_];
@@ -1540,16 +1556,17 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 					state.removeLater(object.soulId);
 					object.soulId=0;
 				}
-				if(object.sacObject.canFly) object.creatureState.flyingDisplacement=object.creatureStats.reviveHeight;
+				if(sacObject.canFly) object.creatureState.flyingDisplacement=object.creatureStats.reviveHeight;
 				object.creatureState.movement=CreatureMovement.tumbling;
+				object.creatureState.fallingVelocity=Vector3f(0.0f,0.0f,0.0f);
 				object.startIdling(state);
 			}
 			if(reviveSequence.canFind(object.animationState)){
 				object.frame+=1;
 				if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
 					object.frame=0;
-					if(!object.pickNextAnimation(reviveSequence,state) && object.creatureState.timer>=totalNumFrames)
-						finish();
+					if(object.creatureState.timer<totalNumFrames) object.pickNextAnimation(reviveSequence,state);
+					else finish();
 				}
 			}else if(object.creatureState.timer>=totalNumFrames){
 				object.frame=0;
@@ -1557,20 +1574,20 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 			}
 			break;
 		case CreatureMode.takeoff:
-			assert(object.sacObject.canFly);
+			assert(sacObject.canFly);
 			assert(object.creatureState.movement==CreatureMovement.onGround);
 			object.frame+=1;
 			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
 				object.frame=0;
 				if(object.animationState==AnimationState.takeoff){
-					object.creatureState.mode=object.sacObject.movingAfterTakeoff?CreatureMode.moving:CreatureMode.idle;
+					object.creatureState.mode=sacObject.movingAfterTakeoff?CreatureMode.moving:CreatureMode.idle;
 					object.creatureState.movement=CreatureMovement.flying;
 				}
 				object.setCreatureState(state);
 			}
 			break;
 		case CreatureMode.landing:
-			assert(object.sacObject.canFly&&!object.sacObject.mustFly);
+			assert(sacObject.canFly&&!sacObject.mustFly);
 			object.frame+=1;
 			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
 				object.frame=0;
@@ -1586,9 +1603,9 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 			}
 			break;
 		case CreatureMode.stunned:
-			with(AnimationState) assert(object.animationState.among(stance1,knocked2Floor,tumble,hitFloor,getUp,damageFront,damageRight,damageBack,damageLeft,damageTop,flyDamage));
+			with(AnimationState) assert(object.animationState.among(stance1,knocked2Floor,falling,tumble,hitFloor,getUp,damageFront,damageRight,damageBack,damageLeft,damageTop,flyDamage));
 			if(object.creatureState.movement==CreatureMovement.tumbling&&object.creatureState.fallingVelocity.z<=0.0f){
-				if(object.sacObject.canFly){
+				if(sacObject.canFly){
 					object.creatureState.movement=CreatureMovement.flying;
 					object.frame=0;
 					object.animationState=AnimationState.hover;
@@ -1596,7 +1613,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 					break;
 				}else if(state.isOnGround(object.position)&&object.position.z<=state.getGroundHeight(object.position)){
 					object.creatureState.movement=CreatureMovement.onGround;
-					if(object.sacObject.hasHitFloor){
+					if(sacObject.hasHitFloor){
 						object.frame=0;
 						object.animationState=AnimationState.hitFloor;
 					}else object.startIdling(state);
@@ -1608,7 +1625,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 				object.frame=0;
 				final switch(object.creatureState.movement){
 					case CreatureMovement.onGround:
-						if(object.animationState.among(AnimationState.knocked2Floor,AnimationState.hitFloor)&&object.sacObject.hasGetUp){
+						if(object.animationState.among(AnimationState.knocked2Floor,AnimationState.hitFloor)&&sacObject.hasGetUp){
 							object.animationState=AnimationState.getUp;
 						}else object.startIdling(state);
 						break;
@@ -1892,23 +1909,24 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 		static if(!fixup) posChanged=true;
 		else needsFixup=true;
 	}
-	if(object.creatureState.mode==CreatureMode.dead) return; // dead creatures do not participate in collision handling
-	proximity.collide!(handleCollision!false)(hitbox);
-	hitbox=[relativeHitbox[0]+newPosition,relativeHitbox[1]+newPosition];
-	proximity.collide!(handleCollision!true)(hitbox);
-	if(needsFixup){
-		auto fixupSpeed=object.creatureStats.collisionFixupSpeed/updateFPS;
-		if(fixupDirection.length>fixupSpeed)
-			fixupDirection=fixupDirection.normalized*object.creatureStats.collisionFixupSpeed/updateFPS;
-		final switch(object.creatureState.movement){
-			case CreatureMovement.onGround:
-				if(state.isOnGround(newPosition)) newPosition=state.moveOnGround(newPosition,fixupDirection);
-				break;
-			case CreatureMovement.flying, CreatureMovement.tumbling:
-				newPosition+=fixupDirection;
-				break;
+	if(object.creatureState.mode!=CreatureMode.dead){ // dead creatures do not participate in collision handling
+		proximity.collide!(handleCollision!false)(hitbox);
+		hitbox=[relativeHitbox[0]+newPosition,relativeHitbox[1]+newPosition];
+		proximity.collide!(handleCollision!true)(hitbox);
+		if(needsFixup){
+			auto fixupSpeed=object.creatureStats.collisionFixupSpeed/updateFPS;
+			if(fixupDirection.length>fixupSpeed)
+				fixupDirection=fixupDirection.normalized*object.creatureStats.collisionFixupSpeed/updateFPS;
+			final switch(object.creatureState.movement){
+				case CreatureMovement.onGround:
+					if(state.isOnGround(newPosition)) newPosition=state.moveOnGround(newPosition,fixupDirection);
+					break;
+				case CreatureMovement.flying, CreatureMovement.tumbling:
+					newPosition+=fixupDirection;
+					break;
+			}
+			posChanged=true;
 		}
-		posChanged=true;
 	}
 	bool onGround=state.isOnGround(newPosition);
 	if(object.creatureState.movement!=CreatureMovement.onGround||onGround){

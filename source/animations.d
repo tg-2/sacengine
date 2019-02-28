@@ -6,7 +6,7 @@ struct Animations{
 			char[4][4] idle;
 			char[4] tumble;
 			char[4] run;
-			char[4] falling; // for dying creatures that are in the air
+			char[4] falling; // for dying creatures that are in the air and when falling with exclusively vertical velocity component
 			char[4] hitFloor;
 			char[4] knocked2Floor; // only for walking creatures
 			char[4] getUp;         // only for walking creatures
