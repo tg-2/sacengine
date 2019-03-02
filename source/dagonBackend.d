@@ -474,6 +474,8 @@ final class SacScene: Scene{
 		position=fixHitbox2dSize(position);
 		auto size=position[1]-position[0];
 		renderBorder(position[0],size,color,rc);
+		mouse.inHitbox=position[0].x<=mouse.x&&mouse.x<=position[1].x&&
+			position[0].y<=mouse.y&&mouse.y<=position[1].y;
 	}
 
 	Matrix4f getModelViewProjectionMatrix(Vector3f position,Quaternionf rotation){
@@ -835,6 +837,7 @@ final class SacScene: Scene{
 		bool visible,showBorder,dragging;
 		auto cursor=Cursor.normal;
 		Target target;
+		bool inHitbox=false;
 	}
 	Mouse mouse;
 	SacCursor!DagonBackend sacCursor;
@@ -882,8 +885,8 @@ final class SacScene: Scene{
 		if(cachedTarget.id!=0&&!state.current.isValidId(cachedTarget.id)) cachedTarget=Target.init;
 		if(!importantTargets.canFind(target.type)){
 			if(cachedTarget.type!=TargetType.none){
-				if(abs(cachedTargetX-mouse.x)<targetCacheDelta &&
-				   abs(cachedTargetY-mouse.y)<targetCacheDelta &&
+				if((mouse.inHitbox || abs(cachedTargetX-mouse.x)<targetCacheDelta &&
+				    abs(cachedTargetY-mouse.y)<targetCacheDelta)&&
 				   cachedTargetFrame+targetCacheDuration>state.current.frame){
 					target=cachedTarget;
 				}else cachedTarget=Target.init;
