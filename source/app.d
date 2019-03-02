@@ -33,6 +33,8 @@ int main(string[] args){
 			auto resolution=parseResolution(opt["--resolution=".length..$]);
 			options.width=resolution.width;
 			options.height=resolution.height;
+		}else if(opt.startsWith("--aspect-distortion=")){
+			options.aspectDistortion=to!float(opt["--aspect-distortion=".length..$]);
 		}else if(opt.startsWith("--shadow-map-resolution=")){
 			options.shadowMapResolution=to!int(opt["--shadow-map-resolution=".length..$]);
 		}else if(opt.startsWith("--glow-brightness=")){

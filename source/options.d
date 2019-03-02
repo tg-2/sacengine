@@ -1,5 +1,6 @@
 struct Options{
 	int width,height;
+	float aspectDistortion=1.2f;
 	int shadowMapResolution=1024;
 	bool enableWidgets=true;
 	bool enableMapBottom=true;
