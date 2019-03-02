@@ -201,13 +201,13 @@ final class SacScene: Scene{
 		//env.sunColor=fixColor(Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f));
 		//env.sunColor=Color4f(envi.ambientRed/255.0f,envi.ambientGreen/255.0f,envi.ambientBlue/255.0f,1.0f);
 		//env.sunColor=fixColor(Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f));
-		env.sunColor=Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f);
+		//env.sunColor=Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f);
 		// TODO: figure this out
-		/+if(exp(envi.sunDirectStrength)==float.infinity)
+		if(exp(envi.sunDirectStrength)==float.infinity)
 			env.sunColor=Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f);
 		else
 			//env.sunColor=(exp(envi.sunDirectStrength)*Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f)+exp(4*min(10,envi.sunAmbientStrength^^10))*Color4f(envi.ambientRed/255.0f,envi.ambientGreen/255.0f,envi.ambientBlue/255.0f,1.0f))/(exp(envi.sunDirectStrength)+exp(4*min(10,envi.sunAmbientStrength^^10)));
-			env.sunColor=(exp(envi.sunDirectStrength)*Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f)+0.5f*exp(envi.sunAmbientStrength)*Color4f(envi.ambientRed/255.0f,envi.ambientGreen/255.0f,envi.ambientBlue/255.0f,1.0f))/(exp(envi.sunDirectStrength)+0.5f*exp(envi.sunAmbientStrength));+/
+			env.sunColor=(exp(envi.sunDirectStrength)*Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f)+0.5f*exp(envi.sunAmbientStrength)*Color4f(envi.ambientRed/255.0f,envi.ambientGreen/255.0f,envi.ambientBlue/255.0f,1.0f))/(exp(envi.sunDirectStrength)+0.5f*exp(envi.sunAmbientStrength));
 		/+if(envi.sunAmbientStrength>=envi.sunDirectStrength){
 			env.sunColor=(exp(envi.sunDirectStrength)*Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f)+exp(4*envi.sunAmbientStrength)*Color4f(envi.ambientRed/255.0f,envi.ambientGreen/255.0f,envi.ambientBlue/255.0f,1.0f))/(exp(envi.sunDirectStrength)+exp(4*envi.sunAmbientStrength));
 		}else{
@@ -604,30 +604,57 @@ final class SacScene: Scene{
 	}
 	struct Camera{
 		int target=0;
-		float distance=10.0f;
-		float height=5.0f;
+		float distance=6.0f;
+		float height=2.0f;
+		float focusHeight;
+		bool centering=false;
+		enum rotationSpeed=0.95f*PI;
+		float lastTargetFacing;
 	}
 	Camera camera;
 	void focusCamera(int target){
 		camera.target=target;
-		camera.distance=5.0f;
-		camera.height=2.0f;
-		positionCamera(true);
+		import std.typecons;
+		alias Tuple=std.typecons.Tuple;
+		auto size=state.current.movingObjectById!((obj){
+			auto hitbox=obj.relativeHitbox;
+			return hitbox[1]-hitbox[0];
+		},function Vector3f(){ assert(0); })(target);
+		auto width=size.x,depth=size.y,height=size.z;
+		height=max(height,1.5f);
+		camera.distance=0.6f+2.32f*height;
+		camera.distance=max(camera.distance,4.5f);
+		camera.height=1.75f*height-1.15f;
+		camera.focusHeight=camera.height-0.3f*(height-1.0f);
+		positionCamera(0.0f,true);
 	}
-	void positionCamera(bool center){
+	void positionCamera(float dt,bool center){
+		if(center) camera.centering=true;
 		if(!state.current.isValidId(camera.target)) camera.target=0;
 		if(camera.target==0) return;
-		if(center){
-			fpview.camera.turn=state.current.movingObjectById!(
+		while(fpview.camera.pitch>180.0f) fpview.camera.pitch-=360.0f;
+		while(fpview.camera.pitch<-180.0f) fpview.camera.pitch+=360.0f;
+		while(fpview.camera.turn>180.0f) fpview.camera.turn-=360.0f;
+		while(fpview.camera.turn<-180.0f) fpview.camera.turn+=360.0f;
+		if(camera.centering){
+			auto newTurn=state.current.movingObjectById!(
 				(obj)=>-radtodeg(obj.creatureState.facing),
 				function float(){ assert(0); }
 			)(camera.target);
+			auto diff=newTurn-fpview.camera.turn;
+			while(diff>180.0f) diff-=360.0f;
+			while(diff<-180.0f) diff+=360.0f;
+			auto speed=radtodeg(camera.rotationSpeed)*dt;
+			if(dt==0||abs(diff)<speed){
+				fpview.camera.turn=newTurn;
+				camera.centering=false;
+			}else fpview.camera.turn+=sign(diff)*speed;
 		}
 		import std.typecons: Tuple, tuple;
 		static Tuple!(Vector3f,float) computePosition(B)(MovingObject!B obj,float turn,Camera camera,ObjectState!B state){
 			auto position=obj.position+rotate(rotationQuaternion(Axis.z,-degtorad(turn)),Vector3f(0.0f,-1.0f,0.0f))*camera.distance;
 			position.z=(obj.position.z-state.getHeight(obj.position)+state.getHeight(position))+camera.height;
-			auto pitchOffset=atan2(position.z-(obj.position.z+2.0f),(obj.position.xy-position.xy).length);
+			auto pitchOffset=atan2(position.z-(obj.position.z+camera.focusHeight),(obj.position.xy-position.xy).length);
 			return tuple(position,pitchOffset);
 		}
 		auto posPitch=state.current.movingObjectById!(
@@ -636,7 +663,6 @@ final class SacScene: Scene{
 		fpview.camera.position=posPitch[0];
 		fpview.camera.pitchOffset=radtodeg(posPitch[1]);
 	}
-	Quaternionf lastTargetRotation;
 	float speed = 100.0f;
 	void cameraControl(double dt){
 		Vector3f forward = fpview.camera.worldTrans.forward;
@@ -696,9 +722,6 @@ final class SacScene: Scene{
 			}else if(eventManager.keyPressed[KEY_F] && !eventManager.keyPressed[KEY_S]){
 				state.current.movingObjectById!startTurningRight(camera.target,state.current);
 			}else state.current.movingObjectById!stopTurning(camera.target,state.current);
-			auto targetRotation=state.current.movingObjectById!((obj)=>obj.rotation, function Quaternionf(){ assert(0); })(camera.target);
-			positionCamera(targetRotation!=lastTargetRotation && !mouse.dragging);
-			lastTargetRotation=targetRotation;
 		}
 		if(eventManager.keyPressed[KEY_K]){
 			fpview.active=false;
@@ -783,6 +806,11 @@ final class SacScene: Scene{
 				sacSkyMaterialBackend.cloudOffset.y=fmod(sacSkyMaterialBackend.cloudOffset.y,1.0f);
 				rotateSky(rotationQuaternion(Axis.z,cast(float)(2*PI/512.0f*totalTime)));
 			}
+			if(camera.target){
+				auto targetFacing=state.current.movingObjectById!((obj)=>obj.creatureState.facing, function float(){ assert(0); })(camera.target);
+				positionCamera(dt,targetFacing!=camera.lastTargetFacing && !mouse.dragging);
+				camera.lastTargetFacing=targetFacing;
+			}
 		}
 		foreach(sac;sacs.data){
 			static float totalTime=0.0f;
@@ -842,7 +870,7 @@ final class SacScene: Scene{
 	Target cachedTarget;
 	float cachedTargetX,cachedTargetY;
 	int cachedTargetFrame;
-	enum targetCacheDelta=50.0f;
+	enum targetCacheDelta=10.0f;
 	enum targetCacheDuration=1.2f*updateFPS;
 	Target mouseCursorTarget(){
 		auto target=mouseCursorTargetImpl();
@@ -1114,9 +1142,9 @@ class ShapeSacCreatureBorder: Owner, Drawable{
     this(Owner o){
         super(o);
 
-        enum size=0.2f;
+        enum size=0.1f;
         enum border=0.5f*size;
-        enum gap=0.01f;
+        enum gap=0.0f;
         enum left=-border,right=1.0f+border;
         enum bottom=1.0f+border,top=-border;
         vertices[0]=Vector2f(left+gap,top);

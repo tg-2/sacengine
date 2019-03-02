@@ -11,4 +11,6 @@ struct Options{
 	int replicateCreatures=1;
 	int cursorSize=32;
 	bool printFPS=false;
+	// just for testing:
+	string wizard="cwe2";
 }

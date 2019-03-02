@@ -109,6 +109,11 @@ Vector3f[2] hitbox2d(B)(ref MovingObject!B object,Matrix4f modelViewProjectionMa
 	return object.sacObject.hitbox2d(object.animationState,object.frame/updateAnimFactor,modelViewProjectionMatrix);
 }
 
+Vector3f relativeCenter(B)(ref MovingObject!B object){
+	auto hbox=object.relativeHitbox;
+	return 0.5f*(hbox[0]+hbox[1]);
+}
+
 Vector3f center(B)(ref MovingObject!B object){
 	auto hbox=object.hitbox;
 	return 0.5f*(hbox[0]+hbox[1]);
@@ -249,6 +254,7 @@ struct Building(B){
 	int side;
 	Array!int componentIds;
 	int flags=0;
+	float facing=0.0f;
 	int top=0;
 	int base=0;
 	float health=0.0f;
@@ -258,10 +264,11 @@ struct Building(B){
 	enum splashSpellResistance=1.0f;
 	enum directRangedResistance=1.0f;
 	enum splashRangedResistance=1.0f;
-	this(immutable(Bldg)* bldg,int side,int flags){
+	this(immutable(Bldg)* bldg,int side,int flags,float facing){
 		this.bldg=bldg;
 		this.side=side;
 		this.flags=flags;
+		this.facing=facing;
 		this.health=bldg.maxHealth;
 	}
 	void opAssign(ref Building!B rhs){
@@ -271,12 +278,16 @@ struct Building(B){
 		assignArray(componentIds,rhs.componentIds);
 		health=rhs.health;
 		flags=rhs.flags;
+		facing=rhs.facing;
 		top=rhs.top;
 		base=rhs.base;
 	}
 }
 int maxHealth(B)(ref Building!B building,ObjectState!B state){
 	return building.bldg.maxHealth;
+}
+Vector3f position(B)(ref Building!B building,ObjectState!B state){
+	return state.staticObjectById!((obj)=>obj.position,function Vector3f(){ assert(0); })(building.componentIds[0]);
 }
 // TODO: the following functionality is duplicated in SacObject
 bool isManafount(immutable(Bldg)* bldg){ // TODO: store in SacBuilding class
@@ -303,6 +314,13 @@ bool isAltar(immutable(Bldg)* bldg){ // TODO: store in SacBuilding class
 bool isAltar(B)(ref Building!B building){
 	return building.bldg.isAltar;
 }
+bool isStratosAltar(immutable(Bldg)* bldg){ // TODO: store in SacBuilding class
+	return bldg.header.numComponents>=1&&bldg.components[0].tag=="tprc";
+}
+bool isStratosAltar(B)(ref Building!B building){
+	return building.bldg.isStratosAltar;
+}
+
 void putOnManafount(B)(ref Building!B building,ref Building!B manafount,ObjectState!B state)in{
 	assert(manafount.isManafount);
 	assert(building.base==0);
@@ -1550,6 +1568,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 			assert(totalNumFrames!=0);
 			object.creatureState.timer+=1;
 			object.creatureState.facing+=(object.creatureState.mode==CreatureMode.fastReviving?2.0f*PI:4.0f*PI)/totalNumFrames;
+			while(object.creatureState.facing>PI) object.creatureState.facing-=2*PI;
 			if(object.creatureState.timer<totalNumFrames/2){
 				object.creatureState.movement=CreatureMovement.flying;
 				object.position.z+=object.creatureStats.reviveHeight/(totalNumFrames/2);
@@ -1711,10 +1730,12 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 				case RotationDirection.left:
 					isRotating=true;
 					object.creatureState.facing+=rotationSpeed;
+					while(object.creatureState.facing>PI) object.creatureState.facing-=2*PI;
 					break;
 				case RotationDirection.right:
 					isRotating=true;
 					object.creatureState.facing-=rotationSpeed;
+					while(object.creatureState.facing<PI) object.creatureState.facing+=2*PI;
 				break;
 			}
 		}
@@ -1962,6 +1983,7 @@ void updateCreature(B)(ref MovingObject!B object, ObjectState!B state){
 void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 	soul.frame+=1;
 	soul.facing+=2*PI/8.0f/updateFPS;
+	while(soul.facing>PI) soul.facing-=2*PI;
 	if(soul.frame==SacSoul!B.numFrames*updateAnimFactor)
 		soul.frame=0;
 	if(soul.creatureId)
@@ -2667,7 +2689,8 @@ final class GameState(B){
 		auto data=ntt.tag in bldgs;
 		enforce(!!data);
 		auto flags=ntt.flags&~Flags.damaged&~ntt.flags.destroyed;
-		auto buildingId=current.addObject(Building!B(data,ntt.side,flags));
+		auto facing=2*PI/360.0f*ntt.facing;
+		auto buildingId=current.addObject(Building!B(data,ntt.side,flags,facing));
 		if(ntt.id !in triggers.objectIds) // e.g. for some reason, the two altars on ferry have the same id
 			triggers.associateId(ntt.id,buildingId);
 		auto position=Vector3f(ntt.x,ntt.y,ntt.z);
@@ -2691,7 +2714,7 @@ final class GameState(B){
 			foreach(ref component;data.components){
 				auto curObj=SacObject!B.getBLDG(ntt.flags&Flags.destroyed&&component.destroyed!="\0\0\0\0"?component.destroyed:component.tag);
 				auto offset=Vector3f(component.x,component.y,component.z);
-				offset=rotate(facingQuaternion(2*PI/360.0f*ntt.facing), offset);
+				offset=rotate(facingQuaternion(building.facing), offset);
 				auto cposition=position+offset;
 				if(!current.isOnGround(cposition)) continue;
 				cposition.z=current.getGroundHeight(cposition);
