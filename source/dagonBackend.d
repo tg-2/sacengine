@@ -463,7 +463,7 @@ final class SacScene: Scene{
 	static Vector2f[2] fixHitbox2dSize(Vector2f[2] position){
 		auto center=0.5f*(position[0]+position[1]);
 		auto size=position[1]-position[0];
-		foreach(k;0..2) size[k]=max(size[k],64.0f);
+		foreach(k;0..2) size[k]=max(size[k],48.0f);
 		return [center-0.5f*size,center+0.5f*size];
 	}
 
@@ -493,6 +493,8 @@ final class SacScene: Scene{
 
 	void renderCursor(RenderingContext* rc){
 		if(mouse.target.id&&!state.current.isValidId(mouse.target.id)) mouse.target=Target.init;
+		mouse.x=eventManager.mouseX;
+		mouse.y=eventManager.mouseY;
 		if(mouse.showBorder){
 			if(mouse.target.type.among(TargetType.creature,TargetType.building)){
 			   static void renderHitbox(T)(T obj,SacScene scene,RenderingContext* rc){
@@ -612,6 +614,8 @@ final class SacScene: Scene{
 		int target=0;
 		float distance=6.0f;
 		float height=2.0f;
+		float zoom=0.125f;
+		float targetZoom=0.125f;
 		float focusHeight;
 		bool centering=false;
 		enum rotationSpeed=0.95f*PI;
@@ -632,9 +636,36 @@ final class SacScene: Scene{
 		camera.distance=max(camera.distance,4.5f);
 		camera.height=1.75f*height-1.15f;
 		camera.focusHeight=camera.height-0.3f*(height-1.0f);
-		positionCamera(0.0f,true);
+		updateCameraPosition(0.0f,true);
 	}
-	void positionCamera(float dt,bool center){
+
+	void positionCamera(){
+		import std.typecons: Tuple, tuple;
+		static Tuple!(Vector3f,float) computePosition(B)(MovingObject!B obj,float turn,Camera camera,ObjectState!B state){
+			auto zoom=camera.zoom;
+			// TODO: distanceFactor to depend on height as well: this is too far for Sorcha and too close for Marduk
+			auto distanceFactor=0.6+3.13f*zoom;
+			auto heightFactor=0.6+2.8f*zoom;
+			camera.distance*=distanceFactor;
+			camera.height*=heightFactor;
+			auto focusHeightFactor=zoom>=0.125?1.0f:(0.75+0.25f*zoom/0.125f);
+			camera.focusHeight*=focusHeightFactor;
+			auto distance=camera.distance;
+			auto height=camera.height;
+			auto focusHeight=camera.focusHeight;
+			auto position=obj.position+rotate(rotationQuaternion(Axis.z,-degtorad(turn)),Vector3f(0.0f,-1.0f,0.0f))*distance;
+			position.z=(obj.position.z-state.getHeight(obj.position)+state.getHeight(position))+height;
+			auto pitchOffset=atan2(position.z-(obj.position.z+focusHeight),(obj.position.xy-position.xy).length);
+			return tuple(position,pitchOffset);
+		}
+		auto posPitch=state.current.movingObjectById!(
+			computePosition,function Tuple!(Vector3f,float)(){ assert(0); }
+		)(camera.target,fpview.camera.turn,camera,state.current);
+		fpview.camera.position=posPitch[0];
+		fpview.camera.pitchOffset=radtodeg(posPitch[1]);
+	}
+
+	void updateCameraPosition(float dt,bool center){
 		if(center) camera.centering=true;
 		if(!state.current.isValidId(camera.target)) camera.target=0;
 		if(camera.target==0) return;
@@ -651,23 +682,17 @@ final class SacScene: Scene{
 			while(diff>180.0f) diff-=360.0f;
 			while(diff<-180.0f) diff+=360.0f;
 			auto speed=radtodeg(camera.rotationSpeed)*dt;
-			if(dt==0||abs(diff)<speed){
+			if(dt==0.0f||abs(diff)<speed){
 				fpview.camera.turn=newTurn;
 				camera.centering=false;
 			}else fpview.camera.turn+=sign(diff)*speed;
 		}
-		import std.typecons: Tuple, tuple;
-		static Tuple!(Vector3f,float) computePosition(B)(MovingObject!B obj,float turn,Camera camera,ObjectState!B state){
-			auto position=obj.position+rotate(rotationQuaternion(Axis.z,-degtorad(turn)),Vector3f(0.0f,-1.0f,0.0f))*camera.distance;
-			position.z=(obj.position.z-state.getHeight(obj.position)+state.getHeight(position))+camera.height;
-			auto pitchOffset=atan2(position.z-(obj.position.z+camera.focusHeight),(obj.position.xy-position.xy).length);
-			return tuple(position,pitchOffset);
+		if(camera.targetZoom!=camera.zoom){
+			auto factor=exp(2.0f*log(0.01f)*dt);
+			camera.zoom=(1-factor)*camera.targetZoom+factor*camera.zoom;
+			camera.zoom=max(0.0f,min(camera.zoom,1.0f));
 		}
-		auto posPitch=state.current.movingObjectById!(
-			computePosition,function Tuple!(Vector3f,float)(){ assert(0); }
-		)(camera.target,fpview.camera.turn,camera,state.current);
-		fpview.camera.position=posPitch[0];
-		fpview.camera.pitchOffset=radtodeg(posPitch[1]);
+		positionCamera();
 	}
 	float speed = 100.0f;
 	void cameraControl(double dt){
@@ -701,6 +726,8 @@ final class SacScene: Scene{
 					eventManager.setMouse(cast(int)mouse.x,cast(int)mouse.y);
 				}
 			}
+			camera.targetZoom-=0.04f*eventManager.mouseWheelY;
+			camera.targetZoom=max(0.0f,min(camera.targetZoom,1.0f));
 		}
 		if(camera.target!=0&&!state.current.isValidId(camera.target)) camera.target=0;
 		if(camera.target==0){
@@ -713,9 +740,6 @@ final class SacScene: Scene{
 			if(eventManager.keyPressed[KEY_P]) speed = 1000.0f;
 			fpview.camera.position += dir.normalized * speed * dt;
 			if(state) fpview.camera.position.z=max(fpview.camera.position.z, state.current.getHeight(fpview.camera.position));
-			/+if(state && state.current.isOnGround(fpview.camera.position)){
-			 fpview.camera.position.z=max(fpview.camera.position.z, state.current.getGroundHeight(fpview.camera.position));
-			 }+/
 		}else{
 			// TODO: implement the following by sending commands to the game state!
 			if(eventManager.keyPressed[KEY_E] && !eventManager.keyPressed[KEY_D]){
@@ -728,6 +752,7 @@ final class SacScene: Scene{
 			}else if(eventManager.keyPressed[KEY_F] && !eventManager.keyPressed[KEY_S]){
 				state.current.movingObjectById!startTurningRight(camera.target,state.current);
 			}else state.current.movingObjectById!stopTurning(camera.target,state.current);
+			positionCamera();
 		}
 		if(eventManager.keyPressed[KEY_K]){
 			fpview.active=false;
@@ -792,7 +817,7 @@ final class SacScene: Scene{
 	}
 
 	override void onViewUpdate(double dt){
-		stateTestControl();
+		if(state) stateTestControl();
 		cameraControl(dt);
 		super.onViewUpdate(dt);
 	}
@@ -814,7 +839,7 @@ final class SacScene: Scene{
 			}
 			if(camera.target){
 				auto targetFacing=state.current.movingObjectById!((obj)=>obj.creatureState.facing, function float(){ assert(0); })(camera.target);
-				positionCamera(dt,targetFacing!=camera.lastTargetFacing && !mouse.dragging);
+				updateCameraPosition(dt,targetFacing!=camera.lastTargetFacing && !mouse.dragging);
 				camera.lastTargetFacing=targetFacing;
 			}
 		}
@@ -922,10 +947,8 @@ final class SacScene: Scene{
 	override void startGBufferInformationDownload(){
 		static int i=0;
 		if(options.printFPS && ((++i)%=2)==0) writeln(eventManager.fps);
-		//if(!fpview.active){
-			mouse.x=eventManager.mouseX;
-			mouse.y=eventManager.mouseY;
-			//}
+		mouse.x=eventManager.mouseX;
+		mouse.y=eventManager.mouseY;
 		auto x=cast(int)(mouse.x+0.5f), y=cast(int)(height-1-mouse.y+0.5f);
 		x=max(0,min(x,width-1));
 		y=max(0,min(y,height-1));
@@ -945,7 +968,7 @@ class MyApplication: SceneApplication{
 		      false, "SacEngine", []);
 		scene = New!SacScene(sceneManager, options);
 		sceneManager.addScene(scene, "Sacrifice");
-		sceneManager.goToScene("Sacrifice");
+		scene.load();
 	}
 }
 
@@ -953,6 +976,7 @@ struct DagonBackend{
 	static MyApplication app;
 	static @property SacScene scene(){
 		enforce(!!app, "Dagon backend not running.");
+		assert(!!app.scene);
 		return app.scene;
 	}
 	this(Options options){
@@ -966,6 +990,7 @@ struct DagonBackend{
 		scene.addObject(obj,position,rotation);
 	}
 	void run(){
+		app.sceneManager.goToScene("Sacrifice");
 		app.run();
 	}
 	~this(){ Delete(app); }
