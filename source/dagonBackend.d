@@ -1081,8 +1081,7 @@ final class SacScene: Scene{
 class MyApplication: SceneApplication{
 	SacScene scene;
 	this(Options options){
-		super(options.width==0?1280:options.width,
-		      options.height==0?1280:options.height,
+		super(options.width,options.height,
 		      false, "SacEngine", []);
 		scene = New!SacScene(sceneManager, options);
 		sceneManager.addScene(scene, "Sacrifice");
