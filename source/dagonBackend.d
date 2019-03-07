@@ -2,7 +2,7 @@ import dagon;
 import options,util;
 import std.math;
 import std.stdio;
-import std.algorithm, std.range, std.exception;
+import std.algorithm, std.range, std.exception, std.typecons;
 
 import sacobject, nttData, sacmap, state;
 import sxsk : gpuSkinning;
@@ -584,6 +584,41 @@ final class SacScene: Scene{
 		material.backend.setTransformationScaled(soulPosition, Quaternionf.identity(), soulScaling, rc);
 		sacSoul.getMesh(SoulColor.blue,hudSoulFrame/updateAnimFactor).render(rc);
 		material.unbind(rc);
+		if(!state.current.isValidId(camera.target)) camera.target=0;
+		if(camera.target){
+			static float getRelativeMana(B)(MovingObject!B obj){
+				if(obj.creatureStats.maxMana==0.0f) return 0.0f;
+				return obj.creatureStats.mana/obj.creatureStats.maxMana;
+			}
+			static float getRelativeHealth(B)(MovingObject!B obj){
+				if(obj.creatureStats.maxHealth==0.0f) return 0.0f;
+				return obj.creatureStats.health/obj.creatureStats.maxHealth;
+			}
+			void renderStatBar(Vector3f origin,float relativeSize,GenericMaterial top,GenericMaterial mid,GenericMaterial bot){
+				auto maxScaling=hudScaling*Vector3f(32.0f,68.0f,0.0f);
+				auto position=origin+Vector3f(0.0f,hudScaling*14.0f+(1.0f-relativeSize)*maxScaling.y,0.0f);
+				auto scaling=Vector3f(maxScaling.x,maxScaling.y*relativeSize,maxScaling.y);
+				auto topPosition=position+Vector3f(0.0f,-hudScaling*4.0f,0.0f);
+				auto topScaling=Vector3f(maxScaling.x,hudScaling*4.0f,maxScaling.y);
+				auto bottomPosition=position+Vector3f(0.0f,scaling.y,0.0f);
+				auto bottomScaling=Vector3f(maxScaling.x,hudScaling*6.0f,maxScaling.y);
+
+				GenericMaterial[3] materials=[top,mid,bot];
+				Vector3f[3] positions=[topPosition,position,bottomPosition];
+				Vector3f[3] scalings=[topScaling,scaling,bottomScaling];
+				static foreach(i;0..3){
+					materials[i].bind(rc);
+					materials[i].backend.setTransformationScaled(positions[i], Quaternionf.identity(), scalings[i], rc);
+					quad.render(rc);
+					materials[i].unbind(rc);
+				}
+			}
+			auto relativeStats=state.current.movingObjectById!((obj)=>tuple(getRelativeMana(obj),getRelativeHealth(obj)),()=>tuple(0.0f,0.0f))(camera.target);
+			auto relativeMana=relativeStats[0];
+			renderStatBar(position1,relativeMana,sacHud.manaTopMaterial,sacHud.manaMaterial,sacHud.manaBottomMaterial);
+			auto relativeHealth=relativeStats[1];
+			renderStatBar(position2,relativeHealth,sacHud.healthTopMaterial,sacHud.healthMaterial,sacHud.healthBottomMaterial);
+		}
 	}
 	void renderHUD(RenderingContext* rc){
 		renderMinimap(rc);
