@@ -451,7 +451,7 @@ final class SacScene: Scene{
 		state.current.eachByType!render(hitboxMaterial,rc);
 	}
 
-	void renderBorder(Vector2f position,Vector2f size,Color4f color,RenderingContext* rc){
+	void renderFrame(Vector2f position,Vector2f size,Color4f color,RenderingContext* rc){
 		colorHUDMaterialBackend.bind(null,rc);
 		scope(success) colorHUDMaterialBackend.unbind(null, rc);
 		auto scaling=Vector3f(size.x,size.y,1.0f);
@@ -467,13 +467,13 @@ final class SacScene: Scene{
 		return [center-0.5f*size,center+0.5f*size];
 	}
 
-	void renderBorder(Vector3f[2] hitbox2d,Color4f color,RenderingContext* rc){
+	void renderFrame(Vector3f[2] hitbox2d,Color4f color,RenderingContext* rc){
 		if(hitbox2d[0].z>1.0f) return;
 		Vector2f[2] position=[Vector2f(0.5f*(hitbox2d[0].x+1.0f)*width,0.5f*(1.0f-hitbox2d[1].y)*height),
 		                      Vector2f(0.5f*(hitbox2d[1].x+1.0f)*width,0.5f*(1.0f-hitbox2d[0].y)*height)];
 		position=fixHitbox2dSize(position);
 		auto size=position[1]-position[0];
-		renderBorder(position[0],size,color,rc);
+		renderFrame(position[0],size,color,rc);
 		mouse.inHitbox=position[0].x<=mouse.x&&mouse.x<=position[1].x&&
 			position[0].y<=mouse.y&&mouse.y<=position[1].y;
 	}
@@ -495,7 +495,7 @@ final class SacScene: Scene{
 		if(mouse.target.id&&!state.current.isValidId(mouse.target.id)) mouse.target=Target.init;
 		mouse.x=eventManager.mouseX;
 		mouse.y=eventManager.mouseY;
-		if(mouse.showBorder){
+		if(mouse.showFrame){
 			if(mouse.target.type.among(TargetType.creature,TargetType.building)){
 			   static void renderHitbox(T)(T obj,SacScene scene,RenderingContext* rc){
 				   alias B=DagonBackend;
@@ -503,14 +503,14 @@ final class SacScene: Scene{
 				   static if(is(T==MovingObject!B)) auto objSide=obj.side;
 				   else auto objSide=sideFromBuildingId!B(obj.buildingId,scene.state.current);
 				   auto color=scene.state.current.sides.sideColor(objSide);
-				   scene.renderBorder(hitbox2d,color,rc);
+				   scene.renderFrame(hitbox2d,color,rc);
 			   }
 			   state.current.objectById!renderHitbox(mouse.target.id,this,rc);
 			}else if(mouse.target.type==TargetType.soul){
 				static void renderHitbox(B)(Soul!B soul,SacScene scene,RenderingContext* rc){
 					auto hitbox2d=soul.hitbox2d(scene.getSpriteModelViewProjectionMatrix(soul.position+soul.scaling*Vector3f(0.0f,0.0f,1.25f*sacSoul.soulHeight)));
-					auto color=soul.color(scene.renderSide,scene.state.current)==SoulColor.blue?blueSoulBorderColor:redSoulBorderColor;
-					scene.renderBorder(hitbox2d,color,rc);
+					auto color=soul.color(scene.renderSide,scene.state.current)==SoulColor.blue?blueSoulFrameColor:redSoulFrameColor;
+					scene.renderFrame(hitbox2d,color,rc);
 				}
 				state.current.soulById!renderHitbox(mouse.target.id,this,rc);
 			}
@@ -523,6 +523,72 @@ final class SacScene: Scene{
 		auto scaling=Vector3f(size,size,1.0f);
 		material.backend.setTransformationScaled(position, Quaternionf.identity(), scaling, rc);
 		quad.render(rc);
+	}
+
+
+	@property float hudScaling(){ return height/480.0f; }
+	int hudSoulFrame=0;
+	void updateHUD(float dt){
+		hudSoulFrame+=1;
+		if(hudSoulFrame>=sacSoul.numFrames*updateAnimFactor)
+			hudSoulFrame=0;
+	}
+	void renderSelectionRoster(RenderingContext* rc){
+		auto material=sacHud.frameMaterial;
+		material.bind(rc);
+		scope(success) material.unbind(rc);
+		auto hudScaling=this.hudScaling;
+		auto scaling=Vector3f(128.0f,256.0f,1.0f);
+		scaling*=hudScaling;
+		auto position=Vector3f(-32.0f*hudScaling,0.5*(height-scaling.y),0);
+		material.backend.setTransformationScaled(position, Quaternionf.identity(), scaling, rc);
+		selectionRoster.render(rc);
+	}
+	void renderMinimap(RenderingContext* rc){
+		auto material=sacHud.frameMaterial;
+		material.bind(rc);
+		scope(success) material.unbind(rc);
+		auto hudScaling=this.hudScaling;
+		auto scaling=Vector3f(160.0f,160.0f,0f);
+		scaling*=hudScaling;
+		auto position=Vector3f(width-scaling.x,height-scaling.y,0);
+		material.backend.setTransformationScaled(position, Quaternionf.identity(), scaling, rc);
+		minimapFrame.render(rc);
+	}
+	void renderStats(RenderingContext* rc){
+		auto material=sacHud.frameMaterial;
+		material.bind(rc);
+		auto hudScaling=this.hudScaling;
+		auto scaling0=Vector3f(64.0f,96.0f,0.0f);
+		scaling0*=hudScaling;
+		auto scaling1=Vector3f(32.0f,96.0f,0.0f);
+		scaling1*=hudScaling;
+		auto position0=Vector3f(width-2*scaling1.x-scaling0.x,0,0);
+		auto position1=Vector3f(width-2*scaling1.x,0,0);
+		auto position2=Vector3f(width-scaling1.x,0,0);
+		material.backend.setTransformationScaled(position0, Quaternionf.identity(), scaling0, rc);
+		statsFrame.render(rc);
+		material.backend.setTransformationScaled(position1, Quaternionf.identity(), scaling1, rc);
+		statsFrame.render(rc);
+		material.backend.setTransformationScaled(position2, Quaternionf.identity(), scaling1, rc);
+		statsFrame.render(rc);
+		material.unbind(rc);
+		material=hudSoulMaterial;
+		material.bind(rc);
+		auto soulPosition=position0+0.5f*scaling0;
+		auto soulScaling=scaling0;
+		soulScaling.x/=sacSoul.soulWidth;
+		soulScaling.y/=sacSoul.soulHeight;
+		soulScaling.y*=-1;
+		soulScaling*=0.85f;
+		material.backend.setTransformationScaled(soulPosition, Quaternionf.identity(), soulScaling, rc);
+		sacSoul.getMesh(SoulColor.blue,hudSoulFrame/updateAnimFactor).render(rc);
+		material.unbind(rc);
+	}
+	void renderHUD(RenderingContext* rc){
+		renderMinimap(rc);
+		renderStats(rc);
+		renderSelectionRoster(rc);
 	}
 
 	override void renderShadowCastingEntities3D(RenderingContext* rc){
@@ -546,7 +612,10 @@ final class SacScene: Scene{
 	}
 	override void renderEntities2D(RenderingContext* rc){
 		super.renderEntities2D(rc);
-		if(mouse.visible) renderCursor(rc);
+		if(mouse.visible){
+			renderHUD(rc);
+			renderCursor(rc);
+		}
 	}
 
 	void setState(GameState!DagonBackend state)in{
@@ -842,6 +911,7 @@ final class SacScene: Scene{
 				updateCameraPosition(dt,targetFacing!=camera.lastTargetFacing && !mouse.dragging);
 				camera.lastTargetFacing=targetFacing;
 			}
+			updateHUD(dt);
 		}
 		foreach(sac;sacs.data){
 			static float totalTime=0.0f;
@@ -852,14 +922,27 @@ final class SacScene: Scene{
 		}
 	}
 	ShapeQuad quad;
-	ShapeSacCreatureBorder border;
+	ShapeSacCreatureFrame border;
+	SacHud!DagonBackend sacHud;
+	ShapeSacSelectionRoster selectionRoster;
+	ShapeSacMinimapFrame minimapFrame;
+	ShapeSacStatsFrame statsFrame;
+	GenericMaterial hudSoulMaterial;
 	void initializeHUD(){
 		quad=New!ShapeQuad(assetManager);
-		border=New!ShapeSacCreatureBorder(assetManager);
+		border=New!ShapeSacCreatureFrame(assetManager);
+		sacHud=new SacHud!DagonBackend();
+		selectionRoster=New!ShapeSacSelectionRoster(assetManager);
+		minimapFrame=New!ShapeSacMinimapFrame(assetManager);
+		statsFrame=New!ShapeSacStatsFrame(assetManager);
+		hudSoulMaterial=createMaterial(hudMaterialBackend2);
+		hudSoulMaterial.blending=Transparent;
+		assert(!!sacSoul.texture);
+		hudSoulMaterial.diffuse=sacSoul.texture;
 	}
 	struct Mouse{
 		float x,y;
-		bool visible,showBorder,dragging;
+		bool visible,showFrame,dragging;
 		auto cursor=Cursor.normal;
 		Target target;
 		bool inHitbox=false;
@@ -936,11 +1019,11 @@ final class SacScene: Scene{
 		mouse.target=mouseCursorTarget();
 		if(mouse.dragging){
 			mouse.cursor=Cursor.drag;
-			mouse.showBorder=false;
+			mouse.showFrame=false;
 		}else{
 			mouse.cursor=mouse.target.cursor(renderSide,state.current);
 			with(Cursor) // TODO: with icons, show border only if spell is applicable to target
-				mouse.showBorder=mouse.target.type==TargetType.soul||
+				mouse.showFrame=mouse.target.type==TargetType.soul||
 					mouse.cursor.among(friendlyUnit,neutralUnit,rescuableUnit,talkingUnit,enemyUnit,iconFriendly,iconNeutral,iconEnemy);
 		}
 	}
@@ -1143,6 +1226,17 @@ static:
 		return materials;
 	}
 
+	Material[] createMaterials(SacHud!DagonBackend sacHud){
+		auto materials=new Material[](sacHud.textures.length);
+		foreach(i;0..materials.length){
+			auto mat=scene.createMaterial(scene.hudMaterialBackend);
+			mat.blending=Transparent;
+			mat.diffuse=sacHud.textures[i];
+			materials[i]=mat;
+		}
+		return materials;
+	}
+
 	enum GL_GPU_MEM_INFO_TOTAL_AVAILABLE_MEM_NVX=0x9048;
 	enum GL_GPU_MEM_INFO_CURRENT_AVAILABLE_MEM_NVX=0x9049;
 
@@ -1161,7 +1255,8 @@ static:
 	}
 }
 
-class ShapeSacCreatureBorder: Owner, Drawable{
+// TODO: get rid of code duplication here?
+class ShapeSacCreatureFrame: Owner, Drawable{
     Vector2f[20] vertices;
     float[20] alpha;
     uint[3][16] indices;
@@ -1269,4 +1364,251 @@ class ShapeSacCreatureBorder: Owner, Drawable{
         glBindVertexArray(0);
         glDepthMask(1);
     }
+}
+
+class ShapeSacSelectionRoster: Owner, Drawable{
+	Vector2f[4] vertices;
+	Vector2f[4] texcoords;
+	uint[3][2] indices;
+
+	GLuint vao = 0;
+	GLuint vbo = 0;
+	GLuint tbo = 0;
+	GLuint eao = 0;
+
+	this(Owner o){
+		super(o);
+
+		vertices[0] = Vector2f(0, 1);
+		vertices[1] = Vector2f(0, 0);
+		vertices[2] = Vector2f(1, 0);
+		vertices[3] = Vector2f(1, 1);
+
+		texcoords[0] = Vector2f(-0.5, 2);
+		texcoords[1] = Vector2f(-0.5, 0);
+		texcoords[2] = Vector2f(0.5, 0);
+		texcoords[3] = Vector2f(0.5, 2);
+
+		indices[0][0] = 0;
+		indices[0][1] = 2;
+		indices[0][2] = 1;
+
+		indices[1][0] = 0;
+		indices[1][1] = 3;
+		indices[1][2] = 2;
+
+		glGenBuffers(1, &vbo);
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		glBufferData(GL_ARRAY_BUFFER, vertices.length * float.sizeof * 2, vertices.ptr, GL_STATIC_DRAW);
+
+		glGenBuffers(1, &tbo);
+		glBindBuffer(GL_ARRAY_BUFFER, tbo);
+		glBufferData(GL_ARRAY_BUFFER, texcoords.length * float.sizeof * 2, texcoords.ptr, GL_STATIC_DRAW);
+
+		glGenBuffers(1, &eao);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, eao);
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.length * uint.sizeof * 3, indices.ptr, GL_STATIC_DRAW);
+
+		glGenVertexArrays(1, &vao);
+		glBindVertexArray(vao);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, eao);
+
+		glEnableVertexAttribArray(0);
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, null);
+
+		glEnableVertexAttribArray(1);
+		glBindBuffer(GL_ARRAY_BUFFER, tbo);
+		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, null);
+
+		glBindVertexArray(0);
+	}
+
+	~this()
+		{
+			glDeleteVertexArrays(1, &vao);
+			glDeleteBuffers(1, &vbo);
+			glDeleteBuffers(1, &tbo);
+			glDeleteBuffers(1, &eao);
+		}
+
+	void update(double dt){ }
+
+	void render(RenderingContext* rc){
+		glDepthMask(0);
+		glBindVertexArray(vao);
+		glDrawElements(GL_TRIANGLES, cast(uint)indices.length * 3, GL_UNSIGNED_INT, cast(void*)0);
+		glBindVertexArray(0);
+		glDepthMask(1);
+	}
+}
+
+class ShapeSacMinimapFrame: Owner, Drawable{
+	Vector2f[4] vertices;
+	Vector2f[4] texcoords;
+	uint[3][2] indices;
+
+	GLuint vao = 0;
+	GLuint vbo = 0;
+	GLuint tbo = 0;
+	GLuint eao = 0;
+
+	this(Owner o){
+		super(o);
+
+		vertices[0] = Vector2f(0, 1);
+		vertices[1] = Vector2f(0, 0);
+		vertices[2] = Vector2f(1, 0);
+		vertices[3] = Vector2f(1, 1);
+
+		texcoords[0] = Vector2f(0.5, 1.5);
+		texcoords[1] = Vector2f(0.5, 0.5);
+		texcoords[2] = Vector2f(1.5, 0.5);
+		texcoords[3] = Vector2f(1.5, 1.5);
+
+		indices[0][0] = 0;
+		indices[0][1] = 2;
+		indices[0][2] = 1;
+
+		indices[1][0] = 0;
+		indices[1][1] = 3;
+		indices[1][2] = 2;
+
+		glGenBuffers(1, &vbo);
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		glBufferData(GL_ARRAY_BUFFER, vertices.length * float.sizeof * 2, vertices.ptr, GL_STATIC_DRAW);
+
+		glGenBuffers(1, &tbo);
+		glBindBuffer(GL_ARRAY_BUFFER, tbo);
+		glBufferData(GL_ARRAY_BUFFER, texcoords.length * float.sizeof * 2, texcoords.ptr, GL_STATIC_DRAW);
+
+		glGenBuffers(1, &eao);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, eao);
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.length * uint.sizeof * 3, indices.ptr, GL_STATIC_DRAW);
+
+		glGenVertexArrays(1, &vao);
+		glBindVertexArray(vao);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, eao);
+
+		glEnableVertexAttribArray(0);
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, null);
+
+		glEnableVertexAttribArray(1);
+		glBindBuffer(GL_ARRAY_BUFFER, tbo);
+		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, null);
+
+		glBindVertexArray(0);
+	}
+
+	~this(){
+		glDeleteVertexArrays(1, &vao);
+		glDeleteBuffers(1, &vbo);
+		glDeleteBuffers(1, &tbo);
+		glDeleteBuffers(1, &eao);
+	}
+
+	void update(double dt){ }
+
+	void render(RenderingContext* rc){
+		glDepthMask(0);
+		glBindVertexArray(vao);
+		glDrawElements(GL_TRIANGLES, cast(uint)indices.length * 3, GL_UNSIGNED_INT, cast(void*)0);
+		glBindVertexArray(0);
+		glDepthMask(1);
+	}
+}
+
+class ShapeSacStatsFrame: Owner, Drawable{
+	Vector2f[8] vertices;
+	Vector2f[8] texcoords;
+	uint[3][4] indices;
+
+	GLuint vao = 0;
+	GLuint vbo = 0;
+	GLuint tbo = 0;
+	GLuint eao = 0;
+
+	this(Owner o){
+		super(o);
+
+		vertices[0] = Vector2f(0, 0.5);
+		vertices[1] = Vector2f(0, 0);
+		vertices[2] = Vector2f(1, 0);
+		vertices[3] = Vector2f(1, 0.5);
+
+		vertices[4] = Vector2f(0, 1);
+		vertices[5] = Vector2f(0, 0.5);
+		vertices[6] = Vector2f(1, 0.5);
+		vertices[7] = Vector2f(1, 1);
+
+		texcoords[0] = Vector2f(0.5, 0.25-0.5/64);
+		texcoords[1] = Vector2f(0.5, 0);
+		texcoords[2] = Vector2f(0.75, 0);
+		texcoords[3] = Vector2f(0.75, 0.25-0.5/64);
+
+		texcoords[4] = Vector2f(0.5, 0);
+		texcoords[5] = Vector2f(0.5, 0.25-0.5/64);
+		texcoords[6] = Vector2f(0.75, 0.25-0.5/64);
+		texcoords[7] = Vector2f(0.75, 0);
+
+		indices[0][0] = 0;
+		indices[0][1] = 2;
+		indices[0][2] = 1;
+
+		indices[1][0] = 0;
+		indices[1][1] = 3;
+		indices[1][2] = 2;
+
+		indices[2][0] = 4;
+		indices[2][1] = 6;
+		indices[2][2] = 5;
+
+		indices[3][0] = 4;
+		indices[3][1] = 7;
+		indices[3][2] = 6;
+
+		glGenBuffers(1, &vbo);
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		glBufferData(GL_ARRAY_BUFFER, vertices.length * float.sizeof * 2, vertices.ptr, GL_STATIC_DRAW);
+
+		glGenBuffers(1, &tbo);
+		glBindBuffer(GL_ARRAY_BUFFER, tbo);
+		glBufferData(GL_ARRAY_BUFFER, texcoords.length * float.sizeof * 2, texcoords.ptr, GL_STATIC_DRAW);
+
+		glGenBuffers(1, &eao);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, eao);
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.length * uint.sizeof * 3, indices.ptr, GL_STATIC_DRAW);
+
+		glGenVertexArrays(1, &vao);
+		glBindVertexArray(vao);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, eao);
+
+		glEnableVertexAttribArray(0);
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, null);
+
+		glEnableVertexAttribArray(1);
+		glBindBuffer(GL_ARRAY_BUFFER, tbo);
+		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, null);
+
+		glBindVertexArray(0);
+	}
+
+	~this(){
+		glDeleteVertexArrays(1, &vao);
+		glDeleteBuffers(1, &vbo);
+		glDeleteBuffers(1, &tbo);
+		glDeleteBuffers(1, &eao);
+	}
+
+	void update(double dt){ }
+
+	void render(RenderingContext* rc){
+		glDepthMask(0);
+		glBindVertexArray(vao);
+		glDrawElements(GL_TRIANGLES, cast(uint)indices.length * 3, GL_UNSIGNED_INT, cast(void*)0);
+		glBindVertexArray(0);
+		glDepthMask(1);
+	}
 }

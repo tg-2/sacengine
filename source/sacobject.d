@@ -504,8 +504,8 @@ B.Mesh[] makeSpriteMeshes(B)(int nU,int nV,float width,float height){ // TODO: r
 	return meshes;
 }
 
-auto blueSoulBorderColor=Color4f(0,182.0f/256.0f,1.0f);
-auto redSoulBorderColor=Color4f(1.0f,0.0f,0.0f);
+auto blueSoulFrameColor=Color4f(0,182.0f/256.0f,1.0f);
+auto redSoulFrameColor=Color4f(1.0f,0.0f,0.0f);
 
 final class SacSoul(B){
 	B.Mesh[] meshes;
@@ -522,9 +522,9 @@ final class SacSoul(B){
 		texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/spir.TXTR"));
 		material=B.createMaterial(this);
 	}
-	enum numFrames=8*updateAnimFactor;
+	enum numFrames=16;
 	B.Mesh getMesh(SoulColor color,int frame){
-		return meshes[(color==SoulColor.red?8:0)+frame/updateAnimFactor];
+		return meshes[(color==SoulColor.red?8:0)+frame/2];
 	}
 }
 
@@ -659,6 +659,28 @@ final class SacCursor(B){
 		materials=B.createMaterials(this);
 	}
 }
+
+final class SacHud(B){
+	union{
+		B.Texture[4] textures;
+		struct{
+			B.Texture frames;
+			B.Texture pages;
+			B.Texture arrows;
+			B.Texture tabs;
+		}
+	}
+	B.Material[] materials;
+	@property B.Material frameMaterial(){ return materials[0]; }
+	this(){
+		frames=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/huds.FLDR/fram.TXTR"));
+		pages=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/huds.FLDR/page.TXTR"));
+		arrows=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/huds.FLDR/sarr.TXTR"));
+		tabs=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/huds.FLDR/tabs.TXTR"));
+		materials=B.createMaterials(this);
+	}
+}
+
 
 auto convertModel(B,Model)(string dir, Model model, float scaling){
 	int[string] names;
