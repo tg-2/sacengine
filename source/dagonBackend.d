@@ -548,8 +548,7 @@ final class SacScene: Scene{
 		material.bind(rc);
 		scope(success) material.unbind(rc);
 		auto hudScaling=this.hudScaling;
-		auto scaling=Vector3f(160.0f,160.0f,0f);
-		scaling*=hudScaling;
+		auto scaling=hudScaling*Vector3f(160.0f,160.0f,0f);
 		auto position=Vector3f(width-scaling.x,height-scaling.y,0);
 		material.backend.setTransformationScaled(position, Quaternionf.identity(), scaling, rc);
 		minimapFrame.render(rc);
