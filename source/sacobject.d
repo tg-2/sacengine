@@ -674,6 +674,7 @@ final class SacHud(B){
 	}
 	B.Material[] materials;
 	@property B.Material frameMaterial(){ return materials[0]; }
+	@property B.Material tabsMaterial(){ return materials[3]; }
 	@property B.Material manaTopMaterial(){ return materials[4]; }
 	@property B.Material manaMaterial(){ return materials[5]; }
 	@property B.Material manaBottomMaterial(){ return materials[6]; }

@@ -525,7 +525,6 @@ final class SacScene: Scene{
 		quad.render(rc);
 	}
 
-
 	@property float hudScaling(){ return height/480.0f; }
 	int hudSoulFrame=0;
 	void updateHUD(float dt){
@@ -620,10 +619,42 @@ final class SacScene: Scene{
 			renderStatBar(position2,relativeHealth,sacHud.healthTopMaterial,sacHud.healthMaterial,sacHud.healthBottomMaterial);
 		}
 	}
+	void renderSpellbook(RenderingContext* rc){
+		auto hudScaling=this.hudScaling;
+		auto material=sacHud.frameMaterial; // TODO: share material binding with other drawing commands (or at least the backend binding)
+		material.bind(rc);
+		auto position=Vector3f(0.0f,height-hudScaling*32.0f,0.0f);
+		auto numFrameSegments=10; // TODO: max(10, spells*2)
+		auto scaling=hudScaling*Vector3f(16.0f,8.0f,0.0f);
+		auto scaling2=hudScaling*Vector3f(48.0f,16.0f,0.0f);
+		auto position2=Vector3f(hudScaling*16.0f*numFrameSegments-4.0f+scaling2.y,height-hudScaling*48.0f,0.0f);
+		material.backend.setTransformationScaled(position2,facingQuaternion(PI/2),scaling2,rc);
+		spellbookFrame2.render(rc);
+		foreach(i;0..numFrameSegments){
+			auto positioni=position+hudScaling*Vector3f(16.0f*i,-8.0f,0.0f);
+			material.backend.setTransformationScaled(positioni,Quaternionf.identity(),scaling,rc);
+			spellbookFrame1.render(rc);
+		}
+		material.unbind(rc);
+		auto tabPosition=Vector3f(0.0f,height-hudScaling*80.0f,0.0f);
+		auto tabScaling=hudScaling*Vector3f(48.0f,48.0f,0.0f);
+		auto tabs=tuple(creatureTab,spellTab,structureTab);
+		material=sacHud.tabsMaterial;
+		material.bind(rc);
+		foreach(i,tab;tabs){
+			material.backend.setTransformationScaled(tabPosition+hudScaling*Vector3f(48.0f,0.0f,0.0f)*i,Quaternionf.identity(),tabScaling,rc);
+			tab.render(rc);
+		}
+		auto spellbookTab=0; // TODO
+		material.backend.setTransformationScaled(tabPosition+hudScaling*Vector3f(48.0f,0.0f,0.0f)*spellbookTab,Quaternionf.identity(),tabScaling,rc);
+		tabSelector.render(rc);
+		material.unbind(rc);
+	}
 	void renderHUD(RenderingContext* rc){
 		renderMinimap(rc);
 		renderStats(rc);
 		renderSelectionRoster(rc);
+		renderSpellbook(rc);
 	}
 
 	override void renderShadowCastingEntities3D(RenderingContext* rc){
@@ -959,21 +990,28 @@ final class SacScene: Scene{
 	ShapeQuad quad;
 	ShapeSacCreatureFrame border;
 	SacHud!DagonBackend sacHud;
-	ShapeSacSelectionRoster selectionRoster;
-	ShapeSacMinimapFrame minimapFrame;
+	ShapeSubQuad selectionRoster, minimapFrame;
 	ShapeSacStatsFrame statsFrame;
+	ShapeSubQuad creatureTab,spellTab,structureTab,tabSelector;
+	ShapeSubQuad spellbookFrame1,spellbookFrame2;
 	GenericMaterial hudSoulMaterial;
 	void initializeHUD(){
 		quad=New!ShapeQuad(assetManager);
 		border=New!ShapeSacCreatureFrame(assetManager);
 		sacHud=new SacHud!DagonBackend();
-		selectionRoster=New!ShapeSacSelectionRoster(assetManager);
-		minimapFrame=New!ShapeSacMinimapFrame(assetManager);
+		selectionRoster=New!ShapeSubQuad(assetManager,-0.5f,0.0f,0.5f,2.0f);
+		minimapFrame=New!ShapeSubQuad(assetManager,0.5f,0.5f,1.5f,1.5f);
 		statsFrame=New!ShapeSacStatsFrame(assetManager);
 		hudSoulMaterial=createMaterial(hudMaterialBackend2);
 		hudSoulMaterial.blending=Transparent;
 		assert(!!sacSoul.texture);
 		hudSoulMaterial.diffuse=sacSoul.texture;
+		creatureTab=New!ShapeSubQuad(assetManager,1.0f/128.0f,0.0f,47.0f/128,48.0f/128.0f);
+		spellTab=New!ShapeSubQuad(assetManager,49.0f/128.0f,0.0f,95.0f/128.0f,48.0f/128.0f);
+		structureTab=New!ShapeSubQuad(assetManager,1.0f/128.0f,48.0f/128.0f,47.0f/128,96.0f/128.0f);
+		tabSelector=New!ShapeSubQuad(assetManager,49.0f/128.0f,48.0f/128.0f,95.0f/128,96.0f/128.0f);
+		spellbookFrame1=New!ShapeSubQuad(assetManager,0.5f,40.0f/128.0f,0.625f,48.0f/128.0f);
+		spellbookFrame2=New!ShapeSubQuad(assetManager,80.5f/128.0f,32.5f/128.0f,1.0f,48.0f/128.0f);
 	}
 	struct Mouse{
 		float x,y;
@@ -1043,11 +1081,12 @@ final class SacScene: Scene{
 		return target;
 	}
 	void animateTarget(Target target){
-		final switch(target.type){
+		switch(target.type){
 			case TargetType.none: return;
 			case TargetType.terrain: animateManalith(target.position, renderSide, state.current); break;
 			case TargetType.creature, TargetType.building: animateManafount(target.position, state.current); break;
 			case TargetType.soul: animateManahoar(target.position, renderSide, 30.0f, state.current); break;
+			default: assert(target.location!=TargetLocation.scene); break;
 		}
 	}
 	void updateCursor(double dt){
@@ -1400,7 +1439,7 @@ class ShapeSacCreatureFrame: Owner, Drawable{
     }
 }
 
-class ShapeSacSelectionRoster: Owner, Drawable{
+class ShapeSubQuad: Owner, Drawable{
 	Vector2f[4] vertices;
 	Vector2f[4] texcoords;
 	uint[3][2] indices;
@@ -1410,7 +1449,7 @@ class ShapeSacSelectionRoster: Owner, Drawable{
 	GLuint tbo = 0;
 	GLuint eao = 0;
 
-	this(Owner o){
+	this(Owner o,float left,float top,float right,float bottom){
 		super(o);
 
 		vertices[0] = Vector2f(0, 1);
@@ -1418,10 +1457,10 @@ class ShapeSacSelectionRoster: Owner, Drawable{
 		vertices[2] = Vector2f(1, 0);
 		vertices[3] = Vector2f(1, 1);
 
-		texcoords[0] = Vector2f(-0.5, 2);
-		texcoords[1] = Vector2f(-0.5, 0);
-		texcoords[2] = Vector2f(0.5, 0);
-		texcoords[3] = Vector2f(0.5, 2);
+		texcoords[0] = Vector2f(left, bottom);
+		texcoords[1] = Vector2f(left, top);
+		texcoords[2] = Vector2f(right, top);
+		texcoords[3] = Vector2f(right, bottom);
 
 		indices[0][0] = 0;
 		indices[0][1] = 2;
@@ -1465,82 +1504,6 @@ class ShapeSacSelectionRoster: Owner, Drawable{
 			glDeleteBuffers(1, &tbo);
 			glDeleteBuffers(1, &eao);
 		}
-
-	void update(double dt){ }
-
-	void render(RenderingContext* rc){
-		glDepthMask(0);
-		glBindVertexArray(vao);
-		glDrawElements(GL_TRIANGLES, cast(uint)indices.length * 3, GL_UNSIGNED_INT, cast(void*)0);
-		glBindVertexArray(0);
-		glDepthMask(1);
-	}
-}
-
-class ShapeSacMinimapFrame: Owner, Drawable{
-	Vector2f[4] vertices;
-	Vector2f[4] texcoords;
-	uint[3][2] indices;
-
-	GLuint vao = 0;
-	GLuint vbo = 0;
-	GLuint tbo = 0;
-	GLuint eao = 0;
-
-	this(Owner o){
-		super(o);
-
-		vertices[0] = Vector2f(0, 1);
-		vertices[1] = Vector2f(0, 0);
-		vertices[2] = Vector2f(1, 0);
-		vertices[3] = Vector2f(1, 1);
-
-		texcoords[0] = Vector2f(0.5, 1.5);
-		texcoords[1] = Vector2f(0.5, 0.5);
-		texcoords[2] = Vector2f(1.5, 0.5);
-		texcoords[3] = Vector2f(1.5, 1.5);
-
-		indices[0][0] = 0;
-		indices[0][1] = 2;
-		indices[0][2] = 1;
-
-		indices[1][0] = 0;
-		indices[1][1] = 3;
-		indices[1][2] = 2;
-
-		glGenBuffers(1, &vbo);
-		glBindBuffer(GL_ARRAY_BUFFER, vbo);
-		glBufferData(GL_ARRAY_BUFFER, vertices.length * float.sizeof * 2, vertices.ptr, GL_STATIC_DRAW);
-
-		glGenBuffers(1, &tbo);
-		glBindBuffer(GL_ARRAY_BUFFER, tbo);
-		glBufferData(GL_ARRAY_BUFFER, texcoords.length * float.sizeof * 2, texcoords.ptr, GL_STATIC_DRAW);
-
-		glGenBuffers(1, &eao);
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, eao);
-		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.length * uint.sizeof * 3, indices.ptr, GL_STATIC_DRAW);
-
-		glGenVertexArrays(1, &vao);
-		glBindVertexArray(vao);
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, eao);
-
-		glEnableVertexAttribArray(0);
-		glBindBuffer(GL_ARRAY_BUFFER, vbo);
-		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, null);
-
-		glEnableVertexAttribArray(1);
-		glBindBuffer(GL_ARRAY_BUFFER, tbo);
-		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, null);
-
-		glBindVertexArray(0);
-	}
-
-	~this(){
-		glDeleteVertexArrays(1, &vao);
-		glDeleteBuffers(1, &vbo);
-		glDeleteBuffers(1, &tbo);
-		glDeleteBuffers(1, &eao);
-	}
 
 	void update(double dt){ }
 

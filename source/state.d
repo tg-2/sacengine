@@ -2600,17 +2600,34 @@ enum TargetType{
 	creature,
 	building,
 	soul,
+
+	creatureTab,
+	spellTab,
+	structureTab,
+
+	spell,
+
+	soulStat,
+	manaStat,
+	healthStat,
+}
+
+enum TargetLocation{
+	scene,
+	hud,
+	minimap,
 }
 
 struct Target{
 	TargetType type;
 	int id;
 	Vector3f position;
+	auto location=TargetLocation.scene;
 }
 Cursor cursor(B)(ref Target target,int renderSide,ObjectState!B state){
 	final switch(target.type) with(TargetType) with(Cursor){
-		case none,terrain: return normal;
-			case creature,building:
+		case none,terrain,creatureTab,spellTab,structureTab,spell,soulStat,manaStat,healthStat: return normal;
+		case creature,building:
 			static Cursor handle(B,T)(T obj,int renderSide,ObjectState!B state){
 				enum isMoving=is(T==MovingObject!B);
 				static if(isMoving) if(obj.creatureState.mode==CreatureMode.dead) return Cursor.normal;
