@@ -2187,7 +2187,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 		// TODO: get rid of duplication here
 		if(objects.sacObject.isManafount){
 			foreach(j;0..objects.length)
-				proximity.addManafount(sideFromBuildingId(objects.buildingIds[j],state),objects.positions[j]);
+				proximity.addManafount(objects.positions[j]);
 		}else if(objects.sacObject.isManalith){
 			foreach(j;0..objects.length)
 				proximity.addManalith(sideFromBuildingId(objects.buildingIds[j],state),objects.positions[j]);
@@ -2379,8 +2379,8 @@ final class Proximity(B){
 		hitboxes.insert(version_,entry);
 	}
 	ManaProximity!B mana;
-	void addManafount(int side,Vector3f position){
-		mana.addManalith(version_,side,position);
+	void addManafount(Vector3f position){
+		mana.addManafount(version_,position);
 	}
 	void addManalith(int side,Vector3f position){
 		mana.addManalith(version_,side,position);
