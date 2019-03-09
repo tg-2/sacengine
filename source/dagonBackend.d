@@ -912,6 +912,10 @@ final class SacScene: Scene{
 					state.movingObjectById!f(target.id,state);
 			}else state.movingObjectById!f(camera.target,state);
 		}
+		static void depleteMana(B)(ref MovingObject!B obj,ObjectState!B state){
+			obj.creatureStats.mana=0.0f;
+		}
+		if(eventManager.keyPressed[KEY_B]) applyToMoving!depleteMana(state.current,camera,mouse.target);
 		if(eventManager.keyPressed[KEY_T]) applyToMoving!kill(state.current,camera,mouse.target);
 		if(eventManager.keyPressed[KEY_R]) applyToMoving!stun(state.current,camera,mouse.target);
 		static void catapultRandomly(B)(ref MovingObject!B object,ObjectState!B state){
