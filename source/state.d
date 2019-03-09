@@ -2285,7 +2285,7 @@ struct ManaEntries{
 		foreach(ref entry;entries){
 			auto distance=(position.xy-entry.position.xy).length;
 			if(distance>=entry.radius) continue;
-			if(entry.side==-1||(!entry.allies?entry.side!=side:sides.getStance(entry.side,side)!=Stance.ally)) continue;
+			if(entry.side!=-1&&(!entry.allies?entry.side!=side:sides.getStance(entry.side,side)!=Stance.ally)) continue;
 			rate+=entry.rate;
 		}
 		return rate;
