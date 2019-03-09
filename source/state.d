@@ -2187,7 +2187,8 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 		// TODO: get rid of duplication here
 		if(objects.sacObject.isManafount){
 			foreach(j;0..objects.length)
-				proximity.addManafount(objects.positions[j]);
+				if(state.buildingById!(obj=>!obj.top,()=>false)(objects.buildingIds[j]))
+					proximity.addManafount(objects.positions[j]);
 		}else if(objects.sacObject.isManalith){
 			foreach(j;0..objects.length)
 				proximity.addManalith(sideFromBuildingId(objects.buildingIds[j],state),objects.positions[j]);
@@ -2346,7 +2347,7 @@ struct ManaProximity(B){
 		return rate;
 	}
 	float manaRegenAt(int version_,int side,Vector3f position,ObjectState!B state){
-		auto offset=Vector3f(50.0f,0.0f,50.0f);
+		auto offset=Vector3f(50.0f,50.0f,0.0f);
 		auto lowTile=getTile(position-offset), highTile=getTile(position+offset);
 		float rate=0.0f;
 		if(lowTile.j+offMapSlack<0||lowTile.i+offMapSlack<0||highTile.j+offMapSlack>=size||highTile.i+offMapSlack>=size)
