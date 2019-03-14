@@ -166,7 +166,7 @@ final class SacMap(B){
 	float getHeight(Vector3f pos){
 		auto triangle=getTriangle(pos);
 		if(triangle[0]==triangle[1]) triangle=getTriangle!true(pos);
-		assert(triangle[0]!=triangle[1]);
+		if(triangle[0]==triangle[1]) return 0.0f;
 		return getHeightImpl(triangle,pos);
 	}
 	float getGroundHeight(Vector3f pos){
