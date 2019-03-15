@@ -2700,6 +2700,7 @@ final class GameState(B){
 			if(object.creatureState.mode==CreatureMode.dead) object.createSoul(state);
 		})(current);
 		map.meshes=createMeshes!B(map.edges,map.heights,map.tiles,options.enableMapBottom); // TODO: allow dynamic retexuring
+		map.minimapMeshes=createMinimapMeshes!B(map.edges,map.tiles);
 		commit();
 	}
 	void placeStructure(ref Structure ntt){

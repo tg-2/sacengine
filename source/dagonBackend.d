@@ -544,6 +544,7 @@ final class SacScene: Scene{
 		selectionRoster.render(rc);
 	}
 	void renderMinimap(RenderingContext* rc){
+		auto map=state.current.map;
 		auto radius=hudScaling*80.0f;
 		auto left=cast(int)(width-2.0f*radius), top=cast(int)(height-2.0f*radius);
 		auto yOffset=eventManager.windowHeight-height;
@@ -558,6 +559,22 @@ final class SacScene: Scene{
 		material.bind(rc);
 		minimapMaterialBackend.setTransformationScaled(position, Quaternionf.identity(), scaling, rc);
 		quad.render(rc);
+		auto minimapZoom=2.5f;
+		auto minimapFactor=hudScaling/minimapZoom;
+		auto camPos=fpview.camera.position;
+		auto mapRotation=facingQuaternion(-degtorad(fpview.camera.turn));
+		auto minimapCenter=Vector3f(camPos.x,camPos.y,0.0f);
+		auto minimapSize=Vector2f(2560.0f,2560.0f);
+		auto mapCenter=Vector3f(width-radius,height-radius,0);
+		auto mapPosition=mapCenter+rotate(mapRotation,minimapFactor*Vector3f(-minimapCenter.x,minimapCenter.y,0)-minimapZoom);
+		auto mapScaling=Vector3f(1,-1,1)*minimapFactor;
+		minimapMaterialBackend.setTransformationScaled(mapPosition,mapRotation,mapScaling,rc);
+		minimapMaterialBackend.setColorMultiplier(Color4f(0.5f,0.5f,0.5f,1.0f));
+		foreach(i,mesh;map.minimapMeshes){
+			if(!mesh) continue;
+			minimapMaterialBackend.bindDiffuse(map.textures[i]);
+			mesh.render(rc);
+		}
 		material.unbind(rc);
 		material=sacHud.frameMaterial;
 		material.bind(rc);
@@ -1029,7 +1046,7 @@ final class SacScene: Scene{
 		hudSoulMaterial.blending=Transparent;
 		hudSoulMaterial.diffuse=sacSoul.texture;
 		minimapBackgroundMaterial=createMaterial(minimapMaterialBackend);
-		minimapBackgroundMaterial.diffuse=Color4f(0.0f,0.0f,0.0f,1.0f);
+		minimapBackgroundMaterial.diffuse=Color4f(0.0f,65.0f/255.0f,66.0f/255.0f,1.0f);
 	}
 	struct Mouse{
 		float x,y;
@@ -1172,8 +1189,10 @@ static:
 	alias Texture=.Texture;
 	alias Material=.GenericMaterial;
 	alias Mesh=.Mesh;
+	alias Mesh2D=.Mesh2D;
 	alias BoneMesh=.BoneMesh;
 	alias TerrainMesh=.TerrainMesh;
+	alias MinimapMesh=.Mesh2D;
 
 	Texture makeTexture(SuperImage i,bool mirroredRepeat=true){
 		auto repeat=mirroredRepeat?GL_MIRRORED_REPEAT:GL_REPEAT;
@@ -1226,6 +1245,18 @@ static:
 		mesh.dataReady=true;
 		mesh.prepareVAO();
 	}
+	MinimapMesh makeMinimapMesh(size_t numVertices, size_t numFaces){
+		auto m=new MinimapMesh(null); // TODO: set owner
+		m.vertices=New!(Vector2f[])(numVertices);
+		m.texcoords=New!(Vector2f[])(numVertices);
+		m.indices=New!(uint[3][])(numFaces);
+		return m;
+	}
+	void finalizeMinimapMesh(MinimapMesh mesh){
+		mesh.dataReady=true;
+		mesh.prepareVAO();
+	}
+
 
 	Material[] createMaterials(SacObject!DagonBackend sobj,SacObject!DagonBackend.MaterialConfig config){
 		GenericMaterial[] materials;
