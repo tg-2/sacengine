@@ -544,14 +544,26 @@ final class SacScene: Scene{
 		selectionRoster.render(rc);
 	}
 	void renderMinimap(RenderingContext* rc){
-		auto material=sacHud.frameMaterial;
-		material.bind(rc);
-		scope(success) material.unbind(rc);
+		auto radius=hudScaling*80.0f;
+		auto left=cast(int)(width-2.0f*radius), top=cast(int)(height-2.0f*radius);
+		auto yOffset=eventManager.windowHeight-height;
+		glScissor(left,0+yOffset,width-left,height-top);
+		scope(success) glScissor(0,0+yOffset,width,height);
 		auto hudScaling=this.hudScaling;
-		auto scaling=hudScaling*Vector3f(160.0f,160.0f,0f);
+		auto scaling=Vector3f(2.0f*radius,2.0f*radius,0f);
 		auto position=Vector3f(width-scaling.x,height-scaling.y,0);
+		auto material=minimapBackgroundMaterial;
+		minimapMaterialBackend.center=Vector2f(width-radius,height-radius);
+		minimapMaterialBackend.radius=0.95f*radius;
+		material.bind(rc);
+		minimapMaterialBackend.setTransformationScaled(position, Quaternionf.identity(), scaling, rc);
+		quad.render(rc);
+		material.unbind(rc);
+		material=sacHud.frameMaterial;
+		material.bind(rc);
 		material.backend.setTransformationScaled(position, Quaternionf.identity(), scaling, rc);
 		minimapFrame.render(rc);
+		material.unbind(rc);
 	}
 	void renderStats(RenderingContext* rc){
 		auto material=sacHud.frameMaterial;
@@ -998,6 +1010,7 @@ final class SacScene: Scene{
 	ShapeSubQuad creatureTab,spellTab,structureTab,tabSelector;
 	ShapeSubQuad spellbookFrame1,spellbookFrame2;
 	GenericMaterial hudSoulMaterial;
+	GenericMaterial minimapBackgroundMaterial;
 	void initializeHUD(){
 		quad=New!ShapeQuad(assetManager);
 		border=New!ShapeSacCreatureFrame(assetManager);
@@ -1005,16 +1018,18 @@ final class SacScene: Scene{
 		selectionRoster=New!ShapeSubQuad(assetManager,-0.5f,0.0f,0.5f,2.0f);
 		minimapFrame=New!ShapeSubQuad(assetManager,0.5f,0.5f,1.5f,1.5f);
 		statsFrame=New!ShapeSacStatsFrame(assetManager);
-		hudSoulMaterial=createMaterial(hudMaterialBackend2);
-		hudSoulMaterial.blending=Transparent;
-		assert(!!sacSoul.texture);
-		hudSoulMaterial.diffuse=sacSoul.texture;
 		creatureTab=New!ShapeSubQuad(assetManager,1.0f/128.0f,0.0f,47.0f/128,48.0f/128.0f);
 		spellTab=New!ShapeSubQuad(assetManager,49.0f/128.0f,0.0f,95.0f/128.0f,48.0f/128.0f);
 		structureTab=New!ShapeSubQuad(assetManager,1.0f/128.0f,48.0f/128.0f,47.0f/128,96.0f/128.0f);
 		tabSelector=New!ShapeSubQuad(assetManager,49.0f/128.0f,48.0f/128.0f,95.0f/128,96.0f/128.0f);
 		spellbookFrame1=New!ShapeSubQuad(assetManager,0.5f,40.0f/128.0f,0.625f,48.0f/128.0f);
 		spellbookFrame2=New!ShapeSubQuad(assetManager,80.5f/128.0f,32.5f/128.0f,1.0f,48.0f/128.0f);
+		assert(!!sacSoul.texture);
+		hudSoulMaterial=createMaterial(hudMaterialBackend2);
+		hudSoulMaterial.blending=Transparent;
+		hudSoulMaterial.diffuse=sacSoul.texture;
+		minimapBackgroundMaterial=createMaterial(minimapMaterialBackend);
+		minimapBackgroundMaterial.diffuse=Color4f(0.0f,0.0f,0.0f,1.0f);
 	}
 	struct Mouse{
 		float x,y;
