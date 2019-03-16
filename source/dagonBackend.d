@@ -577,89 +577,89 @@ final class SacScene: Scene{
 		}
 		material.unbind(rc);
 		sacHud.minimapIconsMaterial.bind(rc);
+		 // temporary scratch space. TODO: maybe share memory with other temporary scratch spaces
+		import std.container: Array;
+		static Array!uint creatureArrowIndices;
+		static Array!uint structureArrowIndices;
 		static void render(T)(ref T objects,float hudScaling,float minimapFactor,Vector3f minimapCenter,Vector3f mapCenter,float radius,Quaternionf mapRotation,SacScene scene,RenderingContext* rc){ // TODO: why does this need to be static? DMD bug?
-			static if(is(typeof(objects.sacObject))||is(T==Souls!(DagonBackend))){
-				static if(!is(T==FixedObjects!DagonBackend)){
-					auto quad=scene.minimapQuad;
-					auto iconScaling=hudScaling*Vector3f(2.0f,2.0f,0.0f);
-					static if(is(typeof(objects.sacObject))){
-						auto sacObject=objects.sacObject;
-						enum isMoving=is(T==MovingObjects!(DagonBackend, RenderMode.opaque))||is(T==MovingObjects!(DagonBackend, RenderMode.transparent));
-						bool isManafount=false;
-						static if(isMoving){
-							enum showArrow=true;
-							bool isWizard=false;
-							if(sacObject.isWizard){
-								isWizard=true;
-								quad=scene.minimapWizard;
-								iconScaling=hudScaling*Vector3f(11.0f,11.0f,0.0f);
-							}
-						}else{
-							bool showArrow=false;
-							enum isWizard=false;
-							if(sacObject.isAltar){
-								showArrow=true;
-								quad=scene.minimapAltar;
-								iconScaling=hudScaling*Vector3f(10.0f,10.0f,0.0f);
-							}else if(sacObject.isManalith){
-								showArrow=true;
-								quad=scene.minimapManalith;
-								iconScaling=hudScaling*Vector3f(12.0f,12.0f,0.0f);
-							}else if(sacObject.isManafount){
-								isManafount=true;
-								quad=scene.minimapManafount;
-								iconScaling=hudScaling*Vector3f(11.0f,11.0f,0.0f);
-								scene.colorHUDMaterialBackend.setColor(Color4f(0.0f,160.0f/255.0f,219.0f/255.0f,1.0f));
-							}else if(sacObject.isShrine){
-								showArrow=true;
-								quad=scene.minimapShrine;
-								iconScaling=hudScaling*Vector3f(12.0f,12.0f,0.0f);
-							}
+			static if((is(typeof(objects.sacObject))||is(T==Souls!(DagonBackend)))&&!is(T==FixedObjects!DagonBackend)){
+				auto quad=scene.minimapQuad;
+				auto iconScaling=hudScaling*Vector3f(2.0f,2.0f,0.0f);
+				static if(is(typeof(objects.sacObject))){
+					auto sacObject=objects.sacObject;
+					enum isMoving=is(T==MovingObjects!(DagonBackend, RenderMode.opaque))||is(T==MovingObjects!(DagonBackend, RenderMode.transparent));
+					bool isManafount=false;
+					static if(isMoving){
+						enum showArrow=true;
+						bool isWizard=false;
+						if(sacObject.isWizard){
+							isWizard=true;
+							quad=scene.minimapWizard;
+							iconScaling=hudScaling*Vector3f(11.0f,11.0f,0.0f);
+						}
+					}else{
+						bool showArrow=false;
+						enum isWizard=false;
+						if(sacObject.isAltar){
+							showArrow=true;
+							quad=scene.minimapAltar;
+							iconScaling=hudScaling*Vector3f(10.0f,10.0f,0.0f);
+						}else if(sacObject.isManalith){
+							showArrow=true;
+							quad=scene.minimapManalith;
+							iconScaling=hudScaling*Vector3f(12.0f,12.0f,0.0f);
+						}else if(sacObject.isManafount){
+							isManafount=true;
+							quad=scene.minimapManafount;
+							iconScaling=hudScaling*Vector3f(11.0f,11.0f,0.0f);
+							scene.colorHUDMaterialBackend.setColor(Color4f(0.0f,160.0f/255.0f,219.0f/255.0f,1.0f));
+						}else if(sacObject.isShrine){
+							showArrow=true;
+							quad=scene.minimapShrine;
+							iconScaling=hudScaling*Vector3f(12.0f,12.0f,0.0f);
 						}
 					}
-					auto clipradiusSq=(0.92f*radius-0.5f*iconScaling.x)*(0.92f*radius-0.5f*iconScaling.y);
-					auto clipradius=sqrt(clipradiusSq);
-					foreach(j;0..objects.length){
-						static if(is(T==StaticObjects!DagonBackend)){
-							if(!isManafount&&!scene.state.current.buildingById!((bldg)=>bldg.health!=0||bldg.isAltar,()=>false)(objects.buildingIds[j])) // TODO: merge with side lookup!
-								continue;
-						}
-						static if(is(T==Souls!DagonBackend)) auto position=objects[j].position-minimapCenter;
-						else auto position=objects.positions[j]-minimapCenter;
-						auto iconOffset=rotate(mapRotation,minimapFactor*Vector3f(position.x,-position.y,0));
-						if(iconOffset.lengthsqr<=clipradiusSq){
-							auto iconCenter=mapCenter+iconOffset;
-							scene.colorHUDMaterialBackend.setTransformationScaled(iconCenter-0.5f*iconScaling,Quaternionf.identity(),iconScaling,rc);
-							static if(is(typeof(objects.sacObject))){
-								if(!isManafount){
-									static if(isMoving) auto side=objects.sides[j];
-									else auto side=sideFromBuildingId(objects.buildingIds[j],scene.state.current);
-									auto color=scene.state.current.sides.sideColor(side);
-									scene.colorHUDMaterialBackend.setColor(color);
-								}
-							}else static if(is(T==Souls!DagonBackend)){
-								auto soul=objects[j];
-								auto color=soul.color(scene.renderSide,scene.state.current)==SoulColor.blue?blueSoulMinimapColor:redSoulMinimapColor;
-								scene.colorHUDMaterialBackend.setColor(color);
-							}
-							quad.render(rc);
-						}else static if(is(typeof(objects.sacObject))){
-							static if(isMoving) auto side=objects.sides[j];
-							else auto side=sideFromBuildingId(objects.buildingIds[j],scene.state.current);
-							if(showArrow&&(side==scene.renderSide||(!isMoving||isWizard) && scene.state.current.sides.getStance(side,scene.renderSide)==Stance.ally)){
-								auto arrowQuad=isMoving?scene.minimapCreatureArrow:scene.minimapStructureArrow;
-								auto arrowScaling=hudScaling*Vector3f(11.0f,11.0f,0.0f);
-								auto offset=iconOffset.normalized*(0.92f*radius-hudScaling*6.0f);
-								auto iconCenter=mapCenter+offset;
-								auto rotation=rotationQuaternion(Axis.z,cast(float)PI/2+atan2(iconOffset.y,iconOffset.x));
-								scene.colorHUDMaterialBackend.setTransformationScaled(iconCenter-rotate(rotation,0.5f*arrowScaling),rotation,arrowScaling,rc);
+					}
+				auto clipradiusSq=(0.92f*radius-0.5f*iconScaling.x)*(0.92f*radius-0.5f*iconScaling.y);
+				auto clipradius=sqrt(clipradiusSq);
+				enforce(objects.length<=uint.max);
+				foreach(j;0..cast(uint)objects.length){
+					static if(is(T==StaticObjects!DagonBackend)){
+						if(!isManafount&&!scene.state.current.buildingById!((bldg)=>bldg.health!=0||bldg.isAltar,()=>false)(objects.buildingIds[j])) // TODO: merge with side lookup!
+							continue;
+					}
+					static if(is(T==Souls!DagonBackend)) auto position=objects[j].position-minimapCenter;
+					else auto position=objects.positions[j]-minimapCenter;
+					auto iconOffset=rotate(mapRotation,minimapFactor*Vector3f(position.x,-position.y,0));
+					if(iconOffset.lengthsqr<=clipradiusSq){
+						auto iconCenter=mapCenter+iconOffset;
+						scene.colorHUDMaterialBackend.setTransformationScaled(iconCenter-0.5f*iconScaling,Quaternionf.identity(),iconScaling,rc);
+						static if(is(typeof(objects.sacObject))){
+							if(!isManafount){
+								static if(isMoving) auto side=objects.sides[j];
+								else auto side=sideFromBuildingId(objects.buildingIds[j],scene.state.current);
 								auto color=scene.state.current.sides.sideColor(side);
 								scene.colorHUDMaterialBackend.setColor(color);
-								arrowQuad.render(rc);
+							}
+						}else static if(is(T==Souls!DagonBackend)){
+							auto soul=objects[j];
+							auto color=soul.color(scene.renderSide,scene.state.current)==SoulColor.blue?blueSoulMinimapColor:redSoulMinimapColor;
+							scene.colorHUDMaterialBackend.setColor(color);
+						}
+						quad.render(rc);
+					}else static if(is(typeof(objects.sacObject))){
+						if(showArrow){
+							static if(isMoving) auto side=objects.sides[j];
+							else auto side=sideFromBuildingId(objects.buildingIds[j],scene.state.current);
+							if(side==scene.renderSide||(!isMoving||isWizard) && scene.state.current.sides.getStance(side,scene.renderSide)==Stance.ally){
+								static if(isMoving) creatureArrowIndices~=objects.ids[j];
+								else structureArrowIndices~=objects.ids[j];
 							}
 						}
 					}
 				}
+			}else static if(is(T==FixedObjects!DagonBackend)){
+				// do nothing
 			}else static if(is(T==Buildings!DagonBackend)){
 				// do nothing
 			}else static if(is(T==Particles!DagonBackend)){
@@ -667,6 +667,30 @@ final class SacScene: Scene{
 			}else static assert(0);
 		}
 		state.current.eachByType!render(hudScaling,minimapFactor,minimapCenter,mapCenter,radius,mapRotation,this,rc);
+		static void renderArrow(T)(T object,float hudScaling,float minimapFactor,Vector3f minimapCenter,Vector3f mapCenter,float radius,Quaternionf mapRotation,SacScene scene,RenderingContext* rc){ // TODO: why does this need to be static? DMD bug?
+			static if(is(typeof(object.sacObject))&&!is(T==FixedObjects!DagonBackend)){
+				auto sacObject=object.sacObject;
+				enum isMoving=is(T==MovingObject!DagonBackend);
+				auto arrowQuad=isMoving?scene.minimapCreatureArrow:scene.minimapStructureArrow;
+				auto arrowScaling=hudScaling*Vector3f(11.0f,11.0f,0.0f);
+				auto position=object.position-minimapCenter;
+				auto iconOffset=rotate(mapRotation,minimapFactor*Vector3f(position.x,-position.y,0));
+				auto offset=iconOffset.normalized*(0.92f*radius-hudScaling*6.0f);
+				auto iconCenter=mapCenter+offset;
+				auto rotation=rotationQuaternion(Axis.z,cast(float)PI/2+atan2(iconOffset.y,iconOffset.x));
+				scene.colorHUDMaterialBackend.setTransformationScaled(iconCenter-rotate(rotation,0.5f*arrowScaling),rotation,arrowScaling,rc);
+				static if(isMoving) auto side=object.side;
+				else auto side=sideFromBuildingId(object.buildingId,scene.state.current);
+				auto color=scene.state.current.sides.sideColor(side);
+				scene.colorHUDMaterialBackend.setColor(color);
+				arrowQuad.render(rc);
+			}
+		}
+		static foreach(isMoving;[true,false])
+			foreach(id;isMoving?creatureArrowIndices.data:structureArrowIndices.data)
+				state.current.objectById!renderArrow(id,hudScaling,minimapFactor,minimapCenter,mapCenter,radius,mapRotation,this,rc);
+		creatureArrowIndices.length=0;
+		structureArrowIndices.length=0;
 		sacHud.minimapIconsMaterial.unbind(rc);
 		material=sacHud.frameMaterial;
 		material.bind(rc);
