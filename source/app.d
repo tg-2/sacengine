@@ -95,7 +95,7 @@ int main(string[] args){
 					alias B=DagonBackend;
 					auto altar=state.staticObjectById!((obj)=>obj, function StaticObject!B(){ assert(0); })(bldg.componentIds[0]);
 					auto curObj=SacObject!B.getSAXS!Wizard(options.wizard.retro.to!string[0..4]);
-					import std.math: PI;
+					import std.math: PI, atan2;
 					int closestManafount=0;
 					Vector3f manafountPosition;
 					state.eachBuilding!((bldg,altarPos,closest,manaPos,state){
@@ -108,19 +108,15 @@ int main(string[] args){
 					})(altar.position,&closestManafount,&manafountPosition,state);
 					int orientation=0;
 					enum distance=15.0f;
-					auto facingOffset=bldg.isStratosAltar?PI/4.0f:0.0f;
+					auto facingOffset=bldg.isStratosAltar?cast(float)PI/4.0f:0.0f;
 					auto facing=bldg.facing+facingOffset;
 					auto rotation=facingQuaternion(facing);
 					auto position=altar.position+rotate(rotation,Vector3f(0.0f,distance,0.0f));
-					foreach(i;1..4){
-						auto facingCand=bldg.facing+facingOffset+i*PI/2;
-						auto rotationCand=facingQuaternion(facingCand);
-						auto positionCand=altar.position+rotate(rotationCand,Vector3f(0.0f,distance,0.0f));
-						if((positionCand-manafountPosition).xy.length<(position-manafountPosition).xy.length){
-							facing=facingCand;
-							rotation=rotationCand;
-							position=positionCand;
-						}
+					if(closestManafount){
+						auto dir2d=(manafountPosition-altar.position).xy.normalized*distance;
+						facing=atan2(dir2d.y,dir2d.x)-cast(float)PI/2.0f;
+						rotation=facingQuaternion(facing);
+						position=altar.position+Vector3f(dir2d.x,dir2d.y,0.0f);
 					}
 					bool onGround=state.isOnGround(position);
 					if(onGround)
