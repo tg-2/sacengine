@@ -627,7 +627,7 @@ final class SacScene: Scene{
 					enum isMoving=is(T==MovingObjects!(DagonBackend, RenderMode.opaque))||is(T==MovingObjects!(DagonBackend, RenderMode.transparent));
 					bool isManafount=false;
 					static if(isMoving){
-						enum showArrow=true;
+						enum mayShowArrow=true;
 						bool isWizard=false;
 						if(sacObject.isWizard){
 							isWizard=true;
@@ -635,14 +635,14 @@ final class SacScene: Scene{
 							iconScaling=hudScaling*Vector3f(11.0f,11.0f,0.0f);
 						}
 					}else{
-						bool showArrow=false;
+						bool mayShowArrow=false;
 						enum isWizard=false;
 						if(sacObject.isAltar){
-							showArrow=true;
+							mayShowArrow=true;
 							quad=scene.minimapAltar;
 							iconScaling=hudScaling*Vector3f(10.0f,10.0f,0.0f);
 						}else if(sacObject.isManalith){
-							showArrow=true;
+							mayShowArrow=true;
 							quad=scene.minimapManalith;
 							iconScaling=hudScaling*Vector3f(12.0f,12.0f,0.0f);
 						}else if(sacObject.isManafount){
@@ -651,17 +651,23 @@ final class SacScene: Scene{
 							iconScaling=hudScaling*Vector3f(11.0f,11.0f,0.0f);
 							scene.colorHUDMaterialBackend.setColor(Color4f(0.0f,160.0f/255.0f,219.0f/255.0f,1.0f));
 						}else if(sacObject.isShrine){
-							showArrow=true;
+							mayShowArrow=true;
 							quad=scene.minimapShrine;
 							iconScaling=hudScaling*Vector3f(12.0f,12.0f,0.0f);
 						}
 					}
-				}else enum showArrow=false;
-				auto clipRadiusFactor=showArrow?0.92f:1.0f;
-				auto clipradiusSq=(clipRadiusFactor*radius-0.5f*iconScaling.x)*(clipRadiusFactor*radius-0.5f*iconScaling.y);
-				auto clipradius=sqrt(clipradiusSq);
+				}else enum mayShowArrow=false;
 				enforce(objects.length<=uint.max);
 				foreach(j;0..cast(uint)objects.length){
+					static if(is(typeof(objects.sacObject))){
+						static if(isMoving) auto side=objects.sides[j];
+						else auto side=sideFromBuildingId(objects.buildingIds[j],scene.state.current);
+						auto showArrow=mayShowArrow&&
+							(side==scene.renderSide||
+							 (!isMoving||isWizard) && scene.state.current.sides.getStance(side,scene.renderSide)==Stance.ally);
+					}else enum showArrow=false;
+					auto clipRadiusFactor=showArrow?0.92f:1.0f;
+					auto clipradiusSq=(clipRadiusFactor*radius-0.5f*iconScaling.x)*(clipRadiusFactor*radius-0.5f*iconScaling.y);
 					static if(is(T==StaticObjects!DagonBackend)){
 						if(!isManafount&&!scene.state.current.buildingById!((bldg)=>bldg.health!=0||bldg.isAltar,()=>false)(objects.buildingIds[j])) // TODO: merge with side lookup!
 							continue;
@@ -674,8 +680,6 @@ final class SacScene: Scene{
 						scene.colorHUDMaterialBackend.setTransformationScaled(iconCenter-0.5f*iconScaling,Quaternionf.identity(),iconScaling,rc);
 						static if(is(typeof(objects.sacObject))){
 							if(!isManafount){
-								static if(isMoving) auto side=objects.sides[j];
-								else auto side=sideFromBuildingId(objects.buildingIds[j],scene.state.current);
 								auto color=scene.state.current.sides.sideColor(side);
 								scene.colorHUDMaterialBackend.setColor(color);
 							}
@@ -693,12 +697,8 @@ final class SacScene: Scene{
 						}
 					}else static if(is(typeof(objects.sacObject))){
 						if(showArrow){
-							static if(isMoving) auto side=objects.sides[j];
-							else auto side=sideFromBuildingId(objects.buildingIds[j],scene.state.current);
-							if(side==scene.renderSide||(!isMoving||isWizard) && scene.state.current.sides.getStance(side,scene.renderSide)==Stance.ally){
-								static if(isMoving) creatureArrowIndices~=objects.ids[j];
-								else structureArrowIndices~=objects.ids[j];
-							}
+							static if(isMoving) creatureArrowIndices~=objects.ids[j];
+							else structureArrowIndices~=objects.ids[j];
 						}
 					}
 				}
@@ -1289,15 +1289,17 @@ final class SacScene: Scene{
 	float cachedTargetX,cachedTargetY;
 	int cachedTargetFrame;
 	enum targetCacheDelta=10.0f;
+	enum minimapTargetCacheDelta=2.0f;
 	enum targetCacheDuration=1.2f*updateFPS;
 	Target mouseCursorTarget(){
 		auto target=mouseCursorTargetImpl();
 		static immutable importantTargets=[TargetType.creature,TargetType.soul];
 		if(cachedTarget.id!=0&&!state.current.isValidId(cachedTarget.id)) cachedTarget=Target.init;
-		if(!importantTargets.canFind(target.type)){
-			if(cachedTarget.type!=TargetType.none && cachedTarget.location!=TargetLocation.minimap){
-				if((mouse.inHitbox || abs(cachedTargetX-mouse.x)<targetCacheDelta &&
-				    abs(cachedTargetY-mouse.y)<targetCacheDelta)&&
+		if(!importantTargets.canFind(target.type)&&!(target.location==TargetLocation.minimap&&target.type==TargetType.building)){
+			auto delta=cachedTarget.location!=TargetLocation.minimap?targetCacheDelta:minimapTargetCacheDelta;
+			if(cachedTarget.type!=TargetType.none){
+				if((mouse.inHitbox || abs(cachedTargetX-mouse.x)<delta &&
+				    abs(cachedTargetY-mouse.y)<delta)&&
 				   cachedTargetFrame+targetCacheDuration>state.current.frame){
 					target=cachedTarget;
 				}else cachedTarget=Target.init;
