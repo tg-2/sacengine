@@ -491,32 +491,33 @@ final class SacScene: Scene{
 		return modelViewProjectionMatrix;
 	}
 
+	void renderTargetFrame(RenderingContext* rc){
+		if(!mouse.showFrame) return;
+		if(mouse.target.type.among(TargetType.creature,TargetType.building)){
+			static void renderHitbox(T)(T obj,SacScene scene,RenderingContext* rc){
+				alias B=DagonBackend;
+				auto hitbox2d=obj.hitbox2d(scene.getModelViewProjectionMatrix(obj.position,obj.rotation));
+				static if(is(T==MovingObject!B)) auto objSide=obj.side;
+				else auto objSide=sideFromBuildingId!B(obj.buildingId,scene.state.current);
+				auto color=scene.state.current.sides.sideColor(objSide);
+				scene.renderFrame(hitbox2d,color,rc);
+			}
+			state.current.objectById!renderHitbox(mouse.target.id,this,rc);
+			}else if(mouse.target.type==TargetType.soul){
+			static void renderHitbox(B)(Soul!B soul,SacScene scene,RenderingContext* rc){
+				auto hitbox2d=soul.hitbox2d(scene.getSpriteModelViewProjectionMatrix(soul.position+soul.scaling*Vector3f(0.0f,0.0f,1.25f*sacSoul.soulHeight)));
+				auto color=soul.color(scene.renderSide,scene.state.current)==SoulColor.blue?blueSoulFrameColor:redSoulFrameColor;
+				scene.renderFrame(hitbox2d,color,rc);
+			}
+			state.current.soulById!renderHitbox(mouse.target.id,this,rc);
+		}
+	}
 	void renderCursor(RenderingContext* rc){
 		if(mouse.target.id&&!state.current.isValidId(mouse.target.id)) mouse.target=Target.init;
 		mouse.x=eventManager.mouseX;
 		mouse.y=eventManager.mouseY;
 		mouse.x=max(0,min(mouse.x,width-1));
 		mouse.y=max(0,min(mouse.y,height-1));
-		if(mouse.showFrame){
-			if(mouse.target.type.among(TargetType.creature,TargetType.building)){
-			   static void renderHitbox(T)(T obj,SacScene scene,RenderingContext* rc){
-				   alias B=DagonBackend;
-				   auto hitbox2d=obj.hitbox2d(scene.getModelViewProjectionMatrix(obj.position,obj.rotation));
-				   static if(is(T==MovingObject!B)) auto objSide=obj.side;
-				   else auto objSide=sideFromBuildingId!B(obj.buildingId,scene.state.current);
-				   auto color=scene.state.current.sides.sideColor(objSide);
-				   scene.renderFrame(hitbox2d,color,rc);
-			   }
-			   state.current.objectById!renderHitbox(mouse.target.id,this,rc);
-			}else if(mouse.target.type==TargetType.soul){
-				static void renderHitbox(B)(Soul!B soul,SacScene scene,RenderingContext* rc){
-					auto hitbox2d=soul.hitbox2d(scene.getSpriteModelViewProjectionMatrix(soul.position+soul.scaling*Vector3f(0.0f,0.0f,1.25f*sacSoul.soulHeight)));
-					auto color=soul.color(scene.renderSide,scene.state.current)==SoulColor.blue?blueSoulFrameColor:redSoulFrameColor;
-					scene.renderFrame(hitbox2d,color,rc);
-				}
-				state.current.soulById!renderHitbox(mouse.target.id,this,rc);
-			}
-		}
 		auto material=sacCursor.materials[mouse.cursor];
 		material.bind(rc);
 		scope(success) material.unbind(rc);
@@ -872,6 +873,7 @@ final class SacScene: Scene{
 	override void renderEntities2D(RenderingContext* rc){
 		super.renderEntities2D(rc);
 		if(mouse.visible){
+			renderTargetFrame(rc);
 			renderHUD(rc);
 			renderCursor(rc);
 		}
