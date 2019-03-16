@@ -575,7 +575,6 @@ final class SacScene: Scene{
 		auto left=cast(int)(width-2.0f*radius), top=cast(int)(height-2.0f*radius);
 		auto yOffset=eventManager.windowHeight-height;
 		glScissor(left,0+yOffset,width-left,height-top);
-		scope(success) glScissor(0,0+yOffset,width,height);
 		auto hudScaling=this.hudScaling;
 		auto scaling=Vector3f(2.0f*radius,2.0f*radius,0f);
 		auto position=Vector3f(width-scaling.x,height-scaling.y,0);
@@ -746,6 +745,11 @@ final class SacScene: Scene{
 		material.bind(rc);
 		material.backend.setTransformationScaled(position, Quaternionf.identity(), scaling, rc);
 		minimapFrame.render(rc);
+		auto compassScaling=-hudScaling*Vector3f(21.0f,21.0f,0.0f);
+		auto compassPosition=mapCenter+rotate(mapRotation,Vector3f(0.0f,radius-2.0f*hudScaling,0.0f)-0.5f*compassScaling);
+		material.backend.setTransformationScaled(compassPosition, mapRotation, compassScaling, rc);
+		glScissor(0,0+yOffset,width,height);
+		minimapCompass.render(rc);
 		material.unbind(rc);
 	}
 	void renderStats(RenderingContext* rc){
@@ -1202,7 +1206,7 @@ final class SacScene: Scene{
 	ShapeQuad quad;
 	ShapeSacCreatureFrame border;
 	SacHud!DagonBackend sacHud;
-	ShapeSubQuad selectionRoster, minimapFrame;
+	ShapeSubQuad selectionRoster, minimapFrame, minimapCompass;
 	ShapeSacStatsFrame statsFrame;
 	ShapeSubQuad creatureTab,spellTab,structureTab,tabSelector;
 	ShapeSubQuad spellbookFrame1,spellbookFrame2;
@@ -1217,6 +1221,7 @@ final class SacScene: Scene{
 		sacHud=new SacHud!DagonBackend();
 		selectionRoster=New!ShapeSubQuad(assetManager,-0.5f,0.0f,0.5f,2.0f);
 		minimapFrame=New!ShapeSubQuad(assetManager,0.5f,0.5f,1.5f,1.5f);
+		minimapCompass=New!ShapeSubQuad(assetManager,101.0f/128.0f,3.0f/128.0f,122.0f/128.0f,24.0f/128.0f);
 		statsFrame=New!ShapeSacStatsFrame(assetManager);
 		creatureTab=New!ShapeSubQuad(assetManager,1.0f/128.0f,0.0f,47.0f/128,48.0f/128.0f);
 		spellTab=New!ShapeSubQuad(assetManager,49.0f/128.0f,0.0f,95.0f/128.0f,48.0f/128.0f);
