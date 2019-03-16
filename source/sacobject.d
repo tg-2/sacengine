@@ -167,6 +167,9 @@ final class SacObject(B){
 	@property bool isAltar(){
 		return altarBaseTags.canFind(tag);
 	}
+	@property bool isAltarRing(){
+		return altarRingTags.canFind(tag);
+	}
 
 	Vector3f[2] smallHitbox(Quaternionf rotation,AnimationState animationState,int frame)in{
 		assert(isSaxs);

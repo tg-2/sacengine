@@ -636,9 +636,9 @@ final class SacScene: Scene{
 					}else{
 						bool mayShowArrow=false;
 						enum isWizard=false;
-						if(sacObject.isAltar){
+						if(sacObject.isAltarRing){
 							mayShowArrow=true;
-							quad=scene.minimapAltar;
+							quad=scene.minimapAltarRing;
 							iconScaling=hudScaling*Vector3f(10.0f,10.0f,0.0f);
 						}else if(sacObject.isManalith){
 							mayShowArrow=true;
@@ -1214,7 +1214,7 @@ final class SacScene: Scene{
 	GenericMaterial hudSoulMaterial;
 	GenericMaterial minimapBackgroundMaterial;
 	ShapeSubQuad minimapQuad;
-	ShapeSubQuad minimapAltar,minimapManalith,minimapWizard,minimapManafount,minimapShrine;
+	ShapeSubQuad minimapAltarRing,minimapManalith,minimapWizard,minimapManafount,minimapShrine;
 	ShapeSubQuad minimapCreatureArrow,minimapStructureArrow;
 	void initializeHUD(){
 		quad=New!ShapeQuad(assetManager);
@@ -1238,7 +1238,7 @@ final class SacScene: Scene{
 		minimapBackgroundMaterial=createMaterial(minimapMaterialBackend);
 		minimapBackgroundMaterial.diffuse=Color4f(0.0f,65.0f/255.0f,66.0f/255.0f,1.0f);
 		minimapQuad=New!ShapeSubQuad(assetManager,16.5f/64.0f,4.5f/65.0f,16.5f/64.0f,4.5f/64.0f);
-		minimapAltar=New!ShapeSubQuad(assetManager,1.0f/64.0f,1.0/65.0f,11.0f/64.0f,11.0f/64.0f);
+		minimapAltarRing=New!ShapeSubQuad(assetManager,1.0f/64.0f,1.0/65.0f,11.0f/64.0f,11.0f/64.0f);
 		minimapManalith=New!ShapeSubQuad(assetManager,12.0f/64.0f,0.0/65.0f,24.0f/64.0f,12.0f/64.0f);
 		minimapWizard=New!ShapeSubQuad(assetManager,25.0f/64.0f,1.0/65.0f,35.5f/64.0f,12.0f/64.0f);
 		minimapManafount=New!ShapeSubQuad(assetManager,36.5f/64.0f,1.0/65.0f,47.0f/64.0f,11.0f/64.0f);

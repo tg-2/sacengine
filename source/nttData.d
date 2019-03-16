@@ -22,8 +22,10 @@ immutable char[4][] manalithTags=["amac","namj","anam","amyp","mats"];
 immutable char[4][] shrineTags=["hscp","rhsj","psac","hsyp","rhss"];
 immutable char[4][] altarTags=["1tla","laaj","a_ac","layp","lats",
                                "_aup","auaj","_auc","auyp","auts"];
-immutable char[4][] altarBaseTags=["abla","tipj","baac","tpyp","tprc",
-                                   "caup",       "bauc",             ];
+immutable char[4][] altarRingTags=["r_ae","otla","gnrj","raac","gryp","gras",
+                                          "raup","2uaj","rauc","2uyp","2uts"];
+immutable char[4][] altarBaseTags=["b_ae","abla","tipj","baac","tpyp","tprc",
+                                          "caup",       "bauc",             ];
 
 
 import std.typecons;

@@ -108,7 +108,7 @@ int main(string[] args){
 					})(altar.position,&closestManafount,&manafountPosition,state);
 					int orientation=0;
 					enum distance=15.0f;
-					auto facingOffset=bldg.isStratosAltar?cast(float)PI/4.0f:0.0f;
+					auto facingOffset=(bldg.isStratosAltar?cast(float)PI/4.0f:0.0f)+cast(float)PI;
 					auto facing=bldg.facing+facingOffset;
 					auto rotation=facingQuaternion(facing);
 					auto position=altar.position+rotate(rotation,Vector3f(0.0f,distance,0.0f));

@@ -320,6 +320,12 @@ bool isStratosAltar(immutable(Bldg)* bldg){ // TODO: store in SacBuilding class
 bool isStratosAltar(B)(ref Building!B building){
 	return building.bldg.isStratosAltar;
 }
+bool isEtherealAltar(immutable(Bldg)* bldg){ // TODO: store in SacBuilding class
+	return bldg.header.numComponents>=1&&bldg.components[0].tag=="b_ae";
+}
+bool isEtherealAltar(B)(ref Building!B building){
+	return building.bldg.isEtherealAltar;
+}
 
 void putOnManafount(B)(ref Building!B building,ref Building!B manafount,ObjectState!B state)in{
 	assert(manafount.isManafount);
@@ -2125,6 +2131,7 @@ void updateBuilding(B)(ref Building!B building, ObjectState!B state){
 			return obj.position+Vector3f(0.0f,0.0f,3.0f);
 		}
 		auto position=state.staticObjectById!(getShrineTop,function Vector3f(){ assert(0); })(building.componentIds[0]);
+		if(building.isEtherealAltar) position.z+=95.0f;
 		animateShrine(position,building.side,state);
 	}
 }
