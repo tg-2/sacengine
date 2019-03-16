@@ -474,7 +474,7 @@ final class SacScene: Scene{
 		position=fixHitbox2dSize(position);
 		auto size=position[1]-position[0];
 		renderFrame(position[0],size,color,rc);
-		mouse.inHitbox=position[0].x<=mouse.x&&mouse.x<=position[1].x&&
+		mouse.inHitbox=!mouse.onMinimap&&position[0].x<=mouse.x&&mouse.x<=position[1].x&&
 			position[0].y<=mouse.y&&mouse.y<=position[1].y;
 	}
 
@@ -495,6 +495,8 @@ final class SacScene: Scene{
 		if(mouse.target.id&&!state.current.isValidId(mouse.target.id)) mouse.target=Target.init;
 		mouse.x=eventManager.mouseX;
 		mouse.y=eventManager.mouseY;
+		mouse.x=max(0,min(mouse.x,width-1));
+		mouse.y=max(0,min(mouse.y,height-1));
 		if(mouse.showFrame){
 			if(mouse.target.type.among(TargetType.creature,TargetType.building)){
 			   static void renderHitbox(T)(T obj,SacScene scene,RenderingContext* rc){
@@ -543,9 +545,32 @@ final class SacScene: Scene{
 		material.backend.setTransformationScaled(position, Quaternionf.identity(), scaling, rc);
 		selectionRoster.render(rc);
 	}
+	float minimapRadius(){ return hudScaling*80.0f; }
+	bool isOnMinimap(Vector2f position){
+		auto radius=minimapRadius;
+		auto center=Vector2f(width-radius,height-radius);
+		return (position-center).lengthsqr<=radius*radius;
+	}
+	void updateMinimapTarget(Target target,Vector2f center,Vector2f scaling){
+		if(!mouse.onMinimap) return;
+		auto topLeft=center-0.5f*scaling;
+		auto bottomRight=center+0.5f*scaling;
+		if(cast(int)topLeft.x<=mouse.x&&mouse.x<=cast(int)(bottomRight.x+0.5f)
+		   && cast(int)topLeft.y<=mouse.y&&mouse.y<=cast(int)(bottomRight.y+0.5f))
+			minimapTarget=target;
+	}
+	void updateMinimapTargetTriangle(Target target,Vector3f[3] triangle){
+		if(!mouse.onMinimap) return;
+		auto mousePos=Vector3f(mouse.x,mouse.y,0.0f);
+		foreach(k;0..3) triangle[k]-=mousePos;
+		foreach(k;0..3)
+			if(cross(triangle[k],triangle[(k+1)%$]).z<0)
+				return;
+		minimapTarget=target;
+	}
 	void renderMinimap(RenderingContext* rc){
 		auto map=state.current.map;
-		auto radius=hudScaling*80.0f;
+		auto radius=minimapRadius;
 		auto left=cast(int)(width-2.0f*radius), top=cast(int)(height-2.0f*radius);
 		auto yOffset=eventManager.windowHeight-height;
 		glScissor(left,0+yOffset,width-left,height-top);
@@ -559,8 +584,7 @@ final class SacScene: Scene{
 		material.bind(rc);
 		minimapMaterialBackend.setTransformationScaled(position, Quaternionf.identity(), scaling, rc);
 		quad.render(rc);
-		auto minimapZoom=2.5f;
-		auto minimapFactor=hudScaling/minimapZoom;
+		auto minimapFactor=hudScaling/camera.minimapZoom;
 		auto camPos=fpview.camera.position;
 		auto mapRotation=facingQuaternion(-degtorad(fpview.camera.turn));
 		auto minimapCenter=Vector3f(camPos.x,camPos.y,0.0f);
@@ -576,6 +600,18 @@ final class SacScene: Scene{
 			mesh.render(rc);
 		}
 		material.unbind(rc);
+		if(mouse.onMinimap){
+			auto mouseOffset=Vector3f(mouse.x,mouse.y,0.0f)-mapCenter;
+			auto minimapPosition=minimapCenter+rotate(mapRotation,Vector3f(mouseOffset.x,-mouseOffset.y,0.0f)/minimapFactor);
+			if(state.current.isOnGround(minimapPosition)){
+				minimapPosition.z=state.current.getGroundHeight(minimapPosition);
+				auto target=Target(TargetType.terrain,0,minimapPosition,TargetLocation.minimap);
+				minimapTarget=target;
+			}else{
+				minimapTarget=Target.init;
+				minimapTarget.location=TargetLocation.minimap;
+			}
+		}
 		sacHud.minimapIconsMaterial.bind(rc);
 		 // temporary scratch space. TODO: maybe share memory with other temporary scratch spaces
 		import std.container: Array;
@@ -619,8 +655,9 @@ final class SacScene: Scene{
 							iconScaling=hudScaling*Vector3f(12.0f,12.0f,0.0f);
 						}
 					}
-					}
-				auto clipradiusSq=(0.92f*radius-0.5f*iconScaling.x)*(0.92f*radius-0.5f*iconScaling.y);
+				}else enum showArrow=false;
+				auto clipRadiusFactor=showArrow?0.92f:1.0f;
+				auto clipradiusSq=(clipRadiusFactor*radius-0.5f*iconScaling.x)*(clipRadiusFactor*radius-0.5f*iconScaling.y);
 				auto clipradius=sqrt(clipradiusSq);
 				enforce(objects.length<=uint.max);
 				foreach(j;0..cast(uint)objects.length){
@@ -647,6 +684,12 @@ final class SacScene: Scene{
 							scene.colorHUDMaterialBackend.setColor(color);
 						}
 						quad.render(rc);
+						static if(is(typeof(objects.sacObject))){
+							if(scene.mouse.onMinimap){
+								auto target=Target(isMoving?TargetType.creature:TargetType.building,objects.ids[j],objects.positions[j],TargetLocation.minimap);
+								scene.updateMinimapTarget(target,iconCenter.xy,iconScaling.xy);
+							}
+						}
 					}else static if(is(typeof(objects.sacObject))){
 						if(showArrow){
 							static if(isMoving) auto side=objects.sides[j];
@@ -684,6 +727,12 @@ final class SacScene: Scene{
 				auto color=scene.state.current.sides.sideColor(side);
 				scene.colorHUDMaterialBackend.setColor(color);
 				arrowQuad.render(rc);
+				if(scene.mouse.onMinimap){
+					auto target=Target(isMoving?TargetType.creature:TargetType.building,object.id,object.position,TargetLocation.minimap);
+					Vector3f[3] triangle=[Vector3f(0.0f,-9.0f,0.0f),Vector3f(6.0f,6.0f,0.0f),Vector3f(-6.0f,6.0f,0.0f)];
+					foreach(k;0..3) triangle[k]=iconCenter+rotate(rotation,hudScaling*triangle[k]);
+					scene.updateMinimapTargetTriangle(target,triangle);
+				}
 			}
 		}
 		static foreach(isMoving;[true,false])
@@ -895,6 +944,7 @@ final class SacScene: Scene{
 		float height=2.0f;
 		float zoom=0.125f;
 		float targetZoom=0.125f;
+		float minimapZoom=2.7f;
 		float focusHeight;
 		bool centering=false;
 		enum rotationSpeed=0.95f*PI;
@@ -982,31 +1032,42 @@ final class SacScene: Scene{
 		//if(eventManager.keyPressed[KEY_Y]) dir += Vector3f(0,1,0);
 		//if(eventManager.keyPressed[KEY_Z]) dir += Vector3f(0,0,1);
 		fpview.control();
+		if(!mouse.dragging) mouse.onMinimap=isOnMinimap(Vector2f(mouse.x,mouse.y));
 		if(mouse.visible){
 			if(((eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK])
 			    && eventManager.mouseButtonPressed[MB_LEFT])||
 			   eventManager.mouseButtonPressed[MB_MIDDLE]
 			){
-				if(fpview.active){
-					mouse.x+=eventManager.mouseRelX;
-					mouse.y+=eventManager.mouseRelY;
-					if(eventManager.mouseRelX||eventManager.mouseRelY)
-						mouse.dragging=true;
-					mouse.x=max(0,min(mouse.x,width-1));
-					mouse.y=max(0,min(mouse.x,height-1));
+				if(eventManager.mouseRelX||eventManager.mouseRelY)
+					mouse.dragging=true;
+				if(!mouse.onMinimap){
+					fpview.active=true;
+					fpview.mouseFactor=-0.25f;
+				}else{
+					SDL_SetRelativeMouseMode(SDL_TRUE);
 				}
-				fpview.active=true;
-				fpview.mouseFactor=-0.25f;
+				mouse.x+=eventManager.mouseRelX;
+				mouse.y+=eventManager.mouseRelY;
+				mouse.x=max(0,min(mouse.x,width-1));
+				mouse.y=max(0,min(mouse.y,height-1));
 			}else{
 				mouse.dragging=false;
-				if(fpview.active){
-					fpview.active=false;
-					fpview.mouseFactor=1.0f;
-					eventManager.setMouse(cast(int)mouse.x,cast(int)mouse.y);
+				if(!mouse.onMinimap){
+					if(fpview.active){
+						fpview.active=false;
+						fpview.mouseFactor=1.0f;
+					}
+				}else{
+					SDL_SetRelativeMouseMode(SDL_FALSE);
 				}
 			}
-			camera.targetZoom-=0.04f*eventManager.mouseWheelY;
-			camera.targetZoom=max(0.0f,min(camera.targetZoom,1.0f));
+			if(!mouse.onMinimap){
+				camera.targetZoom-=0.04f*eventManager.mouseWheelY;
+				camera.targetZoom=max(0.0f,min(camera.targetZoom,1.0f));
+			}else{
+				camera.minimapZoom*=exp(log(1.3)*(-0.4f*eventManager.mouseWheelY+0.04f*(mouse.dragging?eventManager.mouseRelY:0)/hudScaling));
+				camera.minimapZoom=max(0.5f,min(camera.minimapZoom,15.0f));
+			}
 		}
 		if(camera.target!=0&&!state.current.isValidId(camera.target)) camera.target=0;
 		if(camera.target==0){
@@ -1182,6 +1243,7 @@ final class SacScene: Scene{
 		auto cursor=Cursor.normal;
 		Target target;
 		bool inHitbox=false;
+		bool onMinimap=false;
 	}
 	Mouse mouse;
 	SacCursor!DagonBackend sacCursor;
@@ -1195,7 +1257,9 @@ final class SacScene: Scene{
 		fpview.oldMouseY=cast(int)mouse.y;
 		eventManager.setMouse(cast(int)mouse.x, cast(int)mouse.y);
 	}
+	auto minimapTarget=Target.init;
 	Target mouseCursorTargetImpl(){
+		if(mouse.onMinimap) return minimapTarget;
 		auto information=gbuffer.getInformation();
 		auto cur=state.current;
 		if(information.x==1){
@@ -1228,7 +1292,7 @@ final class SacScene: Scene{
 		static immutable importantTargets=[TargetType.creature,TargetType.soul];
 		if(cachedTarget.id!=0&&!state.current.isValidId(cachedTarget.id)) cachedTarget=Target.init;
 		if(!importantTargets.canFind(target.type)){
-			if(cachedTarget.type!=TargetType.none){
+			if(cachedTarget.type!=TargetType.none && cachedTarget.location!=TargetLocation.minimap){
 				if((mouse.inHitbox || abs(cachedTargetX-mouse.x)<targetCacheDelta &&
 				    abs(cachedTargetY-mouse.y)<targetCacheDelta)&&
 				   cachedTargetFrame+targetCacheDuration>state.current.frame){
@@ -1260,15 +1324,19 @@ final class SacScene: Scene{
 		}else{
 			mouse.cursor=mouse.target.cursor(renderSide,state.current);
 			with(Cursor) // TODO: with icons, show border only if spell is applicable to target
-				mouse.showFrame=mouse.target.type==TargetType.soul||
-					mouse.cursor.among(friendlyUnit,neutralUnit,rescuableUnit,talkingUnit,enemyUnit,iconFriendly,iconNeutral,iconEnemy);
+				mouse.showFrame=mouse.target.location!=TargetLocation.minimap &&
+					(mouse.target.type==TargetType.soul||
+					 mouse.cursor.among(friendlyUnit,neutralUnit,rescuableUnit,talkingUnit,enemyUnit,iconFriendly,iconNeutral,iconEnemy));
 		}
 	}
 	override void startGBufferInformationDownload(){
+		if(mouse.onMinimap) return;
 		static int i=0;
 		if(options.printFPS && ((++i)%=2)==0) writeln(eventManager.fps);
 		mouse.x=eventManager.mouseX;
 		mouse.y=eventManager.mouseY;
+		mouse.x=max(0,min(mouse.x,width-1));
+		mouse.y=max(0,min(mouse.y,height-1));
 		auto x=cast(int)(mouse.x+0.5f), y=cast(int)(height-1-mouse.y+0.5f);
 		x=max(0,min(x,width-1));
 		y=max(0,min(y,height-1));
