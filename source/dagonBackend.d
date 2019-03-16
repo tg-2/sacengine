@@ -353,7 +353,7 @@ final class SacScene: Scene{
 						mesh.render(rc);
 					}
 				}
-			}
+			}else static assert(0);
 		}
 		state.current.eachByType!render(options.enableWidgets,this,rc);
 	}
@@ -452,11 +452,11 @@ final class SacScene: Scene{
 	}
 
 	void renderFrame(Vector2f position,Vector2f size,Color4f color,RenderingContext* rc){
-		colorHUDMaterialBackend.bind(null,rc);
-		scope(success) colorHUDMaterialBackend.unbind(null, rc);
+		colorHUDMaterialBackend2.bind(null,rc);
+		scope(success) colorHUDMaterialBackend2.unbind(null, rc);
 		auto scaling=Vector3f(size.x,size.y,1.0f);
-		colorHUDMaterialBackend.setTransformationScaled(Vector3f(position.x,position.y,0.0f), Quaternionf.identity(), scaling, rc);
-		colorHUDMaterialBackend.setColor(color);
+		colorHUDMaterialBackend2.setTransformationScaled(Vector3f(position.x,position.y,0.0f), Quaternionf.identity(), scaling, rc);
+		colorHUDMaterialBackend2.setColor(color);
 		border.render(rc);
 	}
 
@@ -566,7 +566,7 @@ final class SacScene: Scene{
 		auto minimapCenter=Vector3f(camPos.x,camPos.y,0.0f);
 		auto minimapSize=Vector2f(2560.0f,2560.0f);
 		auto mapCenter=Vector3f(width-radius,height-radius,0);
-		auto mapPosition=mapCenter+rotate(mapRotation,minimapFactor*Vector3f(-minimapCenter.x,minimapCenter.y,0)-minimapZoom);
+		auto mapPosition=mapCenter+rotate(mapRotation,minimapFactor*Vector3f(-minimapCenter.x,minimapCenter.y,0));
 		auto mapScaling=Vector3f(1,-1,1)*minimapFactor;
 		minimapMaterialBackend.setTransformationScaled(mapPosition,mapRotation,mapScaling,rc);
 		minimapMaterialBackend.setColorMultiplier(Color4f(0.5f,0.5f,0.5f,1.0f));
@@ -576,6 +576,98 @@ final class SacScene: Scene{
 			mesh.render(rc);
 		}
 		material.unbind(rc);
+		sacHud.minimapIconsMaterial.bind(rc);
+		static void render(T)(ref T objects,float hudScaling,float minimapFactor,Vector3f minimapCenter,Vector3f mapCenter,float radius,Quaternionf mapRotation,SacScene scene,RenderingContext* rc){ // TODO: why does this need to be static? DMD bug?
+			static if(is(typeof(objects.sacObject))||is(T==Souls!(DagonBackend))){
+				static if(!is(T==FixedObjects!DagonBackend)){
+					auto quad=scene.minimapQuad;
+					auto iconScaling=hudScaling*Vector3f(2.0f,2.0f,0.0f);
+					static if(is(typeof(objects.sacObject))){
+						auto sacObject=objects.sacObject;
+						enum isMoving=is(T==MovingObjects!(DagonBackend, RenderMode.opaque))||is(T==MovingObjects!(DagonBackend, RenderMode.transparent));
+						bool isManafount=false;
+						static if(isMoving){
+							enum showArrow=true;
+							bool isWizard=false;
+							if(sacObject.isWizard){
+								isWizard=true;
+								quad=scene.minimapWizard;
+								iconScaling=hudScaling*Vector3f(11.0f,11.0f,0.0f);
+							}
+						}else{
+							bool showArrow=false;
+							enum isWizard=false;
+							if(sacObject.isAltar){
+								showArrow=true;
+								quad=scene.minimapAltar;
+								iconScaling=hudScaling*Vector3f(10.0f,10.0f,0.0f);
+							}else if(sacObject.isManalith){
+								showArrow=true;
+								quad=scene.minimapManalith;
+								iconScaling=hudScaling*Vector3f(12.0f,12.0f,0.0f);
+							}else if(sacObject.isManafount){
+								isManafount=true;
+								quad=scene.minimapManafount;
+								iconScaling=hudScaling*Vector3f(11.0f,11.0f,0.0f);
+								scene.colorHUDMaterialBackend.setColor(Color4f(0.0f,160.0f/255.0f,219.0f/255.0f,1.0f));
+							}else if(sacObject.isShrine){
+								showArrow=true;
+								quad=scene.minimapShrine;
+								iconScaling=hudScaling*Vector3f(12.0f,12.0f,0.0f);
+							}
+						}
+					}
+					auto clipradiusSq=(0.92f*radius-0.5f*iconScaling.x)*(0.92f*radius-0.5f*iconScaling.y);
+					auto clipradius=sqrt(clipradiusSq);
+					foreach(j;0..objects.length){
+						static if(is(T==StaticObjects!DagonBackend)){
+							if(!isManafount&&!scene.state.current.buildingById!((bldg)=>bldg.health!=0||bldg.isAltar,()=>false)(objects.buildingIds[j])) // TODO: merge with side lookup!
+								continue;
+						}
+						static if(is(T==Souls!DagonBackend)) auto position=objects[j].position-minimapCenter;
+						else auto position=objects.positions[j]-minimapCenter;
+						auto iconOffset=rotate(mapRotation,minimapFactor*Vector3f(position.x,-position.y,0));
+						if(iconOffset.lengthsqr<=clipradiusSq){
+							auto iconCenter=mapCenter+iconOffset;
+							scene.colorHUDMaterialBackend.setTransformationScaled(iconCenter-0.5f*iconScaling,Quaternionf.identity(),iconScaling,rc);
+							static if(is(typeof(objects.sacObject))){
+								if(!isManafount){
+									static if(isMoving) auto side=objects.sides[j];
+									else auto side=sideFromBuildingId(objects.buildingIds[j],scene.state.current);
+									auto color=scene.state.current.sides.sideColor(side);
+									scene.colorHUDMaterialBackend.setColor(color);
+								}
+							}else static if(is(T==Souls!DagonBackend)){
+								auto soul=objects[j];
+								auto color=soul.color(scene.renderSide,scene.state.current)==SoulColor.blue?blueSoulMinimapColor:redSoulMinimapColor;
+								scene.colorHUDMaterialBackend.setColor(color);
+							}
+							quad.render(rc);
+						}else static if(is(typeof(objects.sacObject))){
+							static if(isMoving) auto side=objects.sides[j];
+							else auto side=sideFromBuildingId(objects.buildingIds[j],scene.state.current);
+							if(showArrow&&(side==scene.renderSide||(!isMoving||isWizard) && scene.state.current.sides.getStance(side,scene.renderSide)==Stance.ally)){
+								auto arrowQuad=isMoving?scene.minimapCreatureArrow:scene.minimapStructureArrow;
+								auto arrowScaling=hudScaling*Vector3f(11.0f,11.0f,0.0f);
+								auto offset=iconOffset.normalized*(0.92f*radius-hudScaling*6.0f);
+								auto iconCenter=mapCenter+offset;
+								auto rotation=rotationQuaternion(Axis.z,cast(float)PI/2+atan2(iconOffset.y,iconOffset.x));
+								scene.colorHUDMaterialBackend.setTransformationScaled(iconCenter-rotate(rotation,0.5f*arrowScaling),rotation,arrowScaling,rc);
+								auto color=scene.state.current.sides.sideColor(side);
+								scene.colorHUDMaterialBackend.setColor(color);
+								arrowQuad.render(rc);
+							}
+						}
+					}
+				}
+			}else static if(is(T==Buildings!DagonBackend)){
+				// do nothing
+			}else static if(is(T==Particles!DagonBackend)){
+				// do nothing
+			}else static assert(0);
+		}
+		state.current.eachByType!render(hudScaling,minimapFactor,minimapCenter,mapCenter,radius,mapRotation,this,rc);
+		sacHud.minimapIconsMaterial.unbind(rc);
 		material=sacHud.frameMaterial;
 		material.bind(rc);
 		material.backend.setTransformationScaled(position, Quaternionf.identity(), scaling, rc);
@@ -1028,6 +1120,9 @@ final class SacScene: Scene{
 	ShapeSubQuad spellbookFrame1,spellbookFrame2;
 	GenericMaterial hudSoulMaterial;
 	GenericMaterial minimapBackgroundMaterial;
+	ShapeSubQuad minimapQuad;
+	ShapeSubQuad minimapAltar,minimapManalith,minimapWizard,minimapManafount,minimapShrine;
+	ShapeSubQuad minimapCreatureArrow,minimapStructureArrow;
 	void initializeHUD(){
 		quad=New!ShapeQuad(assetManager);
 		border=New!ShapeSacCreatureFrame(assetManager);
@@ -1045,8 +1140,17 @@ final class SacScene: Scene{
 		hudSoulMaterial=createMaterial(hudMaterialBackend2);
 		hudSoulMaterial.blending=Transparent;
 		hudSoulMaterial.diffuse=sacSoul.texture;
+		// minimap
 		minimapBackgroundMaterial=createMaterial(minimapMaterialBackend);
 		minimapBackgroundMaterial.diffuse=Color4f(0.0f,65.0f/255.0f,66.0f/255.0f,1.0f);
+		minimapQuad=New!ShapeSubQuad(assetManager,16.5f/64.0f,4.5f/65.0f,16.5f/64.0f,4.5f/64.0f);
+		minimapAltar=New!ShapeSubQuad(assetManager,1.0f/64.0f,1.0/65.0f,11.0f/64.0f,11.0f/64.0f);
+		minimapManalith=New!ShapeSubQuad(assetManager,12.0f/64.0f,0.0/65.0f,24.0f/64.0f,12.0f/64.0f);
+		minimapWizard=New!ShapeSubQuad(assetManager,25.0f/64.0f,1.0/65.0f,35.5f/64.0f,12.0f/64.0f);
+		minimapManafount=New!ShapeSubQuad(assetManager,36.5f/64.0f,1.0/65.0f,47.0f/64.0f,11.0f/64.0f);
+		minimapShrine=New!ShapeSubQuad(assetManager,48.0f/64.0f,0.0/65.0f,60.0f/64.0f,12.0f/64.0f);
+		minimapCreatureArrow=New!ShapeSubQuad(assetManager,0.0f/64.0f,13.0/65.0f,11.0f/64.0f,24.0f/64.0f);
+		minimapStructureArrow=New!ShapeSubQuad(assetManager,12.0f/64.0f,13.0/65.0f,23.0f/64.0f,24.0f/64.0f);
 	}
 	struct Mouse{
 		float x,y;
@@ -1351,9 +1455,10 @@ static:
 	Material[] createMaterials(SacHud!DagonBackend sacHud){
 		auto materials=new Material[](sacHud.textures.length);
 		foreach(i;0..materials.length){
-			auto mat=scene.createMaterial(scene.hudMaterialBackend);
+			auto mat=scene.createMaterial(i!=10?scene.hudMaterialBackend:scene.colorHUDMaterialBackend);
 			mat.blending=Transparent;
 			mat.diffuse=sacHud.textures[i];
+			if(i==10) mat.color=Color4f(1.0f,1.0f,1.0f,1.0f);
 			materials[i]=mat;
 		}
 		return materials;

@@ -783,8 +783,11 @@ auto eachParticles(alias f,B,T...)(ref Objects!(B,RenderMode.opaque) objects,T a
 			f(particle,args);
 	}
 }
-auto eachByType(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T args){
+auto eachByType(alias f,bool movingFirst=true,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T args){
 	with(objects){
+		static if(movingFirst)
+			foreach(ref movingObject;movingObjects)
+				f(movingObject,args);
 		static if(mode == RenderMode.opaque){
 			foreach(ref staticObject;staticObjects)
 				f(staticObject,args);
@@ -795,8 +798,9 @@ auto eachByType(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T a
 			foreach(ref particle;particles)
 				f(particle,args);
 		}
-		foreach(ref movingObject;movingObjects)
-			f(movingObject,args);
+		static if(!movingFirst)
+			foreach(ref movingObject;movingObjects)
+				f(movingObject,args);
 	}
 }
 
@@ -872,10 +876,10 @@ auto eachBuilding(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
 auto eachParticles(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
 	with(objectManager) opaqueObjects.eachParticles!f(args);
 }
-auto eachByType(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
+auto eachByType(alias f,bool movingFirst=true,B,T...)(ref ObjectManager!B objectManager,T args){
 	with(objectManager){
-		opaqueObjects.eachByType!f(args);
-		transparentObjects.eachByType!f(args);
+		opaqueObjects.eachByType!(f,movingFirst)(args);
+		transparentObjects.eachByType!(f,movingFirst)(args);
 	}
 }
 auto ref objectById(alias f,B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
@@ -2456,7 +2460,7 @@ final class ObjectState(B){ // (update logic)
 	void update(){
 		frame+=1;
 		proximity.start();
-		this.eachByType!addToProximity(this);
+		this.eachByType!(addToProximity,false)(this);
 		this.eachMoving!updateCreature(this);
 		this.eachSoul!updateSoul(this);
 		this.eachBuilding!updateBuilding(this);
@@ -2508,8 +2512,8 @@ auto eachBuilding(alias f,B,T...)(ObjectState!B objectState,T args){
 auto eachParticles(alias f,B,T...)(ObjectState!B objectState,T args){
 	return objectState.obj.eachParticles!f(args);
 }
-auto eachByType(alias f,B,T...)(ObjectState!B objectState,T args){
-	return objectState.obj.eachByType!f(args);
+auto eachByType(alias f,bool movingFirst=true,B,T...)(ObjectState!B objectState,T args){
+	return objectState.obj.eachByType!(f,movingFirst)(args);
 }
 
 auto ref objectById(alias f,B,T...)(ObjectState!B objectState,int id,T args){
@@ -2555,7 +2559,9 @@ final class Sides(B){
 		}
 	}
 	Color4f sideColor(int side){
-		return sideColors[sides[side].color];
+		auto c=sideColors[sides[side].color];
+		if(side==31) static foreach(i;0..3) c[i]*=0.5f;
+		return c;
 	}
 	Color4f manaColor(int side){
 		auto color=0.8f*Vector3f(sideColor(side).rgb)+0.2f*Vector3f(1.0f,1.0f,1.0f);
