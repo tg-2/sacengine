@@ -876,6 +876,7 @@ final class SacScene: Scene{
 	}
 	override void renderEntities2D(RenderingContext* rc){
 		super.renderEntities2D(rc);
+		if(!state) return;
 		if(mouse.visible){
 			renderTargetFrame(rc);
 			renderHUD(rc);
@@ -1327,6 +1328,7 @@ final class SacScene: Scene{
 		}
 	}
 	void updateCursor(double dt){
+		if(!state) return;
 		mouse.target=mouseCursorTarget();
 		if(mouse.dragging){
 			mouse.cursor=Cursor.drag;
