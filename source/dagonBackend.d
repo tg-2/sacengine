@@ -583,11 +583,12 @@ final class SacScene: Scene{
 		minimapMaterialBackend.radius=0.95f*radius;
 		material.bind(rc);
 		minimapMaterialBackend.setTransformationScaled(position, Quaternionf.identity(), scaling, rc);
+		minimapMaterialBackend.setColor(Color4f(0.0f,65.0f/255.0f,66.0f/255.0f,1.0f));
 		quad.render(rc);
 		auto minimapFactor=hudScaling/camera.minimapZoom;
 		auto camPos=fpview.camera.position;
 		auto mapRotation=facingQuaternion(-degtorad(fpview.camera.turn));
-		auto minimapCenter=Vector3f(camPos.x,camPos.y,0.0f);
+		auto minimapCenter=Vector3f(camPos.x,camPos.y,0.0f)+rotate(mapRotation,Vector3f(0.0f,camera.distance*3.73f,0.0f));
 		auto minimapSize=Vector2f(2560.0f,2560.0f);
 		auto mapCenter=Vector3f(width-radius,height-radius,0);
 		auto mapPosition=mapCenter+rotate(mapRotation,minimapFactor*Vector3f(-minimapCenter.x,minimapCenter.y,0));
@@ -598,6 +599,25 @@ final class SacScene: Scene{
 			if(!mesh) continue;
 			minimapMaterialBackend.bindDiffuse(map.textures[i]);
 			mesh.render(rc);
+		}
+		if(camera.target){
+			import std.typecons: Tuple,tuple;
+			auto facingPosition=state.current.movingObjectById!((obj)=>tuple(obj.creatureState.facing,obj.position), function Tuple!(float,Vector3f)(){ assert(0); })(camera.target);
+			auto facing=facingPosition[0],targetPosition=facingPosition[1];
+			auto relativePosition=targetPosition-minimapCenter;
+			auto iconOffset=rotate(mapRotation,minimapFactor*Vector3f(relativePosition.x,-relativePosition.y,0));
+			auto iconPosition=mapCenter+iconOffset;
+			minimapMaterialBackend.setColor(Color4f(1.0f,1.0f,0.0f,1.0f));
+			auto fovScaling=Vector3f(hudScaling,2.0f*radius,0.0f);
+			auto angle=2.0f*cast(float)PI*82.0f/360.0f;
+			auto fovRotation1=mapRotation*facingQuaternion(-facing-0.5f*angle);
+			auto fovPosition1=rotate(fovRotation1,Vector3f(-0.5f*fovScaling.x,-2.0f*radius,0.0f));
+			minimapMaterialBackend.setTransformationScaled(iconPosition+fovPosition1,fovRotation1,fovScaling,rc);
+			quad.render(rc);
+			auto fovRotation2=mapRotation*facingQuaternion(-facing+0.5f*angle);
+			auto fovPosition2=rotate(fovRotation2,Vector3f(-0.5f*fovScaling.x,-2.0f*radius,0.0f));
+			minimapMaterialBackend.setTransformationScaled(iconPosition+fovPosition2,fovRotation2,fovScaling,rc);
+			quad.render(rc);
 		}
 		if(mouse.onMinimap){
 			auto mouseOffset=Vector3f(mouse.x,mouse.y,0.0f)-mapCenter;
@@ -982,12 +1002,10 @@ final class SacScene: Scene{
 			// TODO: distanceFactor to depend on height as well: this is too far for Sorcha and too close for Marduk
 			auto distanceFactor=0.6+3.13f*zoom;
 			auto heightFactor=0.6+2.8f*zoom;
-			camera.distance*=distanceFactor;
-			camera.height*=heightFactor;
 			auto focusHeightFactor=zoom>=0.125?1.0f:(0.75+0.25f*zoom/0.125f);
 			camera.focusHeight*=focusHeightFactor;
-			auto distance=camera.distance;
-			auto height=camera.height;
+			auto distance=camera.distance*distanceFactor;
+			auto height=camera.height*heightFactor;
 			auto focusHeight=camera.focusHeight;
 			auto position=obj.position+rotate(rotationQuaternion(Axis.z,-degtorad(turn)),Vector3f(0.0f,-1.0f,0.0f))*distance;
 			position.z=(obj.position.z-state.getHeight(obj.position)+state.getHeight(position))+height;
@@ -1213,6 +1231,7 @@ final class SacScene: Scene{
 	ShapeSubQuad spellbookFrame1,spellbookFrame2;
 	GenericMaterial hudSoulMaterial;
 	GenericMaterial minimapMaterial;
+	Texture minimapFOVColor;
 	ShapeSubQuad minimapQuad;
 	ShapeSubQuad minimapAltarRing,minimapManalith,minimapWizard,minimapManafount,minimapShrine;
 	ShapeSubQuad minimapCreatureArrow,minimapStructureArrow;
@@ -1236,12 +1255,12 @@ final class SacScene: Scene{
 		hudSoulMaterial.diffuse=sacSoul.texture;
 		// minimap
 		minimapMaterial=createMaterial(minimapMaterialBackend);
-		minimapMaterial.diffuse=Color4f(0.0f,65.0f/255.0f,66.0f/255.0f,1.0f);
+		minimapMaterial.diffuse=Color4f(1.0f,1.0f,1.0f,1.0f);
 		minimapMaterial.blending=Transparent;
 		minimapQuad=New!ShapeSubQuad(assetManager,16.5f/64.0f,4.5f/65.0f,16.5f/64.0f,4.5f/64.0f);
 		minimapAltarRing=New!ShapeSubQuad(assetManager,1.0f/64.0f,1.0/65.0f,11.0f/64.0f,11.0f/64.0f);
 		minimapManalith=New!ShapeSubQuad(assetManager,12.0f/64.0f,0.0/65.0f,24.0f/64.0f,12.0f/64.0f);
-		minimapWizard=New!ShapeSubQuad(assetManager,25.0f/64.0f,1.0/65.0f,35.5f/64.0f,12.0f/64.0f);
+		minimapWizard=New!ShapeSubQuad(assetManager,25.5f/64.0f,1.0/65.0f,35.5f/64.0f,12.0f/64.0f);
 		minimapManafount=New!ShapeSubQuad(assetManager,36.5f/64.0f,1.0/65.0f,47.0f/64.0f,11.0f/64.0f);
 		minimapShrine=New!ShapeSubQuad(assetManager,48.0f/64.0f,0.0/65.0f,60.0f/64.0f,12.0f/64.0f);
 		minimapCreatureArrow=New!ShapeSubQuad(assetManager,0.0f/64.0f,13.0/65.0f,11.0f/64.0f,24.0f/64.0f);
