@@ -12,7 +12,7 @@ final class SacScene: Scene{
 	//Texture txta;
 	Options options;
 	this(SceneManager smngr, Options options){
-		super(options.width, options.height, options.aspectDistortion, smngr);
+		super(options.width, options.height, options.scale, options.aspectDistortion, smngr);
 		this.shadowMapResolution=options.shadowMapResolution;
 		this.options=options;
 	}
@@ -514,8 +514,8 @@ final class SacScene: Scene{
 	}
 	void renderCursor(RenderingContext* rc){
 		if(mouse.target.id&&!state.current.isValidId(mouse.target.id)) mouse.target=Target.init;
-		mouse.x=eventManager.mouseX;
-		mouse.y=eventManager.mouseY;
+		mouse.x=eventManager.mouseX/screenScaling;
+		mouse.y=eventManager.mouseY/screenScaling;
 		mouse.x=max(0,min(mouse.x,width-1));
 		mouse.y=max(0,min(mouse.y,height-1));
 		auto material=sacCursor.materials[mouse.cursor];
@@ -573,8 +573,8 @@ final class SacScene: Scene{
 		auto map=state.current.map;
 		auto radius=minimapRadius;
 		auto left=cast(int)(width-2.0f*radius), top=cast(int)(height-2.0f*radius);
-		auto yOffset=eventManager.windowHeight-height;
-		glScissor(left,0+yOffset,width-left,height-top);
+		auto yOffset=eventManager.windowHeight-cast(int)(height*screenScaling);
+		glScissor(cast(int)(left*screenScaling),0+yOffset,cast(int)((width-left)*screenScaling),cast(int)((height-top)*screenScaling));
 		auto hudScaling=this.hudScaling;
 		auto scaling=Vector3f(2.0f*radius,2.0f*radius,0f);
 		auto position=Vector3f(width-scaling.x,height-scaling.y,0);
@@ -766,7 +766,7 @@ final class SacScene: Scene{
 		auto compassScaling=-hudScaling*Vector3f(21.0f,21.0f,0.0f);
 		auto compassPosition=mapCenter+rotate(mapRotation,Vector3f(0.0f,radius-2.0f*hudScaling,0.0f)-0.5f*compassScaling);
 		material.backend.setTransformationScaled(compassPosition, mapRotation, compassScaling, rc);
-		glScissor(0,0+yOffset,width,height);
+		glScissor(0,0+yOffset,cast(int)(width*screenScaling),cast(int)(height*screenScaling));
 		minimapCompass.render(rc);
 		material.unbind(rc);
 	}
@@ -1069,8 +1069,8 @@ final class SacScene: Scene{
 				}else{
 					SDL_SetRelativeMouseMode(SDL_TRUE);
 				}
-				mouse.x+=eventManager.mouseRelX;
-				mouse.y+=eventManager.mouseRelY;
+				mouse.x+=eventManager.mouseRelX/screenScaling;
+				mouse.y+=eventManager.mouseRelY/screenScaling;
 				mouse.x=max(0,min(mouse.x,width-1));
 				mouse.y=max(0,min(mouse.y,height-1));
 			}else{
@@ -1079,7 +1079,7 @@ final class SacScene: Scene{
 					if(fpview.active){
 						fpview.active=false;
 						fpview.mouseFactor=1.0f;
-						eventManager.setMouse(cast(int)mouse.x,cast(int)mouse.y);
+						eventManager.setMouse(cast(int)(mouse.x*screenScaling),cast(int)(mouse.y*screenScaling));
 					}
 				}else{
 					SDL_SetRelativeMouseMode(SDL_FALSE);
@@ -1107,15 +1107,15 @@ final class SacScene: Scene{
 		}else{
 			// TODO: implement the following by sending commands to the game state!
 			if(eventManager.keyPressed[KEY_E] && !eventManager.keyPressed[KEY_D]){
-				state.current.movingObjectById!startMovingForward(camera.target,state.current);
+				state.addCommand(Command(CommandType.moveForward,camera.target,Target.init));
 			}else if(eventManager.keyPressed[KEY_D] && !eventManager.keyPressed[KEY_E]){
-				state.current.movingObjectById!startMovingBackward(camera.target,state.current);
-			}else state.current.movingObjectById!stopMovement(camera.target,state.current);
+				state.addCommand(Command(CommandType.moveBackward,camera.target,Target.init));
+			}else state.addCommand(Command(CommandType.stopMoving,camera.target,Target.init));
 			if(eventManager.keyPressed[KEY_S] && !eventManager.keyPressed[KEY_F]){
-				state.current.movingObjectById!startTurningLeft(camera.target,state.current);
+				state.addCommand(Command(CommandType.turnLeft,camera.target,Target.init));
 			}else if(eventManager.keyPressed[KEY_F] && !eventManager.keyPressed[KEY_S]){
-				state.current.movingObjectById!startTurningRight(camera.target,state.current);
-			}else state.current.movingObjectById!stopTurning(camera.target,state.current);
+				state.addCommand(Command(CommandType.turnRight,camera.target,Target.init));
+			}else state.addCommand(Command(CommandType.stopTurning,camera.target,Target.init));
 			positionCamera();
 		}
 		if(eventManager.keyPressed[KEY_K]){
@@ -1186,6 +1186,7 @@ final class SacScene: Scene{
 
 	override void onViewUpdate(double dt){
 		if(state) stateTestControl();
+		if(options.scaleToFit) screenScaling=min(cast(float)eventManager.windowWidth/width,cast(float)eventManager.windowHeight/height);
 		cameraControl(dt);
 		super.onViewUpdate(dt);
 	}
@@ -1362,8 +1363,8 @@ final class SacScene: Scene{
 		if(mouse.onMinimap) return;
 		static int i=0;
 		if(options.printFPS && ((++i)%=2)==0) writeln(eventManager.fps);
-		mouse.x=eventManager.mouseX;
-		mouse.y=eventManager.mouseY;
+		mouse.x=eventManager.mouseX/screenScaling;
+		mouse.y=eventManager.mouseY/screenScaling;
 		mouse.x=max(0,min(mouse.x,width-1));
 		mouse.y=max(0,min(mouse.y,height-1));
 		auto x=cast(int)(mouse.x+0.5f), y=cast(int)(height-1-mouse.y+0.5f);

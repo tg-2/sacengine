@@ -2462,7 +2462,19 @@ final class ObjectState(B){ // (update logic)
 	}
 	void updateFrom(ObjectState!B rhs,Command[] frameCommands){
 		copyFrom(rhs);
+		foreach(command;frameCommands)
+			applyCommand(command);
 		update();
+	}
+	void applyCommand(Command command){
+		final switch(command.type) with(CommandType){
+			case moveForward: this.movingObjectById!startMovingForward(command.creature,this); break;
+			case moveBackward: this.movingObjectById!startMovingBackward(command.creature,this); break;
+			case stopMoving: this.movingObjectById!stopMovement(command.creature,this); break;
+			case turnLeft: this.movingObjectById!startTurningLeft(command.creature,this); break;
+			case turnRight: this.movingObjectById!startTurningRight(command.creature,this); break;
+			case stopTurning: this.movingObjectById!(.stopTurning)(command.creature,this); break;
+		}
 	}
 	void update(){
 		frame+=1;
@@ -2672,9 +2684,11 @@ Cursor cursor(B)(ref Target target,int renderSide,ObjectState!B state){
 
 enum CommandType{
 	moveForward,
-	moveBack,
+	moveBackward,
+	stopMoving,
 	turnLeft,
 	turnRight,
+	stopTurning,
 }
 
 struct Command{
@@ -2830,6 +2844,9 @@ final class GameState(B){
 		commands[frame]~=command;
 		rollback(frame);
 		simulateTo(currentFrame);
+	}
+	void addCommand(Command command){
+		addCommand(current.frame,command);
 	}
 }
 

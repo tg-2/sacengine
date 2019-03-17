@@ -33,6 +33,8 @@ int main(string[] args){
 			auto resolution=parseResolution(opt["--resolution=".length..$]);
 			options.width=resolution.width;
 			options.height=resolution.height;
+		}else if(opt.startsWith("--scale=")){
+			options.scale=to!float(opt["--scale=".length..$]);
 		}else if(opt.startsWith("--aspect-distortion=")){
 			options.aspectDistortion=to!float(opt["--aspect-distortion=".length..$]);
 		}else if(opt.startsWith("--shadow-map-resolution=")){
@@ -61,10 +63,10 @@ int main(string[] args){
 			}
 			static foreach(member;__traits(allMembers,Options)){
 				static if(is(typeof(__traits(getMember,options,member))==bool)){
-					case "--disable-"~getOptionName(member):
+					case "--no-"~getOptionName(member):
 						__traits(getMember,options,member)=false;
 						break LoptSwitch;
-					case "--enable-"~getOptionName(member):
+					case "--"~getOptionName(member):
 						__traits(getMember,options,member)=true;
 						break LoptSwitch;
 				}
