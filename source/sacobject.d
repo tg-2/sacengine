@@ -671,7 +671,7 @@ final class SacCursor(B){
 
 final class SacHud(B){
 	union{
-		B.Texture[11] textures;
+		B.Texture[10] textures;
 		struct{
 			B.Texture frames;
 			B.Texture pages;
@@ -679,9 +679,9 @@ final class SacHud(B){
 			B.Texture tabs;
 			B.Texture[3] mana;
 			B.Texture[3] health;
-			B.Texture minimapIcons;
 		}
 	}
+	B.Texture minimapIcons;
 	B.Material[] materials;
 	@property B.Material frameMaterial(){ return materials[0]; }
 	@property B.Material tabsMaterial(){ return materials[3]; }
@@ -691,7 +691,6 @@ final class SacHud(B){
 	@property B.Material healthTopMaterial(){ return materials[7]; }
 	@property B.Material healthMaterial(){ return materials[8]; }
 	@property B.Material healthBottomMaterial(){ return materials[9]; }
-	@property B.Material minimapIconsMaterial(){ return materials[10]; }
 	this(){
 		frames=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/huds.FLDR/fram.TXTR"));
 		pages=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/huds.FLDR/page.TXTR"));

@@ -578,7 +578,7 @@ final class SacScene: Scene{
 		auto hudScaling=this.hudScaling;
 		auto scaling=Vector3f(2.0f*radius,2.0f*radius,0f);
 		auto position=Vector3f(width-scaling.x,height-scaling.y,0);
-		auto material=minimapBackgroundMaterial;
+		auto material=minimapMaterial;
 		minimapMaterialBackend.center=Vector2f(width-radius,height-radius);
 		minimapMaterialBackend.radius=0.95f*radius;
 		material.bind(rc);
@@ -593,13 +593,12 @@ final class SacScene: Scene{
 		auto mapPosition=mapCenter+rotate(mapRotation,minimapFactor*Vector3f(-minimapCenter.x,minimapCenter.y,0));
 		auto mapScaling=Vector3f(1,-1,1)*minimapFactor;
 		minimapMaterialBackend.setTransformationScaled(mapPosition,mapRotation,mapScaling,rc);
-		minimapMaterialBackend.setColorMultiplier(Color4f(0.5f,0.5f,0.5f,1.0f));
+		minimapMaterialBackend.setColor(Color4f(0.5f,0.5f,0.5f,1.0f));
 		foreach(i,mesh;map.minimapMeshes){
 			if(!mesh) continue;
 			minimapMaterialBackend.bindDiffuse(map.textures[i]);
 			mesh.render(rc);
 		}
-		material.unbind(rc);
 		if(mouse.onMinimap){
 			auto mouseOffset=Vector3f(mouse.x,mouse.y,0.0f)-mapCenter;
 			auto minimapPosition=minimapCenter+rotate(mapRotation,Vector3f(mouseOffset.x,-mouseOffset.y,0.0f)/minimapFactor);
@@ -612,7 +611,7 @@ final class SacScene: Scene{
 				minimapTarget.location=TargetLocation.minimap;
 			}
 		}
-		sacHud.minimapIconsMaterial.bind(rc);
+		minimapMaterialBackend.bindDiffuse(sacHud.minimapIcons);
 		 // temporary scratch space. TODO: maybe share memory with other temporary scratch spaces
 		import std.container: Array;
 		static Array!uint creatureArrowIndices;
@@ -648,7 +647,7 @@ final class SacScene: Scene{
 							isManafount=true;
 							quad=scene.minimapManafount;
 							iconScaling=hudScaling*Vector3f(11.0f,11.0f,0.0f);
-							scene.colorHUDMaterialBackend.setColor(Color4f(0.0f,160.0f/255.0f,219.0f/255.0f,1.0f));
+							scene.minimapMaterialBackend.setColor(Color4f(0.0f,160.0f/255.0f,219.0f/255.0f,1.0f));
 						}else if(sacObject.isShrine){
 							mayShowArrow=true;
 							quad=scene.minimapShrine;
@@ -665,8 +664,9 @@ final class SacScene: Scene{
 							(side==scene.renderSide||
 							 (!isMoving||isWizard) && scene.state.current.sides.getStance(side,scene.renderSide)==Stance.ally);
 					}else enum showArrow=false;
-					auto clipRadiusFactor=showArrow?0.92f:1.0f;
-					auto clipradiusSq=(clipRadiusFactor*radius-0.5f*iconScaling.x)*(clipRadiusFactor*radius-0.5f*iconScaling.y);
+					auto clipRadiusFactor=showArrow?0.92f:1.08f;
+					auto clipradiusSq=((clipRadiusFactor*radius+(showArrow?-1.0f:1.0f)*0.5f*iconScaling.x)*
+					                   (clipRadiusFactor*radius+(showArrow?-1.0f:1.0f)*0.5f*iconScaling.y));
 					static if(is(T==StaticObjects!DagonBackend)){
 						if(!isManafount&&!scene.state.current.buildingById!((bldg)=>bldg.health!=0||bldg.isAltar,()=>false)(objects.buildingIds[j])) // TODO: merge with side lookup!
 							continue;
@@ -676,16 +676,16 @@ final class SacScene: Scene{
 					auto iconOffset=rotate(mapRotation,minimapFactor*Vector3f(position.x,-position.y,0));
 					if(iconOffset.lengthsqr<=clipradiusSq){
 						auto iconCenter=mapCenter+iconOffset;
-						scene.colorHUDMaterialBackend.setTransformationScaled(iconCenter-0.5f*iconScaling,Quaternionf.identity(),iconScaling,rc);
+						scene.minimapMaterialBackend.setTransformationScaled(iconCenter-0.5f*iconScaling,Quaternionf.identity(),iconScaling,rc);
 						static if(is(typeof(objects.sacObject))){
 							if(!isManafount){
 								auto color=scene.state.current.sides.sideColor(side);
-								scene.colorHUDMaterialBackend.setColor(color);
+								scene.minimapMaterialBackend.setColor(color);
 							}
 						}else static if(is(T==Souls!DagonBackend)){
 							auto soul=objects[j];
 							auto color=soul.color(scene.renderSide,scene.state.current)==SoulColor.blue?blueSoulMinimapColor:redSoulMinimapColor;
-							scene.colorHUDMaterialBackend.setColor(color);
+							scene.minimapMaterialBackend.setColor(color);
 						}
 						quad.render(rc);
 						static if(is(typeof(objects.sacObject))){
@@ -721,11 +721,11 @@ final class SacScene: Scene{
 				auto offset=iconOffset.normalized*(0.92f*radius-hudScaling*6.0f);
 				auto iconCenter=mapCenter+offset;
 				auto rotation=rotationQuaternion(Axis.z,cast(float)PI/2+atan2(iconOffset.y,iconOffset.x));
-				scene.colorHUDMaterialBackend.setTransformationScaled(iconCenter-rotate(rotation,0.5f*arrowScaling),rotation,arrowScaling,rc);
+				scene.minimapMaterialBackend.setTransformationScaled(iconCenter-rotate(rotation,0.5f*arrowScaling),rotation,arrowScaling,rc);
 				static if(isMoving) auto side=object.side;
 				else auto side=sideFromBuildingId(object.buildingId,scene.state.current);
 				auto color=scene.state.current.sides.sideColor(side);
-				scene.colorHUDMaterialBackend.setColor(color);
+				scene.minimapMaterialBackend.setColor(color);
 				arrowQuad.render(rc);
 				if(scene.mouse.onMinimap){
 					auto target=Target(isMoving?TargetType.creature:TargetType.building,object.id,object.position,TargetLocation.minimap);
@@ -740,7 +740,7 @@ final class SacScene: Scene{
 				state.current.objectById!renderArrow(id,hudScaling,minimapFactor,minimapCenter,mapCenter,radius,mapRotation,this,rc);
 		creatureArrowIndices.length=0;
 		structureArrowIndices.length=0;
-		sacHud.minimapIconsMaterial.unbind(rc);
+		material.unbind(rc);
 		material=sacHud.frameMaterial;
 		material.bind(rc);
 		material.backend.setTransformationScaled(position, Quaternionf.identity(), scaling, rc);
@@ -1212,7 +1212,7 @@ final class SacScene: Scene{
 	ShapeSubQuad creatureTab,spellTab,structureTab,tabSelector;
 	ShapeSubQuad spellbookFrame1,spellbookFrame2;
 	GenericMaterial hudSoulMaterial;
-	GenericMaterial minimapBackgroundMaterial;
+	GenericMaterial minimapMaterial;
 	ShapeSubQuad minimapQuad;
 	ShapeSubQuad minimapAltarRing,minimapManalith,minimapWizard,minimapManafount,minimapShrine;
 	ShapeSubQuad minimapCreatureArrow,minimapStructureArrow;
@@ -1235,8 +1235,9 @@ final class SacScene: Scene{
 		hudSoulMaterial.blending=Transparent;
 		hudSoulMaterial.diffuse=sacSoul.texture;
 		// minimap
-		minimapBackgroundMaterial=createMaterial(minimapMaterialBackend);
-		minimapBackgroundMaterial.diffuse=Color4f(0.0f,65.0f/255.0f,66.0f/255.0f,1.0f);
+		minimapMaterial=createMaterial(minimapMaterialBackend);
+		minimapMaterial.diffuse=Color4f(0.0f,65.0f/255.0f,66.0f/255.0f,1.0f);
+		minimapMaterial.blending=Transparent;
 		minimapQuad=New!ShapeSubQuad(assetManager,16.5f/64.0f,4.5f/65.0f,16.5f/64.0f,4.5f/64.0f);
 		minimapAltarRing=New!ShapeSubQuad(assetManager,1.0f/64.0f,1.0/65.0f,11.0f/64.0f,11.0f/64.0f);
 		minimapManalith=New!ShapeSubQuad(assetManager,12.0f/64.0f,0.0/65.0f,24.0f/64.0f,12.0f/64.0f);
@@ -1559,10 +1560,9 @@ static:
 	Material[] createMaterials(SacHud!DagonBackend sacHud){
 		auto materials=new Material[](sacHud.textures.length);
 		foreach(i;0..materials.length){
-			auto mat=scene.createMaterial(i!=10?scene.hudMaterialBackend:scene.colorHUDMaterialBackend);
+			auto mat=scene.createMaterial(scene.hudMaterialBackend);
 			mat.blending=Transparent;
 			mat.diffuse=sacHud.textures[i];
-			if(i==10) mat.color=Color4f(1.0f,1.0f,1.0f,1.0f);
 			materials[i]=mat;
 		}
 		return materials;
