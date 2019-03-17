@@ -540,9 +540,9 @@ final class SacScene: Scene{
 		material.bind(rc);
 		scope(success) material.unbind(rc);
 		auto hudScaling=this.hudScaling;
-		auto scaling=Vector3f(128.0f,256.0f,1.0f);
+		auto scaling=Vector3f(138.0f,256.0f,1.0f);
 		scaling*=hudScaling;
-		auto position=Vector3f(-32.0f*hudScaling,0.5*(height-scaling.y),0);
+		auto position=Vector3f(-34.0f*hudScaling,0.5*(height-scaling.y),0);
 		material.backend.setTransformationScaled(position, Quaternionf.identity(), scaling, rc);
 		selectionRoster.render(rc);
 	}
