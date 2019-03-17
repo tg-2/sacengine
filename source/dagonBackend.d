@@ -1813,15 +1813,15 @@ class ShapeSacStatsFrame: Owner, Drawable{
 		vertices[6] = Vector2f(1, 0.5);
 		vertices[7] = Vector2f(1, 1);
 
-		texcoords[0] = Vector2f(0.5, 0.25-0.5/64);
+		texcoords[0] = Vector2f(0.5, 0.25-1.0/128);
 		texcoords[1] = Vector2f(0.5, 0);
-		texcoords[2] = Vector2f(0.75, 0);
-		texcoords[3] = Vector2f(0.75, 0.25-0.5/64);
+		texcoords[2] = Vector2f(0.75-1.0/128, 0);
+		texcoords[3] = Vector2f(0.75-1.0/128, 0.25-1.0/128);
 
-		texcoords[4] = Vector2f(0.5, 0);
-		texcoords[5] = Vector2f(0.5, 0.25-0.5/64);
-		texcoords[6] = Vector2f(0.75, 0.25-0.5/64);
-		texcoords[7] = Vector2f(0.75, 0);
+		texcoords[4] = Vector2f(0.5, 1.0/128);
+		texcoords[5] = Vector2f(0.5, 0.25-0.5/128);
+		texcoords[6] = Vector2f(0.75-1.0/128, 0.25-0.5/128);
+		texcoords[7] = Vector2f(0.75-1.0/128, 1.0/128);
 
 		indices[0][0] = 0;
 		indices[0][1] = 2;
