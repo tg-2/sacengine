@@ -606,17 +606,15 @@ final class SacScene: Scene{
 			auto facing=facingPosition[0],targetPosition=facingPosition[1];
 			auto relativePosition=targetPosition-minimapCenter;
 			auto iconOffset=rotate(mapRotation,minimapFactor*Vector3f(relativePosition.x,-relativePosition.y,0));
-			auto iconPosition=mapCenter+iconOffset;
+			auto iconCenter=mapCenter+iconOffset;
 			minimapMaterialBackend.setColor(Color4f(1.0f,1.0f,0.0f,1.0f));
 			auto fovScaling=Vector3f(hudScaling,2.0f*radius,0.0f);
 			auto angle=2.0f*cast(float)PI*82.0f/360.0f;
-			auto fovRotation1=mapRotation*facingQuaternion(-facing-0.5f*angle);
-			auto fovPosition1=rotate(fovRotation1,Vector3f(-0.5f*fovScaling.x,-2.0f*radius,0.0f));
-			minimapMaterialBackend.setTransformationScaled(iconPosition+fovPosition1,fovRotation1,fovScaling,rc);
+			auto fovRotation1=mapRotation*facingQuaternion(-facing-0.5f*angle+cast(float)PI);
+			minimapMaterialBackend.setTransformationScaled(iconCenter+rotate(fovRotation1,Vector3f(-0.5f*fovScaling.x,0.0f,0.0f)),fovRotation1,fovScaling,rc);
 			quad.render(rc);
-			auto fovRotation2=mapRotation*facingQuaternion(-facing+0.5f*angle);
-			auto fovPosition2=rotate(fovRotation2,Vector3f(-0.5f*fovScaling.x,-2.0f*radius,0.0f));
-			minimapMaterialBackend.setTransformationScaled(iconPosition+fovPosition2,fovRotation2,fovScaling,rc);
+			auto fovRotation2=mapRotation*facingQuaternion(-facing+0.5f*angle+cast(float)PI);
+			minimapMaterialBackend.setTransformationScaled(iconCenter+rotate(fovRotation2,Vector3f(-0.5f*fovScaling.x,0.0f,0.0f)),fovRotation2,fovScaling,rc);
 			quad.render(rc);
 		}
 		if(mouse.onMinimap){
@@ -1231,7 +1229,6 @@ final class SacScene: Scene{
 	ShapeSubQuad spellbookFrame1,spellbookFrame2;
 	GenericMaterial hudSoulMaterial;
 	GenericMaterial minimapMaterial;
-	Texture minimapFOVColor;
 	ShapeSubQuad minimapQuad;
 	ShapeSubQuad minimapAltarRing,minimapManalith,minimapWizard,minimapManafount,minimapShrine;
 	ShapeSubQuad minimapCreatureArrow,minimapStructureArrow;
