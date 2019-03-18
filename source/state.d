@@ -699,10 +699,12 @@ struct Objects(B,RenderMode mode){
 			static if(is(T==MovingObject!B)){
 				enforce(type<numMoving);
 				result=Id(mode,type,movingObjects[type].length);
+				if(movingObjects.length<=type) movingObjects.length=type+1;
 				movingObjects[type].addObject(object);
 			}else{
 				enforce(numMoving<=type && type<numMoving+numStatic);
 				result=Id(mode,type,staticObjects[type-numMoving].length);
+				if(staticObjects.length<=type-numMoving) movingObjects.length=type-numMoving+1;
 				staticObjects[type-numMoving].addObject(object);
 			}
 			return result;
@@ -715,6 +717,7 @@ struct Objects(B,RenderMode mode){
 				fixedObjects[$-1].sacObject=object.sacObject;
 			}
 			enforce(numMoving+numStatic<=type);
+			if(fixedObjects.length<=type-(numMoving+numStatic)) fixedObjects.length=type-(numMoving+numStatic)+1;
 			fixedObjects[type-(numMoving+numStatic)].addFixed(object);
 		}
 		Id addObject(Soul!B object){
@@ -734,6 +737,7 @@ struct Objects(B,RenderMode mode){
 				particles.length=particles.length+1;
 				particles[$-1].sacParticle=particle.sacParticle;
 			}
+			if(particles.length<=type) particles.length=type+1;
 			particles[type].addParticle(particle);
 		}
 		void removeObject(int type, int index, ref ObjectManager!B manager){
@@ -1728,7 +1732,7 @@ void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 
 void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 	auto newPosition=object.position;
-	if(object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving,CreatureMode.landing,CreatureMode.dying,CreatureMode.meleeMoving)){
+	if(object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving,CreatureMode.stunned,CreatureMode.landing,CreatureMode.dying,CreatureMode.meleeMoving)){
 		auto rotationSpeed=object.creatureStats.rotationSpeed/updateFPS;
 		bool isRotating=false;
 		if(object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving,CreatureMode.meleeMoving)&&
@@ -1752,7 +1756,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 		auto facing=facingQuaternion(object.creatureState.facing);
 		auto newRotation=facing;
 		if(object.creatureState.movement==CreatureMovement.onGround||
-		   object.animationState==AnimationState.land
+		   object.animationState.among(AnimationState.land,AnimationState.hitFloor)
 		){
 			final switch(object.sacObject.rotateOnGround){
 				case RotateOnGround.no:
@@ -1767,7 +1771,8 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			}
 		}
 		if(isRotating||object.creatureState.mode!=CreatureMode.idle||
-		   object.creatureState.movement==CreatureMovement.flying){
+		   object.creatureState.movement==CreatureMovement.flying||
+		   object.creatureState.movement==CreatureMovement.tumbling){
 			auto diff=newRotation*object.rotation.conj();
 			if(!isRotating){
 				if(object.creatureState.movement==CreatureMovement.flying){
@@ -2825,10 +2830,19 @@ final class GameState(B){
 	void commit(){
 		lastCommitted.copyFrom(current);
 	}
+	void rollback(){
+		rollback(lastCommitted);
+	}
+	void rollback(ObjectState!B state)in{
+		assert(state.frame<=current.frame);
+	}do{
+		if(state.frame!=current.frame) current.copyFrom(state);
+	}
 	void rollback(int frame)in{
 		assert(frame>=lastCommitted.frame);
 	}body{
-		if(frame!=current.frame) current.copyFrom(lastCommitted);
+		if(frame<current.frame) rollback(lastCommitted);
+		simulateTo(frame);
 	}
 	void simulateTo(int frame)in{
 		assert(frame>=current.frame);
