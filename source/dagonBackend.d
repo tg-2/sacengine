@@ -763,8 +763,8 @@ final class SacScene: Scene{
 		material.bind(rc);
 		material.backend.setTransformationScaled(position, Quaternionf.identity(), scaling, rc);
 		minimapFrame.render(rc);
-		auto compassScaling=-hudScaling*Vector3f(21.0f,21.0f,0.0f);
-		auto compassPosition=mapCenter+rotate(mapRotation,Vector3f(0.0f,radius-2.0f*hudScaling,0.0f)-0.5f*compassScaling);
+		auto compassScaling=0.8f*hudScaling*Vector3f(21.0f,21.0f,0.0f);
+		auto compassPosition=mapCenter+rotate(mapRotation,Vector3f(0.0f,radius-3.0f*hudScaling,0.0f)-0.5f*compassScaling);
 		material.backend.setTransformationScaled(compassPosition, mapRotation, compassScaling, rc);
 		glScissor(0,0+yOffset,cast(int)(width*screenScaling),cast(int)(height*screenScaling));
 		minimapCompass.render(rc);
@@ -1269,7 +1269,7 @@ final class SacScene: Scene{
 		sacHud=new SacHud!DagonBackend();
 		selectionRoster=New!ShapeSubQuad(assetManager,-0.5f,0.0f,0.5f,2.0f);
 		minimapFrame=New!ShapeSubQuad(assetManager,0.5f,0.5f,1.5f,1.5f);
-		minimapCompass=New!ShapeSubQuad(assetManager,101.0f/128.0f,3.0f/128.0f,122.0f/128.0f,24.0f/128.0f);
+		minimapCompass=New!ShapeSubQuad(assetManager,101.0f/128.0f,24.0f/128.0f,122.0f/128.0f,3.0f/128.0f);
 		statsFrame=New!ShapeSacStatsFrame(assetManager);
 		creatureTab=New!ShapeSubQuad(assetManager,1.0f/128.0f,0.0f,47.0f/128,48.0f/128.0f);
 		spellTab=New!ShapeSubQuad(assetManager,49.0f/128.0f,0.0f,95.0f/128.0f,48.0f/128.0f);
