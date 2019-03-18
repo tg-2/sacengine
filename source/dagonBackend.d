@@ -976,8 +976,14 @@ final class SacScene: Scene{
 		float lastTargetFacing;
 	}
 	Camera camera;
+	struct MovementState{ // to avoid sending too many commands. TODO: react to input events instead.
+		MovementDirection movement;
+		RotationDirection rotation;
+	}
+	MovementState targetMovementState;
 	void focusCamera(int target){
 		camera.target=target;
+		targetMovementState=MovementState.init;
 		import std.typecons;
 		alias Tuple=std.typecons.Tuple;
 		auto size=state.current.movingObjectById!((obj){
@@ -1105,17 +1111,38 @@ final class SacScene: Scene{
 			fpview.camera.position += dir.normalized * speed * dt;
 			if(state) fpview.camera.position.z=max(fpview.camera.position.z, state.current.getHeight(fpview.camera.position));
 		}else{
-			// TODO: implement the following by sending commands to the game state!
 			if(eventManager.keyPressed[KEY_E] && !eventManager.keyPressed[KEY_D]){
-				state.addCommand(Command(CommandType.moveForward,camera.target,Target.init));
+				if(targetMovementState.movement!=MovementDirection.forward){
+					targetMovementState.movement=MovementDirection.forward;
+					state.addCommand(Command(CommandType.moveForward,camera.target,Target.init));
+				}
 			}else if(eventManager.keyPressed[KEY_D] && !eventManager.keyPressed[KEY_E]){
-				state.addCommand(Command(CommandType.moveBackward,camera.target,Target.init));
-			}else state.addCommand(Command(CommandType.stopMoving,camera.target,Target.init));
+				if(targetMovementState.movement!=MovementDirection.backward){
+					targetMovementState.movement=MovementDirection.backward;
+					state.addCommand(Command(CommandType.moveBackward,camera.target,Target.init));
+				}
+			}else{
+				if(targetMovementState.movement!=MovementDirection.none){
+					targetMovementState.movement=MovementDirection.none;
+					state.addCommand(Command(CommandType.stopMoving,camera.target,Target.init));
+				}
+			}
 			if(eventManager.keyPressed[KEY_S] && !eventManager.keyPressed[KEY_F]){
-				state.addCommand(Command(CommandType.turnLeft,camera.target,Target.init));
+				if(targetMovementState.rotation!=RotationDirection.left){
+					targetMovementState.rotation=RotationDirection.left;
+					state.addCommand(Command(CommandType.turnLeft,camera.target,Target.init));
+				}
 			}else if(eventManager.keyPressed[KEY_F] && !eventManager.keyPressed[KEY_S]){
-				state.addCommand(Command(CommandType.turnRight,camera.target,Target.init));
-			}else state.addCommand(Command(CommandType.stopTurning,camera.target,Target.init));
+				if(targetMovementState.rotation!=RotationDirection.right){
+					targetMovementState.rotation=RotationDirection.right;
+					state.addCommand(Command(CommandType.turnRight,camera.target,Target.init));
+				}
+			}else{
+				if(targetMovementState.rotation!=RotationDirection.none){
+					targetMovementState.rotation=RotationDirection.none;
+					state.addCommand(Command(CommandType.stopTurning,camera.target,Target.init));
+				}
+			}
 			positionCamera();
 		}
 		if(eventManager.keyPressed[KEY_K]){
@@ -1182,6 +1209,9 @@ final class SacScene: Scene{
 
 		if(eventManager.keyPressed[KEY_Y]) showHitboxes=true;
 		if(eventManager.keyPressed[KEY_U]) showHitboxes=false;
+
+		if(eventManager.keyPressed[KEY_H]) state.commit();
+		if(eventManager.keyPressed[KEY_B]) state.rollback();
 	}
 
 	override void onViewUpdate(double dt){
@@ -1197,7 +1227,7 @@ final class SacScene: Scene{
 		//writeln(eventManager.fps);
 		if(state){
 			state.step();
-			state.commit();
+			// state.commit();
 			auto totalTime=state.current.frame*dt;
 			if(skyEntities.length){
 				sacSkyMaterialBackend.sunLoc = state.current.sunSkyRelLoc(fpview.camera.position);

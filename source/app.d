@@ -136,6 +136,7 @@ int main(string[] args){
 					scene.focusCamera(id);
 				}
 			})(state.current,backend.scene,&flag,options);
+			state.commit();
 		}else{
 			auto sac=new SacObject!DagonBackend(args[i],float.nan,anim);
 			auto position=Vector3f(1270.0f, 1270.0f, 0.0f);
