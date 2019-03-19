@@ -1465,10 +1465,7 @@ void dealMeleeDamage(B)(ref Building!B building,ref MovingObject!B attacker,Obje
 
 
 void setMovement(B)(ref MovingObject!B object,MovementDirection direction,ObjectState!B state){
-	// TODO: also check for conditions that immobilze a creature, such as vines or spell casting
-	with(CreatureMode)
-		if(!object.creatureState.mode.among(idle,moving,meleeMoving))
-			return;
+	// TODO: check for conditions that immobilze a creature, such as vines or spell casting
 	if(object.creatureState.movement==CreatureMovement.flying &&
 	   direction==MovementDirection.backward &&
 	   !object.sacObject.canFlyBackward)
@@ -1490,10 +1487,7 @@ void startMovingBackward(B)(ref MovingObject!B object,ObjectState!B state){
 }
 
 void setTurning(B)(ref MovingObject!B object,RotationDirection direction,ObjectState!B state){
-	with(CreatureMode)
-		if(!object.creatureState.mode.among(idle,moving,meleeMoving))
-			return;
-	// TODO: also check for conditions that immobilze a creature, such as vines or spell casting
+	// TODO: check for conditions that immobilze a creature, such as vines or spell casting
 	object.creatureState.rotationDirection=direction;
 }
 void stopTurning(B)(ref MovingObject!B object,ObjectState!B state){
