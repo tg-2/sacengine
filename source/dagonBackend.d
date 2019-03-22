@@ -1212,6 +1212,8 @@ final class SacScene: Scene{
 
 		if(eventManager.keyPressed[KEY_H]) state.commit();
 		if(eventManager.keyPressed[KEY_B]) state.rollback();
+
+		if(camera.target && eventManager.keyPressed[KEY_Q]) spawn(camera.target,"gard",0,state.current);
 	}
 
 	override void onViewUpdate(double dt){
