@@ -1497,7 +1497,7 @@ void setMovement(B)(ref MovingObject!B object,MovementDirection direction,Object
 	if(object.creatureState.movementDirection==direction)
 		return;
 	object.creatureState.movementDirection=direction;
-	if(object.creatureState.mode!=CreatureMode.meleeMoving)
+	if(object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving))
 		object.setCreatureState(state);
 }
 void stopMovement(B)(ref MovingObject!B object,ObjectState!B state){
