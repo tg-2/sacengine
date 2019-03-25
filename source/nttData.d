@@ -218,6 +218,22 @@ string getSaxsAnim(string saxsModlFile, char[4] tag){
 	return r;
 }
 
+immutable string[] iconFolders=["main/MAIN.WAD!/icon.FLDR"];
+immutable string[char[4]] icons;
+string[char[4]] makeIconByTag(){
+	string[char[4]] result;
+	foreach(folder;iconFolders){
+		auto path=buildPath("extracted",folder);
+		foreach(iconFile;dirEntries(path,"*.ICON",SpanMode.depth)){
+			char[4] tag=iconFile[$-9..$-5];
+			reverse(tag[]);
+			// enforce(tag !in result); // some icons seem to be replicated, e.g. rded.ICON
+			result[tag]=iconFile;
+		}
+	}
+	return result;
+}
+
 static this(){
 	bldgs=cast(immutable)makeBldgByTag();
 	bldgModls=cast(immutable)makeBldgModlByTag();
@@ -232,6 +248,8 @@ static this(){
 
 	saxsModls=cast(immutable)makeSaxsModlByTag();
 	saxsAnims=cast(immutable)makeSaxsAnimByTag();
+
+	icons=cast(immutable)makeIconByTag();
 }
 
 

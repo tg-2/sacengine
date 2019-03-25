@@ -358,6 +358,62 @@ final class SacScene: Scene{
 		state.current.eachByType!render(options.enableWidgets,this,rc);
 	}
 
+	void renderCreatureStats(RenderingContext* rc){
+		shadelessMaterialBackend.bind(null,rc);
+		scope(success) colorHUDMaterialBackend.unbind(null,rc);
+		static void renderCreatureStat(B)(MovingObject!B obj,SacScene scene,bool healthAndMana,RenderingContext* rc){
+			auto backend=scene.shadelessMaterialBackend;
+			backend.bindDiffuse(scene.sacHud.statusArrows);
+			backend.setColor(scene.state.current.sides.sideColor(obj.side));
+			// TODO: how is this actually supposed to work?
+			auto hitbox=obj.sacObject.largeHitbox(obj.rotation,obj.animationState,obj.frame/updateAnimFactor);
+			auto scaling=1.0f;
+			auto position=obj.position+Vector3f(0.5f*(hitbox[0].x+hitbox[1].x),0.5f*(hitbox[0].y+hitbox[1].y),hitbox[1].z*1.2f+scaling);
+			backend.setSpriteTransformationScaled(position,scaling,rc);
+			scene.sacHud.statusArrowMeshes[0].render(rc);
+			if(healthAndMana){
+				backend.bindDiffuse(scene.whiteTexture);
+				enum width=92.0f/64.0f, height=10.0f/64.0f, gap=3.0f/64.0f;
+				Vector3f fixPre(Vector3f prescaling){ // TODO: This is a hack. get rid of this.
+					prescaling.x/=1.25f;
+					return prescaling;
+				}
+				if(obj.creatureStats.maxHealth!=0.0f){
+					Vector3f offset=Vector3f(0.0f,0.5f*height+0.5f,0.0f);
+					Vector3f prescaling=Vector3f(width,height,0.0f);
+					backend.setSpriteTransformationScaledPreprocess(position,scaling,offset,fixPre(prescaling),rc);
+					backend.setColor(Color4f(0.5f,0.0f,0.0f));
+					backend.setEnergy(4.0f);
+					scene.sacHud.statusArrowMeshes[0].render(rc); // TODO: different mesh?
+					prescaling=Vector3f(width*obj.creatureStats.health/obj.creatureStats.maxHealth,height,0.0f);
+					backend.setSpriteTransformationScaledPreprocess(position,scaling,offset+Vector3f(-0.5f*(width-prescaling.x),0.0f,0.0f),fixPre(prescaling),rc);
+					backend.setColor(Color4f(1.0f,0.0f,0.0f));
+					backend.setEnergy(8.0f);
+					scene.sacHud.statusArrowMeshes[0].render(rc); // TODO: different mesh?
+				}
+				if(obj.creatureStats.maxMana!=0.0f){
+					Vector3f offset=Vector3f(0.0f,1.5f*height+gap+0.5f,0.0f);
+					Vector3f prescaling=Vector3f(width,height,0.0f);
+					backend.setSpriteTransformationScaledPreprocess(position,scaling,offset,fixPre(prescaling),rc);
+					backend.setColor(Color4f(0.0f,0.25f,0.5f));
+					backend.setEnergy(2.5f);
+					scene.sacHud.statusArrowMeshes[0].render(rc); // TODO: different mesh?
+					prescaling=Vector3f(width*obj.creatureStats.mana/obj.creatureStats.maxMana,height,0.0f);
+					backend.setSpriteTransformationScaledPreprocess(position,scaling,offset+Vector3f(-0.5f*(width-prescaling.x),0.0f,0.0f),fixPre(prescaling),rc);
+					backend.setColor(Color4f(0.0f,0.5f,1.0f));
+					backend.setEnergy(5.0f);
+					scene.sacHud.statusArrowMeshes[0].render(rc); // TODO: different mesh?
+				}
+			}
+		}
+		static void renderOtherSides(B)(MovingObject!B obj,SacScene scene,RenderingContext* rc){
+			if(obj.side!=scene.renderSide) renderCreatureStat(obj,scene,false,rc);
+		}
+		state.current.eachMoving!renderOtherSides(this,rc);
+		foreach(id;state.current.getSelection(renderSide))
+			if(id) state.current.movingObjectById!renderCreatureStat(id,this,true,rc);
+	}
+
 	static void renderBox(Vector3f[2] sl,bool wireframe,RenderingContext* rc){
 		auto small=sl[0],large=sl[1];
 		Vector3f[8] box=[Vector3f(small[0],small[1],small[2]),Vector3f(large[0],small[1],small[2]),
@@ -474,7 +530,7 @@ final class SacScene: Scene{
 		position=fixHitbox2dSize(position);
 		auto size=position[1]-position[0];
 		renderFrame(position[0],size,color,rc);
-		mouse.inHitbox=!mouse.onMinimap&&position[0].x<=mouse.x&&mouse.x<=position[1].x&&
+		mouse.inHitbox=mouse.loc==Mouse.Location.scene&&position[0].x<=mouse.x&&mouse.x<=position[1].x&&
 			position[0].y<=mouse.y&&mouse.y<=position[1].y;
 	}
 
@@ -503,7 +559,7 @@ final class SacScene: Scene{
 				scene.renderFrame(hitbox2d,color,rc);
 			}
 			state.current.objectById!renderHitbox(mouse.target.id,this,rc);
-			}else if(mouse.target.type==TargetType.soul){
+		}else if(mouse.target.type==TargetType.soul){
 			static void renderHitbox(B)(Soul!B soul,SacScene scene,RenderingContext* rc){
 				auto hitbox2d=soul.hitbox2d(scene.getSpriteModelViewProjectionMatrix(soul.position+soul.scaling*Vector3f(0.0f,0.0f,1.25f*sacSoul.soulHeight)));
 				auto color=soul.color(scene.renderSide,scene.state.current)==SoulColor.blue?blueSoulFrameColor:redSoulFrameColor;
@@ -535,16 +591,66 @@ final class SacScene: Scene{
 		if(hudSoulFrame>=sacSoul.numFrames*updateAnimFactor)
 			hudSoulFrame=0;
 	}
+	bool isOnSelectionRoster(Vector2f center){
+		auto scaling=hudScaling*Vector3f(138.0f,256.0f-64.0f,1.0f);
+		auto position=Vector3f(-34.0f*hudScaling,0.5*(height-scaling.y),0);
+		auto topLeft=position;
+		auto bottomRight=position+scaling;
+		return cast(int)topLeft.x<=center.x&&center.x<=cast(int)(bottomRight.x+0.5f)
+			&& cast(int)topLeft.y<=center.y&&center.y<=cast(int)(bottomRight.y+0.5f);
+	}
+	void updateSelectionRosterTarget(Target target,Vector2f position,Vector2f scaling){
+		if(!mouse.onSelectionRoster) return;
+		auto topLeft=position;
+		auto bottomRight=position+scaling;
+		if(cast(int)topLeft.x<=mouse.x&&mouse.x<=cast(int)(bottomRight.x+0.5f)
+		   && cast(int)topLeft.y<=mouse.y&&mouse.y<=cast(int)(bottomRight.y+0.5f))
+			selectionRosterTarget=target;
+	}
 	void renderSelectionRoster(RenderingContext* rc){
+		if(mouse.onSelectionRoster) selectionRosterTarget=Target.init;
 		auto material=sacHud.frameMaterial;
 		material.bind(rc);
 		scope(success) material.unbind(rc);
 		auto hudScaling=this.hudScaling;
-		auto scaling=Vector3f(138.0f,256.0f,1.0f);
-		scaling*=hudScaling;
+		auto scaling=hudScaling*Vector3f(138.0f,256.0f,1.0f);
 		auto position=Vector3f(-34.0f*hudScaling,0.5*(height-scaling.y),0);
 		material.backend.setTransformationScaled(position, Quaternionf.identity(), scaling, rc);
 		selectionRoster.render(rc);
+		auto selection=state.current.getSelection(renderSide);
+		int i=0; // idiotic deprecation of foreach(int i,x;selection)
+		foreach(x;selection){
+			scope(success) i++;
+			if(!selection[i]) continue;
+			static void renderIcon(B)(MovingObject!B obj,int i,Vector3f position,float hudScaling,SacScene scene,RenderingContext* rc){
+				auto cpos=position+hudScaling*Vector3f(i>=6?35.0f:-1.0f,(i%6)*32.0f,0.0f);
+				auto scaling=hudScaling*Vector3f(34.0f,32.0f,0.0f);
+				if(obj.sacObject.icon){
+					scene.hudMaterialBackend.setTransformationScaled(cpos, Quaternionf.identity(), scaling, rc);
+					scene.hudMaterialBackend.bindDiffuse(obj.sacObject.icon);
+					scene.quad.render(rc);
+					if(scene.mouse.onSelectionRoster){
+						auto target=Target(TargetType.creature,obj.id,obj.position,TargetLocation.selectionRoster);
+						scene.updateSelectionRosterTarget(target,cpos.xy,scaling.xy);
+					}
+					if(obj.creatureStats.maxHealth!=0.0f){
+						auto healthScaling=hudScaling*Vector3f(2.0f,30.0f*obj.creatureStats.health/obj.creatureStats.maxHealth,0.0f);
+						auto healthPos=cpos+Vector3f(hudScaling*32.0f,hudScaling*30.0f-healthScaling.y,0.0f);
+						scene.hudMaterialBackend.setTransformationScaled(healthPos, Quaternionf.identity(), healthScaling, rc);
+						scene.hudMaterialBackend.bindDiffuse(scene.healthColorTexture);
+						scene.quad.render(rc);
+					}
+					if(obj.creatureStats.maxMana!=0.0f){
+						auto manaScaling=hudScaling*Vector3f(2.0f,30.0f*obj.creatureStats.mana/obj.creatureStats.maxMana,0.0f);
+						auto manaPos=cpos+Vector3f(hudScaling*34.0f,hudScaling*30.0f-manaScaling.y,0.0f);
+						scene.hudMaterialBackend.setTransformationScaled(manaPos, Quaternionf.identity(), manaScaling, rc);
+						scene.hudMaterialBackend.bindDiffuse(scene.manaColorTexture);
+						scene.quad.render(rc);
+					}
+				}
+			}
+			state.current.movingObjectById!renderIcon(selection[i],i,Vector3f(position.x+34.0f*hudScaling,0.5*(height-scaling.y)+32.0f*hudScaling,0.0f),hudScaling,this,rc);
+		}
 	}
 	float minimapRadius(){ return hudScaling*80.0f; }
 	bool isOnMinimap(Vector2f position){
@@ -570,6 +676,7 @@ final class SacScene: Scene{
 		minimapTarget=target;
 	}
 	void renderMinimap(RenderingContext* rc){
+		if(mouse.onMinimap) minimapTarget=Target.init;
 		auto map=state.current.map;
 		auto radius=minimapRadius;
 		auto left=cast(int)(width-2.0f*radius), top=cast(int)(height-2.0f*radius);
@@ -891,6 +998,7 @@ final class SacScene: Scene{
 		super.renderTransparentEntities3D(rc);
 		if(!state) return;
 		renderNTTs!(RenderMode.transparent)(rc);
+		renderCreatureStats(rc);
 	}
 	override void renderEntities2D(RenderingContext* rc){
 		super.renderEntities2D(rc);
@@ -1053,7 +1161,7 @@ final class SacScene: Scene{
 		positionCamera();
 	}
 	float speed = 100.0f;
-	void cameraControl(double dt){
+	void control(double dt){
 		Vector3f forward = fpview.camera.worldTrans.forward;
 		Vector3f right = fpview.camera.worldTrans.right;
 		Vector3f dir = Vector3f(0, 0, 0);
@@ -1061,7 +1169,11 @@ final class SacScene: Scene{
 		//if(eventManager.keyPressed[KEY_Y]) dir += Vector3f(0,1,0);
 		//if(eventManager.keyPressed[KEY_Z]) dir += Vector3f(0,0,1);
 		fpview.control();
-		if(!mouse.dragging) mouse.onMinimap=isOnMinimap(Vector2f(mouse.x,mouse.y));
+		if(!mouse.dragging){
+			if(isOnSelectionRoster(Vector2f(mouse.x,mouse.y))) mouse.loc=Mouse.Location.selectionRoster;
+			else if(isOnMinimap(Vector2f(mouse.x,mouse.y))) mouse.loc=Mouse.Location.minimap;
+			else mouse.loc=Mouse.Location.scene;
+		}
 		if(mouse.visible){
 			if(((eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK])
 			    && eventManager.mouseButtonPressed[MB_LEFT])||
@@ -1114,37 +1226,44 @@ final class SacScene: Scene{
 			if(eventManager.keyPressed[KEY_E] && !eventManager.keyPressed[KEY_D]){
 				if(targetMovementState.movement!=MovementDirection.forward){
 					targetMovementState.movement=MovementDirection.forward;
-					state.addCommand(Command(CommandType.moveForward,camera.target,Target.init));
+					state.addCommand(Command(CommandType.moveForward,renderSide,camera.target,Target.init));
 				}
 			}else if(eventManager.keyPressed[KEY_D] && !eventManager.keyPressed[KEY_E]){
 				if(targetMovementState.movement!=MovementDirection.backward){
 					targetMovementState.movement=MovementDirection.backward;
-					state.addCommand(Command(CommandType.moveBackward,camera.target,Target.init));
+					state.addCommand(Command(CommandType.moveBackward,renderSide,camera.target,Target.init));
 				}
 			}else{
 				if(targetMovementState.movement!=MovementDirection.none){
 					targetMovementState.movement=MovementDirection.none;
-					state.addCommand(Command(CommandType.stopMoving,camera.target,Target.init));
+					state.addCommand(Command(CommandType.stopMoving,renderSide,camera.target,Target.init));
 				}
 			}
 			if(eventManager.keyPressed[KEY_S] && !eventManager.keyPressed[KEY_F]){
 				if(targetMovementState.rotation!=RotationDirection.left){
 					targetMovementState.rotation=RotationDirection.left;
-					state.addCommand(Command(CommandType.turnLeft,camera.target,Target.init));
+					state.addCommand(Command(CommandType.turnLeft,renderSide,camera.target,Target.init));
 				}
 			}else if(eventManager.keyPressed[KEY_F] && !eventManager.keyPressed[KEY_S]){
 				if(targetMovementState.rotation!=RotationDirection.right){
 					targetMovementState.rotation=RotationDirection.right;
-					state.addCommand(Command(CommandType.turnRight,camera.target,Target.init));
+					state.addCommand(Command(CommandType.turnRight,renderSide,camera.target,Target.init));
 				}
 			}else{
 				if(targetMovementState.rotation!=RotationDirection.none){
 					targetMovementState.rotation=RotationDirection.none;
-					state.addCommand(Command(CommandType.stopTurning,camera.target,Target.init));
+					state.addCommand(Command(CommandType.stopTurning,renderSide,camera.target,Target.init));
 				}
 			}
 			positionCamera();
 		}
+		if(mouse.mouseButtonPressed[MB_LEFT]&&!eventManager.mouseButtonPressed[MB_LEFT]){
+			if(mouse.target.type==TargetType.creature){
+				auto type=eventManager.keyPressed[KEY_LSHIFT]?CommandType.toggleSelection:CommandType.select;
+				state.addCommand(Command(type,renderSide,0,mouse.target));
+			}
+		}
+		mouse.mouseButtonPressed=eventManager.mouseButtonPressed[0..MB_RIGHT+1];
 		if(eventManager.keyPressed[KEY_K]){
 			fpview.active=false;
 			mouse.visible=true;
@@ -1172,7 +1291,7 @@ final class SacScene: Scene{
 		static void depleteMana(B)(ref MovingObject!B obj,ObjectState!B state){
 			obj.creatureStats.mana=0.0f;
 		}
-		if(eventManager.keyPressed[KEY_B]) applyToMoving!depleteMana(state.current,camera,mouse.target);
+		if(eventManager.keyPressed[KEY_A]) applyToMoving!depleteMana(state.current,camera,mouse.target);
 		if(eventManager.keyPressed[KEY_T]) applyToMoving!kill(state.current,camera,mouse.target);
 		if(eventManager.keyPressed[KEY_R]) applyToMoving!stun(state.current,camera,mouse.target);
 		static void catapultRandomly(B)(ref MovingObject!B object,ObjectState!B state){
@@ -1190,7 +1309,8 @@ final class SacScene: Scene{
 		}
 		if(eventManager.keyPressed[KEY_G]) applyToMoving!startFlying(state.current,camera,mouse.target);
 		if(eventManager.keyPressed[KEY_V]) applyToMoving!land(state.current,camera,mouse.target);
-		if(eventManager.keyPressed[KEY_SPACE]) applyToMoving!startMeleeAttacking(state.current,camera,mouse.target);
+		if(eventManager.keyPressed[KEY_SPACE] && !eventManager.keyPressed[KEY_LSHIFT])
+			applyToMoving!startMeleeAttacking(state.current,camera,mouse.target);
 		// TODO: enabling the following destroys ESDF controls. Template-related compiler bug?
 		/+if(eventManager.keyPressed[KEY_UP] && !eventManager.keyPressed[KEY_DOWN]){
 			applyToMoving!startMovingForward(state.current,camera,mouse.target);
@@ -1213,13 +1333,22 @@ final class SacScene: Scene{
 		if(eventManager.keyPressed[KEY_H]) state.commit();
 		if(eventManager.keyPressed[KEY_B]) state.rollback();
 
-		if(camera.target && eventManager.keyPressed[KEY_Q]) spawn(camera.target,"gard",0,state.current);
+		if(camera.target){
+			if(eventManager.keyPressed[KEY_Q]){
+				auto id=spawn(camera.target,"oham",0,state.current);
+				state.current.addToSelection(renderSide,id);
+			}
+			if(eventManager.keyPressed[KEY_LSHIFT]&&eventManager.keyPressed[KEY_SPACE]){
+				auto id=spawn(camera.target,"gard",0,state.current);
+				state.current.addToSelection(renderSide,id);
+			}
+		}
 	}
 
 	override void onViewUpdate(double dt){
 		if(state) stateTestControl();
 		if(options.scaleToFit) screenScaling=min(cast(float)eventManager.windowWidth/width,cast(float)eventManager.windowHeight/height);
-		cameraControl(dt);
+		control(dt);
 		super.onViewUpdate(dt);
 	}
 
@@ -1254,9 +1383,11 @@ final class SacScene: Scene{
 		}
 	}
 	ShapeQuad quad;
+	Texture whiteTexture;
 	ShapeSacCreatureFrame border;
 	SacHud!DagonBackend sacHud;
 	ShapeSubQuad selectionRoster, minimapFrame, minimapCompass;
+	Texture healthColorTexture,manaColorTexture;
 	ShapeSacStatsFrame statsFrame;
 	ShapeSubQuad creatureTab,spellTab,structureTab,tabSelector;
 	ShapeSubQuad spellbookFrame1,spellbookFrame2;
@@ -1267,9 +1398,12 @@ final class SacScene: Scene{
 	ShapeSubQuad minimapCreatureArrow,minimapStructureArrow;
 	void initializeHUD(){
 		quad=New!ShapeQuad(assetManager);
+		whiteTexture=DagonBackend.makeTexture(makeOnePixelImage(Color4f(1.0f,1.0f,1.0f)));
 		border=New!ShapeSacCreatureFrame(assetManager);
 		sacHud=new SacHud!DagonBackend();
 		selectionRoster=New!ShapeSubQuad(assetManager,-0.5f,0.0f,0.5f,2.0f);
+		healthColorTexture=DagonBackend.makeTexture(makeOnePixelImage(healthColor));
+		manaColorTexture=DagonBackend.makeTexture(makeOnePixelImage(manaColor));
 		minimapFrame=New!ShapeSubQuad(assetManager,0.5f,0.5f,1.5f,1.5f);
 		minimapCompass=New!ShapeSubQuad(assetManager,101.0f/128.0f,24.0f/128.0f,122.0f/128.0f,3.0f/128.0f);
 		statsFrame=New!ShapeSacStatsFrame(assetManager);
@@ -1302,7 +1436,16 @@ final class SacScene: Scene{
 		auto cursor=Cursor.normal;
 		Target target;
 		bool inHitbox=false;
-		bool onMinimap=false;
+		enum Location{
+			scene,
+			minimap,
+			selectionRoster,
+			spellIcons,
+		}
+		Location loc;
+		@property bool onMinimap(){ return loc==Location.minimap; }
+		@property bool onSelectionRoster(){ return loc==Location.selectionRoster; }
+		bool[1+3] mouseButtonPressed=[false,false,false,false]; // TODO: react to events instead
 	}
 	Mouse mouse;
 	SacCursor!DagonBackend sacCursor;
@@ -1316,8 +1459,10 @@ final class SacScene: Scene{
 		fpview.oldMouseY=cast(int)mouse.y;
 		eventManager.setMouse(cast(int)mouse.x, cast(int)mouse.y);
 	}
+	auto selectionRosterTarget=Target.init;
 	auto minimapTarget=Target.init;
 	Target mouseCursorTargetImpl(){
+		if(mouse.onSelectionRoster) return selectionRosterTarget;
 		if(mouse.onMinimap) return minimapTarget;
 		auto information=gbuffer.getInformation();
 		auto cur=state.current;
@@ -1386,7 +1531,7 @@ final class SacScene: Scene{
 		}else{
 			mouse.cursor=mouse.target.cursor(renderSide,state.current);
 			with(Cursor) // TODO: with icons, show border only if spell is applicable to target
-				mouse.showFrame=mouse.target.location!=TargetLocation.minimap &&
+				mouse.showFrame=mouse.target.location==TargetLocation.scene &&
 					(mouse.target.type==TargetType.soul||
 					 mouse.cursor.among(friendlyUnit,neutralUnit,rescuableUnit,talkingUnit,enemyUnit,iconFriendly,iconNeutral,iconEnemy));
 		}

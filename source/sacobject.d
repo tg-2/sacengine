@@ -18,6 +18,7 @@ final class SacObject(B){
 	int stateIndex=-1;
 	B.Mesh[] meshes;
 	B.Texture[] textures;
+	B.Texture icon;
 	Vector3f[2][] hitboxes_;
 	bool isSaxs=false;
 	SaxsInstance!B saxsi;
@@ -313,6 +314,11 @@ final class SacObject(B){
 		strc=nttTag in strcs;
 		if(cre8||wizd) data=creatureDataByTag(nttTag);
 		assert((cre8 !is null)+(wizd !is null)+(strc !is null)<=1);
+		auto iconTag=cre8?cre8.icon:wizd?wizd.icon:strc?strc.icon:cast(char[4])"\0\0\0\0";
+		if(iconTag!="\0\0\0\0"){
+			enforce(iconTag in icons,text(iconTag," ",icons));
+			icon=B.makeTexture(loadTXTR(icons[iconTag]));
+		}
 		MaterialConfig conf;
 		// TODO: this is a hack:
 		auto kind=tag;
@@ -510,11 +516,14 @@ B.Mesh[] makeSpriteMeshes(B)(int nU,int nV,float width,float height){ // TODO: r
 	return meshes;
 }
 
-auto blueSoulFrameColor=Color4f(0,182.0f/256.0f,1.0f);
+auto blueSoulFrameColor=Color4f(0,182.0f/255.0f,1.0f);
 auto redSoulFrameColor=Color4f(1.0f,0.0f,0.0f);
 
-auto blueSoulMinimapColor=Color4f(0,165.0f/256.0f,1.0f);
+auto blueSoulMinimapColor=Color4f(0,165.0f/255.0f,1.0f);
 auto redSoulMinimapColor=Color4f(1.0f,0.0f,0.0f);
+
+auto healthColor=Color4f(192.0f/255.0f,0.0f,0.0f);
+auto manaColor=Color4f(0.0f,96.0f/255.0f,192.0f);
 
 final class SacSoul(B){
 	B.Mesh[] meshes;
@@ -681,6 +690,8 @@ final class SacHud(B){
 			B.Texture[3] health;
 		}
 	}
+	B.Texture statusArrows;
+	B.Mesh[] statusArrowMeshes; // TODO: use a single triangle instead of a quad with alpha channel
 	B.Texture minimapIcons;
 	B.Material[] materials;
 	@property B.Material frameMaterial(){ return materials[0]; }
@@ -709,6 +720,8 @@ final class SacHud(B){
 		health[1]=B.makeTexture(imageFromData(healthData,32,1,4));
 		static immutable ubyte[] healthBottomData=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 23, 0, 1, 22, 42, 0, 1, 43, 64, 0, 1, 64, 86, 0, 1, 86, 107, 0, 1, 107, 128, 0, 1, 128, 149, 21, 22, 149, 171, 43, 43, 170, 191, 64, 65, 192, 213, 85, 86, 212, 234, 107, 107, 234, 255, 128, 129, 254, 233, 106, 107, 234, 213, 85, 86, 212, 191, 64, 65, 191, 170, 42, 43, 170, 149, 21, 22, 149, 128, 0, 1, 128, 106, 0, 1, 106, 84, 0, 1, 85, 64, 0, 1, 64, 43, 0, 1, 42, 24, 0, 1, 21, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 23, 0, 1, 22, 42, 0, 1, 43, 64, 0, 1, 64, 86, 0, 1, 86, 107, 1, 2, 107, 129, 0, 1, 107, 149, 22, 22, 128, 171, 43, 43, 149, 192, 65, 65, 170, 213, 86, 86, 192, 235, 107, 108, 212, 255, 128, 128, 212, 234, 107, 107, 191, 213, 85, 86, 169, 191, 64, 64, 148, 171, 42, 43, 127, 149, 20, 21, 106, 128, 0, 1, 106, 105, 0, 1, 85, 85, 0, 0, 63, 65, 3, 3, 43, 36, 0, 1, 21, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 23, 0, 1, 22, 42, 0, 1, 43, 64, 0, 1, 64, 86, 1, 2, 86, 108, 0, 1, 85, 129, 0, 1, 85, 149, 20, 21, 106, 171, 42, 43, 127, 192, 64, 65, 149, 213, 86, 86, 170, 234, 107, 107, 170, 255, 128, 128, 169, 234, 107, 107, 148, 213, 84, 85, 127, 192, 65, 65, 106, 171, 42, 43, 85, 150, 21, 22, 85, 129, 0, 1, 85, 108, 0, 1, 64, 85, 0, 1, 42, 61, 0, 1, 21, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 23, 0, 1, 22, 42, 0, 1, 43, 64, 0, 1, 64, 85, 0, 0, 63, 108, 0, 1, 64, 128, 0, 1, 64, 150, 21, 22, 85, 171, 43, 44, 106, 191, 65, 65, 128, 213, 85, 86, 127, 235, 106, 107, 127, 255, 129, 129, 127, 233, 106, 106, 106, 213, 86, 86, 85, 191, 64, 64, 64, 171, 44, 44, 64, 147, 20, 20, 64, 128, 0, 1, 64, 107, 3, 3, 43, 85, 0, 1, 21, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 23, 0, 1, 22, 43, 0, 0, 42, 65, 0, 1, 43, 85, 0, 0, 42, 107, 0, 1, 43, 128, 0, 0, 42, 150, 20, 21, 63, 171, 44, 44, 85, 192, 65, 65, 85, 213, 86, 86, 85, 234, 107, 107, 85, 255, 128, 128, 84, 235, 105, 106, 63, 213, 85, 86, 42, 190, 65, 66, 43, 170, 43, 43, 42, 148, 24, 24, 43, 128, 0, 1, 42, 109, 0, 1, 21, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 24, 0, 1, 21, 46, 6, 6, 22, 61, 0, 1, 21, 85, 0, 1, 21, 109, 0, 1, 21, 128, 6, 6, 22, 152, 21, 22, 42, 170, 43, 43, 42, 194, 64, 64, 42, 213, 85, 86, 42, 237, 106, 107, 42, 255, 128, 128, 42, 231, 109, 110, 21, 209, 87, 87, 22, 194, 61, 61, 21, 170, 43, 43, 21, 146, 24, 25, 21, 134, 0, 1, 21, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 		health[2]=B.makeTexture(imageFromData(healthBottomData,32,6,4));
+		statusArrows=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/huds.FLDR/sarr.TXTR"));
+		statusArrowMeshes=makeSpriteMeshes!B(2,2,1.25f,1.0f);
 		minimapIcons=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/icon.FLDR/mmic.TXTR"));
 		materials=B.createMaterials(this);
 	}

@@ -96,7 +96,9 @@ struct MovingObject(B){
 		this(sacObject,id,position,rotation,animationState,frame,creatureState,creatureStats,side);
 	}
 }
-
+bool canSelect(B)(int side,int id,ObjectState!B state){
+	return state.movingObjectById!((ref obj,side,state)=>obj.side==side&&!obj.sacObject.isWizard,()=>false)(id,side,state);
+}
 Vector3f[2] relativeHitbox(B)(ref MovingObject!B object){
 	return object.sacObject.hitbox(object.rotation,object.animationState,object.frame/updateAnimFactor);
 }
@@ -2471,6 +2473,7 @@ final class ObjectState(B){ // (update logic)
 		this.map=map;
 		this.sides=sides;
 		this.proximity=proximity;
+		sid=SideManager!B(32);
 	}
 	bool isOnGround(Vector3f position){
 		return map.isOnGround(position);
@@ -2504,6 +2507,7 @@ final class ObjectState(B){ // (update logic)
 		frame=rhs.frame;
 		rng=rhs.rng;
 		obj=rhs.obj;
+		sid=rhs.sid;
 	}
 	void updateFrom(ObjectState!B rhs,Command[] frameCommands){
 		copyFrom(rhs);
@@ -2519,6 +2523,8 @@ final class ObjectState(B){ // (update logic)
 			case turnLeft: this.movingObjectById!startTurningLeft(command.creature,this); break;
 			case turnRight: this.movingObjectById!startTurningRight(command.creature,this); break;
 			case stopTurning: this.movingObjectById!(.stopTurning)(command.creature,this); break;
+			case select: this.select(command.side,command.target.id); break;
+			case toggleSelection: this.toggleSelection(command.side,command.target.id); break;
 		}
 	}
 	void update(){
@@ -2559,6 +2565,38 @@ final class ObjectState(B){ // (update logic)
 	}
 	void addParticle(Particle!B particle){
 		obj.addParticle(particle);
+	}
+	SideManager!B sid;
+	void clearSelection(int side){
+		sid.clearSelection(side);
+	}
+	void select(int side,int id){
+		if(!canSelect(side,id,this)) return;
+		sid.select(side,id);
+	}
+	void addToSelection(int side,int id){
+		if(!canSelect(side,id,this)) return;
+		sid.addToSelection(side,id);
+	}
+	void removeFromSelection(int side,int id){
+		if(!canSelect(side,id,this)) return;
+		sid.removeFromSelection(side,id);
+	}
+	void toggleSelection(int side,int id){
+		if(!canSelect(side,id,this)) return;
+		sid.toggleSelection(side,id);
+	}
+	void defineGroup(int side,int groupId){
+		sid.defineGroup(side,groupId);
+	}
+	void addToGroup(int side,int groupId){
+		sid.addToGroup(side,groupId);
+	}
+	void selectGroup(int side,int groupId){
+		sid.selectGroup(side,groupId);
+	}
+	int[] getSelection(int side){
+		return sid.getSelection(side);
 	}
 }
 auto each(alias f,B,T...)(ObjectState!B objectState,T args){
@@ -2610,7 +2648,7 @@ enum Stance{
 final class Sides(B){
 	private Side[32] sides;
 	private SacParticle!B[32] manaParticles;
-	private SacParticle!B[32] shrineParticles;;
+	private SacParticle!B[32] shrineParticles;
 	private SacParticle!B[32] manahoarParticles;
 	this(Side[] sids...){
 		foreach(ref side;sids){
@@ -2656,6 +2694,151 @@ final class Sides(B){
 	}
 }
 
+enum numCreatureGroups=10;
+enum numCreaturesInGroup=12;
+struct CreatureGroup{
+	int[numCreaturesInGroup] creatureIds;
+	int[] get(){ return creatureIds[]; }
+	bool has(int id){
+		foreach(x;creatureIds) if(x==id) return true;
+		return false;
+	}
+	void addFront(int id){ // for addToSelection
+		foreach_reverse(i;0..creatureIds.length-1)
+			swap(creatureIds[i],creatureIds[i+1]);
+		creatureIds[0]=id;
+	}
+	void addBack(int id){ // for addToGroup
+		if(creatureIds[$-1]){
+			foreach(i;0..creatureIds.length-1)
+				swap(creatureIds[id],creatureIds[i+1]);
+			creatureIds[$-1]=id;
+		}else{
+			foreach_reverse(i;-1..cast(int)creatureIds.length-1){
+				if(i==-1||creatureIds[i]){
+					creatureIds[i+1]=id;
+					break;
+				}
+			}
+		}
+	}
+	void addFront(int[] ids...){
+		foreach_reverse(id;ids) addFront(id); // TODO: do more efficiently
+	}
+	void addBack(int[] ids...){
+		foreach_reverse(id;ids) addBack(id); // TODO: do more efficiently
+	}
+	void remove(int id){
+		foreach(i,x;creatureIds){
+			if(x==id){
+				foreach(j;i..creatureIds.length-1){
+					swap(creatureIds[j],creatureIds[j+1]);
+				}
+				assert(creatureIds[$-1]==id);
+				creatureIds[$-1]=0;
+			}
+		}
+	}
+	void toggle(int id){
+		if(has(id)) remove(id);
+		else addFront(id);
+	}
+	void clear(){
+		creatureIds[]=0;
+	}
+}
+
+struct SideData(B){
+	CreatureGroup selection;
+	CreatureGroup[10] groups;
+	void clearSelection(){
+		selection.clear();
+	}
+	void select(int id){
+		clearSelection();
+		selection.addFront(id);
+	}
+	void addToSelection(int id){
+		if(selection.has(id)) return;
+		selection.addFront(id);
+	}
+	void removeFromSelection(int id){
+		selection.remove(id);
+	}
+	void toggleSelection(int id){
+		selection.toggle(id);
+	}
+	void defineGroup(int groupId)in{
+		assert(0<=groupId&&groupId<numCreatureGroups);
+	}do{
+		groups[groupId]=selection;
+	}
+	void addToGroup(int groupId){
+		groups[groupId].addBack(selection.creatureIds[]);
+	}
+	void selectGroup(int groupId){
+		selection=groups[groupId];
+	}
+	int[] getSelection(){
+		return selection.get();
+	}
+}
+
+struct SideManager(B){
+	Array!(SideData!B) sides;
+	this(int numSides){
+		sides.length=numSides;
+	}
+	void opAssign(SideManager!B rhs){
+		assignArray(sides,rhs.sides);
+	}
+	void clearSelection(int side)in{
+		assert(0<=side&&side<sides.length);
+	}do{
+		sides[side].clearSelection();
+	}
+	void select(int side,int id)in{
+		assert(0<=side&&side<sides.length&&id);
+	}do{
+		sides[side].select(id);
+	}
+	void addToSelection(int side,int id)in{
+		assert(0<=side&&side<sides.length&&id);
+	}do{
+		sides[side].addToSelection(id);
+	}
+	void removeFromSelection(int side,int id)in{
+		assert(0<=side&&side<sides.length&&id);
+	}do{
+		sides[side].removeFromSelection(id);
+	}
+	void toggleSelection(int side,int id)in{
+		assert(0<=side&&side<sides.length&&id);
+	}do{
+		sides[side].toggleSelection(id);
+	}
+	void defineGroup(int side,int groupId)in{
+		assert(0<=side&&side<sides.length&&0<=groupId&&groupId<numCreatureGroups);
+	}do{
+		sides[side].defineGroup(groupId);
+	}
+	void addToGroup(int side,int groupId)in{
+		assert(0<=side&&side<sides.length&&0<=groupId&&groupId<numCreatureGroups);
+	}do{
+		sides[side].addToGroup(groupId);
+	}
+	void selectGroup(int side,int groupId)in{
+		assert(0<=side&&side<sides.length&&0<=groupId&&groupId<numCreatureGroups);
+	}do{
+		sides[side].selectGroup(groupId);
+	}
+	int[] getSelection(int side)in{
+		assert(0<=side&&side<sides.length);
+	}do{
+		return sides[side].getSelection();
+	}
+}
+
 final class Triggers(B){
 	int[int] objectIds;
 	void associateId(int triggerId,int objectId)in{
@@ -2685,8 +2868,9 @@ enum TargetType{
 
 enum TargetLocation{
 	scene,
-	hud,
 	minimap,
+	selectionRoster,
+	hud,
 }
 
 struct Target{
@@ -2734,10 +2918,29 @@ enum CommandType{
 	turnLeft,
 	turnRight,
 	stopTurning,
+
+	select,
+	toggleSelection,
 }
 
 struct Command{
+	this(CommandType type,int side,int creature,Target target)in{
+		final switch(type) with(CommandType){
+			case moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning:
+				assert(!!creature && target==Target.init);
+				break;
+			case select,toggleSelection:
+				assert(!creature && target.type==TargetType.creature);
+				break;
+		}
+	}do{
+		this.type=type;
+		this.side=side;
+		this.creature=creature;
+		this.target=target;
+	}
 	CommandType type;
+	int side;
 	int creature;
 	Target target;
 }

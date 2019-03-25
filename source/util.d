@@ -146,3 +146,10 @@ auto imageFromData(const(ubyte)[] data,int width,int height,int channels)in{
 	img.data[]=data[];
 	return img;
 }
+
+auto makeOnePixelImage(Color4f color){
+	import dagon;
+	auto img = New!UnmanagedImageRGBA8(8, 8);
+	img.fillColor(color);
+	return img;
+}
