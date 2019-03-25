@@ -359,9 +359,11 @@ final class SacScene: Scene{
 	}
 
 	void renderCreatureStats(RenderingContext* rc){
+		rc.information=Vector4f(0.0f,0.0f,0.0f,0.0f);
 		shadelessMaterialBackend.bind(null,rc);
 		scope(success) colorHUDMaterialBackend.unbind(null,rc);
 		static void renderCreatureStat(B)(MovingObject!B obj,SacScene scene,bool healthAndMana,RenderingContext* rc){
+			if(obj.creatureStats.health==0.0f) return;
 			auto backend=scene.shadelessMaterialBackend;
 			backend.bindDiffuse(scene.sacHud.statusArrows);
 			backend.setColor(scene.state.current.sides.sideColor(obj.side));
