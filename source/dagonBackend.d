@@ -358,10 +358,19 @@ final class SacScene: Scene{
 		state.current.eachByType!render(options.enableWidgets,this,rc);
 	}
 
+	bool selectionUpdated=false;
+	CreatureGroup renderedSelection;
+	CreatureGroup rectangleSelection;
 	void renderCreatureStats(RenderingContext* rc){
+		bool updateRectangleSelect=!selectionUpdated&&mouse.loc==Mouse.Location.scene&&mouse.status==Mouse.Status.rectangleSelect;
+		if(updateRectangleSelect){
+			rectangleSelection=CreatureGroup.init;
+			if(mouse.additiveSelect) renderedSelection=state.current.getSelection(renderSide);
+			else renderedSelection=CreatureGroup.init;
+		}else if(!selectionUpdated) renderedSelection=state.current.getSelection(renderSide);
 		rc.information=Vector4f(0.0f,0.0f,0.0f,0.0f);
 		shadelessMaterialBackend.bind(null,rc);
-		scope(success) colorHUDMaterialBackend.unbind(null,rc);
+		scope(success) shadelessMaterialBackend.unbind(null,rc);
 		static void renderCreatureStat(B)(MovingObject!B obj,SacScene scene,bool healthAndMana,RenderingContext* rc){
 			if(obj.creatureStats.health==0.0f) return;
 			auto backend=scene.shadelessMaterialBackend;
@@ -408,11 +417,18 @@ final class SacScene: Scene{
 				}
 			}
 		}
-		static void renderOtherSides(B)(MovingObject!B obj,SacScene scene,RenderingContext* rc){
+		static void renderOtherSides(B)(MovingObject!B obj,SacScene scene,bool updateRectangleSelect,RenderingContext* rc){
+			if(updateRectangleSelect){
+				auto hitbox=obj.sacObject.hitbox(obj.rotation,obj.animationState,obj.frame/updateAnimFactor); // TODO: share computation with some other place?
+				auto center2d=transform(scene.getModelViewProjectionMatrix(obj.position,obj.rotation),0.5f*(hitbox[0]+hitbox[1]));
+				auto screenPosition=Vector2f(0.5f*(center2d.x+1.0f)*scene.width,0.5f*(1.0f-center2d.y)*scene.height);
+				if(scene.isInRectangleSelect(screenPosition)&&canSelect(scene.renderSide,obj.id,scene.state.current)) scene.rectangleSelection.addSorted(obj.id);
+			}
 			if(obj.side!=scene.renderSide) renderCreatureStat(obj,scene,false,rc);
 		}
-		state.current.eachMoving!renderOtherSides(this,rc);
-		foreach(id;state.current.getSelection(renderSide))
+		state.current.eachMoving!renderOtherSides(this,updateRectangleSelect,rc);
+		if(updateRectangleSelect) renderedSelection.addFront(rectangleSelection.creatureIds[]);
+		foreach(id;renderedSelection.creatureIds)
 			if(id) state.current.movingObjectById!renderCreatureStat(id,this,true,rc);
 	}
 
@@ -570,6 +586,44 @@ final class SacScene: Scene{
 			state.current.soulById!renderHitbox(mouse.target.id,this,rc);
 		}
 	}
+	bool isInRectangleSelect(Vector2f position){
+		if(mouse.status!=Mouse.Status.rectangleSelect) return false;
+		auto x1=min(mouse.leftButtonX,mouse.x), x2=max(mouse.leftButtonX,mouse.x);
+		auto y1=min(mouse.leftButtonY,mouse.y), y2=max(mouse.leftButtonY,mouse.y);
+		return x1<=position.x&&position.x<=x2 && y1<=position.y&&position.y<=y2;
+	}
+	void renderRectangleSelectFrame(RenderingContext* rc){
+		if(mouse.status!=Mouse.Status.rectangleSelect) return;
+		auto x1=min(mouse.leftButtonX,mouse.x), x2=max(mouse.leftButtonX,mouse.x);
+		auto y1=min(mouse.leftButtonY,mouse.y), y2=max(mouse.leftButtonY,mouse.y);
+		auto color=Color4f(1.0f,1.0f,1.0f);
+		if(mouse.loc==Mouse.Location.minimap){
+			auto radius=minimapRadius;
+			x1=max(x1,width-2.0f*radius);
+			y1=max(y1,height-2.0f*radius);
+			color=Color4f(1.0f,0.0f,0.0f);
+		}
+		auto rectWidth=x2-x1,rectHeight=y2-y1;
+		colorHUDMaterialBackend.bind(null,rc);
+		scope(success) colorHUDMaterialBackend.unbind(null,rc);
+		colorHUDMaterialBackend.bindDiffuse(whiteTexture);
+		colorHUDMaterialBackend.setColor(color);
+		auto thickness=0.5f*hudScaling;
+		auto scaling1=Vector3f(rectWidth+thickness,thickness,0.0f);
+		auto position1=Vector3f(x1,y1,0.0f);
+		auto position2=Vector3f(x1,y2,0.0f);
+		colorHUDMaterialBackend.setTransformationScaled(position1, Quaternionf.identity(), scaling1, rc);
+		quad.render(rc);
+		colorHUDMaterialBackend.setTransformationScaled(position2, Quaternionf.identity(), scaling1, rc);
+		quad.render(rc);
+		auto scaling2=Vector3f(thickness,rectHeight+thickness,0.0f);
+		auto position3=Vector3f(x1,y1,0.0f);
+		auto position4=Vector3f(x2,y1,0.0f);
+		colorHUDMaterialBackend.setTransformationScaled(position3, Quaternionf.identity(), scaling2, rc);
+		quad.render(rc);
+		colorHUDMaterialBackend.setTransformationScaled(position4, Quaternionf.identity(), scaling2, rc);
+		quad.render(rc);
+	}
 	void renderCursor(RenderingContext* rc){
 		if(mouse.target.id&&!state.current.isValidId(mouse.target.id)) mouse.target=Target.init;
 		mouse.x=eventManager.mouseX/screenScaling;
@@ -581,6 +635,7 @@ final class SacScene: Scene{
 		scope(success) material.unbind(rc);
 		auto size=options.cursorSize;
 		auto position=Vector3f(mouse.x-0.5f*size,mouse.y,0);
+		if(mouse.status==Mouse.Status.rectangleSelect) position.y-=1.0f;
 		auto scaling=Vector3f(size,size,1.0f);
 		material.backend.setTransformationScaled(position, Quaternionf.identity(), scaling, rc);
 		quad.render(rc);
@@ -619,11 +674,10 @@ final class SacScene: Scene{
 		auto position=Vector3f(-34.0f*hudScaling,0.5*(height-scaling.y),0);
 		material.backend.setTransformationScaled(position, Quaternionf.identity(), scaling, rc);
 		selectionRoster.render(rc);
-		auto selection=state.current.getSelection(renderSide);
 		int i=0; // idiotic deprecation of foreach(int i,x;selection)
-		foreach(x;selection){
+		foreach(x;renderedSelection.creatureIds){
 			scope(success) i++;
-			if(!selection[i]) continue;
+			if(!renderedSelection.creatureIds[i]) continue;
 			static void renderIcon(B)(MovingObject!B obj,int i,Vector3f position,float hudScaling,SacScene scene,RenderingContext* rc){
 				auto cpos=position+hudScaling*Vector3f(i>=6?35.0f:-1.0f,(i%6)*32.0f,0.0f);
 				auto scaling=hudScaling*Vector3f(34.0f,32.0f,0.0f);
@@ -651,7 +705,7 @@ final class SacScene: Scene{
 					}
 				}
 			}
-			state.current.movingObjectById!renderIcon(selection[i],i,Vector3f(position.x+34.0f*hudScaling,0.5*(height-scaling.y)+32.0f*hudScaling,0.0f),hudScaling,this,rc);
+			state.current.movingObjectById!renderIcon(renderedSelection.creatureIds[i],i,Vector3f(position.x+34.0f*hudScaling,0.5*(height-scaling.y)+32.0f*hudScaling,0.0f),hudScaling,this,rc);
 		}
 	}
 	float minimapRadius(){ return hudScaling*80.0f; }
@@ -716,8 +770,9 @@ final class SacScene: Scene{
 			auto relativePosition=targetPosition-minimapCenter;
 			auto iconOffset=rotate(mapRotation,minimapFactor*Vector3f(relativePosition.x,-relativePosition.y,0));
 			auto iconCenter=mapCenter+iconOffset;
+			minimapMaterialBackend.bindDiffuse(whiteTexture);
 			minimapMaterialBackend.setColor(Color4f(1.0f,1.0f,0.0f,1.0f));
-			auto fovScaling=Vector3f(hudScaling,2.0f*radius,0.0f);
+			auto fovScaling=Vector3f(0.5f*hudScaling,2.0f*radius,0.0f);
 			auto angle=2.0f*cast(float)PI*82.0f/360.0f;
 			auto fovRotation1=mapRotation*facingQuaternion(-facing-0.5f*angle+cast(float)PI);
 			minimapMaterialBackend.setTransformationScaled(iconCenter+rotate(fovRotation1,Vector3f(-0.5f*fovScaling.x,0.0f,0.0f)),fovRotation1,fovScaling,rc);
@@ -1008,6 +1063,7 @@ final class SacScene: Scene{
 		if(mouse.visible){
 			renderTargetFrame(rc);
 			renderHUD(rc);
+			renderRectangleSelectFrame(rc);
 			renderCursor(rc);
 		}
 	}
@@ -1171,18 +1227,18 @@ final class SacScene: Scene{
 		//if(eventManager.keyPressed[KEY_Y]) dir += Vector3f(0,1,0);
 		//if(eventManager.keyPressed[KEY_Z]) dir += Vector3f(0,0,1);
 		fpview.control();
-		if(!mouse.dragging){
+		if(mouse.status==Mouse.Status.standard){
 			if(isOnSelectionRoster(Vector2f(mouse.x,mouse.y))) mouse.loc=Mouse.Location.selectionRoster;
 			else if(isOnMinimap(Vector2f(mouse.x,mouse.y))) mouse.loc=Mouse.Location.minimap;
 			else mouse.loc=Mouse.Location.scene;
 		}
-		if(mouse.visible){
+		if(mouse.visible && mouse.status.among(Mouse.Status.standard,Mouse.Status.dragging)){
 			if(((eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK])
 			    && eventManager.mouseButtonPressed[MB_LEFT])||
 			   eventManager.mouseButtonPressed[MB_MIDDLE]
 			){
 				if(eventManager.mouseRelX||eventManager.mouseRelY)
-					mouse.dragging=true;
+					mouse.status=Mouse.Status.dragging;
 				if(!mouse.onMinimap){
 					fpview.active=true;
 					fpview.mouseFactor=-0.25f;
@@ -1194,7 +1250,7 @@ final class SacScene: Scene{
 				mouse.x=max(0,min(mouse.x,width-1));
 				mouse.y=max(0,min(mouse.y,height-1));
 			}else{
-				mouse.dragging=false;
+				mouse.status=Mouse.Status.standard;
 				if(!mouse.onMinimap){
 					if(fpview.active){
 						fpview.active=false;
@@ -1209,7 +1265,7 @@ final class SacScene: Scene{
 				camera.targetZoom-=0.04f*eventManager.mouseWheelY;
 				camera.targetZoom=max(0.0f,min(camera.targetZoom,1.0f));
 			}else{
-				camera.minimapZoom*=exp(log(1.3)*(-0.4f*eventManager.mouseWheelY+0.04f*(mouse.dragging?eventManager.mouseRelY:0)/hudScaling));
+				camera.minimapZoom*=exp(log(1.3)*(-0.4f*eventManager.mouseWheelY+0.04f*(mouse.status==Mouse.Status.dragging?eventManager.mouseRelY:0)/hudScaling));
 				camera.minimapZoom=max(0.5f,min(camera.minimapZoom,15.0f));
 			}
 		}
@@ -1259,10 +1315,46 @@ final class SacScene: Scene{
 			}
 			positionCamera();
 		}
+		if(!mouse.mouseButtonPressed[MB_LEFT]){
+			if(eventManager.mouseButtonPressed[MB_LEFT]){
+				mouse.leftButtonX=mouse.x;
+				mouse.leftButtonY=mouse.y;
+			}
+		}else if(mouse.status.among(Mouse.Status.standard,Mouse.Status.rectangleSelect)){
+			if(eventManager.mouseButtonPressed[MB_LEFT]){
+				enum rectangleThreshold=3.0f;
+				if(abs(mouse.x-mouse.leftButtonX)>=rectangleThreshold||abs(mouse.y-mouse.leftButtonY)>=rectangleThreshold){
+					mouse.status=Mouse.Status.rectangleSelect;
+					if(!mouse.loc.among(Mouse.Location.scene,Mouse.Location.minimap))
+						mouse.loc=Mouse.Location.scene;
+				}
+			}
+		}
+		mouse.additiveSelect=eventManager.keyPressed[KEY_LSHIFT];
+		selectionUpdated=false;
 		if(mouse.mouseButtonPressed[MB_LEFT]&&!eventManager.mouseButtonPressed[MB_LEFT]){
-			if(mouse.target.type==TargetType.creature){
-				auto type=eventManager.keyPressed[KEY_LSHIFT]?CommandType.toggleSelection:CommandType.select;
-				state.addCommand(Command(type,renderSide,0,mouse.target));
+			final switch(mouse.status){
+				case Mouse.Status.standard:
+					if(mouse.target.type==TargetType.creature){
+						auto type=mouse.additiveSelect?CommandType.toggleSelection:CommandType.select;
+						state.addCommand(Command(type,renderSide,0,mouse.target));
+					}
+					break;
+				case Mouse.Status.dragging:
+					// do nothing
+					break;
+				case Mouse.Status.rectangleSelect:
+					// TODO
+					mouse.status=Mouse.Status.standard;
+					TargetLocation loc;
+					final switch(mouse.loc){
+						case Mouse.Location.scene: loc=TargetLocation.scene; break;
+						case Mouse.Location.minimap: loc=TargetLocation.minimap; break;
+						case Mouse.Location.selectionRoster,Mouse.Location.spellIcons: assert(0);
+					}
+					state.setSelection(renderSide,renderedSelection,loc);
+					selectionUpdated=true;
+					break;
 			}
 		}
 		mouse.mouseButtonPressed=eventManager.mouseButtonPressed[0..MB_RIGHT+1];
@@ -1371,7 +1463,7 @@ final class SacScene: Scene{
 			}
 			if(camera.target){
 				auto targetFacing=state.current.movingObjectById!((obj)=>obj.creatureState.facing, function float(){ assert(0); })(camera.target);
-				updateCameraPosition(dt,targetFacing!=camera.lastTargetFacing && !mouse.dragging);
+				updateCameraPosition(dt,targetFacing!=camera.lastTargetFacing && mouse.status!=Mouse.Status.dragging);
 				camera.lastTargetFacing=targetFacing;
 			}
 			updateHUD(dt);
@@ -1434,7 +1526,15 @@ final class SacScene: Scene{
 	}
 	struct Mouse{
 		float x,y;
-		bool visible,showFrame,dragging;
+		float leftButtonX,leftButtonY;
+		bool visible,showFrame;
+		enum Status{
+			standard,
+			dragging,
+			rectangleSelect,
+		}
+		Status status;
+		bool additiveSelect=false;
 		auto cursor=Cursor.normal;
 		Target target;
 		bool inHitbox=false;
@@ -1527,15 +1627,22 @@ final class SacScene: Scene{
 	void updateCursor(double dt){
 		if(!state) return;
 		mouse.target=mouseCursorTarget();
-		if(mouse.dragging){
-			mouse.cursor=Cursor.drag;
-			mouse.showFrame=false;
-		}else{
-			mouse.cursor=mouse.target.cursor(renderSide,state.current);
-			with(Cursor) // TODO: with icons, show border only if spell is applicable to target
-				mouse.showFrame=mouse.target.location==TargetLocation.scene &&
-					(mouse.target.type==TargetType.soul||
-					 mouse.cursor.among(friendlyUnit,neutralUnit,rescuableUnit,talkingUnit,enemyUnit,iconFriendly,iconNeutral,iconEnemy));
+		final switch(mouse.status){
+			case Mouse.Status.standard:
+				mouse.cursor=mouse.target.cursor(renderSide,state.current);
+				with(Cursor) // TODO: with icons, show border only if spell is applicable to target
+					mouse.showFrame=mouse.target.location==TargetLocation.scene &&
+						(mouse.target.type==TargetType.soul||
+						 mouse.cursor.among(friendlyUnit,neutralUnit,rescuableUnit,talkingUnit,enemyUnit,iconFriendly,iconNeutral,iconEnemy));
+				break;
+			case Mouse.Status.dragging:
+				mouse.cursor=Cursor.drag;
+				mouse.showFrame=false;
+				break;
+			case Mouse.Status.rectangleSelect:
+				mouse.cursor=Cursor.rectangleSelect;
+				mouse.showFrame=false;
+				break;
 		}
 	}
 	override void startGBufferInformationDownload(){

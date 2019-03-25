@@ -2523,7 +2523,9 @@ final class ObjectState(B){ // (update logic)
 			case turnLeft: this.movingObjectById!startTurningLeft(command.creature,this); break;
 			case turnRight: this.movingObjectById!startTurningRight(command.creature,this); break;
 			case stopTurning: this.movingObjectById!(.stopTurning)(command.creature,this); break;
+			case clearSelection: this.clearSelection(command.side); break;
 			case select: this.select(command.side,command.target.id); break;
+			case selectAll: this.selectAll(command.side,command.target.id); break;
 			case toggleSelection: this.toggleSelection(command.side,command.target.id); break;
 		}
 	}
@@ -2574,6 +2576,10 @@ final class ObjectState(B){ // (update logic)
 		if(!canSelect(side,id,this)) return;
 		sid.select(side,id);
 	}
+	void selectAll(int side,int id){
+		if(!canSelect(side,id,this)) return;
+		// TODO
+	}
 	void addToSelection(int side,int id){
 		if(!canSelect(side,id,this)) return;
 		sid.addToSelection(side,id);
@@ -2595,7 +2601,7 @@ final class ObjectState(B){ // (update logic)
 	void selectGroup(int side,int groupId){
 		sid.selectGroup(side,groupId);
 	}
-	int[] getSelection(int side){
+	CreatureGroup getSelection(int side){
 		return sid.getSelection(side);
 	}
 }
@@ -2700,15 +2706,18 @@ struct CreatureGroup{
 	int[numCreaturesInGroup] creatureIds;
 	int[] get(){ return creatureIds[]; }
 	bool has(int id){
+		if(!id) return false;
 		foreach(x;creatureIds) if(x==id) return true;
 		return false;
 	}
 	void addFront(int id){ // for addToSelection
+		if(!id) return;
 		foreach_reverse(i;0..creatureIds.length-1)
 			swap(creatureIds[i],creatureIds[i+1]);
 		creatureIds[0]=id;
 	}
 	void addBack(int id){ // for addToGroup
+		if(!id) return;
 		if(creatureIds[$-1]){
 			foreach(i;0..creatureIds.length-1)
 				swap(creatureIds[id],creatureIds[i+1]);
@@ -2722,6 +2731,16 @@ struct CreatureGroup{
 			}
 		}
 	}
+	void addSorted(int id){
+		if(!id) return;
+		int i=0;
+		while(i<creatureIds.length&&creatureIds[i]&&creatureIds[i]<id)
+			i++;
+		if(i>=creatureIds.length||creatureIds[i]==id) return;
+		foreach_reverse(j;i..creatureIds.length-1)
+			swap(creatureIds[j],creatureIds[j+1]);
+		creatureIds[i]=id;
+	}
 	void addFront(int[] ids...){
 		foreach_reverse(id;ids) addFront(id); // TODO: do more efficiently
 	}
@@ -2729,6 +2748,7 @@ struct CreatureGroup{
 		foreach_reverse(id;ids) addBack(id); // TODO: do more efficiently
 	}
 	void remove(int id){
+		if(!id) return;
 		foreach(i,x;creatureIds){
 			if(x==id){
 				foreach(j;i..creatureIds.length-1){
@@ -2740,6 +2760,7 @@ struct CreatureGroup{
 		}
 	}
 	void toggle(int id){
+		if(!id) return;
 		if(has(id)) remove(id);
 		else addFront(id);
 	}
@@ -2779,8 +2800,8 @@ struct SideData(B){
 	void selectGroup(int groupId){
 		selection=groups[groupId];
 	}
-	int[] getSelection(){
-		return selection.get();
+	CreatureGroup getSelection(){
+		return selection;
 	}
 }
 
@@ -2832,7 +2853,7 @@ struct SideManager(B){
 	}do{
 		sides[side].selectGroup(groupId);
 	}
-	int[] getSelection(int side)in{
+	CreatureGroup getSelection(int side)in{
 		assert(0<=side&&side<sides.length);
 	}do{
 		return sides[side].getSelection();
@@ -2919,7 +2940,9 @@ enum CommandType{
 	turnRight,
 	stopTurning,
 
+	clearSelection,
 	select,
+	selectAll,
 	toggleSelection,
 }
 
@@ -2927,9 +2950,12 @@ struct Command{
 	this(CommandType type,int side,int creature,Target target)in{
 		final switch(type) with(CommandType){
 			case moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning:
-				assert(!!creature && target==Target.init);
+				assert(!!creature && target is Target.init);
 				break;
-			case select,toggleSelection:
+			case clearSelection:
+				assert(!creature && target is Target.init);
+				break;
+			case selectAll,select,toggleSelection:
 				assert(!creature && target.type==TargetType.creature);
 				break;
 		}
@@ -3104,6 +3130,13 @@ final class GameState(B){
 	}
 	void addCommand(Command command){
 		addCommand(current.frame,command);
+	}
+	void setSelection(int side,CreatureGroup selection,TargetLocation loc){
+		addCommand(Command(CommandType.clearSelection,side,0,Target.init));
+		foreach_reverse(id;selection.creatureIds){
+			if(id==0) continue;
+			addCommand(Command(CommandType.toggleSelection,side,0,Target(TargetType.creature,id,current.movingObjectById!((obj)=>obj.position,function Vector3f(){ assert(0); })(id),loc)));
+		}
 	}
 }
 
