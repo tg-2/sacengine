@@ -359,10 +359,12 @@ final class SacScene: Scene{
 	}
 
 	bool selectionUpdated=false;
+	int lastSelectedId=0,lastSelectedFrame=0;
+	float lastSelectedX,lastSelectedY;
 	CreatureGroup renderedSelection;
 	CreatureGroup rectangleSelection;
 	void renderCreatureStats(RenderingContext* rc){
-		bool updateRectangleSelect=!selectionUpdated&&mouse.loc==Mouse.Location.scene&&mouse.status==Mouse.Status.rectangleSelect;
+		bool updateRectangleSelect=!selectionUpdated&&mouse.status==Mouse.Status.rectangleSelect;
 		if(updateRectangleSelect){
 			rectangleSelection=CreatureGroup.init;
 			if(mouse.additiveSelect) renderedSelection=state.current.getSelection(renderSide);
@@ -417,16 +419,32 @@ final class SacScene: Scene{
 				}
 			}
 		}
-		static void renderOtherSides(B)(MovingObject!B obj,SacScene scene,bool updateRectangleSelect,RenderingContext* rc){
+		static void renderOtherSides(B)(MovingObject!B obj,SacScene scene,bool updateRectangleSelect,bool onMinimap,RenderingContext* rc){
 			if(updateRectangleSelect){
-				auto hitbox=obj.sacObject.hitbox(obj.rotation,obj.animationState,obj.frame/updateAnimFactor); // TODO: share computation with some other place?
-				auto center2d=transform(scene.getModelViewProjectionMatrix(obj.position,obj.rotation),0.5f*(hitbox[0]+hitbox[1]));
-				auto screenPosition=Vector2f(0.5f*(center2d.x+1.0f)*scene.width,0.5f*(1.0f-center2d.y)*scene.height);
-				if(scene.isInRectangleSelect(screenPosition)&&canSelect(scene.renderSide,obj.id,scene.state.current)) scene.rectangleSelection.addSorted(obj.id);
+				if(onMinimap){
+					// TODO: get rid of code duplication somehow
+					auto radius=scene.minimapRadius;
+					auto minimapFactor=scene.hudScaling/scene.camera.minimapZoom;
+					auto camPos=scene.fpview.camera.position;
+					auto mapRotation=facingQuaternion(-degtorad(scene.fpview.camera.turn));
+					auto minimapCenter=Vector3f(camPos.x,camPos.y,0.0f)+rotate(mapRotation,Vector3f(0.0f,scene.camera.distance*3.73f,0.0f));
+					auto mapCenter=Vector3f(scene.width-radius,scene.height-radius,0);
+					auto relativePosition=obj.position-minimapCenter;
+					auto iconOffset=rotate(mapRotation,minimapFactor*Vector3f(relativePosition.x,-relativePosition.y,0));
+					auto iconCenter=mapCenter+iconOffset;
+					if(scene.isOnMinimap(iconCenter.xy)&&scene.isInRectangleSelect(iconCenter.xy)&&canSelect(scene.renderSide,obj.id,scene.state.current))
+						scene.rectangleSelection.addSorted(obj.id);
+				}else{
+					auto hitbox=obj.sacObject.hitbox(obj.rotation,obj.animationState,obj.frame/updateAnimFactor); // TODO: share computation with some other place?
+					auto center2d=transform(scene.getModelViewProjectionMatrix(obj.position,obj.rotation),0.5f*(hitbox[0]+hitbox[1]));
+					if(center2d.z>1.0f) return;
+					auto screenPosition=Vector2f(0.5f*(center2d.x+1.0f)*scene.width,0.5f*(1.0f-center2d.y)*scene.height);
+					if(scene.isInRectangleSelect(screenPosition)&&canSelect(scene.renderSide,obj.id,scene.state.current)) scene.rectangleSelection.addSorted(obj.id);
+				}
 			}
 			if(obj.side!=scene.renderSide) renderCreatureStat(obj,scene,false,rc);
 		}
-		state.current.eachMoving!renderOtherSides(this,updateRectangleSelect,rc);
+		state.current.eachMoving!renderOtherSides(this,updateRectangleSelect,mouse.loc==Mouse.Location.minimap,rc);
 		if(updateRectangleSelect) renderedSelection.addFront(rectangleSelection.creatureIds[]);
 		foreach(id;renderedSelection.creatureIds)
 			if(id) state.current.movingObjectById!renderCreatureStat(id,this,true,rc);
@@ -874,6 +892,8 @@ final class SacScene: Scene{
 							if(scene.mouse.onMinimap){
 								auto target=Target(isMoving?TargetType.creature:TargetType.building,objects.ids[j],objects.positions[j],TargetLocation.minimap);
 								scene.updateMinimapTarget(target,iconCenter.xy,iconScaling.xy);
+								if(scene.isInRectangleSelect(iconCenter.xy)&&canSelect(scene.renderSide,objects.ids[j],scene.state.current))
+									scene.rectangleSelection.addSorted(objects.ids[j]);
 							}
 						}
 					}else static if(is(typeof(objects.sacObject))){
@@ -1337,7 +1357,23 @@ final class SacScene: Scene{
 				case Mouse.Status.standard:
 					if(mouse.target.type==TargetType.creature){
 						auto type=mouse.additiveSelect?CommandType.toggleSelection:CommandType.select;
+						enum doubleClickDelay=0.3f; // in seconds
+						enum delta=targetCacheDelta;
+						if(type==CommandType.select&&(lastSelectedId==mouse.target.id||
+						                              abs(lastSelectedX-mouse.x)<delta &&
+						                              abs(lastSelectedY-mouse.y)<delta) &&
+						   state.current.frame-lastSelectedFrame<=doubleClickDelay*updateFPS){
+							type=CommandType.selectAll;
+							lastSelectedId=0;
+							lastSelectedFrame=state.current.frame;
+							lastSelectedX=mouse.x;
+							lastSelectedY=mouse.y;
+						}
 						state.addCommand(Command(type,renderSide,0,mouse.target));
+						if(type==CommandType.select){
+							lastSelectedId=mouse.target.id;
+							lastSelectedFrame=state.current.frame;
+						}
 					}
 					break;
 				case Mouse.Status.dragging:
@@ -1440,9 +1476,7 @@ final class SacScene: Scene{
 	}
 
 	override void onViewUpdate(double dt){
-		if(state) stateTestControl();
 		if(options.scaleToFit) screenScaling=min(cast(float)eventManager.windowWidth/width,cast(float)eventManager.windowHeight/height);
-		control(dt);
 		super.onViewUpdate(dt);
 	}
 
@@ -1450,6 +1484,8 @@ final class SacScene: Scene{
 		assert(dt==1.0f/updateFPS);
 		//writeln(DagonBackend.getTotalGPUMemory()," ",DagonBackend.getAvailableGPUMemory());
 		//writeln(eventManager.fps);
+		if(state) stateTestControl();
+		control(dt);
 		if(state){
 			state.step();
 			// state.commit();

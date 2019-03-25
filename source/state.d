@@ -96,8 +96,11 @@ struct MovingObject(B){
 		this(sacObject,id,position,rotation,animationState,frame,creatureState,creatureStats,side);
 	}
 }
+bool canSelect(B)(MovingObject!B obj,int side,ObjectState!B state){
+	return obj.side==side&&!obj.sacObject.isWizard;
+}
 bool canSelect(B)(int side,int id,ObjectState!B state){
-	return state.movingObjectById!((ref obj,side,state)=>obj.side==side&&!obj.sacObject.isWizard,()=>false)(id,side,state);
+	return state.movingObjectById!(canSelect,()=>false)(id,side,state);
 }
 Vector3f[2] relativeHitbox(B)(ref MovingObject!B object){
 	return object.sacObject.hitbox(object.rotation,object.animationState,object.frame/updateAnimFactor);
@@ -402,6 +405,8 @@ struct MovingObjects(B,RenderMode mode){
 	void addObject(MovingObject!B object)in{
 		assert(object.id!=0);
 	}do{
+		assert(!sacObject||sacObject is object.sacObject);
+		sacObject=object.sacObject;
 		ids~=object.id;
 		positions~=object.position;
 		rotations~=object.rotation;
@@ -816,6 +821,12 @@ auto eachByType(alias f,bool movingFirst=true,B,RenderMode mode,T...)(ref Object
 				f(movingObject,args);
 	}
 }
+auto eachMovingOf(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,SacObject!B sacObject,T args){
+	with(objects){
+		if(sacObject.stateIndex==-1||sacObject.stateIndex>=movingObjects.length) return;
+		each!f(movingObjects[sacObject.stateIndex],args);
+	}
+}
 
 enum numMoving=100;
 enum numStatic=300;
@@ -893,6 +904,12 @@ auto eachByType(alias f,bool movingFirst=true,B,T...)(ref ObjectManager!B object
 	with(objectManager){
 		opaqueObjects.eachByType!(f,movingFirst)(args);
 		transparentObjects.eachByType!(f,movingFirst)(args);
+	}
+}
+auto eachMovingOf(alias f,B,T...)(ref ObjectManager!B objectManager,SacObject!B sacObject,T args){
+	with(objectManager){
+		opaqueObjects.eachMovingOf!f(sacObject,args);
+		transparentObjects.eachMovingOf!f(sacObject,args);
 	}
 }
 auto ref objectById(alias f,B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
@@ -2578,7 +2595,33 @@ final class ObjectState(B){ // (update logic)
 	}
 	void selectAll(int side,int id){
 		if(!canSelect(side,id,this)) return;
-		// TODO
+		// TODO: use Proximity for this? (Not a bottleneck.)
+		static void processObj(B)(MovingObject!B obj,int side,ObjectState!B state){
+			struct MObj{ int id; Vector3f position; }
+			alias Selection=MObj[numCreaturesInGroup];
+			Selection selection;
+			static void addToSelection(ref MObj[numCreaturesInGroup] selection,MObj obj,MObj nobj){
+				int i=0;
+				while(i<selection.length&&selection[i].id&&(selection[i].position.xy-obj.position.xy).lengthsqr<(nobj.position.xy-obj.position.xy).lengthsqr)
+					i++;
+				if(i>=selection.length||selection[i].id==nobj.id) return;
+				foreach_reverse(j;i..selection.length-1)
+					swap(selection[j],selection[j+1]);
+				selection[i]=nobj;
+			}
+			static void process(B)(MovingObject!B nobj,int side,MObj obj,Selection* selection,ObjectState!B state){
+				if(!canSelect(nobj,side,state)) return;
+				if((obj.position.xy-nobj.position.xy).lengthsqr>50.0f^^2) return;
+				addToSelection(*selection,obj,MObj(nobj.id,nobj.position));
+			}
+			state.eachMovingOf!process(obj.sacObject,side,MObj(obj.id,obj.position),&selection,state);
+			if(selection[0].id!=0){
+				state.clearSelection(side);
+				foreach(i;0..selection.length)
+					if(selection[i].id) state.sid.addToSelection(side,selection[i].id);
+			}
+		}
+		this.movingObjectById!processObj(id,side,this);
 	}
 	void addToSelection(int side,int id){
 		if(!canSelect(side,id,this)) return;
@@ -2622,6 +2665,9 @@ auto eachParticles(alias f,B,T...)(ObjectState!B objectState,T args){
 }
 auto eachByType(alias f,bool movingFirst=true,B,T...)(ObjectState!B objectState,T args){
 	return objectState.obj.eachByType!(f,movingFirst)(args);
+}
+auto eachMovingOf(alias f,B,T...)(ObjectState!B objectState,SacObject!B sacObject,T args){
+	return objectState.obj.eachMovingOf!f(sacObject,args);
 }
 
 auto ref objectById(alias f,B,T...)(ObjectState!B objectState,int id,T args){
