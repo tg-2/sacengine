@@ -97,10 +97,16 @@ struct MovingObject(B){
 	}
 }
 bool canSelect(B)(MovingObject!B obj,int side,ObjectState!B state){
-	return obj.side==side&&!obj.sacObject.isWizard;
+	return obj.side==side&&!obj.sacObject.isWizard&&obj.creatureState.mode!=CreatureMode.dead;
 }
 bool canSelect(B)(int side,int id,ObjectState!B state){
 	return state.movingObjectById!(canSelect,()=>false)(id,side,state);
+}
+void select(B)(MovingObject!B obj,ObjectState!B state){
+	state.addToSelection(obj.side,obj.id);
+}
+void unselect(B)(MovingObject!B obj,ObjectState!B state){
+	state.removeFromSelection(obj.side,obj.id);
 }
 Vector3f[2] relativeHitbox(B)(ref MovingObject!B object){
 	return object.sacObject.hitbox(object.rotation,object.animationState,object.frame/updateAnimFactor);
@@ -1237,6 +1243,7 @@ void kill(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.creatureStats.flags&Flags.cannotDestroyKill) return;
 	with(CreatureMode) if(object.creatureState.mode.among(dying,dead,reviving,fastReviving)) return;
 	if(!object.sacObject.canDie()) return;
+	object.unselect(state);
 	object.creatureStats.health=0.0f;
 	object.creatureState.mode=CreatureMode.dying;
 	object.setCreatureState(state);
@@ -1580,6 +1587,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 						object.frame=sacObject.numFrames(object.animationState)*updateAnimFactor-1;
 						object.creatureState.mode=CreatureMode.dead;
 						object.spawnSoul(state);
+						object.unselect(state);
 						break;
 					case CreatureMovement.flying:
 						object.creatureState.movement=CreatureMovement.tumbling;
