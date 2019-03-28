@@ -379,9 +379,11 @@ final class SacScene: Scene{
 			backend.bindDiffuse(scene.sacHud.statusArrows);
 			backend.setColor(scene.state.current.sides.sideColor(obj.side));
 			// TODO: how is this actually supposed to work?
-			auto hitbox=obj.sacObject.largeHitbox(obj.rotation,obj.animationState,obj.frame/updateAnimFactor);
+			import animations;
+			auto hitbox0=obj.sacObject.hitbox(obj.rotation,AnimationState.stance1,0);
+			auto hitbox=obj.sacObject.hitbox(obj.rotation,obj.animationState,obj.frame/updateAnimFactor);
 			auto scaling=1.0f;
-			auto position=obj.position+Vector3f(0.5f*(hitbox[0].x+hitbox[1].x),0.5f*(hitbox[0].y+hitbox[1].y),hitbox[1].z*1.2f+scaling);
+			auto position=obj.position+Vector3f(0.5f*(hitbox[0].x+hitbox[1].x),0.5f*(hitbox[0].y+hitbox[1].y),0.5f*(hitbox[0].z+hitbox[1].z)+0.75f*(hitbox0[1].z-hitbox0[0].z)+0.5f*scaling);
 			backend.setSpriteTransformationScaled(position,scaling,rc);
 			scene.sacHud.statusArrowMeshes[0].render(rc);
 			if(healthAndMana){
