@@ -153,3 +153,14 @@ auto makeOnePixelImage(Color4f color){
 	img.fillColor(color);
 	return img;
 }
+
+// useful for getting naming conventions right in string mixins:
+string lowerf(string s){
+	if('A'<=s[0]&&s[0]<='Z') return cast(char)(s[0]+('a'-'A'))~s[1..$];
+	return s;
+}
+
+string upperf(string s){
+	if('a'<=s[0]&&s[0]<='z') return cast(char)(s[0]+('A'-'a'))~s[1..$];
+	return s;
+}

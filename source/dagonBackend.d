@@ -1396,6 +1396,12 @@ final class SacScene: Scene{
 					break;
 			}
 		}
+		if(mouse.mouseButtonPressed[MB_RIGHT]&&!eventManager.mouseButtonPressed[MB_RIGHT]){
+			switch(mouse.target.type) with(TargetType){
+				case terrain: state.addCommand(Command(CommandType.move,renderSide,0,mouse.target)); break;
+				default: break;
+			}
+		}
 		mouse.mouseButtonPressed=eventManager.mouseButtonPressed[0..MB_RIGHT+1];
 		if(eventManager.keyPressed[KEY_K]){
 			fpview.active=false;

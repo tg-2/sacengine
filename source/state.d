@@ -62,7 +62,19 @@ struct CreatureState{
 	auto movementDirection=MovementDirection.none;
 	auto rotationDirection=RotationDirection.none;
 	auto fallingVelocity=Vector3f(0.0f,0.0f,0.0f);
+	auto speedLimit=float.infinity; // in meters _per frame_
 	int timer; // used for: constraining revive time to be at least 5s
+}
+
+struct Order{
+	CommandType command;
+	Target target; // TODO: don't store TargetLocation in creature state
+	float targetFacing=0.0f;
+	auto formationOffset=Vector2f(0.0f,0.0f);
+}
+
+struct CreatureAI{
+	Order order;
 }
 
 struct MovingObject(B){
@@ -72,6 +84,7 @@ struct MovingObject(B){
 	Quaternionf rotation;
 	AnimationState animationState;
 	int frame;
+	CreatureAI creatureAI;
 	CreatureState creatureState;
 	CreatureStats creatureStats;
 	int side=0;
@@ -83,6 +96,7 @@ struct MovingObject(B){
 		this.rotation=rotation;
 		this.animationState=animationState;
 		this.frame=frame;
+		this.creatureAI=creatureAI;
 		this.creatureState=creatureState;
 		this.creatureStats=creatureStats;
 		this.side=side;
@@ -91,13 +105,26 @@ struct MovingObject(B){
 		this.id=id;
 		this(sacObject,position,rotation,animationState,frame,creatureState,creatureStats,side);
 	}
-	this(SacObject!B sacObject,int id,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame,CreatureState creatureState,CreatureStats creatureStats,int side,int soulId){
+	this(SacObject!B sacObject,int id,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame,CreatureAI creatureAI,CreatureState creatureState,CreatureStats creatureStats,int side,int soulId){
+		this.creatureAI=creatureAI;
 		this.soulId=soulId;
 		this(sacObject,id,position,rotation,animationState,frame,creatureState,creatureStats,side);
 	}
 }
-bool canSelect(B)(MovingObject!B obj,int side,ObjectState!B state){
+float speedOnGround(B)(ref MovingObject!B object,ObjectState!B state){
+	return object.creatureStats.movementSpeed(false);
+}
+float speedInAir(B)(ref MovingObject!B object,ObjectState!B state){
+	return object.creatureStats.movementSpeed(true);
+}
+float speed(B)(ref MovingObject!B obj,ObjectState!B state){
+	return object.creatureState.movement==CreatureMovement.flying?object.speedOnGround(state):object.speedInAir(state);
+}
+bool canSelect(B)(ref MovingObject!B obj,int side,ObjectState!B state){
 	return obj.side==side&&!obj.sacObject.isWizard&&obj.creatureState.mode!=CreatureMode.dead;
+}
+bool canOrder(B)(ref MovingObject!B obj,int side,ObjectState!B state){
+	return (side==-1||obj.side==side)&&obj.creatureState.mode!=CreatureMode.dead;
 }
 bool canSelect(B)(int side,int id,ObjectState!B state){
 	return state.movingObjectById!(canSelect,()=>false)(id,side,state);
@@ -379,6 +406,7 @@ struct MovingObjects(B,RenderMode mode){
 	Array!Quaternionf rotations;
 	Array!AnimationState animationStates;
 	Array!int frames;
+	Array!CreatureAI creatureAIs;
 	Array!CreatureState creatureStates;
 	Array!CreatureStats creatureStatss;
 	Array!int sides;
@@ -390,6 +418,7 @@ struct MovingObjects(B,RenderMode mode){
 		rotations.length=l;
 		animationStates.length=l;
 		frames.length=l;
+		creatureAIs.length=l;
 		creatureStates.length=l;
 		creatureStatss.length=l;
 		sides.length=l;
@@ -402,6 +431,7 @@ struct MovingObjects(B,RenderMode mode){
 		rotations.reserve(reserveSize);
 		animationStates.reserve(reserveSize);
 		frames.reserve(reserveSize);
+		creatureAIs.reserve(reserveSize);
 		creatureStates.reserve(reserveSize);
 		creatureStatss.reserve(reserveSize);
 		sides.reserve(reserveSize);
@@ -418,6 +448,7 @@ struct MovingObjects(B,RenderMode mode){
 		rotations~=object.rotation;
 		animationStates~=object.animationState;
 		frames~=object.frame;
+		creatureAIs~=object.creatureAI;
 		creatureStates~=object.creatureState;
 		creatureStatss~=object.creatureStats;
 		sides~=object.side;
@@ -439,13 +470,14 @@ struct MovingObjects(B,RenderMode mode){
 		assignArray(rotations,rhs.rotations);
 		assignArray(animationStates,rhs.animationStates);
 		assignArray(frames,rhs.frames);
+		assignArray(creatureAIs,rhs.creatureAIs);
 		assignArray(creatureStates,rhs.creatureStates);
 		assignArray(creatureStatss,rhs.creatureStatss);
 		assignArray(sides,rhs.sides);
 		assignArray(soulIds,rhs.soulIds);
 	}
 	MovingObject!B opIndex(int i){
-		return MovingObject!B(sacObject,ids[i],positions[i],rotations[i],animationStates[i],frames[i],creatureStates[i],creatureStatss[i],sides[i],soulIds[i]);
+		return MovingObject!B(sacObject,ids[i],positions[i],rotations[i],animationStates[i],frames[i],creatureAIs[i],creatureStates[i],creatureStatss[i],sides[i],soulIds[i]);
 	}
 	void opIndexAssign(MovingObject!B obj,int i){
 		assert(obj.sacObject is sacObject);
@@ -454,6 +486,7 @@ struct MovingObjects(B,RenderMode mode){
 		rotations[i]=obj.rotation;
 		animationStates[i]=obj.animationState;
 		frames[i]=obj.frame;
+		creatureAIs[i]=obj.creatureAI;
 		creatureStates[i]=obj.creatureState;
 		creatureStatss[i]=obj.creatureStats; // TODO: this might be a bit wasteful
 		sides[i]=obj.side;
@@ -1297,6 +1330,7 @@ int spawn(T=Creature,B)(int casterId,char[4] tag,int flags,ObjectState!B state){
 		auto obj=MovingObject!B(curObj,position,rotation,AnimationState.disoriented,0,creatureState,curObj.creatureStats(flags),caster.side);
 		obj.setCreatureState(state);
 		obj.updateCreaturePosition(state);
+		obj.order(CommandType.retreat,Target(TargetType.creature,caster.id,caster.position,TargetLocation.none),state,caster.side);
 		return state.addObject(obj);
 	}
 	return state.movingObjectById!(spawnImpl,function int(){ assert(0); })(casterId,tag,flags,state);
@@ -1514,7 +1548,8 @@ void dealMeleeDamage(B)(ref Building!B building,ref MovingObject!B attacker,Obje
 }
 
 
-void setMovement(B)(ref MovingObject!B object,MovementDirection direction,ObjectState!B state){
+void setMovement(B)(ref MovingObject!B object,MovementDirection direction,ObjectState!B state,int side=-1){
+	if(!object.canOrder(side,state)) return;
 	// TODO: check for conditions that immobilze a creature, such as vines or spell casting
 	if(object.creatureState.movement==CreatureMovement.flying &&
 	   direction==MovementDirection.backward &&
@@ -1526,28 +1561,99 @@ void setMovement(B)(ref MovingObject!B object,MovementDirection direction,Object
 	if(object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving))
 		object.setCreatureState(state);
 }
-void stopMovement(B)(ref MovingObject!B object,ObjectState!B state){
-	object.setMovement(MovementDirection.none,state);
+void stopMovement(B)(ref MovingObject!B object,ObjectState!B state,int side=-1){
+	object.setMovement(MovementDirection.none,state,side);
 }
-void startMovingForward(B)(ref MovingObject!B object,ObjectState!B state){
-	object.setMovement(MovementDirection.forward,state);
+void startMovingForward(B)(ref MovingObject!B object,ObjectState!B state,int side=-1){
+	object.setMovement(MovementDirection.forward,state,side);
 }
-void startMovingBackward(B)(ref MovingObject!B object,ObjectState!B state){
-	object.setMovement(MovementDirection.backward,state);
+void startMovingBackward(B)(ref MovingObject!B object,ObjectState!B state,int side=-1){
+	object.setMovement(MovementDirection.backward,state,side);
 }
 
-void setTurning(B)(ref MovingObject!B object,RotationDirection direction,ObjectState!B state){
+void setTurning(B)(ref MovingObject!B object,RotationDirection direction,ObjectState!B state,int side=-1){
+	if(!object.canOrder(side,state)) return;
 	// TODO: check for conditions that immobilze a creature, such as vines or spell casting
 	object.creatureState.rotationDirection=direction;
 }
-void stopTurning(B)(ref MovingObject!B object,ObjectState!B state){
-	object.setTurning(RotationDirection.none,state);
+void stopTurning(B)(ref MovingObject!B object,ObjectState!B state,int side=-1){
+	object.setTurning(RotationDirection.none,state,side);
 }
-void startTurningLeft(B)(ref MovingObject!B object,ObjectState!B state){
-	object.setTurning(RotationDirection.left,state);
+void startTurningLeft(B)(ref MovingObject!B object,ObjectState!B state,int side=-1){
+	object.setTurning(RotationDirection.left,state,side);
 }
-void startTurningRight(B)(ref MovingObject!B object,ObjectState!B state){
-	object.setTurning(RotationDirection.right,state);
+void startTurningRight(B)(ref MovingObject!B object,ObjectState!B state,int side=-1){
+	object.setTurning(RotationDirection.right,state,side);
+}
+
+void startTurningToFaceTowards(B)(ref MovingObject!B object,Vector3f position,ObjectState!B state){
+	auto direction=position.xy-object.position.xy; // TODO: pitch?
+	auto angle=atan2(direction.y,direction.x)+0.5f*cast(float)PI;
+	angle-=object.creatureState.facing;
+	while(angle<-PI) angle+=2*PI;
+	while(angle>PI) angle-=2*PI;
+	auto threshold=0.5f*object.creatureStats.rotationSpeed/updateFPS;
+	if(angle<-threshold) object.startTurningLeft(state);
+	else if(angle>threshold) object.startTurningRight(state);
+	else object.stopTurning(state);
+}
+
+bool movingForwardGetsCloserTo(B)(ref MovingObject!B object,Vector3f position,ObjectState!B state){
+	auto direction=position.xy-object.position.xy;
+	auto forward=Vector2f(-sin(object.creatureState.facing),cos(object.creatureState.facing));
+	return dot(direction,forward)>0;
+}
+
+void order(B)(ref MovingObject!B object,CommandType command,Target target,ObjectState!B state,int side=-1){
+	if(!object.canOrder(side,state)) return;
+	object.creatureAI.order.command=command;
+	object.creatureAI.order.target=target;
+}
+
+void finishOrder(B)(ref MovingObject!B object,ObjectState!B state){
+	object.creatureAI.order=Order.init;
+}
+
+enum retreatDistance=9.0f;
+enum speedLimitFactor=1.01f;
+void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
+	switch(object.creatureAI.order.command){
+		case CommandType.retreat:
+			auto targetPosition=state.movingObjectById!((obj)=>obj.position,()=>Vector3f.init)(object.creatureAI.order.target.id);
+			if(targetPosition !is Vector3f.init){
+				object.startTurningToFaceTowards(targetPosition,state);
+				if((object.position-targetPosition).lengthsqr>retreatDistance^^2 && object.movingForwardGetsCloserTo(targetPosition,state)){
+					object.startMovingForward(state);
+					object.creatureState.speedLimit=speedLimitFactor*max(0.0f,(object.position-targetPosition).length-retreatDistance);
+				}else{
+					object.stopMovement(state);
+					object.creatureState.speedLimit=float.infinity;
+				}
+			}else{
+				object.finishOrder(state);
+			}
+			break;
+		case CommandType.move:
+			auto targetPosition=object.creatureAI.order.target.position;
+			auto distanceThreshold=4.0f*object.creatureStats.movementSpeed(object.creatureState.movement==CreatureMovement.flying)/updateFPS; // TODO: object.movementSpeed
+			if((object.position-targetPosition).lengthsqr>distanceThreshold^^2){
+				object.startTurningToFaceTowards(targetPosition,state);
+				if(object.movingForwardGetsCloserTo(targetPosition,state)){
+					object.startMovingForward(state);
+					object.creatureState.speedLimit=speedLimitFactor*max(0.0f,(object.position-targetPosition).length-0.5f*distanceThreshold);
+				}else{
+					object.stopMovement(state);
+					object.creatureState.speedLimit=float.infinity;
+				}
+			}else{
+				object.stopMovement(state);
+				object.stopTurning(state); // TODO: rotate to hit target facing
+				object.finishOrder(state);
+			}
+			break;
+		case CommandType.none: break;
+		default: assert(0); // TODO: compilation error would be better
+	}
 }
 
 void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
@@ -1852,7 +1958,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 		case CreatureMovement.onGround:
 			if(!object.creatureState.mode.among(CreatureMode.moving,CreatureMode.meleeMoving)) break;
 			void applyMovementOnGround(Vector3f direction){
-				auto speed=object.creatureStats.movementSpeed(false)/updateFPS;
+				auto speed=object.speedOnGround(state)/updateFPS;
 				auto derivative=state.getGroundHeightDerivative(object.position,direction);
 				Vector3f newDirection=direction;
 				if(derivative>0.0f){
@@ -1862,6 +1968,10 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 					auto maxFactor=object.creatureStats.maxDownwardSpeedFactor;
 					if(newDirection.lengthsqr>maxFactor*maxFactor) newDirection=maxFactor*newDirection.normalized;
 				}
+				auto speedFactor=newDirection.length;
+				speed*=speedFactor;
+				newDirection=newDirection.normalized;
+				speed=min(speed,object.creatureState.speedLimit);
 				newPosition=state.moveOnGround(object.position,speed*newDirection);
 			}
 			final switch(object.creatureState.movementDirection){
@@ -1892,7 +2002,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			}
 			if(!object.creatureState.mode.among(CreatureMode.moving,CreatureMode.meleeMoving)) break;
 			void applyMovementInAir(Vector3f direction){
-				auto speed=object.creatureStats.movementSpeed(true)/updateFPS;
+				auto speed=object.speedInAir(state)/updateFPS;
 				newPosition=object.position+speed*direction;
 				auto upwardSpeed=max(0.0f,min(object.creatureStats.takeoffSpeed/updateFPS,object.creatureStats.flyingHeight-object.creatureState.flyingDisplacement));
 				auto onGround=state.isOnGround(newPosition), newHeight=float.nan;
@@ -1905,6 +2015,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 				auto downwardFactor=object.creatureStats.downwardFlyingSpeedFactor;
 				auto newDirection=Vector3f(direction.x,direction.y,direction.z+upwardSpeed).normalized;
 				speed*=sqrt(newDirection.x^^2+newDirection.y^^2+(newDirection.z*(newDirection.z>0?upwardFactor:downwardFactor))^^2);
+				speed=min(speed,object.creatureState.speedLimit);
 				auto velocity=speed*newDirection;
 				newPosition=object.position+velocity;
 				object.creatureState.flyingDisplacement+=velocity.z;
@@ -2055,6 +2166,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 }
 
 void updateCreature(B)(ref MovingObject!B object, ObjectState!B state){
+	object.updateCreatureAI(state);
 	object.updateCreatureState(state);
 	object.updateCreaturePosition(state);
 	object.updateCreatureStats(state);
@@ -2541,17 +2653,33 @@ final class ObjectState(B){ // (update logic)
 		update();
 	}
 	void applyCommand(Command command){
-		final switch(command.type) with(CommandType){
-			case moveForward: this.movingObjectById!startMovingForward(command.creature,this); break;
-			case moveBackward: this.movingObjectById!startMovingBackward(command.creature,this); break;
-			case stopMoving: this.movingObjectById!stopMovement(command.creature,this); break;
-			case turnLeft: this.movingObjectById!startTurningLeft(command.creature,this); break;
-			case turnRight: this.movingObjectById!startTurningRight(command.creature,this); break;
-			case stopTurning: this.movingObjectById!(.stopTurning)(command.creature,this); break;
+		static void applyOrder(Command command,ObjectState!B state){
+			assert(command.target.type.among(TargetType.terrain,TargetType.creature,TargetType.building));
+			if(!command.creature){
+				// TODO: apply formation offsets
+				foreach(selectedId;state.getSelection(command.side).creatureIds){
+					command.creature=selectedId;
+					if(selectedId) applyOrder(command,state);
+				}
+			}else{
+				// TODO: add command indicators to scene
+				state.movingObjectById!order(command.creature,command.type,command.target,state,command.side);
+			}
+		}
+		Lswitch:final switch(command.type) with(CommandType){
+			case none: break; // TODO: maybe get rid of null commands
+			case moveForward: this.movingObjectById!startMovingForward(command.creature,this,command.side); break;
+			case moveBackward: this.movingObjectById!startMovingBackward(command.creature,this,command.side); break;
+			case stopMoving: this.movingObjectById!stopMovement(command.creature,this,command.side); break;
+			case turnLeft: this.movingObjectById!startTurningLeft(command.creature,this,command.side); break;
+			case turnRight: this.movingObjectById!startTurningRight(command.creature,this,command.side); break;
+			case stopTurning: this.movingObjectById!(.stopTurning)(command.creature,this,command.side); break;
 			case clearSelection: this.clearSelection(command.side); break;
 			case select: this.select(command.side,command.target.id); break;
 			case selectAll: this.selectAll(command.side,command.target.id); break;
 			case toggleSelection: this.toggleSelection(command.side,command.target.id); break;
+
+			case retreat,move,guard,attack: applyOrder(command,this); break;
 		}
 	}
 	void update(){
@@ -2942,6 +3070,7 @@ enum TargetType{
 }
 
 enum TargetLocation{
+	none,
 	scene,
 	minimap,
 	selectionRoster,
@@ -2987,6 +3116,7 @@ Cursor cursor(B)(ref Target target,int renderSide,ObjectState!B state){
 
 
 enum CommandType{
+	none,
 	moveForward,
 	moveBackward,
 	stopMoving,
@@ -2998,11 +3128,18 @@ enum CommandType{
 	select,
 	selectAll,
 	toggleSelection,
+
+	retreat,
+	move,
+	guard,
+	attack,
 }
 
 struct Command{
 	this(CommandType type,int side,int creature,Target target)in{
 		final switch(type) with(CommandType){
+			case none:
+				assert(0);
 			case moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning:
 				assert(!!creature && target is Target.init);
 				break;
@@ -3012,6 +3149,14 @@ struct Command{
 			case selectAll,select,toggleSelection:
 				assert(!creature && target.type==TargetType.creature);
 				break;
+			case move:
+				assert(target.type==TargetType.terrain);
+				break;
+			case retreat:
+				assert(target.type==TargetType.creature);
+				break;
+			case guard,attack:
+				assert(target.type.among(TargetType.terrain,TargetType.creature,TargetType.building));
 		}
 	}do{
 		this.type=type;
