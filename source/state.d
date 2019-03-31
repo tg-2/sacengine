@@ -268,9 +268,16 @@ float health(B)(ref StaticObject!B object,ObjectState!B state){
 int sideFromBuildingId(B)(int buildingId,ObjectState!B state){
 	return state.buildingById!((ref b)=>b.side,function int(){ assert(0); })(buildingId);
 }
+auto relativeHitboxes(B)(ref StaticObject!B object){
+	return object.sacObject.hitboxes(object.rotation);
+}
+auto hitboxes(B)(ref StaticObject!B object){
+	return object.sacObject.hitboxes(object.rotation).zip(repeat(object.position)).map!(function Vector3f[2](x)=>[x[0][0]+x[1],x[0][1]+x[1]]);
+}
+
 Vector3f[2] relativeHitbox(B)(ref StaticObject!B object){
 	Vector3f[2] result=[Vector3f(float.max,float.max,float.max),Vector3f(-float.max,-float.max,-float.max)];
-	foreach(hitbox;object.sacObject.hitboxes(object.rotation)){
+	foreach(hitbox;object.relativeHitboxes){
 		foreach(i;0..3){
 			result[0][i]=min(result[0][i],hitbox[0][i]);
 			result[1][i]=max(result[1][i],hitbox[1][i]);
@@ -1760,15 +1767,35 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 				targetPosition+=rotate(facingQuaternion(targetFacing), Vector3f(formationOffset.x,formationOffset.y,0));
 				targetPosition.z=state.getHeight(targetPosition);
 				object.moveTo(targetPosition,targetFacing,state);
-			}// TODO: guard area
+			}else goto case CommandType.move;// TODO: guard area
 			break;
 		case CommandType.attack:
 			auto targetId=object.creatureAI.order.target.id;
-			if(!state.isValidId(targetId)||state.objectById!((obj,state)=>obj.health(state))(targetId,state))
+			if(!state.isValidId(targetId)||state.objectById!((obj,state)=>obj.health(state)==0.0f)(targetId,state))
 				targetId=object.creatureAI.order.target.id=0;
 			if(targetId!=0){
-
-			}// TODO: advance
+				auto targetPosition=state.movingObjectById!((obj)=>obj.position, ()=>object.creatureAI.order.target.position)(targetId);
+				auto hitbox=object.meleeHitbox;
+				enum meleeHitboxFactor=0.8f;
+				auto size=hitbox[1]-hitbox[0];
+				auto center=0.5f*(hitbox[0]+hitbox[1]);
+				size*=meleeHitboxFactor;
+				hitbox=[center-0.5f*size,center+0.5f*size];
+				static bool intersects(T)(T obj,Vector3f[2] hitbox){
+					static if(is(T==MovingObject!B)){
+						return boxesIntersect(obj.hitbox,hitbox);
+					}else{
+						foreach(bhitb;obj.hitboxes)
+							if(boxesIntersect(bhitb,hitbox))
+								return true;
+						return false;
+					}
+				}
+				if(state.objectById!intersects(targetId,hitbox)){
+					object.stopMovement(state);
+					object.startMeleeAttacking(state);
+				}else object.moveTo(targetPosition,float.init,state);
+			}else goto case CommandType.move;// TODO: advance
 			break;
 		case CommandType.none: break;
 		default: assert(0); // TODO: compilation error would be better

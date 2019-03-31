@@ -1400,7 +1400,7 @@ final class SacScene: Scene{
 		if(mouse.mouseButtonPressed[MB_RIGHT]&&!eventManager.mouseButtonPressed[MB_RIGHT]){
 			switch(mouse.target.type) with(TargetType){
 				case terrain: state.addCommand(Command(CommandType.move,renderSide,0,mouse.target,cameraFacing)); break;
-				case creature:
+				case creature,building:
 					switch(mouse.target.cursor(renderSide,state.current)){
 						case Cursor.friendlyUnit,Cursor.friendlyBuilding,Cursor.rescuableUnit,Cursor.neutralUnit,Cursor.neutralBuilding:
 							state.addCommand(Command(CommandType.guard,renderSide,0,mouse.target,cameraFacing)); break;
@@ -1441,7 +1441,7 @@ final class SacScene: Scene{
 		static void depleteMana(B)(ref MovingObject!B obj,ObjectState!B state){
 			obj.creatureStats.mana=0.0f;
 		}
-		if(eventManager.keyPressed[KEY_A]) applyToMoving!depleteMana(state.current,camera,mouse.target);
+		if(eventManager.keyPressed[KEY_A] && !eventManager.keyPressed[KEY_LSHIFT]) applyToMoving!depleteMana(state.current,camera,mouse.target);
 		if(eventManager.keyPressed[KEY_T]) applyToMoving!kill(state.current,camera,mouse.target);
 		if(eventManager.keyPressed[KEY_R]) applyToMoving!stun(state.current,camera,mouse.target);
 		static void catapultRandomly(B)(ref MovingObject!B object,ObjectState!B state){
@@ -1490,6 +1490,10 @@ final class SacScene: Scene{
 			}
 			if(eventManager.keyPressed[KEY_LSHIFT]&&eventManager.keyPressed[KEY_SPACE]){
 				auto id=spawn(camera.target,"gard",0,state.current);
+				state.current.addToSelection(renderSide,id);
+			}
+			if(eventManager.keyPressed[KEY_LSHIFT]&&eventManager.keyPressed[KEY_A]){
+				auto id=spawn(camera.target,"lort",0,state.current);
 				state.current.addToSelection(renderSide,id);
 			}
 		}
