@@ -1293,6 +1293,7 @@ final class SacScene: Scene{
 			}
 		}
 		if(camera.target!=0&&!state.current.isValidId(camera.target)) camera.target=0;
+		auto cameraFacing=-degtorad(fpview.camera.turn);
 		if(camera.target==0){
 			if(eventManager.keyPressed[KEY_E]) dir += -forward;
 			if(eventManager.keyPressed[KEY_D]) dir += forward;
@@ -1307,33 +1308,33 @@ final class SacScene: Scene{
 			if(eventManager.keyPressed[KEY_E] && !eventManager.keyPressed[KEY_D]){
 				if(targetMovementState.movement!=MovementDirection.forward){
 					targetMovementState.movement=MovementDirection.forward;
-					state.addCommand(Command(CommandType.moveForward,renderSide,camera.target,Target.init));
+					state.addCommand(Command(CommandType.moveForward,renderSide,camera.target,Target.init,cameraFacing));
 				}
 			}else if(eventManager.keyPressed[KEY_D] && !eventManager.keyPressed[KEY_E]){
 				if(targetMovementState.movement!=MovementDirection.backward){
 					targetMovementState.movement=MovementDirection.backward;
-					state.addCommand(Command(CommandType.moveBackward,renderSide,camera.target,Target.init));
+					state.addCommand(Command(CommandType.moveBackward,renderSide,camera.target,Target.init,cameraFacing));
 				}
 			}else{
 				if(targetMovementState.movement!=MovementDirection.none){
 					targetMovementState.movement=MovementDirection.none;
-					state.addCommand(Command(CommandType.stopMoving,renderSide,camera.target,Target.init));
+					state.addCommand(Command(CommandType.stopMoving,renderSide,camera.target,Target.init,cameraFacing));
 				}
 			}
 			if(eventManager.keyPressed[KEY_S] && !eventManager.keyPressed[KEY_F]){
 				if(targetMovementState.rotation!=RotationDirection.left){
 					targetMovementState.rotation=RotationDirection.left;
-					state.addCommand(Command(CommandType.turnLeft,renderSide,camera.target,Target.init));
+					state.addCommand(Command(CommandType.turnLeft,renderSide,camera.target,Target.init,cameraFacing));
 				}
 			}else if(eventManager.keyPressed[KEY_F] && !eventManager.keyPressed[KEY_S]){
 				if(targetMovementState.rotation!=RotationDirection.right){
 					targetMovementState.rotation=RotationDirection.right;
-					state.addCommand(Command(CommandType.turnRight,renderSide,camera.target,Target.init));
+					state.addCommand(Command(CommandType.turnRight,renderSide,camera.target,Target.init,cameraFacing));
 				}
 			}else{
 				if(targetMovementState.rotation!=RotationDirection.none){
 					targetMovementState.rotation=RotationDirection.none;
-					state.addCommand(Command(CommandType.stopTurning,renderSide,camera.target,Target.init));
+					state.addCommand(Command(CommandType.stopTurning,renderSide,camera.target,Target.init,cameraFacing));
 				}
 			}
 			positionCamera();
@@ -1372,7 +1373,7 @@ final class SacScene: Scene{
 							lastSelectedX=mouse.x;
 							lastSelectedY=mouse.y;
 						}
-						state.addCommand(Command(type,renderSide,0,mouse.target));
+						state.addCommand(Command(type,renderSide,0,mouse.target,cameraFacing));
 						if(type==CommandType.select){
 							lastSelectedId=mouse.target.id;
 							lastSelectedFrame=state.current.frame;
@@ -1398,7 +1399,17 @@ final class SacScene: Scene{
 		}
 		if(mouse.mouseButtonPressed[MB_RIGHT]&&!eventManager.mouseButtonPressed[MB_RIGHT]){
 			switch(mouse.target.type) with(TargetType){
-				case terrain: state.addCommand(Command(CommandType.move,renderSide,0,mouse.target)); break;
+				case terrain: state.addCommand(Command(CommandType.move,renderSide,0,mouse.target,cameraFacing)); break;
+				case creature:
+					switch(mouse.target.cursor(renderSide,state.current)){
+						case Cursor.friendlyUnit,Cursor.friendlyBuilding,Cursor.rescuableUnit,Cursor.neutralUnit,Cursor.neutralBuilding:
+							state.addCommand(Command(CommandType.guard,renderSide,0,mouse.target,cameraFacing)); break;
+						case Cursor.enemyUnit,Cursor.enemyBuilding:
+							state.addCommand(Command(CommandType.attack,renderSide,0,mouse.target,cameraFacing)); break;
+						default:
+							break;
+					}
+					break;
 				default: break;
 			}
 		}
