@@ -1252,6 +1252,7 @@ final class SacScene: Scene{
 	override void onMouseButtonUp(int button){ mouseButtonUp[button]+=1; }
 
 	void control(double dt){
+		auto oldMouseStatus=mouse.status;
 		scope(success){
 			keyDown[]=0;
 			keyUp[]=0;
@@ -1376,61 +1377,62 @@ final class SacScene: Scene{
 		}
 		mouse.additiveSelect=eventManager.keyPressed[KEY_LSHIFT];
 		selectionUpdated=false;
-		foreach(_;0..mouseButtonUp[MB_LEFT]){
-			final switch(mouse.status){
-				case Mouse.Status.standard:
-					if(mouse.target.type==TargetType.creature){
-						auto type=mouse.additiveSelect?CommandType.toggleSelection:CommandType.select;
-						enum doubleClickDelay=0.3f; // in seconds
-						enum delta=targetCacheDelta;
-						if(type==CommandType.select&&(lastSelectedId==mouse.target.id||
-						                              abs(lastSelectedX-mouse.x)<delta &&
-						                              abs(lastSelectedY-mouse.y)<delta) &&
-						   state.current.frame-lastSelectedFrame<=doubleClickDelay*updateFPS){
-							type=CommandType.selectAll;
-							lastSelectedId=0;
-							lastSelectedFrame=state.current.frame;
-							lastSelectedX=mouse.x;
-							lastSelectedY=mouse.y;
+		if(oldMouseStatus==mouse.status){
+			foreach(_;0..mouseButtonUp[MB_LEFT]){
+				final switch(mouse.status){
+					case Mouse.Status.standard:
+						if(mouse.target.type==TargetType.creature){
+							auto type=mouse.additiveSelect?CommandType.toggleSelection:CommandType.select;
+							enum doubleClickDelay=0.3f; // in seconds
+							enum delta=targetCacheDelta;
+							if(type==CommandType.select&&(lastSelectedId==mouse.target.id||
+							                              abs(lastSelectedX-mouse.x)<delta &&
+							                              abs(lastSelectedY-mouse.y)<delta) &&
+							   state.current.frame-lastSelectedFrame<=doubleClickDelay*updateFPS){
+								type=CommandType.selectAll;
+								lastSelectedId=0;
+								lastSelectedFrame=state.current.frame;
+								lastSelectedX=mouse.x;
+								lastSelectedY=mouse.y;
+							}
+							state.addCommand(Command(type,renderSide,0,mouse.target,cameraFacing));
+							if(type==CommandType.select){
+								lastSelectedId=mouse.target.id;
+								lastSelectedFrame=state.current.frame;
+							}
 						}
-						state.addCommand(Command(type,renderSide,0,mouse.target,cameraFacing));
-						if(type==CommandType.select){
-							lastSelectedId=mouse.target.id;
-							lastSelectedFrame=state.current.frame;
+						break;
+					case Mouse.Status.dragging:
+						// do nothing
+						break;
+					case Mouse.Status.rectangleSelect:
+						mouse.status=Mouse.Status.standard;
+						TargetLocation loc;
+						final switch(mouse.loc){
+							case Mouse.Location.scene: loc=TargetLocation.scene; break;
+							case Mouse.Location.minimap: loc=TargetLocation.minimap; break;
+							case Mouse.Location.selectionRoster,Mouse.Location.spellIcons: assert(0);
 						}
-					}
-					break;
-				case Mouse.Status.dragging:
-					// do nothing
-					break;
-				case Mouse.Status.rectangleSelect:
-					// TODO
-					mouse.status=Mouse.Status.standard;
-					TargetLocation loc;
-					final switch(mouse.loc){
-						case Mouse.Location.scene: loc=TargetLocation.scene; break;
-						case Mouse.Location.minimap: loc=TargetLocation.minimap; break;
-						case Mouse.Location.selectionRoster,Mouse.Location.spellIcons: assert(0);
-					}
-					state.setSelection(renderSide,renderedSelection,loc);
-					selectionUpdated=true;
-					break;
+						state.setSelection(renderSide,renderedSelection,loc);
+						selectionUpdated=true;
+						break;
+				}
 			}
-		}
-		foreach(_;0..mouseButtonUp[MB_RIGHT]){
-			switch(mouse.target.type) with(TargetType){
-				case terrain: state.addCommand(Command(CommandType.move,renderSide,0,mouse.target,cameraFacing)); break;
-				case creature,building:
-					switch(mouse.target.cursor(renderSide,state.current)){
-						case Cursor.friendlyUnit,Cursor.friendlyBuilding,Cursor.rescuableUnit,Cursor.neutralUnit,Cursor.neutralBuilding:
-							state.addCommand(Command(CommandType.guard,renderSide,0,mouse.target,cameraFacing)); break;
-						case Cursor.enemyUnit,Cursor.enemyBuilding:
-							state.addCommand(Command(CommandType.attack,renderSide,0,mouse.target,cameraFacing)); break;
-						default:
-							break;
-					}
-					break;
-				default: break;
+			foreach(_;0..mouseButtonUp[MB_RIGHT]){
+				switch(mouse.target.type) with(TargetType){
+					case terrain: state.addCommand(Command(CommandType.move,renderSide,0,mouse.target,cameraFacing)); break;
+					case creature,building:
+						switch(mouse.target.cursor(renderSide,state.current)){
+							case Cursor.friendlyUnit,Cursor.friendlyBuilding,Cursor.rescuableUnit,Cursor.neutralUnit,Cursor.neutralBuilding:
+								state.addCommand(Command(CommandType.guard,renderSide,0,mouse.target,cameraFacing)); break;
+							case Cursor.enemyUnit,Cursor.enemyBuilding:
+								state.addCommand(Command(CommandType.attack,renderSide,0,mouse.target,cameraFacing)); break;
+							default:
+								break;
+						}
+						break;
+					default: break;
+				}
 			}
 		}
 		if(keyDown[KEY_K]){

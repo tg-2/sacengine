@@ -62,8 +62,8 @@ struct CreatureState{
 	auto movementDirection=MovementDirection.none;
 	auto rotationDirection=RotationDirection.none;
 	auto fallingVelocity=Vector3f(0.0f,0.0f,0.0f);
-	auto speedLimit=float.infinity; // in meters _per frame_
-	auto rotationSpeedLimit=float.infinity; // in radians _per frame_
+	auto speedLimit=float.infinity; // for xy-plane only, in meters _per frame_
+	auto rotationSpeedLimit=float.infinity; // for xy-plane only, in radians _per frame_
 	int timer; // used for: constraining revive time to be at least 5s
 }
 
@@ -1145,7 +1145,11 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 		case CreatureMode.idle:
 			object.creatureState.timer=0;
 			bool isDamaged=object.isDamaged;
-			if(object.creatureState.movement!=CreatureMovement.flying) object.frame=0;
+			if(object.creatureState.movement!=CreatureMovement.flying){
+				if(object.animationState.among(AnimationState.run,AnimationState.walk) && object.creatureState.timer<0.1f*updateFPS)
+					break;
+				object.frame=0;
+			}
 			if(object.frame==0){
 				if(isDamaged&&sacObject.hasAnimationState(AnimationState.stance2))
 					object.animationState=AnimationState.stance2;
@@ -1671,15 +1675,19 @@ void startTurningRight(B)(ref MovingObject!B object,ObjectState!B state,int side
 	object.setTurning(RotationDirection.right,state,side);
 }
 
-void face(B)(ref MovingObject!B object,float facing,ObjectState!B state){
+bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state){
 	auto angle=facing-object.creatureState.facing;
 	while(angle<-cast(float)PI) angle+=2*cast(float)PI;
 	while(angle>cast(float)PI) angle-=2*cast(float)PI;
-	auto threshold=0.01f*object.creatureStats.rotationSpeed/updateFPS;
+	enum threshold=1e-3;
 	object.creatureState.rotationSpeedLimit=rotationSpeedLimitFactor*abs(angle);
 	if(angle>threshold) object.startTurningLeft(state);
 	else if(angle<-threshold) object.startTurningRight(state);
-	else object.stopTurning(state);
+	else{
+		object.stopTurning(state);
+		return true;
+	}
+	return false;
 }
 
 void turnToFaceTowards(B)(ref MovingObject!B object,Vector3f position,ObjectState!B state){
@@ -1697,9 +1705,9 @@ bool movingForwardGetsCloserTo(B)(ref MovingObject!B object,Vector3f position,fl
 	angle-=object.creatureState.facing;
 	while(angle<-cast(float)PI) angle+=2*cast(float)PI;
 	while(angle>cast(float)PI) angle-=2*cast(float)PI;
-	if(speed==0.0f||direction.length>2.1f*2.0f*cast(float)PI*abs(angle)/sqrt(rotationSpeed)) return dot(direction.normalized,forward)>0.7f;
+	if(speed==0.0f||direction.length>2.2f*speed/rotationSpeed*angle/(2.0f*cast(float)PI)) return dot(direction.normalized,forward)>0.7f;
 	auto limit=rotationSpeedLimitFactor*abs(angle);
-	return limit<1e-4;
+	return limit<1e-3;
 }
 
 void order(B)(ref MovingObject!B object,Order order,ObjectState!B state,int side=-1){
@@ -1715,22 +1723,16 @@ void clearOrder(B)(ref MovingObject!B object,ObjectState!B state){
 
 bool moveTo(B)(ref MovingObject!B object,Vector3f targetPosition,float targetFacing,ObjectState!B state){
 	auto speed=object.speed(state)/updateFPS; // TODO: object.movementSpeed
-	if((object.position-targetPosition).lengthsqr>(2.0f*speed)^^2){
+	if((object.position.xy-targetPosition.xy).lengthsqr>(2.0f*speed)^^2){
 		object.turnToFaceTowards(targetPosition,state);
 		if(object.movingForwardGetsCloserTo(targetPosition,speed,state)){
 			object.startMovingForward(state);
-			object.creatureState.speedLimit=speedLimitFactor*(object.position-targetPosition).length;
+			object.creatureState.speedLimit=speedLimitFactor*(object.position.xy-targetPosition.xy).length;
 		}else object.stopMovement(state);
 	}else{
 		object.stopMovement(state);
-		auto angle=targetFacing-object.creatureState.facing;
-		while(angle<-cast(float)PI) angle+=2*cast(float)PI;
-		while(angle>cast(float)PI) angle-=2*cast(float)PI;
-		if(targetFacing is float.init||abs(angle)<1e-4){
-		Lstop:
-			object.stopTurning(state); // TODO: rotate to hit target facing
+		if(targetFacing is float.init||object.face(targetFacing,state))
 			return true;
-		}else object.face(targetFacing,state);
 	}
 	return false;
 }
@@ -1746,7 +1748,7 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 				object.turnToFaceTowards(targetPosition,state);
 				if((object.position-targetPosition).lengthsqr>retreatDistance^^2 && object.movingForwardGetsCloserTo(targetPosition,0.0f,state)){
 					object.startMovingForward(state);
-					object.creatureState.speedLimit=speedLimitFactor*max(0.0f,(object.position-targetPosition).length-retreatDistance);
+					object.creatureState.speedLimit=speedLimitFactor*max(0.0f,(object.position.xy-targetPosition.xy).length-retreatDistance);
 				}else object.stopMovement(state);
 			}else{
 				object.clearOrder(state);
@@ -1817,12 +1819,19 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 	final switch(object.creatureState.mode){
 		case CreatureMode.idle, CreatureMode.moving:
 			auto oldMode=object.creatureState.mode;
-			object.creatureState.mode=object.creatureState.movementDirection==MovementDirection.none?CreatureMode.idle:CreatureMode.moving;
+			auto newMode=object.creatureState.movementDirection==MovementDirection.none?CreatureMode.idle:CreatureMode.moving;
+			object.creatureState.timer+=1;
 			object.frame+=1;
 			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
 				object.frame=0;
+				object.creatureState.mode=newMode;
 				object.setCreatureState(state);
-			}else if(object.creatureState.mode!=oldMode){
+			}else if(newMode!=oldMode && object.creatureState.timer>=0.1f*updateFPS){
+				object.creatureState.mode=newMode;
+				object.setCreatureState(state);
+			}
+			if(oldMode==newMode&&newMode==CreatureMode.idle && object.animationState.among(AnimationState.run,AnimationState.walk) && object.creatureState.timer>=0.1f*updateFPS){
+				object.animationState=AnimationState.stance1;
 				object.setCreatureState(state);
 			}
 			break;
@@ -2132,11 +2141,8 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 					auto maxFactor=object.creatureStats.maxDownwardSpeedFactor;
 					if(newDirection.lengthsqr>maxFactor*maxFactor) newDirection=maxFactor*newDirection.normalized;
 				}
-				auto speedFactor=newDirection.length;
-				speed*=speedFactor;
-				newDirection=newDirection.normalized;
-				speed=min(speed,object.creatureState.speedLimit);
-				newPosition=state.moveOnGround(object.position,speed*newDirection);
+				auto velocity=limitLengthInPlane(newDirection*speed,object.creatureState.speedLimit);
+				newPosition=state.moveOnGround(object.position,velocity);
 			}
 			final switch(object.creatureState.movementDirection){
 				case MovementDirection.none:
@@ -2179,8 +2185,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 				auto downwardFactor=object.creatureStats.downwardFlyingSpeedFactor;
 				auto newDirection=Vector3f(direction.x,direction.y,direction.z+upwardSpeed).normalized;
 				speed*=sqrt(newDirection.x^^2+newDirection.y^^2+(newDirection.z*(newDirection.z>0?upwardFactor:downwardFactor))^^2);
-				speed=min(speed,object.creatureState.speedLimit);
-				auto velocity=speed*newDirection;
+				auto velocity=limitLengthInPlane(speed*newDirection,object.creatureState.speedLimit);
 				newPosition=object.position+velocity;
 				object.creatureState.flyingDisplacement+=velocity.z;
 				if(onGround){
@@ -2848,10 +2853,13 @@ final class ObjectState(B){ // (update logic)
 				auto targetScale=Vector2f(0.0f,0.0f);
 				if(command.target.id!=0){
 					static getScale(T)(ref T obj){
-						static if(is(T==MovingObject!B)) auto hitbox=obj.sacObject.largeHitbox(Quaternionf.identity(),AnimationState.stance1,0);
-						else static if(is(T==StaticObject!B)) auto hitbox=obj.hitbox;
-						else auto hitbox=Vector2f(0.0f,0.0f);
-						return hitbox[1].xy-hitbox[0].xy;
+						static if(is(T==MovingObject!B)){
+							auto hitbox=obj.sacObject.largeHitbox(Quaternionf.identity(),AnimationState.stance1,0);
+							return hitbox[1].xy-hitbox[0].xy;
+						}else static if(is(T==StaticObject!B)){
+							auto hitbox=obj.hitbox;
+							return 0.5f*(hitbox[1].xy-hitbox[0].xy);
+						}else return 0.0f;
 					}
 					if(command.type!=CommandType.attack) targetScale=state.objectById!((obj)=>getScale(obj))(command.target.id);
 					if(selection.creatureIds[].canFind(command.target.id))

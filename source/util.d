@@ -57,6 +57,13 @@ Quaternionf limitRotation(Quaternionf q, float maxAbsAngle){
 	return rotationQuaternion(q.xyz/len,angle); // dlib's rotationAxis is wrong
 }
 
+Vector3f limitLengthInPlane(Vector3f v,float len){
+	auto plen=v.xy.length;
+	if(plen<=len) return v;
+	Vector2f k=v.xy*(len/plen);
+	return Vector3f(k.x,k.y,v.z);
+}
+
 struct Transformation{
 	Quaternionf rotation;
 	Vector3f offset;
