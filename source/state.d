@@ -2799,6 +2799,7 @@ final class ObjectState(B){ // (update logic)
 		update();
 	}
 	void applyCommand(Command command){
+		if(!command.isApplicable(this)) return;
 		static void applyOrder(Command command,ObjectState!B state,bool updateFormation=false,Vector2f formationOffset=Vector2f(0.0f,0.0f)){
 			assert(command.target.type.among(TargetType.terrain,TargetType.creature,TargetType.building));
 			if(!command.creature){
@@ -2828,7 +2829,7 @@ final class ObjectState(B){ // (update logic)
 						else auto hitbox=Vector2f(0.0f,0.0f);
 						return hitbox[1].xy-hitbox[0].xy;
 					}
-					targetScale=state.objectById!((obj)=>getScale(obj))(command.target.id);
+					if(command.type!=CommandType.attack) targetScale=state.objectById!((obj)=>getScale(obj))(command.target.id);
 					if(selection.creatureIds[].canFind(command.target.id))
 						state.movingObjectById!((ref obj,state)=>obj.clearOrder(state))(command.target.id,state);
 				}
@@ -3364,6 +3365,11 @@ struct Command{
 	Target target;
 	float targetFacing;
 	Formation formation=Formation.init;
+
+	bool isApplicable(B)(ObjectState!B state){
+		return (creature==0||state.isValidId(creature)) &&
+			(target.id==0||state.isValidId(target.id));
+	}
 }
 
 final class GameState(B){
