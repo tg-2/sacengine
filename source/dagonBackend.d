@@ -1242,14 +1242,35 @@ final class SacScene: Scene{
 		positionCamera();
 	}
 	float speed = 100.0f;
+
+	int[512] keyDown,keyUp;
+	int[255] mouseButtonDown,mouseButtonUp;
+
+	override void onKeyDown(int key){ keyDown[key]+=1; }
+	override void onKeyUp(int key){ keyUp[key]+=1; }
+	override void onMouseButtonDown(int button){ mouseButtonDown[button]+=1; }
+	override void onMouseButtonUp(int button){ mouseButtonUp[button]+=1; }
+
 	void control(double dt){
+		scope(success){
+			keyDown[]=0;
+			keyUp[]=0;
+			mouseButtonDown[]=0;
+			mouseButtonUp[]=0;
+		}
 		Vector3f forward = fpview.camera.worldTrans.forward;
 		Vector3f right = fpview.camera.worldTrans.right;
 		Vector3f dir = Vector3f(0, 0, 0);
 		//if(eventManager.keyPressed[KEY_X]) dir += Vector3f(1,0,0);
 		//if(eventManager.keyPressed[KEY_Y]) dir += Vector3f(0,1,0);
 		//if(eventManager.keyPressed[KEY_Z]) dir += Vector3f(0,0,1);
-		fpview.control();
+		if(fpview.active){
+			float turn_m =  (eventManager.mouseRelX) * fpview.mouseFactor;
+			float pitch_m = (eventManager.mouseRelY) * fpview.mouseFactor;
+
+			fpview.camera.pitch += pitch_m;
+			fpview.camera.turn += turn_m;
+		}
 		if(mouse.status==Mouse.Status.standard){
 			if(isOnSelectionRoster(Vector2f(mouse.x,mouse.y))) mouse.loc=Mouse.Location.selectionRoster;
 			else if(isOnMinimap(Vector2f(mouse.x,mouse.y))) mouse.loc=Mouse.Location.minimap;
@@ -1339,12 +1360,11 @@ final class SacScene: Scene{
 			}
 			positionCamera();
 		}
-		if(!mouse.mouseButtonPressed[MB_LEFT]){
-			if(eventManager.mouseButtonPressed[MB_LEFT]){
-				mouse.leftButtonX=mouse.x;
-				mouse.leftButtonY=mouse.y;
-			}
-		}else if(mouse.status.among(Mouse.Status.standard,Mouse.Status.rectangleSelect)){
+		if(mouseButtonDown[MB_LEFT]!=0){
+			mouse.leftButtonX=mouse.x;
+			mouse.leftButtonY=mouse.y;
+		}
+		if(mouse.status.among(Mouse.Status.standard,Mouse.Status.rectangleSelect)){
 			if(eventManager.mouseButtonPressed[MB_LEFT]){
 				enum rectangleThreshold=3.0f;
 				if(abs(mouse.x-mouse.leftButtonX)>=rectangleThreshold||abs(mouse.y-mouse.leftButtonY)>=rectangleThreshold){
@@ -1356,7 +1376,7 @@ final class SacScene: Scene{
 		}
 		mouse.additiveSelect=eventManager.keyPressed[KEY_LSHIFT];
 		selectionUpdated=false;
-		if(mouse.mouseButtonPressed[MB_LEFT]&&!eventManager.mouseButtonPressed[MB_LEFT]){
+		foreach(_;0..mouseButtonUp[MB_LEFT]){
 			final switch(mouse.status){
 				case Mouse.Status.standard:
 					if(mouse.target.type==TargetType.creature){
@@ -1397,7 +1417,7 @@ final class SacScene: Scene{
 					break;
 			}
 		}
-		if(mouse.mouseButtonPressed[MB_RIGHT]&&!eventManager.mouseButtonPressed[MB_RIGHT]){
+		foreach(_;0..mouseButtonUp[MB_RIGHT]){
 			switch(mouse.target.type) with(TargetType){
 				case terrain: state.addCommand(Command(CommandType.move,renderSide,0,mouse.target,cameraFacing)); break;
 				case creature,building:
@@ -1413,12 +1433,11 @@ final class SacScene: Scene{
 				default: break;
 			}
 		}
-		mouse.mouseButtonPressed=eventManager.mouseButtonPressed[0..MB_RIGHT+1];
-		if(eventManager.keyPressed[KEY_K]){
+		if(keyDown[KEY_K]){
 			fpview.active=false;
 			mouse.visible=true;
 		}
-		if(eventManager.keyPressed[KEY_L]){
+		if(keyDown[KEY_L]){
 			fpview.active=true;
 			mouse.visible=false;
 			fpview.mouseFactor=2.0f;
@@ -1450,16 +1469,16 @@ final class SacScene: Scene{
 			//auto velocity=Vector3f(0.0f,0.0f,25.0f);
 			object.catapult(velocity,state);
 		}
-		if(eventManager.keyPressed[KEY_W]) applyToMoving!catapultRandomly(state.current,camera,mouse.target);
-		if(eventManager.keyPressed[KEY_RETURN]) applyToMoving!immediateRevive(state.current,camera,mouse.target);
-		if(eventManager.keyPressed[KEY_BACKSPACE]){
+		foreach(_;0..keyDown[KEY_W]) applyToMoving!catapultRandomly(state.current,camera,mouse.target);
+		foreach(_;0..keyDown[KEY_RETURN]) applyToMoving!immediateRevive(state.current,camera,mouse.target);
+		foreach(_;0..keyDown[KEY_BACKSPACE]){
 			if(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK]){
 				applyToMoving!fastRevive(state.current,camera,mouse.target);
 			}else applyToMoving!revive(state.current,camera,mouse.target);
 		}
-		if(eventManager.keyPressed[KEY_G]) applyToMoving!startFlying(state.current,camera,mouse.target);
-		if(eventManager.keyPressed[KEY_V]) applyToMoving!land(state.current,camera,mouse.target);
-		if(eventManager.keyPressed[KEY_SPACE] && !eventManager.keyPressed[KEY_LSHIFT])
+		foreach(_;0..keyDown[KEY_G]) applyToMoving!startFlying(state.current,camera,mouse.target);
+		foreach(_;0..keyDown[KEY_V]) applyToMoving!land(state.current,camera,mouse.target);
+		if(!eventManager.keyPressed[KEY_LSHIFT]) foreach(_;0..keyDown[KEY_SPACE])
 			applyToMoving!startMeleeAttacking(state.current,camera,mouse.target);
 		// TODO: enabling the following destroys ESDF controls. Template-related compiler bug?
 		/+if(eventManager.keyPressed[KEY_UP] && !eventManager.keyPressed[KEY_DOWN]){
@@ -1473,28 +1492,33 @@ final class SacScene: Scene{
 			applyToMoving!startTurningRight(state.current,camera,mouse.target);
 		}else applyToMoving!stopTurning(state.current,camera,mouse.target);+/
 
-		if(eventManager.keyPressed[KEY_M]&&mouse.target.type==TargetType.creature&&mouse.target.id)
-			focusCamera(mouse.target.id);
-		if(eventManager.keyPressed[KEY_N]) camera.target=0;
+		foreach(_;0..keyDown[KEY_M])
+			if(mouse.target.type==TargetType.creature&&mouse.target.id)
+				focusCamera(mouse.target.id);
+		foreach(_;0..keyDown[KEY_N]) camera.target=0;
 
-		if(eventManager.keyPressed[KEY_Y]) showHitboxes=true;
-		if(eventManager.keyPressed[KEY_U]) showHitboxes=false;
+		foreach(_;0..keyDown[KEY_Y]) showHitboxes=true;
+		foreach(_;0..keyDown[KEY_U]) showHitboxes=false;
 
-		if(eventManager.keyPressed[KEY_H]) state.commit();
-		if(eventManager.keyPressed[KEY_B]) state.rollback();
+		foreach(_;0..keyDown[KEY_H]) state.commit();
+		foreach(_;0..keyDown[KEY_B]) state.rollback();
 
 		if(camera.target){
-			if(eventManager.keyPressed[KEY_Q]){
+			foreach(_;0..keyDown[KEY_Q]){
 				auto id=spawn(camera.target,"oham",0,state.current);
 				state.current.addToSelection(renderSide,id);
 			}
-			if(eventManager.keyPressed[KEY_LSHIFT]&&eventManager.keyPressed[KEY_SPACE]){
-				auto id=spawn(camera.target,"gard",0,state.current);
-				state.current.addToSelection(renderSide,id);
+			if(eventManager.keyPressed[KEY_LSHIFT]){
+				foreach(_;0..keyDown[KEY_SPACE]){
+					auto id=spawn(camera.target,"gard",0,state.current);
+					state.current.addToSelection(renderSide,id);
+				}
 			}
-			if(eventManager.keyPressed[KEY_LSHIFT]&&eventManager.keyPressed[KEY_A]){
-				auto id=spawn(camera.target,"lort",0,state.current);
-				state.current.addToSelection(renderSide,id);
+			if(eventManager.keyPressed[KEY_LSHIFT]){
+				foreach(_;0..keyDown[KEY_A]){
+					auto id=spawn(camera.target,"lort",0,state.current);
+					state.current.addToSelection(renderSide,id);
+				}
 			}
 		}
 	}
@@ -1607,7 +1631,6 @@ final class SacScene: Scene{
 		Location loc;
 		@property bool onMinimap(){ return loc==Location.minimap; }
 		@property bool onSelectionRoster(){ return loc==Location.selectionRoster; }
-		bool[1+3] mouseButtonPressed=[false,false,false,false]; // TODO: react to events instead
 	}
 	Mouse mouse;
 	SacCursor!DagonBackend sacCursor;
