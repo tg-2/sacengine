@@ -147,6 +147,9 @@ struct MovingObject(B){
 		this(sacObject,id,position,rotation,animationState,frame,creatureState,creatureStats,side);
 	}
 }
+int side(B)(ref MovingObject!B object,ObjectState!B state){
+	return object.side;
+}
 float health(B)(ref MovingObject!B object){
 	return object.creatureStats.health;
 }
@@ -162,11 +165,11 @@ float speedOnGround(B)(ref MovingObject!B object,ObjectState!B state){
 float speedInAir(B)(ref MovingObject!B object,ObjectState!B state){
 	return object.creatureStats.movementSpeed(true);
 }
-float speed(B)(ref MovingObject!B obj,ObjectState!B state){
-	return object.creatureState.movement==CreatureMovement.flying?object.speedOnGround(state):object.speedInAir(state);
+float speed(B)(ref MovingObject!B object,ObjectState!B state){
+	return object.creatureState.movement==CreatureMovement.flying?object.speedInAir(state):object.speedOnGround(state);
 }
 bool canSelect(B)(ref MovingObject!B obj,int side,ObjectState!B state){
-	return obj.side==side&&!obj.sacObject.isWizard&&obj.creatureState.mode!=CreatureMode.dead;
+	return obj.side==side/+&&!obj.sacObject.isWizard+/&&obj.creatureState.mode!=CreatureMode.dead;
 }
 bool canOrder(B)(ref MovingObject!B obj,int side,ObjectState!B state){
 	return (side==-1||obj.side==side)&&obj.creatureState.mode!=CreatureMode.dead;
@@ -267,6 +270,9 @@ float health(B)(ref StaticObject!B object,ObjectState!B state){
 }
 int sideFromBuildingId(B)(int buildingId,ObjectState!B state){
 	return state.buildingById!((ref b)=>b.side,function int(){ assert(0); })(buildingId);
+}
+int side(B)(ref StaticObject!B object,ObjectState!B state){
+	return sideFromBuildingId(object.buildingId,state);
 }
 auto relativeHitboxes(B)(ref StaticObject!B object){
 	return object.sacObject.hitboxes(object.rotation);
@@ -1137,6 +1143,7 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 	auto sacObject=object.sacObject;
 	final switch(object.creatureState.mode){
 		case CreatureMode.idle:
+			object.creatureState.timer=0;
 			bool isDamaged=object.isDamaged;
 			if(object.creatureState.movement!=CreatureMovement.flying) object.frame=0;
 			if(object.frame==0){
@@ -1185,8 +1192,10 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 						else object.startIdling(state);
 						return;
 					}
-					object.frame=0;
-					object.animationState=AnimationState.run;
+					if(object.animationState!=AnimationState.run){
+						object.frame=0;
+						object.animationState=AnimationState.run;
+					}
 					break;
 				case flying:
 					if(object.frame==0||object.animationState==AnimationState.hover&&sacObject.seamlessFlyAndHover)
@@ -1553,7 +1562,8 @@ bool canDamage(B)(ref MovingObject!B object,ObjectState!B state){
 
 void dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B attacker,ObjectState!B state){
 	if(!object.canDamage(state)) return;
-	object.health=max(0.0f,object.health-damage);
+	auto actualDamage=min(object.health,damage*state.sideDamageMultiplier(attacker.side,object.side));
+	object.health=object.health-actualDamage;
 	if(object.creatureStats.flags&Flags.cannotDestroyKill)
 		object.health=max(object.health,1.0f);
 	// TODO: give xp to attacker
@@ -1570,7 +1580,8 @@ bool canDamage(B)(ref Building!B building,ObjectState!B state){
 
 void dealDamage(B)(ref Building!B building,float damage,ref MovingObject!B attacker,ObjectState!B state){
 	if(!building.canDamage(state)) return;
-	building.health=max(0.0f,building.health-damage);
+	auto actualDamage=min(building.health,damage*state.sideDamageMultiplier(attacker.side,building.side));
+	building.health-=actualDamage;
 	if(building.flags&Flags.cannotDestroyKill)
 		building.health=max(building.health,1.0f);
 	// TODO: give xp to attacker
@@ -1630,6 +1641,7 @@ void setMovement(B)(ref MovingObject!B object,MovementDirection direction,Object
 	if(object.creatureState.movementDirection==direction)
 		return;
 	object.creatureState.movementDirection=direction;
+	if(direction==MovementDirection.none) object.creatureState.speedLimit=float.infinity;
 	if(object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving))
 		object.setCreatureState(state);
 }
@@ -1647,6 +1659,7 @@ void setTurning(B)(ref MovingObject!B object,RotationDirection direction,ObjectS
 	if(!object.canOrder(side,state)) return;
 	// TODO: check for conditions that immobilze a creature, such as vines or spell casting
 	object.creatureState.rotationDirection=direction;
+	if(direction==RotationDirection.none) object.creatureState.rotationSpeedLimit=float.infinity;
 }
 void stopTurning(B)(ref MovingObject!B object,ObjectState!B state,int side=-1){
 	object.setTurning(RotationDirection.none,state,side);
@@ -1660,16 +1673,13 @@ void startTurningRight(B)(ref MovingObject!B object,ObjectState!B state,int side
 
 void face(B)(ref MovingObject!B object,float facing,ObjectState!B state){
 	auto angle=facing-object.creatureState.facing;
-	while(angle<-PI) angle+=2*PI;
-	while(angle>PI) angle-=2*PI;
+	while(angle<-cast(float)PI) angle+=2*cast(float)PI;
+	while(angle>cast(float)PI) angle-=2*cast(float)PI;
 	auto threshold=0.01f*object.creatureStats.rotationSpeed/updateFPS;
 	object.creatureState.rotationSpeedLimit=rotationSpeedLimitFactor*abs(angle);
 	if(angle>threshold) object.startTurningLeft(state);
 	else if(angle<-threshold) object.startTurningRight(state);
-	else{
-		object.creatureState.rotationSpeedLimit=float.max;
-		object.stopTurning(state);
-	}
+	else object.stopTurning(state);
 }
 
 void turnToFaceTowards(B)(ref MovingObject!B object,Vector3f position,ObjectState!B state){
@@ -1685,11 +1695,11 @@ bool movingForwardGetsCloserTo(B)(ref MovingObject!B object,Vector3f position,fl
 	auto forward=Vector2f(-sin(facing),cos(facing));
 	auto angle=atan2(-direction.x,direction.y);
 	angle-=object.creatureState.facing;
-	while(angle<-PI) angle+=2*PI;
-	while(angle>PI) angle-=2*PI;
+	while(angle<-cast(float)PI) angle+=2*cast(float)PI;
+	while(angle>cast(float)PI) angle-=2*cast(float)PI;
 	if(speed==0.0f||direction.length>2.1f*2.0f*cast(float)PI*abs(angle)/sqrt(rotationSpeed)) return dot(direction.normalized,forward)>0.7f;
 	auto limit=rotationSpeedLimitFactor*abs(angle);
-	return limit<0.001f;
+	return limit<1e-4;
 }
 
 void order(B)(ref MovingObject!B object,Order order,ObjectState!B state,int side=-1){
@@ -1704,22 +1714,18 @@ void clearOrder(B)(ref MovingObject!B object,ObjectState!B state){
 }
 
 bool moveTo(B)(ref MovingObject!B object,Vector3f targetPosition,float targetFacing,ObjectState!B state){
-	auto speed=object.creatureStats.movementSpeed(object.creatureState.movement==CreatureMovement.flying)/updateFPS; // TODO: object.movementSpeed
-	if((object.position-targetPosition).lengthsqr>speed^^2){
+	auto speed=object.speed(state)/updateFPS; // TODO: object.movementSpeed
+	if((object.position-targetPosition).lengthsqr>(2.0f*speed)^^2){
 		object.turnToFaceTowards(targetPosition,state);
 		if(object.movingForwardGetsCloserTo(targetPosition,speed,state)){
 			object.startMovingForward(state);
 			object.creatureState.speedLimit=speedLimitFactor*(object.position-targetPosition).length;
-		}else{
-			object.stopMovement(state);
-			object.creatureState.speedLimit=float.infinity;
-		}
+		}else object.stopMovement(state);
 	}else{
 		object.stopMovement(state);
-		object.creatureState.speedLimit=float.infinity;
 		auto angle=targetFacing-object.creatureState.facing;
-		while(angle<-PI) angle+=2*PI;
-		while(angle>PI) angle-=2*PI;
+		while(angle<-cast(float)PI) angle+=2*cast(float)PI;
+		while(angle>cast(float)PI) angle-=2*cast(float)PI;
 		if(targetFacing is float.init||abs(angle)<1e-4){
 		Lstop:
 			object.stopTurning(state); // TODO: rotate to hit target facing
@@ -1730,7 +1736,7 @@ bool moveTo(B)(ref MovingObject!B object,Vector3f targetPosition,float targetFac
 }
 
 enum retreatDistance=9.0f;
-enum speedLimitFactor=1.0f;
+enum speedLimitFactor=0.5f;
 enum rotationSpeedLimitFactor=1.0f;
 void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 	switch(object.creatureAI.order.command){
@@ -1741,10 +1747,7 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 				if((object.position-targetPosition).lengthsqr>retreatDistance^^2 && object.movingForwardGetsCloserTo(targetPosition,0.0f,state)){
 					object.startMovingForward(state);
 					object.creatureState.speedLimit=speedLimitFactor*max(0.0f,(object.position-targetPosition).length-retreatDistance);
-				}else{
-					object.stopMovement(state);
-					object.creatureState.speedLimit=float.infinity;
-				}
+				}else object.stopMovement(state);
 			}else{
 				object.clearOrder(state);
 			}
@@ -1761,12 +1764,14 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 		case CommandType.guard:
 			auto targetId=object.creatureAI.order.target.id;
 			if(targetId!=0){
-				auto targetPositionTargetFacing=state.movingObjectById!((obj)=>tuple(obj.position,obj.creatureState.facing), ()=>tuple(object.creatureAI.order.target.position,object.creatureAI.order.targetFacing))(targetId);
-				auto targetPosition=targetPositionTargetFacing[0], targetFacing=targetPositionTargetFacing[1];
+				auto targetPositionTargetFacingTargetSpeed=state.movingObjectById!((obj,state)=>tuple(obj.position,obj.creatureState.facing,obj.speed(state)/updateFPS), ()=>tuple(object.creatureAI.order.target.position,object.creatureAI.order.targetFacing,0.0f))(targetId,state);
+				auto targetPosition=targetPositionTargetFacingTargetSpeed[0], targetFacing=targetPositionTargetFacingTargetSpeed[1], targetSpeed=targetPositionTargetFacingTargetSpeed[2];
 				auto formationOffset=object.creatureAI.order.formationOffset;
 				targetPosition+=rotate(facingQuaternion(targetFacing), Vector3f(formationOffset.x,formationOffset.y,0));
 				targetPosition.z=state.getHeight(targetPosition);
 				object.moveTo(targetPosition,targetFacing,state);
+				if((object.position-targetPosition).lengthsqr<=(0.5f*updateFPS*targetSpeed)^^2)
+					object.creatureState.speedLimit=min(object.creatureState.speedLimit, targetSpeed);
 			}else goto case CommandType.move;// TODO: guard area
 			break;
 		case CommandType.attack:
@@ -1791,7 +1796,12 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 						return false;
 					}
 				}
-				if(state.objectById!intersects(targetId,hitbox)){
+				bool hasValidTarget=state.objectById!intersects(targetId,hitbox);
+				if(hasValidTarget){
+					int target=object.meleeAttackTarget(state); // TODO: share melee hitbox computation?
+					hasValidTarget=target&&(target==targetId||state.objectById!((obj,side,state)=>state.sides.getStance(side,.side(obj,state))==Stance.enemy)(target,object.side,state));
+				}
+				if(hasValidTarget){
 					object.stopMovement(state);
 					object.startMeleeAttacking(state);
 				}else object.moveTo(targetPosition,float.init,state);
@@ -1806,9 +1816,9 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 	auto sacObject=object.sacObject;
 	final switch(object.creatureState.mode){
 		case CreatureMode.idle, CreatureMode.moving:
-			object.frame+=1;
 			auto oldMode=object.creatureState.mode;
 			object.creatureState.mode=object.creatureState.movementDirection==MovementDirection.none?CreatureMode.idle:CreatureMode.moving;
+			object.frame+=1;
 			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
 				object.frame=0;
 				object.setCreatureState(state);
@@ -1898,8 +1908,8 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 			if(totalNumFrames==0) totalNumFrames=reviveTime;
 			assert(totalNumFrames!=0);
 			object.creatureState.timer+=1;
-			object.creatureState.facing+=(object.creatureState.mode==CreatureMode.fastReviving?2.0f*PI:4.0f*PI)/totalNumFrames;
-			while(object.creatureState.facing>PI) object.creatureState.facing-=2*PI;
+			object.creatureState.facing+=(object.creatureState.mode==CreatureMode.fastReviving?2.0f*cast(float)PI:4.0f*PI)/totalNumFrames;
+			while(object.creatureState.facing>cast(float)PI) object.creatureState.facing-=2*cast(float)PI;
 			if(object.creatureState.timer<totalNumFrames/2){
 				object.creatureState.movement=CreatureMovement.flying;
 				object.position.z+=object.creatureStats.reviveHeight/(totalNumFrames/2);
@@ -1999,6 +2009,39 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 	}
 }
 
+int meleeAttackTarget(B)(int ownId,Vector3f[2] hitbox,Vector3f[2] meleeHitbox,ObjectState!B state){
+	struct CollisionState{
+		Vector3f[2] hitbox;
+		int ownId;
+		int target=0;
+		float distance=float.infinity;
+	}
+	static void handleCollision(ProximityEntry entry,CollisionState *collisionState,ObjectState!B state){
+		if(entry.id==collisionState.ownId) return;
+		if(state.buildingByStaticObjectId!((ref Building!B building,ObjectState!B state)=>building.maxHealth(state)==0,()=>false)(entry.id,state))
+			return;
+		if(!collisionState.target){
+			collisionState.target=entry.id;
+			return;
+		}
+		auto center=0.5f*(entry.hitbox[0]+entry.hitbox[1]);
+		auto attackCenter=0.5f*(collisionState.hitbox[0]+collisionState.hitbox[1]);
+		auto distance=(center-attackCenter).length; // TODO: improve this calculation
+		if(distance<collisionState.distance){
+			collisionState.target=entry.id;
+			collisionState.distance=distance;
+		}
+	}
+	auto collisionState=CollisionState(hitbox,ownId);
+	state.proximity.collide!handleCollision(meleeHitbox,&collisionState,state);
+	return collisionState.target;
+}
+
+int meleeAttackTarget(B)(ref MovingObject!B object,ObjectState!B state){
+	auto hitbox=object.hitbox,meleeHitbox=object.meleeHitbox;
+	return meleeAttackTarget(object.id,hitbox,meleeHitbox,state);
+}
+
 void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.isRegenerating)
 		object.heal(object.creatureStats.regeneration/updateFPS,state);
@@ -2006,32 +2049,7 @@ void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 		object.giveMana(state.manaRegenAt(object.side,object.position)/updateFPS,state);
 	if(object.creatureState.mode.among(CreatureMode.meleeMoving,CreatureMode.meleeAttacking) && object.hasAttackTick){
 		object.creatureState.mode=CreatureMode.meleeAttacking;
-		struct CollisionState{
-			Vector3f[2] hitbox;
-			int ownId;
-			int target=0;
-			float distance=float.infinity;
-		}
-		static void handleCollision(ProximityEntry entry,CollisionState *collisionState,ObjectState!B state){
-			if(entry.id==collisionState.ownId) return;
-			if(state.buildingByStaticObjectId!((ref Building!B building,ObjectState!B state)=>building.maxHealth(state)==0,()=>false)(entry.id,state))
-				return;
-			if(!collisionState.target){
-				collisionState.target=entry.id;
-				return;
-			}
-			auto center=0.5f*(entry.hitbox[0]+entry.hitbox[1]);
-			auto attackCenter=0.5f*(collisionState.hitbox[0]+collisionState.hitbox[1]);
-			auto distance=(center-attackCenter).length; // TODO: improve this calculation
-			if(distance<collisionState.distance){
-				collisionState.target=entry.id;
-				collisionState.distance=distance;
-			}
-		}
-		auto hitbox=object.hitbox,meleeHitbox=object.meleeHitbox;
-		auto collisionState=CollisionState(hitbox,object.id);
-		state.proximity.collide!handleCollision(meleeHitbox,&collisionState,state);
-		if(collisionState.target){
+		if(auto target=object.meleeAttackTarget(state)){
 			static void dealDamage(T)(ref T target,MovingObject!B* attacker,ObjectState!B state){
 				static if(is(T==MovingObject!B)){
 					target.dealMeleeDamage(*attacker,state);
@@ -2042,7 +2060,7 @@ void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 					})(target.buildingId,attacker,state);
 				}
 			}
-			state.objectById!dealDamage(collisionState.target,&object,state);
+			state.objectById!dealDamage(target,&object,state);
 		}
 	}
 }
@@ -2061,12 +2079,12 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 				case RotationDirection.left:
 					isRotating=true;
 					object.creatureState.facing+=min(rotationSpeed,object.creatureState.rotationSpeedLimit);
-					while(object.creatureState.facing>PI) object.creatureState.facing-=2*PI;
+					while(object.creatureState.facing>cast(float)PI) object.creatureState.facing-=2*cast(float)PI;
 					break;
 				case RotationDirection.right:
 					isRotating=true;
 					object.creatureState.facing-=min(rotationSpeed,object.creatureState.rotationSpeedLimit);
-					while(object.creatureState.facing<PI) object.creatureState.facing+=2*PI;
+					while(object.creatureState.facing<cast(float)PI) object.creatureState.facing+=2*cast(float)PI;
 				break;
 			}
 		}
@@ -2320,8 +2338,8 @@ void updateCreature(B)(ref MovingObject!B object, ObjectState!B state){
 
 void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 	soul.frame+=1;
-	soul.facing+=2*PI/8.0f/updateFPS;
-	while(soul.facing>PI) soul.facing-=2*PI;
+	soul.facing+=2*cast(float)PI/8.0f/updateFPS;
+	while(soul.facing>cast(float)PI) soul.facing-=2*cast(float)PI;
 	if(soul.frame==SacSoul!B.numFrames*updateAnimFactor)
 		soul.frame=0;
 	if(soul.creatureId)
@@ -2377,18 +2395,18 @@ void updateParticles(B)(ref Particles!B particles, ObjectState!B state){
 
 void animateManafount(B)(Vector3f location, ObjectState!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.manafount);
-	auto globalAngle=1.5f*2*PI/updateFPS*(state.frame+1000*location.x+location.y);
+	auto globalAngle=1.5f*2*cast(float)PI/updateFPS*(state.frame+1000*location.x+location.y);
 	auto globalMagnitude=0.25f;
 	auto globalDisplacement=globalMagnitude*Vector3f(cos(globalAngle),sin(globalAngle),0.0f);
 	auto center=location+globalDisplacement;
 	static assert(updateFPS==60); // TODO: fix
 	foreach(j;0..2){
-		auto displacementAngle=state.uniform(-PI,PI);
+		auto displacementAngle=state.uniform(-cast(float)PI,cast(float)PI);
 		auto displacementMagnitude=state.uniform(0.0f,0.5f);
 		auto displacement=displacementMagnitude*Vector3f(cos(displacementAngle),sin(displacementAngle),0.0f);
 		foreach(k;0..2){
 			auto position=center+displacement;
-			auto angle=state.uniform(-PI,PI);
+			auto angle=state.uniform(-cast(float)PI,cast(float)PI);
 			auto velocity=(20.0f+state.uniform(-5.0f,5.0f))*Vector3f(cos(angle),sin(angle),state.uniform(2.0f,4.0f)).normalized;
 			auto lifetime=cast(int)(sqrt(sacParticle.numFrames*5.0f)*state.uniform(0.0f,1.0f))^^2;
 			auto frame=0;
@@ -2399,17 +2417,17 @@ void animateManafount(B)(Vector3f location, ObjectState!B state){
 
 void animateManalith(B)(Vector3f location, int side, ObjectState!B state){
 	auto sacParticle=state.sides.manaParticle(side);
-	auto globalAngle=2*PI/updateFPS*(state.frame+1000*location.x+location.y);
+	auto globalAngle=2*cast(float)PI/updateFPS*(state.frame+1000*location.x+location.y);
 	auto globalMagnitude=0.5f;
 	auto globalDisplacement=globalMagnitude*Vector3f(cos(globalAngle),sin(globalAngle),0.0f);
 	auto center=location+globalDisplacement;
 	static assert(updateFPS==60); // TODO: fix
 	foreach(j;0..4){
-		auto displacementAngle=state.uniform(-PI,PI);
+		auto displacementAngle=state.uniform(-cast(float)PI,cast(float)PI);
 		auto displacementMagnitude=3.5f*state.uniform(0.0f,1.0f)^^2;
 		auto displacement=displacementMagnitude*Vector3f(cos(displacementAngle),sin(displacementAngle),0.0f);
 		auto position=center+displacement;
-		auto angle=state.uniform(-PI,PI);
+		auto angle=state.uniform(-cast(float)PI,cast(float)PI);
 		auto velocity=(15.0f+state.uniform(-5.0f,5.0f))*Vector3f(0.0f,0.0f,state.uniform(2.0f,4.0f)).normalized;
 		auto lifetime=cast(int)(sacParticle.numFrames*5.0f-0.7*sacParticle.numFrames*displacement.length*state.uniform(0.0f,1.0f)^^2);
 		auto frame=0;
@@ -2419,17 +2437,17 @@ void animateManalith(B)(Vector3f location, int side, ObjectState!B state){
 
 void animateShrine(B)(Vector3f location, int side, ObjectState!B state){
 	auto sacParticle=state.sides.shrineParticle(side);
-	auto globalAngle=2*PI/updateFPS*(state.frame+1000*location.x+location.y);
+	auto globalAngle=2*cast(float)PI/updateFPS*(state.frame+1000*location.x+location.y);
 	auto globalMagnitude=0.1f;
 	auto globalDisplacement=globalMagnitude*Vector3f(cos(globalAngle),sin(globalAngle),0.0f);
 	auto center=location+globalDisplacement;
 	static assert(updateFPS==60); // TODO: fix
 	foreach(j;0..2){
-		auto displacementAngle=state.uniform(-PI,PI);
+		auto displacementAngle=state.uniform(-cast(float)PI,cast(float)PI);
 		auto displacementMagnitude=1.0f*state.uniform(0.0f,1.0f)^^2;
 		auto displacement=displacementMagnitude*Vector3f(cos(displacementAngle),sin(displacementAngle),0.0f);
 		auto position=center+displacement;
-		auto angle=state.uniform(-PI,PI);
+		auto angle=state.uniform(-cast(float)PI,cast(float)PI);
 		auto velocity=(1.5f+state.uniform(-0.5f,0.5f))*Vector3f(0.0f,0.0f,state.uniform(2.0f,4.0f)).normalized;
 		auto lifetime=cast(int)((sacParticle.numFrames*5.0f)*(1.0f+state.uniform(0.0f,1.0f)^^10));
 		auto frame=0;
@@ -2466,7 +2484,7 @@ void updateBuilding(B)(ref Building!B building, ObjectState!B state){
 
 void animateManahoar(B)(Vector3f location, int side, float rate, ObjectState!B state){
 	auto sacParticle=state.sides.manahoarParticle(side);
-	auto globalAngle=2*PI/updateFPS*state.frame;
+	auto globalAngle=2*cast(float)PI/updateFPS*state.frame;
 	auto globalMagnitude=0.05f;
 	auto globalDisplacement=globalMagnitude*Vector3f(cos(globalAngle),sin(globalAngle),0.0f);
 	auto center=location+globalDisplacement;
@@ -2475,11 +2493,11 @@ void animateManahoar(B)(Vector3f location, int side, float rate, ObjectState!B s
 	auto fractional=cast(int)(1.0f/fmod(perFrame,1.0f));
 	auto numParticles=cast(int)perFrame+(fractional!=0&&state.frame%fractional==0?1:0);
 	foreach(j;0..numParticles){
-		auto displacementAngle=state.uniform(-PI,PI);
+		auto displacementAngle=state.uniform(-cast(float)PI,cast(float)PI);
 		auto displacementMagnitude=0.15f*state.uniform(0.0f,1.0f)^^2;
 		auto displacement=displacementMagnitude*Vector3f(cos(displacementAngle),sin(displacementAngle),0.0f);
 		auto position=center+displacement;
-		auto angle=state.uniform(-PI,PI);
+		auto angle=state.uniform(-cast(float)PI,cast(float)PI);
 		auto velocity=(1.5f+state.uniform(-0.5f,0.5f))*Vector3f(0.0f,0.0f,state.uniform(2.0f,4.0f)).normalized;
 		auto lifetime=cast(int)(0.7f*(sacParticle.numFrames*5.0f-7.0f*sacParticle.numFrames*displacement.length*state.uniform(0.0f,1.0f)^^2));
 		auto frame=0;
@@ -2752,6 +2770,12 @@ final class ObjectState(B){ // (update logic)
 	float manaRegenAt(int side,Vector3f position){
 		return proximity.manaRegenAt(side,position,this);
 	}
+	float sideDamageMultiplier(int attackerSide,int defenderSide){
+		switch(sides.getStance(attackerSide,defenderSide)){
+			case Stance.ally: return 0.5f; // TODO: option
+			default: return 1.0f;
+		}
+	}
 	this(SacMap!B map, Sides!B sides, Proximity!B proximity){
 		this.map=map;
 		this.sides=sides;
@@ -2929,7 +2953,7 @@ final class ObjectState(B){ // (update logic)
 			static void addToSelection(ref MObj[numCreaturesInGroup] selection,MObj obj,MObj nobj){
 				if(selection[].map!"a.id".canFind(nobj.id)) return;
 				int i=0;
-				while(i<selection.length&&selection[i].id&&(selection[i].position.xy-obj.position.xy).lengthsqr>(nobj.position.xy-obj.position.xy).lengthsqr)
+				while(i<selection.length&&selection[i].id&&(selection[i].position.xy-obj.position.xy).lengthsqr<(nobj.position.xy-obj.position.xy).lengthsqr)
 					i++;
 				if(i>=selection.length||selection[i].id==nobj.id) return;
 				foreach_reverse(j;i..selection.length-1)
@@ -2944,7 +2968,7 @@ final class ObjectState(B){ // (update logic)
 			state.eachMovingOf!process(obj.sacObject,side,MObj(obj.id,obj.position),&selection,state);
 			if(selection[0].id!=0){
 				state.clearSelection(side);
-				foreach(i;0..selection.length)
+				foreach_reverse(i;0..selection.length)
 					if(selection[i].id) state.sid.addToSelection(side,selection[i].id);
 			}
 		}
@@ -3410,7 +3434,7 @@ final class GameState(B){
 		auto data=ntt.tag in bldgs;
 		enforce(!!data);
 		auto flags=ntt.flags&~Flags.damaged&~ntt.flags.destroyed;
-		auto facing=2*PI/360.0f*ntt.facing;
+		auto facing=2*cast(float)PI/360.0f*ntt.facing;
 		auto buildingId=current.addObject(Building!B(data,ntt.side,flags,facing));
 		if(ntt.id !in triggers.objectIds) // e.g. for some reason, the two altars on ferry have the same id
 			triggers.associateId(ntt.id,buildingId);
@@ -3439,7 +3463,7 @@ final class GameState(B){
 				auto cposition=position+offset;
 				if(!current.isOnGround(cposition)) continue;
 				cposition.z=current.getGroundHeight(cposition);
-				auto rotation=facingQuaternion(2*PI/360.0f*(ntt.facing+component.facing));
+				auto rotation=facingQuaternion(2*cast(float)PI/360.0f*(ntt.facing+component.facing));
 				building.componentIds~=current.addObject(StaticObject!B(curObj,building.id,cposition,rotation));
 			}
 			if(ntt.base){
