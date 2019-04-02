@@ -3226,7 +3226,7 @@ struct CreatureGroup{
 		foreach_reverse(id;ids) addFront(id); // TODO: do more efficiently
 	}
 	void addBack(int[] ids...){
-		foreach_reverse(id;ids) addBack(id); // TODO: do more efficiently
+		foreach(id;ids) addBack(id); // TODO: do more efficiently
 	}
 	void remove(int id){
 		if(!id) return;
