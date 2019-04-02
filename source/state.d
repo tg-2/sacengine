@@ -231,7 +231,7 @@ float speed(B)(ref MovingObject!B object,ObjectState!B state){
 	return object.creatureState.movement==CreatureMovement.flying?object.speedInAir(state):object.speedOnGround(state);
 }
 bool canSelect(B)(ref MovingObject!B obj,int side,ObjectState!B state){
-	return obj.side==side/+&&!obj.sacObject.isWizard+/&&obj.creatureState.mode!=CreatureMode.dead;
+	return obj.side==side&&!obj.sacObject.isWizard&&obj.creatureState.mode!=CreatureMode.dead;
 }
 bool canOrder(B)(ref MovingObject!B obj,int side,ObjectState!B state){
 	return (side==-1||obj.side==side)&&obj.creatureState.mode!=CreatureMode.dead;
