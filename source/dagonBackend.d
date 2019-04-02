@@ -1435,14 +1435,45 @@ final class SacScene: Scene{
 				}
 			}
 		}
-		if(keyDown[KEY_K]){
-			fpview.active=false;
-			mouse.visible=true;
+		foreach(key;KEY_1..KEY_0){
+			foreach(_;0..keyDown[key]){
+				bool lshift=eventManager.keyPressed[KEY_LSHIFT];
+				bool lctrl=eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK];
+				auto type=!lshift && lctrl ? CommandType.defineGroup:
+					lshift && !lctrl ? CommandType.addToGroup :
+					CommandType.selectGroup;
+				int group = key==KEY_0?9:key-KEY_1;
+				if(group>=numCreatureGroups) break;
+				state.addCommand(Command(type,renderSide,group));
+				if(type==CommandType.addToGroup)
+					state.addCommand(Command(CommandType.selectGroup,renderSide,group));
+			}
 		}
-		if(keyDown[KEY_L]){
-			fpview.active=true;
-			mouse.visible=false;
-			fpview.mouseFactor=2.0f;
+		if(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK]){
+			foreach(_;0..keyDown[KEY_X]){
+				state.addCommand(Command(renderSide,Formation.phalanx));
+			}
+			foreach(_;0..keyDown[KEY_L]){
+				state.addCommand(Command(renderSide,Formation.line));
+			}
+			foreach(_;0..keyDown[KEY_J]){
+				state.addCommand(Command(renderSide,Formation.flankLeft));
+			}
+			foreach(_;0..keyDown[KEY_K]){
+				state.addCommand(Command(renderSide,Formation.flankRight));
+			}
+			foreach(_;0..keyDown[KEY_W]){
+				state.addCommand(Command(renderSide,Formation.wedge));
+			}
+			foreach(_;0..keyDown[KEY_R]){
+				state.addCommand(Command(renderSide,Formation.semicircle));
+			}
+			foreach(_;0..keyDown[KEY_C]){
+				state.addCommand(Command(renderSide,Formation.circle));
+			}
+			foreach(_;0..keyDown[KEY_T]){
+				state.addCommand(Command(renderSide,Formation.skirmish));
+			}
 		}
 	}
 
@@ -1462,26 +1493,28 @@ final class SacScene: Scene{
 		static void depleteMana(B)(ref MovingObject!B obj,ObjectState!B state){
 			obj.creatureStats.mana=0.0f;
 		}
-		if(eventManager.keyPressed[KEY_A] && !eventManager.keyPressed[KEY_LSHIFT]) applyToMoving!depleteMana(state.current,camera,mouse.target);
-		if(eventManager.keyPressed[KEY_T]) applyToMoving!kill(state.current,camera,mouse.target);
-		if(eventManager.keyPressed[KEY_R]) applyToMoving!stun(state.current,camera,mouse.target);
-		static void catapultRandomly(B)(ref MovingObject!B object,ObjectState!B state){
-			import std.random;
-			auto velocity=Vector3f(uniform!"[]"(-20.0f,20.0f), uniform!"[]"(-20.0f,20.0f), uniform!"[]"(10.0f,25.0f));
-			//auto velocity=Vector3f(0.0f,0.0f,25.0f);
-			object.catapult(velocity,state);
+		if(!eventManager.keyPressed[KEY_LSHIFT] && !eventManager.keyPressed[KEY_LCTRL] && !eventManager.keyPressed[KEY_CAPSLOCK]){
+			if(eventManager.keyPressed[KEY_A]) applyToMoving!depleteMana(state.current,camera,mouse.target);
+			if(eventManager.keyPressed[KEY_T]) applyToMoving!kill(state.current,camera,mouse.target);
+			if(eventManager.keyPressed[KEY_R]) applyToMoving!stun(state.current,camera,mouse.target);
+			static void catapultRandomly(B)(ref MovingObject!B object,ObjectState!B state){
+				import std.random;
+				auto velocity=Vector3f(uniform!"[]"(-20.0f,20.0f), uniform!"[]"(-20.0f,20.0f), uniform!"[]"(10.0f,25.0f));
+				//auto velocity=Vector3f(0.0f,0.0f,25.0f);
+				object.catapult(velocity,state);
+			}
+			foreach(_;0..keyDown[KEY_W]) applyToMoving!catapultRandomly(state.current,camera,mouse.target);
+			foreach(_;0..keyDown[KEY_RETURN]) applyToMoving!immediateRevive(state.current,camera,mouse.target);
+			foreach(_;0..keyDown[KEY_G]) applyToMoving!startFlying(state.current,camera,mouse.target);
+			foreach(_;0..keyDown[KEY_V]) applyToMoving!land(state.current,camera,mouse.target);
+			if(!eventManager.keyPressed[KEY_LSHIFT]) foreach(_;0..keyDown[KEY_SPACE])
+				applyToMoving!startMeleeAttacking(state.current,camera,mouse.target);
 		}
-		foreach(_;0..keyDown[KEY_W]) applyToMoving!catapultRandomly(state.current,camera,mouse.target);
-		foreach(_;0..keyDown[KEY_RETURN]) applyToMoving!immediateRevive(state.current,camera,mouse.target);
 		foreach(_;0..keyDown[KEY_BACKSPACE]){
 			if(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK]){
 				applyToMoving!fastRevive(state.current,camera,mouse.target);
 			}else applyToMoving!revive(state.current,camera,mouse.target);
 		}
-		foreach(_;0..keyDown[KEY_G]) applyToMoving!startFlying(state.current,camera,mouse.target);
-		foreach(_;0..keyDown[KEY_V]) applyToMoving!land(state.current,camera,mouse.target);
-		if(!eventManager.keyPressed[KEY_LSHIFT]) foreach(_;0..keyDown[KEY_SPACE])
-			applyToMoving!startMeleeAttacking(state.current,camera,mouse.target);
 		// TODO: enabling the following destroys ESDF controls. Template-related compiler bug?
 		/+if(eventManager.keyPressed[KEY_UP] && !eventManager.keyPressed[KEY_DOWN]){
 			applyToMoving!startMovingForward(state.current,camera,mouse.target);
@@ -1521,6 +1554,17 @@ final class SacScene: Scene{
 					auto id=spawn(camera.target,"lort",0,state.current);
 					state.current.addToSelection(renderSide,id);
 				}
+			}
+		}
+		if(!(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK]||eventManager.keyPressed[KEY_LSHIFT])){
+			if(keyDown[KEY_K]){
+				fpview.active=false;
+				mouse.visible=true;
+			}
+			if(keyDown[KEY_L]){
+				fpview.active=true;
+				mouse.visible=false;
+				fpview.mouseFactor=2.0f;
 			}
 		}
 	}

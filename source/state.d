@@ -76,32 +76,94 @@ struct Order{
 
 enum Formation{
 	line,
+	flankLeft,
+	flankRight,
+	phalanx,
+	semicircle,
+	circle,
+	wedge,
+	skirmish,
 }
 
-Vector2f[numCreaturesInGroup] getFormationOffsets(R)(R ids,Formation formation,Vector2f formationScale,Vector2f targetScale){
+Vector2f[numCreaturesInGroup] getFormationOffsets(R)(R ids,CommandType commandType,Formation formation,Vector2f formationScale,Vector2f targetScale){
 	auto unitDistance=1.75f*max(formationScale.x,formationScale.y);
 	auto targetDistance=1.75f*max(targetScale.x,targetScale.y);
 	if(targetDistance!=0.0f) targetDistance=max(targetDistance, unitDistance);
 	auto numCreatures=ids.until(0).walkLength;
 	Vector2f[numCreaturesInGroup] result=Vector2f(0,0);
+	static immutable float sqrt2=sqrt(2.0f);
 	final switch(formation){
 		case Formation.line:
 			auto offset=-0.5f*(numCreatures-1)*unitDistance;
 			foreach(i;0..numCreatures) result[i]=Vector2f(offset+unitDistance*i,0.0f);
-			if(targetDistance!=0.0f){
+			if(targetDistance!=0.0f && commandType!=commandType.attack){
 				if(numCreatures&1){
 					foreach(i;0..numCreatures){
-						if(i<(numCreatures+1)/2)
-							result[i].x-=2.0f*targetDistance-unitDistance;
+						if(i<(numCreatures+1)/2) result[i].x-=targetDistance;
 						else result[i].x+=targetDistance-unitDistance;
 					}
 				}else{
 					foreach(i;0..numCreatures){
-						if(i<numCreatures/2)
-							result[i].x-=1.5f*targetDistance-unitDistance;
-						else result[i].x+=1.5f*targetDistance-unitDistance;
+						if(i<numCreatures/2) result[i].x-=targetDistance-0.5f*unitDistance;
+						else result[i].x+=targetDistance-0.5f*unitDistance;
 					}
 				}
+			}
+			break;
+		case Formation.flankLeft:
+			auto offset=-(numCreatures*unitDistance);
+			foreach(i;0..numCreatures) result[i]=Vector2f(offset+unitDistance*i,0.0f);
+			if(targetDistance!=0.0f && commandType!=commandType.attack){
+				foreach(i;0..numCreatures)
+					result[i].x-=targetDistance-unitDistance;
+			}
+			break;
+		case Formation.flankRight:
+			auto offset=unitDistance;
+			foreach(i;0..numCreatures) result[i]=Vector2f(offset+unitDistance*i,0.0f);
+			if(targetDistance!=0.0f && commandType!=commandType.attack){
+				foreach(i;0..numCreatures)
+					result[i].x+=targetDistance-unitDistance;
+			}
+			break;
+		case Formation.phalanx:
+			foreach(row;0..3){
+				auto numCreaturesInRow=min(max(0,numCreatures-row*4),4);
+				auto offset=Vector2f(-0.5f*(numCreaturesInRow-1)*unitDistance,-row*unitDistance);
+				foreach(i;0..numCreaturesInRow) result[4*row+i]=offset+Vector2f(unitDistance*i,0.0f);
+			}
+			if(targetDistance!=0.0f && commandType!=commandType.attack){
+				foreach(i;0..numCreatures) result[i].y-=targetDistance;
+			}
+			break;
+		case Formation.semicircle:
+			auto radius=max(targetDistance,(numCreatures-1)*unitDistance/cast(float)PI);
+			foreach(i;0..numCreatures){
+				auto angle=cast(float)PI*i/(numCreatures-1);
+				result[i]=radius*Vector2f(-cos(angle),-sin(angle));
+			}
+			break;
+		case Formation.circle:
+			auto radius=max(targetDistance,numCreatures*unitDistance/(2.0f*cast(float)PI));
+			foreach(i;0..numCreatures){
+				auto angle=2.0f*cast(float)PI*i/numCreatures;
+				result[i]=radius*Vector2f(-cos(angle),-sin(angle));
+			}
+			break;
+		case Formation.wedge:
+			auto scale=max(unitDistance,targetDistance/1.5f);
+			auto offset=Vector2f(0.0f,commandType==CommandType.attack?0.0f:3.0f*0.5f*sqrt2*scale);
+			foreach(i;0..numCreatures/2+1)
+				result[i]=offset-(numCreatures/2-i)*0.5f*Vector2f(sqrt2,sqrt2)*scale;
+			foreach(i;numCreatures/2+1..numCreatures)
+				result[i]=offset+(i-numCreatures/2)*0.5f*Vector2f(sqrt2,-sqrt2)*scale;
+			break;
+		case Formation.skirmish:
+			auto offset=-0.5f*(numCreatures-1)*unitDistance;
+			auto dist=0.5f*sqrt2*unitDistance;
+			foreach(i;0..numCreatures) result[i]=Vector2f(offset+unitDistance*i,(i&1)?-dist:0.0f);
+			if(targetDistance!=0.0f && commandType!=commandType.attack){
+				foreach(i;0..numCreatures) result[i].y+=targetDistance+dist;
 			}
 			break;
 	}
@@ -1772,7 +1834,7 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 				targetPosition+=rotate(facingQuaternion(targetFacing), Vector3f(formationOffset.x,formationOffset.y,0));
 				targetPosition.z=state.getHeight(targetPosition);
 				object.moveTo(targetPosition,targetFacing,state);
-				if((object.position-targetPosition).lengthsqr<=(0.5f*updateFPS*targetSpeed)^^2)
+				if((object.position-targetPosition).lengthsqr<=(0.1f*updateFPS*targetSpeed)^^2)
 					object.creatureState.speedLimit=min(object.creatureState.speedLimit, targetSpeed);
 			}else goto case CommandType.move;// TODO: guard area
 			break;
@@ -2830,7 +2892,7 @@ final class ObjectState(B){ // (update logic)
 	void applyCommand(Command command){
 		if(!command.isApplicable(this)) return;
 		static void applyOrder(Command command,ObjectState!B state,bool updateFormation=false,Vector2f formationOffset=Vector2f(0.0f,0.0f)){
-			assert(command.target.type.among(TargetType.terrain,TargetType.creature,TargetType.building));
+			assert(command.type==CommandType.setFormation||command.target.type.among(TargetType.terrain,TargetType.creature,TargetType.building));
 			if(!command.creature){
 				int[Formation.max+1] num;
 				int numCreatures=0;
@@ -2848,7 +2910,14 @@ final class ObjectState(B){ // (update logic)
 					if(curScale.y>formationScale.y) formationScale.y=curScale.y;
 					num[curFormation]+=1;
 				}
-				if(!updateFormation) command.formation=cast(Formation)iota(0,Formation.max+1).maxElement!(f=>num[f]);
+				if(!updateFormation){
+					// command.formation=cast(Formation)iota(0,Formation.max+1).maxElement!(f=>num[f]); // does not work. why?
+					command.formation=Formation.line;
+					int maxNum=0;
+					foreach(i;0..Formation.max+1)
+						if(num[i]>num[command.formation])
+							command.formation=cast(Formation)i;
+				}
 				auto selection=state.getSelection(command.side);
 				auto targetScale=Vector2f(0.0f,0.0f);
 				if(command.target.id!=0){
@@ -2861,14 +2930,14 @@ final class ObjectState(B){ // (update logic)
 							return 0.5f*(hitbox[1].xy-hitbox[0].xy);
 						}else return 0.0f;
 					}
-					if(command.type!=CommandType.attack) targetScale=state.objectById!((obj)=>getScale(obj))(command.target.id);
+					targetScale=state.objectById!((obj)=>getScale(obj))(command.target.id);
 					if(selection.creatureIds[].canFind(command.target.id))
 						state.movingObjectById!((ref obj,state)=>obj.clearOrder(state))(command.target.id,state);
 				}
 				auto ids=selection.creatureIds[].filter!(x=>x!=command.target.id);
-				auto formationOffsets=getFormationOffsets(ids,command.formation,formationScale,targetScale);
+				auto formationOffsets=getFormationOffsets(ids,command.type,command.formation,formationScale,targetScale);
 				int i=0;
-				foreach(selectedId;ids){
+				foreach(selectedId;ids){ // TODO: for retreat command, need to loop over all creatures of that side
 					scope(success) i++;
 					if(!selectedId) break;
 					command.creature=selectedId;
@@ -2883,25 +2952,29 @@ final class ObjectState(B){ // (update logic)
 				ord.formationOffset=formationOffset;
 				state.movingObjectById!((ref obj,ord,state,side,updateFormation,formation){
 					if(updateFormation) obj.creatureAI.formation=formation;
-					obj.order(ord,state,side);
+					if(ord.command!=CommandType.setFormation) obj.order(ord,state,side);
 				})(command.creature,ord,state,command.side,updateFormation,command.formation);
 			}
 		}
 		Lswitch:final switch(command.type) with(CommandType){
 			case none: break; // TODO: maybe get rid of null commands
+
 			case moveForward: this.movingObjectById!startMovingForward(command.creature,this,command.side); break;
 			case moveBackward: this.movingObjectById!startMovingBackward(command.creature,this,command.side); break;
 			case stopMoving: this.movingObjectById!stopMovement(command.creature,this,command.side); break;
 			case turnLeft: this.movingObjectById!startTurningLeft(command.creature,this,command.side); break;
 			case turnRight: this.movingObjectById!startTurningRight(command.creature,this,command.side); break;
 			case stopTurning: this.movingObjectById!(.stopTurning)(command.creature,this,command.side); break;
-			case clearSelection: this.clearSelection(command.side); break;
-			case select: this.select(command.side,command.target.id); break;
-			case selectAll: this.selectAll(command.side,command.target.id); break;
-			case toggleSelection: this.toggleSelection(command.side,command.target.id); break;
 
-			case retreat,move,guard,attack:
-				applyOrder(command,this); break;
+			case clearSelection: this.clearSelection(command.side); break;
+			static foreach(type;[select,selectAll,toggleSelection]){
+			    case type: mixin(`this.`~to!string(type))(command.side,command.target.id); break Lswitch;
+			}
+			static foreach(type;[defineGroup,addToGroup,selectGroup]){
+			    case type: mixin(`this.`~to!string(type))(command.side,command.group); break Lswitch;
+			}
+			case setFormation: applyOrder(command,this,true); break;
+			case retreat,move,guard,attack: applyOrder(command,this); break;
 		}
 	}
 	void update(){
@@ -3000,8 +3073,8 @@ final class ObjectState(B){ // (update logic)
 	void addToGroup(int side,int groupId){
 		sid.addToGroup(side,groupId);
 	}
-	void selectGroup(int side,int groupId){
-		sid.selectGroup(side,groupId);
+	bool selectGroup(int side,int groupId){
+		return sid.selectGroup(side,groupId);
 	}
 	CreatureGroup getSelection(int side){
 		return sid.getSelection(side);
@@ -3127,7 +3200,7 @@ struct CreatureGroup{
 		if(has(id)) return;
 		if(creatureIds[$-1]){
 			foreach(i;0..creatureIds.length-1)
-				swap(creatureIds[id],creatureIds[i+1]);
+				swap(creatureIds[i],creatureIds[i+1]);
 			creatureIds[$-1]=id;
 		}else{
 			foreach_reverse(i;-1..cast(int)creatureIds.length-1){
@@ -3205,8 +3278,10 @@ struct SideData(B){
 	void addToGroup(int groupId){
 		groups[groupId].addBack(selection.creatureIds[]);
 	}
-	void selectGroup(int groupId){
+	bool selectGroup(int groupId){
+		if(groups[groupId].creatureIds[0]==0) return false;
 		selection=groups[groupId];
+		return true;
 	}
 	CreatureGroup getSelection(){
 		return selection;
@@ -3256,10 +3331,10 @@ struct SideManager(B){
 	}do{
 		sides[side].addToGroup(groupId);
 	}
-	void selectGroup(int side,int groupId)in{
+	bool selectGroup(int side,int groupId)in{
 		assert(0<=side&&side<sides.length&&0<=groupId&&groupId<numCreatureGroups);
 	}do{
-		sides[side].selectGroup(groupId);
+		return sides[side].selectGroup(groupId);
 	}
 	CreatureGroup getSelection(int side)in{
 		assert(0<=side&&side<sides.length);
@@ -3355,6 +3430,12 @@ enum CommandType{
 	selectAll,
 	toggleSelection,
 
+	defineGroup,
+	addToGroup,
+	selectGroup,
+
+	setFormation,
+
 	retreat,
 	move,
 	guard,
@@ -3378,11 +3459,16 @@ struct Command{
 			case move:
 				assert(target.type==TargetType.terrain);
 				break;
+			case setFormation:
+				assert(0);
 			case retreat:
 				assert(target.type==TargetType.creature);
 				break;
 			case guard,attack:
 				assert(target.type.among(TargetType.terrain,TargetType.creature,TargetType.building));
+				break;
+			case defineGroup,addToGroup,selectGroup:
+				assert(0);
 		}
 	}do{
 		this.type=type;
@@ -3391,12 +3477,33 @@ struct Command{
 		this.target=target;
 		this.targetFacing=targetFacing;
 	}
+
+	this(CommandType type,int side,int group)in{
+		switch(type) with(CommandType){
+			case defineGroup,addToGroup,selectGroup:
+				assert(0<=group && group<10);
+				break;
+			default:
+				assert(0);
+		}
+	}do{
+		this.type=type;
+		this.side=side;
+		this.group=group;
+	}
+
+	this(int side,Formation formation){
+		this.type=CommandType.setFormation;
+		this.formation=formation;
+	}
+
 	CommandType type;
 	int side;
 	int creature;
 	Target target;
 	float targetFacing;
 	Formation formation=Formation.init;
+	int group=-1;
 
 	bool isApplicable(B)(ObjectState!B state){
 		return (creature==0||state.isValidId(creature)) &&
