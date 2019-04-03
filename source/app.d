@@ -144,8 +144,19 @@ int main(string[] args){
 				position.z=state.current.getGroundHeight(position);
 			backend.addObject(sac,position,facingQuaternion(0));
 		}
-		if(i+1<args.length&&args[i+1].endsWith(".SXSK"))
+		if(i+1<args.length&&args[i+1].endsWith(".SXSK")){
 			i+=1;
+			import sxsk;
+			static if(!gpuSkinning){
+				if(i+1<args.length&&args[i+1].toLower.endsWith(".obj")){
+					auto sacObj=backend.scene.sacs[backend.scene.sacs.length-1];
+					auto file=File(args[i+1],"w");
+					import saxs2obj;
+					file.writeObj(sacObj.saxsi.saxs,sacObj.animations[0].frames[0]);
+					i+=1;
+				}
+			}
+		}
 	}
 	backend.run();
 	return 0;
