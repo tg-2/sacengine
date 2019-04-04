@@ -1548,10 +1548,12 @@ final class SacScene: Scene{
 					auto id=spawn(camera.target,"gard",0,state.current);
 					state.current.addToSelection(renderSide,id);
 				}
-			}
-			if(eventManager.keyPressed[KEY_LSHIFT]){
 				foreach(_;0..keyDown[KEY_A]){
 					auto id=spawn(camera.target,"lort",0,state.current);
+					state.current.addToSelection(renderSide,id);
+				}
+				foreach(_;0..keyDown[KEY_R]){
+					auto id=spawn(camera.target,"tbsh",0,state.current);
 					state.current.addToSelection(renderSide,id);
 				}
 			}

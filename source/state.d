@@ -133,7 +133,7 @@ Vector2f[numCreaturesInGroup] getFormationOffsets(R)(R ids,CommandType commandTy
 				foreach(i;0..numCreaturesInRow) result[4*row+i]=offset+Vector2f(unitDistance*i,0.0f);
 			}
 			if(targetDistance!=0.0f && commandType!=commandType.attack){
-				foreach(i;0..numCreatures) result[i].y-=targetDistance;
+				foreach(i;0..numCreatures) result[i].y-=2.0f*targetDistance;
 			}
 			break;
 		case Formation.semicircle:
@@ -1471,6 +1471,9 @@ int spawn(T=Creature,B)(int casterId,char[4] tag,int flags,ObjectState!B state){
 		auto mode=CreatureMode.spawning;
 		auto movement=CreatureMovement.flying;
 		auto facing=caster.creatureState.facing;
+		auto newPosition=position+rotate(facingQuaternion(facing),Vector3f(0.0f,6.0f,0.0f));
+		if(!state.isOnGround(position)||state.isOnGround(newPosition)) position=newPosition; // TODO: find closet ground to newPosition instead
+		position.z=state.getHeight(position);
 		auto creatureState=CreatureState(mode, movement, facing);
 		auto rotation=facingQuaternion(facing);
 		auto obj=MovingObject!B(curObj,position,rotation,AnimationState.disoriented,0,creatureState,curObj.creatureStats(flags),caster.side);
@@ -1783,6 +1786,10 @@ void clearOrder(B)(ref MovingObject!B object,ObjectState!B state){
 	object.stopTurning(state);
 }
 
+bool hasOrders(B)(ref MovingObject!B object,ObjectState!B state){
+	return object.creatureAI.order.command!=CommandType.none;
+}
+
 bool moveTo(B)(ref MovingObject!B object,Vector3f targetPosition,float targetFacing,ObjectState!B state){
 	auto speed=object.speed(state)/updateFPS; // TODO: object.movementSpeed
 	if((object.position.xy-targetPosition.xy).lengthsqr>(2.0f*speed)^^2){
@@ -1940,18 +1947,17 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 			assert(object.animationState==AnimationState.disoriented);
 			// TODO: keep it stuck at frame 0 and make it transparent until casting finished.
 			object.frame+=1;
-			if(object.frame!=0){
-				object.creatureState.movement=sacObject.mustFly?CreatureMovement.flying:CreatureMovement.onGround;
-				if(!state.isOnGround(object.position)||state.getGroundHeight(object.position)<object.position.z){
-					if(object.creatureState.movement!=CreatureMovement.flying){
-						object.creatureState.movement=CreatureMovement.tumbling;
-						object.frame=0;
-						object.startIdling(state);
-						break;
-					}
-				}else object.position.z=state.getGroundHeight(object.position);
-			}
-			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
+			object.creatureState.movement=sacObject.mustFly?CreatureMovement.flying:CreatureMovement.onGround;
+			if(!state.isOnGround(object.position)||state.getGroundHeight(object.position)<object.position.z){
+				if(object.creatureState.movement!=CreatureMovement.flying){
+					object.creatureState.movement=CreatureMovement.tumbling;
+					object.frame=0;
+					object.startIdling(state);
+					break;
+				}
+			}else object.position.z=state.getGroundHeight(object.position);
+			object.creatureState.mode=CreatureMode.idle;
+			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){ // (just for robustness)
 				object.frame=0;
 				object.startIdling(state);
 			}
