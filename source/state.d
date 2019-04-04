@@ -1815,7 +1815,8 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 			auto targetPosition=state.movingObjectById!((obj)=>obj.position,()=>Vector3f.init)(object.creatureAI.order.target.id);
 			if(targetPosition !is Vector3f.init){
 				object.turnToFaceTowards(targetPosition,state);
-				if((object.position-targetPosition).lengthsqr>retreatDistance^^2 && object.movingForwardGetsCloserTo(targetPosition,0.0f,state)){
+				auto speed=object.speed(state)/updateFPS;
+				if((object.position.xy-targetPosition.xy).lengthsqr>(retreatDistance+speed)^^2 && object.movingForwardGetsCloserTo(targetPosition,speed,state)){
 					object.startMovingForward(state);
 					object.creatureState.speedLimit=speedLimitFactor*max(0.0f,(object.position.xy-targetPosition.xy).length-retreatDistance);
 				}else object.stopMovement(state);
