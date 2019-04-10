@@ -361,31 +361,40 @@ final class SacScene: Scene{
 				static if(mode==RenderMode.transparent){
 					if(rc.shadowMode) return;
 					if(objects.cones.length<=renderSide) return;
+					if(iota(CommandConeColor.max+1).map!(i=>objects.cones[renderSide][i].length).all!(l=>l==0)) return;
 					sacCommandCone.material.bind(rc);
 					assert(sacCommandCone.material.backend is shadelessMaterialBackend);
 					shadelessMaterialBackend.setInformation(Vector4f(0.0f,0.0f,0.0f,0.0f));
 					scope(success) sacCommandCone.material.unbind(rc);
 					enum maxLifetime=cast(int)(sacCommandCone.lifetime*updateFPS);
 					foreach(i;0..CommandConeColor.max+1){
+						if(objects.cones[renderSide][i].length==0) continue;
 						auto color=sacCommandCone.colors[i];
-						auto energy=5.0f/(color.r+color.g+color.b);
+						auto energy=0.4f*(3.0f/(color.r+color.g+color.b))^^4;
 						shadelessMaterialBackend.setEnergy(energy);
 						shadelessMaterialBackend.setColor(color);
 						foreach(j;0..objects.cones[renderSide][i].length){
 							auto dat=objects.cones[renderSide][i][j];
+							auto position=dat.position;
 							auto rotation=facingQuaternion(dat.lifetime);
 							auto fraction=(1.0f-cast(float)dat.lifetime/maxLifetime);
-							auto vertScaling=1.0f+0.1f*fraction;
-							auto horzScaling=1.0f+fraction;
+							shadelessMaterialBackend.setAlpha(sacCommandCone.getAlpha(fraction));
+							auto vertScaling=1.0f+0.25f*fraction;
+							auto horzScaling=1.0f+2.0f*fraction;
 							auto scaling=Vector3f(horzScaling,horzScaling,vertScaling);
 							shadelessMaterialBackend.bindDiffuse(sacCommandCone.texture);
-							shadelessMaterialBackend.setTransformationScaled(dat.position, rotation, scaling, rc);
+							shadelessMaterialBackend.setTransformationScaled(position, rotation, scaling, rc);
 							sacCommandCone.mesh.render(rc);
-							horzScaling*=0.70f;
-							scaling=Vector3f(horzScaling,horzScaling,vertScaling);
-							shadelessMaterialBackend.bindDiffuse(whiteTexture);
-							shadelessMaterialBackend.setTransformationScaled(dat.position, rotation, scaling, rc);
-							sacCommandCone.mesh.render(rc);
+							enum numShells=8;
+							enum scalingFactor=0.95f;
+							foreach(k;0..numShells){
+								horzScaling*=scalingFactor;
+								rotation=facingQuaternion((k&1?-1.0f:1.0f)*dat.lifetime*(k+1));
+								scaling=Vector3f(horzScaling,horzScaling,vertScaling);
+								if(k+1==numShells) shadelessMaterialBackend.bindDiffuse(whiteTexture);
+								shadelessMaterialBackend.setTransformationScaled(position, rotation, scaling, rc);
+								sacCommandCone.mesh.render(rc);
+							}
 						}
 					}
 				}

@@ -736,16 +736,16 @@ final class SacCommandCone(B){
 	B.Mesh mesh;
 	B.Texture texture;
 	B.Material material;
-	enum numFaces=128;
-	enum height=7.5f;
-	enum radius=0.5f;
+	enum numFaces=8;
+	enum height=10.0f;
+	enum radius=0.7f;
 	enum lifetime=0.5f;
-	static immutable colors=[Color4f(1.0f,1.0f,1.0f),Color4f(1.0f,0.1f,0.1f),Color4f(0.1f,0.1f,1.0f)];
+	static immutable colors=[Color4f(1.0f,1.0f,1.0f),Color4f(1.0f,0.05f,0.05f),Color4f(0.05f,0.05f,1.0f)];
 	this(){
 		mesh=B.makeMesh(129,128);
 		foreach(i;0..numFaces){
 			auto φ=2.0f*cast(float)PI*i/numFaces;
-			mesh.vertices[i]=Vector3f(radius*cos(φ),radius*sin(φ),height);
+			mesh.vertices[i]=Vector3f(0.01f,0.0f,0.0f)+Vector3f(radius*cos(φ),radius*sin(φ),height);
 			mesh.texcoords[i]=Vector2f(0.5f,0.5f)+0.5f*Vector2f(cos(φ),sin(φ));
 		}
 		mesh.vertices[numFaces]=Vector3f(0,0,0);
@@ -755,6 +755,10 @@ final class SacCommandCone(B){
 		B.finalizeMesh(mesh);
 		texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/aura.TXTR"));
 		material=B.createMaterial(this);
+	}
+
+	float getAlpha(float lifetimeFraction){
+		return 1.0f-lifetimeFraction;
 	}
 }
 
