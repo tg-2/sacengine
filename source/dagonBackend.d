@@ -165,8 +165,12 @@ final class SacScene: Scene{
 		skyEntities=[eUndr,eSkyb,eSkyt,eSky,eSun];
 	}
 	SacSoul!DagonBackend sacSoul;
+	SacCommandCone!DagonBackend sacCommandCone;
 	void createSouls(){
 		sacSoul=new SacSoul!DagonBackend();
+	}
+	void createCommandCones(){
+		sacCommandCone=new SacCommandCone!DagonBackend();
 	}
 
 	void rotateSky(Quaternionf rotation){
@@ -351,6 +355,38 @@ final class SacScene: Scene{
 						material.backend.setSpriteTransformationScaled(objects.positions[j],sacParticle.getScale(objects.lifetimes[j]),rc);
 						material.backend.setAlpha(sacParticle.getAlpha(objects.lifetimes[j]));
 						mesh.render(rc);
+					}
+				}
+			}else static if(is(T==CommandCones!DagonBackend)) with(scene){
+				static if(mode==RenderMode.transparent){
+					if(rc.shadowMode) return;
+					if(objects.cones.length<=renderSide) return;
+					sacCommandCone.material.bind(rc);
+					assert(sacCommandCone.material.backend is shadelessMaterialBackend);
+					shadelessMaterialBackend.setInformation(Vector4f(0.0f,0.0f,0.0f,0.0f));
+					scope(success) sacCommandCone.material.unbind(rc);
+					enum maxLifetime=cast(int)(sacCommandCone.lifetime*updateFPS);
+					foreach(i;0..CommandConeColor.max+1){
+						auto color=sacCommandCone.colors[i];
+						auto energy=5.0f/(color.r+color.g+color.b);
+						shadelessMaterialBackend.setEnergy(energy);
+						shadelessMaterialBackend.setColor(color);
+						foreach(j;0..objects.cones[renderSide][i].length){
+							auto dat=objects.cones[renderSide][i][j];
+							auto rotation=facingQuaternion(dat.lifetime);
+							auto fraction=(1.0f-cast(float)dat.lifetime/maxLifetime);
+							auto vertScaling=1.0f+0.1f*fraction;
+							auto horzScaling=1.0f+fraction;
+							auto scaling=Vector3f(horzScaling,horzScaling,vertScaling);
+							shadelessMaterialBackend.bindDiffuse(sacCommandCone.texture);
+							shadelessMaterialBackend.setTransformationScaled(dat.position, rotation, scaling, rc);
+							sacCommandCone.mesh.render(rc);
+							horzScaling*=0.70f;
+							scaling=Vector3f(horzScaling,horzScaling,vertScaling);
+							shadelessMaterialBackend.bindDiffuse(whiteTexture);
+							shadelessMaterialBackend.setTransformationScaled(dat.position, rotation, scaling, rc);
+							sacCommandCone.mesh.render(rc);
+						}
 					}
 				}
 			}else static assert(0);
@@ -912,6 +948,8 @@ final class SacScene: Scene{
 				// do nothing
 			}else static if(is(T==Particles!DagonBackend)){
 				// do nothing
+			}else static if(is(T==CommandCones!DagonBackend)){
+				// do nothing
 			}else static assert(0);
 		}
 		state.current.eachByType!render(hudScaling,minimapFactor,minimapCenter,mapCenter,radius,mapRotation,this,rc);
@@ -1098,6 +1136,7 @@ final class SacScene: Scene{
 		setupEnvironment(state.current.map);
 		createSky(state.current.map);
 		createSouls();
+		createCommandCones();
 		initializeHUD();
 		initializeMouse();
 	}
@@ -2000,6 +2039,16 @@ static:
 			materials[i]=mat;
 		}
 		return materials;
+	}
+
+	Material createMaterial(SacCommandCone!DagonBackend sacCommandCone){
+		auto material=scene.createMaterial(scene.shadelessMaterialBackend);
+		material.depthWrite=false;
+		material.blending=Additive;
+		material.energy=1.0f;
+		//material.diffuse=sacCommandCone.texture;
+		//material.diffuse=makeTexture(makeOnePixelImage(Color4f(1.0f,1.0f,1.0f)));
+		return material;
 	}
 
 	enum GL_GPU_MEM_INFO_TOTAL_AVAILABLE_MEM_NVX=0x9048;

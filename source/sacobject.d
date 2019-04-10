@@ -727,6 +727,38 @@ final class SacHud(B){
 	}
 }
 
+enum CommandConeColor{
+	white,
+	red,
+	blue,
+}
+final class SacCommandCone(B){
+	B.Mesh mesh;
+	B.Texture texture;
+	B.Material material;
+	enum numFaces=128;
+	enum height=7.5f;
+	enum radius=0.5f;
+	enum lifetime=0.5f;
+	static immutable colors=[Color4f(1.0f,1.0f,1.0f),Color4f(1.0f,0.1f,0.1f),Color4f(0.1f,0.1f,1.0f)];
+	this(){
+		mesh=B.makeMesh(129,128);
+		foreach(i;0..numFaces){
+			auto φ=2.0f*cast(float)PI*i/numFaces;
+			mesh.vertices[i]=Vector3f(radius*cos(φ),radius*sin(φ),height);
+			mesh.texcoords[i]=Vector2f(0.5f,0.5f)+0.5f*Vector2f(cos(φ),sin(φ));
+		}
+		mesh.vertices[numFaces]=Vector3f(0,0,0);
+		mesh.texcoords[numFaces]=Vector2f(0.5f,0.5f);
+		foreach(i;0..numFaces) mesh.indices[i]=[i,numFaces,(i+1)%numFaces];
+		mesh.generateNormals(); // (doesn't actually need normals)
+		B.finalizeMesh(mesh);
+		texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/aura.TXTR"));
+		material=B.createMaterial(this);
+	}
+}
+
+
 auto convertModel(B,Model)(string dir, Model model, float scaling){
 	int[string] names;
 	int cur=0;

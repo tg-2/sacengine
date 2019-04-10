@@ -74,6 +74,19 @@ struct Order{
 	auto formationOffset=Vector2f(0.0f,0.0f);
 }
 
+Vector3f getTargetPosition(B)(ref Order order,ObjectState!B state){
+	auto targetPosition=order.target.position;
+	auto targetFacing=order.targetFacing;
+	auto formationOffset=order.formationOffset;
+	return getTargetPosition(targetPosition,targetFacing,formationOffset,state);
+}
+
+Vector3f getTargetPosition(B)(Vector3f targetPosition,float targetFacing,Vector2f formationOffset,ObjectState!B state){
+	targetPosition+=rotate(facingQuaternion(targetFacing), Vector3f(formationOffset.x,formationOffset.y,0));
+	targetPosition.z=state.getHeight(targetPosition);
+	return targetPosition;
+}
+
 enum Formation{
 	line,
 	flankLeft,
@@ -132,7 +145,7 @@ Vector2f[numCreaturesInGroup] getFormationOffsets(R)(R ids,CommandType commandTy
 				auto offset=Vector2f(-0.5f*(numCreaturesInRow-1)*unitDistance,-row*unitDistance);
 				foreach(i;0..numCreaturesInRow) result[4*row+i]=offset+Vector2f(unitDistance*i,0.0f);
 			}
-			if(targetDistance!=0.0f && commandType!=commandType.attack){
+			if(targetDistance!=0.0f && commandType==commandType.guard){
 				foreach(i;0..numCreatures) result[i].y-=2.0f*targetDistance;
 			}
 			break;
@@ -162,7 +175,7 @@ Vector2f[numCreaturesInGroup] getFormationOffsets(R)(R ids,CommandType commandTy
 			auto offset=-0.5f*(numCreatures-1)*unitDistance;
 			auto dist=0.5f*sqrt2*unitDistance;
 			foreach(i;0..numCreatures) result[i]=Vector2f(offset+unitDistance*i,(i&1)?-dist:0.0f);
-			if(targetDistance!=0.0f && commandType!=commandType.attack){
+			if(targetDistance!=0.0f && commandType==commandType.guard){
 				foreach(i;0..numCreatures) result[i].y+=targetDistance+dist;
 			}
 			break;
@@ -856,6 +869,34 @@ struct Particles(B){
 	}
 }
 
+struct CommandCone(B){
+	int side;
+	CommandConeColor color;
+	Vector3f position;
+	int lifetime=cast(int)(SacCommandCone!B.lifetime*updateFPS);
+}
+struct CommandCones(B){
+	struct CommandConeElement(B){
+		Vector3f position;
+		int lifetime;
+		this(CommandCone!B rhs){
+			position=rhs.position;
+			lifetime=rhs.lifetime;
+		}
+	}
+	Array!(Array!(CommandConeElement!B)[CommandConeColor.max+1]) cones;
+	this(int numSides){
+		cones.length=numSides;
+	}
+	void addCommandCone(CommandCone!B cone){
+		cones[cone.side][cone.color]~=CommandConeElement!B(cone);
+	}
+	void removeCommandCone(int side,CommandConeColor color,int index){
+		if(index+1<cones[side][color].length) cones[side][color][index]=cones[side][color][$-1];
+		cones[side][color].length=cones[side][color].length-1;
+	}
+}
+
 struct Objects(B,RenderMode mode){
 	Array!(MovingObjects!(B,mode)) movingObjects;
 	static if(mode == RenderMode.opaque){
@@ -864,6 +905,7 @@ struct Objects(B,RenderMode mode){
 		Souls!B souls;
 		Buildings!B buildings;
 		Array!(Particles!B) particles;
+		CommandCones!B commandCones;
 	}
 	static if(mode==RenderMode.opaque){
 		Id addObject(T)(T object) if(is(T==MovingObject!B)||is(T==StaticObject!B))in{
@@ -926,6 +968,10 @@ struct Objects(B,RenderMode mode){
 			if(particles.length<=type) particles.length=type+1;
 			particles[type].addParticle(particle);
 		}
+		void addCommandCone(CommandCone!B cone){
+			if(!commandCones.cones.length) commandCones=CommandCones!B(32); // TODO: do this eagerly?
+			commandCones.addCommandCone(cone);
+		}
 		void removeObject(int type, int index, ref ObjectManager!B manager){
 			if(type<numMoving){
 				movingObjects[type].removeObject(index,manager);
@@ -945,6 +991,7 @@ struct Objects(B,RenderMode mode){
 			souls=rhs.souls;
 			buildings=rhs.buildings;
 			assignArray(particles,rhs.particles);
+			commandCones=rhs.commandCones;
 		}
 	}
 }
@@ -979,6 +1026,9 @@ auto eachParticles(alias f,B,T...)(ref Objects!(B,RenderMode.opaque) objects,T a
 			f(particle,args);
 	}
 }
+auto eachCommandCones(alias f,B,T...)(ref Objects!(B,RenderMode.opaque) objects,T args){
+	f(objects.commandCones,args);
+}
 auto eachByType(alias f,bool movingFirst=true,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T args){
 	with(objects){
 		static if(movingFirst)
@@ -993,6 +1043,7 @@ auto eachByType(alias f,bool movingFirst=true,B,RenderMode mode,T...)(ref Object
 			f(buildings,args);
 			foreach(ref particle;particles)
 				f(particle,args);
+			f(commandCones,args);
 		}
 		static if(!movingFirst)
 			foreach(ref movingObject;movingObjects)
@@ -1050,6 +1101,9 @@ struct ObjectManager(B){
 	void addParticle(Particle!B particle){
 		opaqueObjects.addParticle(particle);
 	}
+	void addCommandCone(CommandCone!B cone){
+		opaqueObjects.addCommandCone(cone);
+	}
 
 	void opAssign(ObjectManager!B rhs){
 		assignArray(ids,rhs.ids);
@@ -1077,6 +1131,9 @@ auto eachBuilding(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
 }
 auto eachParticles(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
 	with(objectManager) opaqueObjects.eachParticles!f(args);
+}
+auto eachCommandCones(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
+	with(objectManager) opaqueObjects.eachCommandCones!f(args);
 }
 auto eachByType(alias f,bool movingFirst=true,B,T...)(ref ObjectManager!B objectManager,T args){
 	with(objectManager){
@@ -1825,12 +1882,8 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 			}
 			break;
 		case CommandType.move:
-			auto targetPosition=object.creatureAI.order.target.position;
-			auto targetFacing=object.creatureAI.order.targetFacing;
-			auto formationOffset=object.creatureAI.order.formationOffset;
-			targetPosition+=rotate(facingQuaternion(targetFacing), Vector3f(formationOffset.x,formationOffset.y,0));
-			targetPosition.z=state.getHeight(targetPosition);
-			if(object.moveTo(targetPosition,targetFacing,state))
+			auto targetPosition=object.creatureAI.order.getTargetPosition(state);
+			if(object.moveTo(targetPosition,object.creatureAI.order.targetFacing,state))
 				object.clearOrder(state);
 			break;
 		case CommandType.guard:
@@ -1839,8 +1892,7 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 				auto targetPositionTargetFacingTargetSpeed=state.movingObjectById!((obj,state)=>tuple(obj.position,obj.creatureState.facing,obj.speed(state)/updateFPS), ()=>tuple(object.creatureAI.order.target.position,object.creatureAI.order.targetFacing,0.0f))(targetId,state);
 				auto targetPosition=targetPositionTargetFacingTargetSpeed[0], targetFacing=targetPositionTargetFacingTargetSpeed[1], targetSpeed=targetPositionTargetFacingTargetSpeed[2];
 				auto formationOffset=object.creatureAI.order.formationOffset;
-				targetPosition+=rotate(facingQuaternion(targetFacing), Vector3f(formationOffset.x,formationOffset.y,0));
-				targetPosition.z=state.getHeight(targetPosition);
+				targetPosition=getTargetPosition(targetPosition,targetFacing,formationOffset,state);
 				object.moveTo(targetPosition,targetFacing,state);
 				if((object.position-targetPosition).lengthsqr<=(0.1f*updateFPS*targetSpeed)^^2)
 					object.creatureState.speedLimit=min(object.creatureState.speedLimit, targetSpeed);
@@ -2467,6 +2519,21 @@ void updateParticles(B)(ref Particles!B particles, ObjectState!B state){
 	}
 }
 
+void updateCommandCones(B)(ref CommandCones!B commandCones, ObjectState!B state){
+	with(commandCones) foreach(i;0..cast(int)cones.length){
+		foreach(j;0..cast(int)cones[i].length){
+			for(int k=0;k<cones[i][j].length;){
+				if(cones[i][j][k].lifetime<=0){
+					removeCommandCone(i,cast(CommandConeColor)j,k);
+					continue;
+				}
+				scope(success) k++;
+				cones[i][j][k].lifetime-=1;
+			}
+		}
+	}
+}
+
 void animateManafount(B)(Vector3f location, ObjectState!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.manafount);
 	auto globalAngle=1.5f*2*cast(float)PI/updateFPS*(state.frame+1000*location.x+location.y);
@@ -2632,7 +2699,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 			foreach(j;0..objects.length)
 				proximity.addAltar(sideFromBuildingId(objects.buildingIds[j],state),objects.positions[j]);
 		}
-	}else static if(is(T==Souls!B)||is(T==Buildings!B)||is(T==Particles!B)){
+	}else static if(is(T==Souls!B)||is(T==Buildings!B)||is(T==Particles!B)||is(T==CommandCones!B)){
 		// do nothing
 	}else static assert(is(T==FixedObjects!B));
 }
@@ -2961,6 +3028,16 @@ final class ObjectState(B){ // (update logic)
 					if(updateFormation) obj.creatureAI.formation=formation;
 					if(ord.command!=CommandType.setFormation) obj.order(ord,state,side);
 				})(command.creature,ord,state,command.side,updateFormation,command.formation);
+				auto color=CommandConeColor.white;
+				if(command.type==CommandType.guard) color=CommandConeColor.blue;
+				else if(command.type==CommandType.attack) color=CommandConeColor.red;
+				Vector3f position;
+				if(ord.command==CommandType.guard && ord.target.id){
+					auto targetPositionTargetFacing=state.movingObjectById!((obj)=>tuple(obj.position,obj.creatureState.facing), ()=>tuple(ord.target.position,ord.targetFacing))(ord.target.id);
+					auto targetPosition=targetPositionTargetFacing[0], targetFacing=targetPositionTargetFacing[1];
+					position=getTargetPosition(targetPosition,targetFacing,formationOffset,state);
+				}else position=ord.getTargetPosition(state);
+				state.addCommandCone(CommandCone!B(command.side,color,position));
 			}
 		}
 		Lswitch:final switch(command.type) with(CommandType){
@@ -2992,6 +3069,7 @@ final class ObjectState(B){ // (update logic)
 		this.eachSoul!updateSoul(this);
 		this.eachBuilding!updateBuilding(this);
 		this.eachParticles!updateParticles(this);
+		this.eachCommandCones!updateCommandCones(this);
 		this.performRemovals();
 		proximity.end();
 	}
@@ -3022,6 +3100,9 @@ final class ObjectState(B){ // (update logic)
 	}
 	void addParticle(Particle!B particle){
 		obj.addParticle(particle);
+	}
+	void addCommandCone(CommandCone!B cone){
+		obj.addCommandCone(cone);
 	}
 	SideManager!B sid;
 	void clearSelection(int side){
@@ -3101,6 +3182,9 @@ auto eachBuilding(alias f,B,T...)(ObjectState!B objectState,T args){
 }
 auto eachParticles(alias f,B,T...)(ObjectState!B objectState,T args){
 	return objectState.obj.eachParticles!f(args);
+}
+auto eachCommandCones(alias f,B,T...)(ObjectState!B objectState,T args){
+	return objectState.obj.eachCommandCones!f(args);
 }
 auto eachByType(alias f,bool movingFirst=true,B,T...)(ObjectState!B objectState,T args){
 	return objectState.obj.eachByType!(f,movingFirst)(args);
@@ -3687,4 +3771,3 @@ final class GameState(B){
 		}
 	}
 }
-
