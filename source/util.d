@@ -119,6 +119,19 @@ bool boxesIntersect(Vector3f[2] a,Vector3f[2] b){
 		&& intervalsIntersect([a[0].z,a[1].z], [b[0].z,b[1].z]);
 }
 
+Vector3f[2] moveBox(Vector3f[2] box, Vector3f offset){
+	box[0]+=offset;
+	box[1]+=offset;
+	return box;
+}
+
+Vector3f[2] scaleBox(Vector3f[2] box, float factor){
+	auto size=box[1]-box[0];
+	auto center=0.5f*(box[0]+box[1]);
+	size*=factor;
+	return [center-0.5f*size,center+0.5f*size];
+}
+
 import std.container.array;
 T[] data(T)(ref Array!T array){
 	// std.container.array should just provide this functionality...

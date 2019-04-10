@@ -252,6 +252,9 @@ bool canOrder(B)(ref MovingObject!B obj,int side,ObjectState!B state){
 bool canSelect(B)(int side,int id,ObjectState!B state){
 	return state.movingObjectById!(canSelect,()=>false)(id,side,state);
 }
+bool isMeleeAttacking(B)(ref MovingObject!B obj,ObjectState!B state){
+	return !!obj.creatureState.mode.among(CreatureMode.meleeAttacking,CreatureMode.meleeMoving);
+}
 void select(B)(MovingObject!B obj,ObjectState!B state){
 	state.addToSelection(obj.side,obj.id);
 }
@@ -1847,10 +1850,34 @@ bool hasOrders(B)(ref MovingObject!B object,ObjectState!B state){
 	return object.creatureAI.order.command!=CommandType.none;
 }
 
-bool moveTo(B)(ref MovingObject!B object,Vector3f targetPosition,float targetFacing,ObjectState!B state){
+bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectState!B state){
+	auto hitbox=object.hitbox;
+	auto rotation=facingQuaternion(object.creatureState.facing);
+	auto distance=0.1f*(hitbox[1].y-hitbox[0].y);
+	auto frontHitbox=moveBox(hitbox,rotate(rotation,distance*Vector3f(0.0f,1.0f,0.0f)));
+	enum sideHitboxFactor=1.1f;
+	auto sideHitbox=moveBox(scaleBox(hitbox,sideHitboxFactor),rotate(rotation,distance*Vector3f(0.9f,0.1f,0.0f)));
+	bool blockedFront=!!collisionTarget(object.id,hitbox,frontHitbox,state);
+	bool blockedSide=!!collisionTarget(object.id,hitbox,sideHitbox,state);
+	if(blockedFront){
+		object.startTurningLeft(state);
+		object.startMovingForward(state);
+		return false;
+	}
+	object.turnToFaceTowards(targetPosition,state);
+	if(blockedSide && object.creatureState.rotationDirection==RotationDirection.right){
+		object.stopTurning(state);
+		object.startMovingForward(state);
+		return false;
+	}
+	return true;
+}
+
+bool moveTo(B)(ref MovingObject!B object,Vector3f targetPosition,float targetFacing,ObjectState!B state,bool evade=true){
 	auto speed=object.speed(state)/updateFPS; // TODO: object.movementSpeed
 	if((object.position.xy-targetPosition.xy).lengthsqr>(2.0f*speed)^^2){
-		object.turnToFaceTowards(targetPosition,state);
+		if(!evade) object.turnToFaceTowards(targetPosition,state);
+		else if(!object.turnToFaceTowardsEvading(targetPosition,state)) return false;
 		if(object.movingForwardGetsCloserTo(targetPosition,speed,state)){
 			object.startMovingForward(state);
 			object.creatureState.speedLimit=speedLimitFactor*(object.position.xy-targetPosition.xy).length;
@@ -1904,12 +1931,8 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 				targetId=object.creatureAI.order.target.id=0;
 			if(targetId!=0){
 				auto targetPosition=state.movingObjectById!((obj)=>obj.position, ()=>object.creatureAI.order.target.position)(targetId);
-				auto hitbox=object.meleeHitbox;
 				enum meleeHitboxFactor=0.8f;
-				auto size=hitbox[1]-hitbox[0];
-				auto center=0.5f*(hitbox[0]+hitbox[1]);
-				size*=meleeHitboxFactor;
-				hitbox=[center-0.5f*size,center+0.5f*size];
+				auto hitbox=scaleBox(object.meleeHitbox,meleeHitboxFactor);
 				static bool intersects(T)(T obj,Vector3f[2] hitbox){
 					static if(is(T==MovingObject!B)){
 						return boxesIntersect(obj.hitbox,hitbox);
@@ -1925,10 +1948,8 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 					int target=object.meleeAttackTarget(state); // TODO: share melee hitbox computation?
 					hasValidTarget=target&&(target==targetId||state.objectById!((obj,side,state)=>state.sides.getStance(side,.side(obj,state))==Stance.enemy)(target,object.side,state));
 				}
-				if(hasValidTarget){
-					object.stopMovement(state);
-					object.startMeleeAttacking(state);
-				}else object.moveTo(targetPosition,float.init,state);
+				if(hasValidTarget) object.startMeleeAttacking(state);
+				object.moveTo(targetPosition,float.init,state,!object.isMeleeAttacking(state));
 			}else goto case CommandType.move;// TODO: advance
 			break;
 		case CommandType.none: break;
@@ -2139,7 +2160,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 	}
 }
 
-int meleeAttackTarget(B)(int ownId,Vector3f[2] hitbox,Vector3f[2] meleeHitbox,ObjectState!B state){
+int collisionTarget(bool attackFilter=false,B)(int ownId,Vector3f[2] hitbox,Vector3f[2] movedHitbox,ObjectState!B state){
 	struct CollisionState{
 		Vector3f[2] hitbox;
 		int ownId;
@@ -2148,8 +2169,10 @@ int meleeAttackTarget(B)(int ownId,Vector3f[2] hitbox,Vector3f[2] meleeHitbox,Ob
 	}
 	static void handleCollision(ProximityEntry entry,CollisionState *collisionState,ObjectState!B state){
 		if(entry.id==collisionState.ownId) return;
-		if(state.buildingByStaticObjectId!((ref Building!B building,ObjectState!B state)=>building.maxHealth(state)==0,()=>false)(entry.id,state))
-			return;
+		static if(attackFilter){
+			if(state.buildingByStaticObjectId!((ref Building!B building,ObjectState!B state)=>building.maxHealth(state)==0,()=>false)(entry.id,state))
+				return;
+		}
 		if(!collisionState.target){
 			collisionState.target=entry.id;
 			return;
@@ -2163,8 +2186,11 @@ int meleeAttackTarget(B)(int ownId,Vector3f[2] hitbox,Vector3f[2] meleeHitbox,Ob
 		}
 	}
 	auto collisionState=CollisionState(hitbox,ownId);
-	state.proximity.collide!handleCollision(meleeHitbox,&collisionState,state);
+	state.proximity.collide!handleCollision(movedHitbox,&collisionState,state);
 	return collisionState.target;
+}
+int meleeAttackTarget(B)(int ownId,Vector3f[2] hitbox,Vector3f[2] meleeHitbox,ObjectState!B state){
+	return collisionTarget!true(ownId,hitbox,meleeHitbox,state);
 }
 
 int meleeAttackTarget(B)(ref MovingObject!B object,ObjectState!B state){
