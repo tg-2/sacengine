@@ -150,7 +150,7 @@ Vector2f[numCreaturesInGroup] getFormationOffsets(R)(R ids,CommandType commandTy
 			}
 			break;
 		case Formation.semicircle:
-			auto radius=max(targetDistance,(numCreatures-1)*unitDistance/cast(float)PI);
+			auto radius=max(targetDistance,0.5f*unitDistance,(numCreatures-1)*unitDistance/cast(float)PI);
 			foreach(i;0..numCreatures){
 				auto angle=cast(float)PI*i/(numCreatures-1);
 				result[i]=radius*Vector2f(-cos(angle),-sin(angle));
@@ -1851,24 +1851,37 @@ bool hasOrders(B)(ref MovingObject!B object,ObjectState!B state){
 }
 
 bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectState!B state){
+	auto evasion=RotationDirection.none;
 	auto hitbox=object.hitbox;
 	auto rotation=facingQuaternion(object.creatureState.facing);
 	auto distance=0.1f*(hitbox[1].y-hitbox[0].y);
 	auto frontHitbox=moveBox(hitbox,rotate(rotation,distance*Vector3f(0.0f,1.0f,0.0f)));
-	enum sideHitboxFactor=1.1f;
-	auto sideHitbox=moveBox(scaleBox(hitbox,sideHitboxFactor),rotate(rotation,distance*Vector3f(0.9f,0.1f,0.0f)));
-	bool blockedFront=!!collisionTarget(object.id,hitbox,frontHitbox,state);
-	bool blockedSide=!!collisionTarget(object.id,hitbox,sideHitbox,state);
-	if(blockedFront){
-		object.startTurningLeft(state);
+	auto frontObstacleFrontObstacleHitbox=collisionTargetWithHitbox(object.id,hitbox,frontHitbox,state);
+	auto frontObstacle=frontObstacleFrontObstacleHitbox[0];
+	if(frontObstacle){
+		auto frontObstacleHitbox=frontObstacleFrontObstacleHitbox[1];
+		Vector2f[2] frontObstacleHitbox2d=[frontObstacleHitbox[0].xy,frontObstacleHitbox[1].xy];
+		auto frontObstacleDirection=-closestBoxFaceNormal(frontObstacleHitbox2d,object.position.xy);
+		auto facing=object.creatureState.facing;
+		evasion=dot(Vector2f(cos(facing),sin(facing)),frontObstacleDirection)<=0.0f?RotationDirection.right:RotationDirection.left;
+	}
+	if(evasion!=RotationDirection.none){
+		object.setTurning(evasion,state);
 		object.startMovingForward(state);
 		return false;
 	}
 	object.turnToFaceTowards(targetPosition,state);
-	if(blockedSide && object.creatureState.rotationDirection==RotationDirection.right){
-		object.stopTurning(state);
-		object.startMovingForward(state);
-		return false;
+	auto rotationDirection=object.creatureState.rotationDirection;
+	if(rotationDirection!=RotationDirection.none){
+		enum sideHitboxFactor=1.1f;
+		auto sideOffsetX=rotationDirection==RotationDirection.right?1.0f:-1.0f;
+		auto sideHitbox=moveBox(scaleBox(hitbox,sideHitboxFactor),rotate(rotation,distance*Vector3f(sideOffsetX,0.0f,0.0f)));
+		bool blockedSide=!!collisionTarget(object.id,hitbox,sideHitbox,state);
+		if(blockedSide){
+			object.stopTurning(state);
+			object.startMovingForward(state);
+			return false;
+		}
 	}
 	return true;
 }
@@ -2160,11 +2173,12 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 	}
 }
 
-int collisionTarget(bool attackFilter=false,B)(int ownId,Vector3f[2] hitbox,Vector3f[2] movedHitbox,ObjectState!B state){
+auto collisionTarget(bool attackFilter=false,bool returnHitbox=false,B)(int ownId,Vector3f[2] hitbox,Vector3f[2] movedHitbox,ObjectState!B state){
 	struct CollisionState{
 		Vector3f[2] hitbox;
 		int ownId;
 		int target=0;
+		static if(returnHitbox) Vector3f[2] targetHitbox;
 		float distance=float.infinity;
 	}
 	static void handleCollision(ProximityEntry entry,CollisionState *collisionState,ObjectState!B state){
@@ -2173,21 +2187,22 @@ int collisionTarget(bool attackFilter=false,B)(int ownId,Vector3f[2] hitbox,Vect
 			if(state.buildingByStaticObjectId!((ref Building!B building,ObjectState!B state)=>building.maxHealth(state)==0,()=>false)(entry.id,state))
 				return;
 		}
-		if(!collisionState.target){
-			collisionState.target=entry.id;
-			return;
-		}
 		auto center=0.5f*(entry.hitbox[0]+entry.hitbox[1]);
 		auto attackCenter=0.5f*(collisionState.hitbox[0]+collisionState.hitbox[1]);
 		auto distance=(center-attackCenter).length; // TODO: improve this calculation
-		if(distance<collisionState.distance){
+		if(!collisionState.target||distance<collisionState.distance){
 			collisionState.target=entry.id;
+			static if(returnHitbox) collisionState.targetHitbox=entry.hitbox;
 			collisionState.distance=distance;
 		}
 	}
 	auto collisionState=CollisionState(hitbox,ownId);
 	state.proximity.collide!handleCollision(movedHitbox,&collisionState,state);
-	return collisionState.target;
+	static if(returnHitbox) return tuple(collisionState.target,collisionState.targetHitbox);
+	else return collisionState.target;
+}
+auto collisionTargetWithHitbox(B)(int ownId,Vector3f[2] hitbox,Vector3f[2] movedHitbox,ObjectState!B state){
+	return collisionTarget!(false,true)(ownId,hitbox,movedHitbox,state);
 }
 int meleeAttackTarget(B)(int ownId,Vector3f[2] hitbox,Vector3f[2] meleeHitbox,ObjectState!B state){
 	return collisionTarget!true(ownId,hitbox,meleeHitbox,state);

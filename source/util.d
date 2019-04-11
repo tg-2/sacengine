@@ -132,6 +132,27 @@ Vector3f[2] scaleBox(Vector3f[2] box, float factor){
 	return [center-0.5f*size,center+0.5f*size];
 }
 
+Vector!(float,n) closestBoxFaceNormal(size_t n)(Vector!(float,n)[2] box, Vector!(float,n) position){
+	auto bestDist=-double.infinity;
+	size_t normalDirection,normalIndex;
+	static foreach(j;0..2){
+		foreach(i;0..n){
+			static if(j==0) auto candDist=box[0][i]-position[i];
+			else auto candDist=position[i]-box[1][i];
+			if(candDist>bestDist){
+				bestDist=candDist;
+				normalDirection=j;
+				normalIndex=i;
+			}
+		}
+	}
+	typeof(return) result;
+	result.arrayof[]=0.0f;
+	result[normalIndex]=normalDirection?1.0f:-1.0f;
+	return result;
+}
+
+
 import std.container.array;
 T[] data(T)(ref Array!T array){
 	// std.container.array should just provide this functionality...
