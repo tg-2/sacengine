@@ -389,7 +389,7 @@ final class SacScene: Scene{
 							enum scalingFactor=0.95f;
 							foreach(k;0..numShells){
 								horzScaling*=scalingFactor;
-								rotation=facingQuaternion((k&1?-1.0f:1.0f)*dat.lifetime*(k+1));
+								rotation=facingQuaternion((k&1?-1.0f:1.0f)*2.0f*cast(float)PI*fraction*(k+1));
 								scaling=Vector3f(horzScaling,horzScaling,vertScaling);
 								if(k+1==numShells) shadelessMaterialBackend.bindDiffuse(whiteTexture);
 								shadelessMaterialBackend.setTransformationScaled(position, rotation, scaling, rc);
