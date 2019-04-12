@@ -1967,8 +1967,10 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 					int target=object.meleeAttackTarget(state); // TODO: share melee hitbox computation?
 					hasValidTarget=target&&(target==targetId||state.objectById!((obj,side,state)=>state.sides.getStance(side,.side(obj,state))==Stance.enemy)(target,object.side,state));
 				}
-				if(hasValidTarget) object.startMeleeAttacking(state);
-				object.moveTo(targetPosition,float.init,state,!object.isMeleeAttacking(state));
+				if(hasValidTarget){
+					object.startMeleeAttacking(state);
+					object.stopMovement(state);
+				}else object.moveTo(targetPosition,float.init,state,!object.isMeleeAttacking(state));
 			}else goto case CommandType.move;// TODO: advance
 			break;
 		case CommandType.none: break;
