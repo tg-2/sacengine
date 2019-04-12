@@ -261,6 +261,9 @@ void select(B)(MovingObject!B obj,ObjectState!B state){
 void unselect(B)(MovingObject!B obj,ObjectState!B state){
 	state.removeFromSelection(obj.side,obj.id);
 }
+void removeFromGroups(B)(MovingObject!B obj,ObjectState!B state){
+	state.removeFromGroups(obj.side,obj.id);
+}
 Vector3f[2] relativeHitbox(B)(ref MovingObject!B object){
 	return object.sacObject.hitbox(object.rotation,object.animationState,object.frame/updateAnimFactor);
 }
@@ -319,7 +322,7 @@ StunnedBehavior stunnedBehavior(B)(ref MovingObject!B object){
 }
 
 bool isRegenerating(B)(ref MovingObject!B object){
-	return object.creatureState.mode==CreatureMode.idle||object.sacObject.continuousRegeneration;
+	return object.creatureState.mode==CreatureMode.idle||object.sacObject.continuousRegeneration&&!object.creatureState.mode.among(CreatureMode.dying,CreatureMode.dead);
 }
 
 bool isDamaged(B)(ref MovingObject!B object){
@@ -1483,6 +1486,7 @@ void kill(B)(ref MovingObject!B object, ObjectState!B state){
 	with(CreatureMode) if(object.creatureState.mode.among(dying,dead,reviving,fastReviving)) return;
 	if(!object.sacObject.canDie()) return;
 	object.unselect(state);
+	object.removeFromGroups(state);
 	object.health=0.0f;
 	object.creatureState.mode=CreatureMode.dying;
 	object.setCreatureState(state);
@@ -2015,6 +2019,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 						object.creatureState.mode=CreatureMode.dead;
 						object.spawnSoul(state);
 						object.unselect(state);
+						object.removeFromGroups(state);
 						break;
 					case CreatureMovement.flying:
 						object.creatureState.movement=CreatureMovement.tumbling;
@@ -3205,6 +3210,10 @@ final class ObjectState(B){ // (update logic)
 	bool selectGroup(int side,int groupId){
 		return sid.selectGroup(side,groupId);
 	}
+	void removeFromGroups(int side,int id){
+		if(!canSelect(side,id,this)) return;
+		sid.removeFromGroups(side,id);
+	}
 	CreatureGroup getSelection(int side){
 		return sid.getSelection(side);
 	}
@@ -3415,6 +3424,11 @@ struct SideData(B){
 		selection=groups[groupId];
 		return true;
 	}
+	void removeFromGroups(int id){
+		removeFromSelection(id);
+		foreach(i;0..groups.length)
+			groups[i].remove(id);
+	}
 	CreatureGroup getSelection(){
 		return selection;
 	}
@@ -3467,6 +3481,11 @@ struct SideManager(B){
 		assert(0<=side&&side<sides.length&&0<=groupId&&groupId<numCreatureGroups);
 	}do{
 		return sides[side].selectGroup(groupId);
+	}
+	void removeFromGroups(int side,int id)in{
+		assert(0<=side&&side<sides.length&&id);
+	}do{
+		sides[side].removeFromGroups(id);
 	}
 	CreatureGroup getSelection(int side)in{
 		assert(0<=side&&side<sides.length);
