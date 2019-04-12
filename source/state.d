@@ -1855,7 +1855,6 @@ bool hasOrders(B)(ref MovingObject!B object,ObjectState!B state){
 }
 
 bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectState!B state){
-	auto evasion=RotationDirection.none;
 	auto hitbox=object.hitbox;
 	auto rotation=facingQuaternion(object.creatureState.facing);
 	auto distance=0.1f*(hitbox[1].y-hitbox[0].y);
@@ -1867,9 +1866,7 @@ bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPositi
 		Vector2f[2] frontObstacleHitbox2d=[frontObstacleHitbox[0].xy,frontObstacleHitbox[1].xy];
 		auto frontObstacleDirection=-closestBoxFaceNormal(frontObstacleHitbox2d,object.position.xy);
 		auto facing=object.creatureState.facing;
-		evasion=dot(Vector2f(cos(facing),sin(facing)),frontObstacleDirection)<=0.0f?RotationDirection.right:RotationDirection.left;
-	}
-	if(evasion!=RotationDirection.none){
+		auto evasion=dot(Vector2f(cos(facing),sin(facing)),frontObstacleDirection)<=0.0f?RotationDirection.right:RotationDirection.left;
 		object.setTurning(evasion,state);
 		object.startMovingForward(state);
 		return false;
@@ -1915,12 +1912,18 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 		case CommandType.retreat:
 			auto targetPosition=state.movingObjectById!((obj)=>obj.position,()=>Vector3f.init)(object.creatureAI.order.target.id);
 			if(targetPosition !is Vector3f.init){
-				object.turnToFaceTowards(targetPosition,state);
+
 				auto speed=object.speed(state)/updateFPS;
-				if((object.position.xy-targetPosition.xy).lengthsqr>(retreatDistance+speed)^^2 && object.movingForwardGetsCloserTo(targetPosition,speed,state)){
-					object.startMovingForward(state);
-					object.creatureState.speedLimit=speedLimitFactor*max(0.0f,(object.position.xy-targetPosition.xy).length-retreatDistance);
-				}else object.stopMovement(state);
+				if((object.position.xy-targetPosition.xy).lengthsqr>(retreatDistance+speed)^^2){
+					if(!object.turnToFaceTowardsEvading(targetPosition,state)) return;
+					if(object.movingForwardGetsCloserTo(targetPosition,speed,state)){
+						object.startMovingForward(state);
+						object.creatureState.speedLimit=speedLimitFactor*max(0.0f,(object.position.xy-targetPosition.xy).length-retreatDistance);
+					}else object.stopMovement(state);
+				}else{
+					object.stopMovement(state);
+					object.turnToFaceTowards(targetPosition,state);
+				}
 			}else{
 				object.clearOrder(state);
 			}
