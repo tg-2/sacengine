@@ -47,6 +47,8 @@ int main(string[] args){
 			options.cursorSize=to!int(opt["--cursor-size=".length..$]);
 		}else if(opt.startsWith("--wizard=")){
 			options.wizard=opt["--wizard=".length..$];
+		}else if(opt.startsWith("--god=")){
+			options.god=to!God(opt["--god=".length..$]);
 		}else LoptSwitch: switch(opt){
 			static string getOptionName(string memberName){
 				import std.ascii;
@@ -75,6 +77,10 @@ int main(string[] args){
 				stderr.writeln("unknown option: ",opt);
 				return 1;
 		}
+	}
+	if(options.god==God.none){
+		import std.random: uniform;
+		options.god=cast(God)uniform!"[]"(1,5);
 	}
 	auto backend=DagonBackend(options);
 	GameState!DagonBackend state;

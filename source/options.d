@@ -1,3 +1,4 @@
+import ntts: God;
 struct Options{
 	int width,height;
 	float scale=1.0f;
@@ -16,4 +17,5 @@ struct Options{
 	bool printFPS=false;
 	// just for testing:
 	string wizard="cwe2";
+	God god;
 }

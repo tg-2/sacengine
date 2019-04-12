@@ -419,7 +419,7 @@ final class SacScene: Scene{
 		shadelessMaterialBackend.bind(null,rc);
 		scope(success) shadelessMaterialBackend.unbind(null,rc);
 		static void renderCreatureStat(B)(MovingObject!B obj,SacScene scene,bool healthAndMana,RenderingContext* rc){
-			if(obj.creatureState.mode==CreatureMode.dead) return;
+			if(obj.creatureState.mode.among(CreatureMode.dying,CreatureMode.dead)) return;
 			auto backend=scene.shadelessMaterialBackend;
 			backend.bindDiffuse(scene.sacHud.statusArrows);
 			backend.setColor(scene.state.current.sides.sideColor(obj.side));
@@ -1587,22 +1587,21 @@ final class SacScene: Scene{
 		foreach(_;0..keyDown[KEY_B]) state.rollback();
 
 		if(camera.target){
-			foreach(_;0..keyDown[KEY_Q]){
-				auto id=spawn(camera.target,"oham",0,state.current);
-				state.current.addToSelection(renderSide,id);
+			auto creatures=creatureSpells[options.god];
+			static immutable hotkeys=[KEY_Q,KEY_Q,KEY_W,KEY_R,KEY_T,KEY_A,KEY_Z,KEY_X,KEY_C,KEY_V,KEY_SPACE];
+			if(!eventManager.keyPressed[KEY_LSHIFT] && !(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK])){
+				if(creatures.length)
+				foreach(_;0..keyDown[hotkeys[0]]){
+					auto id=spawn(camera.target,creatures[0],0,state.current);
+					state.current.addToSelection(renderSide,id);
+				}
 			}
-			if(eventManager.keyPressed[KEY_LSHIFT]){
-				foreach(_;0..keyDown[KEY_SPACE]){
-					auto id=spawn(camera.target,"gard",0,state.current);
-					state.current.addToSelection(renderSide,id);
-				}
-				foreach(_;0..keyDown[KEY_A]){
-					auto id=spawn(camera.target,"lort",0,state.current);
-					state.current.addToSelection(renderSide,id);
-				}
-				foreach(_;0..keyDown[KEY_R]){
-					auto id=spawn(camera.target,"tbsh",0,state.current);
-					state.current.addToSelection(renderSide,id);
+			if(eventManager.keyPressed[KEY_LSHIFT] && !(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK])){
+				foreach(i;1..min(hotkeys.length,creatures.length)){
+					foreach(_;0..keyDown[hotkeys[i]]){
+						auto id=spawn(camera.target,creatures[i],0,state.current);
+						state.current.addToSelection(renderSide,id);
+					}
 				}
 			}
 		}

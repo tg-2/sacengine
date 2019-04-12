@@ -831,3 +831,12 @@ Lswitch: switch(tag){
 			return null;
 	}
 }
+
+import ntts: God;
+immutable char[4][] persephoneCreatures=["oham","nmuh","amuh","tbsh","cara","lort","plfl","lrps","cbab","mtsl","grdg"];
+immutable char[4][] pyroCreatures=["oham","zidf","fplk","sohf","craf","lrtf","plff","kacf","wlcf","nugf","grdr"];
+immutable char[4][] jamesCreatures=["oham","ycro","palk","sohe","guls","raeb","wlce","kace","llab","mtse","gard"];
+immutable char[4][] stratosCreatures=["oham","lbog","ahcr","bobs","craa","alab","rgos","grps","wlca","ycrp","grdb"];
+immutable char[4][] charnelCreatures=["oham","dzid","dplk","pazb","glsd","kacd","crpd","plfd","ctug","nugd","nomd"];
+immutable char[4][][6] creatureSpells=[["maho"],persephoneCreatures,pyroCreatures,jamesCreatures,stratosCreatures,charnelCreatures];
+static assert(creatureSpells.length==God.max+1);
