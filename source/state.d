@@ -243,6 +243,9 @@ float speedInAir(B)(ref MovingObject!B object,ObjectState!B state){
 float speed(B)(ref MovingObject!B object,ObjectState!B state){
 	return object.creatureState.movement==CreatureMovement.flying?object.speedInAir(state):object.speedOnGround(state);
 }
+float takeoffTime(B)(ref MovingObject!B object,ObjectState!B state){
+	return object.sacObject.takeoffTime;
+}
 bool canSelect(B)(ref MovingObject!B obj,int side,ObjectState!B state){
 	return obj.side==side&&!obj.sacObject.isWizard&&obj.creatureState.mode!=CreatureMode.dead;
 }
@@ -1889,7 +1892,14 @@ bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPositi
 
 bool moveTo(B)(ref MovingObject!B object,Vector3f targetPosition,float targetFacing,ObjectState!B state,bool evade=true){
 	auto speed=object.speed(state)/updateFPS; // TODO: object.movementSpeed
-	if((object.position.xy-targetPosition.xy).lengthsqr>(2.0f*speed)^^2){
+	auto distancesqr=(object.position.xy-targetPosition.xy).lengthsqr;
+	if(distancesqr>(2.0f*speed)^^2){
+		if(object.creatureState.movement!=CreatureMovement.flying&&object.sacObject.canFly){
+			auto distance=sqrt(distancesqr);
+			auto walkingSpeed=object.speedOnGround(state), flyingSpeed=object.speedInAir(state);
+			if(object.takeoffTime(state)+distance/flyingSpeed<distance/walkingSpeed)
+				object.startFlying(state);
+		}
 		if(!evade) object.turnToFaceTowards(targetPosition,state);
 		else if(!object.turnToFaceTowardsEvading(targetPosition,state)) return false;
 		if(object.movingForwardGetsCloserTo(targetPosition,speed,state)){

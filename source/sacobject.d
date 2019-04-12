@@ -54,6 +54,10 @@ final class SacObject(B){
 	@property bool movingAfterTakeoff(){
 		return tag=="nmdd";
 	}
+	@property float takeoffTime(){
+		if(!hasAnimationState(AnimationState.takeoff)) return 0.0f;
+		return cast(float)animations[AnimationState.takeoff].frames.length/animFPS;
+	}
 	@property bool canAttack(){
 		return hasAnimationState(AnimationState.attack0);
 	}
