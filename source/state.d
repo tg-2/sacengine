@@ -1912,7 +1912,6 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 		case CommandType.retreat:
 			auto targetPosition=state.movingObjectById!((obj)=>obj.position,()=>Vector3f.init)(object.creatureAI.order.target.id);
 			if(targetPosition !is Vector3f.init){
-
 				auto speed=object.speed(state)/updateFPS;
 				if((object.position.xy-targetPosition.xy).lengthsqr>(retreatDistance+speed)^^2){
 					if(!object.turnToFaceTowardsEvading(targetPosition,state)) return;
