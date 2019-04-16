@@ -2453,12 +2453,14 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			   ||object.creatureState.mode==CreatureMode.meleeAttacking&&object.position.z-state.getHeight(object.position)>targetFlyingHeight
 			){
 				if(object.creatureState.mode.among(CreatureMode.landing,CreatureMode.idle)) object.creatureState.targetFlyingHeight=float.nan;
-				auto downwardSpeed=object.creatureState.mode==CreatureMode.landing?object.creatureStats.landingSpeed/updateFPS:object.creatureStats.downwardHoverSpeed/updateFPS;
-				newPosition.z-=downwardSpeed;
-				if(state.isOnGround(object.position)){
-					auto height=state.getGroundHeight(newPosition);
-					if(newPosition.z<=height)
-						newPosition.z=height;
+				auto height=state.getHeight(newPosition);
+				if(newPosition.z>height){
+					auto downwardSpeed=object.creatureState.mode==CreatureMode.landing?object.creatureStats.landingSpeed/updateFPS:object.creatureStats.downwardHoverSpeed/updateFPS;
+					newPosition.z-=downwardSpeed;
+					if(state.isOnGround(newPosition)){
+						if(newPosition.z<=height)
+							newPosition.z=height;
+					}
 				}
 				break;
 			}
