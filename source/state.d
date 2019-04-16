@@ -283,6 +283,9 @@ Vector3f[2] hitbox(B)(ref MovingObject!B object){
 	hitbox[1]+=object.position;
 	return hitbox;
 }
+Vector3f[2] closestHitbox(B)(ref MovingObject!B object,Vector3f position){
+	return object.hitbox;
+}
 Vector3f[2] hitbox2d(B)(ref MovingObject!B object,Matrix4f modelViewProjectionMatrix){
 	return object.sacObject.hitbox2d(object.animationState,object.frame/updateAnimFactor,modelViewProjectionMatrix);
 }
@@ -381,6 +384,19 @@ Vector3f[2] relativeHitbox(B)(ref StaticObject!B object){
 		}
 	}
 	foreach(i;0..3) result[0][i]=max(0.0f,result[0][i]);
+	return result;
+}
+Vector3f[2] closestHitbox(B)(ref StaticObject!B object,Vector3f position){
+	Vector3f[2] result;
+	auto resultDistSqr=float.infinity;
+	foreach(hitbox;object.hitboxes){
+		foreach(i;0..3) hitbox[0][i]=max(0.0f,hitbox[0][i]);
+		auto candDistSqr=(boxCenter(hitbox)-position).lengthsqr;
+		if(candDistSqr<resultDistSqr){
+			result=hitbox;
+			resultDistSqr=candDistSqr;
+		}
+	}
 	return result;
 }
 Vector3f[2] hitbox(B)(ref StaticObject!B object){
@@ -2031,9 +2047,11 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 			if(!state.isValidId(targetId)||state.objectById!((obj,state)=>obj.health(state)==0.0f)(targetId,state))
 				targetId=object.creatureAI.order.target.id=0;
 			if(targetId!=0){
-				auto targetPosition=state.objectById!((obj)=>boxCenter(obj.hitbox))(targetId);
 				enum meleeHitboxFactor=0.8f;
 				auto hitbox=scaleBox(object.meleeHitbox,meleeHitboxFactor);
+				auto hitboxCenter=boxCenter(hitbox);
+				auto hitboxOffset=hitboxCenter-object.position;
+				auto targetPosition=state.objectById!((obj,hitboxCenter)=>boxCenter(obj.closestHitbox(hitboxCenter)))(targetId,hitboxCenter);
 				static bool intersects(T)(T obj,Vector3f[2] hitbox){
 					static if(is(T==MovingObject!B)){
 						return boxesIntersect(obj.hitbox,hitbox);
@@ -2049,10 +2067,9 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 					int target=object.meleeAttackTarget(state); // TODO: share melee hitbox computation?
 					hasValidTarget=target&&(target==targetId||state.objectById!((obj,side,state)=>state.sides.getStance(side,.side(obj,state))==Stance.enemy)(target,object.side,state));
 				}
-				auto hitboxOffset=boxCenter(hitbox)-object.position;
+				auto movementPosition=targetPosition-hitboxOffset;
 				auto hitboxOffsetXY=0.75f*(targetPosition.xy-object.position.xy).normalized*hitboxOffset.xy.length;
 				hitboxOffset.x=hitboxOffsetXY.x, hitboxOffset.y=hitboxOffsetXY.y;
-				auto movementPosition=targetPosition-hitboxOffset;
 				if(object.moveTo(movementPosition,float.init,state,!object.isMeleeAttacking(state)))
 					object.turnToFaceTowards(movementPosition,state);
 				if(hasValidTarget){
@@ -2759,9 +2776,9 @@ void updateBuilding(B)(ref Building!B building, ObjectState!B state){
 	if(building.health!=0.0f) building.heal(building.regeneration/updateFPS,state);
 	if(building.isManafount && building.top==0){
 		Vector3f getManafountTop(StaticObject!B obj){
-			auto hitbox=obj.sacObject.hitboxes(obj.rotation)[0];
+			auto hitbox=obj.hitboxes[0];
 			auto center=0.5f*(hitbox[0]+hitbox[1]);
-			return obj.position+center+Vector3f(0.0f,0.0f,0.75f);
+			return center+Vector3f(0.0f,0.0f,0.75f);
 		}
 		auto position=state.staticObjectById!(getManafountTop,function Vector3f(){ assert(0); })(building.componentIds[0]);
 		animateManafount(position,state);
