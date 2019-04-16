@@ -1970,9 +1970,10 @@ bool moveTo(B)(ref MovingObject!B object,Vector3f targetPosition,float targetFac
 				object.pitch(0.0f,state);
 				object.creatureState.targetFlyingHeight=0.0f;
 			}
-		}else if(object.sacObject.canFly){
-			auto distance=sqrt(distancesqr),flyingSpeed=object.speedInAir(state);
-			if(object.takeoffTime(state)+distance/flyingSpeed<distance/speed)
+		}else if(object.creatureState.mode!=CreatureMode.takeoff&&object.sacObject.canFly){
+			auto distance=sqrt(distancesqr);
+			auto walkingSpeed=object.speedOnGround(state),flyingSpeed=object.speedInAir(state);
+			if(object.takeoffTime(state)+distance/flyingSpeed<distance/walkingSpeed)
 				object.startFlying(state);
 		}
 		if(!evade) object.turnToFaceTowards(targetPosition,state);
