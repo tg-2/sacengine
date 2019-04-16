@@ -17,9 +17,18 @@ struct CreatureStats{
 	float splashRangedResistance;
 }
 
+import std.math: PI;
 @property float rotationSpeed(ref CreatureStats stats){ // in radians per second
-	import std.math: PI;
-	return PI;
+	return cast(float)PI;
+}
+@property float pitchingSpeed(ref CreatureStats stats){ // in radians per second
+	return 0.125f*cast(float)PI;
+}
+@property float pitchLowerLimit(ref CreatureStats stats){
+	return -0.25f*cast(float)PI;
+}
+@property float pitchUpperLimit(ref CreatureStats stats){
+	return 0.25f*cast(float)PI;
 }
 @property float movementSpeed(ref CreatureStats stats,bool isFlying){ // in meters per second
 	return (isFlying?stats.flyingSpeed:stats.runningSpeed)*0.01f;
@@ -40,10 +49,10 @@ struct CreatureStats{
 	return 0.5f*stats.movementSpeed(true);
 }
 @property float downwardHoverSpeed(ref CreatureStats stats){
-	return 0.25f*stats.landingSpeed;
+	return 3.0f;
 }
 @property float flyingHeight(ref CreatureStats stats){
-	return 3.0f;
+	return 4.0f;
 }
 
 @property float takeoffSpeed(ref CreatureStats stats){

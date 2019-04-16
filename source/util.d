@@ -35,6 +35,9 @@ ubyte[] readFile(string filename){
 Quaternionf facingQuaternion(float facing){
 	return rotationQuaternion(Axis.z,facing);
 }
+Quaternionf pitchQuaternion(float pitch){
+	return rotationQuaternion(Axis.x,pitch);
+}
 
 Vector3f rotate(Quaternionf rotation, Vector3f v){
 	return rotation.rotate(v);
@@ -123,6 +126,10 @@ Vector3f[2] moveBox(Vector3f[2] box, Vector3f offset){
 	box[0]+=offset;
 	box[1]+=offset;
 	return box;
+}
+
+Vector3f boxCenter(Vector3f[2] box){
+	return 0.5f*(box[0]+box[1]);
 }
 
 Vector3f[2] scaleBox(Vector3f[2] box, float factor){

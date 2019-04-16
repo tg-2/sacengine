@@ -236,6 +236,9 @@ final class SacObject(B){
 	int numAttackTicks(AnimationState animationState){
 		return max(1,animations[animationState].numAttackTicks);
 	}
+	int firstAttackTick(AnimationState animationState){
+		return max(0,min(numFrames(animationState)-1,animations[animationState].firstAttackTick));
+	}
 
 	bool hasAttackTick(AnimationState animationState,int frame){
 		if(animations[animationState].numAttackTicks==0) return frame+1==animations[animationState].frames.length;
@@ -246,7 +249,7 @@ final class SacObject(B){
 		assert(isSaxs);
 	}do{
 		// TODO: this is a guess. what does the game actually do?
-		auto hbox=hitbox(rotation,animationState,frame);
+		auto hbox=hitbox(rotation,animationState.stance1,0);
 		auto center=0.5f*(hbox[0]+hbox[1]);
 		auto width=hbox[1].x-hbox[0].x;
 		auto depth=hbox[1].y-hbox[0].y;
@@ -460,7 +463,7 @@ final class SacObject(B){
 				if(animation.length)
 					loadAnimation(animation);
 				if(!animations.length){
-					auto anim=Animation(0,[Pose(Vector3f(0,0,0),AnimEvent.none,facingQuaternion(0).repeat(saxsi.saxs.bones.length).array)]);
+					auto anim=Animation(0,int.max,[Pose(Vector3f(0,0,0),AnimEvent.none,facingQuaternion(0).repeat(saxsi.saxs.bones.length).array)]);
 					static if(gpuSkinning)
 						anim.compile(saxsi.saxs);
 					animations=[anim];
