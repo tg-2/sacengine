@@ -36,6 +36,15 @@ final class SacObject(B){
 	@property bool mustFly(){
 		return cre8&&cre8.creatureType=="ylfo";
 	}
+	@property bool isAggressive(){
+		return cre8&&cre8.aggressiveness!=0;
+	}
+	@property float aggressiveRange(){
+		return 65.0f; // TODO: aggressiveRange for ranged attacks
+	}
+	@property float advanceRange(){
+		return 100.0f; // TODO: advanceRange for ranged attacks
+	}
 	@property bool canRun(){
 		return hasAnimationState(AnimationState.run);
 	}

@@ -262,6 +262,12 @@ bool canOrder(B)(ref MovingObject!B obj,int side,ObjectState!B state){
 bool canSelect(B)(int side,int id,ObjectState!B state){
 	return state.movingObjectById!(canSelect,()=>false)(id,side,state);
 }
+bool isAggressive(B)(ref MovingObject!B obj,ObjectState!B state){
+	return obj.sacObject.isAggressive;
+}
+float aggressiveRange(B)(ref MovingObject!B obj,CommandType type,ObjectState!B state){
+	return obj.sacObject.aggressiveRange;
+}
 bool isMeleeAttacking(B)(ref MovingObject!B obj,ObjectState!B state){
 	return !!obj.creatureState.mode.among(CreatureMode.meleeAttacking,CreatureMode.meleeMoving);
 }
@@ -383,14 +389,14 @@ Vector3f[2] relativeHitbox(B)(ref StaticObject!B object){
 			result[1][i]=max(result[1][i],hitbox[1][i]);
 		}
 	}
-	foreach(i;0..3) result[0][i]=max(0.0f,result[0][i]);
+	if(result[1].z>=0) result[0].z=max(result[0].z,0.0f);
 	return result;
 }
 Vector3f[2] closestHitbox(B)(ref StaticObject!B object,Vector3f position){
 	Vector3f[2] result;
 	auto resultDistSqr=float.infinity;
 	foreach(hitbox;object.hitboxes){
-		foreach(i;0..3) hitbox[0][i]=max(0.0f,hitbox[0][i]);
+		if(hitbox[1].z>=0) hitbox[0].z=max(hitbox[0].z,object.position.z);
 		auto candDistSqr=(boxCenter(hitbox)-position).lengthsqr;
 		if(candDistSqr<resultDistSqr){
 			result=hitbox;
@@ -1846,10 +1852,13 @@ bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state){
 	return false;
 }
 
-void turnToFaceTowards(B)(ref MovingObject!B object,Vector3f position,ObjectState!B state){
+float facingTowards(B)(ref MovingObject!B object,Vector3f position,ObjectState!B state){
 	auto direction=position.xy-object.position.xy;
-	auto facing=atan2(-direction.x,direction.y);
-	object.face(facing,state);
+	return atan2(-direction.x,direction.y);
+}
+
+void turnToFaceTowards(B)(ref MovingObject!B object,Vector3f position,ObjectState!B state){
+	object.face(object.facingTowards(position,state),state);
 }
 
 void setPitching(B)(ref MovingObject!B object,PitchingDirection direction,ObjectState!B state,int side=-1){
@@ -1949,138 +1958,185 @@ bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPositi
 		if(blockedSide){
 			object.stopTurning(state);
 			object.startMovingForward(state);
-			return false;
+			return true;
 		}
-	}
-	return true;
-}
-
-bool moveTo(B)(ref MovingObject!B object,Vector3f targetPosition,float targetFacing,ObjectState!B state,bool evade=true){
-	auto speed=object.speed(state)/updateFPS; // TODO: object.movementSpeed
-	auto distancesqr=(object.position.xy-targetPosition.xy).lengthsqr;
-	if(distancesqr>(2.0f*speed)^^2){
-		if(object.creatureState.movement==CreatureMovement.flying){
-			if(distancesqr>(0.5f*updateFPS*speed)^^2){
-				object.pitchToFaceTowards(targetPosition,state);
-				auto flyingHeight=object.position.z-state.getHeight(object.position);
-				auto minimumFlyingHeight=object.creatureStats.flyingHeight;
-				if(flyingHeight<minimumFlyingHeight) object.creatureState.targetFlyingHeight=minimumFlyingHeight;
-				else object.creatureState.targetFlyingHeight=float.nan;
-			}else{
-				object.pitch(0.0f,state);
-				object.creatureState.targetFlyingHeight=0.0f;
-			}
-		}else if(object.creatureState.mode!=CreatureMode.takeoff&&object.sacObject.canFly){
-			auto distance=sqrt(distancesqr);
-			auto walkingSpeed=object.speedOnGround(state),flyingSpeed=object.speedInAir(state);
-			if(object.takeoffTime(state)+distance/flyingSpeed<distance/walkingSpeed)
-				object.startFlying(state);
-		}
-		if(!evade) object.turnToFaceTowards(targetPosition,state);
-		else if(!object.turnToFaceTowardsEvading(targetPosition,state)) return false;
-		if(object.movingForwardGetsCloserTo(targetPosition,speed,state)){
-			object.startMovingForward(state);
-			object.creatureState.speedLimit=speedLimitFactor*(object.position.xy-targetPosition.xy).length;
-		}else object.stopMovement(state);
-	}else{
-		object.stopMovement(state);
-		auto facingFinished=targetFacing is float.init||object.face(targetFacing,state);
-		auto pitchingFinished=true;
-		if(object.creatureState.movement==CreatureMovement.flying){
-			pitchingFinished=object.pitch(0.0f,state);
-			object.creatureState.targetFlyingHeight=0.0f;
-		}
-		if(facingFinished && pitchingFinished) return true;
 	}
 	return false;
 }
 
+bool stop(B)(ref MovingObject!B object,float targetFacing,ObjectState!B state){
+	object.stopMovement(state);
+	auto facingFinished=targetFacing is float.init||object.face(targetFacing,state);
+	auto pitchingFinished=true;
+	if(object.creatureState.movement==CreatureMovement.flying){
+		pitchingFinished=object.pitch(0.0f,state);
+		object.creatureState.targetFlyingHeight=0.0f;
+	}
+	return !(facingFinished && pitchingFinished);
+}
+
+bool stopAndFaceTowards(B)(ref MovingObject!B object,Vector3f position,ObjectState!B state){
+	return object.stop(object.facingTowards(position,state),state);
+}
+
+void moveTowards(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectState!B state,bool evade=true){
+	auto speed=object.speed(state)/updateFPS;
+	auto distancesqr=(object.position.xy-targetPosition.xy).lengthsqr;
+	if(object.creatureState.movement==CreatureMovement.flying){
+		if(distancesqr>(0.5f*updateFPS*speed)^^2){
+			object.pitchToFaceTowards(targetPosition,state);
+			auto flyingHeight=object.position.z-state.getHeight(object.position);
+			auto minimumFlyingHeight=object.creatureStats.flyingHeight;
+			if(flyingHeight<minimumFlyingHeight) object.creatureState.targetFlyingHeight=minimumFlyingHeight;
+			else object.creatureState.targetFlyingHeight=float.nan;
+		}else{
+			object.pitch(0.0f,state);
+			object.creatureState.targetFlyingHeight=0.0f;
+		}
+	}else if(object.creatureState.mode!=CreatureMode.takeoff&&object.sacObject.canFly){
+		auto distance=sqrt(distancesqr);
+		auto walkingSpeed=object.speedOnGround(state),flyingSpeed=object.speedInAir(state);
+		if(object.takeoffTime(state)+distance/flyingSpeed<distance/walkingSpeed)
+			object.startFlying(state);
+	}
+	if(!evade) object.turnToFaceTowards(targetPosition,state);
+	else if(object.turnToFaceTowardsEvading(targetPosition,state)) return;
+	if(object.movingForwardGetsCloserTo(targetPosition,speed,state)){
+		object.startMovingForward(state);
+		object.creatureState.speedLimit=speedLimitFactor*(object.position.xy-targetPosition.xy).length;
+	}else object.stopMovement(state);
+}
+
+bool moveTo(B)(ref MovingObject!B object,Vector3f targetPosition,float targetFacing,ObjectState!B state,bool evade=true){
+	auto speed=object.speed(state)/updateFPS;
+	auto distancesqr=(object.position.xy-targetPosition.xy).lengthsqr;
+	if(distancesqr>(2.0f*speed)^^2){
+		object.moveTowards(targetPosition,state,evade);
+		return true;
+	}
+	return object.stop(targetFacing,state);
+}
+
+bool retreatTowards(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectState!B state){
+	if(object.patrolAround(targetPosition,guardDistance,state))
+		return true;
+	auto speed=object.speed(state)/updateFPS;
+	auto distancesqr=(object.position.xy-targetPosition.xy).lengthsqr;
+	if(distancesqr<=(retreatDistance+speed)^^2)
+		return object.stopAndFaceTowards(targetPosition,state);
+	object.moveTowards(targetPosition,state);
+	return true;
+}
+
+bool isValidAttackTarget(B,T)(T obj,ObjectState!B state)if(is(T==MovingObject!B)||is(T==StaticObject!B)){
+	return obj.health(state)!=0.0f;
+}
+bool isValidAttackTarget(B)(int targetId,ObjectState!B state){
+	return state.objectById!(.isValidAttackTarget)(targetId,state);
+}
+
+bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
+	if(!isValidAttackTarget(targetId,state)) return false;
+	enum meleeHitboxFactor=0.8f;
+	auto hitbox=scaleBox(object.meleeHitbox,meleeHitboxFactor);
+	auto hitboxCenter=boxCenter(hitbox);
+	auto hitboxOffset=hitboxCenter-object.position;
+	auto targetPosition=state.objectById!((obj,hitboxCenter)=>boxCenter(obj.closestHitbox(hitboxCenter)))(targetId,hitboxCenter);
+	static bool intersects(T)(T obj,Vector3f[2] hitbox){
+		static if(is(T==MovingObject!B)){
+			return boxesIntersect(obj.hitbox,hitbox);
+		}else{
+			foreach(bhitb;obj.hitboxes)
+				if(boxesIntersect(bhitb,hitbox))
+					return true;
+			return false;
+		}
+	}
+	bool hasValidTarget=state.objectById!intersects(targetId,hitbox);
+	if(hasValidTarget){
+		int target=object.meleeAttackTarget(state); // TODO: share melee hitbox computation?
+		hasValidTarget=target&&(target==targetId||state.objectById!((obj,side,state)=>state.sides.getStance(side,.side(obj,state))==Stance.enemy)(target,object.side,state));
+	}
+	auto movementPosition=targetPosition-hitboxOffset;
+	auto hitboxOffsetXY=0.75f*(targetPosition.xy-object.position.xy).normalized*hitboxOffset.xy.length;
+	hitboxOffset.x=hitboxOffsetXY.x, hitboxOffset.y=hitboxOffsetXY.y;
+	if(!object.moveTo(movementPosition,float.init,state,!object.isMeleeAttacking(state)))
+		object.turnToFaceTowards(movementPosition,state);
+	if(hasValidTarget){
+		object.startMeleeAttacking(state);
+		if(object.creatureState.movement==CreatureMovement.flying)
+			object.creatureState.targetFlyingHeight=movementPosition.z-state.getHeight(object.position);
+	}
+	return true;
+}
+
+bool patrolAround(B)(ref MovingObject!B object,Vector3f position,float range,ObjectState!B state){
+	auto targetId=state.proximity.closestEnemyInRange(object.side,position,range,false,state);
+	if(targetId)
+		if(object.attack(targetId,state))
+			return true;
+	return false;
+}
+
+bool guard(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
+	if(!isValidAttackTarget(targetId,state)) return false;
+	auto targetPositionTargetFacingTargetSpeed=state.movingObjectById!((obj,state)=>tuple(obj.position,obj.creatureState.facing,obj.speed(state)/updateFPS), ()=>tuple(object.creatureAI.order.target.position,object.creatureAI.order.targetFacing,0.0f))(targetId,state);
+	auto targetPosition=targetPositionTargetFacingTargetSpeed[0], targetFacing=targetPositionTargetFacingTargetSpeed[1], targetSpeed=targetPositionTargetFacingTargetSpeed[2];
+	auto formationOffset=object.creatureAI.order.formationOffset;
+	targetPosition=getTargetPosition(targetPosition,targetFacing,formationOffset,state);
+	//object.moveTo(targetPosition,targetFacing,state);
+	if(!object.patrolAround(targetPosition,guardDistance,state))
+		object.moveTo(targetPosition,targetFacing,state);
+	if((object.position-targetPosition).lengthsqr<=(0.1f*updateFPS*targetSpeed)^^2)
+		object.creatureState.speedLimit=min(object.creatureState.speedLimit, targetSpeed);
+	return true;
+}
+
+bool patrol(B)(ref MovingObject!B object,ObjectState!B state){
+	auto position=object.position;
+	auto range=object.aggressiveRange(CommandType.none,state);
+	auto targetId=state.proximity.closestEnemyInRange(object.side,position,range,false,state);
+	if(targetId)
+		if(object.attack(targetId,state))
+			return true;
+	return false;
+}
+
 enum retreatDistance=9.0f;
+enum guardDistance=18.0f; // ok?
 enum speedLimitFactor=0.5f;
 enum rotationSpeedLimitFactor=1.0f;
 void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 	switch(object.creatureAI.order.command){
 		case CommandType.retreat:
 			auto targetPosition=state.movingObjectById!((obj)=>obj.position,()=>Vector3f.init)(object.creatureAI.order.target.id);
-			if(targetPosition !is Vector3f.init){
-				// TODO: get rid of code duplication with moveTo
-				auto speed=object.speed(state)/updateFPS;
-				auto distancesqr=(object.position.xy-targetPosition.xy).lengthsqr;
-				if(distancesqr>(retreatDistance+speed)^^2){
-					if(object.creatureState.movement!=CreatureMovement.flying){
-						auto distance=max(0.0f,sqrt(distancesqr)-retreatDistance);
-						auto walkingSpeed=object.speedOnGround(state), flyingSpeed=object.speedInAir(state);
-						if(object.takeoffTime(state)+distance/flyingSpeed<distance/walkingSpeed)
-							object.startFlying(state);
-					}else object.pitchToFaceTowards(targetPosition,state);
-					if(!object.turnToFaceTowardsEvading(targetPosition,state)) return;
-					if(object.movingForwardGetsCloserTo(targetPosition,speed,state)){
-						object.startMovingForward(state);
-						object.creatureState.speedLimit=speedLimitFactor*max(0.0f,(object.position.xy-targetPosition.xy).length-retreatDistance);
-					}else object.stopMovement(state);
-				}else{
-					object.stopMovement(state);
-					object.turnToFaceTowards(targetPosition,state);
-				}
-			}else{
-				object.clearOrder(state);
-			}
+			if(targetPosition !is Vector3f.init) object.retreatTowards(targetPosition,state);
+			else object.clearOrder(state);
 			break;
 		case CommandType.move:
 			auto targetPosition=object.creatureAI.order.getTargetPosition(state);
-			if(object.moveTo(targetPosition,object.creatureAI.order.targetFacing,state))
+			if(!object.moveTo(targetPosition,object.creatureAI.order.targetFacing,state))
 				object.clearOrder(state);
 			break;
 		case CommandType.guard:
 			auto targetId=object.creatureAI.order.target.id;
-			if(targetId!=0){
-				auto targetPositionTargetFacingTargetSpeed=state.movingObjectById!((obj,state)=>tuple(obj.position,obj.creatureState.facing,obj.speed(state)/updateFPS), ()=>tuple(object.creatureAI.order.target.position,object.creatureAI.order.targetFacing,0.0f))(targetId,state);
-				auto targetPosition=targetPositionTargetFacingTargetSpeed[0], targetFacing=targetPositionTargetFacingTargetSpeed[1], targetSpeed=targetPositionTargetFacingTargetSpeed[2];
-				auto formationOffset=object.creatureAI.order.formationOffset;
-				targetPosition=getTargetPosition(targetPosition,targetFacing,formationOffset,state);
-				object.moveTo(targetPosition,targetFacing,state);
-				if((object.position-targetPosition).lengthsqr<=(0.1f*updateFPS*targetSpeed)^^2)
-					object.creatureState.speedLimit=min(object.creatureState.speedLimit, targetSpeed);
-			}else goto case CommandType.move;// TODO: guard area
+			if(!state.isValidId(targetId)||!object.guard(targetId,state)) targetId=object.creatureAI.order.target.id=0;
+			if(targetId==0&&!object.patrol(state)) goto case CommandType.move;
 			break;
 		case CommandType.attack:
 			auto targetId=object.creatureAI.order.target.id;
-			if(!state.isValidId(targetId)||state.objectById!((obj,state)=>obj.health(state)==0.0f)(targetId,state))
-				targetId=object.creatureAI.order.target.id=0;
-			if(targetId!=0){
-				enum meleeHitboxFactor=0.8f;
-				auto hitbox=scaleBox(object.meleeHitbox,meleeHitboxFactor);
-				auto hitboxCenter=boxCenter(hitbox);
-				auto hitboxOffset=hitboxCenter-object.position;
-				auto targetPosition=state.objectById!((obj,hitboxCenter)=>boxCenter(obj.closestHitbox(hitboxCenter)))(targetId,hitboxCenter);
-				static bool intersects(T)(T obj,Vector3f[2] hitbox){
-					static if(is(T==MovingObject!B)){
-						return boxesIntersect(obj.hitbox,hitbox);
-					}else{
-						foreach(bhitb;obj.hitboxes)
-							if(boxesIntersect(bhitb,hitbox))
-								return true;
-						return false;
-					}
-				}
-				bool hasValidTarget=state.objectById!intersects(targetId,hitbox);
-				if(hasValidTarget){
-					int target=object.meleeAttackTarget(state); // TODO: share melee hitbox computation?
-					hasValidTarget=target&&(target==targetId||state.objectById!((obj,side,state)=>state.sides.getStance(side,.side(obj,state))==Stance.enemy)(target,object.side,state));
-				}
-				auto movementPosition=targetPosition-hitboxOffset;
-				auto hitboxOffsetXY=0.75f*(targetPosition.xy-object.position.xy).normalized*hitboxOffset.xy.length;
-				hitboxOffset.x=hitboxOffsetXY.x, hitboxOffset.y=hitboxOffsetXY.y;
-				if(object.moveTo(movementPosition,float.init,state,!object.isMeleeAttacking(state)))
-					object.turnToFaceTowards(movementPosition,state);
-				if(hasValidTarget){
-					object.startMeleeAttacking(state);
-					if(object.creatureState.movement==CreatureMovement.flying)
-						object.creatureState.targetFlyingHeight=movementPosition.z-state.getHeight(object.position);
-				}
-			}else goto case CommandType.move;// TODO: advance
+			if(!state.isValidId(targetId)||!object.attack(targetId,state)) targetId=object.creatureAI.order.target.id=0;
+			if(targetId==0&&!object.patrol(state)) goto case CommandType.move;
 			break;
-		case CommandType.none: break;
+		case CommandType.none:
+			if(object.isAggressive(state)){
+				if(!object.patrol(state)){
+					object.stopMovement(state);
+					object.stopTurning(state);
+					object.stopPitching(state);
+				}
+			}
+			break;
 		default: assert(0); // TODO: compilation error would be better
 	}
 }
@@ -2836,6 +2892,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 			hitbox[0]+=position;
 			hitbox[1]+=position;
 			proximity.insert(ProximityEntry(objects.ids[j],hitbox));
+			proximity.insertCenter(CenterProximityEntry(false,objects.ids[j],objects.sides[j],objects.positions[j]));
 		}
 		if(objects.sacObject.isManahoar){
 			static bool manahoarAbilityEnabled(CreatureMode mode){
@@ -2860,6 +2917,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 				hitbox[0]+=position;
 				hitbox[1]+=position;
 				proximity.insert(ProximityEntry(objects.ids[j],hitbox));
+				proximity.insertCenter(CenterProximityEntry(true,objects.ids[j],sideFromBuildingId(objects.buildingIds[j],state),objects.positions[j]));
 			}
 		}
 		// TODO: get rid of duplication here
@@ -3037,6 +3095,82 @@ struct ManaProximity(B){
 	}
 }
 
+struct CenterProximityEntry{
+	bool isStatic;
+	int id;
+	int side;
+	Vector3f position;
+}
+
+struct CenterProximityEntries{
+	int version_=0;
+	Array!CenterProximityEntry entries; // TODO: be more clever here?
+	void insert(int version_,CenterProximityEntry entry){
+		if(this.version_!=version_){
+			entries.length=0;
+			this.version_=version_;
+		}
+		entries~=entry;
+	}
+}
+auto eachInRange(alias f,T...)(ref CenterProximityEntries proximity,int version_,Vector3f position,float range,T args){
+	if(proximity.version_!=version_){
+		proximity.entries.length=0;
+		proximity.version_=version_;
+	}
+	foreach(ref entry;proximity.entries){
+		if((entry.position-position).lengthsqr>range^^2) continue;
+		f(entry,args);
+	}
+}
+
+struct CenterProximity(B){
+	enum resolution=50;
+	enum offMapSlack=100/resolution;
+	enum size=(2560+resolution-1)/resolution+2*offMapSlack;
+	static Tuple!(int,"j",int,"i") getTile(Vector3f position){
+		return tuple!("j","i")(cast(int)(position.y/resolution),cast(int)(position.x/resolution)); // TODO: good resolution?
+	}
+	CenterProximityEntries[size][size] data;
+	CenterProximityEntries offMap;
+	void insert(int version_,CenterProximityEntry entry){
+		auto tile=getTile(entry.position);
+		if(tile.j+offMapSlack<0||tile.i+offMapSlack<0||tile.j+offMapSlack>=size||tile.i+offMapSlack>=size) offMap.insert(version_,entry);
+		else data[tile.j+offMapSlack][tile.i+offMapSlack].insert(version_,entry);
+	}
+}
+auto eachInRange(alias f,B,T...)(ref CenterProximity!B proximity,int version_,Vector3f position,float range,T args){
+	with(proximity){
+		auto offset=Vector3f(0.5f*range,0.5f*range,0.0f);
+		auto lowTile=getTile(position-offset), highTile=getTile(position+offset);
+		float rate=0.0f;
+		if(lowTile.j+offMapSlack<0||lowTile.i+offMapSlack<0||highTile.j+offMapSlack>=size||highTile.i+offMapSlack>=size)
+			offMap.eachInRange!f(version_,position,range,args);
+		foreach(j;max(0,lowTile.j+offMapSlack)..min(highTile.j+offMapSlack+1,size))
+			foreach(i;max(0,lowTile.i+offMapSlack)..min(highTile.i+offMapSlack+1,size))
+				data[j][i].eachInRange!f(version_,position,range,args);
+		return rate;
+	}
+}
+CenterProximityEntry closestInRange(alias f,B,T...)(ref CenterProximity!B proximity,int version_,Vector3f position,float range,T args){
+	struct State{
+		auto entry=CenterProximityEntry.init;
+		auto distancesqr=double.infinity;
+	}
+	static void process(ref CenterProximityEntry entry,Vector3f position,State* state,T args){
+		if(!f(entry,args)) return;
+		auto distancesqr=(entry.position-position).lengthsqr;
+		if(distancesqr<state.distancesqr){
+			state.entry=entry;
+			state.distancesqr=distancesqr;
+		}
+	}
+	State state;
+	proximity.eachInRange!process(version_,position,range,position,&state,args);
+	return state.entry;
+}
+
+
 final class Proximity(B){
 	int version_=0;
 	bool active=false;
@@ -3075,6 +3209,20 @@ final class Proximity(B){
 	}
 	float manaRegenAt(int side,Vector3f position,ObjectState!B state){
 		return mana.manaRegenAt(version_,side,position,state);
+	}
+	CenterProximity!B centers;
+	void insertCenter(CenterProximityEntry entry)in{
+		assert(active);
+	}do{
+		centers.insert(version_,entry);
+	}
+	int closestEnemyInRange(int side,Vector3f position,float range,bool onlyCreatures,ObjectState!B state){
+		static bool isEnemy(ref CenterProximityEntry entry,int side,bool onlyCreatures,ObjectState!B state){
+			if(onlyCreatures&&entry.isStatic) return false;
+			if(state.sides.getStance(side,entry.side)!=Stance.enemy) return false;
+			return isValidAttackTarget(entry.id,state);
+		}
+		return centers.closestInRange!isEnemy(version_,position,range,side,onlyCreatures,state).id;
 	}
 }
 auto collide(alias f,B,T...)(Proximity!B proximity,Vector3f[2] hitbox,T args){
