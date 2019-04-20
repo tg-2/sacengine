@@ -365,8 +365,11 @@ struct StaticObject(B){
 		this(sacObject,buildingId,position,rotation);
 	}
 }
+float healthFromBuildingId(B)(int buildingId,ObjectState!B state){
+	return state.buildingById!((ref b)=>b.health,function int(){ assert(0); })(buildingId);
+}
 float health(B)(ref StaticObject!B object,ObjectState!B state){
-	return state.buildingById!((ref b)=>b.health,function int(){ assert(0); })(object.buildingId);
+	return healthFromBuildingId(object.buildingId,state);
 }
 int sideFromBuildingId(B)(int buildingId,ObjectState!B state){
 	return state.buildingById!((ref b)=>b.side,function int(){ assert(0); })(buildingId);
@@ -1766,8 +1769,15 @@ void giveMana(B)(ref MovingObject!B object,float amount,ObjectState!B state){
 }
 
 void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,ObjectState!B state){
-	auto damage=state.uniform(0.8f*attacker.meleeStrength,1.2f*attacker.meleeStrength)/attacker.numAttackTicks(attacker.animationState); // TODO: figure this out
-	auto actualDamage=damage*object.creatureStats.meleeResistance;
+	auto damage=attacker.meleeStrength/attacker.numAttackTicks(attacker.animationState); // TODO: figure this out
+	auto objectHitbox=object.hitbox;
+	auto attackerHitbox=attacker.meleeHitbox;
+	auto size=0.6f/sqrt(3.0f)*((objectHitbox[1]-objectHitbox[0])+(attackerHitbox[1]-attackerHitbox[0]));
+	size.z/=4.0f;
+	auto distance=(boxCenter(objectHitbox)-boxCenter(attackerHitbox));
+	distance.z/=4.0f;
+	auto damageMultiplier=max(0.0f,1.0f-max(0.0f,distance.length/size.length));
+	auto actualDamage=damageMultiplier*damage*object.creatureStats.meleeResistance;
 	auto attackDirection=object.center-attacker.center; // TODO: good?
 	auto stunBehavior=attacker.stunBehavior;
 	auto direction=getDamageDirection(object,attackDirection,state);
@@ -1777,8 +1787,10 @@ void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,Ob
 	else if(fromSide) actualDamage*=1.5f;
 	object.dealDamage(actualDamage,attacker,state);
 	if(stunBehavior==StunBehavior.always || fromBehind && stunBehavior==StunBehavior.fromBehind){
-		object.damageStun(attackDirection,state);
-		return;
+		if(actualDamage>=0.5f*damage){
+			object.damageStun(attackDirection,state);
+			return;
+		}
 	}
 	object.damageAnimation(attackDirection,state);
 	final switch(object.stunnedBehavior){
@@ -2029,6 +2041,7 @@ bool retreatTowards(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectS
 }
 
 bool isValidAttackTarget(B,T)(T obj,ObjectState!B state)if(is(T==MovingObject!B)||is(T==StaticObject!B)){
+	// this needs to be kept in synch with addToProximity
 	return obj.health(state)!=0.0f;
 }
 bool isValidAttackTarget(B)(int targetId,ObjectState!B state){
@@ -2038,10 +2051,8 @@ bool isValidAttackTarget(B)(int targetId,ObjectState!B state){
 bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 	if(!isValidAttackTarget(targetId,state)) return false;
 	enum meleeHitboxFactor=0.8f;
-	auto hitbox=scaleBox(object.meleeHitbox,meleeHitboxFactor);
-	auto hitboxCenter=boxCenter(hitbox);
-	auto hitboxOffset=hitboxCenter-object.position;
-	auto targetPosition=state.objectById!((obj,hitboxCenter)=>boxCenter(obj.closestHitbox(hitboxCenter)))(targetId,hitboxCenter);
+	auto meleeHitbox=scaleBox(object.meleeHitbox,meleeHitboxFactor);
+	auto meleeHitboxCenter=boxCenter(meleeHitbox);
 	static bool intersects(T)(T obj,Vector3f[2] hitbox){
 		static if(is(T==MovingObject!B)){
 			return boxesIntersect(obj.hitbox,hitbox);
@@ -2052,17 +2063,20 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 			return false;
 		}
 	}
-	bool hasValidTarget=state.objectById!intersects(targetId,hitbox);
-	if(hasValidTarget){
-		int target=object.meleeAttackTarget(state); // TODO: share melee hitbox computation?
-		hasValidTarget=target&&(target==targetId||state.objectById!((obj,side,state)=>state.sides.getStance(side,.side(obj,state))==Stance.enemy)(target,object.side,state));
+	int target=0;
+	if(state.objectById!intersects(targetId,meleeHitbox)){
+		target=meleeAttackTarget(object.id,object.hitbox,meleeHitbox,state); // TODO: share melee hitbox computation?
+		if(target&&target!=targetId&&!state.objectById!((obj,side,state)=>state.sides.getStance(side,.side(obj,state))==Stance.enemy)(target,object.side,state))
+			target=0;
 	}
-	auto movementPosition=targetPosition-hitboxOffset;
-	auto hitboxOffsetXY=0.75f*(targetPosition.xy-object.position.xy).normalized*hitboxOffset.xy.length;
-	hitboxOffset.x=hitboxOffsetXY.x, hitboxOffset.y=hitboxOffsetXY.y;
-	if(!object.moveTo(movementPosition,float.init,state,!object.isMeleeAttacking(state)))
+	auto targetPosition=state.objectById!((obj,meleeHitboxCenter)=>boxCenter(obj.closestHitbox(meleeHitboxCenter)))(targetId,meleeHitboxCenter);
+	auto meleeHitboxOffset=meleeHitboxCenter-object.position;
+	auto movementPosition=targetPosition-meleeHitboxOffset;
+	auto meleeHitboxOffsetXY=0.75f*(targetPosition.xy-object.position.xy).normalized*meleeHitboxOffset.xy.length;
+	meleeHitboxOffset.x=meleeHitboxOffsetXY.x, meleeHitboxOffset.y=meleeHitboxOffsetXY.y;
+	if(target||!object.moveTo(movementPosition,float.init,state,!object.isMeleeAttacking(state)))
 		object.turnToFaceTowards(movementPosition,state);
-	if(hasValidTarget){
+	if(target){
 		object.startMeleeAttacking(state);
 		if(object.creatureState.movement==CreatureMovement.flying)
 			object.creatureState.targetFlyingHeight=movementPosition.z-state.getHeight(object.position);
@@ -2071,6 +2085,7 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 }
 
 bool patrolAround(B)(ref MovingObject!B object,Vector3f position,float range,ObjectState!B state){
+	if(!object.isAggressive(state)) return false;
 	auto targetId=state.proximity.closestEnemyInRange(object.side,position,range,false,state);
 	if(targetId)
 		if(object.attack(targetId,state))
@@ -2093,6 +2108,7 @@ bool guard(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 }
 
 bool patrol(B)(ref MovingObject!B object,ObjectState!B state){
+	if(!object.isAggressive(state)) return false;
 	auto position=object.position;
 	auto range=object.aggressiveRange(CommandType.none,state);
 	auto targetId=state.proximity.closestEnemyInRange(object.side,position,range,false,state);
@@ -2133,7 +2149,8 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 				if(!object.patrol(state)){
 					object.stopMovement(state);
 					object.stopTurning(state);
-					object.stopPitching(state);
+					if(object.creatureState.movement==CreatureMovement.flying)
+						object.pitch(0.0f,state);
 				}
 			}
 			break;
@@ -2892,7 +2909,8 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 			hitbox[0]+=position;
 			hitbox[1]+=position;
 			proximity.insert(ProximityEntry(objects.ids[j],hitbox));
-			proximity.insertCenter(CenterProximityEntry(false,objects.ids[j],objects.sides[j],objects.positions[j]));
+			if(objects.creatureStatss[j].health!=0.0f)
+				proximity.insertCenter(CenterProximityEntry(false,objects.ids[j],objects.sides[j],objects.positions[j]));
 		}
 		if(objects.sacObject.isManahoar){
 			static bool manahoarAbilityEnabled(CreatureMode mode){
@@ -2917,7 +2935,9 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 				hitbox[0]+=position;
 				hitbox[1]+=position;
 				proximity.insert(ProximityEntry(objects.ids[j],hitbox));
-				proximity.insertCenter(CenterProximityEntry(true,objects.ids[j],sideFromBuildingId(objects.buildingIds[j],state),objects.positions[j]));
+				auto buildingId=objects.buildingIds[j];
+				if(healthFromBuildingId(buildingId,state)!=0.0f) // this needs to be kept in synch with isValidAttackTarget
+					proximity.insertCenter(CenterProximityEntry(true,objects.ids[j],sideFromBuildingId(buildingId,state),objects.positions[j]));
 			}
 		}
 		// TODO: get rid of duplication here
@@ -3219,8 +3239,7 @@ final class Proximity(B){
 	int closestEnemyInRange(int side,Vector3f position,float range,bool onlyCreatures,ObjectState!B state){
 		static bool isEnemy(ref CenterProximityEntry entry,int side,bool onlyCreatures,ObjectState!B state){
 			if(onlyCreatures&&entry.isStatic) return false;
-			if(state.sides.getStance(side,entry.side)!=Stance.enemy) return false;
-			return isValidAttackTarget(entry.id,state);
+			return state.sides.getStance(side,entry.side)==Stance.enemy;
 		}
 		return centers.closestInRange!isEnemy(version_,position,range,side,onlyCreatures,state).id;
 	}
