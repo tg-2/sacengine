@@ -374,6 +374,9 @@ float health(B)(ref StaticObject!B object,ObjectState!B state){
 int sideFromBuildingId(B)(int buildingId,ObjectState!B state){
 	return state.buildingById!((ref b)=>b.side,function int(){ assert(0); })(buildingId);
 }
+int flagsFromBuildingId(B)(int buildingId,ObjetState!B state){
+	return state.buildingById!((ref b)=>b.flags,function int(){ assert(0); })(buildingId);
+}
 int side(B)(ref StaticObject!B object,ObjectState!B state){
 	return sideFromBuildingId(object.buildingId,state);
 }
@@ -2936,7 +2939,8 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 				hitbox[1]+=position;
 				proximity.insert(ProximityEntry(objects.ids[j],hitbox));
 				auto buildingId=objects.buildingIds[j];
-				if(healthFromBuildingId(buildingId,state)!=0.0f) // this needs to be kept in synch with isValidAttackTarget
+				// this needs to be kept in synch with isValidAttackTarget
+				if(state.buildingById!((ref b)=>b.health!=0.0f&&!(b.flags&Flags.notOnMinimap),function bool(){ assert(0); })(buildingId))
 					proximity.insertCenter(CenterProximityEntry(true,objects.ids[j],sideFromBuildingId(buildingId,state),objects.positions[j]));
 			}
 		}

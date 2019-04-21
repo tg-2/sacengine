@@ -906,8 +906,16 @@ final class SacScene: Scene{
 				foreach(j;0..cast(uint)objects.length){
 					static if(is(typeof(objects.sacObject))){
 						static if(isMoving) if(objects.creatureStates[j].mode==CreatureMode.dead) continue;
-						static if(isMoving) auto side=objects.sides[j];
-						else auto side=sideFromBuildingId(objects.buildingIds[j],scene.state.current);
+						static if(isMoving){
+							auto side=objects.sides[j];
+							auto flags=objects.creatureStatss[j].flags;
+						}else{
+							alias Tuple=std.typecons.Tuple;
+							auto sideFlags=scene.state.current.buildingById!((ref b)=>tuple(b.side,b.flags),function Tuple!(int,int)(){ assert(0); })(objects.buildingIds[j]);
+							auto side=sideFlags[0],flags=sideFlags[1];
+						}
+						import ntts: Flags;
+						if(flags&Flags.notOnMinimap) continue;
 						auto showArrow=mayShowArrow&&
 							(side==scene.renderSide||
 							 (!isMoving||isWizard) && scene.state.current.sides.getStance(side,scene.renderSide)==Stance.ally);
