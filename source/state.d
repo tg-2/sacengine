@@ -2085,7 +2085,7 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 	auto meleeHitboxOffsetXY=0.75f*(targetPosition.xy-object.position.xy).normalized*meleeHitboxOffset.xy.length;
 	meleeHitboxOffset.x=meleeHitboxOffsetXY.x, meleeHitboxOffset.y=meleeHitboxOffsetXY.y;
 	if(target||!object.moveTo(movementPosition,float.init,state,!object.isMeleeAttacking(state)))
-		object.turnToFaceTowards(movementPosition,state);
+		object.turnToFaceTowards(targetPosition,state);
 	if(target){
 		object.startMeleeAttacking(state);
 		if(object.creatureState.movement==CreatureMovement.flying)
@@ -2131,6 +2131,7 @@ bool patrol(B)(ref MovingObject!B object,ObjectState!B state){
 
 enum retreatDistance=9.0f;
 enum guardDistance=18.0f; // ok?
+enum attackDistance=100.0f; // ok?
 enum speedLimitFactor=0.5f;
 enum rotationSpeedLimitFactor=1.0f;
 void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
@@ -2925,7 +2926,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 			hitbox[1]+=position;
 			proximity.insert(ProximityEntry(objects.ids[j],hitbox));
 			if(objects.creatureStatss[j].health!=0.0f)
-				proximity.insertCenter(CenterProximityEntry(false,objects.ids[j],objects.sides[j],objects.positions[j]));
+				proximity.insertCenter(CenterProximityEntry(false,objects.ids[j],objects.sides[j],boxCenter(hitbox)));
 		}
 		if(objects.sacObject.isManahoar){
 			static bool manahoarAbilityEnabled(CreatureMode mode){
@@ -2953,7 +2954,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 				auto buildingId=objects.buildingIds[j];
 				// this needs to be kept in synch with isValidAttackTarget
 				if(state.buildingById!((ref b)=>b.health!=0.0f&&!(b.flags&Flags.notOnMinimap),function bool(){ assert(0); })(buildingId))
-					proximity.insertCenter(CenterProximityEntry(true,objects.ids[j],sideFromBuildingId(buildingId,state),objects.positions[j]));
+					proximity.insertCenter(CenterProximityEntry(true,objects.ids[j],sideFromBuildingId(buildingId,state),boxCenter(hitbox)));
 			}
 		}
 		// TODO: get rid of duplication here
@@ -3320,9 +3321,7 @@ final class ObjectState(B){ // (update logic)
 	}
 	void updateFrom(ObjectState!B rhs,Command[] frameCommands){
 		copyFrom(rhs);
-		foreach(command;frameCommands)
-			applyCommand(command);
-		update();
+		update(frameCommands);
 	}
 	void applyCommand(Command command){
 		if(!command.isApplicable(this)) return;
@@ -3385,10 +3384,6 @@ final class ObjectState(B){ // (update logic)
 				ord.target=command.target;
 				ord.targetFacing=command.targetFacing;
 				ord.formationOffset=formationOffset;
-				state.movingObjectById!((ref obj,ord,state,side,updateFormation,formation){
-					if(updateFormation) obj.creatureAI.formation=formation;
-					if(ord.command!=CommandType.setFormation) obj.order(ord,state,side);
-				})(command.creature,ord,state,command.side,updateFormation,command.formation);
 				auto color=CommandConeColor.white;
 				if(command.type==CommandType.guard) color=CommandConeColor.blue;
 				else if(command.type==CommandType.attack) color=CommandConeColor.red;
@@ -3399,6 +3394,18 @@ final class ObjectState(B){ // (update logic)
 					position=getTargetPosition(targetPosition,targetFacing,formationOffset,state);
 				}else position=ord.getTargetPosition(state);
 				state.addCommandCone(CommandCone!B(command.side,color,position));
+				state.movingObjectById!((ref obj,ord,state,side,updateFormation,formation,position){
+					if(ord.command==CommandType.attack&&ord.target.type==TargetType.creature){
+						// TODO: check whether they stick to creatures of a specific side
+						if(state.movingObjectById!((obj,side,state)=>state.sides.getStance(side,obj.side)==Stance.enemy,()=>false)(ord.target.id,side,state)){
+							position.z=state.getHeight(position)+position.z-state.getHeight(obj.position);
+							auto target=state.proximity.closestEnemyInRange(side,position,attackDistance,true,state);
+							if(target) ord.target.id=target;
+						}
+					}
+					if(updateFormation) obj.creatureAI.formation=formation;
+					if(ord.command!=CommandType.setFormation) obj.order(ord,state,side);
+				})(command.creature,ord,state,command.side,updateFormation,command.formation,position);
 			}
 		}
 		Lswitch:final switch(command.type) with(CommandType){
@@ -3422,10 +3429,12 @@ final class ObjectState(B){ // (update logic)
 			case retreat,move,guard,attack: applyOrder(command,this); break;
 		}
 	}
-	void update(){
+	void update(Command[] frameCommands){
 		frame+=1;
 		proximity.start();
 		this.eachByType!(addToProximity,false)(this);
+		foreach(command;frameCommands)
+			applyCommand(command);
 		this.eachMoving!updateCreature(this);
 		this.eachSoul!updateSoul(this);
 		this.eachBuilding!updateBuilding(this);
