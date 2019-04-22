@@ -1512,22 +1512,22 @@ final class SacScene: Scene{
 			foreach(_;0..keyDown[KEY_L]){
 				state.addCommand(Command(renderSide,Formation.line));
 			}
-			foreach(_;0..keyDown[KEY_J]){
+			foreach(_;0..keyDown[KEY_Z]){
 				state.addCommand(Command(renderSide,Formation.flankLeft));
 			}
-			foreach(_;0..keyDown[KEY_K]){
+			foreach(_;0..keyDown[KEY_V]){
 				state.addCommand(Command(renderSide,Formation.flankRight));
 			}
 			foreach(_;0..keyDown[KEY_W]){
 				state.addCommand(Command(renderSide,Formation.wedge));
 			}
-			foreach(_;0..keyDown[KEY_R]){
+			foreach(_;0..keyDown[KEY_U]){
 				state.addCommand(Command(renderSide,Formation.semicircle));
 			}
-			foreach(_;0..keyDown[KEY_C]){
+			foreach(_;0..keyDown[KEY_O]){
 				state.addCommand(Command(renderSide,Formation.circle));
 			}
-			foreach(_;0..keyDown[KEY_T]){
+			foreach(_;0..keyDown[KEY_Y]){
 				state.addCommand(Command(renderSide,Formation.skirmish));
 			}
 		}
