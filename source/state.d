@@ -2050,6 +2050,13 @@ bool isValidAttackTarget(B,T)(T obj,ObjectState!B state)if(is(T==MovingObject!B)
 bool isValidAttackTarget(B)(int targetId,ObjectState!B state){
 	return state.objectById!(.isValidAttackTarget)(targetId,state);
 }
+bool isValidGuardTarget(B,T)(T obj,ObjectState!B state)if(is(T==MovingObject!B)||is(T==StaticObject!B)){
+	static if(is(T==StaticObject!B)) return true;
+	return isValidAttackTarget(obj,state); // TODO: dead wizards
+}
+bool isValidGuardTarget(B)(int targetId,ObjectState!B state){
+	return state.objectById!(.isValidGuardTarget)(targetId,state);
+}
 
 bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 	if(!isValidAttackTarget(targetId,state)) return false;
@@ -2097,12 +2104,13 @@ bool patrolAround(B)(ref MovingObject!B object,Vector3f position,float range,Obj
 }
 
 bool guard(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
-	if(!isValidAttackTarget(targetId,state)) return false;
+	if(!isValidGuardTarget(targetId,state)) return false;
 	auto targetPositionTargetFacingTargetSpeed=state.movingObjectById!((obj,state)=>tuple(obj.position,obj.creatureState.facing,obj.speed(state)/updateFPS), ()=>tuple(object.creatureAI.order.target.position,object.creatureAI.order.targetFacing,0.0f))(targetId,state);
 	auto targetPosition=targetPositionTargetFacingTargetSpeed[0], targetFacing=targetPositionTargetFacingTargetSpeed[1], targetSpeed=targetPositionTargetFacingTargetSpeed[2];
+	object.creatureAI.order.target.position=targetPosition;
+	object.creatureAI.order.targetFacing=targetFacing;
 	auto formationOffset=object.creatureAI.order.formationOffset;
 	targetPosition=getTargetPosition(targetPosition,targetFacing,formationOffset,state);
-	//object.moveTo(targetPosition,targetFacing,state);
 	if(!object.patrolAround(targetPosition,guardDistance,state))
 		object.moveTo(targetPosition,targetFacing,state);
 	if((object.position-targetPosition).lengthsqr<=(0.1f*updateFPS*targetSpeed)^^2)
@@ -2128,7 +2136,11 @@ enum rotationSpeedLimitFactor=1.0f;
 void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 	switch(object.creatureAI.order.command){
 		case CommandType.retreat:
-			auto targetPosition=state.movingObjectById!((obj)=>obj.position,()=>Vector3f.init)(object.creatureAI.order.target.id);
+			auto targetId=object.creatureAI.order.target.id;
+			if(!state.isValidId(targetId)||!isValidGuardTarget(targetId,state))
+				targetId=object.creatureAI.order.target.id=0;
+			Vector3f targetPosition;
+			if(targetId) targetPosition=state.movingObjectById!((obj)=>obj.position,()=>Vector3f.init)(targetId);
 			if(targetPosition !is Vector3f.init) object.retreatTowards(targetPosition,state);
 			else object.clearOrder(state);
 			break;
