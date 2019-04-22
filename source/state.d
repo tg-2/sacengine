@@ -159,7 +159,7 @@ Vector2f[numCreaturesInGroup] getFormationOffsets(R)(R ids,CommandType commandTy
 		case Formation.semicircle:
 			auto radius=max(targetDistance,0.5f*unitDistance,(numCreatures-1)*unitDistance/cast(float)PI);
 			foreach(i;0..numCreatures){
-				auto angle=cast(float)PI*i/(numCreatures-1);
+				auto angle=numCreatures==1?0.5f*cast(float)PI:cast(float)PI*i/(numCreatures-1);
 				result[i]=radius*Vector2f(-cos(angle),-sin(angle));
 			}
 			break;
