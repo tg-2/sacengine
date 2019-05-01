@@ -632,6 +632,7 @@ final class SacScene: Scene{
 
 	void renderTargetFrame(RenderingContext* rc){
 		if(!mouse.showFrame) return;
+		if(mouse.target.id&&!state.current.isValidId(mouse.target.id,mouse.target.type)) mouse.target=Target.init;
 		if(mouse.target.type.among(TargetType.creature,TargetType.building)){
 			static void renderHitbox(T)(T obj,SacScene scene,RenderingContext* rc){
 				alias B=DagonBackend;

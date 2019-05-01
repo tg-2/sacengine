@@ -1142,6 +1142,7 @@ struct ObjectManager(B){
 	}
 	bool isValidId(int id,TargetType type){
 		if(0<id && id<=ids.length){
+			if(ids[id-1]==Id.init) return false;
 			auto objType=ids[id-1].type;
 			if(objType<numMoving) return type==TargetType.creature;
 			if(objType<numMoving+numStatic) return type==TargetType.building;
@@ -1209,6 +1210,7 @@ auto ref objectById(alias f,B,T...)(ref ObjectManager!B objectManager,int id,T a
 	assert(id>0);
 }do{
 	auto nid=objectManager.ids[id-1];
+	assert(nid!=Id.init);
 	if(nid.type<numMoving){
 		enum byRef=!is(typeof(f(MovingObject!B.init,args))); // TODO: find a better way to check whether argument taken by reference!
 		final switch(nid.mode){
