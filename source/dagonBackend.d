@@ -1769,7 +1769,7 @@ final class SacScene: Scene{
 			Vector3f position=2560.0f*information.yz;
 			if(!cur.isOnGround(position)) return Target.init;
 			position.z=cur.getGroundHeight(position);
-			return Target(TargetType.terrain,0,position);
+			return Target(TargetType.terrain,0,position,TargetLocation.scene);
 		}else if(information.x==2){
 			auto id=(cast(int)information.y)<<16|cast(int)information.z;
 			if(!state.current.isValidId(id,TargetType.creature)&&!state.current.isValidId(id,TargetType.building)) return Target.init;
@@ -1777,13 +1777,13 @@ final class SacScene: Scene{
 				enum isMoving=is(T==MovingObject!B);
 				static if(isMoving) enum type=TargetType.creature;
 				else enum type=TargetType.building;
-				return Target(type,obj.id,obj.position);
+				return Target(type,obj.id,obj.position,TargetLocation.scene);
 			}
 			return cur.objectById!handle(id,renderSide,cur);
 		}else if(information.x==3){
 			auto id=(cast(int)information.y)<<16|cast(int)information.z;
 			if(!cur.isValidId(id,TargetType.soul)) return Target.init;
-			return Target(TargetType.soul,id,cur.soulById!((soul)=>soul.position,function Vector3f(){ assert(0); })(id));
+			return Target(TargetType.soul,id,cur.soulById!((soul)=>soul.position,function Vector3f(){ assert(0); })(id),TargetLocation.scene);
 		}else return Target.init;
 	}
 	Target cachedTarget;
