@@ -1774,12 +1774,10 @@ void giveMana(B)(ref MovingObject!B object,float amount,ObjectState!B state){
 void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,ObjectState!B state){
 	auto damage=attacker.meleeStrength/attacker.numAttackTicks(attacker.animationState); // TODO: figure this out
 	auto objectHitbox=object.hitbox;
-	auto attackerHitbox=attacker.meleeHitbox;
-	auto size=0.6f/sqrt(3.0f)*((objectHitbox[1]-objectHitbox[0])+(attackerHitbox[1]-attackerHitbox[0]));
-	size.z/=4.0f;
-	auto distance=(boxCenter(objectHitbox)-boxCenter(attackerHitbox));
-	distance.z/=4.0f;
-	auto damageMultiplier=max(0.0f,1.0f-max(0.0f,distance.length/size.length));
+	auto attackerHitbox=attacker.meleeHitbox, attackerCenter=boxCenter(attackerHitbox), attackerSize=0.5f*boxSize(attackerHitbox);
+	auto normalProjectionLength=closestBoxFaceNormalWithProjectionLength(objectHitbox,attackerCenter);
+	auto normal=normalProjectionLength[0], distance=max(0.0f,normalProjectionLength[1]);
+	auto damageMultiplier=max(0.0f,1.0f-max(0.0f,distance/abs(dot(attackerSize,normal))));
 	auto actualDamage=damageMultiplier*damage*object.creatureStats.meleeResistance;
 	auto attackDirection=object.center-attacker.center; // TODO: good?
 	auto stunBehavior=attacker.stunBehavior;

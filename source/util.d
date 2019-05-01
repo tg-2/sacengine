@@ -131,7 +131,9 @@ Vector3f[2] moveBox(Vector3f[2] box, Vector3f offset){
 Vector3f boxCenter(Vector3f[2] box){
 	return 0.5f*(box[0]+box[1]);
 }
-
+Vector3f boxSize(Vector3f[2] box){
+	return box[1]-box[0];
+}
 Vector3f[2] scaleBox(Vector3f[2] box, float factor){
 	auto size=box[1]-box[0];
 	auto center=0.5f*(box[0]+box[1]);
@@ -139,8 +141,8 @@ Vector3f[2] scaleBox(Vector3f[2] box, float factor){
 	return [center-0.5f*size,center+0.5f*size];
 }
 
-Vector!(float,n) closestBoxFaceNormal(size_t n)(Vector!(float,n)[2] box, Vector!(float,n) position){
-	auto bestDist=-double.infinity;
+Tuple!(Vector!(float,n),float) closestBoxFaceNormalWithProjectionLength(size_t n)(Vector!(float,n)[2] box, Vector!(float,n) position){
+	auto bestDist=-float.infinity;
 	size_t normalDirection,normalIndex;
 	static foreach(j;0..2){
 		foreach(i;0..n){
@@ -153,10 +155,13 @@ Vector!(float,n) closestBoxFaceNormal(size_t n)(Vector!(float,n)[2] box, Vector!
 			}
 		}
 	}
-	typeof(return) result;
+	Vector!(float,n) result;
 	result.arrayof[]=0.0f;
 	result[normalIndex]=normalDirection?1.0f:-1.0f;
-	return result;
+	return tuple(result,cast(float)bestDist);
+}
+Vector!(float,n) closestBoxFaceNormal(size_t n)(Vector!(float,n)[2] box, Vector!(float,n) position){
+	return closestBoxFaceNormalWithProjectionLength(box,position)[0];
 }
 
 
