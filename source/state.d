@@ -473,6 +473,9 @@ SoulColor color(B)(ref Soul!B soul, int side, ObjectState!B state){
 		return SoulColor.blue;
 	return SoulColor.red;
 }
+SoulColor color(B)(int id, int side, ObjectState!B state){
+	return state.soulById!(color,function SoulColor(){ assert(0); })(id,side,state);
+}
 
 Vector3f[2] hitbox2d(B)(ref Soul!B soul,Matrix4f modelViewProjectionMatrix){
 	auto topLeft=Vector3f(-SacSoul!B.soulWidth/2,-SacSoul!B.soulHeight/2,0.0f)*soul.scaling;
@@ -1135,6 +1138,16 @@ struct ObjectManager(B){
 	bool isValidId(int id){
 		if(0<id && id<=ids.length)
 			return ids[id-1]!=Id.init;
+		return false;
+	}
+	bool isValidId(int id,TargetType type){
+		if(0<id && id<=ids.length){
+			auto objType=ids[id-1].type;
+			if(objType<numMoving) return type==TargetType.creature;
+			if(objType<numMoving+numStatic) return type==TargetType.building;
+			if(objType==ObjectType.soul) return type==TargetType.soul;
+			if(objType==ObjectType.building) return type==TargetType.building;
+		}
 		return false;
 	}
 	void addTransparent(T)(T object, float alpha){
@@ -1923,7 +1936,10 @@ bool movingForwardGetsCloserTo(B)(ref MovingObject!B object,Vector3f position,fl
 	angle-=object.creatureState.facing;
 	while(angle<-cast(float)PI) angle+=2*cast(float)PI;
 	while(angle>cast(float)PI) angle-=2*cast(float)PI;
-	if(speed==0.0f||direction.length>2.2f*speed/rotationSpeed*angle/(2.0f*cast(float)PI)) return dot(direction.normalized,forward)>0.7f;
+	if(dot(direction,forward)<0.0f) return false;
+	float r=speed/rotationSpeed,distsqr=direction.lengthsqr;
+	if(distsqr>=2.2f*r^^2) return true;
+	if(abs(angle)<acos(1.0f-distsqr/(2.2f*r^^2))) return true;
 	auto limit=rotationSpeedLimitFactor*abs(angle);
 	return limit<1e-3;
 }
@@ -3463,6 +3479,9 @@ final class ObjectState(B){ // (update logic)
 	bool isValidId(int id){
 		return obj.isValidId(id);
 	}
+	bool isValidId(int id,TargetType type){
+		return obj.isValidId(id,type);
+	}
 	void addFixed(FixedObject!B object){
 		obj.addFixed(object);
 	}
@@ -3979,8 +3998,8 @@ struct Command{
 	int group=-1;
 
 	bool isApplicable(B)(ObjectState!B state){
-		return (creature==0||state.isValidId(creature)) &&
-			(target.id==0||state.isValidId(target.id));
+		return (creature==0||state.isValidId(creature,TargetType.creature)) &&
+			(target.id==0&&target.type.among(TargetType.none,TargetType.terrain)||state.isValidId(target.id,target.type));
 	}
 }
 

@@ -690,7 +690,7 @@ final class SacScene: Scene{
 		quad.render(rc);
 	}
 	void renderCursor(RenderingContext* rc){
-		if(mouse.target.id&&!state.current.isValidId(mouse.target.id)) mouse.target=Target.init;
+		if(mouse.target.id&&!state.current.isValidId(mouse.target.id,mouse.target.type)) mouse.target=Target.init;
 		mouse.x=eventManager.mouseX/screenScaling;
 		mouse.y=eventManager.mouseY/screenScaling;
 		mouse.x=max(0,min(mouse.x,width-1));
@@ -1041,7 +1041,7 @@ final class SacScene: Scene{
 		material.backend.setTransformationScaled(soulPosition, Quaternionf.identity(), soulScaling, rc);
 		sacSoul.getMesh(SoulColor.blue,hudSoulFrame/updateAnimFactor).render(rc);
 		material.unbind(rc);
-		if(!state.current.isValidId(camera.target)) camera.target=0;
+		if(!state.current.isValidId(camera.target,TargetType.creature)) camera.target=0;
 		if(camera.target){
 			static float getRelativeMana(B)(MovingObject!B obj){
 				if(obj.creatureStats.maxMana==0.0f) return 0.0f;
@@ -1270,7 +1270,7 @@ final class SacScene: Scene{
 
 	void updateCameraPosition(float dt,bool center){
 		if(center) camera.centering=true;
-		if(!state.current.isValidId(camera.target)) camera.target=0;
+		if(!state.current.isValidId(camera.target,TargetType.creature)) camera.target=0;
 		if(camera.target==0) return;
 		while(fpview.camera.pitch>180.0f) fpview.camera.pitch-=360.0f;
 		while(fpview.camera.pitch<-180.0f) fpview.camera.pitch+=360.0f;
@@ -1370,7 +1370,7 @@ final class SacScene: Scene{
 				camera.minimapZoom=max(0.5f,min(camera.minimapZoom,15.0f));
 			}
 		}
-		if(camera.target!=0&&!state.current.isValidId(camera.target)) camera.target=0;
+		if(camera.target!=0&&!state.current.isValidId(camera.target,TargetType.creature)) camera.target=0;
 		auto cameraFacing=-degtorad(fpview.camera.turn);
 		if(camera.target==0){
 			if(eventManager.keyPressed[KEY_E]) dir += -forward;
@@ -1487,6 +1487,17 @@ final class SacScene: Scene{
 								break;
 						}
 						break;
+					case soul:
+						final switch(color(mouse.target.id,renderSide,state.current)){
+							case SoulColor.blue:
+								auto target=Target(TargetType.terrain,0,mouse.target.position,mouse.target.location);
+								state.addCommand(Command(CommandType.move,renderSide,0,target,cameraFacing));
+								break;
+							case SoulColor.red:
+								// TODO: cast convert
+								break;
+						}
+						break;
 					default: break;
 				}
 			}
@@ -1537,9 +1548,9 @@ final class SacScene: Scene{
 		assert(!!state);
 	}do{
 		static void applyToMoving(alias f,B)(ObjectState!B state,Camera camera,Target target){
-			if(!state.isValidId(camera.target)) camera.target=0;
+			if(!state.isValidId(camera.target,TargetType.creature)) camera.target=0;
 			if(camera.target==0){
-				if(!state.isValidId(target.id)) target=Target.init;
+				if(!state.isValidId(target.id,target.type)) target=Target.init;
 				if(target.type.among(TargetType.none,TargetType.terrain))
 					state.eachMoving!f(state);
 				else if(target.type==TargetType.creature)
@@ -1761,16 +1772,17 @@ final class SacScene: Scene{
 			return Target(TargetType.terrain,0,position);
 		}else if(information.x==2){
 			auto id=(cast(int)information.y)<<16|cast(int)information.z;
-			if(!cur.isValidId(id)) return Target.init;
+			if(!state.current.isValidId(id,TargetType.creature)&&!state.current.isValidId(id,TargetType.building)) return Target.init;
 			static Target handle(B,T)(T obj,int renderSide,ObjectState!B state){
 				enum isMoving=is(T==MovingObject!B);
-				static if(isMoving) return Target(TargetType.creature,obj.id,obj.position);
-				else return Target(TargetType.building,obj.id,obj.position);
+				static if(isMoving) enum type=TargetType.creature;
+				else enum type=TargetType.building;
+				return Target(type,obj.id,obj.position);
 			}
 			return cur.objectById!handle(id,renderSide,cur);
 		}else if(information.x==3){
 			auto id=(cast(int)information.y)<<16|cast(int)information.z;
-			if(!cur.isValidId(id)) return Target.init;
+			if(!cur.isValidId(id,TargetType.soul)) return Target.init;
 			return Target(TargetType.soul,id,cur.soulById!((soul)=>soul.position,function Vector3f(){ assert(0); })(id));
 		}else return Target.init;
 	}
@@ -1783,7 +1795,7 @@ final class SacScene: Scene{
 	Target mouseCursorTarget(){
 		auto target=mouseCursorTargetImpl();
 		static immutable importantTargets=[TargetType.creature,TargetType.soul];
-		if(cachedTarget.id!=0&&!state.current.isValidId(cachedTarget.id)) cachedTarget=Target.init;
+		if(cachedTarget.id!=0&&!state.current.isValidId(cachedTarget.id,cachedTarget.type)) cachedTarget=Target.init;
 		if(!importantTargets.canFind(target.type)&&!(target.location==TargetLocation.minimap&&target.type==TargetType.building)){
 			auto delta=cachedTarget.location!=TargetLocation.minimap?targetCacheDelta:minimapTargetCacheDelta;
 			if(cachedTarget.type!=TargetType.none){
