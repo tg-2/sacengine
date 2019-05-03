@@ -1955,6 +1955,8 @@ void order(B)(ref MovingObject!B object,Order order,ObjectState!B state,int side
 void clearOrder(B)(ref MovingObject!B object,ObjectState!B state){
 	object.creatureAI.order=Order.init;
 	object.stopMovement(state);
+	if(object.creatureState.movement==CreatureMovement.flying)
+		object.creatureState.speedLimit=0.0f;
 	object.stopTurning(state);
 	object.stopPitching(state);
 }
@@ -2047,7 +2049,11 @@ void moveTowards(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectStat
 				object.creatureState.speedLimit=min(object.creatureState.speedLimit,speed*(1.0f-currentTime/slowdownTime));
 			}
 		}else object.creatureState.speedLimit=distance;
-	}else object.stopMovement(state);
+	}else{
+		object.stopMovement(state);
+		if(object.creatureState.movement==CreatureMovement.flying)
+			object.creatureState.speedLimit=0.0f;
+	}
 }
 
 bool moveTo(B)(ref MovingObject!B object,Vector3f targetPosition,float targetFacing,ObjectState!B state,bool evade=true){
@@ -2193,8 +2199,10 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 				if(!object.patrol(state)){
 					object.stopMovement(state);
 					object.stopTurning(state);
-					if(object.creatureState.movement==CreatureMovement.flying)
+					if(object.creatureState.movement==CreatureMovement.flying){
+						object.creatureState.speedLimit=0.0f;
 						object.pitch(0.0f,state);
+					}
 				}
 			}
 			break;
