@@ -1442,6 +1442,7 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 			assert(sacObject.canFly && object.creatureState.movement==CreatureMovement.onGround);
 			if(!sacObject.hasAnimationState(AnimationState.takeoff)){
 				object.creatureState.movement=CreatureMovement.flying;
+				object.creatureState.speedLimit=0.0f;
 				if(sacObject.movingAfterTakeoff){
 					object.creatureState.mode=CreatureMode.moving;
 					goto case CreatureMode.moving;
@@ -1997,6 +1998,7 @@ bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPositi
 
 bool stop(B)(ref MovingObject!B object,float targetFacing,ObjectState!B state){
 	object.stopMovement(state);
+	if(object.creatureState.movement==CreatureMovement.flying) object.creatureState.speedLimit=0.0f;
 	auto facingFinished=targetFacing is float.init||object.face(targetFacing,state);
 	auto pitchingFinished=true;
 	if(object.creatureState.movement==CreatureMovement.flying){
@@ -2034,7 +2036,17 @@ void moveTowards(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectStat
 	else if(object.turnToFaceTowardsEvading(targetPosition,state)) return;
 	if(object.movingForwardGetsCloserTo(targetPosition,speed,state)){
 		object.startMovingForward(state);
-		object.creatureState.speedLimit=speedLimitFactor*(object.position.xy-targetPosition.xy).length;
+		auto distance=speedLimitFactor*(object.position.xy-targetPosition.xy).length;
+		if(object.creatureState.movement==CreatureMovement.flying){
+			auto slowdownDist=5.0f;
+			auto slowdownTime=2.0f*slowdownDist/(speed*updateFPS);
+			object.creatureState.speedLimit=min(distance,object.creatureState.speedLimit+speed/(updateFPS*slowdownTime));
+			if(distance<slowdownDist){
+				auto distanceTraveled=slowdownDist-distance;
+				auto currentTime=slowdownTime-sqrt(slowdownTime*(slowdownTime-2.0f*distanceTraveled/(speed*updateFPS)));
+				object.creatureState.speedLimit=min(object.creatureState.speedLimit,speed*(1.0f-currentTime/slowdownTime));
+			}
+		}else object.creatureState.speedLimit=distance;
 	}else object.stopMovement(state);
 }
 
@@ -2121,8 +2133,8 @@ bool patrolAround(B)(ref MovingObject!B object,Vector3f position,float range,Obj
 
 bool guard(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 	if(!isValidGuardTarget(targetId,state)) return false;
-	auto targetPositionTargetFacingTargetSpeed=state.movingObjectById!((obj,state)=>tuple(obj.position,obj.creatureState.facing,obj.speed(state)/updateFPS), ()=>tuple(object.creatureAI.order.target.position,object.creatureAI.order.targetFacing,0.0f))(targetId,state);
-	auto targetPosition=targetPositionTargetFacingTargetSpeed[0], targetFacing=targetPositionTargetFacingTargetSpeed[1], targetSpeed=targetPositionTargetFacingTargetSpeed[2];
+	auto targetPositionTargetFacingTargetSpeedTargetMode=state.movingObjectById!((obj,state)=>tuple(obj.position,obj.creatureState.facing,obj.speed(state)/updateFPS,obj.creatureState.mode), ()=>tuple(object.creatureAI.order.target.position,object.creatureAI.order.targetFacing,0.0f,CreatureMode.idle))(targetId,state);
+	auto targetPosition=targetPositionTargetFacingTargetSpeedTargetMode[0], targetFacing=targetPositionTargetFacingTargetSpeedTargetMode[1], targetSpeed=targetPositionTargetFacingTargetSpeedTargetMode[2],targetMode=targetPositionTargetFacingTargetSpeedTargetMode[3];
 	object.creatureAI.order.target.position=targetPosition;
 	object.creatureAI.order.targetFacing=targetFacing;
 	auto formationOffset=object.creatureAI.order.formationOffset;
@@ -2130,7 +2142,7 @@ bool guard(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 	if(!object.patrolAround(targetPosition,guardDistance,state))
 		object.moveTo(targetPosition,targetFacing,state);
 	if((object.position-targetPosition).lengthsqr<=(0.1f*updateFPS*targetSpeed)^^2)
-		object.creatureState.speedLimit=min(object.creatureState.speedLimit, targetSpeed);
+		object.creatureState.speedLimit=min(object.creatureState.speedLimit,targetSpeed);
 	return true;
 }
 
@@ -2331,6 +2343,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 				if(object.animationState==AnimationState.takeoff){
 					object.creatureState.mode=sacObject.movingAfterTakeoff?CreatureMode.moving:CreatureMode.idle;
 					object.creatureState.movement=CreatureMovement.flying;
+					object.creatureState.speedLimit=0.0f;
 				}
 				object.setCreatureState(state);
 			}
@@ -2356,6 +2369,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 			if(object.creatureState.movement==CreatureMovement.tumbling&&object.creatureState.fallingVelocity.z<=0.0f){
 				if(sacObject.canFly){
 					object.creatureState.movement=CreatureMovement.flying;
+					object.creatureState.speedLimit=0.0f;
 					object.frame=0;
 					object.animationState=AnimationState.hover;
 					object.startIdling(state);
