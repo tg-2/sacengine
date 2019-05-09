@@ -698,13 +698,21 @@ final class SacScene: Scene{
 		mouse.y=max(0,min(mouse.y,height-1));
 		auto material=sacCursor.materials[mouse.cursor];
 		material.bind(rc);
-		scope(success) material.unbind(rc);
 		auto size=options.cursorSize;
 		auto position=Vector3f(mouse.x-0.5f*size,mouse.y,0);
 		if(mouse.status==Mouse.Status.rectangleSelect) position.y-=1.0f;
 		auto scaling=Vector3f(size,size,1.0f);
 		material.backend.setTransformationScaled(position, Quaternionf.identity(), scaling, rc);
 		quad.render(rc);
+		material.unbind(rc);
+		if(mouse.status==Mouse.Status.icon){
+			if(mouse.icon!=MouseIcon.spell){
+				material=sacCursor.iconMaterials[mouse.icon];
+				material.bind(rc);
+				quad.render(rc);
+				material.unbind(rc);
+			}else{}// TODO
+		}
 	}
 
 	@property float hudScaling(){ return height/480.0f; }
@@ -1473,33 +1481,49 @@ final class SacScene: Scene{
 						state.setSelection(renderSide,renderedSelection,loc);
 						selectionUpdated=true;
 						break;
+					case Mouse.Status.icon:
+						// TODO
+						break;
 				}
 			}
 			foreach(_;0..mouseButtonUp[MB_RIGHT]){
-				switch(mouse.target.type) with(TargetType){
-					case terrain: state.addCommand(Command(CommandType.move,renderSide,0,mouse.target,cameraFacing)); break;
-					case creature,building:
-						switch(mouse.target.cursor(renderSide,state.current)){
-							case Cursor.friendlyUnit,Cursor.friendlyBuilding,Cursor.rescuableUnit,Cursor.neutralUnit,Cursor.neutralBuilding:
-								state.addCommand(Command(CommandType.guard,renderSide,0,mouse.target,cameraFacing)); break;
-							case Cursor.enemyUnit,Cursor.enemyBuilding:
-								state.addCommand(Command(CommandType.attack,renderSide,0,mouse.target,cameraFacing)); break;
-							default:
+				final switch(mouse.status){
+					case Mouse.Status.standard:
+						switch(mouse.target.type) with(TargetType){
+							case terrain: state.addCommand(Command(CommandType.move,renderSide,0,mouse.target,cameraFacing)); break;
+							case creature,building:
+								switch(mouse.target.cursor(renderSide,false,state.current)){
+									case Cursor.friendlyUnit,Cursor.friendlyBuilding,Cursor.rescuableUnit,Cursor.neutralUnit,Cursor.neutralBuilding:
+										state.addCommand(Command(CommandType.guard,renderSide,0,mouse.target,cameraFacing)); break;
+									case Cursor.enemyUnit,Cursor.enemyBuilding:
+									state.addCommand(Command(CommandType.attack,renderSide,0,mouse.target,cameraFacing)); break;
+									default:
+										break;
+								}
 								break;
+							case soul:
+								final switch(color(mouse.target.id,renderSide,state.current)){
+									case SoulColor.blue:
+										auto target=Target(TargetType.terrain,0,mouse.target.position,mouse.target.location);
+										state.addCommand(Command(CommandType.move,renderSide,0,target,cameraFacing));
+										break;
+									case SoulColor.red:
+										// TODO: cast convert
+										break;
+								}
+								break;
+							default: break;
 						}
 						break;
-					case soul:
-						final switch(color(mouse.target.id,renderSide,state.current)){
-							case SoulColor.blue:
-								auto target=Target(TargetType.terrain,0,mouse.target.position,mouse.target.location);
-								state.addCommand(Command(CommandType.move,renderSide,0,target,cameraFacing));
-								break;
-							case SoulColor.red:
-								// TODO: cast convert
-								break;
-						}
+					case Mouse.Status.dragging:
+						// do nothing
 						break;
-					default: break;
+					case Mouse.Status.rectangleSelect:
+						// do nothing
+						break;
+					case Mouse.Status.icon:
+						mouse.status=Mouse.Status.standard;
+						break;
 				}
 			}
 		}
@@ -1731,8 +1755,10 @@ final class SacScene: Scene{
 			standard,
 			dragging,
 			rectangleSelect,
+			icon,
 		}
 		Status status;
+		MouseIcon icon;
 		bool additiveSelect=false;
 		auto cursor=Cursor.normal;
 		Target target;
@@ -1826,21 +1852,25 @@ final class SacScene: Scene{
 	void updateCursor(double dt){
 		if(!state) return;
 		mouse.target=mouseCursorTarget();
+		with(Cursor)
+			mouse.showFrame=(mouse.status.among(Mouse.Status.standard,Mouse.Status.rectangleSelect) &&
+				            mouse.target.location==TargetLocation.scene &&
+				            (mouse.target.type==TargetType.soul||
+				             (mouse.status==Mouse.Status.standard?mouse.cursor:mouse.target.cursor(renderSide,false,state.current))
+				             .among(friendlyUnit,neutralUnit,rescuableUnit,talkingUnit,enemyUnit,iconFriendly,iconNeutral,iconEnemy))) ||
+				            (mouse.status==Mouse.Status.icon&&!!mouse.target.type.among(TargetType.creature,TargetType.building,TargetType.soul));
 		final switch(mouse.status){
 			case Mouse.Status.standard:
-				mouse.cursor=mouse.target.cursor(renderSide,state.current);
-				with(Cursor) // TODO: with icons, show border only if spell is applicable to target
-					mouse.showFrame=mouse.target.location==TargetLocation.scene &&
-						(mouse.target.type==TargetType.soul||
-						 mouse.cursor.among(friendlyUnit,neutralUnit,rescuableUnit,talkingUnit,enemyUnit,iconFriendly,iconNeutral,iconEnemy));
+				mouse.cursor=mouse.target.cursor(renderSide,false,state.current);
 				break;
 			case Mouse.Status.dragging:
 				mouse.cursor=Cursor.drag;
-				mouse.showFrame=false;
 				break;
 			case Mouse.Status.rectangleSelect:
 				mouse.cursor=Cursor.rectangleSelect;
-				mouse.showFrame=false;
+				break;
+			case Mouse.Status.icon:
+				mouse.cursor=mouse.target.cursor(renderSide,true,state.current);
 				break;
 		}
 	}
@@ -2048,7 +2078,7 @@ static:
 		}
 	}
 
-	Material[] createMaterials(SacCursor!DagonBackend sacCursor){
+	std.typecons.Tuple!(Material[],Material[]) createMaterials(SacCursor!DagonBackend sacCursor){
 		auto materials=new Material[](sacCursor.textures.length);
 		foreach(i;0..materials.length){
 			auto mat=scene.createMaterial(scene.hudMaterialBackend);
@@ -2056,7 +2086,14 @@ static:
 			mat.diffuse=sacCursor.textures[i];
 			materials[i]=mat;
 		}
-		return materials;
+		auto iconMaterials=new Material[](sacCursor.iconTextures.length);
+		foreach(i;0..iconMaterials.length){
+			auto mat=scene.createMaterial(scene.hudMaterialBackend);
+			mat.blending=Transparent;
+			mat.diffuse=sacCursor.iconTextures[i];
+			iconMaterials[i]=mat;
+		}
+		return tuple(materials,iconMaterials);
 	}
 
 	Material[] createMaterials(SacHud!DagonBackend sacHud){

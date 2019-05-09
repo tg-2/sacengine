@@ -3900,34 +3900,38 @@ struct Target{
 	Vector3f position;
 	auto location=TargetLocation.scene;
 }
-Cursor cursor(B)(ref Target target,int renderSide,ObjectState!B state){
+Cursor cursor(B)(ref Target target,int renderSide,bool showIcon,ObjectState!B state){
 	final switch(target.type) with(TargetType) with(Cursor){
 		case none,terrain,creatureTab,spellTab,structureTab,spell,soulStat,manaStat,healthStat: return normal;
 		case creature,building:
-			static Cursor handle(B,T)(T obj,int renderSide,ObjectState!B state){
+			static Cursor handle(B,T)(T obj,int renderSide,bool showIcon,ObjectState!B state){
 				enum isMoving=is(T==MovingObject!B);
-				static if(isMoving) if(obj.creatureState.mode==CreatureMode.dead) return Cursor.normal;
+				static if(isMoving) if(obj.creatureState.mode==CreatureMode.dead) return showIcon?Cursor.iconNeutral:Cursor.normal;
 				static if(isMoving) auto objSide=obj.side;
 				else{
 					auto objSide=sideFromBuildingId(obj.buildingId,state);
 					auto buildingInteresting=state.buildingById!(bldg=>bldg.health!=0||bldg.isAltar,()=>false)(obj.buildingId);
 				}
 				if(objSide==renderSide){
-					static if(isMoving) return Cursor.friendlyUnit;
-					else if(buildingInteresting) return Cursor.friendlyBuilding;
-					else return Cursor.normal;
+					static if(isMoving) return showIcon?Cursor.iconFriendly:Cursor.friendlyUnit;
+					else if(buildingInteresting) return showIcon?Cursor.iconFriendly:Cursor.friendlyBuilding;
+					else return showIcon?Cursor.iconNeutral:Cursor.normal;
 				}
 				bool isNeutral=state.sides.getStance(renderSide,objSide)!=Stance.enemy;
 				// TODO: some buildings (e.g. mana fountains) have a normal cursor
-				static if(isMoving) return isNeutral?(obj.creatureStats.flags&Flags.rescuable?Cursor.rescuableUnit:Cursor.neutralUnit):Cursor.enemyUnit;
-				else if(buildingInteresting) return isNeutral?Cursor.neutralBuilding:Cursor.enemyBuilding;
-				else return Cursor.normal;
+				static if(isMoving){
+					if(isNeutral) return showIcon?Cursor.iconNeutral:(obj.creatureStats.flags&Flags.rescuable?Cursor.rescuableUnit:Cursor.neutralUnit);
+					return showIcon?Cursor.iconEnemy:Cursor.enemyUnit;
+				}else if(buildingInteresting){
+					if(isNeutral) return showIcon?Cursor.iconNeutral:Cursor.neutralBuilding;
+					return showIcon?Cursor.iconEnemy:Cursor.enemyBuilding;
+				}else return showIcon?Cursor.iconNeutral:Cursor.normal;
 			}
-			return state.objectById!handle(target.id,renderSide,state);
+			return state.objectById!handle(target.id,renderSide,showIcon,state);
 		case soul:
 			if(state.soulById!(color, function SoulColor(){ assert(0); })(target.id,renderSide,state)==SoulColor.blue)
-				return Cursor.blueSoul;
-			return Cursor.normal;
+				return showIcon?Cursor.iconNone:Cursor.blueSoul;
+			return showIcon?Cursor.iconNone:Cursor.normal;
 	}
 }
 

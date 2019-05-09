@@ -666,10 +666,17 @@ enum Cursor{
 	iconEnemy,
 	iconNone,
 }
+enum MouseIcon{
+	attack,
+	guard,
+	spell,
+}
 
 final class SacCursor(B){
 	B.Texture[Cursor.max+1] textures;
 	B.Material[] materials;
+	B.Texture[MouseIcon.max] iconTextures;
+	B.Material[] iconMaterials;
 	this(){
 		textures[Cursor.normal]=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/curs.FLDR/Cnor.ICON"));
 		textures[Cursor.friendlyUnit]=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/curs.FLDR/Cfun.ICON"));
@@ -690,7 +697,12 @@ final class SacCursor(B){
 		textures[Cursor.iconEnemy]=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/curs.FLDR/Tnme.ICON"));
 		textures[Cursor.iconNone]=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/curs.FLDR/Tnon.ICON"));
 		assert(textures[].all!(t=>t!is null));
-		materials=B.createMaterials(this);
+
+		iconTextures[MouseIcon.attack]=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/icon.FLDR/Matt.ICON"));
+		iconTextures[MouseIcon.guard]=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/icon.FLDR/Mgua.ICON"));
+		assert(iconTextures[].all!(t=>t!is null));
+		auto materialsIconMaterials=B.createMaterials(this);
+		materials=materialsIconMaterials[0], iconMaterials=materialsIconMaterials[1];
 	}
 }
 
