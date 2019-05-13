@@ -696,23 +696,32 @@ final class SacScene: Scene{
 		mouse.y=eventManager.mouseY/screenScaling;
 		mouse.x=max(0,min(mouse.x,width-1));
 		mouse.y=max(0,min(mouse.y,height-1));
-		auto material=sacCursor.materials[mouse.cursor];
-		material.bind(rc);
 		auto size=options.cursorSize;
 		auto position=Vector3f(mouse.x-0.5f*size,mouse.y,0);
 		if(mouse.status==Mouse.Status.rectangleSelect) position.y-=1.0f;
 		auto scaling=Vector3f(size,size,1.0f);
-		material.backend.setTransformationScaled(position, Quaternionf.identity(), scaling, rc);
-		quad.render(rc);
-		material.unbind(rc);
 		if(mouse.status==Mouse.Status.icon){
+			auto iconPosition=position+Vector3f(0.0f,4.0f/32.0f*size,0.0f);
 			if(mouse.icon!=MouseIcon.spell){
-				material=sacCursor.iconMaterials[mouse.icon];
+				auto material=sacCursor.iconMaterials[mouse.icon];
 				material.bind(rc);
+				material.backend.setTransformationScaled(iconPosition, Quaternionf.identity(), scaling, rc);
 				quad.render(rc);
 				material.unbind(rc);
 			}else{}// TODO
+			if(!mouse.targetValid){
+				auto material=sacCursor.invalidTargetIconMaterial;
+				material.bind(rc);
+				material.backend.setTransformationScaled(iconPosition, Quaternionf.identity(), scaling, rc);
+				quad.render(rc);
+				material.unbind(rc);
+			}
 		}
+		auto material=sacCursor.materials[mouse.cursor];
+		material.bind(rc);
+		material.backend.setTransformationScaled(position, Quaternionf.identity(), scaling, rc);
+		quad.render(rc);
+		material.unbind(rc);
 	}
 
 	@property float hudScaling(){ return height/480.0f; }
@@ -1337,7 +1346,7 @@ final class SacScene: Scene{
 			fpview.camera.pitch += pitch_m;
 			fpview.camera.turn += turn_m;
 		}
-		if(mouse.status==Mouse.Status.standard){
+		if(mouse.status.among(Mouse.Status.standard,Mouse.Status.icon)){
 			if(isOnSelectionRoster(Vector2f(mouse.x,mouse.y))) mouse.loc=Mouse.Location.selectionRoster;
 			else if(isOnMinimap(Vector2f(mouse.x,mouse.y))) mouse.loc=Mouse.Location.minimap;
 			else mouse.loc=Mouse.Location.scene;
@@ -1482,7 +1491,28 @@ final class SacScene: Scene{
 						selectionUpdated=true;
 						break;
 					case Mouse.Status.icon:
-						// TODO
+						if(mouse.targetValid){
+							final switch(mouse.icon){
+								case MouseIcon.attack:
+									switch(mouse.target.type) with(TargetType){
+										case terrain: state.addCommand(Command(CommandType.advance,renderSide,0,mouse.target,cameraFacing)); break;
+										case creature,building: state.addCommand(Command(CommandType.attack,renderSide,0,mouse.target,cameraFacing)); break;
+										default: break; // invalid target, should not happen
+									}
+									break;
+								case MouseIcon.guard:
+									switch(mouse.target.type) with(TargetType){
+										case terrain: state.addCommand(Command(CommandType.guardArea,renderSide,0,mouse.target,cameraFacing)); break;
+										case creature,building: state.addCommand(Command(CommandType.guard,renderSide,0,mouse.target,cameraFacing)); break;
+										default: break; // invalid target, should not happen
+									}
+									break;
+								case MouseIcon.spell:
+									// TODO
+									break;
+							}
+							mouse.status=Mouse.Status.standard;
+						}
 						break;
 				}
 			}
@@ -1496,7 +1526,7 @@ final class SacScene: Scene{
 									case Cursor.friendlyUnit,Cursor.friendlyBuilding,Cursor.rescuableUnit,Cursor.neutralUnit,Cursor.neutralBuilding:
 										state.addCommand(Command(CommandType.guard,renderSide,0,mouse.target,cameraFacing)); break;
 									case Cursor.enemyUnit,Cursor.enemyBuilding:
-									state.addCommand(Command(CommandType.attack,renderSide,0,mouse.target,cameraFacing)); break;
+										state.addCommand(Command(CommandType.attack,renderSide,0,mouse.target,cameraFacing)); break;
 									default:
 										break;
 								}
@@ -1566,6 +1596,18 @@ final class SacScene: Scene{
 			foreach(_;0..keyDown[KEY_Y]){
 				state.addCommand(Command(renderSide,Formation.skirmish));
 			}
+			foreach(_;0..keyDown[KEY_R]){
+				if(mouse.status==Mouse.Status.standard){
+					mouse.status=Mouse.Status.icon;
+					mouse.icon=MouseIcon.attack;
+				}
+			}
+			foreach(_;0..keyDown[KEY_A]){
+				if(mouse.status==Mouse.Status.standard){
+					mouse.status=Mouse.Status.icon;
+					mouse.icon=MouseIcon.guard;
+				}
+			}
 		}
 	}
 
@@ -1586,9 +1628,9 @@ final class SacScene: Scene{
 			obj.creatureStats.mana=0.0f;
 		}
 		if(!eventManager.keyPressed[KEY_LSHIFT] && !eventManager.keyPressed[KEY_LCTRL] && !eventManager.keyPressed[KEY_CAPSLOCK]){
-			if(eventManager.keyPressed[KEY_A]) applyToMoving!depleteMana(state.current,camera,mouse.target);
-			if(eventManager.keyPressed[KEY_T]) applyToMoving!kill(state.current,camera,mouse.target);
-			if(eventManager.keyPressed[KEY_R]) applyToMoving!stun(state.current,camera,mouse.target);
+			foreach(_;0..keyDown[KEY_A]) applyToMoving!depleteMana(state.current,camera,mouse.target);
+			foreach(_;0..keyDown[KEY_T]) applyToMoving!kill(state.current,camera,mouse.target);
+			foreach(_;0..keyDown[KEY_R]) applyToMoving!stun(state.current,camera,mouse.target);
 			static void catapultRandomly(B)(ref MovingObject!B object,ObjectState!B state){
 				import std.random;
 				auto velocity=Vector3f(uniform!"[]"(-20.0f,20.0f), uniform!"[]"(-20.0f,20.0f), uniform!"[]"(10.0f,25.0f));
@@ -1762,6 +1804,7 @@ final class SacScene: Scene{
 		bool additiveSelect=false;
 		auto cursor=Cursor.normal;
 		Target target;
+		bool targetValid;
 		bool inHitbox=false;
 		enum Location{
 			scene,
@@ -1774,6 +1817,25 @@ final class SacScene: Scene{
 		@property bool onSelectionRoster(){ return loc==Location.selectionRoster; }
 	}
 	Mouse mouse;
+	@property bool mouseTargetValid(){
+		if(mouse.status!=Mouse.Status.icon) return true;
+		final switch(mouse.icon){
+			case MouseIcon.guard,MouseIcon.attack:
+				switch(mouse.target.type){
+					case TargetType.terrain: return true;
+					case TargetType.creature,TargetType.building:
+						switch(mouse.target.cursor(renderSide,false,state.current)){
+							case Cursor.friendlyUnit,Cursor.friendlyBuilding,Cursor.rescuableUnit,Cursor.neutralUnit,Cursor.neutralBuilding:
+							case Cursor.enemyUnit,Cursor.enemyBuilding:
+								return true;
+							default: return false;
+						}
+					default: return false;
+				}
+			case MouseIcon.spell:
+				return false; // TODO
+		}
+	}
 	SacCursor!DagonBackend sacCursor;
 	int renderSide=0; // TODO
 	void initializeMouse(){
@@ -1852,6 +1914,7 @@ final class SacScene: Scene{
 	void updateCursor(double dt){
 		if(!state) return;
 		mouse.target=mouseCursorTarget();
+		mouse.targetValid=mouseTargetValid();
 		with(Cursor)
 			mouse.showFrame=(mouse.status.among(Mouse.Status.standard,Mouse.Status.rectangleSelect) &&
 				            mouse.target.location==TargetLocation.scene &&
@@ -2078,7 +2141,7 @@ static:
 		}
 	}
 
-	std.typecons.Tuple!(Material[],Material[]) createMaterials(SacCursor!DagonBackend sacCursor){
+	std.typecons.Tuple!(Material[],Material[],Material) createMaterials(SacCursor!DagonBackend sacCursor){
 		auto materials=new Material[](sacCursor.textures.length);
 		foreach(i;0..materials.length){
 			auto mat=scene.createMaterial(scene.hudMaterialBackend);
@@ -2093,7 +2156,11 @@ static:
 			mat.diffuse=sacCursor.iconTextures[i];
 			iconMaterials[i]=mat;
 		}
-		return tuple(materials,iconMaterials);
+		auto mat=scene.createMaterial(scene.hudMaterialBackend);
+		mat.blending=Transparent;
+		mat.diffuse=sacCursor.invalidTargetIconTexture;
+		auto invalidTargetIconMaterial=mat;
+		return tuple(materials,iconMaterials,invalidTargetIconMaterial);
 	}
 
 	Material[] createMaterials(SacHud!DagonBackend sacHud){

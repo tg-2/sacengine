@@ -268,6 +268,9 @@ bool isAggressive(B)(ref MovingObject!B obj,ObjectState!B state){
 float aggressiveRange(B)(ref MovingObject!B obj,CommandType type,ObjectState!B state){
 	return obj.sacObject.aggressiveRange;
 }
+float advanceRange(B)(ref MovingObject!B obj,CommandType type,ObjectState!B state){
+	return obj.sacObject.aggressiveRange;
+}
 bool isMeleeAttacking(B)(ref MovingObject!B obj,ObjectState!B state){
 	return !!obj.creatureState.mode.among(CreatureMode.meleeAttacking,CreatureMode.meleeMoving);
 }
@@ -2145,7 +2148,7 @@ bool guard(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 	object.creatureAI.order.targetFacing=targetFacing;
 	auto formationOffset=object.creatureAI.order.formationOffset;
 	targetPosition=getTargetPosition(targetPosition,targetFacing,formationOffset,state);
-	if(!object.patrolAround(targetPosition,guardDistance,state))
+	if(!object.patrolAround(targetPosition,guardDistance,state)) // TODO: prefer enemies that attack the guard target?
 		object.moveTo(targetPosition,targetFacing,state);
 	if((object.position-targetPosition).lengthsqr<=(0.1f*updateFPS*targetSpeed)^^2)
 		object.creatureState.speedLimit=min(object.creatureState.speedLimit,targetSpeed);
@@ -2157,6 +2160,17 @@ bool patrol(B)(ref MovingObject!B object,ObjectState!B state){
 	auto position=object.position;
 	auto range=object.aggressiveRange(CommandType.none,state);
 	auto targetId=state.proximity.closestEnemyInRange(object.side,position,range,false,state);
+	if(targetId)
+		if(object.attack(targetId,state))
+			return true;
+	return false;
+}
+
+bool advance(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectState!B state){
+	if(!object.isAggressive(state)) return false;
+	auto position=object.position;
+	auto range=object.advanceRange(CommandType.none,state);
+	auto targetId=state.proximity.closestEnemyInRangeAndClosestToPreferringAttackersOf(object.side,object.position,range,targetPosition,object.id,false,state);
 	if(targetId)
 		if(object.attack(targetId,state))
 			return true;
@@ -2189,10 +2203,20 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 			if(!state.isValidId(targetId)||!object.guard(targetId,state)) targetId=object.creatureAI.order.target.id=0;
 			if(targetId==0&&!object.patrol(state)) goto case CommandType.move;
 			break;
+		case CommandType.guardArea:
+			auto targetPosition=object.creatureAI.order.getTargetPosition(state);
+			if(!object.patrolAround(targetPosition,guardDistance,state))
+				object.moveTo(targetPosition,object.creatureAI.order.targetFacing,state);
+			break;
 		case CommandType.attack:
 			auto targetId=object.creatureAI.order.target.id;
 			if(!state.isValidId(targetId)||!object.attack(targetId,state)) targetId=object.creatureAI.order.target.id=0;
 			if(targetId==0&&!object.patrol(state)) goto case CommandType.move;
+			break;
+		case CommandType.advance:
+			auto targetPosition=object.creatureAI.order.getTargetPosition(state);
+			if(!object.advance(targetPosition,state))
+				object.moveTo(targetPosition,object.creatureAI.order.targetFacing,state);
 			break;
 		case CommandType.none:
 			if(object.isAggressive(state)){
@@ -2963,8 +2987,12 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 			hitbox[0]+=position;
 			hitbox[1]+=position;
 			proximity.insert(ProximityEntry(objects.ids[j],hitbox));
-			if(objects.creatureStatss[j].health!=0.0f)
-				proximity.insertCenter(CenterProximityEntry(false,objects.ids[j],objects.sides[j],boxCenter(hitbox)));
+			if(objects.creatureStatss[j].health!=0.0f){
+				int attackTargetId=0;
+				if(objects.creatureAIs[j].order.command==CommandType.attack)
+					attackTargetId=objects.creatureAIs[j].order.target.id;
+				proximity.insertCenter(CenterProximityEntry(false,objects.ids[j],objects.sides[j],boxCenter(hitbox),attackTargetId));
+			}
 		}
 		if(objects.sacObject.isManahoar){
 			static bool manahoarAbilityEnabled(CreatureMode mode){
@@ -3175,6 +3203,7 @@ struct CenterProximityEntry{
 	int id;
 	int side;
 	Vector3f position;
+	int attackTargetId=0;
 }
 
 struct CenterProximityEntries{
@@ -3227,22 +3256,33 @@ auto eachInRange(alias f,B,T...)(ref CenterProximity!B proximity,int version_,Ve
 		return rate;
 	}
 }
-CenterProximityEntry closestInRange(alias f,B,T...)(ref CenterProximity!B proximity,int version_,Vector3f position,float range,T args){
+private static struct None;
+CenterProximityEntry inRangeAndClosestTo(alias f,alias priority=None,B,T...)(ref CenterProximity!B proximity,int version_,Vector3f position,float range,Vector3f targetPosition,T args){
+	enum hasPriority=!is(priority==None);
 	struct State{
 		auto entry=CenterProximityEntry.init;
+		static if(hasPriority) int prio;
 		auto distancesqr=double.infinity;
 	}
-	static void process(ref CenterProximityEntry entry,Vector3f position,State* state,T args){
+	static void process(ref CenterProximityEntry entry,Vector3f targetPosition,State* state,T args){
 		if(!f(entry,args)) return;
-		auto distancesqr=(entry.position-position).lengthsqr;
-		if(distancesqr<state.distancesqr){
+		auto distancesqr=(entry.position-targetPosition).lengthsqr;
+		bool better=distancesqr<state.distancesqr;
+		static if(hasPriority){
+			auto prio=priority(entry,args);
+			better=prio>state.prio||prio==state.prio&&better;
+		}
+		if(better){
 			state.entry=entry;
 			state.distancesqr=distancesqr;
 		}
 	}
 	State state;
-	proximity.eachInRange!process(version_,position,range,position,&state,args);
+	proximity.eachInRange!process(version_,position,range,targetPosition,&state,args);
 	return state.entry;
+}
+CenterProximityEntry closestInRange(alias f,alias priority=None,B,T...)(ref CenterProximity!B proximity,int version_,Vector3f position,float range,T args){
+	return proximity.inRangeAndClosestTo!(f,priority)(version_,position,range,position,args);
 }
 
 
@@ -3291,12 +3331,19 @@ final class Proximity(B){
 	}do{
 		centers.insert(version_,entry);
 	}
+	private static bool isEnemy(T...)(ref CenterProximityEntry entry,int side,bool onlyCreatures,ObjectState!B state,T ignored){
+		if(onlyCreatures&&entry.isStatic) return false;
+		return state.sides.getStance(side,entry.side)==Stance.enemy;
+	}
 	int closestEnemyInRange(int side,Vector3f position,float range,bool onlyCreatures,ObjectState!B state){
-		static bool isEnemy(ref CenterProximityEntry entry,int side,bool onlyCreatures,ObjectState!B state){
-			if(onlyCreatures&&entry.isStatic) return false;
-			return state.sides.getStance(side,entry.side)==Stance.enemy;
-		}
 		return centers.closestInRange!isEnemy(version_,position,range,side,onlyCreatures,state).id;
+	}
+	private static int advancePriority(ref CenterProximityEntry entry,int side,bool onlyCreatures,ObjectState!B state,int id){
+		if(entry.attackTargetId==id) return 1;
+		return 0;
+	}
+	int closestEnemyInRangeAndClosestToPreferringAttackersOf(int side,Vector3f position,float range,Vector3f targetPosition,int id,bool onlyCreatures,ObjectState!B state){
+		return centers.inRangeAndClosestTo!(isEnemy,advancePriority)(version_,position,range,targetPosition,side,onlyCreatures,state,id).id;
 	}
 }
 auto collide(alias f,B,T...)(Proximity!B proximity,Vector3f[2] hitbox,T args){
@@ -3423,8 +3470,8 @@ final class ObjectState(B){ // (update logic)
 				ord.targetFacing=command.targetFacing;
 				ord.formationOffset=formationOffset;
 				auto color=CommandConeColor.white;
-				if(command.type==CommandType.guard) color=CommandConeColor.blue;
-				else if(command.type==CommandType.attack) color=CommandConeColor.red;
+				if(command.type.among(CommandType.guard,CommandType.guardArea)) color=CommandConeColor.blue;
+				else if(command.type.among(CommandType.attack,CommandType.advance)) color=CommandConeColor.red;
 				Vector3f position;
 				if(ord.command==CommandType.guard && ord.target.id){
 					auto targetPositionTargetFacing=state.movingObjectById!((obj)=>tuple(obj.position,obj.creatureState.facing), ()=>tuple(ord.target.position,ord.targetFacing))(ord.target.id);
@@ -3464,7 +3511,7 @@ final class ObjectState(B){ // (update logic)
 			    case type: mixin(`this.`~to!string(type))(command.side,command.group); break Lswitch;
 			}
 			case setFormation: applyOrder(command,this,true); break;
-			case retreat,move,guard,attack: applyOrder(command,this); break;
+			case retreat,move,guard,guardArea,attack,advance: applyOrder(command,this); break;
 		}
 	}
 	void update(Command[] frameCommands){
@@ -3902,36 +3949,37 @@ struct Target{
 }
 Cursor cursor(B)(ref Target target,int renderSide,bool showIcon,ObjectState!B state){
 	final switch(target.type) with(TargetType) with(Cursor){
-		case none,terrain,creatureTab,spellTab,structureTab,spell,soulStat,manaStat,healthStat: return normal;
+		case none,creatureTab,spellTab,structureTab,spell,soulStat,manaStat,healthStat: return showIcon?iconNone:normal;
+		case terrain: return showIcon?iconNeutral:normal;
 		case creature,building:
 			static Cursor handle(B,T)(T obj,int renderSide,bool showIcon,ObjectState!B state){
 				enum isMoving=is(T==MovingObject!B);
-				static if(isMoving) if(obj.creatureState.mode==CreatureMode.dead) return showIcon?Cursor.iconNeutral:Cursor.normal;
+				static if(isMoving) if(obj.creatureState.mode==CreatureMode.dead) return showIcon?iconNeutral:normal;
 				static if(isMoving) auto objSide=obj.side;
 				else{
 					auto objSide=sideFromBuildingId(obj.buildingId,state);
 					auto buildingInteresting=state.buildingById!(bldg=>bldg.health!=0||bldg.isAltar,()=>false)(obj.buildingId);
 				}
 				if(objSide==renderSide){
-					static if(isMoving) return showIcon?Cursor.iconFriendly:Cursor.friendlyUnit;
-					else if(buildingInteresting) return showIcon?Cursor.iconFriendly:Cursor.friendlyBuilding;
-					else return showIcon?Cursor.iconNeutral:Cursor.normal;
+					static if(isMoving) return showIcon?iconFriendly:friendlyUnit;
+					else if(buildingInteresting) return showIcon?iconFriendly:friendlyBuilding;
+					else return showIcon?iconNeutral:normal;
 				}
 				bool isNeutral=state.sides.getStance(renderSide,objSide)!=Stance.enemy;
 				// TODO: some buildings (e.g. mana fountains) have a normal cursor
 				static if(isMoving){
-					if(isNeutral) return showIcon?Cursor.iconNeutral:(obj.creatureStats.flags&Flags.rescuable?Cursor.rescuableUnit:Cursor.neutralUnit);
-					return showIcon?Cursor.iconEnemy:Cursor.enemyUnit;
+					if(isNeutral) return showIcon?iconNeutral:(obj.creatureStats.flags&Flags.rescuable?rescuableUnit:neutralUnit);
+					return showIcon?iconEnemy:enemyUnit;
 				}else if(buildingInteresting){
-					if(isNeutral) return showIcon?Cursor.iconNeutral:Cursor.neutralBuilding;
-					return showIcon?Cursor.iconEnemy:Cursor.enemyBuilding;
-				}else return showIcon?Cursor.iconNeutral:Cursor.normal;
+					if(isNeutral) return showIcon?iconNeutral:neutralBuilding;
+					return showIcon?iconEnemy:enemyBuilding;
+				}else return showIcon?iconNeutral:normal;
 			}
 			return state.objectById!handle(target.id,renderSide,showIcon,state);
 		case soul:
 			if(state.soulById!(color, function SoulColor(){ assert(0); })(target.id,renderSide,state)==SoulColor.blue)
-				return showIcon?Cursor.iconNone:Cursor.blueSoul;
-			return showIcon?Cursor.iconNone:Cursor.normal;
+				return showIcon?iconNone:blueSoul;
+			return showIcon?iconNone:normal;
 	}
 }
 
@@ -3959,7 +4007,9 @@ enum CommandType{
 	retreat,
 	move,
 	guard,
+	guardArea,
 	attack,
+	advance,
 }
 
 struct Command{
@@ -3985,7 +4035,10 @@ struct Command{
 				assert(target.type==TargetType.creature);
 				break;
 			case guard,attack:
-				assert(target.type.among(TargetType.terrain,TargetType.creature,TargetType.building));
+				assert(target.type.among(TargetType.creature,TargetType.building));
+				break;
+			case guardArea,advance:
+				assert(target.type==TargetType.terrain);
 				break;
 			case defineGroup,addToGroup,selectGroup:
 				assert(0);

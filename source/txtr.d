@@ -2,7 +2,7 @@ import util;
 import dlib.image,dlib.image.color;
 import std.stdio, std.string, std.algorithm, std.path, std.exception;
 
-SuperImage loadTXTR(string filename){ // TODO: maybe integrate with dagon's TextureAsset
+SuperImage loadTXTR(string filename){
 	enforce(filename.endsWith(".TXTR")||filename.endsWith(".ICON"));
 	auto base = filename[0..$-".TXTR".length];
 	ubyte[] txt;
