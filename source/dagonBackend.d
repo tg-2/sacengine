@@ -1654,7 +1654,7 @@ final class SacScene: Scene{
 		foreach(_;0..keyDown[KEY_BACKSPACE]){
 			if(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK]){
 				applyToMoving!fastRevive(state.current,camera,mouse.target);
-			}else applyToMoving!revive(state.current,camera,mouse.target);
+			}else if(!eventManager.keyPressed[KEY_LSHIFT]) applyToMoving!revive(state.current,camera,mouse.target);
 		}
 		// TODO: enabling the following destroys ESDF controls. Template-related compiler bug?
 		/+if(eventManager.keyPressed[KEY_UP] && !eventManager.keyPressed[KEY_DOWN]){
@@ -1668,18 +1668,21 @@ final class SacScene: Scene{
 			applyToMoving!startTurningRight(state.current,camera,mouse.target);
 		}else applyToMoving!stopTurning(state.current,camera,mouse.target);+/
 
-		foreach(_;0..keyDown[KEY_M])
-			if(mouse.target.type==TargetType.creature&&mouse.target.id)
-				focusCamera(mouse.target.id);
-		foreach(_;0..keyDown[KEY_N]) camera.target=0;
 
-		foreach(_;0..keyDown[KEY_Y]) showHitboxes=true;
-		foreach(_;0..keyDown[KEY_U]) showHitboxes=false;
+		if(!eventManager.keyPressed[KEY_LSHIFT] && !eventManager.keyPressed[KEY_LCTRL] && !eventManager.keyPressed[KEY_CAPSLOCK]){
+			foreach(_;0..keyDown[KEY_M])
+				if(mouse.target.type==TargetType.creature&&mouse.target.id)
+					focusCamera(mouse.target.id);
+			foreach(_;0..keyDown[KEY_N]) camera.target=0;
 
-		foreach(_;0..keyDown[KEY_H]) state.commit();
-		foreach(_;0..keyDown[KEY_B]) state.rollback();
+			foreach(_;0..keyDown[KEY_Y]) showHitboxes=true;
+			foreach(_;0..keyDown[KEY_U]) showHitboxes=false;
 
-		foreach(_;0..keyDown[KEY_COMMA]) if(audio) audio.switchTheme(cast(Theme)((audio.currentTheme+1)%Theme.max));
+			foreach(_;0..keyDown[KEY_H]) state.commit();
+			foreach(_;0..keyDown[KEY_B]) state.rollback();
+
+			foreach(_;0..keyDown[KEY_COMMA]) if(audio) audio.switchTheme(cast(Theme)((audio.currentTheme+1)%Theme.max));
+		}
 
 		if(camera.target){
 			auto creatures=creatureSpells[options.god];
