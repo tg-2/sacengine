@@ -1604,6 +1604,11 @@ final class SacScene: Scene{
 					mouse.icon=MouseIcon.attack;
 				}
 			}
+			foreach(_;0..keyDown[KEY_T]){
+				auto target=Target(TargetType.terrain,0,mouse.target.position,mouse.target.location);
+				target.position.z=state.current.getHeight(target.position);
+				state.addCommand(Command(CommandType.move,renderSide,0,target,cameraFacing));
+			}
 			foreach(_;0..keyDown[KEY_A]){
 				if(mouse.status==Mouse.Status.standard){
 					mouse.status=Mouse.Status.icon;
