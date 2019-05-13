@@ -4,8 +4,9 @@ import std.math;
 import std.stdio;
 import std.algorithm, std.range, std.exception, std.typecons;
 
-import sacobject, nttData, sacmap, state;
+import sacobject, nttData, sacmap, maps, state;
 import sxsk : gpuSkinning;
+import audioBackend;
 
 final class SacScene: Scene{
 	//OBJAsset aOBJ;
@@ -1174,6 +1175,7 @@ final class SacScene: Scene{
 		createCommandCones();
 		initializeHUD();
 		initializeMouse();
+		initializeAudio(state.current.map.tileset);
 	}
 
 	void addObject(SacObject!DagonBackend sobj,Vector3f position,Quaternionf rotation){
@@ -1672,6 +1674,8 @@ final class SacScene: Scene{
 		foreach(_;0..keyDown[KEY_H]) state.commit();
 		foreach(_;0..keyDown[KEY_B]) state.rollback();
 
+		foreach(_;0..keyDown[KEY_COMMA]) if(audio) audio.switchTheme(cast(Theme)((audio.currentTheme+1)%Theme.max));
+
 		if(camera.target){
 			auto creatures=creatureSpells[options.god];
 			static immutable hotkeys=[KEY_Q,KEY_Q,KEY_W,KEY_R,KEY_T,KEY_A,KEY_Z,KEY_X,KEY_C,KEY_V,KEY_SPACE];
@@ -1953,6 +1957,19 @@ final class SacScene: Scene{
 	override void onUpdate(double dt){
 		super.onUpdate(dt);
 		updateCursor(dt);
+		if(audio) audio.update(dt);
+	}
+	AudioBackend audio;
+	void initializeAudio(Tileset tileset){
+		if(options.volume==0.0f) return;
+		audio=New!AudioBackend(tileset,options.volume);
+		audio.switchTheme(Theme.normal);
+	}
+	~this(){
+		if(audio){
+			Delete(audio);
+			audio=null;
+		}
 	}
 }
 

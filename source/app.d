@@ -7,10 +7,9 @@ import std.string, std.array, std.range, std.algorithm, std.stdio;
 import std.exception, std.conv, std.typecons;
 
 int main(string[] args){
-	import derelict.openal.al;
-	DerelictAL.load();
-	import derelict.mpg123;
-	DerelictMPG123.load();
+	import audio;
+	loadAudio();
+	scope(exit) unloadAudio();
 	import core.memory;
 	GC.disable(); // TODO: figure out where GC memory is used incorrectly
 	if(args.length==1) args~="extracted/jamesmod/JMOD.WAD!/modl.FLDR/jman.MRMC/jman.MRMM";
@@ -45,6 +44,8 @@ int main(string[] args){
 			options.replicateCreatures=to!int(opt["--replicate-creatures=".length..$]);
 		}else if(opt.startsWith("--cursor-size=")){
 			options.cursorSize=to!int(opt["--cursor-size=".length..$]);
+		}else if(opt.startsWith("--volume=")){
+			options.volume=to!float(opt["--volume=".length..$]);
 		}else if(opt.startsWith("--wizard=")){
 			options.wizard=opt["--wizard=".length..$];
 		}else if(opt.startsWith("--god=")){

@@ -68,6 +68,13 @@ immutable landFolders=["extracted/ethr/ethr.WAD!/ethr.LAND",
                        "extracted/strato_a/ST_A.WAD!/ST_A.LAND",
                        "extracted/char/char.WAD!/char.LAND"];
 
+immutable godThemes=["extracted/music/God Realm.mp3",
+                     "extracted/music/persephone_normal.mp3",
+                     "extracted/music/pyro_normal.mp3",
+                     "extracted/music/james_normal.mp3",
+                     "extracted/music/stratos_normal.mp3",
+                     "extracted/music/charnel_normal.mp3"];
+
 string[char[4]] makeWidgModlByTag(){
 	string[char[4]] result;
 	foreach(folder;landFolders){

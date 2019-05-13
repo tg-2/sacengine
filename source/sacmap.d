@@ -36,6 +36,7 @@ final class SacMap(B){
 	int n,m;
 	bool[][] edges;
 	float[][] heights;
+	Tileset tileset;
 	ubyte[][] tiles;
 	Envi envi;
 
@@ -56,7 +57,8 @@ final class SacMap(B){
 		enforce(edges.all!(x=>x.length==m));
 		enforce(heights.all!(x=>x.length==m));
 		import nttData: landFolders;
-		auto land=landFolders[detectTileset(filename[0..$-".HMAP".length]~".LEVL")];
+		tileset=detectTileset(filename[0..$-".HMAP".length]~".LEVL");
+		auto land=landFolders[tileset];
 		dti=loadDTIndex(land).dts;
 		auto mapts=loadMAPTs(land);
 		auto bumps=loadDTs(land);

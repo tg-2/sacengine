@@ -1,5 +1,6 @@
 import ntts: God;
 struct Options{
+	// graphics options
 	int width,height;
 	float scale=1.0f;
 	bool scaleToFit=false;
@@ -12,10 +13,12 @@ struct Options{
 	bool enableGlow=true;
 	float glowBrightness=0.5;
 	bool enableAntialiasing=true;
-	int replicateCreatures=1;
 	int cursorSize=32;
 	bool printFPS=false;
+	// audio options
+	float volume=1.0f;
 	// just for testing:
+	int replicateCreatures=1;
 	string wizard="cwe2";
 	God god;
 }
