@@ -1,6 +1,6 @@
 import dlib.math;
 import std.container, std.algorithm: swap;
-import audio, samp, nttData, maps, state;
+import audio, samp, nttData, sacobject, maps, state;
 
 enum Theme{
 	normal,
@@ -14,7 +14,7 @@ enum Theme{
 	menu,
 	none,
 }
-class AudioBackend(B){
+final class AudioBackend(B){
 	MP3[Theme.max] themes;
 	MP3 sacrifice1;
 	MP3 defeat;
@@ -110,6 +110,21 @@ class AudioBackend(B){
 		source.buffer=getBuffer(sound);
 		source.looping=true;
 		sounds3~=LoopSound(source,id);
+	}
+
+	void loopingSoundSetup(StaticObject!B object){
+		auto sound=object.sacObject.loopingSound;
+		if(sound!="\0\0\0\0") loopSoundAt(sound,object.id);
+	}
+	void deleteLoopingSounds(){
+		foreach(i;0..sounds3.length)
+			sounds3[i].source.release();
+		sounds3.length=0;
+	}
+	void updateAudioAfterRollback(ObjectState!B state){
+		// TODO: preserve looping sounds that did not change
+		deleteLoopingSounds();
+		state.eachStatic!((obj,self)=>self.loopingSoundSetup(obj))(this);
 	}
 
 	void updateSounds(float dt,Matrix4f viewMatrix,ObjectState!B state){

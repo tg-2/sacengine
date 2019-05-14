@@ -1999,10 +1999,6 @@ struct DagonBackend{
 		assert(!!app.scene);
 		return app.scene;
 	}
-	enum hasAudio=true;
-	static @property AudioBackend!DagonBackend audio(){
-		return scene.audio;
-	}
 	this(Options options){
 		enforce(!app,"can only have one DagonBackend"); // TODO: fix?
 		app = New!MyApplication(options);
@@ -2228,6 +2224,21 @@ static:
 		glGetIntegerv(GL_GPU_MEM_INFO_CURRENT_AVAILABLE_MEM_NVX,
 		              &cur_avail_mem_kb);
 		return cur_avail_mem_kb;
+	}
+
+
+	enum hasAudio=true;
+	@property AudioBackend!DagonBackend audio(){
+		return scene.audio;
+	}
+	void loopingSoundSetup(StaticObject!DagonBackend object){
+		if(audio) audio.loopingSoundSetup(object);
+	}
+	void deleteLoopingSounds(){
+		if(audio) audio.deleteLoopingSounds();
+	}
+	void updateAudioAfterRollback(){
+		if(audio) audio.updateAudioAfterRollback(scene.state.current);
 	}
 }
 

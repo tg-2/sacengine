@@ -65,6 +65,7 @@ struct Source{
 	@property void position(Vector3f pos){ alSourcefv(id,AL_POSITION,pos.arrayof.ptr); }
 	@property void velocity(Vector3f vel){ alSourcefv(id,AL_VELOCITY,vel.arrayof.ptr); }
 	@property void looping(bool lp){ alSourcei(id,AL_LOOPING,lp?AL_TRUE:AL_FALSE); }
+	@property Buffer buffer(){ ALint id; alGetSourcei(id,AL_BUFFER,&id); return Buffer(id); }
 	@property void buffer(Buffer buffer){ alSourcei(id,AL_BUFFER,buffer.id); }
 	void play(){ alSourcePlay(id); }
 	void pause(){ alSourcePause(id); }

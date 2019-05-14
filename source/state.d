@@ -730,10 +730,7 @@ struct StaticObjects(B){
 		buildingIds~=object.buildingId;
 		positions~=object.position;
 		rotations~=object.rotation;
-		static if(B.hasAudio){
-			auto sound=sacObject.buildingSound;
-			if(sound!="\0\0\0\0" && B.audio) B.audio.loopSoundAt(sound,object.id);
-		}
+		static if(B.hasAudio) B.loopingSoundSetup(this[length-1]);
 	}
 	void removeObject(int index, ObjectManager!B manager){
 		manager.ids[ids[index]-1]=Id.init;
@@ -1069,8 +1066,8 @@ auto eachMoving(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T a
 			movingObject.each!f(args);
 	}
 }
-auto eachStatic(alias f,B,T...)(ref Objects!(B,mode) objects,T args){
-	with(objects){
+auto eachStatic(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T args){
+	static if(mode==RenderMode.opaque) with(objects){
 		foreach(ref staticObject;staticObjects)
 			staticObject.each!f(args);
 	}
@@ -4237,7 +4234,10 @@ final class GameState(B){
 	void rollback(ObjectState!B state)in{
 		assert(state.frame<=current.frame);
 	}do{
-		if(state.frame!=current.frame) current.copyFrom(state);
+		if(state.frame!=current.frame){
+			current.copyFrom(state);
+			static if(B.hasAudio) B.updateAudioAfterRollback();
+		}
 	}
 	void rollback(int frame)in{
 		assert(frame>=lastCommitted.frame);

@@ -185,7 +185,7 @@ final class SacObject(B){
 		return altarRingTags.canFind(tag);
 	}
 
-	@property char[4] buildingSound(){
+	@property char[4] loopingSound(){
 		// TODO: precompute
 		if(isManafount) return "tnof";
 		if(isManalith) return "htlm";
