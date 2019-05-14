@@ -1408,6 +1408,7 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 				goto case CreatureMode.stunned;
 			break;
 		case CreatureMode.dying:
+			playSoundAt(sacObject,object.id,SoundType.death,state);
 			with(AnimationState){
 				static immutable deathCandidatesOnGround=[death0,death1,death2];
 				static immutable deathCandidatesFlying=[flyDeath,death0,death1,death2];
