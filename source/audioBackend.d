@@ -1,6 +1,7 @@
 import dlib.math;
-import std.container, std.algorithm: swap;
+import std.container, std.algorithm: sort, swap;
 import audio, samp, nttData, sacobject, maps, state;
+import util;
 
 enum Theme{
 	normal,
@@ -43,6 +44,7 @@ final class AudioBackend(B){
 		sounds1.reserve(20);
 		sounds2.reserve(20);
 		sounds3.reserve(20);
+		oldSounds3.reserve(20);
 	}
 	void setTileset(Tileset tileset){
 		themes[Theme.normal]=MP3(godThemes[tileset]);
@@ -68,7 +70,11 @@ final class AudioBackend(B){
 				}else themes[currentTheme].source.gain=themeGain*musicGain;
 			}
 		}
-		if(currentTheme!=Theme.none) themes[currentTheme].feed();
+		if(currentTheme!=Theme.none){
+			themes[currentTheme].feed();
+			if(!themes[currentTheme].source.isPlaying())
+				themes[currentTheme].source.play();
+		}
 	}
 	struct Sound1{
 		Source source;
@@ -104,13 +110,17 @@ final class AudioBackend(B){
 		source.buffer=getBuffer(sound);
 		sounds2~=Sound2(source,id);
 	}
-	void loopSoundAt(char[4] sound,int id){
+	void loopSoundAt(Buffer buffer,int id){
 		auto source=makeSource();
 		source.gain=soundGain*_3dSoundVolumeMultiplier;
-		source.buffer=getBuffer(sound);
+		source.buffer=buffer;
 		source.looping=true;
 		sounds3~=LoopSound(source,id);
 	}
+	void loopSoundAt(char[4] sound,int id){
+		loopSoundAt(getBuffer(sound),id);
+	}
+
 
 	void loopingSoundSetup(StaticObject!B object){
 		auto sound=object.sacObject.loopingSound;
@@ -121,10 +131,36 @@ final class AudioBackend(B){
 			sounds3[i].source.release();
 		sounds3.length=0;
 	}
+
+	Array!LoopSound oldSounds3;
 	void updateAudioAfterRollback(ObjectState!B state){
-		// TODO: preserve looping sounds that did not change
-		deleteLoopingSounds();
-		state.eachStatic!((obj,self)=>self.loopingSoundSetup(obj))(this);
+		oldSounds3.length=0;
+		swap(sounds3,oldSounds3);
+		sort!"a.id<b.id"(oldSounds3.data);
+		static void updateLoopingSound(StaticObject!B object,AudioBackend self){
+			auto sound=object.sacObject.loopingSound;
+			if(sound=="\0\0\0\0") return;
+			size_t l=-1,r=self.oldSounds3.length;
+			Buffer buffer=self.getBuffer(sound);
+			while(l+1<r){
+				auto m=l+(r-l)/2;
+				if(self.oldSounds3[m].id<object.id) l=m;
+				else if(self.oldSounds3[m].id!=object.id) r=m;
+				else if(self.oldSounds3[m].source.id!=0){
+					auto oldBuffer=self.oldSounds3[m].source.buffer;
+					if(oldBuffer==buffer){
+						self.sounds3~=self.oldSounds3[m];
+						self.oldSounds3[m].source.id=0;
+						return;
+					}else break;
+				}else break;
+			}
+			self.loopSoundAt(buffer,object.id);
+		}
+		state.eachStatic!updateLoopingSound(this);
+		foreach(i;0..oldSounds3.length)
+			if(oldSounds3[i].source.id!=0)
+				oldSounds3[i].source.release();
 	}
 
 	void updateSounds(float dt,Matrix4f viewMatrix,ObjectState!B state){

@@ -41,7 +41,7 @@ private{
 
 struct Buffer{
 	ALuint id;
-	void release(){ alDeleteBuffers(1,&id); id=0; } // TODO: do this better?
+	void release(){ if(id){ alDeleteBuffers(1,&id); id=0; } } // TODO: do this better?
 }
 
 Buffer makeBuffer(Samp samp){
@@ -65,17 +65,18 @@ struct Source{
 	@property void position(Vector3f pos){ alSourcefv(id,AL_POSITION,pos.arrayof.ptr); }
 	@property void velocity(Vector3f vel){ alSourcefv(id,AL_VELOCITY,vel.arrayof.ptr); }
 	@property void looping(bool lp){ alSourcei(id,AL_LOOPING,lp?AL_TRUE:AL_FALSE); }
-	@property Buffer buffer(){ ALint id; alGetSourcei(id,AL_BUFFER,&id); return Buffer(id); }
+	@property Buffer buffer(){ ALint bid; alGetSourcei(id,AL_BUFFER,&bid); return Buffer(bid); }
 	@property void buffer(Buffer buffer){ alSourcei(id,AL_BUFFER,buffer.id); }
 	void play(){ alSourcePlay(id); }
 	void pause(){ alSourcePause(id); }
 	void stop(){ alSourceStop(id); }
-	void release(){ alDeleteSources(1,&id); id=0; } // TODO: do this better?
+	void release(){ if(id){ alDeleteSources(1,&id); id=0; } } // TODO: do this better?
 }
 
 Source makeSource(){
 	Source source;
 	alGenSources(1,&source.id);
+	enforce(source.id!=0);
 	source.pitch=1.0f;
 	source.gain=1.0f;
 	source.position=Vector3f(0.0f,0.0f,0.0f);
