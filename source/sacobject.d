@@ -31,6 +31,7 @@ final class SacObject(B){
 	immutable(Strc)* strc;
 
 	immutable(Sset)* sset;
+	immutable(Sset)* meleeSset;
 
 	@property bool isWizard(){
 		return !!wizd;
@@ -338,8 +339,10 @@ final class SacObject(B){
 		cre8=nttTag in cre8s;
 		wizd=nttTag in wizds;
 		strc=nttTag in strcs;
-		if(cre8) sset=cre8.creatureSSET in ssets;
-		else if(wizd) sset=wizd.wizardSSET in ssets;
+		if(cre8){
+			sset=cre8.creatureSSET in ssets;
+			meleeSset=cre8.meleeSSET in ssets;
+		}else if(wizd) sset=wizd.wizardSSET in ssets;
 		if(cre8||wizd) data=creatureDataByTag(nttTag);
 		assert((cre8 !is null)+(wizd !is null)+(strc !is null)<=1);
 		auto iconTag=cre8?cre8.icon:wizd?wizd.icon:strc?strc.icon:cast(char[4])"\0\0\0\0";

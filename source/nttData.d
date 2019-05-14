@@ -99,7 +99,9 @@ T[char[4]] makeSpellByTag(T)(){
 		char[4] tag=spellFile[$-9..$-5];
 		reverse(tag[]);
 		enforce(tag !in result);
-		result[tag]=mixin(`load`~T.stringof)(spellFile);
+		auto spell=mixin(`load`~T.stringof)(spellFile);
+		static if(is(T==Cre8)) if(spell.creatureSSET=="tsif") swap(spell.creatureSSET,spell.meleeSSET); // TODO: ok?
+		result[tag]=spell;
 	}
 	static if(is(T==Cre8)){
 		// dragon hatchlings have flying animations, but cannot fly

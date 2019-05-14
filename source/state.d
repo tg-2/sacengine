@@ -1486,6 +1486,7 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 			}
 			break;
 		case CreatureMode.meleeMoving,CreatureMode.meleeAttacking:
+			playSoundAt(sacObject,object.id,SoundType.melee,state);
 			final switch(object.creatureState.movement) with(CreatureMovement) with(AnimationState){
 				case onGround:
 					object.frame=0;
@@ -1736,6 +1737,7 @@ DamageDirection getDamageDirection(B)(ref MovingObject!B object,Vector3f attackD
 }
 
 void damageAnimation(B)(ref MovingObject!B object,Vector3f attackDirection,ObjectState!B state,bool checkIdle=true){
+	playSoundAt(object.sacObject,object.id,SoundType.damaged,state);
 	if(checkIdle&&object.creatureState.mode!=CreatureMode.idle||!checkIdle&&object.creatureState.mode!=CreatureMode.stunned) return;
 	final switch(object.creatureState.movement){
 		case CreatureMovement.onGround:
@@ -1821,6 +1823,7 @@ void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,Ob
 	object.dealDamage(actualDamage,attacker,state);
 	if(stunBehavior==StunBehavior.always || fromBehind && stunBehavior==StunBehavior.fromBehind){
 		if(actualDamage>=0.5f*damage){
+			playSoundAt(attacker.sacObject,attacker.id,SoundType.stun,state);
 			object.damageStun(attackDirection,state);
 			return;
 		}
@@ -1830,15 +1833,18 @@ void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,Ob
 		case StunnedBehavior.normal:
 			break;
 		case StunnedBehavior.onMeleeDamage,StunnedBehavior.onDamage:
+			playSoundAt(attacker.sacObject,attacker.id,SoundType.stun,state);
 			object.damageStun(attackDirection,state);
-			break;
+			return;
 	}
+	playSoundAt(attacker.sacObject,attacker.id,SoundType.hit,state);
 }
 
 void dealMeleeDamage(B)(ref Building!B building,ref MovingObject!B attacker,ObjectState!B state){
 	auto damage=attacker.meleeStrength;
 	auto actualDamage=damage*building.meleeResistance*attacker.sacObject.buildingMeleeDamageMultiplier/attacker.numAttackTicks(attacker.animationState);
 	building.dealDamage(actualDamage,attacker,state);
+	playSoundAt(attacker.sacObject,attacker.id,SoundType.hitWall,state);
 }
 
 
@@ -3417,15 +3423,15 @@ final class ObjectState(B){ // (update logic)
 		obj=rhs.obj;
 		sid=rhs.sid;
 	}
-	void updateFrom(ObjectState!B rhs,Command[] frameCommands,bool playAudio){
+	void updateFrom(ObjectState!B rhs,Command[] frameCommands){
 		copyFrom(rhs);
-		update(frameCommands,playAudio);
+		update(frameCommands);
 	}
-	void applyCommand(Command command,bool playAudio){
+	void applyCommand(Command command){
 		if(!command.isApplicable(this)) return;
 		int whichClick=uniform(2);
 		static if(B.hasAudio) if(command.type.hasClickSound) B.playSound(command.side,commandAppliedSoundTags[whichClick]);
-		command.speakCommand(playAudio,this);
+		command.speakCommand(this);
 		static void applyOrder(Command command,ObjectState!B state,bool updateFormation=false,Vector2f formationOffset=Vector2f(0.0f,0.0f)){
 			assert(command.type==CommandType.setFormation||command.target.type.among(TargetType.terrain,TargetType.creature,TargetType.building));
 			if(!command.creature){
@@ -3532,12 +3538,12 @@ final class ObjectState(B){ // (update logic)
 			case retreat,move,guard,guardArea,attack,advance: applyOrder(command,this); break;
 		}
 	}
-	void update(Command[] frameCommands,bool playAudio){
+	void update(Command[] frameCommands){
 		frame+=1;
 		proximity.start();
 		this.eachByType!(addToProximity,false)(this);
 		foreach(command;frameCommands)
-			applyCommand(command,playAudio);
+			applyCommand(command);
 		this.eachMoving!updateCreature(this);
 		this.eachSoul!updateSoul(this);
 		this.eachBuilding!updateBuilding(this);
@@ -4074,33 +4080,37 @@ SoundType soundType(Command command){
 		case advance: return SoundType.advance;
 	}
 }
-void speakCommand(B)(Command command,bool playAudio,ObjectState!B state){
+void speakCommand(B)(Command command,ObjectState!B state){
 	if(!command.wizard) return;
 	auto soundType=command.soundType;
 	if(soundType==SoundType.none) return;
 	auto sacObject=state.movingObjectById!((obj)=>obj.sacObject,()=>null)(command.wizard);
 	if(!sacObject) return;
-	playSound(command.side,sacObject,soundType,playAudio,state); // TODO: queue speech
+	playSound(command.side,sacObject,soundType,state); // TODO: queue speech
 }
-void playSound(B)(int side,SacObject!B sacObject,SoundType soundType,bool playAudio,ObjectState!B state){
-	auto sset=sacObject.sset;
-	if(!sset) return;
-	auto sounds=sset.getSounds(soundType);
-	if(sounds.length){
-		auto sound=sounds[state.uniform(cast(int)$)];
-		static if(B.hasAudio) if(playAudio)
-			B.playSound(side,sound);
+void playSound(B)(int side,SacObject!B sacObject,SoundType soundType,ObjectState!B state){
+	void playSset(immutable(Sset)* sset){
+		auto sounds=sset.getSounds(soundType);
+		if(sounds.length){
+			auto sound=sounds[state.uniform(cast(int)$)];
+			static if(B.hasAudio) if(playAudio)
+				B.playSound(side,sound);
+		}
 	}
+	if(auto sset=sacObject.sset) playSset(sset);
+	if(auto sset=sacObject.meleeSset) playSset(sset);
 }
-void playSoundAt(B)(SacObject!B sacObject,int id,SoundType soundType,bool playAudio,ObjectState!B state){
-	auto sset=sacObject.sset;
-	if(!sset) return;
-	auto sounds=sset.getSounds(soundType);
-	if(sounds.length){
-		auto sound=sounds[state.uniform(cast(int)$)];
-		static if(B.hasAudio) if(playAudio)
-			B.playSoundAt(sound,id);
+void playSoundAt(B)(SacObject!B sacObject,int id,SoundType soundType,ObjectState!B state){
+	void playSset(immutable(Sset)* sset){
+		auto sounds=sset.getSounds(soundType);
+		if(sounds.length){
+			auto sound=sounds[state.uniform(cast(int)$)];
+			static if(B.hasAudio) if(playAudio)
+				B.playSoundAt(sound,id);
+		}
 	}
+	if(auto sset=sacObject.sset) playSset(sset);
+	if(auto sset=sacObject.meleeSset) playSset(sset);
 }
 struct Command{
 	this(CommandType type,int side,int wizard,int creature,Target target,float targetFacing)in{
@@ -4180,6 +4190,7 @@ struct Command{
 	}
 }
 
+bool playAudio=true;
 final class GameState(B){
 	ObjectState!B lastCommitted;
 	ObjectState!B current;
@@ -4300,8 +4311,8 @@ final class GameState(B){
 		}
 	}
 
-	void step(bool playAudio){
-		next.updateFrom(current,commands[current.frame].data,playAudio);
+	void step(){
+		next.updateFrom(current,commands[current.frame].data);
 		swap(current,next);
 		if(commands.length<=current.frame) commands~=Array!Command();
 	}
@@ -4323,13 +4334,14 @@ final class GameState(B){
 		assert(frame>=lastCommitted.frame);
 	}body{
 		if(frame<current.frame) rollback(lastCommitted);
-		simulateTo(frame,false);
+		playAudio=false;
+		simulateTo(frame);
 	}
-	void simulateTo(int frame,bool playAudio)in{
+	void simulateTo(int frame)in{
 		assert(frame>=current.frame);
 	}body{
 		while(current.frame<frame)
-			step(playAudio);
+			step();
 	}
 	void addCommand(int frame,Command command)in{
 		assert(frame<=current.frame);
@@ -4338,7 +4350,8 @@ final class GameState(B){
 		auto currentFrame=current.frame;
 		commands[frame]~=command;
 		rollback(frame);
-		simulateTo(currentFrame,false);
+		playAudio=false;
+		simulateTo(currentFrame);
 	}
 	void addCommand(Command command){
 		addCommand(current.frame,command);

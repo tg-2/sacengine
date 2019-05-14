@@ -1730,7 +1730,8 @@ final class SacScene: Scene{
 		if(state) stateTestControl();
 		control(dt);
 		if(state){
-			state.step(true);
+			playAudio=true;
+			state.step();
 			// state.commit();
 			auto totalTime=state.current.frame*dt;
 			if(skyEntities.length){
