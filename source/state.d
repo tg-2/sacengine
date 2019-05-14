@@ -299,12 +299,12 @@ Vector3f[2] hitbox2d(B)(ref MovingObject!B object,Matrix4f modelViewProjectionMa
 	return object.sacObject.hitbox2d(object.animationState,object.frame/updateAnimFactor,modelViewProjectionMatrix);
 }
 
-Vector3f relativeCenter(B)(ref MovingObject!B object){
+Vector3f relativeCenter(T)(ref T object){
 	auto hbox=object.relativeHitbox;
 	return 0.5f*(hbox[0]+hbox[1]);
 }
 
-Vector3f center(B)(ref MovingObject!B object){
+Vector3f center(T)(ref T object){
 	auto hbox=object.hitbox;
 	return 0.5f*(hbox[0]+hbox[1]);
 }
@@ -1065,6 +1065,12 @@ auto eachMoving(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T a
 			movingObject.each!f(args);
 	}
 }
+auto eachStatic(alias f,B,T...)(ref Objects!(B,mode) objects,T args){
+	with(objects){
+		foreach(ref staticObject;staticObjects)
+			staticObject.each!f(args);
+	}
+}
 auto eachSoul(alias f,B,T...)(ref Objects!(B,RenderMode.opaque) objects,T args){
 	objects.souls.each!f(args);
 }
@@ -1183,6 +1189,12 @@ auto eachMoving(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
 	with(objectManager){
 		opaqueObjects.eachMoving!f(args);
 		transparentObjects.eachMoving!f(args);
+	}
+}
+auto eachStatic(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
+	with(objectManager){
+		opaqueObjects.eachStatic!f(args);
+		transparentObjects.eachStatic!f(args);
 	}
 }
 auto eachSoul(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
@@ -3635,6 +3647,9 @@ auto each(alias f,B,T...)(ObjectState!B objectState,T args){
 }
 auto eachMoving(alias f,B,T...)(ObjectState!B objectState,T args){
 	return objectState.obj.eachMoving!f(args);
+}
+auto eachStatic(alias f,B,T...)(ObjectState!B objectState,T args){
+	return objectState.obj.eachStatic!f(args);
 }
 auto eachSoul(alias f,B,T...)(ObjectState!B objectState,T args){
 	return objectState.obj.eachSoul!f(args);
