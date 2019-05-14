@@ -53,6 +53,13 @@ Buffer makeBuffer(Samp samp){
 
 struct Source{
 	ALuint id;
+	@property ALenum state(){
+		ALenum result;
+		alGetSourcei(id,AL_SOURCE_STATE,&result);
+		return result;
+	}
+	@property bool isPlaying(){ return state==AL_PLAYING; }
+	@property bool isInitial(){ return state==AL_INITIAL; }
 	@property void pitch(float p){ alSourcef(id,AL_PITCH,p); }
 	@property void gain(float g){ alSourcef(id,AL_GAIN,g); }
 	@property void position(Vector3f pos){ alSourcefv(id,AL_POSITION,pos.arrayof.ptr); }

@@ -17,6 +17,8 @@ struct Options{
 	bool printFPS=false;
 	// audio options
 	float volume=1.0f;
+	float musicVolume=1.0f;
+	float soundVolume=1.0f;
 	// just for testing:
 	int replicateCreatures=1;
 	string wizard="cwe2";

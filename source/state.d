@@ -730,6 +730,10 @@ struct StaticObjects(B){
 		buildingIds~=object.buildingId;
 		positions~=object.position;
 		rotations~=object.rotation;
+		static if(B.hasAudio){
+			auto sound=sacObject.buildingSound;
+			if(sound!="\0\0\0\0" && B.audio) B.audio.loopSoundAt(sound,object.id);
+		}
 	}
 	void removeObject(int index, ObjectManager!B manager){
 		manager.ids[ids[index]-1]=Id.init;

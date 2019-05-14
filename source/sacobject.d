@@ -185,6 +185,14 @@ final class SacObject(B){
 		return altarRingTags.canFind(tag);
 	}
 
+	@property char[4] buildingSound(){
+		// TODO: precompute
+		if(isManafount) return "tnof";
+		if(isManalith) return "htlm";
+		if(isAltar||isShrine) return "rifa";
+		return "\0\0\0\0";
+	}
+
 	Vector3f[2] smallHitbox(Quaternionf rotation,AnimationState animationState,int frame)in{
 		assert(isSaxs);
 	}do{

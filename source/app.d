@@ -46,6 +46,10 @@ int main(string[] args){
 			options.cursorSize=to!int(opt["--cursor-size=".length..$]);
 		}else if(opt.startsWith("--volume=")){
 			options.volume=to!float(opt["--volume=".length..$]);
+		}else if(opt.startsWith("--music-volume=")){
+			options.musicVolume=to!float(opt["--music-volume=".length..$]);
+		}else if(opt.startsWith("--sound-volume=")){
+			options.soundVolume=to!float(opt["--sound-volume=".length..$]);
 		}else if(opt.startsWith("--wizard=")){
 			options.wizard=opt["--wizard=".length..$];
 		}else if(opt.startsWith("--god=")){

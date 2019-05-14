@@ -16,6 +16,7 @@ final class SacScene: Scene{
 		super(options.width, options.height, options.scale, options.aspectDistortion, smngr);
 		this.shadowMapResolution=options.shadowMapResolution;
 		this.options=options;
+		if(options.volume!=0.0f) initializeAudio();
 	}
 	FirstPersonView2 fpview;
 	override void onAssetsRequest(){
@@ -1171,11 +1172,11 @@ final class SacScene: Scene{
 		this.state=state;
 		setupEnvironment(state.current.map);
 		createSky(state.current.map);
+		if(audio) audio.setTileset(state.current.map.tileset);
 		createSouls();
 		createCommandCones();
 		initializeHUD();
 		initializeMouse();
-		initializeAudio(state.current.map.tileset);
 	}
 
 	void addObject(SacObject!DagonBackend sobj,Vector3f position,Quaternionf rotation){
@@ -1963,14 +1964,13 @@ final class SacScene: Scene{
 		gbuffer.startInformationDownload(x,y);
 	}
 	override void onUpdate(double dt){
+		if(audio) audio.update(dt,fpview.viewMatrix,state.current);
 		super.onUpdate(dt);
 		updateCursor(dt);
-		if(audio) audio.update(dt);
 	}
-	AudioBackend audio;
-	void initializeAudio(Tileset tileset){
-		if(options.volume==0.0f) return;
-		audio=New!AudioBackend(tileset,options.volume);
+	AudioBackend!DagonBackend audio;
+	void initializeAudio(){
+		audio=New!(AudioBackend!DagonBackend)(options.volume,options.musicVolume,options.soundVolume);
 		audio.switchTheme(Theme.normal);
 	}
 	~this(){
@@ -1998,6 +1998,10 @@ struct DagonBackend{
 		enforce(!!app, "Dagon backend not running.");
 		assert(!!app.scene);
 		return app.scene;
+	}
+	enum hasAudio=true;
+	static @property AudioBackend!DagonBackend audio(){
+		return scene.audio;
 	}
 	this(Options options){
 		enforce(!app,"can only have one DagonBackend"); // TODO: fix?

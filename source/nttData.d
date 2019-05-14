@@ -241,6 +241,37 @@ string[char[4]] makeIconByTag(){
 	return result;
 }
 
+immutable string[] ssetFolders=["sounds/SFX_.WAD!"];
+immutable string[char[4]] ssets;
+string[char[4]] makeSsetByTag(){
+	string[char[4]] result;
+	foreach(folder;sampFolders){
+		auto path=buildPath("extracted",folder);
+		foreach(sampFile;dirEntries(path,"*.SSET",SpanMode.depth)){
+			char[4] tag=sampFile[$-9..$-5];
+			reverse(tag[]);
+			enforce(tag !in result);
+			result[tag]=sampFile;
+		}
+	}
+	return result;
+}
+immutable string[] sampFolders=["sounds/SFX_.WAD!"];
+immutable string[char[4]] samps;
+string[char[4]] makeSampByTag(){
+	string[char[4]] result;
+	foreach(folder;sampFolders){
+		auto path=buildPath("extracted",folder);
+		foreach(sampFile;dirEntries(path,"*.SAMP",SpanMode.depth)){
+			char[4] tag=sampFile[$-9..$-5];
+			reverse(tag[]);
+			// enforce(tag !in result); // samp names flp1, flp2, flp3, flp4, flp5 appear in both pyro and comn. TODO: figure this out
+			result[tag]=sampFile;
+		}
+	}
+	return result;
+}
+
 static this(){
 	bldgs=cast(immutable)makeBldgByTag();
 	bldgModls=cast(immutable)makeBldgModlByTag();
@@ -257,6 +288,9 @@ static this(){
 	saxsAnims=cast(immutable)makeSaxsAnimByTag();
 
 	icons=cast(immutable)makeIconByTag();
+
+	ssets=cast(immutable)makeSsetByTag();
+	samps=cast(immutable)makeSampByTag();
 }
 
 
