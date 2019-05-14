@@ -1,6 +1,6 @@
 module nttData;
 import std.file, std.path, std.stdio, std.algorithm, std.range, std.string, std.exception;
-import bldg, spells;
+import bldg, spells, sset;
 import util;
 import dlib.math.vector;
 immutable string[] bldgFolders=["joby/joby.WAD!/ethr.FLDR",
@@ -242,21 +242,23 @@ string[char[4]] makeIconByTag(){
 }
 
 immutable string[] ssetFolders=["sounds/SFX_.WAD!"];
-immutable string[char[4]] ssets;
-string[char[4]] makeSsetByTag(){
-	string[char[4]] result;
-	foreach(folder;sampFolders){
+immutable Sset[char[4]] ssets;
+Sset[char[4]] makeSsetByTag(){
+	Sset[char[4]] result;
+	foreach(folder;ssetFolders){
 		auto path=buildPath("extracted",folder);
-		foreach(sampFile;dirEntries(path,"*.SSET",SpanMode.depth)){
-			char[4] tag=sampFile[$-9..$-5];
+		foreach(ssetFile;dirEntries(path,"*.SSET",SpanMode.depth)){
+			char[4] tag=ssetFile[$-9..$-5];
 			reverse(tag[]);
 			enforce(tag !in result);
-			result[tag]=sampFile;
+			result[tag]=loadSSET(ssetFile);
 		}
 	}
 	return result;
 }
-immutable string[] sampFolders=["sounds/SFX_.WAD!"];
+immutable string[] sampFolders=["sounds/SFX_.WAD!","local/sfx_english/SFXe.WAD!"];
+static immutable char[4][] commandAppliedSoundTags=["1lcI","2lcI"];
+
 immutable string[char[4]] samps;
 string[char[4]] makeSampByTag(){
 	string[char[4]] result;

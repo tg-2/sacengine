@@ -1,7 +1,7 @@
 import dlib.math, dlib.image.color;
 import util;
 import mrmm, _3dsm, txtr, saxs, sxsk, widg;
-import animations, ntts, nttData, spells, bldg;
+import animations, ntts, nttData, spells, bldg, sset;
 import stats;
 import std.typecons: Tuple, tuple;
 import std.stdio, std.conv;
@@ -29,6 +29,8 @@ final class SacObject(B){
 	immutable(CreatureData)* data;
 	immutable(Wizd)* wizd;
 	immutable(Strc)* strc;
+
+	immutable(Sset)* sset;
 
 	@property bool isWizard(){
 		return !!wizd;
@@ -336,6 +338,8 @@ final class SacObject(B){
 		cre8=nttTag in cre8s;
 		wizd=nttTag in wizds;
 		strc=nttTag in strcs;
+		if(cre8) sset=cre8.creatureSSET in ssets;
+		else if(wizd) sset=wizd.wizardSSET in ssets;
 		if(cre8||wizd) data=creatureDataByTag(nttTag);
 		assert((cre8 !is null)+(wizd !is null)+(strc !is null)<=1);
 		auto iconTag=cre8?cre8.icon:wizd?wizd.icon:strc?strc.icon:cast(char[4])"\0\0\0\0";

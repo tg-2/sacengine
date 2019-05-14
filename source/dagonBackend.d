@@ -1407,33 +1407,33 @@ final class SacScene: Scene{
 			if(eventManager.keyPressed[KEY_E] && !eventManager.keyPressed[KEY_D]){
 				if(targetMovementState.movement!=MovementDirection.forward){
 					targetMovementState.movement=MovementDirection.forward;
-					state.addCommand(Command(CommandType.moveForward,renderSide,camera.target,Target.init,cameraFacing));
+					state.addCommand(Command(CommandType.moveForward,renderSide,camera.target,camera.target,Target.init,cameraFacing));
 				}
 			}else if(eventManager.keyPressed[KEY_D] && !eventManager.keyPressed[KEY_E]){
 				if(targetMovementState.movement!=MovementDirection.backward){
 					targetMovementState.movement=MovementDirection.backward;
-					state.addCommand(Command(CommandType.moveBackward,renderSide,camera.target,Target.init,cameraFacing));
+					state.addCommand(Command(CommandType.moveBackward,renderSide,camera.target,camera.target,Target.init,cameraFacing));
 				}
 			}else{
 				if(targetMovementState.movement!=MovementDirection.none){
 					targetMovementState.movement=MovementDirection.none;
-					state.addCommand(Command(CommandType.stopMoving,renderSide,camera.target,Target.init,cameraFacing));
+					state.addCommand(Command(CommandType.stopMoving,renderSide,camera.target,camera.target,Target.init,cameraFacing));
 				}
 			}
 			if(eventManager.keyPressed[KEY_S] && !eventManager.keyPressed[KEY_F]){
 				if(targetMovementState.rotation!=RotationDirection.left){
 					targetMovementState.rotation=RotationDirection.left;
-					state.addCommand(Command(CommandType.turnLeft,renderSide,camera.target,Target.init,cameraFacing));
+					state.addCommand(Command(CommandType.turnLeft,renderSide,camera.target,camera.target,Target.init,cameraFacing));
 				}
 			}else if(eventManager.keyPressed[KEY_F] && !eventManager.keyPressed[KEY_S]){
 				if(targetMovementState.rotation!=RotationDirection.right){
 					targetMovementState.rotation=RotationDirection.right;
-					state.addCommand(Command(CommandType.turnRight,renderSide,camera.target,Target.init,cameraFacing));
+					state.addCommand(Command(CommandType.turnRight,renderSide,camera.target,camera.target,Target.init,cameraFacing));
 				}
 			}else{
 				if(targetMovementState.rotation!=RotationDirection.none){
 					targetMovementState.rotation=RotationDirection.none;
-					state.addCommand(Command(CommandType.stopTurning,renderSide,camera.target,Target.init,cameraFacing));
+					state.addCommand(Command(CommandType.stopTurning,renderSide,camera.target,camera.target,Target.init,cameraFacing));
 				}
 			}
 			positionCamera();
@@ -1458,7 +1458,7 @@ final class SacScene: Scene{
 			foreach(_;0..mouseButtonUp[MB_LEFT]){
 				final switch(mouse.status){
 					case Mouse.Status.standard:
-						if(mouse.target.type==TargetType.creature){
+						if(mouse.target.type==TargetType.creature&&canSelect(renderSide,mouse.target.id,state.current)){
 							auto type=mouse.additiveSelect?CommandType.toggleSelection:CommandType.select;
 							enum doubleClickDelay=0.3f; // in seconds
 							enum delta=targetCacheDelta;
@@ -1472,7 +1472,7 @@ final class SacScene: Scene{
 								lastSelectedX=mouse.x;
 								lastSelectedY=mouse.y;
 							}
-							state.addCommand(Command(type,renderSide,0,mouse.target,cameraFacing));
+							state.addCommand(Command(type,renderSide,camera.target,0,mouse.target,cameraFacing));
 							if(type==CommandType.select){
 								lastSelectedId=mouse.target.id;
 								lastSelectedFrame=state.current.frame;
@@ -1490,7 +1490,7 @@ final class SacScene: Scene{
 							case Mouse.Location.minimap: loc=TargetLocation.minimap; break;
 							case Mouse.Location.selectionRoster,Mouse.Location.spellIcons: assert(0);
 						}
-						state.setSelection(renderSide,renderedSelection,loc);
+						state.setSelection(renderSide,camera.target,renderedSelection,loc);
 						selectionUpdated=true;
 						break;
 					case Mouse.Status.icon:
@@ -1498,15 +1498,15 @@ final class SacScene: Scene{
 							final switch(mouse.icon){
 								case MouseIcon.attack:
 									switch(mouse.target.type) with(TargetType){
-										case terrain: state.addCommand(Command(CommandType.advance,renderSide,0,mouse.target,cameraFacing)); break;
-										case creature,building: state.addCommand(Command(CommandType.attack,renderSide,0,mouse.target,cameraFacing)); break;
+										case terrain: state.addCommand(Command(CommandType.advance,renderSide,camera.target,0,mouse.target,cameraFacing)); break;
+										case creature,building: state.addCommand(Command(CommandType.attack,renderSide,camera.target,0,mouse.target,cameraFacing)); break;
 										default: break; // invalid target, should not happen
 									}
 									break;
 								case MouseIcon.guard:
 									switch(mouse.target.type) with(TargetType){
-										case terrain: state.addCommand(Command(CommandType.guardArea,renderSide,0,mouse.target,cameraFacing)); break;
-										case creature,building: state.addCommand(Command(CommandType.guard,renderSide,0,mouse.target,cameraFacing)); break;
+										case terrain: state.addCommand(Command(CommandType.guardArea,renderSide,camera.target,0,mouse.target,cameraFacing)); break;
+										case creature,building: state.addCommand(Command(CommandType.guard,renderSide,camera.target,0,mouse.target,cameraFacing)); break;
 										default: break; // invalid target, should not happen
 									}
 									break;
@@ -1523,13 +1523,13 @@ final class SacScene: Scene{
 				final switch(mouse.status){
 					case Mouse.Status.standard:
 						switch(mouse.target.type) with(TargetType){
-							case terrain: state.addCommand(Command(CommandType.move,renderSide,0,mouse.target,cameraFacing)); break;
+							case terrain: state.addCommand(Command(CommandType.move,renderSide,camera.target,0,mouse.target,cameraFacing)); break;
 							case creature,building:
 								switch(mouse.target.cursor(renderSide,false,state.current)){
 									case Cursor.friendlyUnit,Cursor.friendlyBuilding,Cursor.rescuableUnit,Cursor.neutralUnit,Cursor.neutralBuilding:
-										state.addCommand(Command(CommandType.guard,renderSide,0,mouse.target,cameraFacing)); break;
+										state.addCommand(Command(CommandType.guard,renderSide,camera.target,0,mouse.target,cameraFacing)); break;
 									case Cursor.enemyUnit,Cursor.enemyBuilding:
-										state.addCommand(Command(CommandType.attack,renderSide,0,mouse.target,cameraFacing)); break;
+										state.addCommand(Command(CommandType.attack,renderSide,camera.target,0,mouse.target,cameraFacing)); break;
 									default:
 										break;
 								}
@@ -1538,7 +1538,7 @@ final class SacScene: Scene{
 								final switch(color(mouse.target.id,renderSide,state.current)){
 									case SoulColor.blue:
 										auto target=Target(TargetType.terrain,0,mouse.target.position,mouse.target.location);
-										state.addCommand(Command(CommandType.move,renderSide,0,target,cameraFacing));
+										state.addCommand(Command(CommandType.move,renderSide,camera.target,0,target,cameraFacing));
 										break;
 									case SoulColor.red:
 										// TODO: cast convert
@@ -1556,6 +1556,7 @@ final class SacScene: Scene{
 						break;
 					case Mouse.Status.icon:
 						mouse.status=Mouse.Status.standard;
+						if(audio) audio.playSound("kabI");
 						break;
 				}
 			}
@@ -1569,35 +1570,35 @@ final class SacScene: Scene{
 					CommandType.selectGroup;
 				int group = key==KEY_0?9:key-KEY_1;
 				if(group>=numCreatureGroups) break;
-				state.addCommand(Command(type,renderSide,group));
+				state.addCommand(Command(type,renderSide,camera.target,group));
 				if(type==CommandType.addToGroup)
-					state.addCommand(Command(CommandType.selectGroup,renderSide,group));
+					state.addCommand(Command(CommandType.automaticSelectGroup,renderSide,camera.target,group));
 			}
 		}
 		if(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK]){
 			foreach(_;0..keyDown[KEY_X]){
-				state.addCommand(Command(renderSide,Formation.phalanx));
+				state.addCommand(Command(renderSide,camera.target,Formation.phalanx));
 			}
 			foreach(_;0..keyDown[KEY_L]){
-				state.addCommand(Command(renderSide,Formation.line));
+				state.addCommand(Command(renderSide,camera.target,Formation.line));
 			}
 			foreach(_;0..keyDown[KEY_Z]){
-				state.addCommand(Command(renderSide,Formation.flankLeft));
+				state.addCommand(Command(renderSide,camera.target,Formation.flankLeft));
 			}
 			foreach(_;0..keyDown[KEY_V]){
-				state.addCommand(Command(renderSide,Formation.flankRight));
+				state.addCommand(Command(renderSide,camera.target,Formation.flankRight));
 			}
 			foreach(_;0..keyDown[KEY_W]){
-				state.addCommand(Command(renderSide,Formation.wedge));
+				state.addCommand(Command(renderSide,camera.target,Formation.wedge));
 			}
 			foreach(_;0..keyDown[KEY_U]){
-				state.addCommand(Command(renderSide,Formation.semicircle));
+				state.addCommand(Command(renderSide,camera.target,Formation.semicircle));
 			}
 			foreach(_;0..keyDown[KEY_O]){
-				state.addCommand(Command(renderSide,Formation.circle));
+				state.addCommand(Command(renderSide,camera.target,Formation.circle));
 			}
 			foreach(_;0..keyDown[KEY_Y]){
-				state.addCommand(Command(renderSide,Formation.skirmish));
+				state.addCommand(Command(renderSide,camera.target,Formation.skirmish));
 			}
 			foreach(_;0..keyDown[KEY_R]){
 				if(mouse.status==Mouse.Status.standard){
@@ -1608,7 +1609,7 @@ final class SacScene: Scene{
 			foreach(_;0..keyDown[KEY_T]){
 				auto target=Target(TargetType.terrain,0,mouse.target.position,mouse.target.location);
 				target.position.z=state.current.getHeight(target.position);
-				state.addCommand(Command(CommandType.move,renderSide,0,target,cameraFacing));
+				state.addCommand(Command(CommandType.move,renderSide,camera.target,0,target,cameraFacing));
 			}
 			foreach(_;0..keyDown[KEY_A]){
 				if(mouse.status==Mouse.Status.standard){
@@ -1729,7 +1730,7 @@ final class SacScene: Scene{
 		if(state) stateTestControl();
 		control(dt);
 		if(state){
-			state.step();
+			state.step(true);
 			// state.commit();
 			auto totalTime=state.current.frame*dt;
 			if(skyEntities.length){
@@ -2239,6 +2240,14 @@ static:
 	}
 	void updateAudioAfterRollback(){
 		if(audio) audio.updateAudioAfterRollback(scene.state.current);
+	}
+	void playSound(int side,char[4] sound){
+		if(!audio||side!=-1&&side!=scene.renderSide) return;
+		audio.playSound(sound);
+	}
+	void playSoundAt(char[4] sound,int id){
+		if(!audio) return;
+		audio.playSoundAt(sound,id);
 	}
 }
 

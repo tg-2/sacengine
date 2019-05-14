@@ -76,40 +76,50 @@ final class AudioBackend(B){
 				themes[currentTheme].source.play();
 		}
 	}
-	struct Sound1{
-		Source source;
-		Vector3f position;
-	}
-	Array!Sound1 sounds1;
-	struct Sound2{
-		Source source;
-		int id;
-	}
-	Array!Sound2 sounds2;
-	struct LoopSound{
-		Source source;
-		int id;
-	}
-	Array!LoopSound sounds3;
 
 	Buffer[char[4]] buffers;
 	Buffer getBuffer(char[4] sound){
 		if(sound in buffers) return buffers[sound];
 		return buffers[sound]=makeBuffer(loadSAMP(samps[sound]));
 	}
-
+	struct Sound0{
+		Source source;
+	}
+	Array!Sound0 sounds0;
+	void playSound(char[4] sound,float gain=1.0f){
+		auto source=makeSource();
+		source.gain=soundGain*gain;
+		source.buffer=getBuffer(sound);
+		source.play();
+		sounds0~=Sound0(source);
+	}
+	struct Sound1{
+		Source source;
+		Vector3f position;
+	}
+	Array!Sound1 sounds1;
 	void playSoundAt(char[4] sound,Vector3f position){
 		auto source=makeSource();
 		source.gain=soundGain*_3dSoundVolumeMultiplier;
 		source.buffer=getBuffer(sound);
 		sounds1~=Sound1(source,position);
 	}
+	struct Sound2{
+		Source source;
+		int id;
+	}
+	Array!Sound2 sounds2;
 	void playSoundAt(char[4] sound,int id){
 		auto source=makeSource();
 		source.gain=soundGain*_3dSoundVolumeMultiplier;
 		source.buffer=getBuffer(sound);
 		sounds2~=Sound2(source,id);
 	}
+	struct LoopSound{
+		Source source;
+		int id;
+	}
+	Array!LoopSound sounds3;
 	void loopSoundAt(Buffer buffer,int id){
 		auto source=makeSource();
 		source.gain=soundGain*_3dSoundVolumeMultiplier;
@@ -164,6 +174,15 @@ final class AudioBackend(B){
 	}
 
 	void updateSounds(float dt,Matrix4f viewMatrix,ObjectState!B state){
+		for(int i=0;i<sounds0.length;){
+			if(!sounds0[i].source.isPlaying){
+				swap(sounds0[i],sounds0[$-1]);
+				sounds0[$-1].source.release();
+				sounds0.length=sounds0.length-1;
+				continue;
+			}
+			i++;
+		}
 		for(int i=0;i<sounds1.length;){
 			if(sounds1[i].source.isInitial)
 				sounds1[i].source.play();

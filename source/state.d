@@ -3,7 +3,7 @@ import std.container.array: Array;
 import std.exception, std.stdio, std.conv, std.math;
 import dlib.math, dlib.image.color;
 import std.typecons;
-import sids, ntts, nttData, bldg;
+import sids, ntts, nttData, bldg, sset;
 import sacmap, sacobject, animations;
 import stats;
 import util,options;
@@ -3407,7 +3407,7 @@ final class ObjectState(B){ // (update logic)
 		import std.random: uniform;
 		return uniform(0,n,rng);
 	}
-	float uniform(string bounds="[]",T)(T a,T b){
+	T uniform(string bounds="[]",T)(T a,T b){
 		import std.random: uniform;
 		return uniform!bounds(a,b,rng);
 	}
@@ -3417,12 +3417,15 @@ final class ObjectState(B){ // (update logic)
 		obj=rhs.obj;
 		sid=rhs.sid;
 	}
-	void updateFrom(ObjectState!B rhs,Command[] frameCommands){
+	void updateFrom(ObjectState!B rhs,Command[] frameCommands,bool playAudio){
 		copyFrom(rhs);
-		update(frameCommands);
+		update(frameCommands,playAudio);
 	}
-	void applyCommand(Command command){
+	void applyCommand(Command command,bool playAudio){
 		if(!command.isApplicable(this)) return;
+		int whichClick=uniform(2);
+		static if(B.hasAudio) if(command.type.hasClickSound) B.playSound(command.side,commandAppliedSoundTags[whichClick]);
+		command.speakCommand(playAudio,this);
 		static void applyOrder(Command command,ObjectState!B state,bool updateFormation=false,Vector2f formationOffset=Vector2f(0.0f,0.0f)){
 			assert(command.type==CommandType.setFormation||command.target.type.among(TargetType.terrain,TargetType.creature,TargetType.building));
 			if(!command.creature){
@@ -3520,19 +3523,21 @@ final class ObjectState(B){ // (update logic)
 			static foreach(type;[select,selectAll,toggleSelection]){
 			    case type: mixin(`this.`~to!string(type))(command.side,command.target.id); break Lswitch;
 			}
+			case automaticToggleSelection: goto case toggleSelection;
 			static foreach(type;[defineGroup,addToGroup,selectGroup]){
 			    case type: mixin(`this.`~to!string(type))(command.side,command.group); break Lswitch;
 			}
+			case automaticSelectGroup: goto case selectGroup;
 			case setFormation: applyOrder(command,this,true); break;
 			case retreat,move,guard,guardArea,attack,advance: applyOrder(command,this); break;
 		}
 	}
-	void update(Command[] frameCommands){
+	void update(Command[] frameCommands,bool playAudio){
 		frame+=1;
 		proximity.start();
 		this.eachByType!(addToProximity,false)(this);
 		foreach(command;frameCommands)
-			applyCommand(command);
+			applyCommand(command,playAudio);
 		this.eachMoving!updateCreature(this);
 		this.eachSoul!updateSoul(this);
 		this.eachBuilding!updateBuilding(this);
@@ -4012,11 +4017,13 @@ enum CommandType{
 	clearSelection,
 	select,
 	selectAll,
+	automaticToggleSelection,
 	toggleSelection,
 
 	defineGroup,
 	addToGroup,
 	selectGroup,
+	automaticSelectGroup,
 
 	setFormation,
 
@@ -4028,8 +4035,75 @@ enum CommandType{
 	advance,
 }
 
+bool hasClickSound(CommandType type){
+	final switch(type) with(CommandType){
+		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,clearSelection,automaticToggleSelection,automaticSelectGroup,setFormation,retreat: return false;
+		case select,selectAll,toggleSelection,defineGroup,addToGroup,selectGroup,move,guard,guardArea,attack,advance: return true;
+	}
+}
+SoundType soundType(Command command){
+	final switch(command.type) with(CommandType){
+		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,clearSelection,select,selectAll,automaticToggleSelection,toggleSelection,automaticSelectGroup:
+			return SoundType.none;
+		case defineGroup,addToGroup:
+			switch(command.group){
+				static foreach(i;0..10) case i: return mixin(`SoundType.beGroup`~to!string(i+1));
+				default: return SoundType.none;
+			}
+		case selectGroup:
+			switch(command.group){
+				static foreach(i;0..10) case i: return mixin(`SoundType.group`~to!string(i+1));
+				default: return SoundType.none;
+			}
+		case setFormation:
+			final switch(command.formation) with(Formation){
+				case line: return SoundType.lineFormation;
+				case flankLeft: return SoundType.none;
+				case flankRight: return SoundType.none;
+				case phalanx: return SoundType.phalanxFormation;
+				case semicircle: return SoundType.semicircleFormation;
+				case circle: return SoundType.circleFormation;
+				case wedge: return SoundType.wedgeFormation;
+				case skirmish: return SoundType.skirmishFormation;
+			}
+		case retreat: return SoundType.guardMe;
+		case move: return SoundType.move;
+		case guard: return command.target.type==TargetType.building?SoundType.guardBuilding:command.wizard==command.target.id?SoundType.guardMe:SoundType.guard;
+		case guardArea: return SoundType.defendArea;
+		case attack: return command.target.type==TargetType.building?SoundType.attackBuilding:SoundType.attack;
+		case advance: return SoundType.advance;
+	}
+}
+void speakCommand(B)(Command command,bool playAudio,ObjectState!B state){
+	if(!command.wizard) return;
+	auto soundType=command.soundType;
+	if(soundType==SoundType.none) return;
+	auto sacObject=state.movingObjectById!((obj)=>obj.sacObject,()=>null)(command.wizard);
+	if(!sacObject) return;
+	playSound(command.side,sacObject,soundType,playAudio,state); // TODO: queue speech
+}
+void playSound(B)(int side,SacObject!B sacObject,SoundType soundType,bool playAudio,ObjectState!B state){
+	auto sset=sacObject.sset;
+	if(!sset) return;
+	auto sounds=sset.getSounds(soundType);
+	if(sounds.length){
+		auto sound=sounds[state.uniform(cast(int)$)];
+		static if(B.hasAudio) if(playAudio)
+			B.playSound(side,sound);
+	}
+}
+void playSoundAt(B)(SacObject!B sacObject,int id,SoundType soundType,bool playAudio,ObjectState!B state){
+	auto sset=sacObject.sset;
+	if(!sset) return;
+	auto sounds=sset.getSounds(soundType);
+	if(sounds.length){
+		auto sound=sounds[state.uniform(cast(int)$)];
+		static if(B.hasAudio) if(playAudio)
+			B.playSoundAt(sound,id);
+	}
+}
 struct Command{
-	this(CommandType type,int side,int creature,Target target,float targetFacing)in{
+	this(CommandType type,int side,int wizard,int creature,Target target,float targetFacing)in{
 		final switch(type) with(CommandType){
 			case none:
 				assert(0);
@@ -4039,7 +4113,7 @@ struct Command{
 			case clearSelection:
 				assert(!creature && target is Target.init);
 				break;
-			case selectAll,select,toggleSelection:
+			case selectAll,select,automaticToggleSelection,toggleSelection:
 				assert(!creature && target.type==TargetType.creature);
 				break;
 			case move:
@@ -4056,20 +4130,21 @@ struct Command{
 			case guardArea,advance:
 				assert(target.type==TargetType.terrain);
 				break;
-			case defineGroup,addToGroup,selectGroup:
+			case defineGroup,addToGroup,selectGroup,automaticSelectGroup:
 				assert(0);
 		}
 	}do{
 		this.type=type;
 		this.side=side;
+		this.wizard=wizard;
 		this.creature=creature;
 		this.target=target;
 		this.targetFacing=targetFacing;
 	}
 
-	this(CommandType type,int side,int group)in{
+	this(CommandType type,int side,int wizard,int group)in{
 		switch(type) with(CommandType){
-			case defineGroup,addToGroup,selectGroup:
+			case defineGroup,addToGroup,selectGroup,automaticSelectGroup:
 				assert(0<=group && group<10);
 				break;
 			default:
@@ -4078,16 +4153,20 @@ struct Command{
 	}do{
 		this.type=type;
 		this.side=side;
+		this.wizard=wizard;
 		this.group=group;
 	}
 
-	this(int side,Formation formation){
+	this(int side,int wizard,Formation formation){
 		this.type=CommandType.setFormation;
+		this.side=side;
+		this.wizard=wizard;
 		this.formation=formation;
 	}
 
 	CommandType type;
 	int side;
+	int wizard;
 	int creature;
 	Target target;
 	float targetFacing;
@@ -4095,7 +4174,8 @@ struct Command{
 	int group=-1;
 
 	bool isApplicable(B)(ObjectState!B state){
-		return (creature==0||state.isValidId(creature,TargetType.creature)) &&
+		return (wizard==0||state.isValidId(wizard,TargetType.creature)) &&
+			(creature==0||state.isValidId(creature,TargetType.creature)) &&
 			(target.id==0&&target.type.among(TargetType.none,TargetType.terrain)||state.isValidId(target.id,target.type));
 	}
 }
@@ -4220,8 +4300,8 @@ final class GameState(B){
 		}
 	}
 
-	void step(){
-		next.updateFrom(current,commands[current.frame].data);
+	void step(bool playAudio){
+		next.updateFrom(current,commands[current.frame].data,playAudio);
 		swap(current,next);
 		if(commands.length<=current.frame) commands~=Array!Command();
 	}
@@ -4243,13 +4323,13 @@ final class GameState(B){
 		assert(frame>=lastCommitted.frame);
 	}body{
 		if(frame<current.frame) rollback(lastCommitted);
-		simulateTo(frame);
+		simulateTo(frame,false);
 	}
-	void simulateTo(int frame)in{
+	void simulateTo(int frame,bool playAudio)in{
 		assert(frame>=current.frame);
 	}body{
 		while(current.frame<frame)
-			step();
+			step(playAudio);
 	}
 	void addCommand(int frame,Command command)in{
 		assert(frame<=current.frame);
@@ -4258,17 +4338,17 @@ final class GameState(B){
 		auto currentFrame=current.frame;
 		commands[frame]~=command;
 		rollback(frame);
-		simulateTo(currentFrame);
+		simulateTo(currentFrame,false);
 	}
 	void addCommand(Command command){
 		addCommand(current.frame,command);
 	}
-	void setSelection(int side,CreatureGroup selection,TargetLocation loc){
-		addCommand(Command(CommandType.clearSelection,side,0,Target.init,float.init));
+	void setSelection(int side,int wizard,CreatureGroup selection,TargetLocation loc){
+		addCommand(Command(CommandType.clearSelection,side,wizard,0,Target.init,float.init));
 		foreach_reverse(id;selection.creatureIds){
 			if(id==0) continue;
 			auto target=Target(TargetType.creature,id,current.movingObjectById!((obj)=>obj.position,function Vector3f(){ assert(0); })(id),loc);
-			addCommand(Command(CommandType.toggleSelection,side,0,target,float.init));
+			addCommand(Command(CommandType.automaticToggleSelection,side,wizard,0,target,float.init));
 		}
 	}
 }
