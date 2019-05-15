@@ -1472,7 +1472,7 @@ final class SacScene: Scene{
 								lastSelectedX=mouse.x;
 								lastSelectedY=mouse.y;
 							}
-							state.addCommand(Command(type,renderSide,camera.target,0,mouse.target,cameraFacing));
+							state.addCommand(Command(type,renderSide,camera.target,mouse.target.id,Target.init,cameraFacing));
 							if(type==CommandType.select){
 								lastSelectedId=mouse.target.id;
 								lastSelectedFrame=state.current.frame;
@@ -2241,6 +2241,10 @@ static:
 	}
 	void updateAudioAfterRollback(){
 		if(audio) audio.updateAudioAfterRollback(scene.state.current);
+	}
+	void queueDialogSound(int side,char[4] sound){
+		if(!audio||side!=-1&&side!=scene.renderSide) return;
+		audio.queueDialogSound(sound);
 	}
 	void playSound(int side,char[4] sound){
 		if(!audio||side!=-1&&side!=scene.renderSide) return;

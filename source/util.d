@@ -217,3 +217,24 @@ string upperf(string s){
 	if('a'<=s[0]&&s[0]<='z') return cast(char)(s[0]+('A'-'a'))~s[1..$];
 	return s;
 }
+
+struct Queue(T){
+	Array!T payload;
+	size_t first=0,last=0;
+	void push(T val){
+		if(payload.length==last-first){
+			if(payload.length>1){
+				import std.algorithm: bringToFront;
+				bringToFront(payload[0..first%$],payload[first%$..$]);
+			}
+			last=last-first;
+			first=0;
+			payload~=val;
+			last+=1;
+		}else payload[last++%$]=val;
+	}
+	T pop(){
+		return payload[first++%$];
+	}
+	bool empty(){ return first==last; }
+}

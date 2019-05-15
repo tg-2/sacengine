@@ -3432,7 +3432,7 @@ final class ObjectState(B){ // (update logic)
 		if(!command.isApplicable(this)) return;
 		int whichClick=uniform(2);
 		static if(B.hasAudio) if(command.type.hasClickSound) B.playSound(command.side,commandAppliedSoundTags[whichClick]);
-		command.speakCommand(this);
+		scope(success) command.speakCommand(this);
 		static void applyOrder(Command command,ObjectState!B state,bool updateFormation=false,Vector2f formationOffset=Vector2f(0.0f,0.0f)){
 			assert(command.type==CommandType.setFormation||command.target.type.among(TargetType.terrain,TargetType.creature,TargetType.building));
 			if(!command.creature){
@@ -3528,7 +3528,7 @@ final class ObjectState(B){ // (update logic)
 
 			case clearSelection: this.clearSelection(command.side); break;
 			static foreach(type;[select,selectAll,toggleSelection]){
-			    case type: mixin(`this.`~to!string(type))(command.side,command.target.id); break Lswitch;
+				case type: mixin(`this.`~to!string(type))(command.side,command.creature); break Lswitch;
 			}
 			case automaticToggleSelection: goto case toggleSelection;
 			static foreach(type;[defineGroup,addToGroup,selectGroup]){
@@ -3653,6 +3653,20 @@ final class ObjectState(B){ // (update logic)
 	}
 	CreatureGroup getSelection(int side){
 		return sid.getSelection(side);
+	}
+	int getSelectionRepresentative(int side){
+		auto ids=getSelection(side).creatureIds;
+		int result=0,bestPriority=-1;
+		foreach(id;ids){
+			if(id){
+				int priority=this.movingObjectById!((obj)=>obj.sacObject.creaturePriority,()=>-1)(id);
+				if(priority>bestPriority){
+					result=id;
+					bestPriority=priority;
+				}
+			}
+		}
+		return result;
 	}
 }
 auto each(alias f,B,T...)(ObjectState!B objectState,T args){
@@ -4081,13 +4095,45 @@ SoundType soundType(Command command){
 		case advance: return SoundType.advance;
 	}
 }
+SoundType responseSoundType(Command command){
+	final switch(command.type) with(CommandType){
+		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,setFormation,clearSelection,selectAll,automaticToggleSelection,defineGroup,addToGroup,automaticSelectGroup,retreat:
+			return SoundType.none;
+		case select,toggleSelection,selectGroup:
+			return SoundType.selected; // TODO: annoyed creatures
+		case move,guard,guardArea: return SoundType.moving;
+		case attack,advance: return SoundType.attacking;
+	}
+}
 void speakCommand(B)(Command command,ObjectState!B state){
 	if(!command.wizard) return;
 	auto soundType=command.soundType;
-	if(soundType==SoundType.none) return;
-	auto sacObject=state.movingObjectById!((obj)=>obj.sacObject,()=>null)(command.wizard);
-	if(!sacObject) return;
-	playSound(command.side,sacObject,soundType,state); // TODO: queue speech
+	if(soundType!=SoundType.none){
+		auto sacObject=state.movingObjectById!((obj)=>obj.sacObject,()=>null)(command.wizard);
+		if(sacObject) queueDialogSound(command.side,sacObject,soundType,state);
+	}
+	auto responseSoundType=command.responseSoundType;
+	if(responseSoundType!=SoundType.none){
+		int responding=command.creature?command.creature:state.getSelectionRepresentative(command.side);
+		if(responding&&state.getSelection(command.side).creatureIds[].canFind(responding)){
+			if(auto respondingSacObject=state.movingObjectById!((obj)=>obj.sacObject,()=>null)(responding)){
+				queueDialogSound(command.side,respondingSacObject,responseSoundType,state);
+			}
+		}
+	}
+}
+// TODO: get rid of duplicated code
+void queueDialogSound(B)(int side,SacObject!B sacObject,SoundType soundType,ObjectState!B state){
+	void playSset(immutable(Sset)* sset){
+		auto sounds=sset.getSounds(soundType);
+		if(sounds.length){
+			auto sound=sounds[state.uniform(cast(int)$)];
+			static if(B.hasAudio) if(playAudio)
+				B.queueDialogSound(side,sound);
+		}
+	}
+	if(auto sset=sacObject.sset) playSset(sset);
+	if(auto sset=sacObject.meleeSset) playSset(sset);	
 }
 void playSound(B)(int side,SacObject!B sacObject,SoundType soundType,ObjectState!B state){
 	void playSset(immutable(Sset)* sset){
@@ -4125,7 +4171,7 @@ struct Command{
 				assert(!creature && target is Target.init);
 				break;
 			case selectAll,select,automaticToggleSelection,toggleSelection:
-				assert(!creature && target.type==TargetType.creature);
+				assert(creature && target is Target.init);
 				break;
 			case move:
 				assert(target.type==TargetType.terrain);
@@ -4361,8 +4407,7 @@ final class GameState(B){
 		addCommand(Command(CommandType.clearSelection,side,wizard,0,Target.init,float.init));
 		foreach_reverse(id;selection.creatureIds){
 			if(id==0) continue;
-			auto target=Target(TargetType.creature,id,current.movingObjectById!((obj)=>obj.position,function Vector3f(){ assert(0); })(id),loc);
-			addCommand(Command(CommandType.automaticToggleSelection,side,wizard,0,target,float.init));
+			addCommand(Command(CommandType.automaticToggleSelection,side,wizard,id,Target.init,float.init));
 		}
 	}
 }

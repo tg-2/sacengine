@@ -45,6 +45,9 @@ final class AudioBackend(B){
 		sounds2.reserve(20);
 		sounds3.reserve(20);
 		oldSounds3.reserve(20);
+
+		dialogSource=makeSource();
+		dialogQueue.payload.reserve(5);
 	}
 	void setTileset(Tileset tileset){
 		themes[Theme.normal]=MP3(godThemes[tileset]);
@@ -82,6 +85,18 @@ final class AudioBackend(B){
 		if(sound in buffers) return buffers[sound];
 		return buffers[sound]=makeBuffer(loadSAMP(samps[sound]));
 	}
+	Source dialogSource;
+	struct DialogSound{
+		char[4] sound;
+	}
+	Queue!DialogSound dialogQueue;
+	void queueDialogSound(char[4] sound){
+		foreach(i;dialogQueue.first..dialogQueue.last) // don't enqueue the same sound twice
+			if(dialogQueue.payload[i%$].sound==sound)
+				return;
+		dialogQueue.push(DialogSound(sound));
+	}
+
 	struct Sound0{
 		Source source;
 	}
@@ -174,6 +189,13 @@ final class AudioBackend(B){
 	}
 
 	void updateSounds(float dt,Matrix4f viewMatrix,ObjectState!B state){
+		if(!dialogSource.isPlaying&&!dialogQueue.empty){
+			auto sound=dialogQueue.pop().sound;
+			auto buffer=getBuffer(sound);
+			dialogSource.gain=soundGain;
+			dialogSource.buffer=buffer;
+			dialogSource.play();
+		}
 		for(int i=0;i<sounds0.length;){
 			if(!sounds0[i].source.isPlaying){
 				swap(sounds0[i],sounds0[$-1]);
@@ -239,6 +261,8 @@ final class AudioBackend(B){
 		foreach(i;0..sounds3.length) sounds3[i].source.release();
 		sounds3.length=0;
 		foreach(k,v;buffers) v.release();
+
+		dialogSource.release();
 	}
 	~this(){ release(); }
 }

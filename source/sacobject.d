@@ -36,6 +36,9 @@ final class SacObject(B){
 	@property bool isWizard(){
 		return !!wizd;
 	}
+	@property int creaturePriority(){
+		return cre8?cre8.spellOrder:0;
+	}
 	@property bool mustFly(){
 		return cre8&&cre8.creatureType=="ylfo";
 	}
