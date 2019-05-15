@@ -3654,6 +3654,12 @@ final class ObjectState(B){ // (update logic)
 	CreatureGroup getSelection(int side){
 		return sid.getSelection(side);
 	}
+	int[2] lastSelected(int side){
+		return sid.lastSelected(side);
+	}
+	void resetSelectionCount(int side){
+		return sid.resetSelectionCount(side);
+	}
 	int getSelectionRepresentative(int side){
 		auto ids=getSelection(side).creatureIds;
 		int result=0,bestPriority=-1;
@@ -3835,10 +3841,15 @@ struct CreatureGroup{
 			}
 		}
 	}
-	void toggle(int id){
-		if(!id) return;
-		if(has(id)) remove(id);
-		else addFront(id);
+	bool toggle(int id){
+		if(!id) return false;
+		if(has(id)){
+			remove(id);
+			return false;
+		}else{
+			addFront(id);
+			return true;
+		}
 	}
 	void clear(){
 		creatureIds[]=0;
@@ -3848,12 +3859,21 @@ struct CreatureGroup{
 struct SideData(B){
 	CreatureGroup selection;
 	CreatureGroup[10] groups;
+	int lastSelected=0;
+	int selectionMultiplicity=0;
+	void updateLastSelected(int id){
+		if(lastSelected!=id){
+			lastSelected=id;
+			selectionMultiplicity=1;
+		}else selectionMultiplicity++;
+	}
 	void clearSelection(){
 		selection.clear();
 	}
 	void select(int id){
 		clearSelection();
 		selection.addFront(id);
+		updateLastSelected(id);
 	}
 	void addToSelection(int id){
 		if(selection.has(id)) return;
@@ -3863,7 +3883,8 @@ struct SideData(B){
 		selection.remove(id);
 	}
 	void toggleSelection(int id){
-		selection.toggle(id);
+		if(selection.toggle(id))
+			updateLastSelected(id);
 	}
 	void defineGroup(int groupId)in{
 		assert(0<=groupId&&groupId<numCreatureGroups);
@@ -3885,6 +3906,9 @@ struct SideData(B){
 	}
 	CreatureGroup getSelection(){
 		return selection;
+	}
+	void resetSelectionCount(){
+		selectionMultiplicity=0;
 	}
 }
 
@@ -3945,6 +3969,16 @@ struct SideManager(B){
 		assert(0<=side&&side<sides.length);
 	}do{
 		return sides[side].getSelection();
+	}
+	int[2] lastSelected(int side)in{
+		assert(0<=side&&side<sides.length);
+	}do{
+		return [sides[side].lastSelected,sides[side].selectionMultiplicity];
+	}
+	void resetSelectionCount(int side)in{
+		assert(0<=side&&side<sides.length);
+	}do{
+		return sides[side].resetSelectionCount();
 	}
 }
 
@@ -4117,6 +4151,18 @@ void speakCommand(B)(Command command,ObjectState!B state){
 		int responding=command.creature?command.creature:state.getSelectionRepresentative(command.side);
 		if(responding&&state.getSelection(command.side).creatureIds[].canFind(responding)){
 			if(auto respondingSacObject=state.movingObjectById!((obj)=>obj.sacObject,()=>null)(responding)){
+				if(responseSoundType==SoundType.selected){
+					auto lastSelected=state.lastSelected(command.side);
+					if(responding==lastSelected[0]&&lastSelected[1]>3){
+						if(auto sset=respondingSacObject.sset){
+							auto sounds=sset.getSounds(SoundType.annoyed);
+							auto sound=sounds[(lastSelected[1]-4)%$];
+							static if(B.hasAudio) if(playAudio)
+								B.queueDialogSound(command.side,sound);
+							return;
+						}
+					}
+				}else state.resetSelectionCount(command.side);
 				queueDialogSound(command.side,respondingSacObject,responseSoundType,state);
 			}
 		}
