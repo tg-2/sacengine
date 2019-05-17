@@ -1806,6 +1806,10 @@ void giveMana(B)(ref MovingObject!B object,float amount,ObjectState!B state){
 	object.creatureStats.mana=min(object.creatureStats.mana+amount,object.creatureStats.maxMana);
 }
 
+float meleeDistance(Vector3f[2] objectHitbox,Vector3f attackerCenter){
+	return closestBoxFaceNormalWithProjectionLength(objectHitbox,attackerCenter)[1];
+}
+
 void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,ObjectState!B state){
 	auto damage=attacker.meleeStrength/attacker.numAttackTicks(attacker.animationState); // TODO: figure this out
 	auto objectHitbox=object.hitbox;
@@ -2474,9 +2478,7 @@ auto collisionTarget(bool attackFilter=false,bool returnHitbox=false,B)(int ownI
 			if(state.objectById!((obj,state)=>obj.health(state)==0.0f)(entry.id,state))
 				return;
 		}
-		auto center=0.5f*(entry.hitbox[0]+entry.hitbox[1]);
-		auto attackCenter=0.5f*(collisionState.hitbox[0]+collisionState.hitbox[1]);
-		auto distance=(center-attackCenter).length; // TODO: improve this calculation
+		auto distance=meleeDistance(entry.hitbox,boxCenter(collisionState.hitbox));
 		if(!collisionState.target||distance<collisionState.distance){
 			collisionState.target=entry.id;
 			static if(returnHitbox) collisionState.targetHitbox=entry.hitbox;
