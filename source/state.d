@@ -35,6 +35,7 @@ enum CreatureMode{
 	meleeMoving,
 	meleeAttacking,
 	stunned,
+	cower,
 }
 
 enum CreatureMovement{
@@ -253,8 +254,10 @@ float speed(B)(ref MovingObject!B object,ObjectState!B state){
 float takeoffTime(B)(ref MovingObject!B object,ObjectState!B state){
 	return object.sacObject.takeoffTime;
 }
+bool isWizard(B)(ref MovingObject!B obj){ return obj.sacObject.isWizard; }
+bool isPeasant(B)(ref MovingObject!B obj){ return obj.sacObject.isPeasant; }
 bool canSelect(B)(ref MovingObject!B obj,int side,ObjectState!B state){
-	return obj.side==side&&!obj.sacObject.isWizard&&obj.creatureState.mode!=CreatureMode.dead;
+	return obj.side==side&&!obj.isWizard&&!obj.isPeasant&&obj.creatureState.mode!=CreatureMode.dead;
 }
 bool canOrder(B)(ref MovingObject!B obj,int side,ObjectState!B state){
 	return (side==-1||obj.side==side)&&obj.creatureState.mode!=CreatureMode.dead;
@@ -377,7 +380,7 @@ float health(B)(ref StaticObject!B object,ObjectState!B state){
 int sideFromBuildingId(B)(int buildingId,ObjectState!B state){
 	return state.buildingById!((ref b)=>b.side,function int(){ assert(0); })(buildingId);
 }
-int flagsFromBuildingId(B)(int buildingId,ObjetState!B state){
+int flagsFromBuildingId(B)(int buildingId,ObjectState!B state){
 	return state.buildingById!((ref b)=>b.flags,function int(){ assert(0); })(buildingId);
 }
 int side(B)(ref StaticObject!B object,ObjectState!B state){
@@ -567,6 +570,12 @@ bool isEtherealAltar(immutable(Bldg)* bldg){ // TODO: store in SacBuilding class
 }
 bool isEtherealAltar(B)(ref Building!B building){
 	return building.bldg.isEtherealAltar;
+}
+bool isPeasantShelter(immutable(Bldg)* bldg){
+	return !!(bldg.header.flags&BldgFlags.shelter)||bldg.isAltar;
+}
+bool isPeasantShelter(B)(ref Building!B building){
+	return building.bldg.isPeasantShelter;
 }
 
 void putOnManafount(B)(ref Building!B building,ref Building!B manafount,ObjectState!B state)in{
@@ -1382,6 +1391,8 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 					}
 				}
 			}
+			if(object.id&&object.frame==0&&!state.uniform(5)) // TODO: figure out the original rule for this
+				playSoundAt(sacObject,object.id,SoundType.idleTalk,state);
 			break;
 		case CreatureMode.moving:
 			final switch(object.creatureState.movement) with(CreatureMovement){
@@ -1526,6 +1537,14 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 						else if(hasFalling) object.animationState=AnimationState.falling;
 					}
 					break;
+			}
+			break;
+		case CreatureMode.cower:
+			object.frame=0;
+			object.animationState=sacObject.hasAnimationState(AnimationState.cower)?AnimationState.cower:AnimationState.idle1;
+			if(!state.uniform(5)){ // TODO: figure out the original rule for this
+				playSoundAt(sacObject,object.id,SoundType.cower,state);
+				object.animationState=sacObject.hasAnimationState(AnimationState.talkCower)?AnimationState.talkCower:AnimationState.idle1;
 			}
 			break;
 	}
@@ -1762,7 +1781,7 @@ void damageAnimation(B)(ref MovingObject!B object,Vector3f attackDirection,Objec
 bool canDamage(B)(ref MovingObject!B object,ObjectState!B state){
 	if(object.creatureStats.flags&Flags.cannotDamage) return false;
 	final switch(object.creatureState.mode) with(CreatureMode){
-		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,stunned: return true;
+		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower: return true;
 		case dying,dead,spawning,reviving,fastReviving: return false;
 	}
 }
@@ -1891,6 +1910,13 @@ void startTurningLeft(B)(ref MovingObject!B object,ObjectState!B state,int side=
 }
 void startTurningRight(B)(ref MovingObject!B object,ObjectState!B state,int side=-1){
 	object.setTurning(RotationDirection.right,state,side);
+}
+
+void startCowering(B)(ref MovingObject!B object,ObjectState!B state){
+	if(!object.isPeasant) return;
+	object.stopMovement(state);
+	object.creatureState.mode=CreatureMode.cower;
+	object.setCreatureState(state);
 }
 
 bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state){
@@ -2157,7 +2183,7 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 
 bool patrolAround(B)(ref MovingObject!B object,Vector3f position,float range,ObjectState!B state){
 	if(!object.isAggressive(state)) return false;
-	auto targetId=state.proximity.closestEnemyInRange(object.side,position,range,false,state);
+	auto targetId=state.proximity.closestEnemyInRange(object.side,position,range,EnemyType.all,state);
 	if(targetId)
 		if(object.attack(targetId,state))
 			return true;
@@ -2183,7 +2209,7 @@ bool patrol(B)(ref MovingObject!B object,ObjectState!B state){
 	if(!object.isAggressive(state)) return false;
 	auto position=object.position;
 	auto range=object.aggressiveRange(CommandType.none,state);
-	auto targetId=state.proximity.closestEnemyInRange(object.side,position,range,false,state);
+	auto targetId=state.proximity.closestEnemyInRange(object.side,position,range,EnemyType.all,state);
 	if(targetId)
 		if(object.attack(targetId,state))
 			return true;
@@ -2194,7 +2220,7 @@ bool advance(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectState!B 
 	if(!object.isAggressive(state)) return false;
 	auto position=object.position;
 	auto range=object.advanceRange(CommandType.none,state);
-	auto targetId=state.proximity.closestEnemyInRangeAndClosestToPreferringAttackersOf(object.side,object.position,range,targetPosition,object.id,false,state);
+	auto targetId=state.proximity.closestEnemyInRangeAndClosestToPreferringAttackersOf(object.side,object.position,range,targetPosition,object.id,EnemyType.all,state);
 	if(targetId)
 		if(object.attack(targetId,state))
 			return true;
@@ -2204,9 +2230,20 @@ bool advance(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectState!B 
 enum retreatDistance=9.0f;
 enum guardDistance=18.0f; // ok?
 enum attackDistance=100.0f; // ok?
+enum shelterDistance=50.0f;
+enum scareDistance=50.0f;
 enum speedLimitFactor=0.5f;
 enum rotationSpeedLimitFactor=1.0f;
+
+bool requiresAI(CreatureMode mode){
+	with(CreatureMode) final switch(mode){
+		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking: return true;
+		case dying,dead,spawning,reviving,fastReviving,stunned,cower: return false;
+	}
+}
+
 void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
+	if(!requiresAI(object.creatureState.mode)) return;
 	switch(object.creatureAI.order.command){
 		case CommandType.retreat:
 			auto targetId=object.creatureAI.order.target.id;
@@ -2243,7 +2280,20 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 				object.moveTo(targetPosition,object.creatureAI.order.targetFacing,state);
 			break;
 		case CommandType.none:
-			if(object.isAggressive(state)){
+			if(object.isPeasant){
+				if(object.creatureState.mode!=CreatureMode.cower){
+					auto shelter=state.proximity.closestPeasantShelterInRange(object.side,object.position,shelterDistance,state);
+					if(shelter){
+						if(auto enemy=state.proximity.closestEnemyInRange(object.side,object.position,scareDistance,EnemyType.creature,state)){
+							auto enemyPosition=state.movingObjectById!((obj)=>obj.position,function Vector3f(){ assert(0); })(enemy);
+							// TODO: figure out the original rule for this
+							if(object.creatureState.mode==CreatureMode.idle&&object.creatureState.timer>=updateFPS)
+								playSoundAt(object.sacObject,object.id,SoundType.run,state);
+							object.moveTowards(object.position-(enemyPosition-object.position),state);
+						}else object.stopMovement(state);
+					}else object.startCowering(state);
+				}
+			}else if(object.isAggressive(state)){
 				if(!object.patrol(state)){
 					object.stopMovement(state);
 					object.stopTurning(state);
@@ -2460,6 +2510,11 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 						break;
 				}
 			}
+			break;
+		case CreatureMode.cower:
+			object.frame+=1;
+			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor)
+				object.setCreatureState(state);
 			break;
 	}
 }
@@ -3019,7 +3074,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 		if(objects.sacObject.isManahoar){
 			static bool manahoarAbilityEnabled(CreatureMode mode){
 				final switch(mode) with(CreatureMode){
-					case idle,moving,dying,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned: return true;
+					case idle,moving,dying,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower: return true;
 					case dead,reviving,fastReviving: return false;
 				}
 			}
@@ -3041,8 +3096,10 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 				proximity.insert(ProximityEntry(objects.ids[j],hitbox));
 				auto buildingId=objects.buildingIds[j];
 				// this needs to be kept in synch with isValidAttackTarget
-				if(state.buildingById!((ref b)=>b.health!=0.0f&&!(b.flags&Flags.notOnMinimap),function bool(){ assert(0); })(buildingId))
-					proximity.insertCenter(CenterProximityEntry(true,objects.ids[j],sideFromBuildingId(buildingId,state),boxCenter(hitbox)));
+				auto healthFlags=state.buildingById!((ref b)=>tuple(b.health,b.flags),function Tuple!(float,int){ assert(0); })(buildingId);
+				auto health=healthFlags[0],flags=healthFlags[1];
+				if(!(flags&Flags.notOnMinimap))
+					proximity.insertCenter(CenterProximityEntry(true,objects.ids[j],sideFromBuildingId(buildingId,state),boxCenter(hitbox),0,health==0.0f));
 			}
 		}
 		// TODO: get rid of duplication here
@@ -3226,6 +3283,7 @@ struct CenterProximityEntry{
 	int side;
 	Vector3f position;
 	int attackTargetId=0;
+	bool zeroHealth; // this information only computed for buildings at the moment
 }
 
 struct CenterProximityEntries{
@@ -3308,6 +3366,12 @@ CenterProximityEntry closestInRange(alias f,alias priority=None,B,T...)(ref Cent
 }
 
 
+enum EnemyType{
+	all,
+	creature,
+	building,
+}
+
 final class Proximity(B){
 	int version_=0;
 	bool active=false;
@@ -3353,19 +3417,29 @@ final class Proximity(B){
 	}do{
 		centers.insert(version_,entry);
 	}
-	private static bool isEnemy(T...)(ref CenterProximityEntry entry,int side,bool onlyCreatures,ObjectState!B state,T ignored){
-		if(onlyCreatures&&entry.isStatic) return false;
+	private static bool isEnemy(T...)(ref CenterProximityEntry entry,int side,EnemyType type,ObjectState!B state,T ignored){
+		if(type==EnemyType.creature&&entry.isStatic) return false;
+		if(type==EnemyType.building&&!entry.isStatic) return false;
+		if(entry.zeroHealth) return false;
 		return state.sides.getStance(side,entry.side)==Stance.enemy;
 	}
-	int closestEnemyInRange(int side,Vector3f position,float range,bool onlyCreatures,ObjectState!B state){
-		return centers.closestInRange!isEnemy(version_,position,range,side,onlyCreatures,state).id;
+	int closestEnemyInRange(int side,Vector3f position,float range,EnemyType type,ObjectState!B state){
+		return centers.closestInRange!isEnemy(version_,position,range,side,type,state).id;
 	}
-	private static int advancePriority(ref CenterProximityEntry entry,int side,bool onlyCreatures,ObjectState!B state,int id){
+	private static bool isPeasantShelter(ref CenterProximityEntry entry,int side,ObjectState!B state){
+		if(!entry.isStatic) return false;
+		if(state.sides.getStance(entry.side,side)==Stance.enemy) return false;
+		return state.staticObjectById!((obj,state)=>state.buildingById!(bldg=>bldg.isPeasantShelter,()=>false)(obj.buildingId),()=>false)(entry.id,state);
+	}
+	int closestPeasantShelterInRange(int side,Vector3f position,float range,ObjectState!B state){
+		return centers.closestInRange!isPeasantShelter(version_,position,range,side,state).id;
+	}
+	private static int advancePriority(ref CenterProximityEntry entry,int side,EnemyType type,ObjectState!B state,int id){
 		if(entry.attackTargetId==id) return 1;
 		return 0;
 	}
-	int closestEnemyInRangeAndClosestToPreferringAttackersOf(int side,Vector3f position,float range,Vector3f targetPosition,int id,bool onlyCreatures,ObjectState!B state){
-		return centers.inRangeAndClosestTo!(isEnemy,advancePriority)(version_,position,range,targetPosition,side,onlyCreatures,state,id).id;
+	int closestEnemyInRangeAndClosestToPreferringAttackersOf(int side,Vector3f position,float range,Vector3f targetPosition,int id,EnemyType type,ObjectState!B state){
+		return centers.inRangeAndClosestTo!(isEnemy,advancePriority)(version_,position,range,targetPosition,side,type,state,id).id;
 	}
 }
 auto collide(alias f,B,T...)(Proximity!B proximity,Vector3f[2] hitbox,T args){
@@ -3509,7 +3583,7 @@ final class ObjectState(B){ // (update logic)
 						// TODO: check whether they stick to creatures of a specific side
 						if(state.movingObjectById!((obj,side,state)=>state.sides.getStance(side,obj.side)==Stance.enemy,()=>false)(ord.target.id,side,state)){
 							position.z=state.getHeight(position)+position.z-state.getHeight(obj.position);
-							auto target=state.proximity.closestEnemyInRange(side,position,attackDistance,true,state);
+							auto target=state.proximity.closestEnemyInRange(side,position,attackDistance,EnemyType.creature,state);
 							if(target) ord.target.id=target;
 						}
 					}
@@ -3723,8 +3797,6 @@ auto ref buildingById(alias f,alias noBuilding=fail,B,T...)(ObjectState!B object
 auto ref buildingByStaticObjectId(alias f,alias noStatic=fail,B,T...)(ObjectState!B objectState,int id,T args){
 	return objectState.obj.buildingByStaticObjectId!(f,noStatic)(id,args);
 }
-
-//void addBuilding(immutable(Bldg)* data,
 
 enum Stance{
 	neutral,

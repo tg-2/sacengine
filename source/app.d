@@ -102,7 +102,7 @@ int main(string[] args){
 			backend.setState(state);
 			bool flag=false;
 			state.current.eachBuilding!((bldg,state,scene,flag,options){
-				if(*flag) return;
+				if(*flag||bldg.componentIds.length==0) return;
 				if(bldg.side==backend.scene.renderSide && bldg.isAltar){
 					*flag=true;
 					alias B=DagonBackend;
@@ -112,7 +112,7 @@ int main(string[] args){
 					int closestManafount=0;
 					Vector3f manafountPosition;
 					state.eachBuilding!((bldg,altarPos,closest,manaPos,state){
-						if(!bldg.isManafount) return;
+						if(bldg.componentIds.length==0||!bldg.isManafount) return;
 						auto pos=bldg.position(state);
 						if(*closest==0||(altarPos.xy-pos.xy).length<(altarPos.xy-manaPos.xy).length){
 							*closest=bldg.id;

@@ -36,6 +36,10 @@ final class SacObject(B){
 	@property bool isWizard(){
 		return !!wizd;
 	}
+	private bool isPeasant_;
+	@property bool isPeasant(){
+		return isPeasant_;
+	}
 	@property int creaturePriority(){
 		return cre8?cre8.spellOrder:0;
 	}
@@ -415,7 +419,8 @@ final class SacObject(B){
 		if(!isNaN(data.zfactorOverride)) saxsi.saxs.zfactor=data.zfactorOverride;
 		auto anims=&dat2.animations;
 		auto animIDs=dat2.animations.animations[];
-		animations=new Animation[](animIDs.length);
+		isPeasant_=peasantTags.canFind(tag);
+		animations=new Animation[](animIDs.length+(isPeasant?4:0));
 		foreach(i,ref animID;animIDs){
 			static immutable string[2][] bad=[["2fwc","oppx"],["pezH","tsZB"],["glsd","tsGB"],["ycrp","tsTS"],
 			                                  ["bobs","tsZB"],["guls","tsGB"],["craa","tsGB"],["crpd","tsTS"]];
@@ -429,6 +434,12 @@ final class SacObject(B){
 					animation.compile(saxsi.saxs);
 					animations[i]=animation;
 				}
+			}
+		}
+		if(isPeasant){
+			with(AnimationState) static foreach(i,state;[flyDeath/+pullDown+/,flyDamage/+dig+/,takeoff/+cower+/,flyAttack/+talkCower+/]){
+				animations[pullDown+i]=animations[state];
+				animations[state]=Animation.init;
 			}
 		}
 		saxsi.createMeshes(animations[AnimationState.stance1].frames[0]);

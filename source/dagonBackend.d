@@ -1172,7 +1172,7 @@ final class SacScene: Scene{
 		this.state=state;
 		setupEnvironment(state.current.map);
 		createSky(state.current.map);
-		if(audio) audio.setTileset(state.current.map.tileset);
+		if(audio&&state) audio.setTileset(state.current.map.tileset);
 		createSouls();
 		createCommandCones();
 		initializeHUD();
@@ -1391,7 +1391,7 @@ final class SacScene: Scene{
 				camera.minimapZoom=max(0.5f,min(camera.minimapZoom,15.0f));
 			}
 		}
-		if(camera.target!=0&&!state.current.isValidId(camera.target,TargetType.creature)) camera.target=0;
+		if(camera.target!=0&&(!state||!state.current.isValidId(camera.target,TargetType.creature))) camera.target=0;
 		auto cameraFacing=-degtorad(fpview.camera.turn);
 		if(camera.target==0){
 			if(eventManager.keyPressed[KEY_E]) dir += -forward;
@@ -1404,6 +1404,7 @@ final class SacScene: Scene{
 			fpview.camera.position += dir.normalized * speed * dt;
 			if(state) fpview.camera.position.z=max(fpview.camera.position.z, state.current.getHeight(fpview.camera.position));
 		}else{
+			if(!state) return;
 			if(eventManager.keyPressed[KEY_E] && !eventManager.keyPressed[KEY_D]){
 				if(targetMovementState.movement!=MovementDirection.forward){
 					targetMovementState.movement=MovementDirection.forward;
@@ -1438,6 +1439,7 @@ final class SacScene: Scene{
 			}
 			positionCamera();
 		}
+		if(!state) return;
 		if(mouseButtonDown[MB_LEFT]!=0){
 			mouse.leftButtonX=mouse.x;
 			mouse.leftButtonY=mouse.y;
@@ -1966,8 +1968,8 @@ final class SacScene: Scene{
 		gbuffer.startInformationDownload(x,y);
 	}
 	override void onUpdate(double dt){
-		if(audio) audio.update(dt,fpview.viewMatrix,state.current);
 		super.onUpdate(dt);
+		if(audio&&state) audio.update(dt,fpview.viewMatrix,state.current);
 		updateCursor(dt);
 	}
 	AudioBackend!DagonBackend audio;
@@ -2240,7 +2242,7 @@ static:
 		if(audio) audio.deleteLoopingSounds();
 	}
 	void updateAudioAfterRollback(){
-		if(audio) audio.updateAudioAfterRollback(scene.state.current);
+		if(audio&&scene.state) audio.updateAudioAfterRollback(scene.state.current);
 	}
 	void queueDialogSound(int side,char[4] sound){
 		if(!audio||side!=-1&&side!=scene.renderSide) return;

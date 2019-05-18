@@ -4,6 +4,7 @@ import util;
 enum BldgFlags:uint{
 	none=0,
 	unknown=1<<3,
+	shelter=1<<15, // TODO: correct?
 	ground=1<<31,
 }
 struct BldgHeader{

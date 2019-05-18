@@ -26,12 +26,12 @@ struct Animations{
 			char[4] runSpellcastStart; // wizards only
 			char[4] runSpellcast; // wizards only
 			char[4] runSpellcastEnd; // wizards only
-			char[4] takeoff;
-			char[4] fly;
-			char[4] land;
-			char[4] flyDamage;
-			char[4] flyDeath;
-			char[4] flyAttack;
+			char[4] takeoff; // peasants: cower
+			char[4] fly; // peasants: pull
+			char[4] land; // peasants: pull 2
+			char[4] flyDamage; // peasants: dig
+			char[4] flyDeath;  // peasants: pull down
+			char[4] flyAttack; // peasants: talk/cower
 			char[4] hover;
 			char[4] pickUp;
 			char[4] badLanding;
@@ -74,6 +74,6 @@ string generateAnimationState(){
 			}else names~=x;
 		}
 	}
-	return "enum AnimationState{"~names.join(",")~"}";
+	return "enum AnimationState{"~names.join(",")~",pullDown,dig,cower,talkCower}";
 }
 mixin(generateAnimationState);

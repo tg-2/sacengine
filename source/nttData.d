@@ -91,6 +91,8 @@ immutable string[char[4]] widgModls;
 
 immutable string spellsFolder="spells";
 
+immutable char[4][] peasantTags=["zepa","zepd","zepe","zepf","saep"];
+
 T[char[4]] makeSpellByTag(T)(){
 	T[char[4]] result;
 	static immutable path=buildPath("extracted",spellsFolder);
@@ -106,7 +108,7 @@ T[char[4]] makeSpellByTag(T)(){
 	static if(is(T==Cre8)){
 		// dragon hatchlings have flying animations, but cannot fly
 		// peasants have pulling animations stored in flying animations
-		static immutable nonFlyingTags=["rdbO","zepa","zepd","zepe","zepf","saep","tshg"];
+		static immutable nonFlyingTags=["rdbO","tshg"];
 		foreach(char[4] tag;nonFlyingTags){
 			void fixAnimations(ref Cre8 c){
 				c.animations.takeoff=0;

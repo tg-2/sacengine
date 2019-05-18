@@ -124,7 +124,9 @@ final class AudioBackend(B){
 		int id;
 	}
 	Array!Sound2 sounds2;
-	void playSoundAt(char[4] sound,int id){
+	void playSoundAt(char[4] sound,int id)in{
+		assert(id>0);
+	}do{
 		auto source=makeSource();
 		source.gain=soundGain*_3dSoundVolumeMultiplier;
 		source.buffer=getBuffer(sound);
@@ -206,6 +208,7 @@ final class AudioBackend(B){
 			i++;
 		}
 		for(int i=0;i<sounds1.length;){
+			sounds1[i].source.position=sounds1[i].position*viewMatrix;
 			if(sounds1[i].source.isInitial)
 				sounds1[i].source.play();
 			else if(!sounds1[i].source.isPlaying){
@@ -214,25 +217,22 @@ final class AudioBackend(B){
 				sounds1.length=sounds1.length-1;
 				continue;
 			}
-			sounds1[i].source.position=sounds1[i].position*viewMatrix;
 			i++;
 		}
 		for(int i=0;i<sounds2.length;){
-			if(sounds2[i].source.isInitial)
+			if(state.isValidId(sounds2[i].id))
+				sounds2[i].source.position=state.objectById!((obj)=>obj.center)(sounds2[i].id)*viewMatrix;
+			if(sounds2[i].source.isInitial){
 				sounds2[i].source.play();
-			else if(!sounds2[i].source.isPlaying){
+			}else if(!sounds2[i].source.isPlaying){
 				swap(sounds2[i],sounds2[$-1]);
 				sounds2[$-1].source.release();
 				sounds2.length=sounds2.length-1;
 				continue;
 			}
-			if(state.isValidId(sounds2[i].id))
-				sounds2[i].source.position=state.objectById!((obj)=>obj.center)(sounds2[i].id)*viewMatrix;
 			i++;
 		}
 		for(int i=0;i<sounds3.length;){
-			if(sounds3[i].source.isInitial)
-				sounds3[i].source.play();
 			if(!state.isValidId(sounds3[i].id)){
 				swap(sounds3[i],sounds3[$-1]);
 				sounds3[$-1].source.stop();
@@ -241,6 +241,8 @@ final class AudioBackend(B){
 				continue;
 			}
 			sounds3[i].source.position=state.objectById!((obj)=>obj.center)(sounds3[i].id)*viewMatrix;
+			if(sounds3[i].source.isInitial)
+				sounds3[i].source.play();
 			i++;
 		}
 	}
