@@ -113,9 +113,9 @@ final class AudioBackend(B){
 		Vector3f position;
 	}
 	Array!Sound1 sounds1;
-	void playSoundAt(char[4] sound,Vector3f position){
+	void playSoundAt(char[4] sound,Vector3f position,float gain=1.0f){
 		auto source=makeSource();
-		source.gain=soundGain*_3dSoundVolumeMultiplier;
+		source.gain=soundGain*gain*_3dSoundVolumeMultiplier;
 		source.buffer=getBuffer(sound);
 		sounds1~=Sound1(source,position);
 	}
@@ -124,11 +124,11 @@ final class AudioBackend(B){
 		int id;
 	}
 	Array!Sound2 sounds2;
-	void playSoundAt(char[4] sound,int id)in{
+	void playSoundAt(char[4] sound,int id,float gain=1.0f)in{
 		assert(id>0);
 	}do{
 		auto source=makeSource();
-		source.gain=soundGain*_3dSoundVolumeMultiplier;
+		source.gain=soundGain*gain*_3dSoundVolumeMultiplier;
 		source.buffer=getBuffer(sound);
 		sounds2~=Sound2(source,id);
 	}
@@ -137,15 +137,15 @@ final class AudioBackend(B){
 		int id;
 	}
 	Array!LoopSound sounds3;
-	void loopSoundAt(Buffer buffer,int id){
+	void loopSoundAt(Buffer buffer,int id,float gain=1.0f){
 		auto source=makeSource();
-		source.gain=soundGain*_3dSoundVolumeMultiplier;
+		source.gain=soundGain*gain*_3dSoundVolumeMultiplier;
 		source.buffer=buffer;
 		source.looping=true;
 		sounds3~=LoopSound(source,id);
 	}
-	void loopSoundAt(char[4] sound,int id){
-		loopSoundAt(getBuffer(sound),id);
+	void loopSoundAt(char[4] sound,int id,float gain=1.0f){
+		loopSoundAt(getBuffer(sound),id,gain);
 	}
 
 

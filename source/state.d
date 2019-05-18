@@ -4272,8 +4272,9 @@ void playSoundAt(B)(SacObject!B sacObject,int id,SoundType soundType,ObjectState
 		auto sounds=sset.getSounds(soundType);
 		if(sounds.length){
 			auto sound=sounds[state.uniform(cast(int)$)];
+			auto gain=sset.name=="wasb"?2.0f:1.0f;
 			static if(B.hasAudio) if(playAudio)
-				B.playSoundAt(sound,id);
+				B.playSoundAt(sound,id,gain);
 		}
 	}
 	if(auto sset=sacObject.sset) playSset(sset);

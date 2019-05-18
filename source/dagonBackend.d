@@ -2248,13 +2248,13 @@ static:
 		if(!audio||side!=-1&&side!=scene.renderSide) return;
 		audio.queueDialogSound(sound);
 	}
-	void playSound(int side,char[4] sound){
+	void playSound(int side,char[4] sound,float gain=1.0f){
 		if(!audio||side!=-1&&side!=scene.renderSide) return;
-		audio.playSound(sound);
+		audio.playSound(sound,gain);
 	}
-	void playSoundAt(char[4] sound,int id){
+	void playSoundAt(char[4] sound,int id,float gain=1.0f){
 		if(!audio) return;
-		audio.playSoundAt(sound,id);
+		audio.playSoundAt(sound,id,gain);
 	}
 }
 
