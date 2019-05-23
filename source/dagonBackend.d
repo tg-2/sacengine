@@ -1933,12 +1933,12 @@ final class SacScene: Scene{
 		mouse.target=mouseCursorTarget();
 		mouse.targetValid=mouseTargetValid();
 		with(Cursor)
-			mouse.showFrame=(mouse.status.among(Mouse.Status.standard,Mouse.Status.rectangleSelect) &&
-				            mouse.target.location==TargetLocation.scene &&
-				            (mouse.target.type==TargetType.soul||
-				             (mouse.status==Mouse.Status.standard?mouse.cursor:mouse.target.cursor(renderSide,false,state.current))
-				             .among(friendlyUnit,neutralUnit,rescuableUnit,talkingUnit,enemyUnit,iconFriendly,iconNeutral,iconEnemy))) ||
-				            (mouse.status==Mouse.Status.icon&&!!mouse.target.type.among(TargetType.creature,TargetType.building,TargetType.soul));
+			mouse.showFrame=mouse.targetValid && mouse.target.location==TargetLocation.scene &&
+				            ((mouse.status.among(Mouse.Status.standard,Mouse.Status.rectangleSelect) &&
+				              (mouse.target.type==TargetType.soul ||
+				               (mouse.status==Mouse.Status.standard?mouse.cursor:mouse.target.cursor(renderSide,false,state.current))
+				               .among(friendlyUnit,neutralUnit,rescuableUnit,talkingUnit,enemyUnit,iconFriendly,iconNeutral,iconEnemy))) ||
+				             (mouse.status==Mouse.Status.icon&&!!mouse.target.type.among(TargetType.creature,TargetType.building,TargetType.soul)));
 		final switch(mouse.status){
 			case Mouse.Status.standard:
 				mouse.cursor=mouse.target.cursor(renderSide,false,state.current);
@@ -2244,9 +2244,9 @@ static:
 	void updateAudioAfterRollback(){
 		if(audio&&scene.state) audio.updateAudioAfterRollback(scene.state.current);
 	}
-	void queueDialogSound(int side,char[4] sound){
+	void queueDialogSound(int side,char[4] sound,DialogPriority priority){
 		if(!audio||side!=-1&&side!=scene.renderSide) return;
-		audio.queueDialogSound(sound);
+		audio.queueDialogSound(sound,priority);
 	}
 	void playSound(int side,char[4] sound,float gain=1.0f){
 		if(!audio||side!=-1&&side!=scene.renderSide) return;

@@ -233,8 +233,11 @@ struct Queue(T){
 			last+=1;
 		}else payload[last++%$]=val;
 	}
-	T pop(){
-		return payload[first++%$];
-	}
+	T front(){ return payload[first%$]; }
+	void popFront(){ ++first; }
+	T removeFront(){ return payload[first++%$]; }
+	T back(){ return payload[(last+$-1)%$]; }
+	void popBack(){ --last; }
+	T removeBack(){ return payload[--last%$]; }
 	bool empty(){ return first==last; }
 }

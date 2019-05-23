@@ -4218,7 +4218,7 @@ void speakCommand(B)(Command command,ObjectState!B state){
 	auto soundType=command.soundType;
 	if(soundType!=SoundType.none){
 		auto sacObject=state.movingObjectById!((obj)=>obj.sacObject,()=>null)(command.wizard);
-		if(sacObject) queueDialogSound(command.side,sacObject,soundType,state);
+		if(sacObject) queueDialogSound(command.side,sacObject,soundType,DialogPriority.command,state);
 	}
 	auto responseSoundType=command.responseSoundType;
 	if(responseSoundType!=SoundType.none){
@@ -4232,24 +4232,42 @@ void speakCommand(B)(Command command,ObjectState!B state){
 							auto sounds=sset.getSounds(SoundType.annoyed);
 							auto sound=sounds[(lastSelected[1]-4)%$];
 							static if(B.hasAudio) if(playAudio)
-								B.queueDialogSound(command.side,sound);
+								B.queueDialogSound(command.side,sound,DialogPriority.annoyedResponse);
 							return;
 						}
 					}
 				}else state.resetSelectionCount(command.side);
-				queueDialogSound(command.side,respondingSacObject,responseSoundType,state);
+				queueDialogSound(command.side,respondingSacObject,responseSoundType,DialogPriority.response,state);
 			}
 		}
 	}
 }
 // TODO: get rid of duplicated code
-void queueDialogSound(B)(int side,SacObject!B sacObject,SoundType soundType,ObjectState!B state){
+enum DialogPriority{
+	response,
+	annoyedResponse,
+	command,
+	advisorAnnoy,
+	advisorImportant,
+}
+enum DialogPolicy{
+	queue,
+	ignorePrevious,
+	ignoreNext,
+}
+DialogPolicy dialogPolicy(DialogPriority previous,DialogPriority current){
+	with(DialogPriority) with(DialogPolicy){
+		if(previous.among(response,annoyedResponse,command)) return previous<=current?ignorePrevious:queue;
+		return previous<current?ignorePrevious:queue;
+	}
+}
+void queueDialogSound(B)(int side,SacObject!B sacObject,SoundType soundType,DialogPriority priority,ObjectState!B state){
 	void playSset(immutable(Sset)* sset){
 		auto sounds=sset.getSounds(soundType);
 		if(sounds.length){
 			auto sound=sounds[state.uniform(cast(int)$)];
 			static if(B.hasAudio) if(playAudio)
-				B.queueDialogSound(side,sound);
+				B.queueDialogSound(side,sound,priority);
 		}
 	}
 	if(auto sset=sacObject.sset) playSset(sset);

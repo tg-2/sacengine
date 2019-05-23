@@ -88,13 +88,18 @@ final class AudioBackend(B){
 	Source dialogSource;
 	struct DialogSound{
 		char[4] sound;
+		DialogPriority priority;
 	}
 	Queue!DialogSound dialogQueue;
-	void queueDialogSound(char[4] sound){
-		foreach(i;dialogQueue.first..dialogQueue.last) // don't enqueue the same sound twice
-			if(dialogQueue.payload[i%$].sound==sound)
-				return;
-		dialogQueue.push(DialogSound(sound));
+	void queueDialogSound(char[4] sound,DialogPriority priority){
+		Lwhile: while(!dialogQueue.empty){
+			final switch(dialogPolicy(dialogQueue.back.priority,priority)){
+				case DialogPolicy.queue: break Lwhile;
+				case DialogPolicy.ignorePrevious: dialogQueue.popBack(); break;
+				case DialogPolicy.ignoreNext: return;
+			}
+		}
+		dialogQueue.push(DialogSound(sound,priority));
 	}
 
 	struct Sound0{
@@ -192,7 +197,7 @@ final class AudioBackend(B){
 
 	void updateSounds(float dt,Matrix4f viewMatrix,ObjectState!B state){
 		if(!dialogSource.isPlaying&&!dialogQueue.empty){
-			auto sound=dialogQueue.pop().sound;
+			auto sound=dialogQueue.removeFront().sound;
 			auto buffer=getBuffer(sound);
 			dialogSource.gain=soundGain;
 			dialogSource.buffer=buffer;
