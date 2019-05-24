@@ -91,12 +91,25 @@ final class AudioBackend(B){
 		DialogPriority priority;
 	}
 	Queue!DialogSound dialogQueue;
+	DialogSound currentDialogSound;
 	void queueDialogSound(char[4] sound,DialogPriority priority){
 		Lwhile: while(!dialogQueue.empty){
 			final switch(dialogPolicy(dialogQueue.back.priority,priority)){
 				case DialogPolicy.queue: break Lwhile;
+				case DialogPolicy.interruptPrevious: goto case DialogPolicy.ignorePrevious;
 				case DialogPolicy.ignorePrevious: dialogQueue.popBack(); break;
-				case DialogPolicy.ignoreNext: return;
+				case DialogPolicy.ignoreCurrent: return;
+			}
+		}
+		if(currentDialogSound!=DialogSound.init){
+			final switch(dialogPolicy(currentDialogSound.priority,priority)){
+				case DialogPolicy.queue: break;
+				case DialogPolicy.interruptPrevious:
+					dialogSource.stop();
+					currentDialogSound=DialogSound.init;
+					break;
+				case DialogPolicy.ignorePrevious: break;
+				case DialogPolicy.ignoreCurrent: return;
 			}
 		}
 		dialogQueue.push(DialogSound(sound,priority));
@@ -196,12 +209,16 @@ final class AudioBackend(B){
 	}
 
 	void updateSounds(float dt,Matrix4f viewMatrix,ObjectState!B state){
-		if(!dialogSource.isPlaying&&!dialogQueue.empty){
-			auto sound=dialogQueue.removeFront().sound;
-			auto buffer=getBuffer(sound);
-			dialogSource.gain=soundGain;
-			dialogSource.buffer=buffer;
-			dialogSource.play();
+		if(!dialogSource.isPlaying){
+			currentDialogSound=DialogSound.init;
+			if(!dialogQueue.empty){
+				currentDialogSound=dialogQueue.removeFront();
+				auto sound=currentDialogSound.sound;
+				auto buffer=getBuffer(sound);
+				dialogSource.gain=soundGain;
+				dialogSource.buffer=buffer;
+				dialogSource.play();
+			}
 		}
 		for(int i=0;i<sounds0.length;){
 			if(!sounds0[i].source.isPlaying){

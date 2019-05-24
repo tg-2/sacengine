@@ -2021,7 +2021,7 @@ bool hasOrders(B)(ref MovingObject!B object,ObjectState!B state){
 bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectState!B state){
 	auto hitbox=object.hitbox;
 	auto rotation=facingQuaternion(object.creatureState.facing);
-	auto distance=0.1f*(hitbox[1].y-hitbox[0].y);
+	auto distance=0.05f*((hitbox[1].x-hitbox[0].x)+(hitbox[1].y-hitbox[0].y)); // TODO: improve
 	auto frontHitbox=moveBox(hitbox,rotate(rotation,distance*Vector3f(0.0f,1.0f,0.0f)));
 	auto frontObstacleFrontObstacleHitbox=collisionTargetWithHitbox(object.id,hitbox,frontHitbox,state);
 	auto frontObstacle=frontObstacleFrontObstacleHitbox[0];
@@ -2033,7 +2033,7 @@ bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPositi
 		auto evasion=dot(Vector2f(cos(facing),sin(facing)),frontObstacleDirection)<=0.0f?RotationDirection.right:RotationDirection.left;
 		object.setTurning(evasion,state);
 		object.startMovingForward(state);
-		return false;
+		return true;
 	}
 	object.turnToFaceTowards(targetPosition,state);
 	auto rotationDirection=object.creatureState.rotationDirection;
@@ -4252,13 +4252,15 @@ enum DialogPriority{
 }
 enum DialogPolicy{
 	queue,
+	interruptPrevious,
 	ignorePrevious,
-	ignoreNext,
+	ignoreCurrent,
 }
 DialogPolicy dialogPolicy(DialogPriority previous,DialogPriority current){
 	with(DialogPriority) with(DialogPolicy){
-		if(previous.among(response,annoyedResponse,command)) return previous<=current?ignorePrevious:queue;
-		return previous<current?ignorePrevious:queue;
+		if(previous.among(response,annoyedResponse)) return previous<=current?interruptPrevious:queue;
+		if(previous==command) return previous==current?ignorePrevious:previous<current?interruptPrevious:queue;
+		return previous<current?interruptPrevious:current==advisorAnnoy?ignoreCurrent:queue;
 	}
 }
 void queueDialogSound(B)(int side,SacObject!B sacObject,SoundType soundType,DialogPriority priority,ObjectState!B state){
