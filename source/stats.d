@@ -18,7 +18,8 @@ struct CreatureStats{
 }
 
 import std.math: PI;
-@property float rotationSpeed(ref CreatureStats stats){ // in radians per second
+@property float rotationSpeed(ref CreatureStats stats,bool isFlying){ // in radians per second
+	if(isFlying) return 0.5f*cast(float)PI;
 	return cast(float)PI;
 }
 @property float pitchingSpeed(ref CreatureStats stats){ // in radians per second

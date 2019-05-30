@@ -1983,16 +1983,20 @@ void pitchToFaceTowards(B)(ref MovingObject!B object,Vector3f position,ObjectSta
 	object.pitch(pitch_,state);
 }
 
-bool movingForwardGetsCloserTo(B)(ref MovingObject!B object,Vector3f position,float speed,ObjectState!B state){
+bool movingForwardGetsCloserTo(B)(ref MovingObject!B object,Vector3f position,float speed,ObjectState!B state,bool* slowDown=null){
 	auto direction=position.xy-object.position.xy;
 	auto facing=object.creatureState.facing;
-	auto rotationSpeed=object.creatureStats.rotationSpeed/updateFPS;
+	auto rotationSpeed=object.creatureStats.rotationSpeed(object.creatureState.movement==CreatureMovement.flying)/updateFPS;
 	auto forward=Vector2f(-sin(facing),cos(facing));
 	auto angle=atan2(-direction.x,direction.y);
 	angle-=object.creatureState.facing;
 	while(angle<-cast(float)PI) angle+=2*cast(float)PI;
 	while(angle>cast(float)PI) angle-=2*cast(float)PI;
-	if(dot(direction,forward)<0.0f) return false;
+	if(dot(direction,forward)<0.0f){
+		if(object.creatureState.movement!=CreatureMovement.flying)
+			return false;
+		if(slowDown) *slowDown=true;
+	}
 	float r=speed/rotationSpeed,distsqr=direction.lengthsqr;
 	if(distsqr>=2.2f*r^^2) return true;
 	if(abs(angle)<acos(1.0f-distsqr/(2.2f*r^^2))) return true;
@@ -2089,7 +2093,8 @@ void moveTowards(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectStat
 	}
 	if(!evade) object.turnToFaceTowards(targetPosition,state);
 	else if(object.turnToFaceTowardsEvading(targetPosition,state)) return;
-	if(object.movingForwardGetsCloserTo(targetPosition,speed,state)){
+	bool slowDown=false;
+	if(object.movingForwardGetsCloserTo(targetPosition,speed,state,&slowDown)){
 		object.startMovingForward(state);
 		auto distance=speedLimitFactor*(object.position.xy-targetPosition.xy).length;
 		if(object.creatureState.movement==CreatureMovement.flying){
@@ -2102,6 +2107,7 @@ void moveTowards(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectStat
 				object.creatureState.speedLimit=min(object.creatureState.speedLimit,speed*(1.0f-currentTime/slowdownTime));
 			}
 		}else object.creatureState.speedLimit=distance;
+		if(slowDown) object.creatureState.speedLimit=min(object.creatureState.speedLimit,0.75f*speed);
 	}else{
 		object.stopMovement(state);
 		if(object.creatureState.movement==CreatureMovement.flying)
@@ -2171,8 +2177,13 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 	auto movementPosition=targetPosition-meleeHitboxOffset;
 	auto meleeHitboxOffsetXY=0.75f*(targetPosition.xy-object.position.xy).normalized*meleeHitboxOffset.xy.length;
 	meleeHitboxOffset.x=meleeHitboxOffsetXY.x, meleeHitboxOffset.y=meleeHitboxOffsetXY.y;
-	if(target||!object.moveTo(movementPosition,float.init,state,!object.isMeleeAttacking(state)))
+	if(target||!object.moveTo(movementPosition,float.init,state,!object.isMeleeAttacking(state))){
+		object.pitch(0.0f,state);
 		object.turnToFaceTowards(targetPosition,state);
+		enum normalHitboxFactor=1.01f;
+		if(state.objectById!intersects(targetId,scaleBox(object.hitbox,normalHitboxFactor)))
+			object.stopMovement(state);
+	}
 	if(target){
 		object.startMeleeAttacking(state);
 		if(object.creatureState.movement==CreatureMovement.flying)
@@ -2583,7 +2594,7 @@ void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 	auto newPosition=object.position;
 	if(object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving,CreatureMode.stunned,CreatureMode.landing,CreatureMode.dying,CreatureMode.meleeMoving)){
-		auto rotationSpeed=object.creatureStats.rotationSpeed/updateFPS;
+		auto rotationSpeed=object.creatureStats.rotationSpeed(object.creatureState.movement==CreatureMovement.flying)/updateFPS;
 		auto pitchingSpeed=object.creatureStats.pitchingSpeed/updateFPS;
 		bool isRotating=false;
 		if(object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving,CreatureMode.meleeMoving)&&
