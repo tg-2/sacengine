@@ -546,13 +546,13 @@ enum SoulColor{
 	//green,
 }
 
-B.Mesh[] makeSpriteMeshes(B)(int nU,int nV,float width,float height){ // TODO: replace with shader
+B.Mesh[] makeSpriteMeshes(B)(int nU,int nV,float width,float height,float texWidth=1.0f,float texHeight=1.0f){ // TODO: replace with shader
 	auto meshes=new B.Mesh[](nU*nV);
 	foreach(i,ref mesh;meshes){
 		mesh=B.makeMesh(4,2);
 		int u=cast(int)i%nU,v=cast(int)i/nU;
 		foreach(k;0..4) mesh.vertices[k]=Vector3f(-0.5f*width+width*(k==1||k==2),-0.5f*height+height*(k==2||k==3),0.0f);
-		foreach(k;0..4) mesh.texcoords[k]=Vector2f(1.0f/nU*(u+(k==1||k==2)),1.0f/nV*(v+(k==0||k==1)));
+		foreach(k;0..4) mesh.texcoords[k]=Vector2f(texWidth/nU*(u+(k==1||k==2)),texHeight/nV*(v+(k==0||k==1)));
 		static immutable uint[3][] indices=[[0,1,2],[2,3,0]];
 		mesh.indices[]=indices[];
 		mesh.generateNormals();
@@ -596,6 +596,9 @@ enum ParticleType{
 	manalith,
 	shrine,
 	manahoar,
+	firy,
+	explosion,
+	explosion2,
 }
 
 final class SacParticle(B){
@@ -608,10 +611,10 @@ final class SacParticle(B){
 	float energy=20.0f;
 	float width,height;
 	@property bool gravity(){
-		final switch(type){
-			case ParticleType.manafount:
+		final switch(type) with(ParticleType){
+			case manafount:
 				return true;
-			case ParticleType.manalith,ParticleType.shrine,ParticleType.manahoar:
+			case manalith,shrine,manahoar,firy,explosion,explosion2:
 				return false;
 		}
 	}
@@ -620,26 +623,44 @@ final class SacParticle(B){
 		this.color=color;
 		this.energy=energy;
 		// TODO: extract soul meshes at all different frames from original game
-		final switch(type){
-			case ParticleType.manafount:
+		final switch(type) with(ParticleType){
+			case manafount:
 				width=height=6.0f;
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/elec.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
-			case ParticleType.manalith:
+			case manalith:
 				width=height=12.0f;
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/fb_g.TXTR"));
 				meshes=makeSpriteMeshes!B(3,3,width,height);
 				break;
-			case ParticleType.shrine:
+			case shrine:
 				width=height=4.0f;
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/fb_g.TXTR"));
 				meshes=makeSpriteMeshes!B(3,3,width,height);
 				break;
-			case ParticleType.manahoar:
+			case manahoar:
 				width=height=1.2f;
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/fb_g.TXTR"));
 				meshes=makeSpriteMeshes!B(3,3,width,height);
+				break;
+			case firy:
+				width=height=0.5f;
+				this.energy=3.0f;
+				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/firy.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
+			case explosion:
+				width=height=0.5f;
+				this.energy=3.0f;
+				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/xplo.TXTR"));
+				meshes=makeSpriteMeshes!B(5,5,width,height,239.5f/256.0f,239.5f/256.0f);
+				break;
+			case explosion2:
+				width=height=0.5f;
+				this.energy=3.0f;
+				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/exp2.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
 		}
 		material=B.createMaterial(this);
@@ -656,21 +677,25 @@ final class SacParticle(B){
 		return meshes[frame/updateAnimFactor];
 	}
 	float getAlpha(int lifetime){
-		final switch(type){
-			case ParticleType.manafount:
+		final switch(type) with(ParticleType){
+			case manafount:
 				return min(1.0f,(lifetime/(3.0f*numFrames))^^2);
-			case ParticleType.manalith,ParticleType.shrine,ParticleType.manahoar:
+			case manalith,shrine,manahoar:
 				return min(0.07f,(lifetime/(4.0f*numFrames))^^2);
+			case firy,explosion,explosion2:
+				return 1.0f;
 		}
 	}
 	float getScale(int lifetime){
-		final switch(type){
-			case ParticleType.manafount:
+		final switch(type) with(ParticleType){
+			case manafount:
 				return 1.0f;
-			case ParticleType.manalith,ParticleType.manahoar:
+			case manalith,manahoar:
 				return min(1.0f,lifetime/(4.0f*numFrames));
-			case ParticleType.shrine:
+			case shrine:
 				return min(1.0f,lifetime/(3.0f*numFrames));
+			case firy,explosion,explosion2:
+				return 1.0f;
 		}
 	}
 }

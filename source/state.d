@@ -194,6 +194,7 @@ Vector2f[numCreaturesInGroup] getFormationOffsets(R)(R ids,CommandType commandTy
 struct CreatureAI{
 	Order order;
 	Formation formation;
+	bool isColliding=false;
 }
 
 struct MovingObject(B){
@@ -930,6 +931,40 @@ struct Particles(B){
 	}
 }
 
+struct Debris(B){
+	Vector3f position; // TODO: better representation?
+	Vector3f velocity;
+	Quaternionf rotationUpdate;
+	Quaternionf rotation;
+}
+struct Explosion(B){
+	Vector3f position;
+	float scale,maxScale,expansionSpeed;
+	int frame;
+}
+struct Effects(B){
+	Array!(Debris!B) debris;
+	void addEffect(Debris!B debris){
+		this.debris~=debris;
+	}
+	void removeDebris(int i){
+		if(i+1<debris.length) swap(debris[i],debris[$-1]);
+		debris.length=debris.length-1;
+	}
+	Array!(Explosion!B) explosions;
+	void addEffect(Explosion!B explosion){
+		this.explosions~=explosion;
+	}
+	void removeExplosion(int i){
+		if(i+1<explosions.length) swap(explosions[i],explosions[$-1]);
+		explosions.length=explosions.length-1;
+	}
+	void opAssign(ref Effects!B rhs){
+		assignArray(debris,rhs.debris);
+		assignArray(explosions,rhs.explosions);
+	}
+}
+
 struct CommandCone(B){
 	int side;
 	CommandConeColor color;
@@ -966,6 +1001,7 @@ struct Objects(B,RenderMode mode){
 		Souls!B souls;
 		Buildings!B buildings;
 		Array!(Particles!B) particles;
+		Effects!B effects;
 		CommandCones!B commandCones;
 	}
 	static if(mode==RenderMode.opaque){
@@ -1019,6 +1055,9 @@ struct Objects(B,RenderMode mode){
 			buildings.addObject(object);
 			return result;
 		}
+		void addEffect(T)(T proj){
+			effects.addEffect(proj);
+		}
 		void addParticle(Particle!B particle){
 			auto type=particle.sacParticle.stateIndex;
 			if(type==-1){
@@ -1051,6 +1090,7 @@ struct Objects(B,RenderMode mode){
 			fixedObjects=rhs.fixedObjects; // by reference
 			souls=rhs.souls;
 			buildings=rhs.buildings;
+			effects=rhs.effects;
 			assignArray(particles,rhs.particles);
 			commandCones=rhs.commandCones;
 		}
@@ -1087,6 +1127,9 @@ auto eachSoul(alias f,B,T...)(ref Objects!(B,RenderMode.opaque) objects,T args){
 auto eachBuilding(alias f,B,T...)(ref Objects!(B,RenderMode.opaque) objects,T args){
 	objects.buildings.each!f(args);
 }
+auto eachEffects(alias f,B,T...)(ref Objects!(B,RenderMode.opaque) objects,T args){
+	f(objects.effects,args);
+}
 auto eachParticles(alias f,B,T...)(ref Objects!(B,RenderMode.opaque) objects,T args){
 	with(objects){
 		foreach(ref particle;particles)
@@ -1108,6 +1151,7 @@ auto eachByType(alias f,bool movingFirst=true,B,RenderMode mode,T...)(ref Object
 				f(fixedObject,args);
 			f(souls,args);
 			f(buildings,args);
+			f(effects,args);
 			foreach(ref particle;particles)
 				f(particle,args);
 			f(commandCones,args);
@@ -1176,6 +1220,9 @@ struct ObjectManager(B){
 	void addFixed(FixedObject!B object){
 		opaqueObjects.addFixed(object);
 	}
+	void addEffect(T)(T proj){
+		opaqueObjects.addEffect(proj);
+	}
 	void addParticle(Particle!B particle){
 		opaqueObjects.addParticle(particle);
 	}
@@ -1212,6 +1259,9 @@ auto eachSoul(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
 }
 auto eachBuilding(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
 	with(objectManager) opaqueObjects.eachBuilding!f(args);
+}
+auto eachEffects(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
+	with(objectManager) opaqueObjects.eachEffects!f(args);
 }
 auto eachParticles(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
 	with(objectManager) opaqueObjects.eachParticles!f(args);
@@ -1392,7 +1442,7 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 				}
 			}
 			if(object.id&&object.frame==0&&!state.uniform(5)) // TODO: figure out the original rule for this
-				playSoundAt(sacObject,object.id,SoundType.idleTalk,state);
+				playSoundTypeAt(sacObject,object.id,SoundType.idleTalk,state);
 			break;
 		case CreatureMode.moving:
 			final switch(object.creatureState.movement) with(CreatureMovement){
@@ -1419,7 +1469,7 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 				goto case CreatureMode.stunned;
 			break;
 		case CreatureMode.dying:
-			playSoundAt(sacObject,object.id,SoundType.death,state);
+			playSoundTypeAt(sacObject,object.id,SoundType.death,state);
 			with(AnimationState){
 				static immutable deathCandidatesOnGround=[death0,death1,death2];
 				static immutable deathCandidatesFlying=[flyDeath,death0,death1,death2];
@@ -1498,7 +1548,7 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 			}
 			break;
 		case CreatureMode.meleeMoving,CreatureMode.meleeAttacking:
-			playSoundAt(sacObject,object.id,SoundType.melee,state);
+			playSoundTypeAt(sacObject,object.id,SoundType.melee,state);
 			final switch(object.creatureState.movement) with(CreatureMovement) with(AnimationState){
 				case onGround:
 					object.frame=0;
@@ -1543,7 +1593,7 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 			object.frame=0;
 			object.animationState=sacObject.hasAnimationState(AnimationState.cower)?AnimationState.cower:AnimationState.idle1;
 			if(!state.uniform(5)){ // TODO: figure out the original rule for this
-				playSoundAt(sacObject,object.id,SoundType.cower,state);
+				playSoundTypeAt(sacObject,object.id,SoundType.cower,state);
 				object.animationState=sacObject.hasAnimationState(AnimationState.talkCower)?AnimationState.talkCower:AnimationState.idle1;
 			}
 			break;
@@ -1597,6 +1647,9 @@ void destroy(B)(ref Building!B building, ObjectState!B state){
 				building.componentIds[newLength++]=state.addObject(StaticObject!B(destObj,building.id,object.position,object.rotation));
 			})(id);
 		}
+		state.staticObjectById!((ref StaticObject!B object,state){
+			destructionAnimation(object.center,state);
+		})(id,state);
 	}
 	building.componentIds.length=newLength;
 	if(building.base){
@@ -1757,7 +1810,7 @@ DamageDirection getDamageDirection(B)(ref MovingObject!B object,Vector3f attackD
 }
 
 void damageAnimation(B)(ref MovingObject!B object,Vector3f attackDirection,ObjectState!B state,bool checkIdle=true){
-	playSoundAt(object.sacObject,object.id,SoundType.damaged,state);
+	playSoundTypeAt(object.sacObject,object.id,SoundType.damaged,state);
 	if(checkIdle&&object.creatureState.mode!=CreatureMode.idle||!checkIdle&&object.creatureState.mode!=CreatureMode.stunned) return;
 	final switch(object.creatureState.movement){
 		case CreatureMovement.onGround:
@@ -1847,7 +1900,7 @@ void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,Ob
 	object.dealDamage(actualDamage,attacker,state);
 	if(stunBehavior==StunBehavior.always || fromBehind && stunBehavior==StunBehavior.fromBehind){
 		if(actualDamage>=0.5f*damage){
-			playSoundAt(attacker.sacObject,attacker.id,SoundType.stun,state);
+			playSoundTypeAt(attacker.sacObject,attacker.id,SoundType.stun,state);
 			object.damageStun(attackDirection,state);
 			return;
 		}
@@ -1857,18 +1910,18 @@ void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,Ob
 		case StunnedBehavior.normal:
 			break;
 		case StunnedBehavior.onMeleeDamage,StunnedBehavior.onDamage:
-			playSoundAt(attacker.sacObject,attacker.id,SoundType.stun,state);
+			playSoundTypeAt(attacker.sacObject,attacker.id,SoundType.stun,state);
 			object.damageStun(attackDirection,state);
 			return;
 	}
-	playSoundAt(attacker.sacObject,attacker.id,SoundType.hit,state);
+	playSoundTypeAt(attacker.sacObject,attacker.id,SoundType.hit,state);
 }
 
 void dealMeleeDamage(B)(ref Building!B building,ref MovingObject!B attacker,ObjectState!B state){
 	auto damage=attacker.meleeStrength;
 	auto actualDamage=damage*building.meleeResistance*attacker.sacObject.buildingMeleeDamageMultiplier/attacker.numAttackTicks(attacker.animationState);
 	building.dealDamage(actualDamage,attacker,state);
-	playSoundAt(attacker.sacObject,attacker.id,SoundType.hitWall,state);
+	playSoundTypeAt(attacker.sacObject,attacker.id,SoundType.hitWall,state);
 }
 
 
@@ -2299,7 +2352,7 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 							auto enemyPosition=state.movingObjectById!((obj)=>obj.position,function Vector3f(){ assert(0); })(enemy);
 							// TODO: figure out the original rule for this
 							if(object.creatureState.mode==CreatureMode.idle&&object.creatureState.timer>=updateFPS)
-								playSoundAt(object.sacObject,object.id,SoundType.run,state);
+								playSoundTypeAt(object.sacObject,object.id,SoundType.run,state);
 							object.moveTowards(object.position-(enemyPosition-object.position),state);
 						}else object.stopMovement(state);
 					}else object.startCowering(state);
@@ -2754,10 +2807,11 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 	auto proximity=state.proximity;
 	auto relativeHitbox=object.relativeHitbox;
 	Vector3f[2] hitbox=[relativeHitbox[0]+newPosition,relativeHitbox[1]+newPosition];
-	bool posChanged=false, needsFixup=false;
+	bool posChanged=false, needsFixup=false, isColliding=false;
 	auto fixupDirection=Vector3f(0.0f,0.0f,0.0f);
 	void handleCollision(bool fixup)(ProximityEntry entry){
 		if(entry.id==object.id) return;
+		isColliding=true;
 		enum CollisionDirection{ // which face of obstacle's hitbox was hit
 			left,
 			right,
@@ -2838,6 +2892,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 	}
 	if(object.creatureState.mode!=CreatureMode.dead){ // dead creatures do not participate in collision handling
 		proximity.collide!(handleCollision!false)(hitbox);
+		object.creatureAI.isColliding=isColliding;
 		hitbox=[relativeHitbox[0]+newPosition,relativeHitbox[1]+newPosition];
 		proximity.collide!(handleCollision!true)(hitbox);
 		if(needsFixup){
@@ -2934,6 +2989,88 @@ void updateParticles(B)(ref Particles!B particles, ObjectState!B state){
 		particles.positions[j]+=particles.velocities[j]/updateFPS;
 		if(gravity) particles.velocities[j].z-=15.0f/updateFPS;
 	}
+}
+
+bool updateDebris(B)(ref Debris!B debris,ObjectState!B state){
+	auto oldPosition=debris.position;
+	debris.position+=debris.velocity/updateFPS;
+	debris.velocity.z-=30.0f/updateFPS;
+	debris.rotation=debris.rotationUpdate*debris.rotation;
+	if(state.isOnGround(debris.position)){
+		auto height=state.getGroundHeight(debris.position);
+		if(height>debris.position.z){
+			debris.position.z=height;
+			debris.velocity.z*=-0.2f;
+			if(debris.velocity.z<1.0f)
+				return false;
+		}
+	}else if(debris.position.z<state.getHeight(debris.position)-1000.0f)
+		return false;
+	enum numParticles=3;
+	auto sacParticle=SacParticle!B.get(ParticleType.firy);
+	auto velocity=Vector3f(0.0f,0.0f,0.0f);
+	auto lifetime=sacParticle.numFrames;
+	auto frame=0;
+	foreach(i;0..numParticles){
+		auto position=oldPosition*((cast(float)numParticles-1-i)/(numParticles-1))+debris.position*(cast(float)i/(numParticles-1));
+		position+=0.1f*Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f));
+		state.addParticle(Particle!B(sacParticle,position,velocity,lifetime,frame));
+	}
+	return true;
+}
+bool updateExplosion(B)(ref Explosion!B explosion,ObjectState!B state){
+	with(explosion){
+		frame+=1;
+		if(frame>=32) frame=0;
+		scale+=expansionSpeed/updateFPS;
+		return scale<maxScale;
+	}
+}
+void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
+	for(int i=0;i<effects.debris.length;){
+		if(!updateDebris(effects.debris[i],state)){
+			effects.removeDebris(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.explosions.length;){
+		if(!updateExplosion(effects.explosions[i],state)){
+			effects.removeExplosion(i);
+			continue;
+		}
+		i++;
+	}
+}
+
+void explosionAnimation(B)(Vector3f position,ObjectState!B state){
+	playSoundAt("pxbf",position,state,10.0f);
+	state.addEffect(Explosion!B(position,0.0f,20.0f,40.0f,0));
+	state.addEffect(Explosion!B(position,0.0f,5.0f,10.0f,0));
+	enum numParticles=200;
+	auto sacParticle1=SacParticle!B.get(ParticleType.explosion);
+	auto sacParticle2=SacParticle!B.get(ParticleType.explosion2);
+	foreach(i;0..numParticles){
+		auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+		auto velocity=state.uniform(0.5f,2.0f)*direction;
+		auto lifetime=31;
+		auto frame=0;
+		state.addParticle(Particle!B(i<numParticles/2?sacParticle1:sacParticle2,position,velocity,lifetime,frame));
+	}
+}
+
+void destructionAnimation(B)(Vector3f position,ObjectState!B state){
+	enum numDebris=35;
+	foreach(i;0..numDebris){
+		auto angle=state.uniform(-cast(float)PI,cast(float)PI);
+		auto velocity=(20.0f+state.uniform(-5.0f,5.0f))*Vector3f(cos(angle),sin(angle),state.uniform(1.0f,3.0f)).normalized;
+		auto rotationSpeed=cast(float)2*PI*state.uniform(0.5f,2.0f)/updateFPS;
+		auto rotationAxis=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+		auto rotationUpdate=rotationQuaternion(rotationAxis,rotationSpeed);
+		auto debris=Debris!B(position,velocity,rotationUpdate,Quaternionf.identity());
+		state.addEffect(debris);
+	}
+	explosionAnimation(position,state);
 }
 
 void updateCommandCones(B)(ref CommandCones!B commandCones, ObjectState!B state){
@@ -3128,9 +3265,9 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 			foreach(j;0..objects.length)
 				proximity.addAltar(sideFromBuildingId(objects.buildingIds[j],state),objects.positions[j]);
 		}
-	}else static if(is(T==Souls!B)||is(T==Buildings!B)||is(T==Particles!B)||is(T==CommandCones!B)){
+	}else static if(is(T==Souls!B)||is(T==Buildings!B)||is(T==FixedObjects!B)||is(T==Effects!B)||is(T==Particles!B)||is(T==CommandCones!B)){
 		// do nothing
-	}else static assert(is(T==FixedObjects!B));
+	}else static assert(0);
 }
 
 struct ProximityEntry{
@@ -3518,7 +3655,7 @@ final class ObjectState(B){ // (update logic)
 	void applyCommand(Command command){
 		if(!command.isApplicable(this)) return;
 		int whichClick=uniform(2);
-		static if(B.hasAudio) if(command.type.hasClickSound) B.playSound(command.side,commandAppliedSoundTags[whichClick]);
+		if(command.type.hasClickSound) playSound(command.side,commandAppliedSoundTags[whichClick],this);
 		scope(success) command.speakCommand(this);
 		static void applyOrder(Command command,ObjectState!B state,bool updateFormation=false,Vector2f formationOffset=Vector2f(0.0f,0.0f)){
 			assert(command.type==CommandType.setFormation||command.target.type.among(TargetType.terrain,TargetType.creature,TargetType.building));
@@ -3635,6 +3772,7 @@ final class ObjectState(B){ // (update logic)
 		this.eachMoving!updateCreature(this);
 		this.eachSoul!updateSoul(this);
 		this.eachBuilding!updateBuilding(this);
+		this.eachEffects!updateEffects(this);
 		this.eachParticles!updateParticles(this);
 		this.eachCommandCones!updateCommandCones(this);
 		this.performRemovals();
@@ -3667,6 +3805,9 @@ final class ObjectState(B){ // (update logic)
 	}
 	void addFixed(FixedObject!B object){
 		obj.addFixed(object);
+	}
+	void addEffect(T)(T proj){
+		obj.addEffect(proj);
 	}
 	void addParticle(Particle!B particle){
 		obj.addParticle(particle);
@@ -3776,6 +3917,9 @@ auto eachSoul(alias f,B,T...)(ObjectState!B objectState,T args){
 }
 auto eachBuilding(alias f,B,T...)(ObjectState!B objectState,T args){
 	return objectState.obj.eachBuilding!f(args);
+}
+auto eachEffects(alias f,B,T...)(ObjectState!B objectState,T args){
+	return objectState.obj.eachEffects!f(args);
 }
 auto eachParticles(alias f,B,T...)(ObjectState!B objectState,T args){
 	return objectState.obj.eachParticles!f(args);
@@ -4286,26 +4430,33 @@ void queueDialogSound(B)(int side,SacObject!B sacObject,SoundType soundType,Dial
 	if(auto sset=sacObject.sset) playSset(sset);
 	if(auto sset=sacObject.meleeSset) playSset(sset);	
 }
-void playSound(B)(int side,SacObject!B sacObject,SoundType soundType,ObjectState!B state){
+void playSound(B)(int side,char[4] sound,ObjectState!B state,float gain=1.0f){
+	static if(B.hasAudio) if(playAudio) B.playSound(side,sound,gain);
+}
+void playSoundType(B)(int side,SacObject!B sacObject,SoundType soundType,ObjectState!B state){
 	void playSset(immutable(Sset)* sset){
 		auto sounds=sset.getSounds(soundType);
 		if(sounds.length){
 			auto sound=sounds[state.uniform(cast(int)$)];
-			static if(B.hasAudio) if(playAudio)
-				B.playSound(side,sound);
+			playSound(side,sound,state);
 		}
 	}
 	if(auto sset=sacObject.sset) playSset(sset);
 	if(auto sset=sacObject.meleeSset) playSset(sset);
 }
-void playSoundAt(B)(SacObject!B sacObject,int id,SoundType soundType,ObjectState!B state){
+void playSoundAt(B)(char[4] sound,Vector3f position,ObjectState!B state,float gain=1.0f){
+	static if(B.hasAudio) if(playAudio) B.playSoundAt(sound,position,gain);
+}
+void playSoundAt(B)(char[4] sound,int id,ObjectState!B state,float gain=1.0f){
+	static if(B.hasAudio) if(playAudio) B.playSoundAt(sound,id,gain);
+}
+void playSoundTypeAt(B)(SacObject!B sacObject,int id,SoundType soundType,ObjectState!B state){
 	void playSset(immutable(Sset)* sset){
 		auto sounds=sset.getSounds(soundType);
 		if(sounds.length){
 			auto sound=sounds[state.uniform(cast(int)$)];
 			auto gain=sset.name=="wasb"?2.0f:1.0f;
-			static if(B.hasAudio) if(playAudio)
-				B.playSoundAt(sound,id,gain);
+			playSoundAt(sound,id,state,gain);
 		}
 	}
 	if(auto sset=sacObject.sset) playSset(sset);

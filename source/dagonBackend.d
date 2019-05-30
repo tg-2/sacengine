@@ -4,7 +4,7 @@ import std.math;
 import std.stdio;
 import std.algorithm, std.range, std.exception, std.typecons;
 
-import sacobject, nttData, sacmap, maps, state;
+import sacobject, mrmm, nttData, sacmap, maps, state;
 import sxsk : gpuSkinning;
 import audioBackend;
 
@@ -167,10 +167,34 @@ final class SacScene: Scene{
 		skyEntities=[eUndr,eSkyb,eSkyt,eSky,eSun];
 	}
 	SacSoul!DagonBackend sacSoul;
-	SacCommandCone!DagonBackend sacCommandCone;
 	void createSouls(){
 		sacSoul=new SacSoul!DagonBackend();
 	}
+	SacObject!DagonBackend sacDebris;
+	struct Explosion{
+		Texture texture;
+		GenericMaterial material;
+		ShapeSubSphere[16] frames;
+		auto getFrame(int i){ return frames[i/updateAnimFactor]; }
+	}
+	Explosion explosion;
+	void createEffects(){
+		sacDebris=new SacObject!DagonBackend("extracted/models/MODL.WAD!/bold.MRMC/bold.MRMM");
+		enum nU=4,nV=4;
+		import txtr;
+		explosion.texture=DagonBackend.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pyro.FLDR/txtr.FLDR/exeg.TXTR"));
+		auto mat=createMaterial(shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=Additive;
+		mat.energy=1.0f;
+		mat.diffuse=explosion.texture;
+		explosion.material=mat;
+		foreach(i,ref frame;explosion.frames){
+			int u=cast(int)i%nU,v=cast(int)i/nU;
+			frame=new ShapeSubSphere(1.0f,25,25,true,null,1.0f/nU*u,1.0f/nV*v,1.0f/nU*(u+1),1.0f/nV*(v+1));
+		}
+	}
+	SacCommandCone!DagonBackend sacCommandCone;
 	void createCommandCones(){
 		sacCommandCone=new SacCommandCone!DagonBackend();
 	}
@@ -343,6 +367,30 @@ final class SacScene: Scene{
 				}
 			}else static if(is(T==Buildings!DagonBackend)){
 				// do nothing
+			}else static if(is(T==Effects!DagonBackend)){
+				static if(mode==RenderMode.opaque) if(objects.debris.length){
+					auto materials=scene.sacDebris.materials;
+					foreach(i;0..materials.length){
+						auto material=materials[i];
+						material.bind(rc);
+						scope(success) material.unbind(rc);
+						auto mesh=scene.sacDebris.meshes[i];
+						foreach(j;0..objects.debris.length){
+							material.backend.setTransformationScaled(objects.debris[j].position,objects.debris[j].rotation,0.2f*Vector3f(1.0f,1.0f,1.0f),rc);
+							mesh.render(rc);
+						}
+					}
+				}
+				static if(mode==RenderMode.transparent) if(objects.explosions.length){
+					auto material=scene.explosion.material;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
+					foreach(j;0..objects.explosions.length){
+						auto mesh=scene.explosion.getFrame(objects.explosions[j].frame);
+						material.backend.setTransformationScaled(objects.explosions[j].position,Quaternionf.identity(),objects.explosions[j].scale*Vector3f(1.0f,1.0f,1.0f),rc);
+						mesh.render(rc);
+					}
+				}
 			}else static if(is(T==Particles!DagonBackend)){
 				static if(mode==RenderMode.transparent){
 					if(rc.shadowMode) return; // TODO: particle shadows?
@@ -353,7 +401,7 @@ final class SacScene: Scene{
 					material.backend.setInformation(Vector4f(0.0f,0.0f,0.0f,0.0f));
 					scope(success) material.unbind(rc);
 					foreach(j;0..objects.length){
-						auto mesh=sacParticle.getMesh(objects.frames[j]/updateAnimFactor); // TODO: do in shader?
+						auto mesh=sacParticle.getMesh(objects.frames[j]); // TODO: do in shader?
 						material.backend.setSpriteTransformationScaled(objects.positions[j],sacParticle.getScale(objects.lifetimes[j]),rc);
 						material.backend.setAlpha(sacParticle.getAlpha(objects.lifetimes[j]));
 						mesh.render(rc);
@@ -983,6 +1031,8 @@ final class SacScene: Scene{
 				// do nothing
 			}else static if(is(T==Buildings!DagonBackend)){
 				// do nothing
+			}else static if(is(T==Effects!DagonBackend)){
+				// do nothing
 			}else static if(is(T==Particles!DagonBackend)){
 				// do nothing
 			}else static if(is(T==CommandCones!DagonBackend)){
@@ -1174,6 +1224,7 @@ final class SacScene: Scene{
 		createSky(state.current.map);
 		if(audio&&state) audio.setTileset(state.current.map.tileset);
 		createSouls();
+		createEffects();
 		createCommandCones();
 		initializeHUD();
 		initializeMouse();
@@ -1652,8 +1703,14 @@ final class SacScene: Scene{
 			foreach(_;0..keyDown[KEY_RETURN]) applyToMoving!immediateRevive(state.current,camera,mouse.target);
 			foreach(_;0..keyDown[KEY_G]) applyToMoving!startFlying(state.current,camera,mouse.target);
 			foreach(_;0..keyDown[KEY_V]) applyToMoving!land(state.current,camera,mouse.target);
-			if(!eventManager.keyPressed[KEY_LSHIFT]) foreach(_;0..keyDown[KEY_SPACE])
-				applyToMoving!startMeleeAttacking(state.current,camera,mouse.target);
+			if(!eventManager.keyPressed[KEY_LSHIFT]) foreach(_;0..keyDown[KEY_SPACE]){
+				//applyToMoving!startMeleeAttacking(state.current,camera,mouse.target);
+				if(camera.target){
+					auto position=state.current.movingObjectById!((obj)=>obj.position,function Vector3f(){ return Vector3f.init; })(camera.target);
+					//destructionAnimation(position+Vector3f(0,0,5),state.current);
+					explosionAnimation(position+Vector3f(0,0,5),state.current);
+				}
+			}
 		}
 		foreach(_;0..keyDown[KEY_BACKSPACE]){
 			if(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK]){
@@ -2158,8 +2215,8 @@ static:
 	}
 
 	Material createMaterial(SacParticle!DagonBackend particle){
-		final switch(particle.type){
-			case ParticleType.manafount, ParticleType.manalith, ParticleType.manahoar, ParticleType.shrine:
+		final switch(particle.type) with(ParticleType){
+			case manafount, manalith, manahoar, shrine, firy, explosion, explosion2:
 				auto mat=scene.createMaterial(scene.shadelessMaterialBackend);
 				mat.depthWrite=false;
 				mat.blending=Additive;
@@ -2251,6 +2308,10 @@ static:
 	void playSound(int side,char[4] sound,float gain=1.0f){
 		if(!audio||side!=-1&&side!=scene.renderSide) return;
 		audio.playSound(sound,gain);
+	}
+	void playSoundAt(char[4] sound,Vector3f position,float gain=1.0f){
+		if(!audio) return;
+		audio.playSoundAt(sound,position,gain);
 	}
 	void playSoundAt(char[4] sound,int id,float gain=1.0f){
 		if(!audio) return;
@@ -2538,4 +2599,236 @@ class ShapeSacStatsFrame: Owner, Drawable{
 		glBindVertexArray(0);
 		glDepthMask(1);
 	}
+}
+
+class ShapeSubSphere: Mesh
+{
+    DynamicArray!Vector3f daVertices;
+    DynamicArray!Vector3f daNormals;
+    DynamicArray!Vector2f daTexcoords;
+    DynamicArray!(uint[3]) daIndices;
+
+	this(float radius, int slices, int stacks, bool invNormals, Owner o,float left,float top,float right,float bottom)
+    {
+        super(o);
+
+        float X1, Y1, X2, Y2, Z1, Z2;
+        float inc1, inc2, inc3, inc4, inc5, radius1, radius2;
+        uint[3] tri;
+        uint i = 0;
+
+        float cuts = stacks;
+        float invCuts = 1.0f / cuts;
+        float heightStep = 2.0f * invCuts;
+
+        float invSlices = 1.0f / slices;
+        float angleStep = (2.0f * PI) * invSlices;
+
+        for(int h = 0; h < stacks; h++)
+        {
+            float h1Norm = cast(float)h * invCuts * 2.0f - 1.0f;
+            float h2Norm = cast(float)(h+1) * invCuts * 2.0f - 1.0f;
+            float y1 = sin(HALF_PI * h1Norm);
+            float y2 = sin(HALF_PI * h2Norm);
+
+            float circleRadius1 = cos(HALF_PI * y1);
+            float circleRadius2 = cos(HALF_PI * y2);
+
+            auto curBottom=bottom+(top-bottom)*h/stacks;
+            auto curTop=bottom+(top-bottom)*(h+1)/stacks;
+
+            for(int a = 0; a < slices; a++)
+            {
+	            auto curLeft=left+(right-left)*a/slices;
+	            auto curRight=left+(right-left)*(a+1)/slices;
+                float x1a = sin(angleStep * a) * circleRadius1;
+                float z1a = cos(angleStep * a) * circleRadius1;
+                float x2a = sin(angleStep * (a + 1)) * circleRadius1;
+                float z2a = cos(angleStep * (a + 1)) * circleRadius1;
+
+                float x1b = sin(angleStep * a) * circleRadius2;
+                float z1b = cos(angleStep * a) * circleRadius2;
+                float x2b = sin(angleStep * (a + 1)) * circleRadius2;
+                float z2b = cos(angleStep * (a + 1)) * circleRadius2;
+
+                Vector3f v1 = Vector3f(x1a, z1a, y1);
+                Vector3f v2 = Vector3f(x2a, z2a, y1);
+                Vector3f v3 = Vector3f(x1b, z1b, y2);
+                Vector3f v4 = Vector3f(x2b, z2b, y2);
+
+                Vector3f n1 = v1.normalized;
+                Vector3f n2 = v2.normalized;
+                Vector3f n3 = v3.normalized;
+                Vector3f n4 = v4.normalized;
+
+                daVertices.append(n1 * radius);
+                daVertices.append(n2 * radius);
+                daVertices.append(n3 * radius);
+
+                daVertices.append(n3 * radius);
+                daVertices.append(n2 * radius);
+                daVertices.append(n4 * radius);
+
+                float sign = invNormals? -1.0f : 1.0f;
+
+                daNormals.append(n1 * sign);
+                daNormals.append(n2 * sign);
+                daNormals.append(n3 * sign);
+
+                daNormals.append(n3 * sign);
+                daNormals.append(n2 * sign);
+                daNormals.append(n4 * sign);
+
+                auto uv1 = Vector2f(curLeft,curBottom);
+                auto uv2 = Vector2f(curRight,curBottom);
+                auto uv3 = Vector2f(curLeft,curTop);
+                auto uv4 = Vector2f(curRight,curTop);
+
+                daTexcoords.append(uv1);
+                daTexcoords.append(uv2);
+                daTexcoords.append(uv3);
+
+                daTexcoords.append(uv3);
+                daTexcoords.append(uv2);
+                daTexcoords.append(uv4);
+
+                if (invNormals)
+                {
+                    tri[0] = i+2;
+                    tri[1] = i+1;
+                    tri[2] = i;
+                    daIndices.append(tri);
+
+                    tri[0] = i+5;
+                    tri[1] = i+4;
+                    tri[2] = i+3;
+                    daIndices.append(tri);
+                }
+                else
+                {
+                    tri[0] = i;
+                    tri[1] = i+1;
+                    tri[2] = i+2;
+                    daIndices.append(tri);
+
+                    tri[0] = i+3;
+                    tri[1] = i+4;
+                    tri[2] = i+5;
+                    daIndices.append(tri);
+                }
+
+                i += 6;
+            }
+        }
+
+        /*
+        for(int w = 0; w < resolution; w++)
+        {
+
+
+            for(int h = (-resolution/2); h < (resolution/2); h++)
+            {
+                inc1 = (w/cast(float)resolution)*2*PI;
+                inc2 = ((w+1)/cast(float)resolution)*2*PI;
+
+                inc3 = (h/cast(float)resolution)*PI;
+                inc4 = ((h+1)/cast(float)resolution)*PI;
+
+                X1 = sin(inc1);
+                Y1 = cos(inc1);
+                X2 = sin(inc2);
+                Y2 = cos(inc2);
+
+                radius1 = radius*cos(inc3);
+                radius2 = radius*cos(inc4);
+
+                Z1 = radius*sin(inc3);
+                Z2 = radius*sin(inc4);
+
+                daVertices.append(Vector3f(radius1*X1,Z1,radius1*Y1));
+                daVertices.append(Vector3f(radius1*X2,Z1,radius1*Y2));
+                daVertices.append(Vector3f(radius2*X2,Z2,radius2*Y2));
+
+                daVertices.append(Vector3f(radius1*X1,Z1,radius1*Y1));
+                daVertices.append(Vector3f(radius2*X2,Z2,radius2*Y2));
+                daVertices.append(Vector3f(radius2*X1,Z2,radius2*Y1));
+
+                auto uv1 = Vector2f(0, 0);
+                auto uv2 = Vector2f(0, 1);
+                auto uv3 = Vector2f(1, 1);
+                auto uv4 = Vector2f(1, 0);
+
+                daTexcoords.append(uv1);
+                daTexcoords.append(uv2);
+                daTexcoords.append(uv3);
+
+                daTexcoords.append(uv1);
+                daTexcoords.append(uv3);
+                daTexcoords.append(uv4);
+
+                float sign = invNormals? -1.0f : 1.0f;
+
+                auto n1 = Vector3f(X1,Z1,Y1).normalized;
+                auto n2 = Vector3f(X2,Z1,Y2).normalized;
+                auto n3 = Vector3f(X2,Z2,Y2).normalized;
+                auto n4 = Vector3f(X1,Z2,Y1).normalized;
+
+                daNormals.append(n1 * sign);
+                daNormals.append(n2 * sign);
+                daNormals.append(n3 * sign);
+
+                daNormals.append(n1 * sign);
+                daNormals.append(n3 * sign);
+                daNormals.append(n4 * sign);
+
+                if (invNormals)
+                {
+                    tri[0] = i+2;
+                    tri[1] = i+1;
+                    tri[2] = i;
+                    daIndices.append(tri);
+
+                    tri[0] = i+5;
+                    tri[1] = i+4;
+                    tri[2] = i+3;
+                    daIndices.append(tri);
+                }
+                else
+                {
+                    tri[0] = i;
+                    tri[1] = i+1;
+                    tri[2] = i+2;
+                    daIndices.append(tri);
+
+                    tri[0] = i+3;
+                    tri[1] = i+4;
+                    tri[2] = i+5;
+                    daIndices.append(tri);
+                }
+
+                i += 6;
+            }
+        }
+        */
+
+        vertices = New!(Vector3f[])(daVertices.length);
+        vertices[] = daVertices.data[];
+
+        normals = New!(Vector3f[])(daNormals.length);
+        normals[] = daNormals.data[];
+
+        texcoords = New!(Vector2f[])(daTexcoords.length);
+        texcoords[] = daTexcoords.data[];
+
+        indices = New!(uint[3][])(daIndices.length);
+        indices[] = daIndices.data[];
+
+        daVertices.free();
+        daNormals.free();
+        daTexcoords.free();
+        daIndices.free();
+
+        dataReady = true;
+        prepareVAO();
+    }
 }
