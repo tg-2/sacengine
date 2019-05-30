@@ -2129,7 +2129,8 @@ void moveTowards(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectStat
 	auto distancesqr=(object.position.xy-targetPosition.xy).lengthsqr;
 	if(object.creatureState.movement==CreatureMovement.flying){
 		if(distancesqr>(0.5f*updateFPS*speed)^^2){
-			object.pitchToFaceTowards(targetPosition,state);
+			if(object.creatureAI.isColliding) object.startPitchingUp(state);
+			else object.pitchToFaceTowards(targetPosition,state);
 			auto flyingHeight=object.position.z-state.getHeight(object.position);
 			auto minimumFlyingHeight=object.creatureStats.flyingHeight;
 			if(flyingHeight<minimumFlyingHeight) object.creatureState.targetFlyingHeight=minimumFlyingHeight;
