@@ -35,26 +35,33 @@ struct Face{
 static assert(Face.sizeof==36);
 
 struct Model{
-	Vertex[] vertices;
+	Vertex[][] vertices;
 	Face[] faces;
 	Hitbox[] hitboxes;
 }
 
 Model parseMRMM(ubyte[] data){
+	enforce(data.length>=192);
 	auto fileSize=*cast(uint*)&data[0];
 	enforce(fileSize==data.length);
 	auto numVertices=*cast(uint*)&data[4];
 	auto numFaces=*cast(uint*)&data[12];
+	auto numFrames=*cast(uint*)&data[24];
 	auto numHitboxes=*cast(uint*)&data[68];
 	auto hitboxes=cast(Hitbox[])data[72..72+Hitbox.sizeof*numHitboxes];
 	auto vertexOff=*cast(uint*)&data[184];
 	auto faceOff=*cast(uint*)&data[188];
 	static assert(Vertex.sizeof==40);
-	auto vertices = cast(Vertex[])data[vertexOff..vertexOff+Vertex.sizeof*numVertices];
+	auto vertices=new Vertex[][](numFrames);
+	auto verticesSize=Vertex.sizeof*numVertices;
+	enforce(data.length>=vertexOff+numFrames*verticesSize);
+	foreach(i;0..numFrames)
+		vertices[i]=cast(Vertex[])data[vertexOff+i*verticesSize..vertexOff+(i+1)*verticesSize];
+	enforce(data.length>=faceOff+Face.sizeof*numFaces);
 	auto faces = cast(Face[])data[faceOff..faceOff+Face.sizeof*numFaces];
 	foreach(ref face;faces){
 		foreach(i;face.vertices){
-			enforce(0<=i&&i<vertices.length);
+			enforce(0<=i&&i<numVertices);
 		}
 	}
 	return Model(vertices, faces, hitboxes);

@@ -854,16 +854,17 @@ auto convertModel(B,Model)(string dir, Model model, float scaling){
 	}
 
 	static if(is(typeof(model.vertices))){
+		enforce(model.vertices.length>=1);
 		foreach(k,ref mesh;meshes){
-			auto nvertices=model.vertices.length;
+			auto nvertices=model.vertices[0].length;
 			mesh=B.makeMesh(nvertices,sizes[k]);
-			foreach(i,ref vertex;model.vertices){
+			foreach(i,ref vertex;model.vertices[0]){ // TODO: convert all frames
 				mesh.vertices[i] = fromSac(Vector3f(vertex.pos))*scaling;
 			}
-			foreach(i,ref vertex;model.vertices){
+			foreach(i,ref vertex;model.vertices[0]){
 				mesh.texcoords[i] = Vector2f(vertex.uv);
 			}
-			foreach(i,ref vertex;model.vertices){
+			foreach(i,ref vertex;model.vertices[0]){
 				mesh.normals[i] = fromSac(Vector3f(vertex.normal));
 			}
 		}
