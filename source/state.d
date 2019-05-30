@@ -3046,7 +3046,7 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 
 void explosionAnimation(B)(Vector3f position,ObjectState!B state){
 	playSoundAt("pxbf",position,state,10.0f);
-	state.addEffect(Explosion!B(position,0.0f,20.0f,40.0f,0));
+	state.addEffect(Explosion!B(position,0.0f,30.0f,40.0f,0));
 	state.addEffect(Explosion!B(position,0.0f,5.0f,10.0f,0));
 	enum numParticles=200;
 	auto sacParticle1=SacParticle!B.get(ParticleType.explosion);

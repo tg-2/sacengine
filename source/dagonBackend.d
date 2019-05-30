@@ -1704,12 +1704,12 @@ final class SacScene: Scene{
 			foreach(_;0..keyDown[KEY_G]) applyToMoving!startFlying(state.current,camera,mouse.target);
 			foreach(_;0..keyDown[KEY_V]) applyToMoving!land(state.current,camera,mouse.target);
 			if(!eventManager.keyPressed[KEY_LSHIFT]) foreach(_;0..keyDown[KEY_SPACE]){
-				//applyToMoving!startMeleeAttacking(state.current,camera,mouse.target);
-				if(camera.target){
+				applyToMoving!startMeleeAttacking(state.current,camera,mouse.target);
+				/+if(camera.target){
 					auto position=state.current.movingObjectById!((obj)=>obj.position,function Vector3f(){ return Vector3f.init; })(camera.target);
-					//destructionAnimation(position+Vector3f(0,0,5),state.current);
-					explosionAnimation(position+Vector3f(0,0,5),state.current);
-				}
+					destructionAnimation(position+Vector3f(0,0,5),state.current);
+					//explosionAnimation(position+Vector3f(0,0,5),state.current);
+				}+/
 			}
 		}
 		foreach(_;0..keyDown[KEY_BACKSPACE]){
