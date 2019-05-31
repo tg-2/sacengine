@@ -3120,7 +3120,7 @@ void destructionAnimation(B)(Vector3f position,ObjectState!B state){
 	enum numDebris=35;
 	foreach(i;0..numDebris){
 		auto angle=state.uniform(-cast(float)PI,cast(float)PI);
-		auto velocity=(20.0f+state.uniform(-5.0f,5.0f))*Vector3f(cos(angle),sin(angle),state.uniform(1.0f,3.0f)).normalized;
+		auto velocity=(20.0f+state.uniform(-5.0f,5.0f))*Vector3f(cos(angle),sin(angle),state.uniform(0.5f,2.0f)).normalized;
 		auto rotationSpeed=cast(float)2*PI*state.uniform(0.5f,2.0f)/updateFPS;
 		auto rotationAxis=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
 		auto rotationUpdate=rotationQuaternion(rotationAxis,rotationSpeed);
