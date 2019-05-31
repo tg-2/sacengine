@@ -95,7 +95,7 @@ final class SacObject(B){
 			mixin(`alias ntt=`~name~`;`);
 			if(ntt){
 				maxHealth=ntt.health;
-				regeneration=ntt.regeneration*1e-3f*35.0f;
+				regeneration=ntt.regeneration/60.0f; // convert from amount per minute to amount per second
 				drain=ntt.drain*1e-3f;
 				maxMana=ntt.mana;
 				runningSpeed=ntt.runningSpeed;
