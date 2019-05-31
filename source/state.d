@@ -2621,7 +2621,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 			object.creatureState.timer-=1;
 			object.creatureState.timer2-=1;
 			if(object.creatureState.timer2<=0)
-				object.creatureState.timer2=playSoundTypeAt!true(sacObject,object.id,SoundType.incantation,state,object.creatureState.timer+updateFPS/2);
+				object.creatureState.timer2=playSoundTypeAt!true(sacObject,object.id,SoundType.incantation,state,object.creatureState.timer+updateFPS/2)+updateFPS/10;
 			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
 				object.frame=0;
 				if(object.animationState.among(AnimationState.spellcastEnd,AnimationState.runSpellcastEnd)){
