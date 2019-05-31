@@ -33,6 +33,7 @@ enum AnimEvent{
 struct Animation{
 	int numAttackTicks=0;
 	int firstAttackTick=int.max;
+	int castingTime=int.max;
 	Pose[] frames;
 }
 
@@ -50,7 +51,7 @@ Animation parseSXSK(ubyte[] data,float scaling){
 		auto rotations=anim.map!(x=>Quaternionf(Vector3f(fromSXMD([x[0],x[1],x[2]])),x[3]).normalized()).array;
 		frames~=Pose(displacement,AnimEvent.none,rotations);
 	}
-	return Animation(0,int.max,frames);
+	return Animation(0,int.max,int.max,frames);
 }
 
 AnimEvent translateAnimEvent(char[4] tag){
@@ -80,6 +81,8 @@ void setAnimEvents(ref Animation anim, Skel skel, string filename){
 			++anim.numAttackTicks;
 			anim.firstAttackTick=min(anim.firstAttackTick,frame);
 		}
+		if(aevent==AnimEvent.cast_)
+			anim.castingTime=min(anim.castingTime,frame);
 	}
 }
 

@@ -36,6 +36,12 @@ enum CreatureMode{
 	meleeAttacking,
 	stunned,
 	cower,
+	casting,
+	castingMoving,
+}
+
+bool isMoving(CreatureMode mode){
+	with(CreatureMode) return !!mode.among(moving,meleeMoving,castingMoving);
 }
 
 enum CreatureMovement{
@@ -72,7 +78,8 @@ struct CreatureState{
 	auto speedLimit=float.infinity; // for xy-plane only, in meters _per frame_
 	auto rotationSpeedLimit=float.infinity; // for xy-plane only, in radians _per frame_
 	auto pitchingSpeedLimit=float.infinity; // _in radians _per frame_
-	int timer; // used for: constraining revive time to be at least 5s
+	int timer; // used for: constraining revive time to be at least 5s, time until casting finished
+	int timer2; // used for: time until incantation finished
 }
 
 struct Order{
@@ -1597,6 +1604,10 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 				object.animationState=sacObject.hasAnimationState(AnimationState.talkCower)?AnimationState.talkCower:AnimationState.idle1;
 			}
 			break;
+		case CreatureMode.casting,CreatureMode.castingMoving:
+			object.frame=0;
+			object.animationState=object.creatureState.mode==CreatureMode.casting?AnimationState.spellcastStart:AnimationState.runSpellcastStart;
+			break;
 	}
 }
 
@@ -1617,7 +1628,7 @@ bool pickNextAnimation(B)(ref MovingObject!B object,immutable(AnimationState)[] 
 }
 
 void startIdling(B)(ref MovingObject!B object, ObjectState!B state){
-	if(!object.creatureState.mode.among(CreatureMode.moving,CreatureMode.spawning,CreatureMode.reviving,CreatureMode.fastReviving,CreatureMode.takeoff,CreatureMode.landing,CreatureMode.meleeMoving,CreatureMode.meleeAttacking,CreatureMode.stunned))
+	if(!object.creatureState.mode.among(CreatureMode.moving,CreatureMode.spawning,CreatureMode.reviving,CreatureMode.fastReviving,CreatureMode.takeoff,CreatureMode.landing,CreatureMode.meleeMoving,CreatureMode.meleeAttacking,CreatureMode.stunned,CreatureMode.casting,CreatureMode.castingMoving))
 		return;
 	object.creatureState.mode=CreatureMode.idle;
 	object.setCreatureState(state);
@@ -1834,7 +1845,7 @@ void damageAnimation(B)(ref MovingObject!B object,Vector3f attackDirection,Objec
 bool canDamage(B)(ref MovingObject!B object,ObjectState!B state){
 	if(object.creatureStats.flags&Flags.cannotDamage) return false;
 	final switch(object.creatureState.mode) with(CreatureMode){
-		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower: return true;
+		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,castingMoving: return true;
 		case dying,dead,spawning,reviving,fastReviving: return false;
 	}
 }
@@ -1969,6 +1980,15 @@ void startCowering(B)(ref MovingObject!B object,ObjectState!B state){
 	if(!object.isPeasant) return;
 	object.stopMovement(state);
 	object.creatureState.mode=CreatureMode.cower;
+	object.setCreatureState(state);
+}
+
+void startCasting(B)(ref MovingObject!B object,int numFrames,ObjectState!B state){
+	if(!object.isWizard) return;
+	if(!object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving)) return;
+	object.creatureState.mode=object.creatureState.mode==CreatureMode.idle?CreatureMode.casting:CreatureMode.castingMoving;
+	object.creatureState.timer=numFrames;
+	object.creatureState.timer2=0;
 	object.setCreatureState(state);
 }
 
@@ -2302,7 +2322,7 @@ enum rotationSpeedLimitFactor=1.0f;
 
 bool requiresAI(CreatureMode mode){
 	with(CreatureMode) final switch(mode){
-		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking: return true;
+		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,casting,castingMoving: return true;
 		case dying,dead,spawning,reviving,fastReviving,stunned,cower: return false;
 	}
 }
@@ -2581,6 +2601,42 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor)
 				object.setCreatureState(state);
 			break;
+		case CreatureMode.casting,CreatureMode.castingMoving:
+			auto newMode=object.creatureState.movementDirection==MovementDirection.none?CreatureMode.casting:CreatureMode.castingMoving;
+			object.creatureState.mode=newMode;
+			if(newMode==CreatureMode.castingMoving){
+				if(object.animationState.among(AnimationState.spellcastStart,AnimationState.runSpellcastStart))
+					object.animationState=AnimationState.runSpellcastStart;
+				else if(object.animationState.among(AnimationState.spellcastEnd,AnimationState.runSpellcastEnd))
+					object.animationState=AnimationState.runSpellcastEnd;
+				else object.animationState=AnimationState.runSpellcast;
+			}else{
+				if(object.animationState.among(AnimationState.spellcastStart,AnimationState.runSpellcastStart))
+					object.animationState=AnimationState.spellcastStart;
+				else if(object.animationState.among(AnimationState.spellcastEnd,AnimationState.runSpellcastEnd))
+					object.animationState=AnimationState.spellcastEnd;
+				else object.animationState=AnimationState.spellcast;
+			}
+			object.frame+=1;
+			object.creatureState.timer-=1;
+			object.creatureState.timer2-=1;
+			if(object.creatureState.timer2<=0)
+				object.creatureState.timer2=playSoundTypeAt!true(sacObject,object.id,SoundType.incantation,state,object.creatureState.timer+updateFPS/2);
+			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
+				object.frame=0;
+				if(object.animationState.among(AnimationState.spellcastEnd,AnimationState.runSpellcastEnd)){
+					object.creatureState.mode=object.creatureState.mode==CreatureMode.castingMoving?CreatureMode.moving:CreatureMode.idle;
+					object.setCreatureState(state);
+					return;
+				}
+				if(object.animationState==AnimationState.spellcastStart)
+					object.animationState=AnimationState.spellcast;
+				else if(object.animationState==AnimationState.runSpellcastStart)
+					object.animationState=AnimationState.runSpellcast;
+				auto endAnimation=object.creatureState.mode==CreatureMode.castingMoving?AnimationState.runSpellcastEnd:AnimationState.spellcastEnd;
+				if(sacObject.castingTime(endAnimation)*updateAnimFactor>=object.creatureState.timer)
+					object.animationState=endAnimation;
+			}
 	}
 }
 
@@ -2647,11 +2703,11 @@ void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 
 void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 	auto newPosition=object.position;
-	if(object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving,CreatureMode.stunned,CreatureMode.landing,CreatureMode.dying,CreatureMode.meleeMoving)){
+	if(object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving,CreatureMode.stunned,CreatureMode.landing,CreatureMode.dying,CreatureMode.meleeMoving,CreatureMode.casting,CreatureMode.castingMoving)){
 		auto rotationSpeed=object.creatureStats.rotationSpeed(object.creatureState.movement==CreatureMovement.flying)/updateFPS;
 		auto pitchingSpeed=object.creatureStats.pitchingSpeed/updateFPS;
 		bool isRotating=false;
-		if(object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving,CreatureMode.meleeMoving)&&
+		if(object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving,CreatureMode.meleeMoving,CreatureMode.casting,CreatureMode.castingMoving)&&
 		   object.creatureState.movement!=CreatureMovement.tumbling
 		){
 			final switch(object.creatureState.rotationDirection){
@@ -2715,7 +2771,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 	auto facing=facingQuaternion(object.creatureState.facing);
 	final switch(object.creatureState.movement){
 		case CreatureMovement.onGround:
-			if(!object.creatureState.mode.among(CreatureMode.moving,CreatureMode.meleeMoving)) break;
+			if(!object.creatureState.mode.isMoving) break;
 			void applyMovementOnGround(Vector3f direction){
 				auto speed=object.speedOnGround(state)/updateFPS;
 				auto derivative=state.getGroundHeightDerivative(object.position,direction);
@@ -2758,7 +2814,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 				}
 				break;
 			}
-			if(!object.creatureState.mode.among(CreatureMode.moving,CreatureMode.meleeMoving)) break;
+			if(!object.creatureState.mode.isMoving) break;
 			void applyMovementInAir(Vector3f direction){
 				auto speed=object.speedInAir(state)/updateFPS;
 				newPosition=object.position+speed*direction;
@@ -3225,6 +3281,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 				final switch(mode) with(CreatureMode){
 					case idle,moving,dying,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower: return true;
 					case dead,reviving,fastReviving: return false;
+					case casting,castingMoving: assert(0);
 				}
 			}
 			foreach(j;0..objects.length){
@@ -4431,6 +4488,9 @@ void queueDialogSound(B)(int side,SacObject!B sacObject,SoundType soundType,Dial
 	if(auto sset=sacObject.sset) playSset(sset);
 	if(auto sset=sacObject.meleeSset) playSset(sset);	
 }
+int getSoundDuration(B)(char[4] sound,ObjectState!B state){
+	return B.getSoundDuration(sound);
+}
 void playSound(B)(int side,char[4] sound,ObjectState!B state,float gain=1.0f){
 	static if(B.hasAudio) if(playAudio) B.playSound(side,sound,gain);
 }
@@ -4451,17 +4511,24 @@ void playSoundAt(B)(char[4] sound,Vector3f position,ObjectState!B state,float ga
 void playSoundAt(B)(char[4] sound,int id,ObjectState!B state,float gain=1.0f){
 	static if(B.hasAudio) if(playAudio) B.playSoundAt(sound,id,gain);
 }
-void playSoundTypeAt(B)(SacObject!B sacObject,int id,SoundType soundType,ObjectState!B state){
+auto playSoundTypeAt(bool getDuration=false,B,T...)(SacObject!B sacObject,int id,SoundType soundType,ObjectState!B state,T limit)if(T.length<=(getDuration?1:0)){
+	static if(getDuration) int duration=0;
 	void playSset(immutable(Sset)* sset){
 		auto sounds=sset.getSounds(soundType);
 		if(sounds.length){
 			auto sound=sounds[state.uniform(cast(int)$)];
 			auto gain=sset.name=="wasb"?2.0f:1.0f;
+			auto soundDuration=getSoundDuration(sound,state);
+			static if(getDuration){
+				static if(limit.length) if(soundDuration>limit[0]) return;
+				duration=max(duration,soundDuration);
+			}
 			playSoundAt(sound,id,state,gain);
 		}
 	}
 	if(auto sset=sacObject.sset) playSset(sset);
 	if(auto sset=sacObject.meleeSset) playSset(sset);
+	static if(getDuration) return duration;
 }
 struct Command{
 	this(CommandType type,int side,int wizard,int creature,Target target,float targetFacing)in{

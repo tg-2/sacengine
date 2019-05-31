@@ -80,11 +80,25 @@ final class AudioBackend(B){
 		}
 	}
 
-	Buffer[char[4]] buffers;
-	Buffer getBuffer(char[4] sound){
-		if(sound in buffers) return buffers[sound];
-		return buffers[sound]=makeBuffer(loadSAMP(samps[sound]));
+	struct BufferWithDuration{
+		Buffer buffer;
+		int duration;
+		alias buffer this;
 	}
+	static BufferWithDuration[char[4]] buffers;
+	static BufferWithDuration getBufferWithDuration(char[4] sound){
+		if(sound in buffers) return buffers[sound];
+		auto samp=loadSAMP(samps[sound]);
+		auto duration=cast(int)((samp.data.length*updateFPS+samp.header.byteRate-1)/samp.header.byteRate);
+		return buffers[sound]=BufferWithDuration(makeBuffer(samp),duration);
+	}
+	static Buffer getBuffer(char[4] sound){
+		return getBufferWithDuration(sound).buffer;
+	}
+	static int getDuration(char[4] sound){
+		return getBufferWithDuration(sound).duration;
+	}
+
 	Source dialogSource;
 	struct DialogSound{
 		char[4] sound;
@@ -165,8 +179,6 @@ final class AudioBackend(B){
 	void loopSoundAt(char[4] sound,int id,float gain=1.0f){
 		loopSoundAt(getBuffer(sound),id,gain);
 	}
-
-
 	void loopingSoundSetup(StaticObject!B object){
 		auto sound=object.sacObject.loopingSound;
 		if(sound!="\0\0\0\0") loopSoundAt(sound,object.id);

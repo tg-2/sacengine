@@ -1704,7 +1704,11 @@ final class SacScene: Scene{
 			foreach(_;0..keyDown[KEY_G]) applyToMoving!startFlying(state.current,camera,mouse.target);
 			foreach(_;0..keyDown[KEY_V]) applyToMoving!land(state.current,camera,mouse.target);
 			if(!eventManager.keyPressed[KEY_LSHIFT]) foreach(_;0..keyDown[KEY_SPACE]){
-				applyToMoving!startMeleeAttacking(state.current,camera,mouse.target);
+				//applyToMoving!startMeleeAttacking(state.current,camera,mouse.target);
+				static void castingTest(B)(ref MovingObject!B object,ObjectState!B state){
+					object.startCasting(3*updateFPS,state);
+				}
+				applyToMoving!castingTest(state.current,camera,mouse.target);
 				/+if(camera.target){
 					auto position=state.current.movingObjectById!((obj)=>obj.position,function Vector3f(){ return Vector3f.init; })(camera.target);
 					destructionAnimation(position+Vector3f(0,0,5),state.current);
@@ -2304,6 +2308,9 @@ static:
 	void queueDialogSound(int side,char[4] sound,DialogPriority priority){
 		if(!audio||side!=-1&&side!=scene.renderSide) return;
 		audio.queueDialogSound(sound,priority);
+	}
+	int getSoundDuration(char[4] sound){
+		return AudioBackend!DagonBackend.getDuration(sound);
 	}
 	void playSound(int side,char[4] sound,float gain=1.0f){
 		if(!audio||side!=-1&&side!=scene.renderSide) return;
