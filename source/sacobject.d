@@ -289,6 +289,7 @@ final class SacObject(B){
 		if(tag=="raeb") hitboxCenter*=3.0f;
 		else if(tag=="elab") hitboxCenter*=2.0f;
 		else hitboxCenter*=1.3f;
+		if(tag=="grdf") hitboxCenter.z-=2.5f;
 		hitboxCenter+=center;
 		auto hitboxDimensions=Vector3f(width,depth,height*1.5f);
 		return [hitboxCenter-0.5f*hitboxDimensions,hitboxCenter+0.5f*hitboxDimensions];
