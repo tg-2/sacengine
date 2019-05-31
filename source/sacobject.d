@@ -98,8 +98,8 @@ final class SacObject(B){
 				regeneration=ntt.regeneration/60.0f; // convert from amount per minute to amount per second
 				drain=ntt.drain*1e-3f;
 				maxMana=ntt.mana;
-				runningSpeed=ntt.runningSpeed;
-				flyingSpeed=ntt.flyingSpeed;
+				runningSpeed=ntt.runningSpeed*1e-2f;
+				flyingSpeed=ntt.flyingSpeed*1e-2f;
 				rangedAccuracy=ntt.rangedAccuracy;
 				meleeResistance=ntt.meleeResistance*1e-3f;
 				directSpellResistance=ntt.directSpellResistance*1e-3f;

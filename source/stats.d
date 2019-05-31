@@ -32,7 +32,7 @@ import std.math: PI;
 	return 0.25f*cast(float)PI;
 }
 @property float movementSpeed(ref CreatureStats stats,bool isFlying){ // in meters per second
-	return (isFlying?stats.flyingSpeed:stats.runningSpeed)*0.01f;
+	return isFlying?stats.flyingSpeed:stats.runningSpeed;
 }
 @property float maxDownwardSpeedFactor(ref CreatureStats stats){
 	return 2.0f;
