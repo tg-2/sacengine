@@ -2634,7 +2634,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 				else if(object.animationState==AnimationState.runSpellcastStart)
 					object.animationState=AnimationState.runSpellcast;
 				auto endAnimation=object.creatureState.mode==CreatureMode.castingMoving?AnimationState.runSpellcastEnd:AnimationState.spellcastEnd;
-				if(sacObject.castingTime(endAnimation)*updateAnimFactor>=object.creatureState.timer)
+				if(sacObject.numFrames(endAnimation)*updateAnimFactor>=object.creatureState.timer)
 					object.animationState=endAnimation;
 			}
 	}
