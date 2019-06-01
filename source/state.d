@@ -3714,10 +3714,14 @@ final class ObjectState(B){ // (update logic)
 	}
 	void applyCommand(Command command){
 		if(!command.isApplicable(this)) return;
-		int whichClick=uniform(2);
-		if(command.type.hasClickSound) playSound(command.side,commandAppliedSoundTags[whichClick],this);
-		scope(success) command.speakCommand(this);
-		static void applyOrder(Command command,ObjectState!B state,bool updateFormation=false,Vector2f formationOffset=Vector2f(0.0f,0.0f)){
+		bool success=true;
+		scope(success) if(success){
+			int whichClick=uniform(2);
+			if(command.type.hasClickSound) playSound(command.side,commandAppliedSoundTags[whichClick],this);
+			command.speakCommand(this);
+		}
+		static bool applyOrder(Command command,ObjectState!B state,bool updateFormation=false,Vector2f formationOffset=Vector2f(0.0f,0.0f)){
+			bool success=false;
 			assert(command.type==CommandType.setFormation||command.target.type.among(TargetType.terrain,TargetType.creature,TargetType.building));
 			if(!command.creature){
 				int[Formation.max+1] num;
@@ -3767,9 +3771,10 @@ final class ObjectState(B){ // (update logic)
 					scope(success) i++;
 					if(!selectedId) break;
 					command.creature=selectedId;
-					applyOrder(command,state,true,formationOffsets[i]);
+					success|=applyOrder(command,state,true,formationOffsets[i]);
 				}
 			}else{
+				success=true;
 				// TODO: add command indicators to scene
 				Order ord;
 				ord.command=command.type;
@@ -3799,6 +3804,7 @@ final class ObjectState(B){ // (update logic)
 					if(ord.command!=CommandType.setFormation) obj.order(ord,state,side);
 				})(command.creature,ord,state,command.side,updateFormation,command.formation,position);
 			}
+			return success;
 		}
 		Lswitch:final switch(command.type) with(CommandType){
 			case none: break; // TODO: maybe get rid of null commands
@@ -3815,12 +3821,13 @@ final class ObjectState(B){ // (update logic)
 				case type: mixin(`this.`~to!string(type))(command.side,command.creature); break Lswitch;
 			}
 			case automaticToggleSelection: goto case toggleSelection;
-			static foreach(type;[defineGroup,addToGroup,selectGroup]){
+			static foreach(type;[defineGroup,addToGroup]){
 			    case type: mixin(`this.`~to!string(type))(command.side,command.group); break Lswitch;
 			}
+			case selectGroup: success=this.selectGroup(command.side,command.group); break Lswitch;
 			case automaticSelectGroup: goto case selectGroup;
-			case setFormation: applyOrder(command,this,true); break;
-			case retreat,move,guard,guardArea,attack,advance: applyOrder(command,this); break;
+			case setFormation: success=applyOrder(command,this,true); break;
+			case retreat,move,guard,guardArea,attack,advance: success=applyOrder(command,this); break;
 		}
 	}
 	void update(Command[] frameCommands){
