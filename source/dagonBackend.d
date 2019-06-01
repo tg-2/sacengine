@@ -1515,7 +1515,8 @@ final class SacScene: Scene{
 							auto type=mouse.additiveSelect?CommandType.toggleSelection:CommandType.select;
 							enum doubleClickDelay=0.3f; // in seconds
 							enum delta=targetCacheDelta;
-							if(type==CommandType.select&&(lastSelectedId==mouse.target.id||
+							if(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK]||
+							   type==CommandType.select&&(lastSelectedId==mouse.target.id||
 							                              abs(lastSelectedX-mouse.x)<delta &&
 							                              abs(lastSelectedY-mouse.y)<delta) &&
 							   state.current.frame-lastSelectedFrame<=doubleClickDelay*updateFPS){
