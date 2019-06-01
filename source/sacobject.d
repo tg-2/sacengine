@@ -658,13 +658,13 @@ final class SacParticle(B){
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
 			case explosion:
-				width=height=0.5f;
+				width=height=3.0f;
 				this.energy=3.0f;
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/xplo.TXTR"));
 				meshes=makeSpriteMeshes!B(5,5,width,height,239.5f/256.0f,239.5f/256.0f);
 				break;
 			case explosion2:
-				width=height=0.5f;
+				width=height=3.0f;
 				this.energy=3.0f;
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/exp2.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);

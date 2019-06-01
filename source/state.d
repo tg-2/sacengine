@@ -3056,6 +3056,8 @@ bool updateDebris(B)(ref Debris!B debris,ObjectState!B state){
 	if(state.isOnGround(debris.position)){
 		auto height=state.getGroundHeight(debris.position);
 		if(height>debris.position.z){
+			if(height>debris.position.z+5.0f)
+				return false;
 			debris.position.z=height;
 			debris.velocity.z*=-0.2f;
 			if(debris.velocity.z<1.0f)
@@ -3109,7 +3111,7 @@ void explosionAnimation(B)(Vector3f position,ObjectState!B state){
 	auto sacParticle2=SacParticle!B.get(ParticleType.explosion2);
 	foreach(i;0..numParticles){
 		auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
-		auto velocity=state.uniform(0.5f,2.0f)*direction;
+		auto velocity=state.uniform(1.5f,6.0f)*direction;
 		auto lifetime=31;
 		auto frame=0;
 		state.addParticle(Particle!B(i<numParticles/2?sacParticle1:sacParticle2,position,velocity,lifetime,frame));
