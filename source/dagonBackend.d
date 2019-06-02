@@ -1515,21 +1515,23 @@ final class SacScene: Scene{
 							auto type=mouse.additiveSelect?CommandType.toggleSelection:CommandType.select;
 							enum doubleClickDelay=0.3f; // in seconds
 							enum delta=targetCacheDelta;
-							if(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK]||
-							   type==CommandType.select&&(lastSelectedId==mouse.target.id||
+							if(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK]){
+								type=CommandType.selectAll;
+							}else if(type==CommandType.select&&(lastSelectedId==mouse.target.id||
 							                              abs(lastSelectedX-mouse.x)<delta &&
 							                              abs(lastSelectedY-mouse.y)<delta) &&
-							   state.current.frame-lastSelectedFrame<=doubleClickDelay*updateFPS){
-								type=CommandType.selectAll;
-								lastSelectedId=0;
-								lastSelectedFrame=state.current.frame;
-								lastSelectedX=mouse.x;
-								lastSelectedY=mouse.y;
+							         state.current.frame-lastSelectedFrame<=doubleClickDelay*updateFPS){
+								type=CommandType.automaticSelectAll;
 							}
 							state.addCommand(Command(type,renderSide,camera.target,mouse.target.id,Target.init,cameraFacing));
 							if(type==CommandType.select){
 								lastSelectedId=mouse.target.id;
 								lastSelectedFrame=state.current.frame;
+							}else{
+								lastSelectedId=0;
+								lastSelectedFrame=state.current.frame;
+								lastSelectedX=mouse.x;
+								lastSelectedY=mouse.y;
 							}
 						}
 						break;

@@ -3826,6 +3826,7 @@ final class ObjectState(B){ // (update logic)
 			static foreach(type;[select,selectAll,toggleSelection]){
 				case type: mixin(`this.`~to!string(type))(command.side,command.creature); break Lswitch;
 			}
+			case automaticSelectAll: goto case selectAll;
 			case automaticToggleSelection: goto case toggleSelection;
 			static foreach(type;[defineGroup,addToGroup]){
 			    case type: mixin(`this.`~to!string(type))(command.side,command.group); break Lswitch;
@@ -4419,8 +4420,9 @@ enum CommandType{
 	clearSelection,
 	select,
 	selectAll,
-	automaticToggleSelection,
+	automaticSelectAll,
 	toggleSelection,
+	automaticToggleSelection,
 
 	defineGroup,
 	addToGroup,
@@ -4440,12 +4442,12 @@ enum CommandType{
 bool hasClickSound(CommandType type){
 	final switch(type) with(CommandType){
 		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,clearSelection,automaticToggleSelection,automaticSelectGroup,setFormation,retreat: return false;
-		case select,selectAll,toggleSelection,defineGroup,addToGroup,selectGroup,move,guard,guardArea,attack,advance: return true;
+		case select,selectAll,automaticSelectAll,toggleSelection,defineGroup,addToGroup,selectGroup,move,guard,guardArea,attack,advance: return true;
 	}
 }
 SoundType soundType(Command command){
 	final switch(command.type) with(CommandType){
-		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,clearSelection,select,selectAll,automaticToggleSelection,toggleSelection,automaticSelectGroup:
+		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,clearSelection,select,selectAll,automaticSelectAll,toggleSelection,automaticToggleSelection,automaticSelectGroup:
 			return SoundType.none;
 		case defineGroup,addToGroup:
 			switch(command.group){
@@ -4478,9 +4480,9 @@ SoundType soundType(Command command){
 }
 SoundType responseSoundType(Command command){
 	final switch(command.type) with(CommandType){
-		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,setFormation,clearSelection,selectAll,automaticToggleSelection,defineGroup,addToGroup,automaticSelectGroup,retreat:
+		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,setFormation,clearSelection,automaticSelectAll,automaticToggleSelection,defineGroup,addToGroup,automaticSelectGroup,retreat:
 			return SoundType.none;
-		case select,toggleSelection,selectGroup:
+		case select,selectAll,toggleSelection,selectGroup:
 			return SoundType.selected; // TODO: annoyed creatures
 		case move,guard,guardArea: return SoundType.moving;
 		case attack,advance: return SoundType.attacking;
@@ -4531,7 +4533,7 @@ enum DialogPolicy{
 }
 DialogPolicy dialogPolicy(DialogPriority previous,DialogPriority current){
 	with(DialogPriority) with(DialogPolicy){
-		if(previous.among(response,annoyedResponse)) return previous<=current?interruptPrevious:queue;
+		if(previous.among(response,annoyedResponse)) return previous<current?interruptPrevious:queue;
 		if(previous==command) return previous==current?ignorePrevious:previous<current?interruptPrevious:queue;
 		return previous<current?interruptPrevious:current==advisorAnnoy?ignoreCurrent:queue;
 	}
@@ -4601,7 +4603,7 @@ struct Command{
 			case clearSelection:
 				assert(!creature && target is Target.init);
 				break;
-			case selectAll,select,automaticToggleSelection,toggleSelection:
+			case select,selectAll,automaticSelectAll,toggleSelection,automaticToggleSelection:
 				assert(creature && target is Target.init);
 				break;
 			case move:
