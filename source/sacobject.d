@@ -358,7 +358,7 @@ final class SacObject(B){
 			meleeSset=cre8.meleeSSET in ssets;
 		}else if(wizd) sset=wizd.wizardSSET in ssets;
 		if(cre8||wizd) data=creatureDataByTag(nttTag);
-		assert((cre8 !is null)+(wizd !is null)+(strc !is null)<=1);
+		enforce((cre8 !is null)+(wizd !is null)+(strc !is null)<=1);
 		auto iconTag=cre8?cre8.icon:wizd?wizd.icon:strc?strc.icon:cast(char[4])"\0\0\0\0";
 		if(iconTag!="\0\0\0\0"){
 			enforce(iconTag in icons,text(iconTag," ",icons));

@@ -4,7 +4,7 @@ import std.exception, std.stdio, std.conv, std.math;
 import dlib.math, dlib.image.color;
 import std.typecons;
 import sids, ntts, nttData, bldg, sset;
-import sacmap, sacobject, animations;
+import sacmap, sacobject, animations, sacspell;
 import stats;
 import util,options;
 enum int updateFPS=60;
@@ -482,12 +482,18 @@ struct Soul(B){
 	}
 }
 
-SoulColor color(B)(ref Soul!B soul, int side, ObjectState!B state){
-	if(soul.creatureId==0 || state.movingObjectById!((obj)=>obj.side==side,function bool(){ assert(0); })(soul.creatureId))
-		return SoulColor.blue;
-	return SoulColor.red;
+int side(B)(ref Soul!B soul,ObjectState!B state){
+	if(soul.creatureId==0) return -1;
+	return state.movingObjectById!((obj)=>obj.side,function int(){ assert(0); })(soul.creatureId);
 }
-SoulColor color(B)(int id, int side, ObjectState!B state){
+int soulSide(B)(int id,ObjectState!B state){
+	return state.soulById!(side,function int(){ assert(0); })(id,state);
+}
+SoulColor color(B)(ref Soul!B soul,int side,ObjectState!B state){
+	auto soulSide=soul.side(state);
+	return soulSide==-1||soulSide==side?SoulColor.blue:SoulColor.red;
+}
+SoulColor color(B)(int id,int side,ObjectState!B state){
 	return state.soulById!(color,function SoulColor(){ assert(0); })(id,side,state);
 }
 
@@ -4319,39 +4325,84 @@ struct Target{
 	Vector3f position;
 	auto location=TargetLocation.scene;
 }
-Cursor cursor(B)(ref Target target,int renderSide,bool showIcon,ObjectState!B state){
-	final switch(target.type) with(TargetType) with(Cursor){
-		case none,creatureTab,spellTab,structureTab,spell,soulStat,manaStat,healthStat: return showIcon?iconNone:normal;
-		case terrain: return showIcon?iconNeutral:normal;
+TargetFlags summarize(bool simplified=false,B)(ref Target target,int side,ObjectState!B state){
+	final switch(target.type) with(TargetType){
+		case none,creatureTab,spellTab,structureTab,spell,soulStat,manaStat,healthStat: return TargetFlags.none;
+		case terrain: return TargetFlags.ground;
 		case creature,building:
-			static Cursor handle(B,T)(T obj,int renderSide,bool showIcon,ObjectState!B state){
+			static TargetFlags handle(T)(T obj,int side,ObjectState!B state){
 				enum isMoving=is(T==MovingObject!B);
-				static if(isMoving) if(obj.creatureState.mode==CreatureMode.dead) return showIcon?iconNeutral:normal;
-				static if(isMoving) auto objSide=obj.side;
-				else{
-					auto objSide=sideFromBuildingId(obj.buildingId,state);
-					auto buildingInteresting=state.buildingById!(bldg=>bldg.health!=0||bldg.isAltar,()=>false)(obj.buildingId);
-				}
-				if(objSide==renderSide){
-					static if(isMoving) return showIcon?iconFriendly:friendlyUnit;
-					else if(buildingInteresting) return showIcon?iconFriendly:friendlyBuilding;
-					else return showIcon?iconNeutral:normal;
-				}
-				bool isNeutral=state.sides.getStance(renderSide,objSide)!=Stance.enemy;
-				// TODO: some buildings (e.g. mana fountains) have a normal cursor
 				static if(isMoving){
-					if(isNeutral) return showIcon?iconNeutral:(obj.creatureStats.flags&Flags.rescuable?rescuableUnit:neutralUnit);
-					return showIcon?iconEnemy:enemyUnit;
-				}else if(buildingInteresting){
-					if(isNeutral) return showIcon?iconNeutral:neutralBuilding;
-					return showIcon?iconEnemy:enemyBuilding;
-				}else return showIcon?iconNeutral:normal;
+					auto result=TargetFlags.creature;
+					if(obj.creatureState.mode==CreatureMode.dead) result|=TargetFlags.corpse;
+					auto objSide=obj.side;
+				}else{
+					auto result=TargetFlags.building;
+					auto objSide=sideFromBuildingId(obj.buildingId,state);
+					auto buildingInterestingIsManafount=state.buildingById!(bldg=>tuple(bldg.health!=0||bldg.isAltar,bldg.isManafount),()=>tuple(false,false))(obj.buildingId);
+					auto buildingInteresting=buildingInterestingIsManafount[0],isManafount=buildingInterestingIsManafount[1];
+					buildingInteresting|=isManafount;
+					if(!buildingInteresting) result|=TargetFlags.untargettable; // TODO: there might be a flag for this
+					if(isManafount) result|=TargetFlags.manafount;
+				}
+				if(objSide!=side){
+					auto stance=state.sides.getStance(side,objSide);
+					final switch(stance){
+						case Stance.neutral: break;
+						case Stance.ally: result|=TargetFlags.ally; break;
+						case Stance.enemy: result|=TargetFlags.enemy; break;
+					}
+					static if(isMoving) if(stance!=Stance.enemy&&obj.creatureStats.flags&Flags.rescuable) result|=TargetFlags.rescuable;
+				}else result|=TargetFlags.owned;
+				static if(isMoving&&!simplified){
+					enum flyingLimit=1.0f; // TODO: measure this.
+					if(!state.isOnGround(obj.position)||obj.hitbox[0].z>=state.getGroundHeight(obj.position)+flyingLimit) result|=TargetFlags.flying;
+					if(obj.isWizard){
+						result&=~TargetFlags.creature;
+						result|=TargetFlags.wizard;
+					}
+				}
+				return result;
 			}
-			return state.objectById!handle(target.id,renderSide,showIcon,state);
+			return state.objectById!handle(target.id,side,state);
 		case soul:
-			if(state.soulById!(color, function SoulColor(){ assert(0); })(target.id,renderSide,state)==SoulColor.blue)
-				return showIcon?iconNone:blueSoul;
+			auto result=TargetFlags.soul;
+			auto objSide=soulSide(target.id,state);
+			if(objSide==-1||objSide==side) result|=TargetFlags.owned; // TODO: ok? (not exactly what is going on with free souls.)
+			else{
+				auto stance=state.sides.getStance(side,objSide);
+				final switch(stance){
+					case Stance.neutral: break;
+					case Stance.ally: result|=TargetFlags.ally; break;
+					case Stance.enemy: result|=TargetFlags.enemy; break;
+				}
+			}
+			return result;
+	}
+}
+Cursor cursor(B)(ref Target target,int renderSide,bool showIcon,ObjectState!B state){
+	auto summary=summarize!true(target,renderSide,state);
+	with(TargetFlags) with(Cursor){
+		if(summary==none) return showIcon?iconNone:normal;
+		if(summary&ground||summary&corpse||summary&untargettable) return showIcon?iconNeutral:normal;
+		if(summary&owned){
+			if(summary&creature) return showIcon?iconFriendly:friendlyUnit;
+			if(summary&building) return showIcon?iconFriendly:friendlyBuilding;
+		}
+		bool isNeutral=!(summary&enemy);
+		if(summary&creature){
+			if(isNeutral) return showIcon?iconNeutral:(summary&rescuable?rescuableUnit:neutralUnit);
+			return showIcon?iconEnemy:enemyUnit;
+		}
+		if(summary&building){
+			if(isNeutral) return showIcon?iconNeutral:(summary&manafount?normal:neutralBuilding);
+			return showIcon?iconEnemy:enemyBuilding;
+		}
+		if(summary&soul){
+			if(summary&owned) return showIcon?iconNone:blueSoul;
 			return showIcon?iconNone:normal;
+		}
+		return showIcon?iconNone:normal;
 	}
 }
 

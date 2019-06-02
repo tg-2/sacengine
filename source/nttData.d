@@ -163,6 +163,7 @@ char[4][char[4]] makeTagBySaxsModelTag(){
 
 immutable Cre8[char[4]] cre8s;
 immutable Wizd[char[4]] wizds;
+immutable Spel[char[4]] spels;
 immutable Strc[char[4]] strcs;
 
 immutable char[4][char[4]] tagsFromModel;
@@ -286,6 +287,7 @@ static this(){
 
 	cre8s=cast(immutable)makeSpellByTag!Cre8();
 	wizds=cast(immutable)makeSpellByTag!Wizd();
+	spels=cast(immutable)makeSpellByTag!Spel();
 	strcs=cast(immutable)makeSpellByTag!Strc();
 
 	tagsFromModel=cast(immutable)makeTagBySaxsModelTag();

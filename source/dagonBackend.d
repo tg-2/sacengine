@@ -4,7 +4,7 @@ import std.math;
 import std.stdio;
 import std.algorithm, std.range, std.exception, std.typecons;
 
-import sacobject, mrmm, nttData, sacmap, maps, state;
+import sacobject, sacspell, mrmm, nttData, sacmap, maps, state;
 import sxsk : gpuSkinning;
 import audioBackend;
 
@@ -1549,19 +1549,22 @@ final class SacScene: Scene{
 						break;
 					case Mouse.Status.icon:
 						if(mouse.targetValid){
+							auto summary=mouse.target.summarize(renderSide,state.current);
 							final switch(mouse.icon){
 								case MouseIcon.attack:
-									switch(mouse.target.type) with(TargetType){
-										case terrain: state.addCommand(Command(CommandType.advance,renderSide,camera.target,0,mouse.target,cameraFacing)); break;
-										case creature,building: state.addCommand(Command(CommandType.attack,renderSide,camera.target,0,mouse.target,cameraFacing)); break;
-										default: break; // invalid target, should not happen
+									if(summary&(TargetFlags.creature|TargetFlags.wizard|TargetFlags.building)&&!(summary&TargetFlags.corpse)){
+										state.addCommand(Command(CommandType.attack,renderSide,camera.target,0,mouse.target,cameraFacing));
+									}else{
+										auto target=Target(TargetType.terrain,0,mouse.target.position,mouse.target.location);
+										state.addCommand(Command(CommandType.advance,renderSide,camera.target,0,target,cameraFacing));
 									}
 									break;
 								case MouseIcon.guard:
-									switch(mouse.target.type) with(TargetType){
-										case terrain: state.addCommand(Command(CommandType.guardArea,renderSide,camera.target,0,mouse.target,cameraFacing)); break;
-										case creature,building: state.addCommand(Command(CommandType.guard,renderSide,camera.target,0,mouse.target,cameraFacing)); break;
-										default: break; // invalid target, should not happen
+									if(summary&(TargetFlags.creature|TargetFlags.wizard|TargetFlags.building)&&!(summary&TargetFlags.corpse)){
+										state.addCommand(Command(CommandType.guard,renderSide,camera.target,0,mouse.target,cameraFacing));
+									}else{
+										auto target=Target(TargetType.terrain,0,mouse.target.position,mouse.target.location);
+										state.addCommand(Command(CommandType.guardArea,renderSide,camera.target,0,target,cameraFacing));
 									}
 									break;
 								case MouseIcon.spell:
@@ -1579,13 +1582,16 @@ final class SacScene: Scene{
 						switch(mouse.target.type) with(TargetType){
 							case terrain: state.addCommand(Command(CommandType.move,renderSide,camera.target,0,mouse.target,cameraFacing)); break;
 							case creature,building:
-								switch(mouse.target.cursor(renderSide,false,state.current)){
-									case Cursor.friendlyUnit,Cursor.friendlyBuilding,Cursor.rescuableUnit,Cursor.neutralUnit,Cursor.neutralBuilding:
-										state.addCommand(Command(CommandType.guard,renderSide,camera.target,0,mouse.target,cameraFacing)); break;
-									case Cursor.enemyUnit,Cursor.enemyBuilding:
+								auto summary=mouse.target.summarize(renderSide,state.current);
+								if(!(summary&TargetFlags.untargettable)){
+									if(summary&TargetFlags.corpse){
+										auto target=Target(TargetType.terrain,0,mouse.target.position,mouse.target.location);
+										state.addCommand(Command(CommandType.guardArea,renderSide,camera.target,0,target,cameraFacing)); break;
+									}else if(summary&TargetFlags.enemy){
 										state.addCommand(Command(CommandType.attack,renderSide,camera.target,0,mouse.target,cameraFacing)); break;
-									default:
-										break;
+									}else{
+										state.addCommand(Command(CommandType.guard,renderSide,camera.target,0,mouse.target,cameraFacing)); break;
+									}
 								}
 								break;
 							case soul:
@@ -1610,6 +1616,7 @@ final class SacScene: Scene{
 						break;
 					case Mouse.Status.icon:
 						mouse.status=Mouse.Status.standard;
+						updateCursor(0.0f);
 						if(audio) audio.playSound("kabI");
 						break;
 				}
@@ -1896,21 +1903,13 @@ final class SacScene: Scene{
 		@property bool onSelectionRoster(){ return loc==Location.selectionRoster; }
 	}
 	Mouse mouse;
-	@property bool mouseTargetValid(){
+	bool mouseTargetValid(TargetFlags summary){
 		if(mouse.status!=Mouse.Status.icon) return true;
+		import spells:SpelFlags;
+		enum orderSpelFlags=SpelFlags.targetWizards|SpelFlags.targetCreatures|SpelFlags.targetCorpses|SpelFlags.targetStructures|SpelFlags.targetGround;
 		final switch(mouse.icon){
-			case MouseIcon.guard,MouseIcon.attack:
-				switch(mouse.target.type){
-					case TargetType.terrain: return true;
-					case TargetType.creature,TargetType.building:
-						switch(mouse.target.cursor(renderSide,false,state.current)){
-							case Cursor.friendlyUnit,Cursor.friendlyBuilding,Cursor.rescuableUnit,Cursor.neutralUnit,Cursor.neutralBuilding:
-							case Cursor.enemyUnit,Cursor.enemyBuilding:
-								return true;
-							default: return false;
-						}
-					default: return false;
-				}
+			case MouseIcon.guard: return isApplicable(orderSpelFlags,summary);
+			case MouseIcon.attack: return isApplicable(orderSpelFlags,summary);
 			case MouseIcon.spell:
 				return false; // TODO
 		}
@@ -1928,7 +1927,7 @@ final class SacScene: Scene{
 	}
 	auto selectionRosterTarget=Target.init;
 	auto minimapTarget=Target.init;
-	Target mouseCursorTargetImpl(){
+	Target computeMouseTarget(){
 		if(mouse.onSelectionRoster) return selectionRosterTarget;
 		if(mouse.onMinimap) return minimapTarget;
 		auto information=gbuffer.getInformation();
@@ -1959,9 +1958,11 @@ final class SacScene: Scene{
 	int cachedTargetFrame;
 	enum targetCacheDelta=10.0f;
 	enum minimapTargetCacheDelta=2.0f;
-	enum targetCacheDuration=1.2f*updateFPS;
-	Target mouseCursorTarget(){
-		auto target=mouseCursorTargetImpl();
+	enum targetCacheDuration=0.6f*updateFPS;
+	void updateMouseTarget(){
+		auto target=computeMouseTarget();
+		auto summary=target.summarize!true(renderSide,state.current);
+		auto targetValid=mouseTargetValid(summary);
 		static immutable importantTargets=[TargetType.creature,TargetType.soul];
 		if(cachedTarget.id!=0&&!state.current.isValidId(cachedTarget.id,cachedTarget.type)) cachedTarget=Target.init;
 		if(!importantTargets.canFind(target.type)&&!(target.location==TargetLocation.minimap&&target.type==TargetType.building)){
@@ -1969,17 +1970,27 @@ final class SacScene: Scene{
 			if(cachedTarget.type!=TargetType.none){
 				if((mouse.inHitbox || abs(cachedTargetX-mouse.x)<delta &&
 				    abs(cachedTargetY-mouse.y)<delta)&&
-				   cachedTargetFrame+targetCacheDuration>state.current.frame){
+				   cachedTargetFrame+(mouse.inHitbox?2:1)*targetCacheDuration>state.current.frame){
 					target=cachedTarget;
+					summary=target.summarize!true(renderSide,state.current);
+					targetValid=mouseTargetValid(summary);
 				}else cachedTarget=Target.init;
 			}
-		}else{
+		}else if(targetValid){
 			cachedTarget=target;
 			cachedTargetX=mouse.x;
 			cachedTargetY=mouse.y;
 			cachedTargetFrame=state.current.frame;
 		}
-		return target;
+		mouse.target=target;
+		mouse.targetValid=targetValid;
+		with(Cursor)
+			mouse.showFrame=targetValid && target.location==TargetLocation.scene &&
+				!(summary&TargetFlags.corpse) &&
+				((mouse.status.among(Mouse.Status.standard,Mouse.Status.rectangleSelect) &&
+				  summary&(TargetFlags.soul|TargetFlags.creature|TargetFlags.wizard)) ||
+				 (mouse.status==Mouse.Status.icon&&!!target.type.among(TargetType.creature,TargetType.building,TargetType.soul)));
+
 	}
 	void animateTarget(Target target){
 		switch(target.type){
@@ -1992,15 +2003,7 @@ final class SacScene: Scene{
 	}
 	void updateCursor(double dt){
 		if(!state) return;
-		mouse.target=mouseCursorTarget();
-		mouse.targetValid=mouseTargetValid();
-		with(Cursor)
-			mouse.showFrame=mouse.targetValid && mouse.target.location==TargetLocation.scene &&
-				            ((mouse.status.among(Mouse.Status.standard,Mouse.Status.rectangleSelect) &&
-				              (mouse.target.type==TargetType.soul ||
-				               (mouse.status==Mouse.Status.standard?mouse.cursor:mouse.target.cursor(renderSide,false,state.current))
-				               .among(friendlyUnit,neutralUnit,rescuableUnit,talkingUnit,enemyUnit,iconFriendly,iconNeutral,iconEnemy))) ||
-				             (mouse.status==Mouse.Status.icon&&!!mouse.target.type.among(TargetType.creature,TargetType.building,TargetType.soul)));
+		updateMouseTarget();
 		final switch(mouse.status){
 			case Mouse.Status.standard:
 				mouse.cursor=mouse.target.cursor(renderSide,false,state.current);
