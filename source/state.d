@@ -884,12 +884,135 @@ struct Buildings(B){
 }
 auto each(alias f,B,T...)(ref Buildings!B buildings,T args){
 	foreach(i;0..buildings.length){
-		static if(!is(typeof(f(Soul.init,args)))){
+		static if(!is(typeof(f(Building.init,args)))){
 			// TODO: find a better way to check whether argument taken by reference
-			auto soul=buildings[i];
-			f(soul,args);
-			buildings[i]=soul;
+			auto building=buildings[i];
+			f(building,args);
+			buildings[i]=building;
 		}else f(buildings[i],args);
+	}
+}
+
+enum maxLevel=9;
+
+struct SpellInfo(B){
+	SacSpell!B spell;
+	int level;
+	float cooldown;
+}
+struct Spellbook(B){
+	Array!(SpellInfo!B) spells;
+	void opAssign(ref Spellbook!B rhs){
+		assignArray(spells,rhs.spells);
+	}
+	void addSpell(int level,SacSpell!B spell){
+		spells~=SpellInfo!B(spell,level,0.0f);
+		if(spells.length>=2&&spells[$-1].spell.spellOrder<spells[$-2].spell.spellOrder) sort();
+	}
+	void sort(){
+		.sort!"a.spell.spellOrder<b.spell.spellOrder"(spells.data);
+	}
+	SpellInfo!B[] getSpells(){
+		return spells.data;
+	}
+}
+
+Spellbook!B getDefaultSpellbook(B)(God god){
+	Spellbook!B result;
+	foreach(tag;neutralCreatures)
+		result.addSpell(0,SacSpell!B.get(tag));
+	foreach(tag;neutralSpells)
+		result.addSpell(0,SacSpell!B.get(tag));
+	foreach(tag;structureSpells[0..$-1])
+		result.addSpell(0,SacSpell!B.get(tag));
+	if(god==God.none){
+		result.addSpell(3,SacSpell!B.get(structureSpells[$-1]));
+		return result;
+	}
+	enforce(creatureSpells[god].length==11);
+	enforce(normalSpells[god].length==11);
+	foreach(lv;1..9+1){
+		if(lv==3) result.addSpell(3,SacSpell!B.get(structureSpells[$-1]));
+		if(lv==1){
+			foreach(tag;creatureSpells[god][1..4])
+				result.addSpell(lv,SacSpell!B.get(tag));
+			result.addSpell(lv,SacSpell!B.get(normalSpells[god][lv+1]));
+		}else if(lv<8){
+			result.addSpell(lv,SacSpell!B.get(creatureSpells[god][lv+2]));
+			result.addSpell(lv,SacSpell!B.get(normalSpells[god][lv+1]));
+		}else if(lv==8){
+			foreach(tag;normalSpells[god][9..11])
+				result.addSpell(lv,SacSpell!B.get(tag));
+		}else if(lv==9){
+			result.addSpell(lv,SacSpell!B.get(creatureSpells[god][lv+1]));
+		}
+	}
+	return result;
+}
+
+struct WizardInfo(B){
+	int id;
+	int level;
+	float experience;
+	Spellbook!B spellbook;
+
+	void opAssign(ref WizardInfo!B rhs){
+		id=rhs.id;
+		level=rhs.level;
+		experience=rhs.experience;
+		spellbook=rhs.spellbook;
+	}
+	void addSpell(int level,SacSpell!B spell){
+		spellbook.addSpell(level,spell);
+	}
+	auto getSpells(){
+		return spellbook.getSpells();
+	}
+}
+WizardInfo!B makeWizard(B)(int id,int level,Spellbook!B spellbook){
+	return WizardInfo!B(id,level,0.0f,spellbook);
+}
+struct WizardInfos(B){
+	Array!(WizardInfo!B) wizards;
+	@property int length(){ assert(wizards.length<=int.max); return cast(int)wizards.length; }
+	@property void length(int l){
+		wizards.length=l;
+	}
+	void addWizard(WizardInfo!B wizard){
+		wizards~=wizard;
+	}
+	void removeWizard(int id){
+		auto index=indexForId(id);
+		if(index!=-1){
+			if(index+1<wizards.length)
+				swap(wizards[index],wizards[$-1]);
+			wizards.length=wizards.length-1;
+		}
+	}
+	void opAssign(ref WizardInfos!B rhs){
+		assignArray(wizards,rhs.wizards);
+	}
+	WizardInfo!B opIndex(int i){
+		return wizards[i];
+	}
+	int indexForId(int id){
+		foreach(i;0..wizards.length) if(wizards[i].id==id) return cast(int)i;
+		return -1;
+	}
+	WizardInfo!B* getWizard(int id){
+		auto index=indexForId(id);
+		if(index==-1) return null;
+		return &wizards[index];
+	}
+}
+auto each(alias f,B,T...)(ref WizardInfos!B wizards,T args){
+	foreach(i;0..wizards.length){
+		static if(!is(typeof(f(WizardInfo.init,args)))){
+			// TODO: find a better way to check whether argument taken by reference
+			auto wizard=wizards[i];
+			f(wizard,args);
+			wizards[i]=wizard;
+		}else f(wizards[i],args);
 	}
 }
 
@@ -1013,6 +1136,7 @@ struct Objects(B,RenderMode mode){
 		FixedObjects!B[] fixedObjects;
 		Souls!B souls;
 		Buildings!B buildings;
+		WizardInfos!B wizards;
 		Array!(Particles!B) particles;
 		Effects!B effects;
 		CommandCones!B commandCones;
@@ -1068,6 +1192,25 @@ struct Objects(B,RenderMode mode){
 			buildings.addObject(object);
 			return result;
 		}
+		void removeObject(int type, int index, ref ObjectManager!B manager){
+			if(type<numMoving){
+				movingObjects[type].removeObject(index,manager);
+			}else if(type<numMoving+numStatic){
+				staticObjects[type-numMoving].removeObject(index,manager);
+			}else final switch(cast(ObjectType)type){
+				case ObjectType.soul: souls.removeObject(index,manager); break;
+				case ObjectType.building: buildings.removeObject(index,manager); break;
+			}
+		}
+		void addWizard(WizardInfo!B wizard){
+			wizards.addWizard(wizard);
+		}
+		WizardInfo!B* getWizard(int id){
+			return wizards.getWizard(id);
+		}
+		void removeWizard(int id){
+			wizards.removeWizard(id);
+		}
 		void addEffect(T)(T proj){
 			effects.addEffect(proj);
 		}
@@ -1085,16 +1228,6 @@ struct Objects(B,RenderMode mode){
 			if(!commandCones.cones.length) commandCones=CommandCones!B(32); // TODO: do this eagerly?
 			commandCones.addCommandCone(cone);
 		}
-		void removeObject(int type, int index, ref ObjectManager!B manager){
-			if(type<numMoving){
-				movingObjects[type].removeObject(index,manager);
-			}else if(type<numMoving+numStatic){
-				staticObjects[type-numMoving].removeObject(index,manager);
-			}else final switch(cast(ObjectType)type){
-				case ObjectType.soul: souls.removeObject(index,manager); break;
-				case ObjectType.building: buildings.removeObject(index,manager); break;
-			}
-		}
 	}
 	void opAssign(Objects!(B,mode) rhs){
 		assignArray(movingObjects,rhs.movingObjects);
@@ -1103,6 +1236,7 @@ struct Objects(B,RenderMode mode){
 			fixedObjects=rhs.fixedObjects; // by reference
 			souls=rhs.souls;
 			buildings=rhs.buildings;
+			wizards=rhs.wizards;
 			effects=rhs.effects;
 			assignArray(particles,rhs.particles);
 			commandCones=rhs.commandCones;
@@ -1139,6 +1273,9 @@ auto eachSoul(alias f,B,T...)(ref Objects!(B,RenderMode.opaque) objects,T args){
 }
 auto eachBuilding(alias f,B,T...)(ref Objects!(B,RenderMode.opaque) objects,T args){
 	objects.buildings.each!f(args);
+}
+auto eachWizard(alias f,B,T...)(ref Objects!(B,RenderMode.opaque) objects,T args){
+	objects.wizards.each!f(args);
 }
 auto eachEffects(alias f,B,T...)(ref Objects!(B,RenderMode.opaque) objects,T args){
 	f(objects.effects,args);
@@ -1230,6 +1367,15 @@ struct ObjectManager(B){
 	void addTransparent(T)(T object, float alpha){
 		assert(0,"TODO");
 	}
+	void addWizard(WizardInfo!B wizard){
+		opaqueObjects.addWizard(wizard);
+	}
+	WizardInfo!B* getWizard(int id){
+		return opaqueObjects.getWizard(id);
+	}
+	void removeWizard(int id){
+		opaqueObjects.removeWizard(id);
+	}
 	void addFixed(FixedObject!B object){
 		opaqueObjects.addFixed(object);
 	}
@@ -1272,6 +1418,9 @@ auto eachSoul(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
 }
 auto eachBuilding(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
 	with(objectManager) opaqueObjects.eachBuilding!f(args);
+}
+auto eachWizard(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
+	with(objectManager) opaqueObjects.eachWizard!f(args);
 }
 auto eachEffects(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
 	with(objectManager) opaqueObjects.eachEffects!f(args);
@@ -3265,6 +3414,20 @@ void animateManahoar(B)(Vector3f location, int side, float rate, ObjectState!B s
 	}
 }
 
+void updateSpellbook(B)(ref Spellbook!B spellbook,ObjectState!B state){
+	foreach(ref entry;spellbook.spells.data){
+		if(entry.cooldown>0.0f){
+			entry.cooldown=max(0.0f,entry.cooldown-1.0f/updateFPS);
+			if(entry.cooldown==0.0f){
+				// TODO: animate spell
+			}
+		}
+	}
+}
+void updateWizard(B)(ref WizardInfo!B wizard,ObjectState!B state){
+	updateSpellbook(wizard.spellbook,state);
+}
+
 
 void addToProximity(T,B)(ref T objects, ObjectState!B state){
 	auto proximity=state.proximity;
@@ -3841,14 +4004,15 @@ final class ObjectState(B){ // (update logic)
 		frame+=1;
 		proximity.start();
 		this.eachByType!(addToProximity,false)(this);
+		this.eachEffects!updateEffects(this);
+		this.eachParticles!updateParticles(this);
+		this.eachCommandCones!updateCommandCones(this);
 		foreach(command;frameCommands)
 			applyCommand(command);
 		this.eachMoving!updateCreature(this);
 		this.eachSoul!updateSoul(this);
 		this.eachBuilding!updateBuilding(this);
-		this.eachEffects!updateEffects(this);
-		this.eachParticles!updateParticles(this);
-		this.eachCommandCones!updateCommandCones(this);
+		this.eachWizard!updateWizard(this);
 		this.performRemovals();
 		proximity.end();
 	}
@@ -3870,6 +4034,27 @@ final class ObjectState(B){ // (update logic)
 	void performRemovals(){
 		foreach(id;toRemove.data) removeObject(id);
 		toRemove.length=0;
+	}
+	void addWizard(WizardInfo!B wizard){
+		obj.addWizard(wizard);
+	}
+	WizardInfo!B* getWizard(int id){
+		return obj.getWizard(id);
+	}
+	auto getLevel(int id){
+		auto wizard=getWizard(id);
+		return wizard?wizard.level:0;
+	}
+	auto getSpells(int id){
+		auto wizard=getWizard(id);
+		static bool pred(ref SpellInfo!B spell,int level){ return true;/+spell.level<=level;+/ }
+		static bool pred2(T)(T x){ return pred(x[]); }
+		static first(T)(T x){ return x[0]; }
+		if(!wizard) return zip(typeof(wizard.getSpells()).init,repeat(0)).filter!pred2.map!first;
+		return zip(wizard.getSpells(),repeat(wizard.level)).filter!pred2.map!first;
+	}
+	void removeWizard(int id){
+		obj.removeWizard(id);
 	}
 	bool isValidId(int id){
 		return obj.isValidId(id);
@@ -3991,6 +4176,9 @@ auto eachSoul(alias f,B,T...)(ObjectState!B objectState,T args){
 }
 auto eachBuilding(alias f,B,T...)(ObjectState!B objectState,T args){
 	return objectState.obj.eachBuilding!f(args);
+}
+auto eachWizard(alias f,B,T...)(ObjectState!B objectState,T args){
+	return objectState.obj.eachWizard!f(args);
 }
 auto eachEffects(alias f,B,T...)(ObjectState!B objectState,T args){
 	return objectState.obj.eachEffects!f(args);
@@ -4317,6 +4505,7 @@ enum TargetLocation{
 	scene,
 	minimap,
 	selectionRoster,
+	spellbook,
 	hud,
 }
 
@@ -4548,7 +4737,7 @@ void queueDialogSound(B)(int side,SacObject!B sacObject,SoundType soundType,Dial
 		}
 	}
 	if(auto sset=sacObject.sset) playSset(sset);
-	if(auto sset=sacObject.meleeSset) playSset(sset);	
+	if(auto sset=sacObject.meleeSset) playSset(sset);
 }
 int getSoundDuration(B)(char[4] sound,ObjectState!B state){
 	return B.getSoundDuration(sound);

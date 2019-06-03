@@ -145,6 +145,8 @@ int main(string[] args){
 					obj.updateCreaturePosition(state);
 					auto id=state.addObject(obj);
 					scene.focusCamera(id);
+					auto spellbook=getDefaultSpellbook!B(options.god);
+					state.addWizard(makeWizard(id,9,spellbook));
 				}
 			})(state.current,backend.scene,&flag,options);
 			state.commit();

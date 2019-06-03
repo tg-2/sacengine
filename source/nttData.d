@@ -881,11 +881,153 @@ Lswitch: switch(tag){
 	}
 }
 
+enum SpellTag:char[4]{
+	// neutral creatures:
+	manahoar="oham",
+	// neutral spells:
+	speedup="pups",
+	heal="laeh",
+	// persephone creatures:
+	druid="nmuh",
+	ranger="amuh",
+	shrike="tbsh",
+	scarab="cara",
+	troll="lort",
+	gnome="plfl",
+	gremlin="lrps",
+	mutant="cbab",
+	ent="mtsl",
+	dragon="grdg",
+	// persephone heroes:
+	// TODO
+	// persephone spells
+	wrath="oalf",
+	etherealForm="mrfe",
+	graspingVines="eniv",
+	rainbow="wobr",
+	rainOfFrogs="grfr",
+	healingAura="ruah",
+	vineWall="lawv",
+	charm="mrhc",
+	meanstalks="rter",
+	// pyro creatures:
+	cog="zidf",
+	flameMinion="fplk",
+	spitfire="sohf",
+	tickferno="craf",
+	firefist="lrtf",
+	pyromaniac="plff",
+	pyrodactyl="kacf",
+	bombard="wlcf",
+	warmonger="nugf",
+	phoenix="grdr",
+	// pyro heroes:
+	// TODO
+	// pyro spells:
+	fireball="brif",
+	fireform="mrff",
+	ringsOfFire="rifr",
+	dragonfire="rifd",
+	explosion="pxef",
+	firewall="lwrf",
+	rainOfFire="rifr",
+	blindRage="egar",
+	volcano="clov",
+	// james creatures:
+	trogg="ycro",
+	earthfling="palk",
+	gargoyle="sohe",
+	basilisk="guls",
+	taurock="raeb",
+	flummox="wlce",
+	ikarus="kace",
+	boulderdash="llab",
+	jabberocky="mtse",
+	rhinok="gard",
+	// james heroes:
+	// TODO
+	// james spells:
+	rock="kcor",
+	skinOfStone="niks",
+	soulMole="pmcd",
+	erupt="tpre",
+	haloOfEarth="olah",
+	wallOfSpikes="laws",
+	bombardment="rtem",
+	bovineIntervention="ivob",
+	bore="erob",
+	// stratos creatures:
+	frostwolf="lbog",
+	sylph="ahcr",
+	brainiac="bobs",
+	vortick="craa",
+	squall="alab",
+	stormGiant="rgos",
+	seraph="grps",
+	flurry="wlca",
+	yeti="ycrp",
+	silverback="grdb",
+	// stratos heroes:
+	// TODO
+	// stratos spells:
+	lightning="ntil",
+	airShield="dlhs",
+	freeze="zerf",
+	chainLightning="ntlc",
+	soulWind="dnws",
+	frozenGround="zorf",
+	fence="cnef",
+	cloudkill="likc",
+	tornado="nrot",
+	// charnel creatures:
+	scythe="dzid",
+	fallen="dplk",
+	locust="pazb",
+	necryl="glsd",
+	blight="kacd",
+	netherfiend="crpd",
+	deadeye="plfd",
+	abomination="ctug",
+	styx="nugd",
+	hellmouth="nomd",
+	// charnel heroes:
+	// TODO
+	// charnel spells:
+	insectSwarm="mrws",
+	protectiveSwarm="rwsp",
+	slime="htel",
+	animateDead="deda",
+	demonicRift="tfir",
+	wailingWall="laww",
+	plague="galp",
+	intestinalVaporization="pavi",
+	death="taed",
+	// structure spells:
+	manalith="htlm",
+	guardian="ndrg",
+	convert="ccas",
+	desecrate="ucas",
+	teleport="elet",
+	shrine="pcas",
+}
+
+
 import ntts: God;
-immutable char[4][] persephoneCreatures=["oham","nmuh","amuh","tbsh","cara","lort","plfl","lrps","cbab","mtsl","grdg"];
-immutable char[4][] pyroCreatures=["oham","zidf","fplk","sohf","craf","lrtf","plff","kacf","wlcf","nugf","grdr"];
-immutable char[4][] jamesCreatures=["oham","ycro","palk","sohe","guls","raeb","wlce","kace","llab","mtse","gard"];
-immutable char[4][] stratosCreatures=["oham","lbog","ahcr","bobs","craa","alab","rgos","grps","wlca","ycrp","grdb"];
-immutable char[4][] charnelCreatures=["oham","dzid","dplk","pazb","glsd","kacd","crpd","plfd","ctug","nugd","nomd"];
-immutable char[4][][6] creatureSpells=[["maho"],persephoneCreatures,pyroCreatures,jamesCreatures,stratosCreatures,charnelCreatures];
+private alias ST=SpellTag;
+immutable ST[] neutralCreatures=[ST.manahoar];
+immutable ST[] persephoneCreatures=[ST.druid,ST.ranger,ST.shrike,ST.scarab,ST.troll,ST.gnome,ST.gremlin,ST.mutant,ST.ent,ST.dragon];
+immutable ST[] pyroCreatures=[ST.cog,ST.flameMinion,ST.spitfire,ST.tickferno,ST.firefist,ST.pyromaniac,ST.pyrodactyl,ST.bombard,ST.warmonger,ST.phoenix];
+immutable ST[] jamesCreatures=[ST.trogg,ST.earthfling,ST.gargoyle,ST.basilisk,ST.taurock,ST.flummox,ST.ikarus,ST.boulderdash,ST.jabberocky,ST.rhinok];
+immutable ST[] stratosCreatures=[ST.frostwolf,ST.sylph,ST.brainiac,ST.vortick,ST.squall,ST.stormGiant,ST.seraph,ST.flurry,ST.yeti,ST.silverback];
+immutable ST[] charnelCreatures=[ST.scythe,ST.fallen,ST.locust,ST.necryl,ST.blight,ST.netherfiend,ST.deadeye,ST.abomination,ST.styx,ST.hellmouth];
+immutable ST[][6] creatureSpells=[neutralCreatures,neutralCreatures~persephoneCreatures,neutralCreatures~pyroCreatures,neutralCreatures~jamesCreatures,neutralCreatures~stratosCreatures,neutralCreatures~charnelCreatures];
 static assert(creatureSpells.length==God.max+1);
+immutable ST[] neutralSpells=[ST.speedup,ST.heal];
+immutable ST[] persephoneSpells=[ST.wrath,ST.etherealForm,ST.graspingVines,ST.rainbow,ST.rainOfFrogs,ST.healingAura,ST.vineWall,ST.charm,ST.meanstalks];
+immutable ST[] pyroSpells=[ST.fireball,ST.fireform,ST.ringsOfFire,ST.dragonfire,ST.explosion,ST.firewall,ST.rainOfFire,ST.blindRage,ST.volcano];
+immutable ST[] jamesSpells=[ST.rock,ST.skinOfStone,ST.soulMole,ST.erupt,ST.haloOfEarth,ST.wallOfSpikes,ST.bombardment,ST.bovineIntervention,ST.bore];
+immutable ST[] stratosSpells=[ST.lightning,ST.airShield,ST.freeze,ST.chainLightning,ST.soulWind,ST.frozenGround,ST.fence,ST.cloudkill,ST.tornado];
+immutable ST[] charnelSpells=[ST.insectSwarm,ST.protectiveSwarm,ST.slime,ST.animateDead,ST.demonicRift,ST.wailingWall,ST.plague,ST.intestinalVaporization,ST.death];
+immutable ST[][6] normalSpells=[neutralSpells,neutralSpells~persephoneSpells,neutralSpells~pyroSpells,neutralSpells~jamesSpells,neutralSpells~stratosSpells,neutralSpells~charnelSpells];
+static assert(normalSpells.length==God.max+1);
+immutable ST[] structureSpells=[ST.manalith,ST.guardian,ST.convert,ST.desecrate,ST.teleport,ST.shrine];

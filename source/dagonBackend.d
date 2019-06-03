@@ -786,15 +786,15 @@ final class SacScene: Scene{
 		auto position=Vector3f(-34.0f*hudScaling,0.5*(height-scaling.y),0);
 		auto topLeft=position;
 		auto bottomRight=position+scaling;
-		return cast(int)topLeft.x<=center.x&&center.x<=cast(int)(bottomRight.x+0.5f)
-			&& cast(int)topLeft.y<=center.y&&center.y<=cast(int)(bottomRight.y+0.5f);
+		return floor(topLeft.x)<=center.x&&center.x<=cast(int)ceil(bottomRight.x)
+			&& floor(topLeft.y)<=center.y&&center.y<=cast(int)ceil(bottomRight.y);
 	}
 	void updateSelectionRosterTarget(Target target,Vector2f position,Vector2f scaling){
 		if(!mouse.onSelectionRoster) return;
 		auto topLeft=position;
 		auto bottomRight=position+scaling;
-		if(cast(int)topLeft.x<=mouse.x&&mouse.x<=cast(int)(bottomRight.x+0.5f)
-		   && cast(int)topLeft.y<=mouse.y&&mouse.y<=cast(int)(bottomRight.y+0.5f))
+		if(floor(topLeft.x)<=mouse.x&&mouse.x<=ceil(bottomRight.x)
+		   && floor(topLeft.y)<=mouse.y&&mouse.y<=ceil(bottomRight.y))
 			selectionRosterTarget=target;
 	}
 	void renderSelectionRoster(RenderingContext* rc){
@@ -1147,12 +1147,48 @@ final class SacScene: Scene{
 			renderStatBar(position2,relativeHealth,sacHud.healthTopMaterial,sacHud.healthMaterial,sacHud.healthBottomMaterial);
 		}
 	}
+	auto spellbookTab=SpellType.creature;
+	void switchSpellbookTab(SpellType newTab){
+		if(spellbookTab==newTab) return;
+		if(audio) audio.playSound("okub");
+		spellbookTab=newTab;
+	}
+	int numSpells=0;
+	bool isOnSpellbook(Vector2f center){
+		auto tabScaling=hudScaling*Vector2f(3*48.0f,48.0f);
+		auto tabPosition=Vector2f(0.0f,height-hudScaling*80.0f);
+		auto tabTopLeft=tabPosition;
+		auto tabBottomRight=tabPosition+tabScaling;
+		if(floor(tabTopLeft.x)<=center.x&&center.x<=ceil(tabBottomRight.x)&&
+		   floor(tabTopLeft.y)<=center.y&&center.y<=ceil(tabBottomRight.y))
+			return true;
+		auto spellScaling=hudScaling*Vector2f(numSpells*32.0f+12.0f,36.0f);
+		auto spellPosition=Vector2f(0.0f,height-spellScaling.y);
+		auto spellTopLeft=spellPosition;
+		auto spellBottomRight=spellPosition+spellScaling;
+		if(floor(spellTopLeft.x)<=center.x&&center.x<=ceil(spellBottomRight.x)&&
+		   floor(spellTopLeft.y)<=center.y&&center.y<=ceil(spellBottomRight.y))
+			return true;
+
+		return false;
+	}
+	void updateSpellbookTarget(Target target,Vector2f position,Vector2f scaling){
+		if(!mouse.onSpellbook) return;
+		auto topLeft=position;
+		auto bottomRight=position+scaling;
+		if(floor(topLeft.x)<=mouse.x&&mouse.x<=ceil(bottomRight.x)
+		   && floor(topLeft.y)<=mouse.y&&mouse.y<=ceil(bottomRight.y))
+			spellbookTarget=target;
+	}
 	void renderSpellbook(RenderingContext* rc){
+		if(mouse.onSpellbook) spellbookTarget=Target.init;
 		auto hudScaling=this.hudScaling;
+		auto spells=state.current.getSpells(camera.target).filter!(x=>x.spell.type==spellbookTab);
+		numSpells=cast(int)spells.walkLength;
 		auto material=sacHud.frameMaterial; // TODO: share material binding with other drawing commands (or at least the backend binding)
 		material.bind(rc);
 		auto position=Vector3f(0.0f,height-hudScaling*32.0f,0.0f);
-		auto numFrameSegments=10; // TODO: max(10, spells*2)
+		auto numFrameSegments=max(10,2*numSpells);
 		auto scaling=hudScaling*Vector3f(16.0f,8.0f,0.0f);
 		auto scaling2=hudScaling*Vector3f(48.0f,16.0f,0.0f);
 		auto position2=Vector3f(hudScaling*16.0f*numFrameSegments-4.0f+scaling2.y,height-hudScaling*48.0f,0.0f);
@@ -1164,19 +1200,39 @@ final class SacScene: Scene{
 			spellbookFrame1.render(rc);
 		}
 		material.unbind(rc);
-		auto tabPosition=Vector3f(0.0f,height-hudScaling*80.0f,0.0f);
+		auto tabsPosition=Vector3f(0.0f,height-hudScaling*80.0f,0.0f);
 		auto tabScaling=hudScaling*Vector3f(48.0f,48.0f,0.0f);
 		auto tabs=tuple(creatureTab,spellTab,structureTab);
 		material=sacHud.tabsMaterial;
 		material.bind(rc);
 		foreach(i,tab;tabs){
-			material.backend.setTransformationScaled(tabPosition+hudScaling*Vector3f(48.0f,0.0f,0.0f)*i,Quaternionf.identity(),tabScaling,rc);
+			auto tabPosition=tabsPosition+hudScaling*Vector3f(48.0f,0.0f,0.0f)*i;
+			auto target=Target(cast(TargetType)(TargetType.creatureTab+i),0,Vector3f.init,TargetLocation.spellbook);
+			updateSpellbookTarget(target,tabPosition.xy,tabScaling.xy);
+			material.backend.setTransformationScaled(tabPosition,Quaternionf.identity(),tabScaling,rc);
 			tab.render(rc);
 		}
-		auto spellbookTab=0; // TODO
-		material.backend.setTransformationScaled(tabPosition+hudScaling*Vector3f(48.0f,0.0f,0.0f)*spellbookTab,Quaternionf.identity(),tabScaling,rc);
+		material.backend.setTransformationScaled(tabsPosition+hudScaling*Vector3f(48.0f,0.0f,0.0f)*spellbookTab,Quaternionf.identity(),tabScaling,rc);
 		tabSelector.render(rc);
 		material.unbind(rc);
+		hudMaterialBackend.bind(null,rc);
+		hudMaterialBackend.bindDiffuse(sacHud.pages);
+		ShapeSubQuad[3] pages=[creaturePage,spellPage,structurePage];
+		auto page=pages[spellbookTab];
+		foreach(i,spell;enumerate(spells)){
+			auto spellScaling=hudScaling*Vector3f(32.0f,32.0f,0.0f);
+			auto spellPosition=Vector3f(i*spellScaling.x,height-spellScaling.y,0.0f);
+			hudMaterialBackend.setTransformationScaled(spellPosition,Quaternionf.identity(),spellScaling,rc);
+			page.render(rc);
+		}
+		foreach(i,spell;enumerate(spells)){
+			auto spellScaling=hudScaling*Vector3f(32.0f,32.0f,0.0f);
+			auto spellPosition=Vector3f(i*spellScaling.x,height-spellScaling.y,0.0f);
+			hudMaterialBackend.setTransformationScaled(spellPosition,Quaternionf.identity(),spellScaling,rc);
+			hudMaterialBackend.bindDiffuse(spell.spell.icon);
+			quad.render(rc);
+		}
+		hudMaterialBackend.unbind(null,rc);
 	}
 	void renderHUD(RenderingContext* rc){
 		renderMinimap(rc);
@@ -1401,7 +1457,8 @@ final class SacScene: Scene{
 			fpview.camera.turn += turn_m;
 		}
 		if(mouse.status.among(Mouse.Status.standard,Mouse.Status.icon)){
-			if(isOnSelectionRoster(Vector2f(mouse.x,mouse.y))) mouse.loc=Mouse.Location.selectionRoster;
+			if(isOnSpellbook(Vector2f(mouse.x,mouse.y))) mouse.loc=Mouse.Location.spellbook;
+			else if(isOnSelectionRoster(Vector2f(mouse.x,mouse.y))) mouse.loc=Mouse.Location.selectionRoster;
 			else if(isOnMinimap(Vector2f(mouse.x,mouse.y))) mouse.loc=Mouse.Location.minimap;
 			else mouse.loc=Mouse.Location.scene;
 		}
@@ -1533,6 +1590,12 @@ final class SacScene: Scene{
 								lastSelectedX=mouse.x;
 								lastSelectedY=mouse.y;
 							}
+						}else if(mouse.target.type==TargetType.creatureTab){
+							switchSpellbookTab(SpellType.creature);
+						}else if(mouse.target.type==TargetType.spellTab){
+							switchSpellbookTab(SpellType.spell);
+						}else if(mouse.target.type==TargetType.structureTab){
+							switchSpellbookTab(SpellType.structure);
 						}
 						break;
 					case Mouse.Status.dragging:
@@ -1544,7 +1607,7 @@ final class SacScene: Scene{
 						final switch(mouse.loc){
 							case Mouse.Location.scene: loc=TargetLocation.scene; break;
 							case Mouse.Location.minimap: loc=TargetLocation.minimap; break;
-							case Mouse.Location.selectionRoster,Mouse.Location.spellIcons: assert(0);
+							case Mouse.Location.selectionRoster,Mouse.Location.spellbook: assert(0);
 						}
 						state.setSelection(renderSide,camera.target,renderedSelection,loc);
 						selectionUpdated=true;
@@ -1636,6 +1699,11 @@ final class SacScene: Scene{
 				state.addCommand(Command(type,renderSide,camera.target,group));
 				if(type==CommandType.addToGroup)
 					state.addCommand(Command(CommandType.automaticSelectGroup,renderSide,camera.target,group));
+			}
+		}
+		if(!(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK]||eventManager.keyPressed[KEY_LSHIFT])){
+			foreach(_;0..keyDown[KEY_TAB]){
+				switchSpellbookTab(cast(SpellType)((spellbookTab+1)%(spellbookTab.max+1)));
 			}
 		}
 		if(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK]){
@@ -1837,6 +1905,7 @@ final class SacScene: Scene{
 	Texture healthColorTexture,manaColorTexture;
 	ShapeSacStatsFrame statsFrame;
 	ShapeSubQuad creatureTab,spellTab,structureTab,tabSelector;
+	ShapeSubQuad creaturePage,spellPage,structurePage;
 	ShapeSubQuad spellbookFrame1,spellbookFrame2;
 	GenericMaterial hudSoulMaterial;
 	GenericMaterial minimapMaterial;
@@ -1858,6 +1927,9 @@ final class SacScene: Scene{
 		spellTab=New!ShapeSubQuad(assetManager,49.0f/128.0f,0.0f,95.0f/128.0f,48.0f/128.0f);
 		structureTab=New!ShapeSubQuad(assetManager,1.0f/128.0f,48.0f/128.0f,47.0f/128,96.0f/128.0f);
 		tabSelector=New!ShapeSubQuad(assetManager,49.0f/128.0f,48.0f/128.0f,95.0f/128,96.0f/128.0f);
+		creaturePage=New!ShapeSubQuad(assetManager,0.0f,0.0f,0.5f,0.5f);
+		spellPage=New!ShapeSubQuad(assetManager,0.5f,0.0f,1.0f,0.5f);
+		structurePage=New!ShapeSubQuad(assetManager,0.0f,0.5f,0.5f,1.0f);
 		spellbookFrame1=New!ShapeSubQuad(assetManager,0.5f,40.0f/128.0f,0.625f,48.0f/128.0f);
 		spellbookFrame2=New!ShapeSubQuad(assetManager,80.5f/128.0f,32.5f/128.0f,1.0f,48.0f/128.0f);
 		assert(!!sacSoul.texture);
@@ -1898,11 +1970,12 @@ final class SacScene: Scene{
 			scene,
 			minimap,
 			selectionRoster,
-			spellIcons,
+			spellbook,
 		}
 		Location loc;
 		@property bool onMinimap(){ return loc==Location.minimap; }
 		@property bool onSelectionRoster(){ return loc==Location.selectionRoster; }
+		@property bool onSpellbook(){ return loc==Location.spellbook; }
 	}
 	Mouse mouse;
 	bool mouseTargetValid(TargetFlags summary){
@@ -1927,9 +2000,11 @@ final class SacScene: Scene{
 		fpview.oldMouseY=cast(int)mouse.y;
 		eventManager.setMouse(cast(int)mouse.x, cast(int)mouse.y);
 	}
+	auto spellbookTarget=Target.init;
 	auto selectionRosterTarget=Target.init;
 	auto minimapTarget=Target.init;
 	Target computeMouseTarget(){
+		if(mouse.onSpellbook) return spellbookTarget;
 		if(mouse.onSelectionRoster) return selectionRosterTarget;
 		if(mouse.onMinimap) return minimapTarget;
 		auto information=gbuffer.getInformation();
@@ -1967,7 +2042,8 @@ final class SacScene: Scene{
 		auto targetValid=mouseTargetValid(summary);
 		static immutable importantTargets=[TargetType.creature,TargetType.soul];
 		if(cachedTarget.id!=0&&!state.current.isValidId(cachedTarget.id,cachedTarget.type)) cachedTarget=Target.init;
-		if(!importantTargets.canFind(target.type)&&!(target.location==TargetLocation.minimap&&target.type==TargetType.building)){
+		if(!importantTargets.canFind(target.type)&&!(target.location==TargetLocation.minimap&&target.type==TargetType.building)&&
+		   !target.location.among(TargetLocation.selectionRoster,TargetLocation.spellbook)){
 			auto delta=cachedTarget.location!=TargetLocation.minimap?targetCacheDelta:minimapTargetCacheDelta;
 			if(cachedTarget.type!=TargetType.none){
 				if((mouse.inHitbox || abs(cachedTargetX-mouse.x)<delta &&
