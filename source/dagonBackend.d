@@ -1566,7 +1566,17 @@ final class SacScene: Scene{
 		selectionUpdated=false;
 		if(oldMouseStatus==mouse.status){
 			foreach(_;0..mouseButtonUp[MB_LEFT]){
-				final switch(mouse.status){
+				bool done=true;
+				if(mouse.status.among(Mouse.Status.standard,Mouse.Status.icon)){
+					if(mouse.target.type==TargetType.creatureTab){
+						switchSpellbookTab(SpellType.creature);
+					}else if(mouse.target.type==TargetType.spellTab){
+						switchSpellbookTab(SpellType.spell);
+					}else if(mouse.target.type==TargetType.structureTab){
+						switchSpellbookTab(SpellType.structure);
+					}else done=false;
+				}else done=false;
+				if(!done) final switch(mouse.status){
 					case Mouse.Status.standard:
 						if(mouse.target.type==TargetType.creature&&canSelect(renderSide,mouse.target.id,state.current)){
 							auto type=mouse.additiveSelect?CommandType.toggleSelection:CommandType.select;
@@ -1590,12 +1600,6 @@ final class SacScene: Scene{
 								lastSelectedX=mouse.x;
 								lastSelectedY=mouse.y;
 							}
-						}else if(mouse.target.type==TargetType.creatureTab){
-							switchSpellbookTab(SpellType.creature);
-						}else if(mouse.target.type==TargetType.spellTab){
-							switchSpellbookTab(SpellType.spell);
-						}else if(mouse.target.type==TargetType.structureTab){
-							switchSpellbookTab(SpellType.structure);
 						}
 						break;
 					case Mouse.Status.dragging:

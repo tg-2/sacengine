@@ -28,6 +28,7 @@ bool isApplicable(SpelFlags sflags,TargetFlags tflags)in{
 }do{
 	with(SpelFlags) with(TargetFlags){
 		if(tflags&untargettable) return false;
+		if(tflags==TargetFlags.none) return false;
 		if(!(sflags&targetWizards)&&(tflags&wizard)) return false;
 		if(!(sflags&targetSouls)&&(tflags&soul)) return false;
 		if(!(sflags&targetCreatures)&&(tflags&creature)) return false;
