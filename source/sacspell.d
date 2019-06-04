@@ -14,7 +14,7 @@ enum TargetFlags{
 	ground=1<<14,
 	flying=1<<15,
 	owned=1<<19,
-	 // TODO: figure out SpelFlag for these:
+	 // TODO: figure out flag for these:
 	hero=1<<20,
 	shielded=1<<21,
 	// TODO: figure out building flag for this:
@@ -29,19 +29,19 @@ bool isApplicable(SpelFlags sflags,TargetFlags tflags)in{
 	with(SpelFlags) with(TargetFlags){
 		if(tflags&untargettable) return false;
 		if(tflags==TargetFlags.none) return false;
+		if((sflags&targetGround)&&(tflags&ground)) return true;
 		if(!(sflags&targetWizards)&&(tflags&wizard)) return false;
 		if(!(sflags&targetSouls)&&(tflags&soul)) return false;
 		if(!(sflags&targetCreatures)&&(tflags&creature)) return false;
 		if(!(sflags&targetCorpses)&&(tflags&corpse)) return false;
 		if(!(sflags&targetStructures)&&(tflags&building)) return false;
 		if((sflags&onlyManafounts)&!(tflags&manafount)) return false;
-		if((sflags&disallowEnemy)&(tflags&enemy)) return false;
-		if((sflags&disallowAlly)&(tflags&ally)) return false;
-		if(!(sflags&targetGround)&&(tflags&ground)) return false;
+		if(sflags&requireAlly&&!(tflags&ally)) return false;
+		if(sflags&requireEnemy&&!(tflags&enemy)) return false;
 		if((sflags&disallowFlying)&&(tflags&flying)) return false;
-		if(sflags&onlyCreatures&&!(tflags&creature)) return false;
-		if(sflags&onlyOwned&&!(tflags&owned)) return false;
-		// TODO: shield/hero
+		if((sflags&onlyCreatures)&&!(tflags&creature)) return false;
+		if((sflags&onlyOwned)&&!(tflags&owned)) return false;
+		if((sflags&disallowHero)&&(tflags&hero)) return false;
 	}
 	return true;
 }
@@ -66,11 +66,21 @@ class SacSpell(B){
 	float castingTime;
 	float cooldown;
 
-	@property bool stationary(){ return spel?!!(spel.flags2&SpelFlags2.stationaryCasting):true; }
-	@property bool requiresTarget(){ return spel?!!spel.flags:false; }
-	@property bool nearBuilding(){ return spel?!!(spel.flags2&SpelFlags2.nearBuilding):false; }
-	@property bool nearEnemyAltar(){ return spel?!!(spel.flags2&SpelFlags2.nearEnemyAltar):false; }
-	@property bool connectedToConversion(){ return spel?!!(spel.flags2&SpelFlags2.connectedToConversion):false; }
+	SpelFlags flags;
+	SpelFlags1 flags1;
+	SpelFlags2 flags2;
+
+	@property bool stationary(){ return !!(flags2&SpelFlags2.stationaryCasting); }
+	@property bool requiresTarget(){ return !!flags; }
+	@property bool nearBuilding(){ return !!(flags2&SpelFlags2.nearBuilding); }
+	@property bool nearEnemyAltar(){ return !!(flags2&SpelFlags2.nearEnemyAltar); }
+	@property bool connectedToConversion(){ return !!(flags2&SpelFlags2.connectedToConversion); }
+
+	bool isApplicable(TargetFlags tflags){
+		if(!.isApplicable(flags,tflags)) return false;
+		// TODO: consider other data, such as flags1 and flags2
+		return true;
+	}
 
 	private this(char[4] tag){
 		this.tag=tag;
@@ -92,6 +102,9 @@ class SacSpell(B){
 			range=arg.range;
 			castingTime=arg.castingTime/60.0f; // TODO
 			cooldown=arg.cooldown/60.0f; // TODO
+
+			static if(is(typeof(arg.flags))) flags=arg.flags;
+			static if(is(typeof(arg.flags2))) flags2=arg.flags2;
 		}
 		if(cre8) setStats(cre8);
 		else if(spel) setStats(spel);

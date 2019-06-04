@@ -758,7 +758,17 @@ final class SacScene: Scene{
 				material.backend.setTransformationScaled(iconPosition, Quaternionf.identity(), scaling, rc);
 				quad.render(rc);
 				material.unbind(rc);
-			}else{}// TODO
+			}else{
+				hudMaterialBackend.bind(null,rc);
+				hudMaterialBackend.bindDiffuse(sacHud.pages);
+				ShapeSubQuad[3] pages=[creaturePage,spellPage,structurePage];
+				auto page=pages[spellbookTab];
+				hudMaterialBackend.setTransformationScaled(iconPosition, Quaternionf.identity(), scaling, rc);
+				page.render(rc);
+				hudMaterialBackend.bindDiffuse(mouse.spell.icon);
+				quad.render(rc);
+				hudMaterialBackend.unbind(null,rc);
+			}
 			if(!mouse.targetValid){
 				auto material=sacCursor.invalidTargetIconMaterial;
 				material.bind(rc);
@@ -1153,6 +1163,21 @@ final class SacScene: Scene{
 		if(audio) audio.playSound("okub");
 		spellbookTab=newTab;
 	}
+	void selectSpell(SacSpell!DagonBackend newSpell,bool playAudio=true){
+		if(mouse.status==Mouse.Status.icon&&playAudio&&audio) audio.playSound("kabI");
+		import std.random:uniform; // TODO: put selected spells in game state?
+		auto whichClick=uniform(0,2);
+		if(playAudio&&audio) audio.playSound(commandAppliedSoundTags[whichClick]);
+		// state.current.movingObjectById!((ref obj,castingTime,state){ obj.startCasting(cast(int)(castingTime*updateFPS),state); })(camera.target,newSpell.castingTime,state.current);
+		if(newSpell.flags){
+			mouse.status=Mouse.Status.icon;
+			mouse.icon=MouseIcon.spell;
+			mouse.spell=newSpell;
+		}else{
+			mouse.status=Mouse.Status.standard;
+			// TODO: cast spell
+		}
+	}
 	int numSpells=0;
 	bool isOnSpellbook(Vector2f center){
 		auto tabScaling=hudScaling*Vector2f(3*48.0f,48.0f);
@@ -1172,16 +1197,21 @@ final class SacScene: Scene{
 
 		return false;
 	}
-	void updateSpellbookTarget(Target target,Vector2f position,Vector2f scaling){
+	void updateSpellbookTarget(Target target,SacSpell!DagonBackend targetSpell,Vector2f position,Vector2f scaling){
 		if(!mouse.onSpellbook) return;
 		auto topLeft=position;
 		auto bottomRight=position+scaling;
 		if(floor(topLeft.x)<=mouse.x&&mouse.x<=ceil(bottomRight.x)
-		   && floor(topLeft.y)<=mouse.y&&mouse.y<=ceil(bottomRight.y))
+		   && floor(topLeft.y)<=mouse.y&&mouse.y<=ceil(bottomRight.y)){
 			spellbookTarget=target;
+			spellbookTargetSpell=targetSpell;
+		}
 	}
 	void renderSpellbook(RenderingContext* rc){
-		if(mouse.onSpellbook) spellbookTarget=Target.init;
+		if(mouse.onSpellbook){
+			spellbookTarget=Target.init;
+			spellbookTargetSpell=null;
+		}
 		auto hudScaling=this.hudScaling;
 		auto spells=state.current.getSpells(camera.target).filter!(x=>x.spell.type==spellbookTab);
 		numSpells=cast(int)spells.walkLength;
@@ -1208,7 +1238,7 @@ final class SacScene: Scene{
 		foreach(i,tab;tabs){
 			auto tabPosition=tabsPosition+hudScaling*Vector3f(48.0f,0.0f,0.0f)*i;
 			auto target=Target(cast(TargetType)(TargetType.creatureTab+i),0,Vector3f.init,TargetLocation.spellbook);
-			updateSpellbookTarget(target,tabPosition.xy,tabScaling.xy);
+			updateSpellbookTarget(target,null,tabPosition.xy,tabScaling.xy);
 			material.backend.setTransformationScaled(tabPosition,Quaternionf.identity(),tabScaling,rc);
 			tab.render(rc);
 		}
@@ -1228,6 +1258,8 @@ final class SacScene: Scene{
 		foreach(i,spell;enumerate(spells)){
 			auto spellScaling=hudScaling*Vector3f(32.0f,32.0f,0.0f);
 			auto spellPosition=Vector3f(i*spellScaling.x,height-spellScaling.y,0.0f);
+			auto target=Target(TargetType.spell,0,Vector3f.init,TargetLocation.spellbook);
+			updateSpellbookTarget(target,spell.spell,spellPosition.xy,spellScaling.xy);
 			hudMaterialBackend.setTransformationScaled(spellPosition,Quaternionf.identity(),spellScaling,rc);
 			hudMaterialBackend.bindDiffuse(spell.spell.icon);
 			quad.render(rc);
@@ -1574,6 +1606,8 @@ final class SacScene: Scene{
 						switchSpellbookTab(SpellType.spell);
 					}else if(mouse.target.type==TargetType.structureTab){
 						switchSpellbookTab(SpellType.structure);
+					}else if(mouse.target.type==TargetType.spell){
+						selectSpell(mouse.targetSpell);
 					}else done=false;
 				}else done=false;
 				if(!done) final switch(mouse.status){
@@ -1965,9 +1999,11 @@ final class SacScene: Scene{
 		}
 		Status status;
 		MouseIcon icon;
+		SacSpell!DagonBackend spell;
 		bool additiveSelect=false;
 		auto cursor=Cursor.normal;
 		Target target;
+		SacSpell!DagonBackend targetSpell;
 		bool targetValid;
 		bool inHitbox=false;
 		enum Location{
@@ -1989,8 +2025,7 @@ final class SacScene: Scene{
 		final switch(mouse.icon){
 			case MouseIcon.guard: return isApplicable(orderSpelFlags,summary);
 			case MouseIcon.attack: return isApplicable(orderSpelFlags,summary);
-			case MouseIcon.spell:
-				return false; // TODO
+			case MouseIcon.spell: return mouse.spell.isApplicable(summary);
 		}
 	}
 	SacCursor!DagonBackend sacCursor;
@@ -2005,6 +2040,7 @@ final class SacScene: Scene{
 		eventManager.setMouse(cast(int)mouse.x, cast(int)mouse.y);
 	}
 	auto spellbookTarget=Target.init;
+	SacSpell!DagonBackend spellbookTargetSpell=null;
 	auto selectionRosterTarget=Target.init;
 	auto minimapTarget=Target.init;
 	Target computeMouseTarget(){
@@ -2042,29 +2078,32 @@ final class SacScene: Scene{
 	enum targetCacheDuration=0.6f*updateFPS;
 	void updateMouseTarget(){
 		auto target=computeMouseTarget();
-		auto summary=target.summarize!true(renderSide,state.current);
+		auto summary=target.summarize(renderSide,state.current);
 		auto targetValid=mouseTargetValid(summary);
 		static immutable importantTargets=[TargetType.creature,TargetType.soul];
 		if(cachedTarget.id!=0&&!state.current.isValidId(cachedTarget.id,cachedTarget.type)) cachedTarget=Target.init;
-		if(!importantTargets.canFind(target.type)&&!(target.location==TargetLocation.minimap&&target.type==TargetType.building)&&
-		   !target.location.among(TargetLocation.selectionRoster,TargetLocation.spellbook)){
-			auto delta=cachedTarget.location!=TargetLocation.minimap?targetCacheDelta:minimapTargetCacheDelta;
-			if(cachedTarget.type!=TargetType.none){
-				if((mouse.inHitbox || abs(cachedTargetX-mouse.x)<delta &&
-				    abs(cachedTargetY-mouse.y)<delta)&&
-				   cachedTargetFrame+(mouse.inHitbox?2:1)*targetCacheDuration>state.current.frame){
-					target=cachedTarget;
-					summary=target.summarize!true(renderSide,state.current);
-					targetValid=mouseTargetValid(summary);
-				}else cachedTarget=Target.init;
+		if(target.location.among(TargetLocation.scene,TargetLocation.minimap)){
+			if(!importantTargets.canFind(target.type)&&!(target.location==TargetLocation.minimap&&target.type==TargetType.building)){
+				auto delta=cachedTarget.location!=TargetLocation.minimap?targetCacheDelta:minimapTargetCacheDelta;
+				if(cachedTarget.type!=TargetType.none){
+					if((mouse.inHitbox || abs(cachedTargetX-mouse.x)<delta &&
+					    abs(cachedTargetY-mouse.y)<delta)&&
+					   cachedTargetFrame+(mouse.inHitbox?2:1)*targetCacheDuration>state.current.frame){
+						target=cachedTarget;
+						summary=target.summarize(renderSide,state.current);
+						targetValid=mouseTargetValid(summary);
+					}else cachedTarget=Target.init;
+				}
+			}else if(targetValid){
+				cachedTarget=target;
+				cachedTargetX=mouse.x;
+				cachedTargetY=mouse.y;
+				cachedTargetFrame=state.current.frame;
 			}
-		}else if(targetValid){
-			cachedTarget=target;
-			cachedTargetX=mouse.x;
-			cachedTargetY=mouse.y;
-			cachedTargetFrame=state.current.frame;
 		}
 		mouse.target=target;
+		if(mouse.target.type==TargetType.spell)
+			mouse.targetSpell=spellbookTargetSpell;
 		mouse.targetValid=targetValid;
 		with(Cursor)
 			mouse.showFrame=targetValid && target.location==TargetLocation.scene &&

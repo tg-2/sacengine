@@ -19,7 +19,7 @@ struct Cre8{
 	uint manaCost;
 	float range; // unused
 	uint unknown5; // unused. but it seems spell fails to cast if unknown5>5.
-	ushort unknown6; // ?
+	ushort unknown6; // larger for bigger creatures
 	ushort castingTime;
 	ushort spellOrder;
 	ushort unknown9; // unused?
@@ -168,13 +168,28 @@ enum SpelFlags:uint{
 	targetCorpses=1<<3,
 	targetStructures=1<<4,
 	onlyManafounts=1<<11,
-	disallowEnemy=1<<12,
-	disallowAlly=1<<13,
+	requireAlly=1<<12,
+	requireEnemy=1<<13,
 	targetGround=1<<14,
 	disallowFlying=1<<16,
 	onlyCreatures=1<<18, // redundant?
 	onlyOwned=1<<19,
-	unknown0=1<<20, // TODO: test if this is "inapplicable to hero creature"
+	disallowHero=1<<20,
+}
+
+enum SpelFlags1:ushort{
+	none=0,
+	basicAttackSpell=1<<0,
+	unknown1=1<<1,
+	shield=1<<4,
+	unknown5=1<<5,
+	unknown6=1<<6,
+	unknown10=1<<10,
+	crowdControl=1<<11,
+	unknown12=1<<12,
+	unknown13=1<<5,
+	unknown14=1<<14,
+	unknown15=1<<15,
 }
 
 enum SpelFlags2:uint{
@@ -183,6 +198,7 @@ enum SpelFlags2:uint{
 	connectedToConversion=1<<10,
 	stationaryCasting=1<<25,
 }
+
 
 struct Spel{
 	char[4] id0;
@@ -193,7 +209,7 @@ struct Spel{
 	uint cooldown;
 	uint manaCost;
 	float range;
-	uint flags;
+	SpelFlags flags;
 	ushort unknown6; // ?
 	ushort castingTime;
 	ushort spellOrder;
@@ -208,8 +224,8 @@ struct Spel{
 	float duration;
 	float effectRange;
 	ushort unknown16; // unused?
-	ushort unknown17; // ?
-	uint flags2;
+	SpelFlags1 flags1;
+	SpelFlags2 flags2;
 	uint amount2; // seems to be the same as amount most of the time
 	uint unknown20;
 	uint unknown21; // unused?
@@ -252,7 +268,7 @@ struct Strc{
 	uint cooldown;
 	uint manaCost;
 	float range;
-	uint flags;
+	SpelFlags flags;
 	ushort unknown6; // ?
 	ushort castingTime;
 	ushort spellOrder;

@@ -82,9 +82,23 @@ struct CreatureState{
 	int timer2; // used for: time until incantation finished
 }
 
+struct OrderTarget{
+	TargetType type;
+	int id;
+	Vector3f position;
+	this(TargetType type,int id,Vector3f position){
+		this.type=type;
+		this.id=id;
+		this.position=position;
+	}
+	this(Target target){
+		this(target.type,target.id,target.position);
+	}
+}
+
 struct Order{
 	CommandType command;
-	Target target; // TODO: don't store TargetLocation in creature state
+	OrderTarget target; // TODO: don't store TargetLocation in creature state
 	float targetFacing=0.0f;
 	auto formationOffset=Vector2f(0.0f,0.0f);
 }
@@ -1854,7 +1868,7 @@ int spawn(T=Creature,B)(int casterId,char[4] tag,int flags,ObjectState!B state){
 		auto obj=MovingObject!B(curObj,position,rotation,AnimationState.disoriented,0,creatureState,curObj.creatureStats(flags),caster.side);
 		obj.setCreatureState(state);
 		obj.updateCreaturePosition(state);
-		auto ord=Order(CommandType.retreat,Target(TargetType.creature,caster.id,caster.position,TargetLocation.none));
+		auto ord=Order(CommandType.retreat,OrderTarget(TargetType.creature,caster.id,caster.position));
 		obj.order(ord,state,caster.side);
 		return state.addObject(obj);
 	}
@@ -2143,7 +2157,7 @@ void startCasting(B)(ref MovingObject!B object,int numFrames,ObjectState!B state
 	if(!object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving)) return;
 	object.creatureState.mode=object.creatureState.mode==CreatureMode.idle?CreatureMode.casting:CreatureMode.castingMoving;
 	object.creatureState.timer=numFrames;
-	object.creatureState.timer2=0;
+	object.creatureState.timer2=playSoundTypeAt!true(object.sacObject,object.id,SoundType.incantation,state)+updateFPS/10;
 	object.setCreatureState(state);
 }
 
@@ -3947,7 +3961,7 @@ final class ObjectState(B){ // (update logic)
 				// TODO: add command indicators to scene
 				Order ord;
 				ord.command=command.type;
-				ord.target=command.target;
+				ord.target=OrderTarget(command.target);
 				ord.targetFacing=command.targetFacing;
 				ord.formationOffset=formationOffset;
 				auto color=CommandConeColor.white;
@@ -4047,7 +4061,7 @@ final class ObjectState(B){ // (update logic)
 	}
 	auto getSpells(int id){
 		auto wizard=getWizard(id);
-		static bool pred(ref SpellInfo!B spell,int level){ return true;/+spell.level<=level;+/ }
+		static bool pred(ref SpellInfo!B spell,int level){ return spell.level<=level; }
 		static bool pred2(T)(T x){ return pred(x[]); }
 		static first(T)(T x){ return x[0]; }
 		if(!wizard) return zip(typeof(wizard.getSpells()).init,repeat(0)).filter!pred2.map!first;
@@ -4543,7 +4557,7 @@ TargetFlags summarize(bool simplified=false,B)(ref Target target,int side,Object
 						case Stance.enemy: result|=TargetFlags.enemy; break;
 					}
 					static if(isMoving) if(stance!=Stance.enemy&&obj.creatureStats.flags&Flags.rescuable) result|=TargetFlags.rescuable;
-				}else result|=TargetFlags.owned;
+				}else result|=TargetFlags.owned|TargetFlags.ally;
 				static if(isMoving&&!simplified){
 					enum flyingLimit=1.0f; // TODO: measure this.
 					if(!state.isOnGround(obj.position)||obj.hitbox[0].z>=state.getGroundHeight(obj.position)+flyingLimit) result|=TargetFlags.flying;
@@ -4551,6 +4565,7 @@ TargetFlags summarize(bool simplified=false,B)(ref Target target,int side,Object
 						result&=~TargetFlags.creature;
 						result|=TargetFlags.wizard;
 					}
+					// TODO: shield/hero
 				}
 				return result;
 			}
@@ -4558,15 +4573,8 @@ TargetFlags summarize(bool simplified=false,B)(ref Target target,int side,Object
 		case soul:
 			auto result=TargetFlags.soul;
 			auto objSide=soulSide(target.id,state);
-			if(objSide==-1||objSide==side) result|=TargetFlags.owned; // TODO: ok? (not exactly what is going on with free souls.)
-			else{
-				auto stance=state.sides.getStance(side,objSide);
-				final switch(stance){
-					case Stance.neutral: break;
-					case Stance.ally: result|=TargetFlags.ally; break;
-					case Stance.enemy: result|=TargetFlags.enemy; break;
-				}
-			}
+			if(objSide==-1||objSide==side) result|=TargetFlags.owned|TargetFlags.ally; // TODO: ok? (not exactly what is going on with free souls.)
+			else result|=TargetFlags.enemy;
 			return result;
 	}
 }
