@@ -15,6 +15,32 @@ enum Theme{
 	menu,
 	none,
 }
+
+enum AdvisorHelpSound:char[4]{
+	altarBeingDesecrated="00DA",
+	armyHasBeenSlaughtered="10DA",
+	buildingUnderAttack="20DA",
+	buildingInRuin="30DA",
+	lowOnHealth="40DA",
+	creaturesUnderAttack="50DA",
+	creaturesAreDying="60DA",
+	enemyWizardApproachingAltar="70DA",
+	enemySighted="80DA",
+	enemiesFallBeforeUs="90DA",
+	invalidTarget="01DA",
+	lowOnMana="11DA",
+	allManahoarsSlaughtered="21DA",
+	allManalithsDestroyed="31DA",
+	mustBeNearEnemyAltar="51DA",
+	needMoreSouls="81DA",
+	outOfRange="91DA",
+	sacrificeComplete="02DA",
+	someoneSeeksAnAudience="12DA",
+	notReady="22DA",
+	wizardUnderAttack="32DA",
+	desecrationInterrupted="42DA",
+}
+
 final class AudioBackend(B){
 	MP3[Theme.max] themes;
 	MP3 sacrifice1;

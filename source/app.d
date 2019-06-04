@@ -146,7 +146,7 @@ int main(string[] args){
 					auto id=state.addObject(obj);
 					scene.focusCamera(id);
 					auto spellbook=getDefaultSpellbook!B(options.god);
-					state.addWizard(makeWizard(id,9,spellbook));
+					state.addWizard(makeWizard(id,9,12,spellbook,state));
 				}
 			})(state.current,backend.scene,&flag,options);
 			state.commit();

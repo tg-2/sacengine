@@ -18,7 +18,7 @@ enum TargetFlags{
 	hero=1<<20,
 	shielded=1<<21,
 	// TODO: figure out building flag for this:
-	untargettable=1<<22,
+	untargetable=1<<22,
 	// irrelevant for spell targetting:
 	rescuable,
 }
@@ -27,7 +27,7 @@ bool isApplicable(SpelFlags sflags,TargetFlags tflags)in{
 	assert(sflags);
 }do{
 	with(SpelFlags) with(TargetFlags){
-		if(tflags&untargettable) return false;
+		if(tflags&untargetable) return false;
 		if(tflags==TargetFlags.none) return false;
 		if((sflags&targetGround)&&(tflags&ground)) return true;
 		if(!(sflags&targetWizards)&&(tflags&wizard)) return false;
@@ -35,7 +35,7 @@ bool isApplicable(SpelFlags sflags,TargetFlags tflags)in{
 		if(!(sflags&targetCreatures)&&(tflags&creature)) return false;
 		if(!(sflags&targetCorpses)&&(tflags&corpse)) return false;
 		if(!(sflags&targetStructures)&&(tflags&building)) return false;
-		if((sflags&onlyManafounts)&!(tflags&manafount)) return false;
+		if((sflags&onlyManafounts)&&!(tflags&manafount)) return false;
 		if(sflags&requireAlly&&!(tflags&ally)) return false;
 		if(sflags&requireEnemy&&!(tflags&enemy)) return false;
 		if((sflags&disallowFlying)&&(tflags&flying)) return false;
@@ -63,6 +63,7 @@ class SacSpell(B){
 	ushort spellOrder;
 	float range;
 	float manaCost;
+	int soulCost;
 	float castingTime;
 	float cooldown;
 
@@ -105,9 +106,12 @@ class SacSpell(B){
 
 			static if(is(typeof(arg.flags))) flags=arg.flags;
 			static if(is(typeof(arg.flags2))) flags2=arg.flags2;
+			else flags2|=SpelFlags2.stationaryCasting;
 		}
-		if(cre8) setStats(cre8);
-		else if(spel) setStats(spel);
+		if(cre8){
+			setStats(cre8);
+			soulCost=cre8.souls;
+		}else if(spel) setStats(spel);
 		else if(strc) setStats(strc);
 	}
 	static SacSpell!B[char[4]] spells;

@@ -27,6 +27,7 @@ enum CreatureMode{
 	moving,
 	dying,
 	dead,
+	preSpawning,
 	spawning,
 	reviving,
 	fastReviving,
@@ -37,11 +38,15 @@ enum CreatureMode{
 	stunned,
 	cower,
 	casting,
+	stationaryCasting,
 	castingMoving,
 }
 
 bool isMoving(CreatureMode mode){
 	with(CreatureMode) return !!mode.among(moving,meleeMoving,castingMoving);
+}
+bool isCasting(CreatureMode mode){
+	with(CreatureMode) return !!mode.among(casting,stationaryCasting,castingMoving);
 }
 
 enum CreatureMovement{
@@ -517,10 +522,10 @@ Vector3f[2] hitbox2d(B)(ref Soul!B soul,Matrix4f modelViewProjectionMatrix){
 	return [transform(modelViewProjectionMatrix,topLeft),transform(modelViewProjectionMatrix,bottomRight)];
 }
 
-enum BuildingFlags{
+enum AdditionalBuildingFlags{
 	none=0,
+	inactive=32, // TODO: make sure this doesn't clash with anything
 }
-
 struct Building(B){
 	immutable(Bldg)* bldg; // TODO: replace by SacBuilding class
 	int id=0;
@@ -721,7 +726,7 @@ struct MovingObjects(B,RenderMode mode){
 	}
 	void opIndexAssign(MovingObject!B obj,int i){
 		assert(obj.sacObject is sacObject);
-		assert(ids[i]==obj.id);
+		ids[i]=obj.id;
 		positions[i]=obj.position;
 		rotations[i]=obj.rotation;
 		animationStates[i]=obj.animationState;
@@ -913,6 +918,8 @@ struct SpellInfo(B){
 	SacSpell!B spell;
 	int level;
 	float cooldown;
+	bool ready=true;
+	int readyFrame=16*updateAnimFactor;
 }
 struct Spellbook(B){
 	Array!(SpellInfo!B) spells;
@@ -929,6 +936,18 @@ struct Spellbook(B){
 	SpellInfo!B[] getSpells(){
 		return spells.data;
 	}
+}
+enum SpellStatus{
+	inexistent,
+	invalidTarget,
+	lowOnMana,
+	mustBeNearBuilding,
+	mustBeNearEnemyAltar,
+	mustBeConnectedToConversion,
+	needMoreSouls,
+	outOfRange,
+	notReady,
+	ready,
 }
 
 Spellbook!B getDefaultSpellbook(B)(God god){
@@ -967,12 +986,14 @@ Spellbook!B getDefaultSpellbook(B)(God god){
 struct WizardInfo(B){
 	int id;
 	int level;
+	int souls;
 	float experience;
 	Spellbook!B spellbook;
 
 	void opAssign(ref WizardInfo!B rhs){
 		id=rhs.id;
 		level=rhs.level;
+		souls=rhs.souls;
 		experience=rhs.experience;
 		spellbook=rhs.spellbook;
 	}
@@ -983,8 +1004,15 @@ struct WizardInfo(B){
 		return spellbook.getSpells();
 	}
 }
-WizardInfo!B makeWizard(B)(int id,int level,Spellbook!B spellbook){
-	return WizardInfo!B(id,level,0.0f,spellbook);
+WizardInfo!B makeWizard(B)(int id,int level,int souls,Spellbook!B spellbook,ObjectState!B state){
+	state.movingObjectById!((ref wizard,level,state){
+		wizard.creatureStats.maxHealth+=50.0f*level;
+		wizard.creatureStats.health+=50.0f*level;
+		wizard.creatureStats.mana+=100*level;
+		wizard.creatureStats.maxMana+=100*level;
+		// TODO: boons
+	})(id,level,state);
+	return WizardInfo!B(id,level,souls,0.0f,spellbook);
 }
 struct WizardInfos(B){
 	Array!(WizardInfo!B) wizards;
@@ -1092,6 +1120,11 @@ struct Explosion(B){
 	float scale,maxScale,expansionSpeed;
 	int frame;
 }
+struct CreatureCasting(B){
+	int wizard;
+	int creature;
+	float manaCostPerFrame;
+}
 struct Effects(B){
 	Array!(Debris!B) debris;
 	void addEffect(Debris!B debris){
@@ -1103,15 +1136,24 @@ struct Effects(B){
 	}
 	Array!(Explosion!B) explosions;
 	void addEffect(Explosion!B explosion){
-		this.explosions~=explosion;
+		explosions~=explosion;
 	}
 	void removeExplosion(int i){
 		if(i+1<explosions.length) swap(explosions[i],explosions[$-1]);
 		explosions.length=explosions.length-1;
 	}
+	Array!(CreatureCasting!B) creatureCasts;
+	void addEffect(CreatureCasting!B creatureCast){
+		creatureCasts~=creatureCast;
+	}
+	void removeCreatureCasting(int i){
+		if(i+1<creatureCasts.length) swap(creatureCasts[i],creatureCasts[$-1]);
+		creatureCasts.length=creatureCasts.length-1;
+	}
 	void opAssign(ref Effects!B rhs){
 		assignArray(debris,rhs.debris);
 		assignArray(explosions,rhs.explosions);
+		assignArray(creatureCasts,rhs.creatureCasts);
 	}
 }
 
@@ -1494,7 +1536,7 @@ auto ref movingObjectById(alias f,alias nonMoving=fail,B,T...)(ref ObjectManager
 }do{
 	auto nid=objectManager.ids[id-1];
 	enum byRef=!is(typeof(f(MovingObject!B.init,args))); // TODO: find a better way to check whether argument taken by reference!
-	if(nid.type<numMoving){
+	if(nid.type<numMoving&&nid.index!=-1){
 		final switch(nid.mode){ // TODO: get rid of code duplication
 			case RenderMode.opaque:
 				static if(byRef){
@@ -1516,7 +1558,7 @@ auto ref staticObjectById(alias f,alias nonStatic=fail,B,T...)(ref ObjectManager
 }do{
 	auto nid=objectManager.ids[id-1];
 	enum byRef=!is(typeof(f(StaticObject!B.init,args))); // TODO: find a better way to check whether argument taken by reference!
-	if(nid.type<numMoving) return nonStatic();
+	if(nid.type<numMoving||nid.index==-1) return nonStatic();
 	else if(nid.type<numMoving+numStatic){
 		assert(nid.mode==RenderMode.opaque);
 		assert(nid.type<numMoving+numStatic);
@@ -1531,7 +1573,7 @@ auto ref soulById(alias f,alias noSoul=fail,B,T...)(ref ObjectManager!B objectMa
 	assert(id>0);
 }do{
 	auto nid=objectManager.ids[id-1];
-	if(nid.type!=ObjectType.soul) return noSoul();
+	if(nid.type!=ObjectType.soul||nid.index==-1) return noSoul();
 	enum byRef=!is(typeof(f(Soul!B.init,args))); // TODO: find a better way to check whether argument taken by reference!
 	static if(byRef){
 		auto soul=objectManager.opaqueObjects.souls[nid.index];
@@ -1543,7 +1585,7 @@ auto ref buildingById(alias f,alias noBuilding=fail,B,T...)(ref ObjectManager!B 
 	assert(id>0);
 }do{
 	auto nid=objectManager.ids[id-1];
-	if(nid.type!=ObjectType.building) return noBuilding();
+	if(nid.type!=ObjectType.building||nid.index==-1) return noBuilding();
 	enum byRef=!is(typeof(f(Building!B.init,args))); // TODO: find a better way to check whether argument taken by reference!
 	static if(byRef){
 		auto building=objectManager.opaqueObjects.buildings[nid.index];
@@ -1556,7 +1598,7 @@ auto ref buildingByStaticObjectId(alias f,alias nonStatic=fail,B,T...)(ref Objec
 }do{
 	auto nid=objectManager.ids[id-1];
 	enum byRef=!is(typeof(f(StaticObject!B.init,args))); // TODO: find a better way to check whether argument taken by reference!
-	if(nid.type<numMoving) return nonStatic();
+	if(nid.type<numMoving||nid.index==-1) return nonStatic();
 	else if(nid.type<numMoving+numStatic){
 		assert(nid.mode==RenderMode.opaque);
 		assert(nid.type<numMoving+numStatic);
@@ -1667,7 +1709,7 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 				}
 			}
 			break;
-		case CreatureMode.spawning:
+		case CreatureMode.preSpawning,CreatureMode.spawning:
 			object.frame=0;
 			if(sacObject.hasAnimationState(AnimationState.disoriented))
 				object.animationState=AnimationState.disoriented;
@@ -1772,9 +1814,9 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 				object.animationState=sacObject.hasAnimationState(AnimationState.talkCower)?AnimationState.talkCower:AnimationState.idle1;
 			}
 			break;
-		case CreatureMode.casting,CreatureMode.castingMoving:
+		case CreatureMode.casting,CreatureMode.stationaryCasting,CreatureMode.castingMoving:
 			object.frame=0;
-			object.animationState=object.creatureState.mode==CreatureMode.casting?AnimationState.spellcastStart:AnimationState.runSpellcastStart;
+			object.animationState=object.creatureState.mode==CreatureMode.castingMoving?AnimationState.runSpellcastStart:AnimationState.spellcastStart;
 			break;
 	}
 }
@@ -1796,7 +1838,7 @@ bool pickNextAnimation(B)(ref MovingObject!B object,immutable(AnimationState)[] 
 }
 
 void startIdling(B)(ref MovingObject!B object, ObjectState!B state){
-	if(!object.creatureState.mode.among(CreatureMode.moving,CreatureMode.spawning,CreatureMode.reviving,CreatureMode.fastReviving,CreatureMode.takeoff,CreatureMode.landing,CreatureMode.meleeMoving,CreatureMode.meleeAttacking,CreatureMode.stunned,CreatureMode.casting,CreatureMode.castingMoving))
+	if(!object.creatureState.mode.among(CreatureMode.moving,CreatureMode.spawning,CreatureMode.reviving,CreatureMode.fastReviving,CreatureMode.takeoff,CreatureMode.landing,CreatureMode.meleeMoving,CreatureMode.meleeAttacking,CreatureMode.stunned,CreatureMode.casting,CreatureMode.stationaryCasting,CreatureMode.castingMoving))
 		return;
 	object.creatureState.mode=CreatureMode.idle;
 	object.setCreatureState(state);
@@ -1853,35 +1895,71 @@ void createSoul(B)(ref MovingObject!B object, ObjectState!B state){
 	object.soulId=state.addObject(Soul!B(object.id,object.sacObject.numSouls,object.soulPosition,SoulState.normal));
 }
 
-int spawn(T=Creature,B)(int casterId,char[4] tag,int flags,ObjectState!B state){
-	static int spawnImpl(ref MovingObject!B caster,char[4] tag,int flags,ObjectState!B state){
-		auto curObj=SacObject!B.getSAXS!T(tag);
-		auto position=caster.position;
-		auto mode=CreatureMode.spawning;
-		auto movement=CreatureMovement.flying;
-		auto facing=caster.creatureState.facing;
-		auto newPosition=position+rotate(facingQuaternion(facing),Vector3f(0.0f,6.0f,0.0f));
-		if(!state.isOnGround(position)||state.isOnGround(newPosition)) position=newPosition; // TODO: find closet ground to newPosition instead
-		position.z=state.getHeight(position);
-		auto creatureState=CreatureState(mode, movement, facing);
-		auto rotation=facingQuaternion(facing);
-		auto obj=MovingObject!B(curObj,position,rotation,AnimationState.disoriented,0,creatureState,curObj.creatureStats(flags),caster.side);
-		obj.setCreatureState(state);
-		obj.updateCreaturePosition(state);
-		auto ord=Order(CommandType.retreat,OrderTarget(TargetType.creature,caster.id,caster.position));
-		obj.order(ord,state,caster.side);
-		return state.addObject(obj);
+int spawn(T=Creature,B)(ref MovingObject!B caster,char[4] tag,int flags,ObjectState!B state,bool pre){
+	auto curObj=SacObject!B.getSAXS!T(tag);
+	auto position=caster.position;
+	auto mode=pre?CreatureMode.preSpawning:CreatureMode.spawning;
+	auto movement=CreatureMovement.flying;
+	auto facing=caster.creatureState.facing;
+	auto newPosition=position+rotate(facingQuaternion(facing),Vector3f(0.0f,6.0f,0.0f));
+	if(!state.isOnGround(position)||state.isOnGround(newPosition)) position=newPosition; // TODO: find closet ground to newPosition instead
+	position.z=state.getHeight(position);
+	auto creatureState=CreatureState(mode, movement, facing);
+	auto rotation=facingQuaternion(facing);
+	auto obj=MovingObject!B(curObj,position,rotation,AnimationState.disoriented,0,creatureState,curObj.creatureStats(flags),caster.side);
+	obj.setCreatureState(state);
+	obj.updateCreaturePosition(state);
+	auto ord=Order(CommandType.retreat,OrderTarget(TargetType.creature,caster.id,caster.position));
+	obj.order(ord,state,caster.side);
+	return state.addObject(obj);
+}
+int spawn(T=Creature,B)(int casterId,char[4] tag,int flags,ObjectState!B state,bool pre=true){
+	return state.movingObjectById!(.spawn,function int(){ assert(0); })(casterId,tag,flags,state,pre);
+}
+
+int makeBuilding(B)(ref MovingObjet!B caster,char[4] tag,int flags,int base,ObjectState!B state,bool pre=true)in{
+	assert(base>0);
+}do{
+	auto data=tag in bldgs;
+	enforce(!!data&&!(data.flags&BldgFlags.ground));
+	auto buildingId=current.addObject(Building!B(data,caster.side,flags,facing));
+	current.buildingById!((ref Building!B building){
+		if(flags&Flags.damaged) building.health/=10.0f;
+		if(flags&Flags.destroyed) building.health=0.0f;
+		foreach(ref component;data.components){
+			auto curObj=SacObject!B.getBLDG(flags&Flags.destroyed&&component.destroyed!="\0\0\0\0"?component.destroyed:component.tag);
+			auto offset=Vector3f(component.x,component.y,component.z);
+			offset=rotate(facingQuaternion(building.facing), offset);
+			auto cposition=position+offset;
+			if(!current.isOnGround(cposition)) continue;
+			cposition.z=current.getGroundHeight(cposition);
+			float facing=0.0f; // TODO: ok?
+			auto rotation=facingQuaternion(2*cast(float)PI/360.0f*(facing+component.facing));
+			building.componentIds~=current.addObject(StaticObject!B(curObj,building.id,cposition,rotation));
+		}
+		if(base) current.buildingById!((ref manafount,state){ putOnManafount(building,manafount,state); })(triggers.objectIds[base],current);
+	})(buildingId);
+}
+int makeBuilding(B)(int casterId,char[4] tag,int flags,int base,ObjectState!B state,bool pre=true)in{
+	assert(base>0);
+}do{
+	return state.movingObjectById!(.makeBuilding,function int(){ assert(0); })(casterId,tag,flags,state,pre);
+}
+
+bool canStun(B)(ref MovingObject!B object,ObjectState!B state){
+	final switch(object.creatureState.mode) with(CreatureMode){
+		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,cower,casting,stationaryCasting,castingMoving: return true;
+		case dying,dead,preSpawning,spawning,reviving,fastReviving,stunned: return false;
 	}
-	return state.movingObjectById!(spawnImpl,function int(){ assert(0); })(casterId,tag,flags,state);
 }
 
 void stun(B)(ref MovingObject!B object, ObjectState!B state){
-	with(CreatureMode) if(!object.creatureState.mode.among(idle,moving,takeoff,landing,meleeMoving,meleeAttacking)) return;
+	if(!object.canStun(state)) return;
 	object.creatureState.mode=CreatureMode.stunned;
 	object.setCreatureState(state);
 }
 void damageStun(B)(ref MovingObject!B object, Vector3f attackDirection, ObjectState!B state){
-	with(CreatureMode) if(!object.creatureState.mode.among(idle,moving,takeoff,landing,meleeMoving,meleeAttacking)) return;
+	if(!object.canStun(state)) return;
 	object.creatureState.mode=CreatureMode.stunned;
 	object.setCreatureState(state);
 	object.damageAnimation(attackDirection,state,false);
@@ -2014,8 +2092,8 @@ void damageAnimation(B)(ref MovingObject!B object,Vector3f attackDirection,Objec
 bool canDamage(B)(ref MovingObject!B object,ObjectState!B state){
 	if(object.creatureStats.flags&Flags.cannotDamage) return false;
 	final switch(object.creatureState.mode) with(CreatureMode){
-		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,castingMoving: return true;
-		case dying,dead,spawning,reviving,fastReviving: return false;
+		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving: return true;
+		case dying,dead,preSpawning,spawning,reviving,fastReviving: return false;
 	}
 }
 
@@ -2107,7 +2185,6 @@ void dealMeleeDamage(B)(ref Building!B building,ref MovingObject!B attacker,Obje
 
 void setMovement(B)(ref MovingObject!B object,MovementDirection direction,ObjectState!B state,int side=-1){
 	if(!object.canOrder(side,state)) return;
-	// TODO: check for conditions that immobilze a creature, such as vines or spell casting
 	if(object.creatureState.movement==CreatureMovement.flying &&
 	   direction==MovementDirection.backward &&
 	   !object.sacObject.canFlyBackward)
@@ -2131,7 +2208,6 @@ void startMovingBackward(B)(ref MovingObject!B object,ObjectState!B state,int si
 
 void setTurning(B)(ref MovingObject!B object,RotationDirection direction,ObjectState!B state,int side=-1){
 	if(!object.canOrder(side,state)) return;
-	// TODO: check for conditions that immobilze a creature, such as vines or spell casting
 	object.creatureState.rotationDirection=direction;
 	if(direction==RotationDirection.none) object.creatureState.rotationSpeedLimit=float.infinity;
 }
@@ -2152,13 +2228,37 @@ void startCowering(B)(ref MovingObject!B object,ObjectState!B state){
 	object.setCreatureState(state);
 }
 
-void startCasting(B)(ref MovingObject!B object,int numFrames,ObjectState!B state){
-	if(!object.isWizard) return;
-	if(!object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving)) return;
-	object.creatureState.mode=object.creatureState.mode==CreatureMode.idle?CreatureMode.casting:CreatureMode.castingMoving;
+bool startCasting(B)(ref MovingObject!B object,int numFrames,bool stationary,ObjectState!B state){
+	if(!object.isWizard) return false;
+	if(!object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving)) return false;
+	if(stationary) object.creatureState.mode=CreatureMode.stationaryCasting;
+	else object.creatureState.mode=object.creatureState.mode==CreatureMode.idle?CreatureMode.casting:CreatureMode.castingMoving;
 	object.creatureState.timer=numFrames;
 	object.creatureState.timer2=playSoundTypeAt!true(object.sacObject,object.id,SoundType.incantation,state)+updateFPS/10;
 	object.setCreatureState(state);
+	return true;
+}
+
+bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,ObjectState!B state){
+	if(state.spellStatus!false(object.id,spell,target)!=SpellStatus.ready) return false;
+	int numFrames=cast(int)ceil(updateFPS*spell.castingTime);
+	if(!object.startCasting(numFrames,spell.stationary,state))
+		return false;
+	auto manaCostPerFrame=spell.manaCost/numFrames;
+	final switch(spell.type){
+		case SpellType.creature:
+			assert(target==Target.init);
+			auto wizard=state.getWizard(object.id);
+			assert(wizard&&wizard.souls>=spell.soulCost);
+			wizard.souls-=spell.soulCost;
+			auto creature=spawn(object.id,spell.tag,0,state);
+			state.addEffect(CreatureCasting!B(object.id,creature,manaCostPerFrame));
+			return true;
+		case SpellType.spell:
+			return false; // TODO
+		case SpellType.structure:
+			return false; // TODO
+	}
 }
 
 bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state){
@@ -2491,8 +2591,8 @@ enum rotationSpeedLimitFactor=1.0f;
 
 bool requiresAI(CreatureMode mode){
 	with(CreatureMode) final switch(mode){
-		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,casting,castingMoving: return true;
-		case dying,dead,spawning,reviving,fastReviving,stunned,cower: return false;
+		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,casting,stationaryCasting,castingMoving: return true;
+		case dying,dead,preSpawning,spawning,reviving,fastReviving,stunned,cower: return false;
 	}
 }
 
@@ -2622,6 +2722,8 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 						break;
 				}
 			}
+			break;
+		case CreatureMode.preSpawning:
 			break;
 		case CreatureMode.spawning:
 			assert(object.animationState==AnimationState.disoriented);
@@ -2786,11 +2888,21 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 					object.animationState=AnimationState.spellcastEnd;
 				else object.animationState=AnimationState.spellcast;
 			}
+			goto Lcasting;
+		case CreatureMode.stationaryCasting:
+			if(object.animationState==AnimationState.spellcastEnd&&sacObject.castingTime(AnimationState.spellcastEnd)*updateAnimFactor<=object.frame){
+				object.creatureState.mode=CreatureMode.casting;
+				goto case CreatureMode.casting;
+			}
+		Lcasting:
 			object.frame+=1;
 			object.creatureState.timer-=1;
 			object.creatureState.timer2-=1;
-			if(object.creatureState.timer2<=0)
-				object.creatureState.timer2=playSoundTypeAt!true(sacObject,object.id,SoundType.incantation,state,object.creatureState.timer+updateFPS/2)+updateFPS/10;
+			if(object.creatureState.timer2<=0){
+				if(object.animationState.among(AnimationState.spellcastEnd,AnimationState.runSpellcastEnd))
+					object.creatureState.timer2=playSoundTypeAt!true(sacObject,object.id,SoundType.incantation,state,sacObject.castingTime(AnimationState.spellcastEnd)*updateAnimFactor-object.frame+updateFPS/2)+updateFPS/10;
+				else object.creatureState.timer2=playSoundTypeAt!true(sacObject,object.id,SoundType.incantation,state)+updateFPS/10;
+			}
 			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
 				object.frame=0;
 				if(object.animationState.among(AnimationState.spellcastEnd,AnimationState.runSpellcastEnd)){
@@ -3254,6 +3366,39 @@ bool updateExplosion(B)(ref Explosion!B explosion,ObjectState!B state){
 		return scale<maxScale;
 	}
 }
+enum CastingStatus{
+	underway,
+	interrupted,
+	finished,
+}
+void drainMana(B)(ref MovingObject!B wizard,float manaCostPerFrame,ObjectState!B state){
+	if(wizard.creatureState.timer>=0) // TODO: is this special for slime?eeeedddd
+		wizard.creatureStats.mana=max(0.0f,wizard.creatureStats.mana-manaCostPerFrame);
+}
+CastingStatus castStatus(B)(ref MovingObject!B wizard,ObjectState!B state){
+	with(wizard){
+		if(!creatureState.mode.isCasting) return CastingStatus.interrupted;
+		if(animationState.among(AnimationState.spellcastEnd,AnimationState.runSpellcastEnd)&&frame+1>=sacObject.castingTime(wizard.animationState)*updateAnimFactor)
+			return CastingStatus.finished;
+		return CastingStatus.underway;
+	}
+}
+bool updateCreatureCasting(B)(ref CreatureCasting!B creatureCast,ObjectState!B state){
+	with(creatureCast){
+		auto status=state.movingObjectById!((ref obj,cast_,state){
+			obj.drainMana(cast_.manaCostPerFrame,state);
+			return obj.castStatus(state);
+		},function CastingStatus(){ return CastingStatus.interrupted; })(creatureCast.wizard,creatureCast,state);
+		final switch(status){
+			case CastingStatus.underway: return true;
+			case CastingStatus.interrupted: state.removeObject(creatureCast.creature); return false;
+			case CastingStatus.finished: state.movingObjectById!((ref obj,state){
+				obj.creatureState.mode=CreatureMode.spawning;
+				state.addToSelection(obj.side,obj.id);
+			},function(){})(creatureCast.creature,state); return false;
+		}
+	}
+}
 void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.debris.length;){
 		if(!updateDebris(effects.debris[i],state)){
@@ -3265,6 +3410,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.explosions.length;){
 		if(!updateExplosion(effects.explosions[i],state)){
 			effects.removeExplosion(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.creatureCasts.length;){
+		if(!updateCreatureCasting(effects.creatureCasts[i],state)){
+			effects.removeCreatureCasting(i);
 			continue;
 		}
 		i++;
@@ -3428,18 +3580,33 @@ void animateManahoar(B)(Vector3f location, int side, float rate, ObjectState!B s
 	}
 }
 
-void updateSpellbook(B)(ref Spellbook!B spellbook,ObjectState!B state){
-	foreach(ref entry;spellbook.spells.data){
-		if(entry.cooldown>0.0f){
-			entry.cooldown=max(0.0f,entry.cooldown-1.0f/updateFPS);
-			if(entry.cooldown==0.0f){
-				// TODO: animate spell
-			}
-		}
-	}
+enum SpellbookSoundFlags{
+	none,
+	creatureTab=1,
+	spellTab=2,
+	structureTab=4,
+}
+void playSpellbookSound(B)(int side,SpellbookSoundFlags flags,char[4] tag,ObjectState!B state,float gain=1.0f){
+	static if(B.hasAudio) if(playAudio) B.playSpellbookSound(side,flags,tag,gain);
 }
 void updateWizard(B)(ref WizardInfo!B wizard,ObjectState!B state){
-	updateSpellbook(wizard.spellbook,state);
+	int side=state.movingObjectById!((obj)=>obj.side,()=>-1)(wizard.id);
+	SpellbookSoundFlags flags;
+	foreach(ref entry;wizard.spellbook.spells.data){
+		bool oldReady=entry.ready;
+		entry.cooldown=max(0.0f,entry.cooldown-1.0f/updateFPS);
+		entry.ready=state.spellStatus!true(wizard.id,entry.spell)==SpellStatus.ready;
+		if(entry.readyFrame<16*updateAnimFactor) entry.readyFrame+=1;
+		if(!oldReady&&entry.ready){
+			final switch(entry.spell.type){
+				case SpellType.creature: flags|=SpellbookSoundFlags.creatureTab; break;
+				case SpellType.spell: flags|=SpellbookSoundFlags.spellTab; break;
+				case SpellType.structure: flags|=SpellbookSoundFlags.structureTab; break;
+			}
+			entry.readyFrame=0;
+		}
+	}
+	playSpellbookSound(side,flags,"vaps",state);
 }
 
 
@@ -3465,14 +3632,13 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 			static bool manahoarAbilityEnabled(CreatureMode mode){
 				final switch(mode) with(CreatureMode){
 					case idle,moving,dying,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower: return true;
-					case dead,reviving,fastReviving: return false;
-					case casting,castingMoving: assert(0);
+					case dead,preSpawning,reviving,fastReviving: return false;
+					case casting,stationaryCasting,castingMoving: assert(0);
 				}
 			}
 			foreach(j;0..objects.length){
 				auto mode=objects.creatureStates[j].mode;
 				if(!manahoarAbilityEnabled(mode)) continue;
-				if(mode==CreatureMode.spawning&&objects.frames[j]==0) continue;
 				auto flameLocation=objects.positions[j]+rotate(objects.rotations[j],objects.sacObject.manahoarManaOffset(objects.animationStates[j],objects.frames[j]/updateAnimFactor));
 				auto rate=proximity.addManahoar(objects.sides[j],objects.ids[j],objects.positions[j],state);
 				animateManahoar(flameLocation,objects.sides[j],rate,state);
@@ -4060,12 +4226,38 @@ final class ObjectState(B){ // (update logic)
 		return wizard?wizard.level:0;
 	}
 	auto getSpells(int id){
-		auto wizard=getWizard(id);
+		return getSpells(getWizard(id));
+	}
+	auto getSpells(WizardInfo!B* wizard){
 		static bool pred(ref SpellInfo!B spell,int level){ return spell.level<=level; }
 		static bool pred2(T)(T x){ return pred(x[]); }
 		static first(T)(T x){ return x[0]; }
 		if(!wizard) return zip(typeof(wizard.getSpells()).init,repeat(0)).filter!pred2.map!first;
 		return zip(wizard.getSpells(),repeat(wizard.level)).filter!pred2.map!first;
+	}
+	private static alias spellStatusArgs(bool selectOnly:true)=Seq!();
+	private static alias spellStatusArgs(bool selectOnly:false)=Seq!Target;
+	auto spellStatus(bool selectOnly=false)(int id,SacSpell!B spell,spellStatusArgs!selectOnly target){ // DMD bug: default argument does not work
+		auto wizard=getWizard(id);
+		if(!wizard) return SpellStatus.inexistent;
+		foreach(entry;wizard.getSpells()){
+			if(entry.spell!is spell) continue;
+			if(entry.level>wizard.level) return SpellStatus.inexistent;
+			if(spell.soulCost>wizard.souls) return SpellStatus.needMoreSouls;
+			if(entry.cooldown>0.0f) return SpellStatus.notReady;
+			return this.movingObjectById!((obj,spell,state,spellStatusArgs!selectOnly target){
+				if(spell.manaCost>obj.creatureStats.mana) return SpellStatus.lowOnMana;
+				// if(spell.nearBuilding&&...) return SpellStatus.mustBeNearBuilding; // TODO
+				// if(spell.nearEnemyAltar&&...) return SpellStatus.mustBeNearEnemyAltar; // TODO
+				// if(spell.connectedToConversion&&....) return SpellStatus.mustBeConnectedToConversion; // TODO
+				static if(!selectOnly){
+					if(spell.requiresTarget&&!spell.isApplicable(summarize(target[0],obj.side,this))) return SpellStatus.invalidTarget;
+					if((obj.position-target[0].position).lengthsqr>spell.range^^2) return SpellStatus.outOfRange;
+				}
+				return SpellStatus.ready;
+			},function()=>SpellStatus.inexistent)(id,spell,this,target);
+		}
+		return SpellStatus.inexistent;
 	}
 	void removeWizard(int id){
 		obj.removeWizard(id);
@@ -4546,7 +4738,7 @@ TargetFlags summarize(bool simplified=false,B)(ref Target target,int side,Object
 					auto buildingInterestingIsManafount=state.buildingById!(bldg=>tuple(bldg.health!=0||bldg.isAltar,bldg.isManafount),()=>tuple(false,false))(obj.buildingId);
 					auto buildingInteresting=buildingInterestingIsManafount[0],isManafount=buildingInterestingIsManafount[1];
 					buildingInteresting|=isManafount;
-					if(!buildingInteresting) result|=TargetFlags.untargettable; // TODO: there might be a flag for this
+					if(!buildingInteresting) result|=TargetFlags.untargetable; // TODO: there might be a flag for this
 					if(isManafount) result|=TargetFlags.manafount;
 				}
 				if(objSide!=side){
@@ -4582,7 +4774,7 @@ Cursor cursor(B)(ref Target target,int renderSide,bool showIcon,ObjectState!B st
 	auto summary=summarize!true(target,renderSide,state);
 	with(TargetFlags) with(Cursor){
 		if(summary==none) return showIcon?iconNone:normal;
-		if(summary&ground||summary&corpse||summary&untargettable) return showIcon?iconNeutral:normal;
+		if(summary&ground||summary&corpse||summary&untargetable) return showIcon?iconNeutral:normal;
 		if(summary&owned){
 			if(summary&creature) return showIcon?iconFriendly:friendlyUnit;
 			if(summary&building) return showIcon?iconFriendly:friendlyBuilding;
@@ -4680,7 +4872,7 @@ SoundType responseSoundType(Command command){
 		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,setFormation,clearSelection,automaticSelectAll,automaticToggleSelection,defineGroup,addToGroup,automaticSelectGroup,retreat:
 			return SoundType.none;
 		case select,selectAll,toggleSelection,selectGroup:
-			return SoundType.selected; // TODO: annoyed creatures
+			return SoundType.selected;
 		case move,guard,guardArea: return SoundType.moving;
 		case attack,advance: return SoundType.attacking;
 	}

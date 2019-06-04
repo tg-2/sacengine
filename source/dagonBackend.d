@@ -1163,19 +1163,49 @@ final class SacScene: Scene{
 		if(audio) audio.playSound("okub");
 		spellbookTab=newTab;
 	}
+	void spellAdvisorHelpSpeech(SpellStatus status){
+		auto priority=DialogPriority.advisorAnnoy;
+		char[4] tag;
+		final switch(status) with(AdvisorHelpSound){
+			case SpellStatus.inexistent: return;
+			case SpellStatus.invalidTarget: tag=invalidTarget; break;
+			case SpellStatus.lowOnMana: tag=lowOnMana; break;
+			case SpellStatus.mustBeNearBuilding: return; // (missing)
+			case SpellStatus.mustBeNearEnemyAltar: tag=mustBeNearEnemyAltar; break;
+			case SpellStatus.mustBeConnectedToConversion: return; // (missing)
+			case SpellStatus.needMoreSouls: tag=needMoreSouls; break;
+			case SpellStatus.outOfRange: tag=outOfRange; break;
+			case SpellStatus.notReady: tag=notReady; break;
+			case SpellStatus.ready: return;
+		}
+		audio.queueDialogSound(tag,DialogPriority.advisorAnnoy);
+	}
+	void castSpell(SacSpell!DagonBackend spell,Target target,bool playAudio=true){
+		auto status=state.current.spellStatus!false(camera.target,spell,target);
+		if(status!=SpellStatus.ready){
+			if(playAudio) spellAdvisorHelpSpeech(status);
+			return;
+		}
+		state.current.movingObjectById!((ref obj,spell,target,state){ obj.startCasting(spell,target,state); })(camera.target,spell,target,state.current); // !!!
+	}
 	void selectSpell(SacSpell!DagonBackend newSpell,bool playAudio=true){
 		if(mouse.status==Mouse.Status.icon&&playAudio&&audio) audio.playSound("kabI");
+		if(!camera.target) return;
+		auto status=state.current.spellStatus!true(camera.target,newSpell);
+		if(status!=SpellStatus.ready){
+			if(playAudio) spellAdvisorHelpSpeech(status);
+			return;
+		}
 		import std.random:uniform; // TODO: put selected spells in game state?
 		auto whichClick=uniform(0,2);
 		if(playAudio&&audio) audio.playSound(commandAppliedSoundTags[whichClick]);
-		// state.current.movingObjectById!((ref obj,castingTime,state){ obj.startCasting(cast(int)(castingTime*updateFPS),state); })(camera.target,newSpell.castingTime,state.current);
 		if(newSpell.flags){
 			mouse.status=Mouse.Status.icon;
 			mouse.icon=MouseIcon.spell;
 			mouse.spell=newSpell;
 		}else{
 			mouse.status=Mouse.Status.standard;
-			// TODO: cast spell
+			castSpell(newSpell,Target.init);
 		}
 	}
 	int numSpells=0;
@@ -1213,7 +1243,8 @@ final class SacScene: Scene{
 			spellbookTargetSpell=null;
 		}
 		auto hudScaling=this.hudScaling;
-		auto spells=state.current.getSpells(camera.target).filter!(x=>x.spell.type==spellbookTab);
+		auto wizard=state.current.getWizard(camera.target);
+		auto spells=state.current.getSpells(wizard).filter!(x=>x.spell.type==spellbookTab);
 		numSpells=cast(int)spells.walkLength;
 		auto material=sacHud.frameMaterial; // TODO: share material binding with other drawing commands (or at least the backend binding)
 		material.bind(rc);
@@ -1249,22 +1280,46 @@ final class SacScene: Scene{
 		hudMaterialBackend.bindDiffuse(sacHud.pages);
 		ShapeSubQuad[3] pages=[creaturePage,spellPage,structurePage];
 		auto page=pages[spellbookTab];
-		foreach(i,spell;enumerate(spells)){
-			auto spellScaling=hudScaling*Vector3f(32.0f,32.0f,0.0f);
-			auto spellPosition=Vector3f(i*spellScaling.x,height-spellScaling.y,0.0f);
-			hudMaterialBackend.setTransformationScaled(spellPosition,Quaternionf.identity(),spellScaling,rc);
+		auto pageScaling=hudScaling*Vector3f(32.0f,32.0f,0.0f);
+		foreach(i,entry;enumerate(spells)){
+			auto pagePosition=Vector3f(i*pageScaling.x,height-pageScaling.y,0.0f);
+			auto target=Target(TargetType.spell,0,Vector3f.init,TargetLocation.spellbook);
+			updateSpellbookTarget(target,entry.spell,pagePosition.xy,pageScaling.xy);
+			hudMaterialBackend.setTransformationScaled(pagePosition,Quaternionf.identity(),pageScaling,rc);
 			page.render(rc);
 		}
-		foreach(i,spell;enumerate(spells)){
-			auto spellScaling=hudScaling*Vector3f(32.0f,32.0f,0.0f);
-			auto spellPosition=Vector3f(i*spellScaling.x,height-spellScaling.y,0.0f);
-			auto target=Target(TargetType.spell,0,Vector3f.init,TargetLocation.spellbook);
-			updateSpellbookTarget(target,spell.spell,spellPosition.xy,spellScaling.xy);
+		auto mana=camera.target?state.current.movingObjectById!((obj)=>obj.creatureStats.mana,function float()=>0.0f)(camera.target):0.0f;
+		auto souls=wizard?wizard.souls:0;
+		foreach(i,entry;enumerate(spells)){
+			auto factor=min(1.0f,mana/entry.spell.manaCost);
+			auto spellScaling=factor*pageScaling;
+			auto spellPosition=Vector3f((i+0.5f)*pageScaling.x-0.5f*spellScaling.x,height-0.5f*pageScaling.y-0.5f*spellScaling.y,0.0f);
 			hudMaterialBackend.setTransformationScaled(spellPosition,Quaternionf.identity(),spellScaling,rc);
-			hudMaterialBackend.bindDiffuse(spell.spell.icon);
+			hudMaterialBackend.bindDiffuse(entry.spell.icon);
+			hudMaterialBackend.setAlpha(factor);
 			quad.render(rc);
+			if(entry.spell.soulCost>souls){
+				auto spiritPosition=Vector3f(i*pageScaling.x,height-pageScaling.y,0.0f);
+				auto spiritScaling=hudScaling*Vector3f(16.0f,16.0f,0.0f);
+				hudMaterialBackend.setTransformationScaled(spiritPosition,Quaternionf.identity(),spiritScaling,rc);
+				hudMaterialBackend.bindDiffuse(sacHud.spirit);
+				hudMaterialBackend.setAlpha(1.0f);
+				quad.render(rc);
+			}
 		}
 		hudMaterialBackend.unbind(null,rc);
+		bool bound=false;
+		material=sacHud.spellReadyMaterial;
+		foreach(i,entry;enumerate(spells)){
+			if(entry.readyFrame>=16*updateAnimFactor) continue;
+			if(!bound) material.bind(rc);
+			auto flarePosition=Vector3f((i+0.5f)*pageScaling.x,height-0.5f*pageScaling.y,0.0f);
+			auto flareScaling=hudScaling*Vector3f(48.0f,48.0f,0.0f);
+			flareScaling.y*=-1.0f;
+			material.backend.setTransformationScaled(flarePosition,Quaternionf.identity(),flareScaling,rc);
+			sacHud.getSpellReadyMesh(entry.readyFrame).render(rc);
+		}
+		if(bound) material.unbind(rc);
 	}
 	void renderHUD(RenderingContext* rc){
 		renderMinimap(rc);
@@ -1678,10 +1733,13 @@ final class SacScene: Scene{
 									}
 									break;
 								case MouseIcon.spell:
-									// TODO
+									castSpell(mouse.spell,mouse.target);
 									break;
 							}
 							mouse.status=Mouse.Status.standard;
+						}else if(mouse.icon==MouseIcon.spell){
+							auto status=state.current.spellStatus!false(camera.target,mouse.spell,mouse.target);
+							spellAdvisorHelpSpeech(status);
 						}
 						break;
 				}
@@ -1693,7 +1751,7 @@ final class SacScene: Scene{
 							case terrain: state.addCommand(Command(CommandType.move,renderSide,camera.target,0,mouse.target,cameraFacing)); break;
 							case creature,building:
 								auto summary=mouse.target.summarize(renderSide,state.current);
-								if(!(summary&TargetFlags.untargettable)){
+								if(!(summary&TargetFlags.untargetable)){
 									if(summary&TargetFlags.corpse){
 										auto target=Target(TargetType.terrain,0,mouse.target.position,mouse.target.location);
 										state.addCommand(Command(CommandType.guardArea,renderSide,camera.target,0,target,cameraFacing)); break;
@@ -1829,7 +1887,7 @@ final class SacScene: Scene{
 			if(!eventManager.keyPressed[KEY_LSHIFT]) foreach(_;0..keyDown[KEY_SPACE]){
 				//applyToMoving!startMeleeAttacking(state.current,camera,mouse.target);
 				static void castingTest(B)(ref MovingObject!B object,ObjectState!B state){
-					object.startCasting(3*updateFPS,state);
+					object.startCasting(3*updateFPS,true,state);
 				}
 				applyToMoving!castingTest(state.current,camera,mouse.target);
 				/+if(camera.target){
@@ -1878,14 +1936,14 @@ final class SacScene: Scene{
 			if(!eventManager.keyPressed[KEY_LSHIFT] && !(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK])){
 				if(creatures.length)
 				foreach(_;0..keyDown[hotkeys[0]]){
-					auto id=spawn(camera.target,creatures[0],0,state.current);
+					auto id=spawn(camera.target,creatures[0],0,state.current,false);
 					state.current.addToSelection(renderSide,id);
 				}
 			}
 			if(eventManager.keyPressed[KEY_LSHIFT] && !(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK])){
 				foreach(i;1..min(hotkeys.length,creatures.length)){
 					foreach(_;0..keyDown[hotkeys[i]]){
-						auto id=spawn(camera.target,creatures[i],0,state.current);
+						auto id=spawn(camera.target,creatures[i],0,state.current,false);
 						state.current.addToSelection(renderSide,id);
 					}
 				}
@@ -2025,14 +2083,14 @@ final class SacScene: Scene{
 		@property bool onSpellbook(){ return loc==Location.spellbook; }
 	}
 	Mouse mouse;
-	bool mouseTargetValid(TargetFlags summary){
+	bool mouseTargetValid(){
 		if(mouse.status!=Mouse.Status.icon) return true;
 		import spells:SpelFlags;
 		enum orderSpelFlags=SpelFlags.targetWizards|SpelFlags.targetCreatures|SpelFlags.targetCorpses|SpelFlags.targetStructures|SpelFlags.targetGround;
 		final switch(mouse.icon){
-			case MouseIcon.guard: return isApplicable(orderSpelFlags,summary);
-			case MouseIcon.attack: return isApplicable(orderSpelFlags,summary);
-			case MouseIcon.spell: return mouse.spell.isApplicable(summary);
+			case MouseIcon.guard: return isApplicable(orderSpelFlags,mouse.target.summarize(renderSide,state.current));
+			case MouseIcon.attack: return isApplicable(orderSpelFlags,mouse.target.summarize(renderSide,state.current));
+			case MouseIcon.spell: return state.current.spellStatus!false(camera.target,mouse.spell,mouse.target)==SpellStatus.ready;
 		}
 	}
 	SacCursor!DagonBackend sacCursor;
@@ -2085,8 +2143,7 @@ final class SacScene: Scene{
 	enum targetCacheDuration=0.6f*updateFPS;
 	void updateMouseTarget(){
 		auto target=computeMouseTarget();
-		auto summary=target.summarize(renderSide,state.current);
-		auto targetValid=mouseTargetValid(summary);
+		auto targetValid=mouseTargetValid();
 		static immutable importantTargets=[TargetType.creature,TargetType.soul];
 		if(cachedTarget.id!=0&&!state.current.isValidId(cachedTarget.id,cachedTarget.type)) cachedTarget=Target.init;
 		if(target.location.among(TargetLocation.scene,TargetLocation.minimap)){
@@ -2097,8 +2154,7 @@ final class SacScene: Scene{
 					    abs(cachedTargetY-mouse.y)<delta)&&
 					   cachedTargetFrame+(mouse.inHitbox?2:1)*targetCacheDuration>state.current.frame){
 						target=cachedTarget;
-						summary=target.summarize(renderSide,state.current);
-						targetValid=mouseTargetValid(summary);
+						targetValid=mouseTargetValid();
 					}else cachedTarget=Target.init;
 				}
 			}else if(targetValid){
@@ -2112,6 +2168,7 @@ final class SacScene: Scene{
 		if(mouse.target.type==TargetType.spell)
 			mouse.targetSpell=spellbookTargetSpell;
 		mouse.targetValid=targetValid;
+		auto summary=summarize!true(mouse.target,renderSide,state.current); // TODO: don't compute this twice
 		with(Cursor)
 			mouse.showFrame=targetValid && target.location==TargetLocation.scene &&
 				!(summary&TargetFlags.corpse) &&
@@ -2388,8 +2445,9 @@ static:
 	Material[] createMaterials(SacHud!DagonBackend sacHud){
 		auto materials=new Material[](sacHud.textures.length);
 		foreach(i;0..materials.length){
-			auto mat=scene.createMaterial(scene.hudMaterialBackend);
-			mat.blending=Transparent;
+			bool spellReady=i==SacHud!DagonBackend.spellReadyIndex;
+			auto mat=scene.createMaterial(spellReady?scene.hudMaterialBackend2:scene.hudMaterialBackend);
+			mat.blending=spellReady?Additive:Transparent;
 			mat.diffuse=sacHud.textures[i];
 			materials[i]=mat;
 		}
@@ -2446,6 +2504,15 @@ static:
 	}
 	void playSound(int side,char[4] sound,float gain=1.0f){
 		if(!audio||side!=-1&&side!=scene.renderSide) return;
+		audio.playSound(sound,gain);
+	}
+	void playSpellbookSound(int side,SpellbookSoundFlags flags,char[4] sound,float gain=1.0f){
+		if(!audio||side!=-1&&side!=scene.renderSide) return;
+		final switch(scene.spellbookTab){
+			case SpellType.creature: if(flags&SpellbookSoundFlags.creatureTab) break; return;
+			case SpellType.spell: if(flags&SpellbookSoundFlags.spellTab) break; return;
+			case SpellType.structure: if(flags&SpellbookSoundFlags.structureTab) break; return;
+		}
 		audio.playSound(sound,gain);
 	}
 	void playSoundAt(char[4] sound,Vector3f position,float gain=1.0f){

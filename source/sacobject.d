@@ -775,33 +775,44 @@ final class SacCursor(B){
 
 final class SacHud(B){
 	union{
-		B.Texture[10] textures;
+		B.Texture[12] textures;
 		struct{
 			B.Texture frames;
 			B.Texture pages;
 			B.Texture arrows;
 			B.Texture tabs;
+			B.Texture spirit;
+			B.Texture spellReady;
 			B.Texture[3] mana;
 			B.Texture[3] health;
 		}
 	}
+	enum spellReadyIndex=5;
 	B.Texture statusArrows;
 	B.Mesh[] statusArrowMeshes; // TODO: use a single triangle instead of a quad with alpha channel
 	B.Texture minimapIcons;
 	B.Material[] materials;
 	@property B.Material frameMaterial(){ return materials[0]; }
 	@property B.Material tabsMaterial(){ return materials[3]; }
-	@property B.Material manaTopMaterial(){ return materials[4]; }
-	@property B.Material manaMaterial(){ return materials[5]; }
-	@property B.Material manaBottomMaterial(){ return materials[6]; }
-	@property B.Material healthTopMaterial(){ return materials[7]; }
-	@property B.Material healthMaterial(){ return materials[8]; }
-	@property B.Material healthBottomMaterial(){ return materials[9]; }
+	@property B.Material spellReadyMaterial(){ return materials[5]; }
+	@property B.Material manaTopMaterial(){ return materials[6]; }
+	@property B.Material manaMaterial(){ return materials[7]; }
+	@property B.Material manaBottomMaterial(){ return materials[8]; }
+	@property B.Material healthTopMaterial(){ return materials[9]; }
+	@property B.Material healthMaterial(){ return materials[10]; }
+	@property B.Material healthBottomMaterial(){ return materials[11]; }
+	B.Mesh[] spellReadyMeshes;
+	B.Mesh getSpellReadyMesh(int i){
+		return spellReadyMeshes[i/updateAnimFactor];
+	}
 	this(){
 		frames=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/huds.FLDR/fram.TXTR"));
 		pages=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/huds.FLDR/page.TXTR"));
 		arrows=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/huds.FLDR/sarr.TXTR"));
 		tabs=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/huds.FLDR/tabs.TXTR"));
+		spirit=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/spi2.TXTR"));
+		spellReady=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/icon.FLDR/Ifls.TXTR"));
+		spellReadyMeshes=makeSpriteMeshes!B(4,4,1.0f,1.0f);
 		import dlib.image;
 		static immutable ubyte[] manaTopData=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 46, 70, 22, 0, 42, 66, 43, 0, 42, 66, 43, 0, 42, 66, 43, 0, 42, 66, 43, 0, 42, 66, 43, 0, 64, 68, 64, 0, 86, 67, 85, 0, 86, 67, 85, 0, 86, 67, 85, 0, 86, 67, 85, 0, 84, 67, 85, 0, 64, 68, 64, 0, 42, 66, 43, 0, 42, 66, 43, 0, 42, 66, 43, 0, 42, 66, 43, 0, 42, 69, 43, 0, 36, 67, 21, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 64, 105, 22, 0, 65, 101, 43, 0, 64, 100, 64, 0, 64, 100, 64, 0, 64, 100, 64, 0, 62, 100, 64, 0, 85, 101, 86, 0, 107, 101, 107, 0, 128, 100, 128, 0, 128, 100, 128, 0, 128, 100, 128, 0, 128, 101, 127, 0, 106, 100, 106, 0, 84, 100, 85, 0, 64, 100, 64, 0, 64, 100, 64, 0, 64, 100, 64, 0, 64, 100, 64, 0, 62, 101, 43, 0, 61, 98, 21, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 81, 134, 22, 0, 83, 137, 43, 0, 84, 134, 64, 0, 83, 134, 86, 0, 83, 134, 86, 0, 83, 134, 86, 0, 105, 134, 107, 0, 128, 134, 128, 0, 149, 134, 149, 0, 170, 134, 170, 0, 170, 134, 170, 0, 170, 134, 170, 0, 149, 134, 149, 0, 127, 134, 128, 0, 105, 134, 107, 0, 83, 134, 86, 0, 83, 134, 86, 0, 84, 134, 85, 0, 84, 134, 64, 0, 83, 134, 43, 0, 85, 134, 21, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 104, 169, 22, 0, 107, 167, 43, 0, 104, 168, 64, 0, 104, 167, 86, 0, 105, 167, 107, 0, 105, 167, 107, 0, 127, 168, 128, 0, 148, 167, 149, 0, 170, 168, 171, 0, 191, 168, 192, 0, 213, 167, 213, 0, 213, 168, 212, 0, 191, 167, 191, 0, 170, 167, 170, 0, 147, 168, 149, 0, 126, 168, 128, 0, 105, 167, 107, 0, 105, 168, 106, 0, 105, 169, 85, 0, 104, 168, 64, 0, 104, 167, 43, 0, 103, 171, 21, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 		mana[0]=B.makeTexture(imageFromData(manaTopData,32,4,4));
