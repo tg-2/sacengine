@@ -218,6 +218,15 @@ string upperf(string s){
 	return s;
 }
 
+string flagText(E)(E arg)if(is(E==enum)){
+	string r;
+	import std.traits: EnumMembers;
+	import std.conv: text;
+	foreach(e;EnumMembers!E)
+		if(arg&e) r~=text(r.length?"|":"",e);
+	return r;
+}
+
 struct Queue(T){
 	Array!T payload;
 	size_t first=0,last=0;
