@@ -29,15 +29,15 @@ bool isApplicable(SpelFlags sflags,TargetFlags tflags)in{
 	with(SpelFlags) with(TargetFlags){
 		if(tflags&untargetable) return false;
 		if(tflags==TargetFlags.none) return false;
-		if((sflags&targetGround)&&(tflags&ground)) return true;
+		if(tflags&ground) return !!(sflags&targetGround);
 		if(!(sflags&targetWizards)&&(tflags&wizard)) return false;
 		if(!(sflags&targetSouls)&&(tflags&soul)) return false;
 		if(!(sflags&targetCreatures)&&(tflags&creature)) return false;
 		if(!(sflags&targetCorpses)&&(tflags&corpse)) return false;
 		if(!(sflags&targetStructures)&&(tflags&building)) return false;
 		if((sflags&onlyManafounts)&&!(tflags&manafount)) return false;
-		if(sflags&requireAlly&&!(tflags&ally)) return false;
-		if(sflags&requireEnemy&&!(tflags&enemy)) return false;
+		if(sflags&onlyAlly&&!(tflags&ally)) return false;
+		if(sflags&disallowAlly&&(tflags&ally)) return false;
 		if((sflags&disallowFlying)&&(tflags&flying)) return false;
 		if((sflags&onlyCreatures)&&!(tflags&creature)) return false;
 		if((sflags&onlyOwned)&&!(tflags&owned)) return false;

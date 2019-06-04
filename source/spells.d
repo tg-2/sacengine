@@ -168,8 +168,8 @@ enum SpelFlags:uint{
 	targetCorpses=1<<3,
 	targetStructures=1<<4,
 	onlyManafounts=1<<11,
-	requireAlly=1<<12,
-	requireEnemy=1<<13,
+	onlyAlly=1<<12,
+	disallowAlly=1<<13,
 	targetGround=1<<14,
 	disallowFlying=1<<16,
 	onlyCreatures=1<<18, // redundant?
