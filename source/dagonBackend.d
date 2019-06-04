@@ -1318,10 +1318,21 @@ final class SacScene: Scene{
 		}
 		hudMaterialBackend.unbind(null,rc);
 		bool bound=false;
+		foreach(i,entry;enumerate(spells)){
+			if(entry.cooldown==0.0f) continue;
+			if(!bound){ cooldownMaterialBackend.bind(null,rc); bound=true; }
+			auto pagePosition=Vector3f((i+0.5f)*pageScaling.x,height-0.5f*pageScaling.y,0.0f);
+			cooldownMaterialBackend.setTransformationScaled(pagePosition,Quaternionf.identity(),pageScaling,rc);
+			float progress=1.0f-entry.cooldown/entry.maxCooldown;
+			cooldownMaterialBackend.setProgress(progress);
+			cooldown.render(rc);
+		}
+		cooldownMaterialBackend.unbind(null,rc);
+		bound=false;
 		material=sacHud.spellReadyMaterial;
 		foreach(i,entry;enumerate(spells)){
 			if(entry.readyFrame>=16*updateAnimFactor) continue;
-			if(!bound) material.bind(rc);
+			if(!bound){ material.bind(rc); bound=true; }
 			auto flarePosition=Vector3f((i+0.5f)*pageScaling.x,height-0.5f*pageScaling.y,0.0f);
 			auto flareScaling=hudScaling*Vector3f(48.0f,48.0f,0.0f);
 			flareScaling.y*=-1.0f;
@@ -2040,6 +2051,7 @@ final class SacScene: Scene{
 	ShapeSacStatsFrame statsFrame;
 	ShapeSubQuad creatureTab,spellTab,structureTab,tabSelector;
 	ShapeSubQuad creaturePage,spellPage,structurePage;
+	ShapeCooldown cooldown;
 	ShapeSubQuad spellbookFrame1,spellbookFrame2;
 	GenericMaterial hudSoulMaterial;
 	GenericMaterial minimapMaterial;
@@ -2064,6 +2076,7 @@ final class SacScene: Scene{
 		creaturePage=New!ShapeSubQuad(assetManager,0.0f,0.0f,0.5f,0.5f);
 		spellPage=New!ShapeSubQuad(assetManager,0.5f,0.0f,1.0f,0.5f);
 		structurePage=New!ShapeSubQuad(assetManager,0.0f,0.5f,0.5f,1.0f);
+		cooldown=New!ShapeCooldown(assetManager);
 		spellbookFrame1=New!ShapeSubQuad(assetManager,0.5f,40.0f/128.0f,0.625f,48.0f/128.0f);
 		spellbookFrame2=New!ShapeSubQuad(assetManager,80.5f/128.0f,32.5f/128.0f,1.0f,48.0f/128.0f);
 		assert(!!sacSoul.texture);
@@ -2725,13 +2738,12 @@ class ShapeSubQuad: Owner, Drawable{
 		glBindVertexArray(0);
 	}
 
-	~this()
-		{
-			glDeleteVertexArrays(1, &vao);
-			glDeleteBuffers(1, &vbo);
-			glDeleteBuffers(1, &tbo);
-			glDeleteBuffers(1, &eao);
-		}
+	~this(){
+		glDeleteVertexArrays(1, &vao);
+		glDeleteBuffers(1, &vbo);
+		glDeleteBuffers(1, &tbo);
+		glDeleteBuffers(1, &eao);
+	}
 
 	void update(double dt){ }
 
@@ -3068,4 +3080,76 @@ class ShapeSubSphere: Mesh
         dataReady = true;
         prepareVAO();
     }
+}
+
+class ShapeCooldown: Owner, Drawable{
+	Vector2f[6] vertices;
+	float[6] index;
+	uint[3][4] indices;
+
+	GLuint vao = 0;
+	GLuint vbo = 0;
+	GLuint vio = 0;
+	GLuint eao = 0;
+
+	this(Owner o){
+		super(o);
+		auto unit = sqrt(0.5f);
+		vertices[0] = Vector2f(0, 0);
+		vertices[1] = Vector2f(0, -unit);
+		vertices[2] = Vector2f(unit, 0);
+		vertices[3] = Vector2f(0, unit);
+		vertices[4] = Vector2f(-unit, 0);
+		vertices[5] = vertices[1];
+
+		index=[0,1,2,3,4,5];
+
+		indices[0] = [0,2,1];
+		indices[1] = [0,3,2];
+		indices[2] = [0,4,3];
+		indices[3] = [0,5,4];
+
+		glGenBuffers(1, &vbo);
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		glBufferData(GL_ARRAY_BUFFER, vertices.length * float.sizeof * 2, vertices.ptr, GL_STATIC_DRAW);
+
+		glGenBuffers(1, &vio);
+		glBindBuffer(GL_ARRAY_BUFFER, vio);
+		glBufferData(GL_ARRAY_BUFFER, index.length * int.sizeof, index.ptr, GL_STATIC_DRAW);
+
+		glGenBuffers(1, &eao);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, eao);
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.length * uint.sizeof * 3, indices.ptr, GL_STATIC_DRAW);
+
+		glGenVertexArrays(1, &vao);
+		glBindVertexArray(vao);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, eao);
+
+		glEnableVertexAttribArray(0);
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, null);
+
+		glEnableVertexAttribArray(1);
+		glBindBuffer(GL_ARRAY_BUFFER, vio);
+		glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, 0, null);
+
+		glBindVertexArray(0);
+	}
+
+	~this(){
+		glDeleteVertexArrays(1, &vao);
+		glDeleteBuffers(1, &vbo);
+		glDeleteBuffers(1, &vio);
+		glDeleteBuffers(1, &eao);
+	}
+
+	void update(double dt){ }
+
+	void render(RenderingContext* rc){
+		glDepthMask(0);
+		glBindVertexArray(vao);
+		glDrawElements(GL_TRIANGLES, cast(uint)indices.length * 3, GL_UNSIGNED_INT, cast(void*)0);
+		glBindVertexArray(0);
+		glDepthMask(1);
+	}
 }

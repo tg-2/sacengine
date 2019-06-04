@@ -922,8 +922,8 @@ struct SpellInfo(B){
 	bool ready=true;
 	int readyFrame=16*updateAnimFactor;
 	void setCooldown(float newCooldown){
+		if(cooldown==0.0f||newCooldown>maxCooldown) maxCooldown=newCooldown;
 		if(newCooldown>cooldown) cooldown=newCooldown;
-		if(newCooldown>maxCooldown) maxCooldown=newCooldown; // TODO: check what original does
 	}
 }
 struct Spellbook(B){
