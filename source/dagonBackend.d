@@ -1581,17 +1581,32 @@ final class SacScene: Scene{
 		}
 		if(!state) return;
 		if(mouseButtonDown[MB_LEFT]!=0){
-			mouse.leftButtonX=mouse.x;
-			mouse.leftButtonY=mouse.y;
+			if(mouse.loc.among(Mouse.Location.scene,Mouse.Location.minimap)){
+				mouse.leftButtonX=mouse.x;
+				mouse.leftButtonY=mouse.y;
+			}else mouse.leftButtonX=mouse.leftButtonY=float.nan;
+		}
+		void finishRectangleSelect(){
+			mouse.status=Mouse.Status.standard;
+			TargetLocation loc;
+			final switch(mouse.loc){
+				case Mouse.Location.scene: loc=TargetLocation.scene; break;
+				case Mouse.Location.minimap: loc=TargetLocation.minimap; break;
+				case Mouse.Location.selectionRoster,Mouse.Location.spellbook: assert(0);
+			}
+			state.setSelection(renderSide,camera.target,renderedSelection,loc);
+			selectionUpdated=true;
 		}
 		if(mouse.status.among(Mouse.Status.standard,Mouse.Status.rectangleSelect)){
 			if(eventManager.mouseButtonPressed[MB_LEFT]){
 				enum rectangleThreshold=3.0f;
-				if(abs(mouse.x-mouse.leftButtonX)>=rectangleThreshold||abs(mouse.y-mouse.leftButtonY)>=rectangleThreshold){
-					mouse.status=Mouse.Status.rectangleSelect;
-					if(!mouse.loc.among(Mouse.Location.scene,Mouse.Location.minimap))
-						mouse.loc=Mouse.Location.scene;
+				if(mouse.status==Mouse.Status.standard){
+					if((abs(mouse.x-mouse.leftButtonX)>=rectangleThreshold||abs(mouse.y-mouse.leftButtonY)>=rectangleThreshold)&&
+					   mouse.loc.among(Mouse.Location.scene,Mouse.Location.minimap))
+						mouse.status=Mouse.Status.rectangleSelect;
 				}
+			}else if(mouse.status==Mouse.Status.rectangleSelect){
+				finishRectangleSelect();
 			}
 		}
 		mouse.additiveSelect=eventManager.keyPressed[KEY_LSHIFT];
@@ -1640,15 +1655,7 @@ final class SacScene: Scene{
 						// do nothing
 						break;
 					case Mouse.Status.rectangleSelect:
-						mouse.status=Mouse.Status.standard;
-						TargetLocation loc;
-						final switch(mouse.loc){
-							case Mouse.Location.scene: loc=TargetLocation.scene; break;
-							case Mouse.Location.minimap: loc=TargetLocation.minimap; break;
-							case Mouse.Location.selectionRoster,Mouse.Location.spellbook: assert(0);
-						}
-						state.setSelection(renderSide,camera.target,renderedSelection,loc);
-						selectionUpdated=true;
+						finishRectangleSelect();
 						break;
 					case Mouse.Status.icon:
 						if(mouse.targetValid){
