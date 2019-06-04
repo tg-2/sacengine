@@ -1178,7 +1178,7 @@ final class SacScene: Scene{
 			case SpellStatus.notReady: tag=notReady; break;
 			case SpellStatus.ready: return;
 		}
-		audio.queueDialogSound(tag,DialogPriority.advisorAnnoy);
+		if(audio) audio.queueDialogSound(tag,DialogPriority.advisorAnnoy);
 	}
 	void castSpell(SacSpell!DagonBackend spell,Target target,bool playAudio=true){
 		auto status=state.current.spellStatus!false(camera.target,spell,target);
@@ -1186,20 +1186,24 @@ final class SacScene: Scene{
 			if(playAudio) spellAdvisorHelpSpeech(status);
 			return;
 		}
-		state.current.movingObjectById!((ref obj,spell,target,state){ obj.startCasting(spell,target,state); })(camera.target,spell,target,state.current); // !!!
+		state.addCommand(Command!DagonBackend(renderSide,camera.target,spell,target));
 	}
 	void selectSpell(SacSpell!DagonBackend newSpell,bool playAudio=true){
-		if(mouse.status==Mouse.Status.icon&&playAudio&&audio) audio.playSound("kabI");
+		if(mouse.status==Mouse.Status.icon){
+			if(mouse.icon==MouseIcon.spell&&mouse.spell is newSpell) return;
+			if(playAudio&&audio) audio.playSound("kabI");
+		}
 		if(!camera.target) return;
+		switchSpellbookTab(newSpell.type);
 		auto status=state.current.spellStatus!true(camera.target,newSpell);
 		if(status!=SpellStatus.ready){
 			if(playAudio) spellAdvisorHelpSpeech(status);
 			return;
 		}
-		import std.random:uniform; // TODO: put selected spells in game state?
-		auto whichClick=uniform(0,2);
-		if(playAudio&&audio) audio.playSound(commandAppliedSoundTags[whichClick]);
 		if(newSpell.flags){
+			import std.random:uniform; // TODO: put selected spells in game state?
+			auto whichClick=uniform(0,2);
+			if(playAudio&&audio) audio.playSound(commandAppliedSoundTags[whichClick]);
 			mouse.status=Mouse.Status.icon;
 			mouse.icon=MouseIcon.spell;
 			mouse.spell=newSpell;
@@ -1207,6 +1211,11 @@ final class SacScene: Scene{
 			mouse.status=Mouse.Status.standard;
 			castSpell(newSpell,Target.init);
 		}
+	}
+	void selectSpell(SpellType tab,int index,bool playAudio=true){
+		if(!camera.target) return;
+		auto spells=state.current.getSpells(camera.target).filter!(x=>x.spell.type==tab);
+		foreach(i,entry;enumerate(spells)) if(i==index) return selectSpell(entry.spell,playAudio);
 	}
 	int numSpells=0;
 	bool isOnSpellbook(Vector2f center){
@@ -1578,6 +1587,8 @@ final class SacScene: Scene{
 					SDL_SetRelativeMouseMode(SDL_FALSE);
 				}
 			}
+		}
+		if(mouse.visible){
 			if(!mouse.onMinimap){
 				camera.targetZoom-=0.04f*eventManager.mouseWheelY;
 				camera.targetZoom=max(0.0f,min(camera.targetZoom,1.0f));
@@ -1603,33 +1614,33 @@ final class SacScene: Scene{
 			if(eventManager.keyPressed[KEY_E] && !eventManager.keyPressed[KEY_D]){
 				if(targetMovementState.movement!=MovementDirection.forward){
 					targetMovementState.movement=MovementDirection.forward;
-					state.addCommand(Command(CommandType.moveForward,renderSide,camera.target,camera.target,Target.init,cameraFacing));
+					state.addCommand(Command!DagonBackend(CommandType.moveForward,renderSide,camera.target,camera.target,Target.init,cameraFacing));
 				}
 			}else if(eventManager.keyPressed[KEY_D] && !eventManager.keyPressed[KEY_E]){
 				if(targetMovementState.movement!=MovementDirection.backward){
 					targetMovementState.movement=MovementDirection.backward;
-					state.addCommand(Command(CommandType.moveBackward,renderSide,camera.target,camera.target,Target.init,cameraFacing));
+					state.addCommand(Command!DagonBackend(CommandType.moveBackward,renderSide,camera.target,camera.target,Target.init,cameraFacing));
 				}
 			}else{
 				if(targetMovementState.movement!=MovementDirection.none){
 					targetMovementState.movement=MovementDirection.none;
-					state.addCommand(Command(CommandType.stopMoving,renderSide,camera.target,camera.target,Target.init,cameraFacing));
+					state.addCommand(Command!DagonBackend(CommandType.stopMoving,renderSide,camera.target,camera.target,Target.init,cameraFacing));
 				}
 			}
 			if(eventManager.keyPressed[KEY_S] && !eventManager.keyPressed[KEY_F]){
 				if(targetMovementState.rotation!=RotationDirection.left){
 					targetMovementState.rotation=RotationDirection.left;
-					state.addCommand(Command(CommandType.turnLeft,renderSide,camera.target,camera.target,Target.init,cameraFacing));
+					state.addCommand(Command!DagonBackend(CommandType.turnLeft,renderSide,camera.target,camera.target,Target.init,cameraFacing));
 				}
 			}else if(eventManager.keyPressed[KEY_F] && !eventManager.keyPressed[KEY_S]){
 				if(targetMovementState.rotation!=RotationDirection.right){
 					targetMovementState.rotation=RotationDirection.right;
-					state.addCommand(Command(CommandType.turnRight,renderSide,camera.target,camera.target,Target.init,cameraFacing));
+					state.addCommand(Command!DagonBackend(CommandType.turnRight,renderSide,camera.target,camera.target,Target.init,cameraFacing));
 				}
 			}else{
 				if(targetMovementState.rotation!=RotationDirection.none){
 					targetMovementState.rotation=RotationDirection.none;
-					state.addCommand(Command(CommandType.stopTurning,renderSide,camera.target,camera.target,Target.init,cameraFacing));
+					state.addCommand(Command!DagonBackend(CommandType.stopTurning,renderSide,camera.target,camera.target,Target.init,cameraFacing));
 				}
 			}
 			positionCamera();
@@ -1694,7 +1705,7 @@ final class SacScene: Scene{
 							         state.current.frame-lastSelectedFrame<=doubleClickDelay*updateFPS){
 								type=CommandType.automaticSelectAll;
 							}
-							state.addCommand(Command(type,renderSide,camera.target,mouse.target.id,Target.init,cameraFacing));
+							state.addCommand(Command!DagonBackend(type,renderSide,camera.target,mouse.target.id,Target.init,cameraFacing));
 							if(type==CommandType.select){
 								lastSelectedId=mouse.target.id;
 								lastSelectedFrame=state.current.frame;
@@ -1718,18 +1729,18 @@ final class SacScene: Scene{
 							final switch(mouse.icon){
 								case MouseIcon.attack:
 									if(summary&(TargetFlags.creature|TargetFlags.wizard|TargetFlags.building)&&!(summary&TargetFlags.corpse)){
-										state.addCommand(Command(CommandType.attack,renderSide,camera.target,0,mouse.target,cameraFacing));
+										state.addCommand(Command!DagonBackend(CommandType.attack,renderSide,camera.target,0,mouse.target,cameraFacing));
 									}else{
 										auto target=Target(TargetType.terrain,0,mouse.target.position,mouse.target.location);
-										state.addCommand(Command(CommandType.advance,renderSide,camera.target,0,target,cameraFacing));
+										state.addCommand(Command!DagonBackend(CommandType.advance,renderSide,camera.target,0,target,cameraFacing));
 									}
 									break;
 								case MouseIcon.guard:
 									if(summary&(TargetFlags.creature|TargetFlags.wizard|TargetFlags.building)&&!(summary&TargetFlags.corpse)){
-										state.addCommand(Command(CommandType.guard,renderSide,camera.target,0,mouse.target,cameraFacing));
+										state.addCommand(Command!DagonBackend(CommandType.guard,renderSide,camera.target,0,mouse.target,cameraFacing));
 									}else{
 										auto target=Target(TargetType.terrain,0,mouse.target.position,mouse.target.location);
-										state.addCommand(Command(CommandType.guardArea,renderSide,camera.target,0,target,cameraFacing));
+										state.addCommand(Command!DagonBackend(CommandType.guardArea,renderSide,camera.target,0,target,cameraFacing));
 									}
 									break;
 								case MouseIcon.spell:
@@ -1737,8 +1748,8 @@ final class SacScene: Scene{
 									break;
 							}
 							mouse.status=Mouse.Status.standard;
-						}else if(mouse.icon==MouseIcon.spell){
-							auto status=state.current.spellStatus!false(camera.target,mouse.spell,mouse.target);
+						}else{
+							auto status=mouse.icon==MouseIcon.spell?state.current.spellStatus!false(camera.target,mouse.spell,mouse.target):SpellStatus.invalidTarget;
 							spellAdvisorHelpSpeech(status);
 						}
 						break;
@@ -1748,17 +1759,17 @@ final class SacScene: Scene{
 				final switch(mouse.status){
 					case Mouse.Status.standard:
 						switch(mouse.target.type) with(TargetType){
-							case terrain: state.addCommand(Command(CommandType.move,renderSide,camera.target,0,mouse.target,cameraFacing)); break;
+							case terrain: state.addCommand(Command!DagonBackend(CommandType.move,renderSide,camera.target,0,mouse.target,cameraFacing)); break;
 							case creature,building:
 								auto summary=mouse.target.summarize(renderSide,state.current);
 								if(!(summary&TargetFlags.untargetable)){
 									if(summary&TargetFlags.corpse){
 										auto target=Target(TargetType.terrain,0,mouse.target.position,mouse.target.location);
-										state.addCommand(Command(CommandType.guardArea,renderSide,camera.target,0,target,cameraFacing)); break;
+										state.addCommand(Command!DagonBackend(CommandType.guardArea,renderSide,camera.target,0,target,cameraFacing)); break;
 									}else if(summary&TargetFlags.enemy){
-										state.addCommand(Command(CommandType.attack,renderSide,camera.target,0,mouse.target,cameraFacing)); break;
+										state.addCommand(Command!DagonBackend(CommandType.attack,renderSide,camera.target,0,mouse.target,cameraFacing)); break;
 									}else{
-										state.addCommand(Command(CommandType.guard,renderSide,camera.target,0,mouse.target,cameraFacing)); break;
+										state.addCommand(Command!DagonBackend(CommandType.guard,renderSide,camera.target,0,mouse.target,cameraFacing)); break;
 									}
 								}
 								break;
@@ -1766,7 +1777,7 @@ final class SacScene: Scene{
 								final switch(color(mouse.target.id,renderSide,state.current)){
 									case SoulColor.blue:
 										auto target=Target(TargetType.terrain,0,mouse.target.position,mouse.target.location);
-										state.addCommand(Command(CommandType.move,renderSide,camera.target,0,target,cameraFacing));
+										state.addCommand(Command!DagonBackend(CommandType.move,renderSide,camera.target,0,target,cameraFacing));
 										break;
 									case SoulColor.red:
 										// TODO: cast convert
@@ -1799,9 +1810,9 @@ final class SacScene: Scene{
 					CommandType.selectGroup;
 				int group = key==KEY_0?9:key-KEY_1;
 				if(group>=numCreatureGroups) break;
-				state.addCommand(Command(type,renderSide,camera.target,group));
+				state.addCommand(Command!DagonBackend(type,renderSide,camera.target,group));
 				if(type==CommandType.addToGroup)
-					state.addCommand(Command(CommandType.automaticSelectGroup,renderSide,camera.target,group));
+					state.addCommand(Command!DagonBackend(CommandType.automaticSelectGroup,renderSide,camera.target,group));
 			}
 		}
 		if(!(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK]||eventManager.keyPressed[KEY_LSHIFT])){
@@ -1811,28 +1822,28 @@ final class SacScene: Scene{
 		}
 		if(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK]){
 			foreach(_;0..keyDown[KEY_X]){
-				state.addCommand(Command(renderSide,camera.target,Formation.phalanx));
+				state.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.phalanx));
 			}
 			foreach(_;0..keyDown[KEY_L]){
-				state.addCommand(Command(renderSide,camera.target,Formation.line));
+				state.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.line));
 			}
 			foreach(_;0..keyDown[KEY_Z]){
-				state.addCommand(Command(renderSide,camera.target,Formation.flankLeft));
+				state.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.flankLeft));
 			}
 			foreach(_;0..keyDown[KEY_V]){
-				state.addCommand(Command(renderSide,camera.target,Formation.flankRight));
+				state.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.flankRight));
 			}
 			foreach(_;0..keyDown[KEY_W]){
-				state.addCommand(Command(renderSide,camera.target,Formation.wedge));
+				state.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.wedge));
 			}
 			foreach(_;0..keyDown[KEY_U]){
-				state.addCommand(Command(renderSide,camera.target,Formation.semicircle));
+				state.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.semicircle));
 			}
 			foreach(_;0..keyDown[KEY_O]){
-				state.addCommand(Command(renderSide,camera.target,Formation.circle));
+				state.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.circle));
 			}
 			foreach(_;0..keyDown[KEY_Y]){
-				state.addCommand(Command(renderSide,camera.target,Formation.skirmish));
+				state.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.skirmish));
 			}
 			foreach(_;0..keyDown[KEY_R]){
 				if(mouse.status==Mouse.Status.standard){
@@ -1843,12 +1854,32 @@ final class SacScene: Scene{
 			foreach(_;0..keyDown[KEY_T]){
 				auto target=Target(TargetType.terrain,0,mouse.target.position,mouse.target.location);
 				target.position.z=state.current.getHeight(target.position);
-				state.addCommand(Command(CommandType.move,renderSide,camera.target,0,target,cameraFacing));
+				state.addCommand(Command!DagonBackend(CommandType.move,renderSide,camera.target,0,target,cameraFacing));
 			}
 			foreach(_;0..keyDown[KEY_A]){
 				if(mouse.status==Mouse.Status.standard){
 					mouse.status=Mouse.Status.icon;
 					mouse.icon=MouseIcon.guard;
+				}
+			}
+		}
+		static immutable creatureHotkeys=[KEY_Q,KEY_Q,KEY_W,KEY_R,KEY_T,KEY_A,KEY_Z,KEY_X,KEY_C,KEY_V,KEY_SPACE];
+		foreach(i;0..cast(int)creatureHotkeys.length){
+			if(i==0){
+				if(eventManager.keyPressed[KEY_LSHIFT]||eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK])
+					continue;
+			}else if(!(eventManager.keyPressed[KEY_LSHIFT] && !(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK]))){
+				continue;
+			}
+			foreach(_;0..keyDown[creatureHotkeys[i]]){
+				selectSpell(SpellType.creature,i);
+			}
+		}
+		static immutable spellHotkeys=[KEY_X,KEY_R,KEY_C,KEY_LALT,KEY_W,KEY_T,KEY_SPACE,KEY_V,KEY_Z,KEY_Y,KEY_H];
+		if(!(eventManager.keyPressed[KEY_LSHIFT]||eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK])){
+			foreach(i;0..cast(int)creatureHotkeys.length){
+				foreach(_;0..keyDown[spellHotkeys[i]]){
+					selectSpell(SpellType.spell,i);
 				}
 			}
 		}
@@ -1872,19 +1903,19 @@ final class SacScene: Scene{
 		}
 		if(!eventManager.keyPressed[KEY_LSHIFT] && !eventManager.keyPressed[KEY_LCTRL] && !eventManager.keyPressed[KEY_CAPSLOCK]){
 			foreach(_;0..keyDown[KEY_A]) applyToMoving!depleteMana(state.current,camera,mouse.target);
-			foreach(_;0..keyDown[KEY_T]) applyToMoving!kill(state.current,camera,mouse.target);
-			foreach(_;0..keyDown[KEY_R]) applyToMoving!stun(state.current,camera,mouse.target);
+			foreach(_;0..keyDown[KEY_PERIOD]) applyToMoving!kill(state.current,camera,mouse.target);
+			foreach(_;0..keyDown[KEY_J]) applyToMoving!stun(state.current,camera,mouse.target);
 			static void catapultRandomly(B)(ref MovingObject!B object,ObjectState!B state){
 				import std.random;
 				auto velocity=Vector3f(uniform!"[]"(-20.0f,20.0f), uniform!"[]"(-20.0f,20.0f), uniform!"[]"(10.0f,25.0f));
 				//auto velocity=Vector3f(0.0f,0.0f,25.0f);
 				object.catapult(velocity,state);
 			}
-			foreach(_;0..keyDown[KEY_W]) applyToMoving!catapultRandomly(state.current,camera,mouse.target);
+			foreach(_;0..keyDown[KEY_RSHIFT]) applyToMoving!catapultRandomly(state.current,camera,mouse.target);
 			foreach(_;0..keyDown[KEY_RETURN]) applyToMoving!immediateRevive(state.current,camera,mouse.target);
-			foreach(_;0..keyDown[KEY_G]) applyToMoving!startFlying(state.current,camera,mouse.target);
-			foreach(_;0..keyDown[KEY_V]) applyToMoving!land(state.current,camera,mouse.target);
-			if(!eventManager.keyPressed[KEY_LSHIFT]) foreach(_;0..keyDown[KEY_SPACE]){
+			//foreach(_;0..keyDown[KEY_G]) applyToMoving!startFlying(state.current,camera,mouse.target);
+			//foreach(_;0..keyDown[KEY_V]) applyToMoving!land(state.current,camera,mouse.target);
+			/+if(!eventManager.keyPressed[KEY_LSHIFT]) foreach(_;0..keyDown[KEY_SPACE]){
 				//applyToMoving!startMeleeAttacking(state.current,camera,mouse.target);
 				static void castingTest(B)(ref MovingObject!B object,ObjectState!B state){
 					object.startCasting(3*updateFPS,true,state);
@@ -1895,7 +1926,7 @@ final class SacScene: Scene{
 					destructionAnimation(position+Vector3f(0,0,5),state.current);
 					//explosionAnimation(position+Vector3f(0,0,5),state.current);
 				}+/
-			}
+			}+/
 		}
 		foreach(_;0..keyDown[KEY_BACKSPACE]){
 			if(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK]){
@@ -1921,8 +1952,8 @@ final class SacScene: Scene{
 					focusCamera(mouse.target.id);
 			foreach(_;0..keyDown[KEY_N]) camera.target=0;
 
-			foreach(_;0..keyDown[KEY_Y]) showHitboxes=true;
-			foreach(_;0..keyDown[KEY_U]) showHitboxes=false;
+			foreach(_;0..keyDown[KEY_U]) showHitboxes=true;
+			foreach(_;0..keyDown[KEY_I]) showHitboxes=false;
 
 			foreach(_;0..keyDown[KEY_H]) state.commit();
 			foreach(_;0..keyDown[KEY_B]) state.rollback();
@@ -1930,7 +1961,7 @@ final class SacScene: Scene{
 			foreach(_;0..keyDown[KEY_COMMA]) if(audio) audio.switchTheme(cast(Theme)((audio.currentTheme+1)%Theme.max));
 		}
 
-		if(camera.target){
+		/+if(camera.target){
 			auto creatures=creatureSpells[options.god];
 			static immutable hotkeys=[KEY_Q,KEY_Q,KEY_W,KEY_R,KEY_T,KEY_A,KEY_Z,KEY_X,KEY_C,KEY_V,KEY_SPACE];
 			if(!eventManager.keyPressed[KEY_LSHIFT] && !(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK])){
@@ -1948,7 +1979,7 @@ final class SacScene: Scene{
 					}
 				}
 			}
-		}
+		}+/
 		if(!(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK]||eventManager.keyPressed[KEY_LSHIFT])){
 			if(keyDown[KEY_K]){
 				fpview.active=false;

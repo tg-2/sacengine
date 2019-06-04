@@ -918,8 +918,13 @@ struct SpellInfo(B){
 	SacSpell!B spell;
 	int level;
 	float cooldown;
+	float maxCooldown;
 	bool ready=true;
 	int readyFrame=16*updateAnimFactor;
+	void setCooldown(float newCooldown){
+		if(newCooldown>cooldown) cooldown=newCooldown;
+		if(newCooldown>maxCooldown) maxCooldown=newCooldown; // TODO: check what original does
+	}
 }
 struct Spellbook(B){
 	Array!(SpellInfo!B) spells;
@@ -927,7 +932,7 @@ struct Spellbook(B){
 		assignArray(spells,rhs.spells);
 	}
 	void addSpell(int level,SacSpell!B spell){
-		spells~=SpellInfo!B(spell,level,0.0f);
+		spells~=SpellInfo!B(spell,level,0.0f,0.0f);
 		if(spells.length>=2&&spells[$-1].spell.spellOrder<spells[$-2].spell.spellOrder) sort();
 	}
 	void sort(){
@@ -1002,6 +1007,13 @@ struct WizardInfo(B){
 	}
 	auto getSpells(){
 		return spellbook.getSpells();
+	}
+}
+void applyCooldown(B)(ref WizardInfo!B wizard,SacSpell!B spell,ObjectState!B state){
+	enum genericCooldown=1.0f;
+	foreach(ref entry;wizard.spellbook.spells.data){
+		if(entry.spell is spell) entry.setCooldown(spell.castingTime+spell.cooldown+1.0f);
+		else entry.setCooldown(spell.castingTime+genericCooldown+1.0f);
 	}
 }
 WizardInfo!B makeWizard(B)(int id,int level,int souls,Spellbook!B spellbook,ObjectState!B state){
@@ -1121,6 +1133,7 @@ struct Explosion(B){
 	int frame;
 }
 struct CreatureCasting(B){
+	SacSpell!B spell;
 	int wizard;
 	int creature;
 	float manaCostPerFrame;
@@ -2240,24 +2253,26 @@ bool startCasting(B)(ref MovingObject!B object,int numFrames,bool stationary,Obj
 }
 
 bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,ObjectState!B state){
-	if(state.spellStatus!false(object.id,spell,target)!=SpellStatus.ready) return false;
+	auto wizard=state.getWizard(object.id);
+	if(!wizard) return false;
+	if(state.spellStatus!false(wizard,spell,target)!=SpellStatus.ready) return false;
 	int numFrames=cast(int)ceil(updateFPS*spell.castingTime);
 	if(!object.startCasting(numFrames,spell.stationary,state))
 		return false;
 	auto manaCostPerFrame=spell.manaCost/numFrames;
+	(*wizard).applyCooldown(spell,state);
 	final switch(spell.type){
 		case SpellType.creature:
 			assert(target==Target.init);
-			auto wizard=state.getWizard(object.id);
-			assert(wizard&&wizard.souls>=spell.soulCost);
-			wizard.souls-=spell.soulCost;
 			auto creature=spawn(object.id,spell.tag,0,state);
-			state.addEffect(CreatureCasting!B(object.id,creature,manaCostPerFrame));
+			state.addEffect(CreatureCasting!B(spell,object.id,creature,manaCostPerFrame));
 			return true;
 		case SpellType.spell:
-			return false; // TODO
+			// TODO
+			return true;
 		case SpellType.structure:
-			return false; // TODO
+			// TODO
+			return true;
 	}
 }
 
@@ -3392,7 +3407,11 @@ bool updateCreatureCasting(B)(ref CreatureCasting!B creatureCast,ObjectState!B s
 		final switch(status){
 			case CastingStatus.underway: return true;
 			case CastingStatus.interrupted: state.removeObject(creatureCast.creature); return false;
-			case CastingStatus.finished: state.movingObjectById!((ref obj,state){
+			case CastingStatus.finished:
+				auto wizard=state.getWizard(wizard);
+				if(!wizard||wizard.souls<spell.soulCost) goto case CastingStatus.interrupted;
+				wizard.souls-=spell.soulCost;
+				state.movingObjectById!((ref obj,state){
 				obj.creatureState.mode=CreatureMode.spawning;
 				state.addToSelection(obj.side,obj.id);
 			},function(){})(creatureCast.creature,state); return false;
@@ -4057,11 +4076,11 @@ final class ObjectState(B){ // (update logic)
 		obj=rhs.obj;
 		sid=rhs.sid;
 	}
-	void updateFrom(ObjectState!B rhs,Command[] frameCommands){
+	void updateFrom(ObjectState!B rhs,Command!B[] frameCommands){
 		copyFrom(rhs);
 		update(frameCommands);
 	}
-	void applyCommand(Command command){
+	void applyCommand(Command!B command){
 		if(!command.isApplicable(this)) return;
 		bool success=true;
 		scope(success) if(success){
@@ -4069,7 +4088,7 @@ final class ObjectState(B){ // (update logic)
 			if(command.type.hasClickSound) playSound(command.side,commandAppliedSoundTags[whichClick],this);
 			command.speakCommand(this);
 		}
-		static bool applyOrder(Command command,ObjectState!B state,bool updateFormation=false,Vector2f formationOffset=Vector2f(0.0f,0.0f)){
+		static bool applyOrder(Command!B command,ObjectState!B state,bool updateFormation=false,Vector2f formationOffset=Vector2f(0.0f,0.0f)){
 			bool success=false;
 			assert(command.type==CommandType.setFormation||command.target.type.among(TargetType.terrain,TargetType.creature,TargetType.building));
 			if(!command.creature){
@@ -4178,9 +4197,10 @@ final class ObjectState(B){ // (update logic)
 			case automaticSelectGroup: goto case selectGroup;
 			case setFormation: success=applyOrder(command,this,true); break;
 			case retreat,move,guard,guardArea,attack,advance: success=applyOrder(command,this); break;
+			case castSpell: success=this.movingObjectById!((ref obj,spell,target,state)=>obj.startCasting(spell,target,state),function()=>false)(command.wizard,command.spell,command.target,this);
 		}
 	}
-	void update(Command[] frameCommands){
+	void update(Command!B[] frameCommands){
 		frame+=1;
 		proximity.start();
 		this.eachByType!(addToProximity,false)(this);
@@ -4237,9 +4257,12 @@ final class ObjectState(B){ // (update logic)
 	}
 	private static alias spellStatusArgs(bool selectOnly:true)=Seq!();
 	private static alias spellStatusArgs(bool selectOnly:false)=Seq!Target;
-	auto spellStatus(bool selectOnly=false)(int id,SacSpell!B spell,spellStatusArgs!selectOnly target){ // DMD bug: default argument does not work
+	SpellStatus spellStatus(bool selectOnly=false)(int id,SacSpell!B spell,spellStatusArgs!selectOnly target){ // DMD bug: default argument does not work
 		auto wizard=getWizard(id);
 		if(!wizard) return SpellStatus.inexistent;
+		return spellStatus!selectOnly(wizard,spell,target);
+	}
+	SpellStatus spellStatus(bool selectOnly=false)(WizardInfo!B* wizard,SacSpell!B spell,spellStatusArgs!selectOnly target){ // DMD bug: default argument does not work
 		foreach(entry;wizard.getSpells()){
 			if(entry.spell!is spell) continue;
 			if(entry.level>wizard.level) return SpellStatus.inexistent;
@@ -4255,7 +4278,7 @@ final class ObjectState(B){ // (update logic)
 					if((obj.position-target[0].position).lengthsqr>spell.range^^2) return SpellStatus.outOfRange;
 				}
 				return SpellStatus.ready;
-			},function()=>SpellStatus.inexistent)(id,spell,this,target);
+			},function()=>SpellStatus.inexistent)(wizard.id,spell,this,target);
 		}
 		return SpellStatus.inexistent;
 	}
@@ -4826,15 +4849,17 @@ enum CommandType{
 	guardArea,
 	attack,
 	advance,
+
+	castSpell,
 }
 
 bool hasClickSound(CommandType type){
 	final switch(type) with(CommandType){
 		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,clearSelection,automaticToggleSelection,automaticSelectGroup,setFormation,retreat: return false;
-		case select,selectAll,automaticSelectAll,toggleSelection,defineGroup,addToGroup,selectGroup,move,guard,guardArea,attack,advance: return true;
+		case select,selectAll,automaticSelectAll,toggleSelection,defineGroup,addToGroup,selectGroup,move,guard,guardArea,attack,advance,castSpell: return true;
 	}
 }
-SoundType soundType(Command command){
+SoundType soundType(B)(Command!B command){
 	final switch(command.type) with(CommandType){
 		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,clearSelection,select,selectAll,automaticSelectAll,toggleSelection,automaticToggleSelection,automaticSelectGroup:
 			return SoundType.none;
@@ -4865,11 +4890,12 @@ SoundType soundType(Command command){
 		case guardArea: return SoundType.defendArea;
 		case attack: return command.target.type==TargetType.building?SoundType.attackBuilding:SoundType.attack;
 		case advance: return SoundType.advance;
+		case castSpell: return SoundType.none;
 	}
 }
-SoundType responseSoundType(Command command){
+SoundType responseSoundType(B)(Command!B command){
 	final switch(command.type) with(CommandType){
-		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,setFormation,clearSelection,automaticSelectAll,automaticToggleSelection,defineGroup,addToGroup,automaticSelectGroup,retreat:
+		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,setFormation,clearSelection,automaticSelectAll,automaticToggleSelection,defineGroup,addToGroup,automaticSelectGroup,retreat,castSpell:
 			return SoundType.none;
 		case select,selectAll,toggleSelection,selectGroup:
 			return SoundType.selected;
@@ -4877,7 +4903,7 @@ SoundType responseSoundType(Command command){
 		case attack,advance: return SoundType.attacking;
 	}
 }
-void speakCommand(B)(Command command,ObjectState!B state){
+void speakCommand(B)(Command!B command,ObjectState!B state){
 	if(!command.wizard) return;
 	auto soundType=command.soundType;
 	if(soundType!=SoundType.none){
@@ -4981,7 +5007,7 @@ auto playSoundTypeAt(bool getDuration=false,B,T...)(SacObject!B sacObject,int id
 	if(auto sset=sacObject.meleeSset) playSset(sset);
 	static if(getDuration) return duration;
 }
-struct Command{
+struct Command(B){
 	this(CommandType type,int side,int wizard,int creature,Target target,float targetFacing)in{
 		final switch(type) with(CommandType){
 			case none:
@@ -5009,7 +5035,9 @@ struct Command{
 			case guardArea,advance:
 				assert(target.type==TargetType.terrain);
 				break;
-			case defineGroup,addToGroup,selectGroup,automaticSelectGroup:
+				case defineGroup,addToGroup,selectGroup,automaticSelectGroup:
+				assert(0);
+			case castSpell:
 				assert(0);
 		}
 	}do{
@@ -5043,10 +5071,19 @@ struct Command{
 		this.formation=formation;
 	}
 
+	this(B)(int side,int wizard,SacSpell!B spell,Target target){
+		this.type=CommandType.castSpell;
+		this.side=side;
+		this.wizard=wizard;
+		this.spell=spell;
+		this.target=target;
+	}
+
 	CommandType type;
 	int side;
 	int wizard;
 	int creature;
+	SacSpell!B spell;
 	Target target;
 	float targetFacing;
 	Formation formation=Formation.init;
@@ -5065,7 +5102,7 @@ final class GameState(B){
 	ObjectState!B current;
 	ObjectState!B next;
 	Triggers!B triggers;
-	Array!(Array!Command) commands;
+	Array!(Array!(Command!B)) commands;
 	this(SacMap!B map,Side[] sids,NTTs ntts,Options options)in{
 		assert(!!map);
 	}body{
@@ -5183,7 +5220,7 @@ final class GameState(B){
 	void step(){
 		next.updateFrom(current,commands[current.frame].data);
 		swap(current,next);
-		if(commands.length<=current.frame) commands~=Array!Command();
+		if(commands.length<=current.frame) commands~=Array!(Command!B)();
 	}
 	void commit(){
 		lastCommitted.copyFrom(current);
@@ -5212,7 +5249,7 @@ final class GameState(B){
 		while(current.frame<frame)
 			step();
 	}
-	void addCommand(int frame,Command command)in{
+	void addCommand(int frame,Command!B command)in{
 		assert(frame<=current.frame);
 	}body{
 		assert(frame<commands.length);
@@ -5222,14 +5259,14 @@ final class GameState(B){
 		playAudio=false;
 		simulateTo(currentFrame);
 	}
-	void addCommand(Command command){
+	void addCommand(Command!B command){
 		addCommand(current.frame,command);
 	}
 	void setSelection(int side,int wizard,CreatureGroup selection,TargetLocation loc){
-		addCommand(Command(CommandType.clearSelection,side,wizard,0,Target.init,float.init));
+		addCommand(Command!B(CommandType.clearSelection,side,wizard,0,Target.init,float.init));
 		foreach_reverse(id;selection.creatureIds){
 			if(id==0) continue;
-			addCommand(Command(CommandType.automaticToggleSelection,side,wizard,id,Target.init,float.init));
+			addCommand(Command!B(CommandType.automaticToggleSelection,side,wizard,id,Target.init,float.init));
 		}
 	}
 }
