@@ -3319,7 +3319,7 @@ void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 	while(soul.facing>cast(float)PI) soul.facing-=2*cast(float)PI;
 	if(soul.frame==SacSoul!B.numFrames*updateAnimFactor)
 		soul.frame=0;
-	if(soul.creatureId)
+	if(soul.creatureId&&soul.state!=SoulState.collecting)
 		soul.position=state.movingObjectById!(soulPosition,()=>Vector3f(float.nan,float.nan,float.nan))(soul.creatureId);
 	final switch(soul.state){
 		case SoulState.normal:
