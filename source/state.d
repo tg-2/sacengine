@@ -27,6 +27,7 @@ enum CreatureMode{
 	moving,
 	dying,
 	dead,
+	dissolving,
 	preSpawning,
 	spawning,
 	reviving,
@@ -284,10 +285,10 @@ float takeoffTime(B)(ref MovingObject!B object,ObjectState!B state){
 bool isWizard(B)(ref MovingObject!B obj){ return obj.sacObject.isWizard; }
 bool isPeasant(B)(ref MovingObject!B obj){ return obj.sacObject.isPeasant; }
 bool canSelect(B)(ref MovingObject!B obj,int side,ObjectState!B state){
-	return obj.side==side&&!obj.isWizard&&!obj.isPeasant&&obj.creatureState.mode!=CreatureMode.dead;
+	return obj.side==side&&!obj.isWizard&&!obj.isPeasant&&!obj.creatureState.mode.among(CreatureMode.dead,CreatureMode.dissolving);
 }
 bool canOrder(B)(ref MovingObject!B obj,int side,ObjectState!B state){
-	return (side==-1||obj.side==side)&&obj.creatureState.mode!=CreatureMode.dead;
+	return (side==-1||obj.side==side)&&!obj.creatureState.mode.among(CreatureMode.dead,CreatureMode.dissolving);
 }
 bool canSelect(B)(int side,int id,ObjectState!B state){
 	return state.movingObjectById!(canSelect,()=>false)(id,side,state);
@@ -374,7 +375,7 @@ StunnedBehavior stunnedBehavior(B)(ref MovingObject!B object){
 }
 
 bool isRegenerating(B)(ref MovingObject!B object){
-	return object.creatureState.mode==CreatureMode.idle||object.sacObject.continuousRegeneration&&!object.creatureState.mode.among(CreatureMode.dying,CreatureMode.dead);
+	return object.creatureState.mode==CreatureMode.idle||object.sacObject.continuousRegeneration&&!object.creatureState.mode.among(CreatureMode.dying,CreatureMode.dead,CreatureMode.dissolving);
 }
 
 bool isDamaged(B)(ref MovingObject!B object){
@@ -477,6 +478,7 @@ enum SoulState{
 struct Soul(B){
 	int id=0;
 	int creatureId=0;
+	int preferredSide=-1;
 	int collectorId=0;
 	int number;
 	Vector3f position;
@@ -491,19 +493,21 @@ struct Soul(B){
 		this.state=state;
 		if(state==SoulState.emerging) scaling=0.0f;
 	}
-	this(int creatureId,int number,Vector3f position,SoulState state){
+	this(int creatureId,int preferredSide,int number,Vector3f position,SoulState state){
 		this.creatureId=creatureId;
+		this.preferredSide=preferredSide;
 		this(number,position,state);
 	}
-	this(int id,int creatureId,int number,Vector3f position,SoulState state){
+	this(int id,int creatureId,int preferredSide,int number,Vector3f position,SoulState state){
 		this.id=id;
-		this(creatureId,number,position,state);
+		this.preferredSide=preferredSide;
+		this(creatureId,preferredSide,number,position,state);
 	}
 }
 
 int side(B)(ref Soul!B soul,ObjectState!B state){
 	if(soul.creatureId==0) return -1;
-	return state.movingObjectById!((obj)=>obj.side,function int(){ assert(0); })(soul.creatureId);
+	return soul.preferredSide;
 }
 int soulSide(B)(int id,ObjectState!B state){
 	return state.soulById!(side,function int(){ assert(0); })(id,state);
@@ -1735,6 +1739,9 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 				object.animationState=AnimationState.hitFloor;
 			object.frame=sacObject.numFrames(object.animationState)*updateAnimFactor-1;
 			break;
+		case CreatureMode.dissolving:
+			object.creatureState.timer=0;
+			break;
 		case CreatureMode.reviving, CreatureMode.fastReviving:
 			assert(object.frame==sacObject.numFrames(object.animationState)*updateAnimFactor-1);
 			static immutable reviveSequence=[AnimationState.corpse,AnimationState.float_];
@@ -1860,13 +1867,21 @@ void startIdling(B)(ref MovingObject!B object, ObjectState!B state){
 
 void kill(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.creatureStats.flags&Flags.cannotDestroyKill) return;
-	with(CreatureMode) if(object.creatureState.mode.among(dying,dead,reviving,fastReviving)) return;
+	with(CreatureMode) if(object.creatureState.mode.among(dying,dead,dissolving,reviving,fastReviving)) return;
 	if(!object.sacObject.canDie()) return;
 	object.unselect(state);
 	object.removeFromGroups(state);
 	object.health=0.0f;
 	object.creatureState.mode=CreatureMode.dying;
 	playSoundTypeAt(object.sacObject,object.id,SoundType.death,state);
+	object.setCreatureState(state);
+}
+
+enum dissolutionTime=cast(int)(2.5f*updateFPS);
+enum dissolutionDelay=updateFPS;
+void startDissolving(B)(ref MovingObject!B object,ObjectState!B state){
+	if(!object.creatureState.mode.among(CreatureMode.dead,CreatureMode.dissolving)||object.soulId) return;
+	object.creatureState.mode=CreatureMode.dissolving;
 	object.setCreatureState(state);
 }
 
@@ -1899,14 +1914,14 @@ void spawnSoul(B)(ref MovingObject!B object, ObjectState!B state){
 	with(CreatureMode) if(object.creatureState.mode!=CreatureMode.dead||object.soulId!=0) return;
 	int numSouls=object.sacObject.numSouls;
 	if(!numSouls) return;
-	object.soulId=state.addObject(Soul!B(object.id,object.sacObject.numSouls,object.soulPosition,SoulState.emerging));
+	object.soulId=state.addObject(Soul!B(object.id,object.side,object.sacObject.numSouls,object.soulPosition,SoulState.emerging));
 }
 
 void createSoul(B)(ref MovingObject!B object, ObjectState!B state){
 	with(CreatureMode) if(object.creatureState.mode!=CreatureMode.dead||object.soulId!=0) return;
 	int numSouls=object.sacObject.numSouls;
 	if(!numSouls) return;
-	object.soulId=state.addObject(Soul!B(object.id,object.sacObject.numSouls,object.soulPosition,SoulState.normal));
+	object.soulId=state.addObject(Soul!B(object.id,object.side,object.sacObject.numSouls,object.soulPosition,SoulState.normal));
 }
 
 int spawn(T=Creature,B)(ref MovingObject!B caster,char[4] tag,int flags,ObjectState!B state,bool pre){
@@ -1963,7 +1978,7 @@ int makeBuilding(B)(int casterId,char[4] tag,int flags,int base,ObjectState!B st
 bool canStun(B)(ref MovingObject!B object,ObjectState!B state){
 	final switch(object.creatureState.mode) with(CreatureMode){
 		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,cower,casting,stationaryCasting,castingMoving: return true;
-		case dying,dead,preSpawning,spawning,reviving,fastReviving,stunned: return false;
+		case dying,dead,dissolving,preSpawning,spawning,reviving,fastReviving,stunned: return false;
 	}
 }
 
@@ -1980,7 +1995,7 @@ void damageStun(B)(ref MovingObject!B object, Vector3f attackDirection, ObjectSt
 }
 
 void catapult(B)(ref MovingObject!B object, Vector3f velocity, ObjectState!B state){
-	with(CreatureMode) if(object.creatureState.mode==dead) return;
+	with(CreatureMode) if(object.creatureState.mode.among(dead,dissolving)) return;
 	if(object.creatureState.movement==CreatureMovement.flying) return;
 	if(object.creatureState.mode!=CreatureMode.dying)
 		object.creatureState.mode=CreatureMode.stunned;
@@ -2107,7 +2122,7 @@ bool canDamage(B)(ref MovingObject!B object,ObjectState!B state){
 	if(object.creatureStats.flags&Flags.cannotDamage) return false;
 	final switch(object.creatureState.mode) with(CreatureMode){
 		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving: return true;
-		case dying,dead,preSpawning,spawning,reviving,fastReviving: return false;
+		case dying,dead,dissolving,preSpawning,spawning,reviving,fastReviving: return false;
 	}
 }
 
@@ -2608,7 +2623,7 @@ enum rotationSpeedLimitFactor=1.0f;
 bool requiresAI(CreatureMode mode){
 	with(CreatureMode) final switch(mode){
 		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,casting,stationaryCasting,castingMoving: return true;
-		case dying,dead,preSpawning,spawning,reviving,fastReviving,stunned,cower: return false;
+		case dying,dead,dissolving,preSpawning,spawning,reviving,fastReviving,stunned,cower: return false;
 	}
 }
 
@@ -2768,6 +2783,16 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 					object.creatureState.movement=CreatureMovement.onGround;
 			}
 			break;
+		case CreatureMode.dissolving:
+			object.creatureState.timer+=1;
+			if(object.creatureState.timer==dissolutionDelay){
+				playSoundAt("1ngi",object.id,state);
+				// TODO: add particle effect
+			}
+			if(object.creatureState.timer>=dissolutionTime)
+				state.removeLater(object.id);
+			break;
+
 		case CreatureMode.reviving, CreatureMode.fastReviving:
 			static immutable reviveSequence=[AnimationState.corpse,AnimationState.float_];
 			auto reviveTime=cast(int)(object.creatureStats.reviveTime*updateFPS);
@@ -3244,7 +3269,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 		static if(!fixup) posChanged=true;
 		else needsFixup=true;
 	}
-	if(object.creatureState.mode!=CreatureMode.dead){ // dead creatures do not participate in collision handling
+	if(!object.creatureState.mode.among(CreatureMode.dead,CreatureMode.dissolving)){ // dead creatures do not participate in collision handling
 		proximity.collide!(handleCollision!false)(hitbox);
 		object.creatureAI.isColliding=isColliding;
 		hitbox=[relativeHitbox[0]+newPosition,relativeHitbox[1]+newPosition];
@@ -3298,7 +3323,40 @@ void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 		soul.position=state.movingObjectById!(soulPosition,()=>Vector3f(float.nan,float.nan,float.nan))(soul.creatureId);
 	final switch(soul.state){
 		case SoulState.normal:
-			// TODO: add soul collecting
+			static struct State{
+				int collector=0;
+				int side=-1;
+				float distancesqr=float.infinity;
+				bool tied=false;
+			}
+			enum collectDistance=2.5f; // TODO: measure this
+			static void process(B)(ref WizardInfo!B wizard,Soul!B* soul,State* pstate,ObjectState!B state){ // TODO: use proximity data structure?
+				auto sidePosition=state.movingObjectById!((obj)=>tuple(obj.side,obj.center),function Tuple!(int,Vector3f)(){ assert(0); })(wizard.id);
+				auto side=sidePosition[0],position=sidePosition[1];
+				auto distancesqr=(soul.position-position).lengthsqr;
+
+				if(distancesqr>collectDistance^^2) return;
+				if(soul.creatureId&&side!=soul.preferredSide) return;
+				if(soul.preferredSide!=-1&&pstate.side==soul.preferredSide&&side!=soul.preferredSide) return;
+				if(distancesqr>pstate.distancesqr) return;
+				if(distancesqr==pstate.distancesqr){ pstate.tied=true; return; }
+				*pstate=State(wizard.id,side,distancesqr,false);
+			}
+			State pstate;
+			state.eachWizard!process(&soul,&pstate,state);
+			if(pstate.collector&&!pstate.tied){
+				soul.collectorId=pstate.collector;
+				soul.state=SoulState.collecting;
+				playSoundAt("rips",soul.collectorId,state,2.0f);
+				auto wizard=state.getWizard(soul.collectorId);
+				if(wizard) wizard.souls+=soul.number;
+				if(soul.creatureId){
+					state.movingObjectById!((ref creature,state){
+						creature.soulId=0;
+						creature.startDissolving(state);
+					})(soul.creatureId,state);
+				}
+			}
 			break;
 		case SoulState.emerging:
 			soul.scaling+=(1.0f/3.0f)/updateFPS;
@@ -3315,11 +3373,15 @@ void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 			break;
 		case SoulState.collecting:
 			assert(soul.collectorId!=0);
-			soul.scaling-=1.0f/updateFPS;
+			auto previousScaling=soul.scaling;
+			soul.scaling-=4.0f/updateFPS;
+			// TODO: how to do this more nicely?
+			auto factor=soul.scaling/previousScaling;
+			soul.position=factor*soul.position+(1.0f-factor)*state.movingObjectById!((wiz)=>wiz.center+Vector3f(0.0f,0.0f,0.5f),()=>soul.position)(soul.collectorId);
 			if(soul.scaling<=0.0f){
 				soul.scaling=0.0f;
-				// TODO: delete the soul
-				// TODO: increase collector's soul count
+				state.removeLater(soul.id);
+				soul.number=0;
 			}
 			break;
 	}
@@ -3635,7 +3697,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 	enum isMoving=is(T==MovingObjects!(B, RenderMode.opaque))||is(T==MovingObjects!(B, RenderMode.transparent));
 	static if(isMoving){
 		foreach(j;0..objects.length){
-			if(objects.creatureStates[j].mode==CreatureMode.dead) continue; // dead creatures are not obstacles (bad cache locality)
+			if(objects.creatureStates[j].mode.among(CreatureMode.dead,CreatureMode.dissolving)) continue; // dead creatures are not obstacles (bad cache locality)
 			auto hitbox=objects.sacObject.hitbox(objects.rotations[j],objects.animationStates[j],objects.frames[j]/updateAnimFactor);
 			auto position=objects.positions[j];
 			hitbox[0]+=position;
@@ -3652,7 +3714,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 			static bool manahoarAbilityEnabled(CreatureMode mode){
 				final switch(mode) with(CreatureMode){
 					case idle,moving,dying,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower: return true;
-					case dead,preSpawning,reviving,fastReviving: return false;
+					case dead,dissolving,preSpawning,reviving,fastReviving: return false;
 					case casting,stationaryCasting,castingMoving: assert(0);
 				}
 			}

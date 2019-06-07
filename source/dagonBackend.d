@@ -469,7 +469,7 @@ final class SacScene: Scene{
 		shadelessMaterialBackend.bind(null,rc);
 		scope(success) shadelessMaterialBackend.unbind(null,rc);
 		static void renderCreatureStat(B)(MovingObject!B obj,SacScene scene,bool healthAndMana,RenderingContext* rc){
-			if(obj.creatureState.mode.among(CreatureMode.dying,CreatureMode.dead)) return;
+			if(obj.creatureState.mode.among(CreatureMode.dying,CreatureMode.dead,CreatureMode.dissolving)) return;
 			auto backend=scene.shadelessMaterialBackend;
 			backend.bindDiffuse(scene.sacHud.statusArrows);
 			backend.setColor(scene.state.current.sides.sideColor(obj.side));
@@ -983,7 +983,7 @@ final class SacScene: Scene{
 				enforce(objects.length<=uint.max);
 				foreach(j;0..cast(uint)objects.length){
 					static if(is(typeof(objects.sacObject))){
-						static if(isMoving) if(objects.creatureStates[j].mode==CreatureMode.dead) continue;
+						static if(isMoving) if(objects.creatureStates[j].mode.among(CreatureMode.dead,CreatureMode.dissolving)) continue;
 						static if(isMoving){
 							auto side=objects.sides[j];
 							auto flags=objects.creatureStatss[j].flags;
