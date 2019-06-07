@@ -444,9 +444,12 @@ final class SacObject(B){
 			}
 		}
 		if(isPeasant){
-			with(AnimationState) static foreach(i,state;[flyDeath/+pullDown+/,flyDamage/+dig+/,takeoff/+cower+/,flyAttack/+talkCower+/]){
-				animations[pullDown+i]=animations[state];
-				animations[state]=Animation.init;
+			with(AnimationState){
+				animations[fly]=animations[land]=Animation.init;
+				static foreach(i,state;[flyDeath/+pullDown+/,flyDamage/+dig+/,takeoff/+cower+/,flyAttack/+talkCower+/]){
+					animations[pullDown+i]=animations[state];
+					animations[state]=Animation.init;
+				}
 			}
 		}
 		saxsi.createMeshes(animations[AnimationState.stance1].frames[0]);
