@@ -387,7 +387,7 @@ final class SacScene: Scene{
 					scope(success) material.unbind(rc);
 					foreach(j;0..objects.explosions.length){
 						auto mesh=scene.explosion.getFrame(objects.explosions[j].frame);
-						material.backend.setTransformationScaled(objects.explosions[j].position,Quaternionf.identity(),objects.explosions[j].scale*Vector3f(1.0f,1.0f,1.0f),rc);
+						material.backend.setTransformationScaled(objects.explosions[j].position,Quaternionf.identity(),objects.explosions[j].scale*Vector3f(1.1f,1.1f,0.9f),rc);
 						mesh.render(rc);
 					}
 				}
