@@ -298,8 +298,9 @@ final class SacScene: Scene{
 		static void render(T)(ref T objects,bool enableWidgets,SacScene scene,RenderingContext* rc){ // TODO: why does this need to be static? DMD bug?
 			static if(is(typeof(objects.sacObject))){
 				auto sacObject=objects.sacObject;
-				enum isMoving=is(T==MovingObjects!(DagonBackend, RenderMode.opaque))||is(T==MovingObjects!(DagonBackend, RenderMode.transparent));
-				static if(is(T==MovingObjects!(DagonBackend, RenderMode.opaque))){
+				enum isMoving=is(T==MovingObjects!(DagonBackend, renderMode), RenderMode renderMode);
+				enum isStatic=is(T==StaticObjects!(DagonBackend, renderMode), RenderMode renderMode);
+				static if((isMoving||isStatic)&&objects.renderMode==RenderMode.opaque){
 					auto materials=rc.shadowMode?sacObject.shadowMaterials:sacObject.materials;
 				}else{
 					auto materials=rc.shadowMode?sacObject.shadowMaterials:sacObject.materials; // TODO: add transparency here
@@ -328,7 +329,7 @@ final class SacScene: Scene{
 						auto mesh=sacObject.meshes[i];
 						foreach(j;0..objects.length){
 							material.backend.setTransformation(objects.positions[j], objects.rotations[j], rc);
-							static if(is(T==StaticObjects!DagonBackend)){
+							static if(isStatic){
 								auto id=objects.ids[j];
 								material.backend.setInformation(Vector4f(2.0f,id>>16,id&((1<<16)-1),1.0f));
 							}
@@ -591,7 +592,8 @@ final class SacScene: Scene{
 	GenericMaterial hitboxMaterial=null;
 	final void renderHitboxes(RenderingContext* rc){
 		static void render(T)(ref T objects,GenericMaterial material,RenderingContext* rc){
-			enum isMoving=is(T==MovingObjects!(DagonBackend, RenderMode.opaque))||is(T==MovingObjects!(DagonBackend, RenderMode.transparent));
+			enum isMoving=is(T==MovingObjects!(DagonBackend, renderMode), RenderMode renderMode);
+			enum isStatic=is(T==StaticObjects!(DagonBackend, renderMode), RenderMode renderMode);
 			static if(isMoving){
 				auto sacObject=objects.sacObject;
 				foreach(j;0..objects.length){
@@ -623,7 +625,7 @@ final class SacScene: Scene{
 						//renderBox(hitbox,rc);
 					}+/
 				}
-			}else static if(is(T==StaticObjects!DagonBackend)){
+			}else static if(isStatic){
 				auto sacObject=objects.sacObject;
 				foreach(j;0..objects.length){
 					material.backend.setTransformation(objects.positions[j], Quaternionf.identity(), rc);
@@ -942,12 +944,13 @@ final class SacScene: Scene{
 		static Array!uint creatureArrowIndices;
 		static Array!uint structureArrowIndices;
 		static void render(T)(ref T objects,float hudScaling,float minimapFactor,Vector3f minimapCenter,Vector3f mapCenter,float radius,Quaternionf mapRotation,SacScene scene,RenderingContext* rc){ // TODO: why does this need to be static? DMD bug?
+			enum isMoving=is(T==MovingObjects!(DagonBackend, renderMode), RenderMode renderMode);
+			enum isStatic=is(T==StaticObjects!(DagonBackend, renderMode), RenderMode renderMode);
 			static if((is(typeof(objects.sacObject))||is(T==Souls!(DagonBackend)))&&!is(T==FixedObjects!DagonBackend)){
 				auto quad=scene.minimapQuad;
 				auto iconScaling=hudScaling*Vector3f(2.0f,2.0f,0.0f);
 				static if(is(typeof(objects.sacObject))){
 					auto sacObject=objects.sacObject;
-					enum isMoving=is(T==MovingObjects!(DagonBackend, RenderMode.opaque))||is(T==MovingObjects!(DagonBackend, RenderMode.transparent));
 					bool isManafount=false;
 					static if(isMoving){
 						enum mayShowArrow=true;
@@ -1001,7 +1004,7 @@ final class SacScene: Scene{
 					auto clipRadiusFactor=showArrow?0.92f:1.08f;
 					auto clipradiusSq=((clipRadiusFactor*radius+(showArrow?-1.0f:1.0f)*0.5f*iconScaling.x)*
 					                   (clipRadiusFactor*radius+(showArrow?-1.0f:1.0f)*0.5f*iconScaling.y));
-					static if(is(T==StaticObjects!DagonBackend)){
+					static if(isStatic){
 						if(!isManafount&&!scene.state.current.buildingById!((bldg)=>bldg.health!=0||bldg.isAltar,()=>false)(objects.buildingIds[j])) // TODO: merge with side lookup!
 							continue;
 					}

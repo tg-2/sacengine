@@ -12,10 +12,15 @@ import state:updateAnimFactor;
 
 enum animFPS=30;
 
+enum RenderMode{
+	opaque,
+	transparent,
+}
+
 final class SacObject(B){
 	char[4] tag;
 	char[4] nttTag;
-	int stateIndex=-1;
+	int[RenderMode.max+1] stateIndex=-1;
 	B.Mesh[] meshes;
 	B.Texture[] textures;
 	B.Texture icon;

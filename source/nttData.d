@@ -899,7 +899,9 @@ enum SpellTag:char[4]{
 	ent="mtsl",
 	dragon="grdg",
 	// persephone heroes:
-	// TODO
+	dragonHatchling="rdbO",
+	sirocco="risH",
+	faestus="ehtH",
 	// persephone spells
 	wrath="oalf",
 	etherealForm="mrfe",
@@ -922,11 +924,11 @@ enum SpellTag:char[4]{
 	warmonger="nugf",
 	phoenix="grdr",
 	// pyro heroes:
-	// TODO
+	faestus2="EHTH",
 	// pyro spells:
 	fireball="brif",
 	fireform="mrff",
-	ringsOfFire="rifr",
+	ringsOfFire="rapf",
 	dragonfire="rifd",
 	explosion="pxef",
 	firewall="lwrf",
@@ -945,7 +947,7 @@ enum SpellTag:char[4]{
 	jabberocky="mtse",
 	rhinok="gard",
 	// james heroes:
-	// TODO
+	gammel="magH",
 	// james spells:
 	rock="kcor",
 	skinOfStone="niks",
@@ -991,7 +993,7 @@ enum SpellTag:char[4]{
 	styx="nugd",
 	hellmouth="nomd",
 	// charnel heroes:
-	// TODO
+	thestor="eafH",
 	// charnel spells:
 	insectSwarm="mrws",
 	protectiveSwarm="rwsp",
@@ -1031,3 +1033,6 @@ immutable ST[] charnelSpells=[ST.insectSwarm,ST.protectiveSwarm,ST.slime,ST.anim
 immutable ST[][6] normalSpells=[neutralSpells,neutralSpells~persephoneSpells,neutralSpells~pyroSpells,neutralSpells~jamesSpells,neutralSpells~stratosSpells,neutralSpells~charnelSpells];
 static assert(normalSpells.length==God.max+1);
 immutable ST[] structureSpells=[ST.manalith,ST.guardian,ST.convert,ST.desecrate,ST.teleport,ST.shrine];
+
+immutable ST[] specialCreatures=[ST.dragonHatchling];
+immutable ST[] heroCreatures=[ST.sirocco,ST.faestus,ST.faestus2,  /+ST.thestor+/];

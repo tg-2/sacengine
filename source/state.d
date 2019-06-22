@@ -11,11 +11,6 @@ enum int updateFPS=60;
 static assert(updateFPS%animFPS==0);
 enum updateAnimFactor=updateFPS/animFPS;
 
-enum RenderMode{
-	opaque,
-	transparent,
-}
-
 struct Id{
 	RenderMode mode;
 	int type;
@@ -754,8 +749,8 @@ auto each(alias f,B,RenderMode mode,T...)(ref MovingObjects!(B,mode) movingObjec
 }
 
 
-struct StaticObjects(B){
-	enum renderMode=RenderMode.opaque;
+struct StaticObjects(B,RenderMode mode){
+	enum renderMode=mode;
 	SacObject!B sacObject;
 	Array!int ids;
 	Array!int buildingIds;
@@ -786,7 +781,7 @@ struct StaticObjects(B){
 		}
 		length=length-1;
 	}
-	void opAssign(ref StaticObjects!B rhs){
+	void opAssign(ref StaticObjects!(B,mode) rhs){
 		assert(sacObject is null || sacObject is rhs.sacObject);
 		sacObject=rhs.sacObject;
 		assignArray(ids,rhs.ids);
@@ -805,7 +800,7 @@ struct StaticObjects(B){
 		rotations[i]=obj.rotation;
 	}
 }
-auto each(alias f,B,T...)(ref StaticObjects!B staticObjects,T args){
+auto each(alias f,B,RenderMode mode,T...)(ref StaticObjects!(B,mode) staticObjects,T args){
 	foreach(i;0..staticObjects.length)
 		f(staticObjects[i],args);
 }
@@ -1205,8 +1200,8 @@ struct CommandCones(B){
 
 struct Objects(B,RenderMode mode){
 	Array!(MovingObjects!(B,mode)) movingObjects;
+	Array!(StaticObjects!(B,mode)) staticObjects;
 	static if(mode == RenderMode.opaque){
-		Array!(StaticObjects!B) staticObjects;
 		FixedObjects!B[] fixedObjects;
 		Souls!B souls;
 		Buildings!B buildings;
@@ -1215,40 +1210,52 @@ struct Objects(B,RenderMode mode){
 		Effects!B effects;
 		CommandCones!B commandCones;
 	}
-	static if(mode==RenderMode.opaque){
-		Id addObject(T)(T object) if(is(T==MovingObject!B)||is(T==StaticObject!B))in{
-			assert(object.id!=0);
-		}do{
-			Id result;
-			auto type=object.sacObject.stateIndex; // TODO: support RenderMode.transparent
-			if(type==-1){
-				static if(is(T==MovingObject!B)){
-					type=object.sacObject.stateIndex=cast(int)movingObjects.length;
-					movingObjects.length=movingObjects.length+1;
-					movingObjects[$-1].sacObject=object.sacObject;
-				}else{
-					type=object.sacObject.stateIndex=cast(int)staticObjects.length+numMoving;
-					staticObjects.length=staticObjects.length+1;
-					staticObjects[$-1].sacObject=object.sacObject;
-				}
-			}
+	Id addObject(T)(T object) if(is(T==MovingObject!B)||is(T==StaticObject!B))in{
+		assert(object.id!=0);
+	}do{
+		Id result;
+		auto type=object.sacObject.stateIndex[mode];
+		if(type==-1){
 			static if(is(T==MovingObject!B)){
-				enforce(type<numMoving);
-				if(movingObjects.length<=type) movingObjects.length=type+1;
-				result=Id(mode,type,movingObjects[type].length);
-				movingObjects[type].addObject(object);
+				type=object.sacObject.stateIndex[mode]=cast(int)movingObjects.length;
+				movingObjects.length=movingObjects.length+1;
+				movingObjects[$-1].sacObject=object.sacObject;
 			}else{
-				enforce(numMoving<=type && type<numMoving+numStatic);
-				if(staticObjects.length<=type-numMoving) movingObjects.length=type-numMoving+1;
-				result=Id(mode,type,staticObjects[type-numMoving].length);
-				staticObjects[type-numMoving].addObject(object);
+				type=object.sacObject.stateIndex[mode]=cast(int)staticObjects.length+numMoving;
+				staticObjects.length=staticObjects.length+1;
+				staticObjects[$-1].sacObject=object.sacObject;
 			}
-			return result;
 		}
+		static if(is(T==MovingObject!B)){
+			enforce(type<numMoving);
+			if(movingObjects.length<=type) movingObjects.length=type+1;
+			result=Id(mode,type,movingObjects[type].length);
+			movingObjects[type].addObject(object);
+		}else{
+			enforce(numMoving<=type && type<numMoving+numStatic);
+			if(staticObjects.length<=type-numMoving) movingObjects.length=type-numMoving+1;
+			result=Id(mode,type,staticObjects[type-numMoving].length);
+			staticObjects[type-numMoving].addObject(object);
+		}
+		return result;
+	}
+	void removeObject(int type, int index, ref ObjectManager!B manager){
+		if(type<numMoving){
+			movingObjects[type].removeObject(index,manager);
+		}else if(type<numMoving+numStatic){
+			staticObjects[type-numMoving].removeObject(index,manager);
+		}else static if(mode==RenderMode.opaque){
+			final switch(cast(ObjectType)type){
+				case ObjectType.soul: souls.removeObject(index,manager); break;
+				case ObjectType.building: buildings.removeObject(index,manager); break;
+			}
+		}else enforce(0);
+	}
+	static if(mode==RenderMode.opaque){
 		void addFixed(FixedObject!B object){
-			auto type=object.sacObject.stateIndex;
+			auto type=object.sacObject.stateIndex[mode];
 			if(type==-1){
-				type=object.sacObject.stateIndex=cast(int)fixedObjects.length+numMoving+numStatic;
+				type=object.sacObject.stateIndex[mode]=cast(int)fixedObjects.length+numMoving+numStatic;
 				fixedObjects.length=fixedObjects.length+1;
 				fixedObjects[$-1].sacObject=object.sacObject;
 			}
@@ -1265,16 +1272,6 @@ struct Objects(B,RenderMode mode){
 			auto result=Id(mode,ObjectType.building,buildings.length);
 			buildings.addObject(object);
 			return result;
-		}
-		void removeObject(int type, int index, ref ObjectManager!B manager){
-			if(type<numMoving){
-				movingObjects[type].removeObject(index,manager);
-			}else if(type<numMoving+numStatic){
-				staticObjects[type-numMoving].removeObject(index,manager);
-			}else final switch(cast(ObjectType)type){
-				case ObjectType.soul: souls.removeObject(index,manager); break;
-				case ObjectType.building: buildings.removeObject(index,manager); break;
-			}
 		}
 		void addWizard(WizardInfo!B wizard){
 			wizards.addWizard(wizard);
@@ -1387,8 +1384,9 @@ auto eachByType(alias f,bool movingFirst=true,B,RenderMode mode,T...)(ref Object
 }
 auto eachMovingOf(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,SacObject!B sacObject,T args){
 	with(objects){
-		if(sacObject.stateIndex==-1||sacObject.stateIndex>=movingObjects.length) return;
-		each!f(movingObjects[sacObject.stateIndex],args);
+		auto index=sacObject.stateIndex[mode];
+		if(index==-1||index>=movingObjects.length) return;
+		each!f(movingObjects[index],args);
 	}
 }
 
@@ -1419,7 +1417,7 @@ struct ObjectManager(B){
 		scope(success) assert(ids[id-1]==Id.init);
 		final switch(tid.mode){
 			case RenderMode.opaque: opaqueObjects.removeObject(tid.type,tid.index,this); break;
-			case RenderMode.transparent: assert(0,"TODO");//transparentObjects.removeObject(tid.type,tid.index);
+			case RenderMode.transparent: transparentObjects.removeObject(tid.type,tid.index,this); break;
 		}
 	}
 	bool isValidId(int id){
@@ -3694,7 +3692,8 @@ void updateWizard(B)(ref WizardInfo!B wizard,ObjectState!B state){
 
 void addToProximity(T,B)(ref T objects, ObjectState!B state){
 	auto proximity=state.proximity;
-	enum isMoving=is(T==MovingObjects!(B, RenderMode.opaque))||is(T==MovingObjects!(B, RenderMode.transparent));
+	enum isMoving=is(T==MovingObjects!(B, renderMode), RenderMode renderMode);
+	enum isStatic=is(T==StaticObjects!(B, renderMode), RenderMode renderMode);
 	static if(isMoving){
 		foreach(j;0..objects.length){
 			if(objects.creatureStates[j].mode.among(CreatureMode.dead,CreatureMode.dissolving)) continue; // dead creatures are not obstacles (bad cache locality)
@@ -3726,7 +3725,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 				animateManahoar(flameLocation,objects.sides[j],rate,state);
 			}
 		}
-	}else static if(is(T==StaticObjects!B)){ // TODO: cache those?
+	}else static if(isStatic){ // TODO: cache those?
 		foreach(j;0..objects.length){
 			foreach(hitbox;objects.sacObject.hitboxes(objects.rotations[j])){
 				auto position=objects.positions[j];
