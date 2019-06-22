@@ -2127,14 +2127,14 @@ final class SacScene: Scene{
 		@property bool onSpellbook(){ return loc==Location.spellbook; }
 	}
 	Mouse mouse;
-	bool mouseTargetValid(){
+	bool mouseTargetValid(Target target){
 		if(mouse.status!=Mouse.Status.icon) return true;
 		import spells:SpelFlags;
 		enum orderSpelFlags=SpelFlags.targetWizards|SpelFlags.targetCreatures|SpelFlags.targetCorpses|SpelFlags.targetStructures|SpelFlags.targetGround;
 		final switch(mouse.icon){
-			case MouseIcon.guard: return isApplicable(orderSpelFlags,mouse.target.summarize(renderSide,state.current));
-			case MouseIcon.attack: return isApplicable(orderSpelFlags,mouse.target.summarize(renderSide,state.current));
-			case MouseIcon.spell: return state.current.spellStatus!false(camera.target,mouse.spell,mouse.target)==SpellStatus.ready;
+			case MouseIcon.guard: return isApplicable(orderSpelFlags,target.summarize(renderSide,state.current));
+			case MouseIcon.attack: return isApplicable(orderSpelFlags,target.summarize(renderSide,state.current));
+			case MouseIcon.spell: return state.current.spellStatus!false(camera.target,mouse.spell,target)==SpellStatus.ready;
 		}
 	}
 	SacCursor!DagonBackend sacCursor;
@@ -2187,7 +2187,7 @@ final class SacScene: Scene{
 	enum targetCacheDuration=0.6f*updateFPS;
 	void updateMouseTarget(){
 		auto target=computeMouseTarget();
-		auto targetValid=mouseTargetValid();
+		auto targetValid=mouseTargetValid(target);
 		static immutable importantTargets=[TargetType.creature,TargetType.soul];
 		if(cachedTarget.id!=0&&!state.current.isValidId(cachedTarget.id,cachedTarget.type)) cachedTarget=Target.init;
 		if(target.location.among(TargetLocation.scene,TargetLocation.minimap)){
@@ -2198,7 +2198,7 @@ final class SacScene: Scene{
 					    abs(cachedTargetY-mouse.y)<delta)&&
 					   cachedTargetFrame+(mouse.inHitbox?2:1)*targetCacheDuration>state.current.frame){
 						target=cachedTarget;
-						targetValid=mouseTargetValid();
+						targetValid=mouseTargetValid(target);
 					}else cachedTarget=Target.init;
 				}
 			}else if(targetValid){
