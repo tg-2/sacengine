@@ -20,7 +20,7 @@ enum TargetFlags{
 	// TODO: figure out building flag for this:
 	untargetable=1<<22,
 	// irrelevant for spell targetting:
-	rescuable,
+	rescuable=1<<23,
 }
 
 bool isApplicable(SpelFlags sflags,TargetFlags tflags)in{
