@@ -1216,6 +1216,7 @@ final class SacScene: Scene{
 		if(audio) audio.queueDialogSound(tag,DialogPriority.advisorAnnoy);
 	}
 	void castSpell(SacSpell!DagonBackend spell,Target target,bool playAudio=true){
+		switchSpellbookTab(spell.type);
 		auto status=state.current.spellStatus!false(camera.target,spell,target);
 		if(status!=SpellStatus.ready){
 			if(playAudio) spellAdvisorHelpSpeech(status);
@@ -1223,13 +1224,16 @@ final class SacScene: Scene{
 		}
 		state.addCommand(Command!DagonBackend(renderSide,camera.target,spell,target));
 	}
+	void castSpell(char[4] tag,Target target,bool playAudio=true){
+		castSpell(SacSpell!DagonBackend.get(tag),target,playAudio);
+	}
 	void selectSpell(SacSpell!DagonBackend newSpell,bool playAudio=true){
+		switchSpellbookTab(newSpell.type);
 		if(mouse.status==Mouse.Status.icon){
 			if(mouse.icon==MouseIcon.spell&&mouse.spell is newSpell) return;
 			if(playAudio&&audio) audio.playSound("kabI");
 		}
 		if(!camera.target) return;
-		switchSpellbookTab(newSpell.type);
 		auto status=state.current.spellStatus!true(camera.target,newSpell);
 		if(status!=SpellStatus.ready){
 			if(playAudio) spellAdvisorHelpSpeech(status);
@@ -1246,6 +1250,9 @@ final class SacScene: Scene{
 			mouse.status=Mouse.Status.standard;
 			castSpell(newSpell,Target.init);
 		}
+	}
+	void selectSpell(char[4] tag,bool playAudio=true){
+		selectSpell(SacSpell!DagonBackend.get(tag),playAudio);
 	}
 	void selectSpell(SpellType tab,int index,bool playAudio=true){
 		if(!camera.target) return;
@@ -1814,6 +1821,8 @@ final class SacScene: Scene{
 										state.addCommand(Command!DagonBackend(CommandType.guardArea,renderSide,camera.target,0,target,cameraFacing)); break;
 									}else if(summary&TargetFlags.enemy){
 										state.addCommand(Command!DagonBackend(CommandType.attack,renderSide,camera.target,0,mouse.target,cameraFacing)); break;
+									}else if(summary&TargetFlags.manafount){
+										castSpell("htlm",mouse.target);
 									}else{
 										state.addCommand(Command!DagonBackend(CommandType.guard,renderSide,camera.target,0,mouse.target,cameraFacing)); break;
 									}
@@ -1826,7 +1835,7 @@ final class SacScene: Scene{
 										state.addCommand(Command!DagonBackend(CommandType.move,renderSide,camera.target,0,target,cameraFacing));
 										break;
 									case SoulColor.red:
-										// TODO: cast convert
+										castSpell("ccas",mouse.target);
 										break;
 								}
 								break;
@@ -1923,10 +1932,32 @@ final class SacScene: Scene{
 		}
 		static immutable spellHotkeys=[KEY_X,KEY_R,KEY_C,KEY_LALT,KEY_W,KEY_T,KEY_SPACE,KEY_V,KEY_Z,KEY_Y,KEY_H];
 		if(!(eventManager.keyPressed[KEY_LSHIFT]||eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK])){
-			foreach(i;0..cast(int)creatureHotkeys.length){
+			foreach(i;0..cast(int)spellHotkeys.length){
 				foreach(_;0..keyDown[spellHotkeys[i]]){
 					selectSpell(SpellType.spell,i);
 				}
+			}
+			foreach(_;0..keyDown[KEY_G]){
+				selectSpell("elet");
+			}
+			foreach(_;0..keyDown[KEY_M]){
+				selectSpell("htlm");
+			}
+		}
+		if((eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK]) && !eventManager.keyPressed[KEY_LSHIFT]){
+			foreach(_;0..keyDown[KEY_C]){
+				selectSpell("ccas");
+			}
+			foreach(_;0..keyDown[KEY_G]){
+				selectSpell("ndrg");
+			}
+		}
+		if(eventManager.keyPressed[KEY_LSHIFT] && !(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK])){
+			foreach(_;0..keyDown[KEY_LALT]){
+				selectSpell("pcas");
+			}
+			foreach(_;0..keyDown[KEY_G]){
+				selectSpell("ucas");
 			}
 		}
 	}
