@@ -28,6 +28,7 @@ final class SacObject(B){
 	bool isSaxs=false;
 	SaxsInstance!B saxsi;
 	B.Material[] materials;
+	B.Material[] transparentMaterials;
 	B.Material[] shadowMaterials;
 	Animation[] animations;
 	immutable(Cre8)* cre8;
@@ -394,6 +395,7 @@ final class SacObject(B){
 		if(kind.among("bugz"))
 			conf.locustWingPart=3;
 		materials=B.createMaterials(this,conf);
+		transparentMaterials=B.createTransparentMaterials(this);
 		shadowMaterials=B.createShadowMaterials(this);
 	}
 	final int alphaFlags(char[4] tag){

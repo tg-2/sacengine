@@ -303,7 +303,7 @@ final class SacScene: Scene{
 				static if((isMoving||isStatic)&&objects.renderMode==RenderMode.opaque){
 					auto materials=rc.shadowMode?sacObject.shadowMaterials:sacObject.materials;
 				}else{
-					auto materials=rc.shadowMode?sacObject.shadowMaterials:sacObject.materials; // TODO: add transparency here
+					auto materials=rc.shadowMode?sacObject.shadowMaterials:sacObject.transparentMaterials;
 				}
 				foreach(i;0..materials.length){
 					auto material=materials[i];
@@ -2411,6 +2411,23 @@ static:
 			}else{
 				mat=scene.createMaterial(gpuSkinning&&sobj.isSaxs?scene.boneMaterialBackend:scene.defaultMaterialBackend);
 			}
+			auto diffuse=sobj.isSaxs?sobj.saxsi.saxs.bodyParts[i].texture:sobj.textures[i];
+			if(diffuse !is null) mat.diffuse=diffuse;
+			mat.specular=sobj.isSaxs?Color4f(1,1,1,1):Color4f(0,0,0,1);
+			mat.roughness=0.8;
+			materials~=mat;
+		}
+		return materials;
+	}
+
+	Material[] createTransparentMaterials(SacObject!DagonBackend sobj){
+		GenericMaterial[] materials;
+		foreach(i;0..sobj.isSaxs?sobj.saxsi.meshes.length:sobj.meshes.length){
+			auto mat=scene.createMaterial(gpuSkinning&&sobj.isSaxs?scene.shadelessBoneMaterialBackend:scene.shadelessMaterialBackend);
+			mat.depthWrite=false;
+			mat.blending=Transparent;
+			mat.transparency=0.6f;
+			mat.energy=10.0f;
 			auto diffuse=sobj.isSaxs?sobj.saxsi.saxs.bodyParts[i].texture:sobj.textures[i];
 			if(diffuse !is null) mat.diffuse=diffuse;
 			mat.specular=sobj.isSaxs?Color4f(1,1,1,1):Color4f(0,0,0,1);
