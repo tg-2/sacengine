@@ -91,8 +91,10 @@ class SacSpell(B){
 	@property bool nearEnemyAltar(){ return !!(flags2&SpelFlags2.nearEnemyAltar); }
 	@property bool connectedToConversion(){ return !!(flags2&SpelFlags2.connectedToConversion); }
 
+	@property bool isBuilding(){ return !!strc; }
+
 	@property char[4] buildingTag(God god)in{
-		assert(!!strc);
+		assert(!!isBuilding);
 		assert(god!=God.none);
 	}do{
 		return strc.structure[god-1];

@@ -2418,6 +2418,7 @@ bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,Ob
 			// TODO
 			return true;
 		case SpellType.structure:
+			if(!spell.isBuilding) goto case SpellType.spell;
 			auto base=state.staticObjectById!((obj)=>obj.buildingId,()=>0)(target.id);
 			if(base){ // TODO: stun both wizards on simultaneous lith cast
 				auto building=makeBuilding(object.id,spell.buildingTag(God.persephone),AdditionalBuildingFlags.inactive|Flags.cannotDamage,base,state);
