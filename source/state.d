@@ -5026,11 +5026,11 @@ TargetFlags summarize(bool simplified=false,B)(ref Target target,int side,Object
 				}else{
 					auto result=TargetFlags.building;
 					auto objSide=sideFromBuildingId(obj.buildingId,state);
-					auto buildingInterestingIsManafount=state.buildingById!(bldg=>tuple(bldg.health!=0||bldg.isAltar,bldg.isManafount),()=>tuple(false,false))(obj.buildingId);
-					auto buildingInteresting=buildingInterestingIsManafount[0],isManafount=buildingInterestingIsManafount[1];
+					auto buildingInterestingIsManafountTop=state.buildingById!(bldg=>tuple(bldg.health!=0||bldg.isAltar,bldg.isManafount,bldg.top),()=>tuple(false,false,0))(obj.buildingId);
+					auto buildingInteresting=buildingInterestingIsManafountTop[0],isManafount=buildingInterestingIsManafountTop[1],top=buildingInterestingIsManafountTop[2];
 					buildingInteresting|=isManafount;
 					if(!buildingInteresting) result|=TargetFlags.untargetable; // TODO: there might be a flag for this
-					if(isManafount) result|=TargetFlags.manafount;
+					if(isManafount&&!top) result|=TargetFlags.manafount;
 				}
 				if(objSide!=side){
 					auto stance=state.sides.getStance(side,objSide);
