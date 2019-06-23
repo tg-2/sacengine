@@ -3348,7 +3348,7 @@ void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 				float distancesqr=float.infinity;
 				bool tied=false;
 			}
-			enum collectDistance=2.5f; // TODO: measure this
+			enum collectDistance=3.5f; // TODO: measure this
 			static void process(B)(ref WizardInfo!B wizard,Soul!B* soul,State* pstate,ObjectState!B state){ // TODO: use proximity data structure?
 				auto sidePosition=state.movingObjectById!((obj)=>tuple(obj.side,obj.center),function Tuple!(int,Vector3f)(){ assert(0); })(wizard.id);
 				auto side=sidePosition[0],position=sidePosition[1];
