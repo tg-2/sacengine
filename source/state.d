@@ -1060,8 +1060,8 @@ void applyCooldown(B)(ref WizardInfo!B wizard,SacSpell!B spell,ObjectState!B sta
 	enum genericCooldown=1.0f;
 	enum additionalCooldown=1.5f;
 	foreach(ref entry;wizard.spellbook.spells.data){
-		if(entry.spell is spell) entry.setCooldown(spell.castingTime+spell.cooldown+additionalCooldown);
-		else entry.setCooldown(spell.castingTime+genericCooldown+additionalCooldown);
+		if(entry.spell is spell) entry.setCooldown(spell.castingTime(wizard.level)+spell.cooldown+additionalCooldown);
+		else entry.setCooldown(spell.castingTime(wizard.level)+genericCooldown+additionalCooldown);
 	}
 }
 WizardInfo!B makeWizard(B)(int id,int level,int souls,Spellbook!B spellbook,ObjectState!B state){
@@ -2399,7 +2399,7 @@ bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,Ob
 	auto wizard=state.getWizard(object.id);
 	if(!wizard) return false;
 	if(state.spellStatus!false(wizard,spell,target)!=SpellStatus.ready) return false;
-	int numFrames=cast(int)ceil(updateFPS*spell.castingTime);
+	int numFrames=cast(int)ceil(updateFPS*spell.castingTime(wizard.level));
 	if(!object.startCasting(numFrames,spell.stationary,state))
 		return false;
 	// TODO: "stationary" parameter necessary? If so, check what original engine does if wizard walks and stops
