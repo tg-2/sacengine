@@ -262,7 +262,11 @@ final class SacObject(B){
 	Vector3f[2] hitbox2d(Quaternionf rotation,Matrix4f modelViewProjectionMatrix)in{
 		assert(!isSaxs);
 	}do{
-		return hitboxes(rotation).map!(hbox=>cartesianProduct(only(0,1),only(0,1),only(0,1)).map!(x=>Vector3f(hbox[x[0]].x,hbox[x[1]].y,hbox[x[2]].z)))
+		static Vector3f[2] fix(Vector3f[2] hitbox){
+			hitbox[0].z=max(0,hitbox[0].z);
+			return hitbox;
+		}
+		return hitboxes(rotation).map!fix.map!(hbox=>cartesianProduct(only(0,1),only(0,1),only(0,1)).map!(x=>Vector3f(hbox[x[0]].x,hbox[x[1]].y,hbox[x[2]].z)))
 			.joiner.map!(v=>transform(modelViewProjectionMatrix,v)).bbox;
 	}
 
