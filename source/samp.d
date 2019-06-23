@@ -29,3 +29,14 @@ Samp loadSAMP(string filename){
 	enforce(filename.endsWith(".SAMP"));
 	return parseSAMP(readFile(filename));
 }
+
+Samp sliceSAMP(Samp orig,float lfrac,float rfrac){
+	auto header=new SampHeader;
+	*header=*orig.header;
+	auto byteRate=2;
+	enforce(orig.data.length%byteRate==0);
+	auto l=cast(uint)(orig.data.length*lfrac)/byteRate*byteRate;
+	auto r=cast(uint)(orig.data.length*rfrac+byteRate-1)/byteRate*byteRate;
+	header.size=r-l;
+	return Samp(header,orig.data[l..r]);
+}

@@ -2570,6 +2570,10 @@ static:
 		if(!audio) return;
 		audio.playSoundAt(sound,id,gain);
 	}
+	void stopSoundsAt(int id){
+		if(!audio) return;
+		audio.stopSoundsAt(id);
+	}
 }
 
 // TODO: get rid of code duplication here?

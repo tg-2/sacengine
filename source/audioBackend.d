@@ -112,6 +112,7 @@ final class AudioBackend(B){
 		alias buffer this;
 	}
 	static BufferWithDuration[char[4]] buffers;
+
 	static BufferWithDuration getBufferWithDuration(char[4] sound){
 		if(sound in buffers) return buffers[sound];
 		auto samp=loadSAMP(samps[sound]);
@@ -213,6 +214,26 @@ final class AudioBackend(B){
 		foreach(i;0..sounds3.length)
 			sounds3[i].source.release();
 		sounds3.length=0;
+	}
+	void stopSoundsAt(int id){ // TODO: linear search good?
+		for(int i=0;i<sounds2.length;){
+			if(sounds2[i].id==id){
+				sounds2[i].source.release();
+				swap(sounds2[i],sounds2[$-1]);
+				sounds2.length=sounds2.length-1;
+				continue;
+			}
+			i++;
+		}
+		for(int i=0;i<sounds3.length;){
+			if(sounds3[i].id==id){
+				sounds3[i].source.release();
+				swap(sounds3[i],sounds3[$-1]);
+				sounds3.length=sounds3.length-1;
+				continue;
+			}
+			i++;
+		}
 	}
 
 	Array!LoopSound oldSounds3;

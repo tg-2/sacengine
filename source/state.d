@@ -2266,6 +2266,7 @@ bool startCasting(B)(ref MovingObject!B object,int numFrames,bool stationary,Obj
 	return true;
 }
 
+enum summonSoundGain=2.0f;
 bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,ObjectState!B state){
 	auto wizard=state.getWizard(object.id);
 	if(!wizard) return false;
@@ -2279,6 +2280,7 @@ bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,Ob
 		case SpellType.creature:
 			assert(target==Target.init);
 			auto creature=spawn(object.id,spell.tag,0,state);
+			playSoundAt("NMUS",creature,state,summonSoundGain);
 			state.addEffect(CreatureCasting!B(spell,object.id,creature,manaCostPerFrame));
 			return true;
 		case SpellType.spell:
@@ -3466,9 +3468,11 @@ bool updateCreatureCasting(B)(ref CreatureCasting!B creatureCast,ObjectState!B s
 			return obj.castStatus(state);
 		},function CastingStatus(){ return CastingStatus.interrupted; })(creatureCast.wizard,creatureCast,state);
 		final switch(status){
-			case CastingStatus.underway: return true;
+			case CastingStatus.underway:
+				return true;
 			case CastingStatus.interrupted: state.removeObject(creatureCast.creature); return false;
 			case CastingStatus.finished:
+				stopSoundsAt(creature,state);
 				auto wizard=state.getWizard(wizard);
 				if(!wizard||wizard.souls<spell.soulCost) goto case CastingStatus.interrupted;
 				wizard.souls-=spell.soulCost;
@@ -5047,8 +5051,9 @@ void playSoundType(B)(int side,SacObject!B sacObject,SoundType soundType,ObjectS
 void playSoundAt(B)(char[4] sound,Vector3f position,ObjectState!B state,float gain=1.0f){
 	static if(B.hasAudio) if(playAudio) B.playSoundAt(sound,position,gain);
 }
-void playSoundAt(B)(char[4] sound,int id,ObjectState!B state,float gain=1.0f){
+auto playSoundAt(bool getDuration=false,B,T...)(char[4] sound,int id,ObjectState!B state,float gain=1.0f){
 	static if(B.hasAudio) if(playAudio) B.playSoundAt(sound,id,gain);
+	static if(getDuration) return getSoundDuration(sound,state);
 }
 auto playSoundTypeAt(bool getDuration=false,B,T...)(SacObject!B sacObject,int id,SoundType soundType,ObjectState!B state,T limit)if(T.length<=(getDuration?1:0)){
 	static if(getDuration) int duration=0;
@@ -5057,8 +5062,8 @@ auto playSoundTypeAt(bool getDuration=false,B,T...)(SacObject!B sacObject,int id
 		if(sounds.length){
 			auto sound=sounds[state.uniform(cast(int)$)];
 			auto gain=sset.name=="wasb"?2.0f:1.0f;
-			auto soundDuration=getSoundDuration(sound,state);
 			static if(getDuration){
+				auto soundDuration=getSoundDuration(sound,state);
 				static if(limit.length) if(soundDuration>limit[0]) return;
 				duration=max(duration,soundDuration);
 			}
@@ -5068,6 +5073,9 @@ auto playSoundTypeAt(bool getDuration=false,B,T...)(SacObject!B sacObject,int id
 	if(auto sset=sacObject.sset) playSset(sset);
 	if(auto sset=sacObject.meleeSset) playSset(sset);
 	static if(getDuration) return duration;
+}
+auto stopSoundsAt(B)(int id,ObjectState!B state){
+	static if(B.hasAudio) if(playAudio) B.stopSoundsAt(id);
 }
 struct Command(B){
 	this(CommandType type,int side,int wizard,int creature,Target target,float targetFacing)in{
