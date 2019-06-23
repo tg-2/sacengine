@@ -241,9 +241,9 @@ final class AudioBackend(B){
 		oldSounds3.length=0;
 		swap(sounds3,oldSounds3);
 		sort!"a.id<b.id"(oldSounds3.data);
-		static void updateLoopingSound(StaticObject!B object,AudioBackend self){
+		static void updateLoopingSound(StaticObject!B object,AudioBackend self,ObjectState!B state){
 			auto sound=object.sacObject.loopingSound;
-			if(sound=="\0\0\0\0") return;
+			if(sound=="\0\0\0\0"||!object.isActive(state)) return;
 			size_t l=-1,r=self.oldSounds3.length;
 			Buffer buffer=self.getBuffer(sound);
 			while(l+1<r){
@@ -261,7 +261,7 @@ final class AudioBackend(B){
 			}
 			self.loopSoundAt(buffer,object.id);
 		}
-		state.eachStatic!updateLoopingSound(this);
+		state.eachStatic!updateLoopingSound(this,state);
 		foreach(i;0..oldSounds3.length)
 			if(oldSounds3[i].source.id!=0)
 				oldSounds3[i].source.release();

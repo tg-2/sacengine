@@ -205,7 +205,7 @@ struct Spel{
 	SpellType spellType;
 	char[4] name;
 	char[4] icon;
-	uint unknown1; // unused?
+	uint unknown1; // only used for wizards
 	uint cooldown;
 	uint manaCost;
 	float range;

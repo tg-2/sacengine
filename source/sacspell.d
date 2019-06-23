@@ -1,5 +1,5 @@
 import std.exception, std.conv, std.algorithm;
-import spells, nttData, txtr;
+import spells, ntts, nttData, txtr;
 
 enum TargetFlags{
 	none,
@@ -76,6 +76,13 @@ class SacSpell(B){
 	@property bool nearBuilding(){ return !!(flags2&SpelFlags2.nearBuilding); }
 	@property bool nearEnemyAltar(){ return !!(flags2&SpelFlags2.nearEnemyAltar); }
 	@property bool connectedToConversion(){ return !!(flags2&SpelFlags2.connectedToConversion); }
+
+	@property char[4] buildingTag(God god)in{
+		assert(!!strc);
+		assert(god!=God.none);
+	}do{
+		return strc.structure[god-1];
+	}
 
 	bool isApplicable(TargetFlags tflags){
 		if(!.isApplicable(flags,tflags)) return false;

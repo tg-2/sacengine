@@ -406,6 +406,9 @@ int sideFromBuildingId(B)(int buildingId,ObjectState!B state){
 int flagsFromBuildingId(B)(int buildingId,ObjectState!B state){
 	return state.buildingById!((ref b)=>b.flags,function int(){ assert(0); })(buildingId);
 }
+bool isActive(B)(ref StaticObject!B object,ObjectState!B state){
+	return !(flagsFromBuildingId(object.buildingId,state)&AdditionalBuildingFlags.inactive);
+}
 int side(B)(ref StaticObject!B object,ObjectState!B state){
 	return sideFromBuildingId(object.buildingId,state);
 }
@@ -566,6 +569,16 @@ int maxHealth(B)(ref Building!B building,ObjectState!B state){
 Vector3f position(B)(ref Building!B building,ObjectState!B state){
 	return state.staticObjectById!((obj)=>obj.position,function Vector3f(){ assert(0); })(building.componentIds[0]);
 }
+float height(B)(ref Building!B building,ObjectState!B state){
+	float maxZ=0.0f;
+	foreach(cid;building.componentIds){
+		state.staticObjectById!((obj,state){
+			auto hitbox=obj.hitbox;
+			maxZ=max(maxZ,hitbox[1].z-obj.position.z);
+		})(cid,state);
+	}
+	return maxZ;
+}
 // TODO: the following functionality is duplicated in SacObject
 bool isManafount(immutable(Bldg)* bldg){ // TODO: store in SacBuilding class
 	return bldg.header.numComponents==1&&manafountTags.canFind(bldg.components[0].tag);
@@ -617,6 +630,7 @@ void putOnManafount(B)(ref Building!B building,ref Building!B manafount,ObjectSt
 	if(manafount.top!=0) freeManafount(manafount,state); // original engine associates last building with the fountain
 	manafount.top=building.id;
 	building.base=manafount.id;
+	manafount.stopSounds(state);
 }
 void freeManafount(B)(ref Building!B manafount,ObjectState!B state)in{
 	assert(manafount.isManafount);
@@ -624,8 +638,31 @@ void freeManafount(B)(ref Building!B manafount,ObjectState!B state)in{
 }do{
 	state.buildingById!((ref obj){ assert(obj.base==manafount.id); obj.base=0; })(manafount.top);
 	manafount.top=0;
+	manafount.loopingSoundSetup(state);
 }
-
+void loopingSoundSetup(B)(ref Building!B building,ObjectState!B state){
+	static if(B.hasAudio){
+		if(building.flags&AdditionalBuildingFlags.inactive) return;
+		if(building.isManafount&&building.top!=0) return;
+		if(playAudio){
+			foreach(cid;building.componentIds)
+				state.staticObjectById!(B.loopingSoundSetup)(cid);
+		}
+	}
+}
+void stopSounds(B)(ref Building!B building,ObjectState!B state){
+	static if(B.hasAudio){
+		if(playAudio){
+			foreach(cid;building.componentIds)
+				stopSoundsAt(cid,state);
+		}
+	}
+}
+void activate(B)(ref Building!B building,ObjectState!B state){
+	if(!(building.flags&AdditionalBuildingFlags.inactive)) return;
+	building.flags&=~AdditionalBuildingFlags.inactive;
+	loopingSoundSetup(building,state);
+}
 
 struct Particle(B){
 	SacParticle!B sacParticle;
@@ -757,6 +794,9 @@ struct StaticObjects(B,RenderMode mode){
 	Array!Vector3f positions;
 	Array!Quaternionf rotations;
 
+	static if(mode==RenderMode.transparent){
+		Array!float thresholdZs;
+	}
 	@property int length(){ assert(ids.length<=int.max); return cast(int)ids.length; }
 	@property void length(int l){
 		ids.length=l;
@@ -771,7 +811,8 @@ struct StaticObjects(B,RenderMode mode){
 		buildingIds~=object.buildingId;
 		positions~=object.position;
 		rotations~=object.rotation;
-		static if(B.hasAudio) B.loopingSoundSetup(this[length-1]);
+		static if(mode==RenderMode.transparent)
+			thresholdZs~=0.0f;
 	}
 	void removeObject(int index, ObjectManager!B manager){
 		manager.ids[ids[index]-1]=Id.init;
@@ -788,6 +829,8 @@ struct StaticObjects(B,RenderMode mode){
 		assignArray(buildingIds,rhs.buildingIds);
 		assignArray(positions,rhs.positions);
 		assignArray(rotations,rhs.rotations);
+		static if(mode==RenderMode.transparent)
+			assignArray(thresholdZs,rhs.thresholdZs);
 	}
 	StaticObject!B opIndex(int i){
 		return StaticObject!B(sacObject,ids[i],buildingIds[i],positions[i],rotations[i]);
@@ -798,6 +841,11 @@ struct StaticObjects(B,RenderMode mode){
 		buildingIds[i]=obj.buildingId;
 		positions[i]=obj.position;
 		rotations[i]=obj.rotation;
+	}
+	static if(mode==RenderMode.transparent){
+		void setThresholdZ(int i,float thresholdZ){
+			thresholdZs[i]=thresholdZ;
+		}
 	}
 }
 auto each(alias f,B,RenderMode mode,T...)(ref StaticObjects!(B,mode) staticObjects,T args){
@@ -1138,6 +1186,15 @@ struct CreatureCasting(B){
 	int creature;
 	float manaCostPerFrame;
 }
+struct StructureCasting(B){
+	SacSpell!B spell;
+	int wizard;
+	int building;
+	float buildingHeight;
+	float manaCostPerFrame;
+	int castingTime;
+	int currentFrame;
+}
 struct Effects(B){
 	Array!(Debris!B) debris;
 	void addEffect(Debris!B debris){
@@ -1163,10 +1220,19 @@ struct Effects(B){
 		if(i+1<creatureCasts.length) swap(creatureCasts[i],creatureCasts[$-1]);
 		creatureCasts.length=creatureCasts.length-1;
 	}
+	Array!(StructureCasting!B) structureCasts;
+	void addEffect(StructureCasting!B structureCast){
+		structureCasts~=structureCast;
+	}
+	void removeStructureCasting(int i){
+		if(i+1<structureCasts.length) swap(structureCasts[i],structureCasts[$-1]);
+		structureCasts.length=structureCasts.length-1;
+	}
 	void opAssign(ref Effects!B rhs){
 		assignArray(debris,rhs.debris);
 		assignArray(explosions,rhs.explosions);
 		assignArray(creatureCasts,rhs.creatureCasts);
+		assignArray(structureCasts,rhs.structureCasts);
 	}
 }
 
@@ -1251,6 +1317,12 @@ struct Objects(B,RenderMode mode){
 			}
 		}else enforce(0);
 	}
+	static if(mode==RenderMode.transparent){
+		void setThresholdZ(int type, int index, float thresholdZ){
+			enforce(numMoving<=type&&type<numMoving+numStatic);
+			staticObjects[type-numMoving].setThresholdZ(index, thresholdZ);
+		}
+	}
 	static if(mode==RenderMode.opaque){
 		void addFixed(FixedObject!B object){
 			auto type=object.sacObject.stateIndex[mode];
@@ -1302,8 +1374,8 @@ struct Objects(B,RenderMode mode){
 	}
 	void opAssign(Objects!(B,mode) rhs){
 		assignArray(movingObjects,rhs.movingObjects);
+		assignArray(staticObjects,rhs.staticObjects);
 		static if(mode == RenderMode.opaque){
-			assignArray(staticObjects,rhs.staticObjects);
 			fixedObjects=rhs.fixedObjects; // by reference
 			souls=rhs.souls;
 			buildings=rhs.buildings;
@@ -1365,9 +1437,9 @@ auto eachByType(alias f,bool movingFirst=true,B,RenderMode mode,T...)(ref Object
 		static if(movingFirst)
 			foreach(ref movingObject;movingObjects)
 				f(movingObject,args);
+		foreach(ref staticObject;staticObjects)
+			f(staticObject,args);
 		static if(mode == RenderMode.opaque){
-			foreach(ref staticObject;staticObjects)
-				f(staticObject,args);
 			foreach(ref fixedObject;fixedObjects)
 				f(fixedObject,args);
 			f(souls,args);
@@ -1420,6 +1492,13 @@ struct ObjectManager(B){
 			case RenderMode.transparent: transparentObjects.removeObject(tid.type,tid.index,this); break;
 		}
 	}
+	void setThresholdZ(int id,float thresholdZ)in{
+		assert(0<id && id<=ids.length);
+	}do{
+		auto tid=ids[id-1];
+		enforce(tid.mode==RenderMode.transparent);
+		transparentObjects.setThresholdZ(tid.type,tid.index,thresholdZ);
+	}
 	void setRenderMode(T,RenderMode mode)(int id)if(is(T==MovingObject!B)||is(T==StaticObject!B)){
 		auto tid=ids[id-1];
 		if(tid.mode==mode) return;
@@ -1433,7 +1512,7 @@ struct ObjectManager(B){
 		static if(is(T==MovingObject!B)){
 			auto obj=this.movingObjectById!((obj)=>obj,function MovingObject!B(){ assert(0); })(id);
 		}else{
-			auto obj=this.staticObjectById!((obj)=>obj,function MovingObject!B(){ assert(0); })(id);
+			auto obj=this.staticObjectById!((obj)=>obj,function StaticObject!B(){ assert(0); })(id);
 		}
 		old.removeObject(tid.type,tid.index,this);
 		ids[id-1]=new_.addObject(obj);
@@ -1556,13 +1635,21 @@ auto ref objectById(alias f,B,T...)(ref ObjectManager!B objectManager,int id,T a
 		}
 	}else{
 		enum byRef=!is(typeof(f(StaticObject!B.init,args))); // TODO: find a better way to check whether argument taken by reference!
-		assert(nid.mode==RenderMode.opaque);
 		assert(nid.type<numMoving+numStatic);
-		static if(byRef){
-			auto obj=objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index];
-			scope(success) objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index]=obj;
-			return f(obj,args);
-		}else return f(objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index],args);
+		final switch(nid.mode){
+			case RenderMode.opaque:
+				static if(byRef){
+					auto obj=objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index];
+					scope(success) objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index]=obj;
+					return f(obj,args);
+				}else return f(objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index],args);
+			case RenderMode.transparent:
+				static if(byRef){
+					auto obj=objectManager.transparentObjects.staticObjects[nid.type-numMoving][nid.index];
+					scope(success) objectManager.transparentObjects.staticObjects[nid.type-numMoving][nid.index]=obj;
+					return f(obj,args);
+				}else return f(objectManager.transparentObjects.staticObjects[nid.type-numMoving][nid.index],args);
+		}
 	}
 }
 auto ref movingObjectById(alias f,alias nonMoving=fail,B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
@@ -1594,13 +1681,20 @@ auto ref staticObjectById(alias f,alias nonStatic=fail,B,T...)(ref ObjectManager
 	enum byRef=!is(typeof(f(StaticObject!B.init,args))); // TODO: find a better way to check whether argument taken by reference!
 	if(nid.type<numMoving||nid.index==-1) return nonStatic();
 	else if(nid.type<numMoving+numStatic){
-		assert(nid.mode==RenderMode.opaque);
-		assert(nid.type<numMoving+numStatic);
-		static if(byRef){
-			auto obj=objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index];
-			scope(success) objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index]=obj;
-			return f(obj,args);
-		}else return f(objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index],args);
+		final switch(nid.mode){
+			case RenderMode.opaque:
+				static if(byRef){
+					auto obj=objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index];
+					scope(success) objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index]=obj;
+					return f(obj,args);
+				}else return f(objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index],args);
+			case RenderMode.transparent:
+				static if(byRef){
+					auto obj=objectManager.transparentObjects.staticObjects[nid.type-numMoving][nid.index];
+					scope(success) objectManager.transparentObjects.staticObjects[nid.type-numMoving][nid.index]=obj;
+					return f(obj,args);
+				}else return f(objectManager.transparentObjects.staticObjects[nid.type-numMoving][nid.index],args);
+		}
 	}else return nonStatic();
 }
 auto ref soulById(alias f,alias noSoul=fail,B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
@@ -1962,13 +2056,19 @@ int spawn(T=Creature,B)(int casterId,char[4] tag,int flags,ObjectState!B state,b
 	return state.movingObjectById!(.spawn,function int(){ assert(0); })(casterId,tag,flags,state,pre);
 }
 
-int makeBuilding(B)(ref MovingObjet!B caster,char[4] tag,int flags,int base,ObjectState!B state,bool pre=true)in{
+int makeBuilding(B)(ref MovingObject!B caster,char[4] tag,int flags,int base,ObjectState!B state,bool pre=true)in{
 	assert(base>0);
 }do{
 	auto data=tag in bldgs;
 	enforce(!!data&&!(data.flags&BldgFlags.ground));
-	auto buildingId=current.addObject(Building!B(data,caster.side,flags,facing));
-	current.buildingById!((ref Building!B building){
+	auto position=state.buildingById!(
+		(bldg,state)=>state.staticObjectById!(
+			(obj)=>obj.position,
+			function Vector3f(){ assert(0); })(bldg.componentIds[0]),
+		function Vector3f(){ assert(0); })(base,state);
+	float facing=0.0f; // TODO: ok?
+	auto buildingId=state.addObject(Building!B(data,caster.side,flags,facing));
+	state.buildingById!((ref Building!B building){
 		if(flags&Flags.damaged) building.health/=10.0f;
 		if(flags&Flags.destroyed) building.health=0.0f;
 		foreach(ref component;data.components){
@@ -1976,19 +2076,20 @@ int makeBuilding(B)(ref MovingObjet!B caster,char[4] tag,int flags,int base,Obje
 			auto offset=Vector3f(component.x,component.y,component.z);
 			offset=rotate(facingQuaternion(building.facing), offset);
 			auto cposition=position+offset;
-			if(!current.isOnGround(cposition)) continue;
-			cposition.z=current.getGroundHeight(cposition);
+			if(!state.isOnGround(cposition)) continue;
+			cposition.z=state.getGroundHeight(cposition);
 			float facing=0.0f; // TODO: ok?
 			auto rotation=facingQuaternion(2*cast(float)PI/360.0f*(facing+component.facing));
-			building.componentIds~=current.addObject(StaticObject!B(curObj,building.id,cposition,rotation));
+			building.componentIds~=state.addObject(StaticObject!B(curObj,building.id,cposition,rotation));
 		}
-		if(base) current.buildingById!((ref manafount,state){ putOnManafount(building,manafount,state); })(triggers.objectIds[base],current);
+		if(base) state.buildingById!((ref manafount,state){ putOnManafount(building,manafount,state); })(base,state);
 	})(buildingId);
+	return buildingId;
 }
 int makeBuilding(B)(int casterId,char[4] tag,int flags,int base,ObjectState!B state,bool pre=true)in{
 	assert(base>0);
 }do{
-	return state.movingObjectById!(.makeBuilding,function int(){ assert(0); })(casterId,tag,flags,state,pre);
+	return state.movingObjectById!(.makeBuilding,function int(){ assert(0); })(casterId,tag,flags,base,state,pre);
 }
 
 bool canStun(B)(ref MovingObject!B object,ObjectState!B state){
@@ -2283,6 +2384,15 @@ bool startCasting(B)(ref MovingObject!B object,int numFrames,bool stationary,Obj
 	object.setCreatureState(state);
 	return true;
 }
+int getCastingTime(B)(ref MovingObject!B object,int numFrames,bool stationary,ObjectState!B state){
+	// TODO: "stationary" parameter is probably unnecessary
+	auto sacObject=object.sacObject;
+	auto start=sacObject.numFrames(stationary?AnimationState.spellcastStart:AnimationState.runSpellcastStart)*updateAnimFactor;
+	auto mid=sacObject.numFrames(stationary?AnimationState.spellcast:AnimationState.runSpellcast)*updateAnimFactor;
+	auto end=sacObject.numFrames(stationary?AnimationState.spellcastEnd:AnimationState.runSpellcastEnd)*updateAnimFactor;
+	auto castingTime=sacObject.castingTime(stationary?AnimationState.spellcastEnd:AnimationState.runSpellcastEnd)*updateAnimFactor;
+	return start+max(0,(numFrames-start-end+mid-1))/mid*mid+castingTime;
+}
 
 enum summonSoundGain=2.0f;
 bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,ObjectState!B state){
@@ -2292,7 +2402,9 @@ bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,Ob
 	int numFrames=cast(int)ceil(updateFPS*spell.castingTime);
 	if(!object.startCasting(numFrames,spell.stationary,state))
 		return false;
-	auto manaCostPerFrame=spell.manaCost/numFrames;
+	// TODO: "stationary" parameter necessary? If so, check what original engine does if wizard walks and stops
+	auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
+	auto manaCostPerFrame=spell.manaCost/castingTime;
 	(*wizard).applyCooldown(spell,state);
 	final switch(spell.type){
 		case SpellType.creature:
@@ -2306,7 +2418,15 @@ bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,Ob
 			// TODO
 			return true;
 		case SpellType.structure:
-			// TODO
+			auto base=state.staticObjectById!((obj)=>obj.buildingId,()=>0)(target.id);
+			if(base){ // TODO: stun both wizards on simultaneous lith cast
+				auto building=makeBuilding(object.id,spell.buildingTag(God.persephone),AdditionalBuildingFlags.inactive|Flags.cannotDamage,base,state);
+				state.setRenderMode!(Building!B,RenderMode.transparent)(building);
+				float buildingHeight=state.buildingById!((bldg,state)=>height(bldg,state),()=>0.0f)(building,state);
+				state.addEffect(StructureCasting!B(spell,object.id,building,buildingHeight,manaCostPerFrame,castingTime,0));
+			}else{
+				// TODO: stun wizard
+			}
 			return true;
 	}
 }
@@ -3499,7 +3619,38 @@ bool updateCreatureCasting(B)(ref CreatureCasting!B creatureCast,ObjectState!B s
 				state.movingObjectById!((ref obj,state){
 				obj.creatureState.mode=CreatureMode.spawning;
 				state.addToSelection(obj.side,obj.id);
-			},function(){})(creatureCast.creature,state); return false;
+			},function(){})(creature,state); return false;
+		}
+	}
+}
+enum structureCastingGradientSize=2.0f;
+bool updateStructureCasting(B)(ref StructureCasting!B structureCast,ObjectState!B state){
+	with(structureCast){
+		auto status=state.movingObjectById!((ref obj,cast_,state){
+			obj.drainMana(cast_.manaCostPerFrame,state);
+			return obj.castStatus(state);
+		},function CastingStatus(){ return CastingStatus.interrupted; })(structureCast.wizard,structureCast,state);
+		final switch(status){
+			case CastingStatus.underway:
+				currentFrame+=1;
+				auto thresholdZ=-structureCastingGradientSize+(buildingHeight+structureCastingGradientSize)*currentFrame/castingTime;
+				state.buildingById!((bldg,thresholdZ,state){
+					foreach(cid;bldg.componentIds)
+						state.setThresholdZ(cid,thresholdZ);
+				})(building,thresholdZ,state);
+				return true;
+			case CastingStatus.interrupted:
+				state.buildingById!destroy(building,state);
+				return false;
+			case CastingStatus.finished:
+				state.setRenderMode!(Building!B,RenderMode.opaque)(building);
+				auto wizard=state.getWizard(wizard);
+				if(!wizard||wizard.souls<spell.soulCost) goto case CastingStatus.interrupted;
+				wizard.souls-=spell.soulCost;
+				state.buildingById!((ref building,state){
+					building.activate(state);
+					building.flags&=~Flags.cannotDamage;
+			},function(){})(building,state); return false;
 		}
 	}
 }
@@ -3521,6 +3672,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.creatureCasts.length;){
 		if(!updateCreatureCasting(effects.creatureCasts[i],state)){
 			effects.removeCreatureCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.structureCasts.length;){
+		if(!updateStructureCasting(effects.structureCasts[i],state)){
+			effects.removeStructureCasting(i);
 			continue;
 		}
 		i++;
@@ -3637,27 +3795,33 @@ void animateShrine(B)(Vector3f location, int side, ObjectState!B state){
 void updateBuilding(B)(ref Building!B building, ObjectState!B state){
 	if(building.componentIds.length==0) return;
 	if(building.health!=0.0f) building.heal(building.regeneration/updateFPS,state);
-	if(building.isManafount && building.top==0){
-		Vector3f getManafountTop(StaticObject!B obj){
-			auto hitbox=obj.hitboxes[0];
-			auto center=0.5f*(hitbox[0]+hitbox[1]);
-			return center+Vector3f(0.0f,0.0f,0.75f);
+	if(building.isManafount){
+		if(building.top==0 && !(building.flags&AdditionalBuildingFlags.inactive)){
+			Vector3f getManafountTop(StaticObject!B obj){
+				auto hitbox=obj.hitboxes[0];
+				auto center=0.5f*(hitbox[0]+hitbox[1]);
+				return center+Vector3f(0.0f,0.0f,0.75f);
+			}
+			auto position=state.staticObjectById!(getManafountTop,function Vector3f(){ assert(0); })(building.componentIds[0]);
+			animateManafount(position,state);
 		}
-		auto position=state.staticObjectById!(getManafountTop,function Vector3f(){ assert(0); })(building.componentIds[0]);
-		animateManafount(position,state);
 	}else if(building.isManalith){
-		Vector3f getCenter(StaticObject!B obj){
-			return obj.position+Vector3f(0.0f,0.0f,15.0f);
+		if(!(building.flags&AdditionalBuildingFlags.inactive)){
+			Vector3f getCenter(StaticObject!B obj){
+				return obj.position+Vector3f(0.0f,0.0f,15.0f);
+			}
+			auto position=state.staticObjectById!(getCenter,function Vector3f(){ assert(0); })(building.componentIds[0]);
+			animateManalith(position,building.side,state);
 		}
-		auto position=state.staticObjectById!(getCenter,function Vector3f(){ assert(0); })(building.componentIds[0]);
-		animateManalith(position,building.side,state);
 	}else if(building.isShrine||building.isAltar){
-		Vector3f getShrineTop(StaticObject!B obj){
-			return obj.position+Vector3f(0.0f,0.0f,3.0f);
+		if(!(building.flags&AdditionalBuildingFlags.inactive)){
+			Vector3f getShrineTop(StaticObject!B obj){
+				return obj.position+Vector3f(0.0f,0.0f,3.0f);
+			}
+			auto position=state.staticObjectById!(getShrineTop,function Vector3f(){ assert(0); })(building.componentIds[0]);
+			if(building.isEtherealAltar) position.z+=95.0f;
+			animateShrine(position,building.side,state);
 		}
-		auto position=state.staticObjectById!(getShrineTop,function Vector3f(){ assert(0); })(building.componentIds[0]);
-		if(building.isEtherealAltar) position.z+=95.0f;
-		animateShrine(position,building.side,state);
 	}
 }
 
@@ -4311,10 +4475,23 @@ final class ObjectState(B){ // (update logic)
 	}do{
 		obj.removeObject(id);
 	}
-	void setRenderMode(T,RenderMode mode)(int id)if(is(T==MovingObject!B)||is(T==StaticObject!B)) in{
+	void setThresholdZ(int id,float thresholdZ)in{
+		assert(id!=0);
+	}do{
+		obj.setThresholdZ(id,thresholdZ);
+	}
+	void setRenderMode(T,RenderMode mode)(int id)if(is(T==MovingObject!B)||is(T==StaticObject!B))in{
 		assert(id!=0);
 	}do{
 		obj.setRenderMode!(T,mode)(id);
+	}
+	void setRenderMode(T,RenderMode mode)(int id)if(is(T==Building!B))in{
+		assert(id!=0);
+	}do{
+		this.buildingById!((bldg,state){
+			foreach(cid;bldg.componentIds)
+				state.setRenderMode!(StaticObject!B,mode)(cid);
+		})(id,this);
 	}
 	Array!int toRemove;
 	void removeLater(int id)in{
@@ -5266,6 +5443,7 @@ final class GameState(B){
 				enforce(ntt.base in triggers.objectIds);
 				current.buildingById!((ref manafount,state){ putOnManafount(building,manafount,state); })(triggers.objectIds[ntt.base],current);
 			}
+			building.loopingSoundSetup(current);
 		})(buildingId);
 	}
 

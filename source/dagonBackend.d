@@ -300,17 +300,35 @@ final class SacScene: Scene{
 				auto sacObject=objects.sacObject;
 				enum isMoving=is(T==MovingObjects!(DagonBackend, renderMode), RenderMode renderMode);
 				enum isStatic=is(T==StaticObjects!(DagonBackend, renderMode), RenderMode renderMode);
-				static if((isMoving||isStatic)&&objects.renderMode==RenderMode.opaque){
-					auto materials=rc.shadowMode?sacObject.shadowMaterials:sacObject.materials;
+				static if(is(T==FixedObjects!DagonBackend)) if(!enableWidgets) return;
+
+				static if(objects.renderMode==RenderMode.opaque){
+					enum prepareMaterials=RenderMode.opaque;
 				}else{
-					auto materials=rc.shadowMode?sacObject.shadowMaterials:sacObject.transparentMaterials;
+					static if(isStatic){
+						enum prepareMaterials=mode;
+					}else{
+						enum prepareMaterials=RenderMode.transparent;
+					}
 				}
+				static if(prepareMaterials==RenderMode.opaque){
+					auto materials=rc.shadowMode?sacObject.shadowMaterials:sacObject.materials;
+				}else static if(prepareMaterials==RenderMode.transparent){
+					auto opaqueMaterials=rc.shadowMode?sacObject.shadowMaterials:sacObject.materials;
+					auto materials=rc.shadowMode?sacObject.shadowMaterials:sacObject.transparentMaterials;
+				}else static assert(0);
 				foreach(i;0..materials.length){
 					auto material=materials[i];
 					if(!material) continue;
 					auto blending=("blending" in material.inputs).asInteger;
 					if((mode==RenderMode.transparent)!=(blending==Additive||blending==Transparent)) continue;
 					if(rc.shadowMode&&blending==Additive) continue;
+					static if(isStatic&&objects.renderMode==RenderMode.transparent){
+						auto originalBackend=material.backend;
+						static if(mode==RenderMode.opaque) material.backend=scene.buildingSummonMaterialBackend1;
+						else material.backend=scene.buildingSummonMaterialBackend2;
+						scope(success) material.backend=originalBackend;
+					}
 					material.bind(rc);
 					scope(success) material.unbind(rc);
 					static if(isMoving){
@@ -324,10 +342,24 @@ final class SacScene: Scene{
 							mesh.render(rc);
 						}
 					}else{
-						static if(is(T==FixedObjects!DagonBackend)) if(!enableWidgets) return;
 						material.backend.setInformation(Vector4f(0.0f,0.0f,0.0f,0.0f));
 						auto mesh=sacObject.meshes[i];
+						static if(isStatic&&objects.renderMode==RenderMode.transparent&&mode==RenderMode.transparent){
+							auto opaqueMaterial=opaqueMaterials[i];
+							auto opaqueBlending=("blending" in opaqueMaterial.inputs).asInteger;
+							bool enableDiscard=opaqueBlending!=Transparent;
+							if(!enableDiscard) scene.buildingSummonMaterialBackend2.setEnableDiscard(false);
+							scope(success) if(!enableDiscard) scene.buildingSummonMaterialBackend2.setEnableDiscard(true);
+						}
 						foreach(j;0..objects.length){
+							static if(isStatic&&objects.renderMode==RenderMode.transparent){
+								auto thresholdZ=objects.thresholdZs[j];
+								static if(mode==RenderMode.opaque){
+									scene.buildingSummonMaterialBackend1.setThresholdZ(thresholdZ);
+								}else static if(mode==RenderMode.transparent){
+									scene.buildingSummonMaterialBackend2.setThresholdZ(thresholdZ,thresholdZ+structureCastingGradientSize);
+								}else static assert(0);
+							}
 							material.backend.setTransformation(objects.positions[j], objects.rotations[j], rc);
 							static if(isStatic){
 								auto id=objects.ids[j];
@@ -2423,11 +2455,17 @@ static:
 	Material[] createTransparentMaterials(SacObject!DagonBackend sobj){
 		GenericMaterial[] materials;
 		foreach(i;0..sobj.isSaxs?sobj.saxsi.meshes.length:sobj.meshes.length){
+			if(("blending" in sobj.materials[i].inputs).asInteger==Transparent){
+				materials~=sobj.materials[i];
+				continue;
+			}
 			auto mat=scene.createMaterial(gpuSkinning&&sobj.isSaxs?scene.shadelessBoneMaterialBackend:scene.shadelessMaterialBackend);
 			mat.depthWrite=false;
 			mat.blending=Transparent;
-			mat.transparency=0.6f;
-			mat.energy=10.0f;
+			if(sobj.isSaxs){
+				mat.transparency=0.6f;
+				mat.energy=10.0f;
+			}
 			auto diffuse=sobj.isSaxs?sobj.saxsi.saxs.bodyParts[i].texture:sobj.textures[i];
 			if(diffuse !is null) mat.diffuse=diffuse;
 			mat.specular=sobj.isSaxs?Color4f(1,1,1,1):Color4f(0,0,0,1);
