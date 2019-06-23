@@ -1420,6 +1420,24 @@ struct ObjectManager(B){
 			case RenderMode.transparent: transparentObjects.removeObject(tid.type,tid.index,this); break;
 		}
 	}
+	void setRenderMode(T,RenderMode mode)(int id)if(is(T==MovingObject!B)||is(T==StaticObject!B)){
+		auto tid=ids[id-1];
+		if(tid.mode==mode) return;
+		static if(mode==RenderMode.opaque){
+			alias old=transparentObjects;
+			alias new_=opaqueObjects;
+		}else static if(mode==RenderMode.transparent){
+			alias old=opaqueObjects;
+			alias new_=transparentObjects;
+		}else static assert(0);
+		static if(is(T==MovingObject!B)){
+			auto obj=this.movingObjectById!((obj)=>obj,function MovingObject!B(){ assert(0); })(id);
+		}else{
+			auto obj=this.staticObjectById!((obj)=>obj,function MovingObject!B(){ assert(0); })(id);
+		}
+		old.removeObject(tid.type,tid.index,this);
+		ids[id-1]=new_.addObject(obj);
+	}
 	bool isValidId(int id){
 		if(0<id && id<=ids.length)
 			return ids[id-1]!=Id.init;
@@ -2280,6 +2298,7 @@ bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,Ob
 		case SpellType.creature:
 			assert(target==Target.init);
 			auto creature=spawn(object.id,spell.tag,0,state);
+			state.setRenderMode!(MovingObject!B,RenderMode.transparent)(creature);
 			playSoundAt("NMUS",creature,state,summonSoundGain);
 			state.addEffect(CreatureCasting!B(spell,object.id,creature,manaCostPerFrame));
 			return true;
@@ -3473,6 +3492,7 @@ bool updateCreatureCasting(B)(ref CreatureCasting!B creatureCast,ObjectState!B s
 			case CastingStatus.interrupted: state.removeObject(creatureCast.creature); return false;
 			case CastingStatus.finished:
 				stopSoundsAt(creature,state);
+				state.setRenderMode!(MovingObject!B,RenderMode.opaque)(creature);
 				auto wizard=state.getWizard(wizard);
 				if(!wizard||wizard.souls<spell.soulCost) goto case CastingStatus.interrupted;
 				wizard.souls-=spell.soulCost;
@@ -4290,6 +4310,11 @@ final class ObjectState(B){ // (update logic)
 		assert(id!=0);
 	}do{
 		obj.removeObject(id);
+	}
+	void setRenderMode(T,RenderMode mode)(int id)if(is(T==MovingObject!B)||is(T==StaticObject!B)) in{
+		assert(id!=0);
+	}do{
+		obj.setRenderMode!(T,mode)(id);
 	}
 	Array!int toRemove;
 	void removeLater(int id)in{
