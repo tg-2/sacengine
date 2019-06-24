@@ -2305,6 +2305,7 @@ final class SacScene: Scene{
 	enum targetCacheDuration=0.6f*updateFPS;
 	void updateMouseTarget(){
 		auto target=computeMouseTarget();
+		if(target.id!=0&&!state.current.isValidId(target.id,target.type)) target=Target.init;
 		auto targetValid=mouseTargetValid(target);
 		static immutable importantTargets=[TargetType.creature,TargetType.soul];
 		if(cachedTarget.id!=0&&!state.current.isValidId(cachedTarget.id,cachedTarget.type)) cachedTarget=Target.init;
