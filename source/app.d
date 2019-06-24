@@ -54,6 +54,10 @@ int main(string[] args){
 			options.wizard=opt["--wizard=".length..$];
 		}else if(opt.startsWith("--god=")){
 			options.god=to!God(opt["--god=".length..$]);
+		}else if(opt.startsWith("--level=")){
+			options.level=to!int(opt["--level=".length..$]);
+		}else if(opt.startsWith("--souls=")){
+			options.souls=to!int(opt["--souls=".length..$]);
 		}else LoptSwitch: switch(opt){
 			static string getOptionName(string memberName){
 				import std.ascii;
@@ -146,7 +150,7 @@ int main(string[] args){
 					auto id=state.addObject(obj);
 					scene.focusCamera(id);
 					auto spellbook=getDefaultSpellbook!B(options.god);
-					state.addWizard(makeWizard(id,9,12,spellbook,state));
+					state.addWizard(makeWizard(id,options.level,options.souls,spellbook,state));
 				}
 			})(state.current,backend.scene,&flag,options);
 			state.commit();

@@ -23,4 +23,6 @@ struct Options{
 	int replicateCreatures=1;
 	string wizard="cwe2";
 	God god;
+	int level=9;
+	int souls=12;
 }
