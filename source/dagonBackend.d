@@ -171,28 +171,51 @@ final class SacScene: Scene{
 		sacSoul=new SacSoul!DagonBackend();
 	}
 	SacObject!DagonBackend sacDebris;
-	struct Explosion{
+	struct Explosion{ // TODO: move?
 		Texture texture;
 		GenericMaterial material;
 		ShapeSubSphere[16] frames;
 		auto getFrame(int i){ return frames[i/updateAnimFactor]; }
 	}
-	Explosion explosion;
-	void createEffects(){
-		sacDebris=new SacObject!DagonBackend("extracted/models/MODL.WAD!/bold.MRMC/bold.MRMM");
+	Explosion createExplosion(){
 		enum nU=4,nV=4;
 		import txtr;
-		explosion.texture=DagonBackend.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pyro.FLDR/txtr.FLDR/exeg.TXTR"));
+		auto texture=DagonBackend.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pyro.FLDR/txtr.FLDR/exeg.TXTR"));
 		auto mat=createMaterial(shadelessMaterialBackend);
 		mat.depthWrite=false;
 		mat.blending=Additive;
 		mat.energy=1.0f;
-		mat.diffuse=explosion.texture;
-		explosion.material=mat;
-		foreach(i,ref frame;explosion.frames){
+		mat.diffuse=texture;
+		ShapeSubSphere[16] frames;
+		foreach(i,ref frame;frames){
 			int u=cast(int)i%nU,v=cast(int)i/nU;
 			frame=new ShapeSubSphere(1.0f,25,25,true,null,1.0f/nU*u,1.0f/nV*v,1.0f/nU*(u+1),1.0f/nV*(v+1));
 		}
+		return Explosion(texture,mat,frames);
+	}
+	Explosion explosion;
+	struct BlueRing{ // TODO: move?
+		Texture texture;
+		GenericMaterial material;
+		Mesh[] frames;
+		auto getFrame(int i){ return frames[i/updateAnimFactor]; }
+	}
+	BlueRing createBlueRing(){
+		import txtr;
+		auto texture=DagonBackend.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/brng.TXTR"));
+		auto mat=createMaterial(shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=Additive;
+		mat.energy=20.0f;
+		mat.diffuse=texture;
+		auto frames=makeSpriteMeshes!(DagonBackend,true)(4,4,24,24);
+		return BlueRing(texture,mat,frames);
+	}
+	BlueRing blueRing;
+	void createEffects(){
+		sacDebris=new SacObject!DagonBackend("extracted/models/MODL.WAD!/bold.MRMC/bold.MRMM");
+		explosion=createExplosion();
+		blueRing=createBlueRing();
 	}
 	SacCommandCone!DagonBackend sacCommandCone;
 	void createCommandCones(){
@@ -422,6 +445,35 @@ final class SacScene: Scene{
 						auto mesh=scene.explosion.getFrame(objects.explosions[j].frame);
 						material.backend.setTransformationScaled(objects.explosions[j].position,Quaternionf.identity(),objects.explosions[j].scale*Vector3f(1.1f,1.1f,0.9f),rc);
 						mesh.render(rc);
+					}
+				}
+				static if(mode==RenderMode.transparent) if(objects.structureCasts.length){
+					auto material=scene.blueRing.material;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
+					foreach(j;0..objects.structureCasts.length){
+						static void renderRingsBldg(B)(Building!B bldg,StructureCasting!B* scast,SacScene scene,RenderingContext* rc){
+							static void renderRingsStaticObject(B)(StaticObject!B obj,StructureCasting!B* scast,SacScene scene,RenderingContext* rc){
+								auto offset=scast.buildingHeight*scast.currentFrame/scast.castingTime;
+								auto rotation=Quaternionf.identity();
+								auto frame=scast.currentFrame;
+								enum numRings=3,ringAnimationDelay=4;
+								enum ringSize=0.5f*(1.0f/(numRings-1))*structureCastingGradientSize;
+								foreach(i;0..numRings){
+									auto coffset=offset+ringSize*i;
+									auto position=obj.position+Vector3f(0.0f,0.0f,coffset);
+									auto scale=max(0.0f,min(1.0f,(scast.buildingHeight-coffset)/(2.0f*structureCastingGradientSize)));
+									scene.shadelessMaterialBackend.setTransformationScaled(position,rotation,sqrt(scale)*Vector3f(1.0f,1.0f,1.0f),rc);
+									scene.shadelessMaterialBackend.setEnergy(20.0f*scale^^5);
+									auto mesh=scene.blueRing.getFrame((frame/ringAnimationDelay+4*i)%16);
+									mesh.render(rc);
+								}
+							}
+							foreach(cid;bldg.componentIds){
+								scene.state.current.staticObjectById!renderRingsStaticObject(cid,scast,scene,rc);
+							}
+						}
+						scene.state.current.buildingById!renderRingsBldg(objects.structureCasts[j].building,&objects.structureCasts[j],scene,rc);
 					}
 				}
 			}else static if(is(T==Particles!DagonBackend)){

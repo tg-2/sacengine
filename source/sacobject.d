@@ -567,14 +567,15 @@ enum SoulColor{
 	//green,
 }
 
-B.Mesh[] makeSpriteMeshes(B)(int nU,int nV,float width,float height,float texWidth=1.0f,float texHeight=1.0f){ // TODO: replace with shader
+B.Mesh[] makeSpriteMeshes(B,bool doubleSided=false)(int nU,int nV,float width,float height,float texWidth=1.0f,float texHeight=1.0f){ // TODO: replace with shader
 	auto meshes=new B.Mesh[](nU*nV);
 	foreach(i,ref mesh;meshes){
-		mesh=B.makeMesh(4,2);
+		mesh=B.makeMesh(4,doubleSided?4:2);
 		int u=cast(int)i%nU,v=cast(int)i/nU;
 		foreach(k;0..4) mesh.vertices[k]=Vector3f(-0.5f*width+width*(k==1||k==2),-0.5f*height+height*(k==2||k==3),0.0f);
 		foreach(k;0..4) mesh.texcoords[k]=Vector2f(texWidth/nU*(u+(k==1||k==2)),texHeight/nV*(v+(k==0||k==1)));
-		static immutable uint[3][] indices=[[0,1,2],[2,3,0]];
+		static if(doubleSided) static immutable uint[3][] indices=[[0,1,2],[2,3,0],[0,2,1],[2,0,3]];
+		else static immutable uint[3][] indices=[[0,1,2],[2,3,0]];
 		mesh.indices[]=indices[];
 		mesh.generateNormals();
 		B.finalizeMesh(mesh);

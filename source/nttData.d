@@ -1036,3 +1036,21 @@ immutable ST[] structureSpells=[ST.manalith,ST.guardian,ST.convert,ST.desecrate,
 
 immutable ST[] specialCreatures=[ST.dragonHatchling];
 immutable ST[] heroCreatures=[ST.sirocco,ST.faestus,ST.faestus2,  /+ST.thestor+/];
+
+God getSpellGod(char[4] tag){ // TODO: figure out where this is stored
+	static God[char[4]] getIndex(){
+		God[char[4]] index;
+		import std.traits: EnumMembers;
+		foreach(god;EnumMembers!God){
+			foreach(tag;chain(creatureSpells[god],normalSpells[god]))
+				if(tag!in index) index[tag]=god;
+		}
+		return index;
+	}
+	switch(tag){
+		static foreach(stag,god;getIndex())
+		case stag: return god;
+		default: return God.none;
+	}
+
+}

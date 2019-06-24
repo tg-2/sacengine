@@ -1,4 +1,4 @@
-import std.exception, std.conv, std.algorithm;
+import std.exception, std.conv, std.algorithm, std.range, std.traits;
 import spells, ntts, nttData, txtr;
 
 enum TargetFlags{
@@ -60,6 +60,7 @@ class SacSpell(B){
 	B.Texture icon;
 
 	SpellType type;
+	God god; // TODO: figure out where this is stored
 	ushort spellOrder;
 	float range;
 	float manaCost;
@@ -108,6 +109,7 @@ class SacSpell(B){
 
 	private this(char[4] tag){
 		this.tag=tag;
+		this.god=getSpellGod(tag);
 		cre8=tag in cre8s;
 		spel=tag in spels;
 		strc=tag in strcs;

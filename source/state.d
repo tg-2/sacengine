@@ -2421,7 +2421,9 @@ bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,Ob
 			if(!spell.isBuilding) goto case SpellType.spell;
 			auto base=state.staticObjectById!((obj)=>obj.buildingId,()=>0)(target.id);
 			if(base){ // TODO: stun both wizards on simultaneous lith cast
-				auto building=makeBuilding(object.id,spell.buildingTag(God.persephone),AdditionalBuildingFlags.inactive|Flags.cannotDamage,base,state);
+				auto god=state.getCurrentGod(wizard);
+				if(god==God.none) god=God.persephone;
+				auto building=makeBuilding(object.id,spell.buildingTag(god),AdditionalBuildingFlags.inactive|Flags.cannotDamage,base,state);
 				state.setRenderMode!(Building!B,RenderMode.transparent)(building);
 				float buildingHeight=state.buildingById!((bldg,state)=>height(bldg,state),()=>0.0f)(building,state);
 				state.addEffect(StructureCasting!B(spell,object.id,building,buildingHeight,manaCostPerFrame,castingTime,0));
@@ -4517,12 +4519,21 @@ final class ObjectState(B){ // (update logic)
 	auto getSpells(int id){
 		return getSpells(getWizard(id));
 	}
-	auto getSpells(WizardInfo!B* wizard){
+	auto getSpells(bool retro=false)(WizardInfo!B* wizard){
 		static bool pred(ref SpellInfo!B spell,int level){ return spell.level<=level; }
 		static bool pred2(T)(T x){ return pred(x[]); }
 		static first(T)(T x){ return x[0]; }
-		if(!wizard) return zip(typeof(wizard.getSpells()).init,repeat(0)).filter!pred2.map!first;
-		return zip(wizard.getSpells(),repeat(wizard.level)).filter!pred2.map!first;
+		if(!wizard) return zip(typeof(mixin(retro?q{ wizard.getSpells().retro }:q{ wizard.getSpells()})).init,repeat(0)).filter!pred2.map!first;
+		return zip(mixin(retro?q{ wizard.getSpells().retro }:q{ wizard.getSpells()}),repeat(wizard.level)).filter!pred2.map!first;
+	}
+	God getCurrentGod(int id){
+		return getCurrentGod(getWizard(id));
+	}
+	God getCurrentGod(WizardInfo!B* wizard){
+		if(!wizard) return God.none;
+		auto spells=getSpells!true(wizard).filter!(x=>x.spell.type.among(SpellType.creature,SpellType.spell));
+		if(spells.empty) return God.none;
+		return spells.front.spell.god;
 	}
 	private static alias spellStatusArgs(bool selectOnly:true)=Seq!();
 	private static alias spellStatusArgs(bool selectOnly:false)=Seq!Target;
