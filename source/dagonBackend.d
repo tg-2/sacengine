@@ -198,7 +198,9 @@ final class SacScene: Scene{
 		Texture texture;
 		GenericMaterial material;
 		Mesh[] frames;
-		auto getFrame(int i){ return frames[i/updateAnimFactor]; }
+		enum ringAnimationDelay=4;
+		enum numFrames=16*ringAnimationDelay*updateAnimFactor;
+		auto getFrame(int i){ return frames[i/(ringAnimationDelay*updateAnimFactor)]; }
 	}
 	BlueRing createBlueRing(){
 		import txtr;
@@ -208,7 +210,7 @@ final class SacScene: Scene{
 		mat.blending=Additive;
 		mat.energy=20.0f;
 		mat.diffuse=texture;
-		auto frames=makeSpriteMeshes!(DagonBackend,true)(4,4,24,24);
+		auto frames=makeSpriteMeshes!(DagonBackend,true)(4,4,28,28);
 		return BlueRing(texture,mat,frames);
 	}
 	BlueRing blueRing;
@@ -447,33 +449,18 @@ final class SacScene: Scene{
 						mesh.render(rc);
 					}
 				}
-				static if(mode==RenderMode.transparent) if(objects.structureCasts.length){
+				static if(mode==RenderMode.transparent) if(objects.blueRings.length){
 					auto material=scene.blueRing.material;
 					material.bind(rc);
 					scope(success) material.unbind(rc);
-					foreach(j;0..objects.structureCasts.length){
-						static void renderRingsBldg(B)(Building!B bldg,StructureCasting!B* scast,SacScene scene,RenderingContext* rc){
-							static void renderRingsStaticObject(B)(StaticObject!B obj,StructureCasting!B* scast,SacScene scene,RenderingContext* rc){
-								auto offset=scast.buildingHeight*scast.currentFrame/scast.castingTime;
-								auto rotation=Quaternionf.identity();
-								auto frame=scast.currentFrame;
-								enum numRings=3,ringAnimationDelay=4;
-								enum ringSize=0.5f*(1.0f/(numRings-1))*structureCastingGradientSize;
-								foreach(i;0..numRings){
-									auto coffset=offset+ringSize*i;
-									auto position=obj.position+Vector3f(0.0f,0.0f,coffset);
-									auto scale=max(0.0f,min(1.0f,(scast.buildingHeight-coffset)/(2.0f*structureCastingGradientSize)));
-									scene.shadelessMaterialBackend.setTransformationScaled(position,rotation,sqrt(scale)*Vector3f(1.0f,1.0f,1.0f),rc);
-									scene.shadelessMaterialBackend.setEnergy(20.0f*scale^^5);
-									auto mesh=scene.blueRing.getFrame((frame/ringAnimationDelay+4*i)%16);
-									mesh.render(rc);
-								}
-							}
-							foreach(cid;bldg.componentIds){
-								scene.state.current.staticObjectById!renderRingsStaticObject(cid,scast,scene,rc);
-							}
-						}
-						scene.state.current.buildingById!renderRingsBldg(objects.structureCasts[j].building,&objects.structureCasts[j],scene,rc);
+					foreach(j;0..objects.blueRings.length){
+						auto position=objects.blueRings[j].position;
+						auto scale=objects.blueRings[j].scale;
+						scene.shadelessMaterialBackend.setTransformationScaled(position,Quaternionf.identity(),scale*Vector3f(1.0f,1.0f,1.0f),rc);
+						scene.shadelessMaterialBackend.setEnergy(20.0f*scale^^4);
+						auto mesh=scene.blueRing.getFrame(objects.blueRings[j].frame%scene.blueRing.numFrames);
+						mesh.render(rc);
+
 					}
 				}
 			}else static if(is(T==Particles!DagonBackend)){

@@ -1195,6 +1195,11 @@ struct StructureCasting(B){
 	int castingTime;
 	int currentFrame;
 }
+struct BlueRing(B){
+	Vector3f position;
+	float scale=1.0f;
+	int frame=0;
+}
 struct Effects(B){
 	Array!(Debris!B) debris;
 	void addEffect(Debris!B debris){
@@ -1228,11 +1233,20 @@ struct Effects(B){
 		if(i+1<structureCasts.length) swap(structureCasts[i],structureCasts[$-1]);
 		structureCasts.length=structureCasts.length-1;
 	}
+	Array!(BlueRing!B) blueRings;
+	void addEffect(BlueRing!B blueRing){
+		blueRings~=blueRing;
+	}
+	void removeBlueRing(int i){
+		if(i+1<blueRings.length) swap(blueRings[i],blueRings[$-1]);
+		blueRings.length=blueRings.length-1;
+	}
 	void opAssign(ref Effects!B rhs){
 		assignArray(debris,rhs.debris);
 		assignArray(explosions,rhs.explosions);
 		assignArray(creatureCasts,rhs.creatureCasts);
 		assignArray(structureCasts,rhs.structureCasts);
+		assignArray(blueRings,rhs.blueRings);
 	}
 }
 
@@ -3471,13 +3485,13 @@ void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 				float distancesqr=float.infinity;
 				bool tied=false;
 			}
-			enum collectDistance=3.5f; // TODO: measure this
+			enum collectDistance=4.0f; // TODO: measure this
 			static void process(B)(ref WizardInfo!B wizard,Soul!B* soul,State* pstate,ObjectState!B state){ // TODO: use proximity data structure?
 				auto sidePosition=state.movingObjectById!((obj)=>tuple(obj.side,obj.center),function Tuple!(int,Vector3f)(){ assert(0); })(wizard.id);
 				auto side=sidePosition[0],position=sidePosition[1];
+				if((soul.position.xy-position.xy).lengthsqr>collectDistance^^2) return;
+				if(abs(soul.position.z-position.z)>collectDistance) return;
 				auto distancesqr=(soul.position-position).lengthsqr;
-
-				if(distancesqr>collectDistance^^2) return;
 				if(soul.creatureId&&side!=soul.preferredSide) return;
 				if(soul.preferredSide!=-1&&pstate.side==soul.preferredSide&&side!=soul.preferredSide) return;
 				if(distancesqr>pstate.distancesqr) return;
@@ -3638,8 +3652,19 @@ bool updateStructureCasting(B)(ref StructureCasting!B structureCast,ObjectState!
 				currentFrame+=1;
 				auto thresholdZ=-structureCastingGradientSize+(buildingHeight+structureCastingGradientSize)*currentFrame/castingTime;
 				state.buildingById!((bldg,thresholdZ,state){
-					foreach(cid;bldg.componentIds)
+					foreach(cid;bldg.componentIds){
 						state.setThresholdZ(cid,thresholdZ);
+						if(currentFrame+0.5f*updateFPS<castingTime){
+							auto pos=state.staticObjectById!((obj)=>obj.position,function Vector3f(){ assert(0); })(cid);
+							pos.z+=thresholdZ-0.5f*structureCastingGradientSize*currentFrame/castingTime;
+							foreach(i;0..state.uniform(1,6)){
+								auto position=pos;
+								position.z+=state.uniform(0.0f,structureCastingGradientSize);
+								auto scale=state.uniform(0.875f,1.125f);
+								state.addEffect(BlueRing!B(position,scale,state.uniform(64)));
+							}
+						}
+					}
 				})(building,thresholdZ,state);
 				return true;
 			case CastingStatus.interrupted:
@@ -3655,6 +3680,14 @@ bool updateStructureCasting(B)(ref StructureCasting!B structureCast,ObjectState!
 					building.flags&=~Flags.cannotDamage;
 			},function(){})(building,state); return false;
 		}
+	}
+}
+bool updateBlueRing(B)(ref BlueRing!B blueRing,ObjectState!B state){
+	with(blueRing){
+		frame+=1;
+		scale-=1.0f/updateFPS;
+		if(scale<=0) return false;
+		return true;
 	}
 }
 void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
@@ -3682,6 +3715,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.structureCasts.length;){
 		if(!updateStructureCasting(effects.structureCasts[i],state)){
 			effects.removeStructureCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.blueRings.length;){
+		if(!updateBlueRing(effects.blueRings[i],state)){
+			effects.removeBlueRing(i);
 			continue;
 		}
 		i++;
