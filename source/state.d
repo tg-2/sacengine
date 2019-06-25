@@ -2698,7 +2698,7 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 	}
 	int target=0;
 	if(state.objectById!intersects(targetId,meleeHitbox)){
-		target=meleeAttackTarget(object.id,object.hitbox,meleeHitbox,state); // TODO: share melee hitbox computation?
+		target=meleeAttackTarget(object,state); // TODO: share melee hitbox computation?
 		if(target&&target!=targetId&&!state.objectById!((obj,side,state)=>state.sides.getStance(side,.side(obj,state))==Stance.enemy)(target,object.side,state))
 			target=0;
 	}
@@ -3118,42 +3118,53 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 	}
 }
 
-auto collisionTarget(bool attackFilter=false,bool returnHitbox=false,B)(int ownId,Vector3f[2] hitbox,Vector3f[2] movedHitbox,ObjectState!B state){
+alias CollisionTargetSide(bool active:true)=int;
+alias CollisionTargetSide(bool active:false)=Seq!();
+auto collisionTargetImpl(bool attackFilter=false,bool returnHitbox=false,B)(int ownId,CollisionTargetSide!attackFilter side,Vector3f[2] hitbox,Vector3f[2] movedHitbox,ObjectState!B state){
 	struct CollisionState{
 		Vector3f[2] hitbox;
 		int ownId;
+		static if(attackFilter) int side;
 		int target=0;
 		static if(returnHitbox) Vector3f[2] targetHitbox;
+		static if(attackFilter) bool ally=false;
 		float distance=float.infinity;
 	}
 	static void handleCollision(ProximityEntry entry,CollisionState *collisionState,ObjectState!B state){
 		if(entry.id==collisionState.ownId) return;
 		static if(attackFilter){
-			if(state.objectById!((obj,state)=>obj.health(state)==0.0f)(entry.id,state))
-				return;
+			auto noHealthAlly=state.objectById!((obj,state,side)=>tuple(obj.health(state)==0.0f,state.sides.getStance(side,.side(obj,state))==Stance.ally))(entry.id,state,collisionState.side);
+			auto noHealth=noHealthAlly[0], ally=noHealthAlly[1];
+			if(noHealth) return;
 		}
 		auto distance=meleeDistance(entry.hitbox,boxCenter(collisionState.hitbox));
-		if(!collisionState.target||distance<collisionState.distance){
+		static if(attackFilter) auto pick=!collisionState.target||tuple(ally,distance)<tuple(collisionState.ally,collisionState.distance);
+		else auto pick=!collisionState.target||distance<collisionState.distance;
+		if(pick){
 			collisionState.target=entry.id;
 			static if(returnHitbox) collisionState.targetHitbox=entry.hitbox;
+			static if(attackFilter) collisionState.ally=ally;
 			collisionState.distance=distance;
 		}
 	}
-	auto collisionState=CollisionState(hitbox,ownId);
+	auto collisionState=CollisionState(hitbox,ownId,side);
 	state.proximity.collide!handleCollision(movedHitbox,&collisionState,state);
 	static if(returnHitbox) return tuple(collisionState.target,collisionState.targetHitbox);
 	else return collisionState.target;
 }
-auto collisionTargetWithHitbox(B)(int ownId,Vector3f[2] hitbox,Vector3f[2] movedHitbox,ObjectState!B state){
-	return collisionTarget!(false,true)(ownId,hitbox,movedHitbox,state);
+auto collisionTarget(B)(int ownId,Vector3f[2] hitbox,Vector3f[2] movedHitbox,ObjectState!B state){
+	return collisionTargetImpl!(false,false,B)(ownId,hitbox,movedHitbox,state);
 }
-int meleeAttackTarget(B)(int ownId,Vector3f[2] hitbox,Vector3f[2] meleeHitbox,ObjectState!B state){
-	return collisionTarget!true(ownId,hitbox,meleeHitbox,state);
+auto collisionTargetWithHitbox(B)(int ownId,Vector3f[2] hitbox,Vector3f[2] movedHitbox,ObjectState!B state){
+	return collisionTargetImpl!(false,true,B)(ownId,hitbox,movedHitbox,state);
+}
+int meleeAttackTarget(B)(int ownId,int side,Vector3f[2] hitbox,Vector3f[2] meleeHitbox,ObjectState!B state){
+	return collisionTargetImpl!(true,false,B)(ownId,side,hitbox,meleeHitbox,state);
 }
 
 int meleeAttackTarget(B)(ref MovingObject!B object,ObjectState!B state){
 	auto hitbox=object.hitbox,meleeHitbox=object.meleeHitbox;
-	return meleeAttackTarget(object.id,hitbox,meleeHitbox,state);
+	return meleeAttackTarget(object.id,object.side,hitbox,meleeHitbox,state);
 }
 
 void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
