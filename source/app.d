@@ -28,7 +28,7 @@ int main(string[] args){
 		return tuple!("width","height")(16*to!int(s)/9,to!int(s));
 	}
 	foreach(opt;opts){
-		if(opt.startsWith("--resolution")){
+		if(opt.startsWith("--resolution=")){
 			auto resolution=parseResolution(opt["--resolution=".length..$]);
 			options.width=resolution.width;
 			options.height=resolution.height;
