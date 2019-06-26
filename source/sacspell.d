@@ -64,7 +64,6 @@ class SacSpell(B){
 	ushort spellOrder;
 	float range;
 	float manaCost;
-	int soulCost;
 	float castingTime(int level){
 		if(cre8) return cre8.castingTime/60.0f;
 		if(spel) return spel.castingTime/60.0f;
@@ -81,6 +80,12 @@ class SacSpell(B){
 		}
 	}
 	float cooldown;
+	float amount;
+	float duration;
+	float effectRange;
+	float speed;
+	float acceleration;
+	int soulCost;
 
 	SpelFlags flags;
 	SpelFlags1 flags1;
@@ -135,8 +140,15 @@ class SacSpell(B){
 		if(cre8){
 			setStats(cre8);
 			soulCost=cre8.souls;
-		}else if(spel) setStats(spel);
-		else if(strc) setStats(strc);
+		}else if(spel){
+			setStats(spel);
+			amount=spel.amount;
+			duration=spel.duration;
+			if(tag=="leah") duration=4.5f;
+			effectRange=spel.effectRange;
+			speed=spel.speed;
+			acceleration=spel.acceleration;
+		}else if(strc) setStats(strc);
 	}
 	static SacSpell!B[char[4]] spells;
 	static SacSpell!B get(char[4] tag){

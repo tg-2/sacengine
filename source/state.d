@@ -2449,19 +2449,16 @@ int getCastingTime(B)(ref MovingObject!B object,int numFrames,bool stationary,Ob
 	return start+max(0,(numFrames-start-end+mid-1))/mid*mid+castingTime;
 }
 
-bool speedUp(B)(ref MovingObject!B object,ObjectState!B state){
+bool speedUp(B)(ref MovingObject!B object,SacSpell!B spell,ObjectState!B state){
 	playSoundAt("pups",object.id,state,2.0f);
 	object.creatureStats.effects.speedUp+=1;
-	auto duration=object.isWizard?6.0f:30000.0f/object.creatureStats.maxHealth;
+	auto duration=object.isWizard?spell.duration*0.2f:spell.duration*1000.0f/object.creatureStats.maxHealth;
 	state.addEffect(SpeedUp!B(object.id,cast(int)(duration*updateFPS)));
 	return true;
 }
-bool canSpeedUp(B)(int id,ObjectState!B state){
-	return state.isValidId(id,TargetType.creature); // TODO: check for active speedup
-}
-bool speedUp(B)(int creature,ObjectState!B state){
-	if(!canSpeedUp(creature,state)) return false;
-	return state.movingObjectById!(speedUp,()=>false)(creature,state);
+bool speedUp(B)(int creature,SacSpell!B spell,ObjectState!B state){
+	if(!state.isValidId(creature,TargetType.creature)) return false;
+	return state.movingObjectById!(speedUp,()=>false)(creature,spell,state);
 }
 
 enum summonSoundGain=2.0f;
@@ -2493,7 +2490,7 @@ bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,Ob
 			bool ok=false;
 			switch(spell.tag){
 				case "pups":
-					ok=target.id==object.id?speedUp(object,state):speedUp(target.id,state);
+					ok=target.id==object.id?speedUp(object,spell,state):speedUp(target.id,spell,state);
 					goto default;
 				// TODO
 				default:
