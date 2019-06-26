@@ -19,6 +19,7 @@ struct CreatureStats{
 }
 struct Effects{
 	int speedUp=0;
+	int speedUpFrame=-1;
 }
 
 import std.math: PI;

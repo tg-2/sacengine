@@ -2449,9 +2449,12 @@ int getCastingTime(B)(ref MovingObject!B object,int numFrames,bool stationary,Ob
 	return start+max(0,(numFrames-start-end+mid-1))/mid*mid+castingTime;
 }
 
+enum doubleSpeedUpDelay=cast(int)(0.2f*updateFPS); // 200ms
 bool speedUp(B)(ref MovingObject!B object,SacSpell!B spell,ObjectState!B state){
 	playSoundAt("pups",object.id,state,2.0f);
 	object.creatureStats.effects.speedUp+=1;
+	if(object.creatureStats.effects.speedUpFrame==-1)
+		object.creatureStats.effects.speedUpFrame=state.frame;
 	auto duration=object.isWizard?spell.duration*0.2f:spell.duration*1000.0f/object.creatureStats.maxHealth;
 	state.addEffect(SpeedUp!B(object.id,cast(int)(duration*updateFPS)));
 	return true;
@@ -3778,6 +3781,8 @@ bool updateSpeedUp(B)(ref SpeedUp!B speedUp,ObjectState!B state){
 			if(obj.health==0.0f) return false;
 			if(!framesLeft){
 				obj.creatureStats.effects.speedUp-=1;
+				if(!obj.creatureStats.effects.speedUp)
+					obj.creatureStats.effects.speedUpFrame=-1;
 				return false;
 			}
 			static assert(updateFPS==60);
@@ -5236,6 +5241,8 @@ TargetFlags summarize(bool simplified=false,B)(ref Target target,int side,Object
 						result&=~TargetFlags.creature;
 						result|=TargetFlags.wizard;
 					}
+					if(obj.creatureStats.effects.speedUp && obj.creatureStats.effects.speedUpFrame+doubleSpeedUpDelay<state.frame)
+						result|=TargetFlags.spedUp;
 					// TODO: shield/hero
 				}
 				return result;

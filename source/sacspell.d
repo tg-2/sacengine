@@ -17,10 +17,12 @@ enum TargetFlags{
 	 // TODO: figure out flag for these:
 	hero=1<<20,
 	shielded=1<<21,
+	// spell effects
+	spedUp=1<<22,
 	// TODO: figure out building flag for this:
-	untargetable=1<<22,
+	untargetable=1<<23,
 	// irrelevant for spell targetting:
-	rescuable=1<<23,
+	rescuable=1<<24,
 }
 
 bool isApplicable(SpelFlags sflags,TargetFlags tflags)in{
@@ -108,6 +110,7 @@ class SacSpell(B){
 
 	bool isApplicable(TargetFlags tflags){
 		if(!.isApplicable(flags,tflags)) return false;
+		if(tflags&TargetFlags.spedUp&&tag=="pups") return false;
 		// TODO: consider other data, such as flags1 and flags2
 		return true;
 	}

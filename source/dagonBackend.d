@@ -2340,7 +2340,7 @@ final class SacScene: Scene{
 		if(mouse.target.type==TargetType.spell)
 			mouse.targetSpell=spellbookTargetSpell;
 		mouse.targetValid=targetValid;
-		auto summary=summarize!true(mouse.target,renderSide,state.current); // TODO: don't compute this twice
+		auto summary=summarize!true(mouse.target,renderSide,state.current);
 		with(Cursor)
 			mouse.showFrame=targetValid && target.location==TargetLocation.scene &&
 				!(summary&TargetFlags.corpse) &&
