@@ -15,6 +15,10 @@ struct CreatureStats{
 	float splashSpellResistance;
 	float directRangedResistance;
 	float splashRangedResistance;
+	Effects effects;
+}
+struct Effects{
+	int speedUp=0;
 }
 
 import std.math: PI;
@@ -32,7 +36,8 @@ import std.math: PI;
 	return 0.25f*cast(float)PI;
 }
 @property float movementSpeed(ref CreatureStats stats,bool isFlying){ // in meters per second
-	return isFlying?stats.flyingSpeed:stats.runningSpeed;
+	auto effectFactor=(5.0f/3.0f)^^stats.effects.speedUp;
+	return (isFlying?stats.flyingSpeed:stats.runningSpeed)*effectFactor;
 }
 @property float maxDownwardSpeedFactor(ref CreatureStats stats){
 	return 2.0f;

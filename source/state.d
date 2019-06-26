@@ -1180,18 +1180,20 @@ struct Explosion(B){
 	float scale,maxScale,expansionSpeed;
 	int frame;
 }
-struct CreatureCasting(B){
-	SacSpell!B spell;
+struct ManaDrain(B){
 	int wizard;
-	int creature;
 	float manaCostPerFrame;
 }
-struct StructureCasting(B){
+struct CreatureCasting(B){
+	ManaDrain!B manaDrain;
 	SacSpell!B spell;
-	int wizard;
+	int creature;
+}
+struct StructureCasting(B){
+	ManaDrain!B manaDrain;
+	SacSpell!B spell;
 	int building;
 	float buildingHeight;
-	float manaCostPerFrame;
 	int castingTime;
 	int currentFrame;
 }
@@ -1199,6 +1201,18 @@ struct BlueRing(B){
 	Vector3f position;
 	float scale=1.0f;
 	int frame=0;
+}
+struct SpeedUp(B){
+	int creature;
+	int framesLeft;
+}
+struct SpeedUpShadow(B){
+	int creature;
+	Vector3f position;
+	Quaternionf rotation;
+	AnimationState animationState;
+	int frame;
+	int age=0;
 }
 struct Effects(B){
 	Array!(Debris!B) debris;
@@ -1216,6 +1230,14 @@ struct Effects(B){
 	void removeExplosion(int i){
 		if(i+1<explosions.length) swap(explosions[i],explosions[$-1]);
 		explosions.length=explosions.length-1;
+	}
+	Array!(ManaDrain!B) manaDrains;
+	void addEffect(ManaDrain!B manaDrain){
+		manaDrains~=manaDrain;
+	}
+	void removeManaDrain(int i){
+		if(i+1<manaDrains.length) swap(manaDrains[i],manaDrains[$-1]);
+		manaDrains.length=manaDrains.length-1;
 	}
 	Array!(CreatureCasting!B) creatureCasts;
 	void addEffect(CreatureCasting!B creatureCast){
@@ -1241,12 +1263,31 @@ struct Effects(B){
 		if(i+1<blueRings.length) swap(blueRings[i],blueRings[$-1]);
 		blueRings.length=blueRings.length-1;
 	}
+	Array!(SpeedUp!B) speedUps;
+	void addEffect(SpeedUp!B speedUp){
+		speedUps~=speedUp;
+	}
+	void removeSpeedUp(int i){
+		if(i+1<speedUps.length) swap(speedUps[i],speedUps[$-1]);
+		speedUps.length=speedUps.length-1;
+	}
+	Array!(SpeedUpShadow!B) speedUpShadows;
+	void addEffect(SpeedUpShadow!B speedUpShadow){
+		speedUpShadows~=speedUpShadow;
+	}
+	void removeSpeedUpShadow(int i){
+		if(i+1<speedUpShadows.length) swap(speedUpShadows[i],speedUpShadows[$-1]);
+		speedUpShadows.length=speedUpShadows.length-1;
+	}
 	void opAssign(ref Effects!B rhs){
 		assignArray(debris,rhs.debris);
 		assignArray(explosions,rhs.explosions);
+		assignArray(manaDrains,rhs.manaDrains);
 		assignArray(creatureCasts,rhs.creatureCasts);
 		assignArray(structureCasts,rhs.structureCasts);
 		assignArray(blueRings,rhs.blueRings);
+		assignArray(speedUps,rhs.speedUps);
+		assignArray(speedUpShadows,rhs.speedUpShadows);
 	}
 }
 
@@ -2408,6 +2449,21 @@ int getCastingTime(B)(ref MovingObject!B object,int numFrames,bool stationary,Ob
 	return start+max(0,(numFrames-start-end+mid-1))/mid*mid+castingTime;
 }
 
+bool speedUp(B)(ref MovingObject!B object,ObjectState!B state){
+	playSoundAt("pups",object.id,state,2.0f);
+	object.creatureStats.effects.speedUp+=1;
+	auto duration=object.isWizard?6.0f:30000.0f/object.creatureStats.maxHealth;
+	state.addEffect(SpeedUp!B(object.id,cast(int)(duration*updateFPS)));
+	return true;
+}
+bool canSpeedUp(B)(int id,ObjectState!B state){
+	return state.isValidId(id,TargetType.creature); // TODO: check for active speedup
+}
+bool speedUp(B)(int creature,ObjectState!B state){
+	if(!canSpeedUp(creature,state)) return false;
+	return state.movingObjectById!(speedUp,()=>false)(creature,state);
+}
+
 enum summonSoundGain=2.0f;
 bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,ObjectState!B state){
 	auto wizard=state.getWizard(object.id);
@@ -2419,18 +2475,32 @@ bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,Ob
 	// TODO: "stationary" parameter necessary? If so, check what original engine does if wizard walks and stops
 	auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
 	auto manaCostPerFrame=spell.manaCost/castingTime;
+	auto manaDrain=ManaDrain!B(object.id,manaCostPerFrame);
 	(*wizard).applyCooldown(spell,state);
+	bool stun(){
+		object.damageStun(Vector3f(0.0f,0.0f,-1.0f),state);
+		return false;
+	}
 	final switch(spell.type){
 		case SpellType.creature:
 			assert(target==Target.init);
 			auto creature=spawn(object.id,spell.tag,0,state);
 			state.setRenderMode!(MovingObject!B,RenderMode.transparent)(creature);
 			playSoundAt("NMUS",creature,state,summonSoundGain);
-			state.addEffect(CreatureCasting!B(spell,object.id,creature,manaCostPerFrame));
+			state.addEffect(CreatureCasting!B(manaDrain,spell,creature));
 			return true;
 		case SpellType.spell:
-			// TODO
-			return true;
+			bool ok=false;
+			switch(spell.tag){
+				case "pups":
+					ok=target.id==object.id?speedUp(object,state):speedUp(target.id,state);
+					goto default;
+				// TODO
+				default:
+					if(ok) state.addEffect(manaDrain);
+					else stun();
+					return ok;
+			}
 		case SpellType.structure:
 			if(!spell.isBuilding) goto case SpellType.spell;
 			auto base=state.staticObjectById!((obj)=>obj.buildingId,()=>0)(target.id);
@@ -2440,11 +2510,9 @@ bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,Ob
 				auto building=makeBuilding(object.id,spell.buildingTag(god),AdditionalBuildingFlags.inactive|Flags.cannotDamage,base,state);
 				state.setRenderMode!(Building!B,RenderMode.transparent)(building);
 				float buildingHeight=state.buildingById!((bldg,state)=>height(bldg,state),()=>0.0f)(building,state);
-				state.addEffect(StructureCasting!B(spell,object.id,building,buildingHeight,manaCostPerFrame,castingTime,0));
-			}else{
-				// TODO: stun wizard
-			}
-			return true;
+				state.addEffect(StructureCasting!B(manaDrain,spell,building,buildingHeight,castingTime,0));
+				return true;
+			}else return stun();
 	}
 }
 
@@ -3628,20 +3696,28 @@ CastingStatus castStatus(B)(ref MovingObject!B wizard,ObjectState!B state){
 		return CastingStatus.underway;
 	}
 }
+CastingStatus update(B)(ref ManaDrain!B manaDrain,ObjectState!B state){
+	return state.movingObjectById!((ref obj,manaDrain,state){
+		obj.drainMana(manaDrain.manaCostPerFrame,state);
+		return obj.castStatus(state);
+	},function CastingStatus(){ return CastingStatus.interrupted; })(manaDrain.wizard,manaDrain,state);
+}
+bool updateManaDrain(B)(ref ManaDrain!B manaDrain,ObjectState!B state){
+	final switch(manaDrain.update(state)){
+		case CastingStatus.underway: return true;
+		case CastingStatus.interrupted, CastingStatus.finished: return false;
+	}
+}
 bool updateCreatureCasting(B)(ref CreatureCasting!B creatureCast,ObjectState!B state){
 	with(creatureCast){
-		auto status=state.movingObjectById!((ref obj,cast_,state){
-			obj.drainMana(cast_.manaCostPerFrame,state);
-			return obj.castStatus(state);
-		},function CastingStatus(){ return CastingStatus.interrupted; })(creatureCast.wizard,creatureCast,state);
-		final switch(status){
+		final switch(manaDrain.update(state)){
 			case CastingStatus.underway:
 				return true;
 			case CastingStatus.interrupted: state.removeObject(creatureCast.creature); return false;
 			case CastingStatus.finished:
 				stopSoundsAt(creature,state);
 				state.setRenderMode!(MovingObject!B,RenderMode.opaque)(creature);
-				auto wizard=state.getWizard(wizard);
+				auto wizard=state.getWizard(manaDrain.wizard);
 				if(!wizard||wizard.souls<spell.soulCost) goto case CastingStatus.interrupted;
 				wizard.souls-=spell.soulCost;
 				state.movingObjectById!((ref obj,state){
@@ -3654,11 +3730,7 @@ bool updateCreatureCasting(B)(ref CreatureCasting!B creatureCast,ObjectState!B s
 enum structureCastingGradientSize=2.0f;
 bool updateStructureCasting(B)(ref StructureCasting!B structureCast,ObjectState!B state){
 	with(structureCast){
-		auto status=state.movingObjectById!((ref obj,cast_,state){
-			obj.drainMana(cast_.manaCostPerFrame,state);
-			return obj.castStatus(state);
-		},function CastingStatus(){ return CastingStatus.interrupted; })(structureCast.wizard,structureCast,state);
-		final switch(status){
+		final switch(manaDrain.update(state)){
 			case CastingStatus.underway:
 				currentFrame+=1;
 				auto thresholdZ=-structureCastingGradientSize+(buildingHeight+structureCastingGradientSize)*currentFrame/castingTime;
@@ -3683,7 +3755,7 @@ bool updateStructureCasting(B)(ref StructureCasting!B structureCast,ObjectState!
 				return false;
 			case CastingStatus.finished:
 				state.setRenderMode!(Building!B,RenderMode.opaque)(building);
-				auto wizard=state.getWizard(wizard);
+				auto wizard=state.getWizard(manaDrain.wizard);
 				if(!wizard||wizard.souls<spell.soulCost) goto case CastingStatus.interrupted;
 				wizard.souls-=spell.soulCost;
 				state.buildingById!((ref building,state){
@@ -3701,6 +3773,36 @@ bool updateBlueRing(B)(ref BlueRing!B blueRing,ObjectState!B state){
 		return true;
 	}
 }
+bool updateSpeedUp(B)(ref SpeedUp!B speedUp,ObjectState!B state){
+	with(speedUp){
+		if(!state.isValidId(creature,TargetType.creature)) return false;
+		framesLeft-=1;
+		return state.movingObjectById!((ref obj,framesLeft,state){
+			if(obj.health==0.0f) return false;
+			if(!framesLeft){
+				obj.creatureStats.effects.speedUp-=1;
+				return false;
+			}
+			static assert(updateFPS==60);
+			if(state.frame%2==0){
+				auto hitbox=obj.hitbox;
+				auto sacParticle=SacParticle!B.get(ParticleType.speedUp);
+				state.addParticle(Particle!B(sacParticle,state.uniform(hitbox),Vector3f(0.0f,0.0f,0.0f),sacParticle.numFrames,0));
+			}
+			state.addEffect(SpeedUpShadow!B(obj.id,obj.position,obj.rotation,obj.animationState,obj.frame));
+			return true;
+		},()=>false)(creature,framesLeft,state);
+	}
+}
+
+enum speedUpShadowLifetime=updateFPS/5;
+enum speedUpShadowSpacing=speedUpShadowLifetime/3;
+bool updateSpeedUpShadow(B)(ref SpeedUpShadow!B speedUpShadow,ObjectState!B state){
+	with(speedUpShadow){
+		if(++age>=speedUpShadowLifetime) return false;
+		return true;
+	}
+}
 void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.debris.length;){
 		if(!updateDebris(effects.debris[i],state)){
@@ -3712,6 +3814,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.explosions.length;){
 		if(!updateExplosion(effects.explosions[i],state)){
 			effects.removeExplosion(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.manaDrains.length;){
+		if(!updateManaDrain(effects.manaDrains[i],state)){
+			effects.removeManaDrain(i);
 			continue;
 		}
 		i++;
@@ -3733,6 +3842,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.blueRings.length;){
 		if(!updateBlueRing(effects.blueRings[i],state)){
 			effects.removeBlueRing(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.speedUps.length;){
+		if(!updateSpeedUp(effects.speedUps[i],state)){
+			effects.removeSpeedUp(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.speedUpShadows.length;){
+		if(!updateSpeedUpShadow(effects.speedUpShadows[i],state)){
+			effects.removeSpeedUpShadow(i);
 			continue;
 		}
 		i++;
@@ -4373,6 +4496,11 @@ final class ObjectState(B){ // (update logic)
 	T uniform(string bounds="[]",T)(T a,T b){
 		import std.random: uniform;
 		return uniform!bounds(a,b,rng);
+	}
+	Vector!(T,n) uniform(string bounds="[]",T,int n)(Vector!(T,n)[2] box){
+		Vector!(T,n) r;
+		foreach(i,ref x;r) x=this.uniform(box[0][i],box[1][i]);
+		return r;
 	}
 	void copyFrom(ObjectState!B rhs){
 		frame=rhs.frame;

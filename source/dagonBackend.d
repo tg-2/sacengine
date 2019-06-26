@@ -439,7 +439,7 @@ final class SacScene: Scene{
 						}
 					}
 				}
-				static if(mode==RenderMode.transparent) if(objects.explosions.length){
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.explosions.length){
 					auto material=scene.explosion.material;
 					material.bind(rc);
 					scope(success) material.unbind(rc);
@@ -449,7 +449,7 @@ final class SacScene: Scene{
 						mesh.render(rc);
 					}
 				}
-				static if(mode==RenderMode.transparent) if(objects.blueRings.length){
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.blueRings.length){
 					auto material=scene.blueRing.material;
 					material.bind(rc);
 					scope(success) material.unbind(rc);
@@ -461,6 +461,28 @@ final class SacScene: Scene{
 						auto mesh=scene.blueRing.getFrame(objects.blueRings[j].frame%scene.blueRing.numFrames);
 						mesh.render(rc);
 
+					}
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.speedUpShadows.length){
+					foreach(j;0..objects.speedUpShadows.length){
+						if((objects.speedUpShadows[j].age+1)%speedUpShadowSpacing!=0) continue;
+						auto id=objects.speedUpShadows[j].creature;
+						auto state=scene.state.current;
+						if(!state.isValidId(id,TargetType.creature)) continue;
+						auto sacObject=state.movingObjectById!((obj)=>obj.sacObject,()=>null)(id); // TODO: store within SpeedUpShadow?
+						if(!sacObject) continue;
+						auto materials=sacObject.transparentMaterials;
+						foreach(i;0..materials.length){
+							auto mesh=sacObject.saxsi.meshes[i];
+							auto material=materials[i];
+							material.bind(rc);
+							scope(success) material.unbind(rc);
+							material.backend.setTransformation(objects.speedUpShadows[j].position,objects.speedUpShadows[j].rotation,rc);
+							scene.shadelessBoneMaterialBackend.setAlpha(0.3f);
+							scene.shadelessBoneMaterialBackend.setEnergy(10.0f);
+							sacObject.setFrame(objects.speedUpShadows[j].animationState,objects.speedUpShadows[j].frame/updateAnimFactor);
+							mesh.render(rc);
+						}
 					}
 				}
 			}else static if(is(T==Particles!DagonBackend)){
@@ -2582,7 +2604,7 @@ static:
 
 	Material createMaterial(SacParticle!DagonBackend particle){
 		final switch(particle.type) with(ParticleType){
-			case manafount, manalith, manahoar, shrine, firy, explosion, explosion2:
+				case manafount, manalith, manahoar, shrine, firy, explosion, explosion2, speedUp:
 				auto mat=scene.createMaterial(scene.shadelessMaterialBackend);
 				mat.depthWrite=false;
 				mat.blending=Additive;

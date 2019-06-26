@@ -621,6 +621,7 @@ enum ParticleType{
 	firy,
 	explosion,
 	explosion2,
+	speedUp,
 }
 
 final class SacParticle(B){
@@ -636,7 +637,7 @@ final class SacParticle(B){
 		final switch(type) with(ParticleType){
 			case manafount:
 				return true;
-			case manalith,shrine,manahoar,firy,explosion,explosion2:
+				case manalith,shrine,manahoar,firy,explosion,explosion2,speedUp:
 				return false;
 		}
 	}
@@ -684,6 +685,12 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/exp2.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
+			case speedUp:
+				width=height=1.0f;
+				this.energy=4.0f;
+				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/spd6.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
 		}
 		material=B.createMaterial(this);
 	}
@@ -706,6 +713,8 @@ final class SacParticle(B){
 				return min(0.07f,(lifetime/(4.0f*numFrames))^^2);
 			case firy,explosion,explosion2:
 				return 1.0f;
+			case speedUp:
+				return min(1.0f,(lifetime/(0.5f*numFrames))^^2);
 		}
 	}
 	float getScale(int lifetime){
@@ -717,6 +726,8 @@ final class SacParticle(B){
 			case shrine:
 				return min(1.0f,lifetime/(3.0f*numFrames));
 			case firy,explosion,explosion2:
+				return 1.0f;
+			case speedUp:
 				return 1.0f;
 		}
 	}
