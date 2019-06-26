@@ -1057,9 +1057,13 @@ struct WizardInfo(B){
 	}
 }
 void applyCooldown(B)(ref WizardInfo!B wizard,SacSpell!B spell,ObjectState!B state){
-	enum genericCooldown=1.0f;
-	enum additionalCooldown=1.5f;
+	enum spellGenericCooldown=1.0f;
+	enum buildingGenericCooldown=0.5f;
+	enum spellAdditionalCooldown=1.5f;
+	enum buildingAdditionalCooldown=0.0f;
 	foreach(ref entry;wizard.spellbook.spells.data){
+		auto genericCooldown=spell.isBuilding?buildingGenericCooldown:spellGenericCooldown;
+		auto additionalCooldown=spell.isBuilding?buildingAdditionalCooldown:spellAdditionalCooldown;
 		if(entry.spell is spell) entry.setCooldown(spell.castingTime(wizard.level)+spell.cooldown+additionalCooldown);
 		else entry.setCooldown(spell.castingTime(wizard.level)+genericCooldown+additionalCooldown);
 	}
