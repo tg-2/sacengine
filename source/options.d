@@ -25,4 +25,5 @@ struct Options{
 	God god;
 	int level=9;
 	int souls=12;
+	int delayStart=0;
 }

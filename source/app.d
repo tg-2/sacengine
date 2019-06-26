@@ -58,6 +58,8 @@ int main(string[] args){
 			options.level=to!int(opt["--level=".length..$]);
 		}else if(opt.startsWith("--souls=")){
 			options.souls=to!int(opt["--souls=".length..$]);
+		}else if(opt.startsWith("--delay-start=")){
+			options.delayStart=to!int(opt["--delay-start=".length..$]);
 		}else LoptSwitch: switch(opt){
 			static string getOptionName(string memberName){
 				import std.ascii;
@@ -174,6 +176,13 @@ int main(string[] args){
 				}
 			}
 		}
+	}
+	auto delay=options.delayStart;
+	while(delay){
+		writeln(delay);
+		delay--;
+		import core.thread;
+		Thread.sleep(1.dur!"seconds");
 	}
 	backend.run();
 	return 0;
