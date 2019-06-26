@@ -1183,6 +1183,7 @@ struct Explosion(B){
 struct ManaDrain(B){
 	int wizard;
 	float manaCostPerFrame;
+	int timer;
 }
 struct CreatureCasting(B){
 	ManaDrain!B manaDrain;
@@ -2452,10 +2453,10 @@ int getCastingTime(B)(ref MovingObject!B object,int numFrames,bool stationary,Ob
 enum doubleSpeedUpDelay=cast(int)(0.2f*updateFPS); // 200ms
 bool speedUp(B)(ref MovingObject!B object,SacSpell!B spell,ObjectState!B state){
 	playSoundAt("pups",object.id,state,2.0f);
-	object.creatureStats.effects.speedUp+=1;
+	object.creatureStats.effects.numSpeedUps+=1;
 	if(object.creatureStats.effects.speedUpFrame==-1)
 		object.creatureStats.effects.speedUpFrame=state.frame;
-	auto duration=object.isWizard?spell.duration*0.2f:spell.duration*1000.0f/object.creatureStats.maxHealth;
+	auto duration=(object.isWizard?spell.duration*0.2f:spell.duration*1000.0f/object.creatureStats.maxHealth)+0.5f;
 	state.addEffect(SpeedUp!B(object.id,cast(int)(duration*updateFPS)));
 	return true;
 }
@@ -2473,9 +2474,9 @@ bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,Ob
 	if(!object.startCasting(numFrames,spell.stationary,state))
 		return false;
 	// TODO: "stationary" parameter necessary? If so, check what original engine does if wizard walks and stops
-	auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
-	auto manaCostPerFrame=spell.manaCost/castingTime;
-	auto manaDrain=ManaDrain!B(object.id,manaCostPerFrame);
+	auto numManaDrainFrames=min(numFrames,cast(int)ceil(spell.manaCost*(updateFPS/500.0f)));
+	auto manaCostPerFrame=spell.manaCost/numManaDrainFrames;
+	auto manaDrain=ManaDrain!B(object.id,manaCostPerFrame,numManaDrainFrames);
 	(*wizard).applyCooldown(spell,state);
 	bool stun(){
 		object.damageStun(Vector3f(0.0f,0.0f,-1.0f),state);
@@ -2510,6 +2511,7 @@ bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,Ob
 				auto building=makeBuilding(object.id,spell.buildingTag(god),AdditionalBuildingFlags.inactive|Flags.cannotDamage,base,state);
 				state.setRenderMode!(Building!B,RenderMode.transparent)(building);
 				float buildingHeight=state.buildingById!((bldg,state)=>height(bldg,state),()=>0.0f)(building,state);
+				auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
 				state.addEffect(StructureCasting!B(manaDrain,spell,building,buildingHeight,castingTime,0));
 				return true;
 			}else return stun();
@@ -3684,10 +3686,6 @@ enum CastingStatus{
 	interrupted,
 	finished,
 }
-void drainMana(B)(ref MovingObject!B wizard,float manaCostPerFrame,ObjectState!B state){
-	if(wizard.creatureState.timer>=0) // TODO: is this special for slime?eeeedddd
-		wizard.creatureStats.mana=max(0.0f,wizard.creatureStats.mana-manaCostPerFrame);
-}
 CastingStatus castStatus(B)(ref MovingObject!B wizard,ObjectState!B state){
 	with(wizard){
 		if(!creatureState.mode.isCasting) return CastingStatus.interrupted;
@@ -3697,14 +3695,15 @@ CastingStatus castStatus(B)(ref MovingObject!B wizard,ObjectState!B state){
 	}
 }
 CastingStatus update(B)(ref ManaDrain!B manaDrain,ObjectState!B state){
-	return state.movingObjectById!((ref obj,manaDrain,state){
-		obj.drainMana(manaDrain.manaCostPerFrame,state);
-		return obj.castStatus(state);
+	manaDrain.timer-=1;
+	return state.movingObjectById!((ref wizard,manaDrain,state){
+		if(manaDrain.timer>=0) wizard.creatureStats.mana=max(0.0f,wizard.creatureStats.mana-manaDrain.manaCostPerFrame);
+		return wizard.castStatus(state);
 	},function CastingStatus(){ return CastingStatus.interrupted; })(manaDrain.wizard,manaDrain,state);
 }
 bool updateManaDrain(B)(ref ManaDrain!B manaDrain,ObjectState!B state){
 	final switch(manaDrain.update(state)){
-		case CastingStatus.underway: return true;
+		case CastingStatus.underway: return manaDrain.timer>0;
 		case CastingStatus.interrupted, CastingStatus.finished: return false;
 	}
 }
@@ -3779,11 +3778,23 @@ bool updateSpeedUp(B)(ref SpeedUp!B speedUp,ObjectState!B state){
 		framesLeft-=1;
 		return state.movingObjectById!((ref obj,framesLeft,state){
 			if(obj.health==0.0f) return false;
+			if(obj.creatureStats.effects.speedUpUpdateFrame!=state.frame){
+				obj.creatureStats.effects.speedUp=1.0f;
+				obj.creatureStats.effects.speedUpUpdateFrame=state.frame;
+			}
+			//float speedUpFactor=1.75f^^min(1.0f,framesLeft*(1.0f/(0.5f*updateFPS)));
+			enum coolDownTime=(1.0f*updateFPS);
+			float speedUpFactor=1.0f+0.75f*min(1.0f,framesLeft*(1.0f/coolDownTime));
+			obj.creatureStats.effects.speedUp*=speedUpFactor;
 			if(!framesLeft){
-				obj.creatureStats.effects.speedUp-=1;
 				if(!obj.creatureStats.effects.speedUp)
 					obj.creatureStats.effects.speedUpFrame=-1;
 				return false;
+			}
+			if(framesLeft<coolDownTime){
+				if(framesLeft+1>=coolDownTime)
+					obj.creatureStats.effects.numSpeedUps-=1;
+				return true;
 			}
 			static assert(updateFPS==60);
 			if(state.frame%2==0){
@@ -4730,7 +4741,7 @@ final class ObjectState(B){ // (update logic)
 			if(spell.soulCost>wizard.souls) return SpellStatus.needMoreSouls;
 			if(entry.cooldown>0.0f) return SpellStatus.notReady;
 			return this.movingObjectById!((obj,spell,state,spellStatusArgs!selectOnly target){
-				if(spell.manaCost>obj.creatureStats.mana) return SpellStatus.lowOnMana;
+				if(spell.manaCost>obj.creatureStats.mana+1e-2f) return SpellStatus.lowOnMana; // TODO: store mana as exact integer?
 				// if(spell.nearBuilding&&...) return SpellStatus.mustBeNearBuilding; // TODO
 				// if(spell.nearEnemyAltar&&...) return SpellStatus.mustBeNearEnemyAltar; // TODO
 				// if(spell.connectedToConversion&&....) return SpellStatus.mustBeConnectedToConversion; // TODO
@@ -5241,7 +5252,7 @@ TargetFlags summarize(bool simplified=false,B)(ref Target target,int side,Object
 						result&=~TargetFlags.creature;
 						result|=TargetFlags.wizard;
 					}
-					if(obj.creatureStats.effects.speedUp && obj.creatureStats.effects.speedUpFrame+doubleSpeedUpDelay<state.frame)
+					if(obj.creatureStats.effects.numSpeedUps && obj.creatureStats.effects.speedUpFrame+doubleSpeedUpDelay<state.frame)
 						result|=TargetFlags.spedUp;
 					// TODO: shield/hero
 				}
