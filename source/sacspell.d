@@ -132,7 +132,7 @@ class SacSpell(B){
 		}
 		void setStats(T)(T arg){
 			spellOrder=arg.spellOrder;
-			manaCost=arg.manaCost;
+			manaCost=max(1.0f,arg.manaCost);
 			range=arg.range;
 			cooldown=arg.cooldown/60.0f;
 
