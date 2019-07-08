@@ -44,6 +44,24 @@ bool isMoving(CreatureMode mode){
 bool isCasting(CreatureMode mode){
 	with(CreatureMode) return !!mode.among(casting,stationaryCasting,castingMoving);
 }
+bool isVisibleToAI(CreatureMode mode){
+	final switch(mode) with(CreatureMode){
+		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving: return true;
+		case dying,dead,dissolving,preSpawning,reviving,fastReviving: return false;
+	}
+}
+bool isObstacle(CreatureMode mode){
+	final switch(mode) with(CreatureMode){
+		case idle,moving,dying,spawning,reviving,fastReviving,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving: return true;
+		case dead,dissolving,preSpawning: return false;
+	}
+}
+bool isValidAttackTarget(CreatureMode mode){
+	final switch(mode) with(CreatureMode){
+		case idle,moving,dying,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving: return true;
+		case dead,dissolving,preSpawning,reviving,fastReviving: return false;
+	}
+}
 
 enum CreatureMovement{
 	onGround,
@@ -2744,6 +2762,7 @@ bool retreatTowards(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectS
 
 bool isValidAttackTarget(B,T)(T obj,ObjectState!B state)if(is(T==MovingObject!B)||is(T==StaticObject!B)){
 	// this needs to be kept in synch with addToProximity
+	static if(is(T==MovingObject!B)) if(!obj.creatureState.mode.isValidAttackTarget) return false;
 	return obj.health(state)!=0.0f;
 }
 bool isValidAttackTarget(B)(int targetId,ObjectState!B state){
@@ -3209,9 +3228,9 @@ auto collisionTargetImpl(bool attackFilter=false,bool returnHitbox=false,B)(int 
 	static void handleCollision(ProximityEntry entry,CollisionState *collisionState,ObjectState!B state){
 		if(entry.id==collisionState.ownId) return;
 		static if(attackFilter){
-			auto noHealthAlly=state.objectById!((obj,state,side)=>tuple(obj.health(state)==0.0f,state.sides.getStance(side,.side(obj,state))==Stance.ally))(entry.id,state,collisionState.side);
-			auto noHealth=noHealthAlly[0], ally=noHealthAlly[1];
-			if(noHealth) return;
+			auto validAlly=state.objectById!((obj,state,side)=>tuple(obj.isValidAttackTarget(state),state.sides.getStance(side,.side(obj,state))==Stance.ally))(entry.id,state,collisionState.side);
+			auto valid=validAlly[0], ally=validAlly[1];
+			if(!valid) return;
 		}
 		auto distance=meleeDistance(entry.hitbox,boxCenter(collisionState.hitbox));
 		static if(attackFilter) auto pick=!collisionState.target||tuple(ally,distance)<tuple(collisionState.ally,collisionState.distance);
@@ -4080,13 +4099,17 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 	enum isStatic=is(T==StaticObjects!(B, renderMode), RenderMode renderMode);
 	static if(isMoving){
 		foreach(j;0..objects.length){
-			if(objects.creatureStates[j].mode.among(CreatureMode.dead,CreatureMode.dissolving)) continue; // dead creatures are not obstacles (bad cache locality)
+			bool isObstacle=objects.creatureStates[j].mode.isObstacle;
+			bool isVisibleToAI=objects.creatureStates[j].mode.isVisibleToAI;
+			if(!isObstacle&&!isVisibleToAI) continue;
 			auto hitbox=objects.sacObject.hitbox(objects.rotations[j],objects.animationStates[j],objects.frames[j]/updateAnimFactor);
 			auto position=objects.positions[j];
 			hitbox[0]+=position;
 			hitbox[1]+=position;
-			proximity.insert(ProximityEntry(objects.ids[j],hitbox));
-			if(objects.creatureStatss[j].health!=0.0f){
+			if(isObstacle){
+				proximity.insert(ProximityEntry(objects.ids[j],hitbox));
+			}
+			if(isVisibleToAI){
 				int attackTargetId=0;
 				if(objects.creatureAIs[j].order.command==CommandType.attack)
 					attackTargetId=objects.creatureAIs[j].order.target.id;
