@@ -1058,14 +1058,16 @@ struct WizardInfo(B){
 }
 void applyCooldown(B)(ref WizardInfo!B wizard,SacSpell!B spell,ObjectState!B state){
 	enum spellGenericCooldown=1.0f;
-	enum buildingGenericCooldown=0.5f;
+	enum buildingGenericCooldown=1.0f;
 	enum spellAdditionalCooldown=1.5f;
-	enum buildingAdditionalCooldown=0.0f;
+	enum buildingAdditionalCooldown=0.5f;
 	auto genericCooldown=spell.isBuilding?buildingGenericCooldown:spellGenericCooldown;
 	auto additionalCooldown=spell.isBuilding?buildingAdditionalCooldown:spellAdditionalCooldown;
+	auto spellCooldown=spell.castingTime(wizard.level)+spell.cooldown+additionalCooldown;
+	auto otherCooldown=spell.castingTime(wizard.level)+genericCooldown+additionalCooldown;
 	foreach(ref entry;wizard.spellbook.spells.data){
-		if(entry.spell is spell) entry.setCooldown(spell.castingTime(wizard.level)+spell.cooldown+additionalCooldown);
-		else entry.setCooldown(spell.castingTime(wizard.level)+genericCooldown+additionalCooldown);
+		if(entry.spell is spell) entry.setCooldown(spellCooldown);
+		else entry.setCooldown(otherCooldown);
 	}
 }
 WizardInfo!B makeWizard(B)(int id,int level,int souls,Spellbook!B spellbook,ObjectState!B state){
