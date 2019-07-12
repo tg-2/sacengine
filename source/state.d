@@ -2533,7 +2533,7 @@ bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,Ob
 				auto god=state.getCurrentGod(wizard);
 				if(god==God.none) god=God.persephone;
 				auto building=makeBuilding(object.id,spell.buildingTag(god),AdditionalBuildingFlags.inactive|Flags.cannotDamage,base,state);
-				state.setRenderMode!(Building!B,RenderMode.transparent)(building);
+				state.setupStructureCasting(building);
 				float buildingHeight=state.buildingById!((bldg,state)=>height(bldg,state),()=>0.0f)(building,state);
 				auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
 				state.addEffect(StructureCasting!B(manaDrain,spell,building,buildingHeight,castingTime,0));
@@ -4716,6 +4716,14 @@ final class ObjectState(B){ // (update logic)
 			foreach(cid;bldg.componentIds)
 				state.setRenderMode!(StaticObject!B,mode)(cid);
 		})(id,this);
+	}
+	void setupStructureCasting(int buildingId){
+		this.buildingById!((bldg,state){
+			foreach(cid;bldg.componentIds){
+				state.setRenderMode!(StaticObject!B,RenderMode.transparent)(cid);
+				state.setThresholdZ(cid,-structureCastingGradientSize);
+			}
+		})(buildingId,this);
 	}
 	Array!int toRemove;
 	void removeLater(int id)in{
