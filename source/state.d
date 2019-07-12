@@ -825,6 +825,8 @@ struct StaticObjects(B,RenderMode mode){
 	void addObject(StaticObject!B object)in{
 		assert(object.id!=0);
 	}do{
+		assert(!sacObject||sacObject is object.sacObject);
+		sacObject=object.sacObject;
 		ids~=object.id;
 		buildingIds~=object.buildingId;
 		positions~=object.position;
@@ -1379,7 +1381,7 @@ struct Objects(B,RenderMode mode){
 			movingObjects[type].addObject(object);
 		}else{
 			enforce(numMoving<=type && type<numMoving+numStatic);
-			if(staticObjects.length<=type-numMoving) movingObjects.length=type-numMoving+1;
+			if(staticObjects.length<=type-numMoving) staticObjects.length=type-numMoving+1;
 			result=Id(mode,type,staticObjects[type-numMoving].length);
 			staticObjects[type-numMoving].addObject(object);
 		}
@@ -3802,24 +3804,28 @@ bool updateSpeedUp(B)(ref SpeedUp!B speedUp,ObjectState!B state){
 		if(!state.isValidId(creature,TargetType.creature)) return false;
 		framesLeft-=1;
 		return state.movingObjectById!((ref obj,framesLeft,state){
-			if(obj.health==0.0f) return false;
+			enum coolDownTime=(1.0f*updateFPS);
+			if(obj.health==0.0f){
+				if(framesLeft>=coolDownTime)
+					obj.creatureStats.effects.numSpeedUps-=1;
+				framesLeft=0;
+			}
 			if(obj.creatureStats.effects.speedUpUpdateFrame!=state.frame){
 				obj.creatureStats.effects.speedUp=1.0f;
 				obj.creatureStats.effects.speedUpUpdateFrame=state.frame;
 			}
-			//float speedUpFactor=1.75f^^min(1.0f,framesLeft*(1.0f/(0.5f*updateFPS)));
-			enum coolDownTime=(1.0f*updateFPS);
-			float speedUpFactor=1.0f+0.75f*min(1.0f,framesLeft*(1.0f/coolDownTime));
-			obj.creatureStats.effects.speedUp*=speedUpFactor;
 			if(!framesLeft){
 				if(!obj.creatureStats.effects.speedUp)
 					obj.creatureStats.effects.speedUpFrame=-1;
 				return false;
 			}
+			//float speedUpFactor=1.75f^^min(1.0f,framesLeft*(1.0f/(0.5f*updateFPS)));
+			float speedUpFactor=1.0f+0.75f*min(1.0f,framesLeft*(1.0f/coolDownTime));
+			obj.creatureStats.effects.speedUp*=speedUpFactor;
 			if(framesLeft<coolDownTime){
 				if(framesLeft+1>=coolDownTime)
 					obj.creatureStats.effects.numSpeedUps-=1;
-				return true;
+				if(framesLeft) return true;
 			}
 			static assert(updateFPS==60);
 			if(state.frame%2==0){
