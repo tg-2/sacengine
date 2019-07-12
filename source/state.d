@@ -5506,7 +5506,7 @@ auto playSoundTypeAt(bool getDuration=false,B,T...)(SacObject!B sacObject,int id
 		auto sounds=sset.getSounds(soundType);
 		if(sounds.length){
 			auto sound=sounds[state.uniform(cast(int)$)];
-			auto gain=sset.name=="wasb"?2.0f:1.0f;
+			auto gain=sset.name=="wasb"?2.0f:soundType==SoundType.incantation?1.5f:1.0f;
 			static if(getDuration){
 				auto soundDuration=getSoundDuration(sound,state);
 				static if(limit.length) if(soundDuration>limit[0]) return;
