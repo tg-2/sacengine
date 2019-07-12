@@ -553,12 +553,15 @@ final class SacScene: Scene{
 	CreatureGroup renderedSelection;
 	CreatureGroup rectangleSelection;
 	void renderCreatureStats(RenderingContext* rc){
-		bool updateRectangleSelect=!selectionUpdated&&mouse.status==Mouse.Status.rectangleSelect;
-		if(updateRectangleSelect){
-			rectangleSelection=CreatureGroup.init;
-			if(mouse.additiveSelect) renderedSelection=state.current.getSelection(renderSide);
-			else renderedSelection=CreatureGroup.init;
-		}else if(!selectionUpdated) renderedSelection=state.current.getSelection(renderSide);
+		bool updateRectangleSelect=false;
+		if(renderSide!=-1){
+			updateRectangleSelect=!selectionUpdated&&mouse.status==Mouse.Status.rectangleSelect;
+			if(updateRectangleSelect){
+				rectangleSelection=CreatureGroup.init;
+				if(mouse.additiveSelect) renderedSelection=state.current.getSelection(renderSide);
+				else renderedSelection=CreatureGroup.init;
+			}else if(!selectionUpdated) renderedSelection=state.current.getSelection(renderSide);
+		}else renderedSelection=CreatureGroup.init;
 		rc.information=Vector4f(0.0f,0.0f,0.0f,0.0f);
 		shadelessMaterialBackend.bind(null,rc);
 		scope(success) shadelessMaterialBackend.unbind(null,rc);
@@ -1446,9 +1449,11 @@ final class SacScene: Scene{
 	}
 	void renderHUD(RenderingContext* rc){
 		renderMinimap(rc);
-		renderStats(rc);
-		renderSelectionRoster(rc);
-		renderSpellbook(rc);
+		if(renderSide!=-1){
+			renderStats(rc);
+			renderSelectionRoster(rc);
+			renderSpellbook(rc);
+		}
 	}
 
 	override void renderShadowCastingEntities3D(RenderingContext* rc){
@@ -1768,6 +1773,7 @@ final class SacScene: Scene{
 		}
 		void finishRectangleSelect(){
 			mouse.status=Mouse.Status.standard;
+			if(renderSide==-1) return;
 			TargetLocation loc;
 			final switch(mouse.loc){
 				case Mouse.Location.scene: loc=TargetLocation.scene; break;
@@ -2085,10 +2091,16 @@ final class SacScene: Scene{
 
 
 		if(!eventManager.keyPressed[KEY_LSHIFT] && !eventManager.keyPressed[KEY_LCTRL] && !eventManager.keyPressed[KEY_CAPSLOCK]){
-			foreach(_;0..keyDown[KEY_M])
-				if(mouse.target.type==TargetType.creature&&mouse.target.id)
+			foreach(_;0..keyDown[KEY_M]){
+				if(mouse.target.type==TargetType.creature&&mouse.target.id){
+					renderSide=state.current.movingObjectById!(side,()=>-1)(mouse.target.id,state.current);
 					focusCamera(mouse.target.id);
-			foreach(_;0..keyDown[KEY_N]) camera.target=0;
+				}
+			}
+			foreach(_;0..keyDown[KEY_N]){
+				renderSide=-1;
+				camera.target=0;
+			}
 
 			foreach(_;0..keyDown[KEY_U]) showHitboxes=true;
 			foreach(_;0..keyDown[KEY_I]) showHitboxes=false;

@@ -5008,6 +5008,7 @@ final class Sides(B){
 		return manahoarParticles[side];
 	}
 	Stance getStance(int from,int towards){
+		if(from==-1||towards==-1) return Stance.neutral;
 		if(sides[from].allies&(1<<towards)) return Stance.ally;
 		if(sides[from].enemies&(1<<towards)) return Stance.enemy;
 		return Stance.neutral;
