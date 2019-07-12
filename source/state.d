@@ -5719,6 +5719,10 @@ final class GameState(B){
 		auto id=current.addObject(obj);
 		if(ntt.id !in triggers.objectIds) // e.g. for some reason, the two altars on ferry have the same id
 			triggers.associateId(ntt.id,id);
+		static if(is(T==Wizard)){
+			auto spellbook=getDefaultSpellbook!B(ntt.allegiance);
+			current.addWizard(makeWizard(id,ntt.level,ntt.souls,spellbook,current));
+		}
 	}
 	void placeSpirit(ref Spirit spirit){
 		auto position=Vector3f(spirit.x,spirit.y,spirit.z);

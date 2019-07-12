@@ -58,7 +58,7 @@ struct Wizard{
 	uint unknown0=0;
 	uint id;
 	uint level;
-	uint unknown3;
+	uint souls;
 	God allegiance;
 }
 static assert(Wizard.sizeof==56);
