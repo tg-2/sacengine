@@ -235,6 +235,8 @@ struct CreatureAI{
 	Order order;
 	Formation formation;
 	bool isColliding=false;
+	RotationDirection evasion;
+	int evasionTimer=0;
 }
 
 struct MovingObject(B){
@@ -2654,12 +2656,17 @@ bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPositi
 	auto frontHitbox=moveBox(hitbox,rotate(rotation,distance*Vector3f(0.0f,1.0f,0.0f)));
 	auto frontObstacleFrontObstacleHitbox=collisionTargetWithHitbox(object.id,hitbox,frontHitbox,state);
 	auto frontObstacle=frontObstacleFrontObstacleHitbox[0];
+	--object.creatureAI.evasionTimer;
 	if(frontObstacle){
 		auto frontObstacleHitbox=frontObstacleFrontObstacleHitbox[1];
 		Vector2f[2] frontObstacleHitbox2d=[frontObstacleHitbox[0].xy,frontObstacleHitbox[1].xy];
 		auto frontObstacleDirection=-closestBoxFaceNormal(frontObstacleHitbox2d,object.position.xy);
 		auto facing=object.creatureState.facing;
-		auto evasion=dot(Vector2f(cos(facing),sin(facing)),frontObstacleDirection)<=0.0f?RotationDirection.right:RotationDirection.left;
+		auto evasion=object.creatureAI.evasion;
+		if(object.creatureAI.evasionTimer<=0){
+			evasion=object.creatureAI.evasion=dot(Vector2f(cos(facing),sin(facing)),frontObstacleDirection)<=0.0f?RotationDirection.right:RotationDirection.left;
+			object.creatureAI.evasionTimer=updateFPS;
+		}
 		object.setTurning(evasion,state);
 		object.startMovingForward(state);
 		return true;
