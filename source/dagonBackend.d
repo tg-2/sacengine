@@ -2552,6 +2552,10 @@ static:
 			if(diffuse !is null) mat.diffuse=diffuse;
 			mat.specular=sobj.isSaxs?Color4f(1,1,1,1):Color4f(0,0,0,1);
 			mat.roughness=0.8;
+			if(i==config.shinyPart){
+				mat.emission=diffuse;
+				mat.energy=0.5f;
+			}
 			materials~=mat;
 		}
 		return materials;

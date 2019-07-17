@@ -355,6 +355,7 @@ final class SacObject(B){
 		int sunBeamPart=-1;
 		int locustWingPart=-1;
 		int transparentShinyPart=-1;
+		int shinyPart=-1;
 	}
 
 	private void initializeNTTData(char[4] tag){
@@ -396,8 +397,8 @@ final class SacObject(B){
 			conf.sunBeamPart=1;
 		}
 		// locust wings
-		if(kind.among("bugz"))
-			conf.locustWingPart=3;
+		if(kind.among("bugz")) conf.locustWingPart=3;
+		if(kind.among("bold")) conf.shinyPart=0;
 		materials=B.createMaterials(this,conf);
 		transparentMaterials=B.createTransparentMaterials(this);
 		shadowMaterials=B.createShadowMaterials(this);
@@ -467,6 +468,9 @@ final class SacObject(B){
 		initializeNTTData(dat2.saxsModel);
 	}
 	static SacObject!B[char[4]] objects;
+	static void resetStateIndex(){
+		foreach(tag,obj;objects) obj.stateIndex[]=-1;
+	}
 	static SacObject!B getSAXS(T)(char[4] tag)if(is(T==Creature)||is(T==Wizard)){
 		if(auto r=tag in objects) return *r;
 		return objects[tag]=new SacObject!B(tag,(T*).init); // hack
@@ -695,6 +699,9 @@ final class SacParticle(B){
 		material=B.createMaterial(this);
 	}
 	static SacParticle!B[ParticleType.max+1] particles;
+	static void resetStateIndex(){
+		foreach(tag,obj;particles) if(obj) obj.stateIndex=-1;
+	}
 	static SacParticle!B get(ParticleType type){
 		if(!particles[type]) particles[type]=new SacParticle(type);
 		return particles[type];

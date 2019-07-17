@@ -1360,6 +1360,18 @@ struct Objects(B,RenderMode mode){
 		Effects!B effects;
 		CommandCones!B commandCones;
 	}
+	void resetStateIndex(){
+		foreach(j;0..cast(int)movingObjects.length)
+			movingObjects[j].sacObject.stateIndex[mode]=j;
+		foreach(j;0..cast(int)staticObjects.length)
+			staticObjects[j].sacObject.stateIndex[mode]=j+numMoving;
+		static if(mode == RenderMode.opaque){
+			foreach(j;0..cast(int)fixedObjects.length)
+				fixedObjects[j].sacObject.stateIndex[mode]=j;
+			foreach(j;0..cast(int)particles.length)
+				particles[j].sacParticle.stateIndex=j;
+		}
+	}
 	Id addObject(T)(T object) if(is(T==MovingObject!B)||is(T==StaticObject!B))in{
 		assert(object.id!=0);
 	}do{
@@ -1377,13 +1389,13 @@ struct Objects(B,RenderMode mode){
 			}
 		}
 		static if(is(T==MovingObject!B)){
-			enforce(type<numMoving);
-			if(movingObjects.length<=type) movingObjects.length=type+1;
+			enforce(0<=type && type<numMoving);
+			enforce(type<movingObjects.length);
 			result=Id(mode,type,movingObjects[type].length);
 			movingObjects[type].addObject(object);
 		}else{
 			enforce(numMoving<=type && type<numMoving+numStatic);
-			if(staticObjects.length<=type-numMoving) staticObjects.length=type-numMoving+1;
+			enforce(type-numMoving<staticObjects.length);
 			result=Id(mode,type,staticObjects[type-numMoving].length);
 			staticObjects[type-numMoving].addObject(object);
 		}
@@ -1416,7 +1428,7 @@ struct Objects(B,RenderMode mode){
 				fixedObjects[$-1].sacObject=object.sacObject;
 			}
 			enforce(numMoving+numStatic<=type);
-			if(fixedObjects.length<=type-(numMoving+numStatic)) fixedObjects.length=type-(numMoving+numStatic)+1;
+			enforce(type-(numMoving+numStatic)<fixedObjects.length);
 			fixedObjects[type-(numMoving+numStatic)].addFixed(object);
 		}
 		Id addObject(Soul!B object){
@@ -1448,7 +1460,7 @@ struct Objects(B,RenderMode mode){
 				particles.length=particles.length+1;
 				particles[$-1].sacParticle=particle.sacParticle;
 			}
-			if(particles.length<=type) particles.length=type+1;
+			enforce(0<=type && type<particles.length);
 			particles[type].addParticle(particle);
 		}
 		void addCommandCone(CommandCone!B cone){
@@ -1557,6 +1569,10 @@ struct ObjectManager(B){
 	Array!Id ids;
 	Objects!(B,RenderMode.opaque) opaqueObjects;
 	Objects!(B,RenderMode.transparent) transparentObjects;
+	void resetStateIndex(){
+		opaqueObjects.resetStateIndex();
+		transparentObjects.resetStateIndex();
+	}
 	int addObject(T)(T object) if(is(T==MovingObject!B)||is(T==StaticObject!B)||is(T==Soul!B)||is(T==Building!B))in{
 		assert(object.id==0);
 	}do{
@@ -4557,6 +4573,12 @@ final class ObjectState(B){ // (update logic)
 		foreach(i,ref x;r) x=this.uniform(box[0][i],box[1][i]);
 		return r;
 	}
+	void resetStateIndex(){
+		SacObject!B.resetStateIndex();
+		SacParticle!B.resetStateIndex();
+		sides.resetStateIndex();
+		obj.resetStateIndex();
+	}
 	void copyFrom(ObjectState!B rhs){
 		frame=rhs.frame;
 		rng=rhs.rng;
@@ -4977,6 +4999,11 @@ final class Sides(B){
 	private SacParticle!B[32] manaParticles;
 	private SacParticle!B[32] shrineParticles;
 	private SacParticle!B[32] manahoarParticles;
+	void resetStateIndex(){
+		foreach(tag,obj;manaParticles) if(obj) obj.stateIndex=-1;
+		foreach(tag,obj;shrineParticles) if(obj) obj.stateIndex=-1;
+		foreach(tag,obj;manahoarParticles) if(obj) obj.stateIndex=-1;
+	}
 	this(Side[] sids...){
 		foreach(ref side;sids){
 			enforce(0<=side.id&&side.id<32);
@@ -5655,7 +5682,7 @@ final class GameState(B){
 		current.eachMoving!((ref MovingObject!B object, ObjectState!B state){
 			if(object.creatureState.mode==CreatureMode.dead) object.createSoul(state);
 		})(current);
-		map.meshes=createMeshes!B(map.edges,map.heights,map.tiles,options.enableMapBottom); // TODO: allow dynamic retexuring
+		map.meshes=createMeshes!B(map.edges,map.heights,map.tiles,options.enableMapBottom); // TODO: allow dynamic retexturing
 		map.minimapMeshes=createMinimapMeshes!B(map.edges,map.tiles);
 		commit();
 	}
@@ -5765,10 +5792,9 @@ final class GameState(B){
 	void rollback(ObjectState!B state)in{
 		assert(state.frame<=current.frame);
 	}do{
-		if(state.frame!=current.frame){
-			current.copyFrom(state);
-			static if(B.hasAudio) B.updateAudioAfterRollback();
-		}
+		current.copyFrom(state);
+		static if(B.hasAudio) B.updateAudioAfterRollback();
+		current.resetStateIndex();
 	}
 	void rollback(int frame)in{
 		assert(frame>=lastCommitted.frame);
@@ -5789,7 +5815,7 @@ final class GameState(B){
 		assert(frame<commands.length);
 		auto currentFrame=current.frame;
 		commands[frame]~=command;
-		rollback(frame);
+		if(frame<currentFrame) rollback(frame);
 		playAudio=false;
 		simulateTo(currentFrame);
 	}
