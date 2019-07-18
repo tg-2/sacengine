@@ -657,7 +657,7 @@ void putOnManafount(B)(ref Building!B building,ref Building!B manafount,ObjectSt
 	if(manafount.top!=0) freeManafount(manafount,state); // original engine associates last building with the fountain
 	manafount.top=building.id;
 	building.base=manafount.id;
-	manafount.stopSounds(state);
+	manafount.deactivate(state);
 }
 void freeManafount(B)(ref Building!B manafount,ObjectState!B state)in{
 	assert(manafount.isManafount);
@@ -665,12 +665,11 @@ void freeManafount(B)(ref Building!B manafount,ObjectState!B state)in{
 }do{
 	state.buildingById!((ref obj){ assert(obj.base==manafount.id); obj.base=0; })(manafount.top);
 	manafount.top=0;
-	manafount.loopingSoundSetup(state);
+	manafount.activate(state);
 }
 void loopingSoundSetup(B)(ref Building!B building,ObjectState!B state){
 	static if(B.hasAudio){
 		if(building.flags&AdditionalBuildingFlags.inactive) return;
-		if(building.isManafount&&building.top!=0) return;
 		if(playAudio){
 			foreach(cid;building.componentIds)
 				state.staticObjectById!(B.loopingSoundSetup)(cid);
@@ -689,6 +688,11 @@ void activate(B)(ref Building!B building,ObjectState!B state){
 	if(!(building.flags&AdditionalBuildingFlags.inactive)) return;
 	building.flags&=~AdditionalBuildingFlags.inactive;
 	loopingSoundSetup(building,state);
+}
+void deactivate(B)(ref Building!B building,ObjectState!B state){
+	if(building.flags&AdditionalBuildingFlags.inactive) return;
+	building.flags|=AdditionalBuildingFlags.inactive;
+	building.stopSounds(state);
 }
 
 struct Particle(B,bool relative=false){ // TODO: some particles don't need some fields. Optimize?
@@ -4220,8 +4224,8 @@ void animateShrine(B)(Vector3f location, int side, ObjectState!B state){
 void updateBuilding(B)(ref Building!B building, ObjectState!B state){
 	if(building.componentIds.length==0) return;
 	if(building.health!=0.0f) building.heal(building.regeneration/updateFPS,state);
-	if(building.isManafount){
-		if(building.top==0 && !(building.flags&AdditionalBuildingFlags.inactive)){
+	if(!(building.flags&AdditionalBuildingFlags.inactive)){
+		if(building.isManafount){
 			Vector3f getManafountTop(StaticObject!B obj){
 				auto hitbox=obj.hitboxes[0];
 				auto center=0.5f*(hitbox[0]+hitbox[1]);
@@ -4229,17 +4233,13 @@ void updateBuilding(B)(ref Building!B building, ObjectState!B state){
 			}
 			auto position=state.staticObjectById!(getManafountTop,function Vector3f(){ assert(0); })(building.componentIds[0]);
 			animateManafount(position,state);
-		}
-	}else if(building.isManalith){
-		if(!(building.flags&AdditionalBuildingFlags.inactive)){
+		}else if(building.isManalith){
 			Vector3f getCenter(StaticObject!B obj){
 				return obj.position+Vector3f(0.0f,0.0f,15.0f);
 			}
 			auto position=state.staticObjectById!(getCenter,function Vector3f(){ assert(0); })(building.componentIds[0]);
 			animateManalith(position,building.side,state);
-		}
-	}else if(building.isShrine||building.isAltar){
-		if(!(building.flags&AdditionalBuildingFlags.inactive)){
+		}else if(building.isShrine||building.isAltar){
 			Vector3f getShrineTop(StaticObject!B obj){
 				return obj.position+Vector3f(0.0f,0.0f,3.0f);
 			}
@@ -4361,17 +4361,20 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 		// TODO: get rid of duplication here
 		if(objects.sacObject.isManafount){
 			foreach(j;0..objects.length)
-				if(state.buildingById!(obj=>!obj.top,()=>false)(objects.buildingIds[j]))
+				if(!(flagsFromBuildingId(objects.buildingIds[j],state)&AdditionalBuildingFlags.inactive))
 					proximity.addManafount(objects.positions[j]);
 		}else if(objects.sacObject.isManalith){
 			foreach(j;0..objects.length)
-				proximity.addManalith(sideFromBuildingId(objects.buildingIds[j],state),objects.positions[j]);
+				if(!(flagsFromBuildingId(objects.buildingIds[j],state)&AdditionalBuildingFlags.inactive))
+					proximity.addManalith(sideFromBuildingId(objects.buildingIds[j],state),objects.positions[j]);
 		}else if(objects.sacObject.isShrine){
 			foreach(j;0..objects.length)
-				proximity.addShrine(sideFromBuildingId(objects.buildingIds[j],state),objects.positions[j]);
+				if(!(flagsFromBuildingId(objects.buildingIds[j],state)&AdditionalBuildingFlags.inactive))
+					proximity.addShrine(sideFromBuildingId(objects.buildingIds[j],state),objects.positions[j]);
 		}else if(objects.sacObject.isAltar){
 			foreach(j;0..objects.length)
-				proximity.addAltar(sideFromBuildingId(objects.buildingIds[j],state),objects.positions[j]);
+				if(!(flagsFromBuildingId(objects.buildingIds[j],state)&AdditionalBuildingFlags.inactive))
+					proximity.addAltar(sideFromBuildingId(objects.buildingIds[j],state),objects.positions[j]);
 		}
 	}else static if(is(T==Souls!B)||is(T==Buildings!B)||is(T==FixedObjects!B)||is(T==Effects!B)||is(T==Particles!(B,relative),bool relative)||is(T==CommandCones!B)){
 		// do nothing
