@@ -62,6 +62,13 @@ bool isValidAttackTarget(CreatureMode mode){
 		case dead,dissolving,preSpawning,reviving,fastReviving: return false;
 	}
 }
+bool canHeal(CreatureMode mode){
+	final switch(mode) with(CreatureMode){
+		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving: return true;
+		case dying,dead,dissolving,preSpawning,spawning,reviving,fastReviving: return false;
+	}
+}
+
 
 enum CreatureMovement{
 	onGround,
@@ -684,18 +691,33 @@ void activate(B)(ref Building!B building,ObjectState!B state){
 	loopingSoundSetup(building,state);
 }
 
-struct Particle(B){
+struct Particle(B,bool relative=false){ // TODO: some particles don't need some fields. Optimize?
 	SacParticle!B sacParticle;
+	static if(relative) int baseId;
 	Vector3f position;
 	Vector3f velocity;
+	float scale;
 	int lifetime;
 	int frame;
-	this(SacParticle!B sacParticle,Vector3f position,Vector3f velocity,int lifetime,int frame){
-		this.sacParticle=sacParticle;
-		this.position=position;
-		this.velocity=velocity;
-		this.lifetime=lifetime;
-		this.frame=frame;
+	static if(relative){
+		this(SacParticle!B sacParticle,int baseId,Vector3f position,Vector3f velocity,float scale,int lifetime,int frame){
+			this.sacParticle=sacParticle;
+			this.baseId=baseId;
+			this.position=position;
+			this.velocity=velocity;
+			this.scale=scale;
+			this.lifetime=lifetime;
+			this.frame=frame;
+		}
+	}else{
+		this(SacParticle!B sacParticle,Vector3f position,Vector3f velocity,float scale,int lifetime,int frame){
+			this.sacParticle=sacParticle;
+			this.position=position;
+			this.velocity=velocity;
+			this.scale=scale;
+			this.lifetime=lifetime;
+			this.frame=frame;
+		}
 	}
 }
 
@@ -1146,30 +1168,38 @@ auto each(alias f,B,T...)(ref WizardInfos!B wizards,T args){
 	}
 }
 
-struct Particles(B){
+struct Particles(B,bool relative){
 	SacParticle!B sacParticle;
+	static if(relative) Array!int baseIds;
 	Array!Vector3f positions;
 	Array!Vector3f velocities;
+	Array!float scales;
 	Array!int lifetimes;
 	Array!int frames;
 	@property int length(){ assert(positions.length<=int.max); return cast(int)positions.length; }
 	@property void length(int l){
+		static if(relative) baseIds.length=l;
 		positions.length=l;
 		velocities.length=l;
+		scales.length=l;
 		lifetimes.length=l;
 		frames.length=l;
 	}
 	void reserve(int reserveSize){
+		static if(relative) baseIds.reserve(reserveSize);
 		positions.reserve(reserveSize);
 		velocities.reserve(reserveSize);
+		scales.reserve(reserveSize);
 		lifetimes.reserve(reserveSize);
 		frames.reserve(reserveSize);
 	}
-	void addParticle(Particle!B particle){
-		assert(sacParticle is null || sacParticle is particle.sacParticle);
+	void addParticle(Particle!(B,relative) particle){
+		assert(sacParticle is null && particle.sacParticle.relative==relative || sacParticle is particle.sacParticle);
 		sacParticle=particle.sacParticle; // TODO: get rid of this?
+		static if(relative) baseIds~=particle.baseId;
 		positions~=particle.position;
 		velocities~=particle.velocity;
+		scales~=particle.scale;
 		lifetimes~=particle.lifetime;
 		frames~=particle.frame;
 	}
@@ -1177,21 +1207,26 @@ struct Particles(B){
 		if(index+1<length) this[index]=this[length-1];
 		length=length-1;
 	}
-	void opAssign(ref Particles!B rhs){
+	void opAssign(ref Particles!(B,relative) rhs){
 		assert(sacParticle is null || sacParticle is rhs.sacParticle);
 		sacParticle = rhs.sacParticle;
+		static if(relative) assignArray(baseIds,rhs.baseIds);
 		assignArray(positions,rhs.positions);
 		assignArray(velocities,rhs.velocities);
+		assignArray(scales,rhs.scales);
 		assignArray(lifetimes,rhs.lifetimes);
 		assignArray(frames,rhs.frames);
 	}
-	Particle!B opIndex(int i){
-		return Particle!B(sacParticle,positions[i],velocities[i],lifetimes[i],frames[i]);
+	Particle!(B,relative) opIndex(int i){
+		static if(relative) return Particle!(B,true)(sacParticle,baseIds[i],positions[i],velocities[i],scales[i],lifetimes[i],frames[i]);
+		else return Particle!(B,false)(sacParticle,positions[i],velocities[i],scales[i],lifetimes[i],frames[i]);
 	}
-	void opIndexAssign(Particle!B particle,int i){
+	void opIndexAssign(Particle!(B,relative) particle,int i){
 		assert(particle.sacParticle is sacParticle);
+		static if(relative) baseIds[i]=particle.baseId;
 		positions[i]=particle.position;
 		velocities[i]=particle.velocity;
+		scales[i]=particle.scale;
 		lifetimes[i]=particle.lifetime;
 		frames[i]=particle.frame;
 	}
@@ -1242,6 +1277,16 @@ struct SpeedUpShadow(B){
 	AnimationState animationState;
 	int frame;
 	int age=0;
+}
+struct HealCasting(B){
+	ManaDrain!B manaDrain;
+	SacSpell!B spell;
+	int creature;
+}
+struct Heal(B){
+	int creature;
+	float healthRegenerationPerFrame;
+	int timer;
 }
 struct Effects(B){
 	Array!(Debris!B) debris;
@@ -1308,6 +1353,22 @@ struct Effects(B){
 		if(i+1<speedUpShadows.length) swap(speedUpShadows[i],speedUpShadows[$-1]);
 		speedUpShadows.length=speedUpShadows.length-1;
 	}
+	Array!(HealCasting!B) healCastings;
+	void addEffect(HealCasting!B healCasting){
+		healCastings~=healCasting;
+	}
+	void removeHealCasting(int i){
+		if(i+1<healCastings.length) swap(healCastings[i],healCastings[$-1]);
+		healCastings.length=healCastings.length-1;
+	}
+	Array!(Heal!B) heals;
+	void addEffect(Heal!B heal){
+		heals~=heal;
+	}
+	void removeHeal(int i){
+		if(i+1<heals.length) swap(heals[i],heals[$-1]);
+		heals.length=heals.length-1;
+	}
 	void opAssign(ref Effects!B rhs){
 		assignArray(debris,rhs.debris);
 		assignArray(explosions,rhs.explosions);
@@ -1317,6 +1378,8 @@ struct Effects(B){
 		assignArray(blueRings,rhs.blueRings);
 		assignArray(speedUps,rhs.speedUps);
 		assignArray(speedUpShadows,rhs.speedUpShadows);
+		assignArray(healCastings,rhs.healCastings);
+		assignArray(heals,rhs.heals);
 	}
 }
 
@@ -1356,7 +1419,8 @@ struct Objects(B,RenderMode mode){
 		Souls!B souls;
 		Buildings!B buildings;
 		WizardInfos!B wizards;
-		Array!(Particles!B) particles;
+		Array!(Particles!(B,false)) particles;
+		Array!(Particles!(B,true)) relativeParticles;
 		Effects!B effects;
 		CommandCones!B commandCones;
 	}
@@ -1369,6 +1433,8 @@ struct Objects(B,RenderMode mode){
 			foreach(j;0..cast(int)fixedObjects.length)
 				fixedObjects[j].sacObject.stateIndex[mode]=j;
 			foreach(j;0..cast(int)particles.length)
+				particles[j].sacParticle.stateIndex=j;
+			foreach(j;0..cast(int)relativeParticles.length)
 				particles[j].sacParticle.stateIndex=j;
 		}
 	}
@@ -1453,8 +1519,9 @@ struct Objects(B,RenderMode mode){
 		void addEffect(T)(T proj){
 			effects.addEffect(proj);
 		}
-		void addParticle(Particle!B particle){
+		void addParticle(bool relative)(Particle!(B,relative) particle){
 			auto type=particle.sacParticle.stateIndex;
+			static if(relative) alias particles=relativeParticles;
 			if(type==-1){
 				type=particle.sacParticle.stateIndex=cast(int)particles.length;
 				particles.length=particles.length+1;
@@ -1478,6 +1545,7 @@ struct Objects(B,RenderMode mode){
 			wizards=rhs.wizards;
 			effects=rhs.effects;
 			assignArray(particles,rhs.particles);
+			assignArray(relativeParticles,rhs.relativeParticles);
 			commandCones=rhs.commandCones;
 		}
 	}
@@ -1523,6 +1591,8 @@ auto eachParticles(alias f,B,T...)(ref Objects!(B,RenderMode.opaque) objects,T a
 	with(objects){
 		foreach(ref particle;particles)
 			f(particle,args);
+		foreach(ref particle;relativeParticles)
+			f(particle,args);
 	}
 }
 auto eachCommandCones(alias f,B,T...)(ref Objects!(B,RenderMode.opaque) objects,T args){
@@ -1542,6 +1612,8 @@ auto eachByType(alias f,bool movingFirst=true,B,RenderMode mode,T...)(ref Object
 			f(buildings,args);
 			f(effects,args);
 			foreach(ref particle;particles)
+				f(particle,args);
+			foreach(ref particle;relativeParticles)
 				f(particle,args);
 			f(commandCones,args);
 		}
@@ -1651,7 +1723,7 @@ struct ObjectManager(B){
 	void addEffect(T)(T proj){
 		opaqueObjects.addEffect(proj);
 	}
-	void addParticle(Particle!B particle){
+	void addParticle(bool relative)(Particle!(B,relative) particle){
 		opaqueObjects.addParticle(particle);
 	}
 	void addCommandCone(CommandCone!B cone){
@@ -2371,7 +2443,11 @@ void dealDamage(B)(ref Building!B building,float damage,ref MovingObject!B attac
 	if(building.health==0.0f)
 		building.destroy(state);
 }
-
+bool canHeal(B)(ref MovingObject!B object,ObjectState!B state){
+	if(object.health(state)==object.creatureStats.maxHealth) return false;
+	if(object.health(state)==0.0f) return false;
+	return object.creatureState.mode.canHeal;
+}
 void heal(B)(ref MovingObject!B object,float amount,ObjectState!B state){
 	object.health=min(object.health+amount,object.creatureStats.maxHealth);
 }
@@ -2509,6 +2585,25 @@ bool speedUp(B)(int creature,SacSpell!B spell,ObjectState!B state){
 	return state.movingObjectById!(speedUp,()=>false)(creature,spell,state);
 }
 
+bool castHeal(B)(ref MovingObject!B object,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	state.addEffect(HealCasting!B(manaDrain,spell,object.id));
+	return true;
+}
+bool castHeal(B)(int creature,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	if(!state.isValidId(creature,TargetType.creature)) return false;
+	return state.movingObjectById!(castHeal,()=>false)(creature,manaDrain,spell,state);
+}
+enum healSpeed=250.0f;
+bool heal(B)(int creature,SacSpell!B spell,ObjectState!B state){
+	if(!state.movingObjectById!(canHeal,()=>false)(creature,state)) return false;
+	playSoundAt("laeh",creature,state,2.0f);
+	auto amount=spell.amount;
+	auto duration=cast(int)ceil(amount/healSpeed*updateFPS);
+	auto healthRegenerationPerFrame=amount/duration;
+	state.addEffect(Heal!B(creature,healthRegenerationPerFrame,duration));
+	return true;
+}
+
 enum summonSoundGain=2.0f;
 bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,ObjectState!B state){
 	auto wizard=state.getWizard(object.id);
@@ -2540,7 +2635,8 @@ bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,Ob
 				case "pups":
 					ok=target.id==object.id?speedUp(object,spell,state):speedUp(target.id,spell,state);
 					goto default;
-				// TODO
+				case "laeh":
+					return target.id==object.id?castHeal(object,manaDrain,spell,state):castHeal(target.id,manaDrain,spell,state);
 				default:
 					if(ok) state.addEffect(manaDrain);
 					else stun();
@@ -3674,7 +3770,7 @@ void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 	}
 }
 
-void updateParticles(B)(ref Particles!B particles, ObjectState!B state){
+void updateParticles(B,bool relative)(ref Particles!(B,relative) particles, ObjectState!B state){
 	if(!particles.sacParticle) return;
 	auto sacParticle=particles.sacParticle;
 	auto gravity=sacParticle.gravity;
@@ -3714,12 +3810,13 @@ bool updateDebris(B)(ref Debris!B debris,ObjectState!B state){
 	enum numParticles=3;
 	auto sacParticle=SacParticle!B.get(ParticleType.firy);
 	auto velocity=Vector3f(0.0f,0.0f,0.0f);
+	auto scale=1.0f;
 	auto lifetime=sacParticle.numFrames;
 	auto frame=0;
 	foreach(i;0..numParticles){
 		auto position=oldPosition*((cast(float)numParticles-1-i)/(numParticles-1))+debris.position*(cast(float)i/(numParticles-1));
 		position+=0.1f*Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f));
-		state.addParticle(Particle!B(sacParticle,position,velocity,lifetime,frame));
+		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
 	}
 	return true;
 }
@@ -3854,7 +3951,8 @@ bool updateSpeedUp(B)(ref SpeedUp!B speedUp,ObjectState!B state){
 			if(state.frame%2==0){
 				auto hitbox=obj.hitbox;
 				auto sacParticle=SacParticle!B.get(ParticleType.speedUp);
-				state.addParticle(Particle!B(sacParticle,state.uniform(hitbox),Vector3f(0.0f,0.0f,0.0f),sacParticle.numFrames,0));
+				auto scale=1.0f; // TODO: does this differ for different creatures?
+				state.addParticle(Particle!B(sacParticle,state.uniform(hitbox),Vector3f(0.0f,0.0f,0.0f),scale,sacParticle.numFrames,0));
 			}
 			state.addEffect(SpeedUpShadow!B(obj.id,obj.position,obj.rotation,obj.animationState,obj.frame));
 			return true;
@@ -3870,6 +3968,71 @@ bool updateSpeedUpShadow(B)(ref SpeedUpShadow!B speedUpShadow,ObjectState!B stat
 		return true;
 	}
 }
+
+bool updateHealCasting(B)(ref HealCasting!B healCast,ObjectState!B state){
+	with(healCast){
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				auto sacParticle=SacParticle!B.get(ParticleType.relativeHeal);
+				static assert(updateFPS==60);
+				enum numParticles=2;
+				foreach(i;0..numParticles){
+					state.movingObjectById!((obj,sacParticle,state){
+						auto hitbox=obj.relativeHitbox;
+						auto center=boxCenter(hitbox);
+						auto position=state.uniform(hitbox);
+						position.x*=3.0f;
+						position.y*=3.0f;
+						position.z*=2.0f;
+						auto lifetime=sacParticle.numFrames/60.0f;
+						auto velocity=(center-position)/lifetime;
+						auto scale=1.0f;
+						state.addParticle(Particle!(B,true)(sacParticle,obj.id,position,velocity,scale,sacParticle.numFrames,0));
+					})(creature,sacParticle,state);
+					state.movingObjectById!((obj,sacParticle,state){
+						auto hitbox=obj.relativeHitbox;
+						auto center=boxCenter(hitbox);
+						auto position=state.uniform(hitbox);
+						position.x*=3.0f;
+						position.y*=3.0f;
+						position.z*=2.0f;
+						auto lifetime=sacParticle.numFrames/60.0f;
+						auto velocity=(position-center)/lifetime;
+						auto scale=1.0f;
+						state.addParticle(Particle!(B,true)(sacParticle,obj.id,center,velocity,scale,sacParticle.numFrames,0));
+					})(manaDrain.wizard,sacParticle,state);
+				}
+				return true;
+			case CastingStatus.interrupted: return false;
+			case CastingStatus.finished:
+				heal(creature,spell,state);
+				return false;
+		}
+	}
+}
+bool updateHeal(B)(ref Heal!B heal,ObjectState!B state){
+	heal.timer-=1;
+	if(heal.timer<0) return false;
+	return state.movingObjectById!((ref obj,heal,state){
+		if(!obj.canHeal(state)) return false;
+		obj.heal(heal.healthRegenerationPerFrame,state);
+		static assert(updateFPS==60);
+		auto hitbox=obj.relativeHitbox;
+		auto dim=hitbox[1]-hitbox[0];
+		auto volume=dim.x*dim.y*dim.z;
+		auto scale=2.0f*max(1.0f,pow(volume,1.0f/3.0f));
+		auto sacParticle=SacParticle!B.get(ParticleType.relativeHeal);
+		enum numParticles=2;
+		foreach(i;0..numParticles){
+			auto position=1.1f*state.uniform(cast(Vector2f[2])[hitbox[0].xy,hitbox[1].xy]);
+			auto distance=state.uniform(1.5f,2.5f)*(hitbox[1].z-hitbox[0].z);
+			auto lifetime=sacParticle.numFrames/60.0f;
+			state.addParticle(Particle!(B,true)(sacParticle,obj.id,Vector3f(position.x,position.y,0.0f),Vector3f(0.0f,0.0f,distance/lifetime),scale,sacParticle.numFrames,0));
+		}
+		return true;
+	},function bool(){ return false; })(heal.creature,heal,state);
+}
+
 void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.debris.length;){
 		if(!updateDebris(effects.debris[i],state)){
@@ -3927,6 +4090,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 		}
 		i++;
 	}
+	for(int i=0;i<effects.healCastings.length;){
+		if(!updateHealCasting(effects.healCastings[i],state)){
+			effects.removeHealCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.heals.length;){
+		if(!updateHeal(effects.heals[i],state)){
+			effects.removeHeal(i);
+			continue;
+		}
+		i++;
+	}
 }
 
 void explosionAnimation(B)(Vector3f position,ObjectState!B state){
@@ -3939,9 +4116,10 @@ void explosionAnimation(B)(Vector3f position,ObjectState!B state){
 	foreach(i;0..numParticles){
 		auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
 		auto velocity=state.uniform(1.5f,6.0f)*direction;
+		auto scale=1.0f;
 		auto lifetime=31;
 		auto frame=0;
-		state.addParticle(Particle!B(i<numParticles/2?sacParticle1:sacParticle2,position,velocity,lifetime,frame));
+		state.addParticle(Particle!B(i<numParticles/2?sacParticle1:sacParticle2,position,velocity,scale,lifetime,frame));
 	}
 }
 
@@ -3990,8 +4168,9 @@ void animateManafount(B)(Vector3f location, ObjectState!B state){
 			auto angle=state.uniform(-cast(float)PI,cast(float)PI);
 			auto velocity=(20.0f+state.uniform(-5.0f,5.0f))*Vector3f(cos(angle),sin(angle),state.uniform(2.0f,4.0f)).normalized;
 			auto lifetime=cast(int)(sqrt(sacParticle.numFrames*5.0f)*state.uniform(0.0f,1.0f))^^2;
+			auto scale=1.0f;
 			auto frame=0;
-			state.addParticle(Particle!B(sacParticle,position,velocity,lifetime,frame));
+			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
 		}
 	}
 }
@@ -4010,9 +4189,10 @@ void animateManalith(B)(Vector3f location, int side, ObjectState!B state){
 		auto position=center+displacement;
 		auto angle=state.uniform(-cast(float)PI,cast(float)PI);
 		auto velocity=(15.0f+state.uniform(-5.0f,5.0f))*Vector3f(0.0f,0.0f,state.uniform(2.0f,4.0f)).normalized;
+		auto scale=1.0f;
 		auto lifetime=cast(int)(sacParticle.numFrames*5.0f-0.7*sacParticle.numFrames*displacement.length*state.uniform(0.0f,1.0f)^^2);
 		auto frame=0;
-		state.addParticle(Particle!B(sacParticle,position,velocity,lifetime,frame));
+		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
 	}
 }
 
@@ -4030,9 +4210,10 @@ void animateShrine(B)(Vector3f location, int side, ObjectState!B state){
 		auto position=center+displacement;
 		auto angle=state.uniform(-cast(float)PI,cast(float)PI);
 		auto velocity=(1.5f+state.uniform(-0.5f,0.5f))*Vector3f(0.0f,0.0f,state.uniform(2.0f,4.0f)).normalized;
+		auto scale=1.0f;
 		auto lifetime=cast(int)((sacParticle.numFrames*5.0f)*(1.0f+state.uniform(0.0f,1.0f)^^10));
 		auto frame=0;
-		state.addParticle(Particle!B(sacParticle,position,velocity,lifetime,frame));
+		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
 	}
 }
 
@@ -4086,9 +4267,10 @@ void animateManahoar(B)(Vector3f location, int side, float rate, ObjectState!B s
 		auto position=center+displacement;
 		auto angle=state.uniform(-cast(float)PI,cast(float)PI);
 		auto velocity=(1.5f+state.uniform(-0.5f,0.5f))*Vector3f(0.0f,0.0f,state.uniform(2.0f,4.0f)).normalized;
+		auto scale=1.0f;
 		auto lifetime=cast(int)(0.7f*(sacParticle.numFrames*5.0f-7.0f*sacParticle.numFrames*displacement.length*state.uniform(0.0f,1.0f)^^2));
 		auto frame=0;
-		state.addParticle(Particle!B(sacParticle,position,velocity,lifetime,frame));
+		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
 	}
 }
 
@@ -4191,7 +4373,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 			foreach(j;0..objects.length)
 				proximity.addAltar(sideFromBuildingId(objects.buildingIds[j],state),objects.positions[j]);
 		}
-	}else static if(is(T==Souls!B)||is(T==Buildings!B)||is(T==FixedObjects!B)||is(T==Effects!B)||is(T==Particles!B)||is(T==CommandCones!B)){
+	}else static if(is(T==Souls!B)||is(T==Buildings!B)||is(T==FixedObjects!B)||is(T==Effects!B)||is(T==Particles!(B,relative),bool relative)||is(T==CommandCones!B)){
 		// do nothing
 	}else static assert(0);
 }
@@ -4841,7 +5023,7 @@ final class ObjectState(B){ // (update logic)
 	void addEffect(T)(T proj){
 		obj.addEffect(proj);
 	}
-	void addParticle(Particle!B particle){
+	void addParticle(bool relative)(Particle!(B,relative) particle){
 		obj.addParticle(particle);
 	}
 	void addCommandCone(CommandCone!B cone){

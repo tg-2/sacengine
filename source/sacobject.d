@@ -626,6 +626,8 @@ enum ParticleType{
 	explosion,
 	explosion2,
 	speedUp,
+	heal,
+	relativeHeal,
 }
 
 final class SacParticle(B){
@@ -641,8 +643,16 @@ final class SacParticle(B){
 		final switch(type) with(ParticleType){
 			case manafount:
 				return true;
-				case manalith,shrine,manahoar,firy,explosion,explosion2,speedUp:
+			case manalith,shrine,manahoar,firy,explosion,explosion2,speedUp,heal,relativeHeal:
 				return false;
+		}
+	}
+	@property bool relative(){
+		final switch(type) with(ParticleType){
+			case manafount,manalith,shrine,manahoar,firy,explosion,explosion2,speedUp,heal:
+				return false;
+			case relativeHeal:
+				return true;
 		}
 	}
 	this(ParticleType type,Color4f color=Color4f(1.0f,1.0f,1.0f,1.0f),float energy=20.0f){
@@ -695,6 +705,12 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/spd6.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
+			case heal,relativeHeal: // TODO: load texture only once
+				width=height=1.0f;
+				this.energy=4.0f;
+				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/glo2.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
 		}
 		material=B.createMaterial(this);
 	}
@@ -722,6 +738,8 @@ final class SacParticle(B){
 				return 1.0f;
 			case speedUp:
 				return min(1.0f,(lifetime/(0.5f*numFrames))^^2);
+			case heal,relativeHeal:
+				return min(1.0f,(lifetime/(0.75f*numFrames))^^2);
 		}
 	}
 	float getScale(int lifetime){
@@ -736,6 +754,8 @@ final class SacParticle(B){
 				return 1.0f;
 			case speedUp:
 				return 1.0f;
+			case heal,relativeHeal:
+				return 1.0;
 		}
 	}
 }

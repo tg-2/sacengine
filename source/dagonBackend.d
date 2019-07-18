@@ -485,7 +485,7 @@ final class SacScene: Scene{
 						}
 					}
 				}
-			}else static if(is(T==Particles!DagonBackend)){
+			}else static if(is(T==Particles!(DagonBackend,relative),bool relative)){
 				static if(mode==RenderMode.transparent){
 					if(rc.shadowMode) return; // TODO: particle shadows?
 					auto sacParticle=objects.sacParticle;
@@ -494,9 +494,12 @@ final class SacScene: Scene{
 					material.bind(rc);
 					material.backend.setInformation(Vector4f(0.0f,0.0f,0.0f,0.0f));
 					scope(success) material.unbind(rc);
+					static if(relative) auto state=scene.state.current;
 					foreach(j;0..objects.length){
 						auto mesh=sacParticle.getMesh(objects.frames[j]); // TODO: do in shader?
-						material.backend.setSpriteTransformationScaled(objects.positions[j],sacParticle.getScale(objects.lifetimes[j]),rc);
+						static if(relative) auto position=objects.positions[j]+state.movingObjectById!((obj)=>obj.position,()=>Vector3f(0.0f,0.0f,0.0f))(objects.baseIds[j]);
+						else auto position=objects.positions[j];
+						material.backend.setSpriteTransformationScaled(position,objects.scales[j]*sacParticle.getScale(objects.lifetimes[j]),rc);
 						material.backend.setAlpha(sacParticle.getAlpha(objects.lifetimes[j]));
 						mesh.render(rc);
 					}
@@ -1142,7 +1145,7 @@ final class SacScene: Scene{
 				// do nothing
 			}else static if(is(T==Effects!DagonBackend)){
 				// do nothing
-			}else static if(is(T==Particles!DagonBackend)){
+			}else static if(is(T==Particles!(DagonBackend,relative),bool relative)){
 				// do nothing
 			}else static if(is(T==CommandCones!DagonBackend)){
 				// do nothing
@@ -2620,7 +2623,7 @@ static:
 
 	Material createMaterial(SacParticle!DagonBackend particle){
 		final switch(particle.type) with(ParticleType){
-				case manafount, manalith, manahoar, shrine, firy, explosion, explosion2, speedUp:
+				case manafount, manalith, manahoar, shrine, firy, explosion, explosion2, speedUp, heal, relativeHeal:
 				auto mat=scene.createMaterial(scene.shadelessMaterialBackend);
 				mat.depthWrite=false;
 				mat.blending=Additive;
