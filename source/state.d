@@ -4029,9 +4029,10 @@ bool updateHeal(B)(ref Heal!B heal,ObjectState!B state){
 		enum numParticles=2;
 		foreach(i;0..numParticles){
 			auto position=1.1f*state.uniform(cast(Vector2f[2])[hitbox[0].xy,hitbox[1].xy]);
-			auto distance=state.uniform(1.5f,2.5f)*(hitbox[1].z-hitbox[0].z);
-			auto lifetime=sacParticle.numFrames/60.0f;
-			state.addParticle(Particle!(B,true)(sacParticle,obj.id,Vector3f(position.x,position.y,0.0f),Vector3f(0.0f,0.0f,distance/lifetime),scale,sacParticle.numFrames,0));
+			auto distance=(state.uniform(3)?state.uniform(0.3f,0.6f):state.uniform(1.5f,2.5f))*(hitbox[1].z-hitbox[0].z);
+			auto fullLifetime=sacParticle.numFrames/float(updateFPS);
+			auto lifetime=cast(int)(sacParticle.numFrames*state.uniform(0.0f,1.0f));
+			state.addParticle(Particle!(B,true)(sacParticle,obj.id,Vector3f(position.x,position.y,0.0f),Vector3f(0.0f,0.0f,distance/fullLifetime),scale,lifetime,0));
 		}
 		return true;
 	},function bool(){ return false; })(heal.creature,heal,state);
