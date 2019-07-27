@@ -5,8 +5,7 @@ import std.stdio, std.string, std.algorithm, std.path, std.exception;
 SuperImage loadTXTR(string filename){
 	enforce(filename.endsWith(".TXTR")||filename.endsWith(".ICON"));
 	auto base = filename[0..$-".TXTR".length];
-	ubyte[] txt;
-	foreach(ubyte[] chunk;chunks(File(filename,"rb"),4096)) txt~=chunk;
+	auto txt=readFile(filename);
 	auto width=parseLE(txt[0..4]);
 	txt=txt[4..$];
 	auto height=parseLE(txt[0..4]);
@@ -33,7 +32,7 @@ SuperImage loadTXTR(string filename){
 		grayscale=true;
 	}else{
 		auto palFile=buildPath(dirName(filename), pal~".PALT");
-		foreach(ubyte[] chunk;chunks(File(palFile, "rb"),4096)) palt~=chunk;
+		palt=readFile(palFile);
 		palt=palt[8..$]; // header bytes (TODO: figure out what they mean)
 	}
 	auto channels=3+(hasAlphaColor||hasExplicitAlpha);

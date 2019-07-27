@@ -1,21 +1,21 @@
 module nttData;
-import std.file, std.path, std.stdio, std.algorithm, std.range, std.string, std.exception;
+import std.path, std.stdio, std.algorithm, std.range, std.string, std.exception;
 import bldg, spells, sset;
 import util;
 import dlib.math.vector;
-immutable string[] bldgFolders=["joby/joby.WAD!/ethr.FLDR",
-                                "joby/joby.WAD!/prsc.FLDR",
-                                "pyromod/PMOD.WAD!/bild.FLDR",
-                                "jamesmod/JMOD.WAD!/bild.FLDR",
-                                "stratmod/SMOD.WAD!/bild.FLDR",
-                                "joby/joby.WAD!/ch_a.FLDR",];
+immutable string[] bldgFolders=["extracted/joby/joby.WAD!/ethr.FLDR",
+                                "extracted/joby/joby.WAD!/prsc.FLDR",
+                                "extracted/pyromod/PMOD.WAD!/bild.FLDR",
+                                "extracted/jamesmod/JMOD.WAD!/bild.FLDR",
+                                "extracted/stratmod/SMOD.WAD!/bild.FLDR",
+                                "extracted/joby/joby.WAD!/ch_a.FLDR",];
 
-immutable string[] bldgModlFolders=["joby/joby.WAD!/ethr.FLDR",
-                                    "joby/joby.WAD!/prsc.FLDR",
-                                    "pyromod/PMOD.WAD!/modl.FLDR",
-                                    "jamesmod/JMOD.WAD!/modl.FLDR",
-                                    "stratmod/SMOD.WAD!/modl.FLDR",
-                                    "joby/joby.WAD!/ch_a.FLDR"];
+immutable string[] bldgModlFolders=["extracted/joby/joby.WAD!/ethr.FLDR",
+                                    "extracted/joby/joby.WAD!/prsc.FLDR",
+                                    "extracted/pyromod/PMOD.WAD!/modl.FLDR",
+                                    "extracted/jamesmod/JMOD.WAD!/modl.FLDR",
+                                    "extracted/stratmod/SMOD.WAD!/modl.FLDR",
+                                    "extracted/joby/joby.WAD!/ch_a.FLDR"];
 
 immutable char[4][] manafountTags=["nfcp","tnfj","nfac","nofp","fmts"];
 immutable char[4][] manalithTags=["amac","namj","anam","amyp","mats"];
@@ -27,39 +27,70 @@ immutable char[4][] altarRingTags=["r_ae","otla","gnrj","raac","gryp","gras",
 immutable char[4][] altarBaseTags=["b_ae","abla","tipj","baac","tpyp","tprc",
                                           "caup",       "bauc",             ];
 
-
-import std.typecons;
-Bldg[char[4]] makeBldgByTag(){
-	Bldg[char[4]] result;
-	foreach(folder;bldgFolders){
-		auto path=buildPath("extracted",folder);
-		foreach(bldgFile;dirEntries(path,"*.BLDG",SpanMode.shallow)){
-			char[4] tag=bldgFile[$-9..$-5];
-			reverse(tag[]);
-			enforce(tag !in result);
-			enforce(tag !in result);
-			result[tag]=loadBldg(bldgFile);
+auto makeFileIndex(bool multi=false,bool lowerCase=false)(bool readFromWads,const string[] folders,char[4] extension,bool noDup=true){
+	static if(multi) string[][char[4]] result;
+	else string[char[4]] result;
+	void handle(string file){
+		char[4] tag=file[$-9..$-5];
+		reverse(tag[]);
+		static if(lowerCase){
+			import std.ascii: toLower;
+			foreach(ref x;tag) x=toLower(x);
+		}
+		static if(!multi){
+			if(noDup) enforce(tag !in result);
+			result[tag]=file;
+		}else result[tag]~=file;
+	}
+	foreach(folder;folders){
+		if(readFromWads){
+			enforce(!!wadManager);
+			foreach(file;wadManager.byExt.get(extension,[])){
+				if(file.startsWith(folder))
+					handle(file);
+			}
+		}else{
+			import std.file;
+			foreach(file;dirEntries(folder,"*."~cast(immutable)extension[],SpanMode.depth))
+				handle(file);
 		}
 	}
 	return result;
 }
-
-string[char[4]] makeBldgModlByTag(){
-	string[char[4]] result;
-	foreach(folder;bldgModlFolders){
-		auto path=buildPath("extracted",folder);
-		foreach(bldgModlFile;dirEntries(path,"*.MRMC",SpanMode.shallow)){
-			char[4] tag=bldgModlFile[$-9..$-5];
-			reverse(tag[]);
-			enforce(tag !in result);
-			result[tag]=buildPath(bldgModlFile,bldgModlFile[$-9..$-5]~".MRMM");
+immutable(typeof(load("")))[char[4]] makeByTag(alias load)(bool readFromWads,const string[] folders,char[4] extension,bool noDup=true){
+	typeof(load(""))[char[4]] result;
+	void handle(string file){
+		char[4] tag=file[$-9..$-5];
+		reverse(tag[]);
+		if(noDup) enforce(tag !in result);
+		result[tag]=load(file);
+	}
+	foreach(folder;folders){
+		if(readFromWads){
+			enforce(!!wadManager);
+			foreach(file;wadManager.byExt.get(extension,[]))
+				if(file.startsWith(folder))
+					handle(file);
+		}else{
+			import std.file;
+			foreach(file;dirEntries(folder,"*."~cast(immutable)extension[],SpanMode.depth))
+				handle(file);
 		}
 	}
-	return result;
+	return cast(typeof(return))result;
+
 }
 
-immutable Bldg[char[4]] bldgs;
-immutable string[char[4]] bldgModls;
+immutable(Bldg)[char[4]] makeBldgByTag(bool readFromWads){
+	return makeByTag!loadBldg(readFromWads,bldgFolders,"BLDG");
+}
+
+string[char[4]] makeBldgModlByTag(bool readFromWads){
+	return makeFileIndex(readFromWads,bldgModlFolders,"MRMM");
+}
+
+immutable(Bldg)[char[4]] bldgs;
+string[char[4]] bldgModls;
 
 immutable landFolders=["extracted/ethr/ethr.WAD!/ethr.LAND",
                        "extracted/prsc/prsc.WAD!/prsc.LAND",
@@ -68,44 +99,27 @@ immutable landFolders=["extracted/ethr/ethr.WAD!/ethr.LAND",
                        "extracted/strato_a/ST_A.WAD!/ST_A.LAND",
                        "extracted/char/char.WAD!/char.LAND"];
 
-immutable godThemes=["extracted/music/God Realm.mp3",
-                     "extracted/music/persephone_normal.mp3",
-                     "extracted/music/pyro_normal.mp3",
-                     "extracted/music/james_normal.mp3",
-                     "extracted/music/stratos_normal.mp3",
-                     "extracted/music/charnel_normal.mp3"];
+immutable godThemes=["data/music/God Realm.mp3",
+                     "data/music/persephone_normal.mp3",
+                     "data/music/pyro_normal.mp3",
+                     "data/music/james_normal.mp3",
+                     "data/music/stratos_normal.mp3",
+                     "data/music/charnel_normal.mp3"];
 
-string[char[4]] makeWidgModlByTag(){
-	string[char[4]] result;
-	foreach(folder;landFolders){
-		foreach(widgModlFile;dirEntries(folder,"*.WIDG",SpanMode.depth)){
-			char[4] tag=widgModlFile[$-9..$-5];
-			reverse(tag[]);
-			enforce(tag !in result);
-			result[tag]=widgModlFile;
-		}
-	}
-	return result;
+string[char[4]] makeWidgModlByTag(bool readFromWads){
+	return makeFileIndex(readFromWads,landFolders,"WIDG");
 }
-immutable string[char[4]] widgModls;
+string[char[4]] widgModls;
 
-immutable string spellsFolder="spells";
+immutable string[] spellsFolders=["extracted/spells"];
 
 immutable char[4][] peasantTags=["zepa","zepd","zepe","zepf","saep"];
 
-T[char[4]] makeSpellByTag(T)(){
-	T[char[4]] result;
-	static immutable path=buildPath("extracted",spellsFolder);
-	static immutable ext=toUpper(T.stringof);
-	foreach(spellFile;dirEntries(path,"*."~ext,SpanMode.depth)){
-		char[4] tag=spellFile[$-9..$-5];
-		reverse(tag[]);
-		enforce(tag !in result);
-		auto spell=mixin(`load`~T.stringof)(spellFile);
-		static if(is(T==Cre8)) if(spell.creatureSSET=="tsif") swap(spell.creatureSSET,spell.meleeSSET); // TODO: ok?
-		result[tag]=spell;
-	}
+immutable(T)[char[4]] makeSpellByTag(T)(bool readFromWads){
+	enum char[4] ext=toUpper(T.stringof);
+	auto result=cast(T[char[4]])makeByTag!(mixin(`load`~T.stringof))(readFromWads,spellsFolders,ext);
 	static if(is(T==Cre8)){
+		foreach(k,ref spell;result) if(spell.creatureSSET=="tsif") swap(spell.creatureSSET,spell.meleeSSET);
 		// dragon hatchlings have flying animations, but cannot fly
 		// peasants have pulling animations stored in flying animations
 		static immutable nonFlyingTags=["rdbO","tshg"];
@@ -143,77 +157,54 @@ T[char[4]] makeSpellByTag(T)(){
 		fixFamiliar(result["imaf"]);
 		fixFamiliar(result["tnem"]);
 	}
-	return result;
+	return cast(typeof(return))result;
 }
 
-char[4][char[4]] makeTagBySaxsModelTag(){
+immutable(char[4])[char[4]] makeTagBySaxsModelTag(bool readFromWads){
 	char[4][char[4]] result;
-	static immutable path=buildPath("extracted",spellsFolder);
+	static char[4] load(T)(string file){
+		return mixin(`load`~T.stringof)(file).saxsModel;
+	}
 	foreach(T;Seq!(Cre8,Wizd)){
 		enum ext=toUpper(T.stringof);
-		foreach(spellFile;dirEntries(path,"*."~ext,SpanMode.depth)){
-			char[4] tag=spellFile[$-9..$-5];
-			reverse(tag[]);
-			auto spell=mixin(`load`~T.stringof)(spellFile);
-			result[spell.saxsModel]=tag;
-		}
+		foreach(k,v;makeByTag!(load!T)(readFromWads,spellsFolders,ext))
+			result[v]=k;
 	}
-	return result;
+	return cast(typeof(return))result;
 }
 
-immutable Cre8[char[4]] cre8s;
-immutable Wizd[char[4]] wizds;
-immutable Spel[char[4]] spels;
-immutable Strc[char[4]] strcs;
+immutable(Cre8)[char[4]] cre8s;
+immutable(Wizd)[char[4]] wizds;
+immutable(Spel)[char[4]] spels;
+immutable(Strc)[char[4]] strcs;
 
-immutable char[4][char[4]] tagsFromModel;
+immutable(char[4])[char[4]] tagsFromModel;
 
-immutable string[] saxsModlFolders=["saxs/mrtd.WAD!",
-                                    "saxs_add/AADD.WAD!",
-                                    "saxs_odd/sxod.WAD!",
-                                    "saxs_r1/sxr1.WAD!",
-                                    "saxs_r2/sxr2.WAD!",
-                                    "saxs_r3/sxr3.WAD!",
-                                    "saxs_r4/sxr4.WAD!",
-                                    "saxs_r5/sxr5.WAD!",
-                                    "saxs_r6/sxr6.WAD!",
-                                    "saxs_r7/sxr7.WAD!",
-                                    "saxs_r8/sxr8.WAD!",
-                                    "saxs_r9/sxr9.WAD!",
-                                    "saxs_r10/sr10.WAD!",
-                                    "saxs_r11/sr11.WAD!",
-                                    "saxshero/hero.WAD!",
-                                    "saxs_wiz/sxwz.WAD!"];
+immutable string[] saxsModlFolders=["extracted/saxs/mrtd.WAD!",
+                                    "extracted/saxs_add/AADD.WAD!",
+                                    "extracted/saxs_odd/sxod.WAD!",
+                                    "extracted/saxs_r1/sxr1.WAD!",
+                                    "extracted/saxs_r2/sxr2.WAD!",
+                                    "extracted/saxs_r3/sxr3.WAD!",
+                                    "extracted/saxs_r4/sxr4.WAD!",
+                                    "extracted/saxs_r5/sxr5.WAD!",
+                                    "extracted/saxs_r6/sxr6.WAD!",
+                                    "extracted/saxs_r7/sxr7.WAD!",
+                                    "extracted/saxs_r8/sxr8.WAD!",
+                                    "extracted/saxs_r9/sxr9.WAD!",
+                                    "extracted/saxs_r10/sr10.WAD!",
+                                    "extracted/saxs_r11/sr11.WAD!",
+                                    "extracted/saxshero/hero.WAD!",
+                                    "extracted/saxs_wiz/sxwz.WAD!"];
 
-string[char[4]] makeSaxsModlByTag(){
-	string[char[4]] result;
-	foreach(folder;saxsModlFolders){
-		auto path=buildPath("extracted",folder);
-		foreach(saxsModlFile;dirEntries(path,"*.SXMD",SpanMode.depth)){
-			char[4] tag=saxsModlFile[$-9..$-5];
-			reverse(tag[]);
-			enforce(tag !in result);
-			result[tag]=saxsModlFile;
-		}
-	}
-	return result;
+string[char[4]] makeSaxsModlByTag(bool readFromWads){
+	return makeFileIndex(readFromWads,saxsModlFolders,"SXMD");
 }
-string[][char[4]] makeSaxsAnimByTag(){
-	string[][char[4]] result;
-	foreach(folder;saxsModlFolders){
-		auto path=buildPath("extracted",folder);
-		foreach(saxsAnimFile;dirEntries(path,"*.SXSK",SpanMode.depth)){
-			char[4] tag=saxsAnimFile[$-9..$-5];
-			reverse(tag[]);
-			import std.ascii: toLower;
-			foreach(ref x;tag) x=toLower(x);
-			result[tag]~=saxsAnimFile;
-		}
-	}
-	return result;
+string[][char[4]] makeSaxsAnimByTag(bool readFromWads){
+	return makeFileIndex!(true,true)(readFromWads,saxsModlFolders,"SXSK");
 }
-immutable string[char[4]] saxsModls;
-immutable string[][char[4]] saxsAnims;
+string[char[4]] saxsModls;
+string[][char[4]] saxsAnims;
 
 string getSaxsAnim(string saxsModlFile, char[4] tag){
 	string r=null;
@@ -230,75 +221,48 @@ string getSaxsAnim(string saxsModlFile, char[4] tag){
 	return r;
 }
 
-immutable string[] iconFolders=["main/MAIN.WAD!/icon.FLDR"];
-immutable string[char[4]] icons;
-string[char[4]] makeIconByTag(){
-	string[char[4]] result;
-	foreach(folder;iconFolders){
-		auto path=buildPath("extracted",folder);
-		foreach(iconFile;dirEntries(path,"*.ICON",SpanMode.depth)){
-			char[4] tag=iconFile[$-9..$-5];
-			reverse(tag[]);
-			// enforce(tag !in result); // some icons seem to be replicated, e.g. rded.ICON
-			result[tag]=iconFile;
-		}
-	}
-	return result;
+immutable string[] iconFolders=["extracted/main/MAIN.WAD!/icon.FLDR"];
+string[char[4]] icons;
+string[char[4]] makeIconByTag(bool readFromWads){
+	 // some icons seem to be replicated, e.g. rded.ICON
+	return makeFileIndex(readFromWads,iconFolders,"ICON",false);
 }
 
-immutable string[] ssetFolders=["sounds/SFX_.WAD!"];
-immutable Sset[char[4]] ssets;
-Sset[char[4]] makeSsetByTag(){
-	Sset[char[4]] result;
-	foreach(folder;ssetFolders){
-		auto path=buildPath("extracted",folder);
-		foreach(ssetFile;dirEntries(path,"*.SSET",SpanMode.depth)){
-			char[4] tag=ssetFile[$-9..$-5];
-			reverse(tag[]);
-			enforce(tag !in result);
-			result[tag]=loadSSET(ssetFile);
-		}
-	}
-	return result;
+immutable string[] ssetFolders=["extracted/sounds/SFX_.WAD!"];
+immutable(Sset)[char[4]] ssets;
+immutable(Sset)[char[4]] makeSsetByTag(bool readFromWads){
+	return makeByTag!loadSSET(readFromWads,ssetFolders,"SSET");
 }
-immutable string[] sampFolders=["sounds/SFX_.WAD!","local/sfx_english/SFXe.WAD!"];
-static immutable char[4][] commandAppliedSoundTags=["1lcI","2lcI"];
+immutable string[] sampFolders=["extracted/sounds/SFX_.WAD!",
+                                "extracted/local/sfx_english/SFXe.WAD!"];
+immutable char[4][] commandAppliedSoundTags=["1lcI","2lcI"];
 
-immutable string[char[4]] samps;
-string[char[4]] makeSampByTag(){
-	string[char[4]] result;
-	foreach(folder;sampFolders){
-		auto path=buildPath("extracted",folder);
-		foreach(sampFile;dirEntries(path,"*.SAMP",SpanMode.depth)){
-			char[4] tag=sampFile[$-9..$-5];
-			reverse(tag[]);
-			// enforce(tag !in result); // samp names flp1, flp2, flp3, flp4, flp5 appear in both pyro and comn. TODO: figure this out
-			result[tag]=sampFile;
-		}
-	}
-	return result;
+string[char[4]] samps;
+string[char[4]] makeSampByTag(bool readFromWads){
+	// samp names flp1, flp2, flp3, flp4, flp5 appear in both pyro and comn. TODO: figure this out
+	return makeFileIndex(readFromWads,sampFolders,"SAMP",false);
 }
 
-static this(){
-	bldgs=cast(immutable)makeBldgByTag();
-	bldgModls=cast(immutable)makeBldgModlByTag();
+void initNTTData(bool readFromWads){
+	bldgs=makeBldgByTag(readFromWads);
+	bldgModls=makeBldgModlByTag(readFromWads);
 
-	widgModls=cast(immutable)makeWidgModlByTag();
+	widgModls=makeWidgModlByTag(readFromWads);
 
-	cre8s=cast(immutable)makeSpellByTag!Cre8();
-	wizds=cast(immutable)makeSpellByTag!Wizd();
-	spels=cast(immutable)makeSpellByTag!Spel();
-	strcs=cast(immutable)makeSpellByTag!Strc();
+	cre8s=makeSpellByTag!Cre8(readFromWads);
+	wizds=makeSpellByTag!Wizd(readFromWads);
+	spels=makeSpellByTag!Spel(readFromWads);
+	strcs=makeSpellByTag!Strc(readFromWads);
 
-	tagsFromModel=cast(immutable)makeTagBySaxsModelTag();
+	tagsFromModel=makeTagBySaxsModelTag(readFromWads);
 
-	saxsModls=cast(immutable)makeSaxsModlByTag();
-	saxsAnims=cast(immutable)makeSaxsAnimByTag();
+	saxsModls=makeSaxsModlByTag(readFromWads);
+	saxsAnims=makeSaxsAnimByTag(readFromWads);
 
-	icons=cast(immutable)makeIconByTag();
+	icons=makeIconByTag(readFromWads);
 
-	ssets=cast(immutable)makeSsetByTag();
-	samps=cast(immutable)makeSampByTag();
+	ssets=makeSsetByTag(readFromWads);
+	samps=makeSampByTag(readFromWads);
 }
 
 

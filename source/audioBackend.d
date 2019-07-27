@@ -55,17 +55,17 @@ final class AudioBackend(B){
 	this(float volume,float musicVolume,float soundVolume){
 		musicGain=volume*musicVolume;
 		soundGain=volume*soundVolume;
-		themes[Theme.battle1]=MP3("extracted/music/Battle 1.mp3");
-		themes[Theme.battle2]=MP3("extracted/music/Battle 2.mp3");
-		themes[Theme.battle3]=MP3("extracted/music/Battle 3.mp3");
-		themes[Theme.battle4]=MP3("extracted/music/Battle 4.mp3");
-		themes[Theme.battle5]=MP3("extracted/music/Battle 5.mp3");
-		themes[Theme.losing]=MP3("extracted/music/Sacrifice Losing.mp3");
-		themes[Theme.winning]=MP3("extracted/music/Sacrifice Victory.mp3");
-		themes[Theme.menu]=MP3("extracted/music/menu.mp3");
-		sacrifice1=MP3("extracted/music/Sacrifice 1.mp3");
-		defeat=MP3("extracted/music/Defeat Theme.mp3");
-		victory=MP3("extracted/music/Victory Theme.mp3");
+		themes[Theme.battle1]=MP3("data/music/Battle 1.mp3");
+		themes[Theme.battle2]=MP3("data/music/Battle 2.mp3");
+		themes[Theme.battle3]=MP3("data/music/Battle 3.mp3");
+		themes[Theme.battle4]=MP3("data/music/Battle 4.mp3");
+		themes[Theme.battle5]=MP3("data/music/Battle 5.mp3");
+		themes[Theme.losing]=MP3("data/music/Sacrifice Losing.mp3");
+		themes[Theme.winning]=MP3("data/music/Sacrifice Victory.mp3");
+		themes[Theme.menu]=MP3("data/music/menu.mp3");
+		sacrifice1=MP3("data/music/Sacrifice 1.mp3");
+		defeat=MP3("data/music/Defeat Theme.mp3");
+		victory=MP3("data/music/Victory Theme.mp3");
 
 		sounds1.reserve(20);
 		sounds2.reserve(20);

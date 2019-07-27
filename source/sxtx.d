@@ -1,5 +1,5 @@
 import util;
-import dlib.image,dlib.image.color;
+import dlib.core.stream,dlib.image,dlib.image.color;
 import std.stdio, std.string, std.algorithm, std.path, std.exception;
 
 SuperImage loadSXTX(string filename,bool alpha){
@@ -17,7 +17,7 @@ SuperImage loadSXTX(string filename,bool alpha){
 	auto imageSpec=txt[7..17];
 	writeln(imageSpec);
 	assert(0);+/ // TODO?
-	auto img=loadTGA(filename);
+	auto img=loadTGA(new ArrayStream(readFile(filename)));
 	if(!alpha) return img;
 	auto nimg=image(img.width,img.height,4); // TODO: process data only once
 	auto data=img.data,ndata=nimg.data;

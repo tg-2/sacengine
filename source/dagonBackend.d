@@ -2394,7 +2394,7 @@ final class SacScene: Scene{
 	override void startGBufferInformationDownload(){
 		if(mouse.onMinimap) return;
 		static int i=0;
-		if(options.printFPS && ((++i)%=2)==0) writeln(eventManager.fps);
+		if(options.printFps && ((++i)%=2)==0) writeln(eventManager.fps);
 		mouse.x=eventManager.mouseX/screenScaling;
 		mouse.y=eventManager.mouseY/screenScaling;
 		mouse.x=max(0,min(mouse.x,width-1));

@@ -14,12 +14,13 @@ struct Options{
 	float glowBrightness=0.5;
 	bool enableAntialiasing=true;
 	int cursorSize=32;
-	bool printFPS=false;
+	bool printFps=false;
 	// audio options
 	float volume=1.0f;
 	float musicVolume=1.0f;
 	float soundVolume=1.0f;
 	// just for testing:
+	bool enableReadFromWads=true;
 	int replicateCreatures=1;
 	string wizard="cwe2";
 	God god;

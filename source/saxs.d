@@ -58,9 +58,7 @@ Saxs!B loadSaxs(B)(string filename, int alphaFlags=0){
 	auto saxs=loadSAXS(filename[0..$-5]~".SAXS");
 	auto scaling=saxs.scaling;
 	auto dir=dirName(filename);
-	ubyte[] data;
-	foreach(ubyte[] chunk;chunks(File(filename,"rb"),4096)) data~=chunk;
-	auto model = parseSXMD(data);
+	auto model = parseSXMD(readFile(filename));
 	Vector3f[8] translateHitbox(float[3][8] hitbox){
 		Vector3f[8] result;
 		foreach(i;0..8) result[i]=Vector3f(fromSXMD(hitbox[i]))*scaling;

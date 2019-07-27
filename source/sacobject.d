@@ -445,8 +445,7 @@ final class SacObject(B){
 			                                  ["bobs","tsZB"],["guls","tsGB"],["craa","tsGB"],["crpd","tsTS"]];
 			if(!(animID=="rezW"||animID[0..2]=="00"||bad.any!(x=>x[0]==tag&&x[1]==animID))){
 				auto anim=getSaxsAnim(model,animID);
-				import std.file: exists;
-				if(exists(anim)&&(!(&animID !is &dat2.animations.stance1 && animID==dat2.animations.stance1)
+				if(fileExists(anim)&&(!(&animID !is &dat2.animations.stance1 && animID==dat2.animations.stance1)
 				                  ||i==AnimationState.hover)
 				){
 					auto animation=loadSXSK(anim,saxsi.saxs.scaling);

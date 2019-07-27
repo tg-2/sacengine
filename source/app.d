@@ -1,7 +1,7 @@
 import options;
 import dagonBackend;
 import sids, ntts, sacobject, sacmap, state;
-import util;
+import wadmanager,util;
 import dlib.math;
 import std.string, std.array, std.range, std.algorithm, std.stdio;
 import std.exception, std.conv, std.typecons;
@@ -93,6 +93,14 @@ int main(string[] args){
 		import std.random: uniform;
 		options.god=cast(God)uniform!"[]"(1,5);
 	}
+	enum commit = tryImport!("git/"~tryImport!("git/HEAD","ref: ")["ref: ".length..$],"");
+	writeln("SacEngine ",commit.length?text("version ",commit):"");
+	if(options.enableReadFromWads){
+		wadManager=new WadManager;
+		wadManager.indexWADs("data");
+	}
+	import nttData:initNTTData;
+	initNTTData(options.enableReadFromWads);
 	auto backend=DagonBackend(options);
 	GameState!DagonBackend state;
 	foreach(ref i;1..args.length){

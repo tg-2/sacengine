@@ -2,7 +2,7 @@ import dlib.image, dlib.math, dlib.geometry;
 import util;
 import maps,txtr,envi;
 import std.exception, std.string, std.algorithm, std.conv, std.range;
-import std.stdio, std.path, std.file;
+import std.stdio, std.path;
 import std.typecons: tuple,Tuple;
 import std.math;
 
@@ -219,7 +219,7 @@ SuperImage loadLMap(string filename){
 }
 
 SuperImage[] loadDTs(string directory){
-	auto r=iota(0,7).until!(i=>!exists(buildPath(directory,format("DT%02d.TXTR",i)))).map!(i=>loadTXTR(buildPath(directory,format("DT%02d.TXTR",i)))).array;
+	auto r=iota(0,7).until!(i=>!fileExists(buildPath(directory,format("DT%02d.TXTR",i)))).map!(i=>loadTXTR(buildPath(directory,format("DT%02d.TXTR",i)))).array;
 	foreach(ref img;r){
 		foreach(j;0..256){
 			foreach(i;0..256){
@@ -237,7 +237,7 @@ SuperImage[] loadMAPTs(string directory){
 	return iota(0,256).map!((i){
 			auto maptFile=buildPath(directory,format("%04d.MAPT",i));
 			auto img=image(64,64);
-			if(!exists(maptFile)) return img;
+			if(!fileExists(maptFile)) return img;
 			auto data=readFile(maptFile);
 			foreach(y;0..64){
 				foreach(x;0..64){

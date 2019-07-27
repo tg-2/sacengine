@@ -2,6 +2,7 @@ import sacobject;
 import std.stdio, std.math;
 import std.exception, std.conv, std.algorithm, std.format, std.string, std.path;
 import std.typecons: Tuple, tuple;
+import util;
 
 struct Face{
 	uint unknown0;
@@ -50,8 +51,6 @@ Model parse3DSM(ubyte[] data){
 Tuple!(B.Mesh[], B.Texture[]) load3DSM(B)(string filename, float scaling){
 	enforce(filename.endsWith(".3DSM"));
 	auto dir = dirName(filename);
-	ubyte[] data;
-	foreach(ubyte[] chunk;chunks(File(filename,"rb"),4096)) data~=chunk;
-	auto model = parse3DSM(data);
+	auto model = parse3DSM(readFile(filename));
 	return convertModel!B(dir, model, scaling);
 }

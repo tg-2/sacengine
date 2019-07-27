@@ -3,11 +3,16 @@ import std.typecons, std.algorithm;
 
 alias Seq(T...)=T;
 
-uint parseLE(ubyte[] raw)in{
+uint parseLE(const ubyte[] raw)in{
 	assert(raw.length<=4);
 }body{
 	uint r=0;
 	foreach_reverse(x;raw) r=256*r+x;
+	return r;
+}
+inout(ubyte)[] eat(ref inout(ubyte)[] input, size_t n){
+	auto r=input[0..n];
+	input=input[n..$];
 	return r;
 }
 
@@ -25,7 +30,17 @@ float[3] fromSXMD(float[3] v){
 	return [-v[0],-v[2],v[1]];
 }
 
+import wadmanager;
+WadManager wadManager;
+bool fileExists(string filename){
+	if(wadManager&&filename in wadManager.files)
+		return true;
+	import std.file:exists;
+	return exists(filename);
+}
 ubyte[] readFile(string filename){
+	if(wadManager&&filename in wadManager.files)
+		return wadManager.files[filename];
 	ubyte[] data;
 	import std.stdio;
 	foreach(ubyte[] chunk;chunks(File(filename,"rb"),4096)) data~=chunk;
@@ -249,4 +264,26 @@ struct Queue(T){
 	void popBack(){ --last; }
 	T removeBack(){ return payload[--last%$]; }
 	bool empty(){ return first==last; }
+}
+
+struct Stack(T){
+	private T[] data;
+	bool empty(){
+		return data.length==0;
+	}
+	ref T top(){
+		return data[$-1];
+	}
+	void push(T t){
+		data~=t;
+	}
+	void pop(){
+		data=data[0..$-1];
+		data.assumeSafeAppend();
+	}
+}
+
+template tryImport(string filename,string alt=""){
+	static if(__traits(compiles,import(filename))) enum tryImport = import(filename)[0..$-1];
+	else enum tryImport = alt;
 }

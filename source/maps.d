@@ -28,9 +28,7 @@ HMap parseHMap(ubyte[] data){
 
 HMap loadHMap(string filename){
 	enforce(filename.endsWith(".HMAP"));
-	ubyte[] data;
-	foreach(ubyte[] chunk;chunks(File(filename,"rb"),4096)) data~=chunk;
-	return parseHMap(data);
+	return parseHMap(readFile(filename));
 }
 
 
@@ -62,7 +60,7 @@ static assert(MapGroup.sizeof==60);
 
 DTIndex loadDTIndex(string dir){
 	auto dts=new ubyte[](256);
-	for(int i=0;exists(buildPath(dir,format("MG%02d.MAPG",i)));i++){
+	for(int i=0;fileExists(buildPath(dir,format("MG%02d.MAPG",i)));i++){
 		auto mapgData=readFile(buildPath(dir,format("MG%02d.MAPG",i)));
 		enforce(mapgData.length==MapGroup.sizeof);
 		auto mapg=cast(MapGroup*)mapgData.ptr;
