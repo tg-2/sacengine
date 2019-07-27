@@ -5998,6 +5998,7 @@ final class GameState(B){
 	void addCommand(int frame,Command!B command)in{
 		assert(frame<=current.frame);
 	}body{
+		if(command.side==-1) return;
 		assert(frame<commands.length);
 		auto currentFrame=current.frame;
 		commands[frame]~=command;
