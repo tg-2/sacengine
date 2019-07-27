@@ -103,67 +103,80 @@ int main(string[] args){
 	initNTTData(options.enableReadFromWads);
 	auto backend=DagonBackend(options);
 	GameState!DagonBackend state;
+	void loadMap(string hmap){
+		enforce(hmap.endsWith(".HMAP"));
+		enforce(!state);
+		auto map=new SacMap!DagonBackend(hmap);
+		auto sids=loadSids(hmap[0..$-".HMAP".length]~".SIDS");
+		auto ntts=loadNTTs(hmap[0..$-".HMAP".length]~".NTTS");
+		state=new GameState!DagonBackend(map,sids,ntts,options);
+		backend.setState(state);
+		bool flag=false;
+		state.current.eachBuilding!((bldg,state,scene,flag,options){
+			if(*flag||bldg.componentIds.length==0) return;
+			if(bldg.side==backend.scene.renderSide && bldg.isAltar){
+				*flag=true;
+				alias B=DagonBackend;
+				auto altar=state.staticObjectById!((obj)=>obj, function StaticObject!B(){ assert(0); })(bldg.componentIds[0]);
+				auto curObj=SacObject!B.getSAXS!Wizard(options.wizard.retro.to!string[0..4]);
+				import std.math: PI, atan2;
+				int closestManafount=0;
+				Vector3f manafountPosition;
+				state.eachBuilding!((bldg,altarPos,closest,manaPos,state){
+					if(bldg.componentIds.length==0||!bldg.isManafount) return;
+					auto pos=bldg.position(state);
+					if(*closest==0||(altarPos.xy-pos.xy).length<(altarPos.xy-manaPos.xy).length){
+						*closest=bldg.id;
+						*manaPos=pos;
+					}
+				})(altar.position,&closestManafount,&manafountPosition,state);
+				int orientation=0;
+				enum distance=15.0f;
+				auto facingOffset=(bldg.isStratosAltar?cast(float)PI/4.0f:0.0f)+cast(float)PI;
+				auto facing=bldg.facing+facingOffset;
+				auto rotation=facingQuaternion(facing);
+				auto position=altar.position+rotate(rotation,Vector3f(0.0f,distance,0.0f));
+				if(closestManafount){
+					auto dir2d=(manafountPosition-altar.position).xy.normalized*distance;
+					facing=atan2(dir2d.y,dir2d.x)-cast(float)PI/2.0f;
+					rotation=facingQuaternion(facing);
+					position=altar.position+Vector3f(dir2d.x,dir2d.y,0.0f);
+				}
+				bool onGround=state.isOnGround(position);
+				if(onGround)
+					position.z=state.getGroundHeight(position);
+				auto mode=CreatureMode.idle;
+				auto movement=CreatureMovement.onGround;
+				if(movement==CreatureMovement.onGround && !onGround)
+					movement=curObj.canFly?CreatureMovement.flying:CreatureMovement.tumbling;
+				auto creatureState=CreatureState(mode, movement, facing);
+				import animations;
+				auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState,curObj.creatureStats(0),scene.renderSide);
+				obj.setCreatureState(state);
+				obj.updateCreaturePosition(state);
+				auto id=state.addObject(obj);
+				scene.focusCamera(id);
+				auto spellbook=getDefaultSpellbook!B(options.god);
+				state.addWizard(makeWizard(id,options.level,options.souls,spellbook,state));
+			}
+		})(state.current,backend.scene,&flag,options);
+		state.commit();
+	}
 	foreach(ref i;1..args.length){
 		string anim="";
 		if(i+1<args.length&&args[i+1].endsWith(".SXSK"))
 			anim=args[i+1];
-		if(args[i].endsWith(".HMAP")){
-			enforce(!state);
-			auto map=new SacMap!DagonBackend(args[i]);
-			auto sids=loadSids(args[i][0..$-".HMAP".length]~".SIDS");
-			auto ntts=loadNTTs(args[i][0..$-".HMAP".length]~".NTTS");
-			state=new GameState!DagonBackend(map,sids,ntts,options);
-			backend.setState(state);
-			bool flag=false;
-			state.current.eachBuilding!((bldg,state,scene,flag,options){
-				if(*flag||bldg.componentIds.length==0) return;
-				if(bldg.side==backend.scene.renderSide && bldg.isAltar){
-					*flag=true;
-					alias B=DagonBackend;
-					auto altar=state.staticObjectById!((obj)=>obj, function StaticObject!B(){ assert(0); })(bldg.componentIds[0]);
-					auto curObj=SacObject!B.getSAXS!Wizard(options.wizard.retro.to!string[0..4]);
-					import std.math: PI, atan2;
-					int closestManafount=0;
-					Vector3f manafountPosition;
-					state.eachBuilding!((bldg,altarPos,closest,manaPos,state){
-						if(bldg.componentIds.length==0||!bldg.isManafount) return;
-						auto pos=bldg.position(state);
-						if(*closest==0||(altarPos.xy-pos.xy).length<(altarPos.xy-manaPos.xy).length){
-							*closest=bldg.id;
-							*manaPos=pos;
-						}
-					})(altar.position,&closestManafount,&manafountPosition,state);
-					int orientation=0;
-					enum distance=15.0f;
-					auto facingOffset=(bldg.isStratosAltar?cast(float)PI/4.0f:0.0f)+cast(float)PI;
-					auto facing=bldg.facing+facingOffset;
-					auto rotation=facingQuaternion(facing);
-					auto position=altar.position+rotate(rotation,Vector3f(0.0f,distance,0.0f));
-					if(closestManafount){
-						auto dir2d=(manafountPosition-altar.position).xy.normalized*distance;
-						facing=atan2(dir2d.y,dir2d.x)-cast(float)PI/2.0f;
-						rotation=facingQuaternion(facing);
-						position=altar.position+Vector3f(dir2d.x,dir2d.y,0.0f);
-					}
-					bool onGround=state.isOnGround(position);
-					if(onGround)
-						position.z=state.getGroundHeight(position);
-					auto mode=CreatureMode.idle;
-					auto movement=CreatureMovement.onGround;
-					if(movement==CreatureMovement.onGround && !onGround)
-						movement=curObj.canFly?CreatureMovement.flying:CreatureMovement.tumbling;
-					auto creatureState=CreatureState(mode, movement, facing);
-					import animations;
-					auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState,curObj.creatureStats(0),scene.renderSide);
-					obj.setCreatureState(state);
-					obj.updateCreaturePosition(state);
-					auto id=state.addObject(obj);
-					scene.focusCamera(id);
-					auto spellbook=getDefaultSpellbook!B(options.god);
-					state.addWizard(makeWizard(id,options.level,options.souls,spellbook,state));
-				}
-			})(state.current,backend.scene,&flag,options);
-			state.commit();
+		if(args[i].endsWith(".scp")){
+			if(!wadManager) wadManager=new WadManager();
+			static string hmap; // TODO: this is a hack
+			static int curMapNum=0;
+			static void handle(string name){
+				if(name.endsWith(".HMAP")) hmap=name;
+			}
+			wadManager.indexWAD!handle(args[i],text("`_map",curMapNum++));
+			if(hmap) loadMap(hmap);
+		}else if(args[i].endsWith(".HMAP")){
+			loadMap(args[i]);
 		}else{
 			auto sac=new SacObject!DagonBackend(args[i],float.nan,anim);
 			auto position=Vector3f(1270.0f, 1270.0f, 0.0f);
