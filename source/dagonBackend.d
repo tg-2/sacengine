@@ -2010,11 +2010,14 @@ final class SacScene: Scene{
 			foreach(_;0..keyDown[KEY_G]){
 				selectSpell("elet");
 			}
-			foreach(_;0..keyDown[KEY_M]){
-				selectSpell("htlm");
+			foreach(_;0..keyDown[KEY_A]){
+				selectSpell("ndrg");
 			}
 		}
 		if((eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK]) && !eventManager.keyPressed[KEY_LSHIFT]){
+			foreach(_;0..keyDown[KEY_LALT]){
+				selectSpell("htlm");
+			}
 			foreach(_;0..keyDown[KEY_C]){
 				selectSpell("ccas");
 			}
@@ -2049,7 +2052,7 @@ final class SacScene: Scene{
 			obj.creatureStats.mana=0.0f;
 		}
 		if(!eventManager.keyPressed[KEY_LSHIFT] && !eventManager.keyPressed[KEY_LCTRL] && !eventManager.keyPressed[KEY_CAPSLOCK]){
-			foreach(_;0..keyDown[KEY_A]) applyToMoving!depleteMana(state.current,camera,mouse.target);
+			//foreach(_;0..keyDown[KEY_A]) applyToMoving!depleteMana(state.current,camera,mouse.target);
 			foreach(_;0..keyDown[KEY_PERIOD]) applyToMoving!kill(state.current,camera,mouse.target);
 			foreach(_;0..keyDown[KEY_J]) applyToMoving!stun(state.current,camera,mouse.target);
 			static void catapultRandomly(B)(ref MovingObject!B object,ObjectState!B state){
