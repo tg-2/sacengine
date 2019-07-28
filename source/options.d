@@ -23,7 +23,7 @@ struct Options{
 	// just for testing:
 	bool enableReadFromWads=true;
 	int replicateCreatures=1;
-	string wizard="cwe2";
+	string wizard="";
 	God god;
 	int level=9;
 	int souls=12;

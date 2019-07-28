@@ -431,7 +431,7 @@ CreatureData firefist={
 
 CreatureData flameminion={
 	tag: "fplk",
-	name: "Earthfling",
+	name: "Flame Minion",
 };
 
 CreatureData flummox={
@@ -846,6 +846,18 @@ Lswitch: switch(tag){
 			return null;
 	}
 }
+char[4] tagFromCreatureName(string name){
+Lswitch: switch(name){
+		static foreach(dataName;__traits(allMembers, nttData)){
+			static if(is(typeof(mixin(`nttData.`~dataName))==CreatureData)&&mixin(`nttData.`~dataName).name!="Faestus"){
+				static if(mixin(`nttData.`~dataName).tag!=(char[4]).init)
+				case mixin(`nttData.`~dataName).name, toLower(mixin(`nttData.`~dataName).name):
+					return mixin(`nttData.`~dataName).tag;
+			}
+		}
+		default: return (char[4]).init;
+	}
+}
 
 enum SpellTag:char[4]{
 	// neutral creatures:
@@ -979,6 +991,23 @@ enum SpellTag:char[4]{
 	shrine="pcas",
 }
 
+enum WizardTag:char[4]{
+	abraxus="0ewc",
+	acheron="1dwc",
+	ambassadorButa="0fwc",
+	charlotte="2fwc",
+	eldred="2ewc",
+	grakkus="1fwc",
+	hachimen="2lwc",
+	jadugarr="0awc",
+	mithras="1ewc",
+	seerix="1awc",
+	shakti="0lwc",
+	sorcha="2dwc",
+	theRagman="0dwc",
+	yogo="1lwc",
+}
+
 
 import ntts: God;
 private alias ST=SpellTag;
@@ -1020,3 +1049,6 @@ God getSpellGod(char[4] tag){ // TODO: figure out where this is stored
 	}
 
 }
+
+import std.traits:EnumMembers;
+static immutable wizards=[EnumMembers!WizardTag];

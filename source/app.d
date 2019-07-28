@@ -52,8 +52,26 @@ int main(string[] args){
 			options.soundVolume=to!float(opt["--sound-volume=".length..$]);
 		}else if(opt.startsWith("--wizard=")){
 			options.wizard=opt["--wizard=".length..$];
+			import nttData:tagFromCreatureName;
+			auto tag=tagFromCreatureName(options.wizard);
+			if(tag!=(char[4]).init) options.wizard=text(tag);
+			import nttData:wizards;
+			if(!wizards.canFind(options.wizard)){
+				auto reversed=text(options.wizard.retro);
+				if(wizards.canFind(reversed)){
+					options.wizard=reversed;
+				}else{
+					writefln!"error: unknown wizard '%s'"(options.wizard);
+					return 1;
+				}
+			}
 		}else if(opt.startsWith("--god=")){
-			options.god=to!God(opt["--god=".length..$]);
+			try{
+				options.god=to!God(opt["--god=".length..$]);
+			}catch(Exception e){
+				writefln!"error: unknown god '%s'"(opt["--god=".length..$]);
+				return 1;
+			}
 		}else if(opt.startsWith("--level=")){
 			options.level=to!int(opt["--level=".length..$]);
 		}else if(opt.startsWith("--souls=")){
@@ -93,6 +111,11 @@ int main(string[] args){
 		import std.random: uniform;
 		options.god=cast(God)uniform!"[]"(1,5);
 	}
+	if(options.wizard==""){
+		import std.random: uniform;
+		import nttData:wizards;
+		options.wizard=text((cast(char[4])wizards[uniform!"[)"(0,$)]));
+	}
 	enum commit = tryImport!("git/"~tryImport!("git/HEAD","ref: ")["ref: ".length..$],"");
 	writeln("SacEngine ",commit.length?text("commit ",commit):"","build ",__DATE__," ",__TIME__);
 	if(options.enableReadFromWads){
@@ -118,7 +141,7 @@ int main(string[] args){
 				*flag=true;
 				alias B=DagonBackend;
 				auto altar=state.staticObjectById!((obj)=>obj, function StaticObject!B(){ assert(0); })(bldg.componentIds[0]);
-				auto curObj=SacObject!B.getSAXS!Wizard(options.wizard.retro.to!string[0..4]);
+				auto curObj=SacObject!B.getSAXS!Wizard(options.wizard[0..4]);
 				import std.math: PI, atan2;
 				int closestManafount=0;
 				Vector3f manafountPosition;
