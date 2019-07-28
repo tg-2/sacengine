@@ -2429,7 +2429,7 @@ class MyApplication: SceneApplication{
 	SacScene scene;
 	this(Options options){
 		super(options.width,options.height,
-		      false, "SacEngine", []);
+		      options.enableFullscreen, "SacEngine", []);
 		if(options.width==0||options.height==0){
 			options.width=width;
 			options.height=height;

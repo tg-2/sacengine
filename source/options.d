@@ -2,6 +2,7 @@ import ntts: God;
 struct Options{
 	// graphics options
 	int width,height;
+	bool enableFullscreen=false;
 	float scale=1.0f;
 	bool scaleToFit=false;
 	float aspectDistortion=1.2f;
