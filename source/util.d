@@ -287,3 +287,7 @@ template tryImport(string filename,string alt=""){
 	static if(__traits(compiles,import(filename))) enum tryImport = import(filename)[0..$-1];
 	else enum tryImport = alt;
 }
+
+import std.string,std.path,std.algorithm,std.range;
+string fixPath(string path){ static if(dirSeparator=="/") return path; else return path.replace("/",dirSeparator); }
+string[] fixPaths(string[] paths){ static if(dirSeparator=="/") return paths; else return paths.map!fixPath.array; }

@@ -17,7 +17,8 @@ class WadManager{
 		import std.file:dirEntries,SpanMode;
 		foreach(string wad;dirEntries(dataDir,"*.wad",SpanMode.depth)){
 			enforce(wad.startsWith(dataDir)&&wad.endsWith(".wad"));
-			indexWAD(wad,buildPath("extracted",text(asRelativePath(text("/",wad[0..$-".wad".length]),text("/",dataDir)))));
+			auto directory=buildPath("extracted",relativePath(absolutePath(wad[0..$-".wad".length]),absolutePath(dataDir)));
+			indexWAD(wad,directory);
 			write(".");
 			stdout.flush();
 		}

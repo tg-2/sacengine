@@ -3,19 +3,20 @@ import std.path, std.stdio, std.algorithm, std.range, std.string, std.exception;
 import bldg, spells, sset;
 import util;
 import dlib.math.vector;
+
 immutable string[] bldgFolders=["extracted/joby/joby.WAD!/ethr.FLDR",
                                 "extracted/joby/joby.WAD!/prsc.FLDR",
                                 "extracted/pyromod/PMOD.WAD!/bild.FLDR",
                                 "extracted/jamesmod/JMOD.WAD!/bild.FLDR",
                                 "extracted/stratmod/SMOD.WAD!/bild.FLDR",
-                                "extracted/joby/joby.WAD!/ch_a.FLDR",];
+                                "extracted/joby/joby.WAD!/ch_a.FLDR"].fixPaths;
 
 immutable string[] bldgModlFolders=["extracted/joby/joby.WAD!/ethr.FLDR",
                                     "extracted/joby/joby.WAD!/prsc.FLDR",
                                     "extracted/pyromod/PMOD.WAD!/modl.FLDR",
                                     "extracted/jamesmod/JMOD.WAD!/modl.FLDR",
                                     "extracted/stratmod/SMOD.WAD!/modl.FLDR",
-                                    "extracted/joby/joby.WAD!/ch_a.FLDR"];
+                                    "extracted/joby/joby.WAD!/ch_a.FLDR"].fixPaths;
 
 immutable char[4][] manafountTags=["nfcp","tnfj","nfac","nofp","fmts"];
 immutable char[4][] manalithTags=["amac","namj","anam","amyp","mats"];
@@ -68,9 +69,10 @@ immutable(typeof(load("")))[char[4]] makeByTag(alias load)(bool readFromWads,con
 	foreach(folder;folders){
 		if(readFromWads){
 			enforce(!!wadManager);
-			foreach(file;wadManager.byExt.get(extension,[]))
+			foreach(file;wadManager.byExt.get(extension,[])){
 				if(file.startsWith(folder))
 					handle(file);
+			}
 		}else{
 			import std.file;
 			foreach(file;dirEntries(folder,"*."~cast(immutable)extension[],SpanMode.depth))
@@ -97,21 +99,21 @@ immutable landFolders=["extracted/ethr/ethr.WAD!/ethr.LAND",
                        "extracted/pyro_a/PY_A.WAD!/PY_A.LAND",
                        "extracted/james_a/JA_A.WAD!/JA_A.LAND",
                        "extracted/strato_a/ST_A.WAD!/ST_A.LAND",
-                       "extracted/char/char.WAD!/char.LAND"];
+                       "extracted/char/char.WAD!/char.LAND"].fixPaths;
 
 immutable godThemes=["data/music/God Realm.mp3",
                      "data/music/persephone_normal.mp3",
                      "data/music/pyro_normal.mp3",
                      "data/music/james_normal.mp3",
                      "data/music/stratos_normal.mp3",
-                     "data/music/charnel_normal.mp3"];
+                     "data/music/charnel_normal.mp3"].fixPaths;
 
 string[char[4]] makeWidgModlByTag(bool readFromWads){
 	return makeFileIndex(readFromWads,landFolders,"WIDG");
 }
 string[char[4]] widgModls;
 
-immutable string[] spellsFolders=["extracted/spells"];
+immutable string[] spellsFolders=["extracted/spells"].fixPaths;
 
 immutable char[4][] peasantTags=["zepa","zepd","zepe","zepf","saep"];
 
@@ -195,7 +197,7 @@ immutable string[] saxsModlFolders=["extracted/saxs/mrtd.WAD!",
                                     "extracted/saxs_r10/sr10.WAD!",
                                     "extracted/saxs_r11/sr11.WAD!",
                                     "extracted/saxshero/hero.WAD!",
-                                    "extracted/saxs_wiz/sxwz.WAD!"];
+                                    "extracted/saxs_wiz/sxwz.WAD!"].fixPaths;
 
 string[char[4]] makeSaxsModlByTag(bool readFromWads){
 	return makeFileIndex(readFromWads,saxsModlFolders,"SXMD");
@@ -221,20 +223,20 @@ string getSaxsAnim(string saxsModlFile, char[4] tag){
 	return r;
 }
 
-immutable string[] iconFolders=["extracted/main/MAIN.WAD!/icon.FLDR"];
+immutable string[] iconFolders=["extracted/main/MAIN.WAD!/icon.FLDR"].fixPaths;
 string[char[4]] icons;
 string[char[4]] makeIconByTag(bool readFromWads){
 	 // some icons seem to be replicated, e.g. rded.ICON
 	return makeFileIndex(readFromWads,iconFolders,"ICON",false);
 }
 
-immutable string[] ssetFolders=["extracted/sounds/SFX_.WAD!"];
+immutable string[] ssetFolders=["extracted/sounds/SFX_.WAD!"].fixPaths;
 immutable(Sset)[char[4]] ssets;
 immutable(Sset)[char[4]] makeSsetByTag(bool readFromWads){
 	return makeByTag!loadSSET(readFromWads,ssetFolders,"SSET");
 }
 immutable string[] sampFolders=["extracted/sounds/SFX_.WAD!",
-                                "extracted/local/sfx_english/SFXe.WAD!"];
+                                "extracted/local/sfx_english/SFXe.WAD!"].fixPaths;
 immutable char[4][] commandAppliedSoundTags=["1lcI","2lcI"];
 
 string[char[4]] samps;

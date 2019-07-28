@@ -2430,6 +2430,10 @@ class MyApplication: SceneApplication{
 	this(Options options){
 		super(options.width,options.height,
 		      false, "SacEngine", []);
+		if(options.width==0||options.height==0){
+			options.width=width;
+			options.height=height;
+		}
 		scene = New!SacScene(sceneManager, options);
 		sceneManager.addScene(scene, "Sacrifice");
 		scene.load();
