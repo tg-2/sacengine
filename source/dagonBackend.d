@@ -2111,7 +2111,7 @@ final class SacScene: Scene{
 			foreach(_;0..keyDown[KEY_U]) showHitboxes=true;
 			foreach(_;0..keyDown[KEY_I]) showHitboxes=false;
 
-			foreach(_;0..keyDown[KEY_H]) state.commit();
+			//foreach(_;0..keyDown[KEY_H]) state.commit();
 			foreach(_;0..keyDown[KEY_B]) state.rollback();
 
 			foreach(_;0..keyDown[KEY_COMMA]) if(audio) audio.switchTheme(cast(Theme)((audio.currentTheme+1)%Theme.max));
