@@ -12,9 +12,16 @@ int main(string[] args){
 	scope(exit) unloadAudio();
 	import core.memory;
 	GC.disable(); // TODO: figure out where GC memory is used incorrectly
-	if(args.length==1) args~="extracted/jamesmod/JMOD.WAD!/modl.FLDR/jman.MRMC/jman.MRMM".fixPath;
+	if(args.length==0) args~="";
 	auto opts=args[1..$].filter!(x=>x.startsWith("--")).array;
 	args=chain(args[0..1],args[1..$].filter!(x=>!x.startsWith("--"))).array;
+	if(args.length==1){
+		import std.file;
+		auto candidates=dirEntries("maps","*.scp",SpanMode.depth).array;
+		import std.random:uniform;
+		args~=candidates[uniform!"[)"(0,$)];
+		//args~="extracted/jamesmod/JMOD.WAD!/modl.FLDR/jman.MRMC/jman.MRMM".fixPath;
+	}
 	Options options={
 		//shadowMapResolution: 8192,
 		//shadowMapResolution: 4096,
