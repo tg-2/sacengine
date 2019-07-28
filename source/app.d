@@ -12,7 +12,7 @@ int main(string[] args){
 	scope(exit) unloadAudio();
 	import core.memory;
 	GC.disable(); // TODO: figure out where GC memory is used incorrectly
-	if(args.length==1) args~="extracted/jamesmod/JMOD.WAD!/modl.FLDR/jman.MRMC/jman.MRMM";
+	if(args.length==1) args~="extracted/jamesmod/JMOD.WAD!/modl.FLDR/jman.MRMC/jman.MRMM".fixPath;
 	auto opts=args[1..$].filter!(x=>x.startsWith("--")).array;
 	args=chain(args[0..1],args[1..$].filter!(x=>!x.startsWith("--"))).array;
 	Options options={
