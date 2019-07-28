@@ -2144,7 +2144,7 @@ final class SacScene: Scene{
 			if(keyDown[KEY_L]){
 				fpview.active=true;
 				mouse.visible=false;
-				fpview.mouseFactor=2.0f;
+				fpview.mouseFactor=0.25f;
 			}
 		}
 	}
