@@ -94,7 +94,7 @@ int main(string[] args){
 		options.god=cast(God)uniform!"[]"(1,5);
 	}
 	enum commit = tryImport!("git/"~tryImport!("git/HEAD","ref: ")["ref: ".length..$],"");
-	writeln("SacEngine ",commit.length?text("version ",commit):"");
+	writeln("SacEngine ",commit.length?text("commit ",commit):"","build ",__DATE__," ",__TIME__);
 	if(options.enableReadFromWads){
 		wadManager=new WadManager;
 		wadManager.indexWADs("data");
