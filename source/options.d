@@ -4,7 +4,7 @@ struct Options{
 	int width,height;
 	bool enableFullscreen=false;
 	float scale=1.0f;
-	bool scaleToFit=false;
+	bool scaleToFit=true;
 	float aspectDistortion=1.2f;
 	int shadowMapResolution=1024;
 	bool enableWidgets=true;

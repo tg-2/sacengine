@@ -13,13 +13,17 @@ int main(string[] args){
 	import core.memory;
 	GC.disable(); // TODO: figure out where GC memory is used incorrectly
 	if(args.length==0) args~="";
+	import std.file:exists;
+	if(exists("settings.txt")) args=chain(args[0..1],File("settings.txt").byLineCopy.map!strip,args[1..$]).array;
 	auto opts=args[1..$].filter!(x=>x.startsWith("--")).array;
 	args=chain(args[0..1],args[1..$].filter!(x=>!x.startsWith("--"))).array;
 	if(args.length==1){
 		import std.file;
 		auto candidates=dirEntries("maps","*.scp",SpanMode.depth).array;
 		import std.random:uniform;
-		args~=candidates[uniform!"[)"(0,$)];
+		auto map=candidates[uniform!"[)"(0,$)];
+		stderr.writefln!"no map specified, selected '%s'"(map);
+		args~=map;
 		//args~="extracted/jamesmod/JMOD.WAD!/modl.FLDR/jman.MRMC/jman.MRMM".fixPath;
 	}
 	Options options={
@@ -68,7 +72,7 @@ int main(string[] args){
 				if(wizards.canFind(reversed)){
 					options.wizard=reversed;
 				}else{
-					writefln!"error: unknown wizard '%s'"(options.wizard);
+					stderr.writefln!"error: unknown wizard '%s'"(options.wizard);
 					return 1;
 				}
 			}
@@ -76,7 +80,7 @@ int main(string[] args){
 			try{
 				options.god=to!God(opt["--god=".length..$]);
 			}catch(Exception e){
-				writefln!"error: unknown god '%s'"(opt["--god=".length..$]);
+				stderr.writefln!"error: unknown god '%s'"(opt["--god=".length..$]);
 				return 1;
 			}
 		}else if(opt.startsWith("--level=")){
