@@ -98,7 +98,8 @@ struct MP3{
 		handle=mpg123_new(null,&err);
 		mpg123_format_none(handle);
 		mpg123_format(handle,44100,2,mpg123_enc_enum.MPG123_ENC_SIGNED_16);
-		mpg123_open(handle,filename.ptr);
+		import std.string:toStringz;
+		mpg123_open(handle,filename.toStringz);
 		initialize();
 	}
 	private bool read(ALuint buffer){
