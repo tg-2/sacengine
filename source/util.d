@@ -39,6 +39,7 @@ bool fileExists(string filename){
 	return exists(filename);
 }
 ubyte[] readFile(string filename){
+	filename=fixPath(filename);
 	if(wadManager&&filename in wadManager.files)
 		return wadManager.files[filename];
 	ubyte[] data;
