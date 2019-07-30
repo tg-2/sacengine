@@ -2293,9 +2293,11 @@ void catapult(B)(ref MovingObject!B object, Vector3f velocity, ObjectState!B sta
 	if(object.creatureState.mode!=CreatureMode.dying)
 		object.creatureState.mode=CreatureMode.stunned;
 	// TODO: in original engine, stunned creatures don't switch to the tumbling animation
-	object.creatureState.movement=CreatureMovement.tumbling;
 	object.creatureState.fallingVelocity=velocity;
-	object.setCreatureState(state);
+	if(object.creatureState.movement!=CreatureMovement.tumbling){
+		object.creatureState.movement=CreatureMovement.tumbling;
+		object.setCreatureState(state);
+	}
 }
 
 void immediateRevive(B)(ref MovingObject!B object,ObjectState!B state){
