@@ -558,7 +558,7 @@ final class SacScene: Scene{
 	void renderCreatureStats(RenderingContext* rc){
 		bool updateRectangleSelect=false;
 		if(renderSide!=-1){
-			updateRectangleSelect=!selectionUpdated&&mouse.status==Mouse.Status.rectangleSelect;
+			updateRectangleSelect=!selectionUpdated&&mouse.status==Mouse.Status.rectangleSelect&&!mouse.dragging;
 			if(updateRectangleSelect){
 				rectangleSelection=CreatureGroup.init;
 				if(mouse.additiveSelect) renderedSelection=state.current.getSelection(renderSide);
@@ -804,13 +804,13 @@ final class SacScene: Scene{
 		}
 	}
 	bool isInRectangleSelect(Vector2f position){
-		if(mouse.status!=Mouse.Status.rectangleSelect) return false;
+		if(mouse.status!=Mouse.Status.rectangleSelect||mouse.dragging) return false;
 		auto x1=min(mouse.leftButtonX,mouse.x), x2=max(mouse.leftButtonX,mouse.x);
 		auto y1=min(mouse.leftButtonY,mouse.y), y2=max(mouse.leftButtonY,mouse.y);
 		return x1<=position.x&&position.x<=x2 && y1<=position.y&&position.y<=y2;
 	}
 	void renderRectangleSelectFrame(RenderingContext* rc){
-		if(mouse.status!=Mouse.Status.rectangleSelect) return;
+		if(mouse.status!=Mouse.Status.rectangleSelect||mouse.dragging) return;
 		auto x1=min(mouse.leftButtonX,mouse.x), x2=max(mouse.leftButtonX,mouse.x);
 		auto y1=min(mouse.leftButtonY,mouse.y), y2=max(mouse.leftButtonY,mouse.y);
 		auto color=Color4f(1.0f,1.0f,1.0f);
@@ -849,9 +849,9 @@ final class SacScene: Scene{
 		mouse.y=max(0,min(mouse.y,height-1));
 		auto size=options.cursorSize;
 		auto position=Vector3f(mouse.x-0.5f*size,mouse.y,0);
-		if(mouse.status==Mouse.Status.rectangleSelect) position.y-=1.0f;
+		if(mouse.status==Mouse.Status.rectangleSelect&&!mouse.dragging) position.y-=1.0f;
 		auto scaling=Vector3f(size,size,1.0f);
-		if(mouse.status==Mouse.Status.icon){
+		if(mouse.status==Mouse.Status.icon&&!mouse.dragging){
 			auto iconPosition=position+Vector3f(0.0f,4.0f/32.0f*size,0.0f);
 			if(mouse.icon!=MouseIcon.spell){
 				auto material=sacCursor.iconMaterials[mouse.icon];
@@ -1674,19 +1674,19 @@ final class SacScene: Scene{
 			fpview.camera.pitch += pitch_m;
 			fpview.camera.turn += turn_m;
 		}
-		if(mouse.status.among(Mouse.Status.standard,Mouse.Status.icon)){
+		if(mouse.status.among(Mouse.Status.standard,Mouse.Status.icon)&&!mouse.dragging){
 			if(isOnSpellbook(Vector2f(mouse.x,mouse.y))) mouse.loc=Mouse.Location.spellbook;
 			else if(isOnSelectionRoster(Vector2f(mouse.x,mouse.y))) mouse.loc=Mouse.Location.selectionRoster;
 			else if(isOnMinimap(Vector2f(mouse.x,mouse.y))) mouse.loc=Mouse.Location.minimap;
 			else mouse.loc=Mouse.Location.scene;
 		}
-		if(mouse.visible && mouse.status.among(Mouse.Status.standard,Mouse.Status.dragging)){
+		if(mouse.visible && mouse.status.among(Mouse.Status.standard,Mouse.Status.icon)){
 			if(((eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK])
 			    && eventManager.mouseButtonPressed[MB_LEFT])||
 			   eventManager.mouseButtonPressed[MB_MIDDLE]
 			){
 				if(eventManager.mouseRelX||eventManager.mouseRelY)
-					mouse.status=Mouse.Status.dragging;
+					mouse.dragging=true;
 				if(!mouse.onMinimap){
 					fpview.active=true;
 					fpview.mouseFactor=-0.25f;
@@ -1698,7 +1698,7 @@ final class SacScene: Scene{
 				mouse.x=max(0,min(mouse.x,width-1));
 				mouse.y=max(0,min(mouse.y,height-1));
 			}else{
-				mouse.status=Mouse.Status.standard;
+				mouse.dragging=false;
 				if(!mouse.onMinimap){
 					if(fpview.active){
 						fpview.active=false;
@@ -1715,7 +1715,7 @@ final class SacScene: Scene{
 				camera.targetZoom-=0.04f*eventManager.mouseWheelY;
 				camera.targetZoom=max(0.0f,min(camera.targetZoom,1.0f));
 			}else{
-				camera.minimapZoom*=exp(log(1.3)*(-0.4f*eventManager.mouseWheelY+0.04f*(mouse.status==Mouse.Status.dragging?eventManager.mouseRelY:0)/hudScaling));
+				camera.minimapZoom*=exp(log(1.3)*(-0.4f*eventManager.mouseWheelY+0.04f*(mouse.dragging?eventManager.mouseRelY:0)/hudScaling));
 				camera.minimapZoom=max(0.5f,min(camera.minimapZoom,15.0f));
 			}
 		}
@@ -1786,10 +1786,10 @@ final class SacScene: Scene{
 			state.setSelection(renderSide,camera.target,renderedSelection,loc);
 			selectionUpdated=true;
 		}
-		if(mouse.status.among(Mouse.Status.standard,Mouse.Status.rectangleSelect)){
+		if(mouse.status.among(Mouse.Status.standard,Mouse.Status.rectangleSelect)&&!mouse.dragging){
 			if(eventManager.mouseButtonPressed[MB_LEFT]){
 				enum rectangleThreshold=3.0f;
-				if(mouse.status==Mouse.Status.standard){
+				if(mouse.status==Mouse.Status.standard&&!mouse.dragging){
 					if((abs(mouse.x-mouse.leftButtonX)>=rectangleThreshold||abs(mouse.y-mouse.leftButtonY)>=rectangleThreshold)&&
 					   mouse.loc.among(Mouse.Location.scene,Mouse.Location.minimap))
 						mouse.status=Mouse.Status.rectangleSelect;
@@ -1803,7 +1803,7 @@ final class SacScene: Scene{
 		if(oldMouseStatus==mouse.status){
 			foreach(_;0..mouseButtonUp[MB_LEFT]){
 				bool done=true;
-				if(mouse.status.among(Mouse.Status.standard,Mouse.Status.icon)){
+				if(mouse.status.among(Mouse.Status.standard,Mouse.Status.icon)&&!mouse.dragging){
 					if(mouse.target.type==TargetType.creatureTab){
 						switchSpellbookTab(SpellType.creature);
 					}else if(mouse.target.type==TargetType.spellTab){
@@ -1814,7 +1814,7 @@ final class SacScene: Scene{
 						selectSpell(mouse.targetSpell);
 					}else done=false;
 				}else done=false;
-				if(!done) final switch(mouse.status){
+				if(!done&&!mouse.dragging) final switch(mouse.status){
 					case Mouse.Status.standard:
 						if(mouse.target.type==TargetType.creature&&canSelect(renderSide,mouse.target.id,state.current)){
 							auto type=mouse.additiveSelect?CommandType.toggleSelection:CommandType.select;
@@ -1839,9 +1839,6 @@ final class SacScene: Scene{
 								lastSelectedY=mouse.y;
 							}
 						}
-						break;
-					case Mouse.Status.dragging:
-						// do nothing
 						break;
 					case Mouse.Status.rectangleSelect:
 						finishRectangleSelect();
@@ -1879,7 +1876,7 @@ final class SacScene: Scene{
 				}
 			}
 			foreach(_;0..mouseButtonUp[MB_RIGHT]){
-				final switch(mouse.status){
+				if(!mouse.dragging) final switch(mouse.status){
 					case Mouse.Status.standard:
 						switch(mouse.target.type) with(TargetType){
 							case terrain: state.addCommand(Command!DagonBackend(CommandType.move,renderSide,camera.target,0,mouse.target,cameraFacing)); break;
@@ -1911,9 +1908,6 @@ final class SacScene: Scene{
 								break;
 							default: break;
 						}
-						break;
-					case Mouse.Status.dragging:
-						// do nothing
 						break;
 					case Mouse.Status.rectangleSelect:
 						// do nothing
@@ -1971,7 +1965,7 @@ final class SacScene: Scene{
 				state.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.skirmish));
 			}
 			foreach(_;0..keyDown[KEY_R]){
-				if(mouse.status==Mouse.Status.standard){
+				if(mouse.status==Mouse.Status.standard&&!mouse.dragging){
 					mouse.status=Mouse.Status.icon;
 					mouse.icon=MouseIcon.attack;
 				}
@@ -1982,7 +1976,7 @@ final class SacScene: Scene{
 				state.addCommand(Command!DagonBackend(CommandType.move,renderSide,camera.target,0,target,cameraFacing));
 			}
 			foreach(_;0..keyDown[KEY_A]){
-				if(mouse.status==Mouse.Status.standard){
+				if(mouse.status==Mouse.Status.standard&&!mouse.dragging){
 					mouse.status=Mouse.Status.icon;
 					mouse.icon=MouseIcon.guard;
 				}
@@ -2174,7 +2168,7 @@ final class SacScene: Scene{
 			}
 			if(camera.target){
 				auto targetFacing=state.current.movingObjectById!((obj)=>obj.creatureState.facing, function float(){ assert(0); })(camera.target);
-				updateCameraPosition(dt,targetFacing!=camera.lastTargetFacing && mouse.status!=Mouse.Status.dragging);
+				updateCameraPosition(dt,targetFacing!=camera.lastTargetFacing && !mouse.dragging);
 				camera.lastTargetFacing=targetFacing;
 			}
 			updateHUD(dt);
@@ -2247,10 +2241,10 @@ final class SacScene: Scene{
 		bool visible,showFrame;
 		enum Status{
 			standard,
-			dragging,
 			rectangleSelect,
 			icon,
 		}
+		bool dragging;
 		Status status;
 		MouseIcon icon;
 		SacSpell!DagonBackend spell;
@@ -2273,7 +2267,7 @@ final class SacScene: Scene{
 	}
 	Mouse mouse;
 	bool mouseTargetValid(Target target){
-		if(mouse.status!=Mouse.Status.icon) return true;
+		if(mouse.status!=Mouse.Status.icon||mouse.dragging) return true;
 		import spells:SpelFlags;
 		enum orderSpelFlags=SpelFlags.targetWizards|SpelFlags.targetCreatures|SpelFlags.targetCorpses|SpelFlags.targetStructures|SpelFlags.targetGround;
 		final switch(mouse.icon){
@@ -2362,9 +2356,9 @@ final class SacScene: Scene{
 		with(Cursor)
 			mouse.showFrame=targetValid && target.location==TargetLocation.scene &&
 				!(summary&TargetFlags.corpse) &&
-				((mouse.status.among(Mouse.Status.standard,Mouse.Status.rectangleSelect) &&
+				((mouse.status.among(Mouse.Status.standard,Mouse.Status.rectangleSelect)&&!mouse.dragging &&
 				  summary&(TargetFlags.soul|TargetFlags.creature|TargetFlags.wizard)) ||
-				 (mouse.status==Mouse.Status.icon&&!!target.type.among(TargetType.creature,TargetType.building,TargetType.soul)));
+				 (mouse.status==Mouse.Status.icon&&!mouse.dragging&&!!target.type.among(TargetType.creature,TargetType.building,TargetType.soul)));
 
 	}
 	void animateTarget(Target target){
@@ -2379,12 +2373,10 @@ final class SacScene: Scene{
 	void updateCursor(double dt){
 		if(!state) return;
 		updateMouseTarget();
-		final switch(mouse.status){
+		if(mouse.dragging) mouse.cursor=Cursor.drag;
+		else final switch(mouse.status){
 			case Mouse.Status.standard:
 				mouse.cursor=mouse.target.cursor(renderSide,false,state.current);
-				break;
-			case Mouse.Status.dragging:
-				mouse.cursor=Cursor.drag;
 				break;
 			case Mouse.Status.rectangleSelect:
 				mouse.cursor=Cursor.rectangleSelect;
