@@ -1920,7 +1920,7 @@ final class SacScene: Scene{
 				}
 			}
 		}
-		foreach(key;KEY_1..KEY_0){
+		foreach(key;KEY_1..KEY_0+1){
 			foreach(_;0..keyDown[key]){
 				bool lshift=eventManager.keyPressed[KEY_LSHIFT];
 				bool lctrl=eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK];

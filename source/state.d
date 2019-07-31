@@ -3202,6 +3202,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 				object.creatureState.movement=CreatureMovement.tumbling;
 				object.creatureState.fallingVelocity=Vector3f(0.0f,0.0f,0.0f);
 				object.startIdling(state);
+				state.newCreatureAddToSelection(object.side,object.id);
 			}
 			if(reviveSequence.canFind(object.animationState)){
 				object.frame+=1;
@@ -3874,7 +3875,7 @@ bool updateCreatureCasting(B)(ref CreatureCasting!B creatureCast,ObjectState!B s
 				wizard.souls-=spell.soulCost;
 				state.movingObjectById!((ref obj,state){
 				obj.creatureState.mode=CreatureMode.spawning;
-				state.addToSelection(obj.side,obj.id);
+				state.newCreatureAddToSelection(obj.side,obj.id);
 			},function(){})(creature,state); return false;
 		}
 	}
@@ -5092,6 +5093,9 @@ final class ObjectState(B){ // (update logic)
 	void addToGroup(int side,int groupId){
 		sid.addToGroup(side,groupId);
 	}
+	void addToGroup(int side,int groupId,int creatureId){
+		sid.addToGroup(side,groupId,creatureId);
+	}
 	bool selectGroup(int side,int groupId){
 		return sid.selectGroup(side,groupId);
 	}
@@ -5121,6 +5125,10 @@ final class ObjectState(B){ // (update logic)
 			}
 		}
 		return result;
+	}
+	void newCreatureAddToSelection(int side,int id){
+		addToSelection(side,id);
+		addToGroup(side,numCreatureGroups-1,id);
 	}
 }
 auto each(alias f,B,T...)(ObjectState!B objectState,T args){
@@ -5348,9 +5356,14 @@ struct SideData(B){
 		assert(0<=groupId&&groupId<numCreatureGroups);
 	}do{
 		groups[groupId]=selection;
+		foreach(id;selection.creatureIds) groups[$-1].remove(id);
 	}
 	void addToGroup(int groupId){
 		groups[groupId].addBack(selection.creatureIds[]);
+		foreach(id;selection.creatureIds) groups[$-1].remove(id);
+	}
+	void addToGroup(int groupId,int creatureId){
+		groups[groupId].addBack(creatureId);
 	}
 	bool selectGroup(int groupId){
 		if(groups[groupId].creatureIds[0]==0) return false;
@@ -5412,6 +5425,11 @@ struct SideManager(B){
 		assert(0<=side&&side<sides.length&&0<=groupId&&groupId<numCreatureGroups);
 	}do{
 		sides[side].addToGroup(groupId);
+	}
+	void addToGroup(int side,int groupId,int creatureId)in{
+		assert(0<=side&&side<sides.length&&0<=groupId&&groupId<numCreatureGroups);
+	}do{
+		sides[side].addToGroup(groupId,creatureId);
 	}
 	bool selectGroup(int side,int groupId)in{
 		assert(0<=side&&side<sides.length&&0<=groupId&&groupId<numCreatureGroups);
