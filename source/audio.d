@@ -40,19 +40,21 @@ private{
 }
 
 struct Buffer{
-	ALuint id;
-	void release(){ if(id){ alDeleteBuffers(1,&id); id=0; } } // TODO: do this better?
+	ALuint id=-1;
+	void release(){ if(alIsBuffer(id)){ alDeleteBuffers(1,&id); id=-1; } } // TODO: do this better?
 }
 
 Buffer makeBuffer(Samp samp){
 	Buffer buffer;
+	alGetError();
 	alGenBuffers(1,&buffer.id);
-	alBufferData(buffer.id,AL_FORMAT_MONO16,samp.data.ptr,cast(int)samp.data.length,samp.header.sampleRate);
+	if(alGetError()==AL_NO_ERROR)
+		alBufferData(buffer.id,AL_FORMAT_MONO16,samp.data.ptr,cast(int)samp.data.length,samp.header.sampleRate);
 	return buffer;
 }
 
 struct Source{
-	ALuint id;
+	ALuint id=-1;
 	@property ALenum state(){
 		ALenum result;
 		alGetSourcei(id,AL_SOURCE_STATE,&result);
@@ -70,18 +72,20 @@ struct Source{
 	void play(){ alSourcePlay(id); }
 	void pause(){ alSourcePause(id); }
 	void stop(){ alSourceStop(id); }
-	void release(){ if(id){ alDeleteSources(1,&id); id=0; } } // TODO: do this better?
+	void release(){ if(alIsSource(id)){ alDeleteSources(1,&id); id=-1; } } // TODO: do this better?
 }
 
 Source makeSource(){
 	Source source;
+	alGetError();
 	alGenSources(1,&source.id);
-	enforce(source.id!=0);
-	source.pitch=1.0f;
-	source.gain=1.0f;
-	source.position=Vector3f(0.0f,0.0f,0.0f);
-	source.velocity=Vector3f(0.0f,0.0f,0.0f);
-	source.looping=false;
+	if(alGetError()==AL_NO_ERROR){
+		source.pitch=1.0f;
+		source.gain=1.0f;
+		source.position=Vector3f(0.0f,0.0f,0.0f);
+		source.velocity=Vector3f(0.0f,0.0f,0.0f);
+		source.looping=false;
+	}
 	return source;
 }
 
