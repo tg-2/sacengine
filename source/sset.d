@@ -3,6 +3,7 @@ import std.exception, std.string;
 
 enum SoundType:char[4]{
 	none="\0\0\0\0",
+	// creature SSETs/melee SSETs
 	rescued="serX",
 	selected="tncX",
 	annoyed="nnaX",
@@ -59,6 +60,73 @@ enum SoundType:char[4]{
 	idleTalk="tagX",
 	cower="wocX",
 	run="nurX",
+
+	// spel.SSET
+	sacrifice="casX",
+	gib="bigX",
+	suckBlood="dulb", // ?
+	spirit="rips",
+	spiritRevive="nips", // ?
+	summon="NMUS",
+	spiritRevive2="jncX", // ?
+	insectFlap="pfiX",
+	slime="xrfX", // ?
+	frog="grfX",
+	bow="wobX",
+	arrow="rraX",
+	abomination="babX",
+	sylphBow="obsX",
+	fireball="lbfX",
+	explodingFireball="xbfX",
+	pyromaniacHit="rypX",
+	laser="salX",
+	oil="lioX",
+	fire="rifX",
+	steam="mtsX",
+	ringOfFire="drfX",
+	ignite="ngiX",
+	onFire="fnoX",
+	bombardment="bhmX",
+	cog="gocX",
+	rainOfFireHit="hrfX",
+	unknown0="temX",
+	freeze="zrfX",
+	lightning="ntlX",
+	breakingIce="eciX",
+	bombardmentHit="thmX",
+	bore="kuqX",
+	boreRepair="rkqX",
+	cow="wocX",
+	explodingRock="pxrX",
+	hover="vohX", // ?
+	land="dnlX", // ?
+	swarm="rwsX",
+	gut="tugX",
+	demon="nmdX",
+	wail="lawX",
+	animate="mnaX", // ?
+	mites="timX",
+	blade="dlbX",
+	thunder="nhtX",
+	wind="dnwA",
+	stratosWind="UtsA", // ?
+	jamesWind="UajA", // ?
+	bird="drbA",
+	persephoneBird="CepA", // ?
+	coyote="yocA",
+	jamesAnimals="NajA", // ?
+	charnelAnimals="NhcA",
+	crows="ercA",
+	crickets="ircA",
+	haunted="uahA",
+	charnelWind="UhcA",
+	howl="wohA",
+	insects="sniA",
+	insects2="ChcA", // ?
+	owl="lwoA",
+	snake="ansA",
+	unknown1="rtsA",
+	vulpture="luvA",
 }
 
 struct SsetEntry{
