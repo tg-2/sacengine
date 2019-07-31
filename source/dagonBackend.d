@@ -200,14 +200,24 @@ final class SacScene: Scene{
 		return SacBlueRing!DagonBackend(texture,mat,frames);
 	}
 	SacBlueRing!DagonBackend blueRing;
+	SacLightning!DagonBackend createLightning(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=createMaterial(shadelessBoneMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=Additive;
+		mat.energy=20.0f;
+		mat.diffuse=texture;
+		auto mesh=typeof(return).createMesh();
+		return SacLightning!DagonBackend(texture,mat,mesh);
+	}
+	SacLightning!DagonBackend lightning;
+	SacCommandCone!DagonBackend sacCommandCone;
 	void createEffects(){
+		sacCommandCone=new SacCommandCone!DagonBackend();
 		sacDebris=new SacObject!DagonBackend("extracted/models/MODL.WAD!/bold.MRMC/bold.MRMM");
 		explosion=createExplosion();
 		blueRing=createBlueRing();
-	}
-	SacCommandCone!DagonBackend sacCommandCone;
-	void createCommandCones(){
-		sacCommandCone=new SacCommandCone!DagonBackend();
+		lightning=createLightning();
 	}
 
 	void rotateSky(Quaternionf rotation){
@@ -483,7 +493,10 @@ final class SacScene: Scene{
 					static if(relative) auto state=scene.state.current;
 					foreach(j;0..objects.length){
 						auto mesh=sacParticle.getMesh(objects.frames[j]); // TODO: do in shader?
-						static if(relative) auto position=objects.positions[j]+state.movingObjectById!((obj)=>obj.position,()=>Vector3f(0.0f,0.0f,0.0f))(objects.baseIds[j]);
+						static if(relative){
+							auto position=objects.rotates[j]?state.movingObjectById!((obj,particlePosition)=>rotate(obj.rotation,particlePosition)+obj.position,()=>Vector3f(0.0f,0.0f,0.0f))(objects.baseIds[j],objects.positions[j])
+								: objects.positions[j]+state.movingObjectById!((obj)=>obj.position,()=>Vector3f(0.0f,0.0f,0.0f))(objects.baseIds[j]);
+						}
 						else auto position=objects.positions[j];
 						material.backend.setSpriteTransformationScaled(position,objects.scales[j]*sacParticle.getScale(objects.lifetimes[j]),rc);
 						material.backend.setAlpha(sacParticle.getAlpha(objects.lifetimes[j]));
@@ -1485,7 +1498,6 @@ final class SacScene: Scene{
 		if(audio&&state) audio.setTileset(state.current.map.tileset);
 		createSouls();
 		createEffects();
-		createCommandCones();
 		initializeHUD();
 		initializeMouse();
 	}
@@ -2609,7 +2621,7 @@ static:
 
 	Material createMaterial(SacParticle!DagonBackend particle){
 		final switch(particle.type) with(ParticleType){
-				case manafount, manalith, manahoar, shrine, firy, explosion, explosion2, speedUp, heal, relativeHeal:
+				case manafount, manalith, manahoar, shrine, firy, explosion, explosion2, speedUp, heal, relativeHeal, lightningCasting, spark:
 				auto mat=scene.createMaterial(scene.shadelessMaterialBackend);
 				mat.depthWrite=false;
 				mat.blending=Additive;

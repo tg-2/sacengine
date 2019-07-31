@@ -697,16 +697,20 @@ void deactivate(B)(ref Building!B building,ObjectState!B state){
 
 struct Particle(B,bool relative=false){ // TODO: some particles don't need some fields. Optimize?
 	SacParticle!B sacParticle;
-	static if(relative) int baseId;
+	static if(relative){
+		int baseId;
+		bool rotate;
+	}
 	Vector3f position;
 	Vector3f velocity;
 	float scale;
 	int lifetime;
 	int frame;
 	static if(relative){
-		this(SacParticle!B sacParticle,int baseId,Vector3f position,Vector3f velocity,float scale,int lifetime,int frame){
+		this(SacParticle!B sacParticle,int baseId,bool rotate,Vector3f position,Vector3f velocity,float scale,int lifetime,int frame){
 			this.sacParticle=sacParticle;
 			this.baseId=baseId;
+			this.rotate=rotate;
 			this.position=position;
 			this.velocity=velocity;
 			this.scale=scale;
@@ -1174,7 +1178,10 @@ auto each(alias f,B,T...)(ref WizardInfos!B wizards,T args){
 
 struct Particles(B,bool relative){
 	SacParticle!B sacParticle;
-	static if(relative) Array!int baseIds;
+	static if(relative){
+		Array!int baseIds;
+		Array!bool rotates; // TODO: store as a bit in baseId?
+	}
 	Array!Vector3f positions;
 	Array!Vector3f velocities;
 	Array!float scales;
@@ -1182,7 +1189,10 @@ struct Particles(B,bool relative){
 	Array!int frames;
 	@property int length(){ assert(positions.length<=int.max); return cast(int)positions.length; }
 	@property void length(int l){
-		static if(relative) baseIds.length=l;
+		static if(relative){
+			baseIds.length=l;
+			rotates.length=l;
+		}
 		positions.length=l;
 		velocities.length=l;
 		scales.length=l;
@@ -1190,7 +1200,10 @@ struct Particles(B,bool relative){
 		frames.length=l;
 	}
 	void reserve(int reserveSize){
-		static if(relative) baseIds.reserve(reserveSize);
+		static if(relative){
+			baseIds.reserve(reserveSize);
+			rotates.reserve(reserveSize);
+		}
 		positions.reserve(reserveSize);
 		velocities.reserve(reserveSize);
 		scales.reserve(reserveSize);
@@ -1200,7 +1213,10 @@ struct Particles(B,bool relative){
 	void addParticle(Particle!(B,relative) particle){
 		assert(sacParticle is null && particle.sacParticle.relative==relative || sacParticle is particle.sacParticle);
 		sacParticle=particle.sacParticle; // TODO: get rid of this?
-		static if(relative) baseIds~=particle.baseId;
+		static if(relative){
+			baseIds~=particle.baseId;
+			rotates~=particle.rotate;
+		}
 		positions~=particle.position;
 		velocities~=particle.velocity;
 		scales~=particle.scale;
@@ -1214,7 +1230,10 @@ struct Particles(B,bool relative){
 	void opAssign(ref Particles!(B,relative) rhs){
 		assert(sacParticle is null || sacParticle is rhs.sacParticle);
 		sacParticle = rhs.sacParticle;
-		static if(relative) assignArray(baseIds,rhs.baseIds);
+		static if(relative){
+			assignArray(baseIds,rhs.baseIds);
+			assignArray(rotates,rhs.rotates);
+		}
 		assignArray(positions,rhs.positions);
 		assignArray(velocities,rhs.velocities);
 		assignArray(scales,rhs.scales);
@@ -1222,12 +1241,15 @@ struct Particles(B,bool relative){
 		assignArray(frames,rhs.frames);
 	}
 	Particle!(B,relative) opIndex(int i){
-		static if(relative) return Particle!(B,true)(sacParticle,baseIds[i],positions[i],velocities[i],scales[i],lifetimes[i],frames[i]);
+		static if(relative) return Particle!(B,true)(sacParticle,baseIds[i],rotates[i],positions[i],velocities[i],scales[i],lifetimes[i],frames[i]);
 		else return Particle!(B,false)(sacParticle,positions[i],velocities[i],scales[i],lifetimes[i],frames[i]);
 	}
 	void opIndexAssign(Particle!(B,relative) particle,int i){
 		assert(particle.sacParticle is sacParticle);
-		static if(relative) baseIds[i]=particle.baseId;
+		static if(relative){
+			baseIds[i]=particle.baseId;
+			rotates[i]=particle.rotate;
+		}
 		positions[i]=particle.position;
 		velocities[i]=particle.velocity;
 		scales[i]=particle.scale;
@@ -3994,7 +4016,7 @@ bool updateHealCasting(B)(ref HealCasting!B healCast,ObjectState!B state){
 						auto lifetime=sacParticle.numFrames/60.0f;
 						auto velocity=(center-position)/lifetime;
 						auto scale=1.0f;
-						state.addParticle(Particle!(B,true)(sacParticle,obj.id,position,velocity,scale,sacParticle.numFrames,0));
+						state.addParticle(Particle!(B,true)(sacParticle,obj.id,false,position,velocity,scale,sacParticle.numFrames,0));
 					})(creature,sacParticle,state);
 					state.movingObjectById!((obj,sacParticle,state){
 						auto hitbox=obj.relativeHitbox;
@@ -4006,7 +4028,7 @@ bool updateHealCasting(B)(ref HealCasting!B healCast,ObjectState!B state){
 						auto lifetime=sacParticle.numFrames/60.0f;
 						auto velocity=(position-center)/lifetime;
 						auto scale=1.0f;
-						state.addParticle(Particle!(B,true)(sacParticle,obj.id,center,velocity,scale,sacParticle.numFrames,0));
+						state.addParticle(Particle!(B,true)(sacParticle,obj.id,false,center,velocity,scale,sacParticle.numFrames,0));
 					})(manaDrain.wizard,sacParticle,state);
 				}
 				return true;
@@ -4035,7 +4057,7 @@ bool updateHeal(B)(ref Heal!B heal,ObjectState!B state){
 			auto distance=(state.uniform(3)?state.uniform(0.3f,0.6f):state.uniform(1.5f,2.5f))*(hitbox[1].z-hitbox[0].z);
 			auto fullLifetime=sacParticle.numFrames/float(updateFPS);
 			auto lifetime=cast(int)(sacParticle.numFrames*state.uniform(0.0f,1.0f));
-			state.addParticle(Particle!(B,true)(sacParticle,obj.id,Vector3f(position.x,position.y,0.0f),Vector3f(0.0f,0.0f,distance/fullLifetime),scale,lifetime,0));
+			state.addParticle(Particle!(B,true)(sacParticle,obj.id,false,Vector3f(position.x,position.y,0.0f),Vector3f(0.0f,0.0f,distance/fullLifetime),scale,lifetime,0));
 		}
 		return true;
 	},function bool(){ return false; })(heal.creature,heal,state);

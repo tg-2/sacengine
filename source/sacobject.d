@@ -627,6 +627,8 @@ enum ParticleType{
 	speedUp,
 	heal,
 	relativeHeal,
+	lightningCasting,
+	spark,
 }
 
 final class SacParticle(B){
@@ -640,17 +642,17 @@ final class SacParticle(B){
 	float width,height;
 	@property bool gravity(){
 		final switch(type) with(ParticleType){
-			case manafount:
+			case manafount,spark:
 				return true;
-			case manalith,shrine,manahoar,firy,explosion,explosion2,speedUp,heal,relativeHeal:
+			case manalith,shrine,manahoar,firy,explosion,explosion2,speedUp,heal,relativeHeal,lightningCasting:
 				return false;
 		}
 	}
 	@property bool relative(){
 		final switch(type) with(ParticleType){
-			case manafount,manalith,shrine,manahoar,firy,explosion,explosion2,speedUp,heal:
+			case manafount,manalith,shrine,manahoar,firy,explosion,explosion2,speedUp,heal,spark:
 				return false;
-			case relativeHeal:
+			case relativeHeal,lightningCasting:
 				return true;
 		}
 	}
@@ -710,6 +712,18 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/glo2.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
+			case lightningCasting:
+				width=height=1.0f;
+				this.energy=4.0f;
+				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/cst0.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
+			case spark:
+				width=height=1.0f;
+				this.energy=4.0f;
+				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Stra.FLDR/txtr.FLDR/sprk.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
 		}
 		material=B.createMaterial(this);
 	}
@@ -739,6 +753,8 @@ final class SacParticle(B){
 				return min(1.0f,(lifetime/(0.5f*numFrames))^^2);
 			case heal,relativeHeal:
 				return min(1.0f,(lifetime/(0.75f*numFrames))^^2);
+			case lightningCasting,spark:
+				return 1.0f;
 		}
 	}
 	float getScale(int lifetime){
@@ -754,6 +770,8 @@ final class SacParticle(B){
 			case speedUp:
 				return 1.0f;
 			case heal,relativeHeal:
+				return 1.0;
+			case lightningCasting,spark:
 				return 1.0;
 		}
 	}
@@ -906,6 +924,47 @@ struct SacBlueRing(B){
 	enum numFrames=16*ringAnimationDelay*updateAnimFactor;
 	auto getFrame(int i){ return frames[i/(ringAnimationDelay*updateAnimFactor)]; }
 }
+
+struct SacLightning(B){
+	B.Texture texture;
+	B.Material material;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/ltn2.TXTR"));
+	}
+	B.BoneMesh mesh;
+	static B.BoneMesh createMesh(){
+		auto mesh=B.makeBoneMesh(4*11,6*10);
+		enum length=10.0f;
+		enum size=0.4f;
+		enum sqrt34=sqrt(0.75f);
+		static immutable Vector3f[4] offsets=[Vector3f(0.0f,0.0f,0.0f),size*Vector3f(0.0f,-1.0f,0.0f),size*Vector3f(sqrt34,0.5f,0.0f),size*Vector3f(-sqrt34,0.5f,0.0f)];
+		int numFaces=0;
+		void addFace(uint[3] face...){
+			mesh.indices[numFaces++]=face;
+		}
+		foreach(i;0..11){
+			auto center=Vector3f(0.0f,0.0f,length*float(i)/10);
+			foreach(j;0..4){
+				auto vertex=4*i+j;
+				auto position=i==0||i==10?center:center+offsets[j];
+				foreach(k;0..3){
+					mesh.vertices[k][vertex]=position;
+					mesh.boneIndices[vertex][k]=i;
+				}
+				mesh.weights[4*i+j]=Vector3f(1.0f,0.0f,0.0f);
+			}
+			if(i){
+				foreach(k;0..3){
+					addFace(4*(i-1),4*i,4*i+1+k);
+					addFace(4*i,4*(i-1)+1+k,4*(i-1));
+				}
+			}
+		}
+		assert(numFaces==60);
+		return mesh;
+	}
+}
+
 
 enum CommandConeColor{
 	white,
