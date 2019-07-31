@@ -885,6 +885,28 @@ final class SacHud(B){
 	}
 }
 
+struct SacExplosion(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pyro.FLDR/txtr.FLDR/exeg.TXTR"));
+	}
+	B.Material material;
+	B.SubSphereMesh[16] frames;
+	auto getFrame(int i){ return frames[i/updateAnimFactor]; }
+}
+
+struct SacBlueRing(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/brng.TXTR"));
+	}
+	B.Material material;
+	B.Mesh[] frames;
+	enum ringAnimationDelay=4;
+	enum numFrames=16*ringAnimationDelay*updateAnimFactor;
+	auto getFrame(int i){ return frames[i/(ringAnimationDelay*updateAnimFactor)]; }
+}
+
 enum CommandConeColor{
 	white,
 	red,
@@ -919,7 +941,6 @@ final class SacCommandCone(B){
 		return 1.0f-lifetimeFraction;
 	}
 }
-
 
 auto convertModel(B,Model)(string dir, Model model, float scaling){
 	int[string] names;

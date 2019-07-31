@@ -171,16 +171,10 @@ final class SacScene: Scene{
 		sacSoul=new SacSoul!DagonBackend();
 	}
 	SacObject!DagonBackend sacDebris;
-	struct Explosion{ // TODO: move?
-		Texture texture;
-		GenericMaterial material;
-		ShapeSubSphere[16] frames;
-		auto getFrame(int i){ return frames[i/updateAnimFactor]; }
-	}
-	Explosion createExplosion(){
+	SacExplosion!DagonBackend createExplosion(){
 		enum nU=4,nV=4;
 		import txtr;
-		auto texture=DagonBackend.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pyro.FLDR/txtr.FLDR/exeg.TXTR"));
+		auto texture=typeof(return).loadTexture();
 		auto mat=createMaterial(shadelessMaterialBackend);
 		mat.depthWrite=false;
 		mat.blending=Additive;
@@ -191,29 +185,21 @@ final class SacScene: Scene{
 			int u=cast(int)i%nU,v=cast(int)i/nU;
 			frame=new ShapeSubSphere(1.0f,25,25,true,null,1.0f/nU*u,1.0f/nV*v,1.0f/nU*(u+1),1.0f/nV*(v+1));
 		}
-		return Explosion(texture,mat,frames);
+		return SacExplosion!DagonBackend(texture,mat,frames);
 	}
-	Explosion explosion;
-	struct BlueRing{ // TODO: move?
-		Texture texture;
-		GenericMaterial material;
-		Mesh[] frames;
-		enum ringAnimationDelay=4;
-		enum numFrames=16*ringAnimationDelay*updateAnimFactor;
-		auto getFrame(int i){ return frames[i/(ringAnimationDelay*updateAnimFactor)]; }
-	}
-	BlueRing createBlueRing(){
+	SacExplosion!DagonBackend explosion;
+	SacBlueRing!DagonBackend createBlueRing(){
 		import txtr;
-		auto texture=DagonBackend.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/brng.TXTR"));
+		auto texture=typeof(return).loadTexture();
 		auto mat=createMaterial(shadelessMaterialBackend);
 		mat.depthWrite=false;
 		mat.blending=Additive;
 		mat.energy=20.0f;
 		mat.diffuse=texture;
 		auto frames=makeSpriteMeshes!(DagonBackend,true)(4,4,28,28);
-		return BlueRing(texture,mat,frames);
+		return SacBlueRing!DagonBackend(texture,mat,frames);
 	}
-	BlueRing blueRing;
+	SacBlueRing!DagonBackend blueRing;
 	void createEffects(){
 		sacDebris=new SacObject!DagonBackend("extracted/models/MODL.WAD!/bold.MRMC/bold.MRMM");
 		explosion=createExplosion();
@@ -2460,6 +2446,7 @@ static:
 	alias Mesh=.Mesh;
 	alias Mesh2D=.Mesh2D;
 	alias BoneMesh=.BoneMesh;
+	alias SubSphereMesh=.ShapeSubSphere;
 	alias TerrainMesh=.TerrainMesh;
 	alias MinimapMesh=.Mesh2D;
 
