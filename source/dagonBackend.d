@@ -491,17 +491,29 @@ final class SacScene: Scene{
 					foreach(j;0..objects.lightnings.length){
 						auto start=objects.lightnings[j].start.center(scene.state.current);
 						auto end=objects.lightnings[j].end.center(scene.state.current);
+						auto frame=objects.lightnings[j].frame;
+						enum totalFrames=Lightning!DagonBackend.totalFrames;
+						enum travelDelay=Lightning!DagonBackend.travelDelay;
+						if(frame<travelDelay){
+							auto α=frame/float(travelDelay);
+							end=α*end+start*(1.0f-α);
+						}else if(frame>totalFrames-travelDelay){
+							auto α=(frame-(totalFrames-travelDelay))/float(travelDelay);
+							start=α*end+start*(1.0f-α);
+						}
 						auto diff=end-start;
 						auto len=diff.length;
 						auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),diff/len);
 						scene.shadelessBoneMaterialBackend.setTransformationScaled(start,rotation,Vector3f(1.0f,1.0f,0.1f*len),rc);
 						auto mesh=scene.lightning.getFrame(objects.lightnings[j].frame%scene.lightning.numFrames);
-						Matrix4x4f[numLightningSegments+1] pose;
-						pose[0]=pose[numLightningSegments]=Matrix4f.identity();
-						foreach(k,ref x;pose[1..$-1]) x=Transformation(Quaternionf.identity(),objects.lightnings[j].displacement[k]).getMatrix4f;
-						mesh.pose=pose[];
-						scope(exit) mesh.pose=[];
-						mesh.render(rc);
+						foreach(ref bolt;objects.lightnings[j].bolts){
+							Matrix4x4f[numLightningSegments+1] pose;
+							pose[0]=pose[numLightningSegments]=Matrix4f.identity();
+							foreach(k,ref x;pose[1..$-1]) x=Transformation(Quaternionf.identity(),bolt.displacement[k]).getMatrix4f;
+							mesh.pose=pose[];
+							scope(exit) mesh.pose=[];
+							mesh.render(rc);
+						}
 					}
 				}
 			}else static if(is(T==Particles!(DagonBackend,relative),bool relative)){

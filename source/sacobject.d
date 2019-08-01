@@ -719,8 +719,8 @@ final class SacParticle(B){
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
 			case spark:
-				width=height=1.0f;
-				this.energy=4.0f;
+				width=height=4.0f;
+				this.energy=20.0f;
 				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Stra.FLDR/txtr.FLDR/sprk.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
@@ -942,7 +942,7 @@ struct SacLightning(B){
 			mesh=B.makeBoneMesh(3*4*numSegments,2*3*numSegments);
 			int u=cast(int)t%nU,v=cast(int)t/nU;
 			enum length=10.0f;
-			enum size=0.2f;
+			enum size=0.3f;
 			enum sqrt34=sqrt(0.75f);
 			static immutable Vector3f[3] offsets=[size*Vector3f(0.0f,-1.0f,0.0f),size*Vector3f(sqrt34,0.5f,0.0f),size*Vector3f(-sqrt34,0.5f,0.0f)];
 			int numFaces=0;

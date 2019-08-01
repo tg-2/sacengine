@@ -125,6 +125,10 @@ Vector3f center(B)(ref OrderTarget target,ObjectState!B state){
 	if(!state.isValidId(target.id)) return target.position;
 	return state.objectById!((obj)=>obj.center)(target.id);
 }
+Vector3f[2] hitbox(B)(ref OrderTarget target,ObjectState!B state){
+	if(!state.isValidId(target.id)) return [target.position,target.position];
+	return state.objectById!((obj)=>obj.hitbox)(target.id);
+}
 
 struct Order{
 	CommandType command;
@@ -1324,15 +1328,30 @@ struct LightningCasting(B){
 	int target;
 }
 enum numLightningSegments=10;
+struct LightningBolt(B){
+	Vector3f[numLightningSegments-1] displacement;
+	void changeShape(ObjectState!B state){
+		foreach(ref disp;displacement){
+			enum size=2.5f;
+			static immutable Vector3f[2] box=[-0.5f*size*Vector3f(1.0f,1.0f,1.0f),0.5f*size*Vector3f(1.0f,1.0f,1.0f)];
+			disp=state.uniform(box);
+		}
+	}
+}
 struct Lightning(B){
+	enum totalFrames=64;
+	enum changeShapeDelay=6;
+	enum travelDelay=12;
 	OrderTarget start,end;
+	SacSpell!B spell;
 	int frame;
-	this(OrderTarget start,OrderTarget end,int frame){
+	this(OrderTarget start,OrderTarget end,SacSpell!B spell,int frame){
 		this.start=start;
 		this.end=end;
+		this.spell=spell;
 		this.frame=frame;
 	}
-	Vector3f[numLightningSegments-1] displacement;
+	LightningBolt!B[2] bolts;
 }
 struct Effects(B){
 	Array!(Debris!B) debris;
@@ -2681,8 +2700,10 @@ bool castLightning(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectSt
 bool lightning(B)(int side,OrderTarget start,OrderTarget end,SacSpell!B spell,ObjectState!B state){
 	// TODO: cast ray and possibly shorten travel, apply damage to target
 	playSpellSoundTypeAt(SoundType.lightning,0.5f*(start.center(state)+end.center(state)),state,4.0f);
-	enum numBeams=2;
-	foreach(i;0..numBeams) state.addEffect(Lightning!B(start,end,0));
+	auto lightning=Lightning!B(start,end,spell,0);
+	foreach(ref bolt;lightning.bolts)
+		bolt.changeShape(state);
+	state.addEffect(lightning);
 	return true;
 }
 
@@ -4155,12 +4176,23 @@ bool updateLightningCasting(B)(ref LightningCasting!B lightningCast,ObjectState!
 bool updateLightning(B)(ref Lightning!B lightning,ObjectState!B state){
 	lightning.frame+=1;
 	static assert(updateFPS==60);
-	if(lightning.frame>=64) return false;
-	if(lightning.frame%8==0){
-		foreach(ref disp;lightning.displacement){
-			enum size=2.5f;
-			static immutable Vector3f[2] box=[-0.5f*size*Vector3f(1.0f,1.0f,1.0f),0.5f*size*Vector3f(1.0f,1.0f,1.0f)];
-			disp=state.uniform(box);
+	if(lightning.frame>=lightning.totalFrames) return false;
+	if(lightning.frame%lightning.changeShapeDelay==0)
+		foreach(ref bolt;lightning.bolts)
+			bolt.changeShape(state);
+	if(lightning.frame==lightning.travelDelay){
+		enum numSparks=128;
+		auto sacParticle=SacParticle!B.get(ParticleType.spark);
+		auto hitbox=lightning.end.hitbox(state);
+		auto center=boxCenter(hitbox);
+		foreach(i;0..numSparks){
+			auto position=state.uniform(scaleBox(hitbox,1.2f));
+			auto velocity=Vector3f(position.x-center.x,position.y-center.y,0.0f).normalized;
+			velocity.z=2.0f;
+			auto scale=1.0f;
+			int lifetime=31;
+			int frame=0;
+			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
 		}
 	}
 	return true;
