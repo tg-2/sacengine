@@ -207,8 +207,8 @@ final class SacScene: Scene{
 		mat.blending=Additive;
 		mat.energy=20.0f;
 		mat.diffuse=texture;
-		auto mesh=typeof(return).createMesh();
-		return SacLightning!DagonBackend(texture,mat,mesh);
+		auto frames=typeof(return).createMeshes();
+		return SacLightning!DagonBackend(texture,mat,frames);
 	}
 	SacLightning!DagonBackend lightning;
 	SacCommandCone!DagonBackend sacCommandCone;
@@ -456,10 +456,9 @@ final class SacScene: Scene{
 						scene.shadelessMaterialBackend.setEnergy(20.0f*scale^^4);
 						auto mesh=scene.blueRing.getFrame(objects.blueRings[j].frame%scene.blueRing.numFrames);
 						mesh.render(rc);
-
 					}
 				}
-				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.speedUpShadows.length){
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode){
 					foreach(j;0..objects.speedUpShadows.length){
 						if((objects.speedUpShadows[j].age+1)%speedUpShadowSpacing!=0) continue;
 						auto id=objects.speedUpShadows[j].creature;
@@ -479,6 +478,30 @@ final class SacScene: Scene{
 							sacObject.setFrame(objects.speedUpShadows[j].animationState,objects.speedUpShadows[j].frame/updateAnimFactor);
 							mesh.render(rc);
 						}
+					}
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.lightnings.length){
+					auto material=scene.lightning.material;
+					material.bind(rc);
+					glDisable(GL_CULL_FACE);
+					scope(success){
+						glEnable(GL_CULL_FACE);
+						material.unbind(rc);
+					}
+					foreach(j;0..objects.lightnings.length){
+						auto start=objects.lightnings[j].start.center(scene.state.current);
+						auto end=objects.lightnings[j].end.center(scene.state.current);
+						auto diff=end-start;
+						auto len=diff.length;
+						auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),diff/len);
+						scene.shadelessBoneMaterialBackend.setTransformationScaled(start,rotation,Vector3f(1.0f,1.0f,0.1f*len),rc);
+						auto mesh=scene.lightning.getFrame(objects.lightnings[j].frame%scene.lightning.numFrames);
+						Matrix4x4f[numLightningSegments+1] pose;
+						pose[0]=pose[numLightningSegments]=Matrix4f.identity();
+						foreach(k,ref x;pose[1..$-1]) x=Transformation(Quaternionf.identity(),objects.lightnings[j].displacement[k]).getMatrix4f;
+						mesh.pose=pose[];
+						scope(exit) mesh.pose=[];
+						mesh.render(rc);
 					}
 				}
 			}else static if(is(T==Particles!(DagonBackend,relative),bool relative)){

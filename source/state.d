@@ -121,6 +121,10 @@ struct OrderTarget{
 		this(target.type,target.id,target.position);
 	}
 }
+Vector3f center(B)(ref OrderTarget target,ObjectState!B state){
+	if(!state.isValidId(target.id)) return target.position;
+	return state.objectById!((obj)=>obj.center)(target.id);
+}
 
 struct Order{
 	CommandType command;
@@ -1314,6 +1318,22 @@ struct Heal(B){
 	float healthRegenerationPerFrame;
 	int timer;
 }
+struct LightningCasting(B){
+	ManaDrain!B manaDrain;
+	SacSpell!B spell;
+	int target;
+}
+enum numLightningSegments=10;
+struct Lightning(B){
+	OrderTarget start,end;
+	int frame;
+	this(OrderTarget start,OrderTarget end,int frame){
+		this.start=start;
+		this.end=end;
+		this.frame=frame;
+	}
+	Vector3f[numLightningSegments-1] displacement;
+}
 struct Effects(B){
 	Array!(Debris!B) debris;
 	void addEffect(Debris!B debris){
@@ -1395,6 +1415,22 @@ struct Effects(B){
 		if(i+1<heals.length) swap(heals[i],heals[$-1]);
 		heals.length=heals.length-1;
 	}
+	Array!(LightningCasting!B) lightningCastings;
+	void addEffect(LightningCasting!B lightningCasting){
+		lightningCastings~=lightningCasting;
+	}
+	void removeLightningCasting(int i){
+		if(i+1<lightningCastings.length) swap(lightningCastings[i],lightningCastings[$-1]);
+		lightningCastings.length=lightningCastings.length-1;
+	}
+	Array!(Lightning!B) lightnings;
+	void addEffect(Lightning!B lightning){
+		lightnings~=lightning;
+	}
+	void removeLightning(int i){
+		if(i+1<lightnings.length) swap(lightnings[i],lightnings[$-1]);
+		lightnings.length=lightnings.length-1;
+	}
 	void opAssign(ref Effects!B rhs){
 		assignArray(debris,rhs.debris);
 		assignArray(explosions,rhs.explosions);
@@ -1406,6 +1442,8 @@ struct Effects(B){
 		assignArray(speedUpShadows,rhs.speedUpShadows);
 		assignArray(healCastings,rhs.healCastings);
 		assignArray(heals,rhs.heals);
+		assignArray(lightningCastings,rhs.lightningCastings);
+		assignArray(lightnings,rhs.lightnings);
 	}
 }
 
@@ -2632,6 +2670,23 @@ bool heal(B)(int creature,SacSpell!B spell,ObjectState!B state){
 	return true;
 }
 
+bool castLightning(B,T)(ref T object,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state)if(!is(T==int)){
+	return castLightning(object.id,manaDrain,spell,state);
+}
+bool castLightning(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	if(!state.isValidId(target)) return false;
+	state.addEffect(LightningCasting!B(manaDrain,spell,target));
+	return true;
+}
+bool lightning(B)(int side,OrderTarget start,OrderTarget end,SacSpell!B spell,ObjectState!B state){
+	// TODO: cast ray and possibly shorten travel, apply damage to target
+	playSpellSoundTypeAt(SoundType.lightning,0.5f*(start.center(state)+end.center(state)),state,4.0f);
+	enum numBeams=2;
+	foreach(i;0..numBeams) state.addEffect(Lightning!B(start,end,0));
+	return true;
+}
+
+
 enum summonSoundGain=2.0f;
 bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,ObjectState!B state){
 	auto wizard=state.getWizard(object.id);
@@ -2660,11 +2715,13 @@ bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,Ob
 		case SpellType.spell:
 			bool ok=false;
 			switch(spell.tag){
-				case "pups":
+				case SpellTag.speedup:
 					ok=target.id==object.id?speedUp(object,spell,state):speedUp(target.id,spell,state);
 					goto default;
-				case "laeh":
+				case SpellTag.heal:
 					return target.id==object.id?castHeal(object,manaDrain,spell,state):castHeal(target.id,manaDrain,spell,state);
+				case SpellTag.lightning:
+					return target.id==object.id?castLightning(object,manaDrain,spell,state):castLightning(target.id,manaDrain,spell,state);
 				default:
 					if(ok) state.addEffect(manaDrain);
 					else stun();
@@ -4063,6 +4120,52 @@ bool updateHeal(B)(ref Heal!B heal,ObjectState!B state){
 	},function bool(){ return false; })(heal.creature,heal,state);
 }
 
+bool updateLightningCasting(B)(ref LightningCasting!B lightningCast,ObjectState!B state){
+	with(lightningCast){
+		return state.movingObjectById!((obj){
+			auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
+			auto offset=Vector3f(0.0f,hbox[1].y+1.0f,hbox[1].z+1.0f);
+			final switch(manaDrain.update(state)){
+				case CastingStatus.underway:
+					auto sacParticle=SacParticle!B.get(ParticleType.lightningCasting);
+					enum numParticles=2;
+					foreach(i;0..numParticles){
+						enum uncertainty=0.25f;
+						Vector3f[2] box=[offset-uncertainty*Vector3f(1.0f,1.0f,1.0f),offset+uncertainty*Vector3f(1.0f,1.0f,1.0f)];
+						auto position=state.uniform(box);
+						auto lifetime=sacParticle.numFrames/60.0f;
+						auto velocity=Vector3f(0.0f,0.0f,0.0f);
+						auto scale=1.0f;
+						state.addParticle(Particle!(B,true)(sacParticle,obj.id,true,position,velocity,scale,sacParticle.numFrames,0));
+					}
+					return true;
+				case CastingStatus.interrupted: return false;
+				case CastingStatus.finished:
+					auto start=OrderTarget(TargetType.terrain,0,rotate(obj.rotation,offset)+obj.position);
+					auto end=state.objectById!((obj){
+						enum type=is(typeof(obj)==MovingObject!B)?TargetType.creature:TargetType.building;
+						return OrderTarget(type,obj.id,obj.center);
+					})(lightningCast.target);
+					lightning(obj.side,start,end,spell,state);
+					return false;
+			}
+		},()=>false)(manaDrain.wizard);
+	}
+}
+bool updateLightning(B)(ref Lightning!B lightning,ObjectState!B state){
+	lightning.frame+=1;
+	static assert(updateFPS==60);
+	if(lightning.frame>=64) return false;
+	if(lightning.frame%8==0){
+		foreach(ref disp;lightning.displacement){
+			enum size=2.5f;
+			static immutable Vector3f[2] box=[-0.5f*size*Vector3f(1.0f,1.0f,1.0f),0.5f*size*Vector3f(1.0f,1.0f,1.0f)];
+			disp=state.uniform(box);
+		}
+	}
+	return true;
+}
+
 void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.debris.length;){
 		if(!updateDebris(effects.debris[i],state)){
@@ -4130,6 +4233,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.heals.length;){
 		if(!updateHeal(effects.heals[i],state)){
 			effects.removeHeal(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.lightningCastings.length;){
+		if(!updateLightningCasting(effects.lightningCastings[i],state)){
+			effects.removeLightningCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.lightnings.length;){
+		if(!updateLightning(effects.lightnings[i],state)){
+			effects.removeLightning(i);
 			continue;
 		}
 		i++;
@@ -5765,6 +5882,15 @@ void playSoundType(B)(int side,SacObject!B sacObject,SoundType soundType,ObjectS
 void playSoundAt(B)(char[4] sound,Vector3f position,ObjectState!B state,float gain=1.0f){
 	static if(B.hasAudio) if(playAudio) B.playSoundAt(sound,position,gain);
 }
+void playSpellSoundTypeAt(B)(SoundType soundType,Vector3f position,ObjectState!B state,float gain=1.0f){
+	auto sset=SacSpell!B.sset;
+	if(!sset) return;
+	auto sounds=sset.getSounds(soundType);
+	if(sounds.length){
+		auto sound=sounds[state.uniform(cast(int)$)];
+		playSoundAt(sound,position,state,gain);
+	}
+}
 auto playSoundAt(bool getDuration=false,B,T...)(char[4] sound,int id,ObjectState!B state,float gain=1.0f){
 	static if(B.hasAudio) if(playAudio) B.playSoundAt(sound,id,gain);
 	static if(getDuration) return getSoundDuration(sound,state);
@@ -5772,6 +5898,7 @@ auto playSoundAt(bool getDuration=false,B,T...)(char[4] sound,int id,ObjectState
 auto playSoundTypeAt(bool getDuration=false,B,T...)(SacObject!B sacObject,int id,SoundType soundType,ObjectState!B state,T limit)if(T.length<=(getDuration?1:0)){
 	static if(getDuration) int duration=0;
 	void playSset(immutable(Sset)* sset){
+		if(!sset) return;
 		auto sounds=sset.getSounds(soundType);
 		if(sounds.length){
 			auto sound=sounds[state.uniform(cast(int)$)];

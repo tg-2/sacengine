@@ -1,5 +1,5 @@
 import std.exception, std.conv, std.algorithm, std.range, std.traits;
-import spells, ntts, nttData, txtr;
+import spells, ntts, nttData, txtr, sset;
 
 enum TargetFlags{
 	none,
@@ -56,10 +56,16 @@ enum SpellType:int{
 
 class SacSpell(B){
 	char[4] tag;
+	B.Texture icon;
 	immutable(Cre8)* cre8;
 	immutable(Spel)* spel;
 	immutable(Strc)* strc;
-	B.Texture icon;
+
+	private static immutable(Sset)* sset_;
+	@property static immutable(Sset)* sset(){
+		if(!sset_) sset_="leps" in ssets;
+		return sset_;
+	}
 
 	SpellType type;
 	God god; // TODO: figure out where this is stored

@@ -931,37 +931,50 @@ struct SacLightning(B){
 	static B.Texture loadTexture(){
 		return B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/ltn2.TXTR"));
 	}
-	B.BoneMesh mesh;
-	static B.BoneMesh createMesh(){
-		auto mesh=B.makeBoneMesh(4*11,6*10);
-		enum length=10.0f;
-		enum size=0.4f;
-		enum sqrt34=sqrt(0.75f);
-		static immutable Vector3f[4] offsets=[Vector3f(0.0f,0.0f,0.0f),size*Vector3f(0.0f,-1.0f,0.0f),size*Vector3f(sqrt34,0.5f,0.0f),size*Vector3f(-sqrt34,0.5f,0.0f)];
-		int numFaces=0;
-		void addFace(uint[3] face...){
-			mesh.indices[numFaces++]=face;
-		}
-		foreach(i;0..11){
-			auto center=Vector3f(0.0f,0.0f,length*float(i)/10);
-			foreach(j;0..4){
-				auto vertex=4*i+j;
-				auto position=i==0||i==10?center:center+offsets[j];
-				foreach(k;0..3){
-					mesh.vertices[k][vertex]=position;
-					mesh.boneIndices[vertex][k]=i;
-				}
-				mesh.weights[4*i+j]=Vector3f(1.0f,0.0f,0.0f);
+	B.BoneMesh[] frames;
+	enum numFrames=16*updateAnimFactor;
+	auto getFrame(int i){ return frames[i/updateAnimFactor]; }
+	static B.BoneMesh[] createMeshes(){
+		enum nU=4,nV=4;
+		enum numSegments=10;
+		auto meshes=new B.BoneMesh[](nU*nV);
+		foreach(t,ref mesh;meshes){
+			mesh=B.makeBoneMesh(3*4*numSegments,2*3*numSegments);
+			int u=cast(int)t%nU,v=cast(int)t/nU;
+			enum length=10.0f;
+			enum size=0.2f;
+			enum sqrt34=sqrt(0.75f);
+			static immutable Vector3f[3] offsets=[size*Vector3f(0.0f,-1.0f,0.0f),size*Vector3f(sqrt34,0.5f,0.0f),size*Vector3f(-sqrt34,0.5f,0.0f)];
+			int numFaces=0;
+			void addFace(uint[3] face...){
+				mesh.indices[numFaces++]=face;
 			}
-			if(i){
-				foreach(k;0..3){
-					addFace(4*(i-1),4*i,4*i+1+k);
-					addFace(4*i,4*(i-1)+1+k,4*(i-1));
+			foreach(i;0..numSegments){
+				static Vector3f getCenter(int i){
+					return Vector3f(0.0f,0.0f,length*float(i)/numSegments);
+				}
+				foreach(j;0..3){
+					foreach(k;0..4){
+						int vertex=3*4*i+4*j+k;
+						auto center=((k==1||k==2)?i+1:i);
+						auto position=getCenter(center)+((k==2||k==3)&&center!=0&&center!=numSegments?offsets[j]:Vector3f(0.0f,0.0f,0.0f));
+						foreach(l;0..3){
+							mesh.vertices[l][vertex]=position;
+							mesh.boneIndices[vertex][l]=center;
+						}
+						mesh.weights[vertex]=Vector3f(1.0f,0.0f,0.0f);
+						mesh.texcoords[vertex]=Vector2f(1.0f/nU*(u+((i&1)^(k==1||k==2)?1.0f-0.5f/64:0.5f/64)),1.0f/nV*(v+((k==0||k==1)?1.0f-1.0f/64:0.5f/64)));
+					}
+					int b=3*4*i+4*j;
+					addFace([b+0,b+1,b+2]);
+					addFace([b+2,b+3,b+0]);
 				}
 			}
+			assert(numFaces==2*3*numSegments);
+			mesh.normals[]=Vector3f(0.0f, 0.0f, 0.0f);
+			B.finalizeBoneMesh(mesh);
 		}
-		assert(numFaces==60);
-		return mesh;
+		return meshes;
 	}
 }
 
