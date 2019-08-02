@@ -1342,10 +1342,12 @@ struct Lightning(B){
 	enum totalFrames=64;
 	enum changeShapeDelay=6;
 	enum travelDelay=12;
+	int side;
 	OrderTarget start,end;
 	SacSpell!B spell;
 	int frame;
-	this(OrderTarget start,OrderTarget end,SacSpell!B spell,int frame){
+	this(int side,OrderTarget start,OrderTarget end,SacSpell!B spell,int frame){
+		this.side=side;
 		this.start=start;
 		this.end=end;
 		this.spell=spell;
@@ -2500,16 +2502,21 @@ bool canDamage(B)(ref MovingObject!B object,ObjectState!B state){
 	}
 }
 
-void dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B attacker,ObjectState!B state){
-	if(!object.canDamage(state)) return;
-	auto actualDamage=min(object.health,damage*state.sideDamageMultiplier(attacker.side,object.side));
+float dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B attacker,ObjectState!B state){
+	auto actualDamage=dealDamage(object,damage,attacker.side,state);
+	if(actualDamage) attacker.heal(damage*attacker.creatureStats.drain,state);
+	return actualDamage;
+}
+float dealDamage(B)(ref MovingObject!B object,float damage,int attackingSide,ObjectState!B state){
+	if(!object.canDamage(state)) return 0.0f;
+	auto actualDamage=min(object.health,damage*state.sideDamageMultiplier(attackingSide,object.side));
 	object.health=object.health-actualDamage;
 	if(object.creatureStats.flags&Flags.cannotDestroyKill)
 		object.health=max(object.health,1.0f);
-	// TODO: give xp to attacker
+	// TODO: give xp to wizard of attacking side
 	if(object.health==0.0f)
 		object.kill(state);
-	attacker.heal(damage*attacker.creatureStats.drain,state);
+	return actualDamage;
 }
 
 bool canDamage(B)(ref Building!B building,ObjectState!B state){
@@ -2518,16 +2525,22 @@ bool canDamage(B)(ref Building!B building,ObjectState!B state){
 	return true;
 }
 
-void dealDamage(B)(ref Building!B building,float damage,ref MovingObject!B attacker,ObjectState!B state){
-	if(!building.canDamage(state)) return;
-	auto actualDamage=min(building.health,damage*state.sideDamageMultiplier(attacker.side,building.side));
+float dealDamage(B)(ref Building!B building,float damage,ref MovingObject!B attacker,ObjectState!B state){
+	auto actualDamage=dealDamage(building,damage,attacker.side,state);
+	return actualDamage;
+}
+float dealDamage(B)(ref Building!B building,float damage,int attackingSide,ObjectState!B state){
+	if(!building.canDamage(state)) return 0.0f;
+	auto actualDamage=min(building.health,damage*state.sideDamageMultiplier(attackingSide,building.side));
 	building.health-=actualDamage;
 	if(building.flags&Flags.cannotDestroyKill)
 		building.health=max(building.health,1.0f);
 	// TODO: give xp to attacker
 	if(building.health==0.0f)
 		building.destroy(state);
+	return actualDamage;
 }
+
 bool canHeal(B)(ref MovingObject!B object,ObjectState!B state){
 	if(object.health(state)==object.creatureStats.maxHealth) return false;
 	if(object.health(state)==0.0f) return false;
@@ -2589,6 +2602,17 @@ void dealMeleeDamage(B)(ref Building!B building,ref MovingObject!B attacker,Obje
 	playSoundTypeAt(attacker.sacObject,attacker.id,SoundType.hitWall,state);
 }
 
+void dealSpellDamage(B)(ref MovingObject!B object,SacSpell!B spell,int attackerSide,Vector3f attackDirection,ObjectState!B state){
+	auto damage=spell.amount;
+	auto actualDamage=damage*object.creatureStats.directSpellResistance;
+	object.damageAnimation(attackDirection,state);
+	object.dealDamage(actualDamage,attackerSide,state);
+}
+void dealSpellDamage(B)(ref Building!B building,SacSpell!B spell,int attackerSide,ObjectState!B state){
+	auto damage=spell.amount;
+	auto actualDamage=damage*building.directSpellResistance;
+	building.dealDamage(actualDamage,attackerSide,state);
+}
 
 void setMovement(B)(ref MovingObject!B object,MovementDirection direction,ObjectState!B state,int side=-1){
 	if(!object.canOrder(side,state)) return;
@@ -2700,7 +2724,7 @@ bool castLightning(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectSt
 bool lightning(B)(int side,OrderTarget start,OrderTarget end,SacSpell!B spell,ObjectState!B state){
 	// TODO: cast ray and possibly shorten travel, apply damage to target
 	playSpellSoundTypeAt(SoundType.lightning,0.5f*(start.center(state)+end.center(state)),state,4.0f);
-	auto lightning=Lightning!B(start,end,spell,0);
+	auto lightning=Lightning!B(side,start,end,spell,0);
 	foreach(ref bolt;lightning.bolts)
 		bolt.changeShape(state);
 	state.addEffect(lightning);
@@ -4162,6 +4186,7 @@ bool updateLightningCasting(B)(ref LightningCasting!B lightningCast,ObjectState!
 					return true;
 				case CastingStatus.interrupted: return false;
 				case CastingStatus.finished:
+					if(!state.isValidId(lightningCast.target)) return false;
 					auto start=OrderTarget(TargetType.terrain,0,rotate(obj.rotation,offset)+obj.position);
 					auto end=state.objectById!((obj){
 						enum type=is(typeof(obj)==MovingObject!B)?TargetType.creature:TargetType.building;
@@ -4180,6 +4205,7 @@ bool updateLightning(B)(ref Lightning!B lightning,ObjectState!B state){
 	if(lightning.frame%lightning.changeShapeDelay==0)
 		foreach(ref bolt;lightning.bolts)
 			bolt.changeShape(state);
+	lightning.end.position=lightning.end.center(state);
 	if(lightning.frame==lightning.travelDelay){
 		enum numSparks=128;
 		auto sacParticle=SacParticle!B.get(ParticleType.spark);
@@ -4193,6 +4219,22 @@ bool updateLightning(B)(ref Lightning!B lightning,ObjectState!B state){
 			int lifetime=31;
 			int frame=0;
 			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+		}
+		// TODO: scar
+		auto target=lightning.end.id;
+		if(state.isValidId(target)){
+			static void dealDamage(B,T)(ref T target,SacSpell!B spell,int attackerSide,Vector3f attackDirection,ObjectState!B state){
+				static if(is(T==MovingObject!B)){
+					target.dealSpellDamage(spell,attackerSide,attackDirection,state);
+				}else static if(is(T==StaticObject!B)){
+					assert(target.buildingId);
+					state.buildingById!((ref Building!B building,SacSpell!B spell,int attackerSide,ObjectState!B state){
+						building.dealSpellDamage(spell,attackerSide,state);
+					})(target.buildingId,spell,attackerSide,state);
+				}
+			}
+			auto direction=lightning.end.position-lightning.start.position;
+			state.objectById!dealDamage(target,lightning.spell,lightning.side,direction,state);
 		}
 	}
 	return true;
