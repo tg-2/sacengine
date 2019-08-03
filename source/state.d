@@ -1790,6 +1790,17 @@ struct ObjectManager(B){
 		}
 		return false;
 	}
+	TargetType targetTypeFromId(int id){
+		if(0<id && id<=ids.length){
+			if(ids[id-1]==Id.init) return TargetType.none;
+			auto objType=ids[id-1].type;
+			if(objType<numMoving) return TargetType.creature;
+			if(objType<numMoving+numStatic) return TargetType.building;
+			if(objType==ObjectType.soul) return TargetType.soul;
+			if(objType==ObjectType.building) return TargetType.building;
+		}
+		return TargetType.none;
+	}
 	void addTransparent(T)(T object, float alpha){
 		assert(0,"TODO");
 	}
@@ -2722,8 +2733,14 @@ bool castLightning(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectSt
 	return true;
 }
 bool lightning(B)(int side,OrderTarget start,OrderTarget end,SacSpell!B spell,ObjectState!B state){
-	// TODO: cast ray and possibly shorten travel, apply damage to target
-	playSpellSoundTypeAt(SoundType.lightning,0.5f*(start.center(state)+end.center(state)),state,4.0f);
+	auto startCenter=start.center(state),endCenter=end.center(state);
+	auto newEnd=state.collideRay(startCenter,endCenter-startCenter,1.0f);
+	if(newEnd.type!=TargetType.none){
+		end=newEnd;
+		endCenter=end.center(state);
+	}
+	end.position=endCenter;
+	playSpellSoundTypeAt(SoundType.lightning,0.5f*(startCenter+endCenter),state,4.0f);
 	auto lightning=Lightning!B(side,start,end,spell,0);
 	foreach(ref bolt;lightning.bolts)
 		bolt.changeShape(state);
@@ -4623,6 +4640,18 @@ auto collide(alias f,T...)(ref ProximityEntries proximityEntries,int version_,Ve
 			f(proximityEntries.entries[i],args);
 	}
 }
+Tuple!(float,ProximityEntry) collideRay(ref ProximityEntries proximityEntries,int version_,Vector3f start,Vector3f direction,float limit){
+	if(proximityEntries.version_!=version_){
+		proximityEntries.entries.length=0;
+		proximityEntries.version_=version_;
+	}
+	auto result=tuple(float.infinity,ProximityEntry.init);
+	foreach(i;0..proximityEntries.entries.length){
+		auto cand=rayBoxIntersect(start,direction,proximityEntries.entries[i].hitbox,limit);
+		if(cand<result[0]) result=tuple(cand,proximityEntries.entries[i]);
+	}
+	return result;
+}
 
 struct HitboxProximity(B){
 	enum resolution=10;
@@ -4630,6 +4659,9 @@ struct HitboxProximity(B){
 	enum size=(2560+resolution-1)/resolution+2*offMapSlack;
 	static Tuple!(int,"j",int,"i") getTile(Vector3f position){
 		return tuple!("j","i")(cast(int)(position.y/resolution),cast(int)(position.x/resolution)); // TODO: good resolution?
+	}
+	static Vector2f getVertex(int j,int i){
+		return Vector2f(i*resolution,j*resolution);
 	}
 	ProximityEntries[size][size] data;
 	ProximityEntries offMap;
@@ -4650,6 +4682,40 @@ auto collide(alias f,B,T...)(ref HitboxProximity!B proximity,int version_,Vector
 		foreach(j;max(0,lowTile.j+offMapSlack)..min(highTile.j+offMapSlack+1,size))
 			foreach(i;max(0,lowTile.i+offMapSlack)..min(highTile.i+offMapSlack+1,size))
 				data[j][i].collide!f(version_,hitbox,args);
+	}
+}
+auto collideRay(B)(ref HitboxProximity!B proximity,int version_,Vector3f start,Vector3f direction,float limit){
+	with(proximity){
+		auto result=tuple(float.infinity,ProximityEntry.init);
+		bool updateResult(ref ProximityEntries entries){
+			auto cand=entries.collideRay(version_,start,direction,limit);
+			if(cand[0]<result[0]&&cand[0]<limit){
+				result=cand;
+				return true;
+			}
+			return false;
+		}
+		auto tile=getTile(start);
+		int dj=direction.y<0?-1:1, di=direction.x<0?-1:1;
+		float current=0.0f;
+		bool testOffMap=false;
+		while(current<1.1f*limit&&current<result[0]&&(dj<0?tile.j+offMapSlack>=0:tile.j+offMapSlack<size)&&(di<0?tile.i+offMapSlack>=0:tile.i+offMapSlack<size)){
+			if(tile.j+offMapSlack>=0&&tile.i+offMapSlack>=0&&tile.j+offMapSlack<size&&tile.i+offMapSlack<size){
+				updateResult(data[tile.j+offMapSlack][tile.i+offMapSlack]);
+			}else testOffMap=true;
+			auto next=getVertex(tile.j+(dj==1),tile.i+(di==1));
+			auto tj=(next.y-start.y)/direction.y;
+			auto ti=(next.x-start.x)/direction.x;
+			if(isNaN(ti)||tj<ti){
+				current=tj;
+				tile.j+=dj;
+			}else{
+				current=ti;
+				tile.i+=di;
+			}
+		}
+		if(testOffMap) updateResult(offMap);
+		return result;
 	}
 }
 
@@ -4921,6 +4987,9 @@ final class Proximity(B){
 auto collide(alias f,B,T...)(Proximity!B proximity,Vector3f[2] hitbox,T args){
 	return proximity.hitboxes.collide!(f,B,T)(proximity.version_,hitbox,args);
 }
+auto collideRay(B)(Proximity!B proximity,Vector3f start,Vector3f direction,float limit=float.infinity){
+	return proximity.hitboxes.collideRay(proximity.version_,start,direction,limit);
+}
 
 import std.random: MinstdRand0;
 final class ObjectState(B){ // (update logic)
@@ -4956,6 +5025,15 @@ final class ObjectState(B){ // (update logic)
 	}
 	float getGroundHeightDerivative(Vector3f position,Vector3f direction){
 		return map.getGroundHeightDerivative(position,direction);
+	}
+	OrderTarget collideRay(Vector3f start,Vector3f direction,float limit=float.infinity){
+		auto landscape=map.rayIntersection(start,direction,limit);
+		auto tEntry=proximity.collideRay(start,direction,min(limit,landscape));
+		if(landscape<tEntry[0]) return OrderTarget(TargetType.terrain,0,start+landscape*direction);
+		auto targetType=targetTypeFromId(tEntry[1].id);
+		if(targetType.among(TargetType.creature,TargetType.building))
+			return OrderTarget(targetType,tEntry[1].id,objectById!((obj)=>obj.position)(this,tEntry[1].id));
+		return OrderTarget.init;
 	}
 	Vector2f sunSkyRelLoc(Vector3f cameraPos){
 		return map.sunSkyRelLoc(cameraPos);
@@ -5236,6 +5314,9 @@ final class ObjectState(B){ // (update logic)
 	}
 	bool isValidId(int id,TargetType type){
 		return obj.isValidId(id,type);
+	}
+	TargetType targetTypeFromId(int id){
+		return obj.targetTypeFromId(id);
 	}
 	void addFixed(FixedObject!B object){
 		obj.addFixed(object);

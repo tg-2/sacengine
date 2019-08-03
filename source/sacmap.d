@@ -99,11 +99,8 @@ final class SacMap(B){
 	Vector3f getVertex(int j,int i){
 		return Vector3f(10*i,10*(n-1-j),heights[j][i]);
 	}
-
-	Tuple!(int,"j",int,"i")[3] getTriangle(bool invert=false)(Vector3f pos){
-		auto tile=getTile(pos);
-		int i=tile.i,j=tile.j;
-		if(i<0||i>=n-1||j<0||j>=m-1) return typeof(return).init;
+	Tuple!(Tuple!(int,"j",int,"i")[3][2],"tri",int,"nt") getTriangles(bool invert=false)(int j,int i){
+		if(i<0||i>=n||j<0||j>=m) return typeof(return).init;
 		Tuple!(int,"j",int,"i")[3][2] tri;
 		int nt=0;
 		void makeTri(int[] indices)(){
@@ -130,25 +127,38 @@ final class SacMap(B){
 				makeTri!([2,0,3]);
 			}
 		}
-		bool isInside(Tuple!(int,"j",int,"i")[3] tri){
-			Vector3f getV(int k){
-				auto v=getVertex(tri[k%$].j,tri[k%$].i)-pos;
-				v.z=0;
-				return v;
-			}
-			foreach(k;0..3){
-				if(cross(getV(k),getV(k+1)).z<0)
-					return false;
-			}
-			return true;
+		return tuple!("tri","nt")(tri,nt);
+	}
+	Plane getPlane(Tuple!(int,"j",int,"i")[3] tri){
+		static foreach(i;0..3)
+			mixin(text(`auto p`,i,`=getVertex(tri[`,i,`].expand);`));
+		Plane plane;
+		plane.fromPoints(p0,p1,p2); // wtf.
+		return plane;
+	}
+	bool isInside(Tuple!(int,"j",int,"i")[3] tri,Vector3f pos){
+		Vector3f getV(int k){
+			auto v=getVertex(tri[k%$].j,tri[k%$].i)-pos;
+			v.z=0;
+			return v;
 		}
+		foreach(k;0..3){
+			if(!(cross(getV(k),getV(k+1)).z>=0))
+				return false;
+		}
+		return true;
+	}
+	Tuple!(int,"j",int,"i")[3] getTriangle(bool invert=false)(Vector3f pos){
+		auto tile=getTile(pos);
+		int i=tile.i,j=tile.j;
+		auto triNt=getTriangles!invert(j,i),tri=triNt[0],nt=triNt[1];
 		if(nt==0) return typeof(return).init;
 		if(!invert){
-			if(isInside(tri[0])) return tri[0]; // TODO: fix precision issues, by using fixed-point and splitting at line
+			if(isInside(tri[0],pos)) return tri[0]; // TODO: fix precision issues, by using fixed-point and splitting at line
 			else if(nt==2) return tri[1];
 			else return typeof(return).init;
 		}else{
-			if(nt==1||!isInside(tri[1])) return tri[0];
+			if(nt==1||!isInside(tri[1],pos)) return tri[0];
 			else return tri[1];
 		}
 	}
@@ -158,10 +168,7 @@ final class SacMap(B){
 		return triangle[0]!=triangle[1];
 	}
 	private float getHeightImpl(Tuple!(int,"j",int,"i")[3] triangle,Vector3f pos){
-		static foreach(i;0..3)
-			mixin(text(`auto p`,i,`=getVertex(triangle[`,i,`].expand);`));
-		Plane plane;
-		plane.fromPoints(p0,p1,p2); // wtf.
+		auto plane=getPlane(triangle);
 		return -(plane.a*pos.x+plane.b*pos.y+plane.d)/plane.c;
 	}
 	float getHeight(Vector3f pos){
@@ -206,6 +213,35 @@ final class SacMap(B){
 		}
 		bestNewPosition.z=getGroundHeight(bestNewPosition);
 		return bestNewPosition;
+	}
+	float rayIntersection(Vector3f start,Vector3f direction,float limit=float.infinity){
+		float result=float.infinity;
+		auto tile=getTile(start);
+		int dj=direction.y>=0?-1:1, di=direction.x<0?-1:1;
+		float current=0.0f;
+		while(current<=limit&&current<result&&(dj<0?tile.j>=0:tile.j<n)&&(di<0?tile.i>=0:tile.i<m)){
+			auto trianglesNt=getTriangles(tile.expand),triangles=trianglesNt[0],nt=trianglesNt[1];
+			foreach(k;0..nt){
+				auto plane=getPlane(triangles[k]);
+				auto t=-plane.distance(start)/plane.dot(direction);
+				if(0<=t&&t<=limit&&t<result){
+					auto intersectionPoint=start+t*direction;
+					if(isInside(triangles[k],intersectionPoint))
+						result=t;
+				}
+			}
+			auto next=getVertex(tile.j+(dj==1),tile.i+(di==1));
+			auto tj=(next.y-start.y)/direction.y;
+			auto ti=(next.x-start.x)/direction.x;
+			if(isNaN(ti)||tj<ti){
+				current=tj;
+				tile.j+=dj;
+			}else{
+				current=ti;
+				tile.i+=di;
+			}
+		}
+		return result;
 	}
 }
 

@@ -180,6 +180,35 @@ Vector!(float,n) closestBoxFaceNormal(size_t n)(Vector!(float,n)[2] box, Vector!
 	return closestBoxFaceNormalWithProjectionLength(box,position)[0];
 }
 
+bool isInside(Vector3f point,Vector3f[2] box){
+	return box[0].x<=point.x&&point.x<=box[1].x&&
+		box[0].y<=point.y&&point.y<=box[1].y&&
+		box[0].z<=point.z&&point.z<=box[1].z;
+}
+
+float rayBoxIntersect(Vector3f start,Vector3f direction,Vector3f[2] box,float limit=float.infinity){
+	if(isInside(start,box)) return 0.0f;
+	float result=float.infinity;
+	foreach(d;0..3){
+		foreach(p;0..2){
+			auto t=(box[p][d]-start[d])/direction[d];
+			if(0<=t&&t<result&&t<limit){
+				auto intersectionPoint=start+t*direction;
+				bool ok=true;
+				foreach(e;0..3){
+					if(e==d) continue;
+					if(intersectionPoint[e]<box[0][e]
+					   ||intersectionPoint[e]>box[1][e]){
+						ok=false;
+						break;
+					}
+				}
+				if(ok) result=t;
+			}
+		}
+	}
+	return result;
+}
 
 import std.container.array;
 T[] data(T)(ref Array!T array){
