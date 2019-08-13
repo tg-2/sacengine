@@ -2685,9 +2685,65 @@ int getCastingTime(B)(ref MovingObject!B object,int numFrames,bool stationary,Ob
 	auto sacObject=object.sacObject;
 	auto start=sacObject.numFrames(stationary?AnimationState.spellcastStart:AnimationState.runSpellcastStart)*updateAnimFactor;
 	auto mid=sacObject.numFrames(stationary?AnimationState.spellcast:AnimationState.runSpellcast)*updateAnimFactor;
-	auto end=sacObject.numFrames(stationary?AnimationState.spellcastEnd:AnimationState.runSpellcastEnd)*updateAnimFactor;
+	//auto end=sacObject.numFrames(stationary?AnimationState.spellcastEnd:AnimationState.runSpellcastEnd)*updateAnimFactor;
 	auto castingTime=sacObject.castingTime(stationary?AnimationState.spellcastEnd:AnimationState.runSpellcastEnd)*updateAnimFactor;
-	return start+max(0,(numFrames-start-end+mid-1))/mid*mid+castingTime;
+	return start+max(0,numFrames-start-castingTime+mid-1)/mid*mid+castingTime;
+}
+
+enum summonSoundGain=2.0f;
+bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,ObjectState!B state){
+	auto wizard=state.getWizard(object.id);
+	if(!wizard) return false;
+	if(state.spellStatus!false(wizard,spell,target)!=SpellStatus.ready) return false;
+	int numFrames=cast(int)ceil(updateFPS*spell.castingTime(wizard.level));
+	if(!object.startCasting(numFrames,spell.stationary,state))
+		return false;
+	// TODO: "stationary" parameter necessary? If so, check what original engine does if wizard walks and stops
+	auto numManaDrainFrames=min(numFrames,cast(int)ceil(spell.manaCost*(updateFPS/500.0f)));
+	auto manaCostPerFrame=spell.manaCost/numManaDrainFrames;
+	auto manaDrain=ManaDrain!B(object.id,manaCostPerFrame,numManaDrainFrames);
+	(*wizard).applyCooldown(spell,state);
+	bool stun(){
+		object.damageStun(Vector3f(0.0f,0.0f,-1.0f),state);
+		return false;
+	}
+	final switch(spell.type){
+		case SpellType.creature:
+			assert(target==Target.init);
+			auto creature=spawn(object.id,spell.tag,0,state);
+			state.setRenderMode!(MovingObject!B,RenderMode.transparent)(creature);
+			playSoundAt("NMUS",creature,state,summonSoundGain);
+			state.addEffect(CreatureCasting!B(manaDrain,spell,creature));
+			return true;
+		case SpellType.spell:
+			bool ok=false;
+			switch(spell.tag){
+				case SpellTag.speedup:
+					ok=target.id==object.id?speedUp(object,spell,state):speedUp(target.id,spell,state);
+					goto default;
+				case SpellTag.heal:
+					return target.id==object.id?castHeal(object,manaDrain,spell,state):castHeal(target.id,manaDrain,spell,state);
+				case SpellTag.lightning:
+					return target.id==object.id?castLightning(object,manaDrain,spell,state):castLightning(target.id,manaDrain,spell,state);
+				default:
+					if(ok) state.addEffect(manaDrain);
+					else stun();
+					return ok;
+			}
+		case SpellType.structure:
+			if(!spell.isBuilding) goto case SpellType.spell;
+			auto base=state.staticObjectById!((obj)=>obj.buildingId,()=>0)(target.id);
+			if(base){ // TODO: stun both wizards on simultaneous lith cast
+				auto god=state.getCurrentGod(wizard);
+				if(god==God.none) god=God.persephone;
+				auto building=makeBuilding(object.id,spell.buildingTag(god),AdditionalBuildingFlags.inactive|Flags.cannotDamage,base,state);
+				state.setupStructureCasting(building);
+				float buildingHeight=state.buildingById!((bldg,state)=>height(bldg,state),()=>0.0f)(building,state);
+				auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
+				state.addEffect(StructureCasting!B(manaDrain,spell,building,buildingHeight,castingTime,0));
+				return true;
+			}else return stun();
+	}
 }
 
 enum doubleSpeedUpDelay=cast(int)(0.2f*updateFPS); // 200ms
@@ -2747,63 +2803,6 @@ bool lightning(B)(int immuneId,int side,OrderTarget start,OrderTarget end,SacSpe
 		bolt.changeShape(state);
 	state.addEffect(lightning);
 	return true;
-}
-
-
-enum summonSoundGain=2.0f;
-bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,ObjectState!B state){
-	auto wizard=state.getWizard(object.id);
-	if(!wizard) return false;
-	if(state.spellStatus!false(wizard,spell,target)!=SpellStatus.ready) return false;
-	int numFrames=cast(int)ceil(updateFPS*spell.castingTime(wizard.level));
-	if(!object.startCasting(numFrames,spell.stationary,state))
-		return false;
-	// TODO: "stationary" parameter necessary? If so, check what original engine does if wizard walks and stops
-	auto numManaDrainFrames=min(numFrames,cast(int)ceil(spell.manaCost*(updateFPS/500.0f)));
-	auto manaCostPerFrame=spell.manaCost/numManaDrainFrames;
-	auto manaDrain=ManaDrain!B(object.id,manaCostPerFrame,numManaDrainFrames);
-	(*wizard).applyCooldown(spell,state);
-	bool stun(){
-		object.damageStun(Vector3f(0.0f,0.0f,-1.0f),state);
-		return false;
-	}
-	final switch(spell.type){
-		case SpellType.creature:
-			assert(target==Target.init);
-			auto creature=spawn(object.id,spell.tag,0,state);
-			state.setRenderMode!(MovingObject!B,RenderMode.transparent)(creature);
-			playSoundAt("NMUS",creature,state,summonSoundGain);
-			state.addEffect(CreatureCasting!B(manaDrain,spell,creature));
-			return true;
-		case SpellType.spell:
-			bool ok=false;
-			switch(spell.tag){
-				case SpellTag.speedup:
-					ok=target.id==object.id?speedUp(object,spell,state):speedUp(target.id,spell,state);
-					goto default;
-				case SpellTag.heal:
-					return target.id==object.id?castHeal(object,manaDrain,spell,state):castHeal(target.id,manaDrain,spell,state);
-				case SpellTag.lightning:
-					return target.id==object.id?castLightning(object,manaDrain,spell,state):castLightning(target.id,manaDrain,spell,state);
-				default:
-					if(ok) state.addEffect(manaDrain);
-					else stun();
-					return ok;
-			}
-		case SpellType.structure:
-			if(!spell.isBuilding) goto case SpellType.spell;
-			auto base=state.staticObjectById!((obj)=>obj.buildingId,()=>0)(target.id);
-			if(base){ // TODO: stun both wizards on simultaneous lith cast
-				auto god=state.getCurrentGod(wizard);
-				if(god==God.none) god=God.persephone;
-				auto building=makeBuilding(object.id,spell.buildingTag(god),AdditionalBuildingFlags.inactive|Flags.cannotDamage,base,state);
-				state.setupStructureCasting(building);
-				float buildingHeight=state.buildingById!((bldg,state)=>height(bldg,state),()=>0.0f)(building,state);
-				auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
-				state.addEffect(StructureCasting!B(manaDrain,spell,building,buildingHeight,castingTime,0));
-				return true;
-			}else return stun();
-	}
 }
 
 bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state){
@@ -3477,7 +3476,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 				else if(object.animationState==AnimationState.runSpellcastStart)
 					object.animationState=AnimationState.runSpellcast;
 				auto endAnimation=object.creatureState.mode==CreatureMode.castingMoving?AnimationState.runSpellcastEnd:AnimationState.spellcastEnd;
-				if(sacObject.numFrames(endAnimation)*updateAnimFactor>=object.creatureState.timer)
+				if(sacObject.castingTime(endAnimation)*updateAnimFactor>=object.creatureState.timer)
 					object.animationState=endAnimation;
 			}
 	}
