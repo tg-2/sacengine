@@ -2732,9 +2732,10 @@ bool castLightning(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectSt
 	state.addEffect(LightningCasting!B(manaDrain,spell,target));
 	return true;
 }
-bool lightning(B)(int side,OrderTarget start,OrderTarget end,SacSpell!B spell,ObjectState!B state){
+bool lightning(B)(int immuneId,int side,OrderTarget start,OrderTarget end,SacSpell!B spell,ObjectState!B state){
 	auto startCenter=start.center(state),endCenter=end.center(state);
-	auto newEnd=state.collideRay(startCenter,endCenter-startCenter,1.0f);
+	static bool filter(ref ProximityEntry entry,int id){ return entry.id!=id; }
+	auto newEnd=state.collideRay!filter(startCenter,endCenter-startCenter,1.0f,immuneId);
 	if(newEnd.type!=TargetType.none){
 		end=newEnd;
 		endCenter=end.center(state);
@@ -4186,7 +4187,7 @@ bool updateLightningCasting(B)(ref LightningCasting!B lightningCast,ObjectState!
 	with(lightningCast){
 		return state.movingObjectById!((obj){
 			auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
-			auto offset=Vector3f(0.0f,hbox[1].y+1.0f,hbox[1].z+1.0f);
+			auto offset=Vector3f(0.0f,hbox[1].y+0.75f,hbox[1].z+0.5f);
 			final switch(manaDrain.update(state)){
 				case CastingStatus.underway:
 					auto sacParticle=SacParticle!B.get(ParticleType.lightningCasting);
@@ -4209,7 +4210,7 @@ bool updateLightningCasting(B)(ref LightningCasting!B lightningCast,ObjectState!
 						enum type=is(typeof(obj)==MovingObject!B)?TargetType.creature:TargetType.building;
 						return OrderTarget(type,obj.id,obj.center);
 					})(lightningCast.target);
-					lightning(obj.side,start,end,spell,state);
+					lightning(obj.id,obj.side,start,end,spell,state);
 					return false;
 			}
 		},()=>false)(manaDrain.wizard);
@@ -4640,13 +4641,16 @@ auto collide(alias f,T...)(ref ProximityEntries proximityEntries,int version_,Ve
 			f(proximityEntries.entries[i],args);
 	}
 }
-Tuple!(float,ProximityEntry) collideRay(ref ProximityEntries proximityEntries,int version_,Vector3f start,Vector3f direction,float limit){
+Tuple!(float,ProximityEntry) collideRay(alias filter=None,T...)(ref ProximityEntries proximityEntries,int version_,Vector3f start,Vector3f direction,float limit,T args){
 	if(proximityEntries.version_!=version_){
 		proximityEntries.entries.length=0;
 		proximityEntries.version_=version_;
 	}
 	auto result=tuple(float.infinity,ProximityEntry.init);
 	foreach(i;0..proximityEntries.entries.length){
+		static if(is(typeof(filter(proximityEntries.entries[i],args))))
+			if(!filter(proximityEntries.entries[i],args))
+				continue;
 		auto cand=rayBoxIntersect(start,direction,proximityEntries.entries[i].hitbox,limit);
 		if(cand<result[0]) result=tuple(cand,proximityEntries.entries[i]);
 	}
@@ -4684,11 +4688,11 @@ auto collide(alias f,B,T...)(ref HitboxProximity!B proximity,int version_,Vector
 				data[j][i].collide!f(version_,hitbox,args);
 	}
 }
-auto collideRay(B)(ref HitboxProximity!B proximity,int version_,Vector3f start,Vector3f direction,float limit){
+auto collideRay(alias filter=None,B,T...)(ref HitboxProximity!B proximity,int version_,Vector3f start,Vector3f direction,float limit,T args){
 	with(proximity){
 		auto result=tuple(float.infinity,ProximityEntry.init);
 		bool updateResult(ref ProximityEntries entries){
-			auto cand=entries.collideRay(version_,start,direction,limit);
+			auto cand=entries.collideRay!filter(version_,start,direction,limit,args);
 			if(cand[0]<result[0]&&cand[0]<limit){
 				result=cand;
 				return true;
@@ -4987,8 +4991,8 @@ final class Proximity(B){
 auto collide(alias f,B,T...)(Proximity!B proximity,Vector3f[2] hitbox,T args){
 	return proximity.hitboxes.collide!(f,B,T)(proximity.version_,hitbox,args);
 }
-auto collideRay(B)(Proximity!B proximity,Vector3f start,Vector3f direction,float limit=float.infinity){
-	return proximity.hitboxes.collideRay(proximity.version_,start,direction,limit);
+auto collideRay(alias filter=None,B,T...)(Proximity!B proximity,Vector3f start,Vector3f direction,float limit,T args){
+	return proximity.hitboxes.collideRay!filter(proximity.version_,start,direction,limit,args);
 }
 
 import std.random: MinstdRand0;
@@ -5026,9 +5030,9 @@ final class ObjectState(B){ // (update logic)
 	float getGroundHeightDerivative(Vector3f position,Vector3f direction){
 		return map.getGroundHeightDerivative(position,direction);
 	}
-	OrderTarget collideRay(Vector3f start,Vector3f direction,float limit=float.infinity){
+	OrderTarget collideRay(alias filter=None,T...)(Vector3f start,Vector3f direction,float limit,T args){
 		auto landscape=map.rayIntersection(start,direction,limit);
-		auto tEntry=proximity.collideRay(start,direction,min(limit,landscape));
+		auto tEntry=proximity.collideRay!filter(start,direction,min(limit,landscape),args);
 		if(landscape<tEntry[0]) return OrderTarget(TargetType.terrain,0,start+landscape*direction);
 		auto targetType=targetTypeFromId(tEntry[1].id);
 		if(targetType.among(TargetType.creature,TargetType.building))
