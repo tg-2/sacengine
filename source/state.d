@@ -2699,7 +2699,8 @@ bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,Ob
 	if(!object.startCasting(numFrames,spell.stationary,state))
 		return false;
 	// TODO: "stationary" parameter necessary? If so, check what original engine does if wizard walks and stops
-	auto numManaDrainFrames=min(numFrames,cast(int)ceil(spell.manaCost*(updateFPS/500.0f)));
+	auto drainSpeed=spell.isBuilding?125.0f:500.0f;
+	auto numManaDrainFrames=min(numFrames,cast(int)ceil(spell.manaCost*(updateFPS/drainSpeed)));
 	auto manaCostPerFrame=spell.manaCost/numManaDrainFrames;
 	auto manaDrain=ManaDrain!B(object.id,manaCostPerFrame,numManaDrainFrames);
 	(*wizard).applyCooldown(spell,state);
