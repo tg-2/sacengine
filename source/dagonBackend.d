@@ -505,6 +505,8 @@ final class SacScene: Scene{
 						auto len=diff.length;
 						auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),diff/len);
 						scene.shadelessBoneMaterialBackend.setTransformationScaled(start,rotation,Vector3f(1.0f,1.0f,0.1f*len),rc);
+						auto energy=1.0f+19.0f*(0.5f+0.5f*cos(8.0f*cast(float)PI*frame/float(totalFrames)));
+						scene.shadelessBoneMaterialBackend.setEnergy(energy);
 						auto mesh=scene.lightning.getFrame(objects.lightnings[j].frame%scene.lightning.numFrames);
 						foreach(ref bolt;objects.lightnings[j].bolts){
 							Matrix4x4f[numLightningSegments+1] pose;
