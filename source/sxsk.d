@@ -30,10 +30,15 @@ enum AnimEvent{
 	foot,
 }
 
+struct Hand{
+	int bone;
+	Vector3f position;
+}
 struct Animation{
 	int numAttackTicks=0;
 	int firstAttackTick=int.max;
 	int castingTime=int.max;
+	Hand[2] hands;
 	Pose[] frames;
 }
 
@@ -51,7 +56,7 @@ Animation parseSXSK(ubyte[] data,float scaling){
 		auto rotations=anim.map!(x=>Quaternionf(Vector3f(fromSXMD([x[0],x[1],x[2]])),x[3]).normalized()).array;
 		frames~=Pose(displacement,AnimEvent.none,rotations);
 	}
-	return Animation(0,int.max,int.max,frames);
+	return Animation(0,int.max,int.max,(Hand[2]).init,frames);
 }
 
 AnimEvent translateAnimEvent(char[4] tag){
@@ -91,6 +96,7 @@ Animation loadSXSK(string filename,float scaling){
 	auto anim=parseSXSK(readFile(filename),scaling);
 	auto skel=loadSkel(filename[0..$-5]~".SKEL");
 	anim.setAnimEvents(skel,filename);
+	foreach(i;0..2) anim.hands[i]=Hand(skel.hands[i].bone,Vector3f(skel.hands[i].offset));
 	return anim;
 }
 

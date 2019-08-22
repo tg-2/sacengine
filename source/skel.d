@@ -6,18 +6,17 @@ struct SkelEvent{
 	char[4] tag;
 	float parameter;
 }
-struct SkelUnknown{
-	uint flags; // ?
-	uint unknown0;
-	uint unknown1;
-	uint unknown2;
+struct SkelHand{
+	ushort bone;
+	ushort unknown;
+	float[3] offset;
 }
 struct Skel{
 	uint unknown0; // unused?
 	uint unknown1;
 	uint numEvents;
 	SkelEvent[8] events;
-	SkelUnknown[2] unknown2;
+	SkelHand[2] hands;
 }
 static assert(Skel.sizeof==140);
 

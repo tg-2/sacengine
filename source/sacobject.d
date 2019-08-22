@@ -270,6 +270,16 @@ final class SacObject(B){
 			.joiner.map!(v=>transform(modelViewProjectionMatrix,v)).bbox;
 	}
 
+	Vector3f[2] hands(AnimationState animationState,int frame){
+		Vector3f[2] result;
+		foreach(i;0..2){
+			auto hand=animations[animationState].hands[i];
+			if(hand.bone==0) continue;
+			result[i]=hand.position*animations[animationState].frames[frame].matrices[hand.bone];
+		}
+		return result;
+	}
+
 	int numAttackTicks(AnimationState animationState){
 		return max(1,animations[animationState].numAttackTicks);
 	}
@@ -525,7 +535,7 @@ final class SacObject(B){
 				if(animation.length)
 					loadAnimation(animation);
 				if(!animations.length){
-					auto anim=Animation(0,int.max,int.max,[Pose(Vector3f(0,0,0),AnimEvent.none,facingQuaternion(0).repeat(saxsi.saxs.bones.length).array)]);
+					auto anim=Animation(0,int.max,int.max,(Hand[2]).init,[Pose(Vector3f(0,0,0),AnimEvent.none,facingQuaternion(0).repeat(saxsi.saxs.bones.length).array)]);
 					static if(gpuSkinning)
 						anim.compile(saxsi.saxs);
 					animations=[anim];
