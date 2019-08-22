@@ -2698,7 +2698,6 @@ bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,Ob
 	int numFrames=cast(int)ceil(updateFPS*spell.castingTime(wizard.level));
 	if(!object.startCasting(numFrames,spell.stationary,state))
 		return false;
-	// TODO: "stationary" parameter necessary? If so, check what original engine does if wizard walks and stops
 	auto drainSpeed=spell.isBuilding?125.0f:500.0f;
 	auto numManaDrainFrames=min(numFrames,cast(int)ceil(spell.manaCost*(updateFPS/drainSpeed)));
 	auto manaCostPerFrame=spell.manaCost/numManaDrainFrames;
