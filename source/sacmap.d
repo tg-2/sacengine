@@ -100,7 +100,7 @@ final class SacMap(B){
 		return Vector3f(10*i,10*(n-1-j),heights[j][i]);
 	}
 	Tuple!(Tuple!(int,"j",int,"i")[3][2],"tri",int,"nt") getTriangles(bool invert=false)(int j,int i){
-		if(i<0||i>=n||j<0||j>=m) return typeof(return).init;
+		if(i<0||i+1>=n||j<0||j+1>=m) return typeof(return).init;
 		Tuple!(int,"j",int,"i")[3][2] tri;
 		int nt=0;
 		void makeTri(int[] indices)(){
