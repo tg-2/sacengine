@@ -505,7 +505,8 @@ final class SacScene: Scene{
 						auto len=diff.length;
 						auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),diff/len);
 						scene.shadelessBoneMaterialBackend.setTransformationScaled(start,rotation,Vector3f(1.0f,1.0f,0.1f*len),rc);
-						auto energy=1.0f+19.0f*(0.5f+0.5f*cos(8.0f*cast(float)PI*frame/float(totalFrames)));
+						auto alpha=cast(float)PI*frame/float(totalFrames);
+						auto energy=0.5f+19.5f*(0.5f+0.25f*cos(7.0f*alpha)+0.25f*sin(11.0f*alpha));
 						scene.shadelessBoneMaterialBackend.setEnergy(energy);
 						auto mesh=scene.lightning.getFrame(objects.lightnings[j].frame%scene.lightning.numFrames);
 						foreach(ref bolt;objects.lightnings[j].bolts){
@@ -2668,7 +2669,7 @@ static:
 
 	Material createMaterial(SacParticle!DagonBackend particle){
 		final switch(particle.type) with(ParticleType){
-				case manafount, manalith, manahoar, shrine, firy, explosion, explosion2, speedUp, heal, relativeHeal, lightningCasting, spark:
+				case manafount, manalith, manahoar, shrine, firy, explosion, explosion2, speedUp, heal, relativeHeal, lightningCasting, spark, castPersephone, castPyro, castJames, castStratos, castCharnel:
 				auto mat=scene.createMaterial(scene.shadelessMaterialBackend);
 				mat.depthWrite=false;
 				mat.blending=Additive;

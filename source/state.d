@@ -388,6 +388,12 @@ float meleeStrength(B)(ref MovingObject!B object){
 	return object.sacObject.meleeStrength;
 }
 
+Vector3f[2] hands(B)(ref MovingObject!B object){
+	auto hands=object.sacObject.hands(object.animationState,object.frame/updateAnimFactor);
+	foreach(ref hand;hands) hand=object.position+rotate(object.rotation,hand);
+	return hands;
+}
+
 int numAttackTicks(B)(ref MovingObject!B object,AnimationState animationState){
 	return object.sacObject.numAttackTicks(animationState);
 }
@@ -1288,6 +1294,7 @@ struct CreatureCasting(B){
 	int creature;
 }
 struct StructureCasting(B){
+	God god;
 	ManaDrain!B manaDrain;
 	SacSpell!B spell;
 	int building;
@@ -2740,7 +2747,7 @@ bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,Ob
 				state.setupStructureCasting(building);
 				float buildingHeight=state.buildingById!((bldg,state)=>height(bldg,state),()=>0.0f)(building,state);
 				auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
-				state.addEffect(StructureCasting!B(manaDrain,spell,building,buildingHeight,castingTime,0));
+				state.addEffect(StructureCasting!B(god,manaDrain,spell,building,buildingHeight,castingTime,0));
 				return true;
 			}else return stun();
 	}
@@ -4002,10 +4009,20 @@ bool updateManaDrain(B)(ref ManaDrain!B manaDrain,ObjectState!B state){
 		case CastingStatus.interrupted, CastingStatus.finished: return false;
 	}
 }
+
+void animateCreatureCasting(B)(ref MovingObject!B wizard,SacSpell!B spell,ObjectState!B state){
+	auto god=spell.god;
+	if(god==God.none) god=state.getCurrentGod(state.getWizard(wizard.id));
+	if(god==God.none) god=God.persephone;
+	wizard.animateCastingForGod(god,state);
+}
+
 bool updateCreatureCasting(B)(ref CreatureCasting!B creatureCast,ObjectState!B state){
 	with(creatureCast){
 		final switch(manaDrain.update(state)){
 			case CastingStatus.underway:
+				state.movingObjectById!animateCreatureCasting(manaDrain.wizard,spell,state);
+				// TODO: add rotating particles around creature position
 				return true;
 			case CastingStatus.interrupted: state.removeObject(creatureCast.creature); return false;
 			case CastingStatus.finished:
@@ -4021,28 +4038,38 @@ bool updateCreatureCasting(B)(ref CreatureCasting!B creatureCast,ObjectState!B s
 		}
 	}
 }
+
+void animateStructureCasting(B)(ref StructureCasting!B structureCast,ObjectState!B state){
+	with(structureCast){
+		auto thresholdZ=-structureCastingGradientSize+(buildingHeight+structureCastingGradientSize)*currentFrame/castingTime;
+		state.buildingById!((bldg,thresholdZ,state){
+			foreach(cid;bldg.componentIds){
+				state.setThresholdZ(cid,thresholdZ);
+				if(currentFrame+0.5f*updateFPS<castingTime){
+					auto pos=state.staticObjectById!((obj)=>obj.position,function Vector3f(){ assert(0); })(cid);
+					pos.z+=thresholdZ-0.5f*structureCastingGradientSize*currentFrame/castingTime;
+					foreach(i;0..state.uniform(1,6)){
+						auto position=pos;
+						position.z+=state.uniform(0.0f,structureCastingGradientSize);
+						auto scale=state.uniform(0.875f,1.125f);
+						state.addEffect(BlueRing!B(position,scale,state.uniform(64)));
+					}
+				}
+			}
+			// TODO: add ground particle effects around building
+		})(building,thresholdZ,state);
+		state.movingObjectById!animateCastingForGod(manaDrain.wizard,god,state);
+		// TODO: add ground particle effects around wizard
+	}
+}
+
 enum structureCastingGradientSize=2.0f;
 bool updateStructureCasting(B)(ref StructureCasting!B structureCast,ObjectState!B state){
 	with(structureCast){
 		final switch(manaDrain.update(state)){
 			case CastingStatus.underway:
 				currentFrame+=1;
-				auto thresholdZ=-structureCastingGradientSize+(buildingHeight+structureCastingGradientSize)*currentFrame/castingTime;
-				state.buildingById!((bldg,thresholdZ,state){
-					foreach(cid;bldg.componentIds){
-						state.setThresholdZ(cid,thresholdZ);
-						if(currentFrame+0.5f*updateFPS<castingTime){
-							auto pos=state.staticObjectById!((obj)=>obj.position,function Vector3f(){ assert(0); })(cid);
-							pos.z+=thresholdZ-0.5f*structureCastingGradientSize*currentFrame/castingTime;
-							foreach(i;0..state.uniform(1,6)){
-								auto position=pos;
-								position.z+=state.uniform(0.0f,structureCastingGradientSize);
-								auto scale=state.uniform(0.875f,1.125f);
-								state.addEffect(BlueRing!B(position,scale,state.uniform(64)));
-							}
-						}
-					}
-				})(building,thresholdZ,state);
+				structureCast.animateStructureCasting(state);
 				return true;
 			case CastingStatus.interrupted:
 				state.buildingById!destroy(building,state);
@@ -4117,6 +4144,65 @@ bool updateSpeedUpShadow(B)(ref SpeedUpShadow!B speedUpShadow,ObjectState!B stat
 	}
 }
 
+void animateCasting(bool spread=true,B)(ref MovingObject!B wizard,SacParticle!B sacParticle,ObjectState!B state){
+	auto hands=wizard.hands;
+	enum numParticles=2;
+	foreach(i;0..2){
+		auto hposition=hands[i];
+		if(isNaN(hposition.x)) continue;
+		foreach(k;0..numParticles){
+			static if(spread){
+				auto position=hposition+0.125f*Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+				auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+				auto velocity=state.uniform(0.5f,1.5f)*direction;
+			}else{
+				auto position=hposition;
+				auto velocity=Vector3f(0.0f,0.0f,0.0f);
+			}
+			auto scale=1.0f;
+			auto lifetime=31;
+			auto frame=0;
+			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+		}
+	}
+}
+void animatePersephoneCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	auto castParticle=SacParticle!B.get(ParticleType.castPersephone);
+	wizard.animateCasting(castParticle,state);
+}
+void animatePyroCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	auto castParticle=SacParticle!B.get(ParticleType.castPyro);
+	wizard.animateCasting(castParticle,state);
+}
+void animateJamesCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	auto castParticle=SacParticle!B.get(ParticleType.castJames);
+	wizard.animateCasting(castParticle,state);
+}
+void animateStratosCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	auto castParticle=SacParticle!B.get(ParticleType.castStratos);
+	wizard.animateCasting(castParticle,state);
+}
+void animateCharnelCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	auto castParticle=SacParticle!B.get(ParticleType.castCharnel);
+	wizard.animateCasting(castParticle,state);
+}
+
+void animateCastingForGod(B)(ref MovingObject!B wizard,God god,ObjectState!B state){
+	final switch(god) with(God){
+		import std.traits:EnumMembers;
+		static foreach(sgod;EnumMembers!God){
+			case sgod:
+				static if(sgod!=none) mixin(`animate`~upperf(text(sgod))~`Casting`)(wizard,state);
+				return;
+		}
+	}
+}
+
+void animateHealCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	auto castParticle=SacParticle!B.get(ParticleType.heal);
+	wizard.animateCasting(castParticle,state);
+}
+
 bool updateHealCasting(B)(ref HealCasting!B healCast,ObjectState!B state){
 	with(healCast){
 		final switch(manaDrain.update(state)){
@@ -4150,6 +4236,7 @@ bool updateHealCasting(B)(ref HealCasting!B healCast,ObjectState!B state){
 						state.addParticle(Particle!(B,true)(sacParticle,obj.id,false,center,velocity,scale,sacParticle.numFrames,0));
 					})(manaDrain.wizard,sacParticle,state);
 				}
+				state.movingObjectById!animateHealCasting(manaDrain.wizard,state);
 				return true;
 			case CastingStatus.interrupted: return false;
 			case CastingStatus.finished:
@@ -4182,6 +4269,10 @@ bool updateHeal(B)(ref Heal!B heal,ObjectState!B state){
 	},function bool(){ return false; })(heal.creature,heal,state);
 }
 
+void animateLightningCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	wizard.animateStratosCasting(state);
+}
+
 bool updateLightningCasting(B)(ref LightningCasting!B lightningCast,ObjectState!B state){
 	with(lightningCast){
 		return state.movingObjectById!((obj){
@@ -4200,6 +4291,7 @@ bool updateLightningCasting(B)(ref LightningCasting!B lightningCast,ObjectState!
 						auto scale=1.0f;
 						state.addParticle(Particle!(B,true)(sacParticle,obj.id,true,position,velocity,scale,sacParticle.numFrames,0));
 					}
+					obj.animateLightningCasting(state);
 					return true;
 				case CastingStatus.interrupted: return false;
 				case CastingStatus.finished:

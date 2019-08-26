@@ -639,6 +639,11 @@ enum ParticleType{
 	relativeHeal,
 	lightningCasting,
 	spark,
+	castPersephone,
+	castPyro,
+	castJames,
+	castStratos,
+	castCharnel,
 }
 
 final class SacParticle(B){
@@ -656,6 +661,8 @@ final class SacParticle(B){
 				return true;
 			case manalith,shrine,manahoar,firy,explosion,explosion2,speedUp,heal,relativeHeal,lightningCasting:
 				return false;
+			case castPersephone,castPyro,castJames,castStratos,castCharnel:
+				return false;
 		}
 	}
 	@property bool relative(){
@@ -664,6 +671,8 @@ final class SacParticle(B){
 				return false;
 			case relativeHeal,lightningCasting:
 				return true;
+			case castPersephone,castPyro,castJames,castStratos,castCharnel:
+				return false;
 		}
 	}
 	this(ParticleType type,Color4f color=Color4f(1.0f,1.0f,1.0f,1.0f),float energy=20.0f){
@@ -734,6 +743,36 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Stra.FLDR/txtr.FLDR/sprk.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
+			case castPersephone:
+				width=height=1.0f;
+				this.energy=5.0f;
+				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/cstl.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
+			case castPyro:
+				width=height=1.0f;
+				this.energy=5.0f;
+				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pyro.FLDR/txtr.FLDR/cstp.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
+			case castJames:
+				width=height=1.0f;
+				this.energy=5.0f;
+				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Jame.FLDR/tex_ZERO_.FLDR/cstj.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
+			case castStratos:
+				width=height=1.0f;
+				this.energy=5.0f;
+				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Stra.FLDR/txtr.FLDR/csts.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
+			case castCharnel:
+				width=height=1.0f;
+				this.energy=-1.0f;
+				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Char.FLDR/tex_ZERO_.FLDR/cstc.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
 		}
 		material=B.createMaterial(this);
 	}
@@ -765,6 +804,8 @@ final class SacParticle(B){
 				return min(1.0f,(lifetime/(0.75f*numFrames))^^2);
 			case lightningCasting,spark:
 				return 1.0f;
+			case castPersephone,castPyro,castJames,castStratos,castCharnel:
+				return 1.0f;
 		}
 	}
 	float getScale(int lifetime){
@@ -780,9 +821,12 @@ final class SacParticle(B){
 			case speedUp:
 				return 1.0f;
 			case heal,relativeHeal:
-				return 1.0;
+				return 1.0f;
 			case lightningCasting,spark:
-				return 1.0;
+				return 1.0f;
+			case castPersephone,castPyro,castJames,castStratos,castCharnel:
+				return 1.0f;
+
 		}
 	}
 }
