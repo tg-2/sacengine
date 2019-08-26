@@ -1726,36 +1726,6 @@ final class SacScene: Scene{
 			else if(isOnMinimap(Vector2f(mouse.x,mouse.y))) mouse.loc=Mouse.Location.minimap;
 			else mouse.loc=Mouse.Location.scene;
 		}
-		if(mouse.visible && mouse.status.among(Mouse.Status.standard,Mouse.Status.icon)){
-			if(((eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK])
-			    && eventManager.mouseButtonPressed[MB_LEFT])||
-			   eventManager.mouseButtonPressed[MB_MIDDLE]
-			){
-				if(eventManager.mouseRelX||eventManager.mouseRelY)
-					mouse.dragging=true;
-				if(!mouse.onMinimap){
-					fpview.active=true;
-					fpview.mouseFactor=-0.25f;
-				}else{
-					SDL_SetRelativeMouseMode(SDL_TRUE);
-				}
-				mouse.x+=eventManager.mouseRelX/screenScaling;
-				mouse.y+=eventManager.mouseRelY/screenScaling;
-				mouse.x=max(0,min(mouse.x,width-1));
-				mouse.y=max(0,min(mouse.y,height-1));
-			}else{
-				mouse.dragging=false;
-				if(!mouse.onMinimap){
-					if(fpview.active){
-						fpview.active=false;
-						fpview.mouseFactor=1.0f;
-						eventManager.setMouse(cast(int)(mouse.x*screenScaling),cast(int)(mouse.y*screenScaling));
-					}
-				}else{
-					SDL_SetRelativeMouseMode(SDL_FALSE);
-				}
-			}
-		}
 		if(mouse.visible){
 			if(!mouse.onMinimap){
 				camera.targetZoom-=0.04f*eventManager.mouseWheelY;
@@ -2025,6 +1995,36 @@ final class SacScene: Scene{
 				if(mouse.status==Mouse.Status.standard&&!mouse.dragging){
 					mouse.status=Mouse.Status.icon;
 					mouse.icon=MouseIcon.guard;
+				}
+			}
+		}
+		if(mouse.visible && mouse.status.among(Mouse.Status.standard,Mouse.Status.icon)){
+			if(((eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK])
+			    && eventManager.mouseButtonPressed[MB_LEFT])||
+			   eventManager.mouseButtonPressed[MB_MIDDLE]
+			){
+				if(eventManager.mouseRelX||eventManager.mouseRelY)
+					mouse.dragging=true;
+				if(!mouse.onMinimap){
+					fpview.active=true;
+					fpview.mouseFactor=-0.25f;
+				}else{
+					SDL_SetRelativeMouseMode(SDL_TRUE);
+				}
+				mouse.x+=eventManager.mouseRelX/screenScaling;
+				mouse.y+=eventManager.mouseRelY/screenScaling;
+				mouse.x=max(0,min(mouse.x,width-1));
+				mouse.y=max(0,min(mouse.y,height-1));
+			}else{
+				mouse.dragging=false;
+				if(!mouse.onMinimap){
+					if(fpview.active){
+						fpview.active=false;
+						fpview.mouseFactor=1.0f;
+						eventManager.setMouse(cast(int)(mouse.x*screenScaling),cast(int)(mouse.y*screenScaling));
+					}
+				}else{
+					SDL_SetRelativeMouseMode(SDL_FALSE);
 				}
 			}
 		}
