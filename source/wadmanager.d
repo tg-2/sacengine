@@ -45,7 +45,7 @@ class WadManager{
 			reverse(tmp2);
 			auto ext=cast(string)tmp2.idup;
 			if(ext !in names) names[ext]=(int[string]).init;
-			auto filename=buildPath(odir,name);
+			auto filename=buildPath(odir,name.replace("/","_SLASH_").replace("\\","_BSLASH_").replace("`","_TICK_").replace("\0","_ZERO_").replace("^","_HAT_").replace("/","_SLASH_"));
 			auto zsize=parseLE(info.eat(4));
 			auto size=parseLE(info.eat(4));
 			auto subfiles=parseLE(info.eat(4));
