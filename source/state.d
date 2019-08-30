@@ -125,6 +125,12 @@ Vector3f center(B)(ref OrderTarget target,ObjectState!B state){
 	if(!state.isValidId(target.id)) return target.position;
 	return state.objectById!((obj)=>obj.center)(target.id);
 }
+OrderTarget centerTarget(B)(int id,ObjectState!B state)in{
+	assert(state.isValidId(id));
+}do{
+	auto position=state.objectById!((obj)=>obj.center)(id);
+	return OrderTarget(state.targetTypeFromId(id),id,position);
+}
 Vector3f[2] hitbox(B)(ref OrderTarget target,ObjectState!B state){
 	if(!state.isValidId(target.id)) return [target.position,target.position];
 	return state.objectById!((obj)=>obj.hitbox)(target.id);
@@ -1332,7 +1338,7 @@ struct Heal(B){
 struct LightningCasting(B){
 	ManaDrain!B manaDrain;
 	SacSpell!B spell;
-	int target;
+	OrderTarget target;
 }
 enum numLightningSegments=10;
 struct LightningBolt(B){
@@ -1361,6 +1367,22 @@ struct Lightning(B){
 		this.frame=frame;
 	}
 	LightningBolt!B[2] bolts;
+}
+struct WrathCasting(B){
+	ManaDrain!B manaDrain;
+	SacSpell!B spell;
+	OrderTarget target;
+}
+enum WrathStatus{
+	flying,
+	exploding,
+}
+struct Wrath(B){
+	int side;
+	Vector3f position;
+	Vector3f velocity;
+	OrderTarget target;
+	SacSpell!B spell;
 }
 struct Effects(B){
 	Array!(Debris!B) debris;
@@ -1459,6 +1481,22 @@ struct Effects(B){
 		if(i+1<lightnings.length) swap(lightnings[i],lightnings[$-1]);
 		lightnings.length=lightnings.length-1;
 	}
+	Array!(WrathCasting!B) wrathCastings;
+	void addEffect(WrathCasting!B wrathCasting){
+		wrathCastings~=wrathCasting;
+	}
+	void removeWrathCasting(int i){
+		if(i+1<wrathCastings.length) swap(wrathCastings[i],wrathCastings[$-1]);
+		wrathCastings.length=wrathCastings.length-1;
+	}
+	Array!(Wrath!B) wraths;
+	void addEffect(Wrath!B wrath){
+		wraths~=wrath;
+	}
+	void removeWrath(int i){
+		if(i+1<wraths.length) swap(wraths[i],wraths[$-1]);
+		wraths.length=wraths.length-1;
+	}
 	void opAssign(ref Effects!B rhs){
 		assignArray(debris,rhs.debris);
 		assignArray(explosions,rhs.explosions);
@@ -1472,6 +1510,8 @@ struct Effects(B){
 		assignArray(heals,rhs.heals);
 		assignArray(lightningCastings,rhs.lightningCastings);
 		assignArray(lightnings,rhs.lightnings);
+		assignArray(wrathCastings,rhs.wrathCastings);
+		assignArray(wraths,rhs.wraths);
 	}
 }
 
@@ -2732,6 +2772,8 @@ bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,Ob
 					return target.id==object.id?castHeal(object,manaDrain,spell,state):castHeal(target.id,manaDrain,spell,state);
 				case SpellTag.lightning:
 					return target.id==object.id?castLightning(object,manaDrain,spell,state):castLightning(target.id,manaDrain,spell,state);
+				case SpellTag.wrath:
+					return target.id==object.id?castWrath(object,manaDrain,spell,state):castWrath(target.id,manaDrain,spell,state);
 				default:
 					if(ok) state.addEffect(manaDrain);
 					else stun();
@@ -2792,9 +2834,14 @@ bool castLightning(B,T)(ref T object,ManaDrain!B manaDrain,SacSpell!B spell,Obje
 }
 bool castLightning(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
 	if(!state.isValidId(target)) return false;
-	state.addEffect(LightningCasting!B(manaDrain,spell,target));
+	auto orderTarget=state.objectById!((obj){
+		enum type=is(typeof(obj)==MovingObject!B)?TargetType.creature:TargetType.building;
+		return OrderTarget(type,obj.id,obj.center);
+	})(target);
+	state.addEffect(LightningCasting!B(manaDrain,spell,orderTarget));
 	return true;
 }
+
 bool lightning(B)(int immuneId,int side,OrderTarget start,OrderTarget end,SacSpell!B spell,ObjectState!B state){
 	auto startCenter=start.center(state),endCenter=end.center(state);
 	static bool filter(ref ProximityEntry entry,int id){ return entry.id!=id; }
@@ -2811,6 +2858,25 @@ bool lightning(B)(int immuneId,int side,OrderTarget start,OrderTarget end,SacSpe
 	state.addEffect(lightning);
 	return true;
 }
+
+bool castWrath(B,T)(ref T object,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state)if(!is(T==int)){
+	return castWrath(object.id,manaDrain,spell,state);
+}
+bool castWrath(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	if(!state.isValidId(target)) return false;
+	state.addEffect(WrathCasting!B(manaDrain,spell,centerTarget(target,state)));
+	return true;
+}
+
+bool wrath(B)(int immuneId,int side,Vector3f position,OrderTarget target,SacSpell!B spell,ObjectState!B state){
+	target.position=target.center(state);
+	//playSpellSoundTypeAt(SoundType.?,start,state,4.0f); // TODO
+	auto velocity=Vector3f(0.0f,0.0f,0.0f);
+	auto wrath=Wrath!B(side,position,velocity,target,spell);
+	state.addEffect(wrath);
+	return true;
+}
+
 
 bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state){
 	auto angle=facing-object.creatureState.facing;
@@ -3501,7 +3567,7 @@ auto collisionTargetImpl(bool attackFilter=false,bool returnHitbox=false,B)(int 
 		static if(attackFilter) bool ally=false;
 		float distance=float.infinity;
 	}
-	static void handleCollision(ProximityEntry entry,CollisionState *collisionState,ObjectState!B state){
+	static void handleCollision(ProximityEntry entry,CollisionState* collisionState,ObjectState!B state){
 		if(entry.id==collisionState.ownId) return;
 		static if(attackFilter){
 			auto validAlly=state.objectById!((obj,state,side)=>tuple(obj.isValidAttackTarget(state),state.sides.getStance(side,.side(obj,state))==Stance.ally))(entry.id,state,collisionState.side);
@@ -4146,7 +4212,8 @@ bool updateSpeedUpShadow(B)(ref SpeedUpShadow!B speedUpShadow,ObjectState!B stat
 
 void animateCasting(bool spread=true,B)(ref MovingObject!B wizard,SacParticle!B sacParticle,ObjectState!B state){
 	auto hands=wizard.hands;
-	enum numParticles=2;
+	static if(spread) enum numParticles=2;
+	else enum numParticles=1;
 	foreach(i;0..2){
 		auto hposition=hands[i];
 		if(isNaN(hposition.x)) continue;
@@ -4275,6 +4342,7 @@ void animateLightningCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
 
 bool updateLightningCasting(B)(ref LightningCasting!B lightningCast,ObjectState!B state){
 	with(lightningCast){
+		target.position=target.center(state);
 		return state.movingObjectById!((obj){
 			auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
 			auto offset=Vector3f(0.0f,hbox[1].y+0.75f,hbox[1].z+0.5f);
@@ -4295,12 +4363,8 @@ bool updateLightningCasting(B)(ref LightningCasting!B lightningCast,ObjectState!
 					return true;
 				case CastingStatus.interrupted: return false;
 				case CastingStatus.finished:
-					if(!state.isValidId(lightningCast.target)) return false;
 					auto start=OrderTarget(TargetType.terrain,0,rotate(obj.rotation,offset)+obj.position);
-					auto end=state.objectById!((obj){
-						enum type=is(typeof(obj)==MovingObject!B)?TargetType.creature:TargetType.building;
-						return OrderTarget(type,obj.id,obj.center);
-					})(lightningCast.target);
+					auto end=lightningCast.target;
 					lightning(obj.id,obj.side,start,end,spell,state);
 					return false;
 			}
@@ -4348,6 +4412,74 @@ bool updateLightning(B)(ref Lightning!B lightning,ObjectState!B state){
 	}
 	return true;
 }
+
+void animateWrathCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	auto castParticle=SacParticle!B.get(ParticleType.wrathCasting);
+	wizard.animateCasting!false(castParticle,state);
+}
+
+bool updateWrathCasting(B)(ref WrathCasting!B wrathCast,ObjectState!B state){
+	with(wrathCast){
+		target.position=target.center(state);
+		return state.movingObjectById!((obj){
+			final switch(manaDrain.update(state)){
+				case CastingStatus.underway:
+					obj.animateWrathCasting(state);
+					return true;
+				case CastingStatus.interrupted:
+					return false;
+				case CastingStatus.finished:
+					auto hands=obj.hands;
+					Vector3f start=isNaN(hands[0].x)?hands[1]:isNaN(hands[1].x)?hands[0]:0.5f*(hands[0]+hands[1]);
+					if(isNaN(start.x)){
+						auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
+						auto offset=Vector3f(0.0f,hbox[1].y+0.75f,hbox[1].z+0.5f);
+						start=rotate(obj.rotation,offset)+obj.position;
+					}
+					wrath(obj.id,obj.side,start,wrathCast.target,spell,state);
+					return false;
+			}
+		},()=>false)(manaDrain.wizard);
+	}
+}
+void animateWrath(B)(ref Wrath!B wrath,ObjectState!B state){
+	enum numParticles=5;
+	foreach(i;0..numParticles){
+		auto sacParticle=SacParticle!B.get(ParticleType.wrathCasting);
+		static immutable Vector3f[2] bounds=[-0.2f*Vector3f(1.0f,1.0f,1.0f),0.2f*Vector3f(1.0f,1.0f,1.0f)];
+		auto position=wrath.position-state.uniform(0.0f,1.0f)*wrath.velocity/updateFPS+state.uniform(bounds);
+		auto velocity=Vector3f(0.0f,0.0f,0.0f);
+		auto scale=1.0f;
+		auto lifetime=31;
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+	}
+}
+enum wrathSize=0.1f;
+static immutable Vector3f[2] wrathHitbox=[-0.5f*wrathSize*Vector3f(1.0f,1.0f,1.0f),0.5f*wrathSize*Vector3f(1.0f,1.0f,1.0f)];
+int wrathExplosionTarget(B)(Vector3f position,ObjectState!B state){
+	static struct CollisionState{
+		int target=0;
+		double distance=float.infinity;
+	}
+	static void handleCollision(ProximityEntry entry,CollisionState* collisionState,ObjectState!B state){
+
+	}
+}
+void wrathExplosion(B)(Vector3f position,int target,ObjectState!B state){
+
+}
+bool updateWrath(B)(ref Wrath!B wrath,ObjectState!B state){
+	with(wrath){
+		auto acceleration=(target.center(state)-position).normalized*spell.acceleration;
+		wrath.velocity+=acceleration;
+		if(wrath.velocity.length>spell.speed) wrath.velocity=wrath.velocity.normalized*spell.speed;
+		wrath.position+=wrath.velocity/updateFPS;
+		wrath.animateWrath(state);
+		return true;
+	}
+}
+
 
 void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.debris.length;){
@@ -4430,6 +4562,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.lightnings.length;){
 		if(!updateLightning(effects.lightnings[i],state)){
 			effects.removeLightning(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.wrathCastings.length;){
+		if(!updateWrathCasting(effects.wrathCastings[i],state)){
+			effects.removeWrathCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.wraths.length;){
+		if(!updateWrath(effects.wraths[i],state)){
+			effects.removeWrath(i);
 			continue;
 		}
 		i++;

@@ -644,6 +644,7 @@ enum ParticleType{
 	castJames,
 	castStratos,
 	castCharnel,
+	wrathCasting,
 }
 
 final class SacParticle(B){
@@ -663,6 +664,8 @@ final class SacParticle(B){
 				return false;
 			case castPersephone,castPyro,castJames,castStratos,castCharnel:
 				return false;
+			case wrathCasting:
+				return false;
 		}
 	}
 	@property bool relative(){
@@ -672,6 +675,8 @@ final class SacParticle(B){
 			case relativeHeal,lightningCasting:
 				return true;
 			case castPersephone,castPyro,castJames,castStratos,castCharnel:
+				return false;
+			case wrathCasting:
 				return false;
 		}
 	}
@@ -773,6 +778,12 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Char.FLDR/tex_ZERO_.FLDR/cstc.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
+			case wrathCasting:
+				width=height=1.0f;
+				this.energy=7.5f;
+				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/flao.TXTR"));
+				meshes=makeSpriteMeshes!B(3,3,width,height,252.5f/256.0f,252.5f/256.0f);
+				break;
 		}
 		material=B.createMaterial(this);
 	}
@@ -806,6 +817,9 @@ final class SacParticle(B){
 				return 1.0f;
 			case castPersephone,castPyro,castJames,castStratos,castCharnel:
 				return 1.0f;
+			case wrathCasting:
+				return min(1.0f,lifetime/(1.5f*numFrames));
+				//return 1.0f;
 		}
 	}
 	float getScale(int lifetime){
@@ -826,8 +840,9 @@ final class SacParticle(B){
 				return 1.0f;
 			case castPersephone,castPyro,castJames,castStratos,castCharnel:
 				return 1.0f;
-
-		}
+			case wrathCasting:
+				return min(1.0f,0.4f+0.6f*lifetime/(1.5f*numFrames));
+			}
 	}
 }
 
