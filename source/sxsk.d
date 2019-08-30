@@ -96,7 +96,10 @@ Animation loadSXSK(string filename,float scaling){
 	auto anim=parseSXSK(readFile(filename),scaling);
 	auto skel=loadSkel(filename[0..$-5]~".SKEL");
 	anim.setAnimEvents(skel,filename);
-	foreach(i;0..2) anim.hands[i]=Hand(skel.hands[i].bone,Vector3f(skel.hands[i].offset));
+	foreach(i;0..2){
+		anim.hands[i]=Hand(skel.hands[i].bone,Vector3f(skel.hands[i].offset));
+		if(anim.hands[i].position.y==275.0f) anim.hands[i].position.y*=1e-3; // fix yogo walking casting animation
+	}
 	return anim;
 }
 
