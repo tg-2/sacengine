@@ -180,6 +180,19 @@ Vector!(float,n) closestBoxFaceNormal(size_t n)(Vector!(float,n)[2] box, Vector!
 	return closestBoxFaceNormalWithProjectionLength(box,position)[0];
 }
 
+Vector!(float,n) projectToBox(size_t n)(Vector!(float,n)[2] box,Vector!(float,n) point){
+	auto projection=point;
+	foreach(i;0..n){
+		projection[i]=max(projection[i],box[0][i]);
+		projection[i]=min(projection[i],box[1][i]);
+	}
+	return projection;
+}
+
+float boxPointDistance(size_t n)(Vector!(float,n)[2] box,Vector!(float,n) point){
+	return (point-projectToBox(box,point)).length;
+}
+
 bool isInside(Vector3f point,Vector3f[2] box){
 	return box[0].x<=point.x&&point.x<=box[1].x&&
 		box[0].y<=point.y&&point.y<=box[1].y&&
@@ -321,3 +334,24 @@ template tryImport(string filename,string alt=""){
 import std.string,std.path,std.algorithm,std.range;
 string fixPath(string path){ static if(dirSeparator=="/") return path; else return path.replace("/",dirSeparator); }
 string[] fixPaths(string[] paths){ static if(dirSeparator=="/") return paths; else return paths.map!fixPath.array; }
+
+struct SmallArray(T,size_t n){
+	size_t length;
+	T[n] elements;
+	Array!T rest;
+	void opOpAssign(string op:"~")(T elem){
+		if(length<n){
+			elements[length++]=elem;
+		}else{
+			length+=1;
+			rest~=elem;
+		}
+	}
+	ref T opIndex(size_t i){
+		if(i<n) return elements[i];
+		return rest[i-n];
+	}
+	auto opSlice(){
+		return chain(elements[0..min($,length)],rest[]);
+	}
+}

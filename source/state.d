@@ -2617,7 +2617,7 @@ void giveMana(B)(ref MovingObject!B object,float amount,ObjectState!B state){
 }
 
 float meleeDistance(Vector3f[2] objectHitbox,Vector3f attackerCenter){
-	return closestBoxFaceNormalWithProjectionLength(objectHitbox,attackerCenter)[1];
+	return boxPointDistance(objectHitbox,attackerCenter);
 }
 
 void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,ObjectState!B state){
@@ -2681,11 +2681,51 @@ void dealSpellDamage(B)(int target,SacSpell!B spell,int attackerSide,Vector3f at
 		}else static if(is(T==StaticObject!B)){
 			assert(target.buildingId);
 			state.buildingById!((ref Building!B building,SacSpell!B spell,int attackerSide,ObjectState!B state){
-					building.dealSpellDamage(spell,attackerSide,state);
-				})(target.buildingId,spell,attackerSide,state);
+				building.dealSpellDamage(spell,attackerSide,state);
+			})(target.buildingId,spell,attackerSide,state);
 		}
 	}
 	state.objectById!dealDamage(target,spell,attackerSide,attackDirection,state);
+}
+
+void dealSplashSpellDamage(B)(ref MovingObject!B object,SacSpell!B spell,int attackerSide,Vector3f attackDirection,ObjectState!B state){
+	auto damage=spell.amount;
+	auto actualDamage=damage*object.creatureStats.splashSpellResistance;
+	object.damageAnimation(attackDirection,state);
+	object.dealDamage(actualDamage,attackerSide,state);
+}
+void dealSplashSpellDamage(B)(ref Building!B building,SacSpell!B spell,int attackerSide,ObjectState!B state){
+	auto damage=spell.amount;
+	auto actualDamage=damage*building.splashSpellResistance;
+	building.dealDamage(actualDamage,attackerSide,state);
+}
+
+void dealSplashSpellDamage(B)(int target,SacSpell!B spell,int attackerSide,Vector3f attackDirection,ObjectState!B state){
+	static void dealDamage(B,T)(ref T target,SacSpell!B spell,int attackerSide,Vector3f attackDirection,ObjectState!B state){
+		static if(is(T==MovingObject!B)){
+			target.dealSplashSpellDamage(spell,attackerSide,attackDirection,state);
+		}else static if(is(T==StaticObject!B)){
+			assert(target.buildingId);
+			state.buildingById!((ref Building!B building,SacSpell!B spell,int attackerSide,ObjectState!B state){
+				building.dealSplashSpellDamage(spell,attackerSide,state);
+			})(target.buildingId,spell,attackerSide,state);
+		}
+	}
+	state.objectById!dealDamage(target,spell,attackerSide,attackDirection,state);
+}
+
+void dealSplashSpellDamageAt(B)(int directTarget,SacSpell!B spell,int attackerSide,Vector3f position,ObjectState!B state){
+	auto radius=spell.effectRange;
+	static void dealDamage(ProximityEntry target,ObjectState!B state,int directTarget,SacSpell!B spell,int attackerSide,Vector3f position){
+		if(target.id==directTarget) return;
+		auto radius=spell.effectRange;
+		if(boxPointDistance(target.hitbox,position)>radius) return;
+		auto attackDirection=state.objectById!((obj)=>obj.center)(target.id)-position;
+		dealSplashSpellDamage(target.id,spell,attackerSide,attackDirection,state);
+	}
+	auto offset=Vector3f(radius,radius,radius);
+	Vector3f[2] hitbox=[position-offset,position+offset];
+	collisionTargets!dealDamage(hitbox,state,directTarget,spell,attackerSide,position);
 }
 
 void setMovement(B)(ref MovingObject!B object,MovementDirection direction,ObjectState!B state,int side=-1){
@@ -4473,14 +4513,14 @@ void animateWrath(B)(ref Wrath!B wrath,ObjectState!B state){
 		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
 	}
 }
-int spellCollisionTarget(alias hitbox,alias filter,B,T...)(int side,Vector3f position,ObjectState!B state,T args){
+int collisionTarget(alias hitbox,alias filter,B,T...)(int side,Vector3f position,ObjectState!B state,T args){
 	static struct CollisionState{
 		int target=0;
 		bool valid,ally;
 		double distance=float.infinity;
 	}
 	static void handleCollision(ProximityEntry entry,int side,Vector3f position,CollisionState* collisionState,ObjectState!B state,T args){
-		if(!filter(entry.id,state,args)) return;
+		if(!filter(entry,state,args)) return;
 		auto distance=meleeDistance(entry.hitbox,position);
 		auto validAlly=state.objectById!((obj,state,side)=>tuple(obj.isValidAttackTarget(state),state.sides.getStance(side,.side(obj,state))==Stance.ally))(entry.id,state,side);
 		auto valid=validAlly[0], ally=validAlly[1];
@@ -4495,19 +4535,30 @@ int spellCollisionTarget(alias hitbox,alias filter,B,T...)(int side,Vector3f pos
 	state.proximity.collide!handleCollision(moveBox(hitbox,position),side,position,&collisionState,state,args);
 	return collisionState.target;
 }
+void collisionTargets(alias f,alias filter=None,B,T...)(Vector3f[2] hitbox,ObjectState!B state,T args){
+	static struct CollisionState{ SmallArray!(ProximityEntry,32) targets; }
+	static void handleCollision(ProximityEntry entry,CollisionState* collisionState,ObjectState!B state,T args){
+		static if(!is(filter==None)) if(!filter(entry,state,args)) return;
+		collisionState.targets~=entry;
+	}
+	auto collisionState=CollisionState();
+	state.proximity.collide!handleCollision(hitbox,&collisionState,state,args);
+	foreach(ref entry;collisionState.targets[].sort!"a.id<b.id".uniq) f(entry,state,args);
+}
 enum wrathSize=0.1f;
 static immutable Vector3f[2] wrathHitbox=[-0.5f*wrathSize*Vector3f(1.0f,1.0f,1.0f),0.5f*wrathSize*Vector3f(1.0f,1.0f,1.0f)];
 int wrathCollisionTarget(B)(int side,Vector3f position,ObjectState!B state){
-	static bool filter(int id,ObjectState!B state,int side){
-		return state.objectById!(.side)(id,state)!=side;
+	static bool filter(ProximityEntry entry,ObjectState!B state,int side){
+		return state.objectById!(.side)(entry.id,state)!=side;
 	}
-	return spellCollisionTarget!(wrathHitbox,filter)(side,position,state,side);
+	return collisionTarget!(wrathHitbox,filter)(side,position,state,side);
 }
 void wrathExplosion(B)(ref Wrath!B wrath,int target,ObjectState!B state){
 	wrath.status=WrathStatus.exploding;
 	playSoundAt("hhtr",wrath.position,state,4.0f);
 	if(state.isValidId(target)) dealSpellDamage(target,wrath.spell,wrath.side,wrath.velocity,state);
-	// TODO: splash damage
+	else target=0;
+	dealSplashSpellDamageAt(target,wrath.spell,wrath.side,wrath.position,state);
 	enum numParticles1=200;
 	enum numParticles2=400;
 	auto sacParticle1=SacParticle!B.get(ParticleType.wrathExplosion1);
@@ -4540,12 +4591,28 @@ bool updateWrath(B)(ref Wrath!B wrath,ObjectState!B state){
 				auto distance=target.center(state)-position;
 				auto acceleration=distance.normalized*spell.acceleration;
 				wrath.velocity+=acceleration;
-				if(wrath.velocity.length>spell.speed) wrath.velocity=wrath.velocity.normalized*spell.speed;
-				if(wrath.velocity.length>updateFPS*distance.length) wrath.velocity=wrath.velocity.normalized*distance.length*updateFPS;
-				wrath.position+=wrath.velocity/updateFPS;
+				void capVelocity(){
+					if(wrath.velocity.length>spell.speed) wrath.velocity=wrath.velocity.normalized*spell.speed;
+					if(wrath.velocity.length>updateFPS*distance.length) wrath.velocity=wrath.velocity.normalized*distance.length*updateFPS;
+				}
+				capVelocity();
+				auto newPosition=wrath.position+wrath.velocity/updateFPS;
+				if(state.isOnGround(wrath.position)){
+					auto height=state.getGroundHeight(wrath.position);
+					if(newPosition.z<height+0.5f){
+						wrath.velocity.z+=(height+0.5f-newPosition.z)*updateFPS;
+						capVelocity();
+						newPosition=wrath.position+wrath.velocity/updateFPS;
+					}
+				}
+				wrath.position=newPosition;
 				wrath.animateWrath(state);
 				auto target=wrathCollisionTarget(wrath.side,wrath.position,state);
-				if(state.isValidId(target)) wrathExplosion(wrath,target,state);
+				if(state.isValidId(target)) wrath.wrathExplosion(target,state);
+				else if(state.isOnGround(wrath.position)){
+					if(wrath.position.z<state.getGroundHeight(wrath.position))
+						wrath.wrathExplosion(0,state);
+				}
 				return true;
 			case WrathStatus.exploding:
 				return ++frame<64;
