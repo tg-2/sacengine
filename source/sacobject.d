@@ -645,6 +645,7 @@ enum ParticleType{
 	castStratos,
 	castCharnel,
 	wrathCasting,
+	wrathExplosion,
 }
 
 final class SacParticle(B){
@@ -664,7 +665,7 @@ final class SacParticle(B){
 				return false;
 			case castPersephone,castPyro,castJames,castStratos,castCharnel:
 				return false;
-			case wrathCasting:
+			case wrathCasting,wrathExplosion:
 				return false;
 		}
 	}
@@ -676,7 +677,7 @@ final class SacParticle(B){
 				return true;
 			case castPersephone,castPyro,castJames,castStratos,castCharnel:
 				return false;
-			case wrathCasting:
+			case wrathCasting,wrathExplosion:
 				return false;
 		}
 	}
@@ -784,6 +785,12 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/flao.TXTR"));
 				meshes=makeSpriteMeshes!B(3,3,width,height,252.5f/256.0f,252.5f/256.0f);
 				break;
+			case wrathExplosion:
+				width=height=1.0f;
+				this.energy=50.0f;
+				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/wrth.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height,239.5f/256.0f,239.5f/256.0f);
+				break;
 		}
 		material=B.createMaterial(this);
 	}
@@ -807,7 +814,7 @@ final class SacParticle(B){
 				return min(1.0f,(lifetime/(3.0f*numFrames))^^2);
 			case manalith,shrine,manahoar:
 				return min(0.07f,(lifetime/(4.0f*numFrames))^^2);
-			case firy,explosion,explosion2:
+			case firy,explosion,explosion2,wrathExplosion:
 				return 1.0f;
 			case speedUp:
 				return min(1.0f,(lifetime/(0.5f*numFrames))^^2);
@@ -830,7 +837,7 @@ final class SacParticle(B){
 				return min(1.0f,lifetime/(4.0f*numFrames));
 			case shrine:
 				return min(1.0f,lifetime/(3.0f*numFrames));
-			case firy,explosion,explosion2:
+				case firy,explosion,explosion2,wrathExplosion:
 				return 1.0f;
 			case speedUp:
 				return 1.0f;

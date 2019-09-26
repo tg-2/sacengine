@@ -1378,6 +1378,7 @@ enum WrathStatus{
 	exploding,
 }
 struct Wrath(B){
+	WrathStatus status;
 	int side;
 	Vector3f position;
 	Vector3f velocity;
@@ -2672,6 +2673,20 @@ void dealSpellDamage(B)(ref Building!B building,SacSpell!B spell,int attackerSid
 	building.dealDamage(actualDamage,attackerSide,state);
 }
 
+void dealSpellDamage(B)(int target,SacSpell!B spell,int attackerSide,Vector3f attackDirection,ObjectState!B state){
+	static void dealDamage(B,T)(ref T target,SacSpell!B spell,int attackerSide,Vector3f attackDirection,ObjectState!B state){
+		static if(is(T==MovingObject!B)){
+			target.dealSpellDamage(spell,attackerSide,attackDirection,state);
+		}else static if(is(T==StaticObject!B)){
+			assert(target.buildingId);
+			state.buildingById!((ref Building!B building,SacSpell!B spell,int attackerSide,ObjectState!B state){
+					building.dealSpellDamage(spell,attackerSide,state);
+				})(target.buildingId,spell,attackerSide,state);
+		}
+	}
+	state.objectById!dealDamage(target,spell,attackerSide,attackDirection,state);
+}
+
 void setMovement(B)(ref MovingObject!B object,MovementDirection direction,ObjectState!B state,int side=-1){
 	if(!object.canOrder(side,state)) return;
 	if(object.creatureState.movement==CreatureMovement.flying &&
@@ -2870,9 +2885,9 @@ bool castWrath(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!
 
 bool wrath(B)(int immuneId,int side,Vector3f position,OrderTarget target,SacSpell!B spell,ObjectState!B state){
 	target.position=target.center(state);
-	//playSpellSoundTypeAt(SoundType.?,start,state,4.0f); // TODO
+	playSoundAt("shtr",position,state,4.0f); // TODO: move sound with wrath ball
 	auto velocity=Vector3f(0.0f,0.0f,0.0f);
-	auto wrath=Wrath!B(side,position,velocity,target,spell);
+	auto wrath=Wrath!B(WrathStatus.flying,side,position,velocity,target,spell);
 	state.addEffect(wrath);
 	return true;
 }
@@ -4396,18 +4411,8 @@ bool updateLightning(B)(ref Lightning!B lightning,ObjectState!B state){
 		// TODO: scar
 		auto target=lightning.end.id;
 		if(state.isValidId(target)){
-			static void dealDamage(B,T)(ref T target,SacSpell!B spell,int attackerSide,Vector3f attackDirection,ObjectState!B state){
-				static if(is(T==MovingObject!B)){
-					target.dealSpellDamage(spell,attackerSide,attackDirection,state);
-				}else static if(is(T==StaticObject!B)){
-					assert(target.buildingId);
-					state.buildingById!((ref Building!B building,SacSpell!B spell,int attackerSide,ObjectState!B state){
-						building.dealSpellDamage(spell,attackerSide,state);
-					})(target.buildingId,spell,attackerSide,state);
-				}
-			}
 			auto direction=lightning.end.position-lightning.start.position;
-			state.objectById!dealDamage(target,lightning.spell,lightning.side,direction,state);
+			dealSpellDamage(target,lightning.spell,lightning.side,direction,state);
 		}
 	}
 	return true;
@@ -4455,28 +4460,71 @@ void animateWrath(B)(ref Wrath!B wrath,ObjectState!B state){
 		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
 	}
 }
-enum wrathSize=0.1f;
-static immutable Vector3f[2] wrathHitbox=[-0.5f*wrathSize*Vector3f(1.0f,1.0f,1.0f),0.5f*wrathSize*Vector3f(1.0f,1.0f,1.0f)];
-int wrathExplosionTarget(B)(Vector3f position,ObjectState!B state){
+int spellCollisionTarget(alias hitbox,alias filter,B,T...)(int side,Vector3f position,ObjectState!B state,T args){
 	static struct CollisionState{
 		int target=0;
+		bool valid,ally;
 		double distance=float.infinity;
 	}
-	static void handleCollision(ProximityEntry entry,CollisionState* collisionState,ObjectState!B state){
-
+	static void handleCollision(ProximityEntry entry,int side,Vector3f position,CollisionState* collisionState,ObjectState!B state,T args){
+		if(!filter(entry.id,state,args)) return;
+		auto distance=meleeDistance(entry.hitbox,position);
+		auto validAlly=state.objectById!((obj,state,side)=>tuple(obj.isValidAttackTarget(state),state.sides.getStance(side,.side(obj,state))==Stance.ally))(entry.id,state,side);
+		auto valid=validAlly[0], ally=validAlly[1];
+		if(!collisionState.target||tuple(!valid,ally,distance)<tuple(collisionState.valid,collisionState.ally,collisionState.distance)){
+			collisionState.target=entry.id;
+			collisionState.valid=valid;
+			collisionState.ally=ally;
+			collisionState.distance=distance;
+		}
 	}
+	auto collisionState=CollisionState();
+	state.proximity.collide!handleCollision(moveBox(hitbox,position),side,position,&collisionState,state,args);
+	return collisionState.target;
 }
-void wrathExplosion(B)(Vector3f position,int target,ObjectState!B state){
-
+enum wrathSize=0.1f;
+static immutable Vector3f[2] wrathHitbox=[-0.5f*wrathSize*Vector3f(1.0f,1.0f,1.0f),0.5f*wrathSize*Vector3f(1.0f,1.0f,1.0f)];
+int wrathCollisionTarget(B)(int side,Vector3f position,ObjectState!B state){
+	static bool filter(int id,ObjectState!B state,int side){
+		return state.objectById!(.side)(id,state)!=side;
+	}
+	return spellCollisionTarget!(wrathHitbox,filter)(side,position,state,side);
+}
+void wrathExplosion(B)(ref Wrath!B wrath,int target,ObjectState!B state){
+	wrath.status=WrathStatus.exploding;
+	playSoundAt("hhtr",wrath.position,state,4.0f);
+	if(state.isValidId(target)) dealSpellDamage(target,wrath.spell,wrath.side,wrath.velocity,state);
+	// TODO: splash damage
+	enum numParticles=400;
+	auto sacParticle1=SacParticle!B.get(ParticleType.wrathExplosion);
+	auto sacParticle2=SacParticle!B.get(ParticleType.wrathExplosion);
+	foreach(i;0..numParticles){
+		auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+		auto velocity=state.uniform(0.5f,2.0f)*direction;
+		auto scale=1.0f;
+		auto lifetime=63;
+		auto frame=0;
+		state.addParticle(Particle!B(i<numParticles/2?sacParticle1:sacParticle2,wrath.position,velocity,scale,lifetime,frame));
+	}
 }
 bool updateWrath(B)(ref Wrath!B wrath,ObjectState!B state){
 	with(wrath){
-		auto acceleration=(target.center(state)-position).normalized*spell.acceleration;
-		wrath.velocity+=acceleration;
-		if(wrath.velocity.length>spell.speed) wrath.velocity=wrath.velocity.normalized*spell.speed;
-		wrath.position+=wrath.velocity/updateFPS;
-		wrath.animateWrath(state);
-		return true;
+		final switch(wrath.status){
+			case WrathStatus.flying:
+				auto distance=target.center(state)-position;
+				auto acceleration=distance.normalized*spell.acceleration;
+				wrath.velocity+=acceleration;
+				if(wrath.velocity.length>spell.speed) wrath.velocity=wrath.velocity.normalized*spell.speed;
+				if(wrath.velocity.length>updateFPS*distance.length) wrath.velocity=wrath.velocity.normalized*distance.length*updateFPS;
+				wrath.position+=wrath.velocity/updateFPS;
+				wrath.animateWrath(state);
+				auto target=wrathCollisionTarget(wrath.side,wrath.position,state);
+				if(state.isValidId(target)) wrathExplosion(wrath,target,state);
+				return true;
+			case WrathStatus.exploding:
+				// TODO
+				return false;
+		}
 	}
 }
 
