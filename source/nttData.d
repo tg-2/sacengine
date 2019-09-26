@@ -1000,6 +1000,7 @@ enum WizardTag:char[4]{
 	grakkus="1fwc",
 	hachimen="2lwc",
 	jadugarr="0awc",
+	marduk="2awc",
 	mithras="1ewc",
 	seerix="1awc",
 	shakti="0lwc",
