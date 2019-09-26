@@ -645,7 +645,9 @@ enum ParticleType{
 	castStratos,
 	castCharnel,
 	wrathCasting,
-	wrathExplosion,
+	wrathExplosion1,
+	wrathExplosion2,
+	wrathParticle,
 }
 
 final class SacParticle(B){
@@ -665,8 +667,10 @@ final class SacParticle(B){
 				return false;
 			case castPersephone,castPyro,castJames,castStratos,castCharnel:
 				return false;
-			case wrathCasting,wrathExplosion:
+			case wrathCasting,wrathExplosion1,wrathExplosion2:
 				return false;
+			case wrathParticle:
+				return true;
 		}
 	}
 	@property bool relative(){
@@ -677,9 +681,12 @@ final class SacParticle(B){
 				return true;
 			case castPersephone,castPyro,castJames,castStratos,castCharnel:
 				return false;
-			case wrathCasting,wrathExplosion:
+			case wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle:
 				return false;
 		}
+	}
+	@property bool bumpOffGround(){
+		return type==ParticleType.wrathParticle;
 	}
 	this(ParticleType type,Color4f color=Color4f(1.0f,1.0f,1.0f,1.0f),float energy=20.0f){
 		this.type=type;
@@ -779,17 +786,23 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Char.FLDR/tex_ZERO_.FLDR/cstc.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
-			case wrathCasting:
+			case wrathCasting,wrathExplosion1:
 				width=height=1.0f;
 				this.energy=7.5f;
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/flao.TXTR"));
 				meshes=makeSpriteMeshes!B(3,3,width,height,252.5f/256.0f,252.5f/256.0f);
 				break;
-			case wrathExplosion:
+			case wrathExplosion2:
 				width=height=1.0f;
 				this.energy=50.0f;
 				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/wrth.TXTR"));
-				meshes=makeSpriteMeshes!B(4,4,width,height,239.5f/256.0f,239.5f/256.0f);
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
+			case wrathParticle:
+				width=height=0.3f;
+				this.energy=5.0f;
+				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/prth.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
 		}
 		material=B.createMaterial(this);
@@ -814,19 +827,18 @@ final class SacParticle(B){
 				return min(1.0f,(lifetime/(3.0f*numFrames))^^2);
 			case manalith,shrine,manahoar:
 				return min(0.07f,(lifetime/(4.0f*numFrames))^^2);
-			case firy,explosion,explosion2,wrathExplosion:
+			case firy,explosion,explosion2,wrathExplosion1,wrathExplosion2:
 				return 1.0f;
-			case speedUp:
+			case speedUp,wrathParticle:
 				return min(1.0f,(lifetime/(0.5f*numFrames))^^2);
 			case heal,relativeHeal:
 				return min(1.0f,(lifetime/(0.75f*numFrames))^^2);
 			case lightningCasting,spark:
-				return 1.0f;
+				return 1.0;
 			case castPersephone,castPyro,castJames,castStratos,castCharnel:
 				return 1.0f;
 			case wrathCasting:
 				return min(1.0f,lifetime/(1.5f*numFrames));
-				//return 1.0f;
 		}
 	}
 	float getScale(int lifetime){
@@ -837,7 +849,7 @@ final class SacParticle(B){
 				return min(1.0f,lifetime/(4.0f*numFrames));
 			case shrine:
 				return min(1.0f,lifetime/(3.0f*numFrames));
-				case firy,explosion,explosion2,wrathExplosion:
+				case firy,explosion,explosion2,wrathExplosion1,wrathExplosion2:
 				return 1.0f;
 			case speedUp:
 				return 1.0f;
@@ -849,6 +861,8 @@ final class SacParticle(B){
 				return 1.0f;
 			case wrathCasting:
 				return min(1.0f,0.4f+0.6f*lifetime/(1.5f*numFrames));
+			case wrathParticle:
+				return min(1.0f,lifetime/(0.5f*numFrames));
 			}
 	}
 }
@@ -1015,7 +1029,7 @@ struct SacLightning(B){
 		enum numSegments=10;
 		auto meshes=new B.BoneMesh[](nU*nV);
 		foreach(t,ref mesh;meshes){
-			mesh=B.makeBoneMesh(3*4*numSegments,2*3*numSegments);
+			mesh=B.makeBoneMesh(3*4*numSegments,3*2*numSegments);
 			int u=cast(int)t%nU,v=cast(int)t/nU;
 			enum length=10.0f;
 			enum size=0.3f;
@@ -1049,6 +1063,64 @@ struct SacLightning(B){
 			assert(numFaces==2*3*numSegments);
 			mesh.normals[]=Vector3f(0.0f, 0.0f, 0.0f);
 			B.finalizeBoneMesh(mesh);
+		}
+		return meshes;
+	}
+}
+
+struct SacWrath(B){
+	B.Texture texture;
+	B.Material material;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/forb.TXTR"));
+	}
+	B.Mesh[] frames;
+	enum numFrames=16*2*updateAnimFactor;
+	enum maxScale=30.0f;
+	enum maxOffset=4.0f;
+	auto getFrame(int i){ return frames[i/(2*updateAnimFactor)]; }
+	static B.Mesh[] createMeshes(){
+		enum nU=4,nV=4;
+		auto meshes=new B.Mesh[](nU*nV);
+		foreach(t,ref mesh;meshes){
+			enum resolution=32;
+			enum numSegments=16*resolution;
+			enum textureMultiplier=1.0f/resolution;
+			auto numVertices=3*numSegments,numFaces=2*2*numSegments;
+			mesh=B.makeMesh(numVertices,numFaces);
+			int u=cast(int)t%nU,v=cast(int)t/nU;
+			int curNumFaces=0;
+			void addFace(uint[3] face...){
+				mesh.indices[curNumFaces++]=face;
+			}
+			enum height=0.4f, depth=0.1f;
+			foreach(i;0..numSegments){
+				auto top=3*i,outer=3*i+1,bottom=3*i+2;
+				auto alpha=2*PI*i/numSegments;
+				auto direction=Vector2f(cos(alpha),sin(alpha));
+				mesh.vertices[top]=Vector3f((1.0f-depth)*direction.x,(1.0f-depth)*direction.y,0.5f*height);
+				mesh.vertices[bottom]=mesh.vertices[top];
+				mesh.vertices[bottom].z*=-1.0f;
+				mesh.vertices[outer]=Vector3f(direction.x,direction.y,0.0f);
+				float zigzag(float x,float a,float b){
+					auto α=fmod(x,1);
+					if(cast(int)x&1) α=1-α;
+					return (1-α)*a+α*b;
+				}
+				enum offset=1.0f/64.0f;
+				auto x=zigzag(i*textureMultiplier,1.0f/nU*(u+offset),1.0f/nU*(u+1.0f-offset));
+				mesh.texcoords[top]=Vector2f(x,1.0f/nV*(v+offset));
+				mesh.texcoords[bottom]=mesh.texcoords[top];
+				mesh.texcoords[outer]=Vector2f(x,1.0f/nV*(v+1.0f-offset));
+				int next(int id){ return (id+3)%numVertices; }
+				addFace(top,outer,next(top));
+				addFace(next(top),outer,next(outer));
+				addFace(bottom,next(bottom),outer);
+				addFace(next(bottom),next(outer),outer);
+			}
+			assert(numFaces==2*2*numSegments);
+			mesh.normals[]=Vector3f(0.0f, 0.0f, 0.0f);
+			B.finalizeMesh(mesh);
 		}
 		return meshes;
 	}

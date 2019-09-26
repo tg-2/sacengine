@@ -211,6 +211,17 @@ final class SacScene: Scene{
 		return SacLightning!DagonBackend(texture,mat,frames);
 	}
 	SacLightning!DagonBackend lightning;
+	SacWrath!DagonBackend createWrath(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=createMaterial(shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=Additive;
+		mat.energy=20.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacWrath!DagonBackend(texture,mat,frames);
+	}
+	SacWrath!DagonBackend wrath;
 	SacCommandCone!DagonBackend sacCommandCone;
 	void createEffects(){
 		sacCommandCone=new SacCommandCone!DagonBackend();
@@ -218,6 +229,7 @@ final class SacScene: Scene{
 		explosion=createExplosion();
 		blueRing=createBlueRing();
 		lightning=createLightning();
+		wrath=createWrath();
 	}
 
 	void rotateSky(Quaternionf rotation){
@@ -517,6 +529,23 @@ final class SacScene: Scene{
 							scope(exit) mesh.pose=[];
 							mesh.render(rc);
 						}
+					}
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.wraths.length){
+					auto material=scene.wrath.material;
+					material.bind(rc);
+					glDisable(GL_CULL_FACE);
+					scope(success){
+						glEnable(GL_CULL_FACE);
+						material.unbind(rc);
+					}
+					foreach(j;0..objects.wraths.length){
+						if(objects.wraths[j].status!=WrathStatus.exploding) continue;
+						auto mesh=scene.wrath.getFrame(objects.wraths[j].frame);
+						auto position=objects.wraths[j].position+Vector3f(0.0f,0.0f,scene.wrath.maxOffset/scene.wrath.numFrames*objects.wraths[j].frame);
+						auto scale=scene.wrath.maxScale/scene.wrath.numFrames*objects.wraths[j].frame;
+						scene.shadelessMaterialBackend.setTransformationScaled(position,Quaternionf.identity(),Vector3f(scale,scale,1.0f),rc);
+						mesh.render(rc);
 					}
 				}
 			}else static if(is(T==Particles!(DagonBackend,relative),bool relative)){
@@ -2669,7 +2698,7 @@ static:
 
 	Material createMaterial(SacParticle!DagonBackend particle){
 		final switch(particle.type) with(ParticleType){
-				case manafount, manalith, manahoar, shrine, firy, explosion, explosion2, speedUp, heal, relativeHeal, lightningCasting, spark, castPersephone, castPyro, castJames, castStratos, castCharnel, wrathCasting, wrathExplosion:
+				case manafount, manalith, manahoar, shrine, firy, explosion, explosion2, speedUp, heal, relativeHeal, lightningCasting, spark, castPersephone, castPyro, castJames, castStratos, castCharnel, wrathCasting, wrathExplosion1, wrathExplosion2, wrathParticle:
 				auto mat=scene.createMaterial(scene.shadelessMaterialBackend);
 				mat.depthWrite=false;
 				mat.blending=Additive;

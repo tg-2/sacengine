@@ -1378,12 +1378,13 @@ enum WrathStatus{
 	exploding,
 }
 struct Wrath(B){
-	WrathStatus status;
 	int side;
 	Vector3f position;
 	Vector3f velocity;
 	OrderTarget target;
 	SacSpell!B spell;
+	auto status=WrathStatus.flying;
+	int frame=0;
 }
 struct Effects(B){
 	Array!(Debris!B) debris;
@@ -2887,7 +2888,7 @@ bool wrath(B)(int immuneId,int side,Vector3f position,OrderTarget target,SacSpel
 	target.position=target.center(state);
 	playSoundAt("shtr",position,state,4.0f); // TODO: move sound with wrath ball
 	auto velocity=Vector3f(0.0f,0.0f,0.0f);
-	auto wrath=Wrath!B(WrathStatus.flying,side,position,velocity,target,spell);
+	auto wrath=Wrath!B(side,position,velocity,target,spell);
 	state.addEffect(wrath);
 	return true;
 }
@@ -4024,6 +4025,18 @@ void updateParticles(B,bool relative)(ref Particles!(B,relative) particles, Obje
 		particles.positions[j]+=particles.velocities[j]/updateFPS;
 		if(gravity) particles.velocities[j].z-=15.0f/updateFPS;
 	}
+	if(sacParticle.bumpOffGround){
+		enum eps=1e-3f;
+		for(int j=0;j<particles.length;j++){
+			if(state.isOnGround(particles.positions[j])){
+				auto height=state.getGroundHeight(particles.positions[j]);
+				if(particles.positions[j].z<height){
+					particles.positions[j].z=2.0f*height-particles.positions[j].z;
+					particles.velocities[j].z*=-1.0f;
+				}
+			}
+		}
+	}
 }
 
 bool updateDebris(B)(ref Debris!B debris,ObjectState!B state){
@@ -4495,16 +4508,29 @@ void wrathExplosion(B)(ref Wrath!B wrath,int target,ObjectState!B state){
 	playSoundAt("hhtr",wrath.position,state,4.0f);
 	if(state.isValidId(target)) dealSpellDamage(target,wrath.spell,wrath.side,wrath.velocity,state);
 	// TODO: splash damage
-	enum numParticles=400;
-	auto sacParticle1=SacParticle!B.get(ParticleType.wrathExplosion);
-	auto sacParticle2=SacParticle!B.get(ParticleType.wrathExplosion);
-	foreach(i;0..numParticles){
+	enum numParticles1=200;
+	enum numParticles2=400;
+	auto sacParticle1=SacParticle!B.get(ParticleType.wrathExplosion1);
+	auto sacParticle2=SacParticle!B.get(ParticleType.wrathExplosion2);
+	foreach(i;0..numParticles1+numParticles2){
 		auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
 		auto velocity=state.uniform(0.5f,2.0f)*direction;
-		auto scale=1.0f;
+		auto scale=i<numParticles1?1.5f:1.0f;
+		auto lifetime=i<numParticles1?31:63;
+		auto frame=0;
+		auto position=wrath.position;
+		if(i<numParticles1) position+=0.1f*velocity;
+		state.addParticle(Particle!B(i<numParticles1?sacParticle1:sacParticle2,position,velocity,scale,lifetime,frame));
+	}
+	enum numParticles3=200;
+	auto sacParticle3=SacParticle!B.get(ParticleType.wrathParticle);
+	foreach(i;0..numParticles3){
+		auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+		auto velocity=state.uniform(5.0f,15.0f)*direction;
+		auto scale=state.uniform(0.75f,1.5f);
 		auto lifetime=63;
 		auto frame=0;
-		state.addParticle(Particle!B(i<numParticles/2?sacParticle1:sacParticle2,wrath.position,velocity,scale,lifetime,frame));
+		state.addParticle(Particle!B(sacParticle3,wrath.position,velocity,scale,lifetime,frame));
 	}
 }
 bool updateWrath(B)(ref Wrath!B wrath,ObjectState!B state){
@@ -4522,8 +4548,7 @@ bool updateWrath(B)(ref Wrath!B wrath,ObjectState!B state){
 				if(state.isValidId(target)) wrathExplosion(wrath,target,state);
 				return true;
 			case WrathStatus.exploding:
-				// TODO
-				return false;
+				return ++frame<64;
 		}
 	}
 }
