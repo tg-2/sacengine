@@ -4614,6 +4614,10 @@ bool updateWrath(B)(ref Wrath!B wrath,ObjectState!B state){
 					if(wrath.position.z<state.getGroundHeight(wrath.position))
 						wrath.wrathExplosion(0,state);
 				}
+				if(status!=WrathStatus.exploding&&!state.isValidId(wrath.target.id)){
+					if(distance.length<0.5f*wrathSize)
+						wrath.wrathExplosion(0,state);
+				}
 				return true;
 			case WrathStatus.exploding:
 				return ++frame<64;
