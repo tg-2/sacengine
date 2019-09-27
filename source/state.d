@@ -2688,30 +2688,30 @@ void dealSpellDamage(B)(int target,SacSpell!B spell,int attackerSide,Vector3f at
 	state.objectById!dealDamage(target,spell,attackerSide,attackDirection,state);
 }
 
-void dealSplashSpellDamage(B)(ref MovingObject!B object,SacSpell!B spell,int attackerSide,Vector3f attackDirection,ObjectState!B state){
-	auto damage=spell.amount;
+void dealSplashSpellDamage(B)(ref MovingObject!B object,SacSpell!B spell,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
+	auto damage=spell.amount*max(0.0f,1.0f-distance/spell.effectRange);
 	auto actualDamage=damage*object.creatureStats.splashSpellResistance;
 	object.damageAnimation(attackDirection,state);
 	object.dealDamage(actualDamage,attackerSide,state);
 }
-void dealSplashSpellDamage(B)(ref Building!B building,SacSpell!B spell,int attackerSide,ObjectState!B state){
-	auto damage=spell.amount;
+void dealSplashSpellDamage(B)(ref Building!B building,SacSpell!B spell,int attackerSide,float distance,ObjectState!B state){
+	auto damage=spell.amount*max(0.0f,1.0f-distance/spell.effectRange);
 	auto actualDamage=damage*building.splashSpellResistance;
 	building.dealDamage(actualDamage,attackerSide,state);
 }
 
-void dealSplashSpellDamage(B)(int target,SacSpell!B spell,int attackerSide,Vector3f attackDirection,ObjectState!B state){
-	static void dealDamage(B,T)(ref T target,SacSpell!B spell,int attackerSide,Vector3f attackDirection,ObjectState!B state){
+void dealSplashSpellDamage(B)(int target,SacSpell!B spell,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
+	static void dealDamage(B,T)(ref T target,SacSpell!B spell,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
 		static if(is(T==MovingObject!B)){
-			target.dealSplashSpellDamage(spell,attackerSide,attackDirection,state);
+			target.dealSplashSpellDamage(spell,attackerSide,attackDirection,distance,state);
 		}else static if(is(T==StaticObject!B)){
 			assert(target.buildingId);
-			state.buildingById!((ref Building!B building,SacSpell!B spell,int attackerSide,ObjectState!B state){
-				building.dealSplashSpellDamage(spell,attackerSide,state);
-			})(target.buildingId,spell,attackerSide,state);
+			state.buildingById!((ref Building!B building,SacSpell!B spell,int attackerSide,float distance,ObjectState!B state){
+				building.dealSplashSpellDamage(spell,attackerSide,distance,state);
+			})(target.buildingId,spell,attackerSide,distance,state);
 		}
 	}
-	state.objectById!dealDamage(target,spell,attackerSide,attackDirection,state);
+	state.objectById!dealDamage(target,spell,attackerSide,attackDirection,distance,state);
 }
 
 void dealSplashSpellDamageAt(B)(int directTarget,SacSpell!B spell,int attackerSide,Vector3f position,ObjectState!B state){
@@ -2719,9 +2719,10 @@ void dealSplashSpellDamageAt(B)(int directTarget,SacSpell!B spell,int attackerSi
 	static void dealDamage(ProximityEntry target,ObjectState!B state,int directTarget,SacSpell!B spell,int attackerSide,Vector3f position){
 		if(target.id==directTarget) return;
 		auto radius=spell.effectRange;
-		if(boxPointDistance(target.hitbox,position)>radius) return;
+		auto distance=boxPointDistance(target.hitbox,position);
+		if(distance>radius) return;
 		auto attackDirection=state.objectById!((obj)=>obj.center)(target.id)-position;
-		dealSplashSpellDamage(target.id,spell,attackerSide,attackDirection,state);
+		dealSplashSpellDamage(target.id,spell,attackerSide,attackDirection,distance,state);
 	}
 	auto offset=Vector3f(radius,radius,radius);
 	Vector3f[2] hitbox=[position-offset,position+offset];
