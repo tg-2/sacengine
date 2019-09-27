@@ -108,6 +108,7 @@ final class SacObject(B){
 				flyingSpeed=ntt.flyingSpeed*1e-2f;
 				rangedAccuracy=ntt.rangedAccuracy;
 				meleeResistance=ntt.meleeResistance*1e-3f;
+				splashSpellResistance=ntt.splashSpellResistance*1e-3f;
 				directSpellResistance=ntt.directSpellResistance*1e-3f;
 				splashRangedResistance=ntt.splashRangedResistance*1e-3f;
 				directRangedResistance=ntt.directRangedResistance*1e-3f;
@@ -794,7 +795,7 @@ final class SacParticle(B){
 				break;
 			case wrathExplosion2:
 				width=height=1.0f;
-				this.energy=50.0f;
+				this.energy=20.0f;
 				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/wrth.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
