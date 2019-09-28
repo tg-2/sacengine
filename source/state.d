@@ -4566,8 +4566,8 @@ void wrathExplosion(B)(ref Wrath!B wrath,int target,ObjectState!B state){
 	auto sacParticle2=SacParticle!B.get(ParticleType.wrathExplosion2);
 	foreach(i;0..numParticles1+numParticles2){
 		auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
-		auto velocity=state.uniform(0.5f,2.0f)*direction;
-		auto scale=i<numParticles1?1.5f:1.0f;
+		auto velocity=state.uniform(0.75f,3.0f)*direction;
+		auto scale=i<numParticles1?2.25f:1.5f;
 		auto lifetime=i<numParticles1?31:63;
 		auto frame=0;
 		auto position=wrath.position;
