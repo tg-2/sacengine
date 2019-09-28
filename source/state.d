@@ -1386,6 +1386,22 @@ struct Wrath(B){
 	auto status=WrathStatus.flying;
 	int frame=0;
 }
+struct FireballCasting(B){
+	ManaDrain!B manaDrain;
+	SacSpell!B spell;
+	Fireball!B fireball;
+	int frame=0;
+}
+struct Fireball(B){
+	int side;
+	Vector3f position; // TODO: better representation?
+	Vector3f velocity;
+	OrderTarget target;
+	SacSpell!B spell;
+	Quaternionf rotationUpdate;
+	Quaternionf rotation;
+}
+
 struct Effects(B){
 	Array!(Debris!B) debris;
 	void addEffect(Debris!B debris){
@@ -1499,6 +1515,22 @@ struct Effects(B){
 		if(i+1<wraths.length) swap(wraths[i],wraths[$-1]);
 		wraths.length=wraths.length-1;
 	}
+	Array!(FireballCasting!B) fireballCastings;
+	void addEffect(FireballCasting!B fireballCasting){
+		fireballCastings~=fireballCasting;
+	}
+	void removeFireballCasting(int i){
+		if(i+1<fireballCastings.length) swap(fireballCastings[i],fireballCastings[$-1]);
+		fireballCastings.length=fireballCastings.length-1;
+	}
+	Array!(Fireball!B) fireballs;
+	void addEffect(Fireball!B fireball){
+		fireballs~=fireball;
+	}
+	void removeFireball(int i){
+		if(i+1<fireballs.length) swap(fireballs[i],fireballs[$-1]);
+		fireballs.length=fireballs.length-1;
+	}
 	void opAssign(ref Effects!B rhs){
 		assignArray(debris,rhs.debris);
 		assignArray(explosions,rhs.explosions);
@@ -1514,6 +1546,8 @@ struct Effects(B){
 		assignArray(lightnings,rhs.lightnings);
 		assignArray(wrathCastings,rhs.wrathCastings);
 		assignArray(wraths,rhs.wraths);
+		assignArray(fireballCastings,rhs.fireballCastings);
+		assignArray(fireballs,rhs.fireballs);
 	}
 }
 
@@ -2831,6 +2865,8 @@ bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,Ob
 					return target.id==object.id?castLightning(object,manaDrain,spell,state):castLightning(target.id,manaDrain,spell,state);
 				case SpellTag.wrath:
 					return target.id==object.id?castWrath(object,manaDrain,spell,state):castWrath(target.id,manaDrain,spell,state);
+				case SpellTag.fireball:
+					return target.id==object.id?castFireball(object,manaDrain,spell,state):castFireball(target.id,manaDrain,spell,state);
 				default:
 					if(ok) state.addEffect(manaDrain);
 					else stun();
@@ -2925,7 +2961,7 @@ bool castWrath(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!
 	return true;
 }
 
-bool wrath(B)(int immuneId,int side,Vector3f position,OrderTarget target,SacSpell!B spell,ObjectState!B state){
+bool wrath(B)(int wizard,int side,Vector3f position,OrderTarget target,SacSpell!B spell,ObjectState!B state){
 	target.position=target.center(state);
 	playSoundAt("shtr",position,state,4.0f); // TODO: move sound with wrath ball
 	auto velocity=Vector3f(0.0f,0.0f,0.0f);
@@ -2934,6 +2970,34 @@ bool wrath(B)(int immuneId,int side,Vector3f position,OrderTarget target,SacSpel
 	return true;
 }
 
+Fireball!B makeFireball(B)(int side,Vector3f position,OrderTarget target,SacSpell!B spell,ObjectState!B state){
+	auto rotationSpeed=cast(float)2*PI*state.uniform(0.5f,2.0f)/updateFPS;
+	auto velocity=Vector3f(0.0f,0.0f,0.0f);
+	auto rotationAxis=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+	auto rotationUpdate=rotationQuaternion(rotationAxis,rotationSpeed);
+	return Fireball!B(side,position,velocity,target,spell,rotationUpdate,Quaternionf.identity());
+}
+Vector3f fireballCastingPosition(B)(ref MovingObject!B obj,ObjectState!B state){
+	auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
+	return obj.position+rotate(obj.rotation,Vector3f(0.0f,hbox[1].y+0.75f,hbox[1].z+0.5f));
+}
+bool castFireball(B,T)(ref T object,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state)if(!is(T==int)){
+	return castFireball(object.id,manaDrain,spell,state);
+}
+bool castFireball(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	if(!state.isValidId(target)) return false;
+	auto positionSide=state.movingObjectById!((obj,state)=>tuple(obj.fireballCastingPosition(state),obj.side),function Tuple!(Vector3f,int){ assert(0); })(manaDrain.wizard,state);
+	auto position=positionSide[0],side=positionSide[1];
+	auto fireball=makeFireball(side,position,centerTarget(target,state),spell,state);
+	state.addEffect(FireballCasting!B(manaDrain,spell,fireball));
+	return true;
+}
+
+bool fireball(B)(Fireball!B fireball,ObjectState!B state){
+	playSpellSoundTypeAt(SoundType.fireball,fireball.position,state,4.0f); // TODO: move sound with fireball
+	state.addEffect(fireball);
+	return true;
+}
 
 bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state){
 	auto angle=facing-object.creatureState.facing;
@@ -4592,28 +4656,28 @@ bool updateWrath(B)(ref Wrath!B wrath,ObjectState!B state){
 				auto targetCenter=target.center(state);
 				auto distance=targetCenter-position;
 				auto acceleration=distance.normalized*spell.acceleration;
-				wrath.velocity+=acceleration;
+				velocity+=acceleration;
 				Vector3f capVelocity(Vector3f velocity){
 					if(velocity.length>spell.speed) velocity=velocity.normalized*spell.speed;
 					if(velocity.length>updateFPS*distance.length) velocity=velocity.normalized*distance.length*updateFPS;
 					return velocity;
 				}
 				velocity=capVelocity(velocity);
-				auto newPosition=wrath.position+wrath.velocity/updateFPS;
-				auto height=state.getHeight(wrath.position);
-				if(state.isOnGround(wrath.position)){
+				auto newPosition=position+velocity/updateFPS;
+				auto height=state.getHeight(position);
+				if(state.isOnGround(position)){
 					if(newPosition.z<height+0.5f){
 						auto nvel=velocity;
 						nvel.z+=(height+0.5f-newPosition.z)*updateFPS;
-						newPosition=wrath.position+capVelocity(nvel)/updateFPS;
+						newPosition=position+capVelocity(nvel)/updateFPS;
 					}
 				}
-				wrath.position=newPosition;
+				position=newPosition;
 				wrath.animateWrath(state);
-				auto target=wrathCollisionTarget(wrath.side,wrath.position,state);
+				auto target=wrathCollisionTarget(side,position,state);
 				if(state.isValidId(target)) wrath.wrathExplosion(target,state);
-				else if(state.isOnGround(wrath.position)){
-					if(wrath.position.z<state.getGroundHeight(wrath.position))
+				else if(state.isOnGround(position)){
+					if(position.z<state.getGroundHeight(position))
 						wrath.wrathExplosion(0,state);
 				}
 				if(status!=WrathStatus.exploding&&!state.isValidId(wrath.target.id)){
@@ -4626,7 +4690,115 @@ bool updateWrath(B)(ref Wrath!B wrath,ObjectState!B state){
 		}
 	}
 }
+bool updateFireballCasting(B)(ref FireballCasting!B fireballCast,ObjectState!B state){
+	with(fireballCast){
+		fireball.target.position=fireball.target.center(state);
+		return state.movingObjectById!((obj){
+			final switch(manaDrain.update(state)){
+				case CastingStatus.underway:
+					fireball.position=obj.fireballCastingPosition(state);
+					fireball.rotation=fireball.rotationUpdate*fireball.rotation;
+					obj.animatePyroCasting(state);
+					frame+=1;
+					return true;
+				case CastingStatus.interrupted:
+					return false;
+				case CastingStatus.finished:
+					.fireball(fireball,state);
+					return false;
+			}
+		},()=>false)(manaDrain.wizard);
+	}
+}
+void animateFireball(B)(ref Fireball!B fireball,Vector3f oldPosition,ObjectState!B state){
+	with(fireball){
+		rotation=rotationUpdate*rotation;
+		enum numParticles=3;
+		auto sacParticle=SacParticle!B.get(ParticleType.firy);
+		auto velocity=Vector3f(0.0f,0.0f,0.0f);
+		auto scale=1.0f;
+		auto lifetime=sacParticle.numFrames;
+		auto frame=0;
+		foreach(i;0..numParticles){
+			auto position=oldPosition*((cast(float)numParticles-1-i)/(numParticles-1))+position*(cast(float)i/(numParticles-1));
+			position+=0.1f*Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f));
+			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+		}
+	}
+}
+enum fireballSize=0.5f;
+static immutable Vector3f[2] fireballHitbox=[-0.5f*fireballSize*Vector3f(1.0f,1.0f,1.0f),0.5f*fireballSize*Vector3f(1.0f,1.0f,1.0f)];
+int fireballCollisionTarget(B)(int side,Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state,int side){
+		return state.objectById!(.side)(entry.id,state)!=side;
+	}
+	return collisionTarget!(fireballHitbox,filter)(side,position,state,side);
+}
 
+void fireballExplosion(B)(ref Fireball!B fireball,int target,ObjectState!B state){
+	playSpellSoundTypeAt(SoundType.explodingFireball,fireball.position,state,8.0f);
+	if(state.isValidId(target)) dealSpellDamage(target,fireball.spell,fireball.side,fireball.velocity,state);
+	else target=0;
+	dealSplashSpellDamageAt(target,fireball.spell,fireball.side,fireball.position,state);
+	//explosionParticles(fireball.position,state);
+	enum numParticles1=200;
+	enum numParticles2=1000;
+	auto sacParticle1=SacParticle!B.get(ParticleType.explosion);
+	auto sacParticle2=SacParticle!B.get(ParticleType.explosion2);
+	foreach(i;0..numParticles1+numParticles2){
+		auto position=fireball.position;
+		auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+		auto velocity=(i<numParticles1?1.0f:1.5f)*state.uniform(1.5f,6.0f)*direction;
+		auto scale=1.0f;
+		auto lifetime=31;
+		auto frame=0;
+		state.addParticle(Particle!B(i<numParticles1?sacParticle1:sacParticle2,position,velocity,scale,lifetime,frame));
+	}
+}
+
+bool updateFireball(B)(ref Fireball!B fireball,ObjectState!B state){
+	with(fireball){
+		auto oldPosition=fireball.position;
+		auto targetCenter=target.center(state);
+		auto distance=targetCenter-position;
+		auto acceleration=distance.normalized*spell.acceleration;
+		velocity+=acceleration;
+		Vector3f capVelocity(Vector3f velocity){
+			if(velocity.length>spell.speed) velocity=velocity.normalized*spell.speed;
+			if(velocity.length>updateFPS*distance.length) velocity=velocity.normalized*distance.length*updateFPS;
+			return velocity;
+		}
+		velocity=capVelocity(velocity);
+		auto newPosition=position+velocity/updateFPS;
+		auto height=state.getHeight(position);
+		if(state.isOnGround(position)){
+			if(newPosition.z<height+0.5f){
+				auto nvel=velocity;
+				nvel.z+=(height+0.5f-newPosition.z)*updateFPS;
+				newPosition=position+capVelocity(nvel)/updateFPS;
+			}
+		}
+		position=newPosition;
+		fireball.animateFireball(oldPosition,state);
+		auto target=fireballCollisionTarget(side,position,state);
+		if(state.isValidId(target)){
+			fireball.fireballExplosion(target,state);
+			return false;
+		}else if(state.isOnGround(position)){
+			if(position.z<state.getGroundHeight(position)){
+				fireball.fireballExplosion(0,state);
+				return false;
+			}
+		}
+		if(!state.isValidId(fireball.target.id)){
+			if(distance.length<0.5f*fireballSize){
+				fireball.fireballExplosion(0,state);
+				return false;
+			}
+		}
+		return true;
+	}
+}
 
 void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.debris.length;){
@@ -4727,12 +4899,23 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 		}
 		i++;
 	}
+	for(int i=0;i<effects.fireballCastings.length;){
+		if(!updateFireballCasting(effects.fireballCastings[i],state)){
+			effects.removeFireballCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.fireballs.length;){
+		if(!updateFireball(effects.fireballs[i],state)){
+			effects.removeFireball(i);
+			continue;
+		}
+		i++;
+	}
 }
 
-void explosionAnimation(B)(Vector3f position,ObjectState!B state){
-	playSoundAt("pxbf",position,state,10.0f);
-	state.addEffect(Explosion!B(position,0.0f,30.0f,40.0f,0));
-	state.addEffect(Explosion!B(position,0.0f,5.0f,10.0f,0));
+void explosionParticles(B)(Vector3f position,ObjectState!B state){
 	enum numParticles=200;
 	auto sacParticle1=SacParticle!B.get(ParticleType.explosion);
 	auto sacParticle2=SacParticle!B.get(ParticleType.explosion2);
@@ -4744,6 +4927,13 @@ void explosionAnimation(B)(Vector3f position,ObjectState!B state){
 		auto frame=0;
 		state.addParticle(Particle!B(i<numParticles/2?sacParticle1:sacParticle2,position,velocity,scale,lifetime,frame));
 	}
+}
+
+void explosionAnimation(B)(Vector3f position,ObjectState!B state){
+	playSoundAt("pxbf",position,state,10.0f);
+	state.addEffect(Explosion!B(position,0.0f,30.0f,40.0f,0));
+	state.addEffect(Explosion!B(position,0.0f,5.0f,10.0f,0));
+	explosionParticles(position,state);
 }
 
 void destructionAnimation(B)(Vector3f position,ObjectState!B state){

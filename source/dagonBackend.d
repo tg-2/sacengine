@@ -434,7 +434,7 @@ final class SacScene: Scene{
 			}else static if(is(T==Buildings!DagonBackend)){
 				// do nothing
 			}else static if(is(T==Effects!DagonBackend)){
-				static if(mode==RenderMode.opaque) if(objects.debris.length){
+				static if(mode==RenderMode.opaque) if(objects.debris.length||objects.fireballCastings.length||objects.fireballs.length){
 					auto materials=scene.sacDebris.materials;
 					foreach(i;0..materials.length){
 						auto material=materials[i];
@@ -443,6 +443,15 @@ final class SacScene: Scene{
 						auto mesh=scene.sacDebris.meshes[i];
 						foreach(j;0..objects.debris.length){
 							material.backend.setTransformationScaled(objects.debris[j].position,objects.debris[j].rotation,0.2f*Vector3f(1.0f,1.0f,1.0f),rc);
+							mesh.render(rc);
+						}
+						foreach(j;0..objects.fireballCastings.length){
+							auto scale=0.2f*min(1.0f,objects.fireballCastings[j].frame/(objects.fireballCastings[j].fireball.spell.castingTime(9)*updateFPS));
+							material.backend.setTransformationScaled(objects.fireballCastings[j].fireball.position,objects.fireballCastings[j].fireball.rotation,scale*Vector3f(1.0f,1.0f,1.0f),rc);
+							mesh.render(rc);
+						}
+						foreach(j;0..objects.fireballs.length){
+							material.backend.setTransformationScaled(objects.fireballs[j].position,objects.fireballs[j].rotation,0.2f*Vector3f(1.0f,1.0f,1.0f),rc);
 							mesh.render(rc);
 						}
 					}

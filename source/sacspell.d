@@ -155,7 +155,7 @@ class SacSpell(B){
 			duration=spel.duration;
 			if(tag=="leah") duration=4.5f;
 			effectRange=spel.effectRange;
-			speed=100.0f*spel.speed;
+			speed=75.0f*spel.speed;
 			acceleration=100.0f*spel.acceleration;
 		}else if(strc) setStats(strc);
 	}
