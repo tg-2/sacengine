@@ -4589,21 +4589,23 @@ bool updateWrath(B)(ref Wrath!B wrath,ObjectState!B state){
 	with(wrath){
 		final switch(wrath.status){
 			case WrathStatus.flying:
-				auto distance=target.center(state)-position;
+				auto targetCenter=target.center(state);
+				auto distance=targetCenter-position;
 				auto acceleration=distance.normalized*spell.acceleration;
 				wrath.velocity+=acceleration;
-				void capVelocity(){
-					if(wrath.velocity.length>spell.speed) wrath.velocity=wrath.velocity.normalized*spell.speed;
-					if(wrath.velocity.length>updateFPS*distance.length) wrath.velocity=wrath.velocity.normalized*distance.length*updateFPS;
+				Vector3f capVelocity(Vector3f velocity){
+					if(velocity.length>spell.speed) velocity=velocity.normalized*spell.speed;
+					if(velocity.length>updateFPS*distance.length) velocity=velocity.normalized*distance.length*updateFPS;
+					return velocity;
 				}
-				capVelocity();
+				velocity=capVelocity(velocity);
 				auto newPosition=wrath.position+wrath.velocity/updateFPS;
+				auto height=state.getHeight(wrath.position);
 				if(state.isOnGround(wrath.position)){
-					auto height=state.getGroundHeight(wrath.position);
 					if(newPosition.z<height+0.5f){
-						wrath.velocity.z+=(height+0.5f-newPosition.z)*updateFPS;
-						capVelocity();
-						newPosition=wrath.position+wrath.velocity/updateFPS;
+						auto nvel=velocity;
+						nvel.z+=(height+0.5f-newPosition.z)*updateFPS;
+						newPosition=wrath.position+capVelocity(nvel)/updateFPS;
 					}
 				}
 				wrath.position=newPosition;
