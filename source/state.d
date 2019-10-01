@@ -4742,7 +4742,7 @@ void fireballExplosion(B)(ref Fireball!B fireball,int target,ObjectState!B state
 	dealSplashSpellDamageAt(target,fireball.spell,fireball.side,fireball.position,state);
 	//explosionParticles(fireball.position,state);
 	enum numParticles1=200;
-	enum numParticles2=1000;
+	enum numParticles2=800;
 	auto sacParticle1=SacParticle!B.get(ParticleType.explosion);
 	auto sacParticle2=SacParticle!B.get(ParticleType.explosion2);
 	foreach(i;0..numParticles1+numParticles2){
@@ -4753,6 +4753,27 @@ void fireballExplosion(B)(ref Fireball!B fireball,int target,ObjectState!B state
 		auto lifetime=31;
 		auto frame=0;
 		state.addParticle(Particle!B(i<numParticles1?sacParticle1:sacParticle2,position,velocity,scale,lifetime,frame));
+	}
+	enum numParticles3=200;
+	auto sacParticle3=SacParticle!B.get(ParticleType.ashParticle);
+	foreach(i;0..numParticles3){
+		auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+		auto velocity=state.uniform(7.5f,15.0f)*direction;
+		auto scale=state.uniform(0.75f,1.5f);
+		auto lifetime=95;
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle3,fireball.position,velocity,scale,lifetime,frame));
+	}
+	enum numParticles4=75;
+	auto sacParticle4=SacParticle!B.get(ParticleType.smoke);
+	foreach(i;0..numParticles4){
+		auto position=fireball.position;
+		auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(0.0f,1.0f)).normalized;
+		auto velocity=state.uniform(0.5f,2.0f)*direction+Vector3f(0.0f,0.0f,0.5f);
+		auto scale=1.0f;
+		auto lifetime=127;
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle4,position,velocity,scale,lifetime,frame));
 	}
 }
 

@@ -632,6 +632,7 @@ enum ParticleType{
 	manalith,
 	shrine,
 	manahoar,
+	smoke,
 	firy,
 	explosion,
 	explosion2,
@@ -649,6 +650,7 @@ enum ParticleType{
 	wrathExplosion1,
 	wrathExplosion2,
 	wrathParticle,
+	ashParticle,
 }
 
 final class SacParticle(B){
@@ -670,8 +672,10 @@ final class SacParticle(B){
 				return false;
 			case wrathCasting,wrathExplosion1,wrathExplosion2:
 				return false;
-			case wrathParticle:
+			case wrathParticle,ashParticle:
 				return true;
+			case smoke:
+				return false;
 		}
 	}
 	@property bool relative(){
@@ -682,12 +686,15 @@ final class SacParticle(B){
 				return true;
 			case castPersephone,castPyro,castJames,castStratos,castCharnel:
 				return false;
-			case wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle:
+			case wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,ashParticle,smoke:
 				return false;
 		}
 	}
 	@property bool bumpOffGround(){
-		return type==ParticleType.wrathParticle;
+		switch(type) with(ParticleType){
+			case wrathParticle,ashParticle: return true;
+			default: return false;
+		}
 	}
 	this(ParticleType type,Color4f color=Color4f(1.0f,1.0f,1.0f,1.0f),float energy=20.0f){
 		this.type=type;
@@ -805,6 +812,17 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/prth.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
+			case ashParticle:
+				width=height=0.3f;
+				this.energy=10.0f;
+				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pyro.FLDR/txtr.FLDR/frck.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
+			case smoke:
+				width=height=1.5f;
+				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pyro.FLDR/txtr.FLDR/smok.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
 		}
 		material=B.createMaterial(this);
 	}
@@ -816,11 +834,18 @@ final class SacParticle(B){
 		if(!particles[type]) particles[type]=new SacParticle(type);
 		return particles[type];
 	}
+	@property int delay(){
+		switch(type) with(ParticleType){
+			case ashParticle: return 3;
+			case smoke: return 4;
+			default: return 1;
+		}
+	}
 	@property int numFrames(){
-		return cast(int)meshes.length*updateAnimFactor;
+		return cast(int)meshes.length*updateAnimFactor*delay;
 	}
 	B.Mesh getMesh(int frame){
-		return meshes[frame/updateAnimFactor];
+		return meshes[frame/(updateAnimFactor*delay)];
 	}
 	float getAlpha(int lifetime){
 		final switch(type) with(ParticleType){
@@ -830,7 +855,7 @@ final class SacParticle(B){
 				return min(0.07f,(lifetime/(4.0f*numFrames))^^2);
 			case firy,explosion,explosion2,wrathExplosion1,wrathExplosion2:
 				return 1.0f;
-			case speedUp,wrathParticle:
+			case speedUp,wrathParticle,ashParticle:
 				return min(1.0f,(lifetime/(0.5f*numFrames))^^2);
 			case heal,relativeHeal:
 				return min(1.0f,(lifetime/(0.75f*numFrames))^^2);
@@ -840,6 +865,9 @@ final class SacParticle(B){
 				return 1.0f;
 			case wrathCasting:
 				return min(1.0f,lifetime/(1.5f*numFrames));
+			case smoke:
+				enum delay=64;
+				return 0.5f*(lifetime>=numFrames-(delay-1)?(numFrames-lifetime)/float(delay):lifetime/float(numFrames-delay));
 		}
 	}
 	float getScale(int lifetime){
@@ -862,8 +890,10 @@ final class SacParticle(B){
 				return 1.0f;
 			case wrathCasting:
 				return min(1.0f,0.4f+0.6f*lifetime/(1.5f*numFrames));
-			case wrathParticle:
+			case wrathParticle,ashParticle:
 				return min(1.0f,lifetime/(0.5f*numFrames));
+			case smoke:
+				return 1.0f/(lifetime/float(numFrames)+0.2f);
 			}
 	}
 }

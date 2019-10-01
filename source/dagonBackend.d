@@ -2707,10 +2707,10 @@ static:
 
 	Material createMaterial(SacParticle!DagonBackend particle){
 		final switch(particle.type) with(ParticleType){
-				case manafount, manalith, manahoar, shrine, firy, explosion, explosion2, speedUp, heal, relativeHeal, lightningCasting, spark, castPersephone, castPyro, castJames, castStratos, castCharnel, wrathCasting, wrathExplosion1, wrathExplosion2, wrathParticle:
+				case manafount, manalith, manahoar, shrine, firy, explosion, explosion2, speedUp, heal, relativeHeal, lightningCasting, spark, castPersephone, castPyro, castJames, castStratos, castCharnel, wrathCasting, wrathExplosion1, wrathExplosion2, wrathParticle, ashParticle, smoke:
 				auto mat=scene.createMaterial(scene.shadelessMaterialBackend);
 				mat.depthWrite=false;
-				mat.blending=Additive;
+				mat.blending=particle.type.among(ashParticle,smoke)?Transparent:Additive;
 				mat.energy=particle.energy;
 				mat.diffuse=particle.texture;
 				mat.color=particle.color;
