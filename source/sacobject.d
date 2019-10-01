@@ -855,8 +855,10 @@ final class SacParticle(B){
 				return min(0.07f,(lifetime/(4.0f*numFrames))^^2);
 			case firy,explosion,explosion2,wrathExplosion1,wrathExplosion2:
 				return 1.0f;
-			case speedUp,wrathParticle,ashParticle:
+			case speedUp,wrathParticle:
 				return min(1.0f,(lifetime/(0.5f*numFrames))^^2);
+			case ashParticle:
+				return 1.0f;
 			case heal,relativeHeal:
 				return min(1.0f,(lifetime/(0.75f*numFrames))^^2);
 			case lightningCasting,spark:
@@ -867,7 +869,7 @@ final class SacParticle(B){
 				return min(1.0f,lifetime/(1.5f*numFrames));
 			case smoke:
 				enum delay=64;
-				return 0.5f*(lifetime>=numFrames-(delay-1)?(numFrames-lifetime)/float(delay):lifetime/float(numFrames-delay));
+				return 0.75f*(lifetime>=numFrames-(delay-1)?(numFrames-lifetime)/float(delay):(lifetime/float(numFrames-delay)))^^2;
 		}
 	}
 	float getScale(int lifetime){
@@ -890,8 +892,10 @@ final class SacParticle(B){
 				return 1.0f;
 			case wrathCasting:
 				return min(1.0f,0.4f+0.6f*lifetime/(1.5f*numFrames));
-			case wrathParticle,ashParticle:
+			case wrathParticle:
 				return min(1.0f,lifetime/(0.5f*numFrames));
+			case ashParticle:
+				return 1.0f;
 			case smoke:
 				return 1.0f/(lifetime/float(numFrames)+0.2f);
 			}
