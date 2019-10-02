@@ -836,6 +836,7 @@ final class SacParticle(B){
 	}
 	@property int delay(){
 		switch(type) with(ParticleType){
+			case speedUp: return 2;
 			case ashParticle: return 3;
 			case smoke: return 4;
 			default: return 1;
