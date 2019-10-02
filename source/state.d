@@ -4682,7 +4682,7 @@ bool updateWrath(B)(ref Wrath!B wrath,ObjectState!B state){
 				}
 				if(status!=WrathStatus.exploding){
 					if(distance.length<0.05f)
-						wrath.wrathExplosion(0,state);
+						wrath.wrathExplosion(wrath.target.id,state);
 				}
 				return true;
 			case WrathStatus.exploding:
@@ -4812,7 +4812,7 @@ bool updateFireball(B)(ref Fireball!B fireball,ObjectState!B state){
 			}
 		}
 		if(distance.length<0.05f){
-			fireball.fireballExplosion(0,state);
+			fireball.fireballExplosion(fireball.target.id,state);
 			return false;
 		}
 		return true;
