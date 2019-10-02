@@ -192,6 +192,9 @@ Vector!(float,n) projectToBox(size_t n)(Vector!(float,n)[2] box,Vector!(float,n)
 float boxPointDistance(size_t n)(Vector!(float,n)[2] box,Vector!(float,n) point){
 	return (point-projectToBox(box,point)).length;
 }
+float boxPointDistanceSqr(size_t n)(Vector!(float,n)[2] box,Vector!(float,n) point){
+	return (point-projectToBox(box,point)).lengthsqr;
+}
 
 bool isInside(Vector3f point,Vector3f[2] box){
 	return box[0].x<=point.x&&point.x<=box[1].x&&
