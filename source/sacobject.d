@@ -634,6 +634,7 @@ enum ParticleType{
 	manahoar,
 	smoke,
 	firy,
+	fireball,
 	explosion,
 	explosion2,
 	speedUp,
@@ -666,7 +667,7 @@ final class SacParticle(B){
 		final switch(type) with(ParticleType){
 			case manafount,spark:
 				return true;
-			case manalith,shrine,manahoar,firy,explosion,explosion2,speedUp,heal,relativeHeal,lightningCasting:
+			case manalith,shrine,manahoar,firy,fireball,explosion,explosion2,speedUp,heal,relativeHeal,lightningCasting:
 				return false;
 			case castPersephone,castPyro,castJames,castStratos,castCharnel:
 				return false;
@@ -680,7 +681,7 @@ final class SacParticle(B){
 	}
 	@property bool relative(){
 		final switch(type) with(ParticleType){
-			case manafount,manalith,shrine,manahoar,firy,explosion,explosion2,speedUp,heal,spark:
+			case manafount,manalith,shrine,manahoar,firy,fireball,explosion,explosion2,speedUp,heal,spark:
 				return false;
 			case relativeHeal,lightningCasting:
 				return true;
@@ -727,6 +728,12 @@ final class SacParticle(B){
 				this.energy=3.0f;
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/firy.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
+			case fireball:
+				width=height=0.5f;
+				this.energy=3.0f;
+				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/fbal.TXTR"));
+				meshes=makeSpriteMeshes!B(3,3,width,height);
 				break;
 			case explosion:
 				width=height=3.0f;
@@ -854,7 +861,7 @@ final class SacParticle(B){
 				return min(1.0f,(lifetime/(3.0f*numFrames))^^2);
 			case manalith,shrine,manahoar:
 				return min(0.07f,(lifetime/(4.0f*numFrames))^^2);
-			case firy,explosion,explosion2,wrathExplosion1,wrathExplosion2:
+			case firy,fireball,explosion,explosion2,wrathExplosion1,wrathExplosion2:
 				return 1.0f;
 			case speedUp,wrathParticle:
 				return min(1.0f,(lifetime/(0.5f*numFrames))^^2);
@@ -881,7 +888,7 @@ final class SacParticle(B){
 				return min(1.0f,lifetime/(4.0f*numFrames));
 			case shrine:
 				return min(1.0f,lifetime/(3.0f*numFrames));
-				case firy,explosion,explosion2,wrathExplosion1,wrathExplosion2:
+			case firy,fireball,explosion,explosion2,wrathExplosion1,wrathExplosion2:
 				return 1.0f;
 			case speedUp:
 				return 1.0f;

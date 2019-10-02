@@ -2979,7 +2979,7 @@ Fireball!B makeFireball(B)(int side,Vector3f position,OrderTarget target,SacSpel
 }
 Vector3f fireballCastingPosition(B)(ref MovingObject!B obj,ObjectState!B state){
 	auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
-	return obj.position+rotate(obj.rotation,Vector3f(0.0f,hbox[1].y+0.75f,hbox[1].z+0.5f));
+	return obj.position+rotate(obj.rotation,Vector3f(0.0f,hbox[1].y+0.75f,hbox[1].z+0.25f));
 }
 bool castFireball(B,T)(ref T object,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state)if(!is(T==int)){
 	return castFireball(object.id,manaDrain,spell,state);
@@ -4165,7 +4165,7 @@ bool updateDebris(B)(ref Debris!B debris,ObjectState!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.firy);
 	auto velocity=Vector3f(0.0f,0.0f,0.0f);
 	auto scale=1.0f;
-	auto lifetime=sacParticle.numFrames;
+	auto lifetime=sacParticle.numFrames-1;
 	auto frame=0;
 	foreach(i;0..numParticles){
 		auto position=oldPosition*((cast(float)numParticles-1-i)/(numParticles-1))+debris.position*(cast(float)i/(numParticles-1));
@@ -4713,15 +4713,17 @@ bool updateFireballCasting(B)(ref FireballCasting!B fireballCast,ObjectState!B s
 void animateFireball(B)(ref Fireball!B fireball,Vector3f oldPosition,ObjectState!B state){
 	with(fireball){
 		rotation=rotationUpdate*rotation;
-		enum numParticles=3;
-		auto sacParticle=SacParticle!B.get(ParticleType.firy);
+		enum numParticles=8;
+		auto sacParticle1=SacParticle!B.get(ParticleType.firy);
+		auto sacParticle2=SacParticle!B.get(ParticleType.fireball);
 		auto velocity=Vector3f(0.0f,0.0f,0.0f);
-		auto scale=1.0f;
-		auto lifetime=sacParticle.numFrames;
+		auto lifetime=31;
+		auto scale=1.5f;
 		auto frame=0;
 		foreach(i;0..numParticles){
+			auto sacParticle=i!=0?sacParticle1:sacParticle2;
 			auto position=oldPosition*((cast(float)numParticles-1-i)/(numParticles-1))+position*(cast(float)i/(numParticles-1));
-			position+=0.1f*Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f));
+			position+=0.15f*Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f));
 			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
 		}
 	}

@@ -446,12 +446,12 @@ final class SacScene: Scene{
 							mesh.render(rc);
 						}
 						foreach(j;0..objects.fireballCastings.length){
-							auto scale=0.2f*min(1.0f,objects.fireballCastings[j].frame/(objects.fireballCastings[j].fireball.spell.castingTime(9)*updateFPS));
+							auto scale=0.25f*min(1.0f,objects.fireballCastings[j].frame/(objects.fireballCastings[j].fireball.spell.castingTime(9)*updateFPS));
 							material.backend.setTransformationScaled(objects.fireballCastings[j].fireball.position,objects.fireballCastings[j].fireball.rotation,scale*Vector3f(1.0f,1.0f,1.0f),rc);
 							mesh.render(rc);
 						}
 						foreach(j;0..objects.fireballs.length){
-							material.backend.setTransformationScaled(objects.fireballs[j].position,objects.fireballs[j].rotation,0.2f*Vector3f(1.0f,1.0f,1.0f),rc);
+							material.backend.setTransformationScaled(objects.fireballs[j].position,objects.fireballs[j].rotation,0.25f*Vector3f(1.0f,1.0f,1.0f),rc);
 							mesh.render(rc);
 						}
 					}
@@ -2707,7 +2707,7 @@ static:
 
 	Material createMaterial(SacParticle!DagonBackend particle){
 		final switch(particle.type) with(ParticleType){
-				case manafount, manalith, manahoar, shrine, firy, explosion, explosion2, speedUp, heal, relativeHeal, lightningCasting, spark, castPersephone, castPyro, castJames, castStratos, castCharnel, wrathCasting, wrathExplosion1, wrathExplosion2, wrathParticle, ashParticle, smoke:
+				case manafount, manalith, manahoar, shrine, firy, fireball, explosion, explosion2, speedUp, heal, relativeHeal, lightningCasting, spark, castPersephone, castPyro, castJames, castStratos, castCharnel, wrathCasting, wrathExplosion1, wrathExplosion2, wrathParticle, ashParticle, smoke:
 				auto mat=scene.createMaterial(scene.shadelessMaterialBackend);
 				mat.depthWrite=false;
 				mat.blending=particle.type.among(ashParticle,smoke)?Transparent:Additive;
