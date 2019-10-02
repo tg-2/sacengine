@@ -4680,8 +4680,8 @@ bool updateWrath(B)(ref Wrath!B wrath,ObjectState!B state){
 					if(position.z<state.getGroundHeight(position))
 						wrath.wrathExplosion(0,state);
 				}
-				if(status!=WrathStatus.exploding&&!state.isValidId(wrath.target.id)){
-					if(distance.length<0.5f*wrathSize)
+				if(status!=WrathStatus.exploding){
+					if(distance.length<0.05f)
 						wrath.wrathExplosion(0,state);
 				}
 				return true;
@@ -4811,11 +4811,9 @@ bool updateFireball(B)(ref Fireball!B fireball,ObjectState!B state){
 				return false;
 			}
 		}
-		if(!state.isValidId(fireball.target.id)){
-			if(distance.length<0.5f*fireballSize){
-				fireball.fireballExplosion(0,state);
-				return false;
-			}
+		if(distance.length<0.05f){
+			fireball.fireballExplosion(0,state);
+			return false;
 		}
 		return true;
 	}
