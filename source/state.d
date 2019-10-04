@@ -2360,7 +2360,8 @@ void destroy(B)(ref Building!B building, ObjectState!B state){
 			})(id);
 		}
 		state.staticObjectById!((ref StaticObject!B object,state){
-			destructionAnimation(object.center,state);
+			auto destruction=building.bldg.components[i].destruction;
+			destructionAnimation(destruction,object.center,state);
 		})(id,state);
 	}
 	building.componentIds.length=newLength;
@@ -4321,13 +4322,11 @@ bool updateSpeedUp(B)(ref SpeedUp!B speedUp,ObjectState!B state){
 					obj.creatureStats.effects.numSpeedUps-=1;
 				if(framesLeft) return true;
 			}
-			static assert(updateFPS==60);
-			if(state.frame%2==0){
-				auto hitbox=obj.hitbox;
-				auto sacParticle=SacParticle!B.get(ParticleType.speedUp);
-				auto scale=1.0f; // TODO: does this differ for different creatures?
-				state.addParticle(Particle!B(sacParticle,state.uniform(hitbox),Vector3f(0.0f,0.0f,0.0f),scale,sacParticle.numFrames,0));
-			}
+			auto hitbox=obj.hitbox;
+			auto sacParticle=SacParticle!B.get(ParticleType.speedUp);
+			auto scale=1.0f; // TODO: does this differ for different creatures?
+			auto frame=state.uniform!"[)"(0,sacParticle.numFrames);
+			state.addParticle(Particle!B(sacParticle,state.uniform(hitbox),Vector3f(0.0f,0.0f,0.0f),scale,sacParticle.numFrames,frame));
 			state.addEffect(SpeedUpShadow!B(obj.id,obj.position,obj.rotation,obj.animationState,obj.frame));
 			return true;
 		},()=>false)(creature,framesLeft,state);
@@ -4957,7 +4956,7 @@ void explosionAnimation(B)(Vector3f position,ObjectState!B state){
 	explosionParticles(position,state);
 }
 
-void destructionAnimation(B)(Vector3f position,ObjectState!B state){
+void animateDebris(B)(Vector3f position,ObjectState!B state){
 	enum numDebris=35;
 	foreach(i;0..numDebris){
 		auto angle=state.uniform(-cast(float)PI,cast(float)PI);
@@ -4968,7 +4967,33 @@ void destructionAnimation(B)(Vector3f position,ObjectState!B state){
 		auto debris=Debris!B(position,velocity,rotationUpdate,Quaternionf.identity());
 		state.addEffect(debris);
 	}
-	explosionAnimation(position,state);
+}
+
+void animateAsh(B)(Vector3f position,ObjectState!B state){
+	enum numParticles=300;
+	auto sacParticle=SacParticle!B.get(ParticleType.ashParticle);
+	foreach(i;0..numParticles){
+		auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+		auto velocity=state.uniform(15.0f,30.0f)*direction;
+		//auto scale=state.uniform(1.5f,3.0f);
+		auto scale=state.uniform(1.75f,4.0f);
+		auto lifetime=95;
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+	}
+}
+
+void destructionAnimation(B)(char[4] animation,Vector3f position,ObjectState!B state){
+	switch(animation){
+		case "1tuh":
+			animateAsh(position,state);
+			explosionAnimation(position,state);
+			break;
+		default:
+			animateDebris(position,state);
+			explosionAnimation(position,state);
+			break;
+	}
 }
 
 void updateCommandCones(B)(ref CommandCones!B commandCones, ObjectState!B state){
