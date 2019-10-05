@@ -3928,17 +3928,17 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 		auto collisionDirection=CollisionDirection.left;
 		auto minOverlap=hitbox[1].x-entry.hitbox[0].x;
 		auto cand=entry.hitbox[1].x-hitbox[0].x;
-		if(cand<minOverlap){
+		if(cand<minOverlap||cand==minOverlap&&state.uniform(2)){
 			minOverlap=cand;
 			collisionDirection=CollisionDirection.right;
 		}
 		cand=hitbox[1].y-entry.hitbox[0].y;
-		if(cand<minOverlap){
+		if(cand<minOverlap||cand==minOverlap&&state.uniform(2)){
 			minOverlap=cand;
 			collisionDirection=CollisionDirection.back;
 		}
 		cand=entry.hitbox[1].y-hitbox[0].y;
-		if(cand<minOverlap){
+		if(cand<minOverlap||cand==minOverlap&&state.uniform(2)){
 			minOverlap=cand;
 			collisionDirection=CollisionDirection.front;
 		}
@@ -3948,12 +3948,12 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			case CreatureMovement.flying:
 				if(object.creatureState.mode==CreatureMode.landing) break;
 				cand=hitbox[1].z-entry.hitbox[0].z;
-				if(cand<minOverlap){
+				if(cand<minOverlap||cand==minOverlap&&state.uniform(2)){
 					minOverlap=cand;
 					collisionDirection=CollisionDirection.bottom;
 				}
 				cand=entry.hitbox[1].z-hitbox[0].z;
-				if(cand<minOverlap){
+				if(cand<minOverlap||cand==minOverlap&&state.uniform(2)){
 					minOverlap=cand;
 					collisionDirection=CollisionDirection.top;
 				}
@@ -3961,7 +3961,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			case CreatureMovement.tumbling:
 				static if(!fixup){
 					cand=entry.hitbox[1].z-hitbox[0].z;
-					if(cand<minOverlap)
+					if(cand<minOverlap||cand==minOverlap&&state.uniform(2))
 						object.creatureState.fallingVelocity.z=0.0f;
 				}
 				break;
