@@ -205,7 +205,7 @@ final class SacScene: Scene{
 		auto mat=createMaterial(shadelessBoneMaterialBackend);
 		mat.depthWrite=false;
 		mat.blending=Additive;
-		mat.energy=20.0f;
+		mat.energy=15.0f;
 		mat.diffuse=texture;
 		auto frames=typeof(return).createMeshes();
 		return SacLightning!DagonBackend(texture,mat,frames);
@@ -527,7 +527,7 @@ final class SacScene: Scene{
 						auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),diff/len);
 						scene.shadelessBoneMaterialBackend.setTransformationScaled(start,rotation,Vector3f(1.0f,1.0f,0.1f*len),rc);
 						auto alpha=cast(float)PI*frame/float(totalFrames);
-						auto energy=0.5f+19.5f*(0.5f+0.25f*cos(7.0f*alpha)+0.25f*sin(11.0f*alpha));
+						auto energy=0.375f+14.625f*(0.5f+0.25f*cos(7.0f*alpha)+0.25f*sin(11.0f*alpha));
 						scene.shadelessBoneMaterialBackend.setEnergy(energy);
 						auto mesh=scene.lightning.getFrame(objects.lightnings[j].frame%scene.lightning.numFrames);
 						foreach(ref bolt;objects.lightnings[j].bolts){

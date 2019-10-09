@@ -761,13 +761,13 @@ final class SacParticle(B){
 				break;
 			case lightningCasting:
 				width=height=1.0f;
-				this.energy=4.0f;
+				this.energy=3.0f;
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/cst0.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
 			case spark:
 				width=height=4.0f;
-				this.energy=20.0f;
+				this.energy=15.0f;
 				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Stra.FLDR/txtr.FLDR/sprk.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
@@ -791,7 +791,7 @@ final class SacParticle(B){
 				break;
 			case castStratos:
 				width=height=1.0f;
-				this.energy=5.0f;
+				this.energy=2.0f;
 				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Stra.FLDR/txtr.FLDR/csts.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
