@@ -1401,6 +1401,23 @@ struct Fireball(B){
 	Quaternionf rotationUpdate;
 	Quaternionf rotation;
 }
+struct RockCasting(B){
+	ManaDrain!B manaDrain;
+	SacSpell!B spell;
+	Rock!B rock;
+	int frame;
+}
+struct Rock(B){
+	int immuneId;
+	int side;
+	Vector3f position; // TODO: better representation?
+	Vector3f velocity;
+	OrderTarget target;
+	SacSpell!B spell;
+	Quaternionf rotationUpdate;
+	Quaternionf rotation;
+}
+
 
 struct Effects(B){
 	Array!(Debris!B) debris;
@@ -1531,6 +1548,22 @@ struct Effects(B){
 		if(i+1<fireballs.length) swap(fireballs[i],fireballs[$-1]);
 		fireballs.length=fireballs.length-1;
 	}
+	Array!(RockCasting!B) rockCastings;
+	void addEffect(RockCasting!B rockCasting){
+		rockCastings~=rockCasting;
+	}
+	void removeRockCasting(int i){
+		if(i+1<rockCastings.length) swap(rockCastings[i],rockCastings[$-1]);
+		rockCastings.length=rockCastings.length-1;
+	}
+	Array!(Rock!B) rocks;
+	void addEffect(Rock!B rock){
+		rocks~=rock;
+	}
+	void removeRock(int i){
+		if(i+1<rocks.length) swap(rocks[i],rocks[$-1]);
+		rocks.length=rocks.length-1;
+	}
 	void opAssign(ref Effects!B rhs){
 		assignArray(debris,rhs.debris);
 		assignArray(explosions,rhs.explosions);
@@ -1548,6 +1581,8 @@ struct Effects(B){
 		assignArray(wraths,rhs.wraths);
 		assignArray(fireballCastings,rhs.fireballCastings);
 		assignArray(fireballs,rhs.fireballs);
+		assignArray(rockCastings,rhs.rockCastings);
+		assignArray(rocks,rhs.rocks);
 	}
 }
 
@@ -2828,6 +2863,11 @@ int getCastingTime(B)(ref MovingObject!B object,int numFrames,bool stationary,Ob
 	auto castingTime=sacObject.castingTime(stationary?AnimationState.spellcastEnd:AnimationState.runSpellcastEnd)*updateAnimFactor;
 	return start+max(0,numFrames-start-castingTime+mid-1)/mid*mid+castingTime;
 }
+int getCastingTime(B)(ref MovingObject!B object,SacSpell!B spell,bool stationary,ObjectState!B state){
+	auto wizard=state.getWizard(object.id);
+	int numFrames=cast(int)ceil(updateFPS*spell.castingTime(wizard.level));
+	return getCastingTime(object,spell,stationary,state);
+}
 
 enum summonSoundGain=2.0f;
 bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,ObjectState!B state){
@@ -2868,6 +2908,9 @@ bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,Ob
 					return target.id==object.id?castWrath(object,manaDrain,spell,state):castWrath(target.id,manaDrain,spell,state);
 				case SpellTag.fireball:
 					return target.id==object.id?castFireball(object,manaDrain,spell,state):castFireball(target.id,manaDrain,spell,state);
+				case SpellTag.rock:
+					auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
+					return target.id==object.id?castRock(object.id,object,manaDrain,spell,castingTime,state):castRock(object.id,target.id,manaDrain,spell,castingTime,state);
 				default:
 					if(ok) state.addEffect(manaDrain);
 					else stun();
@@ -2997,6 +3040,39 @@ bool castFireball(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectSta
 bool fireball(B)(Fireball!B fireball,ObjectState!B state){
 	playSpellSoundTypeAt(SoundType.fireball,fireball.position,state,4.0f); // TODO: move sound with fireball
 	state.addEffect(fireball);
+	return true;
+}
+
+Rock!B makeRock(B)(int immuneId,int side,Vector3f position,OrderTarget target,SacSpell!B spell,ObjectState!B state){
+	auto rotationSpeed=cast(float)2*PI*state.uniform(0.1f,0.4f)/updateFPS;
+	auto velocity=Vector3f(0.0f,0.0f,0.0f);
+	auto rotationAxis=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+	auto rotationUpdate=rotationQuaternion(rotationAxis,rotationSpeed);
+	return Rock!B(immuneId,side,position,velocity,target,spell,rotationUpdate,Quaternionf.identity());
+}
+enum rockBuryDepth=1.0f;
+Vector3f rockCastingPosition(B)(ref MovingObject!B obj,ObjectState!B state){
+	auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
+	auto position=obj.position+rotate(obj.rotation,Vector3f(0.0f,hbox[1].y+1.5f,0.0f));
+	position.z=state.getHeight(position)-rockBuryDepth;
+	return position;
+}
+bool castRock(B,T)(int immuneId,ref T object,ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,ObjectState!B state)if(!is(T==int)){
+	return castRock(immuneId,object.id,manaDrain,spell,castingTime,state);
+}
+bool castRock(B)(int immuneId,int target,ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,ObjectState!B state){
+	if(!state.isValidId(target)) return false;
+	auto positionSide=state.movingObjectById!((obj,state)=>tuple(obj.rockCastingPosition(state),obj.side),function Tuple!(Vector3f,int){ assert(0); })(manaDrain.wizard,state);
+	auto position=positionSide[0],side=positionSide[1];
+	auto rock=makeRock(immuneId,side,position,centerTarget(target,state),spell,state);
+	state.addEffect(RockCasting!B(manaDrain,spell,rock,castingTime));
+	return true;
+}
+
+bool rock(B)(Rock!B rock,ObjectState!B state){
+	playSoundAt("tlep",rock.position,state,4.0f);
+	animateEmergingRock(rock,state);
+	state.addEffect(rock);
 	return true;
 }
 
@@ -4342,10 +4418,12 @@ bool updateSpeedUpShadow(B)(ref SpeedUpShadow!B speedUpShadow,ObjectState!B stat
 	}
 }
 
-void animateCasting(bool spread=true,B)(ref MovingObject!B wizard,SacParticle!B sacParticle,ObjectState!B state){
+void animateCasting(bool spread=true,int numParticles=-1,B)(ref MovingObject!B wizard,SacParticle!B sacParticle,ObjectState!B state){
 	auto hands=wizard.hands;
-	static if(spread) enum numParticles=2;
-	else enum numParticles=1;
+	static if(numParticles==-1){
+		static if(spread) enum numParticles=2;
+		else enum numParticles=1;
+	}
 	foreach(i;0..2){
 		auto hposition=hands[i];
 		if(isNaN(hposition.x)) continue;
@@ -4577,14 +4655,14 @@ void animateWrath(B)(ref Wrath!B wrath,ObjectState!B state){
 		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
 	}
 }
-int collisionTarget(alias hitbox,alias filter,B,T...)(int side,Vector3f position,ObjectState!B state,T args){
+int collisionTarget(alias hitbox,alias filter=None,B,T...)(int side,Vector3f position,ObjectState!B state,T args){
 	static struct CollisionState{
 		int target=0;
 		bool valid,ally;
 		double distance=float.infinity;
 	}
 	static void handleCollision(ProximityEntry entry,int side,Vector3f position,CollisionState* collisionState,ObjectState!B state,T args){
-		if(!filter(entry,state,args)) return;
+		static if(!is(filter==None)) if(!filter(entry,state,args)) return;
 		auto distance=meleeDistance(entry.hitbox,position);
 		auto validAlly=state.objectById!((obj,state,side)=>tuple(obj.isValidAttackTarget(state),state.sides.getStance(side,.side(obj,state))==Stance.ally))(entry.id,state,side);
 		auto valid=validAlly[0], ally=validAlly[1];
@@ -4663,8 +4741,8 @@ bool updateWrath(B)(ref Wrath!B wrath,ObjectState!B state){
 				}
 				velocity=capVelocity(velocity);
 				auto newPosition=position+velocity/updateFPS;
-				auto height=state.getHeight(position);
 				if(state.isOnGround(position)){
+					auto height=state.getGroundHeight(position);
 					if(newPosition.z<height+0.5f){
 						auto nvel=velocity;
 						nvel.z+=(height+0.5f-newPosition.z)*updateFPS;
@@ -4689,6 +4767,7 @@ bool updateWrath(B)(ref Wrath!B wrath,ObjectState!B state){
 		}
 	}
 }
+
 bool updateFireballCasting(B)(ref FireballCasting!B fireballCast,ObjectState!B state){
 	with(fireballCast){
 		fireball.target.position=fireball.target.center(state);
@@ -4721,13 +4800,13 @@ void animateFireball(B)(ref Fireball!B fireball,Vector3f oldPosition,ObjectState
 		auto frame=0;
 		foreach(i;0..numParticles){
 			auto sacParticle=i!=0?sacParticle1:sacParticle2;
-			auto position=oldPosition*((cast(float)numParticles-1-i)/(numParticles-1))+position*(cast(float)i/(numParticles-1));
+			auto position=oldPosition*((cast(float)numParticles-1-i)/numParticles)+position*(cast(float)(i+1)/numParticles);
 			position+=0.15f*Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f));
 			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
 		}
 	}
 }
-enum fireballSize=0.5f;
+enum fireballSize=0.5f; // TODO: use bounding box from sac object
 static immutable Vector3f[2] fireballHitbox=[-0.5f*fireballSize*Vector3f(1.0f,1.0f,1.0f),0.5f*fireballSize*Vector3f(1.0f,1.0f,1.0f)];
 int fireballCollisionTarget(B)(int side,Vector3f position,ObjectState!B state){
 	static bool filter(ProximityEntry entry,ObjectState!B state,int side){
@@ -4792,8 +4871,8 @@ bool updateFireball(B)(ref Fireball!B fireball,ObjectState!B state){
 		}
 		velocity=capVelocity(velocity);
 		auto newPosition=position+velocity/updateFPS;
-		auto height=state.getHeight(position);
 		if(state.isOnGround(position)){
+			auto height=state.getGroundHeight(position);
 			if(newPosition.z<height+0.5f){
 				auto nvel=velocity;
 				nvel.z+=(height+0.5f-newPosition.z)*updateFPS;
@@ -4801,12 +4880,14 @@ bool updateFireball(B)(ref Fireball!B fireball,ObjectState!B state){
 			}
 		}
 		position=newPosition;
+		rotation=rotationUpdate*rotation;
 		fireball.animateFireball(oldPosition,state);
 		auto target=fireballCollisionTarget(side,position,state);
 		if(state.isValidId(target)){
 			fireball.fireballExplosion(target,state);
 			return false;
-		}else if(state.isOnGround(position)){
+		}
+		if(state.isOnGround(position)){
 			if(position.z<state.getGroundHeight(position)){
 				fireball.fireballExplosion(0,state);
 				return false;
@@ -4814,6 +4895,151 @@ bool updateFireball(B)(ref Fireball!B fireball,ObjectState!B state){
 		}
 		if(distance.length<0.05f){
 			fireball.fireballExplosion(fireball.target.id,state);
+			return false;
+		}
+		return true;
+	}
+}
+
+void animateRockCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	auto castParticle=SacParticle!B.get(ParticleType.dirt);
+	wizard.animateCasting!(true,1)(castParticle,state);
+}
+
+bool updateRockCasting(B)(ref RockCasting!B rockCast,ObjectState!B state){
+	with(rockCast){
+		rock.target.position=rock.target.center(state);
+		return state.movingObjectById!((obj){
+			final switch(manaDrain.update(state)){
+				case CastingStatus.underway:
+					rock.position=obj.rockCastingPosition(state);
+					rock.position.z+=rockBuryDepth*min(1.0f,1.0f-frame/(updateFPS*rockCast.rock.spell.castingTime(9)));
+					obj.animateRockCasting(state);
+					frame-=1;
+					return true;
+				case CastingStatus.interrupted:
+					return false;
+				case CastingStatus.finished:
+					.rock(rock,state);
+					return false;
+			}
+		},()=>false)(manaDrain.wizard);
+	}
+}
+void animateEmergingRock(B)(ref Rock!B rock,ObjectState!B state){
+	enum numParticles=50;
+	auto sacParticle=SacParticle!B.get(ParticleType.rock);
+	foreach(i;0..numParticles){
+		auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(0.5f,1.0f)).normalized;
+		auto velocity=state.uniform(3.0f,6.0f)*direction;
+		velocity.z*=2.5f;
+		auto scale=state.uniform(0.25f,0.75f);
+		auto lifetime=159;
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle,rock.position,velocity,scale,lifetime,frame));
+	}
+	enum numParticles4=20;
+	auto sacParticle4=SacParticle!B.get(ParticleType.dust);
+	foreach(i;0..numParticles4){
+		auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+		auto position=rock.position+0.75f*direction;
+		auto velocity=0.2f*direction;
+		auto scale=3.0f;
+		auto frame=0;
+		auto lifetime=31;
+		state.addParticle(Particle!B(sacParticle4,position,velocity,scale,lifetime,frame));
+	}
+
+}
+void animateRock(B)(ref Rock!B rock,Vector3f oldPosition,ObjectState!B state){
+	with(rock){
+		rotation=rotationUpdate*rotation;
+		enum numParticles=2;
+		auto sacParticle=SacParticle!B.get(ParticleType.dust);
+		auto velocity=Vector3f(0.0f,0.0f,0.0f);
+		auto lifetime=31;
+		auto scale=1.5f;
+		auto frame=0;
+		foreach(i;0..numParticles){
+			auto position=oldPosition*((cast(float)numParticles-1-i)/numParticles)+position*(cast(float)(i+1)/numParticles);
+			position+=0.3f*Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f));
+			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+		}
+	}
+}
+enum rockSize=2.0f; // TODO: use bounding box from sac object
+static immutable Vector3f[2] rockHitbox=[-0.5f*rockSize*Vector3f(1.0f,1.0f,1.0f),0.5f*rockSize*Vector3f(1.0f,1.0f,1.0f)];
+int rockCollisionTarget(B)(int immuneId,int side,Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state,int immuneId){
+		return entry.id!=immuneId;
+	}
+	return collisionTarget!(rockHitbox,filter)(side,position,state,immuneId);
+}
+
+void rockExplosion(B)(ref Rock!B rock,int target,ObjectState!B state){
+	playSpellSoundTypeAt(SoundType.explodingRock,rock.position,state,8.0f);
+	if(state.isValidId(target)) dealSpellDamage(target,rock.spell,rock.side,rock.velocity,state);
+	enum numParticles3=100;
+	auto sacParticle3=SacParticle!B.get(ParticleType.rock);
+	foreach(i;0..numParticles3){
+		auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+		auto velocity=state.uniform(7.5f,15.0f)*direction;
+		auto scale=state.uniform(1.0f,2.5f);
+		auto lifetime=95;
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle3,rock.position,velocity,scale,lifetime,frame));
+	}
+	enum numParticles4=20;
+	auto sacParticle4=SacParticle!B.get(ParticleType.dirt);
+	foreach(i;0..numParticles4){
+		auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+		auto position=rock.position+0.75f*direction;
+		auto velocity=Vector3f(0.0f,0.0f,0.0f);
+		auto scale=3.0f;
+		auto frame=state.uniform(2)?0:state.uniform(24);
+		auto lifetime=63-frame;
+		state.addParticle(Particle!B(sacParticle4,position,velocity,scale,lifetime,frame));
+	}
+}
+
+enum rockFloatingHeight=7.0f;
+bool updateRock(B)(ref Rock!B rock,ObjectState!B state){
+	with(rock){
+		auto oldPosition=rock.position;
+		auto targetCenter=target.center(state);
+		auto distance=targetCenter-position;
+		auto acceleration=distance.normalized*spell.acceleration;
+		velocity+=acceleration;
+		Vector3f capVelocity(Vector3f velocity){
+			if(velocity.length>spell.speed) velocity=velocity.normalized*spell.speed; // TODO: why?
+			if(velocity.length>updateFPS*distance.length) velocity=velocity.normalized*distance.length*updateFPS;
+			return velocity;
+		}
+		velocity=capVelocity(velocity);
+		auto newPosition=position+velocity/updateFPS;
+		auto height=state.getHeight(position);
+		auto floatingHeight=min(rockFloatingHeight,0.75f*(targetCenter.xy-position.xy).length);
+		if(newPosition.z<height+floatingHeight){
+			auto nvel=velocity;
+			nvel.z+=(height+floatingHeight-newPosition.z)*updateFPS;
+			newPosition=position+capVelocity(nvel)/updateFPS;
+		}
+		position=newPosition;
+		rotation=rotationUpdate*rotation;
+		rock.animateRock(oldPosition,state);
+		auto target=rockCollisionTarget(immuneId,side,position,state);
+		if(state.isValidId(target)){
+			rock.rockExplosion(target,state);
+			return false;
+		}
+		if(state.isOnGround(position)){
+			if(position.z<state.getGroundHeight(position)){
+				rock.rockExplosion(0,state);
+				return false;
+			}
+		}
+		if(distance.length<0.05f){
+			rock.rockExplosion(rock.target.id,state);
 			return false;
 		}
 		return true;
@@ -4929,6 +5155,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.fireballs.length;){
 		if(!updateFireball(effects.fireballs[i],state)){
 			effects.removeFireball(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.rockCastings.length;){
+		if(!updateRockCasting(effects.rockCastings[i],state)){
+			effects.removeRockCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.rocks.length;){
+		if(!updateRock(effects.rocks[i],state)){
+			effects.removeRock(i);
 			continue;
 		}
 		i++;

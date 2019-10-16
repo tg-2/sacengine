@@ -223,6 +223,7 @@ final class SacScene: Scene{
 	}
 	SacWrath!DagonBackend wrath;
 	SacCommandCone!DagonBackend sacCommandCone;
+	SacObject!DagonBackend sacRock;
 	void createEffects(){
 		sacCommandCone=new SacCommandCone!DagonBackend();
 		sacDebris=new SacObject!DagonBackend("extracted/models/MODL.WAD!/bold.MRMC/bold.MRMM");
@@ -230,6 +231,7 @@ final class SacScene: Scene{
 		blueRing=createBlueRing();
 		lightning=createLightning();
 		wrath=createWrath();
+		sacRock=new SacObject!DagonBackend("extracted/models/MODL.WAD!/rock.MRMC/rock.MRMM");
 	}
 
 	void rotateSky(Quaternionf rotation){
@@ -243,7 +245,16 @@ final class SacScene: Scene{
 		auto env=environment;
 		auto envi=&map.envi;
 		//writeln(envi.sunDirectStrength," ",envi.sunAmbientStrength);
-		env.sunEnergy=min(12.0f*envi.sunDirectStrength,30.0f);
+		float sunStrength;
+		final switch(map.tileset) with(Tileset){
+			case ethereal: sunStrength=6.0f; break;
+			case persephone: sunStrength=6.0f; break;
+			case pyro: sunStrength=2.0f; break;
+			case james: sunStrength=14.0f; break;
+			case stratos: sunStrength=12.0f; break;
+			case charnel: sunStrength=4.0f; break;
+		}
+		env.sunEnergy=min(sunStrength*envi.sunDirectStrength,30.0f);
 		Color4f fixColor(Color4f sacColor){
 			return Color4f(0,0.3,1,1)*0.2+sacColor*0.8;
 		}
@@ -555,6 +566,24 @@ final class SacScene: Scene{
 						auto scale=scene.wrath.maxScale/scene.wrath.numFrames*objects.wraths[j].frame;
 						scene.shadelessMaterialBackend.setTransformationScaled(position,Quaternionf.identity(),Vector3f(scale,scale,1.0f),rc);
 						mesh.render(rc);
+					}
+				}
+				static if(mode==RenderMode.opaque) if(objects.rockCastings.length||objects.rocks.length){
+					auto materials=scene.sacRock.materials;
+					foreach(i;0..materials.length){
+						auto material=materials[i];
+						material.bind(rc);
+						scope(success) material.unbind(rc);
+						auto mesh=scene.sacRock.meshes[i];
+						foreach(j;0..objects.rockCastings.length){
+							auto scale=1.0f*Vector3f(1.0f,1.0f,1.0f);
+							material.backend.setTransformationScaled(objects.rockCastings[j].rock.position,objects.rockCastings[j].rock.rotation,scale,rc);
+							mesh.render(rc);
+						}
+						foreach(j;0..objects.rocks.length){
+							material.backend.setTransformationScaled(objects.rocks[j].position,objects.rocks[j].rotation,1.0f*Vector3f(1.0f,1.0f,1.0f),rc);
+							mesh.render(rc);
+						}
 					}
 				}
 			}else static if(is(T==Particles!(DagonBackend,relative),bool relative)){
@@ -2638,7 +2667,8 @@ static:
 			auto diffuse=sobj.isSaxs?sobj.saxsi.saxs.bodyParts[i].texture:sobj.textures[i];
 			if(diffuse !is null) mat.diffuse=diffuse;
 			mat.specular=sobj.isSaxs?Color4f(1,1,1,1):Color4f(0,0,0,1);
-			mat.roughness=0.8;
+			mat.roughness=1.0f;
+			mat.metallic=0.5f;
 			if(i==config.shinyPart){
 				mat.emission=diffuse;
 				mat.energy=0.5f;
@@ -2665,7 +2695,8 @@ static:
 			auto diffuse=sobj.isSaxs?sobj.saxsi.saxs.bodyParts[i].texture:sobj.textures[i];
 			if(diffuse !is null) mat.diffuse=diffuse;
 			mat.specular=sobj.isSaxs?Color4f(1,1,1,1):Color4f(0,0,0,1);
-			mat.roughness=0.8;
+			mat.roughness=1.0f;
+			mat.metallic=0.5f;
 			materials~=mat;
 		}
 		return materials;
@@ -2691,7 +2722,7 @@ static:
 		mat.specular=Color4f(specu*map.envi.specularityRed/255.0f,specu*map.envi.specularityGreen/255.0f,specu*map.envi.specularityBlue/255.0f);
 		//mat.roughness=1.0f-map.envi.landscapeGlossiness;
 		mat.roughness=1.0f;
-		mat.metallic=0.0f;
+		mat.metallic=0.5f;
 		mat.energy=0.05;
 		return mat;
 	}
@@ -2707,10 +2738,11 @@ static:
 
 	Material createMaterial(SacParticle!DagonBackend particle){
 		final switch(particle.type) with(ParticleType){
-				case manafount, manalith, manahoar, shrine, firy, fireball, explosion, explosion2, speedUp, heal, relativeHeal, lightningCasting, spark, castPersephone, castPyro, castJames, castStratos, castCharnel, wrathCasting, wrathExplosion1, wrathExplosion2, wrathParticle, ashParticle, smoke:
+				case manafount, manalith, manahoar, shrine, firy, fireball, explosion, explosion2, speedUp, heal, relativeHeal, lightningCasting, spark, castPersephone, castPyro, castJames, castStratos, castCharnel, wrathCasting, wrathExplosion1, wrathExplosion2, wrathParticle, ashParticle, smoke, dirt, dust,rock:
 				auto mat=scene.createMaterial(scene.shadelessMaterialBackend);
 				mat.depthWrite=false;
-				mat.blending=particle.type.among(ashParticle,smoke)?Transparent:Additive;
+				mat.blending=particle.type.among(ashParticle,smoke,dirt,dust,rock)?Transparent:Additive;
+				if(particle.type==dust) mat.alpha=0.25f;
 				mat.energy=particle.energy;
 				mat.diffuse=particle.texture;
 				mat.color=particle.color;

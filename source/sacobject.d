@@ -652,6 +652,9 @@ enum ParticleType{
 	wrathExplosion2,
 	wrathParticle,
 	ashParticle,
+	dirt,
+	dust,
+	rock,
 }
 
 final class SacParticle(B){
@@ -675,8 +678,10 @@ final class SacParticle(B){
 				return false;
 			case wrathParticle,ashParticle:
 				return true;
-			case smoke:
+			case smoke,dirt,dust:
 				return false;
+			case rock:
+				return true;
 		}
 	}
 	@property bool relative(){
@@ -687,13 +692,13 @@ final class SacParticle(B){
 				return true;
 			case castPersephone,castPyro,castJames,castStratos,castCharnel:
 				return false;
-			case wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,ashParticle,smoke:
+			case wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,ashParticle,smoke,dirt,dust,rock:
 				return false;
 		}
 	}
 	@property bool bumpOffGround(){
 		switch(type) with(ParticleType){
-			case wrathParticle,ashParticle: return true;
+			case wrathParticle,ashParticle,rock: return true;
 			default: return false;
 		}
 	}
@@ -785,7 +790,7 @@ final class SacParticle(B){
 				break;
 			case castJames:
 				width=height=1.0f;
-				this.energy=5.0f;
+				this.energy=2.0f;
 				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Jame.FLDR/tex_ZERO_.FLDR/cstj.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
@@ -827,7 +832,26 @@ final class SacParticle(B){
 				break;
 			case smoke:
 				width=height=1.5f;
+				this.energy=1.0f;
 				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pyro.FLDR/txtr.FLDR/smok.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
+			case dirt:
+				width=height=1.0f;
+				this.energy=1.0f;
+				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/dirt.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
+			case dust:
+				width=height=1.0f;
+				this.energy=1.0f;
+				texture=B.makeTexture(loadTXTR("extracted/shawn/shwn.WAD!/jams.FLDR/text.FLDR/dust.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
+			case rock:
+				width=height=1.0f;
+				this.energy=1.0f;
+				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/rock.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
 		}
@@ -846,6 +870,7 @@ final class SacParticle(B){
 			case speedUp: return 2;
 			case ashParticle: return 3;
 			case smoke: return 4;
+			case dirt: return 2;
 			default: return 1;
 		}
 	}
@@ -878,6 +903,12 @@ final class SacParticle(B){
 			case smoke:
 				enum delay=64;
 				return 0.75f*(lifetime>=numFrames-(delay-1)?(numFrames-lifetime)/float(delay):(lifetime/float(numFrames-delay)))^^2;
+			case rock:
+				return min(1.0f,(lifetime/(1.5f*numFrames)));
+			case dirt:
+				return min(1.0f,(lifetime/(0.25f*numFrames)));
+			case dust:
+				return 1.0f;
 		}
 	}
 	float getScale(int lifetime){
@@ -906,7 +937,11 @@ final class SacParticle(B){
 				return 1.0f;
 			case smoke:
 				return 1.0f/(lifetime/float(numFrames)+0.2f);
-			}
+			case rock:
+				return min(1.0f,lifetime/(3.0f*numFrames));
+			case dirt,dust:
+				return 1.0f;
+		}
 	}
 }
 
