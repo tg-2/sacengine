@@ -196,7 +196,7 @@ final class SacScene: Scene{
 		mat.blending=Additive;
 		mat.energy=20.0f;
 		mat.diffuse=texture;
-		auto frames=makeSpriteMeshes!(DagonBackend,true)(4,4,28,28);
+		auto frames=typeof(return).createMeshes();
 		return SacBlueRing!DagonBackend(texture,mat,frames);
 	}
 	SacBlueRing!DagonBackend blueRing;
@@ -223,7 +223,19 @@ final class SacScene: Scene{
 	}
 	SacWrath!DagonBackend wrath;
 	SacCommandCone!DagonBackend sacCommandCone;
-	SacObject!DagonBackend sacRock;
+	SacObject!DagonBackend rock;
+	SacBug!DagonBackend bug;
+	SacBug!DagonBackend createBug(){
+		import txtr;
+		auto texture=typeof(return).loadTexture();
+		auto mat=createMaterial(shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=Transparent;
+		mat.energy=1.0f;
+		mat.diffuse=texture;
+		auto mesh=typeof(return).createMesh();
+		return SacBug!DagonBackend(texture,mat,mesh);
+	}
 	void createEffects(){
 		sacCommandCone=new SacCommandCone!DagonBackend();
 		sacDebris=new SacObject!DagonBackend("extracted/models/MODL.WAD!/bold.MRMC/bold.MRMM");
@@ -231,7 +243,8 @@ final class SacScene: Scene{
 		blueRing=createBlueRing();
 		lightning=createLightning();
 		wrath=createWrath();
-		sacRock=new SacObject!DagonBackend("extracted/models/MODL.WAD!/rock.MRMC/rock.MRMM");
+		rock=new SacObject!DagonBackend("extracted/models/MODL.WAD!/rock.MRMC/rock.MRMM");
+		bug=createBug();
 	}
 
 	void rotateSky(Quaternionf rotation){
@@ -569,12 +582,12 @@ final class SacScene: Scene{
 					}
 				}
 				static if(mode==RenderMode.opaque) if(objects.rockCastings.length||objects.rocks.length){
-					auto materials=scene.sacRock.materials;
+					auto materials=scene.rock.materials;
 					foreach(i;0..materials.length){
 						auto material=materials[i];
 						material.bind(rc);
 						scope(success) material.unbind(rc);
-						auto mesh=scene.sacRock.meshes[i];
+						auto mesh=scene.rock.meshes[i];
 						foreach(j;0..objects.rockCastings.length){
 							auto scale=1.0f*Vector3f(1.0f,1.0f,1.0f);
 							material.backend.setTransformationScaled(objects.rockCastings[j].rock.position,objects.rockCastings[j].rock.rotation,scale,rc);
@@ -585,6 +598,24 @@ final class SacScene: Scene{
 							mesh.render(rc);
 						}
 					}
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.swarmCastings.length||objects.swarms.length)){
+					// TODO: render bug shadows?
+					auto material=scene.bug.material;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
+					auto mesh=scene.bug.mesh;
+					void renderBug(ref Bug!DagonBackend bug){
+						material.backend.setSpriteTransformationScaled(bug.position,bug.scale,rc);
+						material.backend.setAlpha(bug.alpha);
+						mesh.render(rc);
+					}
+					foreach(j;0..objects.swarmCastings.length)
+						foreach(k;0..objects.swarmCastings[j].swarm.bugs.length)
+							renderBug(objects.swarmCastings[j].swarm.bugs[k]);
+					foreach(j;0..objects.swarms.length)
+						foreach(k;0..objects.swarms[j].bugs.length)
+							renderBug(objects.swarms[j].bugs[k]);
 				}
 			}else static if(is(T==Particles!(DagonBackend,relative),bool relative)){
 				static if(mode==RenderMode.transparent){

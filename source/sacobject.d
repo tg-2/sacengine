@@ -1091,6 +1091,9 @@ struct SacBlueRing(B){
 	enum ringAnimationDelay=4;
 	enum numFrames=16*ringAnimationDelay*updateAnimFactor;
 	auto getFrame(int i){ return frames[i/(ringAnimationDelay*updateAnimFactor)]; }
+	static B.Mesh[] createMeshes(){
+		return makeSpriteMeshes!(B,true)(4,4,28,28);
+	}
 }
 
 struct SacLightning(B){
@@ -1201,6 +1204,29 @@ struct SacWrath(B){
 			B.finalizeMesh(mesh);
 		}
 		return meshes;
+	}
+}
+
+struct SacBug(B){
+	B.Texture texture;
+	B.Material material;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Char.FLDR/tex_ZERO_.FLDR/bugs.TXTR"));
+	}
+	B.Mesh mesh;
+	static B.Mesh createMesh(){ // TODO: use particle shader instead
+		enum width=0.5f,height=0.5f;
+		enum texWidth=1.0f,texHeight=1.0f;
+		enum nU=1,nV=1;
+		enum u=0,v=0;
+		auto mesh=B.makeMesh(4,2);
+		foreach(k;0..4) mesh.vertices[k]=Vector3f(-0.5f*width+width*(k==1||k==2),-0.5f*height+height*(k==2||k==3),0.0f);
+		foreach(k;0..4) mesh.texcoords[k]=Vector2f(texWidth/nU*(u+(k==1||k==2)),texHeight/nV*(v+(k==0||k==1)));
+		static immutable uint[3][] indices=[[0,1,2],[2,3,0]];
+		mesh.indices[]=indices[];
+		mesh.generateNormals();
+		B.finalizeMesh(mesh);
+		return mesh;
 	}
 }
 

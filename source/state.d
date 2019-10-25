@@ -400,6 +400,12 @@ Vector3f[2] hands(B)(ref MovingObject!B object){
 	return hands;
 }
 
+Vector3f randomHand(B)(Vector3f[2] hands,ObjectState!B state){
+	if(isNaN(hands[0].x)) return hands[1];
+	if(isNaN(hands[1].x)) return hands[0];
+	return hands[state.uniform(2)];
+}
+
 int numAttackTicks(B)(ref MovingObject!B object,AnimationState animationState){
 	return object.sacObject.numAttackTicks(animationState);
 }
@@ -1417,7 +1423,39 @@ struct Rock(B){
 	Quaternionf rotationUpdate;
 	Quaternionf rotation;
 }
+struct SwarmCasting(B){
+	ManaDrain!B manaDrain;
+	SacSpell!B spell;
+	Swarm!B swarm;
+}
+struct Bug(B){
+	Vector3f position;
+	Vector3f velocity;
+	Vector3f targetPosition;
+	enum scale=1.0f; // TODO
+	enum alpha=1.0f; // TODO
+}
+enum SwarmStatus{
+	casting,
+	flying,
+	dispersing,
+}
+struct Swarm(B){
+	int side;
+	Vector3f position;
+	Vector3f velocity;
+	OrderTarget target;
+	SacSpell!B spell;
+	int frame;
+	auto status=SwarmStatus.casting;
+	Array!(Bug!B) bugs; // TODO: pull out bugs into separate array?
 
+	void opAssign(ref Swarm!B rhs){
+		this.tupleof[0..$-1]=rhs.tupleof[0..$-1];
+		static assert(__traits(isSame,this.tupleof[$-1],this.bugs));
+		assignArray(bugs,rhs.bugs);
+	}
+}
 
 struct Effects(B){
 	Array!(Debris!B) debris;
@@ -1564,6 +1602,22 @@ struct Effects(B){
 		if(i+1<rocks.length) swap(rocks[i],rocks[$-1]);
 		rocks.length=rocks.length-1;
 	}
+	Array!(SwarmCasting!B) swarmCastings;
+	void addEffect(SwarmCasting!B swarmCasting){
+		swarmCastings~=swarmCasting;
+	}
+	void removeSwarmCasting(int i){
+		if(i+1<swarmCastings.length) swap(swarmCastings[i],swarmCastings[$-1]);
+		swarmCastings.length=swarmCastings.length-1;
+	}
+	Array!(Swarm!B) swarms;
+	void addEffect(Swarm!B swarm){
+		swarms~=swarm;
+	}
+	void removeSwarm(int i){
+		if(i+1<swarms.length) swap(swarms[i],swarms[$-1]);
+		swarms.length=swarms.length-1;
+	}
 	void opAssign(ref Effects!B rhs){
 		assignArray(debris,rhs.debris);
 		assignArray(explosions,rhs.explosions);
@@ -1583,6 +1637,8 @@ struct Effects(B){
 		assignArray(fireballs,rhs.fireballs);
 		assignArray(rockCastings,rhs.rockCastings);
 		assignArray(rocks,rhs.rocks);
+		assignArray(swarmCastings,rhs.swarmCastings);
+		assignArray(swarms,rhs.swarms);
 	}
 }
 
@@ -2911,6 +2967,9 @@ bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,Ob
 				case SpellTag.rock:
 					auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
 					return target.id==object.id?castRock(object.id,object,manaDrain,spell,castingTime,state):castRock(object.id,target.id,manaDrain,spell,castingTime,state);
+				case SpellTag.insectSwarm:
+					auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
+					return target.id==object.id?castSwarm(object,manaDrain,spell,castingTime,state):castSwarm(target.id,manaDrain,spell,castingTime,state);
 				default:
 					if(ok) state.addEffect(manaDrain);
 					else stun();
@@ -3073,6 +3132,36 @@ bool rock(B)(Rock!B rock,ObjectState!B state){
 	playSoundAt("tlep",rock.position,state,4.0f);
 	animateEmergingRock(rock,state);
 	state.addEffect(rock);
+	return true;
+}
+
+Bug!B makeBug(B)(Vector3f position,Vector3f velocity,Vector3f targetPosition){
+	return Bug!B(position,velocity,targetPosition);
+}
+
+Swarm!B makeSwarm(B)(int side,Vector3f position,OrderTarget target,SacSpell!B spell,int frame,ObjectState!B state){
+	auto velocity=Vector3f(0.0f,0.0f,0.0f);
+	return Swarm!B(side,position,velocity,target,spell,frame);
+}
+Vector3f swarmCastingPosition(B)(ref MovingObject!B obj,ObjectState!B state){
+	auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
+	return obj.position+rotate(obj.rotation,Vector3f(0.0f,hbox[1].y+0.75f,hbox[1].z+1.75f));
+}
+bool castSwarm(B,T)(ref T object,ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,ObjectState!B state)if(!is(T==int)){
+	return castSwarm(object.id,manaDrain,spell,castingTime,state);
+}
+bool castSwarm(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,ObjectState!B state){
+	if(!state.isValidId(target)) return false;
+	auto positionSide=state.movingObjectById!((obj,state)=>tuple(obj.swarmCastingPosition(state),obj.side),function Tuple!(Vector3f,int){ assert(0); })(manaDrain.wizard,state);
+	auto position=positionSide[0],side=positionSide[1];
+	auto swarm=makeSwarm(side,position,centerTarget(target,state),spell,castingTime,state);
+	playSpellSoundTypeAt(SoundType.swarm,swarm.position,state,4.0f); // TODO: move sound with swarm
+	state.addEffect(SwarmCasting!B(manaDrain,spell,swarm));
+	return true;
+}
+
+bool swarm(B)(Swarm!B swarm,ObjectState!B state){
+	state.addEffect(swarm);
 	return true;
 }
 
@@ -4685,7 +4774,8 @@ void collisionTargets(alias f,alias filter=None,B,T...)(Vector3f[2] hitbox,Objec
 	}
 	auto collisionState=CollisionState();
 	state.proximity.collide!handleCollision(hitbox,&collisionState,state,args);
-	foreach(ref entry;collisionState.targets[].sort!"a.id<b.id".uniq) f(entry,state,args);
+	// TODO: deal splash damage based on _closest_ hitbox!
+	foreach(ref entry;collisionState.targets[].sort!"a.id<b.id".uniq!"a.id==b.id") f(entry,state,args);
 }
 enum wrathSize=0.1f;
 static immutable Vector3f[2] wrathHitbox=[-0.5f*wrathSize*Vector3f(1.0f,1.0f,1.0f),0.5f*wrathSize*Vector3f(1.0f,1.0f,1.0f)];
@@ -5046,6 +5136,147 @@ bool updateRock(B)(ref Rock!B rock,ObjectState!B state){
 	}
 }
 
+void relocate(B)(ref Swarm!B swarm,Vector3f newPosition){
+	auto diff=newPosition-swarm.position;
+	swarm.position=newPosition;
+	foreach(i;0..swarm.bugs.length){
+		swarm.bugs[i].position+=diff;
+		swarm.bugs[i].targetPosition+=diff;
+	}
+}
+
+bool updateSwarmCasting(B)(ref SwarmCasting!B swarmCast,ObjectState!B state){
+	with(swarmCast){
+		swarm.target.position=swarm.target.center(state);
+		return state.movingObjectById!((obj){
+			final switch(manaDrain.update(state)){
+				case CastingStatus.underway:
+					swarm.relocate(obj.swarmCastingPosition(state));
+					if(swarm.frame>0) swarm.addBugs(obj,state);
+					return swarm.updateSwarm(state);
+				case CastingStatus.interrupted:
+					swarm.status=SwarmStatus.dispersing;
+					.swarm(swarm,state);
+					return false;
+				case CastingStatus.finished:
+					swarm.status=SwarmStatus.flying;
+					.swarm(swarm,state);
+					return false;
+			}
+		},()=>false)(manaDrain.wizard);
+	}
+}
+
+enum swarmSize=0.1f;
+static immutable Vector3f[2] swarmHitbox=[-0.5f*swarmSize*Vector3f(1.0f,1.0f,1.0f),0.5f*swarmSize*Vector3f(1.0f,1.0f,1.0f)];
+int swarmCollisionTarget(B)(int side,Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state,int side){
+		return state.objectById!(.side)(entry.id,state)!=side;
+	}
+	return collisionTarget!(swarmHitbox,filter)(side,position,state,side);
+}
+
+Vector3f makeTargetPosition(B)(ref Swarm!B swarm,float radius,ObjectState!B state){
+	return swarm.position+state.uniform(0.0f,radius)*state.uniformDirection();
+}
+
+bool addBugs(B)(ref Swarm!B swarm,ref MovingObject!B wizard,ObjectState!B state){
+	enum totalBugs=250;
+	auto num=(totalBugs-swarm.bugs.length+swarm.frame-1)/swarm.frame;
+	auto hands=wizard.hands;
+	if(isNaN(hands[0].x)&&isNaN(hands[1].x)){
+		auto hbox=wizard.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
+		auto offset=Vector3f(0.0f,hbox[1].y,hbox[1].z);
+		hands[0]=rotate(wizard.rotation,offset)+wizard.position;
+	}
+	foreach(i;0..num){
+		auto position=randomHand(hands,state);
+		auto targetPosition=swarm.makeTargetPosition(1.0f,state);
+		auto velocity=(targetPosition-position).normalized*0.01f*swarm.spell.speed;
+		auto bug=makeBug!B(position,velocity,targetPosition);
+		swarm.bugs~=bug;
+	}
+	return true;
+}
+void updateBug(B)(ref Swarm!B swarm,ref Bug!B bug,ObjectState!B state){
+	bug.targetPosition+=swarm.velocity/updateFPS;
+	auto spell=swarm.spell;
+	auto bugAcceleration=1.0f*spell.acceleration;
+	auto bugSpeed=1.5f*spell.speed;
+	auto distance=bug.targetPosition-bug.position;
+	auto acceleration=distance.normalized*min(2.0f*distance.length,1.0f)*bugAcceleration;
+	bug.velocity+=acceleration;
+	Vector3f capVelocity(Vector3f velocity){
+		if(velocity.length>bugSpeed) velocity=velocity.normalized*bugSpeed;
+		if(velocity.length>updateFPS*distance.length) velocity=velocity.normalized*distance.length*updateFPS;
+		return velocity;
+	}
+	bug.velocity=capVelocity(bug.velocity);
+	bug.position+=bug.velocity/updateFPS;
+	auto dist=(bug.targetPosition-bug.position).lengthsqr;
+	if(dist<1e-3^^2||!state.uniform(updateFPS/2)){
+		bug.velocity*=0.25f;
+		bug.targetPosition=swarm.makeTargetPosition(2.5f/max(2.0f,dist),state);
+	}
+}
+bool updateBugs(B)(ref Swarm!B swarm,ObjectState!B state){
+	foreach(i;0..swarm.bugs.length)
+		swarm.updateBug(swarm.bugs[i],state);
+	return true;
+}
+void swarmHit(B)(ref Swarm!B swarm,int target,ObjectState!B state){
+	swarm.status=SwarmStatus.dispersing;
+	playSoundAt("zzub",swarm.position,state,4.0f);
+	if(state.isValidId(target)) dealSpellDamage(target,swarm.spell,swarm.side,swarm.velocity,state);
+	else target=0;
+	dealSplashSpellDamageAt(target,swarm.spell,swarm.side,swarm.position,state);
+}
+bool updateSwarm(B)(ref Swarm!B swarm,ObjectState!B state){
+	with(swarm){
+		final switch(status){
+			case SwarmStatus.casting:
+				frame-=1;
+				return swarm.updateBugs(state);
+			case SwarmStatus.flying:
+				auto targetCenter=target.center(state);
+				auto distance=targetCenter-position;
+				auto acceleration=distance.normalized*spell.acceleration;
+				velocity+=acceleration;
+				Vector3f capVelocity(Vector3f velocity){
+					if(velocity.length>spell.speed) velocity=velocity.normalized*spell.speed;
+					if(velocity.length>updateFPS*distance.length) velocity=velocity.normalized*distance.length*updateFPS;
+					return velocity;
+				}
+				velocity=capVelocity(velocity);
+				auto newPosition=position+velocity/updateFPS;
+				if(state.isOnGround(position)){
+					auto height=state.getGroundHeight(position);
+					if(newPosition.z<height+0.5f){
+						auto nvel=velocity;
+						nvel.z+=(height+0.5f-newPosition.z)*updateFPS;
+						newPosition=position+capVelocity(nvel)/updateFPS;
+					}
+				}
+				position=newPosition;
+				//swarm.animateSwarm(state);
+				auto target=swarmCollisionTarget(side,position,state);
+				if(state.isValidId(target)) swarm.swarmHit(target,state);
+				else if(state.isOnGround(position)){
+					if(position.z<state.getGroundHeight(position))
+						swarm.swarmHit(0,state);
+				}
+				if(status!=SwarmStatus.dispersing){
+					if(distance.length<0.05f)
+						swarm.swarmHit(swarm.target.id,state);
+				}
+				return swarm.updateBugs(state);
+			case SwarmStatus.dispersing:
+				//return ++frame<64;
+				return false;
+		}
+	}
+}
+
 void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.debris.length;){
 		if(!updateDebris(effects.debris[i],state)){
@@ -5169,6 +5400,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.rocks.length;){
 		if(!updateRock(effects.rocks[i],state)){
 			effects.removeRock(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.swarmCastings.length;){
+		if(!updateSwarmCasting(effects.swarmCastings[i],state)){
+			effects.removeSwarmCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.swarms.length;){
+		if(!updateSwarm(effects.swarms[i],state)){
+			effects.removeSwarm(i);
 			continue;
 		}
 		i++;
@@ -5916,6 +6161,10 @@ final class ObjectState(B){ // (update logic)
 		Vector!(T,n) r;
 		foreach(i,ref x;r) x=this.uniform(box[0][i],box[1][i]);
 		return r;
+	}
+	Vector!(T,n) uniformDirection(T=float,int n=3)(){
+		// TODO: fix bias
+		return Vector3f(uniform(-1.0f,1.0f),uniform(-1.0f,1.0f),uniform(-1.0f,1.0f)).normalized;
 	}
 	void resetStateIndex(){
 		SacObject!B.resetStateIndex();
