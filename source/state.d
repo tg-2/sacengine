@@ -4817,6 +4817,7 @@ void wrathExplosion(B)(ref Wrath!B wrath,int target,ObjectState!B state){
 		state.addParticle(Particle!B(sacParticle3,wrath.position,velocity,scale,lifetime,frame));
 	}
 }
+enum wrathFlyingHeight=0.5f;
 bool updateWrath(B)(ref Wrath!B wrath,ObjectState!B state){
 	with(wrath){
 		final switch(wrath.status){
@@ -4834,9 +4835,10 @@ bool updateWrath(B)(ref Wrath!B wrath,ObjectState!B state){
 				auto newPosition=position+velocity/updateFPS;
 				if(state.isOnGround(position)){
 					auto height=state.getGroundHeight(position);
-					if(newPosition.z<height+0.5f){
+					auto flyingHeight=min(wrathFlyingHeight,0.75f*(targetCenter.xy-position.xy).length);
+					if(newPosition.z<height+flyingHeight){
 						auto nvel=velocity;
-						nvel.z+=(height+0.5f-newPosition.z)*updateFPS;
+						nvel.z+=(height+flyingHeight-newPosition.z)*updateFPS;
 						newPosition=position+capVelocity(nvel)/updateFPS;
 					}
 				}
@@ -4948,6 +4950,7 @@ void fireballExplosion(B)(ref Fireball!B fireball,int target,ObjectState!B state
 	}
 }
 
+enum fireballFlyingHeight=0.5f;
 bool updateFireball(B)(ref Fireball!B fireball,ObjectState!B state){
 	with(fireball){
 		auto oldPosition=fireball.position;
@@ -4964,9 +4967,10 @@ bool updateFireball(B)(ref Fireball!B fireball,ObjectState!B state){
 		auto newPosition=position+velocity/updateFPS;
 		if(state.isOnGround(position)){
 			auto height=state.getGroundHeight(position);
-			if(newPosition.z<height+0.5f){
+			auto flyingHeight=min(fireballFlyingHeight,0.75f*(targetCenter.xy-position.xy).length);
+			if(newPosition.z<height+flyingHeight){
 				auto nvel=velocity;
-				nvel.z+=(height+0.5f-newPosition.z)*updateFPS;
+				nvel.z+=(height+flyingHeight-newPosition.z)*updateFPS;
 				newPosition=position+capVelocity(nvel)/updateFPS;
 			}
 		}
@@ -5299,9 +5303,10 @@ bool updateSwarm(B)(ref Swarm!B swarm,ObjectState!B state){
 				auto newPosition=position+velocity/updateFPS;
 				if(state.isOnGround(position)){
 					auto height=state.getGroundHeight(position);
-					if(newPosition.z<height+swarmFlyingHeight){
+					auto flyingHeight=min(swarmFlyingHeight,0.75f*(targetCenter.xy-position.xy).length);
+					if(newPosition.z<height+flyingHeight){
 						auto nvel=velocity;
-						nvel.z+=(height+swarmFlyingHeight-newPosition.z)*updateFPS;
+						nvel.z+=(height+flyingHeight-newPosition.z)*updateFPS;
 						newPosition=position+capVelocity(nvel)/updateFPS;
 					}
 				}
