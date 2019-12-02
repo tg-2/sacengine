@@ -607,15 +607,18 @@ final class SacScene: Scene{
 					auto mesh=scene.bug.mesh;
 					void renderBug(ref Bug!DagonBackend bug){
 						material.backend.setSpriteTransformationScaled(bug.position,bug.scale,rc);
-						material.backend.setAlpha(bug.alpha);
 						mesh.render(rc);
 					}
 					foreach(j;0..objects.swarmCastings.length)
 						foreach(k;0..objects.swarmCastings[j].swarm.bugs.length)
 							renderBug(objects.swarmCastings[j].swarm.bugs[k]);
-					foreach(j;0..objects.swarms.length)
+					foreach(j;0..objects.swarms.length){
+						if(objects.swarms[j].status==SwarmStatus.dispersing){
+							material.backend.setAlpha(Bug!DagonBackend.alpha/64.0f*(swarmDispersingFrames-objects.swarms[j].frame));
+						}else material.backend.setAlpha(Bug!DagonBackend.alpha);
 						foreach(k;0..objects.swarms[j].bugs.length)
 							renderBug(objects.swarms[j].bugs[k]);
+					}
 				}
 			}else static if(is(T==Particles!(DagonBackend,relative),bool relative)){
 				static if(mode==RenderMode.transparent){
@@ -2769,10 +2772,10 @@ static:
 
 	Material createMaterial(SacParticle!DagonBackend particle){
 		final switch(particle.type) with(ParticleType){
-				case manafount, manalith, manahoar, shrine, firy, fireball, explosion, explosion2, speedUp, heal, relativeHeal, lightningCasting, spark, castPersephone, castPyro, castJames, castStratos, castCharnel, wrathCasting, wrathExplosion1, wrathExplosion2, wrathParticle, ashParticle, smoke, dirt, dust,rock:
+				case manafount, manalith, manahoar, shrine, firy, fireball, explosion, explosion2, speedUp, heal, relativeHeal, lightningCasting, spark, castPersephone, castPyro, castJames, castStratos, castCharnel, wrathCasting, wrathExplosion1, wrathExplosion2, wrathParticle, ashParticle, smoke, dirt, dust, rock, swarmHit:
 				auto mat=scene.createMaterial(scene.shadelessMaterialBackend);
 				mat.depthWrite=false;
-				mat.blending=particle.type.among(ashParticle,smoke,dirt,dust,rock)?Transparent:Additive;
+				mat.blending=particle.type.among(ashParticle,smoke,dirt,dust,rock,swarmHit)?Transparent:Additive;
 				if(particle.type==dust) mat.alpha=0.25f;
 				mat.energy=particle.energy;
 				mat.diffuse=particle.texture;

@@ -655,6 +655,7 @@ enum ParticleType{
 	dirt,
 	dust,
 	rock,
+	swarmHit,
 }
 
 final class SacParticle(B){
@@ -682,6 +683,8 @@ final class SacParticle(B){
 				return false;
 			case rock:
 				return true;
+			case swarmHit:
+				return true;
 		}
 	}
 	@property bool relative(){
@@ -692,13 +695,13 @@ final class SacParticle(B){
 				return true;
 			case castPersephone,castPyro,castJames,castStratos,castCharnel:
 				return false;
-			case wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,ashParticle,smoke,dirt,dust,rock:
+			case wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,ashParticle,smoke,dirt,dust,rock,swarmHit:
 				return false;
 		}
 	}
 	@property bool bumpOffGround(){
 		switch(type) with(ParticleType){
-			case wrathParticle,ashParticle,rock: return true;
+			case wrathParticle,ashParticle,rock,swarmHit: return true;
 			default: return false;
 		}
 	}
@@ -855,6 +858,12 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/rock.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
+			case swarmHit:
+				width=height=5.0f;
+				this.energy=1.0f;
+				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Char.FLDR/tex_ZERO_.FLDR/puss.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
 		}
 		material=B.createMaterial(this);
 	}
@@ -872,6 +881,7 @@ final class SacParticle(B){
 			case ashParticle: return 3;
 			case smoke: return 4;
 			case dirt: return 2;
+			case swarmHit: return 2;
 			default: return 1;
 		}
 	}
@@ -910,6 +920,8 @@ final class SacParticle(B){
 				return min(1.0f,(lifetime/(0.25f*numFrames)));
 			case dust:
 				return 1.0f;
+			case swarmHit:
+				return min(1.0f,(lifetime/(1.5f*numFrames)));
 		}
 	}
 	float getScale(int lifetime){
@@ -941,6 +953,8 @@ final class SacParticle(B){
 			case rock:
 				return min(1.0f,lifetime/(3.0f*numFrames));
 			case dirt,dust:
+				return 1.0f;
+			case swarmHit:
 				return 1.0f;
 		}
 	}

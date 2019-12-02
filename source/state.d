@@ -5168,7 +5168,7 @@ bool updateSwarmCasting(B)(ref SwarmCasting!B swarmCast,ObjectState!B state){
 	}
 }
 
-enum swarmSize=0.1f;
+enum swarmSize=0.3f;
 static immutable Vector3f[2] swarmHitbox=[-0.5f*swarmSize*Vector3f(1.0f,1.0f,1.0f),0.5f*swarmSize*Vector3f(1.0f,1.0f,1.0f)];
 int swarmCollisionTarget(B)(int side,Vector3f position,ObjectState!B state){
 	static bool filter(ProximityEntry entry,ObjectState!B state,int side){
@@ -5181,6 +5181,8 @@ Vector3f makeTargetPosition(B)(ref Swarm!B swarm,float radius,ObjectState!B stat
 	return swarm.position+state.uniform(0.0f,radius)*state.uniformDirection();
 }
 
+enum swarmFlyingHeight=1.25f;
+enum swarmDispersingFrames=2*updateFPS;
 bool addBugs(B)(ref Swarm!B swarm,ref MovingObject!B wizard,ObjectState!B state){
 	enum totalBugs=250;
 	auto num=(totalBugs-swarm.bugs.length+swarm.frame-1)/swarm.frame;
@@ -5207,6 +5209,8 @@ void updateBug(B)(ref Swarm!B swarm,ref Bug!B bug,ObjectState!B state){
 	auto distance=bug.targetPosition-bug.position;
 	auto acceleration=distance.normalized*min(2.0f*distance.length,1.0f)*bugAcceleration;
 	bug.velocity+=acceleration;
+	enum zdamp=exp(log(0.01f)/updateFPS);
+	bug.velocity.z=zdamp*bug.velocity.z+(1.0f-zdamp)*swarm.velocity.z;
 	Vector3f capVelocity(Vector3f velocity){
 		if(velocity.length>bugSpeed) velocity=velocity.normalized*bugSpeed;
 		if(velocity.length>updateFPS*distance.length) velocity=velocity.normalized*distance.length*updateFPS;
@@ -5233,17 +5237,45 @@ bool updateBugs(B)(ref Swarm!B swarm,ObjectState!B state){
 		swarm.updateBug(swarm.bugs[i],state);
 	return true;
 }
+void disperseBug(B)(ref Swarm!B swarm,ref Bug!B bug,ObjectState!B state){
+	if(swarm.frame%4==0){
+		bug.targetPosition=bug.position+0.5f*(0.5f*(bug.position-swarm.position).normalized+state.uniformDirection()).normalized;
+		bug.targetPosition.x+=cos(bug.targetPosition.y)/updateFPS;
+		bug.targetPosition.y+=cos(bug.targetPosition.x)/updateFPS;
+	}
+	enum damp=exp(log(0.01f)/updateFPS);
+	bug.position=damp*bug.targetPosition+(1.0f-damp)*bug.position;
+}
+void disperseBugs(B)(ref Swarm!B swarm,ObjectState!B state){
+	foreach(i;0..swarm.bugs.length)
+		swarm.disperseBug(swarm.bugs[i],state);
+}
 void swarmHit(B)(ref Swarm!B swarm,int target,ObjectState!B state){
 	swarm.status=SwarmStatus.dispersing;
 	playSoundAt("zzub",swarm.position,state,4.0f);
 	if(state.isValidId(target)){
 		dealSpellDamage(target,swarm.spell,swarm.side,swarm.velocity,state);
-		static void drainMana(T)(ref T obj){
+		static void hit(T)(ref T obj,Swarm!B *swarm,ObjectState!B state){
 			static if(is(T==MovingObject!B)){
 				obj.creatureStats.mana=max(0.0f,obj.creatureStats.mana-0.25f*obj.creatureStats.maxMana);
 			}
+			enum numParticles=128;
+			auto sacParticle=SacParticle!B.get(ParticleType.swarmHit);
+			auto hitbox=obj.hitbox;
+			auto center=boxCenter(hitbox);
+			(*swarm).relocate(center);
+			swarm.velocity=Vector3f(0.0f,0.0f,0.0f);
+			foreach(i;0..numParticles){
+				auto position=state.uniform(scaleBox(hitbox,1.2f));
+				auto velocity=Vector3f(position.x-center.x,position.y-center.y,0.0f).normalized;
+				velocity.z=3.0f;
+				auto scale=1.0f;
+				int lifetime=63;
+				int frame=0;
+				state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+			}
 		}
-		state.objectById!drainMana(target);
+		state.objectById!hit(target,&swarm,state);
 	}else target=0;
 	dealSplashSpellDamageAt(target,swarm.spell,swarm.side,swarm.position,state);
 }
@@ -5267,13 +5299,13 @@ bool updateSwarm(B)(ref Swarm!B swarm,ObjectState!B state){
 				auto newPosition=position+velocity/updateFPS;
 				if(state.isOnGround(position)){
 					auto height=state.getGroundHeight(position);
-					if(newPosition.z<height+1.25f){
+					if(newPosition.z<height+swarmFlyingHeight){
 						auto nvel=velocity;
-						nvel.z+=(height+1.25f-newPosition.z)*updateFPS;
+						nvel.z+=(height+swarmFlyingHeight-newPosition.z)*updateFPS;
 						newPosition=position+capVelocity(nvel)/updateFPS;
 					}
 				}
-				position=newPosition;
+				swarm.position=newPosition;
 				auto target=swarmCollisionTarget(side,position,state);
 				if(state.isValidId(target)) swarm.swarmHit(target,state);
 				else if(state.isOnGround(position)){
@@ -5286,8 +5318,8 @@ bool updateSwarm(B)(ref Swarm!B swarm,ObjectState!B state){
 				}
 				return swarm.updateBugs(state);
 			case SwarmStatus.dispersing:
-				//return ++frame<64;
-				return false;
+				swarm.disperseBugs(state);
+				return ++frame<swarmDispersingFrames;
 		}
 	}
 }
