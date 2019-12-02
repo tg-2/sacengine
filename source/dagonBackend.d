@@ -682,7 +682,7 @@ final class SacScene: Scene{
 				}
 			}else static assert(0);
 		}
-		state.current.eachByType!render(options.enableWidgets,this,rc);
+		state.current.eachByType!(render,true,true)(options.enableWidgets,this,rc);
 	}
 
 	bool selectionUpdated=false;

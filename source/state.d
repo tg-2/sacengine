@@ -1857,7 +1857,7 @@ auto eachParticles(alias f,B,T...)(ref Objects!(B,RenderMode.opaque) objects,T a
 auto eachCommandCones(alias f,B,T...)(ref Objects!(B,RenderMode.opaque) objects,T args){
 	f(objects.commandCones,args);
 }
-auto eachByType(alias f,bool movingFirst=true,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T args){
+auto eachByType(alias f,bool movingFirst=true,bool particlesBeforeEffects=false,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T args){
 	with(objects){
 		static if(movingFirst)
 			foreach(ref movingObject;movingObjects)
@@ -1869,11 +1869,12 @@ auto eachByType(alias f,bool movingFirst=true,B,RenderMode mode,T...)(ref Object
 				f(fixedObject,args);
 			f(souls,args);
 			f(buildings,args);
-			f(effects,args);
+			static if(!particlesBeforeEffects) f(effects,args);
 			foreach(ref particle;particles)
 				f(particle,args);
 			foreach(ref particle;relativeParticles)
 				f(particle,args);
+			static if(particlesBeforeEffects) f(effects,args);
 			f(commandCones,args);
 		}
 		static if(!movingFirst)
@@ -2042,10 +2043,10 @@ auto eachParticles(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
 auto eachCommandCones(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
 	with(objectManager) opaqueObjects.eachCommandCones!f(args);
 }
-auto eachByType(alias f,bool movingFirst=true,B,T...)(ref ObjectManager!B objectManager,T args){
+auto eachByType(alias f,bool movingFirst=true,bool particlesBeforeEffects=false,B,T...)(ref ObjectManager!B objectManager,T args){
 	with(objectManager){
-		opaqueObjects.eachByType!(f,movingFirst)(args);
-		transparentObjects.eachByType!(f,movingFirst)(args);
+		opaqueObjects.eachByType!(f,movingFirst,particlesBeforeEffects)(args);
+		transparentObjects.eachByType!(f,movingFirst,particlesBeforeEffects)(args);
 	}
 }
 auto eachMovingOf(alias f,B,T...)(ref ObjectManager!B objectManager,SacObject!B sacObject,T args){
@@ -5218,6 +5219,14 @@ void updateBug(B)(ref Swarm!B swarm,ref Bug!B bug,ObjectState!B state){
 		bug.velocity*=0.25f;
 		bug.targetPosition=swarm.makeTargetPosition(2.5f/max(2.0f,dist),state);
 	}
+	auto radius=bug.position-swarm.position;
+	auto radialComponent=dot(bug.velocity,radius);
+	if(radius.lengthsqr>1.0f){
+		auto radialDir=radialComponent*radius.normalized;
+		auto rest=bug.velocity-radialDir;
+		auto factor=radialComponent>0.0f?exp(log(0.01f)/updateFPS):exp(log(7.0f)/updateFPS);
+		bug.velocity=rest+factor*radialDir;
+	}
 }
 bool updateBugs(B)(ref Swarm!B swarm,ObjectState!B state){
 	foreach(i;0..swarm.bugs.length)
@@ -5227,8 +5236,15 @@ bool updateBugs(B)(ref Swarm!B swarm,ObjectState!B state){
 void swarmHit(B)(ref Swarm!B swarm,int target,ObjectState!B state){
 	swarm.status=SwarmStatus.dispersing;
 	playSoundAt("zzub",swarm.position,state,4.0f);
-	if(state.isValidId(target)) dealSpellDamage(target,swarm.spell,swarm.side,swarm.velocity,state);
-	else target=0;
+	if(state.isValidId(target)){
+		dealSpellDamage(target,swarm.spell,swarm.side,swarm.velocity,state);
+		static void drainMana(T)(ref T obj){
+			static if(is(T==MovingObject!B)){
+				obj.creatureStats.mana=max(0.0f,obj.creatureStats.mana-0.25f*obj.creatureStats.maxMana);
+			}
+		}
+		state.objectById!drainMana(target);
+	}else target=0;
 	dealSplashSpellDamageAt(target,swarm.spell,swarm.side,swarm.position,state);
 }
 bool updateSwarm(B)(ref Swarm!B swarm,ObjectState!B state){
@@ -5251,14 +5267,13 @@ bool updateSwarm(B)(ref Swarm!B swarm,ObjectState!B state){
 				auto newPosition=position+velocity/updateFPS;
 				if(state.isOnGround(position)){
 					auto height=state.getGroundHeight(position);
-					if(newPosition.z<height+0.5f){
+					if(newPosition.z<height+1.25f){
 						auto nvel=velocity;
-						nvel.z+=(height+0.5f-newPosition.z)*updateFPS;
+						nvel.z+=(height+1.25f-newPosition.z)*updateFPS;
 						newPosition=position+capVelocity(nvel)/updateFPS;
 					}
 				}
 				position=newPosition;
-				//swarm.animateSwarm(state);
 				auto target=swarmCollisionTarget(side,position,state);
 				if(state.isValidId(target)) swarm.swarmHit(target,state);
 				else if(state.isOnGround(position)){
@@ -6565,8 +6580,8 @@ auto eachParticles(alias f,B,T...)(ObjectState!B objectState,T args){
 auto eachCommandCones(alias f,B,T...)(ObjectState!B objectState,T args){
 	return objectState.obj.eachCommandCones!f(args);
 }
-auto eachByType(alias f,bool movingFirst=true,B,T...)(ObjectState!B objectState,T args){
-	return objectState.obj.eachByType!(f,movingFirst)(args);
+auto eachByType(alias f,bool movingFirst=true,bool particlesBeforeEffects=false,B,T...)(ObjectState!B objectState,T args){
+	return objectState.obj.eachByType!(f,movingFirst,particlesBeforeEffects)(args);
 }
 auto eachMovingOf(alias f,B,T...)(ObjectState!B objectState,SacObject!B sacObject,T args){
 	return objectState.obj.eachMovingOf!f(sacObject,args);
