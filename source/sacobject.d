@@ -801,9 +801,10 @@ final class SacParticle(B){
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
 			case castCharnel:
-				width=height=1.0f;
-				this.energy=-1.0f;
-				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Char.FLDR/tex_ZERO_.FLDR/cstc.TXTR"));
+				width=height=0.5f;
+				this.energy=-0.5f;
+				//texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Char.FLDR/tex_ZERO_.FLDR/cstc.TXTR"));
+				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/firy.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
 			case wrathCasting,wrathExplosion1:
