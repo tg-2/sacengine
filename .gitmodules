@@ -1,0 +1,3 @@
+[submodule "source/dagon"]
+	path = source/dagon
+	url = ./source/dagon
