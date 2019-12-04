@@ -6196,9 +6196,6 @@ final class ObjectState(B){ // (update logic)
 			return OrderTarget(targetType,tEntry[1].id,objectById!((obj)=>obj.position)(this,tEntry[1].id));
 		return OrderTarget.init;
 	}
-	Vector2f sunSkyRelLoc(Vector3f cameraPos){
-		return map.sunSkyRelLoc(cameraPos);
-	}
 	int frame=0;
 	auto rng=MinstdRand0(1); // TODO: figure out what rng to use
 	int uniform(int n){

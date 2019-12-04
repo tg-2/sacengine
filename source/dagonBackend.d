@@ -29,142 +29,9 @@ final class SacScene: Scene{
 	DynamicArray!(SacObject!DagonBackend) sacs;
 	Entity[] skyEntities;
 	alias createSky=typeof(super).createSky;
-	void createSky(SacMap!DagonBackend map){
-		auto envi=&map.envi;
-		/+auto eSky=createSky();
-		eSky.rotation=rotationQuaternion(Axiz,cast(float)PI)*
-			rotationQuaternion(Axix,cast(float)(PI/2));+/
-		auto x=10.0f*map.n/2, y=10.0f*map.m/2;
-
-		//auto mesh=New!ShapeSphere(sqrt(0.5^^2+0.7^^2), 8, 4, true, assetManager);
-
-		auto matSkyb = createMaterial(shadelessMaterialBackend);
-		matSkyb.diffuse=map.textures[skybIndex];
-		matSkyb.blending=Transparent;
-		matSkyb.energy=map.Sky.energy;
-		auto eSkyb = createEntity3D();
-		eSkyb.castShadow = false;
-		eSkyb.material = matSkyb;
-		auto meshb=New!Mesh(assetManager);
-		meshb.vertices=New!(Vector3f[])(2*(map.Sky.numSegs+1));
-		meshb.texcoords=New!(Vector2f[])(2*(map.Sky.numSegs+1));
-		meshb.indices=New!(uint[3][])(2*map.Sky.numSegs);
-		foreach(i;0..map.Sky.numSegs+1){
-			auto angle=2*PI*i/map.Sky.numSegs, ca=cos(angle), sa=sin(angle);
-			meshb.vertices[2*i]=Vector3f(0.5*ca*0.8,0.5*sa*0.8,map.Sky.undrZ)*map.Sky.scaling;
-			meshb.vertices[2*i+1]=Vector3f(0.5*ca,0.5*sa,0)*map.Sky.scaling;
-			auto txc=cast(float)i*map.Sky.numTextureRepeats/map.Sky.numSegs;
-			meshb.texcoords[2*i]=Vector2f(txc,0);
-			meshb.texcoords[2*i+1]=Vector2f(txc,1);
-		}
-		foreach(i;0..map.Sky.numSegs){
-			meshb.indices[2*i]=[2*i,2*i+1,2*(i+1)];
-			meshb.indices[2*i+1]=[2*(i+1),2*i+1,2*(i+1)+1];
-		}
-		meshb.generateNormals();
-		meshb.dataReady=true;
-		meshb.prepareVAO();
-		eSkyb.drawable = meshb;
-		eSkyb.position=Vector3f(x,y,map.Sky.dZ*map.Sky.scaling+1);
-		eSkyb.updateTransformation();
-
-		auto matSkyt = createMaterial(shadelessMaterialBackend);
-		matSkyt.diffuse=map.textures[skytIndex];
-		matSkyt.blending=Transparent;
-		matSkyt.energy=map.Sky.energy;
-		auto eSkyt = createEntity3D();
-		eSkyt.castShadow = false;
-		eSkyt.material = matSkyt;
-		auto mesht=New!Mesh(assetManager);
-		mesht.vertices=New!(Vector3f[])(2*(map.Sky.numSegs+1));
-		mesht.texcoords=New!(Vector2f[])(2*(map.Sky.numSegs+1));
-		mesht.indices=New!(uint[3][])(2*map.Sky.numSegs);
-		foreach(i;0..map.Sky.numSegs+1){
-			auto angle=2*PI*i/map.Sky.numSegs, ca=cos(angle), sa=sin(angle);
-			mesht.vertices[2*i]=Vector3f(0.5*ca,0.5*sa,0)*map.Sky.scaling;
-			mesht.vertices[2*i+1]=Vector3f(0.5*ca,0.5*sa,map.Sky.skyZ)*map.Sky.scaling;
-			auto txc=cast(float)i*map.Sky.numTextureRepeats/map.Sky.numSegs;
-			mesht.texcoords[2*i]=Vector2f(txc,1);
-			mesht.texcoords[2*i+1]=Vector2f(txc,0);
-		}
-		foreach(i;0..map.Sky.numSegs){
-			mesht.indices[2*i]=[2*i,2*i+1,2*(i+1)];
-			mesht.indices[2*i+1]=[2*(i+1),2*i+1,2*(i+1)+1];
-		}
-		mesht.generateNormals();
-		mesht.dataReady=true;
-		mesht.prepareVAO();
-		eSkyt.drawable = mesht;
-		eSkyt.position=Vector3f(x,y,map.Sky.dZ*map.Sky.scaling+1);
-		eSkyt.updateTransformation();
-
-		auto matSun = createMaterial(sacSunMaterialBackend);
-		matSun.diffuse=map.textures[sunIndex];
-		matSun.blending=Transparent;
-		matSun.energy=25.0f*map.Sky.energy;
-		auto eSun = createEntity3D();
-		eSun.castShadow = false;
-		eSun.material = matSun;
-		auto meshsu=New!Mesh(assetManager);
-		meshsu.vertices=New!(Vector3f[])(4);
-		meshsu.texcoords=New!(Vector2f[])(4);
-		meshsu.indices=New!(uint[3][])(2);
-		copy(iota(4).map!(i=>Vector3f((-0.5+(i==1||i==2))*0.25,(-0.5+(i==2||i==3))*0.25,map.Sky.skyZ)*map.Sky.scaling),meshsu.vertices);
-		copy(iota(4).map!(i=>Vector2f((i==1||i==2),(i==2||i==3))),meshsu.texcoords);
-		meshsu.indices[0]=[0,2,1];
-		meshsu.indices[1]=[0,3,2];
-		meshsu.generateNormals();
-		meshsu.dataReady=true;
-		meshsu.prepareVAO();
-		eSun.drawable=meshsu;
-		eSun.position=Vector3f(x,y,map.Sky.dZ*map.Sky.scaling+1);
-		eSun.updateTransformation();
-
-		auto matSky = createMaterial(sacSkyMaterialBackend);
-		matSky.diffuse=map.textures[skyIndex];
-		matSky.blending=Transparent;
-		matSky.energy=map.Sky.energy;
-		matSky.transparency=min(envi.maxAlphaFloat,1.0f);
-		auto eSky = createEntity3D();
-		eSky.castShadow = false;
-		eSky.material = matSky;
-		auto meshs=New!Mesh(assetManager);
-		meshs.vertices=New!(Vector3f[])(4);
-		meshs.texcoords=New!(Vector2f[])(4);
-		meshs.indices=New!(uint[3][])(2);
-		copy(iota(4).map!(i=>Vector3f(-0.5+(i==1||i==2),-0.5+(i==2||i==3),map.Sky.skyZ*map.Sky.relCloudLoc)*map.Sky.scaling),meshs.vertices);
-		copy(iota(4).map!(i=>Vector2f(4*(i==1||i==2),4*(i==2||i==3))),meshs.texcoords);
-		meshs.indices[0]=[0,2,1];
-		meshs.indices[1]=[0,3,2];
-		meshs.generateNormals();
-		meshs.dataReady=true;
-		meshs.prepareVAO();
-		eSky.drawable=meshs;
-		eSky.position=Vector3f(x,y,map.Sky.dZ*map.Sky.scaling+1);
-		eSky.updateTransformation();
-
-		auto matUndr = createMaterial(shadelessMaterialBackend);
-		matUndr.diffuse=map.textures[undrIndex];
-		matUndr.blending=Transparent;
-		matUndr.energy=map.Sky.energy;
-		auto eUndr = createEntity3D();
-		eUndr.castShadow = false;
-		eUndr.material = matUndr;
-		auto meshu=New!Mesh(assetManager);
-		meshu.vertices=New!(Vector3f[])(4);
-		meshu.texcoords=New!(Vector2f[])(4);
-		meshu.indices=New!(uint[3][])(2);
-		copy(iota(4).map!(i=>Vector3f((-0.5+(i==1||i==2)),(-0.5+(i==2||i==3)),map.Sky.undrZ)*map.Sky.scaling),meshu.vertices);
-		copy(iota(4).map!(i=>Vector2f((i==1||i==2),(i==2||i==3))),meshu.texcoords);
-		meshu.indices[0]=[0,1,2];
-		meshu.indices[1]=[0,2,3];
-		meshu.generateNormals();
-		meshu.dataReady=true;
-		meshu.prepareVAO();
-		eUndr.drawable=meshu;
-		eUndr.position=Vector3f(x,y,map.Sky.dZ*map.Sky.scaling+1);
-		eUndr.updateTransformation();
-		skyEntities=[eUndr,eSkyb,eSkyt,eSky,eSun];
+	SacSky!DagonBackend sacSky;
+	void createSky(){
+		sacSky=new SacSky!DagonBackend();
 	}
 	SacSoul!DagonBackend sacSoul;
 	void createSouls(){
@@ -247,11 +114,9 @@ final class SacScene: Scene{
 		bug=createBug();
 	}
 
+	Quaternionf skyRotation;
 	void rotateSky(Quaternionf rotation){
-		foreach(e;skyEntities[0..3]){
-			e.rotation=rotation;
-			e.updateTransformation();
-		}
+		skyRotation=rotation;
 	}
 
 	void setupEnvironment(SacMap!DagonBackend map){
@@ -319,6 +184,43 @@ final class SacScene: Scene{
 		// fogDensity?
 	}
 
+	final void renderSky(RenderingContext* rc){
+		auto totalTime=state.current.frame*1.0f/updateFPS;
+		sacSkyMaterialBackend.sunLoc = sacSky.sunSkyRelLoc(fpview.camera.position);
+		sacSkyMaterialBackend.cloudOffset=state.current.frame%(64*updateFPS)*1.0f/(64*updateFPS)*Vector2f(1.0f,-1.0f);
+		auto skyRotation=rotationQuaternion(Axis.z,cast(float)(2*PI/512.0f*totalTime));
+		auto map=state.current.map;
+		auto x=10.0f*map.n/2, y=10.0f*map.m/2;
+		auto skyPosition=Vector3f(x,y,sacSky.dZ*sacSky.scaling+1);
+		auto envi=&map.envi;
+		auto backend0=shadelessMaterialBackend;
+		backend0.bind(null,rc);
+		glDepthMask(GL_TRUE); // TODO: avoid setting this twice?
+		backend0.setInformation(Vector4f(0.0f,0.0f,0.0f,0.0f));
+		backend0.setEnergy(sacSky.energy);
+		backend0.setTransformation(skyPosition,skyRotation,rc);
+		backend0.bindDiffuse(map.textures[skybIndex]);
+		sacSky.skyb.render(rc);
+		backend0.bindDiffuse(map.textures[skytIndex]);
+		sacSky.skyt.render(rc);
+		backend0.bindDiffuse(map.textures[undrIndex]);
+		sacSky.undr.render(rc);
+		auto backend1=sacSunMaterialBackend;
+		backend1.bind(null,rc);
+		backend1.setAlpha(1.0f);
+		backend1.setEnergy(25.0f*sacSky.energy);
+		backend1.bindDiffuse(map.textures[sunIndex]);
+		backend1.setTransformation(skyPosition,Quaternionf.identity(),rc); // TODO: don't create rotation matrix
+		sacSky.sun.render(rc);
+		auto backend2=sacSkyMaterialBackend;
+		backend2.bind(null,rc);
+		backend2.setAlpha(min(map.envi.maxAlphaFloat,1.0f));
+		backend2.setEnergy(sacSky.energy);
+		backend2.bindDiffuse(map.textures[skyIndex]);
+		backend2.setTransformation(skyPosition,Quaternionf.identity(),rc); // TODO: don't create rotation matrix
+		sacSky.sky.render(rc);
+	}
+
 	final void renderMap(RenderingContext* rc){
 		auto map=state.current.map;
 		rc.layer=1;
@@ -326,7 +228,7 @@ final class SacScene: Scene{
 		rc.invModelMatrix=Matrix4x4f.identity();
 		rc.prevModelViewProjMatrix=Matrix4x4f.identity(); // TODO: get rid of this?
 		rc.modelViewMatrix=rc.viewMatrix*rc.modelMatrix;
-		rc.blurModelViewProjMatrix=rc.projectionMatrix*rc.modelViewMatrix;
+		rc.blurModelViewProjMatrix=rc.projectionMatrix*rc.modelViewMatrix; // TODO: get rid of this
 		GenericMaterial mat;
 		if(!rc.shadowMode){
 			mat=map.material; // TODO: get rid of this completely?
@@ -1624,6 +1526,7 @@ final class SacScene: Scene{
 	override void renderTransparentEntities3D(RenderingContext* rc){
 		super.renderTransparentEntities3D(rc);
 		if(!state) return;
+		renderSky(rc);
 		renderNTTs!(RenderMode.transparent)(rc);
 		renderCreatureStats(rc);
 	}
@@ -1642,9 +1545,11 @@ final class SacScene: Scene{
 		assert(this.state is null);
 	}do{
 		this.state=state;
-		setupEnvironment(state.current.map);
-		createSky(state.current.map);
-		if(audio&&state) audio.setTileset(state.current.map.tileset);
+		if(state){
+			setupEnvironment(state.current.map);
+			if(audio) audio.setTileset(state.current.map.tileset);
+		}
+		createSky();
 		createSouls();
 		createEffects();
 		initializeHUD();
@@ -2305,14 +2210,6 @@ final class SacScene: Scene{
 			playAudio=true;
 			state.step();
 			// state.commit();
-			auto totalTime=state.current.frame*dt;
-			if(skyEntities.length){
-				sacSkyMaterialBackend.sunLoc = state.current.sunSkyRelLoc(fpview.camera.position);
-				sacSkyMaterialBackend.cloudOffset+=dt*1.0f/64.0f*Vector2f(1.0f,-1.0f);
-				sacSkyMaterialBackend.cloudOffset.x=fmod(sacSkyMaterialBackend.cloudOffset.x,1.0f);
-				sacSkyMaterialBackend.cloudOffset.y=fmod(sacSkyMaterialBackend.cloudOffset.y,1.0f);
-				rotateSky(rotationQuaternion(Axis.z,cast(float)(2*PI/512.0f*totalTime)));
-			}
 			if(camera.target){
 				auto targetFacing=state.current.movingObjectById!((obj)=>obj.creatureState.facing, function float(){ assert(0); })(camera.target);
 				updateCameraPosition(dt,targetFacing!=camera.lastTargetFacing && !mouse.dragging);

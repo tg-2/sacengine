@@ -575,6 +575,91 @@ final class SacObject(B){
 	}
 }
 
+final class SacSky(B){
+	enum scaling=4*10.0f*256.0f;
+	enum dZ=-0.05, undrZ=-0.25, skyZ=0.25, relCloudLoc=0.7;
+	enum numSegs=64, numTextureRepeats=8;
+	enum energy=1.7f;
+
+	Vector2f sunSkyRelLoc(Vector3f cameraPos){
+		auto sunPos=Vector3f(0,0,skyZ*scaling);
+		auto adjCamPos=cameraPos-Vector3f(1280.0f,1280.0f,dZ*scaling+1);
+		float zDiff=sunPos.z-adjCamPos.z;
+		float tZDiff=scaling*skyZ*(1-relCloudLoc);
+		auto intersection=sunPos+(adjCamPos-sunPos)*tZDiff/zDiff;
+		return intersection.xy/(scaling/2);
+	}
+
+	union{
+		B.Mesh[5] meshes;
+		struct{
+			B.Mesh skyb;
+			B.Mesh skyt;
+			B.Mesh sun;
+			B.Mesh sky;
+			B.Mesh undr;
+		}
+	}
+
+	this(){
+		skyb=B.makeMesh(2*(numSegs+1),2*numSegs);
+		foreach(i;0..numSegs+1){
+			auto angle=2*PI*i/numSegs, ca=cos(angle), sa=sin(angle);
+			skyb.vertices[2*i]=Vector3f(0.5*ca*0.8,0.5*sa*0.8,undrZ)*scaling;
+			skyb.vertices[2*i+1]=Vector3f(0.5*ca,0.5*sa,0)*scaling;
+			auto txc=cast(float)i*numTextureRepeats/numSegs;
+			skyb.texcoords[2*i]=Vector2f(txc,0);
+			skyb.texcoords[2*i+1]=Vector2f(txc,1);
+		}
+		foreach(i;0..numSegs){
+			skyb.indices[2*i]=[2*i,2*i+1,2*(i+1)];
+			skyb.indices[2*i+1]=[2*(i+1),2*i+1,2*(i+1)+1];
+		}
+		skyb.generateNormals();
+		B.finalizeMesh(skyb);
+
+		skyt=B.makeMesh(2*(numSegs+1),2*numSegs);
+		foreach(i;0..numSegs+1){
+			auto angle=2*PI*i/numSegs, ca=cos(angle), sa=sin(angle);
+			skyt.vertices[2*i]=Vector3f(0.5*ca,0.5*sa,0)*scaling;
+			skyt.vertices[2*i+1]=Vector3f(0.5*ca,0.5*sa,skyZ)*scaling;
+			auto txc=cast(float)i*numTextureRepeats/numSegs;
+			skyt.texcoords[2*i]=Vector2f(txc,1);
+			skyt.texcoords[2*i+1]=Vector2f(txc,0);
+		}
+		foreach(i;0..numSegs){
+			skyt.indices[2*i]=[2*i,2*i+1,2*(i+1)];
+			skyt.indices[2*i+1]=[2*(i+1),2*i+1,2*(i+1)+1];
+		}
+		skyt.generateNormals();
+		B.finalizeMesh(skyt);
+
+		sun=B.makeMesh(4,2);
+		copy(iota(4).map!(i=>Vector3f((-0.5+(i==1||i==2))*0.25,(-0.5+(i==2||i==3))*0.25,skyZ)*scaling),sun.vertices);
+		copy(iota(4).map!(i=>Vector2f((i==1||i==2),(i==2||i==3))),sun.texcoords);
+		sun.indices[0]=[0,2,1];
+		sun.indices[1]=[0,3,2];
+		sun.generateNormals();
+		B.finalizeMesh(sun);
+
+		sky=B.makeMesh(4,2);
+		copy(iota(4).map!(i=>Vector3f(-0.5+(i==1||i==2),-0.5+(i==2||i==3),skyZ*relCloudLoc)*scaling),sky.vertices);
+		copy(iota(4).map!(i=>Vector2f(4*(i==1||i==2),4*(i==2||i==3))),sky.texcoords);
+		sky.indices[0]=[0,2,1];
+		sky.indices[1]=[0,3,2];
+		sky.generateNormals();
+		B.finalizeMesh(sky);
+
+		undr=B.makeMesh(4,2);
+		copy(iota(4).map!(i=>Vector3f((-0.5+(i==1||i==2)),(-0.5+(i==2||i==3)),undrZ)*scaling),undr.vertices);
+		copy(iota(4).map!(i=>Vector2f((i==1||i==2),(i==2||i==3))),undr.texcoords);
+		undr.indices[0]=[0,1,2];
+		undr.indices[1]=[0,2,3];
+		undr.generateNormals();
+		B.finalizeMesh(undr);
+	}
+}
+
 enum SoulColor{
 	blue,
 	red,

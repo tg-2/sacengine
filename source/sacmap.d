@@ -77,22 +77,6 @@ final class SacMap(B){
 		material=B.createMaterial(this);
 	}
 
-	struct Sky{
-		enum scaling=4*10.0f*256.0f;
-		enum dZ=-0.05, undrZ=-0.25, skyZ=0.25, relCloudLoc=0.7;
-		enum numSegs=64, numTextureRepeats=8;
-		enum energy=1.7f;
-	}
-
-	Vector2f sunSkyRelLoc(Vector3f cameraPos){
-		auto sunPos=Vector3f(0,0,Sky.skyZ*Sky.scaling);
-		auto adjCamPos=cameraPos-Vector3f(1280.0f,1280.0f,Sky.dZ*Sky.scaling+1);
-		float zDiff=sunPos.z-adjCamPos.z;
-		float tZDiff=Sky.scaling*Sky.skyZ*(1-Sky.relCloudLoc);
-		auto intersection=sunPos+(adjCamPos-sunPos)*tZDiff/zDiff;
-		return intersection.xy/(Sky.scaling/2);
-	}
-
 	Tuple!(int,"j",int,"i") getTile(Vector3f pos){
 		return tuple!("j","i")(cast(int)(n-1-pos.y/10),cast(int)(pos.x/10));
 	}
