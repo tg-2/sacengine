@@ -575,6 +575,36 @@ final class SacObject(B){
 	}
 }
 
+void printWizardStats(B)(SacObject!B wizard){
+	import animations;
+	writeln("casting:");
+	foreach(stationary;[true,false]){
+		writeln(stationary?"stationary:":"walking:");
+		auto start=wizard.numFrames(stationary?AnimationState.spellcastStart:AnimationState.runSpellcastStart)*updateAnimFactor;
+		auto mid=wizard.numFrames(stationary?AnimationState.spellcast:AnimationState.runSpellcast)*updateAnimFactor;
+		//auto end=wizard.numFrames(stationary?AnimationState.spellcastEnd:AnimationState.runSpellcastEnd)*updateAnimFactor;
+		auto castingTime=wizard.castingTime(stationary?AnimationState.spellcastEnd:AnimationState.runSpellcastEnd)*updateAnimFactor;
+		writeln("start: ",start,"\t\tmid: ",mid,"\t\tend: ",castingTime);
+	}
+	auto d0=wizard.numFrames(AnimationState.death0)*updateAnimFactor;
+	auto d1=wizard.numFrames(AnimationState.death1)*updateAnimFactor;
+	auto d2=wizard.numFrames(AnimationState.death2)*updateAnimFactor;
+	writeln("deaths: ",d0," ",d1," ",d2);
+	auto cr=wizard.numFrames(AnimationState.corpseRise)*updateAnimFactor;
+	writeln("corpse rise: ",cr);
+	writeln("death with rise: ",d0+cr," ",d1+cr," ",d2+cr);
+	auto rv=wizard.numFrames(AnimationState.float2Stance)*updateAnimFactor;
+	writeln("revive: ",rv);
+	writeln("death with rise and revive: ",d0+cr+rv," ",d1+cr+rv," ",d2+cr+rv);
+	auto fd=(wizard.hasAnimationState(AnimationState.knocked2Floor)?wizard.numFrames(AnimationState.knocked2Floor):0)*updateAnimFactor;
+	auto gu=(wizard.hasAnimationState(AnimationState.getUp)?wizard.numFrames(AnimationState.getUp):0)*updateAnimFactor;
+	writeln("fall and get up: ",fd,"+",gu,"=",fd+gu);
+	auto ds=wizard.numFrames(AnimationState.damageBack)*updateAnimFactor;
+	writeln("damage stun: ",ds);
+	auto hb=wizard.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
+	writeln("hitbox: ",boxSize(hb)[].map!text.join("×"));
+}
+
 final class SacSky(B){
 	enum scaling=4*10.0f*256.0f;
 	enum dZ=-0.05, undrZ=-0.25, skyZ=0.25, relCloudLoc=0.7;

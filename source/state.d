@@ -1158,6 +1158,55 @@ WizardInfo!B makeWizard(B)(int id,int level,int souls,Spellbook!B spellbook,Obje
 	})(id,level,state);
 	return WizardInfo!B(id,level,souls,0.0f,spellbook);
 }
+int placeWizard(B)(ObjectState!B state,SacObject!B wizard,int side,int level,int souls,Spellbook!B spellbook){
+	bool flag=false;
+	int id=0;
+	state.eachBuilding!((bldg,state,id,wizard,side,level,souls,spellbook){
+		if(*id||bldg.componentIds.length==0) return;
+		if(bldg.side==side && bldg.isAltar){
+			auto altar=state.staticObjectById!((obj)=>obj, function StaticObject!B(){ assert(0); })(bldg.componentIds[0]);
+			import std.math: PI, atan2;
+			int closestManafount=0;
+			Vector3f manafountPosition;
+			state.eachBuilding!((bldg,altarPos,closest,manaPos,state){
+				if(bldg.componentIds.length==0||!bldg.isManafount) return;
+				auto pos=bldg.position(state);
+				if(*closest==0||(altarPos.xy-pos.xy).length<(altarPos.xy-manaPos.xy).length){
+					*closest=bldg.id;
+					*manaPos=pos;
+				}
+			})(altar.position,&closestManafount,&manafountPosition,state);
+			int orientation=0;
+			enum distance=15.0f;
+			auto facingOffset=(bldg.isStratosAltar?cast(float)PI/4.0f:0.0f)+cast(float)PI;
+			auto facing=bldg.facing+facingOffset;
+			auto rotation=facingQuaternion(facing);
+			auto position=altar.position+rotate(rotation,Vector3f(0.0f,distance,0.0f));
+			if(closestManafount){
+				auto dir2d=(manafountPosition-altar.position).xy.normalized*distance;
+				facing=atan2(dir2d.y,dir2d.x)-cast(float)PI/2.0f;
+				rotation=facingQuaternion(facing);
+				position=altar.position+Vector3f(dir2d.x,dir2d.y,0.0f);
+			}
+			bool onGround=state.isOnGround(position);
+			if(onGround)
+				position.z=state.getGroundHeight(position);
+			auto mode=CreatureMode.idle;
+			auto movement=CreatureMovement.onGround;
+			if(movement==CreatureMovement.onGround && !onGround)
+				movement=wizard.canFly?CreatureMovement.flying:CreatureMovement.tumbling;
+			auto creatureState=CreatureState(mode, movement, facing);
+			import animations;
+			auto obj=MovingObject!B(wizard,position,rotation,AnimationState.stance1,0,creatureState,wizard.creatureStats(0),side);
+			obj.setCreatureState(state);
+			obj.updateCreaturePosition(state);
+			*id=state.addObject(obj);
+			state.addWizard(makeWizard(*id,level,souls,spellbook,state));
+		}
+	})(state,&id,wizard,side,level,souls,spellbook);
+	return id;
+}
+
 struct WizardInfos(B){
 	Array!(WizardInfo!B) wizards;
 	@property int length(){ assert(wizards.length<=int.max); return cast(int)wizards.length; }
@@ -6640,6 +6689,7 @@ auto ref buildingByStaticObjectId(alias f,alias noStatic=fail,B,T...)(ObjectStat
 	return objectState.obj.buildingByStaticObjectId!(f,noStatic)(id,args);
 }
 
+
 enum Stance{
 	neutral,
 	ally,
@@ -7322,6 +7372,13 @@ struct Command(B){
 			(creature==0||state.isValidId(creature,TargetType.creature)) &&
 			(target.id==0&&target.type.among(TargetType.none,TargetType.terrain)||state.isValidId(target.id,target.type));
 	}
+
+	int id=0;
+	int opCmp(ref Command!B rhs){
+		if(side<rhs.side) return true;
+		if(side>rhs.side) return false;
+		return id<rhs.id;
+	}
 }
 
 bool playAudio=true;
@@ -7483,23 +7540,16 @@ final class GameState(B){
 	}
 	void addCommand(int frame,Command!B command)in{
 		assert(frame<=current.frame);
+		assert(command.id!=0);
 	}body{
 		if(command.side==-1) return;
 		assert(frame<commands.length);
 		auto currentFrame=current.frame;
 		commands[frame]~=command;
+		if(!isSorted(commands[frame].data))
+			sort(commands[frame].data);
 		if(frame<currentFrame) rollback(frame);
 		playAudio=false;
 		simulateTo(currentFrame);
-	}
-	void addCommand(Command!B command){
-		addCommand(current.frame,command);
-	}
-	void setSelection(int side,int wizard,CreatureGroup selection,TargetLocation loc){
-		addCommand(Command!B(CommandType.clearSelection,side,wizard,0,Target.init,float.init));
-		foreach_reverse(id;selection.creatureIds){
-			if(id==0) continue;
-			addCommand(Command!B(CommandType.automaticToggleSelection,side,wizard,id,Target.init,float.init));
-		}
 	}
 }

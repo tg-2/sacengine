@@ -1,6 +1,6 @@
 import options;
 import dagonBackend;
-import sids, ntts, sacobject, sacmap, state;
+import sids, ntts, sacobject, sacmap, state, controller;
 import wadmanager,util;
 import dlib.math;
 import std.string, std.array, std.range, std.algorithm, std.stdio;
@@ -135,66 +135,26 @@ int main(string[] args){
 	}
 	import nttData:initNTTData;
 	initNTTData(options.enableReadFromWads);
-	auto backend=DagonBackend(options);
-	GameState!DagonBackend state;
+	alias B=DagonBackend;
+	auto backend=B(options);
+	GameState!B state;
+	int controlledSide=0;
 	void loadMap(string hmap){
 		enforce(hmap.endsWith(".HMAP"));
 		enforce(!state);
-		auto map=new SacMap!DagonBackend(hmap);
+		auto map=new SacMap!B(hmap);
 		auto sids=loadSids(hmap[0..$-".HMAP".length]~".SIDS");
 		auto ntts=loadNTTs(hmap[0..$-".HMAP".length]~".NTTS");
-		state=new GameState!DagonBackend(map,sids,ntts,options);
-		backend.setState(state);
-		bool flag=false;
-		state.current.eachBuilding!((bldg,state,scene,flag,options){
-			if(*flag||bldg.componentIds.length==0) return;
-			if(bldg.side==backend.scene.renderSide && bldg.isAltar){
-				*flag=true;
-				alias B=DagonBackend;
-				auto altar=state.staticObjectById!((obj)=>obj, function StaticObject!B(){ assert(0); })(bldg.componentIds[0]);
-				auto curObj=SacObject!B.getSAXS!Wizard(options.wizard[0..4]);
-				import std.math: PI, atan2;
-				int closestManafount=0;
-				Vector3f manafountPosition;
-				state.eachBuilding!((bldg,altarPos,closest,manaPos,state){
-					if(bldg.componentIds.length==0||!bldg.isManafount) return;
-					auto pos=bldg.position(state);
-					if(*closest==0||(altarPos.xy-pos.xy).length<(altarPos.xy-manaPos.xy).length){
-						*closest=bldg.id;
-						*manaPos=pos;
-					}
-				})(altar.position,&closestManafount,&manafountPosition,state);
-				int orientation=0;
-				enum distance=15.0f;
-				auto facingOffset=(bldg.isStratosAltar?cast(float)PI/4.0f:0.0f)+cast(float)PI;
-				auto facing=bldg.facing+facingOffset;
-				auto rotation=facingQuaternion(facing);
-				auto position=altar.position+rotate(rotation,Vector3f(0.0f,distance,0.0f));
-				if(closestManafount){
-					auto dir2d=(manafountPosition-altar.position).xy.normalized*distance;
-					facing=atan2(dir2d.y,dir2d.x)-cast(float)PI/2.0f;
-					rotation=facingQuaternion(facing);
-					position=altar.position+Vector3f(dir2d.x,dir2d.y,0.0f);
-				}
-				bool onGround=state.isOnGround(position);
-				if(onGround)
-					position.z=state.getGroundHeight(position);
-				auto mode=CreatureMode.idle;
-				auto movement=CreatureMovement.onGround;
-				if(movement==CreatureMovement.onGround && !onGround)
-					movement=curObj.canFly?CreatureMovement.flying:CreatureMovement.tumbling;
-				auto creatureState=CreatureState(mode, movement, facing);
-				import animations;
-				auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState,curObj.creatureStats(0),scene.renderSide);
-				obj.setCreatureState(state);
-				obj.updateCreaturePosition(state);
-				auto id=state.addObject(obj);
-				scene.focusCamera(id);
-				auto spellbook=getDefaultSpellbook!B(options.god);
-				state.addWizard(makeWizard(id,options.level,options.souls,spellbook,state));
-			}
-		})(state.current,backend.scene,&flag,options);
+		state=new GameState!B(map,sids,ntts,options);
+		auto wizard=SacObject!B.getSAXS!Wizard(options.wizard[0..4]);
+		//printWizardStats(wizard);
+		auto spellbook=getDefaultSpellbook!B(options.god);
+		auto id=state.current.placeWizard(wizard,controlledSide,options.level,options.souls,spellbook);
+		auto controller=new Controller!B(controlledSide,state);
 		state.commit();
+		backend.setState(state);
+		backend.focusCamera(id);
+		backend.setController(controller);
 	}
 	foreach(ref i;1..args.length){
 		string anim="";
@@ -212,7 +172,7 @@ int main(string[] args){
 		}else if(args[i].endsWith(".HMAP")){
 			loadMap(args[i]);
 		}else{
-			auto sac=new SacObject!DagonBackend(args[i],float.nan,anim);
+			auto sac=new SacObject!B(args[i],float.nan,anim);
 			auto position=Vector3f(1270.0f, 1270.0f, 0.0f);
 			if(state && state.current.isOnGround(position))
 				position.z=state.current.getGroundHeight(position);

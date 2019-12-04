@@ -4,7 +4,7 @@ import std.math;
 import std.stdio;
 import std.algorithm, std.range, std.exception, std.typecons;
 
-import sacobject, sacspell, mrmm, nttData, sacmap, maps, state;
+import sacobject, sacspell, mrmm, nttData, sacmap, maps, state, controller;
 import sxsk : gpuSkinning;
 import audioBackend;
 
@@ -26,6 +26,7 @@ final class SacScene: Scene{
 		//txta.createFromImage(txta.image);
 	}
 	GameState!DagonBackend state;
+	Controller!DagonBackend controller;
 	DynamicArray!(SacObject!DagonBackend) sacs;
 	Entity[] skyEntities;
 	alias createSky=typeof(super).createSky;
@@ -112,11 +113,6 @@ final class SacScene: Scene{
 		wrath=createWrath();
 		rock=new SacObject!DagonBackend("extracted/models/MODL.WAD!/rock.MRMC/rock.MRMM");
 		bug=createBug();
-	}
-
-	Quaternionf skyRotation;
-	void rotateSky(Quaternionf rotation){
-		skyRotation=rotation;
 	}
 
 	void setupEnvironment(SacMap!DagonBackend map){
@@ -1339,7 +1335,7 @@ final class SacScene: Scene{
 			if(playAudio) spellAdvisorHelpSpeech(status);
 			return;
 		}
-		state.addCommand(Command!DagonBackend(renderSide,camera.target,spell,target));
+		controller.addCommand(Command!DagonBackend(renderSide,camera.target,spell,target));
 	}
 	void castSpell(char[4] tag,Target target,bool playAudio=true){
 		castSpell(SacSpell!DagonBackend.get(tag),target,playAudio);
@@ -1556,6 +1552,15 @@ final class SacScene: Scene{
 		initializeMouse();
 	}
 
+	int renderSide=-1;
+	void setController(Controller!DagonBackend controller)in{
+		assert(this.controller is null);
+		assert(this.state!is null&&this.state is controller.state);
+	}do{
+		renderSide=controller.controlledSide;
+		this.controller=controller;
+	}
+
 	void addObject(SacObject!DagonBackend sobj,Vector3f position,Quaternionf rotation){
 		foreach(i;0..sobj.isSaxs?sobj.saxsi.meshes.length:sobj.meshes.length){
 			auto obj=createEntity3D();
@@ -1758,33 +1763,33 @@ final class SacScene: Scene{
 			if(eventManager.keyPressed[KEY_E] && !eventManager.keyPressed[KEY_D]){
 				if(targetMovementState.movement!=MovementDirection.forward){
 					targetMovementState.movement=MovementDirection.forward;
-					state.addCommand(Command!DagonBackend(CommandType.moveForward,renderSide,camera.target,camera.target,Target.init,cameraFacing));
+					controller.addCommand(Command!DagonBackend(CommandType.moveForward,renderSide,camera.target,camera.target,Target.init,cameraFacing));
 				}
 			}else if(eventManager.keyPressed[KEY_D] && !eventManager.keyPressed[KEY_E]){
 				if(targetMovementState.movement!=MovementDirection.backward){
 					targetMovementState.movement=MovementDirection.backward;
-					state.addCommand(Command!DagonBackend(CommandType.moveBackward,renderSide,camera.target,camera.target,Target.init,cameraFacing));
+					controller.addCommand(Command!DagonBackend(CommandType.moveBackward,renderSide,camera.target,camera.target,Target.init,cameraFacing));
 				}
 			}else{
 				if(targetMovementState.movement!=MovementDirection.none){
 					targetMovementState.movement=MovementDirection.none;
-					state.addCommand(Command!DagonBackend(CommandType.stopMoving,renderSide,camera.target,camera.target,Target.init,cameraFacing));
+					controller.addCommand(Command!DagonBackend(CommandType.stopMoving,renderSide,camera.target,camera.target,Target.init,cameraFacing));
 				}
 			}
 			if(eventManager.keyPressed[KEY_S] && !eventManager.keyPressed[KEY_F]){
 				if(targetMovementState.rotation!=RotationDirection.left){
 					targetMovementState.rotation=RotationDirection.left;
-					state.addCommand(Command!DagonBackend(CommandType.turnLeft,renderSide,camera.target,camera.target,Target.init,cameraFacing));
+					controller.addCommand(Command!DagonBackend(CommandType.turnLeft,renderSide,camera.target,camera.target,Target.init,cameraFacing));
 				}
 			}else if(eventManager.keyPressed[KEY_F] && !eventManager.keyPressed[KEY_S]){
 				if(targetMovementState.rotation!=RotationDirection.right){
 					targetMovementState.rotation=RotationDirection.right;
-					state.addCommand(Command!DagonBackend(CommandType.turnRight,renderSide,camera.target,camera.target,Target.init,cameraFacing));
+					controller.addCommand(Command!DagonBackend(CommandType.turnRight,renderSide,camera.target,camera.target,Target.init,cameraFacing));
 				}
 			}else{
 				if(targetMovementState.rotation!=RotationDirection.none){
 					targetMovementState.rotation=RotationDirection.none;
-					state.addCommand(Command!DagonBackend(CommandType.stopTurning,renderSide,camera.target,camera.target,Target.init,cameraFacing));
+					controller.addCommand(Command!DagonBackend(CommandType.stopTurning,renderSide,camera.target,camera.target,Target.init,cameraFacing));
 				}
 			}
 			positionCamera();
@@ -1805,7 +1810,7 @@ final class SacScene: Scene{
 				case Mouse.Location.minimap: loc=TargetLocation.minimap; break;
 				case Mouse.Location.selectionRoster,Mouse.Location.spellbook: assert(0);
 			}
-			state.setSelection(renderSide,camera.target,renderedSelection,loc);
+			controller.setSelection(renderSide,camera.target,renderedSelection,loc);
 			selectionUpdated=true;
 		}
 		if(mouse.status.among(Mouse.Status.standard,Mouse.Status.rectangleSelect)&&!mouse.dragging){
@@ -1850,7 +1855,7 @@ final class SacScene: Scene{
 							         state.current.frame-lastSelectedFrame<=doubleClickDelay*updateFPS){
 								type=CommandType.automaticSelectAll;
 							}
-							state.addCommand(Command!DagonBackend(type,renderSide,camera.target,mouse.target.id,Target.init,cameraFacing));
+							controller.addCommand(Command!DagonBackend(type,renderSide,camera.target,mouse.target.id,Target.init,cameraFacing));
 							if(type==CommandType.select){
 								lastSelectedId=mouse.target.id;
 								lastSelectedFrame=state.current.frame;
@@ -1871,18 +1876,18 @@ final class SacScene: Scene{
 							final switch(mouse.icon){
 								case MouseIcon.attack:
 									if(summary&(TargetFlags.creature|TargetFlags.wizard|TargetFlags.building)&&!(summary&TargetFlags.corpse)){
-										state.addCommand(Command!DagonBackend(CommandType.attack,renderSide,camera.target,0,mouse.target,cameraFacing));
+										controller.addCommand(Command!DagonBackend(CommandType.attack,renderSide,camera.target,0,mouse.target,cameraFacing));
 									}else{
 										auto target=Target(TargetType.terrain,0,mouse.target.position,mouse.target.location);
-										state.addCommand(Command!DagonBackend(CommandType.advance,renderSide,camera.target,0,target,cameraFacing));
+										controller.addCommand(Command!DagonBackend(CommandType.advance,renderSide,camera.target,0,target,cameraFacing));
 									}
 									break;
 								case MouseIcon.guard:
 									if(summary&(TargetFlags.creature|TargetFlags.wizard|TargetFlags.building)&&!(summary&TargetFlags.corpse)){
-										state.addCommand(Command!DagonBackend(CommandType.guard,renderSide,camera.target,0,mouse.target,cameraFacing));
+										controller.addCommand(Command!DagonBackend(CommandType.guard,renderSide,camera.target,0,mouse.target,cameraFacing));
 									}else{
 										auto target=Target(TargetType.terrain,0,mouse.target.position,mouse.target.location);
-										state.addCommand(Command!DagonBackend(CommandType.guardArea,renderSide,camera.target,0,target,cameraFacing));
+										controller.addCommand(Command!DagonBackend(CommandType.guardArea,renderSide,camera.target,0,target,cameraFacing));
 									}
 									break;
 								case MouseIcon.spell:
@@ -1901,19 +1906,19 @@ final class SacScene: Scene{
 				if(!mouse.dragging) final switch(mouse.status){
 					case Mouse.Status.standard:
 						switch(mouse.target.type) with(TargetType){
-							case terrain: state.addCommand(Command!DagonBackend(CommandType.move,renderSide,camera.target,0,mouse.target,cameraFacing)); break;
+							case terrain: controller.addCommand(Command!DagonBackend(CommandType.move,renderSide,camera.target,0,mouse.target,cameraFacing)); break;
 							case creature,building:
 								auto summary=mouse.target.summarize(renderSide,state.current);
 								if(!(summary&TargetFlags.untargetable)){
 									if(summary&TargetFlags.corpse){
 										auto target=Target(TargetType.terrain,0,mouse.target.position,mouse.target.location);
-										state.addCommand(Command!DagonBackend(CommandType.guardArea,renderSide,camera.target,0,target,cameraFacing)); break;
+										controller.addCommand(Command!DagonBackend(CommandType.guardArea,renderSide,camera.target,0,target,cameraFacing)); break;
 									}else if(summary&TargetFlags.enemy){
-										state.addCommand(Command!DagonBackend(CommandType.attack,renderSide,camera.target,0,mouse.target,cameraFacing)); break;
+										controller.addCommand(Command!DagonBackend(CommandType.attack,renderSide,camera.target,0,mouse.target,cameraFacing)); break;
 									}else if(summary&TargetFlags.manafount){
 										castSpell("htlm",mouse.target);
 									}else{
-										state.addCommand(Command!DagonBackend(CommandType.guard,renderSide,camera.target,0,mouse.target,cameraFacing)); break;
+										controller.addCommand(Command!DagonBackend(CommandType.guard,renderSide,camera.target,0,mouse.target,cameraFacing)); break;
 									}
 								}
 								break;
@@ -1921,7 +1926,7 @@ final class SacScene: Scene{
 								final switch(color(mouse.target.id,renderSide,state.current)){
 									case SoulColor.blue:
 										auto target=Target(TargetType.terrain,0,mouse.target.position,mouse.target.location);
-										state.addCommand(Command!DagonBackend(CommandType.move,renderSide,camera.target,0,target,cameraFacing));
+										controller.addCommand(Command!DagonBackend(CommandType.move,renderSide,camera.target,0,target,cameraFacing));
 										break;
 									case SoulColor.red:
 										castSpell("ccas",mouse.target);
@@ -1951,9 +1956,9 @@ final class SacScene: Scene{
 					CommandType.selectGroup;
 				int group = key==KEY_0?9:key-KEY_1;
 				if(group>=numCreatureGroups) break;
-				state.addCommand(Command!DagonBackend(type,renderSide,camera.target,group));
+				controller.addCommand(Command!DagonBackend(type,renderSide,camera.target,group));
 				if(type==CommandType.addToGroup)
-					state.addCommand(Command!DagonBackend(CommandType.automaticSelectGroup,renderSide,camera.target,group));
+					controller.addCommand(Command!DagonBackend(CommandType.automaticSelectGroup,renderSide,camera.target,group));
 			}
 		}
 		if(!(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK]||eventManager.keyPressed[KEY_LSHIFT])){
@@ -1963,28 +1968,28 @@ final class SacScene: Scene{
 		}
 		if(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK]){
 			foreach(_;0..keyDown[KEY_X]){
-				state.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.phalanx));
+				controller.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.phalanx));
 			}
 			foreach(_;0..keyDown[KEY_L]){
-				state.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.line));
+				controller.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.line));
 			}
 			foreach(_;0..keyDown[KEY_Z]){
-				state.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.flankLeft));
+				controller.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.flankLeft));
 			}
 			foreach(_;0..keyDown[KEY_V]){
-				state.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.flankRight));
+				controller.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.flankRight));
 			}
 			foreach(_;0..keyDown[KEY_W]){
-				state.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.wedge));
+				controller.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.wedge));
 			}
 			foreach(_;0..keyDown[KEY_U]){
-				state.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.semicircle));
+				controller.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.semicircle));
 			}
 			foreach(_;0..keyDown[KEY_O]){
-				state.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.circle));
+				controller.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.circle));
 			}
 			foreach(_;0..keyDown[KEY_Y]){
-				state.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.skirmish));
+				controller.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.skirmish));
 			}
 			foreach(_;0..keyDown[KEY_R]){
 				if(mouse.status==Mouse.Status.standard&&!mouse.dragging){
@@ -1995,7 +2000,7 @@ final class SacScene: Scene{
 			foreach(_;0..keyDown[KEY_T]){
 				auto target=Target(TargetType.terrain,0,mouse.target.position,mouse.target.location);
 				target.position.z=state.current.getHeight(target.position);
-				state.addCommand(Command!DagonBackend(CommandType.move,renderSide,camera.target,0,target,cameraFacing));
+				controller.addCommand(Command!DagonBackend(CommandType.move,renderSide,camera.target,0,target,cameraFacing));
 			}
 			foreach(_;0..keyDown[KEY_A]){
 				if(mouse.status==Mouse.Status.standard&&!mouse.dragging){
@@ -2321,7 +2326,6 @@ final class SacScene: Scene{
 		}
 	}
 	SacCursor!DagonBackend sacCursor;
-	int renderSide=0; // TODO
 	void initializeMouse(){
 		sacCursor=new SacCursor!DagonBackend();
 		SDL_ShowCursor(SDL_DISABLE);
@@ -2489,6 +2493,12 @@ struct DagonBackend{
 	}
 	void setState(GameState!DagonBackend state){
 		scene.setState(state);
+	}
+	void focusCamera(int id){
+		scene.focusCamera(id);
+	}
+	void setController(Controller!DagonBackend controller){
+		scene.setController(controller);
 	}
 	void addObject(SacObject!DagonBackend obj,Vector3f position,Quaternionf rotation){
 		scene.addObject(obj,position,rotation);
