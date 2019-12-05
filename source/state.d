@@ -6744,7 +6744,7 @@ final class Sides(B){
 		return manahoarParticles[side];
 	}
 	Stance getStance(int from,int towards){
-		if(from==-1||towards==-1) return Stance.neutral;
+		if(from<0||from>=sides.length||towards<0||towards>=sides.length) return Stance.neutral;
 		if(sides[from].allies&(1<<towards)) return Stance.ally;
 		if(sides[from].enemies&(1<<towards)) return Stance.enemy;
 		return Stance.neutral;
@@ -6897,69 +6897,56 @@ struct SideManager(B){
 	void opAssign(SideManager!B rhs){
 		assignArray(sides,rhs.sides);
 	}
-	void clearSelection(int side)in{
-		assert(0<=side&&side<sides.length);
-	}do{
+	void clearSelection(int side){
+		if(!(0<=side&&side<sides.length)) return;
 		sides[side].clearSelection();
 	}
-	void select(int side,int id)in{
-		assert(0<=side&&side<sides.length&&id);
-	}do{
+	void select(int side,int id){
+		if(!(0<=side&&side<sides.length&&id)) return;
 		sides[side].select(id);
 	}
-	void addToSelection(int side,int id)in{
-		assert(0<=side&&side<sides.length&&id);
-	}do{
+	void addToSelection(int side,int id){
+		if(!(0<=side&&side<sides.length&&id)) return;
 		sides[side].addToSelection(id);
 	}
-	void removeFromSelection(int side,int id)in{
-		assert(0<=side&&side<sides.length&&id);
-	}do{
+	void removeFromSelection(int side,int id){
+		if(!(0<=side&&side<sides.length&&id)) return;
 		sides[side].removeFromSelection(id);
 	}
-	void toggleSelection(int side,int id)in{
-		assert(0<=side&&side<sides.length&&id);
-	}do{
+	void toggleSelection(int side,int id){
+		if(!(0<=side&&side<sides.length&&id)) return;
 		sides[side].toggleSelection(id);
 	}
-	void defineGroup(int side,int groupId)in{
-		assert(0<=side&&side<sides.length&&0<=groupId&&groupId<numCreatureGroups);
-	}do{
+	void defineGroup(int side,int groupId){
+		if(!(0<=side&&side<sides.length&&0<=groupId&&groupId<numCreatureGroups)) return;
 		sides[side].defineGroup(groupId);
 	}
-	void addToGroup(int side,int groupId)in{
-		assert(0<=side&&side<sides.length&&0<=groupId&&groupId<numCreatureGroups);
-	}do{
+	void addToGroup(int side,int groupId){
+		if(!(0<=side&&side<sides.length&&0<=groupId&&groupId<numCreatureGroups)) return;
 		sides[side].addToGroup(groupId);
 	}
-	void addToGroup(int side,int groupId,int creatureId)in{
-		assert(0<=side&&side<sides.length&&0<=groupId&&groupId<numCreatureGroups);
-	}do{
+	void addToGroup(int side,int groupId,int creatureId){
+		if(!(0<=side&&side<sides.length&&0<=groupId&&groupId<numCreatureGroups)) return;
 		sides[side].addToGroup(groupId,creatureId);
 	}
-	bool selectGroup(int side,int groupId)in{
-		assert(0<=side&&side<sides.length&&0<=groupId&&groupId<numCreatureGroups);
-	}do{
+	bool selectGroup(int side,int groupId){
+		if(!(0<=side&&side<sides.length&&0<=groupId&&groupId<numCreatureGroups)) return false;
 		return sides[side].selectGroup(groupId);
 	}
-	void removeFromGroups(int side,int id)in{
-		assert(0<=side&&side<sides.length&&id);
-	}do{
+	void removeFromGroups(int side,int id){
+		if(!(0<=side&&side<sides.length&&id)) return;
 		sides[side].removeFromGroups(id);
 	}
-	CreatureGroup getSelection(int side)in{
-		assert(0<=side&&side<sides.length);
-	}do{
+	CreatureGroup getSelection(int side){
+		if(!(0<=side&&side<sides.length)) return CreatureGroup.init;
 		return sides[side].getSelection();
 	}
-	int[2] lastSelected(int side)in{
-		assert(0<=side&&side<sides.length);
-	}do{
+	int[2] lastSelected(int side){
+		if(!(0<=side&&side<sides.length)) return [0,0];
 		return [sides[side].lastSelected,sides[side].selectionMultiplicity];
 	}
-	void resetSelectionCount(int side)in{
-		assert(0<=side&&side<sides.length);
-	}do{
+	void resetSelectionCount(int side){
+		if(!(0<=side&&side<sides.length)) return;
 		return sides[side].resetSelectionCount();
 	}
 }

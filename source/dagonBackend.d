@@ -1587,7 +1587,9 @@ final class SacScene: Scene{
 		eCamera.position = Vector3f(1270.0f, 1270.0f, 2.0f);
 		fpview = New!FirstPersonView2(eventManager, eCamera, assetManager);
 		view = fpview;
-		mouse.visible=true;
+		fpview.active=true;
+		mouse.visible=false;
+		fpview.mouseFactor=0.25f;
 		//auto mat = createMaterial();
 		//mat.diffuse = Color4f(0.2, 0.2, 0.2, 0.2);
 		//mat.diffuse=txta;
@@ -1630,6 +1632,8 @@ final class SacScene: Scene{
 	}
 	MovementState targetMovementState;
 	void focusCamera(int target){
+		fpview.active=false;
+		mouse.visible=true;
 		camera.target=target;
 		targetMovementState=MovementState.init;
 		import std.typecons;

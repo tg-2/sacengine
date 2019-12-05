@@ -15,6 +15,11 @@ final class Controller(B){
 	void addCommand(Command!B command){
 		addCommand(state.current.frame,command);
 	}
+	void addExternalCommand(int frame,Command!B command)in{
+		assert(command.side!=controlledSide);
+	}do{
+		state.addCommand(frame,command);
+	}
 	void setSelection(int side,int wizard,CreatureGroup selection,TargetLocation loc){
 		if(side!=controlledSide) return;
 		addCommand(Command!B(CommandType.clearSelection,side,wizard,0,Target.init,float.init));

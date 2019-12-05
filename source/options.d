@@ -23,9 +23,17 @@ struct Options{
 	// just for testing:
 	bool enableReadFromWads=true;
 	int replicateCreatures=1;
-	string wizard="";
+	int delayStart=0;
+	int host=0;
+	string joinIP="";
+	Settings settings;
+	alias settings this;
+}
+
+struct Settings{
+	int controlledSide=-1;
+	char[4] wizard="";
 	God god;
 	int level=9;
 	int souls=12;
-	int delayStart=0;
 }

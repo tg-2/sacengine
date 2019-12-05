@@ -33,6 +33,7 @@ int main(string[] args){
 		shadowMapResolution: 1024,
 		enableWidgets: true,
 	};
+	options.controlledSide=int.min;
 	static Tuple!(int,"width",int,"height") parseResolution(string s){
 		auto t=s.split('x');
 		if(t.length==2) return tuple!("width","height")(to!int(t[0]),to!int(t[1]));
@@ -61,21 +62,25 @@ int main(string[] args){
 			options.musicVolume=to!float(opt["--music-volume=".length..$]);
 		}else if(opt.startsWith("--sound-volume=")){
 			options.soundVolume=to!float(opt["--sound-volume=".length..$]);
+		}else if(opt.startsWith("--side=")){
+			options.controlledSide=to!int(opt["--side=".length..$]);
 		}else if(opt.startsWith("--wizard=")){
-			options.wizard=opt["--wizard=".length..$];
+			auto wizard=opt["--wizard=".length..$];
 			import nttData:tagFromCreatureName;
-			auto tag=tagFromCreatureName(options.wizard);
-			if(tag!=(char[4]).init) options.wizard=text(tag);
+			auto tag=tagFromCreatureName(wizard);
+			if(tag!=(char[4]).init) wizard=text(tag);
 			import nttData:wizards;
-			if(!wizards.canFind(options.wizard)){
-				auto reversed=text(options.wizard.retro);
+			if(!wizards.canFind(tag)){
+				auto reversed=tag;
+				reverse(tag[]);
 				if(wizards.canFind(reversed)){
-					options.wizard=reversed;
+					tag=reversed;
 				}else{
 					stderr.writefln!"error: unknown wizard '%s'"(options.wizard);
 					return 1;
 				}
 			}
+			options.wizard=tag;
 		}else if(opt.startsWith("--god=")){
 			try{
 				options.god=to!God(opt["--god=".length..$]);
@@ -118,14 +123,17 @@ int main(string[] args){
 				return 1;
 		}
 	}
-	if(options.god==God.none){
-		import std.random: uniform;
-		options.god=cast(God)uniform!"[]"(1,5);
+	if(options.controlledSide==int.min){
+		options.controlledSide=0;
 	}
 	if(options.wizard==""){
 		import std.random: uniform;
 		import nttData:wizards;
 		options.wizard=text((cast(char[4])wizards[uniform!"[)"(0,$)]));
+	}
+	if(options.god==God.none){
+		import std.random: uniform;
+		options.god=cast(God)uniform!"[]"(1,5);
 	}
 	enum commit = tryImport!("git/"~tryImport!("git/HEAD","ref: ")["ref: ".length..$],"");
 	writeln("SacEngine ",commit.length?text("commit ",commit):"","build ",__DATE__," ",__TIME__);
@@ -138,7 +146,7 @@ int main(string[] args){
 	alias B=DagonBackend;
 	auto backend=B(options);
 	GameState!B state;
-	int controlledSide=0;
+	int controlledSide=options.settings.controlledSide;
 	void loadMap(string hmap){
 		enforce(hmap.endsWith(".HMAP"));
 		enforce(!state);
@@ -153,7 +161,7 @@ int main(string[] args){
 		auto controller=new Controller!B(controlledSide,state);
 		state.commit();
 		backend.setState(state);
-		backend.focusCamera(id);
+		if(id) backend.focusCamera(id);
 		backend.setController(controller);
 	}
 	foreach(ref i;1..args.length){
