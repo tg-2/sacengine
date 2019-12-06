@@ -7515,15 +7515,17 @@ final class GameState(B){
 	}
 
 	void step(){
-		// current.update(commands[committed.frame].data) // TODO: optimize to this
-		next.updateFrom(current,commands[current.frame].data); // this is just to keep copyFrom bug-free
+		// current.update(commands[committed.frame].data) // TODO: allow this kind of in-place update (need to fix swarm)
+		next.updateFrom(current,commands[current.frame].data);
 		swap(current,next);
 		if(commands.length<=current.frame) commands~=Array!(Command!B)();
 	}
 	void stepCommitted()in{
 		assert(lastCommitted.frame<current.frame);
 	}do{
-		lastCommitted.update(commands[lastCommitted.frame].data);
+		//lastCommitted.update(commands[lastCommitted.frame].data); // TODO: allow this kind of in-place update (need to fix swarm)
+		next.updateFrom(lastCommitted,commands[lastCommitted.frame].data);
+		swap(lastCommitted,next);
 	}
 	void commit(){
 		lastCommitted.copyFrom(current);
