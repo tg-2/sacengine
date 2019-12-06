@@ -1,4 +1,4 @@
-import std.algorithm;
+import std.stdio, std.algorithm;
 import state, network;
 final class Controller(B){
 	GameState!B state;
@@ -6,6 +6,7 @@ final class Controller(B){
 	int controlledSide;
 	int commandId=0;
 	int committedFrame;
+	int lastCheckSynch=-1;
 	int firstUpdatedFrame;
 	int currentFrame;
 	this(int controlledSide,GameState!B state,Network!B network){
@@ -44,20 +45,31 @@ final class Controller(B){
 			addCommand(Command!B(CommandType.automaticToggleSelection,side,wizard,id,Target.init,float.init));
 		}
 	}
+	void updateCommitted(){
+		committedFrame=network.committedFrame;
+		assert(committedFrame<=currentFrame);
+		if(network.isHost){
+			while(state.lastCommitted.frame<committedFrame){
+				state.stepCommitted();
+				network.addSynch(state.lastCommitted.frame,state.lastCommitted.hash);
+			}
+		}else state.simulateCommittedTo(committedFrame);
+	}
 	void step(){
 		playAudio=false;
 		if(network){
 			network.update(this);
+			if(network.desynched)
+				return;
 			if(!network.playing){
-				network.updateStatus(PlayerStatus.playing);
-				if(network.isHost&&network.readyToStart())
+				network.updateStatus(PlayerStatus.readyToStart);
+				if(network.isHost&&network.readyToStart()){
+					network.addSynch(state.lastCommitted.frame,state.lastCommitted.hash);
 					network.start();
+				}
 				return;
 			}
-			committedFrame=network.committedFrame;
-			assert(committedFrame<=currentFrame);
-			if(state.lastCommitted.frame<committedFrame)
-				state.simulateCommittedTo(committedFrame);
+			updateCommitted();
 			if(firstUpdatedFrame<currentFrame){
 				// TODO: save multiple states, pick most recent with frame<=firstUpdatedFrame?
 				state.rollback(state.lastCommitted);
@@ -69,6 +81,12 @@ final class Controller(B){
 		state.step();
 		currentFrame=state.current.frame;
 		firstUpdatedFrame=currentFrame;
-		if(network) network.commit(currentFrame);
+		if(network){
+			network.commit(currentFrame);
+			if(!network.isHost&&lastCheckSynch<committedFrame){
+				network.checkSynch(committedFrame,state.lastCommitted.hash);
+				lastCheckSynch=committedFrame;
+			}
+		}
 	}
 }

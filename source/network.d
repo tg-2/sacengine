@@ -16,7 +16,8 @@ struct NetworkCommand{
 }
 
 bool isValidCommand(B)(ref Command!B command){
-	return true; // TODO: defend
+	// TODO: defend comprehensively
+	return CommandType.min<=command.type&&command.type<=CommandType.max;
 }
 
 Command!B fromNetwork(B)(NetworkCommand networkCommand){
@@ -58,6 +59,7 @@ enum PacketType{
 	updateStatus,
 	command,
 	commit,
+	checkSynch,
 }
 
 struct Packet{
@@ -89,6 +91,7 @@ struct Packet{
 				case startGame: return text("Packet.startGame(",startDelay,")");
 				case command: return text("Packet.command(fromNetwork(",networkCommand,"))");
 				case commit: return text("Packet.commit(",commitPlayer,",",commitFrame,")");
+				case checkSynch: return text("Packet.checkSynch(",synchFrame,",",synchHash,")");
 		}
 	}
 	int size=Packet.sizeof;
@@ -124,6 +127,10 @@ struct Packet{
 		struct{ // commit
 			int commitPlayer;
 			int commitFrame;
+		}
+		struct{ // checkSynch
+			int synchFrame;
+			int synchHash;
 		}
 	}
 	static Packet nop(){ return Packet.init; }
@@ -197,6 +204,13 @@ struct Packet{
 		p.commitFrame=frame;
 		return p;
 	}
+	static Packet checkSynch(int frame,int hash){
+		Packet p;
+		p.type=PacketType.checkSynch;
+		p.synchFrame=frame;
+		p.synchHash=hash;
+		return p;
+	}
 }
 
 public import std.socket;
@@ -265,6 +279,7 @@ enum PlayerStatus{
 	loading,
 	readyToStart,
 	playing,
+	desynched,
 	disconnected,
 }
 
@@ -273,11 +288,30 @@ struct Player{
 	Settings settings;
 	Connection connection;
 	int committedFrame=0;
+	int synchronizedFrame=0;
 	int ping=-1;
 }
 
 enum playerLimit=256;
 enum listeningPort=9116;
+
+final class SynchQueue{
+	enum maxLength=256;
+	int[maxLength] hashes;
+	int start=0,end=0;
+	void addReference(int frame,int hash)in{
+		assert(frame==end,text(frame," ",end));
+	}do{
+		while(end+1-start>cast(int)hashes.length)
+			start++;
+		hashes[(end++)%$]=hash;
+	}
+	bool check(int frame,int hash){
+		if(frame<start) return true; // too old. TODO: count this as a desynch?
+		if(frame>=end) return false; // impossibly recent
+		return hashes[frame%$]==hash;
+	}
+}
 
 final class Network(B){
 	Player[] players;
@@ -299,6 +333,7 @@ final class Network(B){
 	enum host=0;
 	bool dumpTraffic=false;
 	bool isHost(){ return me==host; }
+	SynchQueue synchQueue;
 	void hostGame()in{
 		assert(!players.length);
 	}do{
@@ -307,6 +342,7 @@ final class Network(B){
 		static assert(host==0);
 		players=[Player(PlayerStatus.synched,Settings.init,null)];
 		me=0;
+		synchQueue=new SynchQueue();
 	}
 	bool joinGame(InternetAddress hostAddress)in{
 		assert(!players.length);
@@ -333,6 +369,10 @@ final class Network(B){
 	bool playing(){
 		return me!=-1&&players[me].status==PlayerStatus.playing;
 	}
+	bool desynched(){
+		//return me!=-1&&players[me].status==PlayerStatus.desynched;
+		return players.any!(p=>p.status==PlayerStatus.desynched);
+	}
 	int committedFrame(){
 		if(!players.length) return 0;
 		return players.map!(p=>p.committedFrame).reduce!min;
@@ -355,36 +395,45 @@ final class Network(B){
 				connection.send(Packet.setOption!setting(me,mixin(`newSettings.`~setting)));
 		}
 	}
-	void updateStatus(PlayerStatus newStatus)in{
-		assert(me!=-1);
+	void updateStatus(int player,PlayerStatus newStatus)in{
+		assert(player==me||isHost);
 	}do{
-		auto oldStatus=players[me].status;
+		auto oldStatus=players[player].status;
 		if(isHost){
 			foreach(i;0..players.length){
-			if(players[i].connection)
-				sendStatusUpdate(players[i].connection,oldStatus,newStatus);
+				if(players[i].connection)
+					sendStatusUpdate(players[i].connection,oldStatus,newStatus);
 			}
 		}else{
 			if(players[host].connection)
 				sendStatusUpdate(players[host].connection,oldStatus,newStatus);
 		}
-		players[me].status=newStatus;
+		players[player].status=newStatus;
 	}
-	void updateSettings(Settings newSettings)in{
-		assert(me!=-1&&players[me].status>=PlayerStatus.synched);
+	void updateStatus(PlayerStatus newStatus)in{
+		assert(me!=-1);
 	}do{
-		auto oldSettings=players[me].settings;
+		updateStatus(me,newStatus);
+	}
+	void updateSettings(int player,Settings newSettings)in{
+		assert((player==me||isHost)&&players[player].status>=PlayerStatus.synched);
+	}do{
+		auto oldSettings=players[player].settings;
 		if(isHost){
 			foreach(i;0..players.length){
 				if(players[i].connection)
 					sendSettingsUpdate(players[i].connection,oldSettings,newSettings);
 			}
-			players[me].settings=newSettings;
 		}else{
 			if(players[host].connection)
 				sendSettingsUpdate(players[host].connection,oldSettings,newSettings);
 		}
-		players[me].settings=newSettings;
+		players[player].settings=newSettings;
+	}
+	void updateSettings(Settings newSettings)in{
+		assert(me!=-1&&players[me].status>=PlayerStatus.synched);
+	}do{
+		updateSettings(me,newSettings);
 	}
 	void addCommand(int frame,Command!B command)in{
 		assert(playing);
@@ -521,6 +570,23 @@ final class Network(B){
 				break;
 			case PacketType.commit:
 				players[p.commitPlayer].committedFrame=max(players[p.commitPlayer].committedFrame,p.commitFrame);
+				if(controller) controller.updateCommitted();
+				break;
+			case PacketType.checkSynch:
+				if(!isHost){
+					stderr.writeln("checkSynch packet sent to non-host player ",me,": ",p);
+					break;
+				}
+				assert(!!synchQueue);
+				if(!synchQueue.check(p.synchFrame,p.synchHash)){
+					stderr.writeln("player ",sender," desynchronized at frame ",p.synchFrame);
+					if(p.synchFrame>=synchQueue.end){
+						stderr.writeln("tried to synch on non-committed frame (after ",synchQueue.end,")");
+					}else{
+						stderr.writeln("expected hash ",synchQueue.hashes[p.frame%$],", got ",p.synchHash);
+					}
+					updateStatus(sender,PlayerStatus.desynched);
+				}
 				break;
 		}
 	}
@@ -534,6 +600,7 @@ final class Network(B){
 			case ping: break;
 			case ack: break;
 			case updatePlayerId: break;
+			case checkSynch: break;
 			case loadGame: stderr.writeln("load game packet sent to host"); break;
 			case startGame: stderr.writeln("start game packet sent to host"); break;
 			case setOption,updateStatus,command,commit:
@@ -625,5 +692,16 @@ final class Network(B){
 		}
 		Thread.sleep((maxPing/2).msecs);
 		updateStatus(PlayerStatus.playing);
+	}
+	void addSynch(int frame,int hash)in{
+		assert(isHost);
+	}do{
+		synchQueue.addReference(frame,hash);
+	}
+	void checkSynch(int frame,int hash)in{
+		assert(!isHost);
+	}do{
+		if(players[host].connection)
+			players[host].connection.send(Packet.checkSynch(frame,hash));
 	}
 }
