@@ -45,6 +45,7 @@ final class Controller(B){
 		}
 	}
 	void step(){
+		playAudio=false;
 		if(network){
 			network.update(this);
 			if(!network.playing){
@@ -64,6 +65,7 @@ final class Controller(B){
 			}
 		}else committedFrame=currentFrame;
 		state.simulateTo(currentFrame);
+		playAudio=true;
 		state.step();
 		currentFrame=state.current.frame;
 		firstUpdatedFrame=currentFrame;

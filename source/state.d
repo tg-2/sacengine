@@ -1708,6 +1708,9 @@ struct CommandCones(B){
 	}
 	Array!(Array!(CommandConeElement!B)[CommandConeColor.max+1]) cones;
 	this(int numSides){
+		initialize(numSides);
+	}
+	void initialize(int numSides){
 		cones.length=numSides;
 	}
 	void addCommandCone(CommandCone!B cone){
@@ -1716,6 +1719,9 @@ struct CommandCones(B){
 	void removeCommandCone(int side,CommandConeColor color,int index){
 		if(index+1<cones[side][color].length) cones[side][color][index]=cones[side][color][$-1];
 		cones[side][color].length=cones[side][color].length-1;
+	}
+	void opAssign(ref CommandCones!B rhs){
+		assignArray(cones,rhs.cones);
 	}
 }
 
@@ -1868,7 +1874,7 @@ struct Objects(B,RenderMode mode){
 			particles[index].addParticle(particle);
 		}
 		void addCommandCone(CommandCone!B cone){
-			if(!commandCones.cones.length) commandCones=CommandCones!B(32); // TODO: do this eagerly?
+			if(!commandCones.cones.length) commandCones.initialize(32); // TODO: do this eagerly?
 			commandCones.addCommandCone(cone);
 		}
 	}

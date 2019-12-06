@@ -240,7 +240,11 @@ void assignArray(T)(ref Array!T to, ref Array!T from){
 	foreach(i;0..from.length){ // TODO: this is slow!
 		static if(is(T:Array!S,S)) // TODO: wrap array with different opAssign?
 			assignArray(to[i],from[i]);
-		else to[i]=from[i];
+		else static if(is(T:Array!S[n],S,int n)){
+			foreach(j;0..n) assignArray(to[i][j],from[i][j]);
+		}else static if(is(T:Array!S[],S)){
+			static assert(0);
+		}else to[i]=from[i];
 	}
 }
 /+ // TODO: use this for structs that are not arrays and have no opAssign

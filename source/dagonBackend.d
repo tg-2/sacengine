@@ -2216,9 +2216,23 @@ final class SacScene: Scene{
 		if(state) stateTestControl();
 		control(dt);
 		if(state){
-			playAudio=true;
-			if(controller) controller.step();
-			else state.step();
+			if(controller){
+				controller.step();
+				if(options.testLag){
+					if(controller.network){
+						if(controller.network.isHost){
+							static bool delayed=false;
+							if(!delayed){
+								delayed=true;
+								import core.thread;
+								Thread.sleep(1.seconds);
+								eventManager.update();
+								eventManager.update();
+							}
+						}
+					}
+				}
+			}else state.step();
 			// state.commit();
 			if(camera.target){
 				auto targetFacing=state.current.movingObjectById!((obj)=>obj.creatureState.facing, function float(){ assert(0); })(camera.target);

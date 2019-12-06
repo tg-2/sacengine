@@ -27,6 +27,7 @@ struct Options{
 	int host=0;
 	string joinIP="";
 	Settings settings;
+	bool testLag=false;
 	alias settings this;
 }
 
