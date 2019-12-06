@@ -66,7 +66,7 @@ struct Packet{
 			case nop: return "Packet.nop()";
 			case disconnect: return "Packet.disconnect()";
 			case ping: return text("Packet.ping(",id,")");
-			case ack: return text("Packet.ack(",ack,")");
+			case ack: return text("Packet.ack(",pingId,")");
 			case updatePlayerId: return text("Packet.updatePlayerId(",id,")");
 			case setOption:
 				auto len=0;
@@ -86,7 +86,7 @@ struct Packet{
 				}
 				case updateStatus: return text("Packet.updateStatus(",player,`,PlayerStatus.`,newStatus,")");
 				case loadGame: return text("Packet.loadGame()");
-				case startGame: return text("Packet.startGame()");
+				case startGame: return text("Packet.startGame(",startDelay,")");
 				case command: return text("Packet.command(fromNetwork(",networkCommand,"))");
 				case commit: return text("Packet.commit(",commitPlayer,",",commitFrame,")");
 		}
@@ -273,6 +273,7 @@ struct Player{
 	Settings settings;
 	Connection connection;
 	int committedFrame=0;
+	int ping=-1;
 }
 
 enum playerLimit=256;
@@ -406,6 +407,11 @@ final class Network(B){
 		}
 		players[me].committedFrame=max(players[me].committedFrame,frame);
 	}
+	enum AckHandler{
+		none,
+		measurePing,
+	}
+	AckHandler ackHandler;
 	void performPacketAction(int sender,Packet p,Controller!B controller){
 		if(dumpTraffic) writeln("from ",sender,": ",p);
 		final switch(p.type){
@@ -415,7 +421,14 @@ final class Network(B){
 				players[sender].connection=null;
 				break;
 			case PacketType.ping: if(players[sender].connection) players[sender].connection.send(Packet.ack(p.id)); break;
-			case PacketType.ack: break; // TODO
+			case PacketType.ack:
+				final switch(ackHandler) with(AckHandler){
+					case none: break;
+					case measurePing:
+						players[sender].ping=B.ticks()-p.pingId; // TODO: use a median over some window
+						break;
+				}
+				break;
 			case PacketType.updatePlayerId:
 				if(sender!=host){
 					stderr.writeln("non-host player ",sender," attempted to update id: ",p);
@@ -494,6 +507,7 @@ final class Network(B){
 					stderr.writeln("attempt to start game before ready: ",p);
 					break;
 				}
+				Thread.sleep(p.startDelay.msecs);
 				updateStatus(PlayerStatus.playing);
 				break;
 			case PacketType.command:
@@ -586,10 +600,23 @@ final class Network(B){
 	void start()in{
 		assert(isHost);
 	}do{
+		ackHandler=AckHandler.measurePing;
+		players[me].ping=0;
 		foreach(i,ref player;players){
 			if(!player.connection) continue;
-			player.connection.send(Packet.startGame(0));
+			player.connection.send(Packet.ping(B.ticks()));
 		}
+		while(players.any!(p=>p.ping==-1)){
+			update(null);
+		}
+		auto maxPing=players.map!(p=>p.ping).reduce!max;
+		enforce(maxPing!=-1);
+		writeln("pings: ",players.map!(p=>p.ping));
+		foreach(i,ref player;players){
+			if(!player.connection) continue;
+			player.connection.send(Packet.startGame((maxPing-player.ping)/2));
+		}
+		Thread.sleep((maxPing/2).msecs);
 		updateStatus(PlayerStatus.playing);
 	}
 }

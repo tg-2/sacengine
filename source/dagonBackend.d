@@ -2754,6 +2754,8 @@ static:
 		return material;
 	}
 
+	uint ticks(){ return SDL_GetTicks(); }
+
 	enum GL_GPU_MEM_INFO_TOTAL_AVAILABLE_MEM_NVX=0x9048;
 	enum GL_GPU_MEM_INFO_CURRENT_AVAILABLE_MEM_NVX=0x9049;
 
