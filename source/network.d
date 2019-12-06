@@ -1,4 +1,4 @@
-import std.algorithm;
+import std.algorithm, std.stdio, std.conv, std.exception, core.thread;
 import options,sacspell,state,controller;
 import ntts: God;
 
@@ -43,7 +43,7 @@ NetworkCommand toNetwork(B)(Command!B command)in{
 			networkCommand.tupleof[i]=command.tupleof[i]?command.tupleof[i].tag:"\0\0\0\0";
 		}else networkCommand.tupleof[i]=command.tupleof[i];
 	}
-	return networkCommand;	
+	return networkCommand;
 }
 
 enum PacketType{
@@ -51,31 +51,69 @@ enum PacketType{
 	disconnect,
 	ping,
 	ack,
-	setOption,
-	readyToLoad,
+	updatePlayerId,
 	loadGame,
-	readyToStart,
 	startGame,
+	setOption,
+	updateStatus,
 	command,
 	commit,
 }
 
 struct Packet{
+	string toString(){
+		final switch(type) with(PacketType){
+			case nop: return "Packet.nop()";
+			case disconnect: return "Packet.disconnect()";
+			case ping: return text("Packet.ping(",id,")");
+			case ack: return text("Packet.ack(",ack,")");
+			case updatePlayerId: return text("Packet.updatePlayerId(",id,")");
+			case setOption:
+				auto len=0;
+				while(len<optionName.length&&optionName[len]!='\0') ++len;
+				switch(optionName[0..len]){
+					static foreach(setting;__traits(allMembers,Settings)){
+						case setting:
+							alias T=typeof(mixin(`Settings.`~setting));
+							static if(is(T==int)) return text(`Packet.setOption!"`,setting,`"(`,player,",",intValue,")");
+							else static if(is(T==bool))  return text(`Packet.setOption!"`,setting,`"(`,player,",",boolValue,")");
+							else static if(is(T==float))  return text(`Packet.setOption!"`,setting,`"(`,player,",",floatValue,")");
+							else static if(is(T==God)) return text(`Packet.setOption!"`,setting,`"(`,player,",",godValue,")");
+							else static if(is(T==char[4]))  return text(`Packet.setOption!"`,setting,`"(`,player,`,"`,char4Value,`")`);
+							else static assert(0);
+					}
+					default: return text(`Packet.setOption!"`,optionName[0..len],`"(?)`);
+				}
+				case updateStatus: return text("Packet.updateStatus(",player,`,PlayerStatus.`,newStatus,")");
+				case loadGame: return text("Packet.loadGame()");
+				case startGame: return text("Packet.startGame()");
+				case command: return text("Packet.command(fromNetwork(",networkCommand,"))");
+				case commit: return text("Packet.commit(",commitPlayer,",",commitFrame,")");
+		}
+	}
 	int size=Packet.sizeof;
 	PacketType type;
 	union{
 		struct{}// nop
-		struct{ int id; }// ping
+		struct{}// disconnect
+		struct{ int id; }// ping, updatePlayerId
 		struct{ int pingId; } // ack
-		struct{ // setOption, readyToLoad, readyToStart
+		struct{ // setOption, updateStatus
 			int player;
-			char[32] optionName;
 			union{
-				int intValue;
-				int boolValue;
-				float floatValue;
-				God godValue;
-				char[4] char4Value;
+				struct{// setOption
+					char[32] optionName;
+					union{
+						int intValue;
+						int boolValue;
+						float floatValue;
+						God godValue;
+						char[4] char4Value;
+					}
+				}
+				struct{
+					PlayerStatus newStatus;
+				}
 			}
 		}
 		struct{ uint startDelay; } // startGame
@@ -106,36 +144,37 @@ struct Packet{
 		p.pingId=pingId;
 		return p;
 	}
+	static Packet updatePlayerId(int id){
+		Packet p;
+		p.type=PacketType.updatePlayerId;
+		p.id=id;
+		return p;
+	}
 	static Packet setOption(string name)(int player,typeof(mixin(`Options.`~name)) value){
 		Packet p;
 		p.type=PacketType.setOption;
 		p.player=player;
-		optionName[]='\0';
-		optionName[0..name.length]=name[];
+		p.optionName[]='\0';
+		p.optionName[0..name.length]=name[];
 		static assert(name.length<optionName.length);
-		static if(is(typeof(value)==int)) intValue=value;
-		else static if(is(typeof(value)==bool)) boolValue=value;
-		else static if(is(typeof(value)==float)) floatValue=value;
-		else static if(is(typeof(value)==God)) godValue=value;
-		else static if(is(typeof(value)==char[4])) char4Value=value;
+		static if(is(typeof(value)==int)) p.intValue=value;
+		else static if(is(typeof(value)==bool)) p.boolValue=value;
+		else static if(is(typeof(value)==float)) p.floatValue=value;
+		else static if(is(typeof(value)==God)) p.godValue=value;
+		else static if(is(typeof(value)==char[4])) p.char4Value=value;
 		else static assert(0);
 		return p;
 	}
-	static Packet readyToLoad(int player){
+	static Packet updateStatus(int player,PlayerStatus newStatus){
 		Packet p;
-		p.type=PacketType.readyToLoad;
+		p.type=PacketType.updateStatus;
 		p.player=player;
+		p.newStatus=newStatus;
 		return p;
 	}
 	static Packet loadGame(){
 		Packet p;
 		p.type=PacketType.loadGame;
-		return p;
-	}
-	static Packet readyToStart(int player){
-		Packet p;
-		p.type=PacketType.readyToStart;
-		p.player=player;
 		return p;
 	}
 	static Packet startGame(uint startDelay){
@@ -146,19 +185,21 @@ struct Packet{
 	}
 	static Packet command(B)(int frame,Command!B command){
 		Packet p;
+		p.type=PacketType.command;
 		p.frame=frame;
-		p.command=toNetwork(command);
+		p.networkCommand=toNetwork(command);
 		return p;
 	}
 	static Packet commit(int player,int frame){
 		Packet p;
+		p.type=PacketType.commit;
 		p.commitPlayer=player;
 		p.commitFrame=frame;
 		return p;
 	}
 }
 
-import std.socket;
+public import std.socket;
 abstract class Connection{
 	abstract bool alive();
 	abstract bool ready();
@@ -173,9 +214,15 @@ class TCPConnection: Connection{
 		this.tcpSocket=tcpSocket;
 	}
 	bool alive_=true;
-	override bool alive(){ return alive_; }
+	override bool alive(){
+		alive_&=tcpSocket.isAlive;
+		return alive_;
+	}
 	bool ready_=false;
-	override bool ready(){ return ready_; }
+	override bool ready(){
+		if(!ready_&&alive) receiveData;
+		return ready_;
+	}
 	union{
 		Packet packet;
 		ubyte[packet.sizeof] data;
@@ -186,23 +233,18 @@ class TCPConnection: Connection{
 		auto result=packet;
 		ready_=false;
 		dataIndex=0;
-		alive_&=tcpSocket.isAlive;
-		if(alive) receiveData();
 		return result;
 	}
 	void receiveData(){
 		assert(dataIndex<data.length);
 		auto ret=tcpSocket.receive(data[dataIndex..$]);
 		if(ret==Socket.ERROR){
-			import std.stdio;
+			if(wouldHaveBlocked()) return;
 			stderr.writeln(lastSocketError());
 			ret=0;
 		}
 		if(ret==0){
-			if(wouldHaveBlocked()) return;
-			ready_=true;
 			alive_=false;
-			packet=Packet.disconnect();
 			tcpSocket.close();
 			return;
 		}
@@ -218,7 +260,9 @@ class TCPConnection: Connection{
 
 enum PlayerStatus{
 	connected,
+	synched,
 	readyToLoad,
+	loading,
 	readyToStart,
 	playing,
 	disconnected,
@@ -228,26 +272,189 @@ struct Player{
 	PlayerStatus status;
 	Settings settings;
 	Connection connection;
+	int committedFrame=0;
 }
 
-class Network(B){
+enum playerLimit=256;
+enum listeningPort=9116;
+
+final class Network(B){
 	Player[] players;
-	size_t me;
-	void handlePacket(ref Player player,Packet p,Controller!B controller){
+	Socket listener;
+	this(){
+		listener=new Socket(AddressFamily.INET,SocketType.STREAM);
+		listener.setOption(SocketOptionLevel.SOCKET,SocketOption.REUSEADDR,true);
+		try{
+			listener.bind(new InternetAddress(listeningPort));
+			listener.listen(playerLimit);
+			listener.blocking=false;
+		}catch(Exception){
+			listener=null;
+		}
+	}
+	enum host=0;
+	bool isHost(){ return me==host; }
+	void hostGame()in{
+		assert(!players.length);
+	}do{
+		enforce(listener!is null,text("cannot host on port ",listeningPort));
+		static assert(host==0);
+		players=[Player(PlayerStatus.synched,Settings.init,null)];
+		me=0;
+	}
+	void joinGame(InternetAddress hostAddress)in{
+		assert(!players.length);
+	}do{
+		auto socket=new Socket(AddressFamily.INET,SocketType.STREAM);
+		socket.connect(hostAddress);
+		socket.blocking=false;
+		players=[Player(PlayerStatus.connected,Settings.init,new TCPConnection(socket))];
+	}
+	bool synched(){
+		return me!=-1&&players[me].status>=PlayerStatus.synched;
+	}
+	bool readyToLoad(){
+		return players.all!(p=>p.status>=PlayerStatus.readyToLoad);
+	}
+	bool loading(){
+		return me!=-1&&players[me].status==PlayerStatus.loading;
+	}
+	bool readyToStart(){
+		return players.all!(p=>p.status>=PlayerStatus.readyToStart);
+	}
+	bool playing(){
+		return me!=-1&&players[me].status==PlayerStatus.playing;
+	}
+	int committedFrame(){
+		if(!players.length) return 0;
+		return players.map!(p=>p.committedFrame).reduce!min;
+	}
+	int me=-1;
+	void sendPlayerSettings(Connection connection,int player){
+		if(!connection) return;
+		static foreach(setting;__traits(allMembers,Settings))
+			connection.send(Packet.setOption!setting(player,mixin(`players[player].settings.`~setting)));
+		connection.send(Packet.updateStatus(player,players[player].status));
+		// TODO: send address to attempt to establish peer to peer connection
+	}
+	void sendStatusUpdate(Connection connection,PlayerStatus oldStatus,PlayerStatus newStatus){
+		if(oldStatus>=newStatus) return;
+		connection.send(Packet.updateStatus(me,newStatus));
+	}
+	void sendSettingsUpdate(Connection connection,Settings oldSettings,Settings newSettings){
+		static foreach(setting;__traits(allMembers,Settings)){
+			if(mixin(`oldSettings.`~setting)!=mixin(`newSettings.`~setting))
+				connection.send(Packet.setOption!setting(me,mixin(`newSettings.`~setting)));
+		}
+	}
+	void updateStatus(PlayerStatus newStatus)in{
+		assert(me!=-1);
+	}do{
+		auto oldStatus=players[me].status;
+		if(isHost){
+			foreach(i;0..players.length){
+			if(players[i].connection)
+				sendStatusUpdate(players[i].connection,oldStatus,newStatus);
+			}
+		}else{
+			if(players[host].connection)
+				sendStatusUpdate(players[host].connection,oldStatus,newStatus);
+		}
+		players[me].status=newStatus;
+	}
+	void updateSettings(Settings newSettings)in{
+		assert(me!=-1&&players[me].status>=PlayerStatus.synched);
+	}do{
+		auto oldSettings=players[me].settings;
+		if(isHost){
+			foreach(i;0..players.length){
+				if(players[i].connection)
+					sendSettingsUpdate(players[i].connection,oldSettings,newSettings);
+			}
+			players[me].settings=newSettings;
+		}else{
+			if(players[host].connection)
+				sendSettingsUpdate(players[host].connection,oldSettings,newSettings);
+		}
+		players[me].settings=newSettings;
+	}
+	void addCommand(int frame,Command!B command)in{
+		assert(playing);
+	}do{
+		auto p=Packet.command(frame,command);
+		if(isHost){
+			foreach(i;0..players.length){
+				if(players[i].connection)
+					players[i].connection.send(p);
+			}
+		}else{
+			if(players[host].connection)
+				players[host].connection.send(p);
+		}
+	}
+	void commit(int frame)in{
+		assert(me!=-1&&players[me].status==PlayerStatus.playing);
+	}do{
+		if(isHost){
+			foreach(i;0..players.length)
+				if(players[i].connection)
+					players[i].connection.send(Packet.commit(me,frame));
+		}else{
+			if(players[host].connection)
+				players[host].connection.send(Packet.commit(me,frame));
+		}
+		players[me].committedFrame=max(players[me].committedFrame,frame);
+	}
+	void performPacketAction(int sender,Packet p,Controller!B controller){
+		writeln(p);
 		final switch(p.type){
 			case PacketType.nop: break;
-			case PacketType.disconnect: player.connection=null; break;
-			case PacketType.ping: player.connection.send(Packet.ack(p.id)); break;
+			case PacketType.disconnect:
+				writeln("player ",sender," disconnected");
+				players[sender].connection=null;
+				break;
+			case PacketType.ping: if(players[sender].connection) players[sender].connection.send(Packet.ack(p.id)); break;
 			case PacketType.ack: break; // TODO
+			case PacketType.updatePlayerId:
+				if(sender!=host){
+					stderr.writeln("non-host player ",sender," attempted to update id: ",p);
+					break;
+				}
+				if(me!=-1){
+					stderr.writeln("host attempted to identify already identified player ",me,": ",p);
+					break;
+				}
+				if(p.id<0||p.id>=players.length){
+					stderr.writeln("attempt to identify to invalid id ",p.id);
+					break;
+				}
+				me=p.id;
+				updateStatus(PlayerStatus.synched);
+				break;
 			case PacketType.setOption:
+				if(!isHost&&sender!=host){
+					stderr.writeln("non-host player ",sender," attempted to update settings: ",p);
+					break;
+				}
+				if(me!=-1&&players[me].status>=PlayerStatus.loading){
+					stderr.writeln("attempt to change settings after game started loading: ",p);
+					break;
+				}
+				if(p.player<0||p.player>=playerLimit){
+					stderr.writeln("player id out of range: ",p);
+					break;
+				}
+				if(p.player>=players.length) players.length=p.player+1;
+				if(players[p.player].status>=PlayerStatus.readyToLoad){
+					stderr.writeln("attempt to change settings after marked ready to load: ",p);
+					break;
+				}
 				auto len=0;
 				while(len<p.optionName.length&&p.optionName[len]!='\0') ++len;
 				if(len==p.optionName.length) break;
 			Lswitch:switch(p.optionName[0..len]){
 					static foreach(setting;__traits(allMembers,Settings)){
 						case setting:
-							if(p.player<0||p.player>=players.length) break Lswitch;
-							if(players[p.player].status>=PlayerStatus.readyToLoad) break Lswitch;
 							alias T=typeof(mixin(`players[p.player].settings.`~setting));
 							static if(is(T==int)) mixin(`players[p.player].settings.`~setting)=p.intValue;
 							else static if(is(T==bool))  mixin(`players[p.player].settings.`~setting)=p.boolValue;
@@ -260,47 +467,128 @@ class Network(B){
 					default: break;
 				}
 				break;
-			case PacketType.readyToLoad:
-				if(p.player<0||p.player>=players.length) break;
-				players[p.player].status=max(players[p.player].status,PlayerStatus.readyToLoad);
+			case PacketType.updateStatus:
+				if(p.player<0||p.player>=playerLimit) break;
+				if(p.player>=players.length) players.length=p.player+1;
+				players[p.player].status=max(players[p.player].status,p.newStatus);
 				break;
 			case PacketType.loadGame:
-				// TODO: load the game, send readyToStart message
-				break;
-			case PacketType.readyToStart:
-				if(p.player<0||p.player>=players.length) break;
-				players[p.player].status=max(players[p.player].status,PlayerStatus.readyToStart);
+				if(sender!=host){
+					stderr.writeln("non-host player ",sender," attempted to initiate loading: ",p);
+					break;
+				}
+				if(!readyToLoad){
+					stderr.writeln("attempt to load game before ready: ",p);
+					break;
+				}
+				updateStatus(PlayerStatus.loading);
 				break;
 			case PacketType.startGame:
-				// TODO: wait for the specified amount, start game
+				// TODO: wait for the specified amount of time
+				if(sender!=host){
+					stderr.writeln("non-host player ",sender," attempted to start game: ",p);
+					break;
+				}
+				if(!readyToStart){
+					stderr.writeln("attempt to start game before ready: ",p);
+					break;
+				}
+				updateStatus(PlayerStatus.playing);
 				break;
 			case PacketType.command:
-				controller.addExternalCommand(p.frame,fromNetwork!B(p.networkCommand));
+				if(controller) controller.addExternalCommand(p.frame,fromNetwork!B(p.networkCommand));
 				break;
 			case PacketType.commit:
-				// TODO: commit state to max of all committed states
+				players[p.commitPlayer].committedFrame=max(players[p.commitPlayer].committedFrame,p.commitFrame);
 				break;
+		}
+	}
+	void forwardPacket(int player,Packet p,Controller!B controller){
+		if(!isHost) return;
+		// host forwards state updates to all clients
+		// TODO: for commands, allow direct connections, to decrease latency
+		final switch(p.type) with(PacketType){
+			case nop: return;
+			case disconnect: break;
+			case ping: break;
+			case ack: break;
+			case updatePlayerId: break;
+			case loadGame: stderr.writeln("load game packet sent to host"); break;
+			case startGame: stderr.writeln("start game packet sent to host"); break;
+			case setOption,updateStatus,command,commit:
+			foreach(other;0..players.length){
+				if(other==player) return;
+				if(players[other].connection) players[other].connection.send(p);
+			}
+		}
+	}
+	void handlePacket(int player,Packet p,Controller!B controller){
+		performPacketAction(player,p,controller);
+		forwardPacket(player,p,controller);
+	}
+	void addPlayer(Player player)in{
+		assert(isHost);
+	}do{
+		int newId=cast(int)players.length;
+		players~=player;
+		foreach(other;0..cast(int)players.length-1)
+			sendPlayerSettings(players[other].connection,newId);
+		foreach(other;0..cast(int)players.length)
+			sendPlayerSettings(players[newId].connection,other);
+		if(player.connection) player.connection.send(Packet.updatePlayerId(newId));
+	}
+	void acceptNewConnections(){
+		if(isHost){
+			if(players.length>=playerLimit) return;
+			for(Socket newSocket=null;;newSocket=null){
+				try newSocket=listener.accept();
+				catch(Exception){}
+				if(!newSocket) break;
+				newSocket.blocking=false;
+				auto newPlayer=Player(PlayerStatus.connected,Settings.init,new TCPConnection(newSocket));
+				addPlayer(newPlayer);
+				writeln("player ",players.length-1," joined");
+			}
+		}else{
+			// TODO: accept peer-to-peer connections to decrease latency
 		}
 	}
 	void update(Controller!B controller){
-		foreach(ref player;players){
+		acceptNewConnections();
+		foreach(i,ref player;players){
 			if(!player.connection) continue;
 			if(!player.connection.alive){
 				player.connection=null;
-				player.status=PlayerStatus.disconnected;
+				stderr.writeln("player ",i," dropped");
 				continue;
 			}
-			while(player.connection.ready){
-				handlePacket(player,player.connection.receive,controller);
+			while(player.connection&&player.connection.ready){
+				handlePacket(cast(int)i,player.connection.receive,controller);
 			}
 		}
 	}
-}
-
-class GameHost{
-	Socket acceptingSocket;
-	int[] controlledSides;
-	this(int[] controlledSides){
-		this.controlledSides=controlledSides;
+	void idleLobby()in{
+		assert(me==-1||players[me].status<PlayerStatus.loading);
+	}do{
+		update(null);
+		Thread.sleep(1.msecs);
+	}
+	void load()in{
+		assert(isHost);
+	}do{
+		foreach(i,ref player;players){
+			if(!player.connection) continue;
+			player.connection.send(Packet.loadGame);
+		}
+		updateStatus(PlayerStatus.loading);
+	}
+	void start()in{
+		assert(isHost);
+	}do{
+		foreach(i,ref player;players){
+			if(!player.connection) continue;
+			player.connection.send(Packet.startGame(0));
+		}
+		updateStatus(PlayerStatus.playing);
 	}
 }

@@ -2217,7 +2217,8 @@ final class SacScene: Scene{
 		control(dt);
 		if(state){
 			playAudio=true;
-			state.step();
+			if(controller) controller.step();
+			else state.step();
 			// state.commit();
 			if(camera.target){
 				auto targetFacing=state.current.movingObjectById!((obj)=>obj.creatureState.facing, function float(){ assert(0); })(camera.target);

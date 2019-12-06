@@ -1761,6 +1761,16 @@ struct Objects(B,RenderMode mode){
 				staticObjects.length=staticObjects.length+1;
 				staticObjects[$-1].sacObject=object.sacObject;
 			}
+		}else{
+			static if(is(T==MovingObject!B)){
+				enforce(0<=type && type<numMoving);
+				if(type>=movingObjects.length) movingObjects.length=type+1;
+				if(!movingObjects[type].sacObject) movingObjects[type].sacObject=object.sacObject;
+			}else{
+				enforce(numMoving<=type && type<numMoving+numStatic);
+				if(type-numMoving>=staticObjects.length) staticObjects.length=type-numMoving+1;
+				if(!staticObjects[type-numMoving].sacObject) staticObjects[type-numMoving].sacObject=object.sacObject;
+			}
 		}
 		static if(is(T==MovingObject!B)){
 			enforce(0<=type && type<numMoving);
@@ -1800,6 +1810,11 @@ struct Objects(B,RenderMode mode){
 				type=object.sacObject.stateIndex[mode]=cast(int)fixedObjects.length+numMoving+numStatic;
 				fixedObjects.length=fixedObjects.length+1;
 				fixedObjects[$-1].sacObject=object.sacObject;
+			}else{
+				enforce(numMoving+numStatic<=type);
+				if(type-(numMoving+numStatic)>=fixedObjects.length) fixedObjects.length=type-(numMoving+numStatic)+1;
+				if(!fixedObjects[type-(numMoving+numStatic)].sacObject)
+					fixedObjects[type-(numMoving+numStatic)].sacObject=object.sacObject;
 			}
 			enforce(numMoving+numStatic<=type);
 			enforce(type-(numMoving+numStatic)<fixedObjects.length);
@@ -1834,6 +1849,9 @@ struct Objects(B,RenderMode mode){
 				type=particle.sacParticle.stateIndex=cast(int)particles.length;
 				particles.length=particles.length+1;
 				particles[$-1].sacParticle=particle.sacParticle;
+			}else{
+				if(type>=particles.length) particles.length=type+1;
+				if(!particles[type].sacParticle) particles[type].sacParticle=particle.sacParticle;
 			}
 			enforce(0<=type && type<particles.length);
 			particles[type].addParticle(particle);
@@ -7495,9 +7513,15 @@ final class GameState(B){
 	}
 
 	void step(){
-		next.updateFrom(current,commands[current.frame].data);
+		// current.update(commands[committed.frame].data) // TODO: optimize to this
+		next.updateFrom(current,commands[current.frame].data); // this is just to keep copyFrom bug-free
 		swap(current,next);
 		if(commands.length<=current.frame) commands~=Array!(Command!B)();
+	}
+	void stepCommitted()in{
+		assert(lastCommitted.frame<current.frame);
+	}do{
+		lastCommitted.update(commands[lastCommitted.frame].data);
 	}
 	void commit(){
 		lastCommitted.copyFrom(current);
@@ -7521,14 +7545,30 @@ final class GameState(B){
 	}
 	void simulateTo(int frame)in{
 		assert(frame>=current.frame);
-	}body{
+	}do{
 		while(current.frame<frame)
 			step();
+	}
+	void simulateCommittedTo(int frame)in{
+		assert(frame<=current.frame);
+	}do{
+		while(lastCommitted.frame<frame)
+			stepCommitted();
+	}
+	void addCommandInconsistent(int frame,Command!B command)in{
+		assert(frame>=lastCommitted.frame);
+	}do{
+		if(command.side==-1) return;
+		if(commands.length<=frame) commands.length=frame+1;
+		commands[frame]~=command;
+		if(!isSorted(commands[frame].data))
+			sort(commands[frame].data);
 	}
 	void addCommand(int frame,Command!B command)in{
 		assert(frame<=current.frame);
 		assert(command.id!=0);
-	}body{
+		assert(frame>=lastCommitted.frame);
+	}do{
 		if(command.side==-1) return;
 		assert(frame<commands.length);
 		auto currentFrame=current.frame;

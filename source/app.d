@@ -1,6 +1,6 @@
 import options;
 import dagonBackend;
-import sids, ntts, sacobject, sacmap, state, controller;
+import sids, ntts, sacobject, sacmap, state, controller, network;
 import wadmanager,util;
 import dlib.math;
 import std.string, std.array, std.range, std.algorithm, std.stdio;
@@ -62,6 +62,8 @@ int main(string[] args){
 			options.musicVolume=to!float(opt["--music-volume=".length..$]);
 		}else if(opt.startsWith("--sound-volume=")){
 			options.soundVolume=to!float(opt["--sound-volume=".length..$]);
+		}else if(opt.startsWith("--join=")){
+			options.joinIP=opt["--join=".length..$];
 		}else if(opt.startsWith("--side=")){
 			options.controlledSide=to!int(opt["--side=".length..$]);
 		}else if(opt.startsWith("--wizard=")){
@@ -94,6 +96,10 @@ int main(string[] args){
 			options.souls=to!int(opt["--souls=".length..$]);
 		}else if(opt.startsWith("--delay-start=")){
 			options.delayStart=to!int(opt["--delay-start=".length..$]);
+		}else if(opt=="--host"){
+			options.host=2;
+		}else if(opt.startsWith("--host=")){
+			options.host=to!int(opt["--host=".length..$]);
 		}else LoptSwitch: switch(opt){
 			static string getOptionName(string memberName){
 				import std.ascii;
@@ -145,6 +151,30 @@ int main(string[] args){
 	initNTTData(options.enableReadFromWads);
 	alias B=DagonBackend;
 	auto backend=B(options);
+	Network!B network=null;
+	if(options.host){
+		network=new Network!B();
+		network.hostGame();
+	}else if(options.joinIP!=""){
+		network=new Network!B();
+		auto address=new InternetAddress(options.joinIP,listeningPort);
+		network.joinGame(address);
+	}
+	if(network){
+		while(!network.synched) network.idleLobby();
+		network.updateSettings(options.settings);
+		if(!network.isHost) network.updateStatus(PlayerStatus.readyToLoad);
+		while(!network.readyToLoad){
+			network.idleLobby();
+			if(network.isHost&&network.players.length>=options.host)
+				network.updateStatus(PlayerStatus.readyToLoad);
+		}
+		if(network.isHost){
+			network.load();
+		}else{
+			while(!network.loading) network.idleLobby();
+		}
+	}
 	GameState!B state;
 	int controlledSide=options.settings.controlledSide;
 	void loadMap(string hmap){
@@ -154,11 +184,19 @@ int main(string[] args){
 		auto sids=loadSids(hmap[0..$-".HMAP".length]~".SIDS");
 		auto ntts=loadNTTs(hmap[0..$-".HMAP".length]~".NTTS");
 		state=new GameState!B(map,sids,ntts,options);
-		auto wizard=SacObject!B.getSAXS!Wizard(options.wizard[0..4]);
-		//printWizardStats(wizard);
-		auto spellbook=getDefaultSpellbook!B(options.god);
-		auto id=state.current.placeWizard(wizard,controlledSide,options.level,options.souls,spellbook);
-		auto controller=new Controller!B(controlledSide,state);
+		int id=0;
+		void placeWizard(Settings settings){
+			auto wizard=SacObject!B.getSAXS!Wizard(settings.wizard[0..4]);
+			//printWizardStats(wizard);
+			auto spellbook=getDefaultSpellbook!B(settings.god);
+			auto wizId=state.current.placeWizard(wizard,settings.controlledSide,settings.level,settings.souls,spellbook);
+			if(settings.controlledSide==controlledSide) id=wizId;
+		}
+		if(network){
+			foreach(ref player;network.players)
+				placeWizard(player.settings);
+		}else placeWizard(options.settings);
+		auto controller=new Controller!B(controlledSide,state,network);
 		state.commit();
 		backend.setState(state);
 		if(id) backend.focusCamera(id);
@@ -200,12 +238,14 @@ int main(string[] args){
 			}
 		}
 	}
-	auto delay=options.delayStart;
-	while(delay){
-		writeln(delay);
-		delay--;
-		import core.thread;
-		Thread.sleep(1.dur!"seconds");
+	if(!network||network.isHost){
+		auto delay=options.delayStart;
+		while(delay){
+			writeln(delay);
+			delay--;
+			import core.thread;
+			Thread.sleep(1.dur!"seconds");
+		}
 	}
 	backend.run();
 	return 0;
