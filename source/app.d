@@ -161,6 +161,7 @@ int main(string[] args){
 		network.joinGame(address);
 	}
 	if(network){
+		if(options.dumpTraffic) network.dumpTraffic=true;
 		while(!network.synched) network.idleLobby();
 		network.updateSettings(options.settings);
 		if(!network.isHost) network.updateStatus(PlayerStatus.readyToLoad);

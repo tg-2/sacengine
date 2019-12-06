@@ -293,6 +293,7 @@ final class Network(B){
 		}
 	}
 	enum host=0;
+	bool dumpTraffic=false;
 	bool isHost(){ return me==host; }
 	void hostGame()in{
 		assert(!players.length);
@@ -406,7 +407,7 @@ final class Network(B){
 		players[me].committedFrame=max(players[me].committedFrame,frame);
 	}
 	void performPacketAction(int sender,Packet p,Controller!B controller){
-		writeln(p);
+		if(dumpTraffic) writeln("from ",sender,": ",p);
 		final switch(p.type){
 			case PacketType.nop: break;
 			case PacketType.disconnect:

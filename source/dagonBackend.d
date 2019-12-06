@@ -2213,7 +2213,7 @@ final class SacScene: Scene{
 		assert(dt==1.0f/updateFPS);
 		//writeln(DagonBackend.getTotalGPUMemory()," ",DagonBackend.getAvailableGPUMemory());
 		//writeln(eventManager.fps);
-		if(state) stateTestControl();
+		if(state&&!controller.network) stateTestControl();
 		control(dt);
 		if(state){
 			if(controller){

@@ -28,6 +28,7 @@ struct Options{
 	string joinIP="";
 	Settings settings;
 	bool testLag=false;
+	bool dumpTraffic=false;
 	alias settings this;
 }
 
