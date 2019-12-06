@@ -133,7 +133,7 @@ int main(string[] args){
 	if(options.controlledSide==int.min){
 		options.controlledSide=0;
 	}
-	if(options.wizard==""){
+	if(options.wizard=="\0\0\0\0"){
 		import std.random: uniform;
 		import nttData:wizards;
 		options.wizard=text((cast(char[4])wizards[uniform!"[)"(0,$)]));
