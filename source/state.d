@@ -1750,7 +1750,7 @@ struct Objects(B,RenderMode mode){
 			return sacObject.stateIndex[mode]=-1;
 		}else{
 			auto cand=sacObject.stateIndex[mode];
-			if(0<=cand&&cand<movingObjects.length)
+			if(0<=cand&&cand<staticObjects.length)
 				if(staticObjects[cand].sacObject is sacObject)
 					return cand;
 			foreach(i,ref obj;staticObjects.data)
