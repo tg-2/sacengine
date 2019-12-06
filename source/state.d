@@ -1504,6 +1504,7 @@ struct Swarm(B){
 		static assert(__traits(isSame,this.tupleof[$-1],this.bugs));
 		assignArray(bugs,rhs.bugs);
 	}
+	this(this){ bugs=bugs.dup; } // TODO: needed?
 }
 
 struct Effects(B){
@@ -1653,7 +1654,7 @@ struct Effects(B){
 	}
 	Array!(SwarmCasting!B) swarmCastings;
 	void addEffect(SwarmCasting!B swarmCasting){
-		swarmCastings~=swarmCasting;
+		swarmCastings~=move(swarmCasting);
 	}
 	void removeSwarmCasting(int i){
 		if(i+1<swarmCastings.length) swap(swarmCastings[i],swarmCastings[$-1]);
@@ -1661,11 +1662,11 @@ struct Effects(B){
 	}
 	Array!(Swarm!B) swarms;
 	void addEffect(Swarm!B swarm){
-		swarms~=swarm;
+		swarms~=move(swarm);
 	}
 	void removeSwarm(int i){
 		if(i+1<swarms.length) swap(swarms[i],swarms[$-1]);
-		swarms.length=swarms.length-1;
+		swarms.length=swarms.length-1; // TODO: reuse memory?
 	}
 	void opAssign(ref Effects!B rhs){
 		assignArray(debris,rhs.debris);
@@ -3237,12 +3238,12 @@ bool castSwarm(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,int castingT
 	auto position=positionSide[0],side=positionSide[1];
 	auto swarm=makeSwarm(side,position,centerTarget(target,state),spell,castingTime,state);
 	playSpellSoundTypeAt(SoundType.swarm,swarm.position,state,4.0f); // TODO: move sound with swarm
-	state.addEffect(SwarmCasting!B(manaDrain,spell,swarm));
+	state.addEffect(SwarmCasting!B(manaDrain,spell,move(swarm)));
 	return true;
 }
 
 bool swarm(B)(Swarm!B swarm,ObjectState!B state){
-	state.addEffect(swarm);
+	state.addEffect(move(swarm));
 	return true;
 }
 
@@ -5245,7 +5246,7 @@ bool updateSwarmCasting(B)(ref SwarmCasting!B swarmCast,ObjectState!B state){
 					return false;
 				case CastingStatus.finished:
 					swarm.status=SwarmStatus.flying;
-					.swarm(swarm,state);
+					.swarm(move(swarm),state);
 					return false;
 			}
 		},()=>false)(manaDrain.wizard);
@@ -6278,6 +6279,7 @@ final class ObjectState(B){ // (update logic)
 	}
 	int frame=0;
 	auto rng=MinstdRand0(1); // TODO: figure out what rng to use
+	@property int hash(){ return rng.tupleof[0]; } // rng seed as proxy for state hash. TODO: improve
 	int uniform(int n){
 		import std.random: uniform;
 		return uniform(0,n,rng);
