@@ -282,7 +282,7 @@ enum listeningPort=9116;
 final class Network(B){
 	Player[] players;
 	Socket listener;
-	this(){
+	void makeListener(){
 		listener=new Socket(AddressFamily.INET,SocketType.STREAM);
 		listener.setOption(SocketOptionLevel.SOCKET,SocketOption.REUSEADDR,true);
 		try{
@@ -293,24 +293,30 @@ final class Network(B){
 			listener=null;
 		}
 	}
+	this(){
+		// makeListener
+	}
 	enum host=0;
 	bool dumpTraffic=false;
 	bool isHost(){ return me==host; }
 	void hostGame()in{
 		assert(!players.length);
 	}do{
+		makeListener();
 		enforce(listener!is null,text("cannot host on port ",listeningPort));
 		static assert(host==0);
 		players=[Player(PlayerStatus.synched,Settings.init,null)];
 		me=0;
 	}
-	void joinGame(InternetAddress hostAddress)in{
+	bool joinGame(InternetAddress hostAddress)in{
 		assert(!players.length);
 	}do{
 		auto socket=new Socket(AddressFamily.INET,SocketType.STREAM);
-		socket.connect(hostAddress);
+		try socket.connect(hostAddress);
+		catch(Exception){ return false; }
 		socket.blocking=false;
 		players=[Player(PlayerStatus.connected,Settings.init,new TCPConnection(socket))];
+		return true;
 	}
 	bool synched(){
 		return me!=-1&&players[me].status>=PlayerStatus.synched;
@@ -553,6 +559,7 @@ final class Network(B){
 		if(player.connection) player.connection.send(Packet.updatePlayerId(newId));
 	}
 	void acceptNewConnections(){
+		if(!listener) return;
 		if(isHost){
 			if(players.length>=playerLimit) return;
 			for(Socket newSocket=null;;newSocket=null){
