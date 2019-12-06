@@ -1732,56 +1732,53 @@ struct Objects(B,RenderMode mode){
 		Effects!B effects;
 		CommandCones!B commandCones;
 	}
-	void resetStateIndex(){
-		foreach(j;0..cast(int)movingObjects.length)
-			movingObjects[j].sacObject.stateIndex[mode]=j;
-		foreach(j;0..cast(int)staticObjects.length)
-			staticObjects[j].sacObject.stateIndex[mode]=j+numMoving;
-		static if(mode == RenderMode.opaque){
-			foreach(j;0..cast(int)fixedObjects.length)
-				fixedObjects[j].sacObject.stateIndex[mode]=j;
-			foreach(j;0..cast(int)particles.length)
-				particles[j].sacParticle.stateIndex=j;
-			foreach(j;0..cast(int)relativeParticles.length)
-				particles[j].sacParticle.stateIndex=j;
+	int getIndex(T)(SacObject!B sacObject,bool insert) if(is(T==MovingObject!B)||is(T==StaticObject!B)){
+		static if(is(T==MovingObject!B)){
+			// cache, does not change semantics
+			auto cand=sacObject.stateIndex[mode];
+			if(0<=cand&&cand<movingObjects.length)
+				if(movingObjects[cand].sacObject is sacObject)
+					return cand;
+			foreach(i,ref obj;movingObjects.data)
+				if(obj.sacObject is sacObject)
+					return sacObject.stateIndex[mode]=cast(int)i;
+			if(insert){
+				movingObjects.length=movingObjects.length+1;
+				movingObjects[$-1].sacObject=sacObject;
+				return sacObject.stateIndex[mode]=cast(int)movingObjects.length-1;
+			}
+			return sacObject.stateIndex[mode]=-1;
+		}else{
+			auto cand=sacObject.stateIndex[mode];
+			if(0<=cand&&cand<movingObjects.length)
+				if(staticObjects[cand].sacObject is sacObject)
+					return cand;
+			foreach(i,ref obj;staticObjects.data)
+				if(obj.sacObject is sacObject)
+					return sacObject.stateIndex[mode]=cast(int)i;
+			if(insert){
+				staticObjects.length=staticObjects.length+1;
+				staticObjects[$-1].sacObject=sacObject;
+				return sacObject.stateIndex[mode]=cast(int)staticObjects.length-1;
+			}
+			return sacObject.stateIndex[mode]=-1;
 		}
 	}
 	Id addObject(T)(T object) if(is(T==MovingObject!B)||is(T==StaticObject!B))in{
 		assert(object.id!=0);
 	}do{
 		Id result;
-		auto type=object.sacObject.stateIndex[mode];
-		if(type==-1){
-			static if(is(T==MovingObject!B)){
-				type=object.sacObject.stateIndex[mode]=cast(int)movingObjects.length;
-				movingObjects.length=movingObjects.length+1;
-				movingObjects[$-1].sacObject=object.sacObject;
-			}else{
-				type=object.sacObject.stateIndex[mode]=cast(int)staticObjects.length+numMoving;
-				staticObjects.length=staticObjects.length+1;
-				staticObjects[$-1].sacObject=object.sacObject;
-			}
-		}else{
-			static if(is(T==MovingObject!B)){
-				enforce(0<=type && type<numMoving);
-				if(type>=movingObjects.length) movingObjects.length=type+1;
-				if(!movingObjects[type].sacObject) movingObjects[type].sacObject=object.sacObject;
-			}else{
-				enforce(numMoving<=type && type<numMoving+numStatic);
-				if(type-numMoving>=staticObjects.length) staticObjects.length=type-numMoving+1;
-				if(!staticObjects[type-numMoving].sacObject) staticObjects[type-numMoving].sacObject=object.sacObject;
-			}
-		}
+		auto index=getIndex!T(object.sacObject,true);
 		static if(is(T==MovingObject!B)){
-			enforce(0<=type && type<numMoving);
-			enforce(type<movingObjects.length);
-			result=Id(mode,type,movingObjects[type].length);
-			movingObjects[type].addObject(object);
+			enforce(0<=index && index<numMoving);
+			enforce(index<movingObjects.length);
+			result=Id(mode,index,movingObjects[index].length);
+			movingObjects[index].addObject(object);
 		}else{
-			enforce(numMoving<=type && type<numMoving+numStatic);
-			enforce(type-numMoving<staticObjects.length);
-			result=Id(mode,type,staticObjects[type-numMoving].length);
-			staticObjects[type-numMoving].addObject(object);
+			enforce(0<=index && index<numStatic);
+			enforce(index<staticObjects.length);
+			result=Id(mode,index+numMoving,staticObjects[index].length);
+			staticObjects[index].addObject(object);
 		}
 		return result;
 	}
@@ -1804,21 +1801,26 @@ struct Objects(B,RenderMode mode){
 		}
 	}
 	static if(mode==RenderMode.opaque){
-		void addFixed(FixedObject!B object){
-			auto type=object.sacObject.stateIndex[mode];
-			if(type==-1){
-				type=object.sacObject.stateIndex[mode]=cast(int)fixedObjects.length+numMoving+numStatic;
+		int getIndexFixed(SacObject!B sacObject,bool insert){
+			// cache, does not change semantics
+			auto cand=sacObject.stateIndex[mode];
+			if(0<=cand&&cand<fixedObjects.length)
+				if(fixedObjects[cand].sacObject is sacObject)
+					return cand;
+			foreach(i,ref obj;fixedObjects)
+				if(obj.sacObject is sacObject)
+					return sacObject.stateIndex[mode]=cast(int)i;
+			if(insert){
 				fixedObjects.length=fixedObjects.length+1;
-				fixedObjects[$-1].sacObject=object.sacObject;
-			}else{
-				enforce(numMoving+numStatic<=type);
-				if(type-(numMoving+numStatic)>=fixedObjects.length) fixedObjects.length=type-(numMoving+numStatic)+1;
-				if(!fixedObjects[type-(numMoving+numStatic)].sacObject)
-					fixedObjects[type-(numMoving+numStatic)].sacObject=object.sacObject;
+				fixedObjects[$-1].sacObject=sacObject;
+				return sacObject.stateIndex[mode]=cast(int)fixedObjects.length-1;
 			}
-			enforce(numMoving+numStatic<=type);
-			enforce(type-(numMoving+numStatic)<fixedObjects.length);
-			fixedObjects[type-(numMoving+numStatic)].addFixed(object);
+			return sacObject.stateIndex[mode]=-1;
+		}
+		void addFixed(FixedObject!B object){
+			auto index=getIndexFixed(object.sacObject,true);
+			enforce(0<=index&&index<fixedObjects.length);
+			fixedObjects[index].addFixed(object);
 		}
 		Id addObject(Soul!B object){
 			auto result=Id(mode,ObjectType.soul,souls.length);
@@ -1842,19 +1844,28 @@ struct Objects(B,RenderMode mode){
 		void addEffect(T)(T proj){
 			effects.addEffect(proj);
 		}
-		void addParticle(bool relative)(Particle!(B,relative) particle){
-			auto type=particle.sacParticle.stateIndex;
+		int getIndexParticle(bool relative)(SacParticle!B sacParticle,bool insert){
 			static if(relative) alias particles=relativeParticles;
-			if(type==-1){
-				type=particle.sacParticle.stateIndex=cast(int)particles.length;
+			// cache, does not change semantics
+			auto cand=sacParticle.stateIndex;
+			if(0<=cand&&cand<particles.length)
+				if(particles[cand].sacParticle is sacParticle)
+					return cand;
+			foreach(i,ref par;particles.data)
+				if(par.sacParticle is sacParticle)
+					return sacParticle.stateIndex=cast(int)i;
+			if(insert){
 				particles.length=particles.length+1;
-				particles[$-1].sacParticle=particle.sacParticle;
-			}else{
-				if(type>=particles.length) particles.length=type+1;
-				if(!particles[type].sacParticle) particles[type].sacParticle=particle.sacParticle;
+				particles[$-1].sacParticle=sacParticle;
+				return sacParticle.stateIndex=cast(int)particles.length-1;
 			}
-			enforce(0<=type && type<particles.length);
-			particles[type].addParticle(particle);
+			return sacParticle.stateIndex=-1;
+		}
+		void addParticle(bool relative)(Particle!(B,relative) particle){
+			auto index=getIndexParticle!relative(particle.sacParticle,true);
+			static if(relative) alias particles=relativeParticles;
+			enforce(0<=index && index<particles.length);
+			particles[index].addParticle(particle);
 		}
 		void addCommandCone(CommandCone!B cone){
 			if(!commandCones.cones.length) commandCones=CommandCones!B(32); // TODO: do this eagerly?
@@ -1951,7 +1962,7 @@ auto eachByType(alias f,bool movingFirst=true,bool particlesBeforeEffects=false,
 }
 auto eachMovingOf(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,SacObject!B sacObject,T args){
 	with(objects){
-		auto index=sacObject.stateIndex[mode];
+		auto index=objects.getIndex!(MovingObject!B)(sacObject,false);
 		if(index==-1||index>=movingObjects.length) return;
 		each!f(movingObjects[index],args);
 	}
@@ -1968,10 +1979,6 @@ struct ObjectManager(B){
 	Array!Id ids;
 	Objects!(B,RenderMode.opaque) opaqueObjects;
 	Objects!(B,RenderMode.transparent) transparentObjects;
-	void resetStateIndex(){
-		opaqueObjects.resetStateIndex();
-		transparentObjects.resetStateIndex();
-	}
 	int addObject(T)(T object) if(is(T==MovingObject!B)||is(T==StaticObject!B)||is(T==Soul!B)||is(T==Building!B))in{
 		assert(object.id==0);
 	}do{
@@ -6282,12 +6289,6 @@ final class ObjectState(B){ // (update logic)
 		// TODO: fix bias
 		return Vector3f(uniform(-1.0f,1.0f),uniform(-1.0f,1.0f),uniform(-1.0f,1.0f)).normalized;
 	}
-	void resetStateIndex(){
-		SacObject!B.resetStateIndex();
-		SacParticle!B.resetStateIndex();
-		sides.resetStateIndex();
-		obj.resetStateIndex();
-	}
 	void copyFrom(ObjectState!B rhs){
 		frame=rhs.frame;
 		rng=rhs.rng;
@@ -6719,11 +6720,6 @@ final class Sides(B){
 	private SacParticle!B[32] manaParticles;
 	private SacParticle!B[32] shrineParticles;
 	private SacParticle!B[32] manahoarParticles;
-	void resetStateIndex(){
-		foreach(tag,obj;manaParticles) if(obj) obj.stateIndex=-1;
-		foreach(tag,obj;shrineParticles) if(obj) obj.stateIndex=-1;
-		foreach(tag,obj;manahoarParticles) if(obj) obj.stateIndex=-1;
-	}
 	this(Side[] sids...){
 		foreach(ref side;sids){
 			enforce(0<=side.id&&side.id<32);
@@ -7534,7 +7530,6 @@ final class GameState(B){
 	}do{
 		current.copyFrom(state);
 		static if(B.hasAudio) B.updateAudioAfterRollback();
-		current.resetStateIndex();
 	}
 	void rollback(int frame)in{
 		assert(frame>=lastCommitted.frame);
