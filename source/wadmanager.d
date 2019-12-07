@@ -7,11 +7,11 @@ class WadManager{
 	MmFile[] wads;
 	ubyte[][string] files;
 	string[][char[4]] byExt;
-	private void toFile(alias filenameCallback)(ubyte[] data,string name){
+	private void toFile(alias filenameCallback,T...)(ubyte[] data,string name,T args){
 		files[name]=data;
 		byExt[name[$-4..$][0..4]]~=name;
-		static if(is(typeof(filenameCallback(name))))
-			filenameCallback(name);
+		static if(is(typeof(filenameCallback(name,args))))
+			filenameCallback(name,args);
 	}
 	void indexWADs(string dataDir){
 		import std.file:dirEntries,SpanMode;
@@ -24,7 +24,7 @@ class WadManager{
 		}
 		writeln();
 	}
-	void indexWAD(alias filenameCallback=0)(string wadPath,string dirPath){
+	void indexWAD(alias filenameCallback=0,T...)(string wadPath,string dirPath,T args){
 		auto wad=new MmFile(wadPath);
 		wads~=wad;
 		auto input=cast(ubyte[])wad[];
@@ -55,12 +55,12 @@ class WadManager{
 				case 0: // uncompressed file
 					enforce(subfiles==0);
 					enforce(size==zsize);
-					toFile!filenameCallback(input[offset..offset+size],text(filename,".",ext));
+					toFile!filenameCallback(input[offset..offset+size],text(filename,".",ext),args);
 					offset+=size;
 					break;
 				case 2: // compressed file
 					enforce(subfiles==0);
-					toFile!filenameCallback((zsize?cast(ubyte[])uncompress(input[offset..offset+zsize]):[]),text(filename,".",ext));
+					toFile!filenameCallback((zsize?cast(ubyte[])uncompress(input[offset..offset+zsize]):[]),text(filename,".",ext),args);
 					offset+=zsize;
 					break;
 				case 1: // folder
