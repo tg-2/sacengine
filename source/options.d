@@ -29,6 +29,7 @@ struct Options{
 	Settings settings;
 	bool testLag=false;
 	bool dumpTraffic=false;
+	bool checkDesynch=true;
 	alias settings this;
 }
 

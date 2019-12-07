@@ -169,7 +169,8 @@ int main(string[] args){
 		}
 	}
 	if(network){
-		if(options.dumpTraffic) network.dumpTraffic=true;
+		network.dumpTraffic=options.dumpTraffic;
+		network.checkDesynch=options.checkDesynch;
 		while(!network.synched) network.idleLobby();
 		network.updateSettings(options.settings);
 		if(!network.isHost) network.updateStatus(PlayerStatus.readyToLoad);

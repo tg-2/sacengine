@@ -332,6 +332,7 @@ final class Network(B){
 	}
 	enum host=0;
 	bool dumpTraffic=false;
+	bool checkDesynch=true;
 	bool isHost(){ return me==host; }
 	SynchQueue synchQueue;
 	void hostGame()in{
@@ -342,7 +343,7 @@ final class Network(B){
 		static assert(host==0);
 		players=[Player(PlayerStatus.synched,Settings.init,null)];
 		me=0;
-		synchQueue=new SynchQueue();
+		if(checkDesynch) synchQueue=new SynchQueue();
 	}
 	bool joinGame(InternetAddress hostAddress)in{
 		assert(!players.length);
@@ -573,6 +574,7 @@ final class Network(B){
 				if(controller) controller.updateCommitted();
 				break;
 			case PacketType.checkSynch:
+				if(!checkDesynch) return;
 				if(!isHost){
 					stderr.writeln("checkSynch packet sent to non-host player ",me,": ",p);
 					break;
