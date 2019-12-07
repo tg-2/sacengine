@@ -635,7 +635,7 @@ final class Network(B){
 			for(Socket newSocket=null;;newSocket=null){
 				try newSocket=listener.accept();
 				catch(Exception){}
-				if(!newSocket) break;
+				if(!newSocket||!newSocket.isAlive) break;
 				newSocket.blocking=false;
 				auto newPlayer=Player(PlayerStatus.connected,Settings.init,new TCPConnection(newSocket));
 				addPlayer(newPlayer);
