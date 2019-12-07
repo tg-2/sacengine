@@ -20,6 +20,7 @@ final class Controller(B){
 	void addCommand(int frame,Command!B command)in{
 		assert(command.id==0);
 		assert(!network||network.playing);
+		assert(committedFrame<=frame);
 	}do{
 		if(command.side!=controlledSide) return;
 		command.id=++commandId;
@@ -29,10 +30,11 @@ final class Controller(B){
 	}
 	void addCommand(Command!B command){
 		if(network&&!network.playing) return;
-		addCommand(state.current.frame,command);
+		addCommand(currentFrame,command);
 	}
 	void addExternalCommand(int frame,Command!B command)in{
 		assert(command.side!=controlledSide);
+		assert(committedFrame<=frame);
 	}do{
 		firstUpdatedFrame=min(firstUpdatedFrame,frame);
 		state.addCommandInconsistent(frame,command);
