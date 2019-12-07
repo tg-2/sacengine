@@ -4,7 +4,7 @@ import std.math;
 import std.stdio;
 import std.algorithm, std.range, std.exception, std.typecons;
 
-import sacobject, sacspell, mrmm, nttData, sacmap, maps, state, controller;
+import sacobject, sacspell, mrmm, nttData, sacmap, maps, state, controller, network;
 import sxsk : gpuSkinning;
 import audioBackend;
 
@@ -2502,9 +2502,24 @@ class MyApplication: SceneApplication{
 struct DagonBackend{
 	static MyApplication app;
 	static @property SacScene scene(){
-		enforce(!!app, "Dagon backend not running.");
-		assert(!!app.scene);
+		if(!app) return null;
 		return app.scene;
+	}
+	static @property GameState!DagonBackend state(){
+		if(!app) return null;
+		if(!app.scene) return null;
+		return app.scene.state;
+	}
+	static @property Controller!DagonBackend controller(){
+		if(!app) return null;
+		if(!app.scene) return null;
+		return app.scene.controller;
+	}
+	static @property Network!DagonBackend network(){
+		if(!app) return null;
+		if(!app.scene) return null;
+		if(!app.scene.controller) return null;
+		return app.scene.controller.network;
 	}
 	this(Options options){
 		enforce(!app,"can only have one DagonBackend"); // TODO: fix?

@@ -30,6 +30,7 @@ struct Options{
 	bool testLag=false;
 	bool dumpTraffic=false;
 	bool checkDesynch=true;
+	string map="";
 	alias settings this;
 }
 

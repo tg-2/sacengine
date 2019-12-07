@@ -6,6 +6,75 @@ import dlib.math;
 import std.string, std.array, std.range, std.algorithm, std.stdio;
 import std.exception, std.conv, std.typecons;
 
+void loadMap(B)(ref B backend,ref Options options)in{
+	assert(options.map.endsWith(".scp")||options.map.endsWith(".HMAP"));
+}do{
+	int controlledSide=options.settings.controlledSide;
+	Network!B network=null;
+	if(options.host){
+		network=new Network!B();
+		network.hostGame();
+	}else if(options.joinIP!=""){
+		network=new Network!B();
+		auto address=new InternetAddress(options.joinIP,listeningPort);
+		while(!network.joinGame(address)){
+			import core.thread;
+			Thread.sleep(200.msecs);
+		}
+	}
+	if(network){
+		network.dumpTraffic=options.dumpTraffic;
+		network.checkDesynch=options.checkDesynch;
+		while(!network.synched) network.idleLobby();
+		network.updateSettings(options.settings);
+		if(!network.isHost) network.updateStatus(PlayerStatus.readyToLoad);
+		while(!network.readyToLoad){
+			network.idleLobby();
+			if(network.isHost&&network.players.length>=options.host)
+				network.updateStatus(PlayerStatus.readyToLoad);
+		}
+		if(network.isHost){
+			network.load();
+		}else{
+			while(!network.loading) network.idleLobby();
+		}
+	}
+	string hmap="";
+	if(options.map.endsWith(".scp")){
+		if(!wadManager) wadManager=new WadManager();
+		static void handle(string name,string* hmap){
+			if(name.endsWith(".HMAP")) *hmap=name;
+		}
+		static int curMapNum=0; // TODO: needed?
+		wadManager.indexWAD!handle(options.map,text("`_map",curMapNum++),&hmap);
+		enforce(hmap!="","No height map in scp file");
+	}else{
+		enforce(options.map.endsWith(".HMAP"));
+		hmap=options.map;
+	}
+	auto map=new SacMap!B(hmap);
+	auto sids=loadSids(hmap[0..$-".HMAP".length]~".SIDS");
+	auto ntts=loadNTTs(hmap[0..$-".HMAP".length]~".NTTS");
+	auto state=new GameState!B(map,sids,ntts,options);
+	int id=0;
+	void placeWizard(Settings settings){
+		auto wizard=SacObject!B.getSAXS!Wizard(settings.wizard[0..4]);
+		//printWizardStats(wizard);
+		auto spellbook=getDefaultSpellbook!B(settings.god);
+		auto wizId=state.current.placeWizard(wizard,settings.controlledSide,settings.level,settings.souls,spellbook);
+		if(settings.controlledSide==controlledSide) id=wizId;
+	}
+	if(network){
+		foreach(ref player;network.players)
+			placeWizard(player.settings);
+	}else placeWizard(options.settings);
+	auto controller=new Controller!B(controlledSide,state,network);
+	state.commit();
+	backend.setState(state);
+	if(id) backend.focusCamera(id);
+	backend.setController(controller);
+}
+
 int main(string[] args){
 	import audio;
 	loadAudio();
@@ -130,6 +199,7 @@ int main(string[] args){
 			}
 			case "--ignore-settings": break;
 			case "--redirect-output": break;
+			case "--no-join": options.joinIP=""; break;
 			default:
 				stderr.writeln("unknown option: ",opt);
 				return 1;
@@ -157,82 +227,22 @@ int main(string[] args){
 	initNTTData(options.enableReadFromWads);
 	alias B=DagonBackend;
 	auto backend=B(options);
-	Network!B network=null;
-	if(options.host){
-		network=new Network!B();
-		network.hostGame();
-	}else if(options.joinIP!=""){
-		network=new Network!B();
-		auto address=new InternetAddress(options.joinIP,listeningPort);
-		while(!network.joinGame(address)){
-			import core.thread;
-			Thread.sleep(200.msecs);
+	foreach(arg;args){
+		if(arg.endsWith(".scp")||arg.endsWith(".HMAP")){
+			options.map=arg;
 		}
 	}
-	if(network){
-		network.dumpTraffic=options.dumpTraffic;
-		network.checkDesynch=options.checkDesynch;
-		while(!network.synched) network.idleLobby();
-		network.updateSettings(options.settings);
-		if(!network.isHost) network.updateStatus(PlayerStatus.readyToLoad);
-		while(!network.readyToLoad){
-			network.idleLobby();
-			if(network.isHost&&network.players.length>=options.host)
-				network.updateStatus(PlayerStatus.readyToLoad);
-		}
-		if(network.isHost){
-			network.load();
-		}else{
-			while(!network.loading) network.idleLobby();
-		}
-	}
-	GameState!B state;
-	int controlledSide=options.settings.controlledSide;
-	void loadMap(string hmap){
-		enforce(hmap.endsWith(".HMAP"));
-		enforce(!state);
-		auto map=new SacMap!B(hmap);
-		auto sids=loadSids(hmap[0..$-".HMAP".length]~".SIDS");
-		auto ntts=loadNTTs(hmap[0..$-".HMAP".length]~".NTTS");
-		state=new GameState!B(map,sids,ntts,options);
-		int id=0;
-		void placeWizard(Settings settings){
-			auto wizard=SacObject!B.getSAXS!Wizard(settings.wizard[0..4]);
-			//printWizardStats(wizard);
-			auto spellbook=getDefaultSpellbook!B(settings.god);
-			auto wizId=state.current.placeWizard(wizard,settings.controlledSide,settings.level,settings.souls,spellbook);
-			if(settings.controlledSide==controlledSide) id=wizId;
-		}
-		if(network){
-			foreach(ref player;network.players)
-				placeWizard(player.settings);
-		}else placeWizard(options.settings);
-		auto controller=new Controller!B(controlledSide,state,network);
-		state.commit();
-		backend.setState(state);
-		if(id) backend.focusCamera(id);
-		backend.setController(controller);
-	}
+	if(options.map!="") loadMap(backend,options);
+
 	foreach(ref i;1..args.length){
 		string anim="";
 		if(i+1<args.length&&args[i+1].endsWith(".SXSK"))
 			anim=args[i+1];
-		if(args[i].endsWith(".scp")){
-			if(!wadManager) wadManager=new WadManager();
-			static string hmap; // TODO: this is a hack
-			static int curMapNum=0;
-			static void handle(string name){
-				if(name.endsWith(".HMAP")) hmap=name;
-			}
-			wadManager.indexWAD!handle(args[i],text("`_map",curMapNum++));
-			if(hmap) loadMap(hmap);
-		}else if(args[i].endsWith(".HMAP")){
-			loadMap(args[i]);
-		}else{
+		if(!(args[i].endsWith(".scp")||args[i].endsWith(".HMAP"))){
 			auto sac=new SacObject!B(args[i],float.nan,anim);
 			auto position=Vector3f(1270.0f, 1270.0f, 0.0f);
-			if(state && state.current.isOnGround(position))
-				position.z=state.current.getGroundHeight(position);
+			if(B.state && B.state.current.isOnGround(position))
+				position.z=B.state.current.getGroundHeight(position);
 			backend.addObject(sac,position,facingQuaternion(0));
 		}
 		if(i+1<args.length&&args[i+1].endsWith(".SXSK")){
@@ -249,7 +259,7 @@ int main(string[] args){
 			}
 		}
 	}
-	if(!network||network.isHost){
+	if(!B.network||B.network.isHost){
 		auto delay=options.delayStart;
 		while(delay){
 			writeln(delay);
