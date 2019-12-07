@@ -7,6 +7,10 @@ import std.string, std.array, std.range, std.algorithm, std.stdio;
 import std.exception, std.conv, std.typecons;
 
 int main(string[] args){
+	version(Windows){
+		stdout.reopen("SacEngine.out.txt","w");
+		stderr.reopen("SacEngine.err.txt","w");
+	}
 	import audio;
 	loadAudio();
 	scope(exit) unloadAudio();
