@@ -7,10 +7,6 @@ import std.string, std.array, std.range, std.algorithm, std.stdio;
 import std.exception, std.conv, std.typecons;
 
 int main(string[] args){
-	version(Windows){
-		stdout.reopen("SacEngine.out.txt","w");
-		stderr.reopen("SacEngine.err.txt","w");
-	}
 	import audio;
 	loadAudio();
 	scope(exit) unloadAudio();
@@ -19,6 +15,10 @@ int main(string[] args){
 	if(args.length==0) args~="";
 	import std.file:exists;
 	if(!args.canFind("--ignore-settings")&&exists("settings.txt")) args=chain(args[0..1],File("settings.txt").byLineCopy.map!strip,args[1..$]).array;
+	if(args.canFind("--redirect-output")){
+		stdout.reopen("SacEngine.out.txt","w");
+		stderr.reopen("SacEngine.err.txt","w");
+	}
 	auto opts=args[1..$].filter!(x=>x.startsWith("--")).array;
 	args=chain(args[0..1],args[1..$].filter!(x=>!x.startsWith("--"))).array;
 	if(args.length==1){
@@ -129,6 +129,7 @@ int main(string[] args){
 				}
 			}
 			case "--ignore-settings": break;
+			case "--redirect-output": break;
 			default:
 				stderr.writeln("unknown option: ",opt);
 				return 1;
