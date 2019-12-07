@@ -592,7 +592,7 @@ final class Network(B){
 				break;
 		}
 	}
-	void forwardPacket(int player,Packet p,Controller!B controller){
+	void forwardPacket(int sender,Packet p,Controller!B controller){
 		if(!isHost) return;
 		// host forwards state updates to all clients
 		// TODO: for commands, allow direct connections, to decrease latency
@@ -606,15 +606,16 @@ final class Network(B){
 			case loadGame: stderr.writeln("load game packet sent to host"); break;
 			case startGame: stderr.writeln("start game packet sent to host"); break;
 			case setOption,updateStatus,command,commit:
-			foreach(other;0..players.length){
-				if(other==player) return;
-				if(players[other].connection) players[other].connection.send(p);
-			}
+				foreach(other;0..players.length){
+					if(other==sender) continue;
+					if(players[other].connection) players[other].connection.send(p);
+				}
+				break;
 		}
 	}
-	void handlePacket(int player,Packet p,Controller!B controller){
-		performPacketAction(player,p,controller);
-		forwardPacket(player,p,controller);
+	void handlePacket(int sender,Packet p,Controller!B controller){
+		performPacketAction(sender,p,controller);
+		forwardPacket(sender,p,controller);
 	}
 	void addPlayer(Player player)in{
 		assert(isHost);
@@ -674,7 +675,7 @@ final class Network(B){
 		updateStatus(PlayerStatus.loading);
 	}
 	void start()in{
-		assert(isHost);
+		assert(isHost&&readyToStart);
 	}do{
 		ackHandler=AckHandler.measurePing;
 		players[me].ping=0;

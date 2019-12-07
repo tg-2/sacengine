@@ -7517,7 +7517,7 @@ final class GameState(B){
 	}
 
 	void step(){
-		// current.update(commands[committed.frame].data) // TODO: allow this kind of in-place update (need to fix swarm)
+		//current.update(commands[current.frame].data);
 		next.updateFrom(current,commands[current.frame].data);
 		swap(current,next);
 		if(commands.length<=current.frame) commands~=Array!(Command!B)();
@@ -7525,7 +7525,7 @@ final class GameState(B){
 	void stepCommitted()in{
 		assert(lastCommitted.frame<current.frame);
 	}do{
-		//lastCommitted.update(commands[lastCommitted.frame].data); // TODO: allow this kind of in-place update (need to fix swarm)
+		//lastCommitted.update(commands[lastCommitted.frame].data);
 		next.updateFrom(lastCommitted,commands[lastCommitted.frame].data);
 		swap(lastCommitted,next);
 	}

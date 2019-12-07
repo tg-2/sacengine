@@ -33,7 +33,6 @@ final class Controller(B){
 		addCommand(currentFrame,command);
 	}
 	void addExternalCommand(int frame,Command!B command)in{
-		assert(command.side!=controlledSide);
 		assert(committedFrame<=frame);
 	}do{
 		firstUpdatedFrame=min(firstUpdatedFrame,frame);

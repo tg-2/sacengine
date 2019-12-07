@@ -2220,7 +2220,7 @@ final class SacScene: Scene{
 				controller.step();
 				if(options.testLag){
 					if(controller.network){
-						if(controller.network.isHost){
+						if(controller.network.isHost&&controller.network.playing){
 							static bool delayed=false;
 							if(!delayed){
 								delayed=true;
