@@ -1,5 +1,5 @@
 import dlib.math;
-import std.container, std.algorithm: sort, swap;
+import std.container, std.algorithm: sort, swap, among;
 import audio, samp, nttData, sacobject, maps, state;
 import util;
 
@@ -301,7 +301,7 @@ final class AudioBackend(B){
 			i++;
 		}
 		for(int i=0;i<sounds2.length;){
-			if(state.isValidId(sounds2[i].id))
+			if(state.targetTypeFromId(sounds2[i].id).among(TargetType.creature,TargetType.building))
 				sounds2[i].source.position=state.objectById!((obj)=>obj.center)(sounds2[i].id)*viewMatrix;
 			if(sounds2[i].source.isInitial){
 				sounds2[i].source.play();
@@ -314,7 +314,7 @@ final class AudioBackend(B){
 			i++;
 		}
 		for(int i=0;i<sounds3.length;){
-			if(!state.isValidId(sounds3[i].id)){
+			if(!state.targetTypeFromId(sounds3[i].id).among(TargetType.creature,TargetType.building)){
 				swap(sounds3[i],sounds3[$-1]);
 				sounds3[$-1].source.stop();
 				sounds3[$-1].source.release();

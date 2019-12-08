@@ -2159,7 +2159,7 @@ auto ref objectById(alias f,B,T...)(ref ObjectManager!B objectManager,int id,T a
 		}
 	}else{
 		enum byRef=!is(typeof(f(StaticObject!B.init,args))); // TODO: find a better way to check whether argument taken by reference!
-		assert(nid.type<numMoving+numStatic);
+		assert(nid.type<numMoving+numStatic,text(nid.type));
 		final switch(nid.mode){
 			case RenderMode.opaque:
 				static if(byRef){
