@@ -820,7 +820,6 @@ struct MovingObjects(B,RenderMode mode){
 		length=length-1;
 	}
 	void opAssign(ref MovingObjects!(B,mode) rhs){
-		assert(sacObject is null || sacObject is rhs.sacObject);
 		sacObject = rhs.sacObject;
 		assignArray(ids,rhs.ids);
 		assignArray(positions,rhs.positions);
@@ -901,7 +900,6 @@ struct StaticObjects(B,RenderMode mode){
 		length=length-1;
 	}
 	void opAssign(ref StaticObjects!(B,mode) rhs){
-		assert(sacObject is null || sacObject is rhs.sacObject);
 		sacObject=rhs.sacObject;
 		assignArray(ids,rhs.ids);
 		assignArray(buildingIds,rhs.buildingIds);
@@ -945,7 +943,6 @@ struct FixedObjects(B){
 		rotations~=object.rotation;
 	}
 	void opAssign(ref FixedObjects!B rhs){
-		assert(sacObject is null || sacObject is rhs.sacObject);
 		sacObject=rhs.sacObject;
 		assignArray(positions,rhs.positions);
 		assignArray(rotations,rhs.rotations);
@@ -1303,7 +1300,6 @@ struct Particles(B,bool relative){
 		length=length-1;
 	}
 	void opAssign(ref Particles!(B,relative) rhs){
-		assert(sacParticle is null || sacParticle is rhs.sacParticle);
 		sacParticle = rhs.sacParticle;
 		static if(relative){
 			assignArray(baseIds,rhs.baseIds);
