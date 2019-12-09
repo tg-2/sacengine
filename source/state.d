@@ -878,6 +878,8 @@ struct StaticObjects(B,RenderMode mode){
 		buildingIds.length=l;
 		positions.length=l;
 		rotations.length=l;
+		static if(mode==RenderMode.transparent)
+			thresholdZs.length=l;
 	}
 	void addObject(StaticObject!B object)in{
 		assert(object.id!=0);
@@ -917,6 +919,8 @@ struct StaticObjects(B,RenderMode mode){
 		buildingIds[i]=obj.buildingId;
 		positions[i]=obj.position;
 		rotations[i]=obj.rotation;
+		static if(mode==RenderMode.transparent)
+			thresholdZs[i]=rhs.thresholdZs[i];
 	}
 	static if(mode==RenderMode.transparent){
 		void setThresholdZ(int i,float thresholdZ){
