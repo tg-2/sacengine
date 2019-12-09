@@ -615,6 +615,7 @@ struct Building(B){
 		top=rhs.top;
 		base=rhs.base;
 	}
+	this(this){ componentIds=componentIds.dup; } // TODO: needed?
 }
 int maxHealth(B)(ref Building!B building,ObjectState!B state){
 	return building.bldg.maxHealth;
@@ -797,8 +798,8 @@ struct MovingObjects(B,RenderMode mode){
 
 	void addObject(MovingObject!B object)in{
 		assert(object.id!=0);
-	}do{
 		assert(!sacObject||sacObject is object.sacObject);
+	}do{
 		sacObject=object.sacObject;
 		ids~=object.id;
 		positions~=object.position;
@@ -835,8 +836,9 @@ struct MovingObjects(B,RenderMode mode){
 	MovingObject!B opIndex(int i){
 		return MovingObject!B(sacObject,ids[i],positions[i],rotations[i],animationStates[i],frames[i],creatureAIs[i],creatureStates[i],creatureStatss[i],sides[i],soulIds[i]);
 	}
-	void opIndexAssign(MovingObject!B obj,int i){
+	void opIndexAssign(MovingObject!B obj,int i)in{
 		assert(obj.sacObject is sacObject);
+	}do{
 		ids[i]=obj.id;
 		positions[i]=obj.position;
 		rotations[i]=obj.rotation;
@@ -883,8 +885,8 @@ struct StaticObjects(B,RenderMode mode){
 	}
 	void addObject(StaticObject!B object)in{
 		assert(object.id!=0);
-	}do{
 		assert(!sacObject||sacObject is object.sacObject);
+	}do{
 		sacObject=object.sacObject;
 		ids~=object.id;
 		buildingIds~=object.buildingId;
@@ -897,6 +899,8 @@ struct StaticObjects(B,RenderMode mode){
 		manager.ids[ids[index]-1]=Id.init;
 		if(index+1<length){
 			this[index]=this[length-1];
+			static if(mode==RenderMode.transparent)
+				thresholdZs[index]=thresholdZs[length-1];
 			manager.ids[ids[index]-1].index=index;
 		}
 		length=length-1;
@@ -919,8 +923,7 @@ struct StaticObjects(B,RenderMode mode){
 		buildingIds[i]=obj.buildingId;
 		positions[i]=obj.position;
 		rotations[i]=obj.rotation;
-		static if(mode==RenderMode.transparent)
-			thresholdZs[i]=rhs.thresholdZs[i];
+		// TODO: thresholdZ ok?
 	}
 	static if(mode==RenderMode.transparent){
 		void setThresholdZ(int i,float thresholdZ){
@@ -982,22 +985,13 @@ struct Souls(B){
 	void opAssign(ref Souls!B rhs){
 		assignArray(souls,rhs.souls);
 	}
-	Soul!B opIndex(int i){
+	ref Soul!B opIndex(int i){
 		return souls[i];
-	}
-	void opIndexAssign(Soul!B soul,int i){
-		souls[i]=soul;
 	}
 }
 auto each(alias f,B,T...)(ref Souls!B souls,T args){
-	foreach(i;0..souls.length){
-		static if(!is(typeof(f(Soul.init,args)))){
-			// TODO: find a better way to check whether argument taken by reference
-			auto soul=souls[i];
-			f(soul,args);
-			souls[i]=soul;
-		}else f(souls[i],args);
-	}
+	foreach(i;0..souls.length)
+		f(souls[i],args);
 }
 
 struct Buildings(B){
@@ -1005,7 +999,7 @@ struct Buildings(B){
 	@property int length(){ return cast(int)buildings.length; }
 	@property void length(int l){ buildings.length=l; }
 	void addObject(Building!B building){
-		buildings~=building;
+		buildings~=move(building);
 	}
 	void removeObject(int index, ObjectManager!B manager){
 		manager.ids[buildings[index].id-1]=Id.init;
@@ -1020,21 +1014,16 @@ struct Buildings(B){
 		foreach(i;0..buildings.length)
 			buildings[i]=rhs.buildings[i];
 	}
-	Building!B opIndex(int i){
+	ref Building!B opIndex(int i){
 		return buildings[i];
-	}
-	void opIndexAssign(Building!B building,int i){
-		buildings[i]=building;
 	}
 }
 auto each(alias f,B,T...)(ref Buildings!B buildings,T args){
 	foreach(i;0..buildings.length){
 		static if(!is(typeof(f(Building.init,args)))){
 			// TODO: find a better way to check whether argument taken by reference
-			auto building=buildings[i];
-			f(building,args);
-			buildings[i]=building;
-		}else f(buildings[i],args);
+			f(buildings[i],args);
+		}else static assert(false);
 	}
 }
 
@@ -1057,6 +1046,7 @@ struct Spellbook(B){
 	void opAssign(ref Spellbook!B rhs){
 		assignArray(spells,rhs.spells);
 	}
+	this(this){ spells=spells.dup; }
 	void addSpell(int level,SacSpell!B spell){
 		spells~=SpellInfo!B(spell,level,0.0f,0.0f);
 		if(spells.length>=2&&spells[$-1].spell.spellOrder<spells[$-2].spell.spellOrder) sort();
@@ -1162,7 +1152,7 @@ WizardInfo!B makeWizard(B)(int id,int level,int souls,Spellbook!B spellbook,Obje
 int placeWizard(B)(ObjectState!B state,SacObject!B wizard,int side,int level,int souls,Spellbook!B spellbook){
 	bool flag=false;
 	int id=0;
-	state.eachBuilding!((bldg,state,id,wizard,side,level,souls,spellbook){
+	state.eachBuilding!((ref bldg,state,id,wizard,side,level,souls,spellbook){
 		if(*id||bldg.componentIds.length==0) return;
 		if(bldg.side==side && bldg.isAltar){
 			auto altar=state.staticObjectById!((obj)=>obj, function StaticObject!B(){ assert(0); })(bldg.componentIds[0]);
@@ -1228,7 +1218,7 @@ struct WizardInfos(B){
 	void opAssign(ref WizardInfos!B rhs){
 		assignArray(wizards,rhs.wizards);
 	}
-	WizardInfo!B opIndex(int i){
+	ref WizardInfo!B opIndex(int i){
 		return wizards[i];
 	}
 	int indexForId(int id){
@@ -1242,14 +1232,8 @@ struct WizardInfos(B){
 	}
 }
 auto each(alias f,B,T...)(ref WizardInfos!B wizards,T args){
-	foreach(i;0..wizards.length){
-		static if(!is(typeof(f(WizardInfo.init,args)))){
-			// TODO: find a better way to check whether argument taken by reference
-			auto wizard=wizards[i];
-			f(wizard,args);
-			wizards[i]=wizard;
-		}else f(wizards[i],args);
-	}
+	foreach(i;0..wizards.length)
+		f(wizards[i],args);
 }
 
 struct Particles(B,bool relative){
@@ -1836,11 +1820,11 @@ struct Objects(B,RenderMode mode){
 		}
 		Id addObject(Building!B object){
 			auto result=Id(mode,ObjectType.building,buildings.length);
-			buildings.addObject(object);
+			buildings.addObject(move(object));
 			return result;
 		}
 		void addWizard(WizardInfo!B wizard){
-			wizards.addWizard(wizard);
+			wizards.addWizard(move(wizard));
 		}
 		WizardInfo!B* getWizard(int id){
 			return wizards.getWizard(id);
@@ -1849,7 +1833,7 @@ struct Objects(B,RenderMode mode){
 			wizards.removeWizard(id);
 		}
 		void addEffect(T)(T proj){
-			effects.addEffect(proj);
+			effects.addEffect(move(proj));
 		}
 		int getIndexParticle(bool relative)(SacParticle!B sacParticle,bool insert){
 			static if(relative) alias particles=relativeParticles;
@@ -1990,9 +1974,9 @@ struct ObjectManager(B){
 		assert(object.id==0);
 	}do{
 		if(ids.length>=int.max) return 0;
-		object.id=cast(int)ids.length+1;
-		ids~=opaqueObjects.addObject(object);
-		return object.id;
+		auto id=object.id=cast(int)ids.length+1;
+		ids~=opaqueObjects.addObject(move(object));
+		return id;
 	}
 	void removeObject(int id)in{
 		assert(0<id && id<=ids.length);
@@ -2226,12 +2210,7 @@ auto ref soulById(alias f,alias noSoul=fail,B,T...)(ref ObjectManager!B objectMa
 }do{
 	auto nid=objectManager.ids[id-1];
 	if(nid.type!=ObjectType.soul||nid.index==-1) return noSoul();
-	enum byRef=!is(typeof(f(Soul!B.init,args))); // TODO: find a better way to check whether argument taken by reference!
-	static if(byRef){
-		auto soul=objectManager.opaqueObjects.souls[nid.index];
-		scope(success) objectManager.opaqueObjects.souls[nid.index]=soul;
-		return f(soul,args);
-	}else return f(objectManager.opaqueObjects.souls[nid.index],args);
+	return f(objectManager.opaqueObjects.souls[nid.index],args);
 }
 auto ref buildingById(alias f,alias noBuilding=fail,B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
 	assert(id>0);
@@ -2239,11 +2218,8 @@ auto ref buildingById(alias f,alias noBuilding=fail,B,T...)(ref ObjectManager!B 
 	auto nid=objectManager.ids[id-1];
 	if(nid.type!=ObjectType.building||nid.index==-1) return noBuilding();
 	enum byRef=!is(typeof(f(Building!B.init,args))); // TODO: find a better way to check whether argument taken by reference!
-	static if(byRef){
-		auto building=objectManager.opaqueObjects.buildings[nid.index];
-		scope(success) objectManager.opaqueObjects.buildings[nid.index]=building;
-		return f(building,args);
-	}else return f(objectManager.opaqueObjects.buildings[nid.index],args);
+	static assert(byRef);
+	return f(objectManager.opaqueObjects.buildings[nid.index],args);
 }
 auto ref buildingByStaticObjectId(alias f,alias nonStatic=fail,B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
 	assert(id>0);
@@ -2587,7 +2563,7 @@ int makeBuilding(B)(ref MovingObject!B caster,char[4] tag,int flags,int base,Obj
 	auto data=tag in bldgs;
 	enforce(!!data&&!(data.flags&BldgFlags.ground));
 	auto position=state.buildingById!(
-		(bldg,state)=>state.staticObjectById!(
+		(ref bldg,state)=>state.staticObjectById!(
 			(obj)=>obj.position,
 			function Vector3f(){ assert(0); })(bldg.componentIds[0]),
 		function Vector3f(){ assert(0); })(base,state);
@@ -3065,7 +3041,7 @@ bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,Ob
 				if(god==God.none) god=God.persephone;
 				auto building=makeBuilding(object.id,spell.buildingTag(god),AdditionalBuildingFlags.inactive|Flags.cannotDamage,base,state);
 				state.setupStructureCasting(building);
-				float buildingHeight=state.buildingById!((bldg,state)=>height(bldg,state),()=>0.0f)(building,state);
+				float buildingHeight=state.buildingById!((ref bldg,state)=>height(bldg,state),()=>0.0f)(building,state);
 				auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
 				state.addEffect(StructureCasting!B(god,manaDrain,spell,building,buildingHeight,castingTime,0));
 				return true;
@@ -4489,7 +4465,7 @@ bool updateCreatureCasting(B)(ref CreatureCasting!B creatureCast,ObjectState!B s
 void animateStructureCasting(B)(ref StructureCasting!B structureCast,ObjectState!B state){
 	with(structureCast){
 		auto thresholdZ=-structureCastingGradientSize+(buildingHeight+structureCastingGradientSize)*currentFrame/castingTime;
-		state.buildingById!((bldg,thresholdZ,state){
+		state.buildingById!((ref bldg,thresholdZ,state){
 			foreach(cid;bldg.componentIds){
 				state.setThresholdZ(cid,thresholdZ);
 				if(currentFrame+0.5f*updateFPS<castingTime){
@@ -6213,7 +6189,7 @@ final class Proximity(B){
 	private static bool isPeasantShelter(ref CenterProximityEntry entry,int side,ObjectState!B state){
 		if(!entry.isStatic) return false;
 		if(state.sides.getStance(entry.side,side)==Stance.enemy) return false;
-		return state.staticObjectById!((obj,state)=>state.buildingById!(bldg=>bldg.isPeasantShelter,()=>false)(obj.buildingId),()=>false)(entry.id,state);
+		return state.staticObjectById!((obj,state)=>state.buildingById!((ref bldg)=>bldg.isPeasantShelter,()=>false)(obj.buildingId),()=>false)(entry.id,state);
 	}
 	int closestPeasantShelterInRange(int side,Vector3f position,float range,ObjectState!B state){
 		return centers.closestInRange!isPeasantShelter(version_,position,range,side,state).id;
@@ -6445,7 +6421,7 @@ final class ObjectState(B){ // (update logic)
 	}
 	ObjectManager!B obj;
 	int addObject(T)(T object) if(is(T==MovingObject!B)||is(T==StaticObject!B)||is(T==Soul!B)||is(T==Building!B)){
-		return obj.addObject(object);
+		return obj.addObject(move(object));
 	}
 	void removeObject(int id)in{
 		assert(id!=0);
@@ -6465,13 +6441,13 @@ final class ObjectState(B){ // (update logic)
 	void setRenderMode(T,RenderMode mode)(int id)if(is(T==Building!B))in{
 		assert(id!=0);
 	}do{
-		this.buildingById!((bldg,state){
+		this.buildingById!((ref bldg,state){
 			foreach(cid;bldg.componentIds)
 				state.setRenderMode!(StaticObject!B,mode)(cid);
 		})(id,this);
 	}
 	void setupStructureCasting(int buildingId){
-		this.buildingById!((bldg,state){
+		this.buildingById!((ref bldg,state){
 			foreach(cid;bldg.componentIds){
 				state.setRenderMode!(StaticObject!B,RenderMode.transparent)(cid);
 				state.setThresholdZ(cid,-structureCastingGradientSize);
@@ -7029,7 +7005,7 @@ TargetFlags summarize(bool simplified=false,B)(ref Target target,int side,Object
 				}else{
 					auto result=TargetFlags.building;
 					auto objSide=sideFromBuildingId(obj.buildingId,state);
-					auto buildingInterestingIsManafountTop=state.buildingById!(bldg=>tuple(bldg.health!=0||bldg.isAltar,bldg.isManafount,bldg.top),()=>tuple(false,false,0))(obj.buildingId);
+					auto buildingInterestingIsManafountTop=state.buildingById!((ref bldg)=>tuple(bldg.health!=0||bldg.isAltar,bldg.isManafount,bldg.top),()=>tuple(false,false,0))(obj.buildingId);
 					auto buildingInteresting=buildingInterestingIsManafountTop[0],isManafount=buildingInterestingIsManafountTop[1],top=buildingInterestingIsManafountTop[2];
 					buildingInteresting|=isManafount;
 					if(!buildingInteresting) result|=TargetFlags.untargetable; // TODO: there might be a flag for this
@@ -7431,6 +7407,7 @@ final class GameState(B){
 		auto flags=ntt.flags&~Flags.damaged&~ntt.flags.destroyed;
 		auto facing=2*cast(float)PI/360.0f*ntt.facing;
 		auto buildingId=current.addObject(Building!B(data,ntt.side,flags,facing));
+		assert(!!buildingId);
 		if(ntt.id !in triggers.objectIds) // e.g. for some reason, the two altars on ferry have the same id
 			triggers.associateId(ntt.id,buildingId);
 		auto position=Vector3f(ntt.x,ntt.y,ntt.z);
@@ -7493,7 +7470,7 @@ final class GameState(B){
 			triggers.associateId(ntt.id,id);
 		static if(is(T==Wizard)){
 			auto spellbook=getDefaultSpellbook!B(ntt.allegiance);
-			current.addWizard(makeWizard(id,ntt.level,ntt.souls,spellbook,current));
+			current.addWizard(makeWizard(id,ntt.level,ntt.souls,move(spellbook),current));
 		}
 	}
 	void placeSpirit(ref Spirit spirit){

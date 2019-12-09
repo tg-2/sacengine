@@ -1150,7 +1150,7 @@ final class SacScene: Scene{
 					auto clipradiusSq=((clipRadiusFactor*radius+(showArrow?-1.0f:1.0f)*0.5f*iconScaling.x)*
 					                   (clipRadiusFactor*radius+(showArrow?-1.0f:1.0f)*0.5f*iconScaling.y));
 					static if(isStatic){
-						if(!isManafount&&!scene.state.current.buildingById!((bldg)=>bldg.health!=0||bldg.isAltar,()=>false)(objects.buildingIds[j])) // TODO: merge with side lookup!
+						if(!isManafount&&!scene.state.current.buildingById!((ref bldg)=>bldg.health!=0||bldg.isAltar,()=>false)(objects.buildingIds[j])) // TODO: merge with side lookup!
 							continue;
 					}
 					static if(is(T==Souls!DagonBackend)) auto position=objects[j].position-minimapCenter;
