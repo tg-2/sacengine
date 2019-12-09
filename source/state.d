@@ -949,17 +949,8 @@ struct FixedObjects(B){
 		positions~=object.position;
 		rotations~=object.rotation;
 	}
-	void opAssign(ref FixedObjects!B rhs){
-		sacObject=rhs.sacObject;
-		assignArray(positions,rhs.positions);
-		assignArray(rotations,rhs.rotations);
-	}
 	FixedObject!B opIndex(int i){
 		return FixedObject!B(sacObject,positions[i],rotations[i]);
-	}
-	void opIndexAssign(StaticObject!B obj,int i){
-		positions[i]=obj.position;
-		rotations[i]=obj.rotation;
 	}
 }
 auto each(alias f,B,T...)(ref FixedObjects!B fixedObjects,T args){
@@ -977,7 +968,7 @@ struct Souls(B){
 	void removeObject(int index, ObjectManager!B manager){
 		manager.ids[souls[index].id-1]=Id.init;
 		if(index+1<length){
-			this[index]=this[length-1];
+			this[index]=move(this[length-1]);
 			manager.ids[souls[index].id-1].index=index;
 		}
 		length=length-1;
@@ -1004,7 +995,7 @@ struct Buildings(B){
 	void removeObject(int index, ObjectManager!B manager){
 		manager.ids[buildings[index].id-1]=Id.init;
 		if(index+1<length){
-			this[index]=this[length-1];
+			swap(this[index],this[length-1]); // TODO: reuse memory?
 			manager.ids[buildings[index].id-1].index=index;
 		}
 		length=length-1;
@@ -1211,7 +1202,7 @@ struct WizardInfos(B){
 		auto index=indexForId(id);
 		if(index!=-1){
 			if(index+1<wizards.length)
-				swap(wizards[index],wizards[$-1]);
+				swap(wizards[index],wizards[$-1]); // TODO: reuse memory?
 			wizards.length=wizards.length-1;
 		}
 	}
@@ -1497,7 +1488,7 @@ struct Effects(B){
 		this.debris~=debris;
 	}
 	void removeDebris(int i){
-		if(i+1<debris.length) swap(debris[i],debris[$-1]);
+		if(i+1<debris.length) debris[i]=move(debris[$-1]);
 		debris.length=debris.length-1;
 	}
 	Array!(Explosion!B) explosions;
@@ -1505,7 +1496,7 @@ struct Effects(B){
 		explosions~=explosion;
 	}
 	void removeExplosion(int i){
-		if(i+1<explosions.length) swap(explosions[i],explosions[$-1]);
+		if(i+1<explosions.length) explosions[i]=move(explosions[$-1]);
 		explosions.length=explosions.length-1;
 	}
 	Array!(ManaDrain!B) manaDrains;
@@ -1513,7 +1504,7 @@ struct Effects(B){
 		manaDrains~=manaDrain;
 	}
 	void removeManaDrain(int i){
-		if(i+1<manaDrains.length) swap(manaDrains[i],manaDrains[$-1]);
+		if(i+1<manaDrains.length) manaDrains[i]=move(manaDrains[$-1]);
 		manaDrains.length=manaDrains.length-1;
 	}
 	Array!(CreatureCasting!B) creatureCasts;
@@ -1521,7 +1512,7 @@ struct Effects(B){
 		creatureCasts~=creatureCast;
 	}
 	void removeCreatureCasting(int i){
-		if(i+1<creatureCasts.length) swap(creatureCasts[i],creatureCasts[$-1]);
+		if(i+1<creatureCasts.length) creatureCasts[i]=move(creatureCasts[$-1]);
 		creatureCasts.length=creatureCasts.length-1;
 	}
 	Array!(StructureCasting!B) structureCasts;
@@ -1529,7 +1520,7 @@ struct Effects(B){
 		structureCasts~=structureCast;
 	}
 	void removeStructureCasting(int i){
-		if(i+1<structureCasts.length) swap(structureCasts[i],structureCasts[$-1]);
+		if(i+1<structureCasts.length) structureCasts[i]=move(structureCasts[$-1]);
 		structureCasts.length=structureCasts.length-1;
 	}
 	Array!(BlueRing!B) blueRings;
@@ -1537,7 +1528,7 @@ struct Effects(B){
 		blueRings~=blueRing;
 	}
 	void removeBlueRing(int i){
-		if(i+1<blueRings.length) swap(blueRings[i],blueRings[$-1]);
+		if(i+1<blueRings.length) blueRings[i]=move(blueRings[$-1]);
 		blueRings.length=blueRings.length-1;
 	}
 	Array!(SpeedUp!B) speedUps;
@@ -1545,7 +1536,7 @@ struct Effects(B){
 		speedUps~=speedUp;
 	}
 	void removeSpeedUp(int i){
-		if(i+1<speedUps.length) swap(speedUps[i],speedUps[$-1]);
+		if(i+1<speedUps.length) speedUps[i]=move(speedUps[$-1]);
 		speedUps.length=speedUps.length-1;
 	}
 	Array!(SpeedUpShadow!B) speedUpShadows;
@@ -1553,7 +1544,7 @@ struct Effects(B){
 		speedUpShadows~=speedUpShadow;
 	}
 	void removeSpeedUpShadow(int i){
-		if(i+1<speedUpShadows.length) swap(speedUpShadows[i],speedUpShadows[$-1]);
+		if(i+1<speedUpShadows.length) speedUpShadows[i]=move(speedUpShadows[$-1]);
 		speedUpShadows.length=speedUpShadows.length-1;
 	}
 	Array!(HealCasting!B) healCastings;
@@ -1561,7 +1552,7 @@ struct Effects(B){
 		healCastings~=healCasting;
 	}
 	void removeHealCasting(int i){
-		if(i+1<healCastings.length) swap(healCastings[i],healCastings[$-1]);
+		if(i+1<healCastings.length) healCastings[i]=move(healCastings[$-1]);
 		healCastings.length=healCastings.length-1;
 	}
 	Array!(Heal!B) heals;
@@ -1569,7 +1560,7 @@ struct Effects(B){
 		heals~=heal;
 	}
 	void removeHeal(int i){
-		if(i+1<heals.length) swap(heals[i],heals[$-1]);
+		if(i+1<heals.length) heals[i]=move(heals[$-1]);
 		heals.length=heals.length-1;
 	}
 	Array!(LightningCasting!B) lightningCastings;
@@ -1577,7 +1568,7 @@ struct Effects(B){
 		lightningCastings~=lightningCasting;
 	}
 	void removeLightningCasting(int i){
-		if(i+1<lightningCastings.length) swap(lightningCastings[i],lightningCastings[$-1]);
+		if(i+1<lightningCastings.length) lightningCastings[i]=move(lightningCastings[$-1]);
 		lightningCastings.length=lightningCastings.length-1;
 	}
 	Array!(Lightning!B) lightnings;
@@ -1585,7 +1576,7 @@ struct Effects(B){
 		lightnings~=lightning;
 	}
 	void removeLightning(int i){
-		if(i+1<lightnings.length) swap(lightnings[i],lightnings[$-1]);
+		if(i+1<lightnings.length) lightnings[i]=move(lightnings[$-1]);
 		lightnings.length=lightnings.length-1;
 	}
 	Array!(WrathCasting!B) wrathCastings;
@@ -1593,7 +1584,7 @@ struct Effects(B){
 		wrathCastings~=wrathCasting;
 	}
 	void removeWrathCasting(int i){
-		if(i+1<wrathCastings.length) swap(wrathCastings[i],wrathCastings[$-1]);
+		if(i+1<wrathCastings.length) wrathCastings[i]=move(wrathCastings[$-1]);
 		wrathCastings.length=wrathCastings.length-1;
 	}
 	Array!(Wrath!B) wraths;
@@ -1601,7 +1592,7 @@ struct Effects(B){
 		wraths~=wrath;
 	}
 	void removeWrath(int i){
-		if(i+1<wraths.length) swap(wraths[i],wraths[$-1]);
+		if(i+1<wraths.length) wraths[i]=move(wraths[$-1]);
 		wraths.length=wraths.length-1;
 	}
 	Array!(FireballCasting!B) fireballCastings;
@@ -1609,7 +1600,7 @@ struct Effects(B){
 		fireballCastings~=fireballCasting;
 	}
 	void removeFireballCasting(int i){
-		if(i+1<fireballCastings.length) swap(fireballCastings[i],fireballCastings[$-1]);
+		if(i+1<fireballCastings.length) fireballCastings[i]=move(fireballCastings[$-1]);
 		fireballCastings.length=fireballCastings.length-1;
 	}
 	Array!(Fireball!B) fireballs;
@@ -1617,7 +1608,7 @@ struct Effects(B){
 		fireballs~=fireball;
 	}
 	void removeFireball(int i){
-		if(i+1<fireballs.length) swap(fireballs[i],fireballs[$-1]);
+		if(i+1<fireballs.length) fireballs[i]=move(fireballs[$-1]);
 		fireballs.length=fireballs.length-1;
 	}
 	Array!(RockCasting!B) rockCastings;
@@ -1625,7 +1616,7 @@ struct Effects(B){
 		rockCastings~=rockCasting;
 	}
 	void removeRockCasting(int i){
-		if(i+1<rockCastings.length) swap(rockCastings[i],rockCastings[$-1]);
+		if(i+1<rockCastings.length) rockCastings[i]=move(rockCastings[$-1]);
 		rockCastings.length=rockCastings.length-1;
 	}
 	Array!(Rock!B) rocks;
@@ -1633,7 +1624,7 @@ struct Effects(B){
 		rocks~=rock;
 	}
 	void removeRock(int i){
-		if(i+1<rocks.length) swap(rocks[i],rocks[$-1]);
+		if(i+1<rocks.length) rocks[i]=move(rocks[$-1]);
 		rocks.length=rocks.length-1;
 	}
 	Array!(SwarmCasting!B) swarmCastings;
@@ -1641,7 +1632,7 @@ struct Effects(B){
 		swarmCastings~=move(swarmCasting);
 	}
 	void removeSwarmCasting(int i){
-		if(i+1<swarmCastings.length) swap(swarmCastings[i],swarmCastings[$-1]);
+		if(i+1<swarmCastings.length) swarmCastings[i]=move(swarmCastings[$-1]);
 		swarmCastings.length=swarmCastings.length-1;
 	}
 	Array!(Swarm!B) swarms;
