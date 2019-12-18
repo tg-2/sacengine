@@ -121,6 +121,10 @@ int main(string[] args){
 			options.scale=to!float(opt["--scale=".length..$]);
 		}else if(opt.startsWith("--aspect-distortion=")){
 			options.aspectDistortion=to!float(opt["--aspect-distortion=".length..$]);
+		}else if(opt.startsWith("--sun-factor=")){
+			options.sunFactor=to!float(opt["--sun-factor=".length..$]);
+		}else if(opt.startsWith("--ambient-factor=")){
+			options.ambientFactor=to!float(opt["--ambient-factor=".length..$]);
 		}else if(opt.startsWith("--shadow-map-resolution=")){
 			options.shadowMapResolution=to!int(opt["--shadow-map-resolution=".length..$]);
 		}else if(opt.startsWith("--glow-brightness=")){

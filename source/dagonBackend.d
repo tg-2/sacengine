@@ -128,12 +128,12 @@ final class SacScene: Scene{
 			case stratos: sunStrength=12.0f; break;
 			case charnel: sunStrength=4.0f; break;
 		}
-		env.sunEnergy=min(sunStrength*envi.sunDirectStrength,30.0f);
+		env.sunEnergy=min(sunStrength*envi.sunDirectStrength,30.0f)*options.sunFactor;
 		Color4f fixColor(Color4f sacColor){
 			return Color4f(0,0.3,1,1)*0.2+sacColor*0.8;
 		}
 		//env.ambientConstant = fixColor(Color4f(envi.ambientRed*ambi,envi.ambientGreen*ambi,envi.ambientBlue*ambi,1.0f));
-		auto ambi=min(envi.sunAmbientStrength,2.0f);
+		auto ambi=min(envi.sunAmbientStrength,2.0f)*options.ambientFactor;
 		//auto ambi=1.5f*envi.sunAmbientStrength;
 		//env.ambientConstant = fixColor(Color4f(envi.sunColorRed/255.0f*ambi,envi.sunColorGreen/255.0f*ambi,envi.sunColorBlue/255.0f*ambi,1.0f));
 		env.ambientConstant = ambi*Color4f(envi.ambientRed/255.0f,envi.ambientGreen/255.0f,envi.ambientBlue/255.0f,1.0f);

@@ -6,6 +6,8 @@ struct Options{
 	float scale=1.0f;
 	bool scaleToFit=true;
 	float aspectDistortion=1.2f;
+	float sunFactor=1.0f;
+	float ambientFactor=1.0f;
 	int shadowMapResolution=1024;
 	bool enableWidgets=true;
 	bool enableMapBottom=true;
