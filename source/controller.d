@@ -55,6 +55,7 @@ final class Controller(B){
 				network.addSynch(state.lastCommitted.frame,state.lastCommitted.hash);
 			}
 		}else state.simulateCommittedTo(committedFrame);
+		assert(committedFrame==state.lastCommitted.frame);
 	}
 	void step(){
 		playAudio=false;
@@ -74,7 +75,6 @@ final class Controller(B){
 			if(firstUpdatedFrame<currentFrame){
 				// TODO: save multiple states, pick most recent with frame<=firstUpdatedFrame?
 				state.rollback(state.lastCommitted);
-				state.simulateTo(currentFrame);
 			}
 		}else committedFrame=currentFrame;
 		state.simulateTo(currentFrame);
@@ -84,8 +84,9 @@ final class Controller(B){
 		firstUpdatedFrame=currentFrame;
 		if(network){
 			network.commit(currentFrame);
+			updateCommitted();
 			if(!network.isHost&&lastCheckSynch<committedFrame){
-				network.checkSynch(committedFrame,state.lastCommitted.hash);
+				network.checkSynch(state.lastCommitted.frame,state.lastCommitted.hash);
 				lastCheckSynch=committedFrame;
 			}
 		}
