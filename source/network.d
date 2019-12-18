@@ -86,12 +86,12 @@ struct Packet{
 					}
 					default: return text(`Packet.setOption!"`,optionName[0..len],`"(?)`);
 				}
-				case updateStatus: return text("Packet.updateStatus(",player,`,PlayerStatus.`,newStatus,")");
-				case loadGame: return text("Packet.loadGame()");
-				case startGame: return text("Packet.startGame(",startDelay,")");
-				case command: return text("Packet.command(fromNetwork(",networkCommand,"))");
-				case commit: return text("Packet.commit(",commitPlayer,",",commitFrame,")");
-				case checkSynch: return text("Packet.checkSynch(",synchFrame,",",synchHash,")");
+			case updateStatus: return text("Packet.updateStatus(",player,`,PlayerStatus.`,newStatus,")");
+			case loadGame: return text("Packet.loadGame()");
+			case startGame: return text("Packet.startGame(",startDelay,")");
+			case command: return text("Packet.command(fromNetwork(",networkCommand,"))");
+			case commit: return text("Packet.commit(",commitPlayer,",",commitFrame,")");
+			case checkSynch: return text("Packet.checkSynch(",synchFrame,",",synchHash,")");
 		}
 	}
 	int size=Packet.sizeof;
@@ -379,21 +379,23 @@ final class Network(B){
 		return players.map!(p=>p.committedFrame).reduce!min;
 	}
 	int me=-1;
-	void sendPlayerSettings(Connection connection,int player){
+	void sendPlayerSettings(Connection connection,int player)in{
+		assert(isHost);
+	}do{
 		if(!connection) return;
 		static foreach(setting;__traits(allMembers,Settings))
 			connection.send(Packet.setOption!setting(player,mixin(`players[player].settings.`~setting)));
 		connection.send(Packet.updateStatus(player,players[player].status));
 		// TODO: send address to attempt to establish peer to peer connection
 	}
-	void sendStatusUpdate(Connection connection,PlayerStatus oldStatus,PlayerStatus newStatus){
+	void sendStatusUpdate(Connection connection,int player,PlayerStatus oldStatus,PlayerStatus newStatus){
 		if(oldStatus>=newStatus) return;
 		connection.send(Packet.updateStatus(me,newStatus));
 	}
-	void sendSettingsUpdate(Connection connection,Settings oldSettings,Settings newSettings){
+	void sendSettingsUpdate(Connection connection,int player,Settings oldSettings,Settings newSettings){
 		static foreach(setting;__traits(allMembers,Settings)){
 			if(mixin(`oldSettings.`~setting)!=mixin(`newSettings.`~setting))
-				connection.send(Packet.setOption!setting(me,mixin(`newSettings.`~setting)));
+				connection.send(Packet.setOption!setting(player,mixin(`newSettings.`~setting)));
 		}
 	}
 	void updateStatus(int player,PlayerStatus newStatus)in{
@@ -403,11 +405,12 @@ final class Network(B){
 		if(isHost){
 			foreach(i;0..players.length){
 				if(players[i].connection)
-					sendStatusUpdate(players[i].connection,oldStatus,newStatus);
+					sendStatusUpdate(players[i].connection,player,oldStatus,newStatus);
 			}
 		}else{
+			assert(player==me);
 			if(players[host].connection)
-				sendStatusUpdate(players[host].connection,oldStatus,newStatus);
+				sendStatusUpdate(players[host].connection,player,oldStatus,newStatus);
 		}
 		players[player].status=newStatus;
 	}
@@ -417,17 +420,19 @@ final class Network(B){
 		updateStatus(me,newStatus);
 	}
 	void updateSettings(int player,Settings newSettings)in{
+		assert(0<=player&&player<players.length);
 		assert((player==me||isHost)&&players[player].status>=PlayerStatus.synched);
 	}do{
 		auto oldSettings=players[player].settings;
 		if(isHost){
 			foreach(i;0..players.length){
 				if(players[i].connection)
-					sendSettingsUpdate(players[i].connection,oldSettings,newSettings);
+					sendSettingsUpdate(players[i].connection,player,oldSettings,newSettings);
 			}
 		}else{
+			assert(player==me&&players[me].status>=PlayerStatus.synched);
 			if(players[host].connection)
-				sendSettingsUpdate(players[host].connection,oldSettings,newSettings);
+				sendSettingsUpdate(players[host].connection,player,oldSettings,newSettings);
 		}
 		players[player].settings=newSettings;
 	}
