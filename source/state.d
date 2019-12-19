@@ -1436,6 +1436,7 @@ struct RockCasting(B){
 	SacSpell!B spell;
 	Rock!B rock;
 	int frame;
+	int castingTime;
 }
 struct Rock(B){
 	int immuneId;
@@ -3173,7 +3174,7 @@ bool castRock(B)(int immuneId,int target,ManaDrain!B manaDrain,SacSpell!B spell,
 	auto positionSide=state.movingObjectById!((obj,state)=>tuple(obj.rockCastingPosition(state),obj.side),function Tuple!(Vector3f,int){ assert(0); })(manaDrain.wizard,state);
 	auto position=positionSide[0],side=positionSide[1];
 	auto rock=makeRock(immuneId,side,position,centerTarget(target,state),spell,state);
-	state.addEffect(RockCasting!B(manaDrain,spell,rock,castingTime));
+	state.addEffect(RockCasting!B(manaDrain,spell,rock,0,castingTime));
 	return true;
 }
 
@@ -5056,13 +5057,14 @@ bool updateRockCasting(B)(ref RockCasting!B rockCast,ObjectState!B state){
 			final switch(manaDrain.update(state)){
 				case CastingStatus.underway:
 					rock.position=obj.rockCastingPosition(state);
-					rock.position.z+=rockBuryDepth*min(1.0f,1.0f-frame/(updateFPS*rockCast.rock.spell.castingTime(9)));
+					rock.position.z+=rockBuryDepth*min(1.0f,float(frame)/castingTime);
 					obj.animateRockCasting(state);
-					frame-=1;
+					frame+=1;
 					return true;
 				case CastingStatus.interrupted:
 					return false;
 				case CastingStatus.finished:
+					rock.position.z=max(rock.position.z,state.getHeight(rock.position)); // for robustness
 					.rock(rock,state);
 					return false;
 			}
