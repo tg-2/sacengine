@@ -2952,7 +2952,8 @@ void startCowering(B)(ref MovingObject!B object,ObjectState!B state){
 
 bool startCasting(B)(ref MovingObject!B object,int numFrames,bool stationary,ObjectState!B state){
 	if(!object.isWizard) return false;
-	if(!object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving)) return false;
+	if(!object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving)&&object.castStatus(state)!=CastingStatus.finished)
+		return false;
 	if(stationary) object.creatureState.mode=CreatureMode.stationaryCasting;
 	else object.creatureState.mode=object.creatureState.mode==CreatureMode.idle?CreatureMode.casting:CreatureMode.castingMoving;
 	object.creatureState.timer=numFrames;
