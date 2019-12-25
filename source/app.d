@@ -30,14 +30,21 @@ void loadMap(B)(ref B backend,ref Options options)in{
 		if(!network.isHost) network.updateStatus(PlayerStatus.readyToLoad);
 		while(!network.readyToLoad){
 			network.idleLobby();
-			if(network.isHost&&network.players.length>=options.host)
+			if(network.isHost&&network.players.length>=options.host&&network.clientsReadyToLoad()){
+				network.synchronizeSetting!"map"();
+				network.synchronizeSetting!"level"();
+				network.synchronizeSetting!"souls"();
 				network.updateStatus(PlayerStatus.readyToLoad);
+				assert(network.readyToLoad());
+				break;
+			}
 		}
 		if(network.isHost){
 			network.load();
 		}else{
 			while(!network.loading) network.idleLobby();
 		}
+		options.settings=network.settings;
 	}
 	string hmap="";
 	if(options.map.endsWith(".scp")){

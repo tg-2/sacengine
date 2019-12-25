@@ -32,11 +32,11 @@ struct Options{
 	bool testLag=false;
 	bool dumpTraffic=false;
 	bool checkDesynch=true;
-	string map="";
 	alias settings this;
 }
 
 struct Settings{
+	string map="";
 	int controlledSide=-1;
 	char[4] wizard="";
 	God god;

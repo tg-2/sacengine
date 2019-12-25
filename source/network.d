@@ -1,4 +1,4 @@
-import std.algorithm, std.stdio, std.conv, std.exception, core.thread;
+import std.algorithm, std.range, std.stdio, std.conv, std.exception, core.thread;
 import options,sacspell,state,controller;
 import ntts: God;
 
@@ -68,6 +68,8 @@ enum PacketType{
 	checkSynch,
 	// broadcast
 	updateSetting,
+	setMap,
+	appendMap,
 	updateStatus,
 	command,
 	commit,
@@ -78,7 +80,7 @@ PacketPurpose purposeFromType(PacketType type){
 		case nop,disconnect,ping,ack: return peerToPeer;
 		case updatePlayerId,loadGame,startGame: return hostMessage;
 		case checkSynch: return hostQuery;
-		case updateSetting,updateStatus,command,commit: return broadcast;
+		case updateSetting,setMap,appendMap,updateStatus,command,commit: return broadcast;
 	}
 }
 
@@ -98,17 +100,21 @@ struct Packet{
 				while(len<optionName.length&&optionName[len]!='\0') ++len;
 				switch(optionName[0..len]){
 					static foreach(setting;__traits(allMembers,Settings)){
-						case setting:
-							alias T=typeof(mixin(`Settings.`~setting));
-							static if(is(T==int)) return text(`Packet.updateSetting!"`,setting,`"(`,player,",",intValue,")");
-							else static if(is(T==bool))  return text(`Packet.updateSetting!"`,setting,`"(`,player,",",boolValue,")");
-							else static if(is(T==float))  return text(`Packet.updateSetting!"`,setting,`"(`,player,",",floatValue,")");
-							else static if(is(T==God)) return text(`Packet.updateSetting!"`,setting,`"(`,player,",",godValue,")");
-							else static if(is(T==char[4]))  return text(`Packet.updateSetting!"`,setting,`"(`,player,`,"`,char4Value,`")`);
-							else static assert(0);
+						static if(setting!="map"){
+							case setting:
+								alias T=typeof(mixin(`Settings.`~setting));
+								static if(is(T==int)) return text(`Packet.updateSetting!"`,setting,`"(`,player,",",intValue,")");
+								else static if(is(T==bool))  return text(`Packet.updateSetting!"`,setting,`"(`,player,",",boolValue,")");
+								else static if(is(T==float))  return text(`Packet.updateSetting!"`,setting,`"(`,player,",",floatValue,")");
+								else static if(is(T==God)) return text(`Packet.updateSetting!"`,setting,`"(`,player,",",godValue,")");
+								else static if(is(T==char[4]))  return text(`Packet.updateSetting!"`,setting,`"(`,player,`,"`,char4Value,`")`);
+								else static assert(0);
+						}
 					}
 					default: return text(`Packet.updateSetting!"`,optionName[0..len],`"(?)`);
 				}
+			case setMap: return text("Packet.setMap(",mapPlayer,",",mapName,")");
+			case appendMap: return text("Packet.appendMap(",mapPlayer,",",mapName,")");
 			case updateStatus: return text("Packet.updateStatus(",player,`,PlayerStatus.`,newStatus,")");
 			case command: return text("Packet.command(fromNetwork(",networkCommand,"))");
 			case commit: return text("Packet.commit(",commitPlayer,",",commitFrame,")");
@@ -145,6 +151,7 @@ struct Packet{
 				}
 			}
 		}
+		struct{ int mapPlayer; char[32] mapName; } // setMap, appendMap
 		struct{ // command
 			int frame;
 			NetworkCommand networkCommand;
@@ -209,6 +216,26 @@ struct Packet{
 		else static if(is(typeof(value)==God)) p.godValue=value;
 		else static if(is(typeof(value)==char[4])) p.char4Value=value;
 		else static assert(0);
+		return p;
+	}
+	static Packet setMap(int player,string part)in{
+		assert(part.length<=mapName.length);
+	}do{
+		Packet p;
+		p.type=PacketType.setMap;
+		p.mapPlayer=player;
+		p.mapName[0..part.length]=part;
+		p.mapName[part.length..$]=0;
+		return p;
+	}
+	static Packet appendMap(int player,string part)in{
+		assert(part.length<=mapName.length);
+	}do{
+		Packet p;
+		p.type=PacketType.appendMap;
+		p.mapPlayer=player;
+		p.mapName[0..part.length]=part;
+		p.mapName[part.length..$]=0;
 		return p;
 	}
 	static Packet updateStatus(int player,PlayerStatus newStatus){
@@ -307,7 +334,7 @@ enum PlayerStatus{
 struct Player{
 	PlayerStatus status;
 	Settings settings;
-	
+
 	Connection connection;
 	bool alive(){ return connection&&connection.alive; }
 	void send(Packet p){
@@ -395,6 +422,9 @@ final class Network(B){
 	bool readyToLoad(){
 		return players.all!(p=>p.status>=PlayerStatus.readyToLoad);
 	}
+	bool clientsReadyToLoad(){
+		return iota(players.length).filter!(i=>i!=host).map!(i=>players[i]).all!(p=>p.status>=PlayerStatus.readyToLoad);
+	}
 	bool loading(){
 		return me!=-1&&players[me].status==PlayerStatus.loading;
 	}
@@ -413,6 +443,11 @@ final class Network(B){
 		return players.map!(p=>p.committedFrame).reduce!min;
 	}
 	int me=-1;
+	@property settings()in{
+		assert(readyToLoad());
+	}do{
+		return players[me].settings;
+	}
 	void broadcast(Packet p)in{
 		assert(purposeFromType(p.type)==PacketPurpose.broadcast);
 	}do{
@@ -434,16 +469,30 @@ final class Network(B){
 	}do{
 		updateStatus(me,newStatus);
 	}
+	void updateSetting(string setting,T)(int player,T value){
+		if(mixin(`players[player].settings.`~setting)==value) return;
+		static if(setting=="map"){
+			enum blockSize=Packet.mapName.length;
+			foreach(i;0..(value.length+blockSize-1)/blockSize){
+				auto part=value[i*blockSize..min($,(i+1)*blockSize)];
+				if(i==0) broadcast(Packet.setMap(player,part));
+				else broadcast(Packet.appendMap(player,part));
+			}
+		}else broadcast(Packet.updateSetting!setting(player,value));
+		mixin(`players[player].settings.`~setting)=value;
+	}
+	void synchronizeSetting(string setting)()in{
+		assert(isHost);
+	}do{
+		foreach(player;0..cast(int)players.length)
+			updateSetting!setting(player,mixin(`players[host].settings.`~setting));
+	}
 	void updateSettings(int player,Settings newSettings)in{
 		assert(0<=player&&player<players.length);
 		assert((player==me||isHost)&&players[player].status>=PlayerStatus.synched);
 	}do{
-		auto oldSettings=players[player].settings;
-		static foreach(setting;__traits(allMembers,Settings)){
-			if(mixin(`oldSettings.`~setting)!=mixin(`newSettings.`~setting))
-				broadcast(Packet.updateSetting!setting(player,mixin(`newSettings.`~setting)));
-		}
-		players[player].settings=newSettings;
+		static foreach(setting;__traits(allMembers,Settings))
+			updateSetting!setting(player,mixin(`newSettings.`~setting));
 	}
 	void updateSettings(Settings newSettings)in{
 		assert(me!=-1&&players[me].status>=PlayerStatus.synched);
@@ -544,7 +593,7 @@ final class Network(B){
 				}
 				break;
 			// broadcast:
-			case PacketType.updateSetting:
+			case PacketType.updateSetting,PacketType.setMap,PacketType.appendMap:
 				if(!isHost&&sender!=host){
 					stderr.writeln("non-host player ",sender," attempted to update settings: ",p);
 					break;
@@ -553,32 +602,45 @@ final class Network(B){
 					stderr.writeln("attempt to change settings after game started loading: ",p);
 					break;
 				}
+				static assert(p.player.offsetof is p.mapPlayer.offsetof);
 				if(p.player<0||p.player>=playerLimit){
 					stderr.writeln("player id out of range: ",p);
 					break;
 				}
 				if(p.player>=players.length) players.length=p.player+1;
-				if(players[p.player].status>=PlayerStatus.readyToLoad){
+				if(players[sender].status>=PlayerStatus.readyToLoad){
 					stderr.writeln("attempt to change settings after marked ready to load: ",p);
 					break;
 				}
-				auto len=0;
-				while(len<p.optionName.length&&p.optionName[len]!='\0') ++len;
-				if(len==p.optionName.length) break;
-			Lswitch:switch(p.optionName[0..len]){
-					static foreach(setting;__traits(allMembers,Settings)){
-						case setting:
-							alias T=typeof(mixin(`players[p.player].settings.`~setting));
-							static if(is(T==int)) mixin(`players[p.player].settings.`~setting)=p.intValue;
-							else static if(is(T==bool))  mixin(`players[p.player].settings.`~setting)=p.boolValue;
-							else static if(is(T==float))  mixin(`players[p.player].settings.`~setting)=p.floatValue;
-							else static if(is(T==God))  mixin(`players[p.player].settings.`~setting)=p.godValue;
-							else static if(is(T==char[4])) mixin(`players[p.player].settings.`~setting)=p.char4Value;
-							else static assert(0);
-							break Lswitch;
+				if(p.type==PacketType.updateSetting){
+					auto len=0;
+					while(len<p.optionName.length&&p.optionName[len]!='\0') ++len;
+					if(len==p.optionName.length) break;
+				Lswitch:switch(p.optionName[0..len]){
+						static foreach(setting;__traits(allMembers,Settings)){
+							static if(setting!="map"){
+								case setting:
+									alias T=typeof(mixin(`players[p.player].settings.`~setting));
+									static if(is(T==int)) mixin(`players[p.player].settings.`~setting)=p.intValue;
+									else static if(is(T==bool))  mixin(`players[p.player].settings.`~setting)=p.boolValue;
+									else static if(is(T==float))  mixin(`players[p.player].settings.`~setting)=p.floatValue;
+									else static if(is(T==God))  mixin(`players[p.player].settings.`~setting)=p.godValue;
+									else static if(is(T==char[4])) mixin(`players[p.player].settings.`~setting)=p.char4Value;
+									else static assert(0);
+									break Lswitch;
+							}
+						}
+						default: break;
 					}
-					default: break;
-				}
+				}else if(p.type==PacketType.setMap){
+					auto len=0;
+					while(len<p.mapName.length&&p.mapName[len]!='\0') ++len;
+					players[p.mapPlayer].settings.map=p.mapName[0..len].idup;
+				}else if(p.type==PacketType.appendMap){
+					auto len=0;
+					while(len<p.mapName.length&&p.mapName[len]!='\0') ++len;
+					players[p.mapPlayer].settings.map~=p.mapName[0..len];
+				}else assert(0);
 				break;
 			case PacketType.updateStatus:
 				if(p.player<0||p.player>=playerLimit) break;
@@ -618,8 +680,17 @@ final class Network(B){
 		assert(isHost);
 	}do{
 		if(!connection) return;
-		static foreach(setting;__traits(allMembers,Settings))
-			connection.send(Packet.updateSetting!setting(player,mixin(`players[player].settings.`~setting)));
+		static foreach(setting;__traits(allMembers,Settings)){
+			static if(setting=="map"){
+				enum blockSize=Packet.mapName.length;
+				auto value=players[player].settings.map;
+				foreach(i;0..(value.length+blockSize-1)/blockSize){
+					auto part=value[i*blockSize..min($,(i+1)*blockSize)];
+					if(i==0) connection.send(Packet.setMap(player,part));
+					else connection.send(Packet.appendMap(player,part));
+				}
+			}else connection.send(Packet.updateSetting!setting(player,mixin(`players[player].settings.`~setting)));
+		}
 		connection.send(Packet.updateStatus(player,players[player].status));
 		// TODO: send address to attempt to establish peer to peer connection
 	}
