@@ -2270,7 +2270,7 @@ final class SacScene: Scene{
 		whiteTexture=DagonBackend.makeTexture(makeOnePixelImage(Color4f(1.0f,1.0f,1.0f)));
 		border=New!ShapeSacCreatureFrame(assetManager);
 		sacHud=new SacHud!DagonBackend();
-		selectionRoster=New!ShapeSubQuad(assetManager,-0.5f,0.0f,0.5f,2.0f);
+		selectionRoster=New!ShapeSubQuad(assetManager,-63.5f/128.0f,0.0f,63.5f/128.0f,2.0f);
 		healthColorTexture=DagonBackend.makeTexture(makeOnePixelImage(healthColor));
 		manaColorTexture=DagonBackend.makeTexture(makeOnePixelImage(manaColor));
 		minimapFrame=New!ShapeSubQuad(assetManager,0.5f,0.5f,1.5f,1.5f);
