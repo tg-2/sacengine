@@ -3619,6 +3619,20 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 				}
 			}
 			break;
+		case CommandType.useAbility:
+			auto ability=object.sacObject.ability;
+			auto target=Target(object.creatureAI.order.target.type,object.creatureAI.order.target.id,object.creatureAI.order.target.position);
+			bool applicable=ability&&!ability.requiresTarget||ability.isApplicable(summarize(target,object.side,state));
+			if(ability&&target.id&&!applicable){
+				target.id=0;
+				target.type=TargetType.terrain;
+				applicable=!ability.requiresTarget||ability.isApplicable(summarize(target,object.side,state));
+			}
+			if(applicable){
+				object.stun(state); // TODO
+				object.clearOrder(state);
+			}else object.clearOrder(state);
+			break;
 		default: assert(0); // TODO: compilation error would be better
 	}
 }
@@ -6286,8 +6300,7 @@ final class ObjectState(B){ // (update logic)
 			command.speakCommand(this);
 		}
 		static bool applyOrder(Command!B command,ObjectState!B state,bool updateFormation=false,Vector2f formationOffset=Vector2f(0.0f,0.0f)){
-			bool success=false;
-			assert(command.type==CommandType.setFormation||command.target.type.among(TargetType.terrain,TargetType.creature,TargetType.building));
+			assert(command.type.among(CommandType.setFormation,CommandType.useAbility)||command.target.type.among(TargetType.terrain,TargetType.creature,TargetType.building));
 			if(!command.creature){
 				int[Formation.max+1] num;
 				int numCreatures=0;
@@ -6315,7 +6328,7 @@ final class ObjectState(B){ // (update logic)
 				}
 				auto selection=state.getSelection(command.side);
 				auto targetScale=Vector2f(0.0f,0.0f);
-				if(command.target.id!=0){
+				if(!command.type.among(CommandType.setFormation,CommandType.useAbility)&&command.target.id!=0){
 					static getScale(T)(ref T obj){
 						static if(is(T==MovingObject!B)){
 							auto hitbox=obj.sacObject.largeHitbox(Quaternionf.identity(),AnimationState.stance1,0);
@@ -6331,15 +6344,17 @@ final class ObjectState(B){ // (update logic)
 				}
 				auto ids=selection.creatureIds[].filter!(x=>x!=command.target.id);
 				auto formationOffsets=getFormationOffsets(ids,command.type,command.formation,formationScale,targetScale);
+				bool success=false;
 				int i=0;
 				foreach(selectedId;ids){ // TODO: for retreat command, need to loop over all creatures of that side
 					scope(success) i++;
 					if(!selectedId) break;
 					command.creature=selectedId;
-					success|=applyOrder(command,state,true,formationOffsets[i]);
+					if(command.type!=CommandType.useAbility) success|=applyOrder(command,state,true,formationOffsets[i]);
+					else success|=applyOrder(command,state);
 				}
+				return success;
 			}else{
-				success=true;
 				// TODO: add command indicators to scene
 				Order ord;
 				ord.command=command.type;
@@ -6355,8 +6370,8 @@ final class ObjectState(B){ // (update logic)
 					auto targetPosition=targetPositionTargetFacing[0], targetFacing=targetPositionTargetFacing[1];
 					position=getTargetPosition(targetPosition,targetFacing,formationOffset,state);
 				}else position=ord.getTargetPosition(state);
-				state.addCommandCone(CommandCone!B(command.side,color,position));
-				state.movingObjectById!((ref obj,ord,state,side,updateFormation,formation,position){
+				if(command.type!=CommandType.useAbility) state.addCommandCone(CommandCone!B(command.side,color,position));
+				return state.movingObjectById!((ref obj,ord,ability,state,side,updateFormation,formation,position){
 					if(ord.command==CommandType.attack&&ord.target.type==TargetType.creature){
 						// TODO: check whether they stick to creatures of a specific side
 						if(state.movingObjectById!((obj,side,state)=>state.sides.getStance(side,obj.side)==Stance.enemy,()=>false)(ord.target.id,side,state)){
@@ -6365,11 +6380,12 @@ final class ObjectState(B){ // (update logic)
 							if(target) ord.target.id=target;
 						}
 					}
+					if(ord.command==CommandType.useAbility && obj.sacObject.ability !is ability) return false;
 					if(updateFormation) obj.creatureAI.formation=formation;
 					if(ord.command!=CommandType.setFormation) obj.order(ord,state,side);
-				})(command.creature,ord,state,command.side,updateFormation,command.formation,position);
+					return true;
+				},()=>false)(command.creature,ord,command.spell,state,command.side,updateFormation,command.formation,position);
 			}
-			return success;
 		}
 		Lswitch:final switch(command.type) with(CommandType){
 			case none: break; // TODO: maybe get rid of null commands
@@ -6393,7 +6409,7 @@ final class ObjectState(B){ // (update logic)
 			case selectGroup: success=this.selectGroup(command.side,command.group); break Lswitch;
 			case automaticSelectGroup: goto case selectGroup;
 			case setFormation: success=applyOrder(command,this,true); break;
-			case retreat,move,guard,guardArea,attack,advance: success=applyOrder(command,this); break;
+			case retreat,move,guard,guardArea,attack,advance,useAbility: success=applyOrder(command,this); break;
 			case castSpell: success=this.movingObjectById!((ref obj,spell,target,state)=>obj.startCasting(spell,target,state),function()=>false)(command.wizard,command.spell,command.target,this);
 		}
 	}
@@ -7116,12 +7132,13 @@ enum CommandType{
 	advance,
 
 	castSpell,
+	useAbility,
 }
 
 bool hasClickSound(CommandType type){
 	final switch(type) with(CommandType){
 		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,clearSelection,automaticToggleSelection,automaticSelectGroup,setFormation,retreat: return false;
-		case select,selectAll,automaticSelectAll,toggleSelection,defineGroup,addToGroup,selectGroup,move,guard,guardArea,attack,advance,castSpell: return true;
+		case select,selectAll,automaticSelectAll,toggleSelection,defineGroup,addToGroup,selectGroup,move,guard,guardArea,attack,advance,castSpell,useAbility: return true;
 	}
 }
 SoundType soundType(B)(Command!B command){
@@ -7155,12 +7172,12 @@ SoundType soundType(B)(Command!B command){
 		case guardArea: return SoundType.defendArea;
 		case attack: return command.target.type==TargetType.building?SoundType.attackBuilding:SoundType.attack;
 		case advance: return SoundType.advance;
-		case castSpell: return SoundType.none;
+		case castSpell,useAbility: return SoundType.none;
 	}
 }
 SoundType responseSoundType(B)(Command!B command){
 	final switch(command.type) with(CommandType){
-		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,setFormation,clearSelection,automaticSelectAll,automaticToggleSelection,defineGroup,addToGroup,automaticSelectGroup,retreat,castSpell:
+		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,setFormation,clearSelection,automaticSelectAll,automaticToggleSelection,defineGroup,addToGroup,automaticSelectGroup,retreat,castSpell,useAbility:
 			return SoundType.none;
 		case select,selectAll,toggleSelection,selectGroup:
 			return SoundType.selected;
@@ -7316,7 +7333,7 @@ struct Command(B){
 				break;
 				case defineGroup,addToGroup,selectGroup,automaticSelectGroup:
 				assert(0);
-			case castSpell:
+			case castSpell,useAbility:
 				assert(0);
 		}
 	}do{
@@ -7350,11 +7367,18 @@ struct Command(B){
 		this.formation=formation;
 	}
 
-	this(B)(int side,int wizard,SacSpell!B spell,Target target){
+	this(int side,int wizard,SacSpell!B spell,Target target){
 		this.type=CommandType.castSpell;
 		this.side=side;
 		this.wizard=wizard;
 		this.spell=spell;
+		this.target=target;
+	}
+
+	this(int side,SacSpell!B ability,Target target){
+		this.type=CommandType.useAbility;
+		this.side=side;
+		this.spell=ability;
 		this.target=target;
 	}
 

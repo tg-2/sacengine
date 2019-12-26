@@ -1403,8 +1403,7 @@ final class SacScene: Scene{
 			if(playAudio) spellAdvisorHelpSpeech(status);
 			return;
 		}
-		// controller.addCommand(Command!DagonBackend(renderSide,camera.target,spell,target));
-		// TODO
+		controller.addCommand(Command!DagonBackend(renderSide,ability,target));
 	}
 	void useAbility(char[4] tag,Target target,bool playAudio=true){
 		useAbility(SacSpell!DagonBackend.get(tag),target,playAudio);
