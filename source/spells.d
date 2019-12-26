@@ -45,10 +45,10 @@ struct Cre8{
 	ushort souls;
 	ushort unknown20; // some multiplier?
 	uint unknown21; // unused?
-	char[4] ability1; // refers to @ABI
-	char[4] ability2;
+	char[4] ability0; // refers to @ABI
+	char[4] ability1;
 	uint[6] unknown22; // unused?
-	char[4] ability3;
+	char[4] ability2;
 	uint unknown23;
 	uint meleeStrength; // moderately small number
 	uint mana; // "

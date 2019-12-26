@@ -6514,6 +6514,12 @@ final class ObjectState(B){ // (update logic)
 		}
 		return SpellStatus.inexistent;
 	}
+	SpellStatus abilityStatus(bool selectOnly=false)(int side,SacSpell!B ability,spellStatusArgs!selectOnly target){
+		static if(!selectOnly){
+			if(ability.requiresTarget&&!ability.isApplicable(summarize(target[0],side,this))) return SpellStatus.invalidTarget;
+		}
+		return SpellStatus.ready;
+	}
 	void removeWizard(int id){
 		obj.removeWizard(id);
 	}
@@ -6613,20 +6619,6 @@ final class ObjectState(B){ // (update logic)
 	}
 	void resetSelectionCount(int side){
 		return sid.resetSelectionCount(side);
-	}
-	int getSelectionRepresentative(int side){
-		auto ids=getSelection(side).creatureIds;
-		int result=0,bestPriority=-1;
-		foreach(id;ids){
-			if(id){
-				int priority=this.movingObjectById!((obj)=>obj.sacObject.creaturePriority,()=>-1)(id);
-				if(priority>bestPriority){
-					result=id;
-					bestPriority=priority;
-				}
-			}
-		}
-		return result;
 	}
 	void newCreatureAddToSelection(int side,int id){
 		addToSelection(side,id);
@@ -6818,6 +6810,35 @@ struct CreatureGroup{
 	void clear(){
 		creatureIds[]=0;
 	}
+
+	int representative(B)(ObjectState!B state){
+		int result=0,bestPriority=-1;
+		foreach(id;creatureIds){
+			if(id){
+				int priority=state.movingObjectById!((obj)=>obj.sacObject.creaturePriority,()=>-1)(id);
+				if(priority>bestPriority){
+					result=id;
+					bestPriority=priority;
+				}
+			}
+		}
+		return result;
+	}
+	SacSpell!B ability(B)(ObjectState!B state){
+		SacSpell!B ability=null;
+		int bestPriority=-1;
+		foreach(id;creatureIds){
+			if(id){
+				auto prioritySpell=state.movingObjectById!((obj)=>tuple(obj.sacObject.creaturePriority,obj.sacObject.ability),()=>tuple(-1,SacSpell!B.init))(id);
+				auto priority=prioritySpell[0],spell=prioritySpell[1];
+				if(spell&&priority>bestPriority){
+					ability=spell;
+					bestPriority=priority;
+				}
+			}
+		}
+		return ability;
+	}
 }
 
 struct SideData(B){
@@ -6964,6 +6985,7 @@ enum TargetType{
 	structureTab,
 
 	spell,
+	ability,
 
 	soulStat,
 	manaStat,
@@ -6987,7 +7009,7 @@ struct Target{
 }
 TargetFlags summarize(bool simplified=false,B)(ref Target target,int side,ObjectState!B state){
 	final switch(target.type) with(TargetType){
-		case none,creatureTab,spellTab,structureTab,spell,soulStat,manaStat,healthStat: return TargetFlags.none;
+		case none,creatureTab,spellTab,structureTab,spell,ability,soulStat,manaStat,healthStat: return TargetFlags.none;
 		case terrain: return TargetFlags.ground;
 		case creature,building:
 			static TargetFlags handle(T)(T obj,int side,ObjectState!B state){
@@ -7155,7 +7177,7 @@ void speakCommand(B)(Command!B command,ObjectState!B state){
 	}
 	auto responseSoundType=command.responseSoundType;
 	if(responseSoundType!=SoundType.none){
-		int responding=command.creature?command.creature:state.getSelectionRepresentative(command.side);
+		int responding=command.creature?command.creature:state.getSelection(command.side).representative(state);
 		if(responding&&state.getSelection(command.side).creatureIds[].canFind(responding)){
 			if(auto respondingSacObject=state.movingObjectById!((obj)=>obj.sacObject,()=>null)(responding)){
 				if(responseSoundType==SoundType.selected){

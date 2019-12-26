@@ -132,8 +132,7 @@ class SacSpell(B){
 		else if(structureSpells.canFind(tag)) type=SpellType.structure;
 		else type=SpellType.spell;
 		auto iconTag=cre8?cre8.icon:spel?spel.icon:strc.icon;
-		if(iconTag!="\0\0\0\0"){
-			enforce(iconTag in icons,text(iconTag," ",icons));
+		if(iconTag!="\0\0\0\0" && iconTag in icons){
 			icon=B.makeTexture(loadTXTR(icons[iconTag]));
 		}
 		void setStats(T)(T arg){

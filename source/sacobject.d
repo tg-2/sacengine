@@ -1,7 +1,7 @@
 import dlib.math, dlib.image.color;
 import util;
 import mrmm, _3dsm, txtr, saxs, sxsk, widg;
-import animations, ntts, nttData, spells, bldg, sset;
+import animations, ntts, nttData, spells, sacspell, bldg, sset;
 import stats;
 import std.typecons: Tuple, tuple;
 import std.stdio, std.conv;
@@ -31,6 +31,7 @@ final class SacObject(B){
 	B.Material[] transparentMaterials;
 	B.Material[] shadowMaterials;
 	Animation[] animations;
+	SacSpell!B[3] abilities;
 	immutable(Cre8)* cre8;
 	immutable(CreatureData)* data;
 	immutable(Wizd)* wizd;
@@ -296,6 +297,10 @@ final class SacObject(B){
 		return animations[animationState].frames[frame].event==AnimEvent.attack;
 	}
 
+	@property bool isRanged(){ return data && data.ranged; }
+	@property SacSpell!B rangedAttack(){ return isRanged?abilities[0]:null; }
+	@property SacSpell!B ability(){ return isRanged?abilities[1]:abilities[0]; }
+
 	Vector3f[2] meleeHitbox(Quaternionf rotation,AnimationState animationState,int frame)in{
 		assert(isSaxs);
 	}do{
@@ -385,6 +390,12 @@ final class SacObject(B){
 		if(iconTag!="\0\0\0\0"){
 			enforce(iconTag in icons,text(iconTag," ",icons));
 			icon=B.makeTexture(loadTXTR(icons[iconTag]));
+		}
+		if(cre8){
+			static foreach(i;0..3){
+				if(mixin(text(`cre8.ability`,i))!="\0\0\0\0")
+					abilities[i]=SacSpell!B.get(mixin(text(`cre8.ability`,i)));
+			}
 		}
 		MaterialConfig conf;
 		// TODO: this is a hack:
@@ -1099,12 +1110,13 @@ enum MouseIcon{
 	attack,
 	guard,
 	spell,
+	ability,
 }
 
 final class SacCursor(B){
 	B.Texture[Cursor.max+1] textures;
 	B.Material[] materials;
-	B.Texture[MouseIcon.max] iconTextures;
+	B.Texture[MouseIcon.guard+1] iconTextures;
 	B.Material[] iconMaterials;
 	B.Texture invalidTargetIconTexture;
 	B.Material invalidTargetIconMaterial;

@@ -292,6 +292,12 @@ enum StunnedBehavior{
 	onDamage,
 }
 
+enum RangedType{
+	melee,
+	ranged,
+	friendlyRanged,
+}
+
 immutable struct CreatureData{
 	char[4] tag;
 	string name; // TODO: internationalization
@@ -305,11 +311,13 @@ immutable struct CreatureData{
 	bool continuousRegeneration=false;
 	auto soulDisplacement=Vector3f(0.0f,0.0f,0.0f);
 	float buildingMeleeDamageMultiplier=1.0f; // TODO: is this in creature stats?
+	RangedType ranged=RangedType.melee; // TODO: is this in creature data?
 }
 
 CreatureData abomination={
 	tag: "ctug",
 	name: "Abomination",
+	ranged: RangedType.ranged,
 	// hitboxType: ?
 };
 
@@ -323,6 +331,7 @@ CreatureData basilisk={
 	tag: "guls",
 	name: "Basilisk",
 	rotateOnGround: RotateOnGround.completely,
+	ranged: RangedType.ranged,
 };
 
 CreatureData blight={
@@ -337,17 +346,20 @@ CreatureData bombard={
 	name: "Bombard",
 	rotateOnGround: RotateOnGround.sideways,
 	soulDisplacement: Vector3f(0.0f,-1.0f,0.0f),
+	ranged: RangedType.ranged,
 };
 
 CreatureData boulderdash={
 	tag: "llab",
 	name: "Boulderdash",
 	rotateOnGround: RotateOnGround.sideways,
+	ranged: RangedType.ranged,
 };
 
 CreatureData brainiac={
 	tag: "bobs",
 	name: "Brainiac",
+	ranged: RangedType.ranged,
 };
 
 CreatureData cog={
@@ -360,6 +372,7 @@ CreatureData deadeye={
 	name: "Deadeye",
 	// hitboxType: ?
 	stunnedBehavior: StunnedBehavior.onDamage,
+	ranged: RangedType.ranged,
 };
 
 CreatureData dragon={
@@ -387,6 +400,7 @@ CreatureData druid={
 CreatureData earthfling={
 	tag: "palk",
 	name: "Earthfling",
+	ranged: RangedType.ranged,
 };
 
 CreatureData ent={
@@ -401,16 +415,19 @@ CreatureData ent={
 CreatureData faestus1={
 	tag: "ehtH",
 	name: "Faestus",
+	ranged: RangedType.ranged,
 };
 
 CreatureData faestus2={
 	tag: "EHTH",
 	name: "Faestus",
+	ranged: RangedType.ranged,
 };
 
 CreatureData fallen={
 	tag: "dplk",
 	name: "Fallen",
+	ranged: RangedType.ranged,
 };
 
 CreatureData familiar={
@@ -432,12 +449,14 @@ CreatureData firefist={
 CreatureData flameminion={
 	tag: "fplk",
 	name: "Flame Minion",
+	ranged: RangedType.ranged,
 };
 
 CreatureData flummox={
 	tag: "wlce",
 	name: "Flummox",
 	rotateOnGround: RotateOnGround.sideways,
+	ranged: RangedType.ranged,
 };
 
 CreatureData flurry={
@@ -445,6 +464,7 @@ CreatureData flurry={
 	name: "Flurry",
 	rotateOnGround: RotateOnGround.sideways,
 	soulDisplacement: Vector3f(0.0f,0.6f,0.0f),
+	ranged: RangedType.ranged,
 };
 
 CreatureData frostwolf={ // TODO: this is screwed up, why?
@@ -469,6 +489,7 @@ CreatureData gangrel={
 CreatureData gargoyle={
 	tag: "sohe",
 	name: "Gargoyle",
+	ranged: RangedType.ranged,
 };
 
 CreatureData ghost={
@@ -482,6 +503,7 @@ CreatureData gnome={
 	name: "Gnome",
 	// hitboxType: ?
 	stunnedBehavior: StunnedBehavior.onDamage,
+	ranged: RangedType.ranged,
 };
 
 CreatureData gremlin={
@@ -494,6 +516,7 @@ CreatureData hellmouth={
 	tag: "nomd",
 	name: "Hellmouth",
 	rotateOnGround: RotateOnGround.completely,
+	ranged: RangedType.ranged,
 };
 
 CreatureData ikarus={
@@ -515,6 +538,7 @@ CreatureData jabberocky={
 CreatureData locust={
 	tag: "pazb",
 	name: "Locust",
+	ranged: RangedType.ranged,
 };
 
 CreatureData lordSurtur={
@@ -534,12 +558,14 @@ CreatureData mutant={
 	name: "Mutant",
 	// hitboxType: ?
 	stunnedBehavior: StunnedBehavior.onDamage,
+	ranged: RangedType.ranged,
 };
 
 CreatureData necryl={
 	tag: "glsd",
 	name: "Necryl",
 	rotateOnGround: RotateOnGround.completely,
+	ranged: RangedType.ranged,
 };
 
 CreatureData netherfiend={
@@ -559,6 +585,7 @@ CreatureData phoenix={
 	tag: "grdr",
 	name: "Phoenix",
 	stunBehavior: StunBehavior.always,
+	ranged: RangedType.ranged,
 };
 
 CreatureData pyrodactyl={
@@ -572,11 +599,13 @@ CreatureData pyromaniac={
 	tag: "plff",
 	name: "Pyromaniac",
 	stunnedBehavior: StunnedBehavior.onDamage,
+	ranged: RangedType.ranged,
 };
 
 CreatureData ranger={
 	tag: "amuh",
 	name: "Ranger",
+	ranged: RangedType.ranged,
 };
 
 CreatureData rhinok={
@@ -585,6 +614,7 @@ CreatureData rhinok={
 	rotateOnGround: RotateOnGround.completely,
 	// hitboxType: ?
 	stunBehavior: StunBehavior.always,
+	ranged: RangedType.ranged,
 };
 
 CreatureData sacDoctor={
@@ -595,12 +625,14 @@ CreatureData sacDoctor={
 CreatureData saraBella={
 	tag: "pezH",
 	name: "Sara Bella",
+	ranged: RangedType.ranged,
 };
 
 CreatureData scarab={
 	tag: "cara",
 	name: "Scarab",
 	rotateOnGround: RotateOnGround.completely,
+	ranged: RangedType.friendlyRanged,
 };
 
 CreatureData scythe={
@@ -618,6 +650,7 @@ CreatureData seraph={
 CreatureData shrike={
 	tag: "tbsh",
 	name: "Shrike",
+	ranged: RangedType.ranged,
 };
 
 CreatureData silverback={
@@ -627,6 +660,7 @@ CreatureData silverback={
 	rotateOnGround: RotateOnGround.completely,
 	stunBehavior: StunBehavior.always,
 	soulDisplacement: Vector3f(0.0f,0.0f,2.0f),
+	ranged: RangedType.ranged,
 };
 
 CreatureData sirocco={
@@ -653,12 +687,14 @@ CreatureData snowman={
 CreatureData spitfire={
 	tag: "sohf",
 	name: "Spitfire",
+	ranged: RangedType.ranged,
 };
 
 CreatureData squall={
 	tag: "alab",
 	name: "Squall",
 	rotateOnGround: RotateOnGround.sideways,
+	ranged: RangedType.ranged,
 };
 
 CreatureData stormGiant={
@@ -673,11 +709,13 @@ CreatureData styx={
 	name: "Styx",
 	// hitboxType: ?
 	stunnedBehavior: StunnedBehavior.onMeleeDamage,
+	ranged: RangedType.ranged,
 };
 
 CreatureData sylph={
 	tag: "ahcr",
 	name: "Sylph",
+	ranged: RangedType.ranged,
 };
 
 CreatureData taurock={
@@ -690,12 +728,14 @@ CreatureData taurock={
 CreatureData thestor={
 	tag: "eafH",
 	name: "Thestor",
+	ranged: RangedType.ranged,
 };
 
 CreatureData tickferno={
 	tag: "craf",
 	name: "Tickferno",
 	rotateOnGround: RotateOnGround.completely,
+	ranged: RangedType.ranged,
 };
 
 CreatureData toldor={
@@ -722,6 +762,7 @@ CreatureData vortick={
 	tag: "craa",
 	name: "Vortick",
 	rotateOnGround: RotateOnGround.completely,
+	ranged: RangedType.ranged,
 };
 
 CreatureData warmonger={
@@ -729,6 +770,7 @@ CreatureData warmonger={
 	name: "Warmonger",
 	// hitboxType: ?
 	stunnedBehavior: StunnedBehavior.onMeleeDamage,
+	ranged: RangedType.ranged,
 };
 
 CreatureData yeti={

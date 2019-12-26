@@ -899,7 +899,7 @@ final class SacScene: Scene{
 		auto scaling=Vector3f(size,size,1.0f);
 		if(mouse.status==Mouse.Status.icon&&!mouse.dragging){
 			auto iconPosition=position+Vector3f(0.0f,4.0f/32.0f*size,0.0f);
-			if(mouse.icon!=MouseIcon.spell){
+			if(!mouse.icon.among(MouseIcon.spell,MouseIcon.ability)){
 				auto material=sacCursor.iconMaterials[mouse.icon];
 				material.bind(rc);
 				material.backend.setTransformationScaled(iconPosition, Quaternionf.identity(), scaling, rc);
@@ -908,10 +908,10 @@ final class SacScene: Scene{
 			}else{
 				hudMaterialBackend.bind(null,rc);
 				hudMaterialBackend.bindDiffuse(sacHud.pages);
-				ShapeSubQuad[3] pages=[creaturePage,spellPage,structurePage];
-				auto page=pages[spellbookTab];
 				hudMaterialBackend.setTransformationScaled(iconPosition, Quaternionf.identity(), scaling, rc);
-				page.render(rc);
+				/+ShapeSubQuad[3] pages=[creaturePage,spellPage,structurePage];
+				auto page=pages[mouse.spell.type];
+				page.render(rc);+/
 				hudMaterialBackend.bindDiffuse(mouse.spell.icon);
 				quad.render(rc);
 				hudMaterialBackend.unbind(null,rc);
@@ -954,14 +954,27 @@ final class SacScene: Scene{
 		   && floor(topLeft.y)<=mouse.y&&mouse.y<=ceil(bottomRight.y))
 			selectionRosterTarget=target;
 	}
+	void updateSelectionRosterTargetAbility(Target target,SacSpell!DagonBackend targetAbility,Vector2f position,Vector2f scaling){
+		if(!mouse.onSelectionRoster) return;
+		auto topLeft=position;
+		auto bottomRight=position+scaling;
+		if(floor(topLeft.x)<=mouse.x&&mouse.x<=ceil(bottomRight.x)
+		   && floor(topLeft.y)<=mouse.y&&mouse.y<=ceil(bottomRight.y)){
+			selectionRosterTarget=target;
+			selectionRosterTargetAbility=targetAbility;
+		}
+	}
 	void renderSelectionRoster(RenderingContext* rc){
-		if(mouse.onSelectionRoster) selectionRosterTarget=Target.init;
+		if(mouse.onSelectionRoster){
+			selectionRosterTarget=Target.init;
+			selectionRosterTargetAbility=null;
+		}
 		auto material=sacHud.frameMaterial;
 		material.bind(rc);
 		scope(success) material.unbind(rc);
 		auto hudScaling=this.hudScaling;
 		auto scaling=hudScaling*Vector3f(138.0f,256.0f,1.0f);
-		auto position=Vector3f(-34.0f*hudScaling,0.5*(height-scaling.y),0);
+		auto position=Vector3f(-34.0f*hudScaling,0.5f*(height-scaling.y),0);
 		material.backend.setTransformationScaled(position, Quaternionf.identity(), scaling, rc);
 		selectionRoster.render(rc);
 		int i=0; // idiotic deprecation of foreach(int i,x;selection)
@@ -969,9 +982,9 @@ final class SacScene: Scene{
 			scope(success) i++;
 			if(!renderedSelection.creatureIds[i]) continue;
 			static void renderIcon(B)(MovingObject!B obj,int i,Vector3f position,float hudScaling,SacScene scene,RenderingContext* rc){
-				auto cpos=position+hudScaling*Vector3f(i>=6?35.0f:-1.0f,(i%6)*32.0f,0.0f);
-				auto scaling=hudScaling*Vector3f(34.0f,32.0f,0.0f);
 				if(obj.sacObject.icon){
+					auto cpos=position+hudScaling*Vector3f(i>=6?35.0f:-1.0f,(i%6)*32.0f,0.0f);
+					auto scaling=hudScaling*Vector3f(34.0f,32.0f,0.0f);
 					scene.hudMaterialBackend.setTransformationScaled(cpos, Quaternionf.identity(), scaling, rc);
 					scene.hudMaterialBackend.bindDiffuse(obj.sacObject.icon);
 					scene.quad.render(rc);
@@ -996,6 +1009,18 @@ final class SacScene: Scene{
 				}
 			}
 			state.current.movingObjectById!renderIcon(renderedSelection.creatureIds[i],i,Vector3f(position.x+34.0f*hudScaling,0.5*(height-scaling.y)+32.0f*hudScaling,0.0f),hudScaling,this,rc);
+		}
+		auto ability=renderedSelection.ability(state.current);
+		if(ability&&ability.icon){
+			auto ascaling=hudScaling*Vector3f(34.0f,34.0f,0.0f);
+			auto apos=position+Vector3f(hudScaling*105.0f,0.5f*scaling.y-hudScaling*17.0f,0.0f);
+			hudMaterialBackend.setTransformationScaled(apos, Quaternionf.identity(), ascaling, rc);
+			hudMaterialBackend.bindDiffuse(ability.icon);
+			quad.render(rc);
+			if(mouse.onSelectionRoster){
+				auto target=Target(TargetType.ability,0,Vector3f.init,TargetLocation.selectionRoster);
+				updateSelectionRosterTargetAbility(target,ability,apos.xy,ascaling.xy);
+			}
 		}
 	}
 	float minimapRadius(){ return hudScaling*80.0f; }
@@ -1371,6 +1396,41 @@ final class SacScene: Scene{
 		if(!camera.target) return;
 		auto spells=state.current.getSpells(camera.target).filter!(x=>x.spell.type==tab);
 		foreach(i,entry;enumerate(spells)) if(i==index) return selectSpell(entry.spell,playAudio);
+	}
+	void useAbility(SacSpell!DagonBackend ability,Target target,bool playAudio=true){
+		auto status=state.current.abilityStatus!false(renderSide,ability,target);
+		if(status!=SpellStatus.ready){
+			if(playAudio) spellAdvisorHelpSpeech(status);
+			return;
+		}
+		// controller.addCommand(Command!DagonBackend(renderSide,camera.target,spell,target));
+		// TODO
+	}
+	void useAbility(char[4] tag,Target target,bool playAudio=true){
+		useAbility(SacSpell!DagonBackend.get(tag),target,playAudio);
+	}
+	void selectAbility(SacSpell!DagonBackend newAbility,bool playAudio=true){
+		if(mouse.status==Mouse.Status.icon){
+			if(mouse.icon==MouseIcon.ability&&mouse.spell is newAbility) return;
+			if(playAudio&&audio) audio.playSound("kabI");
+		}
+		if(!camera.target) return;
+		auto status=state.current.abilityStatus!true(renderSide,newAbility);
+		if(status!=SpellStatus.ready){
+			if(playAudio) spellAdvisorHelpSpeech(status);
+			return;
+		}
+		if(newAbility.flags){
+			import std.random:uniform; // TODO: put selected spells in game state?
+			auto whichClick=uniform(0,2);
+			if(playAudio&&audio) audio.playSound(commandAppliedSoundTags[whichClick]);
+			mouse.status=Mouse.Status.icon;
+			mouse.icon=MouseIcon.ability;
+			mouse.spell=newAbility;
+		}else{
+			mouse.status=Mouse.Status.standard;
+			useAbility(newAbility,Target.init);
+		}
 	}
 	int numSpells=0;
 	bool isOnSpellbook(Vector2f center){
@@ -1843,6 +1903,8 @@ final class SacScene: Scene{
 						switchSpellbookTab(SpellType.structure);
 					}else if(mouse.target.type==TargetType.spell){
 						selectSpell(mouse.targetSpell);
+					}else if(mouse.target.type==TargetType.ability){
+						selectAbility(mouse.targetSpell);
 					}else done=false;
 				}else done=false;
 				if(!done&&!mouse.dragging) final switch(mouse.status){
@@ -1897,10 +1959,13 @@ final class SacScene: Scene{
 								case MouseIcon.spell:
 									castSpell(mouse.spell,mouse.target);
 									break;
+								case MouseIcon.ability:
+									useAbility(mouse.spell,mouse.target);
 							}
 							mouse.status=Mouse.Status.standard;
 						}else{
-							auto status=mouse.icon==MouseIcon.spell?state.current.spellStatus!false(camera.target,mouse.spell,mouse.target):SpellStatus.invalidTarget;
+							auto status=mouse.icon==MouseIcon.spell?state.current.spellStatus!false(camera.target,mouse.spell,mouse.target):
+								mouse.icon==MouseIcon.ability?state.current.abilityStatus!false(renderSide,mouse.spell,mouse.target):SpellStatus.invalidTarget;
 							spellAdvisorHelpSpeech(status);
 						}
 						break;
@@ -2342,6 +2407,7 @@ final class SacScene: Scene{
 			case MouseIcon.guard: return isApplicable(orderSpelFlags,target.summarize(renderSide,state.current));
 			case MouseIcon.attack: return isApplicable(orderSpelFlags,target.summarize(renderSide,state.current));
 			case MouseIcon.spell: return state.current.spellStatus!false(camera.target,mouse.spell,target)==SpellStatus.ready;
+			case MouseIcon.ability: return state.current.abilityStatus!false(renderSide,mouse.spell,target)==SpellStatus.ready;
 		}
 	}
 	SacCursor!DagonBackend sacCursor;
@@ -2357,6 +2423,7 @@ final class SacScene: Scene{
 	auto spellbookTarget=Target.init;
 	SacSpell!DagonBackend spellbookTargetSpell=null;
 	auto selectionRosterTarget=Target.init;
+	SacSpell!DagonBackend selectionRosterTargetAbility=null;
 	auto minimapTarget=Target.init;
 	Target computeMouseTarget(){
 		if(mouse.onSpellbook) return spellbookTarget;
@@ -2418,6 +2485,8 @@ final class SacScene: Scene{
 		mouse.target=target;
 		if(mouse.target.type==TargetType.spell)
 			mouse.targetSpell=spellbookTargetSpell;
+		if(mouse.target.type==TargetType.ability)
+			mouse.targetSpell=selectionRosterTargetAbility;
 		mouse.targetValid=targetValid;
 		auto summary=summarize!true(mouse.target,renderSide,state.current);
 		with(Cursor)
