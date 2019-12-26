@@ -7354,9 +7354,7 @@ struct Command(B){
 
 	int id=0;
 	int opCmp(ref Command!B rhs){
-		if(side<rhs.side) return true;
-		if(side>rhs.side) return false;
-		return id<rhs.id;
+		return tuple(side,id).opCmp(tuple(rhs.side,rhs.id));
 	}
 }
 
