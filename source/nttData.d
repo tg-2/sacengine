@@ -1031,6 +1031,8 @@ enum SpellTag:char[4]{
 	desecrate="ucas",
 	teleport="elet",
 	shrine="pcas",
+	// creature abilities:
+	runAway="!nur",
 }
 
 enum WizardTag:char[4]{

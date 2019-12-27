@@ -2777,6 +2777,10 @@ void heal(B)(ref MovingObject!B object,float amount,ObjectState!B state){
 void heal(B)(ref Building!B building,float amount,ObjectState!B state){
 	building.health=min(building.health+amount,building.maxHealth(state));
 }
+
+void drainMana(B)(ref MovingObject!B object,float amount,ObjectState!B state){
+	object.creatureStats.mana=max(0.0f,object.creatureStats.mana-amount);
+}
 void giveMana(B)(ref MovingObject!B object,float amount,ObjectState!B state){
 	object.creatureStats.mana=min(object.creatureStats.mana+amount,object.creatureStats.maxMana);
 }
@@ -2965,6 +2969,7 @@ int getCastingTime(B)(ref MovingObject!B object,SacSpell!B spell,bool stationary
 	return getCastingTime(object,spell,stationary,state);
 }
 
+enum manaEpsilon=1e-2f;
 enum summonSoundGain=2.0f;
 bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,ObjectState!B state){
 	auto wizard=state.getWizard(object.id);
@@ -3032,14 +3037,18 @@ bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,Ob
 }
 
 enum doubleSpeedUpDelay=cast(int)(0.2f*updateFPS); // 200ms
-bool speedUp(B)(ref MovingObject!B object,SacSpell!B spell,ObjectState!B state){
+
+bool speedUp(B)(ref MovingObject!B object,SacSpell!B spell,float duration,ObjectState!B state){
 	playSoundAt("pups",object.id,state,2.0f);
 	object.creatureStats.effects.numSpeedUps+=1;
 	if(object.creatureStats.effects.speedUpFrame==-1)
 		object.creatureStats.effects.speedUpFrame=state.frame;
-	auto duration=(object.isWizard?spell.duration*0.2f:spell.duration*1000.0f/object.creatureStats.maxHealth)+0.5f;
 	state.addEffect(SpeedUp!B(object.id,cast(int)(duration*updateFPS)));
 	return true;
+}
+bool speedUp(B)(ref MovingObject!B object,SacSpell!B spell,ObjectState!B state){
+	auto duration=(object.isWizard?spell.duration*0.2f:spell.duration*1000.0f/object.creatureStats.maxHealth)+0.5f;
+	return speedUp(object,spell,duration,state);
 }
 bool speedUp(B)(int creature,SacSpell!B spell,ObjectState!B state){
 	if(!state.isValidId(creature,TargetType.creature)) return false;
@@ -3581,6 +3590,33 @@ bool advance(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectState!B 
 	return false;
 }
 
+bool runAway(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
+	return speedUp(object,ability,ability.duration,state);
+}
+
+bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,Target target,ObjectState!B state){
+	if(object.sacObject.ability!is ability) return false;
+	if(ability.requiresTarget&&!ability.isApplicable(summarize(target,object.side,state))){
+		target.id=0;
+		target.type=TargetType.terrain;
+		if(ability.requiresTarget&&!ability.isApplicable(summarize(target,object.side,state)))
+			return false;
+	}
+	if(state.abilityStatus!false(object,ability,target)!=SpellStatus.ready) return false;
+	switch(ability.tag){
+		case SpellTag.runAway:
+			// TODO: implement run away bug?
+			object.drainMana(ability.manaCost,state);
+			object.runAway(ability,state);
+			return false;
+		default:
+			object.stun(state);
+			object.clearOrder(state);
+			return false;
+	}
+}
+
+
 enum retreatDistance=9.0f;
 enum guardDistance=18.0f; // ok?
 enum attackDistance=100.0f; // ok?
@@ -3668,16 +3704,10 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 		case CommandType.useAbility:
 			auto ability=object.sacObject.ability;
 			auto target=Target(object.creatureAI.order.target.type,object.creatureAI.order.target.id,object.creatureAI.order.target.position);
-			bool applicable=ability&&(!ability.requiresTarget||ability.isApplicable(summarize(target,object.side,state)));
-			if(ability&&target.id&&!applicable){
-				target.id=0;
-				target.type=TargetType.terrain;
-				applicable=!ability.requiresTarget||ability.isApplicable(summarize(target,object.side,state));
-			}
-			if(applicable){
-				object.stun(state); // TODO
+			if(!ability||!object.useAbility(ability,target,state)){
 				object.clearOrder(state);
-			}else object.clearOrder(state);
+				object.updateCreatureAI(state);
+			}
 			break;
 		default: assert(0); // TODO: compilation error would be better
 	}
@@ -6561,13 +6591,15 @@ final class ObjectState(B){ // (update logic)
 			if(spell.soulCost>wizard.souls) return SpellStatus.needMoreSouls;
 			if(entry.cooldown>0.0f) return SpellStatus.notReady;
 			return this.movingObjectById!((obj,spell,state,spellStatusArgs!selectOnly target){
-				if(spell.manaCost>obj.creatureStats.mana+1e-2f) return SpellStatus.lowOnMana; // TODO: store mana as exact integer?
+				if(spell.manaCost>obj.creatureStats.mana+manaEpsilon) return SpellStatus.lowOnMana; // TODO: store mana as exact integer?
 				// if(spell.nearBuilding&&...) return SpellStatus.mustBeNearBuilding; // TODO
 				// if(spell.nearEnemyAltar&&...) return SpellStatus.mustBeNearEnemyAltar; // TODO
 				// if(spell.connectedToConversion&&....) return SpellStatus.mustBeConnectedToConversion; // TODO
 				static if(!selectOnly){
-					if(spell.requiresTarget&&!spell.isApplicable(summarize(target[0],obj.side,this))) return SpellStatus.invalidTarget;
-					if((obj.position-target[0].position).lengthsqr>spell.range^^2) return SpellStatus.outOfRange;
+					if(spell.requiresTarget){
+						if(!spell.isApplicable(summarize(target[0],obj.side,this))) return SpellStatus.invalidTarget;
+						if((obj.position-target[0].position).lengthsqr>spell.range^^2) return SpellStatus.outOfRange;
+					}
 				}
 				return SpellStatus.ready;
 			},function()=>SpellStatus.inexistent)(wizard.id,spell,this,target);
@@ -6579,6 +6611,22 @@ final class ObjectState(B){ // (update logic)
 			if(ability.requiresTarget&&!ability.isApplicable(summarize(target[0],side,this))) return SpellStatus.invalidTarget;
 		}
 		return SpellStatus.ready;
+	}
+	SpellStatus abilityStatus(bool selectOnly=false)(ref MovingObject!B obj,SacSpell!B ability,spellStatusArgs!selectOnly target){
+		if(ability.manaCost>obj.creatureStats.mana+manaEpsilon) return SpellStatus.lowOnMana; // TODO: store mana as exact integer?
+		static if(!selectOnly){
+			if(ability.requiresTarget){
+				if(!ability.isApplicable(summarize(target[0],obj.side,this))) return SpellStatus.invalidTarget;
+				if((obj.position-target[0].position).lengthsqr>ability.range^^2) return SpellStatus.outOfRange;
+			}
+		}
+		switch(ability.tag){
+			case SpellTag.runAway:
+				if(obj.creatureStats.effects.numSpeedUps)
+					return SpellStatus.invalidTarget;
+				return SpellStatus.ready;
+			default: return SpellStatus.ready;
+		}
 	}
 	void removeWizard(int id){
 		obj.removeWizard(id);

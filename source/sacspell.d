@@ -152,7 +152,7 @@ class SacSpell(B){
 			setStats(spel);
 			amount=spel.amount;
 			duration=spel.duration;
-			if(tag=="leah") duration=4.5f;
+			if(tag==SpellTag.heal) duration=4.5f;
 			effectRange=spel.effectRange;
 			speed=60.0f*spel.speed;
 			acceleration=60.0f*spel.acceleration;
