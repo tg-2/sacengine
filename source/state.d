@@ -3668,7 +3668,7 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 		case CommandType.useAbility:
 			auto ability=object.sacObject.ability;
 			auto target=Target(object.creatureAI.order.target.type,object.creatureAI.order.target.id,object.creatureAI.order.target.position);
-			bool applicable=ability&&!ability.requiresTarget||ability.isApplicable(summarize(target,object.side,state));
+			bool applicable=ability&&(!ability.requiresTarget||ability.isApplicable(summarize(target,object.side,state)));
 			if(ability&&target.id&&!applicable){
 				target.id=0;
 				target.type=TargetType.terrain;
