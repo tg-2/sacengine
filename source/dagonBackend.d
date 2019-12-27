@@ -2040,6 +2040,9 @@ final class SacScene: Scene{
 			foreach(_;0..keyDown[KEY_TAB]){
 				switchSpellbookTab(cast(SpellType)((spellbookTab+1)%(spellbookTab.max+1)));
 			}
+			foreach(_;0..keyDown[KEY_P]){
+				selectAbility(CommandQueueing.none);
+			}
 		}
 		if((eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK])&&!eventManager.keyPressed[KEY_LSHIFT]){
 			foreach(_;0..keyDown[KEY_X]){
