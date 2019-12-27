@@ -13,6 +13,7 @@ struct NetworkCommand{
 	Formation formation;
 	int group;
 	int id;
+	CommandQueueing queueing;
 }
 
 bool isValidCommand(B)(ref Command!B command){

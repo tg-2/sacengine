@@ -296,6 +296,7 @@ struct Queue(T){
 	Array!T payload;
 	size_t first=0,last=0;
 	void push(T val){
+		// TODO: this has a bad amortized worst case
 		if(payload.length==last-first){
 			if(payload.length>1){
 				import std.algorithm: bringToFront;
@@ -307,13 +308,41 @@ struct Queue(T){
 			last+=1;
 		}else payload[last++%$]=val;
 	}
-	T front(){ return payload[first%$]; }
+	void pushFront(T val){
+		// TODO: faster implementation?
+		push(val);
+		foreach_reverse(i;first..last){
+			if(i+1==last) continue;
+			swap(payload[i%$],payload[(i+1)%$]);
+		}
+	}
+	ref T front(){ return payload[first%$]; }
 	void popFront(){ ++first; }
 	T removeFront(){ return payload[first++%$]; }
-	T back(){ return payload[(last+$-1)%$]; }
+	ref T back(){ return payload[(last+$-1)%$]; }
 	void popBack(){ --last; }
 	T removeBack(){ return payload[--last%$]; }
 	bool empty(){ return first==last; }
+	this(this){
+		auto oldPayload=payload;
+		auto oldFirst=first;
+		auto oldLast=last;
+		payload=Array!T.init;
+		first=0;
+		payload.length=last=oldLast-oldFirst;
+		foreach(i;oldFirst..oldLast){
+			payload[i-oldFirst]=oldPayload[i%$];
+		}
+	}
+	void opAssign(ref Queue!T rhs){
+		if(&this is &rhs) return;
+		first=0;
+		payload.length=last=rhs.last-rhs.first;
+		foreach(i;rhs.first..rhs.last){
+			payload[i-rhs.first]=rhs.payload[i%$];
+		}
+	}
+	void clear(){ payload.length=first=last=0; }
 }
 
 struct Stack(T){

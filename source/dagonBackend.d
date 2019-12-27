@@ -1377,7 +1377,7 @@ final class SacScene: Scene{
 			if(playAudio) spellAdvisorHelpSpeech(status);
 			return;
 		}
-		if(newSpell.flags){
+		if(newSpell.requiresTarget){
 			import std.random:uniform; // TODO: put selected spells in game state?
 			auto whichClick=uniform(0,2);
 			if(playAudio&&audio) audio.playSound(commandAppliedSoundTags[whichClick]);
@@ -1397,18 +1397,19 @@ final class SacScene: Scene{
 		auto spells=state.current.getSpells(camera.target).filter!(x=>x.spell.type==tab);
 		foreach(i,entry;enumerate(spells)) if(i==index) return selectSpell(entry.spell,playAudio);
 	}
-	void useAbility(SacSpell!DagonBackend ability,Target target,bool playAudio=true){
+	void useAbility(SacSpell!DagonBackend ability,Target target,CommandQueueing queueing,bool playAudio=true){
 		auto status=state.current.abilityStatus!false(renderSide,ability,target);
 		if(status!=SpellStatus.ready){
 			if(playAudio) spellAdvisorHelpSpeech(status);
 			return;
 		}
-		controller.addCommand(Command!DagonBackend(renderSide,ability,target));
+		if(queueing==CommandQueueing.none) queueing=CommandQueueing.pre;
+		controller.addCommand(Command!DagonBackend(renderSide,ability,target),queueing);
 	}
-	void useAbility(char[4] tag,Target target,bool playAudio=true){
-		useAbility(SacSpell!DagonBackend.get(tag),target,playAudio);
+	void useAbility(char[4] tag,Target target,CommandQueueing queueing,bool playAudio=true){
+		useAbility(SacSpell!DagonBackend.get(tag),target,queueing,playAudio);
 	}
-	void selectAbility(SacSpell!DagonBackend newAbility,bool playAudio=true){
+	void selectAbility(SacSpell!DagonBackend newAbility,CommandQueueing queueing,bool playAudio=true){
 		if(mouse.status==Mouse.Status.icon){
 			if(mouse.icon==MouseIcon.ability&&mouse.spell is newAbility) return;
 			if(playAudio&&audio) audio.playSound("kabI");
@@ -1419,7 +1420,7 @@ final class SacScene: Scene{
 			if(playAudio) spellAdvisorHelpSpeech(status);
 			return;
 		}
-		if(newAbility.flags){
+		if(newAbility.requiresTarget){
 			import std.random:uniform; // TODO: put selected spells in game state?
 			auto whichClick=uniform(0,2);
 			if(playAudio&&audio) audio.playSound(commandAppliedSoundTags[whichClick]);
@@ -1428,8 +1429,13 @@ final class SacScene: Scene{
 			mouse.spell=newAbility;
 		}else{
 			mouse.status=Mouse.Status.standard;
-			useAbility(newAbility,Target.init);
+			useAbility(newAbility,Target.init,queueing);
 		}
+	}
+	void selectAbility(CommandQueueing queueing,bool playAudio=true){
+		auto ability=renderedSelection.ability(state.current);
+		if(!ability) return;
+		selectAbility(ability,queueing,playAudio);
 	}
 	int numSpells=0;
 	bool isOnSpellbook(Vector2f center){
@@ -1890,6 +1896,7 @@ final class SacScene: Scene{
 		}
 		mouse.additiveSelect=eventManager.keyPressed[KEY_LSHIFT];
 		selectionUpdated=false;
+		auto queueing=eventManager.keyPressed[KEY_LSHIFT]?CommandQueueing.post:CommandQueueing.none;
 		if(oldMouseStatus==mouse.status){
 			foreach(_;0..mouseButtonUp[MB_LEFT]){
 				bool done=true;
@@ -1903,7 +1910,7 @@ final class SacScene: Scene{
 					}else if(mouse.target.type==TargetType.spell){
 						selectSpell(mouse.targetSpell);
 					}else if(mouse.target.type==TargetType.ability){
-						selectAbility(mouse.targetSpell);
+						selectAbility(mouse.targetSpell,queueing);
 					}else done=false;
 				}else done=false;
 				if(!done&&!mouse.dragging) final switch(mouse.status){
@@ -1941,25 +1948,25 @@ final class SacScene: Scene{
 							final switch(mouse.icon){
 								case MouseIcon.attack:
 									if(summary&(TargetFlags.creature|TargetFlags.wizard|TargetFlags.building)&&!(summary&TargetFlags.corpse)){
-										controller.addCommand(Command!DagonBackend(CommandType.attack,renderSide,camera.target,0,mouse.target,cameraFacing));
+										controller.addCommand(Command!DagonBackend(CommandType.attack,renderSide,camera.target,0,mouse.target,cameraFacing),queueing);
 									}else{
 										auto target=Target(TargetType.terrain,0,mouse.target.position,mouse.target.location);
-										controller.addCommand(Command!DagonBackend(CommandType.advance,renderSide,camera.target,0,target,cameraFacing));
+										controller.addCommand(Command!DagonBackend(CommandType.advance,renderSide,camera.target,0,target,cameraFacing),queueing);
 									}
 									break;
 								case MouseIcon.guard:
 									if(summary&(TargetFlags.creature|TargetFlags.wizard|TargetFlags.building)&&!(summary&TargetFlags.corpse)){
-										controller.addCommand(Command!DagonBackend(CommandType.guard,renderSide,camera.target,0,mouse.target,cameraFacing));
+										controller.addCommand(Command!DagonBackend(CommandType.guard,renderSide,camera.target,0,mouse.target,cameraFacing),queueing);
 									}else{
 										auto target=Target(TargetType.terrain,0,mouse.target.position,mouse.target.location);
-										controller.addCommand(Command!DagonBackend(CommandType.guardArea,renderSide,camera.target,0,target,cameraFacing));
+										controller.addCommand(Command!DagonBackend(CommandType.guardArea,renderSide,camera.target,0,target,cameraFacing),queueing);
 									}
 									break;
 								case MouseIcon.spell:
 									castSpell(mouse.spell,mouse.target);
 									break;
 								case MouseIcon.ability:
-									useAbility(mouse.spell,mouse.target);
+									useAbility(mouse.spell,mouse.target,queueing);
 							}
 							mouse.status=Mouse.Status.standard;
 						}else{
@@ -1974,19 +1981,19 @@ final class SacScene: Scene{
 				if(!mouse.dragging) final switch(mouse.status){
 					case Mouse.Status.standard:
 						switch(mouse.target.type) with(TargetType){
-							case terrain: controller.addCommand(Command!DagonBackend(CommandType.move,renderSide,camera.target,0,mouse.target,cameraFacing)); break;
+							case terrain: controller.addCommand(Command!DagonBackend(CommandType.move,renderSide,camera.target,0,mouse.target,cameraFacing),queueing); break;
 							case creature,building:
 								auto summary=mouse.target.summarize(renderSide,state.current);
 								if(!(summary&TargetFlags.untargetable)){
 									if(summary&TargetFlags.corpse){
 										auto target=Target(TargetType.terrain,0,mouse.target.position,mouse.target.location);
-										controller.addCommand(Command!DagonBackend(CommandType.guardArea,renderSide,camera.target,0,target,cameraFacing)); break;
+										controller.addCommand(Command!DagonBackend(CommandType.guardArea,renderSide,camera.target,0,target,cameraFacing),queueing); break;
 									}else if(summary&TargetFlags.enemy){
-										controller.addCommand(Command!DagonBackend(CommandType.attack,renderSide,camera.target,0,mouse.target,cameraFacing)); break;
+										controller.addCommand(Command!DagonBackend(CommandType.attack,renderSide,camera.target,0,mouse.target,cameraFacing),queueing); break;
 									}else if(summary&TargetFlags.manafount){
 										castSpell("htlm",mouse.target);
 									}else{
-										controller.addCommand(Command!DagonBackend(CommandType.guard,renderSide,camera.target,0,mouse.target,cameraFacing)); break;
+										controller.addCommand(Command!DagonBackend(CommandType.guard,renderSide,camera.target,0,mouse.target,cameraFacing),queueing); break;
 									}
 								}
 								break;
@@ -1994,7 +2001,7 @@ final class SacScene: Scene{
 								final switch(color(mouse.target.id,renderSide,state.current)){
 									case SoulColor.blue:
 										auto target=Target(TargetType.terrain,0,mouse.target.position,mouse.target.location);
-										controller.addCommand(Command!DagonBackend(CommandType.move,renderSide,camera.target,0,target,cameraFacing));
+										controller.addCommand(Command!DagonBackend(CommandType.move,renderSide,camera.target,0,target,cameraFacing),queueing);
 										break;
 									case SoulColor.red:
 										castSpell("ccas",mouse.target);
@@ -2034,7 +2041,7 @@ final class SacScene: Scene{
 				switchSpellbookTab(cast(SpellType)((spellbookTab+1)%(spellbookTab.max+1)));
 			}
 		}
-		if(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK]){
+		if((eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK])&&!eventManager.keyPressed[KEY_LSHIFT]){
 			foreach(_;0..keyDown[KEY_X]){
 				controller.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.phalanx));
 			}
@@ -2068,13 +2075,21 @@ final class SacScene: Scene{
 			foreach(_;0..keyDown[KEY_T]){
 				auto target=Target(TargetType.terrain,0,mouse.target.position,mouse.target.location);
 				target.position.z=state.current.getHeight(target.position);
-				controller.addCommand(Command!DagonBackend(CommandType.move,renderSide,camera.target,0,target,cameraFacing));
+				controller.addCommand(Command!DagonBackend(CommandType.move,renderSide,camera.target,0,target,cameraFacing),queueing);
 			}
 			foreach(_;0..keyDown[KEY_A]){
 				if(mouse.status==Mouse.Status.standard&&!mouse.dragging){
 					mouse.status=Mouse.Status.icon;
 					mouse.icon=MouseIcon.guard;
 				}
+			}
+			foreach(_;0..keyDown[KEY_Q]){
+				selectAbility(CommandQueueing.none);
+			}
+		}
+		if(!(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK])&&eventManager.keyPressed[KEY_LSHIFT]){
+			foreach(_;0..keyDown[KEY_B]){
+				selectAbility(CommandQueueing.none);
 			}
 		}
 		if(mouse.visible && mouse.status.among(Mouse.Status.standard,Mouse.Status.icon)){

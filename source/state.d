@@ -254,6 +254,7 @@ Vector2f[numCreaturesInGroup] getFormationOffsets(R)(R ids,CommandType commandTy
 
 struct CreatureAI{
 	Order order;
+	Queue!Order orderQueue;
 	Formation formation;
 	bool isColliding=false;
 	RotationDirection evasion;
@@ -279,7 +280,6 @@ struct MovingObject(B){
 		this.rotation=rotation;
 		this.animationState=animationState;
 		this.frame=frame;
-		this.creatureAI=creatureAI;
 		this.creatureState=creatureState;
 		this.creatureStats=creatureStats;
 		this.side=side;
@@ -289,7 +289,7 @@ struct MovingObject(B){
 		this(sacObject,position,rotation,animationState,frame,creatureState,creatureStats,side);
 	}
 	this(SacObject!B sacObject,int id,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame,CreatureAI creatureAI,CreatureState creatureState,CreatureStats creatureStats,int side,int soulId){
-		this.creatureAI=creatureAI;
+		this.creatureAI=move(creatureAI);
 		this.soulId=soulId;
 		this(sacObject,id,position,rotation,animationState,frame,creatureState,creatureStats,side);
 	}
@@ -815,7 +815,7 @@ struct MovingObjects(B,RenderMode mode){
 	void removeObject(int index, ObjectManager!B manager){
 		manager.ids[ids[index]-1]=Id.init;
 		if(index+1<length){
-			this[index]=this[length-1];
+			this[index]=this.fetch(length-1); // TODO: swap?
 			manager.ids[ids[index]-1].index=index;
 		}
 		length=length-1;
@@ -833,8 +833,8 @@ struct MovingObjects(B,RenderMode mode){
 		assignArray(sides,rhs.sides);
 		assignArray(soulIds,rhs.soulIds);
 	}
-	MovingObject!B opIndex(int i){
-		return MovingObject!B(sacObject,ids[i],positions[i],rotations[i],animationStates[i],frames[i],creatureAIs[i],creatureStates[i],creatureStatss[i],sides[i],soulIds[i]);
+	MovingObject!B fetch(int i){
+		return MovingObject!B(sacObject,ids[i],positions[i],rotations[i],animationStates[i],frames[i],move(creatureAIs[i]),creatureStates[i],creatureStatss[i],sides[i],soulIds[i]);
 	}
 	void opIndexAssign(MovingObject!B obj,int i)in{
 		assert(obj.sacObject is sacObject);
@@ -844,7 +844,7 @@ struct MovingObjects(B,RenderMode mode){
 		rotations[i]=obj.rotation;
 		animationStates[i]=obj.animationState;
 		frames[i]=obj.frame;
-		creatureAIs[i]=obj.creatureAI;
+		creatureAIs[i]=move(obj.creatureAI);
 		creatureStates[i]=obj.creatureState;
 		creatureStatss[i]=obj.creatureStats; // TODO: this might be a bit wasteful
 		sides[i]=obj.side;
@@ -853,12 +853,9 @@ struct MovingObjects(B,RenderMode mode){
 }
 auto each(alias f,B,RenderMode mode,T...)(ref MovingObjects!(B,mode) movingObjects,T args){
 	foreach(i;0..movingObjects.length){
-		static if(!is(typeof(f(MovingObject.init,args)))){
-			// TODO: find a better way to check whether argument taken by reference
-			auto obj=movingObjects[i];
-			f(obj,args);
-			movingObjects[i]=obj;
-		}else f(movingObjects[i],args);
+		auto obj=movingObjects.fetch(i);
+		f(obj,args);
+		movingObjects[i]=move(obj);
 	}
 }
 
@@ -2121,17 +2118,13 @@ auto ref objectById(alias f,B,T...)(ref ObjectManager!B objectManager,int id,T a
 		enum byRef=!is(typeof(f(MovingObject!B.init,args))); // TODO: find a better way to check whether argument taken by reference!
 		final switch(nid.mode){
 			case RenderMode.opaque:
-				static if(byRef){
-					auto obj=objectManager.opaqueObjects.movingObjects[nid.type][nid.index];
-					scope(success) objectManager.opaqueObjects.movingObjects[nid.type][nid.index]=obj;
-					return f(obj,args);
-				}else return f(objectManager.opaqueObjects.movingObjects[nid.type][nid.index],args);
+				auto obj=objectManager.opaqueObjects.movingObjects[nid.type].fetch(nid.index);
+				scope(success) objectManager.opaqueObjects.movingObjects[nid.type][nid.index]=move(obj);
+				return f(obj,args);
 			case RenderMode.transparent:
-				static if(byRef){
-					auto obj=objectManager.transparentObjects.movingObjects[nid.type][nid.index];
-					scope(success) objectManager.transparentObjects.movingObjects[nid.type][nid.index]=obj;
-					return f(obj,args);
-				}else return f(objectManager.transparentObjects.movingObjects[nid.type][nid.index],args);
+				auto obj=objectManager.transparentObjects.movingObjects[nid.type].fetch(nid.index);
+				scope(success) objectManager.transparentObjects.movingObjects[nid.type][nid.index]=move(obj);
+				return f(obj,args);
 		}
 	}else{
 		enum byRef=!is(typeof(f(StaticObject!B.init,args))); // TODO: find a better way to check whether argument taken by reference!
@@ -2160,17 +2153,13 @@ auto ref movingObjectById(alias f,alias nonMoving=fail,B,T...)(ref ObjectManager
 	if(nid.type<numMoving&&nid.index!=-1){
 		final switch(nid.mode){ // TODO: get rid of code duplication
 			case RenderMode.opaque:
-				static if(byRef){
-					auto obj=objectManager.opaqueObjects.movingObjects[nid.type][nid.index];
-					scope(success) objectManager.opaqueObjects.movingObjects[nid.type][nid.index]=obj;
-					return f(obj,args);
-				}else return f(objectManager.opaqueObjects.movingObjects[nid.type][nid.index],args);
+				auto obj=objectManager.opaqueObjects.movingObjects[nid.type].fetch(nid.index);
+				scope(success) objectManager.opaqueObjects.movingObjects[nid.type][nid.index]=move(obj);
+				return f(obj,args);
 			case RenderMode.transparent:
-				static if(byRef){
-					auto obj=objectManager.transparentObjects.movingObjects[nid.type][nid.index];
-					scope(success) objectManager.transparentObjects.movingObjects[nid.type][nid.index]=obj;
-					return f(obj,args);
-				}else return f(objectManager.transparentObjects.movingObjects[nid.type][nid.index],args);
+				auto obj=objectManager.transparentObjects.movingObjects[nid.type].fetch(nid.index);
+				scope(success) objectManager.transparentObjects.movingObjects[nid.type][nid.index]=move(obj);
+				return f(obj,args);
 		}
 	}else return nonMoving();
 }
@@ -3303,11 +3292,32 @@ bool movingForwardGetsCloserTo(B)(ref MovingObject!B object,Vector3f position,fl
 
 void order(B)(ref MovingObject!B object,Order order,ObjectState!B state,int side=-1){
 	if(!object.canOrder(side,state)) return;
+	object.clearOrderQueue(state);
 	object.creatureAI.order=order;
 }
 
-void clearOrder(B)(ref MovingObject!B object,ObjectState!B state){
-	object.creatureAI.order=Order.init;
+void queueOrder(B)(ref MovingObject!B object,Order order,ObjectState!B state,int side=-1){
+	if(object.creatureAI.order.command==CommandType.none) return .order(object,order,state,side);
+	if(!object.canOrder(side,state)) return;
+	object.creatureAI.orderQueue.push(order);
+}
+
+void prequeueOrder(B)(ref MovingObject!B object,Order order,ObjectState!B state,int side=-1){
+	if(object.creatureAI.order.command==CommandType.none) return .order(object,order,state,side);
+	if(!object.canOrder(side,state)) return;
+	if(hasOrders(object,state)) object.creatureAI.orderQueue.pushFront(object.creatureAI.order);
+	object.creatureAI.order=order;
+}
+
+void order(B)(ref MovingObject!B object,Order order,CommandQueueing queueing,ObjectState!B state,int side=-1){
+	final switch(queueing) with(CommandQueueing){
+		case none: return .order(object,order,state,side);
+		case post: return queueOrder(object,order,state,side);
+		case pre: return prequeueOrder(object,order,state,side);
+	}
+}
+
+void stop(B)(ref MovingObject!B object,ObjectState!B state){
 	object.stopMovement(state);
 	if(object.creatureState.movement==CreatureMovement.flying)
 		object.creatureState.speedLimit=0.0f;
@@ -3315,9 +3325,37 @@ void clearOrder(B)(ref MovingObject!B object,ObjectState!B state){
 	object.stopPitching(state);
 }
 
+void clearOrder(B)(ref MovingObject!B object,ObjectState!B state){
+	object.stop(state);
+	if(!object.creatureAI.orderQueue.empty){
+		object.creatureAI.order=object.creatureAI.orderQueue.front;
+		object.creatureAI.orderQueue.popFront();
+	}else object.creatureAI.order=Order.init;
+}
+
+void clearOrderQueue(B)(ref MovingObject!B object,ObjectState!B state){
+	object.creatureAI.orderQueue.clear();
+	clearOrder(object,state);
+}
+
 bool hasOrders(B)(ref MovingObject!B object,ObjectState!B state){
 	return object.creatureAI.order.command!=CommandType.none;
 }
+
+bool hasQueuedOrders(B)(ref MovingObject!B object,ObjectState!B state){
+	return !object.creatureAI.orderQueue.empty;
+}
+
+void unqueueOrder(B)(ref MovingObject!B object,ObjectState!B state){
+	if(!hasQueuedOrders(object,state)) return;
+	if(object.creatureAI.orderQueue.front.command==CommandType.useAbility){
+		object.stop(state);
+		swap(object.creatureAI.order,object.creatureAI.orderQueue.front);
+		return;
+	}
+	clearOrder(object,state);
+}
+
 
 bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectState!B state){
 	auto hitbox=object.hitbox;
@@ -3505,7 +3543,7 @@ bool patrolAround(B)(ref MovingObject!B object,Vector3f position,float range,Obj
 	return false;
 }
 
-bool guard(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
+bool guard(B)(ref MovingObject!B object,int targetId,ref bool idle,ObjectState!B state){
 	if(!isValidGuardTarget(targetId,state)) return false;
 	auto targetPositionTargetFacingTargetSpeedTargetMode=state.movingObjectById!((obj,state)=>tuple(obj.position,obj.creatureState.facing,obj.speed(state)/updateFPS,obj.creatureState.mode), ()=>tuple(object.creatureAI.order.target.position,object.creatureAI.order.targetFacing,0.0f,CreatureMode.idle))(targetId,state);
 	auto targetPosition=targetPositionTargetFacingTargetSpeedTargetMode[0], targetFacing=targetPositionTargetFacingTargetSpeedTargetMode[1], targetSpeed=targetPositionTargetFacingTargetSpeedTargetMode[2],targetMode=targetPositionTargetFacingTargetSpeedTargetMode[3];
@@ -3513,8 +3551,9 @@ bool guard(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 	object.creatureAI.order.targetFacing=targetFacing;
 	auto formationOffset=object.creatureAI.order.formationOffset;
 	targetPosition=getTargetPosition(targetPosition,targetFacing,formationOffset,state);
-	if(!object.patrolAround(targetPosition,guardDistance,state)) // TODO: prefer enemies that attack the guard target?
-		object.moveTo(targetPosition,targetFacing,state);
+	if(!object.patrolAround(targetPosition,guardDistance,state)){ // TODO: prefer enemies that attack the guard target?
+		idle&=!object.moveTo(targetPosition,targetFacing,state);
+	}
 	if((object.position-targetPosition).lengthsqr<=(0.1f*updateFPS*targetSpeed)^^2)
 		object.creatureState.speedLimit=min(object.creatureState.speedLimit,targetSpeed);
 	return true;
@@ -3566,8 +3605,10 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 				targetId=object.creatureAI.order.target.id=0;
 			Vector3f targetPosition;
 			if(targetId) targetPosition=state.movingObjectById!((obj)=>obj.position,()=>Vector3f.init)(targetId);
-			if(targetPosition !is Vector3f.init) object.retreatTowards(targetPosition,state);
-			else object.clearOrder(state);
+			if(targetPosition !is Vector3f.init){
+				if(!object.retreatTowards(targetPosition,state))
+					object.unqueueOrder(state);
+			}else object.clearOrder(state);
 			break;
 		case CommandType.move:
 			auto targetPosition=object.creatureAI.order.getTargetPosition(state);
@@ -3576,23 +3617,28 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 			break;
 		case CommandType.guard:
 			auto targetId=object.creatureAI.order.target.id;
-			if(!state.isValidId(targetId)||!object.guard(targetId,state)) targetId=object.creatureAI.order.target.id=0;
+			bool idle=true;
+			if(!state.isValidId(targetId)||!object.guard(targetId,idle,state)) targetId=object.creatureAI.order.target.id=0;
 			if(targetId==0&&!object.patrol(state)) goto case CommandType.move;
+			if(idle) object.unqueueOrder(state);
 			break;
 		case CommandType.guardArea:
 			auto targetPosition=object.creatureAI.order.getTargetPosition(state);
 			if(!object.patrolAround(targetPosition,guardDistance,state))
-				object.moveTo(targetPosition,object.creatureAI.order.targetFacing,state);
+				if(!object.moveTo(targetPosition,object.creatureAI.order.targetFacing,state))
+					object.unqueueOrder(state);
 			break;
 		case CommandType.attack:
 			auto targetId=object.creatureAI.order.target.id;
 			if(!state.isValidId(targetId)||!object.attack(targetId,state)) targetId=object.creatureAI.order.target.id=0;
+			// TODO: unqueue order if targetId==0?
 			if(targetId==0&&!object.patrol(state)) goto case CommandType.move;
 			break;
 		case CommandType.advance:
 			auto targetPosition=object.creatureAI.order.getTargetPosition(state);
 			if(!object.advance(targetPosition,state))
-				object.moveTo(targetPosition,object.creatureAI.order.targetFacing,state);
+				if(!object.moveTo(targetPosition,object.creatureAI.order.targetFacing,state))
+					object.unqueueOrder(state);
 			break;
 		case CommandType.none:
 			if(object.isPeasant){
@@ -6339,8 +6385,6 @@ final class ObjectState(B){ // (update logic)
 						}else return 0.0f;
 					}
 					targetScale=state.objectById!((obj)=>getScale(obj))(command.target.id);
-					if(selection.creatureIds[].canFind(command.target.id))
-						state.movingObjectById!((ref obj,state)=>obj.clearOrder(state))(command.target.id,state);
 				}
 				auto ids=selection.creatureIds[].filter!(x=>x!=command.target.id);
 				auto formationOffsets=getFormationOffsets(ids,command.type,command.formation,formationScale,targetScale);
@@ -6382,7 +6426,7 @@ final class ObjectState(B){ // (update logic)
 					}
 					if(ord.command==CommandType.useAbility && obj.sacObject.ability !is ability) return false;
 					if(updateFormation) obj.creatureAI.formation=formation;
-					if(ord.command!=CommandType.setFormation) obj.order(ord,state,side);
+					if(ord.command!=CommandType.setFormation) obj.order(ord,command.queueing,state,side);
 					return true;
 				},()=>false)(command.creature,ord,command.spell,state,command.side,updateFormation,command.formation,position);
 			}
@@ -7303,6 +7347,13 @@ auto playSoundTypeAt(bool getDuration=false,B,T...)(SacObject!B sacObject,int id
 auto stopSoundsAt(B)(int id,ObjectState!B state){
 	static if(B.hasAudio) if(playAudio) B.stopSoundsAt(id);
 }
+
+enum CommandQueueing{
+	none,
+	post,
+	pre,
+}
+
 struct Command(B){
 	this(CommandType type,int side,int wizard,int creature,Target target,float targetFacing)in{
 		final switch(type) with(CommandType){
@@ -7402,6 +7453,7 @@ struct Command(B){
 	int opCmp(ref Command!B rhs){
 		return tuple(side,id).opCmp(tuple(rhs.side,rhs.id));
 	}
+	auto queueing=CommandQueueing.none;
 }
 
 bool playAudio=true;

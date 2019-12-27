@@ -32,6 +32,10 @@ final class Controller(B){
 		if(network&&!network.playing) return;
 		addCommand(currentFrame,command);
 	}
+	void addCommand(Command!B command,CommandQueueing queueing){
+		command.queueing=queueing;
+		addCommand(command);
+	}
 	void addExternalCommand(int frame,Command!B command)in{
 		assert(committedFrame<=frame);
 	}do{
