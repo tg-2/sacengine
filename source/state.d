@@ -3327,9 +3327,9 @@ void order(B)(ref MovingObject!B object,Order order,CommandQueueing queueing,Obj
 }
 
 void stop(B)(ref MovingObject!B object,ObjectState!B state){
+	auto speedLimit=object.creatureState.speedLimit;
+	scope(success) object.creatureState.speedLimit=speedLimit;
 	object.stopMovement(state);
-	if(object.creatureState.movement==CreatureMovement.flying)
-		object.creatureState.speedLimit=0.0f;
 	object.stopTurning(state);
 	object.stopPitching(state);
 }
