@@ -86,12 +86,21 @@ immutable(typeof(load("")))[char[4]] makeByTag(alias load)(bool readFromWads,con
 immutable(Bldg)[char[4]] makeBldgByTag(bool readFromWads){
 	return makeByTag!loadBldg(readFromWads,bldgFolders,"BLDG");
 }
+immutable(char[4])[immutable(Bldg)*] makeBldgTags(){
+	char[4][immutable(Bldg)*] result;
+	foreach(k,ref v;bldgs){
+		assert(&v !in result);
+		result[&v]=k;
+	}
+	return cast(typeof(return))result;
+}
 
 string[char[4]] makeBldgModlByTag(bool readFromWads){
 	return makeFileIndex(readFromWads,bldgModlFolders,"MRMM");
 }
 
 immutable(Bldg)[char[4]] bldgs;
+immutable(char[4])[immutable(Bldg)*] bldgTags;
 string[char[4]] bldgModls;
 
 immutable landFolders=["extracted/ethr/ethr.WAD!/ethr.LAND",
@@ -247,6 +256,7 @@ string[char[4]] makeSampByTag(bool readFromWads){
 
 void initNTTData(bool readFromWads){
 	bldgs=makeBldgByTag(readFromWads);
+	bldgTags=makeBldgTags();
 	bldgModls=makeBldgModlByTag(readFromWads);
 
 	widgModls=makeWidgModlByTag(readFromWads);

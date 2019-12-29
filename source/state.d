@@ -1228,7 +1228,8 @@ struct Particles(B,bool relative){
 	SacParticle!B sacParticle;
 	static if(relative){
 		Array!int baseIds;
-		Array!bool rotates; // TODO: store as a bit in baseId?
+		//Array!bool rotates; // TODO: support Array!bool serialization?
+		Array!ubyte rotates; // TODO: store as a bit in baseId?
 	}
 	Array!Vector3f positions;
 	Array!Vector3f velocities;
@@ -1288,7 +1289,7 @@ struct Particles(B,bool relative){
 		assignArray(frames,rhs.frames);
 	}
 	Particle!(B,relative) opIndex(int i){
-		static if(relative) return Particle!(B,true)(sacParticle,baseIds[i],rotates[i],positions[i],velocities[i],scales[i],lifetimes[i],frames[i]);
+		static if(relative) return Particle!(B,true)(sacParticle,baseIds[i],!!rotates[i],positions[i],velocities[i],scales[i],lifetimes[i],frames[i]);
 		else return Particle!(B,false)(sacParticle,positions[i],velocities[i],scales[i],lifetimes[i],frames[i]);
 	}
 	void opIndexAssign(Particle!(B,relative) particle,int i){
@@ -1672,7 +1673,7 @@ struct CommandCone(B){
 	int lifetime=cast(int)(SacCommandCone!B.lifetime*updateFPS);
 }
 struct CommandCones(B){
-	struct CommandConeElement(B){
+	struct CommandConeElement{
 		Vector3f position;
 		int lifetime;
 		this(CommandCone!B rhs){
@@ -1680,7 +1681,7 @@ struct CommandCones(B){
 			lifetime=rhs.lifetime;
 		}
 	}
-	Array!(Array!(CommandConeElement!B)[CommandConeColor.max+1]) cones;
+	Array!(Array!(CommandConeElement)[CommandConeColor.max+1]) cones;
 	this(int numSides){
 		initialize(numSides);
 	}
@@ -1688,7 +1689,7 @@ struct CommandCones(B){
 		cones.length=numSides;
 	}
 	void addCommandCone(CommandCone!B cone){
-		cones[cone.side][cone.color]~=CommandConeElement!B(cone);
+		cones[cone.side][cone.color]~=CommandConeElement(cone);
 	}
 	void removeCommandCone(int side,CommandConeColor color,int index){
 		if(index+1<cones[side][color].length) cones[side][color][index]=cones[side][color][$-1];
