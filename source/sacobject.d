@@ -520,6 +520,16 @@ final class SacObject(B){
 		return objects[tag]=new SacObject!B(tag,(Widgets*).init); // hack
 	}
 
+	static SacObject!B get(char[4] tag){
+		if(auto r=tag in objects) return *r;
+		if(tag in wizds) return getSAXS!Wizard(tag);
+		if(tag in cre8s) return getSAXS!Creature(tag);
+		if(tag in bldgModls) return getBLDG(tag);
+		if(tag in widgModls) return getWIDG(tag);
+		enforce(0,text("bad tag: ",tag));
+		assert(0);
+	}
+
 	this(string filename, float zfactorOverride=float.nan,string animation=""){
 		enforce(filename.endsWith(".MRMM")||filename.endsWith(".3DSM")||filename.endsWith(".WIDG")||filename.endsWith(".SXMD"));
 		switch(filename[$-4..$]){
