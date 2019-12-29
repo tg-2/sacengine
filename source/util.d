@@ -342,6 +342,7 @@ struct Queue(T){
 			payload[i-rhs.first]=rhs.payload[i%$];
 		}
 	}
+	void opAssign(Queue!T rhs){ this.tupleof=rhs.tupleof; }
 	void clear(){ payload.length=first=last=0; }
 }
 

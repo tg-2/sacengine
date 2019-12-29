@@ -615,6 +615,7 @@ struct Building(B){
 		top=rhs.top;
 		base=rhs.base;
 	}
+	void opAssign(Building!B rhs){ this.tupleof=move(rhs).tupleof; }
 	this(this){ componentIds=componentIds.dup; } // TODO: needed?
 }
 int maxHealth(B)(ref Building!B building,ObjectState!B state){
@@ -833,6 +834,7 @@ struct MovingObjects(B,RenderMode mode){
 		assignArray(sides,rhs.sides);
 		assignArray(soulIds,rhs.soulIds);
 	}
+	void opAssign(MovingObjects!(B,mode) rhs){ this.tupleof=rhs.tupleof; }
 	MovingObject!B fetch(int i){
 		return MovingObject!B(sacObject,ids[i],positions[i],rotations[i],animationStates[i],frames[i],move(creatureAIs[i]),creatureStates[i],creatureStatss[i],sides[i],soulIds[i]);
 	}
@@ -911,6 +913,7 @@ struct StaticObjects(B,RenderMode mode){
 		static if(mode==RenderMode.transparent)
 			assignArray(thresholdZs,rhs.thresholdZs);
 	}
+	void opAssign(StaticObjects!(B,mode) rhs){ this.tupleof=rhs.tupleof; }
 	StaticObject!B opIndex(int i){
 		return StaticObject!B(sacObject,ids[i],buildingIds[i],positions[i],rotations[i]);
 	}
@@ -970,9 +973,8 @@ struct Souls(B){
 		}
 		length=length-1;
 	}
-	void opAssign(ref Souls!B rhs){
-		assignArray(souls,rhs.souls);
-	}
+	void opAssign(ref Souls!B rhs){ assignArray(souls,rhs.souls); }
+	void opAssign(Souls!B rhs){ this.tupleof=rhs.tupleof; }
 	ref Soul!B opIndex(int i){
 		return souls[i];
 	}
@@ -1002,6 +1004,7 @@ struct Buildings(B){
 		foreach(i;0..buildings.length)
 			buildings[i]=rhs.buildings[i];
 	}
+	void opAssign(Buildings!B rhs){ this.tupleof=rhs.tupleof; }
 	ref Building!B opIndex(int i){
 		return buildings[i];
 	}
@@ -1031,9 +1034,8 @@ struct SpellInfo(B){
 }
 struct Spellbook(B){
 	Array!(SpellInfo!B) spells;
-	void opAssign(ref Spellbook!B rhs){
-		assignArray(spells,rhs.spells);
-	}
+	void opAssign(ref Spellbook!B rhs){ assignArray(spells,rhs.spells); }
+	void opAssign(Spellbook!B rhs){ this.tupleof=rhs.tupleof; }
 	this(this){ spells=spells.dup; }
 	void addSpell(int level,SacSpell!B spell){
 		spells~=SpellInfo!B(spell,level,0.0f,0.0f);
@@ -1106,6 +1108,7 @@ struct WizardInfo(B){
 		experience=rhs.experience;
 		spellbook=rhs.spellbook;
 	}
+	void opAssign(WizardInfo!B rhs){ this.tupleof=rhs.tupleof; }
 	void addSpell(int level,SacSpell!B spell){
 		spellbook.addSpell(level,spell);
 	}
@@ -1206,6 +1209,7 @@ struct WizardInfos(B){
 	void opAssign(ref WizardInfos!B rhs){
 		assignArray(wizards,rhs.wizards);
 	}
+	void opAssign(WizardInfos!B rhs){ this.tupleof=rhs.tupleof; }
 	ref WizardInfo!B opIndex(int i){
 		return wizards[i];
 	}
@@ -1288,6 +1292,7 @@ struct Particles(B,bool relative){
 		assignArray(lifetimes,rhs.lifetimes);
 		assignArray(frames,rhs.frames);
 	}
+	void opAssign(Particles!(B,relative) rhs){ this.tupleof=rhs.tupleof; }
 	Particle!(B,relative) opIndex(int i){
 		static if(relative) return Particle!(B,true)(sacParticle,baseIds[i],!!rotates[i],positions[i],velocities[i],scales[i],lifetimes[i],frames[i]);
 		else return Particle!(B,false)(sacParticle,positions[i],velocities[i],scales[i],lifetimes[i],frames[i]);
@@ -1478,6 +1483,7 @@ struct Swarm(B){
 		static assert(__traits(isSame,this.tupleof[$-1],this.bugs));
 		assignArray(bugs,rhs.bugs);
 	}
+	void opAssign(Swarm!B rhs){ this.tupleof=rhs.tupleof; }
 	this(this){ bugs=bugs.dup; } // TODO: needed?
 }
 
@@ -1664,6 +1670,7 @@ struct Effects(B){
 		assignArray(swarmCastings,rhs.swarmCastings);
 		assignArray(swarms,rhs.swarms);
 	}
+	void opAssign(Effects!B rhs){ this.tupleof=rhs.tupleof; }
 }
 
 struct CommandCone(B){
@@ -1695,9 +1702,8 @@ struct CommandCones(B){
 		if(index+1<cones[side][color].length) cones[side][color][index]=cones[side][color][$-1];
 		cones[side][color].length=cones[side][color].length-1;
 	}
-	void opAssign(ref CommandCones!B rhs){
-		assignArray(cones,rhs.cones);
-	}
+	void opAssign(ref CommandCones!B rhs){ assignArray(cones,rhs.cones); }
+	void opAssign(CommandCones!B rhs){ this.tupleof=rhs.tupleof; }
 }
 
 struct Objects(B,RenderMode mode){
