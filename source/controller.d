@@ -88,6 +88,7 @@ final class Controller(B){
 		firstUpdatedFrame=currentFrame;
 		if(network){
 			network.commit(currentFrame);
+			playAudio=false;
 			updateCommitted();
 			if(!network.isHost&&lastCheckSynch<committedFrame){
 				network.checkSynch(state.lastCommitted.frame,state.lastCommitted.hash);
