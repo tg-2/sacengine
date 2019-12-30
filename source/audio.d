@@ -8,10 +8,10 @@ import util,samp;
 
 __gshared ALCdevice* device;
 __gshared ALCcontext* context;
-void loadAudio(){
+bool loadAudio(){
 	DerelictAL.load();
 	device=alcOpenDevice(null);
-	enforce(!!device);
+	if(!device) return false;
 	context=alcCreateContext(device,null);
 	auto ok=alcMakeContextCurrent(context);
 	enforce(ok);
@@ -20,11 +20,15 @@ void loadAudio(){
 	listenerOrientation=Quaternionf.identity();
 	DerelictMPG123.load();
 	mpg123_init();
+	return true;
 }
 void unloadAudio(){
+	if(!device) return;
 	alcMakeContextCurrent(null);
 	alcDestroyContext(context);
 	alcCloseDevice(device);
+	device=null;
+	context=null;
 }
 private{
 	@property void listenerPosition(Vector3f position){

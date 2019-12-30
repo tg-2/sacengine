@@ -86,9 +86,6 @@ void loadMap(B)(ref B backend,ref Options options)in{
 }
 
 int main(string[] args){
-	import audio;
-	loadAudio();
-	scope(exit) unloadAudio();
 	import core.memory;
 	GC.disable(); // TODO: figure out where GC memory is used incorrectly
 	if(args.length==0) args~="";
@@ -237,6 +234,12 @@ int main(string[] args){
 	}
 	enum commit = tryImport!("git/"~tryImport!("git/HEAD","ref: ")["ref: ".length..$],"");
 	writeln("SacEngine ",commit.length?text("commit ",commit):"","build ",__DATE__," ",__TIME__);
+	import audio;
+	if(!loadAudio()){
+		stderr.writeln("failed to initialize audio");
+		options.volume=0.0f;
+	}
+	scope(exit) unloadAudio();
 	if(options.enableReadFromWads){
 		wadManager=new WadManager;
 		wadManager.indexWADs("data");
