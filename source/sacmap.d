@@ -24,6 +24,23 @@ enum{
 }
 enum mapDepth=50.0f;
 
+string getHmap(string filename){
+	string hmap="";
+	if(filename.endsWith(".scp")){
+		import wadmanager;
+		if(!wadManager) wadManager=new WadManager();
+		static void handle(string name,string* hmap){
+			if(name.endsWith(".HMAP")) *hmap=name;
+		}
+		static int curMapNum=0; // TODO: needed?
+		wadManager.indexWAD!handle(filename,text("`_map",curMapNum++),&hmap);
+		enforce(hmap!="","No height map in scp file");
+	}else{
+		enforce(filename.endsWith(".HMAP"));
+		hmap=filename;
+	}
+	return hmap;
+}
 
 final class SacMap(B){
 	B.TerrainMesh[] meshes;

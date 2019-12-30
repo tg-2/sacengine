@@ -32,6 +32,8 @@ struct Options{
 	bool testLag=false;
 	bool dumpTraffic=false;
 	bool checkDesynch=true;
+	string recordingFilename="";
+	string playbackFilename="";
 	alias settings this;
 }
 

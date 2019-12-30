@@ -41,10 +41,10 @@ void deserializeClass(string[] noserialize,T,R,B)(T object,ObjectState!B state,r
 	}
 }
 
-void serialize(alias sink,T)(T t)if(is(T==int)||is(T==uint)||is(T==size_t)||is(T==float)||is(T==bool)||is(T==ubyte)){
+void serialize(alias sink,T)(T t)if(is(T==int)||is(T==uint)||is(T==size_t)||is(T==float)||is(T==bool)||is(T==ubyte)||is(T==char)){
 	sink((*cast(ubyte[t.sizeof]*)&t)[]);
 }
-void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==int)||is(T==uint)||is(T==size_t)||is(T==float)||is(T==bool)||is(T==ubyte)){
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==int)||is(T==uint)||is(T==size_t)||is(T==float)||is(T==bool)||is(T==ubyte)||is(T==char)){
 	enum n=T.sizeof;
 	auto bytes=(cast(ubyte*)(&result))[0..n];
 	data.take(n).copy(bytes);
@@ -94,6 +94,19 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Arr
 	static assert(0,"TODO?");
 }
 
+void serialize(alias sink,T)(T[] values){
+	static assert(is(size_t==ulong));
+	serialize!sink(values.length);
+	foreach(ref v;values) serialize!sink(cast()v);
+}
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==S[],S)){
+	static assert(is(size_t==ulong));
+	size_t len;
+	deserialize(len,state,data);
+	result.length=len;
+	foreach(ref v;result) deserialize(*cast(Unqual!(typeof(v))*)&v,state,data);
+}
+
 void serialize(alias sink,T,size_t n)(ref Vector!(T,n) vector){
 	static foreach(i;0..n) serialize!sink(vector[i]);
 }
@@ -112,11 +125,12 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Que
 	deserializeStruct(result,state,data);
 }
 
-void serialize(alias sink,B)(SacObject!B obj){ serialize!sink(obj.nttTag); }
+void serialize(alias sink,B)(SacObject!B obj){ serialize!sink(obj?obj.nttTag:cast(char[4])"\0\0\0\0"); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SacObject!B)){
 	char[4] tag;
 	deserialize(tag,state,data);
-	result=T.get(tag);
+	if(tag!="\0\0\0\0") result=T.get(tag);
+	else result=null;
 }
 
 void serialize(alias sink)(ref OrderTarget orderTarget){ serializeStruct!sink(orderTarget); }
@@ -162,8 +176,13 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Bui
 void serialize(alias sink,B)(ref Buildings!B buildings){ serializeStruct!sink(buildings); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Buildings!B)){ deserializeStruct(result,state,data); }
 
-void serialize(alias sink,B)(SacSpell!B spell){ serialize!sink(spell.tag); }
-void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SacSpell!B)){ char[4] tag; deserialize(tag,state,data); result=T.get(tag); }
+void serialize(alias sink,B)(SacSpell!B spell){ serialize!sink(spell?spell.tag:cast(char[4])"\0\0\0\0"); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SacSpell!B)){
+	char[4] tag;
+	deserialize(tag,state,data);
+	if(tag!="\0\0\0\0") result=T.get(tag);
+	else result=null;
+}
 
 void serialize(alias sink,B)(ref SpellInfo!B spell){ serializeStruct!sink(spell); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SpellInfo!B)){ deserializeStruct(result,state,data); }
@@ -178,7 +197,9 @@ void serialize(alias sink,B)(ref WizardInfos!B wizards){ serializeStruct!sink(wi
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==WizardInfos!B)){ deserializeStruct(result,state,data); }
 
 
-void serialize(alias sink,B)(SacParticle!B particle){
+void serialize(alias sink,B)(SacParticle!B particle)in{
+	assert(!!particle);
+}do{
 	serialize!sink(particle.type);
 	serialize!sink(particle.side);
 }
@@ -309,4 +330,47 @@ void deserialize(T,R)(T state,ref R data)if(is(T==ObjectState!B,B)){
 	assert(!state.proximity.active);
 	assert(state.toRemove.length==0);
 	deserializeClass!noserialize(state,state,data);
+}
+
+void serialize(alias sink)(ref Target target){ serializeStruct!sink(target); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Target)){ deserializeStruct(result,state,data); }
+void serialize(alias sink,B)(ref Command!B command){ serializeStruct!sink(command); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Command!B)){ deserializeStruct(result,state,data); }
+
+import sids;
+void serialize(alias sink)(ref Side side){ serializeStruct!sink(side); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Side)){ deserializeStruct(result,state,data); }
+
+import recording_;
+
+void serialize(alias sink,B)(Event!B event){ serializeStruct!sink(event); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Event!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(Recording!B recording)in{
+	assert(recording.finalized);
+}do{
+	serialize!sink(recording.mapName);
+	serializeClass!(sink,["manaParticles","shrineParticles","manahoarParticles"])(recording.sides);
+	serialize!sink(recording.committed);
+	serialize!sink(recording.commands);
+	serialize!sink(recording.events);
+}
+void deserialize(T,R)(T recording,ref R data)if(is(T==Recording!B,B)){
+	enum _=is(T==Recording!B,B);
+	deserialize(recording.mapName,ObjectState!B.init,data);
+	import sacmap;
+	auto map=new SacMap!B(getHmap(recording.mapName));
+	auto sides=new Sides!B();
+	deserializeClass!(["manaParticles","shrineParticles","manahoarParticles"])(sides,ObjectState!B.init,data);
+	auto proximity=new Proximity!B();
+	size_t len;
+	deserialize(len,ObjectState!B.init,data);
+	enforce(len!=0);
+	foreach(i;0..len){
+		auto state=new ObjectState!B(map,sides,proximity);
+		deserialize(state,data);
+		recording.committed~=state;
+	}
+	deserialize(recording.commands,ObjectState!B.init,data);
+	deserialize(recording.events,ObjectState!B.init,data);
 }

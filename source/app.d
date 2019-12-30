@@ -1,6 +1,6 @@
 import options;
 import dagonBackend;
-import sids, ntts, sacobject, sacmap, state, controller, network;
+import sids, ntts, sacobject, sacmap, state, controller, network, recording_;
 import wadmanager,util;
 import dlib.math;
 import std.string, std.array, std.range, std.algorithm, std.stdio;
@@ -21,6 +21,13 @@ void loadMap(B)(ref B backend,ref Options options)in{
 			import core.thread;
 			Thread.sleep(200.msecs);
 		}
+	}
+	Recording!B playback=null;
+	if(!network&&options.playbackFilename.length){
+		playback=loadRecording!B(options.playbackFilename);
+		enforce(playback.mapName.endsWith(".scp")||playback.mapName.endsWith(".HMAP"));
+		options.map=playback.mapName;
+		controlledSide=-1;
 	}
 	if(network){
 		network.dumpTraffic=options.dumpTraffic;
@@ -46,37 +53,33 @@ void loadMap(B)(ref B backend,ref Options options)in{
 		}
 		options.settings=network.settings;
 	}
-	string hmap="";
-	if(options.map.endsWith(".scp")){
-		if(!wadManager) wadManager=new WadManager();
-		static void handle(string name,string* hmap){
-			if(name.endsWith(".HMAP")) *hmap=name;
-		}
-		static int curMapNum=0; // TODO: needed?
-		wadManager.indexWAD!handle(options.map,text("`_map",curMapNum++),&hmap);
-		enforce(hmap!="","No height map in scp file");
-	}else{
-		enforce(options.map.endsWith(".HMAP"));
-		hmap=options.map;
-	}
+	auto hmap=getHmap(options.map);
 	auto map=new SacMap!B(hmap);
 	auto sids=loadSids(hmap[0..$-".HMAP".length]~".SIDS");
 	auto ntts=loadNTTs(hmap[0..$-".HMAP".length]~".NTTS");
 	auto state=new GameState!B(map,sids,ntts,options);
 	int id=0;
-	void placeWizard(Settings settings){
-		auto wizard=SacObject!B.getSAXS!Wizard(settings.wizard[0..4]);
-		//printWizardStats(wizard);
-		auto spellbook=getDefaultSpellbook!B(settings.god);
-		auto wizId=state.current.placeWizard(wizard,settings.controlledSide,settings.level,settings.souls,spellbook);
-		if(settings.controlledSide==controlledSide) id=wizId;
+	if(!playback){
+		void placeWizard(Settings settings){
+			auto wizard=SacObject!B.getSAXS!Wizard(settings.wizard[0..4]);
+			//printWizardStats(wizard);
+			auto spellbook=getDefaultSpellbook!B(settings.god);
+			auto wizId=state.current.placeWizard(wizard,settings.controlledSide,settings.level,settings.souls,spellbook);
+			if(settings.controlledSide==controlledSide) id=wizId;
+		}
+		if(network){
+			foreach(ref player;network.players)
+				placeWizard(player.settings);
+		}else placeWizard(options.settings);
+	}else{
+		enforce(playback.committed.length&&playback.committed[0].frame==0);
+		state.current.copyFrom(playback.committed[0]);
+		assignArray(state.commands,playback.commands);
 	}
-	if(network){
-		foreach(ref player;network.players)
-			placeWizard(player.settings);
-	}else placeWizard(options.settings);
-	auto controller=new Controller!B(controlledSide,state,network);
 	state.commit();
+	Recording!B recording=null;
+	if(!playback&&options.recordingFilename.length) recording=new Recording!B(options.map);
+	auto controller=new Controller!B(controlledSide,state,network,recording);
 	backend.setState(state);
 	if(id) backend.focusCamera(id);
 	backend.setController(controller);
@@ -148,6 +151,10 @@ int main(string[] args){
 			options.soundVolume=to!float(opt["--sound-volume=".length..$]);
 		}else if(opt.startsWith("--join=")){
 			options.joinIP=opt["--join=".length..$];
+		}else if(opt.startsWith("--record=")){
+			options.recordingFilename=opt["--record=".length..$];
+		}else if(opt.startsWith("--play=")){
+			options.playbackFilename=opt["--play=".length..$];
 		}else if(opt.startsWith("--side=")){
 			options.controlledSide=to!int(opt["--side=".length..$]);
 		}else if(opt.startsWith("--wizard=")){
@@ -280,5 +287,10 @@ int main(string[] args){
 		}
 	}
 	backend.run();
+	if(B.controller.recording){
+		B.controller.recording.finalize(B.state.commands);
+		writeln("saving recording to '",options.recordingFilename,"'");
+		B.controller.recording.save(options.recordingFilename);
+	}
 	return 0;
 }
