@@ -6831,15 +6831,15 @@ final class Sides(B){
 		return 20.0f;
 	}
 	SacParticle!B manaParticle(int side){
-		if(!manaParticles[side]) manaParticles[side]=new SacParticle!B(ParticleType.manalith, manaColor(side), manaEnergy(side));
+		if(!manaParticles[side]) manaParticles[side]=new SacParticle!B(ParticleType.manalith, manaColor(side), manaEnergy(side), side);
 		return manaParticles[side];
 	}
 	SacParticle!B shrineParticle(int side){
-		if(!shrineParticles[side]) shrineParticles[side]=new SacParticle!B(ParticleType.shrine, manaColor(side), manaEnergy(side));
+		if(!shrineParticles[side]) shrineParticles[side]=new SacParticle!B(ParticleType.shrine, manaColor(side), manaEnergy(side), side);
 		return shrineParticles[side];
 	}
 	SacParticle!B manahoarParticle(int side){
-		if(!manahoarParticles[side]) manahoarParticles[side]=new SacParticle!B(ParticleType.manahoar, manaColor(side), manaEnergy(side));
+		if(!manahoarParticles[side]) manahoarParticles[side]=new SacParticle!B(ParticleType.manahoar, manaColor(side), manaEnergy(side), side);
 		return manahoarParticles[side];
 	}
 	Stance getStance(int from,int towards){
@@ -7639,17 +7639,17 @@ final class GameState(B){
 	}
 
 	void step(){
-		//current.update(commands[current.frame].data);
-		next.updateFrom(current,commands[current.frame].data);
-		swap(current,next);
+		current.update(commands[current.frame].data);
+		//next.updateFrom(current,commands[current.frame].data);
+		//swap(current,next);
 		if(commands.length<=current.frame) commands~=Array!(Command!B)();
 	}
 	void stepCommitted()in{
 		assert(lastCommitted.frame<current.frame);
 	}do{
-		//lastCommitted.update(commands[lastCommitted.frame].data);
-		next.updateFrom(lastCommitted,commands[lastCommitted.frame].data);
-		swap(lastCommitted,next);
+		lastCommitted.update(commands[lastCommitted.frame].data);
+		//next.updateFrom(lastCommitted,commands[lastCommitted.frame].data);
+		//swap(lastCommitted,next);
 	}
 	void commit(){
 		lastCommitted.copyFrom(current);

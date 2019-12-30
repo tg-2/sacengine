@@ -800,6 +800,7 @@ final class SacParticle(B){
 	B.Texture texture;
 	B.Material material;
 	ParticleType type;
+	int side=-1;
 	Color4f color;
 	float energy=20.0f;
 	float width,height;
@@ -841,8 +842,9 @@ final class SacParticle(B){
 			default: return false;
 		}
 	}
-	this(ParticleType type,Color4f color=Color4f(1.0f,1.0f,1.0f,1.0f),float energy=20.0f){
+	this(ParticleType type,Color4f color=Color4f(1.0f,1.0f,1.0f,1.0f),float energy=20.0f,int side=-1){
 		this.type=type;
+		this.side=side;
 		this.color=color;
 		this.energy=energy;
 		// TODO: extract soul meshes at all different frames from original game
