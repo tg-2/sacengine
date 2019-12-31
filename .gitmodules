@@ -1,6 +1,6 @@
 [submodule "source/dagon"]
 	path = source/dagon
-	url = ./source/dagon
+	url = git@github.com:tg-2/dagon.git
 [submodule "source/dlib"]
 	path = source/dlib
-	url = ./source/dlib/
+	url = git@github.com:tg-2/dlib.git
