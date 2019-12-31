@@ -1,3 +1,6 @@
 [submodule "source/dagon"]
 	path = source/dagon
 	url = ./source/dagon
+[submodule "source/dlib"]
+	path = source/dlib
+	url = ./source/dlib/

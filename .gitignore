@@ -5,3 +5,6 @@ source/extracted
 ldc2*
 dub_platform*
 settings.txt
+*.scr
+zeroip.txt
+*.7z
