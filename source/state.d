@@ -6350,7 +6350,18 @@ final class ObjectState(B){ // (update logic)
 	}
 	int frame=0;
 	auto rng=MinstdRand0(1); // TODO: figure out what rng to use
-	@property int hash(){ return rng.tupleof[0]; } // rng seed as proxy for state hash. TODO: improve
+	// @property int hash(){ return rng.tupleof[0]; } // rng seed as proxy for state hash.
+	@property int hash(){
+		import std.digest.crc;
+		CRC32 crc;
+		crc.start();
+		void sink(scope ubyte[] data){ copy(data,&crc); }
+		import serialize_;
+		serialize!sink(this);
+		auto result=crc.finish();
+		static assert(result.sizeof==int.sizeof);
+		return *cast(int*)&result;
+	}
 	int uniform(int n){
 		import std.random: uniform;
 		return uniform(0,n,rng);
