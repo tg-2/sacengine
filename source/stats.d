@@ -23,20 +23,19 @@ struct Effects{
 	int speedUpUpdateFrame=-1;
 	int speedUpFrame=-1;
 }
-
-import std.math: PI;
+import dlib.math.portable: pi;
 @property float rotationSpeed(ref CreatureStats stats,bool isFlying){ // in radians per second
-	if(isFlying) return 0.5f*cast(float)PI;
-	return cast(float)PI;
+	if(isFlying) return 0.5f*pi!float;
+	return pi!float;
 }
 @property float pitchingSpeed(ref CreatureStats stats){ // in radians per second
-	return 0.125f*cast(float)PI;
+	return 0.125f*pi!float;
 }
 @property float pitchLowerLimit(ref CreatureStats stats){
-	return -0.25f*cast(float)PI;
+	return -0.25f*pi!float;
 }
 @property float pitchUpperLimit(ref CreatureStats stats){
-	return 0.25f*cast(float)PI;
+	return 0.25f*pi!float;
 }
 @property float movementSpeed(ref CreatureStats stats,bool isFlying){ // in meters per second
 	auto effectFactor=stats.effects.speedUp;

@@ -1,7 +1,7 @@
 import std.algorithm, std.range;
 import std.container.array: Array;
-import std.exception, std.stdio, std.conv, std.math;
-import dlib.math, dlib.image.color;
+import std.exception, std.stdio, std.conv;
+import dlib.math, dlib.math.portable, dlib.image.color;
 import std.typecons;
 import sids, ntts, nttData, bldg, sset;
 import sacmap, sacobject, animations, sacspell;
@@ -219,16 +219,16 @@ Vector2f[numCreaturesInGroup] getFormationOffsets(R)(R ids,CommandType commandTy
 			}
 			break;
 		case Formation.semicircle:
-			auto radius=max(targetDistance,0.5f*unitDistance,(numCreatures-1)*unitDistance/cast(float)PI);
+			auto radius=max(targetDistance,0.5f*unitDistance,(numCreatures-1)*unitDistance/pi!float);
 			foreach(i;0..numCreatures){
-				auto angle=numCreatures==1?0.5f*cast(float)PI:cast(float)PI*i/(numCreatures-1);
+				auto angle=numCreatures==1?0.5f*pi!float:pi!float*i/(numCreatures-1);
 				result[i]=radius*Vector2f(-cos(angle),-sin(angle));
 			}
 			break;
 		case Formation.circle:
-			auto radius=max(targetDistance,numCreatures*unitDistance/(2.0f*cast(float)PI));
+			auto radius=max(targetDistance,numCreatures*unitDistance/(2.0f*pi!float));
 			foreach(i;0..numCreatures){
-				auto angle=2.0f*cast(float)PI*i/numCreatures;
+				auto angle=2.0f*pi!float*i/numCreatures;
 				result[i]=radius*Vector2f(-cos(angle),-sin(angle));
 			}
 			break;
@@ -1147,7 +1147,6 @@ int placeWizard(B)(ObjectState!B state,SacObject!B wizard,int side,int level,int
 		if(*id||bldg.componentIds.length==0) return;
 		if(bldg.side==side && bldg.isAltar){
 			auto altar=state.staticObjectById!((obj)=>obj, function StaticObject!B(){ assert(0); })(bldg.componentIds[0]);
-			import std.math: PI, atan2;
 			int closestManafount=0;
 			Vector3f manafountPosition;
 			state.eachBuilding!((bldg,altarPos,closest,manaPos,state){
@@ -1160,13 +1159,13 @@ int placeWizard(B)(ObjectState!B state,SacObject!B wizard,int side,int level,int
 			})(altar.position,&closestManafount,&manafountPosition,state);
 			int orientation=0;
 			enum distance=15.0f;
-			auto facingOffset=(bldg.isStratosAltar?cast(float)PI/4.0f:0.0f)+cast(float)PI;
+			auto facingOffset=(bldg.isStratosAltar?pi!float/4.0f:0.0f)+pi!float;
 			auto facing=bldg.facing+facingOffset;
 			auto rotation=facingQuaternion(facing);
 			auto position=altar.position+rotate(rotation,Vector3f(0.0f,distance,0.0f));
 			if(closestManafount){
 				auto dir2d=(manafountPosition-altar.position).xy.normalized*distance;
-				facing=atan2(dir2d.y,dir2d.x)-cast(float)PI/2.0f;
+				facing=atan2(dir2d.y,dir2d.x)-pi!float/2.0f;
 				rotation=facingQuaternion(facing);
 				position=altar.position+Vector3f(dir2d.x,dir2d.y,0.0f);
 			}
@@ -2568,7 +2567,7 @@ int makeBuilding(B)(ref MovingObject!B caster,char[4] tag,int flags,int base,Obj
 			if(!state.isOnGround(cposition)) continue;
 			cposition.z=state.getGroundHeight(cposition);
 			float facing=0.0f; // TODO: ok?
-			auto rotation=facingQuaternion(2*cast(float)PI/360.0f*(facing+component.facing));
+			auto rotation=facingQuaternion(2*pi!float/360.0f*(facing+component.facing));
 			building.componentIds~=state.addObject(StaticObject!B(curObj,building.id,cposition,rotation));
 		}
 		if(base) state.buildingById!((ref manafount,state){ putOnManafount(building,manafount,state); })(base,state);
@@ -3130,7 +3129,7 @@ bool wrath(B)(int wizard,int side,Vector3f position,OrderTarget target,SacSpell!
 }
 
 Fireball!B makeFireball(B)(int side,Vector3f position,OrderTarget target,SacSpell!B spell,ObjectState!B state){
-	auto rotationSpeed=cast(float)2*PI*state.uniform(0.5f,2.0f)/updateFPS;
+	auto rotationSpeed=2*pi!float*state.uniform(0.5f,2.0f)/updateFPS;
 	auto velocity=Vector3f(0.0f,0.0f,0.0f);
 	auto rotationAxis=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
 	auto rotationUpdate=rotationQuaternion(rotationAxis,rotationSpeed);
@@ -3159,7 +3158,7 @@ bool fireball(B)(Fireball!B fireball,ObjectState!B state){
 }
 
 Rock!B makeRock(B)(int immuneId,int side,Vector3f position,OrderTarget target,SacSpell!B spell,ObjectState!B state){
-	auto rotationSpeed=cast(float)2*PI*state.uniform(0.1f,0.4f)/updateFPS;
+	auto rotationSpeed=2*pi!float*state.uniform(0.1f,0.4f)/updateFPS;
 	auto velocity=Vector3f(0.0f,0.0f,0.0f);
 	auto rotationAxis=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
 	auto rotationUpdate=rotationQuaternion(rotationAxis,rotationSpeed);
@@ -3223,8 +3222,8 @@ bool swarm(B)(Swarm!B swarm,ObjectState!B state){
 
 bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state){
 	auto angle=facing-object.creatureState.facing;
-	while(angle<-cast(float)PI) angle+=2*cast(float)PI;
-	while(angle>cast(float)PI) angle-=2*cast(float)PI;
+	while(angle<-pi!float) angle+=2*pi!float;
+	while(angle>pi!float) angle-=2*pi!float;
 	enum threshold=1e-3;
 	object.creatureState.rotationSpeedLimit=rotationSpeedLimitFactor*abs(angle);
 	if(angle>threshold) object.startTurningLeft(state);
@@ -3263,8 +3262,8 @@ void startPitchingDown(B)(ref MovingObject!B object,ObjectState!B state,int side
 
 bool pitch(B)(ref MovingObject!B object,float pitch_,ObjectState!B state){
 	auto angle=pitch_-object.creatureState.flyingPitch;
-	while(angle<-cast(float)PI) angle+=2*cast(float)PI;
-	while(angle>cast(float)PI) angle-=2*cast(float)PI;
+	while(angle<-pi!float) angle+=2*pi!float;
+	while(angle>pi!float) angle-=2*pi!float;
 	enum threshold=1e-3;
 	object.creatureState.pitchingSpeedLimit=rotationSpeedLimitFactor*abs(angle);
 	if(angle>threshold) object.startPitchingUp(state);
@@ -3292,8 +3291,8 @@ bool movingForwardGetsCloserTo(B)(ref MovingObject!B object,Vector3f position,fl
 	auto forward=Vector2f(-sin(facing),cos(facing));
 	auto angle=atan2(-direction.x,direction.y);
 	angle-=object.creatureState.facing;
-	while(angle<-cast(float)PI) angle+=2*cast(float)PI;
-	while(angle>cast(float)PI) angle-=2*cast(float)PI;
+	while(angle<-pi!float) angle+=2*pi!float;
+	while(angle>pi!float) angle-=2*pi!float;
 	if(dot(direction,forward)<0.0f){
 		if(object.creatureState.movement!=CreatureMovement.flying)
 			return false;
@@ -3835,8 +3834,8 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 			if(totalNumFrames==0) totalNumFrames=reviveTime;
 			assert(totalNumFrames!=0);
 			object.creatureState.timer+=1;
-			object.creatureState.facing+=(object.creatureState.mode==CreatureMode.fastReviving?2.0f*cast(float)PI:4.0f*PI)/totalNumFrames;
-			while(object.creatureState.facing>cast(float)PI) object.creatureState.facing-=2*cast(float)PI;
+			object.creatureState.facing+=(object.creatureState.mode==CreatureMode.fastReviving?2.0f*pi!float:4.0f*pi!float)/totalNumFrames;
+			while(object.creatureState.facing>pi!float) object.creatureState.facing-=2*pi!float;
 			if(object.creatureState.timer<totalNumFrames/2){
 				object.creatureState.movement=CreatureMovement.flying;
 				object.position.z+=object.creatureStats.reviveHeight/(totalNumFrames/2);
@@ -4077,12 +4076,12 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 				case RotationDirection.left:
 					isRotating=true;
 					object.creatureState.facing+=min(rotationSpeed,object.creatureState.rotationSpeedLimit);
-					while(object.creatureState.facing>cast(float)PI) object.creatureState.facing-=2*cast(float)PI;
+					while(object.creatureState.facing>pi!float) object.creatureState.facing-=2*pi!float;
 					break;
 				case RotationDirection.right:
 					isRotating=true;
 					object.creatureState.facing-=min(rotationSpeed,object.creatureState.rotationSpeedLimit);
-					while(object.creatureState.facing<cast(float)PI) object.creatureState.facing+=2*cast(float)PI;
+					while(object.creatureState.facing<pi!float) object.creatureState.facing+=2*pi!float;
 				break;
 			}
 			final switch(object.creatureState.pitchingDirection){
@@ -4354,8 +4353,8 @@ void updateCreature(B)(ref MovingObject!B object, ObjectState!B state){
 
 void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 	soul.frame+=1;
-	soul.facing+=2*cast(float)PI/8.0f/updateFPS;
-	while(soul.facing>cast(float)PI) soul.facing-=2*cast(float)PI;
+	soul.facing+=2*pi!float/8.0f/updateFPS;
+	while(soul.facing>pi!float) soul.facing-=2*pi!float;
 	if(soul.frame==SacSoul!B.numFrames*updateAnimFactor)
 		soul.frame=0;
 	if(soul.creatureId&&soul.state!=SoulState.collecting)
@@ -4769,7 +4768,7 @@ bool updateHeal(B)(ref Heal!B heal,ObjectState!B state){
 		auto hitbox=obj.relativeHitbox;
 		auto dim=hitbox[1]-hitbox[0];
 		auto volume=dim.x*dim.y*dim.z;
-		auto scale=2.0f*max(1.0f,pow(volume,1.0f/3.0f));
+		auto scale=2.0f*max(1.0f,cbrt(volume));
 		auto sacParticle=SacParticle!B.get(ParticleType.relativeHeal);
 		enum numParticles=2;
 		foreach(i;0..numParticles){
@@ -5361,7 +5360,8 @@ void updateBug(B)(ref Swarm!B swarm,ref Bug!B bug,ObjectState!B state){
 	auto distance=bug.targetPosition-bug.position;
 	auto acceleration=distance.normalized*min(2.0f*distance.length,1.0f)*bugAcceleration;
 	bug.velocity+=acceleration;
-	enum zdamp=exp(log(0.01f)/updateFPS);
+	static import std.math;
+	static immutable float zdamp=std.math.exp(std.math.log(0.01f)/updateFPS);
 	bug.velocity.z=zdamp*bug.velocity.z+(1.0f-zdamp)*swarm.velocity.z;
 	Vector3f capVelocity(Vector3f velocity){
 		if(velocity.length>bugSpeed) velocity=velocity.normalized*bugSpeed;
@@ -5380,7 +5380,10 @@ void updateBug(B)(ref Swarm!B swarm,ref Bug!B bug,ObjectState!B state){
 	if(radius.lengthsqr>1.0f){
 		auto radialDir=radialComponent*radius.normalized;
 		auto rest=bug.velocity-radialDir;
-		auto factor=radialComponent>0.0f?exp(log(0.01f)/updateFPS):exp(log(7.0f)/updateFPS);
+		static import std.math;
+		static immutable float damp1=std.math.exp(std.math.log(0.01f)/updateFPS);
+		static immutable float damp2=std.math.exp(std.math.log(7.0f)/updateFPS);
+		auto factor=radialComponent>0.0f?damp1:damp2;
 		bug.velocity=rest+factor*radialDir;
 	}
 }
@@ -5395,7 +5398,8 @@ void disperseBug(B)(ref Swarm!B swarm,ref Bug!B bug,ObjectState!B state){
 		bug.targetPosition.x+=cos(bug.targetPosition.y)/updateFPS;
 		bug.targetPosition.y+=cos(bug.targetPosition.x)/updateFPS;
 	}
-	enum damp=exp(log(0.01f)/updateFPS);
+	static import std.math;
+	static immutable float damp=std.math.exp(std.math.log(0.01f)/updateFPS);
 	bug.position=damp*bug.targetPosition+(1.0f-damp)*bug.position;
 }
 void disperseBugs(B)(ref Swarm!B swarm,ObjectState!B state){
@@ -5644,9 +5648,9 @@ void explosionAnimation(B)(Vector3f position,ObjectState!B state){
 void animateDebris(B)(Vector3f position,ObjectState!B state){
 	enum numDebris=35;
 	foreach(i;0..numDebris){
-		auto angle=state.uniform(-cast(float)PI,cast(float)PI);
+		auto angle=state.uniform(-pi!float,pi!float);
 		auto velocity=(20.0f+state.uniform(-5.0f,5.0f))*Vector3f(cos(angle),sin(angle),state.uniform(0.5f,2.0f)).normalized;
-		auto rotationSpeed=cast(float)2*PI*state.uniform(0.5f,2.0f)/updateFPS;
+		auto rotationSpeed=2*pi!float*state.uniform(0.5f,2.0f)/updateFPS;
 		auto rotationAxis=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
 		auto rotationUpdate=rotationQuaternion(rotationAxis,rotationSpeed);
 		auto debris=Debris!B(position,velocity,rotationUpdate,Quaternionf.identity());
@@ -5698,18 +5702,18 @@ void updateCommandCones(B)(ref CommandCones!B commandCones, ObjectState!B state)
 
 void animateManafount(B)(Vector3f location, ObjectState!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.manafount);
-	auto globalAngle=1.5f*2*cast(float)PI/updateFPS*(state.frame+1000*location.x+location.y);
+	auto globalAngle=1.5f*2*pi!float/updateFPS*(state.frame+1000*location.x+location.y);
 	auto globalMagnitude=0.25f;
 	auto globalDisplacement=globalMagnitude*Vector3f(cos(globalAngle),sin(globalAngle),0.0f);
 	auto center=location+globalDisplacement;
 	static assert(updateFPS==60); // TODO: fix
 	foreach(j;0..2){
-		auto displacementAngle=state.uniform(-cast(float)PI,cast(float)PI);
+		auto displacementAngle=state.uniform(-pi!float,pi!float);
 		auto displacementMagnitude=state.uniform(0.0f,0.5f);
 		auto displacement=displacementMagnitude*Vector3f(cos(displacementAngle),sin(displacementAngle),0.0f);
 		foreach(k;0..2){
 			auto position=center+displacement;
-			auto angle=state.uniform(-cast(float)PI,cast(float)PI);
+			auto angle=state.uniform(-pi!float,pi!float);
 			auto velocity=(20.0f+state.uniform(-5.0f,5.0f))*Vector3f(cos(angle),sin(angle),state.uniform(2.0f,4.0f)).normalized;
 			auto lifetime=cast(int)(sqrt(sacParticle.numFrames*5.0f)*state.uniform(0.0f,1.0f))^^2;
 			auto scale=1.0f;
@@ -5721,17 +5725,17 @@ void animateManafount(B)(Vector3f location, ObjectState!B state){
 
 void animateManalith(B)(Vector3f location, int side, ObjectState!B state){
 	auto sacParticle=state.sides.manaParticle(side);
-	auto globalAngle=2*cast(float)PI/updateFPS*(state.frame+1000*location.x+location.y);
+	auto globalAngle=2*pi!float/updateFPS*(state.frame+1000*location.x+location.y);
 	auto globalMagnitude=0.5f;
 	auto globalDisplacement=globalMagnitude*Vector3f(cos(globalAngle),sin(globalAngle),0.0f);
 	auto center=location+globalDisplacement;
 	static assert(updateFPS==60); // TODO: fix
 	foreach(j;0..4){
-		auto displacementAngle=state.uniform(-cast(float)PI,cast(float)PI);
+		auto displacementAngle=state.uniform(-pi!float,pi!float);
 		auto displacementMagnitude=3.5f*state.uniform(0.0f,1.0f)^^2;
 		auto displacement=displacementMagnitude*Vector3f(cos(displacementAngle),sin(displacementAngle),0.0f);
 		auto position=center+displacement;
-		auto angle=state.uniform(-cast(float)PI,cast(float)PI);
+		auto angle=state.uniform(-pi!float,pi!float);
 		auto velocity=(15.0f+state.uniform(-5.0f,5.0f))*Vector3f(0.0f,0.0f,state.uniform(2.0f,4.0f)).normalized;
 		auto scale=1.0f;
 		auto lifetime=cast(int)(sacParticle.numFrames*5.0f-0.7*sacParticle.numFrames*displacement.length*state.uniform(0.0f,1.0f)^^2);
@@ -5742,17 +5746,17 @@ void animateManalith(B)(Vector3f location, int side, ObjectState!B state){
 
 void animateShrine(B)(Vector3f location, int side, ObjectState!B state){
 	auto sacParticle=state.sides.shrineParticle(side);
-	auto globalAngle=2*cast(float)PI/updateFPS*(state.frame+1000*location.x+location.y);
+	auto globalAngle=2*pi!float/updateFPS*(state.frame+1000*location.x+location.y);
 	auto globalMagnitude=0.1f;
 	auto globalDisplacement=globalMagnitude*Vector3f(cos(globalAngle),sin(globalAngle),0.0f);
 	auto center=location+globalDisplacement;
 	static assert(updateFPS==60); // TODO: fix
 	foreach(j;0..2){
-		auto displacementAngle=state.uniform(-cast(float)PI,cast(float)PI);
+		auto displacementAngle=state.uniform(-pi!float,pi!float);
 		auto displacementMagnitude=1.0f*state.uniform(0.0f,1.0f)^^2;
 		auto displacement=displacementMagnitude*Vector3f(cos(displacementAngle),sin(displacementAngle),0.0f);
 		auto position=center+displacement;
-		auto angle=state.uniform(-cast(float)PI,cast(float)PI);
+		auto angle=state.uniform(-pi!float,pi!float);
 		auto velocity=(1.5f+state.uniform(-0.5f,0.5f))*Vector3f(0.0f,0.0f,state.uniform(2.0f,4.0f)).normalized;
 		auto scale=1.0f;
 		auto lifetime=cast(int)((sacParticle.numFrames*5.0f)*(1.0f+state.uniform(0.0f,1.0f)^^10));
@@ -5792,7 +5796,7 @@ void updateBuilding(B)(ref Building!B building, ObjectState!B state){
 
 void animateManahoar(B)(Vector3f location, int side, float rate, ObjectState!B state){
 	auto sacParticle=state.sides.manahoarParticle(side);
-	auto globalAngle=2*cast(float)PI/updateFPS*state.frame;
+	auto globalAngle=2*pi!float/updateFPS*state.frame;
 	auto globalMagnitude=0.05f;
 	auto globalDisplacement=globalMagnitude*Vector3f(cos(globalAngle),sin(globalAngle),0.0f);
 	auto center=location+globalDisplacement;
@@ -5801,11 +5805,11 @@ void animateManahoar(B)(Vector3f location, int side, float rate, ObjectState!B s
 	auto fractional=cast(int)(1.0f/fmod(perFrame,1.0f));
 	auto numParticles=cast(int)perFrame+(fractional!=0&&state.frame%fractional==0?1:0);
 	foreach(j;0..numParticles){
-		auto displacementAngle=state.uniform(-cast(float)PI,cast(float)PI);
+		auto displacementAngle=state.uniform(-pi!float,pi!float);
 		auto displacementMagnitude=0.15f*state.uniform(0.0f,1.0f)^^2;
 		auto displacement=displacementMagnitude*Vector3f(cos(displacementAngle),sin(displacementAngle),0.0f);
 		auto position=center+displacement;
-		auto angle=state.uniform(-cast(float)PI,cast(float)PI);
+		auto angle=state.uniform(-pi!float,pi!float);
 		auto velocity=(1.5f+state.uniform(-0.5f,0.5f))*Vector3f(0.0f,0.0f,state.uniform(2.0f,4.0f)).normalized;
 		auto scale=1.0f;
 		auto lifetime=cast(int)(0.7f*(sacParticle.numFrames*5.0f-7.0f*sacParticle.numFrames*displacement.length*state.uniform(0.0f,1.0f)^^2));
@@ -7550,7 +7554,7 @@ final class GameState(B){
 		auto data=ntt.tag in bldgs;
 		enforce(!!data);
 		auto flags=ntt.flags&~Flags.damaged&~ntt.flags.destroyed;
-		auto facing=2*cast(float)PI/360.0f*ntt.facing;
+		auto facing=2*pi!float/360.0f*ntt.facing;
 		auto buildingId=current.addObject(Building!B(data,ntt.side,flags,facing));
 		assert(!!buildingId);
 		if(ntt.id !in triggers.objectIds) // e.g. for some reason, the two altars on ferry have the same id
@@ -7580,7 +7584,7 @@ final class GameState(B){
 				auto cposition=position+offset;
 				if(!current.isOnGround(cposition)) continue;
 				cposition.z=current.getGroundHeight(cposition);
-				auto rotation=facingQuaternion(2*cast(float)PI/360.0f*(ntt.facing+component.facing));
+				auto rotation=facingQuaternion(2*pi!float/360.0f*(ntt.facing+component.facing));
 				building.componentIds~=current.addObject(StaticObject!B(curObj,building.id,cposition,rotation));
 			}
 			if(ntt.base){

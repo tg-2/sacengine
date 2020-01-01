@@ -1,10 +1,9 @@
-import dlib.image, dlib.math, dlib.geometry;
+import dlib.image, dlib.math, dlib.math.portable, dlib.geometry;
 import util;
 import maps,txtr,envi;
 import std.exception, std.string, std.algorithm, std.conv, std.range;
 import std.stdio, std.path;
 import std.typecons: tuple,Tuple;
-import std.math;
 
 import sacobject;
 

@@ -1,8 +1,8 @@
-import dlib.math;
+import dlib.math, dlib.math.portable;
 import util;
 import sxmd,sxsk,sxtx;
 
-import std.stdio, std.path, std.string, std.exception, std.algorithm, std.range, std.conv, std.math;
+import std.stdio, std.path, std.string, std.exception, std.algorithm, std.range, std.conv;
 
 struct Bone{
 	Vector3f position;

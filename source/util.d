@@ -1,4 +1,4 @@
-import dlib.math;
+import dlib.math, dlib.math.portable;
 import std.typecons, std.algorithm;
 
 alias Seq(T...)=T;
@@ -65,11 +65,11 @@ Vector3f transform(Matrix4f m, Vector3f v){
 }
 
 Quaternionf limitRotation(Quaternionf q, float maxAbsAngle){
-	import std.math, std.algorithm;
+	import std.algorithm;
 	auto len=q.xyz.length;
 	auto angle=2*atan2(len,q.w);
-	if(angle>PI) angle-=2*PI;
-	else if(angle<-PI) angle+=2*PI;
+	if(angle>pi!float) angle-=2*pi!float;
+	else if(angle<-pi!float) angle+=2*pi!float;
 	if(angle<-maxAbsAngle) angle=-maxAbsAngle;
 	if(angle>maxAbsAngle) angle=maxAbsAngle;
 	if(angle==0.0f||len==0.0f) return Quaternionf.identity();

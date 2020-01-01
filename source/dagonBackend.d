@@ -1,6 +1,6 @@
 import dagon;
+import dlib.math.portable;
 import options,util;
-import std.math;
 import std.stdio;
 import std.algorithm, std.range, std.exception, std.typecons;
 
@@ -184,7 +184,7 @@ final class SacScene: Scene{
 		auto totalTime=state.current.frame*1.0f/updateFPS;
 		sacSkyMaterialBackend.sunLoc = sacSky.sunSkyRelLoc(fpview.camera.position);
 		sacSkyMaterialBackend.cloudOffset=state.current.frame%(64*updateFPS)*1.0f/(64*updateFPS)*Vector2f(1.0f,-1.0f);
-		auto skyRotation=rotationQuaternion(Axis.z,cast(float)(2*PI/512.0f*totalTime));
+		auto skyRotation=rotationQuaternion(Axis.z,2*pi!float/512.0f*totalTime);
 		auto map=state.current.map;
 		auto x=10.0f*map.n/2, y=10.0f*map.m/2;
 		auto skyPosition=Vector3f(x,y,sacSky.dZ*sacSky.scaling+1);
@@ -346,7 +346,7 @@ final class SacScene: Scene{
 							auto radius=soul.scaling*sacSoul.soulRadius;
 							if(number<=3) radius*=0.3*number;
 							foreach(k;0..number){
-								auto position=soul.position+rotate(facingQuaternion(objects[j].facing+2*PI*k/number), Vector3f(0.0f,radius,0.0f));
+								auto position=soul.position+rotate(facingQuaternion(objects[j].facing+2*pi!float*k/number), Vector3f(0.0f,radius,0.0f));
 								material.backend.setSpriteTransformationScaled(position+soul.scaling*Vector3f(0.0f,0.0f,1.25f*sacSoul.soulHeight),soul.scaling*soulScaling,rc);
 								mesh.render(rc);
 							}
@@ -448,7 +448,7 @@ final class SacScene: Scene{
 						auto len=diff.length;
 						auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),diff/len);
 						scene.shadelessBoneMaterialBackend.setTransformationScaled(start,rotation,Vector3f(1.0f,1.0f,0.1f*len),rc);
-						auto alpha=cast(float)PI*frame/float(totalFrames);
+						auto alpha=pi!float*frame/float(totalFrames);
 						auto energy=0.375f+14.625f*(0.5f+0.25f*cos(7.0f*alpha)+0.25f*sin(11.0f*alpha));
 						scene.shadelessBoneMaterialBackend.setEnergy(energy);
 						auto mesh=scene.lightning.getFrame(objects.lightnings[j].frame%scene.lightning.numFrames);
@@ -572,7 +572,7 @@ final class SacScene: Scene{
 							enum scalingFactor=0.95f;
 							foreach(k;0..numShells){
 								horzScaling*=scalingFactor;
-								rotation=facingQuaternion((k&1?-1.0f:1.0f)*2.0f*cast(float)PI*fraction*(k+1));
+								rotation=facingQuaternion((k&1?-1.0f:1.0f)*2.0f*pi!float*fraction*(k+1));
 								scaling=Vector3f(horzScaling,horzScaling,vertScaling);
 								if(k+1==numShells) shadelessMaterialBackend.bindDiffuse(whiteTexture);
 								shadelessMaterialBackend.setTransformationScaled(position, rotation, scaling, rc);
@@ -1088,11 +1088,11 @@ final class SacScene: Scene{
 			minimapMaterialBackend.bindDiffuse(whiteTexture);
 			minimapMaterialBackend.setColor(Color4f(1.0f,1.0f,0.0f,1.0f));
 			auto fovScaling=Vector3f(0.5f*hudScaling,2.0f*radius,0.0f);
-			auto angle=2.0f*cast(float)PI*82.0f/360.0f;
-			auto fovRotation1=mapRotation*facingQuaternion(-facing-0.5f*angle+cast(float)PI);
+			auto angle=2.0f*pi!float*82.0f/360.0f;
+			auto fovRotation1=mapRotation*facingQuaternion(-facing-0.5f*angle+pi!float);
 			minimapMaterialBackend.setTransformationScaled(iconCenter+rotate(fovRotation1,Vector3f(-0.5f*fovScaling.x,0.0f,0.0f)),fovRotation1,fovScaling,rc);
 			quad.render(rc);
-			auto fovRotation2=mapRotation*facingQuaternion(-facing+0.5f*angle+cast(float)PI);
+			auto fovRotation2=mapRotation*facingQuaternion(-facing+0.5f*angle+pi!float);
 			minimapMaterialBackend.setTransformationScaled(iconCenter+rotate(fovRotation2,Vector3f(-0.5f*fovScaling.x,0.0f,0.0f)),fovRotation2,fovScaling,rc);
 			quad.render(rc);
 		}
@@ -1233,7 +1233,7 @@ final class SacScene: Scene{
 				auto iconOffset=rotate(mapRotation,minimapFactor*Vector3f(position.x,-position.y,0));
 				auto offset=iconOffset.normalized*(0.92f*radius-hudScaling*6.0f);
 				auto iconCenter=mapCenter+offset;
-				auto rotation=rotationQuaternion(Axis.z,cast(float)PI/2+atan2(iconOffset.y,iconOffset.x));
+				auto rotation=rotationQuaternion(Axis.z,pi!float/2+atan2(iconOffset.y,iconOffset.x));
 				scene.minimapMaterialBackend.setTransformationScaled(iconCenter-rotate(rotation,0.5f*arrowScaling),rotation,arrowScaling,rc);
 				static if(isMoving) auto side=object.side;
 				else auto side=sideFromBuildingId(object.buildingId,scene.state.current);
@@ -1482,7 +1482,7 @@ final class SacScene: Scene{
 		auto scaling=hudScaling*Vector3f(16.0f,8.0f,0.0f);
 		auto scaling2=hudScaling*Vector3f(48.0f,16.0f,0.0f);
 		auto position2=Vector3f(hudScaling*16.0f*numFrameSegments-4.0f+scaling2.y,height-hudScaling*48.0f,0.0f);
-		material.backend.setTransformationScaled(position2,facingQuaternion(PI/2),scaling2,rc);
+		material.backend.setTransformationScaled(position2,facingQuaternion(pi!float/2),scaling2,rc);
 		spellbookFrame2.render(rc);
 		foreach(i;0..numFrameSegments){
 			auto positioni=position+hudScaling*Vector3f(16.0f*i,-8.0f,0.0f);
@@ -1663,12 +1663,12 @@ final class SacScene: Scene{
 		 obj.drawable = aOBJ.mesh;
 		 obj.material = mat;
 		 obj.position = Vector3f(0, 1, 0);
-		 obj.rotation = rotationQuaternion(Axis.x,-cast(float)PI/2);+/
+		 obj.rotation = rotationQuaternion(Axis.x,-pi!float/2);+/
 
 		/+if(!state){
 			auto sky=createSky();
-			sky.rotation=rotationQuaternion(Axis.z,cast(float)PI)*
-				rotationQuaternion(Axis.x,cast(float)(PI/2));
+			sky.rotation=rotationQuaternion(Axis.z,pi!float)*
+				rotationQuaternion(Axis.x,pi!float/2);
 		}+/
 		/+auto ePlane = createEntity3D();
 		 ePlane.drawable = New!ShapePlane(10, 10, 1, assetManager);
@@ -1687,7 +1687,7 @@ final class SacScene: Scene{
 		float minimapZoom=2.7f;
 		float focusHeight;
 		bool centering=false;
-		enum rotationSpeed=0.95f*PI;
+		enum rotationSpeed=0.95f*pi!float;
 		float lastTargetFacing;
 	}
 	Camera camera;
@@ -1763,7 +1763,8 @@ final class SacScene: Scene{
 			}else fpview.camera.turn+=sign(diff)*speed;
 		}
 		if(camera.targetZoom!=camera.zoom){
-			auto factor=exp(2.0f*log(0.01f)*dt);
+			static import std.math;
+			static immutable float factor=std.math.exp(2.0f*std.math.log(0.01f)/updateFPS);
 			camera.zoom=(1-factor)*camera.targetZoom+factor*camera.zoom;
 			camera.zoom=max(0.0f,min(camera.zoom,1.0f));
 		}
@@ -1811,6 +1812,7 @@ final class SacScene: Scene{
 				camera.targetZoom-=0.04f*eventManager.mouseWheelY;
 				camera.targetZoom=max(0.0f,min(camera.targetZoom,1.0f));
 			}else{
+				import std.math:exp,log;
 				camera.minimapZoom*=exp(log(1.3)*(-0.4f*eventManager.mouseWheelY+0.04f*(mouse.dragging?eventManager.mouseRelY:0)/hudScaling));
 				camera.minimapZoom=max(0.5f,min(camera.minimapZoom,15.0f));
 			}
@@ -3224,17 +3226,17 @@ class ShapeSubSphere: Mesh
         float heightStep = 2.0f * invCuts;
 
         float invSlices = 1.0f / slices;
-        float angleStep = (2.0f * PI) * invSlices;
+        float angleStep = (2.0f * pi!float) * invSlices;
 
         for(int h = 0; h < stacks; h++)
         {
             float h1Norm = cast(float)h * invCuts * 2.0f - 1.0f;
             float h2Norm = cast(float)(h+1) * invCuts * 2.0f - 1.0f;
-            float y1 = sin(HALF_PI * h1Norm);
-            float y2 = sin(HALF_PI * h2Norm);
+            float y1 = sin(0.5f*pi!float * h1Norm);
+            float y2 = sin(0.5f*pi!float * h2Norm);
 
-            float circleRadius1 = cos(HALF_PI * y1);
-            float circleRadius2 = cos(HALF_PI * y2);
+            float circleRadius1 = cos(0.5f*pi!float * y1);
+            float circleRadius2 = cos(0.5f*pi!float * y2);
 
             auto curBottom=bottom+(top-bottom)*h/stacks;
             auto curTop=bottom+(top-bottom)*(h+1)/stacks;
@@ -3330,11 +3332,11 @@ class ShapeSubSphere: Mesh
 
             for(int h = (-resolution/2); h < (resolution/2); h++)
             {
-                inc1 = (w/cast(float)resolution)*2*PI;
-                inc2 = ((w+1)/cast(float)resolution)*2*PI;
+                inc1 = (w/cast(float)resolution)*2*pi!float;
+                inc2 = ((w+1)/cast(float)resolution)*2*pi!float;
 
-                inc3 = (h/cast(float)resolution)*PI;
-                inc4 = ((h+1)/cast(float)resolution)*PI;
+                inc3 = (h/cast(float)resolution)*pi!float;
+                inc4 = ((h+1)/cast(float)resolution)*pi!float;
 
                 X1 = sin(inc1);
                 Y1 = cos(inc1);

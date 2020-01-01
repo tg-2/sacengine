@@ -7,7 +7,8 @@ import std.typecons: Tuple, tuple;
 import std.stdio, std.conv;
 alias Tuple=std.typecons.Tuple;
 
-import std.exception, std.algorithm, std.range, std.math, std.path;
+import dlib.math.portable;
+import std.exception, std.algorithm, std.range, std.path;
 import state:updateAnimFactor;
 
 enum animFPS=30;
@@ -329,8 +330,8 @@ final class SacObject(B){
 	}do{
 		auto len=rotation.xyz.length;
 		auto angle=2*atan2(len,rotation.w);
-		if(angle>PI) angle-=2*PI;
-		else if(angle<-PI) angle+=2*PI;
+		if(angle>pi!float) angle-=2*pi!float;
+		else if(angle<-pi!float) angle+=2*pi!float;
 		if(rotation.z<0) angle=-angle;
 		auto aangle=abs(angle);
 		static enum HitboxRotation{
@@ -340,8 +341,8 @@ final class SacObject(B){
 			deg270,
 		}
 		auto hitboxRotation=HitboxRotation.deg0;
-		if(aangle>2*PI/360.0f*45.0f){
-			if(aangle<2*PI/360.0f*135.0f){
+		if(aangle>2*pi!float/360.0f*45.0f){
+			if(aangle<2*pi!float/360.0f*135.0f){
 				if(angle>0) hitboxRotation=HitboxRotation.deg90;
 				else hitboxRotation=HitboxRotation.deg270;
 			}else hitboxRotation=HitboxRotation.deg180;
@@ -655,7 +656,7 @@ final class SacSky(B){
 	this(){
 		skyb=B.makeMesh(2*(numSegs+1),2*numSegs);
 		foreach(i;0..numSegs+1){
-			auto angle=2*PI*i/numSegs, ca=cos(angle), sa=sin(angle);
+			auto angle=2*pi!float*i/numSegs, ca=cos(angle), sa=sin(angle);
 			skyb.vertices[2*i]=Vector3f(0.5*ca*0.8,0.5*sa*0.8,undrZ)*scaling;
 			skyb.vertices[2*i+1]=Vector3f(0.5*ca,0.5*sa,0)*scaling;
 			auto txc=cast(float)i*numTextureRepeats/numSegs;
@@ -671,7 +672,7 @@ final class SacSky(B){
 
 		skyt=B.makeMesh(2*(numSegs+1),2*numSegs);
 		foreach(i;0..numSegs+1){
-			auto angle=2*PI*i/numSegs, ca=cos(angle), sa=sin(angle);
+			auto angle=2*pi!float*i/numSegs, ca=cos(angle), sa=sin(angle);
 			skyt.vertices[2*i]=Vector3f(0.5*ca,0.5*sa,0)*scaling;
 			skyt.vertices[2*i+1]=Vector3f(0.5*ca,0.5*sa,skyZ)*scaling;
 			auto txc=cast(float)i*numTextureRepeats/numSegs;
@@ -1331,7 +1332,7 @@ struct SacWrath(B){
 			enum height=0.4f, depth=0.1f;
 			foreach(i;0..numSegments){
 				auto top=3*i,outer=3*i+1,bottom=3*i+2;
-				auto alpha=2*PI*i/numSegments;
+				auto alpha=2*pi!float*i/numSegments;
 				auto direction=Vector2f(cos(alpha),sin(alpha));
 				mesh.vertices[top]=Vector3f((1.0f-depth)*direction.x,(1.0f-depth)*direction.y,0.5f*height);
 				mesh.vertices[bottom]=mesh.vertices[top];
@@ -1402,7 +1403,7 @@ final class SacCommandCone(B){
 	this(){
 		mesh=B.makeMesh(129,128);
 		foreach(i;0..numFaces){
-			auto φ=2.0f*cast(float)PI*i/numFaces;
+			auto φ=2.0f*cast(float)pi!float*i/numFaces;
 			mesh.vertices[i]=Vector3f(0.01f,0.0f,0.0f)+Vector3f(radius*cos(φ),radius*sin(φ),height);
 			mesh.texcoords[i]=Vector2f(0.5f,0.5f)+0.5f*Vector2f(cos(φ),sin(φ));
 		}
