@@ -2014,14 +2014,13 @@ struct ObjectManager(B){
 			return ids[id-1]!=Id.init;
 		return false;
 	}
-	bool isValidId(int id,TargetType type){
+	bool isValidTarget(int id,TargetType type){
 		if(0<id && id<=ids.length){
 			if(ids[id-1]==Id.init) return false;
 			auto objType=ids[id-1].type;
 			if(objType<numMoving) return type==TargetType.creature;
 			if(objType<numMoving+numStatic) return type==TargetType.building;
 			if(objType==ObjectType.soul) return type==TargetType.soul;
-			if(objType==ObjectType.building) return type==TargetType.building;
 		}
 		return false;
 	}
@@ -2032,7 +2031,6 @@ struct ObjectManager(B){
 			if(objType<numMoving) return TargetType.creature;
 			if(objType<numMoving+numStatic) return TargetType.building;
 			if(objType==ObjectType.soul) return TargetType.soul;
-			if(objType==ObjectType.building) return TargetType.building;
 		}
 		return TargetType.none;
 	}
@@ -2134,7 +2132,7 @@ auto ref objectById(alias f,B,T...)(ref ObjectManager!B objectManager,int id,T a
 		}
 	}else{
 		enum byRef=!is(typeof(f(StaticObject!B.init,args))); // TODO: find a better way to check whether argument taken by reference!
-		enforce(nid.type<numMoving+numStatic,text(nid.type," ",objectManager.ids.data.map!(i=>i.type)));
+		enforce(nid.type<numMoving+numStatic,text(nid.type));
 		final switch(nid.mode){
 			case RenderMode.opaque:
 				static if(byRef){
@@ -3057,7 +3055,7 @@ bool speedUp(B)(ref MovingObject!B object,SacSpell!B spell,ObjectState!B state){
 	return speedUp(object,spell,duration,state);
 }
 bool speedUp(B)(int creature,SacSpell!B spell,ObjectState!B state){
-	if(!state.isValidId(creature,TargetType.creature)) return false;
+	if(!state.isValidTarget(creature,TargetType.creature)) return false;
 	return state.movingObjectById!(speedUp,()=>false)(creature,spell,state);
 }
 
@@ -3066,7 +3064,7 @@ bool castHeal(B)(ref MovingObject!B object,ManaDrain!B manaDrain,SacSpell!B spel
 	return true;
 }
 bool castHeal(B)(int creature,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
-	if(!state.isValidId(creature,TargetType.creature)) return false;
+	if(!state.isValidTarget(creature,TargetType.creature)) return false;
 	return state.movingObjectById!(castHeal,()=>false)(creature,manaDrain,spell,state);
 }
 enum healSpeed=250.0f;
@@ -4608,7 +4606,7 @@ bool updateBlueRing(B)(ref BlueRing!B blueRing,ObjectState!B state){
 }
 bool updateSpeedUp(B)(ref SpeedUp!B speedUp,ObjectState!B state){
 	with(speedUp){
-		if(!state.isValidId(creature,TargetType.creature)) return false;
+		if(!state.isValidTarget(creature,TargetType.creature)) return false;
 		framesLeft-=1;
 		return state.movingObjectById!((ref obj,framesLeft,state){
 			enum coolDownTime=(1.0f*updateFPS);
@@ -6656,8 +6654,8 @@ final class ObjectState(B){ // (update logic)
 	bool isValidId(int id){
 		return obj.isValidId(id);
 	}
-	bool isValidId(int id,TargetType type){
-		return obj.isValidId(id,type);
+	bool isValidTarget(int id,TargetType type){
+		return obj.isValidTarget(id,type);
 	}
 	TargetType targetTypeFromId(int id){
 		return obj.targetTypeFromId(id);
@@ -7514,9 +7512,9 @@ struct Command(B){
 	int group=-1;
 
 	bool isApplicable(B)(ObjectState!B state){
-		return (wizard==0||state.isValidId(wizard,TargetType.creature)) &&
-			(creature==0||state.isValidId(creature,TargetType.creature)) &&
-			(target.id==0&&target.type.among(TargetType.none,TargetType.terrain)||state.isValidId(target.id,target.type));
+		return (wizard==0||state.isValidTarget(wizard,TargetType.creature)) &&
+			(creature==0||state.isValidTarget(creature,TargetType.creature)) &&
+			(target.id==0&&target.type.among(TargetType.none,TargetType.terrain)||state.isValidTarget(target.id,target.type));
 	}
 
 	int id=0;
