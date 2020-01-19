@@ -143,6 +143,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Ord
 	deserializeStruct(result,state,data);
 }
 
+void serialize(alias sink)(ref LocationPredictor locationPredictor){ serializeStruct!sink(locationPredictor); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==LocationPredictor)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink)(ref CreatureAI creatureAI){ serializeStruct!sink(creatureAI); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==CreatureAI)){ deserializeStruct(result,state,data); }
 

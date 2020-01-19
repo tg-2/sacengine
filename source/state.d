@@ -131,6 +131,7 @@ OrderTarget centerTarget(B)(int id,ObjectState!B state)in{
 	auto position=state.objectById!((obj)=>obj.center)(id);
 	return OrderTarget(state.targetTypeFromId(id),id,position);
 }
+
 Vector3f[2] hitbox(B)(ref OrderTarget target,ObjectState!B state){
 	if(!state.isValidId(target.id)) return [target.position,target.position];
 	return state.objectById!((obj)=>obj.hitbox)(target.id);
@@ -252,6 +253,25 @@ Vector2f[numCreaturesInGroup] getFormationOffsets(R)(R ids,CommandType commandTy
 	return result;
 }
 
+struct LocationPredictor{
+	Vector3f lastPosition;
+	void reset(){ lastPosition=Vector3f.init; }
+	Vector3f predict(Vector3f position,float projectileSpeed,Vector3f targetPosition){
+		if(isNaN(lastPosition.x)){
+			lastPosition=targetPosition;
+			return targetPosition;
+		}
+		auto velocity=updateFPS*(targetPosition-lastPosition);
+		lastPosition=targetPosition;
+		if(velocity==Vector3f(0.0f,0.0f,0.0f)) return targetPosition;
+		auto projectileSpeedSqr=projectileSpeed*projectileSpeed;
+		auto remainingSpeedSqr=projectileSpeedSqr-velocity.lengthsqr;
+		if(remainingSpeedSqr<=0) return targetPosition; // TODO: what does original do here?
+		auto timeToImpact=sqrt((targetPosition-position).lengthsqr/remainingSpeedSqr);
+		return targetPosition+velocity*timeToImpact;
+	}
+}
+
 struct CreatureAI{
 	Order order;
 	Queue!Order orderQueue;
@@ -259,6 +279,8 @@ struct CreatureAI{
 	bool isColliding=false;
 	RotationDirection evasion;
 	int evasionTimer=0;
+	int rangedAttackTarget=0;
+	LocationPredictor predictor;
 }
 
 struct MovingObject(B){
@@ -1417,6 +1439,7 @@ struct Wrath(B){
 	SacSpell!B spell;
 	auto status=WrathStatus.flying;
 	int frame=0;
+	LocationPredictor predictor;
 }
 struct FireballCasting(B){
 	ManaDrain!B manaDrain;
@@ -1432,6 +1455,7 @@ struct Fireball(B){
 	SacSpell!B spell;
 	Quaternionf rotationUpdate;
 	Quaternionf rotation;
+	LocationPredictor predictor;
 }
 struct RockCasting(B){
 	ManaDrain!B manaDrain;
@@ -1475,6 +1499,7 @@ struct Swarm(B){
 	SacSpell!B spell;
 	int frame;
 	auto status=SwarmStatus.casting;
+	LocationPredictor predictor;
 	Array!(Bug!B) bugs; // TODO: pull out bugs into separate array?
 
 	void opAssign(ref Swarm!B rhs){
@@ -4967,12 +4992,13 @@ bool updateWrath(B)(ref Wrath!B wrath,ObjectState!B state){
 		final switch(wrath.status){
 			case WrathStatus.flying:
 				auto targetCenter=target.center(state);
-				auto distance=targetCenter-position;
-				auto acceleration=distance.normalized*spell.acceleration;
+				auto predictedCenter=predictor.predict(position,spell.speed,targetCenter);
+				auto predictedDistance=predictedCenter-position;
+				auto acceleration=predictedDistance.normalized*spell.acceleration;
 				velocity+=acceleration;
 				Vector3f capVelocity(Vector3f velocity){
 					if(velocity.length>spell.speed) velocity=velocity.normalized*spell.speed;
-					if(velocity.length>updateFPS*distance.length) velocity=velocity.normalized*distance.length*updateFPS;
+					if(velocity.length>updateFPS*predictedDistance.length) velocity=velocity.normalized*predictedDistance.length*updateFPS;
 					return velocity;
 				}
 				velocity=capVelocity(velocity);
@@ -4995,7 +5021,7 @@ bool updateWrath(B)(ref Wrath!B wrath,ObjectState!B state){
 						wrath.wrathExplosion(0,state);
 				}
 				if(status!=WrathStatus.exploding){
-					if(distance.length<0.05f)
+					if((targetCenter-position).lengthsqr<0.05f^^2)
 						wrath.wrathExplosion(wrath.target.id,state);
 				}
 				return true;
@@ -5097,14 +5123,15 @@ void fireballExplosion(B)(ref Fireball!B fireball,int target,ObjectState!B state
 enum fireballFlyingHeight=0.5f;
 bool updateFireball(B)(ref Fireball!B fireball,ObjectState!B state){
 	with(fireball){
-		auto oldPosition=fireball.position;
+		auto oldPosition=position;
 		auto targetCenter=target.center(state);
-		auto distance=targetCenter-position;
-		auto acceleration=distance.normalized*spell.acceleration;
+		auto predictedCenter=predictor.predict(position,spell.speed,targetCenter);
+		auto predictedDistance=predictedCenter-position;
+		auto acceleration=predictedDistance.normalized*spell.acceleration;
 		velocity+=acceleration;
 		Vector3f capVelocity(Vector3f velocity){
 			if(velocity.length>spell.speed) velocity=velocity.normalized*spell.speed;
-			if(velocity.length>updateFPS*distance.length) velocity=velocity.normalized*distance.length*updateFPS;
+			if(velocity.length>updateFPS*predictedDistance.length) velocity=velocity.normalized*predictedDistance.length*updateFPS;
 			return velocity;
 		}
 		velocity=capVelocity(velocity);
@@ -5132,7 +5159,7 @@ bool updateFireball(B)(ref Fireball!B fireball,ObjectState!B state){
 				return false;
 			}
 		}
-		if(distance.length<0.05f){
+		if((targetCenter-position).lengthsqr<0.05f^^2){
 			fireball.fireballExplosion(fireball.target.id,state);
 			return false;
 		}
@@ -5245,7 +5272,7 @@ void rockExplosion(B)(ref Rock!B rock,int target,ObjectState!B state){
 enum rockFloatingHeight=7.0f;
 bool updateRock(B)(ref Rock!B rock,ObjectState!B state){
 	with(rock){
-		auto oldPosition=rock.position;
+		auto oldPosition=position;
 		auto targetCenter=target.center(state);
 		auto distance=targetCenter-position;
 		auto acceleration=distance.normalized*spell.acceleration;
@@ -5441,12 +5468,13 @@ bool updateSwarm(B)(ref Swarm!B swarm,ObjectState!B state){
 				return swarm.updateBugs(state);
 			case SwarmStatus.flying:
 				auto targetCenter=target.center(state);
-				auto distance=targetCenter-position;
-				auto acceleration=distance.normalized*spell.acceleration;
+				auto predictedCenter=predictor.predict(position,spell.speed,targetCenter);
+				auto predictedDistance=predictedCenter-position;
+				auto acceleration=predictedDistance.normalized*spell.acceleration;
 				velocity+=acceleration;
 				Vector3f capVelocity(Vector3f velocity){
 					if(velocity.length>spell.speed) velocity=velocity.normalized*spell.speed;
-					if(velocity.length>updateFPS*distance.length) velocity=velocity.normalized*distance.length*updateFPS;
+					if(velocity.length>updateFPS*predictedDistance.length) velocity=velocity.normalized*predictedDistance.length*updateFPS;
 					return velocity;
 				}
 				velocity=capVelocity(velocity);
@@ -5468,7 +5496,7 @@ bool updateSwarm(B)(ref Swarm!B swarm,ObjectState!B state){
 						swarm.swarmHit(0,state);
 				}
 				if(status!=SwarmStatus.dispersing){
-					if(distance.length<0.05f)
+					if((targetCenter-position).length<0.05f^^2)
 						swarm.swarmHit(swarm.target.id,state);
 				}
 				return swarm.updateBugs(state);
