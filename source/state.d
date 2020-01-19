@@ -122,18 +122,18 @@ struct OrderTarget{
 	}
 }
 Vector3f center(B)(ref OrderTarget target,ObjectState!B state){
-	if(!state.isValidId(target.id)) return target.position;
+	if(!state.isValidTarget(target.id)) return target.position;
 	return state.objectById!((obj)=>obj.center)(target.id);
 }
 OrderTarget centerTarget(B)(int id,ObjectState!B state)in{
-	assert(state.isValidId(id));
+	assert(state.isValidTarget(id));
 }do{
 	auto position=state.objectById!((obj)=>obj.center)(id);
 	return OrderTarget(state.targetTypeFromId(id),id,position);
 }
 
 Vector3f[2] hitbox(B)(ref OrderTarget target,ObjectState!B state){
-	if(!state.isValidId(target.id)) return [target.position,target.position];
+	if(!state.isValidTarget(target.id)) return [target.position,target.position];
 	return state.objectById!((obj)=>obj.hitbox)(target.id);
 }
 
@@ -269,6 +269,15 @@ struct LocationPredictor{
 		if(remainingSpeedSqr<=0) return targetPosition; // TODO: what does original do here?
 		auto timeToImpact=sqrt((targetPosition-position).lengthsqr/remainingSpeedSqr);
 		return targetPosition+velocity*timeToImpact;
+	}
+	Vector3f predictCenter(B)(Vector3f position,float projectileSpeed,ref OrderTarget target,ObjectState!B state){
+		if(!state.isValidTarget(target.id)) return target.position;
+		static handle(T)(ref T obj,Vector3f position,float projectileSpeed,ObjectState!B state,LocationPredictor* self){
+			auto hitboxCenter=boxCenter(obj.relativeHitbox);
+			auto predictedPosition=self.predict(position,projectileSpeed,obj.position);
+			return predictedPosition+hitboxCenter;
+		}
+		return state.objectById!handle(target.id,position,projectileSpeed,state,&this);
 	}
 }
 
@@ -2039,6 +2048,13 @@ struct ObjectManager(B){
 			return ids[id-1]!=Id.init;
 		return false;
 	}
+	bool isValidTarget(int id){
+		if(0<id && id<=ids.length){
+			if(ids[id-1]==Id.init) return false;
+			return ids[id-1].type<numMoving+numStatic||ids[id-1].type==ObjectType.soul;
+		}
+		return false;
+	}
 	bool isValidTarget(int id,TargetType type){
 		if(0<id && id<=ids.length){
 			if(ids[id-1]==Id.init) return false;
@@ -3107,7 +3123,7 @@ bool castLightning(B,T)(ref T object,ManaDrain!B manaDrain,SacSpell!B spell,Obje
 	return castLightning(object.id,manaDrain,spell,state);
 }
 bool castLightning(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
-	if(!state.isValidId(target)) return false;
+	if(!state.isValidTarget(target)) return false;
 	auto orderTarget=state.objectById!((obj){
 		enum type=is(typeof(obj)==MovingObject!B)?TargetType.creature:TargetType.building;
 		return OrderTarget(type,obj.id,obj.center);
@@ -3137,7 +3153,7 @@ bool castWrath(B,T)(ref T object,ManaDrain!B manaDrain,SacSpell!B spell,ObjectSt
 	return castWrath(object.id,manaDrain,spell,state);
 }
 bool castWrath(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
-	if(!state.isValidId(target)) return false;
+	if(!state.isValidTarget(target)) return false;
 	state.addEffect(WrathCasting!B(manaDrain,spell,centerTarget(target,state)));
 	return true;
 }
@@ -3166,7 +3182,7 @@ bool castFireball(B,T)(ref T object,ManaDrain!B manaDrain,SacSpell!B spell,Objec
 	return castFireball(object.id,manaDrain,spell,state);
 }
 bool castFireball(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
-	if(!state.isValidId(target)) return false;
+	if(!state.isValidTarget(target)) return false;
 	auto positionSide=state.movingObjectById!((obj,state)=>tuple(obj.fireballCastingPosition(state),obj.side),function Tuple!(Vector3f,int){ assert(0); })(manaDrain.wizard,state);
 	auto position=positionSide[0],side=positionSide[1];
 	auto fireball=makeFireball(side,position,centerTarget(target,state),spell,state);
@@ -3198,7 +3214,7 @@ bool castRock(B,T)(int immuneId,ref T object,ManaDrain!B manaDrain,SacSpell!B sp
 	return castRock(immuneId,object.id,manaDrain,spell,castingTime,state);
 }
 bool castRock(B)(int immuneId,int target,ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,ObjectState!B state){
-	if(!state.isValidId(target)) return false;
+	if(!state.isValidTarget(target)) return false;
 	auto positionSide=state.movingObjectById!((obj,state)=>tuple(obj.rockCastingPosition(state),obj.side),function Tuple!(Vector3f,int){ assert(0); })(manaDrain.wizard,state);
 	auto position=positionSide[0],side=positionSide[1];
 	auto rock=makeRock(immuneId,side,position,centerTarget(target,state),spell,state);
@@ -3229,7 +3245,7 @@ bool castSwarm(B,T)(ref T object,ManaDrain!B manaDrain,SacSpell!B spell,int cast
 	return castSwarm(object.id,manaDrain,spell,castingTime,state);
 }
 bool castSwarm(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,ObjectState!B state){
-	if(!state.isValidId(target)) return false;
+	if(!state.isValidTarget(target)) return false;
 	auto positionSide=state.movingObjectById!((obj,state)=>tuple(obj.swarmCastingPosition(state),obj.side),function Tuple!(Vector3f,int){ assert(0); })(manaDrain.wizard,state);
 	auto position=positionSide[0],side=positionSide[1];
 	auto swarm=makeSwarm(side,position,centerTarget(target,state),spell,castingTime,state);
@@ -3666,7 +3682,7 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 	switch(object.creatureAI.order.command){
 		case CommandType.retreat:
 			auto targetId=object.creatureAI.order.target.id;
-			if(!state.isValidId(targetId)||!isValidGuardTarget(targetId,state))
+			if(!state.isValidTarget(targetId)||!isValidGuardTarget(targetId,state))
 				targetId=object.creatureAI.order.target.id=0;
 			Vector3f targetPosition;
 			if(targetId) targetPosition=state.movingObjectById!((obj)=>obj.position,()=>Vector3f.init)(targetId);
@@ -3683,7 +3699,7 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 		case CommandType.guard:
 			auto targetId=object.creatureAI.order.target.id;
 			bool idle=true;
-			if(!state.isValidId(targetId)||!object.guard(targetId,idle,state)) targetId=object.creatureAI.order.target.id=0;
+			if(!state.isValidTarget(targetId)||!object.guard(targetId,idle,state)) targetId=object.creatureAI.order.target.id=0;
 			if(targetId==0&&!object.patrol(state)) goto case CommandType.move;
 			if(idle) object.unqueueOrder(state);
 			break;
@@ -3695,7 +3711,7 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 			break;
 		case CommandType.attack:
 			auto targetId=object.creatureAI.order.target.id;
-			if(!state.isValidId(targetId)||!object.attack(targetId,state)) targetId=object.creatureAI.order.target.id=0;
+			if(!state.isValidTarget(targetId)||!object.attack(targetId,state)) targetId=object.creatureAI.order.target.id=0;
 			// TODO: unqueue order if targetId==0?
 			if(targetId==0&&!object.patrol(state)) goto case CommandType.move;
 			break;
@@ -4864,7 +4880,7 @@ bool updateLightning(B)(ref Lightning!B lightning,ObjectState!B state){
 		}
 		// TODO: scar
 		auto target=lightning.end.id;
-		if(state.isValidId(target)){
+		if(state.isValidTarget(target)){
 			auto direction=lightning.end.position-lightning.start.position;
 			dealSpellDamage(target,lightning.spell,lightning.side,direction,state);
 		}
@@ -4958,7 +4974,7 @@ int wrathCollisionTarget(B)(int side,Vector3f position,ObjectState!B state){
 void wrathExplosion(B)(ref Wrath!B wrath,int target,ObjectState!B state){
 	wrath.status=WrathStatus.exploding;
 	playSoundAt("hhtr",wrath.position,state,4.0f);
-	if(state.isValidId(target)) dealSpellDamage(target,wrath.spell,wrath.side,wrath.velocity,state);
+	if(state.isValidTarget(target)) dealSpellDamage(target,wrath.spell,wrath.side,wrath.velocity,state);
 	else target=0;
 	dealSplashSpellDamageAt(target,wrath.spell,wrath.side,wrath.position,state);
 	enum numParticles1=200;
@@ -4992,7 +5008,7 @@ bool updateWrath(B)(ref Wrath!B wrath,ObjectState!B state){
 		final switch(wrath.status){
 			case WrathStatus.flying:
 				auto targetCenter=target.center(state);
-				auto predictedCenter=predictor.predict(position,spell.speed,targetCenter);
+				auto predictedCenter=predictor.predictCenter(position,spell.speed,target,state);
 				auto predictedDistance=predictedCenter-position;
 				auto acceleration=predictedDistance.normalized*spell.acceleration;
 				velocity+=acceleration;
@@ -5015,7 +5031,7 @@ bool updateWrath(B)(ref Wrath!B wrath,ObjectState!B state){
 				position=newPosition;
 				wrath.animateWrath(state);
 				auto target=wrathCollisionTarget(side,position,state);
-				if(state.isValidId(target)) wrath.wrathExplosion(target,state);
+				if(state.isValidTarget(target)) wrath.wrathExplosion(target,state);
 				else if(state.isOnGround(position)){
 					if(position.z<state.getGroundHeight(position))
 						wrath.wrathExplosion(0,state);
@@ -5080,7 +5096,7 @@ int fireballCollisionTarget(B)(int side,Vector3f position,ObjectState!B state){
 
 void fireballExplosion(B)(ref Fireball!B fireball,int target,ObjectState!B state){
 	playSpellSoundTypeAt(SoundType.explodingFireball,fireball.position,state,8.0f);
-	if(state.isValidId(target)) dealSpellDamage(target,fireball.spell,fireball.side,fireball.velocity,state);
+	if(state.isValidTarget(target)) dealSpellDamage(target,fireball.spell,fireball.side,fireball.velocity,state);
 	else target=0;
 	dealSplashSpellDamageAt(target,fireball.spell,fireball.side,fireball.position,state);
 	//explosionParticles(fireball.position,state);
@@ -5125,7 +5141,7 @@ bool updateFireball(B)(ref Fireball!B fireball,ObjectState!B state){
 	with(fireball){
 		auto oldPosition=position;
 		auto targetCenter=target.center(state);
-		auto predictedCenter=predictor.predict(position,spell.speed,targetCenter);
+		auto predictedCenter=predictor.predictCenter(position,spell.speed,target,state);
 		auto predictedDistance=predictedCenter-position;
 		auto acceleration=predictedDistance.normalized*spell.acceleration;
 		velocity+=acceleration;
@@ -5149,7 +5165,7 @@ bool updateFireball(B)(ref Fireball!B fireball,ObjectState!B state){
 		rotation=rotationUpdate*rotation;
 		fireball.animateFireball(oldPosition,state);
 		auto target=fireballCollisionTarget(side,position,state);
-		if(state.isValidId(target)){
+		if(state.isValidTarget(target)){
 			fireball.fireballExplosion(target,state);
 			return false;
 		}
@@ -5245,7 +5261,7 @@ int rockCollisionTarget(B)(int immuneId,int side,Vector3f position,ObjectState!B
 
 void rockExplosion(B)(ref Rock!B rock,int target,ObjectState!B state){
 	playSpellSoundTypeAt(SoundType.explodingRock,rock.position,state,8.0f);
-	if(state.isValidId(target)) dealSpellDamage(target,rock.spell,rock.side,rock.velocity,state);
+	if(state.isValidTarget(target)) dealSpellDamage(target,rock.spell,rock.side,rock.velocity,state);
 	enum numParticles3=100;
 	auto sacParticle3=SacParticle!B.get(ParticleType.rock);
 	foreach(i;0..numParticles3){
@@ -5295,7 +5311,7 @@ bool updateRock(B)(ref Rock!B rock,ObjectState!B state){
 		rotation=rotationUpdate*rotation;
 		rock.animateRock(oldPosition,state);
 		auto target=rockCollisionTarget(immuneId,side,position,state);
-		if(state.isValidId(target)){
+		if(state.isValidTarget(target)){
 			rock.rockExplosion(target,state);
 			return false;
 		}
@@ -5434,7 +5450,7 @@ void disperseBugs(B)(ref Swarm!B swarm,ObjectState!B state){
 void swarmHit(B)(ref Swarm!B swarm,int target,ObjectState!B state){
 	swarm.status=SwarmStatus.dispersing;
 	playSoundAt("zzub",swarm.position,state,4.0f);
-	if(state.isValidId(target)){
+	if(state.isValidTarget(target)){
 		dealSpellDamage(target,swarm.spell,swarm.side,swarm.velocity,state);
 		static void hit(T)(ref T obj,Swarm!B *swarm,ObjectState!B state){
 			static if(is(T==MovingObject!B)){
@@ -5468,7 +5484,7 @@ bool updateSwarm(B)(ref Swarm!B swarm,ObjectState!B state){
 				return swarm.updateBugs(state);
 			case SwarmStatus.flying:
 				auto targetCenter=target.center(state);
-				auto predictedCenter=predictor.predict(position,spell.speed,targetCenter);
+				auto predictedCenter=predictor.predictCenter(position,spell.speed,target,state);
 				auto predictedDistance=predictedCenter-position;
 				auto acceleration=predictedDistance.normalized*spell.acceleration;
 				velocity+=acceleration;
@@ -5490,7 +5506,7 @@ bool updateSwarm(B)(ref Swarm!B swarm,ObjectState!B state){
 				}
 				swarm.position=newPosition;
 				auto target=swarmCollisionTarget(side,position,state);
-				if(state.isValidId(target)) swarm.swarmHit(target,state);
+				if(state.isValidTarget(target)) swarm.swarmHit(target,state);
 				else if(state.isOnGround(position)){
 					if(position.z<state.getGroundHeight(position))
 						swarm.swarmHit(0,state);
@@ -6681,6 +6697,9 @@ final class ObjectState(B){ // (update logic)
 	}
 	bool isValidId(int id){
 		return obj.isValidId(id);
+	}
+	bool isValidTarget(int id){
+		return obj.isValidTarget(id);
 	}
 	bool isValidTarget(int id,TargetType type){
 		return obj.isValidTarget(id,type);
