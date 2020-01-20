@@ -3344,26 +3344,30 @@ bool movingForwardGetsCloserTo(B)(ref MovingObject!B object,Vector3f position,fl
 	return limit<1e-3;
 }
 
-void order(B)(ref MovingObject!B object,Order order,ObjectState!B state,int side=-1){
-	if(!object.canOrder(side,state)) return;
+bool order(B)(ref MovingObject!B object,Order order,ObjectState!B state,int side=-1){
+	if(!object.canOrder(side,state)) return false;
+	if(!object.isAggressive(state)&&order.command.among(CommandType.attack,CommandType.advance)) return false;
 	object.clearOrderQueue(state);
 	object.creatureAI.order=order;
+	return true;
 }
 
-void queueOrder(B)(ref MovingObject!B object,Order order,ObjectState!B state,int side=-1){
+bool queueOrder(B)(ref MovingObject!B object,Order order,ObjectState!B state,int side=-1){
 	if(object.creatureAI.order.command==CommandType.none) return .order(object,order,state,side);
-	if(!object.canOrder(side,state)) return;
+	if(!object.canOrder(side,state)) return false;
 	object.creatureAI.orderQueue.push(order);
+	return true;
 }
 
-void prequeueOrder(B)(ref MovingObject!B object,Order order,ObjectState!B state,int side=-1){
+bool prequeueOrder(B)(ref MovingObject!B object,Order order,ObjectState!B state,int side=-1){
 	if(object.creatureAI.order.command==CommandType.none) return .order(object,order,state,side);
-	if(!object.canOrder(side,state)) return;
+	if(!object.canOrder(side,state)) return false;
 	if(hasOrders(object,state)) object.creatureAI.orderQueue.pushFront(object.creatureAI.order);
 	object.creatureAI.order=order;
+	return true;
 }
 
-void order(B)(ref MovingObject!B object,Order order,CommandQueueing queueing,ObjectState!B state,int side=-1){
+bool order(B)(ref MovingObject!B object,Order order,CommandQueueing queueing,ObjectState!B state,int side=-1){
 	final switch(queueing) with(CommandQueueing){
 		case none: return .order(object,order,state,side);
 		case post: return queueOrder(object,order,state,side);
@@ -6499,16 +6503,12 @@ final class ObjectState(B){ // (update logic)
 				ord.target=OrderTarget(command.target);
 				ord.targetFacing=command.targetFacing;
 				ord.formationOffset=formationOffset;
-				auto color=CommandConeColor.white;
-				if(command.type.among(CommandType.guard,CommandType.guardArea)) color=CommandConeColor.blue;
-				else if(command.type.among(CommandType.attack,CommandType.advance)) color=CommandConeColor.red;
 				Vector3f position;
 				if(ord.command==CommandType.guard && ord.target.id){
 					auto targetPositionTargetFacing=state.movingObjectById!((obj)=>tuple(obj.position,obj.creatureState.facing), ()=>tuple(ord.target.position,ord.targetFacing))(ord.target.id);
 					auto targetPosition=targetPositionTargetFacing[0], targetFacing=targetPositionTargetFacing[1];
 					position=getTargetPosition(targetPosition,targetFacing,formationOffset,state);
 				}else position=ord.getTargetPosition(state);
-				if(command.type!=CommandType.useAbility) state.addCommandCone(CommandCone!B(command.side,color,position));
 				return state.movingObjectById!((ref obj,ord,ability,state,side,updateFormation,formation,position){
 					if(ord.command==CommandType.attack&&ord.target.type==TargetType.creature){
 						// TODO: check whether they stick to creatures of a specific side
@@ -6520,7 +6520,16 @@ final class ObjectState(B){ // (update logic)
 					}
 					if(ord.command==CommandType.useAbility && obj.sacObject.ability !is ability) return false;
 					if(updateFormation) obj.creatureAI.formation=formation;
-					if(ord.command!=CommandType.setFormation) obj.order(ord,command.queueing,state,side);
+					if(ord.command!=CommandType.setFormation){
+						if(obj.order(ord,command.queueing,state,side)){
+							if(command.type!=CommandType.useAbility){
+								auto color=CommandConeColor.white;
+								if(command.type.among(CommandType.guard,CommandType.guardArea)) color=CommandConeColor.blue;
+								else if(command.type.among(CommandType.attack,CommandType.advance)) color=CommandConeColor.red;
+								state.addCommandCone(CommandCone!B(side,color,position));
+							}
+						}
+					}
 					return true;
 				},()=>false)(command.creature,ord,command.spell,state,command.side,updateFormation,command.formation,position);
 			}
