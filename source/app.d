@@ -289,7 +289,7 @@ int main(string[] args){
 			Thread.sleep(1.dur!"seconds");
 		}
 	}
-	scope(exit) if(B.controller.recording){
+	scope(exit) if(B.controller&&B.controller.recording){
 		B.controller.recording.finalize(B.state.commands);
 		writeln("saving recording to '",options.recordingFilename,"'");
 		B.controller.recording.save(options.recordingFilename);
