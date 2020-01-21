@@ -58,10 +58,12 @@ final class SacObject(B){
 		return cre8&&cre8.aggressiveness!=0;
 	}
 	@property float aggressiveRange(){
-		return 65.0f; // TODO: aggressiveRange for ranged attacks
+		if(auto ra=rangedAttack) return max(65.0f,1.5f*ra.range); // TODO: ok?
+		return 65.0f;
 	}
 	@property float advanceRange(){
-		return 100.0f; // TODO: advanceRange for ranged attacks
+		if(auto ra=rangedAttack) return max(100.0f,1.75f*ra.range); // TODO: ok?
+		return 100.0f;
 	}
 	@property bool canRun(){
 		return hasAnimationState(AnimationState.run);
