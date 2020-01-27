@@ -37,6 +37,8 @@ struct Hand{
 struct Animation{
 	int numAttackTicks=0;
 	int firstAttackTick=int.max;
+	int numShootTicks=0;
+	int firstShootTick=int.max;
 	int castingTime=int.max;
 	Hand[2] hands;
 	Pose[] frames;
@@ -56,7 +58,7 @@ Animation parseSXSK(ubyte[] data,float scaling){
 		auto rotations=anim.map!(x=>Quaternionf(Vector3f(fromSXMD([x[0],x[1],x[2]])),x[3]).normalized()).array;
 		frames~=Pose(displacement,AnimEvent.none,rotations);
 	}
-	return Animation(0,int.max,int.max,(Hand[2]).init,frames);
+	return Animation(0,int.max,0,int.max,int.max,(Hand[2]).init,frames);
 }
 
 AnimEvent translateAnimEvent(char[4] tag){
@@ -85,6 +87,10 @@ void setAnimEvents(ref Animation anim, Skel skel, string filename){
 		if(aevent==AnimEvent.attack){
 			++anim.numAttackTicks;
 			anim.firstAttackTick=min(anim.firstAttackTick,frame);
+		}
+		if(aevent==AnimEvent.shoot){
+			++anim.numShootTicks;
+			anim.firstShootTick=min(anim.firstShootTick,frame);
 		}
 		if(aevent==AnimEvent.cast_)
 			anim.castingTime=min(anim.castingTime,frame);

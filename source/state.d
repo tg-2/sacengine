@@ -36,6 +36,7 @@ enum CreatureMode{
 	casting,
 	stationaryCasting,
 	castingMoving,
+	shooting,
 }
 
 bool isMoving(CreatureMode mode){
@@ -44,27 +45,30 @@ bool isMoving(CreatureMode mode){
 bool isCasting(CreatureMode mode){
 	with(CreatureMode) return !!mode.among(casting,stationaryCasting,castingMoving);
 }
+bool isShooting(CreatureMode mode){
+	with(CreatureMode) return mode==shooting;
+}
 bool isVisibleToAI(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
-		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving: return true;
+		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting: return true;
 		case dying,dead,dissolving,preSpawning,reviving,fastReviving: return false;
 	}
 }
 bool isObstacle(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
-		case idle,moving,dying,spawning,reviving,fastReviving,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving: return true;
+		case idle,moving,dying,spawning,reviving,fastReviving,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting: return true;
 		case dead,dissolving,preSpawning: return false;
 	}
 }
 bool isValidAttackTarget(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
-		case idle,moving,dying,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving: return true;
+		case idle,moving,dying,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting: return true;
 		case dead,dissolving,preSpawning,reviving,fastReviving: return false;
 	}
 }
 bool canHeal(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
-		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving: return true;
+		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting: return true;
 		case dying,dead,dissolving,preSpawning,spawning,reviving,fastReviving: return false;
 	}
 }
@@ -264,20 +268,24 @@ struct LocationPredictor{
 		auto velocity=updateFPS*(targetPosition-lastPosition);
 		lastPosition=targetPosition;
 		if(velocity==Vector3f(0.0f,0.0f,0.0f)) return targetPosition;
-		auto projectileSpeedSqr=projectileSpeed*projectileSpeed;
-		auto remainingSpeedSqr=projectileSpeedSqr-velocity.lengthsqr;
+		auto remainingSpeedSqr=projectileSpeed^^2-velocity.lengthsqr;
 		if(remainingSpeedSqr<=0) return targetPosition; // TODO: what does original do here?
 		auto timeToImpact=sqrt((targetPosition-position).lengthsqr/remainingSpeedSqr);
 		return targetPosition+velocity*timeToImpact;
 	}
 	Vector3f predictCenter(B)(Vector3f position,float projectileSpeed,ref OrderTarget target,ObjectState!B state){
 		if(!state.isValidTarget(target.id)) return target.position;
+		return predictCenter(position,projectileSpeed,target.id,state);
+	}
+	Vector3f predictCenter(B)(Vector3f position,float projectileSpeed,int targetId,ObjectState!B state)in{
+		assert(state.isValidTarget(targetId));
+	}do{
 		static handle(T)(ref T obj,Vector3f position,float projectileSpeed,ObjectState!B state,LocationPredictor* self){
 			auto hitboxCenter=boxCenter(obj.relativeHitbox);
 			auto predictedPosition=self.predict(position,projectileSpeed,obj.position);
 			return predictedPosition+hitboxCenter;
 		}
-		return state.objectById!handle(target.id,position,projectileSpeed,state,&this);
+		return state.objectById!handle(targetId,position,projectileSpeed,state,&this);
 	}
 }
 
@@ -437,13 +445,25 @@ Vector3f randomHand(B)(Vector3f[2] hands,ObjectState!B state){
 	return hands[state.uniform(2)];
 }
 
-int numAttackTicks(B)(ref MovingObject!B object,AnimationState animationState){
-	return object.sacObject.numAttackTicks(animationState);
+int numAttackTicks(B)(ref MovingObject!B object){
+	return object.sacObject.numAttackTicks(object.animationState);
 }
 
 bool hasAttackTick(B)(ref MovingObject!B object){
 	return object.frame%updateAnimFactor==0 && object.sacObject.hasAttackTick(object.animationState,object.frame/updateAnimFactor);
 }
+
+SacSpell!B rangedAttack(B)(ref MovingObject!B object){ return object.sacObject.rangedAttack; }
+
+int numShootTicks(B)(ref MovingObject!B object){
+	return object.sacObject.numShootTicks(object.animationState);
+}
+
+bool hasShootTick(B)(ref MovingObject!B object){
+	return object.frame%updateAnimFactor==0 && object.sacObject.hasShootTick(object.animationState,object.frame/updateAnimFactor);
+}
+
+SacSpell!B ability(B)(ref MovingObject!B object){ return object.sacObject.ability; }
 
 StunBehavior stunBehavior(B)(ref MovingObject!B object){
 	return object.sacObject.stunBehavior;
@@ -2475,6 +2495,10 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 			object.frame=0;
 			object.animationState=object.creatureState.mode==CreatureMode.castingMoving?AnimationState.runSpellcastStart:AnimationState.spellcastStart;
 			break;
+		case CreatureMode.shooting:
+			object.frame=0;
+			object.animationState=AnimationState.shoot0; // TODO: ok?
+			break;
 	}
 }
 
@@ -2495,7 +2519,7 @@ bool pickNextAnimation(B)(ref MovingObject!B object,immutable(AnimationState)[] 
 }
 
 void startIdling(B)(ref MovingObject!B object, ObjectState!B state){
-	if(!object.creatureState.mode.among(CreatureMode.moving,CreatureMode.spawning,CreatureMode.reviving,CreatureMode.fastReviving,CreatureMode.takeoff,CreatureMode.landing,CreatureMode.meleeMoving,CreatureMode.meleeAttacking,CreatureMode.stunned,CreatureMode.casting,CreatureMode.stationaryCasting,CreatureMode.castingMoving))
+	if(!object.creatureState.mode.among(CreatureMode.moving,CreatureMode.spawning,CreatureMode.reviving,CreatureMode.fastReviving,CreatureMode.takeoff,CreatureMode.landing,CreatureMode.meleeMoving,CreatureMode.meleeAttacking,CreatureMode.stunned,CreatureMode.casting,CreatureMode.stationaryCasting,CreatureMode.castingMoving,CreatureMode.shooting))
 		return;
 	object.creatureState.mode=CreatureMode.idle;
 	object.setCreatureState(state);
@@ -2621,7 +2645,7 @@ int makeBuilding(B)(int casterId,char[4] tag,int flags,int base,ObjectState!B st
 
 bool canStun(B)(ref MovingObject!B object,ObjectState!B state){
 	final switch(object.creatureState.mode) with(CreatureMode){
-		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,cower,casting,stationaryCasting,castingMoving: return true;
+		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,cower,casting,stationaryCasting,castingMoving,shooting: return true;
 		case dying,dead,dissolving,preSpawning,spawning,reviving,fastReviving,stunned: return false;
 	}
 }
@@ -2767,7 +2791,7 @@ void damageAnimation(B)(ref MovingObject!B object,Vector3f attackDirection,Objec
 bool canDamage(B)(ref MovingObject!B object,ObjectState!B state){
 	if(object.creatureStats.flags&Flags.cannotDamage) return false;
 	final switch(object.creatureState.mode) with(CreatureMode){
-		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving: return true;
+		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting: return true;
 		case dying,dead,dissolving,preSpawning,spawning,reviving,fastReviving: return false;
 	}
 }
@@ -2835,7 +2859,7 @@ float meleeDistance(Vector3f[2] objectHitbox,Vector3f attackerCenter){
 }
 
 void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,ObjectState!B state){
-	auto damage=attacker.meleeStrength/attacker.numAttackTicks(attacker.animationState); // TODO: figure this out
+	auto damage=attacker.meleeStrength/attacker.numAttackTicks; // TODO: figure this out
 	auto objectHitbox=object.hitbox;
 	auto attackerHitbox=attacker.meleeHitbox, attackerCenter=boxCenter(attackerHitbox), attackerSize=0.5f*boxSize(attackerHitbox);
 	auto normalProjectionLength=closestBoxFaceNormalWithProjectionLength(objectHitbox,attackerCenter);
@@ -2871,7 +2895,7 @@ void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,Ob
 
 void dealMeleeDamage(B)(ref Building!B building,ref MovingObject!B attacker,ObjectState!B state){
 	auto damage=attacker.meleeStrength;
-	auto actualDamage=damage*building.meleeResistance*attacker.sacObject.buildingMeleeDamageMultiplier/attacker.numAttackTicks(attacker.animationState);
+	auto actualDamage=damage*building.meleeResistance*attacker.sacObject.buildingMeleeDamageMultiplier/attacker.numAttackTicks;
 	building.dealDamage(actualDamage,attacker,state);
 	playSoundTypeAt(attacker.sacObject,attacker.id,SoundType.hitWall,state);
 }
@@ -3081,6 +3105,15 @@ bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,Ob
 	}
 }
 
+bool startShooting(B)(ref MovingObject!B object,ObjectState!B state){
+	if(!object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving))
+		return false;
+	object.stopMovement(state);
+	object.creatureState.mode=CreatureMode.shooting;
+	object.setCreatureState(state);
+	return true;
+}
+
 enum doubleSpeedUpDelay=cast(int)(0.2f*updateFPS); // 200ms
 
 bool speedUp(B)(ref MovingObject!B object,SacSpell!B spell,float duration,ObjectState!B state){
@@ -3269,9 +3302,9 @@ bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state){
 	else if(angle<-threshold) object.startTurningRight(state);
 	else{
 		object.stopTurning(state);
-		return true;
+		return false;
 	}
-	return false;
+	return true;
 }
 
 float facingTowards(B)(ref MovingObject!B object,Vector3f position,ObjectState!B state){
@@ -3279,8 +3312,8 @@ float facingTowards(B)(ref MovingObject!B object,Vector3f position,ObjectState!B
 	return atan2(-direction.x,direction.y);
 }
 
-void turnToFaceTowards(B)(ref MovingObject!B object,Vector3f position,ObjectState!B state){
-	object.face(object.facingTowards(position,state),state);
+bool turnToFaceTowards(B)(ref MovingObject!B object,Vector3f position,ObjectState!B state){
+	return object.face(object.facingTowards(position,state),state);
 }
 
 void setPitching(B)(ref MovingObject!B object,PitchingDirection direction,ObjectState!B state,int side=-1){
@@ -3474,12 +3507,13 @@ void moveTowards(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectStat
 	auto distancesqr=(object.position.xy-targetPosition.xy).lengthsqr;
 	if(object.creatureState.movement==CreatureMovement.flying){
 		if(distancesqr>(0.5f*updateFPS*speed)^^2){
-			if(object.creatureAI.isColliding) object.startPitchingUp(state);
-			else object.pitchToFaceTowards(targetPosition,state);
 			auto flyingHeight=object.position.z-state.getHeight(object.position);
 			auto minimumFlyingHeight=object.creatureStats.flyingHeight;
 			if(flyingHeight<minimumFlyingHeight) object.creatureState.targetFlyingHeight=minimumFlyingHeight;
 			else object.creatureState.targetFlyingHeight=float.nan;
+			auto pitchingTarget=targetPosition+Vector3f(0.0f,0.0f,min(flyingHeight,1.5f*minimumFlyingHeight));
+			if(object.creatureAI.isColliding) object.startPitchingUp(state);
+			else object.pitchToFaceTowards(pitchingTarget,state);
 		}else{
 			object.pitch(0.0f,state);
 			object.creatureState.targetFlyingHeight=0.0f;
@@ -3541,14 +3575,34 @@ bool isValidAttackTarget(B,T)(T obj,ObjectState!B state)if(is(T==MovingObject!B)
 	return obj.health(state)!=0.0f;
 }
 bool isValidAttackTarget(B)(int targetId,ObjectState!B state){
-	return state.objectById!(.isValidAttackTarget)(targetId,state);
+	return state.isValidTarget(targetId)&&state.objectById!(.isValidAttackTarget)(targetId,state);
 }
 bool isValidGuardTarget(B,T)(T obj,ObjectState!B state)if(is(T==MovingObject!B)||is(T==StaticObject!B)){
 	static if(is(T==StaticObject!B)) return true;
 	return isValidAttackTarget(obj,state); // TODO: dead wizards
 }
 bool isValidGuardTarget(B)(int targetId,ObjectState!B state){
-	return state.objectById!(.isValidGuardTarget)(targetId,state);
+	return state.isValidTarget(targetId)&&state.objectById!(.isValidGuardTarget)(targetId,state);
+}
+
+bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,ObjectState!B state){
+	if(!isValidAttackTarget(targetId,state)) return true; // TODO
+	if(object.rangedAttack !is rangedAttack) return false; // TODO: multiple ranged attacks?
+	auto predicted=object.creatureAI.predictor.predictCenter(object.position,rangedAttack.speed,targetId,state);
+	// TODO: find a spot from where target can be shot
+	object.creatureState.targetFlyingHeight=object.position.z-state.getHeight(object.position);
+	object.stopMovement(state);
+	auto facing=!object.turnToFaceTowards(predicted,state);
+	if(!object.creatureState.mode.isShooting){
+		if(facing){
+			object.creatureAI.rangedAttackTarget=targetId;
+			object.startShooting(state); // TODO: should this have a delay?
+		}
+	}else{
+		// TODO: shoot ticks
+		return true;
+	}
+	return true;
 }
 
 bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
@@ -3588,6 +3642,12 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 		object.startMeleeAttacking(state);
 		if(object.creatureState.movement==CreatureMovement.flying)
 			object.creatureState.targetFlyingHeight=movementPosition.z-state.getHeight(object.position);
+	}
+	if(auto ra=object.rangedAttack){
+		if((object.position-targetPosition).lengthsqr<(0.5f*ra.range)^^2){ // TODO: figure out the range limit for AI
+			if(object.shoot(ra,targetId,state))
+				return true;
+		}
 	}
 	return true;
 }
@@ -3676,13 +3736,18 @@ enum rotationSpeedLimitFactor=1.0f;
 
 bool requiresAI(CreatureMode mode){
 	with(CreatureMode) final switch(mode){
-		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,casting,stationaryCasting,castingMoving: return true;
+		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,casting,stationaryCasting,castingMoving,shooting: return true;
 		case dying,dead,dissolving,preSpawning,spawning,reviving,fastReviving,stunned,cower: return false;
 	}
 }
 
 void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 	if(!requiresAI(object.creatureState.mode)) return;
+	if(object.creatureState.mode.isShooting){
+		if(!object.shoot(object.sacObject.rangedAttack,object.creatureAI.rangedAttackTarget,state))
+			object.creatureAI.rangedAttackTarget=0;
+		return;
+	}
 	switch(object.creatureAI.order.command){
 		case CommandType.retreat:
 			auto targetId=object.creatureAI.order.target.id;
@@ -3760,6 +3825,10 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 			break;
 		default: assert(0); // TODO: compilation error would be better
 	}
+}
+
+bool isIdle(B)(ref MovingObject!B object, ObjectState!B state){
+	return object.creatureState.mode==CreatureMode.idle && object.creatureAI.order.command==CommandType.none;
 }
 
 void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
@@ -4029,6 +4098,15 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 				if(sacObject.castingTime(endAnimation)*updateAnimFactor>=object.creatureState.timer)
 					object.animationState=endAnimation;
 			}
+			break;
+		case CreatureMode.shooting:
+			object.frame+=1;
+			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
+				object.frame=0;
+				object.startIdling(state);
+				return;
+			}
+			break;
 	}
 }
 
@@ -4106,11 +4184,11 @@ void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 
 void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 	auto newPosition=object.position;
-	if(object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving,CreatureMode.stunned,CreatureMode.landing,CreatureMode.dying,CreatureMode.meleeMoving,CreatureMode.casting,CreatureMode.castingMoving)){
+	with(CreatureMode) if(object.creatureState.mode.among(idle,moving,stunned,landing,dying,meleeMoving,casting,castingMoving,shooting)){
 		auto rotationSpeed=object.creatureStats.rotationSpeed(object.creatureState.movement==CreatureMovement.flying)/updateFPS;
 		auto pitchingSpeed=object.creatureStats.pitchingSpeed/updateFPS;
 		bool isRotating=false;
-		if(object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving,CreatureMode.meleeMoving,CreatureMode.casting,CreatureMode.castingMoving)&&
+		if(object.creatureState.mode.among(idle,moving,meleeMoving,casting,castingMoving,shooting)&&
 		   object.creatureState.movement!=CreatureMovement.tumbling
 		){
 			final switch(object.creatureState.rotationDirection){
@@ -4202,7 +4280,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			break;
 		case CreatureMovement.flying:
 			auto targetFlyingHeight=object.creatureState.targetFlyingHeight;
-			if(object.creatureState.mode.among(CreatureMode.landing,CreatureMode.idle)
+			if(object.creatureState.mode==CreatureMode.landing||object.isIdle(state)
 			   ||object.creatureState.mode==CreatureMode.meleeAttacking&&object.position.z-state.getHeight(object.position)>targetFlyingHeight
 			){
 				if(object.creatureState.mode.among(CreatureMode.landing,CreatureMode.idle)) object.creatureState.targetFlyingHeight=float.nan;
@@ -5922,7 +6000,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 				final switch(mode) with(CreatureMode){
 					case idle,moving,dying,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower: return true;
 					case dead,dissolving,preSpawning,reviving,fastReviving: return false;
-					case casting,stationaryCasting,castingMoving: assert(0);
+					case casting,stationaryCasting,castingMoving,shooting: assert(0);
 				}
 			}
 			foreach(j;0..objects.length){

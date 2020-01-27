@@ -284,15 +284,15 @@ final class SacObject(B){
 		}
 		return result;
 	}
+	int castingTime(AnimationState animationState){
+		return max(0,min(numFrames(animationState)-1,animations[animationState].castingTime));
+	}
 
 	int numAttackTicks(AnimationState animationState){
 		return max(1,animations[animationState].numAttackTicks);
 	}
 	int firstAttackTick(AnimationState animationState){
 		return max(0,min(numFrames(animationState)-1,animations[animationState].firstAttackTick));
-	}
-	int castingTime(AnimationState animationState){
-		return max(0,min(numFrames(animationState)-1,animations[animationState].castingTime));
 	}
 
 	bool hasAttackTick(AnimationState animationState,int frame){
@@ -302,6 +302,14 @@ final class SacObject(B){
 
 	@property bool isRanged(){ return data && data.ranged; }
 	@property SacSpell!B rangedAttack(){ return isRanged?abilities[0]:null; }
+
+	int numShootTicks(AnimationState animationState){
+		return max(1,animations[animationState].numShootTicks);
+	}
+	int firstShootTick(AnimationState animationState){
+		return max(0,min(numFrames(animationState)-1,animations[animationState].firstShootTick));
+	}
+
 	@property SacSpell!B ability(){ return isRanged?abilities[1]:abilities[0]; }
 
 	Vector3f[2] meleeHitbox(Quaternionf rotation,AnimationState animationState,int frame)in{
@@ -560,7 +568,7 @@ final class SacObject(B){
 				if(animation.length)
 					loadAnimation(animation);
 				if(!animations.length){
-					auto anim=Animation(0,int.max,int.max,(Hand[2]).init,[Pose(Vector3f(0,0,0),AnimEvent.none,facingQuaternion(0).repeat(saxsi.saxs.bones.length).array)]);
+					auto anim=Animation(0,int.max,0,int.max,int.max,(Hand[2]).init,[Pose(Vector3f(0,0,0),AnimEvent.none,facingQuaternion(0).repeat(saxsi.saxs.bones.length).array)]);
 					static if(gpuSkinning)
 						anim.compile(saxsi.saxs);
 					animations=[anim];
