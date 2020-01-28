@@ -445,6 +445,15 @@ Vector3f randomHand(B)(Vector3f[2] hands,ObjectState!B state){
 	return hands[state.uniform(2)];
 }
 
+Vector3f shotLocation(B)(ref MovingObject!B object){
+	auto loc=object.sacObject.shotLocation(object.animationState,object.frame/updateAnimFactor);
+	return object.position+rotate(object.rotation,loc);
+}
+Vector3f firstShotLocation(B)(ref MovingObject!B object){
+	auto loc=object.sacObject.firstShotLocation(AnimationState.shoot0);
+	return object.position+rotate(object.rotation,loc);
+}
+
 int numAttackTicks(B)(ref MovingObject!B object){
 	return object.sacObject.numAttackTicks(object.animationState);
 }
@@ -3585,10 +3594,14 @@ bool isValidGuardTarget(B)(int targetId,ObjectState!B state){
 	return state.isValidTarget(targetId)&&state.objectById!(.isValidGuardTarget)(targetId,state);
 }
 
+bool hasClearShot(B)(ref MovingObject!B object,Vector3f target,int targetId,ObjectState!B state){
+	return state.hasLineOfSightTo(object.firstShotLocation,target,object.id,targetId);
+}
 bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,ObjectState!B state){
 	if(!isValidAttackTarget(targetId,state)) return true; // TODO
 	if(object.rangedAttack !is rangedAttack) return false; // TODO: multiple ranged attacks?
 	auto predicted=object.creatureAI.predictor.predictCenter(object.position,rangedAttack.speed,targetId,state);
+	if(!object.hasClearShot(predicted,targetId,state)) return false;
 	// TODO: find a spot from where target can be shot
 	object.creatureState.targetFlyingHeight=object.position.z-state.getHeight(object.position);
 	object.stopMovement(state);
@@ -3628,7 +3641,7 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 	}
 	auto targetPosition=state.objectById!((obj,meleeHitboxCenter)=>boxCenter(obj.closestHitbox(meleeHitboxCenter)))(targetId,meleeHitboxCenter);
 	auto meleeHitboxOffset=meleeHitboxCenter-object.position;
-	auto movementPosition=targetPosition-meleeHitboxOffset;
+	auto movementPosition=targetPosition-meleeHitboxOffset; // TODO: ranged creatures should move to a nearby location where they have a clear shot
 	auto meleeHitboxOffsetXY=0.75f*(targetPosition.xy-object.position.xy).normalized*meleeHitboxOffset.xy.length;
 	meleeHitboxOffset.x=meleeHitboxOffsetXY.x, meleeHitboxOffset.y=meleeHitboxOffsetXY.y;
 	if(target||!object.moveTo(movementPosition,float.init,state,!object.isMeleeAttacking(state))){
@@ -6471,6 +6484,14 @@ final class ObjectState(B){ // (update logic)
 		if(targetType.among(TargetType.creature,TargetType.building))
 			return OrderTarget(targetType,tEntry[1].id,objectById!((obj)=>obj.position)(this,tEntry[1].id));
 		return OrderTarget.init;
+	}
+	OrderTarget lineOfSight(alias filter=None,T...)(Vector3f start,Vector3f target,T args){
+		return collideRay!filter(start,target-start,1.0f,args);
+	}
+	bool hasLineOfSightTo(Vector3f start,Vector3f target,int ignoredId,int targetId){
+		static bool filter(ref ProximityEntry entry,int id){ return entry.id!=id; }
+		auto result=lineOfSight!filter(start,target,ignoredId);
+		return result.type==TargetType.none||result.type.among(TargetType.creature,TargetType.building,TargetType.soul)&&result.id==targetId;
 	}
 	int frame=0;
 	auto rng=MinstdRand0(1); // TODO: figure out what rng to use
