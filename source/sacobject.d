@@ -284,15 +284,15 @@ final class SacObject(B){
 		}
 		return result;
 	}
-	Vector3f shotLocation(AnimationState animationState,int frame){
+	Vector3f shotPosition(AnimationState animationState,int frame){
 		auto hand=animations[animationState].hands[0];
-		if(hand.bone==0) return Vector3f.init;
+		if(hand.bone==0) return Vector3f(0.0f,0.0f,0.0f);
 		return hand.position*animations[animationState].frames[frame].matrices[hand.bone];
 	}
-	Vector3f firstShotLocation(AnimationState animationState=AnimationState.shoot0){
+	Vector3f firstShotPosition(AnimationState animationState=AnimationState.shoot0){
 		auto tick=animations[animationState].firstShootTick;
-		if(tick==-1) return Vector3f.init;
-		return shotLocation(animationState,tick);
+		if(tick==-1) return Vector3f(0.0f,0.0f,0.0f);
+		return shotPosition(animationState,tick);
 	}
 	int castingTime(AnimationState animationState){
 		return max(0,min(numFrames(animationState)-1,animations[animationState].castingTime));
@@ -318,6 +318,11 @@ final class SacObject(B){
 	}
 	int firstShootTick(AnimationState animationState){
 		return max(0,min(numFrames(animationState)-1,animations[animationState].firstShootTick));
+	}
+
+	bool hasShootTick(AnimationState animationState,int frame){
+		if(animations[animationState].numShootTicks==0) return frame+1==animations[animationState].frames.length;
+		return animations[animationState].frames[frame].event==AnimEvent.shoot;
 	}
 
 	@property SacSpell!B ability(){ return isRanged?abilities[1]:abilities[0]; }
@@ -1402,6 +1407,21 @@ struct SacBug(B){
 		mesh.generateNormals();
 		B.finalizeMesh(mesh);
 		return mesh;
+	}
+}
+
+struct SacBrainiacEffect(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Stra.FLDR/txtr.FLDR/mind.TXTR"));
+	}
+	B.Material material;
+	B.Mesh[] frames;
+	enum animationDelay=1;
+	enum numFrames=16*animationDelay*updateAnimFactor;
+	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
+	static B.Mesh[] createMeshes(){
+		return makeSpriteMeshes!(B,true)(4,4,0.9f,0.9f);
 	}
 }
 

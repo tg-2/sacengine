@@ -257,7 +257,7 @@ Vector2f[numCreaturesInGroup] getFormationOffsets(R)(R ids,CommandType commandTy
 	return result;
 }
 
-struct LocationPredictor{
+struct PositionPredictor{
 	Vector3f lastPosition;
 	void reset(){ lastPosition=Vector3f.init; }
 	Vector3f predict(Vector3f position,float projectileSpeed,Vector3f targetPosition){
@@ -280,7 +280,7 @@ struct LocationPredictor{
 	Vector3f predictCenter(B)(Vector3f position,float projectileSpeed,int targetId,ObjectState!B state)in{
 		assert(state.isValidTarget(targetId));
 	}do{
-		static handle(T)(ref T obj,Vector3f position,float projectileSpeed,ObjectState!B state,LocationPredictor* self){
+		static handle(T)(ref T obj,Vector3f position,float projectileSpeed,ObjectState!B state,PositionPredictor* self){
 			auto hitboxCenter=boxCenter(obj.relativeHitbox);
 			auto predictedPosition=self.predict(position,projectileSpeed,obj.position);
 			return predictedPosition+hitboxCenter;
@@ -297,7 +297,7 @@ struct CreatureAI{
 	RotationDirection evasion;
 	int evasionTimer=0;
 	int rangedAttackTarget=0;
-	LocationPredictor predictor;
+	PositionPredictor predictor;
 }
 
 struct MovingObject(B){
@@ -445,12 +445,12 @@ Vector3f randomHand(B)(Vector3f[2] hands,ObjectState!B state){
 	return hands[state.uniform(2)];
 }
 
-Vector3f shotLocation(B)(ref MovingObject!B object){
-	auto loc=object.sacObject.shotLocation(object.animationState,object.frame/updateAnimFactor);
+Vector3f shotPosition(B)(ref MovingObject!B object){
+	auto loc=object.sacObject.shotPosition(object.animationState,object.frame/updateAnimFactor);
 	return object.position+rotate(object.rotation,loc);
 }
-Vector3f firstShotLocation(B)(ref MovingObject!B object){
-	auto loc=object.sacObject.firstShotLocation(AnimationState.shoot0);
+Vector3f firstShotPosition(B)(ref MovingObject!B object){
+	auto loc=object.sacObject.firstShotPosition(AnimationState.shoot0);
 	return object.position+rotate(object.rotation,loc);
 }
 
@@ -1477,7 +1477,7 @@ struct Wrath(B){
 	SacSpell!B spell;
 	auto status=WrathStatus.flying;
 	int frame=0;
-	LocationPredictor predictor;
+	PositionPredictor predictor;
 }
 struct FireballCasting(B){
 	ManaDrain!B manaDrain;
@@ -1493,7 +1493,7 @@ struct Fireball(B){
 	SacSpell!B spell;
 	Quaternionf rotationUpdate;
 	Quaternionf rotation;
-	LocationPredictor predictor;
+	PositionPredictor predictor;
 }
 struct RockCasting(B){
 	ManaDrain!B manaDrain;
@@ -1537,7 +1537,7 @@ struct Swarm(B){
 	SacSpell!B spell;
 	int frame;
 	auto status=SwarmStatus.casting;
-	LocationPredictor predictor;
+	PositionPredictor predictor;
 	Array!(Bug!B) bugs; // TODO: pull out bugs into separate array?
 
 	void opAssign(ref Swarm!B rhs){
@@ -1549,7 +1549,23 @@ struct Swarm(B){
 	this(this){ bugs=bugs.dup; } // TODO: needed?
 }
 
+struct BrainiacProjectile(B){
+	int side;
+	int intendedTarget;
+	Vector3f position;
+	Vector3f direction;
+	SacSpell!B rangedAttack;
+	int frame=0;
+	float travelDistance=0.0f;
+}
+struct BrainiacEffect{
+	Vector3f position;
+	Vector3f direction;
+	int frame=0;
+}
+
 struct Effects(B){
+	// misc
 	Array!(Debris!B) debris;
 	void addEffect(Debris!B debris){
 		this.debris~=debris;
@@ -1574,6 +1590,7 @@ struct Effects(B){
 		if(i+1<manaDrains.length) manaDrains[i]=move(manaDrains[$-1]);
 		manaDrains.length=manaDrains.length-1;
 	}
+	// creature spells
 	Array!(CreatureCasting!B) creatureCasts;
 	void addEffect(CreatureCasting!B creatureCast){
 		creatureCasts~=creatureCast;
@@ -1582,6 +1599,7 @@ struct Effects(B){
 		if(i+1<creatureCasts.length) creatureCasts[i]=move(creatureCasts[$-1]);
 		creatureCasts.length=creatureCasts.length-1;
 	}
+	// structure spells
 	Array!(StructureCasting!B) structureCasts;
 	void addEffect(StructureCasting!B structureCast){
 		structureCasts~=structureCast;
@@ -1598,6 +1616,7 @@ struct Effects(B){
 		if(i+1<blueRings.length) blueRings[i]=move(blueRings[$-1]);
 		blueRings.length=blueRings.length-1;
 	}
+	// ordinary spells
 	Array!(SpeedUp!B) speedUps;
 	void addEffect(SpeedUp!B speedUp){
 		speedUps~=speedUp;
@@ -1710,6 +1729,23 @@ struct Effects(B){
 		if(i+1<swarms.length) swap(swarms[i],swarms[$-1]);
 		swarms.length=swarms.length-1; // TODO: reuse memory?
 	}
+	// projectiles
+	Array!(BrainiacProjectile!B) brainiacProjectiles;
+	void addEffect(BrainiacProjectile!B brainiacProjectile){
+		brainiacProjectiles~=brainiacProjectile;
+	}
+	void removeBrainiacProjectile(int i){
+		if(i+1<brainiacProjectiles.length) brainiacProjectiles[i]=move(brainiacProjectiles[$-1]);
+		brainiacProjectiles.length=brainiacProjectiles.length-1;
+	}
+	Array!BrainiacEffect brainiacEffects;
+	void addEffect(BrainiacEffect brainiacEffect){
+		brainiacEffects~=brainiacEffect;
+	}
+	void removeBrainiacEffect(int i){
+		if(i+1<brainiacEffects.length) brainiacEffects[i]=move(brainiacEffects[$-1]);
+		brainiacEffects.length=brainiacEffects.length-1;
+	}
 	void opAssign(ref Effects!B rhs){
 		assignArray(debris,rhs.debris);
 		assignArray(explosions,rhs.explosions);
@@ -1731,6 +1767,8 @@ struct Effects(B){
 		assignArray(rocks,rhs.rocks);
 		assignArray(swarmCastings,rhs.swarmCastings);
 		assignArray(swarms,rhs.swarms);
+		assignArray(brainiacProjectiles,rhs.brainiacProjectiles);
+		assignArray(brainiacEffects,rhs.brainiacEffects);
 	}
 	void opAssign(Effects!B rhs){ this.tupleof=rhs.tupleof; }
 }
@@ -2653,22 +2691,35 @@ int makeBuilding(B)(int casterId,char[4] tag,int flags,int base,ObjectState!B st
 }
 
 bool canStun(B)(ref MovingObject!B object,ObjectState!B state){
+	if(object.creatureStats.effects.stunCooldown!=0) return false;
 	final switch(object.creatureState.mode) with(CreatureMode){
 		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,cower,casting,stationaryCasting,castingMoving,shooting: return true;
 		case dying,dead,dissolving,preSpawning,spawning,reviving,fastReviving,stunned: return false;
 	}
 }
 
-void stun(B)(ref MovingObject!B object, ObjectState!B state){
-	if(!object.canStun(state)) return;
+bool stun(B)(ref MovingObject!B object, ObjectState!B state){
+	if(!object.canStun(state)) return false;
 	object.creatureState.mode=CreatureMode.stunned;
 	object.setCreatureState(state);
+	return true;
 }
-void damageStun(B)(ref MovingObject!B object, Vector3f attackDirection, ObjectState!B state){
-	if(!object.canStun(state)) return;
+enum stunCooldownFrames=8*updateFPS;
+bool stunWithCooldown(B)(ref MovingObject!B object, int cooldownFrames, ObjectState!B state){
+	if(object.stun(state)){
+		object.creatureStats.effects.stunCooldown=cooldownFrames;
+		return true;
+	}
+	return false;
+}
+enum damageStunCooldownFrames=4*updateFPS; // TODO
+bool damageStun(B)(ref MovingObject!B object, Vector3f attackDirection, ObjectState!B state){
+	if(!object.canStun(state)) return false;
 	object.creatureState.mode=CreatureMode.stunned;
 	object.setCreatureState(state);
 	object.damageAnimation(attackDirection,state,false);
+	object.creatureStats.effects.stunCooldown=damageStunCooldownFrames;
+	return true;
 }
 
 void catapult(B)(ref MovingObject!B object, Vector3f velocity, ObjectState!B state){
@@ -2974,6 +3025,73 @@ void dealSplashSpellDamageAt(B)(int directTarget,SacSpell!B spell,int attackerSi
 	auto offset=Vector3f(radius,radius,radius);
 	Vector3f[2] hitbox=[position-offset,position+offset];
 	collisionTargets!dealDamage(hitbox,state,directTarget,spell,attackerSide,position);
+}
+
+void dealRangedDamage(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int attackerSide,Vector3f attackDirection,ObjectState!B state){
+	auto damage=rangedAttack.amount;
+	auto actualDamage=damage*object.creatureStats.directRangedResistance;
+	object.damageAnimation(attackDirection,state);
+	object.dealDamage(actualDamage,attackerSide,state);
+}
+void dealRangedDamage(B)(ref Building!B building,SacSpell!B rangedAttack,int attackerSide,ObjectState!B state){
+	auto damage=rangedAttack.amount;
+	auto actualDamage=damage*building.directRangedResistance;
+	building.dealDamage(actualDamage,attackerSide,state);
+}
+
+void dealRangedDamage(B)(int target,SacSpell!B rangedAttack,int attackerSide,Vector3f attackDirection,ObjectState!B state){
+	static void dealDamage(B,T)(ref T target,SacSpell!B rangedAttack,int attackerSide,Vector3f attackDirection,ObjectState!B state){
+		static if(is(T==MovingObject!B)){
+			target.dealRangedDamage(rangedAttack,attackerSide,attackDirection,state);
+		}else static if(is(T==StaticObject!B)){
+			assert(target.buildingId);
+			state.buildingById!((ref Building!B building,SacSpell!B rangedAttack,int attackerSide,ObjectState!B state){
+				building.dealRangedDamage(rangedAttack,attackerSide,state);
+			})(target.buildingId,rangedAttack,attackerSide,state);
+		}
+	}
+	state.objectById!dealDamage(target,rangedAttack,attackerSide,attackDirection,state);
+}
+
+void dealSplashRangedDamage(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
+	auto damage=rangedAttack.amount*max(0.0f,1.0f-distance/rangedAttack.effectRange);
+	auto actualDamage=damage*object.creatureStats.splashRangedResistance;
+	object.damageAnimation(attackDirection,state);
+	object.dealDamage(actualDamage,attackerSide,state);
+}
+void dealSplashRangedDamage(B)(ref Building!B building,SacSpell!B rangedAttack,int attackerSide,float distance,ObjectState!B state){
+	auto damage=rangedAttack.amount*max(0.0f,1.0f-distance/rangedAttack.effectRange);
+	auto actualDamage=damage*building.splashRangedResistance;
+	building.dealDamage(actualDamage,attackerSide,state);
+}
+
+void dealSplashRangedDamage(B)(int target,SacSpell!B rangedAttack,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
+	static void dealDamage(B,T)(ref T target,SacSpell!B rangedAttack,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
+		static if(is(T==MovingObject!B)){
+			target.dealSplashRangedDamage(rangedAttack,attackerSide,attackDirection,distance,state);
+		}else static if(is(T==StaticObject!B)){
+			assert(target.buildingId);
+			state.buildingById!((ref Building!B building,SacSpell!B rangedAttack,int attackerSide,float distance,ObjectState!B state){
+				building.dealSplashRangedDamage(rangedAttack,attackerSide,distance,state);
+			})(target.buildingId,rangedAttack,attackerSide,distance,state);
+		}
+	}
+	state.objectById!dealDamage(target,rangedAttack,attackerSide,attackDirection,distance,state);
+}
+
+void dealSplashRangedDamageAt(B)(int directTarget,SacSpell!B rangedAttack,int attackerSide,Vector3f position,ObjectState!B state){
+	auto radius=rangedAttack.effectRange;
+	static void dealDamage(ProximityEntry target,ObjectState!B state,int directTarget,SacSpell!B rangedAttack,int attackerSide,Vector3f position){
+		if(target.id==directTarget) return;
+		auto radius=rangedAttack.effectRange;
+		auto distance=boxPointDistance(target.hitbox,position);
+		if(distance>radius) return;
+		auto attackDirection=state.objectById!((obj)=>obj.center)(target.id)-position;
+		dealSplashRangedDamage(target.id,rangedAttack,attackerSide,attackDirection,distance,state);
+	}
+	auto offset=Vector3f(radius,radius,radius);
+	Vector3f[2] hitbox=[position-offset,position+offset];
+	collisionTargets!dealDamage(hitbox,state,directTarget,rangedAttack,attackerSide,position);
 }
 
 void setMovement(B)(ref MovingObject!B object,MovementDirection direction,ObjectState!B state,int side=-1){
@@ -3301,6 +3419,16 @@ bool swarm(B)(Swarm!B swarm,ObjectState!B state){
 	return true;
 }
 
+Vector3f getShotDirection(B)(Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	return (target-position).normalized; // TODO: factor in accuracy
+}
+
+bool brainiacShoot(B)(int side,int intendedTarget,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	auto direction=getShotDirection(position,target,rangedAttack,state);
+	state.addEffect(BrainiacProjectile!B(side,intendedTarget,position,direction,rangedAttack));
+	return true;
+}
+
 bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state){
 	auto angle=facing-object.creatureState.facing;
 	while(angle<-pi!float) angle+=2*pi!float;
@@ -3595,12 +3723,12 @@ bool isValidGuardTarget(B)(int targetId,ObjectState!B state){
 }
 
 bool hasClearShot(B)(ref MovingObject!B object,Vector3f target,int targetId,ObjectState!B state){
-	return state.hasLineOfSightTo(object.firstShotLocation,target,object.id,targetId);
+	return state.hasLineOfSightTo(object.firstShotPosition,target,object.id,targetId);
 }
 bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,ObjectState!B state){
 	if(!isValidAttackTarget(targetId,state)) return true; // TODO
 	if(object.rangedAttack !is rangedAttack) return false; // TODO: multiple ranged attacks?
-	auto predicted=object.creatureAI.predictor.predictCenter(object.position,rangedAttack.speed,targetId,state);
+	auto predicted=object.creatureAI.predictor.predictCenter(object.firstShotPosition,rangedAttack.speed,targetId,state);
 	if(!object.hasClearShot(predicted,targetId,state)) return false;
 	// TODO: find a spot from where target can be shot
 	object.creatureState.targetFlyingHeight=object.position.z-state.getHeight(object.position);
@@ -3612,8 +3740,14 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 			object.startShooting(state); // TODO: should this have a delay?
 		}
 	}else{
-		// TODO: shoot ticks
-		return true;
+		if(object.hasShootTick){
+			switch(rangedAttack.tag){
+				case SpellTag.brainiacShoot:
+					brainiacShoot(object.side,targetId,object.shotPosition,predicted,rangedAttack,state);
+					break;
+				default: break;
+			}
+		}
 	}
 	return true;
 }
@@ -3845,6 +3979,7 @@ bool isIdle(B)(ref MovingObject!B object, ObjectState!B state){
 }
 
 void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
+	if(object.creatureStats.effects.stunCooldown!=0) --object.creatureStats.effects.stunCooldown;
 	auto sacObject=object.sacObject;
 	final switch(object.creatureState.mode){
 		case CreatureMode.idle, CreatureMode.moving:
@@ -5617,7 +5752,39 @@ bool updateSwarm(B)(ref Swarm!B swarm,ObjectState!B state){
 		}
 	}
 }
-
+enum projectileHitGain=2.0f;
+bool updateBrainiacProjectile(B)(ref BrainiacProjectile!B brainiacProjectile,ObjectState!B state){
+	with(brainiacProjectile){
+		auto oldPosition=position;
+		position+=rangedAttack.speed/updateFPS*direction;
+		travelDistance+=rangedAttack.speed/updateFPS;
+		static assert(updateFPS==60);
+		state.addEffect(BrainiacEffect(position,direction));
+		auto target=state.lineOfSightWithoutSide(oldPosition,position,side,intendedTarget);
+		bool terminate(){
+			//playSoundAt("",creature,state,projectileHitGain); // TODO: brainiac hit sound
+			return false;
+		}
+		if(travelDistance>rangedAttack.range) return terminate();
+		switch(target.type){
+			case TargetType.terrain: return terminate();
+			case TargetType.creature:
+				state.movingObjectById!((ref obj,state){ obj.stunWithCooldown(stunCooldownFrames,state); },(){})(target.id,state);
+				goto case;
+			case TargetType.building:
+				dealRangedDamage(target.id,rangedAttack,side,direction,state);
+				return terminate();
+			default: break;
+		}
+		return true;
+	}
+}
+bool updateBrainiacEffect(B)(ref BrainiacEffect effect,ObjectState!B state){
+	with(effect){
+		static assert(updateFPS==60);
+		return ++frame<32; // TODO: fix timing on this
+	}
+}
 void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.debris.length;){
 		if(!updateDebris(effects.debris[i],state)){
@@ -5755,6 +5922,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.swarms.length;){
 		if(!updateSwarm(effects.swarms[i],state)){
 			effects.removeSwarm(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.brainiacProjectiles.length;){
+		if(!updateBrainiacProjectile(effects.brainiacProjectiles[i],state)){
+			effects.removeBrainiacProjectile(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.brainiacEffects.length;){
+		if(!updateBrainiacEffect(effects.brainiacEffects[i],state)){
+			effects.removeBrainiacEffect(i);
 			continue;
 		}
 		i++;
@@ -6019,9 +6200,9 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 			foreach(j;0..objects.length){
 				auto mode=objects.creatureStates[j].mode;
 				if(!manahoarAbilityEnabled(mode)) continue;
-				auto flameLocation=objects.positions[j]+rotate(objects.rotations[j],objects.sacObject.manahoarManaOffset(objects.animationStates[j],objects.frames[j]/updateAnimFactor));
+				auto flamePosition=objects.positions[j]+rotate(objects.rotations[j],objects.sacObject.manahoarManaOffset(objects.animationStates[j],objects.frames[j]/updateAnimFactor));
 				auto rate=proximity.addManahoar(objects.sides[j],objects.ids[j],objects.positions[j],state);
-				animateManahoar(flameLocation,objects.sides[j],rate,state);
+				animateManahoar(flamePosition,objects.sides[j],rate,state);
 			}
 		}
 	}else static if(isStatic){ // TODO: cache those?
@@ -6094,7 +6275,7 @@ Tuple!(float,ProximityEntry) collideRay(alias filter=None,T...)(ref ProximityEnt
 	}
 	auto result=tuple(float.infinity,ProximityEntry.init);
 	foreach(i;0..proximityEntries.entries.length){
-		static if(is(typeof(filter(proximityEntries.entries[i],args))))
+		static if(!is(filter==None))
 			if(!filter(proximityEntries.entries[i],args))
 				continue;
 		auto cand=rayBoxIntersect(start,direction,proximityEntries.entries[i].hitbox,limit);
@@ -6487,6 +6668,13 @@ final class ObjectState(B){ // (update logic)
 	}
 	OrderTarget lineOfSight(alias filter=None,T...)(Vector3f start,Vector3f target,T args){
 		return collideRay!filter(start,target-start,1.0f,args);
+	}
+	OrderTarget lineOfSightWithoutSide(Vector3f start,Vector3f target,int side,int intendedTarget=0){
+		static bool filter(ref ProximityEntry entry,int side,int intendedTarget,ObjectState!B state){
+			if(entry.id==intendedTarget) return true;
+			return state.objectById!((obj,side,state)=>.side(obj,state)!=side)(entry.id,side,state);
+		}
+		return lineOfSight!filter(start,target,side,intendedTarget,this);
 	}
 	bool hasLineOfSightTo(Vector3f start,Vector3f target,int ignoredId,int targetId){
 		static bool filter(ref ProximityEntry entry,int id){ return entry.id!=id; }

@@ -104,6 +104,18 @@ final class SacScene: Scene{
 		auto mesh=typeof(return).createMesh();
 		return SacBug!DagonBackend(texture,mat,mesh);
 	}
+	SacBrainiacEffect!DagonBackend brainiacEffect;
+	SacBrainiacEffect!DagonBackend createBrainiacEffect(){
+		import txtr;
+		auto texture=typeof(return).loadTexture();
+		auto mat=createMaterial(shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=Additive;
+		mat.energy=20.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacBrainiacEffect!DagonBackend(texture,mat,frames);
+	}
 	void createEffects(){
 		sacCommandCone=new SacCommandCone!DagonBackend();
 		sacDebris=new SacObject!DagonBackend("extracted/models/MODL.WAD!/bold.MRMC/bold.MRMM");
@@ -113,6 +125,7 @@ final class SacScene: Scene{
 		wrath=createWrath();
 		rock=new SacObject!DagonBackend("extracted/models/MODL.WAD!/rock.MRMC/rock.MRMM");
 		bug=createBug();
+		brainiacEffect=createBrainiacEffect();
 	}
 
 	void setupEnvironment(SacMap!DagonBackend map){
@@ -518,6 +531,23 @@ final class SacScene: Scene{
 							renderBug(objects.swarms[j].bugs[k]);
 					}
 				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.brainiacEffects.length){
+					auto material=scene.brainiacEffect.material;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
+					foreach(j;0..objects.brainiacEffects.length){
+						auto position=objects.brainiacEffects[j].position;
+						auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),objects.brainiacEffects[j].direction); // TODO: precompute this?
+						auto frame=objects.brainiacEffects[j].frame;
+						auto relativeProgress=float(frame)/scene.brainiacEffect.numFrames;
+						auto scale=1.0f+0.6f*relativeProgress^^2.5f;
+						scene.shadelessMaterialBackend.setTransformationScaled(position,rotation,scale*Vector3f(1.0f,1.0f,1.0f),rc);
+						scene.shadelessMaterialBackend.setAlpha(0.95f*(1.0f-relativeProgress)^^1.5f);
+						auto mesh=scene.brainiacEffect.getFrame(objects.brainiacEffects[j].frame%scene.brainiacEffect.numFrames);
+						mesh.render(rc);
+					}
+				}
+
 			}else static if(is(T==Particles!(DagonBackend,relative),bool relative)){
 				static if(mode==RenderMode.transparent){
 					if(rc.shadowMode) return; // TODO: particle shadows?
@@ -2179,13 +2209,14 @@ final class SacScene: Scene{
 	}do{
 		static void applyToMoving(alias f,B)(ObjectState!B state,Camera camera,Target target){
 			if(!state.isValidTarget(camera.target,TargetType.creature)) camera.target=0;
+			static void perform(T)(ref T obj,ObjectState!B state){ f(obj,state); }
 			if(camera.target==0){
 				if(!state.isValidTarget(target.id,target.type)) target=Target.init;
 				if(target.type.among(TargetType.none,TargetType.terrain))
-					state.eachMoving!f(state);
+					state.eachMoving!perform(state);
 				else if(target.type==TargetType.creature)
-					state.movingObjectById!f(target.id,state);
-			}else state.movingObjectById!f(camera.target,state);
+					state.movingObjectById!perform(target.id,state);
+			}else state.movingObjectById!perform(camera.target,state);
 		}
 		static void depleteMana(B)(ref MovingObject!B obj,ObjectState!B state){
 			obj.creatureStats.mana=0.0f;

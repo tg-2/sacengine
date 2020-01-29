@@ -1043,6 +1043,8 @@ enum SpellTag:char[4]{
 	shrine="pcas",
 	// creature abilities:
 	runAway="!nur",
+	// ranged attacks:
+	brainiacShoot="bsba",
 }
 
 enum WizardTag:char[4]{

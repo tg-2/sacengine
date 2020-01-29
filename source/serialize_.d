@@ -143,8 +143,8 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Ord
 	deserializeStruct(result,state,data);
 }
 
-void serialize(alias sink)(ref LocationPredictor locationPredictor){ serializeStruct!sink(locationPredictor); }
-void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==LocationPredictor)){ deserializeStruct(result,state,data); }
+void serialize(alias sink)(ref PositionPredictor locationPredictor){ serializeStruct!sink(locationPredictor); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==PositionPredictor)){ deserializeStruct(result,state,data); }
 
 void serialize(alias sink)(ref CreatureAI creatureAI){ serializeStruct!sink(creatureAI); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==CreatureAI)){ deserializeStruct(result,state,data); }
@@ -289,6 +289,12 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Bug
 
 void serialize(alias sink,B)(ref Swarm!B swarm){ serializeStruct!sink(swarm); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Swarm!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref BrainiacProjectile!B brainiacProjectile){ serializeStruct!sink(brainiacProjectile); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BrainiacProjectile!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink)(ref BrainiacEffect brainiacEffect){ serializeStruct!sink(brainiacEffect); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BrainiacEffect)){ deserializeStruct(result,state,data); }
 
 private alias Effects=state.Effects;
 void serialize(alias sink,B)(ref Effects!B effects){ serializeStruct!sink(effects); }
