@@ -3730,8 +3730,14 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 	if(object.rangedAttack !is rangedAttack) return false; // TODO: multiple ranged attacks?
 	auto predicted=object.creatureAI.predictor.predictCenter(object.firstShotPosition,rangedAttack.speed,targetId,state);
 	// TODO: find a spot from where target can be shot
-	object.creatureState.targetFlyingHeight=object.position.z-state.getHeight(object.position);
-	if(!object.creatureState.mode.isShooting){
+	auto notShooting=!object.creatureState.mode.isShooting;
+	if(object.creatureState.movement==CreatureMovement.flying){
+		auto flyingHeight=object.position.z-state.getHeight(object.position);
+		auto minFlyingHeight=object.creatureStats.flyingHeight;
+		object.creatureState.targetFlyingHeight=max(flyingHeight,minFlyingHeight);
+		if(notShooting&&flyingHeight<minFlyingHeight-0.1f) return false;
+	}
+	if(notShooting){
 		if(!object.hasClearShot(predicted,targetId,state)) return false;
 		object.stopMovement(state);
 		auto facing=!object.turnToFaceTowards(predicted,state);
@@ -4813,7 +4819,10 @@ bool updateCreatureCasting(B)(ref CreatureCasting!B creatureCast,ObjectState!B s
 				state.movingObjectById!animateCreatureCasting(manaDrain.wizard,spell,state);
 				// TODO: add rotating particles around creature position
 				return true;
-			case CastingStatus.interrupted: state.removeObject(creatureCast.creature); return false;
+			case CastingStatus.interrupted:
+				stopSoundsAt(creature,state);
+				state.removeObject(creatureCast.creature);
+				return false;
 			case CastingStatus.finished:
 				stopSoundsAt(creature,state);
 				state.setRenderMode!(MovingObject!B,RenderMode.opaque)(creature);
@@ -4821,9 +4830,10 @@ bool updateCreatureCasting(B)(ref CreatureCasting!B creatureCast,ObjectState!B s
 				if(!wizard||wizard.souls<spell.soulCost) goto case CastingStatus.interrupted;
 				wizard.souls-=spell.soulCost;
 				state.movingObjectById!((ref obj,state){
-				obj.creatureState.mode=CreatureMode.spawning;
-				state.newCreatureAddToSelection(obj.side,obj.id);
-			},function(){})(creature,state); return false;
+					obj.creatureState.mode=CreatureMode.spawning;
+					state.newCreatureAddToSelection(obj.side,obj.id);
+				},function(){})(creature,state);
+				return false;
 		}
 	}
 }
@@ -6731,12 +6741,12 @@ final class ObjectState(B){ // (update logic)
 		import std.random: uniform;
 		return uniform!bounds(a,b,rng);
 	}
-	T gauss(T)(T μ,T σ){
+	T normal(T=float)(){
 		enum n=10;
 		T r=0;
-		enum T sqrt3=sqrt(3);
-		foreach(i;0..n) r+=uniform(T(-sqrt3),T(sqrt3));
-		return μ+σ*r;
+		enum T sqrt3n=sqrt(3)/n;
+		foreach(i;0..n) r+=uniform(T(-sqrt3n),T(sqrt3n));
+		return r;
 	}
 	Vector!(T,n) uniform(string bounds="[]",T,int n)(Vector!(T,n)[2] box){
 		Vector!(T,n) r;
