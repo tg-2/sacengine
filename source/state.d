@@ -3729,23 +3729,30 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 	if(!isValidAttackTarget(targetId,state)) return true; // TODO
 	if(object.rangedAttack !is rangedAttack) return false; // TODO: multiple ranged attacks?
 	auto predicted=object.creatureAI.predictor.predictCenter(object.firstShotPosition,rangedAttack.speed,targetId,state);
-	if(!object.hasClearShot(predicted,targetId,state)) return false;
 	// TODO: find a spot from where target can be shot
 	object.creatureState.targetFlyingHeight=object.position.z-state.getHeight(object.position);
-	object.stopMovement(state);
-	auto facing=!object.turnToFaceTowards(predicted,state);
 	if(!object.creatureState.mode.isShooting){
-		if(facing){
+		if(!object.hasClearShot(predicted,targetId,state)) return false;
+		object.stopMovement(state);
+		auto facing=!object.turnToFaceTowards(predicted,state);
+		if(facing&&object.creatureStats.effects.rangedCooldown==0&&object.creatureStats.mana>=rangedAttack.manaCost){
 			object.creatureAI.rangedAttackTarget=targetId;
 			object.startShooting(state); // TODO: should this have a delay?
 		}
 	}else{
+		object.stopMovement(state);
 		if(object.hasShootTick){
-			switch(rangedAttack.tag){
-				case SpellTag.brainiacShoot:
-					brainiacShoot(object.side,targetId,object.shotPosition,predicted,rangedAttack,state);
-					break;
-				default: break;
+			auto drainedMana=rangedAttack.manaCost/object.numShootTicks;
+			if(object.creatureStats.mana>=drainedMana){
+				switch(rangedAttack.tag){
+					case SpellTag.brainiacShoot:
+						brainiacShoot(object.side,targetId,object.shotPosition,predicted,rangedAttack,state);
+						break;
+					default: break;
+				}
+				object.drainMana(drainedMana,state);
+				if(object.creatureStats.effects.rangedCooldown==0)
+					object.creatureStats.effects.rangedCooldown=cast(int)(rangedAttack.cooldown*updateFPS);
 			}
 		}
 	}
@@ -3980,6 +3987,7 @@ bool isIdle(B)(ref MovingObject!B object, ObjectState!B state){
 
 void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.creatureStats.effects.stunCooldown!=0) --object.creatureStats.effects.stunCooldown;
+	if(object.creatureStats.effects.rangedCooldown!=0) --object.creatureStats.effects.rangedCooldown;
 	auto sacObject=object.sacObject;
 	final switch(object.creatureState.mode){
 		case CreatureMode.idle, CreatureMode.moving:
@@ -5753,6 +5761,15 @@ bool updateSwarm(B)(ref Swarm!B swarm,ObjectState!B state){
 	}
 }
 enum projectileHitGain=2.0f;
+enum brainiacProjectileSize=0.45f; // TODO: ok?
+enum brainiacProjectileSlidingDistance=1.5f;
+static immutable Vector3f[2] brainiacProjectileHitbox=[-0.5f*brainiacProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*brainiacProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
+int brainiacProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
+		return entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side;
+	}
+	return collisionTarget!(brainiacProjectileHitbox,filter)(side,position,state,side,intendedTarget);
+}
 bool updateBrainiacProjectile(B)(ref BrainiacProjectile!B brainiacProjectile,ObjectState!B state){
 	with(brainiacProjectile){
 		auto oldPosition=position;
@@ -5760,14 +5777,25 @@ bool updateBrainiacProjectile(B)(ref BrainiacProjectile!B brainiacProjectile,Obj
 		travelDistance+=rangedAttack.speed/updateFPS;
 		static assert(updateFPS==60);
 		state.addEffect(BrainiacEffect(position,direction));
-		auto target=state.lineOfSightWithoutSide(oldPosition,position,side,intendedTarget);
+		OrderTarget target;
+		if(auto targetId=brainiacProjectileCollisionTarget(side,intendedTarget,position,state)){
+			target.id=targetId;
+			target.type=state.targetTypeFromId(targetId);
+		}else{
+			auto offset=Vector3f(0.0f,0.0f,-brainiacProjectileSize);
+			target=state.lineOfSightWithoutSide(oldPosition+offset,position+offset,side,intendedTarget);
+		}
 		bool terminate(){
 			//playSoundAt("",creature,state,projectileHitGain); // TODO: brainiac hit sound
 			return false;
 		}
 		if(travelDistance>rangedAttack.range) return terminate();
 		switch(target.type){
-			case TargetType.terrain: return terminate();
+			case TargetType.terrain:
+				travelDistance=max(travelDistance,rangedAttack.range-brainiacProjectileSlidingDistance);
+				direction=Vector3f(direction.x,direction.y,0.0f).normalized;
+				direction=Vector3f(direction.x,direction.y,state.getGroundHeightDerivative(position,direction)).normalized;
+				break;
 			case TargetType.creature:
 				state.movingObjectById!((ref obj,state){ obj.stunWithCooldown(stunCooldownFrames,state); },(){})(target.id,state);
 				goto case;
@@ -6702,6 +6730,13 @@ final class ObjectState(B){ // (update logic)
 	T uniform(string bounds="[]",T)(T a,T b){
 		import std.random: uniform;
 		return uniform!bounds(a,b,rng);
+	}
+	T gauss(T)(T μ,T σ){
+		enum n=10;
+		T r=0;
+		enum T sqrt3=sqrt(3);
+		foreach(i;0..n) r+=uniform(T(-sqrt3),T(sqrt3));
+		return μ+σ*r;
 	}
 	Vector!(T,n) uniform(string bounds="[]",T,int n)(Vector!(T,n)[2] box){
 		Vector!(T,n) r;

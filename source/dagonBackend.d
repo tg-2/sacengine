@@ -110,7 +110,7 @@ final class SacScene: Scene{
 		auto texture=typeof(return).loadTexture();
 		auto mat=createMaterial(shadelessMaterialBackend);
 		mat.depthWrite=false;
-		mat.blending=Additive;
+		mat.blending=Transparent;
 		mat.energy=20.0f;
 		mat.diffuse=texture;
 		auto frames=typeof(return).createMeshes();

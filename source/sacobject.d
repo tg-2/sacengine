@@ -110,7 +110,7 @@ final class SacObject(B){
 				maxMana=ntt.mana;
 				runningSpeed=ntt.runningSpeed*1e-2f;
 				flyingSpeed=ntt.flyingSpeed*1e-2f;
-				rangedAccuracy=ntt.rangedAccuracy;
+				rangedAccuracy=ntt.rangedAccuracy*(1.0f/short.max);
 				meleeResistance=ntt.meleeResistance*1e-3f;
 				splashSpellResistance=ntt.splashSpellResistance*1e-3f;
 				directSpellResistance=ntt.directSpellResistance*1e-3f;
