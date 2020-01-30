@@ -2348,13 +2348,13 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 	auto sacObject=object.sacObject;
 	final switch(object.creatureState.mode){
 		case CreatureMode.idle:
-			object.creatureState.timer=0;
 			bool isDamaged=object.isDamaged;
 			if(object.creatureState.movement!=CreatureMovement.flying){
 				if(object.animationState.among(AnimationState.run,AnimationState.walk) && object.creatureState.timer<0.1f*updateFPS)
 					break;
 				object.frame=0;
 			}
+			object.creatureState.timer=0;
 			if(object.frame==0){
 				if(isDamaged&&sacObject.hasAnimationState(AnimationState.stance2))
 					object.animationState=AnimationState.stance2;
@@ -2403,6 +2403,7 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 						else object.startIdling(state);
 						return;
 					}
+					object.creatureState.timer=0;
 					if(object.animationState!=AnimationState.run){
 						object.frame=0;
 						object.animationState=AnimationState.run;
@@ -3736,7 +3737,8 @@ bool isValidGuardTarget(B)(int targetId,ObjectState!B state){
 }
 
 bool hasClearShot(B)(ref MovingObject!B object,Vector3f target,int targetId,ObjectState!B state){
-	return state.hasLineOfSightTo(object.firstShotPosition,target,object.id,targetId);
+	auto offset=Vector3f(0.0f,0.0f,-0.2f); // TODO: do some sort of cylinder cast instead
+	return state.hasLineOfSightTo(object.firstShotPosition+offset,target+offset,object.id,targetId);
 }
 bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,ObjectState!B state){
 	if(!isValidAttackTarget(targetId,state)) return true; // TODO
