@@ -189,11 +189,19 @@ Vector!(float,n) projectToBox(size_t n)(Vector!(float,n)[2] box,Vector!(float,n)
 	return projection;
 }
 
-float boxPointDistance(size_t n)(Vector!(float,n)[2] box,Vector!(float,n) point){
-	return (point-projectToBox(box,point)).length;
-}
 float boxPointDistanceSqr(size_t n)(Vector!(float,n)[2] box,Vector!(float,n) point){
 	return (point-projectToBox(box,point)).lengthsqr;
+}
+float boxPointDistance(size_t n)(Vector!(float,n)[2] box,Vector!(float,n) point){
+	return sqrt(boxPointDistanceSqr(box,point));
+}
+float boxBoxDistanceSqr(size_t n)(Vector!(float,n)[2] boxa,Vector!(float,n)[2] boxb){
+	auto p=projectToBox(boxa,boxb[0]);
+	auto q=projectToBox(boxb,p);
+	return (p-q).lengthsqr;
+}
+float boxBoxDistance(size_t n)(Vector!(float,n)[2] boxa,Vector!(float,n)[2] boxb){
+	return sqrt(boxBoxDistanceSqr(boxa,boxb));
 }
 
 bool isInside(Vector3f point,Vector3f[2] box){

@@ -2814,6 +2814,9 @@ void startMeleeAttacking(B)(ref MovingObject!B object,ObjectState!B state){
 	object.setCreatureState(state);
 }
 
+float rangedMeleeAttackDistance(B)(ref MovingObject!B object,ObjectState!B state){
+	return 0.5f;
+}
 
 enum DamageDirection{
 	front,
@@ -3443,11 +3446,10 @@ bool brainiacShoot(B)(int side,int intendedTarget,float accuracy,Vector3f positi
 	return true;
 }
 
-bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state){
+bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state,float threshold=1e-3){
 	auto angle=facing-object.creatureState.facing;
 	while(angle<-pi!float) angle+=2*pi!float;
 	while(angle>pi!float) angle-=2*pi!float;
-	enum threshold=1e-3;
 	object.creatureState.rotationSpeedLimit=rotationSpeedLimitFactor*abs(angle);
 	if(angle>threshold) object.startTurningLeft(state);
 	else if(angle<-threshold) object.startTurningRight(state);
@@ -3463,8 +3465,8 @@ float facingTowards(B)(ref MovingObject!B object,Vector3f position,ObjectState!B
 	return atan2(-direction.x,direction.y);
 }
 
-bool turnToFaceTowards(B)(ref MovingObject!B object,Vector3f position,ObjectState!B state){
-	return object.face(object.facingTowards(position,state),state);
+bool turnToFaceTowards(B)(ref MovingObject!B object,Vector3f position,ObjectState!B state,float threshold=1e-3){
+	return object.face(object.facingTowards(position,state),state,threshold);
 }
 
 void setPitching(B)(ref MovingObject!B object,PitchingDirection direction,ObjectState!B state,int side=-1){
@@ -3493,18 +3495,18 @@ bool pitch(B)(ref MovingObject!B object,float pitch_,ObjectState!B state){
 	else if(angle<-threshold) object.startPitchingDown(state);
 	else{
 		object.stopPitching(state);
-		return true;
+		return false;
 	}
-	return false;
+	return true;
 }
 
-void pitchToFaceTowards(B)(ref MovingObject!B object,Vector3f position,ObjectState!B state){
+bool pitchToFaceTowards(B)(ref MovingObject!B object,Vector3f position,ObjectState!B state){
 	auto direction=position-object.position;
 	if(object.creatureState.targetFlyingHeight!is float.nan)
 		direction.z+=object.creatureState.targetFlyingHeight;
 	auto distance=direction.xy.length;
 	auto pitch_=atan2(direction.z,distance);
-	object.pitch(pitch_,state);
+	return object.pitch(pitch_,state);
 }
 
 bool movingForwardGetsCloserTo(B)(ref MovingObject!B object,Vector3f position,float speed,ObjectState!B state,bool* slowDown=null){
@@ -3637,13 +3639,13 @@ bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPositi
 	return false;
 }
 
-bool stop(B)(ref MovingObject!B object,float targetFacing,ObjectState!B state){
+bool stop(B)(ref MovingObject!B object,float targetFacing,ObjectState!B state,float threshold=1e-3){
 	object.stopMovement(state);
 	if(object.creatureState.movement==CreatureMovement.flying) object.creatureState.speedLimit=0.0f;
-	auto facingFinished=targetFacing is float.init||object.face(targetFacing,state);
+	auto facingFinished=targetFacing is float.init||!object.face(targetFacing,state,threshold);
 	auto pitchingFinished=true;
 	if(object.creatureState.movement==CreatureMovement.flying){
-		pitchingFinished=object.pitch(0.0f,state);
+		pitchingFinished=!object.pitch(0.0f,state);
 		object.creatureState.targetFlyingHeight=0.0f;
 	}
 	return !(facingFinished && pitchingFinished);
@@ -3662,7 +3664,7 @@ void moveTowards(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectStat
 			auto minimumFlyingHeight=object.creatureStats.flyingHeight;
 			if(flyingHeight<minimumFlyingHeight) object.creatureState.targetFlyingHeight=minimumFlyingHeight;
 			else object.creatureState.targetFlyingHeight=float.nan;
-			auto pitchingTarget=targetPosition+Vector3f(0.0f,0.0f,min(flyingHeight,1.5f*minimumFlyingHeight));
+			auto pitchingTarget=targetPosition+Vector3f(0.0f,0.0f,min(flyingHeight,minimumFlyingHeight));
 			if(object.creatureAI.isColliding) object.startPitchingUp(state);
 			else object.pitchToFaceTowards(pitchingTarget,state);
 		}else{
@@ -3709,15 +3711,21 @@ bool moveTo(B)(ref MovingObject!B object,Vector3f targetPosition,float targetFac
 	return object.stop(targetFacing,state);
 }
 
-bool retreatTowards(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectState!B state){
-	if(object.patrolAround(targetPosition,guardDistance,state))
-		return true;
+bool moveWithinRange(B)(ref MovingObject!B object,Vector3f targetPosition,float range,ObjectState!B state){
 	auto speed=object.speed(state)/updateFPS;
 	auto distancesqr=(object.position.xy-targetPosition.xy).lengthsqr;
-	if(distancesqr<=(retreatDistance+speed)^^2)
-		return object.stopAndFaceTowards(targetPosition,state);
+	if(distancesqr<=(range-speed)^^2){
+		object.stop(state);
+		return false;
+	}
 	object.moveTowards(targetPosition,state);
 	return true;
+}
+
+bool retreatTowards(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectState!B state){
+	return object.patrolAround(targetPosition,guardDistance,state) ||
+		object.moveWithinRange(targetPosition,retreatDistance,state) ||
+		object.stopAndFaceTowards(targetPosition,state);
 }
 
 bool isValidAttackTarget(B,T)(T obj,ObjectState!B state)if(is(T==MovingObject!B)||is(T==StaticObject!B)){
@@ -3740,30 +3748,48 @@ bool hasClearShot(B)(ref MovingObject!B object,Vector3f target,int targetId,Obje
 	auto offset=Vector3f(0.0f,0.0f,-0.2f); // TODO: do some sort of cylinder cast instead
 	return state.hasLineOfSightTo(object.firstShotPosition+offset,target+offset,object.id,targetId);
 }
+float shootDistance(B)(ref MovingObject!B object,ObjectState!B state){
+	if(auto ra=object.rangedAttack) return 0.5f*ra.range; // TODO: figure out the range limit for AI
+	return -1.0f;
+}
 bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,ObjectState!B state){
 	if(!isValidAttackTarget(targetId,state)) return true; // TODO
 	if(object.rangedAttack !is rangedAttack) return false; // TODO: multiple ranged attacks?
 	auto predicted=object.creatureAI.predictor.predictCenter(object.firstShotPosition,rangedAttack.speed,targetId,state);
 	// TODO: find a spot from where target can be shot
 	auto notShooting=!object.creatureState.mode.isShooting;
-	if(object.creatureState.movement==CreatureMovement.flying){
+	auto targetPosition=notShooting?state.objectById!((obj)=>obj.position)(targetId):Vector3f.init;
+	if(notShooting){
+		if(object.moveWithinRange(targetPosition,object.shootDistance(state),state))
+			return true;
+	}
+	bool moveCloser(){
+		object.moveTowards(targetPosition,state);
+		return true;
+	}
+	bool isFlying=object.creatureState.movement==CreatureMovement.flying;
+	if(isFlying){
 		auto flyingHeight=object.position.z-state.getHeight(object.position);
 		auto minFlyingHeight=object.creatureStats.flyingHeight;
 		object.creatureState.targetFlyingHeight=max(flyingHeight,minFlyingHeight);
-		if(notShooting&&flyingHeight<minFlyingHeight-0.1f) return false;
+		if(notShooting&&flyingHeight<minFlyingHeight-0.1f) return moveCloser();
 	}
-	if(notShooting){
-		if(!object.hasClearShot(predicted,targetId,state)) return false;
+	void stop(){
 		object.creatureState.timer=updateFPS; // TODO: this is a bit hacky
 		object.stopMovement(state);
-		auto facing=!object.turnToFaceTowards(predicted,state);
+		if(isFlying) object.pitch(0.0f,state);
+	}
+	if(notShooting){
+		if(!object.hasClearShot(predicted,targetId,state)) return moveCloser();
+		stop();
+		auto rotationThreshold=4*object.creatureStats.rotationSpeed(object.creatureState.movement==CreatureMovement.flying)/updateFPS;
+		auto facing=!object.turnToFaceTowards(predicted,state,rotationThreshold);
 		if(facing&&object.creatureStats.effects.rangedCooldown==0&&object.creatureStats.mana>=rangedAttack.manaCost){
 			object.creatureAI.rangedAttackTarget=targetId;
 			object.startShooting(state); // TODO: should this have a delay?
 		}
 	}else{
-		object.creatureState.timer=updateFPS; // TODO: this is a bit hacky
-		object.stopMovement(state);
+		stop();
 		if(object.hasShootTick){
 			auto drainedMana=rangedAttack.manaCost/object.numShootTicks;
 			if(object.creatureStats.mana>=drainedMana){
@@ -3804,24 +3830,22 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 		if(target&&target!=targetId&&!state.objectById!((obj,side,state)=>state.sides.getStance(side,.side(obj,state))==Stance.enemy)(target,object.side,state))
 			target=0;
 	}
-	auto targetPosition=state.objectById!((obj,meleeHitboxCenter)=>boxCenter(obj.closestHitbox(meleeHitboxCenter)))(targetId,meleeHitboxCenter);
+	auto targetHitbox=state.objectById!((obj,meleeHitboxCenter)=>obj.closestHitbox(meleeHitboxCenter))(targetId,meleeHitboxCenter);
+	auto targetPosition=boxCenter(targetHitbox);
 	auto meleeHitboxOffset=meleeHitboxCenter-object.position;
 	auto movementPosition=targetPosition-meleeHitboxOffset; // TODO: ranged creatures should move to a nearby location where they have a clear shot
 	auto meleeHitboxOffsetXY=0.75f*(targetPosition.xy-object.position.xy).normalized*meleeHitboxOffset.xy.length;
 	meleeHitboxOffset.x=meleeHitboxOffsetXY.x, meleeHitboxOffset.y=meleeHitboxOffsetXY.y;
-	if(!target){ // TODO: alternatively, if target is not close enough
-		if(auto ra=object.rangedAttack){
-			if((object.position-targetPosition).lengthsqr<(0.5f*ra.range)^^2){ // TODO: figure out the range limit for AI
-				if(object.shoot(ra,targetId,state))
-					return true;
-			}
-		}
+	auto hitbox=object.hitbox;
+	if(auto ra=object.rangedAttack){
+		if(!target||object.rangedMeleeAttackDistance(state)^^2<boxBoxDistanceSqr(hitbox,targetHitbox))
+			return object.shoot(ra,targetId,state);
 	}
 	if(target||!object.moveTo(movementPosition,float.init,state,!object.isMeleeAttacking(state))){
 		object.pitch(0.0f,state);
 		object.turnToFaceTowards(targetPosition,state);
 		enum normalHitboxFactor=1.01f;
-		if(state.objectById!intersects(targetId,scaleBox(object.hitbox,normalHitboxFactor)))
+		if(state.objectById!intersects(targetId,scaleBox(hitbox,normalHitboxFactor)))
 			object.stopMovement(state);
 	}
 	if(target){
