@@ -3736,8 +3736,7 @@ bool isValidGuardTarget(B)(int targetId,ObjectState!B state){
 }
 
 bool hasClearShot(B)(ref MovingObject!B object,Vector3f target,int targetId,ObjectState!B state){
-	auto offset=Vector3f(0.0f,0.0f,-0.45f); // TODO: ok?
-	return state.hasLineOfSightTo(object.firstShotPosition+offset,target+offset,object.id,targetId);
+	return state.hasLineOfSightTo(object.firstShotPosition,target,object.id,targetId);
 }
 bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,ObjectState!B state){
 	if(!isValidAttackTarget(targetId,state)) return true; // TODO
@@ -3753,6 +3752,7 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 	}
 	if(notShooting){
 		if(!object.hasClearShot(predicted,targetId,state)) return false;
+		object.creatureState.timer=updateFPS; // TODO: this is a bit hacky
 		object.stopMovement(state);
 		auto facing=!object.turnToFaceTowards(predicted,state);
 		if(facing&&object.creatureStats.effects.rangedCooldown==0&&object.creatureStats.mana>=rangedAttack.manaCost){
@@ -3760,6 +3760,7 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 			object.startShooting(state); // TODO: should this have a delay?
 		}
 	}else{
+		object.creatureState.timer=updateFPS; // TODO: this is a bit hacky
 		object.stopMovement(state);
 		if(object.hasShootTick){
 			auto drainedMana=rangedAttack.manaCost/object.numShootTicks;
@@ -5801,14 +5802,22 @@ bool updateBrainiacProjectile(B)(ref BrainiacProjectile!B brainiacProjectile,Obj
 		position+=rangedAttack.speed/updateFPS*direction;
 		travelDistance+=rangedAttack.speed/updateFPS;
 		static assert(updateFPS==60);
-		state.addEffect(BrainiacEffect(position,direction));
+		auto effectPosition=position, effectDirection=direction;
+		if(state.isOnGround(effectPosition)){
+			auto groundHeight=state.getGroundHeight(effectPosition);
+			if(effectPosition.z<groundHeight+brainiacProjectileSize){
+				effectPosition.z=groundHeight+brainiacProjectileSize;
+				effectDirection=Vector3f(effectDirection.x,effectDirection.y,0.0f).normalized;
+				effectDirection=Vector3f(effectDirection.x,effectDirection.y,state.getGroundHeightDerivative(effectPosition,effectDirection)).normalized;
+			}
+		}
+		state.addEffect(BrainiacEffect(effectPosition,effectDirection));
 		OrderTarget target;
 		if(auto targetId=brainiacProjectileCollisionTarget(side,intendedTarget,position,state)){
 			target.id=targetId;
 			target.type=state.targetTypeFromId(targetId);
 		}else{
-			auto offset=Vector3f(0.0f,0.0f,-brainiacProjectileSize);
-			target=state.lineOfSightWithoutSide(oldPosition+offset,position+offset,side,intendedTarget);
+			target=state.lineOfSightWithoutSide(oldPosition,position,side,intendedTarget);
 		}
 		bool terminate(){
 			//playSoundAt("",creature,state,projectileHitGain); // TODO: brainiac hit sound
@@ -5818,8 +5827,11 @@ bool updateBrainiacProjectile(B)(ref BrainiacProjectile!B brainiacProjectile,Obj
 		switch(target.type){
 			case TargetType.terrain:
 				travelDistance=max(travelDistance,rangedAttack.range-brainiacProjectileSlidingDistance);
-				direction=Vector3f(direction.x,direction.y,0.0f).normalized;
-				direction=Vector3f(direction.x,direction.y,state.getGroundHeightDerivative(position,direction)).normalized;
+				if(state.isOnGround(position)){
+					position.z=max(position.z,state.getGroundHeight(position)+brainiacProjectileSize);
+					direction=Vector3f(direction.x,direction.y,0.0f).normalized;
+					direction=Vector3f(direction.x,direction.y,state.getGroundHeightDerivative(position,direction)).normalized;
+				}
 				break;
 			case TargetType.creature:
 				state.movingObjectById!((ref obj,state){ obj.stunWithCooldown(stunCooldownFrames,state); },(){})(target.id,state);
