@@ -3441,6 +3441,7 @@ Vector3f getShotDirection(B)(float accuracy,Vector3f position,Vector3f target,Sa
 }
 
 bool brainiacShoot(B)(int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	playSoundAt("snrb",position,state,4.0f); // TODO: move sound with wrath ball
 	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
 	state.addEffect(BrainiacProjectile!B(side,intendedTarget,position,direction,rangedAttack));
 	return true;
@@ -5814,7 +5815,7 @@ bool updateSwarm(B)(ref Swarm!B swarm,ObjectState!B state){
 		}
 	}
 }
-enum projectileHitGain=2.0f;
+enum projectileHitGain=4.0f;
 enum brainiacProjectileSize=0.45f; // TODO: ok?
 enum brainiacProjectileSlidingDistance=1.5f;
 static immutable Vector3f[2] brainiacProjectileHitbox=[-0.5f*brainiacProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*brainiacProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
@@ -5848,7 +5849,7 @@ bool updateBrainiacProjectile(B)(ref BrainiacProjectile!B brainiacProjectile,Obj
 			target=state.lineOfSightWithoutSide(oldPosition,position,side,intendedTarget);
 		}
 		bool terminate(){
-			//playSoundAt("",creature,state,projectileHitGain); // TODO: brainiac hit sound
+			playSoundAt("hnrb",position,state,projectileHitGain); // TODO: brainiac hit sound
 			return false;
 		}
 		if(travelDistance>rangedAttack.range) return terminate();
