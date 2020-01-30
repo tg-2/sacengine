@@ -3805,16 +3805,18 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 			target=0;
 	}
 	auto targetPosition=state.objectById!((obj,meleeHitboxCenter)=>boxCenter(obj.closestHitbox(meleeHitboxCenter)))(targetId,meleeHitboxCenter);
-	if(auto ra=object.rangedAttack){
-		if((object.position-targetPosition).lengthsqr<(0.5f*ra.range)^^2){ // TODO: figure out the range limit for AI
-			if(object.shoot(ra,targetId,state))
-				return true;
-		}
-	}
 	auto meleeHitboxOffset=meleeHitboxCenter-object.position;
 	auto movementPosition=targetPosition-meleeHitboxOffset; // TODO: ranged creatures should move to a nearby location where they have a clear shot
 	auto meleeHitboxOffsetXY=0.75f*(targetPosition.xy-object.position.xy).normalized*meleeHitboxOffset.xy.length;
 	meleeHitboxOffset.x=meleeHitboxOffsetXY.x, meleeHitboxOffset.y=meleeHitboxOffsetXY.y;
+	if(!target){ // TODO: alternatively, if target is not close enough
+		if(auto ra=object.rangedAttack){
+			if((object.position-targetPosition).lengthsqr<(0.5f*ra.range)^^2){ // TODO: figure out the range limit for AI
+				if(object.shoot(ra,targetId,state))
+					return true;
+			}
+		}
+	}
 	if(target||!object.moveTo(movementPosition,float.init,state,!object.isMeleeAttacking(state))){
 		object.pitch(0.0f,state);
 		object.turnToFaceTowards(targetPosition,state);
