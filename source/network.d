@@ -358,7 +358,7 @@ enum playerLimit=256;
 enum listeningPort=9116;
 
 final class SynchQueue{
-	enum maxLength=256;
+	enum maxLength=1024;
 	int[maxLength] hashes;
 	int start=0,end=0;
 	void addReference(int frame,int hash)in{
@@ -369,7 +369,7 @@ final class SynchQueue{
 		hashes[(end++)%$]=hash;
 	}
 	bool check(int frame,int hash){
-		if(frame<start) return true; // too old. TODO: count this as a desynch?
+		if(frame<start) return false; // too old. TODO: count this as a desynch?
 		if(frame>=end) return false; // impossibly recent
 		return hashes[frame%$]==hash;
 	}
