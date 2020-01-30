@@ -289,7 +289,7 @@ final class SacObject(B){
 		if(hand.bone==0) return Vector3f(0.0f,0.0f,0.0f);
 		return hand.position*animations[animationState].frames[frame].matrices[hand.bone];
 	}
-	Vector3f firstShotPosition(AnimationState animationState=AnimationState.shoot0){
+	Vector3f firstShotPosition(AnimationState animationState){
 		auto tick=animations[animationState].firstShootTick;
 		if(tick==-1) return Vector3f(0.0f,0.0f,0.0f);
 		return shotPosition(animationState,tick);

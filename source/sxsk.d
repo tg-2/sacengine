@@ -23,6 +23,7 @@ enum AnimEvent{
 	none,
 	sound,
 	attack,
+	load,
 	shoot,
 	cast_,
 	death,
@@ -66,7 +67,8 @@ AnimEvent translateAnimEvent(char[4] tag){
 		case "\0\0\0\0": return AnimEvent.none;
 		case "!xfs": return AnimEvent.sound;
 		case "kcta": return AnimEvent.attack;
-		case "lrba","liba": return AnimEvent.shoot; // TODO: is there any difference between those two?
+		case "liba": return AnimEvent.load; // TODO: use event
+		case "lrba": return AnimEvent.shoot;
 		case "tsac": return AnimEvent.cast_;
 		case "hted": return AnimEvent.death;
 		case "barg": return AnimEvent.grab;

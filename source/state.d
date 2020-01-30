@@ -449,8 +449,20 @@ Vector3f shotPosition(B)(ref MovingObject!B object){
 	auto loc=object.sacObject.shotPosition(object.animationState,object.frame/updateAnimFactor);
 	return object.position+rotate(object.rotation,loc);
 }
+AnimationState shootAnimation(B)(ref MovingObject!B object){
+	final switch(object.creatureState.movement) with(CreatureMovement){
+		case onGround:
+			return AnimationState.shoot0;
+		case flying:
+			if(object.sacObject.mustFly)
+				goto case onGround;
+			return AnimationState.flyShoot;
+		case tumbling:
+			goto case onGround;
+	}
+}
 Vector3f firstShotPosition(B)(ref MovingObject!B object){
-	auto loc=object.sacObject.firstShotPosition(AnimationState.shoot0);
+	auto loc=object.sacObject.firstShotPosition(object.shootAnimation);
 	return object.position+rotate(object.rotation,loc);
 }
 
@@ -2544,7 +2556,7 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 			break;
 		case CreatureMode.shooting:
 			object.frame=0;
-			object.animationState=AnimationState.shoot0; // TODO: ok?
+			object.animationState=object.shootAnimation;
 			break;
 	}
 }
@@ -3419,12 +3431,13 @@ bool swarm(B)(Swarm!B swarm,ObjectState!B state){
 	return true;
 }
 
-Vector3f getShotDirection(B)(Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
-	return (target-position).normalized; // TODO: factor in accuracy
+Vector3f getShotDirection(B)(float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	auto φ=2.0f*pi!float*accuracy*state.normal(); // TODO: ok?
+	return rotate(facingQuaternion(φ),(target-position+5.0f*accuracy*state.normal()).normalized); // TODO: ok?
 }
 
-bool brainiacShoot(B)(int side,int intendedTarget,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
-	auto direction=getShotDirection(position,target,rangedAttack,state);
+bool brainiacShoot(B)(int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
 	state.addEffect(BrainiacProjectile!B(side,intendedTarget,position,direction,rangedAttack));
 	return true;
 }
@@ -3723,7 +3736,8 @@ bool isValidGuardTarget(B)(int targetId,ObjectState!B state){
 }
 
 bool hasClearShot(B)(ref MovingObject!B object,Vector3f target,int targetId,ObjectState!B state){
-	return state.hasLineOfSightTo(object.firstShotPosition,target,object.id,targetId);
+	auto offset=Vector3f(0.0f,0.0f,-0.45f); // TODO: ok?
+	return state.hasLineOfSightTo(object.firstShotPosition+offset,target+offset,object.id,targetId);
 }
 bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,ObjectState!B state){
 	if(!isValidAttackTarget(targetId,state)) return true; // TODO
@@ -3750,11 +3764,12 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 		if(object.hasShootTick){
 			auto drainedMana=rangedAttack.manaCost/object.numShootTicks;
 			if(object.creatureStats.mana>=drainedMana){
+				auto accuracy=object.creatureStats.rangedAccuracy;
 				switch(rangedAttack.tag){
 					case SpellTag.brainiacShoot:
-						brainiacShoot(object.side,targetId,object.shotPosition,predicted,rangedAttack,state);
+						brainiacShoot(object.side,targetId,accuracy,object.shotPosition,predicted,rangedAttack,state);
 						break;
-					default: break;
+					default: goto case SpellTag.brainiacShoot;
 				}
 				object.drainMana(drainedMana,state);
 				if(object.creatureStats.effects.rangedCooldown==0)
@@ -6744,7 +6759,7 @@ final class ObjectState(B){ // (update logic)
 	T normal(T=float)(){
 		enum n=10;
 		T r=0;
-		enum T sqrt3n=sqrt(3)/n;
+		enum T sqrt3n=sqrt(3.0f)/n;
 		foreach(i;0..n) r+=uniform(T(-sqrt3n),T(sqrt3n));
 		return r;
 	}

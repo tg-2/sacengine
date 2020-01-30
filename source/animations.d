@@ -37,7 +37,7 @@ struct Animations{
 			char[4] badLanding;
 			char[4] carry;
 			char[4] carried; // special for hellmouth
-			char[4] fling;
+			char[4] flyShoot;
 			char[4] notify;
 			char[4] stance2; // stance when damaged
 			char[4] rise;
