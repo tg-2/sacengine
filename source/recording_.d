@@ -26,7 +26,9 @@ class Recording(B){
 	Array!(Array!(Command!B)) commands;
 	Array!(Event!B) events;
 
+	bool logCore=false;
 	void addCommitted(ObjectState!B state){
+		if(!logCore&&sides) return;
 		if(!sides) sides=state.sides;
 		else enforce(sides is state.sides);
 		if(committed.length<120){

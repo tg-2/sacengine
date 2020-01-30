@@ -33,6 +33,7 @@ struct Options{
 	bool dumpTraffic=false;
 	bool checkDesynch=true;
 	string recordingFilename="";
+	bool logCore=false;
 	string playbackFilename="";
 	alias settings this;
 }

@@ -78,7 +78,10 @@ void loadMap(B)(ref B backend,ref Options options)in{
 	}
 	state.commit();
 	Recording!B recording=null;
-	if(!playback&&options.recordingFilename.length) recording=new Recording!B(options.map);
+	if(!playback&&options.recordingFilename.length){
+		recording=new Recording!B(options.map);
+		recording.logCore=options.logCore;
+	}
 	auto controller=new Controller!B(controlledSide,state,network,recording);
 	backend.setState(state);
 	if(id) backend.focusCamera(id);
