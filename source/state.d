@@ -3447,7 +3447,8 @@ bool brainiacShoot(B)(int side,int intendedTarget,float accuracy,Vector3f positi
 	return true;
 }
 
-bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state,float threshold=1e-3){
+enum defaultFaceThreshold=1e-3;
+bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state,float threshold=defaultFaceThreshold){
 	auto angle=facing-object.creatureState.facing;
 	while(angle<-pi!float) angle+=2*pi!float;
 	while(angle>pi!float) angle-=2*pi!float;
@@ -3466,7 +3467,7 @@ float facingTowards(B)(ref MovingObject!B object,Vector3f position,ObjectState!B
 	return atan2(-direction.x,direction.y);
 }
 
-bool turnToFaceTowards(B)(ref MovingObject!B object,Vector3f position,ObjectState!B state,float threshold=1e-3){
+bool turnToFaceTowards(B)(ref MovingObject!B object,Vector3f position,ObjectState!B state,float threshold=defaultFaceThreshold){
 	return object.face(object.facingTowards(position,state),state,threshold);
 }
 
@@ -3602,7 +3603,7 @@ void unqueueOrder(B)(ref MovingObject!B object,ObjectState!B state){
 }
 
 
-bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectState!B state){
+bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectState!B state,float threshold=defaultFaceThreshold,bool aggressive=false,int targetId=0){
 	auto hitbox=object.hitbox;
 	auto rotation=facingQuaternion(object.creatureState.facing);
 	auto distance=0.05f*((hitbox[1].x-hitbox[0].x)+(hitbox[1].y-hitbox[0].y)); // TODO: improve
@@ -3611,20 +3612,27 @@ bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPositi
 	auto frontObstacle=frontObstacleFrontObstacleHitbox[0];
 	--object.creatureAI.evasionTimer;
 	if(frontObstacle){
-		auto frontObstacleHitbox=frontObstacleFrontObstacleHitbox[1];
-		Vector2f[2] frontObstacleHitbox2d=[frontObstacleHitbox[0].xy,frontObstacleHitbox[1].xy];
-		auto frontObstacleDirection=-closestBoxFaceNormal(frontObstacleHitbox2d,object.position.xy);
-		auto facing=object.creatureState.facing;
-		auto evasion=object.creatureAI.evasion;
-		if(object.creatureAI.evasionTimer<=0){
-			evasion=object.creatureAI.evasion=dot(Vector2f(cos(facing),sin(facing)),frontObstacleDirection)<=0.0f?RotationDirection.right:RotationDirection.left;
-			object.creatureAI.evasionTimer=updateFPS;
+		bool doNotEvade(){
+			if(frontObstacle==targetId) return true;
+			if(!aggressive) return false;
+			return state.objectById!isValidEnemyAttackTarget(targetId,object.side,state);
 		}
-		object.setTurning(evasion,state);
-		object.startMovingForward(state);
-		return true;
+		if(!doNotEvade){
+			auto frontObstacleHitbox=frontObstacleFrontObstacleHitbox[1];
+			Vector2f[2] frontObstacleHitbox2d=[frontObstacleHitbox[0].xy,frontObstacleHitbox[1].xy];
+			auto frontObstacleDirection=-closestBoxFaceNormal(frontObstacleHitbox2d,object.position.xy);
+			auto facing=object.creatureState.facing;
+			auto evasion=object.creatureAI.evasion;
+			if(object.creatureAI.evasionTimer<=0){
+				evasion=object.creatureAI.evasion=dot(Vector2f(cos(facing),sin(facing)),frontObstacleDirection)<=0.0f?RotationDirection.right:RotationDirection.left;
+				object.creatureAI.evasionTimer=updateFPS;
+			}
+			object.setTurning(evasion,state);
+			object.startMovingForward(state);
+			return true;
+		}
 	}
-	object.turnToFaceTowards(targetPosition,state);
+	object.turnToFaceTowards(targetPosition,state,threshold);
 	auto rotationDirection=object.creatureState.rotationDirection;
 	if(rotationDirection!=RotationDirection.none){
 		enum sideHitboxFactor=1.1f;
@@ -3640,7 +3648,7 @@ bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPositi
 	return false;
 }
 
-bool stop(B)(ref MovingObject!B object,float targetFacing,ObjectState!B state,float threshold=1e-3){
+bool stop(B)(ref MovingObject!B object,float targetFacing,ObjectState!B state,float threshold=defaultFaceThreshold){
 	object.stopMovement(state);
 	if(object.creatureState.movement==CreatureMovement.flying) object.creatureState.speedLimit=0.0f;
 	auto facingFinished=targetFacing is float.init||!object.face(targetFacing,state,threshold);
@@ -3718,7 +3726,7 @@ bool moveWithinRange(B)(ref MovingObject!B object,Vector3f targetPosition,float 
 	auto speed=object.speed(state)/updateFPS;
 	auto distancesqr=(object.position.xy-targetPosition.xy).lengthsqr;
 	if(distancesqr<=(range-speed)^^2){
-		object.stop(state);
+		//object.stop(state);
 		return false;
 	}
 	object.moveTowards(targetPosition,state);
@@ -3731,13 +3739,20 @@ bool retreatTowards(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectS
 		object.stopAndFaceTowards(targetPosition,state);
 }
 
-bool isValidAttackTarget(B,T)(T obj,ObjectState!B state)if(is(T==MovingObject!B)||is(T==StaticObject!B)){
+bool isValidAttackTarget(B,T)(ref T obj,ObjectState!B state)if(is(T==MovingObject!B)||is(T==StaticObject!B)){
 	// this needs to be kept in synch with addToProximity
 	static if(is(T==MovingObject!B)) if(!obj.creatureState.mode.isValidAttackTarget) return false;
 	return obj.health(state)!=0.0f;
 }
 bool isValidAttackTarget(B)(int targetId,ObjectState!B state){
 	return state.isValidTarget(targetId)&&state.objectById!(.isValidAttackTarget)(targetId,state);
+}
+bool isValidEnemyAttackTarget(B,T)(ref T obj,int side,ObjectState!B state)if(is(T==MovingObject!B)||is(T==StaticObject!B)){
+	if(!obj.isValidAttackTarget(state)) return false;
+	return state.sides.getStance(side,.side(obj,state))==Stance.enemy;
+}
+bool isValidEnemyAttackTarget(B)(int targetId,int side,ObjectState!B state){
+	return state.isValidTarget(targetId)&&state.objectById!(.isValidEnemyAttackTarget)(targetId,side,state);
 }
 bool isValidGuardTarget(B,T)(T obj,ObjectState!B state)if(is(T==MovingObject!B)||is(T==StaticObject!B)){
 	static if(is(T==StaticObject!B)) return true;
@@ -3791,7 +3806,7 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 		if(!object.hasClearShot(predicted,targetId,state)) return moveCloser();
 		stop();
 		auto rotationThreshold=4*object.creatureStats.rotationSpeed(object.creatureState.movement==CreatureMovement.flying)/updateFPS;
-		auto facing=!object.turnToFaceTowards(predicted,state,rotationThreshold);
+		auto facing=!object.turnToFaceTowardsEvading(predicted,state,rotationThreshold);
 		if(isFlying&&flyingHeight<minFlyingHeight) return true;
 		if(facing&&object.creatureStats.effects.rangedCooldown==0&&object.creatureStats.mana>=rangedAttack.manaCost){
 			object.creatureAI.rangedAttackTarget=targetId;
@@ -3838,7 +3853,7 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 	int target=0;
 	if(state.objectById!intersects(targetId,meleeHitbox)){
 		target=meleeAttackTarget(object,state); // TODO: share melee hitbox computation?
-		if(target&&target!=targetId&&!state.objectById!((obj,side,state)=>state.sides.getStance(side,.side(obj,state))==Stance.enemy)(target,object.side,state))
+		if(target&&target!=targetId&&isValidEnemyAttackTarget(targetId,object.side,state))
 			target=0;
 	}
 	auto targetHitbox=state.objectById!((obj,meleeHitboxCenter)=>obj.closestHitbox(meleeHitboxCenter))(targetId,meleeHitboxCenter);
@@ -3854,7 +3869,7 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 	}
 	if(target||!object.moveTo(movementPosition,float.init,state,!object.isMeleeAttacking(state))){
 		object.pitch(0.0f,state);
-		object.turnToFaceTowards(targetPosition,state);
+		object.turnToFaceTowardsEvading(targetPosition,state,defaultFaceThreshold,true,targetId);
 		enum normalHitboxFactor=1.01f;
 		if(state.objectById!intersects(targetId,scaleBox(hitbox,normalHitboxFactor)))
 			object.stopMovement(state);
@@ -4353,23 +4368,23 @@ auto collisionTargetImpl(bool attackFilter=false,bool returnHitbox=false,B)(int 
 		static if(attackFilter) int side;
 		int target=0;
 		static if(returnHitbox) Vector3f[2] targetHitbox;
-		static if(attackFilter) bool ally=false;
+		static if(attackFilter) int rank;
 		float distance=float.infinity;
 	}
 	static void handleCollision(ProximityEntry entry,CollisionState* collisionState,ObjectState!B state){
 		if(entry.id==collisionState.ownId) return;
 		static if(attackFilter){
-			auto validAlly=state.objectById!((obj,state,side)=>tuple(obj.isValidAttackTarget(state),state.sides.getStance(side,.side(obj,state))==Stance.ally))(entry.id,state,collisionState.side);
-			auto valid=validAlly[0], ally=validAlly[1];
+			auto validRank=state.objectById!((obj,state,side)=>tuple(obj.isValidAttackTarget(state),rank(state.sides.getStance(side,.side(obj,state)))))(entry.id,state,collisionState.side);
+			auto valid=validRank[0], rank=validRank[1];
 			if(!valid) return;
 		}
 		auto distance=meleeDistance(entry.hitbox,boxCenter(collisionState.hitbox));
-		static if(attackFilter) auto pick=!collisionState.target||tuple(ally,distance)<tuple(collisionState.ally,collisionState.distance);
+		static if(attackFilter) auto pick=!collisionState.target||tuple(rank,distance)<tuple(collisionState.rank,collisionState.distance);
 		else auto pick=!collisionState.target||distance<collisionState.distance;
 		if(pick){
 			collisionState.target=entry.id;
 			static if(returnHitbox) collisionState.targetHitbox=entry.hitbox;
-			static if(attackFilter) collisionState.ally=ally;
+			static if(attackFilter) collisionState.rank=rank;
 			collisionState.distance=distance;
 		}
 	}
@@ -5258,18 +5273,18 @@ void animateWrath(B)(ref Wrath!B wrath,ObjectState!B state){
 int collisionTarget(alias hitbox,alias filter=None,B,T...)(int side,Vector3f position,ObjectState!B state,T args){
 	static struct CollisionState{
 		int target=0;
-		bool valid,ally;
+		int rank;
 		double distance=float.infinity;
 	}
 	static void handleCollision(ProximityEntry entry,int side,Vector3f position,CollisionState* collisionState,ObjectState!B state,T args){
 		static if(!is(filter==None)) if(!filter(entry,state,args)) return;
 		auto distance=meleeDistance(entry.hitbox,position);
-		auto validAlly=state.objectById!((obj,state,side)=>tuple(obj.isValidAttackTarget(state),state.sides.getStance(side,.side(obj,state))==Stance.ally))(entry.id,state,side);
-		auto valid=validAlly[0], ally=validAlly[1];
-		if(!collisionState.target||tuple(!valid,ally,distance)<tuple(collisionState.valid,collisionState.ally,collisionState.distance)){
+		auto validRank=state.objectById!((obj,state,side)=>tuple(obj.isValidAttackTarget(state),rank(state.sides.getStance(side,.side(obj,state)))))(entry.id,state,side);
+		auto valid=validRank[0], rank=validRank[1];
+		if(!valid) rank+=3;
+		if(!collisionState.target||tuple(rank,distance)<tuple(collisionState.rank,collisionState.distance)){
 			collisionState.target=entry.id;
-			collisionState.valid=valid;
-			collisionState.ally=ally;
+			collisionState.rank=rank;
 			collisionState.distance=distance;
 		}
 	}
@@ -7288,6 +7303,13 @@ enum Stance{
 	neutral,
 	ally,
 	enemy,
+}
+int rank(Stance stance){
+	final switch(stance){
+		case Stance.enemy: return 0;
+		case Stance.neutral: return 1;
+		case Stance.ally: return 2;
+	}
 }
 
 final class Sides(B){
