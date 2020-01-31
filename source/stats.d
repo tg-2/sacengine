@@ -24,6 +24,7 @@ struct Effects{
 	int speedUpFrame=-1;
 	int stunCooldown=0;
 	int rangedCooldown=0;
+	int abilityCooldown=0;
 }
 import dlib.math.portable: pi;
 @property float rotationSpeed(ref CreatureStats stats,bool isFlying){ // in radians per second

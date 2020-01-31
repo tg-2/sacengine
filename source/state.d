@@ -3800,8 +3800,10 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 	}else{
 		stop();
 		if(object.hasShootTick){
+			if(object.runAwayBug(state)) return true;
 			auto drainedMana=rangedAttack.manaCost/object.numShootTicks;
 			if(object.creatureStats.mana>=drainedMana){
+				auto ability=object.ability;
 				auto accuracy=object.creatureStats.rangedAccuracy;
 				switch(rangedAttack.tag){
 					case SpellTag.brainiacShoot:
@@ -3925,9 +3927,9 @@ bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,Target target,Ob
 			return false;
 	}
 	if(state.abilityStatus!false(object,ability,target)!=SpellStatus.ready) return false;
+	object.creatureStats.effects.abilityCooldown=cast(int)(ability.cooldown*updateFPS);
 	switch(ability.tag){
 		case SpellTag.runAway:
-			// TODO: implement run away bug?
 			object.drainMana(ability.manaCost,state);
 			object.runAway(ability,state);
 			return false;
@@ -3936,6 +3938,21 @@ bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,Target target,Ob
 			object.clearOrder(state);
 			return false;
 	}
+}
+
+bool runAwayBug(B)(ref MovingObject!B object,ObjectState!B state){
+	auto ability=object.ability;
+	if(!ability||ability.tag!=SpellTag.runAway) return false;
+	if(object.creatureAI.order.command!=CommandType.useAbility) return false;
+	auto targetId=object.creatureAI.rangedAttackTarget;
+	if(!state.isValidTarget(targetId,TargetType.creature)) return false;
+	if(state.movingObjectById!((target)=>target.creatureStats.effects.numSpeedUps!=0,()=>true)(targetId)) return false;
+	if(state.abilityStatus!true(object,ability)!=SpellStatus.ready) return false;
+	object.creatureStats.effects.abilityCooldown=cast(int)(ability.cooldown*updateFPS);
+	object.drainMana(ability.manaCost,state);
+	object.clearOrder(state);
+	state.movingObjectById!((ref target,ability,state){ target.runAway(ability,state); })(targetId,ability,state);
+	return true;
 }
 
 
@@ -3957,7 +3974,7 @@ bool requiresAI(CreatureMode mode){
 void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 	if(!requiresAI(object.creatureState.mode)) return;
 	if(object.creatureState.mode.isShooting){
-		if(!object.shoot(object.sacObject.rangedAttack,object.creatureAI.rangedAttackTarget,state))
+		if(!object.shoot(object.rangedAttack,object.creatureAI.rangedAttackTarget,state))
 			object.creatureAI.rangedAttackTarget=0;
 		return;
 	}
@@ -4030,7 +4047,7 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 			}
 			break;
 		case CommandType.useAbility:
-			auto ability=object.sacObject.ability;
+			auto ability=object.ability;
 			auto target=Target(object.creatureAI.order.target.type,object.creatureAI.order.target.id,object.creatureAI.order.target.position);
 			if(!ability||!object.useAbility(ability,target,state)){
 				object.clearOrder(state);
@@ -4048,6 +4065,7 @@ bool isIdle(B)(ref MovingObject!B object, ObjectState!B state){
 void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.creatureStats.effects.stunCooldown!=0) --object.creatureStats.effects.stunCooldown;
 	if(object.creatureStats.effects.rangedCooldown!=0) --object.creatureStats.effects.rangedCooldown;
+	if(object.creatureStats.effects.abilityCooldown!=0) --object.creatureStats.effects.abilityCooldown;
 	auto sacObject=object.sacObject;
 	final switch(object.creatureState.mode){
 		case CreatureMode.idle, CreatureMode.moving:
@@ -7088,6 +7106,7 @@ final class ObjectState(B){ // (update logic)
 		return SpellStatus.ready;
 	}
 	SpellStatus abilityStatus(bool selectOnly=false)(ref MovingObject!B obj,SacSpell!B ability,spellStatusArgs!selectOnly target){
+		if(obj.creatureStats.effects.abilityCooldown!=0) return SpellStatus.notReady;
 		if(ability.manaCost>obj.creatureStats.mana+manaEpsilon) return SpellStatus.lowOnMana; // TODO: store mana as exact integer?
 		static if(!selectOnly){
 			if(ability.requiresTarget){
