@@ -3656,7 +3656,7 @@ bool stopAndFaceTowards(B)(ref MovingObject!B object,Vector3f position,ObjectSta
 	return object.stop(object.facingTowards(position,state),state);
 }
 
-void moveTowards(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectState!B state,bool evade=true){
+void moveTowards(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectState!B state,bool evade=true,bool maintainHeight=false){
 	auto speed=object.speed(state)/updateFPS;
 	auto distancesqr=(object.position.xy-targetPosition.xy).lengthsqr;
 	if(object.creatureState.movement==CreatureMovement.flying){
@@ -3665,7 +3665,9 @@ void moveTowards(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectStat
 			auto minimumFlyingHeight=object.creatureStats.flyingHeight;
 			if(flyingHeight<minimumFlyingHeight) object.creatureState.targetFlyingHeight=minimumFlyingHeight;
 			else object.creatureState.targetFlyingHeight=float.nan;
-			auto pitchingTarget=targetPosition+Vector3f(0.0f,0.0f,min(flyingHeight,minimumFlyingHeight));
+			auto pitchingTarget=maintainHeight?
+				targetPosition+Vector3f(0.0f,0.0f,min(flyingHeight,minimumFlyingHeight)):
+				targetPosition;
 			if(object.creatureAI.isColliding) object.startPitchingUp(state);
 			else object.pitchToFaceTowards(pitchingTarget,state);
 		}else{
@@ -3764,27 +3766,33 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 		if(object.moveWithinRange(targetPosition,object.shootDistance(state),state))
 			return true;
 	}
+	bool isFlying=object.creatureState.movement==CreatureMovement.flying;
+	auto flyingHeight=isFlying?object.position.z-state.getHeight(object.position):0.0f;
+	auto minFlyingHeight=isFlying?object.creatureStats.flyingHeight:0.0f;
+	auto targetFlyingHeight=max(flyingHeight,minFlyingHeight);
 	bool moveCloser(){
-		object.moveTowards(targetPosition,state);
+		object.moveTowards(targetPosition,state,true,true);
+		object.creatureState.targetFlyingHeight=targetFlyingHeight;
 		return true;
 	}
-	bool isFlying=object.creatureState.movement==CreatureMovement.flying;
 	if(isFlying){
-		auto flyingHeight=object.position.z-state.getHeight(object.position);
-		auto minFlyingHeight=object.creatureStats.flyingHeight;
-		object.creatureState.targetFlyingHeight=max(flyingHeight,minFlyingHeight);
+		object.creatureState.targetFlyingHeight=targetFlyingHeight;
 		if(notShooting&&flyingHeight<minFlyingHeight-0.1f) return moveCloser();
 	}
 	void stop(){
 		object.creatureState.timer=updateFPS; // TODO: this is a bit hacky
 		object.stopMovement(state);
-		if(isFlying) object.pitch(0.0f,state);
+		if(isFlying){
+			object.pitch(0.0f,state);
+			object.creatureState.targetFlyingHeight=targetFlyingHeight;
+		}
 	}
 	if(notShooting){
 		if(!object.hasClearShot(predicted,targetId,state)) return moveCloser();
 		stop();
 		auto rotationThreshold=4*object.creatureStats.rotationSpeed(object.creatureState.movement==CreatureMovement.flying)/updateFPS;
 		auto facing=!object.turnToFaceTowards(predicted,state,rotationThreshold);
+		if(isFlying&&flyingHeight<minFlyingHeight) return true;
 		if(facing&&object.creatureStats.effects.rangedCooldown==0&&object.creatureStats.mana>=rangedAttack.manaCost){
 			object.creatureAI.rangedAttackTarget=targetId;
 			object.startShooting(state); // TODO: should this have a delay?
@@ -4014,6 +4022,7 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 					object.stopMovement(state);
 					object.stopTurning(state);
 					if(object.creatureState.movement==CreatureMovement.flying){
+						object.creatureState.targetFlyingHeight=float.nan;
 						object.creatureState.speedLimit=0.0f;
 						object.pitch(0.0f,state);
 					}
@@ -4487,17 +4496,22 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			break;
 		case CreatureMovement.flying:
 			auto targetFlyingHeight=object.creatureState.targetFlyingHeight;
-			if(object.creatureState.mode==CreatureMode.landing||object.isIdle(state)
+			if(object.creatureState.mode.among(CreatureMode.landing,CreatureMode.idle)
 			   ||object.creatureState.mode==CreatureMode.meleeAttacking&&object.position.z-state.getHeight(object.position)>targetFlyingHeight
 			){
-				if(object.creatureState.mode.among(CreatureMode.landing,CreatureMode.idle)) object.creatureState.targetFlyingHeight=float.nan;
 				auto height=state.getHeight(newPosition);
-				if(newPosition.z>height){
+				if(newPosition.z>height+(isNaN(targetFlyingHeight)?0.0f:targetFlyingHeight)){
 					auto downwardSpeed=object.creatureState.mode==CreatureMode.landing?object.creatureStats.landingSpeed/updateFPS:object.creatureStats.downwardHoverSpeed/updateFPS;
 					newPosition.z-=downwardSpeed;
 					if(state.isOnGround(newPosition)){
 						if(newPosition.z<=height)
 							newPosition.z=height;
+					}
+				}
+				if(object.creatureState.mode==CreatureMode.idle&&!isNaN(targetFlyingHeight)){
+					if(newPosition.z<height+targetFlyingHeight){
+						auto upwardSpeed=object.creatureStats.upwardHoverSpeed/updateFPS;
+						newPosition.z+=upwardSpeed;
 					}
 				}
 				break;

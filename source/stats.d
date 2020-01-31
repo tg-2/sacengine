@@ -61,6 +61,9 @@ import dlib.math.portable: pi;
 @property float downwardHoverSpeed(ref CreatureStats stats){
 	return 3.0f;
 }
+@property float upwardHoverSpeed(ref CreatureStats stats){
+	return 3.0f;
+}
 @property float flyingHeight(ref CreatureStats stats){
 	return 4.0f;
 }
