@@ -1459,11 +1459,13 @@ struct Lightning(B){
 	enum totalFrames=64;
 	enum changeShapeDelay=6;
 	enum travelDelay=12;
+	int wizard;
 	int side;
 	OrderTarget start,end;
 	SacSpell!B spell;
 	int frame;
-	this(int side,OrderTarget start,OrderTarget end,SacSpell!B spell,int frame){
+	this(int wizard,int side,OrderTarget start,OrderTarget end,SacSpell!B spell,int frame){
+		this.wizard=wizard;
 		this.side=side;
 		this.start=start;
 		this.end=end;
@@ -1482,6 +1484,7 @@ enum WrathStatus{
 	exploding,
 }
 struct Wrath(B){
+	int wizard;
 	int side;
 	Vector3f position;
 	Vector3f velocity;
@@ -1498,6 +1501,7 @@ struct FireballCasting(B){
 	int frame=0;
 }
 struct Fireball(B){
+	int wizard;
 	int side;
 	Vector3f position; // TODO: better representation?
 	Vector3f velocity;
@@ -1515,7 +1519,7 @@ struct RockCasting(B){
 	int castingTime;
 }
 struct Rock(B){
-	int immuneId;
+	int wizard;
 	int side;
 	Vector3f position; // TODO: better representation?
 	Vector3f velocity;
@@ -1542,6 +1546,7 @@ enum SwarmStatus{
 	dispersing,
 }
 struct Swarm(B){
+	int wizard;
 	int side;
 	Vector3f position;
 	Vector3f velocity;
@@ -1562,6 +1567,7 @@ struct Swarm(B){
 }
 
 struct BrainiacProjectile(B){
+	int attacker;
 	int side;
 	int intendedTarget;
 	Vector3f position;
@@ -2125,6 +2131,11 @@ struct ObjectManager(B){
 	bool isValidId(int id){
 		if(0<id && id<=ids.length)
 			return ids[id-1]!=Id.init;
+		return false;
+	}
+	bool isValidBuilding(int id){
+		if(0<id && id<=ids.length)
+			return ids[id-1].type==ObjectType.building;
 		return false;
 	}
 	bool isValidTarget(int id){
@@ -2864,6 +2875,21 @@ void damageAnimation(B)(ref MovingObject!B object,Vector3f attackDirection,Objec
 	object.frame=0;
 }
 
+
+void healFromDrain(B)(ref MovingObject!B attacker,float actualDamage,ObjectState!B state){
+	if(actualDamage) attacker.heal(actualDamage*attacker.creatureStats.drain,state);
+}
+void healFromDrain(B)(int attacker,float actualDamage,ObjectState!B state){
+	if(state.isValidTarget(attacker,TargetType.creature))
+		return state.movingObjectById!healFromDrain(attacker,actualDamage,state);
+}
+
+float dealDamage(T)(ref T object,float damage,int attacker,int attackingSide,ObjectState!B state)if(is(T==MovingObject!B,B)||is(T==Building!B,B)){
+	if(state.isValidTarget(attacker,TargetType.creature))
+		return state.movingObjectById!((ref atk,obj,dmg,state)=>dealDamage(*obj,dmg,atk,state))(attacker,&object,damage,state);
+	return dealDamage(object,damage,attackingSide,state);
+}
+
 bool canDamage(B)(ref MovingObject!B object,ObjectState!B state){
 	if(object.creatureStats.flags&Flags.cannotDamage) return false;
 	final switch(object.creatureState.mode) with(CreatureMode){
@@ -2874,7 +2900,7 @@ bool canDamage(B)(ref MovingObject!B object,ObjectState!B state){
 
 float dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B attacker,ObjectState!B state){
 	auto actualDamage=dealDamage(object,damage,attacker.side,state);
-	if(actualDamage) attacker.heal(damage*attacker.creatureStats.drain,state);
+	attacker.healFromDrain(actualDamage,state);
 	return actualDamage;
 }
 float dealDamage(B)(ref MovingObject!B object,float damage,int attackingSide,ObjectState!B state){
@@ -2969,145 +2995,146 @@ void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,Ob
 	playSoundTypeAt(attacker.sacObject,attacker.id,SoundType.hit,state);
 }
 
-void dealMeleeDamage(B)(ref Building!B building,ref MovingObject!B attacker,ObjectState!B state){
-	auto damage=attacker.meleeStrength;
-	auto actualDamage=damage*building.meleeResistance*attacker.sacObject.buildingMeleeDamageMultiplier/attacker.numAttackTicks;
-	building.dealDamage(actualDamage,attacker,state);
-	playSoundTypeAt(attacker.sacObject,attacker.id,SoundType.hitWall,state);
+float dealMeleeDamage(B)(ref StaticObject!B object,ref MovingObject!B attacker,ObjectState!B state){
+	return state.buildingById!((ref Building!B building,MovingObject!B* attacker,ObjectState!B state){
+		return building.dealMeleeDamage(*attacker,state);
+	},()=>0.0f)(object.buildingId,&attacker,state);
 }
 
-void dealSpellDamage(B)(ref MovingObject!B object,SacSpell!B spell,int attackerSide,Vector3f attackDirection,ObjectState!B state){
+float dealMeleeDamage(B)(ref Building!B building,ref MovingObject!B attacker,ObjectState!B state){
+	auto damage=attacker.meleeStrength;
+	auto actualDamage=damage*building.meleeResistance*attacker.sacObject.buildingMeleeDamageMultiplier/attacker.numAttackTicks;
+	actualDamage=building.dealDamage(actualDamage,attacker,state);
+	playSoundTypeAt(attacker.sacObject,attacker.id,SoundType.hitWall,state);
+	return actualDamage;
+}
+
+float dealSpellDamage(B)(ref MovingObject!B object,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
 	auto damage=spell.amount;
 	auto actualDamage=damage*object.creatureStats.directSpellResistance;
 	object.damageAnimation(attackDirection,state);
-	object.dealDamage(actualDamage,attackerSide,state);
+	actualDamage=object.dealDamage(actualDamage,attackerSide,state);
+	healFromDrain(attacker,actualDamage,state);
+	return actualDamage;
 }
-void dealSpellDamage(B)(ref Building!B building,SacSpell!B spell,int attackerSide,ObjectState!B state){
+float dealSpellDamage(B)(ref StaticObject!B object,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
+	return state.buildingById!(dealSpellDamage,()=>0.0f)(object.buildingId,spell,attacker,attackerSide,attackDirection,state);
+}
+float dealSpellDamage(B)(ref Building!B building,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
 	auto damage=spell.amount;
 	auto actualDamage=damage*building.directSpellResistance;
-	building.dealDamage(actualDamage,attackerSide,state);
+	return building.dealDamage(actualDamage,attackerSide,state);
+}
+float dealSpellDamage(B)(int target,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
+	if(!state.isValidTarget(target)) return 0.0f;
+	return state.objectById!dealSpellDamage(target,spell,attacker,attackerSide,attackDirection,state);
 }
 
-void dealSpellDamage(B)(int target,SacSpell!B spell,int attackerSide,Vector3f attackDirection,ObjectState!B state){
-	static void dealDamage(B,T)(ref T target,SacSpell!B spell,int attackerSide,Vector3f attackDirection,ObjectState!B state){
-		static if(is(T==MovingObject!B)){
-			target.dealSpellDamage(spell,attackerSide,attackDirection,state);
-		}else static if(is(T==StaticObject!B)){
-			assert(target.buildingId);
-			state.buildingById!((ref Building!B building,SacSpell!B spell,int attackerSide,ObjectState!B state){
-				building.dealSpellDamage(spell,attackerSide,state);
-			})(target.buildingId,spell,attackerSide,state);
-		}
-	}
-	state.objectById!dealDamage(target,spell,attackerSide,attackDirection,state);
-}
-
-void dealSplashSpellDamage(B)(ref MovingObject!B object,SacSpell!B spell,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
+float dealSplashSpellDamage(B)(ref MovingObject!B object,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
 	auto damage=spell.amount*max(0.0f,1.0f-distance/spell.effectRange);
 	auto actualDamage=damage*object.creatureStats.splashSpellResistance;
 	object.damageAnimation(attackDirection,state);
-	object.dealDamage(actualDamage,attackerSide,state);
+	actualDamage=object.dealDamage(actualDamage,attackerSide,state);
+	healFromDrain(attacker,actualDamage,state);
+	return actualDamage;
 }
-void dealSplashSpellDamage(B)(ref Building!B building,SacSpell!B spell,int attackerSide,float distance,ObjectState!B state){
+
+float dealSplashSpellDamage(B)(ref StaticObject!B object,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
+	return state.buildingById!(dealSplashSpellDamage,()=>0.0f)(object.buildingId,spell,attacker,attackerSide,attackDirection,distance,state);
+}
+
+float dealSplashSpellDamage(B)(ref Building!B building,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
 	auto damage=spell.amount*max(0.0f,1.0f-distance/spell.effectRange);
 	auto actualDamage=damage*building.splashSpellResistance;
-	building.dealDamage(actualDamage,attackerSide,state);
+	return building.dealDamage(actualDamage,attackerSide,state);
 }
 
-void dealSplashSpellDamage(B)(int target,SacSpell!B spell,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
-	static void dealDamage(B,T)(ref T target,SacSpell!B spell,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
-		static if(is(T==MovingObject!B)){
-			target.dealSplashSpellDamage(spell,attackerSide,attackDirection,distance,state);
-		}else static if(is(T==StaticObject!B)){
-			assert(target.buildingId);
-			state.buildingById!((ref Building!B building,SacSpell!B spell,int attackerSide,float distance,ObjectState!B state){
-				building.dealSplashSpellDamage(spell,attackerSide,distance,state);
-			})(target.buildingId,spell,attackerSide,distance,state);
-		}
-	}
-	state.objectById!dealDamage(target,spell,attackerSide,attackDirection,distance,state);
+float dealSplashSpellDamage(B)(int target,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
+	if(!state.isValidTarget(target)) return 0.0f;
+	return state.objectById!dealSplashSpellDamage(target,spell,attacker,attackerSide,attackDirection,distance,state);
 }
 
-void dealSplashSpellDamageAt(B)(int directTarget,SacSpell!B spell,int attackerSide,Vector3f position,ObjectState!B state){
+float dealSplashSpellDamageAt(B)(int directTarget,SacSpell!B spell,int attacker,int attackerSide,Vector3f position,ObjectState!B state){
 	auto radius=spell.effectRange;
-	static void dealDamage(ProximityEntry target,ObjectState!B state,int directTarget,SacSpell!B spell,int attackerSide,Vector3f position){
+	static void dealDamage(ProximityEntry target,ObjectState!B state,int directTarget,SacSpell!B spell,int attacker,int attackerSide,Vector3f position,float* sum){
 		if(target.id==directTarget) return;
 		auto radius=spell.effectRange;
 		auto distance=boxPointDistance(target.hitbox,position);
 		if(distance>radius) return;
 		auto attackDirection=state.objectById!((obj)=>obj.center)(target.id)-position;
-		dealSplashSpellDamage(target.id,spell,attackerSide,attackDirection,distance,state);
+		*sum+=dealSplashSpellDamage(target.id,spell,attacker,attackerSide,attackDirection,distance,state);
 	}
 	auto offset=Vector3f(radius,radius,radius);
 	Vector3f[2] hitbox=[position-offset,position+offset];
-	collisionTargets!dealDamage(hitbox,state,directTarget,spell,attackerSide,position);
+	float sum=0.0f;
+	collisionTargets!dealDamage(hitbox,state,directTarget,spell,attacker,attackerSide,position,&sum);
+	return sum;
 }
 
-void dealRangedDamage(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int attackerSide,Vector3f attackDirection,ObjectState!B state){
+float dealRangedDamage(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
 	auto damage=rangedAttack.amount;
 	auto actualDamage=damage*object.creatureStats.directRangedResistance;
 	object.damageAnimation(attackDirection,state);
-	object.dealDamage(actualDamage,attackerSide,state);
+	actualDamage=object.dealDamage(actualDamage,attackerSide,state);
+	healFromDrain(attacker,actualDamage,state);
+	return actualDamage;
 }
-void dealRangedDamage(B)(ref Building!B building,SacSpell!B rangedAttack,int attackerSide,ObjectState!B state){
+
+float dealRangedDamage(B)(ref StaticObject!B object,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
+	return state.buildingById!(dealRangedDamage,()=>0.0f)(object.buildingId,rangedAttack,attacker,attackerSide,attackDirection,state);
+
+}
+
+float dealRangedDamage(B)(ref Building!B building,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
 	auto damage=rangedAttack.amount;
 	auto actualDamage=damage*building.directRangedResistance;
-	building.dealDamage(actualDamage,attackerSide,state);
+	return building.dealDamage(actualDamage,attackerSide,state);
 }
 
-void dealRangedDamage(B)(int target,SacSpell!B rangedAttack,int attackerSide,Vector3f attackDirection,ObjectState!B state){
-	static void dealDamage(B,T)(ref T target,SacSpell!B rangedAttack,int attackerSide,Vector3f attackDirection,ObjectState!B state){
-		static if(is(T==MovingObject!B)){
-			target.dealRangedDamage(rangedAttack,attackerSide,attackDirection,state);
-		}else static if(is(T==StaticObject!B)){
-			assert(target.buildingId);
-			state.buildingById!((ref Building!B building,SacSpell!B rangedAttack,int attackerSide,ObjectState!B state){
-				building.dealRangedDamage(rangedAttack,attackerSide,state);
-			})(target.buildingId,rangedAttack,attackerSide,state);
-		}
-	}
-	state.objectById!dealDamage(target,rangedAttack,attackerSide,attackDirection,state);
+float dealRangedDamage(B)(int target,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
+	if(!state.isValidTarget(target)) return 0.0f;
+	return state.objectById!dealRangedDamage(target,rangedAttack,attacker,attackerSide,attackDirection,state);
 }
 
-void dealSplashRangedDamage(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
+float dealSplashRangedDamage(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
 	auto damage=rangedAttack.amount*max(0.0f,1.0f-distance/rangedAttack.effectRange);
 	auto actualDamage=damage*object.creatureStats.splashRangedResistance;
 	object.damageAnimation(attackDirection,state);
-	object.dealDamage(actualDamage,attackerSide,state);
-}
-void dealSplashRangedDamage(B)(ref Building!B building,SacSpell!B rangedAttack,int attackerSide,float distance,ObjectState!B state){
-	auto damage=rangedAttack.amount*max(0.0f,1.0f-distance/rangedAttack.effectRange);
-	auto actualDamage=damage*building.splashRangedResistance;
-	building.dealDamage(actualDamage,attackerSide,state);
+	actualDamage=object.dealDamage(actualDamage,attackerSide,state);
+	healFromDrain(attacker,actualDamage,state);
+	return actualDamage;
 }
 
-void dealSplashRangedDamage(B)(int target,SacSpell!B rangedAttack,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
-	static void dealDamage(B,T)(ref T target,SacSpell!B rangedAttack,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
-		static if(is(T==MovingObject!B)){
-			target.dealSplashRangedDamage(rangedAttack,attackerSide,attackDirection,distance,state);
-		}else static if(is(T==StaticObject!B)){
-			assert(target.buildingId);
-			state.buildingById!((ref Building!B building,SacSpell!B rangedAttack,int attackerSide,float distance,ObjectState!B state){
-				building.dealSplashRangedDamage(rangedAttack,attackerSide,distance,state);
-			})(target.buildingId,rangedAttack,attackerSide,distance,state);
-		}
-	}
-	state.objectById!dealDamage(target,rangedAttack,attackerSide,attackDirection,distance,state);
+float dealSplashRangedDamage(B)(ref StaticObject!B building,SacSpell!B rangedAttack,int attacker,int attackerSide,float distance,Vector3f attackDirection,ObjectState!B state){
+	state.buildingById!(dealSplashRangedDamage,()=>0.0f)(rangedAttack,attackerSide,distance,attackDirection,state);
+}
+
+float dealSplashRangedDamage(B)(ref Building!B building,SacSpell!B rangedAttack,int attacker,int attackerSide,float distance,Vector3f attackDirection,ObjectState!B state){
+	auto damage=rangedAttack.amount*max(0.0f,1.0f-distance/rangedAttack.effectRange);
+	auto actualDamage=damage*building.splashRangedResistance;
+	return building.dealDamage(actualDamage,attackerSide,state);
+}
+
+float dealSplashRangedDamage(B)(int target,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
+	if(!state.isValidId(target)) return 0.0f;
+	return state.objectById!dealSplashRangedDamage(target,rangedAttack,attackerSide,attackDirection,distance,state);
 }
 
 void dealSplashRangedDamageAt(B)(int directTarget,SacSpell!B rangedAttack,int attackerSide,Vector3f position,ObjectState!B state){
 	auto radius=rangedAttack.effectRange;
-	static void dealDamage(ProximityEntry target,ObjectState!B state,int directTarget,SacSpell!B rangedAttack,int attackerSide,Vector3f position){
+	static void dealDamage(ProximityEntry target,ObjectState!B state,int directTarget,SacSpell!B rangedAttack,int attackerSide,Vector3f position,float* sum){
 		if(target.id==directTarget) return;
 		auto radius=rangedAttack.effectRange;
 		auto distance=boxPointDistance(target.hitbox,position);
 		if(distance>radius) return;
 		auto attackDirection=state.objectById!((obj)=>obj.center)(target.id)-position;
-		dealSplashRangedDamage(target.id,rangedAttack,attackerSide,attackDirection,distance,state);
+		sum+=dealSplashRangedDamage(target.id,rangedAttack,attackerSide,attackDirection,distance,state);
 	}
 	auto offset=Vector3f(radius,radius,radius);
 	Vector3f[2] hitbox=[position-offset,position+offset];
-	collisionTargets!dealDamage(hitbox,state,directTarget,rangedAttack,attackerSide,position);
+	float sum=0.0f;
+	collisionTargets!dealDamage(hitbox,state,directTarget,rangedAttack,attackerSide,position,&sum);
+	return sum;
 }
 
 void setMovement(B)(ref MovingObject!B object,MovementDirection direction,ObjectState!B state,int side=-1){
@@ -3308,17 +3335,17 @@ bool castLightning(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectSt
 	return true;
 }
 
-bool lightning(B)(int immuneId,int side,OrderTarget start,OrderTarget end,SacSpell!B spell,ObjectState!B state){
+bool lightning(B)(int wizard,int side,OrderTarget start,OrderTarget end,SacSpell!B spell,ObjectState!B state){
 	auto startCenter=start.center(state),endCenter=end.center(state);
 	static bool filter(ref ProximityEntry entry,int id){ return entry.id!=id; }
-	auto newEnd=state.collideRay!filter(startCenter,endCenter-startCenter,1.0f,immuneId);
+	auto newEnd=state.collideRay!filter(startCenter,endCenter-startCenter,1.0f,wizard);
 	if(newEnd.type!=TargetType.none){
 		end=newEnd;
 		endCenter=end.center(state);
 	}
 	end.position=endCenter;
 	playSpellSoundTypeAt(SoundType.lightning,0.5f*(startCenter+endCenter),state,4.0f);
-	auto lightning=Lightning!B(side,start,end,spell,0);
+	auto lightning=Lightning!B(wizard,side,start,end,spell,0);
 	foreach(ref bolt;lightning.bolts)
 		bolt.changeShape(state);
 	state.addEffect(lightning);
@@ -3338,17 +3365,17 @@ bool wrath(B)(int wizard,int side,Vector3f position,OrderTarget target,SacSpell!
 	target.position=target.center(state);
 	playSoundAt("shtr",position,state,4.0f); // TODO: move sound with wrath ball
 	auto velocity=Vector3f(0.0f,0.0f,0.0f);
-	auto wrath=Wrath!B(side,position,velocity,target,spell);
+	auto wrath=Wrath!B(wizard,side,position,velocity,target,spell);
 	state.addEffect(wrath);
 	return true;
 }
 
-Fireball!B makeFireball(B)(int side,Vector3f position,OrderTarget target,SacSpell!B spell,ObjectState!B state){
+Fireball!B makeFireball(B)(int wizard,int side,Vector3f position,OrderTarget target,SacSpell!B spell,ObjectState!B state){
 	auto rotationSpeed=2*pi!float*state.uniform(0.5f,2.0f)/updateFPS;
 	auto velocity=Vector3f(0.0f,0.0f,0.0f);
 	auto rotationAxis=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
 	auto rotationUpdate=rotationQuaternion(rotationAxis,rotationSpeed);
-	return Fireball!B(side,position,velocity,target,spell,rotationUpdate,Quaternionf.identity());
+	return Fireball!B(wizard,side,position,velocity,target,spell,rotationUpdate,Quaternionf.identity());
 }
 Vector3f fireballCastingPosition(B)(ref MovingObject!B obj,ObjectState!B state){
 	auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
@@ -3361,7 +3388,7 @@ bool castFireball(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectSta
 	if(!state.isValidTarget(target)) return false;
 	auto positionSide=state.movingObjectById!((obj,state)=>tuple(obj.fireballCastingPosition(state),obj.side),function Tuple!(Vector3f,int){ assert(0); })(manaDrain.wizard,state);
 	auto position=positionSide[0],side=positionSide[1];
-	auto fireball=makeFireball(side,position,centerTarget(target,state),spell,state);
+	auto fireball=makeFireball(manaDrain.wizard,side,position,centerTarget(target,state),spell,state);
 	state.addEffect(FireballCasting!B(manaDrain,spell,fireball));
 	return true;
 }
@@ -3372,12 +3399,12 @@ bool fireball(B)(Fireball!B fireball,ObjectState!B state){
 	return true;
 }
 
-Rock!B makeRock(B)(int immuneId,int side,Vector3f position,OrderTarget target,SacSpell!B spell,ObjectState!B state){
+Rock!B makeRock(B)(int wizard,int side,Vector3f position,OrderTarget target,SacSpell!B spell,ObjectState!B state){
 	auto rotationSpeed=2*pi!float*state.uniform(0.1f,0.4f)/updateFPS;
 	auto velocity=Vector3f(0.0f,0.0f,0.0f);
 	auto rotationAxis=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
 	auto rotationUpdate=rotationQuaternion(rotationAxis,rotationSpeed);
-	return Rock!B(immuneId,side,position,velocity,target,spell,rotationUpdate,Quaternionf.identity());
+	return Rock!B(wizard,side,position,velocity,target,spell,rotationUpdate,Quaternionf.identity());
 }
 enum rockBuryDepth=1.0f;
 Vector3f rockCastingPosition(B)(ref MovingObject!B obj,ObjectState!B state){
@@ -3386,14 +3413,14 @@ Vector3f rockCastingPosition(B)(ref MovingObject!B obj,ObjectState!B state){
 	position.z=state.getHeight(position)-rockBuryDepth;
 	return position;
 }
-bool castRock(B,T)(int immuneId,ref T object,ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,ObjectState!B state)if(!is(T==int)){
-	return castRock(immuneId,object.id,manaDrain,spell,castingTime,state);
+bool castRock(B,T)(int wizard,ref T object,ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,ObjectState!B state)if(!is(T==int)){
+	return castRock(wizard,object.id,manaDrain,spell,castingTime,state);
 }
-bool castRock(B)(int immuneId,int target,ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,ObjectState!B state){
+bool castRock(B)(int wizard,int target,ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,ObjectState!B state){
 	if(!state.isValidTarget(target)) return false;
 	auto positionSide=state.movingObjectById!((obj,state)=>tuple(obj.rockCastingPosition(state),obj.side),function Tuple!(Vector3f,int){ assert(0); })(manaDrain.wizard,state);
 	auto position=positionSide[0],side=positionSide[1];
-	auto rock=makeRock(immuneId,side,position,centerTarget(target,state),spell,state);
+	auto rock=makeRock(wizard,side,position,centerTarget(target,state),spell,state);
 	state.addEffect(RockCasting!B(manaDrain,spell,rock,0,castingTime));
 	return true;
 }
@@ -3409,9 +3436,9 @@ Bug!B makeBug(B)(Vector3f position,Vector3f velocity,Vector3f targetPosition){
 	return Bug!B(position,velocity,targetPosition);
 }
 
-Swarm!B makeSwarm(B)(int side,Vector3f position,OrderTarget target,SacSpell!B spell,int frame,ObjectState!B state){
+Swarm!B makeSwarm(B)(int wizard,int side,Vector3f position,OrderTarget target,SacSpell!B spell,int frame,ObjectState!B state){
 	auto velocity=Vector3f(0.0f,0.0f,0.0f);
-	return Swarm!B(side,position,velocity,target,spell,frame);
+	return Swarm!B(wizard,side,position,velocity,target,spell,frame);
 }
 Vector3f swarmCastingPosition(B)(ref MovingObject!B obj,ObjectState!B state){
 	auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
@@ -3424,7 +3451,7 @@ bool castSwarm(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,int castingT
 	if(!state.isValidTarget(target)) return false;
 	auto positionSide=state.movingObjectById!((obj,state)=>tuple(obj.swarmCastingPosition(state),obj.side),function Tuple!(Vector3f,int){ assert(0); })(manaDrain.wizard,state);
 	auto position=positionSide[0],side=positionSide[1];
-	auto swarm=makeSwarm(side,position,centerTarget(target,state),spell,castingTime,state);
+	auto swarm=makeSwarm(manaDrain.wizard,side,position,centerTarget(target,state),spell,castingTime,state);
 	playSpellSoundTypeAt(SoundType.swarm,swarm.position,state,4.0f); // TODO: move sound with swarm
 	state.addEffect(SwarmCasting!B(manaDrain,spell,move(swarm)));
 	return true;
@@ -3440,10 +3467,10 @@ Vector3f getShotDirection(B)(float accuracy,Vector3f position,Vector3f target,Sa
 	return rotate(facingQuaternion(φ),(target-position+5.0f*accuracy*state.normal()).normalized); // TODO: ok?
 }
 
-bool brainiacShoot(B)(int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+bool brainiacShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
 	playSoundAt("snrb",position,state,4.0f); // TODO: move sound with wrath ball
 	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
-	state.addEffect(BrainiacProjectile!B(side,intendedTarget,position,direction,rangedAttack));
+	state.addEffect(BrainiacProjectile!B(attacker,side,intendedTarget,position,direction,rangedAttack));
 	return true;
 }
 
@@ -3822,7 +3849,7 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 				auto accuracy=object.creatureStats.rangedAccuracy;
 				switch(rangedAttack.tag){
 					case SpellTag.brainiacShoot:
-						brainiacShoot(object.side,targetId,accuracy,object.shotPosition,predicted,rangedAttack,state);
+						brainiacShoot(object.id,object.side,targetId,accuracy,object.shotPosition,predicted,rangedAttack,state);
 						break;
 					default: goto case SpellTag.brainiacShoot;
 				}
@@ -4417,14 +4444,7 @@ void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 		object.creatureState.mode=CreatureMode.meleeAttacking;
 		if(auto target=object.meleeAttackTarget(state)){
 			static void dealDamage(T)(ref T target,MovingObject!B* attacker,ObjectState!B state){
-				static if(is(T==MovingObject!B)){
-					target.dealMeleeDamage(*attacker,state);
-				}else static if(is(T==StaticObject!B)){
-					assert(target.buildingId);
-					state.buildingById!((ref Building!B building,MovingObject!B* attacker,ObjectState!B state){
-						building.dealMeleeDamage(*attacker,state);
-					})(target.buildingId,attacker,state);
-				}
+				target.dealMeleeDamage(*attacker,state);
 			}
 			state.objectById!dealDamage(target,&object,state);
 		}
@@ -5222,7 +5242,7 @@ bool updateLightning(B)(ref Lightning!B lightning,ObjectState!B state){
 		auto target=lightning.end.id;
 		if(state.isValidTarget(target)){
 			auto direction=lightning.end.position-lightning.start.position;
-			dealSpellDamage(target,lightning.spell,lightning.side,direction,state);
+			dealSpellDamage(target,lightning.spell,lightning.wizard,lightning.side,direction,state);
 		}
 	}
 	return true;
@@ -5314,9 +5334,9 @@ int wrathCollisionTarget(B)(int side,Vector3f position,ObjectState!B state){
 void wrathExplosion(B)(ref Wrath!B wrath,int target,ObjectState!B state){
 	wrath.status=WrathStatus.exploding;
 	playSoundAt("hhtr",wrath.position,state,4.0f);
-	if(state.isValidTarget(target)) dealSpellDamage(target,wrath.spell,wrath.side,wrath.velocity,state);
+	if(state.isValidTarget(target)) dealSpellDamage(target,wrath.spell,wrath.wizard,wrath.side,wrath.velocity,state);
 	else target=0;
-	dealSplashSpellDamageAt(target,wrath.spell,wrath.side,wrath.position,state);
+	dealSplashSpellDamageAt(target,wrath.spell,wrath.wizard,wrath.side,wrath.position,state);
 	enum numParticles1=200;
 	enum numParticles2=400;
 	auto sacParticle1=SacParticle!B.get(ParticleType.wrathExplosion1);
@@ -5436,9 +5456,9 @@ int fireballCollisionTarget(B)(int side,Vector3f position,ObjectState!B state){
 
 void fireballExplosion(B)(ref Fireball!B fireball,int target,ObjectState!B state){
 	playSpellSoundTypeAt(SoundType.explodingFireball,fireball.position,state,8.0f);
-	if(state.isValidTarget(target)) dealSpellDamage(target,fireball.spell,fireball.side,fireball.velocity,state);
+	if(state.isValidTarget(target)) dealSpellDamage(target,fireball.spell,fireball.wizard,fireball.side,fireball.velocity,state);
 	else target=0;
-	dealSplashSpellDamageAt(target,fireball.spell,fireball.side,fireball.position,state);
+	dealSplashSpellDamageAt(target,fireball.spell,fireball.wizard,fireball.side,fireball.position,state);
 	//explosionParticles(fireball.position,state);
 	enum numParticles1=200;
 	enum numParticles2=800;
@@ -5601,7 +5621,7 @@ int rockCollisionTarget(B)(int immuneId,int side,Vector3f position,ObjectState!B
 
 void rockExplosion(B)(ref Rock!B rock,int target,ObjectState!B state){
 	playSpellSoundTypeAt(SoundType.explodingRock,rock.position,state,8.0f);
-	if(state.isValidTarget(target)) dealSpellDamage(target,rock.spell,rock.side,rock.velocity,state);
+	if(state.isValidTarget(target)) dealSpellDamage(target,rock.spell,rock.wizard,rock.side,rock.velocity,state);
 	enum numParticles3=100;
 	auto sacParticle3=SacParticle!B.get(ParticleType.rock);
 	foreach(i;0..numParticles3){
@@ -5650,7 +5670,7 @@ bool updateRock(B)(ref Rock!B rock,ObjectState!B state){
 		position=newPosition;
 		rotation=rotationUpdate*rotation;
 		rock.animateRock(oldPosition,state);
-		auto target=rockCollisionTarget(immuneId,side,position,state);
+		auto target=rockCollisionTarget(wizard,side,position,state);
 		if(state.isValidTarget(target)){
 			rock.rockExplosion(target,state);
 			return false;
@@ -5791,7 +5811,7 @@ void swarmHit(B)(ref Swarm!B swarm,int target,ObjectState!B state){
 	swarm.status=SwarmStatus.dispersing;
 	playSoundAt("zzub",swarm.position,state,4.0f);
 	if(state.isValidTarget(target)){
-		dealSpellDamage(target,swarm.spell,swarm.side,swarm.velocity,state);
+		dealSpellDamage(target,swarm.spell,swarm.wizard,swarm.side,swarm.velocity,state);
 		static void hit(T)(ref T obj,Swarm!B *swarm,ObjectState!B state){
 			static if(is(T==MovingObject!B)){
 				obj.creatureStats.mana=max(0.0f,obj.creatureStats.mana-0.25f*obj.creatureStats.maxMana);
@@ -5814,7 +5834,7 @@ void swarmHit(B)(ref Swarm!B swarm,int target,ObjectState!B state){
 		}
 		state.objectById!hit(target,&swarm,state);
 	}else target=0;
-	dealSplashSpellDamageAt(target,swarm.spell,swarm.side,swarm.position,state);
+	dealSplashSpellDamageAt(target,swarm.spell,swarm.wizard,swarm.side,swarm.position,state);
 }
 bool updateSwarm(B)(ref Swarm!B swarm,ObjectState!B state){
 	with(swarm){
@@ -5913,7 +5933,7 @@ bool updateBrainiacProjectile(B)(ref BrainiacProjectile!B brainiacProjectile,Obj
 				state.movingObjectById!((ref obj,state){ obj.stunWithCooldown(stunCooldownFrames,state); },(){})(target.id,state);
 				goto case;
 			case TargetType.building:
-				dealRangedDamage(target.id,rangedAttack,side,direction,state);
+				dealRangedDamage(target.id,rangedAttack,attacker,side,direction,state);
 				return terminate();
 			default: break;
 		}
@@ -7142,6 +7162,9 @@ final class ObjectState(B){ // (update logic)
 	}
 	bool isValidId(int id){
 		return obj.isValidId(id);
+	}
+	bool isValidBuilding(int id){
+		return obj.isValidBuilding(id);
 	}
 	bool isValidTarget(int id){
 		return obj.isValidTarget(id);
