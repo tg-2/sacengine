@@ -3050,6 +3050,8 @@ float dealSplashSpellDamage(B)(ref Building!B building,SacSpell!B spell,int atta
 }
 
 float dealSplashSpellDamage(B)(int target,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
+	if(state.isValidBuilding(target))
+		return state.buildingById!(dealSplashSpellDamage,()=>0.0f)(target,spell,attacker,attackerSide,attackDirection,distance,state);
 	if(!state.isValidTarget(target)) return 0.0f;
 	return state.objectById!dealSplashSpellDamage(target,spell,attacker,attackerSide,attackDirection,distance,state);
 }
@@ -3067,7 +3069,7 @@ float dealSplashSpellDamageAt(B)(int directTarget,SacSpell!B spell,int attacker,
 	auto offset=Vector3f(radius,radius,radius);
 	Vector3f[2] hitbox=[position-offset,position+offset];
 	float sum=0.0f;
-	collisionTargets!dealDamage(hitbox,state,directTarget,spell,attacker,attackerSide,position,&sum);
+	collisionTargets!(dealDamage,None,true)(hitbox,state,directTarget,spell,attacker,attackerSide,position,&sum);
 	return sum;
 }
 
@@ -3116,6 +3118,8 @@ float dealSplashRangedDamage(B)(ref Building!B building,SacSpell!B rangedAttack,
 }
 
 float dealSplashRangedDamage(B)(int target,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
+	if(state.isValidBuilding(target))
+		return state.buildingById!(dealSplashRangedDamage,()=>0.0f)(target,spell,attacker,attackerSide,attackDirection,distance,state);
 	if(!state.isValidId(target)) return 0.0f;
 	return state.objectById!dealSplashRangedDamage(target,rangedAttack,attackerSide,attackDirection,distance,state);
 }
@@ -3133,7 +3137,7 @@ void dealSplashRangedDamageAt(B)(int directTarget,SacSpell!B rangedAttack,int at
 	auto offset=Vector3f(radius,radius,radius);
 	Vector3f[2] hitbox=[position-offset,position+offset];
 	float sum=0.0f;
-	collisionTargets!dealDamage(hitbox,state,directTarget,rangedAttack,attackerSide,position,&sum);
+	collisionTargets!(dealDamage,None,true)(hitbox,state,directTarget,rangedAttack,attackerSide,position,&sum);
 	return sum;
 }
 
@@ -5312,7 +5316,7 @@ int collisionTarget(alias hitbox,alias filter=None,B,T...)(int side,Vector3f pos
 	state.proximity.collide!handleCollision(moveBox(hitbox,position),side,position,&collisionState,state,args);
 	return collisionState.target;
 }
-void collisionTargets(alias f,alias filter=None,B,T...)(Vector3f[2] hitbox,ObjectState!B state,T args){
+void collisionTargets(alias f,alias filter=None,bool uniqueBuildingIds=false,B,T...)(Vector3f[2] hitbox,ObjectState!B state,T args){
 	static struct CollisionState{ SmallArray!(ProximityEntry,32) targets; }
 	static void handleCollision(ProximityEntry entry,CollisionState* collisionState,ObjectState!B state,T args){
 		static if(!is(filter==None)) if(!filter(entry,state,args)) return;
@@ -5320,8 +5324,26 @@ void collisionTargets(alias f,alias filter=None,B,T...)(Vector3f[2] hitbox,Objec
 	}
 	auto collisionState=CollisionState();
 	state.proximity.collide!handleCollision(hitbox,&collisionState,state,args);
-	// TODO: deal splash damage based on _closest_ hitbox!
-	foreach(ref entry;collisionState.targets[].sort!"a.id<b.id".uniq!"a.id==b.id") f(entry,state,args);
+	auto id(ref ProximityEntry entry){ // TODO: only compute this once?
+		static if(uniqueBuildingIds){
+			if(state.isValidTarget(entry.id,TargetType.building)){
+				auto cand=state.staticObjectById!((ref obj)=>obj.buildingId,()=>0)(entry.id);
+				return cand?cand:entry.id;
+			}
+		}
+		return entry.id;
+	}
+	auto center=boxCenter(hitbox); // TODO: pass this as argument?
+	auto compare(string op)(ref ProximityEntry a,ref ProximityEntry b){
+		static if(op=="==") return id(a)==id(b);
+		static if(op=="<"){
+			auto ida=id(a),idb=id(b);
+			if(ida<idb) return true;
+			if(ida>idb) return false;
+			return boxPointDistanceSqr(a.hitbox,center)<boxPointDistanceSqr(b.hitbox,center);
+		}
+	}
+	foreach(ref entry;collisionState.targets[].sort!(compare!"<").uniq!(compare!"==")) f(entry,state,args);
 }
 enum wrathSize=0.1f;
 static immutable Vector3f[2] wrathHitbox=[-0.5f*wrathSize*Vector3f(1.0f,1.0f,1.0f),0.5f*wrathSize*Vector3f(1.0f,1.0f,1.0f)];
