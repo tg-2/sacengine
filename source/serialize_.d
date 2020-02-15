@@ -296,6 +296,12 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Bra
 void serialize(alias sink)(ref BrainiacEffect brainiacEffect){ serializeStruct!sink(brainiacEffect); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BrainiacEffect)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref ShrikeProjectile!B shrikeProjectile){ serializeStruct!sink(shrikeProjectile); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ShrikeProjectile!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink)(ref ShrikeEffect shrikeEffect){ serializeStruct!sink(shrikeEffect); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ShrikeEffect)){ deserializeStruct(result,state,data); }
+
 private alias Effects=state.Effects;
 void serialize(alias sink,B)(ref Effects!B effects){ serializeStruct!sink(effects); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Effects!B)){ deserializeStruct(result,state,data); }

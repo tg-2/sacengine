@@ -116,6 +116,18 @@ final class SacScene: Scene{
 		auto frames=typeof(return).createMeshes();
 		return SacBrainiacEffect!DagonBackend(texture,mat,frames);
 	}
+	SacShrikeEffect!DagonBackend shrikeEffect;
+	SacShrikeEffect!DagonBackend createShrikeEffect(){
+		import txtr;
+		auto texture=typeof(return).loadTexture();
+		auto mat=createMaterial(shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=Additive;
+		mat.energy=15.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacShrikeEffect!DagonBackend(texture,mat,frames);
+	}
 	void createEffects(){
 		sacCommandCone=new SacCommandCone!DagonBackend();
 		sacDebris=new SacObject!DagonBackend("extracted/models/MODL.WAD!/bold.MRMC/bold.MRMM");
@@ -126,6 +138,7 @@ final class SacScene: Scene{
 		rock=new SacObject!DagonBackend("extracted/models/MODL.WAD!/rock.MRMC/rock.MRMM");
 		bug=createBug();
 		brainiacEffect=createBrainiacEffect();
+		shrikeEffect=createShrikeEffect();
 	}
 
 	void setupEnvironment(SacMap!DagonBackend map){
@@ -547,7 +560,22 @@ final class SacScene: Scene{
 						mesh.render(rc);
 					}
 				}
-
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.shrikeEffects.length){
+					auto material=scene.shrikeEffect.material;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
+					foreach(j;0..objects.shrikeEffects.length){
+						auto position=objects.shrikeEffects[j].position;
+						auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),objects.shrikeEffects[j].direction); // TODO: precompute this?
+						auto frame=objects.shrikeEffects[j].frame;
+						auto relativeProgress=float(frame)/scene.shrikeEffect.numFrames;
+						auto scale=1.0f+0.6f*relativeProgress^^2.5f;
+						scene.shadelessMaterialBackend.setTransformationScaled(position,rotation,scale*Vector3f(1.0f,1.0f,1.0f),rc);
+						scene.shadelessMaterialBackend.setAlpha(0.95f*(1.0f-relativeProgress)^^2.0f);
+						auto mesh=scene.shrikeEffect.getFrame(objects.shrikeEffects[j].frame%scene.shrikeEffect.numFrames);
+						mesh.render(rc);
+					}
+				}
 			}else static if(is(T==Particles!(DagonBackend,relative),bool relative)){
 				static if(mode==RenderMode.transparent){
 					if(rc.shadowMode) return; // TODO: particle shadows?

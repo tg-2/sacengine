@@ -1425,6 +1425,20 @@ struct SacBrainiacEffect(B){
 	}
 }
 
+struct SacShrikeEffect(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/sonc.TXTR"));
+	}
+	B.Material material;
+	B.Mesh[] frames;
+	enum animationDelay=1;
+	enum numFrames=64*animationDelay*updateAnimFactor;
+	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
+	static B.Mesh[] createMeshes(){
+		return makeSpriteMeshes!(B,true)(8,8,1.65f,1.65f);
+	}
+}
 
 enum CommandConeColor{
 	white,

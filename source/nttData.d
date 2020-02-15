@@ -1045,6 +1045,7 @@ enum SpellTag:char[4]{
 	runAway="!nur",
 	// ranged attacks:
 	brainiacShoot="bsba",
+	shrikeShoot="absh",
 }
 
 enum WizardTag:char[4]{

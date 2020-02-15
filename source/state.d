@@ -1582,6 +1582,22 @@ struct BrainiacEffect{
 	int frame=0;
 }
 
+struct ShrikeProjectile(B){
+	int attacker;
+	int side;
+	int intendedTarget;
+	Vector3f position;
+	Vector3f direction;
+	SacSpell!B rangedAttack;
+	int frame=0;
+	float travelDistance=0.0f;
+}
+struct ShrikeEffect{
+	Vector3f position;
+	Vector3f direction;
+	int frame=0;
+}
+
 struct Effects(B){
 	// misc
 	Array!(Debris!B) debris;
@@ -1764,6 +1780,22 @@ struct Effects(B){
 		if(i+1<brainiacEffects.length) brainiacEffects[i]=move(brainiacEffects[$-1]);
 		brainiacEffects.length=brainiacEffects.length-1;
 	}
+	Array!(ShrikeProjectile!B) shrikeProjectiles;
+	void addEffect(ShrikeProjectile!B shrikeProjectile){
+		shrikeProjectiles~=shrikeProjectile;
+	}
+	void removeShrikeProjectile(int i){
+		if(i+1<shrikeProjectiles.length) shrikeProjectiles[i]=move(shrikeProjectiles[$-1]);
+		shrikeProjectiles.length=shrikeProjectiles.length-1;
+	}
+	Array!ShrikeEffect shrikeEffects;
+	void addEffect(ShrikeEffect shrikeEffect){
+		shrikeEffects~=shrikeEffect;
+	}
+	void removeShrikeEffect(int i){
+		if(i+1<shrikeEffects.length) shrikeEffects[i]=move(shrikeEffects[$-1]);
+		shrikeEffects.length=shrikeEffects.length-1;
+	}
 	void opAssign(ref Effects!B rhs){
 		assignArray(debris,rhs.debris);
 		assignArray(explosions,rhs.explosions);
@@ -1787,6 +1819,8 @@ struct Effects(B){
 		assignArray(swarms,rhs.swarms);
 		assignArray(brainiacProjectiles,rhs.brainiacProjectiles);
 		assignArray(brainiacEffects,rhs.brainiacEffects);
+		assignArray(shrikeProjectiles,rhs.shrikeProjectiles);
+		assignArray(shrikeEffects,rhs.shrikeEffects);
 	}
 	void opAssign(Effects!B rhs){ this.tupleof=rhs.tupleof; }
 }
@@ -3472,9 +3506,16 @@ Vector3f getShotDirection(B)(float accuracy,Vector3f position,Vector3f target,Sa
 }
 
 bool brainiacShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
-	playSoundAt("snrb",position,state,4.0f); // TODO: move sound with wrath ball
+	playSoundAt("snrb",position,state,4.0f); // TODO: move sound with projectile
 	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
 	state.addEffect(BrainiacProjectile!B(attacker,side,intendedTarget,position,direction,rangedAttack));
+	return true;
+}
+
+bool shrikeShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	playSoundAt("krhs",position,state,4.0f); // TODO: move sound with projectile
+	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
+	state.addEffect(ShrikeProjectile!B(attacker,side,intendedTarget,position,direction,rangedAttack));
 	return true;
 }
 
@@ -3634,7 +3675,7 @@ void unqueueOrder(B)(ref MovingObject!B object,ObjectState!B state){
 }
 
 
-bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectState!B state,float threshold=defaultFaceThreshold,bool aggressive=false,int targetId=0){
+bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPosition,out bool evading,ObjectState!B state,float threshold=defaultFaceThreshold,bool aggressive=false,int targetId=0){
 	auto hitbox=object.hitbox;
 	auto rotation=facingQuaternion(object.creatureState.facing);
 	auto distance=0.05f*((hitbox[1].x-hitbox[0].x)+(hitbox[1].y-hitbox[0].y)); // TODO: improve
@@ -3660,10 +3701,11 @@ bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPositi
 			}
 			object.setTurning(evasion,state);
 			object.startMovingForward(state);
+			evading=true;
 			return true;
 		}
 	}
-	object.turnToFaceTowards(targetPosition,state,threshold);
+	auto result=object.turnToFaceTowards(targetPosition,state,threshold);
 	auto rotationDirection=object.creatureState.rotationDirection;
 	if(rotationDirection!=RotationDirection.none){
 		enum sideHitboxFactor=1.1f;
@@ -3673,10 +3715,11 @@ bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPositi
 		if(blockedSide){
 			object.stopTurning(state);
 			object.startMovingForward(state);
+			evading=true;
 			return true;
 		}
 	}
-	return false;
+	return result;
 }
 
 bool stop(B)(ref MovingObject!B object,float targetFacing,ObjectState!B state,float threshold=defaultFaceThreshold){
@@ -3719,8 +3762,11 @@ void moveTowards(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectStat
 		if(object.takeoffTime(state)+distance/flyingSpeed<distance/walkingSpeed)
 			object.startFlying(state);
 	}
-	if(!evade) object.turnToFaceTowards(targetPosition,state);
-	else if(object.turnToFaceTowardsEvading(targetPosition,state)) return;
+	if(evade){
+		bool evading;
+		object.turnToFaceTowardsEvading(targetPosition,evading,state);
+		if(evading) return;
+	}else object.turnToFaceTowards(targetPosition,state); 
 	bool slowDown=false;
 	if(object.movingForwardGetsCloserTo(targetPosition,speed,state,&slowDown)){
 		object.startMovingForward(state);
@@ -3828,6 +3874,7 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 	void stop(){
 		object.creatureState.timer=updateFPS; // TODO: this is a bit hacky
 		object.stopMovement(state);
+		object.stopTurning(state);
 		if(isFlying){
 			object.pitch(0.0f,state);
 			object.creatureState.targetFlyingHeight=targetFlyingHeight;
@@ -3836,8 +3883,9 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 	if(notShooting){
 		if(!object.hasClearShot(predicted,targetId,state)) return moveCloser();
 		stop();
-		auto rotationThreshold=4*object.creatureStats.rotationSpeed(object.creatureState.movement==CreatureMovement.flying)/updateFPS;
-		auto facing=!object.turnToFaceTowardsEvading(predicted,state,rotationThreshold);
+		auto rotationThreshold=4.0f*object.creatureStats.rotationSpeed(object.creatureState.movement==CreatureMovement.flying)/updateFPS;
+		bool evading;
+		auto facing=!object.turnToFaceTowardsEvading(predicted,evading,state,rotationThreshold);
 		if(isFlying&&flyingHeight<minFlyingHeight) return true;
 		if(facing&&object.creatureStats.effects.rangedCooldown==0&&object.creatureStats.mana>=rangedAttack.manaCost){
 			object.creatureAI.rangedAttackTarget=targetId;
@@ -3854,6 +3902,9 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 				switch(rangedAttack.tag){
 					case SpellTag.brainiacShoot:
 						brainiacShoot(object.id,object.side,targetId,accuracy,object.shotPosition,predicted,rangedAttack,state);
+						break;
+					case SpellTag.shrikeShoot:
+						shrikeShoot(object.id,object.side,targetId,accuracy,object.shotPosition,predicted,rangedAttack,state);
 						break;
 					default: goto case SpellTag.brainiacShoot;
 				}
@@ -3900,7 +3951,8 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 	}
 	if(target||!object.moveTo(movementPosition,float.init,state,!object.isMeleeAttacking(state))){
 		object.pitch(0.0f,state);
-		object.turnToFaceTowardsEvading(targetPosition,state,defaultFaceThreshold,true,targetId);
+		bool evading;
+		object.turnToFaceTowardsEvading(targetPosition,evading,state,defaultFaceThreshold,true,targetId);
 		enum normalHitboxFactor=1.01f;
 		if(state.objectById!intersects(targetId,scaleBox(hitbox,normalHitboxFactor)))
 			object.stopMovement(state);
@@ -5904,7 +5956,7 @@ bool updateSwarm(B)(ref Swarm!B swarm,ObjectState!B state){
 		}
 	}
 }
-enum projectileHitGain=4.0f;
+enum brainiacProjectileHitGain=4.0f;
 enum brainiacProjectileSize=0.45f; // TODO: ok?
 enum brainiacProjectileSlidingDistance=1.5f;
 static immutable Vector3f[2] brainiacProjectileHitbox=[-0.5f*brainiacProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*brainiacProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
@@ -5938,7 +5990,7 @@ bool updateBrainiacProjectile(B)(ref BrainiacProjectile!B brainiacProjectile,Obj
 			target=state.lineOfSightWithoutSide(oldPosition,position,side,intendedTarget);
 		}
 		bool terminate(){
-			playSoundAt("hnrb",position,state,projectileHitGain); // TODO: brainiac hit sound
+			playSoundAt("hnrb",position,state,brainiacProjectileHitGain); // TODO: brainiac hit sound
 			return false;
 		}
 		if(travelDistance>rangedAttack.range) return terminate();
@@ -5968,6 +6020,68 @@ bool updateBrainiacEffect(B)(ref BrainiacEffect effect,ObjectState!B state){
 		return ++frame<32; // TODO: fix timing on this
 	}
 }
+
+enum shrikeProjectileHitGain=4.0f;
+enum shrikeProjectileSize=0.9f; // TODO: ok?
+enum shrikeProjectileSlidingDistance=0.0f;
+static immutable Vector3f[2] shrikeProjectileHitbox=[-0.5f*shrikeProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*shrikeProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
+int shrikeProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
+		return entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side;
+	}
+	return collisionTarget!(shrikeProjectileHitbox,filter)(side,position,state,side,intendedTarget);
+}
+bool updateShrikeProjectile(B)(ref ShrikeProjectile!B shrikeProjectile,ObjectState!B state){
+	with(shrikeProjectile){
+		auto oldPosition=position;
+		position+=rangedAttack.speed/updateFPS*direction;
+		travelDistance+=rangedAttack.speed/updateFPS;
+		static assert(updateFPS==60);
+		auto effectPosition=position, effectDirection=direction;
+		/+if(state.isOnGround(effectPosition)){
+			auto groundHeight=state.getGroundHeight(effectPosition);
+			if(effectPosition.z<groundHeight+shrikeProjectileSize){
+				effectPosition.z=groundHeight+shrikeProjectileSize;
+				effectDirection=Vector3f(effectDirection.x,effectDirection.y,0.0f).normalized;
+				effectDirection=Vector3f(effectDirection.x,effectDirection.y,state.getGroundHeightDerivative(effectPosition,effectDirection)).normalized;
+			}
+		}+/
+		state.addEffect(ShrikeEffect(effectPosition,effectDirection));
+		OrderTarget target;
+		if(auto targetId=shrikeProjectileCollisionTarget(side,intendedTarget,position,state)){
+			target.id=targetId;
+			target.type=state.targetTypeFromId(targetId);
+		}else{
+			target=state.lineOfSightWithoutSide(oldPosition,position,side,intendedTarget);
+		}
+		bool terminate(){
+			playSoundAt("hkhs",position,state,shrikeProjectileHitGain); // TODO: shrike hit sound
+			return false;
+		}
+		if(travelDistance>rangedAttack.range) return terminate();
+		switch(target.type){
+			case TargetType.terrain:
+				travelDistance=max(travelDistance,rangedAttack.range-shrikeProjectileSlidingDistance);
+				break;
+			case TargetType.creature:
+				state.movingObjectById!((ref obj,state){ obj.stunWithCooldown(stunCooldownFrames,state); },(){})(target.id,state);
+				goto case;
+			case TargetType.building:
+				dealRangedDamage(target.id,rangedAttack,attacker,side,direction,state);
+				return terminate();
+			default: break;
+		}
+		return true;
+	}
+}
+bool updateShrikeEffect(B)(ref ShrikeEffect effect,ObjectState!B state){
+	with(effect){
+		static assert(updateFPS==60);
+		return ++frame<128; // TODO: fix timing on this
+	}
+}
+
+
 void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.debris.length;){
 		if(!updateDebris(effects.debris[i],state)){
@@ -6119,6 +6233,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.brainiacEffects.length;){
 		if(!updateBrainiacEffect(effects.brainiacEffects[i],state)){
 			effects.removeBrainiacEffect(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.shrikeProjectiles.length;){
+		if(!updateShrikeProjectile(effects.shrikeProjectiles[i],state)){
+			effects.removeShrikeProjectile(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.shrikeEffects.length;){
+		if(!updateShrikeEffect(effects.shrikeEffects[i],state)){
+			effects.removeShrikeEffect(i);
 			continue;
 		}
 		i++;
