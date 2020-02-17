@@ -1436,7 +1436,7 @@ struct SacShrikeEffect(B){
 	enum numFrames=64*animationDelay*updateAnimFactor;
 	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
 	static B.Mesh[] createMeshes(){
-		return makeSpriteMeshes!(B,true)(8,8,1.65f,1.65f);
+		return makeSpriteMeshes!(B,true)(8,8,1.75f,1.75f);
 	}
 }
 

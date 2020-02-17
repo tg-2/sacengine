@@ -569,7 +569,7 @@ final class SacScene: Scene{
 						auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),objects.shrikeEffects[j].direction); // TODO: precompute this?
 						auto frame=objects.shrikeEffects[j].frame;
 						auto relativeProgress=float(frame)/scene.shrikeEffect.numFrames;
-						auto scale=1.0f+0.6f*relativeProgress^^2.5f;
+						auto scale=(1.0f+0.6f*relativeProgress^^2.5f)*objects.shrikeEffects[j].scale;
 						scene.shadelessMaterialBackend.setTransformationScaled(position,rotation,scale*Vector3f(1.0f,1.0f,1.0f),rc);
 						scene.shadelessMaterialBackend.setAlpha(0.95f*(1.0f-relativeProgress)^^2.0f);
 						auto mesh=scene.shrikeEffect.getFrame(objects.shrikeEffects[j].frame%scene.shrikeEffect.numFrames);

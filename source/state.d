@@ -1595,6 +1595,7 @@ struct ShrikeProjectile(B){
 struct ShrikeEffect{
 	Vector3f position;
 	Vector3f direction;
+	float scale;
 	int frame=0;
 }
 
@@ -6038,15 +6039,8 @@ bool updateShrikeProjectile(B)(ref ShrikeProjectile!B shrikeProjectile,ObjectSta
 		travelDistance+=rangedAttack.speed/updateFPS;
 		static assert(updateFPS==60);
 		auto effectPosition=position, effectDirection=direction;
-		/+if(state.isOnGround(effectPosition)){
-			auto groundHeight=state.getGroundHeight(effectPosition);
-			if(effectPosition.z<groundHeight+shrikeProjectileSize){
-				effectPosition.z=groundHeight+shrikeProjectileSize;
-				effectDirection=Vector3f(effectDirection.x,effectDirection.y,0.0f).normalized;
-				effectDirection=Vector3f(effectDirection.x,effectDirection.y,state.getGroundHeightDerivative(effectPosition,effectDirection)).normalized;
-			}
-		}+/
-		state.addEffect(ShrikeEffect(effectPosition,effectDirection));
+		float effectScale=state.uniform(1.0f,1.5f);
+		state.addEffect(ShrikeEffect(effectPosition,effectDirection,effectScale));
 		OrderTarget target;
 		if(auto targetId=shrikeProjectileCollisionTarget(side,intendedTarget,position,state)){
 			target.id=targetId;
