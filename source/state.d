@@ -1598,7 +1598,13 @@ struct ShrikeEffect{
 	float scale;
 	int frame=0;
 }
-
+struct LocustProjectile(B){
+	SacSpell!B rangedAttack;
+	Vector3f position;
+	Vector3f target;
+	bool blood;
+	int frame=0;
+}
 struct Effects(B){
 	// misc
 	Array!(Debris!B) debris;
@@ -1797,6 +1803,14 @@ struct Effects(B){
 		if(i+1<shrikeEffects.length) shrikeEffects[i]=move(shrikeEffects[$-1]);
 		shrikeEffects.length=shrikeEffects.length-1;
 	}
+	Array!(LocustProjectile!B) locustProjectiles;
+	void addEffect(LocustProjectile!B locustProjectile){
+		locustProjectiles~=locustProjectile;
+	}
+	void removeLocustProjectile(int i){
+		if(i+1<locustProjectiles.length) locustProjectiles[i]=move(locustProjectiles[$-1]);
+		locustProjectiles.length=locustProjectiles.length-1;
+	}
 	void opAssign(ref Effects!B rhs){
 		assignArray(debris,rhs.debris);
 		assignArray(explosions,rhs.explosions);
@@ -1822,6 +1836,7 @@ struct Effects(B){
 		assignArray(brainiacEffects,rhs.brainiacEffects);
 		assignArray(shrikeProjectiles,rhs.shrikeProjectiles);
 		assignArray(shrikeEffects,rhs.shrikeEffects);
+		assignArray(locustProjectiles,rhs.locustProjectiles);
 	}
 	void opAssign(Effects!B rhs){ this.tupleof=rhs.tupleof; }
 }
@@ -3520,6 +3535,18 @@ bool shrikeShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vect
 	return true;
 }
 
+bool locustShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	playSoundAt("tscl",position,state,4.0f);
+	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
+	static bool filter(ref ProximityEntry entry,int id){ return entry.id!=id; }
+	auto end=state.collideRay!filter(position,direction,rangedAttack.range,attacker);
+	if(end.type==TargetType.none) end.position=position+0.5f*rangedAttack.range*direction;
+	if(end.type==TargetType.creature||end.type==TargetType.building)
+		dealRangedDamage(end.id,rangedAttack,attacker,side,direction,state);
+	state.addEffect(LocustProjectile!B(rangedAttack,end.position,position,end.type==TargetType.creature));
+	return true;
+}
+
 enum defaultFaceThreshold=1e-3;
 bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state,float threshold=defaultFaceThreshold){
 	auto angle=facing-object.creatureState.facing;
@@ -3851,7 +3878,9 @@ float shootDistance(B)(ref MovingObject!B object,ObjectState!B state){
 bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,ObjectState!B state){
 	if(!isValidAttackTarget(targetId,state)) return true; // TODO
 	if(object.rangedAttack !is rangedAttack) return false; // TODO: multiple ranged attacks?
-	auto predicted=object.creatureAI.predictor.predictCenter(object.firstShotPosition,rangedAttack.speed,targetId,state);
+	auto predicted=rangedAttack.needsPrediction?
+		object.creatureAI.predictor.predictCenter(object.firstShotPosition,rangedAttack.speed,targetId,state) :
+		state.objectById!center(targetId);
 	// TODO: find a spot from where target can be shot
 	auto notShooting=!object.creatureState.mode.isShooting;
 	auto targetPosition=notShooting?state.objectById!((obj)=>obj.position)(targetId):Vector3f.init;
@@ -3901,6 +3930,11 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 						break;
 					case SpellTag.shrikeShoot:
 						shrikeShoot(object.id,object.side,targetId,accuracy,object.shotPosition,predicted,rangedAttack,state);
+						break;
+					case SpellTag.locustShoot:
+						locustShoot(object.id,object.side,targetId,accuracy,object.shotPosition,predicted,rangedAttack,state);
+						// hack to ensure drain gets applied:
+						object.creatureStats.health=state.movingObjectById!((obj)=>obj.creatureStats.health,()=>0.0f)(object.id);
 						break;
 					default: goto case SpellTag.brainiacShoot;
 				}
@@ -6070,6 +6104,22 @@ bool updateShrikeEffect(B)(ref ShrikeEffect effect,ObjectState!B state){
 	}
 }
 
+bool updateLocustProjectile(B)(ref LocustProjectile!B locustProjectile,ObjectState!B state){
+	with(locustProjectile){
+		static assert(updateFPS==60);
+		auto distance=target-position;
+		auto velocity=rangedAttack.speed/updateFPS*distance.normalized;
+		auto sacParticle=SacParticle!B.get(blood?ParticleType.locustBlood:ParticleType.locustDebris);
+		auto pvelocity=Vector3f(0,0,0),scale=1.0f,lifetime=31,frame=0;
+		enum nSteps=5;
+		foreach(i;0..nSteps){
+			if(!state.uniform(2)) continue;
+			state.addParticle(Particle!B(sacParticle,position+i*velocity/nSteps,pvelocity,scale,lifetime,frame));
+		}
+		position+=velocity;
+		return distance.lengthsqr>=(rangedAttack.speed/updateFPS)^^2;
+	}
+}
 
 void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.debris.length;){
@@ -6236,6 +6286,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.shrikeEffects.length;){
 		if(!updateShrikeEffect(effects.shrikeEffects[i],state)){
 			effects.removeShrikeEffect(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.locustProjectiles.length;){
+		if(!updateLocustProjectile(effects.locustProjectiles[i],state)){
+			effects.removeLocustProjectile(i);
 			continue;
 		}
 		i++;

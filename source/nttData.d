@@ -1046,6 +1046,7 @@ enum SpellTag:char[4]{
 	// ranged attacks:
 	brainiacShoot="bsba",
 	shrikeShoot="absh",
+	locustShoot="zbba",
 }
 
 enum WizardTag:char[4]{

@@ -743,11 +743,12 @@ enum SoulColor{
 	//green,
 }
 
-B.Mesh[] makeSpriteMeshes(B,bool doubleSided=false)(int nU,int nV,float width,float height,float texWidth=1.0f,float texHeight=1.0f){ // TODO: replace with shader
+B.Mesh[] makeSpriteMeshes(B,bool doubleSided=false,bool reverseOrder=false)(int nU,int nV,float width,float height,float texWidth=1.0f,float texHeight=1.0f){ // TODO: replace with shader
 	auto meshes=new B.Mesh[](nU*nV);
 	foreach(i,ref mesh;meshes){
 		mesh=B.makeMesh(4,doubleSided?4:2);
-		int u=cast(int)i%nU,v=cast(int)i/nU;
+		static if(reverseOrder) int u=cast(int)(meshes.length-1-i)%nU,v=cast(int)(meshes.length-1-i)/nU;
+		else int u=cast(int)i%nU,v=cast(int)i/nU;
 		foreach(k;0..4) mesh.vertices[k]=Vector3f(-0.5f*width+width*(k==1||k==2),-0.5f*height+height*(k==2||k==3),0.0f);
 		foreach(k;0..4) mesh.texcoords[k]=Vector2f(texWidth/nU*(u+(k==1||k==2)),texHeight/nV*(v+(k==0||k==1)));
 		static if(doubleSided) static immutable uint[3][] indices=[[0,1,2],[2,3,0],[0,2,1],[2,0,3]];
@@ -818,6 +819,8 @@ enum ParticleType{
 	dust,
 	rock,
 	swarmHit,
+	locustBlood,
+	locustDebris,
 }
 
 final class SacParticle(B){
@@ -848,6 +851,8 @@ final class SacParticle(B){
 				return true;
 			case swarmHit:
 				return true;
+			case locustBlood,locustDebris:
+				return false;
 		}
 	}
 	@property bool relative(){
@@ -859,6 +864,8 @@ final class SacParticle(B){
 			case castPersephone,castPyro,castJames,castStratos,castCharnel:
 				return false;
 			case wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,ashParticle,smoke,dirt,dust,rock,swarmHit:
+				return false;
+			case locustBlood,locustDebris:
 				return false;
 		}
 	}
@@ -1028,6 +1035,18 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Char.FLDR/tex_ZERO_.FLDR/puss.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
+			case locustBlood:
+				width=height=0.4f;
+				this.energy=8.0f;
+				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/blud.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
+			case locustDebris:
+				width=height=0.4f;
+				this.energy=20.0f;
+				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/firy.TXTR"));
+				meshes=makeSpriteMeshes!(B,false,true)(4,4,width,height);
+				break;
 		}
 		material=B.createMaterial(this);
 	}
@@ -1046,6 +1065,7 @@ final class SacParticle(B){
 			case smoke: return 4;
 			case dirt: return 2;
 			case swarmHit: return 2;
+			case locustBlood, locustDebris: return 1;
 			default: return 1;
 		}
 	}
@@ -1086,6 +1106,8 @@ final class SacParticle(B){
 				return 1.0f;
 			case swarmHit:
 				return min(1.0f,(lifetime/(1.5f*numFrames)));
+			case locustBlood,locustDebris:
+				return min(1.0f,(lifetime/(0.5f*numFrames)));
 		}
 	}
 	float getScale(int lifetime){
@@ -1119,6 +1141,8 @@ final class SacParticle(B){
 			case dirt,dust:
 				return 1.0f;
 			case swarmHit:
+				return 1.0f;
+			case locustBlood,locustDebris:
 				return 1.0f;
 		}
 	}

@@ -302,6 +302,10 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Shr
 void serialize(alias sink)(ref ShrikeEffect shrikeEffect){ serializeStruct!sink(shrikeEffect); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ShrikeEffect)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref LocustProjectile!B locustProjectile){ serializeStruct!sink(locustProjectile); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==LocustProjectile!B)){ deserializeStruct(result,state,data); }
+
+
 private alias Effects=state.Effects;
 void serialize(alias sink,B)(ref Effects!B effects){ serializeStruct!sink(effects); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Effects!B)){ deserializeStruct(result,state,data); }

@@ -99,6 +99,8 @@ class SacSpell(B){
 	SpelFlags1 flags1;
 	SpelFlags2 flags2;
 
+	bool needsPrediction=true;
+
 	@property bool stationary(){ return !!(flags2&SpelFlags2.stationaryCasting); }
 	@property bool requiresTarget(){ return !!flags; }
 	@property bool nearBuilding(){ return !!(flags2&SpelFlags2.nearBuilding); }
@@ -156,6 +158,7 @@ class SacSpell(B){
 			effectRange=spel.effectRange;
 			speed=60.0f*spel.speed;
 			acceleration=60.0f*spel.acceleration;
+			needsPrediction=tag!=SpellTag.locustShoot;
 		}else if(strc) setStats(strc);
 	}
 	static SacSpell!B[char[4]] spells;
