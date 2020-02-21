@@ -3865,12 +3865,8 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 	auto targetFlyingHeight=max(flyingHeight,minFlyingHeight);
 	bool moveCloser(){
 		object.moveTowards(targetPosition,state,true,true);
-		object.creatureState.targetFlyingHeight=targetFlyingHeight;
+		if(isFlying) object.creatureState.targetFlyingHeight=targetFlyingHeight;
 		return true;
-	}
-	if(isFlying){
-		object.creatureState.targetFlyingHeight=targetFlyingHeight;
-		if(notShooting&&flyingHeight<minFlyingHeight-0.1f) return moveCloser();
 	}
 	void stop(){
 		object.creatureState.timer=updateFPS; // TODO: this is a bit hacky
@@ -3887,7 +3883,6 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 		auto rotationThreshold=4.0f*object.creatureStats.rotationSpeed(object.creatureState.movement==CreatureMovement.flying)/updateFPS;
 		bool evading;
 		auto facing=!object.turnToFaceTowardsEvading(predicted,evading,state,rotationThreshold);
-		if(isFlying&&flyingHeight<minFlyingHeight) return true;
 		if(facing&&object.creatureStats.effects.rangedCooldown==0&&object.creatureStats.mana>=rangedAttack.manaCost){
 			object.creatureAI.rangedAttackTarget=targetId;
 			object.startShooting(state); // TODO: should this have a delay?
