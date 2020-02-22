@@ -319,6 +319,11 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Spi
 void serialize(alias sink)(ref SpitfireEffect spitfireEffect){ serializeStruct!sink(spitfireEffect); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SpitfireEffect)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref GargoyleProjectile!B gargoyleProjectile){ serializeStruct!sink(gargoyleProjectile); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==GargoyleProjectile!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink)(ref GargoyleEffect gargoyleEffect){ serializeStruct!sink(gargoyleEffect); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==GargoyleEffect)){ deserializeStruct(result,state,data); }
 
 private alias Effects=state.Effects;
 void serialize(alias sink,B)(ref Effects!B effects){ serializeStruct!sink(effects); }

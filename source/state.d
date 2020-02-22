@@ -1611,12 +1611,14 @@ struct ShrikeEffect{
 	float scale;
 	int frame=0;
 }
+
 struct LocustProjectile(B){
 	SacSpell!B rangedAttack;
 	Vector3f position;
 	Vector3f target;
 	bool blood;
 }
+
 struct SpitfireProjectile(B){
 	int attacker;
 	int side;
@@ -1635,6 +1637,26 @@ struct SpitfireEffect{
 	float scale=0.0f;
 	int frame=0;
 }
+
+struct GargoyleProjectile(B){
+	int attacker;
+	int side;
+	int intendedTarget;
+	Vector3f position;
+	Vector3f direction;
+	SacSpell!B rangedAttack;
+	float remainingDistance;
+	int frame=0;
+	SmallArray!(int,16) damagedTargets;
+}
+struct GargoyleEffect{
+	Vector3f position;
+	Vector3f velocity;
+	int lifetime;
+	float scale=0.0f;
+	int frame=0;
+}
+
 struct Effects(B){
 	// misc
 	Array!(Debris!B) debris;
@@ -1865,6 +1887,22 @@ struct Effects(B){
 		if(i+1<spitfireEffects.length) spitfireEffects[i]=move(spitfireEffects[$-1]);
 		spitfireEffects.length=spitfireEffects.length-1;
 	}
+	Array!(GargoyleProjectile!B) gargoyleProjectiles;
+	void addEffect(GargoyleProjectile!B gargoyleProjectile){
+		gargoyleProjectiles~=gargoyleProjectile;
+	}
+	void removeGargoyleProjectile(int i){
+		if(i+1<gargoyleProjectiles.length) swap(gargoyleProjectiles[i],gargoyleProjectiles[$-1]);
+		gargoyleProjectiles.length=gargoyleProjectiles.length-1; // TODO: reuse memory?
+	}
+	Array!GargoyleEffect gargoyleEffects;
+	void addEffect(GargoyleEffect gargoyleEffect){
+		gargoyleEffects~=gargoyleEffect;
+	}
+	void removeGargoyleEffect(int i){
+		if(i+1<gargoyleEffects.length) gargoyleEffects[i]=move(gargoyleEffects[$-1]);
+		gargoyleEffects.length=gargoyleEffects.length-1;
+	}
 	void opAssign(ref Effects!B rhs){
 		assignArray(debris,rhs.debris);
 		assignArray(explosions,rhs.explosions);
@@ -1894,6 +1932,8 @@ struct Effects(B){
 		assignArray(locustProjectiles,rhs.locustProjectiles);
 		assignArray(spitfireProjectiles,rhs.spitfireProjectiles);
 		assignArray(spitfireEffects,rhs.spitfireEffects);
+		assignArray(gargoyleProjectiles,rhs.gargoyleProjectiles);
+		assignArray(gargoyleEffects,rhs.gargoyleEffects);
 	}
 	void opAssign(Effects!B rhs){ this.tupleof=rhs.tupleof; }
 }
@@ -3610,6 +3650,14 @@ bool spitfireShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Ve
 	return true;
 }
 
+bool gargoyleShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	playSoundAt("4tps",position,state,2.0f);
+	playSoundAt("2tlp",position,state,2.0f); // TODO: move with projectile?
+	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
+	state.addEffect(GargoyleProjectile!B(attacker,side,intendedTarget,position,direction,rangedAttack,rangedAttack.range));
+	return true;
+}
+
 enum defaultFaceThreshold=1e-3;
 bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state,float threshold=defaultFaceThreshold){
 	auto angle=facing-object.creatureState.facing;
@@ -4001,6 +4049,9 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 						break;
 					case SpellTag.spitfireShoot:
 						spitfireShoot(object.id,object.side,targetId,accuracy,object.shotPosition,predicted,rangedAttack,state);
+						break;
+					case SpellTag.gargoyleShoot:
+						gargoyleShoot(object.id,object.side,targetId,accuracy,object.shotPosition,predicted,rangedAttack,state);
 						break;
 					default: goto case SpellTag.brainiacShoot;
 				}
@@ -6198,7 +6249,6 @@ bool updateShrikeEffect(B)(ref ShrikeEffect effect,ObjectState!B state){
 	}
 }
 
-enum finalSpitfireProjectileSize=7.5f;
 bool updateLocustProjectile(B)(ref LocustProjectile!B locustProjectile,ObjectState!B state){
 	with(locustProjectile){
 		static assert(updateFPS==60);
@@ -6216,6 +6266,7 @@ bool updateLocustProjectile(B)(ref LocustProjectile!B locustProjectile,ObjectSta
 	}
 }
 
+enum finalSpitfireProjectileSize=7.5f;
 bool updateSpitfireProjectile(B)(ref SpitfireProjectile!B spitfireProjectile,ObjectState!B state){
 	with(spitfireProjectile){
 		auto oldPosition=position;
@@ -6266,6 +6317,54 @@ bool updateSpitfireEffect(B)(ref SpitfireEffect effect,ObjectState!B state){
 	}
 }
 
+enum finalGargoyleProjectileSize=6.0f;
+bool updateGargoyleProjectile(B)(ref GargoyleProjectile!B gargoyleProjectile,ObjectState!B state){
+	with(gargoyleProjectile){
+		auto oldPosition=position;
+		position+=rangedAttack.speed/updateFPS*direction;
+		remainingDistance-=rangedAttack.speed/updateFPS;
+		static bool callback(T)(int id,T* targets,int attacker,int side,int intendedTarget,SacSpell!B rangedAttack,Vector3f attackDirection,ObjectState!B state){
+			auto recordedId=id;
+			if(state.isValidTarget(id,TargetType.building)){
+				if(auto cand=state.staticObjectById!((ref obj)=>obj.buildingId,()=>0)(id))
+					recordedId=cand;
+			}
+			if((*targets)[].canFind(recordedId)) return false;
+			bool validTarget=!!state.targetTypeFromId(id).among(TargetType.creature,TargetType.building);
+			*targets~=recordedId;
+			if(validTarget&&id==intendedTarget){
+				dealRangedDamage(intendedTarget,rangedAttack,attacker,side,attackDirection,state); // TODO: ok?
+				return false;
+			}
+			if(validTarget&&state.objectById!(.side)(id,state)==side)
+				return false;
+			return true;
+		}
+		auto radius=finalGargoyleProjectileSize*frame/(updateFPS*rangedAttack.range/rangedAttack.speed);
+		dealSplashRangedDamageAt!callback(0,rangedAttack,radius,attacker,side,position,state,&damagedTargets,attacker,side,intendedTarget,rangedAttack,direction,state);
+		static assert(updateFPS==60);
+		if(frame<12){
+			enum numEffects=3;
+			foreach(i;0..numEffects){
+				auto effectPosition=position-frame*rangedAttack.speed/updateFPS*direction, effectDirection=direction+0.08f*state.uniformDirection(), effectScale=state.uniform(0.0f,1.0f);
+				auto speed=rangedAttack.speed*state.uniform(0.9f,1.1f);
+				auto lifetime=cast(int)(updateFPS*rangedAttack.range/rangedAttack.speed);
+				state.addEffect(GargoyleEffect(effectPosition,effectDirection*speed,lifetime,effectScale));
+			}
+		}
+		++frame;
+		return remainingDistance>0.0f;
+	}
+}
+bool updateGargoyleEffect(B)(ref GargoyleEffect effect,ObjectState!B state){
+	with(effect){
+		static assert(updateFPS==60);
+		position+=velocity/updateFPS;
+		enum numFrames=64;
+		scale=min(0.75f,scale+finalGargoyleProjectileSize/numFrames);
+		return ++frame<min(lifetime,numFrames);
+	}
+}
 
 void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.debris.length;){
@@ -6460,6 +6559,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.spitfireEffects.length;){
 		if(!updateSpitfireEffect(effects.spitfireEffects[i],state)){
 			effects.removeSpitfireEffect(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.gargoyleProjectiles.length;){
+		if(!updateGargoyleProjectile(effects.gargoyleProjectiles[i],state)){
+			effects.removeGargoyleProjectile(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.gargoyleEffects.length;){
+		if(!updateGargoyleEffect(effects.gargoyleEffects[i],state)){
+			effects.removeGargoyleEffect(i);
 			continue;
 		}
 		i++;

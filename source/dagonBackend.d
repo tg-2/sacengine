@@ -590,6 +590,20 @@ final class SacScene: Scene{
 						mesh.render(rc);
 					}
 				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.gargoyleEffects.length){
+					auto rock=SacParticle!DagonBackend.get(ParticleType.rock);
+					auto material=rock.material;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
+					foreach(j;0..objects.gargoyleEffects.length){
+						auto position=objects.gargoyleEffects[j].position;
+						auto frame=objects.gargoyleEffects[j].frame;
+						auto scale=objects.gargoyleEffects[j].scale;
+						material.backend.setSpriteTransformationScaled(position,scale,rc);
+						auto mesh=rock.getMesh(objects.gargoyleEffects[j].frame%rock.numFrames);
+						mesh.render(rc);
+					}
+				}
 			}else static if(is(T==Particles!(DagonBackend,relative),bool relative)){
 				static if(mode==RenderMode.transparent){
 					if(rc.shadowMode) return; // TODO: particle shadows?
