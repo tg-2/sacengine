@@ -1400,6 +1400,14 @@ struct Explosion(B){
 	float scale,maxScale,expansionSpeed;
 	int frame;
 }
+struct Fire(B){
+	int target;
+	int lifetime;
+	float rangedDamagePerFrame=0.0f;
+	float spellDamagePerFrame=0.0f;
+	int attacker=0;
+	int side=-1;
+}
 struct ManaDrain(B){
 	int wizard;
 	float manaCostPerFrame;
@@ -1630,6 +1638,14 @@ struct Effects(B){
 		if(i+1<explosions.length) explosions[i]=move(explosions[$-1]);
 		explosions.length=explosions.length-1;
 	}
+	Array!(Fire!B) fires;
+	void addEffect(Fire!B fire){
+		fires~=fire;
+	}
+	void removeFire(int i){
+		if(i+1<fires.length) fires[i]=move(fires[$-1]);
+		fires.length=fires.length-1;
+	}
 	Array!(ManaDrain!B) manaDrains;
 	void addEffect(ManaDrain!B manaDrain){
 		manaDrains~=manaDrain;
@@ -1821,6 +1837,7 @@ struct Effects(B){
 	void opAssign(ref Effects!B rhs){
 		assignArray(debris,rhs.debris);
 		assignArray(explosions,rhs.explosions);
+		assignArray(fires,rhs.fires);
 		assignArray(manaDrains,rhs.manaDrains);
 		assignArray(creatureCasts,rhs.creatureCasts);
 		assignArray(structureCasts,rhs.structureCasts);
@@ -3113,20 +3130,21 @@ float dealSplashSpellDamage(B)(int target,SacSpell!B spell,int attacker,int atta
 	return state.objectById!dealSplashSpellDamage(target,spell,attacker,attackerSide,attackDirection,distance,state);
 }
 
-float dealSplashSpellDamageAt(B)(int directTarget,SacSpell!B spell,int attacker,int attackerSide,Vector3f position,ObjectState!B state){
+float dealSplashSpellDamageAt(alias callback=(id)=>true,B,T...)(int directTarget,SacSpell!B spell,int attacker,int attackerSide,Vector3f position,ObjectState!B state,T args){
 	auto radius=spell.effectRange;
-	static void dealDamage(ProximityEntry target,ObjectState!B state,int directTarget,SacSpell!B spell,int attacker,int attackerSide,Vector3f position,float* sum){
+	static void dealDamage(ProximityEntry target,ObjectState!B state,int directTarget,SacSpell!B spell,int attacker,int attackerSide,Vector3f position,float* sum,T args){
 		if(target.id==directTarget) return;
 		auto radius=spell.effectRange;
 		auto distance=boxPointDistance(target.hitbox,position);
 		if(distance>radius) return;
 		auto attackDirection=state.objectById!((obj)=>obj.center)(target.id)-position;
-		*sum+=dealSplashSpellDamage(target.id,spell,attacker,attackerSide,attackDirection,distance,state);
+		if(callback(target.id,args))
+			*sum+=dealSplashSpellDamage(target.id,spell,attacker,attackerSide,attackDirection,distance,state);
 	}
 	auto offset=Vector3f(radius,radius,radius);
 	Vector3f[2] hitbox=[position-offset,position+offset];
 	float sum=0.0f;
-	collisionTargets!(dealDamage,None,true)(hitbox,state,directTarget,spell,attacker,attackerSide,position,&sum);
+	collisionTargets!(dealDamage,None,true)(hitbox,state,directTarget,spell,attacker,attackerSide,position,&sum,args);
 	return sum;
 }
 
@@ -3181,20 +3199,21 @@ float dealSplashRangedDamage(B)(int target,SacSpell!B rangedAttack,int attacker,
 	return state.objectById!dealSplashRangedDamage(target,rangedAttack,attackerSide,attackDirection,distance,state);
 }
 
-void dealSplashRangedDamageAt(B)(int directTarget,SacSpell!B rangedAttack,int attackerSide,Vector3f position,ObjectState!B state){
+void dealSplashRangedDamageAt(alias callback=(id)=>true,B,T...)(int directTarget,SacSpell!B rangedAttack,int attackerSide,Vector3f position,ObjectState!B state,T args){
 	auto radius=rangedAttack.effectRange;
-	static void dealDamage(ProximityEntry target,ObjectState!B state,int directTarget,SacSpell!B rangedAttack,int attackerSide,Vector3f position,float* sum){
+	static void dealDamage(ProximityEntry target,ObjectState!B state,int directTarget,SacSpell!B rangedAttack,int attackerSide,Vector3f position,float* sum,T args){
 		if(target.id==directTarget) return;
 		auto radius=rangedAttack.effectRange;
 		auto distance=boxPointDistance(target.hitbox,position);
 		if(distance>radius) return;
 		auto attackDirection=state.objectById!((obj)=>obj.center)(target.id)-position;
-		sum+=dealSplashRangedDamage(target.id,rangedAttack,attackerSide,attackDirection,distance,state);
+		if(callback(target.id,args))
+			sum+=dealSplashRangedDamage(target.id,rangedAttack,attackerSide,attackDirection,distance,state);
 	}
 	auto offset=Vector3f(radius,radius,radius);
 	Vector3f[2] hitbox=[position-offset,position+offset];
 	float sum=0.0f;
-	collisionTargets!(dealDamage,None,true)(hitbox,state,directTarget,rangedAttack,attackerSide,position,&sum);
+	collisionTargets!(dealDamage,None,true)(hitbox,state,directTarget,rangedAttack,attackerSide,position,&sum,args);
 	return sum;
 }
 
@@ -4984,6 +5003,28 @@ bool updateExplosion(B)(ref Explosion!B explosion,ObjectState!B state){
 		return scale<maxScale;
 	}
 }
+bool updateFire(B)(ref Fire!B fire,ObjectState!B state){
+	with(fire){
+		if(!state.targetTypeFromId(target).among(TargetType.creature,TargetType.building))
+			return false;
+		static assert(updateFPS==60);
+		auto hitbox=state.objectById!hitbox(target);
+		auto dim=hitbox[1]-hitbox[0];
+		auto volume=dim.x*dim.y*dim.z;
+		auto scale=2.0f*max(1.0f,cbrt(volume));
+		auto sacParticle=SacParticle!B.get(ParticleType.fire);
+		enum numParticles=5;
+		foreach(i;0..numParticles){
+			auto position=state.uniform(scaleBox(hitbox,1.1f));
+			auto distance=(state.uniform(3)?state.uniform(0.3f,0.6f):state.uniform(1.5f,2.5f))*(hitbox[1].z-hitbox[0].z);
+			auto fullLifetime=sacParticle.numFrames/float(updateFPS);
+			auto lifetime=cast(int)(sacParticle.numFrames*state.uniform(0.0f,1.0f));
+			auto velocity=Vector3f(0.0f,0.0f,distance/fullLifetime);
+			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,0));
+		}
+		return lifetime-->0;
+	}
+}
 enum CastingStatus{
 	underway,
 	interrupted,
@@ -5568,9 +5609,15 @@ int fireballCollisionTarget(B)(int side,Vector3f position,ObjectState!B state){
 
 void fireballExplosion(B)(ref Fireball!B fireball,int target,ObjectState!B state){
 	playSpellSoundTypeAt(SoundType.explodingFireball,fireball.position,state,8.0f);
-	if(state.isValidTarget(target)) dealSpellDamage(target,fireball.spell,fireball.wizard,fireball.side,fireball.velocity,state);
-	else target=0;
-	dealSplashSpellDamageAt(target,fireball.spell,fireball.wizard,fireball.side,fireball.position,state);
+	if(state.isValidTarget(target)){
+		dealSpellDamage(target,fireball.spell,fireball.wizard,fireball.side,fireball.velocity,state);
+		setAblaze(target,updateFPS,false,0.0f,fireball.wizard,fireball.side,state);
+	}else target=0;
+	static bool callback(int target,int wizard,int side,ObjectState!B state){
+		setAblaze(target,updateFPS,false,0.0f,wizard,side,state);
+		return true;
+	}
+	dealSplashSpellDamageAt!callback(target,fireball.spell,fireball.wizard,fireball.side,fireball.position,state,fireball.wizard,fireball.side,state);
 	//explosionParticles(fireball.position,state);
 	enum numParticles1=200;
 	enum numParticles2=800;
@@ -6144,6 +6191,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 		}
 		i++;
 	}
+	for(int i=0;i<effects.fires.length;){
+		if(!updateFire(effects.fires[i],state)){
+			effects.removeFire(i);
+			continue;
+		}
+		i++;
+	}
 	for(int i=0;i<effects.manaDrains.length;){
 		if(!updateManaDrain(effects.manaDrains[i],state)){
 			effects.removeManaDrain(i);
@@ -6368,6 +6422,10 @@ void destructionAnimation(B)(char[4] animation,Vector3f position,ObjectState!B s
 	}
 }
 
+void setAblaze(B)(int target,int lifetime,bool ranged,float damage,int attacker,int side,ObjectState!B state){
+	state.addEffect(Fire!B(target,lifetime,ranged?damage/lifetime:0.0f,!ranged?damage/lifetime:0.0f,attacker,side));
+}
+
 void updateCommandCones(B)(ref CommandCones!B commandCones, ObjectState!B state){
 	with(commandCones) foreach(i;0..cast(int)cones.length){
 		foreach(j;0..cast(int)cones[i].length){
@@ -6418,10 +6476,9 @@ void animateManalith(B)(Vector3f location, int side, ObjectState!B state){
 		auto displacementMagnitude=3.5f*state.uniform(0.0f,1.0f)^^2;
 		auto displacement=displacementMagnitude*Vector3f(cos(displacementAngle),sin(displacementAngle),0.0f);
 		auto position=center+displacement;
-		auto angle=state.uniform(-pi!float,pi!float);
 		auto velocity=(15.0f+state.uniform(-5.0f,5.0f))*Vector3f(0.0f,0.0f,state.uniform(2.0f,4.0f)).normalized;
 		auto scale=1.0f;
-		auto lifetime=cast(int)(sacParticle.numFrames*5.0f-0.7*sacParticle.numFrames*displacement.length*state.uniform(0.0f,1.0f)^^2);
+		auto lifetime=cast(int)(sacParticle.numFrames*5.0f-0.7*sacParticle.numFrames*displacementMagnitude*state.uniform(0.0f,1.0f)^^2);
 		auto frame=0;
 		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
 	}
@@ -6439,7 +6496,6 @@ void animateShrine(B)(Vector3f location, int side, ObjectState!B state){
 		auto displacementMagnitude=1.0f*state.uniform(0.0f,1.0f)^^2;
 		auto displacement=displacementMagnitude*Vector3f(cos(displacementAngle),sin(displacementAngle),0.0f);
 		auto position=center+displacement;
-		auto angle=state.uniform(-pi!float,pi!float);
 		auto velocity=(1.5f+state.uniform(-0.5f,0.5f))*Vector3f(0.0f,0.0f,state.uniform(2.0f,4.0f)).normalized;
 		auto scale=1.0f;
 		auto lifetime=cast(int)((sacParticle.numFrames*5.0f)*(1.0f+state.uniform(0.0f,1.0f)^^10));
@@ -6492,10 +6548,9 @@ void animateManahoar(B)(Vector3f location, int side, float rate, ObjectState!B s
 		auto displacementMagnitude=0.15f*state.uniform(0.0f,1.0f)^^2;
 		auto displacement=displacementMagnitude*Vector3f(cos(displacementAngle),sin(displacementAngle),0.0f);
 		auto position=center+displacement;
-		auto angle=state.uniform(-pi!float,pi!float);
 		auto velocity=(1.5f+state.uniform(-0.5f,0.5f))*Vector3f(0.0f,0.0f,state.uniform(2.0f,4.0f)).normalized;
 		auto scale=1.0f;
-		auto lifetime=cast(int)(0.7f*(sacParticle.numFrames*5.0f-7.0f*sacParticle.numFrames*displacement.length*state.uniform(0.0f,1.0f)^^2));
+		auto lifetime=cast(int)(0.7f*(sacParticle.numFrames*5.0f-7.0f*sacParticle.numFrames*displacementMagnitude*state.uniform(0.0f,1.0f)^^2));
 		auto frame=0;
 		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
 	}

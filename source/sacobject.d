@@ -797,6 +797,7 @@ enum ParticleType{
 	manahoar,
 	smoke,
 	firy,
+	fire,
 	fireball,
 	explosion,
 	explosion2,
@@ -837,7 +838,7 @@ final class SacParticle(B){
 		final switch(type) with(ParticleType){
 			case manafount,spark:
 				return true;
-			case manalith,shrine,manahoar,firy,fireball,explosion,explosion2,speedUp,heal,relativeHeal,lightningCasting:
+			case manalith,shrine,manahoar,firy,fire,fireball,explosion,explosion2,speedUp,heal,relativeHeal,lightningCasting:
 				return false;
 			case castPersephone,castPyro,castJames,castStratos,castCharnel:
 				return false;
@@ -857,7 +858,7 @@ final class SacParticle(B){
 	}
 	@property bool relative(){
 		final switch(type) with(ParticleType){
-			case manafount,manalith,shrine,manahoar,firy,fireball,explosion,explosion2,speedUp,heal,spark:
+			case manafount,manalith,shrine,manahoar,firy,fire,fireball,explosion,explosion2,speedUp,heal,spark:
 				return false;
 			case relativeHeal,lightningCasting:
 				return true;
@@ -905,6 +906,12 @@ final class SacParticle(B){
 			case firy:
 				width=height=0.5f;
 				this.energy=3.0f;
+				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/firy.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
+			case fire:
+				width=height=1.0f;
+				this.energy=1.0f;
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/firy.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
@@ -1063,6 +1070,7 @@ final class SacParticle(B){
 			case speedUp: return 2;
 			case ashParticle: return 3;
 			case smoke: return 4;
+			case fire: return 2;
 			case dirt: return 2;
 			case swarmHit: return 2;
 			case locustBlood, locustDebris: return 1;
@@ -1083,6 +1091,8 @@ final class SacParticle(B){
 				return min(0.07f,(lifetime/(4.0f*numFrames))^^2);
 			case firy,fireball,explosion,explosion2,wrathExplosion1,wrathExplosion2:
 				return 1.0f;
+			case fire:
+				return min(1.0f,(float(lifetime)/numFrames)^^2);
 			case speedUp,wrathParticle:
 				return min(1.0f,(lifetime/(0.5f*numFrames))^^2);
 			case ashParticle:
@@ -1118,7 +1128,7 @@ final class SacParticle(B){
 				return min(1.0f,lifetime/(4.0f*numFrames));
 			case shrine:
 				return min(1.0f,lifetime/(3.0f*numFrames));
-			case firy,fireball,explosion,explosion2,wrathExplosion1,wrathExplosion2:
+			case firy,fire,fireball,explosion,explosion2,wrathExplosion1,wrathExplosion2:
 				return 1.0f;
 			case speedUp:
 				return 1.0f;
