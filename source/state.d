@@ -1588,8 +1588,8 @@ struct BrainiacProjectile(B){
 	Vector3f position;
 	Vector3f direction;
 	SacSpell!B rangedAttack;
+	float remainingDistance;
 	int frame=0;
-	float travelDistance=0.0f;
 }
 struct BrainiacEffect{
 	Vector3f position;
@@ -1604,8 +1604,8 @@ struct ShrikeProjectile(B){
 	Vector3f position;
 	Vector3f direction;
 	SacSpell!B rangedAttack;
+	float remainingDistance;
 	int frame=0;
-	float travelDistance=0.0f;
 }
 struct ShrikeEffect{
 	Vector3f position;
@@ -3550,14 +3550,14 @@ Vector3f getShotDirection(B)(float accuracy,Vector3f position,Vector3f target,Sa
 bool brainiacShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
 	playSoundAt("snrb",position,state,4.0f); // TODO: move sound with projectile
 	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
-	state.addEffect(BrainiacProjectile!B(attacker,side,intendedTarget,position,direction,rangedAttack));
+	state.addEffect(BrainiacProjectile!B(attacker,side,intendedTarget,position,direction,rangedAttack,rangedAttack.range));
 	return true;
 }
 
 bool shrikeShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
 	playSoundAt("krhs",position,state,4.0f); // TODO: move sound with projectile
 	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
-	state.addEffect(ShrikeProjectile!B(attacker,side,intendedTarget,position,direction,rangedAttack));
+	state.addEffect(ShrikeProjectile!B(attacker,side,intendedTarget,position,direction,rangedAttack,rangedAttack.range));
 	return true;
 }
 
@@ -6055,7 +6055,7 @@ bool updateBrainiacProjectile(B)(ref BrainiacProjectile!B brainiacProjectile,Obj
 	with(brainiacProjectile){
 		auto oldPosition=position;
 		position+=rangedAttack.speed/updateFPS*direction;
-		travelDistance+=rangedAttack.speed/updateFPS;
+		remainingDistance-=rangedAttack.speed/updateFPS;
 		static assert(updateFPS==60);
 		auto effectPosition=position, effectDirection=direction;
 		if(state.isOnGround(effectPosition)){
@@ -6078,10 +6078,10 @@ bool updateBrainiacProjectile(B)(ref BrainiacProjectile!B brainiacProjectile,Obj
 			playSoundAt("hnrb",position,state,brainiacProjectileHitGain); // TODO: brainiac hit sound
 			return false;
 		}
-		if(travelDistance>rangedAttack.range) return terminate();
+		if(remainingDistance<=0.0f) return terminate();
 		switch(target.type){
 			case TargetType.terrain:
-				travelDistance=max(travelDistance,rangedAttack.range-brainiacProjectileSlidingDistance);
+				remainingDistance=min(remainingDistance,brainiacProjectileSlidingDistance);
 				if(state.isOnGround(position)){
 					position.z=max(position.z,state.getGroundHeight(position)+brainiacProjectileSize);
 					direction=Vector3f(direction.x,direction.y,0.0f).normalized;
@@ -6120,7 +6120,7 @@ bool updateShrikeProjectile(B)(ref ShrikeProjectile!B shrikeProjectile,ObjectSta
 	with(shrikeProjectile){
 		auto oldPosition=position;
 		position+=rangedAttack.speed/updateFPS*direction;
-		travelDistance+=rangedAttack.speed/updateFPS;
+		remainingDistance-=rangedAttack.speed/updateFPS;
 		static assert(updateFPS==60);
 		auto effectPosition=position, effectDirection=direction;
 		float effectScale=state.uniform(1.0f,1.5f);
@@ -6136,10 +6136,10 @@ bool updateShrikeProjectile(B)(ref ShrikeProjectile!B shrikeProjectile,ObjectSta
 			playSoundAt("hkhs",position,state,shrikeProjectileHitGain); // TODO: shrike hit sound
 			return false;
 		}
-		if(travelDistance>rangedAttack.range) return terminate();
+		if(remainingDistance<=0) return terminate();
 		switch(target.type){
 			case TargetType.terrain:
-				travelDistance=max(travelDistance,rangedAttack.range-shrikeProjectileSlidingDistance);
+				remainingDistance=min(remainingDistance,shrikeProjectileSlidingDistance);
 				break;
 			case TargetType.creature:
 				state.movingObjectById!((ref obj,state){ obj.stunWithCooldown(stunCooldownFrames,state); },(){})(target.id,state);
