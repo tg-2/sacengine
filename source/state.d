@@ -129,6 +129,10 @@ Vector3f center(B)(ref OrderTarget target,ObjectState!B state){
 	if(!state.isValidTarget(target.id)) return target.position;
 	return state.objectById!((obj)=>obj.center)(target.id);
 }
+Vector3f lowCenter(B)(ref OrderTarget target,ObjectState!B state){
+	if(!state.isValidTarget(target.id)) return target.position;
+	return state.objectById!((obj)=>obj.lowCenter)(target.id);
+}
 OrderTarget centerTarget(B)(int id,ObjectState!B state)in{
 	assert(state.isValidTarget(id));
 }do{
@@ -414,7 +418,10 @@ Vector3f center(T)(ref T object){
 	auto hbox=object.hitbox;
 	return 0.5f*(hbox[0]+hbox[1]);
 }
-
+Vector3f lowCenter(T)(ref T object){
+	auto hbox=object.hitbox;
+	return Vector3f(0.5f*(hbox[0].x+hbox[1].x),0.5f*(hbox[0].y+hbox[1].y),0.25f*(3.0f*hbox[0].z+hbox[1].z));
+}
 Vector3f[2] relativeMeleeHitbox(B)(ref MovingObject!B object){
 	return object.sacObject.meleeHitbox(object.rotation,object.animationState,object.frame/updateAnimFactor);
 }
@@ -3541,6 +3548,7 @@ bool locustShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vect
 	static bool filter(ref ProximityEntry entry,int id){ return entry.id!=id; }
 	auto end=state.collideRay!filter(position,direction,rangedAttack.range,attacker);
 	if(end.type==TargetType.none) end.position=position+0.5f*rangedAttack.range*direction;
+	else end.position=end.lowCenter(state);
 	if(end.type==TargetType.creature||end.type==TargetType.building)
 		dealRangedDamage(end.id,rangedAttack,attacker,side,direction,state);
 	state.addEffect(LocustProjectile!B(rangedAttack,end.position,position,end.type==TargetType.creature));
