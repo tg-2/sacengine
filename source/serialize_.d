@@ -120,6 +120,11 @@ void deserialize(T,R,B)(ref T rotation,ObjectState!B state,ref R data)if(is(T==Q
 	foreach(ref x;rotation.tupleof) deserialize(x,state,data);
 }
 
+void serialize(alias sink,T,size_t n)(SmallArray!(T,n) values)if(!is(T==bool)){ return serializeStruct!sink(values); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SmallArray!(S,n),S,size_t n)){
+	deserializeStruct(result,state,data);
+}
+
 void serialize(alias sink,T)(ref Queue!T queue){ serializeStruct!sink(queue); } // TODO: compactify?
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Queue!S,S)){
 	deserializeStruct(result,state,data);
@@ -307,6 +312,12 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Shr
 
 void serialize(alias sink,B)(ref LocustProjectile!B locustProjectile){ serializeStruct!sink(locustProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==LocustProjectile!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref SpitfireProjectile!B spitfireProjectile){ serializeStruct!sink(spitfireProjectile); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SpitfireProjectile!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink)(ref SpitfireEffect spitfireEffect){ serializeStruct!sink(spitfireEffect); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SpitfireEffect)){ deserializeStruct(result,state,data); }
 
 
 private alias Effects=state.Effects;

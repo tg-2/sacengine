@@ -1589,7 +1589,6 @@ struct BrainiacProjectile(B){
 	Vector3f direction;
 	SacSpell!B rangedAttack;
 	float remainingDistance;
-	int frame=0;
 }
 struct BrainiacEffect{
 	Vector3f position;
@@ -1605,7 +1604,6 @@ struct ShrikeProjectile(B){
 	Vector3f direction;
 	SacSpell!B rangedAttack;
 	float remainingDistance;
-	int frame=0;
 }
 struct ShrikeEffect{
 	Vector3f position;
@@ -1618,6 +1616,23 @@ struct LocustProjectile(B){
 	Vector3f position;
 	Vector3f target;
 	bool blood;
+}
+struct SpitfireProjectile(B){
+	int attacker;
+	int side;
+	int intendedTarget;
+	Vector3f position;
+	Vector3f direction;
+	SacSpell!B rangedAttack;
+	float remainingDistance;
+	int frame=0;
+	SmallArray!(int,16) damagedTargets;
+}
+struct SpitfireEffect{
+	Vector3f position;
+	Vector3f velocity;
+	int lifetime;
+	float scale=0.0f;
 	int frame=0;
 }
 struct Effects(B){
@@ -1834,6 +1849,22 @@ struct Effects(B){
 		if(i+1<locustProjectiles.length) locustProjectiles[i]=move(locustProjectiles[$-1]);
 		locustProjectiles.length=locustProjectiles.length-1;
 	}
+	Array!(SpitfireProjectile!B) spitfireProjectiles;
+	void addEffect(SpitfireProjectile!B spitfireProjectile){
+		spitfireProjectiles~=spitfireProjectile;
+	}
+	void removeSpitfireProjectile(int i){
+		if(i+1<spitfireProjectiles.length) swap(spitfireProjectiles[i],spitfireProjectiles[$-1]);
+		spitfireProjectiles.length=spitfireProjectiles.length-1; // TODO: reuse memory?
+	}
+	Array!SpitfireEffect spitfireEffects;
+	void addEffect(SpitfireEffect spitfireEffect){
+		spitfireEffects~=spitfireEffect;
+	}
+	void removeSpitfireEffect(int i){
+		if(i+1<spitfireEffects.length) spitfireEffects[i]=move(spitfireEffects[$-1]);
+		spitfireEffects.length=spitfireEffects.length-1;
+	}
 	void opAssign(ref Effects!B rhs){
 		assignArray(debris,rhs.debris);
 		assignArray(explosions,rhs.explosions);
@@ -1861,6 +1892,8 @@ struct Effects(B){
 		assignArray(shrikeProjectiles,rhs.shrikeProjectiles);
 		assignArray(shrikeEffects,rhs.shrikeEffects);
 		assignArray(locustProjectiles,rhs.locustProjectiles);
+		assignArray(spitfireProjectiles,rhs.spitfireProjectiles);
+		assignArray(spitfireEffects,rhs.spitfireEffects);
 	}
 	void opAssign(Effects!B rhs){ this.tupleof=rhs.tupleof; }
 }
@@ -3105,7 +3138,7 @@ float dealSpellDamage(B)(int target,SacSpell!B spell,int attacker,int attackerSi
 }
 
 float dealSplashSpellDamage(B)(ref MovingObject!B object,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
-	auto damage=spell.amount*max(0.0f,1.0f-distance/spell.effectRange);
+	auto damage=spell.amount*(spell.effectRange>0.0f?max(0.0f,1.0f-distance/spell.effectRange):1.0f);
 	auto actualDamage=damage*object.creatureStats.splashSpellResistance;
 	object.damageAnimation(attackDirection,state);
 	actualDamage=object.dealDamage(actualDamage,attackerSide,state);
@@ -3118,7 +3151,7 @@ float dealSplashSpellDamage(B)(ref StaticObject!B object,SacSpell!B spell,int at
 }
 
 float dealSplashSpellDamage(B)(ref Building!B building,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
-	auto damage=spell.amount*max(0.0f,1.0f-distance/spell.effectRange);
+	auto damage=spell.amount*(spell.effectRange>0.0f?max(0.0f,1.0f-distance/spell.effectRange):1.0f);
 	auto actualDamage=damage*building.splashSpellResistance;
 	return building.dealDamage(actualDamage,attackerSide,state);
 }
@@ -3130,11 +3163,9 @@ float dealSplashSpellDamage(B)(int target,SacSpell!B spell,int attacker,int atta
 	return state.objectById!dealSplashSpellDamage(target,spell,attacker,attackerSide,attackDirection,distance,state);
 }
 
-float dealSplashSpellDamageAt(alias callback=(id)=>true,B,T...)(int directTarget,SacSpell!B spell,int attacker,int attackerSide,Vector3f position,ObjectState!B state,T args){
-	auto radius=spell.effectRange;
-	static void dealDamage(ProximityEntry target,ObjectState!B state,int directTarget,SacSpell!B spell,int attacker,int attackerSide,Vector3f position,float* sum,T args){
+float dealSplashSpellDamageAt(alias callback=(id)=>true,B,T...)(int directTarget,SacSpell!B spell,float radius,int attacker,int attackerSide,Vector3f position,ObjectState!B state,T args){
+	static void dealDamage(ProximityEntry target,ObjectState!B state,int directTarget,SacSpell!B spell,int attacker,int attackerSide,Vector3f position,float* sum,float radius,T args){
 		if(target.id==directTarget) return;
-		auto radius=spell.effectRange;
 		auto distance=boxPointDistance(target.hitbox,position);
 		if(distance>radius) return;
 		auto attackDirection=state.objectById!((obj)=>obj.center)(target.id)-position;
@@ -3144,7 +3175,7 @@ float dealSplashSpellDamageAt(alias callback=(id)=>true,B,T...)(int directTarget
 	auto offset=Vector3f(radius,radius,radius);
 	Vector3f[2] hitbox=[position-offset,position+offset];
 	float sum=0.0f;
-	collisionTargets!(dealDamage,None,true)(hitbox,state,directTarget,spell,attacker,attackerSide,position,&sum,args);
+	collisionTargets!(dealDamage,None,true)(hitbox,state,directTarget,spell,attacker,attackerSide,position,&sum,radius,args);
 	return sum;
 }
 
@@ -3174,7 +3205,7 @@ float dealRangedDamage(B)(int target,SacSpell!B rangedAttack,int attacker,int at
 }
 
 float dealSplashRangedDamage(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
-	auto damage=rangedAttack.amount*max(0.0f,1.0f-distance/rangedAttack.effectRange);
+	auto damage=rangedAttack.amount*(rangedAttack.effectRange>0.0f?max(0.0f,1.0f-distance/rangedAttack.effectRange):1.0f);
 	auto actualDamage=damage*object.creatureStats.splashRangedResistance;
 	object.damageAnimation(attackDirection,state);
 	actualDamage=object.dealDamage(actualDamage,attackerSide,state);
@@ -3182,38 +3213,36 @@ float dealSplashRangedDamage(B)(ref MovingObject!B object,SacSpell!B rangedAttac
 	return actualDamage;
 }
 
-float dealSplashRangedDamage(B)(ref StaticObject!B building,SacSpell!B rangedAttack,int attacker,int attackerSide,float distance,Vector3f attackDirection,ObjectState!B state){
-	state.buildingById!(dealSplashRangedDamage,()=>0.0f)(rangedAttack,attackerSide,distance,attackDirection,state);
+float dealSplashRangedDamage(B)(ref StaticObject!B object,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
+	return state.buildingById!(dealSplashRangedDamage,()=>0.0f)(object.buildingId,rangedAttack,attacker,attackerSide,attackDirection,distance,state);
 }
 
-float dealSplashRangedDamage(B)(ref Building!B building,SacSpell!B rangedAttack,int attacker,int attackerSide,float distance,Vector3f attackDirection,ObjectState!B state){
-	auto damage=rangedAttack.amount*max(0.0f,1.0f-distance/rangedAttack.effectRange);
+float dealSplashRangedDamage(B)(ref Building!B building,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
+	auto damage=rangedAttack.amount*(rangedAttack.effectRange>0.0f?max(0.0f,1.0f-distance/rangedAttack.effectRange):1.0f);
 	auto actualDamage=damage*building.splashRangedResistance;
 	return building.dealDamage(actualDamage,attackerSide,state);
 }
 
 float dealSplashRangedDamage(B)(int target,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
 	if(state.isValidBuilding(target))
-		return state.buildingById!(dealSplashRangedDamage,()=>0.0f)(target,spell,attacker,attackerSide,attackDirection,distance,state);
+		return state.buildingById!(dealSplashRangedDamage,()=>0.0f)(target,rangedAttack,attacker,attackerSide,attackDirection,distance,state);
 	if(!state.isValidId(target)) return 0.0f;
-	return state.objectById!dealSplashRangedDamage(target,rangedAttack,attackerSide,attackDirection,distance,state);
+	return state.objectById!dealSplashRangedDamage(target,rangedAttack,attacker,attackerSide,attackDirection,distance,state);
 }
 
-void dealSplashRangedDamageAt(alias callback=(id)=>true,B,T...)(int directTarget,SacSpell!B rangedAttack,int attackerSide,Vector3f position,ObjectState!B state,T args){
-	auto radius=rangedAttack.effectRange;
-	static void dealDamage(ProximityEntry target,ObjectState!B state,int directTarget,SacSpell!B rangedAttack,int attackerSide,Vector3f position,float* sum,T args){
+float dealSplashRangedDamageAt(alias callback=(id)=>true,B,T...)(int directTarget,SacSpell!B rangedAttack,float radius,int attacker,int attackerSide,Vector3f position,ObjectState!B state,T args){
+	static void dealDamage(ProximityEntry target,ObjectState!B state,int directTarget,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f position,float* sum,float radius,T args){
 		if(target.id==directTarget) return;
-		auto radius=rangedAttack.effectRange;
 		auto distance=boxPointDistance(target.hitbox,position);
 		if(distance>radius) return;
 		auto attackDirection=state.objectById!((obj)=>obj.center)(target.id)-position;
 		if(callback(target.id,args))
-			sum+=dealSplashRangedDamage(target.id,rangedAttack,attackerSide,attackDirection,distance,state);
+			*sum+=dealSplashRangedDamage(target.id,rangedAttack,attacker,attackerSide,attackDirection,distance,state);
 	}
 	auto offset=Vector3f(radius,radius,radius);
 	Vector3f[2] hitbox=[position-offset,position+offset];
 	float sum=0.0f;
-	collisionTargets!(dealDamage,None,true)(hitbox,state,directTarget,rangedAttack,attackerSide,position,&sum,args);
+	collisionTargets!(dealDamage,None,true)(hitbox,state,directTarget,rangedAttack,attacker,attackerSide,position,&sum,radius,args);
 	return sum;
 }
 
@@ -3571,6 +3600,13 @@ bool locustShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vect
 	if(end.type==TargetType.creature||end.type==TargetType.building)
 		dealRangedDamage(end.id,rangedAttack,attacker,side,direction,state);
 	state.addEffect(LocustProjectile!B(rangedAttack,end.position,position,end.type==TargetType.creature));
+	return true;
+}
+
+bool spitfireShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	playSoundAt("6abf",position,state,4.0f);
+	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
+	state.addEffect(SpitfireProjectile!B(attacker,side,intendedTarget,position,direction,rangedAttack,rangedAttack.range));
 	return true;
 }
 
@@ -3962,6 +3998,9 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 						locustShoot(object.id,object.side,targetId,accuracy,object.shotPosition,predicted,rangedAttack,state);
 						// hack to ensure drain gets applied:
 						object.creatureStats.health=state.movingObjectById!((obj)=>obj.creatureStats.health,()=>0.0f)(object.id);
+						break;
+					case SpellTag.spitfireShoot:
+						spitfireShoot(object.id,object.side,targetId,accuracy,object.shotPosition,predicted,rangedAttack,state);
 						break;
 					default: goto case SpellTag.brainiacShoot;
 				}
@@ -5489,7 +5528,7 @@ void wrathExplosion(B)(ref Wrath!B wrath,int target,ObjectState!B state){
 	playSoundAt("hhtr",wrath.position,state,4.0f);
 	if(state.isValidTarget(target)) dealSpellDamage(target,wrath.spell,wrath.wizard,wrath.side,wrath.velocity,state);
 	else target=0;
-	dealSplashSpellDamageAt(target,wrath.spell,wrath.wizard,wrath.side,wrath.position,state);
+	dealSplashSpellDamageAt(target,wrath.spell,wrath.spell.effectRange,wrath.wizard,wrath.side,wrath.position,state);
 	enum numParticles1=200;
 	enum numParticles2=400;
 	auto sacParticle1=SacParticle!B.get(ParticleType.wrathExplosion1);
@@ -5617,7 +5656,7 @@ void fireballExplosion(B)(ref Fireball!B fireball,int target,ObjectState!B state
 		setAblaze(target,updateFPS,false,0.0f,wizard,side,state);
 		return true;
 	}
-	dealSplashSpellDamageAt!callback(target,fireball.spell,fireball.wizard,fireball.side,fireball.position,state,fireball.wizard,fireball.side,state);
+	dealSplashSpellDamageAt!callback(target,fireball.spell,fireball.spell.effectRange,fireball.wizard,fireball.side,fireball.position,state,fireball.wizard,fireball.side,state);
 	//explosionParticles(fireball.position,state);
 	enum numParticles1=200;
 	enum numParticles2=800;
@@ -5993,7 +6032,7 @@ void swarmHit(B)(ref Swarm!B swarm,int target,ObjectState!B state){
 		}
 		state.objectById!hit(target,&swarm,state);
 	}else target=0;
-	dealSplashSpellDamageAt(target,swarm.spell,swarm.wizard,swarm.side,swarm.position,state);
+	dealSplashSpellDamageAt(target,swarm.spell,swarm.spell.effectRange,swarm.wizard,swarm.side,swarm.position,state);
 }
 bool updateSwarm(B)(ref Swarm!B swarm,ObjectState!B state){
 	with(swarm){
@@ -6075,7 +6114,7 @@ bool updateBrainiacProjectile(B)(ref BrainiacProjectile!B brainiacProjectile,Obj
 			target=state.lineOfSightWithoutSide(oldPosition,position,side,intendedTarget);
 		}
 		bool terminate(){
-			playSoundAt("hnrb",position,state,brainiacProjectileHitGain); // TODO: brainiac hit sound
+			playSoundAt("hnrb",position,state,brainiacProjectileHitGain);
 			return false;
 		}
 		if(remainingDistance<=0.0f) return terminate();
@@ -6133,7 +6172,7 @@ bool updateShrikeProjectile(B)(ref ShrikeProjectile!B shrikeProjectile,ObjectSta
 			target=state.lineOfSightWithoutSide(oldPosition,position,side,intendedTarget);
 		}
 		bool terminate(){
-			playSoundAt("hkhs",position,state,shrikeProjectileHitGain); // TODO: shrike hit sound
+			playSoundAt("hkhs",position,state,shrikeProjectileHitGain);
 			return false;
 		}
 		if(remainingDistance<=0) return terminate();
@@ -6159,6 +6198,7 @@ bool updateShrikeEffect(B)(ref ShrikeEffect effect,ObjectState!B state){
 	}
 }
 
+enum finalSpitfireProjectileSize=7.5f;
 bool updateLocustProjectile(B)(ref LocustProjectile!B locustProjectile,ObjectState!B state){
 	with(locustProjectile){
 		static assert(updateFPS==60);
@@ -6175,6 +6215,57 @@ bool updateLocustProjectile(B)(ref LocustProjectile!B locustProjectile,ObjectSta
 		return distance.lengthsqr>=(rangedAttack.speed/updateFPS)^^2;
 	}
 }
+
+bool updateSpitfireProjectile(B)(ref SpitfireProjectile!B spitfireProjectile,ObjectState!B state){
+	with(spitfireProjectile){
+		auto oldPosition=position;
+		position+=rangedAttack.speed/updateFPS*direction;
+		remainingDistance-=rangedAttack.speed/updateFPS;
+		static bool callback(T)(int id,T* targets,int attacker,int side,int intendedTarget,SacSpell!B rangedAttack,Vector3f attackDirection,ObjectState!B state){
+			auto recordedId=id;
+			if(state.isValidTarget(id,TargetType.building)){
+				if(auto cand=state.staticObjectById!((ref obj)=>obj.buildingId,()=>0)(id))
+					recordedId=cand;
+			}
+			if((*targets)[].canFind(recordedId)) return false;
+			bool validTarget=!!state.targetTypeFromId(id).among(TargetType.creature,TargetType.building);
+			*targets~=recordedId;
+			if(validTarget&&id==intendedTarget){
+				dealRangedDamage(intendedTarget,rangedAttack,attacker,side,attackDirection,state); // TODO: ok?
+				setAblaze(id,updateFPS/2,true,0.0f,attacker,side,state);
+				return false;
+			}
+			if(validTarget&&state.objectById!(.side)(id,state)==side)
+				return false;
+			if(validTarget) setAblaze(id,updateFPS/2,true,0.0f,attacker,side,state);
+			return true;
+		}
+		auto radius=finalSpitfireProjectileSize*frame/(updateFPS*rangedAttack.range/rangedAttack.speed);
+		dealSplashRangedDamageAt!callback(0,rangedAttack,radius,attacker,side,position,state,&damagedTargets,attacker,side,intendedTarget,rangedAttack,direction,state);
+		static assert(updateFPS==60);
+		if(frame<12){
+			enum numEffects=3;
+			foreach(i;0..numEffects){
+				auto effectPosition=position-frame*rangedAttack.speed/updateFPS*direction, effectDirection=direction+0.05f*state.uniformDirection(), effectScale=state.uniform(0.0f,1.0f);
+				auto speed=rangedAttack.speed*state.uniform(0.9f,1.1f);
+				auto lifetime=cast(int)(updateFPS*rangedAttack.range/rangedAttack.speed);
+				state.addEffect(SpitfireEffect(effectPosition,effectDirection*speed,lifetime,effectScale));
+			}
+		}
+		++frame;
+		return remainingDistance>0.0f;
+	}
+}
+bool updateSpitfireEffect(B)(ref SpitfireEffect effect,ObjectState!B state){
+	with(effect){
+		static assert(updateFPS==60);
+		position+=velocity/updateFPS;
+		enum numFrames=64;
+		scale+=finalSpitfireProjectileSize/numFrames;
+		return ++frame<min(lifetime,numFrames);
+	}
+}
+
 
 void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.debris.length;){
@@ -6355,6 +6446,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.locustProjectiles.length;){
 		if(!updateLocustProjectile(effects.locustProjectiles[i],state)){
 			effects.removeLocustProjectile(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.spitfireProjectiles.length;){
+		if(!updateSpitfireProjectile(effects.spitfireProjectiles[i],state)){
+			effects.removeSpitfireProjectile(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.spitfireEffects.length;){
+		if(!updateSpitfireEffect(effects.spitfireEffects[i],state)){
+			effects.removeSpitfireEffect(i);
 			continue;
 		}
 		i++;

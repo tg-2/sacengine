@@ -576,6 +576,20 @@ final class SacScene: Scene{
 						mesh.render(rc);
 					}
 				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.spitfireEffects.length){
+					auto fire=SacParticle!DagonBackend.get(ParticleType.fire);
+					auto material=fire.material;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
+					foreach(j;0..objects.spitfireEffects.length){
+						auto position=objects.spitfireEffects[j].position;
+						auto frame=objects.spitfireEffects[j].frame;
+						auto scale=objects.spitfireEffects[j].scale;
+						material.backend.setSpriteTransformationScaled(position,scale,rc);
+						auto mesh=fire.getMesh(objects.spitfireEffects[j].frame%fire.numFrames);
+						mesh.render(rc);
+					}
+				}
 			}else static if(is(T==Particles!(DagonBackend,relative),bool relative)){
 				static if(mode==RenderMode.transparent){
 					if(rc.shadowMode) return; // TODO: particle shadows?
