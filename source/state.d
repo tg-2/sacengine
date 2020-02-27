@@ -3560,7 +3560,7 @@ bool wrath(B)(int wizard,int side,Vector3f position,OrderTarget target,SacSpell!
 Fireball!B makeFireball(B)(int wizard,int side,Vector3f position,OrderTarget target,SacSpell!B spell,ObjectState!B state){
 	auto rotationSpeed=2*pi!float*state.uniform(0.5f,2.0f)/updateFPS;
 	auto velocity=Vector3f(0.0f,0.0f,0.0f);
-	auto rotationAxis=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+	auto rotationAxis=state.uniformDirection();
 	auto rotationUpdate=rotationQuaternion(rotationAxis,rotationSpeed);
 	return Fireball!B(wizard,side,position,velocity,target,spell,rotationUpdate,Quaternionf.identity());
 }
@@ -3589,7 +3589,7 @@ bool fireball(B)(Fireball!B fireball,ObjectState!B state){
 Rock!B makeRock(B)(int wizard,int side,Vector3f position,OrderTarget target,SacSpell!B spell,ObjectState!B state){
 	auto rotationSpeed=2*pi!float*state.uniform(0.1f,0.4f)/updateFPS;
 	auto velocity=Vector3f(0.0f,0.0f,0.0f);
-	auto rotationAxis=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+	auto rotationAxis=state.uniformDirection();
 	auto rotationUpdate=rotationQuaternion(rotationAxis,rotationSpeed);
 	return Rock!B(wizard,side,position,velocity,target,spell,rotationUpdate,Quaternionf.identity());
 }
@@ -3706,7 +3706,7 @@ bool earthflingShoot(B)(int attacker,int side,int intendedTarget,float accuracy,
 	playSoundAt("4tps",position,state,4.0f);
 	auto direction=getShotDirectionWithGravity(accuracy,position,target,rangedAttack,state);
 	auto rotationSpeed=2*pi!float*state.uniform(0.1f,0.4f)/updateFPS;
-	auto rotationAxis=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+	auto rotationAxis=state.uniformDirection();
 	auto rotationUpdate=rotationQuaternion(rotationAxis,rotationSpeed);
 	state.addEffect(EarthflingProjectile!B(attacker,side,intendedTarget,position,direction*rangedAttack.speed,rangedAttack,rotationUpdate,Quaternionf.identity()));
 	return true;
@@ -5148,7 +5148,7 @@ bool updateDebris(B)(ref Debris!B debris,ObjectState!B state){
 	auto frame=0;
 	foreach(i;0..numParticles){
 		auto position=oldPosition*((cast(float)numParticles-1-i)/(numParticles-1))+debris.position*(cast(float)i/(numParticles-1));
-		position+=0.1f*Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f));
+		position+=0.1f*state.uniformDirection();
 		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
 	}
 	return true;
@@ -5357,8 +5357,8 @@ void animateCasting(bool spread=true,int numParticles=-1,B)(ref MovingObject!B w
 		if(isNaN(hposition.x)) continue;
 		foreach(k;0..numParticles){
 			static if(spread){
-				auto position=hposition+0.125f*Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
-				auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+				auto position=hposition+0.125f*state.uniformDirection();
+				auto direction=state.uniformDirection();
 				auto velocity=state.uniform(0.5f,1.5f)*direction;
 			}else{
 				auto position=hposition;
@@ -5653,7 +5653,7 @@ void wrathExplosion(B)(ref Wrath!B wrath,int target,ObjectState!B state){
 	auto sacParticle1=SacParticle!B.get(ParticleType.wrathExplosion1);
 	auto sacParticle2=SacParticle!B.get(ParticleType.wrathExplosion2);
 	foreach(i;0..numParticles1+numParticles2){
-		auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+		auto direction=state.uniformDirection();
 		auto velocity=state.uniform(0.75f,3.0f)*direction;
 		auto scale=i<numParticles1?2.25f:1.5f;
 		auto lifetime=i<numParticles1?31:63;
@@ -5665,7 +5665,7 @@ void wrathExplosion(B)(ref Wrath!B wrath,int target,ObjectState!B state){
 	enum numParticles3=200;
 	auto sacParticle3=SacParticle!B.get(ParticleType.wrathParticle);
 	foreach(i;0..numParticles3){
-		auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+		auto direction=state.uniformDirection();
 		auto velocity=state.uniform(5.0f,15.0f)*direction;
 		auto scale=state.uniform(0.75f,1.5f);
 		auto lifetime=63;
@@ -5751,7 +5751,7 @@ void animateFireball(B)(ref Fireball!B fireball,Vector3f oldPosition,ObjectState
 		foreach(i;0..numParticles){
 			auto sacParticle=i!=0?sacParticle1:sacParticle2;
 			auto position=oldPosition*((cast(float)numParticles-1-i)/numParticles)+position*(cast(float)(i+1)/numParticles);
-			position+=0.15f*Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f));
+			position+=0.15f*state.uniformDirection();
 			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
 		}
 	}
@@ -5783,7 +5783,7 @@ void fireballExplosion(B)(ref Fireball!B fireball,int target,ObjectState!B state
 	auto sacParticle2=SacParticle!B.get(ParticleType.explosion2);
 	foreach(i;0..numParticles1+numParticles2){
 		auto position=fireball.position;
-		auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+		auto direction=state.uniformDirection();
 		auto velocity=(i<numParticles1?1.0f:1.5f)*state.uniform(1.5f,6.0f)*direction;
 		auto scale=1.0f;
 		auto lifetime=31;
@@ -5793,7 +5793,7 @@ void fireballExplosion(B)(ref Fireball!B fireball,int target,ObjectState!B state
 	enum numParticles3=300;
 	auto sacParticle3=SacParticle!B.get(ParticleType.ashParticle);
 	foreach(i;0..numParticles3){
-		auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+		auto direction=state.uniformDirection();
 		auto velocity=state.uniform(7.5f,15.0f)*direction;
 		auto scale=state.uniform(0.75f,1.5f);
 		auto lifetime=95;
@@ -5804,7 +5804,7 @@ void fireballExplosion(B)(ref Fireball!B fireball,int target,ObjectState!B state
 	auto sacParticle4=SacParticle!B.get(ParticleType.smoke);
 	foreach(i;0..numParticles4){
 		auto position=fireball.position;
-		auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(0.0f,2.0f)).normalized;
+		auto direction=state.uniformDirection();
 		auto velocity=state.uniform(0.5f,2.0f)*direction+Vector3f(0.0f,0.0f,0.5f);
 		auto scale=1.0f;
 		auto lifetime=127;
@@ -5890,7 +5890,7 @@ void animateEmergingRock(B)(ref Rock!B rock,ObjectState!B state){
 	enum numParticles=50;
 	auto sacParticle=SacParticle!B.get(ParticleType.rock);
 	foreach(i;0..numParticles){
-		auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(0.5f,1.0f)).normalized;
+		auto direction=state.uniformDirection();
 		auto velocity=state.uniform(3.0f,6.0f)*direction;
 		velocity.z*=2.5f;
 		auto scale=state.uniform(0.25f,0.75f);
@@ -5901,7 +5901,7 @@ void animateEmergingRock(B)(ref Rock!B rock,ObjectState!B state){
 	enum numParticles4=20;
 	auto sacParticle4=SacParticle!B.get(ParticleType.dust);
 	foreach(i;0..numParticles4){
-		auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+		auto direction=state.uniformDirection();
 		auto position=rock.position+0.75f*direction;
 		auto velocity=0.2f*direction;
 		auto scale=3.0f;
@@ -5942,7 +5942,7 @@ void rockExplosion(B)(ref Rock!B rock,int target,ObjectState!B state){
 	enum numParticles3=100;
 	auto sacParticle3=SacParticle!B.get(ParticleType.rock);
 	foreach(i;0..numParticles3){
-		auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+		auto direction=state.uniformDirection();
 		auto velocity=state.uniform(7.5f,15.0f)*direction;
 		auto scale=state.uniform(1.0f,2.5f);
 		auto lifetime=95;
@@ -5952,7 +5952,7 @@ void rockExplosion(B)(ref Rock!B rock,int target,ObjectState!B state){
 	enum numParticles4=20;
 	auto sacParticle4=SacParticle!B.get(ParticleType.dirt);
 	foreach(i;0..numParticles4){
-		auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+		auto direction=state.uniformDirection();
 		auto position=rock.position+0.75f*direction;
 		auto velocity=Vector3f(0.0f,0.0f,0.0f);
 		auto scale=3.0f;
@@ -6463,12 +6463,12 @@ int earthflingProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f 
 }
 
 void earthflingProjectileExplosion(B)(ref EarthflingProjectile!B earthflingProjectile,int target,ObjectState!B state){
-	playSoundAt("pmir",earthflingProjectile.position,state,4.0f);
+	playSoundAt("pmir",earthflingProjectile.position,state,2.0f);
 	if(state.isValidTarget(target)) dealRangedDamage(target,earthflingProjectile.rangedAttack,earthflingProjectile.attacker,earthflingProjectile.side,earthflingProjectile.velocity,state);
 	enum numParticles3=20;
 	auto sacParticle3=SacParticle!B.get(ParticleType.rock);
 	foreach(i;0..numParticles3){
-		auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+		auto direction=state.uniformDirection();
 		auto velocity=0.3f*state.uniform(7.5f,15.0f)*direction;
 		auto scale=0.3f*state.uniform(1.0f,2.5f);
 		auto lifetime=95;
@@ -6478,7 +6478,7 @@ void earthflingProjectileExplosion(B)(ref EarthflingProjectile!B earthflingProje
 	enum numParticles4=4;
 	auto sacParticle4=SacParticle!B.get(ParticleType.dirt);
 	foreach(i;0..numParticles4){
-		auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+		auto direction=state.uniformDirection();
 		auto position=earthflingProjectile.position+0.25f*direction;
 		auto velocity=Vector3f(0.0f,0.0f,0.0f);
 		auto scale=1.0f;
@@ -6545,7 +6545,7 @@ void flameMinionProjectileExplosion(B)(ref FlameMinionProjectile!B flameMinionPr
 	enum numParticles4=30;
 	auto sacParticle4=SacParticle!B.get(ParticleType.fire);
 	foreach(i;0..numParticles4){
-		auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+		auto direction=state.uniformDirection();
 		auto position=flameMinionProjectile.position+0.25f*direction;
 		auto velocity=Vector3f(0.0f,0.0f,1.0f); // TODO: original uses vibrating particles
 		auto scale=1.0f;
@@ -6810,7 +6810,7 @@ void explosionParticles(B)(Vector3f position,ObjectState!B state){
 	auto sacParticle1=SacParticle!B.get(ParticleType.explosion);
 	auto sacParticle2=SacParticle!B.get(ParticleType.explosion2);
 	foreach(i;0..numParticles){
-		auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+		auto direction=state.uniformDirection();
 		auto velocity=state.uniform(1.5f,6.0f)*direction;
 		auto scale=1.0f;
 		auto lifetime=31;
@@ -6832,7 +6832,7 @@ void animateDebris(B)(Vector3f position,ObjectState!B state){
 		auto angle=state.uniform(-pi!float,pi!float);
 		auto velocity=(20.0f+state.uniform(-5.0f,5.0f))*Vector3f(cos(angle),sin(angle),state.uniform(0.5f,2.0f)).normalized;
 		auto rotationSpeed=2*pi!float*state.uniform(0.5f,2.0f)/updateFPS;
-		auto rotationAxis=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+		auto rotationAxis=state.uniformDirection();
 		auto rotationUpdate=rotationQuaternion(rotationAxis,rotationSpeed);
 		auto debris=Debris!B(position,velocity,rotationUpdate,Quaternionf.identity());
 		state.addEffect(debris);
@@ -6843,7 +6843,7 @@ void animateAsh(B)(Vector3f position,ObjectState!B state){
 	enum numParticles=300;
 	auto sacParticle=SacParticle!B.get(ParticleType.ashParticle);
 	foreach(i;0..numParticles){
-		auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+		auto direction=state.uniformDirection();
 		auto velocity=state.uniform(15.0f,30.0f)*direction;
 		//auto scale=state.uniform(1.5f,3.0f);
 		auto scale=state.uniform(1.75f,4.0f);
