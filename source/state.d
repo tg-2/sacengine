@@ -3703,7 +3703,7 @@ bool gargoyleShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Ve
 }
 
 bool earthflingShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
-	playSoundAt("4tps",position,state,4.0f); // TODO: correct?
+	playSoundAt("4tps",position,state,4.0f);
 	auto direction=getShotDirectionWithGravity(accuracy,position,target,rangedAttack,state);
 	auto rotationSpeed=2*pi!float*state.uniform(0.1f,0.4f)/updateFPS;
 	auto rotationAxis=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
@@ -3713,7 +3713,7 @@ bool earthflingShoot(B)(int attacker,int side,int intendedTarget,float accuracy,
 }
 
 bool flameMinionShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
-	//playSoundAt("????",position,state,4.0f); // TODO
+	playSpellSoundTypeAt(SoundType.fireball,position,state,4.0f); // TODO: move with projectile
 	auto direction=getShotDirectionWithGravity(accuracy,position,target,rangedAttack,state);
 	state.addEffect(FlameMinionProjectile!B(attacker,side,intendedTarget,position,direction*rangedAttack.speed,rangedAttack));
 	return true;
@@ -6463,7 +6463,7 @@ int earthflingProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f 
 }
 
 void earthflingProjectileExplosion(B)(ref EarthflingProjectile!B earthflingProjectile,int target,ObjectState!B state){
-	playSoundAt("pmir",earthflingProjectile.position,state,4.0f); // TODO: correct?
+	playSoundAt("pmir",earthflingProjectile.position,state,4.0f);
 	if(state.isValidTarget(target)) dealRangedDamage(target,earthflingProjectile.rangedAttack,earthflingProjectile.attacker,earthflingProjectile.side,earthflingProjectile.velocity,state);
 	enum numParticles3=20;
 	auto sacParticle3=SacParticle!B.get(ParticleType.rock);
@@ -6538,17 +6538,16 @@ int flameMinionProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f
 }
 
 void flameMinionProjectileExplosion(B)(ref FlameMinionProjectile!B flameMinionProjectile,int target,ObjectState!B state){
-	//playSoundAt("????",flameMinionProjectile.position,state,4.0f); // TODO
 	if(state.isValidTarget(target)){
 		dealRangedDamage(target,flameMinionProjectile.rangedAttack,flameMinionProjectile.attacker,flameMinionProjectile.side,flameMinionProjectile.velocity,state);
 		with(flameMinionProjectile) setAblaze(target,updateFPS/4,true,0.0f,attacker,side,state);
 	}
-	enum numParticles4=20;
+	enum numParticles4=30;
 	auto sacParticle4=SacParticle!B.get(ParticleType.fire);
 	foreach(i;0..numParticles4){
 		auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
 		auto position=flameMinionProjectile.position+0.25f*direction;
-		auto velocity=Vector3f(0.0f,0.0f,0.0f);
+		auto velocity=Vector3f(0.0f,0.0f,1.0f); // TODO: original uses vibrating particles
 		auto scale=1.0f;
 		auto frame=state.uniform(2)?0:state.uniform(24);
 		auto lifetime=63-frame;
