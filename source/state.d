@@ -1668,6 +1668,15 @@ struct EarthflingProjectile(B){
 	Quaternionf rotation;
 }
 
+struct FlameMinionProjectile(B){
+	int attacker;
+	int side;
+	int intendedTarget;
+	Vector3f position;
+	Vector3f velocity;
+	SacSpell!B rangedAttack;
+}
+
 struct Effects(B){
 	// misc
 	Array!(Debris!B) debris;
@@ -1922,6 +1931,14 @@ struct Effects(B){
 		if(i+1<earthflingProjectiles.length) swap(earthflingProjectiles[i],earthflingProjectiles[$-1]);
 		earthflingProjectiles.length=earthflingProjectiles.length-1; // TODO: reuse memory?
 	}
+	Array!(FlameMinionProjectile!B) flameMinionProjectiles;
+	void addEffect(FlameMinionProjectile!B flameMinionProjectile){
+		flameMinionProjectiles~=flameMinionProjectile;
+	}
+	void removeFlameMinionProjectile(int i){
+		if(i+1<flameMinionProjectiles.length) swap(flameMinionProjectiles[i],flameMinionProjectiles[$-1]);
+		flameMinionProjectiles.length=flameMinionProjectiles.length-1; // TODO: reuse memory?
+	}
 	void opAssign(ref Effects!B rhs){
 		assignArray(debris,rhs.debris);
 		assignArray(explosions,rhs.explosions);
@@ -1954,6 +1971,7 @@ struct Effects(B){
 		assignArray(gargoyleProjectiles,rhs.gargoyleProjectiles);
 		assignArray(gargoyleEffects,rhs.gargoyleEffects);
 		assignArray(earthflingProjectiles,rhs.earthflingProjectiles);
+		assignArray(flameMinionProjectiles,rhs.flameMinionProjectiles);
 	}
 	void opAssign(Effects!B rhs){ this.tupleof=rhs.tupleof; }
 }
@@ -3694,6 +3712,12 @@ bool earthflingShoot(B)(int attacker,int side,int intendedTarget,float accuracy,
 	return true;
 }
 
+bool flameMinionShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	//playSoundAt("????",position,state,4.0f); // TODO
+	auto direction=getShotDirectionWithGravity(accuracy,position,target,rangedAttack,state);
+	state.addEffect(FlameMinionProjectile!B(attacker,side,intendedTarget,position,direction*rangedAttack.speed,rangedAttack));
+	return true;
+}
 
 enum defaultFaceThreshold=1e-3;
 bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state,float threshold=defaultFaceThreshold){
@@ -3942,7 +3966,7 @@ void moveTowards(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectStat
 		bool evading;
 		object.turnToFaceTowardsEvading(targetPosition,evading,state);
 		if(evading) return;
-	}else object.turnToFaceTowards(targetPosition,state); 
+	}else object.turnToFaceTowards(targetPosition,state);
 	bool slowDown=false;
 	if(object.movingForwardGetsCloserTo(targetPosition,speed,state,&slowDown)){
 		object.startMovingForward(state);
@@ -4092,6 +4116,9 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 						break;
 					case SpellTag.earthflingShoot:
 						earthflingShoot(object.id,object.side,targetId,accuracy,object.shotPosition,predicted,rangedAttack,state);
+						break;
+					case SpellTag.flameMinionShoot:
+						flameMinionShoot(object.id,object.side,targetId,accuracy,object.shotPosition,predicted,rangedAttack,state);
 						break;
 					default: goto case SpellTag.brainiacShoot;
 				}
@@ -5095,6 +5122,7 @@ void updateParticles(B,bool relative)(ref Particles!(B,relative) particles, Obje
 	}
 }
 
+enum debrisFallLimit=1000.0f;
 bool updateDebris(B)(ref Debris!B debris,ObjectState!B state){
 	auto oldPosition=debris.position;
 	debris.position+=debris.velocity/updateFPS;
@@ -5110,7 +5138,7 @@ bool updateDebris(B)(ref Debris!B debris,ObjectState!B state){
 			if(debris.velocity.z<1.0f)
 				return false;
 		}
-	}else if(debris.position.z<state.getHeight(debris.position)-1000.0f)
+	}else if(debris.position.z<state.getHeight(debris.position)-debrisFallLimit)
 		return false;
 	enum numParticles=3;
 	auto sacParticle=SacParticle!B.get(ParticleType.firy);
@@ -5894,7 +5922,7 @@ void animateRock(B)(ref Rock!B rock,Vector3f oldPosition,ObjectState!B state){
 		auto frame=0;
 		foreach(i;0..numParticles){
 			auto position=oldPosition*((cast(float)numParticles-1-i)/numParticles)+position*(cast(float)(i+1)/numParticles);
-			position+=0.3f*Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f));
+			position+=0.3f*state.uniformDirection();
 			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
 		}
 	}
@@ -6417,7 +6445,7 @@ void animateEarthflingProjectile(B)(ref EarthflingProjectile!B earthflingProject
 		auto frame=0;
 		foreach(i;0..numParticles){
 			auto position=oldPosition*((cast(float)numParticles-1-i)/numParticles)+position*(cast(float)(i+1)/numParticles);
-			position+=0.3f*Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f));
+			position+=0.3f*state.uniformDirection();
 			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
 		}
 	}
@@ -6476,7 +6504,76 @@ bool updateEarthflingProjectile(B)(ref EarthflingProjectile!B earthflingProjecti
 				earthflingProjectile.earthflingProjectileExplosion(0,state);
 				return false;
 			}
+		}else if(position.z<state.getHeight(position)-rangedAttack.fallLimit)
+			return false;
+		return true;
+	}
+}
+
+void animateFlameMinionProjectile(B)(ref FlameMinionProjectile!B flameMinionProjectile,Vector3f oldPosition,ObjectState!B state){
+	with(flameMinionProjectile){
+		enum numParticles=4;
+		auto sacParticle=SacParticle!B.get(ParticleType.firy);
+		auto velocity=Vector3f(0.0f,0.0f,0.0f);
+		auto lifetime=15;
+		auto scale=0.75f;
+		auto frame=15;
+		foreach(i;0..numParticles){
+			auto position=oldPosition*((cast(float)numParticles-1-i)/numParticles)+position*(cast(float)(i+1)/numParticles);
+			position+=0.1f*state.uniformDirection();
+			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
 		}
+	}
+}
+
+enum flameMinionProjectileHitGain=4.0f;
+enum flameMinionProjectileSize=0.7f; // TODO: ok?
+enum flameMinionProjectileSlidingDistance=0.0f;
+static immutable Vector3f[2] flameMinionProjectileHitbox=[-0.5f*flameMinionProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*flameMinionProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
+int flameMinionProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
+		return entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side;
+	}
+	return collisionTarget!(flameMinionProjectileHitbox,filter)(side,position,state,side,intendedTarget);
+}
+
+void flameMinionProjectileExplosion(B)(ref FlameMinionProjectile!B flameMinionProjectile,int target,ObjectState!B state){
+	//playSoundAt("????",flameMinionProjectile.position,state,4.0f); // TODO
+	if(state.isValidTarget(target)){
+		dealRangedDamage(target,flameMinionProjectile.rangedAttack,flameMinionProjectile.attacker,flameMinionProjectile.side,flameMinionProjectile.velocity,state);
+		with(flameMinionProjectile) setAblaze(target,updateFPS/4,true,0.0f,attacker,side,state);
+	}
+	enum numParticles4=20;
+	auto sacParticle4=SacParticle!B.get(ParticleType.fire);
+	foreach(i;0..numParticles4){
+		auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+		auto position=flameMinionProjectile.position+0.25f*direction;
+		auto velocity=Vector3f(0.0f,0.0f,0.0f);
+		auto scale=1.0f;
+		auto frame=state.uniform(2)?0:state.uniform(24);
+		auto lifetime=63-frame;
+		state.addParticle(Particle!B(sacParticle4,position,velocity,scale,lifetime,frame));
+	}
+}
+
+bool updateFlameMinionProjectile(B)(ref FlameMinionProjectile!B flameMinionProjectile,ObjectState!B state){
+	with(flameMinionProjectile){
+		auto oldPosition=position;
+		position+=velocity/updateFPS;
+		velocity.z-=rangedAttack.fallingAcceleration/updateFPS;
+		flameMinionProjectile.animateFlameMinionProjectile(oldPosition,state);
+		auto target=flameMinionProjectileCollisionTarget(side,intendedTarget,position,state);
+		if(state.isValidTarget(target)){
+			flameMinionProjectile.flameMinionProjectileExplosion(target,state);
+			return false;
+		}
+		if(state.isOnGround(position)){
+			if(position.z<state.getGroundHeight(position)){
+				flameMinionProjectile.flameMinionProjectileExplosion(0,state);
+				return false;
+			}
+		}else if(position.z<state.getHeight(position)-rangedAttack.fallLimit)
+			return false;
 		return true;
 	}
 }
@@ -6696,6 +6793,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.earthflingProjectiles.length;){
 		if(!updateEarthflingProjectile(effects.earthflingProjectiles[i],state)){
 			effects.removeEarthflingProjectile(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.flameMinionProjectiles.length;){
+		if(!updateFlameMinionProjectile(effects.flameMinionProjectiles[i],state)){
+			effects.removeFlameMinionProjectile(i);
 			continue;
 		}
 		i++;

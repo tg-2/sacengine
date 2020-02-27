@@ -94,6 +94,7 @@ class SacSpell(B){
 	float speed;
 	float acceleration;
 	enum fallingAcceleration=30.0f;
+	enum fallLimit=1000.0f;
 	int soulCost;
 
 	SpelFlags flags;
