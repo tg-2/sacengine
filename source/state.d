@@ -1657,6 +1657,17 @@ struct GargoyleEffect{
 	int frame=0;
 }
 
+struct EarthflingProjectile(B){
+	int attacker;
+	int side;
+	int intendedTarget;
+	Vector3f position;
+	Vector3f velocity;
+	SacSpell!B rangedAttack;
+	Quaternionf rotationUpdate;
+	Quaternionf rotation;
+}
+
 struct Effects(B){
 	// misc
 	Array!(Debris!B) debris;
@@ -1903,6 +1914,14 @@ struct Effects(B){
 		if(i+1<gargoyleEffects.length) gargoyleEffects[i]=move(gargoyleEffects[$-1]);
 		gargoyleEffects.length=gargoyleEffects.length-1;
 	}
+	Array!(EarthflingProjectile!B) earthflingProjectiles;
+	void addEffect(EarthflingProjectile!B earthflingProjectile){
+		earthflingProjectiles~=earthflingProjectile;
+	}
+	void removeEarthflingProjectile(int i){
+		if(i+1<earthflingProjectiles.length) swap(earthflingProjectiles[i],earthflingProjectiles[$-1]);
+		earthflingProjectiles.length=earthflingProjectiles.length-1; // TODO: reuse memory?
+	}
 	void opAssign(ref Effects!B rhs){
 		assignArray(debris,rhs.debris);
 		assignArray(explosions,rhs.explosions);
@@ -1934,6 +1953,7 @@ struct Effects(B){
 		assignArray(spitfireEffects,rhs.spitfireEffects);
 		assignArray(gargoyleProjectiles,rhs.gargoyleProjectiles);
 		assignArray(gargoyleEffects,rhs.gargoyleEffects);
+		assignArray(earthflingProjectiles,rhs.earthflingProjectiles);
 	}
 	void opAssign(Effects!B rhs){ this.tupleof=rhs.tupleof; }
 }
@@ -3616,6 +3636,12 @@ Vector3f getShotDirection(B)(float accuracy,Vector3f position,Vector3f target,Sa
 	return rotate(facingQuaternion(φ),(target-position+5.0f*accuracy*state.normal()).normalized); // TODO: ok?
 }
 
+Vector3f getShotDirectionWithGravity(B)(float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
+	direction.z+=0.5f*rangedAttack.fallingAcceleration*(target-position).length/rangedAttack.speed^^2;
+	return direction;
+}
+
 bool brainiacShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
 	playSoundAt("snrb",position,state,4.0f); // TODO: move sound with projectile
 	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
@@ -3657,6 +3683,17 @@ bool gargoyleShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Ve
 	state.addEffect(GargoyleProjectile!B(attacker,side,intendedTarget,position,direction,rangedAttack,rangedAttack.range));
 	return true;
 }
+
+bool earthflingShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	playSoundAt("4tps",position,state,4.0f); // TODO: correct?
+	auto direction=getShotDirectionWithGravity(accuracy,position,target,rangedAttack,state);
+	auto rotationSpeed=2*pi!float*state.uniform(0.1f,0.4f)/updateFPS;
+	auto rotationAxis=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+	auto rotationUpdate=rotationQuaternion(rotationAxis,rotationSpeed);
+	state.addEffect(EarthflingProjectile!B(attacker,side,intendedTarget,position,direction*rangedAttack.speed,rangedAttack,rotationUpdate,Quaternionf.identity()));
+	return true;
+}
+
 
 enum defaultFaceThreshold=1e-3;
 bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state,float threshold=defaultFaceThreshold){
@@ -4052,6 +4089,9 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 						break;
 					case SpellTag.gargoyleShoot:
 						gargoyleShoot(object.id,object.side,targetId,accuracy,object.shotPosition,predicted,rangedAttack,state);
+						break;
+					case SpellTag.earthflingShoot:
+						earthflingShoot(object.id,object.side,targetId,accuracy,object.shotPosition,predicted,rangedAttack,state);
 						break;
 					default: goto case SpellTag.brainiacShoot;
 				}
@@ -6366,6 +6406,82 @@ bool updateGargoyleEffect(B)(ref GargoyleEffect effect,ObjectState!B state){
 	}
 }
 
+void animateEarthflingProjectile(B)(ref EarthflingProjectile!B earthflingProjectile,Vector3f oldPosition,ObjectState!B state){
+	with(earthflingProjectile){
+		rotation=rotationUpdate*rotation;
+		enum numParticles=2;
+		auto sacParticle=SacParticle!B.get(ParticleType.dust);
+		auto velocity=Vector3f(0.0f,0.0f,0.0f);
+		auto lifetime=31;
+		auto scale=0.5f;
+		auto frame=0;
+		foreach(i;0..numParticles){
+			auto position=oldPosition*((cast(float)numParticles-1-i)/numParticles)+position*(cast(float)(i+1)/numParticles);
+			position+=0.3f*Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f));
+			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+		}
+	}
+}
+
+enum earthflingProjectileHitGain=4.0f;
+enum earthflingProjectileSize=0.7f; // TODO: ok?
+enum earthflingProjectileSlidingDistance=0.0f;
+static immutable Vector3f[2] earthflingProjectileHitbox=[-0.5f*earthflingProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*earthflingProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
+int earthflingProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
+		return entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side;
+	}
+	return collisionTarget!(earthflingProjectileHitbox,filter)(side,position,state,side,intendedTarget);
+}
+
+void earthflingProjectileExplosion(B)(ref EarthflingProjectile!B earthflingProjectile,int target,ObjectState!B state){
+	playSoundAt("pmir",earthflingProjectile.position,state,4.0f); // TODO: correct?
+	if(state.isValidTarget(target)) dealRangedDamage(target,earthflingProjectile.rangedAttack,earthflingProjectile.attacker,earthflingProjectile.side,earthflingProjectile.velocity,state);
+	enum numParticles3=20;
+	auto sacParticle3=SacParticle!B.get(ParticleType.rock);
+	foreach(i;0..numParticles3){
+		auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+		auto velocity=0.3f*state.uniform(7.5f,15.0f)*direction;
+		auto scale=0.3f*state.uniform(1.0f,2.5f);
+		auto lifetime=95;
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle3,earthflingProjectile.position,velocity,scale,lifetime,frame));
+	}
+	enum numParticles4=4;
+	auto sacParticle4=SacParticle!B.get(ParticleType.dirt);
+	foreach(i;0..numParticles4){
+		auto direction=Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f)).normalized;
+		auto position=earthflingProjectile.position+0.25f*direction;
+		auto velocity=Vector3f(0.0f,0.0f,0.0f);
+		auto scale=1.0f;
+		auto frame=state.uniform(2)?0:state.uniform(24);
+		auto lifetime=63-frame;
+		state.addParticle(Particle!B(sacParticle4,position,velocity,scale,lifetime,frame));
+	}
+}
+
+bool updateEarthflingProjectile(B)(ref EarthflingProjectile!B earthflingProjectile,ObjectState!B state){
+	with(earthflingProjectile){
+		auto oldPosition=position;
+		position+=velocity/updateFPS;
+		velocity.z-=rangedAttack.fallingAcceleration/updateFPS;
+		earthflingProjectile.animateEarthflingProjectile(oldPosition,state);
+		auto target=earthflingProjectileCollisionTarget(side,intendedTarget,position,state);
+		if(state.isValidTarget(target)){
+			earthflingProjectile.earthflingProjectileExplosion(target,state);
+			return false;
+		}
+		if(state.isOnGround(position)){
+			if(position.z<state.getGroundHeight(position)){
+				earthflingProjectile.earthflingProjectileExplosion(0,state);
+				return false;
+			}
+		}
+		return true;
+	}
+}
+
+
 void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.debris.length;){
 		if(!updateDebris(effects.debris[i],state)){
@@ -6573,6 +6689,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.gargoyleEffects.length;){
 		if(!updateGargoyleEffect(effects.gargoyleEffects[i],state)){
 			effects.removeGargoyleEffect(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.earthflingProjectiles.length;){
+		if(!updateEarthflingProjectile(effects.earthflingProjectiles[i],state)){
+			effects.removeEarthflingProjectile(i);
 			continue;
 		}
 		i++;

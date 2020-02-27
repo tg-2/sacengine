@@ -1049,6 +1049,7 @@ enum SpellTag:char[4]{
 	locustShoot="zbba",
 	spitfireShoot="fhba",
 	gargoyleShoot="ehba",
+	earthflingShoot="ekba",
 }
 
 enum WizardTag:char[4]{

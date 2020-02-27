@@ -505,7 +505,7 @@ final class SacScene: Scene{
 						mesh.render(rc);
 					}
 				}
-				static if(mode==RenderMode.opaque) if(objects.rockCastings.length||objects.rocks.length){
+				static if(mode==RenderMode.opaque) if(objects.rockCastings.length||objects.rocks.length||objects.earthflingProjectiles.length){
 					auto materials=scene.rock.materials;
 					foreach(i;0..materials.length){
 						auto material=materials[i];
@@ -519,6 +519,10 @@ final class SacScene: Scene{
 						}
 						foreach(j;0..objects.rocks.length){
 							material.backend.setTransformationScaled(objects.rocks[j].position,objects.rocks[j].rotation,1.0f*Vector3f(1.0f,1.0f,1.0f),rc);
+							mesh.render(rc);
+						}
+						foreach(j;0..objects.earthflingProjectiles.length){
+							material.backend.setTransformationScaled(objects.earthflingProjectiles[j].position,objects.earthflingProjectiles[j].rotation,0.3f*Vector3f(1.0f,1.0f,1.0f),rc);
 							mesh.render(rc);
 						}
 					}
