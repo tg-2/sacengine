@@ -331,6 +331,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Ear
 void serialize(alias sink,B)(ref FlameMinionProjectile!B flameMinionProjectile){ serializeStruct!sink(flameMinionProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==FlameMinionProjectile!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref FallenProjectile!B fallenProjectile){ serializeStruct!sink(fallenProjectile); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==FallenProjectile!B)){ deserializeStruct(result,state,data); }
+
 private alias Effects=state.Effects;
 void serialize(alias sink,B)(ref Effects!B effects){ serializeStruct!sink(effects); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Effects!B)){ deserializeStruct(result,state,data); }

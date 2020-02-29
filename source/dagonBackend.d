@@ -527,14 +527,14 @@ final class SacScene: Scene{
 						}
 					}
 				}
-				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.swarmCastings.length||objects.swarms.length)){
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.swarmCastings.length||objects.swarms.length||objects.fallenProjectiles.length)){
 					// TODO: render bug shadows?
 					auto material=scene.bug.material;
 					material.bind(rc);
 					scope(success) material.unbind(rc);
 					auto mesh=scene.bug.mesh;
-					void renderBug(ref Bug!DagonBackend bug){
-						material.backend.setSpriteTransformationScaled(bug.position,bug.scale,rc);
+					void renderBug(bool fallen=false)(ref Bug!DagonBackend bug){
+						material.backend.setSpriteTransformationScaled(bug.position,fallen?0.5f*bug.scale:bug.scale,rc);
 						mesh.render(rc);
 					}
 					foreach(j;0..objects.swarmCastings.length)
@@ -546,6 +546,13 @@ final class SacScene: Scene{
 						}else material.backend.setAlpha(Bug!DagonBackend.alpha);
 						foreach(k;0..objects.swarms[j].bugs.length)
 							renderBug(objects.swarms[j].bugs[k]);
+					}
+					foreach(j;0..objects.fallenProjectiles.length){
+						if(objects.fallenProjectiles[j].status==SwarmStatus.dispersing){
+							material.backend.setAlpha(Bug!DagonBackend.alpha/64.0f*(fallenProjectileDispersingFrames-objects.fallenProjectiles[j].frame));
+						}else material.backend.setAlpha(Bug!DagonBackend.alpha);
+						foreach(k;0..objects.fallenProjectiles[j].bugs.length)
+							renderBug!true(objects.fallenProjectiles[j].bugs[k]);
 					}
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.brainiacEffects.length){

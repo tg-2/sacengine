@@ -1677,6 +1677,27 @@ struct FlameMinionProjectile(B){
 	SacSpell!B rangedAttack;
 }
 
+struct FallenProjectile(B){
+	int attacker;
+	int side;
+	int intendedTarget;
+	Vector3f position;
+	Vector3f velocity;
+	SacSpell!B rangedAttack;
+	int frame;
+	auto status=SwarmStatus.flying;
+	Array!(Bug!B) bugs; // TODO: pull out bugs into separate array?
+
+	void opAssign(ref FallenProjectile!B rhs){
+		this.tupleof[0..$-1]=rhs.tupleof[0..$-1];
+		static assert(__traits(isSame,this.tupleof[$-1],this.bugs));
+		assignArray(bugs,rhs.bugs);
+	}
+	void opAssign(FallenProjectile!B rhs){ this.tupleof=rhs.tupleof; }
+	this(this){ bugs=bugs.dup; } // TODO: needed?
+}
+
+
 struct Effects(B){
 	// misc
 	Array!(Debris!B) debris;
@@ -1939,6 +1960,14 @@ struct Effects(B){
 		if(i+1<flameMinionProjectiles.length) swap(flameMinionProjectiles[i],flameMinionProjectiles[$-1]);
 		flameMinionProjectiles.length=flameMinionProjectiles.length-1; // TODO: reuse memory?
 	}
+	Array!(FallenProjectile!B) fallenProjectiles;
+	void addEffect(FallenProjectile!B fallenProjectile){
+		fallenProjectiles~=move(fallenProjectile);
+	}
+	void removeFallenProjectile(int i){
+		if(i+1<fallenProjectiles.length) swap(fallenProjectiles[i],fallenProjectiles[$-1]);
+		fallenProjectiles.length=fallenProjectiles.length-1; // TODO: reuse memory?
+	}
 	void opAssign(ref Effects!B rhs){
 		assignArray(debris,rhs.debris);
 		assignArray(explosions,rhs.explosions);
@@ -1972,6 +2001,7 @@ struct Effects(B){
 		assignArray(gargoyleEffects,rhs.gargoyleEffects);
 		assignArray(earthflingProjectiles,rhs.earthflingProjectiles);
 		assignArray(flameMinionProjectiles,rhs.flameMinionProjectiles);
+		assignArray(fallenProjectiles,rhs.fallenProjectiles);
 	}
 	void opAssign(Effects!B rhs){ this.tupleof=rhs.tupleof; }
 }
@@ -3719,6 +3749,16 @@ bool flameMinionShoot(B)(int attacker,int side,int intendedTarget,float accuracy
 	return true;
 }
 
+bool fallenShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	playSoundAt("htim",position,state,2.0f); // TODO: move with projectile
+	auto direction=getShotDirectionWithGravity(accuracy,position,target,rangedAttack,state);
+	auto projectile=FallenProjectile!B(attacker,side,intendedTarget,position,direction*rangedAttack.speed,rangedAttack,0,SwarmStatus.flying);
+	projectile.addBugs(state);
+	state.addEffect(move(projectile));
+	return true;
+}
+
+
 enum defaultFaceThreshold=1e-3;
 bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state,float threshold=defaultFaceThreshold){
 	auto angle=facing-object.creatureState.facing;
@@ -4119,6 +4159,9 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 						break;
 					case SpellTag.flameMinionShoot:
 						flameMinionShoot(object.id,object.side,targetId,accuracy,object.shotPosition,predicted,rangedAttack,state);
+						break;
+					case SpellTag.fallenShoot:
+						fallenShoot(object.id,object.side,targetId,accuracy,object.shotPosition,predicted,rangedAttack,state);
 						break;
 					default: goto case SpellTag.brainiacShoot;
 				}
@@ -6577,6 +6620,122 @@ bool updateFlameMinionProjectile(B)(ref FlameMinionProjectile!B flameMinionProje
 	}
 }
 
+Vector3f makeTargetPosition(B)(ref FallenProjectile!B fallenProjectile,float radius,ObjectState!B state){
+	return fallenProjectile.position+state.uniform(0.0f,radius)*state.uniformDirection();
+}
+
+enum fallenProjectileRadius=0.5f;
+enum fallenProjectileDispersingFrames=2*updateFPS;
+void addBugs(B)(ref FallenProjectile!B fallenProjectile,ObjectState!B state){
+	enum totalBugs=50;
+	foreach(i;0..totalBugs){
+		auto position=fallenProjectile.makeTargetPosition(fallenProjectileRadius,state);
+		auto targetPosition=fallenProjectile.makeTargetPosition(fallenProjectileRadius,state);
+		auto velocity=fallenProjectile.velocity+(targetPosition-position).normalized*0.01f*fallenProjectile.rangedAttack.speed;
+		auto bug=makeBug!B(position,velocity,targetPosition);
+		fallenProjectile.bugs~=bug;
+	}
+}
+void updateBug(B)(ref FallenProjectile!B fallenProjectile,ref Bug!B bug,ObjectState!B state){
+	bug.targetPosition+=fallenProjectile.velocity/updateFPS;
+	auto rangedAttack=fallenProjectile.rangedAttack;
+	auto bugAcceleration=1.0f*rangedAttack.acceleration;
+	auto bugSpeed=1.5f*rangedAttack.speed;
+	auto distance=bug.targetPosition-bug.position;
+	auto acceleration=distance.normalized*min(2.0f*distance.length,1.0f)*bugAcceleration;
+	acceleration.z-=fallenProjectile.rangedAttack.fallingAcceleration/updateFPS;
+	bug.velocity+=acceleration;
+	static import std.math;
+	static immutable float zdamp=std.math.exp(std.math.log(0.01f)/updateFPS);
+	bug.position+=bug.velocity/updateFPS;
+	auto dist=(bug.targetPosition-bug.position).lengthsqr;
+	if(dist<1e-3^^2||!state.uniform(updateFPS/2)){
+		bug.velocity=fallenProjectile.velocity+0.25f*(bug.velocity-fallenProjectile.velocity);
+		bug.targetPosition=fallenProjectile.makeTargetPosition(fallenProjectileRadius*2.5f/max(2.0f,dist),state);
+	}
+	auto radius=bug.position-fallenProjectile.position;
+	auto radialComponent=dot(bug.velocity,radius);
+	if(radius.lengthsqr>1.0f){
+		auto radialDir=radialComponent*radius.normalized;
+		auto rest=bug.velocity-radialDir;
+		static import std.math;
+		static immutable float damp1=std.math.exp(std.math.log(0.01f)/updateFPS);
+		static immutable float damp2=std.math.exp(std.math.log(7.0f)/updateFPS);
+		auto factor=radialComponent>0.0f?damp1:damp2;
+		bug.velocity=rest+factor*radialDir;
+	}
+}
+bool updateBugs(B)(ref FallenProjectile!B fallenProjectile,ObjectState!B state){
+	foreach(i;0..fallenProjectile.bugs.length)
+		fallenProjectile.updateBug(fallenProjectile.bugs[i],state);
+	return true;
+}
+void disperseBug(B)(ref FallenProjectile!B fallenProjectile,ref Bug!B bug,ObjectState!B state){
+	if(fallenProjectile.frame%4==0){
+		bug.targetPosition=bug.position+0.2f*(0.5f*(bug.position-fallenProjectile.position).normalized+state.uniformDirection()).normalized;
+		bug.targetPosition.x+=cos(bug.targetPosition.y)/updateFPS;
+		bug.targetPosition.y+=cos(bug.targetPosition.x)/updateFPS;
+	}
+	static import std.math;
+	static immutable float damp=std.math.exp(std.math.log(0.01f)/updateFPS);
+	bug.position=damp*bug.targetPosition+(1.0f-damp)*bug.position;
+}
+void disperseBugs(B)(ref FallenProjectile!B fallenProjectile,ObjectState!B state){
+	foreach(i;0..fallenProjectile.bugs.length)
+		fallenProjectile.disperseBug(fallenProjectile.bugs[i],state);
+}
+void fallenProjectileHit(B)(ref FallenProjectile!B fallenProjectile,int target,ObjectState!B state){
+	fallenProjectile.status=SwarmStatus.dispersing;
+	playSoundAt("2tim",fallenProjectile.position,state,4.0f);
+	if(state.isValidTarget(target))
+		dealRangedDamage(target,fallenProjectile.rangedAttack,fallenProjectile.attacker,fallenProjectile.side,fallenProjectile.velocity,state);
+	enum numParticles=32;
+	auto sacParticle=SacParticle!B.get(ParticleType.swarmHit);
+	fallenProjectile.velocity=Vector3f(0.0f,0.0f,0.0f);
+	foreach(i;0..numParticles){
+		auto position=fallenProjectile.position;
+		auto velocity=0.3f*state.uniformDirection();
+		velocity.z+=3.0f;
+		auto scale=0.5f;
+		int lifetime=63;
+		int frame=0;
+		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+	}
+}
+
+enum fallenProjectileHitGain=4.0f;
+enum fallenProjectileSize=0.5f; // TODO: ok?
+enum fallenProjectileSlidingDistance=0.0f;
+static immutable Vector3f[2] fallenProjectileHitbox=[-0.5f*fallenProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*fallenProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
+int fallenProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
+		return entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side;
+	}
+	return collisionTarget!(fallenProjectileHitbox,filter)(side,position,state,side,intendedTarget);
+}
+
+bool updateFallenProjectile(B)(ref FallenProjectile!B fallenProjectile,ObjectState!B state){
+	with(fallenProjectile){
+		final switch(status){
+			case SwarmStatus.casting,SwarmStatus.flying:
+				auto oldPosition=position;
+				position+=velocity/updateFPS;
+				velocity.z-=rangedAttack.fallingAcceleration/updateFPS;
+				auto target=fallenProjectileCollisionTarget(side,intendedTarget,position,state);
+				if(state.isValidTarget(target)){
+					fallenProjectile.fallenProjectileHit(target,state);
+				}else if(state.isOnGround(position)){
+					if(position.z<state.getGroundHeight(position))
+						fallenProjectile.fallenProjectileHit(0,state);
+				}else if(position.z<state.getHeight(position)-rangedAttack.fallLimit)
+					return false;
+				return fallenProjectile.updateBugs(state);
+			case SwarmStatus.dispersing:
+				fallenProjectile.disperseBugs(state);
+				return ++frame<fallenProjectileDispersingFrames;
+		}
+	}
+}
 
 void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.debris.length;){
@@ -6799,6 +6958,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.flameMinionProjectiles.length;){
 		if(!updateFlameMinionProjectile(effects.flameMinionProjectiles[i],state)){
 			effects.removeFlameMinionProjectile(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.fallenProjectiles.length;){
+		if(!updateFallenProjectile(effects.fallenProjectiles[i],state)){
+			effects.removeFallenProjectile(i);
 			continue;
 		}
 		i++;

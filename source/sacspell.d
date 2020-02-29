@@ -1,5 +1,5 @@
 import std.exception, std.conv, std.algorithm, std.range, std.traits;
-import spells, ntts, nttData, txtr, sset;
+import spells, ntts, nttData, txtr, sset, util;
 
 enum TargetFlags{
 	none,
@@ -93,7 +93,7 @@ class SacSpell(B){
 	float effectRange;
 	float speed;
 	float acceleration;
-	enum fallingAcceleration=30.0f;
+	@property float fallingAcceleration(){ return tag==SpellTag.fallenShoot?10.0f:30.0f; }
 	enum fallLimit=1000.0f;
 	int soulCost;
 
