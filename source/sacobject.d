@@ -1115,7 +1115,7 @@ final class SacParticle(B){
 			case dust:
 				return 1.0f;
 			case swarmHit:
-				return min(1.0f,(lifetime/(1.5f*numFrames)));
+				return min(1.0f,(lifetime/(0.75f*numFrames)));
 			case locustBlood,locustDebris:
 				return min(1.0f,(lifetime/(0.5f*numFrames)));
 		}
@@ -1151,7 +1151,7 @@ final class SacParticle(B){
 			case dirt,dust:
 				return 1.0f;
 			case swarmHit:
-				return 1.0f;
+				return min(1.0f,(lifetime/(0.75f*numFrames)));
 			case locustBlood,locustDebris:
 				return 1.0f;
 		}

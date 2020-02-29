@@ -6627,7 +6627,7 @@ Vector3f makeTargetPosition(B)(ref FallenProjectile!B fallenProjectile,float rad
 enum fallenProjectileRadius=0.5f;
 enum fallenProjectileDispersingFrames=2*updateFPS;
 void addBugs(B)(ref FallenProjectile!B fallenProjectile,ObjectState!B state){
-	enum totalBugs=50;
+	enum totalBugs=75;
 	foreach(i;0..totalBugs){
 		auto position=fallenProjectile.makeTargetPosition(fallenProjectileRadius,state);
 		auto targetPosition=fallenProjectile.makeTargetPosition(fallenProjectileRadius,state);
@@ -6687,6 +6687,7 @@ void disperseBugs(B)(ref FallenProjectile!B fallenProjectile,ObjectState!B state
 void fallenProjectileHit(B)(ref FallenProjectile!B fallenProjectile,int target,ObjectState!B state){
 	fallenProjectile.status=SwarmStatus.dispersing;
 	playSoundAt("2tim",fallenProjectile.position,state,4.0f);
+	playSpellSoundTypeAt(SoundType.swarm,fallenProjectile.position,state,2.0f);
 	if(state.isValidTarget(target))
 		dealRangedDamage(target,fallenProjectile.rangedAttack,fallenProjectile.attacker,fallenProjectile.side,fallenProjectile.velocity,state);
 	enum numParticles=32;
@@ -6694,7 +6695,7 @@ void fallenProjectileHit(B)(ref FallenProjectile!B fallenProjectile,int target,O
 	fallenProjectile.velocity=Vector3f(0.0f,0.0f,0.0f);
 	foreach(i;0..numParticles){
 		auto position=fallenProjectile.position;
-		auto velocity=0.3f*state.uniformDirection();
+		auto velocity=state.uniformDirection();
 		velocity.z+=3.0f;
 		auto scale=0.5f;
 		int lifetime=63;
