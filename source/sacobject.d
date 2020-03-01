@@ -284,6 +284,27 @@ final class SacObject(B){
 		}
 		return result;
 	}
+	struct LoadedArrow{
+		Vector3f top;
+		Vector3f bottom;
+		Vector3f front;
+		Vector3f hand;
+	}
+	LoadedArrow loadedArrow(AnimationState animationState,int frame){
+		LoadedArrow result;
+		if(!(nttTag==SpellTag.sylph||nttTag==SpellTag.ranger)) return result;
+		auto front=animations[animationState].hands[0];
+		if(front.bone==0) return result;
+		auto matrices=animations[animationState].frames[frame].matrices;
+		auto topBone=16;
+		auto bottomBone=17;
+		auto handBone=11;
+		result.top=Vector3f(0.0f,0.65f,0.0f)*matrices[topBone];
+		result.bottom=Vector3f(0.0f,-0.60f,0.0f)*matrices[bottomBone];
+		result.front=(front.position+Vector3f(-0.1f,0.4f,0.0f))*matrices[front.bone];
+		result.hand=Vector3f(0.0f,0.1f,0.05f)*matrices[handBone];
+		return result;
+	}
 	Vector3f shotPosition(AnimationState animationState,int frame){
 		auto hand=animations[animationState].hands[0];
 		if(hand.bone==0) return Vector3f(0.0f,0.0f,0.0f);
@@ -312,6 +333,10 @@ final class SacObject(B){
 
 	@property bool isRanged(){ return data && data.ranged; }
 	@property SacSpell!B rangedAttack(){ return isRanged?abilities[0]:null; }
+
+	bool hasLoadTick(AnimationState animationState,int frame){
+		return animations[animationState].frames[frame].event==AnimEvent.load;
+	}
 
 	int numShootTicks(AnimationState animationState){
 		return max(1,animations[animationState].numShootTicks);
@@ -1471,6 +1496,52 @@ struct SacShrikeEffect(B){
 	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
 	static B.Mesh[] createMeshes(){
 		return makeSpriteMeshes!(B,true)(8,8,1.75f,1.75f);
+	}
+}
+
+struct SacArrow(B){
+	B.Texture texture;
+	B.Material sylphMaterial;
+	static B.Texture loadSylphTexture(){
+		return B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/ltn2.TXTR"));
+	}
+	B.Mesh[] frames;
+	enum numFrames=16*updateAnimFactor;
+	auto getFrame(int i){ return frames[i/updateAnimFactor]; }
+	static B.Mesh[] createMeshes(){
+		enum nU=4,nV=4;
+		auto meshes=new B.Mesh[](nU*nV);
+		foreach(t,ref mesh;meshes){
+			mesh=B.makeMesh(3*4,3*2);
+			int u=cast(int)t%nU,v=cast(int)t/nU;
+			enum length=1.0f;
+			enum size=0.1f;
+			enum sqrt34=sqrt(0.75f);
+			static immutable Vector3f[3] offsets=[size*Vector3f(0.0f,-1.0f,0.0f),size*Vector3f(sqrt34,0.5f,0.0f),size*Vector3f(-sqrt34,0.5f,0.0f)];
+			int numFaces=0;
+			void addFace(uint[3] face...){
+				mesh.indices[numFaces++]=face;
+			}
+			static Vector3f getCenter(int i){
+				return Vector3f(0.0f,0.0f,length*i);
+			}
+			foreach(j;0..3){
+				foreach(k;0..4){
+					int vertex=4*j+k;
+					auto center=((k==1||k==2)?1:0);
+					auto position=getCenter(center)+((k==2||k==3)&&center!=1?offsets[j]:Vector3f(0.0f,0.0f,0.0f));
+					mesh.vertices[vertex]=position;
+					mesh.texcoords[vertex]=Vector2f(1.0f/nU*(u+((k==1||k==2)?1.0f-0.5f/64:0.5f/64)),1.0f/nV*(v+((k==0||k==1)?1.0f-1.0f/64:0.5f/64)));
+				}
+				int b=4*j;
+				addFace([b+0,b+1,b+2]);
+				addFace([b+2,b+3,b+0]);
+			}
+			assert(numFaces==2*3);
+			mesh.normals[]=Vector3f(0.0f,0.0f,0.0f);
+			B.finalizeMesh(mesh);
+		}
+		return meshes;
 	}
 }
 

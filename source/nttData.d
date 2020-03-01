@@ -1052,6 +1052,7 @@ enum SpellTag:char[4]{
 	earthflingShoot="ekba",
 	flameMinionShoot="fkba",
 	fallenShoot="dkba",
+	sylphShoot="aaba",
 }
 
 enum WizardTag:char[4]{

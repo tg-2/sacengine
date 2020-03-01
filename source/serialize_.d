@@ -334,6 +334,12 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Fla
 void serialize(alias sink,B)(ref FallenProjectile!B fallenProjectile){ serializeStruct!sink(fallenProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==FallenProjectile!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref SylphEffect!B sylphEffect){ serializeStruct!sink(sylphEffect); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SylphEffect!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref SylphProjectile!B sylphProjectile){ serializeStruct!sink(sylphProjectile); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SylphProjectile!B)){ deserializeStruct(result,state,data); }
+
 private alias Effects=state.Effects;
 void serialize(alias sink,B)(ref Effects!B effects){ serializeStruct!sink(effects); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Effects!B)){ deserializeStruct(result,state,data); }

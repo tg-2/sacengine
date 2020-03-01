@@ -456,6 +456,11 @@ Vector3f shotPosition(B)(ref MovingObject!B object){
 	auto loc=object.sacObject.shotPosition(object.animationState,object.frame/updateAnimFactor);
 	return object.position+rotate(object.rotation,loc);
 }
+SacObject!B.LoadedArrow loadedArrow(B)(ref MovingObject!B object){
+	auto result=object.sacObject.loadedArrow(object.animationState,object.frame/updateAnimFactor);
+	foreach(ref pos;result.tupleof) pos=object.position+rotate(object.rotation,pos);
+	return result;
+}
 AnimationState shootAnimation(B)(ref MovingObject!B object){
 	final switch(object.creatureState.movement) with(CreatureMovement){
 		case onGround:
@@ -482,6 +487,10 @@ bool hasAttackTick(B)(ref MovingObject!B object){
 }
 
 SacSpell!B rangedAttack(B)(ref MovingObject!B object){ return object.sacObject.rangedAttack; }
+
+bool hasLoadTick(B)(ref MovingObject!B object){
+	return object.frame%updateAnimFactor==0 && object.sacObject.hasLoadTick(object.animationState,object.frame/updateAnimFactor);
+}
 
 int numShootTicks(B)(ref MovingObject!B object){
 	return object.sacObject.numShootTicks(object.animationState);
@@ -1697,6 +1706,21 @@ struct FallenProjectile(B){
 	this(this){ bugs=bugs.dup; } // TODO: needed?
 }
 
+struct SylphEffect(B){
+	int attacker;
+	int frame=0;
+}
+
+struct SylphProjectile(B){
+	int attacker;
+	int side;
+	int intendedTarget;
+	Vector3f position;
+	Vector3f velocity;
+	SacSpell!B rangedAttack;
+	int frame=0;
+}
+
 
 struct Effects(B){
 	// misc
@@ -1968,6 +1992,22 @@ struct Effects(B){
 		if(i+1<fallenProjectiles.length) swap(fallenProjectiles[i],fallenProjectiles[$-1]);
 		fallenProjectiles.length=fallenProjectiles.length-1; // TODO: reuse memory?
 	}
+	Array!(SylphEffect!B) sylphEffects;
+	void addEffect(SylphEffect!B sylphEffect){
+		sylphEffects~=move(sylphEffect);
+	}
+	void removeSylphEffect(int i){
+		if(i+1<sylphEffects.length) swap(sylphEffects[i],sylphEffects[$-1]);
+		sylphEffects.length=sylphEffects.length-1; // TODO: reuse memory?
+	}
+	Array!(SylphProjectile!B) sylphProjectiles;
+	void addEffect(SylphProjectile!B sylphProjectile){
+		sylphProjectiles~=move(sylphProjectile);
+	}
+	void removeSylphProjectile(int i){
+		if(i+1<sylphProjectiles.length) swap(sylphProjectiles[i],sylphProjectiles[$-1]);
+		sylphProjectiles.length=sylphProjectiles.length-1; // TODO: reuse memory?
+	}
 	void opAssign(ref Effects!B rhs){
 		assignArray(debris,rhs.debris);
 		assignArray(explosions,rhs.explosions);
@@ -2002,6 +2042,8 @@ struct Effects(B){
 		assignArray(earthflingProjectiles,rhs.earthflingProjectiles);
 		assignArray(flameMinionProjectiles,rhs.flameMinionProjectiles);
 		assignArray(fallenProjectiles,rhs.fallenProjectiles);
+		assignArray(sylphEffects,rhs.sylphEffects);
+		assignArray(sylphProjectiles,rhs.sylphProjectiles);
 	}
 	void opAssign(Effects!B rhs){ this.tupleof=rhs.tupleof; }
 }
@@ -3758,6 +3800,16 @@ bool fallenShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vect
 	return true;
 }
 
+void sylphLoad(B)(int attacker,ObjectState!B state){
+	state.addEffect(SylphEffect!B(attacker));
+}
+
+bool sylphShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	playSpellSoundTypeAt(SoundType.bow,position,state,2.0f);
+	auto direction=getShotDirectionWithGravity(accuracy,position,target,rangedAttack,state);
+	state.addEffect(SylphProjectile!B(attacker,side,intendedTarget,position,direction*rangedAttack.speed,rangedAttack));
+	return true;
+}
 
 enum defaultFaceThreshold=1e-3;
 bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state,float threshold=defaultFaceThreshold){
@@ -4130,6 +4182,14 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 		}
 	}else{
 		stop();
+		if(object.hasLoadTick()){
+			switch(rangedAttack.tag){
+				case SpellTag.sylphShoot:
+					sylphLoad(object.id,state);
+					break;
+				default: break;
+			}
+		}
 		if(object.hasShootTick){
 			if(object.runAwayBug(state)) return true;
 			auto drainedMana=rangedAttack.manaCost/object.numShootTicks;
@@ -4162,6 +4222,9 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 						break;
 					case SpellTag.fallenShoot:
 						fallenShoot(object.id,object.side,targetId,accuracy,object.shotPosition,predicted,rangedAttack,state);
+						break;
+					case SpellTag.sylphShoot:
+						sylphShoot(object.id,object.side,targetId,accuracy,object.shotPosition,predicted,rangedAttack,state);
 						break;
 					default: goto case SpellTag.brainiacShoot;
 				}
@@ -6494,7 +6557,6 @@ void animateEarthflingProjectile(B)(ref EarthflingProjectile!B earthflingProject
 	}
 }
 
-enum earthflingProjectileHitGain=4.0f;
 enum earthflingProjectileSize=0.7f; // TODO: ok?
 enum earthflingProjectileSlidingDistance=0.0f;
 static immutable Vector3f[2] earthflingProjectileHitbox=[-0.5f*earthflingProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*earthflingProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
@@ -6569,7 +6631,6 @@ void animateFlameMinionProjectile(B)(ref FlameMinionProjectile!B flameMinionProj
 	}
 }
 
-enum flameMinionProjectileHitGain=4.0f;
 enum flameMinionProjectileSize=0.7f; // TODO: ok?
 enum flameMinionProjectileSlidingDistance=0.0f;
 static immutable Vector3f[2] flameMinionProjectileHitbox=[-0.5f*flameMinionProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*flameMinionProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
@@ -6704,9 +6765,7 @@ void fallenProjectileHit(B)(ref FallenProjectile!B fallenProjectile,int target,O
 	}
 }
 
-enum fallenProjectileHitGain=4.0f;
 enum fallenProjectileSize=0.5f; // TODO: ok?
-enum fallenProjectileSlidingDistance=0.0f;
 static immutable Vector3f[2] fallenProjectileHitbox=[-0.5f*fallenProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*fallenProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
 int fallenProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
 	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
@@ -6735,6 +6794,53 @@ bool updateFallenProjectile(B)(ref FallenProjectile!B fallenProjectile,ObjectSta
 				fallenProjectile.disperseBugs(state);
 				return ++frame<fallenProjectileDispersingFrames;
 		}
+	}
+}
+
+bool updateSylphEffect(B)(ref SylphEffect!B sylphEffect,ObjectState!B state){
+	with(sylphEffect){
+		frame+=1;
+		static bool check(ref MovingObject!B attacker){
+			return attacker.creatureState.mode.isShooting&&!attacker.hasShootTick;
+		}
+		return state.movingObjectById!(check,()=>false)(attacker);
+	}
+}
+
+enum sylphProjectileSize=0.1f; // TODO: ok?
+static immutable Vector3f[2] sylphProjectileHitbox=[-0.5f*sylphProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*sylphProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
+int sylphProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
+		return entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side;
+	}
+	return collisionTarget!(sylphProjectileHitbox,filter)(side,position,state,side,intendedTarget);
+}
+
+void sylphProjectileHit(B)(ref SylphProjectile!B sylphProjectile,int target,ObjectState!B state){
+	playSpellSoundTypeAt(SoundType.arrow,sylphProjectile.position,state,2.0f);
+	if(state.isValidTarget(target))
+		dealRangedDamage(target,sylphProjectile.rangedAttack,sylphProjectile.attacker,sylphProjectile.side,sylphProjectile.velocity,state);
+}
+
+bool updateSylphProjectile(B)(ref SylphProjectile!B sylphProjectile,ObjectState!B state){
+	with(sylphProjectile){
+		frame+=1;
+		auto oldPosition=position;
+		position+=velocity/updateFPS;
+		velocity.z-=rangedAttack.fallingAcceleration/updateFPS;
+		auto target=sylphProjectileCollisionTarget(side,intendedTarget,position,state);
+		if(state.isValidTarget(target)){
+			sylphProjectile.sylphProjectileHit(target,state);
+			return false;
+		}
+		if(state.isOnGround(position)){
+			if(position.z<state.getGroundHeight(position)){
+				sylphProjectile.sylphProjectileHit(0,state);
+				return false;
+			}
+		}else if(position.z<state.getHeight(position)-rangedAttack.fallLimit)
+			return false;
+		return true;
 	}
 }
 
@@ -6966,6 +7072,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.fallenProjectiles.length;){
 		if(!updateFallenProjectile(effects.fallenProjectiles[i],state)){
 			effects.removeFallenProjectile(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.sylphEffects.length;){
+		if(!updateSylphEffect(effects.sylphEffects[i],state)){
+			effects.removeSylphEffect(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.sylphProjectiles.length;){
+		if(!updateSylphProjectile(effects.sylphProjectiles[i],state)){
+			effects.removeSylphProjectile(i);
 			continue;
 		}
 		i++;

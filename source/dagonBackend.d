@@ -128,6 +128,17 @@ final class SacScene: Scene{
 		auto frames=typeof(return).createMeshes();
 		return SacShrikeEffect!DagonBackend(texture,mat,frames);
 	}
+	SacArrow!DagonBackend createArrow(){
+		auto sylphTexture=typeof(return).loadSylphTexture();
+		auto smat=createMaterial(shadelessMaterialBackend);
+		smat.depthWrite=false;
+		smat.blending=Additive;
+		smat.energy=10.0f;
+		smat.diffuse=sylphTexture;
+		auto frames=typeof(return).createMeshes();
+		return SacArrow!DagonBackend(sylphTexture,smat,frames);
+	}
+	SacArrow!DagonBackend arrow;
 	void createEffects(){
 		sacCommandCone=new SacCommandCone!DagonBackend();
 		sacDebris=new SacObject!DagonBackend("extracted/models/MODL.WAD!/bold.MRMC/bold.MRMM");
@@ -139,6 +150,7 @@ final class SacScene: Scene{
 		bug=createBug();
 		brainiacEffect=createBrainiacEffect();
 		shrikeEffect=createShrikeEffect();
+		arrow=createArrow();
 	}
 
 	void setupEnvironment(SacMap!DagonBackend map){
@@ -612,6 +624,47 @@ final class SacScene: Scene{
 						auto scale=objects.gargoyleEffects[j].scale;
 						material.backend.setSpriteTransformationScaled(position,scale,rc);
 						auto mesh=rock.getMesh(objects.gargoyleEffects[j].frame%rock.numFrames);
+						mesh.render(rc);
+					}
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.sylphEffects.length||objects.sylphProjectiles.length)){
+					auto material=scene.arrow.sylphMaterial;
+					material.bind(rc);
+					glDisable(GL_CULL_FACE);
+					scope(success){
+						glEnable(GL_CULL_FACE);
+						material.unbind(rc);
+					}
+					foreach(j;0..objects.sylphEffects.length){
+						auto id=objects.sylphEffects[j].attacker;
+						auto state=scene.state.current;
+						if(!state.isValidTarget(id,TargetType.creature)) continue;
+						auto mesh=scene.arrow.getFrame(objects.sylphEffects[j].frame%(16*updateAnimFactor));
+						static void renderLoadedArrow(B)(ref MovingObject!B object,SacScene scene,Mesh mesh,RenderingContext* rc){
+							auto loadedArrow=object.loadedArrow;
+							if(loadedArrow!=loadedArrow) return;
+							void renderArrow(Vector3f start,Vector3f end){
+								auto direction=end-start;
+								auto len=direction.length;
+								auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),direction/len);
+								scene.shadelessBoneMaterialBackend.setTransformationScaled(start,rotation,Vector3f(1.0f,1.0f,len),rc);
+								mesh.render(rc);
+							}
+							with(loadedArrow){
+								renderArrow(hand,top);
+								renderArrow(hand,bottom);
+								renderArrow(hand,front);
+							}
+						}
+						state.movingObjectById!renderLoadedArrow(id,scene,mesh,rc);
+					}
+					foreach(j;0..objects.sylphProjectiles.length){
+						auto position=objects.sylphProjectiles[j].position;
+						auto velocity=objects.sylphProjectiles[j].velocity;
+						auto direction=velocity.normalized;
+						auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),direction);
+						scene.shadelessBoneMaterialBackend.setTransformationScaled(position,rotation,Vector3f(1.0f,1.0f,1.6f),rc);
+						auto mesh=scene.arrow.getFrame(objects.sylphProjectiles[j].frame%(16*updateAnimFactor));
 						mesh.render(rc);
 					}
 				}
