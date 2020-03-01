@@ -1500,10 +1500,15 @@ struct SacShrikeEffect(B){
 }
 
 struct SacArrow(B){
-	B.Texture texture;
+	B.Texture sylphTexture;
 	B.Material sylphMaterial;
 	static B.Texture loadSylphTexture(){
 		return B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/ltn2.TXTR"));
+	}
+	B.Texture rangerTexture;
+	B.Material rangerMaterial;
+	static B.Texture loadRangerTexture(){
+		return B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/wzrg.TXTR"));
 	}
 	B.Mesh[] frames;
 	enum numFrames=16*updateAnimFactor;

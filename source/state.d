@@ -1710,8 +1710,21 @@ struct SylphEffect(B){
 	int attacker;
 	int frame=0;
 }
-
 struct SylphProjectile(B){
+	int attacker;
+	int side;
+	int intendedTarget;
+	Vector3f position;
+	Vector3f velocity;
+	SacSpell!B rangedAttack;
+	int frame=0;
+}
+
+struct RangerEffect(B){
+	int attacker;
+	int frame=0;
+}
+struct RangerProjectile(B){
 	int attacker;
 	int side;
 	int intendedTarget;
@@ -2008,6 +2021,22 @@ struct Effects(B){
 		if(i+1<sylphProjectiles.length) swap(sylphProjectiles[i],sylphProjectiles[$-1]);
 		sylphProjectiles.length=sylphProjectiles.length-1; // TODO: reuse memory?
 	}
+	Array!(RangerEffect!B) rangerEffects;
+	void addEffect(RangerEffect!B rangerEffect){
+		rangerEffects~=move(rangerEffect);
+	}
+	void removeRangerEffect(int i){
+		if(i+1<rangerEffects.length) swap(rangerEffects[i],rangerEffects[$-1]);
+		rangerEffects.length=rangerEffects.length-1; // TODO: reuse memory?
+	}
+	Array!(RangerProjectile!B) rangerProjectiles;
+	void addEffect(RangerProjectile!B rangerProjectile){
+		rangerProjectiles~=move(rangerProjectile);
+	}
+	void removeRangerProjectile(int i){
+		if(i+1<rangerProjectiles.length) swap(rangerProjectiles[i],rangerProjectiles[$-1]);
+		rangerProjectiles.length=rangerProjectiles.length-1; // TODO: reuse memory?
+	}
 	void opAssign(ref Effects!B rhs){
 		assignArray(debris,rhs.debris);
 		assignArray(explosions,rhs.explosions);
@@ -2044,6 +2073,8 @@ struct Effects(B){
 		assignArray(fallenProjectiles,rhs.fallenProjectiles);
 		assignArray(sylphEffects,rhs.sylphEffects);
 		assignArray(sylphProjectiles,rhs.sylphProjectiles);
+		assignArray(rangerEffects,rhs.rangerEffects);
+		assignArray(rangerProjectiles,rhs.rangerProjectiles);
 	}
 	void opAssign(Effects!B rhs){ this.tupleof=rhs.tupleof; }
 }
@@ -3803,11 +3834,20 @@ bool fallenShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vect
 void sylphLoad(B)(int attacker,ObjectState!B state){
 	state.addEffect(SylphEffect!B(attacker));
 }
-
 bool sylphShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
 	playSpellSoundTypeAt(SoundType.bow,position,state,2.0f);
 	auto direction=getShotDirectionWithGravity(accuracy,position,target,rangedAttack,state);
 	state.addEffect(SylphProjectile!B(attacker,side,intendedTarget,position,direction*rangedAttack.speed,rangedAttack));
+	return true;
+}
+
+void rangerLoad(B)(int attacker,ObjectState!B state){
+	state.addEffect(RangerEffect!B(attacker));
+}
+bool rangerShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	playSpellSoundTypeAt(SoundType.bow,position,state,2.0f);
+	auto direction=getShotDirectionWithGravity(accuracy,position,target,rangedAttack,state);
+	state.addEffect(RangerProjectile!B(attacker,side,intendedTarget,position,direction*rangedAttack.speed,rangedAttack));
 	return true;
 }
 
@@ -4187,6 +4227,9 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 				case SpellTag.sylphShoot:
 					sylphLoad(object.id,state);
 					break;
+				case SpellTag.rangerShoot:
+					rangerLoad(object.id,state);
+					break;
 				default: break;
 			}
 		}
@@ -4225,6 +4268,9 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 						break;
 					case SpellTag.sylphShoot:
 						sylphShoot(object.id,object.side,targetId,accuracy,object.shotPosition,predicted,rangedAttack,state);
+						break;
+					case SpellTag.rangerShoot:
+						rangerShoot(object.id,object.side,targetId,accuracy,object.shotPosition,predicted,rangedAttack,state);
 						break;
 					default: goto case SpellTag.brainiacShoot;
 				}
@@ -6844,6 +6890,54 @@ bool updateSylphProjectile(B)(ref SylphProjectile!B sylphProjectile,ObjectState!
 	}
 }
 
+bool updateRangerEffect(B)(ref RangerEffect!B rangerEffect,ObjectState!B state){
+	with(rangerEffect){
+		frame+=1;
+		static bool check(ref MovingObject!B attacker){
+			return attacker.creatureState.mode.isShooting&&!attacker.hasShootTick;
+		}
+		return state.movingObjectById!(check,()=>false)(attacker);
+	}
+}
+
+enum rangerProjectileSize=0.1f; // TODO: ok?
+static immutable Vector3f[2] rangerProjectileHitbox=[-0.5f*rangerProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*rangerProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
+int rangerProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
+		return entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side;
+	}
+	return collisionTarget!(rangerProjectileHitbox,filter)(side,position,state,side,intendedTarget);
+}
+
+void rangerProjectileHit(B)(ref RangerProjectile!B rangerProjectile,int target,ObjectState!B state){
+	playSpellSoundTypeAt(SoundType.arrow,rangerProjectile.position,state,2.0f);
+	if(state.isValidTarget(target))
+		dealRangedDamage(target,rangerProjectile.rangedAttack,rangerProjectile.attacker,rangerProjectile.side,rangerProjectile.velocity,state);
+}
+
+bool updateRangerProjectile(B)(ref RangerProjectile!B rangerProjectile,ObjectState!B state){
+	with(rangerProjectile){
+		frame+=1;
+		auto oldPosition=position;
+		position+=velocity/updateFPS;
+		velocity.z-=rangedAttack.fallingAcceleration/updateFPS;
+		auto target=rangerProjectileCollisionTarget(side,intendedTarget,position,state);
+		if(state.isValidTarget(target)){
+			rangerProjectile.rangerProjectileHit(target,state);
+			return false;
+		}
+		if(state.isOnGround(position)){
+			if(position.z<state.getGroundHeight(position)){
+				rangerProjectile.rangerProjectileHit(0,state);
+				return false;
+			}
+		}else if(position.z<state.getHeight(position)-rangedAttack.fallLimit)
+			return false;
+		return true;
+	}
+}
+
+
 void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.debris.length;){
 		if(!updateDebris(effects.debris[i],state)){
@@ -7086,6 +7180,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.sylphProjectiles.length;){
 		if(!updateSylphProjectile(effects.sylphProjectiles[i],state)){
 			effects.removeSylphProjectile(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.rangerEffects.length;){
+		if(!updateRangerEffect(effects.rangerEffects[i],state)){
+			effects.removeRangerEffect(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.rangerProjectiles.length;){
+		if(!updateRangerProjectile(effects.rangerProjectiles[i],state)){
+			effects.removeRangerProjectile(i);
 			continue;
 		}
 		i++;

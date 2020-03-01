@@ -135,8 +135,14 @@ final class SacScene: Scene{
 		smat.blending=Additive;
 		smat.energy=10.0f;
 		smat.diffuse=sylphTexture;
+		auto rangerTexture=typeof(return).loadRangerTexture();
+		auto rmat=createMaterial(shadelessMaterialBackend);
+		rmat.depthWrite=false;
+		rmat.blending=Additive;
+		rmat.energy=15.0f;
+		rmat.diffuse=rangerTexture;
 		auto frames=typeof(return).createMeshes();
-		return SacArrow!DagonBackend(sylphTexture,smat,frames);
+		return SacArrow!DagonBackend(sylphTexture,smat,rangerTexture,rmat,frames);
 	}
 	SacArrow!DagonBackend arrow;
 	void createEffects(){
@@ -627,19 +633,20 @@ final class SacScene: Scene{
 						mesh.render(rc);
 					}
 				}
-				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.sylphEffects.length||objects.sylphProjectiles.length)){
-					auto material=scene.arrow.sylphMaterial;
+				static foreach(arrow;["sylph","ranger"])
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(mixin(`objects.`~arrow~`Effects`).length||mixin(`objects.`~arrow,`Projectiles`).length)){
+					auto material=mixin(`scene.arrow.`~arrow~`Material`);
 					material.bind(rc);
 					glDisable(GL_CULL_FACE);
 					scope(success){
 						glEnable(GL_CULL_FACE);
 						material.unbind(rc);
 					}
-					foreach(j;0..objects.sylphEffects.length){
-						auto id=objects.sylphEffects[j].attacker;
+					foreach(j;0..mixin(`objects.`~arrow~`Effects`).length){
+						auto id=mixin(`objects.`~arrow~`Effects`)[j].attacker;
 						auto state=scene.state.current;
 						if(!state.isValidTarget(id,TargetType.creature)) continue;
-						auto mesh=scene.arrow.getFrame(objects.sylphEffects[j].frame%(16*updateAnimFactor));
+						auto mesh=scene.arrow.getFrame(mixin(`objects.`~arrow~`Effects`)[j].frame%(16*updateAnimFactor));
 						static void renderLoadedArrow(B)(ref MovingObject!B object,SacScene scene,Mesh mesh,RenderingContext* rc){
 							auto loadedArrow=object.loadedArrow;
 							if(loadedArrow!=loadedArrow) return;
@@ -658,13 +665,13 @@ final class SacScene: Scene{
 						}
 						state.movingObjectById!renderLoadedArrow(id,scene,mesh,rc);
 					}
-					foreach(j;0..objects.sylphProjectiles.length){
-						auto position=objects.sylphProjectiles[j].position;
-						auto velocity=objects.sylphProjectiles[j].velocity;
+					foreach(j;0..mixin(`objects.`~arrow,`Projectiles`).length){
+						auto position=mixin(`objects.`~arrow,`Projectiles`)[j].position;
+						auto velocity=mixin(`objects.`~arrow,`Projectiles`)[j].velocity;
 						auto direction=velocity.normalized;
 						auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),direction);
 						scene.shadelessBoneMaterialBackend.setTransformationScaled(position,rotation,Vector3f(1.0f,1.0f,1.6f),rc);
-						auto mesh=scene.arrow.getFrame(objects.sylphProjectiles[j].frame%(16*updateAnimFactor));
+						auto mesh=scene.arrow.getFrame(mixin(`objects.`~arrow,`Projectiles`)[j].frame%(16*updateAnimFactor));
 						mesh.render(rc);
 					}
 				}
