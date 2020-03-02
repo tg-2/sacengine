@@ -64,13 +64,35 @@ void loadMap(B)(ref B backend,ref Options options)in{
 			auto wizard=SacObject!B.getSAXS!Wizard(settings.wizard[0..4]);
 			//printWizardStats(wizard);
 			auto spellbook=getDefaultSpellbook!B(settings.god);
-			auto wizId=state.current.placeWizard(wizard,settings.controlledSide,settings.level,settings.souls,spellbook);
+			auto flags=0;
+			auto wizId=state.current.placeWizard(wizard,flags,settings.controlledSide,settings.level,settings.souls,move(spellbook));
 			if(settings.controlledSide==controlledSide) id=wizId;
 		}
 		if(network){
 			foreach(ref player;network.players)
 				placeWizard(player.settings);
-		}else placeWizard(options.settings);
+		}else{
+			placeWizard(options.settings);
+			if(options.protectManafounts){
+				foreach(i;0..options.protectManafounts) state.current.uniform(2);
+				state.current.eachBuilding!((bldg,state){
+					if(bldg.componentIds.length==0||!bldg.isManafount) return;
+					auto bpos=bldg.position(state);
+					import nttData;
+					static immutable lv1Creatures=[persephoneCreatures[0..3],pyroCreatures[0..3],jamesCreatures[0..3],stratosCreatures[0..3],charnelCreatures[0..3]];
+					auto tags=lv1Creatures[state.uniform(cast(int)$)];
+					foreach(i;0..10){
+						auto tag=tags[state.uniform(cast(int)$)];
+						int flags=0;
+						int side=1;
+						auto position=bpos+10.0f*state.uniformDirection();
+						import dlib.math.portable;
+						auto facing=state.uniform(-pi!float,pi!float);
+						state.placeCreature(tag,flags,side,position,facing);
+					}
+				})(state.current);
+			}
+		}
 	}else{
 		enforce(playback.committed.length&&playback.committed[0].frame==0);
 		state.current.copyFrom(playback.committed[0]);
@@ -141,6 +163,8 @@ int main(string[] args){
 			options.glowBrightness=to!float(opt["--glow-brightness=".length..$]);
 		}else if(opt.startsWith("--replicate-creatures=")){
 			options.replicateCreatures=to!int(opt["--replicate-creatures=".length..$]);
+		}else if(opt.startsWith("--protect-manafounts=")){
+			options.protectManafounts=to!int(opt["--protect-manafounts=".length..$]);
 		}else if(opt.startsWith("--cursor-size=")){
 			options.cursorSize=to!int(opt["--cursor-size=".length..$]);
 		}else if(opt.startsWith("--volume=")){

@@ -25,6 +25,7 @@ struct Options{
 	// just for testing:
 	bool enableReadFromWads=true;
 	int replicateCreatures=1;
+	int protectManafounts=0;
 	int delayStart=0;
 	int host=0;
 	string joinIP="";

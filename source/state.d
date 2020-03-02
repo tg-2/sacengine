@@ -1226,12 +1226,44 @@ WizardInfo!B makeWizard(B)(int id,int level,int souls,Spellbook!B spellbook,Obje
 		wizard.creatureStats.maxMana+=100*level;
 		// TODO: boons
 	})(id,level,state);
-	return WizardInfo!B(id,level,souls,0.0f,spellbook);
+	return WizardInfo!B(id,level,souls,0.0f,move(spellbook));
 }
-int placeWizard(B)(ObjectState!B state,SacObject!B wizard,int side,int level,int souls,Spellbook!B spellbook){
+
+int placeCreature(B)(ObjectState!B state,SacObject!B sacObject,int flags,int side,Vector3f position,float facing){
+	bool onGround=state.isOnGround(position);
+	if(onGround)
+		position.z=state.getGroundHeight(position);
+	auto mode=CreatureMode.idle;
+	auto movement=CreatureMovement.onGround;
+	if(movement==CreatureMovement.onGround && !onGround)
+		movement=sacObject.canFly?CreatureMovement.flying:CreatureMovement.tumbling;
+	if(movement==CreatureMovement.onGround&&sacObject.mustFly)
+		movement=CreatureMovement.flying;
+	auto creatureState=CreatureState(mode, movement, facing);
+	import animations;
+	auto rotation=facingQuaternion(facing);
+	auto obj=MovingObject!B(sacObject,position,rotation,AnimationState.stance1,0,creatureState,sacObject.creatureStats(flags),side);
+	obj.setCreatureState(state);
+	obj.updateCreaturePosition(state);
+	return state.addObject(obj);
+}
+
+int placeCreature(T=Creature,B)(ObjectState!B state,char[4] tag,int flags,int side,Vector3f position,float facing){
+	return state.placeCreature(SacObject!B.getSAXS!T(tag),flags,side,position,facing);
+}
+
+int placeWizard(B)(ObjectState!B state,SacObject!B wizard,int flags,int side,int level,int souls,Spellbook!B spellbook,Vector3f position,float facing){
+	auto id=state.placeCreature(wizard,flags,side,position,facing);
+	state.addWizard(makeWizard(id,level,souls,move(spellbook),state));
+	return id;
+}
+
+int placeWizard(B)(ObjectState!B state,SacObject!B wizard,int flags,int side,int level,int souls,Spellbook!B spellbook)in{
+	assert(wizard.isWizard);
+}do{
 	bool flag=false;
 	int id=0;
-	state.eachBuilding!((ref bldg,state,id,wizard,side,level,souls,spellbook){
+	state.eachBuilding!((ref bldg,state,id,wizard,flags,side,level,souls,spellbook){
 		if(*id||bldg.componentIds.length==0) return;
 		if(bldg.side==side && bldg.isAltar){
 			auto altar=state.staticObjectById!((obj)=>obj, function StaticObject!B(){ assert(0); })(bldg.componentIds[0]);
@@ -1245,34 +1277,21 @@ int placeWizard(B)(ObjectState!B state,SacObject!B wizard,int side,int level,int
 					*manaPos=pos;
 				}
 			})(altar.position,&closestManafount,&manafountPosition,state);
-			int orientation=0;
 			enum distance=15.0f;
-			auto facingOffset=(bldg.isStratosAltar?pi!float/4.0f:0.0f)+pi!float;
-			auto facing=bldg.facing+facingOffset;
-			auto rotation=facingQuaternion(facing);
-			auto position=altar.position+rotate(rotation,Vector3f(0.0f,distance,0.0f));
+			float facing;
+			Vector3f position;
 			if(closestManafount){
 				auto dir2d=(manafountPosition-altar.position).xy.normalized*distance;
 				facing=atan2(dir2d.y,dir2d.x)-pi!float/2.0f;
-				rotation=facingQuaternion(facing);
 				position=altar.position+Vector3f(dir2d.x,dir2d.y,0.0f);
+			}else{
+				auto facingOffset=(bldg.isStratosAltar?pi!float/4.0f:0.0f)+pi!float;
+				facing=bldg.facing+facingOffset;
+				position=altar.position+rotate(facingQuaternion(facing),Vector3f(0.0f,distance,0.0f));
 			}
-			bool onGround=state.isOnGround(position);
-			if(onGround)
-				position.z=state.getGroundHeight(position);
-			auto mode=CreatureMode.idle;
-			auto movement=CreatureMovement.onGround;
-			if(movement==CreatureMovement.onGround && !onGround)
-				movement=wizard.canFly?CreatureMovement.flying:CreatureMovement.tumbling;
-			auto creatureState=CreatureState(mode, movement, facing);
-			import animations;
-			auto obj=MovingObject!B(wizard,position,rotation,AnimationState.stance1,0,creatureState,wizard.creatureStats(0),side);
-			obj.setCreatureState(state);
-			obj.updateCreaturePosition(state);
-			*id=state.addObject(obj);
-			state.addWizard(makeWizard(*id,level,souls,spellbook,state));
+			*id=state.placeWizard(wizard,flags,side,level,souls,move(spellbook),position,facing);
 		}
-	})(state,&id,wizard,side,level,souls,spellbook);
+	})(state,&id,wizard,flags,side,level,souls,move(spellbook));
 	return id;
 }
 
@@ -5633,10 +5652,11 @@ void animateLightningCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
 bool updateLightningCasting(B)(ref LightningCasting!B lightningCast,ObjectState!B state){
 	with(lightningCast){
 		target.position=target.center(state);
-		return state.movingObjectById!((obj){
+		auto status=manaDrain.update(state);
+		return state.movingObjectById!((obj,status){
 			auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
 			auto offset=Vector3f(0.0f,hbox[1].y+0.75f,hbox[1].z+0.5f);
-			final switch(manaDrain.update(state)){
+			final switch(status){
 				case CastingStatus.underway:
 					auto sacParticle=SacParticle!B.get(ParticleType.lightningCasting);
 					enum numParticles=2;
@@ -5658,7 +5678,7 @@ bool updateLightningCasting(B)(ref LightningCasting!B lightningCast,ObjectState!
 					lightning(obj.id,obj.side,start,end,spell,state);
 					return false;
 			}
-		},()=>false)(manaDrain.wizard);
+		},()=>false)(manaDrain.wizard,status);
 	}
 }
 bool updateLightning(B)(ref Lightning!B lightning,ObjectState!B state){
