@@ -654,7 +654,7 @@ final class SacScene: Scene{
 								auto direction=end-start;
 								auto len=direction.length;
 								auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),direction/len);
-								scene.shadelessBoneMaterialBackend.setTransformationScaled(start,rotation,Vector3f(1.0f,1.0f,len),rc);
+								scene.shadelessMaterialBackend.setTransformationScaled(start,rotation,Vector3f(1.0f,1.0f,len),rc);
 								mesh.render(rc);
 							}
 							with(loadedArrow){
@@ -670,7 +670,7 @@ final class SacScene: Scene{
 						auto velocity=mixin(`objects.`~arrow,`Projectiles`)[j].velocity;
 						auto direction=velocity.normalized;
 						auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),direction);
-						scene.shadelessBoneMaterialBackend.setTransformationScaled(position,rotation,Vector3f(1.0f,1.0f,1.6f),rc);
+						scene.shadelessMaterialBackend.setTransformationScaled(position,rotation,Vector3f(1.0f,1.0f,1.6f),rc);
 						auto mesh=scene.arrow.getFrame(mixin(`objects.`~arrow,`Projectiles`)[j].frame%(16*updateAnimFactor));
 						mesh.render(rc);
 					}
