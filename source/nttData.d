@@ -1043,6 +1043,7 @@ enum SpellTag:char[4]{
 	shrine="pcas",
 	// creature abilities:
 	runAway="!nur",
+	playDead="dedp",
 	// ranged attacks:
 	brainiacShoot="bsba",
 	shrikeShoot="absh",
