@@ -336,6 +336,8 @@ final class SacScene: Scene{
 							material.backend.setTransformation(objects.positions[j], objects.rotations[j], rc);
 							auto id=objects.ids[j];
 							material.backend.setInformation(Vector4f(2.0f,id>>16,id&((1<<16)-1),1.0f));
+							static if(prepareMaterials==RenderMode.transparent)
+								material.backend.setAlpha(objects.alphas[j]);
 							// TODO: interpolate animations to get 60 FPS?
 							sacObject.setFrame(objects.animationStates[j],objects.frames[j]/updateAnimFactor);
 							mesh.render(rc);

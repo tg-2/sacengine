@@ -1045,6 +1045,7 @@ enum SpellTag:char[4]{
 	runAway="!nur",
 	playDead="dedp",
 	rockForm="dihk",
+	stealth="ivni",
 	// ranged attacks:
 	brainiacShoot="bsba",
 	shrikeShoot="absh",

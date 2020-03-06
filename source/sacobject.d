@@ -54,8 +54,8 @@ final class SacObject(B){
 	@property bool mustFly(){
 		return cre8&&cre8.creatureType=="ylfo";
 	}
-	@property bool isAggressive(){
-		return cre8&&cre8.aggressiveness!=0;
+	@property bool isPacifist(){
+		return !cre8||cre8.aggressiveness==0;
 	}
 	@property float aggressiveRange(){
 		if(auto ra=rangedAttack) return max(65.0f,1.5f*ra.range); // TODO: ok?

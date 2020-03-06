@@ -41,7 +41,6 @@ enum CreatureMode{
 	playingDead,
 	pretendingToRevive,
 	rockForm,
-	invisible,
 }
 
 bool isMoving(CreatureMode mode){
@@ -54,31 +53,31 @@ bool isShooting(CreatureMode mode){
 	with(CreatureMode) return mode==shooting;
 }
 bool isHidden(CreatureMode mode){
-	with(CreatureMode) return !!mode.among(pretendingToDie,playingDead,rockForm,invisible);
+	with(CreatureMode) return !!mode.among(pretendingToDie,playingDead,rockForm);
 }
 bool isVisibleToAI(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting: return true;
-			case dying,dead,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,rockForm,invisible: return false;
+			case dying,dead,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,rockForm: return false;
 	}
 }
 bool isObstacle(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,dying,spawning,reviving,fastReviving,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,
-			pretendingToDie,playingDead,pretendingToRevive,rockForm,invisible: return true;
+			pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
 		case dead,dissolving,preSpawning: return false;
 	}
 }
 bool isValidAttackTarget(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,dying,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting: return true;
-		case dead,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,rockForm,invisible: return false;
+		case dead,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,rockForm: return false;
 	}
 }
 bool canHeal(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,
-			pretendingToDie,playingDead,pretendingToRevive,rockForm,invisible: return true;
+			pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
 		case dying,dead,dissolving,preSpawning,spawning,reviving,fastReviving: return false;
 	}
 }
@@ -382,8 +381,13 @@ bool canOrder(B)(ref MovingObject!B obj,int side,ObjectState!B state){
 bool canSelect(B)(int side,int id,ObjectState!B state){
 	return state.movingObjectById!(canSelect,()=>false)(id,side,state);
 }
+bool isPacifist(B)(ref MovingObject!B obj,ObjectState!B state){
+	return obj.sacObject.isPacifist;
+}
 bool isAggressive(B)(ref MovingObject!B obj,ObjectState!B state){
-	return obj.sacObject.isAggressive;
+	if(obj.isPacifist(state)) return false;
+	if(obj.creatureStats.effects.stealth) return false;
+	return true;
 }
 float aggressiveRange(B)(ref MovingObject!B obj,CommandType type,ObjectState!B state){
 	return obj.sacObject.aggressiveRange;
@@ -526,6 +530,12 @@ bool isRegenerating(B)(ref MovingObject!B object){
 
 bool isDamaged(B)(ref MovingObject!B object){
 	return object.health<=0.25f*object.creatureStats.maxHealth;
+}
+
+bool isHidden(B)(ref MovingObject!B object){
+	if(object.creatureState.mode.isHidden) return true;
+	if(object.creatureStats.effects.stealth) return true;
+	return false;
 }
 
 struct StaticObject(B){
@@ -868,6 +878,10 @@ struct MovingObjects(B,RenderMode mode){
 	Array!CreatureStats creatureStatss;
 	Array!int sides;
 	Array!int soulIds;
+	static if(mode==RenderMode.transparent){
+		Array!float alphas;
+	}
+
 	@property int length(){ assert(ids.length<=int.max); return cast(int)ids.length; }
 	@property void length(int l){
 		ids.length=l;
@@ -880,6 +894,8 @@ struct MovingObjects(B,RenderMode mode){
 		creatureStatss.length=l;
 		sides.length=l;
 		soulIds.length=l;
+		static if(mode==RenderMode.transparent)
+			alphas.length=l;
 	}
 
 	void reserve(int reserveSize){
@@ -893,6 +909,8 @@ struct MovingObjects(B,RenderMode mode){
 		creatureStatss.reserve(reserveSize);
 		sides.reserve(reserveSize);
 		soulIds.reserve(reserveSize);
+		static if(mode==RenderMode.transparent)
+			alphas.reserve(reserveSize);
 	}
 
 	void addObject(MovingObject!B object)in{
@@ -910,11 +928,15 @@ struct MovingObjects(B,RenderMode mode){
 		creatureStatss~=object.creatureStats;
 		sides~=object.side;
 		soulIds~=object.soulId;
+		static if(mode==RenderMode.transparent)
+			alphas~=1.0f;
 	}
 	void removeObject(int index, ObjectManager!B manager){
 		manager.ids[ids[index]-1]=Id.init;
 		if(index+1<length){
 			this[index]=this.fetch(length-1); // TODO: swap?
+			static if(mode==RenderMode.transparent)
+				alphas[index]=alphas[length-1];
 			manager.ids[ids[index]-1].index=index;
 		}
 		length=length-1;
@@ -931,6 +953,8 @@ struct MovingObjects(B,RenderMode mode){
 		assignArray(creatureStatss,rhs.creatureStatss);
 		assignArray(sides,rhs.sides);
 		assignArray(soulIds,rhs.soulIds);
+		static if(mode==RenderMode.transparent)
+			assignArray(alphas,rhs.alphas);
 	}
 	void opAssign(MovingObjects!(B,mode) rhs){ this.tupleof=rhs.tupleof; }
 	MovingObject!B fetch(int i){
@@ -949,6 +973,12 @@ struct MovingObjects(B,RenderMode mode){
 		creatureStatss[i]=obj.creatureStats; // TODO: this might be a bit wasteful
 		sides[i]=obj.side;
 		soulIds[i]=obj.soulId;
+		// TODO: alphas ok?
+	}
+	static if(mode==RenderMode.transparent){
+		void setAlpha(int i,float alpha){
+			alphas[i]=alpha;
+		}
 	}
 }
 auto each(alias f,B,RenderMode mode,T...)(ref MovingObjects!(B,mode) movingObjects,T args){
@@ -1772,6 +1802,15 @@ struct RockForm(B){
 	enum numFrames=30;
 }
 
+enum StealthStatus{ fadingOut, stationary, fadingIn }
+struct Stealth(B){
+	int target;
+	enum targetAlpha=0.1f;
+	float progress=0.0f;
+	StealthStatus status;
+	enum numFrames=30;
+}
+
 struct Effects(B){
 	// misc
 	Array!(Debris!B) debris;
@@ -2031,8 +2070,8 @@ struct Effects(B){
 		flameMinionProjectiles~=flameMinionProjectile;
 	}
 	void removeFlameMinionProjectile(int i){
-		if(i+1<flameMinionProjectiles.length) swap(flameMinionProjectiles[i],flameMinionProjectiles[$-1]);
-		flameMinionProjectiles.length=flameMinionProjectiles.length-1; // TODO: reuse memory?
+		if(i+1<flameMinionProjectiles.length) flameMinionProjectiles[i]=move(flameMinionProjectiles[$-1]);
+		flameMinionProjectiles.length=flameMinionProjectiles.length-1;
 	}
 	Array!(FallenProjectile!B) fallenProjectiles;
 	void addEffect(FallenProjectile!B fallenProjectile){
@@ -2047,40 +2086,48 @@ struct Effects(B){
 		sylphEffects~=move(sylphEffect);
 	}
 	void removeSylphEffect(int i){
-		if(i+1<sylphEffects.length) swap(sylphEffects[i],sylphEffects[$-1]);
-		sylphEffects.length=sylphEffects.length-1; // TODO: reuse memory?
+		if(i+1<sylphEffects.length) sylphEffects[i]=move(sylphEffects[$-1]);
+		sylphEffects.length=sylphEffects.length-1;
 	}
 	Array!(SylphProjectile!B) sylphProjectiles;
 	void addEffect(SylphProjectile!B sylphProjectile){
 		sylphProjectiles~=move(sylphProjectile);
 	}
 	void removeSylphProjectile(int i){
-		if(i+1<sylphProjectiles.length) swap(sylphProjectiles[i],sylphProjectiles[$-1]);
-		sylphProjectiles.length=sylphProjectiles.length-1; // TODO: reuse memory?
+		if(i+1<sylphProjectiles.length) sylphProjectiles[i]=move(sylphProjectiles[$-1]);
+		sylphProjectiles.length=sylphProjectiles.length-1;
 	}
 	Array!(RangerEffect!B) rangerEffects;
 	void addEffect(RangerEffect!B rangerEffect){
 		rangerEffects~=move(rangerEffect);
 	}
 	void removeRangerEffect(int i){
-		if(i+1<rangerEffects.length) swap(rangerEffects[i],rangerEffects[$-1]);
-		rangerEffects.length=rangerEffects.length-1; // TODO: reuse memory?
+		if(i+1<rangerEffects.length) rangerEffects[i]=move(rangerEffects[$-1]);
+		rangerEffects.length=rangerEffects.length-1;
 	}
 	Array!(RangerProjectile!B) rangerProjectiles;
 	void addEffect(RangerProjectile!B rangerProjectile){
 		rangerProjectiles~=move(rangerProjectile);
 	}
 	void removeRangerProjectile(int i){
-		if(i+1<rangerProjectiles.length) swap(rangerProjectiles[i],rangerProjectiles[$-1]);
-		rangerProjectiles.length=rangerProjectiles.length-1; // TODO: reuse memory?
+		if(i+1<rangerProjectiles.length) rangerProjectiles[i]=move(rangerProjectiles[$-1]);
+		rangerProjectiles.length=rangerProjectiles.length-1;
 	}
 	Array!(RockForm!B) rockForms;
 	void addEffect(RockForm!B rockForm){
 		rockForms~=move(rockForm);
 	}
 	void removeRockForm(int i){
-		if(i+1<rockForms.length) swap(rockForms[i],rockForms[$-1]);
-		rockForms.length=rockForms.length-1; // TODO: reuse memory?
+		if(i+1<rockForms.length) rockForms[i]=move(rockForms[$-1]);
+		rockForms.length=rockForms.length-1;
+	}
+	Array!(Stealth!B) stealths;
+	void addEffect(Stealth!B stealth){
+		stealths~=move(stealth);
+	}
+	void removeStealth(int i){
+		if(i+1<stealths.length) stealths[i]=move(stealths[$-1]);
+		stealths.length=stealths.length-1;
 	}
 	void opAssign(ref Effects!B rhs){
 		assignArray(debris,rhs.debris);
@@ -2121,6 +2168,7 @@ struct Effects(B){
 		assignArray(rangerEffects,rhs.rangerEffects);
 		assignArray(rangerProjectiles,rhs.rangerProjectiles);
 		assignArray(rockForms,rhs.rockForms);
+		assignArray(stealths,rhs.stealths);
 	}
 	void opAssign(Effects!B rhs){ this.tupleof=rhs.tupleof; }
 }
@@ -2234,6 +2282,10 @@ struct Objects(B,RenderMode mode){
 		}else enforce(0);
 	}
 	static if(mode==RenderMode.transparent){
+		void setAlpha(int type, int index, float alpha){
+			enforce(0<=type&&type<numMoving);
+			movingObjects[type].setAlpha(index, alpha);
+		}
 		void setThresholdZ(int type, int index, float thresholdZ){
 			enforce(numMoving<=type&&type<numMoving+numStatic);
 			staticObjects[type-numMoving].setThresholdZ(index, thresholdZ);
@@ -2436,6 +2488,13 @@ struct ObjectManager(B){
 			case RenderMode.opaque: opaqueObjects.removeObject(tid.type,tid.index,this); break;
 			case RenderMode.transparent: transparentObjects.removeObject(tid.type,tid.index,this); break;
 		}
+	}
+	void setAlpha(int id,float alpha)in{
+		assert(0<id && id<=ids.length);
+	}do{
+		auto tid=ids[id-1];
+		enforce(tid.mode==RenderMode.transparent);
+		transparentObjects.setAlpha(tid.type,tid.index,alpha);
 	}
 	void setThresholdZ(int id,float thresholdZ)in{
 		assert(0<id && id<=ids.length);
@@ -2692,7 +2751,7 @@ auto ref buildingByStaticObjectId(alias f,alias nonStatic=fail,B,T...)(ref Objec
 void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 	auto sacObject=object.sacObject;
 	final switch(object.creatureState.mode){
-		case CreatureMode.idle, CreatureMode.rockForm, CreatureMode.invisible:
+		case CreatureMode.idle, CreatureMode.rockForm:
 			bool isDamaged=object.isDamaged;
 			if(object.creatureState.movement!=CreatureMovement.flying){
 				if(object.animationState.among(AnimationState.run,AnimationState.walk) && object.creatureState.timer<0.1f*updateFPS)
@@ -2926,7 +2985,7 @@ bool pickNextAnimation(B)(ref MovingObject!B object,immutable(AnimationState)[] 
 }
 
 void startIdling(B)(ref MovingObject!B object, ObjectState!B state){
-	if(!object.creatureState.mode.among(CreatureMode.moving,CreatureMode.spawning,CreatureMode.reviving,CreatureMode.fastReviving,CreatureMode.takeoff,CreatureMode.landing,CreatureMode.meleeMoving,CreatureMode.meleeAttacking,CreatureMode.stunned,CreatureMode.casting,CreatureMode.stationaryCasting,CreatureMode.castingMoving,CreatureMode.shooting,CreatureMode.rockForm,CreatureMode.invisible))
+	if(!object.creatureState.mode.among(CreatureMode.moving,CreatureMode.spawning,CreatureMode.reviving,CreatureMode.fastReviving,CreatureMode.takeoff,CreatureMode.landing,CreatureMode.meleeMoving,CreatureMode.meleeAttacking,CreatureMode.stunned,CreatureMode.casting,CreatureMode.stationaryCasting,CreatureMode.castingMoving,CreatureMode.shooting,CreatureMode.rockForm))
 		return;
 	object.creatureState.mode=CreatureMode.idle;
 	object.setCreatureState(state);
@@ -3063,7 +3122,7 @@ bool canStun(B)(ref MovingObject!B object,ObjectState!B state){
 	if(object.creatureStats.effects.stunCooldown!=0) return false;
 	final switch(object.creatureState.mode) with(CreatureMode){
 		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,cower,casting,stationaryCasting,castingMoving,shooting: return true;
-		case dying,dead,dissolving,preSpawning,spawning,reviving,fastReviving,stunned,pretendingToDie,playingDead,pretendingToRevive,rockForm,invisible: return false;
+		case dying,dead,dissolving,preSpawning,spawning,reviving,fastReviving,stunned,pretendingToDie,playingDead,pretendingToRevive,rockForm: return false;
 	}
 }
 
@@ -3242,9 +3301,10 @@ float dealDamage(T)(ref T object,float damage,int attacker,int attackingSide,Obj
 
 bool canDamage(B)(ref MovingObject!B object,ObjectState!B state){
 	if(object.creatureStats.flags&Flags.cannotDamage) return false;
+	if(object.creatureStats.effects.stealth) return false;
 	final switch(object.creatureState.mode) with(CreatureMode){
 		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting: return true;
-		case dying,dead,dissolving,preSpawning,spawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,rockForm,invisible: return false;
+		case dying,dead,dissolving,preSpawning,spawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,rockForm: return false;
 	}
 }
 
@@ -3583,6 +3643,7 @@ bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,Ob
 			assert(target==Target.init);
 			auto creature=spawn(object.id,spell.tag,0,state);
 			state.setRenderMode!(MovingObject!B,RenderMode.transparent)(creature);
+			state.setAlpha(creature,0.6f);
 			playSoundAt("NMUS",creature,state,summonSoundGain);
 			state.addEffect(CreatureCasting!B(manaDrain,spell,creature));
 			return true;
@@ -4000,7 +4061,7 @@ bool movingForwardGetsCloserTo(B)(ref MovingObject!B object,Vector3f position,fl
 
 bool order(B)(ref MovingObject!B object,Order order,ObjectState!B state,int side=-1){
 	if(!object.canOrder(side,state)) return false;
-	if(!object.isAggressive(state)&&order.command.among(CommandType.attack,CommandType.advance)) return false;
+	if(object.isPacifist(state)&&order.command.among(CommandType.attack,CommandType.advance)) return false;
 	object.clearOrderQueue(state);
 	object.creatureAI.order=order;
 	return true;
@@ -4430,7 +4491,7 @@ bool patrol(B)(ref MovingObject!B object,ObjectState!B state){
 }
 
 bool advance(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectState!B state){
-	if(!object.isAggressive(state)) return false;
+	if(object.isPacifist(state)) return false;
 	auto position=object.position;
 	auto range=object.advanceRange(CommandType.none,state);
 	auto targetId=state.proximity.closestEnemyInRangeAndClosestToPreferringAttackersOf(object.side,object.position,range,targetPosition,object.id,EnemyType.all,state);
@@ -4460,6 +4521,28 @@ bool rockForm(B)(ref MovingObject!B object,ObjectState!B state){
 	return true;
 }
 
+void updateRenderMode(B)(int target,ObjectState!B state){
+	if(!state.isValidTarget(target,TargetType.creature)) return;
+	static RenderMode targetMode(ref MovingObject!B object,ObjectState!B state){
+		if(object.creatureStats.effects.stealth) return RenderMode.transparent;
+		return RenderMode.opaque;
+	}
+	final switch(state.movingObjectById!(targetMode,()=>RenderMode.opaque)(target,state)){
+		import std.traits: EnumMembers;
+		static foreach(mode;EnumMembers!RenderMode){
+			case mode: return state.setRenderMode!(MovingObject!B,mode)(target);
+		}
+	}
+}
+
+bool stealth(B)(ref MovingObject!B object,ObjectState!B state){
+	if(object.creatureStats.effects.stealth) return false;
+	object.creatureStats.effects.stealth=true;
+	playSoundAt("tlts",object.id,state,2.0f);
+	state.addEffect(Stealth!B(object.id));
+	return true;
+}
+
 bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,Target target,ObjectState!B state){
 	if(object.sacObject.ability!is ability) return false;
 	if(ability.requiresTarget&&!ability.isApplicable(summarize(target,object.side,state))){
@@ -4469,19 +4552,22 @@ bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,Target target,Ob
 			return false;
 	}
 	if(state.abilityStatus!false(object,ability,target)!=SpellStatus.ready) return false;
-	object.creatureStats.effects.abilityCooldown=cast(int)(ability.cooldown*updateFPS);
+	void apply(){
+		object.drainMana(ability.manaCost,state);
+		object.creatureStats.effects.abilityCooldown=cast(int)(ability.cooldown*updateFPS);
+	}
 	switch(ability.tag){
 		case SpellTag.runAway:
-			object.drainMana(ability.manaCost,state);
-			object.runAway(ability,state);
+			if(object.runAway(ability,state)) apply();
 			return false;
 		case SpellTag.playDead:
-			if(object.playDead(state))
-				object.drainMana(ability.manaCost,state);
+			if(object.playDead(state)) apply();
 			return false;
 		case SpellTag.rockForm:
-			if(object.rockForm(state))
-				object.drainMana(ability.manaCost,state);
+			if(object.rockForm(state)) apply();
+			return false;
+		case SpellTag.stealth:
+			if(object.stealth(state)) apply();
 			return false;
 		default:
 			object.stun(state);
@@ -4516,7 +4602,7 @@ enum rotationSpeedLimitFactor=1.0f;
 
 bool requiresAI(CreatureMode mode){
 	with(CreatureMode) final switch(mode){
-		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,casting,stationaryCasting,castingMoving,shooting,playingDead,rockForm,invisible: return true;
+		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,casting,stationaryCasting,castingMoving,shooting,playingDead,rockForm: return true;
 		case dying,dead,dissolving,preSpawning,spawning,reviving,fastReviving,stunned,cower,pretendingToDie,pretendingToRevive: return false;
 	}
 }
@@ -4528,12 +4614,13 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 			object.creatureAI.rangedAttackTarget=0;
 		return;
 	}
-	if(object.creatureState.mode.isHidden){
+	if(object.isHidden){
 		if(object.creatureAI.order.command==CommandType.none)
 			return;
 		if(object.creatureState.mode==CreatureMode.playingDead)
 			return object.pretendToRevive(state);
-		object.startIdling(state);
+		if(object.creatureState.mode==CreatureMode.rockForm)
+			object.startIdling(state);
 	}
 	switch(object.creatureAI.order.command){
 		case CommandType.retreat:
@@ -4644,13 +4731,6 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 			}
 			break;
 		case CreatureMode.rockForm:
-			break;
-		case CreatureMode.invisible:
-			object.frame+=1;
-			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
-				object.frame=0;
-				object.setCreatureState(state);
-			}
 			break;
 		case CreatureMode.dying, CreatureMode.pretendingToDie:
 			with(AnimationState) assert(object.animationState.among(death0,death1,death2,flyDeath,falling,tumble,hitFloor),text(sacObject.tag," ",object.animationState));
@@ -7084,6 +7164,51 @@ bool updateRockForm(B)(ref RockForm!B rockForm,ObjectState!B state){
 	}
 }
 
+bool updateStealth(B)(ref Stealth!B stealth,ObjectState!B state){
+	with(stealth){
+		if(!state.isValidTarget(target,TargetType.creature)) return false;
+		updateRenderMode(target,state);
+		if(status!=StealthStatus.fadingIn){
+			static bool check(ref MovingObject!B obj){
+				assert(obj.creatureStats.effects.stealth);
+				final switch(obj.creatureState.mode) with(CreatureMode){
+					case idle,moving,takeoff,landing,cower,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
+					case dying,dead,dissolving,preSpawning,spawning,reviving,fastReviving,meleeMoving,meleeAttacking,stunned,casting,stationaryCasting,castingMoving,shooting: return false;
+				}
+			}
+			if(!state.movingObjectById!(check,()=>false)(target)){
+				status=StealthStatus.fadingIn;
+				playSoundAt("tlts",target,state,2.0f);
+			}
+		}
+		void updateAlpha(){
+			state.setAlpha(target,1.0f+progress*(targetAlpha-1.0f));
+		}
+		final switch(status){
+			case StealthStatus.fadingOut:
+				progress=min(1.0f,progress+1.0f/numFrames);
+				if(progress==1.0f) status=StealthStatus.stationary;
+				updateAlpha();
+				break;
+			case StealthStatus.stationary:
+				break;
+			case StealthStatus.fadingIn:
+				progress=max(0.0f,progress-1.0f/numFrames);
+				if(progress==0.0f){
+					static void removeStealth(B)(ref MovingObject!B object){
+						assert(object.creatureStats.effects.stealth);
+						object.creatureStats.effects.stealth=false;
+					}
+					state.movingObjectById!removeStealth(target);
+					updateRenderMode(target,state);
+					return false;
+				}
+				updateAlpha();
+				break;
+		}
+		return true;
+	}
+}
 
 void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.debris.length;){
@@ -7352,6 +7477,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 		}
 		i++;
 	}
+	for(int i=0;i<effects.stealths.length;){
+		if(!updateStealth(effects.stealths[i],state)){
+			effects.removeStealth(i);
+			continue;
+		}
+		i++;
+	}
 }
 
 void explosionParticles(B)(Vector3f position,ObjectState!B state){
@@ -7605,7 +7737,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 		if(objects.sacObject.isManahoar){
 			static bool manahoarAbilityEnabled(CreatureMode mode){
 				final switch(mode) with(CreatureMode){
-					case idle,moving,dying,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,pretendingToDie,rockForm,invisible: return true;
+					case idle,moving,dying,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,pretendingToDie,rockForm: return true;
 					case dead,dissolving,preSpawning,reviving,fastReviving,playingDead,pretendingToRevive: return false;
 					case casting,stationaryCasting,castingMoving,shooting: assert(0);
 				}
@@ -8292,6 +8424,11 @@ final class ObjectState(B){ // (update logic)
 	}do{
 		obj.removeObject(id);
 	}
+	void setAlpha(int id,float alpha)in{
+		assert(id!=0);
+	}do{
+		obj.setAlpha(id,alpha);
+	}
 	void setThresholdZ(int id,float thresholdZ)in{
 		assert(id!=0);
 	}do{
@@ -8404,6 +8541,19 @@ final class ObjectState(B){ // (update logic)
 		switch(ability.tag){
 			case SpellTag.runAway:
 				if(obj.creatureStats.effects.numSpeedUps)
+					return SpellStatus.invalidTarget;
+				return SpellStatus.ready;
+			case SpellTag.playDead:
+				with(CreatureMode)
+					if(obj.creatureState.mode.among(stunned,pretendingToDie,playingDead))
+						return SpellStatus.invalidTarget;
+				return SpellStatus.ready;
+			case SpellTag.rockForm:
+				if(obj.creatureState.mode==CreatureMode.rockForm)
+					return SpellStatus.invalidTarget;
+				return SpellStatus.ready;
+			case SpellTag.stealth:
+				if(obj.creatureStats.effects.stealth)
 					return SpellStatus.invalidTarget;
 				return SpellStatus.ready;
 			default: return SpellStatus.ready;
