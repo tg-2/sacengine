@@ -523,7 +523,7 @@ final class SacScene: Scene{
 						mesh.render(rc);
 					}
 				}
-				static if(mode==RenderMode.opaque) if(objects.rockCastings.length||objects.rocks.length||objects.earthflingProjectiles.length){
+				static if(mode==RenderMode.opaque) if(objects.rockCastings.length||objects.rocks.length||objects.earthflingProjectiles.length||objects.rockForms.length){
 					auto materials=scene.rock.materials;
 					foreach(i;0..materials.length){
 						auto material=materials[i];
@@ -541,6 +541,16 @@ final class SacScene: Scene{
 						}
 						foreach(j;0..objects.earthflingProjectiles.length){
 							material.backend.setTransformationScaled(objects.earthflingProjectiles[j].position,objects.earthflingProjectiles[j].rotation,0.3f*Vector3f(1.0f,1.0f,1.0f),rc);
+							mesh.render(rc);
+						}
+						foreach(j;0..objects.rockForms.length){
+							auto target=objects.rockForms[j].target;
+							alias Tuple=std.typecons.Tuple;
+							auto positionRotation=scene.state.current.movingObjectById!((ref obj)=>tuple(center(obj),obj.rotation), function Tuple!(Vector3f,Quaternionf)(){ return typeof(return).init; })(target);
+							auto position=positionRotation[0], rotation=positionRotation[1];
+							if(isNaN(position.x)) continue;
+							auto scale=objects.rockForms[j].scale*objects.rockForms[j].relativeScale;
+							material.backend.setTransformationScaled(position,rotation,scale*Vector3f(1.0f,1.0f,1.0f),rc);
 							mesh.render(rc);
 						}
 					}

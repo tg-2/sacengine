@@ -1044,6 +1044,7 @@ enum SpellTag:char[4]{
 	// creature abilities:
 	runAway="!nur",
 	playDead="dedp",
+	rockForm="dihk",
 	// ranged attacks:
 	brainiacShoot="bsba",
 	shrikeShoot="absh",
