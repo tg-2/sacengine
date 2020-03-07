@@ -7259,10 +7259,8 @@ bool updateLifeShield(B)(ref LifeShield!B lifeShield,ObjectState!B state){
 				assert(obj.creatureStats.effects.lifeShield);
 				return obj.creatureState.mode.canShield;
 			}
-			if(!state.movingObjectById!(check,()=>false)(target)||frame+scaleFrames>=ability.duration*updateFPS){
+			if(!state.movingObjectById!(check,()=>false)(target)||frame+scaleFrames>=ability.duration*updateFPS)
 				status=LifeShieldStatus.shrinking;
-				playSoundAt("tlts",target,state,2.0f);
-			}
 		}
 		final switch(status){
 			case LifeShieldStatus.growing:
