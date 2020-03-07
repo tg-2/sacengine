@@ -128,6 +128,7 @@ final class SacScene: Scene{
 		auto frames=typeof(return).createMeshes();
 		return SacShrikeEffect!DagonBackend(texture,mat,frames);
 	}
+	SacArrow!DagonBackend arrow;
 	SacArrow!DagonBackend createArrow(){
 		auto sylphTexture=typeof(return).loadSylphTexture();
 		auto smat=createMaterial(shadelessMaterialBackend);
@@ -144,7 +145,23 @@ final class SacScene: Scene{
 		auto frames=typeof(return).createMeshes();
 		return SacArrow!DagonBackend(sylphTexture,smat,rangerTexture,rmat,frames);
 	}
-	SacArrow!DagonBackend arrow;
+	SacLifeShield!DagonBackend lifeShield;
+	SacLifeShield!DagonBackend createLifeShield(){
+		enum nU=4,nV=4;
+		import txtr;
+		auto texture=typeof(return).loadTexture();
+		auto mat=createMaterial(shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=Additive;
+		mat.energy=10.0f;
+		mat.diffuse=texture;
+		ShapeSubSphere[16] frames;
+		foreach(i,ref frame;frames){
+			int u=cast(int)i%nU,v=cast(int)i/nU;
+			frame=new ShapeSubSphere(0.5f,25,25,true,null,1.0f/nU*u,1.0f/nV*v,1.0f/nU*(u+1),1.0f/nV*(v+1),true);
+		}
+		return SacLifeShield!DagonBackend(texture,mat,frames);
+	}
 	void createEffects(){
 		sacCommandCone=new SacCommandCone!DagonBackend();
 		sacDebris=new SacObject!DagonBackend("extracted/models/MODL.WAD!/bold.MRMC/bold.MRMM");
@@ -157,6 +174,7 @@ final class SacScene: Scene{
 		brainiacEffect=createBrainiacEffect();
 		shrikeEffect=createShrikeEffect();
 		arrow=createArrow();
+		lifeShield=createLifeShield();
 	}
 
 	void setupEnvironment(SacMap!DagonBackend map){
@@ -333,9 +351,14 @@ final class SacScene: Scene{
 					static if(isMoving){
 						auto mesh=sacObject.saxsi.meshes[i];
 						foreach(j;0..objects.length){ // TODO: use instanced rendering instead
+							if(rc.shadowMode&&objects.creatureStatss[j].effects.stealth) continue;
 							material.backend.setTransformation(objects.positions[j], objects.rotations[j], rc);
 							auto id=objects.ids[j];
-							material.backend.setInformation(Vector4f(2.0f,id>>16,id&((1<<16)-1),1.0f));
+							Vector4f information;
+							if(scene.renderSide!=objects.sides[j]&&(!objects.creatureStates[j].mode.isVisibleToAI||objects.creatureStatss[j].effects.stealth)){
+								information=Vector4f(0.0f,0.0f,0.0f,0.0f);
+							}else information=Vector4f(2.0f,id>>16,id&((1<<16)-1),1.0f);
+							material.backend.setInformation(information);
 							static if(prepareMaterials==RenderMode.transparent)
 								material.backend.setAlpha(objects.alphas[j]);
 							// TODO: interpolate animations to get 60 FPS?
@@ -687,6 +710,22 @@ final class SacScene: Scene{
 						mesh.render(rc);
 					}
 				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.lifeShields.length){
+					auto material=scene.lifeShield.material;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
+					foreach(j;0..objects.lifeShields.length){
+						auto target=objects.lifeShields[j].target;
+						alias Tuple=std.typecons.Tuple;
+						auto positionRotationBoxSize=scene.state.current.movingObjectById!((ref obj)=>tuple(center(obj),obj.rotation,boxSize(obj.sacObject.hitbox(Quaternionf.identity(),obj.animationState,obj.frame/updateAnimFactor))), function Tuple!(Vector3f,Quaternionf,Vector3f)(){ return typeof(return).init; })(target);
+						auto position=positionRotationBoxSize[0], rotation=positionRotationBoxSize[1], boxSize=positionRotationBoxSize[2];
+						if(isNaN(position.x)) continue;
+						auto scale=objects.lifeShields[j].scale;
+						material.backend.setTransformationScaled(position,rotation,scale*1.4f*boxSize,rc);
+						auto mesh=scene.lifeShield.getFrame(objects.lifeShields[j].frame%scene.lifeShield.numFrames);
+						mesh.render(rc);
+					}
+				}
 			}else static if(is(T==Particles!(DagonBackend,relative),bool relative)){
 				static if(mode==RenderMode.transparent){
 					if(rc.shadowMode) return; // TODO: particle shadows?
@@ -773,8 +812,9 @@ final class SacScene: Scene{
 		rc.information=Vector4f(0.0f,0.0f,0.0f,0.0f);
 		shadelessMaterialBackend.bind(null,rc);
 		scope(success) shadelessMaterialBackend.unbind(null,rc);
-		static void renderCreatureStat(B)(MovingObject!B obj,SacScene scene,bool healthAndMana,RenderingContext* rc){
+		static void renderCreatureStat(B)(ref MovingObject!B obj,SacScene scene,bool healthAndMana,RenderingContext* rc){
 			if(obj.creatureState.mode.among(CreatureMode.dying,CreatureMode.dead,CreatureMode.dissolving)) return;
+			if(scene.renderSide!=obj.side&&(!obj.creatureState.mode.isVisibleToAI||obj.creatureStats.effects.stealth)) return;
 			auto backend=scene.shadelessMaterialBackend;
 			backend.bindDiffuse(scene.sacHud.statusArrows);
 			backend.setColor(scene.state.current.sides.sideColor(obj.side));
@@ -1325,7 +1365,11 @@ final class SacScene: Scene{
 				enforce(objects.length<=uint.max);
 				foreach(j;0..cast(uint)objects.length){
 					static if(is(typeof(objects.sacObject))){
-						static if(isMoving) if(objects.creatureStates[j].mode.among(CreatureMode.dead,CreatureMode.dissolving)) continue;
+						static if(isMoving){
+							if(objects.creatureStates[j].mode.among(CreatureMode.dead,CreatureMode.dissolving)) continue;
+							if(scene.renderSide!=objects.sides[j]&&(!objects.creatureStates[j].mode.isVisibleToAI||objects.creatureStatss[j].effects.stealth))
+								continue;
+						}
 						static if(isMoving){
 							auto side=objects.sides[j];
 							auto flags=objects.creatureStatss[j].flags;
@@ -3375,236 +3419,142 @@ class ShapeSacStatsFrame: Owner, Drawable{
 	}
 }
 
-class ShapeSubSphere: Mesh
-{
-    DynamicArray!Vector3f daVertices;
-    DynamicArray!Vector3f daNormals;
-    DynamicArray!Vector2f daTexcoords;
-    DynamicArray!(uint[3]) daIndices;
+class ShapeSubSphere: Mesh{
+	DynamicArray!Vector3f daVertices;
+	DynamicArray!Vector3f daNormals;
+	DynamicArray!Vector2f daTexcoords;
+	DynamicArray!(uint[3]) daIndices;
 
-	this(float radius, int slices, int stacks, bool invNormals, Owner o,float left,float top,float right,float bottom)
-    {
-        super(o);
+	this(float radius, int slices, int stacks, bool invNormals, Owner o,float left,float top,float right,float bottom,bool rep=false){
+		super(o);
 
-        float X1, Y1, X2, Y2, Z1, Z2;
-        float inc1, inc2, inc3, inc4, inc5, radius1, radius2;
-        uint[3] tri;
-        uint i = 0;
+		float X1, Y1, X2, Y2, Z1, Z2;
+		float inc1, inc2, inc3, inc4, inc5, radius1, radius2;
+		uint[3] tri;
+		uint i = 0;
 
-        float cuts = stacks;
-        float invCuts = 1.0f / cuts;
-        float heightStep = 2.0f * invCuts;
+		float cuts = stacks;
+		float invCuts = 1.0f / cuts;
+		float heightStep = 2.0f * invCuts;
 
-        float invSlices = 1.0f / slices;
-        float angleStep = (2.0f * pi!float) * invSlices;
+		float invSlices = 1.0f / slices;
+		float angleStep = (2.0f * pi!float) * invSlices;
 
-        for(int h = 0; h < stacks; h++)
-        {
-            float h1Norm = cast(float)h * invCuts * 2.0f - 1.0f;
-            float h2Norm = cast(float)(h+1) * invCuts * 2.0f - 1.0f;
-            float y1 = sin(0.5f*pi!float * h1Norm);
-            float y2 = sin(0.5f*pi!float * h2Norm);
+		for(int h = 0; h < stacks; h++){
+			float h1Norm = cast(float)h * invCuts * 2.0f - 1.0f;
+			float h2Norm = cast(float)(h+1) * invCuts * 2.0f - 1.0f;
+			float y1 = sin(0.5f*pi!float * h1Norm);
+			float y2 = sin(0.5f*pi!float * h2Norm);
 
-            float circleRadius1 = cos(0.5f*pi!float * y1);
-            float circleRadius2 = cos(0.5f*pi!float * y2);
+			float circleRadius1 = cos(0.5f*pi!float * y1);
+			float circleRadius2 = cos(0.5f*pi!float * y2);
 
-            auto curBottom=bottom+(top-bottom)*h/stacks;
-            auto curTop=bottom+(top-bottom)*(h+1)/stacks;
+			auto curBottom=bottom+(top-bottom)*h/stacks;
+			auto curTop=bottom+(top-bottom)*(h+1)/stacks;
 
-            for(int a = 0; a < slices; a++)
-            {
-	            auto curLeft=left+(right-left)*a/slices;
-	            auto curRight=left+(right-left)*(a+1)/slices;
-                float x1a = sin(angleStep * a) * circleRadius1;
-                float z1a = cos(angleStep * a) * circleRadius1;
-                float x2a = sin(angleStep * (a + 1)) * circleRadius1;
-                float z2a = cos(angleStep * (a + 1)) * circleRadius1;
+			for(int a = 0; a < slices*(rep?2:1); a++){
+				auto curLeft=left+(right-left)*a/slices;
+				auto curRight=left+(right-left)*(a+1)/slices;
+				if(rep&&a>=slices){
+					curLeft=left+(right-left)*(2*slices-a)/slices;
+					curRight=left+(right-left)*(2*slices-1-a)/slices;
+				}
+				float x1a = sin(angleStep * a) * circleRadius1;
+				float z1a = cos(angleStep * a) * circleRadius1;
+				float x2a = sin(angleStep * (a + 1)) * circleRadius1;
+				float z2a = cos(angleStep * (a + 1)) * circleRadius1;
 
-                float x1b = sin(angleStep * a) * circleRadius2;
-                float z1b = cos(angleStep * a) * circleRadius2;
-                float x2b = sin(angleStep * (a + 1)) * circleRadius2;
-                float z2b = cos(angleStep * (a + 1)) * circleRadius2;
+				float x1b = sin(angleStep * a) * circleRadius2;
+				float z1b = cos(angleStep * a) * circleRadius2;
+				float x2b = sin(angleStep * (a + 1)) * circleRadius2;
+				float z2b = cos(angleStep * (a + 1)) * circleRadius2;
 
-                Vector3f v1 = Vector3f(x1a, z1a, y1);
-                Vector3f v2 = Vector3f(x2a, z2a, y1);
-                Vector3f v3 = Vector3f(x1b, z1b, y2);
-                Vector3f v4 = Vector3f(x2b, z2b, y2);
+				Vector3f v1 = Vector3f(x1a, z1a, y1);
+				Vector3f v2 = Vector3f(x2a, z2a, y1);
+				Vector3f v3 = Vector3f(x1b, z1b, y2);
+				Vector3f v4 = Vector3f(x2b, z2b, y2);
 
-                Vector3f n1 = v1.normalized;
-                Vector3f n2 = v2.normalized;
-                Vector3f n3 = v3.normalized;
-                Vector3f n4 = v4.normalized;
+				Vector3f n1 = v1.normalized;
+				Vector3f n2 = v2.normalized;
+				Vector3f n3 = v3.normalized;
+				Vector3f n4 = v4.normalized;
 
-                daVertices.append(n1 * radius);
-                daVertices.append(n2 * radius);
-                daVertices.append(n3 * radius);
+				daVertices.append(n1 * radius);
+				daVertices.append(n2 * radius);
+				daVertices.append(n3 * radius);
 
-                daVertices.append(n3 * radius);
-                daVertices.append(n2 * radius);
-                daVertices.append(n4 * radius);
+				daVertices.append(n3 * radius);
+				daVertices.append(n2 * radius);
+				daVertices.append(n4 * radius);
 
-                float sign = invNormals? -1.0f : 1.0f;
+				float sign = invNormals? -1.0f : 1.0f;
 
-                daNormals.append(n1 * sign);
-                daNormals.append(n2 * sign);
-                daNormals.append(n3 * sign);
+				daNormals.append(n1 * sign);
+				daNormals.append(n2 * sign);
+				daNormals.append(n3 * sign);
 
-                daNormals.append(n3 * sign);
-                daNormals.append(n2 * sign);
-                daNormals.append(n4 * sign);
+				daNormals.append(n3 * sign);
+				daNormals.append(n2 * sign);
+				daNormals.append(n4 * sign);
 
-                auto uv1 = Vector2f(curLeft,curBottom);
-                auto uv2 = Vector2f(curRight,curBottom);
-                auto uv3 = Vector2f(curLeft,curTop);
-                auto uv4 = Vector2f(curRight,curTop);
+				auto uv1 = Vector2f(curLeft,curBottom);
+				auto uv2 = Vector2f(curRight,curBottom);
+				auto uv3 = Vector2f(curLeft,curTop);
+				auto uv4 = Vector2f(curRight,curTop);
 
-                daTexcoords.append(uv1);
-                daTexcoords.append(uv2);
-                daTexcoords.append(uv3);
+				daTexcoords.append(uv1);
+				daTexcoords.append(uv2);
+				daTexcoords.append(uv3);
 
-                daTexcoords.append(uv3);
-                daTexcoords.append(uv2);
-                daTexcoords.append(uv4);
+				daTexcoords.append(uv3);
+				daTexcoords.append(uv2);
+				daTexcoords.append(uv4);
 
-                if (invNormals)
-                {
-                    tri[0] = i+2;
-                    tri[1] = i+1;
-                    tri[2] = i;
-                    daIndices.append(tri);
+				if(invNormals){
+					tri[0] = i+2;
+					tri[1] = i+1;
+					tri[2] = i;
+					daIndices.append(tri);
 
-                    tri[0] = i+5;
-                    tri[1] = i+4;
-                    tri[2] = i+3;
-                    daIndices.append(tri);
-                }
-                else
-                {
-                    tri[0] = i;
-                    tri[1] = i+1;
-                    tri[2] = i+2;
-                    daIndices.append(tri);
+					tri[0] = i+5;
+					tri[1] = i+4;
+					tri[2] = i+3;
+					daIndices.append(tri);
+				}else{
+					tri[0] = i;
+					tri[1] = i+1;
+					tri[2] = i+2;
+					daIndices.append(tri);
 
-                    tri[0] = i+3;
-                    tri[1] = i+4;
-                    tri[2] = i+5;
-                    daIndices.append(tri);
-                }
+					tri[0] = i+3;
+					tri[1] = i+4;
+					tri[2] = i+5;
+					daIndices.append(tri);
+				}
 
-                i += 6;
-            }
-        }
+				i += 6;
+			}
+		}
+		vertices = New!(Vector3f[])(daVertices.length);
+		vertices[] = daVertices.data[];
 
-        /*
-        for(int w = 0; w < resolution; w++)
-        {
+		normals = New!(Vector3f[])(daNormals.length);
+		normals[] = daNormals.data[];
 
+		texcoords = New!(Vector2f[])(daTexcoords.length);
+		texcoords[] = daTexcoords.data[];
 
-            for(int h = (-resolution/2); h < (resolution/2); h++)
-            {
-                inc1 = (w/cast(float)resolution)*2*pi!float;
-                inc2 = ((w+1)/cast(float)resolution)*2*pi!float;
+		indices = New!(uint[3][])(daIndices.length);
+		indices[] = daIndices.data[];
 
-                inc3 = (h/cast(float)resolution)*pi!float;
-                inc4 = ((h+1)/cast(float)resolution)*pi!float;
+		daVertices.free();
+		daNormals.free();
+		daTexcoords.free();
+		daIndices.free();
 
-                X1 = sin(inc1);
-                Y1 = cos(inc1);
-                X2 = sin(inc2);
-                Y2 = cos(inc2);
-
-                radius1 = radius*cos(inc3);
-                radius2 = radius*cos(inc4);
-
-                Z1 = radius*sin(inc3);
-                Z2 = radius*sin(inc4);
-
-                daVertices.append(Vector3f(radius1*X1,Z1,radius1*Y1));
-                daVertices.append(Vector3f(radius1*X2,Z1,radius1*Y2));
-                daVertices.append(Vector3f(radius2*X2,Z2,radius2*Y2));
-
-                daVertices.append(Vector3f(radius1*X1,Z1,radius1*Y1));
-                daVertices.append(Vector3f(radius2*X2,Z2,radius2*Y2));
-                daVertices.append(Vector3f(radius2*X1,Z2,radius2*Y1));
-
-                auto uv1 = Vector2f(0, 0);
-                auto uv2 = Vector2f(0, 1);
-                auto uv3 = Vector2f(1, 1);
-                auto uv4 = Vector2f(1, 0);
-
-                daTexcoords.append(uv1);
-                daTexcoords.append(uv2);
-                daTexcoords.append(uv3);
-
-                daTexcoords.append(uv1);
-                daTexcoords.append(uv3);
-                daTexcoords.append(uv4);
-
-                float sign = invNormals? -1.0f : 1.0f;
-
-                auto n1 = Vector3f(X1,Z1,Y1).normalized;
-                auto n2 = Vector3f(X2,Z1,Y2).normalized;
-                auto n3 = Vector3f(X2,Z2,Y2).normalized;
-                auto n4 = Vector3f(X1,Z2,Y1).normalized;
-
-                daNormals.append(n1 * sign);
-                daNormals.append(n2 * sign);
-                daNormals.append(n3 * sign);
-
-                daNormals.append(n1 * sign);
-                daNormals.append(n3 * sign);
-                daNormals.append(n4 * sign);
-
-                if (invNormals)
-                {
-                    tri[0] = i+2;
-                    tri[1] = i+1;
-                    tri[2] = i;
-                    daIndices.append(tri);
-
-                    tri[0] = i+5;
-                    tri[1] = i+4;
-                    tri[2] = i+3;
-                    daIndices.append(tri);
-                }
-                else
-                {
-                    tri[0] = i;
-                    tri[1] = i+1;
-                    tri[2] = i+2;
-                    daIndices.append(tri);
-
-                    tri[0] = i+3;
-                    tri[1] = i+4;
-                    tri[2] = i+5;
-                    daIndices.append(tri);
-                }
-
-                i += 6;
-            }
-        }
-        */
-
-        vertices = New!(Vector3f[])(daVertices.length);
-        vertices[] = daVertices.data[];
-
-        normals = New!(Vector3f[])(daNormals.length);
-        normals[] = daNormals.data[];
-
-        texcoords = New!(Vector2f[])(daTexcoords.length);
-        texcoords[] = daTexcoords.data[];
-
-        indices = New!(uint[3][])(daIndices.length);
-        indices[] = daIndices.data[];
-
-        daVertices.free();
-        daNormals.free();
-        daTexcoords.free();
-        daIndices.free();
-
-        dataReady = true;
-        prepareVAO();
-    }
+		dataReady = true;
+		prepareVAO();
+	}
 }
 
 class ShapeCooldown: Owner, Drawable{

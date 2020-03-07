@@ -58,7 +58,7 @@ bool isHidden(CreatureMode mode){
 bool isVisibleToAI(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting: return true;
-			case dying,dead,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,rockForm: return false;
+		case dying,dead,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,rockForm: return false;
 	}
 }
 bool isObstacle(CreatureMode mode){
@@ -81,7 +81,12 @@ bool canHeal(CreatureMode mode){
 		case dying,dead,dissolving,preSpawning,spawning,reviving,fastReviving: return false;
 	}
 }
-
+bool canShield(CreatureMode mode){
+	final switch(mode) with(CreatureMode){
+		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
+		case dying,dead,dissolving,preSpawning,spawning,reviving,fastReviving: return false;
+	}
+}
 
 enum CreatureMovement{
 	onGround,
@@ -525,7 +530,7 @@ StunnedBehavior stunnedBehavior(B)(ref MovingObject!B object){
 }
 
 bool isRegenerating(B)(ref MovingObject!B object){
-	return object.creatureState.mode==CreatureMode.idle||object.sacObject.continuousRegeneration&&!object.creatureState.mode.among(CreatureMode.dying,CreatureMode.dead,CreatureMode.dissolving);
+	return object.creatureState.mode.among(CreatureMode.idle,CreatureMode.playingDead,CreatureMode.rockForm)||object.sacObject.continuousRegeneration&&!object.creatureState.mode.among(CreatureMode.dying,CreatureMode.dead,CreatureMode.dissolving);
 }
 
 bool isDamaged(B)(ref MovingObject!B object){
@@ -1811,6 +1816,17 @@ struct Stealth(B){
 	enum numFrames=30;
 }
 
+enum LifeShieldStatus{ growing, stationary, shrinking }
+struct LifeShield(B){
+	int target;
+	SacSpell!B ability;
+	int soundEffectTimer;
+	int frame=0;
+	float scale=0.0f;
+	LifeShieldStatus status;
+	enum scaleFrames=15;
+}
+
 struct Effects(B){
 	// misc
 	Array!(Debris!B) debris;
@@ -2129,6 +2145,14 @@ struct Effects(B){
 		if(i+1<stealths.length) stealths[i]=move(stealths[$-1]);
 		stealths.length=stealths.length-1;
 	}
+	Array!(LifeShield!B) lifeShields;
+	void addEffect(LifeShield!B lifeShield){
+		lifeShields~=move(lifeShield);
+	}
+	void removeLifeShield(int i){
+		if(i+1<lifeShields.length) lifeShields[i]=move(lifeShields[$-1]);
+		lifeShields.length=lifeShields.length-1;
+	}
 	void opAssign(ref Effects!B rhs){
 		assignArray(debris,rhs.debris);
 		assignArray(explosions,rhs.explosions);
@@ -2169,6 +2193,7 @@ struct Effects(B){
 		assignArray(rangerProjectiles,rhs.rangerProjectiles);
 		assignArray(rockForms,rhs.rockForms);
 		assignArray(stealths,rhs.stealths);
+		assignArray(lifeShields,rhs.lifeShields);
 	}
 	void opAssign(Effects!B rhs){ this.tupleof=rhs.tupleof; }
 }
@@ -3315,7 +3340,8 @@ float dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B at
 }
 float dealDamage(B)(ref MovingObject!B object,float damage,int attackingSide,ObjectState!B state){
 	if(!object.canDamage(state)) return 0.0f;
-	auto actualDamage=min(object.health,damage*state.sideDamageMultiplier(attackingSide,object.side));
+	auto shieldDamageMultiplier=object.creatureStats.effects.lifeShield?0.5f:1.0f;
+	auto actualDamage=min(object.health,damage*state.sideDamageMultiplier(attackingSide,object.side)*shieldDamageMultiplier);
 	object.health=object.health-actualDamage;
 	if(object.creatureStats.flags&Flags.cannotDestroyKill)
 		object.health=max(object.health,1.0f);
@@ -4543,6 +4569,14 @@ bool stealth(B)(ref MovingObject!B object,ObjectState!B state){
 	return true;
 }
 
+bool lifeShield(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
+	if(object.creatureStats.effects.lifeShield) return false;
+	object.creatureStats.effects.lifeShield=true;
+	auto duration=playSoundAt!true("ahsl",object.id,state,2.0f);
+	state.addEffect(LifeShield!B(object.id,ability,duration));
+	return true;
+}
+
 bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,Target target,ObjectState!B state){
 	if(object.sacObject.ability!is ability) return false;
 	if(ability.requiresTarget&&!ability.isApplicable(summarize(target,object.side,state))){
@@ -4568,6 +4602,9 @@ bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,Target target,Ob
 			return false;
 		case SpellTag.stealth:
 			if(object.stealth(state)) apply();
+			return false;
+		case SpellTag.lifeShield:
+			if(object.lifeShield(ability,state)) apply();
 			return false;
 		default:
 			object.stun(state);
@@ -5057,6 +5094,8 @@ int meleeAttackTarget(B)(ref MovingObject!B object,ObjectState!B state){
 void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.isRegenerating)
 		object.heal(object.creatureStats.regeneration/updateFPS,state);
+	if(object.creatureState.mode==CreatureMode.playingDead)
+		object.heal(30.0f/updateFPS,state); // TODO: ok?
 	if(object.creatureStats.mana<object.creatureStats.maxMana)
 		object.giveMana(state.manaRegenAt(object.side,object.position)/updateFPS,state);
 	if(object.creatureState.mode.among(CreatureMode.meleeMoving,CreatureMode.meleeAttacking) && object.hasAttackTick){
@@ -7210,6 +7249,45 @@ bool updateStealth(B)(ref Stealth!B stealth,ObjectState!B state){
 	}
 }
 
+bool updateLifeShield(B)(ref LifeShield!B lifeShield,ObjectState!B state){
+	with(lifeShield){
+		if(!state.isValidTarget(target,TargetType.creature)) return false;
+		++frame;
+		if(--soundEffectTimer==0) soundEffectTimer=playSoundAt!true("lhsl",target,state,2.0f);
+		if(status!=LifeShieldStatus.shrinking){
+			static bool check(ref MovingObject!B obj){
+				assert(obj.creatureStats.effects.lifeShield);
+				return obj.creatureState.mode.canShield;
+			}
+			if(!state.movingObjectById!(check,()=>false)(target)||frame+scaleFrames>=ability.duration*updateFPS){
+				status=LifeShieldStatus.shrinking;
+				playSoundAt("tlts",target,state,2.0f);
+			}
+		}
+		final switch(status){
+			case LifeShieldStatus.growing:
+				scale=min(1.0f,scale+1.0f/scaleFrames);
+				if(scale==1.0f) status=LifeShieldStatus.stationary;
+				break;
+			case LifeShieldStatus.stationary:
+				break;
+			case LifeShieldStatus.shrinking:
+				scale=max(0.0f,scale-1.0f/scaleFrames);
+				if(scale==0.0f){
+					static void removeLifeShield(B)(ref MovingObject!B object){
+						assert(object.creatureStats.effects.lifeShield);
+						object.creatureStats.effects.lifeShield=false;
+					}
+					state.movingObjectById!removeLifeShield(target);
+					updateRenderMode(target,state);
+					return false;
+				}
+				break;
+		}
+		return true;
+	}
+}
+
 void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.debris.length;){
 		if(!updateDebris(effects.debris[i],state)){
@@ -7484,6 +7562,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 		}
 		i++;
 	}
+	for(int i=0;i<effects.lifeShields.length;){
+		if(!updateLifeShield(effects.lifeShields[i],state)){
+			effects.removeLifeShield(i);
+			continue;
+		}
+		i++;
+	}
 }
 
 void explosionParticles(B)(Vector3f position,ObjectState!B state){
@@ -7718,7 +7803,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 	static if(isMoving){
 		foreach(j;0..objects.length){
 			bool isObstacle=objects.creatureStates[j].mode.isObstacle;
-			bool isVisibleToAI=objects.creatureStates[j].mode.isVisibleToAI;
+			bool isVisibleToAI=objects.creatureStates[j].mode.isVisibleToAI&&!(objects.creatureStatss[j].flags&Flags.notOnMinimap)&&!objects.creatureStatss[j].effects.stealth;
 			if(!isObstacle&&!isVisibleToAI) continue;
 			auto hitbox=objects.sacObject.hitbox(objects.rotations[j],objects.animationStates[j],objects.frames[j]/updateAnimFactor);
 			auto position=objects.positions[j];
@@ -8554,6 +8639,10 @@ final class ObjectState(B){ // (update logic)
 				return SpellStatus.ready;
 			case SpellTag.stealth:
 				if(obj.creatureStats.effects.stealth)
+					return SpellStatus.invalidTarget;
+				return SpellStatus.ready;
+			case SpellTag.lifeShield:
+				if(obj.creatureStats.effects.lifeShield)
 					return SpellStatus.invalidTarget;
 				return SpellStatus.ready;
 			default: return SpellStatus.ready;

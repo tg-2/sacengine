@@ -1550,6 +1550,18 @@ struct SacArrow(B){
 	}
 }
 
+struct SacLifeShield(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/ent1.TXTR"));
+	}
+	B.Material material;
+	B.SubSphereMesh[16] frames;
+	enum animationDelay=2;
+	enum numFrames=16*updateAnimFactor*animationDelay;
+	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
+}
+
 enum CommandConeColor{
 	white,
 	red,
