@@ -129,13 +129,13 @@ final class SacScene: Scene{
 		auto smat=createMaterial(shadelessMaterialBackend);
 		smat.depthWrite=false;
 		smat.blending=Additive;
-		smat.energy=10.0f;
+		smat.energy=30.0f;
 		smat.diffuse=sylphTexture;
 		auto rangerTexture=typeof(return).loadRangerTexture();
 		auto rmat=createMaterial(shadelessMaterialBackend);
 		rmat.depthWrite=false;
 		rmat.blending=Additive;
-		rmat.energy=15.0f;
+		rmat.energy=45.0f;
 		rmat.diffuse=rangerTexture;
 		auto frames=typeof(return).createMeshes();
 		return SacArrow!DagonBackend(sylphTexture,smat,rangerTexture,rmat,frames);
