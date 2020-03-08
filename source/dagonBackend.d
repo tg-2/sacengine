@@ -741,7 +741,7 @@ final class SacScene: Scene{
 						auto position=objects.divineSights[j].position;
 						auto frame=objects.divineSights[j].frame;
 						auto mesh=scene.divineSight.getFrame(frame%scene.divineSight.numFrames);
-						auto scale=min(1.0f,float(frame)/(divineSightNumRisingFrames-1));
+						auto scale=objects.divineSights[j].scale;
 						auto alpha=scale^^2;
 						material.backend.setSpriteTransformationScaled(position,scale,rc);
 						material.backend.setAlpha(alpha);

@@ -1833,6 +1833,7 @@ struct DivineSight(B){
 	Vector3f velocity;
 	SacSpell!B ability;
 	int frame=0;
+	float scale=0.0f;
 	int target=0;
 }
 
@@ -7321,13 +7322,21 @@ enum divineSightNumRisingFrames=45;
 bool updateDivineSight(B)(ref DivineSight!B divineSight,ObjectState!B state){
 	with(divineSight){
 		++frame;
+		auto lifetime=divineSightNumRisingFrames+ability.duration*updateFPS;
+		scale=min(1.0f,min(float(frame),lifetime-float(frame))/(divineSightNumRisingFrames-1));
 		if(frame<divineSightNumRisingFrames){
 			position.z=state.getHeight(position)+0.5f*divineSightFlyingHeight+frame*(0.5f*divineSightFlyingHeight)/(divineSightNumRisingFrames-1);
 			return true;
 		}
 		auto flyingHeight=divineSightFlyingHeight;
-		if(target==0) target=state.proximity.closestEnemyInRange(side,position,ability.range,EnemyType.creature,state);
-		if(target!=-1&&state.isValidTarget(target,TargetType.creature)){
+		if(target==0){
+			auto travelFrames=frame-divineSightNumRisingFrames;
+			if(travelFrames*ability.speed<updateFPS*ability.range){
+				velocity=velocity.normalized*ability.speed;
+			}else if((travelFrames-1)*ability.speed<updateFPS*ability.range)
+				velocity=Vector3f(0.0f,0.0f,0.0f);
+			target=state.proximity.closestEnemyInRange(side,position,ability.range,EnemyType.creature,state);
+		}else if(target!=-1&&state.isValidTarget(target,TargetType.creature)){
 			static getHitbox(B)(ref MovingObject!B obj){
 				auto hbox=obj.sacObject.hitbox(obj.rotation,AnimationState.stance1,0);
 				hbox[0]+=obj.position;
@@ -7360,7 +7369,7 @@ bool updateDivineSight(B)(ref DivineSight!B divineSight,ObjectState!B state){
 		}
 		position=newPosition;
 		// TODO: clear fog of war
-		return true;
+		return frame<lifetime;
 	}
 }
 
