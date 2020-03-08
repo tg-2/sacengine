@@ -355,6 +355,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Ste
 void serialize(alias sink,B)(ref LifeShield!B lifeShield){ serializeStruct!sink(lifeShield); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==LifeShield!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref DivineSight!B divineSight){ serializeStruct!sink(divineSight); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==DivineSight!B)){ deserializeStruct(result,state,data); }
+
 private alias Effects=state.Effects;
 void serialize(alias sink,B)(ref Effects!B effects){ serializeStruct!sink(effects); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Effects!B)){ deserializeStruct(result,state,data); }

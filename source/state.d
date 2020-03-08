@@ -76,15 +76,15 @@ bool isValidAttackTarget(CreatureMode mode){
 }
 bool canHeal(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
-		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,
+		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,
 			pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
-		case dying,dead,dissolving,preSpawning,spawning,reviving,fastReviving: return false;
+		case dying,dead,dissolving,preSpawning,reviving,fastReviving: return false;
 	}
 }
 bool canShield(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
-		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
-		case dying,dead,dissolving,preSpawning,spawning,reviving,fastReviving: return false;
+		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
+		case dying,dead,dissolving,preSpawning,reviving,fastReviving: return false;
 	}
 }
 
@@ -1827,6 +1827,15 @@ struct LifeShield(B){
 	enum scaleFrames=15;
 }
 
+struct DivineSight(B){
+	int side;
+	Vector3f position;
+	Vector3f velocity;
+	SacSpell!B ability;
+	int frame=0;
+	int target=0;
+}
+
 struct Effects(B){
 	// misc
 	Array!(Debris!B) debris;
@@ -2152,6 +2161,14 @@ struct Effects(B){
 	void removeLifeShield(int i){
 		if(i+1<lifeShields.length) lifeShields[i]=move(lifeShields[$-1]);
 		lifeShields.length=lifeShields.length-1;
+	}
+	Array!(DivineSight!B) divineSights;
+	void addEffect(DivineSight!B divineSight){
+		divineSights~=divineSight;
+	}
+	void removeDivineSight(int i){
+		if(i+1<divineSights.length) divineSights[i]=move(divineSights[$-1]);
+		divineSights.length=divineSights.length-1;
 	}
 	void opAssign(ref Effects!B rhs){
 		assignArray(debris,rhs.debris);
@@ -3146,8 +3163,8 @@ int makeBuilding(B)(int casterId,char[4] tag,int flags,int base,ObjectState!B st
 bool canStun(B)(ref MovingObject!B object,ObjectState!B state){
 	if(object.creatureStats.effects.stunCooldown!=0) return false;
 	final switch(object.creatureState.mode) with(CreatureMode){
-		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,cower,casting,stationaryCasting,castingMoving,shooting: return true;
-		case dying,dead,dissolving,preSpawning,spawning,reviving,fastReviving,stunned,pretendingToDie,playingDead,pretendingToRevive,rockForm: return false;
+		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,cower,casting,stationaryCasting,castingMoving,shooting: return true;
+		case dying,dead,dissolving,preSpawning,reviving,fastReviving,stunned,pretendingToDie,playingDead,pretendingToRevive,rockForm: return false;
 	}
 }
 
@@ -3328,8 +3345,8 @@ bool canDamage(B)(ref MovingObject!B object,ObjectState!B state){
 	if(object.creatureStats.flags&Flags.cannotDamage) return false;
 	if(object.creatureStats.effects.stealth) return false;
 	final switch(object.creatureState.mode) with(CreatureMode){
-		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting: return true;
-		case dying,dead,dissolving,preSpawning,spawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,rockForm: return false;
+		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting: return true;
+		case dying,dead,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,rockForm: return false;
 	}
 }
 
@@ -4207,6 +4224,7 @@ bool stop(B)(ref MovingObject!B object,float targetFacing,ObjectState!B state,fl
 	object.stopMovement(state);
 	if(object.creatureState.movement==CreatureMovement.flying) object.creatureState.speedLimit=0.0f;
 	auto facingFinished=targetFacing is float.init||!object.face(targetFacing,state,threshold);
+	if(facingFinished) object.stopTurning(state);
 	auto pitchingFinished=true;
 	if(object.creatureState.movement==CreatureMovement.flying){
 		pitchingFinished=!object.pitch(0.0f,state);
@@ -4294,7 +4312,7 @@ bool moveWithinRange(B)(ref MovingObject!B object,Vector3f targetPosition,float 
 bool retreatTowards(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectState!B state){
 	return object.patrolAround(targetPosition,guardDistance,state) ||
 		object.moveWithinRange(targetPosition,retreatDistance,state) ||
-		object.stopAndFaceTowards(targetPosition,state);
+		object.stop(float.init,state);
 }
 
 bool isValidAttackTarget(B,T)(ref T obj,ObjectState!B state)if(is(T==MovingObject!B)||is(T==StaticObject!B)){
@@ -4577,6 +4595,15 @@ bool lifeShield(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B st
 	return true;
 }
 
+bool divineSight(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
+	auto direction=rotate(facingQuaternion(object.creatureState.facing),Vector3f(0.0f,1.0f,0.0f));
+	auto position=object.position+2.0f*direction;
+	position.z=state.getHeight(position);
+	auto velocity=ability.speed*direction;
+	state.addEffect(DivineSight!B(object.side,position,velocity,ability));
+	return true;
+}
+
 bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,Target target,ObjectState!B state){
 	if(object.sacObject.ability!is ability) return false;
 	if(ability.requiresTarget&&!ability.isApplicable(summarize(target,object.side,state))){
@@ -4605,6 +4632,9 @@ bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,Target target,Ob
 			return false;
 		case SpellTag.lifeShield:
 			if(object.lifeShield(ability,state)) apply();
+			return false;
+		case SpellTag.divineSight:
+			if(object.divineSight(ability,state)) apply();
 			return false;
 		default:
 			object.stun(state);
@@ -4639,8 +4669,8 @@ enum rotationSpeedLimitFactor=1.0f;
 
 bool requiresAI(CreatureMode mode){
 	with(CreatureMode) final switch(mode){
-		case idle,moving,takeoff,landing,meleeMoving,meleeAttacking,casting,stationaryCasting,castingMoving,shooting,playingDead,rockForm: return true;
-		case dying,dead,dissolving,preSpawning,spawning,reviving,fastReviving,stunned,cower,pretendingToDie,pretendingToRevive: return false;
+		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,casting,stationaryCasting,castingMoving,shooting,playingDead,rockForm: return true;
+		case dying,dead,dissolving,preSpawning,reviving,fastReviving,stunned,cower,pretendingToDie,pretendingToRevive: return false;
 	}
 }
 
@@ -7211,8 +7241,8 @@ bool updateStealth(B)(ref Stealth!B stealth,ObjectState!B state){
 			static bool check(ref MovingObject!B obj){
 				assert(obj.creatureStats.effects.stealth);
 				final switch(obj.creatureState.mode) with(CreatureMode){
-					case idle,moving,takeoff,landing,cower,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
-					case dying,dead,dissolving,preSpawning,spawning,reviving,fastReviving,meleeMoving,meleeAttacking,stunned,casting,stationaryCasting,castingMoving,shooting: return false;
+					case idle,moving,spawning,takeoff,landing,cower,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
+					case dying,dead,dissolving,preSpawning,reviving,fastReviving,meleeMoving,meleeAttacking,stunned,casting,stationaryCasting,castingMoving,shooting: return false;
 				}
 			}
 			if(!state.movingObjectById!(check,()=>false)(target)){
@@ -7282,6 +7312,54 @@ bool updateLifeShield(B)(ref LifeShield!B lifeShield,ObjectState!B state){
 				}
 				break;
 		}
+		return true;
+	}
+}
+
+enum divineSightFlyingHeight=4.0f;
+enum divineSightNumRisingFrames=45;
+bool updateDivineSight(B)(ref DivineSight!B divineSight,ObjectState!B state){
+	with(divineSight){
+		++frame;
+		if(frame<divineSightNumRisingFrames){
+			position.z=state.getHeight(position)+0.5f*divineSightFlyingHeight+frame*(0.5f*divineSightFlyingHeight)/(divineSightNumRisingFrames-1);
+			return true;
+		}
+		auto flyingHeight=divineSightFlyingHeight;
+		if(target==0) target=state.proximity.closestEnemyInRange(side,position,ability.range,EnemyType.creature,state);
+		if(target!=-1&&state.isValidTarget(target,TargetType.creature)){
+			static getHitbox(B)(ref MovingObject!B obj){
+				auto hbox=obj.sacObject.hitbox(obj.rotation,AnimationState.stance1,0);
+				hbox[0]+=obj.position;
+				hbox[1]+=obj.position;
+				return hbox;
+			}
+			alias VT=Vector3f[2]; // workaround for DMD bug
+			auto targetHitbox=state.movingObjectById!(getHitbox,()=>VT.init)(target);
+			auto targetCenter=boxCenter(targetHitbox);
+			if(!isNaN(targetCenter.x)){
+				flyingHeight=targetHitbox[1].z-state.getHeight(targetCenter)+0.5f*divineSightFlyingHeight;
+				auto distance=targetCenter-position;
+				auto acceleration=distance.normalized*ability.acceleration;
+				velocity+=acceleration;
+				Vector3f capVelocity(Vector3f velocity){
+					if(velocity.length>ability.speed) velocity=velocity.normalized*ability.speed;
+					if(velocity.length>updateFPS*distance.length) velocity=velocity.normalized*distance.length*updateFPS;
+					return velocity;
+				}
+				velocity=capVelocity(velocity);
+			}
+		}else target=-1;
+		auto newPosition=position+velocity/updateFPS;
+		auto height=state.getHeight(position);
+		if(newPosition.z<height+flyingHeight){
+			auto nvel=velocity;
+			nvel.z+=(height+flyingHeight-newPosition.z)*updateFPS;
+			if(nvel.length>ability.speed) nvel=nvel.normalized*ability.speed;
+			newPosition=position+nvel/updateFPS;
+		}
+		position=newPosition;
+		// TODO: clear fog of war
 		return true;
 	}
 }
@@ -7563,6 +7641,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.lifeShields.length;){
 		if(!updateLifeShield(effects.lifeShields[i],state)){
 			effects.removeLifeShield(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.divineSights.length;){
+		if(!updateDivineSight(effects.divineSights[i],state)){
+			effects.removeDivineSight(i);
 			continue;
 		}
 		i++;

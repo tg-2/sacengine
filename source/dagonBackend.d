@@ -41,7 +41,6 @@ final class SacScene: Scene{
 	SacObject!DagonBackend sacDebris;
 	SacExplosion!DagonBackend createExplosion(){
 		enum nU=4,nV=4;
-		import txtr;
 		auto texture=typeof(return).loadTexture();
 		auto mat=createMaterial(shadelessMaterialBackend);
 		mat.depthWrite=false;
@@ -57,7 +56,6 @@ final class SacScene: Scene{
 	}
 	SacExplosion!DagonBackend explosion;
 	SacBlueRing!DagonBackend createBlueRing(){
-		import txtr;
 		auto texture=typeof(return).loadTexture();
 		auto mat=createMaterial(shadelessMaterialBackend);
 		mat.depthWrite=false;
@@ -94,7 +92,6 @@ final class SacScene: Scene{
 	SacObject!DagonBackend rock;
 	SacBug!DagonBackend bug;
 	SacBug!DagonBackend createBug(){
-		import txtr;
 		auto texture=typeof(return).loadTexture();
 		auto mat=createMaterial(shadelessMaterialBackend);
 		mat.depthWrite=false;
@@ -106,7 +103,6 @@ final class SacScene: Scene{
 	}
 	SacBrainiacEffect!DagonBackend brainiacEffect;
 	SacBrainiacEffect!DagonBackend createBrainiacEffect(){
-		import txtr;
 		auto texture=typeof(return).loadTexture();
 		auto mat=createMaterial(shadelessMaterialBackend);
 		mat.depthWrite=false;
@@ -118,7 +114,6 @@ final class SacScene: Scene{
 	}
 	SacShrikeEffect!DagonBackend shrikeEffect;
 	SacShrikeEffect!DagonBackend createShrikeEffect(){
-		import txtr;
 		auto texture=typeof(return).loadTexture();
 		auto mat=createMaterial(shadelessMaterialBackend);
 		mat.depthWrite=false;
@@ -162,6 +157,17 @@ final class SacScene: Scene{
 		}
 		return SacLifeShield!DagonBackend(texture,mat,frames);
 	}
+	SacDivineSight!DagonBackend divineSight;
+	SacDivineSight!DagonBackend createDivineSight(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=createMaterial(shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=Transparent;
+		mat.energy=3.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacDivineSight!DagonBackend(texture,mat,frames);
+	}
 	void createEffects(){
 		sacCommandCone=new SacCommandCone!DagonBackend();
 		sacDebris=new SacObject!DagonBackend("extracted/models/MODL.WAD!/bold.MRMC/bold.MRMM");
@@ -175,6 +181,7 @@ final class SacScene: Scene{
 		shrikeEffect=createShrikeEffect();
 		arrow=createArrow();
 		lifeShield=createLifeShield();
+		divineSight=createDivineSight();
 	}
 
 	void setupEnvironment(SacMap!DagonBackend map){
@@ -685,16 +692,16 @@ final class SacScene: Scene{
 						static void renderLoadedArrow(B)(ref MovingObject!B object,SacScene scene,Mesh mesh,RenderingContext* rc){
 							auto loadedArrow=object.loadedArrow;
 							if(loadedArrow!=loadedArrow) return;
-							void renderArrow(Vector3f start,Vector3f end){
+							void renderArrow(Vector3f start,Vector3f end,float scale=1.0f){
 								auto direction=end-start;
 								auto len=direction.length;
 								auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),direction/len);
-								scene.shadelessMaterialBackend.setTransformationScaled(start,rotation,Vector3f(1.0f,1.0f,len),rc);
+								scene.shadelessMaterialBackend.setTransformationScaled(start,rotation,Vector3f(scale,scale,len),rc);
 								mesh.render(rc);
 							}
 							with(loadedArrow){
-								renderArrow(hand,top);
-								renderArrow(hand,bottom);
+								renderArrow(hand,top,0.5f);
+								renderArrow(hand,bottom,0.5f);
 								renderArrow(hand,front);
 							}
 						}
@@ -723,6 +730,21 @@ final class SacScene: Scene{
 						auto scale=objects.lifeShields[j].scale;
 						material.backend.setTransformationScaled(position,rotation,scale*1.4f*boxSize,rc);
 						auto mesh=scene.lifeShield.getFrame(objects.lifeShields[j].frame%scene.lifeShield.numFrames);
+						mesh.render(rc);
+					}
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.divineSights.length){
+					auto material=scene.divineSight.material;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
+					foreach(j;0..objects.divineSights.length){
+						auto position=objects.divineSights[j].position;
+						auto frame=objects.divineSights[j].frame;
+						auto mesh=scene.divineSight.getFrame(frame%scene.divineSight.numFrames);
+						auto scale=min(1.0f,float(frame)/(divineSightNumRisingFrames-1));
+						auto alpha=scale^^2;
+						material.backend.setSpriteTransformationScaled(position,scale,rc);
+						material.backend.setAlpha(alpha);
 						mesh.render(rc);
 					}
 				}

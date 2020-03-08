@@ -1562,6 +1562,22 @@ struct SacLifeShield(B){
 	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
 }
 
+struct SacDivineSight(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/scri.TXTR"));
+	}
+	B.Material material;
+	B.Mesh[] frames;
+	enum animationDelay=4;
+	enum numFrames=16*updateAnimFactor*animationDelay;
+	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
+	static B.Mesh[] createMeshes(){
+		return makeSpriteMeshes!B(4,4,2.5f,2.25f);
+	}
+}
+
+
 enum CommandConeColor{
 	white,
 	red,

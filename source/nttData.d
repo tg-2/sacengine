@@ -1047,6 +1047,7 @@ enum SpellTag:char[4]{
 	rockForm="dihk",
 	stealth="ivni",
 	lifeShield="hsba",
+	divineSight="eesd",
 	// ranged attacks:
 	brainiacShoot="bsba",
 	shrikeShoot="absh",
