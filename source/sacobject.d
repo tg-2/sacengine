@@ -33,6 +33,7 @@ final class SacObject(B){
 	B.Material[] shadowMaterials;
 	Animation[] animations;
 	SacSpell!B[3] abilities;
+	SacSpell!B passiveAbility;
 	immutable(Cre8)* cre8;
 	immutable(CreatureData)* data;
 	immutable(Wizd)* wizd;
@@ -447,6 +448,8 @@ final class SacObject(B){
 				if(mixin(text(`cre8.ability`,i))!="\0\0\0\0")
 					abilities[i]=SacSpell!B.get(mixin(text(`cre8.ability`,i)));
 			}
+			if(cre8.passiveAbility!="\0\0\0\0")
+				passiveAbility=SacSpell!B.get(cre8.passiveAbility);
 		}
 		MaterialConfig conf;
 		// TODO: this is a hack:
@@ -843,6 +846,7 @@ enum ParticleType{
 	dirt,
 	dust,
 	rock,
+	steam,
 	smoke,
 	swarmHit,
 	locustBlood,
@@ -867,7 +871,7 @@ final class SacParticle(B){
 				return false;
 			case castPersephone,castPyro,castJames,castStratos,castCharnel:
 				return false;
-			case wrathCasting,wrathExplosion1,wrathExplosion2:
+			case wrathCasting,wrathExplosion1,wrathExplosion2,steam:
 				return false;
 			case wrathParticle,ashParticle:
 				return true;
@@ -889,7 +893,7 @@ final class SacParticle(B){
 				return true;
 			case castPersephone,castPyro,castJames,castStratos,castCharnel:
 				return false;
-			case wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,ashParticle,smoke,dirt,dust,rock,swarmHit:
+			case wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,ashParticle,steam,smoke,dirt,dust,rock,swarmHit:
 				return false;
 			case locustBlood,locustDebris:
 				return false;
@@ -1031,6 +1035,12 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/prth.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
+			case steam:
+				width=height=2.0f;
+				this.energy=0.25f;
+				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/stem.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
 			case ashParticle:
 				width=height=0.3f;
 				this.energy=10.0f;
@@ -1130,6 +1140,8 @@ final class SacParticle(B){
 				return 1.0f;
 			case wrathCasting:
 				return min(1.0f,lifetime/(1.5f*numFrames));
+			case steam:
+				return 1.0f;
 			case smoke:
 				enum delay=64;
 				return 0.75f*(lifetime>=numFrames-(delay-1)?(numFrames-lifetime)/float(delay):(lifetime/float(numFrames-delay)))^^2;
@@ -1167,6 +1179,8 @@ final class SacParticle(B){
 				return min(1.0f,0.4f+0.6f*lifetime/(1.5f*numFrames));
 			case wrathParticle:
 				return min(1.0f,lifetime/(0.5f*numFrames));
+			case steam:
+				return 1.0f;
 			case ashParticle:
 				return 1.0f;
 			case smoke:

@@ -520,6 +520,7 @@ bool hasShootTick(B)(ref MovingObject!B object){
 }
 
 SacSpell!B ability(B)(ref MovingObject!B object){ return object.sacObject.ability; }
+SacSpell!B passiveAbility(B)(ref MovingObject!B object){ return object.sacObject.passiveAbility; }
 
 StunBehavior stunBehavior(B)(ref MovingObject!B object){
 	return object.sacObject.stunBehavior;
@@ -3044,6 +3045,10 @@ bool kill(B,bool pretending=false)(ref MovingObject!B object, ObjectState!B stat
 		object.health=0.0f;
 		object.creatureState.mode=CreatureMode.dying;
 		playSoundTypeAt(object.sacObject,object.id,SoundType.death,state);
+		if(auto ability=object.passiveAbility){
+			if(ability.tag==SpellTag.steamCloud)
+				object.steamCloud(ability,state);
+		}
 	}else{
 		with(CreatureMode) if(object.creatureState.mode.among(stunned,pretendingToDie,playingDead)) return false;
 		object.creatureState.mode=CreatureMode.pretendingToDie;
@@ -4659,6 +4664,23 @@ bool runAwayBug(B)(ref MovingObject!B object,ObjectState!B state){
 	return true;
 }
 
+bool steamCloud(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
+	dealSplashRangedDamageAt(object.id,ability,ability.effectRange,object.id,object.side,object.position,state);
+	enum numParticles2=100;
+	auto sacParticle2=SacParticle!B.get(ParticleType.steam);
+	auto hitbox=object.hitbox;
+	auto scale=0.3f*boxSize(hitbox).length;
+	foreach(i;0..numParticles2){
+		auto position=state.uniform(scaleBox(hitbox,1.2f));
+		//auto direction=state.uniformDirection();
+		auto direction=(position-boxCenter(hitbox)).normalized;
+		auto velocity=scale*state.uniform(0.25f,0.75f)*direction;
+		auto lifetime=63;
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle2,position,velocity,scale,lifetime,frame));
+	}
+	return true;
+}
 
 enum retreatDistance=9.0f;
 enum guardDistance=18.0f; // ok?

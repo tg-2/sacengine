@@ -1048,6 +1048,8 @@ enum SpellTag:char[4]{
 	stealth="ivni",
 	lifeShield="hsba",
 	divineSight="eesd",
+	// passive abilities:
+	steamCloud="goc@",
 	// ranged attacks:
 	brainiacShoot="bsba",
 	shrikeShoot="absh",
