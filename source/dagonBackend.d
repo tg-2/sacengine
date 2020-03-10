@@ -464,7 +464,7 @@ final class SacScene: Scene{
 						mesh.render(rc);
 					}
 				}
-				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.blueRings.length){
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.blueRings.length||objects.teleportRings.length)){
 					auto material=scene.blueRing.material;
 					material.bind(rc);
 					scope(success) material.unbind(rc);
@@ -474,6 +474,14 @@ final class SacScene: Scene{
 						scene.shadelessMaterialBackend.setTransformationScaled(position,Quaternionf.identity(),scale*Vector3f(1.0f,1.0f,1.0f),rc);
 						scene.shadelessMaterialBackend.setEnergy(20.0f*scale^^4);
 						auto mesh=scene.blueRing.getFrame(objects.blueRings[j].frame%scene.blueRing.numFrames);
+						mesh.render(rc);
+					}
+					foreach(j;0..objects.teleportRings.length){
+						auto position=objects.teleportRings[j].position;
+						auto scale=objects.teleportRings[j].scale*sqrt(1.0f-float(objects.teleportRings[j].frame)/teleportRingLifetime);
+						scene.shadelessMaterialBackend.setTransformationScaled(position,Quaternionf.identity(),0.08f*scale*Vector3f(1.0f,1.0f,1.0f),rc);
+						scene.shadelessMaterialBackend.setEnergy(20.0f*scale^^2);
+						auto mesh=scene.blueRing.getFrame(objects.teleportRings[j].frame%scene.blueRing.numFrames);
 						mesh.render(rc);
 					}
 				}

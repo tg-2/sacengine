@@ -250,6 +250,15 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Str
 void serialize(alias sink,B)(ref BlueRing!B blueRing){ serializeStruct!sink(blueRing); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BlueRing!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref TeleportCasting!B teleportCasting){ serializeStruct!sink(teleportCasting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==TeleportCasting!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref TeleportEffect!B teleportEffect){ serializeStruct!sink(teleportEffect); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==TeleportEffect!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref TeleportRing!B teleportRing){ serializeStruct!sink(teleportRing); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==TeleportRing!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref SpeedUp!B speedUp){ serializeStruct!sink(speedUp); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SpeedUp!B)){ deserializeStruct(result,state,data); }
 

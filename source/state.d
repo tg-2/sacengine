@@ -190,9 +190,18 @@ enum Formation{
 	skirmish,
 }
 
+static getScale(T)(ref T obj){
+	static if(is(T==MovingObject!B,B)){
+		auto hitbox=obj.sacObject.largeHitbox(Quaternionf.identity(),AnimationState.stance1,0);
+		return 0.5f*(hitbox[1].xy-hitbox[0].xy);
+	}else static if(is(T==StaticObject!B,B)){
+		auto hitbox=obj.hitbox;
+		return 0.5f*(hitbox[1].xy-hitbox[0].xy);
+	}else return 0.0f;
+}
 Vector2f[numCreaturesInGroup] getFormationOffsets(R)(R ids,CommandType commandType,Formation formation,Vector2f formationScale,Vector2f targetScale){
 	auto unitDistance=1.75f*max(formationScale.x,formationScale.y);
-	auto targetDistance=1.75f*max(targetScale.x,targetScale.y);
+	auto targetDistance=0.5f*(1.25f*unitDistance+max(targetScale.x,targetScale.y));
 	if(targetDistance!=0.0f) targetDistance=max(targetDistance, unitDistance);
 	auto numCreatures=ids.until(0).walkLength;
 	Vector2f[numCreaturesInGroup] result=Vector2f(0,0);
@@ -238,7 +247,7 @@ Vector2f[numCreaturesInGroup] getFormationOffsets(R)(R ids,CommandType commandTy
 				foreach(i;0..numCreaturesInRow) result[4*row+i]=offset+Vector2f(unitDistance*i,0.0f);
 			}
 			if(targetDistance!=0.0f && commandType==commandType.guard){
-				foreach(i;0..numCreatures) result[i].y-=2.0f*targetDistance;
+				foreach(i;0..numCreatures) result[i].y-=3.0f*targetDistance;
 			}
 			break;
 		case Formation.semicircle:
@@ -1506,6 +1515,25 @@ struct BlueRing(B){
 	float scale=1.0f;
 	int frame=0;
 }
+
+struct TeleportCasting(B){
+	ManaDrain!B manaDrain;
+	SacSpell!B spell;
+	int target;
+	Vector3f targetPosition;
+}
+struct TeleportEffect(B){
+	bool isTeleportOut;
+	Vector3f position;
+	float scale;
+	float height;
+	int frame=0;
+}
+struct TeleportRing(B){
+	Vector3f position;
+	float scale;
+	int frame=0;
+}
 struct SpeedUp(B){
 	int creature;
 	int framesLeft;
@@ -1903,6 +1931,30 @@ struct Effects(B){
 	void addEffect(SpeedUp!B speedUp){
 		speedUps~=speedUp;
 	}
+	Array!(TeleportCasting!B) teleportCastings;
+	void addEffect(TeleportCasting!B teleportCasting){
+		teleportCastings~=teleportCasting;
+	}
+	void removeTeleportCasting(int i){
+		if(i+1<teleportCastings.length) teleportCastings[i]=move(teleportCastings[$-1]);
+		teleportCastings.length=teleportCastings.length-1;
+	}
+	Array!(TeleportEffect!B) teleportEffects;
+	void addEffect(TeleportEffect!B teleportEffect){
+		teleportEffects~=teleportEffect;
+	}
+	void removeTeleportEffect(int i){
+		if(i+1<teleportEffects.length) teleportEffects[i]=move(teleportEffects[$-1]);
+		teleportEffects.length=teleportEffects.length-1;
+	}
+	Array!(TeleportRing!B) teleportRings;
+	void addEffect(TeleportRing!B teleportRing){
+		teleportRings~=teleportRing;
+	}
+	void removeTeleportRing(int i){
+		if(i+1<teleportRings.length) teleportRings[i]=move(teleportRings[$-1]);
+		teleportRings.length=teleportRings.length-1;
+	}
 	void removeSpeedUp(int i){
 		if(i+1<speedUps.length) speedUps[i]=move(speedUps[$-1]);
 		speedUps.length=speedUps.length-1;
@@ -2180,6 +2232,9 @@ struct Effects(B){
 		assignArray(creatureCasts,rhs.creatureCasts);
 		assignArray(structureCasts,rhs.structureCasts);
 		assignArray(blueRings,rhs.blueRings);
+		assignArray(teleportCastings,rhs.teleportCastings);
+		assignArray(teleportEffects,rhs.teleportEffects);
+		assignArray(teleportRings,rhs.teleportRings);
 		assignArray(speedUps,rhs.speedUps);
 		assignArray(speedUpShadows,rhs.speedUpShadows);
 		assignArray(healCastings,rhs.healCastings);
@@ -3699,6 +3754,8 @@ bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,Ob
 		case SpellType.spell:
 			bool ok=false;
 			switch(spell.tag){
+				case SpellTag.teleport:
+					return castTeleport(manaDrain,spell,object.position,target.id,state);
 				case SpellTag.speedup:
 					ok=target.id==object.id?speedUp(object,spell,state):speedUp(target.id,spell,state);
 					goto default;
@@ -3743,6 +3800,60 @@ bool startShooting(B)(ref MovingObject!B object,ObjectState!B state){
 	object.stopMovement(state);
 	object.creatureState.mode=CreatureMode.shooting;
 	object.setCreatureState(state);
+	return true;
+}
+
+Vector3f getTeleportPosition(B)(SacSpell!B spell,Vector3f startPosition,int target,ObjectState!B state){
+	if(!state.isValidTarget(target)) return Vector3f.init;
+	auto targetPositionTargetScale=state.objectById!((ref obj)=>tuple(obj.position,obj.getScale))(target);
+	auto targetPosition=targetPositionTargetScale[0], targetScale=targetPositionTargetScale[1];
+	return targetPosition+(startPosition-targetPosition).normalized*(targetScale.length+0.2f*spell.effectRange);
+}
+
+bool castTeleport(B)(ManaDrain!B manaDrain,SacSpell!B spell,Vector3f startPosition,int target,ObjectState!B state){
+	auto position=getTeleportPosition(spell,startPosition,target,state);
+	if(isNaN(position.x)) return false;
+	state.addEffect(TeleportCasting!B(manaDrain,spell,target,position));
+	return true;
+}
+
+void animateTeleport(B)(bool isOut,Vector3f[2] hitbox,ObjectState!B state){
+	auto position=boxCenter([hitbox[0],Vector3f(hitbox[1].x,hitbox[1].y,hitbox[0].z)]);
+	auto size=boxSize(hitbox);
+	auto scale=max(size.x,size.y);
+	playSoundAt("elet",position,state,2.0f);
+	state.addEffect(TeleportEffect!B(isOut,position,scale,size.z));
+	auto sacParticle=SacParticle!B.get(ParticleType.heal);
+	auto pscale=size.length;
+	auto velocity=Vector3f(0.0f,0.0f,0.0f);
+	auto lifetime=63;
+	auto frame=0;
+	foreach(i;0..50){
+		auto pposition=state.uniform(scaleBox(hitbox,1.3f));
+		auto npscale=pscale*state.uniform(0.5f,1.5f);
+		state.addParticle(Particle!B(sacParticle,pposition,velocity,pscale,lifetime,frame));
+	}
+}
+
+bool teleport(B)(int side,Vector3f startPosition,Vector3f targetPosition,SacSpell!B spell,ObjectState!B state){
+	static void teleport(ref CenterProximityEntry entry,int side,Vector3f startPosition,Vector3f targetPosition,ObjectState!B state){
+		static void doIt(ref MovingObject!B obj,Vector3f startPosition,Vector3f targetPosition,ObjectState!B state){
+			auto oldHeight=obj.position.z-state.getHeight(startPosition);
+			auto newPosition=obj.position-startPosition+targetPosition;
+			if(obj.creatureState.movement!=CreatureMovement.flying&&!state.isOnGround(newPosition)){
+				newPosition=targetPosition; // TODO: fix
+			}
+			newPosition.z=state.getHeight(newPosition)+max(0.0f,oldHeight);
+			auto startHitbox=obj.hitbox;
+			obj.position=newPosition;
+			auto newHitbox=obj.hitbox;
+			animateTeleport(true,startHitbox,state);
+			animateTeleport(false,newHitbox,state);
+		}
+		if(entry.isStatic||!state.isValidTarget(entry.id,TargetType.creature)||side!=entry.side) return;
+		state.movingObjectById!doIt(entry.id,startPosition,targetPosition,state);
+	}
+	state.proximity.eachInRange!teleport(startPosition,spell.effectRange,side,startPosition,targetPosition,state);
 	return true;
 }
 
@@ -4596,7 +4707,8 @@ bool stealth(B)(ref MovingObject!B object,ObjectState!B state){
 bool lifeShield(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
 	if(object.creatureStats.effects.lifeShield) return false;
 	object.creatureStats.effects.lifeShield=true;
-	auto duration=playSoundAt!true("ahsl",object.id,state,2.0f);
+	auto duration=20;
+	playSoundAt!true("ahsl",object.id,state,2.0f);
 	state.addEffect(LifeShield!B(object.id,ability,duration));
 	return true;
 }
@@ -5775,6 +5887,54 @@ bool updateSpeedUp(B)(ref SpeedUp!B speedUp,ObjectState!B state){
 			state.addEffect(SpeedUpShadow!B(obj.id,obj.position,obj.rotation,obj.animationState,obj.frame));
 			return true;
 		},()=>false)(creature,framesLeft,state);
+	}
+}
+
+bool updateTeleportCasting(B)(ref TeleportCasting!B teleportCast,ObjectState!B state){
+	with(teleportCast){
+		auto sidePosition=state.movingObjectById!((ref obj)=>tuple(obj.side,obj.position),()=>tuple(-1,Vector3f.init))(manaDrain.wizard);
+		auto side=sidePosition[0], startPosition=sidePosition[1];
+		if(side==-1) return false;
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				if(state.isValidTarget(target))
+					targetPosition=getTeleportPosition(spell,startPosition,target,state);
+				return true;
+			case CastingStatus.interrupted: return false;
+			case CastingStatus.finished:
+				teleport(side,startPosition,targetPosition,spell,state);
+				return false;
+		}
+	}
+}
+
+enum teleportEffectLifetime=32;
+bool updateTeleportEffect(B)(ref TeleportEffect!B teleportEffect,ObjectState!B state){
+	with(teleportEffect){
+		if(isTeleportOut){
+			if(frame==0) position.z+=4.0f/5.0f*height;
+			if(frame==teleportEffectLifetime/5) position.z-=3.0f/5.0f*height;
+			if(frame==3*teleportEffectLifetime/5) position.z-=4.0f/5.0f*height;
+			position+=Vector3f(0.0f,0.0f,height)/teleportEffectLifetime;
+			++frame;
+		}else{
+			if(frame==0) position.z+=2.0f/5.0f*height;
+			if(frame==2*teleportEffectLifetime/5) position.z+=4.0f/5.0f*height;
+			if(frame==4*teleportEffectLifetime/5) position.z+=3.0f/5.0f*height;
+			position-=Vector3f(0.0f,0.0f,height)/teleportEffectLifetime;
+			++frame;
+		}
+		state.addEffect(TeleportRing!B(position,scale));
+		return frame<teleportEffectLifetime;
+	}
+}
+
+enum teleportRingLifetime=48;
+bool updateTeleportRing(B)(ref TeleportRing!B teleportRing,ObjectState!B state){
+	with(teleportRing){
+		++frame;
+		position+=Vector3f(0.0f,0.0f,0.25f)/teleportRingLifetime;
+		return frame<teleportRingLifetime;
 	}
 }
 
@@ -7445,6 +7605,27 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 		}
 		i++;
 	}
+	for(int i=0;i<effects.teleportCastings.length;){
+		if(!updateTeleportCasting(effects.teleportCastings[i],state)){
+			effects.removeTeleportCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.teleportEffects.length;){
+		if(!updateTeleportEffect(effects.teleportEffects[i],state)){
+			effects.removeTeleportEffect(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.teleportRings.length;){
+		if(!updateTeleportRing(effects.teleportRings[i],state)){
+			effects.removeTeleportRing(i);
+			continue;
+		}
+		i++;
+	}
 	for(int i=0;i<effects.speedUps.length;){
 		if(!updateSpeedUp(effects.speedUps[i],state)){
 			effects.removeSpeedUp(i);
@@ -7890,7 +8071,7 @@ void playSpellbookSound(B)(int side,SpellbookSoundFlags flags,char[4] tag,Object
 	static if(B.hasAudio) if(playAudio) B.playSpellbookSound(side,flags,tag,gain);
 }
 void updateWizard(B)(ref WizardInfo!B wizard,ObjectState!B state){
-	int side=state.movingObjectById!((obj)=>obj.side,()=>-1)(wizard.id);
+	int side=state.movingObjectById!((ref obj)=>obj.side,()=>-1)(wizard.id);
 	SpellbookSoundFlags flags;
 	foreach(ref entry;wizard.spellbook.spells.data){
 		bool oldReady=entry.ready;
@@ -8365,6 +8546,10 @@ auto collide(alias f,B,T...)(Proximity!B proximity,Vector3f[2] hitbox,T args){
 auto collideRay(alias filter=None,B,T...)(Proximity!B proximity,Vector3f start,Vector3f direction,float limit,T args){
 	return proximity.hitboxes.collideRay!filter(proximity.version_,start,direction,limit,args);
 }
+auto eachInRange(alias f,B,T...)(ref Proximity!B proximity,Vector3f position,float range,T args){
+	return proximity.centers.eachInRange!(f,B,T)(proximity.version_,position,range,args);
+}
+
 
 import std.random: MinstdRand0;
 final class ObjectState(B){ // (update logic)
@@ -8511,15 +8696,6 @@ final class ObjectState(B){ // (update logic)
 				auto selection=state.getSelection(command.side);
 				auto targetScale=Vector2f(0.0f,0.0f);
 				if(!command.type.among(CommandType.setFormation,CommandType.useAbility)&&command.target.id!=0){
-					static getScale(T)(ref T obj){
-						static if(is(T==MovingObject!B)){
-							auto hitbox=obj.sacObject.largeHitbox(Quaternionf.identity(),AnimationState.stance1,0);
-							return hitbox[1].xy-hitbox[0].xy;
-						}else static if(is(T==StaticObject!B)){
-							auto hitbox=obj.hitbox;
-							return 0.5f*(hitbox[1].xy-hitbox[0].xy);
-						}else return 0.0f;
-					}
 					targetScale=state.objectById!((obj)=>getScale(obj))(command.target.id);
 				}
 				auto ids=selection.creatureIds[].filter!(x=>x!=command.target.id);
