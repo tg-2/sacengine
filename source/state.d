@@ -3807,7 +3807,7 @@ Vector3f getTeleportPosition(B)(SacSpell!B spell,Vector3f startPosition,int targ
 	if(!state.isValidTarget(target)) return Vector3f.init;
 	auto targetPositionTargetScale=state.objectById!((ref obj)=>tuple(obj.position,obj.getScale))(target);
 	auto targetPosition=targetPositionTargetScale[0], targetScale=targetPositionTargetScale[1];
-	return targetPosition+(startPosition-targetPosition).normalized*(targetScale.length+0.2f*spell.effectRange);
+	return targetPosition+(startPosition-targetPosition).normalized*spell.effectRange;
 }
 
 bool castTeleport(B)(ManaDrain!B manaDrain,SacSpell!B spell,Vector3f startPosition,int target,ObjectState!B state){
