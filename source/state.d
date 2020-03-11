@@ -8865,7 +8865,7 @@ final class ObjectState(B){ // (update logic)
 	}
 	God getCurrentGod(WizardInfo!B* wizard){
 		if(!wizard) return God.none;
-		auto spells=getSpells!true(wizard).filter!(x=>x.spell.type.among(SpellType.creature,SpellType.spell));
+		auto spells=getSpells!true(wizard).filter!(x=>x.spell.type.among(SpellType.creature,SpellType.spell)&&x.spell.god!=God.none);
 		if(spells.empty) return God.none;
 		return spells.front.spell.god;
 	}
