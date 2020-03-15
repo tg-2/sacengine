@@ -4304,27 +4304,25 @@ bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPositi
 	auto frontObstacleFrontObstacleHitbox=collisionTargetWithHitbox(object.id,hitbox,frontHitbox,state);
 	auto frontObstacle=frontObstacleFrontObstacleHitbox[0];
 	--object.creatureAI.evasionTimer;
-	if(frontObstacle){
-		bool doNotEvade(){
-			if(frontObstacle==targetId) return true;
-			if(!aggressive) return false;
-			return state.objectById!isValidEnemyAttackTarget(targetId,object.side,state);
+	bool doNotEvade(int obstacle){
+		if(obstacle==targetId) return true;
+		if(!aggressive) return false;
+		return state.objectById!isValidEnemyAttackTarget(obstacle,object.side,state);
+	}
+	if(frontObstacle&&!doNotEvade(frontObstacle)){
+		auto frontObstacleHitbox=frontObstacleFrontObstacleHitbox[1];
+		Vector2f[2] frontObstacleHitbox2d=[frontObstacleHitbox[0].xy,frontObstacleHitbox[1].xy];
+		auto frontObstacleDirection=-closestBoxFaceNormal(frontObstacleHitbox2d,object.position.xy);
+		auto facing=object.creatureState.facing;
+		auto evasion=object.creatureAI.evasion;
+		if(object.creatureAI.evasionTimer<=0){
+			evasion=object.creatureAI.evasion=dot(Vector2f(cos(facing),sin(facing)),frontObstacleDirection)<=0.0f?RotationDirection.right:RotationDirection.left;
+			object.creatureAI.evasionTimer=updateFPS;
 		}
-		if(!doNotEvade){
-			auto frontObstacleHitbox=frontObstacleFrontObstacleHitbox[1];
-			Vector2f[2] frontObstacleHitbox2d=[frontObstacleHitbox[0].xy,frontObstacleHitbox[1].xy];
-			auto frontObstacleDirection=-closestBoxFaceNormal(frontObstacleHitbox2d,object.position.xy);
-			auto facing=object.creatureState.facing;
-			auto evasion=object.creatureAI.evasion;
-			if(object.creatureAI.evasionTimer<=0){
-				evasion=object.creatureAI.evasion=dot(Vector2f(cos(facing),sin(facing)),frontObstacleDirection)<=0.0f?RotationDirection.right:RotationDirection.left;
-				object.creatureAI.evasionTimer=updateFPS;
-			}
-			object.setTurning(evasion,state);
-			object.startMovingForward(state);
-			evading=true;
-			return true;
-		}
+		object.setTurning(evasion,state);
+		object.startMovingForward(state);
+		evading=true;
+		return true;
 	}
 	auto result=object.turnToFaceTowards(targetPosition,state,threshold);
 	auto rotationDirection=object.creatureState.rotationDirection;
@@ -4332,8 +4330,8 @@ bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPositi
 		enum sideHitboxFactor=1.1f;
 		auto sideOffsetX=rotationDirection==RotationDirection.right?1.0f:-1.0f;
 		auto sideHitbox=moveBox(scaleBox(hitbox,sideHitboxFactor),rotate(rotation,distance*Vector3f(sideOffsetX,0.0f,0.0f)));
-		bool blockedSide=!!collisionTarget(object.id,hitbox,sideHitbox,state);
-		if(blockedSide){
+		auto sideObstacle=collisionTarget(object.id,hitbox,sideHitbox,state);
+		if(sideObstacle&&!doNotEvade(sideObstacle)){
 			object.stopTurning(state);
 			object.startMovingForward(state);
 			evading=true;
@@ -4359,7 +4357,7 @@ bool stopAndFaceTowards(B)(ref MovingObject!B object,Vector3f position,ObjectSta
 	return object.stop(object.facingTowards(position,state),state);
 }
 
-void moveTowards(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectState!B state,bool evade=true,bool maintainHeight=false,bool stayAboveGround=true){
+void moveTowards(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectState!B state,bool evade=true,bool maintainHeight=false,bool stayAboveGround=true,int targetId=0){
 	auto distancesqr=(object.position.xy-targetPosition.xy).lengthsqr;
 	auto isFlying=object.creatureState.movement==CreatureMovement.flying;
 	if(isFlying){
@@ -4385,7 +4383,7 @@ void moveTowards(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectStat
 	}
 	if(evade){
 		bool evading;
-		object.turnToFaceTowardsEvading(targetPosition,evading,state);
+		object.turnToFaceTowardsEvading(targetPosition,evading,state,defaultFaceThreshold,targetId!=0,targetId);
 		if(evading) return;
 	}else object.turnToFaceTowards(targetPosition,state);
 	if(object.movingForwardGetsCloserTo(targetPosition,object.creatureState.speed,object.creatureStats.movementAcceleration(isFlying),state)){
@@ -4393,24 +4391,22 @@ void moveTowards(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectStat
 	}else object.stopMovement(state);
 }
 
-bool moveTo(B)(ref MovingObject!B object,Vector3f targetPosition,float targetFacing,ObjectState!B state,bool evade=true,bool maintainHeight=false,bool stayAboveGround=true){
+bool moveTo(B)(ref MovingObject!B object,Vector3f targetPosition,float targetFacing,ObjectState!B state,bool evade=true,bool maintainHeight=false,bool stayAboveGround=true,int targetId=0){
 	auto speed=object.speed(state)/updateFPS;
 	auto distancesqr=(object.position.xy-targetPosition.xy).lengthsqr;
 	if(distancesqr>(2.0f*speed)^^2){
-		object.moveTowards(targetPosition,state,evade,maintainHeight,stayAboveGround);
+		object.moveTowards(targetPosition,state,evade,maintainHeight,stayAboveGround,targetId);
 		return true;
 	}
 	return object.stop(targetFacing,state);
 }
 
-bool moveWithinRange(B)(ref MovingObject!B object,Vector3f targetPosition,float range,ObjectState!B state){
+bool moveWithinRange(B)(ref MovingObject!B object,Vector3f targetPosition,float range,ObjectState!B state,bool evade=true,bool maintainHeight=false,bool stayAboveGround=true,int targetId=0){
 	auto speed=object.speed(state)/updateFPS;
 	auto distancesqr=(object.position.xy-targetPosition.xy).lengthsqr;
-	if(distancesqr<=(range-speed)^^2){
-		//object.stop(state);
+	if(distancesqr<=(range-speed)^^2)
 		return false;
-	}
-	object.moveTowards(targetPosition,state);
+	object.moveTowards(targetPosition,state,evade,maintainHeight,stayAboveGround,targetId);
 	return true;
 }
 
@@ -4578,22 +4574,23 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 	}
 	auto targetHitbox=state.objectById!((obj,meleeHitboxCenter)=>obj.closestHitbox(meleeHitboxCenter))(targetId,meleeHitboxCenter);
 	auto targetPosition=boxCenter(targetHitbox);
-	auto meleeHitboxOffset=meleeHitboxCenter-object.position;
-	auto movementPosition=targetPosition-meleeHitboxOffset; // TODO: ranged creatures should move to a nearby location where they have a clear shot
-	auto meleeHitboxOffsetXY=0.75f*(targetPosition.xy-object.position.xy).normalized*meleeHitboxOffset.xy.length;
-	meleeHitboxOffset.x=meleeHitboxOffsetXY.x, meleeHitboxOffset.y=meleeHitboxOffsetXY.y;
+	auto flatTargetHitbox=targetHitbox;
+	flatTargetHitbox[0].z=flatTargetHitbox[1].z=0.5f*(targetHitbox[0].z+targetHitbox[1].z);
+	auto movementPosition=projectToBox(flatTargetHitbox,object.center); // TODO: ranged creatures should move to a nearby location where they have a clear shot
 	auto hitbox=object.hitbox;
 	if(auto ra=object.rangedAttack){
 		if(!target||object.rangedMeleeAttackDistance(state)^^2<boxBoxDistanceSqr(hitbox,targetHitbox))
 			return object.shoot(ra,targetId,state);
 	}
-	if(target||!object.moveTo(movementPosition,float.init,state,!object.isMeleeAttacking(state),false,false)){
-		object.pitch(0.0f,state);
+	Vector2f[2] hitbox2d=[hitbox[0].xy,hitbox[1].xy];
+	auto targetDistance=0.5f*hitbox2d.length;
+	if(target||!object.moveWithinRange(movementPosition,3.5f*targetDistance,state,!object.isMeleeAttacking(state),false,false)){
 		bool evading;
-		object.turnToFaceTowardsEvading(targetPosition,evading,state,defaultFaceThreshold,true,targetId);
-		enum normalHitboxFactor=1.01f;
-		if(state.objectById!intersects(targetId,scaleBox(hitbox,normalHitboxFactor)))
+		if(object.turnToFaceTowardsEvading(targetPosition,evading,state,defaultFaceThreshold,true,targetId)||
+		   !object.moveWithinRange(movementPosition,targetDistance,state,!object.isMeleeAttacking(state),false,false,targetId)){
 			object.stopMovement(state);
+			object.pitch(0.0f,state);
+		}
 	}
 	if(target){
 		object.startMeleeAttacking(state);
