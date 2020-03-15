@@ -46,6 +46,10 @@ import dlib.math.portable: pi;
 	auto effectFactor=stats.effects.speedUp;
 	return (isFlying?stats.flyingSpeed:stats.runningSpeed)*effectFactor;
 }
+@property float movementAcceleration(ref CreatureStats stats,bool isFlying){
+	auto effectFactor=stats.effects.speedUp;
+	return (isFlying?20.0f:75.0f)*effectFactor;
+}
 @property float maxDownwardSpeedFactor(ref CreatureStats stats){
 	return 2.0f;
 }
