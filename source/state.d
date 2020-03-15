@@ -4576,7 +4576,7 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 	auto targetPosition=boxCenter(targetHitbox);
 	auto flatTargetHitbox=targetHitbox;
 	flatTargetHitbox[0].z=flatTargetHitbox[1].z=0.5f*(targetHitbox[0].z+targetHitbox[1].z);
-	auto movementPosition=projectToBox(flatTargetHitbox,object.center); // TODO: ranged creatures should move to a nearby location where they have a clear shot
+	auto movementPosition=projectToBox(flatTargetHitbox,object.position); // TODO: ranged creatures should move to a nearby location where they have a clear shot
 	auto hitbox=object.hitbox;
 	if(auto ra=object.rangedAttack){
 		if(!target||object.rangedMeleeAttackDistance(state)^^2<boxBoxDistanceSqr(hitbox,targetHitbox))
@@ -4586,7 +4586,7 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 	auto targetDistance=0.5f*hitbox2d.length;
 	if(target||!object.moveWithinRange(movementPosition,3.5f*targetDistance,state,!object.isMeleeAttacking(state),false,false)){
 		bool evading;
-		if(object.turnToFaceTowardsEvading(targetPosition,evading,state,defaultFaceThreshold,true,targetId)||
+		if(object.turnToFaceTowardsEvading(movementPosition,evading,state,10.0f*defaultFaceThreshold,true,targetId)&&!evading||
 		   !object.moveWithinRange(movementPosition,targetDistance,state,!object.isMeleeAttacking(state),false,false,targetId)){
 			object.stopMovement(state);
 			object.pitch(0.0f,state);
