@@ -8713,8 +8713,9 @@ final class ObjectState(B){ // (update logic)
 					if(ord.command==CommandType.attack&&ord.target.type==TargetType.creature){
 						// TODO: check whether they stick to creatures of a specific side
 						if(state.movingObjectById!((obj,side,state)=>state.sides.getStance(side,obj.side)==Stance.enemy,()=>false)(ord.target.id,side,state)){
-							position.z=state.getHeight(position)+position.z-state.getHeight(obj.position);
-							auto target=state.proximity.closestEnemyInRange(side,position,attackDistance,EnemyType.creature,state);
+							auto newPosition=position;
+							newPosition.z=state.getHeight(newPosition)+newPosition.z-state.getHeight(obj.position);
+							auto target=state.proximity.closestEnemyInRange(side,newPosition,attackDistance,EnemyType.creature,state);
 							if(target) ord.target.id=target;
 						}
 					}
