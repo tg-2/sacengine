@@ -5328,10 +5328,9 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 	auto facing=facingQuaternion(object.creatureState.facing);
 	final switch(object.creatureState.movement){
 		case CreatureMovement.onGround:
-			if(!object.creatureState.mode.isMoving) break;
 			auto groundSpeed=object.speedOnGround(state);
 			auto groundAcceleration=object.accelerationOnGround(state);
-			final switch(object.creatureState.movementDirection){
+			final switch(object.creatureState.mode.isMoving?object.creatureState.movementDirection:MovementDirection.none){
 				case MovementDirection.none:
 					object.creatureState.speed=sign(object.creatureState.speed)*(max(0.0f,abs(object.creatureState.speed)-groundAcceleration/updateFPS));
 					break;
@@ -5378,10 +5377,9 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 				}
 				break;
 			}
-			if(!object.creatureState.mode.isMoving) break;
 			auto airSpeed=object.speedInAir(state);
 			auto airAcceleration=object.accelerationInAir(state);
-			final switch(object.creatureState.movementDirection){
+			final switch(object.creatureState.mode.isMoving?object.creatureState.movementDirection:MovementDirection.none){
 				case MovementDirection.none:
 					object.creatureState.speed=sign(object.creatureState.speed)*(max(0.0f,abs(object.creatureState.speed)-airAcceleration/updateFPS));
 					break;
