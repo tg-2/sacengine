@@ -4473,24 +4473,27 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 		if(isFlying) object.creatureState.targetFlyingHeight=targetFlyingHeight;
 		return true;
 	}
-	void stop(){
+	bool stop(){
 		object.creatureState.timer=updateFPS; // TODO: this is a bit hacky
 		object.stopMovement(state);
-		object.stopTurning(state);
+		bool evading;
+		object.turnToFaceTowardsEvading(predicted,evading,state);
 		if(isFlying){
 			object.pitch(0.0f,state);
 			object.creatureState.targetFlyingHeight=targetFlyingHeight;
 		}
+		return object.creatureState.speed==0.0f;
 	}
 	if(notShooting){
 		if(!object.hasClearShot(predicted,targetId,state)) return moveCloser();
-		stop();
-		auto rotationThreshold=4.0f*object.creatureStats.rotationSpeed(object.creatureState.movement==CreatureMovement.flying)/updateFPS;
-		bool evading;
-		auto facing=!object.turnToFaceTowardsEvading(predicted,evading,state,rotationThreshold);
-		if(facing&&object.creatureStats.effects.rangedCooldown==0&&object.creatureStats.mana>=rangedAttack.manaCost){
-			object.creatureAI.rangedAttackTarget=targetId;
-			object.startShooting(state); // TODO: should this have a delay?
+		if(stop()){
+			auto rotationThreshold=4.0f*object.creatureStats.rotationSpeed(object.creatureState.movement==CreatureMovement.flying)/updateFPS;
+			bool evading;
+			auto facing=!object.turnToFaceTowardsEvading(predicted,evading,state,rotationThreshold);
+			if(facing&&object.creatureStats.effects.rangedCooldown==0&&object.creatureStats.mana>=rangedAttack.manaCost){
+				object.creatureAI.rangedAttackTarget=targetId;
+				object.startShooting(state); // TODO: should this have a delay?
+			}
 		}
 	}else{
 		stop();
