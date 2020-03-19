@@ -3016,22 +3016,8 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 			}
 			break;
 		case CreatureMode.meleeMoving,CreatureMode.meleeAttacking:
-			playSoundTypeAt(sacObject,object.id,SoundType.melee,state);
-			final switch(object.creatureState.movement) with(CreatureMovement) with(AnimationState){
-				case onGround:
-					object.frame=0;
-					static immutable attackCandidatesOnGround=[attack0,attack1,attack2];
-					object.pickRandomAnimation(attackCandidatesOnGround,state);
-					break;
-				case flying:
-					if(sacObject.mustFly)
-						goto case onGround; // (bug in original engine: it fails to do this.)
-					object.frame=0;
-					object.animationState=flyAttack;
-					break;
-				case tumbling:
-					assert(0);
-			}
+			with(AnimationState)
+				enforce(object.frame==0&&object.animationState.among(attack0,attack1,attack2,flyAttack));
 			break;
 		case CreatureMode.stunned:
 			final switch(object.creatureState.movement){
@@ -3336,13 +3322,30 @@ void land(B)(ref MovingObject!B object,ObjectState!B state){
 	object.setCreatureState(state);
 }
 
-void startMeleeAttacking(B)(ref MovingObject!B object,ObjectState!B state){
+void startMeleeAttacking(B)(ref MovingObject!B object,bool downward,ObjectState!B state){
 	with(CreatureMode) with(CreatureMovement)
 		if(!object.creatureState.mode.among(idle,moving)||
 		   !object.creatureState.movement.among(onGround,flying)||
 		   !object.sacObject.canAttack)
 			return;
 	object.creatureState.mode=CreatureMode.meleeMoving;
+	auto sacObject=object.sacObject;
+	playSoundTypeAt(sacObject,object.id,SoundType.melee,state);
+	object.frame=0;
+	final switch(object.creatureState.movement) with(CreatureMovement) with(AnimationState){
+		case onGround:
+			static immutable attackCandidatesOnGround=[attack0,attack1,attack2];
+			if(downward&&sacObject.hasAnimationState(attack2)) object.animationState=attack2;
+			else object.pickRandomAnimation(attackCandidatesOnGround[0..2],state);
+			break;
+		case flying:
+			if(sacObject.mustFly)
+				goto case onGround; // (bug in original engine: it fails to do this.)
+			object.animationState=flyAttack;
+			break;
+		case tumbling:
+			assert(0);
+	}
 	object.setCreatureState(state);
 }
 
@@ -4585,6 +4588,7 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 	flatTargetHitbox[0].z=flatTargetHitbox[1].z=0.5f*(targetHitbox[0].z+targetHitbox[1].z);
 	auto movementPosition=projectToBox(flatTargetHitbox,object.position); // TODO: ranged creatures should move to a nearby location where they have a clear shot
 	auto hitbox=object.hitbox;
+	auto position=boxCenter(hitbox);
 	if(auto ra=object.rangedAttack){
 		if(!target||object.rangedMeleeAttackDistance(state)^^2<boxBoxDistanceSqr(hitbox,targetHitbox))
 			return object.shoot(ra,targetId,state);
@@ -4600,7 +4604,8 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 		}
 	}
 	if(target){
-		object.startMeleeAttacking(state);
+		enum downwardThreshold=0.25f;
+		object.startMeleeAttacking(targetPosition.z+downwardThreshold<position.z,state);
 		if(object.creatureState.movement==CreatureMovement.flying)
 			object.creatureState.targetFlyingHeight=movementPosition.z-state.getHeight(object.position);
 	}
