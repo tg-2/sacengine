@@ -59,9 +59,6 @@ final class SacMap(B){
 	this(string filename){
 		enforce(filename.endsWith(".HMAP"));
 		auto hmap=loadHMap(filename);
-		auto minHeight=1e9;
-		foreach(h;hmap.heights) foreach(x;h) minHeight=min(minHeight,x);
-		foreach(h;hmap.heights) foreach(ref x;h) x-=minHeight;
 		envi=loadENVI(filename[0..$-".HMAP".length]~".ENVI");
 		auto tmap=loadTMap(filename[0..$-".HMAP".length]~".TMAP");
 		edges=hmap.edges;
@@ -69,6 +66,9 @@ final class SacMap(B){
 		tiles=tmap.tiles;
 		n=to!int(edges.length);
 		m=to!int(edges[1].length);
+		auto minHeight=float.infinity;
+		foreach(j,h;hmap.heights) foreach(i,x;h) if(!edges[j][i]) minHeight=min(minHeight,x);
+		if(minHeight!=float.infinity) foreach(h;hmap.heights) foreach(ref x;h) x-=minHeight;
 		enforce(heights.length==n);
 		enforce(edges.all!(x=>x.length==m));
 		enforce(heights.all!(x=>x.length==m));
