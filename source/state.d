@@ -3482,17 +3482,15 @@ void giveMana(B)(ref MovingObject!B object,float amount,ObjectState!B state){
 	object.creatureStats.mana=min(object.creatureStats.mana+amount,object.creatureStats.maxMana);
 }
 
-float meleeDistance(Vector3f[2] objectHitbox,Vector3f attackerCenter){
-	return boxPointDistance(objectHitbox,attackerCenter);
+float meleeDistanceSqr(Vector3f[2] objectHitbox,Vector3f[2] attackerHitbox){
+	return boxBoxDistanceSqr(objectHitbox,attackerHitbox);
 }
 
 void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,ObjectState!B state){
 	auto damage=attacker.meleeStrength/attacker.numAttackTicks; // TODO: figure this out
-	auto objectHitbox=object.hitbox;
-	auto attackerHitbox=attacker.meleeHitbox, attackerCenter=boxCenter(attackerHitbox), attackerSize=0.5f*boxSize(attackerHitbox);
-	auto normalProjectionLength=closestBoxFaceNormalWithProjectionLength(objectHitbox,attackerCenter);
-	auto normal=normalProjectionLength[0], distance=max(0.0f,normalProjectionLength[1]);
-	auto damageMultiplier=max(0.0f,1.0f-max(0.0f,distance/abs(dot(attackerSize,normal))));
+	auto objectHitbox=object.hitbox, attackerHitbox=attacker.meleeHitbox, attackerSizeSqr=0.25f*boxSize(attackerHitbox).lengthsqr;
+	auto distanceSqr=meleeDistanceSqr(objectHitbox,attackerHitbox);
+	auto damageMultiplier=max(0.0f,1.0f-max(0.0f,sqrt(distanceSqr/attackerSizeSqr)));
 	auto actualDamage=damageMultiplier*damage*object.creatureStats.meleeResistance;
 	auto attackDirection=object.center-attacker.center; // TODO: good?
 	auto stunBehavior=attacker.stunBehavior;
@@ -4593,9 +4591,8 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 		if(!target||object.rangedMeleeAttackDistance(state)^^2<boxBoxDistanceSqr(hitbox,targetHitbox))
 			return object.shoot(ra,targetId,state);
 	}
-	Vector2f[2] hitbox2d=[hitbox[0].xy,hitbox[1].xy];
-	auto targetDistance=0.5f*hitbox2d.length;
-	if(target||!object.moveWithinRange(movementPosition,3.5f*targetDistance,state,!object.isMeleeAttacking(state),false,false)){
+	auto targetDistance=0.8f*(position-meleeHitboxCenter).xy.length;
+	if(target||!object.moveWithinRange(movementPosition,3.5f*targetDistance,state,!object.isMeleeAttacking(state),false,false,targetId)){
 		bool evading;
 		if(object.turnToFaceTowardsEvading(movementPosition,evading,state,10.0f*defaultFaceThreshold,true,targetId)&&!evading||
 		   !object.moveWithinRange(movementPosition,targetDistance,state,!object.isMeleeAttacking(state),false,false,targetId)){
@@ -4607,7 +4604,7 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 		enum downwardThreshold=0.25f;
 		object.startMeleeAttacking(targetPosition.z+downwardThreshold<position.z,state);
 		if(object.creatureState.movement==CreatureMovement.flying)
-			object.creatureState.targetFlyingHeight=movementPosition.z-state.getHeight(object.position);
+			object.creatureState.targetFlyingHeight=movementPosition.z-state.getHeight(movementPosition);
 	}
 	return true;
 }
@@ -5209,7 +5206,7 @@ auto collisionTargetImpl(bool attackFilter=false,bool returnHitbox=false,B)(int 
 		int target=0;
 		static if(returnHitbox) Vector3f[2] targetHitbox;
 		static if(attackFilter) int rank;
-		float distance=float.infinity;
+		float distanceSqr=float.infinity;
 	}
 	static void handleCollision(ProximityEntry entry,CollisionState* collisionState,ObjectState!B state){
 		if(entry.id==collisionState.ownId) return;
@@ -5218,14 +5215,14 @@ auto collisionTargetImpl(bool attackFilter=false,bool returnHitbox=false,B)(int 
 			auto valid=validRank[0], rank=validRank[1];
 			if(!valid) return;
 		}
-		auto distance=meleeDistance(entry.hitbox,boxCenter(collisionState.hitbox));
-		static if(attackFilter) auto pick=!collisionState.target||tuple(rank,distance)<tuple(collisionState.rank,collisionState.distance);
-		else auto pick=!collisionState.target||distance<collisionState.distance;
+		auto distanceSqr=meleeDistanceSqr(entry.hitbox,collisionState.hitbox);
+		static if(attackFilter) auto pick=!collisionState.target||tuple(rank,distanceSqr)<tuple(collisionState.rank,collisionState.distanceSqr);
+		else auto pick=!collisionState.target||distanceSqr<collisionState.distanceSqr;
 		if(pick){
 			collisionState.target=entry.id;
 			static if(returnHitbox) collisionState.targetHitbox=entry.hitbox;
 			static if(attackFilter) collisionState.rank=rank;
-			collisionState.distance=distance;
+			collisionState.distanceSqr=distanceSqr;
 		}
 	}
 	auto collisionState=CollisionState(hitbox,ownId,side);
@@ -6183,18 +6180,18 @@ int collisionTarget(alias hitbox,alias filter=None,B,T...)(int side,Vector3f pos
 	static struct CollisionState{
 		int target=0;
 		int rank;
-		double distance=float.infinity;
+		double distanceSqr=float.infinity;
 	}
 	static void handleCollision(ProximityEntry entry,int side,Vector3f position,CollisionState* collisionState,ObjectState!B state,T args){
 		static if(!is(filter==None)) if(!filter(entry,state,args)) return;
-		auto distance=meleeDistance(entry.hitbox,position);
+		auto distanceSqr=boxPointDistanceSqr(entry.hitbox,position);
 		auto validRank=state.objectById!((obj,state,side)=>tuple(obj.isValidAttackTarget(state),rank(state.sides.getStance(side,.side(obj,state)))))(entry.id,state,side);
 		auto valid=validRank[0], rank=validRank[1];
 		if(!valid) rank+=3;
-		if(!collisionState.target||tuple(rank,distance)<tuple(collisionState.rank,collisionState.distance)){
+		if(!collisionState.target||tuple(rank,distanceSqr)<tuple(collisionState.rank,collisionState.distanceSqr)){
 			collisionState.target=entry.id;
 			collisionState.rank=rank;
-			collisionState.distance=distance;
+			collisionState.distanceSqr=distanceSqr;
 		}
 	}
 	auto collisionState=CollisionState();
