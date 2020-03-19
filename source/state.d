@@ -3702,7 +3702,7 @@ void startTurningRight(B)(ref MovingObject!B object,ObjectState!B state,int side
 
 void startCowering(B)(ref MovingObject!B object,ObjectState!B state){
 	if(!object.isPeasant) return;
-	object.stopMovement(state);
+	object.stop(state);
 	object.creatureState.mode=CreatureMode.cower;
 	object.setCreatureState(state);
 }
@@ -4582,11 +4582,11 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 	}
 	auto targetHitbox=state.objectById!((obj,meleeHitboxCenter)=>obj.closestHitbox(meleeHitboxCenter))(targetId,meleeHitboxCenter);
 	auto targetPosition=boxCenter(targetHitbox);
-	auto flatTargetHitbox=targetHitbox;
-	flatTargetHitbox[0].z=flatTargetHitbox[1].z=0.5f*(targetHitbox[0].z+targetHitbox[1].z);
-	auto movementPosition=projectToBox(flatTargetHitbox,object.position); // TODO: ranged creatures should move to a nearby location where they have a clear shot
 	auto hitbox=object.hitbox;
 	auto position=boxCenter(hitbox);
+	auto flatTargetHitbox=targetHitbox;
+	flatTargetHitbox[1].z=max(flatTargetHitbox[0].z,targetHitbox[1].z-(meleeHitboxCenter.z-position.z));
+	auto movementPosition=projectToBoxTowardsCenter(flatTargetHitbox,object.position); // TODO: ranged creatures should move to a nearby location where they have a clear shot
 	if(auto ra=object.rangedAttack){
 		if(!target||object.rangedMeleeAttackDistance(state)^^2<boxBoxDistanceSqr(hitbox,targetHitbox))
 			return object.shoot(ra,targetId,state);
@@ -4603,6 +4603,8 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 	if(target){
 		enum downwardThreshold=0.25f;
 		object.startMeleeAttacking(targetPosition.z+downwardThreshold<position.z,state);
+		object.creatureState.targetFlyingHeight=float.nan;
+	}else if(!object.rangedAttack){
 		if(object.creatureState.movement==CreatureMovement.flying)
 			object.creatureState.targetFlyingHeight=movementPosition.z-state.getHeight(movementPosition);
 	}
@@ -4869,7 +4871,7 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 							if(object.creatureState.mode==CreatureMode.idle&&object.creatureState.timer>=updateFPS)
 								playSoundTypeAt(object.sacObject,object.id,SoundType.run,state);
 							object.moveTowards(object.position-(enemyPosition-object.position),state);
-						}else object.stopMovement(state);
+						}else object.stop(state);
 					}else object.startCowering(state);
 				}
 			}else if(object.isAggressive(state)){

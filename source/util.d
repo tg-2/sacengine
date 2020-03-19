@@ -189,6 +189,19 @@ Vector!(float,n) projectToBox(size_t n)(Vector!(float,n)[2] box,Vector!(float,n)
 	return projection;
 }
 
+Vector!(float,n) projectToBoxTowardsCenter(size_t n)(Vector!(float,n)[2] box,Vector!(float,n) point){
+	auto center=boxCenter(box);
+	auto distance=point-center;
+	auto t=1.0f;
+	foreach(i;0..n){
+		foreach(j;0..2){
+			auto cand=(box[j][i]-center[i])/distance[i];
+			if(cand>=0.0f) t=min(t,cand);
+		}
+	}
+	return center+t*distance;
+}
+
 float boxPointDistanceSqr(size_t n)(Vector!(float,n)[2] box,Vector!(float,n) point){
 	return (point-projectToBox(box,point)).lengthsqr;
 }
