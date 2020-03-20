@@ -732,7 +732,7 @@ final class SacScene: Scene{
 					foreach(j;0..objects.lifeShields.length){
 						auto target=objects.lifeShields[j].target;
 						alias Tuple=std.typecons.Tuple;
-						auto positionRotationBoxSize=scene.state.current.movingObjectById!((ref obj)=>tuple(center(obj),obj.rotation,boxSize(obj.sacObject.hitbox(Quaternionf.identity(),obj.animationState,obj.frame/updateAnimFactor))), function Tuple!(Vector3f,Quaternionf,Vector3f)(){ return typeof(return).init; })(target);
+						auto positionRotationBoxSize=scene.state.current.movingObjectById!((ref obj)=>tuple(center(obj),obj.rotation,boxSize(obj.sacObject.largeHitbox(Quaternionf.identity(),obj.animationState,obj.frame/updateAnimFactor))), function Tuple!(Vector3f,Quaternionf,Vector3f)(){ return typeof(return).init; })(target);
 						auto position=positionRotationBoxSize[0], rotation=positionRotationBoxSize[1], boxSize=positionRotationBoxSize[2];
 						if(isNaN(position.x)) continue;
 						auto scale=objects.lifeShields[j].scale;

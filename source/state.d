@@ -1876,6 +1876,11 @@ struct DivineSight(B){
 	int target=0;
 }
 
+struct Protector(B){
+	int id;
+	SacSpell!B ability;
+}
+
 struct Effects(B){
 	// misc
 	Array!(Debris!B) debris;
@@ -2234,6 +2239,14 @@ struct Effects(B){
 		if(i+1<divineSights.length) divineSights[i]=move(divineSights[$-1]);
 		divineSights.length=divineSights.length-1;
 	}
+	Array!(Protector!B) protectors;
+	void addEffect(Protector!B protector){
+		protectors~=protector;
+	}
+	void removeProtector(int i){
+		if(i+1<protectors.length) protectors[i]=move(protectors[$-1]);
+		protectors.length=protectors.length-1;
+	}
 	void opAssign(ref Effects!B rhs){
 		assignArray(debris,rhs.debris);
 		assignArray(explosions,rhs.explosions);
@@ -2278,6 +2291,7 @@ struct Effects(B){
 		assignArray(rockForms,rhs.rockForms);
 		assignArray(stealths,rhs.stealths);
 		assignArray(lifeShields,rhs.lifeShields);
+		assignArray(protectors,rhs.protectors);
 	}
 	void opAssign(Effects!B rhs){ this.tupleof=rhs.tupleof; }
 }
@@ -4716,6 +4730,13 @@ bool divineSight(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B s
 	return true;
 }
 
+bool protector(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
+	auto lifeShield=SacSpell!B.get(SpellTag.lifeShield);
+	if(!object.lifeShield(lifeShield,state)) return false;
+	state.addEffect(Protector!B(object.id,ability));
+	return true;
+}
+
 bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,Target target,ObjectState!B state){
 	if(object.sacObject.ability!is ability) return false;
 	if(ability.requiresTarget&&!ability.isApplicable(summarize(target,object.side,state))){
@@ -4747,6 +4768,9 @@ bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,Target target,Ob
 			return false;
 		case SpellTag.divineSight:
 			if(object.divineSight(ability,state)) apply();
+			return false;
+		case SpellTag.protector:
+			if(object.protector(ability,state)) apply();
 			return false;
 		default:
 			object.stun(state);
@@ -7548,6 +7572,24 @@ bool updateDivineSight(B)(ref DivineSight!B divineSight,ObjectState!B state){
 	}
 }
 
+bool updateProtector(B)(ref Protector!B protector,ObjectState!B state){
+	if(!state.isValidTarget(protector.id,TargetType.creature)) return false;
+	static void applyProtector(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
+		auto lifeShield=SacSpell!B.get(SpellTag.lifeShield);
+		static void applyShield(ref CenterProximityEntry entry,int id,int side,SacSpell!B lifeShield,ObjectState!B state){
+			if(entry.isStatic||side!=entry.side||id==entry.id||!state.isValidTarget(entry.id,TargetType.creature)) return;
+			static void doIt(ref MovingObject!B object,SacSpell!B lifeShield,ObjectState!B state){
+				if(object.isWizard) return;
+				object.lifeShield(lifeShield,state);
+			}
+			state.movingObjectById!doIt(entry.id,lifeShield,state);
+		}
+		state.proximity.eachInRange!applyShield(object.center,ability.effectRange,object.id,object.side,lifeShield,state);
+	}
+	state.movingObjectById!applyProtector(protector.id,protector.ability,state);
+	return false;
+}
+
 void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.debris.length;){
 		if(!updateDebris(effects.debris[i],state)){
@@ -7853,6 +7895,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.divineSights.length;){
 		if(!updateDivineSight(effects.divineSights[i],state)){
 			effects.removeDivineSight(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.protectors.length;){
+		if(!updateProtector(effects.protectors[i],state)){
+			effects.removeProtector(i);
 			continue;
 		}
 		i++;
