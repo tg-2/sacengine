@@ -4524,7 +4524,7 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 			}
 		}
 		if(object.hasShootTick){
-			if(object.runAwayBug(state)) return true;
+			if(object.shootAbilityBug(state)) return true;
 			auto drainedMana=rangedAttack.manaCost/object.numShootTicks;
 			if(object.creatureStats.mana>=drainedMana){
 				auto ability=object.ability;
@@ -4706,6 +4706,7 @@ void updateRenderMode(B)(int target,ObjectState!B state){
 
 bool stealth(B)(ref MovingObject!B object,ObjectState!B state){
 	if(object.creatureStats.effects.stealth) return false;
+	object.clearOrderQueue(state);
 	object.creatureStats.effects.stealth=true;
 	playSoundAt("tlts",object.id,state,2.0f);
 	state.addEffect(Stealth!B(object.id));
@@ -4737,8 +4738,7 @@ bool protector(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B sta
 	return true;
 }
 
-bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,Target target,ObjectState!B state){
-	if(object.sacObject.ability!is ability) return false;
+bool checkAbility(B)(ref MovingObject!B object,SacSpell!B ability,Target target,ObjectState!B state){
 	if(ability.requiresTarget&&!ability.isApplicable(summarize(target,object.side,state))){
 		target.id=0;
 		target.type=TargetType.terrain;
@@ -4746,6 +4746,12 @@ bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,Target target,Ob
 			return false;
 	}
 	if(state.abilityStatus!false(object,ability,target)!=SpellStatus.ready) return false;
+	return true;
+}
+
+bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,Target target,ObjectState!B state){
+	if(object.sacObject.ability!is ability) return false;
+	if(!object.checkAbility(ability,target,state)) return false;
 	void apply(){
 		object.drainMana(ability.manaCost,state);
 		object.creatureStats.effects.abilityCooldown=cast(int)(ability.cooldown*updateFPS);
@@ -4791,6 +4797,20 @@ bool runAwayBug(B)(ref MovingObject!B object,ObjectState!B state){
 	object.drainMana(ability.manaCost,state);
 	object.clearOrder(state);
 	state.movingObjectById!((ref target,ability,state){ target.runAway(ability,state); })(targetId,ability,state);
+	return true;
+}
+
+bool shootAbilityBug(B)(ref MovingObject!B object,ObjectState!B state){
+	if(runAwayBug(object,state)) return true;
+	auto ability=object.ability;
+	if(!ability||object.creatureAI.order.command!=CommandType.useAbility) return false;
+	auto id=object.creatureAI.rangedAttackTarget;
+	auto targetType=state.targetTypeFromId(id);
+	if(!targetType.among(TargetType.creature,TargetType.building)) return false;
+	auto target=Target(targetType,id,state.objectById!((obj)=>obj.position)(id));
+	if(!object.checkAbility(ability,target,state)) return false;
+	if(!object.useAbility(ability,target,state))
+		object.clearOrder(state);
 	return true;
 }
 
@@ -7433,6 +7453,13 @@ bool updateRockForm(B)(ref RockForm!B rockForm,ObjectState!B state){
 	}
 }
 
+bool checkStealth(B)(ref MovingObject!B obj){
+	final switch(obj.creatureState.mode) with(CreatureMode){
+		case idle,moving,spawning,takeoff,landing,cower,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
+		case dying,dead,dissolving,preSpawning,reviving,fastReviving,meleeMoving,meleeAttacking,stunned,casting,stationaryCasting,castingMoving,shooting: return false;
+	}
+}
+
 bool updateStealth(B)(ref Stealth!B stealth,ObjectState!B state){
 	with(stealth){
 		if(!state.isValidTarget(target,TargetType.creature)) return false;
@@ -7440,10 +7467,7 @@ bool updateStealth(B)(ref Stealth!B stealth,ObjectState!B state){
 		if(status!=StealthStatus.fadingIn){
 			static bool check(ref MovingObject!B obj){
 				assert(obj.creatureStats.effects.stealth);
-				final switch(obj.creatureState.mode) with(CreatureMode){
-					case idle,moving,spawning,takeoff,landing,cower,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
-					case dying,dead,dissolving,preSpawning,reviving,fastReviving,meleeMoving,meleeAttacking,stunned,casting,stationaryCasting,castingMoving,shooting: return false;
-				}
+				return obj.checkStealth();
 			}
 			if(!state.movingObjectById!(check,()=>false)(target)){
 				status=StealthStatus.fadingIn;
@@ -8971,7 +8995,7 @@ final class ObjectState(B){ // (update logic)
 					return SpellStatus.invalidTarget;
 				return SpellStatus.ready;
 			case SpellTag.stealth:
-				if(obj.creatureStats.effects.stealth)
+				if(obj.creatureStats.effects.stealth||!obj.checkStealth)
 					return SpellStatus.invalidTarget;
 				return SpellStatus.ready;
 			case SpellTag.lifeShield:
