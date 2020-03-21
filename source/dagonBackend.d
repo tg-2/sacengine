@@ -2331,6 +2331,10 @@ final class SacScene: Scene{
 					mouse.icon=MouseIcon.guard;
 				}
 			}
+			foreach(_;0..keyDown[KEY_SPACE]){
+				auto target=Target(TargetType.creature,camera.target);
+				controller.addCommand(Command!DagonBackend(CommandType.retreat,renderSide,camera.target,0,target,float.init));
+			}
 			foreach(_;0..keyDown[KEY_Q]){
 				selectAbility(CommandQueueing.none);
 			}

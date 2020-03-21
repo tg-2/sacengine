@@ -8759,21 +8759,34 @@ final class ObjectState(B){ // (update logic)
 						if(num[i]>num[command.formation])
 							command.formation=cast(Formation)i;
 				}
-				auto selection=state.getSelection(command.side);
-				auto targetScale=Vector2f(0.0f,0.0f);
-				if(!command.type.among(CommandType.setFormation,CommandType.useAbility)&&command.target.id!=0){
-					targetScale=state.objectById!((obj)=>getScale(obj))(command.target.id);
-				}
-				auto ids=selection.creatureIds[].filter!(x=>x!=command.target.id);
-				auto formationOffsets=getFormationOffsets(ids,command.type,command.formation,formationScale,targetScale);
 				bool success=false;
-				int i=0;
-				foreach(selectedId;ids){ // TODO: for retreat command, need to loop over all creatures of that side
-					scope(success) i++;
-					if(!selectedId) break;
-					command.creature=selectedId;
-					if(command.type!=CommandType.useAbility) success|=applyOrder(command,state,true,formationOffsets[i]);
-					else success|=applyOrder(command,state);
+				if(command.type==CommandType.retreat){
+					static void retreat(ref MovingObject!B obj,Command!B command,ObjectState!B state,bool* success){
+						if(obj.isWizard) return;
+						command.creature=obj.id;
+						Order ord;
+						ord.command=command.type;
+						ord.target=OrderTarget(command.target);
+						obj.order(ord,command.queueing,state,command.side);
+						*success|=true;
+					}
+					state.eachMovingOfSide!retreat(command.side,command,state,&success);
+				}else{
+					auto selection=state.getSelection(command.side);
+					auto targetScale=Vector2f(0.0f,0.0f);
+					if(!command.type.among(CommandType.setFormation,CommandType.useAbility)&&command.target.id!=0){
+						targetScale=state.objectById!((obj)=>getScale(obj))(command.target.id);
+					}
+					auto ids=selection.creatureIds[].filter!(x=>x!=command.target.id);
+					auto formationOffsets=getFormationOffsets(ids,command.type,command.formation,formationScale,targetScale);
+					int i=0;
+					foreach(selectedId;ids){
+						scope(success) i++;
+						if(!selectedId) break;
+						command.creature=selectedId;
+						if(command.type!=CommandType.useAbility) success|=applyOrder(command,state,true,formationOffsets[i]);
+						else success|=applyOrder(command,state);
+					}
 				}
 				return success;
 			}else{
@@ -9148,6 +9161,13 @@ auto eachByType(alias f,bool movingFirst=true,bool particlesBeforeEffects=false,
 }
 auto eachMovingOf(alias f,B,T...)(ObjectState!B objectState,SacObject!B sacObject,T args){
 	return objectState.obj.eachMovingOf!f(sacObject,args);
+}
+auto eachMovingOfSide(alias f,B,T...)(ObjectState!B objectState,int side,T args){
+	static void doIt(ref MovingObject!B obj,int side,T args){
+		if(obj.side!=side) return;
+		f(obj,args);
+	}
+	return objectState.obj.eachMoving!doIt(side,args);
 }
 
 auto ref objectById(alias f,B,T...)(ObjectState!B objectState,int id,T args){
