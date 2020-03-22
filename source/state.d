@@ -3767,7 +3767,7 @@ bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,Ob
 	}
 	final switch(spell.type){
 		case SpellType.creature:
-			assert(target==Target.init);
+			assert(target is Target.init);
 			auto creature=spawn(object.id,spell.tag,0,state);
 			state.setRenderMode!(MovingObject!B,RenderMode.transparent)(creature);
 			state.setAlpha(creature,0.6f);

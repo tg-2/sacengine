@@ -441,8 +441,10 @@ void serialize(alias sink,B)(Recording!B recording)in{
 void deserialize(T,R)(T recording,ref R data)if(is(T==Recording!B,B)){
 	enum _=is(T==Recording!B,B);
 	deserialize(recording.mapName,ObjectState!B.init,data);
-	import sacmap;
-	auto map=new SacMap!B(getHmap(recording.mapName));
+	import sacmap, ntts;
+	auto hmap=getHmap(recording.mapName);
+	auto map=new SacMap!B(hmap);
+	auto nttData=loadNTTs(hmap[0..$-".HMAP".length]~".NTTS");
 	auto sides=new Sides!B();
 	deserializeClass!(["manaParticles","shrineParticles","manahoarParticles"])(sides,ObjectState!B.init,data);
 	auto proximity=new Proximity!B();
@@ -451,6 +453,16 @@ void deserialize(T,R)(T recording,ref R data)if(is(T==Recording!B,B)){
 	enforce(len!=0);
 	foreach(i;0..len){
 		auto state=new ObjectState!B(map,sides,proximity);
+		foreach(w;nttData.widgetss){ // TODO: get rid of code duplication
+			auto curObj=SacObject!B.getWIDG(w.tag);
+			foreach(pos;w.positions){
+				auto position=Vector3f(pos[0],pos[1],0);
+				if(!state.isOnGround(position)) continue;
+				position.z=state.getGroundHeight(position);
+				auto rotation=facingQuaternion(-pos[2]);
+				state.addFixed(FixedObject!B(curObj,position,rotation));
+			}
+		}
 		deserialize(state,data);
 		recording.committed~=state;
 	}
