@@ -173,8 +173,14 @@ Vector3f getTargetPosition(B)(ref Order order,ObjectState!B state){
 	return getTargetPosition(targetPosition,targetFacing,formationOffset,state);
 }
 
+Vector3f getTargetPosition(B)(ref Command!B command,Vector2f formationOffset,ObjectState!B state){
+	auto targetPosition=command.target.position;
+	auto targetFacing=command.targetFacing;
+	return getTargetPosition(targetPosition,targetFacing,formationOffset,state);
+}
+
 Vector3f getTargetPosition(B)(Vector3f targetPosition,float targetFacing,Vector2f formationOffset,ObjectState!B state){
-	targetPosition+=rotate(facingQuaternion(targetFacing), Vector3f(formationOffset.x,formationOffset.y,0));
+	targetPosition+=rotate(facingQuaternion(targetFacing), Vector3f(formationOffset.x,formationOffset.y,0.0f));
 	targetPosition.z=state.getHeight(targetPosition);
 	return targetPosition;
 }
@@ -8747,7 +8753,7 @@ final class ObjectState(B){ // (update logic)
 			if(command.type.hasClickSound) playSound(command.side,commandAppliedSoundTags[whichClick],this);
 			command.speakCommand(this);
 		}
-		static bool applyOrder(Command!B command,ObjectState!B state,bool updateFormation=false,Vector2f formationOffset=Vector2f(0.0f,0.0f)){
+		static bool applyOrder(Command!B command,ObjectState!B state,bool updateFormation=false,Vector3f position=Vector3f.init,Vector2f formationOffset=Vector2f(0.0f,0.0f)){
 			assert(command.type.among(CommandType.setFormation,CommandType.useAbility)||command.target.type.among(TargetType.terrain,TargetType.creature,TargetType.building));
 			if(!command.creature){
 				int[Formation.max+1] num;
@@ -8794,13 +8800,51 @@ final class ObjectState(B){ // (update logic)
 					}
 					auto ids=selection.creatureIds[].filter!(x=>x!=command.target.id);
 					auto formationOffsets=getFormationOffsets(ids,command.type,command.formation,formationScale,targetScale);
+					Vector3f[numCreaturesInGroup] positions,targetPositions;
 					int i=0;
 					foreach(selectedId;ids){
-						scope(success) i++;
+						if(!selectedId) break;
+						if(command.type==CommandType.guard && command.target.id){
+							auto targetPositionTargetFacing=state.movingObjectById!((obj)=>tuple(obj.position,obj.creatureState.facing), ()=>tuple(command.target.position,command.targetFacing))(command.target.id);
+							auto targetPosition=targetPositionTargetFacing[0], targetFacing=targetPositionTargetFacing[1];
+							targetPositions[i]=getTargetPosition(targetPosition,targetFacing,formationOffsets[i],state);
+						}else targetPositions[i]=command.getTargetPosition(formationOffsets[i],state);
+						positions[i]=state.movingObjectById!((obj)=>obj.position,()=>Vector3f.init)(selectedId);
+						i++;
+					}
+					numCreatures=i;
+					if(command.type!=CommandType.setFormation){
+						// greedily match creatures to offsets
+						Tuple!(float,int,"pos",int,"tpos")[numCreaturesInGroup^^2] distances;
+						foreach(j;0..numCreatures){
+							foreach(k;0..numCreatures){
+								auto distanceSqr=(positions[j].xy-targetPositions[k].xy).lengthsqr;
+								assert(!isNaN(distanceSqr),text(j," ",k," ",positions," ",targetPositions));
+								distances[j*numCreatures+k]=tuple(distanceSqr,j,k);
+							}
+						}
+						sort(distances[0..numCreatures^^2]);
+						bool[numCreaturesInGroup] matched,tmatched;
+						i=0;
+						auto origTargets=targetPositions;
+						auto origOffsets=formationOffsets;
+						for(int j=0;i<numCreatures;j++){
+							if(matched[distances[j].pos]) continue;
+							if(tmatched[distances[j].tpos]) continue;
+							targetPositions[distances[j].pos]=origTargets[distances[j].tpos];
+							formationOffsets[distances[j].pos]=origOffsets[distances[j].tpos];
+							matched[distances[j].pos]=true;
+							tmatched[distances[j].tpos]=true;
+							i++;
+						}
+					}
+					i=0;
+					foreach(selectedId;ids){
 						if(!selectedId) break;
 						command.creature=selectedId;
-						if(command.type!=CommandType.useAbility) success|=applyOrder(command,state,true,formationOffsets[i]);
+						if(command.type!=CommandType.useAbility) success|=applyOrder(command,state,true,targetPositions[i],formationOffsets[i]);
 						else success|=applyOrder(command,state);
+						i++;
 					}
 				}
 				return success;
@@ -8811,12 +8855,6 @@ final class ObjectState(B){ // (update logic)
 				ord.target=OrderTarget(command.target);
 				ord.targetFacing=command.targetFacing;
 				ord.formationOffset=formationOffset;
-				Vector3f position;
-				if(ord.command==CommandType.guard && ord.target.id){
-					auto targetPositionTargetFacing=state.movingObjectById!((obj)=>tuple(obj.position,obj.creatureState.facing), ()=>tuple(ord.target.position,ord.targetFacing))(ord.target.id);
-					auto targetPosition=targetPositionTargetFacing[0], targetFacing=targetPositionTargetFacing[1];
-					position=getTargetPosition(targetPosition,targetFacing,formationOffset,state);
-				}else position=ord.getTargetPosition(state);
 				return state.movingObjectById!((ref obj,ord,ability,state,side,updateFormation,formation,position){
 					if(ord.command==CommandType.attack&&ord.target.type==TargetType.creature){
 						// TODO: check whether they stick to creatures of a specific side
