@@ -191,7 +191,7 @@ final class SacScene: Scene{
 		float sunStrength;
 		final switch(map.tileset) with(Tileset){
 			case ethereal: sunStrength=6.0f; break;
-			case persephone: sunStrength=6.0f; break;
+			case persephone: sunStrength=3.0f; break;
 			case pyro: sunStrength=2.0f; break;
 			case james: sunStrength=14.0f; break;
 			case stratos: sunStrength=12.0f; break;
@@ -3029,11 +3029,11 @@ static:
 
 	Material createMaterial(SacMap!DagonBackend map){
 		auto mat=scene.createMaterial(scene.terrainMaterialBackend);
-		auto specu=map.envi.landscapeSpecularity;
+		auto specu=0.1f*map.envi.landscapeSpecularity;
 		mat.specular=Color4f(specu*map.envi.specularityRed/255.0f,specu*map.envi.specularityGreen/255.0f,specu*map.envi.specularityBlue/255.0f);
 		//mat.roughness=1.0f-map.envi.landscapeGlossiness;
 		mat.roughness=1.0f;
-		mat.metallic=0.5f;
+		mat.metallic=0.1f;
 		mat.energy=0.05;
 		return mat;
 	}
