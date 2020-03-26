@@ -191,7 +191,7 @@ final class SacScene: Scene{
 		float sunStrength;
 		final switch(map.tileset) with(Tileset){
 			case ethereal: sunStrength=6.0f; break;
-			case persephone: sunStrength=3.0f; break;
+			case persephone: sunStrength=6.0f; break;
 			case pyro: sunStrength=2.0f; break;
 			case james: sunStrength=14.0f; break;
 			case stratos: sunStrength=12.0f; break;
@@ -3035,6 +3035,7 @@ static:
 		mat.roughness=1.0f;
 		mat.metallic=0.1f;
 		mat.energy=0.05;
+		if(map.tileset==Tileset.james) mat.detailFactor=0.0f;
 		return mat;
 	}
 
