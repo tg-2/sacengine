@@ -4463,7 +4463,7 @@ bool hasClearShot(B)(ref MovingObject!B object,Vector3f target,int targetId,Obje
 	return state.hasLineOfSightTo(object.firstShotPosition+offset,target+offset,object.id,targetId);
 }
 float shootDistance(B)(ref MovingObject!B object,ObjectState!B state){
-	if(auto ra=object.rangedAttack) return 0.5f*ra.range; // TODO: figure out the range limit for AI
+	if(auto ra=object.rangedAttack) return 0.8f*ra.range; // TODO: figure out the range limit for AI
 	return -1.0f;
 }
 bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,ObjectState!B state){
@@ -4628,9 +4628,15 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 	return true;
 }
 
+float maxTargetHeight(B)(ref MovingObject!B object,ObjectState!B state){
+	if(object.creatureState.movement==CreatureMovement.flying||object.rangedAttack) return float.infinity;
+	return object.relativeMeleeHitbox[1].z;
+}
+
 bool patrolAround(B)(ref MovingObject!B object,Vector3f position,float range,ObjectState!B state){
 	if(!object.isAggressive(state)) return false;
-	auto targetId=state.proximity.closestEnemyInRange(object.side,position,range,EnemyType.all,state);
+	float maxHeight=object.maxTargetHeight(state);
+	auto targetId=state.proximity.closestEnemyInRange(object.side,position,range,EnemyType.all,state,maxHeight);
 	if(targetId)
 		if(object.attack(targetId,state))
 			return true;
@@ -4655,7 +4661,8 @@ bool patrol(B)(ref MovingObject!B object,ObjectState!B state){
 	if(!object.isAggressive(state)) return false;
 	auto position=object.position;
 	auto range=object.aggressiveRange(CommandType.none,state);
-	auto targetId=state.proximity.closestEnemyInRange(object.side,position,range,EnemyType.all,state);
+	auto maxHeight=object.maxTargetHeight(state);
+	auto targetId=state.proximity.closestEnemyInRange(object.side,position,range,EnemyType.all,state,maxHeight);
 	if(targetId)
 		if(object.attack(targetId,state))
 			return true;
@@ -4666,7 +4673,8 @@ bool advance(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectState!B 
 	if(object.isPacifist(state)) return false;
 	auto position=object.position;
 	auto range=object.advanceRange(CommandType.none,state);
-	auto targetId=state.proximity.closestEnemyInRangeAndClosestToPreferringAttackersOf(object.side,object.position,range,targetPosition,object.id,EnemyType.all,state);
+	auto maxHeight=object.maxTargetHeight(state);
+	auto targetId=state.proximity.closestEnemyInRangeAndClosestToPreferringAttackersOf(object.side,object.position,range,targetPosition,object.id,EnemyType.all,state,maxHeight);
 	if(targetId)
 		if(object.attack(targetId,state))
 			return true;
@@ -8584,14 +8592,18 @@ final class Proximity(B){
 	}do{
 		centers.insert(version_,entry);
 	}
-	private static bool isEnemy(T...)(ref CenterProximityEntry entry,int side,EnemyType type,ObjectState!B state,T ignored){
+	private static bool isEnemy(T...)(ref CenterProximityEntry entry,int side,EnemyType type,ObjectState!B state,float maxHeight=float.infinity,T ignored=T.init){
 		if(type==EnemyType.creature&&entry.isStatic) return false;
 		if(type==EnemyType.building&&!entry.isStatic) return false;
 		if(entry.zeroHealth) return false;
+		if(maxHeight<float.infinity){
+			auto hitbox=state.objectById!hitbox(entry.id);
+			if(hitbox[0].z>state.getHeight(boxCenter(hitbox))+maxHeight) return false;
+		}
 		return state.sides.getStance(side,entry.side)==Stance.enemy;
 	}
-	int closestEnemyInRange(int side,Vector3f position,float range,EnemyType type,ObjectState!B state){
-		return centers.closestInRange!isEnemy(version_,position,range,side,type,state).id;
+	int closestEnemyInRange(int side,Vector3f position,float range,EnemyType type,ObjectState!B state,float maxHeight=float.infinity){
+		return centers.closestInRange!isEnemy(version_,position,range,side,type,state,maxHeight).id;
 	}
 	private static bool isPeasantShelter(ref CenterProximityEntry entry,int side,ObjectState!B state){
 		if(!entry.isStatic) return false;
@@ -8601,12 +8613,12 @@ final class Proximity(B){
 	int closestPeasantShelterInRange(int side,Vector3f position,float range,ObjectState!B state){
 		return centers.closestInRange!isPeasantShelter(version_,position,range,side,state).id;
 	}
-	private static int advancePriority(ref CenterProximityEntry entry,int side,EnemyType type,ObjectState!B state,int id){
+	private static int advancePriority(ref CenterProximityEntry entry,int side,EnemyType type,ObjectState!B state,float maxHeight,int id){
 		if(entry.attackTargetId==id) return 1;
 		return 0;
 	}
-	int closestEnemyInRangeAndClosestToPreferringAttackersOf(int side,Vector3f position,float range,Vector3f targetPosition,int id,EnemyType type,ObjectState!B state){
-		return centers.inRangeAndClosestTo!(isEnemy,advancePriority)(version_,position,range,targetPosition,side,type,state,id).id;
+	int closestEnemyInRangeAndClosestToPreferringAttackersOf(int side,Vector3f position,float range,Vector3f targetPosition,int id,EnemyType type,ObjectState!B state,float maxHeight=float.infinity){
+		return centers.inRangeAndClosestTo!(isEnemy,advancePriority)(version_,position,range,targetPosition,side,type,state,maxHeight,id).id;
 	}
 }
 auto collide(alias f,B,T...)(Proximity!B proximity,Vector3f[2] hitbox,T args){
@@ -8811,7 +8823,8 @@ final class ObjectState(B){ // (update logic)
 						if(state.movingObjectById!((obj,side,state)=>state.sides.getStance(side,obj.side)==Stance.enemy,()=>false)(ord.target.id,side,state)){
 							auto newPosition=position;
 							newPosition.z=state.getHeight(newPosition)+newPosition.z-state.getHeight(obj.position);
-							auto target=state.proximity.closestEnemyInRange(side,newPosition,attackDistance,EnemyType.creature,state);
+							auto maxHeight=obj.maxTargetHeight(state);
+							auto target=state.proximity.closestEnemyInRange(side,newPosition,attackDistance,EnemyType.creature,state,maxHeight);
 							if(target) ord.target.id=target;
 						}
 					}
