@@ -4474,8 +4474,11 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 		state.objectById!center(targetId);
 	// TODO: find a spot from where target can be shot
 	auto notShooting=!object.creatureState.mode.isShooting;
-	auto targetPosition=notShooting?state.objectById!((obj)=>obj.position)(targetId):Vector3f.init;
+	Vector3f targetPosition;
 	if(notShooting){
+		auto center=object.center;
+		auto targetHitbox=state.objectById!((obj,center)=>obj.closestHitbox(center))(targetId,center);
+		targetPosition=projectToBoxTowardsCenter(targetHitbox,center);
 		if(object.moveWithinRange(targetPosition,object.shootDistance(state),state))
 			return true;
 	}
