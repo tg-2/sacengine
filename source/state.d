@@ -4341,7 +4341,15 @@ bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPositi
 		auto facing=object.creatureState.facing;
 		auto evasion=object.creatureAI.evasion;
 		if(object.creatureAI.evasionTimer<=0){
-			evasion=object.creatureAI.evasion=dot(Vector2f(cos(facing),sin(facing)),frontObstacleDirection)<=0.0f?RotationDirection.right:RotationDirection.left;
+			evasion=RotationDirection.none;
+			if(state.isValidTarget(frontObstacle,TargetType.creature)){
+				static RotationDirection adaptiveEvasion(ref MovingObject!B obj,ObjectState!B state){
+					return obj.creatureAI.evasion!=RotationDirection.none?state.uniform(2)?RotationDirection.right:RotationDirection.left:RotationDirection.none; // TODO: ok?
+				}
+				evasion=object.creatureAI.evasion=state.movingObjectById!(adaptiveEvasion,()=>RotationDirection.none)(frontObstacle,state);
+			}
+			if(evasion==RotationDirection.none)
+				evasion=object.creatureAI.evasion=dot(Vector2f(cos(facing),sin(facing)),frontObstacleDirection)<=0.0f?RotationDirection.right:RotationDirection.left;
 			object.creatureAI.evasionTimer=updateFPS;
 		}
 		object.setTurning(evasion,state);
