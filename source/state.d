@@ -8821,13 +8821,13 @@ final class ObjectState(B){ // (update logic)
 						i++;
 					}
 					numCreatures=i;
-					if(command.type!=CommandType.setFormation){
+					if(!isNaN(targetPositions[0].z)){ // what are all circumstances when this happens?
 						// greedily match creatures to offsets
 						Tuple!(float,int,"pos",int,"tpos")[numCreaturesInGroup^^2] distances;
 						foreach(j;0..numCreatures){
 							foreach(k;0..numCreatures){
 								auto distanceSqr=(positions[j].xy-targetPositions[k].xy).lengthsqr;
-								assert(!isNaN(distanceSqr),text(j," ",k," ",positions," ",targetPositions));
+								assert(!isNaN(distanceSqr),text(command.type," ",j," ",k," ",positions," ",targetPositions));
 								distances[j*numCreatures+k]=tuple(distanceSqr,j,k);
 							}
 						}
