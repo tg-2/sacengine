@@ -8765,7 +8765,6 @@ final class ObjectState(B){ // (update logic)
 			assert(command.type.among(CommandType.setFormation,CommandType.useAbility)||command.target.type.among(TargetType.terrain,TargetType.creature,TargetType.building));
 			if(!command.creature){
 				int[Formation.max+1] num;
-				int numCreatures=0;
 				Vector2f formationScale=Vector2f(1.0f,1.0f);
 				foreach(selectedId;state.getSelection(command.side).creatureIds){
 					if(!selectedId) break;
@@ -8802,26 +8801,24 @@ final class ObjectState(B){ // (update logic)
 					state.eachMovingOfSide!retreat(command.side,command,state,&success);
 				}else{
 					auto selection=state.getSelection(command.side);
-					auto targetScale=Vector2f(0.0f,0.0f);
-					if(!command.type.among(CommandType.setFormation,CommandType.useAbility)&&command.target.id!=0){
-						targetScale=state.objectById!((obj)=>getScale(obj))(command.target.id);
-					}
 					auto ids=selection.creatureIds[].filter!(x=>x!=command.target.id);
-					auto formationOffsets=getFormationOffsets(ids,command.type,command.formation,formationScale,targetScale);
 					Vector3f[numCreaturesInGroup] positions,targetPositions;
-					int i=0;
-					foreach(selectedId;ids){
-						if(!selectedId) break;
-						if(command.type==CommandType.guard && command.target.id){
-							auto targetPositionTargetFacing=state.movingObjectById!((obj)=>tuple(obj.position,obj.creatureState.facing), ()=>tuple(command.target.position,command.targetFacing))(command.target.id);
-							auto targetPosition=targetPositionTargetFacing[0], targetFacing=targetPositionTargetFacing[1];
+					Vector2f[numCreaturesInGroup] formationOffsets;
+					if(!command.type.among(CommandType.setFormation,CommandType.useAbility)){
+						auto targetScale=command.target.id!=0?state.objectById!((obj)=>getScale(obj))(command.target.id):Vector2f(0.0f,0.0f);
+						formationOffsets=getFormationOffsets(ids,command.type,command.formation,formationScale,targetScale);
+						int i=0;
+						foreach(selectedId;ids){
+							if(!selectedId) break;
+							if(command.type==CommandType.guard && command.target.id){
+								auto targetPositionTargetFacing=state.movingObjectById!((obj)=>tuple(obj.position,obj.creatureState.facing), ()=>tuple(command.target.position,command.targetFacing))(command.target.id);
+								auto targetPosition=targetPositionTargetFacing[0], targetFacing=targetPositionTargetFacing[1];
 							targetPositions[i]=getTargetPosition(targetPosition,targetFacing,formationOffsets[i],state);
-						}else targetPositions[i]=command.getTargetPosition(formationOffsets[i],state);
-						positions[i]=state.movingObjectById!((obj)=>obj.position,()=>Vector3f.init)(selectedId);
-						i++;
-					}
-					numCreatures=i;
-					if(command.type!=CommandType.setFormation&&!isNaN(targetPositions[0].x)){ // what are all circumstances when this happens?
+							}else targetPositions[i]=command.getTargetPosition(formationOffsets[i],state);
+							positions[i]=state.movingObjectById!((obj)=>obj.position,()=>Vector3f.init)(selectedId);
+							i++;
+						}
+						int numCreatures=i;
 						// greedily match creatures to offsets
 						Tuple!(float,int,"pos",int,"tpos")[numCreaturesInGroup^^2] distances;
 						foreach(j;0..numCreatures){
@@ -8846,7 +8843,7 @@ final class ObjectState(B){ // (update logic)
 							i++;
 						}
 					}
-					i=0;
+					int i=0;
 					foreach(selectedId;ids){
 						if(!selectedId) break;
 						command.creature=selectedId;
