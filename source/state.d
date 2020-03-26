@@ -8821,7 +8821,7 @@ final class ObjectState(B){ // (update logic)
 						i++;
 					}
 					numCreatures=i;
-					if(!isNaN(targetPositions[0].z)){ // what are all circumstances when this happens?
+					if(command.type!=CommandType.setFormation&&!isNaN(targetPositions[0].x)){ // what are all circumstances when this happens?
 						// greedily match creatures to offsets
 						Tuple!(float,int,"pos",int,"tpos")[numCreaturesInGroup^^2] distances;
 						foreach(j;0..numCreatures){
