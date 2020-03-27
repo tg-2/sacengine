@@ -1,0 +1,76 @@
+# Control Keys
+Move Forward:    e or Up Arrow
+Move Backward:   d or Down Arrow
+Turn Left:       s or Left Arrow
+Turn Right:      f or Right Arrow
+Camera zoom in:  Keypad-+ or =
+Camera zoom out: Keypad-- or -
+# Command Bindings
+## Orders
+Attack:               Ctrl-r
+Guard:                Ctrl-a
+Retreat!:             Ctrl-Space
+Move:                 Ctrl-t
+Use Creature Ability: Ctrl-q or Shift-b
+Drop Soul:            p or Ctrl-p
+## Miscellanneous
+Options Menu:
+Skip Speech:
+Open Next Spell Tab: Tab
+Open Creation spells:
+Open Spells:
+Open Structure spells:
+Quick Save: F1
+Quick Load: F2
+Pause:
+Change camera:
+Send Chat Message: Enter
+Gamma Correction +: Shift-]
+Gamma Correction -: Shift-[
+Screen Shot: F11
+## Formations
+Semicircle Formation: Ctrl-u
+Circle Formation: Ctrl-o
+Phalanx Formation: Ctrl-x
+Wedge Formation: Ctrl-w
+Skirmish Formation: Ctrl-y
+Line Formation: Ctrl-l
+Flank left formation: Ctrl-z
+Flank right formation: Ctrl-v
+## Taunts
+Random Taunt: Keypad-0
+Taunt #1: Keypad-1
+Taunt #2: Keypad-2
+Taunt #3: Keypad-3
+Taunt #4: Keypad-4
+## Cast creation spell #
+Cast creation spell #1: q
+Cast creation spell #2: Shift-q
+Cast creation spell #3: Shift-w
+Cast creation spell #4: Shift-r
+Cast creation spell #5: Shift-t
+Cast creation spell #6: Shift-a
+Cast creation spell #7: Shift-z
+Cast creation spell #8: Shift-x
+Cast creation spell #9: Shift-c
+Cast creation spell #10: Shift-v
+Cast creation spell #11: Shift-Space
+## Cast spell #
+Cast spell #1: x
+Cast spell #2: r
+Cast spell #3: c
+Cast spell #4: Alt
+Cast spell #5: w
+Cast spell #6: t
+Cast spell #7: Space
+Cast spell #8: v
+Cast spell #9: z
+Cast spell #10: y
+Cast spell #11: h
+## Cast Neutral Spell
+Cast Manalith: Ctrl-Alt
+Cast Guardian: Ctrl-g
+Cast Convert: Ctrl-c
+Cast Desecrate: Shift-g
+Cast Teleport: g
+Cast Shrine: Shift-Alt
