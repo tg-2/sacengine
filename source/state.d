@@ -4608,7 +4608,7 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 	int target=0;
 	if(state.objectById!intersects(targetId,meleeHitbox)){
 		target=meleeAttackTarget(object,state); // TODO: share melee hitbox computation?
-		if(target&&target!=targetId&&isValidEnemyAttackTarget(targetId,object.side,state))
+		if(target&&target!=targetId&&!isValidEnemyAttackTarget(targetId,object.side,state))
 			target=0;
 	}
 	auto targetHitbox=state.objectById!((obj,meleeHitboxCenter)=>obj.closestHitbox(meleeHitboxCenter))(targetId,meleeHitboxCenter);
@@ -4616,17 +4616,17 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 	auto hitbox=object.hitbox;
 	auto position=boxCenter(hitbox);
 	auto flatTargetHitbox=targetHitbox;
-	flatTargetHitbox[1].z=max(flatTargetHitbox[0].z,targetHitbox[1].z-(meleeHitboxCenter.z-position.z));
+	flatTargetHitbox[1].z=max(flatTargetHitbox[0].z,targetHitbox[1].z-boxSize(hitbox).z);
 	auto movementPosition=projectToBoxTowardsCenter(flatTargetHitbox,object.position); // TODO: ranged creatures should move to a nearby location where they have a clear shot
 	if(auto ra=object.rangedAttack){
 		if(!target||object.rangedMeleeAttackDistance(state)^^2<boxBoxDistanceSqr(hitbox,targetHitbox))
 			return object.shoot(ra,targetId,state);
 	}
-	auto targetDistance=0.8f*(position-meleeHitboxCenter).xy.length;
-	if(target||!object.moveWithinRange(movementPosition,3.5f*targetDistance,state,!object.isMeleeAttacking(state),false,false,targetId)){
+	auto targetDistance=(position-meleeHitboxCenter).xy.length;
+	if(target||!object.moveWithinRange(movementPosition,2.8f*targetDistance,state,!object.isMeleeAttacking(state),false,false,targetId)){
 		bool evading;
 		if(object.turnToFaceTowardsEvading(movementPosition,evading,state,10.0f*defaultFaceThreshold,true,targetId)&&!evading||
-		   !object.moveWithinRange(movementPosition,targetDistance,state,!object.isMeleeAttacking(state),false,false,targetId)){
+		   !object.moveWithinRange(movementPosition,0.8*targetDistance,state,!object.isMeleeAttacking(state),false,false,targetId)){
 			object.stopMovement(state);
 			object.pitch(0.0f,state);
 		}
@@ -4636,8 +4636,10 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 		object.startMeleeAttacking(targetPosition.z+downwardThreshold<position.z,state);
 		object.creatureState.targetFlyingHeight=float.nan;
 	}else if(!object.rangedAttack){
-		if(object.creatureState.movement==CreatureMovement.flying)
-			object.creatureState.targetFlyingHeight=movementPosition.z-state.getHeight(movementPosition);
+		if(object.creatureState.movement==CreatureMovement.flying){
+			auto minFlyingHeight=object.creatureStats.flyingHeight*min(1.0f,0.1f*targetDistance-0.5f);
+			object.creatureState.targetFlyingHeight=max(minFlyingHeight,movementPosition.z-max(state.getHeight(movementPosition),state.getHeight(object.position)));
+		}
 	}
 	return true;
 }

@@ -72,7 +72,7 @@ import dlib.math.portable: pi;
 	return 3.0f;
 }
 @property float flyingHeight(ref CreatureStats stats){
-	return 4.0f;
+	return 4.5f;
 }
 
 @property float takeoffSpeed(ref CreatureStats stats){
