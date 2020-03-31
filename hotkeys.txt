@@ -1,8 +1,8 @@
 # Control Keys
-Move Forward:    e or Up Arrow
-Move Backward:   d or Down Arrow
-Turn Left:       s or Left Arrow
-Turn Right:      f or Right Arrow
+Move Forward:    e
+Move Backward:   d
+Turn Left:       s
+Turn Right:      f
 Camera zoom in:  Keypad-+ or =
 Camera zoom out: Keypad-- or -
 # Command Bindings
