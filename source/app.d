@@ -115,7 +115,12 @@ int main(string[] args){
 	GC.disable(); // TODO: figure out where GC memory is used incorrectly
 	if(args.length==0) args~="";
 	import std.file:exists;
-	if(!args.canFind("--ignore-settings")&&exists("settings.txt")) args=chain(args[0..1],File("settings.txt").byLineCopy.map!strip.filter!(l=>l.length!=0&&l[0]!='#'),args[1..$]).array;
+	static string stripComment(string s){
+		auto i=s.indexOf('#');
+		if(i==-1) return s;
+		return s[0..i];
+	}
+	if(!args.canFind("--ignore-settings")&&exists("settings.txt")) args=chain(args[0..1],File("settings.txt").byLineCopy.map!stripComment.map!strip.filter!(l=>l.length!=0),args[1..$]).array;
 	if(args.canFind("--redirect-output")){
 		stdout.reopen("SacEngine.out.txt","w");
 		stderr.reopen("SacEngine.err.txt","w");
