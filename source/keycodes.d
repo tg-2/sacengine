@@ -28,7 +28,7 @@ enum KeyTag:char[4]{
 	scrollLock="lcsK",
 	shift="tfsK",
 	space="cpsK",
-	tab="cpsK",
+	tab="batK",
 	upArrow="_puK",
 }
 

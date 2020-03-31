@@ -2,7 +2,7 @@ import dagon;
 import dlib.math.portable;
 import options,util;
 import std.stdio;
-import std.algorithm, std.range, std.exception, std.typecons;
+import std.algorithm, std.range, std.exception, std.typecons, std.conv;
 
 import sacobject, sacspell, mrmm, nttData, sacmap, maps, state, controller, network;
 import sxsk : gpuSkinning;
@@ -2315,113 +2315,106 @@ final class SacScene: Scene{
 					controller.addCommand(Command!DagonBackend(CommandType.automaticSelectGroup,renderSide,camera.target,group));
 			}
 		}
-		if(!ctrl&&!shift){
-			foreach(_;0..keyDown[KEY_TAB]){
-				switchSpellbookTab(cast(SpellType)((spellbookTab+1)%(spellbookTab.max+1)));
+		void triggerBindable(Bindable command){
+			void unsupported(){
+				stderr.writeln("bindable command not yet supported: ",defaultName(command));
 			}
-			foreach(_;0..keyDown[KEY_P]){
-				selectAbility(CommandQueueing.none);
-			}
-		}
-		if(ctrl&&!shift){
-			foreach(_;0..keyDown[KEY_X]){
-				controller.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.phalanx));
-			}
-			foreach(_;0..keyDown[KEY_L]){
-				controller.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.line));
-			}
-			foreach(_;0..keyDown[KEY_Z]){
-				controller.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.flankLeft));
-			}
-			foreach(_;0..keyDown[KEY_V]){
-				controller.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.flankRight));
-			}
-			foreach(_;0..keyDown[KEY_W]){
-				controller.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.wedge));
-			}
-			foreach(_;0..keyDown[KEY_U]){
-				controller.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.semicircle));
-			}
-			foreach(_;0..keyDown[KEY_O]){
-				controller.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.circle));
-			}
-			foreach(_;0..keyDown[KEY_Y]){
-				controller.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.skirmish));
-			}
-			foreach(_;0..keyDown[KEY_R]){
-				if(mouse.status==Mouse.Status.standard&&!mouse.dragging){
-					mouse.status=Mouse.Status.icon;
-					mouse.icon=MouseIcon.attack;
+			Lswitch: final switch(command) with(Bindable){
+				case unknown: break;
+				// control keys
+				case moveForward,moveBackward,turnLeft,turnRight,cameraZoomIn,cameraZoomOut: enforce(0,"bad hotkeys"); break;
+				// orders
+				case attack:
+					if(mouse.status==Mouse.Status.standard&&!mouse.dragging){
+						mouse.status=Mouse.Status.icon;
+						mouse.icon=MouseIcon.attack;
+					}
+					break;
+				case guard:
+					if(mouse.status==Mouse.Status.standard&&!mouse.dragging){
+						mouse.status=Mouse.Status.icon;
+						mouse.icon=MouseIcon.guard;
+					}
+					break;
+				case retreat:
+					auto target=Target(TargetType.creature,camera.target);
+					controller.addCommand(Command!DagonBackend(CommandType.retreat,renderSide,camera.target,0,target,float.init));
+					break;
+				case move:
+					auto target=Target(TargetType.terrain,0,mouse.target.position,mouse.target.location);
+					target.position.z=state.current.getHeight(target.position);
+					controller.addCommand(Command!DagonBackend(CommandType.move,renderSide,camera.target,0,target,cameraFacing),queueing);
+					break;
+				case useAbility:
+					selectAbility(CommandQueueing.none);
+					break;
+				case dropSoul: unsupported(); break;
+				// miscellanneous
+				case optionsMenu,skipSpeech: unsupported(); break;
+				case openNextSpellTab:
+					switchSpellbookTab(cast(SpellType)((spellbookTab+1)%(spellbookTab.max+1)));
+					break;
+				case openCreationSpells:
+					switchSpellbookTab(SpellType.creature);
+					break;
+				case openSpells:
+					switchSpellbookTab(SpellType.spell);
+					break;
+				case openStructureSpells:
+					switchSpellbookTab(SpellType.structure);
+					break;
+				case quickSave,quickLoad,pause,changeCamera,sendChatMessage,gammaCorrectionPlus,gammaCorrectionMinus,screenShot: unsupported(); break;
+				// formations
+				case semicircleFormation:
+					controller.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.semicircle));
+					break;
+				case circleFormation:
+					controller.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.circle));
+					break;
+				case phalanxFormation:
+					controller.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.phalanx));
+					break;
+				case wedgeFormation:
+					controller.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.wedge));
+					break;
+				case skirmishFormation:
+					controller.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.skirmish));
+					break;
+				case lineFormation:
+					controller.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.line));
+					break;
+				case flankLeftFormation:
+					controller.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.flankLeft));
+					break;
+				case flankRightFormation:
+					controller.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.flankRight));
+					break;
+				// taunts
+				case randomTaunt: unsupported(); break;
+				static foreach(i;1..4+1) case mixin(text(`taunt`,i)): unsupported(); break;
+				// spells
+				static foreach(i;1..11+1){
+					case mixin(text(`castCreationSpell`,i)):
+						selectSpell(SpellType.creature,i-1);
+						break Lswitch;
 				}
-			}
-			foreach(_;0..keyDown[KEY_T]){
-				auto target=Target(TargetType.terrain,0,mouse.target.position,mouse.target.location);
-				target.position.z=state.current.getHeight(target.position);
-				controller.addCommand(Command!DagonBackend(CommandType.move,renderSide,camera.target,0,target,cameraFacing),queueing);
-			}
-			foreach(_;0..keyDown[KEY_A]){
-				if(mouse.status==Mouse.Status.standard&&!mouse.dragging){
-					mouse.status=Mouse.Status.icon;
-					mouse.icon=MouseIcon.guard;
+				static foreach(i;1..11+1){
+					case mixin(text(`castSpell`,i)):
+						selectSpell(SpellType.spell,i-1);
+						break Lswitch;
 				}
-			}
-			foreach(_;0..keyDown[KEY_SPACE]){
-				auto target=Target(TargetType.creature,camera.target);
-				controller.addCommand(Command!DagonBackend(CommandType.retreat,renderSide,camera.target,0,target,float.init));
-			}
-			foreach(_;0..keyDown[KEY_Q]){
-				selectAbility(CommandQueueing.none);
-			}
-		}
-		if(!ctrl&&shift){
-			foreach(_;0..keyDown[KEY_B]){
-				selectAbility(CommandQueueing.none);
+				/+static foreach(i;1..11+1){
+					case mixin(text(`castStructureSpell`,i)):
+						selectSpell(SpellType.structure,i-1);
+						break Lswitch;
+				}+/
+				case castManalith,castManahoar,castSpeedUp,castGuardian,castConvert,castDesecrate,castTeleport,castHeal,castShrine:
+					selectSpell(command);
 			}
 		}
-		static immutable creatureHotkeys=[KEY_Q,KEY_Q,KEY_W,KEY_R,KEY_T,KEY_A,KEY_Z,KEY_X,KEY_C,KEY_V,KEY_SPACE];
-		foreach(i;0..cast(int)creatureHotkeys.length){
-			if(i==0){
-				if(shift||ctrl)
-					continue;
-			}else if(!(shift && !ctrl)){
-				continue;
-			}
-			foreach(_;0..keyDown[creatureHotkeys[i]]){
-				selectSpell(SpellType.creature,i);
-			}
-		}
-		static immutable spellHotkeys=[KEY_X,KEY_R,KEY_C,KEY_LALT,KEY_W,KEY_T,KEY_SPACE,KEY_V,KEY_Z,KEY_Y,KEY_H];
-		if(!shift&&!ctrl){
-			foreach(i;0..cast(int)spellHotkeys.length){
-				foreach(_;0..keyDown[spellHotkeys[i]]){
-					selectSpell(SpellType.spell,i);
-				}
-			}
-			foreach(_;0..keyDown[KEY_G]){
-				selectSpell("elet");
-			}
-			foreach(_;0..keyDown[KEY_A]){
-				selectSpell("ndrg");
-			}
-		}
-		if(ctrl && !shift){
-			foreach(_;0..keyDown[KEY_LALT]){
-				selectSpell("htlm");
-			}
-			foreach(_;0..keyDown[KEY_C]){
-				selectSpell("ccas");
-			}
-			foreach(_;0..keyDown[KEY_G]){
-				selectSpell("ndrg");
-			}
-		}
-		if(shift && !ctrl){
-			foreach(_;0..keyDown[KEY_LALT]){
-				selectSpell("pcas");
-			}
-			foreach(_;0..keyDown[KEY_G]){
-				selectSpell("ucas");
-			}
+		foreach(ref hotkey;options.hotkeys[modifiers]){
+			foreach(_;0..keyDown[hotkey.keycode])
+				triggerBindable(hotkey.action);
 		}
 	}
 
