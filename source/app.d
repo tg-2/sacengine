@@ -173,6 +173,8 @@ int main(string[] args){
 			options.musicVolume=to!float(opt["--music-volume=".length..$]);
 		}else if(opt.startsWith("--sound-volume=")){
 			options.soundVolume=to!float(opt["--sound-volume=".length..$]);
+		}else if(opt.startsWith("--hotkeys=")){
+			options.hotkeyFilename=opt["--hotkeys=".length..$];
 		}else if(opt.startsWith("--join=")){
 			options.joinIP=opt["--join=".length..$];
 		}else if(opt.startsWith("--record=")){
@@ -273,6 +275,11 @@ int main(string[] args){
 	}
 	import nttData:initNTTData;
 	initNTTData(options.enableReadFromWads);
+	import hotkeys_:initHotkeys,defaultHotkeys,loadHotkeys;
+	initHotkeys();
+	if(options.hotkeyFilename.length){
+		options.hotkeys=loadHotkeys(options.hotkeyFilename);
+	}else options.hotkeys=defaultHotkeys();
 	alias B=DagonBackend;
 	auto backend=B(options);
 	foreach(arg;args){

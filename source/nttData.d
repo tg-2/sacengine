@@ -254,6 +254,16 @@ string[char[4]] makeSampByTag(bool readFromWads){
 	return makeFileIndex(readFromWads,sampFolders,"SAMP",false);
 }
 
+immutable string[] textFolders=["extracted/local/lang_english/LANG.WAD!/ENGL.LANG",
+                                "extracted/local/langp3_english/LNG+.WAD!/addl.LANG"];
+
+immutable(string)[char[4]] texts;
+immutable(string)[char[4]] makeTextByTag(bool readFromWads){
+	import text_;
+	// TODO: split into multiple tables to avoid duplicate tags
+	return makeByTag!loadText(readFromWads,textFolders,"TEXT",false);
+}
+
 void initNTTData(bool readFromWads){
 	bldgs=makeBldgByTag(readFromWads);
 	bldgTags=makeBldgTags();
@@ -275,6 +285,8 @@ void initNTTData(bool readFromWads){
 
 	ssets=makeSsetByTag(readFromWads);
 	samps=makeSampByTag(readFromWads);
+
+	texts=makeTextByTag(readFromWads);
 }
 
 

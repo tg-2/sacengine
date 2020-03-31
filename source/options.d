@@ -1,4 +1,5 @@
 import ntts: God;
+import hotkeys_: Hotkeys;
 struct Options{
 	// graphics options
 	int width,height;
@@ -22,6 +23,9 @@ struct Options{
 	float volume=1.0f;
 	float musicVolume=1.0f;
 	float soundVolume=1.0f;
+	// hotkeys
+	string hotkeyFilename="";
+	Hotkeys hotkeys;
 	// just for testing:
 	bool enableReadFromWads=true;
 	int replicateCreatures=1;
