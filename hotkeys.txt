@@ -10,7 +10,7 @@ Camera zoom out: Keypad-- or -
 Attack:               Ctrl-r
 Guard:                Ctrl-a
 Retreat!:             Ctrl-Space
-Move:                 Ctrl-t
+Go to:                Ctrl-t
 Use Creature Ability: Ctrl-q or Shift-b
 Drop Soul:            p or Ctrl-p
 ## Miscellanneous
@@ -24,7 +24,7 @@ Quick Save: F1
 Quick Load: F2
 Pause:
 Change camera:
-Send Chat Message: Enter
+Send Chat Message: Return
 Gamma Correction +: Shift-]
 Gamma Correction -: Shift-[
 Screen Shot: F11

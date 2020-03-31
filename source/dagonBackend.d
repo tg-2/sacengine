@@ -2062,52 +2062,12 @@ final class SacScene: Scene{
 		}
 		if(camera.target!=0&&(!state||!state.current.isValidTarget(camera.target,TargetType.creature))) camera.target=0;
 		auto cameraFacing=-degtorad(fpview.camera.turn);
-		if(camera.target==0){
-			if(eventManager.keyPressed[KEY_E]) dir += -forward;
-			if(eventManager.keyPressed[KEY_D]) dir += forward;
-			if(eventManager.keyPressed[KEY_S]) dir += -right;
-			if(eventManager.keyPressed[KEY_F]) dir += right;
-			if(eventManager.keyPressed[KEY_I]) speed = 10.0f;
-			if(eventManager.keyPressed[KEY_O]) speed = 100.0f;
-			if(eventManager.keyPressed[KEY_P]) speed = 1000.0f;
-			fpview.camera.position += dir.normalized * speed * dt;
-			if(state) fpview.camera.position.z=max(fpview.camera.position.z, state.current.getHeight(fpview.camera.position));
-		}else{
-			if(!state) return;
-			if(eventManager.keyPressed[KEY_E] && !eventManager.keyPressed[KEY_D]){
-				if(targetMovementState.movement!=MovementDirection.forward){
-					targetMovementState.movement=MovementDirection.forward;
-					controller.addCommand(Command!DagonBackend(CommandType.moveForward,renderSide,camera.target,camera.target,Target.init,cameraFacing));
-				}
-			}else if(eventManager.keyPressed[KEY_D] && !eventManager.keyPressed[KEY_E]){
-				if(targetMovementState.movement!=MovementDirection.backward){
-					targetMovementState.movement=MovementDirection.backward;
-					controller.addCommand(Command!DagonBackend(CommandType.moveBackward,renderSide,camera.target,camera.target,Target.init,cameraFacing));
-				}
-			}else{
-				if(targetMovementState.movement!=MovementDirection.none){
-					targetMovementState.movement=MovementDirection.none;
-					controller.addCommand(Command!DagonBackend(CommandType.stopMoving,renderSide,camera.target,camera.target,Target.init,cameraFacing));
-				}
-			}
-			if(eventManager.keyPressed[KEY_S] && !eventManager.keyPressed[KEY_F]){
-				if(targetMovementState.rotation!=RotationDirection.left){
-					targetMovementState.rotation=RotationDirection.left;
-					controller.addCommand(Command!DagonBackend(CommandType.turnLeft,renderSide,camera.target,camera.target,Target.init,cameraFacing));
-				}
-			}else if(eventManager.keyPressed[KEY_F] && !eventManager.keyPressed[KEY_S]){
-				if(targetMovementState.rotation!=RotationDirection.right){
-					targetMovementState.rotation=RotationDirection.right;
-					controller.addCommand(Command!DagonBackend(CommandType.turnRight,renderSide,camera.target,camera.target,Target.init,cameraFacing));
-				}
-			}else{
-				if(targetMovementState.rotation!=RotationDirection.none){
-					targetMovementState.rotation=RotationDirection.none;
-					controller.addCommand(Command!DagonBackend(CommandType.stopTurning,renderSide,camera.target,camera.target,Target.init,cameraFacing));
-				}
-			}
-			positionCamera();
-		}
+		import hotkeys_;
+		Modifiers modifiers;
+		if(eventManager.keyPressed[KEY_LCTRL]||options.hotkeys.capsIsCtrl&&eventManager.keyPressed[KEY_CAPSLOCK]) modifiers|=Modifiers.ctrl;
+		if(eventManager.keyPressed[KEY_LSHIFT]) modifiers|=Modifiers.shift;
+		bool ctrl=!!(modifiers&Modifiers.ctrl);
+		bool shift=!!(modifiers&Modifiers.shift);
 		if(!state) return;
 		if(mouseButtonDown[MB_LEFT]!=0){
 			if(mouse.loc.among(Mouse.Location.scene,Mouse.Location.minimap)){
@@ -2139,9 +2099,9 @@ final class SacScene: Scene{
 				finishRectangleSelect();
 			}
 		}
-		mouse.additiveSelect=eventManager.keyPressed[KEY_LSHIFT];
+		mouse.additiveSelect=shift;
 		selectionUpdated=false;
-		auto queueing=eventManager.keyPressed[KEY_LSHIFT]?CommandQueueing.post:CommandQueueing.none;
+		auto queueing=shift?CommandQueueing.post:CommandQueueing.none;
 		if(oldMouseStatus==mouse.status){
 			foreach(_;0..mouseButtonUp[MB_LEFT]){
 				bool done=true;
@@ -2164,7 +2124,7 @@ final class SacScene: Scene{
 							auto type=mouse.additiveSelect?CommandType.toggleSelection:CommandType.select;
 							enum doubleClickDelay=0.3f; // in seconds
 							enum delta=targetCacheDelta;
-							if(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK]){
+							if(ctrl){
 								type=CommandType.selectAll;
 							}else if(type==CommandType.select&&(lastSelectedId==mouse.target.id||
 							                              abs(lastSelectedX-mouse.x)<delta &&
@@ -2267,12 +2227,85 @@ final class SacScene: Scene{
 				}
 			}
 		}
+		if(mouse.visible && mouse.status.among(Mouse.Status.standard,Mouse.Status.icon)){
+			   if(ctrl && eventManager.mouseButtonPressed[MB_LEFT]||
+			   eventManager.mouseButtonPressed[MB_MIDDLE]
+			){
+				if(eventManager.mouseRelX||eventManager.mouseRelY)
+					mouse.dragging=true;
+				if(!mouse.onMinimap){
+					fpview.active=true;
+					fpview.mouseFactor=-0.25f;
+				}else{
+					SDL_SetRelativeMouseMode(SDL_TRUE);
+				}
+				mouse.x+=eventManager.mouseRelX/screenScaling;
+				mouse.y+=eventManager.mouseRelY/screenScaling;
+				mouse.x=max(0,min(mouse.x,width-1));
+				mouse.y=max(0,min(mouse.y,height-1));
+			}else{
+				mouse.dragging=false;
+				if(!mouse.onMinimap){
+					if(fpview.active){
+						fpview.active=false;
+						fpview.mouseFactor=1.0f;
+						eventManager.setMouse(cast(int)(mouse.x*screenScaling),cast(int)(mouse.y*screenScaling));
+					}
+				}else{
+					SDL_SetRelativeMouseMode(SDL_FALSE);
+				}
+			}
+		}
+		if(camera.target==0){
+			if(eventManager.keyPressed[KEY_E]) dir += -forward;
+			if(eventManager.keyPressed[KEY_D]) dir += forward;
+			if(eventManager.keyPressed[KEY_S]) dir += -right;
+			if(eventManager.keyPressed[KEY_F]) dir += right;
+			if(eventManager.keyPressed[KEY_I]) speed = 10.0f;
+			if(eventManager.keyPressed[KEY_O]) speed = 100.0f;
+			if(eventManager.keyPressed[KEY_P]) speed = 1000.0f;
+			fpview.camera.position += dir.normalized * speed * dt;
+			if(state) fpview.camera.position.z=max(fpview.camera.position.z, state.current.getHeight(fpview.camera.position));
+		}else{
+			if(!state) return;
+			if(eventManager.keyPressed[KEY_E] && !eventManager.keyPressed[KEY_D]){
+				if(targetMovementState.movement!=MovementDirection.forward){
+					targetMovementState.movement=MovementDirection.forward;
+					controller.addCommand(Command!DagonBackend(CommandType.moveForward,renderSide,camera.target,camera.target,Target.init,cameraFacing));
+				}
+			}else if(eventManager.keyPressed[KEY_D] && !eventManager.keyPressed[KEY_E]){
+				if(targetMovementState.movement!=MovementDirection.backward){
+					targetMovementState.movement=MovementDirection.backward;
+					controller.addCommand(Command!DagonBackend(CommandType.moveBackward,renderSide,camera.target,camera.target,Target.init,cameraFacing));
+				}
+			}else{
+				if(targetMovementState.movement!=MovementDirection.none){
+					targetMovementState.movement=MovementDirection.none;
+					controller.addCommand(Command!DagonBackend(CommandType.stopMoving,renderSide,camera.target,camera.target,Target.init,cameraFacing));
+				}
+			}
+			if(eventManager.keyPressed[KEY_S] && !eventManager.keyPressed[KEY_F]){
+				if(targetMovementState.rotation!=RotationDirection.left){
+					targetMovementState.rotation=RotationDirection.left;
+					controller.addCommand(Command!DagonBackend(CommandType.turnLeft,renderSide,camera.target,camera.target,Target.init,cameraFacing));
+				}
+			}else if(eventManager.keyPressed[KEY_F] && !eventManager.keyPressed[KEY_S]){
+				if(targetMovementState.rotation!=RotationDirection.right){
+					targetMovementState.rotation=RotationDirection.right;
+					controller.addCommand(Command!DagonBackend(CommandType.turnRight,renderSide,camera.target,camera.target,Target.init,cameraFacing));
+				}
+			}else{
+				if(targetMovementState.rotation!=RotationDirection.none){
+					targetMovementState.rotation=RotationDirection.none;
+					controller.addCommand(Command!DagonBackend(CommandType.stopTurning,renderSide,camera.target,camera.target,Target.init,cameraFacing));
+				}
+			}
+			positionCamera();
+		}
 		foreach(key;KEY_1..KEY_0+1){
 			foreach(_;0..keyDown[key]){
-				bool lshift=eventManager.keyPressed[KEY_LSHIFT];
-				bool lctrl=eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK];
-				auto type=!lshift && lctrl ? CommandType.defineGroup:
-					lshift && !lctrl ? CommandType.addToGroup :
+				auto type=!shift && ctrl ? CommandType.defineGroup:
+					shift && !ctrl ? CommandType.addToGroup :
 					CommandType.selectGroup;
 				int group = key==KEY_0?9:key-KEY_1;
 				if(group>=numCreatureGroups) break;
@@ -2281,7 +2314,7 @@ final class SacScene: Scene{
 					controller.addCommand(Command!DagonBackend(CommandType.automaticSelectGroup,renderSide,camera.target,group));
 			}
 		}
-		if(!(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK]||eventManager.keyPressed[KEY_LSHIFT])){
+		if(!ctrl&&!shift){
 			foreach(_;0..keyDown[KEY_TAB]){
 				switchSpellbookTab(cast(SpellType)((spellbookTab+1)%(spellbookTab.max+1)));
 			}
@@ -2289,7 +2322,7 @@ final class SacScene: Scene{
 				selectAbility(CommandQueueing.none);
 			}
 		}
-		if((eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK])&&!eventManager.keyPressed[KEY_LSHIFT]){
+		if(ctrl&&!shift){
 			foreach(_;0..keyDown[KEY_X]){
 				controller.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.phalanx));
 			}
@@ -2339,47 +2372,17 @@ final class SacScene: Scene{
 				selectAbility(CommandQueueing.none);
 			}
 		}
-		if(!(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK])&&eventManager.keyPressed[KEY_LSHIFT]){
+		if(!ctrl&&shift){
 			foreach(_;0..keyDown[KEY_B]){
 				selectAbility(CommandQueueing.none);
-			}
-		}
-		if(mouse.visible && mouse.status.among(Mouse.Status.standard,Mouse.Status.icon)){
-			if(((eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK])
-			    && eventManager.mouseButtonPressed[MB_LEFT])||
-			   eventManager.mouseButtonPressed[MB_MIDDLE]
-			){
-				if(eventManager.mouseRelX||eventManager.mouseRelY)
-					mouse.dragging=true;
-				if(!mouse.onMinimap){
-					fpview.active=true;
-					fpview.mouseFactor=-0.25f;
-				}else{
-					SDL_SetRelativeMouseMode(SDL_TRUE);
-				}
-				mouse.x+=eventManager.mouseRelX/screenScaling;
-				mouse.y+=eventManager.mouseRelY/screenScaling;
-				mouse.x=max(0,min(mouse.x,width-1));
-				mouse.y=max(0,min(mouse.y,height-1));
-			}else{
-				mouse.dragging=false;
-				if(!mouse.onMinimap){
-					if(fpview.active){
-						fpview.active=false;
-						fpview.mouseFactor=1.0f;
-						eventManager.setMouse(cast(int)(mouse.x*screenScaling),cast(int)(mouse.y*screenScaling));
-					}
-				}else{
-					SDL_SetRelativeMouseMode(SDL_FALSE);
-				}
 			}
 		}
 		static immutable creatureHotkeys=[KEY_Q,KEY_Q,KEY_W,KEY_R,KEY_T,KEY_A,KEY_Z,KEY_X,KEY_C,KEY_V,KEY_SPACE];
 		foreach(i;0..cast(int)creatureHotkeys.length){
 			if(i==0){
-				if(eventManager.keyPressed[KEY_LSHIFT]||eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK])
+				if(shift||ctrl)
 					continue;
-			}else if(!(eventManager.keyPressed[KEY_LSHIFT] && !(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK]))){
+			}else if(!(shift && !ctrl)){
 				continue;
 			}
 			foreach(_;0..keyDown[creatureHotkeys[i]]){
@@ -2387,7 +2390,7 @@ final class SacScene: Scene{
 			}
 		}
 		static immutable spellHotkeys=[KEY_X,KEY_R,KEY_C,KEY_LALT,KEY_W,KEY_T,KEY_SPACE,KEY_V,KEY_Z,KEY_Y,KEY_H];
-		if(!(eventManager.keyPressed[KEY_LSHIFT]||eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK])){
+		if(!shift&&!ctrl){
 			foreach(i;0..cast(int)spellHotkeys.length){
 				foreach(_;0..keyDown[spellHotkeys[i]]){
 					selectSpell(SpellType.spell,i);
@@ -2400,7 +2403,7 @@ final class SacScene: Scene{
 				selectSpell("ndrg");
 			}
 		}
-		if((eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK]) && !eventManager.keyPressed[KEY_LSHIFT]){
+		if(ctrl && !shift){
 			foreach(_;0..keyDown[KEY_LALT]){
 				selectSpell("htlm");
 			}
@@ -2411,7 +2414,7 @@ final class SacScene: Scene{
 				selectSpell("ndrg");
 			}
 		}
-		if(eventManager.keyPressed[KEY_LSHIFT] && !(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK])){
+		if(shift && !ctrl){
 			foreach(_;0..keyDown[KEY_LALT]){
 				selectSpell("pcas");
 			}
