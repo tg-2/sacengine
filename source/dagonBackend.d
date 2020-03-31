@@ -2824,8 +2824,9 @@ final class SacScene: Scene{
 class MyApplication: SceneApplication{
 	SacScene scene;
 	this(Options options){
-		super(options.width,options.height,
-		      options.enableFullscreen, "SacEngine", []);
+		auto width=cast(int)(options.width*options.scale);
+		auto height=cast(int)(options.height*options.scale);
+		super(width, height, options.enableFullscreen, "SacEngine", []);
 		if(options.width==0||options.height==0){
 			options.width=width;
 			options.height=height;
