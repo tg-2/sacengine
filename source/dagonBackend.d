@@ -2068,6 +2068,53 @@ final class SacScene: Scene{
 		if(eventManager.keyPressed[KEY_LSHIFT]) modifiers|=Modifiers.shift;
 		bool ctrl=!!(modifiers&Modifiers.ctrl);
 		bool shift=!!(modifiers&Modifiers.shift);
+		bool pressed(int[] keyCodes){ return keyCodes.any!(key=>eventManager.keyPressed[key]);}
+		if(camera.target==0){
+			if(pressed(options.hotkeys.moveForward)) dir += -forward;
+			if(pressed(options.hotkeys.moveBackward)) dir += forward;
+			if(pressed(options.hotkeys.turnLeft)) dir += -right;
+			if(pressed(options.hotkeys.turnRight)) dir += right;
+			if(eventManager.keyPressed[KEY_I]) speed = 10.0f;
+			if(eventManager.keyPressed[KEY_O]) speed = 100.0f;
+			if(eventManager.keyPressed[KEY_P]) speed = 1000.0f;
+			fpview.camera.position += dir.normalized * speed * dt;
+			if(state) fpview.camera.position.z=max(fpview.camera.position.z, state.current.getHeight(fpview.camera.position));
+		}else{
+			if(!state) return;
+			if(pressed(options.hotkeys.moveForward) && !pressed(options.hotkeys.moveBackward)){
+				if(targetMovementState.movement!=MovementDirection.forward){
+					targetMovementState.movement=MovementDirection.forward;
+					controller.addCommand(Command!DagonBackend(CommandType.moveForward,renderSide,camera.target,camera.target,Target.init,cameraFacing));
+				}
+			}else if(pressed(options.hotkeys.moveBackward) && !pressed(options.hotkeys.moveForward)){
+				if(targetMovementState.movement!=MovementDirection.backward){
+					targetMovementState.movement=MovementDirection.backward;
+					controller.addCommand(Command!DagonBackend(CommandType.moveBackward,renderSide,camera.target,camera.target,Target.init,cameraFacing));
+				}
+			}else{
+				if(targetMovementState.movement!=MovementDirection.none){
+					targetMovementState.movement=MovementDirection.none;
+					controller.addCommand(Command!DagonBackend(CommandType.stopMoving,renderSide,camera.target,camera.target,Target.init,cameraFacing));
+				}
+			}
+			if(pressed(options.hotkeys.turnLeft) && !pressed(options.hotkeys.turnRight)){
+				if(targetMovementState.rotation!=RotationDirection.left){
+					targetMovementState.rotation=RotationDirection.left;
+					controller.addCommand(Command!DagonBackend(CommandType.turnLeft,renderSide,camera.target,camera.target,Target.init,cameraFacing));
+				}
+			}else if(pressed(options.hotkeys.turnRight) && !pressed(options.hotkeys.turnLeft)){
+				if(targetMovementState.rotation!=RotationDirection.right){
+					targetMovementState.rotation=RotationDirection.right;
+					controller.addCommand(Command!DagonBackend(CommandType.turnRight,renderSide,camera.target,camera.target,Target.init,cameraFacing));
+				}
+			}else{
+				if(targetMovementState.rotation!=RotationDirection.none){
+					targetMovementState.rotation=RotationDirection.none;
+					controller.addCommand(Command!DagonBackend(CommandType.stopTurning,renderSide,camera.target,camera.target,Target.init,cameraFacing));
+				}
+			}
+			positionCamera();
+		}
 		if(!state) return;
 		if(mouseButtonDown[MB_LEFT]!=0){
 			if(mouse.loc.among(Mouse.Location.scene,Mouse.Location.minimap)){
@@ -2255,52 +2302,6 @@ final class SacScene: Scene{
 					SDL_SetRelativeMouseMode(SDL_FALSE);
 				}
 			}
-		}
-		if(camera.target==0){
-			if(eventManager.keyPressed[KEY_E]) dir += -forward;
-			if(eventManager.keyPressed[KEY_D]) dir += forward;
-			if(eventManager.keyPressed[KEY_S]) dir += -right;
-			if(eventManager.keyPressed[KEY_F]) dir += right;
-			if(eventManager.keyPressed[KEY_I]) speed = 10.0f;
-			if(eventManager.keyPressed[KEY_O]) speed = 100.0f;
-			if(eventManager.keyPressed[KEY_P]) speed = 1000.0f;
-			fpview.camera.position += dir.normalized * speed * dt;
-			if(state) fpview.camera.position.z=max(fpview.camera.position.z, state.current.getHeight(fpview.camera.position));
-		}else{
-			if(!state) return;
-			if(eventManager.keyPressed[KEY_E] && !eventManager.keyPressed[KEY_D]){
-				if(targetMovementState.movement!=MovementDirection.forward){
-					targetMovementState.movement=MovementDirection.forward;
-					controller.addCommand(Command!DagonBackend(CommandType.moveForward,renderSide,camera.target,camera.target,Target.init,cameraFacing));
-				}
-			}else if(eventManager.keyPressed[KEY_D] && !eventManager.keyPressed[KEY_E]){
-				if(targetMovementState.movement!=MovementDirection.backward){
-					targetMovementState.movement=MovementDirection.backward;
-					controller.addCommand(Command!DagonBackend(CommandType.moveBackward,renderSide,camera.target,camera.target,Target.init,cameraFacing));
-				}
-			}else{
-				if(targetMovementState.movement!=MovementDirection.none){
-					targetMovementState.movement=MovementDirection.none;
-					controller.addCommand(Command!DagonBackend(CommandType.stopMoving,renderSide,camera.target,camera.target,Target.init,cameraFacing));
-				}
-			}
-			if(eventManager.keyPressed[KEY_S] && !eventManager.keyPressed[KEY_F]){
-				if(targetMovementState.rotation!=RotationDirection.left){
-					targetMovementState.rotation=RotationDirection.left;
-					controller.addCommand(Command!DagonBackend(CommandType.turnLeft,renderSide,camera.target,camera.target,Target.init,cameraFacing));
-				}
-			}else if(eventManager.keyPressed[KEY_F] && !eventManager.keyPressed[KEY_S]){
-				if(targetMovementState.rotation!=RotationDirection.right){
-					targetMovementState.rotation=RotationDirection.right;
-					controller.addCommand(Command!DagonBackend(CommandType.turnRight,renderSide,camera.target,camera.target,Target.init,cameraFacing));
-				}
-			}else{
-				if(targetMovementState.rotation!=RotationDirection.none){
-					targetMovementState.rotation=RotationDirection.none;
-					controller.addCommand(Command!DagonBackend(CommandType.stopTurning,renderSide,camera.target,camera.target,Target.init,cameraFacing));
-				}
-			}
-			positionCamera();
 		}
 		foreach(key;KEY_1..KEY_0+1){
 			foreach(_;0..keyDown[key]){
