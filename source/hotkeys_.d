@@ -336,7 +336,7 @@ Hotkeys parseHotkeys(string hotkeys){
 	Hotkeys result;
 	foreach(line;hotkeys.lineSplitter){
 		line=line.strip;
-		if(line[0]=='#') continue;
+		if(!line.length||line[0]=='#') continue;
 		auto colon=line.indexOf(':');
 		if(colon==line.length-1) continue;
 		if(colon==-1){
