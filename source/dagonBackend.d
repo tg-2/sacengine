@@ -2391,7 +2391,11 @@ final class SacScene: Scene{
 					break;
 				// taunts
 				case randomTaunt: unsupported(); break;
-				static foreach(i;1..4+1) case mixin(text(`taunt`,i)): unsupported(); break;
+				static foreach(i;1..4+1){
+					case mixin(text(`taunt`,i)):
+						unsupported();
+						break Lswitch;
+				}
 				// spells
 				static foreach(i;1..11+1){
 					case mixin(text(`castCreationSpell`,i)):
