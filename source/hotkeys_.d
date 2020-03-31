@@ -182,7 +182,7 @@ string defaultName(Bindable bindable){
 // string translatedName(Bindable bindable){ } // TODO
 
 enum Modifiers{
-	None=0,
+	none=0,
 	ctrl=1,
 	shift=2,
 	shiftCtrl=3,
@@ -201,6 +201,8 @@ struct ModHotkey{
 
 struct Hotkeys{
 	bool capsIsCtrl=true;
+	int[] moveForward,moveBackward,turnLeft,turnRight;
+	int[] cameraZoomIn,cameraZoomOut;
 	Hotkey[][Modifiers.max+1] hotkeys;
 	alias hotkeys this;
 	void add(ModHotkey modHotkey){
@@ -209,7 +211,76 @@ struct Hotkeys{
 }
 
 Hotkeys defaultHotkeys(){
-	return Hotkeys.init; // TODO
+	Hotkeys result;
+	// control keys
+	result.moveForward=[KEY_E,KEY_UP];
+	result.moveBackward=[KEY_D,KEY_DOWN];
+	result.turnLeft=[KEY_S,KEY_LEFT];
+	result.turnRight=[KEY_F,KEY_RIGHT];
+	result.cameraZoomIn=[KEY_KP_PLUS,KEY_EQUALS];
+	result.cameraZoomOut=[KEY_KP_MINUS,KEY_MINUS];
+	// orders
+	result[Modifiers.ctrl]~=Hotkey(KEY_R,Bindable.attack);
+	result[Modifiers.ctrl]~=Hotkey(KEY_A,Bindable.guard);
+	result[Modifiers.ctrl]~=Hotkey(KEY_SPACE,Bindable.retreat);
+	result[Modifiers.ctrl]~=Hotkey(KEY_T,Bindable.move);
+	result[Modifiers.ctrl]~=Hotkey(KEY_Q,Bindable.useAbility);
+	result[Modifiers.shift]~=Hotkey(KEY_B,Bindable.useAbility);
+	result[Modifiers.none]~=Hotkey(KEY_P,Bindable.dropSoul);
+	// miscellanneous
+	result[Modifiers.none]~=Hotkey(KEY_F1,Bindable.quickSave);
+	result[Modifiers.none]~=Hotkey(KEY_F2,Bindable.quickLoad);
+	result[Modifiers.none]~=Hotkey(KEY_RETURN,Bindable.sendChatMessage);
+	result[Modifiers.shift]~=Hotkey(KEY_RIGHTBRACKET,Bindable.gammaCorrectionPlus);
+	result[Modifiers.shift]~=Hotkey(KEY_LEFTBRACKET,Bindable.gammaCorrectionMinus);
+	result[Modifiers.none]~=Hotkey(KEY_F11,Bindable.screenShot);
+	// formations
+	result[Modifiers.ctrl]~=Hotkey(KEY_U,Bindable.semicircleFormation);
+	result[Modifiers.ctrl]~=Hotkey(KEY_O,Bindable.circleFormation);
+	result[Modifiers.ctrl]~=Hotkey(KEY_X,Bindable.phalanxFormation);
+	result[Modifiers.ctrl]~=Hotkey(KEY_W,Bindable.wedgeFormation);
+	result[Modifiers.ctrl]~=Hotkey(KEY_Y,Bindable.skirmishFormation);
+	result[Modifiers.ctrl]~=Hotkey(KEY_L,Bindable.lineFormation);
+	result[Modifiers.ctrl]~=Hotkey(KEY_Z,Bindable.flankLeftFormation);
+	result[Modifiers.ctrl]~=Hotkey(KEY_V,Bindable.flankRightFormation);
+	// taunts
+	result[Modifiers.none]~=Hotkey(KEY_KP_0,Bindable.randomTaunt);
+	result[Modifiers.none]~=Hotkey(KEY_KP_1,Bindable.taunt1);
+	result[Modifiers.none]~=Hotkey(KEY_KP_2,Bindable.taunt2);
+	result[Modifiers.none]~=Hotkey(KEY_KP_3,Bindable.taunt3);
+	result[Modifiers.none]~=Hotkey(KEY_KP_4,Bindable.taunt4);
+	// cast creation spell #
+	result[Modifiers.none]~=Hotkey(KEY_Q,Bindable.castCreationSpell1);
+	result[Modifiers.shift]~=Hotkey(KEY_Q,Bindable.castCreationSpell2);
+	result[Modifiers.shift]~=Hotkey(KEY_W,Bindable.castCreationSpell3);
+	result[Modifiers.shift]~=Hotkey(KEY_R,Bindable.castCreationSpell4);
+	result[Modifiers.shift]~=Hotkey(KEY_T,Bindable.castCreationSpell5);
+	result[Modifiers.shift]~=Hotkey(KEY_A,Bindable.castCreationSpell6);
+	result[Modifiers.shift]~=Hotkey(KEY_Z,Bindable.castCreationSpell7);
+	result[Modifiers.shift]~=Hotkey(KEY_X,Bindable.castCreationSpell8);
+	result[Modifiers.shift]~=Hotkey(KEY_C,Bindable.castCreationSpell9);
+	result[Modifiers.shift]~=Hotkey(KEY_V,Bindable.castCreationSpell10);
+	result[Modifiers.shift]~=Hotkey(KEY_SPACE,Bindable.castCreationSpell11);
+	// cast spell #
+	result[Modifiers.none]~=Hotkey(KEY_X,Bindable.castSpell1);
+	result[Modifiers.none]~=Hotkey(KEY_R,Bindable.castSpell2);
+	result[Modifiers.none]~=Hotkey(KEY_C,Bindable.castSpell3);
+	result[Modifiers.none]~=Hotkey(KEY_LALT,Bindable.castSpell4);
+	result[Modifiers.none]~=Hotkey(KEY_W,Bindable.castSpell5);
+	result[Modifiers.none]~=Hotkey(KEY_T,Bindable.castSpell6);
+	result[Modifiers.none]~=Hotkey(KEY_SPACE,Bindable.castSpell7);
+	result[Modifiers.none]~=Hotkey(KEY_V,Bindable.castSpell8);
+	result[Modifiers.none]~=Hotkey(KEY_Z,Bindable.castSpell9);
+	result[Modifiers.none]~=Hotkey(KEY_Y,Bindable.castSpell10);
+	result[Modifiers.none]~=Hotkey(KEY_H,Bindable.castSpell11);
+	// cast neutral spell
+	result[Modifiers.ctrl]~=Hotkey(KEY_LALT,Bindable.castManalith);
+	result[Modifiers.ctrl]~=Hotkey(KEY_G,Bindable.castGuardian);
+	result[Modifiers.ctrl]~=Hotkey(KEY_C,Bindable.castConvert);
+	result[Modifiers.shift]~=Hotkey(KEY_G,Bindable.castDesecrate);
+	result[Modifiers.none]~=Hotkey(KEY_G,Bindable.castTeleport);
+	result[Modifiers.shift]~=Hotkey(KEY_LALT,Bindable.castShrine);
+	return result;
 }
 
 string _or_,shift,ctrl,shiftDash,ctrlDash;
@@ -282,7 +353,15 @@ Hotkeys parseHotkeys(string hotkeys){
 			auto modKeycode=parseModKeycode(key);
 			if(!modKeycode.keycode) continue;
 			if(modKeycode.keycode==KEY_CAPSLOCK) result.capsIsCtrl=false;
-			result.add(ModHotkey(modKeycode.mod,Hotkey(modKeycode.keycode,bindable)));
+			switch(bindable) with(Bindable){
+				case moveForward: result.moveForward~=modKeycode.keycode; break;
+				case moveBackward: result.moveBackward~=modKeycode.keycode; break;
+				case turnLeft: result.turnLeft~=modKeycode.keycode; break;
+				case turnRight: result.turnRight~=modKeycode.keycode; break;
+				case cameraZoomIn: result.cameraZoomIn~=modKeycode.keycode; break;
+				case cameraZoomOut: result.cameraZoomOut~=modKeycode.keycode; break;
+				default: result.add(ModHotkey(modKeycode.mod,Hotkey(modKeycode.keycode,bindable)));
+			}
 		}
 	}
 	return result;
