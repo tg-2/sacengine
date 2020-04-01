@@ -255,7 +255,7 @@ string[char[4]] makeSampByTag(bool readFromWads){
 }
 
 immutable string[] textFolders=["extracted/local/lang_english/LANG.WAD!/ENGL.LANG",
-                                "extracted/local/langp3_english/LNG+.WAD!/addl.LANG"];
+                                "extracted/local/langp3_english/LNG+.WAD!/addl.LANG"].fixPaths;
 
 immutable(string)[char[4]] texts;
 immutable(string)[char[4]] makeTextByTag(bool readFromWads){
