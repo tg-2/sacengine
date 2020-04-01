@@ -4390,7 +4390,8 @@ bool stopAndFaceTowards(B)(ref MovingObject!B object,Vector3f position,ObjectSta
 	return object.stop(object.facingTowards(position,state),state);
 }
 
-void moveTowards(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectState!B state,bool evade=true,bool maintainHeight=false,bool stayAboveGround=true,int targetId=0){
+void moveTowards(B)(ref MovingObject!B object,Vector3f ultimateTargetPosition,float acceptableRadius,ObjectState!B state,bool evade=true,bool maintainHeight=false,bool stayAboveGround=true,int targetId=0){
+	auto targetPosition=ultimateTargetPosition;
 	auto distancesqr=(object.position.xy-targetPosition.xy).lengthsqr;
 	auto isFlying=object.creatureState.movement==CreatureMovement.flying;
 	if(isFlying){
@@ -4428,7 +4429,7 @@ bool moveTo(B)(ref MovingObject!B object,Vector3f targetPosition,float targetFac
 	auto speed=object.speed(state)/updateFPS;
 	auto distancesqr=(object.position.xy-targetPosition.xy).lengthsqr;
 	if(distancesqr>(2.0f*speed)^^2){
-		object.moveTowards(targetPosition,state,evade,maintainHeight,stayAboveGround,targetId);
+		object.moveTowards(targetPosition,0.0f,state,evade,maintainHeight,stayAboveGround,targetId);
 		return true;
 	}
 	return object.stop(targetFacing,state);
@@ -4439,7 +4440,7 @@ bool moveWithinRange(B)(ref MovingObject!B object,Vector3f targetPosition,float 
 	auto distancesqr=(object.position.xy-targetPosition.xy).lengthsqr;
 	if(distancesqr<=(range-speed)^^2)
 		return false;
-	object.moveTowards(targetPosition,state,evade,maintainHeight,stayAboveGround,targetId);
+	object.moveTowards(targetPosition,range,state,evade,maintainHeight,stayAboveGround,targetId);
 	return true;
 }
 
@@ -4501,7 +4502,7 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 	auto minFlyingHeight=isFlying?object.creatureStats.flyingHeight:0.0f;
 	auto targetFlyingHeight=max(flyingHeight,minFlyingHeight);
 	bool moveCloser(){
-		object.moveTowards(targetPosition,state,true,true);
+		object.moveTowards(targetPosition,0.0f,state,true,true);
 		if(isFlying) object.creatureState.targetFlyingHeight=targetFlyingHeight;
 		return true;
 	}
@@ -4941,7 +4942,7 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 							// TODO: figure out the original rule for this
 							if(object.creatureState.mode==CreatureMode.idle&&object.creatureState.timer>=updateFPS)
 								playSoundTypeAt(object.sacObject,object.id,SoundType.run,state);
-							object.moveTowards(object.position-(enemyPosition-object.position),state);
+							object.moveTowards(object.position-(enemyPosition-object.position),0.0f,state);
 						}else object.stop(state);
 					}else object.startCowering(state);
 				}
