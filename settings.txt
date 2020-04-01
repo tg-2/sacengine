@@ -1,0 +1,45 @@
+# hotkeys
+--hotkeys=hotkeys.txt          # name of hotkey file
+
+# game options
+# --level=5                    # set starting level  (default: 9)
+# --souls=12                   # set amount of souls (default: 16)
+# --wizard=eldred              # choose wizard model (default: random)
+# --god=persephone             # choose god (default: random)
+# --side=0                     # set player side (default: 0)
+
+# multiplayer options
+# --host=2                     # host for 2 players
+# --join=localhost             # join a hosted game on the local machine
+# --join=10.147.17.56          # join tg on desktop over zerotier
+# --join=25.11.191.171         # join tg on desktop over hamachi
+# --side=1                     # set player side to side 1 (currently, manual selection of side is required for multiplayer, default: 0)
+
+# graphics options
+--resolution=720               # resolution for rendering of scene (format: height or width×height)
+# --scale=1.0                  # scale width and height of window (values smaller than 1 can be used for supersampling)
+# --no-scale-to-fit            # do not scale rendered scene to match size of window
+# --fullscreen                 # full screen mode (terminate with alt+f4 on windows)
+# --no-widgets                 # disable widgets (may improve framerate, as rendering of widgets is not optimized)
+# --cursor-size=32             # change size of cursor (default: 32)
+# --shadow-map-resolution=4096 # change resolution of cascading shadow maps (default: 1024)
+# --fog                        # render fog (currently ignores linear vs exponential falloff setting)
+# --no-map-bottom              # do not render bottom of map (similar to original engine)
+# --no-glow                    # disable glow effect
+# --glow-brightness=0.5        # tweak glow effect (default: 0.5)
+# --no-antialiasing            # disable FXAA effect
+# --ambient-factor=1.0         # tweak strength of ambient lighting
+# --sun-factor=1.0             # tweak strength of sun lighting
+
+# audio options
+# --volume=0.5                 # global factor on volume
+# --music-volume=0.5           # additional factor on music volume
+# --sound-volume=0.5           # additional factor on sound volume
+
+# miscellanneous
+# --redirect-output            # print diagnostics to SacEngine.out.txt and SacEngine.err.txt
+# --record=replay.rcp          # record a replay. experimental. will only be compatible with exact same version of engine (no sanity checks)
+# --log-core                   # when recording, save the full game state of the last two seconds of gameplay, useful for troubleshooting
+# --play=replay.rcp            # play a replay. experimental.
+# --protect-manafounts=1       # currently singleplayer only, put random level 1 creatures on top of each mana fountain
+# --replicate-creatures=2      # create multiple copies of all creatures on the map, currently, for multiplayer, all players must manually enable this option
