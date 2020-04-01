@@ -322,7 +322,7 @@ struct PositionPredictor{
 	}
 }
 
-enum directWalkDistance=10.0f;
+enum directWalkDistance=5.0f;
 struct Path{
 	Vector3f targetPosition;
 	int age=0;
@@ -343,9 +343,9 @@ struct Path{
 				targetPosition=newTarget;
 				age=0;
 			}
-		}else if((newTarget-targetPosition).lengthsqr>directWalkDistance^^2)
+		}else if((newTarget-targetPosition).lengthsqr>2.0f*directWalkDistance^^2)
 			reset();
-		while(path.length&&(path.back()-currentPosition).lengthsqr<directWalkDistance^^2)
+		while(path.length&&(path.back()-currentPosition).lengthsqr<2.0f*directWalkDistance^^2)
 			path.removeBack(1);
 		if(path.length) return path.back();
 		return newTarget;
@@ -364,19 +364,30 @@ class PathFinder(B){
 	enum xlen=pred.length, ylen=pred[0].length;
 	static Tuple!(int,"x",int,"y") roundToGrid(Vector3f position,ObjectState!B state){
 		enum scale=1.0f/directWalkDistance;
-		int x=cast(int)round(scale*(position.x+position.y)-0.5f);
-		int y=cast(int)round(scale*(-position.x+position.y)+255.5f);
+		//int x=cast(int)round(scale*(position.x+position.y)-0.5f);
+		//int y=cast(int)round(scale*(-position.x+position.y)+255.5f);
+		int x=cast(int)round(scale*position.x);
+		int y=cast(int)round(scale*position.y);
 		x=max(0,min(x,xlen-1));
 		y=max(0,min(y,ylen-1));
 		return tuple!("x","y")(x,y);
 	}
 	static Vector3f position(int x,int y,ObjectState!B state){
 		enum scale=directWalkDistance;
-		auto a=scale*(0.5f*(x-y)+128.0f);
-		auto b=scale*(0.5f*(x+y)-127.5f);
+		//auto a=scale*(0.5f*(x-y)+128.0f);
+		//auto b=scale*(0.5f*(x+y)-127.5f);
+		auto a=scale*x;
+		auto b=scale*y;
 		auto p=Vector3f(a,b,0.0f);
 		p.z=state.getHeight(p);
 		return p;
+	}
+	static bool unblocked(Vector3f position,ObjectState!B state){
+		enum eps=1.0f;
+		static immutable Vector3f[4] offsets=[Vector3f(-eps,0.0f,0.0f),Vector3f(eps,0.0f,0.0f),
+		                                      Vector3f(0.0f,-eps,0.0f),Vector3f(0.0f,eps,0.0f)];
+		foreach(ref off;offsets) if(!state.isOnGround(position+off)) return false; // TODO: read edge map directly?
+		return true;
 	}
 	Heap!Entry heap;
 	void findPath(ref Array!Vector3f path,Vector3f start,Vector3f end,float radius,ObjectState!B state){
@@ -406,7 +417,7 @@ class PathFinder(B){
 					if(nx<0||ny<0||nx>=xlen||ny>=ylen) continue;
 					if(pred[nx][ny]) continue;
 					auto npos=position(nx,ny,state);
-					if(!state.isOnGround(npos)) continue; // TODO: read edge map directly?
+					if(!unblocked(npos,state)) continue;
 					auto distance=cur.distance+(pos-npos).length;
 					auto heuristic=distance+max(0.0f,(endpos-position(nx,ny,state)).length-radius);
 					ubyte dir=cast(ubyte)(4*(-dx+1)+(-dy+1)+1);
