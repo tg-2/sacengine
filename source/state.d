@@ -343,9 +343,9 @@ struct Path{
 				targetPosition=newTarget;
 				age=0;
 			}
-		}else if((newTarget-targetPosition).lengthsqr>2.0f*directWalkDistance^^2)
+		}else if((newTarget-targetPosition).lengthsqr>directWalkDistance^^2)
 			reset();
-		while(path.length&&(path.back()-currentPosition).lengthsqr<2.0f*directWalkDistance^^2)
+		while(path.length&&(path.back()-currentPosition).lengthsqr<directWalkDistance^^2)
 			path.removeBack(1);
 		if(path.length) return path.back();
 		return newTarget;
@@ -360,19 +360,23 @@ class PathFinder(B){
 		bool less(ref Entry rhs){ return heuristic<rhs.heuristic; }
 		//bool less(ref Entry rhs){ return distance<rhs.distance; }
 	}
-	ubyte[256][256] pred;
+	ubyte[512][512] pred;
 	enum xlen=pred.length, ylen=pred[0].length;
 	static Tuple!(int,"x",int,"y") roundToGrid(Vector3f position,ObjectState!B state){
-		int x=cast(int)round(position.x*(1.0f/directWalkDistance));
-		int y=cast(int)round(position.y*(1.0f/directWalkDistance));
+		enum scale=1.0f/directWalkDistance;
+		int x=cast(int)round(scale*(position.x+position.y)-0.5f);
+		int y=cast(int)round(scale*(-position.x+position.y)+255.5f);
 		x=max(0,min(x,xlen-1));
 		y=max(0,min(y,ylen-1));
 		return tuple!("x","y")(x,y);
 	}
 	static Vector3f position(int x,int y,ObjectState!B state){
-		auto r=Vector3f(directWalkDistance*x,directWalkDistance*y,0.0f);
-		r.z=state.getHeight(r);
-		return r;
+		enum scale=directWalkDistance;
+		auto a=scale*(0.5f*(x-y)+128.0f);
+		auto b=scale*(0.5f*(x+y)-127.5f);
+		auto p=Vector3f(a,b,0.0f);
+		p.z=state.getHeight(p);
+		return p;
 	}
 	Heap!Entry heap;
 	void findPath(ref Array!Vector3f path,Vector3f start,Vector3f end,float radius,ObjectState!B state){
