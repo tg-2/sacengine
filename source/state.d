@@ -4997,14 +4997,7 @@ bool requiresAI(CreatureMode mode){
 
 void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 	if(!requiresAI(object.creatureState.mode)) return;
-	scope(success){
-		if(object.creatureAI.isOnAIQueue){
-			if(state.frontOfAIQueue(object.side,object.id)){
-				state.aiQueue(object.side).popFront();
-				object.creatureAI.isOnAIQueue=false;
-			}
-		}else object.creatureAI.isOnAIQueue=state.pushToAIQueue(object.side,object.id);
-	}
+	if(!object.creatureAI.isOnAIQueue) object.creatureAI.isOnAIQueue=state.pushToAIQueue(object.side,object.id);
 	if(object.creatureState.mode.isShooting){
 		if(!object.shoot(object.rangedAttack,object.creatureAI.rangedAttackTarget,state))
 			object.creatureAI.rangedAttackTarget=0;
@@ -9059,6 +9052,10 @@ final class ObjectState(B){ // (update logic)
 		foreach(command;frameCommands)
 			applyCommand(command);
 		this.eachMoving!updateCreature(this);
+		foreach(side;0..cast(int)sid.sides.length) if(auto q=aiQueue(side)) if(!q.empty){
+			this.movingObjectById!((ref obj){ obj.creatureAI.isOnAIQueue=false; })(q.front);
+			q.popFront();
+		}
 		this.eachSoul!updateSoul(this);
 		this.eachBuilding!updateBuilding(this);
 		this.eachWizard!updateWizard(this);
