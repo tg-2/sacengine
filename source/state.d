@@ -322,6 +322,107 @@ struct PositionPredictor{
 	}
 }
 
+enum directWalkDistance=10.0f;
+struct Path{
+	Vector3f targetPosition;
+	int age=0;
+	private Array!Vector3f path;
+	this(this){ path=path.dup; }
+	void opAssign(Path rhs){ this.path=rhs.path; }
+	void opAssign(ref Path rhs){ assignArray(path,rhs.path); }
+	void reset(){
+		age=0;
+		path.length=0;
+		targetPosition=Vector3f.init;
+	}
+	Vector3f nextTarget(B)(Vector3f currentPosition,Vector3f newTarget,float radius,bool frontOfAIQueue,ObjectState!B state){
+		++age;
+		if(frontOfAIQueue){
+			if(targetPosition!=newTarget||age>2*updateFPS){
+				state.findPath(path,currentPosition,newTarget,radius);
+				targetPosition=newTarget;
+				age=0;
+			}
+		}else if((newTarget-targetPosition).lengthsqr>2.0f*directWalkDistance^^2)
+			reset();
+		while(path.length&&(path.back()-currentPosition).lengthsqr<2.0f*directWalkDistance^^2)
+			path.removeBack(1);
+		if(path.length) return path.back();
+		return newTarget;
+	}
+}
+class PathFinder(B){
+	struct Entry{
+		float distance;
+		float heuristic;
+		int x,y;
+		ubyte dir;
+		bool less(ref Entry rhs){ return heuristic<rhs.heuristic; }
+		//bool less(ref Entry rhs){ return distance<rhs.distance; }
+	}
+	ubyte[256][256] pred;
+	enum xlen=pred.length, ylen=pred[0].length;
+	static Tuple!(int,"x",int,"y") roundToGrid(Vector3f position,ObjectState!B state){
+		int x=cast(int)round(position.x*(1.0f/directWalkDistance));
+		int y=cast(int)round(position.y*(1.0f/directWalkDistance));
+		x=max(0,min(x,xlen-1));
+		y=max(0,min(y,ylen-1));
+		return tuple!("x","y")(x,y);
+	}
+	static Vector3f position(int x,int y,ObjectState!B state){
+		auto r=Vector3f(directWalkDistance*x,directWalkDistance*y,0.0f);
+		r.z=state.getHeight(r);
+		return r;
+	}
+	Heap!Entry heap;
+	void findPath(ref Array!Vector3f path,Vector3f start,Vector3f end,float radius,ObjectState!B state){
+		auto nstart=roundToGrid(start,state);
+		auto nend=roundToGrid(end,state);
+		import core.stdc.string: memset;
+		memset(&pred,0,pred.sizeof); // TODO: optimize this?
+		heap.clear();
+		auto endpos=position(nend.expand,state);
+		if(!state.isOnGround(endpos)) return; // TODO
+		heap.push(Entry(0.0f,max(0.0f,(endpos-position(nstart.expand,state)).length-radius),nstart.expand,0xff));
+		auto x=nend.x,y=nend.y;
+		while(!heap.empty()){
+			auto cur=heap.pop();
+			if(pred[cur.x][cur.y]) continue;
+			pred[cur.x][cur.y]=cur.dir;
+			if(cur.x==nend.x&&cur.y==nend.y) break;
+			auto pos=position(cur.x,cur.y,state);
+			if(radius!=0.0f&&(pos-endpos).lengthsqr<radius^^2){
+				x=cur.x,y=cur.y;
+				break;
+			}
+			for(int dx=-1;dx<=1;dx++){
+				for(int dy=-1;dy<=1;dy++){
+					if(!dx&&!dy) continue;
+					auto nx=cur.x+dx,ny=cur.y+dy;
+					if(nx<0||ny<0||nx>=xlen||ny>=ylen) continue;
+					if(pred[nx][ny]) continue;
+					auto npos=position(nx,ny,state);
+					if(!state.isOnGround(npos)) continue; // TODO: read edge map directly?
+					auto distance=cur.distance+(pos-npos).length;
+					auto heuristic=distance+max(0.0f,(endpos-position(nx,ny,state)).length-radius);
+					ubyte dir=cast(ubyte)(4*(-dx+1)+(-dy+1)+1);
+					heap.push(Entry(distance,heuristic,nx,ny,dir));
+				}
+			}
+		}
+		heap.clear();
+		path.length=0;
+		for(;;){
+			path~=position(x,y,state);
+			if(x==nstart.x&&y==nstart.y) break;
+			if(pred[x][y]==0) break;
+			auto dx=(pred[x][y]-1)/4-1;
+			auto dy=(pred[x][y]-1)%4-1;
+			x+=dx, y+=dy;
+		}
+	}
+}
+
 struct CreatureAI{
 	Order order;
 	Queue!Order orderQueue;
@@ -331,6 +432,8 @@ struct CreatureAI{
 	int evasionTimer=0;
 	int rangedAttackTarget=0;
 	PositionPredictor predictor;
+	bool isOnAIQueue=false;
+	Path path;
 }
 
 struct MovingObject(B){
@@ -2643,9 +2746,9 @@ struct ObjectManager(B){
 			alias new_=transparentObjects;
 		}else static assert(0);
 		static if(is(T==MovingObject!B)){
-			auto obj=this.movingObjectById!((obj)=>obj,function MovingObject!B(){ assert(0); })(id);
+			auto obj=this.movingObjectById!((obj)=>move(obj),function MovingObject!B(){ assert(0); })(id);
 		}else{
-			auto obj=this.staticObjectById!((obj)=>obj,function StaticObject!B(){ assert(0); })(id);
+			auto obj=this.staticObjectById!((obj)=>move(obj),function StaticObject!B(){ assert(0); })(id);
 		}
 		old.removeObject(tid.type,tid.index,this);
 		ids[id-1]=new_.addObject(obj);
@@ -4391,9 +4494,11 @@ bool stopAndFaceTowards(B)(ref MovingObject!B object,Vector3f position,ObjectSta
 }
 
 void moveTowards(B)(ref MovingObject!B object,Vector3f ultimateTargetPosition,float acceptableRadius,ObjectState!B state,bool evade=true,bool maintainHeight=false,bool stayAboveGround=true,int targetId=0){
-	auto targetPosition=ultimateTargetPosition;
-	auto distancesqr=(object.position.xy-targetPosition.xy).lengthsqr;
+	auto distancesqr=(object.position.xy-ultimateTargetPosition.xy).lengthsqr;
 	auto isFlying=object.creatureState.movement==CreatureMovement.flying;
+	Vector3f targetPosition=ultimateTargetPosition;
+	if(isFlying) object.creatureAI.path.reset();
+	else targetPosition=object.creatureAI.path.nextTarget(object.position,ultimateTargetPosition,acceptableRadius,state.frontOfAIQueue(object.side,object.id),state);
 	if(isFlying){
 		if(distancesqr>(0.1f*object.speed(state))^^2){
 			auto flyingHeight=object.position.z-state.getHeight(object.position);
@@ -4877,6 +4982,14 @@ bool requiresAI(CreatureMode mode){
 
 void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 	if(!requiresAI(object.creatureState.mode)) return;
+	scope(success){
+		if(object.creatureAI.isOnAIQueue){
+			if(state.frontOfAIQueue(object.side,object.id)){
+				state.aiQueue(object.side).popFront();
+				object.creatureAI.isOnAIQueue=false;
+			}
+		}else object.creatureAI.isOnAIQueue=state.pushToAIQueue(object.side,object.id);
+	}
 	if(object.creatureState.mode.isShooting){
 		if(!object.shoot(object.rangedAttack,object.creatureAI.rangedAttackTarget,state))
 			object.creatureAI.rangedAttackTarget=0;
@@ -8663,10 +8776,11 @@ final class ObjectState(B){ // (update logic)
 			default: return 1.0f;
 		}
 	}
-	this(SacMap!B map, Sides!B sides, Proximity!B proximity){
+	this(SacMap!B map, Sides!B sides, Proximity!B proximity, PathFinder!B pathFinder){
 		this.map=map;
 		this.sides=sides;
 		this.proximity=proximity;
+		this.pathFinder=pathFinder;
 		sid=SideManager!B(32);
 	}
 	bool isOnGround(Vector3f position){
@@ -8683,6 +8797,10 @@ final class ObjectState(B){ // (update logic)
 	}
 	float getGroundHeightDerivative(Vector3f position,Vector3f direction){
 		return map.getGroundHeightDerivative(position,direction);
+	}
+	PathFinder!B pathFinder;
+	void findPath(ref Array!Vector3f path,Vector3f start,Vector3f target,float radius){
+		pathFinder.findPath(path,start,target,radius,this);
 	}
 	OrderTarget collideRay(alias filter=None,T...)(Vector3f start,Vector3f direction,float limit,T args){
 		auto landscape=map.rayIntersection(start,direction,limit);
@@ -9111,6 +9229,20 @@ final class ObjectState(B){ // (update logic)
 		obj.addCommandCone(cone);
 	}
 	SideManager!B sid;
+	Queue!int* aiQueue(int side){
+		return sid.aiQueue(side);
+	}
+	bool frontOfAIQueue(int side,int id){
+		if(auto q=aiQueue(side)) return q.front==id;
+		return false;
+	}
+	bool pushToAIQueue(int side,int id){
+		if(auto q=aiQueue(side)){
+			q.push(id);
+			return true;
+		}
+		return false;
+	}
 	void clearSelection(int side){
 		sid.clearSelection(side);
 	}
@@ -9426,6 +9558,7 @@ struct SideData(B){
 	CreatureGroup[10] groups;
 	int lastSelected=0;
 	int selectionMultiplicity=0;
+	Queue!int aiQueue;
 	void updateLastSelected(int id){
 		if(lastSelected!=id){
 			lastSelected=id;
@@ -9489,6 +9622,10 @@ struct SideManager(B){
 	}
 	void opAssign(SideManager!B rhs){
 		assignArray(sides,rhs.sides);
+	}
+	Queue!int* aiQueue(int side){
+		if(!(0<=side&&side<sides.length)) return null;
+		return &sides[side].aiQueue;
 	}
 	void clearSelection(int side){
 		if(!(0<=side&&side<sides.length)) return;
@@ -9988,9 +10125,10 @@ final class GameState(B){
 	}body{
 		auto sides=new Sides!B(sids);
 		auto proximity=new Proximity!B();
-		current=new ObjectState!B(map,sides,proximity);
-		next=new ObjectState!B(map,sides,proximity);
-		lastCommitted=new ObjectState!B(map,sides,proximity);
+		auto pathFinder=new PathFinder!B();
+		current=new ObjectState!B(map,sides,proximity,pathFinder);
+		next=new ObjectState!B(map,sides,proximity,pathFinder);
+		lastCommitted=new ObjectState!B(map,sides,proximity,pathFinder);
 		triggers=new Triggers!B();
 		commands.length=1;
 		foreach(ref structure;ntts.structures)

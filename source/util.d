@@ -367,6 +367,38 @@ struct Queue(T){
 	void clear(){ payload.length=first=last=0; }
 }
 
+struct Heap(T){
+	private Array!T payload;
+	void clear(){ payload.length=0; }
+	bool empty(){ return payload.length==0; }
+	this(this){ payload=payload.dup; }
+	void opAssign(Heap!T rhs){ this.payload=rhs.payload; }
+	void opAssign(ref Heap!T rhs){ assignArray(payload,rhs.payload); }
+	void push(T value){
+		payload~=move(value);
+		for(size_t i=payload.length-1;i;i=(i-1)/2){
+			if(payload[i].less(payload[(i-1)/2]))
+				swap(payload[i],payload[(i-1)/2]);
+			else break;
+		}
+	}
+	T pop(){
+		swap(payload[0],payload[$-1]);
+		auto result=move(payload[$-1]);
+		payload.removeBack(1);
+		for(size_t i=0;2*i+1<payload.length;){
+			auto j=2*i+1;
+			if(2*i+2<payload.length&&payload[2*i+2].less(payload[j]))
+				j=2*i+2;
+			if(payload[j].less(payload[i])){
+				swap(payload[i],payload[j]);
+				i=j;
+			}else break;
+		}
+		return result;
+	}
+}
+
 struct Stack(T){
 	private T[] data;
 	bool empty(){

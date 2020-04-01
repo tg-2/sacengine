@@ -32,7 +32,7 @@ class Recording(B){
 		if(!sides) sides=state.sides;
 		else enforce(sides is state.sides);
 		if(committed.length<120){
-			auto copy=new ObjectState!B(state.map,state.sides,state.proximity);
+			auto copy=new ObjectState!B(state.map,state.sides,state.proximity,state.pathFinder);
 			copy.copyFrom(state);
 			committed~=copy;
 		}else{

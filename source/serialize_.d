@@ -151,6 +151,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Ord
 void serialize(alias sink)(ref PositionPredictor locationPredictor){ serializeStruct!sink(locationPredictor); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==PositionPredictor)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink)(ref Path path){ serializeStruct!sink(path); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Path)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink)(ref CreatureAI creatureAI){ serializeStruct!sink(creatureAI); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==CreatureAI)){ deserializeStruct(result,state,data); }
 
@@ -403,13 +406,13 @@ void serialize(alias sink,B)(ref SideManager!B sides){ serializeStruct!sink(side
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SideManager!B)){ deserializeStruct(result,state,data); }
 
 void serialize(alias sink,B)(ObjectState!B state){
-	enum noserialize=["map","sides","proximity","toRemove"];
+	enum noserialize=["map","sides","proximity","pathFinder","toRemove"];
 	assert(!state.proximity.active);
 	assert(state.toRemove.length==0);
 	serializeClass!(sink,noserialize)(state);
 }
 void deserialize(T,R)(T state,ref R data)if(is(T==ObjectState!B,B)){
-	enum noserialize=["map","sides","proximity","toRemove"];
+	enum noserialize=["map","sides","proximity","pathFinder","toRemove"];
 	assert(!state.proximity.active);
 	assert(state.toRemove.length==0);
 	deserializeClass!noserialize(state,state,data);
@@ -448,11 +451,12 @@ void deserialize(T,R)(T recording,ref R data)if(is(T==Recording!B,B)){
 	auto sides=new Sides!B();
 	deserializeClass!(["manaParticles","shrineParticles","manahoarParticles"])(sides,ObjectState!B.init,data);
 	auto proximity=new Proximity!B();
+	auto pathFinder=new PathFinder!B();
 	size_t len;
 	deserialize(len,ObjectState!B.init,data);
 	enforce(len!=0);
 	foreach(i;0..len){
-		auto state=new ObjectState!B(map,sides,proximity);
+		auto state=new ObjectState!B(map,sides,proximity,pathFinder);
 		foreach(w;nttData.widgetss){ // TODO: get rid of code duplication
 			auto curObj=SacObject!B.getWIDG(w.tag);
 			foreach(pos;w.positions){

@@ -103,7 +103,8 @@ final class SacMap(B){
 		if(i<0||i+1>=n||j<0||j+1>=m) return typeof(return).init;
 		Tuple!(int,"j",int,"i")[3][2] tri;
 		int nt=0;
-		void makeTri(int[] indices)(){
+		void makeTri(int[] idx)()@nogc{
+			static immutable indices=idx;
 			foreach(k,ref x;tri[nt++]){
 				x=tuple!("j","i")(j+dj(indices[k]),i+di(indices[k]));
 			}
@@ -285,8 +286,8 @@ SuperImage[] loadMAPTs(string directory){
 		}).array;
 }
 
-int di(int k){ return k==1||k==2; }
-int dj(int k){ return k==2||k==3; }
+int di(int k)@nogc{ return k==1||k==2; }
+int dj(int k)@nogc{ return k==2||k==3; }
 void getFaces(O)(bool[][] edges,int j,int i,O o){
 	if(!edges[j][i]){
 		if(!edges[j+1][i+1]&&!edges[j][i+1]) o.put([0,2,1]);
