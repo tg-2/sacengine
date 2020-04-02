@@ -387,7 +387,29 @@ class PathFinder(B){
 	static bool unblocked(Vector3f position,ObjectState!B state){
 		enum eps=1.0f;
 		static immutable Vector3f[3] offsets=[Vector3f(-0.5f*eps,eps,0.0f),Vector3f(0.5f*eps,eps,0.0f),Vector3f(0.0f,-eps,0.0f)];
-		foreach(ref off;offsets) if(!state.isOnGround(position+off)) return false; // TODO: read edge map directly?
+		foreach(ref off;offsets) if(!state.isOnGround(position+off)) return false;
+		return true;
+	}
+	static bool unblocked(int x,int y,ObjectState!B state){
+		if(x<=0||y<=0||x+1>=xlen||y+1>=ylen) return false;
+		int nx=x/2, ny=cast(int)ylen/2-1-(y+1)/2;
+		auto edges=state.map.edges;
+		if(!(x&1)&&!(y&1)) return !edges[ny][nx]&&!edges[ny][nx-1]&&!edges[ny-1][nx]&&!edges[ny][nx+1]&&!edges[ny+1][nx];
+		if((x&1)&&(y&1)){
+			foreach(j;ny..ny+1)
+				foreach(i;nx..nx+1)
+					if(edges[j][i]) return false;
+			return true;
+		}
+		if(x&1&&!(y&1)){
+			if(edges[ny][nx]||edges[ny][nx+1]) return false;
+			if(edges[ny-1][nx]&&edges[ny-1][nx+1]) return false;
+			if(edges[ny+1][nx]&&edges[ny+1][nx]) return false;
+			return true;
+		}
+		if(edges[ny][nx]||edges[ny+1][nx]) return false;
+		if(edges[ny][nx-1]&&edges[ny+1][nx-1]) return false;
+		if(edges[ny][nx+1]&&edges[ny+1][nx+1]) return false;
 		return true;
 	}
 	Heap!Entry heap;
@@ -404,9 +426,9 @@ class PathFinder(B){
 				if(ok) return false;
 			}
 		}
-		/+import std.datetime.stopwatch;
+		import std.datetime.stopwatch;
 		auto sw=StopWatch(AutoStart.yes);
-		scope(success){ writeln(sw.peek.total!"hnsecs"*1e-7*1e3,"ms"); }+/
+		scope(success){ writeln(sw.peek.total!"hnsecs"*1e-7*1e3,"ms"); }
 		auto nstart=roundToGrid(start,state);
 		auto nend=roundToGrid(end,state);
 		import core.stdc.string: memset;
@@ -434,8 +456,9 @@ class PathFinder(B){
 				foreach(ny;max(0,cur.y-1)..min(cur.y+2,ylen)){
 					if(cur.x==nx&&cur.y==ny) continue;
 					if(pred[nx][ny]) continue;
+					if(!unblocked(nx,ny,state)) continue;
 					auto npos=position(nx,ny,state);
-					if(!unblocked(npos,state)) continue;
+					//if(!unblocked(npos,state)) continue;
 					auto distance=cur.distance+(pos-npos).length;
 					auto heuristic=distance+max(0.0f,(endpos-position(nx,ny,state)).length-radius);
 					if(heuristic>=dist[nx][ny]) continue;
