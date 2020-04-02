@@ -337,16 +337,17 @@ struct Path{
 	}
 	Vector3f nextTarget(B)(Vector3f currentPosition,Vector3f newTarget,float radius,bool frontOfAIQueue,ObjectState!B state){
 		++age;
-		if(frontOfAIQueue){
-			if(targetPosition!=newTarget||age>2*updateFPS){
-				state.findPath(path,currentPosition,newTarget,radius);
-				targetPosition=newTarget;
-				age=0;
-			}
-		}else if((newTarget-targetPosition).lengthsqr>2.0f*directWalkDistance^^2)
+		if((newTarget-targetPosition).lengthsqr>2.0f*directWalkDistance^^2)
 			reset();
 		while(path.length&&(path.back()-currentPosition).lengthsqr<2.0f*directWalkDistance^^2)
 			path.removeBack(1);
+		if(frontOfAIQueue){
+			if(targetPosition!=newTarget||age>2*updateFPS){
+				if(state.findPath(path,currentPosition,newTarget,radius))
+					targetPosition=newTarget;
+				age=0;
+			}
+		}
 		if(path.length) return path.back();
 		return newTarget;
 	}
@@ -361,7 +362,8 @@ class PathFinder(B){
 		//bool less(ref Entry rhs){ return distance<rhs.distance; }
 	}
 	ubyte[512][512] pred;
-	enum xlen=pred.length, ylen=pred[0].length;
+	float[512][512] dist;
+	enum xlen=dist.length, ylen=dist[0].length;
 	static Tuple!(int,"x",int,"y") roundToGrid(Vector3f position,ObjectState!B state){
 		enum scale=1.0f/directWalkDistance;
 		//int x=cast(int)round(scale*(position.x+position.y)-0.5f);
@@ -384,43 +386,61 @@ class PathFinder(B){
 	}
 	static bool unblocked(Vector3f position,ObjectState!B state){
 		enum eps=1.0f;
-		static immutable Vector3f[4] offsets=[Vector3f(-eps,0.0f,0.0f),Vector3f(eps,0.0f,0.0f),
-		                                      Vector3f(0.0f,-eps,0.0f),Vector3f(0.0f,eps,0.0f)];
+		static immutable Vector3f[3] offsets=[Vector3f(-0.5f*eps,eps,0.0f),Vector3f(0.5f*eps,eps,0.0f),Vector3f(0.0f,-eps,0.0f)];
 		foreach(ref off;offsets) if(!state.isOnGround(position+off)) return false; // TODO: read edge map directly?
 		return true;
 	}
 	Heap!Entry heap;
-	void findPath(ref Array!Vector3f path,Vector3f start,Vector3f end,float radius,ObjectState!B state){
+	bool findPath(ref Array!Vector3f path,Vector3f start,Vector3f end,float radius,ObjectState!B state){
+		if(path.length){ // check validity of existing path
+			if((path.back-start).lengthsqr<8.0f*directWalkDistance^^2){
+				bool ok=true;
+				foreach(p;path.data){
+					if(!unblocked(p,state)){
+						ok=false;
+						break;
+					}
+				}
+				if(ok) return false;
+			}
+		}
+		/+import std.datetime.stopwatch;
+		auto sw=StopWatch(AutoStart.yes);
+		scope(success){ writeln(sw.peek.total!"hnsecs"*1e-7*1e3,"ms"); }+/
 		auto nstart=roundToGrid(start,state);
 		auto nend=roundToGrid(end,state);
 		import core.stdc.string: memset;
-		memset(&pred,0,pred.sizeof); // TODO: optimize this?
+		memset(&pred,0,pred.sizeof);
+		foreach(ref d;dist) d[]=float.infinity;
+		//writeln("memset: ",sw.peek.total!"hnsecs"*1e-7*1e3,"ms");
 		heap.clear();
 		auto endpos=position(nend.expand,state);
-		if(!unblocked(endpos,state)) return; // TODO
+		if(!unblocked(endpos,state)) return false; // TODO
 		heap.push(Entry(0.0f,max(0.0f,(endpos-position(nstart.expand,state)).length-radius),nstart.expand,0xff));
-		auto x=nend.x,y=nend.y;
-		while(!heap.empty()){
+		auto x=nstart.x,y=nstart.y;
+		dist[x][y]=0.0f;
+		enum limit=11000;
+		int j=0;
+		for(int i=0;!heap.empty()&&i<limit;){
 			auto cur=heap.pop();
 			if(pred[cur.x][cur.y]) continue;
+			i++;
 			pred[cur.x][cur.y]=cur.dir;
+			x=cur.x,y=cur.y;
 			if(cur.x==nend.x&&cur.y==nend.y) break;
 			auto pos=position(cur.x,cur.y,state);
-			if(radius!=0.0f&&(pos-endpos).lengthsqr<radius^^2){
-				x=cur.x,y=cur.y;
-				break;
-			}
-			for(int dx=-1;dx<=1;dx++){
-				for(int dy=-1;dy<=1;dy++){
-					if(!dx&&!dy) continue;
-					auto nx=cur.x+dx,ny=cur.y+dy;
-					if(nx<0||ny<0||nx>=xlen||ny>=ylen) continue;
+			if(radius!=0.0f&&(pos-endpos).lengthsqr<radius^^2) break;
+			foreach(nx;max(0,cur.x-1)..min(cur.x+2,xlen)){
+				foreach(ny;max(0,cur.y-1)..min(cur.y+2,ylen)){
+					if(cur.x==nx&&cur.y==ny) continue;
 					if(pred[nx][ny]) continue;
 					auto npos=position(nx,ny,state);
 					if(!unblocked(npos,state)) continue;
 					auto distance=cur.distance+(pos-npos).length;
 					auto heuristic=distance+max(0.0f,(endpos-position(nx,ny,state)).length-radius);
-					ubyte dir=cast(ubyte)(4*(-dx+1)+(-dy+1)+1);
+					if(heuristic>=dist[nx][ny]) continue;
+					dist[nx][ny]=heuristic;
+					byte dir=cast(ubyte)(4*(x-nx+1)+(y-ny+1)+1);
 					heap.push(Entry(distance,heuristic,nx,ny,dir));
 				}
 			}
@@ -435,6 +455,7 @@ class PathFinder(B){
 			auto dy=(pred[x][y]-1)%4-1;
 			x+=dx, y+=dy;
 		}
+		return true;
 	}
 }
 
@@ -8807,8 +8828,8 @@ final class ObjectState(B){ // (update logic)
 		return map.getGroundHeightDerivative(position,direction);
 	}
 	PathFinder!B pathFinder;
-	void findPath(ref Array!Vector3f path,Vector3f start,Vector3f target,float radius){
-		pathFinder.findPath(path,start,target,radius,this);
+	bool findPath(ref Array!Vector3f path,Vector3f start,Vector3f target,float radius){
+		return pathFinder.findPath(path,start,target,radius,this);
 	}
 	OrderTarget collideRay(alias filter=None,T...)(Vector3f start,Vector3f direction,float limit,T args){
 		auto landscape=map.rayIntersection(start,direction,limit);
