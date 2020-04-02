@@ -397,7 +397,7 @@ class PathFinder(B){
 		memset(&pred,0,pred.sizeof); // TODO: optimize this?
 		heap.clear();
 		auto endpos=position(nend.expand,state);
-		if(!state.isOnGround(endpos)) return; // TODO
+		if(!unblocked(endpos,state)) return; // TODO
 		heap.push(Entry(0.0f,max(0.0f,(endpos-position(nstart.expand,state)).length-radius),nstart.expand,0xff));
 		auto x=nend.x,y=nend.y;
 		while(!heap.empty()){
