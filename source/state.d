@@ -426,9 +426,9 @@ class PathFinder(B){
 				if(ok) return false;
 			}
 		}
-		import std.datetime.stopwatch;
+		/+import std.datetime.stopwatch;
 		auto sw=StopWatch(AutoStart.yes);
-		scope(success){ writeln(sw.peek.total!"hnsecs"*1e-7*1e3,"ms"); }
+		scope(success){ writeln(sw.peek.total!"hnsecs"*1e-7*1e3,"ms"); }+/
 		auto nstart=roundToGrid(start,state);
 		auto nend=roundToGrid(end,state);
 		import core.stdc.string: memset;
