@@ -451,7 +451,7 @@ void deserialize(T,R)(T recording,ref R data)if(is(T==Recording!B,B)){
 	auto sides=new Sides!B();
 	deserializeClass!(["manaParticles","shrineParticles","manahoarParticles"])(sides,ObjectState!B.init,data);
 	auto proximity=new Proximity!B();
-	auto pathFinder=new PathFinder!B();
+	auto pathFinder=new PathFinder!B(map);
 	size_t len;
 	deserialize(len,ObjectState!B.init,data);
 	enforce(len!=0);

@@ -353,6 +353,36 @@ struct Path{
 	}
 }
 class PathFinder(B){
+	bool[512][512] free;
+	float[512][512] heights;
+	this(SacMap!B map){
+		auto edges=map.edges;
+		foreach(x;0..512){
+			foreach(y;0..512){
+				if(x<=0||y<=0||x+1>=xlen||y+1>=ylen){ free[x][y]=false; continue; }
+				int nx=x/2, ny=cast(int)ylen/2-1-(y+1)/2;
+				if(!(x&1)&&!(y&1)){ free[x][y]=!edges[ny][nx]&&!edges[ny][nx-1]&&!edges[ny-1][nx]&&!edges[ny][nx+1]&&!edges[ny+1][nx]; continue; }
+				if((x&1)&&(y&1)){ free[x][y]=!edges[ny][nx]&&!edges[ny][nx+1]&&!edges[ny+1][nx]&&!edges[ny+1][nx+1]; continue; }
+				if(x&1&&!(y&1)){
+					if(edges[ny][nx]||edges[ny][nx+1]) free[x][y]=false;
+					else if((!ny||edges[ny-1][nx])&&(!ny||edges[ny-1][nx+1])) free[x][y]=false;
+					else if(edges[ny+1][nx]&&edges[ny+1][nx+1]) free[x][y]=false;
+					else free[x][y]=true;
+				}else{
+					if(edges[ny][nx]||edges[ny+1][nx]) free[x][y]=false;
+					else if(edges[ny][nx-1]&&edges[ny+1][nx-1]) free[x][y]=false;
+					else if(edges[ny][nx+1]&&(ny+1>=256||edges[ny+1][nx+1])) free[x][y]=false;
+					else free[x][y]=true;
+				}
+			}
+		}
+		enum scale=directWalkDistance;
+		foreach(x;0..512){
+			foreach(y;0..512){
+				heights[x][y]=map.getHeight(Vector3f(scale*x,scale*y,0.0f));
+			}
+		}
+	}
 	struct Entry{
 		float distance;
 		float heuristic;
@@ -374,14 +404,14 @@ class PathFinder(B){
 		y=max(0,min(y,ylen-1));
 		return tuple!("x","y")(x,y);
 	}
-	static Vector3f position(int x,int y,ObjectState!B state){
+	Vector3f position(int x,int y,ObjectState!B state){
 		enum scale=directWalkDistance;
 		//auto a=scale*(0.5f*(x-y)+128.0f);
 		//auto b=scale*(0.5f*(x+y)-127.5f);
 		auto a=scale*x;
 		auto b=scale*y;
-		auto p=Vector3f(a,b,0.0f);
-		p.z=state.getHeight(p);
+		auto p=Vector3f(a,b,0.0f,heights[x][y]);
+		//p.z=state.getHeight(p);
 		return p;
 	}
 	static bool unblocked(Vector3f position,ObjectState!B state){
@@ -390,22 +420,8 @@ class PathFinder(B){
 		foreach(ref off;offsets) if(!state.isOnGround(position+off)) return false;
 		return true;
 	}
-	static bool unblocked(int x,int y,ObjectState!B state){
-		if(x<=0||y<=0||x+1>=xlen||y+1>=ylen) return false;
-		int nx=x/2, ny=cast(int)ylen/2-1-(y+1)/2;
-		auto edges=state.map.edges;
-		if(!(x&1)&&!(y&1)) return !edges[ny][nx]&&!edges[ny][nx-1]&&!edges[ny-1][nx]&&!edges[ny][nx+1]&&!edges[ny+1][nx];
-		if((x&1)&&(y&1)) return !edges[ny][nx]&&!edges[ny][nx+1]&&!edges[ny+1][nx]&&!edges[ny+1][nx+1];
-		if(x&1&&!(y&1)){
-			if(edges[ny][nx]||edges[ny][nx+1]) return false;
-			if(edges[ny-1][nx]&&edges[ny-1][nx+1]) return false;
-			if(edges[ny+1][nx]&&edges[ny+1][nx+1]) return false;
-			return true;
-		}
-		if(edges[ny][nx]||edges[ny+1][nx]) return false;
-		if(edges[ny][nx-1]&&edges[ny+1][nx-1]) return false;
-		if(edges[ny][nx+1]&&edges[ny+1][nx+1]) return false;
-		return true;
+	bool unblocked(int x,int y,ObjectState!B state){
+		return free[x][y];
 	}
 	Heap!Entry heap;
 	bool findPath(ref Array!Vector3f path,Vector3f start,Vector3f end,float radius,ObjectState!B state){
@@ -443,8 +459,8 @@ class PathFinder(B){
 			path.length=0;
 			return true;
 		}
-		/+import std.datetime.stopwatch;
-		auto sw=StopWatch(AutoStart.yes);
+		import std.datetime.stopwatch;
+		/+auto sw=StopWatch(AutoStart.yes);
 		scope(success){ writeln(sw.peek.total!"hnsecs"*1e-7*1e3,"ms"); }+/
 		import core.stdc.string: memset;
 		memset(&pred,0,pred.sizeof);
@@ -10194,7 +10210,7 @@ final class GameState(B){
 	}body{
 		auto sides=new Sides!B(sids);
 		auto proximity=new Proximity!B();
-		auto pathFinder=new PathFinder!B();
+		auto pathFinder=new PathFinder!B(map);
 		current=new ObjectState!B(map,sides,proximity,pathFinder);
 		next=new ObjectState!B(map,sides,proximity,pathFinder);
 		lastCommitted=new ObjectState!B(map,sides,proximity,pathFinder);
