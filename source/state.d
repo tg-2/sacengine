@@ -399,7 +399,7 @@ class PathFinder(B){
 		if(x&1&&!(y&1)){
 			if(edges[ny][nx]||edges[ny][nx+1]) return false;
 			if(edges[ny-1][nx]&&edges[ny-1][nx+1]) return false;
-			if(edges[ny+1][nx]&&edges[ny+1][nx]) return false;
+			if(edges[ny+1][nx]&&edges[ny+1][nx+1]) return false;
 			return true;
 		}
 		if(edges[ny][nx]||edges[ny+1][nx]) return false;
