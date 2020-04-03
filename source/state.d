@@ -395,12 +395,7 @@ class PathFinder(B){
 		int nx=x/2, ny=cast(int)ylen/2-1-(y+1)/2;
 		auto edges=state.map.edges;
 		if(!(x&1)&&!(y&1)) return !edges[ny][nx]&&!edges[ny][nx-1]&&!edges[ny-1][nx]&&!edges[ny][nx+1]&&!edges[ny+1][nx];
-		if((x&1)&&(y&1)){
-			foreach(j;ny..ny+1)
-				foreach(i;nx..nx+1)
-					if(edges[j][i]) return false;
-			return true;
-		}
+		if((x&1)&&(y&1)) return !edges[ny][nx]&&!edges[ny][nx+1]&&!edges[ny+1][nx]&&!edges[ny+1][nx+1];
 		if(x&1&&!(y&1)){
 			if(edges[ny][nx]||edges[ny][nx+1]) return false;
 			if(edges[ny-1][nx]&&edges[ny-1][nx+1]) return false;
@@ -426,18 +421,36 @@ class PathFinder(B){
 				if(ok) return false;
 			}
 		}
+		auto nstart=roundToGrid(start,state);
+		auto nend=roundToGrid(end,state);
+		if(!unblocked(nend.expand,state)){
+			int dist=int.max;
+			int cx=nend.x, cy=nend.y;
+			foreach(nx;max(0,nend.x-2)..min(nend.x+3,xlen)){
+				foreach(ny;max(0,nend.y-2)..min(nend.y+3,ylen)){
+					int cand=(nx-nend.x)^^2+(ny-nend.y)^^2;
+					if(unblocked(nx,ny,state)&&cand<dist){
+						cx=nx, cy=ny;
+						dist=cand;
+					}
+				}
+			}
+			if(dist==int.max) return false; // TODO
+			nend.x=cx, nend.y=cy;
+		}
+		auto endpos=position(nend.expand,state);
+		if((start-end).lengthsqr<(end-endpos).lengthsqr){
+			path.length=0;
+			return true;
+		}
 		/+import std.datetime.stopwatch;
 		auto sw=StopWatch(AutoStart.yes);
 		scope(success){ writeln(sw.peek.total!"hnsecs"*1e-7*1e3,"ms"); }+/
-		auto nstart=roundToGrid(start,state);
-		auto nend=roundToGrid(end,state);
 		import core.stdc.string: memset;
 		memset(&pred,0,pred.sizeof);
 		foreach(ref d;dist) d[]=float.infinity;
 		//writeln("memset: ",sw.peek.total!"hnsecs"*1e-7*1e3,"ms");
 		heap.clear();
-		auto endpos=position(nend.expand,state);
-		if(!unblocked(endpos,state)) return false; // TODO
 		heap.push(Entry(0.0f,max(0.0f,(endpos-position(nstart.expand,state)).length-radius),nstart.expand,0xff));
 		auto x=nstart.x,y=nstart.y;
 		dist[x][y]=0.0f;
@@ -476,7 +489,7 @@ class PathFinder(B){
 			if(pred[x][y]==0) break;
 			auto dx=(pred[x][y]-1)/4-1;
 			auto dy=(pred[x][y]-1)%4-1;
-			x+=dx, y+=dy;
+			x+=dx,y+=dy;
 		}
 		return true;
 	}
