@@ -386,7 +386,7 @@ class PathFinder(B){
 	struct Entry{
 		float distance;
 		float heuristic;
-		int x,y;
+		short x,y;
 		ubyte dir;
 		bool less(ref Entry rhs){ return heuristic<rhs.heuristic; }
 		//bool less(ref Entry rhs){ return distance<rhs.distance; }
@@ -394,17 +394,17 @@ class PathFinder(B){
 	ubyte[512][512] pred;
 	float[512][512] dist;
 	enum xlen=dist.length, ylen=dist[0].length;
-	static Tuple!(int,"x",int,"y") roundToGrid(Vector3f position,ObjectState!B state){
+	static Tuple!(short,"x",short,"y") roundToGrid(Vector3f position,ObjectState!B state){
 		enum scale=1.0f/directWalkDistance;
 		//int x=cast(int)round(scale*(position.x+position.y)-0.5f);
 		//int y=cast(int)round(scale*(-position.x+position.y)+255.5f);
-		int x=cast(int)round(scale*position.x);
-		int y=cast(int)round(scale*position.y);
-		x=max(0,min(x,xlen-1));
-		y=max(0,min(y,ylen-1));
+		short x=cast(short)round(scale*position.x);
+		short y=cast(short)round(scale*position.y);
+		x=max(cast(short)0,min(x,cast(short)(xlen-1)));
+		y=max(cast(short)0,min(y,cast(short)(ylen-1)));
 		return tuple!("x","y")(x,y);
 	}
-	Vector3f position(int x,int y,ObjectState!B state){
+	Vector3f position(short x,short y,ObjectState!B state){
 		enum scale=directWalkDistance;
 		//auto a=scale*(0.5f*(x-y)+128.0f);
 		//auto b=scale*(0.5f*(x+y)-127.5f);
@@ -420,7 +420,7 @@ class PathFinder(B){
 		foreach(ref off;offsets) if(!state.isOnGround(position+off)) return false;
 		return true;
 	}
-	bool unblocked(int x,int y,ObjectState!B state){
+	bool unblocked(short x,short y,ObjectState!B state){
 		return free[x][y];
 	}
 	Heap!Entry heap;
@@ -441,9 +441,9 @@ class PathFinder(B){
 		auto nend=roundToGrid(end,state);
 		if(!unblocked(nend.expand,state)){
 			int dist=int.max;
-			int cx=nend.x, cy=nend.y;
-			foreach(nx;max(0,nend.x-2)..min(nend.x+3,xlen)){
-				foreach(ny;max(0,nend.y-2)..min(nend.y+3,ylen)){
+			short cx=nend.x, cy=nend.y;
+			foreach(short nx;max(cast(short)0,cast(short)(nend.x-2))..min(cast(short)(nend.x+3),cast(short)xlen)){
+				foreach(short ny;max(cast(short)0,cast(short)(nend.y-2))..min(cast(short)(nend.y+3),cast(short)ylen)){
 					int cand=(nx-nend.x)^^2+(ny-nend.y)^^2;
 					if(unblocked(nx,ny,state)&&cand<dist){
 						cx=nx, cy=ny;
@@ -460,8 +460,8 @@ class PathFinder(B){
 			return true;
 		}
 		import std.datetime.stopwatch;
-		/+auto sw=StopWatch(AutoStart.yes);
-		scope(success){ writeln(sw.peek.total!"hnsecs"*1e-7*1e3,"ms"); }+/
+		auto sw=StopWatch(AutoStart.yes);
+		scope(success){ writeln(sw.peek.total!"hnsecs"*1e-7*1e3,"ms"); }
 		import core.stdc.string: memset;
 		memset(&pred,0,pred.sizeof);
 		foreach(ref d;dist) d[]=float.infinity;
@@ -481,8 +481,8 @@ class PathFinder(B){
 			if(cur.x==nend.x&&cur.y==nend.y) break;
 			auto pos=position(cur.x,cur.y,state);
 			if(radius!=0.0f&&(pos-endpos).lengthsqr<radius^^2) break;
-			foreach(nx;max(0,cur.x-1)..min(cur.x+2,xlen)){
-				foreach(ny;max(0,cur.y-1)..min(cur.y+2,ylen)){
+			foreach(nx;max(cast(short)0,cast(short)(cur.x-1))..min(cast(short)(cur.x+2),cast(short)xlen)){
+				foreach(ny;max(cast(short)0,cast(short)(cur.y-1))..min(cast(short)(cur.y+2),cast(short)ylen)){
 					if(cur.x==nx&&cur.y==ny) continue;
 					if(pred[nx][ny]) continue;
 					if(!unblocked(nx,ny,state)) continue;
