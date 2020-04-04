@@ -409,7 +409,7 @@ class PathFinder(B){
 		//auto b=scale*(0.5f*(x+y)-127.5f);
 		auto a=scale*x;
 		auto b=scale*y;
-		auto p=Vector3f(a,b,0.0f,heights[x][y]);
+		auto p=Vector3f(a,b,heights[x][y]);
 		//p.z=state.getHeight(p);
 		return p;
 	}
