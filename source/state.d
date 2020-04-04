@@ -4315,7 +4315,7 @@ bool gargoyleShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Ve
 bool earthflingShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
 	playSoundAt("4tps",position,state,4.0f);
 	auto direction=getShotDirectionWithGravity(accuracy,position,target,rangedAttack,state);
-	auto rotationSpeed=2*pi!float*state.uniform(0.1f,0.4f)/updateFPS;
+	auto rotationSpeed=2*pi!float*state.uniform(0.2f,0.8f)/updateFPS;
 	auto rotationAxis=state.uniformDirection();
 	auto rotationUpdate=rotationQuaternion(rotationAxis,rotationSpeed);
 	state.addEffect(EarthflingProjectile!B(attacker,side,intendedTarget,position,direction*rangedAttack.speed,rangedAttack,rotationUpdate,Quaternionf.identity()));
@@ -7353,6 +7353,7 @@ bool updateEarthflingProjectile(B)(ref EarthflingProjectile!B earthflingProjecti
 		auto oldPosition=position;
 		position+=velocity/updateFPS;
 		velocity.z-=rangedAttack.fallingAcceleration/updateFPS;
+		rotation=rotationUpdate*rotation;
 		earthflingProjectile.animateEarthflingProjectile(oldPosition,state);
 		auto target=earthflingProjectileCollisionTarget(side,intendedTarget,position,state);
 		if(state.isValidTarget(target)){
