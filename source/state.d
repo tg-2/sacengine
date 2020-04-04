@@ -4672,7 +4672,7 @@ bool hasClearShot(B)(ref MovingObject!B object,Vector3f target,int targetId,Obje
 }
 float shootDistance(B)(ref MovingObject!B object,ObjectState!B state){
 	if(auto ra=object.rangedAttack) return 0.8f*ra.range; // TODO: figure out the range limit for AI
-	return -1.0f;
+	return 0.0f;
 }
 bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,ObjectState!B state){
 	if(!isValidAttackTarget(targetId,state)) return true; // TODO
@@ -4846,7 +4846,7 @@ float maxTargetHeight(B)(ref MovingObject!B object,ObjectState!B state){
 bool patrolAround(B)(ref MovingObject!B object,Vector3f position,float range,ObjectState!B state){
 	if(!object.isAggressive(state)) return false;
 	float maxHeight=object.maxTargetHeight(state);
-	auto targetId=state.proximity.closestEnemyInRange(object.side,position,range,EnemyType.all,state,maxHeight);
+	auto targetId=state.proximity.closestEnemyInRange(object.side,position,range+object.shootDistance(state),EnemyType.all,state,maxHeight);
 	if(targetId)
 		if(object.attack(targetId,state))
 			return true;
@@ -5054,7 +5054,7 @@ bool steamCloud(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B st
 }
 
 enum retreatDistance=9.0f;
-enum guardDistance=18.0f; // ok?
+enum guardDistance=20.0f; // ok?
 enum attackDistance=100.0f; // ok?
 enum shelterDistance=50.0f;
 enum scareDistance=50.0f;
