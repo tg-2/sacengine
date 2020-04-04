@@ -383,11 +383,10 @@ class PathFinder(B){
 			}
 		}
 	}
-	struct Entry{
-		float distance;
+	static struct Entry{
 		float heuristic;
+		float distance;
 		short x,y;
-		ubyte dir;
 		bool less(ref Entry rhs){ return heuristic<rhs.heuristic; }
 		//bool less(ref Entry rhs){ return distance<rhs.distance; }
 	}
@@ -460,23 +459,23 @@ class PathFinder(B){
 			return true;
 		}
 		import std.datetime.stopwatch;
-		auto sw=StopWatch(AutoStart.yes);
-		scope(success){ writeln(sw.peek.total!"hnsecs"*1e-7*1e3,"ms"); }
+		/+auto sw=StopWatch(AutoStart.yes);
+		scope(success){ writeln(sw.peek.total!"hnsecs"*1e-7*1e3,"ms"); }+/
 		import core.stdc.string: memset;
 		memset(&pred,0,pred.sizeof);
 		foreach(ref d;dist) d[]=float.infinity;
 		//writeln("memset: ",sw.peek.total!"hnsecs"*1e-7*1e3,"ms");
 		heap.clear();
-		heap.push(Entry(0.0f,max(0.0f,(endpos-position(nstart.expand,state)).length-radius),nstart.expand,0xff));
+		heap.push(Entry(max(0.0f,(endpos-position(nstart.expand,state)).length-radius),0.0f,nstart.expand));
+		pred[nstart.x][nstart.y]=0x7f;
 		auto x=nstart.x,y=nstart.y;
 		dist[x][y]=0.0f;
 		enum limit=11000;
-		int j=0;
 		for(int i=0;!heap.empty()&&i<limit;){
 			auto cur=heap.pop();
-			if(pred[cur.x][cur.y]) continue;
+			if(pred[cur.x][cur.y]&(1<<7)) continue;
 			i++;
-			pred[cur.x][cur.y]=cur.dir;
+			pred[cur.x][cur.y]|=(1<<7);
 			x=cur.x,y=cur.y;
 			if(cur.x==nend.x&&cur.y==nend.y) break;
 			auto pos=position(cur.x,cur.y,state);
@@ -484,16 +483,17 @@ class PathFinder(B){
 			foreach(nx;max(cast(short)0,cast(short)(cur.x-1))..min(cast(short)(cur.x+2),cast(short)xlen)){
 				foreach(ny;max(cast(short)0,cast(short)(cur.y-1))..min(cast(short)(cur.y+2),cast(short)ylen)){
 					if(cur.x==nx&&cur.y==ny) continue;
-					if(pred[nx][ny]) continue;
+					if(pred[nx][ny]&(1<<7)) continue;
 					if(!unblocked(nx,ny,state)) continue;
 					auto npos=position(nx,ny,state);
 					//if(!unblocked(npos,state)) continue;
 					auto distance=cur.distance+(pos-npos).length;
-					auto heuristic=distance+max(0.0f,(endpos-position(nx,ny,state)).length-radius);
+					//auto distance=cur.heuristic-max(0.0f,(endpos-pos).length-radius)+(pos-npos).length;
+					auto heuristic=distance+max(0.0f,(endpos-npos).length-radius);
 					if(heuristic>=dist[nx][ny]) continue;
 					dist[nx][ny]=heuristic;
-					byte dir=cast(ubyte)(4*(x-nx+1)+(y-ny+1)+1);
-					heap.push(Entry(distance,heuristic,nx,ny,dir));
+					pred[nx][ny]=cast(ubyte)(((x-nx+1)<<2)+(y-ny+1));
+					heap.push(Entry(heuristic,distance,nx,ny));
 				}
 			}
 		}
@@ -502,9 +502,9 @@ class PathFinder(B){
 		for(;;){
 			path~=position(x,y,state);
 			if(x==nstart.x&&y==nstart.y) break;
-			if(pred[x][y]==0) break;
-			auto dx=(pred[x][y]-1)/4-1;
-			auto dy=(pred[x][y]-1)%4-1;
+			if(!(pred[x][y]&(1<<7))) break;
+			auto dx=((pred[x][y]&((1<<7)-1))>>2)-1;
+			auto dy=((pred[x][y]&((1<<7)-1))&3)-1;
 			x+=dx,y+=dy;
 		}
 		return true;
