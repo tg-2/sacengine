@@ -4845,6 +4845,7 @@ float maxTargetHeight(B)(ref MovingObject!B object,ObjectState!B state){
 
 bool patrolAround(B)(ref MovingObject!B object,Vector3f position,float range,ObjectState!B state){
 	if(!object.isAggressive(state)) return false;
+	if((object.position.xy-position.xy).lengthsqr>range^^2) return false;
 	float maxHeight=object.maxTargetHeight(state);
 	auto targetId=state.proximity.closestEnemyInRange(object.side,position,range+object.shootDistance(state),EnemyType.all,state,maxHeight);
 	if(targetId)
