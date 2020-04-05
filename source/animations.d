@@ -77,3 +77,18 @@ string generateAnimationState(){
 	return "enum AnimationState{"~names.join(",")~",pullDown,dig,cower,talkCower}";
 }
 mixin(generateAnimationState);
+
+enum SacDoctorAnimationState: AnimationState{
+	stance=AnimationState.stance1,
+	dance=AnimationState.idle0,
+	walk=AnimationState.tumble,
+	run=AnimationState.run,
+	expelled=AnimationState.falling,
+	bounce=AnimationState.hitFloor,
+	stab=AnimationState.attack0,
+	pumpCorpse=AnimationState.attack1,
+	pickUpCorpse=AnimationState.attack2,
+	stance2Torture=AnimationState.runSpellcastStart,
+	torture=AnimationState.runSpellcast,
+	torture2Stance=AnimationState.runSpellcastEnd,
+}

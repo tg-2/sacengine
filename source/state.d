@@ -337,7 +337,7 @@ struct Path{
 	}
 	Vector3f nextTarget(B)(Vector3f currentPosition,Vector3f newTarget,float radius,bool frontOfAIQueue,ObjectState!B state){
 		++age;
-		if((newTarget-targetPosition).lengthsqr>2.0f*directWalkDistance^^2)
+		if((newTarget-targetPosition).lengthsqr>directWalkDistance^^2)
 			reset();
 		while(path.length&&(path.back()-currentPosition).lengthsqr<2.0f*directWalkDistance^^2)
 			path.removeBack(1);
@@ -593,8 +593,9 @@ float acceleration(B)(ref MovingObject!B object,ObjectState!B state){
 
 bool isWizard(B)(ref MovingObject!B obj){ return obj.sacObject.isWizard; }
 bool isPeasant(B)(ref MovingObject!B obj){ return obj.sacObject.isPeasant; }
+bool isSacDoctor(B)(ref MovingObject!B obj){ return obj.sacObject.isSacDoctor; }
 bool canSelect(B)(ref MovingObject!B obj,int side,ObjectState!B state){
-	return obj.side==side&&!obj.isWizard&&!obj.isPeasant&&!obj.creatureState.mode.among(CreatureMode.dead,CreatureMode.dissolving);
+	return obj.side==side&&!obj.isWizard&&!obj.isPeasant&&!obj.isSacDoctor&&!obj.creatureState.mode.among(CreatureMode.dead,CreatureMode.dissolving);
 }
 bool canOrder(B)(ref MovingObject!B obj,int side,ObjectState!B state){
 	return (side==-1||obj.side==side)&&!obj.creatureState.mode.among(CreatureMode.dead,CreatureMode.dissolving);
@@ -1544,7 +1545,8 @@ int placeWizard(B)(ObjectState!B state,SacObject!B wizard,int flags,int side,int
 			Vector3f position;
 			if(closestManafount){
 				auto dir2d=(manafountPosition-altar.position).xy.normalized*distance;
-				facing=atan2(dir2d.y,dir2d.x)-pi!float/2.0f;
+				if(dir2d.x==0.0f&&dir2d.y==0.0f) dir2d=Vector2f(0.0f,1.0f);
+				facing=atan2(-dir2d.x,dir2d.y);
 				position=altar.position+Vector3f(dir2d.x,dir2d.y,0.0f);
 			}else{
 				auto facingOffset=(bldg.isStratosAltar?pi!float/4.0f:0.0f)+pi!float;
@@ -1721,6 +1723,27 @@ struct BlueRing(B){
 	Vector3f position;
 	float scale=1.0f;
 	int frame=0;
+}
+
+struct RedVortex{
+	Vector3f position;
+	float scale=0.0f;
+	int frame=0;
+	enum radius=2.5f;
+	enum numFramesToEmerge=120;
+	enum numFrames=120;
+	enum numFramesToDisappear=60;
+	enum height=15;
+}
+
+struct ConvertCasting(B){
+	int side;
+	ManaDrain!B manaDrain;
+	SacSpell!B spell;
+	int target;
+	Vector3f landingPosition;
+	RedVortex vortex;
+	bool underway=true;
 }
 
 struct TeleportCasting(B){
@@ -2078,6 +2101,12 @@ struct Protector(B){
 	SacSpell!B ability;
 }
 
+struct Disappearance{
+	int id;
+	int lifetime;
+	int frame=0;
+}
+
 struct Effects(B){
 	// misc
 	Array!(Debris!B) debris;
@@ -2144,6 +2173,14 @@ struct Effects(B){
 		speedUps~=speedUp;
 	}
 	Array!(TeleportCasting!B) teleportCastings;
+	Array!(ConvertCasting!B) convertCastings;
+	void addEffect(ConvertCasting!B convertCasting){
+		convertCastings~=convertCasting;
+	}
+	void removeConvertCasting(int i){
+		if(i+1<convertCastings.length) convertCastings[i]=move(convertCastings[$-1]);
+		convertCastings.length=convertCastings.length-1;
+	}
 	void addEffect(TeleportCasting!B teleportCasting){
 		teleportCastings~=teleportCasting;
 	}
@@ -2444,6 +2481,14 @@ struct Effects(B){
 		if(i+1<protectors.length) protectors[i]=move(protectors[$-1]);
 		protectors.length=protectors.length-1;
 	}
+	Array!(Disappearance) disappearances;
+	void addEffect(Disappearance disappearance){
+		disappearances~=disappearance;
+	}
+	void removeDisappearance(int i){
+		if(i+1<disappearances.length) disappearances[i]=move(disappearances[$-1]);
+		disappearances.length=disappearances.length-1;
+	}
 	void opAssign(ref Effects!B rhs){
 		assignArray(debris,rhs.debris);
 		assignArray(explosions,rhs.explosions);
@@ -2452,6 +2497,7 @@ struct Effects(B){
 		assignArray(creatureCasts,rhs.creatureCasts);
 		assignArray(structureCasts,rhs.structureCasts);
 		assignArray(blueRings,rhs.blueRings);
+		assignArray(convertCastings,rhs.convertCastings);
 		assignArray(teleportCastings,rhs.teleportCastings);
 		assignArray(teleportEffects,rhs.teleportEffects);
 		assignArray(teleportRings,rhs.teleportRings);
@@ -2489,6 +2535,7 @@ struct Effects(B){
 		assignArray(stealths,rhs.stealths);
 		assignArray(lifeShields,rhs.lifeShields);
 		assignArray(protectors,rhs.protectors);
+		assignArray(disappearances,rhs.disappearances);
 	}
 	void opAssign(Effects!B rhs){ this.tupleof=rhs.tupleof; }
 }
@@ -3958,9 +4005,9 @@ bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,Ob
 	auto manaCostPerFrame=spell.manaCost/numManaDrainFrames;
 	auto manaDrain=ManaDrain!B(object.id,manaCostPerFrame,numManaDrainFrames);
 	(*wizard).applyCooldown(spell,state);
-	bool stun(){
-		object.damageStun(Vector3f(0.0f,0.0f,-1.0f),state);
-		return false;
+	bool stun(bool ok=false){
+		if(!ok) object.damageStun(Vector3f(0.0f,0.0f,-1.0f),state);
+		return ok;
 	}
 	final switch(spell.type){
 		case SpellType.creature:
@@ -3974,29 +4021,30 @@ bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,Ob
 		case SpellType.spell:
 			bool ok=false;
 			switch(spell.tag){
+				case SpellTag.convert:
+					return stun(castConvert(object.side,manaDrain,spell,object.position,target.id,state));
 				case SpellTag.teleport:
-					return castTeleport(manaDrain,spell,object.position,target.id,state);
+					return stun(castTeleport(manaDrain,spell,object.position,target.id,state));
 				case SpellTag.speedup:
 					ok=target.id==object.id?speedUp(object,spell,state):speedUp(target.id,spell,state);
 					goto default;
 				case SpellTag.heal:
-					return target.id==object.id?castHeal(object,manaDrain,spell,state):castHeal(target.id,manaDrain,spell,state);
+					return stun(target.id==object.id?castHeal(object,manaDrain,spell,state):castHeal(target.id,manaDrain,spell,state));
 				case SpellTag.lightning:
-					return target.id==object.id?castLightning(object,manaDrain,spell,state):castLightning(target.id,manaDrain,spell,state);
+					return stun(target.id==object.id?castLightning(object,manaDrain,spell,state):castLightning(target.id,manaDrain,spell,state));
 				case SpellTag.wrath:
-					return target.id==object.id?castWrath(object,manaDrain,spell,state):castWrath(target.id,manaDrain,spell,state);
+					return stun(target.id==object.id?castWrath(object,manaDrain,spell,state):castWrath(target.id,manaDrain,spell,state));
 				case SpellTag.fireball:
-					return target.id==object.id?castFireball(object,manaDrain,spell,state):castFireball(target.id,manaDrain,spell,state);
+					return stun(target.id==object.id?castFireball(object,manaDrain,spell,state):castFireball(target.id,manaDrain,spell,state));
 				case SpellTag.rock:
 					auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
-					return target.id==object.id?castRock(object.id,object,manaDrain,spell,castingTime,state):castRock(object.id,target.id,manaDrain,spell,castingTime,state);
+					return stun(target.id==object.id?castRock(object.id,object,manaDrain,spell,castingTime,state):castRock(object.id,target.id,manaDrain,spell,castingTime,state));
 				case SpellTag.insectSwarm:
 					auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
-					return target.id==object.id?castSwarm(object,manaDrain,spell,castingTime,state):castSwarm(target.id,manaDrain,spell,castingTime,state);
+					return stun(target.id==object.id?castSwarm(object,manaDrain,spell,castingTime,state):castSwarm(target.id,manaDrain,spell,castingTime,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
-					else stun();
-					return ok;
+					return stun(ok);
 			}
 		case SpellType.structure:
 			if(!spell.isBuilding) goto case SpellType.spell;
@@ -4020,6 +4068,17 @@ bool startShooting(B)(ref MovingObject!B object,ObjectState!B state){
 	object.stopMovement(state);
 	object.creatureState.mode=CreatureMode.shooting;
 	object.setCreatureState(state);
+	return true;
+}
+
+bool castConvert(B)(int side,ManaDrain!B manaDrain,SacSpell!B spell,Vector3f castPosition,int target,ObjectState!B state){
+	auto targetPosition=state.soulById!((ref soul)=>soul.position,function()=>Vector3f.init)(target);
+	if(isNaN(targetPosition.x)) return false;
+	auto direction=(targetPosition-castPosition).normalized;
+	auto position=targetPosition+20.0f*direction;
+	auto landingPosition=0.5f*(position+targetPosition);
+	position.z=state.getHeight(position)+RedVortex.height;
+	state.addEffect(ConvertCasting!B(side,manaDrain,spell,target,landingPosition,RedVortex(position)));
 	return true;
 }
 
@@ -4375,7 +4434,9 @@ bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state,float th
 
 float facingTowards(B)(ref MovingObject!B object,Vector3f position,ObjectState!B state){
 	auto direction=position.xy-object.position.xy;
-	return atan2(-direction.x,direction.y);
+	auto result=atan2(-direction.x,direction.y);
+	if(isNaN(result)) return 0.0f;
+	return result;
 }
 
 bool turnToFaceTowards(B)(ref MovingObject!B object,Vector3f position,ObjectState!B state,float threshold=defaultFaceThreshold){
@@ -4419,6 +4480,7 @@ bool pitchToFaceTowards(B)(ref MovingObject!B object,Vector3f position,ObjectSta
 		direction.z+=object.creatureState.targetFlyingHeight;
 	auto distance=direction.xy.length;
 	auto pitch_=atan2(direction.z,distance);
+	if(isNaN(pitch_)) pitch_=0.0f;
 	return object.pitch(pitch_,state);
 }
 
@@ -4428,6 +4490,7 @@ bool movingForwardGetsCloserTo(B)(ref MovingObject!B object,Vector3f position,fl
 	auto rotationSpeed=object.creatureStats.rotationSpeed(object.creatureState.movement==CreatureMovement.flying);
 	auto forward=Vector2f(-sin(facing),cos(facing));
 	auto angle=atan2(-direction.x,direction.y);
+	if(isNaN(angle)) return false;
 	angle-=object.creatureState.facing;
 	while(angle<-pi!float) angle+=2*pi!float;
 	while(angle>pi!float) angle-=2*pi!float;
@@ -4915,7 +4978,7 @@ bool rockForm(B)(ref MovingObject!B object,ObjectState!B state){
 void updateRenderMode(B)(int target,ObjectState!B state){
 	if(!state.isValidTarget(target,TargetType.creature)) return;
 	static RenderMode targetMode(ref MovingObject!B object,ObjectState!B state){
-		if(object.creatureStats.effects.stealth) return RenderMode.transparent;
+		if(object.creatureStats.effects.stealth||object.creatureStats.effects.disappearing) return RenderMode.transparent;
 		return RenderMode.opaque;
 	}
 	final switch(state.movingObjectById!(targetMode,()=>RenderMode.opaque)(target,state)){
@@ -4958,6 +5021,12 @@ bool protector(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B sta
 	if(!object.lifeShield(lifeShield,state)) return false;
 	state.addEffect(Protector!B(object.id,ability));
 	return true;
+}
+
+void disappear(B)(ref MovingObject!B object,int lifetime,ObjectState!B state){
+	if(object.creatureStats.effects.disappearing) return;
+	object.creatureStats.effects.disappearing=true;
+	state.addEffect(Disappearance(object.id,lifetime));
 }
 
 bool checkAbility(B)(ref MovingObject!B object,SacSpell!B ability,Target target,ObjectState!B state){
@@ -5210,6 +5279,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 				}
 			}
 			object.frame+=1;
+			if(object.isSacDoctor&&object.frame==70) object.disappear(50,state);
 			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
 				object.frame=0;
 				final switch(object.creatureState.movement){
@@ -5398,6 +5468,11 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 						if(object.animationState.among(AnimationState.knocked2Floor,AnimationState.getUp))
 							goto case CreatureMovement.onGround;
 						// continue tumbling
+						if(object.isSacDoctor){
+							if(object.animationState==cast(AnimationState)SacDoctorAnimationState.expelled){
+								object.frame=sacObject.numFrames(object.animationState)*updateAnimFactor-1;
+							}
+						}
 						break;
 				}
 			}
@@ -6149,6 +6224,71 @@ bool updateSpeedUp(B)(ref SpeedUp!B speedUp,ObjectState!B state){
 		},()=>false)(creature,framesLeft,state);
 	}
 }
+
+bool updateRedVortex(B)(ref RedVortex vortex,ObjectState!B state){
+	vortex.frame+=1;
+	if(vortex.scale>0.3f){
+		vortex.position.z=state.getHeight(vortex.position)+vortex.height;
+		foreach(i;0..2){
+			auto sacParticle=SacParticle!B.get(ParticleType.redVortexDroplet);
+			auto velocity=0.1f*state.uniformDirection();
+			velocity.z-=5.0f;
+			auto position=vortex.position+vortex.scale*Vector3f(0.0f,0.0f,-0.8f*vortex.radius)+0.35f*vortex.radius*Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),0.0f);
+			auto scale=1.0f;
+			auto frame=0;
+			state.addParticle(Particle!B(sacParticle,position,velocity,scale,sacParticle.numFrames,frame));
+		}
+	}
+	return true;
+}
+
+int spawnSacDoctor(B)(int side,Vector3f position,Vector3f landingPosition,ObjectState!B state){
+	auto curObj=SacObject!B.getSAXS!Creature(SpellTag.sacDoctor);
+	position.z=max(position.z-0.9f*RedVortex.radius,state.getHeight(position));
+	auto direction=landingPosition-position;
+	auto facing=atan2(-direction.x,direction.y);
+	if(isNaN(facing)) facing=0.0f;
+	auto mode=CreatureMode.stunned;
+	auto movement=CreatureMovement.tumbling;
+	auto creatureState=CreatureState(mode, movement, facing);
+	enum jumpVelocity=15.0f, g=30.0f;
+	creatureState.fallingVelocity.z=jumpVelocity;
+	auto fallingHeight=position.z-landingPosition.z;
+	auto fallingTime=jumpVelocity/g+sqrt(max(0.0f,jumpVelocity^^2+2.0f*g*fallingHeight))/g;
+	creatureState.fallingVelocity.x=direction.x/fallingTime;
+	creatureState.fallingVelocity.y=direction.y/fallingTime;
+	auto rotation=facingQuaternion(facing);
+	auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState,curObj.creatureStats(Flags.cannotDamage),side);
+	obj.setCreatureState(state);
+	obj.updateCreaturePosition(state);
+	obj.animationState=cast(AnimationState)SacDoctorAnimationState.expelled;
+	return state.addObject(obj);
+}
+
+bool updateConvertCasting(B)(ref ConvertCasting!B convertCast,ObjectState!B state){
+	with(convertCast){
+		vortex.updateRedVortex(state);
+		if(underway){
+			vortex.scale=min(1.0,vortex.scale+1.0f/vortex.numFramesToEmerge);
+			final switch(manaDrain.update(state)){
+				case CastingStatus.underway:
+					return true;
+				case CastingStatus.interrupted: underway=false; break;
+				case CastingStatus.finished:
+					underway=false;
+					spawnSacDoctor(side,vortex.position,landingPosition,state);
+					break;
+			}
+		}else{
+			if(vortex.frame>vortex.numFramesToEmerge+vortex.numFrames){
+				vortex.scale=max(0.0,vortex.scale-1.0f/vortex.numFramesToDisappear);
+				if(vortex.scale==0.0f) return false;
+			}
+		}
+		return true;
+	}
+}
+
 
 bool updateTeleportCasting(B)(ref TeleportCasting!B teleportCast,ObjectState!B state){
 	with(teleportCast){
@@ -7838,6 +7978,20 @@ bool updateProtector(B)(ref Protector!B protector,ObjectState!B state){
 	return false;
 }
 
+bool updateDisappearance(B)(ref Disappearance disappearance,ObjectState!B state){
+	with(disappearance){
+		if(!state.isValidTarget(id,TargetType.creature)) return false;
+		updateRenderMode(id,state);
+		++frame;
+		state.setAlpha(id,(float(lifetime-frame)/lifetime)^^2);
+		if(frame>=lifetime){
+			state.removeLater(id);
+			return false;
+		}
+		return true;
+	}
+}
+
 void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.debris.length;){
 		if(!updateDebris(effects.debris[i],state)){
@@ -7884,6 +8038,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.blueRings.length;){
 		if(!updateBlueRing(effects.blueRings[i],state)){
 			effects.removeBlueRing(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.convertCastings.length;){
+		if(!updateConvertCasting(effects.convertCastings[i],state)){
+			effects.removeConvertCasting(i);
 			continue;
 		}
 		i++;
@@ -8150,6 +8311,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.protectors.length;){
 		if(!updateProtector(effects.protectors[i],state)){
 			effects.removeProtector(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.disappearances.length;){
+		if(!updateDisappearance(effects.disappearances[i],state)){
+			effects.removeDisappearance(i);
 			continue;
 		}
 		i++;

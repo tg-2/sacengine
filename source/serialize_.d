@@ -253,6 +253,12 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Str
 void serialize(alias sink,B)(ref BlueRing!B blueRing){ serializeStruct!sink(blueRing); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BlueRing!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink)(ref RedVortex vortex){ serializeStruct!sink(vortex); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==RedVortex)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref ConvertCasting!B convertCasting){ serializeStruct!sink(convertCasting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ConvertCasting!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref TeleportCasting!B teleportCasting){ serializeStruct!sink(teleportCasting); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==TeleportCasting!B)){ deserializeStruct(result,state,data); }
 
@@ -372,6 +378,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Div
 
 void serialize(alias sink,B)(ref Protector!B protector){ serializeStruct!sink(protector); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Protector!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink)(ref Disappearance disappearance){ serializeStruct!sink(disappearance); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Disappearance)){ deserializeStruct(result,state,data); }
 
 private alias Effects=state.Effects;
 void serialize(alias sink,B)(ref Effects!B effects){ serializeStruct!sink(effects); }

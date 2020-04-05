@@ -49,6 +49,9 @@ final class SacObject(B){
 	@property bool isPeasant(){
 		return isPeasant_;
 	}
+	@property bool isSacDoctor(){
+		return nttTag==SpellTag.sacDoctor;
+	}
 	@property int creaturePriority(){
 		return cre8?cre8.spellOrder:0;
 	}
@@ -56,7 +59,7 @@ final class SacObject(B){
 		return cre8&&cre8.creatureType=="ylfo";
 	}
 	@property bool isPacifist(){
-		return !cre8||cre8.aggressiveness==0;
+		return !cre8||cre8.aggressiveness==0||isSacDoctor;
 	}
 	@property float aggressiveRange(){
 		if(auto ra=rangedAttack) return max(65.0f,1.5f*ra.range); // TODO: ok?
@@ -541,6 +544,9 @@ final class SacObject(B){
 		}
 		saxsi.createMeshes(animations[AnimationState.stance1].frames[0]);
 		initializeNTTData(dat2.saxsModel);
+		if(isSacDoctor){
+			animations[AnimationState.death0]=animations[cast(AnimationState)SacDoctorAnimationState.dance];
+		}
 	}
 	static SacObject!B[char[4]] objects;
 	static void resetStateIndex(){
@@ -832,6 +838,8 @@ enum ParticleType{
 	heal,
 	relativeHeal,
 	lightningCasting,
+	redVortexDroplet,
+	blueVortexDroplet,
 	spark,
 	castPersephone,
 	castPyro,
@@ -869,6 +877,8 @@ final class SacParticle(B){
 				return true;
 			case manalith,shrine,manahoar,firy,fire,fireball,explosion,explosion2,speedUp,heal,relativeHeal,lightningCasting:
 				return false;
+			case redVortexDroplet,blueVortexDroplet:
+				return true;
 			case castPersephone,castPyro,castJames,castStratos,castCharnel:
 				return false;
 			case wrathCasting,wrathExplosion1,wrathExplosion2,steam:
@@ -891,6 +901,8 @@ final class SacParticle(B){
 				return false;
 			case relativeHeal,lightningCasting:
 				return true;
+			case redVortexDroplet,blueVortexDroplet:
+				return false;
 			case castPersephone,castPyro,castJames,castStratos,castCharnel:
 				return false;
 			case wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,ashParticle,steam,smoke,dirt,dust,rock,swarmHit:
@@ -901,7 +913,7 @@ final class SacParticle(B){
 	}
 	@property bool bumpOffGround(){
 		switch(type) with(ParticleType){
-			case wrathParticle,ashParticle,rock,swarmHit: return true;
+			case wrathParticle,ashParticle,rock,swarmHit,redVortexDroplet,blueVortexDroplet: return true;
 			default: return false;
 		}
 	}
@@ -975,6 +987,18 @@ final class SacParticle(B){
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
 			case lightningCasting:
+				width=height=1.0f;
+				this.energy=3.0f;
+				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/cst0.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
+			case redVortexDroplet:
+				width=height=1.0f;
+				this.energy=3.0f;
+				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/vtx2.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
+			case blueVortexDroplet:
 				width=height=1.0f;
 				this.energy=3.0f;
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/cst0.TXTR"));
@@ -1103,6 +1127,7 @@ final class SacParticle(B){
 	@property int delay(){
 		switch(type) with(ParticleType){
 			case speedUp: return 2;
+			case redVortexDroplet: return 2;
 			case ashParticle: return 3;
 			case smoke: return 4;
 			case fire: return 2;
@@ -1136,6 +1161,8 @@ final class SacParticle(B){
 				return min(1.0f,(lifetime/(0.75f*numFrames))^^2);
 			case lightningCasting,spark:
 				return 1.0;
+			case redVortexDroplet,blueVortexDroplet:
+				return min(1.0f,(lifetime/(0.75f*numFrames))^^2);
 			case castPersephone,castPyro,castJames,castStratos,castCharnel:
 				return 1.0f;
 			case wrathCasting:
@@ -1173,6 +1200,8 @@ final class SacParticle(B){
 				return 1.0f;
 			case lightningCasting,spark:
 				return 1.0f;
+			case redVortexDroplet,blueVortexDroplet:
+				return min(1.0f,(lifetime/(0.75f*numFrames)));
 			case castPersephone,castPyro,castJames,castStratos,castCharnel:
 				return 1.0f;
 			case wrathCasting:
@@ -1349,6 +1378,47 @@ struct SacBlueRing(B){
 	}
 }
 
+B.BoneMesh[] makeLineMeshes(B)(int numSegments,int nU,int nV){
+	auto meshes=new B.BoneMesh[](nU*nV);
+	foreach(t,ref mesh;meshes){
+		mesh=B.makeBoneMesh(3*4*numSegments,3*2*numSegments);
+		int u=cast(int)t%nU,v=cast(int)t/nU;
+		enum length=10.0f;
+		enum size=0.3f;
+		enum sqrt34=sqrt(0.75f);
+		static immutable Vector3f[3] offsets=[size*Vector3f(0.0f,-1.0f,0.0f),size*Vector3f(sqrt34,0.5f,0.0f),size*Vector3f(-sqrt34,0.5f,0.0f)];
+		int numFaces=0;
+		void addFace(uint[3] face...){
+			mesh.indices[numFaces++]=face;
+		}
+		foreach(i;0..numSegments){
+			Vector3f getCenter(int i){
+				return Vector3f(0.0f,0.0f,length*float(i)/numSegments);
+			}
+			foreach(j;0..3){
+				foreach(k;0..4){
+					int vertex=3*4*i+4*j+k;
+					auto center=((k==1||k==2)?i+1:i);
+					auto position=getCenter(center)+((k==2||k==3)&&center!=0&&center!=numSegments?offsets[j]:Vector3f(0.0f,0.0f,0.0f));
+					foreach(l;0..3){
+						mesh.vertices[l][vertex]=position;
+						mesh.boneIndices[vertex][l]=center;
+					}
+					mesh.weights[vertex]=Vector3f(1.0f,0.0f,0.0f);
+					mesh.texcoords[vertex]=Vector2f(1.0f/nU*(u+((i&1)^(k==1||k==2)?1.0f-0.5f/64:0.5f/64)),1.0f/nV*(v+((k==0||k==1)?1.0f-1.0f/64:0.5f/64)));
+				}
+				int b=3*4*i+4*j;
+				addFace([b+0,b+1,b+2]);
+				addFace([b+2,b+3,b+0]);
+			}
+		}
+		assert(numFaces==2*3*numSegments);
+		mesh.normals[]=Vector3f(0.0f, 0.0f, 0.0f);
+		B.finalizeBoneMesh(mesh);
+	}
+	return meshes;
+}
+
 struct SacLightning(B){
 	B.Texture texture;
 	B.Material material;
@@ -1359,46 +1429,9 @@ struct SacLightning(B){
 	enum numFrames=16*updateAnimFactor;
 	auto getFrame(int i){ return frames[i/updateAnimFactor]; }
 	static B.BoneMesh[] createMeshes(){
-		enum nU=4,nV=4;
 		enum numSegments=10;
-		auto meshes=new B.BoneMesh[](nU*nV);
-		foreach(t,ref mesh;meshes){
-			mesh=B.makeBoneMesh(3*4*numSegments,3*2*numSegments);
-			int u=cast(int)t%nU,v=cast(int)t/nU;
-			enum length=10.0f;
-			enum size=0.3f;
-			enum sqrt34=sqrt(0.75f);
-			static immutable Vector3f[3] offsets=[size*Vector3f(0.0f,-1.0f,0.0f),size*Vector3f(sqrt34,0.5f,0.0f),size*Vector3f(-sqrt34,0.5f,0.0f)];
-			int numFaces=0;
-			void addFace(uint[3] face...){
-				mesh.indices[numFaces++]=face;
-			}
-			foreach(i;0..numSegments){
-				static Vector3f getCenter(int i){
-					return Vector3f(0.0f,0.0f,length*float(i)/numSegments);
-				}
-				foreach(j;0..3){
-					foreach(k;0..4){
-						int vertex=3*4*i+4*j+k;
-						auto center=((k==1||k==2)?i+1:i);
-						auto position=getCenter(center)+((k==2||k==3)&&center!=0&&center!=numSegments?offsets[j]:Vector3f(0.0f,0.0f,0.0f));
-						foreach(l;0..3){
-							mesh.vertices[l][vertex]=position;
-							mesh.boneIndices[vertex][l]=center;
-						}
-						mesh.weights[vertex]=Vector3f(1.0f,0.0f,0.0f);
-						mesh.texcoords[vertex]=Vector2f(1.0f/nU*(u+((i&1)^(k==1||k==2)?1.0f-0.5f/64:0.5f/64)),1.0f/nV*(v+((k==0||k==1)?1.0f-1.0f/64:0.5f/64)));
-					}
-					int b=3*4*i+4*j;
-					addFace([b+0,b+1,b+2]);
-					addFace([b+2,b+3,b+0]);
-				}
-			}
-			assert(numFaces==2*3*numSegments);
-			mesh.normals[]=Vector3f(0.0f, 0.0f, 0.0f);
-			B.finalizeBoneMesh(mesh);
-		}
-		return meshes;
+		enum nU=4,nV=4;
+		return makeLineMeshes!B(numSegments,nU,nV);
 	}
 }
 
@@ -1589,6 +1622,72 @@ struct SacDivineSight(B){
 	static B.Mesh[] createMeshes(){
 		return makeSpriteMeshes!B(4,4,2.5f,2.25f);
 	}
+}
+
+struct SacVortex(B){
+	B.Texture redRim,redCenter;
+	B.Texture blueRim,blueCenter;
+	B.Material redRimMat,redCenterMat;
+	B.Material blueRimMat,blueCenterMat;
+	void loadTextures(){
+		redRim=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/vtx1.TXTR"));
+		redCenter=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/vtx2.TXTR"));
+		blueRim=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/ltn2.TXTR"));
+		blueCenter=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/vtx2.TXTR"));
+	}
+	B.Mesh[] rimMeshes;
+	static B.Mesh[] createRimMeshes(){
+		enum nU=4,nV=4;
+		auto meshes=new B.Mesh[](nU*nV);
+		foreach(t,ref mesh;meshes){
+			enum resolution=32;
+			enum numSegments=16*resolution;
+			enum textureMultiplier=1.0f/resolution;
+			auto numVertices=3*numSegments,numFaces=2*2*numSegments;
+			mesh=B.makeMesh(numVertices,numFaces);
+			int u=cast(int)t%nU,v=cast(int)t/nU;
+			int curNumFaces=0;
+			void addFace(uint[3] face...){
+				mesh.indices[curNumFaces++]=face;
+			}
+			enum thickness=0.35f;
+			foreach(i;0..numSegments){
+				auto top=3*i,middle=3*i+1,bottom=3*i+2;
+				auto alpha=2*pi!float*i/numSegments;
+				auto direction=Vector2f(cos(alpha),sin(alpha));
+				mesh.vertices[top]=Vector3f(direction.x,direction.y,0.0f);
+				mesh.vertices[middle]=Vector3f((1.0f-0.5f*thickness)*direction.x,(1.0f-0.5f*thickness)*direction.y,0.0f);
+				mesh.vertices[bottom]=Vector3f((1.0f-thickness)*direction.x,(1.0f-thickness)*direction.y,0.0f);
+				float zigzag(float x,float a,float b){
+					auto α=fmod(x,1);
+					if(cast(int)x&1) α=1-α;
+					return (1-α)*a+α*b;
+				}
+				enum offset=1.0f/64.0f;
+				auto x=zigzag(i*textureMultiplier,1.0f/nU*(u+offset),1.0f/nU*(u+1.0f-offset));
+				mesh.texcoords[top]=Vector2f(x,1.0f/nV*(v+offset));
+				mesh.texcoords[bottom]=mesh.texcoords[top];
+				mesh.texcoords[middle]=Vector2f(x,1.0f/nV*(v+1.0f-offset));
+				int next(int id){ return (id+3)%numVertices; }
+				addFace(top,next(top),middle);
+				addFace(next(top),next(middle),middle);
+				addFace(bottom,middle,next(bottom));
+				addFace(next(bottom),middle,next(middle));
+			}
+			assert(numFaces==2*2*numSegments);
+			mesh.normals[]=Vector3f(0.0f, 0.0f, 0.0f);
+			B.finalizeMesh(mesh);
+		}
+		return meshes;
+	}
+	enum numRimFrames=16*updateAnimFactor;
+	B.Mesh getRimFrame(int i){ return rimMeshes[i/updateAnimFactor]; }
+	B.Mesh[] centerMeshes;
+	static B.Mesh[] createCenterMeshes(){
+		return makeSpriteMeshes!B(4,4,2.0f,2.0f);
+	}
+	enum numCenterFrames=16*updateAnimFactor;
+	B.Mesh getCenterFrame(int i){ return centerMeshes[i/updateAnimFactor]; }
 }
 
 

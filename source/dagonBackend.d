@@ -66,6 +66,34 @@ final class SacScene: Scene{
 		return SacBlueRing!DagonBackend(texture,mat,frames);
 	}
 	SacBlueRing!DagonBackend blueRing;
+	SacVortex!DagonBackend createVortex(){
+		SacVortex!DagonBackend result;
+		result.loadTextures();
+		result.rimMeshes=typeof(return).createRimMeshes();
+		result.redRimMat=createMaterial(shadelessMaterialBackend);
+		result.redRimMat.depthWrite=false;
+		result.redRimMat.blending=Additive;
+		result.redRimMat.energy=10.0f;
+		result.redRimMat.diffuse=result.redRim;
+		result.blueRimMat=createMaterial(shadelessMaterialBackend);
+		result.blueRimMat.depthWrite=false;
+		result.blueRimMat.blending=Additive;
+		result.blueRimMat.energy=10.0f;
+		result.blueRimMat.diffuse=result.blueRim;
+		result.centerMeshes=typeof(return).createCenterMeshes();
+		result.redCenterMat=createMaterial(shadelessMaterialBackend);
+		result.redCenterMat.depthWrite=false;
+		result.redCenterMat.blending=Additive;
+		result.redCenterMat.energy=1.0f;
+		result.redCenterMat.diffuse=result.redCenter;
+		result.blueCenterMat=createMaterial(shadelessMaterialBackend);
+		result.blueCenterMat.depthWrite=false;
+		result.blueCenterMat.blending=Additive;
+		result.blueCenterMat.energy=1.0f;
+		result.blueCenterMat.diffuse=result.blueCenter;
+		return result;
+	}
+	SacVortex!DagonBackend vortex;
 	SacLightning!DagonBackend createLightning(){
 		auto texture=typeof(return).loadTexture();
 		auto mat=createMaterial(shadelessBoneMaterialBackend);
@@ -173,6 +201,7 @@ final class SacScene: Scene{
 		sacDebris=new SacObject!DagonBackend("extracted/models/MODL.WAD!/bold.MRMC/bold.MRMM");
 		explosion=createExplosion();
 		blueRing=createBlueRing();
+		vortex=createVortex();
 		lightning=createLightning();
 		wrath=createWrath();
 		rock=new SacObject!DagonBackend("extracted/models/MODL.WAD!/rock.MRMC/rock.MRMM");
@@ -316,6 +345,14 @@ final class SacScene: Scene{
 			mesh.render(rc);
 		}
 		//mat.unbind(rc); // TODO: needed?
+		/+auto pathFinder=state.current.pathFinder;
+		foreach(y;0..511){
+			foreach(x;0..511){
+				if(!pathFinder.unblocked(x,y,state.current)) continue;
+				auto p=pathFinder.position(x,y,state.current);
+				renderBox([p-Vector3f(1.0f,1.0f,1.0f),p+Vector3f(1.0f,1.0f,1.0f)],false,rc);
+			}
+		}+/
 	}
 
 	final void renderNTTs(RenderMode mode)(RenderingContext* rc){
@@ -463,6 +500,26 @@ final class SacScene: Scene{
 						material.backend.setTransformationScaled(objects.explosions[j].position,Quaternionf.identity(),objects.explosions[j].scale*Vector3f(1.1f,1.1f,0.9f),rc);
 						mesh.render(rc);
 					}
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.convertCastings.length){
+					auto centerMat=scene.vortex.redCenterMat;
+					void renderCenter(ref RedVortex vortex){
+						centerMat.backend.setSpriteTransformationScaled(vortex.position,vortex.scale*vortex.radius,rc);
+						auto mesh=scene.vortex.getCenterFrame(vortex.frame%scene.vortex.numRimFrames);
+						mesh.render(rc);
+					}
+					auto rimMat=scene.vortex.redRimMat;
+					void renderRim(ref RedVortex vortex){
+						rimMat.backend.setSpriteTransformationScaled(vortex.position,vortex.scale*vortex.radius,rc);
+						auto mesh=scene.vortex.getRimFrame(vortex.frame%scene.vortex.numRimFrames);
+						mesh.render(rc);
+					}
+					centerMat.bind(rc);
+					foreach(j;0..objects.convertCastings.length) renderCenter(objects.convertCastings[j].vortex);
+					centerMat.unbind(rc);
+					rimMat.bind(rc);
+					foreach(j;0..objects.convertCastings.length) renderRim(objects.convertCastings[j].vortex);
+					rimMat.unbind(rc);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.blueRings.length||objects.teleportRings.length)){
 					auto material=scene.blueRing.material;
@@ -3052,7 +3109,7 @@ static:
 
 	Material createMaterial(SacParticle!DagonBackend particle){
 		final switch(particle.type) with(ParticleType){
-				case manafount, manalith, manahoar, shrine, firy, fire, fireball, explosion, explosion2, speedUp, heal, relativeHeal, lightningCasting, spark, castPersephone, castPyro, castJames, castStratos, castCharnel, wrathCasting, wrathExplosion1, wrathExplosion2, wrathParticle, steam, ashParticle, smoke, dirt, dust, rock, swarmHit, locustBlood, locustDebris:
+			case manafount, manalith, manahoar, shrine, firy, fire, fireball, explosion, explosion2, speedUp, heal, relativeHeal, lightningCasting, redVortexDroplet, blueVortexDroplet, spark, castPersephone, castPyro, castJames, castStratos, castCharnel, wrathCasting, wrathExplosion1, wrathExplosion2, wrathParticle, steam, ashParticle, smoke, dirt, dust, rock, swarmHit, locustBlood, locustDebris:
 				auto mat=scene.createMaterial(scene.shadelessMaterialBackend);
 				mat.depthWrite=false;
 				mat.blending=particle.type.among(ashParticle,smoke,dirt,dust,rock,swarmHit,locustBlood)?Transparent:Additive;

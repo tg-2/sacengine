@@ -926,6 +926,7 @@ Lswitch: switch(name){
 enum SpellTag:char[4]{
 	// neutral creatures:
 	manahoar="oham",
+	sacDoctor="dcas",
 	// neutral spells:
 	speedup="pups",
 	heal="laeh",
