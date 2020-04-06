@@ -37,6 +37,7 @@ enum CreatureMode{
 	stationaryCasting,
 	castingMoving,
 	shooting,
+	pumping,
 	pretendingToDie,
 	playingDead,
 	pretendingToRevive,
@@ -57,33 +58,33 @@ bool isHidden(CreatureMode mode){
 }
 bool isVisibleToAI(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
-		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting: return true;
+		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping: return true;
 		case dying,dead,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,rockForm: return false;
 	}
 }
 bool isObstacle(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
-		case idle,moving,dying,spawning,reviving,fastReviving,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,
+		case idle,moving,dying,spawning,reviving,fastReviving,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,
 			pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
 		case dead,dissolving,preSpawning: return false;
 	}
 }
 bool isValidAttackTarget(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
-		case idle,moving,dying,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting: return true;
+		case idle,moving,dying,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping: return true;
 		case dead,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,rockForm: return false;
 	}
 }
 bool canHeal(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
-		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,
+		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,
 			pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
 		case dying,dead,dissolving,preSpawning,reviving,fastReviving: return false;
 	}
 }
 bool canShield(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
-		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
+		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
 		case dying,dead,dissolving,preSpawning,reviving,fastReviving: return false;
 	}
 }
@@ -336,11 +337,9 @@ struct Path{
 		targetPosition=Vector3f.init;
 	}
 	Vector3f nextTarget(B)(Vector3f currentPosition,Vector3f newTarget,float radius,bool frontOfAIQueue,ObjectState!B state){
-		++age;
 		if((newTarget-targetPosition).lengthsqr>directWalkDistance^^2)
 			reset();
-		while(path.length&&(path.back()-currentPosition).lengthsqr<2.0f*directWalkDistance^^2)
-			path.removeBack(1);
+		++age;
 		if(frontOfAIQueue){
 			if(targetPosition!=newTarget||age>2*updateFPS){
 				if(state.findPath(path,currentPosition,newTarget,radius))
@@ -348,6 +347,8 @@ struct Path{
 				age=0;
 			}
 		}
+		while(path.length&&(path.back()-currentPosition).lengthsqr<2.0f*directWalkDistance^^2)
+			path.removeBack(1);
 		if(path.length) return path.back();
 		return newTarget;
 	}
@@ -376,17 +377,30 @@ class PathFinder(B){
 
 	void determineComponents(){
 		foreach(ref c;componentIds) c[]=-1;
+		static struct Entry{ short x,y; }
+		Queue!Entry q;
 		foreach(x;0..xlen){
 			foreach(y;0..ylen){
 				if(~componentIds[x][y]) continue;
-				void fill(int x,int y,int id){
+				void fill(short x,short y,int id){
 					if(~componentIds[x][y]||!free[x][y]) return;
 					componentIds[x][y]=id;
-					foreach(nx;max(0,x-1)..min(x+2,xlen))
-						foreach(ny;max(0,y-1)..min(y+2,ylen))
-							fill(nx,ny,id);
+					q.clear();
+					q.push(Entry(x,y));
+					while(!q.empty){
+						auto xy=q.front;
+						q.popFront();
+						x=xy.x,y=xy.y;
+						foreach(nx;max(0,x-1)..min(x+2,xlen)){
+							foreach(ny;max(0,y-1)..min(y+2,ylen)){
+								if(~componentIds[nx][ny]||!free[nx][ny]) continue;
+								componentIds[nx][ny]=id;
+								q.push(Entry(cast(short)nx,cast(short)ny));
+							}
+						}
+					}
 				}
-				fill(x,y,numComponents++);
+				fill(cast(short)x,cast(short)y,numComponents++);
 			}
 		}
 	}
@@ -1777,15 +1791,26 @@ struct ConvertCasting(B){
 	ManaDrain!B manaDrain;
 	SacSpell!B spell;
 	int target;
+	int targetShrine;
 	Vector3f landingPosition;
 	RedVortex vortex;
 	bool underway=true;
 }
 
-struct Conversion(B){
+enum ConversionStatus{
+	fall,
+	walkToSoul,
+	pump,
+	pickUp,
+	move,
+}
+
+struct Conversion{
 	int side;
-	ManaDrain manaDrain;
-	SacSpell!B spell;
+	int sacDoctor;
+	int target;
+	int targetShrine;
+	ConversionStatus status;
 }
 
 struct TeleportCasting(B){
@@ -2223,6 +2248,14 @@ struct Effects(B){
 		if(i+1<convertCastings.length) convertCastings[i]=move(convertCastings[$-1]);
 		convertCastings.length=convertCastings.length-1;
 	}
+	Array!Conversion conversions;
+	void addEffect(Conversion conversion){
+		conversions~=conversion;
+	}
+	void removeConversion(int i){
+		if(i+1<conversions.length) conversions[i]=move(conversions[$-1]);
+		conversions.length=conversions.length-1;
+	}
 	void addEffect(TeleportCasting!B teleportCasting){
 		teleportCastings~=teleportCasting;
 	}
@@ -2540,6 +2573,7 @@ struct Effects(B){
 		assignArray(structureCasts,rhs.structureCasts);
 		assignArray(blueRings,rhs.blueRings);
 		assignArray(convertCastings,rhs.convertCastings);
+		assignArray(conversions,rhs.conversions);
 		assignArray(teleportCastings,rhs.teleportCastings);
 		assignArray(teleportEffects,rhs.teleportEffects);
 		assignArray(teleportRings,rhs.teleportRings);
@@ -3359,6 +3393,11 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 			object.frame=0;
 			object.animationState=object.shootAnimation;
 			break;
+		case CreatureMode.pumping:
+			assert(object.isSacDoctor);
+			object.frame=0;
+			object.animationState=cast(AnimationState)SacDoctorAnimationState.stab;
+			break;
 	}
 }
 
@@ -3520,7 +3559,7 @@ bool canStun(B)(ref MovingObject!B object,ObjectState!B state){
 	if(object.creatureStats.effects.stunCooldown!=0) return false;
 	final switch(object.creatureState.mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,cower,casting,stationaryCasting,castingMoving,shooting: return true;
-		case dying,dead,dissolving,preSpawning,reviving,fastReviving,stunned,pretendingToDie,playingDead,pretendingToRevive,rockForm: return false;
+		case dying,dead,dissolving,preSpawning,reviving,fastReviving,stunned,pretendingToDie,playingDead,pretendingToRevive,rockForm,pumping: return false;
 	}
 }
 
@@ -3718,7 +3757,7 @@ bool canDamage(B)(ref MovingObject!B object,ObjectState!B state){
 	if(object.creatureStats.flags&Flags.cannotDamage) return false;
 	if(object.creatureStats.effects.stealth) return false;
 	final switch(object.creatureState.mode) with(CreatureMode){
-		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting: return true;
+		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping: return true;
 		case dying,dead,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,rockForm: return false;
 	}
 }
@@ -4064,7 +4103,7 @@ bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,Ob
 			bool ok=false;
 			switch(spell.tag){
 				case SpellTag.convert:
-					return stun(castConvert(object.side,manaDrain,spell,object.position,target.id,state));
+					return stun(castConvert(object.side,manaDrain,spell,object.position,target.id,wizard.closestShrine,state));
 				case SpellTag.teleport:
 					return stun(castTeleport(manaDrain,spell,object.position,target.id,state));
 				case SpellTag.speedup:
@@ -4113,7 +4152,17 @@ bool startShooting(B)(ref MovingObject!B object,ObjectState!B state){
 	return true;
 }
 
-bool castConvert(B)(int side,ManaDrain!B manaDrain,SacSpell!B spell,Vector3f castPosition,int target,ObjectState!B state){
+bool startPumping(B)(ref MovingObject!B object,ObjectState!B state){
+	if(!object.isSacDoctor||!object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving))
+		return false;
+	object.stopMovement(state);
+	object.creatureState.mode=CreatureMode.pumping;
+	object.setCreatureState(state);
+	return true;
+}
+
+bool castConvert(B)(int side,ManaDrain!B manaDrain,SacSpell!B spell,Vector3f castPosition,int target,int targetShrine,ObjectState!B state){
+	if(!targetShrine) return false;
 	auto targetPosition=state.soulById!((ref soul,int side){
 		static assert(is(typeof(soul.convertSideMask)==uint));
 		if(0<=side&&side<32) soul.convertSideMask&=~(1u<<side);
@@ -4124,7 +4173,7 @@ bool castConvert(B)(int side,ManaDrain!B manaDrain,SacSpell!B spell,Vector3f cas
 	auto position=targetPosition+20.0f*direction;
 	auto landingPosition=0.5f*(position+targetPosition);
 	position.z=state.getHeight(position)+RedVortex.height;
-	state.addEffect(ConvertCasting!B(side,manaDrain,spell,target,landingPosition,RedVortex(position)));
+	state.addEffect(ConvertCasting!B(side,manaDrain,spell,target,targetShrine,landingPosition,RedVortex(position)));
 	return true;
 }
 
@@ -4690,11 +4739,11 @@ bool stopAndFaceTowards(B)(ref MovingObject!B object,Vector3f position,ObjectSta
 	return object.stop(object.facingTowards(position,state),state);
 }
 
-void moveTowards(B)(ref MovingObject!B object,Vector3f ultimateTargetPosition,float acceptableRadius,ObjectState!B state,bool evade=true,bool maintainHeight=false,bool stayAboveGround=true,int targetId=0){
+void moveTowards(B)(ref MovingObject!B object,Vector3f ultimateTargetPosition,float acceptableRadius,ObjectState!B state,bool evade=true,bool maintainHeight=false,bool stayAboveGround=true,int targetId=0,bool disablePathfinding=false){
 	auto distancesqr=(object.position.xy-ultimateTargetPosition.xy).lengthsqr;
 	auto isFlying=object.creatureState.movement==CreatureMovement.flying;
 	Vector3f targetPosition=ultimateTargetPosition;
-	if(isFlying) object.creatureAI.path.reset();
+	if(isFlying||disablePathfinding) object.creatureAI.path.reset();
 	else targetPosition=object.creatureAI.path.nextTarget(object.position,ultimateTargetPosition,acceptableRadius,state.frontOfAIQueue(object.side,object.id),state);
 	if(isFlying){
 		if(distancesqr>(0.1f*object.speed(state))^^2){
@@ -4727,22 +4776,22 @@ void moveTowards(B)(ref MovingObject!B object,Vector3f ultimateTargetPosition,fl
 	}else object.stopMovement(state);
 }
 
-bool moveTo(B)(ref MovingObject!B object,Vector3f targetPosition,float targetFacing,ObjectState!B state,bool evade=true,bool maintainHeight=false,bool stayAboveGround=true,int targetId=0){
+bool moveTo(B)(ref MovingObject!B object,Vector3f targetPosition,float targetFacing,ObjectState!B state,bool evade=true,bool maintainHeight=false,bool stayAboveGround=true,int targetId=0,bool disablePathfinding=false){
 	auto speed=object.speed(state)/updateFPS;
 	auto distancesqr=(object.position.xy-targetPosition.xy).lengthsqr;
 	if(distancesqr>(2.0f*speed)^^2){
-		object.moveTowards(targetPosition,0.0f,state,evade,maintainHeight,stayAboveGround,targetId);
+		object.moveTowards(targetPosition,0.0f,state,evade,maintainHeight,stayAboveGround,targetId,disablePathfinding);
 		return true;
 	}
 	return object.stop(targetFacing,state);
 }
 
-bool moveWithinRange(B)(ref MovingObject!B object,Vector3f targetPosition,float range,ObjectState!B state,bool evade=true,bool maintainHeight=false,bool stayAboveGround=true,int targetId=0){
+bool moveWithinRange(B)(ref MovingObject!B object,Vector3f targetPosition,float range,ObjectState!B state,bool evade=true,bool maintainHeight=false,bool stayAboveGround=true,int targetId=0,bool disablePathfinding=false){
 	auto speed=object.speed(state)/updateFPS;
 	auto distancesqr=(object.position.xy-targetPosition.xy).lengthsqr;
 	if(distancesqr<=(range-speed)^^2)
 		return false;
-	object.moveTowards(targetPosition,range,state,evade,maintainHeight,stayAboveGround,targetId);
+	object.moveTowards(targetPosition,range,state,evade,maintainHeight,stayAboveGround,targetId,disablePathfinding);
 	return true;
 }
 
@@ -4928,8 +4977,8 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 	auto targetDistance=(position-meleeHitboxCenter).xy.length;
 	if(target||!object.moveWithinRange(movementPosition,2.8f*targetDistance,state,!object.isMeleeAttacking(state),false,false,targetId)){
 		bool evading;
-		if(object.turnToFaceTowardsEvading(movementPosition,evading,state,10.0f*defaultFaceThreshold,true,targetId)&&!evading||
-		   !object.moveWithinRange(movementPosition,0.8*targetDistance,state,!object.isMeleeAttacking(state),false,false,targetId)){
+		if(object.turnToFaceTowardsEvading(movementPosition,evading,state,0.2f*pi!float,true,targetId)&&!evading||
+		   !object.moveWithinRange(movementPosition,0.8*targetDistance,state,!object.isMeleeAttacking(state),false,false,targetId,true)){
 			object.stopMovement(state);
 			object.pitch(0.0f,state);
 		}
@@ -5180,7 +5229,7 @@ enum rotationSpeedLimitFactor=1.0f;
 bool requiresAI(CreatureMode mode){
 	with(CreatureMode) final switch(mode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,casting,stationaryCasting,castingMoving,shooting,playingDead,rockForm: return true;
-		case dying,dead,dissolving,preSpawning,reviving,fastReviving,stunned,cower,pretendingToDie,pretendingToRevive: return false;
+		case dying,dead,dissolving,preSpawning,reviving,fastReviving,stunned,cower,pretendingToDie,pretendingToRevive,pumping: return false;
 	}
 }
 
@@ -5580,7 +5629,13 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
 				object.frame=0;
 				object.startIdling(state);
-				return;
+			}
+			break;
+		case CreatureMode.pumping:
+			object.frame+=1;
+			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
+				object.frame=0;
+				object.animationState=cast(AnimationState)SacDoctorAnimationState.pumpCorpse;
 			}
 			break;
 	}
@@ -6314,19 +6369,26 @@ int spawnSacDoctor(B)(int side,Vector3f position,Vector3f landingPosition,Object
 bool updateConvertCasting(B)(ref ConvertCasting!B convertCast,ObjectState!B state){
 	with(convertCast){
 		vortex.updateRedVortex(state);
+		bool interrupted=false;
+		if(!state.isValidTarget(targetShrine,TargetType.building)){
+			underway=false;
+			interrupted=true;
+		}
 		if(underway){
 			vortex.scale=min(1.0,vortex.scale+1.0f/vortex.numFramesToEmerge);
 			final switch(manaDrain.update(state)){
 				case CastingStatus.underway:
 					return true;
-				case CastingStatus.interrupted: underway=false; break;
+				case CastingStatus.interrupted: underway=false; interrupted=true; break;
 				case CastingStatus.finished:
 					underway=false;
-					spawnSacDoctor(side,vortex.position,landingPosition,state);
+					auto sacDoctor=spawnSacDoctor(side,vortex.position,landingPosition,state);
+					if(!sacDoctor){ underway=false; interrupted=true; break; }
+					state.addEffect(Conversion(side,sacDoctor,target,targetShrine));
 					break;
 			}
 		}else{
-			if(vortex.frame>vortex.numFramesToEmerge+vortex.numFrames){
+			if(interrupted||vortex.frame>vortex.numFramesToEmerge+vortex.numFrames){
 				vortex.scale=max(0.0,vortex.scale-1.0f/vortex.numFramesToDisappear);
 				if(vortex.scale==0.0f) return false;
 			}
@@ -6335,6 +6397,83 @@ bool updateConvertCasting(B)(ref ConvertCasting!B convertCast,ObjectState!B stat
 	}
 }
 
+bool updateConversion(B)(ref Conversion conversion,ObjectState!B state){
+	if(!state.isValidTarget(conversion.sacDoctor,TargetType.creature)){
+		// TODO: free creature if needed
+		return false;
+	}
+	static bool update(ref MovingObject!B sacDoc,Conversion* conversion,ObjectState!B state){
+		with(conversion){
+			bool shrineDestroyed=!state.isValidTarget(targetShrine,TargetType.building);
+			void freeSoul(){
+				state.soulById!((ref soul,side){
+					static assert(is(typeof(soul.convertSideMask)==uint));
+					soul.convertSideMask|=(1u<<side);
+				},(){})(target,side);
+			}
+			final switch(status){
+				case ConversionStatus.fall:
+					if(sacDoc.animationState==cast(AnimationState)SacDoctorAnimationState.bounce){
+						sacDoc.creatureStats.flags&=~Flags.cannotDamage;
+						status=ConversionStatus.walkToSoul;
+						goto case;
+					}
+					break;
+				case ConversionStatus.walkToSoul:
+					if(sacDoc.animationState==cast(AnimationState)SacDoctorAnimationState.bounce) break;
+					if(shrineDestroyed||!state.soulById!((ref soul)=>soul.state.among(SoulState.normal,SoulState.emerging)||!soul.creatureId,()=>false)(target)){
+						sacDoc.kill(state);
+						freeSoul();
+						return false;
+					}
+					auto soulPosition=state.soulById!((ref soul)=>soul.position,()=>Vector3f.init)(target);
+					if((sacDoc.position-soulPosition).lengthsqr<4.0f){
+						sacDoc.clearOrderQueue(state);
+						status=ConversionStatus.pump;
+						sacDoc.startPumping(state);
+					}else if(!sacDoc.hasOrders(state)){
+						auto ord=Order(CommandType.move,OrderTarget(TargetType.soul,target,soulPosition));
+						sacDoc.order(ord,state);
+					}else{
+						sacDoc.creatureAI.order.target.position=soulPosition;
+					}
+					break;
+				case ConversionStatus.pump:
+					if(shrineDestroyed){
+						sacDoc.kill(state);
+					}
+					// TODO: start reviving creature if needed
+					if(sacDoc.creatureState.mode==CreatureMode.dying){
+						// TODO: kill reviving creature if needed
+						freeSoul();
+						return false;
+					}
+					break;
+				case ConversionStatus.pickUp:
+					if(shrineDestroyed){
+						sacDoc.kill(state);
+					}
+					// TODO: pick up creature
+					if(sacDoc.creatureState.mode==CreatureMode.dying){
+						// TODO: free creature
+						return false;
+					}
+					break;
+				case ConversionStatus.move:
+					if(shrineDestroyed){
+						sacDoc.kill(state);
+					}
+					if(sacDoc.creatureState.mode==CreatureMode.dying){
+						// TODO: free creature
+						return false;
+					}
+					break;
+			}
+			return true;
+		}
+	}
+	return state.movingObjectById!(update,function bool(){ assert(0); })(conversion.sacDoctor,&conversion,state);
+}
 
 bool updateTeleportCasting(B)(ref TeleportCasting!B teleportCast,ObjectState!B state){
 	with(teleportCast){
@@ -7866,7 +8005,7 @@ bool updateRockForm(B)(ref RockForm!B rockForm,ObjectState!B state){
 bool checkStealth(B)(ref MovingObject!B obj){
 	final switch(obj.creatureState.mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,cower,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
-		case dying,dead,dissolving,preSpawning,reviving,fastReviving,meleeMoving,meleeAttacking,stunned,casting,stationaryCasting,castingMoving,shooting: return false;
+		case dying,dead,dissolving,preSpawning,reviving,fastReviving,meleeMoving,meleeAttacking,stunned,casting,stationaryCasting,castingMoving,shooting,pumping: return false;
 	}
 }
 
@@ -8091,6 +8230,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.convertCastings.length;){
 		if(!updateConvertCasting(effects.convertCastings[i],state)){
 			effects.removeConvertCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.conversions.length;){
+		if(!updateConversion(effects.conversions[i],state)){
+			effects.removeConversion(i);
 			continue;
 		}
 		i++;
@@ -8652,7 +8798,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 				final switch(mode) with(CreatureMode){
 					case idle,moving,dying,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,pretendingToDie,rockForm: return true;
 					case dead,dissolving,preSpawning,reviving,fastReviving,playingDead,pretendingToRevive: return false;
-					case casting,stationaryCasting,castingMoving,shooting: assert(0);
+					case casting,stationaryCasting,castingMoving,shooting,pumping: assert(0);
 				}
 			}
 			foreach(j;0..objects.length){

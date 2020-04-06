@@ -259,6 +259,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Red
 void serialize(alias sink,B)(ref ConvertCasting!B convertCasting){ serializeStruct!sink(convertCasting); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ConvertCasting!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink)(ref Conversion conversion){ serializeStruct!sink(conversion); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Conversion)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref TeleportCasting!B teleportCasting){ serializeStruct!sink(teleportCasting); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==TeleportCasting!B)){ deserializeStruct(result,state,data); }
 
