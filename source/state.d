@@ -354,35 +354,65 @@ struct Path{
 }
 class PathFinder(B){
 	bool[512][512] free;
-	float[512][512] heights;
-	this(SacMap!B map){
-		auto edges=map.edges;
-		foreach(x;0..512){
-			foreach(y;0..512){
-				if(x<=0||y<=0||x+1>=xlen||y+1>=ylen){ free[x][y]=false; continue; }
-				int nx=x/2, ny=cast(int)ylen/2-1-(y+1)/2;
-				if(!(x&1)&&!(y&1)){ free[x][y]=!edges[ny][nx]&&!edges[ny][nx-1]&&!edges[ny-1][nx]&&!edges[ny][nx+1]&&!edges[ny+1][nx]; continue; }
-				if((x&1)&&(y&1)){ free[x][y]=!edges[ny][nx]&&!edges[ny][nx+1]&&!edges[ny+1][nx]&&!edges[ny+1][nx+1]; continue; }
-				if(x&1&&!(y&1)){
-					if(edges[ny][nx]||edges[ny][nx+1]) free[x][y]=false;
-					else if((!ny||edges[ny-1][nx])&&(!ny||edges[ny-1][nx+1])) free[x][y]=false;
-					else if(edges[ny+1][nx]&&edges[ny+1][nx+1]) free[x][y]=false;
-					else free[x][y]=true;
-				}else{
-					if(edges[ny][nx]||edges[ny+1][nx]) free[x][y]=false;
-					else if(edges[ny][nx-1]&&edges[ny+1][nx-1]) free[x][y]=false;
-					else if(edges[ny][nx+1]&&(ny+1>=256||edges[ny+1][nx+1])) free[x][y]=false;
-					else free[x][y]=true;
-				}
-			}
+	private static bool isFree(int x,int y,bool[][] edges){
+		if(x<=0||y<=0||x+1>=xlen||y+1>=ylen) return false;
+		int nx=x/2, ny=cast(int)ylen/2-1-(y+1)/2;
+		if(!(x&1)&&!(y&1)) return !edges[ny][nx]&&!edges[ny][nx-1]&&!edges[ny-1][nx]&&!edges[ny][nx+1]&&!edges[ny+1][nx];
+		if((x&1)&&(y&1)) return !edges[ny][nx]&&!edges[ny][nx+1]&&!edges[ny+1][nx]&&!edges[ny+1][nx+1];
+		if(x&1&&!(y&1)){
+			if(edges[ny][nx]||edges[ny][nx+1]) return false;
+			if((!ny||edges[ny-1][nx])&&(!ny||edges[ny-1][nx+1])) return false;
+			if(edges[ny+1][nx]&&edges[ny+1][nx+1]) return false;
+		}else{
+			if(edges[ny][nx]||edges[ny+1][nx]) return false;
+			if(edges[ny][nx-1]&&edges[ny+1][nx-1]) return false;
+			if(edges[ny][nx+1]&&(ny+1>=256||edges[ny+1][nx+1])) return false;
 		}
-		enum scale=directWalkDistance;
-		foreach(x;0..512){
-			foreach(y;0..512){
-				heights[x][y]=map.getHeight(Vector3f(scale*x,scale*y,0.0f));
+		return true;
+	}
+	float[512][512] heights;
+	int numComponents=0;
+	int[512][512] componentIds;
+
+	void determineComponents(){
+		foreach(ref c;componentIds) c[]=-1;
+		foreach(x;0..xlen){
+			foreach(y;0..ylen){
+				if(~componentIds[x][y]) continue;
+				void fill(int x,int y,int id){
+					if(~componentIds[x][y]||!free[x][y]) return;
+					componentIds[x][y]=id;
+					foreach(nx;max(0,x-1)..min(x+2,xlen))
+						foreach(ny;max(0,y-1)..min(y+2,ylen))
+							fill(nx,ny,id);
+				}
+				fill(x,y,numComponents++);
 			}
 		}
 	}
+
+	this(SacMap!B map){
+		auto edges=map.edges;
+		foreach(x;0..xlen){
+			foreach(y;0..ylen){
+				free[x][y]=isFree(x,y,edges);
+			}
+		}
+		enum scale=directWalkDistance;
+		foreach(x;0..xlen){
+			foreach(y;0..ylen){
+				heights[x][y]=map.getHeight(Vector3f(scale*x,scale*y,0.0f));
+			}
+		}
+		determineComponents();
+	}
+
+	int getComponentId(Vector3f position,ObjectState!B state){
+		auto xy=closestUnblocked(roundToGrid(position,state).expand,1,state),x=xy[0],y=xy[1];
+		if(x<0||x>=xlen||y<0||y>=ylen) return -1;
+		return componentIds[x][y];
+	}
+
 	static struct Entry{
 		float heuristic;
 		float distance;
@@ -392,7 +422,7 @@ class PathFinder(B){
 	}
 	ubyte[512][512] pred;
 	float[512][512] dist;
-	enum xlen=dist.length, ylen=dist[0].length;
+	enum xlen=cast(int)dist.length, ylen=cast(int)dist[0].length;
 	static Tuple!(short,"x",short,"y") roundToGrid(Vector3f position,ObjectState!B state){
 		enum scale=1.0f/directWalkDistance;
 		//int x=cast(int)round(scale*(position.x+position.y)-0.5f);
@@ -422,6 +452,20 @@ class PathFinder(B){
 	bool unblocked(short x,short y,ObjectState!B state){
 		return free[x][y];
 	}
+	Tuple!(short,"x",short,"y") closestUnblocked(short x,short y,short limit,ObjectState!B state){
+		int dist=int.max;
+		short cx=x, cy=y;
+		foreach(short nx;max(cast(short)0,cast(short)(x-limit))..min(cast(short)(x+limit+1),cast(short)xlen)){
+			foreach(short ny;max(cast(short)0,cast(short)(y-limit))..min(cast(short)(y+limit+1),cast(short)ylen)){
+				int cand=(nx-x)^^2+(ny-y)^^2;
+				if(unblocked(nx,ny,state)&&cand<dist){
+					cx=nx, cy=ny;
+					dist=cand;
+				}
+			}
+		}
+		return tuple!("x","y")(cx,cy);
+	}
 	Heap!Entry heap;
 	bool findPath(ref Array!Vector3f path,Vector3f start,Vector3f end,float radius,ObjectState!B state){
 		if(path.length){ // check validity of existing path
@@ -439,19 +483,9 @@ class PathFinder(B){
 		auto nstart=roundToGrid(start,state);
 		auto nend=roundToGrid(end,state);
 		if(!unblocked(nend.expand,state)){
-			int dist=int.max;
-			short cx=nend.x, cy=nend.y;
-			foreach(short nx;max(cast(short)0,cast(short)(nend.x-2))..min(cast(short)(nend.x+3),cast(short)xlen)){
-				foreach(short ny;max(cast(short)0,cast(short)(nend.y-2))..min(cast(short)(nend.y+3),cast(short)ylen)){
-					int cand=(nx-nend.x)^^2+(ny-nend.y)^^2;
-					if(unblocked(nx,ny,state)&&cand<dist){
-						cx=nx, cy=ny;
-						dist=cand;
-					}
-				}
-			}
-			if(dist==int.max) return false; // TODO
-			nend.x=cx, nend.y=cy;
+			auto cand=closestUnblocked(nend.expand,2,state);
+			if(nend==cand) return false; // TODO
+			nend=cand;
 		}
 		auto endpos=position(nend.expand,state);
 		if((start-end).lengthsqr<(end-endpos).lengthsqr){
@@ -865,6 +899,7 @@ struct Soul(B){
 	int number;
 	Vector3f position;
 	SoulState state;
+	uint convertSideMask=-1;
 	int frame=0;
 	float facing=0.0f;
 	float scaling=1.0f;
@@ -1451,6 +1486,7 @@ struct WizardInfo(B){
 	int souls;
 	float experience;
 	Spellbook!B spellbook;
+	int closestShrine=0;
 
 	void opAssign(ref WizardInfo!B rhs){
 		id=rhs.id;
@@ -1744,6 +1780,12 @@ struct ConvertCasting(B){
 	Vector3f landingPosition;
 	RedVortex vortex;
 	bool underway=true;
+}
+
+struct Conversion(B){
+	int side;
+	ManaDrain manaDrain;
+	SacSpell!B spell;
 }
 
 struct TeleportCasting(B){
@@ -4072,7 +4114,11 @@ bool startShooting(B)(ref MovingObject!B object,ObjectState!B state){
 }
 
 bool castConvert(B)(int side,ManaDrain!B manaDrain,SacSpell!B spell,Vector3f castPosition,int target,ObjectState!B state){
-	auto targetPosition=state.soulById!((ref soul)=>soul.position,function()=>Vector3f.init)(target);
+	auto targetPosition=state.soulById!((ref soul,int side){
+		static assert(is(typeof(soul.convertSideMask)==uint));
+		if(0<=side&&side<32) soul.convertSideMask&=~(1u<<side);
+		return soul.position;
+	},function()=>Vector3f.init)(target,side);
 	if(isNaN(targetPosition.x)) return false;
 	auto direction=(targetPosition-castPosition).normalized;
 	auto position=targetPosition+20.0f*direction;
@@ -8519,6 +8565,34 @@ void animateManahoar(B)(Vector3f location, int side, float rate, ObjectState!B s
 	}
 }
 
+
+int findClosestShrine(B)(int side,Vector3f position,ObjectState!B state){ // TODO: do a single pass for all wizards?
+	static struct Result{
+		int currentId=0;
+		float currentDistance=float.infinity;
+	}
+	static void find(T)(ref T objects,int side,Vector3f position,int componentId,ObjectState!B state,Result* result){
+		static if(is(T==StaticObjects!(B,renderMode),RenderMode renderMode)){
+			if(objects.sacObject.isAltar||objects.sacObject.isShrine){ // TODO: use cached indices?
+				foreach(j;0..objects.length){
+					if(state.buildingById!((ref bldg,side)=>bldg.side!=side||bldg.flags&AdditionalBuildingFlags.inactive,()=>false)(objects.buildingIds[j],side))
+						continue;
+					auto candidateDistance=(position-objects.positions[j]).xy.lengthsqr;
+					if(candidateDistance<result.currentDistance && componentId==state.pathFinder.getComponentId(objects.positions[j],state)){
+						result.currentId=objects.ids[j];
+						result.currentDistance=candidateDistance;
+					}
+				}
+			}
+		}
+	}
+	auto componentId=state.pathFinder.getComponentId(position,state);
+	if(componentId==-1) return 0;
+	Result result;
+	state.eachByType!find(side,position,componentId,state,&result);
+	return result.currentId;
+}
+
 enum SpellbookSoundFlags{
 	none,
 	creatureTab=1,
@@ -8529,7 +8603,9 @@ void playSpellbookSound(B)(int side,SpellbookSoundFlags flags,char[4] tag,Object
 	static if(B.hasAudio) if(playAudio) B.playSpellbookSound(side,flags,tag,gain);
 }
 void updateWizard(B)(ref WizardInfo!B wizard,ObjectState!B state){
-	int side=state.movingObjectById!((ref obj)=>obj.side,()=>-1)(wizard.id);
+	auto sidePosition=state.movingObjectById!((ref obj)=>tuple(obj.side,obj.position),()=>tuple(-1,Vector3f.init))(wizard.id);
+	auto side=sidePosition[0], position=sidePosition[1];
+	wizard.closestShrine=side==-1?0:findClosestShrine(side,position,state);
 	SpellbookSoundFlags flags;
 	foreach(ref entry;wizard.spellbook.spells.data){
 		bool oldReady=entry.ready;
@@ -8547,7 +8623,6 @@ void updateWizard(B)(ref WizardInfo!B wizard,ObjectState!B state){
 	}
 	playSpellbookSound(side,flags,"vaps",state);
 }
-
 
 void addToProximity(T,B)(ref T objects, ObjectState!B state){
 	auto proximity=state.proximity;
@@ -9397,6 +9472,7 @@ final class ObjectState(B){ // (update logic)
 			if(entry.level>wizard.level) return SpellStatus.inexistent;
 			if(spell.soulCost>wizard.souls) return SpellStatus.needMoreSouls;
 			if(entry.cooldown>0.0f) return SpellStatus.notReady;
+			if(spell.tag==SpellTag.convert) if(!wizard.closestShrine) return SpellStatus.mustBeConnectedToConversion;
 			return this.movingObjectById!((obj,spell,state,spellStatusArgs!selectOnly target){
 				if(spell.manaCost>obj.creatureStats.mana+manaEpsilon) return SpellStatus.lowOnMana; // TODO: store mana as exact integer?
 				// if(spell.nearBuilding&&...) return SpellStatus.mustBeNearBuilding; // TODO
@@ -9406,6 +9482,14 @@ final class ObjectState(B){ // (update logic)
 					if(spell.requiresTarget){
 						if(!spell.isApplicable(summarize(target[0],obj.side,this))) return SpellStatus.invalidTarget;
 						if((obj.position-target[0].position).lengthsqr>spell.range^^2) return SpellStatus.outOfRange;
+						if(spell.tag==SpellTag.convert){
+							auto side=state.movingObjectById!(.side,()=>-1)(wizard.id,state);
+							if(0<=side&&side<32){
+								auto convertSideMask=state.soulById!((ref soul)=>soul.convertSideMask,()=>0u)(target[0].id);
+								static assert(is(typeof(convertSideMask)==uint));
+								if(!(convertSideMask&(1u<<side))) return SpellStatus.invalidTarget;
+							}
+						}
 					}
 				}
 				return SpellStatus.ready;

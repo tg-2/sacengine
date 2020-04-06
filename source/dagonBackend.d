@@ -1827,6 +1827,12 @@ final class SacScene: Scene{
 			hudMaterialBackend.bindDiffuse(entry.spell.icon);
 			hudMaterialBackend.setAlpha(factor);
 			quad.render(rc);
+			if(entry.spell.tag==SpellTag.convert&&!wizard.closestShrine){
+				hudMaterialBackend.setTransformationScaled(spellPosition,Quaternionf.identity(),pageScaling,rc);
+				hudMaterialBackend.bindDiffuse(sacCursor.invalidTargetIconTexture);
+				hudMaterialBackend.setAlpha(1.0f);
+				quad.render(rc);
+			}
 			if(entry.spell.soulCost>souls){
 				auto spiritPosition=Vector3f(i*pageScaling.x,height-pageScaling.y,0.0f);
 				auto spiritScaling=hudScaling*Vector3f(16.0f,16.0f,0.0f);
