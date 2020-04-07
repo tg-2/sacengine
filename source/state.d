@@ -3596,6 +3596,7 @@ int makeBuilding(B)(int casterId,char[4] tag,int flags,int base,ObjectState!B st
 }
 
 bool canStun(B)(ref MovingObject!B object,ObjectState!B state){
+	if(object.isSacDoctor) return false;
 	if(object.creatureStats.effects.stunCooldown!=0) return false;
 	final switch(object.creatureState.mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,cower,casting,stationaryCasting,castingMoving,shooting: return true;
