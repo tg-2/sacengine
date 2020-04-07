@@ -4292,6 +4292,7 @@ void animateTeleport(B)(bool isOut,Vector3f[2] hitbox,ObjectState!B state){
 bool teleport(B)(int side,Vector3f startPosition,Vector3f targetPosition,SacSpell!B spell,ObjectState!B state){
 	static void teleport(ref CenterProximityEntry entry,int side,Vector3f startPosition,Vector3f targetPosition,ObjectState!B state){
 		static void doIt(ref MovingObject!B obj,Vector3f startPosition,Vector3f targetPosition,ObjectState!B state){
+			if(obj.isSacDoctor) return;
 			auto oldHeight=obj.position.z-state.getHeight(obj.position);
 			auto newPosition=obj.position-startPosition+targetPosition;
 			if(obj.creatureState.movement!=CreatureMovement.flying&&!state.isOnGround(newPosition)){
