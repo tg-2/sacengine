@@ -51,7 +51,7 @@ struct Animations{
 			char[4] bow;
 			char[4] laugh;
 			char[4] disoriented;
-			char[4] corpseRise; // wizards only
+			char[4] corpseRise;
 			char[4] floatStatic; // wizards only
 			char[4] floatMove; // wizards only
 			char[4] float2Stance; // wizards only

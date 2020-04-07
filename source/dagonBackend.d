@@ -399,7 +399,7 @@ final class SacScene: Scene{
 							material.backend.setTransformation(objects.positions[j], objects.rotations[j], rc);
 							auto id=objects.ids[j];
 							Vector4f information;
-							if(scene.renderSide!=objects.sides[j]&&(!objects.creatureStates[j].mode.isVisibleToAI||objects.creatureStatss[j].effects.stealth)){
+							if(scene.renderSide!=objects.sides[j]&&(!objects.creatureStates[j].mode.isVisibleToOtherSides||objects.creatureStatss[j].effects.stealth)){
 								information=Vector4f(0.0f,0.0f,0.0f,0.0f);
 							}else information=Vector4f(2.0f,id>>16,id&((1<<16)-1),1.0f);
 							material.backend.setInformation(information);
@@ -503,22 +503,60 @@ final class SacScene: Scene{
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.convertCastings.length){
 					auto centerMat=scene.vortex.redCenterMat;
-					void renderCenter(ref RedVortex vortex){
+					void renderRedCenter(ref RedVortex vortex){
 						centerMat.backend.setSpriteTransformationScaled(vortex.position,vortex.scale*vortex.radius,rc);
 						auto mesh=scene.vortex.getCenterFrame(vortex.frame%scene.vortex.numRimFrames);
 						mesh.render(rc);
 					}
 					auto rimMat=scene.vortex.redRimMat;
-					void renderRim(ref RedVortex vortex){
+					void renderRedRim(ref RedVortex vortex){
 						rimMat.backend.setSpriteTransformationScaled(vortex.position,vortex.scale*vortex.radius,rc);
 						auto mesh=scene.vortex.getRimFrame(vortex.frame%scene.vortex.numRimFrames);
 						mesh.render(rc);
 					}
 					centerMat.bind(rc);
-					foreach(j;0..objects.convertCastings.length) renderCenter(objects.convertCastings[j].vortex);
+					foreach(j;0..objects.convertCastings.length) renderRedCenter(objects.convertCastings[j].vortex);
 					centerMat.unbind(rc);
 					rimMat.bind(rc);
-					foreach(j;0..objects.convertCastings.length) renderRim(objects.convertCastings[j].vortex);
+					foreach(j;0..objects.convertCastings.length) renderRedRim(objects.convertCastings[j].vortex);
+					rimMat.unbind(rc);
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.conversions.length){
+					auto getPositionAndScaleForId(int id,float scale){
+						alias H=Vector3f[2];
+						auto hitbox=scene.state.current.movingObjectById!((ref obj)=>obj.hitbox,()=>H.init)(id);
+						auto size=boxSize(hitbox);
+						return tuple(boxCenter(hitbox),scale*0.65f*Vector3f(1.1f*size.length,0.9f*size.length,0.0f)); // TODO
+					}
+					auto centerMat=scene.vortex.blueCenterMat;
+					void renderBlueCenter(Vector3f position,Vector3f scale,int frame){
+						if(isNaN(position.x)) return;
+						centerMat.backend.setSpriteTransformationScaled(position,scale,rc);
+						auto mesh=scene.vortex.getCenterFrame(frame%scene.vortex.numRimFrames);
+						mesh.render(rc);
+					}
+					void renderBlueCenterForId(int id,float scale,int frame){
+						return renderBlueCenter(getPositionAndScaleForId(id,scale).expand,frame);
+					}
+					auto rimMat=scene.vortex.blueRimMat;
+					void renderBlueRim(Vector3f position,Vector3f scale,int frame){
+						if(isNaN(position.x)) return;
+						rimMat.backend.setSpriteTransformationScaled(position,scale,rc);
+						auto mesh=scene.vortex.getRimFrame(frame%scene.vortex.numRimFrames);
+						mesh.render(rc);
+					}
+					void renderBlueRimForId(int id,float scale,int frame){
+						return renderBlueRim(getPositionAndScaleForId(id,scale).expand,frame);
+					}
+					centerMat.bind(rc);
+					foreach(j;0..objects.conversions.length)
+						if(objects.conversions[j].status.among(ConversionStatus.move,ConversionStatus.shrinking))
+							renderBlueCenterForId(objects.conversions[j].creature,objects.conversions[j].vortexScale,objects.conversions[j].frame);
+					centerMat.unbind(rc);
+					rimMat.bind(rc);
+					foreach(j;0..objects.conversions.length)
+						if(objects.conversions[j].status.among(ConversionStatus.move,ConversionStatus.shrinking))
+							renderBlueRimForId(objects.conversions[j].creature,objects.conversions[j].vortexScale,objects.conversions[j].frame);
 					rimMat.unbind(rc);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.blueRings.length||objects.teleportRings.length)){
@@ -1454,7 +1492,7 @@ final class SacScene: Scene{
 					static if(is(typeof(objects.sacObject))){
 						static if(isMoving){
 							if(objects.creatureStates[j].mode.among(CreatureMode.dead,CreatureMode.dissolving)) continue;
-							if(scene.renderSide!=objects.sides[j]&&(!objects.creatureStates[j].mode.isVisibleToAI||objects.creatureStatss[j].effects.stealth))
+							if(scene.renderSide!=objects.sides[j]&&(!objects.creatureStates[j].mode.isVisibleToOtherSides||objects.creatureStatss[j].effects.stealth))
 								continue;
 						}
 						static if(isMoving){
@@ -1491,6 +1529,7 @@ final class SacScene: Scene{
 							}
 						}else static if(is(T==Souls!DagonBackend)){
 							auto soul=objects[j];
+							if(!soul.state.among(SoulState.normal,SoulState.emerging)) return;
 							auto color=soul.color(scene.renderSide,scene.state.current)==SoulColor.blue?blueSoulMinimapColor:redSoulMinimapColor;
 							scene.minimapMaterialBackend.setColor(color);
 						}
@@ -2733,7 +2772,7 @@ final class SacScene: Scene{
 	bool mouseTargetValid(Target target){
 		if(mouse.status!=Mouse.Status.icon||mouse.dragging) return true;
 		import spells:SpelFlags;
-		enum orderSpelFlags=SpelFlags.targetWizards|SpelFlags.targetCreatures|SpelFlags.targetCorpses|SpelFlags.targetStructures|SpelFlags.targetGround;
+		enum orderSpelFlags=SpelFlags.targetWizards|SpelFlags.targetCreatures|SpelFlags.targetCorpses|SpelFlags.targetStructures|SpelFlags.targetGround|AdditionalSpelFlags.targetSacrificed;
 		final switch(mouse.icon){
 			case MouseIcon.guard: return isApplicable(orderSpelFlags,target.summarize(renderSide,state.current));
 			case MouseIcon.attack: return isApplicable(orderSpelFlags,target.summarize(renderSide,state.current));

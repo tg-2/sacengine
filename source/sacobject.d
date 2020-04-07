@@ -1633,7 +1633,7 @@ struct SacVortex(B){
 		redRim=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/vtx1.TXTR"));
 		redCenter=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/vtx2.TXTR"));
 		blueRim=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/ltn2.TXTR"));
-		blueCenter=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/vtx2.TXTR"));
+		blueCenter=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/vtx3.TXTR"));
 	}
 	B.Mesh[] rimMeshes;
 	static B.Mesh[] createRimMeshes(){

@@ -68,7 +68,7 @@ enum SoundType:char[4]{
 	spirit="rips",
 	spiritRevive="nips", // ?
 	summon="NMUS",
-	spiritRevive2="jncX", // ?
+	convertRevive="jncX",
 	insectFlap="pfiX",
 	slime="xrfX", // ?
 	frog="grfX",

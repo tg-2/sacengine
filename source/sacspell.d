@@ -19,16 +19,21 @@ enum TargetFlags{
 	shielded=1<<21,
 	// spell effects
 	spedUp=1<<22,
+	beingSacrificed=1<<23,
 	// TODO: figure out building flag for this:
-	untargetable=1<<23,
+	untargetable=1<<24,
 	// irrelevant for spell targetting:
-	rescuable=1<<24,
+	rescuable=1<<25,
 }
 
-bool isApplicable(SpelFlags sflags,TargetFlags tflags)in{
+enum AdditionalSpelFlags{
+	targetSacrificed=1<<23, // TODO: make sure this does not clash with anything
+}
+
+bool isApplicable(int sflags,int tflags)in{
 	assert(sflags);
 }do{
-	with(SpelFlags) with(TargetFlags){
+	with(SpelFlags) with(AdditionalSpelFlags) with(TargetFlags){
 		if(tflags&untargetable) return false;
 		if(tflags==TargetFlags.none) return false;
 		if(tflags&ground) return !!(sflags&targetGround);
@@ -44,6 +49,7 @@ bool isApplicable(SpelFlags sflags,TargetFlags tflags)in{
 		if((sflags&onlyCreatures)&&!(tflags&creature)) return false;
 		if((sflags&onlyOwned)&&!(tflags&owned)) return false;
 		if((sflags&disallowHero)&&(tflags&hero)) return false;
+		if(!(sflags&targetSacrificed)&(tflags&beingSacrificed)) return false;
 	}
 	return true;
 }
@@ -97,9 +103,9 @@ class SacSpell(B){
 	enum fallLimit=1000.0f;
 	int soulCost;
 
-	SpelFlags flags;
-	SpelFlags1 flags1;
-	SpelFlags2 flags2;
+	int flags;
+	int flags1;
+	int flags2;
 
 	bool needsPrediction=true;
 
