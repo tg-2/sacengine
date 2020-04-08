@@ -1529,7 +1529,7 @@ final class SacScene: Scene{
 							}
 						}else static if(is(T==Souls!DagonBackend)){
 							auto soul=objects[j];
-							if(!soul.state.among(SoulState.normal,SoulState.emerging)) return;
+							if(!soul.state.among(SoulState.normal,SoulState.emerging)) continue;
 							auto color=soul.color(scene.renderSide,scene.state.current)==SoulColor.blue?blueSoulMinimapColor:redSoulMinimapColor;
 							scene.minimapMaterialBackend.setColor(color);
 						}
