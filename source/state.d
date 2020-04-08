@@ -654,7 +654,7 @@ bool canSelect(B)(ref MovingObject!B obj,int side,ObjectState!B state){
 	return obj.side==side&&!obj.isWizard&&!obj.isPeasant&&!obj.isSacDoctor&&!obj.creatureState.mode.among(CreatureMode.dead,CreatureMode.dissolving,CreatureMode.convertReviving,CreatureMode.thrashing);
 }
 bool canOrder(B)(ref MovingObject!B obj,int side,ObjectState!B state){
-	return (side==-1||obj.side==side)&&!obj.creatureState.mode.among(CreatureMode.dead,CreatureMode.dissolving);
+	return (side==-1||obj.side==side&&!obj.isSacDoctor)&&!obj.creatureState.mode.among(CreatureMode.dead,CreatureMode.dissolving);
 }
 bool canSelect(B)(int side,int id,ObjectState!B state){
 	return state.movingObjectById!(canSelect,()=>false)(id,side,state);
