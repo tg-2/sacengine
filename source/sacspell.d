@@ -49,7 +49,7 @@ bool isApplicable(int sflags,int tflags)in{
 		if((sflags&onlyCreatures)&&!(tflags&creature)) return false;
 		if((sflags&onlyOwned)&&!(tflags&owned)) return false;
 		if((sflags&disallowHero)&&(tflags&hero)) return false;
-		if(!(sflags&targetSacrificed)&(tflags&beingSacrificed)) return false;
+		if(!(sflags&targetSacrificed)&&(tflags&beingSacrificed)) return false;
 	}
 	return true;
 }
