@@ -6489,24 +6489,26 @@ bool updateConvertCasting(B)(ref ConvertCasting!B convertCast,ObjectState!B stat
 }
 
 bool updateConversion(B)(ref Conversion conversion,ObjectState!B state){
+	static void freeSoulImpl(Conversion* conversion,ObjectState!B state){
+		state.soulById!((ref soul,side){
+			static assert(is(typeof(soul.convertSideMask)==uint));
+			soul.convertSideMask|=(1u<<side);
+		},(){})(conversion.soul,conversion.side);
+	}
 	if(conversion.status==ConversionStatus.shrinking){
 		conversion.vortexScale=max(0.0f,conversion.vortexScale-1.0f/Conversion.numFramesToDisappear);
 		return conversion.vortexScale>0.0f;
 	}
 	if(!state.isValidTarget(conversion.sacDoctor,TargetType.creature)){
+		if(conversion.soul) freeSoulImpl(&conversion,state);
 		if(conversion.creature) state.movingObjectById!(freeCreature,()=>false)(conversion.creature,Vector3f.init,state);
 		conversion.status=ConversionStatus.shrinking;
 		return true;
 	}
 	static bool update(ref MovingObject!B sacDoc,Conversion* conversion,ObjectState!B state){
+		void freeSoul(){ freeSoulImpl(conversion,state); }
 		with(conversion){
 			bool shrineDestroyed=!state.isValidTarget(targetShrine,TargetType.building);
-			void freeSoul(){
-				state.soulById!((ref soul,side){
-					static assert(is(typeof(soul.convertSideMask)==uint));
-					soul.convertSideMask|=(1u<<side);
-				},(){})(soul,side);
-			}
 			final switch(status){
 				case ConversionStatus.fall:
 					if(sacDoc.animationState==cast(AnimationState)SacDoctorAnimationState.bounce){
@@ -6566,6 +6568,11 @@ bool updateConversion(B)(ref Conversion conversion,ObjectState!B state){
 								sacDoc.kill(state);
 								state.movingObjectById!(kill,()=>false)(creature,state);
 								return false;
+							}
+							if(soul){
+								state.removeLater(soul);
+								soul=0;
+								state.movingObjectById!((ref obj){ obj.soulId=0; })(creature);
 							}
 						}
 					}
@@ -8933,8 +8940,8 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 			static bool manahoarAbilityEnabled(CreatureMode mode){
 				final switch(mode) with(CreatureMode){
 					case idle,moving,dying,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,pretendingToDie,rockForm: return true;
-					case dead,dissolving,preSpawning,reviving,fastReviving,playingDead,pretendingToRevive: return false;
-					case casting,stationaryCasting,castingMoving,shooting,pumping,convertReviving,thrashing: assert(0);
+					case dead,dissolving,preSpawning,reviving,fastReviving,playingDead,pretendingToRevive,convertReviving,thrashing: return false;
+					case casting,stationaryCasting,castingMoving,shooting,pumping: assert(0);
 				}
 			}
 			foreach(j;0..objects.length){
@@ -9709,7 +9716,7 @@ final class ObjectState(B){ // (update logic)
 		toRemove~=id;
 	}
 	void performRemovals(){
-		foreach(id;toRemove.data) removeObject(id);
+		foreach(id;toRemove.data) if(isValidId(id)) removeObject(id);
 		toRemove.length=0;
 	}
 	void addWizard(WizardInfo!B wizard){
