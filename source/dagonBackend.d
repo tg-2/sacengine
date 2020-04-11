@@ -536,6 +536,7 @@ final class SacScene: Scene{
 						mesh.render(rc);
 					}
 					void renderBlueCenterForId(int id,float scale,int frame){
+						if(!id) return;
 						return renderBlueCenter(getPositionAndScaleForId(id,scale).expand,frame);
 					}
 					auto rimMat=scene.vortex.blueRimMat;
@@ -546,6 +547,7 @@ final class SacScene: Scene{
 						mesh.render(rc);
 					}
 					void renderBlueRimForId(int id,float scale,int frame){
+						if(!id) return;
 						return renderBlueRim(getPositionAndScaleForId(id,scale).expand,frame);
 					}
 					centerMat.bind(rc);

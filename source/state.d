@@ -6501,9 +6501,11 @@ bool updateConversion(B)(ref Conversion conversion,ObjectState!B state){
 	}
 	if(!state.isValidTarget(conversion.sacDoctor,TargetType.creature)){
 		if(conversion.soul) freeSoulImpl(&conversion,state);
-		if(conversion.creature) state.movingObjectById!(freeCreature,()=>false)(conversion.creature,Vector3f.init,state);
-		conversion.status=ConversionStatus.shrinking;
-		return true;
+		if(conversion.creature){
+			state.movingObjectById!(freeCreature,()=>false)(conversion.creature,Vector3f.init,state);
+			conversion.status=ConversionStatus.shrinking;
+			return true;
+		}else return false;
 	}
 	static bool update(ref MovingObject!B sacDoc,Conversion* conversion,ObjectState!B state){
 		void freeSoul(){ freeSoulImpl(conversion,state); }
