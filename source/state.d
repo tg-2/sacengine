@@ -10361,7 +10361,7 @@ TargetFlags summarize(bool simplified=false,B)(ref Target target,int side,Object
 				enum isMoving=is(T==MovingObject!B);
 				static if(isMoving){
 					auto result=TargetFlags.creature;
-					if(obj.creatureState.mode==CreatureMode.dead) result|=TargetFlags.corpse;
+					if(obj.creatureState.mode.among(CreatureMode.dead,CreatureMode.dissolving)) result|=TargetFlags.corpse;
 					if(obj.creatureState.mode.among(CreatureMode.convertReviving,CreatureMode.thrashing)) result|=TargetFlags.beingSacrificed;
 					auto objSide=obj.side;
 				}else{
