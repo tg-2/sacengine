@@ -1705,10 +1705,10 @@ struct SacTether(B){
 	B.BoneMesh[] frames;
 	enum numFrames=16*updateAnimFactor;
 	auto getFrame(int i){ return frames[i/updateAnimFactor]; }
+	enum numSegments=19;
 	static B.BoneMesh[] createMeshes(){
-		enum numSegments=19;
 		enum nU=4,nV=4;
-		return makeLineMeshes!B(numSegments,nU,nV,0.0f,0.3f,true);
+		return makeLineMeshes!B(numSegments,nU,nV,0.0f,0.2f,true);
 	}
 }
 

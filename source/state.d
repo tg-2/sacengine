@@ -1822,9 +1822,20 @@ enum ConversionStatus{
 }
 
 struct SacDocTether{
-	enum n=20;
 	enum m=5;
-	Vector3f[n] locations;
+	Vector3f[m] locations;
+	Vector3f[m] velocities;
+	Vector3f[2] get(float t){
+		auto i=max(0,min(cast(int)floor(t*(m-1)),m-2));
+		auto u=max(0.0f,min(t*(m-1)-i,1.0f));
+		auto p0=locations[i], p1=locations[i+1];
+		auto m0=locations[min(i+1,cast(int)$-1)]-locations[max(0,cast(int)i-1)];
+		auto m1=locations[min(i+2,cast(int)$-1)]-locations[i];
+		//auto p=(1.0f-u)*locations[i]+u*locations[i+1], m=locations[i+1]-locations[i]; // linear interpolation
+		auto p=(2*u^^3-3*u^^2+1)*p0+(u^^3-2*u^^2+u)*m0+(-2*u^^3+3*u^^2)*p1+(u^^3-u^^2)*m1;
+		auto m=(6*u^^2-6*u)*p0+(3*u^^2-4*u)*m0+(-6*u^^2+6*u)*p1+(3*u^^2-2*u)*m1;
+		return [p,m];
+	}
 }
 
 struct Conversion{
@@ -6502,28 +6513,50 @@ bool updateConvertCasting(B)(ref ConvertCasting!B convertCast,ObjectState!B stat
 	}
 }
 
-SacDocTether makeSacDocTether(B)(ref MovingObject!B sacDoc,int target,ObjectState!B state){
-	SacDocTether tether;
+Vector3f[SacDocTether.m] getSacDocTetherTargetLocations(B)(ref MovingObject!B sacDoc,int target,ObjectState!B state){
+	Vector3f[SacDocTether.m] locations;
 	auto needle = sacDoc.needle;
 	auto center = state.movingObjectById!((ref obj)=>obj.center,()=>Vector3f.init)(target);
-	if(isNaN(needle[0].x)||isNaN(center.x)) return tether;
-	float intp=tether.n-1;
-	foreach(i,ref p;tether.locations){
-		p = i/intp*center+(intp-i)/intp*needle[0];
-	}
+	if(isNaN(needle[0].x)||isNaN(center.x)) return locations;
+	locations[0]=needle[0];
+	auto start=needle[0]+1.5f*needle[1];
+	locations[1]=start;
+	float intp=locations.length-2;
+	foreach(i,ref p;locations[1..$]) p=i/intp*center+(intp-i)/intp*start;
+	return locations;
+}
+
+SacDocTether makeSacDocTether(B)(ref MovingObject!B sacDoc,int target,ObjectState!B state){
+	SacDocTether tether;
+	tether.locations=getSacDocTetherTargetLocations(sacDoc,target,state);
+	tether.velocities[]=Vector3f(0.0f,0.0f,0.0f);
 	return tether;
 }
 
+
 void updateSacDocTether(B)(ref SacDocTether tether,ref MovingObject!B sacDoc,int target,ObjectState!B state){
-	auto needle = sacDoc.needle;
-	auto center = state.movingObjectById!((ref obj)=>obj.center,()=>Vector3f.init)(target);
-	if(isNaN(needle[0].x)||isNaN(center.x)){
+	auto targets=getSacDocTetherTargetLocations(sacDoc,target,state);
+	if(isNaN(targets[0].x)){
 		tether=SacDocTether.init;
 		return;
 	}
-	float intp=tether.n-1;
-	foreach(i,ref p;tether.locations){
-		p = i/intp*center+(intp-i)/intp*needle[0];
+	auto totalVelocity=0.5f*(updateFPS*((targets[0]-tether.locations[0])+targets[1]-tether.locations[1]));
+	tether.locations[0]=targets[0];
+	tether.locations[1]=targets[1];
+	tether.locations[$-1]=targets[$-1];
+	enum accelFactor=120.0f;
+	static import std.math;
+	enum dampFactor=std.math.exp(std.math.log(0.5f)/updateFPS);
+	enum maxVelocity=20.0f;
+	foreach(i;2..targets.length-1){
+		auto acceleration=targets[i]-tether.locations[i];
+		acceleration=accelFactor*acceleration.lengthsqr^^(1/7.0f)*acceleration;
+		tether.velocities[i]+=acceleration/updateFPS;
+		tether.velocities[i]*=dampFactor;
+		auto relativeVelocity=tether.velocities[i]-totalVelocity;
+		if(relativeVelocity.lengthsqr>maxVelocity^^2)
+			tether.velocities[i]=totalVelocity+maxVelocity/relativeVelocity.length*relativeVelocity;
+		tether.locations[i]+=tether.velocities[i]/updateFPS;
 	}
 }
 

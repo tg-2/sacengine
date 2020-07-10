@@ -586,11 +586,11 @@ final class SacScene: Scene{
 						auto energy=0.375f+14.625f*(0.5f+0.25f*cos(7.0f*alpha)+0.25f*sin(11.0f*alpha));
 						scene.shadelessBoneMaterialBackend.setEnergy(energy);
 						auto mesh=scene.tether.getFrame(frame%scene.tether.numFrames);
-						Matrix4x4f[tether.locations.length] pose;
+						Matrix4x4f[scene.tether.numSegments+1] pose;
 						foreach(i,ref x;pose){
-							auto diff=tether.locations[min(i+1,cast(int)$-1)]-tether.locations[max(0,cast(int)i-1)];
-							auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),diff.normalized);
-							x=Transformation(rotation,tether.locations[i]).getMatrix4f;
+							auto curve = tether.get(i/float(pose.length-1));
+							auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),curve[1].normalized);
+							x=Transformation(rotation,curve[0]).getMatrix4f;
 						}
 						mesh.pose=pose[];
 						scope(exit) mesh.pose=[];
