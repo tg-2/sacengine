@@ -94,6 +94,17 @@ final class SacScene: Scene{
 		return result;
 	}
 	SacVortex!DagonBackend vortex;
+	SacTether!DagonBackend createTether(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=createMaterial(shadelessBoneMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=Additive;
+		mat.energy=15.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacTether!DagonBackend(texture,mat,frames);
+	}
+	SacTether!DagonBackend tether;
 	SacLightning!DagonBackend createLightning(){
 		auto texture=typeof(return).loadTexture();
 		auto mat=createMaterial(shadelessBoneMaterialBackend);
@@ -202,6 +213,7 @@ final class SacScene: Scene{
 		explosion=createExplosion();
 		blueRing=createBlueRing();
 		vortex=createVortex();
+		tether=createTether();
 		lightning=createLightning();
 		wrath=createWrath();
 		rock=new SacObject!DagonBackend("extracted/models/MODL.WAD!/rock.MRMC/rock.MRMM");
@@ -560,6 +572,31 @@ final class SacScene: Scene{
 						if(objects.conversions[j].status.among(ConversionStatus.move,ConversionStatus.shrinking))
 							renderBlueRimForId(objects.conversions[j].creature,objects.conversions[j].vortexScale,objects.conversions[j].frame);
 					rimMat.unbind(rc);
+					auto material=scene.tether.material;
+					material.bind(rc);
+					glDisable(GL_CULL_FACE);
+					scope(success){
+						glEnable(GL_CULL_FACE);
+						material.unbind(rc);
+					}
+					scene.shadelessBoneMaterialBackend.setTransformation(Vector3f(0.0f,0.0f,0.0f),Quaternionf.identity(),rc);
+					void renderTether(ref SacDocTether tether,int frame){
+						if(isNaN(tether.locations[0].x)) return;
+						auto alpha=pi!float*frame/updateFPS;
+						auto energy=0.375f+14.625f*(0.5f+0.25f*cos(7.0f*alpha)+0.25f*sin(11.0f*alpha));
+						scene.shadelessBoneMaterialBackend.setEnergy(energy);
+						auto mesh=scene.tether.getFrame(frame%scene.tether.numFrames);
+						Matrix4x4f[tether.locations.length] pose;
+						foreach(i,ref x;pose){
+							auto diff=tether.locations[min(i+1,cast(int)$-1)]-tether.locations[max(0,cast(int)i-1)];
+							auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),diff.normalized);
+							x=Transformation(rotation,tether.locations[i]).getMatrix4f;
+						}
+						mesh.pose=pose[];
+						scope(exit) mesh.pose=[];
+						mesh.render(rc);
+					}
+					foreach(j;0..objects.conversions.length) renderTether(objects.conversions[j].tether,objects.conversions[j].frame);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.blueRings.length||objects.teleportRings.length)){
 					auto material=scene.blueRing.material;
@@ -632,7 +669,7 @@ final class SacScene: Scene{
 						auto alpha=pi!float*frame/float(totalFrames);
 						auto energy=0.375f+14.625f*(0.5f+0.25f*cos(7.0f*alpha)+0.25f*sin(11.0f*alpha));
 						scene.shadelessBoneMaterialBackend.setEnergy(energy);
-						auto mesh=scene.lightning.getFrame(objects.lightnings[j].frame%scene.lightning.numFrames);
+						auto mesh=scene.lightning.getFrame(frame%scene.lightning.numFrames);
 						foreach(ref bolt;objects.lightnings[j].bolts){
 							Matrix4x4f[numLightningSegments+1] pose;
 							pose[0]=pose[numLightningSegments]=Matrix4f.identity();

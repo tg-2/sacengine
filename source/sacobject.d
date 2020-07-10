@@ -288,6 +288,14 @@ final class SacObject(B){
 		}
 		return result;
 	}
+	Vector3f[2] needle(AnimationState animationState,int frame){
+		Vector3f[2] result;
+		if(!isSacDoctor) return result;
+		auto hand=Hand(16,Vector3f(0.0f,0.0f,2.2f));
+		result[0]=hand.position*animations[animationState].frames[frame].matrices[hand.bone];
+		result[1]=animations[animationState].frames[frame].matrices[hand.bone].rotate(Vector3f(0.0f,0.0f,1.0f));
+		return result;
+	}
 	struct LoadedArrow{
 		Vector3f top;
 		Vector3f bottom;
@@ -1378,15 +1386,13 @@ struct SacBlueRing(B){
 	}
 }
 
-B.BoneMesh[] makeLineMeshes(B)(int numSegments,int nU,int nV){
+B.BoneMesh[] makeLineMeshes(B)(int numSegments,int nU,int nV,float length,float size,bool pointy){
 	auto meshes=new B.BoneMesh[](nU*nV);
 	foreach(t,ref mesh;meshes){
 		mesh=B.makeBoneMesh(3*4*numSegments,3*2*numSegments);
 		int u=cast(int)t%nU,v=cast(int)t/nU;
-		enum length=10.0f;
-		enum size=0.3f;
 		enum sqrt34=sqrt(0.75f);
-		static immutable Vector3f[3] offsets=[size*Vector3f(0.0f,-1.0f,0.0f),size*Vector3f(sqrt34,0.5f,0.0f),size*Vector3f(-sqrt34,0.5f,0.0f)];
+		immutable Vector3f[3] offsets=[size*Vector3f(0.0f,-1.0f,0.0f),size*Vector3f(sqrt34,0.5f,0.0f),size*Vector3f(-sqrt34,0.5f,0.0f)];
 		int numFaces=0;
 		void addFace(uint[3] face...){
 			mesh.indices[numFaces++]=face;
@@ -1399,7 +1405,7 @@ B.BoneMesh[] makeLineMeshes(B)(int numSegments,int nU,int nV){
 				foreach(k;0..4){
 					int vertex=3*4*i+4*j+k;
 					auto center=((k==1||k==2)?i+1:i);
-					auto position=getCenter(center)+((k==2||k==3)&&center!=0&&center!=numSegments?offsets[j]:Vector3f(0.0f,0.0f,0.0f));
+					auto position=getCenter(center)+((k==2||k==3)&&(!pointy||center!=0&&center!=numSegments)?offsets[j]:Vector3f(0.0f,0.0f,0.0f));
 					foreach(l;0..3){
 						mesh.vertices[l][vertex]=position;
 						mesh.boneIndices[vertex][l]=center;
@@ -1431,7 +1437,7 @@ struct SacLightning(B){
 	static B.BoneMesh[] createMeshes(){
 		enum numSegments=10;
 		enum nU=4,nV=4;
-		return makeLineMeshes!B(numSegments,nU,nV);
+		return makeLineMeshes!B(numSegments,nU,nV,10.0f,0.3f,true);
 	}
 }
 
@@ -1690,6 +1696,21 @@ struct SacVortex(B){
 	B.Mesh getCenterFrame(int i){ return centerMeshes[i/updateAnimFactor]; }
 }
 
+struct SacTether(B){
+	B.Texture texture;
+	B.Material material;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/ltn2.TXTR"));
+	}
+	B.BoneMesh[] frames;
+	enum numFrames=16*updateAnimFactor;
+	auto getFrame(int i){ return frames[i/updateAnimFactor]; }
+	static B.BoneMesh[] createMeshes(){
+		enum numSegments=19;
+		enum nU=4,nV=4;
+		return makeLineMeshes!B(numSegments,nU,nV,0.0f,0.3f,true);
+	}
+}
 
 enum CommandConeColor{
 	white,

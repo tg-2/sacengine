@@ -744,6 +744,13 @@ Vector3f randomHand(B)(Vector3f[2] hands,ObjectState!B state){
 	return hands[state.uniform(2)];
 }
 
+Vector3f[2] needle(B)(ref MovingObject!B object){
+	auto needle=object.sacObject.needle(object.animationState,object.frame/updateAnimFactor);
+	needle[0]=object.position+rotate(object.rotation,needle[0]);
+	needle[1]=rotate(object.rotation,needle[1]);
+	return needle;
+}
+
 Vector3f shotPosition(B)(ref MovingObject!B object){
 	auto loc=object.sacObject.shotPosition(object.animationState,object.frame/updateAnimFactor);
 	return object.position+rotate(object.rotation,loc);
@@ -1814,11 +1821,18 @@ enum ConversionStatus{
 	shrinking,
 }
 
+struct SacDocTether{
+	enum n=20;
+	enum m=5;
+	Vector3f[n] locations;
+}
+
 struct Conversion{
 	int side;
 	int sacDoctor;
 	int soul;
 	int targetShrine;
+	SacDocTether tether;
 	ConversionStatus status;
 	int creature;
 	int timer;
@@ -6488,6 +6502,31 @@ bool updateConvertCasting(B)(ref ConvertCasting!B convertCast,ObjectState!B stat
 	}
 }
 
+SacDocTether makeSacDocTether(B)(ref MovingObject!B sacDoc,int target,ObjectState!B state){
+	SacDocTether tether;
+	auto needle = sacDoc.needle;
+	auto center = state.movingObjectById!((ref obj)=>obj.center,()=>Vector3f.init)(target);
+	if(isNaN(needle[0].x)||isNaN(center.x)) return tether;
+	float intp=tether.n-1;
+	foreach(i,ref p;tether.locations){
+		p = i/intp*center+(intp-i)/intp*needle[0];
+	}
+	return tether;
+}
+
+void updateSacDocTether(B)(ref SacDocTether tether,ref MovingObject!B sacDoc,int target,ObjectState!B state){
+	auto needle = sacDoc.needle;
+	auto center = state.movingObjectById!((ref obj)=>obj.center,()=>Vector3f.init)(target);
+	if(isNaN(needle[0].x)||isNaN(center.x)){
+		tether=SacDocTether.init;
+		return;
+	}
+	float intp=tether.n-1;
+	foreach(i,ref p;tether.locations){
+		p = i/intp*center+(intp-i)/intp*needle[0];
+	}
+}
+
 bool updateConversion(B)(ref Conversion conversion,ObjectState!B state){
 	static void freeSoulImpl(Conversion* conversion,ObjectState!B state){
 		state.soulById!((ref soul,side){
@@ -6564,6 +6603,7 @@ bool updateConversion(B)(ref Conversion conversion,ObjectState!B state){
 						}
 						if(--timer==0){
 							status=ConversionStatus.move;
+							tether=makeSacDocTether(sacDoc,creature,state);
 							sacDoc.startIdling(state);
 							sacDoc.animationState=cast(AnimationState)SacDoctorAnimationState.pickUpCorpse;
 							if(!state.movingObjectById!(startThrashing,()=>false)(creature,state)){
@@ -6582,6 +6622,7 @@ bool updateConversion(B)(ref Conversion conversion,ObjectState!B state){
 				case ConversionStatus.move:
 					++frame;
 					vortexScale=min(1.0f,vortexScale+1.0f/Conversion.numFramesToEmerge);
+					tether.updateSacDocTether(sacDoc,creature,state);
 					static bool update(ref MovingObject!B creature,MovingObject!B* sacDoc,Conversion* conversion,ObjectState!B state){
 						auto transportHeight=3.5f, transportDistance=2.0f+0.5f*creature.getScale.length;
 						//auto targetPosition2d=transportDistance*(creature.position-sacDoc.position).xy.normalized;
@@ -6603,6 +6644,7 @@ bool updateConversion(B)(ref Conversion conversion,ObjectState!B state){
 					if(sacDoc.creatureState.mode==CreatureMode.dying){
 						state.movingObjectById!(freeCreature,()=>false)(creature,sacDoc.position,state);
 						status=ConversionStatus.shrinking;
+						tether=SacDocTether.init;
 					}
 					if(!sacDoc.hasOrders(state)){
 						auto ord=Order(CommandType.move,OrderTarget(TargetType.building,targetShrine,shrinePosition));
