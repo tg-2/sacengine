@@ -6913,13 +6913,17 @@ bool updateRitual(B)(ref Ritual ritual,ObjectState!B state){
 					},(){})(id,shrinePosition,state);
 				}
 				if(type==RitualType.convert&&progress==walkTime+3*updateFPS){
-					state.movingObjectById!((ref obj,nRounds,side,state){
+					if(state.movingObjectById!((ref obj,nRounds,side,state){
 						auto targetRounds=cast(int)obj.creatureStats.maxHealth/550;
-						if(nRounds==targetRounds)
+						if(nRounds==targetRounds){
 							obj.gib(state,caster);
-					},(){})(creature,nRounds,side,state);
-					ritual.stopRitual(state);
-					return false;
+							return true;
+						}
+						return false;
+					},()=>true)(creature,nRounds,side,state)){
+						ritual.stopRitual(state);
+						return false;
+					}
 				}
 			}
 		}
