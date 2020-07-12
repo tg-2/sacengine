@@ -88,7 +88,7 @@ enum SacDoctorAnimationState: AnimationState{
 	stab=AnimationState.attack0,
 	pumpCorpse=AnimationState.attack1,
 	pickUpCorpse=AnimationState.attack2,
-	stance2Torture=AnimationState.runSpellcastStart,
-	torture=AnimationState.runSpellcast,
-	torture2Stance=AnimationState.runSpellcastEnd,
+	stance2Torture=AnimationState.spellcastStart,
+	torture=AnimationState.spellcast,
+	torture2Stance=AnimationState.spellcastEnd,
 }
