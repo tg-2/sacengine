@@ -26,6 +26,7 @@ struct Effects{
 	int rangedCooldown=0;
 	int abilityCooldown=0;
 	int carrying=0;
+	bool appearing=false;
 	bool disappearing=false;
 	bool stealth=false;
 	bool lifeShield=false;

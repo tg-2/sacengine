@@ -1814,13 +1814,6 @@ struct ConvertCasting(B){
 	bool interrupted=false;
 }
 
-enum ConversionStatus{
-	fall,
-	walkToSoul,
-	pump,
-	move,
-	shrinking,
-}
 
 struct SacDocTether{
 	enum m=5;
@@ -1839,6 +1832,14 @@ struct SacDocTether{
 	}
 }
 
+enum ConversionStatus{
+	fall,
+	walkToSoul,
+	pump,
+	move,
+	shrinking,
+}
+
 struct Conversion{
 	int side;
 	int sacDoctor;
@@ -1853,6 +1854,30 @@ struct Conversion{
 	static assert(updateFPS==60);
 	enum numFramesToEmerge=60;
 	enum numFramesToDisappear=45;
+}
+
+enum RitualType{
+	convert,
+	desecrate,
+}
+
+enum RitualStatus{
+	waiting,
+	walking,
+	shooting,
+}
+
+struct Ritual{
+	RitualType type;
+	Vector3f start;
+	int side;
+	int shrine;
+	int[4] sacDoctors;
+	int creature;
+	RitualStatus status;
+	enum setupTime=5*updateFPS;
+	int timer=setupTime;
+	int frame=0;
 }
 
 struct TeleportCasting(B){
@@ -2210,6 +2235,12 @@ struct Protector(B){
 	SacSpell!B ability;
 }
 
+struct Appearance{
+	int id;
+	int lifetime;
+	int frame=0;
+}
+
 struct Disappearance{
 	int id;
 	int lifetime;
@@ -2297,6 +2328,14 @@ struct Effects(B){
 	void removeConversion(int i){
 		if(i+1<conversions.length) conversions[i]=move(conversions[$-1]);
 		conversions.length=conversions.length-1;
+	}
+	Array!Ritual rituals;
+	void addEffect(Ritual ritual){
+		rituals~=ritual;
+	}
+	void removeRitual(int i){
+		if(i+1<rituals.length) rituals[i]=move(rituals[$-1]);
+		rituals.length=rituals.length-1;
 	}
 	void addEffect(TeleportCasting!B teleportCasting){
 		teleportCastings~=teleportCasting;
@@ -2598,6 +2637,14 @@ struct Effects(B){
 		if(i+1<protectors.length) protectors[i]=move(protectors[$-1]);
 		protectors.length=protectors.length-1;
 	}
+	Array!(Appearance) appearances;
+	void addEffect(Appearance appearance){
+		appearances~=appearance;
+	}
+	void removeAppearance(int i){
+		if(i+1<appearances.length) appearances[i]=move(appearances[$-1]);
+		appearances.length=appearances.length-1;
+	}
 	Array!(Disappearance) disappearances;
 	void addEffect(Disappearance disappearance){
 		disappearances~=disappearance;
@@ -2616,6 +2663,7 @@ struct Effects(B){
 		assignArray(blueRings,rhs.blueRings);
 		assignArray(convertCastings,rhs.convertCastings);
 		assignArray(conversions,rhs.conversions);
+		assignArray(rituals,rhs.rituals);
 		assignArray(teleportCastings,rhs.teleportCastings);
 		assignArray(teleportEffects,rhs.teleportEffects);
 		assignArray(teleportRings,rhs.teleportRings);
@@ -2653,6 +2701,7 @@ struct Effects(B){
 		assignArray(stealths,rhs.stealths);
 		assignArray(lifeShields,rhs.lifeShields);
 		assignArray(protectors,rhs.protectors);
+		assignArray(appearances,rhs.appearances);
 		assignArray(disappearances,rhs.disappearances);
 	}
 	void opAssign(Effects!B rhs){ this.tupleof=rhs.tupleof; }
@@ -3431,7 +3480,8 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 			break;
 		case CreatureMode.casting,CreatureMode.stationaryCasting,CreatureMode.castingMoving:
 			object.frame=0;
-			object.animationState=object.creatureState.mode==CreatureMode.castingMoving?AnimationState.runSpellcastStart:AnimationState.spellcastStart;
+			if(object.isSacDoctor) object.animationState=cast(AnimationState)SacDoctorAnimationState.torture;
+			else object.animationState=object.creatureState.mode==CreatureMode.castingMoving?AnimationState.runSpellcastStart:AnimationState.spellcastStart;
 			break;
 		case CreatureMode.shooting:
 			object.frame=0;
@@ -4132,7 +4182,7 @@ void startCowering(B)(ref MovingObject!B object,ObjectState!B state){
 }
 
 bool startCasting(B)(ref MovingObject!B object,int numFrames,bool stationary,ObjectState!B state){
-	if(!object.isWizard) return false;
+	if(!object.isWizard&&!object.isSacDoctor) return false;
 	if(!object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving)&&object.castStatus(state)!=CastingStatus.finished)
 		return false;
 	if(stationary) object.creatureState.mode=CreatureMode.stationaryCasting;
@@ -5177,7 +5227,7 @@ bool rockForm(B)(ref MovingObject!B object,ObjectState!B state){
 void updateRenderMode(B)(int target,ObjectState!B state){
 	if(!state.isValidTarget(target,TargetType.creature)) return;
 	static RenderMode targetMode(ref MovingObject!B object,ObjectState!B state){
-		if(object.creatureStats.effects.stealth||object.creatureStats.effects.disappearing) return RenderMode.transparent;
+		if(object.creatureStats.effects.stealth||object.creatureStats.effects.appearing||object.creatureStats.effects.disappearing) return RenderMode.transparent;
 		return RenderMode.opaque;
 	}
 	final switch(state.movingObjectById!(targetMode,()=>RenderMode.opaque)(target,state)){
@@ -5220,6 +5270,17 @@ bool protector(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B sta
 	if(!object.lifeShield(lifeShield,state)) return false;
 	state.addEffect(Protector!B(object.id,ability));
 	return true;
+}
+
+void appear(B)(int id,int lifetime,ObjectState!B state){
+	if(!state.movingObjectById!((ref object){
+		if(object.creatureStats.effects.appearing) return false;
+		object.creatureStats.effects.appearing=true;
+		return true;
+	},()=>false)(id)) return;
+	updateRenderMode(id,state);
+	state.setAlpha(id,0.0f);
+	state.addEffect(Appearance(id,lifetime));
 }
 
 void disappear(B)(ref MovingObject!B object,int lifetime,ObjectState!B state){
@@ -5706,27 +5767,31 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 			}
 		Lcasting:
 			object.frame+=1;
-			object.creatureState.timer-=1;
-			object.creatureState.timer2-=1;
-			if(object.creatureState.timer2<=0){
-				if(object.animationState.among(AnimationState.spellcastEnd,AnimationState.runSpellcastEnd))
-					object.creatureState.timer2=playSoundTypeAt!true(sacObject,object.id,SoundType.incantation,state,sacObject.castingTime(AnimationState.spellcastEnd)*updateAnimFactor-object.frame+updateFPS/2)+updateFPS/10;
-				else object.creatureState.timer2=playSoundTypeAt!true(sacObject,object.id,SoundType.incantation,state)+updateFPS/10;
+			if(object.isWizard){
+				object.creatureState.timer-=1;
+				object.creatureState.timer2-=1;
+				if(object.creatureState.timer2<=0){
+					if(object.animationState.among(AnimationState.spellcastEnd,AnimationState.runSpellcastEnd))
+						object.creatureState.timer2=playSoundTypeAt!true(sacObject,object.id,SoundType.incantation,state,sacObject.castingTime(AnimationState.spellcastEnd)*updateAnimFactor-object.frame+updateFPS/2)+updateFPS/10;
+					else object.creatureState.timer2=playSoundTypeAt!true(sacObject,object.id,SoundType.incantation,state)+updateFPS/10;
+				}
 			}
 			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
 				object.frame=0;
-				if(object.animationState.among(AnimationState.spellcastEnd,AnimationState.runSpellcastEnd)){
-					object.creatureState.mode=object.creatureState.mode==CreatureMode.castingMoving?CreatureMode.moving:CreatureMode.idle;
-					object.setCreatureState(state);
-					return;
+				if(object.isWizard){
+					if(object.animationState.among(AnimationState.spellcastEnd,AnimationState.runSpellcastEnd)){
+						object.creatureState.mode=object.creatureState.mode==CreatureMode.castingMoving?CreatureMode.moving:CreatureMode.idle;
+						object.setCreatureState(state);
+						return;
+					}
+					if(object.animationState==AnimationState.spellcastStart)
+						object.animationState=AnimationState.spellcast;
+					else if(object.animationState==AnimationState.runSpellcastStart)
+						object.animationState=AnimationState.runSpellcast;
+					auto endAnimation=object.creatureState.mode==CreatureMode.castingMoving?AnimationState.runSpellcastEnd:AnimationState.spellcastEnd;
+					if(sacObject.castingTime(endAnimation)*updateAnimFactor>=object.creatureState.timer)
+						object.animationState=endAnimation;
 				}
-				if(object.animationState==AnimationState.spellcastStart)
-					object.animationState=AnimationState.spellcast;
-				else if(object.animationState==AnimationState.runSpellcastStart)
-					object.animationState=AnimationState.runSpellcast;
-				auto endAnimation=object.creatureState.mode==CreatureMode.castingMoving?AnimationState.runSpellcastEnd:AnimationState.spellcastEnd;
-				if(sacObject.castingTime(endAnimation)*updateAnimFactor>=object.creatureState.timer)
-					object.animationState=endAnimation;
 			}
 			break;
 		case CreatureMode.shooting:
@@ -6689,8 +6754,11 @@ bool updateConversion(B)(ref Conversion conversion,ObjectState!B state){
 						state.movingObjectById!(freeCreature,()=>false)(creature,sacDoc.position,state);
 						status=ConversionStatus.shrinking;
 						tether=SacDocTether.init;
-					}
-					if(!sacDoc.hasOrders(state)){
+					}else if(sacDoc.creatureState.movement==CreatureMovement.onGround && (sacDoc.position.xy-shrinePosition.xy).lengthsqr<20.0f^^2 && startRitual(RitualType.convert,side,targetShrine,creature,state)){
+						status=ConversionStatus.shrinking;
+						tether=SacDocTether.init;
+						sacDoc.kill(state);
+					}else if(!sacDoc.hasOrders(state)){
 						auto ord=Order(CommandType.move,OrderTarget(TargetType.building,targetShrine,shrinePosition));
 						sacDoc.order(ord,state);
 					}else{
@@ -6704,6 +6772,125 @@ bool updateConversion(B)(ref Conversion conversion,ObjectState!B state){
 		}
 	}
 	return state.movingObjectById!(update,function bool(){ assert(0); })(conversion.sacDoctor,&conversion,state);
+}
+
+bool freeForRitual(B)(int targetShrine,ObjectState!B state){
+	return true; // TODO
+}
+
+void stopRitual(B)(ref Ritual ritual,ObjectState!B state){
+	state.movingObjectById!(freeCreature,()=>false)(ritual.creature,ritual.start,state);
+	foreach(id;ritual.sacDoctors) state.movingObjectById!(kill,()=>false)(id,state);
+	// TODO
+}
+
+
+int spawnRitualSacDoctor(B)(int side,Vector3f position,float facing,ObjectState!B state){
+	auto curObj=SacObject!B.getSAXS!Creature(SpellTag.sacDoctor);
+	if(isNaN(facing)) facing=0.0f;
+	position.z=state.getHeight(position);
+	auto mode=CreatureMode.idle;
+	auto movement=CreatureMovement.onGround;
+	auto creatureState=CreatureState(mode, movement, facing);
+	auto rotation=facingQuaternion(facing);
+	auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState,curObj.creatureStats(0),side);
+	obj.setCreatureState(state);
+	obj.updateCreaturePosition(state);
+	obj.animationState=cast(AnimationState)SacDoctorAnimationState.dance;
+	auto id=state.addObject(obj);
+	appear(id,50,state);
+	return id;
+}
+
+Tuple!(Vector3f,float)[4] ritualPositions(B)(Vector3f shrinePosition,ObjectState!B state,float progress=0.0f){
+	typeof(return) result;
+	foreach(k;0..4){
+		auto radius=20.0f-3.0f*max(0.0f,5.0f*progress-4.0f);
+		auto facing=(0.125f+0.25f*(k+min(1.1f*progress,0.7f+0.3f*progress)))%1.0f*2*pi!float;
+		auto position=shrinePosition+Vector3f(cos(facing-0.5f*pi!float),sin(facing-0.5f*pi!float),0.0f)*radius;
+		result[k]=tuple(position,facing);
+	}
+	return result;
+}
+
+bool startRitual(B)(RitualType type,int side,int shrine,int creature,ObjectState!B state){
+	if(!freeForRitual(shrine,state)) return false;
+	auto start=state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(creature);
+	if(isNaN(start.x)) return false;
+	int[4] sacDoctors;
+	auto shrinePosition=state.staticObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(shrine);
+	if(isNaN(shrinePosition.x)) return false;
+	auto positions=ritualPositions(shrinePosition,state);
+	foreach(k,ref id;sacDoctors) id=spawnRitualSacDoctor(side,positions[k].expand,state);
+	state.addEffect(Ritual(type,start,side,shrine,sacDoctors,creature));
+	return true;
+}
+
+bool updateRitual(B)(ref Ritual ritual,ObjectState!B state){
+	with(ritual){
+		++frame;
+		--timer;
+		auto shrinePositionIsAltar=state.staticObjectById!((ref obj)=>tuple(obj.position,obj.sacObject.isAltar),()=>tuple(Vector3f.init,false))(shrine);
+		auto shrinePosition=shrinePositionIsAltar[0], isAltar=shrinePositionIsAltar[1];
+		if(isNaN(shrinePosition.x)){
+			ritual.stopRitual(state);
+			return false;
+		}
+		foreach(id;sacDoctors){
+			if(state.movingObjectById!((ref obj)=>obj.creatureState.mode==CreatureMode.dying,()=>false)(id)){
+				ritual.stopRitual(state);
+				return false;
+			}
+		}
+		state.movingObjectById!((ref obj,shrinePosition,remainingTime,state){
+			auto hitbox=obj.relativeHitbox;
+			auto targetPosition=shrinePosition-0.5f*(hitbox[0]+hitbox[1]);
+			obj.position=((remainingTime-1)*obj.position+targetPosition)/float(remainingTime);
+		})(creature,shrinePosition+Vector3f(0.0f,0.0f,isAltar?20.0f:17.5f),max(1,ritual.setupTime-frame),state);
+		if(frame>=ritual.setupTime){
+			auto time=frame-ritual.setupTime;
+			static assert(updateFPS==60);
+			enum walkTime=4*updateFPS+updateFPS/2;
+			enum shootTime=4*updateFPS+updateFPS/2;
+			enum waitTime=4*updateFPS+updateFPS/2;
+			enum roundTime=walkTime+shootTime+waitTime;
+			auto nRounds=time/roundTime;
+			auto progress=time%roundTime;
+			if(progress<walkTime){
+				auto positions=ritualPositions(shrinePosition,state,float(progress)/walkTime);
+				foreach(k,id;sacDoctors){
+					state.movingObjectById!((ref sacDoc,position,state){
+						if(progress==0){
+							sacDoc.creatureState.mode=CreatureMode.moving;
+							sacDoc.setCreatureState(state);
+						}
+						if(!sacDoc.hasOrders(state)){
+							auto ord=Order(CommandType.move,OrderTarget(TargetType.terrain,0,position));
+							sacDoc.order(ord,state);
+						}else{
+							sacDoc.creatureAI.order.target.position=position;
+						}
+					},(){})(id,positions[k][0],state);
+				}
+			}else{
+				if(progress==walkTime){
+					foreach_reverse(k;1..sacDoctors.length)
+						swap(sacDoctors[k],sacDoctors[k-1]);
+				}
+				foreach(k,id;sacDoctors){
+					state.movingObjectById!((ref sacDoc,shrinePosition,state){
+						sacDoc.clearOrderQueue(state);
+						if(!sacDoc.turnToFaceTowards(shrinePosition,state)){
+							if(!sacDoc.creatureState.mode.isCasting&&progress<walkTime+shootTime||progress+updateAnimFactor*135==roundTime){
+								sacDoc.startCasting(2*updateFPS,false,state);
+							}
+						}
+					},(){})(id,shrinePosition,state);
+				}
+			}
+		}
+		return true;
+	}
 }
 
 bool updateTeleportCasting(B)(ref TeleportCasting!B teleportCast,ObjectState!B state){
@@ -8394,6 +8581,23 @@ bool updateProtector(B)(ref Protector!B protector,ObjectState!B state){
 	return false;
 }
 
+bool updateAppearance(B)(ref Appearance appearance,ObjectState!B state){
+	with(appearance){
+		if(!state.isValidTarget(id,TargetType.creature)) return false;
+		updateRenderMode(id,state);
+		++frame;
+		state.setAlpha(id,(float(frame)/lifetime)^^2);
+		if(frame>=lifetime){
+			state.movingObjectById!((ref object){
+				object.creatureStats.effects.appearing=false;
+			})(id);
+			updateRenderMode(id,state);
+			return false;
+		}
+		return true;
+	}
+}
+
 bool updateDisappearance(B)(ref Disappearance disappearance,ObjectState!B state){
 	with(disappearance){
 		if(!state.isValidTarget(id,TargetType.creature)) return false;
@@ -8468,6 +8672,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.conversions.length;){
 		if(!updateConversion(effects.conversions[i],state)){
 			effects.removeConversion(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.rituals.length;){
+		if(!updateRitual(effects.rituals[i],state)){
+			effects.removeRitual(i);
 			continue;
 		}
 		i++;
@@ -8734,6 +8945,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.protectors.length;){
 		if(!updateProtector(effects.protectors[i],state)){
 			effects.removeProtector(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.appearances.length;){
+		if(!updateAppearance(effects.appearances[i],state)){
+			effects.removeAppearance(i);
 			continue;
 		}
 		i++;

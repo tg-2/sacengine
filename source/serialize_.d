@@ -265,6 +265,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Sac
 void serialize(alias sink)(ref Conversion conversion){ serializeStruct!sink(conversion); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Conversion)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink)(ref Ritual ritual){ serializeStruct!sink(ritual); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Ritual)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref TeleportCasting!B teleportCasting){ serializeStruct!sink(teleportCasting); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==TeleportCasting!B)){ deserializeStruct(result,state,data); }
 
@@ -384,6 +387,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Div
 
 void serialize(alias sink,B)(ref Protector!B protector){ serializeStruct!sink(protector); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Protector!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink)(ref Appearance appearance){ serializeStruct!sink(appearance); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Appearance)){ deserializeStruct(result,state,data); }
 
 void serialize(alias sink)(ref Disappearance disappearance){ serializeStruct!sink(disappearance); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Disappearance)){ deserializeStruct(result,state,data); }
