@@ -975,6 +975,7 @@ Vector3f[2] hitbox2d(B)(ref Soul!B soul,Matrix4f modelViewProjectionMatrix){
 enum AdditionalBuildingFlags{
 	none=0,
 	inactive=32, // TODO: make sure this doesn't clash with anything
+	occupied=33, // TODO: make sure this doesn't clash with anything
 }
 struct Building(B){
 	immutable(Bldg)* bldg; // TODO: replace by SacBuilding class
@@ -6800,13 +6801,26 @@ bool updateConversion(B)(ref Conversion conversion,ObjectState!B state){
 }
 
 bool freeForRitual(B)(int targetShrine,ObjectState!B state){
-	return true; // TODO
+	return state.staticObjectById!((ref shrine,state){
+		return state.buildingById!((ref bldg){
+			return !(bldg.flags&AdditionalBuildingFlags.occupied);
+		},()=>false)(shrine.buildingId);
+	},()=>false)(targetShrine,state);
+}
+
+void setOccupied(B)(int shrine,bool occupied,ObjectState!B state){
+	return state.staticObjectById!((ref shrine,occupied,state){
+		state.buildingById!((ref bldg,occupied){
+			if(occupied) bldg.flags|=AdditionalBuildingFlags.occupied;
+			else bldg.flags&=~AdditionalBuildingFlags.occupied;
+		},(){})(shrine.buildingId,occupied);
+	},(){})(shrine,occupied,state);
 }
 
 void stopRitual(B)(ref Ritual ritual,ObjectState!B state){
 	state.movingObjectById!(freeCreature,()=>false)(ritual.creature,ritual.start,state);
 	foreach(id;ritual.sacDoctors) state.movingObjectById!(kill,()=>false)(id,state);
-	// TODO
+	setOccupied(ritual.shrine,false,state);
 }
 
 
@@ -6848,6 +6862,7 @@ bool startRitual(B)(RitualType type,int side,int caster,int shrine,int creature,
 	auto positions=ritualPositions(shrinePosition,state);
 	foreach(k,ref id;sacDoctors) id=spawnRitualSacDoctor(side,positions[k].expand,state);
 	state.addEffect(Ritual(type,start,side,caster,shrine,sacDoctors,creature));
+	setOccupied(shrine,true,state);
 	return true;
 }
 
