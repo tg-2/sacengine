@@ -1842,6 +1842,7 @@ enum ConversionStatus{
 
 struct Conversion{
 	int side;
+	int caster;
 	int sacDoctor;
 	int soul;
 	int targetShrine;
@@ -1871,6 +1872,7 @@ struct Ritual{
 	RitualType type;
 	Vector3f start;
 	int side;
+	int caster;
 	int shrine;
 	int[4] sacDoctors;
 	int creature;
@@ -3554,6 +3556,29 @@ bool kill(B,bool pretending=false)(ref MovingObject!B object, ObjectState!B stat
 }
 bool playDead(B)(ref MovingObject!B object, ObjectState!B state){
 	return object.kill!(B,true)(state);
+}
+
+bool gib(B)(ref MovingObject!B object, ObjectState!B state,int giveSoulsTo=-1){
+	int numSouls=object.sacObject.numSouls;
+	if(numSouls){
+		if(giveSoulsTo!=-1){
+			if(auto wizard=state.getWizard(giveSoulsTo)){
+				wizard.souls+=numSouls;
+			}else giveSoulsTo=-1;
+		}
+		if(giveSoulsTo==-1){
+			if(!object.soulId) object.soulId=state.addObject(Soul!B(object.id,object.side,object.sacObject.numSouls,object.soulPosition,SoulState.emerging));
+			state.soulById!((ref soul){
+				if(soul.state==SoulState.reviving)
+					soul.state=SoulState.emerging;
+				soul.creatureId=0;
+			},(){})(object.soulId);
+			object.soulId=0;
+		}
+	}
+	state.removeLater(object.id);
+	// TODO: gib animation
+	return true;
 }
 
 enum dissolutionTime=cast(int)(2.5f*updateFPS);
@@ -6219,8 +6244,8 @@ void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 				soul.collectorId=pstate.collector;
 				soul.state=SoulState.collecting;
 				playSoundAt("rips",soul.collectorId,state,2.0f);
-				auto wizard=state.getWizard(soul.collectorId);
-				if(wizard) wizard.souls+=soul.number;
+				if(auto wizard=state.getWizard(soul.collectorId))
+					wizard.souls+=soul.number;
 				if(soul.creatureId){
 					state.movingObjectById!((ref creature,state){
 						creature.soulId=0;
@@ -6576,7 +6601,7 @@ bool updateConvertCasting(B)(ref ConvertCasting!B convertCast,ObjectState!B stat
 					underway=false;
 					auto sacDoctor=spawnSacDoctor(side,vortex.position,landingPosition,state);
 					if(!sacDoctor){ underway=false; interrupted=true; break; }
-					state.addEffect(Conversion(side,sacDoctor,target,targetShrine));
+					state.addEffect(Conversion(side,manaDrain.wizard,sacDoctor,target,targetShrine));
 					break;
 			}
 		}else{
@@ -6754,7 +6779,7 @@ bool updateConversion(B)(ref Conversion conversion,ObjectState!B state){
 						state.movingObjectById!(freeCreature,()=>false)(creature,sacDoc.position,state);
 						status=ConversionStatus.shrinking;
 						tether=SacDocTether.init;
-					}else if(sacDoc.creatureState.movement==CreatureMovement.onGround && (sacDoc.position.xy-shrinePosition.xy).lengthsqr<20.0f^^2 && startRitual(RitualType.convert,side,targetShrine,creature,state)){
+					}else if(sacDoc.creatureState.movement==CreatureMovement.onGround && (sacDoc.position.xy-shrinePosition.xy).lengthsqr<20.0f^^2 && startRitual(RitualType.convert,side,caster,targetShrine,creature,state)){
 						status=ConversionStatus.shrinking;
 						tether=SacDocTether.init;
 						sacDoc.kill(state);
@@ -6813,7 +6838,7 @@ Tuple!(Vector3f,float)[4] ritualPositions(B)(Vector3f shrinePosition,ObjectState
 	return result;
 }
 
-bool startRitual(B)(RitualType type,int side,int shrine,int creature,ObjectState!B state){
+bool startRitual(B)(RitualType type,int side,int caster,int shrine,int creature,ObjectState!B state){
 	if(!freeForRitual(shrine,state)) return false;
 	auto start=state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(creature);
 	if(isNaN(start.x)) return false;
@@ -6822,7 +6847,7 @@ bool startRitual(B)(RitualType type,int side,int shrine,int creature,ObjectState
 	if(isNaN(shrinePosition.x)) return false;
 	auto positions=ritualPositions(shrinePosition,state);
 	foreach(k,ref id;sacDoctors) id=spawnRitualSacDoctor(side,positions[k].expand,state);
-	state.addEffect(Ritual(type,start,side,shrine,sacDoctors,creature));
+	state.addEffect(Ritual(type,start,side,caster,shrine,sacDoctors,creature));
 	return true;
 }
 
@@ -6881,11 +6906,20 @@ bool updateRitual(B)(ref Ritual ritual,ObjectState!B state){
 					state.movingObjectById!((ref sacDoc,shrinePosition,state){
 						sacDoc.clearOrderQueue(state);
 						if(!sacDoc.turnToFaceTowards(shrinePosition,state)){
-							if(!sacDoc.creatureState.mode.isCasting&&progress<walkTime+shootTime||progress+updateAnimFactor*135==roundTime){
+							if(!sacDoc.creatureState.mode.isCasting&&progress<walkTime+shootTime){
 								sacDoc.startCasting(2*updateFPS,false,state);
 							}
 						}
 					},(){})(id,shrinePosition,state);
+				}
+				if(type==RitualType.convert&&progress==walkTime+3*updateFPS){
+					state.movingObjectById!((ref obj,nRounds,side,state){
+						auto targetRounds=cast(int)obj.creatureStats.maxHealth/550;
+						if(nRounds==targetRounds)
+							obj.gib(state,caster);
+					},(){})(creature,nRounds,side,state);
+					ritual.stopRitual(state);
+					return false;
 				}
 			}
 		}
