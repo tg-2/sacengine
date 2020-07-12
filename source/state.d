@@ -1811,6 +1811,7 @@ struct ConvertCasting(B){
 	Vector3f landingPosition;
 	RedVortex vortex;
 	bool underway=true;
+	bool interrupted=false;
 }
 
 enum ConversionStatus{
@@ -6485,17 +6486,27 @@ int spawnSacDoctor(B)(int side,Vector3f position,Vector3f landingPosition,Object
 bool updateConvertCasting(B)(ref ConvertCasting!B convertCast,ObjectState!B state){
 	with(convertCast){
 		vortex.updateRedVortex(state);
-		bool interrupted=false;
+		void freeSoulImpl(){
+			state.soulById!((ref soul,side){
+				static assert(is(typeof(soul.convertSideMask)==uint));
+				soul.convertSideMask|=(1u<<side);
+			},(){})(convertCast.target,convertCast.side);
+		}
 		if(!state.isValidTarget(targetShrine,TargetType.building)){
 			underway=false;
 			interrupted=true;
+			freeSoulImpl();
 		}
 		if(underway){
 			vortex.scale=min(1.0,vortex.scale+1.0f/vortex.numFramesToEmerge);
 			final switch(manaDrain.update(state)){
 				case CastingStatus.underway:
 					return true;
-				case CastingStatus.interrupted: underway=false; interrupted=true; break;
+				case CastingStatus.interrupted:
+					underway=false;
+					interrupted=true;
+					freeSoulImpl();
+					break;
 				case CastingStatus.finished:
 					underway=false;
 					auto sacDoctor=spawnSacDoctor(side,vortex.position,landingPosition,state);
