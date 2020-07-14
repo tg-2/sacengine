@@ -976,7 +976,7 @@ Vector3f[2] hitbox2d(B)(ref Soul!B soul,Matrix4f modelViewProjectionMatrix){
 enum AdditionalBuildingFlags{
 	none=0,
 	inactive=32, // TODO: make sure this doesn't clash with anything
-	occupied=33, // TODO: make sure this doesn't clash with anything
+	occupied=64, // TODO: make sure this doesn't clash with anything
 }
 struct Building(B){
 	immutable(Bldg)* bldg; // TODO: replace by SacBuilding class
