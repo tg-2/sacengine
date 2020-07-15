@@ -6911,11 +6911,10 @@ bool updateRitual(B)(ref Ritual ritual,ObjectState!B state){
 				return false;
 			}
 		}
-		state.movingObjectById!((ref obj,shrinePosition,remainingTime,state){
-			auto hitbox=obj.relativeHitbox;
-			auto targetPosition=shrinePosition-0.5f*(hitbox[0]+hitbox[1]);
+		state.movingObjectById!((ref obj,targetPosition,remainingTime,state){
+			auto hitbox=obj.sacObject.largeHitbox(Quaternionf.identity(),AnimationState.stance1,0);
 			obj.position=((remainingTime-1)*obj.position+targetPosition)/float(remainingTime);
-		})(creature,shrinePosition+Vector3f(0.0f,0.0f,isAltar?20.0f:17.5f),max(1,ritual.setupTime-frame),state);
+		})(creature,shrinePosition+Vector3f(0.0f,0.0f,isAltar?15.0f:12.5f),max(1,ritual.setupTime-frame),state);
 		if(frame>=ritual.setupTime){
 			auto time=frame-ritual.setupTime;
 			static assert(updateFPS==60);
@@ -6956,7 +6955,7 @@ bool updateRitual(B)(ref Ritual ritual,ObjectState!B state){
 						}
 					},(){})(id,shrinePosition,state);
 				}
-				if(type==RitualType.convert&&progress==walkTime+3*updateFPS){
+				if(type==RitualType.convert&&progress==walkTime+135*updateAnimFactor){
 					if(state.movingObjectById!((ref obj,nRounds,side,state){
 						auto targetRounds=cast(int)obj.creatureStats.maxHealth/550;
 						if(nRounds==targetRounds){
