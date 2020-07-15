@@ -1731,29 +1731,30 @@ final class SacScene: Scene{
 		}
 		if(audio) audio.queueDialogSound(tag,DialogPriority.advisorAnnoy);
 	}
-	void castSpell(SacSpell!DagonBackend spell,Target target,bool playAudio=true){
+	bool castSpell(SacSpell!DagonBackend spell,Target target,bool playAudio=true){
 		switchSpellbookTab(spell.type);
 		auto status=state.current.spellStatus!false(camera.target,spell,target);
 		if(status!=SpellStatus.ready){
 			if(playAudio) spellAdvisorHelpSpeech(status);
-			return;
+			return false;
 		}
 		controller.addCommand(Command!DagonBackend(renderSide,camera.target,spell,target));
+		return true;
 	}
-	void castSpell(char[4] tag,Target target,bool playAudio=true){
-		castSpell(SacSpell!DagonBackend.get(tag),target,playAudio);
+	bool castSpell(char[4] tag,Target target,bool playAudio=true){
+		return castSpell(SacSpell!DagonBackend.get(tag),target,playAudio);
 	}
-	void selectSpell(SacSpell!DagonBackend newSpell,bool playAudio=true){
+	bool selectSpell(SacSpell!DagonBackend newSpell,bool playAudio=true){
 		switchSpellbookTab(newSpell.type);
 		if(mouse.status==Mouse.Status.icon){
-			if(mouse.icon==MouseIcon.spell&&mouse.spell is newSpell) return;
+			if(mouse.icon==MouseIcon.spell&&mouse.spell is newSpell) return false;
 			if(playAudio&&audio) audio.playSound("kabI");
 		}
-		if(!camera.target) return;
+		if(!camera.target) return false;
 		auto status=state.current.spellStatus!true(camera.target,newSpell);
 		if(status!=SpellStatus.ready){
 			if(playAudio) spellAdvisorHelpSpeech(status);
-			return;
+			return false;
 		}
 		if(newSpell.requiresTarget){
 			import std.random:uniform; // TODO: put selected spells in game state?
@@ -1762,41 +1763,44 @@ final class SacScene: Scene{
 			mouse.status=Mouse.Status.icon;
 			mouse.icon=MouseIcon.spell;
 			mouse.spell=newSpell;
+			return true;
 		}else{
 			mouse.status=Mouse.Status.standard;
-			castSpell(newSpell,Target.init);
+			return castSpell(newSpell,Target.init);
 		}
 	}
-	void selectSpell(char[4] tag,bool playAudio=true){
-		selectSpell(SacSpell!DagonBackend.get(tag),playAudio);
+	bool selectSpell(char[4] tag,bool playAudio=true){
+		return selectSpell(SacSpell!DagonBackend.get(tag),playAudio);
 	}
-	void selectSpell(SpellType tab,int index,bool playAudio=true){
-		if(!camera.target) return;
+	bool selectSpell(SpellType tab,int index,bool playAudio=true){
+		if(!camera.target) return false;
 		auto spells=state.current.getSpells(camera.target).filter!(x=>x.spell.type==tab);
 		foreach(i,entry;enumerate(spells)) if(i==index) return selectSpell(entry.spell,playAudio);
+		return false;
 	}
-	void useAbility(SacSpell!DagonBackend ability,Target target,CommandQueueing queueing,bool playAudio=true){
+	bool useAbility(SacSpell!DagonBackend ability,Target target,CommandQueueing queueing,bool playAudio=true){
 		auto status=state.current.abilityStatus!false(renderSide,ability,target);
 		if(status!=SpellStatus.ready){
 			if(playAudio) spellAdvisorHelpSpeech(status);
-			return;
+			return false;
 		}
 		if(queueing==CommandQueueing.none) queueing=CommandQueueing.pre;
 		controller.addCommand(Command!DagonBackend(renderSide,ability,target),queueing);
+		return true;
 	}
-	void useAbility(char[4] tag,Target target,CommandQueueing queueing,bool playAudio=true){
-		useAbility(SacSpell!DagonBackend.get(tag),target,queueing,playAudio);
+	bool useAbility(char[4] tag,Target target,CommandQueueing queueing,bool playAudio=true){
+		return useAbility(SacSpell!DagonBackend.get(tag),target,queueing,playAudio);
 	}
-	void selectAbility(SacSpell!DagonBackend newAbility,CommandQueueing queueing,bool playAudio=true){
+	bool selectAbility(SacSpell!DagonBackend newAbility,CommandQueueing queueing,bool playAudio=true){
 		if(mouse.status==Mouse.Status.icon){
-			if(mouse.icon==MouseIcon.ability&&mouse.spell is newAbility) return;
+			if(mouse.icon==MouseIcon.ability&&mouse.spell is newAbility) return false;
 			if(playAudio&&audio) audio.playSound("kabI");
 		}
-		if(!camera.target) return;
+		if(!camera.target) return false;
 		auto status=state.current.abilityStatus!true(renderSide,newAbility);
 		if(status!=SpellStatus.ready){
 			if(playAudio) spellAdvisorHelpSpeech(status);
-			return;
+			return false;
 		}
 		if(newAbility.requiresTarget){
 			import std.random:uniform; // TODO: put selected spells in game state?
@@ -1805,9 +1809,10 @@ final class SacScene: Scene{
 			mouse.status=Mouse.Status.icon;
 			mouse.icon=MouseIcon.ability;
 			mouse.spell=newAbility;
+			return true;
 		}else{
 			mouse.status=Mouse.Status.standard;
-			useAbility(newAbility,Target.init,queueing);
+			return useAbility(newAbility,Target.init,queueing);
 		}
 	}
 	void selectAbility(CommandQueueing queueing,bool playAudio=true){
@@ -1905,7 +1910,11 @@ final class SacScene: Scene{
 			hudMaterialBackend.bindDiffuse(entry.spell.icon);
 			hudMaterialBackend.setAlpha(factor);
 			quad.render(rc);
-			if(entry.spell.tag==SpellTag.convert&&!wizard.closestShrine){
+			bool active=true;
+			if(entry.spell.tag==SpellTag.guardian&&!wizard.closestBuilding) active=false;
+			if(entry.spell.tag==SpellTag.desecrate&&!wizard.closestEnemyAltar) active=false;
+			if(entry.spell.tag==SpellTag.convert&&!wizard.closestShrine) active=false;
+			if(!active){
 				hudMaterialBackend.setTransformationScaled(spellPosition,Quaternionf.identity(),pageScaling,rc);
 				hudMaterialBackend.bindDiffuse(sacCursor.invalidTargetIconTexture);
 				hudMaterialBackend.setAlpha(1.0f);
@@ -2346,6 +2355,7 @@ final class SacScene: Scene{
 										auto target=Target(TargetType.terrain,0,mouse.target.position,mouse.target.location);
 										controller.addCommand(Command!DagonBackend(CommandType.advance,renderSide,camera.target,0,target,cameraFacing),queueing);
 									}
+									mouse.status=Mouse.Status.standard;
 									break;
 								case MouseIcon.guard:
 									if(summary&(TargetFlags.creature|TargetFlags.wizard|TargetFlags.building)&&!(summary&TargetFlags.corpse)){
@@ -2354,14 +2364,17 @@ final class SacScene: Scene{
 										auto target=Target(TargetType.terrain,0,mouse.target.position,mouse.target.location);
 										controller.addCommand(Command!DagonBackend(CommandType.guardArea,renderSide,camera.target,0,target,cameraFacing),queueing);
 									}
+									mouse.status=Mouse.Status.standard;
 									break;
 								case MouseIcon.spell:
-									castSpell(mouse.spell,mouse.target);
+									if(castSpell(mouse.spell,mouse.target))
+										mouse.status=Mouse.Status.standard;
 									break;
 								case MouseIcon.ability:
-									useAbility(mouse.spell,mouse.target,queueing);
+									if(useAbility(mouse.spell,mouse.target,queueing))
+										mouse.status=Mouse.Status.standard;
+									break;
 							}
-							mouse.status=Mouse.Status.standard;
 						}else{
 							auto status=mouse.icon==MouseIcon.spell?state.current.spellStatus!false(camera.target,mouse.spell,mouse.target):
 								mouse.icon==MouseIcon.ability?state.current.abilityStatus!false(renderSide,mouse.spell,mouse.target):SpellStatus.invalidTarget;
@@ -2815,7 +2828,7 @@ final class SacScene: Scene{
 		final switch(mouse.icon){
 			case MouseIcon.guard: return isApplicable(orderSpelFlags,target.summarize(renderSide,state.current));
 			case MouseIcon.attack: return isApplicable(orderSpelFlags,target.summarize(renderSide,state.current));
-			case MouseIcon.spell: return state.current.spellStatus!false(camera.target,mouse.spell,target)==SpellStatus.ready;
+			case MouseIcon.spell: return !!state.current.spellStatus!false(camera.target,mouse.spell,target).among(SpellStatus.ready,SpellStatus.mustBeNearBuilding,SpellStatus.mustBeNearEnemyAltar,SpellStatus.mustBeConnectedToConversion);
 			case MouseIcon.ability: return state.current.abilityStatus!false(renderSide,mouse.spell,target)==SpellStatus.ready;
 		}
 	}

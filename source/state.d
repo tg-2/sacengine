@@ -1517,7 +1517,9 @@ struct WizardInfo(B){
 	int souls;
 	float experience;
 	Spellbook!B spellbook;
+	int closestBuilding=0;
 	int closestShrine=0;
+	int closestEnemyAltar=0;
 
 	void opAssign(ref WizardInfo!B rhs){
 		id=rhs.id;
@@ -1864,12 +1866,6 @@ enum RitualType{
 	desecrate,
 }
 
-enum RitualStatus{
-	waiting,
-	walking,
-	shooting,
-}
-
 struct Ritual{
 	RitualType type;
 	Vector3f start;
@@ -1878,7 +1874,6 @@ struct Ritual{
 	int shrine;
 	int[4] sacDoctors;
 	int creature;
-	RitualStatus status;
 	enum setupTime=5*updateFPS;
 	int timer=setupTime;
 	int frame=0;
@@ -9242,31 +9237,51 @@ void animateManahoar(B)(Vector3f location, int side, float rate, ObjectState!B s
 }
 
 
-int findClosestShrine(B)(int side,Vector3f position,ObjectState!B state){ // TODO: do a single pass for all wizards?
+int[3] findClosestBuildings(B)(int side,Vector3f position,ObjectState!B state){ // [building,shrine,enemy altar] // TODO: do a single pass for all wizards?
+	enum RType{
+		building,
+		shrine,
+		enemyAltar,
+	}
 	static struct Result{
-		int currentId=0;
-		float currentDistance=float.infinity;
+		int[3] currentIds=0;
+		float[3] currentDistances=float.infinity;
 	}
 	static void find(T)(ref T objects,int side,Vector3f position,int componentId,ObjectState!B state,Result* result){
 		static if(is(T==StaticObjects!(B,renderMode),RenderMode renderMode)){
-			if(objects.sacObject.isAltar||objects.sacObject.isShrine){ // TODO: use cached indices?
+			bool altar=objects.sacObject.isAltar;
+			bool shrine=objects.sacObject.isShrine;
+			if(altar||shrine||objects.sacObject.isManalith){ // TODO: use cached indices?
 				foreach(j;0..objects.length){
-					if(state.buildingById!((ref bldg,side)=>bldg.side!=side||bldg.flags&AdditionalBuildingFlags.inactive,()=>false)(objects.buildingIds[j],side))
-						continue;
-					auto candidateDistance=(position-objects.positions[j]).xy.lengthsqr;
-					if(candidateDistance<result.currentDistance && componentId==state.pathFinder.getComponentId(objects.positions[j],state)){
-						result.currentId=objects.ids[j];
-						result.currentDistance=candidateDistance;
-					}
+					import std.traits:EnumMembers;
+					static foreach(k;EnumMembers!RType){{
+						static if(k==RType.building){
+							if(state.buildingById!((ref bldg,side)=>bldg.side!=side,()=>true)(objects.buildingIds[j],side))
+								mixin(text(`goto Lnext`,k),`;`);
+						}else static if(k==RType.shrine){
+							if(!altar&&!shrine||state.buildingById!((ref bldg,side)=>bldg.side!=side||bldg.flags&AdditionalBuildingFlags.inactive,()=>true)(objects.buildingIds[j],side))
+								mixin(text(`goto Lnext`,k,`;`));
+						}else{
+							if(!altar||state.buildingById!((ref bldg,side,state)=>state.sides.getStance(side,bldg.side)!=Stance.enemy,()=>true)(objects.buildingIds[j],side,state))
+								mixin(text(`goto Lnext`,k,`;`));
+						}
+						auto candidateDistance=(position-objects.positions[j]).xy.lengthsqr;
+						if(k==RType.building && candidateDistance>50.0f^^2) mixin(text(`goto Lnext`,k,`;`));
+						if(k==RType.enemyAltar && candidateDistance>75.0f^^2) mixin(text(`goto Lnext`,k,`;`));
+						if(candidateDistance<result.currentDistances[k] && (k==RType.building||componentId==state.pathFinder.getComponentId(objects.positions[j],state))){ // TODO: is it really possible to guard over the void?
+							result.currentIds[k]=objects.ids[j];
+							result.currentDistances[k]=candidateDistance;
+						}
+					}mixin(text(`Lnext`,k,`:;`));}
 				}
 			}
 		}
 	}
 	auto componentId=state.pathFinder.getComponentId(position,state);
-	if(componentId==-1) return 0;
+	if(componentId==-1) return [0,0,0];
 	Result result;
 	state.eachByType!find(side,position,componentId,state,&result);
-	return result.currentId;
+	return result.currentIds;
 }
 
 enum SpellbookSoundFlags{
@@ -9281,7 +9296,10 @@ void playSpellbookSound(B)(int side,SpellbookSoundFlags flags,char[4] tag,Object
 void updateWizard(B)(ref WizardInfo!B wizard,ObjectState!B state){
 	auto sidePosition=state.movingObjectById!((ref obj)=>tuple(obj.side,obj.position),()=>tuple(-1,Vector3f.init))(wizard.id);
 	auto side=sidePosition[0], position=sidePosition[1];
-	wizard.closestShrine=side==-1?0:findClosestShrine(side,position,state);
+	auto ids=side==-1?(int[3]).init:findClosestBuildings(side,position,state);
+	wizard.closestBuilding=ids[0];
+	wizard.closestShrine=ids[1];
+	wizard.closestEnemyAltar=ids[2];
 	SpellbookSoundFlags flags;
 	foreach(ref entry;wizard.spellbook.spells.data){
 		bool oldReady=entry.ready;
@@ -10147,17 +10165,11 @@ final class ObjectState(B){ // (update logic)
 			if(entry.spell!is spell) continue;
 			if(entry.level>wizard.level) return SpellStatus.inexistent;
 			if(spell.soulCost>wizard.souls) return SpellStatus.needMoreSouls;
-			if(entry.cooldown>0.0f) return SpellStatus.notReady;
-			if(spell.tag==SpellTag.convert) if(!wizard.closestShrine) return SpellStatus.mustBeConnectedToConversion;
-			return this.movingObjectById!((obj,spell,state,spellStatusArgs!selectOnly target){
+			auto status=this.movingObjectById!((obj,spell,state,spellStatusArgs!selectOnly target){
 				if(spell.manaCost>obj.creatureStats.mana+manaEpsilon) return SpellStatus.lowOnMana; // TODO: store mana as exact integer?
-				// if(spell.nearBuilding&&...) return SpellStatus.mustBeNearBuilding; // TODO
-				// if(spell.nearEnemyAltar&&...) return SpellStatus.mustBeNearEnemyAltar; // TODO
-				// if(spell.connectedToConversion&&....) return SpellStatus.mustBeConnectedToConversion; // TODO
 				static if(!selectOnly){
 					if(spell.requiresTarget){
 						if(!spell.isApplicable(summarize(target[0],obj.side,this))) return SpellStatus.invalidTarget;
-						if((obj.position-target[0].position).lengthsqr>spell.range^^2) return SpellStatus.outOfRange;
 						if(spell.tag==SpellTag.convert){
 							auto side=state.movingObjectById!(.side,()=>-1)(wizard.id,state);
 							if(0<=side&&side<32){
@@ -10166,10 +10178,18 @@ final class ObjectState(B){ // (update logic)
 								if(!(convertSideMask&(1u<<side))) return SpellStatus.invalidTarget;
 							}
 						}
+						if((obj.position-target[0].position).lengthsqr>spell.range^^2) return SpellStatus.outOfRange;
 					}
 				}
 				return SpellStatus.ready;
 			},function()=>SpellStatus.inexistent)(wizard.id,spell,this,target);
+			if(status==SpellStatus.ready){
+				if(spell.tag==SpellTag.guardian) if(!wizard.closestBuilding) return SpellStatus.mustBeNearBuilding;
+				if(spell.tag==SpellTag.desecrate) if(!wizard.closestEnemyAltar) return SpellStatus.mustBeNearEnemyAltar;
+				if(spell.tag==SpellTag.convert) if(!wizard.closestShrine) return SpellStatus.mustBeConnectedToConversion;
+			}
+			if(entry.cooldown>0.0f) return SpellStatus.notReady;
+			return status;
 		}
 		return SpellStatus.inexistent;
 	}
