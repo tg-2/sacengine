@@ -9157,7 +9157,7 @@ void animateManalith(B)(Vector3f location, int side, ObjectState!B state){
 	}
 }
 
-void animateShrine(B)(Vector3f location, int side, ObjectState!B state){
+void animateShrine(B)(bool active,Vector3f location, int side, ObjectState!B state){
 	auto sacParticle=state.sides.shrineParticle(side);
 	auto globalAngle=2*pi!float/updateFPS*(state.frame+1000*location.x+location.y);
 	auto globalMagnitude=0.1f;
@@ -9169,7 +9169,7 @@ void animateShrine(B)(Vector3f location, int side, ObjectState!B state){
 		auto displacementMagnitude=1.0f*state.uniform(0.0f,1.0f)^^2;
 		auto displacement=displacementMagnitude*Vector3f(cos(displacementAngle),sin(displacementAngle),0.0f);
 		auto position=center+displacement;
-		auto velocity=(1.5f+state.uniform(-0.5f,0.5f))*Vector3f(0.0f,0.0f,state.uniform(2.0f,4.0f)).normalized;
+		auto velocity=(active?2.5f:1.0f)*(1.5f+state.uniform(-0.5f,0.5f))*Vector3f(0.0f,0.0f,state.uniform(2.0f,4.0f)).normalized;
 		auto scale=1.0f;
 		auto lifetime=cast(int)((sacParticle.numFrames*5.0f)*(1.0f+state.uniform(0.0f,1.0f)^^10));
 		auto frame=0;
@@ -9201,7 +9201,7 @@ void updateBuilding(B)(ref Building!B building, ObjectState!B state){
 			}
 			auto position=state.staticObjectById!(getShrineTop,function Vector3f(){ assert(0); })(building.componentIds[0]);
 			if(building.isEtherealAltar) position.z+=95.0f;
-			animateShrine(position,building.side,state);
+			animateShrine(!!(building.flags&AdditionalBuildingFlags.occupied),position,building.side,state);
 		}
 	}
 }
