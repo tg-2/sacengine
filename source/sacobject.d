@@ -846,6 +846,7 @@ enum ParticleType{
 	heal,
 	relativeHeal,
 	lightningCasting,
+	needle,
 	redVortexDroplet,
 	blueVortexDroplet,
 	spark,
@@ -885,6 +886,8 @@ final class SacParticle(B){
 				return true;
 			case manalith,shrine,manahoar,firy,fire,fireball,explosion,explosion2,speedUp,heal,relativeHeal,lightningCasting:
 				return false;
+			case needle:
+				return true;
 			case redVortexDroplet,blueVortexDroplet:
 				return true;
 			case castPersephone,castPyro,castJames,castStratos,castCharnel:
@@ -909,6 +912,8 @@ final class SacParticle(B){
 				return false;
 			case relativeHeal,lightningCasting:
 				return true;
+			case needle:
+				return false;
 			case redVortexDroplet,blueVortexDroplet:
 				return false;
 			case castPersephone,castPyro,castJames,castStratos,castCharnel:
@@ -921,7 +926,7 @@ final class SacParticle(B){
 	}
 	@property bool bumpOffGround(){
 		switch(type) with(ParticleType){
-			case wrathParticle,ashParticle,rock,swarmHit,redVortexDroplet,blueVortexDroplet: return true;
+			case wrathParticle,ashParticle,rock,swarmHit,needle,redVortexDroplet,blueVortexDroplet: return true;
 			default: return false;
 		}
 	}
@@ -995,6 +1000,12 @@ final class SacParticle(B){
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
 			case lightningCasting:
+				width=height=1.0f;
+				this.energy=3.0f;
+				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/cst0.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
+			case needle:
 				width=height=1.0f;
 				this.energy=3.0f;
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/cst0.TXTR"));
@@ -1169,6 +1180,8 @@ final class SacParticle(B){
 				return min(1.0f,(lifetime/(0.75f*numFrames))^^2);
 			case lightningCasting,spark:
 				return 1.0;
+			case needle:
+				return min(1.0f,(lifetime/(0.5f*numFrames))^^2);
 			case redVortexDroplet,blueVortexDroplet:
 				return min(1.0f,(lifetime/(0.75f*numFrames))^^2);
 			case castPersephone,castPyro,castJames,castStratos,castCharnel:
@@ -1208,6 +1221,8 @@ final class SacParticle(B){
 				return 1.0f;
 			case lightningCasting,spark:
 				return 1.0f;
+			case needle:
+				return min(1.0f,lifetime/(0.5f*numFrames));
 			case redVortexDroplet,blueVortexDroplet:
 				return min(1.0f,(lifetime/(0.75f*numFrames)));
 			case castPersephone,castPyro,castJames,castStratos,castCharnel:

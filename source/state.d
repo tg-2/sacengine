@@ -6676,6 +6676,19 @@ void updateSacDocTether(B)(ref SacDocTether tether,ref MovingObject!B sacDoc,int
 			tether.velocities[i]=totalVelocity+maxVelocity/relativeVelocity.length*relativeVelocity;
 		tether.locations[i]+=tether.velocities[i]/updateFPS;
 	}
+	enum numParticles=2;
+	auto needle=sacDoc.needle;
+	auto sacParticle=SacParticle!B.get(ParticleType.needle);
+	foreach(i;0..numParticles){
+		auto direction=needle[1]+state.uniform(0.2f,1.0f)*state.uniformDirection();
+		auto velocity=state.uniform(1.5f,2.0f)*direction;
+		velocity.z*=2.5f;
+		auto scale=state.uniform(0.5f,1.0f);
+		auto lifetime=31+state.uniform(0,32);
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle,needle[0],velocity,scale,lifetime,frame));
+	}
+
 }
 
 bool updateConversion(B)(ref Conversion conversion,ObjectState!B state){
