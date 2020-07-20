@@ -1874,6 +1874,9 @@ struct Ritual{
 	int shrine;
 	int[4] sacDoctors;
 	int creature;
+	SacDocTether[4] tethers;
+	LightningBolt[2] altarBolts;
+	LightningBolt[3] desecrateBolts;
 	enum setupTime=5*updateFPS;
 	int timer=setupTime;
 	int frame=0;
@@ -1925,9 +1928,9 @@ struct LightningCasting(B){
 	OrderTarget target;
 }
 enum numLightningSegments=10;
-struct LightningBolt(B){
+struct LightningBolt{
 	Vector3f[numLightningSegments-1] displacement;
-	void changeShape(ObjectState!B state){
+	void changeShape(B)(ObjectState!B state){
 		foreach(ref disp;displacement){
 			enum size=2.5f;
 			static immutable Vector3f[2] box=[-0.5f*size*Vector3f(1.0f,1.0f,1.0f),0.5f*size*Vector3f(1.0f,1.0f,1.0f)];
@@ -1952,7 +1955,7 @@ struct Lightning(B){
 		this.spell=spell;
 		this.frame=frame;
 	}
-	LightningBolt!B[2] bolts;
+	LightningBolt[2] bolts;
 }
 struct WrathCasting(B){
 	ManaDrain!B manaDrain;
@@ -6626,29 +6629,29 @@ bool updateConvertCasting(B)(ref ConvertCasting!B convertCast,ObjectState!B stat
 	}
 }
 
-Vector3f[SacDocTether.m] getSacDocTetherTargetLocations(B)(ref MovingObject!B sacDoc,int target,ObjectState!B state){
+Vector3f[SacDocTether.m] getSacDocTetherTargetLocations(B)(ref MovingObject!B sacDoc,int target,ObjectState!B state,float needleExpansion=1.5f){
 	Vector3f[SacDocTether.m] locations;
 	auto needle = sacDoc.needle;
 	auto center = state.movingObjectById!((ref obj)=>obj.center,()=>Vector3f.init)(target);
 	if(isNaN(needle[0].x)||isNaN(center.x)) return locations;
 	locations[0]=needle[0];
-	auto start=needle[0]+1.5f*needle[1];
-	locations[1]=start;
-	float intp=locations.length-2;
-	foreach(i,ref p;locations[1..$]) p=i/intp*center+(intp-i)/intp*start;
+	auto start=isNaN(needleExpansion)?needle[0]:needle[0]+needleExpansion*needle[1];
+	if(!isNaN(needleExpansion)) locations[1]=start;
+	float intp=locations.length-2+isNaN(needleExpansion);
+	foreach(i,ref p;locations[!isNaN(needleExpansion)..$]) p=i/intp*center+(intp-i)/intp*start;
 	return locations;
 }
 
-SacDocTether makeSacDocTether(B)(ref MovingObject!B sacDoc,int target,ObjectState!B state){
+SacDocTether makeSacDocTether(B)(ref MovingObject!B sacDoc,int target,ObjectState!B state,float needleExpansion=1.5f){
 	SacDocTether tether;
-	tether.locations=getSacDocTetherTargetLocations(sacDoc,target,state);
+	tether.locations=getSacDocTetherTargetLocations(sacDoc,target,state,needleExpansion);
 	tether.velocities[]=Vector3f(0.0f,0.0f,0.0f);
 	return tether;
 }
 
 
-void updateSacDocTether(B)(ref SacDocTether tether,ref MovingObject!B sacDoc,int target,ObjectState!B state){
-	auto targets=getSacDocTetherTargetLocations(sacDoc,target,state);
+void updateSacDocTether(B)(ref SacDocTether tether,ref MovingObject!B sacDoc,int target,ObjectState!B state,float needleExpansion=1.5f){
+	auto targets=getSacDocTetherTargetLocations(sacDoc,target,state,needleExpansion);
 	if(isNaN(targets[0].x)){
 		tether=SacDocTether.init;
 		return;
@@ -6683,7 +6686,6 @@ void updateSacDocTether(B)(ref SacDocTether tether,ref MovingObject!B sacDoc,int
 		auto frame=0;
 		state.addParticle(Particle!B(sacParticle,needle[0],velocity,scale,lifetime,frame));
 	}
-
 }
 
 bool updateConversion(B)(ref Conversion conversion,ObjectState!B state){
@@ -6909,7 +6911,7 @@ bool updateRitual(B)(ref Ritual ritual,ObjectState!B state){
 		state.movingObjectById!((ref obj,targetPosition,remainingTime,state){
 			auto hitbox=obj.sacObject.largeHitbox(Quaternionf.identity(),AnimationState.stance1,0);
 			obj.position=((remainingTime-1)*obj.position+targetPosition)/float(remainingTime);
-		})(creature,shrinePosition+Vector3f(0.0f,0.0f,isAltar?15.0f:12.5f),max(1,ritual.setupTime-frame),state);
+		})(creature,shrinePosition+Vector3f(0.0f,0.0f,15.0f),max(1,ritual.setupTime-frame),state);
 		if(frame>=ritual.setupTime){
 			auto time=frame-ritual.setupTime;
 			static assert(updateFPS==60);
@@ -6940,27 +6942,40 @@ bool updateRitual(B)(ref Ritual ritual,ObjectState!B state){
 					foreach_reverse(k;1..sacDoctors.length)
 						swap(sacDoctors[k],sacDoctors[k-1]);
 				}
+				enum tortureStart=updateAnimFactor*5, tortureEnd=updateAnimFactor*130;
 				foreach(k,id;sacDoctors){
-					state.movingObjectById!((ref sacDoc,shrinePosition,state){
+					state.movingObjectById!((ref sacDoc,k,shrinePosition,ritual,state){
 						sacDoc.clearOrderQueue(state);
-						if(!sacDoc.turnToFaceTowards(shrinePosition,state)){
-							if(!sacDoc.creatureState.mode.isCasting&&progress<walkTime+shootTime){
+						if(sacDoc.creatureState.mode!=CreatureMode.torturing){
+							if(!sacDoc.turnToFaceTowards(shrinePosition,state)&&progress<walkTime+shootTime)
 								sacDoc.startTorturing(state);
+						}else{
+							if(progress<walkTime+shootTime){
+								if(sacDoc.frame==tortureStart){
+									ritual.tethers[k]=sacDoc.makeSacDocTether(ritual.creature,state,float.nan);
+									foreach(ref x;ritual.tethers[k].locations[1..$-1]) x+=3.0f*state.uniformDirection();
+								}
 							}
+							if(!isNaN(ritual.tethers[k].locations[0].x)&&sacDoc.frame>tortureStart && sacDoc.frame<tortureEnd)
+								ritual.tethers[k].updateSacDocTether(sacDoc,ritual.creature,state,float.nan);
 						}
-					},(){})(id,shrinePosition,state);
+						if(sacDoc.frame==tortureEnd) ritual.tethers[k]=SacDocTether.init;
+					},(){})(id,k,shrinePosition,&ritual,state);
 				}
-				if(type==RitualType.convert&&progress==walkTime+135*updateAnimFactor){
-					if(state.movingObjectById!((ref obj,nRounds,side,state){
-						auto targetRounds=cast(int)obj.creatureStats.maxHealth/550;
-						if(nRounds==targetRounds){
-							obj.gib(state,caster);
-							return true;
+				if(progress==walkTime+135*updateAnimFactor){
+					tethers=(SacDocTether[4]).init;
+					if(type==RitualType.convert){
+						if(state.movingObjectById!((ref obj,nRounds,side,state){
+							auto targetRounds=cast(int)obj.creatureStats.maxHealth/550;
+							if(nRounds==targetRounds){
+								obj.gib(state,caster);
+								return true;
+							}
+							return false;
+						},()=>true)(creature,nRounds,side,state)){
+							ritual.stopRitual(state);
+							return false;
 						}
-						return false;
-					},()=>true)(creature,nRounds,side,state)){
-						ritual.stopRitual(state);
-						return false;
 					}
 				}
 			}

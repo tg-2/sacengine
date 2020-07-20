@@ -572,6 +572,8 @@ final class SacScene: Scene{
 						if(objects.conversions[j].status.among(ConversionStatus.move,ConversionStatus.shrinking))
 							renderBlueRimForId(objects.conversions[j].creature,objects.conversions[j].vortexScale,objects.conversions[j].frame);
 					rimMat.unbind(rc);
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.conversions.length||objects.rituals.length)){
 					auto material=scene.tether.material;
 					material.bind(rc);
 					glDisable(GL_CULL_FACE);
@@ -597,6 +599,7 @@ final class SacScene: Scene{
 						mesh.render(rc);
 					}
 					foreach(j;0..objects.conversions.length) renderTether(objects.conversions[j].tether,objects.conversions[j].frame);
+					foreach(j;0..objects.rituals.length) foreach(k;0..4) renderTether(objects.rituals[j].tethers[k],objects.rituals[j].frame);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.blueRings.length||objects.teleportRings.length)){
 					auto material=scene.blueRing.material;

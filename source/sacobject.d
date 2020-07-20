@@ -1723,7 +1723,7 @@ struct SacTether(B){
 	enum numSegments=19;
 	static B.BoneMesh[] createMeshes(){
 		enum nU=4,nV=4;
-		return makeLineMeshes!B(numSegments,nU,nV,0.0f,0.2f,true);
+		return makeLineMeshes!B(numSegments,nU,nV,0.0f,0.3f,true);
 	}
 }
 

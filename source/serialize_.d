@@ -292,8 +292,8 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Hea
 void serialize(alias sink,B)(ref LightningCasting!B lightningCasting){ serializeStruct!sink(lightningCasting); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==LightningCasting!B)){ deserializeStruct(result,state,data); }
 
-void serialize(alias sink,B)(ref LightningBolt!B lightningBolt){ serializeStruct!sink(lightningBolt); }
-void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==LightningBolt!B)){ deserializeStruct(result,state,data); }
+void serialize(alias sink)(ref LightningBolt lightningBolt){ serializeStruct!sink(lightningBolt); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==LightningBolt)){ deserializeStruct(result,state,data); }
 
 void serialize(alias sink,B)(ref Lightning!B lightning){ serializeStruct!sink(lightning); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Lightning!B)){ deserializeStruct(result,state,data); }
