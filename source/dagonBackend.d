@@ -644,7 +644,7 @@ final class SacScene: Scene{
 						}
 					}
 				}
-				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.lightnings.length){
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.lightnings.length||objects.rituals.length)){
 					auto material=scene.lightning.material;
 					material.bind(rc);
 					glDisable(GL_CULL_FACE);
@@ -652,19 +652,8 @@ final class SacScene: Scene{
 						glEnable(GL_CULL_FACE);
 						material.unbind(rc);
 					}
-					foreach(j;0..objects.lightnings.length){
-						auto start=objects.lightnings[j].start.center(scene.state.current);
-						auto end=objects.lightnings[j].end.center(scene.state.current);
-						auto frame=objects.lightnings[j].frame;
-						enum totalFrames=Lightning!DagonBackend.totalFrames;
-						enum travelDelay=Lightning!DagonBackend.travelDelay;
-						if(frame<travelDelay){
-							auto α=frame/float(travelDelay);
-							end=α*end+start*(1.0f-α);
-						}else if(frame>totalFrames-travelDelay){
-							auto α=(frame-(totalFrames-travelDelay))/float(travelDelay);
-							start=α*end+start*(1.0f-α);
-						}
+					enum totalFrames=Lightning!DagonBackend.totalFrames;
+					void renderBolts(LightningBolt[] bolts,Vector3f start,Vector3f end,int frame){
 						auto diff=end-start;
 						auto len=diff.length;
 						auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),diff/len);
@@ -673,7 +662,7 @@ final class SacScene: Scene{
 						auto energy=0.375f+14.625f*(0.5f+0.25f*cos(7.0f*alpha)+0.25f*sin(11.0f*alpha));
 						scene.shadelessBoneMaterialBackend.setEnergy(energy);
 						auto mesh=scene.lightning.getFrame(frame%scene.lightning.numFrames);
-						foreach(ref bolt;objects.lightnings[j].bolts){
+						foreach(ref bolt;bolts){
 							Matrix4x4f[numLightningSegments+1] pose;
 							pose[0]=pose[numLightningSegments]=Matrix4f.identity();
 							foreach(k,ref x;pose[1..$-1]) x=Transformation(Quaternionf.identity(),bolt.displacement[k]).getMatrix4f;
@@ -681,6 +670,28 @@ final class SacScene: Scene{
 							scope(exit) mesh.pose=[];
 							mesh.render(rc);
 						}
+					}
+					foreach(j;0..objects.lightnings.length){
+						auto start=objects.lightnings[j].start.center(scene.state.current);
+						auto end=objects.lightnings[j].end.center(scene.state.current);
+						auto frame=objects.lightnings[j].frame;
+						enum travelDelay=Lightning!DagonBackend.travelDelay;
+						if(frame<travelDelay){
+							auto α=frame/float(travelDelay);
+							end=α*end+start*(1.0f-α);
+						}else if(frame>totalFrames-travelDelay){
+							auto α=(frame-(totalFrames-travelDelay))/float(travelDelay);
+							start=α*end+start*(1.0f-α);
+						}
+						renderBolts(objects.lightnings[j].bolts[],start,end,frame);
+					}
+					foreach(j;0..objects.rituals.length){
+						if(isNaN(objects.rituals[j].altarBolts[0].displacement[0].x)) continue;
+						auto end=scene.state.current.movingObjectById!(center,()=>Vector3f.init)(objects.rituals[j].creature);
+						auto start=scene.state.current.staticObjectById!((ref obj)=>obj.position+Vector3f(0.0f,0.0f,60.0f),()=>Vector3f.init)(objects.rituals[j].shrine);
+						if(isNaN(end.x)||isNaN(start.x)) continue;
+						auto frame=objects.rituals[j].frame;
+						renderBolts(objects.rituals[j].altarBolts[],start,end,frame);
 					}
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.wraths.length){

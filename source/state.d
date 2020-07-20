@@ -6962,8 +6962,17 @@ bool updateRitual(B)(ref Ritual ritual,ObjectState!B state){
 						if(sacDoc.frame==tortureEnd) ritual.tethers[k]=SacDocTether.init;
 					},(){})(id,k,shrinePosition,&ritual,state);
 				}
+				enum boltDelay=updateAnimFactor*5;
+				enum changeShapeDelay=6;
+				if(progress>=walkTime+boltDelay+tortureStart&&progress<walkTime+boltDelay+tortureEnd){
+					if(progress==walkTime+boltDelay+tortureStart||frame%changeShapeDelay==0)
+						foreach(ref bolt;altarBolts) bolt.changeShape(state);
+				}else if(progress==walkTime+boltDelay+tortureEnd){
+					altarBolts=(LightningBolt[2]).init;
+				}
 				if(progress==walkTime+135*updateAnimFactor){
 					tethers=(SacDocTether[4]).init;
+					altarBolts=(LightningBolt[2]).init;
 					if(type==RitualType.convert){
 						if(state.movingObjectById!((ref obj,nRounds,side,state){
 							auto targetRounds=cast(int)obj.creatureStats.maxHealth/550;
