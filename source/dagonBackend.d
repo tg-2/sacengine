@@ -1486,14 +1486,9 @@ final class SacScene: Scene{
 		if(mouse.onMinimap){
 			auto mouseOffset=Vector3f(mouse.x,mouse.y,0.0f)-mapCenter;
 			auto minimapPosition=minimapCenter+rotate(mapRotation,Vector3f(mouseOffset.x,-mouseOffset.y,0.0f)/minimapFactor);
-			if(state.current.isOnGround(minimapPosition)){
-				minimapPosition.z=state.current.getGroundHeight(minimapPosition);
-				auto target=Target(TargetType.terrain,0,minimapPosition,TargetLocation.minimap);
-				minimapTarget=target;
-			}else{
-				minimapTarget=Target.init;
-				minimapTarget.location=TargetLocation.minimap;
-			}
+			minimapPosition.z=state.current.getHeight(minimapPosition);
+			auto target=Target(TargetType.terrain,0,minimapPosition,TargetLocation.minimap);
+			minimapTarget=target;
 		}
 		minimapMaterialBackend.bindDiffuse(sacHud.minimapIcons);
 		 // temporary scratch space. TODO: maybe share memory with other temporary scratch spaces
@@ -2510,9 +2505,11 @@ final class SacScene: Scene{
 					controller.addCommand(Command!DagonBackend(CommandType.retreat,renderSide,camera.target,0,target,float.init));
 					break;
 				case move:
-					auto target=Target(TargetType.terrain,0,mouse.target.position,mouse.target.location);
-					target.position.z=state.current.getHeight(target.position);
-					controller.addCommand(Command!DagonBackend(CommandType.move,renderSide,camera.target,0,target,cameraFacing),queueing);
+					with(TargetType) if(mouse.target.type.among(terrain,creature,building,soul)){ // TODO: sky
+						auto target=Target(terrain,0,mouse.target.position,mouse.target.location);
+						target.position.z=state.current.getHeight(target.position);
+						controller.addCommand(Command!DagonBackend(CommandType.move,renderSide,camera.target,0,target,cameraFacing),queueing);
+					}
 					break;
 				case useAbility:
 					selectAbility(CommandQueueing.none);
