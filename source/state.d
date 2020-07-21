@@ -6963,7 +6963,7 @@ bool updateRitual(B)(ref Ritual ritual,ObjectState!B state){
 					},(){})(id,k,shrinePosition,&ritual,state);
 				}
 				enum boltDelay=updateAnimFactor*5;
-				enum changeShapeDelay=6;
+				enum changeShapeDelay=9;
 				if(progress>=walkTime+boltDelay+tortureStart&&progress<walkTime+boltDelay+tortureEnd){
 					if(progress==walkTime+boltDelay+tortureStart||frame%changeShapeDelay==0)
 						foreach(ref bolt;altarBolts) bolt.changeShape(state);
