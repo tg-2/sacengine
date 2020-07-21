@@ -84,6 +84,12 @@ bool isValidAttackTarget(CreatureMode mode){
 		case dead,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,rockForm,convertReviving,thrashing: return false;
 	}
 }
+bool isValidGuardTarget(CreatureMode mode){
+	final switch(mode) with(CreatureMode){
+		case idle,moving,dying,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,rockForm,convertReviving,pumping,torturing,thrashing: return true;
+		case dead,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive: return false;
+	}
+}
 bool canHeal(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing,
@@ -5008,8 +5014,9 @@ bool isValidEnemyAttackTarget(B)(int targetId,int side,ObjectState!B state){
 	return state.isValidTarget(targetId)&&state.objectById!(.isValidEnemyAttackTarget)(targetId,side,state);
 }
 bool isValidGuardTarget(B,T)(T obj,ObjectState!B state)if(is(T==MovingObject!B)||is(T==StaticObject!B)){
-	static if(is(T==StaticObject!B)) return true;
-	return isValidAttackTarget(obj,state); // TODO: dead wizards
+	static if(is(T==MovingObject!B)){
+		return obj.creatureState.mode.isValidGuardTarget && obj.health(state)!=0.0f;
+	}else return true;
 }
 bool isValidGuardTarget(B)(int targetId,ObjectState!B state){
 	return state.isValidTarget(targetId)&&state.objectById!(.isValidGuardTarget)(targetId,state);
