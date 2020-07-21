@@ -1929,7 +1929,8 @@ final class SacScene: Scene{
 			if(entry.spell.tag==SpellTag.desecrate&&!wizard.closestEnemyAltar) active=false;
 			if(entry.spell.tag==SpellTag.convert&&!wizard.closestShrine) active=false;
 			if(!active){
-				hudMaterialBackend.setTransformationScaled(spellPosition,Quaternionf.identity(),pageScaling,rc);
+				auto inactivePosition=Vector3f(i*pageScaling.x,height-pageScaling.y,0.0f);
+				hudMaterialBackend.setTransformationScaled(inactivePosition,Quaternionf.identity(),pageScaling,rc);
 				hudMaterialBackend.bindDiffuse(sacCursor.invalidTargetIconTexture);
 				hudMaterialBackend.setAlpha(1.0f);
 				quad.render(rc);
