@@ -22,6 +22,10 @@ enum CreatureMode{
 	moving,
 	dying,
 	dead,
+	deadToGhost,
+	idleGhost,
+	movingGhost,
+	ghostToIdle,
 	dissolving,
 	preSpawning,
 	spawning,
@@ -48,7 +52,7 @@ enum CreatureMode{
 }
 
 bool isMoving(CreatureMode mode){
-	with(CreatureMode) return !!mode.among(moving,meleeMoving,castingMoving);
+	with(CreatureMode) return !!mode.among(moving,movingGhost,meleeMoving,castingMoving);
 }
 bool isCasting(CreatureMode mode){
 	with(CreatureMode) return !!mode.among(casting,stationaryCasting,castingMoving);
@@ -62,13 +66,13 @@ bool isHidden(CreatureMode mode){
 bool isVisibleToAI(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing: return true;
-		case dying,dead,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,rockForm,convertReviving,thrashing: return false;
+		case dying,dead,deadToGhost,idleGhost,movingGhost,ghostToIdle,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,rockForm,convertReviving,thrashing: return false;
 	}
 }
 bool isVisibleToOtherSides(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing,convertReviving,thrashing: return true;
-		case dying,dead,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,rockForm: return false;
+		case dying,dead,deadToGhost,idleGhost,movingGhost,ghostToIdle,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,rockForm: return false;
 	}
 }
 bool isObstacle(CreatureMode mode){
@@ -76,18 +80,21 @@ bool isObstacle(CreatureMode mode){
 		case idle,moving,dying,spawning,reviving,fastReviving,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,
 			torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm,convertReviving,thrashing: return true;
 		case dead,dissolving,preSpawning: return false;
+		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return true; // ghost has interacting hitbox in original
 	}
 }
 bool isValidAttackTarget(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,dying,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing: return true;
 		case dead,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,rockForm,convertReviving,thrashing: return false;
+		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return false;
 	}
 }
 bool isValidGuardTarget(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,dying,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,rockForm,convertReviving,pumping,torturing,thrashing: return true;
 		case dead,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive: return false;
+		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return true;
 	}
 }
 bool canHeal(CreatureMode mode){
@@ -95,12 +102,14 @@ bool canHeal(CreatureMode mode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing,
 			pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
 		case dying,dead,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
+		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return false;
 	}
 }
 bool canShield(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
 		case dying,dead,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
+		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return false;
 	}
 }
 
@@ -3408,6 +3417,24 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 		case CreatureMode.dissolving:
 			object.creatureState.timer=0;
 			break;
+		case CreatureMode.deadToGhost:
+			object.frame=0;
+			object.animationState=AnimationState.corpseRise;
+			break;
+		case CreatureMode.idleGhost:
+			if(object.animationState!=AnimationState.floatMove||object.frame>=sacObject.numFrames(AnimationState.floatStatic)*updateAnimFactor)
+				object.frame=0;
+			object.animationState=AnimationState.floatStatic;
+			break;
+		case CreatureMode.movingGhost:
+			if(object.animationState!=AnimationState.floatStatic||object.frame>=sacObject.numFrames(AnimationState.floatMove)*updateAnimFactor)
+				object.frame=0;
+			object.animationState=AnimationState.floatMove;
+			break;
+		case CreatureMode.ghostToIdle:
+			object.frame=0;
+			object.animationState=AnimationState.float2Stance;
+			break;
 		case CreatureMode.reviving, CreatureMode.fastReviving, CreatureMode.pretendingToRevive:
 			assert(object.frame==sacObject.numFrames(object.animationState)*updateAnimFactor-1);
 			static immutable reviveSequence=[AnimationState.corpse,AnimationState.float_];
@@ -3711,7 +3738,7 @@ bool canStun(B)(ref MovingObject!B object,ObjectState!B state){
 	if(object.creatureStats.effects.stunCooldown!=0) return false;
 	final switch(object.creatureState.mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,cower,casting,stationaryCasting,castingMoving,shooting: return true;
-		case dying,dead,dissolving,preSpawning,reviving,fastReviving,stunned,pretendingToDie,playingDead,pretendingToRevive,rockForm,pumping,torturing,convertReviving,thrashing: return false;
+			case dying,dead,deadToGhost,idleGhost,movingGhost,ghostToIdle,dissolving,preSpawning,reviving,fastReviving,stunned,pretendingToDie,playingDead,pretendingToRevive,rockForm,pumping,torturing,convertReviving,thrashing: return false;
 	}
 }
 
@@ -3928,7 +3955,7 @@ bool canDamage(B)(ref MovingObject!B object,ObjectState!B state){
 	if(object.creatureStats.effects.stealth) return false;
 	final switch(object.creatureState.mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing: return true;
-		case dying,dead,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,rockForm,convertReviving,thrashing: return false;
+			case dying,dead,deadToGhost,idleGhost,movingGhost,ghostToIdle,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,rockForm,convertReviving,thrashing: return false;
 	}
 }
 
@@ -5439,6 +5466,8 @@ bool requiresAI(CreatureMode mode){
 	with(CreatureMode) final switch(mode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,casting,stationaryCasting,castingMoving,shooting,playingDead,rockForm: return true;
 		case dying,dead,dissolving,preSpawning,reviving,fastReviving,stunned,cower,pretendingToDie,pretendingToRevive,pumping,torturing,convertReviving,thrashing: return false;
+		case deadToGhost,ghostToIdle: return false;
+		case idleGhost,movingGhost: return true;
 	}
 }
 
@@ -5547,9 +5576,12 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.creatureStats.effects.abilityCooldown!=0) --object.creatureStats.effects.abilityCooldown;
 	auto sacObject=object.sacObject;
 	final switch(object.creatureState.mode){
-		case CreatureMode.idle, CreatureMode.moving:
+		case CreatureMode.idle, CreatureMode.moving, CreatureMode.idleGhost, CreatureMode.movingGhost:
 			auto oldMode=object.creatureState.mode;
-			auto newMode=object.creatureState.movementDirection==MovementDirection.none&&object.creatureState.speed==0.0f?CreatureMode.idle:CreatureMode.moving;
+			auto ghost=oldMode==CreatureMode.idleGhost||oldMode==CreatureMode.movingGhost;
+			auto idle=ghost?CreatureMode.idleGhost:CreatureMode.idle;
+			auto moving=ghost?CreatureMode.movingGhost:CreatureMode.moving;
+			auto newMode=object.creatureState.movementDirection==MovementDirection.none&&object.creatureState.speed==0.0f?idle:moving;
 			object.creatureState.timer+=1;
 			object.frame+=1;
 			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
@@ -5561,7 +5593,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 				object.creatureState.mode=newMode;
 				object.setCreatureState(state);
 			}
-			if(oldMode==newMode&&newMode==CreatureMode.idle && object.animationState.among(AnimationState.run,AnimationState.walk,cast(AnimationState)SacDoctorAnimationState.walk) && object.creatureState.timer>=0.1f*updateFPS){
+			if(oldMode==newMode&&newMode==idle && object.animationState.among(AnimationState.run,AnimationState.walk,cast(AnimationState)SacDoctorAnimationState.walk) && object.creatureState.timer>=0.1f*updateFPS){
 				object.animationState=AnimationState.stance1;
 				object.setCreatureState(state);
 			}
@@ -5592,9 +5624,14 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 						object.frame=sacObject.numFrames(object.animationState)*updateAnimFactor-1;
 						if(object.creatureState.mode==CreatureMode.dying){
 							object.creatureState.mode=CreatureMode.dead;
-							object.spawnSoul(state);
-							object.unselect(state);
-							object.removeFromGroups(state);
+							if(object.isWizard){ // TODO: check for altar
+								object.creatureState.mode=CreatureMode.deadToGhost;
+								object.setCreatureState(state);
+							}else{
+								object.spawnSoul(state);
+								object.unselect(state);
+								object.removeFromGroups(state);
+							}
 						}else{
 							assert(object.creatureState.mode==CreatureMode.pretendingToDie);
 							object.creatureState.mode=CreatureMode.playingDead;
@@ -5653,7 +5690,20 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 			if(object.creatureState.timer>=dissolutionTime)
 				state.removeLater(object.id);
 			break;
-
+		case CreatureMode.deadToGhost:
+			object.frame+=1;
+			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
+				object.creatureState.mode=CreatureMode.idleGhost;
+				object.setCreatureState(state);
+			}
+			break;
+		case CreatureMode.ghostToIdle:
+			object.frame+=1;
+			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
+				object.creatureState.mode=CreatureMode.idle;
+				object.setCreatureState(state);
+			}
+			break;
 		case CreatureMode.reviving, CreatureMode.fastReviving:
 			static immutable reviveSequence=[AnimationState.corpse,AnimationState.float_];
 			auto reviveTime=cast(int)(object.creatureStats.reviveTime*updateFPS);
@@ -5936,11 +5986,11 @@ void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 
 void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 	auto newPosition=object.position;
-	with(CreatureMode) if(object.creatureState.mode.among(idle,moving,stunned,landing,dying,meleeMoving,casting,castingMoving,shooting)){
+	with(CreatureMode) if(object.creatureState.mode.among(idle,moving,idleGhost,movingGhost,stunned,landing,dying,meleeMoving,casting,castingMoving,shooting)){
 		auto rotationSpeed=object.creatureStats.rotationSpeed(object.creatureState.movement==CreatureMovement.flying)/updateFPS;
 		auto pitchingSpeed=object.creatureStats.pitchingSpeed/updateFPS;
 		bool isRotating=false;
-		if(object.creatureState.mode.among(idle,moving,meleeMoving,casting,castingMoving,shooting,torturing)&&
+		if(object.creatureState.mode.among(idle,moving,idleGhost,movingGhost,meleeMoving,casting,castingMoving,shooting,torturing)&&
 		   object.creatureState.movement!=CreatureMovement.tumbling
 		){
 			final switch(object.creatureState.rotationDirection){
@@ -8530,7 +8580,7 @@ bool updateRockForm(B)(ref RockForm!B rockForm,ObjectState!B state){
 bool checkStealth(B)(ref MovingObject!B obj){
 	final switch(obj.creatureState.mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,cower,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
-		case dying,dead,dissolving,preSpawning,reviving,fastReviving,meleeMoving,meleeAttacking,stunned,casting,stationaryCasting,castingMoving,shooting,pumping,torturing,convertReviving,thrashing: return false;
+		case dying,dead,deadToGhost,idleGhost,movingGhost,ghostToIdle,dissolving,preSpawning,reviving,fastReviving,meleeMoving,meleeAttacking,stunned,casting,stationaryCasting,castingMoving,shooting,pumping,torturing,convertReviving,thrashing: return false;
 	}
 }
 
@@ -9377,7 +9427,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 				final switch(mode) with(CreatureMode){
 					case idle,moving,dying,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,pretendingToDie,rockForm: return true;
 					case dead,dissolving,preSpawning,reviving,fastReviving,playingDead,pretendingToRevive,convertReviving,thrashing: return false;
-					case casting,stationaryCasting,castingMoving,shooting,pumping,torturing: assert(0);
+					case deadToGhost,idleGhost,movingGhost,ghostToIdle,casting,stationaryCasting,castingMoving,shooting,pumping,torturing: assert(0);
 				}
 			}
 			foreach(j;0..objects.length){
