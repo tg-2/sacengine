@@ -83,6 +83,15 @@ bool isObstacle(CreatureMode mode){
 		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return true; // ghost has interacting hitbox in original
 	}
 }
+bool isProjectileObstacle(CreatureMode mode){
+	final switch(mode) with(CreatureMode){
+		case idle,moving,dying,spawning,reviving,fastReviving,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,
+			torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
+		case convertReviving,thrashing: return false; // TODO: correct?
+		case dead,dissolving,preSpawning: return false;
+		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return false;
+	}
+}
 bool isValidAttackTarget(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,dying,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing: return true;
@@ -110,6 +119,12 @@ bool canShield(CreatureMode mode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
 		case dying,dead,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
 		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return false;
+	}
+}
+bool canCollectSouls(CreatureMode mode){
+	final switch(mode) with(CreatureMode){
+		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
+		case dying,dead,deadToGhost,idleGhost,movingGhost,ghostToIdle,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
 	}
 }
 
@@ -5919,7 +5934,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 
 alias CollisionTargetSide(bool active:true)=int;
 alias CollisionTargetSide(bool active:false)=Seq!();
-auto collisionTargetImpl(bool attackFilter=false,bool returnHitbox=false,B)(int ownId,CollisionTargetSide!attackFilter side,Vector3f[2] hitbox,Vector3f[2] movedHitbox,ObjectState!B state){
+auto collisionTargetImpl(bool projectileFilter,bool attackFilter=false,bool returnHitbox=false,B)(int ownId,CollisionTargetSide!attackFilter side,Vector3f[2] hitbox,Vector3f[2] movedHitbox,ObjectState!B state){
 	struct CollisionState{
 		Vector3f[2] hitbox;
 		int ownId;
@@ -5930,6 +5945,7 @@ auto collisionTargetImpl(bool attackFilter=false,bool returnHitbox=false,B)(int 
 		float distanceSqr=float.infinity;
 	}
 	static void handleCollision(ProximityEntry entry,CollisionState* collisionState,ObjectState!B state){
+		static if(projectileFilter) if(!entry.isProjectileObstacle) return;
 		if(entry.id==collisionState.ownId) return;
 		static if(attackFilter){
 			auto validRank=state.objectById!((obj,state,side)=>tuple(obj.isValidAttackTarget(state),rank(state.sides.getStance(side,.side(obj,state)))))(entry.id,state,collisionState.side);
@@ -5951,14 +5967,14 @@ auto collisionTargetImpl(bool attackFilter=false,bool returnHitbox=false,B)(int 
 	static if(returnHitbox) return tuple(collisionState.target,collisionState.targetHitbox);
 	else return collisionState.target;
 }
-auto collisionTarget(B)(int ownId,Vector3f[2] hitbox,Vector3f[2] movedHitbox,ObjectState!B state){
-	return collisionTargetImpl!(false,false,B)(ownId,hitbox,movedHitbox,state);
+auto collisionTarget(bool projectileFilter=true,B)(int ownId,Vector3f[2] hitbox,Vector3f[2] movedHitbox,ObjectState!B state){
+	return collisionTargetImpl!(projectileFilter,false,false,B)(ownId,hitbox,movedHitbox,state);
 }
-auto collisionTargetWithHitbox(B)(int ownId,Vector3f[2] hitbox,Vector3f[2] movedHitbox,ObjectState!B state){
-	return collisionTargetImpl!(false,true,B)(ownId,hitbox,movedHitbox,state);
+auto collisionTargetWithHitbox(bool projectileFilter=true,B)(int ownId,Vector3f[2] hitbox,Vector3f[2] movedHitbox,ObjectState!B state){
+	return collisionTargetImpl!(projectileFilter,false,true,B)(ownId,hitbox,movedHitbox,state);
 }
-int meleeAttackTarget(B)(int ownId,int side,Vector3f[2] hitbox,Vector3f[2] meleeHitbox,ObjectState!B state){
-	return collisionTargetImpl!(true,false,B)(ownId,side,hitbox,meleeHitbox,state);
+int meleeAttackTarget(bool projectileFilter=true,B)(int ownId,int side,Vector3f[2] hitbox,Vector3f[2] meleeHitbox,ObjectState!B state){
+	return collisionTargetImpl!(projectileFilter,true,false,B)(ownId,side,hitbox,meleeHitbox,state);
 }
 
 int meleeAttackTarget(B)(ref MovingObject!B object,ObjectState!B state){
@@ -6237,7 +6253,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 		static if(!fixup) posChanged=true;
 		else needsFixup=true;
 	}
-	if(!object.creatureState.mode.among(CreatureMode.dead,CreatureMode.dissolving,CreatureMode.convertReviving)){ // dead creatures do not participate in collision handling
+	if(!object.creatureState.mode.among(CreatureMode.dead,CreatureMode.dissolving,CreatureMode.convertReviving,CreatureMode.thrashing)){ // dead creatures do not participate in collision handling
 		proximity.collide!(handleCollision!false)(hitbox);
 		object.creatureAI.isColliding=isColliding;
 		hitbox=[relativeHitbox[0]+newPosition,relativeHitbox[1]+newPosition];
@@ -6281,6 +6297,10 @@ void updateCreature(B)(ref MovingObject!B object, ObjectState!B state){
 	object.updateCreatureStats(state);
 }
 
+bool canCollectSouls(B)(ref MovingObject!B object){
+	return object.isWizard&&object.creatureState.mode.canCollectSouls&&object.health!=0.0f;
+}
+
 void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 	soul.frame+=1;
 	soul.facing+=2*pi!float/8.0f/updateFPS;
@@ -6299,8 +6319,9 @@ void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 			}
 			enum collectDistance=4.0f; // TODO: measure this
 			static void process(B)(ref WizardInfo!B wizard,Soul!B* soul,State* pstate,ObjectState!B state){ // TODO: use proximity data structure?
-				auto sidePosition=state.movingObjectById!((obj)=>tuple(obj.side,obj.center),function Tuple!(int,Vector3f)(){ assert(0); })(wizard.id);
-				auto side=sidePosition[0],position=sidePosition[1];
+				auto sidePositionValid=state.movingObjectById!((obj)=>tuple(obj.side,obj.center,obj.canCollectSouls),()=>Tuple!(int,Vector3f,bool).init)(wizard.id);
+				auto side=sidePositionValid[0],position=sidePositionValid[1],valid=sidePositionValid[2];
+				if(!valid) return;
 				if((soul.position.xy-position.xy).lengthsqr>collectDistance^^2) return;
 				if(abs(soul.position.z-position.z)>collectDistance) return;
 				auto distancesqr=(soul.position-position).lengthsqr;
@@ -7400,7 +7421,7 @@ enum wrathSize=0.1f;
 static immutable Vector3f[2] wrathHitbox=[-0.5f*wrathSize*Vector3f(1.0f,1.0f,1.0f),0.5f*wrathSize*Vector3f(1.0f,1.0f,1.0f)];
 int wrathCollisionTarget(B)(int side,Vector3f position,ObjectState!B state){
 	static bool filter(ProximityEntry entry,ObjectState!B state,int side){
-		return state.objectById!(.side)(entry.id,state)!=side;
+		return entry.isProjectileObstacle&&state.objectById!(.side)(entry.id,state)!=side;
 	}
 	return collisionTarget!(wrathHitbox,filter)(side,position,state,side);
 }
@@ -7522,7 +7543,7 @@ enum fireballSize=0.5f; // TODO: use bounding box from sac object
 static immutable Vector3f[2] fireballHitbox=[-0.5f*fireballSize*Vector3f(1.0f,1.0f,1.0f),0.5f*fireballSize*Vector3f(1.0f,1.0f,1.0f)];
 int fireballCollisionTarget(B)(int side,Vector3f position,ObjectState!B state){
 	static bool filter(ProximityEntry entry,ObjectState!B state,int side){
-		return state.objectById!(.side)(entry.id,state)!=side;
+		return entry.isProjectileObstacle&&state.objectById!(.side)(entry.id,state)!=side;
 	}
 	return collisionTarget!(fireballHitbox,filter)(side,position,state,side);
 }
@@ -7693,7 +7714,7 @@ enum rockSize=2.0f; // TODO: use bounding box from sac object
 static immutable Vector3f[2] rockHitbox=[-0.5f*rockSize*Vector3f(1.0f,1.0f,1.0f),0.5f*rockSize*Vector3f(1.0f,1.0f,1.0f)];
 int rockCollisionTarget(B)(int immuneId,int side,Vector3f position,ObjectState!B state){
 	static bool filter(ProximityEntry entry,ObjectState!B state,int immuneId){
-		return entry.id!=immuneId;
+		return entry.isProjectileObstacle&&entry.id!=immuneId;
 	}
 	return collisionTarget!(rockHitbox,filter)(side,position,state,immuneId);
 }
@@ -7803,7 +7824,7 @@ enum swarmSize=0.3f;
 static immutable Vector3f[2] swarmHitbox=[-0.5f*swarmSize*Vector3f(1.0f,1.0f,1.0f),0.5f*swarmSize*Vector3f(1.0f,1.0f,1.0f)];
 int swarmCollisionTarget(B)(int side,Vector3f position,ObjectState!B state){
 	static bool filter(ProximityEntry entry,ObjectState!B state,int side){
-		return state.objectById!(.side)(entry.id,state)!=side;
+		return entry.isProjectileObstacle&&state.objectById!(.side)(entry.id,state)!=side;
 	}
 	return collisionTarget!(swarmHitbox,filter)(side,position,state,side);
 }
@@ -7967,7 +7988,7 @@ enum brainiacProjectileSlidingDistance=1.5f;
 static immutable Vector3f[2] brainiacProjectileHitbox=[-0.5f*brainiacProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*brainiacProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
 int brainiacProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
 	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
-		return entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side;
+		return entry.isProjectileObstacle&&(entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side);
 	}
 	return collisionTarget!(brainiacProjectileHitbox,filter)(side,position,state,side,intendedTarget);
 }
@@ -8032,7 +8053,7 @@ enum shrikeProjectileSlidingDistance=0.0f;
 static immutable Vector3f[2] shrikeProjectileHitbox=[-0.5f*shrikeProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*shrikeProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
 int shrikeProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
 	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
-		return entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side;
+		return entry.isProjectileObstacle&&(entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side);
 	}
 	return collisionTarget!(shrikeProjectileHitbox,filter)(side,position,state,side,intendedTarget);
 }
@@ -8218,7 +8239,7 @@ enum earthflingProjectileSlidingDistance=0.0f;
 static immutable Vector3f[2] earthflingProjectileHitbox=[-0.5f*earthflingProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*earthflingProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
 int earthflingProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
 	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
-		return entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side;
+		return entry.isProjectileObstacle&&(entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side);
 	}
 	return collisionTarget!(earthflingProjectileHitbox,filter)(side,position,state,side,intendedTarget);
 }
@@ -8293,7 +8314,7 @@ enum flameMinionProjectileSlidingDistance=0.0f;
 static immutable Vector3f[2] flameMinionProjectileHitbox=[-0.5f*flameMinionProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*flameMinionProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
 int flameMinionProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
 	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
-		return entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side;
+		return entry.isProjectileObstacle&&(entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side);
 	}
 	return collisionTarget!(flameMinionProjectileHitbox,filter)(side,position,state,side,intendedTarget);
 }
@@ -8426,7 +8447,7 @@ enum fallenProjectileSize=0.5f; // TODO: ok?
 static immutable Vector3f[2] fallenProjectileHitbox=[-0.5f*fallenProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*fallenProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
 int fallenProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
 	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
-		return entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side;
+		return entry.isProjectileObstacle&&(entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side);
 	}
 	return collisionTarget!(fallenProjectileHitbox,filter)(side,position,state,side,intendedTarget);
 }
@@ -8468,7 +8489,7 @@ enum sylphProjectileSize=0.1f; // TODO: ok?
 static immutable Vector3f[2] sylphProjectileHitbox=[-0.5f*sylphProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*sylphProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
 int sylphProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
 	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
-		return entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side;
+		return entry.isProjectileObstacle&&(entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side);
 	}
 	return collisionTarget!(sylphProjectileHitbox,filter)(side,position,state,side,intendedTarget);
 }
@@ -8515,7 +8536,7 @@ enum rangerProjectileSize=0.1f; // TODO: ok?
 static immutable Vector3f[2] rangerProjectileHitbox=[-0.5f*rangerProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*rangerProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
 int rangerProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
 	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
-		return entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side;
+		return entry.isProjectileObstacle&&(entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side);
 	}
 	return collisionTarget!(rangerProjectileHitbox,filter)(side,position,state,side,intendedTarget);
 }
@@ -9413,7 +9434,8 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 			hitbox[0]+=position;
 			hitbox[1]+=position;
 			if(isObstacle){
-				proximity.insert(ProximityEntry(objects.ids[j],hitbox));
+				bool isProjectileObstacle=objects.creatureStates[j].mode.isProjectileObstacle;
+				proximity.insert(ProximityEntry(objects.ids[j],hitbox,isProjectileObstacle));
 			}
 			if(isVisibleToAI){
 				int attackTargetId=0;
@@ -9479,6 +9501,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 struct ProximityEntry{
 	int id;
 	Vector3f[2] hitbox;
+	bool isProjectileObstacle=true;
 }
 struct ProximityEntries{
 	int version_=0;
@@ -9917,13 +9940,14 @@ final class ObjectState(B){ // (update logic)
 	}
 	OrderTarget lineOfSightWithoutSide(Vector3f start,Vector3f target,int side,int intendedTarget=0){
 		static bool filter(ref ProximityEntry entry,int side,int intendedTarget,ObjectState!B state){
+			if(!entry.isProjectileObstacle) return false;
 			if(entry.id==intendedTarget) return true;
 			return state.objectById!((obj,side,state)=>.side(obj,state)!=side)(entry.id,side,state);
 		}
 		return lineOfSight!filter(start,target,side,intendedTarget,this);
 	}
 	bool hasLineOfSightTo(Vector3f start,Vector3f target,int ignoredId,int targetId){
-		static bool filter(ref ProximityEntry entry,int id){ return entry.id!=id; }
+		static bool filter(ref ProximityEntry entry,int id){ return entry.isProjectileObstacle&&entry.id!=id; }
 		auto result=lineOfSight!filter(start,target,ignoredId);
 		return result.type==TargetType.none||result.type.among(TargetType.creature,TargetType.building,TargetType.soul)&&result.id==targetId;
 	}
