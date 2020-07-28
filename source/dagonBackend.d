@@ -411,6 +411,7 @@ final class SacScene: Scene{
 							material.backend.setTransformation(objects.positions[j], objects.rotations[j], rc);
 							auto id=objects.ids[j];
 							Vector4f information;
+							if(scene.renderSide!=objects.sides[j]&&objects.creatureStates[j].mode.isGhost) continue;
 							if(scene.renderSide!=objects.sides[j]&&(!objects.creatureStates[j].mode.isVisibleToOtherSides||objects.creatureStatss[j].effects.stealth)){
 								information=Vector4f(0.0f,0.0f,0.0f,0.0f);
 							}else information=Vector4f(2.0f,id>>16,id&((1<<16)-1),1.0f);
