@@ -103,7 +103,8 @@ bool isValidGuardTarget(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,dying,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,rockForm,convertReviving,pumping,torturing,thrashing: return true;
 		case dead,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive: return false;
-		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return true;
+		case deadToGhost: return false;
+		case idleGhost,movingGhost,ghostToIdle: return true;
 	}
 }
 bool canHeal(CreatureMode mode){
@@ -5057,7 +5058,7 @@ bool isValidEnemyAttackTarget(B)(int targetId,int side,ObjectState!B state){
 }
 bool isValidGuardTarget(B,T)(T obj,ObjectState!B state)if(is(T==MovingObject!B)||is(T==StaticObject!B)){
 	static if(is(T==MovingObject!B)){
-		return obj.creatureState.mode.isValidGuardTarget && obj.health(state)!=0.0f;
+		return obj.creatureState.mode.isValidGuardTarget;
 	}else return true;
 }
 bool isValidGuardTarget(B)(int targetId,ObjectState!B state){
