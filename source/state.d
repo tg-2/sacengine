@@ -669,8 +669,9 @@ float health(B)(ref MovingObject!B object,ObjectState!B state){
 void health(B)(ref MovingObject!B object,float value){
 	object.creatureStats.health=value;
 }
+enum ghostSpeedFactor=1.75f;
 float speedOnGround(B)(ref MovingObject!B object,ObjectState!B state){
-	return object.creatureStats.movementSpeed(false);
+	return (object.isGhost?ghostSpeedFactor:1.0f)*object.creatureStats.movementSpeed(false);
 }
 float speedInAir(B)(ref MovingObject!B object,ObjectState!B state){
 	return object.creatureStats.movementSpeed(true);
@@ -6901,7 +6902,7 @@ bool updateConversion(B)(ref Conversion conversion,ObjectState!B state){
 						auto targetDirection=targetPosition-creature.position;
 						auto distance=targetDirection.length;
 						if(distance>0.75f){
-							auto transportVelocity=1.1f*sacDoc.creatureStats.movementSpeed(false)/updateFPS;
+							auto transportVelocity=1.1f*(*sacDoc).speedOnGround(state)/updateFPS;
 							if(distance<transportVelocity) creature.position=targetPosition;
 							else creature.position+=transportVelocity/distance*targetDirection; // TODO: inertia?
 						}
