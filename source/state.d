@@ -5626,6 +5626,11 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 		case CreatureMode.idle, CreatureMode.moving, CreatureMode.idleGhost, CreatureMode.movingGhost:
 			auto oldMode=object.creatureState.mode;
 			auto ghost=oldMode==CreatureMode.idleGhost||oldMode==CreatureMode.movingGhost;
+			if(ghost&&object.health==object.creatureStats.maxHealth){
+				object.creatureState.mode=CreatureMode.ghostToIdle;
+				object.setCreatureState(state);
+				break;
+			}
 			auto idle=ghost?CreatureMode.idleGhost:CreatureMode.idle;
 			auto moving=ghost?CreatureMode.movingGhost:CreatureMode.moving;
 			auto newMode=object.creatureState.movementDirection==MovementDirection.none&&object.creatureState.speed==0.0f?idle:moving;
