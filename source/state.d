@@ -54,6 +54,18 @@ enum CreatureMode{
 bool isMoving(CreatureMode mode){
 	with(CreatureMode) return !!mode.among(moving,movingGhost,meleeMoving,castingMoving);
 }
+bool isGhost(CreatureMode mode){
+	with(CreatureMode) return !!mode.among(idleGhost,movingGhost);
+}
+bool isDying(CreatureMode mode){
+	with(CreatureMode) return !!mode.among(dying,deadToGhost);
+}
+bool isAlive(CreatureMode mode){
+	final switch(mode) with(CreatureMode){
+		case idle,moving,idleGhost,movingGhost,ghostToIdle,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
+		case dying,dead,deadToGhost,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
+	}
+}
 bool isCasting(CreatureMode mode){
 	with(CreatureMode) return !!mode.among(casting,stationaryCasting,castingMoving);
 }
@@ -4030,8 +4042,11 @@ void heal(B)(ref Building!B building,float amount,ObjectState!B state){
 void drainMana(B)(ref MovingObject!B object,float amount,ObjectState!B state){
 	object.creatureStats.mana=max(0.0f,object.creatureStats.mana-amount);
 }
+
+enum ghostHealthPerMana=4.2f;
 void giveMana(B)(ref MovingObject!B object,float amount,ObjectState!B state){
 	object.creatureStats.mana=min(object.creatureStats.mana+amount,object.creatureStats.maxMana);
+	if(object.isWizard&&object.isGhost) object.heal(ghostHealthPerMana*amount,state);
 }
 
 float meleeDistanceSqr(Vector3f[2] objectHitbox,Vector3f[2] attackerHitbox){
@@ -4259,10 +4274,25 @@ void startCowering(B)(ref MovingObject!B object,ObjectState!B state){
 	object.setCreatureState(state);
 }
 
-bool startCasting(B)(ref MovingObject!B object,int numFrames,bool stationary,ObjectState!B state){
+bool isGhost(B)(ref MovingObject!B object){
+	return object.creatureState.mode.isGhost;
+}
+bool isDying(B)(ref MovingObject!B object){
+	return object.creatureState.mode.isDying;
+}
+bool isAlive(B)(ref MovingObject!B object){
+	return object.creatureState.mode.isAlive;
+}
+
+bool canCast(B)(ref MovingObject!B object,ObjectState!B state){
 	if(!object.isWizard) return false;
 	if(!object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving)&&object.castStatus(state)!=CastingStatus.finished)
 		return false;
+	return true;
+}
+
+bool startCasting(B)(ref MovingObject!B object,int numFrames,bool stationary,ObjectState!B state){
+	if(!object.canCast(state)) return false;
 	if(stationary) object.creatureState.mode=CreatureMode.stationaryCasting;
 	else object.creatureState.mode=object.creatureState.mode==CreatureMode.idle?CreatureMode.casting:CreatureMode.castingMoving;
 	object.creatureState.timer=numFrames;
@@ -5988,7 +6018,7 @@ void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 		object.heal(object.creatureStats.regeneration/updateFPS,state);
 	if(object.creatureState.mode==CreatureMode.playingDead)
 		object.heal(30.0f/updateFPS,state); // TODO: ok?
-	if(object.creatureStats.mana<object.creatureStats.maxMana)
+	if(object.creatureStats.mana<object.creatureStats.maxMana||object.isGhost)
 		object.giveMana(state.manaRegenAt(object.side,object.position)/updateFPS,state);
 	if(object.creatureState.mode.among(CreatureMode.meleeMoving,CreatureMode.meleeAttacking) && object.hasAttackTick){
 		object.creatureState.mode=CreatureMode.meleeAttacking;

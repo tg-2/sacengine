@@ -1964,12 +1964,21 @@ final class SacScene: Scene{
 		}
 		if(bound) material.unbind(rc);
 	}
+	bool statsVisible(int target){
+		if(!camera.target) return false;
+		with(CreatureMode)
+			return !state.current.movingObjectById!(isDying,()=>true)(camera.target);
+	}
+	bool spellbookVisible(int target){
+		if(!camera.target) return false;
+		return state.current.movingObjectById!((ref obj)=>!obj.isDying&&!obj.isGhost,()=>false)(camera.target);
+	}
 	void renderHUD(RenderingContext* rc){
 		renderMinimap(rc);
 		if(renderSide!=-1){
-			renderStats(rc);
+			if(statsVisible(camera.target)) renderStats(rc);
 			renderSelectionRoster(rc);
-			renderSpellbook(rc);
+			if(spellbookVisible(camera.target)) renderSpellbook(rc);
 		}
 	}
 
