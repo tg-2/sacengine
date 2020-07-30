@@ -265,11 +265,11 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Sac
 void serialize(alias sink)(ref SacDocTether sacDocTether){ serializeStruct!sink(sacDocTether); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SacDocTether)){ deserializeStruct(result,state,data); }
 
-void serialize(alias sink)(ref SacDocCarry sacDocCarry){ serializeStruct!sink(sacDocCarry); }
-void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SacDocCarry)){ deserializeStruct(result,state,data); }
+void serialize(alias sink,B)(ref SacDocCarry!B sacDocCarry){ serializeStruct!sink(sacDocCarry); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SacDocCarry!B)){ deserializeStruct(result,state,data); }
 
-void serialize(alias sink)(ref Ritual ritual){ serializeStruct!sink(ritual); }
-void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Ritual)){ deserializeStruct(result,state,data); }
+void serialize(alias sink,B)(ref Ritual!B ritual){ serializeStruct!sink(ritual); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Ritual!B)){ deserializeStruct(result,state,data); }
 
 void serialize(alias sink,B)(ref TeleportCasting!B teleportCasting){ serializeStruct!sink(teleportCasting); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==TeleportCasting!B)){ deserializeStruct(result,state,data); }
