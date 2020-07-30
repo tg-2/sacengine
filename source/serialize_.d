@@ -259,14 +259,14 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Blu
 void serialize(alias sink)(ref RedVortex vortex){ serializeStruct!sink(vortex); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==RedVortex)){ deserializeStruct(result,state,data); }
 
-void serialize(alias sink,B)(ref ConvertCasting!B convertCasting){ serializeStruct!sink(convertCasting); }
-void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ConvertCasting!B)){ deserializeStruct(result,state,data); }
+void serialize(alias sink,B)(ref SacDocCasting!B convertCasting){ serializeStruct!sink(convertCasting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SacDocCasting!B)){ deserializeStruct(result,state,data); }
 
 void serialize(alias sink)(ref SacDocTether sacDocTether){ serializeStruct!sink(sacDocTether); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SacDocTether)){ deserializeStruct(result,state,data); }
 
-void serialize(alias sink)(ref Conversion conversion){ serializeStruct!sink(conversion); }
-void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Conversion)){ deserializeStruct(result,state,data); }
+void serialize(alias sink)(ref SacDocCarry sacDocCarry){ serializeStruct!sink(sacDocCarry); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SacDocCarry)){ deserializeStruct(result,state,data); }
 
 void serialize(alias sink)(ref Ritual ritual){ serializeStruct!sink(ritual); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Ritual)){ deserializeStruct(result,state,data); }

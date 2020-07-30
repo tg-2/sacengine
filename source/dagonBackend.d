@@ -516,7 +516,7 @@ final class SacScene: Scene{
 						mesh.render(rc);
 					}
 				}
-				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.convertCastings.length){
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.sacDocCastings.length){
 					auto centerMat=scene.vortex.redCenterMat;
 					void renderRedCenter(ref RedVortex vortex){
 						centerMat.backend.setSpriteTransformationScaled(vortex.position,vortex.scale*vortex.radius,rc);
@@ -530,13 +530,13 @@ final class SacScene: Scene{
 						mesh.render(rc);
 					}
 					centerMat.bind(rc);
-					foreach(j;0..objects.convertCastings.length) renderRedCenter(objects.convertCastings[j].vortex);
+					foreach(j;0..objects.sacDocCastings.length) renderRedCenter(objects.sacDocCastings[j].vortex);
 					centerMat.unbind(rc);
 					rimMat.bind(rc);
-					foreach(j;0..objects.convertCastings.length) renderRedRim(objects.convertCastings[j].vortex);
+					foreach(j;0..objects.sacDocCastings.length) renderRedRim(objects.sacDocCastings[j].vortex);
 					rimMat.unbind(rc);
 				}
-				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.conversions.length){
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.sacDocCarries.length){
 					auto getPositionAndScaleForId(int id,float scale){
 						alias H=Vector3f[2];
 						auto hitbox=scene.state.current.movingObjectById!((ref obj)=>obj.hitbox,()=>H.init)(id);
@@ -566,17 +566,17 @@ final class SacScene: Scene{
 						return renderBlueRim(getPositionAndScaleForId(id,scale).expand,frame);
 					}
 					centerMat.bind(rc);
-					foreach(j;0..objects.conversions.length)
-						if(objects.conversions[j].status.among(ConversionStatus.move,ConversionStatus.shrinking))
-							renderBlueCenterForId(objects.conversions[j].creature,objects.conversions[j].vortexScale,objects.conversions[j].frame);
+					foreach(j;0..objects.sacDocCarries.length)
+						if(objects.sacDocCarries[j].status.among(SacDocCarryStatus.move,SacDocCarryStatus.shrinking))
+							renderBlueCenterForId(objects.sacDocCarries[j].creature,objects.sacDocCarries[j].vortexScale,objects.sacDocCarries[j].frame);
 					centerMat.unbind(rc);
 					rimMat.bind(rc);
-					foreach(j;0..objects.conversions.length)
-						if(objects.conversions[j].status.among(ConversionStatus.move,ConversionStatus.shrinking))
-							renderBlueRimForId(objects.conversions[j].creature,objects.conversions[j].vortexScale,objects.conversions[j].frame);
+					foreach(j;0..objects.sacDocCarries.length)
+						if(objects.sacDocCarries[j].status.among(SacDocCarryStatus.move,SacDocCarryStatus.shrinking))
+							renderBlueRimForId(objects.sacDocCarries[j].creature,objects.sacDocCarries[j].vortexScale,objects.sacDocCarries[j].frame);
 					rimMat.unbind(rc);
 				}
-				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.conversions.length||objects.rituals.length)){
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.sacDocCarries.length||objects.rituals.length)){
 					auto material=scene.tether.material;
 					material.bind(rc);
 					glDisable(GL_CULL_FACE);
@@ -601,7 +601,7 @@ final class SacScene: Scene{
 						scope(exit) mesh.pose=[];
 						mesh.render(rc);
 					}
-					foreach(j;0..objects.conversions.length) renderTether(objects.conversions[j].tether,objects.conversions[j].frame);
+					foreach(j;0..objects.sacDocCarries.length) renderTether(objects.sacDocCarries[j].tether,objects.sacDocCarries[j].frame);
 					foreach(j;0..objects.rituals.length) foreach(k;0..4) renderTether(objects.rituals[j].tethers[k],objects.rituals[j].frame);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.blueRings.length||objects.teleportRings.length)){

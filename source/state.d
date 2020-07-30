@@ -1859,7 +1859,7 @@ struct RedVortex{
 	enum height=15;
 }
 
-struct ConvertCasting(B){
+struct SacDocCasting(B){
 	int side;
 	ManaDrain!B manaDrain;
 	SacSpell!B spell;
@@ -1889,7 +1889,7 @@ struct SacDocTether{
 	}
 }
 
-enum ConversionStatus{
+enum SacDocCarryStatus{
 	fall,
 	walkToSoul,
 	pump,
@@ -1897,14 +1897,14 @@ enum ConversionStatus{
 	shrinking,
 }
 
-struct Conversion{
+struct SacDocCarry{
 	int side;
 	int caster;
 	int sacDoctor;
 	int soul;
 	int targetShrine;
 	SacDocTether tether;
-	ConversionStatus status;
+	SacDocCarryStatus status;
 	int creature;
 	int timer;
 	int frame=0;
@@ -2369,21 +2369,21 @@ struct Effects(B){
 		speedUps~=speedUp;
 	}
 	Array!(TeleportCasting!B) teleportCastings;
-	Array!(ConvertCasting!B) convertCastings;
-	void addEffect(ConvertCasting!B convertCasting){
-		convertCastings~=convertCasting;
+	Array!(SacDocCasting!B) sacDocCastings;
+	void addEffect(SacDocCasting!B sacDocCasting){
+		sacDocCastings~=sacDocCasting;
 	}
-	void removeConvertCasting(int i){
-		if(i+1<convertCastings.length) convertCastings[i]=move(convertCastings[$-1]);
-		convertCastings.length=convertCastings.length-1;
+	void removeSacDocCasting(int i){
+		if(i+1<sacDocCastings.length) sacDocCastings[i]=move(sacDocCastings[$-1]);
+		sacDocCastings.length=sacDocCastings.length-1;
 	}
-	Array!Conversion conversions;
-	void addEffect(Conversion conversion){
-		conversions~=conversion;
+	Array!SacDocCarry sacDocCarries;
+	void addEffect(SacDocCarry sacDocCarry){
+		sacDocCarries~=sacDocCarry;
 	}
-	void removeConversion(int i){
-		if(i+1<conversions.length) conversions[i]=move(conversions[$-1]);
-		conversions.length=conversions.length-1;
+	void removeSacDocCarry(int i){
+		if(i+1<sacDocCarries.length) sacDocCarries[i]=move(sacDocCarries[$-1]);
+		sacDocCarries.length=sacDocCarries.length-1;
 	}
 	Array!Ritual rituals;
 	void addEffect(Ritual ritual){
@@ -2717,8 +2717,8 @@ struct Effects(B){
 		assignArray(creatureCasts,rhs.creatureCasts);
 		assignArray(structureCasts,rhs.structureCasts);
 		assignArray(blueRings,rhs.blueRings);
-		assignArray(convertCastings,rhs.convertCastings);
-		assignArray(conversions,rhs.conversions);
+		assignArray(sacDocCastings,rhs.sacDocCastings);
+		assignArray(sacDocCarries,rhs.sacDocCarries);
 		assignArray(rituals,rhs.rituals);
 		assignArray(teleportCastings,rhs.teleportCastings);
 		assignArray(teleportEffects,rhs.teleportEffects);
@@ -4451,7 +4451,7 @@ bool castConvert(B)(int side,ManaDrain!B manaDrain,SacSpell!B spell,Vector3f cas
 	auto position=targetPosition+20.0f*direction;
 	auto landingPosition=0.5f*(position+targetPosition);
 	position.z=state.getHeight(position)+RedVortex.height;
-	state.addEffect(ConvertCasting!B(side,manaDrain,spell,target,targetShrine,landingPosition,RedVortex(position)));
+	state.addEffect(SacDocCasting!B(side,manaDrain,spell,target,targetShrine,landingPosition,RedVortex(position)));
 	return true;
 }
 
@@ -6720,7 +6720,7 @@ int spawnSacDoctor(B)(int side,Vector3f position,Vector3f landingPosition,Object
 	return state.addObject(obj);
 }
 
-bool updateConvertCasting(B)(ref ConvertCasting!B convertCast,ObjectState!B state){
+bool updateSacDocCasting(B)(ref SacDocCasting!B convertCast,ObjectState!B state){
 	with(convertCast){
 		vortex.updateRedVortex(state);
 		void freeSoulImpl(){
@@ -6748,7 +6748,7 @@ bool updateConvertCasting(B)(ref ConvertCasting!B convertCast,ObjectState!B stat
 					underway=false;
 					auto sacDoctor=spawnSacDoctor(side,vortex.position,landingPosition,state);
 					if(!sacDoctor){ underway=false; interrupted=true; break; }
-					state.addEffect(Conversion(side,manaDrain.wizard,sacDoctor,target,targetShrine));
+					state.addEffect(SacDocCarry(side,manaDrain.wizard,sacDoctor,target,targetShrine));
 					break;
 			}
 		}else{
@@ -6820,38 +6820,38 @@ void updateSacDocTether(B)(ref SacDocTether tether,ref MovingObject!B sacDoc,int
 	}
 }
 
-bool updateConversion(B)(ref Conversion conversion,ObjectState!B state){
-	static void freeSoulImpl(Conversion* conversion,ObjectState!B state){
+bool updateSacDocCarry(B)(ref SacDocCarry sacDocCarry,ObjectState!B state){
+	static void freeSoulImpl(SacDocCarry* sacDocCarry,ObjectState!B state){
 		state.soulById!((ref soul,side){
 			static assert(is(typeof(soul.convertSideMask)==uint));
 			soul.convertSideMask|=(1u<<side);
-		},(){})(conversion.soul,conversion.side);
+		},(){})(sacDocCarry.soul,sacDocCarry.side);
 	}
-	if(conversion.status==ConversionStatus.shrinking){
-		conversion.vortexScale=max(0.0f,conversion.vortexScale-1.0f/Conversion.numFramesToDisappear);
-		return conversion.vortexScale>0.0f;
+	if(sacDocCarry.status==SacDocCarryStatus.shrinking){
+		sacDocCarry.vortexScale=max(0.0f,sacDocCarry.vortexScale-1.0f/SacDocCarry.numFramesToDisappear);
+		return sacDocCarry.vortexScale>0.0f;
 	}
-	if(!state.isValidTarget(conversion.sacDoctor,TargetType.creature)){
-		if(conversion.soul) freeSoulImpl(&conversion,state);
-		if(conversion.creature){
-			state.movingObjectById!(freeCreature,()=>false)(conversion.creature,Vector3f.init,state);
-			conversion.status=ConversionStatus.shrinking;
+	if(!state.isValidTarget(sacDocCarry.sacDoctor,TargetType.creature)){
+		if(sacDocCarry.soul) freeSoulImpl(&sacDocCarry,state);
+		if(sacDocCarry.creature){
+			state.movingObjectById!(freeCreature,()=>false)(sacDocCarry.creature,Vector3f.init,state);
+			sacDocCarry.status=SacDocCarryStatus.shrinking;
 			return true;
 		}else return false;
 	}
-	static bool update(ref MovingObject!B sacDoc,Conversion* conversion,ObjectState!B state){
-		void freeSoul(){ freeSoulImpl(conversion,state); }
-		with(conversion){
+	static bool update(ref MovingObject!B sacDoc,SacDocCarry* sacDocCarry,ObjectState!B state){
+		void freeSoul(){ freeSoulImpl(sacDocCarry,state); }
+		with(sacDocCarry){
 			bool shrineDestroyed=!state.isValidTarget(targetShrine,TargetType.building);
 			final switch(status){
-				case ConversionStatus.fall:
+				case SacDocCarryStatus.fall:
 					if(sacDoc.animationState==cast(AnimationState)SacDoctorAnimationState.bounce){
 						sacDoc.creatureStats.flags&=~Flags.cannotDamage;
-						status=ConversionStatus.walkToSoul;
+						status=SacDocCarryStatus.walkToSoul;
 						goto case;
 					}
 					break;
-				case ConversionStatus.walkToSoul:
+				case SacDocCarryStatus.walkToSoul:
 					if(sacDoc.animationState==cast(AnimationState)SacDoctorAnimationState.bounce) break;
 					if(shrineDestroyed||!state.soulById!((ref soul)=>soul.state.among(SoulState.normal,SoulState.emerging)||!soul.creatureId,()=>false)(soul)){
 						sacDoc.kill(state);
@@ -6862,7 +6862,7 @@ bool updateConversion(B)(ref Conversion conversion,ObjectState!B state){
 					auto soulPosition=soulPositionSoulNumber[0], soulNumber=soulPositionSoulNumber[1];
 					if((sacDoc.position-soulPosition).xy.lengthsqr<4.0f){
 						sacDoc.clearOrderQueue(state);
-						status=ConversionStatus.pump;
+						status=SacDocCarryStatus.pump;
 						sacDoc.startPumping(state);
 						timer=(soulNumber+1)*5*updateFPS;
 						sacDoc.creatureStats.effects.carrying=soulNumber;
@@ -6873,7 +6873,7 @@ bool updateConversion(B)(ref Conversion conversion,ObjectState!B state){
 						sacDoc.creatureAI.order.target.position=soulPosition;
 					}
 					break;
-				case ConversionStatus.pump:
+				case SacDocCarryStatus.pump:
 					if(shrineDestroyed) sacDoc.kill(state);
 					if(sacDoc.creatureState.mode==CreatureMode.dying){
 						freeSoul();
@@ -6895,7 +6895,7 @@ bool updateConversion(B)(ref Conversion conversion,ObjectState!B state){
 							playSpellSoundTypeAt(SoundType.convertRevive,sacDoc.id,state,2.0f);
 						}
 						if(--timer==0){
-							status=ConversionStatus.move;
+							status=SacDocCarryStatus.move;
 							tether=makeSacDocTether(sacDoc,creature,state);
 							sacDoc.startIdling(state);
 							sacDoc.animationState=cast(AnimationState)SacDoctorAnimationState.pickUpCorpse;
@@ -6912,11 +6912,11 @@ bool updateConversion(B)(ref Conversion conversion,ObjectState!B state){
 						}
 					}
 					break;
-				case ConversionStatus.move:
+				case SacDocCarryStatus.move:
 					++frame;
-					vortexScale=min(1.0f,vortexScale+1.0f/Conversion.numFramesToEmerge);
+					vortexScale=min(1.0f,vortexScale+1.0f/SacDocCarry.numFramesToEmerge);
 					tether.updateSacDocTether(sacDoc,creature,state);
-					static bool update(ref MovingObject!B creature,MovingObject!B* sacDoc,Conversion* conversion,ObjectState!B state){
+					static bool update(ref MovingObject!B creature,MovingObject!B* sacDoc,SacDocCarry* sacDocCarry,ObjectState!B state){
 						auto transportHeight=3.5f, transportDistance=2.0f+0.5f*creature.getScale.length;
 						//auto targetPosition2d=transportDistance*(creature.position-sacDoc.position).xy.normalized;
 						//auto targetPosition=sacDoc.position+Vector3f(targetPosition2d.x,targetPosition2d.y,transportHeight);
@@ -6931,15 +6931,15 @@ bool updateConversion(B)(ref Conversion conversion,ObjectState!B state){
 						return true;
 					}
 					auto shrinePosition=state.staticObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(targetShrine);
-					if(shrineDestroyed||isNaN(shrinePosition.x)||!state.movingObjectById!(update,()=>false)(creature,&sacDoc,conversion,state)){
+					if(shrineDestroyed||isNaN(shrinePosition.x)||!state.movingObjectById!(update,()=>false)(creature,&sacDoc,sacDocCarry,state)){
 						sacDoc.kill(state);
 					}
 					if(sacDoc.creatureState.mode==CreatureMode.dying){
 						state.movingObjectById!(freeCreature,()=>false)(creature,sacDoc.position,state);
-						status=ConversionStatus.shrinking;
+						status=SacDocCarryStatus.shrinking;
 						tether=SacDocTether.init;
 					}else if(sacDoc.creatureState.movement==CreatureMovement.onGround && (sacDoc.position.xy-shrinePosition.xy).lengthsqr<20.0f^^2 && startRitual(RitualType.convert,side,caster,targetShrine,creature,state)){
-						status=ConversionStatus.shrinking;
+						status=SacDocCarryStatus.shrinking;
 						tether=SacDocTether.init;
 						sacDoc.kill(state);
 					}else if(!sacDoc.hasOrders(state)){
@@ -6949,13 +6949,13 @@ bool updateConversion(B)(ref Conversion conversion,ObjectState!B state){
 						sacDoc.creatureAI.order.target.position=shrinePosition;
 					}
 					break;
-				case ConversionStatus.shrinking:
+				case SacDocCarryStatus.shrinking:
 					assert(0);
 			}
 			return true;
 		}
 	}
-	return state.movingObjectById!(update,function bool(){ assert(0); })(conversion.sacDoctor,&conversion,state);
+	return state.movingObjectById!(update,function bool(){ assert(0); })(sacDocCarry.sacDoctor,&sacDocCarry,state);
 }
 
 bool freeForRitual(B)(int targetShrine,ObjectState!B state){
@@ -8894,16 +8894,16 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 		}
 		i++;
 	}
-	for(int i=0;i<effects.convertCastings.length;){
-		if(!updateConvertCasting(effects.convertCastings[i],state)){
-			effects.removeConvertCasting(i);
+	for(int i=0;i<effects.sacDocCastings.length;){
+		if(!updateSacDocCasting(effects.sacDocCastings[i],state)){
+			effects.removeSacDocCasting(i);
 			continue;
 		}
 		i++;
 	}
-	for(int i=0;i<effects.conversions.length;){
-		if(!updateConversion(effects.conversions[i],state)){
-			effects.removeConversion(i);
+	for(int i=0;i<effects.sacDocCarries.length;){
+		if(!updateSacDocCarry(effects.sacDocCarries[i],state)){
+			effects.removeSacDocCarry(i);
 			continue;
 		}
 		i++;
