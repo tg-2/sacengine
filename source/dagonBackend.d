@@ -416,8 +416,10 @@ final class SacScene: Scene{
 								information=Vector4f(0.0f,0.0f,0.0f,0.0f);
 							}else information=Vector4f(2.0f,id>>16,id&((1<<16)-1),1.0f);
 							material.backend.setInformation(information);
-							static if(prepareMaterials==RenderMode.transparent)
-								material.backend.setAlpha(objects.alphas[j]);
+							static if(prepareMaterials==RenderMode.transparent){
+								scene.shadelessBoneMaterialBackend.setAlpha(objects.alphas[j]);
+								scene.shadelessBoneMaterialBackend.setEnergy(objects.energies[j]);
+							}
 							// TODO: interpolate animations to get 60 FPS?
 							sacObject.setFrame(objects.animationStates[j],objects.frames[j]/updateAnimFactor);
 							mesh.render(rc);
@@ -3177,10 +3179,6 @@ static:
 			auto mat=scene.createMaterial(gpuSkinning&&sobj.isSaxs?scene.shadelessBoneMaterialBackend:scene.shadelessMaterialBackend);
 			mat.depthWrite=false;
 			mat.blending=Transparent;
-			if(sobj.isSaxs){
-				mat.transparency=0.6f;
-				mat.energy=10.0f;
-			}
 			auto diffuse=sobj.isSaxs?sobj.saxsi.saxs.bodyParts[i].texture:sobj.textures[i];
 			if(diffuse !is null) mat.diffuse=diffuse;
 			mat.specular=sobj.isSaxs?Color4f(1,1,1,1):Color4f(0,0,0,1);

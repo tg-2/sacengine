@@ -1213,6 +1213,7 @@ struct MovingObjects(B,RenderMode mode){
 	Array!int soulIds;
 	static if(mode==RenderMode.transparent){
 		Array!float alphas;
+		Array!float energies;
 	}
 
 	@property int length(){ assert(ids.length<=int.max); return cast(int)ids.length; }
@@ -1227,8 +1228,10 @@ struct MovingObjects(B,RenderMode mode){
 		creatureStatss.length=l;
 		sides.length=l;
 		soulIds.length=l;
-		static if(mode==RenderMode.transparent)
+		static if(mode==RenderMode.transparent){
 			alphas.length=l;
+			energies.length=l;
+		}
 	}
 
 	void reserve(int reserveSize){
@@ -1242,8 +1245,10 @@ struct MovingObjects(B,RenderMode mode){
 		creatureStatss.reserve(reserveSize);
 		sides.reserve(reserveSize);
 		soulIds.reserve(reserveSize);
-		static if(mode==RenderMode.transparent)
+		static if(mode==RenderMode.transparent){
 			alphas.reserve(reserveSize);
+			energies.reserve(reserveSize);
+		}
 	}
 
 	void addObject(MovingObject!B object)in{
@@ -1261,8 +1266,10 @@ struct MovingObjects(B,RenderMode mode){
 		creatureStatss~=object.creatureStats;
 		sides~=object.side;
 		soulIds~=object.soulId;
-		static if(mode==RenderMode.transparent)
+		static if(mode==RenderMode.transparent){
 			alphas~=1.0f;
+			energies~=1.0f;
+		}
 	}
 	void removeObject(int index, ObjectManager!B manager){
 		manager.ids[ids[index]-1]=Id.init;
@@ -1286,8 +1293,10 @@ struct MovingObjects(B,RenderMode mode){
 		assignArray(creatureStatss,rhs.creatureStatss);
 		assignArray(sides,rhs.sides);
 		assignArray(soulIds,rhs.soulIds);
-		static if(mode==RenderMode.transparent)
+		static if(mode==RenderMode.transparent){
 			assignArray(alphas,rhs.alphas);
+			assignArray(energies,rhs.energies);
+		}
 	}
 	void opAssign(MovingObjects!(B,mode) rhs){ this.tupleof=rhs.tupleof; }
 	MovingObject!B fetch(int i){
@@ -1306,11 +1315,11 @@ struct MovingObjects(B,RenderMode mode){
 		creatureStatss[i]=obj.creatureStats; // TODO: this might be a bit wasteful
 		sides[i]=obj.side;
 		soulIds[i]=obj.soulId;
-		// TODO: alphas ok?
 	}
 	static if(mode==RenderMode.transparent){
-		void setAlpha(int i,float alpha){
+		void setAlpha(int i,float alpha,float energy){
 			alphas[i]=alpha;
+			energies[i]=energy;
 		}
 	}
 }
@@ -2249,7 +2258,8 @@ struct RockForm(B){
 enum StealthStatus{ fadingOut, stationary, fadingIn }
 struct Stealth(B){
 	int target;
-	enum targetAlpha=0.1f;
+	enum targetAlpha=0.06f;
+	enum targetEnergy=10.0f;
 	float progress=0.0f;
 	StealthStatus status;
 	enum numFrames=30;
@@ -2862,9 +2872,9 @@ struct Objects(B,RenderMode mode){
 		}else enforce(0);
 	}
 	static if(mode==RenderMode.transparent){
-		void setAlpha(int type, int index, float alpha){
+		void setAlpha(int type, int index, float alpha, float energy){
 			enforce(0<=type&&type<numMoving);
-			movingObjects[type].setAlpha(index, alpha);
+			movingObjects[type].setAlpha(index, alpha, energy);
 		}
 		void setThresholdZ(int type, int index, float thresholdZ){
 			enforce(numMoving<=type&&type<numMoving+numStatic);
@@ -3069,12 +3079,12 @@ struct ObjectManager(B){
 			case RenderMode.transparent: transparentObjects.removeObject(tid.type,tid.index,this); break;
 		}
 	}
-	void setAlpha(int id,float alpha)in{
+	void setAlpha(int id,float alpha, float energy)in{
 		assert(0<id && id<=ids.length);
 	}do{
 		auto tid=ids[id-1];
 		enforce(tid.mode==RenderMode.transparent);
-		transparentObjects.setAlpha(tid.type,tid.index,alpha);
+		transparentObjects.setAlpha(tid.type,tid.index,alpha,energy);
 	}
 	void setThresholdZ(int id,float thresholdZ)in{
 		assert(0<id && id<=ids.length);
@@ -3137,9 +3147,6 @@ struct ObjectManager(B){
 			if(objType==ObjectType.soul) return TargetType.soul;
 		}
 		return TargetType.none;
-	}
-	void addTransparent(T)(T object, float alpha){
-		assert(0,"TODO");
 	}
 	void addWizard(WizardInfo!B wizard){
 		opaqueObjects.addWizard(wizard);
@@ -3449,6 +3456,7 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 		case CreatureMode.deadToGhost:
 			object.frame=0;
 			object.animationState=AnimationState.corpseRise;
+			state.updateRenderModeLater(object.id);
 			break;
 		case CreatureMode.idleGhost:
 			if(object.animationState!=AnimationState.floatMove||object.frame>=sacObject.numFrames(AnimationState.floatStatic)*updateAnimFactor)
@@ -4339,7 +4347,7 @@ bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,Ob
 			assert(target is Target.init);
 			auto creature=spawn(object.id,spell.tag,0,state);
 			state.setRenderMode!(MovingObject!B,RenderMode.transparent)(creature);
-			state.setAlpha(creature,0.6f);
+			state.setAlpha(creature,0.36f,10.0f);
 			playSoundAt("NMUS",creature,state,summonSoundGain);
 			state.addEffect(CreatureCasting!B(manaDrain,spell,creature));
 			return true;
@@ -5346,6 +5354,7 @@ void updateRenderMode(B)(int target,ObjectState!B state){
 	if(!state.isValidTarget(target,TargetType.creature)) return;
 	static RenderMode targetMode(ref MovingObject!B object,ObjectState!B state){
 		if(object.creatureStats.effects.stealth||object.creatureStats.effects.appearing||object.creatureStats.effects.disappearing) return RenderMode.transparent;
+		with(CreatureMode) if(object.creatureState.mode.among(deadToGhost,idleGhost,movingGhost,ghostToIdle)) return RenderMode.transparent;
 		return RenderMode.opaque;
 	}
 	final switch(state.movingObjectById!(targetMode,()=>RenderMode.opaque)(target,state)){
@@ -5397,7 +5406,7 @@ void appear(B)(int id,int lifetime,ObjectState!B state){
 		return true;
 	},()=>false)(id)) return;
 	updateRenderMode(id,state);
-	state.setAlpha(id,0.0f);
+	state.setAlpha(id,0.0f,1.0f);
 	state.addEffect(Appearance(id,lifetime));
 }
 
@@ -5617,6 +5626,9 @@ bool isIdle(B)(ref MovingObject!B object, ObjectState!B state){
 	return object.creatureState.mode==CreatureMode.idle && object.creatureAI.order.command==CommandType.none;
 }
 
+enum ghostAlpha=0.36f;
+enum ghostEnergy=10.0f;
+
 void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.creatureStats.effects.stunCooldown!=0) --object.creatureStats.effects.stunCooldown;
 	if(object.creatureStats.effects.rangedCooldown!=0) --object.creatureStats.effects.rangedCooldown;
@@ -5744,6 +5756,8 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 			break;
 		case CreatureMode.deadToGhost:
 			object.frame+=1;
+			auto progress=float(object.frame)/(sacObject.numFrames(object.animationState)*updateAnimFactor);
+			state.setAlpha(object.id,(1.0f-progress)+ghostAlpha*progress,(1.0f-progress)+ghostEnergy*progress);
 			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
 				object.creatureState.mode=CreatureMode.idleGhost;
 				object.setCreatureState(state);
@@ -5751,9 +5765,12 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 			break;
 		case CreatureMode.ghostToIdle:
 			object.frame+=1;
+			auto progress=float(object.frame)/(sacObject.numFrames(object.animationState)*updateAnimFactor);
+			state.setAlpha(object.id,ghostAlpha*(1.0f-progress)+progress,ghostEnergy*(1.0f-progress)+progress);
 			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
 				object.creatureState.mode=CreatureMode.idle;
 				object.setCreatureState(state);
+				state.updateRenderModeLater(object.id);
 			}
 			break;
 		case CreatureMode.reviving, CreatureMode.fastReviving:
@@ -8657,7 +8674,7 @@ bool updateStealth(B)(ref Stealth!B stealth,ObjectState!B state){
 			}
 		}
 		void updateAlpha(){
-			state.setAlpha(target,1.0f+progress*(targetAlpha-1.0f));
+			state.setAlpha(target,1.0f+progress*(targetAlpha-1.0f),1.0f+progress*(targetEnergy-1.0f));
 		}
 		final switch(status){
 			case StealthStatus.fadingOut:
@@ -8801,7 +8818,7 @@ bool updateAppearance(B)(ref Appearance appearance,ObjectState!B state){
 		if(!state.isValidTarget(id,TargetType.creature)) return false;
 		updateRenderMode(id,state);
 		++frame;
-		state.setAlpha(id,(float(frame)/lifetime)^^2);
+		state.setAlpha(id,(float(frame)/lifetime),1.0f);
 		if(frame>=lifetime){
 			state.movingObjectById!((ref object){
 				object.creatureStats.effects.appearing=false;
@@ -8818,7 +8835,7 @@ bool updateDisappearance(B)(ref Disappearance disappearance,ObjectState!B state)
 		if(!state.isValidTarget(id,TargetType.creature)) return false;
 		updateRenderMode(id,state);
 		++frame;
-		state.setAlpha(id,(float(lifetime-frame)/lifetime)^^2);
+		state.setAlpha(id,(float(lifetime-frame)/lifetime),1.0f);
 		if(frame>=lifetime){
 			state.removeLater(id);
 			return false;
@@ -10213,6 +10230,7 @@ final class ObjectState(B){ // (update logic)
 		this.eachSoul!updateSoul(this);
 		this.eachBuilding!updateBuilding(this);
 		this.eachWizard!updateWizard(this);
+		this.performRenderModeUpdates();
 		this.performRemovals();
 		proximity.end();
 	}
@@ -10225,10 +10243,10 @@ final class ObjectState(B){ // (update logic)
 	}do{
 		obj.removeObject(id);
 	}
-	void setAlpha(int id,float alpha)in{
+	void setAlpha(int id,float alpha,float energy)in{
 		assert(id!=0);
 	}do{
-		obj.setAlpha(id,alpha);
+		obj.setAlpha(id,alpha,energy);
 	}
 	void setThresholdZ(int id,float thresholdZ)in{
 		assert(id!=0);
@@ -10265,6 +10283,16 @@ final class ObjectState(B){ // (update logic)
 	void performRemovals(){
 		foreach(id;toRemove.data) if(isValidId(id)) removeObject(id);
 		toRemove.length=0;
+	}
+	Array!int toUpdateRenderMode;
+	void updateRenderModeLater(int id)in{
+		assert(id!=0);
+	}do{
+		toUpdateRenderMode~=id;
+	}
+	void performRenderModeUpdates(){
+		foreach(id;toUpdateRenderMode.data) if(isValidId(id)) updateRenderMode(id,this);
+		toUpdateRenderMode.length=0;
 	}
 	void addWizard(WizardInfo!B wizard){
 		obj.addWizard(wizard);
