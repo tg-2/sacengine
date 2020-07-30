@@ -1,6 +1,6 @@
 import nttData,bldg,sacobject,sacspell,stats,state,util;
 import dlib.math;
-import std.algorithm, std.range, std.container, std.traits, std.exception, std.conv, std.stdio;
+import std.algorithm, std.range, std.container, std.traits, std.exception, std.conv, std.stdio, std.typecons: Tuple;
 import std.random;
 
 
@@ -106,6 +106,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==S[]
 	result.length=len;
 	foreach(ref v;result) deserialize(*cast(Unqual!(typeof(v))*)&v,state,data);
 }
+
+void serialize(alias sink,T...)(ref Tuple!T values){ foreach(ref x;values.expand) serialize!sink(x); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Tuple!S,S...)){ foreach(ref x;result.expand) deserialize(x,state,data); }
 
 void serialize(alias sink,T,size_t n)(ref Vector!(T,n) vector){
 	static foreach(i;0..n) serialize!sink(vector[i]);
