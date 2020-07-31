@@ -1475,6 +1475,7 @@ final class SacScene: Scene{
 			minimapMaterialBackend.bindDiffuse(map.textures[i]);
 			mesh.render(rc);
 		}
+		if(!state.current.isValidTarget(camera.target,TargetType.creature)) camera.target=0;
 		if(camera.target){
 			import std.typecons: Tuple,tuple;
 			auto facingPosition=state.current.movingObjectById!((obj)=>tuple(obj.creatureState.facing,obj.position), function Tuple!(float,Vector3f)(){ assert(0); })(camera.target);
@@ -2752,6 +2753,7 @@ final class SacScene: Scene{
 				}
 			}else state.step();
 			// state.commit();
+			if(!state.current.isValidTarget(camera.target,TargetType.creature)) camera.target=0;
 			if(camera.target){
 				auto targetFacing=state.current.movingObjectById!((obj)=>obj.creatureState.facing, function float(){ assert(0); })(camera.target);
 				updateCameraPosition(dt,targetFacing!=camera.lastTargetFacing && !mouse.dragging);

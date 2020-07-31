@@ -3654,6 +3654,14 @@ bool kill(B,bool pretending=false)(ref MovingObject!B object, ObjectState!B stat
 	object.setCreatureState(state);
 	return true;
 }
+void killAll(B)(int side, ObjectState!B state){
+	void perform(ref MovingObject!B obj,int side,ObjectState!B state){
+		if(obj.side==side)
+			obj.kill(state);
+	}
+	state.eachMoving!perform(side,state);
+}
+
 bool playDead(B)(ref MovingObject!B object, ObjectState!B state){
 	return object.kill!(B,true)(state);
 }
@@ -5693,7 +5701,8 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 		case CreatureMode.idle, CreatureMode.moving, CreatureMode.idleGhost, CreatureMode.movingGhost:
 			auto oldMode=object.creatureState.mode;
 			auto ghost=oldMode==CreatureMode.idleGhost||oldMode==CreatureMode.movingGhost;
-			if(ghost&&object.health==object.creatureStats.maxHealth){
+			if(ghost&&(object.health==object.creatureStats.maxHealth||object.creatureStats.effects.numDesecrations)){
+				if(object.creatureStats.effects.numDesecrations) object.creatureStats.health=max(1.0f,object.creatureStats.health);
 				object.creatureState.mode=CreatureMode.ghostToIdle;
 				object.setCreatureState(state);
 				break;
@@ -5743,9 +5752,15 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 						object.frame=sacObject.numFrames(object.animationState)*updateAnimFactor-1;
 						if(object.creatureState.mode==CreatureMode.dying){
 							object.creatureState.mode=CreatureMode.dead;
-							if(object.isWizard && !object.creatureStats.effects.numDesecrations){
-								object.creatureState.mode=CreatureMode.deadToGhost;
-								object.setCreatureState(state);
+							bool wizard=object.isWizard;
+							if(wizard){
+								if(object.creatureStats.effects.numDesecrations){
+									disappear(object,4*updateFPS,state);
+									killAll(object.side,state);
+								}else{
+									object.creatureState.mode=CreatureMode.deadToGhost;
+									object.setCreatureState(state);
+								}
 							}else{
 								object.spawnSoul(state);
 								object.unselect(state);
