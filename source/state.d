@@ -1709,8 +1709,20 @@ struct WizardInfos(B){
 		foreach(i;0..wizards.length) if(wizards[i].id==id) return cast(int)i;
 		return -1;
 	}
+	int indexForSide(int side,ObjectState!B state){
+		foreach(i;0..wizards.length){
+			if(state.movingObjectById!(.side,()=>-1)(wizards[i].id,state)==side)
+			   return cast(int)i;
+		}
+		return -1;
+	}
 	WizardInfo!B* getWizard(int id){
 		auto index=indexForId(id);
+		if(index==-1) return null;
+		return &wizards[index];
+	}
+	WizardInfo!B* getWizardForSide(int side,ObjectState!B state){
+		auto index=indexForSide(side,state);
 		if(index==-1) return null;
 		return &wizards[index];
 	}
@@ -1856,7 +1868,10 @@ struct RedVortex{
 	enum numFramesToEmerge=120;
 	enum numFrames=120;
 	enum numFramesToDisappear=60;
-	enum height=15;
+	enum convertHeight=15.0f;
+	enum convertDistance=20.0f;
+	enum desecrateHeight=15.0f;
+	enum desecrateDistance=12.5f;
 }
 
 enum RitualType{
@@ -1931,6 +1946,8 @@ struct Ritual(B){
 	int shrine;
 	int[4] sacDoctors;
 	int creature;
+	RedVortex vortex;
+	int targetWizard;
 	SacDocTether[4] tethers;
 	LightningBolt[2] altarBolts;
 	LightningBolt[3] desecrateBolts;
@@ -2923,6 +2940,9 @@ struct Objects(B,RenderMode mode){
 		WizardInfo!B* getWizard(int id){
 			return wizards.getWizard(id);
 		}
+		WizardInfo!B* getWizardForSide(int side,ObjectState!B state){
+			return wizards.getWizardForSide(side,state);
+		}
 		void removeWizard(int id){
 			wizards.removeWizard(id);
 		}
@@ -3157,6 +3177,9 @@ struct ObjectManager(B){
 	}
 	WizardInfo!B* getWizard(int id){
 		return opaqueObjects.getWizard(id);
+	}
+	WizardInfo!B* getWizardForSide(int side,ObjectState!B state){
+		return opaqueObjects.getWizardForSide(side,state);
 	}
 	void removeWizard(int id){
 		opaqueObjects.removeWizard(id);
@@ -4005,17 +4028,25 @@ float dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B at
 	attacker.healFromDrain(actualDamage,state);
 	return actualDamage;
 }
-float dealDamage(B)(ref MovingObject!B object,float damage,int attackingSide,ObjectState!B state){
+float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,ObjectState!B state){
 	if(!object.canDamage(state)) return 0.0f;
-	auto shieldDamageMultiplier=object.creatureStats.effects.lifeShield?0.5f:1.0f;
-	auto actualDamage=min(object.health,damage*state.sideDamageMultiplier(attackingSide,object.side)*shieldDamageMultiplier);
-	object.health=object.health-actualDamage;
+	auto actualDamage=min(object.health,damage);
+	object.creatureStats.health-=actualDamage;
 	if(object.creatureStats.flags&Flags.cannotDestroyKill)
-		object.health=max(object.health,1.0f);
+		object.creatureStats.health=max(object.health,1.0f);
 	// TODO: give xp to wizard of attacking side
 	if(object.health==0.0f)
 		object.kill(state);
 	return actualDamage;
+}
+float dealDamage(B)(ref MovingObject!B object,float damage,int attackingSide,ObjectState!B state){
+	if(!object.canDamage(state)) return 0.0f;
+	auto shieldDamageMultiplier=object.creatureStats.effects.lifeShield?0.5f:1.0f;
+	return dealRawDamage(object,damage*state.sideDamageMultiplier(attackingSide,object.side)*shieldDamageMultiplier,attackingSide,state);
+}
+float dealDesecrationDamage(B)(ref MovingObject!B object,float damage,int attackingSide,ObjectState!B state){
+	if(!object.canDamage(state)) return 0.0f;
+	return dealRawDamage(object,damage*state.sideDamageMultiplier(attackingSide,object.side),attackingSide,state);
 }
 
 bool canDamage(B)(ref Building!B building,ObjectState!B state){
@@ -4454,9 +4485,9 @@ bool castConvert(B)(int side,ManaDrain!B manaDrain,SacSpell!B spell,Vector3f cas
 	},function()=>Vector3f.init)(target,side);
 	if(isNaN(targetPosition.x)) return false;
 	auto direction=(targetPosition-castPosition).normalized;
-	auto position=targetPosition+20.0f*direction;
+	auto position=targetPosition+RedVortex.convertDistance*direction;
 	auto landingPosition=0.5f*(position+targetPosition);
-	position.z=state.getHeight(position)+RedVortex.height;
+	position.z=state.getHeight(position)+RedVortex.convertHeight;
 	state.addEffect(SacDocCasting!B(RitualType.convert,side,manaDrain,spell,target,targetShrine,landingPosition,RedVortex(position)));
 	return true;
 }
@@ -4468,7 +4499,7 @@ bool castDesecrate(B)(int side,ManaDrain!B manaDrain,SacSpell!B spell,Vector3f c
 	auto direction=(targetPosition-castPosition).normalized;
 	auto position=targetPosition-20.0f*direction; // TODO: ok?
 	auto landingPosition=0.5f*(position+targetPosition);
-	position.z=state.getHeight(position)+RedVortex.height;
+	position.z=state.getHeight(position)+RedVortex.desecrateHeight;
 	state.addEffect(SacDocCasting!B(RitualType.desecrate,side,manaDrain,spell,target,targetShrine,landingPosition,RedVortex(position)));
 	return true;
 }
@@ -6695,10 +6726,10 @@ bool updateSpeedUp(B)(ref SpeedUp!B speedUp,ObjectState!B state){
 	}
 }
 
-bool updateRedVortex(B)(ref RedVortex vortex,ObjectState!B state){
+bool updateRedVortex(B)(ref RedVortex vortex,ObjectState!B state,float height=RedVortex.convertHeight){
 	vortex.frame+=1;
+	vortex.position.z=state.getHeight(vortex.position)+height;
 	if(vortex.scale>0.3f){
-		vortex.position.z=state.getHeight(vortex.position)+vortex.height;
 		foreach(i;0..2){
 			auto sacParticle=SacParticle!B.get(ParticleType.redVortexDroplet);
 			auto velocity=0.1f*state.uniformDirection();
@@ -7035,6 +7066,7 @@ void stopRitual(B)(ref Ritual!B ritual,ObjectState!B state){
 	state.movingObjectById!(freeCreature,()=>false)(ritual.creature,ritual.start,state);
 	foreach(id;ritual.sacDoctors) state.movingObjectById!(kill,()=>false)(id,state);
 	setOccupied(ritual.shrine,false,state);
+	// TODO: shrink vortex
 }
 
 
@@ -7071,11 +7103,27 @@ bool startRitual(B)(RitualType type,int side,SacSpell!B spell,int caster,int shr
 	auto start=state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(creature);
 	if(isNaN(start.x)) return false;
 	int[4] sacDoctors;
-	auto shrinePosition=state.staticObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(shrine);
+	auto shrinePositionShrineSide=state.staticObjectById!((ref obj,state)=>tuple(obj.position,obj.side(state)),()=>Tuple!(Vector3f,int).init)(shrine,state);
+	auto shrinePosition=shrinePositionShrineSide[0], shrineSide=shrinePositionShrineSide[1];
 	if(isNaN(shrinePosition.x)) return false;
 	auto positions=ritualPositions(shrinePosition,state);
 	foreach(k,ref id;sacDoctors) id=spawnRitualSacDoctor(side,positions[k].expand,state);
-	state.addEffect(Ritual!B(type,start,side,spell,caster,shrine,sacDoctors,creature));
+	RedVortex vortex;
+	int targetWizard=0;
+	auto vortexHeight=type==RitualType.desecrate?RedVortex.desecrateHeight:RedVortex.convertHeight;
+	if(type==RitualType.desecrate){
+		auto wizard=state.getWizardForSide(shrineSide);
+		if(wizard){
+			auto wizardPosition=state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(wizard.id);
+			if(!isNaN(wizardPosition.x)){
+				vortex.position=wizardPosition+vortex.desecrateDistance*(shrinePosition-wizardPosition).normalized;
+				if(isNaN(vortex.position.x)) vortex.position=wizardPosition;
+				vortex.position.z=state.getHeight(vortex.position)+vortexHeight;
+				targetWizard=wizard.id;
+			}
+		}
+	}
+	state.addEffect(Ritual!B(type,start,side,spell,caster,shrine,sacDoctors,creature,vortex,targetWizard));
 	setOccupied(shrine,true,state);
 	return true;
 }
@@ -7100,6 +7148,22 @@ bool updateRitual(B)(ref Ritual!B ritual,ObjectState!B state){
 			auto hitbox=obj.sacObject.largeHitbox(Quaternionf.identity(),AnimationState.stance1,0);
 			obj.position=((remainingTime-1)*obj.position+targetPosition)/float(remainingTime);
 		})(creature,shrinePosition+Vector3f(0.0f,0.0f,15.0f),max(1,ritual.setupTime-frame),state);
+		if(!isNaN(vortex.position.x)){
+			if(targetWizard){
+				vortex.scale=min(1.0,vortex.scale+1.0f/vortex.numFramesToEmerge);
+				auto targetPosition=state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(targetWizard);
+				if(!isNaN(targetPosition.x)){
+					if((vortex.position.xy-targetPosition.xy).lengthsqr>vortex.desecrateDistance^^2){
+						auto newPos=targetPosition.xy+vortex.desecrateDistance*(vortex.position.xy-targetPosition.xy).normalized;
+						vortex.position.x=newPos.x;
+						vortex.position.y=newPos.y;
+					}
+				}else targetWizard=0;
+			}else{
+				vortex.scale=max(0.0,vortex.scale-1.0f/vortex.numFramesToDisappear);
+			}
+			vortex.updateRedVortex(state,vortex.desecrateHeight);
+		}
 		if(frame>=ritual.setupTime){
 			auto time=frame-ritual.setupTime;
 			static assert(updateFPS==60);
@@ -7153,26 +7217,41 @@ bool updateRitual(B)(ref Ritual!B ritual,ObjectState!B state){
 				enum boltDelay=updateAnimFactor*5;
 				enum changeShapeDelay=9;
 				if(progress>=walkTime+boltDelay+tortureStart&&progress<walkTime+boltDelay+tortureEnd){
-					if(progress==walkTime+boltDelay+tortureStart||frame%changeShapeDelay==0)
+					if(type==RitualType.desecrate){
+						if(targetWizard){
+							auto numSouls=state.movingObjectById!((ref obj)=>obj.sacObject.numSouls,()=>0)(creature);
+							static void drain(ref MovingObject!B wizard,int side,int numSouls,ObjectState!B state){
+								dealDesecrationDamage(wizard,(200.0f*(1+numSouls))/(tortureEnd-tortureStart),side,state);
+								drainMana(wizard,(40.0f*(1+numSouls))/(tortureEnd-tortureStart),state);
+								// TODO: desecration XP drain
+							}
+							state.movingObjectById!(drain,(){})(targetWizard,side,numSouls,state);
+						}
+					}
+					if(progress==walkTime+boltDelay+tortureStart||frame%changeShapeDelay==0){
 						foreach(ref bolt;altarBolts) bolt.changeShape(state);
+					}
+					if(type==RitualType.desecrate){
+						if(progress==walkTime+boltDelay+tortureStart||frame%6==0)
+							if(targetWizard&&!isNaN(vortex.position.x))
+								foreach(ref bolt;desecrateBolts) bolt.changeShape(state);
+					}
 				}else if(progress==walkTime+boltDelay+tortureEnd){
 					altarBolts=(LightningBolt[2]).init;
 				}
 				if(progress==walkTime+135*updateAnimFactor){
 					tethers=(SacDocTether[4]).init;
 					altarBolts=(LightningBolt[2]).init;
-					if(type==RitualType.convert){
-						if(state.movingObjectById!((ref obj,nRounds,side,state){
-							auto targetRounds=cast(int)obj.creatureStats.maxHealth/550;
-							if(nRounds==targetRounds){
-								obj.gib(state,caster);
-								return true;
-							}
-							return false;
-						},()=>true)(creature,nRounds,side,state)){
-							ritual.stopRitual(state);
-							return false;
+					if(type==RitualType.convert&&state.movingObjectById!((ref obj,nRounds,side,state){
+						auto targetRounds=cast(int)obj.creatureStats.maxHealth/550;
+						if(nRounds==targetRounds){
+							obj.gib(state,caster);
+							return true;
 						}
+						return false;
+					},()=>true)(creature,nRounds,side,state)){
+						ritual.stopRitual(state);
+						return false;
 					}
 				}
 			}
@@ -10355,6 +10434,9 @@ final class ObjectState(B){ // (update logic)
 	}
 	WizardInfo!B* getWizard(int id){
 		return obj.getWizard(id);
+	}
+	WizardInfo!B* getWizardForSide(int side){
+		return obj.getWizardForSide(side,this);
 	}
 	auto getLevel(int id){
 		auto wizard=getWizard(id);

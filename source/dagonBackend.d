@@ -516,7 +516,7 @@ final class SacScene: Scene{
 						mesh.render(rc);
 					}
 				}
-				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.sacDocCastings.length){
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.sacDocCastings.length||objects.rituals.length)){
 					auto centerMat=scene.vortex.redCenterMat;
 					void renderRedCenter(ref RedVortex vortex){
 						centerMat.backend.setSpriteTransformationScaled(vortex.position,vortex.scale*vortex.radius,rc);
@@ -531,9 +531,11 @@ final class SacScene: Scene{
 					}
 					centerMat.bind(rc);
 					foreach(j;0..objects.sacDocCastings.length) renderRedCenter(objects.sacDocCastings[j].vortex);
+					foreach(j;0..objects.rituals.length) if(!isNaN(objects.rituals[j].vortex.position.x)) renderRedCenter(objects.rituals[j].vortex);
 					centerMat.unbind(rc);
 					rimMat.bind(rc);
 					foreach(j;0..objects.sacDocCastings.length) renderRedRim(objects.sacDocCastings[j].vortex);
+					foreach(j;0..objects.rituals.length) if(!isNaN(objects.rituals[j].vortex.position.x)) renderRedRim(objects.rituals[j].vortex);
 					rimMat.unbind(rc);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.sacDocCarries.length){
@@ -695,6 +697,11 @@ final class SacScene: Scene{
 						if(isNaN(end.x)||isNaN(start.x)) continue;
 						auto frame=objects.rituals[j].frame;
 						renderBolts(objects.rituals[j].altarBolts[],start,end,frame);
+						if(!objects.rituals[j].targetWizard) continue;
+						start=objects.rituals[j].vortex.position;
+						end=scene.state.current.movingObjectById!(center,()=>Vector3f.init)(objects.rituals[j].targetWizard);
+						if(isNaN(end.x)||isNaN(start.x)) continue;
+						renderBolts(objects.rituals[j].desecrateBolts[],start,end,frame);
 					}
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.wraths.length){
