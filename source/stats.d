@@ -30,6 +30,7 @@ struct Effects{
 	bool disappearing=false;
 	bool stealth=false;
 	bool lifeShield=false;
+	int numDesecrations=0;
 }
 import dlib.math.portable: pi;
 @property float rotationSpeed(ref CreatureStats stats,bool isFlying){ // in radians per second

@@ -113,10 +113,9 @@ bool isValidAttackTarget(CreatureMode mode){
 }
 bool isValidGuardTarget(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
-		case idle,moving,dying,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,rockForm,convertReviving,pumping,torturing,thrashing: return true;
-		case dead,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive: return false;
-		case deadToGhost: return false;
-		case idleGhost,movingGhost,ghostToIdle: return true;
+		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,rockForm,convertReviving,pumping,torturing,thrashing: return true;
+		case dying,dead,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive: return false;
+		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return true;
 	}
 }
 bool canHeal(CreatureMode mode){
@@ -3660,6 +3659,8 @@ bool playDead(B)(ref MovingObject!B object, ObjectState!B state){
 }
 
 bool gib(B)(ref MovingObject!B object, ObjectState!B state,int giveSoulsTo=-1){
+	object.unselect(state);
+	object.removeFromGroups(state);
 	int numSouls=object.sacObject.numSouls;
 	if(numSouls){
 		if(giveSoulsTo!=-1){
@@ -4324,6 +4325,9 @@ bool isGhost(B)(ref MovingObject!B object){
 bool isDying(B)(ref MovingObject!B object){
 	return object.creatureState.mode.isDying;
 }
+bool isDead(B)(ref MovingObject!B object){
+	return object.creatureState.mode==CreatureMode.dead;
+}
 bool isAlive(B)(ref MovingObject!B object){
 	return object.creatureState.mode.isAlive;
 }
@@ -4464,6 +4468,8 @@ bool startThrashing(B)(ref MovingObject!B object,ObjectState!B state){
 	object.creatureState.mode=CreatureMode.thrashing;
 	object.creatureState.movement=CreatureMovement.flying;
 	object.setCreatureState(state);
+	object.unselect(state);
+	object.removeFromGroups(state);
 	return true;
 }
 bool freeCreature(B)(ref MovingObject!B object,Vector3f landingPosition,ObjectState!B state){
@@ -5737,7 +5743,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 						object.frame=sacObject.numFrames(object.animationState)*updateAnimFactor-1;
 						if(object.creatureState.mode==CreatureMode.dying){
 							object.creatureState.mode=CreatureMode.dead;
-							if(object.isWizard){ // TODO: check for altar
+							if(object.isWizard && !object.creatureStats.effects.numDesecrations){
 								object.creatureState.mode=CreatureMode.deadToGhost;
 								object.setCreatureState(state);
 							}else{
@@ -7062,15 +7068,18 @@ void setOccupied(B)(int shrine,bool occupied,ObjectState!B state){
 	},(){})(shrine,occupied,state);
 }
 
-bool stopRitual(B)(ref Ritual!B ritual,ObjectState!B state){
-	ritual.stopped=true;
-	state.movingObjectById!(freeCreature,()=>false)(ritual.creature,ritual.start,state);
-	foreach(id;ritual.sacDoctors) state.movingObjectById!(kill,()=>false)(id,state);
-	ritual.tethers=typeof(ritual.tethers).init;
-	ritual.altarBolts=typeof(ritual.altarBolts).init;
-	ritual.desecrateBolts=typeof(ritual.desecrateBolts).init;
-	setOccupied(ritual.shrine,false,state);
-	return ritual.vortex.scale>0.0f;
+bool stopRitual(B)(ref Ritual!B ritual,ObjectState!B state,bool targetDead=false){
+	with(ritual){
+		stopped=true;
+		if(creature) state.movingObjectById!(freeCreature,()=>false)(creature,start,state);
+		foreach(id;sacDoctors) state.movingObjectById!(kill,()=>false)(id,state);
+		tethers=typeof(tethers).init;
+		altarBolts=typeof(altarBolts).init;
+		if(!targetDead) desecrateBolts=typeof(desecrateBolts).init;
+		setOccupied(shrine,false,state);
+		if(targetWizard) state.movingObjectById!((ref obj){ obj.creatureStats.effects.numDesecrations-=1; },(){})(targetWizard);
+		return vortex.scale>0.0f;
+	}
 }
 
 
@@ -7129,14 +7138,24 @@ bool startRitual(B)(RitualType type,int side,SacSpell!B spell,int caster,int shr
 	}
 	state.addEffect(Ritual!B(type,start,side,spell,caster,shrine,sacDoctors,creature,vortex,targetWizard));
 	setOccupied(shrine,true,state);
+	if(targetWizard) state.movingObjectById!((ref obj){ obj.creatureStats.effects.numDesecrations+=1; },(){})(targetWizard);
 	return true;
 }
 
 bool updateRitual(B)(ref Ritual!B ritual,ObjectState!B state){
 	with(ritual){
 		++frame;
+		if(!state.isValidTarget(targetWizard,TargetType.creature)) targetWizard=0;
+		bool targetDead=!targetWizard||state.movingObjectById!(isDead,()=>true)(targetWizard);
+		if(type==RitualType.desecrate&&targetWizard&&targetDead){
+			// TODO: destroy altar
+			if(isNaN(desecrateBolts[0].displacement[0].x)||frame%6==0){
+				if(!isNaN(vortex.position.x))
+					foreach(ref bolt;desecrateBolts) bolt.changeShape(state);
+			}
+		}
 		if(ritual.stopped){
-			vortex.scale=max(0.0f,vortex.scale-1.0f/vortex.numFramesToDisappear);
+			if(!targetWizard||!targetDead) vortex.scale=max(0.0f,vortex.scale-1.0f/vortex.numFramesToDisappear);
 			return vortex.scale>0.0f;
 		}
 		auto shrinePositionIsAltar=state.staticObjectById!((ref obj)=>tuple(obj.position,obj.sacObject.isAltar),()=>tuple(Vector3f.init,false))(shrine);
@@ -7146,10 +7165,10 @@ bool updateRitual(B)(ref Ritual!B ritual,ObjectState!B state){
 			if(state.movingObjectById!((ref obj)=>obj.creatureState.mode==CreatureMode.dying,()=>false)(id))
 				return ritual.stopRitual(state);
 		}
-		state.movingObjectById!((ref obj,targetPosition,remainingTime,state){
+		if(creature) state.movingObjectById!((ref obj,targetPosition,remainingTime,state){
 			auto hitbox=obj.sacObject.largeHitbox(Quaternionf.identity(),AnimationState.stance1,0);
 			obj.position=((remainingTime-1)*obj.position+targetPosition)/float(remainingTime);
-		})(creature,shrinePosition+Vector3f(0.0f,0.0f,15.0f),max(1,ritual.setupTime-frame),state);
+		},(){})(creature,shrinePosition+Vector3f(0.0f,0.0f,15.0f),max(1,ritual.setupTime-frame),state);
 		if(!isNaN(vortex.position.x)){
 			if(targetWizard){
 				vortex.scale=min(1.0f,vortex.scale+1.0f/vortex.numFramesToEmerge);
@@ -7197,7 +7216,7 @@ bool updateRitual(B)(ref Ritual!B ritual,ObjectState!B state){
 						swap(sacDoctors[k],sacDoctors[k-1]);
 				}
 				enum tortureStart=updateAnimFactor*5, tortureEnd=updateAnimFactor*130;
-				foreach(k,id;sacDoctors){
+				if(ritual.creature) foreach(k,id;sacDoctors){
 					state.movingObjectById!((ref sacDoc,k,shrinePosition,ritual,state){
 						sacDoc.clearOrderQueue(state);
 						if(sacDoc.creatureState.mode!=CreatureMode.torturing){
@@ -7219,40 +7238,48 @@ bool updateRitual(B)(ref Ritual!B ritual,ObjectState!B state){
 				enum boltDelay=updateAnimFactor*5;
 				enum changeShapeDelay=9;
 				if(progress>=walkTime+boltDelay+tortureStart&&progress<walkTime+boltDelay+tortureEnd){
-					if(type==RitualType.desecrate){
-						if(targetWizard){
-							auto numSouls=state.movingObjectById!((ref obj)=>obj.sacObject.numSouls,()=>0)(creature);
-							static void drain(ref MovingObject!B wizard,int side,int numSouls,ObjectState!B state){
-								dealDesecrationDamage(wizard,(200.0f*(1+numSouls))/(tortureEnd-tortureStart),side,state);
-								drainMana(wizard,(40.0f*(1+numSouls))/(tortureEnd-tortureStart),state);
-								// TODO: desecration XP drain
-							}
-							state.movingObjectById!(drain,(){})(targetWizard,side,numSouls,state);
-						}
-					}
 					if(progress==walkTime+boltDelay+tortureStart||frame%changeShapeDelay==0){
 						foreach(ref bolt;altarBolts) bolt.changeShape(state);
 					}
-					if(type==RitualType.desecrate){
+					if(type==RitualType.desecrate&&!targetDead){
 						if(progress==walkTime+boltDelay+tortureStart||frame%6==0)
-							if(targetWizard&&!isNaN(vortex.position.x))
+							if(!isNaN(vortex.position.x))
 								foreach(ref bolt;desecrateBolts) bolt.changeShape(state);
+						auto numSouls=creature?state.movingObjectById!((ref obj)=>obj.sacObject.numSouls,()=>0)(creature):0;
+						static void drain(ref MovingObject!B wizard,int side,int numSouls,ObjectState!B state){
+							dealDesecrationDamage(wizard,(200.0f*(1+numSouls))/(tortureEnd-tortureStart),side,state);
+							drainMana(wizard,(40.0f*(1+numSouls))/(tortureEnd-tortureStart),state);
+							// TODO: desecration XP drain
+						}
+						state.movingObjectById!(drain,(){})(targetWizard,side,numSouls,state);
 					}
 				}else if(progress==walkTime+boltDelay+tortureEnd){
 					altarBolts=(LightningBolt[2]).init;
+					if(!targetDead) desecrateBolts=(LightningBolt[3]).init;
 				}
 				if(progress==walkTime+135*updateAnimFactor){
 					tethers=(SacDocTether[4]).init;
 					altarBolts=(LightningBolt[2]).init;
-					if(type==RitualType.convert&&state.movingObjectById!((ref obj,nRounds,side,state){
-						auto targetRounds=cast(int)obj.creatureStats.maxHealth/550;
-						if(nRounds==targetRounds){
-							obj.gib(state,caster);
-							return true;
-						}
-						return false;
-					},()=>true)(creature,nRounds,side,state))
-						return ritual.stopRitual(state);
+					bool finish=false;
+					final switch(type){
+						case RitualType.convert:
+							if(!creature||state.movingObjectById!((ref obj,nRounds,caster,state){
+								auto targetRounds=cast(int)obj.creatureStats.maxHealth/550;
+								if(nRounds==targetRounds){
+									obj.gib(state,caster);
+									return true;
+								}
+								return false;
+							},()=>true)(creature,nRounds,caster,state))
+								return ritual.stopRitual(state);
+							break;
+						case RitualType.desecrate:
+							if(targetDead){
+								if(creature) state.movingObjectById!((ref obj,caster,state){ obj.gib(state,caster); },(){})(creature,caster,state);
+								return ritual.stopRitual(state,true);
+							}
+							break;
+					}
 				}
 			}
 		}

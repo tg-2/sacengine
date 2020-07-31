@@ -691,17 +691,17 @@ final class SacScene: Scene{
 						renderBolts(objects.lightnings[j].bolts[],start,end,frame);
 					}
 					foreach(j;0..objects.rituals.length){
-						if(isNaN(objects.rituals[j].altarBolts[0].displacement[0].x)) continue;
-						auto end=scene.state.current.movingObjectById!(center,()=>Vector3f.init)(objects.rituals[j].creature);
-						auto start=scene.state.current.staticObjectById!((ref obj)=>obj.position+Vector3f(0.0f,0.0f,60.0f),()=>Vector3f.init)(objects.rituals[j].shrine);
-						if(isNaN(end.x)||isNaN(start.x)) continue;
 						auto frame=objects.rituals[j].frame;
-						renderBolts(objects.rituals[j].altarBolts[],start,end,frame);
-						if(!objects.rituals[j].targetWizard) continue;
-						start=objects.rituals[j].vortex.position;
-						end=scene.state.current.movingObjectById!(center,()=>Vector3f.init)(objects.rituals[j].targetWizard);
-						if(isNaN(end.x)||isNaN(start.x)) continue;
-						renderBolts(objects.rituals[j].desecrateBolts[],start,end,frame);
+						if(!isNaN(objects.rituals[j].altarBolts[0].displacement[0].x)){
+							auto start=scene.state.current.staticObjectById!((ref obj)=>obj.position+Vector3f(0.0f,0.0f,60.0f),()=>Vector3f.init)(objects.rituals[j].shrine);
+							auto end=scene.state.current.movingObjectById!(center,()=>Vector3f.init)(objects.rituals[j].creature);
+							if(!isNaN(end.x)&&!isNaN(start.x)) renderBolts(objects.rituals[j].altarBolts[],start,end,frame);
+						}
+						if(objects.rituals[j].targetWizard){
+							auto start=objects.rituals[j].vortex.position;
+							auto end=scene.state.current.movingObjectById!(center,()=>Vector3f.init)(objects.rituals[j].targetWizard);
+							if(!isNaN(end.x)&&!isNaN(start.x)) renderBolts(objects.rituals[j].desecrateBolts[],start,end,frame);
+						}
 					}
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.wraths.length){
@@ -1977,11 +1977,11 @@ final class SacScene: Scene{
 	bool statsVisible(int target){
 		if(!camera.target) return false;
 		with(CreatureMode)
-			return !state.current.movingObjectById!(isDying,()=>true)(camera.target);
+			return state.current.movingObjectById!((ref obj)=>!obj.isDying&&!obj.isDead,()=>false)(camera.target);
 	}
 	bool spellbookVisible(int target){
 		if(!camera.target) return false;
-		return state.current.movingObjectById!((ref obj)=>!obj.isDying&&!obj.isGhost,()=>false)(camera.target);
+		return state.current.movingObjectById!((ref obj)=>!obj.isDying&&!obj.isGhost&&!obj.isDead,()=>false)(camera.target);
 	}
 	void renderHUD(RenderingContext* rc){
 		renderMinimap(rc);
