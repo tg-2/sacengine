@@ -1952,8 +1952,8 @@ struct Ritual(B){
 	LightningBolt[2] altarBolts;
 	LightningBolt[3] desecrateBolts;
 	enum setupTime=5*updateFPS;
-	int timer=setupTime;
 	int frame=0;
+	bool stopped=false;
 }
 
 struct TeleportCasting(B){
@@ -7062,11 +7062,15 @@ void setOccupied(B)(int shrine,bool occupied,ObjectState!B state){
 	},(){})(shrine,occupied,state);
 }
 
-void stopRitual(B)(ref Ritual!B ritual,ObjectState!B state){
+bool stopRitual(B)(ref Ritual!B ritual,ObjectState!B state){
+	ritual.stopped=true;
 	state.movingObjectById!(freeCreature,()=>false)(ritual.creature,ritual.start,state);
 	foreach(id;ritual.sacDoctors) state.movingObjectById!(kill,()=>false)(id,state);
+	ritual.tethers=typeof(ritual.tethers).init;
+	ritual.altarBolts=typeof(ritual.altarBolts).init;
+	ritual.desecrateBolts=typeof(ritual.desecrateBolts).init;
 	setOccupied(ritual.shrine,false,state);
-	// TODO: shrink vortex
+	return ritual.vortex.scale>0.0f;
 }
 
 
@@ -7131,18 +7135,16 @@ bool startRitual(B)(RitualType type,int side,SacSpell!B spell,int caster,int shr
 bool updateRitual(B)(ref Ritual!B ritual,ObjectState!B state){
 	with(ritual){
 		++frame;
-		--timer;
+		if(ritual.stopped){
+			vortex.scale=max(0.0f,vortex.scale-1.0f/vortex.numFramesToDisappear);
+			return vortex.scale>0.0f;
+		}
 		auto shrinePositionIsAltar=state.staticObjectById!((ref obj)=>tuple(obj.position,obj.sacObject.isAltar),()=>tuple(Vector3f.init,false))(shrine);
 		auto shrinePosition=shrinePositionIsAltar[0], isAltar=shrinePositionIsAltar[1];
-		if(isNaN(shrinePosition.x)){
-			ritual.stopRitual(state);
-			return false;
-		}
+		if(isNaN(shrinePosition.x)) return ritual.stopRitual(state);
 		foreach(id;sacDoctors){
-			if(state.movingObjectById!((ref obj)=>obj.creatureState.mode==CreatureMode.dying,()=>false)(id)){
-				ritual.stopRitual(state);
-				return false;
-			}
+			if(state.movingObjectById!((ref obj)=>obj.creatureState.mode==CreatureMode.dying,()=>false)(id))
+				return ritual.stopRitual(state);
 		}
 		state.movingObjectById!((ref obj,targetPosition,remainingTime,state){
 			auto hitbox=obj.sacObject.largeHitbox(Quaternionf.identity(),AnimationState.stance1,0);
@@ -7150,7 +7152,7 @@ bool updateRitual(B)(ref Ritual!B ritual,ObjectState!B state){
 		})(creature,shrinePosition+Vector3f(0.0f,0.0f,15.0f),max(1,ritual.setupTime-frame),state);
 		if(!isNaN(vortex.position.x)){
 			if(targetWizard){
-				vortex.scale=min(1.0,vortex.scale+1.0f/vortex.numFramesToEmerge);
+				vortex.scale=min(1.0f,vortex.scale+1.0f/vortex.numFramesToEmerge);
 				auto targetPosition=state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(targetWizard);
 				if(!isNaN(targetPosition.x)){
 					if((vortex.position.xy-targetPosition.xy).lengthsqr>vortex.desecrateDistance^^2){
@@ -7249,10 +7251,8 @@ bool updateRitual(B)(ref Ritual!B ritual,ObjectState!B state){
 							return true;
 						}
 						return false;
-					},()=>true)(creature,nRounds,side,state)){
-						ritual.stopRitual(state);
-						return false;
-					}
+					},()=>true)(creature,nRounds,side,state))
+						return ritual.stopRitual(state);
 				}
 			}
 		}
