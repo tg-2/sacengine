@@ -874,15 +874,17 @@ struct StaticObject(B){
 	int buildingId=0;
 	Vector3f position;
 	Quaternionf rotation;
-	this(SacObject!B sacObject,int buildingId,Vector3f position,Quaternionf rotation){
+	float scale;
+	this(SacObject!B sacObject,int buildingId,Vector3f position,Quaternionf rotation,float scale){
 		this.sacObject=sacObject;
 		this.buildingId=buildingId;
 		this.position=position;
 		this.rotation=rotation;
+		this.scale=scale;
 	}
-	this(SacObject!B sacObject,int id,int buildingId,Vector3f position,Quaternionf rotation){
+	this(SacObject!B sacObject,int id,int buildingId,Vector3f position,Quaternionf rotation,float scale){
 		this.id=id;
-		this(sacObject,buildingId,position,rotation);
+		this(sacObject,buildingId,position,rotation,scale);
 	}
 }
 float healthFromBuildingId(B)(int buildingId,ObjectState!B state){
@@ -1338,6 +1340,7 @@ struct StaticObjects(B,RenderMode mode){
 	Array!int buildingIds;
 	Array!Vector3f positions;
 	Array!Quaternionf rotations;
+	Array!float scales;
 
 	static if(mode==RenderMode.transparent){
 		Array!float thresholdZs;
@@ -1348,6 +1351,7 @@ struct StaticObjects(B,RenderMode mode){
 		buildingIds.length=l;
 		positions.length=l;
 		rotations.length=l;
+		scales.length=l;
 		static if(mode==RenderMode.transparent)
 			thresholdZs.length=l;
 	}
@@ -1360,6 +1364,7 @@ struct StaticObjects(B,RenderMode mode){
 		buildingIds~=object.buildingId;
 		positions~=object.position;
 		rotations~=object.rotation;
+		scales~=object.scale;
 		static if(mode==RenderMode.transparent)
 			thresholdZs~=0.0f;
 	}
@@ -1379,12 +1384,13 @@ struct StaticObjects(B,RenderMode mode){
 		assignArray(buildingIds,rhs.buildingIds);
 		assignArray(positions,rhs.positions);
 		assignArray(rotations,rhs.rotations);
+		assignArray(scales,rhs.scales);
 		static if(mode==RenderMode.transparent)
 			assignArray(thresholdZs,rhs.thresholdZs);
 	}
 	void opAssign(StaticObjects!(B,mode) rhs){ this.tupleof=rhs.tupleof; }
 	StaticObject!B opIndex(int i){
-		return StaticObject!B(sacObject,ids[i],buildingIds[i],positions[i],rotations[i]);
+		return StaticObject!B(sacObject,ids[i],buildingIds[i],positions[i],rotations[i],scales[i]);
 	}
 	void opIndexAssign(StaticObject!B obj,int i){
 		assert(sacObject is obj.sacObject);
@@ -1392,7 +1398,7 @@ struct StaticObjects(B,RenderMode mode){
 		buildingIds[i]=obj.buildingId;
 		positions[i]=obj.position;
 		rotations[i]=obj.rotation;
-		// TODO: thresholdZ ok?
+		scales[i]=obj.scale;
 	}
 	static if(mode==RenderMode.transparent){
 		void setThresholdZ(int i,float thresholdZ){
@@ -2323,6 +2329,24 @@ struct Disappearance{
 	int frame=0;
 }
 
+struct AltarDestruction{
+	int ring;
+	Vector3f position;
+	Quaternionf oldRotation;
+	Quaternionf newRotation;
+	int shrine;
+	float shrineHeight;
+	int[4] pillars;
+	float pillarHeight;
+	int manafount;
+	int frame=0;
+	static assert(updateFPS%30==0);
+	enum wiggleFrames=updateFPS/30;
+	enum disappearDuration=4*updateFPS;
+	enum floatDuration=4*updateFPS;
+	enum explodeDuration=3*updateFPS;
+}
+
 struct Effects(B){
 	// misc
 	Array!(Debris!B) debris;
@@ -2713,7 +2737,7 @@ struct Effects(B){
 		if(i+1<protectors.length) protectors[i]=move(protectors[$-1]);
 		protectors.length=protectors.length-1;
 	}
-	Array!(Appearance) appearances;
+	Array!Appearance appearances;
 	void addEffect(Appearance appearance){
 		appearances~=appearance;
 	}
@@ -2721,13 +2745,21 @@ struct Effects(B){
 		if(i+1<appearances.length) appearances[i]=move(appearances[$-1]);
 		appearances.length=appearances.length-1;
 	}
-	Array!(Disappearance) disappearances;
+	Array!Disappearance disappearances;
 	void addEffect(Disappearance disappearance){
 		disappearances~=disappearance;
 	}
 	void removeDisappearance(int i){
 		if(i+1<disappearances.length) disappearances[i]=move(disappearances[$-1]);
 		disappearances.length=disappearances.length-1;
+	}
+	Array!AltarDestruction altarDestructions;
+	void addEffect(AltarDestruction altarDestruction){
+		altarDestructions~=altarDestruction;
+	}
+	void removeAltarDestruction(int i){
+		if(i+1<altarDestructions.length) altarDestructions[i]=move(altarDestructions[$-1]);
+		altarDestructions.length=altarDestructions.length-1;
 	}
 	void opAssign(ref Effects!B rhs){
 		assignArray(debris,rhs.debris);
@@ -2779,6 +2811,7 @@ struct Effects(B){
 		assignArray(protectors,rhs.protectors);
 		assignArray(appearances,rhs.appearances);
 		assignArray(disappearances,rhs.disappearances);
+		assignArray(altarDestructions,rhs.altarDestructions);
 	}
 	void opAssign(Effects!B rhs){ this.tupleof=rhs.tupleof; }
 }
@@ -3709,7 +3742,7 @@ void destroy(B)(ref Building!B building, ObjectState!B state){
 		if(destroyed!="\0\0\0\0"){
 			auto destObj=SacObject!B.getBLDG(destroyed);
 			state.staticObjectById!((ref StaticObject!B object){
-				building.componentIds[newLength++]=state.addObject(StaticObject!B(destObj,building.id,object.position,object.rotation));
+				building.componentIds[newLength++]=state.addObject(StaticObject!B(destObj,building.id,object.position,object.rotation,object.scale));
 			})(id);
 		}
 		state.staticObjectById!((ref StaticObject!B object,state){
@@ -3770,7 +3803,7 @@ int spawn(T=Creature,B)(int casterId,char[4] tag,int flags,ObjectState!B state,b
 	return state.movingObjectById!(.spawn,function int(){ assert(0); })(casterId,tag,flags,state,pre);
 }
 
-int makeBuilding(B)(ref MovingObject!B caster,char[4] tag,int flags,int base,ObjectState!B state,bool pre=true)in{
+int makeBuilding(B)(ref MovingObject!B caster,char[4] tag,int flags,int base,ObjectState!B state)in{
 	assert(base>0);
 }do{
 	auto data=tag in bldgs;
@@ -3794,16 +3827,39 @@ int makeBuilding(B)(ref MovingObject!B caster,char[4] tag,int flags,int base,Obj
 			cposition.z=state.getGroundHeight(cposition);
 			float facing=0.0f; // TODO: ok?
 			auto rotation=facingQuaternion(2*pi!float/360.0f*(facing+component.facing));
-			building.componentIds~=state.addObject(StaticObject!B(curObj,building.id,cposition,rotation));
+			building.componentIds~=state.addObject(StaticObject!B(curObj,building.id,cposition,rotation,1.0f));
 		}
 		if(base) state.buildingById!((ref manafount,state){ putOnManafount(building,manafount,state); })(base,state);
 	})(buildingId);
 	return buildingId;
 }
-int makeBuilding(B)(int casterId,char[4] tag,int flags,int base,ObjectState!B state,bool pre=true)in{
+int makeBuilding(B)(int casterId,char[4] tag,int flags,int base,ObjectState!B state)in{
 	assert(base>0);
 }do{
-	return state.movingObjectById!(.makeBuilding,function int(){ assert(0); })(casterId,tag,flags,base,state,pre);
+	return state.movingObjectById!(.makeBuilding,function int(){ assert(0); })(casterId,tag,flags,base,state);
+}
+
+int makeBuilding(B)(int side,char[4] tag,Vector3f position,int flags,ObjectState!B state){
+	auto data=tag in bldgs;
+	enforce(!!data);
+	float facing=0.0f; // TODO: ok?
+	auto buildingId=state.addObject(Building!B(data,side,flags,facing));
+	state.buildingById!((ref Building!B building){
+		if(flags&Flags.damaged) building.health/=10.0f;
+		if(flags&Flags.destroyed) building.health=0.0f;
+		foreach(ref component;data.components){
+			auto curObj=SacObject!B.getBLDG(flags&Flags.destroyed&&component.destroyed!="\0\0\0\0"?component.destroyed:component.tag);
+			auto offset=Vector3f(component.x,component.y,component.z);
+			offset=rotate(facingQuaternion(building.facing), offset);
+			auto cposition=position+offset;
+			if(!state.isOnGround(cposition)) continue;
+			cposition.z=state.getGroundHeight(cposition);
+			float facing=0.0f; // TODO: ok?
+			auto rotation=facingQuaternion(2*pi!float/360.0f*(facing+component.facing));
+			building.componentIds~=state.addObject(StaticObject!B(curObj,building.id,cposition,rotation,1.0f));
+		}
+	})(buildingId);
+	return buildingId;
 }
 
 bool canStun(B)(ref MovingObject!B object,ObjectState!B state){
@@ -5477,6 +5533,28 @@ void disappear(B)(ref MovingObject!B object,int lifetime,ObjectState!B state){
 	if(object.creatureStats.effects.disappearing) return;
 	object.creatureStats.effects.disappearing=true;
 	state.addEffect(Disappearance(object.id,lifetime));
+}
+
+int makeManafount(B)(Vector3f position,int flags,ObjectState!B state){
+	return makeBuilding(neutralSide,"tnof",position,flags,state);
+}
+
+bool destroyAltar(B)(ref StaticObject!B shrine,ObjectState!B state){
+	static bool destroy(ref Building!B building,StaticObject!B* shrine,ObjectState!B state){
+		if(!isAltar(building)) return false;
+		if(building.flags&AdditionalBuildingFlags.inactive) return false;
+		building.deactivate(state);
+		enforce(building.componentIds[0]==shrine.id);
+		float shrineHeight=(*shrine).relativeHitbox[1].z;
+		int ring=building.componentIds[$-1];
+		int[4] pillars;
+		if(building.componentIds.length>=6) pillars[]=building.componentIds.data[1..5];
+		float pillarHeight=state.staticObjectById!((ref pillar,state)=>pillar.relativeHitbox[1].z,()=>0.0f)(pillars[0],state);
+		auto manafount=makeManafount(shrine.position,AdditionalBuildingFlags.inactive,state);
+		state.addEffect(AltarDestruction(ring,shrine.position,Quaternionf.identity(),Quaternionf.identity(),shrine.id,shrineHeight,pillars,pillarHeight,manafount));
+		return true;
+	}
+	return state.buildingById!(destroy,()=>false)(shrine.buildingId,&shrine,state);
 }
 
 bool checkAbility(B)(ref MovingObject!B object,SacSpell!B ability,Target target,ObjectState!B state){
@@ -7163,7 +7241,7 @@ bool updateRitual(B)(ref Ritual!B ritual,ObjectState!B state){
 		if(!state.isValidTarget(targetWizard,TargetType.creature)) targetWizard=0;
 		bool targetDead=!targetWizard||state.movingObjectById!(isDead,()=>true)(targetWizard);
 		if(type==RitualType.desecrate&&targetWizard&&targetDead){
-			// TODO: destroy altar
+			state.staticObjectById!(destroyAltar,()=>false)(shrine,state);
 			if(isNaN(desecrateBolts[0].displacement[0].x)||frame%6==0){
 				if(!isNaN(vortex.position.x))
 					foreach(ref bolt;desecrateBolts) bolt.changeShape(state);
@@ -7291,6 +7369,7 @@ bool updateRitual(B)(ref Ritual!B ritual,ObjectState!B state){
 						case RitualType.desecrate:
 							if(targetDead){
 								if(creature) state.movingObjectById!((ref obj,caster,state){ obj.gib(state,caster); },(){})(creature,caster,state);
+								state.staticObjectById!(destroyAltar,()=>false)(shrine,state);
 								return ritual.stopRitual(state,true);
 							}
 							break;
@@ -9021,6 +9100,53 @@ bool updateDisappearance(B)(ref Disappearance disappearance,ObjectState!B state)
 	}
 }
 
+bool updateAltarDestruction(B)(ref AltarDestruction altarDestruction,ObjectState!B state){
+	with(altarDestruction){
+		if(frame==0){
+			foreach(id;pillars) state.setRenderMode!(StaticObject!B,RenderMode.transparent)(id);
+			state.setRenderMode!(StaticObject!B,RenderMode.transparent)(shrine);
+		}
+		++frame;
+		if(frame<=disappearDuration+floatDuration){
+			state.staticObjectById!((ref ring,altarDestruction,state){
+				if(frame%wiggleFrames==0){
+					auto frame=altarDestruction.frame;
+					float progress=float(frame)/(disappearDuration+floatDuration);
+					altarDestruction.oldRotation=altarDestruction.newRotation;
+					altarDestruction.newRotation=facingQuaternion(2.0f*pi!float*progress)*rotationBetween(Vector3f(0.0f,0.0f,1.0f),(Vector3f(0.0f,0.0f,1.0f)+0.25f*(0.2f+0.8f*progress)*state.uniformDirection()).normalized);
+				}
+				ring.rotation=slerp(altarDestruction.oldRotation,altarDestruction.newRotation,float(frame%wiggleFrames)/wiggleFrames);
+			},(){})(ring,&altarDestruction,state);
+		}
+		if(frame<=disappearDuration){
+			float progress=float(frame)/disappearDuration;
+			foreach(id;pillars) state.setThresholdZ(id,(pillarHeight+structureCastingGradientSize)*(1.0f-progress)+-structureCastingGradientSize*progress);
+			state.setThresholdZ(shrine,(shrineHeight+structureCastingGradientSize)*(1.0f-progress)+-structureCastingGradientSize*progress);
+			if(frame==disappearDuration){
+				state.buildingById!(activate,(){})(manafount,state);
+				state.staticObjectById!((ref ring,state)=>state.buildingById!((ref altar){ swap(altar.componentIds[0],altar.componentIds[$-1]); altar.componentIds.length=1; },(){})(ring.buildingId),(){})(ring,state);
+				foreach(id;pillars) if(id) state.removeObject(id);
+				if(shrine) state.removeObject(shrine);
+				pillars[]=shrine=0;
+			}
+		}else if(frame<=disappearDuration+floatDuration){
+			float progress=float(frame-disappearDuration)/floatDuration;
+			enum finalHeight=1e3f;
+			state.staticObjectById!((ref ring,position,progress){
+				ring.position=position+Vector3f(0.0f,0.0f,finalHeight*progress^^2);
+				ring.scale=1.0f-progress;
+			},(){})(ring,position,progress);
+			if(frame==disappearDuration+floatDuration){
+				if(ring) state.removeObject(ring);
+				ring=0;
+				position=position+Vector3f(0.0f,0.0f,finalHeight);
+			}
+		}
+		return frame<=disappearDuration+floatDuration+explodeDuration;
+	}
+}
+
+
 void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.debris.length;){
 		if(!updateDebris(effects.debris[i],state)){
@@ -9368,6 +9494,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.disappearances.length;){
 		if(!updateDisappearance(effects.disappearances[i],state)){
 			effects.removeDisappearance(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.altarDestructions.length;){
+		if(!updateAltarDestruction(effects.altarDestructions[i],state)){
+			effects.removeAltarDestruction(i);
 			continue;
 		}
 		i++;
@@ -10782,6 +10915,7 @@ int rank(Stance stance){
 	}
 }
 
+enum neutralSide=31;
 final class Sides(B){
 	private Side[32] sides;
 	private SacParticle!B[32] manaParticles;
@@ -11579,7 +11713,7 @@ final class GameState(B){
 				if(!current.isOnGround(cposition)) continue;
 				cposition.z=current.getGroundHeight(cposition);
 				auto rotation=facingQuaternion(2*pi!float/360.0f*(ntt.facing+component.facing));
-				building.componentIds~=current.addObject(StaticObject!B(curObj,building.id,cposition,rotation));
+				building.componentIds~=current.addObject(StaticObject!B(curObj,building.id,cposition,rotation,1.0f));
 			}
 			if(ntt.base){
 				enforce(ntt.base in triggers.objectIds);

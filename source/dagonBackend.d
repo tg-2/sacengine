@@ -443,7 +443,9 @@ final class SacScene: Scene{
 									scene.buildingSummonMaterialBackend2.setThresholdZ(thresholdZ,thresholdZ+structureCastingGradientSize);
 								}else static assert(0);
 							}
-							material.backend.setTransformation(objects.positions[j], objects.rotations[j], rc);
+							static if(isStatic){
+								material.backend.setTransformationScaled(objects.positions[j], objects.rotations[j], objects.scales[j]*Vector3f(1.0f,1.0f,1.0f), rc);
+							}else material.backend.setTransformation(objects.positions[j], objects.rotations[j], rc);
 							static if(isStatic){
 								auto id=objects.ids[j];
 								material.backend.setInformation(Vector4f(2.0f,id>>16,id&((1<<16)-1),1.0f));
@@ -704,7 +706,7 @@ final class SacScene: Scene{
 						}
 					}
 				}
-				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.wraths.length){
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.wraths.length||objects.altarDestructions.length)){
 					auto material=scene.wrath.material;
 					material.bind(rc);
 					glDisable(GL_CULL_FACE);
@@ -712,13 +714,24 @@ final class SacScene: Scene{
 						glEnable(GL_CULL_FACE);
 						material.unbind(rc);
 					}
-					foreach(j;0..objects.wraths.length){
-						if(objects.wraths[j].status!=WrathStatus.exploding) continue;
-						auto mesh=scene.wrath.getFrame(objects.wraths[j].frame);
-						auto position=objects.wraths[j].position+Vector3f(0.0f,0.0f,scene.wrath.maxOffset/scene.wrath.numFrames*objects.wraths[j].frame);
-						auto scale=scene.wrath.maxScale/scene.wrath.numFrames*objects.wraths[j].frame;
+					void renderWrath(int frame,Vector3f position,float scale_=1.0f){
+						auto mesh=scene.wrath.getFrame(frame);
+						auto scale=scale_*scene.wrath.maxScale/scene.wrath.numFrames*frame;
 						scene.shadelessMaterialBackend.setTransformationScaled(position,Quaternionf.identity(),Vector3f(scale,scale,1.0f),rc);
 						mesh.render(rc);
+					}
+					foreach(j;0..objects.wraths.length){
+						if(objects.wraths[j].status!=WrathStatus.exploding) continue;
+						auto frame=objects.wraths[j].frame;
+						auto position=objects.wraths[j].position+Vector3f(0.0f,0.0f,scene.wrath.maxOffset/scene.wrath.numFrames*objects.wraths[j].frame);
+						renderWrath(frame,position);
+					}
+					foreach(j;0..objects.altarDestructions.length){
+						enum delay=AltarDestruction.disappearDuration+AltarDestruction.floatDuration;
+						if(objects.altarDestructions[j].frame<delay) continue;
+						auto frame=(objects.altarDestructions[j].frame-delay)*(scene.wrath.numFrames-1)/AltarDestruction.explodeDuration;
+						auto position=objects.altarDestructions[j].position;
+						renderWrath(frame,position,20.0f);
 					}
 				}
 				static if(mode==RenderMode.opaque) if(objects.rockCastings.length||objects.rocks.length||objects.earthflingProjectiles.length||objects.rockForms.length){
