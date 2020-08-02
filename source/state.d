@@ -1959,6 +1959,7 @@ struct Ritual(B){
 	enum setupTime=5*updateFPS;
 	int frame=0;
 	bool stopped=false;
+	Vector3f shrinePosition;
 }
 
 struct TeleportCasting(B){
@@ -7252,7 +7253,8 @@ bool updateRitual(B)(ref Ritual!B ritual,ObjectState!B state){
 			return vortex.scale>0.0f;
 		}
 		auto shrinePositionIsAltar=state.staticObjectById!((ref obj)=>tuple(obj.position,obj.sacObject.isAltar),()=>tuple(Vector3f.init,false))(shrine);
-		auto shrinePosition=shrinePositionIsAltar[0], isAltar=shrinePositionIsAltar[1];
+		if(type==RitualType.convert||!targetDead||!isNaN(shrinePositionIsAltar[0].x)) shrinePosition=shrinePositionIsAltar[0];
+		auto isAltar=shrinePositionIsAltar[1];
 		if(isNaN(shrinePosition.x)) return ritual.stopRitual(state);
 		foreach(id;sacDoctors){
 			if(state.movingObjectById!((ref obj)=>obj.creatureState.mode==CreatureMode.dying,()=>false)(id))
