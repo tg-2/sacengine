@@ -7644,14 +7644,16 @@ void animateWrathCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
 bool updateWrathCasting(B)(ref WrathCasting!B wrathCast,ObjectState!B state){
 	with(wrathCast){
 		target.position=target.center(state);
-		return state.movingObjectById!((obj){
-			final switch(manaDrain.update(state)){
-				case CastingStatus.underway:
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				return state.movingObjectById!((obj){
 					obj.animateWrathCasting(state);
 					return true;
-				case CastingStatus.interrupted:
-					return false;
-				case CastingStatus.finished:
+				},()=>false)(manaDrain.wizard);
+			case CastingStatus.interrupted:
+				return false;
+			case CastingStatus.finished:
+				return state.movingObjectById!((obj){
 					auto hands=obj.hands;
 					Vector3f start=isNaN(hands[0].x)?hands[1]:isNaN(hands[1].x)?hands[0]:0.5f*(hands[0]+hands[1]);
 					if(isNaN(start.x)){
@@ -7661,8 +7663,8 @@ bool updateWrathCasting(B)(ref WrathCasting!B wrathCast,ObjectState!B state){
 					}
 					wrath(obj.id,obj.side,start,wrathCast.target,spell,state);
 					return false;
-			}
-		},()=>false)(manaDrain.wizard);
+				},()=>false)(manaDrain.wizard);
+		}
 	}
 }
 void animateWrath(B)(ref Wrath!B wrath,ObjectState!B state){
@@ -7816,21 +7818,21 @@ bool updateWrath(B)(ref Wrath!B wrath,ObjectState!B state){
 bool updateFireballCasting(B)(ref FireballCasting!B fireballCast,ObjectState!B state){
 	with(fireballCast){
 		fireball.target.position=fireball.target.center(state);
-		return state.movingObjectById!((obj){
 			final switch(manaDrain.update(state)){
 				case CastingStatus.underway:
-					fireball.position=obj.fireballCastingPosition(state);
-					fireball.rotation=fireball.rotationUpdate*fireball.rotation;
-					obj.animatePyroCasting(state);
-					frame+=1;
-					return true;
+					return state.movingObjectById!((obj){
+						fireball.position=obj.fireballCastingPosition(state);
+						fireball.rotation=fireball.rotationUpdate*fireball.rotation;
+						obj.animatePyroCasting(state);
+						frame+=1;
+						return true;
+					},()=>false)(manaDrain.wizard);
 				case CastingStatus.interrupted:
 					return false;
 				case CastingStatus.finished:
 					.fireball(fireball,state);
 					return false;
 			}
-		},()=>false)(manaDrain.wizard);
 	}
 }
 void animateFireball(B)(ref Fireball!B fireball,Vector3f oldPosition,ObjectState!B state){
@@ -7963,14 +7965,15 @@ void animateRockCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
 bool updateRockCasting(B)(ref RockCasting!B rockCast,ObjectState!B state){
 	with(rockCast){
 		rock.target.position=rock.target.center(state);
-		return state.movingObjectById!((obj){
 			final switch(manaDrain.update(state)){
 				case CastingStatus.underway:
-					rock.position=obj.rockCastingPosition(state);
-					rock.position.z+=rockBuryDepth*min(1.0f,float(frame)/castingTime);
-					obj.animateRockCasting(state);
-					frame+=1;
-					return true;
+					return state.movingObjectById!((obj){
+						rock.position=obj.rockCastingPosition(state);
+						rock.position.z+=rockBuryDepth*min(1.0f,float(frame)/castingTime);
+						obj.animateRockCasting(state);
+						frame+=1;
+						return true;
+					},()=>false)(manaDrain.wizard);
 				case CastingStatus.interrupted:
 					return false;
 				case CastingStatus.finished:
@@ -7978,7 +7981,6 @@ bool updateRockCasting(B)(ref RockCasting!B rockCast,ObjectState!B state){
 					.rock(rock,state);
 					return false;
 			}
-		},()=>false)(manaDrain.wizard);
 	}
 }
 void animateEmergingRock(B)(ref Rock!B rock,ObjectState!B state){
@@ -8113,12 +8115,13 @@ void relocate(B)(ref Swarm!B swarm,Vector3f newPosition){
 bool updateSwarmCasting(B)(ref SwarmCasting!B swarmCast,ObjectState!B state){
 	with(swarmCast){
 		swarm.target.position=swarm.target.center(state);
-		return state.movingObjectById!((obj){
 			final switch(manaDrain.update(state)){
 				case CastingStatus.underway:
-					swarm.relocate(obj.swarmCastingPosition(state));
-					if(swarm.frame>0) swarm.addBugs(obj,state);
-					return swarm.updateSwarm(state);
+					return state.movingObjectById!((obj){
+						swarm.relocate(obj.swarmCastingPosition(state));
+						if(swarm.frame>0) swarm.addBugs(obj,state);
+						return swarm.updateSwarm(state);
+					},()=>false)(manaDrain.wizard);
 				case CastingStatus.interrupted:
 					swarm.status=SwarmStatus.dispersing;
 					.swarm(swarm,state);
@@ -8128,7 +8131,6 @@ bool updateSwarmCasting(B)(ref SwarmCasting!B swarmCast,ObjectState!B state){
 					.swarm(move(swarm),state);
 					return false;
 			}
-		},()=>false)(manaDrain.wizard);
 	}
 }
 
