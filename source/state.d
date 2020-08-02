@@ -3514,6 +3514,7 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 			object.creatureState.timer=0;
 			break;
 		case CreatureMode.deadToGhost:
+			object.creatureStats.mana=0.0f;
 			object.frame=0;
 			object.animationState=AnimationState.corpseRise;
 			state.updateRenderModeLater(object.id);
