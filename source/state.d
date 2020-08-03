@@ -2339,6 +2339,8 @@ struct AltarDestruction{
 	float shrineHeight;
 	int[4] pillars;
 	float pillarHeight;
+	int[4] stalks;
+	float stalkHeight;
 	int manafount;
 	int frame=0;
 	static assert(updateFPS%30==0);
@@ -5547,13 +5549,17 @@ bool destroyAltar(B)(ref StaticObject!B shrine,ObjectState!B state){
 		if(building.flags&AdditionalBuildingFlags.inactive) return false;
 		building.deactivate(state);
 		enforce(building.componentIds[0]==shrine.id);
+		enforce(building.componentIds.length>=2);
 		float shrineHeight=(*shrine).relativeHitbox[1].z;
-		int ring=building.componentIds[$-1];
+		int ring=building.componentIds.length>=6?building.componentIds[5]:building.componentIds[1];
 		int[4] pillars;
 		if(building.componentIds.length>=6) pillars[]=building.componentIds.data[1..5];
-		float pillarHeight=state.staticObjectById!((ref pillar,state)=>pillar.relativeHitbox[1].z,()=>0.0f)(pillars[0],state);
+		float pillarHeight=pillars[0]?state.staticObjectById!((ref pillar,state)=>pillar.relativeHitbox[1].z,()=>0.0f)(pillars[0],state):0.0f;
+		int[4] stalks;
+		if(building.componentIds.length>=10) stalks[]=building.componentIds.data[6..10];
+		float stalkHeight=stalks[0]?state.staticObjectById!((ref pillar,state)=>pillar.relativeHitbox[1].z,()=>0.0f)(stalks[0],state):0.0f;
 		auto manafount=makeManafount(shrine.position,AdditionalBuildingFlags.inactive,state);
-		state.addEffect(AltarDestruction(ring,shrine.position,Quaternionf.identity(),Quaternionf.identity(),shrine.id,shrineHeight,pillars,pillarHeight,manafount));
+		state.addEffect(AltarDestruction(ring,shrine.position,Quaternionf.identity(),Quaternionf.identity(),shrine.id,shrineHeight,pillars,pillarHeight,stalks,stalkHeight,manafount));
 		return true;
 	}
 	return state.buildingById!(destroy,()=>false)(shrine.buildingId,&shrine,state);
@@ -7863,6 +7869,42 @@ int fireballCollisionTarget(B)(int side,Vector3f position,ObjectState!B state){
 	return collisionTarget!(fireballHitbox,filter)(side,position,state,side);
 }
 
+void animateFireballExplosion(B)(Vector3f position,ObjectState!B state,float scale_=1.0f){
+	//explosionParticles(fireball.position,state);
+	enum numParticles1=200;
+	enum numParticles2=800;
+	auto sacParticle1=SacParticle!B.get(ParticleType.explosion);
+	auto sacParticle2=SacParticle!B.get(ParticleType.explosion2);
+	foreach(i;0..numParticles1+numParticles2){
+		auto direction=state.uniformDirection();
+		auto velocity=scale_*(i<numParticles1?1.0f:1.5f)*state.uniform(1.5f,6.0f)*direction;
+		auto scale=scale_;
+		auto lifetime=31;
+		auto frame=0;
+		state.addParticle(Particle!B(i<numParticles1?sacParticle1:sacParticle2,position,velocity,scale,lifetime,frame));
+	}
+	enum numParticles3=300;
+	auto sacParticle3=SacParticle!B.get(ParticleType.ashParticle);
+	foreach(i;0..numParticles3){
+		auto direction=state.uniformDirection();
+		auto velocity=scale_*state.uniform(7.5f,15.0f)*direction;
+		auto scale=scale_*state.uniform(0.75f,1.5f);
+		auto lifetime=95;
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle3,position,velocity,scale,lifetime,frame));
+	}
+	enum numParticles4=75;
+	auto sacParticle4=SacParticle!B.get(ParticleType.smoke);
+	foreach(i;0..numParticles4){
+		auto direction=state.uniformDirection();
+		auto velocity=scale_*state.uniform(0.5f,2.0f)*direction+Vector3f(0.0f,0.0f,0.5f);
+		auto scale=scale_;
+		auto lifetime=127;
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle4,position,velocity,scale,lifetime,frame));
+	}
+}
+
 void fireballExplosion(B)(ref Fireball!B fireball,int target,ObjectState!B state){
 	playSpellSoundTypeAt(SoundType.explodingFireball,fireball.position,state,8.0f);
 	if(state.isValidTarget(target)){
@@ -7874,41 +7916,7 @@ void fireballExplosion(B)(ref Fireball!B fireball,int target,ObjectState!B state
 		return true;
 	}
 	dealSplashSpellDamageAt!callback(target,fireball.spell,fireball.spell.effectRange,fireball.wizard,fireball.side,fireball.position,state,fireball.wizard,fireball.side,state);
-	//explosionParticles(fireball.position,state);
-	enum numParticles1=200;
-	enum numParticles2=800;
-	auto sacParticle1=SacParticle!B.get(ParticleType.explosion);
-	auto sacParticle2=SacParticle!B.get(ParticleType.explosion2);
-	foreach(i;0..numParticles1+numParticles2){
-		auto position=fireball.position;
-		auto direction=state.uniformDirection();
-		auto velocity=(i<numParticles1?1.0f:1.5f)*state.uniform(1.5f,6.0f)*direction;
-		auto scale=1.0f;
-		auto lifetime=31;
-		auto frame=0;
-		state.addParticle(Particle!B(i<numParticles1?sacParticle1:sacParticle2,position,velocity,scale,lifetime,frame));
-	}
-	enum numParticles3=300;
-	auto sacParticle3=SacParticle!B.get(ParticleType.ashParticle);
-	foreach(i;0..numParticles3){
-		auto direction=state.uniformDirection();
-		auto velocity=state.uniform(7.5f,15.0f)*direction;
-		auto scale=state.uniform(0.75f,1.5f);
-		auto lifetime=95;
-		auto frame=0;
-		state.addParticle(Particle!B(sacParticle3,fireball.position,velocity,scale,lifetime,frame));
-	}
-	enum numParticles4=75;
-	auto sacParticle4=SacParticle!B.get(ParticleType.smoke);
-	foreach(i;0..numParticles4){
-		auto position=fireball.position;
-		auto direction=state.uniformDirection();
-		auto velocity=state.uniform(0.5f,2.0f)*direction+Vector3f(0.0f,0.0f,0.5f);
-		auto scale=1.0f;
-		auto lifetime=127;
-		auto frame=0;
-		state.addParticle(Particle!B(sacParticle4,position,velocity,scale,lifetime,frame));
-	}
+	animateFireballExplosion(fireball.position,state);
 }
 
 enum fireballFlyingHeight=0.5f;
@@ -9108,12 +9116,12 @@ bool updateDisappearance(B)(ref Disappearance disappearance,ObjectState!B state)
 bool updateAltarDestruction(B)(ref AltarDestruction altarDestruction,ObjectState!B state){
 	with(altarDestruction){
 		if(frame==0){
-			foreach(id;pillars) state.setRenderMode!(StaticObject!B,RenderMode.transparent)(id);
-			state.setRenderMode!(StaticObject!B,RenderMode.transparent)(shrine);
+			foreach(id;chain(pillars[],stalks[])) if(id) state.setRenderMode!(StaticObject!B,RenderMode.transparent)(id);
+			if(shrine) state.setRenderMode!(StaticObject!B,RenderMode.transparent)(shrine);
 		}
 		++frame;
 		if(frame<=disappearDuration+floatDuration){
-			state.staticObjectById!((ref ring,altarDestruction,state){
+			if(ring) state.staticObjectById!((ref ring,altarDestruction,state){
 				if(frame%wiggleFrames==0){
 					auto frame=altarDestruction.frame;
 					float progress=float(frame)/(disappearDuration+floatDuration);
@@ -9125,26 +9133,35 @@ bool updateAltarDestruction(B)(ref AltarDestruction altarDestruction,ObjectState
 		}
 		if(frame<=disappearDuration){
 			float progress=float(frame)/disappearDuration;
-			foreach(id;pillars) state.setThresholdZ(id,(pillarHeight+structureCastingGradientSize)*(1.0f-progress)+-structureCastingGradientSize*progress);
-			state.setThresholdZ(shrine,(shrineHeight+structureCastingGradientSize)*(1.0f-progress)+-structureCastingGradientSize*progress);
+			foreach(id;pillars) if(id) state.setThresholdZ(id,(pillarHeight+structureCastingGradientSize)*(1.0f-progress)+-structureCastingGradientSize*progress);
+			foreach(id;stalks) if(id) state.setThresholdZ(id,(stalkHeight+structureCastingGradientSize)*(1.0f-progress)+-structureCastingGradientSize*progress);
+			if(shrine) state.setThresholdZ(shrine,(shrineHeight+structureCastingGradientSize)*(1.0f-progress)+-structureCastingGradientSize*progress);
 			if(frame==disappearDuration){
 				state.buildingById!(activate,(){})(manafount,state);
 				state.staticObjectById!((ref ring,state)=>state.buildingById!((ref altar){ swap(altar.componentIds[0],altar.componentIds[$-1]); altar.componentIds.length=1; },(){})(ring.buildingId),(){})(ring,state);
 				foreach(id;pillars) if(id) state.removeObject(id);
+				foreach(id;stalks) if(id) state.removeObject(id);
 				if(shrine) state.removeObject(shrine);
-				pillars[]=shrine=0;
+				shrine=0;
+				pillars[]=0;
+				stalks[]=0;
 			}
 		}else if(frame<=disappearDuration+floatDuration){
 			float progress=float(frame-disappearDuration)/floatDuration;
 			enum finalHeight=1e3f;
-			state.staticObjectById!((ref ring,position,progress){
+			if(ring) state.staticObjectById!((ref ring,position,progress){
 				ring.position=position+Vector3f(0.0f,0.0f,finalHeight*progress^^2);
 				ring.scale=1.0f-progress;
 			},(){})(ring,position,progress);
 			if(frame==disappearDuration+floatDuration){
-				if(ring) state.removeObject(ring);
-				ring=0;
+				if(ring){
+					auto buildingId=state.staticObjectById!((ref ring)=>ring.buildingId,()=>0)(ring);
+					state.removeObject(ring);
+					ring=0;
+					state.removeObject(buildingId);
+				}
 				position=position+Vector3f(0.0f,0.0f,finalHeight);
+				animateFireballExplosion(position,state,20.0f);
 			}
 		}
 		return frame<=disappearDuration+floatDuration+explodeDuration;
