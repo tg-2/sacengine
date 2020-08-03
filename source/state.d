@@ -2343,8 +2343,8 @@ struct AltarDestruction{
 	float stalkHeight;
 	int manafount;
 	int frame=0;
-	static assert(updateFPS%30==0);
-	enum wiggleFrames=updateFPS/30;
+	enum wiggleFrames=updateFPS/60;
+	static assert(updateFPS%wiggleFrames==0);
 	enum disappearDuration=4*updateFPS;
 	enum floatDuration=4*updateFPS;
 	enum explodeDuration=3*updateFPS;
@@ -9127,9 +9127,10 @@ bool updateAltarDestruction(B)(ref AltarDestruction altarDestruction,ObjectState
 					auto frame=altarDestruction.frame;
 					float progress=float(frame)/(disappearDuration+floatDuration);
 					altarDestruction.oldRotation=altarDestruction.newRotation;
-					altarDestruction.newRotation=facingQuaternion(2.0f*pi!float*progress)*rotationBetween(Vector3f(0.0f,0.0f,1.0f),(Vector3f(0.0f,0.0f,1.0f)+0.25f*(0.2f+0.8f*progress)*state.uniformDirection()).normalized);
+					altarDestruction.newRotation=facingQuaternion(2.0f*pi!float*progress)*rotationBetween(Vector3f(0.0f,0.0f,1.0f),(Vector3f(0.0f,0.0f,1.0f)+0.4f*(0.4f+0.6f*progress)^^2*state.uniformDirection()).normalized);
 				}
-				ring.rotation=slerp(altarDestruction.oldRotation,altarDestruction.newRotation,float(frame%wiggleFrames)/wiggleFrames);
+				static if(wiggleFrames==1) ring.rotation=newRotation;
+				else ring.rotation=slerp(altarDestruction.oldRotation,altarDestruction.newRotation,float(frame%wiggleFrames)/wiggleFrames);
 			},(){})(ring,&altarDestruction,state);
 		}
 		if(frame<=disappearDuration){
