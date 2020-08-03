@@ -1766,6 +1766,7 @@ final class SacScene: Scene{
 	}
 	bool castSpell(SacSpell!DagonBackend spell,Target target,bool playAudio=true){
 		switchSpellbookTab(spell.type);
+		if(!spellbookVisible(camera.target)) return false;
 		auto status=state.current.spellStatus!false(camera.target,spell,target);
 		if(status!=SpellStatus.ready){
 			if(playAudio) spellAdvisorHelpSpeech(status);
@@ -1779,11 +1780,11 @@ final class SacScene: Scene{
 	}
 	bool selectSpell(SacSpell!DagonBackend newSpell,bool playAudio=true){
 		switchSpellbookTab(newSpell.type);
+		if(!spellbookVisible(camera.target)) return false;
 		if(mouse.status==Mouse.Status.icon){
 			if(mouse.icon==MouseIcon.spell&&mouse.spell is newSpell) return false;
 			if(playAudio&&audio) audio.playSound("kabI");
 		}
-		if(!camera.target) return false;
 		auto status=state.current.spellStatus!true(camera.target,newSpell);
 		if(status!=SpellStatus.ready){
 			if(playAudio) spellAdvisorHelpSpeech(status);
@@ -1806,7 +1807,7 @@ final class SacScene: Scene{
 		return selectSpell(SacSpell!DagonBackend.get(tag),playAudio);
 	}
 	bool selectSpell(SpellType tab,int index,bool playAudio=true){
-		if(!camera.target) return false;
+		if(!spellbookVisible(camera.target)) return false;
 		auto spells=state.current.getSpells(camera.target).filter!(x=>x.spell.type==tab);
 		foreach(i,entry;enumerate(spells)) if(i==index) return selectSpell(entry.spell,playAudio);
 		return false;
@@ -1825,11 +1826,11 @@ final class SacScene: Scene{
 		return useAbility(SacSpell!DagonBackend.get(tag),target,queueing,playAudio);
 	}
 	bool selectAbility(SacSpell!DagonBackend newAbility,CommandQueueing queueing,bool playAudio=true){
+		if(renderSide==-1) return false;
 		if(mouse.status==Mouse.Status.icon){
 			if(mouse.icon==MouseIcon.ability&&mouse.spell is newAbility) return false;
 			if(playAudio&&audio) audio.playSound("kabI");
 		}
-		if(!camera.target) return false;
 		auto status=state.current.abilityStatus!true(renderSide,newAbility);
 		if(status!=SpellStatus.ready){
 			if(playAudio) spellAdvisorHelpSpeech(status);
@@ -2465,8 +2466,8 @@ final class SacScene: Scene{
 						break;
 					case Mouse.Status.icon:
 						mouse.status=Mouse.Status.standard;
-						updateCursor(0.0f);
 						if(audio) audio.playSound("kabI");
+						updateCursor(0.0f);
 						break;
 				}
 			}
@@ -2986,6 +2987,11 @@ final class SacScene: Scene{
 				mouse.cursor=Cursor.rectangleSelect;
 				break;
 			case Mouse.Status.icon:
+				if(!spellbookVisible(camera.target)){
+					mouse.status=Mouse.Status.standard;
+					if(audio) audio.playSound("kabI");
+					goto case Mouse.Status.standard;
+				}
 				mouse.cursor=mouse.target.cursor(renderSide,true,state.current);
 				break;
 		}
