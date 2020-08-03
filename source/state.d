@@ -126,6 +126,15 @@ bool canHeal(CreatureMode mode){
 		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return false;
 	}
 }
+bool canRegenerateMana(CreatureMode mode){
+	final switch(mode) with(CreatureMode){
+		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing,
+			pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
+		case dying,dead,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
+		case deadToGhost: return false;
+		case idleGhost,movingGhost,ghostToIdle: return true;
+	}
+}
 bool canShield(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
@@ -855,7 +864,7 @@ StunnedBehavior stunnedBehavior(B)(ref MovingObject!B object){
 }
 
 bool isRegenerating(B)(ref MovingObject!B object){
-	return object.creatureState.mode.among(CreatureMode.idle,CreatureMode.playingDead,CreatureMode.rockForm)||object.sacObject.continuousRegeneration&&!object.creatureState.mode.among(CreatureMode.dying,CreatureMode.dead,CreatureMode.dissolving);
+	return object.creatureState.mode.among(CreatureMode.idle,CreatureMode.playingDead,CreatureMode.rockForm)||object.sacObject.continuousRegeneration&&object.creatureState.mode.canHeal;
 }
 
 bool isDamaged(B)(ref MovingObject!B object){
@@ -6198,7 +6207,7 @@ void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 		object.heal(object.creatureStats.regeneration/updateFPS,state);
 	if(object.creatureState.mode==CreatureMode.playingDead)
 		object.heal(30.0f/updateFPS,state); // TODO: ok?
-	if(object.creatureStats.mana<object.creatureStats.maxMana||object.isGhost)
+	if(object.creatureState.mode.canRegenerateMana&&(object.creatureStats.mana<object.creatureStats.maxMana||object.isGhost))
 		object.giveMana(state.manaRegenAt(object.side,object.position)/updateFPS,state);
 	if(object.creatureState.mode.among(CreatureMode.meleeMoving,CreatureMode.meleeAttacking) && object.hasAttackTick){
 		object.creatureState.mode=CreatureMode.meleeAttacking;
