@@ -4170,7 +4170,8 @@ void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,Ob
 	auto damage=attacker.meleeStrength/attacker.numAttackTicks; // TODO: figure this out
 	auto objectHitbox=object.hitbox, attackerHitbox=attacker.meleeHitbox, attackerSizeSqr=0.25f*boxSize(attackerHitbox).lengthsqr;
 	auto distanceSqr=meleeDistanceSqr(objectHitbox,attackerHitbox);
-	auto damageMultiplier=max(0.0f,1.0f-max(0.0f,sqrt(distanceSqr/attackerSizeSqr)));
+	//auto damageMultiplier=max(0.0f,1.0f-max(0.0f,sqrt(distanceSqr/attackerSizeSqr)));
+	auto damageMultiplier=max(0.0f,1.0f-max(0.0f,(sqrt(distanceSqr)+state.uniform(0.5f,1.0f))/sqrt(attackerSizeSqr)));
 	auto actualDamage=damageMultiplier*damage*object.creatureStats.meleeResistance;
 	auto attackDirection=object.center-attacker.center; // TODO: good?
 	auto stunBehavior=attacker.stunBehavior;
@@ -5381,7 +5382,7 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 	if(target||!object.moveWithinRange(movementPosition,2.8f*targetDistance,state,!object.isMeleeAttacking(state),false,false,targetId)){
 		bool evading;
 		if(object.turnToFaceTowardsEvading(movementPosition,evading,state,0.2f*pi!float,true,targetId)&&!evading||
-		   !object.moveWithinRange(movementPosition,0.8*targetDistance,state,!object.isMeleeAttacking(state),false,false,targetId,true)){
+		   !object.moveWithinRange(movementPosition,0.8f*targetDistance,state,!object.isMeleeAttacking(state),false,false,targetId,true)){
 			object.stopMovement(state);
 			object.pitch(0.0f,state);
 		}
