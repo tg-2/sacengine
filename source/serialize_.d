@@ -280,6 +280,12 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Tel
 void serialize(alias sink,B)(ref TeleportRing!B teleportRing){ serializeStruct!sink(teleportRing); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==TeleportRing!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref GuardianCasting!B guardianCasting){ serializeStruct!sink(guardianCasting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==GuardianCasting!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink)(ref Guardian guardian){ serializeStruct!sink(guardian); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Guardian)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref SpeedUp!B speedUp){ serializeStruct!sink(speedUp); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SpeedUp!B)){ deserializeStruct(result,state,data); }
 

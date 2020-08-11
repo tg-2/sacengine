@@ -105,6 +105,17 @@ final class SacScene: Scene{
 		return SacTether!DagonBackend(texture,mat,frames);
 	}
 	SacTether!DagonBackend tether;
+	SacGuardianTether!DagonBackend createGuardianTether(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=createMaterial(shadelessBoneMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=Additive;
+		mat.energy=5.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacGuardianTether!DagonBackend(texture,mat,frames);
+	}
+	SacGuardianTether!DagonBackend guardianTether;
 	SacLightning!DagonBackend createLightning(){
 		auto texture=typeof(return).loadTexture();
 		auto mat=createMaterial(shadelessBoneMaterialBackend);
@@ -214,6 +225,7 @@ final class SacScene: Scene{
 		blueRing=createBlueRing();
 		vortex=createVortex();
 		tether=createTether();
+		guardianTether=createGuardianTether();
 		lightning=createLightning();
 		wrath=createWrath();
 		rock=new SacObject!DagonBackend("extracted/models/MODL.WAD!/rock.MRMC/rock.MRMM");
@@ -607,6 +619,35 @@ final class SacScene: Scene{
 					}
 					foreach(j;0..objects.sacDocCarries.length) renderTether(objects.sacDocCarries[j].tether,objects.sacDocCarries[j].frame);
 					foreach(j;0..objects.rituals.length) foreach(k;0..4) renderTether(objects.rituals[j].tethers[k],objects.rituals[j].frame);
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.guardians.length){
+					auto material=scene.guardianTether.material;
+					material.bind(rc);
+					glDisable(GL_CULL_FACE);
+					scope(success){
+						glEnable(GL_CULL_FACE);
+						material.unbind(rc);
+					}
+					void renderGuardianTether(ref Guardian guardian){
+						with(guardian){
+							auto diff=end-start;
+							auto len=diff.length;
+							auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),diff/len);
+							auto pulse=0.75f+0.25f*0.5f*(1.0f+sin(2.0f*pi!float*(frame%pulseFrames)/(pulseFrames-1)));
+							scene.shadelessBoneMaterialBackend.setTransformationScaled(start,rotation,Vector3f(pulse,pulse,(1.0f/1.5f)*len),rc);
+							auto mesh=scene.guardianTether.getFrame(frame%scene.guardianTether.numFrames);
+							Matrix4x4f[scene.guardianTether.numSegments+1] pose;
+							pose[0]=pose[scene.guardianTether.numSegments]=Matrix4f.identity();
+							foreach(i,ref x;pose[1..$-1]){
+								auto curve=get(i/float(pose.length-1));
+								x=Transformation(Quaternionf.identity(),curve[0]).getMatrix4f;
+							}
+							mesh.pose=pose[];
+							scope(exit) mesh.pose=[];
+							mesh.render(rc);
+						}
+					}
+					foreach(ref guardian;objects.guardians) renderGuardianTether(guardian);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.blueRings.length||objects.teleportRings.length)){
 					auto material=scene.blueRing.material;

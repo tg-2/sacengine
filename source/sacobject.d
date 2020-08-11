@@ -52,6 +52,12 @@ final class SacObject(B){
 	@property bool isSacDoctor(){
 		return nttTag==SpellTag.sacDoctor;
 	}
+	@property bool isHero(){
+		return heroCreatures.canFind(nttTag);
+	}
+	@property bool isFamiliar(){
+		return familiarCreatures.canFind(nttTag);
+	}
 	@property int creaturePriority(){
 		return cre8?cre8.spellOrder:0;
 	}
@@ -59,7 +65,7 @@ final class SacObject(B){
 		return cre8&&cre8.creatureType=="ylfo";
 	}
 	@property bool isPacifist(){
-		return !cre8||cre8.aggressiveness==0||isSacDoctor;
+		return !cre8||cre8.aggressiveness==0||isSacDoctor||isFamiliar;
 	}
 	@property float aggressiveRange(){
 		if(auto ra=rangedAttack) return max(65.0f,1.5f*ra.range); // TODO: ok?
@@ -1401,7 +1407,7 @@ struct SacBlueRing(B){
 	}
 }
 
-B.BoneMesh[] makeLineMeshes(B)(int numSegments,int nU,int nV,float length,float size,bool pointy){
+B.BoneMesh[] makeLineMeshes(B)(int numSegments,int nU,int nV,float length,float size,bool pointy,bool flip=true){
 	auto meshes=new B.BoneMesh[](nU*nV);
 	foreach(t,ref mesh;meshes){
 		mesh=B.makeBoneMesh(3*4*numSegments,3*2*numSegments);
@@ -1426,7 +1432,7 @@ B.BoneMesh[] makeLineMeshes(B)(int numSegments,int nU,int nV,float length,float 
 						mesh.boneIndices[vertex][l]=center;
 					}
 					mesh.weights[vertex]=Vector3f(1.0f,0.0f,0.0f);
-					mesh.texcoords[vertex]=Vector2f(1.0f/nU*(u+((i&1)^(k==1||k==2)?1.0f-0.5f/64:0.5f/64)),1.0f/nV*(v+((k==0||k==1)?1.0f-1.0f/64:0.5f/64)));
+					mesh.texcoords[vertex]=Vector2f(1.0f/nU*(u+((flip?i&1:0)^(k==1||k==2)?1.0f-0.5f/64:0.5f/64)),1.0f/nV*(v+((k==0||k==1)?1.0f-1.0f/64:0.5f/64)));
 				}
 				int b=3*4*i+4*j;
 				addFace([b+0,b+1,b+2]);
@@ -1724,6 +1730,22 @@ struct SacTether(B){
 	static B.BoneMesh[] createMeshes(){
 		enum nU=4,nV=4;
 		return makeLineMeshes!B(numSegments,nU,nV,0.0f,0.3f,true);
+	}
+}
+
+struct SacGuardianTether(B){
+	B.Texture texture;
+	B.Material material;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Misc.FLDR/txtr.FLDR/grdn.TXTR"));
+	}
+	B.BoneMesh[] frames;
+	enum numFrames=16*updateAnimFactor;
+	auto getFrame(int i){ return frames[i/updateAnimFactor]; }
+	enum numSegments=19;
+	static B.BoneMesh[] createMeshes(){
+		enum nU=4,nV=4;
+		return makeLineMeshes!B(numSegments,nU,nV,1.5f,1.0f,true);
 	}
 }
 

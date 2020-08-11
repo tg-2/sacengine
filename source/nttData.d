@@ -927,6 +927,8 @@ enum SpellTag:char[4]{
 	// neutral creatures:
 	manahoar="oham",
 	sacDoctor="dcas",
+	familiar="imaf",
+	zyzyx="tnem",
 	// neutral spells:
 	speedup="pups",
 	heal="laeh",
@@ -943,8 +945,9 @@ enum SpellTag:char[4]{
 	dragon="grdg",
 	// persephone heroes:
 	dragonHatchling="rdbO",
+	faestus1="ehtH",
+	toldor="oohH",
 	sirocco="risH",
-	faestus="ehtH",
 	// persephone spells
 	wrath="oalf",
 	etherealForm="mrfe",
@@ -1013,7 +1016,8 @@ enum SpellTag:char[4]{
 	yeti="ycrp",
 	silverback="grdb",
 	// stratos heroes:
-	// TODO
+	saraBella="pezH",
+	lordSurtur="uslH",
 	// stratos spells:
 	lightning="ntil",
 	airShield="dlhs",
@@ -1036,6 +1040,8 @@ enum SpellTag:char[4]{
 	styx="nugd",
 	hellmouth="nomd",
 	// charnel heroes:
+	gangrel="ramH",
+	astaroth="RAMH",
 	thestor="eafH",
 	// charnel spells:
 	insectSwarm="mrws",
@@ -1116,8 +1122,9 @@ immutable ST[][6] normalSpells=[neutralSpells,neutralSpells~persephoneSpells,neu
 static assert(normalSpells.length==God.max+1);
 immutable ST[] structureSpells=[ST.manalith,ST.guardian,ST.convert,ST.desecrate,ST.teleport,ST.shrine];
 
-immutable ST[] specialCreatures=[ST.dragonHatchling];
-immutable ST[] heroCreatures=[ST.sirocco,ST.faestus,ST.faestus2,  /+ST.thestor+/];
+immutable ST[] specialCreatures=[ST.dragonHatchling]; // TODO: is this treated like a hero creature?
+immutable ST[] heroCreatures=[ST.faestus1,ST.toldor,ST.sirocco,ST.faestus2,ST.gammel,ST.saraBella,ST.lordSurtur,ST.gangrel,ST.astaroth,ST.thestor];
+immutable ST[] familiarCreatures=[ST.familiar,ST.zyzyx];
 
 God getSpellGod(char[4] tag){ // TODO: figure out where this is stored
 	static God[char[4]] getIndex(){

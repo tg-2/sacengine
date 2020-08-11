@@ -1,4 +1,4 @@
-import std.algorithm, std.range;
+ import std.algorithm, std.range;
 import std.container.array: Array;
 import std.exception, std.stdio, std.conv;
 import dlib.math, dlib.math.portable, dlib.image.color;
@@ -106,8 +106,8 @@ bool isProjectileObstacle(CreatureMode mode){
 }
 bool isValidAttackTarget(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
-		case idle,moving,dying,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing: return true;
-		case dead,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,rockForm,convertReviving,thrashing: return false;
+		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing: return true;
+		case dying,dead,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,rockForm,convertReviving,thrashing: return false;
 		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return false;
 	}
 }
@@ -703,14 +703,20 @@ float acceleration(B)(ref MovingObject!B object,ObjectState!B state){
 bool isWizard(B)(ref MovingObject!B obj){ return obj.sacObject.isWizard; }
 bool isPeasant(B)(ref MovingObject!B obj){ return obj.sacObject.isPeasant; }
 bool isSacDoctor(B)(ref MovingObject!B obj){ return obj.sacObject.isSacDoctor; }
+bool isHero(B)(ref MovingObject!B obj){ return obj.sacObject.isHero; }
+bool isFamiliar(B)(ref MovingObject!B obj){ return obj.sacObject.isFamiliar; }
+
+bool isShielded(B)(ref MovingObject!B obj){ return obj.creatureStats.effects.shield; }
+bool isGuardian(B)(ref MovingObject!B obj){ return obj.creatureStats.effects.isGuardian; }
+
 bool canSelect(B)(ref MovingObject!B obj,int side,ObjectState!B state){
 	return obj.side==side&&!obj.isWizard&&!obj.isPeasant&&!obj.isSacDoctor&&!obj.creatureState.mode.among(CreatureMode.dead,CreatureMode.dissolving,CreatureMode.convertReviving,CreatureMode.thrashing);
 }
-bool canOrder(B)(ref MovingObject!B obj,int side,ObjectState!B state){
-	return (side==-1||obj.side==side&&!obj.isSacDoctor)&&!obj.creatureState.mode.among(CreatureMode.dead,CreatureMode.dissolving);
-}
 bool canSelect(B)(int side,int id,ObjectState!B state){
 	return state.movingObjectById!(canSelect,()=>false)(id,side,state);
+}
+bool canOrder(B)(ref MovingObject!B obj,int side,ObjectState!B state){
+	return (side==-1||obj.side==side&&!obj.isSacDoctor)&&!obj.creatureState.mode.among(CreatureMode.dead,CreatureMode.dissolving);
 }
 bool isPacifist(B)(ref MovingObject!B obj,ObjectState!B state){
 	return obj.sacObject.isPacifist;
@@ -852,7 +858,10 @@ bool hasShootTick(B)(ref MovingObject!B object){
 	return object.frame%updateAnimFactor==0 && object.sacObject.hasShootTick(object.animationState,object.frame/updateAnimFactor);
 }
 
-SacSpell!B ability(B)(ref MovingObject!B object){ return object.sacObject.ability; }
+SacSpell!B ability(B)(ref MovingObject!B object){
+	if(object.isGuardian) return null;
+	return object.sacObject.ability;
+}
 SacSpell!B passiveAbility(B)(ref MovingObject!B object){ return object.sacObject.passiveAbility; }
 
 StunBehavior stunBehavior(B)(ref MovingObject!B object){
@@ -1048,6 +1057,7 @@ struct Building(B){
 	enum splashSpellResistance=1.0f;
 	enum directRangedResistance=1.0f;
 	enum splashRangedResistance=1.0f;
+	Array!int guardianIds;
 	this(immutable(Bldg)* bldg,int side,int flags,float facing){
 		this.bldg=bldg;
 		this.side=side;
@@ -1065,6 +1075,7 @@ struct Building(B){
 		facing=rhs.facing;
 		top=rhs.top;
 		base=rhs.base;
+		assignArray(guardianIds,rhs.guardianIds);
 	}
 	void opAssign(Building!B rhs){ this.tupleof=move(rhs).tupleof; }
 	this(this){ componentIds=componentIds.dup; } // TODO: needed?
@@ -1906,22 +1917,11 @@ struct SacDocCasting(B){
 	bool interrupted=false;
 }
 
-
 struct SacDocTether{
 	enum m=5;
 	Vector3f[m] locations;
 	Vector3f[m] velocities;
-	Vector3f[2] get(float t){
-		auto i=max(0,min(cast(int)floor(t*(m-1)),m-2));
-		auto u=max(0.0f,min(t*(m-1)-i,1.0f));
-		auto p0=locations[i], p1=locations[i+1];
-		auto m0=locations[min(i+1,cast(int)$-1)]-locations[max(0,cast(int)i-1)];
-		auto m1=locations[min(i+2,cast(int)$-1)]-locations[i];
-		//auto p=(1.0f-u)*locations[i]+u*locations[i+1], m=locations[i+1]-locations[i]; // linear interpolation
-		auto p=(2*u^^3-3*u^^2+1)*p0+(u^^3-2*u^^2+u)*m0+(-2*u^^3+3*u^^2)*p1+(u^^3-u^^2)*m1;
-		auto m=(6*u^^2-6*u)*p0+(3*u^^2-4*u)*m0+(-6*u^^2+6*u)*p1+(3*u^^2-2*u)*m1;
-		return [p,m];
-	}
+	Vector3f[2] get(float t){ return cintp(locations[],t); }
 }
 
 enum SacDocCarryStatus{
@@ -1988,6 +1988,32 @@ struct TeleportRing(B){
 	Vector3f position;
 	float scale;
 	int frame=0;
+}
+struct GuardianCasting(B){
+	ManaDrain!B manaDrain;
+	SacSpell!B spell;
+	int creature;
+}
+enum GuardianStatus{
+	appearing,
+	steady,
+	disappearingAtBuilding,
+	disappearingAtCreature,
+}
+struct Guardian{
+	int creature;
+	int building;
+	GuardianStatus status;
+	int frame=0;
+	enum numFramesToEmerge=updateFPS;
+	enum numFramesToDisappear=updateFPS;
+	enum numFramesToChangeShape=updateFPS;
+	enum pulseFrames=updateFPS/2;
+	Vector3f start, end;
+	enum m=5;
+	Vector3f[m] locations, prevLocs, nextLocs;
+	enum locRadius=0.75f;
+	Vector3f[2] get(float t){ return cintp(locations[],t); }
 }
 struct SpeedUp(B){
 	int creature;
@@ -2419,12 +2445,6 @@ struct Effects(B){
 		if(i+1<blueRings.length) blueRings[i]=move(blueRings[$-1]);
 		blueRings.length=blueRings.length-1;
 	}
-	// ordinary spells
-	Array!(SpeedUp!B) speedUps;
-	void addEffect(SpeedUp!B speedUp){
-		speedUps~=speedUp;
-	}
-	Array!(TeleportCasting!B) teleportCastings;
 	Array!(SacDocCasting!B) sacDocCastings;
 	void addEffect(SacDocCasting!B sacDocCasting){
 		sacDocCastings~=sacDocCasting;
@@ -2449,6 +2469,7 @@ struct Effects(B){
 		if(i+1<rituals.length) rituals[i]=move(rituals[$-1]);
 		rituals.length=rituals.length-1;
 	}
+	Array!(TeleportCasting!B) teleportCastings;
 	void addEffect(TeleportCasting!B teleportCasting){
 		teleportCastings~=teleportCasting;
 	}
@@ -2471,6 +2492,27 @@ struct Effects(B){
 	void removeTeleportRing(int i){
 		if(i+1<teleportRings.length) teleportRings[i]=move(teleportRings[$-1]);
 		teleportRings.length=teleportRings.length-1;
+	}
+	Array!(GuardianCasting!B) guardianCastings;
+	void addEffect(GuardianCasting!B guardianCasting){
+		guardianCastings~=guardianCasting;
+	}
+	void removeGuardianCasting(int i){
+		if(i+1<guardianCastings.length) guardianCastings[i]=move(guardianCastings[$-1]);
+		guardianCastings.length=guardianCastings.length-1;
+	}
+	Array!Guardian guardians;
+	void addEffect(Guardian guardian){
+		guardians~=guardian;
+	}
+	void removeGuardian(int i){
+		if(i+1<guardians.length) guardians[i]=move(guardians[$-1]);
+		guardians.length=guardians.length-1;
+	}
+	// ordinary spells
+	Array!(SpeedUp!B) speedUps;
+	void addEffect(SpeedUp!B speedUp){
+		speedUps~=speedUp;
 	}
 	void removeSpeedUp(int i){
 		if(i+1<speedUps.length) speedUps[i]=move(speedUps[$-1]);
@@ -2787,6 +2829,8 @@ struct Effects(B){
 		assignArray(teleportCastings,rhs.teleportCastings);
 		assignArray(teleportEffects,rhs.teleportEffects);
 		assignArray(teleportRings,rhs.teleportRings);
+		assignArray(guardianCastings,rhs.guardianCastings);
+		assignArray(guardians,rhs.guardians);
 		assignArray(speedUps,rhs.speedUps);
 		assignArray(speedUpShadows,rhs.speedUpShadows);
 		assignArray(healCastings,rhs.healCastings);
@@ -4086,9 +4130,9 @@ void healFromDrain(B)(int attacker,float actualDamage,ObjectState!B state){
 		return state.movingObjectById!healFromDrain(attacker,actualDamage,state);
 }
 
-float dealDamage(T)(ref T object,float damage,int attacker,int attackingSide,ObjectState!B state)if(is(T==MovingObject!B,B)||is(T==Building!B,B)){
-	if(state.isValidTarget(attacker,TargetType.creature))
-		return state.movingObjectById!((ref atk,obj,dmg,state)=>dealDamage(*obj,dmg,atk,state))(attacker,&object,damage,state);
+float dealDamage(T,B)(ref T object,float damage,int attacker,int attackingSide,ObjectState!B state)if(is(T==MovingObject!B)||is(T==Building!B)){
+	if(object.id!=attacker&&state.isValidTarget(attacker,TargetType.creature))
+		return state.movingObjectById!((ref atk,obj,dmg,state)=>dealDamage(*obj,dmg,atk,state),()=>0.0f)(attacker,&object,damage,state);
 	return dealDamage(object,damage,attackingSide,state);
 }
 
@@ -4097,18 +4141,22 @@ bool canDamage(B)(ref MovingObject!B object,ObjectState!B state){
 	if(object.creatureStats.effects.stealth) return false;
 	final switch(object.creatureState.mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing: return true;
-			case dying,dead,deadToGhost,idleGhost,movingGhost,ghostToIdle,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,rockForm,convertReviving,thrashing: return false;
+		case dying,dead,deadToGhost,idleGhost,movingGhost,ghostToIdle,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,rockForm,convertReviving,thrashing: return false;
 	}
 }
 
 float dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B attacker,ObjectState!B state){
-	auto actualDamage=dealDamage(object,damage,attacker.side,state);
+	float factor=1.0f;
+	if(attacker.isGuardian) factor*=1.5f; // TODO: apply twice for poison damage
+	auto actualDamage=dealDamage(object,factor*damage,attacker.side,state);
 	attacker.healFromDrain(actualDamage,state);
 	return actualDamage;
 }
 float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,ObjectState!B state){
 	if(!object.canDamage(state)) return 0.0f;
-	auto actualDamage=min(object.health,damage);
+	auto actualDamage=damage;
+	if(object.creatureStats.effects.isGuardian) actualDamage*=0.5f;
+	actualDamage=min(object.health,actualDamage);
 	object.creatureStats.health-=actualDamage;
 	if(object.creatureStats.flags&Flags.cannotDestroyKill)
 		object.creatureStats.health=max(object.health,1.0f);
@@ -4133,11 +4181,181 @@ bool canDamage(B)(ref Building!B building,ObjectState!B state){
 	return true;
 }
 
+// TODO: get rid of code duplication in guardian damage procedures
+float damageGuardians(B)(ref Building!B building,float damage,int attackingSide,ObjectState!B state){
+	if(building.guardianIds.length){
+		auto n=building.guardianIds.length;
+		auto splitDamage=damage/max(n,0.5f*(n+3));
+		float actualDamage=0.0f;
+		auto attachPosition=building.guardianAttachPosition(state);
+		bool ok=false;
+		foreach(id;building.guardianIds.data){
+			actualDamage+=state.movingObjectById!((ref obj,splitDamage,attackingSide,attachPosition,state,ok){
+				if(!obj.isValidGuard(state)) return 0.0f;
+				auto attackDirection=obj.center-attachPosition;
+				obj.damageAnimation(attackDirection,state,false);
+				*ok=true;
+				return dealDamage(obj,splitDamage,attackingSide,state);
+			},()=>0.0f)(id,splitDamage,attackingSide,attachPosition,state,&ok);
+		}
+		if(ok) return actualDamage;
+	}
+	return float.nan;
+}
+float damageGuardians(B)(ref Building!B building,float damage,ref MovingObject!B attacker,ObjectState!B state){
+	if(building.guardianIds.length){
+		auto n=building.guardianIds.length;
+		auto splitDamage=damage/max(n,0.5f*(n+3));
+		float actualDamage=0.0f;
+		auto attachPosition=building.guardianAttachPosition(state);
+		bool ok=false;
+		foreach(id;building.guardianIds.data){
+			if(id==attacker.id){
+				if(!attacker.isValidGuard(state))
+					continue;
+				auto attackDirection=attacker.center-attachPosition;
+				attacker.damageAnimation(attackDirection,state,false);
+				actualDamage+=attacker.dealDamage(splitDamage,attacker,state);
+				ok=true;
+			}else{
+				actualDamage+=state.movingObjectById!((ref obj,splitDamage,attacker,attachPosition,state,ok){
+					if(!obj.isValidGuard(state)) return 0.0f;
+					auto attackDirection=obj.center-attachPosition;
+					obj.damageAnimation(attackDirection,state,false);
+					*ok=true;
+					return dealDamage(obj,splitDamage,*attacker,state);
+				},()=>0.0f)(id,splitDamage,&attacker,attachPosition,state,&ok);
+			}
+		}
+		if(ok) return actualDamage;
+	}
+	return float.nan;
+}
+float meleeDamageGuardians(B)(ref Building!B building,float damage,ref MovingObject!B attacker,ObjectState!B state){
+	if(building.guardianIds.length){
+		auto n=building.guardianIds.length;
+		auto splitDamage=damage/max(n,0.5f*(n+3));
+		float actualDamage=0.0f;
+		auto attachPosition=building.guardianAttachPosition(state);
+		bool ok=false;
+		foreach(id;building.guardianIds.data){
+			if(id==attacker.id){
+				if(!attacker.isValidGuard(state))
+					continue;
+				auto attackDirection=attacker.center-attachPosition;
+				attacker.damageAnimation(attackDirection,state,false);
+				actualDamage+=attacker.dealDamage(splitDamage,attacker,state);
+				ok=true;
+			}else{
+				actualDamage+=state.movingObjectById!((ref obj,splitDamage,attacker,attachPosition,state,ok){
+					if(!obj.isValidGuard(state)) return 0.0f;
+					auto attackDirection=obj.center-attachPosition;
+					obj.damageAnimation(attackDirection,state,false);
+					*ok=true;
+					auto actualDamage=splitDamage*obj.creatureStats.meleeResistance;
+					actualDamage*=2.0f; // compensates for higher guardian resistance to all damage
+					return dealDamage(obj,actualDamage,*attacker,state);
+				},()=>0.0f)(id,splitDamage,&attacker,attachPosition,state,&ok);
+			}
+		}
+		if(ok) return actualDamage;
+	}
+	return float.nan;
+}
+float spellDamageGuardians(B)(ref Building!B building,float damage,int attacker,int attackingSide,ObjectState!B state){
+	if(building.guardianIds.length){
+		auto n=building.guardianIds.length;
+		auto splitDamage=damage/max(n,0.5f*(n+3));
+		float actualDamage=0.0f;
+		auto attachPosition=building.guardianAttachPosition(state);
+		bool ok=false;
+		foreach(id;building.guardianIds.data){
+			actualDamage+=state.movingObjectById!((ref obj,splitDamage,attacker,attackingSide,attachPosition,state,ok){
+				if(!obj.isValidGuard(state)) return 0.0f;
+				auto attackDirection=obj.center-attachPosition;
+				obj.damageAnimation(attackDirection,state,false);
+				*ok=true;
+				auto actualDamage=splitDamage*obj.creatureStats.directSpellResistance;
+				return dealDamage(obj,actualDamage,attacker,attackingSide,state);
+			},()=>0.0f)(id,splitDamage,attacker,attackingSide,attachPosition,state,&ok);
+		}
+		if(ok) return actualDamage;
+	}
+	return float.nan;
+}
+float splashSpellDamageGuardians(B)(ref Building!B building,float damage,int attacker,int attackingSide,ObjectState!B state){
+	if(building.guardianIds.length){
+		auto n=building.guardianIds.length;
+		auto splitDamage=damage/max(n,0.5f*(n+3));
+		float actualDamage=0.0f;
+		auto attachPosition=building.guardianAttachPosition(state);
+		bool ok=false;
+		foreach(id;building.guardianIds.data){
+			actualDamage+=state.movingObjectById!((ref obj,splitDamage,attacker,attackingSide,attachPosition,state,ok){
+				if(!obj.isValidGuard(state)) return 0.0f;
+				auto attackDirection=obj.center-attachPosition;
+				obj.damageAnimation(attackDirection,state,false);
+				*ok=true;
+				auto actualDamage=splitDamage*obj.creatureStats.splashSpellResistance;
+				return dealDamage(obj,actualDamage,attacker,attackingSide,state);
+			},()=>0.0f)(id,splitDamage,attacker,attackingSide,attachPosition,state,&ok);
+		}
+		if(ok) return actualDamage;
+	}
+	return float.nan;
+}
+float rangedDamageGuardians(B)(ref Building!B building,float damage,int attacker,int attackingSide,ObjectState!B state){
+	if(building.guardianIds.length){
+		auto n=building.guardianIds.length;
+		auto splitDamage=damage/max(n,0.5f*(n+3));
+		float actualDamage=0.0f;
+		auto attachPosition=building.guardianAttachPosition(state);
+		bool ok=false;
+		foreach(id;building.guardianIds.data){
+			actualDamage+=state.movingObjectById!((ref obj,splitDamage,attacker,attackingSide,attachPosition,state,ok){
+				if(!obj.isValidGuard(state)) return 0.0f;
+				auto attackDirection=obj.center-attachPosition;
+				obj.damageAnimation(attackDirection,state,false);
+				*ok=true;
+				auto actualDamage=splitDamage*obj.creatureStats.directRangedResistance;
+				return dealDamage(obj,actualDamage,attacker,attackingSide,state);
+			},()=>0.0f)(id,splitDamage,attacker,attackingSide,attachPosition,state,&ok);
+		}
+		if(ok) return actualDamage;
+	}
+	return float.nan;
+}
+float splashRangedDamageGuardians(B)(ref Building!B building,float damage,int attacker,int attackingSide,ObjectState!B state){
+	if(building.guardianIds.length){
+		auto n=building.guardianIds.length;
+		auto splitDamage=damage/max(n,0.5f*(n+3));
+		float actualDamage=0.0f;
+		auto attachPosition=building.guardianAttachPosition(state);
+		bool ok=false;
+		foreach(id;building.guardianIds.data){
+			actualDamage+=state.movingObjectById!((ref obj,splitDamage,attacker,attackingSide,attachPosition,state,ok){
+				if(!obj.isValidGuard(state)) return 0.0f;
+				auto attackDirection=obj.center-attachPosition;
+				*ok=true;
+				obj.damageAnimation(attackDirection,state,false);
+				auto actualDamage=splitDamage*obj.creatureStats.splashRangedResistance;
+				return dealDamage(obj,actualDamage,attacker,attackingSide,state);
+			},()=>0.0f)(id,splitDamage,attacker,attackingSide,attachPosition,state,&ok);
+		}
+		if(ok) return actualDamage;
+	}
+	return float.nan;
+}
+
 float dealDamage(B)(ref Building!B building,float damage,ref MovingObject!B attacker,ObjectState!B state){
+	auto guardianDamage=damageGuardians(building,damage,attacker,state);
+	if(!isNaN(guardianDamage)) return guardianDamage;
 	auto actualDamage=dealDamage(building,damage,attacker.side,state);
 	return actualDamage;
 }
 float dealDamage(B)(ref Building!B building,float damage,int attackingSide,ObjectState!B state){
+	auto guardianDamage=damageGuardians(building,damage,attackingSide,state);
+	if(!isNaN(guardianDamage)) return guardianDamage;
 	if(!building.canDamage(state)) return 0.0f;
 	auto actualDamage=min(building.health,damage*state.sideDamageMultiplier(attackingSide,building.side));
 	building.health-=actualDamage;
@@ -4188,7 +4406,7 @@ void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,Ob
 	bool fromBehind=direction==DamageDirection.back;
 	bool fromSide=!!direction.among(DamageDirection.left,DamageDirection.right);
 	if(fromBehind) actualDamage*=2.0f;
-	else if(fromSide) actualDamage*=1.5f;
+	if(object.isGuardian) actualDamage*=2.0f; // compensates for higher guardian resistance to all damage
 	object.dealDamage(actualDamage,attacker,state);
 	if(stunBehavior==StunBehavior.always || fromBehind && stunBehavior==StunBehavior.fromBehind){
 		if(actualDamage>=0.5f*damage){
@@ -4216,8 +4434,11 @@ float dealMeleeDamage(B)(ref StaticObject!B object,ref MovingObject!B attacker,O
 }
 
 float dealMeleeDamage(B)(ref Building!B building,ref MovingObject!B attacker,ObjectState!B state){
-	auto damage=attacker.meleeStrength;
-	auto actualDamage=damage*building.meleeResistance*attacker.sacObject.buildingMeleeDamageMultiplier/attacker.numAttackTicks;
+	auto damage=attacker.meleeStrength/attacker.numAttackTicks;
+	auto guardianDamage=meleeDamageGuardians(building,damage,attacker,state);
+	if(!isNaN(guardianDamage)) return guardianDamage;
+	auto actualDamage=damage*building.meleeResistance*attacker.sacObject.buildingMeleeDamageMultiplier;
+	if(building.guardianIds.length) actualDamage*=2.0f; // compensates for higher resistances of guardians
 	actualDamage=building.dealDamage(actualDamage,attacker,state);
 	playSoundTypeAt(attacker.sacObject,attacker.id,SoundType.hitWall,state);
 	return actualDamage;
@@ -4236,6 +4457,8 @@ float dealSpellDamage(B)(ref StaticObject!B object,SacSpell!B spell,int attacker
 }
 float dealSpellDamage(B)(ref Building!B building,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
 	auto damage=spell.amount;
+	auto guardianDamage=spellDamageGuardians(building,damage,attacker,attackerSide,state);
+	if(!isNaN(guardianDamage)) return guardianDamage;
 	auto actualDamage=damage*building.directSpellResistance;
 	return building.dealDamage(actualDamage,attackerSide,state);
 }
@@ -4259,6 +4482,8 @@ float dealSplashSpellDamage(B)(ref StaticObject!B object,SacSpell!B spell,int at
 
 float dealSplashSpellDamage(B)(ref Building!B building,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
 	auto damage=spell.amount*(spell.effectRange>0.0f?max(0.0f,1.0f-distance/spell.effectRange):1.0f);
+	auto guardianDamage=splashSpellDamageGuardians(building,damage,attacker,attackerSide,state);
+	if(!isNaN(guardianDamage)) return guardianDamage;
 	auto actualDamage=damage*building.splashSpellResistance;
 	return building.dealDamage(actualDamage,attackerSide,state);
 }
@@ -4302,6 +4527,8 @@ float dealRangedDamage(B)(ref StaticObject!B object,SacSpell!B rangedAttack,int 
 
 float dealRangedDamage(B)(ref Building!B building,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
 	auto damage=rangedAttack.amount;
+	auto guardianDamage=rangedDamageGuardians(building,damage,attacker,attackerSide,state);
+	if(!isNaN(guardianDamage)) return guardianDamage;
 	auto actualDamage=damage*building.directRangedResistance;
 	return building.dealDamage(actualDamage,attackerSide,state);
 }
@@ -4326,6 +4553,8 @@ float dealSplashRangedDamage(B)(ref StaticObject!B object,SacSpell!B rangedAttac
 
 float dealSplashRangedDamage(B)(ref Building!B building,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
 	auto damage=rangedAttack.amount*(rangedAttack.effectRange>0.0f?max(0.0f,1.0f-distance/rangedAttack.effectRange):1.0f);
+	auto guardianDamage=splashRangedDamageGuardians(building,damage,attacker,attackerSide,state);
+	if(!isNaN(guardianDamage)) return guardianDamage;
 	auto actualDamage=damage*building.splashRangedResistance;
 	return building.dealDamage(actualDamage,attackerSide,state);
 }
@@ -4477,6 +4706,8 @@ bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,Ob
 					return stun(castDesecrate(object.side,manaDrain,spell,object.position,target.id,wizard.closestEnemyAltar,state));
 				case SpellTag.teleport:
 					return stun(castTeleport(manaDrain,spell,object.position,target.id,state));
+				case SpellTag.guardian:
+					return stun(castGuardian(manaDrain,spell,target.id,state));
 				case SpellTag.speedup:
 					ok=target.id==object.id?speedUp(object,spell,state):speedUp(target.id,spell,state);
 					goto default;
@@ -4646,6 +4877,59 @@ bool teleport(B)(int side,Vector3f startPosition,Vector3f targetPosition,SacSpel
 	state.proximity.eachInRange!teleport(startPosition,spell.effectRange,side,startPosition,targetPosition,state);
 	return true;
 }
+
+bool castGuardian(B)(ManaDrain!B manaDrain,SacSpell!B spell,int target,ObjectState!B state){
+	state.addEffect(GuardianCasting!B(manaDrain,spell,target));
+	return true;
+}
+
+int findClosestBuilding(B)(int side,Vector3f position,ObjectState!B state){
+	static struct Result{
+		int currentId=0;
+		float currentDistance=float.infinity;
+	}
+	static void find(T)(ref T objects,int side,Vector3f position,ObjectState!B state,Result* result){
+		static if(is(T==StaticObjects!(B,renderMode),RenderMode renderMode)){
+			bool altar=objects.sacObject.isAltar;
+			bool shrine=objects.sacObject.isShrine;
+			if(altar||shrine||objects.sacObject.isManalith){ // TODO: use cached indices?
+				foreach(j;0..objects.length){
+					if(state.buildingById!((ref bldg,side)=>bldg.side!=side,()=>true)(objects.buildingIds[j],side))
+						continue;
+					auto candidateDistance=(position-objects.positions[j]).xy.lengthsqr;
+					if(candidateDistance<result.currentDistance){ // TODO: is it really possible to guard over the void?
+						result.currentId=objects.ids[j];
+						result.currentDistance=candidateDistance;
+					}
+				}
+			}
+		}
+	}
+	Result result;
+	state.eachByType!find(side,position,state,&result);
+	return result.currentId;
+}
+
+bool guardian(B)(int side,SacSpell!B spell,int target,ObjectState!B state){
+	if(side==-1) return false;
+	return state.movingObjectById!((ref obj,side,state){
+		if(obj.side!=side||obj.isWizard||obj.isHero||obj.isFamiliar) return false;
+		if(obj.creatureStats.effects.isGuardian) return false;
+		int structure=findClosestBuilding(side,obj.position,state);
+		if(!structure) return false;
+		int buildingId=state.staticObjectById!((ref obj)=>obj.buildingId,()=>0)(structure);
+		if(!buildingId) return false;
+		if(!state.buildingById!((ref bldg,int id){ bldg.guardianIds~=id; return true; },()=>false)(buildingId,obj.id))
+			return false;
+		obj.unselect(state);
+		obj.removeFromGroups(state);
+		obj.clearOrderQueue(state);
+		obj.creatureStats.effects.isGuardian=true;
+		state.addEffect(Guardian(obj.id,buildingId));
+		return true;
+	},()=>false)(target,side,state);
+}
+
 
 enum doubleSpeedUpDelay=cast(int)(0.2f*updateFPS); // 200ms
 
@@ -5587,7 +5871,7 @@ bool checkAbility(B)(ref MovingObject!B object,SacSpell!B ability,Target target,
 }
 
 bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,Target target,ObjectState!B state){
-	if(object.sacObject.ability!is ability) return false;
+	if(object.ability!is ability) return false;
 	if(!object.checkAbility(ability,target,state)) return false;
 	void apply(){
 		object.drainMana(ability.manaCost,state);
@@ -6207,6 +6491,8 @@ void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 		object.heal(object.creatureStats.regeneration/updateFPS,state);
 	if(object.creatureState.mode==CreatureMode.playingDead)
 		object.heal(30.0f/updateFPS,state); // TODO: ok?
+	if(object.isGuardian)
+		object.heal(1000.0f/(60*updateFPS),state);
 	if(object.creatureState.mode.canRegenerateMana&&(object.creatureStats.mana<object.creatureStats.maxMana||object.isGhost))
 		object.giveMana(state.manaRegenAt(object.side,object.position)/updateFPS,state);
 	if(object.creatureState.mode.among(CreatureMode.meleeMoving,CreatureMode.meleeAttacking) && object.hasAttackTick){
@@ -6804,6 +7090,143 @@ bool updateBlueRing(B)(ref BlueRing!B blueRing,ObjectState!B state){
 		return true;
 	}
 }
+
+void animateGuardianCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	auto castParticle=SacParticle!B.get(ParticleType.heal);
+	wizard.animateCasting!false(castParticle,state);
+}
+bool updateGuardianCasting(B)(ref GuardianCasting!B guardianCast,ObjectState!B state){
+	with(guardianCast){
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				state.movingObjectById!animateGuardianCasting(manaDrain.wizard,state);
+				return true;
+			case CastingStatus.interrupted: return false;
+			case CastingStatus.finished:
+				int side=state.movingObjectById!(.side,()=>-1)(manaDrain.wizard,state);
+				if(side!=-1) guardian(side,spell,creature,state);
+				return false;
+		}
+	}
+}
+bool unguardian(B)(ref Guardian guardian,ObjectState!B state){
+	return state.movingObjectById!((ref obj,state){
+		if(!obj.creatureStats.effects.isGuardian) return false;
+		obj.creatureStats.effects.isGuardian=false;
+		return true;
+	},()=>false)(guardian.creature,state)
+		& state.buildingById!((ref bldg,creature,state){
+		for(int j=0;j<bldg.guardianIds.length;j++){
+			if(bldg.guardianIds[j]==creature){
+				if(j+1<bldg.guardianIds.length)
+					swap(bldg.guardianIds[j],bldg.guardianIds[$-1]);
+				bldg.guardianIds.length=bldg.guardianIds.length-1;
+				return true;
+			}
+		}
+		return false;
+	},()=>false)(guardian.building,guardian.creature,state);
+}
+
+bool updateGuardianShape(B)(ref Guardian guardian,ObjectState!B state){
+	with(guardian){
+		if(frame%numFramesToChangeShape==0){
+			prevLocs=nextLocs;
+			static immutable Vector3f[2] box=[-locRadius*0.5f*Vector3f(1.0f,1.0f,1.0f),locRadius*0.5f*Vector3f(1.0f,1.0f,1.0f)];
+			foreach(i,ref x;nextLocs){
+				x=state.uniform(box);
+				if(i==0||i+1==nextLocs.length) x*=0.25f;
+			}
+			if(isNaN(prevLocs[0].x)) updateGuardianShape(guardian, state);
+		}
+		float progress=float(frame%numFramesToChangeShape)/numFramesToChangeShape;
+		foreach(i,ref x;locations) x=(1.0f-progress)*prevLocs[i]+progress*nextLocs[i];
+		frame+=1;
+		return true;
+	}
+}
+
+enum manalithGuardHeight=15.0f;
+enum shrineGuardHeight=2.5f;
+Vector3f guardianAttachPosition(B)(ref Building!B building,ObjectState!B state){
+	if(building.componentIds.length==0) return Vector3f.init;
+	if(building.isManalith) return state.staticObjectById!((ref obj)=>obj.position+Vector3f(0.0f,0.0f,manalithGuardHeight),()=>Vector3f.init)(building.componentIds[0]);
+	return state.staticObjectById!((ref obj)=>obj.position+Vector3f(0.0f,0.0f,shrineGuardHeight),()=>Vector3f.init)(building.componentIds[0]);
+}
+
+bool isValidGuard(B)(ref MovingObject!B obj,ObjectState!B state){
+	return !obj.isDying&&!obj.isDead&&obj.creatureState.mode!=CreatureMode.thrashing;
+}
+
+bool updateGuardian(B)(ref Guardian guardian,ObjectState!B state){
+	with(guardian){
+		if(!updateGuardianShape(guardian,state)) return false;
+		auto creaturePosition=state.movingObjectById!(center,()=>Vector3f.init)(creature);
+		auto buildingPosition=state.buildingById!(guardianAttachPosition,()=>Vector3f.init)(building,state);
+
+		if(isNaN(creaturePosition.x)||isNaN(buildingPosition.x)){
+			unguardian(guardian,state);
+			return false;
+		}
+		if((creaturePosition.xy-buildingPosition.xy).lengthsqr>50.0f^^2){
+			auto dir2d=(creaturePosition.xy-buildingPosition.xy).normalized;
+			auto position2d=buildingPosition.xy+20.0f*dir2d;
+			auto position=Vector3f(position2d.x,position2d.y,0.0f);
+			position.z=state.getHeight(position);
+			auto facing=atan2(dir2d.x,-dir2d.y);
+			auto order=Order(CommandType.move,OrderTarget(TargetType.terrain,0,position),facing);
+			state.movingObjectById!((ref obj,order,state){
+				if(obj.creatureAI.order.command==CommandType.move&&(obj.creatureAI.order.target.position.xy-buildingPosition.xy).length<50.0f)
+					return true;
+				return obj.order(order,state);
+			},()=>false)(creature,order,state);
+		}
+		with(GuardianStatus) if(status.among(disappearingAtBuilding,disappearingAtCreature)&&frame==numFramesToDisappear){
+			unguardian(guardian,state);
+			return false;
+		}
+		if(state.movingObjectById!((ref obj,state)=>!obj.isValidGuard(state),()=>true)(creature,state)){
+			switch(status) with(GuardianStatus){
+				case appearing:
+					unguardian(guardian,state);
+					return false;
+				case steady:
+					status=status.disappearingAtBuilding;
+					frame=1;
+					break;
+				default: break;
+			}
+		}
+		// TODO: bind creature to building
+		final switch(status) with(GuardianStatus){
+			case appearing:
+				if(frame==numFramesToEmerge){
+					status=steady;
+					goto case steady;
+				}
+				float progress=(float(frame)/numFramesToEmerge)^^3;
+				start=creaturePosition;
+				end=(1.0f-progress)*creaturePosition+progress*buildingPosition;
+				break;
+			case steady:
+				start=creaturePosition;
+				end=buildingPosition;
+				break;
+			case disappearingAtBuilding:
+				float progress=float(frame)/numFramesToDisappear;
+				start=(1.0f-progress)*creaturePosition+progress*buildingPosition;
+				end=buildingPosition;
+				break;
+			case disappearingAtCreature:
+				float progress=float(frame)/numFramesToDisappear;
+				start=creaturePosition;
+				end=progress*creaturePosition+(1.0f-progress)*buildingPosition;
+				break;
+		}
+		return true;
+	}
+}
+
 bool updateSpeedUp(B)(ref SpeedUp!B speedUp,ObjectState!B state){
 	with(speedUp){
 		if(!state.isValidTarget(creature,TargetType.creature)) return false;
@@ -9272,6 +9695,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 		}
 		i++;
 	}
+	for(int i=0;i<effects.guardianCastings.length;){
+		if(!updateGuardianCasting(effects.guardianCastings[i],state)){
+			effects.removeGuardianCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.guardians.length;){
+		if(!updateGuardian(effects.guardians[i],state)){
+			effects.removeGuardian(i);
+			continue;
+		}
+		i++;
+	}
 	for(int i=0;i<effects.speedUps.length;){
 		if(!updateSpeedUp(effects.speedUps[i],state)){
 			effects.removeSpeedUp(i);
@@ -10514,7 +10951,7 @@ final class ObjectState(B){ // (update logic)
 							if(target) ord.target.id=target;
 						}
 					}
-					if(ord.command==CommandType.useAbility && obj.sacObject.ability !is ability) return false;
+					if(ord.command==CommandType.useAbility && obj.ability !is ability) return false;
 					if(updateFormation) obj.creatureAI.formation=formation;
 					if(ord.command!=CommandType.setFormation){
 						if(obj.order(ord,command.queueing,state,side)){
@@ -11093,7 +11530,7 @@ struct CreatureGroup{
 		int bestPriority=-1;
 		foreach(id;creatureIds){
 			if(id){
-				auto prioritySpell=state.movingObjectById!((obj)=>tuple(obj.sacObject.creaturePriority,obj.sacObject.ability),()=>tuple(-1,SacSpell!B.init))(id);
+				auto prioritySpell=state.movingObjectById!((obj)=>tuple(obj.sacObject.creaturePriority,obj.ability),()=>tuple(-1,SacSpell!B.init))(id);
 				auto priority=prioritySpell[0],spell=prioritySpell[1];
 				if(spell&&priority>bestPriority){
 					ability=spell;
@@ -11315,7 +11752,10 @@ TargetFlags summarize(bool simplified=false,B)(ref Target target,int side,Object
 					}
 					if(obj.creatureStats.effects.numSpeedUps && obj.creatureStats.effects.speedUpFrame+doubleSpeedUpDelay<state.frame)
 						result|=TargetFlags.spedUp;
-					// TODO: shield/hero
+					if(obj.isHero) result|=TargetFlags.hero;
+					if(obj.isFamiliar) result|=TargetFlags.familiar;
+					if(obj.isShielded) result|=TargetFlags.shielded;
+					if(obj.isGuardian) result|=TargetFlags.guardian;
 				}
 				return result;
 			}
