@@ -11295,10 +11295,17 @@ final class ObjectState(B){ // (update logic)
 		if(!canSelect(side,id,this)) return;
 		sid.select(side,id);
 	}
+	int buildingIdForGuardian(int creature){
+		foreach(ref guardian;obj.opaqueObjects.effects.guardians){
+			if(guardian.creature==creature)
+				return guardian.building;
+		}
+		return 0;
+	}
 	void selectAll(int side,int id){
 		if(!canSelect(side,id,this)) return;
 		// TODO: use Proximity for this? (Not a bottleneck.)
-		static void processObj(B)(MovingObject!B obj,int side,ObjectState!B state){
+		static void processObj(B)(ref MovingObject!B obj,int side,ObjectState!B state){
 			struct MObj{ int id; Vector3f position; }
 			alias Selection=MObj[numCreaturesInGroup];
 			Selection selection;
@@ -11312,12 +11319,21 @@ final class ObjectState(B){ // (update logic)
 					swap(selection[j],selection[j+1]);
 				selection[i]=nobj;
 			}
-			static void process(B)(MovingObject!B nobj,int side,MObj obj,Selection* selection,ObjectState!B state){
+			static void process(B)(ref MovingObject!B nobj,bool guardian,int side,MObj mobj,Selection* selection,ObjectState!B state){
 				if(!canSelect(nobj,side,state)) return;
-				if((obj.position.xy-nobj.position.xy).lengthsqr>50.0f^^2) return;
-				addToSelection(*selection,obj,MObj(nobj.id,nobj.position));
+				if(nobj.isGuardian!=guardian) return;
+				if((mobj.position.xy-nobj.position.xy).lengthsqr>50.0f^^2) return;
+				addToSelection(*selection,mobj,MObj(nobj.id,nobj.position));
 			}
-			state.eachMovingOf!process(obj.sacObject,side,MObj(obj.id,obj.position),&selection,state);
+			auto mobj=MObj(obj.id,obj.position);
+			if(obj.isGuardian){
+				if(auto building=state.buildingIdForGuardian(obj.id)){
+					state.buildingById!((ref bldg,side,mobj,selection,state){
+						foreach(id;bldg.guardianIds)
+							state.movingObjectById!(process,(){})(id,true,side,mobj,selection,state);
+					},(){})(building,side,mobj,&selection,state);
+				}
+			}else state.eachMovingOf!process(obj.sacObject,false,side,mobj,&selection,state);
 			if(selection[0].id!=0){
 				state.clearSelection(side);
 				foreach_reverse(i;0..selection.length)
