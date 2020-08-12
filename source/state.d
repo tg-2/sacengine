@@ -4131,9 +4131,14 @@ void healFromDrain(B)(int attacker,float actualDamage,ObjectState!B state){
 }
 
 float dealDamage(T,B)(ref T object,float damage,int attacker,int attackingSide,ObjectState!B state)if(is(T==MovingObject!B)||is(T==Building!B)){
+	auto actualDamage=damage;
+	static if(is(T==MovingObject!B)){
+		if(object.id==attacker)
+			if(object.isGuardian) actualDamage*=1.5f;
+	}
 	if(object.id!=attacker&&state.isValidTarget(attacker,TargetType.creature))
-		return state.movingObjectById!((ref atk,obj,dmg,state)=>dealDamage(*obj,dmg,atk,state),()=>0.0f)(attacker,&object,damage,state);
-	return dealDamage(object,damage,attackingSide,state);
+		return state.movingObjectById!((ref atk,obj,dmg,state)=>dealDamage(*obj,dmg,atk,state),()=>0.0f)(attacker,&object,actualDamage,state);
+	return dealDamage(object,actualDamage,attackingSide,state);
 }
 
 bool canDamage(B)(ref MovingObject!B object,ObjectState!B state){
@@ -4146,9 +4151,9 @@ bool canDamage(B)(ref MovingObject!B object,ObjectState!B state){
 }
 
 float dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B attacker,ObjectState!B state){
-	float factor=1.0f;
-	if(attacker.isGuardian) factor*=1.5f; // TODO: apply twice for poison damage
-	auto actualDamage=dealDamage(object,factor*damage,attacker.side,state);
+	auto actualDamage=damage;
+	if(attacker.isGuardian) actualDamage*=1.5f; // TODO: apply twice for poison damage
+	actualDamage=dealDamage(object,actualDamage,attacker.side,state);
 	attacker.healFromDrain(actualDamage,state);
 	return actualDamage;
 }
@@ -4448,7 +4453,7 @@ float dealSpellDamage(B)(ref MovingObject!B object,SacSpell!B spell,int attacker
 	auto damage=spell.amount;
 	auto actualDamage=damage*object.creatureStats.directSpellResistance;
 	object.damageAnimation(attackDirection,state);
-	actualDamage=object.dealDamage(actualDamage,attackerSide,state);
+	actualDamage=object.dealDamage(actualDamage,attacker,attackerSide,state);
 	healFromDrain(attacker,actualDamage,state);
 	return actualDamage;
 }
@@ -4460,7 +4465,7 @@ float dealSpellDamage(B)(ref Building!B building,SacSpell!B spell,int attacker,i
 	auto guardianDamage=spellDamageGuardians(building,damage,attacker,attackerSide,state);
 	if(!isNaN(guardianDamage)) return guardianDamage;
 	auto actualDamage=damage*building.directSpellResistance;
-	return building.dealDamage(actualDamage,attackerSide,state);
+	return building.dealDamage(actualDamage,attacker,attackerSide,state);
 }
 float dealSpellDamage(B)(int target,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
 	if(!state.isValidTarget(target)) return 0.0f;
@@ -4471,7 +4476,7 @@ float dealSplashSpellDamage(B)(ref MovingObject!B object,SacSpell!B spell,int at
 	auto damage=spell.amount*(spell.effectRange>0.0f?max(0.0f,1.0f-distance/spell.effectRange):1.0f);
 	auto actualDamage=damage*object.creatureStats.splashSpellResistance;
 	object.damageAnimation(attackDirection,state);
-	actualDamage=object.dealDamage(actualDamage,attackerSide,state);
+	actualDamage=object.dealDamage(actualDamage,attacker,attackerSide,state);
 	healFromDrain(attacker,actualDamage,state);
 	return actualDamage;
 }
@@ -4485,7 +4490,7 @@ float dealSplashSpellDamage(B)(ref Building!B building,SacSpell!B spell,int atta
 	auto guardianDamage=splashSpellDamageGuardians(building,damage,attacker,attackerSide,state);
 	if(!isNaN(guardianDamage)) return guardianDamage;
 	auto actualDamage=damage*building.splashSpellResistance;
-	return building.dealDamage(actualDamage,attackerSide,state);
+	return building.dealDamage(actualDamage,attacker,attackerSide,state);
 }
 
 float dealSplashSpellDamage(B)(int target,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
@@ -4515,14 +4520,13 @@ float dealRangedDamage(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int 
 	auto damage=rangedAttack.amount;
 	auto actualDamage=damage*object.creatureStats.directRangedResistance;
 	object.damageAnimation(attackDirection,state);
-	actualDamage=object.dealDamage(actualDamage,attackerSide,state);
+	actualDamage=object.dealDamage(actualDamage,attacker,attackerSide,state);
 	healFromDrain(attacker,actualDamage,state);
 	return actualDamage;
 }
 
 float dealRangedDamage(B)(ref StaticObject!B object,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
 	return state.buildingById!(dealRangedDamage,()=>0.0f)(object.buildingId,rangedAttack,attacker,attackerSide,attackDirection,state);
-
 }
 
 float dealRangedDamage(B)(ref Building!B building,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
@@ -4530,7 +4534,7 @@ float dealRangedDamage(B)(ref Building!B building,SacSpell!B rangedAttack,int at
 	auto guardianDamage=rangedDamageGuardians(building,damage,attacker,attackerSide,state);
 	if(!isNaN(guardianDamage)) return guardianDamage;
 	auto actualDamage=damage*building.directRangedResistance;
-	return building.dealDamage(actualDamage,attackerSide,state);
+	return building.dealDamage(actualDamage,attacker,attackerSide,state);
 }
 
 float dealRangedDamage(B)(int target,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
@@ -4542,7 +4546,7 @@ float dealSplashRangedDamage(B)(ref MovingObject!B object,SacSpell!B rangedAttac
 	auto damage=rangedAttack.amount*(rangedAttack.effectRange>0.0f?max(0.0f,1.0f-distance/rangedAttack.effectRange):1.0f);
 	auto actualDamage=damage*object.creatureStats.splashRangedResistance;
 	object.damageAnimation(attackDirection,state);
-	actualDamage=object.dealDamage(actualDamage,attackerSide,state);
+	actualDamage=object.dealDamage(actualDamage,attacker,attackerSide,state);
 	healFromDrain(attacker,actualDamage,state);
 	return actualDamage;
 }
@@ -4556,7 +4560,7 @@ float dealSplashRangedDamage(B)(ref Building!B building,SacSpell!B rangedAttack,
 	auto guardianDamage=splashRangedDamageGuardians(building,damage,attacker,attackerSide,state);
 	if(!isNaN(guardianDamage)) return guardianDamage;
 	auto actualDamage=damage*building.splashRangedResistance;
-	return building.dealDamage(actualDamage,attackerSide,state);
+	return building.dealDamage(actualDamage,attacker,attackerSide,state);
 }
 
 float dealSplashRangedDamage(B)(int target,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
