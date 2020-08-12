@@ -6076,6 +6076,23 @@ bool isIdle(B)(ref MovingObject!B object, ObjectState!B state){
 enum ghostAlpha=0.36f;
 enum ghostEnergy=10.0f;
 
+void animateGhostTransition(B)(ref MovingObject!B wizard,ObjectState!B state){
+	playSpellSoundTypeAt(SoundType.lightning,wizard.id,state,2.0f);
+	enum numParticles=100;
+	auto sacParticle=SacParticle!B.get(ParticleType.ghostTransition);
+	auto hitbox=wizard.hitbox;
+	foreach(i;0..numParticles){
+		auto position=state.uniform(hitbox);
+		auto direction=(position-wizard.position).normalized;
+		auto velocity=state.uniform(1.0f,2.0f)*direction;
+		velocity.z*=2.5f;
+		auto scale=state.uniform(0.25f,0.75f);
+		auto lifetime=95;
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+	}
+}
+
 void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.creatureStats.effects.stunCooldown!=0) --object.creatureStats.effects.stunCooldown;
 	if(object.creatureStats.effects.rangedCooldown!=0) --object.creatureStats.effects.rangedCooldown;
@@ -6089,6 +6106,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 				if(object.creatureStats.effects.numDesecrations) object.creatureStats.health=max(1.0f,object.creatureStats.health);
 				object.creatureState.mode=CreatureMode.ghostToIdle;
 				object.setCreatureState(state);
+				object.animateGhostTransition(state);
 				break;
 			}
 			auto idle=ghost?CreatureMode.idleGhost:CreatureMode.idle;
@@ -6215,6 +6233,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
 				object.creatureState.mode=CreatureMode.idleGhost;
 				object.setCreatureState(state);
+				object.animateGhostTransition(state);
 			}
 			break;
 		case CreatureMode.ghostToIdle:

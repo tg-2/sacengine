@@ -851,6 +851,7 @@ enum ParticleType{
 	speedUp,
 	heal,
 	relativeHeal,
+	ghostTransition,
 	lightningCasting,
 	needle,
 	redVortexDroplet,
@@ -892,6 +893,8 @@ final class SacParticle(B){
 				return true;
 			case manalith,shrine,manahoar,firy,fire,fireball,explosion,explosion2,speedUp,heal,relativeHeal,lightningCasting:
 				return false;
+			case ghostTransition:
+				return true;
 			case needle:
 				return true;
 			case redVortexDroplet,blueVortexDroplet:
@@ -914,7 +917,7 @@ final class SacParticle(B){
 	}
 	@property bool relative(){
 		final switch(type) with(ParticleType){
-			case manafount,manalith,shrine,manahoar,firy,fire,fireball,explosion,explosion2,speedUp,heal,spark:
+			case manafount,manalith,shrine,manahoar,firy,fire,fireball,explosion,explosion2,speedUp,heal,ghostTransition,spark:
 				return false;
 			case relativeHeal,lightningCasting:
 				return true;
@@ -932,7 +935,7 @@ final class SacParticle(B){
 	}
 	@property bool bumpOffGround(){
 		switch(type) with(ParticleType){
-			case wrathParticle,ashParticle,rock,swarmHit,needle,redVortexDroplet,blueVortexDroplet: return true;
+			case ghostTransition,wrathParticle,ashParticle,rock,swarmHit,needle,redVortexDroplet,blueVortexDroplet: return true;
 			default: return false;
 		}
 	}
@@ -999,7 +1002,7 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/spd6.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
-			case heal,relativeHeal: // TODO: load texture only once
+			case heal,relativeHeal,ghostTransition: // TODO: load texture only once
 				width=height=1.0f;
 				this.energy=4.0f;
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/glo2.TXTR"));
@@ -1182,7 +1185,7 @@ final class SacParticle(B){
 				return min(1.0f,(lifetime/(0.5f*numFrames))^^2);
 			case ashParticle:
 				return 1.0f;
-			case heal,relativeHeal:
+			case heal,relativeHeal,ghostTransition:
 				return min(1.0f,(lifetime/(0.75f*numFrames))^^2);
 			case lightningCasting,spark:
 				return 1.0;
@@ -1223,7 +1226,7 @@ final class SacParticle(B){
 				return 1.0f;
 			case speedUp:
 				return 1.0f;
-			case heal,relativeHeal:
+			case heal,relativeHeal,ghostTransition:
 				return 1.0f;
 			case lightningCasting,spark:
 				return 1.0f;
