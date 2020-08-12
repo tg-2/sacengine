@@ -1185,7 +1185,7 @@ void deactivate(B)(ref Building!B building,ObjectState!B state){
 	building.stopSounds(state);
 }
 
-struct Particle(B,bool relative=false){ // TODO: some particles don't need some fields. Optimize?
+struct Particle(B,bool relative=false,bool sideFiltered=false){ // TODO: some particles don't need some fields. Optimize?
 	SacParticle!B sacParticle;
 	static if(relative){
 		int baseId;
@@ -1196,6 +1196,7 @@ struct Particle(B,bool relative=false){ // TODO: some particles don't need some 
 	float scale;
 	int lifetime;
 	int frame;
+	static if(sideFiltered) int sideFilter; // TODO: spread into one array per side?
 	static if(relative){
 		this(SacParticle!B sacParticle,int baseId,bool rotate,Vector3f position,Vector3f velocity,float scale,int lifetime,int frame){
 			this.sacParticle=sacParticle;
@@ -1757,7 +1758,7 @@ auto each(alias f,B,T...)(ref WizardInfos!B wizards,T args){
 		f(wizards[i],args);
 }
 
-struct Particles(B,bool relative){
+struct Particles(B,bool relative,bool sideFiltered=false){
 	SacParticle!B sacParticle;
 	static if(relative){
 		Array!int baseIds;
@@ -1769,6 +1770,7 @@ struct Particles(B,bool relative){
 	Array!float scales;
 	Array!int lifetimes;
 	Array!int frames;
+	static if(sideFiltered) Array!int sideFilters;
 	@property int length(){ assert(positions.length<=int.max); return cast(int)positions.length; }
 	@property void length(int l){
 		static if(relative){
@@ -1780,6 +1782,7 @@ struct Particles(B,bool relative){
 		scales.length=l;
 		lifetimes.length=l;
 		frames.length=l;
+		static if(sideFiltered) sideFilters.length=l;
 	}
 	void reserve(int reserveSize){
 		static if(relative){
@@ -1791,8 +1794,9 @@ struct Particles(B,bool relative){
 		scales.reserve(reserveSize);
 		lifetimes.reserve(reserveSize);
 		frames.reserve(reserveSize);
+		static if(sideFiltered) sideFilters.reserve(reserveSize);
 	}
-	void addParticle(Particle!(B,relative) particle){
+	void addParticle(Particle!(B,relative,sideFiltered) particle){
 		assert(sacParticle is null && particle.sacParticle.relative==relative || sacParticle is particle.sacParticle);
 		sacParticle=particle.sacParticle; // TODO: get rid of this?
 		static if(relative){
@@ -1804,12 +1808,13 @@ struct Particles(B,bool relative){
 		scales~=particle.scale;
 		lifetimes~=particle.lifetime;
 		frames~=particle.frame;
+		static if(sideFiltered) sideFilters~=particle.sideFilter;
 	}
 	void removeParticle(int index){
 		if(index+1<length) this[index]=this[length-1];
 		length=length-1;
 	}
-	void opAssign(ref Particles!(B,relative) rhs){
+	void opAssign(ref Particles!(B,relative,sideFiltered) rhs){
 		sacParticle = rhs.sacParticle;
 		static if(relative){
 			assignArray(baseIds,rhs.baseIds);
@@ -1820,13 +1825,19 @@ struct Particles(B,bool relative){
 		assignArray(scales,rhs.scales);
 		assignArray(lifetimes,rhs.lifetimes);
 		assignArray(frames,rhs.frames);
+		static if(sideFiltered) assignArray(sideFilters,rhs.sideFilters);
 	}
-	void opAssign(Particles!(B,relative) rhs){ this.tupleof=rhs.tupleof; }
-	Particle!(B,relative) opIndex(int i){
-		static if(relative) return Particle!(B,true)(sacParticle,baseIds[i],!!rotates[i],positions[i],velocities[i],scales[i],lifetimes[i],frames[i]);
-		else return Particle!(B,false)(sacParticle,positions[i],velocities[i],scales[i],lifetimes[i],frames[i]);
+	void opAssign(Particles!(B,relative,sideFiltered) rhs){ this.tupleof=rhs.tupleof; }
+	Particle!(B,relative,sideFiltered) opIndex(int i){
+		static if(sideFiltered){
+			static if(relative) return Particle!(B,true,true)(sacParticle,baseIds[i],!!rotates[i],positions[i],velocities[i],scales[i],lifetimes[i],frames[i],sideFilters[i]);
+			else{ auto r=Particle!(B,false,true)(sacParticle,positions[i],velocities[i],scales[i],lifetimes[i],frames[i]); r.sideFilter=sideFilters[i]; return r; }
+		}else{
+			static if(relative) return Particle!(B,true)(sacParticle,baseIds[i],!!rotates[i],positions[i],velocities[i],scales[i],lifetimes[i],frames[i]);
+			else return Particle!(B,false)(sacParticle,positions[i],velocities[i],scales[i],lifetimes[i],frames[i]);
+		}
 	}
-	void opIndexAssign(Particle!(B,relative) particle,int i){
+	void opIndexAssign(Particle!(B,relative,sideFiltered) particle,int i){
 		assert(particle.sacParticle is sacParticle);
 		static if(relative){
 			baseIds[i]=particle.baseId;
@@ -1837,6 +1848,7 @@ struct Particles(B,bool relative){
 		scales[i]=particle.scale;
 		lifetimes[i]=particle.lifetime;
 		frames[i]=particle.frame;
+		static if(sideFiltered) sideFilters[i]=particle.sideFilter;
 	}
 }
 
@@ -2915,6 +2927,7 @@ struct Objects(B,RenderMode mode){
 		WizardInfos!B wizards;
 		Array!(Particles!(B,false)) particles;
 		Array!(Particles!(B,true)) relativeParticles;
+		Array!(Particles!(B,false,true)) filteredParticles;
 		Effects!B effects;
 		CommandCones!B commandCones;
 	}
@@ -3037,8 +3050,11 @@ struct Objects(B,RenderMode mode){
 		void addEffect(T)(T proj){
 			effects.addEffect(move(proj));
 		}
-		int getIndexParticle(bool relative)(SacParticle!B sacParticle,bool insert){
-			static if(relative) alias particles=relativeParticles;
+		int getIndexParticle(bool relative,bool sideFiltered)(SacParticle!B sacParticle,bool insert){
+			static if(sideFiltered){
+				static assert(!relative);
+				alias particles=filteredParticles;
+			}else static if(relative) alias particles=relativeParticles;
 			// cache, does not change semantics
 			auto cand=sacParticle.stateIndex;
 			if(0<=cand&&cand<particles.length)
@@ -3054,9 +3070,12 @@ struct Objects(B,RenderMode mode){
 			}
 			return sacParticle.stateIndex=-1;
 		}
-		void addParticle(bool relative)(Particle!(B,relative) particle){
-			auto index=getIndexParticle!relative(particle.sacParticle,true);
-			static if(relative) alias particles=relativeParticles;
+		void addParticle(bool relative,bool sideFiltered)(Particle!(B,relative,sideFiltered) particle){
+			auto index=getIndexParticle!(relative,sideFiltered)(particle.sacParticle,true);
+			static if(sideFiltered){
+				static assert(!relative);
+				alias particles=filteredParticles;
+			}else static if(relative) alias particles=relativeParticles;
 			enforce(0<=index && index<particles.length);
 			particles[index].addParticle(particle);
 		}
@@ -3076,6 +3095,7 @@ struct Objects(B,RenderMode mode){
 			effects=rhs.effects;
 			assignArray(particles,rhs.particles);
 			assignArray(relativeParticles,rhs.relativeParticles);
+			assignArray(filteredParticles,rhs.filteredParticles);
 			commandCones=rhs.commandCones;
 		}
 	}
@@ -3123,6 +3143,8 @@ auto eachParticles(alias f,B,T...)(ref Objects!(B,RenderMode.opaque) objects,T a
 			f(particle,args);
 		foreach(ref particle;relativeParticles)
 			f(particle,args);
+		foreach(ref particle;filteredParticles)
+			f(particle,args);
 	}
 }
 auto eachCommandCones(alias f,B,T...)(ref Objects!(B,RenderMode.opaque) objects,T args){
@@ -3144,6 +3166,8 @@ auto eachByType(alias f,bool movingFirst=true,bool particlesBeforeEffects=false,
 			foreach(ref particle;particles)
 				f(particle,args);
 			foreach(ref particle;relativeParticles)
+				f(particle,args);
+			foreach(ref particle;filteredParticles)
 				f(particle,args);
 			static if(particlesBeforeEffects) f(effects,args);
 			f(commandCones,args);
@@ -3278,7 +3302,7 @@ struct ObjectManager(B){
 	void addEffect(T)(T proj){
 		opaqueObjects.addEffect(proj);
 	}
-	void addParticle(bool relative)(Particle!(B,relative) particle){
+	void addParticle(bool relative,bool sideFiltered)(Particle!(B,relative,sideFiltered) particle){
 		opaqueObjects.addParticle(particle);
 	}
 	void addCommandCone(CommandCone!B cone){
@@ -6092,6 +6116,15 @@ void animateGhostTransition(B)(ref MovingObject!B wizard,ObjectState!B state){
 		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
 	}
 }
+void animateGhost(B)(ref MovingObject!B wizard,ObjectState!B state){
+	auto hitbox=wizard.hitbox;
+	auto sacParticle=SacParticle!B.get(ParticleType.ghost);
+	auto scale=1.0f; // TODO: does this differ for different creatures?
+	auto frame=state.uniform!"[)"(0,sacParticle.numFrames);
+	auto particle=Particle!(B,false,true)(sacParticle,state.uniform(hitbox),Vector3f(0.0f,0.0f,0.0f),scale,sacParticle.numFrames,frame);
+	particle.sideFilter=wizard.side;
+	state.addParticle(particle);
+}
 
 void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.creatureStats.effects.stunCooldown!=0) --object.creatureStats.effects.stunCooldown;
@@ -6102,6 +6135,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 		case CreatureMode.idle, CreatureMode.moving, CreatureMode.idleGhost, CreatureMode.movingGhost:
 			auto oldMode=object.creatureState.mode;
 			auto ghost=oldMode==CreatureMode.idleGhost||oldMode==CreatureMode.movingGhost;
+			if(ghost) object.animateGhost(state);
 			if(ghost&&(object.health==object.creatureStats.maxHealth||object.creatureStats.effects.numDesecrations)){
 				if(object.creatureStats.effects.numDesecrations) object.creatureStats.health=max(1.0f,object.creatureStats.health);
 				object.creatureState.mode=CreatureMode.ghostToIdle;
@@ -6905,7 +6939,7 @@ void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 	}
 }
 
-void updateParticles(B,bool relative)(ref Particles!(B,relative) particles, ObjectState!B state){
+void updateParticles(B,bool relative,bool sideFiltered)(ref Particles!(B,relative,sideFiltered) particles, ObjectState!B state){
 	if(!particles.sacParticle) return;
 	auto sacParticle=particles.sacParticle;
 	auto gravity=sacParticle.gravity;
@@ -11233,7 +11267,7 @@ final class ObjectState(B){ // (update logic)
 	void addEffect(T)(T proj){
 		obj.addEffect(proj);
 	}
-	void addParticle(bool relative)(Particle!(B,relative) particle){
+	void addParticle(bool relative,bool sideFiltered)(Particle!(B,relative,sideFiltered) particle){
 		obj.addParticle(particle);
 	}
 	void addCommandCone(CommandCone!B cone){

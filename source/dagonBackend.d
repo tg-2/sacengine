@@ -968,7 +968,7 @@ final class SacScene: Scene{
 						mesh.render(rc);
 					}
 				}
-			}else static if(is(T==Particles!(DagonBackend,relative),bool relative)){
+			}else static if(is(T==Particles!(DagonBackend,relative,sideFiltered),bool relative,bool sideFiltered)){
 				static if(mode==RenderMode.transparent){
 					if(rc.shadowMode) return; // TODO: particle shadows?
 					auto sacParticle=objects.sacParticle;
@@ -979,6 +979,10 @@ final class SacScene: Scene{
 					scope(success) material.unbind(rc);
 					static if(relative) auto state=scene.state.current;
 					foreach(j;0..objects.length){
+						static if(sideFiltered){
+							if(objects.sideFilters[j]!=scene.renderSide)
+								continue;
+						}
 						auto mesh=sacParticle.getMesh(objects.frames[j]); // TODO: do in shader?
 						static if(relative){
 							auto position=objects.rotates[j]?state.movingObjectById!((obj,particlePosition)=>rotate(obj.rotation,particlePosition)+obj.position,()=>Vector3f(0.0f,0.0f,0.0f))(objects.baseIds[j],objects.positions[j])
@@ -3295,7 +3299,7 @@ static:
 
 	Material createMaterial(SacParticle!DagonBackend particle){
 		final switch(particle.type) with(ParticleType){
-			case manafount, manalith, manahoar, shrine, firy, fire, fireball, explosion, explosion2, speedUp, heal, relativeHeal, ghostTransition, lightningCasting, needle, redVortexDroplet, blueVortexDroplet, spark, castPersephone, castPyro, castJames, castStratos, castCharnel, wrathCasting, wrathExplosion1, wrathExplosion2, wrathParticle, steam, ashParticle, smoke, dirt, dust, rock, swarmHit, locustBlood, locustDebris:
+			case manafount, manalith, manahoar, shrine, firy, fire, fireball, explosion, explosion2, speedUp, heal, relativeHeal, ghostTransition, ghost, lightningCasting, needle, redVortexDroplet, blueVortexDroplet, spark, castPersephone, castPyro, castJames, castStratos, castCharnel, wrathCasting, wrathExplosion1, wrathExplosion2, wrathParticle, steam, ashParticle, smoke, dirt, dust, rock, swarmHit, locustBlood, locustDebris:
 				auto mat=scene.createMaterial(scene.shadelessMaterialBackend);
 				mat.depthWrite=false;
 				mat.blending=particle.type.among(ashParticle,smoke,dirt,dust,rock,swarmHit,locustBlood)?Transparent:Additive;
