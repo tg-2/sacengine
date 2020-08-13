@@ -1,4 +1,4 @@
- import std.algorithm, std.range;
+import std.algorithm, std.range;
 import std.container.array: Array;
 import std.exception, std.stdio, std.conv;
 import dlib.math, dlib.math.portable, dlib.image.color;
@@ -1557,37 +1557,53 @@ enum SpellStatus{
 	ready,
 }
 
-Spellbook!B getDefaultSpellbook(B)(God god){
-	Spellbook!B result;
-	foreach(tag;neutralCreatures)
-		result.addSpell(0,SacSpell!B.get(tag));
-	foreach(tag;neutralSpells)
-		result.addSpell(0,SacSpell!B.get(tag));
-	foreach(tag;structureSpells[0..$-1])
-		result.addSpell(0,SacSpell!B.get(tag));
-	if(god==God.none){
-		result.addSpell(3,SacSpell!B.get(structureSpells[$-1]));
-		return result;
-	}
-	enforce(creatureSpells[god].length==11);
-	enforce(normalSpells[god].length==11);
-	foreach(lv;1..9+1){
-		if(lv==3) result.addSpell(3,SacSpell!B.get(structureSpells[$-1]));
-		if(lv==1){
-			foreach(tag;creatureSpells[god][1..4])
-				result.addSpell(lv,SacSpell!B.get(tag));
-			result.addSpell(lv,SacSpell!B.get(normalSpells[god][lv+1]));
-		}else if(lv<8){
-			result.addSpell(lv,SacSpell!B.get(creatureSpells[god][lv+2]));
-			result.addSpell(lv,SacSpell!B.get(normalSpells[god][lv+1]));
-		}else if(lv==8){
-			foreach(tag;normalSpells[god][9..11])
-				result.addSpell(lv,SacSpell!B.get(tag));
-		}else if(lv==9){
-			result.addSpell(lv,SacSpell!B.get(creatureSpells[god][lv+1]));
+immutable(SpellSpec)[][God.max+1] computeDefaultSpells(){
+	import std.traits:EnumMembers;
+	typeof(return) result;
+	foreach(god;[EnumMembers!God]){
+		char[4] workaround(SpellTag tag){ return [tag[0],tag[1],tag[2],tag[3]]; } // ???
+		foreach(tag;neutralCreatures)
+			result[god]~=SpellSpec(0,workaround(tag));
+		foreach(tag;neutralSpells)
+			result[god]~=SpellSpec(0,workaround(tag));
+		foreach(tag;structureSpells[0..$-1])
+			result[god]~=SpellSpec(0,workaround(tag));
+		if(god==God.none){
+			result[god]~=SpellSpec(3,workaround(structureSpells[$-1]));
+			continue;
+		}
+		enforce(creatureSpells[god].length==11);
+		enforce(normalSpells[god].length==11);
+		foreach(lv;1..9+1){
+			if(lv==3) result[god]~=SpellSpec(3,workaround(structureSpells[$-1]));
+			if(lv==1){
+				foreach(tag;creatureSpells[god][1..4])
+					result[god]~=SpellSpec(lv,workaround(tag));
+				result[god]~=SpellSpec(lv,workaround(normalSpells[god][lv+1]));
+			}else if(lv<8){
+				result[god]~=SpellSpec(lv,workaround(creatureSpells[god][lv+2]));
+				result[god]~=SpellSpec(lv,workaround(normalSpells[god][lv+1]));
+			}else if(lv==8){
+				foreach(tag;normalSpells[god][9..11])
+					result[god]~=SpellSpec(lv,workaround(tag));
+			}else if(lv==9){
+				result[god]~=SpellSpec(lv,workaround(creatureSpells[god][lv+1]));
+			}
 		}
 	}
 	return result;
+}
+
+immutable defaultSpells=computeDefaultSpells();
+
+Spellbook!B getSpellbook(B)(const(SpellSpec)[] spells){
+	Spellbook!B result;
+	foreach(spec;spells) result.addSpell(spec.level,SacSpell!B.get(spec.tag));
+	return result;
+}
+
+Spellbook!B getDefaultSpellbook(B)(God god){
+	return getSpellbook!B(defaultSpells[god]);
 }
 
 struct WizardInfo(B){

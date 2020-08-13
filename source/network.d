@@ -1,4 +1,5 @@
 import std.algorithm, std.range, std.stdio, std.conv, std.exception, core.thread;
+import std.traits: Unqual;
 import options,sacspell,state,controller;
 import ntts: God;
 
@@ -69,6 +70,8 @@ enum PacketType{
 	checkSynch,
 	// broadcast
 	updateSetting,
+	clearArraySetting,
+	appendArraySetting,
 	setMap,
 	appendMap,
 	updateStatus,
@@ -81,7 +84,7 @@ PacketPurpose purposeFromType(PacketType type){
 		case nop,disconnect,ping,ack: return peerToPeer;
 		case updatePlayerId,loadGame,startGame: return hostMessage;
 		case checkSynch: return hostQuery;
-		case updateSetting,setMap,appendMap,updateStatus,command,commit: return broadcast;
+		case updateSetting,clearArraySetting,appendArraySetting,setMap,appendMap,updateStatus,command,commit: return broadcast;
 	}
 }
 
@@ -100,10 +103,10 @@ struct Packet{
 				auto len=0;
 				while(len<optionName.length&&optionName[len]!='\0') ++len;
 				switch(optionName[0..len]){
-					static foreach(setting;__traits(allMembers,Settings)){
-						static if(setting!="map"){
+					static foreach(setting;__traits(allMembers,Settings)){{
+						alias T=typeof(mixin(`Settings.`~setting));
+						static if(!is(T==S[],S)){
 							case setting:
-								alias T=typeof(mixin(`Settings.`~setting));
 								static if(is(T==int)) return text(`Packet.updateSetting!"`,setting,`"(`,player,",",intValue,")");
 								else static if(is(T==bool))  return text(`Packet.updateSetting!"`,setting,`"(`,player,",",boolValue,")");
 								else static if(is(T==float))  return text(`Packet.updateSetting!"`,setting,`"(`,player,",",floatValue,")");
@@ -111,8 +114,26 @@ struct Packet{
 								else static if(is(T==char[4]))  return text(`Packet.updateSetting!"`,setting,`"(`,player,`,"`,char4Value,`")`);
 								else static assert(0);
 						}
-					}
+					}}
 					default: return text(`Packet.updateSetting!"`,optionName[0..len],`"(?)`);
+				}
+			// TODO: generalize packet types on arrays and strings
+			case clearArraySetting:
+				auto len=0;
+				while(len<optionName.length&&optionName[len]!='\0') ++len;
+				return text(`Packet.clearArraySetting!"`,optionName[0..len],`"(`,player,`)`);
+			case appendArraySetting:
+				auto len=0;
+				while(len<optionName.length&&optionName[len]!='\0') ++len;
+				switch(optionName[0..len]){
+					static foreach(setting;__traits(allMembers,Settings)){{
+						alias T=typeof(mixin(`Settings.`~setting));
+						static if(is(T==S[],S)){
+							case setting:
+								return text(`Packet.appendArraySetting!"`,setting,`"(`,player,`,`,getValue!S(),`)`);
+						}
+					}}
+					default: return text(`Packet.appendArraySetting!"`,optionName[0..len],`"(?)`);
 				}
 			case setMap: return text("Packet.setMap(",mapPlayer,",",mapName,")");
 			case appendMap: return text("Packet.appendMap(",mapPlayer,",",mapName,")");
@@ -137,7 +158,7 @@ struct Packet{
 		struct{ // updateSetting, updateStatus
 			int player;
 			union{
-				struct{// updateSetting
+				struct{// updateSetting, clearArraySetting, appendArraySetting
 					char[32] optionName;
 					union{
 						int intValue;
@@ -145,6 +166,8 @@ struct Packet{
 						float floatValue;
 						God godValue;
 						char[4] char4Value;
+						char charValue;
+						SpellSpec spellSpecValue;
 					}
 				}
 				struct{
@@ -204,6 +227,24 @@ struct Packet{
 		p.synchHash=hash;
 		return p;
 	}
+	void setValue(T)(T value){
+		static if(is(T==int)) intValue=value;
+		else static if(is(T==bool)) boolValue=value;
+		else static if(is(T==float)) floatValue=value;
+		else static if(is(Unqual!T==char)) charValue=value;
+		else static if(is(T==char[4])) char4Value=value;
+		else static if(is(Unqual!T==SpellSpec)) spellSpecValue=value;
+		else static assert(0,T.stringof);
+	}
+	auto getValue(T)(){
+		static if(is(T==int)) return intValue;
+		else static if(is(T==bool)) return boolValue;
+		else static if(is(T==float)) return floatValue;
+		else static if(is(Unqual!T==char)) return charValue;
+		else static if(is(T==char[4])) return char4Value;
+		else static if(is(Unqual!T==SpellSpec)) return spellSpecValue;
+		else static assert(0,T.stringof);
+	}
 	static Packet updateSetting(string name)(int player,typeof(mixin(`Options.`~name)) value){
 		Packet p;
 		p.type=PacketType.updateSetting;
@@ -211,12 +252,26 @@ struct Packet{
 		p.optionName[]='\0';
 		p.optionName[0..name.length]=name[];
 		static assert(name.length<optionName.length);
-		static if(is(typeof(value)==int)) p.intValue=value;
-		else static if(is(typeof(value)==bool)) p.boolValue=value;
-		else static if(is(typeof(value)==float)) p.floatValue=value;
-		else static if(is(typeof(value)==God)) p.godValue=value;
-		else static if(is(typeof(value)==char[4])) p.char4Value=value;
-		else static assert(0);
+		p.setValue(value);
+		return p;
+	}
+	static Packet clearArraySetting(string name)(int player){
+		Packet p;
+		p.type=PacketType.clearArraySetting;
+		p.player=player;
+		p.optionName[]='\0';
+		p.optionName[0..name.length]=name[];
+		static assert(name.length<optionName.length);
+		return p;
+	}
+	static Packet appendArraySetting(string name)(int player,typeof(mixin(`Options.`~name~`[0]`)) value){
+		Packet p;
+		p.type=PacketType.appendArraySetting;
+		p.player=player;
+		p.optionName[]='\0';
+		p.optionName[0..name.length]=name[];
+		static assert(name.length<optionName.length);
+		p.setValue(value);
 		return p;
 	}
 	static Packet setMap(int player,string part)in{
@@ -472,13 +527,16 @@ final class Network(B){
 	}
 	void updateSetting(string setting,T)(int player,T value){
 		if(mixin(`players[player].settings.`~setting)==value) return;
-		static if(setting=="map"){
+		static if(setting=="map"){ // TODO: generalize
 			enum blockSize=Packet.mapName.length;
 			foreach(i;0..(value.length+blockSize-1)/blockSize){
 				auto part=value[i*blockSize..min($,(i+1)*blockSize)];
 				if(i==0) broadcast(Packet.setMap(player,part));
 				else broadcast(Packet.appendMap(player,part));
 			}
+		}else static if(is(typeof(mixin(`players[player].settings.`~setting))==S[],S)){ // TODO: generalize
+			broadcast(Packet.clearArraySetting!setting(player));
+			foreach(entry;value) broadcast(Packet.appendArraySetting!setting(player,entry));
 		}else broadcast(Packet.updateSetting!setting(player,value));
 		mixin(`players[player].settings.`~setting)=value;
 	}
@@ -594,7 +652,7 @@ final class Network(B){
 				}
 				break;
 			// broadcast:
-			case PacketType.updateSetting,PacketType.setMap,PacketType.appendMap:
+			case PacketType.updateSetting,PacketType.clearArraySetting,PacketType.appendArraySetting,PacketType.setMap,PacketType.appendMap:
 				if(!isHost&&sender!=host){
 					stderr.writeln("non-host player ",sender," attempted to update settings: ",p);
 					break;
@@ -618,20 +676,30 @@ final class Network(B){
 					while(len<p.optionName.length&&p.optionName[len]!='\0') ++len;
 					if(len==p.optionName.length) break;
 				Lswitch:switch(p.optionName[0..len]){
-						static foreach(setting;__traits(allMembers,Settings)){
-							static if(setting!="map"){
+						static foreach(setting;__traits(allMembers,Settings)){{
+							alias T=typeof(mixin(`players[p.player].settings.`~setting));
+							static if(!is(T==S[],S)){
 								case setting:
-									alias T=typeof(mixin(`players[p.player].settings.`~setting));
-									static if(is(T==int)) mixin(`players[p.player].settings.`~setting)=p.intValue;
-									else static if(is(T==bool))  mixin(`players[p.player].settings.`~setting)=p.boolValue;
-									else static if(is(T==float))  mixin(`players[p.player].settings.`~setting)=p.floatValue;
-									else static if(is(T==God))  mixin(`players[p.player].settings.`~setting)=p.godValue;
-									else static if(is(T==char[4])) mixin(`players[p.player].settings.`~setting)=p.char4Value;
-									else static assert(0);
+									mixin(`players[p.player].settings.`~setting)=p.getValue!T();
 									break Lswitch;
 							}
-						}
-						default: break;
+						}}
+						default: stderr.writeln("warning: unknown setting '",p.optionName[0..len],"'"); break;
+					}
+				}else if(p.type==PacketType.clearArraySetting||p.type==PacketType.appendArraySetting){
+					auto len=0;
+					while(len<p.optionName.length&&p.optionName[len]!='\0') ++len;
+				Lswitcha:switch(p.optionName[0..len]){
+						static foreach(setting;__traits(allMembers,Settings)){{
+							alias T=typeof(mixin(`players[p.player].settings.`~setting));
+							static if(is(T==S[],S)){
+								case setting:
+									if(p.type==PacketType.clearArraySetting) mixin(`players[p.player].settings.`~setting)=[];
+									else if(p.type==PacketType.appendArraySetting) mixin(`players[p.player].settings.`~setting)~=p.getValue!S();
+									break Lswitcha;
+							}
+						}}
+						default: stderr.writeln("warning: unknown array setting '",p.optionName[0..len],"'"); break;
 					}
 				}else if(p.type==PacketType.setMap){
 					auto len=0;
@@ -681,8 +749,8 @@ final class Network(B){
 		assert(isHost);
 	}do{
 		if(!connection) return;
-		static foreach(setting;__traits(allMembers,Settings)){
-			static if(setting=="map"){
+		static foreach(setting;__traits(allMembers,Settings)){{
+			static if(setting=="map"){ // TODO: generalize
 				enum blockSize=Packet.mapName.length;
 				auto value=players[player].settings.map;
 				foreach(i;0..(value.length+blockSize-1)/blockSize){
@@ -690,8 +758,11 @@ final class Network(B){
 					if(i==0) connection.send(Packet.setMap(player,part));
 					else connection.send(Packet.appendMap(player,part));
 				}
+			}else static if(is(typeof(mixin(`players[player].settings.`~setting))==S[],S)){
+				connection.send(Packet.clearArraySetting!setting(player));
+				foreach(entry;mixin(`players[player].settings.`~setting)) connection.send(Packet.appendArraySetting!setting(player,entry));
 			}else connection.send(Packet.updateSetting!setting(player,mixin(`players[player].settings.`~setting)));
-		}
+		}}
 		connection.send(Packet.updateStatus(player,players[player].status));
 		// TODO: send address to attempt to establish peer to peer connection
 	}

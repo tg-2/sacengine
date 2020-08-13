@@ -63,7 +63,7 @@ void loadMap(B)(ref B backend,ref Options options)in{
 		void placeWizard(Settings settings){
 			auto wizard=SacObject!B.getSAXS!Wizard(settings.wizard[0..4]);
 			//printWizardStats(wizard);
-			auto spellbook=getDefaultSpellbook!B(settings.god);
+			auto spellbook=getSpellbook!B(settings.spellbook);
 			auto flags=0;
 			auto wizId=state.current.placeWizard(wizard,flags,settings.controlledSide,settings.level,settings.souls,move(spellbook));
 			if(settings.controlledSide==controlledSide) id=wizId;
@@ -266,6 +266,7 @@ int main(string[] args){
 		import std.random: uniform;
 		options.god=cast(God)uniform!"[]"(1,5);
 	}
+	options.spellbook=defaultSpells[options.god];
 	enum commit = tryImport!("git/"~tryImport!("git/HEAD","ref: ")["ref: ".length..$],"");
 	writeln("SacEngine ",commit.length?text("commit ",commit):"","build ",__DATE__," ",__TIME__);
 	import audio;

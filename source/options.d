@@ -33,6 +33,7 @@ struct Options{
 	int delayStart=0;
 	int host=0;
 	string joinIP="";
+	God god;
 	Settings settings;
 	bool testLag=false;
 	bool dumpTraffic=false;
@@ -43,11 +44,15 @@ struct Options{
 	alias settings this;
 }
 
+struct SpellSpec{
+	int level;
+	char[4] tag;
+}
 struct Settings{
 	string map="";
 	int controlledSide=-1;
 	char[4] wizard="";
-	God god;
+	immutable(SpellSpec)[] spellbook;
 	int level=9;
 	int souls=12;
 }
