@@ -31,7 +31,10 @@ struct Options{
 	Settings settings;
 	bool randomSpellbook=false;
 	// global settings
+	bool randomWizards=false;
 	bool randomSpellbooks=false;
+	bool synchronizeLevel=true;
+	bool synchronizeSouls=true;
 	// just for testing:
 	bool enableReadFromWads=true;
 	int replicateCreatures=1;
