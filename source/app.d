@@ -38,6 +38,7 @@ void loadMap(B)(ref B backend,ref Options options)in{
 		while(!network.readyToLoad){
 			network.idleLobby();
 			if(network.isHost&&network.players.length>=options.host&&network.clientsReadyToLoad()){
+				network.synchronizeSetting!"map"();
 				bool[32] sideTaken=false;
 				foreach(ref player;network.players){
 					auto side=player.settings.controlledSide;
@@ -51,7 +52,15 @@ void loadMap(B)(ref B backend,ref Options options)in{
 					network.updateSetting!"controlledSide"(cast(int)i,freeSides.front);
 					freeSides.popFront();
 				}
-				network.synchronizeSetting!"map"();
+				if(options._2v2||options._3v3){
+					int teamSize=1;
+					if(options._2v2) teamSize=2;
+					if(options._3v3) teamSize=3;
+					foreach(i,ref player;network.players){
+						auto side=player.settings.controlledSide;
+						if(side>=0) network.updateSetting!"team"(cast(int)i,side/teamSize);
+					}
+				}
 				if(options.synchronizeLevel) network.synchronizeSetting!"level"();
 				if(options.synchronizeSouls) network.synchronizeSetting!"souls"();
 				foreach(player;0..cast(int)network.players.length){
@@ -274,6 +283,7 @@ int main(string[] args){
 			static string getOptionName(string memberName){
 				import std.ascii;
 				auto m=memberName;
+				if(m.startsWith("_")) m=m["_".length..$];
 				if(m.startsWith("enable")) m=m["enable".length..$];
 				else if(m.startsWith("disable")) m=m["disable".length..$];
 				string r;
@@ -305,6 +315,8 @@ int main(string[] args){
 	if(options.controlledSide==int.min){
 		options.controlledSide=0;
 	}
+	if(options.host&&options._2v2) options.host=max(options.host,4);
+	if(options.host&&options._3v3) options.host=max(options.host,6);
 	if(options.wizard=="\0\0\0\0"||options.randomWizards){
 		import std.random: uniform;
 		import nttData:wizards;
