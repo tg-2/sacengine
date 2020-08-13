@@ -11553,6 +11553,14 @@ final class Sides(B){
 		if(!manahoarParticles[side]) manahoarParticles[side]=new SacParticle!B(ParticleType.manahoar, manaColor(side), manaEnergy(side), side);
 		return manahoarParticles[side];
 	}
+	void setStance(int from,int towards,Stance stance){
+		if(from<0||from>=sides.length||towards<0||towards>=sides.length) return;
+		final switch(stance){
+			case Stance.ally: sides[from].allies|=1<<towards; sides[from].enemies&=~(1<<towards); break;
+			case Stance.enemy: sides[from].allies&=~(1<<towards); sides[from].enemies|=1<<towards; break;
+			case Stance.neutral: sides[from].allies&=~(1<<towards); sides[from].enemies&=~(1<<towards); break;
+		}
+	}
 	Stance getStance(int from,int towards){
 		if(from<0||from>=sides.length||towards<0||towards>=sides.length) return Stance.neutral;
 		if(sides[from].allies&(1<<towards)) return Stance.ally;
@@ -12247,10 +12255,9 @@ final class GameState(B){
 	ObjectState!B next;
 	Triggers!B triggers;
 	Array!(Array!(Command!B)) commands;
-	this(SacMap!B map,Side[] sids,NTTs ntts,Options options)in{
+	this(SacMap!B map,Sides!B sides,NTTs ntts,Options options)in{
 		assert(!!map);
 	}body{
-		auto sides=new Sides!B(sids);
 		auto proximity=new Proximity!B();
 		auto pathFinder=new PathFinder!B(map);
 		current=new ObjectState!B(map,sides,proximity,pathFinder);
