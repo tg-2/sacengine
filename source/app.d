@@ -61,6 +61,24 @@ void loadMap(B)(ref B backend,ref Options options)in{
 						if(side>=0) network.updateSetting!"team"(cast(int)i,side/teamSize);
 					}
 				}
+				if(options.shuffleSides){
+					auto π=iota(network.players.length).array;
+					import std.random:randomShuffle;
+					randomShuffle(π);
+					auto sides=network.players.map!((ref p)=>p.settings.controlledSide).array;
+					auto teams=network.players.map!((ref p)=>p.settings.team).array;
+					foreach(i,j;π){
+						network.updateSetting!"controlledSide"(cast(int)i,sides[j]);
+						network.updateSetting!"team"(cast(int)i,teams[j]);
+					}
+				}
+				if(options.shuffleTeams){
+					auto π=iota(network.players.length).array;
+					import std.random:randomShuffle;
+					randomShuffle(π);
+					auto teams=network.players.map!((ref p)=>p.settings.team).array;
+					foreach(i,j;π) network.updateSetting!"team"(cast(int)i,teams[j]);
+				}
 				if(options.synchronizeLevel) network.synchronizeSetting!"level"();
 				if(options.synchronizeSouls) network.synchronizeSetting!"souls"();
 				foreach(player;0..cast(int)network.players.length){

@@ -33,6 +33,8 @@ struct Options{
 	// global settings
 	bool _2v2=false;
 	bool _3v3=false;
+	bool shuffleSides=false;
+	bool shuffleTeams=false;
 	bool randomWizards=false;
 	bool randomSpellbooks=false;
 	bool synchronizeLevel=true;
