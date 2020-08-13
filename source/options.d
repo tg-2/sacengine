@@ -26,6 +26,12 @@ struct Options{
 	// hotkeys
 	string hotkeyFilename="";
 	Hotkeys hotkeys;
+	// player-specific settings
+	God god;
+	Settings settings;
+	bool randomSpellbook=false;
+	// global settings
+	bool randomSpellbooks=false;
 	// just for testing:
 	bool enableReadFromWads=true;
 	int replicateCreatures=1;
@@ -33,8 +39,6 @@ struct Options{
 	int delayStart=0;
 	int host=0;
 	string joinIP="";
-	God god;
-	Settings settings;
 	bool testLag=false;
 	bool dumpTraffic=false;
 	bool checkDesynch=true;

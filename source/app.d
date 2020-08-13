@@ -41,6 +41,10 @@ void loadMap(B)(ref B backend,ref Options options)in{
 				network.synchronizeSetting!"map"();
 				network.synchronizeSetting!"level"();
 				network.synchronizeSetting!"souls"();
+				foreach(player;0..cast(int)network.players.length){
+					if(player==network.me) continue;
+					if(options.randomSpellbooks) network.updateSetting!"spellbook"(player,randomSpells());
+				}
 				network.updateStatus(PlayerStatus.readyToLoad);
 				assert(network.readyToLoad());
 				break;
@@ -266,7 +270,9 @@ int main(string[] args){
 		import std.random: uniform;
 		options.god=cast(God)uniform!"[]"(1,5);
 	}
-	options.spellbook=defaultSpells[options.god];
+	if(options.randomSpellbook||options.randomSpellbooks){
+		options.spellbook=randomSpells();
+	}else options.spellbook=defaultSpells[options.god];
 	enum commit = tryImport!("git/"~tryImport!("git/HEAD","ref: ")["ref: ".length..$],"");
 	writeln("SacEngine ",commit.length?text("commit ",commit):"","build ",__DATE__," ",__TIME__);
 	import audio;

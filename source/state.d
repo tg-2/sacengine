@@ -1596,6 +1596,42 @@ immutable(SpellSpec)[][God.max+1] computeDefaultSpells(){
 
 immutable defaultSpells=computeDefaultSpells();
 
+immutable(SpellSpec)[] randomSpells(){
+	import std.random;
+	char[4] workaround(SpellTag tag){ return [tag[0],tag[1],tag[2],tag[3]]; } // ???
+	God god(){ return cast(God)uniform!"[]"(1,cast(int)God.max); }
+	typeof(return) result;
+	foreach(tag;neutralCreatures)
+		result~=SpellSpec(0,workaround(tag));
+	foreach(tag;neutralSpells)
+		result~=SpellSpec(0,workaround(tag));
+	foreach(tag;structureSpells[0..$-1])
+		result~=SpellSpec(0,workaround(tag));
+	enforce(creatureSpells[god].length==11);
+	enforce(normalSpells[god].length==11);
+	foreach(lv;1..9+1){
+		if(lv==3) result~=SpellSpec(3,workaround(structureSpells[$-1]));
+		if(lv==1){
+			foreach(i;1..4){
+				auto tag=creatureSpells[god][i];
+				result~=SpellSpec(lv,workaround(tag));
+			}
+			result~=SpellSpec(lv,workaround(normalSpells[god][lv+1]));
+		}else if(lv<8){
+			result~=SpellSpec(lv,workaround(creatureSpells[god][lv+2]));
+			result~=SpellSpec(lv,workaround(normalSpells[god][lv+1]));
+		}else if(lv==8){
+			foreach(i;9..11){
+				auto tag=normalSpells[god][i];
+				result~=SpellSpec(lv,workaround(tag));
+			}
+		}else if(lv==9){
+			result~=SpellSpec(lv,workaround(creatureSpells[god][lv+1]));
+		}
+	}
+	return result;
+}
+
 Spellbook!B getSpellbook(B)(const(SpellSpec)[] spells){
 	Spellbook!B result;
 	foreach(spec;spells) result.addSpell(spec.level,SacSpell!B.get(spec.tag));
