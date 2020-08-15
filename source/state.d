@@ -4236,8 +4236,8 @@ float dealDamage(T,B)(ref T object,float damage,int attacker,int attackingSide,O
 bool canDamage(B)(ref MovingObject!B object,ObjectState!B state){
 	if(object.creatureStats.flags&Flags.cannotDamage) return false;
 	final switch(object.creatureState.mode) with(CreatureMode){
-		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing,playingDead,pretendingToRevive: return true;
-		case dying,dead,deadToGhost,idleGhost,movingGhost,ghostToIdle,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,convertReviving,thrashing,rockForm: return false;
+		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing,playingDead,pretendingToRevive,rockForm: return true;
+		case dying,dead,deadToGhost,idleGhost,movingGhost,ghostToIdle,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,convertReviving,thrashing: return false;
 	}
 }
 
@@ -4263,7 +4263,9 @@ float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,
 }
 float dealDamage(B)(ref MovingObject!B object,float damage,int attackingSide,ObjectState!B state){
 	if(!object.canDamage(state)) return 0.0f;
-	auto shieldDamageMultiplier=object.creatureStats.effects.lifeShield?0.5f:1.0f;
+	auto shieldDamageMultiplier=1.0f;
+	if(object.creatureStats.effects.lifeShield) shieldDamageMultiplier*=0.5f;
+	if(object.creatureState.mode==CreatureMode.rockForm) shieldDamageMultiplier*=0.05f;
 	return dealRawDamage(object,damage*state.sideDamageMultiplier(attackingSide,object.side)*shieldDamageMultiplier,attackingSide,state);
 }
 float dealDesecrationDamage(B)(ref MovingObject!B object,float damage,int attackingSide,ObjectState!B state){
