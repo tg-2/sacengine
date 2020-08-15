@@ -10415,7 +10415,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 			int attackTargetId=0;
 			if(objects.creatureAIs[j].order.command==CommandType.attack)
 				attackTargetId=objects.creatureAIs[j].order.target.id;
-			proximity.insertCenter(CenterProximityEntry(false,isVisibleToAI,objects.ids[j],objects.sides[j],boxCenter(hitbox),attackTargetId));
+			proximity.insertCenter(CenterProximityEntry(false,isVisibleToAI,objects.ids[j],objects.sides[j],boxCenter(hitbox),hitbox[0].z,attackTargetId));
 		}
 		if(objects.sacObject.isManahoar){
 			static bool manahoarAbilityEnabled(CreatureMode mode){
@@ -10444,7 +10444,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 				// this needs to be kept in synch with isValidAttackTarget
 				auto healthFlags=state.buildingById!((ref b)=>tuple(b.health,b.flags),function Tuple!(float,int){ assert(0); })(buildingId);
 				auto health=healthFlags[0],flags=healthFlags[1];
-				proximity.insertCenter(CenterProximityEntry(true,!(flags&Flags.notOnMinimap),objects.ids[j],sideFromBuildingId(buildingId,state),boxCenter(hitbox),0,health==0.0f));
+				proximity.insertCenter(CenterProximityEntry(true,!(flags&Flags.notOnMinimap),objects.ids[j],sideFromBuildingId(buildingId,state),boxCenter(hitbox),hitbox[0].z,0,health==0.0f));
 			}
 		}
 		// TODO: get rid of duplication here
@@ -10684,6 +10684,7 @@ struct CenterProximityEntry{
 	int id;
 	int side;
 	Vector3f position;
+	float height;
 	int attackTargetId=0;
 	bool zeroHealth; // this information only computed for buildings at the moment
 }
@@ -10824,10 +10825,7 @@ final class Proximity(B){
 		if(type==EnemyType.creature&&entry.isStatic) return false;
 		if(type==EnemyType.building&&!entry.isStatic) return false;
 		if(entry.zeroHealth) return false;
-		if(maxHeight<float.infinity){
-			auto hitbox=state.objectById!hitbox(entry.id);
-			if(hitbox[0].z>state.getHeight(boxCenter(hitbox))+maxHeight) return false;
-		}
+		if(maxHeight<float.infinity && entry.height>state.getHeight(entry.position)+maxHeight) return false;
 		return state.sides.getStance(side,entry.side)==Stance.enemy;
 	}
 	int closestEnemyInRange(int side,Vector3f position,float range,EnemyType type,ObjectState!B state,float maxHeight=float.infinity){
