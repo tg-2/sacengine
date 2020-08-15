@@ -394,6 +394,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Lif
 void serialize(alias sink,B)(ref DivineSight!B divineSight){ serializeStruct!sink(divineSight); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==DivineSight!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref SteamCloud!B steamCloud){ serializeStruct!sink(steamCloud); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SteamCloud!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref Protector!B protector){ serializeStruct!sink(protector); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Protector!B)){ deserializeStruct(result,state,data); }
 

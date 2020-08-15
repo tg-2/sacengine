@@ -2412,6 +2412,13 @@ struct DivineSight(B){
 	int target=0;
 }
 
+struct SteamCloud(B){
+	int id;
+	int side;
+	Vector3f[2] hitbox;
+	SacSpell!B ability;
+}
+
 struct Protector(B){
 	int id;
 	SacSpell!B ability;
@@ -2847,6 +2854,14 @@ struct Effects(B){
 		if(i+1<divineSights.length) divineSights[i]=move(divineSights[$-1]);
 		divineSights.length=divineSights.length-1;
 	}
+	Array!(SteamCloud!B) steamClouds;
+	void addEffect(SteamCloud!B steamCloud){
+		steamClouds~=steamCloud;
+	}
+	void removeSteamCloud(int i){
+		if(i+1<steamClouds.length) steamClouds[i]=move(steamClouds[$-1]);
+		steamClouds.length=steamClouds.length-1;
+	}
 	Array!(Protector!B) protectors;
 	void addEffect(Protector!B protector){
 		protectors~=protector;
@@ -2928,6 +2943,7 @@ struct Effects(B){
 		assignArray(rockForms,rhs.rockForms);
 		assignArray(stealths,rhs.stealths);
 		assignArray(lifeShields,rhs.lifeShields);
+		assignArray(steamClouds,rhs.steamClouds);
 		assignArray(protectors,rhs.protectors);
 		assignArray(appearances,rhs.appearances);
 		assignArray(disappearances,rhs.disappearances);
@@ -4219,10 +4235,9 @@ float dealDamage(T,B)(ref T object,float damage,int attacker,int attackingSide,O
 
 bool canDamage(B)(ref MovingObject!B object,ObjectState!B state){
 	if(object.creatureStats.flags&Flags.cannotDamage) return false;
-	if(object.creatureStats.effects.stealth) return false;
 	final switch(object.creatureState.mode) with(CreatureMode){
-		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing: return true;
-		case dying,dead,deadToGhost,idleGhost,movingGhost,ghostToIdle,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,rockForm,convertReviving,thrashing: return false;
+		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing,playingDead,pretendingToRevive: return true;
+		case dying,dead,deadToGhost,idleGhost,movingGhost,ghostToIdle,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,convertReviving,thrashing,rockForm: return false;
 	}
 }
 
@@ -6016,20 +6031,7 @@ bool shootAbilityBug(B)(ref MovingObject!B object,ObjectState!B state){
 }
 
 bool steamCloud(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
-	dealSplashRangedDamageAt(object.id,ability,ability.effectRange,object.id,object.side,object.position,state);
-	enum numParticles2=100;
-	auto sacParticle2=SacParticle!B.get(ParticleType.steam);
-	auto hitbox=object.hitbox;
-	auto scale=0.3f*boxSize(hitbox).length;
-	foreach(i;0..numParticles2){
-		auto position=state.uniform(scaleBox(hitbox,1.2f));
-		//auto direction=state.uniformDirection();
-		auto direction=(position-boxCenter(hitbox)).normalized;
-		auto velocity=scale*state.uniform(0.25f,0.75f)*direction;
-		auto lifetime=63;
-		auto frame=0;
-		state.addParticle(Particle!B(sacParticle2,position,velocity,scale,lifetime,frame));
-	}
+	state.addEffect(SteamCloud!B(object.id,object.side,object.hitbox,ability));
 	return true;
 }
 
@@ -9439,6 +9441,7 @@ bool updateRockForm(B)(ref RockForm!B rockForm,ObjectState!B state){
 		if(!state.isValidTarget(target,TargetType.creature)) return false;
 		if(status!=RockFormStatus.shrinking){
 			static bool check(ref MovingObject!B obj){
+				if(obj.isGuardian) return false;
 				return obj.creatureState.mode==CreatureMode.rockForm;
 			}
 			if(!state.movingObjectById!(check,()=>false)(target)){
@@ -9464,6 +9467,7 @@ bool updateRockForm(B)(ref RockForm!B rockForm,ObjectState!B state){
 }
 
 bool checkStealth(B)(ref MovingObject!B obj){
+	if(obj.isGuardian) return false;
 	final switch(obj.creatureState.mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,cower,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
 		case dying,dead,deadToGhost,idleGhost,movingGhost,ghostToIdle,dissolving,preSpawning,reviving,fastReviving,meleeMoving,meleeAttacking,stunned,casting,stationaryCasting,castingMoving,shooting,pumping,torturing,convertReviving,thrashing: return false;
@@ -9603,6 +9607,25 @@ bool updateDivineSight(B)(ref DivineSight!B divineSight,ObjectState!B state){
 		position=newPosition;
 		// TODO: clear fog of war
 		return frame<lifetime;
+	}
+}
+
+bool updateSteamCloud(B)(ref SteamCloud!B steamCloud,ObjectState!B state){
+	with(steamCloud){
+		dealSplashRangedDamageAt(id,ability,ability.effectRange,id,side,boxCenter(hitbox),state);
+		enum numParticles2=100;
+		auto sacParticle2=SacParticle!B.get(ParticleType.steam);
+		auto scale=0.3f*boxSize(hitbox).length;
+		foreach(i;0..numParticles2){
+			auto position=state.uniform(scaleBox(hitbox,1.2f));
+			//auto direction=state.uniformDirection();
+			auto direction=(position-boxCenter(hitbox)).normalized;
+			auto velocity=scale*state.uniform(0.25f,0.75f)*direction;
+			auto lifetime=63;
+			auto frame=0;
+			state.addParticle(Particle!B(sacParticle2,position,velocity,scale,lifetime,frame));
+		}
+		return false;
 	}
 }
 
@@ -10052,6 +10075,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.divineSights.length;){
 		if(!updateDivineSight(effects.divineSights[i],state)){
 			effects.removeDivineSight(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.steamClouds.length;){
+		if(!updateSteamCloud(effects.steamClouds[i],state)){
+			effects.removeSteamCloud(i);
 			continue;
 		}
 		i++;
