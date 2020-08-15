@@ -4955,7 +4955,7 @@ void animateTeleport(B)(bool isOut,Vector3f[2] hitbox,ObjectState!B state){
 bool teleport(B)(int side,Vector3f startPosition,Vector3f targetPosition,SacSpell!B spell,ObjectState!B state){
 	static void teleport(ref CenterProximityEntry entry,int side,Vector3f startPosition,Vector3f targetPosition,ObjectState!B state){
 		static void doIt(ref MovingObject!B obj,Vector3f startPosition,Vector3f targetPosition,ObjectState!B state){
-			if(obj.isSacDoctor||obj.isGuardian) return;
+			if(obj.isSacDoctor||obj.isGuardian||obj.isDying) return;
 			if(!obj.isWizard&&obj.creatureAI.order.command!=CommandType.guard)
 				obj.clearOrderQueue(state);
 			auto oldHeight=obj.position.z-state.getHeight(obj.position);
