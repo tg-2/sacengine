@@ -4938,7 +4938,7 @@ void animateTeleport(B)(bool isOut,Vector3f[2] hitbox,ObjectState!B state){
 bool teleport(B)(int side,Vector3f startPosition,Vector3f targetPosition,SacSpell!B spell,ObjectState!B state){
 	static void teleport(ref CenterProximityEntry entry,int side,Vector3f startPosition,Vector3f targetPosition,ObjectState!B state){
 		static void doIt(ref MovingObject!B obj,Vector3f startPosition,Vector3f targetPosition,ObjectState!B state){
-			if(obj.isSacDoctor) return;
+			if(obj.isSacDoctor||obj.isGuardian) return;
 			auto oldHeight=obj.position.z-state.getHeight(obj.position);
 			auto newPosition=obj.position-startPosition+targetPosition;
 			if(obj.creatureState.movement!=CreatureMovement.flying&&!state.isOnGround(newPosition)){
@@ -10380,12 +10380,10 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 				bool isProjectileObstacle=objects.creatureStates[j].mode.isProjectileObstacle;
 				proximity.insert(ProximityEntry(objects.ids[j],hitbox,isProjectileObstacle));
 			}
-			if(isVisibleToAI){
-				int attackTargetId=0;
-				if(objects.creatureAIs[j].order.command==CommandType.attack)
-					attackTargetId=objects.creatureAIs[j].order.target.id;
-				proximity.insertCenter(CenterProximityEntry(false,objects.ids[j],objects.sides[j],boxCenter(hitbox),attackTargetId));
-			}
+			int attackTargetId=0;
+			if(objects.creatureAIs[j].order.command==CommandType.attack)
+				attackTargetId=objects.creatureAIs[j].order.target.id;
+			proximity.insertCenter(CenterProximityEntry(false,isVisibleToAI,objects.ids[j],objects.sides[j],boxCenter(hitbox),attackTargetId));
 		}
 		if(objects.sacObject.isManahoar){
 			static bool manahoarAbilityEnabled(CreatureMode mode){
@@ -10414,8 +10412,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 				// this needs to be kept in synch with isValidAttackTarget
 				auto healthFlags=state.buildingById!((ref b)=>tuple(b.health,b.flags),function Tuple!(float,int){ assert(0); })(buildingId);
 				auto health=healthFlags[0],flags=healthFlags[1];
-				if(!(flags&Flags.notOnMinimap))
-					proximity.insertCenter(CenterProximityEntry(true,objects.ids[j],sideFromBuildingId(buildingId,state),boxCenter(hitbox),0,health==0.0f));
+				proximity.insertCenter(CenterProximityEntry(true,!(flags&Flags.notOnMinimap),objects.ids[j],sideFromBuildingId(buildingId,state),boxCenter(hitbox),0,health==0.0f));
 			}
 		}
 		// TODO: get rid of duplication here
@@ -10651,6 +10648,7 @@ struct ManaProximity(B){
 
 struct CenterProximityEntry{
 	bool isStatic;
+	bool isVisibleToAI;
 	int id;
 	int side;
 	Vector3f position;
@@ -10790,6 +10788,7 @@ final class Proximity(B){
 		centers.insert(version_,entry);
 	}
 	private static bool isEnemy(T...)(ref CenterProximityEntry entry,int side,EnemyType type,ObjectState!B state,float maxHeight=float.infinity,T ignored=T.init){
+		if(!entry.isVisibleToAI) return false;
 		if(type==EnemyType.creature&&entry.isStatic) return false;
 		if(type==EnemyType.building&&!entry.isStatic) return false;
 		if(entry.zeroHealth) return false;
