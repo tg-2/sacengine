@@ -859,7 +859,7 @@ bool hasShootTick(B)(ref MovingObject!B object){
 }
 
 SacSpell!B ability(B)(ref MovingObject!B object){
-	if(object.isGuardian) return null;
+	if(object.isGuardian||object.isDying) return null;
 	return object.sacObject.ability;
 }
 SacSpell!B passiveAbility(B)(ref MovingObject!B object){ return object.sacObject.passiveAbility; }
