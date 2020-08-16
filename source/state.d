@@ -3803,11 +3803,13 @@ bool pickNextAnimation(B)(ref MovingObject!B object,immutable(AnimationState)[] 
 	return true;
 }
 
-void startIdling(B)(ref MovingObject!B object, ObjectState!B state){
+bool startIdling(B)(ref MovingObject!B object, ObjectState!B state){
+	if(object.creatureState.mode==CreatureMode.idle) return true;
 	with(CreatureMode) if(!object.creatureState.mode.among(moving,spawning,reviving,fastReviving,takeoff,landing,meleeMoving,meleeAttacking,stunned,casting,stationaryCasting,castingMoving,shooting,pumping,torturing,rockForm))
-		return;
+		return false;
 	object.creatureState.mode=CreatureMode.idle;
 	object.setCreatureState(state);
+	return true;
 }
 
 bool kill(B,bool pretending=false)(ref MovingObject!B object, ObjectState!B state){
@@ -7555,11 +7557,15 @@ bool updateSacDocCarry(B)(ref SacDocCarry!B sacDocCarry,ObjectState!B state){
 		}else return false;
 	}
 	static bool startMoving(ref MovingObject!B sacDoc,ref SacDocCarry!B sacDocCarry,ObjectState!B state){
+		if(sacDoc.isDying) return false;
 		with(sacDocCarry){
 			sacDoc.clearOrderQueue(state);
 			status=SacDocCarryStatus.move;
 			tether=makeSacDocTether(sacDoc,creature,state);
-			sacDoc.startIdling(state);
+			if(!sacDoc.startIdling(state)){
+				sacDoc.kill(state);
+				return false;
+			}
 			sacDoc.animationState=cast(AnimationState)SacDoctorAnimationState.pickUpCorpse;
 			if(!state.movingObjectById!(startThrashing,()=>false)(creature,state)){
 				sacDoc.kill(state);
@@ -7624,8 +7630,8 @@ bool updateSacDocCarry(B)(ref SacDocCarry!B sacDocCarry,ObjectState!B state){
 								return false;
 							}
 							if((sacDoc.position-creaturePosition).xy.lengthsqr<(2.0f*scale+0.5f).lengthsqr){
-								sacDoc.creatureStats.effects.carrying=numSouls;
 								if(!startMoving(sacDoc,*sacDocCarry,state)) return false;
+								sacDoc.creatureStats.effects.carrying=numSouls;
 							}else if(!sacDoc.hasOrders(state)){
 								auto ord=Order(CommandType.move,OrderTarget(TargetType.creature,creature,creaturePosition));
 								sacDoc.order(ord,state);
