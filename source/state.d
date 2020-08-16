@@ -4958,7 +4958,7 @@ bool teleport(B)(int side,Vector3f startPosition,Vector3f targetPosition,SacSpel
 	static void teleport(ref CenterProximityEntry entry,int side,Vector3f startPosition,Vector3f targetPosition,ObjectState!B state){
 		static void doIt(ref MovingObject!B obj,Vector3f startPosition,Vector3f targetPosition,ObjectState!B state){
 			if(obj.isSacDoctor||obj.isGuardian||obj.isDying) return;
-			if(!obj.isWizard&&obj.creatureAI.order.command!=CommandType.guard)
+			if(!obj.isWizard&&!obj.creatureAI.order.command.among(CommandType.guard,CommandType.retreat))
 				obj.clearOrderQueue(state);
 			auto oldHeight=obj.position.z-state.getHeight(obj.position);
 			auto newPosition=obj.position-startPosition+targetPosition;
