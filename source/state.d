@@ -5598,7 +5598,10 @@ bool retreatTowards(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectS
 
 bool isValidAttackTarget(B,T)(ref T obj,ObjectState!B state)if(is(T==MovingObject!B)||is(T==StaticObject!B)){
 	// this needs to be kept in synch with addToProximity
-	static if(is(T==MovingObject!B)) if(!obj.creatureState.mode.isValidAttackTarget) return false;
+	static if(is(T==MovingObject!B)){
+		if(!obj.creatureState.mode.isValidAttackTarget) return false;
+		if(obj.creatureStats.effects.stealth) return false;
+	}
 	return obj.health(state)!=0.0f;
 }
 bool isValidAttackTarget(B)(int targetId,ObjectState!B state){
@@ -6308,6 +6311,8 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 				if(state.isOnGround(object.position)&&object.position.z<=state.getGroundHeight(object.position))
 					object.creatureState.movement=CreatureMovement.onGround;
 			}
+			if(object.creatureState.mode==CreatureMode.playingDead&&object.isGuardian)
+				object.pretendToRevive(state);
 			break;
 		case CreatureMode.dissolving:
 			object.creatureState.timer+=1;
@@ -9444,11 +9449,11 @@ bool updateRockForm(B)(ref RockForm!B rockForm,ObjectState!B state){
 	with(rockForm){
 		if(!state.isValidTarget(target,TargetType.creature)) return false;
 		if(status!=RockFormStatus.shrinking){
-			static bool check(ref MovingObject!B obj){
-				if(obj.isGuardian) return false;
+			static bool check(ref MovingObject!B obj,ObjectState!B state){
+				if(obj.isGuardian) obj.startIdling(state);
 				return obj.creatureState.mode==CreatureMode.rockForm;
 			}
-			if(!state.movingObjectById!(check,()=>false)(target)){
+			if(!state.movingObjectById!(check,()=>false)(target,state)){
 				status=RockFormStatus.shrinking;
 				playSoundAt("tlep",target,state,2.0f);
 			}
@@ -9483,11 +9488,12 @@ bool updateStealth(B)(ref Stealth!B stealth,ObjectState!B state){
 		if(!state.isValidTarget(target,TargetType.creature)) return false;
 		updateRenderMode(target,state);
 		if(status!=StealthStatus.fadingIn){
-			static bool check(ref MovingObject!B obj){
+			static bool check(ref MovingObject!B obj,ObjectState!B state){
 				assert(obj.creatureStats.effects.stealth);
+				if(obj.isGuardian) return false;
 				return obj.checkStealth();
 			}
-			if(!state.movingObjectById!(check,()=>false)(target)){
+			if(!state.movingObjectById!(check,()=>false)(target,state)){
 				status=StealthStatus.fadingIn;
 				playSoundAt("tlts",target,state,2.0f);
 			}
