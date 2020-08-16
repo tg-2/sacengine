@@ -7629,7 +7629,8 @@ bool updateSacDocCarry(B)(ref SacDocCarry!B sacDocCarry,ObjectState!B state){
 								sacDoc.kill(state);
 								return false;
 							}
-							if((sacDoc.position-creaturePosition).xy.lengthsqr<(2.0f*scale+0.5f).lengthsqr){
+							enum desecratePickUpDistance=10.0f;
+							if((sacDoc.position-creaturePosition).xy.lengthsqr<max((2.0f*scale+0.5f).lengthsqr,desecratePickUpDistance^^2)){
 								if(!startMoving(sacDoc,*sacDocCarry,state)) return false;
 								sacDoc.creatureStats.effects.carrying=numSouls;
 							}else if(!sacDoc.hasOrders(state)){
