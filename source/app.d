@@ -113,7 +113,7 @@ void loadMap(B)(ref B backend,ref Options options)in{
 		int mpside=side.assignment&PlayerAssignment.multiplayerMask;
 		if(!mpside) continue;
 		multiplayerSides[mpside-1]=cast(int)i;
-		matchedSides[mpside]=true;
+		matchedSides[mpside-1]=true;
 	}
 	iota(32).filter!(i=>!matchedSides[i]).copy(multiplayerSides[].filter!(x=>x==-1));
 	int multiplayerSide(int side){
