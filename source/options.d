@@ -63,6 +63,7 @@ struct Settings{
 	string map="";
 	int controlledSide=-1;
 	int team=-1;
+	string name="";
 	char[4] wizard="";
 	immutable(SpellSpec)[] spellbook;
 	int level=9;

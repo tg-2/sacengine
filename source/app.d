@@ -263,6 +263,8 @@ int main(string[] args){
 			options.controlledSide=to!int(opt["--side=".length..$]);
 		}else if(opt.startsWith("--team=")){
 			options.team=to!int(opt["--team=".length..$]);
+		}else if(opt.startsWith("--name=")){
+			options.name=opt["--name=".length..$];
 		}else if(opt.startsWith("--wizard=")){
 			auto wizard=opt["--wizard=".length..$];
 			import nttData:tagFromCreatureName;

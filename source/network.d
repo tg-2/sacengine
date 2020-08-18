@@ -72,19 +72,23 @@ enum PacketType{
 	updateSetting,
 	clearArraySetting,
 	appendArraySetting,
+	confirmArraySetting,
 	setMap,
 	appendMap,
+	confirmMap,
 	updateStatus,
 	command,
 	commit,
 }
+
+enum arrayLengthLimit=4096;
 
 PacketPurpose purposeFromType(PacketType type){
 	final switch(type) with(PacketType) with(PacketPurpose){
 		case nop,disconnect,ping,ack: return peerToPeer;
 		case updatePlayerId,loadGame,startGame: return hostMessage;
 		case checkSynch: return hostQuery;
-		case updateSetting,clearArraySetting,appendArraySetting,setMap,appendMap,updateStatus,command,commit: return broadcast;
+		case updateSetting,clearArraySetting,appendArraySetting,confirmArraySetting,setMap,appendMap,confirmMap,updateStatus,command,commit: return broadcast;
 	}
 }
 
@@ -135,8 +139,13 @@ struct Packet{
 					}}
 					default: return text(`Packet.appendArraySetting!"`,optionName[0..len],`"(?)`);
 				}
+			case confirmArraySetting:
+				auto len=0;
+				while(len<optionName.length&&optionName[len]!='\0') ++len;
+				return text(`Packet.confirmArraySetting!"`,optionName[0..len],`"(`,player,`)`);
 			case setMap: return text("Packet.setMap(",mapPlayer,",",mapName,")");
 			case appendMap: return text("Packet.appendMap(",mapPlayer,",",mapName,")");
+			case confirmMap: return text("Packet.confirmMap(",player,")");
 			case updateStatus: return text("Packet.updateStatus(",player,`,PlayerStatus.`,newStatus,")");
 			case command: return text("Packet.command(fromNetwork(",networkCommand,"))");
 			case commit: return text("Packet.commit(",commitPlayer,",",commitFrame,")");
@@ -155,10 +164,10 @@ struct Packet{
 			int synchHash;
 		}
 		struct{ int pingId; } // ack
-		struct{ // updateSetting, updateStatus
+		struct{ // updateStatus, updateSetting, clearArraySetting, appendArraySetting, confirmArraySetting
 			int player;
 			union{
-				struct{// updateSetting, clearArraySetting, appendArraySetting
+				struct{// updateSetting, clearArraySetting, appendArraySetting, confirmArraySetting
 					char[32] optionName;
 					union{
 						int intValue;
@@ -175,7 +184,7 @@ struct Packet{
 				}
 			}
 		}
-		struct{ int mapPlayer; char[32] mapName; } // setMap, appendMap
+		struct{ int mapPlayer; char[32] mapName; } // setMap, appendMap, confirmMap
 		struct{ // command
 			int frame;
 			NetworkCommand networkCommand;
@@ -274,6 +283,15 @@ struct Packet{
 		p.setValue(value);
 		return p;
 	}
+	static Packet confirmArraySetting(string name)(int player){
+		Packet p;
+		p.type=PacketType.confirmArraySetting;
+		p.player=player;
+		p.optionName[]='\0';
+		p.optionName[0..name.length]=name[];
+		static assert(name.length<optionName.length);
+		return p;
+	}
 	static Packet setMap(int player,string part)in{
 		assert(part.length<=mapName.length);
 	}do{
@@ -292,6 +310,12 @@ struct Packet{
 		p.mapPlayer=player;
 		p.mapName[0..part.length]=part;
 		p.mapName[part.length..$]=0;
+		return p;
+	}
+	static Packet confirmMap(int player){
+		Packet p;
+		p.type=PacketType.confirmMap;
+		p.player=player;
 		return p;
 	}
 	static Packet updateStatus(int player,PlayerStatus newStatus){
@@ -495,8 +519,9 @@ final class Network(B){
 		return players.any!(p=>p.status==PlayerStatus.desynched);
 	}
 	int committedFrame(){
-		if(!players.length) return 0;
-		return players.map!(p=>p.committedFrame).reduce!min;
+		auto valid=players.filter!((ref p)=>!p.status.among(PlayerStatus.disconnected,PlayerStatus.desynched));
+		if(valid.empty) return 0;
+		return valid.map!(p=>p.committedFrame).reduce!min;
 	}
 	int me=-1;
 	@property settings()in{
@@ -534,9 +559,11 @@ final class Network(B){
 				if(i==0) broadcast(Packet.setMap(player,part));
 				else broadcast(Packet.appendMap(player,part));
 			}
+			broadcast(Packet.confirmMap(player));
 		}else static if(is(typeof(mixin(`players[player].settings.`~setting))==S[],S)){ // TODO: generalize
 			broadcast(Packet.clearArraySetting!setting(player));
 			foreach(entry;value) broadcast(Packet.appendArraySetting!setting(player,entry));
+			broadcast(Packet.confirmArraySetting!setting(player));
 		}else broadcast(Packet.updateSetting!setting(player,value));
 		mixin(`players[player].settings.`~setting)=value;
 	}
@@ -574,14 +601,24 @@ final class Network(B){
 		measurePing,
 	}
 	AckHandler ackHandler;
+	void report(bool error=false,T...)(int player,T action){
+		static if(error){
+			if(players[player].settings.name=="") stderr.writeln("player ",player," ",action);
+			else stderr.writeln(players[player].settings.name," (player ",player,") ",action);
+		}else{
+			if(players[player].settings.name=="") writeln("player ",player," ",action);
+			else writeln(players[player].settings.name," (player ",player,") ",action);
+		}
+	}
 	void performPacketAction(int sender,Packet p,Controller!B controller){
 		if(dumpTraffic) writeln("from ",sender,": ",p);
 		final switch(p.type){
 			// peer to peer:
 			case PacketType.nop: break;
 			case PacketType.disconnect:
-				writeln("player ",sender," disconnected");
 				players[sender].connection=null;
+				updateStatus(sender,PlayerStatus.disconnected);
+				report(sender,"disconnected");
 				break;
 			case PacketType.ping: players[sender].send(Packet.ack(p.id)); break;
 			case PacketType.ack:
@@ -642,7 +679,7 @@ final class Network(B){
 				}
 				assert(!!synchQueue);
 				if(!synchQueue.check(p.synchFrame,p.synchHash)){
-					stderr.writeln("player ",sender," desynchronized at frame ",p.synchFrame);
+					report!true(sender,"desynchronized at frame ",p.synchFrame);
 					if(p.synchFrame>=synchQueue.end){
 						stderr.writeln("tried to synch on non-committed frame (after ",synchQueue.end,")");
 					}else{
@@ -652,7 +689,7 @@ final class Network(B){
 				}
 				break;
 			// broadcast:
-			case PacketType.updateSetting,PacketType.clearArraySetting,PacketType.appendArraySetting,PacketType.setMap,PacketType.appendMap:
+			case PacketType.updateSetting,PacketType.clearArraySetting,PacketType.appendArraySetting,PacketType.confirmArraySetting,PacketType.setMap,PacketType.appendMap,PacketType.confirmMap:
 				if(!isHost&&sender!=host){
 					stderr.writeln("non-host player ",sender," attempted to update settings: ",p);
 					break;
@@ -674,7 +711,6 @@ final class Network(B){
 				if(p.type==PacketType.updateSetting){
 					auto len=0;
 					while(len<p.optionName.length&&p.optionName[len]!='\0') ++len;
-					if(len==p.optionName.length) break;
 				Lswitch:switch(p.optionName[0..len]){
 						static foreach(setting;__traits(allMembers,Settings)){{
 							alias T=typeof(mixin(`players[p.player].settings.`~setting));
@@ -695,12 +731,19 @@ final class Network(B){
 							static if(is(T==S[],S)){
 								case setting:
 									if(p.type==PacketType.clearArraySetting) mixin(`players[p.player].settings.`~setting)=[];
-									else if(p.type==PacketType.appendArraySetting) mixin(`players[p.player].settings.`~setting)~=p.getValue!S();
+									else if(p.type==PacketType.appendArraySetting){
+										if(mixin(`players[p.player].settings.`~setting).length<arrayLengthLimit)
+											mixin(`players[p.player].settings.`~setting)~=p.getValue!S();
+									}
 									break Lswitcha;
 							}
 						}}
 						default: stderr.writeln("warning: unknown array setting '",p.optionName[0..len],"'"); break;
 					}
+				}else if(p.type==PacketType.confirmArraySetting){
+					auto len=0;
+					while(len<p.optionName.length&&p.optionName[len]!='\0') ++len;
+					if(p.optionName[0..len]=="name" && players[p.player].settings.name!="") writeln("player ",p.player," is ",players[p.player].settings.name);
 				}else if(p.type==PacketType.setMap){
 					auto len=0;
 					while(len<p.mapName.length&&p.mapName[len]!='\0') ++len;
@@ -708,7 +751,9 @@ final class Network(B){
 				}else if(p.type==PacketType.appendMap){
 					auto len=0;
 					while(len<p.mapName.length&&p.mapName[len]!='\0') ++len;
-					players[p.mapPlayer].settings.map~=p.mapName[0..len];
+					if(players[p.mapPlayer].settings.map.length<arrayLengthLimit)
+						players[p.mapPlayer].settings.map~=p.mapName[0..len];
+				}else if(p.type==PacketType.confirmMap){
 				}else assert(0);
 				break;
 			case PacketType.updateStatus:
@@ -758,15 +803,17 @@ final class Network(B){
 					if(i==0) connection.send(Packet.setMap(player,part));
 					else connection.send(Packet.appendMap(player,part));
 				}
+				connection.send(Packet.confirmMap(player));
 			}else static if(is(typeof(mixin(`players[player].settings.`~setting))==S[],S)){
 				connection.send(Packet.clearArraySetting!setting(player));
 				foreach(entry;mixin(`players[player].settings.`~setting)) connection.send(Packet.appendArraySetting!setting(player,entry));
+				connection.send(Packet.confirmArraySetting!setting(player));
 			}else connection.send(Packet.updateSetting!setting(player,mixin(`players[player].settings.`~setting)));
 		}}
 		connection.send(Packet.updateStatus(player,players[player].status));
 		// TODO: send address to attempt to establish peer to peer connection
 	}
-	void addPlayer(Player player)in{
+	int addPlayer(Player player)in{
 		assert(isHost);
 	}do{
 		int newId=cast(int)players.length;
@@ -776,10 +823,11 @@ final class Network(B){
 		foreach(other;0..cast(int)players.length)
 			sendPlayerData(players[newId].connection,other);
 		players[newId].send(Packet.updatePlayerId(newId));
+		return newId;
 	}
 	void acceptNewConnections(){
 		if(!listener) return;
-		if(playing) return; // TODO: allow observers to join and dropped players to reconnect
+		if(loading||playing) return; // TODO: allow observers to join and dropped players to reconnect
 		if(isHost){
 			if(players.length>=playerLimit) return;
 			for(Socket newSocket=null;;newSocket=null){
@@ -789,8 +837,8 @@ final class Network(B){
 				newSocket.blocking=false;
 				// TODO: detect reconnection attempts
 				auto newPlayer=Player(PlayerStatus.connected,Settings.init,new TCPConnection(newSocket));
-				addPlayer(newPlayer);
-				writeln("player ",players.length-1," joined");
+				auto newId=addPlayer(newPlayer);
+				writeln("player ",newId," joined");
 			}
 		}else{
 			// TODO: accept peer-to-peer connections to decrease latency
@@ -802,7 +850,8 @@ final class Network(B){
 			if(!player.connection) continue;
 			if(!player.alive){
 				player.connection=null;
-				stderr.writeln("player ",i," dropped");
+				if(isHost) updateStatus(cast(int)i,PlayerStatus.disconnected);
+				report!true(cast(int)i,"dropped");
 				continue;
 			}
 			while(player.ready) handlePacket(cast(int)i,player.receive,controller);
