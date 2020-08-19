@@ -486,14 +486,16 @@ final class Network(B){
 		me=0;
 		if(checkDesynch) synchQueue=new SynchQueue();
 	}
+	Socket joinSocket=null;
 	bool joinGame(InternetAddress hostAddress)in{
 		assert(!players.length);
 	}do{
-		auto socket=new Socket(AddressFamily.INET,SocketType.STREAM);
-		try socket.connect(hostAddress);
+		if(!joinSocket) joinSocket=new Socket(AddressFamily.INET,SocketType.STREAM);
+		try joinSocket.connect(hostAddress);
 		catch(Exception){ return false; }
-		socket.blocking=false;
-		players=[Player(PlayerStatus.connected,Settings.init,new TCPConnection(socket))];
+		joinSocket.blocking=false;
+		players=[Player(PlayerStatus.connected,Settings.init,new TCPConnection(joinSocket))];
+		joinSocket=null;
 		return true;
 	}
 	bool synched(){
