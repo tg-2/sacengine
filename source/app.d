@@ -20,6 +20,7 @@ void loadMap(B)(ref B backend,ref Options options)in{
 		while(!network.joinGame(address)){
 			import core.thread;
 			Thread.sleep(200.msecs);
+			if(!backend.processEvents()) return;
 		}
 	}
 	Recording!B playback=null;
@@ -32,12 +33,17 @@ void loadMap(B)(ref B backend,ref Options options)in{
 	if(network){
 		network.dumpTraffic=options.dumpTraffic;
 		network.checkDesynch=options.checkDesynch;
-		while(!network.synched) network.idleLobby();
+		while(!network.synched){
+			network.idleLobby();
+			if(!backend.processEvents()) return;
+		}
 		network.updateSettings(options.settings);
 		if(!network.isHost) network.updateStatus(PlayerStatus.readyToLoad);
 		while(!network.readyToLoad){
 			network.idleLobby();
+			if(!backend.processEvents()) return;
 			if(network.isHost&&network.players.length>=options.host&&network.clientsReadyToLoad()){
+				network.acceptingNewConnections=false; // TODO: accept observers later
 				network.synchronizeSetting!"map"();
 				bool[32] sideTaken=false;
 				foreach(ref player;network.players){
@@ -96,7 +102,10 @@ void loadMap(B)(ref B backend,ref Options options)in{
 		if(network.isHost){
 			network.load();
 		}else{
-			while(!network.loading) network.idleLobby();
+			while(!network.loading){
+				network.idleLobby();
+				if(!backend.processEvents()) return;
+			}
 		}
 		options.settings=network.settings;
 		controlledSide=options.settings.controlledSide;
@@ -180,6 +189,7 @@ void loadMap(B)(ref B backend,ref Options options)in{
 	auto controller=new Controller!B(multiplayerSide(controlledSide),state,network,recording);
 	backend.setState(state);
 	if(id) backend.focusCamera(id);
+	else backend.scene.fpview.active=true;
 	backend.setController(controller);
 }
 

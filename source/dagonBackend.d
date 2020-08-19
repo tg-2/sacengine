@@ -2134,7 +2134,6 @@ final class SacScene: Scene{
 		eCamera.position = Vector3f(1270.0f, 1270.0f, 2.0f);
 		fpview = New!FirstPersonView2(eventManager, eCamera, assetManager);
 		view = fpview;
-		fpview.active=true;
 		mouse.visible=false;
 		fpview.mouseFactor=0.25f;
 		//auto mat = createMaterial();
@@ -2795,7 +2794,7 @@ final class SacScene: Scene{
 		control(dt);
 		if(state){
 			if(controller){
-				controller.step();
+				if(controller.step()) eventManager.update();
 				if(options.testLag){
 					if(controller.network){
 						if(controller.network.isHost&&controller.network.playing){
@@ -3125,6 +3124,11 @@ struct DagonBackend{
 	}
 	void addObject(SacObject!DagonBackend obj,Vector3f position,Quaternionf rotation){
 		scene.addObject(obj,position,rotation);
+	}
+	bool processEvents(){
+		app.eventManager.update();
+		app.processEvents();
+		return app.eventManager.running;
 	}
 	void run(){
 		app.sceneManager.goToScene("Sacrifice");

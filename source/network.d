@@ -827,9 +827,10 @@ final class Network(B){
 		players[newId].send(Packet.updatePlayerId(newId));
 		return newId;
 	}
+	bool acceptingNewConnections=true;
 	void acceptNewConnections(){
 		if(!listener) return;
-		if(loading||playing) return; // TODO: allow observers to join and dropped players to reconnect
+		if(!acceptingNewConnections||loading||playing) return; // TODO: allow observers to join and dropped players to reconnect
 		if(isHost){
 			if(players.length>=playerLimit) return;
 			for(Socket newSocket=null;;newSocket=null){
@@ -879,13 +880,13 @@ final class Network(B){
 		players[me].ping=0;
 		foreach(ref player;players)
 			player.send(Packet.ping(B.ticks()));
-		while(players.any!(p=>p.ping==-1))
+		while(players.any!((ref p)=>!p.status.among(PlayerStatus.disconnected,PlayerStatus.desynched)&&p.ping==-1))
 			update(null);
 		auto maxPing=players.map!(p=>p.ping).reduce!max;
-		enforce(maxPing!=-1);
 		writeln("pings: ",players.map!(p=>p.ping));
 		foreach(ref player;players)
-			player.send(Packet.startGame((maxPing-player.ping)/2));
+			if(player.ping!=-1)
+				player.send(Packet.startGame((maxPing-player.ping)/2));
 		Thread.sleep((maxPing/2).msecs);
 		updateStatus(PlayerStatus.playing);
 	}

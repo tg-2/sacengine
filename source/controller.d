@@ -67,19 +67,19 @@ final class Controller(B){
 		}
 		assert(committedFrame==state.lastCommitted.frame);
 	}
-	void step(){
+	bool step(){
 		playAudio=false;
 		if(network){
 			network.update(this);
 			if(network.desynched)
-				return;
+				return false;
 			if(!network.playing){
 				network.updateStatus(PlayerStatus.readyToStart);
 				if(network.isHost&&network.readyToStart()){
 					network.addSynch(state.lastCommitted.frame,state.lastCommitted.hash);
 					network.start();
 				}
-				return;
+				return true; // ignore passed time in next frame
 			}
 			updateCommitted();
 			if(firstUpdatedFrame<currentFrame){
@@ -105,5 +105,6 @@ final class Controller(B){
 				lastCheckSynch=committedFrame;
 			}
 		}
+		return false;
 	}
 }
