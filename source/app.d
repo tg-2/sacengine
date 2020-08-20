@@ -43,7 +43,8 @@ void loadMap(B)(ref B backend,ref Options options)in{
 			network.idleLobby();
 			if(!backend.processEvents()) return;
 			if(network.isHost&&network.players.length>=options.host&&network.clientsReadyToLoad()){
-				network.acceptingNewConnections=false; // TODO: accept observers later
+				//network.acceptingNewConnections=false; // TODO: accept observers later
+				network.stopListening();
 				network.synchronizeSetting!"map"();
 				bool[32] sideTaken=false;
 				foreach(ref player;network.players){

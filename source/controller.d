@@ -24,7 +24,7 @@ final class Controller(B){
 	}
 	void addCommand(int frame,Command!B command)in{
 		assert(command.id==0);
-		assert(!network||network.playing);
+		assert(!network||network.playing||frame==0&&command.type==CommandType.surrender);
 		assert(committedFrame<=frame);
 	}do{
 		if(command.side!=controlledSide) return;
@@ -77,7 +77,7 @@ final class Controller(B){
 				network.updateStatus(PlayerStatus.readyToStart);
 				if(network.isHost&&network.readyToStart()){
 					network.addSynch(state.lastCommitted.frame,state.lastCommitted.hash);
-					network.start();
+					network.start(this);
 				}
 				return true; // ignore passed time in next frame
 			}

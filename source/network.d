@@ -588,7 +588,7 @@ final class Network(B){
 		updateSettings(me,newSettings);
 	}
 	void addCommand(int frame,Command!B command)in{
-		assert(playing&&players[me].committedFrame<=frame);
+		assert((playing||frame==0&&command.type==CommandType.surrender)&&players[command.side].committedFrame<=frame);
 	}do{
 		broadcast(Packet.command(frame,command));
 	}
@@ -828,6 +828,10 @@ final class Network(B){
 		return newId;
 	}
 	bool acceptingNewConnections=true;
+	void stopListening(){
+		acceptingNewConnections=false;
+		listener.close();
+	}
 	void acceptNewConnections(){
 		if(!listener) return;
 		if(!acceptingNewConnections||loading||playing) return; // TODO: allow observers to join and dropped players to reconnect
@@ -884,7 +888,7 @@ final class Network(B){
 			player.send(Packet.loadGame);
 		updateStatus(PlayerStatus.loading);
 	}
-	void start()in{
+	void start(Controller!B controller)in{
 		assert(isHost&&readyToStart);
 	}do{
 		ackHandler=AckHandler.measurePing;
@@ -892,7 +896,7 @@ final class Network(B){
 		foreach(ref player;players)
 			player.send(Packet.ping(B.ticks()));
 		while(players.any!((ref p)=>!p.status.among(PlayerStatus.disconnected,PlayerStatus.desynched)&&p.ping==-1))
-			update(null);
+			update(controller);
 		auto maxPing=players.map!(p=>p.ping).reduce!max;
 		writeln("pings: ",players.map!(p=>p.ping));
 		foreach(ref player;players)
