@@ -626,7 +626,7 @@ struct CreatureAI{
 	bool isColliding=false;
 	RotationDirection evasion;
 	int evasionTimer=0;
-	int rangedAttackTarget=0;
+	int targetId=0;
 	PositionPredictor predictor;
 	bool isOnAIQueue=false;
 	Path path;
@@ -2404,6 +2404,7 @@ struct LifeShield(B){
 
 struct DivineSight(B){
 	int side;
+	int creature;
 	Vector3f position;
 	Vector3f velocity;
 	SacSpell!B ability;
@@ -5676,7 +5677,7 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 			bool evading;
 			auto facing=!object.turnToFaceTowardsEvading(predicted,evading,state,rotationThreshold);
 			if(facing&&object.creatureStats.effects.rangedCooldown==0&&object.creatureStats.mana>=rangedAttack.manaCost){
-				object.creatureAI.rangedAttackTarget=targetId;
+				object.creatureAI.targetId=targetId;
 				object.startShooting(state); // TODO: should this have a delay?
 			}
 		}
@@ -5806,9 +5807,11 @@ bool patrolAround(B)(ref MovingObject!B object,Vector3f position,float range,Obj
 	if(!object.isAggressive(state)) return false;
 	if((object.position.xy-position.xy).lengthsqr>range^^2) return false;
 	float maxHeight=object.maxTargetHeight(state);
-	auto targetId=state.proximity.closestEnemyInRange(object.side,position,range+object.shootDistance(state),EnemyType.all,state,maxHeight);
-	if(targetId)
-		if(object.attack(targetId,state))
+	if(state.frontOfAIQueue(object.side,object.id))
+		object.creatureAI.targetId=state.proximity.closestEnemyInRange(object.side,position,range+object.shootDistance(state),EnemyType.all,state,maxHeight);
+	if(!state.isValidTarget(object.creatureAI.targetId,TargetType.creature)) object.creatureAI.targetId=0;
+	if(object.creatureAI.targetId)
+		if(object.attack(object.creatureAI.targetId,state))
 			return true;
 	return false;
 }
@@ -5832,9 +5835,11 @@ bool patrol(B)(ref MovingObject!B object,ObjectState!B state){
 	auto position=object.position;
 	auto range=object.aggressiveRange(CommandType.none,state);
 	auto maxHeight=object.maxTargetHeight(state);
-	auto targetId=state.proximity.closestEnemyInRange(object.side,position,range,EnemyType.all,state,maxHeight);
-	if(targetId)
-		if(object.attack(targetId,state))
+	if(state.frontOfAIQueue(object.side,object.id))
+		object.creatureAI.targetId=state.proximity.closestEnemyInRange(object.side,position,range,EnemyType.all,state,maxHeight);
+	if(!state.isValidTarget(object.creatureAI.targetId,TargetType.creature)) object.creatureAI.targetId=0;
+	if(object.creatureAI.targetId)
+		if(object.attack(object.creatureAI.targetId,state))
 			return true;
 	return false;
 }
@@ -5844,9 +5849,11 @@ bool advance(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectState!B 
 	auto position=object.position;
 	auto range=object.advanceRange(CommandType.none,state);
 	auto maxHeight=object.maxTargetHeight(state);
-	auto targetId=state.proximity.closestEnemyInRangeAndClosestToPreferringAttackersOf(object.side,object.position,range,targetPosition,object.id,EnemyType.all,state,maxHeight);
-	if(targetId)
-		if(object.attack(targetId,state))
+	if(state.frontOfAIQueue(object.side,object.id))
+		object.creatureAI.targetId=state.proximity.closestEnemyInRangeAndClosestToPreferringAttackersOf(object.side,object.position,range,targetPosition,object.id,EnemyType.all,state,maxHeight);
+	if(!state.isValidTarget(object.creatureAI.targetId,TargetType.creature)) object.creatureAI.targetId=0;
+	if(object.creatureAI.targetId)
+		if(object.attack(object.creatureAI.targetId,state))
 			return true;
 	return false;
 }
@@ -5909,7 +5916,7 @@ bool divineSight(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B s
 	auto position=object.position+2.0f*direction;
 	position.z=state.getHeight(position);
 	auto velocity=ability.speed*direction;
-	state.addEffect(DivineSight!B(object.side,position,velocity,ability));
+	state.addEffect(DivineSight!B(object.side,object.id,position,velocity,ability));
 	return true;
 }
 
@@ -6014,7 +6021,7 @@ bool runAwayBug(B)(ref MovingObject!B object,ObjectState!B state){
 	auto ability=object.ability;
 	if(!ability||ability.tag!=SpellTag.runAway) return false;
 	if(object.creatureAI.order.command!=CommandType.useAbility) return false;
-	auto targetId=object.creatureAI.rangedAttackTarget;
+	auto targetId=object.creatureAI.targetId;
 	if(!state.isValidTarget(targetId,TargetType.creature)) return false;
 	if(state.movingObjectById!((target)=>target.creatureStats.effects.numSpeedUps!=0,()=>true)(targetId)) return false;
 	if(state.abilityStatus!true(object,ability)!=SpellStatus.ready) return false;
@@ -6029,7 +6036,7 @@ bool shootAbilityBug(B)(ref MovingObject!B object,ObjectState!B state){
 	if(runAwayBug(object,state)) return true;
 	auto ability=object.ability;
 	if(!ability||object.creatureAI.order.command!=CommandType.useAbility) return false;
-	auto id=object.creatureAI.rangedAttackTarget;
+	auto id=object.creatureAI.targetId;
 	auto targetType=state.targetTypeFromId(id);
 	if(!targetType.among(TargetType.creature,TargetType.building)) return false;
 	auto target=Target(targetType,id,state.objectById!((obj)=>obj.position)(id));
@@ -6065,8 +6072,8 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 	if(!requiresAI(object.creatureState.mode)) return;
 	if(!object.creatureAI.isOnAIQueue) object.creatureAI.isOnAIQueue=state.pushToAIQueue(object.side,object.id);
 	if(object.creatureState.mode.isShooting){
-		if(!object.shoot(object.rangedAttack,object.creatureAI.rangedAttackTarget,state))
-			object.creatureAI.rangedAttackTarget=0;
+		if(!object.shoot(object.rangedAttack,object.creatureAI.targetId,state))
+			object.creatureAI.targetId=0;
 		return;
 	}
 	if(object.isHidden){
@@ -6124,7 +6131,10 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 				if(object.creatureState.mode!=CreatureMode.cower){
 					auto shelter=state.proximity.closestPeasantShelterInRange(object.side,object.position,shelterDistance,state);
 					if(shelter){
-						if(auto enemy=state.proximity.closestEnemyInRange(object.side,object.position,scareDistance,EnemyType.creature,state)){
+						if(state.frontOfAIQueue(object.side,object.id))
+							object.creatureAI.targetId=state.proximity.closestEnemyInRange(object.side,object.position,scareDistance,EnemyType.creature,state);
+						if(!state.isValidTarget(object.creatureAI.targetId,TargetType.creature)) object.creatureAI.targetId=0;
+						if(auto enemy=object.creatureAI.targetId){
 							auto enemyPosition=state.movingObjectById!((obj)=>obj.position,function Vector3f(){ assert(0); })(enemy);
 							// TODO: figure out the original rule for this
 							if(object.creatureState.mode==CreatureMode.idle&&object.creatureState.timer>=updateFPS)
@@ -9589,7 +9599,8 @@ bool updateDivineSight(B)(ref DivineSight!B divineSight,ObjectState!B state){
 				velocity=velocity.normalized*ability.speed;
 			}else if((travelFrames-1)*ability.speed<updateFPS*ability.range)
 				velocity=Vector3f(0.0f,0.0f,0.0f);
-			target=state.proximity.closestEnemyInRange(side,position,ability.range,EnemyType.creature,state);
+			if(state.frontOfAIQueue(side,creature)) // TODO: what happens in original if creature dies?
+			   target=state.proximity.closestEnemyInRange(side,position,ability.range,EnemyType.creature,state);
 		}else if(target!=-1&&state.isValidTarget(target,TargetType.creature)){
 			static getHitbox(B)(ref MovingObject!B obj){
 				auto hbox=obj.sacObject.hitbox(obj.rotation,AnimationState.stance1,0);
