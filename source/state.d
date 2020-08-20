@@ -3827,7 +3827,6 @@ bool kill(B,bool pretending=false)(ref MovingObject!B object, ObjectState!B stat
 	with(CreatureMode) if(object.creatureState.mode.among(dying,dead,dissolving,reviving,fastReviving)) return false;
 	if(object.isGhost){ state.addEffect(GhostKill(object.id)); return true; }
 	static if(!pretending){
-		if(object.creatureStats.flags&Flags.cannotDestroyKill) return false;
 		if(!object.sacObject.canDie()) return false;
 		if(object.creatureState.mode!=CreatureMode.convertReviving){
 			object.creatureState.mode=CreatureMode.dying;
@@ -5967,7 +5966,7 @@ bool hasAltar(B)(int side,ObjectState!B state){
 				foreach(j;0..objects.length){
 					if(state.buildingById!((ref bldg,side){
 						if(bldg.side!=side) return false;
-						if(isAltar(bldg)) return false;
+						if(!isAltar(bldg)) return false;
 						if(bldg.flags&(AdditionalBuildingFlags.inactive|Flags.notOnMinimap)) return false;
 						return true;
 					},()=>false)(objects.buildingIds[j],side)){
@@ -6005,26 +6004,29 @@ bool destroyAltar(B)(ref StaticObject!B shrine,ObjectState!B state){
 	return state.buildingById!(destroy,()=>false)(shrine.buildingId,&shrine,state);
 }
 
-bool surrender(B)(int side,ObjectState!B state){
-	static void destroy(T)(ref T objects,int side,ObjectState!B state,bool* found){
+void destroyAltars(B)(int side,ObjectState!B state){
+	static void destroy(T)(ref T objects,int side,ObjectState!B state){
 		static if(is(T==StaticObjects!(B,renderMode),RenderMode renderMode)){
 			if(objects.sacObject.isAltar){
 				foreach(j;0..objects.length){
 					if(state.buildingById!((ref bldg,side)=>bldg.side!=side,()=>true)(objects.buildingIds[j],side))
 						continue;
 					auto shrine=objects[j];
-					scope(exit) objects[j]=shrine;
-					*found|=destroyAltar(shrine,state);
+					// scope(exit) objects[j]=shrine; // unnecessary, but uncommenting seems to expose compiler bug
+					destroyAltar(shrine,state);
 				}
 			}
 		}
 	}
-	bool found=false;
-	state.eachByType!destroy(side,state,&found);
-	if(auto wiz=state.getWizardForSide(side)) state.movingObjectById!(kill,()=>false)(wiz.id,state);
-	return found;
-
+	state.eachByType!destroy(side,state);
 }
+
+void lose(B)(int side,ObjectState!B state){
+	destroyAltars(side,state);
+	killAll(side,state);
+}
+
+bool surrender(B)(int side,ObjectState!B state){ lose(side,state); return true; }
 
 bool checkAbility(B)(ref MovingObject!B object,SacSpell!B ability,Target target,ObjectState!B state){
 	if(ability.requiresTarget&&!ability.isApplicable(summarize(target,object.side,state))){
@@ -6325,8 +6327,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 							if(object.isWizard){
 								bool noAltar=!hasAltar(object.side,state);
 								if(object.creatureStats.effects.numDesecrations||noAltar){
-									disappear(object,4*updateFPS,state);
-									killAll(object.side,state);
+									object.disappear(object.creatureStats.effects.numDesecrations?4*updateFPS:updateFPS,state);
 								}else{
 									object.creatureState.mode=CreatureMode.deadToGhost;
 									object.setCreatureState(state);
@@ -9768,6 +9769,7 @@ bool updateDisappearance(B)(ref Disappearance disappearance,ObjectState!B state)
 		++frame;
 		state.setAlpha(id,(float(lifetime-frame)/lifetime),1.0f);
 		if(frame>=lifetime){
+			state.movingObjectById!((ref object,state){ if(object.isWizard) lose(object.side,state); },(){})(id,state);
 			state.removeLater(id);
 			return false;
 		}
