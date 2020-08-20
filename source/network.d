@@ -247,7 +247,7 @@ struct Packet{
 	}
 	auto getValue(T)(){
 		static if(is(T==int)) return intValue;
-		else static if(is(T==bool)) return boolValue;
+		else static if(is(T==bool)) return !!boolValue;
 		else static if(is(T==float)) return floatValue;
 		else static if(is(Unqual!T==char)) return charValue;
 		else static if(is(T==char[4])) return char4Value;

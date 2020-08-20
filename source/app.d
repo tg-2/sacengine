@@ -47,12 +47,14 @@ void loadMap(B)(ref B backend,ref Options options)in{
 				network.synchronizeSetting!"map"();
 				bool[32] sideTaken=false;
 				foreach(ref player;network.players){
+					if(player.settings.observer) continue;
 					auto side=player.settings.controlledSide;
 					if(side<0||side>=sideTaken.length||sideTaken[side]) player.settings.controlledSide=-1;
 					else sideTaken[side]=true;
 				}
 				auto freeSides=iota(32).filter!(i=>!sideTaken[i]);
 				foreach(i,ref player;network.players){
+					if(player.settings.observer) continue;
 					if(freeSides.empty) break;
 					if(player.settings.controlledSide!=-1) continue;
 					network.updateSetting!"controlledSide"(cast(int)i,freeSides.front);
@@ -269,6 +271,8 @@ int main(string[] args){
 			options.recordingFilename=opt["--record=".length..$];
 		}else if(opt.startsWith("--play=")){
 			options.playbackFilename=opt["--play=".length..$];
+		}else if(opt=="--observer"){
+			options.observer=true;
 		}else if(opt.startsWith("--side=")){
 			options.controlledSide=to!int(opt["--side=".length..$]);
 		}else if(opt.startsWith("--team=")){
@@ -343,7 +347,7 @@ int main(string[] args){
 		}
 	}
 	if(options.controlledSide==int.min){
-		options.controlledSide=0;
+		options.controlledSide=options.observer?-1:0;
 	}
 	if(options.host&&options._2v2) options.host=max(options.host,4);
 	if(options.host&&options._3v3) options.host=max(options.host,6);

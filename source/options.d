@@ -61,6 +61,7 @@ struct SpellSpec{
 }
 struct Settings{
 	string map="";
+	bool observer=false;
 	int controlledSide=-1;
 	int team=-1;
 	string name="";
