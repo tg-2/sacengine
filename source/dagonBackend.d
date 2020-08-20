@@ -2269,35 +2269,13 @@ final class SacScene: Scene{
 			mouseButtonDown[]=0;
 			mouseButtonUp[]=0;
 		}
-		Vector3f forward = fpview.camera.worldTrans.forward;
-		Vector3f right = fpview.camera.worldTrans.right;
-		Vector3f dir = Vector3f(0, 0, 0);
-		//if(eventManager.keyPressed[KEY_X]) dir += Vector3f(1,0,0);
-		//if(eventManager.keyPressed[KEY_Y]) dir += Vector3f(0,1,0);
-		//if(eventManager.keyPressed[KEY_Z]) dir += Vector3f(0,0,1);
-		if(fpview.active){
-			float turn_m =  (eventManager.mouseRelX) * fpview.mouseFactor;
-			float pitch_m = (eventManager.mouseRelY) * fpview.mouseFactor;
-
-			fpview.camera.pitch += pitch_m;
-			fpview.camera.turn += turn_m;
-		}
 		if(mouse.status.among(Mouse.Status.standard,Mouse.Status.icon)&&!mouse.dragging){
 			if(isOnSpellbook(Vector2f(mouse.x,mouse.y))) mouse.loc=Mouse.Location.spellbook;
 			else if(isOnSelectionRoster(Vector2f(mouse.x,mouse.y))) mouse.loc=Mouse.Location.selectionRoster;
 			else if(isOnMinimap(Vector2f(mouse.x,mouse.y))) mouse.loc=Mouse.Location.minimap;
 			else mouse.loc=Mouse.Location.scene;
 		}
-		if(mouse.visible){
-			if(!mouse.onMinimap){
-				camera.targetZoom-=0.04f*eventManager.mouseWheelY;
-				camera.targetZoom=max(0.0f,min(camera.targetZoom,1.0f));
-			}else{
-				import std.math:exp,log;
-				camera.minimapZoom*=exp(log(1.3)*(-0.4f*eventManager.mouseWheelY+0.04f*(mouse.dragging?eventManager.mouseRelY:0)/hudScaling));
-				camera.minimapZoom=max(0.5f,min(camera.minimapZoom,15.0f));
-			}
-		}
+		if(options.observer||!controller) return;
 		if(camera.target!=0&&(!state||!state.current.isValidTarget(camera.target,TargetType.creature))) camera.target=0;
 		auto cameraFacing=-degtorad(fpview.camera.turn);
 		import hotkeys_;
@@ -2307,17 +2285,7 @@ final class SacScene: Scene{
 		bool ctrl=!!(modifiers&Modifiers.ctrl);
 		bool shift=!!(modifiers&Modifiers.shift);
 		bool pressed(int[] keyCodes){ return keyCodes.any!(key=>eventManager.keyPressed[key]);}
-		if(camera.target==0){
-			if(pressed(options.hotkeys.moveForward)) dir += -forward;
-			if(pressed(options.hotkeys.moveBackward)) dir += forward;
-			if(pressed(options.hotkeys.turnLeft)) dir += -right;
-			if(pressed(options.hotkeys.turnRight)) dir += right;
-			if(eventManager.keyPressed[KEY_I]) speed = 10.0f;
-			if(eventManager.keyPressed[KEY_O]) speed = 100.0f;
-			if(eventManager.keyPressed[KEY_P]) speed = 1000.0f;
-			fpview.camera.position += dir.normalized * speed * dt;
-			if(state) fpview.camera.position.z=max(fpview.camera.position.z, state.current.getHeight(fpview.camera.position));
-		}else{
+		if(camera.target){
 			if(!state) return;
 			if(pressed(options.hotkeys.moveForward) && !pressed(options.hotkeys.moveBackward)){
 				if(targetMovementState.movement!=MovementDirection.forward){
@@ -2635,8 +2603,29 @@ final class SacScene: Scene{
 				}
 			}
 		}
+	}
+
+	void cameraControl(double dt){
+		if(fpview.active){
+			float turn_m =  (eventManager.mouseRelX) * fpview.mouseFactor;
+			float pitch_m = (eventManager.mouseRelY) * fpview.mouseFactor;
+
+			fpview.camera.pitch += pitch_m;
+			fpview.camera.turn += turn_m;
+		}
+		if(mouse.visible){
+			if(!mouse.onMinimap){
+				camera.targetZoom-=0.04f*eventManager.mouseWheelY;
+				camera.targetZoom=max(0.0f,min(camera.targetZoom,1.0f));
+			}else{
+				import std.math:exp,log;
+				camera.minimapZoom*=exp(log(1.3)*(-0.4f*eventManager.mouseWheelY+0.04f*(mouse.dragging?eventManager.mouseRelY:0)/hudScaling));
+				camera.minimapZoom=max(0.5f,min(camera.minimapZoom,15.0f));
+			}
+		}
+		bool ctrl=eventManager.keyPressed[KEY_LCTRL]||options.hotkeys.capsIsCtrl&&eventManager.keyPressed[KEY_CAPSLOCK];
 		if(mouse.visible && mouse.status.among(Mouse.Status.standard,Mouse.Status.icon)){
-			   if(ctrl && eventManager.mouseButtonPressed[MB_LEFT]||
+			if(ctrl && eventManager.mouseButtonPressed[MB_LEFT]||
 			   eventManager.mouseButtonPressed[MB_MIDDLE]
 			){
 				if(eventManager.mouseRelX||eventManager.mouseRelY)
@@ -2662,6 +2651,52 @@ final class SacScene: Scene{
 				}else{
 					SDL_SetRelativeMouseMode(SDL_FALSE);
 				}
+			}
+		}
+	}
+
+
+	void observerControl(double dt)in{
+		assert(!!state);
+	}do{
+	Vector3f forward = fpview.camera.worldTrans.forward;
+		Vector3f right = fpview.camera.worldTrans.right;
+		Vector3f dir = Vector3f(0, 0, 0);
+		//if(eventManager.keyPressed[KEY_X]) dir += Vector3f(1,0,0);
+		//if(eventManager.keyPressed[KEY_Y]) dir += Vector3f(0,1,0);
+		//if(eventManager.keyPressed[KEY_Z]) dir += Vector3f(0,0,1);
+		bool pressed(int[] keyCodes){ return keyCodes.any!(key=>eventManager.keyPressed[key]);}
+		if(camera.target!=0&&(!state||!state.current.isValidTarget(camera.target,TargetType.creature))) camera.target=0;
+		if(camera.target==0){
+			if(pressed(options.hotkeys.moveForward)) dir += -forward;
+			if(pressed(options.hotkeys.moveBackward)) dir += forward;
+			if(pressed(options.hotkeys.turnLeft)) dir += -right;
+			if(pressed(options.hotkeys.turnRight)) dir += right;
+			if(eventManager.keyPressed[KEY_I]) speed = 10.0f;
+			if(eventManager.keyPressed[KEY_O]) speed = 100.0f;
+			if(eventManager.keyPressed[KEY_P]) speed = 1000.0f;
+			fpview.camera.position += dir.normalized * speed * dt;
+			if(state) fpview.camera.position.z=max(fpview.camera.position.z, state.current.getHeight(fpview.camera.position));
+		}else positionCamera();
+		if(!eventManager.keyPressed[KEY_LSHIFT] && !eventManager.keyPressed[KEY_LCTRL] && !eventManager.keyPressed[KEY_CAPSLOCK]){
+			foreach(_;0..keyDown[KEY_M]){
+				if(mouse.target.type==TargetType.creature&&mouse.target.id){
+					renderSide=state.current.movingObjectById!(side,()=>-1)(mouse.target.id,state.current);
+					focusCamera(mouse.target.id);
+				}
+			}
+			foreach(_;0..keyDown[KEY_N]){
+				renderSide=-1;
+				camera.target=0;
+			}
+			if(keyDown[KEY_K]){
+				fpview.active=false;
+				mouse.visible=true;
+			}
+			if(keyDown[KEY_L]){
+				fpview.active=true;
+				mouse.visible=false;
+				fpview.mouseFactor=0.25f;
 			}
 		}
 	}
@@ -2729,22 +2764,11 @@ final class SacScene: Scene{
 
 
 		if(!eventManager.keyPressed[KEY_LSHIFT] && !eventManager.keyPressed[KEY_LCTRL] && !eventManager.keyPressed[KEY_CAPSLOCK]){
-			foreach(_;0..keyDown[KEY_M]){
-				if(mouse.target.type==TargetType.creature&&mouse.target.id){
-					renderSide=state.current.movingObjectById!(side,()=>-1)(mouse.target.id,state.current);
-					focusCamera(mouse.target.id);
-				}
-			}
-			foreach(_;0..keyDown[KEY_N]){
-				renderSide=-1;
-				camera.target=0;
-			}
-
 			foreach(_;0..keyDown[KEY_U]) showHitboxes=true;
 			foreach(_;0..keyDown[KEY_I]) showHitboxes=false;
 
 			//foreach(_;0..keyDown[KEY_H]) state.commit();
-			foreach(_;0..keyDown[KEY_B]) state.rollback();
+			//foreach(_;0..keyDown[KEY_B]) state.rollback();
 
 			foreach(_;0..keyDown[KEY_COMMA]) if(audio) audio.switchTheme(cast(Theme)((audio.currentTheme+1)%Theme.max));
 		}
@@ -2768,17 +2792,6 @@ final class SacScene: Scene{
 				}
 			}
 		}+/
-		if(!(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK]||eventManager.keyPressed[KEY_LSHIFT])){
-			if(keyDown[KEY_K]){
-				fpview.active=false;
-				mouse.visible=true;
-			}
-			if(keyDown[KEY_L]){
-				fpview.active=true;
-				mouse.visible=false;
-				fpview.mouseFactor=0.25f;
-			}
-		}
 	}
 
 	override void onViewUpdate(double dt){
@@ -2790,8 +2803,10 @@ final class SacScene: Scene{
 		assert(dt==1.0f/updateFPS);
 		//writeln(DagonBackend.getTotalGPUMemory()," ",DagonBackend.getAvailableGPUMemory());
 		//writeln(eventManager.fps);
+		if(state&&(options.observer||!controller.network)) observerControl(dt);
 		if(state&&!controller.network) stateTestControl();
 		control(dt);
+		cameraControl(dt);
 		if(state){
 			if(controller){
 				if(controller.step()) eventManager.update();

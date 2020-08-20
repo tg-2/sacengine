@@ -133,8 +133,11 @@ void loadMap(B)(ref B backend,ref Options options)in{
 	}
 	if(network){ // TODO: factor out relevant parts for local games
 		foreach(i,ref a;network.players){
+			if(a.settings.observer) continue;
 			foreach(ref b;network.players[i+1..$]){
+				if(b.settings.observer) continue;
 				int s=multiplayerSide(a.settings.controlledSide), t=multiplayerSide(b.settings.controlledSide);
+				assert(s!=t);
 				int x=a.settings.team, y=b.settings.team;
 				auto stance=x!=-1&&y!=-1&&x==y?Stance.ally:Stance.enemy;
 				sides.setStance(s,t,stance);
@@ -145,6 +148,7 @@ void loadMap(B)(ref B backend,ref Options options)in{
 	int id=0;
 	if(!playback){
 		void placeWizard(Settings settings){
+			if(settings.observer) return;
 			auto wizard=SacObject!B.getSAXS!Wizard(settings.wizard[0..4]);
 			//printWizardStats(wizard);
 			auto spellbook=getSpellbook!B(settings.spellbook);
@@ -193,6 +197,7 @@ void loadMap(B)(ref B backend,ref Options options)in{
 	if(id) backend.focusCamera(id);
 	else backend.scene.fpview.active=true;
 	backend.setController(controller);
+	if(options.observer) controller.controlledSide=-1;
 }
 
 int main(string[] args){
