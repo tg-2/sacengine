@@ -1928,6 +1928,7 @@ struct ManaDrain(B){
 	float manaCostPerFrame;
 	int timer;
 }
+struct GhostKill{ int id; }
 struct CreatureCasting(B){
 	ManaDrain!B manaDrain;
 	SacSpell!B spell;
@@ -2491,6 +2492,14 @@ struct Effects(B){
 		if(i+1<manaDrains.length) manaDrains[i]=move(manaDrains[$-1]);
 		manaDrains.length=manaDrains.length-1;
 	}
+	Array!GhostKill ghostKills;
+	void addEffect(GhostKill ghostKill){
+		ghostKills~=ghostKill;
+	}
+	void removeGhostKill(int i){
+		if(i+1<ghostKills.length) ghostKills[i]=move(ghostKills[$-1]);
+		ghostKills.length=ghostKills.length-1;
+	}
 	// creature spells
 	Array!(CreatureCasting!B) creatureCasts;
 	void addEffect(CreatureCasting!B creatureCast){
@@ -2900,6 +2909,7 @@ struct Effects(B){
 		assignArray(explosions,rhs.explosions);
 		assignArray(fires,rhs.fires);
 		assignArray(manaDrains,rhs.manaDrains);
+		assignArray(ghostKills,rhs.ghostKills);
 		assignArray(creatureCasts,rhs.creatureCasts);
 		assignArray(structureCasts,rhs.structureCasts);
 		assignArray(blueRings,rhs.blueRings);
@@ -3815,6 +3825,7 @@ bool startIdling(B)(ref MovingObject!B object, ObjectState!B state){
 
 bool kill(B,bool pretending=false)(ref MovingObject!B object, ObjectState!B state){
 	with(CreatureMode) if(object.creatureState.mode.among(dying,dead,dissolving,reviving,fastReviving)) return false;
+	if(object.isGhost){ state.addEffect(GhostKill(object.id)); return true; }
 	static if(!pretending){
 		if(object.creatureStats.flags&Flags.cannotDestroyKill) return false;
 		if(!object.sacObject.canDie()) return false;
@@ -5948,6 +5959,30 @@ int makeManafount(B)(Vector3f position,int flags,ObjectState!B state){
 	return makeBuilding(neutralSide,"tnof",position,flags,state);
 }
 
+bool hasAltar(B)(int side,ObjectState!B state){
+	static void find(T)(ref T objects,int side,ObjectState!B state,bool* found){
+		if(*found) return;
+		static if(is(T==StaticObjects!(B,renderMode),RenderMode renderMode)){
+			if(objects.sacObject.isAltar){
+				foreach(j;0..objects.length){
+					if(state.buildingById!((ref bldg,side){
+						if(bldg.side!=side) return false;
+						if(isAltar(bldg)) return false;
+						if(bldg.flags&(AdditionalBuildingFlags.inactive|Flags.notOnMinimap)) return false;
+						return true;
+					},()=>false)(objects.buildingIds[j],side)){
+						*found=true;
+						break;
+					}
+				}
+			}
+		}
+	}
+	bool found=false;
+	state.eachByType!find(side,state,&found);
+	return found;
+}
+
 bool destroyAltar(B)(ref StaticObject!B shrine,ObjectState!B state){
 	static bool destroy(ref Building!B building,StaticObject!B* shrine,ObjectState!B state){
 		if(!isAltar(building)) return false;
@@ -5968,6 +6003,27 @@ bool destroyAltar(B)(ref StaticObject!B shrine,ObjectState!B state){
 		return true;
 	}
 	return state.buildingById!(destroy,()=>false)(shrine.buildingId,&shrine,state);
+}
+
+bool surrender(B)(int side,ObjectState!B state){
+	static void destroy(T)(ref T objects,int side,ObjectState!B state,bool* found){
+		static if(is(T==StaticObjects!(B,renderMode),RenderMode renderMode)){
+			if(objects.sacObject.isAltar){
+				foreach(j;0..objects.length){
+					if(state.buildingById!((ref bldg,side)=>bldg.side!=side,()=>true)(objects.buildingIds[j],side))
+						continue;
+					auto shrine=objects[j];
+					scope(exit) objects[j]=shrine;
+					*found|=destroyAltar(shrine,state);
+				}
+			}
+		}
+	}
+	bool found=false;
+	state.eachByType!destroy(side,state,&found);
+	if(auto wiz=state.getWizardForSide(side)) state.movingObjectById!(kill,()=>false)(wiz.id,state);
+	return found;
+
 }
 
 bool checkAbility(B)(ref MovingObject!B object,SacSpell!B ability,Target target,ObjectState!B state){
@@ -6198,6 +6254,13 @@ void animateGhost(B)(ref MovingObject!B wizard,ObjectState!B state){
 	particle.sideFilter=wizard.side;
 	state.addParticle(particle);
 }
+bool unghost(B)(ref MovingObject!B wizard,ObjectState!B state){
+	if(!wizard.creatureState.mode.among(CreatureMode.idleGhost,CreatureMode.movingGhost)) return false;
+	wizard.creatureState.mode=CreatureMode.ghostToIdle;
+	wizard.setCreatureState(state);
+	wizard.animateGhostTransition(state);
+	return true;
+}
 
 void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.creatureStats.effects.stunCooldown!=0) --object.creatureStats.effects.stunCooldown;
@@ -6211,9 +6274,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 			if(ghost) object.animateGhost(state);
 			if(ghost&&(object.health==object.creatureStats.maxHealth||object.creatureStats.effects.numDesecrations)){
 				if(object.creatureStats.effects.numDesecrations) object.creatureStats.health=max(1.0f,object.creatureStats.health);
-				object.creatureState.mode=CreatureMode.ghostToIdle;
-				object.setCreatureState(state);
-				object.animateGhostTransition(state);
+				object.unghost(state);
 				break;
 			}
 			auto idle=ghost?CreatureMode.idleGhost:CreatureMode.idle;
@@ -6261,9 +6322,9 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 						object.frame=sacObject.numFrames(object.animationState)*updateAnimFactor-1;
 						if(object.creatureState.mode==CreatureMode.dying){
 							object.creatureState.mode=CreatureMode.dead;
-							bool wizard=object.isWizard;
-							if(wizard){
-								if(object.creatureStats.effects.numDesecrations){
+							if(object.isWizard){
+								bool noAltar=!hasAltar(object.side,state);
+								if(object.creatureStats.effects.numDesecrations||noAltar){
 									disappear(object,4*updateFPS,state);
 									killAll(object.side,state);
 								}else{
@@ -7132,6 +7193,14 @@ bool updateManaDrain(B)(ref ManaDrain!B manaDrain,ObjectState!B state){
 		case CastingStatus.underway: return manaDrain.timer>0;
 		case CastingStatus.interrupted, CastingStatus.finished: return false;
 	}
+}
+bool updateGhostKill(B)(ref GhostKill ghostKill,ObjectState!B state){
+	return state.movingObjectById!((ref wizard,state){
+		if(wizard.creatureState.mode.among(CreatureMode.idleGhost,CreatureMode.movingGhost))
+			wizard.unghost(state);
+		if(!wizard.isGhost) wizard.kill(state);
+		return true;
+	},()=>false)(ghostKill.id,state);
 }
 
 void animateCreatureCasting(B)(ref MovingObject!B wizard,SacSpell!B spell,ObjectState!B state){
@@ -9792,6 +9861,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 		}
 		i++;
 	}
+	for(int i=0;i<effects.ghostKills.length;){
+		if(!updateGhostKill(effects.ghostKills[i],state)){
+			effects.removeGhostKill(i);
+			continue;
+		}
+		i++;
+	}
 	for(int i=0;i<effects.creatureCasts.length;){
 		if(!updateCreatureCasting(effects.creatureCasts[i],state)){
 			effects.removeCreatureCasting(i);
@@ -11154,7 +11230,8 @@ final class ObjectState(B){ // (update logic)
 			case automaticSelectGroup: goto case selectGroup;
 			case setFormation: success=applyOrder(command,this,true); break;
 			case retreat,move,guard,guardArea,attack,advance,useAbility: success=applyOrder(command,this); break;
-			case castSpell: success=this.movingObjectById!((ref obj,spell,target,state)=>obj.startCasting(spell,target,state),function()=>false)(command.wizard,command.spell,command.target,this);
+			case castSpell: success=this.movingObjectById!((ref obj,spell,target,state)=>obj.startCasting(spell,target,state),function()=>false)(command.wizard,command.spell,command.target,this); break;
+			case surrender: success=.surrender(command.side,this); break;
 		}
 	}
 	void update(Command!B[] frameCommands){
@@ -12015,11 +12092,13 @@ enum CommandType{
 
 	castSpell,
 	useAbility,
+
+	surrender,
 }
 
 bool hasClickSound(CommandType type){
 	final switch(type) with(CommandType){
-		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,clearSelection,automaticToggleSelection,automaticSelectGroup,setFormation,retreat: return false;
+		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,clearSelection,automaticToggleSelection,automaticSelectGroup,setFormation,retreat,surrender: return false;
 		case select,selectAll,automaticSelectAll,toggleSelection,defineGroup,addToGroup,selectGroup,move,guard,guardArea,attack,advance,castSpell,useAbility: return true;
 	}
 }
@@ -12055,11 +12134,12 @@ SoundType soundType(B)(Command!B command){
 		case attack: return command.target.type==TargetType.building?SoundType.attackBuilding:SoundType.attack;
 		case advance: return SoundType.advance;
 		case castSpell,useAbility: return SoundType.none;
+		case surrender: return SoundType.none;
 	}
 }
 SoundType responseSoundType(B)(Command!B command){
 	final switch(command.type) with(CommandType){
-		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,setFormation,clearSelection,automaticSelectAll,automaticToggleSelection,defineGroup,addToGroup,automaticSelectGroup,retreat,castSpell,useAbility:
+		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,setFormation,clearSelection,automaticSelectAll,automaticToggleSelection,defineGroup,addToGroup,automaticSelectGroup,retreat,castSpell,useAbility,surrender:
 			return SoundType.none;
 		case select,selectAll,toggleSelection,selectGroup:
 			return SoundType.selected;
@@ -12233,6 +12313,8 @@ struct Command(B){
 				assert(0);
 			case castSpell,useAbility:
 				assert(0);
+			case surrender:
+				assert(0);
 		}
 	}do{
 		this.type=type;
@@ -12278,6 +12360,11 @@ struct Command(B){
 		this.side=side;
 		this.spell=ability;
 		this.target=target;
+	}
+
+	this(int side){
+		this.type=CommandType.surrender;
+		this.side=side;
 	}
 
 	CommandType type;

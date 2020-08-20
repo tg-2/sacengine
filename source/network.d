@@ -619,7 +619,7 @@ final class Network(B){
 			case PacketType.nop: break;
 			case PacketType.disconnect:
 				players[sender].connection=null;
-				updateStatus(sender,PlayerStatus.disconnected);
+				disconnectPlayer(sender,controller);
 				report(sender,"disconnected");
 				break;
 			case PacketType.ping: players[sender].send(Packet.ack(p.id)); break;
@@ -847,13 +847,24 @@ final class Network(B){
 			// TODO: accept peer-to-peer connections to decrease latency
 		}
 	}
+	void disconnectPlayer(int i,Controller!B controller){
+		if(isHost||i==host){
+			if(!players[i].settings.observer&&players[i].settings.controlledSide!=-1){// surrender
+				auto controlledSide=controller.controlledSide;
+				controller.controlledSide=players[i].settings.controlledSide;
+				scope(exit) controller.controlledSide=controlledSide;
+				controller.addCommand(controller.currentFrame,Command!B(players[i].settings.controlledSide));
+			}
+		}
+		if(isHost) updateStatus(cast(int)i,PlayerStatus.disconnected);
+	}
 	void update(Controller!B controller){
 		acceptNewConnections();
 		foreach(i,ref player;players){
 			if(!player.connection) continue;
 			if(!player.alive){
 				player.connection=null;
-				if(isHost) updateStatus(cast(int)i,PlayerStatus.disconnected);
+				disconnectPlayer(cast(int)i,controller);
 				report!true(cast(int)i,"dropped");
 				continue;
 			}

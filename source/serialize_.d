@@ -247,6 +247,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Fir
 void serialize(alias sink,B)(ref ManaDrain!B manaDrain){ serializeStruct!sink(manaDrain); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ManaDrain!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink)(ref GhostKill ghostKill){ serializeStruct!sink(ghostKill); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==GhostKill)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref CreatureCasting!B creatureCast){ serializeStruct!sink(creatureCast); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==CreatureCasting!B)){ deserializeStruct(result,state,data); }
 
