@@ -1362,7 +1362,6 @@ struct StaticObjects(B,RenderMode mode){
 	Array!Vector3f positions;
 	Array!Quaternionf rotations;
 	Array!float scales;
-
 	static if(mode==RenderMode.transparent){
 		Array!float thresholdZs;
 	}
@@ -2449,7 +2448,7 @@ struct AltarDestruction{
 	float pillarHeight;
 	int[4] stalks;
 	float stalkHeight;
-	int manafount;
+	int manafount=0;
 	int frame=0;
 	enum wiggleFrames=updateFPS/60;
 	static assert(updateFPS%wiggleFrames==0);
@@ -5997,8 +5996,7 @@ bool destroyAltar(B)(ref StaticObject!B shrine,ObjectState!B state){
 		int[4] stalks;
 		if(building.componentIds.length>=10) stalks[]=building.componentIds.data[6..10];
 		float stalkHeight=stalks[0]?state.staticObjectById!((ref pillar,state)=>pillar.relativeHitbox[1].z,()=>0.0f)(stalks[0],state):0.0f;
-		auto manafount=makeManafount(shrine.position,AdditionalBuildingFlags.inactive,state);
-		state.addEffect(AltarDestruction(ring,shrine.position,Quaternionf.identity(),Quaternionf.identity(),shrine.id,shrineHeight,pillars,pillarHeight,stalks,stalkHeight,manafount));
+		state.addEffect(AltarDestruction(ring,shrine.position,Quaternionf.identity(),Quaternionf.identity(),shrine.id,shrineHeight,pillars,pillarHeight,stalks,stalkHeight));
 		return true;
 	}
 	return state.buildingById!(destroy,()=>false)(shrine.buildingId,&shrine,state);
@@ -6012,7 +6010,6 @@ void destroyAltars(B)(int side,ObjectState!B state){
 					if(state.buildingById!((ref bldg,side)=>bldg.side!=side,()=>true)(objects.buildingIds[j],side))
 						continue;
 					auto shrine=objects[j];
-					// scope(exit) objects[j]=shrine; // unnecessary, but uncommenting seems to expose compiler bug
 					destroyAltar(shrine,state);
 				}
 			}
@@ -9780,6 +9777,7 @@ bool updateDisappearance(B)(ref Disappearance disappearance,ObjectState!B state)
 bool updateAltarDestruction(B)(ref AltarDestruction altarDestruction,ObjectState!B state){
 	with(altarDestruction){
 		if(frame==0){
+			if(!manafount) manafount=makeManafount(position,AdditionalBuildingFlags.inactive,state);
 			foreach(id;chain(pillars[],stalks[])) if(id) state.setRenderMode!(StaticObject!B,RenderMode.transparent)(id);
 			if(shrine) state.setRenderMode!(StaticObject!B,RenderMode.transparent)(shrine);
 		}
