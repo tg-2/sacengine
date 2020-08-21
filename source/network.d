@@ -857,7 +857,7 @@ final class Network(B){
 				auto controlledSide=controller.controlledSide;
 				controller.controlledSide=players[i].settings.controlledSide;
 				scope(exit) controller.controlledSide=controlledSide;
-				controller.addCommand(controller.currentFrame,Command!B(players[i].settings.controlledSide));
+				controller.addCommand(max(controller.currentFrame,players[i].committedFrame),Command!B(players[i].settings.controlledSide));
 			}
 		}
 		if(isHost) updateStatus(cast(int)i,PlayerStatus.disconnected);

@@ -906,7 +906,7 @@ struct StaticObject(B){
 	}
 }
 float healthFromBuildingId(B)(int buildingId,ObjectState!B state){
-	return state.buildingById!((ref b)=>b.health,function int(){ assert(0); })(buildingId);
+	return state.buildingById!((ref b)=>b.health,()=>0.0f)(buildingId);
 }
 float health(B)(ref StaticObject!B object,ObjectState!B state){
 	return healthFromBuildingId(object.buildingId,state);
