@@ -6,8 +6,7 @@ strip SacEngine-$d.exe
 zip SacEngine-$d.zip SacEngine-$d.exe SDL2.dll freetype.dll libmpg123-0.dll settings.txt hotkeys.txt
 
 ./build-release.sh
+cp 3d SacEngine-current
 cp 3d SacEngine-$d
 strip SacEngine-$d
 zip SacEngine-$d-linux.zip SacEngine-$d
-
-ln -s SacEngine-$d SacEngine-current
