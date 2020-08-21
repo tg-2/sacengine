@@ -379,6 +379,23 @@ final class SacScene: Scene{
 		}+/
 	}
 
+	static void renderLoadedArrow(B)(ref MovingObject!B object,SacScene scene,Mesh mesh,RenderingContext* rc){
+		auto loadedArrow=object.loadedArrow;
+		if(loadedArrow!=loadedArrow) return;
+		void renderArrow(Vector3f start,Vector3f end,float scale=1.0f){
+			auto direction=end-start;
+			auto len=direction.length;
+			auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),direction/len);
+			scene.shadelessMaterialBackend.setTransformationScaled(start,rotation,Vector3f(scale,scale,len),rc);
+			mesh.render(rc);
+		}
+		with(loadedArrow){
+			renderArrow(hand,top,0.5f);
+			renderArrow(hand,bottom,0.5f);
+			renderArrow(hand,front);
+		}
+	}
+	
 	final void renderNTTs(RenderMode mode)(RenderingContext* rc){
 		static void render(T)(ref T objects,bool enableWidgets,SacScene scene,RenderingContext* rc){ // TODO: why does this need to be static? DMD bug?
 			static if(is(typeof(objects.sacObject))){
@@ -909,23 +926,10 @@ final class SacScene: Scene{
 						auto state=scene.state.current;
 						if(!state.isValidTarget(id,TargetType.creature)) continue;
 						auto mesh=scene.arrow.getFrame(mixin(`objects.`~arrow~`Effects`)[j].frame%(16*updateAnimFactor));
-						static void renderLoadedArrow(B)(ref MovingObject!B object,SacScene scene,Mesh mesh,RenderingContext* rc){
-							auto loadedArrow=object.loadedArrow;
-							if(loadedArrow!=loadedArrow) return;
-							void renderArrow(Vector3f start,Vector3f end,float scale=1.0f){
-								auto direction=end-start;
-								auto len=direction.length;
-								auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),direction/len);
-								scene.shadelessMaterialBackend.setTransformationScaled(start,rotation,Vector3f(scale,scale,len),rc);
-								mesh.render(rc);
-							}
-							with(loadedArrow){
-								renderArrow(hand,top,0.5f);
-								renderArrow(hand,bottom,0.5f);
-								renderArrow(hand,front);
-							}
-						}
-						state.movingObjectById!renderLoadedArrow(id,scene,mesh,rc);
+						// static void renderLoadedArrow(B)(ref MovingObject!B object,SacScene scene,Mesh mesh,RenderingContext* rc){
+						// 	// implementation moved to outer scope due to compiler bug
+						// }
+						state.movingObjectById!(renderLoadedArrow,(){})(id,scene,mesh,rc);
 					}
 					foreach(j;0..mixin(`objects.`~arrow,`Projectiles`).length){
 						auto position=mixin(`objects.`~arrow,`Projectiles`)[j].position;
@@ -1135,7 +1139,7 @@ final class SacScene: Scene{
 		state.current.eachMoving!renderOtherSides(this,updateRectangleSelect,mouse.loc==Mouse.Location.minimap,rc);
 		if(updateRectangleSelect) renderedSelection.addFront(rectangleSelection.creatureIds[]);
 		foreach(id;renderedSelection.creatureIds)
-			if(id) state.current.movingObjectById!renderCreatureStat(id,this,true,rc);
+			if(id) state.current.movingObjectById!(renderCreatureStat,(){})(id,this,true,rc);
 	}
 
 	static void renderBox(Vector3f[2] sl,bool wireframe,RenderingContext* rc){
@@ -1301,7 +1305,7 @@ final class SacScene: Scene{
 				auto color=soul.color(scene.renderSide,scene.state.current)==SoulColor.blue?blueSoulFrameColor:redSoulFrameColor;
 				scene.renderFrame(hitbox2d,color,rc);
 			}
-			state.current.soulById!renderHitbox(mouse.target.id,this,rc);
+			state.current.soulById!(renderHitbox,(){})(mouse.target.id,this,rc);
 		}
 	}
 	bool isInRectangleSelect(Vector2f position){
@@ -1463,7 +1467,7 @@ final class SacScene: Scene{
 					}
 				}
 			}
-			state.current.movingObjectById!renderIcon(renderedSelection.creatureIds[i],i,Vector3f(position.x+34.0f*hudScaling,0.5*(height-scaling.y)+32.0f*hudScaling,0.0f),hudScaling,this,rc);
+			state.current.movingObjectById!(renderIcon,(){})(renderedSelection.creatureIds[i],i,Vector3f(position.x+34.0f*hudScaling,0.5*(height-scaling.y)+32.0f*hudScaling,0.0f),hudScaling,this,rc);
 		}
 		auto ability=renderedSelection.ability(state.current);
 		if(ability&&ability.icon){
@@ -2712,8 +2716,8 @@ final class SacScene: Scene{
 				if(target.type.among(TargetType.none,TargetType.terrain))
 					state.eachMoving!perform(state);
 				else if(target.type==TargetType.creature)
-					state.movingObjectById!perform(target.id,state);
-			}else state.movingObjectById!perform(camera.target,state);
+					state.movingObjectById!(perform,(){})(target.id,state);
+			}else state.movingObjectById!(perform,(){})(camera.target,state);
 		}
 		static void depleteMana(B)(ref MovingObject!B obj,ObjectState!B state){
 			obj.creatureStats.mana=0.0f;

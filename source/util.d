@@ -275,8 +275,6 @@ void assignArray(T)(ref Array!T to, ref Array!T from){
 }
 +/
 
-void fail(){ assert(0); }
-
 import dlib.image;
 auto imageFromData(const(ubyte)[] data,int width,int height,int channels)in{
 	assert(data.length==width*height*channels);

@@ -1092,7 +1092,7 @@ float height(B)(ref Building!B building,ObjectState!B state){
 		state.staticObjectById!((obj,state){
 			auto hitbox=obj.hitbox;
 			maxZ=max(maxZ,hitbox[1].z-obj.position.z);
-		})(cid,state);
+		},(){})(cid,state);
 	}
 	return maxZ;
 }
@@ -1153,7 +1153,7 @@ void freeManafount(B)(ref Building!B manafount,ObjectState!B state)in{
 	assert(manafount.isManafount);
 	assert(manafount.top!=0);
 }do{
-	state.buildingById!((ref obj){ assert(obj.base==manafount.id); obj.base=0; })(manafount.top);
+	state.buildingById!((ref obj){ assert(obj.base==manafount.id); obj.base=0; },(){})(manafount.top);
 	manafount.top=0;
 	manafount.activate(state);
 }
@@ -1162,7 +1162,7 @@ void loopingSoundSetup(B)(ref Building!B building,ObjectState!B state){
 		if(building.flags&AdditionalBuildingFlags.inactive) return;
 		if(playAudio){
 			foreach(cid;building.componentIds)
-				state.staticObjectById!(B.loopingSoundSetup)(cid);
+				state.staticObjectById!(B.loopingSoundSetup,(){})(cid);
 		}
 	}
 }
@@ -1687,7 +1687,7 @@ WizardInfo!B makeWizard(B)(int id,int level,int souls,Spellbook!B spellbook,Obje
 		wizard.creatureStats.mana+=100*level;
 		wizard.creatureStats.maxMana+=100*level;
 		// TODO: boons
-	})(id,level,state);
+	},(){ assert(0); })(id,level,state);
 	return WizardInfo!B(id,level,souls,0.0f,move(spellbook));
 }
 
@@ -1927,6 +1927,7 @@ struct ManaDrain(B){
 	float manaCostPerFrame;
 	int timer;
 }
+struct BuildingDestruction{ int id; }
 struct GhostKill{ int id; }
 struct CreatureCasting(B){
 	ManaDrain!B manaDrain;
@@ -2491,6 +2492,14 @@ struct Effects(B){
 		if(i+1<manaDrains.length) manaDrains[i]=move(manaDrains[$-1]);
 		manaDrains.length=manaDrains.length-1;
 	}
+	Array!BuildingDestruction buildingDestructions;
+	void addEffect(BuildingDestruction buildingDestruction){
+		buildingDestructions~=buildingDestruction;
+	}
+	void removeBuildingDestruction(int i){
+		if(i+1<buildingDestructions.length) buildingDestructions[i]=move(buildingDestructions[$-1]);
+		buildingDestructions.length=buildingDestructions.length-1;
+	}
 	Array!GhostKill ghostKills;
 	void addEffect(GhostKill ghostKill){
 		ghostKills~=ghostKill;
@@ -2908,6 +2917,7 @@ struct Effects(B){
 		assignArray(explosions,rhs.explosions);
 		assignArray(fires,rhs.fires);
 		assignArray(manaDrains,rhs.manaDrains);
+		assignArray(buildingDestructions,rhs.buildingDestructions);
 		assignArray(ghostKills,rhs.ghostKills);
 		assignArray(creatureCasts,rhs.creatureCasts);
 		assignArray(structureCasts,rhs.structureCasts);
@@ -3477,7 +3487,7 @@ auto ref objectById(alias f,B,T...)(ref ObjectManager!B objectManager,int id,T a
 		}
 	}
 }
-auto ref movingObjectById(alias f,alias nonMoving=fail,B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
+auto ref movingObjectById(alias f,alias nonMoving,B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
 	assert(id>0);
 }do{
 	auto nid=objectManager.ids[id-1];
@@ -3495,7 +3505,7 @@ auto ref movingObjectById(alias f,alias nonMoving=fail,B,T...)(ref ObjectManager
 		}
 	}else return nonMoving();
 }
-auto ref staticObjectById(alias f,alias nonStatic=fail,B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
+auto ref staticObjectById(alias f,alias nonStatic,B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
 	assert(id>0);
 }do{
 	auto nid=objectManager.ids[id-1];
@@ -3518,14 +3528,14 @@ auto ref staticObjectById(alias f,alias nonStatic=fail,B,T...)(ref ObjectManager
 		}
 	}else return nonStatic();
 }
-auto ref soulById(alias f,alias noSoul=fail,B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
+auto ref soulById(alias f,alias noSoul,B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
 	assert(id>0);
 }do{
 	auto nid=objectManager.ids[id-1];
 	if(nid.type!=ObjectType.soul||nid.index==-1) return noSoul();
 	return f(objectManager.opaqueObjects.souls[nid.index],args);
 }
-auto ref buildingById(alias f,alias noBuilding=fail,B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
+auto ref buildingById(alias f,alias noBuilding,B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
 	assert(id>0);
 }do{
 	auto nid=objectManager.ids[id-1];
@@ -3534,7 +3544,7 @@ auto ref buildingById(alias f,alias noBuilding=fail,B,T...)(ref ObjectManager!B 
 	static assert(byRef);
 	return f(objectManager.opaqueObjects.buildings[nid.index],args);
 }
-auto ref buildingByStaticObjectId(alias f,alias nonStatic=fail,B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
+auto ref buildingByStaticObjectId(alias f,alias nonStatic,B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
 	assert(id>0);
 }do{
 	auto nid=objectManager.ids[id-1];
@@ -3896,27 +3906,7 @@ void startDissolving(B)(ref MovingObject!B object,ObjectState!B state){
 void destroy(B)(ref Building!B building, ObjectState!B state){
 	if(building.flags&Flags.cannotDestroyKill) return;
 	if(building.maxHealth(state)==0.0f) return;
-	int newLength=0;
-	foreach(i,id;building.componentIds.data){
-		state.removeLater(id);
-		auto destroyed=building.bldg.components[i].destroyed;
-		if(destroyed!="\0\0\0\0"){
-			auto destObj=SacObject!B.getBLDG(destroyed);
-			state.staticObjectById!((ref StaticObject!B object){
-				building.componentIds[newLength++]=state.addObject(StaticObject!B(destObj,building.id,object.position,object.rotation,object.scale));
-			})(id);
-		}
-		state.staticObjectById!((ref StaticObject!B object,state){
-			auto destruction=building.bldg.components[i].destruction;
-			destructionAnimation(destruction,object.center,state);
-		})(id,state);
-	}
-	building.componentIds.length=newLength;
-	if(building.base){
-		state.buildingById!freeManafount(building.base,state);
-	}
-	if(newLength==0)
-		state.removeLater(building.id);
+	state.addEffect(BuildingDestruction(building.id));
 }
 
 void spawnSoul(B)(ref MovingObject!B object, ObjectState!B state){
@@ -3990,8 +3980,8 @@ int makeBuilding(B)(ref MovingObject!B caster,char[4] tag,int flags,int base,Obj
 			auto rotation=facingQuaternion(2*pi!float/360.0f*(facing+component.facing));
 			building.componentIds~=state.addObject(StaticObject!B(curObj,building.id,cposition,rotation,1.0f));
 		}
-		if(base) state.buildingById!((ref manafount,state){ putOnManafount(building,manafount,state); })(base,state);
-	})(buildingId);
+		if(base) state.buildingById!((ref manafount,state){ putOnManafount(building,manafount,state); },(){})(base,state);
+	},(){ assert(0); })(buildingId);
 	return buildingId;
 }
 int makeBuilding(B)(int casterId,char[4] tag,int flags,int base,ObjectState!B state)in{
@@ -4019,7 +4009,7 @@ int makeBuilding(B)(int side,char[4] tag,Vector3f position,int flags,ObjectState
 			auto rotation=facingQuaternion(2*pi!float/360.0f*(facing+component.facing));
 			building.componentIds~=state.addObject(StaticObject!B(curObj,building.id,cposition,rotation,1.0f));
 		}
-	})(buildingId);
+	},(){ assert(0); })(buildingId);
 	return buildingId;
 }
 
@@ -4231,7 +4221,7 @@ void healFromDrain(B)(ref MovingObject!B attacker,float actualDamage,ObjectState
 }
 void healFromDrain(B)(int attacker,float actualDamage,ObjectState!B state){
 	if(state.isValidTarget(attacker,TargetType.creature))
-		return state.movingObjectById!healFromDrain(attacker,actualDamage,state);
+		return state.movingObjectById!(healFromDrain,(){})(attacker,actualDamage,state);
 }
 
 float dealDamage(T,B)(ref T object,float damage,int attacker,int attackingSide,ObjectState!B state)if(is(T==MovingObject!B)||is(T==Building!B)){
@@ -4983,7 +4973,7 @@ bool teleport(B)(int side,Vector3f startPosition,Vector3f targetPosition,SacSpel
 			animateTeleport(false,newHitbox,state);
 		}
 		if(entry.isStatic||!state.isValidTarget(entry.id,TargetType.creature)||side!=entry.side) return;
-		state.movingObjectById!doIt(entry.id,startPosition,targetPosition,state);
+		state.movingObjectById!(doIt,(){})(entry.id,startPosition,targetPosition,state);
 	}
 	state.proximity.eachInRange!teleport(startPosition,spell.effectRange,side,startPosition,targetPosition,state);
 	return true;
@@ -6083,7 +6073,7 @@ bool runAwayBug(B)(ref MovingObject!B object,ObjectState!B state){
 	object.creatureStats.effects.abilityCooldown=cast(int)(ability.cooldown*updateFPS);
 	object.drainMana(ability.manaCost,state);
 	object.clearOrder(state);
-	state.movingObjectById!((ref target,ability,state){ target.runAway(ability,state); })(targetId,ability,state);
+	state.movingObjectById!((ref target,ability,state){ target.runAway(ability,state); },(){})(targetId,ability,state);
 	return true;
 }
 
@@ -7040,7 +7030,7 @@ void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 					state.movingObjectById!((ref creature,state){
 						creature.soulId=0;
 						creature.startDissolving(state);
-					})(soul.creatureId,state);
+					},(){})(soul.creatureId,state);
 				}
 			}
 			break;
@@ -7192,6 +7182,31 @@ bool updateManaDrain(B)(ref ManaDrain!B manaDrain,ObjectState!B state){
 		case CastingStatus.interrupted, CastingStatus.finished: return false;
 	}
 }
+bool updateBuildingDestruction(B)(ref BuildingDestruction buildingDestruction,ObjectState!B state){
+	if(state.buildingById!((ref building,state){
+		int newLength=0;
+		foreach(i,id;building.componentIds.data){
+			state.removeLater(id);
+			auto destroyed=building.bldg.components[i].destroyed;
+			if(destroyed!="\0\0\0\0"){
+				auto destObj=SacObject!B.getBLDG(destroyed);
+				state.staticObjectById!((ref StaticObject!B object){
+					building.componentIds[newLength++]=state.addObject(StaticObject!B(destObj,building.id,object.position,object.rotation,object.scale));
+				},(){})(id);
+			}
+			state.staticObjectById!((ref StaticObject!B object,state){
+				auto destruction=building.bldg.components[i].destruction;
+				destructionAnimation(destruction,object.center,state);
+			},(){})(id,state);
+		}
+		building.componentIds.length=newLength;
+		if(building.base) state.buildingById!(freeManafount,(){})(building.base,state);
+		return newLength==0;
+	},()=>false)(buildingDestruction.id,state)){
+		state.removeObject(buildingDestruction.id);
+	}
+	return false;
+}
 bool updateGhostKill(B)(ref GhostKill ghostKill,ObjectState!B state){
 	return state.movingObjectById!((ref wizard,state){
 		if(wizard.creatureState.mode.among(CreatureMode.idleGhost,CreatureMode.movingGhost))
@@ -7212,7 +7227,7 @@ bool updateCreatureCasting(B)(ref CreatureCasting!B creatureCast,ObjectState!B s
 	with(creatureCast){
 		final switch(manaDrain.update(state)){
 			case CastingStatus.underway:
-				state.movingObjectById!animateCreatureCasting(manaDrain.wizard,spell,state);
+				state.movingObjectById!(animateCreatureCasting,(){})(manaDrain.wizard,spell,state);
 				// TODO: add rotating particles around creature position
 				return true;
 			case CastingStatus.interrupted:
@@ -7252,8 +7267,8 @@ void animateStructureCasting(B)(ref StructureCasting!B structureCast,ObjectState
 				}
 			}
 			// TODO: add ground particle effects around building
-		})(building,thresholdZ,state);
-		state.movingObjectById!animateCastingForGod(manaDrain.wizard,god,state);
+		},(){})(building,thresholdZ,state);
+		state.movingObjectById!(animateCastingForGod,(){})(manaDrain.wizard,god,state);
 		// TODO: add ground particle effects around wizard
 	}
 }
@@ -7267,7 +7282,7 @@ bool updateStructureCasting(B)(ref StructureCasting!B structureCast,ObjectState!
 				structureCast.animateStructureCasting(state);
 				return true;
 			case CastingStatus.interrupted:
-				state.buildingById!destroy(building,state);
+				state.buildingById!(destroy,(){})(building,state);
 				return false;
 			case CastingStatus.finished:
 				state.setRenderMode!(Building!B,RenderMode.opaque)(building);
@@ -7298,7 +7313,7 @@ bool updateGuardianCasting(B)(ref GuardianCasting!B guardianCast,ObjectState!B s
 	with(guardianCast){
 		final switch(manaDrain.update(state)){
 			case CastingStatus.underway:
-				state.movingObjectById!animateGuardianCasting(manaDrain.wizard,state);
+				state.movingObjectById!(animateGuardianCasting,(){})(manaDrain.wizard,state);
 				return true;
 			case CastingStatus.interrupted: return false;
 			case CastingStatus.finished:
@@ -7652,7 +7667,7 @@ bool updateSacDocCarry(B)(ref SacDocCarry!B sacDocCarry,ObjectState!B state){
 			if(soul){
 				state.removeLater(soul);
 				soul=0;
-				state.movingObjectById!((ref obj){ obj.soulId=0; })(creature);
+				state.movingObjectById!((ref obj){ obj.soulId=0; },(){})(creature);
 			}
 			return true;
 		}
@@ -8165,7 +8180,7 @@ bool updateHealCasting(B)(ref HealCasting!B healCast,ObjectState!B state){
 						auto velocity=(center-position)/lifetime;
 						auto scale=1.0f;
 						state.addParticle(Particle!(B,true)(sacParticle,obj.id,false,position,velocity,scale,sacParticle.numFrames,0));
-					})(creature,sacParticle,state);
+					},(){})(creature,sacParticle,state);
 					state.movingObjectById!((obj,sacParticle,state){
 						auto hitbox=obj.relativeHitbox;
 						auto center=boxCenter(hitbox);
@@ -8177,9 +8192,9 @@ bool updateHealCasting(B)(ref HealCasting!B healCast,ObjectState!B state){
 						auto velocity=(position-center)/lifetime;
 						auto scale=1.0f;
 						state.addParticle(Particle!(B,true)(sacParticle,obj.id,false,center,velocity,scale,sacParticle.numFrames,0));
-					})(manaDrain.wizard,sacParticle,state);
+					},(){})(manaDrain.wizard,sacParticle,state);
 				}
-				state.movingObjectById!animateHealCasting(manaDrain.wizard,state);
+				state.movingObjectById!(animateHealCasting,(){})(manaDrain.wizard,state);
 				return true;
 			case CastingStatus.interrupted: return false;
 			case CastingStatus.finished:
@@ -9600,7 +9615,7 @@ bool updateStealth(B)(ref Stealth!B stealth,ObjectState!B state){
 						assert(object.creatureStats.effects.stealth);
 						object.creatureStats.effects.stealth=false;
 					}
-					state.movingObjectById!removeStealth(target);
+					state.movingObjectById!(removeStealth,(){})(target);
 					updateRenderMode(target,state);
 					return false;
 				}
@@ -9638,7 +9653,7 @@ bool updateLifeShield(B)(ref LifeShield!B lifeShield,ObjectState!B state){
 						assert(object.creatureStats.effects.lifeShield);
 						object.creatureStats.effects.lifeShield=false;
 					}
-					state.movingObjectById!removeLifeShield(target);
+					state.movingObjectById!(removeLifeShield,(){})(target);
 					updateRenderMode(target,state);
 					return false;
 				}
@@ -9734,11 +9749,11 @@ bool updateProtector(B)(ref Protector!B protector,ObjectState!B state){
 				if(object.isWizard) return;
 				object.lifeShield(lifeShield,state);
 			}
-			state.movingObjectById!doIt(entry.id,lifeShield,state);
+			state.movingObjectById!(doIt,(){})(entry.id,lifeShield,state);
 		}
 		state.proximity.eachInRange!applyShield(object.center,ability.effectRange,object.id,object.side,lifeShield,state);
 	}
-	state.movingObjectById!applyProtector(protector.id,protector.ability,state);
+	state.movingObjectById!(applyProtector,(){})(protector.id,protector.ability,state);
 	return false;
 }
 
@@ -9751,7 +9766,7 @@ bool updateAppearance(B)(ref Appearance appearance,ObjectState!B state){
 		if(frame>=lifetime){
 			state.movingObjectById!((ref object){
 				object.creatureStats.effects.appearing=false;
-			})(id);
+			},(){})(id);
 			updateRenderMode(id,state);
 			return false;
 		}
@@ -9857,6 +9872,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.manaDrains.length;){
 		if(!updateManaDrain(effects.manaDrains[i],state)){
 			effects.removeManaDrain(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.buildingDestructions.length;){
+		if(!updateBuildingDestruction(effects.buildingDestructions[i],state)){
+			effects.removeBuildingDestruction(i);
 			continue;
 		}
 		i++;
@@ -11210,12 +11232,12 @@ final class ObjectState(B){ // (update logic)
 		Lswitch:final switch(command.type) with(CommandType){
 			case none: break; // TODO: maybe get rid of null commands
 
-			case moveForward: this.movingObjectById!startMovingForward(command.creature,this,command.side); break;
-			case moveBackward: this.movingObjectById!startMovingBackward(command.creature,this,command.side); break;
-			case stopMoving: this.movingObjectById!stopMovement(command.creature,this,command.side); break;
-			case turnLeft: this.movingObjectById!startTurningLeft(command.creature,this,command.side); break;
-			case turnRight: this.movingObjectById!startTurningRight(command.creature,this,command.side); break;
-			case stopTurning: this.movingObjectById!(.stopTurning)(command.creature,this,command.side); break;
+			case moveForward: this.movingObjectById!(startMovingForward,(){})(command.creature,this,command.side); break;
+			case moveBackward: this.movingObjectById!(startMovingBackward,(){})(command.creature,this,command.side); break;
+            case stopMoving: this.movingObjectById!(stopMovement,(){})(command.creature,this,command.side); break;
+			case turnLeft: this.movingObjectById!(startTurningLeft,(){})(command.creature,this,command.side); break;
+			case turnRight: this.movingObjectById!(startTurningRight,(){})(command.creature,this,command.side); break;
+			case stopTurning: this.movingObjectById!(.stopTurning,(){})(command.creature,this,command.side); break;
 
 			case clearSelection: this.clearSelection(command.side); break;
 			static foreach(type;[select,selectAll,toggleSelection]){
@@ -11245,7 +11267,7 @@ final class ObjectState(B){ // (update logic)
 			applyCommand(command);
 		this.eachMoving!updateCreature(this);
 		foreach(side;0..cast(int)sid.sides.length) if(auto q=aiQueue(side)) if(!q.empty){
-			this.movingObjectById!((ref obj){ obj.creatureAI.isOnAIQueue=false; })(q.front);
+			this.movingObjectById!((ref obj){ obj.creatureAI.isOnAIQueue=false; },(){})(q.front);
 			q.popFront();
 		}
 		this.eachSoul!updateSoul(this);
@@ -11285,7 +11307,7 @@ final class ObjectState(B){ // (update logic)
 		this.buildingById!((ref bldg,state){
 			foreach(cid;bldg.componentIds)
 				state.setRenderMode!(StaticObject!B,mode)(cid);
-		})(id,this);
+		},(){})(id,this);
 	}
 	void setupStructureCasting(int buildingId){
 		this.buildingById!((ref bldg,state){
@@ -11293,7 +11315,7 @@ final class ObjectState(B){ // (update logic)
 				state.setRenderMode!(StaticObject!B,RenderMode.transparent)(cid);
 				state.setThresholdZ(cid,-structureCastingGradientSize);
 			}
-		})(buildingId,this);
+		},(){})(buildingId,this);
 	}
 	Array!int toRemove;
 	void removeLater(int id)in{
@@ -11524,7 +11546,7 @@ final class ObjectState(B){ // (update logic)
 					if(selection[i].id) state.sid.addToSelection(side,selection[i].id);
 			}
 		}
-		this.movingObjectById!processObj(id,side,this);
+		this.movingObjectById!(processObj,(){})(id,side,this);
 	}
 	void addToSelection(int side,int id){
 		if(!canSelect(side,id,this)) return;
@@ -11612,19 +11634,19 @@ auto eachMovingOfSide(alias f,B,T...)(ObjectState!B objectState,int side,T args)
 auto ref objectById(alias f,B,T...)(ObjectState!B objectState,int id,T args){
 	return objectState.obj.objectById!f(id,args);
 }
-auto ref movingObjectById(alias f,alias nonMoving=fail,B,T...)(ObjectState!B objectState,int id,T args){
+auto ref movingObjectById(alias f,alias nonMoving,B,T...)(ObjectState!B objectState,int id,T args){
 	return objectState.obj.movingObjectById!(f,nonMoving)(id,args);
 }
-auto ref staticObjectById(alias f,alias nonStatic=fail,B,T...)(ObjectState!B objectState,int id,T args){
+auto ref staticObjectById(alias f,alias nonStatic,B,T...)(ObjectState!B objectState,int id,T args){
 	return objectState.obj.staticObjectById!(f,nonStatic)(id,args);
 }
-auto ref soulById(alias f,alias noSoul=fail,B,T...)(ObjectState!B objectState,int id,T args){
+auto ref soulById(alias f,alias noSoul,B,T...)(ObjectState!B objectState,int id,T args){
 	return objectState.obj.soulById!(f,noSoul)(id,args);
 }
-auto ref buildingById(alias f,alias noBuilding=fail,B,T...)(ObjectState!B objectState,int id,T args){
+auto ref buildingById(alias f,alias noBuilding,B,T...)(ObjectState!B objectState,int id,T args){
 	return objectState.obj.buildingById!(f,noBuilding)(id,args);
 }
-auto ref buildingByStaticObjectId(alias f,alias noStatic=fail,B,T...)(ObjectState!B objectState,int id,T args){
+auto ref buildingByStaticObjectId(alias f,alias noStatic,B,T...)(ObjectState!B objectState,int id,T args){
 	return objectState.obj.buildingByStaticObjectId!(f,noStatic)(id,args);
 }
 
@@ -12464,10 +12486,10 @@ final class GameState(B){
 			}
 			if(ntt.base){
 				enforce(ntt.base in triggers.objectIds);
-				current.buildingById!((ref manafount,state){ putOnManafount(building,manafount,state); })(triggers.objectIds[ntt.base],current);
+				current.buildingById!((ref manafount,state){ putOnManafount(building,manafount,state); },(){})(triggers.objectIds[ntt.base],current);
 			}
 			building.loopingSoundSetup(current);
-		})(buildingId);
+		},(){ assert(0); })(buildingId);
 	}
 
 	void placeNTT(T)(ref T ntt) if(is(T==Creature)||is(T==Wizard)){
