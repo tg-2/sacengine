@@ -7190,9 +7190,9 @@ bool updateBuildingDestruction(B)(ref BuildingDestruction buildingDestruction,Ob
 			auto destroyed=building.bldg.components[i].destroyed;
 			if(destroyed!="\0\0\0\0"){
 				auto destObj=SacObject!B.getBLDG(destroyed);
-				state.staticObjectById!((ref StaticObject!B object){
-					building.componentIds[newLength++]=state.addObject(StaticObject!B(destObj,building.id,object.position,object.rotation,object.scale));
-				},(){})(id);
+				auto positionRotationScale=state.staticObjectById!((ref StaticObject!B object)=>tuple(object.position,object.rotation,object.scale),()=>Tuple!(Vector3f,Quaternionf,float).init)(id);
+				if(!isNaN(positionRotationScale[2]))
+					building.componentIds[newLength++]=state.addObject(StaticObject!B(destObj,building.id,positionRotationScale.expand));
 			}
 			state.staticObjectById!((ref StaticObject!B object,state){
 				auto destruction=building.bldg.components[i].destruction;
