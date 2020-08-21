@@ -48,6 +48,7 @@
 # --volume=0.5                 # global factor on volume
 # --music-volume=0.5           # additional factor on music volume
 # --sound-volume=0.5           # additional factor on sound volume
+# --no-advisor-help-speech     # disable zyzyx
 
 # miscellanneous
 # --redirect-output            # print diagnostics to SacEngine.out.txt and SacEngine.err.txt

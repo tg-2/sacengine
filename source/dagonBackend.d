@@ -1797,6 +1797,7 @@ final class SacScene: Scene{
 		spellbookTab=newTab;
 	}
 	void spellAdvisorHelpSpeech(SpellStatus status){
+		if(!options.advisorHelpSpeech) return;
 		auto priority=DialogPriority.advisorAnnoy;
 		char[4] tag;
 		final switch(status) with(AdvisorHelpSound){
@@ -1811,7 +1812,7 @@ final class SacScene: Scene{
 			case SpellStatus.notReady: tag=notReady; break;
 			case SpellStatus.ready: return;
 		}
-		if(audio) audio.queueDialogSound(tag,DialogPriority.advisorAnnoy);
+		if(audio) audio.queueDialogSound(tag,priority);
 	}
 	bool castSpell(SacSpell!DagonBackend spell,Target target,bool playAudio=true){
 		switchSpellbookTab(spell.type);
