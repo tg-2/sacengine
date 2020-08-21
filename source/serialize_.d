@@ -449,14 +449,14 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Sid
 
 void serialize(alias sink,B)(ObjectState!B state){
 	enum noserialize=["map","sides","proximity","pathFinder","toRemove"];
-	assert(!state.proximity.active);
-	assert(state.toRemove.length==0);
+	if(state.proximity.active) stderr.writeln("warning: serialize: proximity active");
+	if(state.toRemove.length!=0) stderr.writeln("warning: serialize: toRemove not empty");
 	serializeClass!(sink,noserialize)(state);
 }
 void deserialize(T,R)(T state,ref R data)if(is(T==ObjectState!B,B)){
 	enum noserialize=["map","sides","proximity","pathFinder","toRemove"];
-	assert(!state.proximity.active);
-	assert(state.toRemove.length==0);
+	if(state.proximity.active) stderr.writeln("warning: deserialize: proximity active");
+	if(state.toRemove.length!=0) stderr.writeln("warning: deserialize: toRemove not empty");
 	deserializeClass!noserialize(state,state,data);
 }
 
