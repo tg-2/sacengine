@@ -31,6 +31,7 @@ struct Options{
 	Settings settings;
 	bool randomSpellbook=false;
 	// global settings
+	string mapList;
 	bool _2v2=false;
 	bool _3v3=false;
 	bool shuffleSides=false;

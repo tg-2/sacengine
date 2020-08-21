@@ -8,6 +8,7 @@
 # --god=persephone             # choose god (default: random god)
 # --random-spellbook           # choose fully random spellbook
 # --side=0                     # set player side (default: 0)
+# --map-list=maps-1v1.txt      # list of maps for random selection
 
 # multiplayer options for client
 # --join=localhost             # join a hosted game on the local machine

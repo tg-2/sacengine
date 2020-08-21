@@ -218,15 +218,6 @@ int main(string[] args){
 	}
 	auto opts=args[1..$].filter!(x=>x.startsWith("--")).array;
 	args=chain(args[0..1],args[1..$].filter!(x=>!x.startsWith("--"))).array;
-	if(args.length==1){
-		import std.file;
-		auto candidates=dirEntries("maps","*.scp",SpanMode.depth).array;
-		import std.random:uniform;
-		auto map=candidates[uniform!"[)"(0,$)];
-		stderr.writefln!"no map specified, selected '%s'"(map);
-		args~=map;
-		//args~="extracted/jamesmod/JMOD.WAD!/modl.FLDR/jman.MRMC/jman.MRMM".fixPath;
-	}
 	Options options={
 		//shadowMapResolution: 8192,
 		//shadowMapResolution: 4096,
@@ -313,6 +304,8 @@ int main(string[] args){
 			options.level=to!int(opt["--level=".length..$]);
 		}else if(opt.startsWith("--souls=")){
 			options.souls=to!int(opt["--souls=".length..$]);
+		}else if(opt.startsWith("--map-list=")){
+			options.mapList=opt["--map-list=".length..$];
 		}else if(opt.startsWith("--delay-start=")){
 			options.delayStart=to!int(opt["--delay-start=".length..$]);
 		}else if(opt=="--host"){
@@ -394,6 +387,14 @@ int main(string[] args){
 		if(arg.endsWith(".scp")||arg.endsWith(".HMAP")){
 			options.map=arg;
 		}
+	}
+	if(options.map==""){
+		import std.file;
+		auto candidates=!options.mapList?dirEntries("maps","*.scp",SpanMode.depth).map!(x=>cast(string)x).array:File(options.mapList).byLineCopy.map!(l=>stripComment(l.strip)).filter!(l=>!l.empty).array;
+		import std.random:uniform;
+		auto map=candidates.length?candidates[uniform!"[)"(0,$)]:"";
+		if(map!="") stdout.writefln!"selected map '%s'"(map);
+		options.map=map;
 	}
 	if(options.map!="") loadMap(backend,options);
 
