@@ -588,7 +588,7 @@ final class Network(B){
 		updateSettings(me,newSettings);
 	}
 	void addCommand(int frame,Command!B command)in{
-		assert((playing||frame==0&&command.type==CommandType.surrender)&&players[command.side].committedFrame<=frame);
+		assert(playing&&players[me].committedFrame<=frame||command.type==CommandType.surrender);
 	}do{
 		broadcast(Packet.command(frame,command));
 	}
