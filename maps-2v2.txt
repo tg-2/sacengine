@@ -1,0 +1,140 @@
+maps/(4) EM-Andes.scp
+maps/(4) EM-Arches's Fall.scp
+maps/(4) EM-Arches's Summer.scp
+maps/(4) EM-Arena.scp
+maps/(4) EM-Bloody Hell.scp
+maps/(4) EM-Breeze.scp
+maps/(4) EM-Bug.scp
+maps/(4) EM-Charnel's Lyke Wake.scp
+maps/(4) EM-Charnel's Reflection.scp
+maps/(4) EM-ChristmasTEST.scp
+maps/(4) EM-Cold Field.scp
+maps/(4) EM-concept map.scp
+maps/(4) EM-conceptmap.scp
+maps/(4) EM-Confusion.scp
+maps/(4) EM-Conifer Forest.scp
+maps/(4) EM-Cross Hill.scp
+maps/(4) EM-Dark Chess.scp
+maps/(4) EM-Darkness In The Middle.scp
+maps/(4) EM-Desert Of Deception [7].scp
+maps/(4) EM-Desert Of Deception.scp
+maps/(4) EM-Diablo's Shell.scp
+maps/(4) EM-Dirty Clown.scp
+maps/(4) EM-Dominator.scp
+maps/(4) EM-Dragon's Den.scp
+maps/(4) EM-Eden.scp
+maps/(4) EM-Eklis.scp
+maps/(4) EM-Ethereal 2.scp
+maps/(4) EM-Ethereal Conflict.scp
+maps/(4) EM-Ethereal.scp
+maps/(4) EM-Ethereal Startling.scp
+maps/(4) EM-Fish Food.scp
+maps/(4) EM-Gaymap.scp
+maps/(4) EM-God's Predilection.scp
+maps/(4) EM-Golden Evil.scp
+maps/(4) EM-Greed.scp
+maps/(4) EM-Hamburger Dell Doomed.scp
+maps/(4) EM-Hamburger Dell.scp
+maps/(4) EM-Hamburger Hill Fried Edition.scp
+maps/(4) EM-Hazard.scp
+maps/(4) EM-Headwaters.scp
+maps/(4) EM-Humanaptra.scp
+maps/(4) EM-James's Kingdom.scp
+maps/(4) EM-James's Twirl Reflection.scp
+maps/(4) EM-Majestic.scp
+maps/(4) EM-Maze.scp
+maps/(4) EM-Menace.scp
+maps/(4) EM-Microfight.scp
+maps/(4) EM-Middle Earth.scp
+maps/(4) EM-Moonlight Desert.scp
+maps/(4) EM-Nano Fight.scp
+maps/(4) EM-Nightmare-no hills.scp
+maps/(4) EM-Nightmare.scp
+maps/(4) EM-North Pole.scp
+maps/(4) EM-Omikron.scp
+maps/(4) EM-paradise29.scp
+maps/(4) EM-paradise61.scp
+maps/(4) EM-Persephone's Reflection.scp
+maps/(4) EM-Plaxland.scp
+maps/(4) EM-Psychical Illusion.scp
+maps/(4) EM-Pugna.scp
+maps/(4) EM-Pyro's Party Ground.scp
+maps/(4) EM-Red Desert.scp
+maps/(4) EM-Salt Gulch.scp
+maps/(4) EM-Shadow & Light.scp
+maps/(4) EM-Shell.scp
+maps/(4) EM-Sideralis.scp
+maps/(4) EM-Simplicity Teamplay.scp
+maps/(4) EM-Slaughter Only.scp
+maps/(4) EM-Slaughter.scp
+maps/(4) EM-SpiralTitsTestMap.scp
+maps/(4) EM-Square.scp
+maps/(4) EM-Star Of Wisdom.scp
+maps/(4) EM-Stinking Watercourse.scp
+maps/(4) EM-Strangulated.scp
+maps/(4) EM-Stratos's Kingdom.scp
+maps/(4) EM-Stratos's Twirl Reflection.scp
+maps/(4) EM-Sunny Fields.scp
+maps/(4) EM-Teleport My Friend.scp
+maps/(4) EM-The Realm Of Fancy.scp
+maps/(4) EM-The Two Towers.scp
+maps/(4) EM-Tornado.scp
+maps/(4) EM-Trenches.scp
+maps/(4) EM-Trespass.scp
+maps/(4) EM-Twisted Fate.scp
+maps/(4) EM-Two Farms.scp
+maps/(4) EM-Unreal Tournament.scp
+maps/(4) EM-Valley Of Fusion.scp
+maps/(4) EM-Veggie Burger Hill.scp
+maps/(4) EM-Vernal.scp
+maps/(4) EM-Volcano Teamplay.scp
+maps/(4) EM-Wave.scp
+maps/(4) EM-Wicked World.scp
+maps/(4) EM-Xmas.scp
+maps/(4) EM-Zairon.scp
+maps/(4) WM-Astral Dome 5.8.scp
+maps/(4) WM-Attack.scp
+maps/(4) WM-Avalanche.scp
+maps/(4) WM-Battle Coast.scp
+maps/(4) WM-Brass World.scp
+maps/(4) WM-Cinder Twirl.scp
+maps/(4) WM-Conifer Vale.scp
+maps/(4) WM-Creeping Place.scp
+maps/(4) WM-Culling.scp
+maps/(4) WM-Dawn Valley.scp
+maps/(4) WM-Dry Hills.scp
+maps/(4) WM-Encircle1.scp
+maps/(4) WM-Fading Land.scp
+maps/(4) WM-Freakish.scp
+maps/(4) WM-Grace.scp
+maps/(4) WM-Grand Arena.scp
+maps/(4) WM-Grief.scp
+maps/(4) WM-Hallow 2.3.scp
+maps/(4) WM-High GuardiaN.scp
+maps/(4) WM-Hoax.scp
+maps/(4) WM-Horizon.scp
+maps/(4) WM-Insect Lives Matter.scp
+maps/(4) WM-Meropis.scp
+maps/(4) WM-Nexus.scp
+maps/(4) WM-Passage.scp
+maps/(4) WM-Penance.scp
+maps/(4) WM-Repentance.scp
+maps/(4) WM-Rush-em.scp
+maps/(4) WM-Sand.scp
+maps/(4) WM-Sand Storm.scp
+maps/(4) WM-Solace.scp
+maps/(4) WM-Sorrow.scp
+maps/(4) WM-Sorrow V4.scp
+maps/(4) WM-Spinach Burger Hill.scp
+maps/(4) WM-Storm Zone.scp
+maps/(4) WM-Sunset Edge.scp
+maps/(4) WM-Sunshine.scp
+maps/(4) WM-theBattlecoast.scp
+maps/(4) WM-theDawnvalley.scp
+maps/(4) WM-Veiled Island.scp
+maps/(4) WM-Vex.scp
+maps/(4) WM-Wildland Pass.scp
+maps/(4) WM-Winter Siege.scp
+maps/(4) Ferry.scp
+maps/(4) Arctic Realm 2v2.scp
+maps/(4) Aztec.scp

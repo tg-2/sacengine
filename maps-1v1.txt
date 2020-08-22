@@ -1,0 +1,41 @@
+maps/(2) EM-Atta.scp
+maps/(2) EM-Desert Of Deception.scp
+maps/(2) EM-Eden.scp
+maps/(2) EM-Eklis.scp
+maps/(2) EM-Ethereal Conflict.scp
+maps/(2) EM-Fish Food.scp
+maps/(2) EM-Gaymap.scp
+maps/(2) EM-Greed.scp
+maps/(2) EM-Hazy.scp
+maps/(2) EM-Heart Attack.scp
+maps/(2) EM-Hearts.scp
+maps/(2) EM-Humanaptra.scp
+maps/(2) EM-Menace.scp
+maps/(2) EM-North Pole.scp
+maps/(2) EM-Sideralis.scp
+maps/(2) EM-Stinking Watercourse.scp
+maps/(2) EM-Twisted Fate.scp
+maps/(2) EM-Valley Of Fusion.scp
+maps/(2) WM-Botany 1on1.scp
+maps/(2) WM-Cinder Twirl.scp
+maps/(2) WM-ColdKiss.scp
+maps/(2) WM-Dawn Valley.scp
+maps/(2) WM-Fading Land.scp
+maps/(2) WM-Penance.scp
+maps/(2) WM-Pipe Dream.scp
+maps/(2) WM-Prejudice.scp
+maps/(2) WM-Rift.scp
+maps/(2) WM-Routine.scp
+maps/(2) WM-Ruckus [no lightmap].scp
+maps/(2) WM-Ruckus.scp
+maps/(2) WM-Sorrow.scp
+maps/(2) WM-Swap.scp
+maps/(2) WM-theDawnvalley.scp
+maps/(2) WM-theRift.scp
+maps/(2) WM-Wildland Pass.scp
+maps/(2) TM-Chain of Being.scp
+maps/(2) TM-Glaciers.scp
+maps/(2) TM-Sunhair.scp
+maps/(2) TM-Urknall.scp
+maps/(2) Ferry.scp
+maps/(2) Arctic Realm.scp
