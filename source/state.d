@@ -2449,6 +2449,13 @@ struct SteamCloud(B){
 	SacSpell!B ability;
 }
 
+struct PoisonCloud(B){
+	int id;
+	int side;
+	Vector3f[2] hitbox;
+	SacSpell!B ability;
+}
+
 struct Protector(B){
 	int id;
 	SacSpell!B ability;
@@ -2924,6 +2931,14 @@ struct Effects(B){
 		if(i+1<steamClouds.length) steamClouds[i]=move(steamClouds[$-1]);
 		steamClouds.length=steamClouds.length-1;
 	}
+	Array!(PoisonCloud!B) poisonClouds;
+	void addEffect(PoisonCloud!B poisonCloud){
+		poisonClouds~=poisonCloud;
+	}
+	void removePoisonCloud(int i){
+		if(i+1<poisonClouds.length) poisonClouds[i]=move(poisonClouds[$-1]);
+		poisonClouds.length=poisonClouds.length-1;
+	}
 	Array!(Protector!B) protectors;
 	void addEffect(Protector!B protector){
 		protectors~=protector;
@@ -3010,6 +3025,7 @@ struct Effects(B){
 		assignArray(stealths,rhs.stealths);
 		assignArray(lifeShields,rhs.lifeShields);
 		assignArray(steamClouds,rhs.steamClouds);
+		assignArray(poisonClouds,rhs.poisonClouds);
 		assignArray(protectors,rhs.protectors);
 		assignArray(appearances,rhs.appearances);
 		assignArray(disappearances,rhs.disappearances);
@@ -3887,8 +3903,11 @@ bool kill(B,bool pretending=false)(ref MovingObject!B object, ObjectState!B stat
 			object.creatureState.mode=CreatureMode.dying;
 			playSoundTypeAt(object.sacObject,object.id,SoundType.death,state);
 			if(auto ability=object.passiveAbility){
-				if(ability.tag==SpellTag.steamCloud)
-					object.steamCloud(ability,state);
+				switch(ability.tag){
+					case SpellTag.steamCloud: object.steamCloud(ability,state); break;
+					case SpellTag.poisonCloud: object.poisonCloud(ability,state); break;
+					default: break;
+				}
 			}
 		}else{
 			object.creatureState.mode=CreatureMode.dead;
@@ -5378,6 +5397,9 @@ bool poison(B)(ref MovingObject!B obj,float poisonDamage,int lifetime,bool infec
 	return true;
 }
 
+bool poison(B)(ref MovingObject!B obj,SacSpell!B rangedAttack,bool infectuous,int attacker,int attackerSide,ObjectState!B state){
+	return poison(obj,rangedAttack.amount/rangedAttack.duration,cast(int)(rangedAttack.duration*updateFPS),infectuous,attacker,attackerSide,state);
+}
 
 enum defaultFaceThreshold=1e-3;
 bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state,float threshold=defaultFaceThreshold){
@@ -6166,6 +6188,11 @@ bool shootAbilityBug(B)(ref MovingObject!B object,ObjectState!B state){
 
 bool steamCloud(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
 	state.addEffect(SteamCloud!B(object.id,object.side,object.hitbox,ability));
+	return true;
+}
+
+bool poisonCloud(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
+	state.addEffect(PoisonCloud!B(object.id,object.side,object.hitbox,ability));
 	return true;
 }
 
@@ -9657,7 +9684,7 @@ bool updateNecrylProjectile(B)(ref NecrylProjectile!B necrylProjectile,ObjectSta
 		switch(target.type){
 			case TargetType.terrain: return terminate();
 			case TargetType.creature:
-				state.movingObjectById!(poison,()=>false)(target.id,rangedAttack.amount/rangedAttack.duration,cast(int)(rangedAttack.duration*updateFPS),true,attacker,side,state);
+				state.movingObjectById!(poison,()=>false)(target.id,rangedAttack,true,attacker,side,state);
 				return terminate();
 			case TargetType.building:
 				dealRangedDamage(target.id,rangedAttack,attacker,side,direction,state);
@@ -9904,6 +9931,34 @@ bool updateSteamCloud(B)(ref SteamCloud!B steamCloud,ObjectState!B state){
 			auto lifetime=63;
 			auto frame=0;
 			state.addParticle(Particle!B(sacParticle2,position,velocity,scale,lifetime,frame));
+		}
+		return false;
+	}
+}
+
+bool updatePoisonCloud(B)(ref PoisonCloud!B poisonCloud,ObjectState!B state){
+	with(poisonCloud){
+		static void process(ProximityEntry target,ObjectState!B state,int directTarget,SacSpell!B ability,int attacker,int attackerSide,Vector3f position,float radius){
+			if(target.id==attacker) return;
+			auto distance=boxPointDistance(target.hitbox,position);
+			if(distance>radius) return;
+			state.movingObjectById!(poison,()=>false)(target.id,ability,true,attacker,attackerSide,state);
+		}
+		auto position=boxCenter(hitbox);
+		auto radius=ability.effectRange;
+		auto offset=Vector3f(radius,radius,radius);
+		Vector3f[2] phitbox=[position-offset,position+offset];
+		collisionTargets!process(phitbox,state,id,ability,id,side,position,radius);
+		enum numParticles2=50;
+		auto sacParticle2=SacParticle!B.get(ParticleType.poison);
+		auto scale=boxSize(hitbox).length;
+		foreach(i;0..numParticles2){
+			auto pposition=state.uniform(scaleBox(hitbox,2.0f));
+			auto direction=(position-boxCenter(hitbox)).normalized;
+			auto velocity=scale*state.uniform(0.25f,0.75f)*direction;
+			auto lifetime=state.uniform(95,127);
+			auto frame=0;
+			state.addParticle(Particle!B(sacParticle2,pposition,velocity,scale,lifetime,frame));
 		}
 		return false;
 	}
@@ -10393,6 +10448,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.steamClouds.length;){
 		if(!updateSteamCloud(effects.steamClouds[i],state)){
 			effects.removeSteamCloud(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.poisonClouds.length;){
+		if(!updatePoisonCloud(effects.poisonClouds[i],state)){
+			effects.removePoisonCloud(i);
 			continue;
 		}
 		i++;
