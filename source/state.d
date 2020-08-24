@@ -9717,7 +9717,10 @@ bool updatePoison(B)(ref Poison poison,ObjectState!B state){
 		},(){})(poison.creature,&poison,state);
 	}
 	return state.movingObjectById!((ref obj,poison,state){
-		if(!obj.creatureState.mode.canBePoisoned) return false;
+		if(!obj.creatureState.mode.canBePoisoned){
+			obj.creatureStats.effects.poisonDamage-=poisonDamage;
+			return false;
+		}
 		auto hitbox=obj.relativeHitbox;
 		auto dim=hitbox[1]-hitbox[0];
 		auto volume=dim.x*dim.y*dim.z;
