@@ -881,7 +881,8 @@ StunnedBehavior stunnedBehavior(B)(ref MovingObject!B object){
 }
 
 bool isRegenerating(B)(ref MovingObject!B object){
-	return object.creatureState.mode.among(CreatureMode.idle,CreatureMode.playingDead,CreatureMode.rockForm)||object.sacObject.continuousRegeneration&&object.creatureState.mode.canHeal;
+	return (object.creatureState.mode.among(CreatureMode.idle,CreatureMode.playingDead,CreatureMode.rockForm)||object.sacObject.continuousRegeneration&&object.creatureState.mode.canHeal)
+		&& object.creatureStats.effects.poisonDamage==0.0f;
 }
 
 bool isDamaged(B)(ref MovingObject!B object){
