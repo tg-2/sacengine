@@ -388,6 +388,12 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Ran
 void serialize(alias sink,B)(ref RangerProjectile!B rangerProjectile){ serializeStruct!sink(rangerProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==RangerProjectile!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref NecrylProjectile!B necrylProjectile){ serializeStruct!sink(necrylProjectile); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==NecrylProjectile!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink)(ref Poison poison){ serializeStruct!sink(poison); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Poison)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref RockForm!B rockForm){ serializeStruct!sink(rockForm); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==RockForm!B)){ deserializeStruct(result,state,data); }
 

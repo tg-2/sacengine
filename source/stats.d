@@ -6,7 +6,7 @@ struct CreatureStats{
 	float maxHealth;
 	float regeneration;
 	float drain;
-	float maxMana;	
+	float maxMana;
 	float runningSpeed;
 	float flyingSpeed;
 	float rangedAccuracy;
@@ -32,6 +32,8 @@ struct Effects{
 	bool lifeShield=false;
 	int numDesecrations=0;
 	bool isGuardian=false;
+	float poisonDamage=0.0f;
+	int infectionCooldown=0;
 
 	@property bool shield(){ return lifeShield; } // TODO: add remaining shields
 }

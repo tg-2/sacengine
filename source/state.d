@@ -135,6 +135,14 @@ bool canRegenerateMana(CreatureMode mode){
 		case idleGhost,movingGhost,ghostToIdle: return true;
 	}
 }
+bool canBePoisoned(CreatureMode mode){
+	final switch(mode) with(CreatureMode){
+		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing,
+			pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
+		case dying,dead,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
+		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return false;
+	}
+}
 bool canShield(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
@@ -2373,6 +2381,26 @@ struct RangerProjectile(B){
 	int frame=0;
 }
 
+struct NecrylProjectile(B){
+	int attacker;
+	int side;
+	int intendedTarget;
+	Vector3f position;
+	Vector3f direction;
+	SacSpell!B rangedAttack;
+	float remainingDistance;
+}
+
+struct Poison{
+	int creature;
+	float poisonDamage;
+	int lifetime;
+	bool infectuous;
+	int attacker;
+	int attackerSide;
+}
+
+
 enum RockFormStatus{ growing, stationary, shrinking }
 struct RockForm(B){
 	int target;
@@ -2840,6 +2868,22 @@ struct Effects(B){
 		if(i+1<rangerProjectiles.length) rangerProjectiles[i]=move(rangerProjectiles[$-1]);
 		rangerProjectiles.length=rangerProjectiles.length-1;
 	}
+	Array!(NecrylProjectile!B) necrylProjectiles;
+	void addEffect(NecrylProjectile!B necrylProjectile){
+		necrylProjectiles~=necrylProjectile;
+	}
+	void removeNecrylProjectile(int i){
+		if(i+1<necrylProjectiles.length) necrylProjectiles[i]=move(necrylProjectiles[$-1]);
+		necrylProjectiles.length=necrylProjectiles.length-1;
+	}
+	Array!Poison poisons;
+	void addEffect(Poison poison){
+		poisons~=poison;
+	}
+	void removePoison(int i){
+		if(i+1<poisons.length) poisons[i]=move(poisons[$-1]);
+		poisons.length=poisons.length-1;
+	}
 	Array!(RockForm!B) rockForms;
 	void addEffect(RockForm!B rockForm){
 		rockForms~=move(rockForm);
@@ -2960,6 +3004,8 @@ struct Effects(B){
 		assignArray(sylphProjectiles,rhs.sylphProjectiles);
 		assignArray(rangerEffects,rhs.rangerEffects);
 		assignArray(rangerProjectiles,rhs.rangerProjectiles);
+		assignArray(necrylProjectiles,rhs.necrylProjectiles);
+		assignArray(poisons,rhs.poisons);
 		assignArray(rockForms,rhs.rockForms);
 		assignArray(stealths,rhs.stealths);
 		assignArray(lifeShields,rhs.lifeShields);
@@ -4485,6 +4531,7 @@ void drainMana(B)(ref MovingObject!B object,float amount,ObjectState!B state){
 
 enum ghostHealthPerMana=4.2f;
 void giveMana(B)(ref MovingObject!B object,float amount,ObjectState!B state){
+	if(object.creatureStats.effects.poisonDamage) return;
 	object.creatureStats.mana=min(object.creatureStats.mana+amount,object.creatureStats.maxMana);
 	if(object.isWizard&&object.isGhost) object.heal(ghostHealthPerMana*amount,state);
 }
@@ -4615,6 +4662,15 @@ float dealRangedDamage(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int 
 	auto damage=rangedAttack.amount;
 	auto actualDamage=damage*object.creatureStats.directRangedResistance;
 	object.damageAnimation(attackDirection,state);
+	actualDamage=object.dealDamage(actualDamage,attacker,attackerSide,state);
+	healFromDrain(attacker,actualDamage,state);
+	return actualDamage;
+}
+
+float dealPoisonDamage(B)(ref MovingObject!B object,float damage,int attacker,int attackerSide,ObjectState!B state){
+	if(object.id==attacker?object.isGuardian:state.movingObjectById!((ref attacker)=>attacker.isGuardian,()=>false)(attacker))
+		damage*=1.5f;
+	auto actualDamage=damage*object.creatureStats.directRangedResistance;
 	actualDamage=object.dealDamage(actualDamage,attacker,attackerSide,state);
 	healFromDrain(attacker,actualDamage,state);
 	return actualDamage;
@@ -5309,6 +5365,20 @@ bool rangerShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vect
 	return true;
 }
 
+bool necrylShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	playSoundAt("nlws",position,state,4.0f); // TODO: move sound with projectile
+	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
+	state.addEffect(NecrylProjectile!B(attacker,side,intendedTarget,position,direction,rangedAttack,rangedAttack.range));
+	return true;
+}
+
+bool poison(B)(ref MovingObject!B obj,float poisonDamage,int lifetime,bool infectuous,int attacker,int attackerSide,ObjectState!B state){
+	obj.creatureStats.effects.poisonDamage+=poisonDamage;
+	state.addEffect(Poison(obj.id,poisonDamage,lifetime,infectuous,attacker,attackerSide));
+	return true;
+}
+
+
 enum defaultFaceThreshold=1e-3;
 bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state,float threshold=defaultFaceThreshold){
 	auto angle=facing-object.creatureState.facing;
@@ -5731,6 +5801,9 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 						break;
 					case SpellTag.rangerShoot:
 						rangerShoot(object.id,object.side,targetId,accuracy,object.shotPosition,predicted,rangedAttack,state);
+						break;
+					case SpellTag.necrylShoot:
+						necrylShoot(object.id,object.side,targetId,accuracy,object.shotPosition,predicted,rangedAttack,state);
 						break;
 					default: goto case SpellTag.brainiacShoot;
 				}
@@ -6255,6 +6328,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.creatureStats.effects.stunCooldown!=0) --object.creatureStats.effects.stunCooldown;
 	if(object.creatureStats.effects.rangedCooldown!=0) --object.creatureStats.effects.rangedCooldown;
 	if(object.creatureStats.effects.abilityCooldown!=0) --object.creatureStats.effects.abilityCooldown;
+	if(object.creatureStats.effects.infectionCooldown!=0) --object.creatureStats.effects.infectionCooldown;
 	auto sacObject=object.sacObject;
 	final switch(object.creatureState.mode){
 		case CreatureMode.idle, CreatureMode.moving, CreatureMode.idleGhost, CreatureMode.movingGhost:
@@ -9544,6 +9618,102 @@ bool updateRangerProjectile(B)(ref RangerProjectile!B rangerProjectile,ObjectSta
 	}
 }
 
+enum necrylProjectileSize=0.15f; // TODO: ok?
+static immutable Vector3f[2] necrylProjectileHitbox=[-0.5f*necrylProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*necrylProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
+int necrylProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
+		return entry.isProjectileObstacle&&(entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side);
+	}
+	return collisionTarget!(necrylProjectileHitbox,filter)(side,position,state,side,intendedTarget);
+}
+
+bool updateNecrylProjectile(B)(ref NecrylProjectile!B necrylProjectile,ObjectState!B state){
+	with(necrylProjectile){
+		auto oldPosition=position;
+		auto velocity=rangedAttack.speed*direction/updateFPS;
+		position+=velocity;
+		remainingDistance-=rangedAttack.speed/updateFPS;
+		static assert(updateFPS==60);
+		auto sacParticle=SacParticle!B.get(ParticleType.poison);
+		auto pvelocity=Vector3f(0,0,0),scale=0.5f,lifetime=31,frame=0;
+		enum size=0.25f;
+		static immutable Vector3f[2] box=[-0.5f*size*Vector3f(1.0f,1.0f,1.0f),0.5f*size*Vector3f(1.0f,1.0f,1.0f)];
+		enum nSteps=2;
+		foreach(i;0..nSteps)
+			foreach(j;0..2)
+				state.addParticle(Particle!B(sacParticle,position+velocity/nSteps+state.uniform(box),pvelocity,scale,lifetime,frame));
+		OrderTarget target;
+		if(auto targetId=necrylProjectileCollisionTarget(side,intendedTarget,position,state)){
+			target.id=targetId;
+			target.type=state.targetTypeFromId(targetId);
+		}else{
+			target=state.lineOfSightWithoutSide(oldPosition,position,side,intendedTarget);
+		}
+		bool terminate(){
+			//playSoundAt("?",position,state,necrylProjectileHitGain);
+			return false;
+		}
+		if(remainingDistance<=0.0f) return terminate();
+		switch(target.type){
+			case TargetType.terrain: return terminate();
+			case TargetType.creature:
+				state.movingObjectById!(poison,()=>false)(target.id,rangedAttack.amount/rangedAttack.duration,cast(int)(rangedAttack.duration*updateFPS),true,attacker,side,state);
+				return terminate();
+			case TargetType.building:
+				dealRangedDamage(target.id,rangedAttack,attacker,side,direction,state);
+				return terminate();
+			default: break;
+		}
+		return true;
+	}
+}
+
+bool updatePoison(B)(ref Poison poison,ObjectState!B state){
+	if(!state.isValidTarget(poison.creature,TargetType.creature)) return false;
+	if(poison.infectuous){
+		state.movingObjectById!((ref obj,poison,state){
+			if(!obj.creatureAI.isOnAIQueue) obj.creatureAI.isOnAIQueue=state.pushToAIQueue(obj.side,obj.id);
+			if(!state.frontOfAIQueue(obj.side,obj.id)) return;
+			auto hitbox=obj.hitbox;
+			hitbox[0]-=2.0f, hitbox[1]+=2.0f;
+			auto poisonDamage=obj.creatureStats.effects.poisonDamage;
+			static void infect(ProximityEntry target,ObjectState!B state,int creature,float poisonDamage,int lifetime,int attacker,int attackerSide){
+				if(target.id==creature) return;
+				state.movingObjectById!((ref next,creature,poisonDamage,lifetime,attacker,attackerSide,state){
+					if(next.creatureStats.effects.infectionCooldown) return;
+					next.poison(poisonDamage,lifetime,true,attacker,attackerSide,state);
+					next.creatureStats.effects.infectionCooldown=lifetime+3*updateFPS;
+				},(){})(target.id,creature,poisonDamage,lifetime,attacker,attackerSide,state);
+			}
+			collisionTargets!infect(hitbox,state,obj.id,poisonDamage,poison.lifetime,poison.attacker,poison.attackerSide);
+		},(){})(poison.creature,&poison,state);
+	}
+	return state.movingObjectById!((ref obj,poison,state){
+		if(!obj.creatureState.mode.canBePoisoned) return false;
+		auto hitbox=obj.relativeHitbox;
+		auto dim=hitbox[1]-hitbox[0];
+		auto volume=dim.x*dim.y*dim.z;
+		auto scale=2.0f*max(1.0f,cbrt(volume));
+		auto sacParticle=SacParticle!B.get(ParticleType.relativePoison);
+		static assert(updateFPS==60);
+		if(state.frame%2==0){
+			enum numParticles=1;
+			foreach(i;0..numParticles){
+				auto position=1.1f*state.uniform(hitbox);
+				auto velocity=Vector3f(0.0f,0.0f,0.0f);
+				auto lifetime=min(poison.lifetime,cast(int)(sacParticle.numFrames*state.uniform(0.0f,1.0f)));
+				state.addParticle(Particle!(B,true)(sacParticle,obj.id,false,position,velocity,scale,lifetime,0));
+			}
+		}
+		with(*poison){
+			obj.dealPoisonDamage(poisonDamage/updateFPS,attacker,attackerSide,state);
+			auto result=lifetime-->0;
+			if(!result) obj.creatureStats.effects.poisonDamage-=poisonDamage;
+			return result;
+		}
+	},()=>false)(poison.creature,&poison,state);
+}
+
 bool updateRockForm(B)(ref RockForm!B rockForm,ObjectState!B state){
 	with(rockForm){
 		if(!state.isValidTarget(target,TargetType.creature)) return false;
@@ -10175,6 +10345,21 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 			effects.removeRangerProjectile(i);
 			continue;
 		}
+		i++;
+	}
+	for(int i=0;i<effects.necrylProjectiles.length;){
+		if(!updateNecrylProjectile(effects.necrylProjectiles[i],state)){
+			effects.removeNecrylProjectile(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.poisons.length;){
+		auto poison=effects.poisons[i];
+		if(!updatePoison(poison,state)){ // careful: may append to poisons
+			effects.removePoison(i);
+			continue;
+		}else effects.poisons[i]=poison;
 		i++;
 	}
 	for(int i=0;i<effects.rockForms.length;){

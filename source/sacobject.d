@@ -873,6 +873,8 @@ enum ParticleType{
 	rock,
 	steam,
 	smoke,
+	poison,
+	relativePoison,
 	swarmHit,
 	locustBlood,
 	locustDebris,
@@ -910,6 +912,8 @@ final class SacParticle(B){
 				return false;
 			case rock:
 				return true;
+			case poison,relativePoison:
+				return false;
 			case swarmHit:
 				return true;
 			case locustBlood,locustDebris:
@@ -928,8 +932,10 @@ final class SacParticle(B){
 				return false;
 			case castPersephone,castPyro,castJames,castStratos,castCharnel:
 				return false;
-			case wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,ashParticle,steam,smoke,dirt,dust,rock,swarmHit:
+			case wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,ashParticle,steam,smoke,dirt,dust,rock,poison,swarmHit:
 				return false;
+			case relativePoison:
+				return true;
 			case locustBlood,locustDebris:
 				return false;
 		}
@@ -1124,6 +1130,12 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/rock.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
+			case poison,relativePoison:
+				width=height=1.0f;
+				this.energy=1.0f;
+				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/pois.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
 			case swarmHit:
 				width=height=5.0f;
 				this.energy=1.0f;
@@ -1162,6 +1174,7 @@ final class SacParticle(B){
 			case smoke: return 4;
 			case fire: return 2;
 			case dirt: return 2;
+			case poison, relativePoison: return 2;
 			case swarmHit: return 2;
 			case locustBlood, locustDebris: return 1;
 			default: return 1;
@@ -1210,6 +1223,10 @@ final class SacParticle(B){
 				return min(1.0f,(lifetime/(0.25f*numFrames)));
 			case dust:
 				return 1.0f;
+			case poison:
+				return min(1.0f,(lifetime/(0.5f*numFrames)));
+			case relativePoison:
+				return 0.5f*min(1.0f,(lifetime/(0.5f*numFrames)));
 			case swarmHit:
 				return min(1.0f,(lifetime/(0.75f*numFrames)));
 			case locustBlood,locustDebris:
@@ -1251,6 +1268,8 @@ final class SacParticle(B){
 			case rock:
 				return min(1.0f,lifetime/(3.0f*numFrames));
 			case dirt,dust:
+				return 1.0f;
+			case poison,relativePoison:
 				return 1.0f;
 			case swarmHit:
 				return min(1.0f,(lifetime/(0.75f*numFrames)));
