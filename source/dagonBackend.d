@@ -258,7 +258,7 @@ final class SacScene: Scene{
 		auto ambi=min(envi.sunAmbientStrength,2.0f)*options.ambientFactor;
 		//auto ambi=1.5f*envi.sunAmbientStrength;
 		//env.ambientConstant = fixColor(Color4f(envi.sunColorRed/255.0f*ambi,envi.sunColorGreen/255.0f*ambi,envi.sunColorBlue/255.0f*ambi,1.0f));
-		env.ambientConstant = ambi*Color4f(envi.ambientRed/255.0f,envi.ambientGreen/255.0f,envi.ambientBlue/255.0f,1.0f);
+		env.ambientConstant = Color4f(ambi*envi.ambientRed/255.0f,ambi*envi.ambientGreen/255.0f,ambi*envi.ambientBlue/255.0f,1.0f);
 		env.backgroundColor = Color4f(envi.skyRed/255.0f,envi.skyGreen/255.0f,envi.skyBlue/255.0f,1.0f);
 		// envi.minAlphaInt, envi.maxAlphaInt, envi.minAlphaFloat ?
 		// envi.maxAlphaFloat used for sky alpha
@@ -274,8 +274,9 @@ final class SacScene: Scene{
 		//env.sunColor=Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f);
 		/+env.sunColor=0.5f*Color4f(envi.ambientRed/255.0f,envi.ambientGreen/255.0f,envi.ambientBlue/255.0f,1.0f)+
 			0.5f*Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f);+/
-		env.sunColor=envi.sunAmbientStrength/(envi.sunDirectStrength+envi.sunAmbientStrength)*Color4f(envi.ambientRed/255.0f,envi.ambientGreen/255.0f,envi.ambientBlue/255.0f,1.0f)+
+		auto sunColor=envi.sunAmbientStrength/(envi.sunDirectStrength+envi.sunAmbientStrength)*Color4f(envi.ambientRed/255.0f,envi.ambientGreen/255.0f,envi.ambientBlue/255.0f,1.0f)+
 			envi.sunDirectStrength/(envi.sunDirectStrength+envi.sunAmbientStrength)*Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f);
+		env.sunColor=Color4f(sunColor);
 		// TODO: figure this out
 		/+if(exp(envi.sunDirectStrength)==float.infinity)
 			env.sunColor=Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f);
