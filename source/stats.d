@@ -32,7 +32,7 @@ struct Effects{
 	bool lifeShield=false;
 	int numDesecrations=0;
 	bool isGuardian=false;
-	float poisonDamage=0.0f;
+	int poisonDamage=0;
 	int infectionCooldown=0;
 
 	@property bool shield(){ return lifeShield; } // TODO: add remaining shields

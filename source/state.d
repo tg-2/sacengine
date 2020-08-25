@@ -5393,7 +5393,7 @@ bool necrylShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vect
 }
 
 bool poison(B)(ref MovingObject!B obj,float poisonDamage,int lifetime,bool infectuous,int attacker,int attackerSide,ObjectState!B state){
-	obj.creatureStats.effects.poisonDamage+=poisonDamage;
+	obj.creatureStats.effects.poisonDamage+=cast(int)poisonDamage;
 	state.addEffect(Poison(obj.id,poisonDamage,lifetime,infectuous,attacker,attackerSide));
 	return true;
 }
@@ -9718,7 +9718,7 @@ bool updatePoison(B)(ref Poison poison,ObjectState!B state){
 	}
 	return state.movingObjectById!((ref obj,poison,state){
 		if(!obj.creatureState.mode.canBePoisoned){
-			obj.creatureStats.effects.poisonDamage-=poisonDamage;
+			obj.creatureStats.effects.poisonDamage-=cast(int)poison.poisonDamage;
 			return false;
 		}
 		auto hitbox=obj.relativeHitbox;
@@ -9739,7 +9739,7 @@ bool updatePoison(B)(ref Poison poison,ObjectState!B state){
 		with(*poison){
 			obj.dealPoisonDamage(poisonDamage/updateFPS,attacker,attackerSide,state);
 			auto result=lifetime-->0;
-			if(!result) obj.creatureStats.effects.poisonDamage-=poisonDamage;
+			if(!result) obj.creatureStats.effects.poisonDamage-=cast(int)poisonDamage;
 			return result;
 		}
 	},()=>false)(poison.creature,&poison,state);
