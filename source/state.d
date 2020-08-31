@@ -882,7 +882,7 @@ StunnedBehavior stunnedBehavior(B)(ref MovingObject!B object){
 
 bool isRegenerating(B)(ref MovingObject!B object){
 	return (object.creatureState.mode.among(CreatureMode.idle,CreatureMode.playingDead,CreatureMode.rockForm)||object.sacObject.continuousRegeneration&&object.creatureState.mode.canHeal)
-		&& object.creatureStats.effects.poisonDamage==0.0f;
+		&& !object.creatureStats.effects.regenerationBlocked;
 }
 
 bool isDamaged(B)(ref MovingObject!B object){
@@ -2399,6 +2399,8 @@ struct Poison{
 	bool infectuous;
 	int attacker;
 	int attackerSide;
+	int frame=0;
+	enum manaBlockDelay=2*updateFPS;
 }
 
 
@@ -4551,7 +4553,7 @@ void drainMana(B)(ref MovingObject!B object,float amount,ObjectState!B state){
 
 enum ghostHealthPerMana=4.2f;
 void giveMana(B)(ref MovingObject!B object,float amount,ObjectState!B state){
-	if(object.creatureStats.effects.poisonDamage) return;
+	if(object.creatureStats.effects.manaBlocked) return;
 	object.creatureStats.mana=min(object.creatureStats.mana+amount,object.creatureStats.maxMana);
 	if(object.isWizard&&object.isGhost) object.heal(ghostHealthPerMana*amount,state);
 }
@@ -9713,14 +9715,18 @@ bool updatePoison(B)(ref Poison poison,ObjectState!B state){
 					next.creatureStats.effects.infectionCooldown=lifetime+3*updateFPS;
 				},(){})(target.id,creature,poisonDamage,lifetime,attacker,attackerSide,state);
 			}
-			collisionTargets!infect(hitbox,state,obj.id,poisonDamage,poison.lifetime,poison.attacker,poison.attackerSide);
+			collisionTargets!infect(hitbox,state,obj.id,poisonDamage,poison.lifetime-poison.frame,poison.attacker,poison.attackerSide);
 		},(){})(poison.creature,&poison,state);
 	}
 	return state.movingObjectById!((ref obj,poison,state){
-		if(!obj.creatureState.mode.canBePoisoned){
+		if(poison.frame==Poison.manaBlockDelay) obj.creatureStats.effects.numManaBlocks+=1;
+		bool removePoison(){
+			if(poison.frame>=Poison.manaBlockDelay) obj.creatureStats.effects.numManaBlocks-=1;
 			obj.creatureStats.effects.poisonDamage-=cast(int)poison.poisonDamage;
 			return false;
 		}
+		if(!obj.creatureState.mode.canBePoisoned)
+			return removePoison;
 		auto hitbox=obj.relativeHitbox;
 		auto dim=hitbox[1]-hitbox[0];
 		auto volume=dim.x*dim.y*dim.z;
@@ -9732,15 +9738,14 @@ bool updatePoison(B)(ref Poison poison,ObjectState!B state){
 			foreach(i;0..numParticles){
 				auto position=1.1f*state.uniform(hitbox);
 				auto velocity=Vector3f(0.0f,0.0f,0.0f);
-				auto lifetime=min(poison.lifetime,cast(int)(sacParticle.numFrames*state.uniform(0.0f,1.0f)));
+				auto lifetime=min(poison.lifetime-poison.frame,cast(int)(sacParticle.numFrames*state.uniform(0.0f,1.0f)));
 				state.addParticle(Particle!(B,true)(sacParticle,obj.id,false,position,velocity,scale,lifetime,0));
 			}
 		}
 		with(*poison){
 			obj.dealPoisonDamage(poisonDamage/updateFPS,attacker,attackerSide,state);
-			auto result=lifetime-->0;
-			if(!result) obj.creatureStats.effects.poisonDamage-=cast(int)poisonDamage;
-			return result;
+			if(frame++>=lifetime) return removePoison();
+			return true;
 		}
 	},()=>false)(poison.creature,&poison,state);
 }

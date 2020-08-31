@@ -34,7 +34,10 @@ struct Effects{
 	bool isGuardian=false;
 	int poisonDamage=0;
 	int infectionCooldown=0;
+	int numManaBlocks=0;
 
+	@property bool regenerationBlocked(){ return poisonDamage!=0; }
+	@property bool manaBlocked(){ return numManaBlocks!=0; }
 	@property bool shield(){ return lifeShield; } // TODO: add remaining shields
 }
 import dlib.math.portable: pi;
