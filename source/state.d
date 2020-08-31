@@ -5891,7 +5891,7 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 		if(target&&target!=targetId&&!isValidEnemyAttackTarget(targetId,object.side,state))
 			target=0;
 	}
-	auto targetHitbox=state.objectById!((obj,meleeHitboxCenter)=>obj.closestHitbox(meleeHitboxCenter))(targetId,meleeHitboxCenter);
+	auto targetHitbox=state.objectById!((ref obj,meleeHitboxCenter)=>obj.closestHitbox(meleeHitboxCenter))(targetId,meleeHitboxCenter);
 	auto targetPosition=boxCenter(targetHitbox);
 	auto hitbox=object.hitbox;
 	auto position=boxCenter(hitbox);
@@ -5899,6 +5899,10 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 	flatTargetHitbox[1].z=max(flatTargetHitbox[0].z,targetHitbox[1].z-boxSize(hitbox).z);
 	auto movementPosition=projectToBoxTowardsCenter(flatTargetHitbox,object.position); // TODO: ranged creatures should move to a nearby location where they have a clear shot
 	if(auto ra=object.rangedAttack){
+		if(ra.tag==SpellTag.scarabShoot){
+			if(target&&state.movingObjectById!((ref obj,side)=>obj.side==side,()=>false)(target,object.side))
+				target=0;
+		}
 		if(!target||object.rangedMeleeAttackDistance(state)^^2<boxBoxDistanceSqr(hitbox,targetHitbox))
 			return object.shoot(ra,targetId,state);
 	}
@@ -5929,15 +5933,26 @@ float maxTargetHeight(B)(ref MovingObject!B object,ObjectState!B state){
 	return object.relativeMeleeHitbox[1].z;
 }
 
+int updateTarget(B)(ref MovingObject!B object,Vector3f position,float range,ObjectState!B state){
+	if(state.frontOfAIQueue(object.side,object.id)){
+		if(object.rangedAttack&&object.rangedAttack.tag==SpellTag.scarabShoot){
+			auto targetId=state.proximity.lowestHealthCreatureInRange(object.side,object.id,position,object.rangedAttack.range,state);
+			if(!targetId) targetId=state.proximity.lowestHealthCreatureInRange(object.side,object.id,position,range,state);
+			object.creatureAI.targetId=targetId;
+		}else{
+			float maxHeight=object.maxTargetHeight(state);
+			object.creatureAI.targetId=state.proximity.closestEnemyInRange(object.side,position,range,EnemyType.all,state,maxHeight);
+		}
+	}
+	if(!state.isValidTarget(object.creatureAI.targetId,TargetType.creature)) object.creatureAI.targetId=0;
+	return object.creatureAI.targetId;
+}
+
 bool patrolAround(B)(ref MovingObject!B object,Vector3f position,float range,ObjectState!B state){
 	if(!object.isAggressive(state)) return false;
 	if((object.position.xy-position.xy).lengthsqr>range^^2) return false;
-	float maxHeight=object.maxTargetHeight(state);
-	if(state.frontOfAIQueue(object.side,object.id))
-		object.creatureAI.targetId=state.proximity.closestEnemyInRange(object.side,position,range+object.shootDistance(state),EnemyType.all,state,maxHeight);
-	if(!state.isValidTarget(object.creatureAI.targetId,TargetType.creature)) object.creatureAI.targetId=0;
-	if(object.creatureAI.targetId)
-		if(object.attack(object.creatureAI.targetId,state))
+	if(auto targetId=object.updateTarget(position,range+object.shootDistance(state),state))
+		if(object.attack(targetId,state))
 			return true;
 	return false;
 }
@@ -5961,11 +5976,8 @@ bool patrol(B)(ref MovingObject!B object,ObjectState!B state){
 	auto position=object.position;
 	auto range=object.aggressiveRange(CommandType.none,state);
 	auto maxHeight=object.maxTargetHeight(state);
-	if(state.frontOfAIQueue(object.side,object.id))
-		object.creatureAI.targetId=state.proximity.closestEnemyInRange(object.side,position,range,EnemyType.all,state,maxHeight);
-	if(!state.isValidTarget(object.creatureAI.targetId,TargetType.creature)) object.creatureAI.targetId=0;
-	if(object.creatureAI.targetId)
-		if(object.attack(object.creatureAI.targetId,state))
+	if(auto targetId=object.updateTarget(position,range,state))
+		if(object.attack(targetId,state))
 			return true;
 	return false;
 }
@@ -11229,9 +11241,10 @@ auto eachInRange(alias f,B,T...)(ref CenterProximity!B proximity,int version_,Ve
 private static struct None;
 CenterProximityEntry inRangeAndClosestTo(alias f,alias priority=None,B,T...)(ref CenterProximity!B proximity,int version_,Vector3f position,float range,Vector3f targetPosition,T args){
 	enum hasPriority=!is(priority==None);
+	import std.traits:ReturnType;
 	struct State{
 		auto entry=CenterProximityEntry.init;
-		static if(hasPriority) int prio;
+		static if(hasPriority) ReturnType!((ref CenterProximityEntry entry,T args)=>priority(entry,args)) prio;
 		auto distancesqr=double.infinity;
 	}
 	static void process(ref CenterProximityEntry entry,Vector3f targetPosition,State* state,T args){
@@ -11244,10 +11257,13 @@ CenterProximityEntry inRangeAndClosestTo(alias f,alias priority=None,B,T...)(ref
 		}
 		if(better){
 			state.entry=entry;
+			static if(hasPriority) state.prio=prio;
 			state.distancesqr=distancesqr;
 		}
 	}
 	State state;
+	static if(is(typeof(state.prio)==float)) state.prio=-float.infinity;
+	static if(is(typeof(state.prio)==double)) state.prio=-double.infinity;
 	proximity.eachInRange!process(version_,position,range,targetPosition,&state,args);
 	return state.entry;
 }
@@ -11317,6 +11333,23 @@ final class Proximity(B){
 	}
 	int closestEnemyInRange(int side,Vector3f position,float range,EnemyType type,ObjectState!B state,float maxHeight=float.infinity){
 		return centers.closestInRange!isEnemy(version_,position,range,side,type,state,maxHeight).id;
+	}
+	int lowestHealthCreatureInRange(int side,int ignoredId,Vector3f position,float range,ObjectState!B state){
+		static bool isCreatureOfSide(T...)(ref CenterProximityEntry entry,int side,int ignoredId,ObjectState!B state){
+			if(!entry.isVisibleToAI) return false;
+			if(entry.isStatic) return false;
+			//if(entry.zeroHealth) return false;
+			if(entry.id==ignoredId) return false;
+			if(entry.side!=side) return false;
+			if(state.movingObjectById!((ref obj)=>obj.creatureStats.health==obj.creatureStats.maxHealth,()=>true)(entry.id))
+				return false;
+			return true;
+		}
+		static float priority(ref CenterProximityEntry entry,int side,int ignoredId,ObjectState!B state){
+			auto result=-state.movingObjectById!((ref obj)=>obj.creatureStats.health/obj.creatureStats.maxHealth,()=>float.infinity)(entry.id);
+			return result;
+		}
+		return centers.closestInRange!(isCreatureOfSide,priority)(version_,position,range,side,ignoredId,state).id;
 	}
 	private static bool isPeasantShelter(ref CenterProximityEntry entry,int side,ObjectState!B state){
 		if(!entry.isStatic) return false;
