@@ -850,6 +850,7 @@ enum ParticleType{
 	explosion2,
 	speedUp,
 	heal,
+	scarabHit,
 	relativeHeal,
 	ghostTransition,
 	ghost,
@@ -894,7 +895,11 @@ final class SacParticle(B){
 		final switch(type) with(ParticleType){
 			case manafount,spark:
 				return true;
-			case manalith,shrine,manahoar,firy,fire,fireball,explosion,explosion2,speedUp,ghost,heal,relativeHeal,lightningCasting:
+			case manalith,shrine,manahoar,firy,fire,fireball,explosion,explosion2,speedUp,ghost,heal:
+				return false;
+			case scarabHit:
+				return true;
+			case relativeHeal,lightningCasting:
 				return false;
 			case ghostTransition:
 				return true;
@@ -922,7 +927,7 @@ final class SacParticle(B){
 	}
 	@property bool relative(){
 		final switch(type) with(ParticleType){
-			case manafount,manalith,shrine,manahoar,firy,fire,fireball,explosion,explosion2,speedUp,ghost,heal,ghostTransition,spark:
+			case manafount,manalith,shrine,manahoar,firy,fire,fireball,explosion,explosion2,speedUp,ghost,heal,scarabHit,ghostTransition,spark:
 				return false;
 			case relativeHeal,lightningCasting:
 				return true;
@@ -942,7 +947,7 @@ final class SacParticle(B){
 	}
 	@property bool bumpOffGround(){
 		switch(type) with(ParticleType){
-			case ghostTransition,wrathParticle,ashParticle,rock,swarmHit,needle,redVortexDroplet,blueVortexDroplet: return true;
+			case scarabHit,ghostTransition,wrathParticle,ashParticle,rock,swarmHit,needle,redVortexDroplet,blueVortexDroplet: return true;
 			default: return false;
 		}
 	}
@@ -1009,7 +1014,7 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/spd6.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
-			case heal,relativeHeal,ghostTransition,ghost: // TODO: load texture only once
+			case heal,scarabHit,relativeHeal,ghostTransition,ghost: // TODO: load texture only once
 				width=height=1.0f;
 				this.energy=4.0f;
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/glo2.TXTR"));
@@ -1175,6 +1180,7 @@ final class SacParticle(B){
 			case fire: return 2;
 			case dirt: return 2;
 			case poison, relativePoison: return 2;
+			case scarabHit: return 2;
 			case swarmHit: return 2;
 			case locustBlood, locustDebris: return 1;
 			default: return 1;
@@ -1227,7 +1233,7 @@ final class SacParticle(B){
 				return min(1.0f,(lifetime/(0.5f*numFrames)));
 			case relativePoison:
 				return 0.5f*min(1.0f,(lifetime/(0.5f*numFrames)));
-			case swarmHit:
+			case swarmHit,scarabHit:
 				return min(1.0f,(lifetime/(0.75f*numFrames)));
 			case locustBlood,locustDebris:
 				return min(1.0f,(lifetime/(0.5f*numFrames)));
@@ -1271,7 +1277,7 @@ final class SacParticle(B){
 				return 1.0f;
 			case poison,relativePoison:
 				return 1.0f;
-			case swarmHit:
+			case swarmHit,scarabHit:
 				return min(1.0f,(lifetime/(0.75f*numFrames)));
 			case locustBlood,locustDebris:
 				return 1.0f;

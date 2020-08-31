@@ -1084,6 +1084,7 @@ enum SpellTag:char[4]{
 	rangerShoot="wobf",
 
 	necrylShoot="cena",
+	scarabShoot="slba",
 }
 
 enum WizardTag:char[4]{

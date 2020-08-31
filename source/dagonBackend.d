@@ -3324,7 +3324,7 @@ static:
 
 	Material createMaterial(SacParticle!DagonBackend particle){
 		final switch(particle.type) with(ParticleType){
-			case manafount, manalith, manahoar, shrine, firy, fire, fireball, explosion, explosion2, speedUp, heal, relativeHeal, ghostTransition, ghost, lightningCasting, needle, redVortexDroplet, blueVortexDroplet, spark, castPersephone, castPyro, castJames, castStratos, castCharnel, wrathCasting, wrathExplosion1, wrathExplosion2, wrathParticle, steam, ashParticle, smoke, dirt, dust, rock, poison, relativePoison, swarmHit, locustBlood, locustDebris:
+			case manafount, manalith, manahoar, shrine, firy, fire, fireball, explosion, explosion2, speedUp, heal, scarabHit, relativeHeal, ghostTransition, ghost, lightningCasting, needle, redVortexDroplet, blueVortexDroplet, spark, castPersephone, castPyro, castJames, castStratos, castCharnel, wrathCasting, wrathExplosion1, wrathExplosion2, wrathParticle, steam, ashParticle, smoke, dirt, dust, rock, poison, relativePoison, swarmHit, locustBlood, locustDebris:
 				auto mat=scene.createMaterial(scene.shadelessMaterialBackend);
 				mat.depthWrite=false;
 				mat.blending=particle.type.among(ashParticle,smoke,dirt,dust,rock,poison,relativePoison,swarmHit,locustBlood)?Transparent:Additive;

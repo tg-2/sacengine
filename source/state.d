@@ -2403,6 +2403,15 @@ struct Poison{
 	enum manaBlockDelay=2*updateFPS;
 }
 
+struct ScarabProjectile(B){
+	int attacker;
+	int side;
+	int intendedTarget;
+	Vector3f position;
+	Vector3f direction;
+	SacSpell!B rangedAttack;
+	float remainingDistance;
+}
 
 enum RockFormStatus{ growing, stationary, shrinking }
 struct RockForm(B){
@@ -2894,6 +2903,14 @@ struct Effects(B){
 		if(i+1<poisons.length) poisons[i]=move(poisons[$-1]);
 		poisons.length=poisons.length-1;
 	}
+	Array!(ScarabProjectile!B) scarabProjectiles;
+	void addEffect(ScarabProjectile!B scarabProjectile){
+		scarabProjectiles~=scarabProjectile;
+	}
+	void removeScarabProjectile(int i){
+		if(i+1<scarabProjectiles.length) scarabProjectiles[i]=move(scarabProjectiles[$-1]);
+		scarabProjectiles.length=scarabProjectiles.length-1;
+	}
 	Array!(RockForm!B) rockForms;
 	void addEffect(RockForm!B rockForm){
 		rockForms~=move(rockForm);
@@ -3023,6 +3040,7 @@ struct Effects(B){
 		assignArray(rangerEffects,rhs.rangerEffects);
 		assignArray(rangerProjectiles,rhs.rangerProjectiles);
 		assignArray(necrylProjectiles,rhs.necrylProjectiles);
+		assignArray(scarabProjectiles,rhs.scarabProjectiles);
 		assignArray(poisons,rhs.poisons);
 		assignArray(rockForms,rhs.rockForms);
 		assignArray(stealths,rhs.stealths);
@@ -5142,8 +5160,8 @@ bool heal(B)(int creature,SacSpell!B spell,ObjectState!B state){
 	if(!state.movingObjectById!(canHeal,()=>false)(creature,state)) return false;
 	playSoundAt("laeh",creature,state,2.0f);
 	auto amount=spell.amount;
-	auto duration=cast(int)ceil(amount/healSpeed*updateFPS);
-	auto healthRegenerationPerFrame=amount/duration;
+	auto duration=spell.amount==float.infinity?int.max:cast(int)ceil(amount/healSpeed*updateFPS);
+	auto healthRegenerationPerFrame=spell.amount==float.infinity?healSpeed/updateFPS:amount/duration;
 	state.addEffect(Heal!B(creature,healthRegenerationPerFrame,duration));
 	return true;
 }
@@ -5403,6 +5421,14 @@ bool poison(B)(ref MovingObject!B obj,float poisonDamage,int lifetime,bool infec
 bool poison(B)(ref MovingObject!B obj,SacSpell!B rangedAttack,bool infectuous,int attacker,int attackerSide,ObjectState!B state){
 	return poison(obj,rangedAttack.amount/rangedAttack.duration,cast(int)(rangedAttack.duration*updateFPS),infectuous,attacker,attackerSide,state);
 }
+
+bool scarabShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	playSoundAt("srcs",position,state,4.0f); // TODO: move sound with projectile
+	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
+	state.addEffect(ScarabProjectile!B(attacker,side,intendedTarget,position,direction,rangedAttack,rangedAttack.range));
+	return true;
+}
+
 
 enum defaultFaceThreshold=1e-3;
 bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state,float threshold=defaultFaceThreshold){
@@ -5829,6 +5855,9 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 						break;
 					case SpellTag.necrylShoot:
 						necrylShoot(object.id,object.side,targetId,accuracy,object.shotPosition,predicted,rangedAttack,state);
+						break;
+					case SpellTag.scarabShoot:
+						scarabShoot(object.id,object.side,targetId,accuracy,object.shotPosition,predicted,rangedAttack,state);
 						break;
 					default: goto case SpellTag.brainiacShoot;
 				}
@@ -9670,8 +9699,8 @@ bool updateNecrylProjectile(B)(ref NecrylProjectile!B necrylProjectile,ObjectSta
 		static immutable Vector3f[2] box=[-0.5f*size*Vector3f(1.0f,1.0f,1.0f),0.5f*size*Vector3f(1.0f,1.0f,1.0f)];
 		enum nSteps=2;
 		foreach(i;0..nSteps)
-			foreach(j;0..2)
-				state.addParticle(Particle!B(sacParticle,position+velocity/nSteps+state.uniform(box),pvelocity,scale,lifetime,frame));
+			foreach(j;0..4)
+				state.addParticle(Particle!B(sacParticle,oldPosition+float(i+1)/nSteps*velocity+state.uniform(box),pvelocity,scale,lifetime,frame));
 		OrderTarget target;
 		if(auto targetId=necrylProjectileCollisionTarget(side,intendedTarget,position,state)){
 			target.id=targetId;
@@ -9749,6 +9778,77 @@ bool updatePoison(B)(ref Poison poison,ObjectState!B state){
 		}
 	},()=>false)(poison.creature,&poison,state);
 }
+
+
+void scarabProjectileHit(B)(ref ScarabProjectile!B scarabProjectile,int target,ObjectState!B state){
+	playSoundAt("hrcs",scarabProjectile.position,state,scarabProjectileHitGain);
+	Vector3f[2] hitbox;
+	if(state.isValidTarget(target,TargetType.creature)){
+		hitbox=state.movingObjectById!(.hitbox,()=>typeof(hitbox).init)(target);
+		heal(target,scarabProjectile.rangedAttack,state);
+	}else if(state.isValidTarget(target,TargetType.building)){
+		hitbox=state.staticObjectById!(.hitbox,()=>typeof(hitbox).init)(target);
+	}else{
+		hitbox[0]=scarabProjectile.position-0.5f;
+		hitbox[1]=scarabProjectile.position+0.5f;
+	}
+	if(isNaN(hitbox[0].x)) return;
+	enum numParticles=64;
+	auto sacParticle=SacParticle!B.get(ParticleType.scarabHit);
+	auto center=boxCenter(hitbox);
+	foreach(i;0..numParticles){
+		auto position=state.uniform(scaleBox(hitbox,0.8f));
+		auto velocity=1.5f*state.uniform(0.5f,2.0f)*Vector3f(position.x-center.x,position.y-center.y,2.0f);
+		auto scale=state.uniform(0.5f,1.0f);
+		int lifetime=79;
+		int frame=0;
+		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+	}
+}
+
+enum scarabProjectileHitGain=2.0f;
+enum scarabProjectileSize=0.15f; // TODO: ok?
+static immutable Vector3f[2] scarabProjectileHitbox=[-0.5f*scarabProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*scarabProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
+int scarabProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
+		return entry.isProjectileObstacle&&(entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side);
+	}
+	return collisionTarget!(scarabProjectileHitbox,filter)(side,position,state,side,intendedTarget);
+}
+
+bool updateScarabProjectile(B)(ref ScarabProjectile!B scarabProjectile,ObjectState!B state){
+	with(scarabProjectile){
+		auto oldPosition=position;
+		auto velocity=rangedAttack.speed*direction/updateFPS;
+		position+=velocity;
+		remainingDistance-=rangedAttack.speed/updateFPS;
+		static assert(updateFPS==60);
+		auto sacParticle=SacParticle!B.get(ParticleType.heal);
+		auto pvelocity=Vector3f(0,0,0),scale=1.5f,lifetime=31,frame=0;
+		enum size=0.25f;
+		static immutable Vector3f[2] box=[-0.5f*size*Vector3f(1.0f,1.0f,1.0f),0.5f*size*Vector3f(1.0f,1.0f,1.0f)];
+		enum nSteps=3;
+		foreach(i;0..nSteps)
+			foreach(j;0..4)
+				state.addParticle(Particle!B(sacParticle,oldPosition+float(i+1)/nSteps*velocity+state.uniform(box),pvelocity,scale,lifetime,frame));
+		OrderTarget target;
+		if(auto targetId=scarabProjectileCollisionTarget(side,intendedTarget,position,state)){
+			target.id=targetId;
+			target.type=state.targetTypeFromId(targetId);
+		}else{
+			target=state.lineOfSightWithoutSide(oldPosition,position,side,intendedTarget);
+		}
+		bool terminate(){
+			return false;
+		}
+		if(target.type!=TargetType.none||remainingDistance<=0.0f){
+			scarabProjectile.scarabProjectileHit(target.id,state);
+			return false;
+		}
+		return true;
+	}
+}
+
 
 bool updateRockForm(B)(ref RockForm!B rockForm,ObjectState!B state){
 	with(rockForm){
@@ -10424,6 +10524,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 			effects.removePoison(i);
 			continue;
 		}else effects.poisons[i]=poison;
+		i++;
+	}
+	for(int i=0;i<effects.scarabProjectiles.length;){
+		if(!updateScarabProjectile(effects.scarabProjectiles[i],state)){
+			effects.removeScarabProjectile(i);
+			continue;
+		}
 		i++;
 	}
 	for(int i=0;i<effects.rockForms.length;){

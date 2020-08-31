@@ -166,6 +166,7 @@ class SacSpell(B){
 			amount=spel.amount;
 			duration=spel.duration;
 			if(tag==SpellTag.heal) duration=4.5f;
+			if(tag==SpellTag.scarabShoot) amount=float.infinity;
 			effectRange=spel.effectRange;
 			speed=60.0f*spel.speed;
 			acceleration=60.0f*spel.acceleration;
