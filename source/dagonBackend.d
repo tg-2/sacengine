@@ -446,7 +446,7 @@ final class SacScene: Scene{
 								information=Vector4f(0.0f,0.0f,0.0f,0.0f);
 							}else information=Vector4f(2.0f,id>>16,id&((1<<16)-1),1.0f);
 							material.backend.setInformation(information);
-							static if(prepareMaterials==RenderMode.transparent){
+							static if(prepareMaterials==RenderMode.transparent) if(!rc.shadowMode){
 								scene.shadelessBoneMaterialBackend.setAlpha(objects.alphas[j]);
 								scene.shadelessBoneMaterialBackend.setEnergy(objects.energies[j]);
 							}
