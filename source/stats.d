@@ -37,7 +37,7 @@ struct Effects{
 	int numManaBlocks=0;
 	bool petrified=false;
 
-	@property bool regenerationBlocked(){ return poisonDamage!=0; }
+	@property bool regenerationBlocked(){ return poisonDamage!=0||immobilized; }
 	@property bool manaBlocked(){ return numManaBlocks!=0; }
 	@property bool ccProtected(){ return lifeShield||petrified; } // TODO: add remaining shields
 	@property bool immobilized(){ return petrified; } // TODO: add freeze

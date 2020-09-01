@@ -4420,6 +4420,8 @@ float dealDamage(B)(ref MovingObject!B object,float damage,int attackingSide,Obj
 	auto shieldDamageMultiplier=1.0f;
 	if(object.creatureStats.effects.lifeShield) shieldDamageMultiplier*=0.5f;
 	if(object.creatureState.mode==CreatureMode.rockForm) shieldDamageMultiplier*=0.05f;
+	if(object.creatureStats.effects.petrified) shieldDamageMultiplier*=0.2f;
+	// TODO: bleed, in case of petrification, bleed rocks instead
 	return dealRawDamage(object,damage*state.sideDamageMultiplier(attackingSide,object.side)*shieldDamageMultiplier,attackingSide,state);
 }
 float dealDesecrationDamage(B)(ref MovingObject!B object,float damage,int attackingSide,ObjectState!B state){
@@ -5506,14 +5508,15 @@ bool basiliskShoot(B)(ref MovingObject!B obj,int intendedTarget,float accuracy,V
 
 bool petrify(B)(ref MovingObject!B obj,int lifetime,Vector3f attackDirection,ObjectState!B state){
 	if(obj.creatureStats.effects.petrified) return false;
-	obj.startTumbling(state);
 	obj.creatureStats.effects.petrified=true;
+	obj.creatureState.mode=CreatureMode.stunned;
+	obj.startTumbling(state);
 	state.addEffect(Petrification(obj.id,lifetime,attackDirection));
 	return true;
 }
 
 bool petrify(B)(ref MovingObject!B obj,SacSpell!B rangedAttack,Vector3f attackDirection,ObjectState!B state){
-	auto duration=(obj.isWizard?3.0f:15000.0f/obj.creatureStats.maxHealth)+0.25f;
+	auto duration=(obj.isWizard?3.0f:10000.0f/obj.creatureStats.maxHealth)+0.25f;
 	//auto lifetime=cast(int)(rangedAttack.duration*updateFPS);
 	//auto lifetime=cast(int)(120000/obj.creatureStats.maxHealth);
 	auto lifetime=cast(int)(duration*updateFPS);
@@ -6493,7 +6496,6 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.creatureStats.effects.rangedCooldown!=0) --object.creatureStats.effects.rangedCooldown;
 	if(object.creatureStats.effects.abilityCooldown!=0) --object.creatureStats.effects.abilityCooldown;
 	if(object.creatureStats.effects.infectionCooldown!=0) --object.creatureStats.effects.infectionCooldown;
-	if(object.creatureStats.effects.immobilized) return;
 	auto sacObject=object.sacObject;
 	final switch(object.creatureState.mode){
 		case CreatureMode.idle, CreatureMode.moving, CreatureMode.idleGhost, CreatureMode.movingGhost:
@@ -6727,9 +6729,10 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 			}
 			break;
 		case CreatureMode.stunned:
-			with(AnimationState) assert(object.animationState.among(stance1,knocked2Floor,falling,tumble,hitFloor,getUp,damageFront,damageRight,damageBack,damageLeft,damageTop,flyDamage));
+			auto immobilized=object.creatureStats.effects.immobilized;
+			with(AnimationState) assert(immobilized||object.animationState.among(stance1,knocked2Floor,falling,tumble,hitFloor,getUp,damageFront,damageRight,damageBack,damageLeft,damageTop,flyDamage));
 			if(object.creatureState.movement==CreatureMovement.tumbling&&object.creatureState.fallingVelocity.z<=0.0f){
-				if(sacObject.canFly){
+				if(sacObject.canFly && !immobilized){
 					object.creatureState.movement=CreatureMovement.flying;
 					object.frame=0;
 					object.animationState=AnimationState.hover;
@@ -6739,13 +6742,16 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 					object.creatureState.movement=CreatureMovement.onGround;
 					if(object.animationState.among(AnimationState.falling,AnimationState.tumble)){
 						if(sacObject.hasHitFloor){
-							object.frame=0;
-							object.animationState=AnimationState.hitFloor;
+							if(!immobilized){
+								object.frame=0;
+								object.animationState=AnimationState.hitFloor; // TODO: fall damage
+							}
 						}else object.startIdling(state);
 					}
 					break;
 				}
 			}
+			if(immobilized) break;
 			object.frame+=1;
 			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
 				object.frame=0;
@@ -10017,6 +10023,7 @@ bool updatePetrification(B)(ref Petrification petrification,ObjectState!B state)
 		bool removePetrification(){
 			obj.creatureStats.effects.petrified=false;
 			obj.creatureStats.effects.stunCooldown=0;
+			obj.creatureState.mode=CreatureMode.idle;
 			obj.damageStun(petrification.attackDirection,state);
 			return false;
 		}
