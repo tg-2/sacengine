@@ -9913,8 +9913,9 @@ void scarabProjectileHit(B)(ref ScarabProjectile!B scarabProjectile,int target,O
 	auto sacParticle=SacParticle!B.get(ParticleType.scarabHit);
 	auto center=boxCenter(hitbox);
 	foreach(i;0..numParticles){
-		auto position=state.uniform(scaleBox(hitbox,0.8f));
-		auto velocity=1.5f*state.uniform(0.5f,2.0f)*Vector3f(position.x-center.x,position.y-center.y,2.0f);
+		auto position=state.uniform(scaleBox(hitbox,0.9f));
+		//auto velocity=1.5f*state.uniform(0.5f,2.0f)*Vector3f(position.x-center.x,position.y-center.y,2.0f);
+		auto velocity=1.5f*state.uniform(0.5f,2.0f)*Vector3f(state.uniform(hitbox[0].x,hitbox[1].x)-center.x,state.uniform(hitbox[0].y,hitbox[1].y)-center.y,2.5f);
 		auto scale=state.uniform(0.5f,1.0f);
 		int lifetime=79;
 		int frame=0;
@@ -9925,11 +9926,11 @@ void scarabProjectileHit(B)(ref ScarabProjectile!B scarabProjectile,int target,O
 enum scarabProjectileHitGain=2.0f;
 enum scarabProjectileSize=0.15f; // TODO: ok?
 static immutable Vector3f[2] scarabProjectileHitbox=[-0.5f*scarabProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*scarabProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
-int scarabProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
-	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
-		return entry.isProjectileObstacle&&(entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)==side);
+int scarabProjectileCollisionTarget(B)(int attacker,int side,int intendedTarget,Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state,int attacker,int side,int intendedTarget){
+		return entry.isProjectileObstacle&&entry.id!=attacker&&(entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)==side);
 	}
-	return collisionTarget!(scarabProjectileHitbox,filter)(side,position,state,side,intendedTarget);
+	return collisionTarget!(scarabProjectileHitbox,filter)(side,position,state,attacker,side,intendedTarget);
 }
 
 bool updateScarabProjectile(B)(ref ScarabProjectile!B scarabProjectile,ObjectState!B state){
@@ -9948,11 +9949,17 @@ bool updateScarabProjectile(B)(ref ScarabProjectile!B scarabProjectile,ObjectSta
 			foreach(j;0..4)
 				state.addParticle(Particle!B(sacParticle,oldPosition+float(i+1)/nSteps*velocity+state.uniform(box),pvelocity,scale,lifetime,frame));
 		OrderTarget target;
-		if(auto targetId=scarabProjectileCollisionTarget(side,intendedTarget,position,state)){
+		if(auto targetId=scarabProjectileCollisionTarget(attacker,side,intendedTarget,position,state)){
 			target.id=targetId;
 			target.type=state.targetTypeFromId(targetId);
 		}else{
-			target=state.lineOfSightWithoutSide(oldPosition,position,side,intendedTarget);
+			static bool filter(ref ProximityEntry entry,int attacker,int side,int intendedTarget,ObjectState!B state){
+				if(!entry.isProjectileObstacle) return false;
+				if(entry.id==intendedTarget) return true;
+				if(entry.id==attacker) return false;
+				return state.objectById!((obj,side,state)=>.side(obj,state)==side)(entry.id,side,state);
+			}
+			target=state.lineOfSight!filter(oldPosition,position,attacker,side,intendedTarget,state);
 		}
 		if(target.type!=TargetType.none||remainingDistance<=0.0f){
 			scarabProjectile.scarabProjectileHit(target.id,state);
