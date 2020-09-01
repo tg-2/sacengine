@@ -190,6 +190,17 @@ final class SacScene: Scene{
 		auto frames=typeof(return).createMeshes();
 		return SacArrow!DagonBackend(sylphTexture,smat,rangerTexture,rmat,frames);
 	}
+	SacBasiliskEffect!DagonBackend basiliskEffect;
+	SacBasiliskEffect!DagonBackend createBasiliskEffect(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=createMaterial(shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=Additive;
+		mat.energy=20.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacBasiliskEffect!DagonBackend(texture,mat,frames);
+	}
 	SacLifeShield!DagonBackend lifeShield;
 	SacLifeShield!DagonBackend createLifeShield(){
 		enum nU=4,nV=4;
@@ -233,6 +244,7 @@ final class SacScene: Scene{
 		brainiacEffect=createBrainiacEffect();
 		shrikeEffect=createShrikeEffect();
 		arrow=createArrow();
+		basiliskEffect=createBasiliskEffect();
 		lifeShield=createLifeShield();
 		divineSight=createDivineSight();
 	}
@@ -446,9 +458,18 @@ final class SacScene: Scene{
 								information=Vector4f(0.0f,0.0f,0.0f,0.0f);
 							}else information=Vector4f(2.0f,id>>16,id&((1<<16)-1),1.0f);
 							material.backend.setInformation(information);
-							static if(prepareMaterials==RenderMode.transparent) if(!rc.shadowMode){
-								scene.shadelessBoneMaterialBackend.setAlpha(objects.alphas[j]);
-								scene.shadelessBoneMaterialBackend.setEnergy(objects.energies[j]);
+							static if(prepareMaterials==RenderMode.transparent){
+								if(!rc.shadowMode){
+									scene.shadelessBoneMaterialBackend.setAlpha(objects.alphas[j]);
+									scene.shadelessBoneMaterialBackend.setEnergy(objects.energies[j]);
+								}
+							}else{
+								if(!rc.shadowMode && objects.creatureStatss[j].effects.petrified){
+									scene.boneMaterialBackend.setPetrified(true);
+								}
+								scope(success) if(!rc.shadowMode && objects.creatureStatss[j].effects.petrified){
+									scene.boneMaterialBackend.setPetrified(false);
+								}
 							}
 							// TODO: interpolate animations to get 60 FPS?
 							sacObject.setFrame(objects.animationStates[j],objects.frames[j]/updateAnimFactor);
@@ -939,6 +960,22 @@ final class SacScene: Scene{
 						auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),direction);
 						scene.shadelessMaterialBackend.setTransformationScaled(position,rotation,Vector3f(1.0f,1.0f,1.6f),rc);
 						auto mesh=scene.arrow.getFrame(mixin(`objects.`~arrow,`Projectiles`)[j].frame%(16*updateAnimFactor));
+						mesh.render(rc);
+					}
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.basiliskEffects.length){
+					auto material=scene.basiliskEffect.material;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
+					foreach(j;0..objects.basiliskEffects.length){
+						auto position=objects.basiliskEffects[j].position;
+						auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),objects.basiliskEffects[j].direction); // TODO: precompute this?
+						auto frame=objects.basiliskEffects[j].frame;
+						auto relativeProgress=float(frame)/scene.basiliskEffect.numFrames;
+						auto scale=1.0f+0.6f*relativeProgress^^2.5f;
+						scene.shadelessMaterialBackend.setTransformationScaled(position,rotation,scale*Vector3f(1.0f,1.0f,1.0f),rc);
+						scene.shadelessMaterialBackend.setAlpha(0.95f*(1.0f-relativeProgress)^^1.5f);
+						auto mesh=scene.basiliskEffect.getFrame(objects.basiliskEffects[j].frame%scene.basiliskEffect.numFrames);
 						mesh.render(rc);
 					}
 				}

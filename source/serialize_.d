@@ -397,6 +397,15 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Poi
 void serialize(alias sink,B)(ref ScarabProjectile!B scarabProjectile){ serializeStruct!sink(scarabProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ScarabProjectile!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref BasiliskProjectile!B basiliskProjectile){ serializeStruct!sink(basiliskProjectile); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BasiliskProjectile!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink)(ref BasiliskEffect basiliskEffect){ serializeStruct!sink(basiliskEffect); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BasiliskEffect)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink)(ref Petrification petrification){ serializeStruct!sink(petrification); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Petrification)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref RockForm!B rockForm){ serializeStruct!sink(rockForm); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==RockForm!B)){ deserializeStruct(result,state,data); }
 

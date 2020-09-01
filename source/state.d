@@ -143,6 +143,14 @@ bool canBePoisoned(CreatureMode mode){
 		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return false;
 	}
 }
+bool canBePetrified(CreatureMode mode){
+	final switch(mode) with(CreatureMode){
+		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing,
+			pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
+		case dying,dead,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
+		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return false;
+	}
+}
 bool canShield(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
@@ -714,7 +722,7 @@ bool isSacDoctor(B)(ref MovingObject!B obj){ return obj.sacObject.isSacDoctor; }
 bool isHero(B)(ref MovingObject!B obj){ return obj.sacObject.isHero; }
 bool isFamiliar(B)(ref MovingObject!B obj){ return obj.sacObject.isFamiliar; }
 
-bool isShielded(B)(ref MovingObject!B obj){ return obj.creatureStats.effects.shield; }
+bool isCCProtected(B)(ref MovingObject!B obj){ return obj.creatureStats.effects.ccProtected; }
 bool isGuardian(B)(ref MovingObject!B obj){ return obj.creatureStats.effects.isGuardian; }
 
 bool canSelect(B)(ref MovingObject!B obj,int side,ObjectState!B state){
@@ -822,6 +830,8 @@ Vector3f shotPosition(B)(ref MovingObject!B object){
 	auto loc=object.sacObject.shotPosition(object.animationState,object.frame/updateAnimFactor);
 	return object.position+rotate(object.rotation,loc);
 }
+Vector3f[2] basiliskShotPositions(B)(ref MovingObject!B object){ return object.hands; }
+
 SacObject!B.LoadedArrow loadedArrow(B)(ref MovingObject!B object){
 	auto result=object.sacObject.loadedArrow(object.animationState,object.frame/updateAnimFactor);
 	foreach(ref pos;result.tupleof) pos=object.position+rotate(object.rotation,pos);
@@ -2413,6 +2423,28 @@ struct ScarabProjectile(B){
 	float remainingDistance;
 }
 
+struct BasiliskProjectile(B){
+	int attacker;
+	int side;
+	int intendedTarget;
+	Vector3f[2] positions;
+	Vector3f direction;
+	SacSpell!B rangedAttack;
+	float remainingDistance;
+}
+struct BasiliskEffect{
+	Vector3f position;
+	Vector3f direction;
+	int frame=0;
+}
+
+struct Petrification{
+	int creature;
+	int lifetime;
+	Vector3f attackDirection;
+	int frame=0;
+}
+
 enum RockFormStatus{ growing, stationary, shrinking }
 struct RockForm(B){
 	int target;
@@ -2911,6 +2943,30 @@ struct Effects(B){
 		if(i+1<scarabProjectiles.length) scarabProjectiles[i]=move(scarabProjectiles[$-1]);
 		scarabProjectiles.length=scarabProjectiles.length-1;
 	}
+	Array!(BasiliskProjectile!B) basiliskProjectiles;
+	void addEffect(BasiliskProjectile!B basiliskProjectile){
+		basiliskProjectiles~=basiliskProjectile;
+	}
+	void removeBasiliskProjectile(int i){
+		if(i+1<basiliskProjectiles.length) basiliskProjectiles[i]=move(basiliskProjectiles[$-1]);
+		basiliskProjectiles.length=basiliskProjectiles.length-1;
+	}
+	Array!BasiliskEffect basiliskEffects;
+	void addEffect(BasiliskEffect basiliskEffect){
+		basiliskEffects~=basiliskEffect;
+	}
+	void removeBasiliskEffect(int i){
+		if(i+1<basiliskEffects.length) basiliskEffects[i]=move(basiliskEffects[$-1]);
+		basiliskEffects.length=basiliskEffects.length-1;
+	}
+	Array!Petrification petrifications;
+	void addEffect(Petrification petrification){
+		petrifications~=petrification;
+	}
+	void removePetrification(int i){
+		if(i+1<petrifications.length) petrifications[i]=move(petrifications[$-1]);
+		petrifications.length=petrifications.length-1;
+	}
 	Array!(RockForm!B) rockForms;
 	void addEffect(RockForm!B rockForm){
 		rockForms~=move(rockForm);
@@ -3040,8 +3096,11 @@ struct Effects(B){
 		assignArray(rangerEffects,rhs.rangerEffects);
 		assignArray(rangerProjectiles,rhs.rangerProjectiles);
 		assignArray(necrylProjectiles,rhs.necrylProjectiles);
-		assignArray(scarabProjectiles,rhs.scarabProjectiles);
 		assignArray(poisons,rhs.poisons);
+		assignArray(scarabProjectiles,rhs.scarabProjectiles);
+		assignArray(basiliskProjectiles,rhs.basiliskProjectiles);
+		assignArray(basiliskEffects,rhs.basiliskEffects);
+		assignArray(petrifications,rhs.petrifications);
 		assignArray(rockForms,rhs.rockForms);
 		assignArray(stealths,rhs.stealths);
 		assignArray(lifeShields,rhs.lifeShields);
@@ -4224,6 +4283,13 @@ void land(B)(ref MovingObject!B object,ObjectState!B state){
 	object.setCreatureState(state);
 }
 
+void startTumbling(B)(ref MovingObject!B object,ObjectState!B state){
+	if(object.creatureState.movement!=CreatureMovement.flying) return;
+	auto direction=rotate(object.rotation,Vector3f(0.0f,1.0f,0.0f));
+	object.creatureState.fallingVelocity=object.creatureState.speed*direction; // TODO: have consistent "velocity" instead?
+	object.creatureState.movement=CreatureMovement.tumbling;
+}
+
 void startMeleeAttacking(B)(ref MovingObject!B object,bool downward,ObjectState!B state){
 	with(CreatureMode) with(CreatureMovement)
 		if(!object.creatureState.mode.among(idle,moving)||
@@ -4786,6 +4852,7 @@ void setMovement(B)(ref MovingObject!B object,MovementDirection direction,Object
 	if(object.creatureState.movementDirection==direction)
 		return;
 	object.creatureState.movementDirection=direction;
+	if(object.creatureStats.effects.immobilized) return;
 	if(object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving))
 		object.setCreatureState(state);
 }
@@ -5429,6 +5496,29 @@ bool scarabShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vect
 	return true;
 }
 
+bool basiliskShoot(B)(ref MovingObject!B obj,int intendedTarget,float accuracy,Vector3f[2] positions,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	auto center=boxCenter(positions);
+	playSoundAt("ssab",center,state,4.0f); // TODO: move sound with projectile?
+	auto direction=getShotDirection(accuracy,positions[1],target,rangedAttack,state);
+	state.addEffect(BasiliskProjectile!B(obj.id,obj.side,intendedTarget,positions,direction,rangedAttack,rangedAttack.range));
+	return true;
+}
+
+bool petrify(B)(ref MovingObject!B obj,int lifetime,Vector3f attackDirection,ObjectState!B state){
+	if(obj.creatureStats.effects.petrified) return false;
+	obj.startTumbling(state);
+	obj.creatureStats.effects.petrified=true;
+	state.addEffect(Petrification(obj.id,lifetime,attackDirection));
+	return true;
+}
+
+bool petrify(B)(ref MovingObject!B obj,SacSpell!B rangedAttack,Vector3f attackDirection,ObjectState!B state){
+	auto duration=(obj.isWizard?3.0f:15000.0f/obj.creatureStats.maxHealth)+0.25f;
+	//auto lifetime=cast(int)(rangedAttack.duration*updateFPS);
+	//auto lifetime=cast(int)(120000/obj.creatureStats.maxHealth);
+	auto lifetime=cast(int)(duration*updateFPS);
+	return petrify(obj,lifetime,attackDirection,state);
+}
 
 enum defaultFaceThreshold=1e-3;
 bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state,float threshold=defaultFaceThreshold){
@@ -5858,6 +5948,9 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 						break;
 					case SpellTag.scarabShoot:
 						scarabShoot(object.id,object.side,targetId,accuracy,object.shotPosition,predicted,rangedAttack,state);
+						break;
+					case SpellTag.basiliskShoot:
+						basiliskShoot(object,targetId,accuracy,object.basiliskShotPositions,predicted,rangedAttack,state);
 						break;
 					default: goto case SpellTag.brainiacShoot;
 				}
@@ -6400,6 +6493,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.creatureStats.effects.rangedCooldown!=0) --object.creatureStats.effects.rangedCooldown;
 	if(object.creatureStats.effects.abilityCooldown!=0) --object.creatureStats.effects.abilityCooldown;
 	if(object.creatureStats.effects.infectionCooldown!=0) --object.creatureStats.effects.infectionCooldown;
+	if(object.creatureStats.effects.immobilized) return;
 	auto sacObject=object.sacObject;
 	final switch(object.creatureState.mode){
 		case CreatureMode.idle, CreatureMode.moving, CreatureMode.idleGhost, CreatureMode.movingGhost:
@@ -6839,7 +6933,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 		auto pitchingSpeed=object.creatureStats.pitchingSpeed/updateFPS;
 		bool isRotating=false;
 		if(object.creatureState.mode.among(idle,moving,idleGhost,movingGhost,meleeMoving,casting,castingMoving,shooting,torturing)&&
-		   object.creatureState.movement!=CreatureMovement.tumbling
+		   object.creatureState.movement!=CreatureMovement.tumbling&&!object.creatureStats.effects.immobilized
 		){
 			final switch(object.creatureState.rotationDirection){
 				case RotationDirection.none:
@@ -6902,6 +6996,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 	auto facing=facingQuaternion(object.creatureState.facing);
 	final switch(object.creatureState.movement){
 		case CreatureMovement.onGround:
+			if(object.creatureStats.effects.immobilized) break;
 			auto groundSpeed=object.speedOnGround(state);
 			auto groundAcceleration=object.accelerationOnGround(state);
 			final switch(object.creatureState.mode.isMoving?object.creatureState.movementDirection:MovementDirection.none){
@@ -6930,6 +7025,10 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			newPosition=state.moveOnGround(object.position,velocity);
 			break;
 		case CreatureMovement.flying:
+			if(object.creatureStats.effects.immobilized){
+				object.startTumbling(state);
+				goto case CreatureMovement.tumbling;
+			}
 			auto targetFlyingHeight=object.creatureState.targetFlyingHeight;
 			if(object.creatureState.mode.among(CreatureMode.landing,CreatureMode.idle)
 			   ||object.creatureState.mode==CreatureMode.meleeAttacking&&object.position.z-state.getHeight(object.position)>targetFlyingHeight
@@ -9791,7 +9890,6 @@ bool updatePoison(B)(ref Poison poison,ObjectState!B state){
 	},()=>false)(poison.creature,&poison,state);
 }
 
-
 void scarabProjectileHit(B)(ref ScarabProjectile!B scarabProjectile,int target,ObjectState!B state){
 	playSoundAt("hrcs",scarabProjectile.position,state,scarabProjectileHitGain);
 	Vector3f[2] hitbox;
@@ -9823,7 +9921,7 @@ enum scarabProjectileSize=0.15f; // TODO: ok?
 static immutable Vector3f[2] scarabProjectileHitbox=[-0.5f*scarabProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*scarabProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
 int scarabProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
 	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
-		return entry.isProjectileObstacle&&(entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side);
+		return entry.isProjectileObstacle&&(entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)==side);
 	}
 	return collisionTarget!(scarabProjectileHitbox,filter)(side,position,state,side,intendedTarget);
 }
@@ -9850,15 +9948,85 @@ bool updateScarabProjectile(B)(ref ScarabProjectile!B scarabProjectile,ObjectSta
 		}else{
 			target=state.lineOfSightWithoutSide(oldPosition,position,side,intendedTarget);
 		}
-		bool terminate(){
-			return false;
-		}
 		if(target.type!=TargetType.none||remainingDistance<=0.0f){
 			scarabProjectile.scarabProjectileHit(target.id,state);
 			return false;
 		}
 		return true;
 	}
+}
+
+enum basiliskProjectileHitGain=4.0f;
+enum basiliskProjectileSize=0.35f; // TODO: ok?
+enum basiliskProjectileSlidingDistance=1.5f;
+static immutable Vector3f[2] basiliskProjectileHitbox=[-0.5f*basiliskProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*basiliskProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
+int basiliskProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
+		return entry.isProjectileObstacle&&(entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side);
+	}
+	return collisionTarget!(basiliskProjectileHitbox,filter)(side,position,state,side,intendedTarget);
+}
+bool updateBasiliskProjectile(B)(ref BasiliskProjectile!B basiliskProjectile,ObjectState!B state){
+	with(basiliskProjectile){
+		auto oldPositions=positions;
+		auto velocity=rangedAttack.speed/updateFPS*direction;
+		foreach(ref position;positions) position+=velocity;
+		remainingDistance-=rangedAttack.speed/updateFPS;
+		static assert(updateFPS==60);
+		enum nSteps=2;
+		foreach(k;0..nSteps){
+			foreach(oldPosition;oldPositions)
+				state.addEffect(BasiliskEffect(oldPosition+float(k+1)/nSteps*velocity,direction));
+		}
+		OrderTarget target;
+		if(auto targetId=basiliskProjectileCollisionTarget(side,intendedTarget,positions[0],state)){
+			target.id=targetId;
+			target.type=state.targetTypeFromId(targetId);
+		}else if(auto targetId=basiliskProjectileCollisionTarget(side,intendedTarget,positions[1],state)){
+			target.id=targetId;
+			target.type=state.targetTypeFromId(targetId);
+		}else{
+			target=state.lineOfSightWithoutSide(oldPositions[0],positions[0],side,intendedTarget);
+			if(!target.type) target=state.lineOfSightWithoutSide(oldPositions[1],positions[1],side,intendedTarget);
+		}
+		bool terminate(){
+			playSoundAt("mfkr",boxCenter(positions),state,basiliskProjectileHitGain);
+			return false;
+		}
+		if(remainingDistance<=0.0f) return terminate();
+		switch(target.type){
+			case TargetType.terrain: return terminate();
+			case TargetType.creature:
+				state.movingObjectById!(petrify,()=>false)(target.id,rangedAttack,direction,state);
+				return terminate();
+			case TargetType.building: return terminate();
+			default: break;
+		}
+		return true;
+	}
+}
+bool updateBasiliskEffect(B)(ref BasiliskEffect effect,ObjectState!B state){
+	with(effect){
+		static assert(updateFPS==60);
+		return ++frame<32; // TODO: fix timing on this
+	}
+}
+
+bool updatePetrification(B)(ref Petrification petrification,ObjectState!B state){
+	return state.movingObjectById!((ref obj,petrification,state){
+		bool removePetrification(){
+			obj.creatureStats.effects.petrified=false;
+			obj.creatureStats.effects.stunCooldown=0;
+			obj.damageStun(petrification.attackDirection,state);
+			return false;
+		}
+		if(!obj.creatureState.mode.canBePetrified)
+			return removePetrification();
+		with(*petrification){
+			if(frame++>=lifetime) return removePetrification();
+			return true;
+		}
+	},()=>false)(petrification.creature,&petrification,state);
 }
 
 
@@ -10541,6 +10709,27 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.scarabProjectiles.length;){
 		if(!updateScarabProjectile(effects.scarabProjectiles[i],state)){
 			effects.removeScarabProjectile(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.basiliskProjectiles.length;){
+		if(!updateBasiliskProjectile(effects.basiliskProjectiles[i],state)){
+			effects.removeBasiliskProjectile(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.basiliskEffects.length;){
+		if(!updateBasiliskEffect(effects.basiliskEffects[i],state)){
+			effects.removeBasiliskEffect(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.petrifications.length;){
+		if(!updatePetrification(effects.petrifications[i],state)){
+			effects.removePetrification(i);
 			continue;
 		}
 		i++;
@@ -12437,7 +12626,7 @@ TargetFlags summarize(bool simplified=false,B)(ref Target target,int side,Object
 						result|=TargetFlags.spedUp;
 					if(obj.isHero) result|=TargetFlags.hero;
 					if(obj.isFamiliar) result|=TargetFlags.familiar;
-					if(obj.isShielded) result|=TargetFlags.shielded;
+					if(obj.isCCProtected) result|=TargetFlags.ccProtected;
 					if(obj.isGuardian) result|=TargetFlags.guardian;
 				}
 				return result;

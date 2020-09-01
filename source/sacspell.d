@@ -20,7 +20,7 @@ enum TargetFlags{
 	// spell effects
 	guardian=1<<22,
 	spedUp=1<<23,
-	shielded=1<<24,
+	ccProtected=1<<24,
 	beingSacrificed=1<<25,
 	// TODO: figure out building flag for this:
 	untargetable=1<<26,

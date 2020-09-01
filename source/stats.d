@@ -35,10 +35,12 @@ struct Effects{
 	int poisonDamage=0;
 	int infectionCooldown=0;
 	int numManaBlocks=0;
+	bool petrified=false;
 
 	@property bool regenerationBlocked(){ return poisonDamage!=0; }
 	@property bool manaBlocked(){ return numManaBlocks!=0; }
-	@property bool shield(){ return lifeShield; } // TODO: add remaining shields
+	@property bool ccProtected(){ return lifeShield||petrified; } // TODO: add remaining shields
+	@property bool immobilized(){ return petrified; } // TODO: add freeze
 }
 import dlib.math.portable: pi;
 @property float rotationSpeed(ref CreatureStats stats,bool isFlying){ // in radians per second
