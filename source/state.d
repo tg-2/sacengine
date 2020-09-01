@@ -4346,6 +4346,7 @@ DamageDirection getDamageDirection(B)(ref MovingObject!B object,Vector3f attackD
 }
 
 void damageAnimation(B)(ref MovingObject!B object,Vector3f attackDirection,ObjectState!B state,bool checkIdle=true){
+	if(object.creatureStats.effects.immobilized) return;
 	playSoundTypeAt(object.sacObject,object.id,SoundType.damaged,state);
 	if(checkIdle&&object.creatureState.mode!=CreatureMode.idle||!checkIdle&&object.creatureState.mode!=CreatureMode.stunned) return;
 	final switch(object.creatureState.movement){
@@ -5507,7 +5508,8 @@ bool basiliskShoot(B)(ref MovingObject!B obj,int intendedTarget,float accuracy,V
 }
 
 bool petrify(B)(ref MovingObject!B obj,int lifetime,Vector3f attackDirection,ObjectState!B state){
-	if(obj.creatureStats.effects.petrified) return false;
+	if(obj.creatureStats.effects.ccProtected) return false;
+	assert(!obj.creatureStats.effects.petrified);
 	obj.creatureStats.effects.petrified=true;
 	obj.creatureState.mode=CreatureMode.stunned;
 	obj.startTumbling(state);
@@ -10032,6 +10034,19 @@ bool updatePetrification(B)(ref Petrification petrification,ObjectState!B state)
 			obj.creatureStats.effects.stunCooldown=0;
 			obj.creatureState.mode=CreatureMode.idle;
 			obj.damageStun(petrification.attackDirection,state);
+			auto hitbox=obj.hitbox;
+			enum numParticles=32;
+			auto sacParticle=SacParticle!B.get(ParticleType.rock);
+			auto center=boxCenter(hitbox);
+			foreach(i;0..numParticles){
+				auto position=state.uniform(scaleBox(hitbox,0.9f));
+				//auto velocity=1.5f*state.uniform(0.5f,2.0f)*Vector3f(position.x-center.x,position.y-center.y,2.0f);
+				auto velocity=1.5f*state.uniform(0.5f,2.0f)*Vector3f(state.uniform(hitbox[0].x,hitbox[1].x)-center.x,state.uniform(hitbox[0].y,hitbox[1].y)-center.y,2.0f);
+				auto scale=state.uniform(0.25f,0.75f);
+				int lifetime=159;
+				int frame=0;
+				state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+			}
 			return false;
 		}
 		if(!obj.creatureState.mode.canBePetrified)
