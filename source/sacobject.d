@@ -1418,7 +1418,7 @@ struct SacExplosion(B){
 		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pyro.FLDR/txtr.FLDR/exeg.TXTR"));
 	}
 	B.Material material;
-	B.SubSphereMesh[16] frames;
+	B.SubSphere[16] frames;
 	auto getFrame(int i){ return frames[i/updateAnimFactor]; }
 }
 
@@ -1675,7 +1675,7 @@ struct SacLifeShield(B){
 		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/ent1.TXTR"));
 	}
 	B.Material material;
-	B.SubSphereMesh[16] frames;
+	B.SubSphere[16] frames;
 	enum animationDelay=2;
 	enum numFrames=16*updateAnimFactor*animationDelay;
 	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
