@@ -5518,9 +5518,7 @@ bool petrify(B)(ref MovingObject!B obj,int lifetime,Vector3f attackDirection,Obj
 }
 
 bool petrify(B)(ref MovingObject!B obj,SacSpell!B rangedAttack,Vector3f attackDirection,ObjectState!B state){
-	auto duration=(obj.isWizard?3.0f:10000.0f/obj.creatureStats.maxHealth)+0.25f;
-	//auto lifetime=cast(int)(rangedAttack.duration*updateFPS);
-	//auto lifetime=cast(int)(120000/obj.creatureStats.maxHealth);
+	auto duration=obj.isWizard?2.5f:min(10.0f,10000.0f/obj.creatureStats.maxHealth);
 	auto lifetime=cast(int)(duration*updateFPS);
 	return petrify(obj,lifetime,attackDirection,state);
 }
