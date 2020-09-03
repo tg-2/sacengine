@@ -931,10 +931,10 @@ float health(B)(ref StaticObject!B object,ObjectState!B state){
 	return healthFromBuildingId(object.buildingId,state);
 }
 int sideFromBuildingId(B)(int buildingId,ObjectState!B state){
-	return state.buildingById!((ref b)=>b.side,function int(){ assert(0); })(buildingId);
+	return state.buildingById!((ref b)=>b.side,()=>-1)(buildingId);
 }
 int flagsFromBuildingId(B)(int buildingId,ObjectState!B state){
-	return state.buildingById!((ref b)=>b.flags,function int(){ assert(0); })(buildingId);
+	return state.buildingById!((ref b)=>b.flags,()=>0)(buildingId);
 }
 bool isActive(B)(ref StaticObject!B object,ObjectState!B state){
 	return !(flagsFromBuildingId(object.buildingId,state)&AdditionalBuildingFlags.inactive);
@@ -1039,14 +1039,14 @@ int side(B)(ref Soul!B soul,ObjectState!B state){
 	return soul.preferredSide;
 }
 int soulSide(B)(int id,ObjectState!B state){
-	return state.soulById!(side,function int(){ assert(0); })(id,state);
+	return state.soulById!(side,()=>-1)(id,state);
 }
 SoulColor color(B)(ref Soul!B soul,int side,ObjectState!B state){
 	auto soulSide=soul.side(state);
 	return soulSide==-1||soulSide==side?SoulColor.blue:SoulColor.red;
 }
 SoulColor color(B)(int id,int side,ObjectState!B state){
-	return state.soulById!(color,function SoulColor(){ assert(0); })(id,side,state);
+	return state.soulById!(color,()=>SoulColor.red)(id,side,state);
 }
 
 Vector3f[2] hitbox2d(B)(ref Soul!B soul,Matrix4f modelViewProjectionMatrix){
@@ -1103,7 +1103,7 @@ int maxHealth(B)(ref Building!B building,ObjectState!B state){
 	return building.bldg.maxHealth;
 }
 Vector3f position(B)(ref Building!B building,ObjectState!B state){
-	return state.staticObjectById!((obj)=>obj.position,function Vector3f(){ assert(0); })(building.componentIds[0]);
+	return state.staticObjectById!((obj)=>obj.position,()=>Vector3f.init)(building.componentIds[0]);
 }
 float height(B)(ref Building!B building,ObjectState!B state){
 	float maxZ=0.0f;
@@ -4077,26 +4077,24 @@ void createSoul(B)(ref MovingObject!B object, ObjectState!B state){
 	object.soulId=state.addObject(Soul!B(object.id,object.side,object.sacObject.numSouls,object.soulPosition,SoulState.normal));
 }
 
-int spawn(T=Creature,B)(ref MovingObject!B caster,char[4] tag,int flags,ObjectState!B state,bool pre){
+int spawn(T=Creature,B)(int wizard,char[4] tag,int flags,ObjectState!B state,bool pre=true){
+	auto positionFacingSide=state.movingObjectById!((ref caster)=>tuple(caster.position,caster.creatureState.facing,caster.side),()=>tuple(Vector3f.init,float.init,-1))(wizard);
+	auto position=positionFacingSide[0],facing=positionFacingSide[1],side=positionFacingSide[2];
+	if(side==-1) return 0;
 	auto curObj=SacObject!B.getSAXS!T(tag);
-	auto position=caster.position;
 	auto mode=pre?CreatureMode.preSpawning:CreatureMode.spawning;
-	auto facing=caster.creatureState.facing;
 	auto newPosition=position+rotate(facingQuaternion(facing),Vector3f(0.0f,6.0f,0.0f));
 	if(state.isOnGround(newPosition)||!state.isOnGround(position)) position=newPosition; // TODO: find closest ground to newPosition instead
 	auto movement=state.isOnGround(position)?CreatureMovement.onGround:CreatureMovement.flying;
 	position.z=state.getHeight(position);
 	auto creatureState=CreatureState(mode, movement, facing);
 	auto rotation=facingQuaternion(facing);
-	auto obj=MovingObject!B(curObj,position,rotation,AnimationState.disoriented,0,creatureState,curObj.creatureStats(flags),caster.side);
+	auto obj=MovingObject!B(curObj,position,rotation,AnimationState.disoriented,0,creatureState,curObj.creatureStats(flags),side);
 	obj.setCreatureState(state);
 	obj.updateCreaturePosition(state);
-	auto ord=Order(CommandType.retreat,OrderTarget(TargetType.creature,caster.id,caster.position));
-	obj.order(ord,state,caster.side);
+	auto ord=Order(CommandType.retreat,OrderTarget(TargetType.creature,wizard,position));
+	obj.order(ord,state,side);
 	return state.addObject(obj);
-}
-int spawn(T=Creature,B)(int casterId,char[4] tag,int flags,ObjectState!B state,bool pre=true){
-	return state.movingObjectById!(.spawn,function int(){ assert(0); })(casterId,tag,flags,state,pre);
 }
 
 int makeBuilding(B)(ref MovingObject!B caster,char[4] tag,int flags,int base,ObjectState!B state)in{
@@ -4937,76 +4935,81 @@ int getCastingTime(B)(ref MovingObject!B object,SacSpell!B spell,bool stationary
 
 enum manaEpsilon=1e-2f;
 enum summonSoundGain=2.0f;
-bool startCasting(B)(ref MovingObject!B object,SacSpell!B spell,Target target,ObjectState!B state){
-	auto wizard=state.getWizard(object.id);
+bool startCasting(B)(int caster,SacSpell!B spell,Target target,ObjectState!B state){
+	auto wizard=state.getWizard(caster);
 	if(!wizard) return false;
 	if(state.spellStatus!false(wizard,spell,target)!=SpellStatus.ready) return false;
 	int numFrames=cast(int)ceil(updateFPS*spell.castingTime(wizard.level));
-	if(!object.startCasting(numFrames,spell.stationary,state))
+	if(!state.movingObjectById!((ref object,numFrames,spell,state)=>object.startCasting(numFrames,spell.stationary,state),()=>false)(caster,numFrames,spell,state))
 		return false;
 	auto drainSpeed=spell.isBuilding?125.0f:500.0f;
 	auto numManaDrainFrames=min(numFrames,cast(int)ceil(spell.manaCost*(updateFPS/drainSpeed)));
 	auto manaCostPerFrame=spell.manaCost/numManaDrainFrames;
-	auto manaDrain=ManaDrain!B(object.id,manaCostPerFrame,numManaDrainFrames);
+	auto manaDrain=ManaDrain!B(caster,manaCostPerFrame,numManaDrainFrames);
 	(*wizard).applyCooldown(spell,state);
-	bool stun(bool ok=false){
+	bool stun(ref MovingObject!B object,bool ok=false){
 		if(!ok) object.damageStun(Vector3f(0.0f,0.0f,-1.0f),state);
 		return ok;
 	}
 	final switch(spell.type){
 		case SpellType.creature:
 			assert(target is Target.init);
-			auto creature=spawn(object.id,spell.tag,0,state);
+			auto creature=spawn(caster,spell.tag,0,state);
+			if(!creature) return false;
 			state.setRenderMode!(MovingObject!B,RenderMode.transparent)(creature);
 			state.setAlpha(creature,0.36f,10.0f);
 			playSoundAt("NMUS",creature,state,summonSoundGain);
 			state.addEffect(CreatureCasting!B(manaDrain,spell,creature));
 			return true;
 		case SpellType.spell:
-			bool ok=false;
-			switch(spell.tag){
-				case SpellTag.convert:
-					return stun(castConvert(object.side,manaDrain,spell,object.position,target.id,wizard.closestShrine,state));
-				case SpellTag.desecrate:
-					return stun(castDesecrate(object.side,manaDrain,spell,object.position,target.id,wizard.closestEnemyAltar,state));
-				case SpellTag.teleport:
-					return stun(castTeleport(manaDrain,spell,object.position,target.id,state));
-				case SpellTag.guardian:
-					return stun(castGuardian(manaDrain,spell,target.id,state));
-				case SpellTag.speedup:
-					ok=target.id==object.id?speedUp(object,spell,state):speedUp(target.id,spell,state);
-					goto default;
-				case SpellTag.heal:
-					return stun(target.id==object.id?castHeal(object,manaDrain,spell,state):castHeal(target.id,manaDrain,spell,state));
-				case SpellTag.lightning:
-					return stun(target.id==object.id?castLightning(object,manaDrain,spell,state):castLightning(target.id,manaDrain,spell,state));
-				case SpellTag.wrath:
-					return stun(target.id==object.id?castWrath(object,manaDrain,spell,state):castWrath(target.id,manaDrain,spell,state));
-				case SpellTag.fireball:
-					return stun(target.id==object.id?castFireball(object,manaDrain,spell,state):castFireball(target.id,manaDrain,spell,state));
-				case SpellTag.rock:
-					auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
-					return stun(target.id==object.id?castRock(object.id,object,manaDrain,spell,castingTime,state):castRock(object.id,target.id,manaDrain,spell,castingTime,state));
-				case SpellTag.insectSwarm:
-					auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
-					return stun(target.id==object.id?castSwarm(object,manaDrain,spell,castingTime,state):castSwarm(target.id,manaDrain,spell,castingTime,state));
-				default:
-					if(ok) state.addEffect(manaDrain);
-					return stun(ok);
+			bool castSpell(ref MovingObject!B object){
+				bool ok=false;
+				switch(spell.tag){
+					case SpellTag.convert:
+						return stun(object,castConvert(object.side,manaDrain,spell,object.position,target.id,wizard.closestShrine,state));
+					case SpellTag.desecrate:
+						return stun(object,castDesecrate(object.side,manaDrain,spell,object.position,target.id,wizard.closestEnemyAltar,state));
+					case SpellTag.teleport:
+						return stun(object,castTeleport(manaDrain,spell,object.position,target.id,state));
+					case SpellTag.guardian:
+						return stun(object,castGuardian(manaDrain,spell,target.id,state));
+					case SpellTag.speedup:
+						ok=target.id==object.id?speedUp(object,spell,state):speedUp(target.id,spell,state);
+						goto default;
+					case SpellTag.heal:
+						return stun(object,target.id==object.id?castHeal(object,manaDrain,spell,state):castHeal(target.id,manaDrain,spell,state));
+					case SpellTag.lightning:
+						return stun(object,target.id==object.id?castLightning(object,manaDrain,spell,state):castLightning(target.id,manaDrain,spell,state));
+					case SpellTag.wrath:
+						return stun(object,target.id==object.id?castWrath(object,manaDrain,spell,state):castWrath(target.id,manaDrain,spell,state));
+					case SpellTag.fireball:
+						return stun(object,target.id==object.id?castFireball(object,manaDrain,spell,state):castFireball(target.id,manaDrain,spell,state));
+					case SpellTag.rock:
+						auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
+						return stun(object,target.id==object.id?castRock(object.id,object,manaDrain,spell,castingTime,state):castRock(object.id,target.id,manaDrain,spell,castingTime,state));
+					case SpellTag.insectSwarm:
+						auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
+						return stun(object,target.id==object.id?castSwarm(object,manaDrain,spell,castingTime,state):castSwarm(target.id,manaDrain,spell,castingTime,state));
+					default:
+						if(ok) state.addEffect(manaDrain);
+						return stun(object,ok);
+				}
 			}
+			return state.movingObjectById!(castSpell,()=>false)(caster);
 		case SpellType.structure:
 			if(!spell.isBuilding) goto case SpellType.spell;
 			auto base=state.staticObjectById!((obj)=>obj.buildingId,()=>0)(target.id);
 			if(base){ // TODO: stun both wizards on simultaneous lith cast
 				auto god=state.getCurrentGod(wizard);
 				if(god==God.none) god=God.persephone;
-				auto building=makeBuilding(object.id,spell.buildingTag(god),AdditionalBuildingFlags.inactive|Flags.cannotDamage,base,state);
+				auto building=makeBuilding(caster,spell.buildingTag(god),AdditionalBuildingFlags.inactive|Flags.cannotDamage,base,state);
 				state.setupStructureCasting(building);
 				float buildingHeight=state.buildingById!((ref bldg,state)=>height(bldg,state),()=>0.0f)(building,state);
-				auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
+				auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+				if(castingTime==-1) return false;
 				state.addEffect(StructureCasting!B(god,manaDrain,spell,building,buildingHeight,castingTime,0));
 				return true;
-			}else return stun();
+			}else return state.movingObjectById!(stun,()=>false)(caster);
 	}
 }
 
@@ -11864,7 +11867,7 @@ final class ObjectState(B){ // (update logic)
 			case automaticSelectGroup: goto case selectGroup;
 			case setFormation: success=applyOrder(command,this,true); break;
 			case retreat,move,guard,guardArea,attack,advance,useAbility: success=applyOrder(command,this); break;
-			case castSpell: success=this.movingObjectById!((ref obj,spell,target,state)=>obj.startCasting(spell,target,state),function()=>false)(command.wizard,command.spell,command.target,this); break;
+			case castSpell: success=startCasting(command.wizard,command.spell,command.target,this); break;
 			case surrender: success=.surrender(command.side,this); break;
 		}
 	}
