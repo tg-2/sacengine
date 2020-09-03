@@ -4947,8 +4947,8 @@ bool startCasting(B)(int caster,SacSpell!B spell,Target target,ObjectState!B sta
 	auto manaCostPerFrame=spell.manaCost/numManaDrainFrames;
 	auto manaDrain=ManaDrain!B(caster,manaCostPerFrame,numManaDrainFrames);
 	(*wizard).applyCooldown(spell,state);
-	bool stun(ref MovingObject!B object,bool ok=false){
-		if(!ok) object.damageStun(Vector3f(0.0f,0.0f,-1.0f),state);
+	bool stun(bool ok=false){
+		if(!ok) state.movingObjectById!((ref object){ object.damageStun(Vector3f(0.0f,0.0f,-1.0f),state); },(){})(caster);
 		return ok;
 	}
 	final switch(spell.type){
@@ -4962,40 +4962,47 @@ bool startCasting(B)(int caster,SacSpell!B spell,Target target,ObjectState!B sta
 			state.addEffect(CreatureCasting!B(manaDrain,spell,creature));
 			return true;
 		case SpellType.spell:
-			bool castSpell(ref MovingObject!B object){
-				bool ok=false;
-				switch(spell.tag){
-					case SpellTag.convert:
-						return stun(object,castConvert(object.side,manaDrain,spell,object.position,target.id,wizard.closestShrine,state));
-					case SpellTag.desecrate:
-						return stun(object,castDesecrate(object.side,manaDrain,spell,object.position,target.id,wizard.closestEnemyAltar,state));
-					case SpellTag.teleport:
-						return stun(object,castTeleport(manaDrain,spell,object.position,target.id,state));
-					case SpellTag.guardian:
-						return stun(object,castGuardian(manaDrain,spell,target.id,state));
-					case SpellTag.speedup:
-						ok=target.id==object.id?speedUp(object,spell,state):speedUp(target.id,spell,state);
-						goto default;
-					case SpellTag.heal:
-						return stun(object,target.id==object.id?castHeal(object,manaDrain,spell,state):castHeal(target.id,manaDrain,spell,state));
-					case SpellTag.lightning:
-						return stun(object,target.id==object.id?castLightning(object,manaDrain,spell,state):castLightning(target.id,manaDrain,spell,state));
-					case SpellTag.wrath:
-						return stun(object,target.id==object.id?castWrath(object,manaDrain,spell,state):castWrath(target.id,manaDrain,spell,state));
-					case SpellTag.fireball:
-						return stun(object,target.id==object.id?castFireball(object,manaDrain,spell,state):castFireball(target.id,manaDrain,spell,state));
-					case SpellTag.rock:
-						auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
-						return stun(object,target.id==object.id?castRock(object.id,object,manaDrain,spell,castingTime,state):castRock(object.id,target.id,manaDrain,spell,castingTime,state));
-					case SpellTag.insectSwarm:
-						auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
-						return stun(object,target.id==object.id?castSwarm(object,manaDrain,spell,castingTime,state):castSwarm(target.id,manaDrain,spell,castingTime,state));
-					default:
-						if(ok) state.addEffect(manaDrain);
-						return stun(object,ok);
-				}
+			bool ok=false;
+			switch(spell.tag){
+				case SpellTag.convert:
+					auto sidePosition=state.movingObjectById!((ref object)=>tuple(object.side,object.position),()=>tuple(-1,Vector3f.init))(caster);
+					auto side=sidePosition[0],position=sidePosition[1];
+					if(side==-1) return false;
+					return stun(castConvert(side,manaDrain,spell,position,target.id,wizard.closestShrine,state));
+				case SpellTag.desecrate:
+					auto sidePosition=state.movingObjectById!((ref object)=>tuple(object.side,object.position),()=>tuple(-1,Vector3f.init))(caster);
+					auto side=sidePosition[0],position=sidePosition[1];
+					if(side==-1) return false;
+					return stun(castDesecrate(side,manaDrain,spell,position,target.id,wizard.closestEnemyAltar,state));
+				case SpellTag.teleport:
+					auto position=state.movingObjectById!((ref object)=>object.position,()=>Vector3f.init)(caster);
+					if(isNaN(position.x)) return false;
+					return stun(castTeleport(manaDrain,spell,position,target.id,state));
+				case SpellTag.guardian:
+					return stun(castGuardian(manaDrain,spell,target.id,state));
+				case SpellTag.speedup:
+					ok=speedUp(target.id,spell,state);
+					goto default;
+				case SpellTag.heal:
+					return stun(castHeal(target.id,manaDrain,spell,state));
+				case SpellTag.lightning:
+					return stun(castLightning(target.id,manaDrain,spell,state));
+				case SpellTag.wrath:
+					return stun(castWrath(target.id,manaDrain,spell,state));
+				case SpellTag.fireball:
+					return stun(castFireball(target.id,manaDrain,spell,state));
+				case SpellTag.rock:
+					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					if(castingTime==-1) return false;
+					return stun(castRock(caster,target.id,manaDrain,spell,castingTime,state));
+				case SpellTag.insectSwarm:
+					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					if(castingTime==-1) return false;
+					return stun(castSwarm(target.id,manaDrain,spell,castingTime,state));
+				default:
+					if(ok) state.addEffect(manaDrain);
+					return stun(ok);
 			}
-			return state.movingObjectById!(castSpell,()=>false)(caster);
 		case SpellType.structure:
 			if(!spell.isBuilding) goto case SpellType.spell;
 			auto base=state.staticObjectById!((obj)=>obj.buildingId,()=>0)(target.id);
@@ -5009,7 +5016,7 @@ bool startCasting(B)(int caster,SacSpell!B spell,Target target,ObjectState!B sta
 				if(castingTime==-1) return false;
 				state.addEffect(StructureCasting!B(god,manaDrain,spell,building,buildingHeight,castingTime,0));
 				return true;
-			}else return state.movingObjectById!(stun,()=>false)(caster);
+			}else return stun();
 	}
 }
 
@@ -5220,13 +5227,10 @@ bool speedUp(B)(int creature,SacSpell!B spell,ObjectState!B state){
 	return state.movingObjectById!(speedUp,()=>false)(creature,spell,state);
 }
 
-bool castHeal(B)(ref MovingObject!B object,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
-	state.addEffect(HealCasting!B(manaDrain,spell,object.id));
-	return true;
-}
 bool castHeal(B)(int creature,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
 	if(!state.isValidTarget(creature,TargetType.creature)) return false;
-	return state.movingObjectById!(castHeal,()=>false)(creature,manaDrain,spell,state);
+	state.addEffect(HealCasting!B(manaDrain,spell,creature));
+	return true;
 }
 enum healSpeed=250.0f;
 bool heal(B)(int creature,SacSpell!B spell,ObjectState!B state){
@@ -5239,9 +5243,6 @@ bool heal(B)(int creature,SacSpell!B spell,ObjectState!B state){
 	return true;
 }
 
-bool castLightning(B,T)(ref T object,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state)if(!is(T==int)){
-	return castLightning(object.id,manaDrain,spell,state);
-}
 bool castLightning(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
 	if(!state.isValidTarget(target)) return false;
 	auto orderTarget=state.objectById!((obj){
@@ -5269,9 +5270,6 @@ bool lightning(B)(int wizard,int side,OrderTarget start,OrderTarget end,SacSpell
 	return true;
 }
 
-bool castWrath(B,T)(ref T object,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state)if(!is(T==int)){
-	return castWrath(object.id,manaDrain,spell,state);
-}
 bool castWrath(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
 	if(!state.isValidTarget(target)) return false;
 	state.addEffect(WrathCasting!B(manaDrain,spell,centerTarget(target,state)));
@@ -5297,9 +5295,6 @@ Fireball!B makeFireball(B)(int wizard,int side,Vector3f position,OrderTarget tar
 Vector3f fireballCastingPosition(B)(ref MovingObject!B obj,ObjectState!B state){
 	auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
 	return obj.position+rotate(obj.rotation,Vector3f(0.0f,hbox[1].y+0.75f,hbox[1].z+0.25f));
-}
-bool castFireball(B,T)(ref T object,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state)if(!is(T==int)){
-	return castFireball(object.id,manaDrain,spell,state);
 }
 bool castFireball(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
 	if(!state.isValidTarget(target)) return false;
@@ -5330,9 +5325,6 @@ Vector3f rockCastingPosition(B)(ref MovingObject!B obj,ObjectState!B state){
 	position.z=state.getHeight(position)-rockBuryDepth;
 	return position;
 }
-bool castRock(B,T)(int wizard,ref T object,ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,ObjectState!B state)if(!is(T==int)){
-	return castRock(wizard,object.id,manaDrain,spell,castingTime,state);
-}
 bool castRock(B)(int wizard,int target,ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,ObjectState!B state){
 	if(!state.isValidTarget(target)) return false;
 	auto positionSide=state.movingObjectById!((obj,state)=>tuple(obj.rockCastingPosition(state),obj.side),function Tuple!(Vector3f,int){ assert(0); })(manaDrain.wizard,state);
@@ -5360,9 +5352,6 @@ Swarm!B makeSwarm(B)(int wizard,int side,Vector3f position,OrderTarget target,Sa
 Vector3f swarmCastingPosition(B)(ref MovingObject!B obj,ObjectState!B state){
 	auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
 	return obj.position+rotate(obj.rotation,Vector3f(0.0f,hbox[1].y+0.75f,hbox[1].z+1.75f));
-}
-bool castSwarm(B,T)(ref T object,ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,ObjectState!B state)if(!is(T==int)){
-	return castSwarm(object.id,manaDrain,spell,castingTime,state);
 }
 bool castSwarm(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,ObjectState!B state){
 	if(!state.isValidTarget(target)) return false;
