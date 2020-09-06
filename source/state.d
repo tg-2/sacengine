@@ -1938,6 +1938,7 @@ struct Fire(B){
 	int lifetime;
 	float rangedDamagePerFrame=0.0f;
 	float spellDamagePerFrame=0.0f;
+	float manaDrainPerFrame=0.0f;
 	int attacker=0;
 	int side=-1;
 }
@@ -2442,6 +2443,24 @@ struct Petrification{
 	int creature;
 	int lifetime;
 	Vector3f attackDirection;
+	int frame=0;
+}
+
+struct TickfernoProjectile(B){
+	int attacker;
+	int side;
+	int intendedTarget;
+	Vector3f position;
+	Vector3f direction;
+	SacSpell!B rangedAttack;
+	float remainingDistance;
+	Vector3f startPosition;
+	int frame=0;
+	int hitframe=-1;
+}
+struct TickfernoEffect{
+	Vector3f position;
+	Vector3f direction;
 	int frame=0;
 }
 
@@ -2959,6 +2978,22 @@ struct Effects(B){
 		if(i+1<basiliskEffects.length) basiliskEffects[i]=move(basiliskEffects[$-1]);
 		basiliskEffects.length=basiliskEffects.length-1;
 	}
+	Array!(TickfernoProjectile!B) tickfernoProjectiles;
+	void addEffect(TickfernoProjectile!B tickfernoProjectile){
+		tickfernoProjectiles~=tickfernoProjectile;
+	}
+	void removeTickfernoProjectile(int i){
+		if(i+1<tickfernoProjectiles.length) tickfernoProjectiles[i]=move(tickfernoProjectiles[$-1]);
+		tickfernoProjectiles.length=tickfernoProjectiles.length-1;
+	}
+	Array!TickfernoEffect tickfernoEffects;
+	void addEffect(TickfernoEffect tickfernoEffect){
+		tickfernoEffects~=tickfernoEffect;
+	}
+	void removeTickfernoEffect(int i){
+		if(i+1<tickfernoEffects.length) tickfernoEffects[i]=move(tickfernoEffects[$-1]);
+		tickfernoEffects.length=tickfernoEffects.length-1;
+	}
 	Array!Petrification petrifications;
 	void addEffect(Petrification petrification){
 		petrifications~=petrification;
@@ -3101,6 +3136,8 @@ struct Effects(B){
 		assignArray(basiliskProjectiles,rhs.basiliskProjectiles);
 		assignArray(basiliskEffects,rhs.basiliskEffects);
 		assignArray(petrifications,rhs.petrifications);
+		assignArray(tickfernoProjectiles,rhs.tickfernoProjectiles);
+		assignArray(tickfernoEffects,rhs.tickfernoEffects);
 		assignArray(rockForms,rhs.rockForms);
 		assignArray(stealths,rhs.stealths);
 		assignArray(lifeShields,rhs.lifeShields);
@@ -4700,22 +4737,51 @@ float dealMeleeDamage(B)(ref Building!B building,ref MovingObject!B attacker,Obj
 
 float dealSpellDamage(B)(ref MovingObject!B object,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
 	auto damage=spell.amount;
+	return dealSpellDamage(object,damage,attacker,attackerSide,attackDirection,state);
+}
+float dealSpellDamage(B)(ref MovingObject!B object,float damage,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
 	auto actualDamage=damage*object.creatureStats.directSpellResistance;
 	object.damageAnimation(attackDirection,state);
 	actualDamage=object.dealDamage(actualDamage,attacker,attackerSide,state);
 	healFromDrain(attacker,actualDamage,state);
 	return actualDamage;
 }
-float dealSpellDamage(B)(ref StaticObject!B object,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
-	return state.buildingById!(dealSpellDamage,()=>0.0f)(object.buildingId,spell,attacker,attackerSide,attackDirection,state);
+
+float dealSpellDamage(B)(ref MovingObject!B object,float damage,int attacker,int attackerSide,ObjectState!B state){
+	auto actualDamage=damage*object.creatureStats.directSpellResistance;
+	actualDamage=object.dealDamage(actualDamage,attacker,attackerSide,state);
+	healFromDrain(attacker,actualDamage,state);
+	return actualDamage;
 }
+
+
+float dealSpellDamage(B)(ref StaticObject!B object,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
+	return dealSpellDamage(object,spell.amount,attacker,attackerSide,attackDirection,state);
+}
+float dealSpellDamage(B)(ref StaticObject!B object,float damage,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
+	return state.buildingById!(dealSpellDamage,()=>0.0f)(object.buildingId,damage,attacker,attackerSide,attackDirection,state);
+}
+float dealSpellDamage(B)(ref StaticObject!B object,float damage,int attacker,int attackerSide,ObjectState!B state){
+	return state.buildingById!(dealSpellDamage,()=>0.0f)(object.buildingId,damage,attacker,attackerSide,state);
+}
+
 float dealSpellDamage(B)(ref Building!B building,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
 	auto damage=spell.amount;
+	return dealSpellDamage(spell,attacker,attackerSide,attackDirectionState);
+}
+
+float dealSpellDamage(B)(ref Building!B building,float damage,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
+	return dealSpellDamage(building,damage,attacker,attackerSide,state);
+}
+
+float dealSpellDamage(B)(ref Building!B building,float damage,int attacker,int attackerSide,ObjectState!B state){
 	auto guardianDamage=spellDamageGuardians(building,damage,attacker,attackerSide,state);
 	if(!isNaN(guardianDamage)) return guardianDamage;
 	auto actualDamage=damage*building.directSpellResistance;
 	return building.dealDamage(actualDamage,attacker,attackerSide,state);
 }
+
+
 float dealSpellDamage(B)(int target,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
 	if(!state.isValidTarget(target)) return 0.0f;
 	return state.objectById!dealSpellDamage(target,spell,attacker,attackerSide,attackDirection,state);
@@ -4767,8 +4833,19 @@ float dealSplashSpellDamageAt(alias callback=(id)=>true,B,T...)(int directTarget
 
 float dealRangedDamage(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
 	auto damage=rangedAttack.amount;
+	return dealRangedDamage(object,damage,attacker,attackerSide,attackDirection,state);
+}
+
+float dealRangedDamage(B)(ref MovingObject!B object,float damage,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
 	auto actualDamage=damage*object.creatureStats.directRangedResistance;
 	object.damageAnimation(attackDirection,state);
+	actualDamage=object.dealDamage(actualDamage,attacker,attackerSide,state);
+	healFromDrain(attacker,actualDamage,state);
+	return actualDamage;
+}
+
+float dealRangedDamage(B)(ref MovingObject!B object,float damage,int attacker,int attackerSide,ObjectState!B state){
+	auto actualDamage=damage*object.creatureStats.directRangedResistance;
 	actualDamage=object.dealDamage(actualDamage,attacker,attackerSide,state);
 	healFromDrain(attacker,actualDamage,state);
 	return actualDamage;
@@ -4783,12 +4860,35 @@ float dealPoisonDamage(B)(ref MovingObject!B object,float damage,int attacker,in
 	return actualDamage;
 }
 
+float dealFireDamage(T,B)(ref T object,float rangedDamage,float spellDamage,int attacker,int attackerSide,ObjectState!B state){
+	auto actualRangedDamage=0.0f;
+	if(rangedDamage>0.0f) actualRangedDamage=object.dealRangedDamage(rangedDamage,attacker,attackerSide,state);
+	healFromDrain(attacker,actualRangedDamage,state);
+	auto actualSpellDamage=0.0f;
+	if(spellDamage>0.0f) actualSpellDamage=object.dealSpellDamage(spellDamage,attacker,attackerSide,state);
+	healFromDrain(attacker,actualSpellDamage,state);
+	return actualRangedDamage+actualSpellDamage;
+}
+
 float dealRangedDamage(B)(ref StaticObject!B object,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
-	return state.buildingById!(dealRangedDamage,()=>0.0f)(object.buildingId,rangedAttack,attacker,attackerSide,attackDirection,state);
+	return dealRangedDamage(object,rangedAttack.amount,attacker,attackerSide,attackDirection,state);
+}
+float dealRangedDamage(B)(ref StaticObject!B object,float damage,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
+	return state.buildingById!(dealRangedDamage,()=>0.0f)(object.buildingId,damage,attacker,attackerSide,attackDirection,state);
+}
+float dealRangedDamage(B)(ref StaticObject!B object,float damage,int attacker,int attackerSide,ObjectState!B state){
+	return state.buildingById!(dealRangedDamage,()=>0.0f)(object.buildingId,damage,attacker,attackerSide,state);
 }
 
 float dealRangedDamage(B)(ref Building!B building,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
 	auto damage=rangedAttack.amount;
+	return dealRangedDamage(building,damage,attacker,attackerSide,attackDirection,state);
+}
+
+float dealRangedDamage(B)(ref Building!B building,float damage,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
+	return dealRangedDamage(building,damage,attacker,attackerSide,state);
+}
+float dealRangedDamage(B)(ref Building!B building,float damage,int attacker,int attackerSide,ObjectState!B state){
 	auto guardianDamage=rangedDamageGuardians(building,damage,attacker,attackerSide,state);
 	if(!isNaN(guardianDamage)) return guardianDamage;
 	auto actualDamage=damage*building.directRangedResistance;
@@ -5491,11 +5591,11 @@ bool scarabShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vect
 	return true;
 }
 
-bool basiliskShoot(B)(ref MovingObject!B obj,int intendedTarget,float accuracy,Vector3f[2] positions,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+bool basiliskShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f[2] positions,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
 	auto center=boxCenter(positions);
 	playSoundAt("ssab",center,state,4.0f); // TODO: move sound with projectile?
 	auto direction=getShotDirection(accuracy,positions[1],target,rangedAttack,state);
-	state.addEffect(BasiliskProjectile!B(obj.id,obj.side,intendedTarget,positions,direction,rangedAttack,rangedAttack.range));
+	state.addEffect(BasiliskProjectile!B(attacker,side,intendedTarget,positions,direction,rangedAttack,rangedAttack.range));
 	return true;
 }
 
@@ -5514,6 +5614,14 @@ bool petrify(B)(ref MovingObject!B obj,SacSpell!B rangedAttack,Vector3f attackDi
 	auto lifetime=cast(int)(duration*updateFPS);
 	return petrify(obj,lifetime,attackDirection,state);
 }
+
+bool tickfernoShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	playSpellSoundTypeAt(SoundType.laser,position,state,4.0f);
+	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
+	state.addEffect(TickfernoProjectile!B(attacker,side,intendedTarget,position,direction,rangedAttack,rangedAttack.range,position));
+	return true;
+}
+
 
 enum defaultFaceThreshold=1e-3;
 bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state,float threshold=defaultFaceThreshold){
@@ -5945,7 +6053,10 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 						scarabShoot(object.id,object.side,targetId,accuracy,object.shotPosition,predicted,rangedAttack,state);
 						break;
 					case SpellTag.basiliskShoot:
-						basiliskShoot(object,targetId,accuracy,object.basiliskShotPositions,predicted,rangedAttack,state);
+						basiliskShoot(object.id,object.side,targetId,accuracy,object.basiliskShotPositions,predicted,rangedAttack,state);
+						break;
+					case SpellTag.tickfernoShoot:
+						tickfernoShoot(object.id,object.side,targetId,accuracy,object.shotPosition,predicted,rangedAttack,state);
 						break;
 					default: goto case SpellTag.brainiacShoot;
 				}
@@ -7380,6 +7491,9 @@ bool updateFire(B)(ref Fire!B fire,ObjectState!B state){
 	with(fire){
 		if(!state.targetTypeFromId(target).among(TargetType.creature,TargetType.building))
 			return false;
+		if(rangedDamagePerFrame>0.0f||spellDamagePerFrame>0.0f)
+			state.objectById!dealFireDamage(target,rangedDamagePerFrame,spellDamagePerFrame,attacker,side,state);
+		if(manaDrainPerFrame>0.0f) state.movingObjectById!(drainMana,(){})(target,manaDrainPerFrame,state);
 		static assert(updateFPS==60);
 		auto hitbox=state.objectById!hitbox(target);
 		auto dim=hitbox[1]-hitbox[0];
@@ -9536,22 +9650,26 @@ int flameMinionProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f
 	return collisionTarget!(flameMinionProjectileHitbox,filter)(side,position,state,side,intendedTarget);
 }
 
+
+void flameEffect(B)(Vector3f position,ObjectState!B state,float scale=1.0f){
+	enum numParticles4=30;
+	auto sacParticle4=SacParticle!B.get(ParticleType.fire);
+	foreach(i;0..numParticles4){
+		auto direction=state.uniformDirection();
+		auto pposition=position+scale*0.25f*direction;
+		auto velocity=scale*Vector3f(0.0f,0.0f,1.0f); // TODO: original uses vibrating particles
+		auto frame=state.uniform(2)?0:state.uniform(24);
+		auto lifetime=63-frame;
+		state.addParticle(Particle!B(sacParticle4,pposition,velocity,scale,lifetime,frame));
+	}
+}
+
 void flameMinionProjectileExplosion(B)(ref FlameMinionProjectile!B flameMinionProjectile,int target,ObjectState!B state){
 	if(state.isValidTarget(target)){
 		dealRangedDamage(target,flameMinionProjectile.rangedAttack,flameMinionProjectile.attacker,flameMinionProjectile.side,flameMinionProjectile.velocity,state);
 		with(flameMinionProjectile) setAblaze(target,updateFPS/4,true,0.0f,attacker,side,state);
 	}
-	enum numParticles4=30;
-	auto sacParticle4=SacParticle!B.get(ParticleType.fire);
-	foreach(i;0..numParticles4){
-		auto direction=state.uniformDirection();
-		auto position=flameMinionProjectile.position+0.25f*direction;
-		auto velocity=Vector3f(0.0f,0.0f,1.0f); // TODO: original uses vibrating particles
-		auto scale=1.0f;
-		auto frame=state.uniform(2)?0:state.uniform(24);
-		auto lifetime=63-frame;
-		state.addParticle(Particle!B(sacParticle4,position,velocity,scale,lifetime,frame));
-	}
+	flameEffect(flameMinionProjectile.position,state);
 }
 
 bool updateFlameMinionProjectile(B)(ref FlameMinionProjectile!B flameMinionProjectile,ObjectState!B state){
@@ -10046,6 +10164,72 @@ bool updatePetrification(B)(ref Petrification petrification,ObjectState!B state)
 			return true;
 		}
 	},()=>false)(petrification.creature,&petrification,state);
+}
+
+
+enum tickfernoProjectileHitGain=4.0f;
+enum tickfernoProjectileSize=0.35f; // TODO: ok?
+enum tickfernoProjectileSlidingDistance=1.5f;
+static immutable Vector3f[2] tickfernoProjectileHitbox=[-0.5f*tickfernoProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*tickfernoProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
+int tickfernoProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
+		return entry.isProjectileObstacle&&(entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side);
+	}
+	return collisionTarget!(tickfernoProjectileHitbox,filter)(side,position,state,side,intendedTarget);
+}
+bool updateTickfernoProjectile(B)(ref TickfernoProjectile!B tickfernoProjectile,ObjectState!B state){
+	with(tickfernoProjectile){
+		++frame;
+		auto velocity=rangedAttack.speed/updateFPS*direction;
+		if(remainingDistance>0.0f){
+			void terminate(){
+				playSoundAt("malf",position,state,tickfernoProjectileHitGain);
+				remainingDistance=0.0f;
+				hitframe=frame;
+			}
+			auto oldPosition=position;
+			position+=velocity;
+			remainingDistance-=rangedAttack.speed/updateFPS;
+			if(remainingDistance<0.0f) terminate();
+			static assert(updateFPS==60);
+			if(!state.uniform(4)) state.addEffect(TickfernoEffect(oldPosition,direction));
+			OrderTarget target;
+			if(auto targetId=tickfernoProjectileCollisionTarget(side,intendedTarget,position,state)){
+				target.id=targetId;
+				target.type=state.targetTypeFromId(targetId);
+			}else{
+				target=state.lineOfSightWithoutSide(oldPosition,position,side,intendedTarget);
+			}
+			float manaDrain=0.0f;
+			switch(target.type){
+				case TargetType.terrain:
+					flameEffect(position,state,2.0f);
+					terminate();
+					break;
+				case TargetType.creature:
+					manaDrain=state.movingObjectById!((ref object)=>0.5f*object.creatureStats.maxMana,()=>0.0f)(target.id);
+					goto case;
+				case TargetType.building:
+					// TODO: burn mana
+					setAblazeWithManaDrain(target.id,cast(int)(updateFPS*rangedAttack.duration),rangedAttack.amount,manaDrain,attacker,side,state);
+					terminate();
+					break;
+				default: break;
+			}
+		}
+		if(hitframe!=-1&&frame>=hitframe+updateFPS||frame>=2*updateFPS){
+			startPosition+=velocity;
+			if(dot(position-startPosition,direction)<0.0f)
+				return false;
+		}
+		return true;
+	}
+}
+bool updateTickfernoEffect(B)(ref TickfernoEffect effect,ObjectState!B state){
+	with(effect){
+		static assert(updateFPS==60);
+		return ++frame<96; // TODO: fix timing on this
+	}
 }
 
 
@@ -10753,6 +10937,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 		}
 		i++;
 	}
+	for(int i=0;i<effects.tickfernoProjectiles.length;){
+		if(!updateTickfernoProjectile(effects.tickfernoProjectiles[i],state)){
+			effects.removeTickfernoProjectile(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.tickfernoEffects.length;){
+		if(!updateTickfernoEffect(effects.tickfernoEffects[i],state)){
+			effects.removeTickfernoEffect(i);
+			continue;
+		}
+		i++;
+	}
 	for(int i=0;i<effects.rockForms.length;){
 		if(!updateRockForm(effects.rockForms[i],state)){
 			effects.removeRockForm(i);
@@ -10887,7 +11085,10 @@ void destructionAnimation(B)(char[4] animation,Vector3f position,ObjectState!B s
 }
 
 void setAblaze(B)(int target,int lifetime,bool ranged,float damage,int attacker,int side,ObjectState!B state){
-	state.addEffect(Fire!B(target,lifetime,ranged?damage/lifetime:0.0f,!ranged?damage/lifetime:0.0f,attacker,side));
+	state.addEffect(Fire!B(target,lifetime,ranged?damage/lifetime:0.0f,!ranged?damage/lifetime:0.0f,0.0f,attacker,side));
+}
+void setAblazeWithManaDrain(B)(int target,int lifetime,float damage,float manaDrain,int attacker,int side,ObjectState!B state){
+	state.addEffect(Fire!B(target,lifetime,damage/lifetime,0.0f,manaDrain/lifetime,attacker,side));
 }
 
 void updateCommandCones(B)(ref CommandCones!B commandCones, ObjectState!B state){
@@ -13211,4 +13412,5 @@ final class GameState(B){
 		playAudio=false;
 		simulateTo(currentFrame);
 	}
+
 }

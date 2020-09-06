@@ -1669,6 +1669,38 @@ struct SacBasiliskEffect(B){
 	}
 }
 
+struct SacLaser(B){
+	B.Texture texture;
+	B.Material material;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/wzrg.TXTR"));
+	}
+	B.BoneMesh[] frames;
+	enum numFrames=16*updateAnimFactor;
+	auto getFrame(int i){ return frames[i/updateAnimFactor]; }
+	enum numSegments=3;
+	static B.BoneMesh[] createMeshes(){
+		enum nU=4,nV=4;
+		return makeLineMeshes!B(numSegments,nU,nV,1.0f,1.0f,true);
+	}
+}
+
+struct SacTickfernoEffect(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/tube.TXTR"));
+	}
+	B.Material material;
+	B.Mesh[] frames;
+	enum animationDelay=1;
+	enum numFrames=16*animationDelay*updateAnimFactor;
+	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
+	static B.Mesh[] createMeshes(){
+		return makeSpriteMeshes!(B,true)(4,4,1.0f,1.0f);
+	}
+}
+
+
 struct SacLifeShield(B){
 	B.Texture texture;
 	static B.Texture loadTexture(){

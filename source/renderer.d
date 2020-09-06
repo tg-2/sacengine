@@ -243,6 +243,28 @@ struct Renderer(B){
 		auto frames=typeof(return).createMeshes();
 		return SacBasiliskEffect!B(texture,mat,frames);
 	}
+	SacTickfernoEffect!B tickfernoEffect;
+	SacTickfernoEffect!B createTickfernoEffect(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Additive;
+		mat.energy=20.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacTickfernoEffect!B(texture,mat,frames);
+	}
+	SacLaser!B laser;
+	SacLaser!B createLaser(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessBoneMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Additive;
+		mat.energy=5.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacLaser!B(texture,mat,frames);
+	}
 	SacLifeShield!B lifeShield;
 	SacLifeShield!B createLifeShield(){
 		enum nU=4,nV=4;
@@ -286,7 +308,9 @@ struct Renderer(B){
 		brainiacEffect=createBrainiacEffect();
 		shrikeEffect=createShrikeEffect();
 		arrow=createArrow();
+		laser=createLaser();
 		basiliskEffect=createBasiliskEffect();
+		tickfernoEffect=createTickfernoEffect();
 		lifeShield=createLifeShield();
 		divineSight=createDivineSight();
 	}
@@ -297,13 +321,13 @@ struct Renderer(B){
 		createEffects();
 		initializeHUD();
 	}
-	
+
 	struct EnvOpt{
 		float sunFactor;
 		float ambientFactor;
 		bool enableFog;
 	}
-	
+
 	void setupEnvironment(EnvOpt options,SacMap!B map){
 		auto env=B.environment; // TODO: get rid of this?
 		auto envi=&map.envi;
@@ -467,7 +491,7 @@ struct Renderer(B){
 	struct R3DOpt{
 		bool enableWidgets;
 	}
-	
+
 	void renderNTTs(RenderMode mode)(R3DOpt options,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
 		static void render(T)(ref T objects,Renderer!B* self,bool enableWidgets,ObjectState!B state,RenderInfo!B* info,B.RenderContext rc){ // TODO: why does this need to be static? DMD bug?
 			static if(is(typeof(objects.sacObject))){
@@ -1035,6 +1059,50 @@ struct Renderer(B){
 						mesh.render(rc);
 					}
 				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.tickfernoProjectiles.length){
+					auto material=self.laser.material;
+					material.bind(rc);
+					B.disableCulling();
+					scope(success){
+						B.enableCulling();
+						material.unbind(rc);
+					}
+					void renderLaser(float scale,int frame,Vector3f start,Vector3f end){
+						auto diff=end-start;
+						auto len=diff.length;
+						auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),diff/len);
+						//auto pulse=0.75f+0.25f*0.5f*(1.0f+sin(2.0f*pi!float*(frame%pulseFrames)/(pulseFrames-1)));
+						B.shadelessBoneMaterialBackend.setTransformationScaled(start,rotation,Vector3f(scale,scale,len),rc);
+						auto mesh=self.laser.getFrame(frame%self.laser.numFrames);
+						Matrix4x4f[self.laser.numSegments+1] pose;
+						pose[0]=pose[self.laser.numSegments]=Matrix4f.identity();
+						foreach(i,ref x;pose[1..$-1]){
+							auto curve=Vector3f(0.0f,0.0f,0.0f);
+							if(i+1==pose[1..$-1].length) curve.z=(1.0f/3.0f)*max(0.0f,1.0f-2.0f/len);
+							x=Transformation(Quaternionf.identity(),curve).getMatrix4f;
+						}
+						mesh.pose=pose[];
+						scope(exit) mesh.pose=[];
+						mesh.render(rc);
+					}
+					foreach(ref projectile;objects.tickfernoProjectiles) renderLaser(2.0f/3.0f,projectile.frame,projectile.startPosition,projectile.position);
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.tickfernoEffects.length){
+					auto material=self.tickfernoEffect.material;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
+					foreach(j;0..objects.tickfernoEffects.length){
+						auto position=objects.tickfernoEffects[j].position;
+						auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),objects.tickfernoEffects[j].direction); // TODO: precompute this?
+						auto frame=objects.tickfernoEffects[j].frame;
+						auto relativeProgress=float(frame)/(3.0f*self.tickfernoEffect.numFrames);
+						auto scale=1.2f*(1.0f+0.6f*relativeProgress^^2.5f);
+						B.shadelessMaterialBackend.setTransformationScaled(position,rotation,scale*Vector3f(1.0f,1.0f,1.0f),rc);
+						B.shadelessMaterialBackend.setAlpha(0.95f*(1.0f-relativeProgress)^^1.5f);
+						auto mesh=self.tickfernoEffect.getFrame(objects.tickfernoEffects[j].frame%self.tickfernoEffect.numFrames);
+						mesh.render(rc);
+					}
+				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.lifeShields.length){
 					auto material=self.lifeShield.material;
 					material.bind(rc);
@@ -1232,7 +1300,7 @@ struct Renderer(B){
 			if(id) state.movingObjectById!(renderCreatureStat!B,(){})(id,&this,true,state,info,rc);
 	}
 
-	B.Mesh boxMesh=null;	
+	B.Mesh boxMesh=null;
 	void renderBox(Vector3f[2] sl,bool wireframe,B.RenderContext rc){
 		auto small=sl[0],large=sl[1];
 		Vector3f[8] box=[Vector3f(small[0],small[1],small[2]),Vector3f(large[0],small[1],small[2]),
@@ -1513,7 +1581,7 @@ struct Renderer(B){
 	auto selectionRosterTarget=Target.init;
 	SacSpell!B selectionRosterTargetAbility=null;
 	auto minimapTarget=Target.init;
-	
+
 	bool isOnSelectionRoster(Vector2f center,ref RenderInfo!B info){
 		auto scaling=info.hudScaling*Vector3f(138.0f,256.0f-64.0f,1.0f);
 		auto position=Vector3f(-34.0f*info.hudScaling,0.5*(info.height-scaling.y),0);
@@ -1906,7 +1974,7 @@ struct Renderer(B){
 			renderStatBar(position2,relativeHealth,sacHud.healthTopMaterial,sacHud.healthMaterial,sacHud.healthBottomMaterial);
 		}
 	}
-	
+
 	int numSpells=0;
 	bool isOnSpellbook(Vector2f center,ref RenderInfo!B info){
 		auto hudScaling=info.hudScaling;
@@ -2090,4 +2158,4 @@ struct Renderer(B){
 		}
 	}
 }
- 
+
