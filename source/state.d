@@ -11269,6 +11269,14 @@ int[3] findClosestBuildings(B)(int side,Vector3f position,ObjectState!B state){ 
 	return result.currentIds;
 }
 
+bool spellbookVisible(B)(int wizardId,ObjectState!B state){
+	return state.movingObjectById!((ref obj)=>!obj.isDying&&!obj.isGhost&&!obj.isDead,()=>false)(wizardId);
+}
+bool statsVisible(B)(int wizardId,ObjectState!B state){
+	with(CreatureMode)
+		return state.movingObjectById!((ref obj)=>!obj.isDying&&!obj.isDead,()=>false)(wizardId);
+}
+
 enum SpellbookSoundFlags{
 	none,
 	creatureTab=1,
@@ -11300,7 +11308,7 @@ void updateWizard(B)(ref WizardInfo!B wizard,ObjectState!B state){
 			entry.readyFrame=0;
 		}
 	}
-	playSpellbookSound(side,flags,"vaps",state);
+	if(spellbookVisible(wizard.id,state)) playSpellbookSound(side,flags,"vaps",state);
 }
 
 void addToProximity(T,B)(ref T objects, ObjectState!B state){

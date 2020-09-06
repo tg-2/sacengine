@@ -2115,12 +2115,11 @@ struct Renderer(B){
 	}
 	bool statsVisible(ObjectState!B state,ref RenderInfo!B info){
 		if(!info.camera.target) return false;
-		with(CreatureMode)
-			return state.movingObjectById!((ref obj)=>!obj.isDying&&!obj.isDead,()=>false)(info.camera.target);
+		return .statsVisible(info.camera.target,state);
 	}
 	bool spellbookVisible(ObjectState!B state,ref RenderInfo!B info){
 		if(!info.camera.target) return false;
-		return state.movingObjectById!((ref obj)=>!obj.isDying&&!obj.isGhost&&!obj.isDead,()=>false)(info.camera.target);
+		return .spellbookVisible(info.camera.target,state);
 	}
 	void renderHUD(ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
 		renderMinimap(state,info,rc);
