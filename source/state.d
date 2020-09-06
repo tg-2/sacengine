@@ -160,8 +160,8 @@ bool canShield(CreatureMode mode){
 }
 bool canCollectSouls(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
-		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
-		case dying,dead,deadToGhost,idleGhost,movingGhost,ghostToIdle,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
+		case idle,moving,ghostToIdle,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
+		case dying,dead,deadToGhost,idleGhost,movingGhost,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
 	}
 }
 
