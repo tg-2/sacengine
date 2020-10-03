@@ -1,3 +1,7 @@
+// copyright © tg
+// distributed under the terms of the gplv3 license
+// https://www.gnu.org/licenses/gpl-3.0.txt
+
 import dlib.image, dlib.math, dlib.math.portable, dlib.geometry;
 import util;
 import maps,txtr,envi;

@@ -1,3 +1,7 @@
+// copyright © tg
+// distributed under the terms of the gplv3 license
+// https://www.gnu.org/licenses/gpl-3.0.txt
+
 import std.exception, std.string;
 import util;
 import dlib.image.color;

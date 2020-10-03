@@ -1,3 +1,7 @@
+// copyright © tg
+// distributed under the terms of the gplv3 license
+// https://www.gnu.org/licenses/gpl-3.0.txt
+
 import std.algorithm, std.range;
 import std.container.array: Array;
 import std.exception, std.stdio, std.conv;

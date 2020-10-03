@@ -1,3 +1,7 @@
+// copyright © tg
+// distributed under the terms of the gplv3 license
+// https://www.gnu.org/licenses/gpl-3.0.txt
+
 import util;
 import std.mmfile;
 import std.stdio, std.zlib, std.algorithm, std.path, std.conv;

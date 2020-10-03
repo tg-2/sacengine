@@ -1,3 +1,7 @@
+// copyright © tg
+// distributed under the terms of the gplv3 license
+// https://www.gnu.org/licenses/gpl-3.0.txt
+
 module nttData;
 import std.path, std.stdio, std.algorithm, std.range, std.string, std.exception;
 import bldg, spells, sset;

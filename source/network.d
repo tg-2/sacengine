@@ -1,3 +1,7 @@
+// copyright © tg
+// distributed under the terms of the gplv3 license
+// https://www.gnu.org/licenses/gpl-3.0.txt
+
 import std.algorithm, std.range, std.stdio, std.conv, std.exception, core.thread;
 import std.traits: Unqual;
 import options,sacspell,state,controller;

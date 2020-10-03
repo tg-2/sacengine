@@ -1,3 +1,7 @@
+// copyright © tg
+// distributed under the terms of the gplv3 license
+// https://www.gnu.org/licenses/gpl-3.0.txt
+
 import dlib.math, dlib.image.color;
 import util;
 import mrmm, _3dsm, txtr, saxs, sxsk, widg;

@@ -1,3 +1,7 @@
+// copyright © tg
+// distributed under the terms of the gplv3 license
+// https://www.gnu.org/licenses/gpl-3.0.txt
+
 import nttData,bldg,sacobject,sacspell,stats,state,util;
 import dlib.math;
 import std.algorithm, std.range, std.container, std.traits, std.exception, std.conv, std.stdio, std.typecons: Tuple;
