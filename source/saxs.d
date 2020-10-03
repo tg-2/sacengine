@@ -27,7 +27,7 @@ struct Vertex{
 		this.indices=indices;
 		this.uv=uv;
 	}
-	@property int[] indices(){
+	@property int[] indices()return{
 		foreach(i;0..3){
 			if(indices_[i]==-1)
 				return indices_[0..i];

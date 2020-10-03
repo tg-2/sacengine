@@ -12670,7 +12670,7 @@ enum numCreatureGroups=10;
 enum numCreaturesInGroup=12;
 struct CreatureGroup{
 	int[numCreaturesInGroup] creatureIds;
-	int[] get(){ return creatureIds[]; }
+	int[] get()return{ return creatureIds[]; }
 	bool has(int id){
 		if(!id) return false;
 		foreach(x;creatureIds) if(x==id) return true;
