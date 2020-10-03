@@ -1685,7 +1685,7 @@ struct SacLaser(B){
 	}
 }
 
-struct SacTickfernoEffect(B){
+struct SacTube(B){
 	B.Texture texture;
 	static B.Texture loadTexture(){
 		return B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/tube.TXTR"));

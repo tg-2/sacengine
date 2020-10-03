@@ -1087,6 +1087,7 @@ enum SpellTag:char[4]{
 	scarabShoot="slba",
 	basiliskShoot="dpsf",
 	tickfernoShoot="sfba",
+	vortickShoot="cita",
 }
 
 enum WizardTag:char[4]{

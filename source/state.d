@@ -2464,6 +2464,21 @@ struct TickfernoEffect{
 	int frame=0;
 }
 
+struct VortickProjectile(B){
+	int attacker;
+	int side;
+	int intendedTarget;
+	Vector3f position;
+	Vector3f direction;
+	SacSpell!B rangedAttack;
+	float remainingDistance;
+}
+struct VortickEffect{
+	Vector3f position;
+	Vector3f direction;
+	int frame=0;
+}
+
 enum RockFormStatus{ growing, stationary, shrinking }
 struct RockForm(B){
 	int target;
@@ -2978,6 +2993,14 @@ struct Effects(B){
 		if(i+1<basiliskEffects.length) basiliskEffects[i]=move(basiliskEffects[$-1]);
 		basiliskEffects.length=basiliskEffects.length-1;
 	}
+	Array!Petrification petrifications;
+	void addEffect(Petrification petrification){
+		petrifications~=petrification;
+	}
+	void removePetrification(int i){
+		if(i+1<petrifications.length) petrifications[i]=move(petrifications[$-1]);
+		petrifications.length=petrifications.length-1;
+	}
 	Array!(TickfernoProjectile!B) tickfernoProjectiles;
 	void addEffect(TickfernoProjectile!B tickfernoProjectile){
 		tickfernoProjectiles~=tickfernoProjectile;
@@ -2994,13 +3017,21 @@ struct Effects(B){
 		if(i+1<tickfernoEffects.length) tickfernoEffects[i]=move(tickfernoEffects[$-1]);
 		tickfernoEffects.length=tickfernoEffects.length-1;
 	}
-	Array!Petrification petrifications;
-	void addEffect(Petrification petrification){
-		petrifications~=petrification;
+	Array!(VortickProjectile!B) vortickProjectiles;
+	void addEffect(VortickProjectile!B vortickProjectile){
+		vortickProjectiles~=vortickProjectile;
 	}
-	void removePetrification(int i){
-		if(i+1<petrifications.length) petrifications[i]=move(petrifications[$-1]);
-		petrifications.length=petrifications.length-1;
+	void removeVortickProjectile(int i){
+		if(i+1<vortickProjectiles.length) vortickProjectiles[i]=move(vortickProjectiles[$-1]);
+		vortickProjectiles.length=vortickProjectiles.length-1;
+	}
+	Array!VortickEffect vortickEffects;
+	void addEffect(VortickEffect vortickEffect){
+		vortickEffects~=vortickEffect;
+	}
+	void removeVortickEffect(int i){
+		if(i+1<vortickEffects.length) vortickEffects[i]=move(vortickEffects[$-1]);
+		vortickEffects.length=vortickEffects.length-1;
 	}
 	Array!(RockForm!B) rockForms;
 	void addEffect(RockForm!B rockForm){
@@ -3138,6 +3169,8 @@ struct Effects(B){
 		assignArray(petrifications,rhs.petrifications);
 		assignArray(tickfernoProjectiles,rhs.tickfernoProjectiles);
 		assignArray(tickfernoEffects,rhs.tickfernoEffects);
+		assignArray(vortickProjectiles,rhs.vortickProjectiles);
+		assignArray(vortickEffects,rhs.vortickEffects);
 		assignArray(rockForms,rhs.rockForms);
 		assignArray(stealths,rhs.stealths);
 		assignArray(lifeShields,rhs.lifeShields);
@@ -3938,7 +3971,7 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 					object.animationState=sacObject.hasFlyDamage?AnimationState.flyDamage:AnimationState.hover;
 					break;
 				case CreatureMovement.tumbling:
-					if(object.animationState!=AnimationState.knocked2Floor){
+					if(object.animationState!=AnimationState.knocked2Floor && !object.isSacDoctor){
 						object.frame=0;
 						object.animationState=AnimationState.stance1;
 						bool hasFalling=sacObject.hasFalling;
@@ -4232,11 +4265,12 @@ void catapult(B)(ref MovingObject!B object, Vector3f velocity, ObjectState!B sta
 	if(object.creatureState.mode!=CreatureMode.dying)
 		object.creatureState.mode=CreatureMode.stunned;
 	// TODO: in original engine, stunned creatures don't switch to the tumbling animation
-	object.creatureState.fallingVelocity=velocity;
 	if(object.creatureState.movement!=CreatureMovement.tumbling){
 		object.creatureState.movement=CreatureMovement.tumbling;
 		object.setCreatureState(state);
+		object.creatureState.fallingVelocity=Vector3f(0.0f,0.0f,0.0f);
 	}
+	object.creatureState.fallingVelocity+=velocity;
 }
 
 void immediateRevive(B)(ref MovingObject!B object,ObjectState!B state){
@@ -4870,6 +4904,11 @@ float dealFireDamage(T,B)(ref T object,float rangedDamage,float spellDamage,int 
 	return actualRangedDamage+actualSpellDamage;
 }
 
+float dealFallDamage(B)(ref MovingObject!B object,ObjectState!B state){
+	enum fallDamageFactor=20.0f;
+	auto damage=sqrt(max(0.0f,-object.creatureState.fallingVelocity.z))*fallDamageFactor; // TODO: figure this out
+	return object.dealDamage(damage,-1,state); // TODO: properly attribute fall damage to sides
+}
 float dealRangedDamage(B)(ref StaticObject!B object,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
 	return dealRangedDamage(object,rangedAttack.amount,attacker,attackerSide,attackDirection,state);
 }
@@ -5130,11 +5169,13 @@ bool startShooting(B)(ref MovingObject!B object,ObjectState!B state){
 }
 
 bool startPumping(B)(ref MovingObject!B object,ObjectState!B state){
-	if(!object.isSacDoctor||!object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving))
+	if(!object.isSacDoctor||!object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving,CreatureMode.stunned))
 		return false;
 	object.stopMovement(state);
-	object.creatureState.mode=CreatureMode.pumping;
-	object.setCreatureState(state);
+	if(object.creatureState.mode!=CreatureMode.pumping){
+		object.creatureState.mode=CreatureMode.pumping;
+		object.setCreatureState(state);
+	}
 	return true;
 }
 
@@ -5622,6 +5663,12 @@ bool tickfernoShoot(B)(int attacker,int side,int intendedTarget,float accuracy,V
 	return true;
 }
 
+bool vortickShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	playSoundAt("2xtv",position,state,4.0f);
+	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
+	state.addEffect(VortickProjectile!B(attacker,side,intendedTarget,position,direction,rangedAttack,rangedAttack.range));
+	return true;
+}
 
 enum defaultFaceThreshold=1e-3;
 bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state,float threshold=defaultFaceThreshold){
@@ -6057,6 +6104,9 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 						break;
 					case SpellTag.tickfernoShoot:
 						tickfernoShoot(object.id,object.side,targetId,accuracy,object.shotPosition,predicted,rangedAttack,state);
+						break;
+					case SpellTag.vortickShoot:
+						vortickShoot(object.id,object.side,targetId,accuracy,object.shotPosition,predicted,rangedAttack,state);
 						break;
 					default: goto case SpellTag.brainiacShoot;
 				}
@@ -6833,7 +6883,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 			break;
 		case CreatureMode.stunned:
 			auto immobilized=object.creatureStats.effects.immobilized;
-			with(AnimationState) assert(immobilized||object.animationState.among(stance1,knocked2Floor,falling,tumble,hitFloor,getUp,damageFront,damageRight,damageBack,damageLeft,damageTop,flyDamage));
+			with(AnimationState) assert(immobilized||object.isSacDoctor||object.animationState.among(stance1,knocked2Floor,falling,tumble,hitFloor,getUp,damageFront,damageRight,damageBack,damageLeft,damageTop,flyDamage));
 			if(object.creatureState.movement==CreatureMovement.tumbling&&object.creatureState.fallingVelocity.z<=0.0f){
 				if(sacObject.canFly && !immobilized){
 					object.creatureState.movement=CreatureMovement.flying;
@@ -6844,8 +6894,9 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 				}else if(state.isOnGround(object.position)&&object.position.z<=state.getGroundHeight(object.position)){
 					object.creatureState.movement=CreatureMovement.onGround;
 					if(object.animationState.among(AnimationState.falling,AnimationState.tumble)){
-						if(sacObject.hasHitFloor){
-							if(!immobilized){
+						object.dealFallDamage(state);
+						if(sacObject.hasHitFloor&&!immobilized){
+							if(!object.isSacDoctor||object.animationState==cast(AnimationState)SacDoctorAnimationState.expelled){
 								object.frame=0;
 								object.animationState=AnimationState.hitFloor; // TODO: fall damage
 							}
@@ -6862,7 +6913,8 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 					case CreatureMovement.onGround:
 						if(object.animationState.among(AnimationState.knocked2Floor,AnimationState.hitFloor)&&sacObject.hasGetUp){
 							object.animationState=AnimationState.getUp;
-						}else object.startIdling(state);
+						}else if(!object.isSacDoctor||object.animationState==AnimationState.hitFloor)
+							object.startIdling(state);
 						break;
 					case CreatureMovement.flying:
 						object.startIdling(state);
@@ -8091,6 +8143,8 @@ bool updateSacDocCarry(B)(ref SacDocCarry!B sacDocCarry,ObjectState!B state){
 					}
 					break;
 				case SacDocCarryStatus.pump:
+					if(!sacDoc.creatureState.mode==CreatureMode.pumping)
+						sacDoc.startPumping(state);
 					if(shrineDestroyed) sacDoc.kill(state);
 					if(sacDoc.creatureState.mode==CreatureMode.dying){
 						freeSoul();
@@ -9313,6 +9367,7 @@ bool updateSwarm(B)(ref Swarm!B swarm,ObjectState!B state){
 		}
 	}
 }
+
 enum brainiacProjectileHitGain=4.0f;
 enum brainiacProjectileSize=0.45f; // TODO: ok?
 enum brainiacProjectileSlidingDistance=1.5f;
@@ -10232,6 +10287,62 @@ bool updateTickfernoEffect(B)(ref TickfernoEffect effect,ObjectState!B state){
 	}
 }
 
+enum vortickProjectileHitGain=4.0f;
+enum vortickProjectileSize=0.45f; // TODO: ok?
+enum vortickProjectileSlidingDistance=1.5f;
+static immutable Vector3f[2] vortickProjectileHitbox=[-0.5f*vortickProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*vortickProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
+int vortickProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
+		return entry.isProjectileObstacle&&(entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side);
+	}
+	return collisionTarget!(vortickProjectileHitbox,filter)(side,position,state,side,intendedTarget);
+}
+bool updateVortickProjectile(B)(ref VortickProjectile!B vortickProjectile,ObjectState!B state){
+	with(vortickProjectile){
+		auto oldPosition=position;
+		auto velocity=rangedAttack.speed/updateFPS*direction;
+		position+=velocity;
+		remainingDistance-=rangedAttack.speed/updateFPS;
+		static assert(updateFPS==60);
+		enum nSteps=2;
+		foreach(i;0..nSteps)
+			state.addEffect(VortickEffect(oldPosition+float(i+1)/nSteps*velocity,direction));
+		OrderTarget target;
+		if(auto targetId=vortickProjectileCollisionTarget(side,intendedTarget,position,state)){
+			target.id=targetId;
+			target.type=state.targetTypeFromId(targetId);
+		}else{
+			target=state.lineOfSightWithoutSide(oldPosition,position,side,intendedTarget);
+		}
+		bool terminate(){
+			playSoundAt("gxtv",position,state,vortickProjectileHitGain);
+			return false;
+		}
+		if(remainingDistance<=0.0f) return terminate();
+		switch(target.type){
+			case TargetType.terrain:
+				return terminate();
+			case TargetType.creature:
+				auto effectDirection=20.0f*Vector3f(-direction.x,-direction.y,2.0f).normalized;
+				state.movingObjectById!((ref obj,state){
+					obj.creatureState.fallingVelocity.z=0.0f;
+					obj.catapult(effectDirection,state);
+				},(){})(target.id,state);
+				goto case;
+			case TargetType.building:
+				dealRangedDamage(target.id,rangedAttack,attacker,side,direction,state);
+				return terminate();
+			default: break;
+		}
+		return true;
+	}
+}
+bool updateVortickEffect(B)(ref VortickEffect effect,ObjectState!B state){
+	with(effect){
+		static assert(updateFPS==60);
+		return ++frame<64; // TODO: fix timing on this
+	}
+}
 
 bool updateRockForm(B)(ref RockForm!B rockForm,ObjectState!B state){
 	with(rockForm){
@@ -10947,6 +11058,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.tickfernoEffects.length;){
 		if(!updateTickfernoEffect(effects.tickfernoEffects[i],state)){
 			effects.removeTickfernoEffect(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.vortickProjectiles.length;){
+		if(!updateVortickProjectile(effects.vortickProjectiles[i],state)){
+			effects.removeVortickProjectile(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.vortickEffects.length;){
+		if(!updateVortickEffect(effects.vortickEffects[i],state)){
+			effects.removeVortickEffect(i);
 			continue;
 		}
 		i++;
@@ -11804,6 +11929,7 @@ final class ObjectState(B){ // (update logic)
 		return proximity.manaRegenAt(side,position,this);
 	}
 	float sideDamageMultiplier(int attackerSide,int defenderSide){
+		if(attackerSide==-1) return 1.0f;
 		switch(sides.getStance(attackerSide,defenderSide)){
 			case Stance.ally: return 0.5f; // TODO: option
 			default: return 1.0f;

@@ -412,6 +412,12 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Tic
 void serialize(alias sink)(ref TickfernoEffect tickfernoEffect){ serializeStruct!sink(tickfernoEffect); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==TickfernoEffect)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref VortickProjectile!B vortickProjectile){ serializeStruct!sink(vortickProjectile); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==VortickProjectile!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink)(ref VortickEffect vortickEffect){ serializeStruct!sink(vortickEffect); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==VortickEffect)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref RockForm!B rockForm){ serializeStruct!sink(rockForm); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==RockForm!B)){ deserializeStruct(result,state,data); }
 

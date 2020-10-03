@@ -243,8 +243,8 @@ struct Renderer(B){
 		auto frames=typeof(return).createMeshes();
 		return SacBasiliskEffect!B(texture,mat,frames);
 	}
-	SacTickfernoEffect!B tickfernoEffect;
-	SacTickfernoEffect!B createTickfernoEffect(){
+	SacTube!B tube;
+	SacTube!B createTube(){
 		auto texture=typeof(return).loadTexture();
 		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
 		mat.depthWrite=false;
@@ -252,7 +252,7 @@ struct Renderer(B){
 		mat.energy=20.0f;
 		mat.diffuse=texture;
 		auto frames=typeof(return).createMeshes();
-		return SacTickfernoEffect!B(texture,mat,frames);
+		return SacTube!B(texture,mat,frames);
 	}
 	SacLaser!B laser;
 	SacLaser!B createLaser(){
@@ -310,7 +310,7 @@ struct Renderer(B){
 		arrow=createArrow();
 		laser=createLaser();
 		basiliskEffect=createBasiliskEffect();
-		tickfernoEffect=createTickfernoEffect();
+		tube=createTube();
 		lifeShield=createLifeShield();
 		divineSight=createDivineSight();
 	}
@@ -1087,21 +1087,21 @@ struct Renderer(B){
 					}
 					foreach(ref projectile;objects.tickfernoProjectiles) renderLaser(2.0f/3.0f,projectile.frame,projectile.startPosition,projectile.position);
 				}
-				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.tickfernoEffects.length){
-					auto material=self.tickfernoEffect.material;
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.tickfernoEffects.length||objects.vortickEffects.length)){
+					auto material=self.tube.material;
 					material.bind(rc);
 					scope(success) material.unbind(rc);
-					foreach(j;0..objects.tickfernoEffects.length){
-						auto position=objects.tickfernoEffects[j].position;
-						auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),objects.tickfernoEffects[j].direction); // TODO: precompute this?
-						auto frame=objects.tickfernoEffects[j].frame;
-						auto relativeProgress=float(frame)/(3.0f*self.tickfernoEffect.numFrames);
-						auto scale=1.2f*(1.0f+0.6f*relativeProgress^^2.5f);
+					void renderTube(Vector3f position,Vector3f direction,int frame,float scale_,float ltfactor=1.0f){
+						auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),direction); // TODO: precompute this?
+						auto relativeProgress=float(frame)/(ltfactor*self.tube.numFrames);
+						auto scale=scale_*(1.0f+0.6f*relativeProgress^^2.5f);
 						B.shadelessMaterialBackend.setTransformationScaled(position,rotation,scale*Vector3f(1.0f,1.0f,1.0f),rc);
 						B.shadelessMaterialBackend.setAlpha(0.95f*(1.0f-relativeProgress)^^1.5f);
-						auto mesh=self.tickfernoEffect.getFrame(objects.tickfernoEffects[j].frame%self.tickfernoEffect.numFrames);
+						auto mesh=self.tube.getFrame(frame%self.tube.numFrames);
 						mesh.render(rc);
 					}
+					foreach(ref effect;objects.tickfernoEffects) renderTube(effect.position,effect.direction,effect.frame,1.2f,3.0f);
+					foreach(ref effect;objects.vortickEffects) renderTube(effect.position,effect.direction,effect.frame,0.6f,2.0f);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.lifeShields.length){
 					auto material=self.lifeShield.material;
