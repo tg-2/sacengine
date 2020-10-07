@@ -6197,7 +6197,7 @@ int updateTarget(B)(ref MovingObject!B object,Vector3f position,float range,Obje
 			object.creatureAI.targetId=state.proximity.closestEnemyInRange(object.side,position,range,EnemyType.all,state,maxHeight);
 		}
 	}
-	if(!state.isValidTarget(object.creatureAI.targetId,TargetType.creature)) object.creatureAI.targetId=0;
+	if(!state.isValidTarget(object.creatureAI.targetId)) object.creatureAI.targetId=0;
 	return object.creatureAI.targetId;
 }
 
