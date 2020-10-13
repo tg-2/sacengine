@@ -716,19 +716,19 @@ final class SacScene: Scene{
 
 	void cameraControl(double dt){
 		if(fpview.active){
-			float turn_m =  (eventManager.mouseRelX) * fpview.mouseFactor;
-			float pitch_m = (eventManager.mouseRelY) * fpview.mouseFactor;
+			float turn_m =  (eventManager.mouseRelX) * fpview.mouseFactor * options.cameraMouseSensitivity;
+			float pitch_m = (eventManager.mouseRelY) * fpview.mouseFactor * options.cameraMouseSensitivity;
 
 			camera.pitch += pitch_m;
 			camera.turn += turn_m;
 		}
 		if(mouse.visible){
 			if(!mouse.onMinimap){
-				camera.targetZoom-=0.04f*eventManager.mouseWheelY;
+				camera.targetZoom-=0.04f*eventManager.mouseWheelY*options.mouseWheelSensitivity;
 				camera.targetZoom=max(0.0f,min(camera.targetZoom,1.0f));
 			}else{
 				import std.math:exp,log;
-				camera.minimapZoom*=exp(log(1.3)*(-0.4f*eventManager.mouseWheelY+0.04f*(mouse.dragging?eventManager.mouseRelY:0)/hudScaling));
+				camera.minimapZoom*=exp(log(1.3)*(-0.4f*eventManager.mouseWheelY*options.mouseWheelSensitivity+0.04f*(mouse.dragging?eventManager.mouseRelY:0)/hudScaling));
 				camera.minimapZoom=max(0.5f,min(camera.minimapZoom,15.0f));
 			}
 		}

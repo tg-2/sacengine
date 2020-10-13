@@ -266,6 +266,10 @@ int main(string[] args){
 			options.soundVolume=to!float(opt["--sound-volume=".length..$]);
 		}else if(opt.startsWith("--hotkeys=")){
 			options.hotkeyFilename=opt["--hotkeys=".length..$];
+		}else if(opt.startsWith("--camera-mouse-sensitivity")){
+			options.cameraMouseSensitivity=to!float(opt["--camera-mouse-sensitivity=".length..$]);
+		}else if(opt.startsWith("--mouse-wheel-sensitivity")){
+			options.mouseWheelSensitivity=to!float(opt["--mouse-wheel-sensitivity=".length..$]);
 		}else if(opt.startsWith("--join=")){
 			options.joinIP=opt["--join=".length..$];
 		}else if(opt.startsWith("--record=")){

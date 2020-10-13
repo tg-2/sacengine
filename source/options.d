@@ -28,9 +28,11 @@ struct Options{
 	float musicVolume=1.0f;
 	float soundVolume=1.0f;
 	bool advisorHelpSpeech=true;
-	// hotkeys
+	// input options
 	string hotkeyFilename="";
 	Hotkeys hotkeys;
+	float cameraMouseSensitivity=1.0f;
+	float mouseWheelSensitivity=1.0f;
 	// player-specific settings
 	God god;
 	Settings settings;
