@@ -33,6 +33,7 @@ struct Options{
 	Hotkeys hotkeys;
 	float cameraMouseSensitivity=1.0f;
 	float mouseWheelSensitivity=1.0f;
+	bool debugHotkeys=false;
 	// player-specific settings
 	God god;
 	Settings settings;

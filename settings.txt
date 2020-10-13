@@ -57,5 +57,6 @@
 # --record=replay.rcp              # record a replay. experimental. will only be compatible with exact same version of engine (no sanity checks)
 # --log-core                       # when recording, save the full game state of the last two seconds of gameplay, useful for troubleshooting
 # --play=replay.rcp                # play a replay. experimental.
+# --debug-hotkeys                  # adds a few hardcoded hotkeys
 # --protect-manafounts=1           # currently singleplayer only, put random level 1 creatures on top of each mana fountain
 # --replicate-creatures=2          # create multiple copies of all creatures on the map, currently, for multiplayer, all players must manually enable this option

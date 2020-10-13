@@ -788,25 +788,27 @@ final class SacScene: Scene{
 			if(state) camera.position.z=max(camera.position.z, state.current.getHeight(camera.position));
 		}
 		positionCamera();
-		if(!eventManager.keyPressed[KEY_LSHIFT] && !eventManager.keyPressed[KEY_LCTRL] && !eventManager.keyPressed[KEY_CAPSLOCK]){
-			foreach(_;0..keyDown[KEY_M]){
-				if(mouse.target.type==TargetType.creature&&mouse.target.id){
-					renderSide=state.current.movingObjectById!(side,()=>-1)(mouse.target.id,state.current);
-					focusCamera(mouse.target.id);
+		if(options.observer||options.debugHotkeys){
+			if(!eventManager.keyPressed[KEY_LSHIFT] && !eventManager.keyPressed[KEY_LCTRL] && !eventManager.keyPressed[KEY_CAPSLOCK]){
+				foreach(_;0..keyDown[KEY_M]){
+					if(mouse.target.type==TargetType.creature&&mouse.target.id){
+						renderSide=state.current.movingObjectById!(side,()=>-1)(mouse.target.id,state.current);
+						focusCamera(mouse.target.id);
+					}
 				}
-			}
-			foreach(_;0..keyDown[KEY_N]){
-				renderSide=-1;
-				camera.target=0;
-			}
-			if(keyDown[KEY_K]){
-				fpview.active=false;
-				mouse.visible=true;
-			}
-			if(keyDown[KEY_L]){
-				fpview.active=true;
-				mouse.visible=false;
-				fpview.mouseFactor=0.25f;
+				foreach(_;0..keyDown[KEY_N]){
+					renderSide=-1;
+					camera.target=0;
+				}
+				if(keyDown[KEY_K]){
+					fpview.active=false;
+					mouse.visible=true;
+				}
+				if(keyDown[KEY_L]){
+					fpview.active=true;
+					mouse.visible=false;
+					fpview.mouseFactor=0.25f;
+				}
 			}
 		}
 	}
@@ -814,6 +816,7 @@ final class SacScene: Scene{
 	void stateTestControl()in{
 		assert(!!state);
 	}do{
+		if(!options.debugHotkeys) return;
 		static void applyToMoving(alias f,B)(ObjectState!B state,Camera camera,Target target){
 			if(!state.isValidTarget(camera.target,TargetType.creature)) camera.target=0;
 			static void perform(T)(ref T obj,ObjectState!B state){ f(obj,state); }
