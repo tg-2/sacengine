@@ -8844,32 +8844,38 @@ void wrathExplosion(B)(ref Wrath!B wrath,int target,ObjectState!B state){
 	}
 }
 enum wrathFlyingHeight=0.5f;
+bool accelerateTowards(T,B)(ref T spell_,float targetFlyingHeight,ObjectState!B state){
+	with(spell_){
+		auto targetCenter=target.center(state);
+		auto predictedCenter=predictor.predictCenter(position,spell.speed,target,state);
+		auto predictedDistance=predictedCenter-position;
+		auto acceleration=predictedDistance.normalized*spell.acceleration;
+		velocity+=acceleration;
+		Vector3f capVelocity(Vector3f velocity){
+			if(velocity.length>spell.speed) velocity=velocity.normalized*spell.speed;
+			if(velocity.length>updateFPS*predictedDistance.length) velocity=velocity.normalized*predictedDistance.length*updateFPS;
+			return velocity;
+		}
+		velocity=capVelocity(velocity);
+		auto newPosition=position+velocity/updateFPS;
+		if(state.isOnGround(position)){
+			auto height=state.getGroundHeight(position);
+			auto flyingHeight=min(targetFlyingHeight,0.75f*(targetCenter.xy-position.xy).length);
+			if(newPosition.z<height+flyingHeight){
+				auto nvel=velocity;
+				nvel.z+=(height+flyingHeight-newPosition.z)*updateFPS;
+				newPosition=position+capVelocity(nvel)/updateFPS;
+			}
+		}
+		position=newPosition;
+		return (targetCenter-position).lengthsqr<0.05f^^2;
+	}
+}
 bool updateWrath(B)(ref Wrath!B wrath,ObjectState!B state){
 	with(wrath){
 		final switch(wrath.status){
 			case WrathStatus.flying:
-				auto targetCenter=target.center(state);
-				auto predictedCenter=predictor.predictCenter(position,spell.speed,target,state);
-				auto predictedDistance=predictedCenter-position;
-				auto acceleration=predictedDistance.normalized*spell.acceleration;
-				velocity+=acceleration;
-				Vector3f capVelocity(Vector3f velocity){
-					if(velocity.length>spell.speed) velocity=velocity.normalized*spell.speed;
-					if(velocity.length>updateFPS*predictedDistance.length) velocity=velocity.normalized*predictedDistance.length*updateFPS;
-					return velocity;
-				}
-				velocity=capVelocity(velocity);
-				auto newPosition=position+velocity/updateFPS;
-				if(state.isOnGround(position)){
-					auto height=state.getGroundHeight(position);
-					auto flyingHeight=min(wrathFlyingHeight,0.75f*(targetCenter.xy-position.xy).length);
-					if(newPosition.z<height+flyingHeight){
-						auto nvel=velocity;
-						nvel.z+=(height+flyingHeight-newPosition.z)*updateFPS;
-						newPosition=position+capVelocity(nvel)/updateFPS;
-					}
-				}
-				position=newPosition;
+				bool closeToTarget=wrath.accelerateTowards(wrathFlyingHeight,state);
 				wrath.animateWrath(state);
 				auto target=wrathCollisionTarget(side,position,state);
 				if(state.isValidTarget(target)) wrath.wrathExplosion(target,state);
@@ -8877,10 +8883,8 @@ bool updateWrath(B)(ref Wrath!B wrath,ObjectState!B state){
 					if(position.z<state.getGroundHeight(position))
 						wrath.wrathExplosion(0,state);
 				}
-				if(status!=WrathStatus.exploding){
-					if((targetCenter-position).lengthsqr<0.05f^^2)
-						wrath.wrathExplosion(wrath.target.id,state);
-				}
+				if(status!=WrathStatus.exploding && closeToTarget)
+					wrath.wrathExplosion(wrath.target.id,state);
 				return true;
 			case WrathStatus.exploding:
 				return ++frame<64;
@@ -8989,28 +8993,7 @@ enum fireballFlyingHeight=0.5f;
 bool updateFireball(B)(ref Fireball!B fireball,ObjectState!B state){
 	with(fireball){
 		auto oldPosition=position;
-		auto targetCenter=target.center(state);
-		auto predictedCenter=predictor.predictCenter(position,spell.speed,target,state);
-		auto predictedDistance=predictedCenter-position;
-		auto acceleration=predictedDistance.normalized*spell.acceleration;
-		velocity+=acceleration;
-		Vector3f capVelocity(Vector3f velocity){
-			if(velocity.length>spell.speed) velocity=velocity.normalized*spell.speed;
-			if(velocity.length>updateFPS*predictedDistance.length) velocity=velocity.normalized*predictedDistance.length*updateFPS;
-			return velocity;
-		}
-		velocity=capVelocity(velocity);
-		auto newPosition=position+velocity/updateFPS;
-		if(state.isOnGround(position)){
-			auto height=state.getGroundHeight(position);
-			auto flyingHeight=min(fireballFlyingHeight,0.75f*(targetCenter.xy-position.xy).length);
-			if(newPosition.z<height+flyingHeight){
-				auto nvel=velocity;
-				nvel.z+=(height+flyingHeight-newPosition.z)*updateFPS;
-				newPosition=position+capVelocity(nvel)/updateFPS;
-			}
-		}
-		position=newPosition;
+		bool closeToTarget=fireball.accelerateTowards(fireballFlyingHeight,state);
 		rotation=rotationUpdate*rotation;
 		fireball.animateFireball(oldPosition,state);
 		auto target=fireballCollisionTarget(side,position,state);
@@ -9024,7 +9007,7 @@ bool updateFireball(B)(ref Fireball!B fireball,ObjectState!B state){
 				return false;
 			}
 		}
-		if((targetCenter-position).lengthsqr<0.05f^^2){
+		if(closeToTarget){
 			fireball.fireballExplosion(fireball.target.id,state);
 			return false;
 		}
@@ -9332,38 +9315,15 @@ bool updateSwarm(B)(ref Swarm!B swarm,ObjectState!B state){
 				frame-=1;
 				return swarm.updateBugs(state);
 			case SwarmStatus.flying:
-				auto targetCenter=target.center(state);
-				auto predictedCenter=predictor.predictCenter(position,spell.speed,target,state);
-				auto predictedDistance=predictedCenter-position;
-				auto acceleration=predictedDistance.normalized*spell.acceleration;
-				velocity+=acceleration;
-				Vector3f capVelocity(Vector3f velocity){
-					if(velocity.length>spell.speed) velocity=velocity.normalized*spell.speed;
-					if(velocity.length>updateFPS*predictedDistance.length) velocity=velocity.normalized*predictedDistance.length*updateFPS;
-					return velocity;
-				}
-				velocity=capVelocity(velocity);
-				auto newPosition=position+velocity/updateFPS;
-				if(state.isOnGround(position)){
-					auto height=state.getGroundHeight(position);
-					auto flyingHeight=min(swarmFlyingHeight,0.75f*(targetCenter.xy-position.xy).length);
-					if(newPosition.z<height+flyingHeight){
-						auto nvel=velocity;
-						nvel.z+=(height+flyingHeight-newPosition.z)*updateFPS;
-						newPosition=position+capVelocity(nvel)/updateFPS;
-					}
-				}
-				swarm.position=newPosition;
+				bool closeToTarget=swarm.accelerateTowards(swarmFlyingHeight,state);
 				auto target=swarmCollisionTarget(side,position,state);
 				if(state.isValidTarget(target)) swarm.swarmHit(target,state);
 				else if(state.isOnGround(position)){
 					if(position.z<state.getGroundHeight(position))
 						swarm.swarmHit(0,state);
 				}
-				if(status!=SwarmStatus.dispersing){
-					if((targetCenter-position).length<0.05f^^2)
-						swarm.swarmHit(swarm.target.id,state);
-				}
+				if(status!=SwarmStatus.dispersing && closeToTarget)
+					swarm.swarmHit(swarm.target.id,state);
 				return swarm.updateBugs(state);
 			case SwarmStatus.dispersing:
 				swarm.disperseBugs(state);
