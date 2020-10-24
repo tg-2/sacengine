@@ -344,6 +344,12 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Bug
 void serialize(alias sink,B)(ref Swarm!B swarm){ serializeStruct!sink(swarm); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Swarm!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref SkinOfStoneCasting!B skinOfStoneCasting){ serializeStruct!sink(skinOfStoneCasting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SkinOfStoneCasting!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref SkinOfStone!B skinOfStone){ serializeStruct!sink(skinOfStone); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SkinOfStone!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref BrainiacProjectile!B brainiacProjectile){ serializeStruct!sink(brainiacProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BrainiacProjectile!B)){ deserializeStruct(result,state,data); }
 

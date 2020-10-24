@@ -40,10 +40,12 @@ struct Effects{
 	int infectionCooldown=0;
 	int numManaBlocks=0;
 	bool petrified=false;
+	bool skinOfStone=false;
 
 	@property bool regenerationBlocked(){ return poisonDamage!=0||immobilized; }
 	@property bool manaBlocked(){ return numManaBlocks!=0; }
-	@property bool ccProtected(){ return lifeShield||petrified; } // TODO: add remaining shields
+	@property bool ccProtected(){ return lifeShield||petrified||skinOfStone; } // TODO: add remaining shields
+	@property bool stoneEffect(){ return petrified||skinOfStone; }
 	@property bool immobilized(){ return petrified; } // TODO: add freeze
 }
 import dlib.math.portable: pi;

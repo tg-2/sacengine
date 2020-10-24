@@ -2253,6 +2253,20 @@ struct Swarm(B){
 	this(this){ bugs=bugs.dup; } // TODO: needed?
 }
 
+struct SkinOfStoneCasting(B){
+	ManaDrain!B manaDrain;
+	SacSpell!B spell;
+	int frame;
+	int castingTime;
+	float scale;
+}
+
+struct SkinOfStone(B){
+	int target;
+	SacSpell!B spell;
+	int frame=0;
+}
+
 struct BrainiacProjectile(B){
 	int attacker;
 	int side;
@@ -2828,6 +2842,22 @@ struct Effects(B){
 		if(i+1<swarms.length) swap(swarms[i],swarms[$-1]);
 		swarms.length=swarms.length-1; // TODO: reuse memory?
 	}
+	Array!(SkinOfStoneCasting!B) skinOfStoneCastings;
+	void addEffect(SkinOfStoneCasting!B skinOfStoneCasting){
+		skinOfStoneCastings~=skinOfStoneCasting;
+	}
+	void removeSkinOfStoneCasting(int i){
+		if(i+1<skinOfStoneCastings.length) skinOfStoneCastings[i]=move(skinOfStoneCastings[$-1]);
+		skinOfStoneCastings.length=skinOfStoneCastings.length-1;
+	}
+	Array!(SkinOfStone!B) skinOfStones;
+	void addEffect(SkinOfStone!B skinOfStone){
+		skinOfStones~=skinOfStone;
+	}
+	void removeSkinOfStone(int i){
+		if(i+1<skinOfStones.length) skinOfStones[i]=move(skinOfStones[$-1]);
+		skinOfStones.length=skinOfStones.length-1;
+	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
 	void addEffect(BrainiacProjectile!B brainiacProjectile){
@@ -3149,6 +3179,8 @@ struct Effects(B){
 		assignArray(rocks,rhs.rocks);
 		assignArray(swarmCastings,rhs.swarmCastings);
 		assignArray(swarms,rhs.swarms);
+		assignArray(skinOfStoneCastings,rhs.skinOfStoneCastings);
+		assignArray(skinOfStones,rhs.skinOfStones);
 		assignArray(brainiacProjectiles,rhs.brainiacProjectiles);
 		assignArray(brainiacEffects,rhs.brainiacEffects);
 		assignArray(shrikeProjectiles,rhs.shrikeProjectiles);
@@ -4495,6 +4527,7 @@ float dealDamage(B)(ref MovingObject!B object,float damage,int attackingSide,Obj
 	if(object.creatureStats.effects.lifeShield) shieldDamageMultiplier*=0.5f;
 	if(object.creatureState.mode==CreatureMode.rockForm) shieldDamageMultiplier*=0.05f;
 	if(object.creatureStats.effects.petrified) shieldDamageMultiplier*=0.2f;
+	if(object.creatureStats.effects.skinOfStone) shieldDamageMultiplier*=0.25f;
 	// TODO: bleed, in case of petrification, bleed rocks instead
 	return dealRawDamage(object,damage*state.sideDamageMultiplier(attackingSide,object.side)*shieldDamageMultiplier,attackingSide,state);
 }
@@ -5142,6 +5175,10 @@ bool startCasting(B)(int caster,SacSpell!B spell,Target target,ObjectState!B sta
 					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
 					if(castingTime==-1) return false;
 					return stun(castSwarm(target.id,manaDrain,spell,castingTime,state));
+				case SpellTag.skinOfStone:
+					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					if(castingTime==-1) return false;
+					return stun(castSkinOfStone(manaDrain,spell,castingTime,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -5510,6 +5547,21 @@ bool castSwarm(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,int castingT
 
 bool swarm(B)(Swarm!B swarm,ObjectState!B state){
 	state.addEffect(move(swarm));
+	return true;
+}
+
+bool castSkinOfStone(B)(ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,ObjectState!B state){
+	auto scale=state.movingObjectById!((ref obj)=>getScale(obj).length,()=>float.init)(manaDrain.wizard);
+	if(isNaN(scale)) return false;
+	state.addEffect(SkinOfStoneCasting!B(manaDrain,spell,0,castingTime,scale));
+	return true;
+}
+
+bool skinOfStone(B)(ref MovingObject!B object,SacSpell!B spell,ObjectState!B state){
+	if(object.creatureStats.effects.skinOfStone) return false;
+	object.creatureStats.effects.skinOfStone=true;
+	playSoundAt("ksts",object.center,state);
+	state.addEffect(SkinOfStone!B(object.id,spell));
 	return true;
 }
 
@@ -9023,22 +9075,22 @@ void animateRockCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
 bool updateRockCasting(B)(ref RockCasting!B rockCast,ObjectState!B state){
 	with(rockCast){
 		rock.target.position=rock.target.center(state);
-			final switch(manaDrain.update(state)){
-				case CastingStatus.underway:
-					return state.movingObjectById!((obj){
-						rock.position=obj.rockCastingPosition(state);
-						rock.position.z+=rockBuryDepth*min(1.0f,float(frame)/castingTime);
-						obj.animateRockCasting(state);
-						frame+=1;
-						return true;
-					},()=>false)(manaDrain.wizard);
-				case CastingStatus.interrupted:
-					return false;
-				case CastingStatus.finished:
-					rock.position.z=max(rock.position.z,state.getHeight(rock.position)); // for robustness
-					.rock(rock,state);
-					return false;
-			}
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				return state.movingObjectById!((obj){
+					rock.position=obj.rockCastingPosition(state);
+					rock.position.z+=rockBuryDepth*min(1.0f,float(frame)/castingTime);
+					obj.animateRockCasting(state);
+					frame+=1;
+					return true;
+				},()=>false)(manaDrain.wizard);
+			case CastingStatus.interrupted:
+				return false;
+			case CastingStatus.finished:
+				rock.position.z=max(rock.position.z,state.getHeight(rock.position)); // for robustness
+				.rock(rock,state);
+				return false;
+		}
 	}
 }
 void animateEmergingRock(B)(ref Rock!B rock,ObjectState!B state){
@@ -9329,6 +9381,63 @@ bool updateSwarm(B)(ref Swarm!B swarm,ObjectState!B state){
 				swarm.disperseBugs(state);
 				return ++frame<swarmDispersingFrames;
 		}
+	}
+}
+
+void animateSkinOfStoneCasting(B)(ref SkinOfStoneCasting!B skinOfStoneCast,ObjectState!B state){
+	with(skinOfStoneCast){
+		auto positions=state.movingObjectById!((ref obj)=>tuple(obj.position,obj.center),()=>Tuple!(Vector3f,Vector3f).init)(manaDrain.wizard);
+		auto position=positions[0], center=positions[1];
+		enum numParticles=30;
+		auto castParticle=SacParticle!B.get(ParticleType.dirt);
+		auto progress=min(float(frame)/castingTime,1.0f);
+		foreach(k;0..numParticles){
+			auto φ=state.uniform(-pi!float,pi!float);
+			auto offset=1.5f*(scale+0.5f)*Vector3f(cos(φ),sin(φ),0.0f);
+			auto pposition=(1.0f-0.8f*progress)*(position+offset)+0.8f*progress*center;
+			pposition.z=(1.0f-progress)*(position.z+offset.z)+progress*center.z;
+			auto pvelocity=Vector3f(0.0f,0.0f,0.0f);
+			auto scale=2.0f*skinOfStoneCast.scale;
+			auto lifetime=6;
+			auto frame=skinOfStoneCast.frame;
+			state.addParticle(Particle!B(castParticle,pposition,pvelocity,scale,lifetime,frame));
+		}
+	}
+}
+bool updateSkinOfStoneCasting(B)(ref SkinOfStoneCasting!B skinOfStoneCast,ObjectState!B state){
+	with(skinOfStoneCast){
+		frame+=1;
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				skinOfStoneCast.animateSkinOfStoneCasting(state);
+				// TODO: animate
+				return true;
+			case CastingStatus.interrupted:
+				return false;
+			case CastingStatus.finished:
+				state.movingObjectById!(skinOfStone,()=>false)(manaDrain.wizard,spell,state);
+				return false;
+		}
+	}
+}
+
+bool updateSkinOfStone(B)(ref SkinOfStone!B skinOfStone,ObjectState!B state){
+	with(skinOfStone){
+		if(!state.isValidTarget(target,TargetType.creature)) return false;
+		++frame;
+		static bool check(ref MovingObject!B obj){
+			assert(obj.creatureStats.effects.skinOfStone);
+			return obj.creatureState.mode.canShield;
+		}
+		if(!state.movingObjectById!(check,()=>false)(target)||frame>=spell.duration*updateFPS){
+			static void removeSkinOfStone(B)(ref MovingObject!B object){
+				assert(object.creatureStats.effects.skinOfStone);
+				object.creatureStats.effects.skinOfStone=false;
+			}
+			state.movingObjectById!(removeSkinOfStone,(){})(target);
+			return false;
+		}
+		return true;
 	}
 }
 
@@ -10853,6 +10962,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.swarms.length;){
 		if(!updateSwarm(effects.swarms[i],state)){
 			effects.removeSwarm(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.skinOfStoneCastings.length;){
+		if(!updateSkinOfStoneCasting(effects.skinOfStoneCastings[i],state)){
+			effects.removeSkinOfStoneCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.skinOfStones.length;){
+		if(!updateSkinOfStone(effects.skinOfStones[i],state)){
+			effects.removeSkinOfStone(i);
 			continue;
 		}
 		i++;

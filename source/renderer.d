@@ -551,12 +551,9 @@ struct Renderer(B){
 									B.shadelessBoneMaterialBackend.setEnergy(objects.energies[j]);
 								}
 							}else{
-								if(!rc.shadowMode && objects.creatureStatss[j].effects.petrified){
-									B.boneMaterialBackend.setPetrified(true);
-								}
-								scope(success) if(!rc.shadowMode && objects.creatureStatss[j].effects.petrified){
-									B.boneMaterialBackend.setPetrified(false);
-								}
+								bool petrified=!rc.shadowMode && material.backend is B.boneMaterialBackend && objects.creatureStatss[j].effects.stoneEffect;
+								if(petrified) B.boneMaterialBackend.setPetrified(true);
+								scope(success) if(petrified) B.boneMaterialBackend.setPetrified(false);
 							}
 							// TODO: interpolate animations to get 60 FPS?
 							sacObject.setFrame(objects.animationStates[j],objects.frames[j]/updateAnimFactor);
@@ -801,7 +798,8 @@ struct Renderer(B){
 						if((objects.speedUpShadows[j].age+1)%speedUpShadowSpacing!=0) continue;
 						auto id=objects.speedUpShadows[j].creature;
 						if(!state.isValidTarget(id,TargetType.creature)) continue;
-						auto sacObject=state.movingObjectById!((obj)=>obj.sacObject,()=>null)(id); // TODO: store within SpeedUpShadow?
+						auto sacObjectPetrified=state.movingObjectById!((obj)=>tuple(obj.sacObject,obj.creatureStats.effects.stoneEffect),()=>tuple(SacObject!B.init,false))(id); // TODO: store within SpeedUpShadow?
+						auto sacObject=sacObjectPetrified[0], petrified=sacObjectPetrified[1];
 						if(!sacObject) continue;
 						auto materials=sacObject.transparentMaterials;
 						foreach(i;0..materials.length){
@@ -812,6 +810,8 @@ struct Renderer(B){
 							material.backend.setTransformation(objects.speedUpShadows[j].position,objects.speedUpShadows[j].rotation,rc);
 							B.shadelessBoneMaterialBackend.setAlpha(0.3f);
 							B.shadelessBoneMaterialBackend.setEnergy(10.0f);
+							if(petrified) B.shadelessBoneMaterialBackend.setPetrified(true);
+							scope(success) if(petrified) B.shadelessBoneMaterialBackend.setPetrified(false);
 							sacObject.setFrame(objects.speedUpShadows[j].animationState,objects.speedUpShadows[j].frame/updateAnimFactor);
 							mesh.render(rc);
 						}
