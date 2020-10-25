@@ -5560,7 +5560,6 @@ bool castSkinOfStone(B)(ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,O
 bool skinOfStone(B)(ref MovingObject!B object,SacSpell!B spell,ObjectState!B state){
 	if(object.creatureStats.effects.skinOfStone) return false;
 	object.creatureStats.effects.skinOfStone=true;
-	playSoundAt("ksts",object.center,state);
 	state.addEffect(SkinOfStone!B(object.id,spell));
 	return true;
 }
@@ -9384,21 +9383,23 @@ bool updateSwarm(B)(ref Swarm!B swarm,ObjectState!B state){
 	}
 }
 
-void animateSkinOfStoneCasting(B)(ref SkinOfStoneCasting!B skinOfStoneCast,ObjectState!B state){
+void animateSkinOfStoneCasting(B)(ref SkinOfStoneCasting!B skinOfStoneCast,ObjectState!B state,int lifetime=12){
 	with(skinOfStoneCast){
-		auto positions=state.movingObjectById!((ref obj)=>tuple(obj.position,obj.center),()=>Tuple!(Vector3f,Vector3f).init)(manaDrain.wizard);
+		auto castParticle=SacParticle!B.get(ParticleType.dirt);
+		auto positions=state.movingObjectById!((ref wizard,castParticle){
+			wizard.animateCasting!(true,1)(castParticle,state);
+			return tuple(wizard.position,wizard.center);
+		},()=>Tuple!(Vector3f,Vector3f).init)(manaDrain.wizard,castParticle);
 		auto position=positions[0], center=positions[1];
 		enum numParticles=30;
-		auto castParticle=SacParticle!B.get(ParticleType.dirt);
 		auto progress=min(float(frame)/castingTime,1.0f);
 		foreach(k;0..numParticles){
 			auto φ=state.uniform(-pi!float,pi!float);
-			auto offset=1.5f*(scale+0.5f)*Vector3f(cos(φ),sin(φ),0.0f);
-			auto pposition=(1.0f-0.8f*progress)*(position+offset)+0.8f*progress*center;
+			auto offset=2.0f*(scale+0.5f)*Vector3f(cos(φ),sin(φ),0.0f);
+			auto pposition=(1.0f-0.9f*progress)*(position+offset)+0.9f*progress*center;
 			pposition.z=(1.0f-progress)*(position.z+offset.z)+progress*center.z;
 			auto pvelocity=Vector3f(0.0f,0.0f,0.0f);
 			auto scale=2.0f*skinOfStoneCast.scale;
-			auto lifetime=6;
 			auto frame=skinOfStoneCast.frame;
 			state.addParticle(Particle!B(castParticle,pposition,pvelocity,scale,lifetime,frame));
 		}
@@ -9410,9 +9411,9 @@ bool updateSkinOfStoneCasting(B)(ref SkinOfStoneCasting!B skinOfStoneCast,Object
 		final switch(manaDrain.update(state)){
 			case CastingStatus.underway:
 				skinOfStoneCast.animateSkinOfStoneCasting(state);
-				// TODO: animate
 				return true;
 			case CastingStatus.interrupted:
+				skinOfStoneCast.animateSkinOfStoneCasting(state,31);
 				return false;
 			case CastingStatus.finished:
 				state.movingObjectById!(skinOfStone,()=>false)(manaDrain.wizard,spell,state);
@@ -9430,11 +9431,25 @@ bool updateSkinOfStone(B)(ref SkinOfStone!B skinOfStone,ObjectState!B state){
 			return obj.creatureState.mode.canShield;
 		}
 		if(!state.movingObjectById!(check,()=>false)(target)||frame>=spell.duration*updateFPS){
-			static void removeSkinOfStone(B)(ref MovingObject!B object){
+			static void removeSkinOfStone(B)(ref MovingObject!B object,ObjectState!B state){
 				assert(object.creatureStats.effects.skinOfStone);
 				object.creatureStats.effects.skinOfStone=false;
+				auto hitbox=object.hitbox;
+				auto center=boxCenter(hitbox);
+				playSoundAt("ksts",center,state);
+				enum numParticles=64;
+				auto sacParticle=SacParticle!B.get(ParticleType.rock);
+				foreach(i;0..numParticles){
+					auto position=state.uniform(scaleBox(hitbox,0.9f));
+					auto direction=state.uniformDirection();
+					auto velocity=state.uniform(2.5f,3.0f)*direction;
+					auto scale=state.uniform(1.0f,2.5f);
+					auto lifetime=95;
+					auto frame=0;
+					state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+				}
 			}
-			state.movingObjectById!(removeSkinOfStone,(){})(target);
+			state.movingObjectById!(removeSkinOfStone,(){})(target,state);
 			return false;
 		}
 		return true;
