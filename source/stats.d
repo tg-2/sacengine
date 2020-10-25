@@ -41,10 +41,11 @@ struct Effects{
 	int numManaBlocks=0;
 	bool petrified=false;
 	bool skinOfStone=false;
+	bool etherealForm=false;
 
 	@property bool regenerationBlocked(){ return poisonDamage!=0||immobilized; }
 	@property bool manaBlocked(){ return numManaBlocks!=0; }
-	@property bool ccProtected(){ return lifeShield||petrified||skinOfStone; } // TODO: add remaining shields
+	@property bool ccProtected(){ return lifeShield||petrified||skinOfStone||etherealForm; } // TODO: add remaining shields
 	@property bool stoneEffect(){ return petrified||skinOfStone; }
 	@property bool immobilized(){ return petrified; } // TODO: add freeze
 }

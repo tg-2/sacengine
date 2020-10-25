@@ -2267,6 +2267,23 @@ struct SkinOfStone(B){
 	int frame=0;
 }
 
+enum EtherealFormStatus{ fadingOut, stationary, fadingIn }
+struct EtherealFormCasting(B){
+	ManaDrain!B manaDrain;
+	SacSpell!B spell;
+}
+
+struct EtherealForm(B){
+	int target;
+	SacSpell!B spell;
+	int frame=0;
+	enum targetAlpha=0.36f;
+	enum targetEnergy=10.0f;
+	float progress=0.0f;
+	EtherealFormStatus status;
+	enum numFrames=30;
+}
+
 struct BrainiacProjectile(B){
 	int attacker;
 	int side;
@@ -2858,6 +2875,22 @@ struct Effects(B){
 		if(i+1<skinOfStones.length) skinOfStones[i]=move(skinOfStones[$-1]);
 		skinOfStones.length=skinOfStones.length-1;
 	}
+	Array!(EtherealFormCasting!B) etherealFormCastings;
+	void addEffect(EtherealFormCasting!B etherealFormCasting){
+		etherealFormCastings~=etherealFormCasting;
+	}
+	void removeEtherealFormCasting(int i){
+		if(i+1<etherealFormCastings.length) etherealFormCastings[i]=move(etherealFormCastings[$-1]);
+		etherealFormCastings.length=etherealFormCastings.length-1;
+	}
+	Array!(EtherealForm!B) etherealForms;
+	void addEffect(EtherealForm!B etherealForm){
+		etherealForms~=etherealForm;
+	}
+	void removeEtherealForm(int i){
+		if(i+1<etherealForms.length) etherealForms[i]=move(etherealForms[$-1]);
+		etherealForms.length=etherealForms.length-1;
+	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
 	void addEffect(BrainiacProjectile!B brainiacProjectile){
@@ -3181,6 +3214,8 @@ struct Effects(B){
 		assignArray(swarms,rhs.swarms);
 		assignArray(skinOfStoneCastings,rhs.skinOfStoneCastings);
 		assignArray(skinOfStones,rhs.skinOfStones);
+		assignArray(etherealFormCastings,rhs.etherealFormCastings);
+		assignArray(etherealForms,rhs.etherealForms);
 		assignArray(brainiacProjectiles,rhs.brainiacProjectiles);
 		assignArray(brainiacEffects,rhs.brainiacEffects);
 		assignArray(shrikeProjectiles,rhs.shrikeProjectiles);
@@ -4495,6 +4530,7 @@ float dealDamage(T,B)(ref T object,float damage,int attacker,int attackingSide,O
 
 bool canDamage(B)(ref MovingObject!B object,ObjectState!B state){
 	if(object.creatureStats.flags&Flags.cannotDamage) return false;
+	if(object.creatureStats.effects.etherealForm) return false;
 	final switch(object.creatureState.mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing,playingDead,pretendingToRevive,rockForm: return true;
 		case dying,dead,deadToGhost,idleGhost,movingGhost,ghostToIdle,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,convertReviving,thrashing: return false;
@@ -5179,6 +5215,8 @@ bool startCasting(B)(int caster,SacSpell!B spell,Target target,ObjectState!B sta
 					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
 					if(castingTime==-1) return false;
 					return stun(castSkinOfStone(manaDrain,spell,castingTime,state));
+				case SpellTag.etherealForm:
+					return stun(castEtherealForm(manaDrain,spell,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -5563,6 +5601,22 @@ bool skinOfStone(B)(ref MovingObject!B object,SacSpell!B spell,ObjectState!B sta
 	state.addEffect(SkinOfStone!B(object.id,spell));
 	return true;
 }
+
+bool castEtherealForm(B)(ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	if(!state.isValidTarget(manaDrain.wizard)) return false;
+	state.addEffect(EtherealFormCasting!B(manaDrain,spell));
+	return true;
+}
+
+bool etherealForm(B)(ref MovingObject!B object,SacSpell!B spell,ObjectState!B state){
+	if(object.creatureStats.effects.etherealForm) return false;
+	object.creatureStats.effects.etherealForm=true;
+	playSoundAt("vniw",object.id,state);
+	object.animateEtherealFormTransition(state);
+	state.addEffect(EtherealForm!B(object.id,spell));
+	return true;
+}
+
 
 Vector3f getShotDirection(B)(float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
 	auto φ=2.0f*pi!float*accuracy*state.normal(); // TODO: ok?
@@ -6323,7 +6377,7 @@ bool rockForm(B)(ref MovingObject!B object,ObjectState!B state){
 void updateRenderMode(B)(int target,ObjectState!B state){
 	if(!state.isValidTarget(target,TargetType.creature)) return;
 	static RenderMode targetMode(ref MovingObject!B object,ObjectState!B state){
-		if(object.creatureStats.effects.stealth||object.creatureStats.effects.appearing||object.creatureStats.effects.disappearing) return RenderMode.transparent;
+		if(object.creatureStats.effects.stealth||object.creatureStats.effects.appearing||object.creatureStats.effects.disappearing||object.creatureStats.effects.etherealForm) return RenderMode.transparent;
 		with(CreatureMode) if(object.creatureState.mode.among(deadToGhost,idleGhost,movingGhost,ghostToIdle)) return RenderMode.transparent;
 		return RenderMode.opaque;
 	}
@@ -9456,6 +9510,86 @@ bool updateSkinOfStone(B)(ref SkinOfStone!B skinOfStone,ObjectState!B state){
 	}
 }
 
+void animateEtherealFormCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	auto castParticle=SacParticle!B.get(ParticleType.heal);
+	wizard.animateCasting!false(castParticle,state);
+}
+bool updateEtherealFormCasting(B)(ref EtherealFormCasting!B etherealFormCast,ObjectState!B state){
+	with(etherealFormCast){
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				state.movingObjectById!(animateEtherealFormCasting,(){})(manaDrain.wizard,state);
+				return true;
+			case CastingStatus.interrupted:
+				return false;
+			case CastingStatus.finished:
+				state.movingObjectById!(etherealForm,()=>false)(manaDrain.wizard,spell,state);
+				return false;
+		}
+	}
+}
+void animateEtherealFormTransition(B)(ref MovingObject!B wizard,ObjectState!B state){
+	playSpellSoundTypeAt(SoundType.lightning,wizard.id,state,2.0f);
+	enum numParticles=64;
+	auto sacParticle=SacParticle!B.get(ParticleType.etherealFormSpark);
+	auto hitbox=wizard.hitbox;
+	foreach(i;0..numParticles){
+		auto position=state.uniform(scaleBox(hitbox,0.9f));
+		auto direction=state.uniformDirection();
+		auto velocity=state.uniform(1.0,2.0f)*direction;
+		velocity.z*=1.5f;
+		velocity.z+=1.5f;
+		auto scale=state.uniform(1.0f,2.5f);
+		auto lifetime=63;
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+	}
+}
+bool updateEtherealForm(B)(ref EtherealForm!B etherealForm,ObjectState!B state){
+	with(etherealForm){
+		if(!state.isValidTarget(target,TargetType.creature)) return false;
+		updateRenderMode(target,state);
+		++frame;
+		if(status!=EtherealFormStatus.fadingIn){
+			static bool check(ref MovingObject!B obj){
+				assert(obj.creatureStats.effects.etherealForm);
+				return obj.creatureState.mode.canShield;
+			}
+			if(!state.movingObjectById!(check,()=>false)(target)||frame>=spell.duration*updateFPS)
+				status=EtherealFormStatus.fadingIn;
+		}
+		void updateAlpha(){
+			state.setAlpha(target,1.0f+progress*(targetAlpha-1.0f),1.0f+progress*(targetEnergy-1.0f));
+		}
+		final switch(status){
+			case EtherealFormStatus.fadingOut:
+				progress=min(1.0f,progress+1.0f/numFrames);
+				if(progress==1.0f) status=EtherealFormStatus.stationary;
+				updateAlpha();
+				break;
+			case EtherealFormStatus.stationary:
+				state.movingObjectById!(.animateGhost,(){})(target,state);
+				break;
+			case EtherealFormStatus.fadingIn:
+				state.movingObjectById!(.animateGhost,(){})(target,state);
+				progress=max(0.0f,progress-1.0f/numFrames);
+				if(progress==0.0f){
+					static void removeEtherealForm(B)(ref MovingObject!B object){
+						assert(object.creatureStats.effects.etherealForm);
+						object.creatureStats.effects.etherealForm=false;
+					}
+					state.movingObjectById!(removeEtherealForm,(){})(target);
+					updateRenderMode(target,state);
+					return false;
+				}
+				updateAlpha();
+				break;
+		}
+		return true;
+	}
+}
+
+
 enum brainiacProjectileHitGain=4.0f;
 enum brainiacProjectileSize=0.45f; // TODO: ok?
 enum brainiacProjectileSlidingDistance=1.5f;
@@ -10991,6 +11125,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.skinOfStones.length;){
 		if(!updateSkinOfStone(effects.skinOfStones[i],state)){
 			effects.removeSkinOfStone(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.etherealFormCastings.length;){
+		if(!updateEtherealFormCasting(effects.etherealFormCastings[i],state)){
+			effects.removeEtherealFormCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.etherealForms.length;){
+		if(!updateEtherealForm(effects.etherealForms[i],state)){
+			effects.removeEtherealForm(i);
 			continue;
 		}
 		i++;

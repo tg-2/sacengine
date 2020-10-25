@@ -350,6 +350,12 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Ski
 void serialize(alias sink,B)(ref SkinOfStone!B skinOfStone){ serializeStruct!sink(skinOfStone); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SkinOfStone!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref EtherealFormCasting!B etherealFormCasting){ serializeStruct!sink(etherealFormCasting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==EtherealFormCasting!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref EtherealForm!B etherealForm){ serializeStruct!sink(etherealForm); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==EtherealForm!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref BrainiacProjectile!B brainiacProjectile){ serializeStruct!sink(brainiacProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BrainiacProjectile!B)){ deserializeStruct(result,state,data); }
 

@@ -863,6 +863,7 @@ enum ParticleType{
 	redVortexDroplet,
 	blueVortexDroplet,
 	spark,
+	etherealFormSpark,
 	castPersephone,
 	castPyro,
 	castJames,
@@ -907,7 +908,7 @@ final class SacParticle(B){
 				return false;
 			case ghostTransition:
 				return true;
-			case needle:
+			case needle,etherealFormSpark:
 				return true;
 			case redVortexDroplet,blueVortexDroplet:
 				return true;
@@ -935,7 +936,7 @@ final class SacParticle(B){
 				return false;
 			case relativeHeal,lightningCasting:
 				return true;
-			case needle:
+			case needle,etherealFormSpark:
 				return false;
 			case redVortexDroplet,blueVortexDroplet:
 				return false;
@@ -1030,7 +1031,7 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/cst0.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
-			case needle:
+			case needle,etherealFormSpark:
 				width=height=1.0f;
 				this.energy=3.0f;
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/cst0.TXTR"));
@@ -1179,6 +1180,7 @@ final class SacParticle(B){
 			case ghostTransition,ghost: return 2;
 			case speedUp: return 2;
 			case redVortexDroplet: return 2;
+			case etherealFormSpark: return 2;
 			case ashParticle: return 3;
 			case smoke: return 4;
 			case fire: return 2;
@@ -1214,7 +1216,7 @@ final class SacParticle(B){
 				return min(1.0f,(lifetime/(0.75f*numFrames))^^2);
 			case lightningCasting,spark:
 				return 1.0;
-			case needle:
+			case needle,etherealFormSpark:
 				return min(1.0f,(lifetime/(0.5f*numFrames))^^2);
 			case redVortexDroplet,blueVortexDroplet:
 				return min(1.0f,(lifetime/(0.75f*numFrames))^^2);
@@ -1259,7 +1261,7 @@ final class SacParticle(B){
 				return 1.0f;
 			case lightningCasting,spark:
 				return 1.0f;
-			case needle:
+			case needle,etherealFormSpark:
 				return min(1.0f,lifetime/(0.5f*numFrames));
 			case redVortexDroplet,blueVortexDroplet:
 				return min(1.0f,(lifetime/(0.75f*numFrames)));
