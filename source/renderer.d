@@ -1306,11 +1306,10 @@ struct Renderer(B){
 
 	B.Mesh boxMesh=null;
 	void renderBox(Vector3f[2] sl,bool wireframe,B.RenderContext rc){
-		auto small=sl[0],large=sl[1];
-		Vector3f[8] box=[Vector3f(small[0],small[1],small[2]),Vector3f(large[0],small[1],small[2]),
-		                 Vector3f(large[0],large[1],small[2]),Vector3f(small[0],large[1],small[2]),
-		                 Vector3f(small[0],small[1],large[2]),Vector3f(large[0],small[1],large[2]),
-		                 Vector3f(large[0],large[1],large[2]),Vector3f(small[0],large[1],large[2])];
+		static Vector3f[8] box=[Vector3f(-0.5f,-0.5f,-0.5f),Vector3f(0.5f,-0.5f,-0.5f),
+		                 Vector3f(0.5f,0.5f,-0.5f),Vector3f(-0.5f,0.5f,-0.5f),
+		                 Vector3f(-0.5f,-0.5f,0.5f),Vector3f(0.5f,-0.5f,0.5f),
+		                 Vector3f(0.5f,0.5f,0.5f),Vector3f(-0.5f,0.5f,0.5f)];
 		if(wireframe) B.enableWireframe();
 		if(!boxMesh){
 			boxMesh=B.makeMesh(8,6*2);
@@ -1331,6 +1330,7 @@ struct Renderer(B){
 			boxMesh.texcoords[]=Vector2f(0,0);
 			B.finalizeMesh(boxMesh);
 		}
+		hitboxMaterial.backend.setTransformationScaled(boxCenter(sl), Quaternionf.identity(), boxSize(sl), rc);
 		boxMesh.render(rc);
 		if(wireframe) B.disableWireframe();
 	}
@@ -1343,15 +1343,18 @@ struct Renderer(B){
 			static if(isMoving){
 				auto sacObject=objects.sacObject;
 				foreach(j;0..objects.length){
-					self.hitboxMaterial.backend.setTransformation(objects.positions[j], Quaternionf.identity(), rc);
 					auto hitbox=sacObject.hitbox(objects.rotations[j],objects.animationStates[j],objects.frames[j]/updateAnimFactor);
+					hitbox[0]+=objects.positions[j];
+					hitbox[1]+=objects.positions[j];
 					self.renderBox(hitbox,true,rc);
 					auto meleeHitbox=sacObject.meleeHitbox(objects.rotations[j],objects.animationStates[j],objects.frames[j]/updateAnimFactor);
+					meleeHitbox[0]+=objects.positions[j];
+					meleeHitbox[1]+=objects.positions[j];
 					self.renderBox(meleeHitbox,true,rc);
 					/+auto hands=sacObject.hands(objects.animationStates[j],objects.frames[j]/updateAnimFactor);
 					foreach(i;0..2){
 						if(hands[i] is Vector3f.init) continue;
-						hands[i]=rotate(objects.rotations[j],hands[i]);
+						hands[i]=objects.positions[j]+rotate(objects.rotations[j],hands[i]);
 						Vector3f[2] nbox;
 						nbox=[hands[i]-(0.2*Vector3f(1,1,1)),hands[i]+(0.2*Vector3f(1,1,1))];
 						renderBox(nbox,false,rc);
@@ -1359,7 +1362,7 @@ struct Renderer(B){
 					/+foreach(i;1..sacObject.saxsi.saxs.bones.length){
 						auto bhitbox=sacObject.saxsi.saxs.bones[i].hitbox;
 						foreach(ref x;bhitbox){
-							x=rotate(objects.rotations[j],x*sacObject.animations[objects.animationStates[j]].frames[objects.frames[j]/updateAnimFactor].matrices[i]);
+							x=objectrs.positions[j]+rotate(objects.rotations[j],x*sacObject.animations[objects.animationStates[j]].frames[objects.frames[j]/updateAnimFactor].matrices[i]);
 						}
 						if(i!=23&&i!=26) continue;
 						//Vector3f[8] box=[Vector3f(-1,-1,-1),Vector3f(1,-1,-1),Vector3f(1,1,-1),Vector3f(-1,1,-1),Vector3f(-1,-1,1),Vector3f(1,-1,1),Vector3f(1,1,1),Vector3f(-1,1,1)];
@@ -1384,9 +1387,11 @@ struct Renderer(B){
 			}else static if(isStatic){
 				auto sacObject=objects.sacObject;
 				foreach(j;0..objects.length){
-					self.hitboxMaterial.backend.setTransformation(objects.positions[j], Quaternionf.identity(), rc);
-					foreach(hitbox;sacObject.hitboxes(objects.rotations[j]))
+					foreach(hitbox;sacObject.hitboxes(objects.rotations[j])){
+						hitbox[0]+=objects.positions[j];
+						hitbox[1]+=objects.positions[j];
 						self.renderBox(hitbox,true,rc);
+					}
 				}
 			}
 		}
