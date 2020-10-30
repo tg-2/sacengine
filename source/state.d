@@ -2284,6 +2284,20 @@ struct EtherealForm(B){
 	enum numFrames=30;
 }
 
+struct FireformCasting(B){
+	ManaDrain!B manaDrain;
+	SacSpell!B spell;
+	int frame;
+	int castingTime;
+	int soundTimer;
+}
+struct Fireform(B){
+	int target;
+	SacSpell!B spell;
+	int frame;
+	int soundTimer;
+}
+
 struct BrainiacProjectile(B){
 	int attacker;
 	int side;
@@ -2891,6 +2905,22 @@ struct Effects(B){
 		if(i+1<etherealForms.length) etherealForms[i]=move(etherealForms[$-1]);
 		etherealForms.length=etherealForms.length-1;
 	}
+	Array!(FireformCasting!B) fireformCastings;
+	void addEffect(FireformCasting!B fireformCasting){
+		fireformCastings~=fireformCasting;
+	}
+	void removeFireformCasting(int i){
+		if(i+1<fireformCastings.length) fireformCastings[i]=move(fireformCastings[$-1]);
+		fireformCastings.length=fireformCastings.length-1;
+	}
+	Array!(Fireform!B) fireforms;
+	void addEffect(Fireform!B fireform){
+		fireforms~=fireform;
+	}
+	void removeFireform(int i){
+		if(i+1<fireforms.length) fireforms[i]=move(fireforms[$-1]);
+		fireforms.length=fireforms.length-1;
+	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
 	void addEffect(BrainiacProjectile!B brainiacProjectile){
@@ -3216,6 +3246,8 @@ struct Effects(B){
 		assignArray(skinOfStones,rhs.skinOfStones);
 		assignArray(etherealFormCastings,rhs.etherealFormCastings);
 		assignArray(etherealForms,rhs.etherealForms);
+		assignArray(fireformCastings,rhs.fireformCastings);
+		assignArray(fireforms,rhs.fireforms);
 		assignArray(brainiacProjectiles,rhs.brainiacProjectiles);
 		assignArray(brainiacEffects,rhs.brainiacEffects);
 		assignArray(shrikeProjectiles,rhs.shrikeProjectiles);
@@ -5217,6 +5249,10 @@ bool startCasting(B)(int caster,SacSpell!B spell,Target target,ObjectState!B sta
 					return stun(castSkinOfStone(manaDrain,spell,castingTime,state));
 				case SpellTag.etherealForm:
 					return stun(castEtherealForm(manaDrain,spell,state));
+				case SpellTag.fireform:
+					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					if(castingTime==-1) return false;
+					return stun(castFireform(manaDrain,spell,castingTime,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -5617,6 +5653,22 @@ bool etherealForm(B)(ref MovingObject!B object,SacSpell!B spell,ObjectState!B st
 	return true;
 }
 
+enum fireformGain=4.0f;
+bool castFireform(B)(ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,ObjectState!B state){
+	if(!state.isValidTarget(manaDrain.wizard)) return false;
+	playSoundAt("1ngi",manaDrain.wizard,state,fireformGain);
+	auto soundTimer=playSoundAt!true("5plf",manaDrain.wizard,state,fireformGain);
+	state.addEffect(FireformCasting!B(manaDrain,spell,0,castingTime,soundTimer));
+	return true;
+}
+
+bool fireform(B)(ref MovingObject!B object,SacSpell!B spell,ObjectState!B state,int soundTimer=-1){
+	if(object.creatureStats.effects.fireform) return false;
+	object.creatureStats.effects.fireform=true;
+	if(soundTimer==-1) soundTimer=playSoundAt!true("5plf",object.id,state,fireformGain);
+	state.addEffect(Fireform!B(object.id,spell,0,soundTimer));
+	return true;
+}
 
 Vector3f getShotDirection(B)(float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
 	auto φ=2.0f*pi!float*accuracy*state.normal(); // TODO: ok?
@@ -7648,6 +7700,26 @@ bool updateExplosion(B)(ref Explosion!B explosion,ObjectState!B state){
 		return scale<maxScale;
 	}
 }
+
+void spawnFireParticles(B,T)(ref T object,int numParticles,ObjectState!B state){
+	enum isMoving=is(T==MovingObject!B);
+	static if(isMoving) auto hitbox=object.relativeHitbox;
+	else auto hitbox=object.hitbox;
+	auto dim=hitbox[1]-hitbox[0];
+	auto volume=dim.x*dim.y*dim.z;
+	auto scale=2.0f*max(1.0f,cbrt(volume));
+	auto sacParticle=SacParticle!B.get(ParticleType.fire);
+	foreach(i;0..numParticles){
+		auto position=state.uniform(scaleBox(hitbox,1.1f));
+		auto distance=(state.uniform(3)?state.uniform(0.3f,0.6f):state.uniform(1.5f,2.5f))*(hitbox[1].z-hitbox[0].z);
+		auto fullLifetime=sacParticle.numFrames/float(updateFPS);
+		auto lifetime=cast(int)(sacParticle.numFrames*state.uniform(0.0f,1.0f));
+		auto velocity=Vector3f(0.0f,0.0f,distance/fullLifetime);
+		static if(isMoving) state.addParticle(Particle!(B,true)(sacParticle,object.id,true,position,velocity,scale,lifetime,0));
+		else state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,0));
+	}
+}
+
 bool updateFire(B)(ref Fire!B fire,ObjectState!B state){
 	with(fire){
 		if(!state.targetTypeFromId(target).among(TargetType.creature,TargetType.building))
@@ -7656,20 +7728,8 @@ bool updateFire(B)(ref Fire!B fire,ObjectState!B state){
 			state.objectById!dealFireDamage(target,rangedDamagePerFrame,spellDamagePerFrame,attacker,side,state);
 		if(manaDrainPerFrame>0.0f) state.movingObjectById!(drainMana,(){})(target,manaDrainPerFrame,state);
 		static assert(updateFPS==60);
-		auto hitbox=state.objectById!hitbox(target);
-		auto dim=hitbox[1]-hitbox[0];
-		auto volume=dim.x*dim.y*dim.z;
-		auto scale=2.0f*max(1.0f,cbrt(volume));
-		auto sacParticle=SacParticle!B.get(ParticleType.fire);
 		enum numParticles=5;
-		foreach(i;0..numParticles){
-			auto position=state.uniform(scaleBox(hitbox,1.1f));
-			auto distance=(state.uniform(3)?state.uniform(0.3f,0.6f):state.uniform(1.5f,2.5f))*(hitbox[1].z-hitbox[0].z);
-			auto fullLifetime=sacParticle.numFrames/float(updateFPS);
-			auto lifetime=cast(int)(sacParticle.numFrames*state.uniform(0.0f,1.0f));
-			auto velocity=Vector3f(0.0f,0.0f,distance/fullLifetime);
-			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,0));
-		}
+		state.objectById!spawnFireParticles(target,numParticles,state);
 		return lifetime-->0;
 	}
 }
@@ -9589,6 +9649,115 @@ bool updateEtherealForm(B)(ref EtherealForm!B etherealForm,ObjectState!B state){
 	}
 }
 
+void animateFireformCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	auto castParticle=SacParticle!B.get(ParticleType.firy);
+	auto hands=wizard.hands;
+	foreach(i;0..2){
+		auto hposition=hands[i];
+		if(isNaN(hposition.x)) continue;
+		foreach(k;0..3){
+			auto position=hposition;
+			auto distance=state.uniform(0.5f,1.5f);
+			auto fullLifetime=castParticle.numFrames/float(updateFPS);
+			auto lifetime=cast(int)(castParticle.numFrames*state.uniform(0.0f,1.0f));
+			auto velocity=Vector3f(0.0f,0.0f,distance/fullLifetime);
+			auto scale=1.0f;
+			auto frame=0;
+			state.addParticle(Particle!B(castParticle,position,velocity,scale,lifetime,frame));
+		}
+	}
+}
+
+void spawnFireformParticles(B)(ref MovingObject!B wizard,int numParticles,ObjectState!B state){
+	auto sacParticle=SacParticle!B.get(ParticleType.fire);
+	auto hitbox=wizard.sacObject.hitbox(Quaternionf.identity(),wizard.animationState,wizard.frame/updateAnimFactor);
+	auto center=boxCenter(hitbox);
+	auto size=boxSize(hitbox);
+	size.x=size.y=max(size.x,size.y)+1.0f;
+	size.z+=0.5f;
+	auto scale=0.5f*max(1.0f,cbrt(size.x*size.y*size.z));
+	foreach(k;0..numParticles){
+		auto φ=state.uniform(-pi!float,pi!float);
+		auto pposition=center+state.uniformDirection()*0.5f*size;
+		auto pvelocity=Vector3f(0.0f,0.0f,0.0f);
+		auto lifetime=31;
+		auto frame=0;
+		state.addParticle(Particle!(B,true)(sacParticle,wizard.id,true,pposition,pvelocity,scale,lifetime,frame));
+	}
+}
+
+enum fireformParticleRate=50;
+void animateFireformCasting(B)(ref FireformCasting!B fireformCast,ObjectState!B state){
+	with(fireformCast){
+		auto progress=min(float(frame)/castingTime,1.0f);
+		auto numParticlesF=fireformParticleRate*progress;
+		auto numParticles=cast(int)floor(numParticlesF)+(state.uniform(0.0f,1.0f)<=numParticlesF-floor(numParticlesF));
+		state.movingObjectById!((ref wizard,numParticles,state){
+			wizard.animateFireformCasting(state);
+			wizard.spawnFireformParticles(numParticles,state);
+		},(){})(manaDrain.wizard,numParticles,state);
+	}
+}
+bool updateFireformCasting(B)(ref FireformCasting!B fireformCast,ObjectState!B state){
+	with(fireformCast){
+		frame+=1;
+		if(--soundTimer==0) soundTimer=playSoundAt!true("5plf",manaDrain.wizard,state,fireformGain);
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				fireformCast.animateFireformCasting(state);
+				return true;
+			case CastingStatus.interrupted:
+				fireformCast.animateFireformCasting(state);
+				return false;
+			case CastingStatus.finished:
+				state.movingObjectById!(fireform,()=>false)(manaDrain.wizard,spell,state,soundTimer);
+				return false;
+		}
+	}
+}
+
+void ignite(B)(ref MovingObject!B obj,float damage,int attacker,int side,ObjectState!B state){
+	enum numParticles=5;
+	obj.dealFireDamage(0.0f,damage,attacker,side,state);
+	obj.spawnFireParticles(numParticles,state);
+	if(obj.creatureStats.effects.ignitionTime+updateFPS/3<state.frame)
+		playSoundAt("1ngi",obj.id,state,2.0f);
+	obj.creatureStats.effects.ignitionTime=state.frame;
+}
+
+bool updateFireform(B)(ref Fireform!B fireform,ObjectState!B state){
+	with(fireform){
+		if(!state.isValidTarget(target,TargetType.creature)) return false;
+		++frame;
+		if(--soundTimer==0) soundTimer=playSoundAt!true("5plf",target,state,fireformGain);
+		static bool check(ref MovingObject!B obj,ObjectState!B state){
+			assert(obj.creatureStats.effects.fireform);
+			obj.spawnFireformParticles(fireformParticleRate,state);
+			return obj.creatureState.mode.canShield;
+		}
+		state.movingObjectById!((ref obj,fireform,state){
+			auto hitbox=obj.hitbox;
+			hitbox[0]-=Vector3f(2.0f,2.0f,1.0f), hitbox[1]+=Vector3f(2.0f,2.0f,1.0f);
+			static void burn(ProximityEntry target,ObjectState!B state,SacSpell!B spell,int attacker,int side){
+				if(target.id==attacker) return;
+				state.movingObjectById!((ref obj,damage,attacker,side,state){
+					if(state.sides.getStance(side,obj.side)!=Stance.ally)
+						obj.ignite(damage,attacker,side,state);
+				},(){})(target.id,spell.amount/updateFPS,attacker,side,state);
+			}
+			collisionTargets!burn(hitbox,state,fireform.spell,obj.id,obj.side);
+		},(){})(fireform.target,&fireform,state);
+		if(!state.movingObjectById!(check,()=>false)(target,state)||frame>=spell.duration*updateFPS){
+			static void removeFireform(B)(ref MovingObject!B object){
+				assert(object.creatureStats.effects.fireform);
+				object.creatureStats.effects.fireform=false;
+			}
+			state.movingObjectById!(removeFireform,(){})(target);
+			return false;
+		}
+		return true;
+	}
+}
 
 enum brainiacProjectileHitGain=4.0f;
 enum brainiacProjectileSize=0.45f; // TODO: ok?
@@ -11139,6 +11308,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.etherealForms.length;){
 		if(!updateEtherealForm(effects.etherealForms[i],state)){
 			effects.removeEtherealForm(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.fireformCastings.length;){
+		if(!updateFireformCasting(effects.fireformCastings[i],state)){
+			effects.removeFireformCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.fireforms.length;){
+		if(!updateFireform(effects.fireforms[i],state)){
+			effects.removeFireform(i);
 			continue;
 		}
 		i++;

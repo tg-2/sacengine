@@ -356,6 +356,12 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Eth
 void serialize(alias sink,B)(ref EtherealForm!B etherealForm){ serializeStruct!sink(etherealForm); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==EtherealForm!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref FireformCasting!B fireformCasting){ serializeStruct!sink(fireformCasting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==FireformCasting!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref Fireform!B fireform){ serializeStruct!sink(fireform); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Fireform!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref BrainiacProjectile!B brainiacProjectile){ serializeStruct!sink(brainiacProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BrainiacProjectile!B)){ deserializeStruct(result,state,data); }
 

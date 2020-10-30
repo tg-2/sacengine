@@ -254,8 +254,10 @@ immutable char[4][] commandAppliedSoundTags=["1lcI","2lcI"];
 
 string[char[4]] samps;
 string[char[4]] makeSampByTag(bool readFromWads){
+	auto r=makeFileIndex(readFromWads,sampFolders,"SAMP",false);
 	// samp names flp1, flp2, flp3, flp4, flp5 appear in both pyro and comn. TODO: figure this out
-	return makeFileIndex(readFromWads,sampFolders,"SAMP",false);
+	r["5plf"]="extracted/sounds/SFX_.WAD!/comn.FLDR/flp5.SAMP";
+	return r;
 }
 
 immutable string[] textFolders=["extracted/local/lang_english/LANG.WAD!/ENGL.LANG",
