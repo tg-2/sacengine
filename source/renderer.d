@@ -197,6 +197,17 @@ struct Renderer(B){
 		auto mesh=typeof(return).createMesh();
 		return SacBug!B(texture,mat,mesh);
 	}
+	SacProtectiveBug!B protectiveBug;
+	SacProtectiveBug!B createProtectiveBug(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Transparent;
+		mat.energy=1.0f;
+		mat.diffuse=texture;
+		auto meshes=typeof(return).createMeshes();
+		return SacProtectiveBug!B(texture,mat,meshes);
+	}
 	SacBrainiacEffect!B brainiacEffect;
 	SacBrainiacEffect!B createBrainiacEffect(){
 		auto texture=typeof(return).loadTexture();
@@ -309,6 +320,7 @@ struct Renderer(B){
 		wrath=createWrath();
 		rock=new SacObject!B("extracted/models/MODL.WAD!/rock.MRMC/rock.MRMM");
 		bug=createBug();
+		protectiveBug=createProtectiveBug();
 		brainiacEffect=createBrainiacEffect();
 		shrikeEffect=createShrikeEffect();
 		arrow=createArrow();
@@ -958,6 +970,27 @@ struct Renderer(B){
 						foreach(k;0..objects.fallenProjectiles[j].bugs.length)
 							renderBug!true(objects.fallenProjectiles[j].bugs[k]);
 					}
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.protectiveSwarmCastings.length||objects.protectiveSwarms.length)){
+					// TODO: render bug shadows?
+					auto material=self.protectiveBug.material;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
+					void renderProtectiveBug(ref ProtectiveBug!B protectiveBug,Vector3f position,Quaternionf rotation){
+						material.backend.setSpriteTransformationScaled(position+rotate(rotation,protectiveBug.position),protectiveBug.scale,rc);
+						auto mesh=self.protectiveBug.getFrame(protectiveBug.frame%self.protectiveBug.numFrames);
+						mesh.render(rc);
+					}
+					void renderProtectiveSwarm(ref ProtectiveSwarm!B protectiveSwarm){
+						material.backend.setAlpha(ProtectiveBug!B.alpha*protectiveSwarm.alpha);
+						auto positionRotation=state.movingObjectById!((ref object)=>tuple(object.center,object.rotation),()=>Tuple!(Vector3f,Quaternionf).init)(protectiveSwarm.target);
+						auto position=positionRotation[0],rotation=positionRotation[1];
+						if(isNaN(position.x)) return;
+						foreach(k;0..protectiveSwarm.bugs.length)
+							renderProtectiveBug(protectiveSwarm.bugs[k],position,rotation);
+					}
+					foreach(j;0..objects.protectiveSwarmCastings.length) renderProtectiveSwarm(objects.protectiveSwarmCastings[j].protectiveSwarm);
+					foreach(j;0..objects.protectiveSwarms.length) renderProtectiveSwarm(objects.protectiveSwarms[j]);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.brainiacEffects.length){
 					auto material=self.brainiacEffect.material;

@@ -2298,6 +2298,45 @@ struct Fireform(B){
 	int soundTimer;
 }
 
+struct ProtectiveSwarmCasting(B){
+	ManaDrain!B manaDrain;
+	SacSpell!B spell;
+	ProtectiveSwarm!B protectiveSwarm;
+}
+struct ProtectiveBug(B){
+	Vector3f position;
+	Vector3f startPosition;
+	Vector3f targetPosition;
+	float scale=1.0f;
+	int frame;
+	float progress=0.0f;
+	enum alpha=1.0f; // TODO?
+}
+enum ProtectiveSwarmStatus{
+	casting,
+	steady,
+	dispersing,
+}
+struct ProtectiveSwarm(B){
+	int target;
+	SacSpell!B spell;
+	int castingTime;
+	int soundTimer;
+	int frame=0;
+	float alpha=1.0f;
+	auto status=ProtectiveSwarmStatus.casting;
+	Array!(ProtectiveBug!B) bugs; // TODO: pull out bugs into separate array?
+
+	void opAssign(ref ProtectiveSwarm!B rhs){
+		this.tupleof[0..$-1]=rhs.tupleof[0..$-1];
+		static assert(__traits(isSame,this.tupleof[$-1],this.bugs));
+		assignArray(bugs,rhs.bugs);
+	}
+	void opAssign(ProtectiveSwarm!B rhs){ this.tupleof=rhs.tupleof; }
+	this(this){ bugs=bugs.dup; } // TODO: needed?
+}
+
+
 struct BrainiacProjectile(B){
 	int attacker;
 	int side;
@@ -2921,6 +2960,22 @@ struct Effects(B){
 		if(i+1<fireforms.length) fireforms[i]=move(fireforms[$-1]);
 		fireforms.length=fireforms.length-1;
 	}
+	Array!(ProtectiveSwarmCasting!B) protectiveSwarmCastings;
+	void addEffect(ProtectiveSwarmCasting!B protectiveSwarmCasting){
+		protectiveSwarmCastings~=move(protectiveSwarmCasting);
+	}
+	void removeProtectiveSwarmCasting(int i){
+		if(i+1<protectiveSwarmCastings.length) protectiveSwarmCastings[i]=move(protectiveSwarmCastings[$-1]);
+		protectiveSwarmCastings.length=protectiveSwarmCastings.length-1;
+	}
+	Array!(ProtectiveSwarm!B) protectiveSwarms;
+	void addEffect(ProtectiveSwarm!B protectiveSwarm){
+		protectiveSwarms~=move(protectiveSwarm);
+	}
+	void removeProtectiveSwarm(int i){
+		if(i+1<protectiveSwarms.length) swap(protectiveSwarms[i],protectiveSwarms[$-1]);
+		protectiveSwarms.length=protectiveSwarms.length-1; // TODO: reuse memory?
+	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
 	void addEffect(BrainiacProjectile!B brainiacProjectile){
@@ -3248,6 +3303,8 @@ struct Effects(B){
 		assignArray(etherealForms,rhs.etherealForms);
 		assignArray(fireformCastings,rhs.fireformCastings);
 		assignArray(fireforms,rhs.fireforms);
+		assignArray(protectiveSwarmCastings,rhs.protectiveSwarmCastings);
+		assignArray(protectiveSwarms,rhs.protectiveSwarms);
 		assignArray(brainiacProjectiles,rhs.brainiacProjectiles);
 		assignArray(brainiacEffects,rhs.brainiacEffects);
 		assignArray(shrikeProjectiles,rhs.shrikeProjectiles);
@@ -4520,7 +4577,7 @@ DamageDirection getDamageDirection(B)(ref MovingObject!B object,Vector3f attackD
 void damageAnimation(B)(ref MovingObject!B object,Vector3f attackDirection,ObjectState!B state,bool checkIdle=true){
 	if(object.creatureStats.effects.immobilized) return;
 	playSoundTypeAt(object.sacObject,object.id,SoundType.damaged,state);
-	if(checkIdle&&object.creatureState.mode!=CreatureMode.idle||!checkIdle&&object.creatureState.mode!=CreatureMode.stunned) return;
+	if(checkIdle&&!object.creatureState.mode.among(CreatureMode.idle,CreatureMode.cower)||!checkIdle&&object.creatureState.mode!=CreatureMode.stunned) return;
 	final switch(object.creatureState.movement){
 		case CreatureMovement.onGround:
 			break;
@@ -4532,6 +4589,8 @@ void damageAnimation(B)(ref MovingObject!B object,Vector3f attackDirection,Objec
 			return;
 	}
 	if(object.creatureState.movement==CreatureMovement.tumbling) return;
+	if(AnimationState.damageFront<=object.animationState&&object.animationState<=AnimationState.damageFront+DamageDirection.max)
+		return;
 	auto damageDirection=getDamageDirection(object,attackDirection,state);
 	auto animationState=cast(AnimationState)(AnimationState.damageFront+damageDirection);
 	if(!object.sacObject.hasAnimationState(animationState))
@@ -5253,6 +5312,10 @@ bool startCasting(B)(int caster,SacSpell!B spell,Target target,ObjectState!B sta
 					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
 					if(castingTime==-1) return false;
 					return stun(castFireform(manaDrain,spell,castingTime,state));
+				case SpellTag.protectiveSwarm:
+					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					if(castingTime==-1) return false;
+					return stun(castProtectiveSwarm(manaDrain,spell,castingTime,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -5667,6 +5730,25 @@ bool fireform(B)(ref MovingObject!B object,SacSpell!B spell,ObjectState!B state,
 	object.creatureStats.effects.fireform=true;
 	if(soundTimer==-1) soundTimer=playSoundAt!true("5plf",object.id,state,fireformGain);
 	state.addEffect(Fireform!B(object.id,spell,0,soundTimer));
+	return true;
+}
+
+enum protectiveSwarmGain=1.0f;
+bool castProtectiveSwarm(B)(ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,ObjectState!B state){
+	if(!state.isValidTarget(manaDrain.wizard)) return false;
+	auto soundTimer=playSoundAt!true("3rws",manaDrain.wizard,state,protectiveSwarmGain);
+	auto pswarm=ProtectiveSwarm!B(manaDrain.wizard,spell,castingTime,soundTimer);
+	state.addEffect(ProtectiveSwarmCasting!B(manaDrain,spell,move(pswarm)));
+	return true;
+}
+
+bool protectiveSwarm(B)(ProtectiveSwarm!B protectiveSwarm,ObjectState!B state){
+	if(!state.movingObjectById!((ref object){
+		if(object.creatureStats.effects.protectiveSwarm) return false;
+		object.creatureStats.effects.protectiveSwarm=true;
+		return true;
+	},()=>false)(protectiveSwarm.target)) return false;
+	state.addEffect(move(protectiveSwarm));
 	return true;
 }
 
@@ -9340,7 +9422,7 @@ bool updateSwarmCasting(B)(ref SwarmCasting!B swarmCast,ObjectState!B state){
 		swarm.target.position=swarm.target.center(state);
 			final switch(manaDrain.update(state)){
 				case CastingStatus.underway:
-					return state.movingObjectById!((obj){
+					return state.movingObjectById!((ref obj){
 						swarm.relocate(obj.swarmCastingPosition(state));
 						if(swarm.frame>0) swarm.addBugs(obj,state);
 						return swarm.updateSwarm(state);
@@ -9370,17 +9452,22 @@ Vector3f makeTargetPosition(B)(ref Swarm!B swarm,float radius,ObjectState!B stat
 	return swarm.position+state.uniform(0.0f,radius)*state.uniformDirection();
 }
 
-enum swarmFlyingHeight=1.25f;
-enum swarmDispersingFrames=2*updateFPS;
-bool addBugs(B)(ref Swarm!B swarm,ref MovingObject!B wizard,ObjectState!B state){
-	enum totalBugs=250;
-	auto num=(totalBugs-swarm.bugs.length+swarm.frame-1)/swarm.frame;
+Vector3f[2] swarmHands(B)(ref MovingObject!B wizard){
 	auto hands=wizard.hands;
 	if(isNaN(hands[0].x)&&isNaN(hands[1].x)){
 		auto hbox=wizard.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
 		auto offset=Vector3f(0.0f,hbox[1].y,hbox[1].z);
 		hands[0]=rotate(wizard.rotation,offset)+wizard.position;
 	}
+	return hands;
+}
+
+enum swarmFlyingHeight=1.25f;
+enum swarmDispersingFrames=2*updateFPS;
+bool addBugs(B)(ref Swarm!B swarm,ref MovingObject!B wizard,ObjectState!B state){
+	enum totalBugs=250;
+	auto num=(totalBugs-swarm.bugs.length+swarm.frame-1)/swarm.frame;
+	auto hands=swarmHands(wizard);
 	foreach(i;0..num){
 		auto position=randomHand(hands,state);
 		auto targetPosition=swarm.makeTargetPosition(1.0f,state);
@@ -9707,7 +9794,6 @@ bool updateFireformCasting(B)(ref FireformCasting!B fireformCast,ObjectState!B s
 				fireformCast.animateFireformCasting(state);
 				return true;
 			case CastingStatus.interrupted:
-				fireformCast.animateFireformCasting(state);
 				return false;
 			case CastingStatus.finished:
 				state.movingObjectById!(fireform,()=>false)(manaDrain.wizard,spell,state,soundTimer);
@@ -9730,11 +9816,6 @@ bool updateFireform(B)(ref Fireform!B fireform,ObjectState!B state){
 		if(!state.isValidTarget(target,TargetType.creature)) return false;
 		++frame;
 		if(--soundTimer==0) soundTimer=playSoundAt!true("5plf",target,state,fireformGain);
-		static bool check(ref MovingObject!B obj,ObjectState!B state){
-			assert(obj.creatureStats.effects.fireform);
-			obj.spawnFireformParticles(fireformParticleRate,state);
-			return obj.creatureState.mode.canShield;
-		}
 		state.movingObjectById!((ref obj,fireform,state){
 			auto hitbox=obj.hitbox;
 			hitbox[0]-=Vector3f(2.0f,2.0f,1.0f), hitbox[1]+=Vector3f(2.0f,2.0f,1.0f);
@@ -9747,6 +9828,11 @@ bool updateFireform(B)(ref Fireform!B fireform,ObjectState!B state){
 			}
 			collisionTargets!burn(hitbox,state,fireform.spell,obj.id,obj.side);
 		},(){})(fireform.target,&fireform,state);
+		static bool check(ref MovingObject!B obj,ObjectState!B state){
+			assert(obj.creatureStats.effects.fireform);
+			obj.spawnFireformParticles(fireformParticleRate,state);
+			return obj.creatureState.mode.canShield;
+		}
 		if(!state.movingObjectById!(check,()=>false)(target,state)||frame>=spell.duration*updateFPS){
 			static void removeFireform(B)(ref MovingObject!B object){
 				assert(object.creatureStats.effects.fireform);
@@ -9756,6 +9842,140 @@ bool updateFireform(B)(ref Fireform!B fireform,ObjectState!B state){
 			return false;
 		}
 		return true;
+	}
+}
+
+bool updateProtectiveSwarmCasting(B)(ref ProtectiveSwarmCasting!B protectiveSwarmCast,ObjectState!B state){
+	with(protectiveSwarmCast){
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				protectiveSwarm.status=ProtectiveSwarmStatus.casting;
+				return protectiveSwarm.updateProtectiveSwarm(state);
+			case CastingStatus.interrupted:
+				protectiveSwarm.status=ProtectiveSwarmStatus.dispersing;
+				return protectiveSwarm.updateProtectiveSwarm(state);
+			case CastingStatus.finished:
+				protectiveSwarm.status=ProtectiveSwarmStatus.steady;
+				.protectiveSwarm(move(protectiveSwarm),state);
+				return false;
+		}
+	}
+}
+Vector3f protectiveBugNewPosition(B)(Vector3f position,ObjectState!B state){
+	return (position+2.5f*state.uniformDirection()).normalized;
+}
+Vector3f protectiveSwarmSize(B)(ref MovingObject!B wizard){
+	auto hitbox=wizard.sacObject.hitbox(Quaternionf.identity(),wizard.animationState,wizard.frame/updateAnimFactor);
+	auto center=boxCenter(hitbox);
+	auto size=boxSize(hitbox);
+	size.x=size.y=max(size.x,size.y)+2.0f;
+	size.z+=1.0f;
+	return size;
+}
+void setPositions(B)(scope ProtectiveBug!B[] bugs){
+	foreach(ref bug;bugs){
+		with(bug) position=progress*targetPosition+(1.0f-progress)*startPosition;
+	}
+}
+void addBugs(B)(ref ProtectiveSwarm!B protectiveSwarm,ref MovingObject!B wizard,ObjectState!B state){
+	auto size=wizard.protectiveSwarmSize;
+	Vector3f rescale(Vector3f p){ return 0.5f*p*size; }
+	enum totalBugs=150;
+	auto num=(totalBugs-protectiveSwarm.bugs.length+protectiveSwarm.castingTime-1)/protectiveSwarm.castingTime;
+	auto hands=wizard.sacObject.hands(wizard.animationState,wizard.frame/updateAnimFactor);
+	if(isNaN(hands[0].x)&&isNaN(hands[1].x)){
+		auto hbox=wizard.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
+		hands[0]=Vector3f(0.0f,hbox[1].y,hbox[1].z);
+	}
+	auto scale=0.25f*max(1.0f,cbrt(size.x*size.y*size.z));
+	foreach(i;0..num){
+		auto position=randomHand(hands,state)/size;
+		auto targetPosition=rescale(protectiveBugNewPosition(position,state));
+		auto frame=state.uniform(32);
+		auto scale_=scale*state.uniform(0.5f,1.75f);
+		auto bug=ProtectiveBug!B(Vector3f(0.0f,0.0f,0.0f),position,targetPosition,scale_,frame);
+		protectiveSwarm.bugs~=bug;
+	}
+	setPositions(protectiveSwarm.bugs.data[$-num..$]);
+}
+void updateBugs(B)(ref ProtectiveSwarm!B protectiveSwarm,ref MovingObject!B wizard,ObjectState!B state){
+	auto size=wizard.protectiveSwarmSize;
+	Vector3f rescale(Vector3f p){ return 0.5f*p*size; }
+	foreach(ref bug;protectiveSwarm.bugs){
+		bug.progress+=3.0f/updateFPS;
+		if(bug.progress>=1.0f){
+			bug.startPosition=bug.targetPosition;
+			bug.targetPosition=rescale(protectiveBugNewPosition(bug.startPosition,state));
+			bug.progress=0.0f;
+		}
+		bug.frame+=1;
+	}
+	setPositions(protectiveSwarm.bugs.data);
+}
+
+float bugDamage(B)(ref MovingObject!B obj,float damage,int attacker,int side,Vector3f attackDirection,ObjectState!B state){
+	auto actualDamage=obj.dealSpellDamage(damage,attacker,side,attackDirection,state);
+	if(actualDamage){
+		if(obj.creatureStats.effects.buzzTime+updateFPS/3<state.frame)
+			playSpellSoundTypeAt(SoundType.swarm,obj.id,state,protectiveSwarmGain);
+		obj.creatureStats.effects.buzzTime=state.frame;
+	}
+	return actualDamage;
+}
+
+bool updateProtectiveSwarm(B)(ref ProtectiveSwarm!B protectiveSwarm,ObjectState!B state){
+	with(protectiveSwarm){
+		if(!state.isValidTarget(target,TargetType.creature)) return false;
+		if(protectiveSwarm.status!=ProtectiveSwarmStatus.dispersing){
+			if(--soundTimer==0) soundTimer=playSoundAt!true("3rws",target,state,protectiveSwarmGain);
+		}
+		frame+=1;
+		static bool check(ref MovingObject!B obj,ProtectiveSwarm!B* protectiveSwarm,ObjectState!B state){
+			if(protectiveSwarm.status==ProtectiveSwarmStatus.steady){
+				auto hitbox=obj.hitbox;
+				hitbox[0]-=Vector3f(4.0f,4.0f,2.0f), hitbox[1]+=Vector3f(4.0f,4.0f,2.0f);
+				float totalDamage=0.0f;
+				static void damage(ProximityEntry target,ObjectState!B state,SacSpell!B spell,int attacker,int side,Vector3f center,float* totalDamage){
+					if(target.id==attacker) return;
+					state.movingObjectById!((ref obj,damage,attacker,side,state){
+						if(state.sides.getStance(side,obj.side)!=Stance.ally){
+							// TODO: limit distance between hitboxes to 4?
+							*totalDamage+=obj.bugDamage(damage,attacker,side,obj.center-center,state);
+						}
+					},(){})(target.id,spell.amount/updateFPS,attacker,side,state);
+				}
+				collisionTargets!damage(hitbox,state,protectiveSwarm.spell,obj.id,obj.side,obj.center,&totalDamage);
+				if(totalDamage) obj.heal(0.5f*totalDamage,state);
+			}
+			(*protectiveSwarm).updateBugs(obj,state);
+			if(protectiveSwarm.status==ProtectiveSwarmStatus.casting){
+				if(protectiveSwarm.castingTime>0){
+					(*protectiveSwarm).addBugs(obj,state);
+					protectiveSwarm.castingTime-=1;
+				}
+				return true;
+			}
+			if(protectiveSwarm.status==ProtectiveSwarmStatus.dispersing)
+				return true;
+			assert(obj.creatureStats.effects.protectiveSwarm);
+			return obj.creatureState.mode.canShield;
+		}
+		bool valid=state.movingObjectById!(check,()=>false)(target,&protectiveSwarm,state);
+		final switch(status){
+			case ProtectiveSwarmStatus.casting,ProtectiveSwarmStatus.steady:
+				if(!valid||frame>=spell.duration*updateFPS){
+					static void removeProtectiveSwarm(B)(ref MovingObject!B object){
+						assert(object.creatureStats.effects.protectiveSwarm);
+						object.creatureStats.effects.protectiveSwarm=false;
+					}
+					state.movingObjectById!(removeProtectiveSwarm,(){})(target);
+					status=ProtectiveSwarmStatus.dispersing;
+				}
+				return true;
+			case ProtectiveSwarmStatus.dispersing:
+				alpha-=0.5f/updateFPS;
+				return alpha>0.0f;
+		}
 	}
 }
 
@@ -11322,6 +11542,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.fireforms.length;){
 		if(!updateFireform(effects.fireforms[i],state)){
 			effects.removeFireform(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.protectiveSwarmCastings.length;){
+		if(!updateProtectiveSwarmCasting(effects.protectiveSwarmCastings[i],state)){
+			effects.removeProtectiveSwarmCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.protectiveSwarms.length;){
+		if(!updateProtectiveSwarm(effects.protectiveSwarms[i],state)){
+			effects.removeProtectiveSwarm(i);
 			continue;
 		}
 		i++;
@@ -13623,15 +13857,21 @@ void playSoundType(B)(int side,SacObject!B sacObject,SoundType soundType,ObjectS
 void playSoundAt(B)(char[4] sound,Vector3f position,ObjectState!B state,float gain=1.0f){
 	static if(B.hasAudio) if(playAudio) B.playSoundAt(sound,position,gain);
 }
-void playSpellSoundTypeAt(B)(SoundType soundType,Vector3f position,ObjectState!B state,float gain=1.0f){
+auto playSpellSoundTypeAt(bool getDuration=false,B,T)(SoundType soundType,T target,ObjectState!B state,float gain=1.0f){
 	auto sset=SacSpell!B.sset;
-	if(!sset) return;
+	if(!sset){
+		static if(getDuration) return 0;
+		else return;
+	}
 	auto sounds=sset.getSounds(soundType);
 	if(sounds.length){
 		auto sound=sounds[state.uniform(cast(int)$)];
-		playSoundAt(sound,position,state,gain);
+		playSoundAt(sound,target,state,gain);
+		static if(getDuration) return getSoundDuration(sound,state);
 	}
+	static if(getDuration) return 0;
 }
+
 auto playSoundAt(bool getDuration=false,B,T...)(char[4] sound,int id,ObjectState!B state,float gain=1.0f){
 	static if(B.hasAudio) if(playAudio) B.playSoundAt(sound,id,gain);
 	static if(getDuration) return getSoundDuration(sound,state);
@@ -13655,15 +13895,6 @@ auto playSoundTypeAt(bool getDuration=false,B,T...)(SacObject!B sacObject,int id
 	if(auto sset=sacObject.sset) playSset(sset);
 	if(auto sset=sacObject.meleeSset) playSset(sset);
 	static if(getDuration) return duration;
-}
-auto playSpellSoundTypeAt(B)(SoundType soundType,int id,ObjectState!B state,float gain=1.0f){
-	auto sset=SacSpell!B.sset;
-	if(!sset) return;
-	auto sounds=sset.getSounds(soundType);
-	if(sounds.length){
-		auto sound=sounds[state.uniform(cast(int)$)];
-		playSoundAt(sound,id,state,gain);
-	}
 }
 auto stopSoundsAt(B)(int id,ObjectState!B state){
 	static if(B.hasAudio) if(playAudio) B.stopSoundsAt(id);

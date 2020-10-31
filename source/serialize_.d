@@ -362,6 +362,15 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Fir
 void serialize(alias sink,B)(ref Fireform!B fireform){ serializeStruct!sink(fireform); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Fireform!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref ProtectiveSwarmCasting!B protectiveSwarmCasting){ serializeStruct!sink(protectiveSwarmCasting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ProtectiveSwarmCasting!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref ProtectiveBug!B protectiveBug){ serializeStruct!sink(protectiveBug); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ProtectiveBug!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref ProtectiveSwarm!B protectiveSwarm){ serializeStruct!sink(protectiveSwarm); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ProtectiveSwarm!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref BrainiacProjectile!B brainiacProjectile){ serializeStruct!sink(brainiacProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BrainiacProjectile!B)){ deserializeStruct(result,state,data); }
 
