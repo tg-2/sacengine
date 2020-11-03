@@ -234,7 +234,7 @@ final class SacScene: Scene{
 
 		//view = New!Freeview(eventManager, assetManager);
 		auto eCamera=createEntity3D();
-		eCamera.position=Vector3f(1270.0f, 1270.0f, 2.0f);
+		eCamera.position=camera.position;
 		fpview=New!FirstPersonView2(eventManager, eCamera, assetManager);
 		view=fpview;
 		mouse.visible=false;

@@ -26,7 +26,7 @@ struct Camera{
 	float lastTargetFacing;
 
 	int width,height;
-	Vector3f position;
+	Vector3f position=Vector3f(1270.0f,1270.0f,2.0f);
 	float turn=0.0f,pitch=-90.0f,roll=0.0f; // TODO: use radians
 	float pitchOffset=0.0f;
 }
