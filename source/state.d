@@ -10676,18 +10676,7 @@ bool updatePoison(B)(ref Poison poison,ObjectState!B state){
 	},()=>false)(poison.creature,&poison,state);
 }
 
-void scarabProjectileHit(B)(ref ScarabProjectile!B scarabProjectile,int target,ObjectState!B state){
-	playSoundAt("hrcs",scarabProjectile.position,state,scarabProjectileHitGain);
-	Vector3f[2] hitbox;
-	if(state.isValidTarget(target,TargetType.creature)){
-		hitbox=state.movingObjectById!(.hitbox,()=>typeof(hitbox).init)(target);
-		heal(target,scarabProjectile.rangedAttack,state);
-	}else if(state.isValidTarget(target,TargetType.building)){
-		hitbox=state.staticObjectById!(.hitbox,()=>typeof(hitbox).init)(target);
-	}else{
-		hitbox[0]=scarabProjectile.position-0.5f;
-		hitbox[1]=scarabProjectile.position+0.5f;
-	}
+void animateScarabProjectileHit(B)(ref ScarabProjectile!B scarabProjectile,Vector3f[2] hitbox,ObjectState!B state){
 	if(isNaN(hitbox[0].x)) return;
 	enum numParticles=64;
 	auto sacParticle=SacParticle!B.get(ParticleType.scarabHit);
@@ -10701,6 +10690,26 @@ void scarabProjectileHit(B)(ref ScarabProjectile!B scarabProjectile,int target,O
 		int frame=0;
 		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
 	}
+}
+
+void scarabProjectileHit(B)(ref ScarabProjectile!B scarabProjectile,int target,ObjectState!B state){
+	playSoundAt("hrcs",scarabProjectile.position,state,scarabProjectileHitGain);
+	Vector3f[2] hitbox;
+	if(state.isValidTarget(target,TargetType.creature)){
+		hitbox=state.movingObjectById!(.hitbox,()=>typeof(hitbox).init)(target);
+		heal(target,scarabProjectile.rangedAttack,state);
+	}else if(state.isValidTarget(target,TargetType.building)){
+		hitbox=state.staticObjectById!(.hitbox,()=>typeof(hitbox).init)(target);
+	}else{
+		hitbox[0]=scarabProjectile.position-0.5f;
+		hitbox[1]=scarabProjectile.position+0.5f;
+	}
+	static bool callback(int target,int attacker,SacSpell!B rangedAttack,ObjectState!B state){
+		heal(target,rangedAttack,state);
+		return false;
+	}
+	with(scarabProjectile) dealSplashSpellDamageAt!callback(target,rangedAttack,rangedAttack.effectRange,attacker,side,position,state,target,rangedAttack,state);
+	scarabProjectile.animateScarabProjectileHit(hitbox,state);
 }
 
 enum scarabProjectileHitGain=2.0f;
