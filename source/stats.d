@@ -29,6 +29,7 @@ struct Effects{
 	int stunCooldown=0;
 	int rangedCooldown=0;
 	int abilityCooldown=0;
+	int yellCooldown=0;
 	int carrying=0;
 	bool appearing=false;
 	bool disappearing=false;

@@ -4576,7 +4576,12 @@ DamageDirection getDamageDirection(B)(ref MovingObject!B object,Vector3f attackD
 
 void damageAnimation(B)(ref MovingObject!B object,Vector3f attackDirection,ObjectState!B state,bool checkIdle=true){
 	if(object.creatureStats.effects.immobilized) return;
-	playSoundTypeAt(object.sacObject,object.id,SoundType.damaged,state);
+	if(AnimationState.damageFront<=object.animationState&&object.animationState<=AnimationState.damageFront+DamageDirection.max)
+		return;
+	if(object.animationState==AnimationState.flyDamage)
+		return;
+	if(object.creatureStats.effects.yellCooldown==0)
+		object.creatureStats.effects.yellCooldown=playSoundTypeAt!true(object.sacObject,object.id,SoundType.damaged,state)+updateFPS/2;
 	if(checkIdle&&!object.creatureState.mode.among(CreatureMode.idle,CreatureMode.cower)||!checkIdle&&object.creatureState.mode!=CreatureMode.stunned) return;
 	final switch(object.creatureState.movement){
 		case CreatureMovement.onGround:
@@ -4589,8 +4594,6 @@ void damageAnimation(B)(ref MovingObject!B object,Vector3f attackDirection,Objec
 			return;
 	}
 	if(object.creatureState.movement==CreatureMovement.tumbling) return;
-	if(AnimationState.damageFront<=object.animationState&&object.animationState<=AnimationState.damageFront+DamageDirection.max)
-		return;
 	auto damageDirection=getDamageDirection(object,attackDirection,state);
 	auto animationState=cast(AnimationState)(AnimationState.damageFront+damageDirection);
 	if(!object.sacObject.hasAnimationState(animationState))
@@ -6892,6 +6895,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.creatureStats.effects.rangedCooldown!=0) --object.creatureStats.effects.rangedCooldown;
 	if(object.creatureStats.effects.abilityCooldown!=0) --object.creatureStats.effects.abilityCooldown;
 	if(object.creatureStats.effects.infectionCooldown!=0) --object.creatureStats.effects.infectionCooldown;
+	if(object.creatureStats.effects.yellCooldown!=0) --object.creatureStats.effects.yellCooldown;
 	auto sacObject=object.sacObject;
 	final switch(object.creatureState.mode){
 		case CreatureMode.idle, CreatureMode.moving, CreatureMode.idleGhost, CreatureMode.movingGhost:
