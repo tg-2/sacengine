@@ -171,6 +171,12 @@ immutable(T)[char[4]] makeSpellByTag(T)(bool readFromWads){
 		}
 		fixFamiliar(result["imaf"]);
 		fixFamiliar(result["tnem"]);
+		void fixRhinok(ref Cre8 c){
+			//c.animations.thrash="????";
+			//c.animations.rise="????";
+			c.animations.corpseRise="pcdE";
+		}
+		fixRhinok(result["gard"]);
 	}
 	return cast(typeof(return))result;
 }
