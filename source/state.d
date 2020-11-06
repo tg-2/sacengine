@@ -8318,11 +8318,13 @@ bool updateSacDocCarry(B)(ref SacDocCarry!B sacDocCarry,ObjectState!B state){
 			status=SacDocCarryStatus.move;
 			tether=makeSacDocTether(sacDoc,creature,state);
 			if(!sacDoc.startIdling(state)){
+				if(soul) freeSoulImpl(&sacDocCarry,state);
 				sacDoc.kill(state);
 				return false;
 			}
 			sacDoc.animationState=cast(AnimationState)SacDoctorAnimationState.pickUpCorpse;
 			if(!state.movingObjectById!(startThrashing,()=>false)(creature,state)){
+				if(soul) freeSoulImpl(&sacDocCarry,state);
 				sacDoc.kill(state);
 				state.movingObjectById!(kill,()=>false)(creature,state);
 				return false;
@@ -8408,13 +8410,14 @@ bool updateSacDocCarry(B)(ref SacDocCarry!B sacDocCarry,ObjectState!B state){
 					}
 					if(sacDoc.animationState==cast(AnimationState)SacDoctorAnimationState.pumpCorpse){
 						if(!creature){
-							freeSoul();
 							creature=state.soulById!((ref soul)=>soul.creatureId,()=>0)(soul);
 							if(!creature){
+								freeSoul();
 								sacDoc.kill(state);
 								return false;
 							}
 							if(!state.movingObjectById!(convertRevive,()=>false)(creature,state)){
+								freeSoul();
 								sacDoc.kill(state);
 								return false;
 							}
