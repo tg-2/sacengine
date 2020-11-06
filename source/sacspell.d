@@ -21,15 +21,16 @@ enum TargetFlags{
 	 // TODO: figure out flag for these:
 	hero=1<<20,
 	familiar=1<<21,
+	sacDoctor=1<<22,
 	// spell effects
-	guardian=1<<22,
-	spedUp=1<<23,
-	ccProtected=1<<24,
-	beingSacrificed=1<<25,
+	guardian=1<<23,
+	spedUp=1<<24,
+	ccProtected=1<<25,
+	beingSacrificed=1<<26,
 	// TODO: figure out building flag for this:
-	untargetable=1<<26,
+	untargetable=1<<27,
 	// irrelevant for spell targetting:
-	rescuable=1<<27,
+	rescuable=1<<28,
 }
 
 enum AdditionalSpelFlags{
@@ -133,7 +134,8 @@ class SacSpell(B){
 	bool isApplicable(TargetFlags tflags){
 		if(!.isApplicable(flags,tflags)) return false;
 		if(tflags&TargetFlags.spedUp&&tag==SpellTag.speedup) return false;
-		if(tflags&(TargetFlags.guardian|TargetFlags.familiar)&&tag==SpellTag.guardian) return false;
+		if(tflags&(TargetFlags.guardian|TargetFlags.familiar|TargetFlags.sacDoctor)&&tag==SpellTag.guardian) return false;
+		if(tflags&(TargetFlags.familiar|TargetFlags.sacDoctor)&&tag==SpellTag.desecrate) return false;
 		// TODO: consider other data, such as flags1 and flags2?
 		return true;
 	}

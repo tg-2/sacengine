@@ -4175,6 +4175,8 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 			if(object.animationState.among(AnimationState.death0,AnimationState.death1,AnimationState.death2))
 				object.animationState=AnimationState.corpseRise;
 			else object.animationState=AnimationState.rise;
+			if(!object.sacObject.hasAnimationState(object.animationState))
+				object.animationState=AnimationState.stance1;
 			break;
 	}
 }
@@ -5512,7 +5514,7 @@ int findClosestBuilding(B)(int side,Vector3f position,ObjectState!B state){
 bool guardian(B)(int side,SacSpell!B spell,int target,ObjectState!B state){
 	if(side==-1) return false;
 	return state.movingObjectById!((ref obj,side,state){
-		if(obj.side!=side||obj.isWizard||obj.isHero||obj.isFamiliar) return false;
+		if(obj.side!=side||obj.isWizard||obj.isHero||obj.isFamiliar||obj.isSacDoctor) return false;
 		if(obj.creatureStats.effects.isGuardian) return false;
 		int structure=findClosestBuilding(side,obj.position,state);
 		if(!structure) return false;
@@ -13663,6 +13665,7 @@ TargetFlags summarize(bool simplified=false,B)(ref Target target,int side,Object
 						result|=TargetFlags.spedUp;
 					if(obj.isHero) result|=TargetFlags.hero;
 					if(obj.isFamiliar) result|=TargetFlags.familiar;
+					if(obj.isSacDoctor) result|=TargetFlags.sacDoctor;
 					if(obj.isCCProtected) result|=TargetFlags.ccProtected;
 					if(obj.isGuardian) result|=TargetFlags.guardian;
 				}
