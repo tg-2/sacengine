@@ -765,9 +765,7 @@ final class SacScene: Scene{
 	}
 
 
-	void observerControl(double dt)in{
-		assert(!!state);
-	}do{
+	void observerControl(double dt){
 		Vector3f forward = fpview.camera.worldTrans.forward;
 		Vector3f right = fpview.camera.worldTrans.right;
 		Vector3f dir = Vector3f(0, 0, 0);
@@ -790,7 +788,7 @@ final class SacScene: Scene{
 		positionCamera();
 		if(options.observer||options.debugHotkeys){
 			if(!eventManager.keyPressed[KEY_LSHIFT] && !eventManager.keyPressed[KEY_LCTRL] && !eventManager.keyPressed[KEY_CAPSLOCK]){
-				foreach(_;0..keyDown[KEY_M]){
+				if(state) foreach(_;0..keyDown[KEY_M]){
 					if(mouse.target.type==TargetType.creature&&mouse.target.id){
 						renderSide=state.current.movingObjectById!(side,()=>-1)(mouse.target.id,state.current);
 						focusCamera(mouse.target.id);
@@ -922,7 +920,7 @@ final class SacScene: Scene{
 		assert(dt==1.0f/updateFPS);
 		//writeln(DagonBackend.getTotalGPUMemory()," ",DagonBackend.getAvailableGPUMemory());
 		//writeln(eventManager.fps);
-		if(state&&(options.observer||!controller.network)) observerControl(dt);
+		if(options.observer||!controller||!controller.network) observerControl(dt);
 		if(state&&!controller.network&&options.playbackFilename=="") stateTestControl();
 		control(dt);
 		cameraControl(dt);

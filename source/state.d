@@ -4175,8 +4175,6 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 			if(object.animationState.among(AnimationState.death0,AnimationState.death1,AnimationState.death2))
 				object.animationState=AnimationState.corpseRise;
 			else object.animationState=AnimationState.rise;
-			if(!object.sacObject.hasAnimationState(object.animationState))
-				object.animationState=AnimationState.stance1;
 			break;
 	}
 }
@@ -7262,6 +7260,8 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 				object.frame=0;
 				if(object.animationState.among(AnimationState.rise,AnimationState.corpseRise)) object.animationState=AnimationState.float2Thrash;
 				else if(object.animationState==AnimationState.float2Thrash) object.animationState=AnimationState.thrash;
+				if(!object.sacObject.hasAnimationState(object.animationState))
+					object.animationState=AnimationState.stance1;
 			}
 	}
 }
