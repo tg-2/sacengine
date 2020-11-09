@@ -3935,6 +3935,7 @@ auto ref buildingByStaticObjectId(alias f,alias nonStatic,B,T...)(ref ObjectMana
 }
 
 void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
+	if(object.creatureStats.effects.immobilized) object.creatureState.mode=CreatureMode.stunned;
 	auto sacObject=object.sacObject;
 	final switch(object.creatureState.mode){
 		case CreatureMode.idle, CreatureMode.rockForm:
@@ -4119,6 +4120,7 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 				enforce(object.frame==0&&object.animationState.among(attack0,attack1,attack2,flyAttack));
 			break;
 		case CreatureMode.stunned:
+			if(object.creatureStats.effects.immobilized) break;
 			final switch(object.creatureState.movement){
 				case CreatureMovement.onGround:
 					object.frame=0;
@@ -4424,7 +4426,6 @@ void catapult(B)(ref MovingObject!B object, Vector3f velocity, ObjectState!B sta
 	if(object.creatureState.movement==CreatureMovement.flying) return;
 	if(object.creatureState.mode!=CreatureMode.dying)
 		object.creatureState.mode=CreatureMode.stunned;
-	// TODO: in original engine, stunned creatures don't switch to the tumbling animation
 	if(object.creatureState.movement!=CreatureMovement.tumbling){
 		object.creatureState.movement=CreatureMovement.tumbling;
 		object.setCreatureState(state);
@@ -10824,7 +10825,7 @@ bool updatePetrification(B)(ref Petrification petrification,ObjectState!B state)
 		bool removePetrification(){
 			obj.creatureStats.effects.petrified=false;
 			obj.creatureStats.effects.stunCooldown=0;
-			obj.creatureState.mode=CreatureMode.idle;
+			obj.startIdling(state);
 			obj.damageStun(petrification.attackDirection,state);
 			auto hitbox=obj.hitbox;
 			enum numParticles=32;
