@@ -10710,11 +10710,12 @@ void scarabProjectileHit(B)(ref ScarabProjectile!B scarabProjectile,int target,O
 		hitbox[0]=scarabProjectile.position-0.5f;
 		hitbox[1]=scarabProjectile.position+0.5f;
 	}
-	static bool callback(int target,int attacker,SacSpell!B rangedAttack,ObjectState!B state){
-		heal(target,rangedAttack,state);
+	static bool callback(int target,int side,SacSpell!B rangedAttack,ObjectState!B state){
+		if(state.movingObjectById!((ref obj)=>obj.side,()=>-1)(target)==side)
+			heal(target,rangedAttack,state);
 		return false;
 	}
-	with(scarabProjectile) dealSplashSpellDamageAt!callback(target,rangedAttack,rangedAttack.effectRange,attacker,side,position,state,target,rangedAttack,state);
+	with(scarabProjectile) dealSplashSpellDamageAt!callback(target,rangedAttack,rangedAttack.effectRange,attacker,side,position,state,side,rangedAttack,state);
 	scarabProjectile.animateScarabProjectileHit(hitbox,state);
 }
 
