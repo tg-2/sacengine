@@ -6429,7 +6429,7 @@ float maxTargetHeight(B)(ref MovingObject!B object,ObjectState!B state){
 	return object.relativeMeleeHitbox[1].z;
 }
 
-int updateTarget(B)(ref MovingObject!B object,Vector3f position,float range,ObjectState!B state){
+int updateTarget(bool advance=false,B,T...)(ref MovingObject!B object,Vector3f position,float range,ObjectState!B state){
 	if(state.frontOfAIQueue(object.side,object.id)){
 		if(object.rangedAttack&&object.rangedAttack.tag==SpellTag.scarabShoot){
 			auto targetId=state.proximity.lowestHealthCreatureInRange(object.side,object.id,position,object.rangedAttack.range,state);
@@ -6437,7 +6437,8 @@ int updateTarget(B)(ref MovingObject!B object,Vector3f position,float range,Obje
 			object.creatureAI.targetId=targetId;
 		}else{
 			float maxHeight=object.maxTargetHeight(state);
-			object.creatureAI.targetId=state.proximity.closestEnemyInRange(object.side,position,range,EnemyType.all,state,maxHeight);
+			static if(advance) object.creatureAI.targetId=state.proximity.closestEnemyInRangeAndClosestToPreferringAttackersOf(object.side,object.position,range,position,object.id,EnemyType.all,state,maxHeight);
+			else object.creatureAI.targetId=state.proximity.closestEnemyInRange(object.side,position,range,EnemyType.all,state,maxHeight);
 		}
 	}
 	if(!state.isValidTarget(object.creatureAI.targetId)) object.creatureAI.targetId=0;
@@ -6471,7 +6472,6 @@ bool patrol(B)(ref MovingObject!B object,ObjectState!B state){
 	if(!object.isAggressive(state)) return false;
 	auto position=object.position;
 	auto range=object.aggressiveRange(CommandType.none,state);
-	auto maxHeight=object.maxTargetHeight(state);
 	if(auto targetId=object.updateTarget(position,range,state))
 		if(object.attack(targetId,state))
 			return true;
@@ -6480,13 +6480,8 @@ bool patrol(B)(ref MovingObject!B object,ObjectState!B state){
 
 bool advance(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectState!B state){
 	if(object.isPacifist(state)) return false;
-	auto position=object.position;
 	auto range=object.advanceRange(CommandType.none,state);
-	auto maxHeight=object.maxTargetHeight(state);
-	if(state.frontOfAIQueue(object.side,object.id))
-		object.creatureAI.targetId=state.proximity.closestEnemyInRangeAndClosestToPreferringAttackersOf(object.side,object.position,range,targetPosition,object.id,EnemyType.all,state,maxHeight);
-	if(!state.isValidTarget(object.creatureAI.targetId,TargetType.creature)) object.creatureAI.targetId=0;
-	if(object.creatureAI.targetId)
+	if(auto targetId=object.updateTarget!true(targetPosition,range,state))
 		if(object.attack(object.creatureAI.targetId,state))
 			return true;
 	return false;
