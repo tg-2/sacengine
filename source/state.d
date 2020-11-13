@@ -4595,6 +4595,7 @@ DamageDirection getDamageDirection(B)(ref MovingObject!B object,Vector3f attackD
 }
 
 void damageAnimation(B)(ref MovingObject!B object,Vector3f attackDirection,ObjectState!B state,bool checkIdle=true){
+	if(checkIdle&&!object.canDamage(state)) return;
 	if(object.creatureStats.effects.immobilized) return;
 	if(AnimationState.damageFront<=object.animationState&&object.animationState<=AnimationState.damageFront+DamageDirection.max)
 		return;
