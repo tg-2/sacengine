@@ -4173,10 +4173,29 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 		case CreatureMode.convertReviving:
 			break;
 		case CreatureMode.thrashing:
-			object.frame=0;
-			if(object.animationState.among(AnimationState.death0,AnimationState.death1,AnimationState.death2))
-				object.animationState=AnimationState.corpseRise;
-			else object.animationState=AnimationState.rise;
+			if(object.animationState.among(AnimationState.death0,AnimationState.death1,AnimationState.death2)){
+				if(sacObject.hasAnimationState(AnimationState.corpseRise)){
+					object.frame=0;
+					object.animationState=AnimationState.corpseRise;
+					break;
+				}
+			}else{
+				if(sacObject.hasAnimationState(AnimationState.rise)){
+					object.frame=0;
+					object.animationState=AnimationState.rise;
+					break;
+				}
+			}
+			if(sacObject.hasAnimationState(AnimationState.float2Thrash)){
+				object.frame=0;
+				object.animationState=AnimationState.float2Thrash;
+				break;
+			}
+			if(sacObject.hasAnimationState(AnimationState.thrash)){
+				object.frame=0;
+				object.animationState=AnimationState.thrash;
+				break;
+			}
 			break;
 	}
 }
@@ -7251,13 +7270,17 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 		case CreatureMode.convertReviving:
 			break;
 		case CreatureMode.thrashing:
-			object.frame+=1;
+			if(object.animationState.among(AnimationState.rise,AnimationState.corpseRise,AnimationState.thrash,AnimationState.float2Thrash,AnimationState.thrash))
+				object.frame+=1;
 			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
 				object.frame=0;
 				if(object.animationState.among(AnimationState.rise,AnimationState.corpseRise)) object.animationState=AnimationState.float2Thrash;
 				else if(object.animationState==AnimationState.float2Thrash) object.animationState=AnimationState.thrash;
-				if(!object.sacObject.hasAnimationState(object.animationState))
-					object.animationState=AnimationState.stance1;
+				if(!object.sacObject.hasAnimationState(object.animationState)){
+					object.animationState=AnimationState.thrash;
+					if(!object.sacObject.hasAnimationState(object.animationState))
+						object.animationState=AnimationState.stance1;
+				}
 			}
 	}
 }
