@@ -1137,7 +1137,7 @@ struct Renderer(B){
 						auto mesh=self.tube.getFrame(frame%self.tube.numFrames);
 						mesh.render(rc);
 					}
-					foreach(ref effect;objects.tickfernoEffects) renderTube(effect.position,effect.direction,effect.frame,1.2f,3.0f);
+					foreach(ref effect;objects.tickfernoEffects) renderTube(effect.position,effect.direction,effect.frame,1.2f,2.0f);
 					foreach(ref effect;objects.vortickEffects) renderTube(effect.position,effect.direction,effect.frame,0.6f,2.0f);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.lifeShields.length){

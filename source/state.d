@@ -10922,7 +10922,7 @@ bool updateTickfernoProjectile(B)(ref TickfernoProjectile!B tickfernoProjectile,
 				default: break;
 			}
 		}
-		if(hitframe!=-1&&frame>=hitframe+updateFPS||frame>=2*updateFPS){
+		if(hitframe!=-1&&frame>=hitframe+updateFPS/2||frame>=updateFPS){
 			startPosition+=velocity;
 			if(dot(position-startPosition,direction)<0.0f)
 				return false;
@@ -10933,7 +10933,7 @@ bool updateTickfernoProjectile(B)(ref TickfernoProjectile!B tickfernoProjectile,
 bool updateTickfernoEffect(B)(ref TickfernoEffect effect,ObjectState!B state){
 	with(effect){
 		static assert(updateFPS==60);
-		return ++frame<96; // TODO: fix timing on this
+		return ++frame<64; // TODO: fix timing on this
 	}
 }
 
