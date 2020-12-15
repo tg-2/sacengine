@@ -80,15 +80,14 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==S[n
 	data.popFrontN(n);
 }
 void serialize(alias sink,T)(Array!T values)if(!is(T==bool)){
-	static assert(is(size_t==ulong));
-	serialize!sink(values.length);
+	static assert(is(size_t:ulong));
+	serialize!sink(cast(ulong)values.length);
 	foreach(ref v;values.data) serialize!sink(v);
 }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Array!S,S)&&!is(S==bool)){
-	static assert(is(size_t==ulong));
-	size_t len;
+	ulong len;
 	deserialize(len,state,data);
-	result.length=len;
+	result.length=cast(size_t)len;
 	foreach(ref v;result.data) deserialize(v,state,data);
 }
 void serialize(alias sink,T)(Array!bool values){
@@ -99,15 +98,14 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Arr
 }
 
 void serialize(alias sink,T)(T[] values){
-	static assert(is(size_t==ulong));
-	serialize!sink(values.length);
+	static assert(is(size_t:ulong));
+	serialize!sink(cast(ulong)values.length);
 	foreach(ref v;values) serialize!sink(cast()v);
 }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==S[],S)){
-	static assert(is(size_t==ulong));
-	size_t len;
+	ulong len;
 	deserialize(len,state,data);
-	result.length=len;
+	result.length=cast(size_t)len;
 	foreach(ref v;result) deserialize(*cast(Unqual!(typeof(v))*)&v,state,data);
 }
 
@@ -558,7 +556,7 @@ void deserialize(T,R)(T recording,ref R data)if(is(T==Recording!B,B)){
 	deserializeClass!(["manaParticles","shrineParticles","manahoarParticles"])(sides,ObjectState!B.init,data);
 	auto proximity=new Proximity!B();
 	auto pathFinder=new PathFinder!B(map);
-	size_t len;
+	ulong len;
 	deserialize(len,ObjectState!B.init,data);
 	enforce(len!=0);
 	foreach(i;0..len){
