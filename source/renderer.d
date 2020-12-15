@@ -1053,7 +1053,7 @@ struct Renderer(B){
 					}
 				}
 				static foreach(arrow;["sylph","ranger"])
-				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(mixin(`objects.`~arrow~`Effects`).length||mixin(`objects.`~arrow,`Projectiles`).length)){
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(mixin(`objects.`~arrow~`Effects`).length||mixin(`objects.`~arrow~`Projectiles`).length)){
 					auto material=mixin(`self.arrow.`~arrow~`Material`);
 					material.bind(rc);
 					B.disableCulling();
@@ -1070,13 +1070,13 @@ struct Renderer(B){
 						// }
 						state.movingObjectById!(renderLoadedArrow!B,(){})(id,mesh,state,info,rc);
 					}
-					foreach(j;0..mixin(`objects.`~arrow,`Projectiles`).length){
-						auto position=mixin(`objects.`~arrow,`Projectiles`)[j].position;
-						auto velocity=mixin(`objects.`~arrow,`Projectiles`)[j].velocity;
+					foreach(j;0..mixin(`objects.`~arrow~`Projectiles`).length){
+						auto position=mixin(`objects.`~arrow~`Projectiles`)[j].position;
+						auto velocity=mixin(`objects.`~arrow~`Projectiles`)[j].velocity;
 						auto direction=velocity.normalized;
 						auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),direction);
 						B.shadelessMaterialBackend.setTransformationScaled(position,rotation,Vector3f(1.0f,1.0f,1.6f),rc);
-						auto mesh=self.arrow.getFrame(mixin(`objects.`~arrow,`Projectiles`)[j].frame%(16*updateAnimFactor));
+						auto mesh=self.arrow.getFrame(mixin(`objects.`~arrow~`Projectiles`)[j].frame%(16*updateAnimFactor));
 						mesh.render(rc);
 					}
 				}
