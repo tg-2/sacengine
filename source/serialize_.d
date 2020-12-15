@@ -45,10 +45,10 @@ void deserializeClass(string[] noserialize,T,R,B)(T object,ObjectState!B state,r
 	}
 }
 
-void serialize(alias sink,T)(T t)if(is(T==int)||is(T==uint)||is(T==size_t)||is(T==float)||is(T==bool)||is(T==ubyte)||is(T==char)){
+void serialize(alias sink,T)(T t)if(is(T==int)||is(T==uint)||is(T==ulong)||is(T==float)||is(T==bool)||is(T==ubyte)||is(T==char)){
 	sink((*cast(ubyte[t.sizeof]*)&t)[]);
 }
-void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==int)||is(T==uint)||is(T==size_t)||is(T==float)||is(T==bool)||is(T==ubyte)||is(T==char)){
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==int)||is(T==uint)||is(T==ulong)||is(T==float)||is(T==bool)||is(T==ubyte)||is(T==char)){
 	enum n=T.sizeof;
 	auto bytes=(cast(ubyte*)(&result))[0..n];
 	data.take(n).copy(bytes);
@@ -63,17 +63,17 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==enu
 void serialize(alias sink)(ref MinstdRand0 rng){ serializeStruct!sink(rng); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==MinstdRand0)){ deserializeStruct(result,state,data); }
 
-void serialize(alias sink,T,size_t n)(ref T[n] values)if(!(is(T==char)||is(T==ubyte)||is(T==int)||is(T==uint)||is(T==size_t)||is(T==float)||is(T==bool)||is(T==ubyte))){
+void serialize(alias sink,T,size_t n)(ref T[n] values)if(!(is(T==char)||is(T==ubyte)||is(T==int)||is(T==uint)||is(T==ulong)||is(T==float)||is(T==bool)||is(T==ubyte))){
 	foreach(ref v;values) serialize!sink(v);
 }
-void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==S[n],S,size_t n)&&!(is(S==char)||is(S==ubyte)||is(S==int)||is(S==uint)||is(S==size_t)||is(S==float)||is(S==bool)||is(S==ubyte))){
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==S[n],S,size_t n)&&!(is(S==char)||is(S==ubyte)||is(S==int)||is(S==uint)||is(S==ulong)||is(S==float)||is(S==bool)||is(S==ubyte))){
 	foreach(ref v;result) deserialize(v,state,data);
 }
 
-void serialize(alias sink,T,size_t n)(ref T[n] values)if(is(T==char)||is(T==ubyte)||is(T==int)||is(T==uint)||is(T==size_t)||is(T==float)||is(T==bool)||is(T==ubyte)){
+void serialize(alias sink,T,size_t n)(ref T[n] values)if(is(T==char)||is(T==ubyte)||is(T==int)||is(T==uint)||is(T==ulong)||is(T==float)||is(T==bool)||is(T==ubyte)){
 	sink(cast(ubyte[])values[]);
 }
-void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==S[n],S,size_t n)&&(is(S==char)||is(S==ubyte)||is(S==int)||is(S==uint)||is(S==size_t)||is(S==float)||is(S==bool)||is(S==ubyte))){
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==S[n],S,size_t n)&&(is(S==char)||is(S==ubyte)||is(S==int)||is(S==uint)||is(S==ulong)||is(S==float)||is(S==bool)||is(S==ubyte))){
 	enum n=T.sizeof;
 	auto bytes=(cast(ubyte*)(&result))[0..n];
 	data.take(n).copy(bytes);
