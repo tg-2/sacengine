@@ -12073,7 +12073,7 @@ int[3] findClosestBuildings(B)(int side,Vector3f position,ObjectState!B state){ 
 					static foreach(k;EnumMembers!RType){{
 						static if(k==RType.building){
 							if(state.buildingById!((ref bldg,side)=>bldg.side!=side,()=>true)(objects.buildingIds[j],side))
-								mixin(text(`goto Lnext`,k),`;`);
+								mixin(text(`goto Lnext`,k,`;`));
 						}else static if(k==RType.shrine){
 							if(!altar&&!shrine||state.buildingById!((ref bldg,side)=>bldg.side!=side||bldg.flags&AdditionalBuildingFlags.inactive,()=>true)(objects.buildingIds[j],side))
 								mixin(text(`goto Lnext`,k,`;`));
