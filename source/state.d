@@ -6294,7 +6294,7 @@ float shootDistance(B)(ref MovingObject!B object,ObjectState!B state){
 	return 0.0f;
 }
 bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,ObjectState!B state){
-	if(!isValidAttackTarget(targetId,state)) return true; // TODO
+	if(!isValidAttackTarget(targetId,state)&&(object.creatureState.mode!=CreatureMode.shooting||!state.isValidTarget(targetId))) return true; // TODO
 	if(object.rangedAttack !is rangedAttack) return false; // TODO: multiple ranged attacks?
 	auto predicted=rangedAttack.needsPrediction?
 		object.creatureAI.predictor.predictCenter(object.firstShotPosition,rangedAttack.speed,targetId,state) :
@@ -7555,6 +7555,8 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			break;
 		case CreatureMovement.tumbling:
 			object.creatureState.fallingVelocity.z-=object.creatureStats.fallingAcceleration/updateFPS;
+			//enum speedCap=30.0f; TODO: figure out constant
+			//if(object.creatureState.fallingVelocity.lengthsqr>speedCap^^2) object.creatureState.fallingVelocity=object.creatureState.fallingVelocity.normalized*speedCap;
 			newPosition=object.position+object.creatureState.fallingVelocity/updateFPS;
 			if(object.creatureState.fallingVelocity.z<=0.0f && state.isOnGround(newPosition))
 				newPosition.z=max(newPosition.z,state.getGroundHeight(newPosition));
