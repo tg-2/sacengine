@@ -7196,7 +7196,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 								object.animationState=AnimationState.hitFloor; // TODO: fall damage
 							}
 						}else object.startIdling(state);
-					}
+					}else object.startIdling(state);
 					break;
 				}
 			}
