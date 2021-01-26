@@ -1071,7 +1071,7 @@ final class SacScene: Scene{
 				mouse.cursor=Cursor.rectangleSelect;
 				break;
 			case MouseStatus.icon:
-				if(!renderer.spellbookVisible(state.current,info)){
+				if(mouse.icon==MouseIcon.spell&&!renderer.spellbookVisible(state.current,info)){
 					mouse.status=MouseStatus.standard;
 					if(audio) audio.playSound("kabI");
 					goto case MouseStatus.standard;
