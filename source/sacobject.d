@@ -1690,6 +1690,34 @@ struct SacBasiliskEffect(B){
 	}
 }
 
+struct SacLifeShield(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/ent1.TXTR"));
+	}
+	B.Material material;
+	B.SubSphere[16] frames;
+	enum animationDelay=2;
+	enum numFrames=16*updateAnimFactor*animationDelay;
+	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
+}
+
+struct SacDivineSight(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/scri.TXTR"));
+	}
+	B.Material material;
+	B.Mesh[] frames;
+	enum animationDelay=4;
+	enum numFrames=16*updateAnimFactor*animationDelay;
+	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
+	static B.Mesh[] createMeshes(){
+		return makeSpriteMeshes!B(4,4,2.5f,2.25f);
+	}
+}
+
+
 struct SacLaser(B){
 	B.Texture texture;
 	B.Material material;
@@ -1721,33 +1749,22 @@ struct SacTube(B){
 	}
 }
 
-
-struct SacLifeShield(B){
+struct SacVortexEffect(B){
 	B.Texture texture;
 	static B.Texture loadTexture(){
-		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/ent1.TXTR"));
-	}
-	B.Material material;
-	B.SubSphere[16] frames;
-	enum animationDelay=2;
-	enum numFrames=16*updateAnimFactor*animationDelay;
-	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
-}
-
-struct SacDivineSight(B){
-	B.Texture texture;
-	static B.Texture loadTexture(){
-		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/scri.TXTR"));
+		return B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/cst0.TXTR"));
 	}
 	B.Material material;
 	B.Mesh[] frames;
 	enum animationDelay=4;
 	enum numFrames=16*updateAnimFactor*animationDelay;
 	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
+	//auto getFrame(int i){ return frames[9]; }
 	static B.Mesh[] createMeshes(){
-		return makeSpriteMeshes!B(4,4,2.5f,2.25f);
+		return makeSpriteMeshes!B(4,4,1.0f,1.0f);
 	}
 }
+
 
 struct SacVortex(B){
 	B.Texture redRim,redCenter;

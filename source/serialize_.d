@@ -447,6 +447,12 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Vor
 void serialize(alias sink)(ref VortickEffect vortickEffect){ serializeStruct!sink(vortickEffect); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==VortickEffect)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref VortexEffect!B vortexEffect){ serializeStruct!sink(vortexEffect); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==VortexEffect!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref VortexEffect!B.Particle particle){ serializeStruct!sink(particle); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==VortexEffect!B.Particle)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref RockForm!B rockForm){ serializeStruct!sink(rockForm); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==RockForm!B)){ deserializeStruct(result,state,data); }
 

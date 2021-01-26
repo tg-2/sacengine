@@ -269,6 +269,17 @@ struct Renderer(B){
 		auto frames=typeof(return).createMeshes();
 		return SacTube!B(texture,mat,frames);
 	}
+	SacVortexEffect!B vortexEffect;
+	SacVortexEffect!B createVortexEffect(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Additive;
+		mat.energy=20.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacVortexEffect!B(texture,mat,frames);
+	}
 	SacLaser!B laser;
 	SacLaser!B createLaser(){
 		auto texture=typeof(return).loadTexture();
@@ -327,6 +338,7 @@ struct Renderer(B){
 		laser=createLaser();
 		basiliskEffect=createBasiliskEffect();
 		tube=createTube();
+		vortexEffect=createVortexEffect();
 		lifeShield=createLifeShield();
 		divineSight=createDivineSight();
 	}
@@ -1137,8 +1149,25 @@ struct Renderer(B){
 						auto mesh=self.tube.getFrame(frame%self.tube.numFrames);
 						mesh.render(rc);
 					}
-					foreach(ref effect;objects.tickfernoEffects) renderTube(effect.position,effect.direction,effect.frame,1.2f,2.0f);
-					foreach(ref effect;objects.vortickEffects) renderTube(effect.position,effect.direction,effect.frame,0.6f,2.0f);
+					foreach(ref effect;objects.tickfernoEffects.data) renderTube(effect.position,effect.direction,effect.frame,1.2f,2.0f);
+					foreach(ref effect;objects.vortickEffects.data) renderTube(effect.position,effect.direction,effect.frame,0.6f,2.0f);
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.vortexEffects.length){
+					auto material=self.vortexEffect.material;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
+					foreach(ref effect;objects.vortexEffects.data){
+						foreach(ref particle;effect.particles.data){
+							auto position=particle.position;
+							auto frame=particle.frame;
+							auto scale=(0.6f+0.4f*frame/(effect.duration*updateFPS)*particle.scale);
+							B.shadelessMaterialBackend.setSpriteTransformationScaled(effect.position+position,scale,rc);
+							auto alpha=(1.0f-1.0f*effect.frame/(effect.duration*updateFPS))^^2;
+							B.shadelessMaterialBackend.setAlpha(alpha);
+							auto mesh=self.vortexEffect.getFrame(frame%self.vortexEffect.numFrames);
+							mesh.render(rc);
+						}
+					}
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.lifeShields.length){
 					auto material=self.lifeShield.material;

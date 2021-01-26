@@ -2567,6 +2567,22 @@ struct VortickEffect{
 	int frame=0;
 }
 
+struct VortexEffect(B){
+	Vector3f position;
+	SacSpell!B rangedAttack;
+	int frame=0;
+	struct Particle{
+		Vector3f position;
+		Vector3f velocity;
+		float scale=1.0f;
+		int frame=0;
+	}
+	Array!Particle particles;
+	enum duration=2.0f;
+	enum radiusFactor=2;
+	enum maxHeight=4.0f;
+}
+
 enum RockFormStatus{ growing, stationary, shrinking }
 struct RockForm(B){
 	int target;
@@ -3185,6 +3201,14 @@ struct Effects(B){
 		if(i+1<vortickEffects.length) vortickEffects[i]=move(vortickEffects[$-1]);
 		vortickEffects.length=vortickEffects.length-1;
 	}
+	Array!(VortexEffect!B) vortexEffects;
+	void addEffect(VortexEffect!B vortexEffect){
+		vortexEffects~=move(vortexEffect);
+	}
+	void removeVortexEffect(int i){
+		if(i+1<vortexEffects.length) swap(vortexEffects[i],vortexEffects[$-1]);
+		vortexEffects.length=vortexEffects.length-1; // TODO: reuse memory?
+	}
 	Array!(RockForm!B) rockForms;
 	void addEffect(RockForm!B rockForm){
 		rockForms~=move(rockForm);
@@ -3331,6 +3355,7 @@ struct Effects(B){
 		assignArray(tickfernoEffects,rhs.tickfernoEffects);
 		assignArray(vortickProjectiles,rhs.vortickProjectiles);
 		assignArray(vortickEffects,rhs.vortickEffects);
+		assignArray(vortexEffects,rhs.vortexEffects);
 		assignArray(rockForms,rhs.rockForms);
 		assignArray(stealths,rhs.stealths);
 		assignArray(lifeShields,rhs.lifeShields);
@@ -5934,6 +5959,13 @@ bool vortickShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vec
 	playSoundAt("2xtv",position,state,4.0f);
 	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
 	state.addEffect(VortickProjectile!B(attacker,side,intendedTarget,position,direction,rangedAttack,rangedAttack.range));
+	return true;
+}
+
+enum vortexGain=4.0f;
+bool spawnVortex(B)(Vector3f position,SacSpell!B rangedAttack,ObjectState!B state){
+	playSoundAt("gxtv",position,state,vortexGain);
+	state.addEffect(VortexEffect!B(position,rangedAttack));
 	return true;
 }
 
@@ -10937,7 +10969,6 @@ bool updateTickfernoEffect(B)(ref TickfernoEffect effect,ObjectState!B state){
 	}
 }
 
-enum vortickProjectileHitGain=4.0f;
 enum vortickProjectileSize=0.45f; // TODO: ok?
 enum vortickProjectileSlidingDistance=1.5f;
 static immutable Vector3f[2] vortickProjectileHitbox=[-0.5f*vortickProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*vortickProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
@@ -10965,7 +10996,7 @@ bool updateVortickProjectile(B)(ref VortickProjectile!B vortickProjectile,Object
 			target=state.lineOfSightWithoutSide(oldPosition,position,side,intendedTarget);
 		}
 		bool terminate(){
-			playSoundAt("gxtv",position,state,vortickProjectileHitGain);
+			spawnVortex(position,rangedAttack,state);
 			return false;
 		}
 		if(remainingDistance<=0.0f) return terminate();
@@ -10973,11 +11004,11 @@ bool updateVortickProjectile(B)(ref VortickProjectile!B vortickProjectile,Object
 			case TargetType.terrain:
 				return terminate();
 			case TargetType.creature:
-				auto effectDirection=20.0f*Vector3f(-direction.x,-direction.y,2.0f).normalized;
+				/+auto effectDirection=20.0f*Vector3f(-direction.x,-direction.y,2.0f).normalized;
 				state.movingObjectById!((ref obj,state){
 					obj.creatureState.fallingVelocity.z=0.0f;
 					obj.catapult(effectDirection,state);
-				},(){})(target.id,state);
+				},(){})(target.id,state);+/
 				goto case;
 			case TargetType.building:
 				dealRangedDamage(target.id,rangedAttack,attacker,side,direction,state);
@@ -10991,6 +11022,72 @@ bool updateVortickEffect(B)(ref VortickEffect effect,ObjectState!B state){
 	with(effect){
 		static assert(updateFPS==60);
 		return ++frame<64; // TODO: fix timing on this
+	}
+}
+
+Vector3f vortexForceField(Vector3f position,float radius,float height){
+	//if(position.xy.lengthsqr>radius*radius) return Vector3f(0.0f,0.0f,0.0f);
+	if(position.z<0.0f||position.z>height) return Vector3f(0.0f,0.0f,0.0f);
+	return Vector3f((-15.0f*position.y-10.0f*position.x)/radius,(5.0f*position.x-10.0f*position.y)/radius,30.0f*1.25f);
+}
+void addVortexParticles(B)(ref VortexEffect!B vortex,ObjectState!B state){
+	with(vortex){
+		auto radius=radiusFactor*rangedAttack.effectRange;
+		auto height=maxHeight;
+		auto numParticles=4;
+		foreach(i;0..numParticles){
+			auto position=Vector3f(0.0f,0.0f,0.0f);
+			auto directionXY=radius*state.uniformDirection!(float,2)();
+			auto locationXY=state.uniform(0.0f,0.3f);
+			auto velocityXY=(1.0f-locationXY)/duration*directionXY;
+			position.x+=locationXY/duration*directionXY.x;
+			position.y+=locationXY/duration*directionXY.y;
+			auto velocityZ=state.uniform(0.8f,1.0f)*height/duration;
+			auto velocity=Vector3f(velocityXY.x,velocityXY.y,velocityZ);
+			auto scale=state.uniform(0.3f,1.0f);
+			auto frame=0;
+			vortex.particles~=Particle(position,velocity,scale,frame);
+		}
+	}
+}
+
+bool updateVortexEffect(B)(ref VortexEffect!B vortex,ObjectState!B state){
+	with(vortex){
+		if(frame<0.75f*duration*updateFPS) vortex.addVortexParticles(state);
+		auto radius=radiusFactor*rangedAttack.effectRange;
+		auto height=maxHeight;
+		for(int i=0;i<particles.length;){
+			with(particles[i]){
+				auto velocityXY=(vortexForceField(position,radius,height)-Vector3f(0.0f,0.0f,30.0f))/updateFPS;
+				velocity.x+=velocityXY.x;
+				velocity.y+=velocityXY.y;
+				position+=velocity/updateFPS;
+				if(++frame>2*updateFPS){
+					if(i+1<particles.length) swap(particles[i],particles[$-1]);
+					particles.length=particles.length-1;
+					continue;
+				}
+				i++;
+			}
+		}
+		Vector3f[2] hitbox=[Vector3f(position.x-radius,position.y-radius,position.z),Vector3f(position.x+radius,position.y+radius,position.z+height)];
+		static void influence(ProximityEntry target,ObjectState!B state,VortexEffect!B *vortex,float radius,float height){
+			state.movingObjectById!((ref obj,vortex,radius,height,state){
+				if(obj.creatureState.movement!=CreatureMovement.tumbling){
+					auto direction=(vortex.position.xy-obj.center.xy).normalized*5.0f;
+					obj.catapult(Vector3f(direction.x,direction.y,3.0f),state);
+				}
+				if(obj.creatureState.movement==CreatureMovement.tumbling){
+					auto acceleration=vortexForceField(obj.center-vortex.position,radius,height);
+					acceleration.x*=3.0f;
+					acceleration.y*=3.0f;
+					obj.creatureState.fallingVelocity+=acceleration/updateFPS;
+					obj.creatureState.fallingVelocity.z=max(obj.creatureState.fallingVelocity.z,3.0f);
+				}
+			},(){})(target.id,vortex,radius,height,state);
+		}
+		collisionTargets!influence(hitbox,state,&vortex,radius,height);
+		return ++frame<=duration*updateFPS;
 	}
 }
 
@@ -11778,6 +11875,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.vortickEffects.length;){
 		if(!updateVortickEffect(effects.vortickEffects[i],state)){
 			effects.removeVortickEffect(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.vortexEffects.length;){
+		if(!updateVortexEffect(effects.vortexEffects[i],state)){
+			effects.removeVortexEffect(i);
 			continue;
 		}
 		i++;
@@ -12728,7 +12832,8 @@ final class ObjectState(B){ // (update logic)
 	}
 	Vector!(T,n) uniformDirection(T=float,int n=3)(){
 		// TODO: fix bias
-		return Vector3f(uniform(-1.0f,1.0f),uniform(-1.0f,1.0f),uniform(-1.0f,1.0f)).normalized;
+		static if(n==2) return Vector2f(uniform(-1.0f,1.0f),uniform(-1.0f,1.0f)).normalized;
+		else return Vector3f(uniform(-1.0f,1.0f),uniform(-1.0f,1.0f),uniform(-1.0f,1.0f)).normalized;
 	}
 	void copyFrom(ObjectState!B rhs){
 		frame=rhs.frame;
