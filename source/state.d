@@ -4472,10 +4472,9 @@ void catapult(B)(ref MovingObject!B object, Vector3f velocity, ObjectState!B sta
 		object.creatureState.mode=CreatureMode.stunned;
 	if(object.creatureState.movement!=CreatureMovement.tumbling){
 		object.creatureState.movement=CreatureMovement.tumbling;
+		object.creatureState.fallingVelocity=velocity;
 		object.setCreatureState(state);
-		object.creatureState.fallingVelocity=Vector3f(0.0f,0.0f,0.0f);
-	}
-	object.creatureState.fallingVelocity+=velocity;
+	}else object.creatureState.fallingVelocity+=velocity;
 }
 
 void immediateRevive(B)(ref MovingObject!B object,ObjectState!B state){
@@ -7554,7 +7553,8 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			}
 			break;
 		case CreatureMovement.tumbling:
-			object.creatureState.fallingVelocity.z-=object.creatureStats.fallingAcceleration/updateFPS;
+			if(object.creatureStats.effects.antiGravityTime<state.frame)
+				object.creatureState.fallingVelocity.z-=object.creatureStats.fallingAcceleration/updateFPS;
 			//enum speedCap=30.0f; TODO: figure out constant
 			//if(object.creatureState.fallingVelocity.lengthsqr>speedCap^^2) object.creatureState.fallingVelocity=object.creatureState.fallingVelocity.normalized*speedCap;
 			newPosition=object.position+object.creatureState.fallingVelocity/updateFPS;
@@ -11027,21 +11027,29 @@ bool updateVortickEffect(B)(ref VortickEffect effect,ObjectState!B state){
 	}
 }
 
+Vector3f vortexAnimationForceField(Vector3f position,float radius,float height){
+	//if(position.xy.lengthsqr>radius*radius) return Vector3f(0.0f,0.0f,0.0f);
+	if(position.z<0.0f||position.z>height) return Vector3f(0.0f,0.0f,0.0f);
+	//return Vector3f(-3.75f*position.y-2.5f*position.x,3.75f*position.x-2.5f*position.y,30.0f*0.25f);
+	return Vector3f(-3.75f*position.y-1.5f*position.x,3.75f*position.x-1.5f*position.y,30.0f*0.3f);
+}
 Vector3f vortexForceField(Vector3f position,float radius,float height){
 	//if(position.xy.lengthsqr>radius*radius) return Vector3f(0.0f,0.0f,0.0f);
 	if(position.z<0.0f||position.z>height) return Vector3f(0.0f,0.0f,0.0f);
-	return Vector3f((-15.0f*position.y-10.0f*position.x)/radius,(5.0f*position.x-10.0f*position.y)/radius,30.0f*1.25f);
+	return Vector3f(-3.75f*position.y-1.5f*position.x,3.75f*position.x-1.5f*position.y,30.0f*0.3f);
 }
+
 void addVortexParticles(B)(ref VortexEffect!B vortex,ObjectState!B state){
 	with(vortex){
 		auto radius=radiusFactor*rangedAttack.effectRange;
 		auto height=maxHeight;
-		auto numParticles=4;
+		auto numParticles=5;
 		foreach(i;0..numParticles){
 			auto position=Vector3f(0.0f,0.0f,0.0f);
 			auto directionXY=radius*state.uniformDirection!(float,2)();
-			auto locationXY=state.uniform(0.0f,0.3f);
-			auto velocityXY=(1.0f-locationXY)/duration*directionXY;
+			auto locationXY=state.uniform(0.0f,0.2f);
+			auto endlocationXY=state.uniform(max(locationXY,0.95f),1.0f);
+			auto velocityXY=(endlocationXY-locationXY)/duration*directionXY;
 			position.x+=locationXY/duration*directionXY.x;
 			position.y+=locationXY/duration*directionXY.y;
 			auto velocityZ=state.uniform(0.8f,1.0f)*height/duration;
@@ -11060,7 +11068,7 @@ bool updateVortexEffect(B)(ref VortexEffect!B vortex,ObjectState!B state){
 		auto height=maxHeight;
 		for(int i=0;i<particles.length;){
 			with(particles[i]){
-				auto velocityXY=(vortexForceField(position,radius,height)-Vector3f(0.0f,0.0f,30.0f))/updateFPS;
+				auto velocityXY=vortexAnimationForceField(position,radius,height)/updateFPS;
 				velocity.x+=velocityXY.x;
 				velocity.y+=velocityXY.y;
 				position+=velocity/updateFPS;
@@ -11077,18 +11085,17 @@ bool updateVortexEffect(B)(ref VortexEffect!B vortex,ObjectState!B state){
 			state.movingObjectById!((ref obj,vortex,radius,height,state){
 				if(obj.creatureState.movement!=CreatureMovement.tumbling){
 					auto direction=(vortex.position.xy-obj.center.xy).normalized*5.0f;
-					obj.catapult(Vector3f(direction.x,direction.y,3.0f),state);
+					obj.catapult(Vector3f(1.5f*direction.x,1.5f*direction.y,4.5f),state);
 				}
 				if(obj.creatureState.movement==CreatureMovement.tumbling){
 					auto acceleration=vortexForceField(obj.center-vortex.position,radius,height);
-					acceleration.x*=3.0f;
-					acceleration.y*=3.0f;
 					obj.creatureState.fallingVelocity+=acceleration/updateFPS;
 					obj.creatureState.fallingVelocity.z=max(obj.creatureState.fallingVelocity.z,3.0f);
+					obj.creatureStats.effects.antiGravityTime=state.frame;
 				}
 			},(){})(target.id,vortex,radius,height,state);
 		}
-		collisionTargets!influence(hitbox,state,&vortex,radius,height);
+		if(frame<0.75f*duration*updateFPS) collisionTargets!influence(hitbox,state,&vortex,radius,height);
 		return ++frame<=duration*updateFPS;
 	}
 }

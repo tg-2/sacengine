@@ -47,6 +47,7 @@ struct Effects{
 	bool protectiveSwarm=false;
 	int ignitionTime=-2;
 	int buzzTime=-2;
+	int antiGravityTime=-2;
 
 	@property bool regenerationBlocked(){ return poisonDamage!=0||immobilized; }
 	@property bool manaBlocked(){ return numManaBlocks!=0; }
