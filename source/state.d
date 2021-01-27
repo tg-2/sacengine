@@ -1757,7 +1757,7 @@ int placeWizard(B)(ObjectState!B state,SacObject!B wizard,int flags,int side,int
 			state.eachBuilding!((bldg,altarPos,closest,manaPos,state){
 				if(bldg.componentIds.length==0||!bldg.isManafount) return;
 				auto pos=bldg.position(state);
-				if(*closest==0||(altarPos.xy-pos.xy).length<(altarPos.xy-manaPos.xy).length){
+				if(*closest==0||(altarPos-pos).length<(altarPos-*manaPos).length){
 					*closest=bldg.id;
 					*manaPos=pos;
 				}
@@ -6244,7 +6244,7 @@ bool moveTo(B)(ref MovingObject!B object,Vector3f targetPosition,float targetFac
 
 bool moveWithinRange(B)(ref MovingObject!B object,Vector3f targetPosition,float range,ObjectState!B state,bool evade=true,bool maintainHeight=false,bool stayAboveGround=true,int targetId=0,bool disablePathfinding=false){
 	auto speed=object.speed(state)/updateFPS;
-	auto distancesqr=(object.position.xy-targetPosition.xy).lengthsqr;
+	auto distancesqr=(object.position-targetPosition).lengthsqr;
 	if(distancesqr<=(range-speed)^^2)
 		return false;
 	object.moveTowards(targetPosition,range,state,evade,maintainHeight,stayAboveGround,targetId,disablePathfinding);
@@ -8508,7 +8508,7 @@ bool updateSacDocCarry(B)(ref SacDocCarry!B sacDocCarry,ObjectState!B state){
 						state.movingObjectById!(freeCreature,()=>false)(creature,sacDoc.position,state);
 						status=SacDocCarryStatus.shrinking;
 						tether=SacDocTether.init;
-					}else if(sacDoc.creatureState.movement==CreatureMovement.onGround && (sacDoc.position.xy-shrinePosition.xy).lengthsqr<20.0f^^2 && startRitual(type,side,spell,caster,targetShrine,creature,state)){
+					}else if(sacDoc.creatureState.movement==CreatureMovement.onGround && (sacDoc.position-shrinePosition).lengthsqr<20.0f^^2 && startRitual(type,side,spell,caster,targetShrine,creature,state)){
 						status=SacDocCarryStatus.shrinking;
 						tether=SacDocTether.init;
 						sacDoc.kill(state);
@@ -8652,7 +8652,7 @@ bool updateRitual(B)(ref Ritual!B ritual,ObjectState!B state){
 				vortex.scale=min(1.0f,vortex.scale+1.0f/vortex.numFramesToEmerge);
 				auto targetPosition=state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(targetWizard);
 				if(!isNaN(targetPosition.x)){
-					if((vortex.position.xy-targetPosition.xy).lengthsqr>vortex.desecrateDistance^^2){
+					if((vortex.position-targetPosition).lengthsqr>vortex.desecrateDistance^^2){
 						auto newPos=targetPosition.xy+vortex.desecrateDistance*(vortex.position.xy-targetPosition.xy).normalized;
 						vortex.position.x=newPos.x;
 						vortex.position.y=newPos.y;
@@ -12463,7 +12463,7 @@ struct ManaEntries{
 		auto sides=state.sides;
 		float rate=0.0f;
 		foreach(ref entry;entries){
-			auto distance=(position.xy-entry.position.xy).length;
+			auto distance=(position-entry.position).length;
 			if(distance>=entry.radius) continue;
 			if(entry.side!=-1&&(!entry.allies?entry.side!=side:sides.getStance(entry.side,side)!=Stance.ally)) continue;
 			rate+=entry.rate;
@@ -12519,7 +12519,7 @@ struct ManaProximity(B){
 		auto sides=state.sides;
 		foreach(ref manalith;manaliths){
 			if(sides.getStance(manalith.side,side)!=Stance.ally) continue;
-			auto distance=(position.xy-manalith.position.xy).length;
+			auto distance=(position-manalith.position).length;
 			rate+=max(0.0f,min((20.0f/50.0f)*distance,(20.0f/(1000.0f-50.0f))*(1000.0f-distance)));
 		}
 		addEntry(version_,ManaEntry(false,side,position,40.0f,rate));
@@ -12924,7 +12924,7 @@ final class ObjectState(B){ // (update logic)
 						Tuple!(float,int,"pos",int,"tpos")[numCreaturesInGroup^^2] distances;
 						foreach(j;0..numCreatures){
 							foreach(k;0..numCreatures){
-								auto distanceSqr=(positions[j].xy-targetPositions[k].xy).lengthsqr;
+								auto distanceSqr=(positions[j]-targetPositions[k]).lengthsqr;
 								assert(!isNaN(distanceSqr),text(command.type," ",j," ",k," ",positions," ",targetPositions));
 								distances[j*numCreatures+k]=tuple(distanceSqr,j,k);
 							}
@@ -13277,7 +13277,7 @@ final class ObjectState(B){ // (update logic)
 			static void addToSelection(ref MObj[numCreaturesInGroup] selection,MObj obj,MObj nobj){
 				if(selection[].map!"a.id".canFind(nobj.id)) return;
 				int i=0;
-				while(i<selection.length&&selection[i].id&&(selection[i].position.xy-obj.position.xy).lengthsqr<(nobj.position.xy-obj.position.xy).lengthsqr)
+				while(i<selection.length&&selection[i].id&&(selection[i].position-obj.position).lengthsqr<(nobj.position-obj.position).lengthsqr)
 					i++;
 				if(i>=selection.length||selection[i].id==nobj.id) return;
 				foreach_reverse(j;i..selection.length-1)
@@ -13287,7 +13287,7 @@ final class ObjectState(B){ // (update logic)
 			static void process(B)(ref MovingObject!B nobj,bool guardian,int side,MObj mobj,Selection* selection,ObjectState!B state){
 				if(!canSelect(nobj,side,state)) return;
 				if(nobj.isGuardian!=guardian) return;
-				if((mobj.position.xy-nobj.position.xy).lengthsqr>50.0f^^2) return;
+				if((mobj.position-nobj.position).lengthsqr>50.0f^^2) return;
 				addToSelection(*selection,mobj,MObj(nobj.id,nobj.position));
 			}
 			auto mobj=MObj(obj.id,obj.position);
