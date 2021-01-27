@@ -10998,7 +10998,7 @@ bool updateVortickProjectile(B)(ref VortickProjectile!B vortickProjectile,Object
 			target=state.lineOfSightWithoutSide(oldPosition,position,side,intendedTarget);
 		}
 		bool terminate(){
-			spawnVortex(position,rangedAttack,state);
+			spawnVortex(oldPosition,rangedAttack,state);
 			return false;
 		}
 		if(remainingDistance<=0.0f) return terminate();
@@ -11028,14 +11028,12 @@ bool updateVortickEffect(B)(ref VortickEffect effect,ObjectState!B state){
 }
 
 Vector3f vortexAnimationForceField(Vector3f position,float radius,float height){
-	//if(position.xy.lengthsqr>radius*radius) return Vector3f(0.0f,0.0f,0.0f);
-	if(position.z<0.0f||position.z>height) return Vector3f(0.0f,0.0f,0.0f);
 	//return Vector3f(-3.75f*position.y-2.5f*position.x,3.75f*position.x-2.5f*position.y,30.0f*0.25f);
-	return Vector3f(-3.75f*position.y-1.5f*position.x,3.75f*position.x-1.5f*position.y,30.0f*0.3f);
+	return vortexForceField(position,radius,height);
 }
 Vector3f vortexForceField(Vector3f position,float radius,float height){
 	//if(position.xy.lengthsqr>radius*radius) return Vector3f(0.0f,0.0f,0.0f);
-	if(position.z<0.0f||position.z>height) return Vector3f(0.0f,0.0f,0.0f);
+	if(position.z>height) return Vector3f(0.0f,0.0f,0.0f);
 	return Vector3f(-3.75f*position.y-1.5f*position.x,3.75f*position.x-1.5f*position.y,30.0f*0.3f);
 }
 
@@ -11080,7 +11078,7 @@ bool updateVortexEffect(B)(ref VortexEffect!B vortex,ObjectState!B state){
 				i++;
 			}
 		}
-		Vector3f[2] hitbox=[Vector3f(position.x-radius,position.y-radius,position.z),Vector3f(position.x+radius,position.y+radius,position.z+height)];
+		Vector3f[2] hitbox=[Vector3f(position.x-radius,position.y-radius,position.z-0.25f*height),Vector3f(position.x+radius,position.y+radius,position.z+height)];
 		static void influence(ProximityEntry target,ObjectState!B state,VortexEffect!B *vortex,float radius,float height){
 			state.movingObjectById!((ref obj,vortex,radius,height,state){
 				if(obj.creatureState.movement!=CreatureMovement.tumbling){
