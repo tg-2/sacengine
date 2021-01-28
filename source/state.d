@@ -1672,6 +1672,7 @@ struct WizardInfo(B){
 	Spellbook!B spellbook;
 	int closestBuilding=0;
 	int closestShrine=0;
+	int closestAltar=0;
 	int closestEnemyAltar=0;
 
 	void opAssign(ref WizardInfo!B rhs){
@@ -1743,6 +1744,7 @@ int placeWizard(B)(ObjectState!B state,SacObject!B wizard,int flags,int side,int
 	return id;
 }
 
+enum wizardAltarDistance=15.0f;
 int placeWizard(B)(ObjectState!B state,SacObject!B wizard,int flags,int side,int level,int souls,Spellbook!B spellbook)in{
 	assert(wizard.isWizard);
 }do{
@@ -1762,7 +1764,7 @@ int placeWizard(B)(ObjectState!B state,SacObject!B wizard,int flags,int side,int
 					*manaPos=pos;
 				}
 			})(altar.position,&closestManafount,&manafountPosition,state);
-			enum distance=15.0f;
+			enum distance=wizardAltarDistance;
 			float facing;
 			Vector3f position;
 			if(closestManafount){
@@ -4291,18 +4293,19 @@ bool playDead(B)(ref MovingObject!B object, ObjectState!B state){
 	return object.kill!(B,true)(state);
 }
 
-bool gib(B)(ref MovingObject!B object, ObjectState!B state,int giveSoulsTo=-1){
+bool gib(B)(ref MovingObject!B object, ObjectState!B state,int giveSoulsTo=-1){ // giveSoulsTo=-2: don't spawn soul
 	object.unselect(state);
 	object.removeFromGroups(state);
 	int numSouls=object.sacObject.numSouls;
 	if(numSouls){
-		if(giveSoulsTo!=-1){
+		if(giveSoulsTo>=0){
 			if(auto wizard=state.getWizard(giveSoulsTo)){
 				wizard.souls+=numSouls;
 			}else giveSoulsTo=-1;
 		}
-		if(giveSoulsTo==-1){
-			if(!object.soulId) object.soulId=state.addObject(Soul!B(object.id,object.side,object.sacObject.numSouls,object.soulPosition,SoulState.emerging));
+		if(giveSoulsTo==-1 && !object.soulId)
+			object.soulId=state.addObject(Soul!B(object.id,object.side,object.sacObject.numSouls,object.soulPosition,SoulState.emerging));
+		if(object.soulId){
 			state.soulById!((ref soul){
 				if(soul.state==SoulState.reviving)
 					soul.state=SoulState.emerging;
@@ -5461,15 +5464,19 @@ bool castDesecrate(B)(int side,ManaDrain!B manaDrain,SacSpell!B spell,Vector3f c
 	return true;
 }
 
-Vector3f getTeleportPosition(B)(SacSpell!B spell,Vector3f startPosition,int target,ObjectState!B state){
+Vector3f getTeleportPosition(B)(Vector3f startPosition,int target,float radius,ObjectState!B state){
 	if(!state.isValidTarget(target)) return Vector3f.init;
 	auto targetPositionTargetScale=state.objectById!((ref obj)=>tuple(obj.position,obj.getScale))(target);
 	auto targetPosition=targetPositionTargetScale[0], targetScale=targetPositionTargetScale[1];
-	auto teleportPosition=targetPosition+(startPosition-targetPosition).normalized*spell.effectRange;
+	auto teleportPosition=targetPosition+(startPosition-targetPosition).normalized*radius;
 	if(!state.isOnGround(teleportPosition)){
 		teleportPosition=targetPosition; // TODO: fix
 	}
 	return teleportPosition;
+}
+
+Vector3f getTeleportPosition(B)(SacSpell!B spell,Vector3f startPosition,int target,ObjectState!B state){
+	return getTeleportPosition(startPosition,target,spell.effectRange,state);
 }
 
 bool castTeleport(B)(ManaDrain!B manaDrain,SacSpell!B spell,Vector3f startPosition,int target,ObjectState!B state){
@@ -5497,23 +5504,37 @@ void animateTeleport(B)(bool isOut,Vector3f[2] hitbox,ObjectState!B state){
 	}
 }
 
+void animateWizardVoidTeleport(B)(bool isOut,Vector3f[2] hitbox,ObjectState!B state){
+	return animateTeleport(isOut,hitbox,state); // TODO
+}
+
+bool teleport(B)(ref MovingObject!B obj,Vector3f newPosition,ObjectState!B state,bool wizardVoid=false){ // TODO: get rid of startPosition parameter
+	if(!obj.isWizard&&!obj.isSacDoctor&&!obj.creatureAI.order.command.among(CommandType.guard,CommandType.retreat))
+		obj.clearOrderQueue(state);
+	auto oldHeight=obj.position.z-state.getHeight(obj.position);
+	newPosition.z=state.getHeight(newPosition)+max(0.0f,oldHeight);
+	auto startHitbox=obj.hitbox;
+	obj.position=newPosition;
+	auto newHitbox=obj.hitbox;
+	if(wizardVoid){
+		animateWizardVoidTeleport(true,startHitbox,state);
+		animateWizardVoidTeleport(false,newHitbox,state);
+	}else{
+		animateTeleport(true,startHitbox,state);
+		animateTeleport(false,newHitbox,state);
+	}
+	return true;
+}
+
 bool teleport(B)(int side,Vector3f startPosition,Vector3f targetPosition,SacSpell!B spell,ObjectState!B state){
 	static void teleport(ref CenterProximityEntry entry,int side,Vector3f startPosition,Vector3f targetPosition,ObjectState!B state){
-		static void doIt(ref MovingObject!B obj,Vector3f startPosition,Vector3f targetPosition,ObjectState!B state){
+		static void doIt(ref MovingObject!B obj,Vector3f startPosition,Vector3f targetPosition,ObjectState!B state,bool wizardVoid=false){
 			if(obj.isSacDoctor||obj.isGuardian||obj.isDying) return;
-			if(!obj.isWizard&&!obj.creatureAI.order.command.among(CommandType.guard,CommandType.retreat))
-				obj.clearOrderQueue(state);
-			auto oldHeight=obj.position.z-state.getHeight(obj.position);
 			auto newPosition=obj.position-startPosition+targetPosition;
 			if(obj.creatureState.movement!=CreatureMovement.flying&&!state.isOnGround(newPosition)){
 				newPosition=targetPosition; // TODO: fix
 			}
-			newPosition.z=state.getHeight(newPosition)+max(0.0f,oldHeight);
-			auto startHitbox=obj.hitbox;
-			obj.position=newPosition;
-			auto newHitbox=obj.hitbox;
-			animateTeleport(true,startHitbox,state);
-			animateTeleport(false,newHitbox,state);
+			obj.teleport(newPosition,state);
 		}
 		if(entry.isStatic||!state.isValidTarget(entry.id,TargetType.creature)||side!=entry.side) return;
 		state.movingObjectById!(doIt,(){})(entry.id,startPosition,targetPosition,state);
@@ -6946,6 +6967,8 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 	auto sacObject=object.sacObject;
 	final switch(object.creatureState.mode){
 		case CreatureMode.idle, CreatureMode.moving, CreatureMode.idleGhost, CreatureMode.movingGhost:
+			if(object.creatureState.movement==CreatureMovement.tumbling && state.isOnGround(object.position) && object.position.z<=state.getGroundHeight(object.position))
+			   object.creatureState.movement=CreatureMovement.onGround;
 			auto oldMode=object.creatureState.mode;
 			auto ghost=oldMode==CreatureMode.idleGhost||oldMode==CreatureMode.movingGhost;
 			if(ghost) object.animateGhost(state);
@@ -7192,7 +7215,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 						if(sacObject.hasHitFloor&&!immobilized){
 							if(!object.isSacDoctor||object.animationState==cast(AnimationState)SacDoctorAnimationState.expelled){
 								object.frame=0;
-								object.animationState=AnimationState.hitFloor; // TODO: fall damage
+								object.animationState=AnimationState.hitFloor;
 							}
 						}else object.startIdling(state);
 					}else object.startIdling(state);
@@ -7214,8 +7237,9 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 						object.startIdling(state);
 						break;
 					case CreatureMovement.tumbling:
-						if(object.animationState.among(AnimationState.knocked2Floor,AnimationState.getUp))
-							goto case CreatureMovement.onGround;
+						with(AnimationState)
+							if(object.animationState.among(knocked2Floor,getUp,stance1,stance2,idle0,idle1,idle2,idle3))
+								goto case CreatureMovement.onGround;
 						// continue tumbling
 						if(object.isSacDoctor){
 							if(object.animationState==cast(AnimationState)SacDoctorAnimationState.expelled){
@@ -7387,6 +7411,9 @@ void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 	}
 }
 
+enum gibDepth=0.5f*mapDepth;
+enum soulVanishDepth=mapDepth;
+
 void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 	auto newPosition=object.position;
 	with(CreatureMode) if(object.creatureState.mode.among(idle,moving,idleGhost,movingGhost,stunned,landing,dying,meleeMoving,casting,castingMoving,shooting)){
@@ -7555,8 +7582,8 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 		case CreatureMovement.tumbling:
 			if(object.creatureStats.effects.antiGravityTime<state.frame)
 				object.creatureState.fallingVelocity.z-=object.creatureStats.fallingAcceleration/updateFPS;
-			//enum speedCap=30.0f; TODO: figure out constant
-			//if(object.creatureState.fallingVelocity.lengthsqr>speedCap^^2) object.creatureState.fallingVelocity=object.creatureState.fallingVelocity.normalized*speedCap;
+			enum speedCap=30.0f; // TODO: figure out constant
+			if(object.creatureState.fallingVelocity.lengthsqr>speedCap^^2) object.creatureState.fallingVelocity=object.creatureState.fallingVelocity.normalized*speedCap;
 			newPosition=object.position+object.creatureState.fallingVelocity/updateFPS;
 			if(object.creatureState.fallingVelocity.z<=0.0f && state.isOnGround(newPosition))
 				newPosition.z=max(newPosition.z,state.getGroundHeight(newPosition));
@@ -7669,15 +7696,28 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 		}
 	}
 	bool onGround=state.isOnGround(newPosition);
+	auto height=state.getHeight(newPosition);
+	if(!onGround&&newPosition.z<height-gibDepth){
+		auto tpId=0;
+		if(object.isWizard)
+			if(auto wiz=state.getWizard(object.id))
+				tpId=wiz.closestAltar;
+		if(tpId!=0){
+			auto targetPosition=getTeleportPosition(newPosition,tpId,wizardAltarDistance,state);
+			if(isNaN(targetPosition.x)) tpId=0;
+			object.teleport(targetPosition,state,true);
+			newPosition=object.position;
+		}
+		if(tpId==0) object.gib(state,-2);
+	}			// TODO: improve? original engine does this, but it can cause ultrafast ascending for flying creatures
 	if(object.creatureState.movement!=CreatureMovement.onGround||onGround){
 		if(posChanged){
-			// TODO: improve? original engine does this, but it can cause ultrafast ascending for flying creatures
 			final switch(object.creatureState.movement){
 				case CreatureMovement.onGround:
-					newPosition.z=state.getGroundHeight(newPosition);
+					newPosition.z=height;
 					break;
 				case CreatureMovement.flying, CreatureMovement.tumbling:
-					if(onGround) newPosition.z=max(newPosition.z,state.getGroundHeight(newPosition));
+					if(onGround) newPosition.z=max(newPosition.z,height);
 					break;
 			}
 		}
@@ -12164,15 +12204,17 @@ void animateManahoar(B)(Vector3f location, int side, float rate, ObjectState!B s
 }
 
 
-int[3] findClosestBuildings(B)(int side,Vector3f position,ObjectState!B state){ // [building,shrine,enemy altar] // TODO: do a single pass for all wizards?
+int[4] findClosestBuildings(B)(int side,Vector3f position,ObjectState!B state){ // TODO: do a single pass for all wizards?
+	// [building for guardian,shrine for convert,own altar for teleport from void,enemy altar for desecrate]
 	enum RType{
 		building,
 		shrine,
+		altar,
 		enemyAltar,
 	}
 	static struct Result{
-		int[3] currentIds=0;
-		float[3] currentDistances=float.infinity;
+		int[4] currentIds=0;
+		float[4] currentDistances=float.infinity;
 	}
 	static void find(T)(ref T objects,int side,Vector3f position,int componentId,ObjectState!B state,Result* result){
 		static if(is(T==StaticObjects!(B,renderMode),RenderMode renderMode)){
@@ -12186,16 +12228,19 @@ int[3] findClosestBuildings(B)(int side,Vector3f position,ObjectState!B state){ 
 							if(state.buildingById!((ref bldg,side)=>bldg.side!=side,()=>true)(objects.buildingIds[j],side))
 								mixin(text(`goto Lnext`,k,`;`));
 						}else static if(k==RType.shrine){
-							if(!altar&&!shrine||state.buildingById!((ref bldg,side)=>bldg.side!=side||bldg.flags&AdditionalBuildingFlags.inactive,()=>true)(objects.buildingIds[j],side))
+							if(!altar&&!shrine||componentId==-1||state.buildingById!((ref bldg,side)=>bldg.side!=side||bldg.flags&AdditionalBuildingFlags.inactive,()=>true)(objects.buildingIds[j],side))
+								mixin(text(`goto Lnext`,k,`;`));
+						}else static if(k==RType.altar){
+							if(!altar||state.buildingById!((ref bldg,side)=>bldg.side!=side||bldg.flags&AdditionalBuildingFlags.inactive,()=>true)(objects.buildingIds[j],side))
 								mixin(text(`goto Lnext`,k,`;`));
 						}else{
-							if(!altar||state.buildingById!((ref bldg,side,state)=>state.sides.getStance(side,bldg.side)!=Stance.enemy,()=>true)(objects.buildingIds[j],side,state))
+							if(!altar||componentId==-1||state.buildingById!((ref bldg,side,state)=>state.sides.getStance(side,bldg.side)!=Stance.enemy||bldg.flags&AdditionalBuildingFlags.inactive,()=>true)(objects.buildingIds[j],side,state))
 								mixin(text(`goto Lnext`,k,`;`));
 						}
 						auto candidateDistance=(position-objects.positions[j]).xy.lengthsqr;
 						if(k==RType.building && candidateDistance>50.0f^^2) mixin(text(`goto Lnext`,k,`;`));
 						if(k==RType.enemyAltar && candidateDistance>75.0f^^2) mixin(text(`goto Lnext`,k,`;`));
-						if(candidateDistance<result.currentDistances[k] && (k==RType.building||componentId==state.pathFinder.getComponentId(objects.positions[j],state))){ // TODO: is it really possible to guard over the void?
+						if(candidateDistance<result.currentDistances[k] && (k.among(RType.building,RType.altar)||componentId==state.pathFinder.getComponentId(objects.positions[j],state))){ // TODO: is it really possible to guard over the void?
 							result.currentIds[k]=objects.ids[j];
 							result.currentDistances[k]=candidateDistance;
 						}
@@ -12205,7 +12250,6 @@ int[3] findClosestBuildings(B)(int side,Vector3f position,ObjectState!B state){ 
 		}
 	}
 	auto componentId=state.pathFinder.getComponentId(position,state);
-	if(componentId==-1) return [0,0,0];
 	Result result;
 	state.eachByType!find(side,position,componentId,state,&result);
 	return result.currentIds;
@@ -12231,10 +12275,11 @@ void playSpellbookSound(B)(int side,SpellbookSoundFlags flags,char[4] tag,Object
 void updateWizard(B)(ref WizardInfo!B wizard,ObjectState!B state){
 	auto sidePosition=state.movingObjectById!((ref obj)=>tuple(obj.side,obj.position),()=>tuple(-1,Vector3f.init))(wizard.id);
 	auto side=sidePosition[0], position=sidePosition[1];
-	auto ids=side==-1?(int[3]).init:findClosestBuildings(side,position,state);
+	auto ids=side==-1?(int[4]).init:findClosestBuildings(side,position,state);
 	wizard.closestBuilding=ids[0];
 	wizard.closestShrine=ids[1];
-	wizard.closestEnemyAltar=ids[2];
+	wizard.closestAltar=ids[2];
+	wizard.closestEnemyAltar=ids[3];
 	SpellbookSoundFlags flags;
 	foreach(ref entry;wizard.spellbook.spells.data){
 		bool oldReady=entry.ready;
