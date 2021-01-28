@@ -7412,7 +7412,6 @@ void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 }
 
 enum gibDepth=0.5f*mapDepth;
-enum soulVanishDepth=mapDepth;
 
 void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 	auto newPosition=object.position;
@@ -7736,14 +7735,28 @@ bool canCollectSouls(B)(ref MovingObject!B object){
 	return object.isWizard&&object.creatureState.mode.canCollectSouls&&object.health!=0.0f;
 }
 
+enum soulVanishDepth=mapDepth;
+enum soulFallSpeed=1.0f;
 void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 	soul.frame+=1;
 	soul.facing+=2*pi!float/8.0f/updateFPS;
 	while(soul.facing>pi!float) soul.facing-=2*pi!float;
 	if(soul.frame==SacSoul!B.numFrames*updateAnimFactor)
 		soul.frame=0;
-	if(soul.creatureId&&soul.state!=SoulState.collecting)
-		soul.position=state.movingObjectById!(soulPosition,()=>Vector3f(float.nan,float.nan,float.nan))(soul.creatureId);
+	if(soul.state!=SoulState.collecting){
+		if(!soul.creatureId){
+			auto height=state.getHeight(soul.position);
+			if(soul.position.z>height||!state.isOnGround(soul.position)){
+				if(soul.position.z+soulVanishDepth<height+soulFallSpeed){
+					if(soul.position.z+soulVanishDepth<height){
+						state.removeLater(soul.id);
+						return;
+					}
+				}
+				soul.position.z-=soulFallSpeed/updateFPS;
+			}else soul.position.z=height;
+		}else soul.position=state.movingObjectById!(soulPosition,()=>Vector3f(float.nan,float.nan,float.nan))(soul.creatureId);
+	}
 	final switch(soul.state){
 		case SoulState.normal:
 			static struct State{
@@ -7753,6 +7766,7 @@ void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 				bool tied=false;
 			}
 			enum collectDistance=4.0f; // TODO: measure this
+			enum preferredBonus=3.0f; // TODO: measure this?
 			static void process(B)(ref WizardInfo!B wizard,Soul!B* soul,State* pstate,ObjectState!B state){ // TODO: use proximity data structure?
 				auto sidePositionValid=state.movingObjectById!((obj)=>tuple(obj.side,obj.center,obj.canCollectSouls),()=>Tuple!(int,Vector3f,bool).init)(wizard.id);
 				auto side=sidePositionValid[0],position=sidePositionValid[1],valid=sidePositionValid[2];
@@ -7760,8 +7774,10 @@ void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 				if((soul.position.xy-position.xy).lengthsqr>collectDistance^^2) return;
 				if(abs(soul.position.z-position.z)>collectDistance) return;
 				auto distancesqr=(soul.position-position).lengthsqr;
-				if(soul.creatureId&&side!=soul.preferredSide) return;
-				if(soul.preferredSide!=-1&&pstate.side==soul.preferredSide&&side!=soul.preferredSide) return;
+				if(soul.preferredSide!=-1&&side!=soul.preferredSide){
+					if(soul.creatureId) return;
+					distancesqr+=preferredBonus;
+				}
 				if(distancesqr>pstate.distancesqr) return;
 				if(distancesqr==pstate.distancesqr){ pstate.tied=true; return; }
 				*pstate=State(wizard.id,side,distancesqr,false);
