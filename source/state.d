@@ -12973,7 +12973,7 @@ final class ObjectState(B){ // (update logic)
 							if(command.type==CommandType.guard && command.target.id){
 								auto targetPositionTargetFacing=state.movingObjectById!((obj)=>tuple(obj.position,obj.creatureState.facing), ()=>tuple(command.target.position,command.targetFacing))(command.target.id);
 								auto targetPosition=targetPositionTargetFacing[0], targetFacing=targetPositionTargetFacing[1];
-							targetPositions[i]=getTargetPosition(targetPosition,targetFacing,formationOffsets[i],state);
+								targetPositions[i]=getTargetPosition(targetPosition,targetFacing,formationOffsets[i],state);
 							}else targetPositions[i]=command.getTargetPosition(formationOffsets[i],state);
 							positions[i]=state.movingObjectById!((obj)=>obj.position,()=>Vector3f.init)(selectedId);
 							i++;
