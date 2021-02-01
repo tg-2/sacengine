@@ -11084,13 +11084,16 @@ bool updateVortickEffect(B)(ref VortickEffect effect,ObjectState!B state){
 }
 
 Vector3f vortexAnimationForceField(Vector3f position,float radius,float height){
-	//return Vector3f(-3.75f*position.y-2.5f*position.x,3.75f*position.x-2.5f*position.y,30.0f*0.25f);
-	return vortexForceField(position,radius,height);
+	//return Vector3f(-3.75f*position.y-1.5f*position.x,3.75f*position.x-1.5f*position.y,30.0f*0.25f);
+	return Vector3f(-3.75f*position.y-2.5f*position.x,3.75f*position.x-2.5f*position.y,30.0f*0.25f);
 }
 Vector3f vortexForceField(Vector3f position,float radius,float height){
 	//if(position.xy.lengthsqr>radius*radius) return Vector3f(0.0f,0.0f,0.0f);
 	if(position.z>height) return Vector3f(0.0f,0.0f,0.0f);
-	return Vector3f(-3.75f*position.y-1.5f*position.x,3.75f*position.x-1.5f*position.y,30.0f*0.3f);
+	//return Vector3f(-7.5f*position.y-7.5f*position.x,7.5f*position.x-7.5f*position.y,30.0f*0.35f);
+	//return Vector3f(-7.0f*position.y-7.0f*position.x,7.0f*position.x-7.0f*position.y,30.0f*0.35f);
+	//return Vector3f(-6.0f*position.y-6.0f*position.x,6.0f*position.x-6.0f*position.y,30.0f*0.4f);
+	return Vector3f(-6.0f*position.y-6.0f*position.x,6.0f*position.x-6.0f*position.y,30.0f*0.35f);
 }
 
 void addVortexParticles(B)(ref VortexEffect!B vortex,ObjectState!B state){
@@ -11139,12 +11142,14 @@ bool updateVortexEffect(B)(ref VortexEffect!B vortex,ObjectState!B state){
 			state.movingObjectById!((ref obj,vortex,radius,height,state){
 				if(obj.creatureState.movement!=CreatureMovement.tumbling){
 					auto direction=(vortex.position.xy-obj.center.xy).normalized*5.0f;
-					obj.catapult(Vector3f(1.5f*direction.x,1.5f*direction.y,4.5f),state);
+					//obj.catapult(Vector3f(1.5f*direction.x,1.5f*direction.y,4.5f),state);
+					//obj.catapult(Vector3f(1.5f*direction.y,-1.5f*direction.x,4.5f),state);
+					obj.catapult(Vector3f(direction.y,-direction.x,1.0f),state);
 				}
 				if(obj.creatureState.movement==CreatureMovement.tumbling){
 					auto acceleration=vortexForceField(obj.center-vortex.position,radius,height);
 					obj.creatureState.fallingVelocity+=acceleration/updateFPS;
-					obj.creatureState.fallingVelocity.z=max(obj.creatureState.fallingVelocity.z,3.0f);
+					obj.creatureState.fallingVelocity.z=max(obj.creatureState.fallingVelocity.z,1.0f);
 					obj.creatureStats.effects.antiGravityTime=state.frame;
 				}
 			},(){})(target.id,vortex,radius,height,state);
