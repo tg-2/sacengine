@@ -11093,7 +11093,7 @@ Vector3f vortexForceField(Vector3f position,float radius,float height){
 	//return Vector3f(-7.5f*position.y-7.5f*position.x,7.5f*position.x-7.5f*position.y,30.0f*0.35f);
 	//return Vector3f(-7.0f*position.y-7.0f*position.x,7.0f*position.x-7.0f*position.y,30.0f*0.35f);
 	//return Vector3f(-6.0f*position.y-6.0f*position.x,6.0f*position.x-6.0f*position.y,30.0f*0.4f);
-	return Vector3f(5.5f*(-position.y-position.x),5.5f*(position.x-position.y),15.0f*0.35f);
+	return Vector3f(4.5f*(-position.y-position.x),4.5f*(position.x-position.y),5.5f);
 }
 
 void addVortexParticles(B)(ref VortexEffect!B vortex,ObjectState!B state){
