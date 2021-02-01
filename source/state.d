@@ -2581,7 +2581,7 @@ struct VortexEffect(B){
 	}
 	Array!Particle particles;
 	enum duration=2.0f;
-	enum radiusFactor=2;
+	enum radiusFactor=1;
 	enum maxHeight=4.0f;
 }
 
@@ -11093,12 +11093,12 @@ Vector3f vortexForceField(Vector3f position,float radius,float height){
 	//return Vector3f(-7.5f*position.y-7.5f*position.x,7.5f*position.x-7.5f*position.y,30.0f*0.35f);
 	//return Vector3f(-7.0f*position.y-7.0f*position.x,7.0f*position.x-7.0f*position.y,30.0f*0.35f);
 	//return Vector3f(-6.0f*position.y-6.0f*position.x,6.0f*position.x-6.0f*position.y,30.0f*0.4f);
-	return Vector3f(5.5f*(-position.y-position.x),5.5f*(position.x-position.y),30.0f*0.35f);
+	return Vector3f(5.5f*(-position.y-position.x),5.5f*(position.x-position.y),15.0f*0.35f);
 }
 
 void addVortexParticles(B)(ref VortexEffect!B vortex,ObjectState!B state){
 	with(vortex){
-		auto radius=radiusFactor*rangedAttack.effectRange;
+		auto radius=2.0f*radiusFactor*rangedAttack.effectRange;
 		auto height=maxHeight;
 		auto numParticles=5;
 		foreach(i;0..numParticles){
@@ -11137,7 +11137,8 @@ bool updateVortexEffect(B)(ref VortexEffect!B vortex,ObjectState!B state){
 				i++;
 			}
 		}
-		Vector3f[2] hitbox=[Vector3f(position.x-radius,position.y-radius,position.z-0.25f*height),Vector3f(position.x+radius,position.y+radius,position.z+height)];
+		auto diag=sqrt(2.0f)*radius;
+		Vector3f[2] hitbox=[Vector3f(position.x-diag,position.y-diag,position.z-0.25f*height),Vector3f(position.x+diag,position.y+diag,position.z+height)];
 		static void influence(ProximityEntry target,ObjectState!B state,VortexEffect!B *vortex,float radius,float height){
 			state.movingObjectById!((ref obj,vortex,radius,height,state){
 				if(obj.creatureState.movement!=CreatureMovement.tumbling){

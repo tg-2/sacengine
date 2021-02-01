@@ -835,7 +835,7 @@ final class SacScene: Scene{
 			foreach(_;0..keyDown[KEY_J]) applyToMoving!stun(state.current,camera,mouse.target);
 			static void catapultRandomly(B)(ref MovingObject!B object,ObjectState!B state){
 				import std.random;
-				auto velocity=Vector3f(uniform!"[]"(-20.0f,20.0f), uniform!"[]"(-20.0f,20.0f), uniform!"[]"(10.0f,25.0f));
+				auto velocity=Vector3f(uniform!"[]"(-10.0f,10.0f), uniform!"[]"(-10.0f,10.0f), uniform!"[]"(10.0f,25.0f));
 				//auto velocity=Vector3f(0.0f,0.0f,25.0f);
 				object.catapult(velocity,state);
 			}
