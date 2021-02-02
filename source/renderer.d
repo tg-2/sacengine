@@ -93,11 +93,7 @@ struct Renderer(B){
 		mat.blending=B.Blending.Additive;
 		mat.energy=1.0f;
 		mat.diffuse=texture;
-		B.SubSphere[16] frames;
-		foreach(i,ref frame;frames){
-			int u=cast(int)i%nU,v=cast(int)i/nU;
-			frame=B.makeSubSphere(1.0f,25,25,true,1.0f/nU*u,1.0f/nV*v,1.0f/nU*(u+1),1.0f/nV*(v+1));
-		}
+		B.Mesh[16] frames=makeSphereMeshes!B(24,25,nU,nV,1.0f)[0..16];
 		return SacExplosion!B(texture,mat,frames);
 	}
 	SacExplosion!B explosion;
@@ -301,11 +297,7 @@ struct Renderer(B){
 		mat.blending=B.Blending.Additive;
 		mat.energy=10.0f;
 		mat.diffuse=texture;
-		B.SubSphere[16] frames;
-		foreach(i,ref frame;frames){
-			int u=cast(int)i%nU,v=cast(int)i/nU;
-			frame=B.makeSubSphere(0.5f,25,25,true,1.0f/nU*u,1.0f/nV*v,1.0f/nU*(u+1),1.0f/nV*(v+1),true);
-		}
+		B.Mesh[16] frames=makeSphereMeshes!B(24,25,nU,nV,0.5f)[0..16];
 		return SacLifeShield!B(texture,mat,frames);
 	}
 	SacDivineSight!B divineSight;
@@ -1172,7 +1164,11 @@ struct Renderer(B){
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.lifeShields.length){
 					auto material=self.lifeShield.material;
 					material.bind(rc);
-					scope(success) material.unbind(rc);
+					B.disableCulling();
+					scope(success){
+						B.enableCulling();
+						material.unbind(rc);
+						}
 					foreach(j;0..objects.lifeShields.length){
 						auto target=objects.lifeShields[j].target;
 						auto positionRotationBoxSize=state.movingObjectById!((ref obj)=>tuple(center(obj),obj.rotation,boxSize(obj.sacObject.largeHitbox(Quaternionf.identity(),obj.animationState,obj.frame/updateAnimFactor))), function Tuple!(Vector3f,Quaternionf,Vector3f)(){ return typeof(return).init; })(target);

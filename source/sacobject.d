@@ -800,7 +800,7 @@ B.Mesh[] makeSpriteMeshes(B,bool doubleSided=false,bool reverseOrder=false)(int 
 	foreach(i,ref mesh;meshes){
 		mesh=B.makeMesh(4,doubleSided?4:2);
 		static if(reverseOrder) int u=cast(int)(meshes.length-1-i)%nU,v=cast(int)(meshes.length-1-i)/nU;
-		else int u=cast(int)i%nU,v=cast(int)i/nU;
+		else int u=cast(int)i%nU,v=cast(int)i/nV;
 		foreach(k;0..4) mesh.vertices[k]=Vector3f(-0.5f*width+width*(k==1||k==2),-0.5f*height+height*(k==2||k==3),0.0f);
 		foreach(k;0..4) mesh.texcoords[k]=Vector2f(texWidth/nU*(u+(k==1||k==2)),texHeight/nV*(v+(k==0||k==1)));
 		static if(doubleSided) static immutable uint[3][] indices=[[0,1,2],[2,3,0],[0,2,1],[2,0,3]];
@@ -1424,7 +1424,7 @@ struct SacExplosion(B){
 		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pyro.FLDR/txtr.FLDR/exeg.TXTR"));
 	}
 	B.Material material;
-	B.SubSphere[16] frames;
+	B.Mesh[16] frames;
 	auto getFrame(int i){ return frames[i/updateAnimFactor]; }
 }
 
@@ -1690,13 +1690,52 @@ struct SacBasiliskEffect(B){
 	}
 }
 
+B.Mesh[] makeSphereMeshes(B)(int numU,int numV,int nU,int nV,float radius,float texWidth=1.0f,float texHeight=1.0f){
+	auto meshes=new B.Mesh[](nU*nV);
+	foreach(t,ref mesh;meshes){
+		int u=cast(int)t%nU,v=cast(int)t/nV;
+		mesh=B.makeMesh(2+numU*numV,2*numU*numV);
+		int numFaces=0;
+		void addFace(uint[3] face...){
+			mesh.indices[numFaces++]=face;
+		}
+		mesh.vertices[0]=Vector3f(0.0f,0.0f,radius);
+		mesh.texcoords[0]=Vector2f(texWidth/nU*(u+0.5f),texHeight/nV*(v+0.5f));
+		mesh.vertices[$-1]=Vector3f(0.0f,0.0f,-radius);
+		mesh.texcoords[$-1]=Vector2f(texWidth/nU*(u+0.5f),texHeight/nV*(v+0.5f));
+		int idx(int i,int j){
+			if(i==-1) return 0;
+			if(i==numU) return 1+numU*numV;
+			return 1+numV*i+j;
+		}
+		foreach(i;0..numU){
+			foreach(j;0..numV){
+				auto θ=pi!float*(1+i)/(numU+1);
+				auto φ=2.0f*pi!float*j/numV;
+				mesh.vertices[idx(i,j)]=radius*Vector3f(cos(φ)*sin(θ),sin(φ)*sin(θ),cos(θ));
+				auto texRadius=2*i<=numU?2.0f*i/numU:2.0f-2.0f*i/numU;
+				mesh.texcoords[idx(i,j)]=Vector3f(texWidth/nU*(u+0.5f*(1.0f+cos(φ)*texRadius)),texHeight/nV*(v+0.5f*(1.0f+sin(φ)*texRadius)));
+				if(i!=0){
+					addFace([idx(i,j),idx(i,j+1),idx(i-1,j)]);
+					addFace([idx(i,j+1),idx(i-1,j+1),idx(i-1,j)]);
+					if(i+1==numU) addFace([idx(i,j),idx(i+1,j),idx(i,j+1)]);
+				}else addFace([idx(i,j),idx(i,j+1),idx(-1,j)]);
+			}
+		}
+		assert(numFaces==2*numU*numV);
+		mesh.generateNormals();
+		B.finalizeMesh(mesh);
+	}
+	return meshes;
+}
+
 struct SacLifeShield(B){
 	B.Texture texture;
 	static B.Texture loadTexture(){
 		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/ent1.TXTR"));
 	}
 	B.Material material;
-	B.SubSphere[16] frames;
+	B.Mesh[16] frames;
 	enum animationDelay=2;
 	enum numFrames=16*updateAnimFactor*animationDelay;
 	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
