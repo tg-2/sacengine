@@ -168,6 +168,12 @@ bool canCollectSouls(CreatureMode mode){
 		case dying,dead,deadToGhost,idleGhost,movingGhost,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
 	}
 }
+bool canCatapult(CreatureMode mode){
+	final switch(mode) with(CreatureMode){
+		case idle,moving,spawning,takeoff,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
+		case ghostToIdle,landing,dying,dead,deadToGhost,idleGhost,movingGhost,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
+	}
+}
 
 enum CreatureMovement{
 	onGround,
@@ -4468,10 +4474,14 @@ bool damageStun(B)(ref MovingObject!B object, Vector3f attackDirection, ObjectSt
 	return true;
 }
 
+bool canCatapult(B)(ref MovingObject!B object){
+	return object.creatureState.mode.canCatapult;
+}
+
 void catapult(B)(ref MovingObject!B object, Vector3f velocity, ObjectState!B state){
-	with(CreatureMode) if(object.creatureState.mode.among(dead,dissolving)) return;
-	if(object.isGhost) return;
+	if(!object.canCatapult) return;
 	if(object.creatureState.movement==CreatureMovement.flying) return;
+	if(object.creatureState.mode==CreatureMode.pumping) object.kill(state);
 	if(object.creatureState.mode!=CreatureMode.dying)
 		object.creatureState.mode=CreatureMode.stunned;
 	if(object.creatureState.movement!=CreatureMovement.tumbling){
@@ -7213,11 +7223,11 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 					object.creatureState.movement=CreatureMovement.onGround;
 					if(object.animationState.among(AnimationState.falling,AnimationState.tumble)){
 						object.dealFallDamage(state);
-						if(sacObject.hasHitFloor&&!immobilized){
-							if(!object.isSacDoctor||object.animationState==cast(AnimationState)SacDoctorAnimationState.expelled){
-								object.frame=0;
-								object.animationState=AnimationState.hitFloor;
-							}
+						if(sacObject.hasHitFloor&&!immobilized&&
+						   (!object.isSacDoctor||object.animationState==cast(AnimationState)SacDoctorAnimationState.expelled)
+						){
+							object.frame=0;
+							object.animationState=AnimationState.hitFloor;
 						}else object.startIdling(state);
 					}else object.startIdling(state);
 					break;
