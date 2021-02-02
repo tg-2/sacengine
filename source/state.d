@@ -5438,7 +5438,11 @@ bool startThrashing(B)(ref MovingObject!B object,ObjectState!B state){
 	return true;
 }
 bool freeCreature(B)(ref MovingObject!B object,Vector3f landingPosition,ObjectState!B state){
-	with(CreatureMode) if(object.creatureState.mode!=CreatureMode.thrashing) return false;
+	if(object.creatureState.mode==CreatureMode.convertReviving){
+		object.kill(state);
+		return true;
+	}
+	if(object.creatureState.mode!=CreatureMode.thrashing) return false;
 	object.creatureState.mode=CreatureMode.stunned;
 	object.creatureState.movement=CreatureMovement.tumbling;
 	if(isNaN(landingPosition.x)) object.creatureState.fallingVelocity=Vector3f(0.0f,0.0f,0.0f);
@@ -8528,7 +8532,7 @@ bool updateSacDocCarry(B)(ref SacDocCarry!B sacDocCarry,ObjectState!B state){
 					if(shrineDestroyed) sacDoc.kill(state);
 					if(sacDoc.creatureState.mode==CreatureMode.dying){
 						freeSoul();
-						if(creature) state.movingObjectById!(kill,()=>false)(creature,state);
+						if(creature) state.movingObjectById!(freeCreature,()=>false)(creature,Vector3f.init,state);
 						return false;
 					}
 					if(sacDoc.animationState==cast(AnimationState)SacDoctorAnimationState.pumpCorpse){
