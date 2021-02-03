@@ -45,13 +45,14 @@ struct Effects{
 	bool etherealForm=false;
 	bool fireform=false;
 	bool protectiveSwarm=false;
+	bool airShield=false;
 	int ignitionTime=-2;
 	int buzzTime=-2;
 	int antiGravityTime=-2;
 
 	@property bool regenerationBlocked(){ return poisonDamage!=0||immobilized; }
 	@property bool manaBlocked(){ return numManaBlocks!=0; }
-	@property bool ccProtected(){ return lifeShield||petrified||skinOfStone||etherealForm||fireform||protectiveSwarm; } // TODO: add remaining shields
+	@property bool ccProtected(){ return lifeShield||petrified||skinOfStone||etherealForm||fireform||protectiveSwarm||airShield; } // TODO: add remaining CC effects
 	@property bool stoneEffect(){ return petrified||skinOfStone; }
 	@property bool immobilized(){ return petrified; } // TODO: add freeze
 }

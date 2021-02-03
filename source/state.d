@@ -170,10 +170,17 @@ bool canCollectSouls(CreatureMode mode){
 }
 bool canCatapult(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
-		case idle,moving,spawning,takeoff,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
-		case ghostToIdle,landing,dying,dead,deadToGhost,idleGhost,movingGhost,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
+		case idle,moving,dying,spawning,takeoff,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
+		case ghostToIdle,landing,dead,deadToGhost,idleGhost,movingGhost,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
 	}
 }
+bool canPush(CreatureMode mode){
+	final switch(mode) with(CreatureMode){
+		case idle,moving,dying,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
+		case ghostToIdle,dead,deadToGhost,idleGhost,movingGhost,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
+	}
+}
+
 
 enum CreatureMovement{
 	onGround,
@@ -2344,6 +2351,26 @@ struct ProtectiveSwarm(B){
 	this(this){ bugs=bugs.dup; } // TODO: needed?
 }
 
+struct AirShieldCasting(B){
+	ManaDrain!B manaDrain;
+	int castingTime;
+	AirShield!B airShield;
+}
+enum AirShieldStatus{ growing, stationary, shrinking }
+struct AirShield(B){
+	int target;
+	SacSpell!B spell;
+	int frame=0;
+	float scale=0.0f;
+	AirShieldStatus status;
+	struct Particle{
+		float height;
+		float radius;
+		float θ;
+		int frame=0;
+	}
+	Array!Particle particles;
+}
 
 struct BrainiacProjectile(B){
 	int attacker;
@@ -3000,6 +3027,22 @@ struct Effects(B){
 		if(i+1<protectiveSwarms.length) swap(protectiveSwarms[i],protectiveSwarms[$-1]);
 		protectiveSwarms.length=protectiveSwarms.length-1; // TODO: reuse memory?
 	}
+	Array!(AirShieldCasting!B) airShieldCastings;
+	void addEffect(AirShieldCasting!B airShieldCasting){
+		airShieldCastings~=move(airShieldCasting);
+	}
+	void removeAirShieldCasting(int i){
+		if(i+1<airShieldCastings.length) airShieldCastings[i]=move(airShieldCastings[$-1]);
+		airShieldCastings.length=airShieldCastings.length-1;
+	}
+	Array!(AirShield!B) airShields;
+	void addEffect(AirShield!B airShield){
+		airShields~=move(airShield);
+	}
+	void removeAirShield(int i){
+		if(i+1<airShields.length) airShields[i]=move(airShields[$-1]);
+		airShields.length=airShields.length-1;
+	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
 	void addEffect(BrainiacProjectile!B brainiacProjectile){
@@ -3337,6 +3380,8 @@ struct Effects(B){
 		assignArray(fireforms,rhs.fireforms);
 		assignArray(protectiveSwarmCastings,rhs.protectiveSwarmCastings);
 		assignArray(protectiveSwarms,rhs.protectiveSwarms);
+		assignArray(airShieldCastings,rhs.airShieldCastings);
+		assignArray(airShields,rhs.airShields);
 		assignArray(brainiacProjectiles,rhs.brainiacProjectiles);
 		assignArray(brainiacEffects,rhs.brainiacEffects);
 		assignArray(shrikeProjectiles,rhs.shrikeProjectiles);
@@ -4477,7 +4522,6 @@ bool damageStun(B)(ref MovingObject!B object, Vector3f attackDirection, ObjectSt
 bool canCatapult(B)(ref MovingObject!B object){
 	return object.creatureState.mode.canCatapult;
 }
-
 void catapult(B)(ref MovingObject!B object, Vector3f velocity, ObjectState!B state){
 	if(!object.canCatapult) return;
 	if(object.creatureState.movement==CreatureMovement.flying) return;
@@ -4489,6 +4533,34 @@ void catapult(B)(ref MovingObject!B object, Vector3f velocity, ObjectState!B sta
 		object.creatureState.fallingVelocity=velocity;
 		object.setCreatureState(state);
 	}else object.creatureState.fallingVelocity+=velocity;
+}
+
+bool canPush(B)(ref MovingObject!B object){
+	return object.creatureState.mode.canPush;
+}
+void push(B)(ref MovingObject!B object, Vector3f velocity, ObjectState!B state){
+	auto newPosition=object.position+velocity/updateFPS;
+	if(object.creatureState.movement==CreatureMovement.onGround){
+		if(!state.isOnGround(newPosition)) return;
+		newPosition.z=state.getGroundHeight(newPosition);
+	}
+	object.position=newPosition;
+}
+
+void pushAll(alias filter=None,B,T...)(Vector3f position,float innerRadius,float radius,float innerStrength,ObjectState!B state,T args){
+	Vector3f[2] hitbox=[position-radius,position+radius];
+	void doPush(ref ProximityEntry entry,ObjectState!B state,T args){
+		if(!state.isValidTarget(entry.id,TargetType.creature)) return;
+		state.movingObjectById!((ref obj){
+			if(!obj.canPush) return;
+			auto direction=obj.center-position;
+			auto distance=direction.length;
+			if(distance==0.0f) return;
+			auto strength=(1.0f-(distance-innerRadius)/(radius-innerRadius))*innerStrength;
+			obj.push(strength*direction/distance,state);
+		},(){})(entry.id);
+	}
+	collisionTargets!(doPush,filter)(hitbox,state,args);
 }
 
 void immediateRevive(B)(ref MovingObject!B object,ObjectState!B state){
@@ -4717,6 +4789,8 @@ float dealDamage(B)(ref MovingObject!B object,float damage,int attackingSide,Obj
 	if(object.creatureState.mode==CreatureMode.rockForm) shieldDamageMultiplier*=0.05f;
 	if(object.creatureStats.effects.petrified) shieldDamageMultiplier*=0.2f;
 	if(object.creatureStats.effects.skinOfStone) shieldDamageMultiplier*=0.25f;
+	if(object.creatureStats.effects.airShield) shieldDamageMultiplier*=0.5f;
+	if(object.creatureStats.effects.protectiveSwarm) shieldDamageMultiplier*=0.75f;
 	// TODO: bleed, in case of petrification, bleed rocks instead
 	return dealRawDamage(object,damage*state.sideDamageMultiplier(attackingSide,object.side)*shieldDamageMultiplier,attackingSide,state);
 }
@@ -5378,6 +5452,10 @@ bool startCasting(B)(int caster,SacSpell!B spell,Target target,ObjectState!B sta
 					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
 					if(castingTime==-1) return false;
 					return stun(castProtectiveSwarm(manaDrain,spell,castingTime,state));
+				case SpellTag.airShield:
+					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					if(castingTime==-1) return false;
+					return stun(castAirShield(manaDrain,spell,castingTime,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -5835,6 +5913,27 @@ bool protectiveSwarm(B)(ProtectiveSwarm!B protectiveSwarm,ObjectState!B state){
 	state.addEffect(move(protectiveSwarm));
 	return true;
 }
+
+enum airShieldGain=2.0f;
+bool castAirShield(B)(ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,ObjectState!B state){
+	if(!state.movingObjectById!((ref obj)=>obj.creatureStats.effects.airShield=true,()=>false)(manaDrain.wizard)) return false;
+	auto airShield=AirShield!B(manaDrain.wizard,spell);
+	playSoundAt("dhsa",manaDrain.wizard,state,airShieldGain);
+	state.addEffect(AirShieldCasting!B(manaDrain,castingTime,move(airShield)));
+	return true;
+}
+
+bool airShield(B)(AirShield!B airShield,ObjectState!B state){
+	if(!state.movingObjectById!((ref object){
+		if(object.creatureStats.effects.airShield) return false;
+		object.creatureStats.effects.airShield=true;
+		return true;
+	},()=>false)(airShield.target)) return false;
+	playSoundAt("dhsa",airShield.target,state,airShieldGain);
+	state.addEffect(move(airShield));
+	return true;
+}
+
 
 Vector3f getShotDirection(B)(float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
 	auto φ=2.0f*pi!float*accuracy*state.normal(); // TODO: ok?
@@ -10113,6 +10212,95 @@ bool updateProtectiveSwarm(B)(ref ProtectiveSwarm!B protectiveSwarm,ObjectState!
 	}
 }
 
+void animateAirShieldCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	wizard.animateStratosCasting(state);
+}
+bool updateAirShieldCasting(B)(ref AirShieldCasting!B airShieldCast,ObjectState!B state){
+	with(airShieldCast){
+		airShield.frame+=1;
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				state.movingObjectById!(animateAirShieldCasting,(){})(manaDrain.wizard,state);
+				return airShield.updateAirShield(state,castingTime);
+			case CastingStatus.interrupted:
+				airShield.status=AirShieldStatus.shrinking;
+				state.addEffect(move(airShield));
+				return false;
+			case CastingStatus.finished:
+				state.addEffect(move(airShield));
+				return false;
+		}
+	}
+}
+bool updateAirShield(B)(ref AirShield!B airShield,ObjectState!B state,int scaleFrames=15){
+	with(airShield){
+		if(!state.isValidTarget(target,TargetType.creature)) return false;
+		auto relHitbox=state.movingObjectById!(relativeHitbox,()=>(Vector3f[2]).init)(airShield.target);
+		auto boxSize=.boxSize(relHitbox);
+		auto boxCenter=.boxCenter(relHitbox);
+		boxSize.x=boxSize.y=sqrt(0.5f*(boxSize.x^^2+boxSize.y^^2));
+		auto dimensions=Vector3f(2.0f,2.0f,1.5f)*boxSize;
+		enum T=0.75f;
+		for(int i=0;i<particles.length;i++){
+			with(particles[i]){
+				θ+=2*pi!float/(T*updateFPS*(0.1f+radius));
+				frame+=1;
+				if(frame>=16*updateAnimFactor){
+					if(i+1<particles.length)
+						swap(particles[i],particles[$-1]);
+					particles.length=particles.length-1;
+				}
+			}
+		}
+		auto numParticles=!state.uniform(2)+!state.uniform(2);
+		foreach(i;0..numParticles){
+			float height=state.uniform(-1.0f,1.0f);
+			float radius=sqrt(1-height^^2)*state.uniform(0.05f,1.25f);
+			float θ=state.uniform(-pi!float,pi!float);
+			radius*=0.5f*dimensions.x;
+			height=boxCenter.z+height*0.5f*dimensions.z;
+			particles~=AirShield!B.Particle(height,radius,θ);
+		}
+		++frame;
+		if(status!=AirShieldStatus.shrinking){
+			static bool check(ref MovingObject!B obj){
+				assert(obj.creatureStats.effects.airShield);
+				return obj.creatureState.mode.canShield;
+			}
+			if(!state.movingObjectById!(check,()=>false)(target)||frame+scaleFrames>=spell.duration*updateFPS)
+				status=AirShieldStatus.shrinking;
+		}
+		auto hitboxSide=state.movingObjectById!((ref obj)=>tuple(obj.hitbox,obj.side),()=>tuple((Vector3f[2]).init,-1))(airShield.target);
+		auto hitbox=hitboxSide[0], side=hitboxSide[1];
+		static bool filter(ProximityEntry entry,ObjectState!B state,int side){
+			return state.movingObjectById!((ref obj,side)=>obj.side!=side&&obj.canPush,()=>false)(entry.id,side);
+		}
+		pushAll!filter(.boxCenter(hitbox),0.5f*(hitbox[1].xy-hitbox[0].xy).length,0.5f*spell.effectRange,25.0f,state,side);
+		final switch(status){
+			case AirShieldStatus.growing:
+				scale=min(1.0f,scale+1.0f/scaleFrames);
+				if(scale==1.0f) status=AirShieldStatus.stationary;
+				break;
+			case AirShieldStatus.stationary:
+				break;
+			case AirShieldStatus.shrinking:
+				scale=max(0.0f,scale-1.0f/scaleFrames);
+				if(scale==0.0f){
+					static void removeAirShield(B)(ref MovingObject!B object){
+						assert(object.creatureStats.effects.airShield);
+						object.creatureStats.effects.airShield=false;
+					}
+					state.movingObjectById!(removeAirShield,(){})(target);
+					playSoundAt("dhsa",target,state,airShieldGain);
+					updateRenderMode(target,state);
+					return false;
+				}
+				break;
+		}
+		return true;
+	}
+}
+
 enum brainiacProjectileHitGain=4.0f;
 enum brainiacProjectileSize=0.45f; // TODO: ok?
 enum brainiacProjectileSlidingDistance=1.5f;
@@ -11776,6 +11964,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.protectiveSwarms.length;){
 		if(!updateProtectiveSwarm(effects.protectiveSwarms[i],state)){
 			effects.removeProtectiveSwarm(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.airShieldCastings.length;){
+		if(!updateAirShieldCasting(effects.airShieldCastings[i],state)){
+			effects.removeAirShieldCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.airShields.length;){
+		if(!updateAirShield(effects.airShields[i],state)){
+			effects.removeAirShield(i);
 			continue;
 		}
 		i++;

@@ -1594,6 +1594,71 @@ struct SacProtectiveBug(B){
 	}
 }
 
+B.Mesh[] makeSphereMeshes(B)(int numU,int numV,int nU,int nV,float radius,float texWidth=1.0f,float texHeight=1.0f){
+	auto meshes=new B.Mesh[](nU*nV);
+	foreach(t,ref mesh;meshes){
+		int u=cast(int)t%nU,v=cast(int)t/nV;
+		mesh=B.makeMesh(2+numU*numV,2*numU*numV);
+		int numFaces=0;
+		void addFace(uint[3] face...){
+			mesh.indices[numFaces++]=face;
+		}
+		mesh.vertices[0]=Vector3f(0.0f,0.0f,radius);
+		mesh.texcoords[0]=Vector2f(texWidth/nU*(u+0.5f),texHeight/nV*(v+0.5f));
+		mesh.vertices[$-1]=Vector3f(0.0f,0.0f,-radius);
+		mesh.texcoords[$-1]=Vector2f(texWidth/nU*(u+0.5f),texHeight/nV*(v+0.5f));
+		int idx(int i,int j){
+			if(i==-1) return 0;
+			if(i==numU) return 1+numU*numV;
+			return 1+numV*i+j;
+		}
+		foreach(i;0..numU){
+			foreach(j;0..numV){
+				auto θ=pi!float*(1+i)/(numU+1);
+				auto φ=2.0f*pi!float*j/numV;
+				mesh.vertices[idx(i,j)]=radius*Vector3f(cos(φ)*sin(θ),sin(φ)*sin(θ),cos(θ));
+				auto texRadius=2*i<=numU?2.0f*i/numU:2.0f-2.0f*i/numU;
+				mesh.texcoords[idx(i,j)]=Vector3f(texWidth/nU*(u+0.5f*(1.0f+cos(φ)*texRadius)),texHeight/nV*(v+0.5f*(1.0f+sin(φ)*texRadius)));
+				if(i!=0){
+					addFace([idx(i,j),idx(i,j+1),idx(i-1,j)]);
+					addFace([idx(i,j+1),idx(i-1,j+1),idx(i-1,j)]);
+					if(i+1==numU) addFace([idx(i,j),idx(i+1,j),idx(i,j+1)]);
+				}else addFace([idx(i,j),idx(i,j+1),idx(-1,j)]);
+			}
+		}
+		assert(numFaces==2*numU*numV);
+		mesh.generateNormals();
+		B.finalizeMesh(mesh);
+	}
+	return meshes;
+}
+struct SacAirShield(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Stra.FLDR/txtr.FLDR/shld.TXTR"));
+	}
+	B.Material material;
+	B.Mesh[8] frames;
+	enum animationDelay=4;
+	enum numFrames=8*updateAnimFactor*animationDelay;
+	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
+}
+
+struct SacAirShieldEffect(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Stra.FLDR/txtr.FLDR/pash.TXTR"));
+	}
+	B.Material material;
+	B.Mesh[] frames;
+	enum animationDelay=1;
+	enum numFrames=16*animationDelay*updateAnimFactor;
+	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
+	static B.Mesh[] createMeshes(){
+		return makeSpriteMeshes!(B,true)(4,4,0.75f,0.75f);
+	}
+}
+
 struct SacBrainiacEffect(B){
 	B.Texture texture;
 	static B.Texture loadTexture(){
@@ -1688,45 +1753,6 @@ struct SacBasiliskEffect(B){
 	static B.Mesh[] createMeshes(){
 		return makeSpriteMeshes!(B,true)(4,4,0.6f,0.6f);
 	}
-}
-
-B.Mesh[] makeSphereMeshes(B)(int numU,int numV,int nU,int nV,float radius,float texWidth=1.0f,float texHeight=1.0f){
-	auto meshes=new B.Mesh[](nU*nV);
-	foreach(t,ref mesh;meshes){
-		int u=cast(int)t%nU,v=cast(int)t/nV;
-		mesh=B.makeMesh(2+numU*numV,2*numU*numV);
-		int numFaces=0;
-		void addFace(uint[3] face...){
-			mesh.indices[numFaces++]=face;
-		}
-		mesh.vertices[0]=Vector3f(0.0f,0.0f,radius);
-		mesh.texcoords[0]=Vector2f(texWidth/nU*(u+0.5f),texHeight/nV*(v+0.5f));
-		mesh.vertices[$-1]=Vector3f(0.0f,0.0f,-radius);
-		mesh.texcoords[$-1]=Vector2f(texWidth/nU*(u+0.5f),texHeight/nV*(v+0.5f));
-		int idx(int i,int j){
-			if(i==-1) return 0;
-			if(i==numU) return 1+numU*numV;
-			return 1+numV*i+j;
-		}
-		foreach(i;0..numU){
-			foreach(j;0..numV){
-				auto θ=pi!float*(1+i)/(numU+1);
-				auto φ=2.0f*pi!float*j/numV;
-				mesh.vertices[idx(i,j)]=radius*Vector3f(cos(φ)*sin(θ),sin(φ)*sin(θ),cos(θ));
-				auto texRadius=2*i<=numU?2.0f*i/numU:2.0f-2.0f*i/numU;
-				mesh.texcoords[idx(i,j)]=Vector3f(texWidth/nU*(u+0.5f*(1.0f+cos(φ)*texRadius)),texHeight/nV*(v+0.5f*(1.0f+sin(φ)*texRadius)));
-				if(i!=0){
-					addFace([idx(i,j),idx(i,j+1),idx(i-1,j)]);
-					addFace([idx(i,j+1),idx(i-1,j+1),idx(i-1,j)]);
-					if(i+1==numU) addFace([idx(i,j),idx(i+1,j),idx(i,j+1)]);
-				}else addFace([idx(i,j),idx(i,j+1),idx(-1,j)]);
-			}
-		}
-		assert(numFaces==2*numU*numV);
-		mesh.generateNormals();
-		B.finalizeMesh(mesh);
-	}
-	return meshes;
 }
 
 struct SacLifeShield(B){

@@ -369,6 +369,15 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Pro
 void serialize(alias sink,B)(ref ProtectiveSwarm!B protectiveSwarm){ serializeStruct!sink(protectiveSwarm); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ProtectiveSwarm!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref AirShieldCasting!B airShieldCasting){ serializeStruct!sink(airShieldCasting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==AirShieldCasting!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref AirShield!B.Particle particle){ serializeStruct!sink(particle); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==AirShield!B.Particle)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref AirShield!B airShield){ serializeStruct!sink(airShield); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==AirShield!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref BrainiacProjectile!B brainiacProjectile){ serializeStruct!sink(brainiacProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BrainiacProjectile!B)){ deserializeStruct(result,state,data); }
 

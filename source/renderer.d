@@ -204,6 +204,31 @@ struct Renderer(B){
 		auto meshes=typeof(return).createMeshes();
 		return SacProtectiveBug!B(texture,mat,meshes);
 	}
+	SacAirShield!B airShield;
+	SacAirShield!B createAirShield(){
+		enum nU=4,nV=2;
+		import txtr;
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Transparent;
+		mat.energy=5.0f;
+		mat.transparency=0.3f;
+		mat.diffuse=texture;
+		B.Mesh[8] frames=makeSphereMeshes!B(24,25,nU,nV,0.5f)[0..8];
+		return SacAirShield!B(texture,mat,frames);
+	}
+	SacAirShieldEffect!B airShieldEffect;
+	SacAirShieldEffect!B createAirShieldEffect(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Additive;
+		mat.energy=10.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacAirShieldEffect!B(texture,mat,frames);
+	}
 	SacBrainiacEffect!B brainiacEffect;
 	SacBrainiacEffect!B createBrainiacEffect(){
 		auto texture=typeof(return).loadTexture();
@@ -324,6 +349,8 @@ struct Renderer(B){
 		rock=new SacObject!B("extracted/models/MODL.WAD!/rock.MRMC/rock.MRMM");
 		bug=createBug();
 		protectiveBug=createProtectiveBug();
+		airShield=createAirShield();
+		airShieldEffect=createAirShieldEffect();
 		brainiacEffect=createBrainiacEffect();
 		shrikeEffect=createShrikeEffect();
 		arrow=createArrow();
@@ -995,6 +1022,38 @@ struct Renderer(B){
 					}
 					foreach(j;0..objects.protectiveSwarmCastings.length) renderProtectiveSwarm(objects.protectiveSwarmCastings[j].protectiveSwarm);
 					foreach(j;0..objects.protectiveSwarms.length) renderProtectiveSwarm(objects.protectiveSwarms[j]);
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.airShieldCastings.length||objects.airShields.length)){
+					auto material=self.airShield.material;
+					auto effectMaterial=self.airShieldEffect.material;
+					void renderAirShield(ref AirShield!B airShield){
+						material.bind(rc); // TODO: worth separating effects from shield?
+						B.disableCulling();
+						auto target=airShield.target;
+						auto positionRotationBoxSize=state.movingObjectById!((ref obj)=>tuple(center(obj),obj.position,obj.rotation,boxSize(obj.sacObject.largeHitbox(Quaternionf.identity(),obj.animationState,obj.frame/updateAnimFactor))), function Tuple!(Vector3f,Vector3f,Quaternionf,Vector3f)(){ return typeof(return).init; })(target);
+						auto position=positionRotationBoxSize[0], rawPosition=positionRotationBoxSize[1], rotation=positionRotationBoxSize[2], boxSize=positionRotationBoxSize[3];
+						if(isNaN(position.x)) return;
+						auto scale=airShield.scale+0.05f*(1.0f*sin(2.0f*pi!float*2.0f*airShield.frame/updateFPS));
+						boxSize.x=boxSize.y=sqrt(0.5f*(boxSize.x^^2+boxSize.y^^2));
+						auto dimensions=Vector3f(2.0f,2.0f,1.5f)*boxSize;
+						material.backend.setTransformationScaled(position,rotation,scale*dimensions,rc);
+						auto mesh=self.airShield.getFrame(airShield.frame%self.airShield.numFrames);
+						mesh.render(rc);
+						B.enableCulling();
+						material.unbind(rc);
+						effectMaterial.bind(rc);
+						foreach(ref particle;airShield.particles){
+							auto location=Vector3f(particle.radius*cos(particle.θ),particle.radius*sin(particle.θ),particle.height)*airShield.scale;
+							auto pposition=rawPosition+rotate(rotation,location);
+							auto frame=particle.frame;
+							B.shadelessMaterialBackend.setSpriteTransformationScaled(pposition,scale,rc);
+							auto pmesh=self.airShieldEffect.getFrame(frame%self.airShieldEffect.numFrames);
+							pmesh.render(rc);
+						}
+						effectMaterial.unbind(rc);
+					}
+					foreach(ref airShieldCasting;objects.airShieldCastings) renderAirShield(airShieldCasting.airShield);
+					foreach(ref airShield;objects.airShields) renderAirShield(airShield);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.brainiacEffects.length){
 					auto material=self.brainiacEffect.material;
