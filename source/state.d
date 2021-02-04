@@ -4547,7 +4547,7 @@ void push(B)(ref MovingObject!B object, Vector3f velocity, ObjectState!B state){
 	object.position=newPosition;
 }
 
-void pushAll(alias filter=None,B,T...)(Vector3f position,float innerRadius,float radius,float innerStrength,ObjectState!B state,T args){
+void pushAll(alias filter=None,bool sacDoctorSuperPush=false,B,T...)(Vector3f position,float innerRadius,float radius,float innerStrength,ObjectState!B state,T args){
 	Vector3f[2] hitbox=[position-radius,position+radius];
 	void doPush(ref ProximityEntry entry,ObjectState!B state,T args){
 		if(!state.isValidTarget(entry.id,TargetType.creature)) return;
@@ -4556,6 +4556,12 @@ void pushAll(alias filter=None,B,T...)(Vector3f position,float innerRadius,float
 			auto distance=direction.length;
 			if(distance==0.0f||distance>=radius) return;
 			auto strength=(1.0f-(distance-innerRadius)/(radius-innerRadius))*innerStrength;
+			static if(sacDoctorSuperPush){
+				if(obj.isSacDoctor){
+					if(obj.isDying) return;
+					if(distance<radius-0.1f) strength=1.1f*obj.speedOnGround(state);
+				}
+			}
 			obj.push(strength*direction/distance,state);
 		},(){})(entry.id);
 	}
@@ -8935,6 +8941,10 @@ bool updateRitual(B)(ref Ritual!B ritual,ObjectState!B state){
 				}
 			}
 		}
+		static bool filter(ref ProximityEntry entry,ObjectState!B state,int[4] sacDoctors,int creature){
+			return !sacDoctors[].canFind(entry.id) && entry.id!=creature;
+		}
+		pushAll!(filter,true)(shrinePosition,5.0f,20.0f,20.0f,state,sacDoctors,creature);
 		return true;
 	}
 }
@@ -10298,7 +10308,7 @@ bool updateAirShield(B)(ref AirShield!B airShield,ObjectState!B state,int scaleF
 		}
 		auto hitboxSide=state.movingObjectById!((ref obj)=>tuple(obj.hitbox,obj.side),()=>tuple((Vector3f[2]).init,-1))(airShield.target);
 		auto hitbox=hitboxSide[0], side=hitboxSide[1];
-		static bool filter(ProximityEntry entry,ObjectState!B state,int side){
+		static bool filter(ref ProximityEntry entry,ObjectState!B state,int side){
 			return state.movingObjectById!((ref obj,side)=>obj.side!=side&&obj.canPush,()=>false)(entry.id,side);
 		}
 		pushAll!filter(.boxCenter(hitbox),0.5f*(hitbox[1].xy-hitbox[0].xy).length,0.5f*spell.effectRange,25.0f,state,side);
