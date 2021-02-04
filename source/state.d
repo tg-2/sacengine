@@ -5921,7 +5921,11 @@ bool protectiveSwarm(B)(ProtectiveSwarm!B protectiveSwarm,ObjectState!B state){
 
 enum airShieldGain=2.0f;
 bool castAirShield(B)(ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,ObjectState!B state){
-	if(!state.movingObjectById!((ref obj)=>obj.creatureStats.effects.airShield=true,()=>false)(manaDrain.wizard)) return false;
+	if(!state.movingObjectById!((ref object){
+		if(object.creatureStats.effects.protectiveSwarm) return false;
+		object.creatureStats.effects.airShield=true;
+		return true;
+	},()=>false)(manaDrain.wizard)) return false;
 	auto airShield=AirShield!B(manaDrain.wizard,spell);
 	playSoundAt("dhsa",manaDrain.wizard,state,airShieldGain);
 	state.addEffect(AirShieldCasting!B(manaDrain,castingTime,move(airShield)));
