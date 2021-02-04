@@ -10212,6 +10212,24 @@ bool updateProtectiveSwarm(B)(ref ProtectiveSwarm!B protectiveSwarm,ObjectState!
 	}
 }
 
+void animateFreezeCasting(B)(ref MovingObject!B obj,ObjectState!B state){
+	auto sacParticle=SacParticle!B.get(ParticleType.freeze);
+	enum numParticles=2;
+	foreach(i;0..numParticles){
+		auto hitbox=obj.relativeHitbox;
+		auto center=boxCenter(hitbox);
+		auto position=state.uniform(hitbox)-center;
+		position.x*=4.0f;
+		position.y*=4.0f;
+		position.z*=4.0f;
+		position+=center;
+		auto lifetime=sacParticle.numFrames/60.0f;
+		auto velocity=(center-position)/lifetime;
+		auto scale=1.0f;
+		state.addParticle(Particle!(B,true)(sacParticle,obj.id,false,position,velocity,scale,sacParticle.numFrames,0));
+	}
+}
+
 void animateAirShieldCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
 	wizard.animateStratosCasting(state);
 }
@@ -10220,7 +10238,10 @@ bool updateAirShieldCasting(B)(ref AirShieldCasting!B airShieldCast,ObjectState!
 		airShield.frame+=1;
 		final switch(manaDrain.update(state)){
 			case CastingStatus.underway:
-				state.movingObjectById!(animateAirShieldCasting,(){})(manaDrain.wizard,state);
+				state.movingObjectById!((ref obj,state){
+					obj.animateAirShieldCasting(state);
+					obj.animateFreezeCasting(state);
+				},(){})(manaDrain.wizard,state);
 				return airShield.updateAirShield(state,castingTime);
 			case CastingStatus.interrupted:
 				airShield.status=AirShieldStatus.shrinking;
