@@ -4552,15 +4552,14 @@ void pushAll(alias filter=None,B,T...)(Vector3f position,float innerRadius,float
 	void doPush(ref ProximityEntry entry,ObjectState!B state,T args){
 		if(!state.isValidTarget(entry.id,TargetType.creature)) return;
 		state.movingObjectById!((ref obj){
-			if(!obj.canPush) return;
 			auto direction=obj.center-position;
 			auto distance=direction.length;
-			if(distance==0.0f) return;
+			if(distance==0.0f||distance>=radius) return;
 			auto strength=(1.0f-(distance-innerRadius)/(radius-innerRadius))*innerStrength;
 			obj.push(strength*direction/distance,state);
 		},(){})(entry.id);
 	}
-	collisionTargets!(doPush,filter)(hitbox,state,args);
+	collisionTargets!(doPush,filter,false,true)(hitbox,state,args);
 }
 
 void immediateRevive(B)(ref MovingObject!B object,ObjectState!B state){
@@ -7468,6 +7467,7 @@ auto collisionTargetImpl(bool projectileFilter,bool attackFilter=false,bool retu
 		float distanceSqr=float.infinity;
 	}
 	static void handleCollision(ProximityEntry entry,CollisionState* collisionState,ObjectState!B state){
+		if(!entry.isObstacle) return;
 		static if(projectileFilter) if(!entry.isProjectileObstacle) return;
 		if(entry.id==collisionState.ownId) return;
 		static if(attackFilter){
@@ -7708,6 +7708,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 	bool posChanged=false, needsFixup=false, isColliding=false;
 	auto fixupDirection=Vector3f(0.0f,0.0f,0.0f);
 	void handleCollision(bool fixup)(ProximityEntry entry){
+		if(!entry.isObstacle) return;
 		if(entry.id==object.id) return;
 		isColliding=true;
 		enum CollisionDirection{ // which face of obstacle's hitbox was hit
@@ -8169,6 +8170,8 @@ bool updateStructureCasting(B)(ref StructureCasting!B structureCast,ObjectState!
 			case CastingStatus.underway:
 				currentFrame+=1;
 				structureCast.animateStructureCasting(state);
+				auto position=state.buildingById!((ref bldg,state)=>state.staticObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(bldg.componentIds[0]),()=>Vector3f.init)(building,state);
+				if(!isNaN(position.x)) pushAll(position,5.0f,15.0f,5.0f,state);
 				return true;
 			case CastingStatus.interrupted:
 				state.buildingById!(destroy,(){})(building,state);
@@ -9240,6 +9243,7 @@ int collisionTarget(alias hitbox,alias filter=None,B,T...)(int side,Vector3f pos
 		double distanceSqr=float.infinity;
 	}
 	static void handleCollision(ProximityEntry entry,int side,Vector3f position,CollisionState* collisionState,ObjectState!B state,T args){
+		if(!entry.isObstacle) return;
 		static if(!is(filter==None)) if(!filter(entry,state,args)) return;
 		auto distanceSqr=boxPointDistanceSqr(entry.hitbox,position);
 		auto validRank=state.objectById!((obj,state,side)=>tuple(obj.isValidAttackTarget(state),rank(state.sides.getStance(side,.side(obj,state)))))(entry.id,state,side);
@@ -9255,9 +9259,10 @@ int collisionTarget(alias hitbox,alias filter=None,B,T...)(int side,Vector3f pos
 	state.proximity.collide!handleCollision(moveBox(hitbox,position),side,position,&collisionState,state,args);
 	return collisionState.target;
 }
-void collisionTargets(alias f,alias filter=None,bool uniqueBuildingIds=false,B,T...)(Vector3f[2] hitbox,ObjectState!B state,T args){
+void collisionTargets(alias f,alias filter=None,bool uniqueBuildingIds=false,bool keepNonObstacles=false,B,T...)(Vector3f[2] hitbox,ObjectState!B state,T args){
 	static struct CollisionState{ SmallArray!(ProximityEntry,32) targets; }
 	static void handleCollision(ProximityEntry entry,CollisionState* collisionState,ObjectState!B state,T args){
+		static if(!keepNonObstacles) if(!entry.isObstacle) return;
 		static if(!is(filter==None)) if(!filter(entry,state,args)) return;
 		collisionState.targets~=entry;
 	}
@@ -11083,6 +11088,7 @@ bool updateScarabProjectile(B)(ref ScarabProjectile!B scarabProjectile,ObjectSta
 			target.type=state.targetTypeFromId(targetId);
 		}else{
 			static bool filter(ref ProximityEntry entry,int attacker,int side,int intendedTarget,ObjectState!B state){
+				if(!entry.isObstacle) return false;
 				if(!entry.isProjectileObstacle) return false;
 				if(entry.id==intendedTarget) return true;
 				if(entry.id==attacker) return false;
@@ -12566,15 +12572,12 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 		foreach(j;0..objects.length){
 			bool isObstacle=objects.creatureStates[j].mode.isObstacle;
 			bool isVisibleToAI=objects.creatureStates[j].mode.isVisibleToAI&&!(objects.creatureStatss[j].flags&Flags.notOnMinimap)&&!objects.creatureStatss[j].effects.stealth;
-			if(!isObstacle&&!isVisibleToAI) continue;
 			auto hitbox=objects.sacObject.hitbox(objects.rotations[j],objects.animationStates[j],objects.frames[j]/updateAnimFactor);
 			auto position=objects.positions[j];
 			hitbox[0]+=position;
 			hitbox[1]+=position;
-			if(isObstacle){
-				bool isProjectileObstacle=objects.creatureStates[j].mode.isProjectileObstacle;
-				proximity.insert(ProximityEntry(objects.ids[j],hitbox,isProjectileObstacle));
-			}
+			bool isProjectileObstacle=objects.creatureStates[j].mode.isProjectileObstacle;
+			proximity.insert(ProximityEntry(objects.ids[j],hitbox,isObstacle,isProjectileObstacle));
 			int attackTargetId=0;
 			if(objects.creatureAIs[j].order.command==CommandType.attack)
 				attackTargetId=objects.creatureAIs[j].order.target.id;
@@ -12636,6 +12639,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 struct ProximityEntry{
 	int id;
 	Vector3f[2] hitbox;
+	bool isObstacle=true;
 	bool isProjectileObstacle=true;
 }
 struct ProximityEntries{
@@ -13097,6 +13101,7 @@ final class ObjectState(B){ // (update logic)
 	}
 	OrderTarget lineOfSightWithoutSide(Vector3f start,Vector3f target,int side,int intendedTarget=0){
 		static bool filter(ref ProximityEntry entry,int side,int intendedTarget,ObjectState!B state){
+			if(!entry.isObstacle) return false;
 			if(!entry.isProjectileObstacle) return false;
 			if(entry.id==intendedTarget) return true;
 			return state.objectById!((obj,side,state)=>.side(obj,state)!=side)(entry.id,side,state);
@@ -13104,7 +13109,7 @@ final class ObjectState(B){ // (update logic)
 		return lineOfSight!filter(start,target,side,intendedTarget,this);
 	}
 	bool hasLineOfSightTo(Vector3f start,Vector3f target,int ignoredId,int targetId){
-		static bool filter(ref ProximityEntry entry,int id){ return entry.isProjectileObstacle&&entry.id!=id; }
+		static bool filter(ref ProximityEntry entry,int id){ return entry.isObstacle&&entry.isProjectileObstacle&&entry.id!=id; }
 		auto result=lineOfSight!filter(start,target,ignoredId);
 		return result.type==TargetType.none||result.type.among(TargetType.creature,TargetType.building,TargetType.soul)&&result.id==targetId;
 	}
