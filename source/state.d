@@ -10315,7 +10315,7 @@ bool updateAirShield(B)(ref AirShield!B airShield,ObjectState!B state,int scaleF
 		static bool filter(ref ProximityEntry entry,ObjectState!B state,int side){
 			return state.movingObjectById!((ref obj,side)=>obj.side!=side&&obj.canPush,()=>false)(entry.id,side);
 		}
-		pushAll!filter(.boxCenter(hitbox),0.5f*(hitbox[1].xy-hitbox[0].xy).length,0.5f*spell.effectRange,25.0f,state,side);
+		pushAll!filter(.boxCenter(hitbox),0.5f*(hitbox[1].xy-hitbox[0].xy).length,0.5f*spell.effectRange,20.0f,state,side);
 		final switch(status){
 			case AirShieldStatus.growing:
 				scale=min(1.0f,scale+1.0f/scaleFrames);
