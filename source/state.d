@@ -4296,7 +4296,7 @@ bool pickNextAnimation(B)(ref MovingObject!B object,immutable(AnimationState)[] 
 
 bool startIdling(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.creatureState.mode==CreatureMode.idle) return true;
-	with(CreatureMode) if(!object.creatureState.mode.among(moving,spawning,reviving,fastReviving,takeoff,landing,meleeMoving,meleeAttacking,stunned,casting,stationaryCasting,castingMoving,shooting,pumping,torturing,rockForm))
+	with(CreatureMode) if(!object.creatureState.mode.among(moving,spawning,reviving,fastReviving,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing,rockForm))
 		return false;
 	object.creatureState.mode=CreatureMode.idle;
 	object.setCreatureState(state);
@@ -6936,8 +6936,8 @@ enum rotationSpeedLimitFactor=1.0f;
 
 bool requiresAI(CreatureMode mode){
 	with(CreatureMode) final switch(mode){
-		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,casting,stationaryCasting,castingMoving,shooting,playingDead,rockForm: return true;
-		case dying,dead,dissolving,preSpawning,reviving,fastReviving,stunned,cower,pretendingToDie,pretendingToRevive,pumping,torturing,convertReviving,thrashing: return false;
+		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,cower,casting,stationaryCasting,castingMoving,shooting,playingDead,rockForm: return true;
+		case dying,dead,dissolving,preSpawning,reviving,fastReviving,stunned,pretendingToDie,pretendingToRevive,pumping,torturing,convertReviving,thrashing: return false;
 		case deadToGhost,ghostToIdle: return false;
 		case idleGhost,movingGhost: return true;
 	}
@@ -7003,21 +7003,23 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 			break;
 		case CommandType.none:
 			if(object.isPeasant){
-				if(object.creatureState.mode!=CreatureMode.cower){
-					auto shelter=state.proximity.closestPeasantShelterInRange(object.side,object.position,shelterDistance,state);
-					if(shelter){
-						if(state.frontOfAIQueue(object.side,object.id))
-							object.creatureAI.targetId=state.proximity.closestEnemyInRange(object.side,object.position,scareDistance,EnemyType.creature,state);
-						if(!state.isValidTarget(object.creatureAI.targetId,TargetType.creature)) object.creatureAI.targetId=0;
-						if(auto enemy=object.creatureAI.targetId){
-							auto enemyPosition=state.movingObjectById!((obj)=>obj.position,function Vector3f(){ assert(0); })(enemy);
-							// TODO: figure out the original rule for this
-							if(object.creatureState.mode==CreatureMode.idle&&object.creatureState.timer>=updateFPS)
-								playSoundTypeAt(object.sacObject,object.id,SoundType.run,state);
-							object.moveTowards(object.position-(enemyPosition-object.position),0.0f,state);
-						}else object.stop(state);
-					}else object.startCowering(state);
-				}
+				if(auto shelter=state.proximity.closestPeasantShelterInRange(object.side,object.position,shelterDistance,state)){
+					if(object.creatureState.mode==CreatureMode.cower){
+						object.frame=0;
+						object.startIdling(state);
+					}
+					if(state.frontOfAIQueue(object.side,object.id))
+						object.creatureAI.targetId=state.proximity.closestEnemyInRange(object.side,object.position,scareDistance,EnemyType.creature,state);
+					if(!state.isValidTarget(object.creatureAI.targetId,TargetType.creature)) object.creatureAI.targetId=0;
+					if(auto enemy=object.creatureAI.targetId){
+						auto enemyPosition=state.movingObjectById!((obj)=>obj.position,function Vector3f(){ assert(0); })(enemy);
+						// TODO: figure out the original rule for this
+						if(object.creatureState.mode==CreatureMode.idle&&object.creatureState.timer>=updateFPS)
+							playSoundTypeAt(object.sacObject,object.id,SoundType.run,state);
+						object.moveTowards(object.position-(enemyPosition-object.position),0.0f,state);
+					}else object.stop(state);
+				}else if(object.creatureState.mode!=CreatureMode.cower)
+					object.startCowering(state);
 			}else if(object.isAggressive(state)){
 				if(!object.patrol(state)){
 					object.stopMovement(state);
