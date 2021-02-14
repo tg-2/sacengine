@@ -1028,7 +1028,6 @@ struct Renderer(B){
 					auto effectMaterial=self.airShieldEffect.material;
 					void renderAirShield(ref AirShield!B airShield){
 						material.bind(rc); // TODO: worth separating effects from shield?
-						B.disableCulling();
 						auto target=airShield.target;
 						auto positionRotationBoxSize=state.movingObjectById!((ref obj)=>tuple(center(obj),obj.position,obj.rotation,boxSize(obj.sacObject.largeHitbox(Quaternionf.identity(),obj.animationState,obj.frame/updateAnimFactor))), function Tuple!(Vector3f,Vector3f,Quaternionf,Vector3f)(){ return typeof(return).init; })(target);
 						auto position=positionRotationBoxSize[0], rawPosition=positionRotationBoxSize[1], rotation=positionRotationBoxSize[2], boxSize=positionRotationBoxSize[3];
@@ -1039,7 +1038,6 @@ struct Renderer(B){
 						material.backend.setTransformationScaled(position,rotation,scale*dimensions,rc);
 						auto mesh=self.airShield.getFrame(airShield.frame%self.airShield.numFrames);
 						mesh.render(rc);
-						B.enableCulling();
 						material.unbind(rc);
 						effectMaterial.bind(rc);
 						foreach(ref particle;airShield.particles){
