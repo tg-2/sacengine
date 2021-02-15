@@ -5265,7 +5265,7 @@ float dealFireDamage(T,B)(ref T object,float rangedDamage,float spellDamage,int 
 float dealFallDamage(B)(ref MovingObject!B object,ObjectState!B state){
 	enum fallDamageFactor=20.0f;
 	//auto damage=sqrt(max(0.0f,-object.creatureState.fallingVelocity.z))*fallDamageFactor;
-	auto damage=max(0.0f,-object.creatureState.fallingVelocity.z)*fallDamageFactor; // TODO: correct?
+	auto damage=max(0.0f,-object.creatureState.fallingVelocity.z-5.0f)*60.0/55.0*fallDamageFactor; // TODO: correct?
 	return object.dealDamage(damage,-1,state); // TODO: properly attribute fall damage to sides
 }
 float dealRangedDamage(B)(ref StaticObject!B object,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
