@@ -7406,7 +7406,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 					object.animationState=AnimationState.hover;
 					object.startIdling(state);
 					break;
-				}else if(state.isOnGround(object.position)&&object.position.z<=state.getGroundHeight(object.position)){
+				}else if(state.isOnGround(object.position)&&object.position.z+object.creatureState.fallingVelocity.z/updateFPS<=state.getGroundHeight(object.position)){
 					object.creatureState.movement=CreatureMovement.onGround;
 					if(object.animationState.among(AnimationState.falling,AnimationState.tumble)){
 						object.dealFallDamage(state);
@@ -11412,7 +11412,7 @@ Vector3f vortexForceField(Vector3f position,float radius,float height){
 	//return Vector3f(-7.5f*position.y-7.5f*position.x,7.5f*position.x-7.5f*position.y,30.0f*0.35f);
 	//return Vector3f(-7.0f*position.y-7.0f*position.x,7.0f*position.x-7.0f*position.y,30.0f*0.35f);
 	//return Vector3f(-6.0f*position.y-6.0f*position.x,6.0f*position.x-6.0f*position.y,30.0f*0.4f);
-	return Vector3f(4.5f*(-position.y-position.x),4.5f*(position.x-position.y),5.5f);
+	return Vector3f(5.5f*(-position.y-position.x),5.5f*(position.x-position.y),5.5f);
 }
 
 void addVortexParticles(B)(ref VortexEffect!B vortex,ObjectState!B state){
@@ -11464,7 +11464,7 @@ bool updateVortexEffect(B)(ref VortexEffect!B vortex,ObjectState!B state){
 					auto direction=(vortex.position.xy-obj.center.xy).normalized*5.0f;
 					//obj.catapult(Vector3f(1.5f*direction.x,1.5f*direction.y,4.5f),state);
 					//obj.catapult(Vector3f(1.5f*direction.y,-1.5f*direction.x,4.5f),state);
-					obj.catapult(Vector3f(direction.y,-direction.x,1.0f),state);
+					obj.catapult(Vector3f(direction.y,-direction.x,4.5f),state);
 				}
 				if(obj.creatureState.movement==CreatureMovement.tumbling){
 					auto acceleration=vortexForceField(obj.center-vortex.position,radius,height);
