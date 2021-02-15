@@ -4419,7 +4419,7 @@ bool gib(B)(ref MovingObject!B object, ObjectState!B state,int giveSoulsTo=-1){ 
 		}
 	}
 	state.removeLater(object.id);
-	playSpellSoundTypeAt(SoundType.gib,object.position,state,2.0f);
+	playSpellSoundTypeAt(SoundType.gib,object.position,state,4.0f);
 	// TODO: gib animation
 	return true;
 }
