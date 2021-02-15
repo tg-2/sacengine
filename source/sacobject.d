@@ -1902,6 +1902,22 @@ struct SacVortex(B){
 	B.Mesh getCenterFrame(int i){ return centerMeshes[i/updateAnimFactor]; }
 }
 
+struct SacSquallEffect(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Stra.FLDR/txtr.FLDR/sqll.TXTR"));
+	}
+	B.Material material;
+	B.Mesh[] frames;
+	enum animationDelay=2;
+	enum numFrames=16*animationDelay*updateAnimFactor;
+	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
+	static B.Mesh[] createMeshes(){
+		return makeSpriteMeshes!(B,true)(4,4,2.5f,2.5f);
+	}
+}
+
+
 struct SacTether(B){
 	B.Texture texture;
 	B.Material material;

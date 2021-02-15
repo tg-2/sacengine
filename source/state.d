@@ -2618,6 +2618,32 @@ struct VortexEffect(B){
 	enum maxHeight=4.0f;
 }
 
+struct SquallProjectile(B){
+	int attacker;
+	int side;
+	int intendedTarget;
+	Vector3f position;
+	Vector3f direction;
+	SacSpell!B rangedAttack;
+	float remainingDistance;
+}
+struct SquallEffect{
+	Vector3f position;
+	Vector3f direction;
+	int frame=0;
+}
+
+struct Pushback(B){
+	int creature;
+	Vector3f direction;
+	SacSpell!B rangedAttack;
+	int frame=0;
+	enum pushDuration=2.0f/3.0f;
+	enum pushDistance=15.0f;
+	enum pushVelocity=pushDistance/pushDuration;
+}
+
+
 enum RockFormStatus{ growing, stationary, shrinking }
 struct RockForm(B){
 	int target;
@@ -3260,6 +3286,30 @@ struct Effects(B){
 		if(i+1<vortexEffects.length) swap(vortexEffects[i],vortexEffects[$-1]);
 		vortexEffects.length=vortexEffects.length-1; // TODO: reuse memory?
 	}
+	Array!(SquallProjectile!B) squallProjectiles;
+	void addEffect(SquallProjectile!B squallProjectile){
+		squallProjectiles~=squallProjectile;
+	}
+	void removeSquallProjectile(int i){
+		if(i+1<squallProjectiles.length) squallProjectiles[i]=move(squallProjectiles[$-1]);
+		squallProjectiles.length=squallProjectiles.length-1;
+	}
+	Array!SquallEffect squallEffects;
+	void addEffect(SquallEffect squallEffect){
+		squallEffects~=squallEffect;
+	}
+	void removeSquallEffect(int i){
+		if(i+1<squallEffects.length) squallEffects[i]=move(squallEffects[$-1]);
+		squallEffects.length=squallEffects.length-1;
+	}
+	Array!(Pushback!B) pushbacks;
+	void addEffect(Pushback!B pushback){
+		pushbacks~=move(pushback);
+	}
+	void removePushback(int i){
+		if(i+1<pushbacks.length) swap(pushbacks[i],pushbacks[$-1]);
+		pushbacks.length=pushbacks.length-1; // TODO: reuse memory?
+	}
 	Array!(RockForm!B) rockForms;
 	void addEffect(RockForm!B rockForm){
 		rockForms~=move(rockForm);
@@ -3409,6 +3459,9 @@ struct Effects(B){
 		assignArray(vortickProjectiles,rhs.vortickProjectiles);
 		assignArray(vortickEffects,rhs.vortickEffects);
 		assignArray(vortexEffects,rhs.vortexEffects);
+		assignArray(squallProjectiles,rhs.squallProjectiles);
+		assignArray(squallEffects,rhs.squallEffects);
+		assignArray(pushbacks,rhs.pushbacks);
 		assignArray(rockForms,rhs.rockForms);
 		assignArray(stealths,rhs.stealths);
 		assignArray(lifeShields,rhs.lifeShields);
@@ -6112,6 +6165,21 @@ bool spawnVortex(B)(Vector3f position,SacSpell!B rangedAttack,ObjectState!B stat
 	return true;
 }
 
+enum pushbackGain=4.0f;
+bool squallShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	playSoundAt("slqs",position,state,4.0f);
+	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
+	state.addEffect(SquallProjectile!B(attacker,side,intendedTarget,position,direction,rangedAttack,rangedAttack.range));
+	return true;
+}
+
+bool pushback(B)(int creature, Vector3f direction,SacSpell!B rangedAttack,ObjectState!B state){
+	if(!state.isValidTarget(creature,TargetType.creature)) return false;
+	state.addEffect(Pushback!B(creature,direction,rangedAttack));
+	return true;
+}
+
+
 enum defaultFaceThreshold=1e-3;
 bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state,float threshold=defaultFaceThreshold){
 	auto angle=facing-object.creatureState.facing;
@@ -6550,7 +6618,10 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 					case SpellTag.vortickShoot:
 						vortickShoot(object.id,object.side,targetId,accuracy,object.shotPosition,predicted,rangedAttack,state);
 						break;
-					default: goto case SpellTag.brainiacShoot;
+					case SpellTag.squallShoot:
+						squallShoot(object.id,object.side,targetId,accuracy,object.shotPosition,predicted,rangedAttack,state);
+						break;
+					default: writeln(rangedAttack.tag); goto case SpellTag.brainiacShoot;
 				}
 				object.drainMana(drainedMana,state);
 				if(object.creatureStats.effects.rangedCooldown==0)
@@ -11406,6 +11477,74 @@ bool updateVortexEffect(B)(ref VortexEffect!B vortex,ObjectState!B state){
 	}
 }
 
+enum squallProjectileSize=0.45f; // TODO: ok?
+enum squallProjectileSlidingDistance=1.5f;
+static immutable Vector3f[2] squallProjectileHitbox=[-0.5f*squallProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*squallProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
+int squallProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
+		return entry.isProjectileObstacle&&(entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side);
+	}
+	return collisionTarget!(squallProjectileHitbox,filter)(side,position,state,side,intendedTarget);
+}
+bool updateSquallProjectile(B)(ref SquallProjectile!B squallProjectile,ObjectState!B state){
+	with(squallProjectile){
+		auto oldPosition=position;
+		auto velocity=rangedAttack.speed/updateFPS*direction;
+		position+=velocity;
+		remainingDistance-=rangedAttack.speed/updateFPS;
+		static assert(updateFPS==60);
+		enum nSteps=1;
+		foreach(i;0..nSteps)
+			state.addEffect(SquallEffect(oldPosition+float(i+1)/nSteps*velocity,direction));
+		OrderTarget target;
+		if(auto targetId=squallProjectileCollisionTarget(side,intendedTarget,position,state)){
+			target.id=targetId;
+			target.type=state.targetTypeFromId(targetId);
+		}else{
+			target=state.lineOfSightWithoutSide(oldPosition,position,side,intendedTarget);
+		}
+		bool terminate(){
+			playSoundAt("hlqs",position,state,brainiacProjectileHitGain);
+			return false;
+		}
+		if(remainingDistance<=0.0f) return terminate();
+		switch(target.type){
+			case TargetType.terrain:
+				return terminate();
+			case TargetType.creature:
+				pushback(target.id,direction,rangedAttack,state);
+				goto case;
+			case TargetType.building:
+				dealRangedDamage(target.id,rangedAttack,attacker,side,direction,state);
+				return terminate();
+			default: break;
+		}
+		return true;
+	}
+}
+bool updateSquallEffect(B)(ref SquallEffect effect,ObjectState!B state){
+	with(effect){
+		static assert(updateFPS==60);
+		return ++frame<64; // TODO: fix timing on this
+	}
+}
+
+bool updatePushback(B)(ref Pushback!B pushback,ObjectState!B state){
+	with(pushback){
+		return state.movingObjectById!((ref obj,vel,state){
+			final switch(obj.creatureState.movement) with(CreatureMovement){
+				case onGround,flying:
+					obj.push(vel,state);
+					return true;
+				case tumbling:
+					obj.creatureState.fallingVelocity+=vel;
+					return false;
+			}
+		},()=>false)(creature,pushVelocity*direction,state) && ++frame<pushDuration*updateFPS;
+	}
+}
+
+
 bool updateRockForm(B)(ref RockForm!B rockForm,ObjectState!B state){
 	with(rockForm){
 		if(!state.isValidTarget(target,TargetType.creature)) return false;
@@ -12211,6 +12350,27 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.vortexEffects.length;){
 		if(!updateVortexEffect(effects.vortexEffects[i],state)){
 			effects.removeVortexEffect(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.squallProjectiles.length;){
+		if(!updateSquallProjectile(effects.squallProjectiles[i],state)){
+			effects.removeSquallProjectile(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.squallEffects.length;){
+		if(!updateSquallEffect(effects.squallEffects[i],state)){
+			effects.removeSquallEffect(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.pushbacks.length;){
+		if(!updatePushback(effects.pushbacks[i],state)){
+			effects.removePushback(i);
 			continue;
 		}
 		i++;

@@ -462,6 +462,15 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Vor
 void serialize(alias sink,B)(ref VortexEffect!B.Particle particle){ serializeStruct!sink(particle); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==VortexEffect!B.Particle)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref SquallProjectile!B squallProjectile){ serializeStruct!sink(squallProjectile); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SquallProjectile!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink)(ref SquallEffect squallEffect){ serializeStruct!sink(squallEffect); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SquallEffect)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref Pushback!B pushback){ serializeStruct!sink(pushback); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Pushback!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref RockForm!B rockForm){ serializeStruct!sink(rockForm); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==RockForm!B)){ deserializeStruct(result,state,data); }
 

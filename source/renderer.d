@@ -268,6 +268,17 @@ struct Renderer(B){
 		auto frames=typeof(return).createMeshes();
 		return SacArrow!B(sylphTexture,smat,rangerTexture,rmat,frames);
 	}
+	SacLaser!B laser;
+	SacLaser!B createLaser(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessBoneMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Additive;
+		mat.energy=5.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacLaser!B(texture,mat,frames);
+	}
 	SacBasiliskEffect!B basiliskEffect;
 	SacBasiliskEffect!B createBasiliskEffect(){
 		auto texture=typeof(return).loadTexture();
@@ -301,16 +312,16 @@ struct Renderer(B){
 		auto frames=typeof(return).createMeshes();
 		return SacVortexEffect!B(texture,mat,frames);
 	}
-	SacLaser!B laser;
-	SacLaser!B createLaser(){
+	SacSquallEffect!B squallEffect;
+	SacSquallEffect!B createSquallEffect(){
 		auto texture=typeof(return).loadTexture();
-		auto mat=B.makeMaterial(B.shadelessBoneMaterialBackend);
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
 		mat.depthWrite=false;
 		mat.blending=B.Blending.Additive;
-		mat.energy=5.0f;
+		mat.energy=20.0f;
 		mat.diffuse=texture;
 		auto frames=typeof(return).createMeshes();
-		return SacLaser!B(texture,mat,frames);
+		return SacSquallEffect!B(texture,mat,frames);
 	}
 	SacLifeShield!B lifeShield;
 	SacLifeShield!B createLifeShield(){
@@ -358,6 +369,7 @@ struct Renderer(B){
 		basiliskEffect=createBasiliskEffect();
 		tube=createTube();
 		vortexEffect=createVortexEffect();
+		squallEffect=createSquallEffect();
 		lifeShield=createLifeShield();
 		divineSight=createDivineSight();
 	}
@@ -1217,6 +1229,21 @@ struct Renderer(B){
 							mesh.render(rc);
 						}
 					}
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.squallEffects.length){
+					auto material=self.squallEffect.material;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
+					void renderSquallEffect(Vector3f position,Vector3f direction,int frame,float scale_,float ltfactor=1.0f){
+						auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),direction); // TODO: precompute this?
+						auto relativeProgress=float(frame)/(ltfactor*self.squallEffect.numFrames);
+						auto scale=scale_*(1.0f+1.0f*relativeProgress^^2.5f);
+						B.shadelessMaterialBackend.setTransformationScaled(position,rotation,scale*Vector3f(1.0f,1.0f,1.0f),rc);
+						B.shadelessMaterialBackend.setAlpha(0.95f*(1.0f-relativeProgress)^^1.5f);
+						auto mesh=self.squallEffect.getFrame(frame%self.squallEffect.numFrames);
+						mesh.render(rc);
+					}
+					foreach(ref effect;objects.squallEffects.data) renderSquallEffect(effect.position,effect.direction,effect.frame,0.6f,2.0f);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.lifeShields.length){
 					auto material=self.lifeShield.material;
