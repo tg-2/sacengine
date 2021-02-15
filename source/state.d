@@ -6621,7 +6621,7 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 					case SpellTag.squallShoot:
 						squallShoot(object.id,object.side,targetId,accuracy,object.shotPosition,predicted,rangedAttack,state);
 						break;
-					default: writeln(rangedAttack.tag); goto case SpellTag.brainiacShoot;
+					default: goto case SpellTag.brainiacShoot;
 				}
 				object.drainMana(drainedMana,state);
 				if(object.creatureStats.effects.rangedCooldown==0)
