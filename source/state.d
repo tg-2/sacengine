@@ -5264,7 +5264,8 @@ float dealFireDamage(T,B)(ref T object,float rangedDamage,float spellDamage,int 
 
 float dealFallDamage(B)(ref MovingObject!B object,ObjectState!B state){
 	enum fallDamageFactor=20.0f;
-	auto damage=sqrt(max(0.0f,-object.creatureState.fallingVelocity.z))*fallDamageFactor; // TODO: figure this out
+	//auto damage=sqrt(max(0.0f,-object.creatureState.fallingVelocity.z))*fallDamageFactor;
+	auto damage=max(0.0f,-object.creatureState.fallingVelocity.z)*fallDamageFactor; // TODO: correct?
 	return object.dealDamage(damage,-1,state); // TODO: properly attribute fall damage to sides
 }
 float dealRangedDamage(B)(ref StaticObject!B object,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
@@ -7778,7 +7779,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 		case CreatureMovement.tumbling:
 			if(object.creatureStats.effects.antiGravityTime<state.frame)
 				object.creatureState.fallingVelocity.z-=object.creatureStats.fallingAcceleration/updateFPS;
-			enum speedCap=30.0f; // TODO: figure out constant
+			enum speedCap=60.0f; // TODO: figure out constant
 			if(object.creatureState.fallingVelocity.lengthsqr>speedCap^^2) object.creatureState.fallingVelocity=object.creatureState.fallingVelocity.normalized*speedCap;
 			newPosition=object.position+object.creatureState.fallingVelocity/updateFPS;
 			if(object.creatureState.fallingVelocity.z<=0.0f && state.isOnGround(newPosition))
