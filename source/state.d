@@ -5639,11 +5639,11 @@ bool castTeleport(B)(ManaDrain!B manaDrain,SacSpell!B spell,Vector3f startPositi
 	return true;
 }
 
-void animateTeleport(B)(bool isOut,Vector3f[2] hitbox,ObjectState!B state){
+void animateTeleport(B)(bool isOut,Vector3f[2] hitbox,ObjectState!B state,bool soundEffect=true){
 	auto position=boxCenter([hitbox[0],Vector3f(hitbox[1].x,hitbox[1].y,hitbox[0].z)]);
 	auto size=boxSize(hitbox);
 	auto scale=max(size.x,size.y);
-	playSoundAt("elet",position,state,2.0f);
+	if(soundEffect) playSoundAt("elet",position,state,2.0f);
 	state.addEffect(TeleportEffect!B(isOut,position,scale,size.z));
 	auto sacParticle=SacParticle!B.get(ParticleType.heal);
 	auto pscale=size.length;
@@ -5658,7 +5658,7 @@ void animateTeleport(B)(bool isOut,Vector3f[2] hitbox,ObjectState!B state){
 }
 
 void animateWizardVoidTeleport(B)(bool isOut,Vector3f[2] hitbox,ObjectState!B state){
-	return animateTeleport(isOut,hitbox,state); // TODO
+	return animateTeleport(isOut,hitbox,state,false);
 }
 
 bool teleport(B)(ref MovingObject!B obj,Vector3f newPosition,ObjectState!B state,bool wizardVoid=false){ // TODO: get rid of startPosition parameter
@@ -5681,7 +5681,7 @@ bool teleport(B)(ref MovingObject!B obj,Vector3f newPosition,ObjectState!B state
 
 bool teleport(B)(int side,Vector3f startPosition,Vector3f targetPosition,SacSpell!B spell,ObjectState!B state){
 	static void teleport(ref CenterProximityEntry entry,int side,Vector3f startPosition,Vector3f targetPosition,ObjectState!B state){
-		static void doIt(ref MovingObject!B obj,Vector3f startPosition,Vector3f targetPosition,ObjectState!B state,bool wizardVoid=false){
+		static void doIt(ref MovingObject!B obj,Vector3f startPosition,Vector3f targetPosition,ObjectState!B state){
 			if(obj.isSacDoctor||obj.isGuardian||obj.isDying) return;
 			auto newPosition=obj.position-startPosition+targetPosition;
 			if(obj.creatureState.movement!=CreatureMovement.flying&&!state.isOnGround(newPosition)){
