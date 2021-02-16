@@ -4830,8 +4830,15 @@ float dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B at
 }
 float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,ObjectState!B state){
 	if(!object.canDamage(state)) return 0.0f;
-	auto actualDamage=damage;
+	auto actualDamage=damage*state.sideDamageMultiplier(attackingSide,object.side);
 	if(object.creatureStats.effects.isGuardian) actualDamage*=0.5f;
+	if(auto passive=object.sacObject.passiveOnDamage){
+		if(passive.tag==SpellTag.taurockPassive){
+			auto relativeHP=object.creatureStats.health/object.creatureStats.maxHealth;
+			auto damageFactor=0.25f+0.75f*relativeHP;
+			actualDamage*=damageFactor;
+		}
+	}
 	actualDamage=min(object.health,actualDamage);
 	object.creatureStats.health-=actualDamage;
 	if(object.creatureStats.flags&Flags.cannotDestroyKill)
@@ -4851,11 +4858,11 @@ float dealDamage(B)(ref MovingObject!B object,float damage,int attackingSide,Obj
 	if(object.creatureStats.effects.airShield) shieldDamageMultiplier*=0.5f;
 	if(object.creatureStats.effects.protectiveSwarm) shieldDamageMultiplier*=0.75f;
 	// TODO: bleed, in case of petrification, bleed rocks instead
-	return dealRawDamage(object,damage*state.sideDamageMultiplier(attackingSide,object.side)*shieldDamageMultiplier,attackingSide,state);
+	return dealRawDamage(object,damage*shieldDamageMultiplier,attackingSide,state);
 }
 float dealDesecrationDamage(B)(ref MovingObject!B object,float damage,int attackingSide,ObjectState!B state){
 	if(!object.canDamage(state)) return 0.0f;
-	return dealRawDamage(object,damage*state.sideDamageMultiplier(attackingSide,object.side),attackingSide,state);
+	return dealRawDamage(object,damage,attackingSide,state);
 }
 
 bool canDamage(B)(ref Building!B building,ObjectState!B state){

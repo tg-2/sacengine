@@ -1083,6 +1083,7 @@ enum SpellTag:char[4]{
 	// passive abilities:
 	steamCloud="goc@",
 	poisonCloud="cen@",
+	taurockPassive="korq",
 	// ranged attacks:
 	brainiacShoot="bsba",
 	shrikeShoot="absh",
