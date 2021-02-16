@@ -5084,8 +5084,8 @@ float meleeDistanceSqr(Vector3f[2] objectHitbox,Vector3f[2] attackerHitbox){
 	return boxBoxDistanceSqr(objectHitbox,attackerHitbox);
 }
 
-void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,ObjectState!B state){
-	auto damage=attacker.meleeStrength/attacker.numAttackTicks; // TODO: figure this out
+void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,float damageFactor,ObjectState!B state){
+	auto damage=damageFactor*attacker.meleeStrength/attacker.numAttackTicks; // TODO: figure this out
 	auto objectHitbox=object.hitbox, attackerHitbox=attacker.meleeHitbox, attackerSizeSqr=0.25f*boxSize(attackerHitbox).lengthsqr;
 	auto distanceSqr=meleeDistanceSqr(objectHitbox,attackerHitbox);
 	//auto damageMultiplier=max(0.0f,1.0f-max(0.0f,sqrt(distanceSqr/attackerSizeSqr)));
@@ -5118,14 +5118,14 @@ void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,Ob
 	playSoundTypeAt(attacker.sacObject,attacker.id,SoundType.hit,state);
 }
 
-float dealMeleeDamage(B)(ref StaticObject!B object,ref MovingObject!B attacker,ObjectState!B state){
-	return state.buildingById!((ref Building!B building,MovingObject!B* attacker,ObjectState!B state){
-		return building.dealMeleeDamage(*attacker,state);
-	},()=>0.0f)(object.buildingId,&attacker,state);
+float dealMeleeDamage(B)(ref StaticObject!B object,ref MovingObject!B attacker,float damageFactor,ObjectState!B state){
+	return state.buildingById!((ref Building!B building,MovingObject!B* attacker,float damageFactor,ObjectState!B state){
+		return building.dealMeleeDamage(*attacker,damageFactor,state);
+	},()=>0.0f)(object.buildingId,&attacker,damageFactor,state);
 }
 
-float dealMeleeDamage(B)(ref Building!B building,ref MovingObject!B attacker,ObjectState!B state){
-	auto damage=attacker.meleeStrength/attacker.numAttackTicks;
+float dealMeleeDamage(B)(ref Building!B building,ref MovingObject!B attacker,float damageFactor,ObjectState!B state){
+	auto damage=damageFactor*attacker.meleeStrength/attacker.numAttackTicks;
 	auto guardianDamage=meleeDamageGuardians(building,damage,attacker,state);
 	if(!isNaN(guardianDamage)) return guardianDamage;
 	auto actualDamage=damage*building.meleeResistance*attacker.sacObject.buildingMeleeDamageMultiplier;
@@ -7608,9 +7608,16 @@ void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 		object.giveMana(state.manaRegenAt(object.side,object.position)/updateFPS,state);
 	if(object.creatureState.mode.among(CreatureMode.meleeMoving,CreatureMode.meleeAttacking) && object.hasAttackTick){
 		object.creatureState.mode=CreatureMode.meleeAttacking;
-		if(auto target=object.meleeAttackTarget(state)){
+		if(auto target=object.meleeAttackTarget(state)){ // TODO: factor this out into its own function?
 			static void dealDamage(T)(ref T target,MovingObject!B* attacker,ObjectState!B state){
-				target.dealMeleeDamage(*attacker,state);
+				float damageFactor=1.0f;
+				if(auto passive=attacker.sacObject.passiveOnDamage){
+					if(passive.tag==SpellTag.firefistPassive){
+						auto relativeHP=attacker.creatureStats.health/attacker.creatureStats.maxHealth;
+						damageFactor=1.0f+1.5f*(1.0f-relativeHP);
+					}
+				}
+				target.dealMeleeDamage(*attacker,damageFactor,state); // TODO: maybe those functions should be local
 			}
 			state.objectById!dealDamage(target,&object,state);
 		}

@@ -1084,6 +1084,7 @@ enum SpellTag:char[4]{
 	steamCloud="goc@",
 	poisonCloud="cen@",
 	taurockPassive="korq",
+	firefistPassive="ahtf",
 	// ranged attacks:
 	brainiacShoot="bsba",
 	shrikeShoot="absh",
