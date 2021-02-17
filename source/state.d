@@ -13344,7 +13344,7 @@ final class ObjectState(B){ // (update logic)
 	}
 	T uniform(string bounds="[]",T)(T a,T b){
 		import std.random: uniform;
-		return uniform!bounds(a,b,rng);
+		return uniform!bounds(min(a,b),max(a,b),rng);
 	}
 	T normal(T=float)(){
 		enum n=10;
