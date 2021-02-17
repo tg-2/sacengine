@@ -4406,7 +4406,7 @@ bool kill(B,bool pretending=false)(ref MovingObject!B object, ObjectState!B stat
 }
 void killAll(B)(int side, ObjectState!B state){
 	void perform(ref MovingObject!B obj,int side,ObjectState!B state){
-		if(obj.side==side)
+		if(obj.side==side && obj.creatureState.mode!=CreatureMode.convertReviving)
 			obj.kill(state);
 	}
 	state.eachMoving!perform(side,state);
