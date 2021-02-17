@@ -2370,6 +2370,16 @@ struct AirShield(B){
 		int frame=0;
 	}
 	Array!Particle particles;
+
+	void opAssign(ref AirShield!B rhs){
+			this.tupleof[0..$-1]=rhs.tupleof[0..$-1];
+		static assert(__traits(isSame,this.tupleof[$-1],this.particles));
+		assignArray(particles,rhs.particles);
+	}
+	void opAssign(AirShield!B rhs){
+		this.tupleof=rhs.tupleof;
+	}
+	this(this){ particles=particles.dup; } // TODO: needed?
 }
 
 struct BrainiacProjectile(B){
@@ -2613,6 +2623,15 @@ struct VortexEffect(B){
 		int frame=0;
 	}
 	Array!Particle particles;
+	void opAssign(ref VortexEffect!B rhs){
+		this.tupleof[0..$-1]=rhs.tupleof[0..$-1];
+		static assert(__traits(isSame,this.tupleof[$-1],this.particles));
+		assignArray(particles,rhs.particles);
+	}
+	void opAssign(VortexEffect!B rhs){
+		this.tupleof=rhs.tupleof;
+	}
+	this(this){ particles=particles.dup; } // TODO: needed?
 	enum duration=2.0f;
 	enum radiusFactor=1;
 	enum maxHeight=4.0f;

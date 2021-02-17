@@ -44,7 +44,7 @@ bool diffData(B)(SacParticle!B a,SacParticle!B b,lazy string path){
 	return r;
 }
 
-bool diffData(T)(T a,T b,lazy string path)if(is(T==int)||is(T==uint)||is(T==size_t)||is(T==float)||is(T==bool)||is(T==ubyte)||is(T==char)||is(T==enum)||is(T==char[n],size_t n)||is(T==string)){
+bool diffData(T)(T a,T b,lazy string path)if(is(T==short)||is(T==ushort)||is(T==int)||is(T==uint)||is(T==size_t)||is(T==float)||is(T==bool)||is(T==ubyte)||is(T==char)||is(T==enum)||is(T==char[n],size_t n)||is(T==string)){
 	bool r=false;
 	static if(is(T==S[n],S,size_t n)){ // abool deprecation warning
 		if(a!=b){
