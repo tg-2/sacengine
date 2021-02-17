@@ -28,7 +28,7 @@ final class Controller(B){
 	}
 	void addCommand(int frame,Command!B command)in{
 		assert(command.id==0);
-		assert(!network||network.playing||frame==0&&command.type==CommandType.surrender);
+		assert(!network||network.playing||command.type==CommandType.surrender);
 		assert(committedFrame<=frame);
 	}do{
 		if(command.side!=controlledSide) return;
