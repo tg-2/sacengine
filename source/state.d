@@ -6074,6 +6074,7 @@ bool freeze(B)(int wizard,int side,int target,SacSpell!B spell,ObjectState!B sta
 		assert(!obj.creatureStats.effects.frozen);
 		obj.creatureStats.effects.frozen=true;
 		obj.creatureState.mode=CreatureMode.stunned;
+		obj.startTumbling(state);
 		auto duration=(obj.isWizard?0.25f:800.0f/obj.health)*spell.duration;
 		return cast(int)ceil(updateFPS*duration);
 	},()=>-1)(target);
