@@ -1665,6 +1665,36 @@ struct SacAirShieldEffect(B){
 	}
 }
 
+B.Mesh makeBoxMesh(B)(float width,float height,float depth){
+	static Vector3f[8] box=[Vector3f(-0.5f,-0.5f,-0.5f),Vector3f(0.5f,-0.5f,-0.5f),
+	                        Vector3f(0.5f,0.5f,-0.5f),Vector3f(-0.5f,0.5f,-0.5f),
+	                        Vector3f(-0.5f,-0.5f,0.5f),Vector3f(0.5f,-0.5f,0.5f),
+	                        Vector3f(0.5f,0.5f,0.5f),Vector3f(-0.5f,0.5f,0.5f)];
+	auto mesh=B.makeMesh(16,6*2);
+	mesh.vertices[0..8]=box[];
+	mesh.vertices[8..16]=box[];
+	//foreach(ref x;mesh.vertices) x*=10;
+	int curFace=0;
+	int offset=0;
+	void face(int[] ccw...){
+		ccw[]+=offset;
+		mesh.indices[curFace++]=[ccw[0],ccw[1],ccw[3]];
+		mesh.indices[curFace++]=[ccw[1],ccw[3],ccw[2]];
+		foreach(i;0..4) mesh.texcoords[ccw[i]]=Vector3f(0.0f+(i==1||i==2),0.0f+(i==2||i==3));
+	}
+	face(0,3,2,1);
+	face(4,5,6,7);
+	offset=8;
+	face(0,1,5,4);
+	face(1,2,6,5);
+	face(2,3,7,6);
+	face(3,0,4,7);
+	mesh.generateNormals();
+	B.finalizeMesh(mesh);
+	return mesh;
+}
+
+
 struct SacBrainiacEffect(B){
 	B.Texture texture;
 	static B.Texture loadTexture(){

@@ -1448,30 +1448,8 @@ struct Renderer(B){
 
 	B.Mesh boxMesh=null;
 	void renderBox(Vector3f[2] sl,bool wireframe,B.RenderContext rc){
-		static Vector3f[8] box=[Vector3f(-0.5f,-0.5f,-0.5f),Vector3f(0.5f,-0.5f,-0.5f),
-		                 Vector3f(0.5f,0.5f,-0.5f),Vector3f(-0.5f,0.5f,-0.5f),
-		                 Vector3f(-0.5f,-0.5f,0.5f),Vector3f(0.5f,-0.5f,0.5f),
-		                 Vector3f(0.5f,0.5f,0.5f),Vector3f(-0.5f,0.5f,0.5f)];
 		if(wireframe) B.enableWireframe();
-		if(!boxMesh){
-			boxMesh=B.makeMesh(8,6*2);
-			boxMesh.vertices[]=box[];
-			//foreach(ref x;boxMesh.vertices) x*=10;
-			boxMesh.indices[0]=[0,2,1];
-			boxMesh.indices[1]=[2,0,3];
-			boxMesh.indices[2]=[4,5,6];
-			boxMesh.indices[3]=[6,7,4];
-			boxMesh.indices[4]=[0,1,5];
-			boxMesh.indices[5]=[0,5,4];
-			boxMesh.indices[6]=[1,2,6];
-			boxMesh.indices[7]=[6,5,1];
-			boxMesh.indices[8]=[2,3,7];
-			boxMesh.indices[9]=[7,6,2];
-			boxMesh.indices[10]=[3,0,4];
-			boxMesh.indices[11]=[4,7,3];
-			boxMesh.texcoords[]=Vector2f(0,0);
-			B.finalizeMesh(boxMesh);
-		}
+		if(!boxMesh) boxMesh=makeBoxMesh!B(1.0f,1.0f,1.0f);
 		hitboxMaterial.backend.setTransformationScaled(boxCenter(sl), Quaternionf.identity(), boxSize(sl), rc);
 		boxMesh.render(rc);
 		if(wireframe) B.disableWireframe();
