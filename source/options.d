@@ -37,11 +37,13 @@ struct Options{
 	// player-specific settings
 	God god;
 	Settings settings;
+	bool randomGods=false;
 	bool randomSpellbook=false;
 	// global settings
 	string mapList;
 	bool _2v2=false;
 	bool _3v3=false;
+	bool mirrorMatch=false;
 	bool shuffleSides=false;
 	bool shuffleTeams=false;
 	bool randomWizards=false;

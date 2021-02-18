@@ -96,10 +96,24 @@ void loadMap(B)(ref B backend,ref Options options)in{
 				if(options.synchronizeSouls) network.synchronizeSetting!"souls"();
 				foreach(player;0..cast(int)network.players.length){
 					if(player==network.me) continue;
-					if(options.randomSpellbooks) network.updateSetting!"spellbook"(player,randomSpells());
 					import std.random: uniform;
+					if(options.randomGods) network.updateSetting!"spellbook"(player,defaultSpells[uniform!"[]"(1,5)]);
+					if(options.randomSpellbooks) network.updateSetting!"spellbook"(player,randomSpells());
 					import nttData:wizards;
 					if(options.randomWizards) network.updateSetting!"wizard"(player,cast(char[4])wizards[uniform!"[)"(0,$)]);
+				}
+				if(options.mirrorMatch){ // TODO: this is a hack
+					foreach(player;0..cast(int)network.players.length){
+						auto team=network.players[player].settings.team;
+						if(team==0) continue;
+						auto index=network.players[0..player].count!((ref player)=>player.settings.team==team);
+						auto team0=network.players.filter!((ref player)=>player.settings.team==0);
+						if(team0.save.walkLength>index){
+							team0.popFrontN(index);
+							if(options.randomSpellbooks||options.randomGods) network.updateSetting!"spellbook"(player,team0.front.settings.spellbook);
+							if(options.randomWizards) network.updateSetting!"wizard"(player,team0.front.settings.wizard);
+						}
+					}
 				}
 				network.updateStatus(PlayerStatus.readyToLoad);
 				assert(network.readyToLoad());
@@ -363,7 +377,7 @@ int main(string[] args){
 		import nttData:wizards;
 		options.wizard=cast(char[4])wizards[uniform!"[)"(0,$)];
 	}
-	if(options.god==God.none){
+	if(options.god==God.none||options.randomGods){
 		import std.random: uniform;
 		options.god=cast(God)uniform!"[]"(1,5);
 	}
