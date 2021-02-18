@@ -920,7 +920,7 @@ final class SacScene: Scene{
 		assert(dt==1.0f/updateFPS);
 		//writeln(DagonBackend.getTotalGPUMemory()," ",DagonBackend.getAvailableGPUMemory());
 		//writeln(eventManager.fps);
-		if(options.observer||!controller||!controller.network) observerControl(dt);
+		if(options.observer||camera.target==0||!controller||!controller.network) observerControl(dt);
 		if(state&&!controller.network&&options.playbackFilename=="") stateTestControl();
 		control(dt);
 		cameraControl(dt);
