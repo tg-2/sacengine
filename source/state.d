@@ -7493,7 +7493,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 					break;
 				}else if(state.isOnGround(object.position)&&object.position.z+object.creatureState.fallingVelocity.z/updateFPS<=state.getGroundHeight(object.position)){
 					object.creatureState.movement=CreatureMovement.onGround;
-					if(object.animationState.among(AnimationState.falling,AnimationState.tumble)){
+					if(object.animationState.among(AnimationState.falling,AnimationState.tumble)||immobilized){
 						if(sacObject.hasHitFloor&&!immobilized&&
 						   (!object.isSacDoctor||object.animationState==cast(AnimationState)SacDoctorAnimationState.expelled)
 						){
