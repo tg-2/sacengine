@@ -7249,7 +7249,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 	auto sacObject=object.sacObject;
 	final switch(object.creatureState.mode){
 		case CreatureMode.idle, CreatureMode.moving, CreatureMode.idleGhost, CreatureMode.movingGhost:
-			if(object.creatureState.movement==CreatureMovement.tumbling && state.isOnGround(object.position) && object.position.z<=state.getGroundHeight(object.position))
+			if(object.creatureState.movement==CreatureMovement.tumbling && state.isOnGround(object.position) && object.position.z+object.creatureState.fallingVelocity.z/updateFPS<=state.getGroundHeight(object.position))
 			   object.creatureState.movement=CreatureMovement.onGround;
 			auto oldMode=object.creatureState.mode;
 			auto ghost=oldMode==CreatureMode.idleGhost||oldMode==CreatureMode.movingGhost;
@@ -7284,7 +7284,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 			with(AnimationState) assert(object.animationState.among(death0,death1,death2,flyDeath,falling,tumble,hitFloor),text(sacObject.tag," ",object.animationState));
 			if(object.creatureState.movement==CreatureMovement.tumbling){
 				if(state.isOnGround(object.position)){
-					if(object.creatureState.fallingVelocity.z<=0.0f&&object.position.z<=state.getGroundHeight(object.position)){
+					if(object.creatureState.fallingVelocity.z<=0.0f&&object.position.z+object.creatureState.fallingVelocity.z/updateFPS<=state.getGroundHeight(object.position)){
 						object.creatureState.movement=CreatureMovement.onGround;
 						with(AnimationState)
 						if(sacObject.canFly && !object.animationState.among(hitFloor,death0,death1,death2)){
@@ -7362,7 +7362,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 			with(AnimationState) assert(object.animationState.among(hitFloor,death0,death1,death2));
 			assert(object.frame==sacObject.numFrames(object.animationState)*updateAnimFactor-1);
 			if(object.creatureState.movement==CreatureMovement.tumbling&&object.creatureState.fallingVelocity.z<=0.0f){
-				if(state.isOnGround(object.position)&&object.position.z<=state.getGroundHeight(object.position))
+				if(state.isOnGround(object.position)&&object.position.z+object.creatureState.fallingVelocity.z/updateFPS<=state.getGroundHeight(object.position))
 					object.creatureState.movement=CreatureMovement.onGround;
 			}
 			if(object.creatureState.mode==CreatureMode.playingDead&&object.isGuardian)
@@ -7493,13 +7493,13 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 				}else if(state.isOnGround(object.position)&&object.position.z+object.creatureState.fallingVelocity.z/updateFPS<=state.getGroundHeight(object.position)){
 					object.creatureState.movement=CreatureMovement.onGround;
 					if(object.animationState.among(AnimationState.falling,AnimationState.tumble)){
-						object.dealFallDamage(state);
 						if(sacObject.hasHitFloor&&!immobilized&&
 						   (!object.isSacDoctor||object.animationState==cast(AnimationState)SacDoctorAnimationState.expelled)
 						){
 							object.frame=0;
 							object.animationState=AnimationState.hitFloor;
 						}else object.startIdling(state);
+						object.dealFallDamage(state);
 					}else object.startIdling(state);
 					break;
 				}
