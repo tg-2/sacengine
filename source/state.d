@@ -740,6 +740,7 @@ bool isHero(B)(ref MovingObject!B obj){ return obj.sacObject.isHero; }
 bool isFamiliar(B)(ref MovingObject!B obj){ return obj.sacObject.isFamiliar; }
 
 bool isCCProtected(B)(ref MovingObject!B obj){ return obj.creatureStats.effects.ccProtected; }
+bool isHealBlocked(B)(ref MovingObject!B obj){ return obj.creatureStats.effects.healBlocked; }
 bool isGuardian(B)(ref MovingObject!B obj){ return obj.creatureStats.effects.isGuardian; }
 
 bool canSelect(B)(ref MovingObject!B obj,int side,ObjectState!B state){
@@ -2382,6 +2383,22 @@ struct AirShield(B){
 	this(this){ particles=particles.dup; } // TODO: needed?
 }
 
+struct FreezeCasting(B){
+	ManaDrain!B manaDrain;
+	SacSpell!B spell;
+	int creature;
+}
+struct Freeze(B){
+	int creature;
+	SacSpell!B spell;
+	int wizard;
+	int side;
+	int timer;
+	float scale=0.0f;
+	enum numFramesToAppear=updateFPS/2;
+}
+
+
 struct BrainiacProjectile(B){
 	int attacker;
 	int side;
@@ -3088,6 +3105,22 @@ struct Effects(B){
 		if(i+1<airShields.length) airShields[i]=move(airShields[$-1]);
 		airShields.length=airShields.length-1;
 	}
+	Array!(FreezeCasting!B) freezeCastings;
+	void addEffect(FreezeCasting!B freezeCasting){
+		freezeCastings~=move(freezeCasting);
+	}
+	void removeFreezeCasting(int i){
+		if(i+1<freezeCastings.length) freezeCastings[i]=move(freezeCastings[$-1]);
+		freezeCastings.length=freezeCastings.length-1;
+	}
+	Array!(Freeze!B) freezes;
+	void addEffect(Freeze!B freeze){
+		freezes~=move(freeze);
+	}
+	void removeFreeze(int i){
+		if(i+1<freezes.length) freezes[i]=move(freezes[$-1]);
+		freezes.length=freezes.length-1;
+	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
 	void addEffect(BrainiacProjectile!B brainiacProjectile){
@@ -3451,6 +3484,8 @@ struct Effects(B){
 		assignArray(protectiveSwarms,rhs.protectiveSwarms);
 		assignArray(airShieldCastings,rhs.airShieldCastings);
 		assignArray(airShields,rhs.airShields);
+		assignArray(freezeCastings,rhs.freezeCastings);
+		assignArray(freezes,rhs.freezes);
 		assignArray(brainiacProjectiles,rhs.brainiacProjectiles);
 		assignArray(brainiacEffects,rhs.brainiacEffects);
 		assignArray(shrikeProjectiles,rhs.shrikeProjectiles);
@@ -4859,6 +4894,7 @@ float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,
 		}
 	}
 	actualDamage=min(object.health,actualDamage);
+	if(actualDamage>0.0f) object.unfreeze(state);
 	object.creatureStats.health-=actualDamage;
 	if(object.creatureStats.flags&Flags.cannotDestroyKill)
 		object.creatureStats.health=max(object.health,1.0f);
@@ -5542,6 +5578,8 @@ bool startCasting(B)(int caster,SacSpell!B spell,Target target,ObjectState!B sta
 					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
 					if(castingTime==-1) return false;
 					return stun(castAirShield(manaDrain,spell,castingTime,state));
+				case SpellTag.freeze:
+					return stun(castFreeze(target.id,manaDrain,spell,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -6024,6 +6062,26 @@ bool airShield(B)(AirShield!B airShield,ObjectState!B state){
 	return true;
 }
 
+bool castFreeze(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	if(!state.isValidTarget(target)) return false;
+	state.addEffect(FreezeCasting!B(manaDrain,spell,target));
+	return true;
+}
+enum freezeGain=4.0f;
+bool freeze(B)(int wizard,int side,int target,SacSpell!B spell,ObjectState!B state){
+	auto duration=state.movingObjectById!((ref obj){
+		if(obj.creatureStats.effects.ccProtected) return -1;
+		assert(!obj.creatureStats.effects.frozen);
+		obj.creatureStats.effects.frozen=true;
+		obj.creatureState.mode=CreatureMode.stunned;
+		auto duration=(obj.isWizard?0.25f:800.0f/obj.health)*spell.duration;
+		return cast(int)ceil(updateFPS*duration);
+	},()=>-1)(target);
+	if(duration==-1) return false;
+	playSoundAt("3zrf",target,state,freezeGain);
+	state.addEffect(Freeze!B(target,spell,wizard,side,duration));
+	return true;
+}
 
 Vector3f getShotDirection(B)(float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
 	auto φ=2.0f*pi!float*accuracy*state.normal(); // TODO: ok?
@@ -10339,24 +10397,6 @@ bool updateProtectiveSwarm(B)(ref ProtectiveSwarm!B protectiveSwarm,ObjectState!
 	}
 }
 
-void animateFreezeCasting(B)(ref MovingObject!B obj,ObjectState!B state){
-	auto sacParticle=SacParticle!B.get(ParticleType.freeze);
-	enum numParticles=2;
-	foreach(i;0..numParticles){
-		auto hitbox=obj.relativeHitbox;
-		auto center=boxCenter(hitbox);
-		auto position=state.uniform(hitbox)-center;
-		position.x*=4.0f;
-		position.y*=4.0f;
-		position.z*=4.0f;
-		position+=center;
-		auto lifetime=sacParticle.numFrames/60.0f;
-		auto velocity=(center-position)/lifetime;
-		auto scale=1.0f;
-		state.addParticle(Particle!(B,true)(sacParticle,obj.id,false,position,velocity,scale,sacParticle.numFrames,0));
-	}
-}
-
 void animateAirShieldCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
 	wizard.animateStratosCasting(state);
 }
@@ -10446,6 +10486,97 @@ bool updateAirShield(B)(ref AirShield!B airShield,ObjectState!B state,int scaleF
 				break;
 		}
 		return true;
+	}
+}
+
+
+void animateFreezeCasting(B)(ref MovingObject!B obj,ObjectState!B state){
+	auto sacParticle=SacParticle!B.get(ParticleType.freeze);
+	auto hitbox=obj.relativeHitbox;
+	auto center=boxCenter(hitbox);
+	enum numParticles=2;
+	foreach(i;0..numParticles){
+		auto position=state.uniform(hitbox)-center;
+		position.x*=4.0f;
+		position.y*=4.0f;
+		position.z*=4.0f;
+		position+=center;
+		auto lifetime=sacParticle.numFrames/60.0f;
+		auto velocity=(center-position)/lifetime;
+		auto scale=1.0f;
+		state.addParticle(Particle!(B,true)(sacParticle,obj.id,false,position,velocity,scale,sacParticle.numFrames,0));
+	}
+}
+
+bool updateFreezeCasting(B)(ref FreezeCasting!B freezeCast,ObjectState!B state){
+	with(freezeCast){
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				auto sacParticle=SacParticle!B.get(ParticleType.freeze);
+				state.movingObjectById!(animateFreezeCasting,(){})(creature,state);
+				static assert(updateFPS==60);
+				state.movingObjectById!((obj,sacParticle,state){
+					auto hitbox=obj.relativeHitbox;
+					auto center=boxCenter(hitbox);
+					enum numParticles=2;
+					foreach(i;0..numParticles){
+						auto position=state.uniform(hitbox)-center;
+						position.x*=4.0f;
+						position.y*=4.0f;
+						position.z*=4.0f;
+						position+=center;
+						auto lifetime=sacParticle.numFrames/60.0f;
+						auto velocity=(position-center)/lifetime;
+						auto scale=1.0f;
+						state.addParticle(Particle!(B,true)(sacParticle,obj.id,false,center,velocity,scale,sacParticle.numFrames,0));
+					}
+				},(){})(manaDrain.wizard,sacParticle,state);
+				return true;
+			case CastingStatus.interrupted: return false;
+			case CastingStatus.finished:
+				state.movingObjectById!((ref obj,creature,spell,state){
+					freeze(obj.id,obj.side,creature,spell,state);
+				},(){})(manaDrain.wizard,creature,spell,state);
+				return false;
+		}
+	}
+}
+
+void unfreeze(B)(ref MovingObject!B obj,ObjectState!B state){
+	if(!obj.creatureStats.effects.frozen) return;
+	obj.creatureStats.effects.frozen=false;
+	obj.startIdling(state);
+}
+
+bool updateFreeze(B)(ref Freeze!B freeze,ObjectState!B state){
+	with(freeze){
+		if(--timer<=0) state.movingObjectById!(unfreeze,(){})(creature,state);
+		scale=min(1.0f,scale+1.0f/numFramesToAppear);
+		bool frozen=state.movingObjectById!((ref obj)=>obj.creatureStats.effects.frozen,()=>false)(creature);
+		if(!frozen){
+			state.movingObjectById!((ref obj,state){
+				playSpellSoundTypeAt(SoundType.breakingIce,creature,state,freezeGain);
+				dealSpellDamage(obj,spell,wizard,side,Vector3f(0.0f,0.0f,1.0f),state);
+				auto hitbox=obj.sacObject.largeHitbox(obj.rotation,obj.animationState,obj.frame/updateAnimFactor);
+				hitbox[0]+=obj.position;
+				hitbox[1]+=obj.position;
+				auto center=boxCenter(hitbox);
+				auto dim=boxSize(hitbox);
+				auto volume=dim.x*dim.y*dim.z;
+				auto scale=0.75f*max(1.0f,cbrt(volume));
+				auto sacParticle=SacParticle!B.get(ParticleType.shard);
+				enum numParticles=30;
+				foreach(i;0..numParticles){
+					auto position=state.uniform(scaleBox(hitbox,1.05f));
+					auto velocity=Vector3f(position.x-center.x,position.y-center.y,0.0f).normalized;
+					velocity.z=3.0f;
+					int lifetime=31;
+					int frame=0;
+					state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+				}
+			},(){})(creature,state);
+		}
+		return frozen;
 	}
 }
 
@@ -12195,6 +12326,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.airShields.length;){
 		if(!updateAirShield(effects.airShields[i],state)){
 			effects.removeAirShield(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.freezeCastings.length;){
+		if(!updateFreezeCasting(effects.freezeCastings[i],state)){
+			effects.removeFreezeCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.freezes.length;){
+		if(!updateFreeze(effects.freezes[i],state)){
+			effects.removeFreeze(i);
 			continue;
 		}
 		i++;
@@ -14321,6 +14466,7 @@ TargetFlags summarize(bool simplified=false,B)(ref Target target,int side,Object
 					if(obj.isFamiliar) result|=TargetFlags.familiar;
 					if(obj.isSacDoctor) result|=TargetFlags.sacDoctor;
 					if(obj.isCCProtected) result|=TargetFlags.ccProtected;
+					if(obj.isHealBlocked) result|=TargetFlags.healBlocked;
 					if(obj.isGuardian) result|=TargetFlags.guardian;
 				}
 				return result;

@@ -26,11 +26,12 @@ enum TargetFlags{
 	guardian=1<<23,
 	spedUp=1<<24,
 	ccProtected=1<<25,
-	beingSacrificed=1<<26,
+	healBlocked=1<<26,
+	beingSacrificed=1<<27,
 	// TODO: figure out building flag for this:
-	untargetable=1<<27,
+	untargetable=1<<28,
 	// irrelevant for spell targetting:
-	rescuable=1<<28,
+	rescuable=1<<29,
 }
 
 enum AdditionalSpelFlags{
@@ -136,6 +137,13 @@ class SacSpell(B){
 		if(tflags&TargetFlags.spedUp&&tag==SpellTag.speedup) return false;
 		if(tflags&(TargetFlags.guardian|TargetFlags.familiar|TargetFlags.sacDoctor)&&tag==SpellTag.guardian) return false;
 		if(tflags&(TargetFlags.familiar|TargetFlags.sacDoctor)&&tag==SpellTag.desecrate) return false;
+		if(tflags&TargetFlags.healBlocked&&tag==SpellTag.heal) return false;
+		if(tflags&TargetFlags.ccProtected){
+			if(tag==SpellTag.freeze) return false;
+			if(tag==SpellTag.slime) return false;
+			if(tag==SpellTag.graspingVines) return false;
+			if(tag==SpellTag.ringsOfFire) return false;
+		}
 		// TODO: consider other data, such as flags1 and flags2?
 		return true;
 	}

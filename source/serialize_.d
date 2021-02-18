@@ -378,6 +378,12 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Air
 void serialize(alias sink,B)(ref AirShield!B airShield){ serializeStruct!sink(airShield); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==AirShield!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref FreezeCasting!B freezeCasting){ serializeStruct!sink(freezeCasting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==FreezeCasting!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref Freeze!B freeze){ serializeStruct!sink(freeze); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Freeze!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref BrainiacProjectile!B brainiacProjectile){ serializeStruct!sink(brainiacProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BrainiacProjectile!B)){ deserializeStruct(result,state,data); }
 

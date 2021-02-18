@@ -866,6 +866,7 @@ enum ParticleType{
 	blueVortexDroplet,
 	spark,
 	etherealFormSpark,
+	shard,
 	castPersephone,
 	castPyro,
 	castJames,
@@ -910,7 +911,7 @@ final class SacParticle(B){
 				return false;
 			case ghostTransition:
 				return true;
-			case needle,etherealFormSpark:
+			case needle,etherealFormSpark,shard:
 				return true;
 			case freeze:
 				return false;
@@ -940,7 +941,7 @@ final class SacParticle(B){
 				return false;
 			case relativeHeal,lightningCasting:
 				return true;
-			case needle,etherealFormSpark:
+			case needle,etherealFormSpark,shard:
 				return false;
 			case freeze:
 				return true;
@@ -1041,6 +1042,12 @@ final class SacParticle(B){
 				width=height=1.0f;
 				this.energy=3.0f;
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/cst0.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
+			case shard:
+				width=height=1.0f;
+				this.energy=3.0f;
+				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Stra.FLDR/txtr.FLDR/shrd.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
 			case redVortexDroplet:
@@ -1224,6 +1231,8 @@ final class SacParticle(B){
 				return 1.0;
 			case needle,freeze,etherealFormSpark:
 				return min(1.0f,(lifetime/(0.5f*numFrames))^^2);
+			case shard:
+				return 1.0f;
 			case redVortexDroplet,blueVortexDroplet:
 				return min(1.0f,(lifetime/(0.75f*numFrames))^^2);
 			case castPersephone,castPyro,castJames,castStratos,castCharnel:
@@ -1269,6 +1278,8 @@ final class SacParticle(B){
 				return 1.0f;
 			case needle,freeze,etherealFormSpark:
 				return min(1.0f,lifetime/(0.5f*numFrames));
+			case shard:
+				return 1.0f;
 			case redVortexDroplet,blueVortexDroplet:
 				return min(1.0f,(lifetime/(0.75f*numFrames)));
 			case castPersephone,castPyro,castJames,castStratos,castCharnel:
@@ -1665,35 +1676,53 @@ struct SacAirShieldEffect(B){
 	}
 }
 
-B.Mesh makeBoxMesh(B)(float width,float height,float depth){
+B.Mesh makeBoxMesh(B)(float width,float depth,float height){
 	static Vector3f[8] box=[Vector3f(-0.5f,-0.5f,-0.5f),Vector3f(0.5f,-0.5f,-0.5f),
 	                        Vector3f(0.5f,0.5f,-0.5f),Vector3f(-0.5f,0.5f,-0.5f),
 	                        Vector3f(-0.5f,-0.5f,0.5f),Vector3f(0.5f,-0.5f,0.5f),
 	                        Vector3f(0.5f,0.5f,0.5f),Vector3f(-0.5f,0.5f,0.5f)];
-	auto mesh=B.makeMesh(16,6*2);
+	auto mesh=B.makeMesh(24,6*2);
 	mesh.vertices[0..8]=box[];
-	mesh.vertices[8..16]=box[];
+	foreach(ref p;mesh.vertices[0..8]){
+		p.x*=width;
+		p.y*=depth;
+		p.z*=height;
+	}
+	mesh.vertices[8..16]=mesh.vertices[0..8];
+	mesh.vertices[16..24]=mesh.vertices[0..8];
 	//foreach(ref x;mesh.vertices) x*=10;
 	int curFace=0;
 	int offset=0;
 	void face(int[] ccw...){
 		ccw[]+=offset;
 		mesh.indices[curFace++]=[ccw[0],ccw[1],ccw[3]];
-		mesh.indices[curFace++]=[ccw[1],ccw[3],ccw[2]];
-		foreach(i;0..4) mesh.texcoords[ccw[i]]=Vector3f(0.0f+(i==1||i==2),0.0f+(i==2||i==3));
+		mesh.indices[curFace++]=[ccw[1],ccw[2],ccw[3]];
+		foreach(i;0..4) mesh.texcoords[ccw[i]]=Vector3f(0.0f+(i==1||i==2),0.0f+!(i==2||i==3));
 	}
 	face(0,3,2,1);
 	face(4,5,6,7);
-	offset=8;
+	offset+=8;
 	face(0,1,5,4);
-	face(1,2,6,5);
 	face(2,3,7,6);
+	offset+=8;
+	face(1,2,6,5);
 	face(3,0,4,7);
 	mesh.generateNormals();
 	B.finalizeMesh(mesh);
 	return mesh;
 }
 
+struct SacFreeze(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Stra.FLDR/txtr.FLDR/frez.TXTR"));
+	}
+	B.Material material;
+	B.Mesh mesh;
+	static B.Mesh createMesh(){
+		return makeBoxMesh!B(1.0f,1.0f,1.0f);
+	}
+}
 
 struct SacBrainiacEffect(B){
 	B.Texture texture;

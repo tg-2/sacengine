@@ -229,6 +229,18 @@ struct Renderer(B){
 		auto frames=typeof(return).createMeshes();
 		return SacAirShieldEffect!B(texture,mat,frames);
 	}
+	SacFreeze!B freeze;
+	SacFreeze!B createFreeze(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Transparent;
+		mat.energy=5.0f;
+		mat.transparency=0.2f;
+		mat.diffuse=texture;
+		auto mesh=typeof(return).createMesh();
+		return SacFreeze!B(texture,mat,mesh);
+	}
 	SacBrainiacEffect!B brainiacEffect;
 	SacBrainiacEffect!B createBrainiacEffect(){
 		auto texture=typeof(return).loadTexture();
@@ -362,6 +374,7 @@ struct Renderer(B){
 		protectiveBug=createProtectiveBug();
 		airShield=createAirShield();
 		airShieldEffect=createAirShieldEffect();
+		freeze=createFreeze();
 		brainiacEffect=createBrainiacEffect();
 		shrikeEffect=createShrikeEffect();
 		arrow=createArrow();
@@ -1064,6 +1077,31 @@ struct Renderer(B){
 					}
 					foreach(ref airShieldCasting;objects.airShieldCastings) renderAirShield(airShieldCasting.airShield);
 					foreach(ref airShield;objects.airShields) renderAirShield(airShield);
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.freezes.length){
+					auto material=self.freeze.material;
+					auto mesh=self.freeze.mesh;
+					material.bind(rc);
+					B.disableCulling();
+					scope(success){
+						B.enableCulling();
+						material.unbind(rc);
+					}
+					void renderFreeze(ref Freeze!B freeze){
+						auto scale=freeze.scale;
+						auto creature=freeze.creature;
+						auto hitbox=state.movingObjectById!((ref obj){
+							auto hitbox=obj.sacObject.largeHitbox(obj.rotation,obj.animationState,obj.frame/updateAnimFactor);
+							hitbox[0]+=obj.position;
+							hitbox[1]+=obj.position;
+							return hitbox;
+						}, ()=>(Vector3f[2]).init)(creature);
+						auto center=boxCenter(hitbox), size=boxSize(hitbox);
+						if(isNaN(center.x)) return;
+						material.backend.setTransformationScaled(center,Quaternionf.identity(),scale*size,rc);
+						mesh.render(rc);
+					}
+					foreach(ref freeze;objects.freezes) renderFreeze(freeze);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.brainiacEffects.length){
 					auto material=self.brainiacEffect.material;
