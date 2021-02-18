@@ -857,7 +857,7 @@ final class Network(B){
 	}
 	void disconnectPlayer(int i,Controller!B controller){
 		if(isHost||i==host){
-			if(!players[i].settings.observer&&players[i].settings.controlledSide!=-1){// surrender
+			if(controller&&!players[i].settings.observer&&players[i].settings.controlledSide!=-1){// surrender
 				auto controlledSide=controller.controlledSide;
 				controller.controlledSide=players[i].settings.controlledSide;
 				scope(exit) controller.controlledSide=controlledSide;
