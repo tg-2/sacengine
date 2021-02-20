@@ -138,12 +138,7 @@ class SacSpell(B){
 		if(tflags&(TargetFlags.guardian|TargetFlags.familiar|TargetFlags.sacDoctor)&&tag==SpellTag.guardian) return false;
 		if(tflags&(TargetFlags.familiar|TargetFlags.sacDoctor)&&tag==SpellTag.desecrate) return false;
 		if(tflags&TargetFlags.healBlocked&&tag==SpellTag.heal) return false;
-		if(tflags&TargetFlags.ccProtected){
-			if(tag==SpellTag.freeze) return false;
-			if(tag==SpellTag.slime) return false;
-			if(tag==SpellTag.graspingVines) return false;
-			if(tag==SpellTag.ringsOfFire) return false;
-		}
+		if(tflags&TargetFlags.ccProtected&&flags1&SpelFlags1.crowdControl) return false;
 		// TODO: consider other data, such as flags1 and flags2?
 		return true;
 	}
@@ -169,6 +164,7 @@ class SacSpell(B){
 			cooldown=arg.cooldown/60.0f;
 
 			static if(is(typeof(arg.flags))) flags=arg.flags;
+			static if(is(typeof(arg.flags1))) flags1=arg.flags1;
 			static if(is(typeof(arg.flags2))) flags2=arg.flags2;
 			else flags2|=SpelFlags2.stationaryCasting;
 		}

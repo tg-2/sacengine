@@ -87,7 +87,7 @@ enum SoundType:char[4]{
 	oil="lioX",
 	fire="rifX",
 	steam="mtsX",
-	ringOfFire="drfX",
+	disableRingsOfFire="drfX",
 	ignite="ngiX",
 	onFire="fnoX",
 	bombardment="bhmX",

@@ -162,6 +162,13 @@ bool canShield(CreatureMode mode){
 		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return false;
 	}
 }
+bool canCC(CreatureMode mode){
+	final switch(mode) with(CreatureMode){
+		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
+		case dying,dead,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
+		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return false;
+	}
+}
 bool canCollectSouls(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,ghostToIdle,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
@@ -1584,6 +1591,7 @@ struct Spellbook(B){
 }
 enum SpellStatus{
 	inexistent,
+	disabled,
 	invalidTarget,
 	lowOnMana,
 	mustBeNearBuilding,
@@ -2400,6 +2408,19 @@ struct Freeze(B){
 	enum numFramesToAppear=updateFPS/2;
 }
 
+struct RingsOfFireCasting(B){
+	ManaDrain!B manaDrain;
+	SacSpell!B spell;
+	int creature;
+}
+struct RingsOfFire(B){
+	int creature;
+	SacSpell!B spell;
+	int wizard;
+	int side;
+	int timer;
+	int soundTimer=0;
+}
 
 struct BrainiacProjectile(B){
 	int attacker;
@@ -3123,6 +3144,22 @@ struct Effects(B){
 		if(i+1<freezes.length) freezes[i]=move(freezes[$-1]);
 		freezes.length=freezes.length-1;
 	}
+	Array!(RingsOfFireCasting!B) ringsOfFireCastings;
+	void addEffect(RingsOfFireCasting!B ringsOfFireCasting){
+		ringsOfFireCastings~=move(ringsOfFireCasting);
+	}
+	void removeRingsOfFireCasting(int i){
+		if(i+1<ringsOfFireCastings.length) ringsOfFireCastings[i]=move(ringsOfFireCastings[$-1]);
+		ringsOfFireCastings.length=ringsOfFireCastings.length-1;
+	}
+	Array!(RingsOfFire!B) ringsOfFires;
+	void addEffect(RingsOfFire!B ringsOfFire){
+		ringsOfFires~=move(ringsOfFire);
+	}
+	void removeRingsOfFire(int i){
+		if(i+1<ringsOfFires.length) ringsOfFires[i]=move(ringsOfFires[$-1]);
+		ringsOfFires.length=ringsOfFires.length-1;
+	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
 	void addEffect(BrainiacProjectile!B brainiacProjectile){
@@ -3488,6 +3525,8 @@ struct Effects(B){
 		assignArray(airShields,rhs.airShields);
 		assignArray(freezeCastings,rhs.freezeCastings);
 		assignArray(freezes,rhs.freezes);
+		assignArray(ringsOfFireCastings,rhs.ringsOfFireCastings);
+		assignArray(ringsOfFires,rhs.ringsOfFires);
 		assignArray(brainiacProjectiles,rhs.brainiacProjectiles);
 		assignArray(brainiacEffects,rhs.brainiacEffects);
 		assignArray(shrikeProjectiles,rhs.shrikeProjectiles);
@@ -5583,6 +5622,8 @@ bool startCasting(B)(int caster,SacSpell!B spell,Target target,ObjectState!B sta
 					return stun(castAirShield(manaDrain,spell,castingTime,state));
 				case SpellTag.freeze:
 					return stun(castFreeze(target.id,manaDrain,spell,state));
+				case SpellTag.ringsOfFire:
+					return stun(castRingsOfFire(target.id,manaDrain,spell,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -5977,6 +6018,7 @@ bool swarm(B)(Swarm!B swarm,ObjectState!B state){
 }
 
 bool castSkinOfStone(B)(ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,ObjectState!B state){
+	if(state.movingObjectById!((ref obj)=>obj.creatureStats.effects.shieldBlocked,()=>true)(manaDrain.wizard)) return false;
 	auto scale=state.movingObjectById!((ref obj)=>getScale(obj).length,()=>float.init)(manaDrain.wizard);
 	if(isNaN(scale)) return false;
 	state.addEffect(SkinOfStoneCasting!B(manaDrain,spell,0,castingTime,scale));
@@ -5991,7 +6033,7 @@ bool skinOfStone(B)(ref MovingObject!B object,SacSpell!B spell,ObjectState!B sta
 }
 
 bool castEtherealForm(B)(ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
-	if(!state.isValidTarget(manaDrain.wizard)) return false;
+	if(state.movingObjectById!((ref obj)=>obj.creatureStats.effects.shieldBlocked,()=>true)(manaDrain.wizard)) return false;
 	state.addEffect(EtherealFormCasting!B(manaDrain,spell));
 	return true;
 }
@@ -6007,7 +6049,12 @@ bool etherealForm(B)(ref MovingObject!B object,SacSpell!B spell,ObjectState!B st
 
 enum fireformGain=4.0f;
 bool castFireform(B)(ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,ObjectState!B state){
-	if(!state.isValidTarget(manaDrain.wizard)) return false;
+	if(!state.movingObjectById!((ref obj){
+		if(obj.creatureStats.effects.shieldBlocked) return false;
+		if(obj.creatureStats.effects.fireform) return false;
+		obj.creatureStats.effects.fireform=true;
+		return true;
+	},()=>false)(manaDrain.wizard)) return false;
 	playSoundAt("1ngi",manaDrain.wizard,state,fireformGain);
 	auto soundTimer=playSoundAt!true("5plf",manaDrain.wizard,state,fireformGain);
 	state.addEffect(FireformCasting!B(manaDrain,spell,0,castingTime,soundTimer));
@@ -6015,8 +6062,7 @@ bool castFireform(B)(ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,Obje
 }
 
 bool fireform(B)(ref MovingObject!B object,SacSpell!B spell,ObjectState!B state,int soundTimer=-1){
-	if(object.creatureStats.effects.fireform) return false;
-	object.creatureStats.effects.fireform=true;
+	if(!object.creatureStats.effects.fireform) return false;
 	if(soundTimer==-1) soundTimer=playSoundAt!true("5plf",object.id,state,fireformGain);
 	state.addEffect(Fireform!B(object.id,spell,0,soundTimer));
 	return true;
@@ -6024,7 +6070,12 @@ bool fireform(B)(ref MovingObject!B object,SacSpell!B spell,ObjectState!B state,
 
 enum protectiveSwarmGain=1.0f;
 bool castProtectiveSwarm(B)(ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,ObjectState!B state){
-	if(!state.isValidTarget(manaDrain.wizard)) return false;
+	if(!state.movingObjectById!((ref obj){
+		if(obj.creatureStats.effects.shieldBlocked) return false;
+		if(obj.creatureStats.effects.protectiveSwarm) return false;
+		obj.creatureStats.effects.protectiveSwarm=true;
+		return true;
+	},()=>false)(manaDrain.wizard)) return false;
 	auto soundTimer=playSoundAt!true("3rws",manaDrain.wizard,state,protectiveSwarmGain);
 	auto pswarm=ProtectiveSwarm!B(manaDrain.wizard,spell,castingTime,soundTimer);
 	state.addEffect(ProtectiveSwarmCasting!B(manaDrain,spell,move(pswarm)));
@@ -6032,11 +6083,8 @@ bool castProtectiveSwarm(B)(ManaDrain!B manaDrain,SacSpell!B spell,int castingTi
 }
 
 bool protectiveSwarm(B)(ProtectiveSwarm!B protectiveSwarm,ObjectState!B state){
-	if(!state.movingObjectById!((ref object){
-		if(object.creatureStats.effects.protectiveSwarm) return false;
-		object.creatureStats.effects.protectiveSwarm=true;
-		return true;
-	},()=>false)(protectiveSwarm.target)) return false;
+	if(!state.movingObjectById!((ref object)=>object.creatureStats.effects.protectiveSwarm,()=>false)(protectiveSwarm.target))
+		return false;
 	state.addEffect(move(protectiveSwarm));
 	return true;
 }
@@ -6044,7 +6092,8 @@ bool protectiveSwarm(B)(ProtectiveSwarm!B protectiveSwarm,ObjectState!B state){
 enum airShieldGain=2.0f;
 bool castAirShield(B)(ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,ObjectState!B state){
 	if(!state.movingObjectById!((ref object){
-		if(object.creatureStats.effects.protectiveSwarm) return false;
+		if(object.creatureStats.effects.shieldBlocked) return false;
+		if(object.creatureStats.effects.airShield) return false;
 		object.creatureStats.effects.airShield=true;
 		return true;
 	},()=>false)(manaDrain.wizard)) return false;
@@ -6066,14 +6115,14 @@ bool airShield(B)(AirShield!B airShield,ObjectState!B state){
 }
 
 bool castFreeze(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
-	if(!state.isValidTarget(target)) return false;
+	if(state.movingObjectById!((ref obj)=>obj.creatureStats.effects.ccProtected||!obj.creatureState.mode.canCC,()=>true)(target)) return false;
 	state.addEffect(FreezeCasting!B(manaDrain,spell,target));
 	return true;
 }
 enum freezeGain=4.0f;
 bool freeze(B)(int wizard,int side,int target,SacSpell!B spell,ObjectState!B state){
 	auto duration=state.movingObjectById!((ref obj){
-		if(obj.creatureStats.effects.ccProtected) return -1;
+		if(obj.creatureStats.effects.frozen) return -1;
 		assert(!obj.creatureStats.effects.frozen);
 		obj.creatureStats.effects.frozen=true;
 		obj.creatureState.mode=CreatureMode.stunned;
@@ -6086,6 +6135,25 @@ bool freeze(B)(int wizard,int side,int target,SacSpell!B spell,ObjectState!B sta
 	state.addEffect(Freeze!B(target,spell,wizard,side,duration));
 	return true;
 }
+
+bool castRingsOfFire(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	if(!state.movingObjectById!((ref obj){
+		if(obj.creatureStats.effects.ccProtected||!obj.creatureState.mode.canCC) return false;
+		obj.creatureStats.effects.ringsOfFire=true;
+		return true;
+	},()=>false)(target)) return false;
+	state.addEffect(RingsOfFireCasting!B(manaDrain,spell,target));
+	return true;
+}
+enum ringsOfFireGain=4.0f;
+bool ringsOfFire(B)(int wizard,int side,int target,SacSpell!B spell,ObjectState!B state){
+	if(!state.movingObjectById!((ref obj)=>obj.creatureStats.effects.ringsOfFire,()=>false)(target)) return false;
+	auto duration=cast(int)ceil(updateFPS*spell.duration);
+	playSoundAt("malf",target,state,ringsOfFireGain);
+	state.addEffect(RingsOfFire!B(target,spell,wizard,side,duration));
+	return true;
+}
+
 
 Vector3f getShotDirection(B)(float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
 	auto φ=2.0f*pi!float*accuracy*state.normal(); // TODO: ok?
@@ -6889,6 +6957,7 @@ bool stealth(B)(ref MovingObject!B object,ObjectState!B state){
 
 bool lifeShield(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
 	if(object.creatureStats.effects.lifeShield) return false;
+	if(object.creatureStats.effects.shieldBlocked) return false;
 	object.creatureStats.effects.lifeShield=true;
 	auto duration=20;
 	playSoundAt!true("ahsl",object.id,state,2.0f);
@@ -10411,7 +10480,7 @@ bool updateAirShieldCasting(B)(ref AirShieldCasting!B airShieldCast,ObjectState!
 			case CastingStatus.underway:
 				state.movingObjectById!((ref obj,state){
 					obj.animateAirShieldCasting(state);
-					obj.animateFreezeCasting(state);
+					obj.animateFreezeCastingTarget(state);
 				},(){})(manaDrain.wizard,state);
 				return airShield.updateAirShield(state,castingTime);
 			case CastingStatus.interrupted:
@@ -10493,8 +10562,7 @@ bool updateAirShield(B)(ref AirShield!B airShield,ObjectState!B state,int scaleF
 	}
 }
 
-
-void animateFreezeCasting(B)(ref MovingObject!B obj,ObjectState!B state){
+void animateFreezeCastingTarget(B)(ref MovingObject!B obj,ObjectState!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.freeze);
 	auto hitbox=obj.relativeHitbox;
 	auto center=boxCenter(hitbox);
@@ -10517,7 +10585,7 @@ bool updateFreezeCasting(B)(ref FreezeCasting!B freezeCast,ObjectState!B state){
 		final switch(manaDrain.update(state)){
 			case CastingStatus.underway:
 				auto sacParticle=SacParticle!B.get(ParticleType.freeze);
-				state.movingObjectById!(animateFreezeCasting,(){})(creature,state);
+				state.movingObjectById!(animateFreezeCastingTarget,(){})(creature,state);
 				static assert(updateFPS==60);
 				state.movingObjectById!((obj,sacParticle,state){
 					auto hitbox=obj.relativeHitbox;
@@ -10583,6 +10651,94 @@ bool updateFreeze(B)(ref Freeze!B freeze,ObjectState!B state){
 		return frozen;
 	}
 }
+
+void animateRingsOfFireCastingTarget(B)(ref MovingObject!B obj,ObjectState!B state){
+	auto sacParticle=SacParticle!B.get(ParticleType.firy);
+	auto hitbox=obj.relativeHitbox;
+	auto center=boxCenter(hitbox);
+	auto dim=hitbox[1]-hitbox[0];
+	auto volume=dim.x*dim.y*dim.z;
+	auto scale=max(1.0f,cbrt(volume));
+	enum numParticles=2;
+	foreach(i;0..numParticles){
+		auto position=state.uniform(hitbox)-center;
+		position.x*=2.0f;
+		position.y*=2.0f;
+		position.z*=2.0f;
+		position+=center;
+		auto lifetime=sacParticle.numFrames/60.0f;
+		auto velocity=(center-position)/lifetime;
+		state.addParticle(Particle!(B,true)(sacParticle,obj.id,false,position,velocity,scale,sacParticle.numFrames,0));
+	}
+}
+
+void animateRingsOfFireCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	auto castParticle=SacParticle!B.get(ParticleType.firy);
+	wizard.animateCasting!false(castParticle,state);
+}
+
+bool updateRingsOfFireCasting(B)(ref RingsOfFireCasting!B ringsOfFireCast,ObjectState!B state){
+	with(ringsOfFireCast){
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				auto sacParticle=SacParticle!B.get(ParticleType.firy);
+				state.movingObjectById!(animateRingsOfFireCastingTarget,(){})(creature,state);
+				state.movingObjectById!(animateRingsOfFireCasting,(){})(manaDrain.wizard,state);
+				return true;
+			case CastingStatus.interrupted: return false;
+			case CastingStatus.finished:
+				state.movingObjectById!((ref obj,creature,spell,state){
+					ringsOfFire(obj.id,obj.side,creature,spell,state);
+				},(){})(manaDrain.wizard,creature,spell,state);
+				return false;
+		}
+	}
+}
+
+void animateRingsOfFire(bool relative=true,B)(ref MovingObject!B obj,ObjectState!B state){
+	enum numParticles=30;
+	auto sacParticle=SacParticle!B.get(ParticleType.firy);
+	auto hitbox=obj.sacObject.largeHitbox(obj.rotation,obj.animationState,obj.frame/updateAnimFactor);
+	auto height=state.uniform(0.4f,1.2f);
+	auto duration=state.uniform(0.8f,1.2f);
+	auto scale=state.uniform(1.2f,1.25f)*getScale(obj).length*height;
+	foreach(k;0..numParticles){
+		auto φ=state.uniform(-pi!float,pi!float);
+		auto offset=Vector3f(scale*cos(φ),scale*sin(φ),hitbox[0].z+(hitbox[1].z-hitbox[0].z)*height);
+		auto velocity=-offset/duration;
+		auto lifetime=cast(int)ceil(updateFPS*duration);
+		auto frame=0;
+		static if(relative) state.addParticle(Particle!(B,true)(sacParticle,obj.id,true,offset,velocity,scale,lifetime,frame));
+		else state.addParticle(Particle!B(sacParticle,obj.position+offset,velocity,scale,lifetime,frame));
+	}
+}
+
+void removeRingsOfFire(B)(ref MovingObject!B obj,ObjectState!B state){
+	if(!obj.creatureStats.effects.ringsOfFire) return;
+	obj.creatureStats.effects.ringsOfFire=false;
+	foreach(i;0..3) animateRingsOfFire!false(obj,state);
+	playSpellSoundTypeAt!true(SoundType.disableRingsOfFire,obj.id,state,ringsOfFireGain);
+}
+
+bool updateRingsOfFire(B)(ref RingsOfFire!B ringsOfFire,ObjectState!B state){
+	with(ringsOfFire){
+		bool keep=state.movingObjectById!((ref obj,state){
+			if(!obj.creatureState.mode.canCC) return false;
+			static assert(updateFPS==60);
+			if(ringsOfFire.timer%25==0||state.uniform(50)==0) obj.animateRingsOfFire(state);
+			auto damagePerFrame=spell.amount/updateFPS;
+			obj.dealFireDamage(0.0f,damagePerFrame,wizard,side,state);
+			return true;
+		},()=>false)(creature,state);
+		if(!keep||--timer<=0){
+			state.movingObjectById!(removeRingsOfFire,(){})(creature,state);
+			return false;
+		}
+		if(--soundTimer<=0) soundTimer=playSoundAt!true("5plf",creature,state,ringsOfFireGain); // TODO: original picks one of multiple effects
+		return true;
+	}
+}
+
 
 enum brainiacProjectileHitGain=4.0f;
 enum brainiacProjectileSize=0.45f; // TODO: ok?
@@ -11801,7 +11957,7 @@ bool updateLifeShield(B)(ref LifeShield!B lifeShield,ObjectState!B state){
 	with(lifeShield){
 		if(!state.isValidTarget(target,TargetType.creature)) return false;
 		++frame;
-		if(--soundEffectTimer==0) soundEffectTimer=playSoundAt!true("lhsl",target,state,2.0f);
+		if(--soundEffectTimer<=0) soundEffectTimer=playSoundAt!true("lhsl",target,state,2.0f);
 		if(status!=LifeShieldStatus.shrinking){
 			static bool check(ref MovingObject!B obj){
 				assert(obj.creatureStats.effects.lifeShield);
@@ -12344,6 +12500,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.freezes.length;){
 		if(!updateFreeze(effects.freezes[i],state)){
 			effects.removeFreeze(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.ringsOfFireCastings.length;){
+		if(!updateRingsOfFireCasting(effects.ringsOfFireCastings[i],state)){
+			effects.removeRingsOfFireCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.ringsOfFires.length;){
+		if(!updateRingsOfFire(effects.ringsOfFires[i],state)){
+			effects.removeRingsOfFire(i);
 			continue;
 		}
 		i++;
@@ -13808,7 +13978,7 @@ final class ObjectState(B){ // (update logic)
 			if(entry.spell!is spell) continue;
 			if(entry.level>wizard.level) return SpellStatus.inexistent;
 			if(spell.soulCost>wizard.souls) return SpellStatus.needMoreSouls;
-			auto status=this.movingObjectById!((obj,spell,state,spellStatusArgs!selectOnly target){
+			auto status=this.movingObjectById!((ref obj,spell,state,spellStatusArgs!selectOnly target){
 				if(spell.manaCost>obj.creatureStats.mana+manaEpsilon) return SpellStatus.lowOnMana; // TODO: store mana as exact integer?
 				static if(!selectOnly){
 					if(spell.requiresTarget){
@@ -13824,6 +13994,9 @@ final class ObjectState(B){ // (update logic)
 						if((obj.position-target[0].position).lengthsqr>spell.range^^2) return SpellStatus.outOfRange;
 					}
 				}
+				import spells:SpelFlags1;
+				if(obj.creatureStats.effects.shieldBlocked && spell.flags1&SpelFlags1.shield)
+					return SpellStatus.disabled;
 				return SpellStatus.ready;
 			},function()=>SpellStatus.inexistent)(wizard.id,spell,this,target);
 			if(status==SpellStatus.ready){

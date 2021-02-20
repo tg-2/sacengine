@@ -50,13 +50,18 @@ struct Effects{
 	int buzzTime=-2;
 	int antiGravityTime=-2;
 	bool frozen=false;
+	bool ringsOfFire=false;
 
-	@property bool regenerationBlocked(){ return poisonDamage!=0||immobilized; }
+	@property bool regenerationBlocked(){ return poisonDamage!=0||immobilized||ringsOfFire; }
 	@property bool manaBlocked(){ return numManaBlocks!=0; }
-	@property bool ccProtected(){ return lifeShield||petrified||skinOfStone||etherealForm||fireform||protectiveSwarm||airShield||frozen; }
+	@property bool ccProtected(){
+		return lifeShield||skinOfStone||etherealForm||fireform||protectiveSwarm||airShield
+			||petrified||frozen||ringsOfFire;
+	}
 	@property bool stoneEffect(){ return petrified||skinOfStone; }
 	@property bool immobilized(){ return petrified||frozen; }
-	@property bool healBlocked(){ return petrified||frozen; } // TODO: add remaining effects, actually take this into consideration
+	@property bool healBlocked(){ return petrified||frozen||ringsOfFire; } // TODO: add remaining effects
+	@property bool shieldBlocked(){ return ringsOfFire; }
 }
 import dlib.math.portable: pi;
 @property float rotationSpeed(ref CreatureStats stats,bool isFlying){ // in radians per second

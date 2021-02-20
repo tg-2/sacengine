@@ -384,6 +384,12 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Fre
 void serialize(alias sink,B)(ref Freeze!B freeze){ serializeStruct!sink(freeze); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Freeze!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref RingsOfFireCasting!B ringsOfFireCasting){ serializeStruct!sink(ringsOfFireCasting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==RingsOfFireCasting!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref RingsOfFire!B ringsOfFire){ serializeStruct!sink(ringsOfFire); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==RingsOfFire!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref BrainiacProjectile!B brainiacProjectile){ serializeStruct!sink(brainiacProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BrainiacProjectile!B)){ deserializeStruct(result,state,data); }
 

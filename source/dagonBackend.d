@@ -54,6 +54,7 @@ final class SacScene: Scene{
 		char[4] tag;
 		final switch(status) with(AdvisorHelpSound){
 			case SpellStatus.inexistent: return;
+			case SpellStatus.disabled: return;
 			case SpellStatus.invalidTarget: tag=invalidTarget; break;
 			case SpellStatus.lowOnMana: tag=lowOnMana; break;
 			case SpellStatus.mustBeNearBuilding: return; // (missing)
@@ -80,6 +81,11 @@ final class SacScene: Scene{
 	bool castSpell(char[4] tag,Target target,bool playAudio=true){
 		return castSpell(SacSpell!DagonBackend.get(tag),target,playAudio);
 	}
+	void playCommandAppliedSound(){
+		import std.random:uniform; // TODO: put selected spells in game state?
+		auto whichClick=uniform(0,2);
+		if(audio) audio.playSound(commandAppliedSoundTags[whichClick]);
+	}
 	bool selectSpell(SacSpell!DagonBackend newSpell,bool playAudio=true){
 		switchSpellbookTab(newSpell.type);
 		if(!renderer.spellbookVisible(state.current,info)) return false;
@@ -88,14 +94,14 @@ final class SacScene: Scene{
 			if(playAudio&&audio) audio.playSound("kabI");
 		}
 		auto status=state.current.spellStatus!true(camera.target,newSpell);
+		if(status==SpellStatus.disabled && playAudio) playCommandAppliedSound();
 		if(status!=SpellStatus.ready){
 			if(playAudio) spellAdvisorHelpSpeech(status);
 			return false;
 		}
 		if(newSpell.requiresTarget){
-			import std.random:uniform; // TODO: put selected spells in game state?
-			auto whichClick=uniform(0,2);
-			if(playAudio&&audio) audio.playSound(commandAppliedSoundTags[whichClick]);
+			playCommandAppliedSound();
+			if(playAudio) playCommandAppliedSound();
 			mouse.status=MouseStatus.icon;
 			mouse.icon=MouseIcon.spell;
 			mouse.spell=newSpell;
