@@ -74,7 +74,7 @@ enum SoundType:char[4]{
 	summon="NMUS",
 	convertRevive="jncX",
 	insectFlap="pfiX",
-	slime="xrfX", // ?
+	slime="xrfX",
 	frog="grfX",
 	bow="wobX",
 	arrow="rraX",

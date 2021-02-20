@@ -872,6 +872,7 @@ enum ParticleType{
 	castJames,
 	castStratos,
 	castCharnel,
+	castCharnel2,
 	wrathCasting,
 	wrathExplosion1,
 	wrathExplosion2,
@@ -885,6 +886,7 @@ enum ParticleType{
 	poison,
 	relativePoison,
 	swarmHit,
+	slime,
 	locustBlood,
 	locustDebris,
 }
@@ -917,7 +919,7 @@ final class SacParticle(B){
 				return false;
 			case redVortexDroplet,blueVortexDroplet:
 				return true;
-			case castPersephone,castPyro,castJames,castStratos,castCharnel:
+			case castPersephone,castPyro,castJames,castStratos,castCharnel,castCharnel2:
 				return false;
 			case wrathCasting,wrathExplosion1,wrathExplosion2,steam:
 				return false;
@@ -929,7 +931,7 @@ final class SacParticle(B){
 				return true;
 			case poison,relativePoison:
 				return false;
-			case swarmHit:
+			case swarmHit,slime:
 				return true;
 			case locustBlood,locustDebris:
 				return false;
@@ -947,9 +949,9 @@ final class SacParticle(B){
 				return true;
 			case redVortexDroplet,blueVortexDroplet:
 				return false;
-			case castPersephone,castPyro,castJames,castStratos,castCharnel:
+			case castPersephone,castPyro,castJames,castStratos,castCharnel,castCharnel2:
 				return false;
-			case wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,ashParticle,steam,smoke,dirt,dust,rock,poison,swarmHit:
+			case wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,ashParticle,steam,smoke,dirt,dust,rock,poison,swarmHit,slime:
 				return false;
 			case relativePoison:
 				return true;
@@ -959,7 +961,7 @@ final class SacParticle(B){
 	}
 	@property bool bumpOffGround(){
 		switch(type) with(ParticleType){
-			case scarabHit,ghostTransition,wrathParticle,ashParticle,rock,swarmHit,needle,redVortexDroplet,blueVortexDroplet: return true;
+			case scarabHit,ghostTransition,wrathParticle,ashParticle,rock,swarmHit,slime,needle,redVortexDroplet,blueVortexDroplet: return true;
 			default: return false;
 		}
 	}
@@ -1099,6 +1101,12 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/firy.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
+			case castCharnel2:
+				width=height=1.0f;
+				this.energy=5.0f;
+				texture=B.makeTexture(loadTXTR("extracted/Daniel/DanC.WAD!/char.FLDR/cfx1.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
 			case wrathCasting,wrathExplosion1:
 				width=height=1.0f;
 				this.energy=7.5f;
@@ -1165,6 +1173,12 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Char.FLDR/tex_ZERO_.FLDR/puss.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
+			case slime:
+				width=height=1.0f;
+				this.energy=1.0f;
+				texture=B.makeTexture(loadTXTR("extracted/Daniel/DanC.WAD!/char.FLDR/lth2.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
 			case locustBlood:
 				width=height=0.4f;
 				this.energy=8.0f;
@@ -1201,6 +1215,7 @@ final class SacParticle(B){
 			case poison, relativePoison: return 2;
 			case scarabHit: return 2;
 			case swarmHit: return 2;
+			case slime: return 2;
 			case locustBlood, locustDebris: return 1;
 			default: return 1;
 		}
@@ -1235,7 +1250,7 @@ final class SacParticle(B){
 				return 1.0f;
 			case redVortexDroplet,blueVortexDroplet:
 				return min(1.0f,(lifetime/(0.75f*numFrames))^^2);
-			case castPersephone,castPyro,castJames,castStratos,castCharnel:
+			case castPersephone,castPyro,castJames,castStratos,castCharnel,castCharnel2:
 				return 1.0f;
 			case wrathCasting:
 				return min(1.0f,lifetime/(1.5f*numFrames));
@@ -1254,7 +1269,7 @@ final class SacParticle(B){
 				return min(1.0f,(lifetime/(0.5f*numFrames)));
 			case relativePoison:
 				return 0.5f*min(1.0f,(lifetime/(0.5f*numFrames)));
-			case swarmHit,scarabHit:
+			case swarmHit,scarabHit,slime:
 				return min(1.0f,(lifetime/(0.75f*numFrames)));
 			case locustBlood,locustDebris:
 				return min(1.0f,(lifetime/(0.5f*numFrames)));
@@ -1282,7 +1297,7 @@ final class SacParticle(B){
 				return 1.0f;
 			case redVortexDroplet,blueVortexDroplet:
 				return min(1.0f,(lifetime/(0.75f*numFrames)));
-			case castPersephone,castPyro,castJames,castStratos,castCharnel:
+			case castPersephone,castPyro,castJames,castStratos,castCharnel,castCharnel2:
 				return 1.0f;
 			case wrathCasting:
 				return min(1.0f,0.4f+0.6f*lifetime/(1.5f*numFrames));
@@ -1300,7 +1315,7 @@ final class SacParticle(B){
 				return 1.0f;
 			case poison,relativePoison:
 				return 1.0f;
-			case swarmHit,scarabHit:
+			case swarmHit,scarabHit,slime:
 				return min(1.0f,(lifetime/(0.75f*numFrames)));
 			case locustBlood,locustDebris:
 				return 1.0f;
@@ -1611,11 +1626,46 @@ struct SacProtectiveBug(B){
 	}
 }
 
+B.Mesh makeSphereMesh(B)(int numU,int numV,float radius,float u1=0.0f,float v1=0.0f,float u2=1.0f,float v2=1.0f){
+	auto mesh=B.makeMesh(2+numU*numV,2*numU*numV);
+	int numFaces=0;
+	void addFace(uint[3] face...){
+		mesh.indices[numFaces++]=face;
+	}
+	mesh.vertices[0]=Vector3f(0.0f,0.0f,radius);
+	mesh.texcoords[0]=Vector2f(0.5f*(u1+u2),0.5f*(v1+v2));
+	mesh.vertices[$-1]=Vector3f(0.0f,0.0f,-radius);
+	mesh.texcoords[$-1]=Vector2f(0.5f*(u1+u2),0.5f*(v1+v2));
+	int idx(int i,int j){
+		if(i==-1) return 0;
+		if(i==numU) return 1+numU*numV;
+		return 1+numV*i+j;
+	}
+	foreach(i;0..numU){
+		foreach(j;0..numV){
+			auto θ=pi!float*(1+i)/(numU+1);
+			auto φ=2.0f*pi!float*j/numV;
+			mesh.vertices[idx(i,j)]=radius*Vector3f(cos(φ)*sin(θ),sin(φ)*sin(θ),cos(θ));
+			auto texRadius=2*i<=numU?2.0f*i/numU:2.0f-2.0f*i/numU;
+			mesh.texcoords[idx(i,j)]=Vector3f(u1+(u2-u1)*0.5f*(1.0f+cos(φ)*texRadius),v1+(v2-v1)*0.5f*(1.0f+sin(φ)*texRadius));
+			if(i!=0){
+				addFace([idx(i,j),idx(i,j+1),idx(i-1,j)]);
+				addFace([idx(i,j+1),idx(i-1,j+1),idx(i-1,j)]);
+				if(i+1==numU) addFace([idx(i,j),idx(i+1,j),idx(i,j+1)]);
+			}else addFace([idx(i,j),idx(i,j+1),idx(-1,j)]);
+		}
+	}
+	assert(numFaces==2*numU*numV);
+	mesh.generateNormals();
+	B.finalizeMesh(mesh);
+	return mesh;
+}
+
 B.Mesh[] makeSphereMeshes(B)(int numU,int numV,int nU,int nV,float radius,float texWidth=1.0f,float texHeight=1.0f){
 	auto meshes=new B.Mesh[](nU*nV);
 	foreach(t,ref mesh;meshes){
 		int u=cast(int)t%nU,v=cast(int)t/nV;
-		mesh=B.makeMesh(2+numU*numV,2*numU*numV);
+		mesh=B.makeMesh(2+numU*numV,2*numU*numV); // TODO: reuse makeSphereMesh here
 		int numFaces=0;
 		void addFace(uint[3] face...){
 			mesh.indices[numFaces++]=face;
@@ -1655,10 +1705,14 @@ struct SacAirShield(B){
 		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Stra.FLDR/txtr.FLDR/shld.TXTR"));
 	}
 	B.Material material;
-	B.Mesh[8] frames;
+	B.Mesh[] frames;
 	enum animationDelay=4;
 	enum numFrames=8*updateAnimFactor*animationDelay;
 	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
+	static B.Mesh[] createMeshes(){
+		enum nU=4,nV=2;
+		return makeSphereMeshes!B(24,25,nU,nV,0.5f);
+	}
 }
 
 struct SacAirShieldEffect(B){
@@ -1721,6 +1775,18 @@ struct SacFreeze(B){
 	B.Mesh mesh;
 	static B.Mesh createMesh(){
 		return makeBoxMesh!B(1.0f,1.0f,1.0f);
+	}
+}
+
+struct SacSlime(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/Daniel/DanC.WAD!/char.FLDR/lthg.TXTR"),false);
+	}
+	B.Material material;
+	B.Mesh mesh;
+	static B.Mesh createMesh(){
+		return makeSphereMesh!B(24,25,0.5f);
 	}
 }
 

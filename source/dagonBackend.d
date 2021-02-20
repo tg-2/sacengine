@@ -1284,6 +1284,8 @@ static:
 	@property environment(){ return scene.environment; } // TODO: get rid of this?
 	@property shadowMap(){ return scene.shadowMap; }     // TODO: get rid of this?
 
+	@property GeometryPassBackend defaultMaterialBackend(){ return scene.defaultMaterialBackend; }
+
 	@property BoneBackend boneMaterialBackend(){ return scene.boneMaterialBackend; }
 	@property TerrainBackend2 terrainMaterialBackend(){ return scene.terrainMaterialBackend; }
 	@property ShadelessBackend shadelessMaterialBackend(){ return scene.shadelessMaterialBackend; }
@@ -1433,10 +1435,10 @@ static:
 
 	Material createMaterial(SacParticle!DagonBackend particle){
 		final switch(particle.type) with(ParticleType){
-			case manafount, manalith, manahoar, shrine, firy, fire, fireball, explosion, explosion2, speedUp, heal, scarabHit, relativeHeal, ghostTransition, ghost, lightningCasting, needle, freeze, etherealFormSpark, shard, redVortexDroplet, blueVortexDroplet, spark, castPersephone, castPyro, castJames, castStratos, castCharnel, wrathCasting, wrathExplosion1, wrathExplosion2, wrathParticle, steam, ashParticle, smoke, dirt, dust, rock, poison, relativePoison, swarmHit, locustBlood, locustDebris:
+			case manafount, manalith, manahoar, shrine, firy, fire, fireball, explosion, explosion2, speedUp, heal, scarabHit, relativeHeal, ghostTransition, ghost, lightningCasting, needle, freeze, etherealFormSpark, shard, redVortexDroplet, blueVortexDroplet, spark, castPersephone, castPyro, castJames, castStratos, castCharnel, castCharnel2, wrathCasting, wrathExplosion1, wrathExplosion2, wrathParticle, steam, ashParticle, smoke, dirt, dust, rock, poison, relativePoison, swarmHit, slime, locustBlood, locustDebris:
 				auto mat=makeMaterial(scene.shadelessMaterialBackend);
 				mat.depthWrite=false;
-				mat.blending=particle.type.among(ashParticle,smoke,dirt,dust,rock,poison,relativePoison,swarmHit,locustBlood)?Transparent:Additive;
+				mat.blending=particle.type.among(ashParticle,smoke,dirt,dust,rock,poison,relativePoison,swarmHit,slime,locustBlood)?Transparent:Additive;
 				if(particle.type==dust) mat.alpha=0.25f;
 				mat.energy=particle.energy;
 				mat.diffuse=particle.texture;

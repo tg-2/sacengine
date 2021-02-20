@@ -883,13 +883,19 @@ int numAttackTicks(B)(ref MovingObject!B object){
 	return object.sacObject.numAttackTicks(object.animationState);
 }
 
-bool hasAttackTick(B)(ref MovingObject!B object){
+int slowdownFactor(B)(ref MovingObject!B object){
+	return 4^^min(10,object.creatureStats.effects.numSlimes);
+}
+
+bool hasAttackTick(B)(ref MovingObject!B object,ObjectState!B state){
+	if(state.frame%object.slowdownFactor) return false;
 	return object.frame%updateAnimFactor==0 && object.sacObject.hasAttackTick(object.animationState,object.frame/updateAnimFactor);
 }
 
 SacSpell!B rangedAttack(B)(ref MovingObject!B object){ return object.sacObject.rangedAttack; }
 
-bool hasLoadTick(B)(ref MovingObject!B object){
+bool hasLoadTick(B)(ref MovingObject!B object,ObjectState!B state){	
+	if(state.frame%object.slowdownFactor) return false;
 	return object.frame%updateAnimFactor==0 && object.sacObject.hasLoadTick(object.animationState,object.frame/updateAnimFactor);
 }
 
@@ -897,7 +903,8 @@ int numShootTicks(B)(ref MovingObject!B object){
 	return object.sacObject.numShootTicks(object.animationState);
 }
 
-bool hasShootTick(B)(ref MovingObject!B object){
+bool hasShootTick(B)(ref MovingObject!B object,ObjectState!B state){
+	if(state.frame%object.slowdownFactor) return false;
 	return object.frame%updateAnimFactor==0 && object.sacObject.hasShootTick(object.animationState,object.frame/updateAnimFactor);
 }
 
@@ -2422,6 +2429,22 @@ struct RingsOfFire(B){
 	int soundTimer=0;
 }
 
+struct SlimeCasting(B){
+	ManaDrain!B manaDrain;
+	SacSpell!B spell;
+	int creature;
+	int castingTime;
+	bool finishedCasting=false;
+	float progress=0.0f;
+	enum heightOffset=10.0f;
+	enum progressThreshold=0.85f;
+}
+struct Slime(B){
+	int creature;
+	SacSpell!B spell;
+	int timer;
+}
+
 struct BrainiacProjectile(B){
 	int attacker;
 	int side;
@@ -3160,6 +3183,22 @@ struct Effects(B){
 		if(i+1<ringsOfFires.length) ringsOfFires[i]=move(ringsOfFires[$-1]);
 		ringsOfFires.length=ringsOfFires.length-1;
 	}
+	Array!(SlimeCasting!B) slimeCastings;
+	void addEffect(SlimeCasting!B slimeCasting){
+		slimeCastings~=move(slimeCasting);
+	}
+	void removeSlimeCasting(int i){
+		if(i+1<slimeCastings.length) slimeCastings[i]=move(slimeCastings[$-1]);
+		slimeCastings.length=slimeCastings.length-1;
+	}
+	Array!(Slime!B) slimes;
+	void addEffect(Slime!B slime){
+		slimes~=move(slime);
+	}
+	void removeSlime(int i){
+		if(i+1<slimes.length) slimes[i]=move(slimes[$-1]);
+		slimes.length=slimes.length-1;
+	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
 	void addEffect(BrainiacProjectile!B brainiacProjectile){
@@ -3527,6 +3566,8 @@ struct Effects(B){
 		assignArray(freezes,rhs.freezes);
 		assignArray(ringsOfFireCastings,rhs.ringsOfFireCastings);
 		assignArray(ringsOfFires,rhs.ringsOfFires);
+		assignArray(slimeCastings,rhs.slimeCastings);
+		assignArray(slimes,rhs.slimes);
 		assignArray(brainiacProjectiles,rhs.brainiacProjectiles);
 		assignArray(brainiacEffects,rhs.brainiacEffects);
 		assignArray(shrikeProjectiles,rhs.shrikeProjectiles);
@@ -4947,15 +4988,16 @@ float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,
 }
 float dealDamage(B)(ref MovingObject!B object,float damage,int attackingSide,ObjectState!B state){
 	if(!object.canDamage(state)) return 0.0f;
-	auto shieldDamageMultiplier=1.0f;
-	if(object.creatureStats.effects.lifeShield) shieldDamageMultiplier*=0.5f;
-	if(object.creatureState.mode==CreatureMode.rockForm) shieldDamageMultiplier*=0.05f;
-	if(object.creatureStats.effects.petrified) shieldDamageMultiplier*=0.2f;
-	if(object.creatureStats.effects.skinOfStone) shieldDamageMultiplier*=0.25f;
-	if(object.creatureStats.effects.airShield) shieldDamageMultiplier*=0.5f;
-	if(object.creatureStats.effects.protectiveSwarm) shieldDamageMultiplier*=0.75f;
+	auto damageMultiplier=1.0f;
+	if(object.creatureStats.effects.lifeShield) damageMultiplier*=0.5f;
+	if(object.creatureState.mode==CreatureMode.rockForm) damageMultiplier*=0.05f;
+	if(object.creatureStats.effects.petrified) damageMultiplier*=0.2f;
+	if(object.creatureStats.effects.skinOfStone) damageMultiplier*=0.25f;
+	if(object.creatureStats.effects.airShield) damageMultiplier*=0.5f;
+	if(object.creatureStats.effects.protectiveSwarm) damageMultiplier*=0.75f;
+	damageMultiplier*=1.2f^^object.creatureStats.effects.numSlimes;
 	// TODO: bleed, in case of petrification, bleed rocks instead
-	return dealRawDamage(object,damage*shieldDamageMultiplier,attackingSide,state);
+	return dealRawDamage(object,damage*damageMultiplier,attackingSide,state);
 }
 float dealDesecrationDamage(B)(ref MovingObject!B object,float damage,int attackingSide,ObjectState!B state){
 	if(!object.canDamage(state)) return 0.0f;
@@ -5624,6 +5666,9 @@ bool startCasting(B)(int caster,SacSpell!B spell,Target target,ObjectState!B sta
 					return stun(castFreeze(target.id,manaDrain,spell,state));
 				case SpellTag.ringsOfFire:
 					return stun(castRingsOfFire(target.id,manaDrain,spell,state));
+				case SpellTag.slime:
+					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					return stun(castSlime(target.id,manaDrain,spell,castingTime,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -6127,7 +6172,7 @@ bool freeze(B)(int wizard,int side,int target,SacSpell!B spell,ObjectState!B sta
 		obj.creatureStats.effects.frozen=true;
 		obj.creatureState.mode=CreatureMode.stunned;
 		obj.startTumbling(state);
-		auto duration=(obj.isWizard?0.25f:800.0f/obj.health)*spell.duration;
+		auto duration=(obj.isWizard?.25f:1000.0f/obj.health)*spell.duration;
 		return cast(int)ceil(updateFPS*duration);
 	},()=>-1)(target);
 	if(duration==-1) return false;
@@ -6154,6 +6199,27 @@ bool ringsOfFire(B)(int wizard,int side,int target,SacSpell!B spell,ObjectState!
 	return true;
 }
 
+bool castSlime(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,ObjectState!B state){
+	if(!state.movingObjectById!((ref obj){
+		if(obj.creatureStats.effects.ccProtected||!obj.creatureState.mode.canCC) return false;
+		return true;
+	},()=>false)(target)) return false;
+	state.addEffect(SlimeCasting!B(manaDrain,spell,target,castingTime));
+	return true;
+}
+enum slimeGain=4.0f;
+bool slime(B)(int target,SacSpell!B spell,ObjectState!B state){
+	auto duration=state.movingObjectById!((ref obj,state){
+		playSpellSoundTypeAt(SoundType.slime,target,state,slimeGain);
+		obj.animateSlimeTransition(state);
+		obj.creatureStats.effects.numSlimes+=1;
+		auto duration=(obj.isWizard?0.25f:1000.0f/obj.health)*spell.duration;
+		return cast(int)ceil(updateFPS*duration);
+	},()=>-1)(target,state);
+	if(duration==-1) return false;
+	state.addEffect(Slime!B(target,spell,duration));
+	return true;
+}
 
 Vector3f getShotDirection(B)(float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
 	auto φ=2.0f*pi!float*accuracy*state.normal(); // TODO: ok?
@@ -6711,7 +6777,7 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 		}
 	}else{
 		stop();
-		if(object.hasLoadTick()){
+		if(object.hasLoadTick(state)){
 			switch(rangedAttack.tag){
 				case SpellTag.sylphShoot:
 					sylphLoad(object.id,state);
@@ -6722,7 +6788,7 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 				default: break;
 			}
 		}
-		if(object.hasShootTick){
+		if(object.hasShootTick(state)){
 			if(object.shootAbilityBug(state)) return true;
 			auto drainedMana=rangedAttack.manaCost/object.numShootTicks;
 			if(object.creatureStats.mana>=drainedMana){
@@ -7319,6 +7385,8 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.creatureStats.effects.abilityCooldown!=0) --object.creatureStats.effects.abilityCooldown;
 	if(object.creatureStats.effects.infectionCooldown!=0) --object.creatureStats.effects.infectionCooldown;
 	if(object.creatureStats.effects.yellCooldown!=0) --object.creatureStats.effects.yellCooldown;
+	int slowdownFactor=object.slowdownFactor;
+	if(state.frame%slowdownFactor) return;
 	auto sacObject=object.sacObject;
 	final switch(object.creatureState.mode){
 		case CreatureMode.idle, CreatureMode.moving, CreatureMode.idleGhost, CreatureMode.movingGhost:
@@ -7634,7 +7702,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 			}
 		Lcasting:
 			object.frame+=1;
-			object.creatureState.timer-=1;
+			object.creatureState.timer-=slowdownFactor;
 			object.creatureState.timer2-=1;
 			if(object.creatureState.timer2<=0){
 				if(object.animationState.among(AnimationState.spellcastEnd,AnimationState.runSpellcastEnd))
@@ -7756,7 +7824,7 @@ void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 		object.heal(1000.0f/(60*updateFPS),state);
 	if(object.creatureState.mode.canRegenerateMana&&(object.creatureStats.mana<object.creatureStats.maxMana||object.isGhost))
 		object.giveMana(state.manaRegenAt(object.side,object.position)/updateFPS,state);
-	if(object.creatureState.mode.among(CreatureMode.meleeMoving,CreatureMode.meleeAttacking) && object.hasAttackTick){
+	if(object.creatureState.mode.among(CreatureMode.meleeMoving,CreatureMode.meleeAttacking) && object.hasAttackTick(state)){
 		object.creatureState.mode=CreatureMode.meleeAttacking;
 		if(auto target=object.meleeAttackTarget(state)){ // TODO: factor this out into its own function?
 			static void dealDamage(T)(ref T target,MovingObject!B* attacker,ObjectState!B state){
@@ -10739,6 +10807,89 @@ bool updateRingsOfFire(B)(ref RingsOfFire!B ringsOfFire,ObjectState!B state){
 	}
 }
 
+void animateSlimeCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	auto castParticle=SacParticle!B.get(ParticleType.castCharnel2);
+	wizard.animateCasting(castParticle,state);
+}
+
+bool updateSlimeCasting(B)(ref SlimeCasting!B slimeCast,ObjectState!B state){
+	with(slimeCast){
+		progress=min(1.0f,progress+1.0f/castingTime);
+		if(progress==1.0f){
+			slime(creature,spell,state);
+			return false;
+		}
+		final switch(finishedCasting?CastingStatus.finished:manaDrain.update(state)){
+			case CastingStatus.underway:
+				auto sacParticle=SacParticle!B.get(ParticleType.slime);
+				state.movingObjectById!(animateSlimeCasting,(){})(manaDrain.wizard,state);
+				return true;
+			case CastingStatus.interrupted: return false;
+			case CastingStatus.finished:
+				finishedCasting=true;
+				return progress<1.0f;
+		}
+	}
+}
+
+void animateSlimeTransition(B)(ref MovingObject!B obj,ObjectState!B state){
+	enum numParticles=128;
+	auto sacParticle=SacParticle!B.get(ParticleType.slime);
+	auto hitbox=obj.hitbox;
+	auto center=boxCenter(hitbox);
+	auto scale=0.8f*getScale(obj).length;
+	foreach(i;0..numParticles){
+		auto position=state.uniform(scaleBox(hitbox,1.2f));
+		auto velocity=Vector3f(position.x-center.x,position.y-center.y,0.0f).normalized;
+		velocity.z=3.0f;
+		int lifetime=63;
+		int frame=0;
+		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+	}	
+}
+
+void animateSlime(bool relative=true,B)(ref MovingObject!B obj,ObjectState!B state){
+	enum numParticles=4;
+	auto sacParticle=SacParticle!B.get(ParticleType.slime);
+	auto hitbox=obj.sacObject.largeHitbox(obj.rotation,obj.animationState,obj.frame/updateAnimFactor);
+	auto duration=state.uniform(0.8f,1.2f);
+	auto scale=0.25*state.uniform(0.75f,1.0f)*getScale(obj).length;
+	auto box=scaleBox(hitbox,0.8f);
+	box[0].z=0.5f*(hitbox[0].z+hitbox[1].z);
+	box[1].z=hitbox[1].z;
+	foreach(k;0..numParticles){
+		auto offset=state.uniform(box); // TODO: pick location close to bone?
+		auto height=(offset.z-hitbox[0].z)/(hitbox[1].z-hitbox[0].z);
+		auto velocity=Vector3f(0.0f,0.0f,0.0f,-height/duration);
+		auto lifetime=cast(int)ceil(updateFPS*duration);
+		auto frame=0;
+		static if(relative) state.addParticle(Particle!(B,true)(sacParticle,obj.id,true,offset,velocity,scale,lifetime,frame));
+		else state.addParticle(Particle!B(sacParticle,obj.position+offset,velocity,scale,lifetime,frame));
+	}
+}
+
+void removeSlime(B)(ref MovingObject!B obj,ObjectState!B state){
+	if(!obj.creatureStats.effects.slimed) return;
+	obj.creatureStats.effects.numSlimes-=1;
+	obj.animateSlimeTransition(state);
+}
+
+bool updateSlime(B)(ref Slime!B slime,ObjectState!B state){
+	with(slime){
+		bool keep=state.movingObjectById!((ref obj,state){
+			if(!obj.creatureState.mode.canCC) return false;
+			static assert(updateFPS==60);
+			if(slime.timer%10==0||state.uniform(20)==0) obj.animateSlime(state);
+			return true;
+		},()=>false)(creature,state);
+		if(!keep||--timer<=0){
+			state.movingObjectById!(removeSlime,(){})(creature,state);
+			return false;
+		}
+		return true;
+	}
+}
+
 
 enum brainiacProjectileHitGain=4.0f;
 enum brainiacProjectileSize=0.45f; // TODO: ok?
@@ -11240,10 +11391,10 @@ bool updateFallenProjectile(B)(ref FallenProjectile!B fallenProjectile,ObjectSta
 bool updateSylphEffect(B)(ref SylphEffect!B sylphEffect,ObjectState!B state){
 	with(sylphEffect){
 		frame+=1;
-		static bool check(ref MovingObject!B attacker){
-			return attacker.creatureState.mode.isShooting&&!attacker.hasShootTick;
+		static bool check(ref MovingObject!B attacker,ObjectState!B state){
+			return attacker.creatureState.mode.isShooting&&!attacker.hasShootTick(state);
 		}
-		return state.movingObjectById!(check,()=>false)(attacker);
+		return state.movingObjectById!(check,()=>false)(attacker,state);
 	}
 }
 
@@ -11287,10 +11438,10 @@ bool updateSylphProjectile(B)(ref SylphProjectile!B sylphProjectile,ObjectState!
 bool updateRangerEffect(B)(ref RangerEffect!B rangerEffect,ObjectState!B state){
 	with(rangerEffect){
 		frame+=1;
-		static bool check(ref MovingObject!B attacker){
-			return attacker.creatureState.mode.isShooting&&!attacker.hasShootTick;
+		static bool check(ref MovingObject!B attacker,ObjectState!B state){
+			return attacker.creatureState.mode.isShooting&&!attacker.hasShootTick(state);
 		}
-		return state.movingObjectById!(check,()=>false)(attacker);
+		return state.movingObjectById!(check,()=>false)(attacker,state);
 	}
 }
 
@@ -12514,6 +12665,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.ringsOfFires.length;){
 		if(!updateRingsOfFire(effects.ringsOfFires[i],state)){
 			effects.removeRingsOfFire(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.slimeCastings.length;){
+		if(!updateSlimeCasting(effects.slimeCastings[i],state)){
+			effects.removeSlimeCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.slimes.length;){
+		if(!updateSlime(effects.slimes[i],state)){
+			effects.removeSlime(i);
 			continue;
 		}
 		i++;

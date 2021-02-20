@@ -206,7 +206,6 @@ struct Renderer(B){
 	}
 	SacAirShield!B airShield;
 	SacAirShield!B createAirShield(){
-		enum nU=4,nV=2;
 		import txtr;
 		auto texture=typeof(return).loadTexture();
 		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
@@ -215,7 +214,7 @@ struct Renderer(B){
 		mat.energy=5.0f;
 		mat.transparency=0.3f;
 		mat.diffuse=texture;
-		B.Mesh[8] frames=makeSphereMeshes!B(24,25,nU,nV,0.5f)[0..8];
+		auto frames=typeof(return).createMeshes;
 		return SacAirShield!B(texture,mat,frames);
 	}
 	SacAirShieldEffect!B airShieldEffect;
@@ -240,6 +239,17 @@ struct Renderer(B){
 		mat.diffuse=texture;
 		auto mesh=typeof(return).createMesh();
 		return SacFreeze!B(texture,mat,mesh);
+	}
+	SacSlime!B slime;
+	SacSlime!B createSlime(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.defaultMaterialBackend);
+		mat.specular=Color4f(1,1,1,1);
+		mat.roughness=1.0f;
+		mat.metallic=0.5f;
+		mat.diffuse=texture;
+		auto mesh=typeof(return).createMesh();
+		return SacSlime!B(texture,mat,mesh);
 	}
 	SacBrainiacEffect!B brainiacEffect;
 	SacBrainiacEffect!B createBrainiacEffect(){
@@ -385,6 +395,7 @@ struct Renderer(B){
 		squallEffect=createSquallEffect();
 		lifeShield=createLifeShield();
 		divineSight=createDivineSight();
+		slime=createSlime();
 	}
 
 	void initialize(){
@@ -622,6 +633,17 @@ struct Renderer(B){
 								bool petrified=!rc.shadowMode && material.backend is B.boneMaterialBackend && objects.creatureStatss[j].effects.stoneEffect;
 								if(petrified) B.boneMaterialBackend.setPetrified(true);
 								scope(success) if(petrified) B.boneMaterialBackend.setPetrified(false);
+								bool slimed=!rc.shadowMode && material.backend is B.boneMaterialBackend && objects.creatureStatss[j].effects.slimed;
+								auto idiffuse = typeof("diffuse" in material.inputs).init;
+								if(slimed){
+									idiffuse="diffuse" in material.inputs;
+									auto sdiffuse="diffuse" in self.slime.material.inputs;
+									if(auto stx=sdiffuse.texture) B.boneMaterialBackend.bindDiffuse(stx); // TODO: render slimed creatures in a separate pass/using shader setting instead?
+									else idiffuse=null;
+								}
+								scope(success){
+									if(slimed && idiffuse.texture) B.boneMaterialBackend.bindDiffuse(idiffuse.texture);
+								}
 							}
 							// TODO: interpolate animations to get 60 FPS?
 							sacObject.setFrame(objects.animationStates[j],objects.frames[j]/updateAnimFactor);
@@ -866,8 +888,8 @@ struct Renderer(B){
 						if((objects.speedUpShadows[j].age+1)%speedUpShadowSpacing!=0) continue;
 						auto id=objects.speedUpShadows[j].creature;
 						if(!state.isValidTarget(id,TargetType.creature)) continue;
-						auto sacObjectPetrified=state.movingObjectById!((obj)=>tuple(obj.sacObject,obj.creatureStats.effects.stoneEffect),()=>tuple(SacObject!B.init,false))(id); // TODO: store within SpeedUpShadow?
-						auto sacObject=sacObjectPetrified[0], petrified=sacObjectPetrified[1];
+						auto sacObjectPetrifiedSlimed=state.movingObjectById!((obj)=>tuple(obj.sacObject,obj.creatureStats.effects.stoneEffect,obj.creatureStats.effects.slimed),()=>tuple(SacObject!B.init,false,false))(id); // TODO: store within SpeedUpShadow?
+						auto sacObject=sacObjectPetrifiedSlimed[0], petrified=sacObjectPetrifiedSlimed[1], slimed=sacObjectPetrifiedSlimed[2];
 						if(!sacObject) continue;
 						auto materials=sacObject.transparentMaterials;
 						foreach(i;0..materials.length){
@@ -880,6 +902,16 @@ struct Renderer(B){
 							B.shadelessBoneMaterialBackend.setEnergy(10.0f);
 							if(petrified) B.shadelessBoneMaterialBackend.setPetrified(true);
 							scope(success) if(petrified) B.shadelessBoneMaterialBackend.setPetrified(false);
+							auto idiffuse = typeof("diffuse" in material.inputs).init;
+							if(slimed){
+									idiffuse="diffuse" in material.inputs;
+									auto sdiffuse="diffuse" in self.slime.material.inputs;
+									if(auto stx=sdiffuse.texture) B.boneMaterialBackend.bindDiffuse(stx); // TODO: render slimed creatures in a separate pass/using shader setting instead?
+									else idiffuse=null;
+							}
+							scope(success){
+								if(slimed && idiffuse.texture) B.boneMaterialBackend.bindDiffuse(idiffuse.texture);
+							}
 							sacObject.setFrame(objects.speedUpShadows[j].animationState,objects.speedUpShadows[j].frame/updateAnimFactor);
 							mesh.render(rc);
 						}
@@ -1102,6 +1134,30 @@ struct Renderer(B){
 						mesh.render(rc);
 					}
 					foreach(ref freeze;objects.freezes) renderFreeze(freeze);
+				}
+				static if(mode==RenderMode.opaque) if(objects.slimeCastings.length){
+					auto material=self.slime.material;
+					auto mesh=self.slime.mesh;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
+					void renderSlime(ref SlimeCasting!B slime){
+						auto scale=min(1.0f,slime.progress/slime.progressThreshold);
+						auto position=1.0f-1.0f/(1.0f-slime.progressThreshold)*max(0.0f,slime.progress-slime.progressThreshold);
+						auto offset=Vector3f(0.0f,0.0f,position*slime.heightOffset);
+						auto creature=slime.creature;
+						import animations;
+						auto sizeCenter=state.movingObjectById!((ref obj){
+							auto hitbox=obj.sacObject.largeHitbox(Quaternionf.identity(),AnimationState.stance1,0);
+							hitbox[0]+=obj.position;
+							hitbox[1]+=obj.position;
+							return tuple(boxSize(hitbox).length,boxCenter(hitbox));
+						},()=>tuple(float.nan,Vector3f.init))(creature);
+						auto size=sizeCenter[0],center=sizeCenter[1];
+						if(isNaN(size)) return;
+						material.backend.setTransformationScaled(center+offset,Quaternionf.identity(),scale*size*Vector3f(1.0f,1.0f,1.0f),rc);
+						mesh.render(rc);
+					}
+					foreach(ref slime;objects.slimeCastings) renderSlime(slime);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.brainiacEffects.length){
 					auto material=self.brainiacEffect.material;

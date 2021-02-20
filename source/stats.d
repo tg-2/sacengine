@@ -51,17 +51,18 @@ struct Effects{
 	int antiGravityTime=-2;
 	bool frozen=false;
 	bool ringsOfFire=false;
-
-	@property bool regenerationBlocked(){ return poisonDamage!=0||immobilized||ringsOfFire; }
+	int numSlimes=0;
+	@property bool slimed(){ return numSlimes!=0; }
+	@property bool regenerationBlocked(){ return poisonDamage!=0||immobilized||ringsOfFire||slimed; }
 	@property bool manaBlocked(){ return numManaBlocks!=0; }
 	@property bool ccProtected(){
 		return lifeShield||skinOfStone||etherealForm||fireform||protectiveSwarm||airShield
-			||petrified||frozen||ringsOfFire;
+			||petrified||frozen||ringsOfFire||slimed;
 	}
 	@property bool stoneEffect(){ return petrified||skinOfStone; }
 	@property bool immobilized(){ return petrified||frozen; }
-	@property bool healBlocked(){ return petrified||frozen||ringsOfFire; } // TODO: add remaining effects
-	@property bool shieldBlocked(){ return ringsOfFire; }
+	@property bool healBlocked(){ return petrified||frozen||ringsOfFire||slimed; } // TODO: add remaining effects
+	@property bool shieldBlocked(){ return ringsOfFire||slimed; }
 }
 import dlib.math.portable: pi;
 @property float rotationSpeed(ref CreatureStats stats,bool isFlying){ // in radians per second
@@ -78,7 +79,7 @@ import dlib.math.portable: pi;
 	return 0.25f*pi!float;
 }
 @property float movementSpeed(ref CreatureStats stats,bool isFlying){ // in meters per second
-	auto effectFactor=stats.effects.speedUp;
+	auto effectFactor=stats.effects.speedUp*0.25f^^stats.effects.numSlimes; // TODO: probably slime slowdown should be interpolated too
 	return (isFlying?stats.flyingSpeed:stats.runningSpeed)*effectFactor;
 }
 @property float movementAcceleration(ref CreatureStats stats,bool isFlying){
