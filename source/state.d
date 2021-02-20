@@ -4414,6 +4414,7 @@ bool startIdling(B)(ref MovingObject!B object, ObjectState!B state){
 
 bool kill(B,bool pretending=false)(ref MovingObject!B object, ObjectState!B state){
 	with(CreatureMode) if(object.creatureState.mode.among(dying,dead,dissolving,reviving,fastReviving)) return false;
+	object.unfreeze(state);
 	if(object.isGhost){ state.addEffect(GhostKill(object.id)); return true; }
 	static if(!pretending){
 		if(!object.sacObject.canDie()) return false;
