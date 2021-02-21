@@ -122,6 +122,13 @@ bool isValidGuardTarget(CreatureMode mode){
 		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return true;
 	}
 }
+bool canKill(CreatureMode mode){
+	final switch(mode) with(CreatureMode){
+		case idle,moving,deadToGhost,idleGhost,movingGhost,ghostToIdle,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,
+			castingMoving,shooting,pumping,torturing,convertReviving,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
+		case dying,dead,dissolving,preSpawning,reviving,fastReviving,thrashing: return false; // TODO: check if reviving creatures die when owner surrenders
+	}
+}
 bool canHeal(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing,
@@ -894,7 +901,7 @@ bool hasAttackTick(B)(ref MovingObject!B object,ObjectState!B state){
 
 SacSpell!B rangedAttack(B)(ref MovingObject!B object){ return object.sacObject.rangedAttack; }
 
-bool hasLoadTick(B)(ref MovingObject!B object,ObjectState!B state){	
+bool hasLoadTick(B)(ref MovingObject!B object,ObjectState!B state){
 	if(state.frame%object.slowdownFactor) return false;
 	return object.frame%updateAnimFactor==0 && object.sacObject.hasLoadTick(object.animationState,object.frame/updateAnimFactor);
 }
@@ -4493,7 +4500,7 @@ bool startIdling(B)(ref MovingObject!B object, ObjectState!B state){
 }
 
 bool kill(B,bool pretending=false)(ref MovingObject!B object, ObjectState!B state){
-	with(CreatureMode) if(object.creatureState.mode.among(dying,dead,dissolving,reviving,fastReviving)) return false;
+	if(!object.creatureState.mode.canKill) return false;
 	object.unfreeze(state);
 	if(object.isGhost){ state.addEffect(GhostKill(object.id)); return true; }
 	static if(!pretending){
@@ -10845,7 +10852,7 @@ void animateSlimeTransition(B)(ref MovingObject!B obj,ObjectState!B state){
 		int lifetime=63;
 		int frame=0;
 		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
-	}	
+	}
 }
 
 void animateSlime(bool relative=true,B)(ref MovingObject!B obj,ObjectState!B state){
