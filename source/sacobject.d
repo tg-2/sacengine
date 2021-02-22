@@ -868,6 +868,7 @@ enum ParticleType{
 	etherealFormSpark,
 	shard,
 	castPersephone,
+	castPersephone2,
 	castPyro,
 	castJames,
 	castStratos,
@@ -919,7 +920,7 @@ final class SacParticle(B){
 				return false;
 			case redVortexDroplet,blueVortexDroplet:
 				return true;
-			case castPersephone,castPyro,castJames,castStratos,castCharnel,castCharnel2:
+			case castPersephone,castPersephone2,castPyro,castJames,castStratos,castCharnel,castCharnel2:
 				return false;
 			case wrathCasting,wrathExplosion1,wrathExplosion2,steam:
 				return false;
@@ -949,7 +950,7 @@ final class SacParticle(B){
 				return true;
 			case redVortexDroplet,blueVortexDroplet:
 				return false;
-			case castPersephone,castPyro,castJames,castStratos,castCharnel,castCharnel2:
+			case castPersephone,castPersephone2,castPyro,castJames,castStratos,castCharnel,castCharnel2:
 				return false;
 			case wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,ashParticle,steam,smoke,dirt,dust,rock,poison,swarmHit,slime:
 				return false;
@@ -1074,6 +1075,12 @@ final class SacParticle(B){
 				width=height=1.0f;
 				this.energy=5.0f;
 				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/cstl.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
+			case castPersephone2:
+				width=height=1.0f;
+				this.energy=5.0f;
+				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/cst1.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
 			case castPyro:
@@ -1250,7 +1257,7 @@ final class SacParticle(B){
 				return 1.0f;
 			case redVortexDroplet,blueVortexDroplet:
 				return min(1.0f,(lifetime/(0.75f*numFrames))^^2);
-			case castPersephone,castPyro,castJames,castStratos,castCharnel,castCharnel2:
+			case castPersephone,castPersephone2,castPyro,castJames,castStratos,castCharnel,castCharnel2:
 				return 1.0f;
 			case wrathCasting:
 				return min(1.0f,lifetime/(1.5f*numFrames));
@@ -1297,7 +1304,7 @@ final class SacParticle(B){
 				return 1.0f;
 			case redVortexDroplet,blueVortexDroplet:
 				return min(1.0f,(lifetime/(0.75f*numFrames)));
-			case castPersephone,castPyro,castJames,castStratos,castCharnel,castCharnel2:
+			case castPersephone,castPersephone2,castPyro,castJames,castStratos,castCharnel,castCharnel2:
 				return 1.0f;
 			case wrathCasting:
 				return min(1.0f,0.4f+0.6f*lifetime/(1.5f*numFrames));

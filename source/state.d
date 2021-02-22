@@ -2452,6 +2452,19 @@ struct Slime(B){
 	int timer;
 }
 
+struct GraspingVinesCasting(B){
+	ManaDrain!B manaDrain;
+	SacSpell!B spell;
+	int creature;
+}
+struct GraspingVines(B){
+	int creature;
+	SacSpell!B spell;
+	int timer;
+	bool active=true;
+}
+
+
 struct BrainiacProjectile(B){
 	int attacker;
 	int side;
@@ -3206,6 +3219,22 @@ struct Effects(B){
 		if(i+1<slimes.length) slimes[i]=move(slimes[$-1]);
 		slimes.length=slimes.length-1;
 	}
+	Array!(GraspingVinesCasting!B) graspingVinesCastings;
+	void addEffect(GraspingVinesCasting!B graspingVinesCasting){
+		graspingVinesCastings~=move(graspingVinesCasting);
+	}
+	void removeGraspingVinesCasting(int i){
+		if(i+1<graspingVinesCastings.length) graspingVinesCastings[i]=move(graspingVinesCastings[$-1]);
+		graspingVinesCastings.length=graspingVinesCastings.length-1;
+	}
+	Array!(GraspingVines!B) graspingViness;
+	void addEffect(GraspingVines!B graspingVines){
+		graspingViness~=move(graspingVines);
+	}
+	void removeGraspingVines(int i){
+		if(i+1<graspingViness.length) graspingViness[i]=move(graspingViness[$-1]);
+		graspingViness.length=graspingViness.length-1;
+	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
 	void addEffect(BrainiacProjectile!B brainiacProjectile){
@@ -3575,6 +3604,8 @@ struct Effects(B){
 		assignArray(ringsOfFires,rhs.ringsOfFires);
 		assignArray(slimeCastings,rhs.slimeCastings);
 		assignArray(slimes,rhs.slimes);
+		assignArray(graspingVinesCastings,rhs.graspingVinesCastings);
+		assignArray(graspingViness,rhs.graspingViness);
 		assignArray(brainiacProjectiles,rhs.brainiacProjectiles);
 		assignArray(brainiacEffects,rhs.brainiacEffects);
 		assignArray(shrikeProjectiles,rhs.shrikeProjectiles);
@@ -5505,7 +5536,7 @@ void setMovement(B)(ref MovingObject!B object,MovementDirection direction,Object
 	if(object.creatureState.movementDirection==direction)
 		return;
 	object.creatureState.movementDirection=direction;
-	if(object.creatureStats.effects.immobilized) return;
+	if(object.creatureStats.effects.immobilized||object.creatureStats.effects.fixed) return;
 	if(object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving))
 		object.setCreatureState(state);
 }
@@ -5676,6 +5707,8 @@ bool startCasting(B)(int caster,SacSpell!B spell,Target target,ObjectState!B sta
 				case SpellTag.slime:
 					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
 					return stun(castSlime(target.id,manaDrain,spell,castingTime,state));
+				case SpellTag.graspingVines:
+					return stun(castGraspingVines(target.id,manaDrain,spell,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -6225,6 +6258,27 @@ bool slime(B)(int target,SacSpell!B spell,ObjectState!B state){
 	},()=>-1)(target,state);
 	if(duration==-1) return false;
 	state.addEffect(Slime!B(target,spell,duration));
+	return true;
+}
+
+bool castGraspingVines(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	if(!state.movingObjectById!((ref obj){
+		if(obj.creatureStats.effects.ccProtected||!obj.creatureState.mode.canCC) return false;
+		return true;
+	},()=>false)(target)) return false;
+	state.addEffect(GraspingVinesCasting!B(manaDrain,spell,target));
+	return true;
+}
+enum graspingVinesGain=4.0f;
+bool graspingVines(B)(int target,SacSpell!B spell,ObjectState!B state){
+	auto duration=state.movingObjectById!((ref obj,state){
+		playSoundAt("toor",obj.position,state,graspingVinesGain);
+		obj.creatureStats.effects.numVines+=1;
+		auto duration=(obj.isWizard?0.25f:1000.0f/obj.health)*spell.duration;
+		return cast(int)ceil(updateFPS*duration);
+	},()=>-1)(target,state);
+	if(duration==-1) return false;
+	state.addEffect(GraspingVines!B(target,spell,duration));
 	return true;
 }
 
@@ -7409,7 +7463,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 			}
 			auto idle=ghost?CreatureMode.idleGhost:CreatureMode.idle;
 			auto moving=ghost?CreatureMode.movingGhost:CreatureMode.moving;
-			auto newMode=object.creatureState.movementDirection==MovementDirection.none&&object.creatureState.speed==0.0f?idle:moving;
+			auto newMode=object.creatureState.movementDirection==MovementDirection.none&&object.creatureState.speed==0.0f||object.creatureStats.effects.fixed?idle:moving;
 			object.creatureState.timer+=1;
 			object.frame+=1;
 			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
@@ -7686,7 +7740,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 				object.setCreatureState(state);
 			break;
 		case CreatureMode.casting,CreatureMode.castingMoving:
-			auto newMode=object.creatureState.movementDirection==MovementDirection.none?CreatureMode.casting:CreatureMode.castingMoving;
+			auto newMode=object.creatureState.movementDirection==MovementDirection.none||object.creatureStats.effects.fixed?CreatureMode.casting:CreatureMode.castingMoving;
 			object.creatureState.mode=newMode;
 			if(newMode==CreatureMode.castingMoving){
 				if(object.animationState.among(AnimationState.spellcastStart,AnimationState.runSpellcastStart))
@@ -7858,7 +7912,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 		auto pitchingSpeed=object.creatureStats.pitchingSpeed/updateFPS;
 		bool isRotating=false;
 		if(object.creatureState.mode.among(idle,moving,idleGhost,movingGhost,meleeMoving,casting,castingMoving,shooting,torturing)&&
-		   object.creatureState.movement!=CreatureMovement.tumbling&&!object.creatureStats.effects.immobilized
+		   object.creatureState.movement!=CreatureMovement.tumbling&&!object.creatureStats.effects.immobilized&&!object.creatureStats.effects.fixed
 		){
 			final switch(object.creatureState.rotationDirection){
 				case RotationDirection.none:
@@ -7921,7 +7975,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 	auto facing=facingQuaternion(object.creatureState.facing);
 	final switch(object.creatureState.movement){
 		case CreatureMovement.onGround:
-			if(object.creatureStats.effects.immobilized) break;
+			if(object.creatureStats.effects.immobilized||object.creatureStats.effects.fixed) break;
 			auto groundSpeed=object.speedOnGround(state);
 			auto groundAcceleration=object.accelerationOnGround(state);
 			final switch(object.creatureState.mode.isMoving?object.creatureState.movementDirection:MovementDirection.none){
@@ -8159,7 +8213,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 					break;
 			}
 		}
-		object.position=newPosition;
+		if(!object.creatureStats.effects.fixed) object.position=newPosition;
 	}
 }
 
@@ -10828,7 +10882,6 @@ bool updateSlimeCasting(B)(ref SlimeCasting!B slimeCast,ObjectState!B state){
 		}
 		final switch(finishedCasting?CastingStatus.finished:manaDrain.update(state)){
 			case CastingStatus.underway:
-				auto sacParticle=SacParticle!B.get(ParticleType.slime);
 				state.movingObjectById!(animateSlimeCasting,(){})(manaDrain.wizard,state);
 				return true;
 			case CastingStatus.interrupted: return false;
@@ -10891,6 +10944,64 @@ bool updateSlime(B)(ref Slime!B slime,ObjectState!B state){
 		},()=>false)(creature,state);
 		if(!keep||--timer<=0){
 			state.movingObjectById!(removeSlime,(){})(creature,state);
+			return false;
+		}
+		return true;
+	}
+}
+
+void animateGraspingVinesCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	auto castParticle=SacParticle!B.get(ParticleType.castPersephone2);
+	wizard.animateCasting(castParticle,state);
+}
+void animateGraspingVinesCastingTarget(B)(ref MovingObject!B obj,ObjectState!B state){
+	enum numParticles=16;
+	auto sacParticle=SacParticle!B.get(ParticleType.dirt);
+	auto hitbox=obj.hitbox;
+	hitbox[1].z=hitbox[0].z+0.1f*(hitbox[1].z-hitbox[0].z);
+	auto center=boxCenter(hitbox);
+	auto scale=0.6f*getScale(obj).length;
+	foreach(i;0..numParticles){
+		auto position=state.uniform(hitbox);
+		auto velocity=Vector3f(0.0f,0.0f,0.0f);
+		int lifetime=31;
+		int frame=0;
+		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+	}
+}
+
+bool updateGraspingVinesCasting(B)(ref GraspingVinesCasting!B graspingVinesCast,ObjectState!B state){
+	with(graspingVinesCast){
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				state.movingObjectById!(animateGraspingVinesCasting,(){})(manaDrain.wizard,state);
+				state.movingObjectById!(animateGraspingVinesCastingTarget,(){})(creature,state);
+				return true;
+			case CastingStatus.interrupted: return false;
+			case CastingStatus.finished:
+				graspingVines(creature,spell,state);
+				return false;
+		}
+	}
+}
+
+bool updateGraspingVines(B)(ref GraspingVines!B graspingVines,ObjectState!B state){
+	with(graspingVines){
+		if(active){
+			bool keep=state.movingObjectById!((ref obj,state){
+				if(!obj.creatureState.mode.canCC) return false;
+				return true;
+			},()=>false)(creature,state);
+			if(!keep||--timer<=0){
+				active=false;
+				state.movingObjectById!((ref obj){
+					obj.creatureStats.effects.numVines-=1;
+					playSoundAt("dafr",obj.position,state,graspingVinesGain);
+				},(){})(creature);
+			}
+			// TODO: animate vines
+		}else{
+			// TODO: move vines back into ground
 			return false;
 		}
 		return true;
@@ -12686,6 +12797,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.slimes.length;){
 		if(!updateSlime(effects.slimes[i],state)){
 			effects.removeSlime(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.graspingVinesCastings.length;){
+		if(!updateGraspingVinesCasting(effects.graspingVinesCastings[i],state)){
+			effects.removeGraspingVinesCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.graspingViness.length;){
+		if(!updateGraspingVines(effects.graspingViness[i],state)){
+			effects.removeGraspingVines(i);
 			continue;
 		}
 		i++;

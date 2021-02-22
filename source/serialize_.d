@@ -396,6 +396,12 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Sli
 void serialize(alias sink,B)(ref Slime!B slime){ serializeStruct!sink(slime); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Slime!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref GraspingVinesCasting!B graspingVinesCasting){ serializeStruct!sink(graspingVinesCasting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==GraspingVinesCasting!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref GraspingVines!B graspingVines){ serializeStruct!sink(graspingVines); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==GraspingVines!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref BrainiacProjectile!B brainiacProjectile){ serializeStruct!sink(brainiacProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BrainiacProjectile!B)){ deserializeStruct(result,state,data); }
 
