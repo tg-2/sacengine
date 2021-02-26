@@ -7,10 +7,10 @@ import saxs, sxsk, dagonBackend;
 static if(!gpuSkinning):
 	import std.algorithm, std.range, std.stdio;
 
-void writeObj(B)(File file,Saxs!B saxs,Pose pose){
+void writeObj(B)(File file,Saxs!B saxs,Pose pose=Pose.init){
 	auto saxsi=SaxsInstance!B(saxs);
 	saxsi.createMeshes(pose);
-	saxsi.setPose(pose);
+	if(pose !is pose.init) saxsi.setPose(pose);
 	auto meshes=saxsi.meshes;
 	int numVertices=0;
 	foreach(i,mesh;meshes){
