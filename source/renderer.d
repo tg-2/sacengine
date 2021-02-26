@@ -251,6 +251,17 @@ struct Renderer(B){
 		auto mesh=typeof(return).createMesh();
 		return SacSlime!B(texture,mat,mesh);
 	}
+	SacVine!B vine;
+	SacVine!B createVine(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.defaultMaterialBackend);
+		mat.specular=Color4f(1,1,1,1);
+		mat.roughness=1.0f;
+		mat.metallic=0.5f;
+		mat.diffuse=texture;
+		auto mesh=typeof(return).createMesh();
+		return SacVine!B(texture,mat,mesh);
+	}
 	SacBrainiacEffect!B brainiacEffect;
 	SacBrainiacEffect!B createBrainiacEffect(){
 		auto texture=typeof(return).loadTexture();
@@ -396,6 +407,7 @@ struct Renderer(B){
 		lifeShield=createLifeShield();
 		divineSight=createDivineSight();
 		slime=createSlime();
+		vine=createVine();
 	}
 
 	void initialize(){
