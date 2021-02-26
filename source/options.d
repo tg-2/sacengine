@@ -40,6 +40,7 @@ struct Options{
 	bool randomGods=false;
 	bool randomSpellbook=false;
 	// global settings
+	bool noMap=false;
 	string mapList;
 	bool _2v2=false;
 	bool _3v3=false;

@@ -206,7 +206,6 @@ final class SacScene: Scene{
 			if(audio) audio.setTileset(state.current.map.tileset);
 		}
 		renderer.initialize();
-		initializeMouse();
 	}
 
 	void setController(Controller!DagonBackend controller)in{
@@ -807,11 +806,13 @@ final class SacScene: Scene{
 				if(keyDown[KEY_K]){
 					fpview.active=false;
 					mouse.visible=true;
+					if(!state) SDL_ShowCursor(SDL_ENABLE);
 				}
 				if(keyDown[KEY_L]){
 					fpview.active=true;
 					mouse.visible=false;
 					fpview.mouseFactor=0.25f;
+					if(!state) SDL_ShowCursor(SDL_DISABLE);
 				}
 			}
 		}
@@ -1178,6 +1179,7 @@ struct DagonBackend{
 	}
 	void run(){
 		app.sceneManager.goToScene("Sacrifice");
+		app.scene.initializeMouse();
 		app.run();
 	}
 	~this(){ Delete(app); }

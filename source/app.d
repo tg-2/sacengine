@@ -410,7 +410,7 @@ int main(string[] args){
 			options.map=arg;
 		}
 	}
-	if(options.map==""){
+	if(options.map==""&&!options.noMap){
 		import std.file;
 		auto candidates=!options.mapList?dirEntries("maps","*.scp",SpanMode.depth).map!(x=>cast(string)x).array:File(options.mapList).byLineCopy.map!(l=>stripComment(l.strip)).filter!(l=>!l.empty).array;
 		import std.random:uniform;
@@ -418,7 +418,8 @@ int main(string[] args){
 		if(map!="") stdout.writefln!"selected map '%s'"(map);
 		options.map=map;
 	}
-	if(options.map!="") loadMap(backend,options);
+	if(options.map!=""&&!options.noMap) loadMap(backend,options);
+	else backend.scene.fpview.active=true;
 
 	foreach(ref i;1..args.length){
 		string anim="";
