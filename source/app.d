@@ -432,6 +432,7 @@ int main(string[] args){
 				position.z=B.state.current.getGroundHeight(position);
 			backend.addObject(sac,position,facingQuaternion(0));
 		}
+		if(anim) i+=1;
 		import sxsk;
 		static if(!gpuSkinning){ // TODO: always expose this functionality
 			void writeObj(string filename){
@@ -440,13 +441,7 @@ int main(string[] args){
 				import saxs2obj;
 				file.writeObj(sacObj.saxsi.saxs,anim?sacObj.animations[0].frames[0]:Pose.init);
 			}
-			if(i+1<args.length&&args[i+1].endsWith(".SXSK")){
-				i+=1;
-				if(i+1<args.length&&args[i+1].toLower.endsWith(".obj")){
-					writeObj(args[i+1]);
-					i+=1;
-				}
-			}else if(i+1<args.length&&args[i+1].endsWith(".obj")){
+			if(i+1<args.length&&args[i+1].endsWith(".obj")){
 				writeObj(args[i+1]);
 				i+=1;
 			}
