@@ -547,7 +547,8 @@ final class SacObject(B){
 				                  ||i==AnimationState.hover)
 				){
 					auto animation=loadSXSK(anim,saxsi.saxs.scaling);
-					animation.compile(saxsi.saxs);
+					auto ok=animation.compile(saxsi.saxs);
+					if(!ok) writeln("warning: ",animID," is bad for ",tag);
 					animations[i]=animation;
 				}
 			}

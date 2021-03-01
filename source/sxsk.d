@@ -116,10 +116,12 @@ Animation loadSXSK(string filename,float scaling){
 }
 
 import saxs;
-void compile(B)(ref Animation anim, ref Saxs!B saxs){
+bool compile(B)(ref Animation anim, ref Saxs!B saxs){
 	enforce(saxs.bones.length<=maxNumBones);
+	bool ok=true;
 	foreach(ref frame;anim.frames){
-		enforce(frame.rotations.length==saxs.bones.length);
+		//enforce(frame.rotations.length==saxs.bones.length);
+		ok&=frame.rotations.length==saxs.bones.length;
 		Transformation[maxNumBones] transform;
 		transform[0]=Transformation(Quaternionf.identity,Vector3f(0,0,0));
 		foreach(j,ref bone;saxs.bones)
@@ -133,4 +135,5 @@ void compile(B)(ref Animation anim, ref Saxs!B saxs){
 			matrices[j]=transform[j].getMatrix4f();
 		frame.matrices=matrices;
 	}
+	return ok;
 }

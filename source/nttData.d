@@ -904,6 +904,14 @@ CreatureData yogo={
 	name: "Yogo",
 };
 
+CreatureData executioner={
+	tag: "mwas",
+	name: "Sawman",
+	rotateOnGround: RotateOnGround.completely,
+	stunBehavior: StunBehavior.always,
+};
+
+
 CreatureData* creatureDataByTag(char[4] tag){
 Lswitch: switch(tag){
 		static foreach(dataName;__traits(allMembers, nttData)){
