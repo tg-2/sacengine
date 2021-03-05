@@ -448,9 +448,9 @@ final class SacObject(B){
 		int shinyPart=-1;
 	}
 
-	private void initializeNTTData(char[4] tag){
+	private void initializeNTTData(char[4] tag,char[4] nttTag){
 		this.tag=tag;
-		this.nttTag=tag in tagsFromModel?tagsFromModel[tag]:tag;
+		this.nttTag=nttTag;
 		cre8=nttTag in cre8s;
 		wizd=nttTag in wizds;
 		strc=nttTag in strcs;
@@ -563,7 +563,7 @@ final class SacObject(B){
 			}
 		}
 		saxsi.createMeshes(animations[AnimationState.stance1].frames[0]);
-		initializeNTTData(dat2.saxsModel);
+		initializeNTTData(dat2.saxsModel,tag);
 		if(isSacDoctor){
 			animations[AnimationState.death0]=animations[cast(AnimationState)SacDoctorAnimationState.dance];
 		}
@@ -582,7 +582,7 @@ final class SacObject(B){
 		meshes=mt[0];
 		textures=mt[1];
 		hitboxes_=mt[2];
-		initializeNTTData(tag);
+		initializeNTTData(tag,tag);
 	}
 	static SacObject!B getBLDG(char[4] tag){
 		if(auto r=tag in objects) return *r;
@@ -593,7 +593,7 @@ final class SacObject(B){
 		auto mt=loadWIDG!B(widgModls[tag]);
 		meshes=[mt[0]];
 		textures=[mt[1]];
-		initializeNTTData(tag);
+		initializeNTTData(tag,tag);
 	}
 	static SacObject!B getWIDG(char[4] tag){
 		if(auto r=tag in objects) return *r;
@@ -649,7 +649,7 @@ final class SacObject(B){
 		}
 		char[4] tag=filename[$-9..$-5][0..4];
 		reverse(tag[]);
-		initializeNTTData(tag);
+		initializeNTTData(tag,tag in tagsFromModel?tagsFromModel[tag]:tag);
 	}
 
 	void loadAnimation(string animation){ // (just for testing)

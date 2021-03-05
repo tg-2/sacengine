@@ -823,6 +823,7 @@ CreatureData zyzyx={
 	name: "Zyzyx",
 };
 
+
 CreatureData abraxus={
 	tag: "0ewc",
 	name: "Abraxus",
@@ -904,11 +905,36 @@ CreatureData yogo={
 	name: "Yogo",
 };
 
+
+CreatureData dizzy={
+	tag: "yzzd",
+	name: "Dizzy",
+};
+
 CreatureData executioner={
 	tag: "mwas",
 	name: "Sawman",
 	rotateOnGround: RotateOnGround.completely,
 	stunBehavior: StunBehavior.always,
+};
+
+CreatureData scarpy={
+	tag: "racs",
+	name: "Scarpy",
+	ranged: RangedType.ranged,
+};
+
+CreatureData wrecktangle={
+	tag: "mtsf",
+	name: "Wrecktangle",
+	rotateOnGround: RotateOnGround.completely,
+	ranged: RangedType.ranged,
+};
+
+
+CreatureData fireWizard={
+	tag: "hros",
+	name: "Fire Wizard",
 };
 
 
@@ -924,6 +950,7 @@ Lswitch: switch(tag){
 				}
 			}
 		}
+		case "10af": return &nttData.scarpy; // TODO: get rid of this
 		default:
 			import std.stdio;
 			stderr.writeln("WARNING: unknown creature tag '",tag,"'");
