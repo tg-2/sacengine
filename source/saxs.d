@@ -161,50 +161,49 @@ Saxs!B loadSaxs(B)(string filename, int alphaFlags=0){
 	return Saxs!B(model.zfactor,scaling,bones,hitboxBones,positions,bodyParts);
 }
 
-static if(!gpuSkinning){
-	B.Mesh[] createMeshes(B)(Saxs!B saxs){
-		auto ap = new Vector3f[](saxs.bones.length);
-		ap[0]=Vector3f(0,0,0);
-		foreach(i,ref bone;saxs.bones[1..$]){
-			ap[i+1]=bone.position;
-			ap[i+1]+=ap[bone.parent];
-		}
-		auto meshes=new B.Mesh[](saxs.bodyParts.length);
-		foreach(i,ref bodyPart;saxs.bodyParts){
-			meshes[i]=B.makeMesh(bodyPart.vertices.length,bodyPart.faces.length);
-			foreach(j,ref vertex;bodyPart.vertices){
-				auto position=Vector3f(0,0,0);
-				foreach(v;vertex.indices.map!(k=>(ap[saxs.positions[k].bone]+saxs.positions[k].offset)*saxs.positions[k].weight))
-					position+=v;
-				meshes[i].vertices[j]=position;
-				meshes[i].texcoords[j]=vertex.uv;
-			}
-			meshes[i].indices[]=bodyPart.faces[];
-			meshes[i].generateNormals();
-			B.finalizeMesh(meshes[i]);
-		}
-		return meshes;
+
+B.Mesh[] createMeshes(B)(Saxs!B saxs){
+	auto ap = new Vector3f[](saxs.bones.length);
+	ap[0]=Vector3f(0,0,0);
+	foreach(i,ref bone;saxs.bones[1..$]){
+		ap[i+1]=bone.position;
+		ap[i+1]+=ap[bone.parent];
 	}
-}else{
-	B.BoneMesh[] createBoneMeshes(B)(Saxs!B saxs,Pose normalPose){
-		auto meshes=new B.BoneMesh[](saxs.bodyParts.length);
-		foreach(i,ref bodyPart;saxs.bodyParts){
-			meshes[i]=B.makeBoneMesh(bodyPart.vertices.length,bodyPart.faces.length);
-			foreach(j,ref vertex;bodyPart.vertices){
-				foreach(k,index;vertex.indices){
-					meshes[i].vertices[k][j]=saxs.positions[index].offset;
-					meshes[i].boneIndices[j][k]=to!uint(saxs.positions[index].bone);
-					meshes[i].weights[j].arrayof[k]=saxs.positions[index].weight;
-				}
-				meshes[i].texcoords[j]=vertex.uv;
-			}
-			meshes[i].indices[]=bodyPart.faces[];
-			meshes[i].pose=normalPose.matrices;
-			meshes[i].generateNormals();
-			B.finalizeBoneMesh(meshes[i]);
+	auto meshes=new B.Mesh[](saxs.bodyParts.length);
+	foreach(i,ref bodyPart;saxs.bodyParts){
+		meshes[i]=B.makeMesh(bodyPart.vertices.length,bodyPart.faces.length);
+		foreach(j,ref vertex;bodyPart.vertices){
+			auto position=Vector3f(0,0,0);
+			foreach(v;vertex.indices.map!(k=>(ap[saxs.positions[k].bone]+saxs.positions[k].offset)*saxs.positions[k].weight))
+				position+=v;
+			meshes[i].vertices[j]=position;
+			meshes[i].texcoords[j]=vertex.uv;
 		}
-		return meshes;
+		meshes[i].indices[]=bodyPart.faces[];
+		meshes[i].generateNormals();
+		B.finalizeMesh(meshes[i]);
 	}
+	return meshes;
+}
+
+B.BoneMesh[] createBoneMeshes(B)(Saxs!B saxs,Pose normalPose){
+	auto meshes=new B.BoneMesh[](saxs.bodyParts.length);
+	foreach(i,ref bodyPart;saxs.bodyParts){
+		meshes[i]=B.makeBoneMesh(bodyPart.vertices.length,bodyPart.faces.length);
+		foreach(j,ref vertex;bodyPart.vertices){
+			foreach(k,index;vertex.indices){
+				meshes[i].vertices[k][j]=saxs.positions[index].offset;
+				meshes[i].boneIndices[j][k]=to!uint(saxs.positions[index].bone);
+				meshes[i].weights[j].arrayof[k]=saxs.positions[index].weight;
+			}
+			meshes[i].texcoords[j]=vertex.uv;
+		}
+		meshes[i].indices[]=bodyPart.faces[];
+		meshes[i].pose=normalPose.matrices;
+		meshes[i].generateNormals();
+		B.finalizeBoneMesh(meshes[i]);
+	}
+	return meshes;
 }
 
 struct SaxsInstance(B){
@@ -218,39 +217,43 @@ void createMeshes(B)(ref SaxsInstance!B saxsi,Pose normalPose){
 	else saxsi.meshes=createBoneMeshes!B(saxsi.saxs,normalPose);
 }
 
+void setPose(B)(ref Saxs!B saxs,ref B.BoneMesh[] meshes,Pose pose){
+	enforce(saxs.bodyParts.length==meshes.length);
+	foreach(ref mesh;meshes)
+		mesh.pose=pose.matrices;
+}
+
+void setPose(B)(ref Saxs!B saxs,ref B.Mesh[] meshes,Pose pose){
+	enforce(saxs.bodyParts.length==meshes.length);
+	enforce(saxs.bones.length<=maxNumBones);
+	Transformation[maxNumBones] transform;
+	transform[0]=Transformation(Quaternionf.identity,Vector3f(0,0,0));
+	enforce(pose.rotations.length==saxs.bones.length);
+	foreach(i,ref bone;saxs.bones)
+		transform[i]=transform[bone.parent]*Transformation(pose.rotations[i],bone.position);
+	auto displacement=pose.displacement;
+	displacement.z*=saxs.zfactor;
+	enforce(meshes.length==saxs.bodyParts.length);
+	//Vector3f low=Vector3f(1,1,1)/0.0f, high=-Vector3f(1,1,1)/0.0f;
+	foreach(i,ref bodyPart;saxs.bodyParts){
+		enforce(meshes[i].vertices.length==bodyPart.vertices.length);
+		foreach(j,ref vertex;bodyPart.vertices){
+			auto position=displacement;
+			foreach(k;vertex.indices)
+				position+=transform[saxs.positions[k].bone](saxs.positions[k].offset)*saxs.positions[k].weight;
+			//position+=offset*transform[saxs.positions[k].bone].getMatrix4f()*saxs.positions[k].weight;
+			meshes[i].vertices[j]=position;
+			/+static foreach(k;0..3){
+				low.arrayof[k]=min(low.arrayof[k],position.arrayof[k]);
+				high.arrayof[k]=max(high.arrayof[k],position.arrayof[k]);
+			}+/
+		}
+		meshes[i].generateNormals();
+		B.finalizeMesh(meshes[i]);
+	}
+	//return [low,high];
+}
 
 void setPose(B)(ref SaxsInstance!B saxsi, Pose pose){
-	auto saxs=saxsi.saxs;
-	static if(gpuSkinning){
-		foreach(i;0..saxs.bodyParts.length)
-			saxsi.meshes[i].pose=pose.matrices;
-	}else{
-		enforce(saxs.bones.length<=maxNumBones);
-		Transformation[maxNumBones] transform;
-		transform[0]=Transformation(Quaternionf.identity,Vector3f(0,0,0));
-		enforce(pose.rotations.length==saxs.bones.length);
-		foreach(i,ref bone;saxs.bones)
-			transform[i]=transform[bone.parent]*Transformation(pose.rotations[i],bone.position);
-		auto displacement=pose.displacement;
-		displacement.z*=saxsi.saxs.zfactor;
-		enforce(saxsi.meshes.length==saxs.bodyParts.length);
-		//Vector3f low=Vector3f(1,1,1)/0.0f, high=-Vector3f(1,1,1)/0.0f;
-		foreach(i,ref bodyPart;saxs.bodyParts){
-			enforce(saxsi.meshes[i].vertices.length==bodyPart.vertices.length);
-			foreach(j,ref vertex;bodyPart.vertices){
-				auto position=displacement;
-				foreach(k;vertex.indices)
-					position+=transform[saxs.positions[k].bone](saxs.positions[k].offset)*saxs.positions[k].weight;
-					//position+=offset*transform[saxs.positions[k].bone].getMatrix4f()*saxs.positions[k].weight;
-				saxsi.meshes[i].vertices[j]=position;
-				/+static foreach(k;0..3){
-					low.arrayof[k]=min(low.arrayof[k],position.arrayof[k]);
-					high.arrayof[k]=max(high.arrayof[k],position.arrayof[k]);
-				}+/
-			}
-			saxsi.meshes[i].generateNormals();
-			B.finalizeMesh(saxsi.meshes[i]);
-		}
-		//return [low,high];
-	}
+	setPose!B(saxsi.saxs,saxsi.meshes,pose);
 }
