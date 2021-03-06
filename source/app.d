@@ -432,7 +432,7 @@ int main(string[] args){
 				position.z=B.state.current.getGroundHeight(position);
 			backend.addObject(sac,position,facingQuaternion(0));
 		}
-		if(anim) i+=1;
+		if(anim.length) i+=1;
 		import sxsk;
 		static if(!gpuSkinning){ // TODO: always expose this functionality
 			void writeObj(string filename){
