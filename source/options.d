@@ -21,7 +21,7 @@ struct Options{
 	bool enableGlow=true;
 	float glowBrightness=0.5;
 	bool enableAntialiasing=true;
-	int cursorSize=32;
+	int cursorSize=-1;
 	bool printFps=false;
 	// audio options
 	float volume=1.0f;

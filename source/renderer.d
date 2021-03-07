@@ -1716,12 +1716,13 @@ struct Renderer(B){
 		quad.render(rc);
 	}
 	void renderCursor(int size,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
+		float scale=size==-1?32*info.hudScaling:size;
 		if(info.mouse.target.id&&!state.isValidTarget(info.mouse.target.id,info.mouse.target.type)) info.mouse.target=Target.init;
-		auto position=Vector3f(info.mouse.x-0.5f*size,info.mouse.y,0);
+		auto position=Vector3f(info.mouse.x-0.5f*scale,info.mouse.y,0);
 		if(info.mouse.status==Mouse!B.Status.rectangleSelect&&!info.mouse.dragging) position.y-=1.0f;
-		auto scaling=Vector3f(size,size,1.0f);
+		auto scaling=Vector3f(scale,scale,1.0f);
 		if(info.mouse.status==Mouse!B.Status.icon&&!info.mouse.dragging){
-			auto iconPosition=position+Vector3f(0.0f,4.0f/32.0f*size,0.0f);
+			auto iconPosition=position+Vector3f(0.0f,4.0f/32.0f*scale,0.0f);
 			if(!info.mouse.icon.among(MouseIcon.spell,MouseIcon.ability)){
 				auto material=sacCursor.iconMaterials[info.mouse.icon];
 				material.bind(rc);
