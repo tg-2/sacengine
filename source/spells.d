@@ -68,7 +68,8 @@ struct Cre8{
 	char[4] kind; // may refer to subfolder with creature name
 	uint unknown31; // unused?
 	Animations animations;
-	uint[2] unknown36; // ?
+	uint passiveType;
+	uint passiveFlags;
 	char[4] passiveAbility;
 	uint[21] unknown37; // unused
 }
