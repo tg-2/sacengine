@@ -612,6 +612,8 @@ final class SacObject(B){
 
 	this(string filename, float zfactorOverride=float.nan,string animation=""){
 		enforce(filename.endsWith(".MRMM")||filename.endsWith(".3DSM")||filename.endsWith(".WIDG")||filename.endsWith(".SXMD"));
+		char[4] tag=filename[$-9..$-5][0..4];
+		reverse(tag[]);
 		switch(filename[$-4..$]){
 			case "MRMM":
 				auto mt=loadMRMM!B(filename, 1.0f);
@@ -647,9 +649,18 @@ final class SacObject(B){
 			default:
 				assert(0);
 		}
-		char[4] tag=filename[$-9..$-5][0..4];
-		reverse(tag[]);
 		initializeNTTData(tag,tag in tagsFromModel?tagsFromModel[tag]:tag);
+	}
+
+	void setMeshes(B.Mesh[] meshes,Pose pose=Pose.init){
+		if(isSaxs){ // TODO: transfer to BoneMesh using the pose
+			isSaxs=false;
+			this.meshes=meshes;
+			this.textures=saxsi.saxs.bodyParts.map!((ref p)=>p.texture).array;
+			initializeNTTData(tag,nttTag);
+		}else{
+			this.meshes=meshes;
+		}
 	}
 
 	void loadAnimation(string animation){ // (just for testing)

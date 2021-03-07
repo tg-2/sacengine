@@ -430,21 +430,23 @@ int main(string[] args){
 			auto position=Vector3f(1270.0f, 1270.0f, 0.0f);
 			if(B.state && B.state.current.isOnGround(position))
 				position.z=B.state.current.getGroundHeight(position);
-			backend.addObject(sac,position,facingQuaternion(0));
-		}
-		if(anim.length) i+=1;
-		import sxsk;
-		static if(!gpuSkinning){ // TODO: always expose this functionality
-			void writeObj(string filename){
-				auto sacObj=backend.scene.sacs[backend.scene.sacs.length-1];
-				auto file=File(args[i+1],"w");
-				import saxs2obj;
-				file.writeObj(sacObj.saxsi.saxs,anim?sacObj.animations[0].frames[0]:Pose.init);
-			}
+			if(anim.length) i+=1;
 			if(i+1<args.length&&args[i+1].endsWith(".obj")){
-				writeObj(args[i+1]);
-				i+=1;
+				if(args[i+1].startsWith("export:")){
+					import sxsk,saxs2obj;
+					auto filename=args[i+1]["export:".length..$];
+					if(sac.isSaxs) saveObj!B(filename,sac.saxsi.saxs,anim?sac.animations[0].frames[0]:Pose.init);
+					else saveObj!B(filename,sac.meshes);
+					i+=1;
+				}else if(args[i+1].startsWith("import:")){
+					import obj;
+					auto filename=args[i+1]["import:".length..$];
+					auto meshes=loadObj!B(filename);
+					sac.setMeshes(meshes);
+					i+=1;
+				}
 			}
+			backend.addObject(sac,position,facingQuaternion(0));
 		}
 	}
 	if(!B.network||B.network.isHost){
