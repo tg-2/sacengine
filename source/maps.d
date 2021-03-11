@@ -94,8 +94,16 @@ LMap loadLMap(string filename){
 	return parseLMap(data);
 }
 
+import ntts:God;
 struct Levl{
-	ubyte[40] unknown;
+	uint[3] unknown;
+	uint multiSouls;
+	uint multiMinLevel;
+	uint multiMaxLevel;
+	uint singleSouls;
+	uint singleStartLevel;
+	uint singleMaxLevel;
+	God singleAssociatedGod;
 	char[4] retroTileset;
 }
 static assert(Levl.sizeof==44);
