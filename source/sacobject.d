@@ -1817,9 +1817,9 @@ B.BoneMesh makeVineMesh(B)(int numSegments,int numVertices,float length,float si
 	}
 	foreach(i;0..numSegments+1){
 		auto center=Vector3f(0.0f,0.0f,length*float(i)/numSegments);
+		float sizeFactor=float(numSegments-i)/numSegments;
 		foreach(j;0..numVertices){
 			auto φ=2.0f*pi!float*j/(numVertices-1);
-			float sizeFactor=float(numVertices-1-j)/(numVertices-1);
 			auto position=center+size*sizeFactor*Vector3f(cos(φ),sin(φ),0.0f);
 			int vertex=numVertices*i+j;
 			foreach(l;0..3){
@@ -1827,7 +1827,7 @@ B.BoneMesh makeVineMesh(B)(int numSegments,int numVertices,float length,float si
 				mesh.boneIndices[vertex][l]=i;
 			}
 			mesh.weights[vertex]=Vector3f(1.0f,0.0f,0.0f);
-			mesh.texcoords[vertex]=Vector2f(float(j)/(numVertices-1),float(i)/numSegments);
+			mesh.texcoords[vertex]=Vector2f(float(j)/(numVertices-1),float(numSegments-i)/numSegments);
 			if(i&&j){
 				int du=1, dv=numVertices;
 				addFace([vertex-du-dv,vertex-dv,vertex]);
@@ -1848,13 +1848,13 @@ struct SacVine(B){
 	B.Texture texture;
 	B.Material material;
 	static B.Texture loadTexture(){
-		return B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/ltn2.TXTR"));
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/vine.TXTR"));
 	}
 	B.BoneMesh mesh;
 	enum numSegments=19;
 	static B.BoneMesh createMesh(){
 		enum numVertices=25;
-		return makeVineMesh!B(numSegments,numVertices,10.0f,0.3f);
+		return makeVineMesh!B(numSegments,numVertices,0.0f,0.3f);
 	}
 }
 

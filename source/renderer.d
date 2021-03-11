@@ -254,7 +254,7 @@ struct Renderer(B){
 	SacVine!B vine;
 	SacVine!B createVine(){
 		auto texture=typeof(return).loadTexture();
-		auto mat=B.makeMaterial(B.defaultMaterialBackend);
+		auto mat=B.makeMaterial(B.boneMaterialBackend);
 		mat.specular=Color4f(1,1,1,1);
 		mat.roughness=1.0f;
 		mat.metallic=0.5f;
@@ -1170,6 +1170,28 @@ struct Renderer(B){
 						mesh.render(rc);
 					}
 					foreach(ref slime;objects.slimeCastings) renderSlime(slime);
+				}
+				static if(mode==RenderMode.opaque) if(objects.graspingViness.length){
+					auto material=self.vine.material; // TODO: shadowMaterial?
+					auto mesh=self.vine.mesh;
+					material.bind(rc);
+					B.boneMaterialBackend.setTransformation(Vector3f(0.0f,0.0f,0.0f),Quaternionf.identity(),rc);
+					void renderVine(ref Vine vine){
+						if(isNaN(vine.locations[0].x)) return;
+						Matrix4x4f[self.vine.numSegments+1] pose;
+						foreach(i,ref x;pose){
+							auto curve = vine.get(i/float(pose.length-1));
+							auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),curve[1].normalized);
+							//auto rotation=Quaternionf.identity();
+							x=Transformation(rotation,curve[0]).getMatrix4f;
+						}
+						mesh.pose=pose[];
+						scope(exit) mesh.pose=[];
+						mesh.render(rc);
+					}
+					foreach(ref graspingVines;objects.graspingViness)
+						foreach(ref vine;graspingVines.vines)
+							renderVine(vine);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.brainiacEffects.length){
 					auto material=self.brainiacEffect.material;

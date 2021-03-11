@@ -2457,10 +2457,20 @@ struct GraspingVinesCasting(B){
 	SacSpell!B spell;
 	int creature;
 }
+struct Vine{
+	enum m=5;
+	Vector3f base,target;
+	static import std.math;
+	enum growthFactor=std.math.exp(std.math.log(0.9f)/updateFPS);
+	Vector3f[m] locations;
+	Vector3f[m] velocities;
+	Vector3f[2] get(float t){ return cintp(locations[],t); }
+}
 struct GraspingVines(B){
 	int creature;
 	SacSpell!B spell;
 	int timer;
+	Vine[8] vines;
 	bool active=true;
 }
 
@@ -6269,16 +6279,34 @@ bool castGraspingVines(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,Obje
 	state.addEffect(GraspingVinesCasting!B(manaDrain,spell,target));
 	return true;
 }
+Vine spawnVine(B)(Vector3f[2] hitbox,ObjectState!B state){
+	Vector3f[2] nhitbox=[Vector3f(hitbox[0].x,hitbox[0].y,0.5f*(hitbox[0].z+hitbox[1].z)),hitbox[1]];
+	auto target=state.uniform(nhitbox);
+	enum displacement=1.0f;
+	auto base=target+state.uniform(0.0f,displacement)*Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),0.0f);
+	// TODO: snap base to ground
+	base.z=state.getHeight(base);
+	target.z=max(target.z,base.z+displacement);
+	auto result=Vine(base,target);
+	foreach(i,ref x;result.locations){
+		result.locations[i]=base;
+		result.velocities[i]=Vector3f(0.0f,0.0f,0.0f);
+	}
+	return result;
+}
 enum graspingVinesGain=4.0f;
 bool graspingVines(B)(int target,SacSpell!B spell,ObjectState!B state){
-	auto duration=state.movingObjectById!((ref obj,state){
+	auto durationHitbox=state.movingObjectById!((ref obj,state){
 		playSoundAt("toor",obj.position,state,graspingVinesGain);
 		obj.creatureStats.effects.numVines+=1;
 		auto duration=(obj.isWizard?0.25f:1000.0f/obj.health)*spell.duration;
-		return cast(int)ceil(updateFPS*duration);
-	},()=>-1)(target,state);
+		return tuple(cast(int)ceil(updateFPS*duration), obj.hitbox);
+	},()=>tuple(-1,(Vector3f[2]).init))(target,state);
+	auto duration=durationHitbox[0],hitbox=durationHitbox[1];
 	if(duration==-1) return false;
-	state.addEffect(GraspingVines!B(target,spell,duration));
+	Vine[8] vines;
+	foreach(ref vine;vines) vine=spawnVine(hitbox,state);
+	state.addEffect(GraspingVines!B(target,spell,duration,vines));
 	return true;
 }
 
@@ -10987,8 +11015,29 @@ bool updateGraspingVinesCasting(B)(ref GraspingVinesCasting!B graspingVinesCast,
 	}
 }
 
+void updateVine(B)(ref Vine vine,ObjectState!B state){
+	vine.locations[0]=vine.base;
+	vine.locations[$-1]=vine.locations[$-1]*(1.0f-vine.growthFactor)+vine.growthFactor*vine.target;
+	enum accelFactor=120.0f;
+	static import std.math;
+	enum dampFactor=std.math.exp(std.math.log(0.5f)/updateFPS);
+	enum maxVelocity=20.0f;
+	foreach(i;1..vine.m-1){
+		auto target=float(vine.m-1-i)/(vine.m-1)*vine.base+float(i)/(vine.m-1)*vine.target;
+		auto acceleration=target-vine.locations[i];
+		acceleration=accelFactor*acceleration.lengthsqr^^(1/7.0f)*acceleration;
+		vine.velocities[i]+=acceleration/updateFPS;
+		vine.velocities[i]*=dampFactor;
+		auto relativeVelocity=vine.velocities[i];
+		if(relativeVelocity.lengthsqr>maxVelocity^^2)
+			vine.velocities[i]=maxVelocity/relativeVelocity.length*relativeVelocity;
+		vine.locations[i]+=vine.velocities[i]/updateFPS;
+	}
+}
+
 bool updateGraspingVines(B)(ref GraspingVines!B graspingVines,ObjectState!B state){
 	with(graspingVines){
+		foreach(ref vine;vines) updateVine(vine,state);
 		if(active){
 			bool keep=state.movingObjectById!((ref obj,state){
 				if(!obj.creatureState.mode.canCC) return false;
