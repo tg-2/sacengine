@@ -918,9 +918,21 @@ CreatureData executioner={
 	stunBehavior: StunBehavior.always,
 };
 
+CreatureData maelstrom={
+	tag: "nuga",
+	name: "Maelstrom",
+	ranged: RangedType.ranged,
+};
+
 CreatureData scarpy={
 	tag: "racs",
 	name: "Scarpy",
+	ranged: RangedType.ranged,
+};
+
+CreatureData scorpion={
+	tag: "rocs",
+	name: "Scorpion",
 	ranged: RangedType.ranged,
 };
 
