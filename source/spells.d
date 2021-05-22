@@ -223,7 +223,9 @@ struct Spel{
 	ushort unknown9; // ?
 	char[4] unknown10;
 	char[4] unknown11;
-	uint[4] unknown12; // unused?
+	uint[2] unknown12; // unused?
+	float damageRange;
+	uint unknown13; // unused?
 	ushort amount; // e.g. damage or amount of healed hitpoints
 	ushort unknown14; // unused?
 	float speed;
