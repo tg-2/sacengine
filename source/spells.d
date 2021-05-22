@@ -234,7 +234,7 @@ struct Spel{
 	SpelFlags1 flags1;
 	SpelFlags2 flags2;
 	uint amount2; // seems to be the same as amount most of the time
-	uint unknown20;
+	uint amount3; // e.g., number of vines spawned by meanstalks, number of creatures targeted by death
 	uint unknown21; // unused?
 	uint unknown22; // unused?
 	ushort soundFlags; // unclear how to interpret
