@@ -5375,7 +5375,7 @@ float dealSpellDamage(B)(int target,SacSpell!B spell,int attacker,int attackerSi
 }
 
 float dealSplashSpellDamage(B)(ref MovingObject!B object,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
-	auto damage=spell.amount*(spell.effectRange>0.0f?max(0.0f,1.0f-distance/spell.effectRange):1.0f);
+	auto damage=spell.amount*(spell.damageRange>0.0f?max(0.0f,1.0f-distance/spell.damageRange):1.0f);
 	auto actualDamage=damage*object.creatureStats.splashSpellResistance;
 	object.damageAnimation(attackDirection,state);
 	actualDamage=object.dealDamage(actualDamage,attacker,attackerSide,state);
@@ -5388,7 +5388,7 @@ float dealSplashSpellDamage(B)(ref StaticObject!B object,SacSpell!B spell,int at
 }
 
 float dealSplashSpellDamage(B)(ref Building!B building,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
-	auto damage=spell.amount*(spell.effectRange>0.0f?max(0.0f,1.0f-distance/spell.effectRange):1.0f);
+	auto damage=spell.amount*(spell.damageRange>0.0f?max(0.0f,1.0f-distance/spell.damageRange):1.0f);
 	auto guardianDamage=splashSpellDamageGuardians(building,damage,attacker,attackerSide,state);
 	if(!isNaN(guardianDamage)) return guardianDamage;
 	auto actualDamage=damage*building.splashSpellResistance;
@@ -5494,7 +5494,7 @@ float dealRangedDamage(B)(int target,SacSpell!B rangedAttack,int attacker,int at
 }
 
 float dealSplashRangedDamage(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
-	auto damage=rangedAttack.amount*(rangedAttack.effectRange>0.0f?max(0.0f,1.0f-distance/rangedAttack.effectRange):1.0f);
+	auto damage=rangedAttack.amount*(rangedAttack.damageRange>0.0f?max(0.0f,1.0f-distance/rangedAttack.damageRange):1.0f);
 	auto actualDamage=damage*object.creatureStats.splashRangedResistance;
 	object.damageAnimation(attackDirection,state);
 	actualDamage=object.dealDamage(actualDamage,attacker,attackerSide,state);
@@ -5507,7 +5507,7 @@ float dealSplashRangedDamage(B)(ref StaticObject!B object,SacSpell!B rangedAttac
 }
 
 float dealSplashRangedDamage(B)(ref Building!B building,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
-	auto damage=rangedAttack.amount*(rangedAttack.effectRange>0.0f?max(0.0f,1.0f-distance/rangedAttack.effectRange):1.0f);
+	auto damage=rangedAttack.amount*(rangedAttack.damageRange>0.0f?max(0.0f,1.0f-distance/rangedAttack.damageRange):1.0f);
 	auto guardianDamage=splashRangedDamageGuardians(building,damage,attacker,attackerSide,state);
 	if(!isNaN(guardianDamage)) return guardianDamage;
 	auto actualDamage=damage*building.splashRangedResistance;
@@ -9714,7 +9714,7 @@ void wrathExplosion(B)(ref Wrath!B wrath,int target,ObjectState!B state){
 	playSoundAt("hhtr",wrath.position,state,4.0f);
 	if(state.isValidTarget(target)) dealSpellDamage(target,wrath.spell,wrath.wizard,wrath.side,wrath.velocity,state);
 	else target=0;
-	dealSplashSpellDamageAt(target,wrath.spell,wrath.spell.effectRange,wrath.wizard,wrath.side,wrath.position,state);
+	dealSplashSpellDamageAt(target,wrath.spell,wrath.spell.damageRange,wrath.wizard,wrath.side,wrath.position,state);
 	enum numParticles1=200;
 	enum numParticles2=400;
 	auto sacParticle1=SacParticle!B.get(ParticleType.wrathExplosion1);
@@ -9882,7 +9882,7 @@ void fireballExplosion(B)(ref Fireball!B fireball,int target,ObjectState!B state
 		setAblaze(target,updateFPS,false,0.0f,wizard,side,state);
 		return true;
 	}
-	dealSplashSpellDamageAt!callback(target,fireball.spell,fireball.spell.effectRange,fireball.wizard,fireball.side,fireball.position,state,fireball.wizard,fireball.side,state);
+	dealSplashSpellDamageAt!callback(target,fireball.spell,fireball.spell.damageRange,fireball.wizard,fireball.side,fireball.position,state,fireball.wizard,fireball.side,state);
 	animateFireballExplosion(fireball.position,state);
 }
 
@@ -10208,7 +10208,7 @@ void swarmHit(B)(ref Swarm!B swarm,int target,ObjectState!B state){
 		}
 		state.objectById!hit(target,&swarm,state);
 	}else target=0;
-	dealSplashSpellDamageAt(target,swarm.spell,swarm.spell.effectRange,swarm.wizard,swarm.side,swarm.position,state);
+	dealSplashSpellDamageAt(target,swarm.spell,swarm.spell.damageRange,swarm.wizard,swarm.side,swarm.position,state);
 }
 bool updateSwarm(B)(ref Swarm!B swarm,ObjectState!B state){
 	with(swarm){
@@ -10988,11 +10988,13 @@ void animateGraspingVinesCastingTarget(B)(ref MovingObject!B obj,ObjectState!B s
 	enum numParticles=16;
 	auto sacParticle=SacParticle!B.get(ParticleType.dirt);
 	auto hitbox=obj.hitbox;
-	hitbox[1].z=hitbox[0].z+0.1f*(hitbox[1].z-hitbox[0].z);
+	hitbox[1].z=0.1f*(hitbox[1].z-hitbox[0].z);
+	hitbox[0].z=0.0f;
 	auto center=boxCenter(hitbox);
 	auto scale=0.6f*getScale(obj).length;
 	foreach(i;0..numParticles){
 		auto position=state.uniform(hitbox);
+		position.z=position.z+state.getHeight(position);
 		auto velocity=Vector3f(0.0f,0.0f,0.0f);
 		int lifetime=31;
 		int frame=0;
@@ -12369,7 +12371,7 @@ bool updateDivineSight(B)(ref DivineSight!B divineSight,ObjectState!B state){
 
 bool updateSteamCloud(B)(ref SteamCloud!B steamCloud,ObjectState!B state){
 	with(steamCloud){
-		dealSplashRangedDamageAt(id,ability,ability.effectRange,id,side,boxCenter(hitbox),state);
+		dealSplashRangedDamageAt(id,ability,ability.damageRange,id,side,boxCenter(hitbox),state);
 		enum numParticles2=100;
 		auto sacParticle2=SacParticle!B.get(ParticleType.steam);
 		auto scale=0.3f*boxSize(hitbox).length;

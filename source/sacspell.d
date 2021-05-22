@@ -105,6 +105,7 @@ class SacSpell(B){
 	float amount;
 	float duration;
 	float effectRange;
+	float damageRange;
 	float speed;
 	float acceleration;
 	@property float fallingAcceleration(){ return tag==SpellTag.fallenShoot?10.0f:30.0f; }
@@ -179,6 +180,7 @@ class SacSpell(B){
 			if(tag==SpellTag.scarabShoot) amount=float.infinity;
 			if(tag==SpellTag.teleport) flags1&=~cast(int)SpelFlags1.shield;
 			effectRange=spel.effectRange;
+			damageRange=spel.damageRange;
 			speed=60.0f*spel.speed;
 			acceleration=60.0f*spel.acceleration;
 			needsPrediction=tag!=SpellTag.locustShoot;
