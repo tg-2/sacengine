@@ -45,7 +45,7 @@ struct Cre8{
 	ushort unknown16; // some multiplier?
 	ushort unknown17; // some multiplier?
 	ushort unknown18; // some multiplier?
-	ushort unknown19; // a small number
+	ushort god;
 	ushort souls;
 	ushort unknown20; // some multiplier?
 	uint unknown21; // unused?
