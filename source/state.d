@@ -13468,8 +13468,8 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 		if(objects.sacObject.isManahoar){
 			static bool manahoarAbilityEnabled(CreatureMode mode){
 				final switch(mode) with(CreatureMode){
-					case idle,moving,dying,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,pretendingToDie,rockForm: return true;
-					case dead,dissolving,preSpawning,reviving,fastReviving,playingDead,pretendingToRevive,convertReviving,thrashing: return false;
+					case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,rockForm: return true;
+					case dying,dead,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,convertReviving,thrashing: return false;
 					case deadToGhost,idleGhost,movingGhost,ghostToIdle,casting,stationaryCasting,castingMoving,shooting,pumping,torturing: assert(0);
 				}
 			}
