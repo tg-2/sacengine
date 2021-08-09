@@ -10444,6 +10444,7 @@ bool updateFireformCasting(B)(ref FireformCasting!B fireformCast,ObjectState!B s
 				fireformCast.animateFireformCasting(state);
 				return true;
 			case CastingStatus.interrupted:
+				state.movingObjectById!((ref obj){ obj.creatureStats.effects.fireform=false; },(){})(manaDrain.wizard);
 				return false;
 			case CastingStatus.finished:
 				state.movingObjectById!(fireform,()=>false)(manaDrain.wizard,spell,state,soundTimer);
@@ -10502,6 +10503,7 @@ bool updateProtectiveSwarmCasting(B)(ref ProtectiveSwarmCasting!B protectiveSwar
 				protectiveSwarm.status=ProtectiveSwarmStatus.casting;
 				return protectiveSwarm.updateProtectiveSwarm(state);
 			case CastingStatus.interrupted:
+				state.movingObjectById!((ref obj){ obj.creatureStats.effects.protectiveSwarm=false; },(){})(manaDrain.wizard);
 				protectiveSwarm.status=ProtectiveSwarmStatus.dispersing;
 				return protectiveSwarm.updateProtectiveSwarm(state);
 			case CastingStatus.finished:
