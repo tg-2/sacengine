@@ -4,6 +4,7 @@
 
 import dlib.math, dlib.math.portable;
 import std.typecons, std.algorithm;
+import std.exception:enforce;
 
 alias Seq(T...)=T;
 
@@ -12,6 +13,13 @@ uint parseLE(const ubyte[] raw)in{
 }body{
 	uint r=0;
 	foreach_reverse(x;raw) r=256*r+x;
+	return r;
+}
+uint parseUint(ref ubyte[] data){
+	enforce(data.length>=4);
+	uint r=0;
+	foreach_reverse(x;data[0..4]) r=256*r+x;
+	data=data[4..$];
 	return r;
 }
 inout(ubyte)[] eat(ref inout(ubyte)[] input, size_t n){

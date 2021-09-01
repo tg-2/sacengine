@@ -4,7 +4,7 @@
 
 import dlib.image, dlib.math, dlib.math.portable, dlib.geometry;
 import util;
-import maps,txtr,envi;
+import maps,txtr,envi,trig;
 import std.exception, std.string, std.algorithm, std.conv, std.range;
 import std.stdio, std.path;
 import std.typecons: tuple,Tuple;
@@ -59,11 +59,14 @@ final class SacMap(B){
 	Tileset tileset;
 	ubyte[][] tiles;
 	Envi envi;
+	Trig trig;
 
 	this(string filename){
 		enforce(filename.endsWith(".HMAP"));
 		auto hmap=loadHMap(filename);
 		envi=loadENVI(filename[0..$-".HMAP".length]~".ENVI");
+		try trig=loadTRIG(filename[0..$-".HMAP".length]~".TRIG");
+		catch(Exception e){ stderr.writeln("warning: failed to parse triggers (",e.msg,")"); }
 		auto tmap=loadTMap(filename[0..$-".HMAP".length]~".TMAP");
 		edges=hmap.edges;
 		heights=hmap.heights;
