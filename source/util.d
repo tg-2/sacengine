@@ -22,6 +22,12 @@ uint parseUint(ref ubyte[] data){
 	data=data[4..$];
 	return r;
 }
+short parseShort(ref ubyte[] data){
+	enforce(data.length>=2);
+	auto r=cast(short)(256*data[0]+data[1]);
+	data=data[2..$];
+	return r;
+}
 inout(ubyte)[] eat(ref inout(ubyte)[] input, size_t n){
 	auto r=input[0..n];
 	input=input[n..$];
