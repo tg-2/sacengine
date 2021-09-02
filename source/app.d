@@ -422,6 +422,24 @@ int main(string[] args){
 	else backend.scene.fpview.active=true;
 
 	foreach(ref i;1..args.length){
+		if(args[i].endsWith(".SAMP")){
+			import samp,audio;
+			auto filename=args[i];
+			bool loop=false;
+			if(filename.startsWith("loop:")){
+				loop=true;
+				filename=filename["loop:".length..$];
+			}
+			auto sample=loadSAMP(filename);
+			auto buffer=makeBuffer(sample);
+			auto source=makeSource();
+			source.looping=loop;
+			source.buffer=buffer;
+			source.play();
+			import core.thread;
+			while(source.isPlaying()){ Thread.sleep(1.dur!"msecs"); }
+			continue;
+		}
 		string anim="";
 		if(i+1<args.length&&args[i+1].endsWith(".SXSK"))
 			anim=args[i+1];
