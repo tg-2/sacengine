@@ -64,6 +64,7 @@ struct Options{
 	string recordingFilename="";
 	bool logCore=false;
 	string playbackFilename="";
+	string exportFolder="sacengine-exports";
 	alias settings this;
 }
 

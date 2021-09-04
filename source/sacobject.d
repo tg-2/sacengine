@@ -25,6 +25,7 @@ enum RenderMode{
 final class SacObject(B){
 	char[4] tag;
 	char[4] nttTag;
+	string name;
 	int[RenderMode.max+1] stateIndex=-1;
 	B.Mesh[] meshes;
 	B.Texture[] textures;
@@ -451,6 +452,7 @@ final class SacObject(B){
 	private void initializeNTTData(char[4] tag,char[4] nttTag){
 		this.tag=tag;
 		this.nttTag=nttTag;
+		this.name=texts.get(nttTag,"(Unknown)");
 		cre8=nttTag in cre8s;
 		wizd=nttTag in wizds;
 		strc=nttTag in strcs;

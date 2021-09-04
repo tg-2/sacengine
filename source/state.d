@@ -7,7 +7,7 @@ import std.container.array: Array;
 import std.exception, std.stdio, std.conv;
 import dlib.math, dlib.math.portable, dlib.image.color;
 import std.typecons;
-import sids, ntts, nttData, bldg, sset;
+import sids, trig, ntts, nttData, bldg, sset;
 import sacmap, sacobject, animations, sacspell;
 import stats;
 import util,options;
@@ -14632,6 +14632,14 @@ final class Sides(B){
 			sides[i].enemies&=~(1<<i); // not enemies of themselves
 		}
 	}
+	int opApply(scope int delegate(ref Side) dg){
+		foreach(side;sides) if(auto r=dg(side)) return r;
+		return 0;
+	}
+	int opApply(scope int delegate(size_t,ref Side) dg){
+		foreach(i,side;sides) if(auto r=dg(i,side)) return r;
+		return 0;
+	}
 	Color4f sideColor(int side){
 		auto c=sideColors[sides[side].color];
 		if(side==31) static foreach(i;0..3) c[i]*=0.5f;
@@ -14916,6 +14924,11 @@ final class Triggers(B){
 	}do{
 		objectIds[triggerId]=objectId;
 	}
+	int associatedId(int triggerId){
+		return objectIds.get(triggerId,0);
+	}
+	Trig trig;
+	this(Trig trig){ this.trig=trig; }
 }
 
 enum TargetType{
@@ -15370,7 +15383,7 @@ final class GameState(B){
 	ObjectState!B next;
 	Triggers!B triggers;
 	Array!(Array!(Command!B)) commands;
-	this(SacMap!B map,Sides!B sides,NTTs ntts,Options options)in{
+	this(SacMap!B map,Sides!B sides,Triggers!B triggers,NTTs ntts,Options options)in{
 		assert(!!map);
 	}body{
 		auto proximity=new Proximity!B();
@@ -15378,7 +15391,7 @@ final class GameState(B){
 		current=new ObjectState!B(map,sides,proximity,pathFinder);
 		next=new ObjectState!B(map,sides,proximity,pathFinder);
 		lastCommitted=new ObjectState!B(map,sides,proximity,pathFinder);
-		triggers=new Triggers!B();
+		this.triggers=triggers;
 		commands.length=1;
 		foreach(ref structure;ntts.structures)
 			placeStructure(structure);

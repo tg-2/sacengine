@@ -4,11 +4,27 @@
 
 import options;
 import dagonBackend;
-import sids, ntts, sacobject, sacmap, state, controller, network, recording_;
+import sids, trig, ntts, sacobject, sacmap, state, controller, network, recording_;
 import wadmanager,util;
 import dlib.math;
 import std.string, std.array, std.range, std.algorithm, std.stdio;
 import std.exception, std.conv, std.typecons;
+
+import speechexport;
+
+GameState!B prepareGameState(B)(ref Options options){
+	auto hmap=getHmap(options.map);
+	auto base=hmap[0..$-".HMAP".length];
+	auto map=new SacMap!B(hmap);
+	auto sids=loadSids(base~".SIDS");
+	Trig trig;
+	try trig=loadTRIG(base~".TRIG");
+	catch(Exception e){ stderr.writeln("warning: failed to parse triggers (",e.msg,")"); }
+	auto ntts=loadNTTs(base~".NTTS");
+	auto sides=new Sides!B(sids);
+	auto triggers=new Triggers!B(trig);
+	return new GameState!B(map,sides,triggers,ntts,options);
+}
 
 void loadMap(B)(ref B backend,ref Options options)in{
 	assert(options.map.endsWith(".scp")||options.map.endsWith(".HMAP"));
@@ -131,15 +147,11 @@ void loadMap(B)(ref B backend,ref Options options)in{
 		options.settings=network.settings;
 		controlledSide=options.settings.controlledSide;
 	}
-	auto hmap=getHmap(options.map);
-	auto map=new SacMap!B(hmap);
-	auto sids=loadSids(hmap[0..$-".HMAP".length]~".SIDS");
-	auto ntts=loadNTTs(hmap[0..$-".HMAP".length]~".NTTS");
-	auto sides=new Sides!B(sids);
-	auto state=new GameState!B(map,sides,ntts,options);
+	auto state=prepareGameState!B(options);
+	auto sides=state.current.sides;
 	int[32] multiplayerSides=-1;
 	bool[32] matchedSides=false;
-	foreach(i,ref side;sids){
+	foreach(i,ref side;sides){
 		int mpside=side.assignment&PlayerAssignment.multiplayerMask;
 		if(!mpside) continue;
 		multiplayerSides[mpside-1]=cast(int)i;
@@ -290,6 +302,8 @@ int main(string[] args){
 			options.recordingFilename=opt["--record=".length..$];
 		}else if(opt.startsWith("--play=")){
 			options.playbackFilename=opt["--play=".length..$];
+		}else if(opt.startsWith("--export-folder=")){
+			options.exportFolder=opt["--export-folder=".length..$];
 		}else if(opt=="--observer"){
 			options.observer=true;
 		}else if(opt.startsWith("--side=")){
@@ -406,7 +420,7 @@ int main(string[] args){
 	alias B=DagonBackend;
 	auto backend=B(options);
 	foreach(arg;args){
-		if(arg.endsWith(".scp")||arg.endsWith(".HMAP")){
+		if(arg.endsWith(".scp")||arg.endsWith(".HMAP")||arg.startsWith("export-speech:")){
 			options.map=arg;
 		}
 	}
@@ -418,7 +432,11 @@ int main(string[] args){
 		if(map!="") stdout.writefln!"selected map '%s'"(map);
 		options.map=map;
 	}
-	if(options.map!=""&&!options.noMap) loadMap(backend,options);
+	if(options.map.startsWith("export-speech:")){
+		options.map=options.map["export-speech:".length..$];
+		exportSpeech!B(options);
+		return 0;
+	}else if(options.map!=""&&!options.noMap) loadMap(backend,options);
 	else backend.scene.fpview.active=true;
 
 	foreach(ref i;1..args.length){

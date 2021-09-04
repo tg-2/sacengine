@@ -46,6 +46,7 @@ string getHmap(string filename){
 }
 
 final class SacMap(B){
+	string hmap;
 	B.TerrainMesh[] meshes;
 	B.MinimapMesh[] minimapMeshes;
 	B.Texture[] textures;
@@ -59,14 +60,12 @@ final class SacMap(B){
 	Tileset tileset;
 	ubyte[][] tiles;
 	Envi envi;
-	Trig trig;
 
 	this(string filename){
 		enforce(filename.endsWith(".HMAP"));
+		this.hmap=filename;
 		auto hmap=loadHMap(filename);
 		envi=loadENVI(filename[0..$-".HMAP".length]~".ENVI");
-		try trig=loadTRIG(filename[0..$-".HMAP".length]~".TRIG");
-		catch(Exception e){ stderr.writeln("warning: failed to parse triggers (",e.msg,")"); }
 		auto tmap=loadTMap(filename[0..$-".HMAP".length]~".TMAP");
 		edges=hmap.edges;
 		heights=hmap.heights;
