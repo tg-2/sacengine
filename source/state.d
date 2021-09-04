@@ -443,7 +443,7 @@ struct Path{
 		path.length=0;
 		targetPosition=Vector3f.init;
 	}
-	Vector3f nextTarget(B)(Vector3f currentPosition,Vector3f newTarget,float radius,bool frontOfAIQueue,ObjectState!B state){
+	Vector3f nextTarget(B)(Vector3f currentPosition,Vector3f[2] hitbox,Vector3f newTarget,float radius,bool frontOfAIQueue,ObjectState!B state){
 		if((newTarget-targetPosition).lengthsqr>directWalkDistance^^2)
 			reset();
 		++age;
@@ -454,7 +454,15 @@ struct Path{
 				age=0;
 			}
 		}
-		while(path.length&&(path.back()-currentPosition).lengthsqr<2.0f*directWalkDistance^^2)
+		bool blocked(Vector3f position){
+			bool collision=false;
+			void handleCollision(ProximityEntry entry){ collision=true; }
+			auto movedHitbox=hitbox;
+			foreach(ref x;movedHitbox) x+=position;
+			state.proximity.collide!handleCollision(movedHitbox);
+			return collision;
+		}
+		while(path.length&&((path.back()-currentPosition).lengthsqr<2.0f*directWalkDistance^^2||blocked(path.back())))
 			path.removeBack(1);
 		if(path.length) return path.back();
 		return newTarget;
@@ -6725,7 +6733,7 @@ void moveTowards(B)(ref MovingObject!B object,Vector3f ultimateTargetPosition,fl
 	auto isFlying=object.creatureState.movement==CreatureMovement.flying;
 	Vector3f targetPosition=ultimateTargetPosition;
 	if(isFlying||disablePathfinding) object.creatureAI.path.reset();
-	else targetPosition=object.creatureAI.path.nextTarget(object.position,ultimateTargetPosition,acceptableRadius,state.frontOfAIQueue(object.side,object.id),state);
+	else targetPosition=object.creatureAI.path.nextTarget(object.position,object.relativeHitbox,ultimateTargetPosition,acceptableRadius,state.frontOfAIQueue(object.side,object.id),state);
 	if(isFlying){
 		if(distancesqr>(0.1f*object.speed(state))^^2){
 			auto flyingHeight=object.position.z-state.getHeight(object.position);
