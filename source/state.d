@@ -2262,6 +2262,7 @@ struct Rock(B){
 	SacSpell!B spell;
 	Quaternionf rotationUpdate;
 	Quaternionf rotation;
+	int frame=0;
 }
 struct SwarmCasting(B){
 	ManaDrain!B manaDrain;
@@ -10022,6 +10023,7 @@ void rockExplosion(B)(ref Rock!B rock,int target,ObjectState!B state){
 	}
 }
 
+enum rockWarmupTime=updateFPS/3;
 enum rockFloatingHeight=7.0f;
 bool updateRock(B)(ref Rock!B rock,ObjectState!B state){
 	with(rock){
@@ -10038,7 +10040,7 @@ bool updateRock(B)(ref Rock!B rock,ObjectState!B state){
 		velocity=capVelocity(velocity);
 		auto newPosition=position+velocity/updateFPS;
 		auto height=state.getHeight(position);
-		auto floatingHeight=min(rockFloatingHeight,0.75f*(targetCenter.xy-position.xy).length);
+		auto floatingHeight=min(rockFloatingHeight,rock.frame<rockWarmupTime?float.infinity:0.75f*(targetCenter.xy-position.xy).length);
 		if(newPosition.z<height+floatingHeight){
 			auto nvel=velocity;
 			nvel.z+=(height+floatingHeight-newPosition.z)*updateFPS;
@@ -10047,6 +10049,7 @@ bool updateRock(B)(ref Rock!B rock,ObjectState!B state){
 		position=newPosition;
 		rotation=rotationUpdate*rotation;
 		rock.animateRock(oldPosition,state);
+		if(++rock.frame<rockWarmupTime) return true;
 		auto target=rockCollisionTarget(wizard,side,position,state);
 		if(state.isValidTarget(target)){
 			rock.rockExplosion(target,state);
