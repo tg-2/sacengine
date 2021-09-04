@@ -10,7 +10,7 @@ alias Seq(T...)=T;
 
 uint parseLE(const ubyte[] raw)in{
 	assert(raw.length<=4);
-}body{
+}do{
 	uint r=0;
 	foreach_reverse(x;raw) r=256*r+x;
 	return r;
@@ -441,6 +441,25 @@ template tryImport(string filename,string alt=""){
 import std.string,std.path,std.algorithm,std.range;
 string fixPath(string path){ static if(dirSeparator=="/") return path; else return path.replace("/",dirSeparator); }
 string[] fixPaths(string[] paths){ static if(dirSeparator=="/") return paths; else return paths.map!fixPath.array; }
+
+string[2][] symbolReplacements=[
+	["/","_SLASH_"],
+	["\\","_BSLASH_"],
+	["`","_TICK_"],
+	["\0","_ZERO_"],
+	["^","_HAT_"],
+	["/","_SLASH_"],
+	["?","_QUESTIONMARK_"],
+];
+
+string normalizeFilename(string name){
+	foreach(x;symbolReplacements) name=name.replace(x[0],x[1]);
+	return name;
+}
+string unnormalizeFilename(string name){
+	foreach(x;symbolReplacements) name=name.replace(x[1],x[0]);
+	return name;
+}
 
 struct SmallArray(T,size_t n){
 	size_t length;

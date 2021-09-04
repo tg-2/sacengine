@@ -36,7 +36,7 @@ auto makeFileIndex(bool multi=false,bool lowerCase=false)(bool readFromWads,cons
 	static if(multi) string[][char[4]] result;
 	else string[char[4]] result;
 	void handle(string file){
-		char[4] tag=file[$-9..$-5];
+		char[4] tag=unnormalizeFilename(file)[$-9..$-5];
 		reverse(tag[]);
 		static if(lowerCase){
 			import std.ascii: toLower;
@@ -65,9 +65,9 @@ auto makeFileIndex(bool multi=false,bool lowerCase=false)(bool readFromWads,cons
 immutable(typeof(load("")))[char[4]] makeByTag(alias load)(bool readFromWads,const string[] folders,char[4] extension,bool noDup=true){
 	typeof(load(""))[char[4]] result;
 	void handle(string file){
-		char[4] tag=file[$-9..$-5];
+		char[4] tag=unnormalizeFilename(file)[$-9..$-5];
 		reverse(tag[]);
-		if(noDup) enforce(tag !in result);
+		if(noDup) enforce(tag !in result,tag);
 		result[tag]=load(file);
 	}
 	foreach(folder;folders){
