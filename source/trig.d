@@ -5,14 +5,16 @@ import std.array:join;
 
 import util;
 
-abstract class TrigCondition{}
+abstract class TrigCondition{ mixin TrigMixin; }
 class TrigAlways: TrigCondition{
 	override string toString(){ return "Always"; }
+	mixin TrigMixin;
 }
 
-abstract class TrigSideSpec{}
+abstract class TrigSideSpec{ mixin TrigMixin; }
 class TrigCurrentSide: TrigSideSpec{
 	override string toString(){ return "current side"; }
+	mixin TrigMixin;
 }
 
 string sideIdToString(uint side){ return text("side ",side); }
@@ -21,76 +23,92 @@ class TrigSide: TrigSideSpec{
 	uint side;
 	this(uint side){ this.side=side; }
 	override string toString(){ return sideIdToString(side); }
+	mixin TrigMixin;
 }
 class TrigEnemySides: TrigSideSpec{
 	override string toString(){ return "enemy sides"; }
+	mixin TrigMixin;
 }
 class TrigFriendlySides: TrigSideSpec{
 	override string toString(){ return "friendly sides"; }
+	mixin TrigMixin;
 }
 class TrigNeutralSides: TrigSideSpec{
 	override string toString(){ return "neutral sides"; }
+	mixin TrigMixin;
 }
 
 
-abstract class TrigConstraint{}
+abstract class TrigConstraint{ mixin TrigMixin; }
 
 class TrigAtLeast: TrigConstraint{
 	TrigQuantity quantity;
 	this(TrigQuantity quantity){ this.quantity=quantity; }
 	override string toString(){ return text("at least ",quantity); }
+	mixin TrigMixin;
 }
 class TrigAtMost: TrigConstraint{
 	TrigQuantity quantity;
 	this(TrigQuantity quantity){ this.quantity=quantity; }
 	override string toString(){ return text("at most ",quantity); }
+	mixin TrigMixin;
 }
 class TrigExactly: TrigConstraint{
 	TrigQuantity quantity;
 	this(TrigQuantity quantity){ this.quantity=quantity; }
 	override string toString(){ return text("exactly ",quantity); }
+	mixin TrigMixin;
 }
 class TrigAll: TrigConstraint{
 	override string toString(){ return "all"; }
+	mixin TrigMixin;
 }
 class TrigNone: TrigConstraint{
 	override string toString(){ return "none"; }
+	mixin TrigMixin;
 }
 class TrigTrue: TrigConstraint{
 	override string toString(){ return "true"; }
+	mixin TrigMixin;
 }
 class TrigFalse: TrigConstraint{
 	override string toString(){ return "false"; }
+	mixin TrigMixin;
 }
 
-abstract class TrigNtts{}
+abstract class TrigNtts{ mixin TrigMixin; }
 class TrigQuantityCreatureType: TrigNtts{
 	TrigConstraint constraint;
 	char[4] ctype;
 	this(TrigConstraint constraint,char[4] ctype){ this.constraint=constraint; this.ctype=ctype; }
 	override string toString(){ return text(constraint," ",creatureTypeToString(ctype)); }
+	mixin TrigMixin;
 }
 class TrigQuantityStructureType: TrigNtts{
 	TrigConstraint constraint;
 	char[4] stype;
 	this(TrigConstraint constraint,char[4] stype){ this.constraint=constraint; this.stype=stype; }
 	override string toString(){ return text(constraint," ",structureTypeToString(stype)); }
+	mixin TrigMixin;
 }
 class TrigNttsCreature: TrigNtts{
 	TrigCreature creature;
 	this(TrigCreature creature){ this.creature=creature; }
 	override string toString(){ return text(creature); }
+	mixin TrigMixin;
 }
 class TrigNttsStructure: TrigNtts{
 	TrigStructure structure;
 	this(TrigStructure structure){ this.structure=structure; }
 	override string toString(){ return text(structure); }
+	mixin TrigMixin;
 }
 class TrigIfSideSpecCommandsNttsCondition: TrigCondition{
 	TrigSideSpec sideSpec;
 	TrigNtts ntts;
 	this(TrigSideSpec sideSpec,TrigNtts ntts){ this.sideSpec=sideSpec; this.ntts=ntts; }
 	override string toString(){ return text("If ",sideSpec," commands ",ntts); }
+	mixin TrigMixin;
 }
 class TrigIfSideSpecCommandsNttsAtLocationCondition: TrigCondition{
 	TrigSideSpec sideSpec;
@@ -98,6 +116,7 @@ class TrigIfSideSpecCommandsNttsAtLocationCondition: TrigCondition{
 	TrigLocation location;
 	this(TrigSideSpec sideSpec,TrigNtts ntts,TrigLocation location){ this.sideSpec=sideSpec; this.ntts=ntts; this.location=location; }
 	override string toString(){ return text("If ",sideSpec," commands ",ntts," at ",location); }
+	mixin TrigMixin;
 }
 class TrigIfSideSpecCommandsNttsWithinMetersOfNttCondition: TrigCondition{
 	TrigSideSpec sideSpec;
@@ -108,12 +127,14 @@ class TrigIfSideSpecCommandsNttsWithinMetersOfNttCondition: TrigCondition{
 		this.sideSpec=sideSpec; this.ntts=ntts; this.quantity=quantity; this.ntt=ntt;
 	}
 	override string toString(){ return text("If ",sideSpec," commands ",ntts," within ",quantity," meters of ",ntt); }
+	mixin TrigMixin;
 }
 class TrigIfSideSpecDoesNotCommandNttsCondition: TrigCondition{
 	TrigSideSpec sideSpec;
 	TrigNtts ntts;
 	this(TrigSideSpec sideSpec,TrigNtts ntts){ this.sideSpec=sideSpec; this.ntts=ntts; }
 	override string toString(){ return text("If ",sideSpec," does not command ",ntts); }
+	mixin TrigMixin;
 }
 class TrigIfSideSpecDoesNotCommandNttsAtLocationCondition: TrigCondition{
 	TrigSideSpec sideSpec;
@@ -121,17 +142,20 @@ class TrigIfSideSpecDoesNotCommandNttsAtLocationCondition: TrigCondition{
 	TrigLocation location;
 	this(TrigSideSpec sideSpec,TrigNtts ntts,TrigLocation location){ this.sideSpec=sideSpec; this.ntts=ntts; this.location=location; }
 	override string toString(){ return text("If ",sideSpec," does not command ",ntts," at ",location); }
+	mixin TrigMixin;
 }
 
 class TrigIfElapsedGameTimeIsFramesCondition: TrigCondition{
 	TrigConstraint constraint;
 	this(TrigConstraint constraint){ this.constraint=constraint; }
 	override string toString(){ return text("If elapsed game time is ",constraint," frames"); }
+	mixin TrigMixin;
 }
 class TrigIfGameTimerIsFramesCondition: TrigCondition{
 	TrigConstraint constraint;
 	this(TrigConstraint constraint){ this.constraint=constraint; }
 	override string toString(){ return text("If game timer is ",constraint," frames"); }
+	mixin TrigMixin;
 }
 
 class TrigIfSideSpecSeesNttsCondition: TrigCondition{
@@ -139,12 +163,14 @@ class TrigIfSideSpecSeesNttsCondition: TrigCondition{
 	TrigNtts ntts;
 	this(TrigSideSpec sideSpec,TrigNtts ntts){ this.sideSpec=sideSpec; this.ntts=ntts; }
 	override string toString(){ return text("If ",sideSpec," sees ",ntts); }
+	mixin TrigMixin;
 }
 class TrigIfNttSeesNttsCondition: TrigCondition{
 	TrigNtt ntt;
 	TrigNtts ntts;
 	this(TrigNtt ntt,TrigNtts ntts){ this.ntt=ntt; this.ntts=ntts; }
 	override string toString(){ return text("If ",ntt," sees ",ntts); }
+	mixin TrigMixin;
 }
 
 class TrigIfSideSpecIsAttackedBySideCondition: TrigCondition{
@@ -152,12 +178,14 @@ class TrigIfSideSpecIsAttackedBySideCondition: TrigCondition{
 	uint sideId;
 	this(TrigSideSpec sideSpec,uint sideId){ this.sideSpec=sideSpec; this.sideId=sideId; }
 	override string toString(){ return text("If ",sideSpec," is attacked by ",sideIdToString(sideId)); }
+	mixin TrigMixin;
 }
 class TrigIfCreatureIsAttackedBySideSpecCondition: TrigCondition{
 	TrigCreature creature;
 	TrigSideSpec sideSpec;
 	this(TrigCreature creature,TrigSideSpec sideSpec){ this.creature=creature; this.sideSpec=sideSpec; }
 	override string toString(){ return text("If ",creature," is attacked by ",sideSpec); }
+	mixin TrigMixin;
 }
 
 class TrigIfVariableCondition: TrigCondition{
@@ -165,6 +193,7 @@ class TrigIfVariableCondition: TrigCondition{
 	TrigConstraint constraint;
 	this(uint variable,TrigConstraint constraint){ this.variable=variable; this.constraint=constraint; }
 	override string toString(){ return text("If variable ",variable," ",constraint); }
+	mixin TrigMixin;
 }
 
 class TrigIfNttHasResourceCondition: TrigCondition{
@@ -175,6 +204,7 @@ class TrigIfNttHasResourceCondition: TrigCondition{
 		this.ntt=ntt; this.constraint=constraint; this.resource=resource;
 	}
 	override string toString(){ return text("If ",ntt," has ",constraint," ",resourceToString(resource)); }
+	mixin TrigMixin;
 }
 class TrigIfCreatureHasStatCondition: TrigCondition{
 	TrigCreature creature;
@@ -184,77 +214,93 @@ class TrigIfCreatureHasStatCondition: TrigCondition{
 		this.creature=creature; this.constraint=constraint; this.creatureStat=creatureStat;
 	}
 	override string toString(){ return text("If ",creature," has ",constraint," ",creatureStatToString(creatureStat)); }
+	mixin TrigMixin;
 }
 class TrigIfPlayerHasCreaturesSelectedCondition: TrigCondition{
 	TrigCreature[] creatures;
 	this(TrigCreature[] creatures){ this.creatures=creatures; }
 	override string toString(){ return text("If player has ",creatures.map!text.join(" and "), " selected"); }
+	mixin TrigMixin;
 }
 class TrigIfCreatureHasOrdersCondition: TrigCondition{
 	TrigCreature creature;
 	TrigOrder order;
 	this(TrigCreature creature,TrigOrder order){ this.creature=creature; this.order=order; }
 	override string toString(){ return text("If ",creature, " has orders ",order); }
+	mixin TrigMixin;
 }
 class TrigIfStructureActiveValueCondition: TrigCondition{
 	TrigStructure structure;
 	TrigConstraint constraint;
 	this(TrigStructure structure,TrigConstraint constraint){ this.structure=structure; this.constraint=constraint; }
 	override string toString(){ return text("If ",structure," active value ",constraint); }
+	mixin TrigMixin;
 }
 class TrigIfCurrentSideIsAnAiSide: TrigCondition{
 	override string toString(){ return "If current side is an AI side"; }
+	mixin TrigMixin;
 }
 class TrigIfCurrentSideIsAPlayerSide: TrigCondition{
 	override string toString(){ return "If current side is a player side"; }
+	mixin TrigMixin;
 }
 
 class TrigIfNttExistsCondition: TrigCondition{
 	TrigNtt ntt;
 	this(TrigNtt ntt){ this.ntt=ntt; }
 	override string toString(){ return text("If ",ntt," exists"); }
+	mixin TrigMixin;
 }
 class TrigIfNttExistsOnTheCurrentSideCondition: TrigCondition{
 	TrigNtt ntt;
 	this(TrigNtt ntt){ this.ntt=ntt; }
 	override string toString(){ return text("If ",ntt," exists on the current side"); }
+	mixin TrigMixin;
 }
 class TrigIfCreatureIsAliveCondition: TrigCondition{
 	TrigCreature creature;
 	this(TrigCreature creature){ this.creature=creature; }
 	override string toString(){ return text("If ",creature," is alive"); }
+	mixin TrigMixin;
 }
 
 class TrigOrCondition: TrigCondition{
 	TrigCondition condition1,condition2;
 	this(TrigCondition condition1,TrigCondition condition2){ this.condition1=condition1; this.condition2=condition2; }
 	override string toString(){ return text("(",condition1,") OR (",condition2,")"); }
+	mixin TrigMixin;
 }
 class TrigAndCondition: TrigCondition{
 	TrigCondition condition1,condition2;
 	this(TrigCondition condition1,TrigCondition condition2){ this.condition1=condition1; this.condition2=condition2; }
 	override string toString(){ return text("(",condition1,") AND (",condition2,")"); }
+	mixin TrigMixin;
 }
 class TrigNotCondition: TrigCondition{
 	TrigCondition condition;
 	this(TrigCondition condition){ this.condition=condition; }
 	override string toString(){ return text("NOT ",condition); }
+	mixin TrigMixin;
 }
 
-abstract class TrigAction{}
+abstract class TrigAction{ mixin TrigMixin; }
 class TrigPauseAction: TrigAction{
 	uint numFrames;
 	this(uint numFrames){ this.numFrames=numFrames; }
 	override string toString(){ return text("Pause for ",numFrames, " frames"); }
+	mixin TrigMixin;
 }
 class TrigEndMissionInDefeatAction: TrigAction{
 	override string toString(){ return text("End mission in defeat"); }
+	mixin TrigMixin;
 }
 class TrigEndMissionInVictoryAction: TrigAction{
 	override string toString(){ return text("End mission in victory"); }
+	mixin TrigMixin;
 }
 class TrigEndMissionAction: TrigAction{
 	override string toString(){ return text("End mission"); }
+	mixin TrigMixin;
 }
 enum TrigStance{
 	hostile=33,
@@ -266,12 +312,14 @@ class TrigDeclareStanceToSideAction: TrigAction{
 	uint side;
 	this(TrigStance stance,uint side){ this.stance=stance; this.side=side; }
 	override string toString(){ return text("Declare ",stance," to ",sideIdToString(side)); }
+	mixin TrigMixin;
 }
 class TrigChangeSideAction: TrigAction{
 	TrigNtt ntt;
 	uint side;
 	this(TrigNtt ntt,uint side){ this.ntt=ntt; this.side=side; }
 	override string toString(){ return text("Change side ",ntt," to ",sideIdToString(side)); }
+	mixin TrigMixin;
 }
 string nttTypeToString(char[4] nttType){
 	switch(nttType){
@@ -291,6 +339,7 @@ class TrigChangeSideAllOfTypeAction: TrigAction{
 	uint side;
 	this(char[4] nttType,uint side){ this.nttType=nttType; this.side=side; }
 	override string toString(){ return text("Change side all ",nttTypeToString(nttType)," to ",sideIdToString(side)); }
+	mixin TrigMixin;
 }
 class TrigChangeSideAllOfTypeAtLocationAction: TrigAction{
 	char[4] nttType;
@@ -298,6 +347,7 @@ class TrigChangeSideAllOfTypeAtLocationAction: TrigAction{
 	uint side;
 	this(char[4] nttType,TrigLocation location,uint side){ this.nttType=nttType; this.location=location; this.side=side; }
 	override string toString(){ return text("Change side all ",nttTypeToString(nttType)," at ",location," to ",sideIdToString(side)); }
+	mixin TrigMixin;
 }
 
 string nttToString(int ntt){ // wtf.
@@ -306,7 +356,7 @@ string nttToString(int ntt){ // wtf.
 	return null;
 }
 
-abstract class TrigNtt{}
+abstract class TrigNtt{ mixin TrigMixin; }
 class TrigCreature:TrigNtt{
 	uint id;
 	bool isId2=false; // ?
@@ -316,6 +366,7 @@ class TrigCreature:TrigNtt{
 		return text("creature ",ntt);
 	}
 	override string toString(){ return nttToString(id); }
+	mixin TrigMixin;
 }
 class TrigWizard:TrigNtt{
 	uint id;
@@ -325,49 +376,58 @@ class TrigWizard:TrigNtt{
 		return text("wizard ",ntt);
 	}
 	override string toString(){ return nttToString(id); }
+	mixin TrigMixin;
 }
 class TrigStructure:TrigNtt{
 	uint id;
 	this(uint id){ this.id = id; }
 	override string toString(){ return text("structure ",id); }
+	mixin TrigMixin;
 }
-abstract class TrigLocation{}
+abstract class TrigLocation{ mixin TrigMixin; }
 class TrigMarker: TrigLocation{
 	uint id;
 	this(uint id){ this.id = id; }
 	override string toString(){ return text("Marker ",id); }
+	mixin TrigMixin;
 }
 class TrigMarkerAtHeight: TrigLocation{
 	uint id;
 	uint height;
 	this(uint id,uint height){ this.id = id; this.height=height; }
 	override string toString(){ return text("Marker ",id," at ",height," meters height"); }
+	mixin TrigMixin;
 }
 class TrigAtNtt: TrigLocation{
 	TrigNtt ntt;
 	this(TrigNtt ntt){ this.ntt=ntt; }
 	override string toString(){ return text(ntt); }
+	mixin TrigMixin;
 }
-abstract class TrigOrder{}
+abstract class TrigOrder{ mixin TrigMixin; }
 class TrigOrderAttack: TrigOrder{
 	TrigNtt target;
 	this(TrigNtt target){ this.target=target; }
 	override string toString(){ return text("attack ",target); }
+	mixin TrigMixin;
 }
 class TrigOrderGoToLocation: TrigOrder{
 	TrigLocation location;
 	this(TrigLocation location){ this.location=location; }
 	override string toString(){ return text("go to ",location); }
+	mixin TrigMixin;
 }
 class TrigOrderAttackLocation: TrigOrder{
 	TrigLocation location;
 	this(TrigLocation location){ this.location=location; }
 	override string toString(){ return text("attack ",location); }
+	mixin TrigMixin;
 }
 class TrigOrderGuardLocation: TrigOrder{
 	TrigLocation location;
 	this(TrigLocation location){ this.location=location; }
 	override string toString(){ return text("guard ",location); }
+	mixin TrigMixin;
 }
 enum TrigFormation{
 	line=270,
@@ -396,20 +456,23 @@ class TrigOrderGoToLocationInFormation:TrigOrder{
 	TrigFormation formation;
 	this(TrigLocation location,TrigFormation formation){ this.location=location; this.formation=formation; }
 	override string toString(){ return text("go to ",location," in ",trigFormationToString(formation)," formation"); }
+	mixin TrigMixin;
 }
 class TrigOrderAttackLocationInFormation:TrigOrder{
 	TrigLocation location;
 	TrigFormation formation;
 	this(TrigLocation location,TrigFormation formation){ this.location=location; this.formation=formation; }
 	override string toString(){ return text("attack ",location," in ",trigFormationToString(formation)," formation"); }
+	mixin TrigMixin;
 }
 class TrigOrderGuardLocationInFormation:TrigOrder{
 	TrigLocation location;
 	TrigFormation formation;
 	this(TrigLocation location,TrigFormation formation){ this.location=location; this.formation=formation; }
 	override string toString(){ return text("guard ",location," in ",trigFormationToString(formation)," formation"); }
+	mixin TrigMixin;
 }
-class TrigSpellSpec{}
+class TrigSpellSpec{ mixin TrigMixin; }
 class TrigSpellAtNtt: TrigSpellSpec{
 	char[4] tag;
 	uint ntt;
@@ -419,6 +482,7 @@ class TrigSpellAtNtt: TrigSpellSpec{
 		return text(ntt);
 	}
 	override string toString(){ return text("cast ",tag," on ",nttToString(ntt)); }
+	mixin TrigMixin;
 }
 class TrigSpellAtSoulOfNtt: TrigSpellSpec{
 	char[4] tag;
@@ -429,47 +493,56 @@ class TrigSpellAtSoulOfNtt: TrigSpellSpec{
 		return text("creature ",ntt);
 	}
 	override string toString(){ return text("cast ",tag," on soul of ",nttToString(ntt)); }
+	mixin TrigMixin;
 }
 class TrigSpellAtLocation: TrigSpellSpec{
 	char[4] tag;
 	TrigLocation location;
 	this(char[4] tag,TrigLocation location){ this.tag=tag; this.location=location; }
 	override string toString(){ return text("cast ",tag," at ",location); }
-
+	mixin TrigMixin;
 }
 class TrigSpell: TrigSpellSpec{
 	char[4] tag;
 	this(char[4] tag){ this.tag=tag; }
 	override string toString(){ return text(tag); }
+	mixin TrigMixin;
 }
 class TrigCreatureSpell: TrigSpellSpec{
 	char[4] tag;
 	this(char[4] tag){ this.tag=tag; }
 	override string toString(){ return text(tag); }
+	mixin TrigMixin;
 }
 class TrigOrderCast: TrigOrder{
 	TrigSpellSpec spellSpec;
 	this(TrigSpellSpec spellSpec){ this.spellSpec=spellSpec;}
 	override string toString(){ return text("cast ",spellSpec); }
+	mixin TrigMixin;
 }
 class TrigOrderNotify: TrigOrder{
 	TrigCreature creature;
 	this(TrigCreature creature){ this.creature=creature; }
 	override string toString(){ return text("notify ",creature); }
+	mixin TrigMixin;
 }
 class TrigOrderTurnToFaceLocation:TrigOrder{
 	TrigLocation location;
 	this(TrigLocation location){ this.location=location; }
 	override string toString(){ return text("turn to face ",location); }
+	mixin TrigMixin;
 }
 class TrigOrderPassiveNotify: TrigOrder{
 	override string toString(){ return text("passive notify"); }
+	mixin TrigMixin;
 }
 class TrigOrderCancelOrders: TrigOrder{
 	override string toString(){ return text("cancel orders"); }
+	mixin TrigMixin;
 }
 class TrigOrderDie: TrigOrder{
 	override string toString(){ return text("die"); }
+	mixin TrigMixin;
 }
 
 class TrigOrderAction: TrigAction{
@@ -477,12 +550,14 @@ class TrigOrderAction: TrigAction{
 	TrigOrder order;
 	this(TrigCreature creature,TrigOrder order){ this.creature=creature; this.order=order; }
 	override string toString(){ return text("Order ",creature, " ",order); }
+	mixin TrigMixin;
 }
 class TrigOrderListAction: TrigAction{
 	TrigCreature[] creatures;
 	TrigOrder order;
 	this(TrigCreature[] creatures,TrigOrder order){ this.creatures=creatures; this.order=order; }
 	override string toString(){ return text("Order ",creatures.map!text.join(" and "), " ",order); }
+	mixin TrigMixin;
 }
 class TrigOrderAllOfTypeAtLocationAction: TrigAction{
 	char[4] ctype;
@@ -492,41 +567,49 @@ class TrigOrderAllOfTypeAtLocationAction: TrigAction{
 		this.ctype=ctype; this.location=location; this.order=order;
 	}
 	override string toString(){ return text("Order all ",creatureTypeToString(ctype)," at ",location," ",order); }
+	mixin TrigMixin;
 }
 class TrigOrderAllOfTypeAction: TrigAction{
 	char[4] ctype;
 	TrigOrder order;
 	this(char[4] ctype,TrigOrder order){ this.ctype=ctype; this.order=order; }
 	override string toString(){ return text("Order all ",creatureTypeToString(ctype)," ",order); }
+	mixin TrigMixin;
 }
 class TrigDisplayVariableAction: TrigAction{
 	uint variable;
 	this(uint variable){ this.variable=variable; }
 	override string toString(){ return text("Display variable ",variable); }
+	mixin TrigMixin;
 }
 class TrigDisplayTextAction: TrigAction{
 	char[4] text;
 	this(char[4] text){ this.text=text; }
 	override string toString(){ return .text("Display text ",text); }
+	mixin TrigMixin;
 }
 class TrigHideVariableAction: TrigAction{
 	uint variable;
 	this(uint variable){ this.variable=variable; }
 	override string toString(){ return text("Hide variable ",variable); }
+	mixin TrigMixin;
 }
 class TrigClearTextAction: TrigAction{
 	override string toString(){ return .text("Clear text"); }
+	mixin TrigMixin;
 }
 class TrigPlaySampleAction: TrigAction{
 	char[4] sample;
 	this(char[4] sample){ this.sample=sample; }
 	override string toString(){ return .text("Play sample ",sample); }
+	mixin TrigMixin;
 }
 class TrigCreateCreatureTypeAtLocationAction: TrigAction{
 	char[4] ctype;
 	TrigLocation location;
 	this(char[4] ctype,TrigLocation location){ this.ctype=ctype; this.location=location; }
 	override string toString(){ return text("Create ",creatureTypeToString(ctype)," at ",location); }
+	mixin TrigMixin;
 }
 class TrigCreateCreatureTypeOnSideAtLocationAction: TrigAction{
 	char[4] ctype;
@@ -538,6 +621,7 @@ class TrigCreateCreatureTypeOnSideAtLocationAction: TrigAction{
 		this.location=location;
 	}
 	override string toString(){ return text("Create ",creatureTypeToString(ctype)," on ",sideIdToString(side)," at ",location); }
+	mixin TrigMixin;
 }
 class TrigCreateMultipleCreatureTypeOnSideAtLocationAction: TrigAction{
 	uint amount;
@@ -553,39 +637,52 @@ class TrigCreateMultipleCreatureTypeOnSideAtLocationAction: TrigAction{
 	override string toString(){
 		return text("Create ",amount," ",creatureTypeToString(ctype)," on ",sideIdToString(side)," at ",location);
 	}
+	mixin TrigMixin;
 }
-abstract class TrigQuantity{}
-class TrigQuantityTrue: TrigQuantity{ override string toString(){ return "true"; } }
-class TrigQuantityFalse: TrigQuantity{ override string toString(){ return "false"; } }
+abstract class TrigQuantity{ mixin TrigMixin; }
+class TrigQuantityTrue: TrigQuantity{
+	override string toString(){ return "true"; }
+	mixin TrigMixin;
+}
+class TrigQuantityFalse: TrigQuantity{
+	override string toString(){ return "false"; }
+	mixin TrigMixin;
+}
 class TrigQuantityInteger: TrigQuantity{
 	int value;
 	this(int value){ this.value=value; }
 	override string toString(){ return text(value); }
+	mixin TrigMixin;
 }
 class TrigQuantityVariable: TrigQuantity{
 	uint variable;
 	this(int variable){ this.variable=variable; }
 	override string toString(){ return text("variable ",variable); }
+	mixin TrigMixin;
 }
 class TrigQuantityAdd: TrigQuantity{
 	TrigQuantity a,b;
 	this(TrigQuantity a,TrigQuantity b){ this.a=a; this.b=b; }
 	override string toString(){ return text("(",a," + ",b,")"); }
+	mixin TrigMixin;
 }
 class TrigQuantitySub: TrigQuantity{
 	TrigQuantity a,b;
 	this(TrigQuantity a,TrigQuantity b){ this.a=a; this.b=b; }
 	override string toString(){ return text("(",a," - ",b,")"); }
+	mixin TrigMixin;
 }
 class TrigQuantityMul: TrigQuantity{
 	TrigQuantity a,b;
 	this(TrigQuantity a,TrigQuantity b){ this.a=a; this.b=b; }
 	override string toString(){ return text("(",a," * ",b,")"); }
+	mixin TrigMixin;
 }
 class TrigQuantityDiv: TrigQuantity{
 	TrigQuantity a,b;
 	this(TrigQuantity a,TrigQuantity b){ this.a=a; this.b=b; }
 	override string toString(){ return text("(",a," / ",b,")"); }
+	mixin TrigMixin;
 }
 
 enum TrigCreatureStat{
@@ -626,6 +723,7 @@ class TrigQuantityCreatureStat: TrigQuantity{
 		this.creature=creature;
 	}
 	override string toString(){ return text(creatureStatToString(stat)," of ",creature); }
+	mixin TrigMixin;
 }
 
 class TrigSetVariableAction: TrigAction{
@@ -633,10 +731,11 @@ class TrigSetVariableAction: TrigAction{
 	TrigQuantity quantity;
 	this(uint variable,TrigQuantity quantity){ this.variable=variable; this.quantity=quantity; }
 	override string toString(){ return text("Set variable ",variable," to ",quantity); }
+	mixin TrigMixin;
 }
 
 
-abstract class TrigQuantifiedNtts{}
+abstract class TrigQuantifiedNtts{ mixin TrigMixin; }
 
 char[4] parseTrigCreatureType(ref ubyte[] data){
 	auto vtype=parseUint(data);
@@ -656,6 +755,7 @@ class TrigCreatureTypeNtts: TrigQuantifiedNtts{
 	char[4] ctype;
 	this(char[4] ctype){ this.ctype=ctype; }
 	override string toString(){ return creatureTypeToString(ctype); }
+	mixin TrigMixin;
 }
 
 char[4] parseTrigStructureType(ref ubyte[] data){
@@ -674,6 +774,7 @@ class TrigStructureTypeNtts: TrigQuantifiedNtts{
 	char[4] stype;
 	this(char[4] stype){ this.stype=stype; }
 	override string toString(){ return structureTypeToString(stype); }
+	mixin TrigMixin;
 }
 
 class TrigCreatureTypeAtLocationNtts: TrigQuantifiedNtts{
@@ -681,18 +782,21 @@ class TrigCreatureTypeAtLocationNtts: TrigQuantifiedNtts{
 	TrigLocation location;
 	this(char[4] ctype,TrigLocation location){ this.ctype=ctype; this.location=location;}
 	override string toString(){ return text(creatureTypeToString(ctype)," at ",location); }
+	mixin TrigMixin;
 }
 class TrigStructureTypeAtLocationNtts: TrigQuantifiedNtts{
 	char[4] stype;
 	TrigLocation location;
 	this(char[4] stype,TrigLocation location){ this.stype=stype; this.location=location;}
 	override string toString(){ return text(structureTypeToString(stype)," at ",location); }
+	mixin TrigMixin;
 }
 class TrigSetVariableToNumberOfNttsAction: TrigAction{
 	uint variable;
 	TrigQuantifiedNtts quantifiedNtts;
 	this(uint variable,TrigQuantifiedNtts quantifiedNtts){ this.variable=variable; this.quantifiedNtts=quantifiedNtts; }
 	override string toString(){ return text("Set variable ",variable," equal to number of ",quantifiedNtts); }
+	mixin TrigMixin;
 }
 
 enum TrigResource{
@@ -717,6 +821,7 @@ class TrigSetVariableToResourceOfNttAction: TrigAction{
 		this.ntt=ntt;
 	}
 	override string toString(){ return text("Set variable ",variable," equal to ",resourceToString(resource)," of ",ntt); }
+	mixin TrigMixin;
 }
 class TrigSetVariableToResourceOfNttsAction: TrigAction{
 	uint variable;
@@ -728,6 +833,7 @@ class TrigSetVariableToResourceOfNttsAction: TrigAction{
 		this.quantifiedNtts=quantifiedNtts;
 	}
 	override string toString(){ return text("Set variable ",variable," equal to ",resourceToString(resource)," of ",quantifiedNtts); }
+	mixin TrigMixin;
 }
 class TrigSetVariableToRandomNumberInRangeAction: TrigAction{
 	uint variable;
@@ -738,22 +844,26 @@ class TrigSetVariableToRandomNumberInRangeAction: TrigAction{
 		this.high=high;
 	}
 	override string toString(){ return text("Set variable ",variable, " equal to random number in range ",low," to ",high); }
+	mixin TrigMixin;
 }
 
-abstract class TrigActor{}
+abstract class TrigActor{ mixin TrigMixin; }
 class TrigActorCreature: TrigActor{
 	TrigCreature creature;
 	this(TrigCreature creature){ this.creature=creature; }
 	override string toString(){ return text(creature); }
+	mixin TrigMixin;
 }
-abstract class TrigActorName: TrigActor{}
+abstract class TrigActorName: TrigActor{ mixin TrigMixin; }
 class TrigActorNameText: TrigActorName{
 	char[4] text;
 	this(char[4] text){ this.text=text; }
 	override string toString(){ return .text(text); }
+	mixin TrigMixin;
 }
 class TrigActorNamePlayerWizard: TrigActorName{
 	override string toString(){ return "player wizard"; }
+	mixin TrigMixin;
 }
 enum TrigGod{
 	persephone=82,
@@ -776,8 +886,9 @@ class TrigActorGod: TrigActor{
 	TrigGod god;
 	this(TrigGod god){ this.god=god; }
 	override string toString(){ return godToString(god); }
+	mixin TrigMixin;
 }
-abstract class TrigSpeaks{}
+abstract class TrigSpeaks{ mixin TrigMixin; }
 enum TrigEmotion{
 	anger=214,
 	happiness=215,
@@ -785,61 +896,75 @@ enum TrigEmotion{
 }
 class TrigSays: TrigSpeaks{
 	override string toString(){ return "says"; }
+	mixin TrigMixin;
 }
 class TrigSaysWithEmotion: TrigSpeaks{
 	TrigEmotion emotion;
 	this(TrigEmotion emotion){ this.emotion=emotion; }
 	override string toString(){ return text("says with ",emotion); }
+	mixin TrigMixin;
 }
 class TrigAsks: TrigSpeaks{
 	override string toString(){ return "asks"; }
+	mixin TrigMixin;
 }
 class TrigAsksWithEmotion: TrigSpeaks{
 	TrigEmotion emotion;
 	this(TrigEmotion emotion){ this.emotion=emotion; }
 	override string toString(){ return text("asks with ",emotion); }
+	mixin TrigMixin;
 }
 class TrigExclaims: TrigSpeaks{
 	override string toString(){ return "exclaims"; }
+	mixin TrigMixin;
 }
 class TrigExclaimsWithEmotion: TrigSpeaks{
 	TrigEmotion emotion;
 	this(TrigEmotion emotion){ this.emotion=emotion; }
 	override string toString(){ return text("exclaims with ",emotion); }
+	mixin TrigMixin;
 }
 class TrigNarrates: TrigSpeaks{
 	override string toString(){ return "narrates"; }
+	mixin TrigMixin;
 }
 
-abstract class TrigTiming{}
+abstract class TrigTiming{ mixin TrigMixin; }
 class TrigAutoTimed: TrigTiming{
 	override string toString(){ return "auto timed"; }
+	mixin TrigMixin;
 }
 class TrigSampleLengthMinusFrames: TrigTiming{
 	TrigQuantity quantity;
 	this(TrigQuantity quantity){ this.quantity=quantity; }
 	override string toString(){ return text("timed by sample length minus ",quantity," frames"); }
+	mixin TrigMixin;
 }
 class TrigPersistent: TrigTiming{
 	override string toString(){ return "persistent"; }
+	mixin TrigMixin;
 }
 class TrigPauseForInput: TrigTiming{
 	override string toString(){ return "pause for input"; }
+	mixin TrigMixin;
 }
 class TrigForFrames: TrigTiming{
 	TrigQuantity quantity;
 	this(TrigQuantity quantity){ this.quantity=quantity; }
 	override string toString(){ return text("for ",quantity," frames"); }
+	mixin TrigMixin;
 }
 
-abstract class TrigSampleSpec{}
+abstract class TrigSampleSpec{ mixin TrigMixin; }
 class TrigWithSampleNone: TrigSampleSpec{
 	override string toString(){ return "with sample none"; }
+	mixin TrigMixin;
 }
 class TrigWithSample: TrigSampleSpec{
 	char[4] sample;
 	this(char[4] sample){ this.sample=sample; }
 	override string toString(){ return text("with sample ",sample); }
+	mixin TrigMixin;
 }
 class TrigSpeechWithTextAction: TrigAction{
 	TrigActor actor;
@@ -855,6 +980,7 @@ class TrigSpeechWithTextAction: TrigAction{
 		this.sampleSpec=sampleSpec;
 	}
 	override string toString(){ return .text("Speech ",actor," ",speaks," text ",text," ",timing," ",sampleSpec); }
+	mixin TrigMixin;
 }
 
 class TrigSpeechCreatureSpeaksSampleAction: TrigAction{
@@ -863,6 +989,7 @@ class TrigSpeechCreatureSpeaksSampleAction: TrigAction{
 	char[4] sample;
 	this(TrigCreature creature,TrigSpeaks speaks,char[4] sample){ this.creature=creature; this.speaks=speaks; this.sample=sample; }
 	override string toString(){ return text("Speech ",creature," ",speaks," sample ",sample); }
+	mixin TrigMixin;
 }
 class TrigSpeechCreatureSaysTextWithSampleAction: TrigAction{
 	TrigCreature creature;
@@ -870,6 +997,7 @@ class TrigSpeechCreatureSaysTextWithSampleAction: TrigAction{
 	char[4] sample;
 	this(TrigCreature creature,char[4] text,char[4] sample){ this.creature=creature; this.text=text; this.sample=sample; }
 	override string toString(){ return .text("Speech ",creature," says text ",text," with sample ",sample); }
+	mixin TrigMixin;
 }
 class TrigSpeechCreatureAsksTextWithSampleAction: TrigAction{
 	TrigCreature creature;
@@ -877,6 +1005,7 @@ class TrigSpeechCreatureAsksTextWithSampleAction: TrigAction{
 	char[4] sample;
 	this(TrigCreature creature,char[4] text,char[4] sample){ this.creature=creature; this.text=text; this.sample=sample; }
 	override string toString(){ return .text("Speech ",creature," asks text ",text," with sample ",sample); }
+	mixin TrigMixin;
 }
 class TrigSpeechCreatureExclaimsTextWithSampleAction: TrigAction{
 	TrigCreature creature;
@@ -884,6 +1013,7 @@ class TrigSpeechCreatureExclaimsTextWithSampleAction: TrigAction{
 	char[4] sample;
 	this(TrigCreature creature,char[4] text,char[4] sample){ this.creature=creature; this.text=text; this.sample=sample; }
 	override string toString(){ return .text("Speech ",creature," exclaims text ",text," with sample ",sample); }
+	mixin TrigMixin;
 }
 class TrigSpeechGodSaysTextWithSampleAction: TrigAction{
 	TrigGod god;
@@ -891,6 +1021,7 @@ class TrigSpeechGodSaysTextWithSampleAction: TrigAction{
 	char[4] sample;
 	this(TrigGod god,char[4] text,char[4] sample){ this.god=god; this.text=text; this.sample=sample; }
 	override string toString(){ return .text(godToString(god)," says text ",text," with sample ",sample); }
+	mixin TrigMixin;
 }
 
 enum TrigNarrator{
@@ -912,75 +1043,90 @@ class TrigSpeechNarratorNarratesTextWithSampleAction:  TrigAction{
 	char[4] sample;
 	this(TrigNarrator narrator,char[4] text,char[4] sample){ this.narrator=narrator; this.text=text; this.sample=sample; }
 	override string toString(){ return .text(narratorToString(narrator)," narrates text ",text," with sample ",sample); }
+	mixin TrigMixin;
 }
 
 class TrigSetObjectiveCompleteAction: TrigAction{
 	uint missionObjective;
 	this(uint missionObjective){ this.missionObjective=missionObjective; }
 	override string toString(){ return text("Set objective: mission objective ",missionObjective," complete"); }
+	mixin TrigMixin;
 }
 
 class TrigEnableObjectiveAction: TrigAction{
 	uint missionObjective;
 	this(uint missionObjective){ this.missionObjective=missionObjective; }
 	override string toString(){ return text("Enable objective: mission objective ",missionObjective); }
+	mixin TrigMixin;
 }
 class TrigDisableObjectiveAction: TrigAction{
 	uint missionObjective;
 	this(uint missionObjective){ this.missionObjective=missionObjective; }
 	override string toString(){ return text("Disable objective: mission objective ",missionObjective); }
+	mixin TrigMixin;
 }
 class TrigTeleportAllOfTypeAtLocationToLocationAction: TrigAction{
 	char[4] ctype;
 	TrigLocation location1,location2;
 	this(char[4] ctype,TrigLocation location1,TrigLocation location2){ this.ctype=ctype; this.location1=location1; this.location2=location2; }
 	override string toString(){ return text("Teleport all ",ctype," at ",location1," to ",location2); }
+	mixin TrigMixin;
 }
 class TrigTeleportAllOfTypeAtLocationAwayAction: TrigAction{
 	char[4] ctype;
 	TrigLocation location;
 	this(char[4] ctype,TrigLocation location){ this.ctype=ctype; this.location=location; }
 	override string toString(){ return text("Teleport all ",ctype," at ",location," away"); }
+	mixin TrigMixin;
 }
 class TrigTeleportCreatureToLocationAction: TrigAction{
 	TrigCreature creature;
 	TrigLocation location;
 	this(TrigCreature creature,TrigLocation location){ this.creature=creature; this.location=location; }
 	override string toString(){ return text("Teleport ",creature," to ",location); }
+	mixin TrigMixin;
 }
 class TrigTeleportCreatureAwayAction: TrigAction{
 	TrigCreature creature;
 	this(TrigCreature creature){ this.creature=creature; }
 	override string toString(){ return text("Teleport ",creature," away"); }
+	mixin TrigMixin;
 }
 class TrigSetGameTimerAction: TrigAction{
 	TrigQuantity quantity;
 	this(TrigQuantity quantity){ this.quantity=quantity; }
 	override string toString(){ return text("Set game timer ",quantity); }
+	mixin TrigMixin;
 }
 class TrigDisplayGameTimerAction: TrigAction{
 	override string toString(){ return "Display game timer"; }
+	mixin TrigMixin;
 }
 class TrigHideGameTimerAction: TrigAction{
 	override string toString(){ return "Hide game timer"; }
+	mixin TrigMixin;
 }
 
-abstract class TrigAiSetting{}
+abstract class TrigAiSetting{ mixin TrigMixin; }
 class TrigAiPaused: TrigAiSetting{
 	override string toString(){ return "paused"; }
+	mixin TrigMixin;
 }
 class TrigAiUnpaused: TrigAiSetting{
 	override string toString(){ return "unpaused"; }
+	mixin TrigMixin;
 }
 class TrigAiAggressionToQuantity: TrigAiSetting{
 	TrigQuantity quantity;
 	this(TrigQuantity quantity){ this.quantity=quantity; }
 	override string toString(){ return text("aggression to ",quantity); }
+	mixin TrigMixin;
 }
 class TrigSetAiSetting: TrigAction{
 	TrigAiSetting aiSetting;
 	this(TrigAiSetting aiSetting){ this.aiSetting=aiSetting; }
 	override string toString(){ return text("Set AI ",aiSetting); }
+	mixin TrigMixin;
 }
 
 enum TrigSwitch{
@@ -995,29 +1141,35 @@ class TrigTurnBeaconAtLocationAction: TrigAction{
 		this.location=location;
 	}
 	override string toString(){ return text("Turn beacon ",beaconSetting," on ",location); }
+	mixin TrigMixin;
 }
 
 class TrigCinematicsStartAction: TrigAction{
 	override string toString(){ return "Cinematics Start"; }
+	mixin TrigMixin;
 }
 class TrigCinematicsEndAction: TrigAction{
 	override string toString(){ return "Cinematics End"; }
+	mixin TrigMixin;
 }
 
 class TrigSetViewFocusToLocationAction: TrigAction{
 	TrigLocation location;
 	this(TrigLocation location){ this.location=location; }
 	override string toString(){ return text("Set view focus to ",location); }
+	mixin TrigMixin;
 }
 class TrigSetViewOriginFromLocationAction: TrigAction{
 	TrigLocation location;
 	this(TrigLocation location){ this.location=location; }
 	override string toString(){ return text("Set view origin from ",location); }
+	mixin TrigMixin;
 }
 class TrigSetViewOriginFromLocationFocusToLocationAction: TrigAction{
 	TrigLocation location1,location2;
 	this(TrigLocation location1,TrigLocation location2){ this.location1=location1; this.location2=location2; }
 	override string toString(){ return text("Set view origin from ",location1,", focus to ",location2); }
+	mixin TrigMixin;
 }
 
 
@@ -1042,12 +1194,14 @@ class TrigSetViewZoomAction: TrigAction{
 	TrigZoomLevel zoomLevel;
 	this(TrigZoomLevel zoomLevel){ this.zoomLevel=zoomLevel; }
 	override string toString(){ return text("Set view zoom to ",zoomLevelToString(zoomLevel)); }
+	mixin TrigMixin;
 }
 
 class TrigSetViewSpeedAction: TrigAction{
 	TrigQuantity quantity;
 	this(TrigQuantity quantity){ this.quantity=quantity; }
 	override string toString(){ return text("Set view speed to ",quantity); }
+	mixin TrigMixin;
 }
 
 class TrigGiveCreatureResourceAction: TrigAction{
@@ -1058,6 +1212,7 @@ class TrigGiveCreatureResourceAction: TrigAction{
 		this.creature=creature; this.quantity=quantity; this.resource=resource;
 	}
 	override string toString(){ return text("Give ",creature," ",quantity," ",resourceToString(resource)); }
+	mixin TrigMixin;
 }
 
 class TrigGiveAllOfTypeAtLocationResourceAction: TrigAction{
@@ -1069,6 +1224,7 @@ class TrigGiveAllOfTypeAtLocationResourceAction: TrigAction{
 		this.ctype=ctype; this.location=location; this.quantity=quantity; this.resource=resource;
 	}
 	override string toString(){ return text("Give all ",ctype," at ",location," ",quantity," ",resourceToString(resource)); }
+	mixin TrigMixin;
 }
 
 class TrigGiveWizardSpellAction: TrigAction{
@@ -1076,6 +1232,7 @@ class TrigGiveWizardSpellAction: TrigAction{
 	char[4] spell;
 	this(TrigWizard wizard,char[4] spell){ this.wizard=wizard; this.spell=spell; }
 	override string toString(){ return text("Give ",wizard," spell ",spell); }
+	mixin TrigMixin;
 }
 
 class TrigCastSpellAtLocationAction: TrigAction{
@@ -1083,6 +1240,7 @@ class TrigCastSpellAtLocationAction: TrigAction{
 	TrigLocation location;
 	this(char[4] spell,TrigLocation location){ this.spell=spell; this.location=location; }
 	override string toString(){ return text("Cast spell ",spell," at ",location); }
+	mixin TrigMixin;
 }
 
 enum TrigNttState{
@@ -1112,6 +1270,7 @@ class TrigSetNttStateAction: TrigAction{
 	TrigSwitch switch_;
 	this(TrigNtt ntt,TrigNttState state,TrigSwitch switch_){ this.ntt=ntt; this.state=state; this.switch_=switch_; }
 	override string toString(){ return text("Set ",ntt," ",nttStateToString(state)," ",switch_); }
+	mixin TrigMixin;
 }
 
 class TrigSetAllOfTypeStateAction: TrigAction{
@@ -1120,6 +1279,7 @@ class TrigSetAllOfTypeStateAction: TrigAction{
 	TrigSwitch switch_;
 	this(char[4] nttType,TrigNttState state,TrigSwitch switch_){ this.nttType=nttType; this.state=state; this.switch_=switch_; }
 	override string toString(){ return text("Set all ",nttTypeToString(nttType)," ",nttStateToString(state)," ",switch_); }
+	mixin TrigMixin;
 }
 
 class TrigSetAllOfTypeAtLocationStateAction: TrigAction{
@@ -1129,6 +1289,7 @@ class TrigSetAllOfTypeAtLocationStateAction: TrigAction{
 	TrigSwitch switch_;
 	this(char[4] nttType,TrigLocation location,TrigNttState state,TrigSwitch switch_){ this.nttType=nttType; this.location=location; this.state=state; this.switch_=switch_; }
 	override string toString(){ return text("Set all ",nttTypeToString(nttType)," at ",location," ",nttStateToString(state)," ",switch_); }
+	mixin TrigMixin;
 }
 
 class TrigSetCreatureStatAction: TrigAction{
@@ -1139,6 +1300,7 @@ class TrigSetCreatureStatAction: TrigAction{
 		this.creature=creature; this.creatureStat=creatureStat; this.quantity=quantity;
 	}
 	override string toString(){ return text("Set ",creature," ",creatureStat," ",quantity); }
+	mixin TrigMixin;
 }
 
 enum TrigWeather{
@@ -1154,12 +1316,14 @@ class TrigSetWeatherAction: TrigAction{
 	TrigSwitch switch_;
 	this(TrigWeather weather,TrigSwitch switch_){ this.weather=weather; this.switch_=switch_; }
 	override string toString(){ return text("Set ",weather," ",switch_); }
+	mixin TrigMixin;
 }
 
 class TrigSetNextMissionFilenameAction: TrigAction{
 	char[4] filename;
 	this(char[4] filename){ this.filename=filename; }
 	override string toString(){ return text("Set next mission filename ",filename); }
+	mixin TrigMixin;
 }
 
 enum TrigMissionId{
@@ -1185,6 +1349,7 @@ class TrigSetNextMissionIdAction: TrigAction{
 	TrigMissionId missionId;
 	this(TrigMissionId missionId){ this.missionId=missionId; }
 	override string toString(){ return text("Set next mission ",missionIdToString(missionId)); }
+	mixin TrigMixin;
 }
 
 enum TrigColor{
@@ -1198,12 +1363,14 @@ class TrigFadeToColorOverFramesAction: TrigAction{
 	TrigQuantity quantity;
 	this(TrigColor color,TrigQuantity quantity){ this.color=color; this.quantity=quantity; }
 	override string toString(){ return text("Fade to ",color," over ",quantity," frames"); }
+	mixin TrigMixin;
 }
 
 class TrigScreenShakeAtLocationAction: TrigAction{
 	TrigLocation location;
 	this(TrigLocation location){ this.location=location; }
 	override string toString(){ return text("Screen shake at ",location); }
+	mixin TrigMixin;
 }
 
 enum TrigInterfaceElement{
@@ -1228,6 +1395,7 @@ class TrigTurnInterfaceElement: TrigAction{
 	TrigSwitch switch_;
 	this(TrigInterfaceElement interfaceElement,TrigSwitch switch_){ this.interfaceElement=interfaceElement; this.switch_=switch_; }
 	override string toString(){ return text("Turn interface element ",interfaceElementToString(interfaceElement)," ",switch_); }
+	mixin TrigMixin;
 }
 
 class TrigSetStructureActiveLevelAction: TrigAction{
@@ -1235,6 +1403,7 @@ class TrigSetStructureActiveLevelAction: TrigAction{
 	TrigQuantity quantity;
 	this(TrigStructure structure,TrigQuantity quantity){ this.structure=structure; this.quantity=quantity; }
 	override string toString(){ return text("Set ",structure," active level to ",quantity); }
+	mixin TrigMixin;
 }
 
 class TrigAskTextAction: TrigAction{
@@ -1244,6 +1413,7 @@ class TrigAskTextAction: TrigAction{
 		this.question=question; this.option_a=option_a; this.option_b=option_b; this.variable=variable;
 	}
 	override string toString(){ return text( "Ask ",question,", give choices ",option_a," or ",option_b," and set variable ",variable); }
+	mixin TrigMixin;
 }
 class TrigAskTextWithSampleAction: TrigAction{
 	char[4] question;
@@ -1254,18 +1424,22 @@ class TrigAskTextWithSampleAction: TrigAction{
 		this.question=question; this.sampleSpec=sampleSpec; this.option_a=option_a; this.option_b=option_b; this.variable=variable;
 	}
 	override string toString(){ return text( "Ask ",question," ",sampleSpec,", give choices ",option_a," or ",option_b," and set variable ",variable); }
+	mixin TrigMixin;
 }
 
 class TrigShowRandomTipAction: TrigAction{
 	override string toString(){ return "Show random tip"; }
+	mixin TrigMixin;
 }
 class TrigShowTipTextAction: TrigAction{
 	char[4] text;
 	this(char[4] text){ this.text=text; }
 	override string toString(){ return .text("Show tip text ",text); }
+	mixin TrigMixin;
 }
 class TrigSuppressTipboxAction: TrigAction{
 	override string toString(){ return "Suppress tipbox"; }
+	mixin TrigMixin;
 }
 
 class TrigAddTextWithSampleToSpeechHistoryAction: TrigAction{
@@ -1273,15 +1447,18 @@ class TrigAddTextWithSampleToSpeechHistoryAction: TrigAction{
 	TrigSampleSpec sampleSpec;
 	this(char[4] text,TrigSampleSpec sampleSpec){ this.text=text; this.sampleSpec=sampleSpec; }
 	override string toString(){ return .text("Add text ",text," with ",sampleSpec," to speech history"); }
+	mixin TrigMixin;
 }
 class TrigAddIntroSampleToSpeechHistoryAction: TrigAction{
 	char[4] sample;
 	this(char[4] sample){ this.sample=sample; }
 	override string toString(){ return text("Add intro sample ",sample," to speech history"); }
+	mixin TrigMixin;
 }
 
 class TrigMusicResetAction: TrigAction{
 	override string toString(){ return "Music reset"; }
+	mixin TrigMixin;
 }
 enum TrigMood{
 	battle=266,
@@ -1291,11 +1468,13 @@ class TrigMusicAddToMoodAction: TrigAction{
 	TrigMood mood;
 	this(TrigQuantity quantity,TrigMood mood){ this.quantity=quantity; this.mood=mood; }
 	override string toString(){ return text("Music add ",quantity," to ",mood); }
+	mixin TrigMixin;
 }
 class TrigMusicTurnAction: TrigAction{
 	TrigSwitch switch_;
 	this(TrigSwitch switch_){ this.switch_=switch_; }
 	override string toString(){ return text("Music turn ",switch_); }
+	mixin TrigMixin;
 }
 
 enum TriggerFlags{
@@ -1551,6 +1730,7 @@ enum ConditionType{
 	ifSideSpecDoesNotCommandNtts=46,
 	ifSideSpecDoesNotCommandNttsAtLocation=47,
 	ifElapsedGameTimeIsFrames=3,
+	ifGameTimerIsFrames=99,
 	ifSideSpecSeesNtts=53,
 	ifNttSeesNtts=54,
 	ifSideSpecIsAttackedBySide=55,
@@ -1588,6 +1768,8 @@ TrigCondition parseTrigCondition(ref ubyte[] data){
 			return parseTrigIfSideSpecDoesNotCommandNttsAtLocationCondition(data);
 		case ConditionType.ifElapsedGameTimeIsFrames:
 			return parseTrigIfElapsedGameTimeIsFramesCondition(data);
+		case ConditionType.ifGameTimerIsFrames:
+			return parseTrigIfGameTimerIsFramesCondition(data);
 		case ConditionType.ifSideSpecSeesNtts:
 			return parseTrigIfSideSpecSeesNttsCondition(data);
 		case ConditionType.ifNttSeesNtts:
@@ -2766,4 +2948,48 @@ Trig parseTRIG(ubyte[] data){
 }
 Trig loadTRIG(string filename){
 	return parseTRIG(readFile(filename));
+}
+
+
+mixin template TrigMixin(){
+	enum isTrigAST=true;
+	static if(is(typeof(super)==Object)){
+		abstract void visit(TrigVisitor visitor);
+		abstract void visitChildren(TrigVisitor visitor);
+	}else{
+		override void visit(TrigVisitor visitor){ visitor.accept(this); }
+		override void visitChildren(TrigVisitor visitor){
+			foreach(x;this.tupleof){
+				static if(is(typeof(x)==class))
+					x.visit(visitor);
+			}
+		}
+	}
+}
+
+enum isTrigAst(alias T)=is(T==class)&&__traits(isSame,__traits(parent,T),__traits(parent,TrigVisitor))&&!is(T:TrigVisitor);
+alias Mixin(string s)=mixin(s);
+
+import std.meta;
+enum tmpTrigAstNodesFilter(string s)=s!="TrigAstNodes"&&s!="Mixin";
+
+/*alias TrigAstNodes=Filter!(isTrigAst, // (compiler is buggy, manually pasted below)
+                           staticMap!(Mixin,
+                                      Filter!(tmpTrigAstNodesFilter,
+                                      __traits(allMembers,__traits(parent,TrigVisitor)))));
+pragma(msg,TrigAstNodes);*/
+
+alias TrigAstNodes = AliasSeq!(TrigCondition, TrigAlways, TrigSideSpec, TrigCurrentSide, TrigSide, TrigEnemySides, TrigFriendlySides, TrigNeutralSides, TrigConstraint, TrigAtLeast, TrigAtMost, TrigExactly, TrigAll, TrigNone, TrigTrue, TrigFalse, TrigNtts, TrigQuantityCreatureType, TrigQuantityStructureType, TrigNttsCreature, TrigNttsStructure, TrigIfSideSpecCommandsNttsCondition, TrigIfSideSpecCommandsNttsAtLocationCondition, TrigIfSideSpecCommandsNttsWithinMetersOfNttCondition, TrigIfSideSpecDoesNotCommandNttsCondition, TrigIfSideSpecDoesNotCommandNttsAtLocationCondition, TrigIfElapsedGameTimeIsFramesCondition, TrigIfGameTimerIsFramesCondition, TrigIfSideSpecSeesNttsCondition, TrigIfNttSeesNttsCondition, TrigIfSideSpecIsAttackedBySideCondition, TrigIfCreatureIsAttackedBySideSpecCondition, TrigIfVariableCondition, TrigIfNttHasResourceCondition, TrigIfCreatureHasStatCondition, TrigIfPlayerHasCreaturesSelectedCondition, TrigIfCreatureHasOrdersCondition, TrigIfStructureActiveValueCondition, TrigIfCurrentSideIsAnAiSide, TrigIfCurrentSideIsAPlayerSide, TrigIfNttExistsCondition, TrigIfNttExistsOnTheCurrentSideCondition, TrigIfCreatureIsAliveCondition, TrigOrCondition, TrigAndCondition, TrigNotCondition, TrigAction, TrigPauseAction, TrigEndMissionInDefeatAction, TrigEndMissionInVictoryAction, TrigEndMissionAction, TrigDeclareStanceToSideAction, TrigChangeSideAction, TrigChangeSideAllOfTypeAction, TrigChangeSideAllOfTypeAtLocationAction, TrigNtt, TrigCreature, TrigWizard, TrigStructure, TrigLocation, TrigMarker, TrigMarkerAtHeight, TrigAtNtt, TrigOrder, TrigOrderAttack, TrigOrderGoToLocation, TrigOrderAttackLocation, TrigOrderGuardLocation, TrigOrderGoToLocationInFormation, TrigOrderAttackLocationInFormation, TrigOrderGuardLocationInFormation, TrigSpellSpec, TrigSpellAtNtt, TrigSpellAtSoulOfNtt, TrigSpellAtLocation, TrigSpell, TrigCreatureSpell, TrigOrderCast, TrigOrderNotify, TrigOrderTurnToFaceLocation, TrigOrderPassiveNotify, TrigOrderCancelOrders, TrigOrderDie, TrigOrderAction, TrigOrderListAction, TrigOrderAllOfTypeAtLocationAction, TrigOrderAllOfTypeAction, TrigDisplayVariableAction, TrigDisplayTextAction, TrigHideVariableAction, TrigClearTextAction, TrigPlaySampleAction, TrigCreateCreatureTypeAtLocationAction, TrigCreateCreatureTypeOnSideAtLocationAction, TrigCreateMultipleCreatureTypeOnSideAtLocationAction, TrigQuantity, TrigQuantityTrue, TrigQuantityFalse, TrigQuantityInteger, TrigQuantityVariable, TrigQuantityAdd, TrigQuantitySub, TrigQuantityMul, TrigQuantityDiv, TrigQuantityCreatureStat, TrigSetVariableAction, TrigQuantifiedNtts, TrigCreatureTypeNtts, TrigStructureTypeNtts, TrigCreatureTypeAtLocationNtts, TrigStructureTypeAtLocationNtts, TrigSetVariableToNumberOfNttsAction, TrigSetVariableToResourceOfNttAction, TrigSetVariableToResourceOfNttsAction, TrigSetVariableToRandomNumberInRangeAction, TrigActor, TrigActorCreature, TrigActorName, TrigActorNameText, TrigActorNamePlayerWizard, TrigActorGod, TrigSpeaks, TrigSays, TrigSaysWithEmotion, TrigAsks, TrigAsksWithEmotion, TrigExclaims, TrigExclaimsWithEmotion, TrigNarrates, TrigTiming, TrigAutoTimed, TrigSampleLengthMinusFrames, TrigPersistent, TrigPauseForInput, TrigForFrames, TrigSampleSpec, TrigWithSampleNone, TrigWithSample, TrigSpeechWithTextAction, TrigSpeechCreatureSpeaksSampleAction, TrigSpeechCreatureSaysTextWithSampleAction, TrigSpeechCreatureAsksTextWithSampleAction, TrigSpeechCreatureExclaimsTextWithSampleAction, TrigSpeechGodSaysTextWithSampleAction, TrigSpeechNarratorNarratesTextWithSampleAction, TrigSetObjectiveCompleteAction, TrigEnableObjectiveAction, TrigDisableObjectiveAction, TrigTeleportAllOfTypeAtLocationToLocationAction, TrigTeleportAllOfTypeAtLocationAwayAction, TrigTeleportCreatureToLocationAction, TrigTeleportCreatureAwayAction, TrigSetGameTimerAction, TrigDisplayGameTimerAction, TrigHideGameTimerAction, TrigAiSetting, TrigAiPaused, TrigAiUnpaused, TrigAiAggressionToQuantity, TrigSetAiSetting, TrigTurnBeaconAtLocationAction, TrigCinematicsStartAction, TrigCinematicsEndAction, TrigSetViewFocusToLocationAction, TrigSetViewOriginFromLocationAction, TrigSetViewOriginFromLocationFocusToLocationAction, TrigSetViewZoomAction, TrigSetViewSpeedAction, TrigGiveCreatureResourceAction, TrigGiveAllOfTypeAtLocationResourceAction, TrigGiveWizardSpellAction, TrigCastSpellAtLocationAction, TrigSetNttStateAction, TrigSetAllOfTypeStateAction, TrigSetAllOfTypeAtLocationStateAction, TrigSetCreatureStatAction, TrigSetWeatherAction, TrigSetNextMissionFilenameAction, TrigSetNextMissionIdAction, TrigFadeToColorOverFramesAction, TrigScreenShakeAtLocationAction, TrigTurnInterfaceElement, TrigSetStructureActiveLevelAction, TrigAskTextAction, TrigAskTextWithSampleAction, TrigShowRandomTipAction, TrigShowTipTextAction, TrigSuppressTipboxAction, TrigAddTextWithSampleToSpeechHistoryAction, TrigAddIntroSampleToSpeechHistoryAction, TrigMusicResetAction, TrigMusicAddToMoodAction, TrigMusicTurnAction);
+
+
+abstract class TrigVisitor{
+	static foreach(alias x;TrigAstNodes)
+		void accept(mixin(x) trig){ }
+}
+abstract class TrigVisitorRecursive: TrigVisitor{
+	static foreach(alias x;TrigAstNodes){
+		override void accept(mixin(x) trig){
+			trig.visitChildren(this);
+		}
+	}
 }
