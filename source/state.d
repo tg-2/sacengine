@@ -10023,7 +10023,7 @@ void rockExplosion(B)(ref Rock!B rock,int target,ObjectState!B state){
 	}
 }
 
-enum rockWarmupTime=updateFPS/3;
+enum rockWarmupTime=updateFPS/4;
 enum rockFloatingHeight=7.0f;
 bool updateRock(B)(ref Rock!B rock,ObjectState!B state){
 	with(rock){
