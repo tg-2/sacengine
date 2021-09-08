@@ -1856,7 +1856,7 @@ struct SacVine(B){
 	enum numSegments=19;
 	static B.BoneMesh createMesh(){
 		enum numVertices=25;
-		return makeVineMesh!B(numSegments,numVertices,0.0f,0.3f);
+		return makeVineMesh!B(numSegments,numVertices,0.0f,0.1f);
 	}
 }
 

@@ -2469,6 +2469,7 @@ struct GraspingVinesCasting(B){
 struct Vine{
 	enum m=5;
 	Vector3f base,target;
+	float scale;
 	static import std.math;
 	enum growthFactor=std.math.exp(std.math.log(0.9f)/updateFPS);
 	Vector3f[m] locations;
@@ -6289,6 +6290,7 @@ bool castGraspingVines(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,Obje
 	return true;
 }
 Vine spawnVine(B)(Vector3f[2] hitbox,ObjectState!B state){
+	float scale=boxSize(hitbox).length/2.0f;
 	Vector3f[2] nhitbox=[Vector3f(hitbox[0].x,hitbox[0].y,0.5f*(hitbox[0].z+hitbox[1].z)),hitbox[1]];
 	auto target=state.uniform(nhitbox);
 	enum displacement=1.0f;
@@ -6296,10 +6298,12 @@ Vine spawnVine(B)(Vector3f[2] hitbox,ObjectState!B state){
 	// TODO: snap base to ground
 	base.z=state.getHeight(base);
 	target.z=max(target.z,base.z+displacement);
-	auto result=Vine(base,target);
+	auto result=Vine(base,target,scale);
 	foreach(i,ref x;result.locations){
 		result.locations[i]=base;
-		result.velocities[i]=Vector3f(0.0f,0.0f,0.0f);
+		//result.velocities[i]=Vector3f(0.0f,0.0f,0.0f);
+		result.velocities[i]=state.uniformDirection()*scale;
+		result.velocities[i].z=0.1f;
 	}
 	return result;
 }
@@ -11031,22 +11035,26 @@ bool updateGraspingVinesCasting(B)(ref GraspingVinesCasting!B graspingVinesCast,
 
 void updateVine(B)(ref Vine vine,ObjectState!B state){
 	vine.locations[0]=vine.base;
-	vine.locations[$-1]=vine.locations[$-1]*(1.0f-vine.growthFactor)+vine.growthFactor*vine.target;
+	//vine.locations[$-1]=vine.locations[$-1]*(1.0f-vine.growthFactor)+vine.growthFactor*vine.target;
 	enum accelFactor=120.0f;
 	static import std.math;
 	enum dampFactor=std.math.exp(std.math.log(0.5f)/updateFPS);
 	enum maxVelocity=20.0f;
-	foreach(i;1..vine.m-1){
-		auto target=float(vine.m-1-i)/(vine.m-1)*vine.base+float(i)/(vine.m-1)*vine.target;
+	foreach(i;1..vine.m){
+		auto realTarget=float(vine.m-1-i)/(vine.m-1)*vine.base+float(i)/(vine.m-1)*vine.target;
+		auto target=vine.locations[$-1]*(1.0f-vine.growthFactor)+vine.growthFactor*realTarget;
 		auto acceleration=target-vine.locations[i];
-		acceleration=accelFactor*acceleration.lengthsqr^^(1/7.0f)*acceleration;
+		acceleration=accelFactor/vine.scale*acceleration.lengthsqr^^(1/7.0f)*acceleration;
 		vine.velocities[i]+=acceleration/updateFPS;
 		vine.velocities[i]*=dampFactor;
+		if(vine.velocities[i].lengthsqr<(0.2f*vine.scale)^^2) vine.velocities[i]=vine.scale*state.uniformDirection();
 		auto relativeVelocity=vine.velocities[i];
 		if(relativeVelocity.lengthsqr>maxVelocity^^2)
 			vine.velocities[i]=maxVelocity/relativeVelocity.length*relativeVelocity;
 		vine.locations[i]+=vine.velocities[i]/updateFPS;
 	}
+	auto len=(vine.target-vine.base).length/(vine.m-1)*vine.growthFactor+(1.0f-vine.growthFactor)*(vine.locations[$-1]-vine.base).length;
+	if(len>1.0f) foreach(i;1..vine.m) vine.locations[i]=vine.locations[i-1]+len*(vine.locations[i]-vine.locations[i-1]).normalized;
 }
 
 bool updateGraspingVines(B)(ref GraspingVines!B graspingVines,ObjectState!B state){

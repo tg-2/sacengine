@@ -1175,7 +1175,6 @@ struct Renderer(B){
 					auto material=self.vine.material; // TODO: shadowMaterial?
 					auto mesh=self.vine.mesh;
 					material.bind(rc);
-					B.boneMaterialBackend.setTransformation(Vector3f(0.0f,0.0f,0.0f),Quaternionf.identity(),rc);
 					void renderVine(ref Vine vine){
 						if(isNaN(vine.locations[0].x)) return;
 						Matrix4x4f[self.vine.numSegments+1] pose;
@@ -1183,8 +1182,9 @@ struct Renderer(B){
 							auto curve = vine.get(i/float(pose.length-1));
 							auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),curve[1].normalized);
 							//auto rotation=Quaternionf.identity();
-							x=Transformation(rotation,curve[0]).getMatrix4f;
+							x=Transformation(rotation,curve[0]/vine.scale).getMatrix4f;
 						}
+						B.boneMaterialBackend.setTransformationScaled(Vector3f(0.0f,0.0f,0.0f),Quaternionf.identity(),vine.scale*Vector3f(1.0f,1.0f,1.0f),rc);
 						mesh.pose=pose[];
 						scope(exit) mesh.pose=[];
 						mesh.render(rc);
