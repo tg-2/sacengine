@@ -2467,11 +2467,11 @@ struct GraspingVinesCasting(B){
 	int creature;
 }
 struct Vine{
-	enum m=5;
+	enum m=4;
 	Vector3f base,target;
 	float scale;
 	static import std.math;
-	enum growthFactor=std.math.exp(std.math.log(0.9f)/updateFPS);
+	enum growthFactor=std.math.exp(std.math.log(0.7f)/updateFPS);
 	Vector3f[m] locations;
 	Vector3f[m] velocities;
 	Vector3f[2] get(float t){ return cintp(locations[],t); }
@@ -2482,6 +2482,9 @@ struct GraspingVines(B){
 	int timer;
 	Vine[8] vines;
 	bool active=true;
+	float lengthFactor=0.1f;
+	enum growthTime=updateFPS;
+	enum vanishTime=updateFPS;
 }
 
 
@@ -8915,7 +8918,7 @@ void updateSacDocTether(B)(ref SacDocTether tether,ref MovingObject!B sacDoc,int
 	tether.locations[$-1]=targets[$-1];
 	enum accelFactor=120.0f;
 	static import std.math;
-	enum dampFactor=std.math.exp(std.math.log(0.5f)/updateFPS);
+	enum dampFactor=std.math.exp(std.math.log(0.25f)/updateFPS);
 	enum maxVelocity=20.0f;
 	foreach(i;2..targets.length-1){
 		auto acceleration=targets[i]-tether.locations[i];
@@ -11033,33 +11036,33 @@ bool updateGraspingVinesCasting(B)(ref GraspingVinesCasting!B graspingVinesCast,
 	}
 }
 
-void updateVine(B)(ref Vine vine,ObjectState!B state){
+void updateVine(B)(ref Vine vine,float lengthFactor,ObjectState!B state){
 	vine.locations[0]=vine.base;
 	//vine.locations[$-1]=vine.locations[$-1]*(1.0f-vine.growthFactor)+vine.growthFactor*vine.target;
-	enum accelFactor=120.0f;
+	enum accelFactor=90.0f;
 	static import std.math;
 	enum dampFactor=std.math.exp(std.math.log(0.5f)/updateFPS);
 	enum maxVelocity=20.0f;
 	foreach(i;1..vine.m){
-		auto realTarget=float(vine.m-1-i)/(vine.m-1)*vine.base+float(i)/(vine.m-1)*vine.target;
+		auto realTarget=vine.base+lengthFactor*float(i)/(vine.m-1)*(vine.target-vine.base);
 		auto target=vine.locations[$-1]*(1.0f-vine.growthFactor)+vine.growthFactor*realTarget;
 		auto acceleration=target-vine.locations[i];
 		acceleration=accelFactor/vine.scale*acceleration.lengthsqr^^(1/7.0f)*acceleration;
 		vine.velocities[i]+=acceleration/updateFPS;
 		vine.velocities[i]*=dampFactor;
-		if(vine.velocities[i].lengthsqr<(0.2f*vine.scale)^^2) vine.velocities[i]=vine.scale*state.uniformDirection();
+		if(vine.velocities[i].lengthsqr<(0.2f*vine.scale)^^2) vine.velocities[i]=vine.scale*0.75f*state.uniformDirection();
 		auto relativeVelocity=vine.velocities[i];
 		if(relativeVelocity.lengthsqr>maxVelocity^^2)
 			vine.velocities[i]=maxVelocity/relativeVelocity.length*relativeVelocity;
 		vine.locations[i]+=vine.velocities[i]/updateFPS;
 	}
 	auto len=(vine.target-vine.base).length/(vine.m-1)*vine.growthFactor+(1.0f-vine.growthFactor)*(vine.locations[$-1]-vine.base).length;
-	if(len>1.0f) foreach(i;1..vine.m) vine.locations[i]=vine.locations[i-1]+len*(vine.locations[i]-vine.locations[i-1]).normalized;
+	if(len>1.0f) foreach(i;1..vine.m) vine.locations[i]=vine.locations[i-1]+len*lengthFactor*(vine.locations[i]-vine.locations[i-1]).normalized;
 }
 
 bool updateGraspingVines(B)(ref GraspingVines!B graspingVines,ObjectState!B state){
 	with(graspingVines){
-		foreach(ref vine;vines) updateVine(vine,state);
+		foreach(ref vine;vines) updateVine(vine,lengthFactor,state);
 		if(active){
 			bool keep=state.movingObjectById!((ref obj,state){
 				if(!obj.creatureState.mode.canCC) return false;
@@ -11072,10 +11075,10 @@ bool updateGraspingVines(B)(ref GraspingVines!B graspingVines,ObjectState!B stat
 					playSoundAt("dafr",obj.position,state,graspingVinesGain);
 				},(){})(creature);
 			}
-			// TODO: animate vines
+			lengthFactor=min(1.0f,lengthFactor+1.0f/float(growthTime));
 		}else{
-			// TODO: move vines back into ground
-			return false;
+			lengthFactor=max(0.0f,lengthFactor-1.0f/float(vanishTime));
+			if(lengthFactor==0.0f) return false;
 		}
 		return true;
 	}

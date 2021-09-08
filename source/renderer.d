@@ -1175,23 +1175,24 @@ struct Renderer(B){
 					auto material=self.vine.material; // TODO: shadowMaterial?
 					auto mesh=self.vine.mesh;
 					material.bind(rc);
-					void renderVine(ref Vine vine){
+					void renderVine(ref Vine vine,float lengthFactor){
 						if(isNaN(vine.locations[0].x)) return;
 						Matrix4x4f[self.vine.numSegments+1] pose;
 						foreach(i,ref x;pose){
 							auto curve = vine.get(i/float(pose.length-1));
 							auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),curve[1].normalized);
 							//auto rotation=Quaternionf.identity();
-							x=Transformation(rotation,curve[0]/vine.scale).getMatrix4f;
+							x=Transformation(rotation,curve[0]/(vine.scale*lengthFactor)).getMatrix4f;
 						}
-						B.boneMaterialBackend.setTransformationScaled(Vector3f(0.0f,0.0f,0.0f),Quaternionf.identity(),vine.scale*Vector3f(1.0f,1.0f,1.0f),rc);
+						auto scale=vine.scale*lengthFactor*Vector3f(1.0f,1.0f,1.0f);
+						B.boneMaterialBackend.setTransformationScaled(Vector3f(0.0f,0.0f,0.0f),Quaternionf.identity(),scale,rc);
 						mesh.pose=pose[];
 						scope(exit) mesh.pose=[];
 						mesh.render(rc);
 					}
 					foreach(ref graspingVines;objects.graspingViness)
 						foreach(ref vine;graspingVines.vines)
-							renderVine(vine);
+							renderVine(vine,graspingVines.lengthFactor);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.brainiacEffects.length){
 					auto material=self.brainiacEffect.material;
