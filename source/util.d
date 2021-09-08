@@ -491,6 +491,6 @@ Vector3f[2] cintp(Vector3f[] locations,float t){
 	auto m1=locations[min(i+2,cast(int)$-1)]-locations[i];
 	//auto p=(1.0f-u)*locations[i]+u*locations[i+1], m=locations[i+1]-locations[i]; // linear interpolation
 	auto p=(2*u^^3-3*u^^2+1)*p0+(u^^3-2*u^^2+u)*m0+(-2*u^^3+3*u^^2)*p1+(u^^3-u^^2)*m1;
-	auto m=(6*u^^2-6*u)*p0+(3*u^^2-4*u)*m0+(-6*u^^2+6*u)*p1+(3*u^^2-2*u)*m1;
+	auto m=(6*u^^2-6*u)*p0+(3*u^^2-4*u+1)*m0+(-6*u^^2+6*u)*p1+(3*u^^2-2*u)*m1;
 	return [p,m];
 }
