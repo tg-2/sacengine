@@ -2480,7 +2480,7 @@ struct GraspingVines(B){
 	int creature;
 	SacSpell!B spell;
 	int timer;
-	Vine[8] vines;
+	Vine[16] vines;
 	bool active=true;
 	float lengthFactor=0.1f;
 	enum growthTime=updateFPS;
@@ -6320,7 +6320,7 @@ bool graspingVines(B)(int target,SacSpell!B spell,ObjectState!B state){
 	},()=>tuple(-1,(Vector3f[2]).init))(target,state);
 	auto duration=durationHitbox[0],hitbox=durationHitbox[1];
 	if(duration==-1) return false;
-	Vine[8] vines;
+	Vine[GraspingVines!B.vines.length] vines;
 	foreach(ref vine;vines) vine=spawnVine(hitbox,state);
 	state.addEffect(GraspingVines!B(target,spell,duration,vines));
 	return true;
