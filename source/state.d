@@ -11074,7 +11074,7 @@ bool updateGraspingVines(B)(ref GraspingVines!B graspingVines,ObjectState!B stat
 				active=false;
 				state.movingObjectById!((ref obj){
 					obj.creatureStats.effects.numVines-=1;
-					playSoundAt("dafr",obj.position,state,graspingVinesGain);
+					playSoundAt("dafr",obj.position,state,0.5f*graspingVinesGain);
 				},(){})(creature);
 			}
 			lengthFactor=min(1.0f,lengthFactor+1.0f/float(growthTime));
