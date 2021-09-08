@@ -7414,7 +7414,9 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 					if(auto enemy=object.creatureAI.targetId){
 						auto enemyPosition=state.movingObjectById!((obj)=>obj.position,function Vector3f(){ assert(0); })(enemy);
 						// TODO: figure out the original rule for this
-						if(object.creatureState.mode==CreatureMode.idle&&object.creatureState.timer>=updateFPS)
+						if(object.creatureState.mode==CreatureMode.idle&&object.creatureState.timer>=updateFPS
+						   &&!object.creatureStats.effects.immobilized
+						   &&!object.creatureStats.effects.fixed)
 							playSoundTypeAt(object.sacObject,object.id,SoundType.run,state);
 						object.moveTowards(object.position-(enemyPosition-object.position),0.0f,state);
 					}else object.stop(state);
