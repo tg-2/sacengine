@@ -6890,7 +6890,6 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 			if(object.shootAbilityBug(state)) return true;
 			auto drainedMana=rangedAttack.manaCost/object.numShootTicks;
 			if(object.creatureStats.mana>=drainedMana){
-				auto ability=object.ability;
 				auto accuracy=object.creatureStats.rangedAccuracy;
 				switch(rangedAttack.tag){
 					case SpellTag.brainiacShoot:
