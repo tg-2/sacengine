@@ -6301,6 +6301,7 @@ Vine spawnVine(B)(Vector3f[2] hitbox,ObjectState!B state){
 	// TODO: snap base to ground
 	base.z=state.getHeight(base);
 	target.z=max(target.z,base.z+displacement);
+	base.z-=0.1f*scale;
 	auto result=Vine(base,target,scale);
 	foreach(i,ref x;result.locations){
 		result.locations[i]=base;
