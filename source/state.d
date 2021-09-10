@@ -2508,6 +2508,7 @@ struct SoulMole(B){
 	PositionPredictor positionPredictor;
 	int frame=0;
 	enum roundtripTime=9*updateFPS;
+	int soundTimer;
 }
 
 struct BrainiacProjectile(B){
@@ -11162,7 +11163,39 @@ bool updateSoulMoleCasting(B)(ref SoulMoleCasting!B soulMoleCast,ObjectState!B s
 	}
 }
 
+void animateSoulMole(B)(ref SoulMole!B soulMole,Vector3f oldPosition,ObjectState!B state){
+	with(soulMole){
+		if(state.isOnGround(soulMole.position)){
+			enum numParticles=2;
+			auto sacParticle=SacParticle!B.get(ParticleType.dust);
+			foreach(i;0..numParticles){
+				auto position=oldPosition*((cast(float)numParticles-1-i)/numParticles)+position*(cast(float)(i+1)/numParticles);
+				auto velocity=Vector3f(0.0f,0.0f,0.0f);
+				auto lifetime=31;
+				auto scale=2.0f;
+				auto frame=0;
+				position+=0.6f*state.uniformDirection();
+				state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+			}
+		}
+		enum numParticles3=2;
+		auto sacParticle3=SacParticle!B.get(ParticleType.rock);
+		foreach(i;0..numParticles3){
+			auto position=soulMole.position;
+			auto direction=state.uniformDirection();
+			auto velocity=state.uniform(5f,10.0f)*direction;
+			auto scale=state.uniform(0.5f,2.0f);
+			auto lifetime=63;
+			auto frame=0;
+			state.addParticle(Particle!B(sacParticle3,position,velocity,scale,lifetime,frame));
+		}
+	}
+}
+
+enum soulMoleGain=1.0f;
 bool updateSoulMolePosition(B)(ref SoulMole!B soulMole,ObjectState!B state){
+	if(--soulMole.soundTimer<=0) soulMole.soundTimer=playSpellSoundTypeAt!true(SoundType.bore,soulMole.position,state,soulMoleGain); // TODO: sound should follow mole
+	auto oldPosition=soulMole.position;
 	soulMole.frame+=1;
 	static assert(soulMole.roundtripTime%2==0);
 	bool forward=soulMole.frame<soulMole.roundtripTime/2;
@@ -11174,7 +11207,10 @@ bool updateSoulMolePosition(B)(ref SoulMole!B soulMole,ObjectState!B state){
 	auto wizardPosition=state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(soulMole.wizard);
 	if(isNaN(wizardPosition.x)) return false;
 	if(!forward) targetPosition=wizardPosition;
-	if(soulMole.frame==soulMole.roundtripTime/2) soulMole.positionPredictor.lastPosition=targetPosition;
+	if(soulMole.frame==soulMole.roundtripTime/2){
+		playSoundAt("ltss",soulMole.position,state,soulMoleGain); // TODO: sound should follow mole
+		soulMole.positionPredictor.lastPosition=targetPosition;
+	}
 	//targetPosition=0.5f*(targetPosition+soulMole.positionPredictor.predictAtTime(float(framesLeft)/updateFPS,targetPosition));
 	targetPosition=soulMole.positionPredictor.predictAtTime(float(framesLeft)/updateFPS,targetPosition);
 	//enum minSoulMoleSpeed=10.0f;
@@ -11183,13 +11219,23 @@ bool updateSoulMolePosition(B)(ref SoulMole!B soulMole,ObjectState!B state){
 	soulMole.position=relativePosition*soulMole.position+(1.0f-relativePosition)*targetPosition;
 	soulMole.position.z=state.getHeight(soulMole.position);
 	if(!forward) state.soulById!((ref soul,molePosition){ soul.position=molePosition; },(){})(soulMole.soul,soulMole.position);
+	soulMole.animateSoulMole(oldPosition,state);
 	return soulMole.frame<=soulMole.roundtripTime;
 }
 
 bool updateSoulMole(B)(ref SoulMole!B soulMole,ObjectState!B state){
 	if(!soulMole.updateSoulMolePosition(state))
 		return false;
-	// TODO: stun
+	static bool callback(int target,int side,ObjectState!B state){
+		state.movingObjectById!((ref obj,side,state){
+			if(state.sides.getStance(side,obj.side)!=Stance.ally)
+				obj.stun(state);
+		},(){})(target,side,state);
+		return false;
+	}
+	auto side=state.movingObjectById!((ref obj)=>obj.side,()=>-1)(soulMole.wizard);
+	if(side==-1) return false;
+	with(soulMole) dealSplashSpellDamageAt!callback(0,spell,spell.effectRange,wizard,side,position,state,side,state);
 	return true;
 }
 
