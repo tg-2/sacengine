@@ -8387,12 +8387,7 @@ void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 				playSoundAt("rips",soul.collectorId,state,2.0f);
 				if(auto wizard=state.getWizard(soul.collectorId))
 					wizard.souls+=soul.number;
-				if(soul.creatureId){
-					state.movingObjectById!((ref creature,state){
-						creature.soulId=0;
-						creature.startDissolving(state);
-					},(){})(soul.creatureId,state);
-				}
+				soul.severSoul(state);
 			}
 			break;
 		case SoulState.emerging:
@@ -11192,6 +11187,18 @@ void animateSoulMole(B)(ref SoulMole!B soulMole,Vector3f oldPosition,ObjectState
 	}
 }
 
+void severSoul(B)(ref Soul!B soul,ObjectState!B state){
+	if(soul.creatureId){
+		if(soul.creatureId){
+			state.movingObjectById!((ref creature,state){
+				creature.soulId=0;
+				creature.startDissolving(state);
+			},(){})(soul.creatureId,state);
+		}
+		soul.creatureId=0;
+	}
+}
+
 enum soulMoleGain=1.0f;
 bool updateSoulMolePosition(B)(ref SoulMole!B soulMole,ObjectState!B state){
 	if(--soulMole.soundTimer<=0) soulMole.soundTimer=playSpellSoundTypeAt!true(SoundType.bore,soulMole.position,state,soulMoleGain); // TODO: sound should follow mole
@@ -11209,6 +11216,11 @@ bool updateSoulMolePosition(B)(ref SoulMole!B soulMole,ObjectState!B state){
 	if(!forward) targetPosition=wizardPosition;
 	if(soulMole.frame==soulMole.roundtripTime/2){
 		playSoundAt("ltss",soulMole.position,state,soulMoleGain); // TODO: sound should follow mole
+		auto side=state.movingObjectById!((ref obj)=>obj.side,()=>-1)(soulMole.wizard);
+		state.soulById!((ref soul,side,state){
+			soul.severSoul(state);
+			soul.preferredSide=side;
+		},(){})(soulMole.soul,side,state);
 		soulMole.positionPredictor.lastPosition=targetPosition;
 	}
 	//targetPosition=0.5f*(targetPosition+soulMole.positionPredictor.predictAtTime(float(framesLeft)/updateFPS,targetPosition));
@@ -11220,7 +11232,7 @@ bool updateSoulMolePosition(B)(ref SoulMole!B soulMole,ObjectState!B state){
 	soulMole.position.z=state.getHeight(soulMole.position);
 	if(!forward) state.soulById!((ref soul,molePosition){ soul.position=molePosition; },(){})(soulMole.soul,soulMole.position);
 	soulMole.animateSoulMole(oldPosition,state);
-	return soulMole.frame<=soulMole.roundtripTime;
+	return framesLeft>0;
 }
 
 bool updateSoulMole(B)(ref SoulMole!B soulMole,ObjectState!B state){
