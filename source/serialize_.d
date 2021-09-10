@@ -405,6 +405,12 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Vin
 void serialize(alias sink,B)(ref GraspingVines!B graspingVines){ serializeStruct!sink(graspingVines); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==GraspingVines!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref SoulMoleCasting!B soulMoleCasting){ serializeStruct!sink(soulMoleCasting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SoulMoleCasting!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref SoulMole!B soulMole){ serializeStruct!sink(soulMole); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SoulMole!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref BrainiacProjectile!B brainiacProjectile){ serializeStruct!sink(brainiacProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BrainiacProjectile!B)){ deserializeStruct(result,state,data); }
 

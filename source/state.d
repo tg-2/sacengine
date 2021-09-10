@@ -401,6 +401,15 @@ Vector2f[numCreaturesInGroup] getFormationOffsets(R)(R ids,CommandType commandTy
 struct PositionPredictor{
 	Vector3f lastPosition;
 	void reset(){ lastPosition=Vector3f.init; }
+	Vector3f predictAtTime(float timeToImpact,Vector3f targetPosition){
+		if(isNaN(lastPosition.x)){
+			lastPosition=targetPosition;
+			return targetPosition;
+		}
+		auto velocity=updateFPS*(targetPosition-lastPosition);
+		lastPosition=targetPosition;
+		return targetPosition+velocity*timeToImpact;
+	}
 	Vector3f predict(Vector3f position,float projectileSpeed,Vector3f targetPosition){
 		if(isNaN(lastPosition.x)){
 			lastPosition=targetPosition;
@@ -2487,6 +2496,19 @@ struct GraspingVines(B){
 	enum vanishTime=updateFPS;
 }
 
+struct SoulMoleCasting(B){
+	ManaDrain!B manaDrain;
+	SoulMole!B soulMole;
+}
+struct SoulMole(B){
+	int soul;
+	int wizard;
+	SacSpell!B spell;
+	Vector3f position;
+	PositionPredictor positionPredictor;
+	int frame=0;
+	enum roundtripTime=9*updateFPS;
+}
 
 struct BrainiacProjectile(B){
 	int attacker;
@@ -3258,6 +3280,22 @@ struct Effects(B){
 		if(i+1<graspingViness.length) graspingViness[i]=move(graspingViness[$-1]);
 		graspingViness.length=graspingViness.length-1;
 	}
+	Array!(SoulMoleCasting!B) soulMoleCastings;
+	void addEffect(SoulMoleCasting!B soulMoleCasting){
+		soulMoleCastings~=move(soulMoleCasting);
+	}
+	void removeSoulMoleCasting(int i){
+		if(i+1<soulMoleCastings.length) soulMoleCastings[i]=move(soulMoleCastings[$-1]);
+		soulMoleCastings.length=soulMoleCastings.length-1;
+	}
+	Array!(SoulMole!B) soulMoles;
+	void addEffect(SoulMole!B soulMole){
+		soulMoles~=move(soulMole);
+	}
+	void removeSoulMole(int i){
+		if(i+1<soulMoles.length) soulMoles[i]=move(soulMoles[$-1]);
+		soulMoles.length=soulMoles.length-1;
+	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
 	void addEffect(BrainiacProjectile!B brainiacProjectile){
@@ -3629,6 +3667,8 @@ struct Effects(B){
 		assignArray(slimes,rhs.slimes);
 		assignArray(graspingVinesCastings,rhs.graspingVinesCastings);
 		assignArray(graspingViness,rhs.graspingViness);
+		assignArray(soulMoleCastings,rhs.soulMoleCastings);
+		assignArray(soulMoles,rhs.soulMoles);
 		assignArray(brainiacProjectiles,rhs.brainiacProjectiles);
 		assignArray(brainiacEffects,rhs.brainiacEffects);
 		assignArray(shrikeProjectiles,rhs.shrikeProjectiles);
@@ -5732,6 +5772,8 @@ bool startCasting(B)(int caster,SacSpell!B spell,Target target,ObjectState!B sta
 					return stun(castSlime(target.id,manaDrain,spell,castingTime,state));
 				case SpellTag.graspingVines:
 					return stun(castGraspingVines(target.id,manaDrain,spell,state));
+				case SpellTag.soulMole:
+					return stun(castSoulMole(target.id,manaDrain,spell,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -6324,6 +6366,19 @@ bool graspingVines(B)(int target,SacSpell!B spell,ObjectState!B state){
 	Vine[GraspingVines!B.vines.length] vines;
 	foreach(ref vine;vines) vine=spawnVine(hitbox,state);
 	state.addEffect(GraspingVines!B(target,spell,duration,vines));
+	return true;
+}
+
+bool castSoulMole(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	if(!state.soulById!((ref soul)=>true,()=>false)(target)) return false;
+	auto location=state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(manaDrain.wizard);
+	if(isNaN(location.x)) return false;
+	auto soulMole=SoulMole!B(target,manaDrain.wizard,spell,location);
+	state.addEffect(SoulMoleCasting!B(manaDrain,soulMole));
+	return true;
+}
+bool soulMole(B)(SoulMole!B soulMole,ObjectState!B state){
+	state.addEffect(soulMole);
 	return true;
 }
 
@@ -11087,6 +11142,56 @@ bool updateGraspingVines(B)(ref GraspingVines!B graspingVines,ObjectState!B stat
 	}
 }
 
+bool updateSoulMoleCasting(B)(ref SoulMoleCasting!B soulMoleCast,ObjectState!B state){
+	with(soulMoleCast){
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				if(!soulMole.updateSoulMolePosition(state))
+					return false;
+				return state.movingObjectById!((ref obj){
+					obj.animateRockCasting(state);
+					return true;
+				},()=>false)(manaDrain.wizard);
+			case CastingStatus.interrupted:
+				return false;
+			case CastingStatus.finished:
+				.soulMole(soulMole,state);
+				return false;
+
+		}
+	}
+}
+
+bool updateSoulMolePosition(B)(ref SoulMole!B soulMole,ObjectState!B state){
+	soulMole.frame+=1;
+	static assert(soulMole.roundtripTime%2==0);
+	bool forward=soulMole.frame<soulMole.roundtripTime/2;
+	auto framesLeft=forward?soulMole.roundtripTime/2-soulMole.frame:soulMole.roundtripTime-soulMole.frame;
+	auto soulPosition=state.soulById!((ref soul)=>soul.position,()=>Vector3f.init)(soulMole.soul);
+	if(isNaN(soulPosition.x)) return false;
+	Vector3f targetPosition;
+	if(forward) targetPosition=soulPosition;
+	auto wizardPosition=state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(soulMole.wizard);
+	if(isNaN(wizardPosition.x)) return false;
+	if(!forward) targetPosition=wizardPosition;
+	if(soulMole.frame==soulMole.roundtripTime/2) soulMole.positionPredictor.lastPosition=targetPosition;
+	//targetPosition=0.5f*(targetPosition+soulMole.positionPredictor.predictAtTime(float(framesLeft)/updateFPS,targetPosition));
+	targetPosition=soulMole.positionPredictor.predictAtTime(float(framesLeft)/updateFPS,targetPosition);
+	//enum minSoulMoleSpeed=10.0f;
+	//framesLeft=min(framesLeft,cast(int)ceil(updateFPS*(soulMole.position-targetPosition).length/minSoulMoleSpeed));
+	auto relativePosition=float(framesLeft)/(framesLeft+1);
+	soulMole.position=relativePosition*soulMole.position+(1.0f-relativePosition)*targetPosition;
+	soulMole.position.z=state.getHeight(soulMole.position);
+	if(!forward) state.soulById!((ref soul,molePosition){ soul.position=molePosition; },(){})(soulMole.soul,soulMole.position);
+	return soulMole.frame<=soulMole.roundtripTime;
+}
+
+bool updateSoulMole(B)(ref SoulMole!B soulMole,ObjectState!B state){
+	if(!soulMole.updateSoulMolePosition(state))
+		return false;
+	// TODO: stun
+	return true;
+}
 
 enum brainiacProjectileHitGain=4.0f;
 enum brainiacProjectileSize=0.45f; // TODO: ok?
@@ -12890,6 +12995,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.graspingViness.length;){
 		if(!updateGraspingVines(effects.graspingViness[i],state)){
 			effects.removeGraspingVines(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.soulMoleCastings.length;){
+		if(!updateSoulMoleCasting(effects.soulMoleCastings[i],state)){
+			effects.removeSoulMoleCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.soulMoles.length;){
+		if(!updateSoulMole(effects.soulMoles[i],state)){
+			effects.removeSoulMole(i);
 			continue;
 		}
 		i++;
