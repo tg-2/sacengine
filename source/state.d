@@ -11215,7 +11215,7 @@ bool updateSoulMolePosition(B)(ref SoulMole!B soulMole,ObjectState!B state){
 	if(forward) targetPosition=soulPosition;
 	auto wizardPosition=state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(soulMole.wizard);
 	if(isNaN(wizardPosition.x)) return false;
-	if(forward&&(soulMole.position-targetPosition).lengthsqr<(minSoulMoleSpeed/updateFPS)^^2){
+	if(forward&&(soulMole.position-targetPosition).xy.lengthsqr<(minSoulMoleSpeed/updateFPS)^^2){
 		soulMole.frame=soulMole.roundtripTime/2;
 		forward=false;
 		framesLeft=soulMole.roundtripTime/2;
