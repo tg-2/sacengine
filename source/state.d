@@ -11202,6 +11202,7 @@ void severSoul(B)(ref Soul!B soul,ObjectState!B state){
 enum soulMoleGain=1.0f;
 bool updateSoulMolePosition(B)(ref SoulMole!B soulMole,ObjectState!B state){
 	if(--soulMole.soundTimer<=0) soulMole.soundTimer=playSpellSoundTypeAt!true(SoundType.bore,soulMole.position,state,soulMoleGain); // TODO: sound should follow mole
+	auto prevTargetPosition=soulMole.positionPredictor.lastPosition;
 	auto oldPosition=soulMole.position;
 	soulMole.frame+=1;
 	static assert(soulMole.roundtripTime%2==0);
@@ -11229,16 +11230,14 @@ bool updateSoulMolePosition(B)(ref SoulMole!B soulMole,ObjectState!B state){
 		},(){})(soulMole.soul,side,state);
 		soulMole.positionPredictor.lastPosition=targetPosition;
 	}
-	//auto predictedTargetPosition=0.5f*(targetPosition+soulMole.positionPredictor.predictAtTime(float(framesLeft)/updateFPS,targetPosition));
 	auto predictedTargetPosition=soulMole.positionPredictor.predictAtTime(float(framesLeft)/updateFPS,targetPosition);
-	//framesLeft=min(framesLeft,cast(int)ceil(updateFPS*(soulMole.position-targetPosition).length/minSoulMoleSpeed));
 	auto relativePosition=float(framesLeft)/(framesLeft+1);
 	auto newPosition=relativePosition*soulMole.position+(1.0f-relativePosition)*predictedTargetPosition;
 	newPosition.z=state.getHeight(newPosition);
 	auto speed=updateFPS*((targetPosition-oldPosition).length-(targetPosition-newPosition).length);
 	if(speed<minSoulMoleSpeed){
-		auto offset=min(minSoulMoleSpeed/updateFPS,(targetPosition-oldPosition).length)*(targetPosition-oldPosition).normalized;
-		newPosition=oldPosition+offset; // TODO: add predicted component
+		auto dist=max(0.0f,(targetPosition-oldPosition).length-minSoulMoleSpeed/updateFPS);
+		newPosition=targetPosition+(newPosition-targetPosition).normalized*dist;
 		newPosition.z=state.getHeight(newPosition);
 	}
 	if(!forward) state.soulById!((ref soul,molePosition){ soul.position=molePosition; },(){})(soulMole.soul,soulMole.position);
