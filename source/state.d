@@ -11240,7 +11240,7 @@ bool updateSoulMolePosition(B)(ref SoulMole!B soulMole,ObjectState!B state){
 		newPosition=targetPosition+(newPosition-targetPosition).normalized*dist;
 		newPosition.z=state.getHeight(newPosition);
 	}
-	if(!forward) state.soulById!((ref soul,molePosition){ soul.position=molePosition; },(){})(soulMole.soul,soulMole.position);
+	if(!forward) state.soulById!((ref soul,molePosition){ if(!soul.collectorId) soul.position=molePosition; },(){})(soulMole.soul,soulMole.position);
 	soulMole.position=newPosition;
 	soulMole.animateSoulMole(oldPosition,state);
 	return framesLeft>0;
