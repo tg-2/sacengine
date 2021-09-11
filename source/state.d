@@ -11252,7 +11252,7 @@ bool updateSoulMole(B)(ref SoulMole!B soulMole,ObjectState!B state){
 	static bool callback(int target,int side,ObjectState!B state){
 		state.movingObjectById!((ref obj,side,state){
 			if(state.sides.getStance(side,obj.side)!=Stance.ally)
-				obj.stun(state);
+				obj.stunWithCooldown(stunCooldownFrames,state);
 		},(){})(target,side,state);
 		return false;
 	}
