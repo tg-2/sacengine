@@ -2505,7 +2505,9 @@ struct SoulMole(B){
 	int wizard;
 	SacSpell!B spell;
 	Vector3f position;
+	Vector3f startPosition;
 	PositionPredictor positionPredictor;
+	Vector3f velocity=Vector3f(0.0f,0.0f,0.0f);
 	int frame=0;
 	enum roundtripTime=9*updateFPS;
 	int soundTimer;
@@ -6372,9 +6374,9 @@ bool graspingVines(B)(int target,SacSpell!B spell,ObjectState!B state){
 
 bool castSoulMole(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
 	if(!state.soulById!((ref soul)=>true,()=>false)(target)) return false;
-	auto location=state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(manaDrain.wizard);
-	if(isNaN(location.x)) return false;
-	auto soulMole=SoulMole!B(target,manaDrain.wizard,spell,location);
+	auto position=state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(manaDrain.wizard);
+	if(isNaN(position.x)) return false;
+	auto soulMole=SoulMole!B(target,manaDrain.wizard,spell,position,position);
 	state.addEffect(SoulMoleCasting!B(manaDrain,soulMole));
 	return true;
 }
@@ -11205,32 +11207,45 @@ bool updateSoulMolePosition(B)(ref SoulMole!B soulMole,ObjectState!B state){
 	enum soulFrame=soulMole.roundtripTime/2;
 	enum backFrame=soulMole.roundtripTime;
 	static bool isTransitionFrame(int frame){ return frame==sideFrame||frame==soulFrame; }
+	enum MolePhase{
+		toSide,
+		toSoul,
+		back,
+	}
+	static MolePhase molePhase(int frame){
+		//if(frame<sideFrame) return MolePhase.toSide;
+		if(frame<soulFrame) return MolePhase.toSoul;
+		return MolePhase.back;
+	}
 	static int nextTransitionFrame(int frame){
-		//if(frame<sideFrame) return sideFrame;
-		if(frame<soulFrame) return soulFrame;
-		return backFrame;
+		final switch(molePhase(frame)){
+			case MolePhase.toSide: return sideFrame;
+			case MolePhase.toSoul: return soulFrame;
+			case MolePhase.back: return backFrame;
+		}
 	}
-	static int framesLeft(int frame){
-		return nextTransitionFrame(frame)-frame;
-	}
+	static int framesLeft(int frame){ return nextTransitionFrame(frame)-frame; }
 	if(--soulMole.soundTimer<=0) soulMole.soundTimer=playSpellSoundTypeAt!true(SoundType.bore,soulMole.position,state,soulMoleGain); // TODO: sound should follow mole
 	auto prevTargetPosition=soulMole.positionPredictor.lastPosition;
 	auto oldPosition=soulMole.position;
 	soulMole.frame+=1;
 	static assert(soulMole.roundtripTime%2==0);
-	enum minSoulMoleSpeed=5.0f;
-	bool forward=soulMole.frame<soulMole.roundtripTime/2;
 	auto soulPosition=state.soulById!((ref soul)=>soul.position,()=>Vector3f.init)(soulMole.soul);
-	if(isNaN(soulPosition.x)) return false;
-	Vector3f targetPosition;
-	if(forward) targetPosition=soulPosition;
 	auto wizardPosition=state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(soulMole.wizard);
-	if(isNaN(wizardPosition.x)) return false;
-	if(forward&&(soulMole.position-targetPosition).xy.lengthsqr<(minSoulMoleSpeed/updateFPS)^^2){
-		soulMole.frame=soulMole.roundtripTime/2;
-		forward=false;
+	Vector3f moleTarget(int frame){
+		final switch(molePhase(frame)){
+			case MolePhase.toSide: assert(0,"TODO");
+			case MolePhase.toSoul: return soulPosition;
+			case MolePhase.back: return wizardPosition;
+		}
 	}
-	if(!forward) targetPosition=wizardPosition;
+	auto targetPosition=moleTarget(soulMole.frame);
+	enum minSoulMoleSpeed=5.0f;
+	if(molePhase(soulMole.frame)<MolePhase.back&&(soulMole.position-targetPosition).xy.lengthsqr<(minSoulMoleSpeed/updateFPS)^^2){
+		soulMole.frame=nextTransitionFrame(soulMole.frame);
+		targetPosition=moleTarget(soulMole.frame);
+	}
+	if(isNaN(targetPosition.x)) return false;
 	if(soulMole.frame==soulFrame){
 		playSoundAt("ltss",soulMole.position,state,soulMoleGain); // TODO: sound should follow mole
 		auto side=state.movingObjectById!((ref obj)=>obj.side,()=>-1)(soulMole.wizard);
@@ -11251,7 +11266,11 @@ bool updateSoulMolePosition(B)(ref SoulMole!B soulMole,ObjectState!B state){
 		newPosition=targetPosition+(newPosition-targetPosition).normalized*dist;
 		newPosition.z=state.getHeight(newPosition);
 	}
-	if(!forward) state.soulById!((ref soul,molePosition){ if(!soul.collectorId) soul.position=molePosition; },(){})(soulMole.soul,soulMole.position);
+	if(molePhase(soulMole.frame)>MolePhase.toSoul){
+		state.soulById!((ref soul,molePosition){
+			if(!soul.collectorId) soul.position=molePosition;
+		},(){})(soulMole.soul,soulMole.position);
+	}
 	soulMole.position=newPosition;
 	soulMole.animateSoulMole(oldPosition,state);
 	return soulMole.frame<backFrame;
