@@ -11246,7 +11246,7 @@ bool updateSoulMolePosition(B)(ref SoulMole!B soulMole,ObjectState!B state){
 	Vector3f[2] moleTarget(int frame){
 		final switch(molePhase(frame)){
 			case MolePhase.toSoul: return [soulPosition,soulMole.targetVelocity];
-			case MolePhase.back: return [wizardPosition,0.25f*(wizardPosition-soulMole.startPosition)];
+			case MolePhase.back: return [wizardPosition,0.75f*(wizardPosition-soulMole.startPosition)];
 		}
 	}
 	auto targetLocation=moleTarget(soulMole.frame);
