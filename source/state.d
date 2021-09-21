@@ -2506,8 +2506,9 @@ struct SoulMole(B){
 	SacSpell!B spell;
 	Vector3f position;
 	Vector3f startPosition;
+	Vector3f targetVelocity;
 	PositionPredictor positionPredictor;
-	Vector3f velocity=Vector3f(0.0f,0.0f,0.0f);
+	//Vector3f velocity=Vector3f(0.0f,0.0f,0.0f);
 	int frame=0;
 	enum roundtripTime=9*updateFPS;
 	int soundTimer;
@@ -6373,10 +6374,14 @@ bool graspingVines(B)(int target,SacSpell!B spell,ObjectState!B state){
 }
 
 bool castSoulMole(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
-	if(!state.soulById!((ref soul)=>true,()=>false)(target)) return false;
+	auto soulPosition=state.soulById!((ref soul)=>soul.position,()=>Vector3f.init)(target);
+	if(isNaN(soulPosition.x)) return false;
 	auto position=state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(manaDrain.wizard);
 	if(isNaN(position.x)) return false;
-	auto soulMole=SoulMole!B(target,manaDrain.wizard,spell,position,position);
+	auto direction=cross(Vector3f(0.0f,0.0f,1.0f),soulPosition-position).normalized;
+	auto targetVelocity=0.75f*(soulPosition-position).length*direction;
+	//auto targetVelocity=Vector3f(0.0f,0.0f,0.0f);
+	auto soulMole=SoulMole!B(target,manaDrain.wizard,spell,position,position,targetVelocity);
 	state.addEffect(SoulMoleCasting!B(manaDrain,soulMole));
 	return true;
 }
@@ -11201,31 +11206,30 @@ void severSoul(B)(ref Soul!B soul,ObjectState!B state){
 	}
 }
 
-enum soulMoleGain=1.0f;
+enum soulMoleGain=5.0f;
 bool updateSoulMolePosition(B)(ref SoulMole!B soulMole,ObjectState!B state){
 	static assert(soulMole.roundtripTime%4==0);
-	enum sideFrame=soulMole.roundtripTime/4;
 	enum soulFrame=soulMole.roundtripTime/2;
 	enum backFrame=soulMole.roundtripTime;
-	static bool isTransitionFrame(int frame){ return frame==sideFrame||frame==soulFrame; }
 	enum MolePhase{
-		toSide,
 		toSoul,
 		back,
 	}
 	static MolePhase molePhase(int frame){
-		//if(frame<sideFrame) return MolePhase.toSide;
-		if(frame<soulFrame) return MolePhase.toSoul;
+		if(frame<=soulFrame) return MolePhase.toSoul;
 		return MolePhase.back;
 	}
 	static int nextTransitionFrame(int frame){
 		final switch(molePhase(frame)){
-			case MolePhase.toSide: return sideFrame;
 			case MolePhase.toSoul: return soulFrame;
 			case MolePhase.back: return backFrame;
 		}
 	}
 	static int framesLeft(int frame){ return nextTransitionFrame(frame)-frame; }
+	static float relativeProgress(int frame){
+		if(frame<=soulFrame) return float(frame)/soulFrame;
+		return float(frame-soulFrame)/(backFrame-soulFrame);
+	}
 	if(--soulMole.soundTimer<=0) soulMole.soundTimer=playSpellSoundTypeAt!true(SoundType.bore,soulMole.position,state,soulMoleGain); // TODO: sound should follow mole
 	auto prevTargetPosition=soulMole.positionPredictor.lastPosition;
 	auto oldPosition=soulMole.position;
@@ -11233,52 +11237,60 @@ bool updateSoulMolePosition(B)(ref SoulMole!B soulMole,ObjectState!B state){
 	auto soulPosition=state.soulById!((ref soul)=>soul.position,()=>Vector3f.init)(soulMole.soul);
 	if(isNaN(soulPosition.x)) return false;
 	auto wizardPosition=state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(soulMole.wizard);
-	Vector3f moleTarget(int frame){
+	Vector3f[2] moleOrigin(int frame){
 		final switch(molePhase(frame)){
-			case MolePhase.toSide: assert(0,"TODO");
-			case MolePhase.toSoul: return soulPosition;
-			case MolePhase.back: return wizardPosition;
+			case MolePhase.toSoul: return [soulMole.startPosition,Vector3f(0.0f,0.0f,0.0f)];
+			case MolePhase.back: return [soulMole.startPosition,soulMole.targetVelocity];
 		}
 	}
-	auto targetPosition=moleTarget(soulMole.frame);
-	enum minSoulMoleSpeed=5.0f;
-	if(molePhase(soulMole.frame)<MolePhase.back&&(soulMole.position-targetPosition).xy.lengthsqr<(minSoulMoleSpeed/updateFPS)^^2){
-		soulMole.frame=nextTransitionFrame(soulMole.frame);
-		targetPosition=moleTarget(soulMole.frame);
+	Vector3f[2] moleTarget(int frame){
+		final switch(molePhase(frame)){
+			case MolePhase.toSoul: return [soulPosition,soulMole.targetVelocity];
+			case MolePhase.back: return [wizardPosition,0.25f*(wizardPosition-soulMole.startPosition)];
+		}
 	}
+	auto targetLocation=moleTarget(soulMole.frame);
+	auto targetPosition=targetLocation[0],targetVelocity=targetLocation[1];
+	/*enum minSoulMoleSpeed=5.0f;
+	if(molePhase(soulMole.frame)<MolePhase.back&&(oldPosition-targetPosition).xy.lengthsqr<(minSoulMoleSpeed/updateFPS)^^2){
+		soulMole.frame=nextTransitionFrame(soulMole.frame);
+		targetLocation=moleTarget(soulMole.frame);
+		targetPosition=targetLocation[0], targetVelocity=targetLocation[1];
+	}*/
 	if(isNaN(targetPosition.x)) return false;
-	if(isTransitionFrame(soulMole.frame)) soulMole.positionPredictor.lastPosition=targetPosition;
-	if(soulMole.frame==soulFrame){
-		playSoundAt("ltss",soulMole.position,state,soulMoleGain); // TODO: sound should follow mole
+	if(soulMole.frame==soulFrame+1){
+		playSoundAt("ltss",oldPosition,state,soulMoleGain); // TODO: sound should follow mole
 		auto side=state.movingObjectById!((ref obj)=>obj.side,()=>-1)(soulMole.wizard);
 		state.soulById!((ref soul,side,state){
 			soul.severSoul(state);
 			soul.preferredSide=side;
 		},(){})(soulMole.soul,side,state);
+		soulMole.startPosition=oldPosition;
+		soulMole.positionPredictor.lastPosition=targetPosition;
 	}
 	auto curFramesLeft=framesLeft(soulMole.frame);
 	auto predictedTargetPosition=soulMole.positionPredictor.predictAtTime(float(curFramesLeft)/updateFPS,targetPosition);
 	auto relativePosition=1.0f/(curFramesLeft+1);
-	//auto newPosition=(1.0f-relativePosition)*soulMole.position+relativePosition*predictedTargetPosition;
-	Vector3f[2][2] locations=[[soulMole.position,soulMole.velocity],
-							  [predictedTargetPosition,Vector3f(0.0f,0.0f,0.0f)]];
-	Vector3f[2] newLocation=cintp2(locations,1.0f/(curFramesLeft+1));
-	auto newPosition=newLocation[0];
+	//auto newPosition=(1.0f-relativePosition)*oldPosition+relativePosition*predictedTargetPosition;
+	/*Vector3f[2][2] locations=[[oldPosition,soulMole.velocity],
+	                          [predictedTargetPosition,targetVelocity]];
+	Vector3f[2] newLocation=cintp2(locations,relativePosition);*/
+	Vector3f[2] newLocation=cintp2([moleOrigin(soulMole.frame),moleTarget(soulMole.frame)],relativeProgress(soulMole.frame));
+	auto newPosition=newLocation[0], newVelocity=newLocation[1];
 	newPosition.z=state.getHeight(newPosition);
-	auto speed=updateFPS*((targetPosition-oldPosition).length-(targetPosition-newPosition).length);
+	/*auto speed=updateFPS*((targetPosition-oldPosition).length-(targetPosition-newPosition).length);
 	if(speed<minSoulMoleSpeed){
 		auto dist=max(0.0f,(targetPosition-oldPosition).length-minSoulMoleSpeed/updateFPS);
 		newPosition=targetPosition+(newPosition-targetPosition).normalized*dist;
 		newPosition.z=state.getHeight(newPosition);
-	}
+	}*/
 	if(molePhase(soulMole.frame)>MolePhase.toSoul){
 		state.soulById!((ref soul,molePosition){
 			if(!soul.collectorId) soul.position=molePosition;
-		},(){})(soulMole.soul,soulMole.position);
+		},(){})(soulMole.soul,newPosition);
 	}
-	//soulMole.velocity=updateFPS*(newPosition-soulMole.position);
-	soulMole.velocity=newLocation[1];
 	soulMole.position=newPosition;
+	//soulMole.velocity=newVelocity;
 	soulMole.animateSoulMole(oldPosition,state);
 	return soulMole.frame<backFrame;
 }
