@@ -482,6 +482,14 @@ struct SmallArray(T,size_t n){
 	}
 }
 
+Vector3f[2] cintp2(Vector3f[2][2] locations,float t){
+	auto p0=locations[0][0], m0=locations[0][1];
+	auto p1=locations[1][0], m1=locations[1][1];
+	auto p=(2*t^^3-3*t^^2+1)*p0+(t^^3-2*t^^2+t)*m0+(-2*t^^3+3*t^^2)*p1+(t^^3-t^^2)*m1;
+	auto m=(6*t^^2-6*t)*p0+(3*t^^2-4*t+1)*m0+(-6*t^^2+6*t)*p1+(3*t^^2-2*t)*m1;
+	return [p,m];
+}
+
 Vector3f[2] cintp(Vector3f[] locations,float t){
 	auto n=locations.length;
 	auto i=max(0,min(cast(int)floor(t*(n-1)),n-2));
