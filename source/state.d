@@ -8010,7 +8010,10 @@ void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 			state.objectById!dealDamage(target,&object,state);
 			if(auto passive=object.sacObject.passiveAbility){
 				if(passive.tag==SpellTag.graspingVines){
-					graspingVines(target,SacSpell!B.get(passive.tag),state);
+					auto tref=Target(state.targetTypeFromId(target),target);
+					auto summary=summarize(tref,-1,state);
+					if(passive.isApplicable(summary))
+						graspingVines(target,passive,state);
 				}
 			}
 		}
