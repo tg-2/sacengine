@@ -7209,8 +7209,9 @@ bool divineSight(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B s
 }
 
 bool protector(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
+	if(object.creatureStats.effects.lifeShield) return false;
 	auto lifeShield=SacSpell!B.get(SpellTag.lifeShield);
-	if(!object.lifeShield(lifeShield,state)) return false;
+	object.lifeShield(lifeShield,state);
 	state.addEffect(Protector!B(object.id,ability));
 	return true;
 }
