@@ -522,6 +522,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Ste
 void serialize(alias sink,B)(ref PoisonCloud!B poisonCloud){ serializeStruct!sink(poisonCloud); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==PoisonCloud!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref BlightMite!B blightMite){ serializeStruct!sink(blightMite); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BlightMite!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref Protector!B protector){ serializeStruct!sink(protector); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Protector!B)){ deserializeStruct(result,state,data); }
 

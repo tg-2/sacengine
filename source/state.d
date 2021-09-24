@@ -2850,6 +2850,18 @@ struct PoisonCloud(B){
 	SacSpell!B ability;
 }
 
+struct BlightMite(B){
+	Vector3f position;
+	Vector3f velocity;
+	int creature;
+	// int bone; // TODO: stick on bones
+	Vector3f relativePosition;
+	int frame=0;
+	int numJumps=0;
+	float alpha=1.0f;
+	enum fadeTime=0.5f;
+}
+
 struct Protector(B){
 	int id;
 	SacSpell!B ability;
@@ -3589,6 +3601,14 @@ struct Effects(B){
 		if(i+1<poisonClouds.length) poisonClouds[i]=move(poisonClouds[$-1]);
 		poisonClouds.length=poisonClouds.length-1;
 	}
+	Array!(BlightMite!B) blightMites;
+	void addEffect(BlightMite!B blightMite){
+		blightMites~=blightMite;
+	}
+	void removeBlightMite(int i){
+		if(i+1<blightMites.length) blightMites[i]=move(blightMites[$-1]);
+		blightMites.length=blightMites.length-1;
+	}
 	Array!(Protector!B) protectors;
 	void addEffect(Protector!B protector){
 		protectors~=protector;
@@ -3708,6 +3728,7 @@ struct Effects(B){
 		assignArray(lifeShields,rhs.lifeShields);
 		assignArray(steamClouds,rhs.steamClouds);
 		assignArray(poisonClouds,rhs.poisonClouds);
+		assignArray(blightMites,rhs.blightMites);
 		assignArray(protectors,rhs.protectors);
 		assignArray(appearances,rhs.appearances);
 		assignArray(disappearances,rhs.disappearances);
@@ -6897,6 +6918,7 @@ float shootDistance(B)(ref MovingObject!B object,ObjectState!B state){
 	if(auto ra=object.rangedAttack) return 0.8f*ra.range; // TODO: figure out the range limit for AI
 	return 0.0f;
 }
+
 bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,ObjectState!B state){
 	if(!isValidAttackTarget(targetId,state)&&(object.creatureState.mode!=CreatureMode.shooting||!state.isValidTarget(targetId))) return true; // TODO
 	if(object.rangedAttack !is rangedAttack) return false; // TODO: multiple ranged attacks?
@@ -6917,11 +6939,6 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 	auto flyingHeight=isFlying?object.position.z-state.getHeight(object.position):0.0f;
 	auto minFlyingHeight=isFlying?object.creatureStats.flyingHeight:0.0f;
 	auto targetFlyingHeight=max(flyingHeight,minFlyingHeight);
-	bool moveCloser(){
-		object.moveTowards(targetPosition,0.0f,state,true,true);
-		if(isFlying) object.creatureState.targetFlyingHeight=targetFlyingHeight;
-		return true;
-	}
 	bool stop(){
 		object.creatureState.timer=updateFPS; // TODO: this is a bit hacky
 		object.stopMovement(state);
@@ -6934,7 +6951,11 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 		return object.creatureState.speed==0.0f;
 	}
 	if(notShooting){
-		if(!object.hasClearShot(predicted,targetId,state)) return moveCloser();
+		if(!object.hasClearShot(predicted,targetId,state)){
+			object.moveTowards(targetPosition,0.0f,state,true,true);
+			if(isFlying) object.creatureState.targetFlyingHeight=targetFlyingHeight;
+			return true;
+		}
 		if(stop()){
 			auto rotationThreshold=4.0f*object.creatureStats.rotationSpeed(object.creatureState.movement==CreatureMovement.flying)/updateFPS;
 			bool evading;
@@ -7208,6 +7229,10 @@ bool divineSight(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B s
 	return true;
 }
 
+bool blightMitesShoot(B)(float accuracy,Vector3f position,Vector3f target,SacSpell!B spell,ObjectState!B state){
+	return false;
+}
+
 bool protector(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
 	if(object.creatureStats.effects.lifeShield) return false;
 	auto lifeShield=SacSpell!B.get(SpellTag.lifeShield);
@@ -7323,6 +7348,9 @@ bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,Target target,Ob
 		object.drainMana(ability.manaCost,state);
 		object.creatureStats.effects.abilityCooldown=cast(int)(ability.cooldown*updateFPS);
 	}
+	bool moveIntoRange(){
+		return false;
+	}
 	switch(ability.tag){
 		case SpellTag.runAway:
 			if(object.runAway(ability,state)) apply();
@@ -7342,6 +7370,8 @@ bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,Target target,Ob
 		case SpellTag.divineSight:
 			if(object.divineSight(ability,state)) apply();
 			return false;
+		case SpellTag.blightMites:
+			return moveIntoRange();//&&blightMitesShoot(accuracy,position,target,ability,state);
 		case SpellTag.protector:
 			if(object.protector(ability,state)) apply();
 			return false;
@@ -12674,6 +12704,40 @@ bool updatePoisonCloud(B)(ref PoisonCloud!B poisonCloud,ObjectState!B state){
 	}
 }
 
+bool updateBlightMite(B)(ref BlightMite!B blightMite,ObjectState!B state){
+	with(blightMite){
+		++frame;
+		if(creature){
+			// TODO: stick to creature
+			return true;
+		}else{
+			if(numJumps>=5){
+				alpha=1.0f/(fadeTime*updateFPS);
+				if(alpha<=0.0f)
+					return false;
+			}
+			position+=velocity/updateFPS;
+			velocity.z-=30.0f/updateFPS;
+			if(state.isOnGround(position)){
+				auto height=state.getGroundHeight(position);
+				if(height>position.z){
+					position.z=height;
+					numJumps+=1;
+					if(numJumps>=5){
+						velocity=Vector3f(0.0f,0.0f,0.0f);
+					}else{
+						// TODO: target nearby creatures
+						velocity=3.0f*state.uniformDirection();
+						velocity.z=3.0f;
+					}
+				}
+			}
+			// TODO: infect creatures
+			return true;
+		}
+	}
+}
+
 bool updateProtector(B)(ref Protector!B protector,ObjectState!B state){
 	if(!state.isValidTarget(protector.id,TargetType.creature)) return false;
 	static void applyProtector(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
@@ -13389,6 +13453,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.poisonClouds.length;){
 		if(!updatePoisonCloud(effects.poisonClouds[i],state)){
 			effects.removePoisonCloud(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.blightMites.length;){
+		if(!updateBlightMite(effects.blightMites[i],state)){
+			effects.removeBlightMite(i);
 			continue;
 		}
 		i++;
