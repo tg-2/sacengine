@@ -8008,6 +8008,11 @@ void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 				target.dealMeleeDamage(*attacker,damageFactor,state); // TODO: maybe those functions should be local
 			}
 			state.objectById!dealDamage(target,&object,state);
+			if(auto passive=object.sacObject.passiveAbility){
+				if(passive.tag==SpellTag.graspingVines){
+					graspingVines(target,SacSpell!B.get(passive.tag),state);
+				}
+			}
 		}
 	}
 }
