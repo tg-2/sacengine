@@ -4625,7 +4625,7 @@ bool pickNextAnimation(B)(ref MovingObject!B object,immutable(AnimationState)[] 
 
 bool startIdling(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.creatureState.mode==CreatureMode.idle) return true;
-	with(CreatureMode) if(!object.creatureState.mode.among(moving,spawning,reviving,fastReviving,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,pumping,torturing,rockForm))
+	with(CreatureMode) if(!object.creatureState.mode.among(moving,spawning,reviving,fastReviving,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,usingAbility,pumping,torturing,rockForm))
 		return false;
 	object.creatureState.mode=CreatureMode.idle;
 	object.setCreatureState(state);
@@ -5720,7 +5720,7 @@ int getCastingTime(B)(ref MovingObject!B object,SacSpell!B spell,bool stationary
 
 enum manaEpsilon=1e-2f;
 enum summonSoundGain=2.0f;
-bool startCasting(B)(int caster,SacSpell!B spell,Target target,ObjectState!B state){
+bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!B state){
 	auto wizard=state.getWizard(caster);
 	if(!wizard) return false;
 	if(state.spellStatus!false(wizard,spell,target)!=SpellStatus.ready) return false;
@@ -5738,7 +5738,7 @@ bool startCasting(B)(int caster,SacSpell!B spell,Target target,ObjectState!B sta
 	}
 	final switch(spell.type){
 		case SpellType.creature:
-			assert(target is Target.init);
+			assert(target is OrderTarget.init);
 			auto creature=spawn(caster,spell.tag,0,state);
 			if(!creature) return false;
 			state.setRenderMode!(MovingObject!B,RenderMode.transparent)(creature);
@@ -5839,6 +5839,15 @@ bool startShooting(B)(ref MovingObject!B object,ObjectState!B state){
 		return false;
 	object.stopMovement(state);
 	object.creatureState.mode=CreatureMode.shooting;
+	object.setCreatureState(state);
+	return true;
+}
+
+bool startUsingAbility(B)(ref MovingObject!B object,ObjectState!B state){
+	if(!object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving))
+		return false;
+	object.stopMovement(state);
+	object.creatureState.mode=CreatureMode.usingAbility;
 	object.setCreatureState(state);
 	return true;
 }
@@ -6700,8 +6709,15 @@ bool movingForwardGetsCloserTo(B)(ref MovingObject!B object,Vector3f position,fl
 bool order(B)(ref MovingObject!B object,Order order,ObjectState!B state,int side=-1){
 	if(!object.canOrder(side,state)) return false;
 	if(object.isPacifist(state)&&order.command.among(CommandType.attack,CommandType.advance)) return false;
+	Order previousOrder;
+	if(object.creatureState.mode==CreatureMode.usingAbility) // TODO: handle shooting the same way?
+		previousOrder=object.creatureAI.order;
 	object.clearOrderQueue(state);
 	object.creatureAI.order=order;
+	if(previousOrder.command!=CommandType.none){
+		if(object.hasOrders(state)) object.creatureAI.orderQueue.pushFront(object.creatureAI.order);
+		object.prequeueOrder(previousOrder,state);
+	}
 	return true;
 }
 
@@ -6715,8 +6731,17 @@ bool queueOrder(B)(ref MovingObject!B object,Order order,ObjectState!B state,int
 bool prequeueOrder(B)(ref MovingObject!B object,Order order,ObjectState!B state,int side=-1){
 	if(object.creatureAI.order.command==CommandType.none) return .order(object,order,state,side);
 	if(!object.canOrder(side,state)) return false;
-	if(hasOrders(object,state)) object.creatureAI.orderQueue.pushFront(object.creatureAI.order);
-	object.creatureAI.order=order;
+	if(object.creatureState.mode==CreatureMode.usingAbility && object.creatureAI.order.command==CommandType.useAbility){ // TODO: handle shooting the same way?
+		if(!object.creatureAI.orderQueue.empty && object.creatureAI.orderQueue.front.command==CommandType.useAbility)
+			object.creatureAI.orderQueue.front=order; // only one ability command can be queued at start
+		else object.creatureAI.orderQueue.pushFront(order);
+	}else{
+		if(object.hasOrders(state)){
+			if(!(order.command==CommandType.useAbility&&object.creatureAI.order.command==CommandType.useAbility)) // only one ability command can be queued at start
+				object.creatureAI.orderQueue.pushFront(object.creatureAI.order);
+		}
+		object.creatureAI.order=order;
+	}
 	return true;
 }
 
@@ -6735,6 +6760,7 @@ void stop(B)(ref MovingObject!B object,ObjectState!B state){
 }
 
 void clearOrder(B)(ref MovingObject!B object,ObjectState!B state){
+	if(object.creatureState.mode==CreatureMode.usingAbility) return; // TODO: handle shooting the same way?
 	object.stop(state);
 	if(!object.creatureAI.orderQueue.empty){
 		object.creatureAI.order=object.creatureAI.orderQueue.front;
@@ -6744,7 +6770,7 @@ void clearOrder(B)(ref MovingObject!B object,ObjectState!B state){
 
 void clearOrderQueue(B)(ref MovingObject!B object,ObjectState!B state){
 	object.creatureAI.orderQueue.clear();
-	clearOrder(object,state);
+	object.clearOrder(state);
 }
 
 bool hasOrders(B)(ref MovingObject!B object,ObjectState!B state){
@@ -6925,11 +6951,15 @@ bool isValidGuardTarget(B)(int targetId,ObjectState!B state){
 }
 
 bool hasClearShot(B)(ref MovingObject!B object,Vector3f targetPosition,OrderTarget target,ObjectState!B state){
-	auto offset=Vector3f(0.0f,0.0f,-0.2f); // TODO: do some sort of cylinder cast instead
+	auto offset=target.type==TargetType.terrain?Vector3f(0.0f,0.0f,0.2f):Vector3f(0.0f,0.0f,-0.2f); // TODO: do some sort of cylinder cast instead
 	return state.hasLineOfSightTo(object.firstShotPosition+offset,targetPosition+offset,object.id,target.id);
 }
 float shootDistance(B)(ref MovingObject!B object,ObjectState!B state){
 	if(auto ra=object.rangedAttack) return 0.8f*ra.range; // TODO: figure out the range limit for AI
+	return 0.0f;
+}
+float useAbilityDistance(B)(ref MovingObject!B object,ObjectState!B state){
+	if(auto ab=object.ability) return 0.8f*ab.range; // TODO: figure out the range limit for AI
 	return 0.0f;
 }
 
@@ -6958,14 +6988,23 @@ Vector3f predictShotTargetPosition(B)(ref MovingObject!B object,SacSpell!B range
 	}
 }
 
-bool aim(B)(ref MovingObject!B object,SacSpell!B rangedAttack,OrderTarget target,Vector3f predicted,ObjectState!B state){
+bool aim(bool ability=false,B)(ref MovingObject!B object,SacSpell!B rangedAttack,OrderTarget target,Vector3f predicted,ObjectState!B state){
 	// TODO: find a spot from where target can be shot
-	auto notShooting=!object.creatureState.mode.isShooting;
+	static if(ability){
+		auto notShooting=!object.creatureState.mode.isShooting;
+	}else{
+		auto notShooting=!object.creatureState.mode.isUsingAbility;
+	}
 	Vector3f targetPosition;
 	if(notShooting){
 		targetPosition=object.getShotTargetPosition(target,state);
 		if(isNaN(targetPosition.x)) return false;
-		if(object.moveWithinRange(targetPosition,object.shootDistance(state),state))
+		static if(ability){
+			auto distance=object.useAbilityDistance(state);
+		}else{
+			auto distance=object.shootDistance(state);
+		}
+		if(object.moveWithinRange(targetPosition,distance,state))
 			return true;
 	}
 	bool isFlying=object.creatureState.movement==CreatureMovement.flying;
@@ -6993,9 +7032,15 @@ bool aim(B)(ref MovingObject!B object,SacSpell!B rangedAttack,OrderTarget target
 			auto rotationThreshold=4.0f*object.creatureStats.rotationSpeed(object.creatureState.movement==CreatureMovement.flying)/updateFPS;
 			bool evading;
 			auto facing=!object.turnToFaceTowardsEvading(predicted,evading,state,rotationThreshold);
-			if(facing&&object.creatureStats.effects.rangedCooldown==0&&object.creatureStats.mana>=rangedAttack.manaCost){
+			static if(ability) auto cooldown=object.creatureStats.effects.abilityCooldown;
+			else auto cooldown=object.creatureStats.effects.rangedCooldown;
+			if(facing&&cooldown==0&&object.creatureStats.mana>=rangedAttack.manaCost){
 				object.creatureAI.targetId=target.id;
-				object.startShooting(state); // TODO: should this have a delay?
+				static if(ability){
+					object.startUsingAbility(state);
+				}else{
+					object.startShooting(state); // TODO: should this have a delay?
+				}
 			}
 		}
 	}else{
@@ -7017,9 +7062,9 @@ void loadOnTick(B)(ref MovingObject!B object,SacSpell!B rangedAttack,ObjectState
 		}
 	}
 }
-bool shootOnTick(B)(ref MovingObject!B object,OrderTarget target,Vector3f shotTarget,SacSpell!B rangedAttack,ObjectState!B state){
+bool shootOnTick(bool ability=false,B)(ref MovingObject!B object,OrderTarget target,Vector3f shotTarget,SacSpell!B rangedAttack,ObjectState!B state){
 	if(object.hasShootTick(state)){
-		if(object.shootAbilityBug(state)) return true;
+		if(!ability) if(object.shootAbilityBug(state)) return true;
 		auto drainedMana=rangedAttack.manaCost/object.numShootTicks;
 		if(object.creatureStats.mana>=drainedMana){
 			auto accuracy=object.creatureStats.rangedAccuracy;
@@ -7386,26 +7431,46 @@ void lose(B)(int side,ObjectState!B state){
 
 bool surrender(B)(int side,ObjectState!B state){ lose(side,state); return true; }
 
-bool checkAbility(B)(ref MovingObject!B object,SacSpell!B ability,Target target,ObjectState!B state){
+bool isRangedAbility(B)(SacSpell!B ability){ // TODO: put this directly in SacSpell!B ?
+	switch(ability.tag){
+		case SpellTag.blightMites: return true;
+		default: return false;
+	}
+}
+
+bool checkAbility(B)(ref MovingObject!B object,SacSpell!B ability,OrderTarget target,ObjectState!B state){
 	if(ability.requiresTarget&&!ability.isApplicable(summarize(target,object.side,state))){
 		target.id=0;
 		target.type=TargetType.terrain;
 		if(ability.requiresTarget&&!ability.isApplicable(summarize(target,object.side,state)))
 			return false;
 	}
-	if(state.abilityStatus!false(object,ability,target)!=SpellStatus.ready) return false;
-	return true;
+	auto status=state.abilityStatus!false(object,ability,target);
+	if(status.among(SpellStatus.notReady,SpellStatus.lowOnMana)) return ability.isRangedAbility;
+	return status==SpellStatus.ready;
 }
 
-bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,Target target,ObjectState!B state){
+bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,OrderTarget target,ObjectState!B state){
 	if(object.ability!is ability) return false;
 	if(!object.checkAbility(ability,target,state)) return false;
 	void apply(){
 		object.drainMana(ability.manaCost,state);
 		object.creatureStats.effects.abilityCooldown=cast(int)(ability.cooldown*updateFPS);
 	}
-	bool moveIntoRange(){
-		return false;
+	bool shoot(){
+		auto predicted=object.predictShotTargetPosition(ability,target,state);
+		if(isNaN(predicted.x)) return false;
+		if(!object.aim!true(ability,target,predicted,state))
+			return false;
+		if(object.creatureState.mode.isUsingAbility){
+			object.loadOnTick(ability,state);
+			if(object.shootOnTick!true(target,predicted,ability,state)){
+				if(object.creatureStats.effects.abilityCooldown==0)
+					object.creatureStats.effects.abilityCooldown=cast(int)(ability.cooldown*updateFPS);
+				return false;
+			}
+		}
+		return true;
 	}
 	switch(ability.tag){
 		case SpellTag.runAway:
@@ -7427,7 +7492,7 @@ bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,Target target,Ob
 			if(object.divineSight(ability,state)) apply();
 			return false;
 		case SpellTag.blightMites:
-			return moveIntoRange();//&&blightMitesShoot(accuracy,position,target,ability,state);
+			return shoot();//&&blightMitesShoot(accuracy,position,target,ability,state);
 		case SpellTag.protector:
 			if(object.protector(ability,state)) apply();
 			return false;
@@ -7460,7 +7525,7 @@ bool shootAbilityBug(B)(ref MovingObject!B object,ObjectState!B state){
 	auto id=object.creatureAI.targetId;
 	auto targetType=state.targetTypeFromId(id);
 	if(!targetType.among(TargetType.creature,TargetType.building)) return false;
-	auto target=Target(targetType,id,state.objectById!((obj)=>obj.position)(id));
+	auto target=OrderTarget(targetType,id,state.objectById!((obj)=>obj.position)(id));
 	if(!object.checkAbility(ability,target,state)) return false;
 	if(!object.useAbility(ability,target,state))
 		object.clearOrder(state);
@@ -7500,6 +7565,11 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 	if(object.creatureState.mode.isShooting){
 		if(!object.shoot(object.rangedAttack,object.creatureAI.targetId,state))
 			object.creatureAI.targetId=0;
+		return;
+	}
+	if(object.creatureState.mode.isUsingAbility){
+		if(object.creatureAI.order.command==CommandType.useAbility) // TODO: fix
+			object.useAbility(object.ability,object.creatureAI.order.target,state);
 		return;
 	}
 	if(object.isHidden){
@@ -7586,8 +7656,7 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 			break;
 		case CommandType.useAbility:
 			auto ability=object.ability;
-			auto target=Target(object.creatureAI.order.target.type,object.creatureAI.order.target.id,object.creatureAI.order.target.position);
-			if(!ability||!object.useAbility(ability,target,state)){
+			if(!ability||!object.useAbility(ability,object.creatureAI.order.target,state)){
 				object.clearOrder(state);
 				object.updateCreatureAI(state);
 			}
@@ -7982,11 +8051,20 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 					object.animationState=endAnimation;
 			}
 			break;
-		case CreatureMode.shooting, CreatureMode.usingAbility:
+		case CreatureMode.shooting:
 			object.frame+=1;
 			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
 				object.frame=0;
 				object.startIdling(state);
+			}
+			break;
+		case CreatureMode.usingAbility:
+			object.frame+=1;
+			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
+				object.frame=0;
+				object.startIdling(state);
+				if(object.creatureAI.order.command==CommandType.useAbility) // TODO: handle shooting the same way?
+					object.clearOrder(state);
 			}
 			break;
 		case CreatureMode.pumping:
@@ -8097,7 +8175,7 @@ void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 			state.objectById!dealDamage(target,&object,state);
 			if(auto passive=object.sacObject.passiveAbility){
 				if(passive.tag==SpellTag.graspingVines){
-					auto tref=Target(state.targetTypeFromId(target),target);
+					auto tref=OrderTarget(state.targetTypeFromId(target),target,Vector3f.init);
 					auto summary=summarize(tref,-1,state);
 					if(passive.isApplicable(summary))
 						graspingVines(target,passive,state);
@@ -8111,13 +8189,13 @@ enum gibDepth=0.5f*mapDepth;
 
 void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 	auto newPosition=object.position;
-	with(CreatureMode) if(object.creatureState.mode.among(idle,moving,idleGhost,movingGhost,stunned,landing,dying,meleeMoving,casting,castingMoving,shooting)){
+	with(CreatureMode) if(object.creatureState.mode.among(idle,moving,idleGhost,movingGhost,stunned,landing,dying,meleeMoving,casting,castingMoving,shooting,usingAbility)){
 		auto rotationSpeed=object.creatureStats.rotationSpeed(object.creatureState.movement==CreatureMovement.flying)/updateFPS;
 		if(object.creatureStats.effects.slimed && object.creatureState.movementDirection!=MovementDirection.none)
 			rotationSpeed*=0.25f^^object.creatureStats.effects.numSlimes;
 		auto pitchingSpeed=object.creatureStats.pitchingSpeed/updateFPS;
 		bool isRotating=false;
-		if(object.creatureState.mode.among(idle,moving,idleGhost,movingGhost,meleeMoving,casting,castingMoving,shooting,torturing)&&
+		if(object.creatureState.mode.among(idle,moving,idleGhost,movingGhost,meleeMoving,casting,castingMoving,shooting,usingAbility,torturing)&&
 		   object.creatureState.movement!=CreatureMovement.tumbling&&!object.creatureStats.effects.immobilized&&!object.creatureStats.effects.fixed
 		){
 			final switch(object.creatureState.rotationDirection){
@@ -9189,7 +9267,7 @@ bool updateSacDocCarry(B)(ref SacDocCarry!B sacDocCarry,ObjectState!B state){
 							if(sacDoc.animationState==cast(AnimationState)SacDoctorAnimationState.bounce) break;
 							auto creaturePositionScaleNumSouls=state.movingObjectById!((ref obj,spell,state)=>tuple(obj.position,obj.getScale,obj.sacObject.numSouls),()=>Tuple!(Vector3f,Vector2f,int).init)(creature,spell,state);
 							auto creaturePosition=creaturePositionScaleNumSouls[0], scale=creaturePositionScaleNumSouls[1], numSouls=creaturePositionScaleNumSouls[2];
-							auto creatureTarget=Target(TargetType.creature,creature,creaturePosition);
+							auto creatureTarget=OrderTarget(TargetType.creature,creature,creaturePosition);
 							if(!spell.isApplicable(summarize(creatureTarget,side,state))||isNaN(creaturePosition.x)){
 								sacDoc.kill(state);
 								return false;
@@ -14598,7 +14676,7 @@ final class ObjectState(B){ // (update logic)
 			case automaticSelectGroup: goto case selectGroup;
 			case setFormation: success=applyOrder(command,this,true); break;
 			case retreat,move,guard,guardArea,attack,advance,useAbility: success=applyOrder(command,this); break;
-			case castSpell: success=startCasting(command.wizard,command.spell,command.target,this); break;
+			case castSpell: success=startCasting(command.wizard,command.spell,OrderTarget(command.target),this); break;
 			case surrender: success=.surrender(command.side,this); break;
 		}
 	}
@@ -14716,7 +14794,7 @@ final class ObjectState(B){ // (update logic)
 		return spells.front.spell.god;
 	}
 	private static alias spellStatusArgs(bool selectOnly:true)=Seq!();
-	private static alias spellStatusArgs(bool selectOnly:false)=Seq!Target;
+	private static alias spellStatusArgs(bool selectOnly:false)=Seq!OrderTarget;
 	SpellStatus spellStatus(bool selectOnly=false)(int id,SacSpell!B spell,spellStatusArgs!selectOnly target){ // DMD bug: default argument does not work
 		auto wizard=getWizard(id);
 		if(!wizard) return SpellStatus.inexistent;
@@ -15362,7 +15440,7 @@ struct Target{
 	Vector3f position;
 	auto location=TargetLocation.scene;
 }
-TargetFlags summarize(bool simplified=false,B)(ref Target target,int side,ObjectState!B state){
+TargetFlags summarize(bool simplified=false,B)(ref OrderTarget target,int side,ObjectState!B state){
 	final switch(target.type) with(TargetType){
 		case none,creatureTab,spellTab,structureTab,spell,ability,soulStat,manaStat,healthStat: return TargetFlags.none;
 		case terrain: return TargetFlags.ground;
@@ -15419,7 +15497,7 @@ TargetFlags summarize(bool simplified=false,B)(ref Target target,int side,Object
 			return result;
 	}
 }
-Cursor cursor(B)(ref Target target,int renderSide,bool showIcon,ObjectState!B state){
+Cursor cursor(B)(ref OrderTarget target,int renderSide,bool showIcon,ObjectState!B state){
 	auto summary=summarize!true(target,renderSide,state);
 	with(TargetFlags) with(Cursor){
 		if(summary==none) return showIcon?iconNone:normal;

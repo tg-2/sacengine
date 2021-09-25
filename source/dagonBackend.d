@@ -70,7 +70,7 @@ final class SacScene: Scene{
 	bool castSpell(SacSpell!DagonBackend spell,Target target,bool playAudio=true){
 		switchSpellbookTab(spell.type);
 		if(!renderer.spellbookVisible(state.current,info)) return false;
-		auto status=state.current.spellStatus!false(camera.target,spell,target);
+		auto status=state.current.spellStatus!false(camera.target,spell,OrderTarget(target));
 		if(status!=SpellStatus.ready){
 			if(playAudio) spellAdvisorHelpSpeech(status);
 			return false;
@@ -121,7 +121,7 @@ final class SacScene: Scene{
 		return false;
 	}
 	bool useAbility(SacSpell!DagonBackend ability,Target target,CommandQueueing queueing,bool playAudio=true){
-		auto status=state.current.abilityStatus!false(renderSide,ability,target);
+		auto status=state.current.abilityStatus!false(renderSide,ability,OrderTarget(target));
 		if(status!=SpellStatus.ready){
 			if(playAudio) spellAdvisorHelpSpeech(status);
 			return false;
@@ -634,8 +634,9 @@ final class SacScene: Scene{
 						finishRectangleSelect();
 						break;
 					case MouseStatus.icon:
+						auto otarget=OrderTarget(mouse.target);
 						if(mouse.targetValid){
-							auto summary=mouse.target.summarize(renderSide,state.current);
+							auto summary=otarget.summarize(renderSide,state.current);
 							final switch(mouse.icon){
 								case MouseIcon.attack:
 									if(summary&(TargetFlags.creature|TargetFlags.wizard|TargetFlags.building)&&!(summary&TargetFlags.corpse)){
@@ -665,8 +666,8 @@ final class SacScene: Scene{
 									break;
 							}
 						}else{
-							auto status=mouse.icon==MouseIcon.spell?state.current.spellStatus!false(camera.target,mouse.spell,mouse.target):
-								mouse.icon==MouseIcon.ability?state.current.abilityStatus!false(renderSide,mouse.spell,mouse.target):SpellStatus.invalidTarget;
+							auto status=mouse.icon==MouseIcon.spell?state.current.spellStatus!false(camera.target,mouse.spell,otarget):
+								mouse.icon==MouseIcon.ability?state.current.abilityStatus!false(renderSide,mouse.spell,otarget):SpellStatus.invalidTarget;
 							spellAdvisorHelpSpeech(status);
 						}
 						break;
@@ -678,7 +679,8 @@ final class SacScene: Scene{
 						switch(mouse.target.type) with(TargetType){
 							case terrain: controller.addCommand(Command!DagonBackend(CommandType.move,renderSide,camera.target,0,mouse.target,cameraFacing),queueing); break;
 							case creature,building:
-								auto summary=mouse.target.summarize(renderSide,state.current);
+								auto otarget=OrderTarget(mouse.target);
+								auto summary=otarget.summarize(renderSide,state.current);
 								if(!(summary&TargetFlags.untargetable)){
 									if(summary&TargetFlags.corpse){
 										auto target=Target(TargetType.terrain,0,mouse.target.position,mouse.target.location);
@@ -970,11 +972,12 @@ final class SacScene: Scene{
 		if(mouse.status!=MouseStatus.icon||mouse.dragging) return true;
 		import spells:SpelFlags;
 		enum orderSpelFlags=SpelFlags.targetWizards|SpelFlags.targetCreatures|SpelFlags.targetCorpses|SpelFlags.targetStructures|SpelFlags.targetGround|AdditionalSpelFlags.targetSacrificed;
+		auto otarget=OrderTarget(target);
 		final switch(mouse.icon){
-			case MouseIcon.guard: return isApplicable(orderSpelFlags,target.summarize(renderSide,state.current));
-			case MouseIcon.attack: return isApplicable(orderSpelFlags,target.summarize(renderSide,state.current));
-			case MouseIcon.spell: return !!state.current.spellStatus!false(camera.target,mouse.spell,target).among(SpellStatus.ready,SpellStatus.mustBeNearBuilding,SpellStatus.mustBeNearEnemyAltar,SpellStatus.mustBeConnectedToConversion);
-			case MouseIcon.ability: return state.current.abilityStatus!false(renderSide,mouse.spell,target)==SpellStatus.ready;
+			case MouseIcon.guard: return isApplicable(orderSpelFlags,otarget.summarize(renderSide,state.current));
+			case MouseIcon.attack: return isApplicable(orderSpelFlags,otarget.summarize(renderSide,state.current));
+			case MouseIcon.spell: return !!state.current.spellStatus!false(camera.target,mouse.spell,otarget).among(SpellStatus.ready,SpellStatus.mustBeNearBuilding,SpellStatus.mustBeNearEnemyAltar,SpellStatus.mustBeConnectedToConversion);
+			case MouseIcon.ability: return state.current.abilityStatus!false(renderSide,mouse.spell,otarget)==SpellStatus.ready;
 		}
 	}
 	void initializeMouse(){
@@ -1048,7 +1051,8 @@ final class SacScene: Scene{
 		if(mouse.target.type==TargetType.ability)
 			mouse.targetSpell=renderer.selectionRosterTargetAbility;
 		mouse.targetValid=targetValid;
-		auto summary=summarize!true(mouse.target,renderSide,state.current);
+		auto otarget=OrderTarget(mouse.target);
+		auto summary=summarize!true(otarget,renderSide,state.current);
 		with(Cursor)
 			mouse.showFrame=targetValid && target.location==TargetLocation.scene &&
 				!(summary&TargetFlags.corpse) &&
@@ -1069,10 +1073,11 @@ final class SacScene: Scene{
 	void updateCursor(double dt){
 		if(!state) return;
 		updateMouseTarget();
+		auto otarget=OrderTarget(mouse.target);
 		if(mouse.dragging) mouse.cursor=Cursor.drag;
 		else final switch(mouse.status){
 			case MouseStatus.standard:
-				mouse.cursor=mouse.target.cursor(renderSide,false,state.current);
+				mouse.cursor=otarget.cursor(renderSide,false,state.current);
 				break;
 			case MouseStatus.rectangleSelect:
 				mouse.cursor=Cursor.rectangleSelect;
@@ -1083,7 +1088,7 @@ final class SacScene: Scene{
 					if(audio) audio.playSound("kabI");
 					goto case MouseStatus.standard;
 				}
-				mouse.cursor=mouse.target.cursor(renderSide,true,state.current);
+				mouse.cursor=otarget.cursor(renderSide,true,state.current);
 				break;
 		}
 	}
