@@ -159,6 +159,7 @@ bool canBePoisoned(CreatureMode mode){
 		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return false;
 	}
 }
+bool canBeInfectedByMites(CreatureMode mode){ return canBePoisoned(mode); }
 bool canBePetrified(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,usingAbility,
@@ -2861,11 +2862,13 @@ struct PoisonCloud(B){
 }
 
 struct BlightMite(B){
+	int creature;
 	Vector3f position;
 	Vector3f velocity;
-	int creature;
+	SacSpell!B ability;
+	int target=0;
+	int infectionTime=0;
 	// int bone; // TODO: stick on bones
-	Vector3f relativePosition;
 	int frame=0;
 	int numJumps=0;
 	float alpha=1.0f;
@@ -7119,6 +7122,10 @@ bool shootOnTick(bool ability=false,B)(ref MovingObject!B object,OrderTarget tar
 				case SpellTag.squallShoot:
 					squallShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
 					break;
+				// abilities:
+				case SpellTag.blightMites:
+					blightMitesShoot(object.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
+					break;
 				default: goto case SpellTag.brainiacShoot;
 			}
 			object.drainMana(drainedMana,state);
@@ -7330,8 +7337,14 @@ bool divineSight(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B s
 	return true;
 }
 
-bool blightMitesShoot(B)(float accuracy,Vector3f position,Vector3f target,SacSpell!B spell,ObjectState!B state){
-	return false;
+bool blightMitesShoot(B)(int creature,float accuracy,Vector3f position,Vector3f target,SacSpell!B ability,ObjectState!B state){
+	playSoundAt("ltim",position,state,4.0f); // TODO: move sound with projectile
+	foreach(i;0..10){
+		auto direction=getShotDirectionWithGravity(accuracy,position,target,ability,state);
+		direction+=0.2f*state.uniformDirection();
+		state.addEffect(BlightMite!B(creature,position,direction*ability.speed,ability));
+	}
+	return true;
 }
 
 bool protector(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
@@ -7492,7 +7505,7 @@ bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,OrderTarget targ
 			if(object.divineSight(ability,state)) apply();
 			return false;
 		case SpellTag.blightMites:
-			return shoot();//&&blightMitesShoot(accuracy,position,target,ability,state);
+			return shoot();
 		case SpellTag.protector:
 			if(object.protector(ability,state)) apply();
 			return false;
@@ -12838,35 +12851,71 @@ bool updatePoisonCloud(B)(ref PoisonCloud!B poisonCloud,ObjectState!B state){
 	}
 }
 
+enum blightMiteSize=0.5f;
+static immutable Vector3f[2] blightMiteHitbox=[-0.5f*blightMiteSize*Vector3f(1.0f,1.0f,1.0f),0.5f*blightMiteSize*Vector3f(1.0f,1.0f,1.0f)];
+int blightMiteCollisionTarget(B)(Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state){
+		return entry.isProjectileObstacle&&state.movingObjectById!((ref obj)=>obj.creatureState.mode.canBeInfectedByMites,()=>false)(entry.id);
+	}
+	return collisionTarget!(blightMiteHitbox,filter)(-1,position,state);
+}
 bool updateBlightMite(B)(ref BlightMite!B blightMite,ObjectState!B state){
 	with(blightMite){
 		++frame;
-		if(creature){
-			// TODO: stick to creature
+		bool vanish(){
+			alpha-=1.0f/(fadeTime*updateFPS);
+			if(alpha<=0.0f)
+				return false;
+			return true;
+		}
+		if(target){
+			auto keep=++infectionTime<=updateFPS*ability.duration;
+			if(!keep||state.movingObjectById!((ref obj)=>!obj.creatureState.mode.canBeInfectedByMites,()=>true)(target)){
+				keep=false;
+				if(alpha==1.0f) state.movingObjectById!((ref obj){ obj.creatureStats.effects.numBlightMites-=1; },(){})(target);
+			}
+			if(!keep) return vanish();
 			return true;
 		}else{
-			if(numJumps>=5){
-				alpha=1.0f/(fadeTime*updateFPS);
-				if(alpha<=0.0f)
-					return false;
-			}
+			if(numJumps>=5) return vanish();
 			position+=velocity/updateFPS;
-			velocity.z-=30.0f/updateFPS;
+			velocity.z-=ability.fallingAcceleration/updateFPS;
 			if(state.isOnGround(position)){
 				auto height=state.getGroundHeight(position);
 				if(height>position.z){
 					position.z=height;
 					numJumps+=1;
+					if(state.uniform(2)) playSpellSoundTypeAt(SoundType.mites,position,state,1.0f);
 					if(numJumps>=5){
 						velocity=Vector3f(0.0f,0.0f,0.0f);
 					}else{
-						// TODO: target nearby creatures
-						velocity=3.0f*state.uniformDirection();
-						velocity.z=3.0f;
+						if(auto closeCreature=state.proximity.closestCreatureInRange(position,ability.effectRange,state,10.0f)){
+							auto creaturePosition=state.movingObjectById!((ref obj)=>obj.center,()=>Vector3f.init)(closeCreature);
+							auto direction=creaturePosition-position;
+							velocity=4.5f*direction.normalized+0.5f*state.uniformDirection();
+							velocity.z+=0.5f*ability.fallingAcceleration*direction.length/velocity.length;
+							velocity.z=min(velocity.z,10.0f);
+						}else{
+							velocity=5.0f*state.uniformDirection();
+							velocity.z=10.0f;
+						}
 					}
 				}
 			}
-			// TODO: infect creatures
+			if(auto collisionTarget=blightMiteCollisionTarget(position,state)){
+				if(frame>updateFPS/2||collisionTarget!=creature){
+					auto targetPositionTargetRotation=state.movingObjectById!((ref obj){
+						obj.creatureStats.effects.numBlightMites+=1;
+						return tuple(obj.position,obj.rotation);
+					},()=>Tuple!(Vector3f,Quaternionf).init)(collisionTarget);
+					auto targetPosition=targetPositionTargetRotation[0], targetRotation=targetPositionTargetRotation[1];
+					if(!isNaN(targetPosition.x)){
+						playSoundAt("htim",position,state,1.0f); // TODO: move sound with projectile
+						position=rotate(targetRotation.conj(),position-targetPosition);
+						target=collisionTarget;
+					}
+				}
+			}
 			return true;
 		}
 	}
@@ -14348,12 +14397,19 @@ final class Proximity(B){
 	}do{
 		centers.insert(version_,entry);
 	}
-	private static bool isEnemy(T...)(ref CenterProximityEntry entry,int side,EnemyType type,ObjectState!B state,float maxHeight=float.infinity,T ignored=T.init){
+	private static bool isOfType(T...)(ref CenterProximityEntry entry,EnemyType type,ObjectState!B state,float maxHeight=float.infinity,T ignored=T.init){
 		if(!entry.isVisibleToAI) return false;
 		if(type==EnemyType.creature&&entry.isStatic) return false;
 		if(type==EnemyType.building&&!entry.isStatic) return false;
 		if(entry.zeroHealth) return false;
 		if(maxHeight<float.infinity && entry.height>state.getHeight(entry.position)+maxHeight) return false;
+		return true;
+	}
+	int closestCreatureInRange(Vector3f position,float range,ObjectState!B state,float maxHeight=float.infinity){
+		return centers.closestInRange!isOfType(version_,position,range,EnemyType.creature,state,maxHeight).id;
+	}
+	private static bool isEnemy(T...)(ref CenterProximityEntry entry,int side,EnemyType type,ObjectState!B state,float maxHeight=float.infinity,T ignored=T.init){
+		if(!isOfType(entry,type,state,maxHeight,ignored)) return false;
 		return state.sides.getStance(side,entry.side)==Stance.enemy;
 	}
 	int closestEnemyInRange(int side,Vector3f position,float range,EnemyType type,ObjectState!B state,float maxHeight=float.infinity){

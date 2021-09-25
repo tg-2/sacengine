@@ -380,6 +380,17 @@ struct Renderer(B){
 		auto frames=typeof(return).createMeshes();
 		return SacDivineSight!B(texture,mat,frames);
 	}
+	SacBlightMite!B blightMite;
+	SacBlightMite!B createBlightMite(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Transparent;
+		mat.energy=3.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacBlightMite!B(texture,mat,frames);
+	}
 	void createEffects(){
 		sacCommandCone=new SacCommandCone!B();
 		sacDebris=new SacObject!B("extracted/models/MODL.WAD!/bold.MRMC/bold.MRMM");
@@ -406,6 +417,7 @@ struct Renderer(B){
 		squallEffect=createSquallEffect();
 		lifeShield=createLifeShield();
 		divineSight=createDivineSight();
+		blightMite=createBlightMite();
 		slime=createSlime();
 		vine=createVine();
 	}
@@ -1415,6 +1427,25 @@ struct Renderer(B){
 						auto scale=objects.divineSights[j].scale;
 						auto alpha=scale^^2;
 						material.backend.setSpriteTransformationScaled(position,scale,rc);
+						material.backend.setAlpha(alpha);
+						mesh.render(rc);
+					}
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.blightMites.length){
+					auto material=self.blightMite.material;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
+					foreach(j;0..objects.blightMites.length){
+						auto position=objects.blightMites[j].position;
+						if(auto target=objects.blightMites[j].target){
+							auto targetPositionTargetRotation=state.movingObjectById!((ref obj)=>tuple(obj.position,obj.rotation),()=>Tuple!(Vector3f,Quaternionf).init)(target);
+							auto targetPosition=targetPositionTargetRotation[0], targetRotation=targetPositionTargetRotation[1];
+							position=targetPosition+rotate(targetRotation,position);
+						}
+						auto frame=objects.blightMites[j].frame;
+						auto mesh=self.blightMite.getFrame(frame%self.blightMite.numFrames);
+						auto alpha=objects.blightMites[j].alpha;
+						material.backend.setSpriteTransformation(position,rc);
 						material.backend.setAlpha(alpha);
 						mesh.render(rc);
 					}

@@ -53,6 +53,7 @@ struct Effects{
 	bool ringsOfFire=false;
 	int numSlimes=0;
 	int numVines=0;
+	int numBlightMites=0;
 	@property bool slimed(){ return numSlimes!=0; }
 	@property bool vined(){ return numVines!=0; }
 	@property bool regenerationBlocked(){ return poisonDamage!=0||immobilized||ringsOfFire||slimed||vined; }
@@ -82,7 +83,7 @@ import dlib.math.portable: pi;
 	return 0.25f*pi!float;
 }
 @property float movementSpeed(ref CreatureStats stats,bool isFlying){ // in meters per second
-	auto effectFactor=stats.effects.speedUp*0.25f^^stats.effects.numSlimes; // TODO: probably slime slowdown should be interpolated too
+	auto effectFactor=stats.effects.speedUp*0.25f^^stats.effects.numSlimes*0.8f^^stats.effects.numBlightMites; // TODO: probably slowdowns should be interpolated too
 	return (isFlying?stats.flyingSpeed:stats.runningSpeed)*effectFactor;
 }
 @property float movementAcceleration(ref CreatureStats stats,bool isFlying){

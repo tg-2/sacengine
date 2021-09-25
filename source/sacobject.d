@@ -1984,6 +1984,20 @@ struct SacDivineSight(B){
 	}
 }
 
+struct SacBlightMite(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Char.FLDR/tex_ZERO_.FLDR/mite.TXTR"));
+	}
+	B.Material material;
+	B.Mesh[] frames;
+	enum animationDelay=2;
+	enum numFrames=16*animationDelay*updateAnimFactor;
+	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
+	static B.Mesh[] createMeshes(){
+		return makeSpriteMeshes!B(4,4,1.0f,1.0f);
+	}
+}
 
 struct SacLaser(B){
 	B.Texture texture;
@@ -2113,22 +2127,6 @@ struct SacSquallEffect(B){
 		return makeSpriteMeshes!(B,true)(4,4,2.5f,2.5f);
 	}
 }
-
-struct SacBlightMite(B){
-	B.Texture texture;
-	static B.Texture loadTexture(){
-		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Char.FLDR/tex_ZERO_.FLDR/mite.TXTR"));
-	}
-	B.Material material;
-	B.Mesh[] frames;
-	enum animationDelay=2;
-	enum numFrames=16*animationDelay*updateAnimFactor;
-	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
-	static B.Mesh[] createMeshes(){
-		return makeSpriteMeshes!B(4,4,1.0f,1.0f);
-	}
-}
-
 
 struct SacTether(B){
 	B.Texture texture;

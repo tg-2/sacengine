@@ -108,7 +108,13 @@ class SacSpell(B){
 	float damageRange;
 	float speed;
 	float acceleration;
-	@property float fallingAcceleration(){ return tag==SpellTag.fallenShoot?10.0f:30.0f; }
+	@property float fallingAcceleration(){
+		switch(tag){
+			case SpellTag.fallenShoot: return 10.0f;
+			case SpellTag.blightMites: return 20.0f;
+			default: return 30.0f;
+		}
+	}
 	enum fallLimit=1000.0f;
 	int soulCost;
 
