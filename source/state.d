@@ -2923,6 +2923,23 @@ struct AltarDestruction{
 	enum explodeDuration=3*updateFPS;
 }
 
+struct ScreenShake{
+	Vector3f position;
+	int lifetime;
+	float strength=1.0f;
+	float range=100.0f;
+	Vector3f displacement=Vector3f(0.0f,0.0f,0.0f);
+	Vector3f target;
+	int frame=0;
+	enum shakes=30;
+	static assert(updateFPS%shakes==0);
+	enum shakeFrames=updateFPS/shakes;
+
+	Vector3f getDisplacement(Vector3f camPos){
+		return (max(0.0f,range-(camPos-position).length)/range)^^2*displacement;
+	}
+}
+
 struct Effects(B){
 	// misc
 	Array!(Debris!B) debris;
@@ -3585,7 +3602,7 @@ struct Effects(B){
 		if(i+1<flummoxProjectiles.length) swap(flummoxProjectiles[i],flummoxProjectiles[$-1]);
 		flummoxProjectiles.length=flummoxProjectiles.length-1; // TODO: reuse memory?
 	}
-
+	// abilities
 	Array!(RockForm!B) rockForms;
 	void addEffect(RockForm!B rockForm){
 		rockForms~=move(rockForm);
@@ -3650,6 +3667,7 @@ struct Effects(B){
 		if(i+1<protectors.length) protectors[i]=move(protectors[$-1]);
 		protectors.length=protectors.length-1;
 	}
+	// special effects
 	Array!Appearance appearances;
 	void addEffect(Appearance appearance){
 		appearances~=appearance;
@@ -3673,6 +3691,14 @@ struct Effects(B){
 	void removeAltarDestruction(int i){
 		if(i+1<altarDestructions.length) altarDestructions[i]=move(altarDestructions[$-1]);
 		altarDestructions.length=altarDestructions.length-1;
+	}
+	Array!ScreenShake screenShakes;
+	void addEffect(ScreenShake screenShake){
+		screenShakes~=screenShake;
+	}
+	void removeScreenShake(int i){
+		if(i+1<screenShakes.length) screenShakes[i]=move(screenShakes[$-1]);
+		screenShakes.length=screenShakes.length-1;
 	}
 	void opAssign(ref Effects!B rhs){
 		assignArray(debris,rhs.debris);
@@ -3767,6 +3793,7 @@ struct Effects(B){
 		assignArray(appearances,rhs.appearances);
 		assignArray(disappearances,rhs.disappearances);
 		assignArray(altarDestructions,rhs.altarDestructions);
+		assignArray(screenShakes,rhs.screenShakes);
 	}
 	void opAssign(Effects!B rhs){ this.tupleof=rhs.tupleof; }
 }
@@ -7483,6 +7510,10 @@ void lose(B)(int side,ObjectState!B state){
 }
 
 bool surrender(B)(int side,ObjectState!B state){ lose(side,state); return true; }
+
+void screenShake(B)(Vector3f position,int lifetime,float strength,float range,ObjectState!B state){
+	state.addEffect(ScreenShake(position,lifetime,strength,range));
+}
 
 bool isRangedAbility(B)(SacSpell!B ability){ // TODO: put this directly in SacSpell!B ?
 	switch(ability.tag){
@@ -12723,7 +12754,7 @@ void flummoxProjectileExplosion(B)(ref FlummoxProjectile!B flummoxProjectile,Obj
 		auto lifetime=63-frame;
 		state.addParticle(Particle!B(sacParticle4,position,velocity,scale,lifetime,frame));
 	}
-	// TODO: screen shake
+	screenShake(flummoxProjectile.position,60,0.5f,100.0f,state);
 	// TODO: add scar
 }
 
@@ -13151,6 +13182,25 @@ bool updateAltarDestruction(B)(ref AltarDestruction altarDestruction,ObjectState
 	}
 }
 
+bool updateScreenShake(B)(ref ScreenShake screenShake,ObjectState!B state){
+	with(screenShake){
+		auto rem=frame%shakeFrames;
+		if(rem==0){
+			if(frame+shakeFrames>=lifetime){
+				target=Vector3f(0.0f,0.0f,0.0f);
+			}else{
+				auto oldDirection=target.normalized;
+				auto newDirection=state.uniformDirection();
+				if((oldDirection-newDirection).lengthsqr<0.25f) newDirection=-oldDirection;
+				auto decay=min(1.0f,4.0f*(1.0f-(float(frame)/lifetime)^^2));
+				target=strength*decay*newDirection;
+			}
+		}
+		float relativeProgress=1.0f/(shakeFrames-rem);
+		displacement=relativeProgress*target+(1.0f-relativeProgress)*displacement;
+		return ++frame<lifetime;
+	}
+}
 
 void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.debris.length;){
@@ -13801,6 +13851,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.altarDestructions.length;){
 		if(!updateAltarDestruction(effects.altarDestructions[i],state)){
 			effects.removeAltarDestruction(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.screenShakes.length;){
+		if(!updateScreenShake(effects.screenShakes[i],state)){
+			effects.removeScreenShake(i);
 			continue;
 		}
 		i++;

@@ -293,12 +293,21 @@ final class SacScene: Scene{
 		updateCameraPosition(0.0f,true);
 	}
 
+	Vector3f getCameraDisplacement(Vector3f position){
+		Vector3f result=Vector3f(0.0f,0.0f,0.0f);
+		foreach(ref screenShake;state.current.obj.opaqueObjects.effects.screenShakes){
+			result+=screenShake.getDisplacement(position);
+		}
+		return result;
+	}
+
 	void positionFPCamera(){
 		camera.width=width;
 		camera.height=height;
 		info.windowHeight=eventManager.windowHeight;
 		info.hudScaling=info.height/480.0f;
 		fpview.camera.position=camera.position;
+		fpview.camera.eyePosition=Vector3f(0.0f,0.0f,1.0f)+getCameraDisplacement(camera.position);
 		fpview.camera.turn=camera.turn;
 		fpview.camera.pitch=camera.pitch;
 		fpview.camera.roll=camera.roll;
