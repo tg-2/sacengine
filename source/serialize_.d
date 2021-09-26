@@ -504,6 +504,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Squ
 void serialize(alias sink,B)(ref Pushback!B pushback){ serializeStruct!sink(pushback); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Pushback!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref FlummoxProjectile!B flummoxProjectile){ serializeStruct!sink(flummoxProjectile); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==FlummoxProjectile!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref RockForm!B rockForm){ serializeStruct!sink(rockForm); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==RockForm!B)){ deserializeStruct(result,state,data); }
 

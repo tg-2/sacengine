@@ -1026,7 +1026,8 @@ struct Renderer(B){
 				}
 				static if(mode==RenderMode.opaque) if(objects.rockCastings.length||objects.rocks.length||
 				                                      objects.soulMoleCastings.length||objects.soulMoles.length||
-				                                      objects.earthflingProjectiles.length||objects.rockForms.length
+				                                      objects.earthflingProjectiles.length||objects.flummoxProjectiles.length||
+				                                      objects.rockForms.length
 				){
 					auto materials=self.rock.materials;
 					foreach(i;0..materials.length){
@@ -1043,16 +1044,20 @@ struct Renderer(B){
 							material.backend.setTransformationScaled(objects.rocks[j].position,objects.rocks[j].rotation,1.0f*Vector3f(1.0f,1.0f,1.0f),rc);
 							mesh.render(rc);
 						}
-						foreach(j;0..objects.earthflingProjectiles.length){
-							material.backend.setTransformationScaled(objects.earthflingProjectiles[j].position,objects.earthflingProjectiles[j].rotation,0.3f*Vector3f(1.0f,1.0f,1.0f),rc);
-							mesh.render(rc);
-						}
 						foreach(j;0..objects.soulMoleCastings.length){
 							material.backend.setTransformationScaled(objects.soulMoleCastings[j].soulMole.position,Quaternionf.identity(),Vector3f(1.0f,1.0f,1.0f),rc);
 							mesh.render(rc);
 						}
 						foreach(j;0..objects.soulMoles.length){
 							material.backend.setTransformationScaled(objects.soulMoles[j].position,Quaternionf.identity(),Vector3f(1.0f,1.0f,1.0f),rc);
+							mesh.render(rc);
+						}
+						foreach(j;0..objects.earthflingProjectiles.length){
+							material.backend.setTransformationScaled(objects.earthflingProjectiles[j].position,objects.earthflingProjectiles[j].rotation,0.3f*Vector3f(1.0f,1.0f,1.0f),rc);
+							mesh.render(rc);
+						}
+						foreach(j;0..objects.flummoxProjectiles.length){
+							material.backend.setTransformationScaled(objects.flummoxProjectiles[j].position,objects.flummoxProjectiles[j].rotation,1.25f*Vector3f(1.0f,1.0f,1.0f),rc);
 							mesh.render(rc);
 						}
 						foreach(j;0..objects.rockForms.length){

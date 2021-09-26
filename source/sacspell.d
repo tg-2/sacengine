@@ -188,6 +188,7 @@ class SacSpell(B){
 			effectRange=spel.effectRange;
 			damageRange=spel.damageRange;
 			speed=60.0f*spel.speed;
+			if(tag==SpellTag.flummoxShoot) speed*=0.75f;
 			acceleration=60.0f*spel.acceleration;
 			needsPrediction=tag!=SpellTag.locustShoot;
 		}else if(strc) setStats(strc);

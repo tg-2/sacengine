@@ -2805,6 +2805,17 @@ struct Pushback(B){
 	enum pushVelocity=pushDistance/pushDuration;
 }
 
+struct FlummoxProjectile(B){
+	int attacker;
+	int side;
+	int intendedTarget;
+	Vector3f position;
+	Vector3f velocity;
+	SacSpell!B rangedAttack;
+	Quaternionf rotationUpdate;
+	Quaternionf rotation;
+}
+
 
 enum RockFormStatus{ growing, stationary, shrinking }
 struct RockForm(B){
@@ -3566,6 +3577,15 @@ struct Effects(B){
 		if(i+1<pushbacks.length) swap(pushbacks[i],pushbacks[$-1]);
 		pushbacks.length=pushbacks.length-1; // TODO: reuse memory?
 	}
+	Array!(FlummoxProjectile!B) flummoxProjectiles;
+	void addEffect(FlummoxProjectile!B flummoxProjectile){
+		flummoxProjectiles~=flummoxProjectile;
+	}
+	void removeFlummoxProjectile(int i){
+		if(i+1<flummoxProjectiles.length) swap(flummoxProjectiles[i],flummoxProjectiles[$-1]);
+		flummoxProjectiles.length=flummoxProjectiles.length-1; // TODO: reuse memory?
+	}
+
 	Array!(RockForm!B) rockForms;
 	void addEffect(RockForm!B rockForm){
 		rockForms~=move(rockForm);
@@ -3736,6 +3756,7 @@ struct Effects(B){
 		assignArray(squallProjectiles,rhs.squallProjectiles);
 		assignArray(squallEffects,rhs.squallEffects);
 		assignArray(pushbacks,rhs.pushbacks);
+		assignArray(flummoxProjectiles,rhs.flummoxProjectiles);
 		assignArray(rockForms,rhs.rockForms);
 		assignArray(stealths,rhs.stealths);
 		assignArray(lifeShields,rhs.lifeShields);
@@ -6619,6 +6640,19 @@ bool pushback(B)(int creature, Vector3f direction,SacSpell!B rangedAttack,Object
 	return true;
 }
 
+void flummoxLoad(B)(int attacker,ObjectState!B state){
+	playSoundAt("walc",attacker,state,2.0f);
+}
+bool flummoxShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	playSoundAt("3tps",position,state,4.0f);
+	auto direction=getShotDirectionWithGravity(accuracy,position,target,rangedAttack,state);
+	auto rotationSpeed=2*pi!float*state.uniform(0.05f,0.2f)/updateFPS;
+	auto rotationAxis=state.uniformDirection();
+	auto rotationUpdate=rotationQuaternion(rotationAxis,rotationSpeed);
+	state.addEffect(FlummoxProjectile!B(attacker,side,intendedTarget,position,direction*rangedAttack.speed,rangedAttack,rotationUpdate,Quaternionf.identity()));
+	return true;
+}
+
 
 enum defaultFaceThreshold=1e-3;
 bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state,float threshold=defaultFaceThreshold){
@@ -7061,6 +7095,9 @@ void loadOnTick(B)(ref MovingObject!B object,SacSpell!B rangedAttack,ObjectState
 			case SpellTag.rangerShoot:
 				rangerLoad(object.id,state);
 				break;
+			case SpellTag.flummoxShoot:
+				flummoxLoad(object.id,state);
+				break;
 			default: break;
 		}
 	}
@@ -7121,6 +7158,9 @@ bool shootOnTick(bool ability=false,B)(ref MovingObject!B object,OrderTarget tar
 					break;
 				case SpellTag.squallShoot:
 					squallShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
+					break;
+				case SpellTag.flummoxShoot:
+					flummoxShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
 					break;
 				// abilities:
 				case SpellTag.blightMites:
@@ -12627,6 +12667,89 @@ bool updatePushback(B)(ref Pushback!B pushback,ObjectState!B state){
 	}
 }
 
+void animateFlummoxProjectile(B)(ref FlummoxProjectile!B flummoxProjectile,Vector3f oldPosition,ObjectState!B state){
+	with(flummoxProjectile){
+		rotation=rotationUpdate*rotation;
+		enum numParticles=2;
+		auto sacParticle=SacParticle!B.get(ParticleType.dust);
+		auto velocity=Vector3f(0.0f,0.0f,0.0f);
+		auto lifetime=31;
+		auto scale=1.5f;
+		auto frame=0;
+		foreach(i;0..numParticles){
+			auto position=oldPosition*((cast(float)numParticles-1-i)/numParticles)+position*(cast(float)(i+1)/numParticles);
+			position+=0.3f*state.uniformDirection();
+			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+		}
+	}
+}
+
+enum flummoxProjectileSize=2.0f; // TODO: ok?
+enum flummoxProjectileSlidingDistance=0.0f;
+static immutable Vector3f[2] flummoxProjectileHitbox=[-0.5f*flummoxProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*flummoxProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
+int flummoxProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
+		return entry.isProjectileObstacle&&(entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side);
+	}
+	return collisionTarget!(flummoxProjectileHitbox,filter)(side,position,state,side,intendedTarget);
+}
+
+void flummoxProjectileExplosion(B)(ref FlummoxProjectile!B flummoxProjectile,ObjectState!B state){
+	playSoundAt("7sms",flummoxProjectile.position,state,4.0f);
+	static bool callback(int target,ObjectState!B state){
+		state.movingObjectById!(stunWithCooldown,()=>false)(target,stunCooldownFrames,state);
+		return true;
+	}
+	with(flummoxProjectile)
+		dealSplashRangedDamageAt!callback(0,rangedAttack,rangedAttack.effectRange,attacker,side,position,state,state);
+	enum numParticles3=100;
+	auto sacParticle3=SacParticle!B.get(ParticleType.rock);
+	foreach(i;0..numParticles3){
+		auto direction=state.uniformDirection();
+		auto velocity=state.uniform(10.0f,20.0f)*direction;
+		auto scale=state.uniform(1.0f,1.5f);
+		auto lifetime=95;
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle3,flummoxProjectile.position,velocity,scale,lifetime,frame));
+	}
+	enum numParticles4=20;
+	auto sacParticle4=SacParticle!B.get(ParticleType.dirt);
+	foreach(i;0..numParticles4){
+		auto direction=state.uniformDirection();
+		auto position=flummoxProjectile.position+direction;
+		auto velocity=Vector3f(0.0f,0.0f,0.0f);
+		auto scale=3.75f;
+		auto frame=state.uniform(2)?0:state.uniform(24);
+		auto lifetime=63-frame;
+		state.addParticle(Particle!B(sacParticle4,position,velocity,scale,lifetime,frame));
+	}
+	// TODO: screen shake
+	// TODO: add scar
+}
+
+bool updateFlummoxProjectile(B)(ref FlummoxProjectile!B flummoxProjectile,ObjectState!B state){
+	with(flummoxProjectile){
+		auto oldPosition=position;
+		position+=velocity/updateFPS;
+		velocity.z-=rangedAttack.fallingAcceleration/updateFPS;
+		rotation=rotationUpdate*rotation;
+		flummoxProjectile.animateFlummoxProjectile(oldPosition,state);
+		auto target=flummoxProjectileCollisionTarget(side,intendedTarget,position,state);
+		if(state.isValidTarget(target)){
+			flummoxProjectile.flummoxProjectileExplosion(state);
+			return false;
+		}
+		if(state.isOnGround(position)){
+			if(position.z<state.getGroundHeight(position)){
+				flummoxProjectile.flummoxProjectileExplosion(state);
+				return false;
+			}
+		}else if(position.z<state.getHeight(position)-rangedAttack.fallLimit)
+			return false;
+		return true;
+	}
+}
+
 
 bool updateRockForm(B)(ref RockForm!B rockForm,ObjectState!B state){
 	with(rockForm){
@@ -13594,6 +13717,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.pushbacks.length;){
 		if(!updatePushback(effects.pushbacks[i],state)){
 			effects.removePushback(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.flummoxProjectiles.length;){
+		if(!updateFlummoxProjectile(effects.flummoxProjectiles[i],state)){
+			effects.removeFlummoxProjectile(i);
 			continue;
 		}
 		i++;

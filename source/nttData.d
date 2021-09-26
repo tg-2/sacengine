@@ -1152,6 +1152,8 @@ enum SpellTag:char[4]{
 	vortickShoot="cita",
 
 	squallShoot="amba",
+
+	flummoxShoot="crba",
 }
 
 enum WizardTag:char[4]{
