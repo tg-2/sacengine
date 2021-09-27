@@ -9923,7 +9923,7 @@ bool updateHeal(B)(ref Heal!B heal,ObjectState!B state){
 	return state.movingObjectById!((ref obj,heal,state){
 		if(!obj.canHeal(state)) return false;
 		obj.heal(heal.healthRegenerationPerFrame,state);
-		if(obj.health(state)==object.creatureStats.maxHealth) return false;
+		if(obj.health(state)==obj.creatureStats.maxHealth) return false;
 		static assert(updateFPS==60);
 		auto hitbox=obj.relativeHitbox;
 		auto dim=hitbox[1]-hitbox[0];
