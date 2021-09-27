@@ -2128,6 +2128,95 @@ struct SacSquallEffect(B){
 	}
 }
 
+struct SacPyromaniacRocket(B){
+	B.Texture texture;
+	B.Material material;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pyro.FLDR/txtr.FLDR/rckt.TXTR"));
+	}
+	B.Mesh[] frames;
+	enum animationDelay=2;
+	enum numFrames=4*animationDelay*updateAnimFactor;
+	auto getFrame(int i){ return frames[i/(updateAnimFactor*animationDelay)]; }
+	static B.Mesh[] createMeshes(){
+		enum nU=1,nV=4;
+		auto meshes=new B.Mesh[](nU*nV);
+		foreach(t,ref mesh;meshes){
+			mesh=B.makeMesh(3*4,3*2);
+			int u=cast(int)t%nU,v=cast(int)t/nU;
+			enum length=2.0f;
+			enum size=0.4f;
+			enum sqrt34=sqrt(0.75f);
+			static immutable Vector3f[3] offsets=[size*Vector3f(0.0f,-1.0f,0.0f),size*Vector3f(sqrt34,0.5f,0.0f),size*Vector3f(-sqrt34,0.5f,0.0f)];
+			int numFaces=0;
+			void addFace(uint[3] face...){
+				mesh.indices[numFaces++]=face;
+			}
+			static Vector3f getCenter(int i){
+				return Vector3f(0.0f,0.0f,length*(i-1));
+			}
+			foreach(j;0..3){
+				foreach(k;0..4){
+					int vertex=4*j+k;
+					int center=(k==1||k==2);
+					auto position=getCenter(center)+((k==2||k==3)?offsets[j]:Vector3f(0.0f,0.0f,0.0f));
+					mesh.vertices[vertex]=position;
+					mesh.texcoords[vertex]=Vector2f(1.0f/nU*(u+((k==1||k==2)?1.0f-0.5f/256:0.5f/256)),1.0f/nV*(v+((k==0||k==1)?1.0f-1.0f/64:0.5f/64)));
+				}
+				int b=4*j;
+				addFace([b+0,b+1,b+2]);
+				addFace([b+2,b+3,b+0]);
+			}
+			assert(numFaces==2*3);
+			mesh.normals[]=Vector3f(0.0f,0.0f,0.0f);
+			B.finalizeMesh(mesh);
+		}
+		return meshes;
+	}
+}
+
+struct SacPoisonDart(B){
+	B.Texture texture;
+	B.Material material;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Char.FLDR/tex_ZERO_.FLDR/hypo.TXTR"));
+	}
+	B.Mesh mesh;
+	static B.Mesh createMesh(){
+		enum nU=1,nV=1;
+		enum t=0;
+		auto mesh=B.makeMesh(3*4,3*2);
+		int u=cast(int)t%nU,v=cast(int)t/nU;
+		enum length=2.0f;
+		enum size=0.8f;
+		enum sqrt34=sqrt(0.75f);
+		static immutable Vector3f[3] offsets=[size*Vector3f(0.0f,-1.0f,0.0f),size*Vector3f(sqrt34,0.5f,0.0f),size*Vector3f(-sqrt34,0.5f,0.0f)];
+		int numFaces=0;
+		void addFace(uint[3] face...){
+			mesh.indices[numFaces++]=face;
+		}
+		static Vector3f getCenter(int i){
+			return Vector3f(0.0f,0.0f,length*(i-1));
+		}
+		foreach(j;0..3){
+			foreach(k;0..4){
+				int vertex=4*j+k;
+				int center=(k==1||k==2);
+				auto position=getCenter(center)+((k==2||k==3)?offsets[j]:Vector3f(0.0f,0.0f,0.0f));
+				mesh.vertices[vertex]=position;
+				mesh.texcoords[vertex]=Vector2f(1.0f/nU*(u+((k==1||k==2)?1.0f-0.5f/256:0.5f/256)),1.0f/nV*(v+((k==0||k==1)?1.0f-1.0f/256:0.5f/256)));
+			}
+			int b=4*j;
+			addFace([b+0,b+1,b+2]);
+			addFace([b+2,b+3,b+0]);
+		}
+		assert(numFaces==2*3);
+		mesh.normals[]=Vector3f(0.0f,0.0f,0.0f);
+		B.finalizeMesh(mesh);
+		return mesh;
+	}
+}
+
 struct SacTether(B){
 	B.Texture texture;
 	B.Material material;

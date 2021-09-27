@@ -356,6 +356,28 @@ struct Renderer(B){
 		auto frames=typeof(return).createMeshes();
 		return SacSquallEffect!B(texture,mat,frames);
 	}
+	SacPyromaniacRocket!B pyromaniacRocket;
+	SacPyromaniacRocket!B createPyromaniacRocket(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Transparent;
+		mat.energy=3.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacPyromaniacRocket!B(texture,mat,frames);
+	}
+	SacPoisonDart!B poisonDart;
+	SacPoisonDart!B createPoisonDart(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Transparent;
+		mat.energy=3.0f;
+		mat.diffuse=texture;
+		auto mesh=typeof(return).createMesh();
+		return SacPoisonDart!B(texture,mat,mesh);
+	}
 	SacLifeShield!B lifeShield;
 	SacLifeShield!B createLifeShield(){
 		enum nU=4,nV=4;
@@ -415,6 +437,8 @@ struct Renderer(B){
 		tube=createTube();
 		vortexEffect=createVortexEffect();
 		squallEffect=createSquallEffect();
+		pyromaniacRocket=createPyromaniacRocket();
+		poisonDart=createPoisonDart();
 		lifeShield=createLifeShield();
 		divineSight=createDivineSight();
 		blightMite=createBlightMite();
@@ -1402,6 +1426,38 @@ struct Renderer(B){
 					}
 					foreach(ref effect;objects.squallEffects.data) renderSquallEffect(effect.position,effect.direction,effect.frame,0.6f,2.0f);
 				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.pyromaniacRockets.length){
+					auto material=self.pyromaniacRocket.material;
+					material.bind(rc);
+					B.disableCulling();
+					scope(success){
+						B.enableCulling();
+						material.unbind(rc);
+					}
+					void renderPyromaniacRocket(Vector3f position,Vector3f direction,int frame){
+						auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),direction); // TODO: precompute this?
+						B.shadelessMaterialBackend.setTransformation(position,rotation,rc);
+						auto mesh=self.pyromaniacRocket.getFrame(frame%self.pyromaniacRocket.numFrames);
+						mesh.render(rc);
+					}
+					foreach(ref effect;objects.pyromaniacRockets.data) renderPyromaniacRocket(effect.position,effect.direction,effect.frame);
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.poisonDarts.length){
+					auto material=self.poisonDart.material;
+					material.bind(rc);
+					B.disableCulling();
+					scope(success){
+						B.enableCulling();
+						material.unbind(rc);
+					}
+					void renderPoisonDart(Vector3f position,Vector3f direction){
+						auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),direction); // TODO: precompute this?
+						B.shadelessMaterialBackend.setTransformation(position,rotation,rc);
+						auto mesh=self.poisonDart.mesh;
+						mesh.render(rc);
+					}
+					foreach(ref effect;objects.poisonDarts.data) renderPoisonDart(effect.position,effect.direction);
+				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.lifeShields.length){
 					auto material=self.lifeShield.material;
 					material.bind(rc);
@@ -1409,7 +1465,7 @@ struct Renderer(B){
 					scope(success){
 						B.enableCulling();
 						material.unbind(rc);
-						}
+					}
 					foreach(j;0..objects.lifeShields.length){
 						auto target=objects.lifeShields[j].target;
 						auto positionRotationBoxSize=state.movingObjectById!((ref obj)=>tuple(center(obj),obj.rotation,boxSize(obj.sacObject.largeHitbox(Quaternionf.identity(),obj.animationState,obj.frame/updateAnimFactor))), function Tuple!(Vector3f,Quaternionf,Vector3f)(){ return typeof(return).init; })(target);

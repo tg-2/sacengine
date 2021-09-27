@@ -507,6 +507,12 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Pus
 void serialize(alias sink,B)(ref FlummoxProjectile!B flummoxProjectile){ serializeStruct!sink(flummoxProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==FlummoxProjectile!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref PyromaniacRocket!B pyromaniacRocket){ serializeStruct!sink(pyromaniacRocket); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==PyromaniacRocket!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref PoisonDart!B poisonDart){ serializeStruct!sink(poisonDart); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==PoisonDart!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref RockForm!B rockForm){ serializeStruct!sink(rockForm); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==RockForm!B)){ deserializeStruct(result,state,data); }
 

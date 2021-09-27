@@ -1154,6 +1154,9 @@ enum SpellTag:char[4]{
 	squallShoot="amba",
 
 	flummoxShoot="crba",
+	pyromaniacShoot="lffa",
+
+	deadeyeShoot="lfda",
 }
 
 enum WizardTag:char[4]{

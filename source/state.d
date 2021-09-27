@@ -2013,6 +2013,7 @@ struct Fire(B){
 	float manaDrainPerFrame=0.0f;
 	int attacker=0;
 	int side=-1;
+	DamageMod damageMod;
 }
 struct ManaDrain(B){
 	int wizard;
@@ -2816,6 +2817,26 @@ struct FlummoxProjectile(B){
 	Quaternionf rotation;
 }
 
+struct PyromaniacRocket(B){
+	int attacker;
+	int side;
+	int intendedTarget;
+	Vector3f position;
+	Vector3f direction;
+	SacSpell!B rangedAttack;
+	float remainingDistance;
+	int frame=0;
+}
+
+struct PoisonDart(B){
+	int attacker;
+	int side;
+	int intendedTarget;
+	Vector3f position;
+	Vector3f direction;
+	SacSpell!B rangedAttack;
+	float remainingDistance;
+}
 
 enum RockFormStatus{ growing, stationary, shrinking }
 struct RockForm(B){
@@ -3602,6 +3623,22 @@ struct Effects(B){
 		if(i+1<flummoxProjectiles.length) swap(flummoxProjectiles[i],flummoxProjectiles[$-1]);
 		flummoxProjectiles.length=flummoxProjectiles.length-1; // TODO: reuse memory?
 	}
+	Array!(PyromaniacRocket!B) pyromaniacRockets;
+	void addEffect(PyromaniacRocket!B pyromaniacRocket){
+		pyromaniacRockets~=pyromaniacRocket;
+	}
+	void removePyromaniacRocket(int i){
+		if(i+1<pyromaniacRockets.length) pyromaniacRockets[i]=move(pyromaniacRockets[$-1]);
+		pyromaniacRockets.length=pyromaniacRockets.length-1;
+	}
+	Array!(PoisonDart!B) poisonDarts;
+	void addEffect(PoisonDart!B poisonDart){
+		poisonDarts~=poisonDart;
+	}
+	void removePoisonDart(int i){
+		if(i+1<poisonDarts.length) poisonDarts[i]=move(poisonDarts[$-1]);
+		poisonDarts.length=poisonDarts.length-1;
+	}
 	// abilities
 	Array!(RockForm!B) rockForms;
 	void addEffect(RockForm!B rockForm){
@@ -3783,6 +3820,8 @@ struct Effects(B){
 		assignArray(squallEffects,rhs.squallEffects);
 		assignArray(pushbacks,rhs.pushbacks);
 		assignArray(flummoxProjectiles,rhs.flummoxProjectiles);
+		assignArray(pyromaniacRockets,rhs.pyromaniacRockets);
+		assignArray(poisonDarts,rhs.poisonDarts);
 		assignArray(rockForms,rhs.rockForms);
 		assignArray(stealths,rhs.stealths);
 		assignArray(lifeShields,rhs.lifeShields);
@@ -5129,15 +5168,26 @@ void healFromDrain(B)(int attacker,float actualDamage,ObjectState!B state){
 		return state.movingObjectById!(healFromDrain,(){})(attacker,actualDamage,state);
 }
 
-float dealDamage(T,B)(ref T object,float damage,int attacker,int attackingSide,ObjectState!B state)if(is(T==MovingObject!B)||is(T==Building!B)){
+enum DamageMod{
+	none=0,
+	fall=1<<0,
+	peirceShield=1<<1,
+	lightning=1<<2,
+	ignite=1<<3,
+	// TODO: treat those as modifiers to cut down on pointless code duplication:
+	// ranged=...
+	// splash=...
+}
+
+float dealDamage(T,B)(ref T object,float damage,int attacker,int attackingSide,DamageMod damageMod,ObjectState!B state)if(is(T==MovingObject!B)||is(T==Building!B)){
 	auto actualDamage=damage;
 	static if(is(T==MovingObject!B)){
 		if(object.id==attacker)
 			if(object.isGuardian) actualDamage*=1.5f;
 	}
 	if(object.id!=attacker&&state.isValidTarget(attacker,TargetType.creature))
-		return state.movingObjectById!((ref atk,obj,dmg,state)=>dealDamage(*obj,dmg,atk,state),()=>0.0f)(attacker,&object,actualDamage,state);
-	return dealDamage(object,actualDamage,attackingSide,state);
+		return state.movingObjectById!((ref atk,obj,dmg,damageMod,state)=>dealDamage(*obj,dmg,atk,damageMod,state),()=>0.0f)(attacker,&object,actualDamage,damageMod,state);
+	return dealDamage(object,actualDamage,attackingSide,damageMod,state);
 }
 
 bool canDamage(B)(ref MovingObject!B object,ObjectState!B state){
@@ -5149,10 +5199,10 @@ bool canDamage(B)(ref MovingObject!B object,ObjectState!B state){
 	}
 }
 
-float dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B attacker,ObjectState!B state){
+float dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B attacker,DamageMod damageMod,ObjectState!B state){
 	auto actualDamage=damage;
 	if(attacker.isGuardian) actualDamage*=1.5f; // TODO: apply twice for poison damage
-	actualDamage=dealDamage(object,actualDamage,attacker.side,state);
+	actualDamage=dealDamage(object,actualDamage,attacker.side,damageMod,state);
 	attacker.healFromDrain(actualDamage,state);
 	return actualDamage;
 }
@@ -5177,15 +5227,17 @@ float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,
 		object.kill(state);
 	return actualDamage;
 }
-float dealDamage(B)(ref MovingObject!B object,float damage,int attackingSide,ObjectState!B state){
+float dealDamage(B)(ref MovingObject!B object,float damage,int attackingSide,DamageMod damageMod,ObjectState!B state){
 	if(!object.canDamage(state)) return 0.0f;
 	auto damageMultiplier=1.0f;
-	if(object.creatureStats.effects.lifeShield) damageMultiplier*=0.5f;
-	if(object.creatureState.mode==CreatureMode.rockForm) damageMultiplier*=0.05f;
-	if(object.creatureStats.effects.petrified) damageMultiplier*=0.2f;
-	if(object.creatureStats.effects.skinOfStone) damageMultiplier*=0.25f;
-	if(object.creatureStats.effects.airShield) damageMultiplier*=0.5f;
-	if(object.creatureStats.effects.protectiveSwarm) damageMultiplier*=0.75f;
+	if(!(damageMod&DamageMod.peirceShield)){
+		if(object.creatureStats.effects.lifeShield) damageMultiplier*=0.5f;
+		if(object.creatureState.mode==CreatureMode.rockForm) damageMultiplier*=0.05f;
+		if(object.creatureStats.effects.petrified) damageMultiplier*=0.2f;
+		if(object.creatureStats.effects.skinOfStone) damageMultiplier*=0.25f;
+		if(object.creatureStats.effects.airShield) damageMultiplier*=0.5f;
+		if(object.creatureStats.effects.protectiveSwarm) damageMultiplier*=0.75f;
+	}
 	damageMultiplier*=1.2f^^object.creatureStats.effects.numSlimes;
 	// TODO: bleed, in case of petrification, bleed rocks instead
 	return dealRawDamage(object,damage*damageMultiplier,attackingSide,state);
@@ -5202,7 +5254,7 @@ bool canDamage(B)(ref Building!B building,ObjectState!B state){
 }
 
 // TODO: get rid of code duplication in guardian damage procedures
-float damageGuardians(B)(ref Building!B building,float damage,int attackingSide,ObjectState!B state){
+float damageGuardians(B)(ref Building!B building,float damage,int attackingSide,DamageMod damageMod,ObjectState!B state){
 	if(building.guardianIds.length){
 		auto n=building.guardianIds.length;
 		auto splitDamage=damage/max(n,0.5f*(n+3));
@@ -5210,19 +5262,19 @@ float damageGuardians(B)(ref Building!B building,float damage,int attackingSide,
 		auto attachPosition=building.guardianAttachPosition(state);
 		bool ok=false;
 		foreach(id;building.guardianIds.data){
-			actualDamage+=state.movingObjectById!((ref obj,splitDamage,attackingSide,attachPosition,state,ok){
+			actualDamage+=state.movingObjectById!((ref obj,splitDamage,attackingSide,attachPosition,damageMod,state,ok){
 				if(!obj.isValidGuard(state)) return 0.0f;
 				auto attackDirection=obj.center-attachPosition;
 				obj.damageAnimation(attackDirection,state,false);
 				*ok=true;
-				return dealDamage(obj,splitDamage,attackingSide,state);
-			},()=>0.0f)(id,splitDamage,attackingSide,attachPosition,state,&ok);
+				return dealDamage(obj,splitDamage,attackingSide,damageMod,state);
+			},()=>0.0f)(id,splitDamage,attackingSide,attachPosition,damageMod,state,&ok);
 		}
 		if(ok) return actualDamage;
 	}
 	return float.nan;
 }
-float damageGuardians(B)(ref Building!B building,float damage,ref MovingObject!B attacker,ObjectState!B state){
+float damageGuardians(B)(ref Building!B building,float damage,ref MovingObject!B attacker,DamageMod damageMod,ObjectState!B state){
 	if(building.guardianIds.length){
 		auto n=building.guardianIds.length;
 		auto splitDamage=damage/max(n,0.5f*(n+3));
@@ -5235,23 +5287,23 @@ float damageGuardians(B)(ref Building!B building,float damage,ref MovingObject!B
 					continue;
 				auto attackDirection=attacker.center-attachPosition;
 				attacker.damageAnimation(attackDirection,state,false);
-				actualDamage+=attacker.dealDamage(splitDamage,attacker,state);
+				actualDamage+=attacker.dealDamage(splitDamage,attacker,damageMod,state);
 				ok=true;
 			}else{
-				actualDamage+=state.movingObjectById!((ref obj,splitDamage,attacker,attachPosition,state,ok){
+				actualDamage+=state.movingObjectById!((ref obj,splitDamage,attacker,attachPosition,damageMod,state,ok){
 					if(!obj.isValidGuard(state)) return 0.0f;
 					auto attackDirection=obj.center-attachPosition;
 					obj.damageAnimation(attackDirection,state,false);
 					*ok=true;
-					return dealDamage(obj,splitDamage,*attacker,state);
-				},()=>0.0f)(id,splitDamage,&attacker,attachPosition,state,&ok);
+					return dealDamage(obj,splitDamage,*attacker,damageMod,state);
+				},()=>0.0f)(id,splitDamage,&attacker,attachPosition,damageMod,state,&ok);
 			}
 		}
 		if(ok) return actualDamage;
 	}
 	return float.nan;
 }
-float meleeDamageGuardians(B)(ref Building!B building,float damage,ref MovingObject!B attacker,ObjectState!B state){
+float meleeDamageGuardians(B)(ref Building!B building,float damage,ref MovingObject!B attacker,DamageMod damageMod,ObjectState!B state){
 	if(building.guardianIds.length){
 		auto n=building.guardianIds.length;
 		auto splitDamage=damage/max(n,0.5f*(n+3));
@@ -5264,25 +5316,25 @@ float meleeDamageGuardians(B)(ref Building!B building,float damage,ref MovingObj
 					continue;
 				auto attackDirection=attacker.center-attachPosition;
 				attacker.damageAnimation(attackDirection,state,false);
-				actualDamage+=attacker.dealDamage(splitDamage,attacker,state);
+				actualDamage+=attacker.dealDamage(splitDamage,attacker,damageMod,state);
 				ok=true;
 			}else{
-				actualDamage+=state.movingObjectById!((ref obj,splitDamage,attacker,attachPosition,state,ok){
+				actualDamage+=state.movingObjectById!((ref obj,splitDamage,attacker,attachPosition,damageMod,state,ok){
 					if(!obj.isValidGuard(state)) return 0.0f;
 					auto attackDirection=obj.center-attachPosition;
 					obj.damageAnimation(attackDirection,state,false);
 					*ok=true;
 					auto actualDamage=splitDamage*obj.creatureStats.meleeResistance;
 					actualDamage*=2.0f; // compensates for higher guardian resistance to all damage
-					return dealDamage(obj,actualDamage,*attacker,state);
-				},()=>0.0f)(id,splitDamage,&attacker,attachPosition,state,&ok);
+					return dealDamage(obj,actualDamage,*attacker,damageMod,state);
+				},()=>0.0f)(id,splitDamage,&attacker,attachPosition,damageMod,state,&ok);
 			}
 		}
 		if(ok) return actualDamage;
 	}
 	return float.nan;
 }
-float spellDamageGuardians(B)(ref Building!B building,float damage,int attacker,int attackingSide,ObjectState!B state){
+float spellDamageGuardians(B)(ref Building!B building,float damage,int attacker,int attackingSide,DamageMod damageMod,ObjectState!B state){
 	if(building.guardianIds.length){
 		auto n=building.guardianIds.length;
 		auto splitDamage=damage/max(n,0.5f*(n+3));
@@ -5290,20 +5342,20 @@ float spellDamageGuardians(B)(ref Building!B building,float damage,int attacker,
 		auto attachPosition=building.guardianAttachPosition(state);
 		bool ok=false;
 		foreach(id;building.guardianIds.data){
-			actualDamage+=state.movingObjectById!((ref obj,splitDamage,attacker,attackingSide,attachPosition,state,ok){
+			actualDamage+=state.movingObjectById!((ref obj,splitDamage,attacker,attackingSide,attachPosition,damageMod,state,ok){
 				if(!obj.isValidGuard(state)) return 0.0f;
 				auto attackDirection=obj.center-attachPosition;
 				obj.damageAnimation(attackDirection,state,false);
 				*ok=true;
 				auto actualDamage=splitDamage*obj.creatureStats.directSpellResistance;
-				return dealDamage(obj,actualDamage,attacker,attackingSide,state);
-			},()=>0.0f)(id,splitDamage,attacker,attackingSide,attachPosition,state,&ok);
+				return dealDamage(obj,actualDamage,attacker,attackingSide,damageMod,state);
+			},()=>0.0f)(id,splitDamage,attacker,attackingSide,attachPosition,damageMod,state,&ok);
 		}
 		if(ok) return actualDamage;
 	}
 	return float.nan;
 }
-float splashSpellDamageGuardians(B)(ref Building!B building,float damage,int attacker,int attackingSide,ObjectState!B state){
+float splashSpellDamageGuardians(B)(ref Building!B building,float damage,int attacker,int attackingSide,DamageMod damageMod,ObjectState!B state){
 	if(building.guardianIds.length){
 		auto n=building.guardianIds.length;
 		auto splitDamage=damage/max(n,0.5f*(n+3));
@@ -5311,20 +5363,20 @@ float splashSpellDamageGuardians(B)(ref Building!B building,float damage,int att
 		auto attachPosition=building.guardianAttachPosition(state);
 		bool ok=false;
 		foreach(id;building.guardianIds.data){
-			actualDamage+=state.movingObjectById!((ref obj,splitDamage,attacker,attackingSide,attachPosition,state,ok){
+			actualDamage+=state.movingObjectById!((ref obj,splitDamage,attacker,attackingSide,attachPosition,damageMod,state,ok){
 				if(!obj.isValidGuard(state)) return 0.0f;
 				auto attackDirection=obj.center-attachPosition;
 				obj.damageAnimation(attackDirection,state,false);
 				*ok=true;
 				auto actualDamage=splitDamage*obj.creatureStats.splashSpellResistance;
-				return dealDamage(obj,actualDamage,attacker,attackingSide,state);
-			},()=>0.0f)(id,splitDamage,attacker,attackingSide,attachPosition,state,&ok);
+				return dealDamage(obj,actualDamage,attacker,attackingSide,damageMod,state);
+			},()=>0.0f)(id,splitDamage,attacker,attackingSide,attachPosition,damageMod,state,&ok);
 		}
 		if(ok) return actualDamage;
 	}
 	return float.nan;
 }
-float rangedDamageGuardians(B)(ref Building!B building,float damage,int attacker,int attackingSide,ObjectState!B state){
+float rangedDamageGuardians(B)(ref Building!B building,float damage,int attacker,int attackingSide,DamageMod damageMod,ObjectState!B state){
 	if(building.guardianIds.length){
 		auto n=building.guardianIds.length;
 		auto splitDamage=damage/max(n,0.5f*(n+3));
@@ -5332,20 +5384,20 @@ float rangedDamageGuardians(B)(ref Building!B building,float damage,int attacker
 		auto attachPosition=building.guardianAttachPosition(state);
 		bool ok=false;
 		foreach(id;building.guardianIds.data){
-			actualDamage+=state.movingObjectById!((ref obj,splitDamage,attacker,attackingSide,attachPosition,state,ok){
+			actualDamage+=state.movingObjectById!((ref obj,splitDamage,attacker,attackingSide,attachPosition,damageMod,state,ok){
 				if(!obj.isValidGuard(state)) return 0.0f;
 				auto attackDirection=obj.center-attachPosition;
 				obj.damageAnimation(attackDirection,state,false);
 				*ok=true;
 				auto actualDamage=splitDamage*obj.creatureStats.directRangedResistance;
-				return dealDamage(obj,actualDamage,attacker,attackingSide,state);
-			},()=>0.0f)(id,splitDamage,attacker,attackingSide,attachPosition,state,&ok);
+				return dealDamage(obj,actualDamage,attacker,attackingSide,damageMod,state);
+			},()=>0.0f)(id,splitDamage,attacker,attackingSide,attachPosition,damageMod,state,&ok);
 		}
 		if(ok) return actualDamage;
 	}
 	return float.nan;
 }
-float splashRangedDamageGuardians(B)(ref Building!B building,float damage,int attacker,int attackingSide,ObjectState!B state){
+float splashRangedDamageGuardians(B)(ref Building!B building,float damage,int attacker,int attackingSide,DamageMod damageMod,ObjectState!B state){
 	if(building.guardianIds.length){
 		auto n=building.guardianIds.length;
 		auto splitDamage=damage/max(n,0.5f*(n+3));
@@ -5353,28 +5405,28 @@ float splashRangedDamageGuardians(B)(ref Building!B building,float damage,int at
 		auto attachPosition=building.guardianAttachPosition(state);
 		bool ok=false;
 		foreach(id;building.guardianIds.data){
-			actualDamage+=state.movingObjectById!((ref obj,splitDamage,attacker,attackingSide,attachPosition,state,ok){
+			actualDamage+=state.movingObjectById!((ref obj,splitDamage,attacker,attackingSide,attachPosition,damageMod,state,ok){
 				if(!obj.isValidGuard(state)) return 0.0f;
 				auto attackDirection=obj.center-attachPosition;
 				*ok=true;
 				obj.damageAnimation(attackDirection,state,false);
 				auto actualDamage=splitDamage*obj.creatureStats.splashRangedResistance;
-				return dealDamage(obj,actualDamage,attacker,attackingSide,state);
-			},()=>0.0f)(id,splitDamage,attacker,attackingSide,attachPosition,state,&ok);
+				return dealDamage(obj,actualDamage,attacker,attackingSide,damageMod,state);
+				},()=>0.0f)(id,splitDamage,attacker,attackingSide,attachPosition,damageMod,state,&ok);
 		}
 		if(ok) return actualDamage;
 	}
 	return float.nan;
 }
 
-float dealDamage(B)(ref Building!B building,float damage,ref MovingObject!B attacker,ObjectState!B state){
-	auto guardianDamage=damageGuardians(building,damage,attacker,state);
+float dealDamage(B)(ref Building!B building,float damage,ref MovingObject!B attacker,DamageMod damageMod,ObjectState!B state){
+	auto guardianDamage=damageGuardians(building,damage,attacker,damageMod,state);
 	if(!isNaN(guardianDamage)) return guardianDamage;
-	auto actualDamage=dealDamage(building,damage,attacker.side,state);
+	auto actualDamage=dealDamage(building,damage,attacker.side,damageMod,state);
 	return actualDamage;
 }
-float dealDamage(B)(ref Building!B building,float damage,int attackingSide,ObjectState!B state){
-	auto guardianDamage=damageGuardians(building,damage,attackingSide,state);
+float dealDamage(B)(ref Building!B building,float damage,int attackingSide,DamageMod damageMod,ObjectState!B state){
+	auto guardianDamage=damageGuardians(building,damage,attackingSide,damageMod,state);
 	if(!isNaN(guardianDamage)) return guardianDamage;
 	if(!building.canDamage(state)) return 0.0f;
 	auto actualDamage=min(building.health,damage*state.sideDamageMultiplier(attackingSide,building.side));
@@ -5414,7 +5466,7 @@ float meleeDistanceSqr(Vector3f[2] objectHitbox,Vector3f[2] attackerHitbox){
 	return boxBoxDistanceSqr(objectHitbox,attackerHitbox);
 }
 
-void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,float damageFactor,ObjectState!B state){
+void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,float damageFactor,DamageMod damageMod,ObjectState!B state){
 	auto damage=damageFactor*attacker.meleeStrength/attacker.numAttackTicks; // TODO: figure this out
 	auto objectHitbox=object.hitbox, attackerHitbox=attacker.meleeHitbox, attackerSizeSqr=0.25f*boxSize(attackerHitbox).lengthsqr;
 	auto distanceSqr=meleeDistanceSqr(objectHitbox,attackerHitbox);
@@ -5428,7 +5480,7 @@ void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,fl
 	bool fromSide=!!direction.among(DamageDirection.left,DamageDirection.right);
 	if(fromBehind) actualDamage*=2.0f;
 	if(object.isGuardian) actualDamage*=2.0f; // compensates for higher guardian resistance to all damage
-	object.dealDamage(actualDamage,attacker,state);
+	object.dealDamage(actualDamage,attacker,damageMod,state);
 	if(stunBehavior==StunBehavior.always || fromBehind && stunBehavior==StunBehavior.fromBehind){
 		if(actualDamage>=0.5f*damage){
 			playSoundTypeAt(attacker.sacObject,attacker.id,SoundType.stun,state);
@@ -5448,154 +5500,155 @@ void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,fl
 	playSoundTypeAt(attacker.sacObject,attacker.id,SoundType.hit,state);
 }
 
-float dealMeleeDamage(B)(ref StaticObject!B object,ref MovingObject!B attacker,float damageFactor,ObjectState!B state){
-	return state.buildingById!((ref Building!B building,MovingObject!B* attacker,float damageFactor,ObjectState!B state){
-		return building.dealMeleeDamage(*attacker,damageFactor,state);
-	},()=>0.0f)(object.buildingId,&attacker,damageFactor,state);
+float dealMeleeDamage(B)(ref StaticObject!B object,ref MovingObject!B attacker,float damageFactor,DamageMod damageMod,ObjectState!B state){
+	return state.buildingById!((ref Building!B building,MovingObject!B* attacker,float damageFactor,DamageMod damageMod,ObjectState!B state){
+		return building.dealMeleeDamage(*attacker,damageFactor,damageMod,state);
+	},()=>0.0f)(object.buildingId,&attacker,damageFactor,damageMod,state);
 }
 
-float dealMeleeDamage(B)(ref Building!B building,ref MovingObject!B attacker,float damageFactor,ObjectState!B state){
+float dealMeleeDamage(B)(ref Building!B building,ref MovingObject!B attacker,float damageFactor,DamageMod damageMod,ObjectState!B state){
 	auto damage=damageFactor*attacker.meleeStrength/attacker.numAttackTicks;
-	auto guardianDamage=meleeDamageGuardians(building,damage,attacker,state);
+	auto guardianDamage=meleeDamageGuardians(building,damage,attacker,damageMod,state);
 	if(!isNaN(guardianDamage)) return guardianDamage;
 	auto actualDamage=damage*building.meleeResistance*attacker.sacObject.buildingMeleeDamageMultiplier;
 	if(building.guardianIds.length) actualDamage*=2.0f; // compensates for higher resistances of guardians
-	actualDamage=building.dealDamage(actualDamage,attacker,state);
+	actualDamage=building.dealDamage(actualDamage,attacker,damageMod,state);
 	playSoundTypeAt(attacker.sacObject,attacker.id,SoundType.hitWall,state);
 	return actualDamage;
 }
 
-float dealSpellDamage(B)(ref MovingObject!B object,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
+float dealSpellDamage(B)(ref MovingObject!B object,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,DamageMod damageMod,ObjectState!B state){
 	auto damage=spell.amount;
-	return dealSpellDamage(object,damage,attacker,attackerSide,attackDirection,state);
+	return dealSpellDamage(object,damage,attacker,attackerSide,attackDirection,damageMod,state);
 }
-float dealSpellDamage(B)(ref MovingObject!B object,float damage,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
+float dealSpellDamage(B)(ref MovingObject!B object,float damage,int attacker,int attackerSide,Vector3f attackDirection,DamageMod damageMod,ObjectState!B state){
 	auto actualDamage=damage*object.creatureStats.directSpellResistance;
 	object.damageAnimation(attackDirection,state);
-	actualDamage=object.dealDamage(actualDamage,attacker,attackerSide,state);
+	actualDamage=object.dealDamage(actualDamage,attacker,attackerSide,damageMod,state);
 	healFromDrain(attacker,actualDamage,state);
 	return actualDamage;
 }
 
-float dealSpellDamage(B)(ref MovingObject!B object,float damage,int attacker,int attackerSide,ObjectState!B state){
+float dealSpellDamage(B)(ref MovingObject!B object,float damage,int attacker,int attackerSide,DamageMod damageMod, ObjectState!B state){
 	auto actualDamage=damage*object.creatureStats.directSpellResistance;
-	actualDamage=object.dealDamage(actualDamage,attacker,attackerSide,state);
+	actualDamage=object.dealDamage(actualDamage,attacker,attackerSide,damageMod,state);
 	healFromDrain(attacker,actualDamage,state);
 	return actualDamage;
 }
 
 
-float dealSpellDamage(B)(ref StaticObject!B object,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
-	return dealSpellDamage(object,spell.amount,attacker,attackerSide,attackDirection,state);
+float dealSpellDamage(B)(ref StaticObject!B object,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,DamageMod damageMod,ObjectState!B state){
+	return dealSpellDamage(object,spell.amount,attacker,attackerSide,attackDirection,damageMod,state);
 }
-float dealSpellDamage(B)(ref StaticObject!B object,float damage,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
-	return state.buildingById!(dealSpellDamage,()=>0.0f)(object.buildingId,damage,attacker,attackerSide,attackDirection,state);
+float dealSpellDamage(B)(ref StaticObject!B object,float damage,int attacker,int attackerSide,Vector3f attackDirection,DamageMod damageMod,ObjectState!B state){
+	return state.buildingById!(dealSpellDamage,()=>0.0f)(object.buildingId,damage,attacker,attackerSide,attackDirection,damageMod,state);
 }
-float dealSpellDamage(B)(ref StaticObject!B object,float damage,int attacker,int attackerSide,ObjectState!B state){
-	return state.buildingById!(dealSpellDamage,()=>0.0f)(object.buildingId,damage,attacker,attackerSide,state);
+float dealSpellDamage(B)(ref StaticObject!B object,float damage,int attacker,int attackerSide,DamageMod damageMod,ObjectState!B state){
+	return state.buildingById!(dealSpellDamage,()=>0.0f)(object.buildingId,damage,attacker,attackerSide,damageMod,state);
 }
 
-float dealSpellDamage(B)(ref Building!B building,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
+float dealSpellDamage(B)(ref Building!B building,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,DamageMod damageMod,ObjectState!B state){
 	auto damage=spell.amount;
-	return dealSpellDamage(spell,attacker,attackerSide,attackDirectionState);
+	return dealSpellDamage(spell,attacker,attackerSide,attackDirection,damageMod,state);
 }
 
-float dealSpellDamage(B)(ref Building!B building,float damage,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
-	return dealSpellDamage(building,damage,attacker,attackerSide,state);
+float dealSpellDamage(B)(ref Building!B building,float damage,int attacker,int attackerSide,Vector3f attackDirection,DamageMod damageMod,ObjectState!B state){
+	return dealSpellDamage(building,damage,attacker,attackerSide,damageMod,state);
 }
 
-float dealSpellDamage(B)(ref Building!B building,float damage,int attacker,int attackerSide,ObjectState!B state){
-	auto guardianDamage=spellDamageGuardians(building,damage,attacker,attackerSide,state);
+float dealSpellDamage(B)(ref Building!B building,float damage,int attacker,int attackerSide,DamageMod damageMod,ObjectState!B state){
+	auto guardianDamage=spellDamageGuardians(building,damage,attacker,attackerSide,damageMod,state);
 	if(!isNaN(guardianDamage)) return guardianDamage;
 	auto actualDamage=damage*building.directSpellResistance;
-	return building.dealDamage(actualDamage,attacker,attackerSide,state);
+	return building.dealDamage(actualDamage,attacker,attackerSide,damageMod,state);
 }
 
 
-float dealSpellDamage(B)(int target,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
+float dealSpellDamage(B)(int target,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,DamageMod damageMod,ObjectState!B state){
 	if(!state.isValidTarget(target)) return 0.0f;
-	return state.objectById!dealSpellDamage(target,spell,attacker,attackerSide,attackDirection,state);
+	return state.objectById!dealSpellDamage(target,spell,attacker,attackerSide,attackDirection,damageMod,state);
 }
 
-float dealSplashSpellDamage(B)(ref MovingObject!B object,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
+float dealSplashSpellDamage(B)(ref MovingObject!B object,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,float distance,DamageMod damageMod,ObjectState!B state){
 	auto damage=spell.amount*(spell.damageRange>0.0f?max(0.0f,1.0f-distance/spell.damageRange):1.0f);
 	auto actualDamage=damage*object.creatureStats.splashSpellResistance;
 	object.damageAnimation(attackDirection,state);
-	actualDamage=object.dealDamage(actualDamage,attacker,attackerSide,state);
+	actualDamage=object.dealDamage(actualDamage,attacker,attackerSide,damageMod,state);
 	healFromDrain(attacker,actualDamage,state);
 	return actualDamage;
 }
 
-float dealSplashSpellDamage(B)(ref StaticObject!B object,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
-	return state.buildingById!(dealSplashSpellDamage,()=>0.0f)(object.buildingId,spell,attacker,attackerSide,attackDirection,distance,state);
+float dealSplashSpellDamage(B)(ref StaticObject!B object,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,float distance,DamageMod damageMod,ObjectState!B state){
+	return state.buildingById!(dealSplashSpellDamage,()=>0.0f)(object.buildingId,spell,attacker,attackerSide,attackDirection,distance,damageMod,state);
 }
 
-float dealSplashSpellDamage(B)(ref Building!B building,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
+float dealSplashSpellDamage(B)(ref Building!B building,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,float distance,DamageMod damageMod,ObjectState!B state){
 	auto damage=spell.amount*(spell.damageRange>0.0f?max(0.0f,1.0f-distance/spell.damageRange):1.0f);
-	auto guardianDamage=splashSpellDamageGuardians(building,damage,attacker,attackerSide,state);
+	auto guardianDamage=splashSpellDamageGuardians(building,damage,attacker,attackerSide,damageMod,state);
 	if(!isNaN(guardianDamage)) return guardianDamage;
 	auto actualDamage=damage*building.splashSpellResistance;
-	return building.dealDamage(actualDamage,attacker,attackerSide,state);
+	return building.dealDamage(actualDamage,attacker,attackerSide,damageMod,state);
 }
 
-float dealSplashSpellDamage(B)(int target,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
+float dealSplashSpellDamage(B)(int target,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,float distance,DamageMod damageMod,ObjectState!B state){
 	if(state.isValidBuilding(target))
-		return state.buildingById!(dealSplashSpellDamage,()=>0.0f)(target,spell,attacker,attackerSide,attackDirection,distance,state);
+		return state.buildingById!(dealSplashSpellDamage,()=>0.0f)(target,spell,attacker,attackerSide,attackDirection,distance,damageMod,state);
 	if(!state.isValidTarget(target)) return 0.0f;
-	return state.objectById!dealSplashSpellDamage(target,spell,attacker,attackerSide,attackDirection,distance,state);
+	return state.objectById!dealSplashSpellDamage(target,spell,attacker,attackerSide,attackDirection,distance,damageMod,state);
 }
 
-float dealSplashSpellDamageAt(alias callback=(id)=>true,B,T...)(int directTarget,SacSpell!B spell,float radius,int attacker,int attackerSide,Vector3f position,ObjectState!B state,T args){
-	static void dealDamage(ProximityEntry target,ObjectState!B state,int directTarget,SacSpell!B spell,int attacker,int attackerSide,Vector3f position,float* sum,float radius,T args){
+float dealSplashSpellDamageAt(alias callback=(id)=>true,B,T...)(int directTarget,SacSpell!B spell,float radius,int attacker,int attackerSide,Vector3f position,DamageMod damageMod,ObjectState!B state,T args){
+	static void dealDamage(ProximityEntry target,ObjectState!B state,int directTarget,SacSpell!B spell,int attacker,int attackerSide,Vector3f position,float* sum,float radius,DamageMod damageMod,T args){
 		if(target.id==directTarget) return;
 		auto distance=boxPointDistance(target.hitbox,position);
 		if(distance>radius) return;
 		auto attackDirection=state.objectById!((obj)=>obj.center)(target.id)-position;
 		if(callback(target.id,args))
-			*sum+=dealSplashSpellDamage(target.id,spell,attacker,attackerSide,attackDirection,distance,state);
+			*sum+=dealSplashSpellDamage(target.id,spell,attacker,attackerSide,attackDirection,distance,damageMod,state);
 	}
 	auto offset=Vector3f(radius,radius,radius);
 	Vector3f[2] hitbox=[position-offset,position+offset];
 	float sum=0.0f;
-	collisionTargets!(dealDamage,None,true)(hitbox,state,directTarget,spell,attacker,attackerSide,position,&sum,radius,args);
+	collisionTargets!(dealDamage,None,true)(hitbox,state,directTarget,spell,attacker,attackerSide,position,&sum,radius,damageMod,args);
 	return sum;
 }
 
-float dealRangedDamage(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
+float dealRangedDamage(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,DamageMod damageMod,ObjectState!B state){
 	auto damage=rangedAttack.amount;
-	return dealRangedDamage(object,damage,attacker,attackerSide,attackDirection,state);
+	return dealRangedDamage(object,damage,attacker,attackerSide,attackDirection,damageMod,state);
 }
-
-float dealRangedDamage(B)(ref MovingObject!B object,float damage,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
+float dealRangedDamage(B)(ref MovingObject!B object,float damage,int attacker,int attackerSide,Vector3f attackDirection,DamageMod damageMod,ObjectState!B state){
 	auto actualDamage=damage*object.creatureStats.directRangedResistance;
 	object.damageAnimation(attackDirection,state);
-	actualDamage=object.dealDamage(actualDamage,attacker,attackerSide,state);
+	actualDamage=object.dealDamage(actualDamage,attacker,attackerSide,damageMod,state);
 	healFromDrain(attacker,actualDamage,state);
 	return actualDamage;
 }
 
-float dealRangedDamage(B)(ref MovingObject!B object,float damage,int attacker,int attackerSide,ObjectState!B state){
+float dealRangedDamage(B)(ref MovingObject!B object,float damage,int attacker,int attackerSide,DamageMod damageMod,ObjectState!B state){
 	auto actualDamage=damage*object.creatureStats.directRangedResistance;
-	actualDamage=object.dealDamage(actualDamage,attacker,attackerSide,state);
+	actualDamage=object.dealDamage(actualDamage,attacker,attackerSide,damageMod,state);
 	healFromDrain(attacker,actualDamage,state);
 	return actualDamage;
 }
 
-float dealPoisonDamage(B)(ref MovingObject!B object,float damage,int attacker,int attackerSide,ObjectState!B state){
+float dealPoisonDamage(B)(ref MovingObject!B object,float damage,int attacker,int attackerSide,DamageMod damageMod,ObjectState!B state){
 	if(object.id==attacker?object.isGuardian:state.movingObjectById!((ref attacker)=>attacker.isGuardian,()=>false)(attacker))
 		damage*=1.5f;
 	auto actualDamage=damage*object.creatureStats.directRangedResistance;
-	actualDamage=object.dealDamage(actualDamage,attacker,attackerSide,state);
+	actualDamage=object.dealDamage(actualDamage,attacker,attackerSide,damageMod,state);
 	healFromDrain(attacker,actualDamage,state);
 	return actualDamage;
 }
 
-float dealFireDamage(T,B)(ref T object,float rangedDamage,float spellDamage,int attacker,int attackerSide,ObjectState!B state){
+float dealFireDamage(T,B)(ref T object,float rangedDamage,float spellDamage,int attacker,int attackerSide,DamageMod damageMod,ObjectState!B state){
 	auto actualRangedDamage=0.0f;
-	if(rangedDamage>0.0f) actualRangedDamage=object.dealRangedDamage(rangedDamage,attacker,attackerSide,state);
+	if(rangedDamage>0.0f){
+		actualRangedDamage=object.dealRangedDamage(rangedDamage,attacker,attackerSide,damageMod,state);
+	}
 	healFromDrain(attacker,actualRangedDamage,state);
 	auto actualSpellDamage=0.0f;
-	if(spellDamage>0.0f) actualSpellDamage=object.dealSpellDamage(spellDamage,attacker,attackerSide,state);
+	if(spellDamage>0.0f) actualSpellDamage=object.dealSpellDamage(spellDamage,attacker,attackerSide,damageMod,state);
 	healFromDrain(attacker,actualSpellDamage,state);
 	return actualRangedDamage+actualSpellDamage;
 }
@@ -5604,79 +5657,79 @@ float dealFallDamage(B)(ref MovingObject!B object,ObjectState!B state){
 	enum fallDamageFactor=20.0f;
 	//auto damage=sqrt(max(0.0f,-object.creatureState.fallingVelocity.z))*fallDamageFactor;
 	auto damage=max(0.0f,-object.creatureState.fallingVelocity.z-5.0f)*60.0/55.0*fallDamageFactor; // TODO: correct?
-	return object.dealDamage(damage,-1,state); // TODO: properly attribute fall damage to sides
+	return object.dealDamage(damage,-1,DamageMod.fall,state); // TODO: properly attribute fall damage to sides
 }
-float dealRangedDamage(B)(ref StaticObject!B object,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
-	return dealRangedDamage(object,rangedAttack.amount,attacker,attackerSide,attackDirection,state);
+float dealRangedDamage(B)(ref StaticObject!B object,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,DamageMod damageMod,ObjectState!B state){
+	return dealRangedDamage(object,rangedAttack.amount,attacker,attackerSide,attackDirection,damageMod,state);
 }
-float dealRangedDamage(B)(ref StaticObject!B object,float damage,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
-	return state.buildingById!(dealRangedDamage,()=>0.0f)(object.buildingId,damage,attacker,attackerSide,attackDirection,state);
+float dealRangedDamage(B)(ref StaticObject!B object,float damage,int attacker,int attackerSide,Vector3f attackDirection,DamageMod damageMod,ObjectState!B state){
+	return state.buildingById!(dealRangedDamage,()=>0.0f)(object.buildingId,damage,attacker,attackerSide,attackDirection,damageMod,state);
 }
-float dealRangedDamage(B)(ref StaticObject!B object,float damage,int attacker,int attackerSide,ObjectState!B state){
-	return state.buildingById!(dealRangedDamage,()=>0.0f)(object.buildingId,damage,attacker,attackerSide,state);
+float dealRangedDamage(B)(ref StaticObject!B object,float damage,int attacker,int attackerSide,DamageMod damageMod,ObjectState!B state){
+	return state.buildingById!(dealRangedDamage,()=>0.0f)(object.buildingId,damage,attacker,attackerSide,damageMod,state);
 }
 
-float dealRangedDamage(B)(ref Building!B building,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
+float dealRangedDamage(B)(ref Building!B building,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,DamageMod damageMod,ObjectState!B state){
 	auto damage=rangedAttack.amount;
-	return dealRangedDamage(building,damage,attacker,attackerSide,attackDirection,state);
+	return dealRangedDamage(building,damage,attacker,attackerSide,attackDirection,damageMod,state);
 }
 
-float dealRangedDamage(B)(ref Building!B building,float damage,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
-	return dealRangedDamage(building,damage,attacker,attackerSide,state);
+float dealRangedDamage(B)(ref Building!B building,float damage,int attacker,int attackerSide,Vector3f attackDirection,DamageMod damageMod,ObjectState!B state){
+	return dealRangedDamage(building,damage,attacker,attackerSide,damageMod,state);
 }
-float dealRangedDamage(B)(ref Building!B building,float damage,int attacker,int attackerSide,ObjectState!B state){
-	auto guardianDamage=rangedDamageGuardians(building,damage,attacker,attackerSide,state);
+float dealRangedDamage(B)(ref Building!B building,float damage,int attacker,int attackerSide,DamageMod damageMod,ObjectState!B state){
+	auto guardianDamage=rangedDamageGuardians(building,damage,attacker,attackerSide,damageMod,state);
 	if(!isNaN(guardianDamage)) return guardianDamage;
 	auto actualDamage=damage*building.directRangedResistance;
-	return building.dealDamage(actualDamage,attacker,attackerSide,state);
+	return building.dealDamage(actualDamage,attacker,attackerSide,damageMod,state);
 }
 
-float dealRangedDamage(B)(int target,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,ObjectState!B state){
+float dealRangedDamage(B)(int target,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,DamageMod damageMod,ObjectState!B state){
 	if(!state.isValidTarget(target)) return 0.0f;
-	return state.objectById!dealRangedDamage(target,rangedAttack,attacker,attackerSide,attackDirection,state);
+	return state.objectById!dealRangedDamage(target,rangedAttack,attacker,attackerSide,attackDirection,damageMod,state);
 }
 
-float dealSplashRangedDamage(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
+float dealSplashRangedDamage(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,float distance,DamageMod damageMod,ObjectState!B state){
 	auto damage=rangedAttack.amount*(rangedAttack.damageRange>0.0f?max(0.0f,1.0f-distance/rangedAttack.damageRange):1.0f);
 	auto actualDamage=damage*object.creatureStats.splashRangedResistance;
 	object.damageAnimation(attackDirection,state);
-	actualDamage=object.dealDamage(actualDamage,attacker,attackerSide,state);
+	actualDamage=object.dealDamage(actualDamage,attacker,attackerSide,damageMod,state);
 	healFromDrain(attacker,actualDamage,state);
 	return actualDamage;
 }
 
-float dealSplashRangedDamage(B)(ref StaticObject!B object,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
-	return state.buildingById!(dealSplashRangedDamage,()=>0.0f)(object.buildingId,rangedAttack,attacker,attackerSide,attackDirection,distance,state);
+float dealSplashRangedDamage(B)(ref StaticObject!B object,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,float distance,DamageMod damageMod,ObjectState!B state){
+	return state.buildingById!(dealSplashRangedDamage,()=>0.0f)(object.buildingId,rangedAttack,attacker,attackerSide,attackDirection,distance,damageMod,state);
 }
 
-float dealSplashRangedDamage(B)(ref Building!B building,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
+float dealSplashRangedDamage(B)(ref Building!B building,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,float distance,DamageMod damageMod,ObjectState!B state){
 	auto damage=rangedAttack.amount*(rangedAttack.damageRange>0.0f?max(0.0f,1.0f-distance/rangedAttack.damageRange):1.0f);
-	auto guardianDamage=splashRangedDamageGuardians(building,damage,attacker,attackerSide,state);
+	auto guardianDamage=splashRangedDamageGuardians(building,damage,attacker,attackerSide,damageMod,state);
 	if(!isNaN(guardianDamage)) return guardianDamage;
 	auto actualDamage=damage*building.splashRangedResistance;
-	return building.dealDamage(actualDamage,attacker,attackerSide,state);
+	return building.dealDamage(actualDamage,attacker,attackerSide,damageMod,state);
 }
 
-float dealSplashRangedDamage(B)(int target,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,float distance,ObjectState!B state){
+float dealSplashRangedDamage(B)(int target,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,float distance,DamageMod damageMod,ObjectState!B state){
 	if(state.isValidBuilding(target))
-		return state.buildingById!(dealSplashRangedDamage,()=>0.0f)(target,rangedAttack,attacker,attackerSide,attackDirection,distance,state);
+		return state.buildingById!(dealSplashRangedDamage,()=>0.0f)(target,rangedAttack,attacker,attackerSide,attackDirection,distance,damageMod,state);
 	if(!state.isValidId(target)) return 0.0f;
-	return state.objectById!dealSplashRangedDamage(target,rangedAttack,attacker,attackerSide,attackDirection,distance,state);
+	return state.objectById!dealSplashRangedDamage(target,rangedAttack,attacker,attackerSide,attackDirection,distance,damageMod,state);
 }
 
-float dealSplashRangedDamageAt(alias callback=(id)=>true,B,T...)(int directTarget,SacSpell!B rangedAttack,float radius,int attacker,int attackerSide,Vector3f position,ObjectState!B state,T args){
-	static void dealDamage(ProximityEntry target,ObjectState!B state,int directTarget,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f position,float* sum,float radius,T args){
+float dealSplashRangedDamageAt(alias callback=(id)=>true,B,T...)(int directTarget,SacSpell!B rangedAttack,float radius,int attacker,int attackerSide,Vector3f position,DamageMod damageMod,ObjectState!B state,T args){
+	static void dealDamage(ProximityEntry target,ObjectState!B state,int directTarget,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f position,float* sum,float radius,DamageMod damageMod,T args){
 		if(target.id==directTarget) return;
 		auto distance=boxPointDistance(target.hitbox,position);
 		if(distance>radius) return;
 		auto attackDirection=state.objectById!((obj)=>obj.center)(target.id)-position;
 		if(callback(target.id,args))
-			*sum+=dealSplashRangedDamage(target.id,rangedAttack,attacker,attackerSide,attackDirection,distance,state);
+			*sum+=dealSplashRangedDamage(target.id,rangedAttack,attacker,attackerSide,attackDirection,distance,damageMod,state);
 	}
 	auto offset=Vector3f(radius,radius,radius);
 	Vector3f[2] hitbox=[position-offset,position+offset];
 	float sum=0.0f;
-	collisionTargets!(dealDamage,None,true)(hitbox,state,directTarget,rangedAttack,attacker,attackerSide,position,&sum,radius,args);
+	collisionTargets!(dealDamage,None,true)(hitbox,state,directTarget,rangedAttack,attacker,attackerSide,position,&sum,radius,damageMod,args);
 	return sum;
 }
 
@@ -6518,7 +6571,7 @@ bool locustShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vect
 	if(end.type==TargetType.none) end.position=position+0.5f*rangedAttack.range*direction;
 	else end.position=end.lowCenter(state);
 	if(end.type==TargetType.creature||end.type==TargetType.building)
-		dealRangedDamage(end.id,rangedAttack,attacker,side,direction,state);
+		dealRangedDamage(end.id,rangedAttack,attacker,side,direction,DamageMod.none,state);
 	state.addEffect(LocustProjectile!B(rangedAttack,end.position,position,end.type==TargetType.creature));
 	return true;
 }
@@ -6680,6 +6733,19 @@ bool flummoxShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vec
 	return true;
 }
 
+bool pyromaniacShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	playSoundAt("5abf",position,state,2.0f);
+	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
+	state.addEffect(PyromaniacRocket!B(attacker,side,intendedTarget,position,direction,rangedAttack,rangedAttack.range));
+	return true;
+}
+
+bool deadeyeShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	playSoundAt("hsed",position,state,2.0f);
+	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
+	state.addEffect(PoisonDart!B(attacker,side,intendedTarget,position,direction,rangedAttack,rangedAttack.range));
+	return true;
+}
 
 enum defaultFaceThreshold=1e-3;
 bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state,float threshold=defaultFaceThreshold){
@@ -7125,7 +7191,7 @@ void loadOnTick(B)(ref MovingObject!B object,SacSpell!B rangedAttack,ObjectState
 			case SpellTag.flummoxShoot:
 				flummoxLoad(object.id,state);
 				break;
-			default: break;
+			default: writeln(object.sacObject.tag); break;
 		}
 	}
 }
@@ -7188,6 +7254,12 @@ bool shootOnTick(bool ability=false,B)(ref MovingObject!B object,OrderTarget tar
 					break;
 				case SpellTag.flummoxShoot:
 					flummoxShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
+					break;
+				case SpellTag.pyromaniacShoot:
+					pyromaniacShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
+					break;
+				case SpellTag.deadeyeShoot:
+					deadeyeShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
 					break;
 				// abilities:
 				case SpellTag.blightMites:
@@ -8254,7 +8326,7 @@ void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 						damageFactor=1.0f+1.5f*(1.0f-relativeHP);
 					}
 				}
-				target.dealMeleeDamage(*attacker,damageFactor,state); // TODO: maybe those functions should be local
+				target.dealMeleeDamage(*attacker,damageFactor,DamageMod.none,state); // TODO: maybe those functions should be local
 			}
 			state.objectById!dealDamage(target,&object,state);
 			if(auto passive=object.sacObject.passiveAbility){
@@ -8779,7 +8851,7 @@ bool updateFire(B)(ref Fire!B fire,ObjectState!B state){
 		if(!state.targetTypeFromId(target).among(TargetType.creature,TargetType.building))
 			return false;
 		if(rangedDamagePerFrame>0.0f||spellDamagePerFrame>0.0f)
-			state.objectById!dealFireDamage(target,rangedDamagePerFrame,spellDamagePerFrame,attacker,side,state);
+			state.objectById!dealFireDamage(target,rangedDamagePerFrame,spellDamagePerFrame,attacker,side,damageMod,state);
 		if(manaDrainPerFrame>0.0f) state.movingObjectById!(drainMana,(){})(target,manaDrainPerFrame,state);
 		static assert(updateFPS==60);
 		enum numParticles=5;
@@ -9931,7 +10003,7 @@ bool updateLightning(B)(ref Lightning!B lightning,ObjectState!B state){
 		auto target=lightning.end.id;
 		if(state.isValidTarget(target)){
 			auto direction=lightning.end.position-lightning.start.position;
-			dealSpellDamage(target,lightning.spell,lightning.wizard,lightning.side,direction,state);
+			dealSpellDamage(target,lightning.spell,lightning.wizard,lightning.side,direction,DamageMod.lightning,state);
 		}
 	}
 	return true;
@@ -10045,9 +10117,9 @@ int wrathCollisionTarget(B)(int side,Vector3f position,ObjectState!B state){
 void wrathExplosion(B)(ref Wrath!B wrath,int target,ObjectState!B state){
 	wrath.status=WrathStatus.exploding;
 	playSoundAt("hhtr",wrath.position,state,4.0f);
-	if(state.isValidTarget(target)) dealSpellDamage(target,wrath.spell,wrath.wizard,wrath.side,wrath.velocity,state);
+	if(state.isValidTarget(target)) dealSpellDamage(target,wrath.spell,wrath.wizard,wrath.side,wrath.velocity,DamageMod.none,state);
 	else target=0;
-	dealSplashSpellDamageAt(target,wrath.spell,wrath.spell.damageRange,wrath.wizard,wrath.side,wrath.position,state);
+	dealSplashSpellDamageAt(target,wrath.spell,wrath.spell.damageRange,wrath.wizard,wrath.side,wrath.position,DamageMod.none,state);
 	enum numParticles1=200;
 	enum numParticles2=400;
 	auto sacParticle1=SacParticle!B.get(ParticleType.wrathExplosion1);
@@ -10208,14 +10280,14 @@ void animateFireballExplosion(B)(Vector3f position,ObjectState!B state,float sca
 void fireballExplosion(B)(ref Fireball!B fireball,int target,ObjectState!B state){
 	playSpellSoundTypeAt(SoundType.explodingFireball,fireball.position,state,8.0f);
 	if(state.isValidTarget(target)){
-		dealSpellDamage(target,fireball.spell,fireball.wizard,fireball.side,fireball.velocity,state);
-		setAblaze(target,updateFPS,false,0.0f,fireball.wizard,fireball.side,state);
+		dealSpellDamage(target,fireball.spell,fireball.wizard,fireball.side,fireball.velocity,DamageMod.ignite,state);
+		setAblaze(target,updateFPS,false,0.0f,fireball.wizard,fireball.side,DamageMod.ignite,state);
 	}else target=0;
 	static bool callback(int target,int wizard,int side,ObjectState!B state){
-		setAblaze(target,updateFPS,false,0.0f,wizard,side,state);
+		setAblaze(target,updateFPS,false,0.0f,wizard,side,DamageMod.none,state);
 		return true;
 	}
-	dealSplashSpellDamageAt!callback(target,fireball.spell,fireball.spell.damageRange,fireball.wizard,fireball.side,fireball.position,state,fireball.wizard,fireball.side,state);
+	dealSplashSpellDamageAt!callback(target,fireball.spell,fireball.spell.damageRange,fireball.wizard,fireball.side,fireball.position,DamageMod.ignite,state,fireball.wizard,fireball.side,state);
 	animateFireballExplosion(fireball.position,state);
 }
 
@@ -10323,7 +10395,7 @@ int rockCollisionTarget(B)(int immuneId,int side,Vector3f position,ObjectState!B
 
 void rockExplosion(B)(ref Rock!B rock,int target,ObjectState!B state){
 	playSpellSoundTypeAt(SoundType.explodingRock,rock.position,state,8.0f);
-	if(state.isValidTarget(target)) dealSpellDamage(target,rock.spell,rock.wizard,rock.side,rock.velocity,state);
+	if(state.isValidTarget(target)) dealSpellDamage(target,rock.spell,rock.wizard,rock.side,rock.velocity,DamageMod.none,state);
 	enum numParticles3=100;
 	auto sacParticle3=SacParticle!B.get(ParticleType.rock);
 	foreach(i;0..numParticles3){
@@ -10520,7 +10592,7 @@ void swarmHit(B)(ref Swarm!B swarm,int target,ObjectState!B state){
 	swarm.status=SwarmStatus.dispersing;
 	playSoundAt("zzub",swarm.position,state,4.0f);
 	if(state.isValidTarget(target)){
-		dealSpellDamage(target,swarm.spell,swarm.wizard,swarm.side,swarm.velocity,state);
+		dealSpellDamage(target,swarm.spell,swarm.wizard,swarm.side,swarm.velocity,DamageMod.none,state);
 		static void hit(T)(ref T obj,Swarm!B *swarm,ObjectState!B state){
 			static if(is(T==MovingObject!B)){
 				obj.creatureStats.mana=max(0.0f,obj.creatureStats.mana-0.25f*obj.creatureStats.maxMana);
@@ -10543,7 +10615,7 @@ void swarmHit(B)(ref Swarm!B swarm,int target,ObjectState!B state){
 		}
 		state.objectById!hit(target,&swarm,state);
 	}else target=0;
-	dealSplashSpellDamageAt(target,swarm.spell,swarm.spell.damageRange,swarm.wizard,swarm.side,swarm.position,state);
+	dealSplashSpellDamageAt(target,swarm.spell,swarm.spell.damageRange,swarm.wizard,swarm.side,swarm.position,DamageMod.none,state);
 }
 bool updateSwarm(B)(ref Swarm!B swarm,ObjectState!B state){
 	with(swarm){
@@ -10790,7 +10862,7 @@ bool updateFireformCasting(B)(ref FireformCasting!B fireformCast,ObjectState!B s
 
 void ignite(B)(ref MovingObject!B obj,float damage,int attacker,int side,ObjectState!B state){
 	enum numParticles=5;
-	obj.dealFireDamage(0.0f,damage,attacker,side,state);
+	obj.dealFireDamage(0.0f,damage,attacker,side,DamageMod.peirceShield,state); // TODO: peirce shield?
 	obj.spawnFireParticles(numParticles,state);
 	if(obj.creatureStats.effects.ignitionTime+updateFPS/3<state.frame)
 		playSoundAt("1ngi",obj.id,state,2.0f);
@@ -10901,7 +10973,7 @@ void updateBugs(B)(ref ProtectiveSwarm!B protectiveSwarm,ref MovingObject!B wiza
 }
 
 float bugDamage(B)(ref MovingObject!B obj,float damage,int attacker,int side,Vector3f attackDirection,ObjectState!B state){
-	auto actualDamage=obj.dealSpellDamage(damage,attacker,side,attackDirection,state);
+	auto actualDamage=obj.dealSpellDamage(damage,attacker,side,attackDirection,DamageMod.none,state);
 	if(actualDamage){
 		if(obj.creatureStats.effects.buzzTime+updateFPS/3<state.frame)
 			playSpellSoundTypeAt(SoundType.swarm,obj.id,state,protectiveSwarmGain);
@@ -11124,7 +11196,7 @@ bool updateFreeze(B)(ref Freeze!B freeze,ObjectState!B state){
 		if(!frozen){
 			state.movingObjectById!((ref obj,state){
 				playSpellSoundTypeAt(SoundType.breakingIce,creature,state,freezeGain);
-				dealSpellDamage(obj,spell,wizard,side,Vector3f(0.0f,0.0f,1.0f),state);
+				dealSpellDamage(obj,spell,wizard,side,Vector3f(0.0f,0.0f,1.0f),DamageMod.none,state);
 				auto hitbox=obj.sacObject.largeHitbox(obj.rotation,obj.animationState,obj.frame/updateAnimFactor);
 				hitbox[0]+=obj.position;
 				hitbox[1]+=obj.position;
@@ -11223,7 +11295,7 @@ bool updateRingsOfFire(B)(ref RingsOfFire!B ringsOfFire,ObjectState!B state){
 			static assert(updateFPS==60);
 			if(ringsOfFire.timer%25==0||state.uniform(50)==0) obj.animateRingsOfFire(state);
 			auto damagePerFrame=spell.amount/updateFPS;
-			obj.dealFireDamage(0.0f,damagePerFrame,wizard,side,state);
+			obj.dealFireDamage(0.0f,damagePerFrame,wizard,side,DamageMod.peirceShield,state);
 			return true;
 		},()=>false)(creature,state);
 		if(!keep||--timer<=0){
@@ -11564,7 +11636,7 @@ bool updateSoulMole(B)(ref SoulMole!B soulMole,ObjectState!B state){
 	}
 	auto side=state.movingObjectById!((ref obj)=>obj.side,()=>-1)(soulMole.wizard);
 	if(side==-1) return false;
-	with(soulMole) dealSplashSpellDamageAt!callback(0,spell,spell.effectRange,wizard,side,position,state,side,state);
+	with(soulMole) dealSplashSpellDamageAt!callback(0,spell,spell.effectRange,wizard,side,position,DamageMod.none,state,side,state);
 	return true;
 }
 
@@ -11619,7 +11691,7 @@ bool updateBrainiacProjectile(B)(ref BrainiacProjectile!B brainiacProjectile,Obj
 				state.movingObjectById!((ref obj,state){ obj.stunWithCooldown(stunCooldownFrames,state); },(){})(target.id,state);
 				goto case;
 			case TargetType.building:
-				dealRangedDamage(target.id,rangedAttack,attacker,side,direction,state);
+				dealRangedDamage(target.id,rangedAttack,attacker,side,direction,DamageMod.none,state);
 				return terminate();
 			default: break;
 		}
@@ -11672,7 +11744,7 @@ bool updateShrikeProjectile(B)(ref ShrikeProjectile!B shrikeProjectile,ObjectSta
 				state.movingObjectById!((ref obj,state){ obj.stunWithCooldown(stunCooldownFrames,state); },(){})(target.id,state);
 				goto case;
 			case TargetType.building:
-				dealRangedDamage(target.id,rangedAttack,attacker,side,direction,state);
+				dealRangedDamage(target.id,rangedAttack,attacker,side,direction,DamageMod.none,state);
 				return terminate();
 			default: break;
 		}
@@ -11719,17 +11791,17 @@ bool updateSpitfireProjectile(B)(ref SpitfireProjectile!B spitfireProjectile,Obj
 			bool validTarget=!!state.targetTypeFromId(id).among(TargetType.creature,TargetType.building);
 			*targets~=recordedId;
 			if(validTarget&&id==intendedTarget){
-				dealRangedDamage(intendedTarget,rangedAttack,attacker,side,attackDirection,state); // TODO: ok?
-				setAblaze(id,updateFPS/2,true,0.0f,attacker,side,state);
+				dealRangedDamage(intendedTarget,rangedAttack,attacker,side,attackDirection,DamageMod.ignite,state); // TODO: ok?
+				setAblaze(id,updateFPS/2,true,0.0f,attacker,side,DamageMod.none,state);
 				return false;
 			}
 			if(validTarget&&state.objectById!(.side)(id,state)==side)
 				return false;
-			if(validTarget) setAblaze(id,updateFPS/2,true,0.0f,attacker,side,state);
+			if(validTarget) setAblaze(id,updateFPS/2,true,0.0f,attacker,side,DamageMod.none,state);
 			return true;
 		}
 		auto radius=finalSpitfireProjectileSize*frame/(updateFPS*rangedAttack.range/rangedAttack.speed);
-		dealSplashRangedDamageAt!callback(0,rangedAttack,radius,attacker,side,position,state,&damagedTargets,attacker,side,intendedTarget,rangedAttack,direction,state);
+		dealSplashRangedDamageAt!callback(0,rangedAttack,radius,attacker,side,position,DamageMod.ignite,state,&damagedTargets,attacker,side,intendedTarget,rangedAttack,direction,state);
 		static assert(updateFPS==60);
 		if(frame<12){
 			enum numEffects=3;
@@ -11770,7 +11842,7 @@ bool updateGargoyleProjectile(B)(ref GargoyleProjectile!B gargoyleProjectile,Obj
 			bool validTarget=!!state.targetTypeFromId(id).among(TargetType.creature,TargetType.building);
 			*targets~=recordedId;
 			if(validTarget&&id==intendedTarget){
-				dealRangedDamage(intendedTarget,rangedAttack,attacker,side,attackDirection,state); // TODO: ok?
+				dealRangedDamage(intendedTarget,rangedAttack,attacker,side,attackDirection,DamageMod.none,state); // TODO: ok?
 				return false;
 			}
 			if(validTarget&&state.objectById!(.side)(id,state)==side)
@@ -11778,7 +11850,7 @@ bool updateGargoyleProjectile(B)(ref GargoyleProjectile!B gargoyleProjectile,Obj
 			return true;
 		}
 		auto radius=finalGargoyleProjectileSize*frame/(updateFPS*rangedAttack.range/rangedAttack.speed);
-		dealSplashRangedDamageAt!callback(0,rangedAttack,radius,attacker,side,position,state,&damagedTargets,attacker,side,intendedTarget,rangedAttack,direction,state);
+		dealSplashRangedDamageAt!callback(0,rangedAttack,radius,attacker,side,position,DamageMod.none,state,&damagedTargets,attacker,side,intendedTarget,rangedAttack,direction,state);
 		static assert(updateFPS==60);
 		if(frame<12){
 			enum numEffects=3;
@@ -11832,7 +11904,7 @@ int earthflingProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f 
 
 void earthflingProjectileExplosion(B)(ref EarthflingProjectile!B earthflingProjectile,int target,ObjectState!B state){
 	playSoundAt("pmir",earthflingProjectile.position,state,2.0f);
-	if(state.isValidTarget(target)) dealRangedDamage(target,earthflingProjectile.rangedAttack,earthflingProjectile.attacker,earthflingProjectile.side,earthflingProjectile.velocity,state);
+	if(state.isValidTarget(target)) dealRangedDamage(target,earthflingProjectile.rangedAttack,earthflingProjectile.attacker,earthflingProjectile.side,earthflingProjectile.velocity,DamageMod.none,state);
 	enum numParticles3=20;
 	auto sacParticle3=SacParticle!B.get(ParticleType.rock);
 	foreach(i;0..numParticles3){
@@ -11921,8 +11993,8 @@ void flameEffect(B)(Vector3f position,ObjectState!B state,float scale=1.0f){
 
 void flameMinionProjectileExplosion(B)(ref FlameMinionProjectile!B flameMinionProjectile,int target,ObjectState!B state){
 	if(state.isValidTarget(target)){
-		dealRangedDamage(target,flameMinionProjectile.rangedAttack,flameMinionProjectile.attacker,flameMinionProjectile.side,flameMinionProjectile.velocity,state);
-		with(flameMinionProjectile) setAblaze(target,updateFPS/4,true,0.0f,attacker,side,state);
+		dealRangedDamage(target,flameMinionProjectile.rangedAttack,flameMinionProjectile.attacker,flameMinionProjectile.side,flameMinionProjectile.velocity,DamageMod.ignite,state);
+		with(flameMinionProjectile) setAblaze(target,updateFPS/4,true,0.0f,attacker,side,DamageMod.none,state);
 	}
 	flameEffect(flameMinionProjectile.position,state);
 }
@@ -12018,7 +12090,7 @@ void fallenProjectileHit(B)(ref FallenProjectile!B fallenProjectile,int target,O
 	playSoundAt("2tim",fallenProjectile.position,state,4.0f);
 	playSpellSoundTypeAt(SoundType.swarm,fallenProjectile.position,state,2.0f);
 	if(state.isValidTarget(target))
-		dealRangedDamage(target,fallenProjectile.rangedAttack,fallenProjectile.attacker,fallenProjectile.side,fallenProjectile.velocity,state);
+		dealRangedDamage(target,fallenProjectile.rangedAttack,fallenProjectile.attacker,fallenProjectile.side,fallenProjectile.velocity,DamageMod.none,state);
 	enum numParticles=32;
 	auto sacParticle=SacParticle!B.get(ParticleType.swarmHit);
 	fallenProjectile.velocity=Vector3f(0.0f,0.0f,0.0f);
@@ -12087,7 +12159,7 @@ int sylphProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f posit
 void sylphProjectileHit(B)(ref SylphProjectile!B sylphProjectile,int target,ObjectState!B state){
 	playSpellSoundTypeAt(SoundType.arrow,sylphProjectile.position,state,2.0f);
 	if(state.isValidTarget(target))
-		dealRangedDamage(target,sylphProjectile.rangedAttack,sylphProjectile.attacker,sylphProjectile.side,sylphProjectile.velocity,state);
+		dealRangedDamage(target,sylphProjectile.rangedAttack,sylphProjectile.attacker,sylphProjectile.side,sylphProjectile.velocity,DamageMod.none,state);
 }
 
 bool updateSylphProjectile(B)(ref SylphProjectile!B sylphProjectile,ObjectState!B state){
@@ -12134,7 +12206,7 @@ int rangerProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f posi
 void rangerProjectileHit(B)(ref RangerProjectile!B rangerProjectile,int target,ObjectState!B state){
 	playSpellSoundTypeAt(SoundType.arrow,rangerProjectile.position,state,2.0f);
 	if(state.isValidTarget(target))
-		dealRangedDamage(target,rangerProjectile.rangedAttack,rangerProjectile.attacker,rangerProjectile.side,rangerProjectile.velocity,state);
+		dealRangedDamage(target,rangerProjectile.rangedAttack,rangerProjectile.attacker,rangerProjectile.side,rangerProjectile.velocity,DamageMod.none,state);
 }
 
 bool updateRangerProjectile(B)(ref RangerProjectile!B rangerProjectile,ObjectState!B state){
@@ -12201,7 +12273,7 @@ bool updateNecrylProjectile(B)(ref NecrylProjectile!B necrylProjectile,ObjectSta
 				state.movingObjectById!(poison,()=>false)(target.id,rangedAttack,true,attacker,side,state);
 				return terminate();
 			case TargetType.building:
-				dealRangedDamage(target.id,rangedAttack,attacker,side,direction,state);
+				dealRangedDamage(target.id,rangedAttack,attacker,side,direction,DamageMod.none,state);
 				return terminate();
 			default: break;
 		}
@@ -12254,7 +12326,7 @@ bool updatePoison(B)(ref Poison poison,ObjectState!B state){
 			}
 		}
 		with(*poison){
-			obj.dealPoisonDamage(poisonDamage/updateFPS,attacker,attackerSide,state);
+			obj.dealPoisonDamage(poisonDamage/updateFPS,attacker,attackerSide,DamageMod.none,state);
 			if(frame++>=lifetime) return removePoison();
 			return true;
 		}
@@ -12294,7 +12366,7 @@ void scarabProjectileHit(B)(ref ScarabProjectile!B scarabProjectile,int target,O
 			heal(target,rangedAttack,state);
 		return false;
 	}
-	with(scarabProjectile) dealSplashSpellDamageAt!callback(target,rangedAttack,rangedAttack.effectRange,attacker,side,position,state,side,rangedAttack,state);
+	with(scarabProjectile) dealSplashSpellDamageAt!callback(target,rangedAttack,rangedAttack.effectRange,attacker,side,position,DamageMod.none,state,side,rangedAttack,state);
 	scarabProjectile.animateScarabProjectileHit(hitbox,state);
 }
 
@@ -12476,8 +12548,8 @@ bool updateTickfernoProjectile(B)(ref TickfernoProjectile!B tickfernoProjectile,
 					manaDrain=state.movingObjectById!((ref object)=>0.5f*object.creatureStats.maxMana,()=>0.0f)(target.id);
 					goto case;
 				case TargetType.building:
-					// TODO: burn mana
-					setAblazeWithManaDrain(target.id,cast(int)(updateFPS*rangedAttack.duration),rangedAttack.amount,manaDrain,attacker,side,state);
+					// TODO: ignite oil?
+					setAblazeWithManaDrain(target.id,cast(int)(updateFPS*rangedAttack.duration),rangedAttack.amount,manaDrain,attacker,side,DamageMod.none,state);
 					terminate();
 					break;
 				default: break;
@@ -12540,7 +12612,7 @@ bool updateVortickProjectile(B)(ref VortickProjectile!B vortickProjectile,Object
 				},(){})(target.id,state);+/
 				goto case;
 			case TargetType.building:
-				dealRangedDamage(target.id,rangedAttack,attacker,side,direction,state);
+				dealRangedDamage(target.id,rangedAttack,attacker,side,direction,DamageMod.none,state);
 				return terminate();
 			default: break;
 		}
@@ -12631,6 +12703,7 @@ bool updateVortexEffect(B)(ref VortexEffect!B vortex,ObjectState!B state){
 	}
 }
 
+enum squallProjectileHitGain=4.0f;
 enum squallProjectileSize=0.45f; // TODO: ok?
 enum squallProjectileSlidingDistance=1.5f;
 static immutable Vector3f[2] squallProjectileHitbox=[-0.5f*squallProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*squallProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
@@ -12658,7 +12731,7 @@ bool updateSquallProjectile(B)(ref SquallProjectile!B squallProjectile,ObjectSta
 			target=state.lineOfSightWithoutSide(oldPosition,position,side,intendedTarget);
 		}
 		bool terminate(){
-			playSoundAt("hlqs",position,state,brainiacProjectileHitGain);
+			playSoundAt("hlqs",position,state,squallProjectileHitGain);
 			return false;
 		}
 		if(remainingDistance<=0.0f) return terminate();
@@ -12669,7 +12742,7 @@ bool updateSquallProjectile(B)(ref SquallProjectile!B squallProjectile,ObjectSta
 				pushback(target.id,direction,rangedAttack,state);
 				goto case;
 			case TargetType.building:
-				dealRangedDamage(target.id,rangedAttack,attacker,side,direction,state);
+				dealRangedDamage(target.id,rangedAttack,attacker,side,direction,DamageMod.none,state);
 				return terminate();
 			default: break;
 		}
@@ -12732,7 +12805,7 @@ void flummoxProjectileExplosion(B)(ref FlummoxProjectile!B flummoxProjectile,Obj
 		return true;
 	}
 	with(flummoxProjectile)
-		dealSplashRangedDamageAt!callback(0,rangedAttack,rangedAttack.effectRange,attacker,side,position,state,state);
+		dealSplashRangedDamageAt!callback(0,rangedAttack,rangedAttack.effectRange,attacker,side,position,DamageMod.none,state,state);
 	enum numParticles3=100;
 	auto sacParticle3=SacParticle!B.get(ParticleType.rock);
 	foreach(i;0..numParticles3){
@@ -12777,6 +12850,113 @@ bool updateFlummoxProjectile(B)(ref FlummoxProjectile!B flummoxProjectile,Object
 			}
 		}else if(position.z<state.getHeight(position)-rangedAttack.fallLimit)
 			return false;
+		return true;
+	}
+}
+
+enum pyromaniacRocketHitGain=2.0f;
+enum pyromaniacRocketSize=0.1; // TODO: ok?
+enum pyromaniacRocketSlidingDistance=0.0f;
+
+void animatePyromaniacRocket(B)(ref PyromaniacRocket!B pyromaniacRocket,Vector3f oldPosition,ObjectState!B state){
+	with(pyromaniacRocket){
+		enum numParticles=4;
+		auto sacParticle=SacParticle!B.get(ParticleType.smoke);
+		auto lifetime=47;
+		auto scale=0.75f;
+		auto frame=80;
+		foreach(i;0..numParticles){
+			auto position=oldPosition*((cast(float)numParticles-1-i)/numParticles)+position*(cast(float)(i+1)/numParticles)-2.5f*direction;
+			position+=0.6f*state.uniformDirection();
+			auto velocity=0.05f*state.uniformDirection();
+			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+		}
+	}
+}
+static immutable Vector3f[2] pyromaniacRocketHitbox=[-0.5f*pyromaniacRocketSize*Vector3f(1.0f,1.0f,1.0f),0.5f*pyromaniacRocketSize*Vector3f(1.0f,1.0f,1.0f)];
+int pyromaniacRocketCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
+		return entry.isProjectileObstacle&&(entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side);
+	}
+	return collisionTarget!(pyromaniacRocketHitbox,filter)(side,position,state,side,intendedTarget);
+}
+bool updatePyromaniacRocket(B)(ref PyromaniacRocket!B pyromaniacRocket,ObjectState!B state){
+	with(pyromaniacRocket){
+		++frame;
+		auto oldPosition=position;
+		auto velocity=rangedAttack.speed/updateFPS*direction;
+		position+=velocity;
+		remainingDistance-=rangedAttack.speed/updateFPS;
+		static assert(updateFPS==60);
+		pyromaniacRocket.animatePyromaniacRocket(oldPosition,state);
+		OrderTarget target;
+		if(auto targetId=pyromaniacRocketCollisionTarget(side,intendedTarget,position,state)){
+			target.id=targetId;
+			target.type=state.targetTypeFromId(targetId);
+		}else{
+			target=state.lineOfSightWithoutSide(oldPosition,position,side,intendedTarget);
+		}
+		bool terminate(){
+			playSpellSoundTypeAt(SoundType.pyromaniacHit,position,state,pyromaniacRocketHitGain);
+			return false;
+		}
+		if(remainingDistance<=0.0f) return terminate();
+		switch(target.type){
+			case TargetType.terrain:
+				flameEffect(position,state,2.0f);
+				return terminate();
+			case TargetType.creature:
+				goto case;
+			case TargetType.building:
+				//dealRangedDamage(target.id,rangedAttack,attacker,side,direction,state);
+				setAblaze(target.id,cast(int)(rangedAttack.duration*updateFPS),true,rangedAttack.amount,attacker,side,DamageMod.peirceShield,state);
+				return terminate();
+			default: break;
+		}
+		return true;
+	}
+}
+
+enum poisonDartHitGain=2.0f;
+enum poisonDartSize=0.1; // TODO: ok?
+enum poisonDartSlidingDistance=0.0f;
+
+static immutable Vector3f[2] poisonDartHitbox=[-0.5f*poisonDartSize*Vector3f(1.0f,1.0f,1.0f),0.5f*poisonDartSize*Vector3f(1.0f,1.0f,1.0f)];
+int poisonDartCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
+		return entry.isProjectileObstacle&&(entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side);
+	}
+	return collisionTarget!(poisonDartHitbox,filter)(side,position,state,side,intendedTarget);
+}
+bool updatePoisonDart(B)(ref PoisonDart!B poisonDart,ObjectState!B state){
+	with(poisonDart){
+		auto oldPosition=position;
+		auto velocity=rangedAttack.speed/updateFPS*direction;
+		position+=velocity;
+		remainingDistance-=rangedAttack.speed/updateFPS;
+		static assert(updateFPS==60);
+		OrderTarget target;
+		if(auto targetId=poisonDartCollisionTarget(side,intendedTarget,position,state)){
+			target.id=targetId;
+			target.type=state.targetTypeFromId(targetId);
+		}else{
+			target=state.lineOfSightWithoutSide(oldPosition,position,side,intendedTarget);
+		}
+		bool terminate(){
+			playSoundAt("thed",position,state,poisonDartHitGain);
+			return false;
+		}
+		if(remainingDistance<=0.0f) return terminate();
+		switch(target.type){
+			case TargetType.terrain: return terminate();
+			case TargetType.creature:
+				state.movingObjectById!(poison,()=>false)(target.id,rangedAttack,false,attacker,side,state);
+				return terminate();
+			case TargetType.building:
+				dealRangedDamage(target.id,rangedAttack,attacker,side,direction,DamageMod.none,state);
+				return terminate();
+			default: break;
+		}
 		return true;
 	}
 }
@@ -12960,7 +13140,7 @@ bool updateDivineSight(B)(ref DivineSight!B divineSight,ObjectState!B state){
 
 bool updateSteamCloud(B)(ref SteamCloud!B steamCloud,ObjectState!B state){
 	with(steamCloud){
-		dealSplashRangedDamageAt(id,ability,ability.damageRange,id,side,boxCenter(hitbox),state);
+		dealSplashRangedDamageAt(id,ability,ability.damageRange,id,side,boxCenter(hitbox),DamageMod.none,state);
 		enum numParticles2=100;
 		auto sacParticle2=SacParticle!B.get(ParticleType.steam);
 		auto scale=0.3f*boxSize(hitbox).length;
@@ -13778,6 +13958,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 		}
 		i++;
 	}
+	for(int i=0;i<effects.pyromaniacRockets.length;){
+		if(!updatePyromaniacRocket(effects.pyromaniacRockets[i],state)){
+			effects.removePyromaniacRocket(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.poisonDarts.length;){
+		if(!updatePoisonDart(effects.poisonDarts[i],state)){
+			effects.removePoisonDart(i);
+			continue;
+		}
+		i++;
+	}
 	for(int i=0;i<effects.rockForms.length;){
 		if(!updateRockForm(effects.rockForms[i],state)){
 			effects.removeRockForm(i);
@@ -13925,11 +14119,11 @@ void destructionAnimation(B)(char[4] animation,Vector3f position,ObjectState!B s
 	}
 }
 
-void setAblaze(B)(int target,int lifetime,bool ranged,float damage,int attacker,int side,ObjectState!B state){
-	state.addEffect(Fire!B(target,lifetime,ranged?damage/lifetime:0.0f,!ranged?damage/lifetime:0.0f,0.0f,attacker,side));
+void setAblaze(B)(int target,int lifetime,bool ranged,float damage,int attacker,int side,DamageMod damageMod,ObjectState!B state){
+	state.addEffect(Fire!B(target,lifetime,ranged?damage/lifetime:0.0f,!ranged?damage/lifetime:0.0f,0.0f,attacker,side,damageMod));
 }
-void setAblazeWithManaDrain(B)(int target,int lifetime,float damage,float manaDrain,int attacker,int side,ObjectState!B state){
-	state.addEffect(Fire!B(target,lifetime,damage/lifetime,0.0f,manaDrain/lifetime,attacker,side));
+void setAblazeWithManaDrain(B)(int target,int lifetime,float damage,float manaDrain,int attacker,int side,DamageMod damageMod,ObjectState!B state){
+	state.addEffect(Fire!B(target,lifetime,damage/lifetime,0.0f,manaDrain/lifetime,attacker,side,damageMod));
 }
 
 void updateCommandCones(B)(ref CommandCones!B commandCones, ObjectState!B state){
