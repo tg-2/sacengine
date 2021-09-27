@@ -1155,6 +1155,7 @@ enum SpellTag:char[4]{
 
 	flummoxShoot="crba",
 	pyromaniacShoot="lffa",
+	gnomeShoot="plfa",
 
 	deadeyeShoot="lfda",
 }

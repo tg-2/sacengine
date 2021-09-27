@@ -510,6 +510,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Flu
 void serialize(alias sink,B)(ref PyromaniacRocket!B pyromaniacRocket){ serializeStruct!sink(pyromaniacRocket); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==PyromaniacRocket!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref GnomeEffect!B gnomeEffect){ serializeStruct!sink(gnomeEffect); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==GnomeEffect!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref PoisonDart!B poisonDart){ serializeStruct!sink(poisonDart); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==PoisonDart!B)){ deserializeStruct(result,state,data); }
 

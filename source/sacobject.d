@@ -892,6 +892,7 @@ enum ParticleType{
 	wrathExplosion1,
 	wrathExplosion2,
 	wrathParticle,
+	gnomeHit,
 	ashParticle,
 	dirt,
 	dust,
@@ -938,7 +939,7 @@ final class SacParticle(B){
 				return false;
 			case wrathCasting,wrathExplosion1,wrathExplosion2,steam:
 				return false;
-			case wrathParticle,ashParticle:
+			case wrathParticle,gnomeHit,ashParticle:
 				return true;
 			case smoke,dirt,dust:
 				return false;
@@ -966,7 +967,7 @@ final class SacParticle(B){
 				return false;
 			case castPersephone,castPersephone2,castPyro,castJames,castStratos,castCharnel,castCharnel2:
 				return false;
-			case wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,ashParticle,steam,smoke,dirt,dust,rock,poison,swarmHit,slime:
+			case wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,gnomeHit,ashParticle,steam,smoke,dirt,dust,rock,poison,swarmHit,slime:
 				return false;
 			case relativePoison:
 				return true;
@@ -976,7 +977,7 @@ final class SacParticle(B){
 	}
 	@property bool bumpOffGround(){
 		switch(type) with(ParticleType){
-			case scarabHit,ghostTransition,wrathParticle,ashParticle,rock,swarmHit,slime,needle,redVortexDroplet,blueVortexDroplet: return true;
+			case scarabHit,ghostTransition,wrathParticle,gnomeHit,ashParticle,rock,swarmHit,slime,needle,redVortexDroplet,blueVortexDroplet: return true;
 			default: return false;
 		}
 	}
@@ -1146,6 +1147,12 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/prth.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
+			case gnomeHit:
+				width=height=0.5f;
+				this.energy=5.0f;
+				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/gsqb.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
 			case steam:
 				width=height=2.0f;
 				this.energy=0.25f;
@@ -1229,6 +1236,7 @@ final class SacParticle(B){
 			case speedUp: return 2;
 			case redVortexDroplet: return 2;
 			case etherealFormSpark: return 2;
+			case gnomeHit: return 2;
 			case ashParticle: return 3;
 			case smoke: return 4;
 			case fire: return 2;
@@ -1257,7 +1265,7 @@ final class SacParticle(B){
 				return 1.0f;
 			case fire:
 				return min(1.0f,(float(lifetime)/numFrames)^^2);
-			case speedUp,ghost,wrathParticle:
+			case speedUp,ghost,wrathParticle,gnomeHit:
 				return min(1.0f,(lifetime/(0.5f*numFrames))^^2);
 			case ashParticle:
 				return 1.0f;
@@ -1322,7 +1330,7 @@ final class SacParticle(B){
 				return 1.0f;
 			case wrathCasting:
 				return min(1.0f,0.4f+0.6f*lifetime/(1.5f*numFrames));
-			case wrathParticle:
+			case wrathParticle,gnomeHit:
 				return min(1.0f,lifetime/(0.5f*numFrames));
 			case steam:
 				return 1.0f;
@@ -2214,6 +2222,73 @@ struct SacPoisonDart(B){
 		mesh.normals[]=Vector3f(0.0f,0.0f,0.0f);
 		B.finalizeMesh(mesh);
 		return mesh;
+	}
+}
+
+struct SacGnomeEffect(B){
+	B.Texture texture;
+	B.Material material;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/gmfl.TXTR"));
+	}
+	B.Mesh[] frames;
+	enum animationDelay=2;
+	enum numFrames=4*animationDelay*updateAnimFactor;
+	auto getFrame(int i){ return frames[i/(updateAnimFactor*animationDelay)]; }
+	static B.Mesh[] createMeshes(){
+		enum nU=2,nV=2;
+		auto meshes=new B.Mesh[](nU*nV);
+		foreach(t,ref mesh;meshes){
+			mesh=B.makeMesh(3*4*2+4*4,3*2*2+4*2);
+			int u=cast(int)t%nU,v=cast(int)t/nU;
+			enum length=1.7f;
+			enum size=0.7f;
+			enum sqrt34=sqrt(0.75f);
+			static immutable Vector3f[3] offsets=[size*Vector3f(0.0f,-1.0f,0.0f),size*Vector3f(sqrt34,0.5f,0.0f),size*Vector3f(-sqrt34,0.5f,0.0f)];
+			int numFaces=0;
+			void addFace(uint[3] face...){
+				mesh.indices[numFaces++]=face;
+			}
+			foreach(i;0..2){
+				static Vector3f getCenter(int i){
+					return Vector3f(0.0f,0.0f,i==0?0.0f:i==1?0.25f:length);
+				}
+				foreach(j;0..3){
+					foreach(k;0..4){
+						int vertex=3*4*i+4*j+k;
+						int center=((k==1||k==2)?i+1:i);
+						auto position=getCenter(center)+((k==2||k==3)?offsets[j]:Vector3f(0.0f,0.0f,0.0f));
+						mesh.vertices[vertex]=position;
+						mesh.texcoords[vertex]=Vector2f(1.0f/nU*(u+((!(i&1))^(k==1||k==2)?1.0f-0.5f/64:0.5f/64)),1.0f/nV*(v+((k==0||k==1)?0.5f/64:1.0f-1.0f/64)));
+					}
+					int b=3*4*i+4*j;
+					addFace([b+0,b+1,b+2]);
+					addFace([b+2,b+3,b+0]);
+				}
+			}
+			assert(numFaces==2*3*2);
+			foreach(i;0..2){
+				foreach(j;0..2){
+					static Vector3f getPos(int i,int j){
+						return Vector3f(size*(i-1),size*(j-1),0.25f);
+					}
+					foreach(k;0..4){
+						int vertex=3*4*2+2*4*i+4*j+k;
+						int ci=((k==1||k==2)?i+1:i),cj=((k==0||k==1)?j:j+1);
+						auto position=getPos(ci,cj);
+						mesh.vertices[vertex]=position;
+						mesh.texcoords[vertex]=Vector2f(1.0f/nU*(u+((!(i&1))^(k==1||k==2)?1.0f-0.5f/64:0.5f/64)),1.0f/nV*(v+((!(j&1))^(k==0||k==1)?0.5f/64:1.0f-1.0f/64)));
+					}
+					int b=3*4*2+2*4*i+4*j;
+					addFace([b+0,b+1,b+2]);
+					addFace([b+2,b+3,b+0]);
+				}
+			}
+			assert(numFaces==2*3*2+4*2);
+			mesh.normals[]=Vector3f(0.0f,0.0f,0.0f);
+			B.finalizeMesh(mesh);
+		}
+		return meshes;
 	}
 }
 

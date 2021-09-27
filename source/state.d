@@ -2828,6 +2828,15 @@ struct PyromaniacRocket(B){
 	int frame=0;
 }
 
+struct GnomeEffect(B){
+	Vector3f position;
+	Vector3f direction;
+	SacSpell!B rangedAttack;
+	int frame=0;
+	enum animationDelay=2;
+	enum numFrames=4*animationDelay*updateAnimFactor;
+}
+
 struct PoisonDart(B){
 	int attacker;
 	int side;
@@ -3631,6 +3640,14 @@ struct Effects(B){
 		if(i+1<pyromaniacRockets.length) pyromaniacRockets[i]=move(pyromaniacRockets[$-1]);
 		pyromaniacRockets.length=pyromaniacRockets.length-1;
 	}
+	Array!(GnomeEffect!B) gnomeEffects;
+	void addEffect(GnomeEffect!B gnomeEffect){
+		gnomeEffects~=gnomeEffect;
+	}
+	void removeGnomeEffect(int i){
+		if(i+1<gnomeEffects.length) gnomeEffects[i]=move(gnomeEffects[$-1]);
+		gnomeEffects.length=gnomeEffects.length-1;
+	}
 	Array!(PoisonDart!B) poisonDarts;
 	void addEffect(PoisonDart!B poisonDart){
 		poisonDarts~=poisonDart;
@@ -3821,6 +3838,7 @@ struct Effects(B){
 		assignArray(pushbacks,rhs.pushbacks);
 		assignArray(flummoxProjectiles,rhs.flummoxProjectiles);
 		assignArray(pyromaniacRockets,rhs.pyromaniacRockets);
+		assignArray(gnomeEffects,rhs.gnomeEffects);
 		assignArray(poisonDarts,rhs.poisonDarts);
 		assignArray(rockForms,rhs.rockForms);
 		assignArray(stealths,rhs.stealths);
@@ -6740,6 +6758,36 @@ bool pyromaniacShoot(B)(int attacker,int side,int intendedTarget,float accuracy,
 	return true;
 }
 
+void animateGnomeShot(B)(Vector3f position,Vector3f direction,SacSpell!B rangedAttack,ObjectState!B state){
+	state.addEffect(GnomeEffect!B(position,direction,rangedAttack));
+}
+void animateGnomeHit(B)(Vector3f position,SacSpell!B rangedAttack,ObjectState!B state){
+	playSoundAt("tihg",position,state,0.5f);
+	enum numParticles3=200;
+	auto sacParticle3=SacParticle!B.get(ParticleType.gnomeHit);
+	foreach(i;0..numParticles3){
+		auto direction=state.uniformDirection();
+		auto velocity=state.uniform(2.0f,8.0f)*direction;
+		auto scale=state.uniform(1.0f,2.5f);
+		auto lifetime=63;
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle3,position,velocity,scale,lifetime,frame));
+	}
+}
+
+bool gnomeShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	playSoundAt("thsg",position,state,2.0f);
+	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
+	static bool filter(ref ProximityEntry entry,int id){ return entry.id!=id; }
+	auto end=state.collideRay!filter(position,direction,rangedAttack.range,attacker);
+	if(end.type==TargetType.none) end.position=position+0.5f*rangedAttack.range*direction;
+	if(end.type==TargetType.creature||end.type==TargetType.building)
+		dealRangedDamage(end.id,rangedAttack,attacker,side,direction,DamageMod.none,state);
+	animateGnomeShot(position,direction,rangedAttack,state);
+	animateGnomeHit(end.position,rangedAttack,state);
+	return true;
+}
+
 bool deadeyeShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
 	playSoundAt("hsed",position,state,2.0f);
 	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
@@ -7257,6 +7305,9 @@ bool shootOnTick(bool ability=false,B)(ref MovingObject!B object,OrderTarget tar
 					break;
 				case SpellTag.pyromaniacShoot:
 					pyromaniacShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
+					break;
+				case SpellTag.gnomeShoot:
+					gnomeShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
 					break;
 				case SpellTag.deadeyeShoot:
 					deadeyeShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
@@ -12855,6 +12906,12 @@ bool updateFlummoxProjectile(B)(ref FlummoxProjectile!B flummoxProjectile,Object
 	}
 }
 
+bool updateGnomeEffect(B)(ref GnomeEffect!B gnomeEffect,ObjectState!B state){
+	with(gnomeEffect){
+		return ++frame<=numFrames;
+	}
+}
+
 enum pyromaniacRocketHitGain=2.0f;
 enum pyromaniacRocketSize=0.1; // TODO: ok?
 enum pyromaniacRocketSlidingDistance=0.0f;
@@ -13966,6 +14023,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 		}
 		i++;
 	}
+	for(int i=0;i<effects.gnomeEffects.length;){
+		if(!updateGnomeEffect(effects.gnomeEffects[i],state)){
+			effects.removeGnomeEffect(i);
+			continue;
+		}
+		i++;
+	}
 	for(int i=0;i<effects.poisonDarts.length;){
 		if(!updatePoisonDart(effects.poisonDarts[i],state)){
 			effects.removePoisonDart(i);
@@ -14888,7 +14952,7 @@ final class ObjectState(B){ // (update logic)
 		if(landscape<tEntry[0]) return OrderTarget(TargetType.terrain,0,start+landscape*direction);
 		auto targetType=targetTypeFromId(tEntry[1].id);
 		if(targetType.among(TargetType.creature,TargetType.building))
-			return OrderTarget(targetType,tEntry[1].id,objectById!((obj)=>obj.position)(this,tEntry[1].id));
+			return OrderTarget(targetType,tEntry[1].id,start+tEntry[0]*direction);
 		return OrderTarget.init;
 	}
 	OrderTarget lineOfSight(alias filter=None,T...)(Vector3f start,Vector3f target,T args){

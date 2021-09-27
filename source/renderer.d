@@ -367,6 +367,17 @@ struct Renderer(B){
 		auto frames=typeof(return).createMeshes();
 		return SacPyromaniacRocket!B(texture,mat,frames);
 	}
+	SacGnomeEffect!B gnomeEffect;
+	SacGnomeEffect!B createGnomeEffect(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Additive;
+		mat.energy=10.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacGnomeEffect!B(texture,mat,frames);
+	}
 	SacPoisonDart!B poisonDart;
 	SacPoisonDart!B createPoisonDart(){
 		auto texture=typeof(return).loadTexture();
@@ -438,6 +449,7 @@ struct Renderer(B){
 		vortexEffect=createVortexEffect();
 		squallEffect=createSquallEffect();
 		pyromaniacRocket=createPyromaniacRocket();
+		gnomeEffect=createGnomeEffect();
 		poisonDart=createPoisonDart();
 		lifeShield=createLifeShield();
 		divineSight=createDivineSight();
@@ -1441,6 +1453,22 @@ struct Renderer(B){
 						mesh.render(rc);
 					}
 					foreach(ref effect;objects.pyromaniacRockets.data) renderPyromaniacRocket(effect.position,effect.direction,effect.frame);
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.gnomeEffects.length){
+					auto material=self.gnomeEffect.material;
+					material.bind(rc);
+					B.disableCulling();
+					scope(success){
+						B.enableCulling();
+						material.unbind(rc);
+					}
+					void renderGnomeEffect(Vector3f position,Vector3f direction,int frame){
+						auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),direction); // TODO: precompute this?
+						B.shadelessMaterialBackend.setTransformation(position,rotation,rc);
+						auto mesh=self.gnomeEffect.getFrame(frame%self.gnomeEffect.numFrames);
+						mesh.render(rc);
+					}
+					foreach(ref effect;objects.gnomeEffects.data) renderGnomeEffect(effect.position,effect.direction,effect.frame);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.poisonDarts.length){
 					auto material=self.poisonDart.material;
