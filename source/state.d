@@ -2551,6 +2551,7 @@ struct Rainbow(B){
 	int side;
 	OrderTarget last,current;
 	SacSpell!B spell;
+	PositionPredictor predictor;
 	int numTargets=0;
 	int frame=0;
 	enum totTargets=6;
@@ -2576,6 +2577,7 @@ struct RainbowEffect(B){
 	enum delay=32;
 	enum totalFrames=travelFrames+delay+travelFrames;
 	int frame=0;
+	int soundTimer;
 }
 
 struct BrainiacProjectile(B){
@@ -7335,7 +7337,7 @@ void loadOnTick(B)(ref MovingObject!B object,SacSpell!B rangedAttack,ObjectState
 			case SpellTag.flummoxShoot:
 				flummoxLoad(object.id,state);
 				break;
-			default: writeln(object.sacObject.tag); break;
+			default: break;
 		}
 	}
 }
@@ -10070,6 +10072,24 @@ bool updateHealCasting(B)(ref HealCasting!B healCast,ObjectState!B state){
 		}
 	}
 }
+
+void animateHeal(B)(ref MovingObject!B obj,ObjectState!B state){
+	static assert(updateFPS==60);
+	auto hitbox=obj.relativeHitbox;
+	auto dim=hitbox[1]-hitbox[0];
+	auto volume=dim.x*dim.y*dim.z;
+	auto scale=2.0f*max(1.0f,cbrt(volume));
+	auto sacParticle=SacParticle!B.get(ParticleType.relativeHeal);
+	enum numParticles=2;
+	foreach(i;0..numParticles){
+		auto position=1.1f*state.uniform(cast(Vector2f[2])[hitbox[0].xy,hitbox[1].xy]);
+		auto distance=(state.uniform(3)?state.uniform(0.3f,0.6f):state.uniform(1.5f,2.5f))*(hitbox[1].z-hitbox[0].z);
+		auto fullLifetime=sacParticle.numFrames/float(updateFPS);
+		auto lifetime=cast(int)(sacParticle.numFrames*state.uniform(0.0f,1.0f));
+		state.addParticle(Particle!(B,true)(sacParticle,obj.id,false,Vector3f(position.x,position.y,0.0f),Vector3f(0.0f,0.0f,distance/fullLifetime),scale,lifetime,0));
+	}
+}
+
 bool updateHeal(B)(ref Heal!B heal,ObjectState!B state){
 	heal.timer-=1;
 	if(heal.timer<0) return false;
@@ -10077,20 +10097,7 @@ bool updateHeal(B)(ref Heal!B heal,ObjectState!B state){
 		if(!obj.canHeal(state)) return false;
 		obj.heal(heal.healthRegenerationPerFrame,state);
 		if(obj.health(state)==obj.creatureStats.maxHealth) return false;
-		static assert(updateFPS==60);
-		auto hitbox=obj.relativeHitbox;
-		auto dim=hitbox[1]-hitbox[0];
-		auto volume=dim.x*dim.y*dim.z;
-		auto scale=2.0f*max(1.0f,cbrt(volume));
-		auto sacParticle=SacParticle!B.get(ParticleType.relativeHeal);
-		enum numParticles=2;
-		foreach(i;0..numParticles){
-			auto position=1.1f*state.uniform(cast(Vector2f[2])[hitbox[0].xy,hitbox[1].xy]);
-			auto distance=(state.uniform(3)?state.uniform(0.3f,0.6f):state.uniform(1.5f,2.5f))*(hitbox[1].z-hitbox[0].z);
-			auto fullLifetime=sacParticle.numFrames/float(updateFPS);
-			auto lifetime=cast(int)(sacParticle.numFrames*state.uniform(0.0f,1.0f));
-			state.addParticle(Particle!(B,true)(sacParticle,obj.id,false,Vector3f(position.x,position.y,0.0f),Vector3f(0.0f,0.0f,distance/fullLifetime),scale,lifetime,0));
-		}
+		obj.animateHeal(state);
 		return true;
 	},function bool(){ return false; })(heal.creature,heal,state);
 }
@@ -11793,17 +11800,22 @@ bool updateSoulMole(B)(ref SoulMole!B soulMole,ObjectState!B state){
 	return true;
 }
 
-void updateRainbowTarget(B)(ref OrderTarget target,ObjectState!B state){
-	if(state.isValidTarget(target.id,TargetType.creature)){
-		auto cand=state.movingObjectById!(center,()=>Vector3f.init)(target.id);
-		if(!isNaN(cand.x)) target.position=cand;
-	}
-}
-
 void animateRainbowCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
 	auto castParticle=SacParticle!B.get(ParticleType.heal);
 	wizard.animateCasting(castParticle,state);
-	// TODO: add particles from below
+	static assert(updateFPS==60);
+	auto hitbox=wizard.relativeHitbox;
+	auto scale=2.0f;
+	auto sacParticle=SacParticle!B.get(ParticleType.heal);
+	enum numParticles=6;
+	foreach(i;0..numParticles){
+		auto position=1.1f*state.uniform(cast(Vector2f[2])[hitbox[0].xy,hitbox[1].xy]);
+		auto distance=(state.uniform(3)?state.uniform(0.3f,0.6f):state.uniform(1.5f,2.5f))*(hitbox[1].z-hitbox[0].z);
+		auto fullLifetime=2.0f*sacParticle.numFrames/float(updateFPS);
+		auto lifetime=cast(int)(sacParticle.numFrames*state.uniform(0.0f,2.0f));
+		// TODO: particles should accelerate upwards
+		state.addParticle(Particle!B(sacParticle,wizard.position+rotate(wizard.rotation,Vector3f(position.x,position.y,state.uniform(0.0f,0.5f*distance))),Vector3f(0.0f,0.0f,distance/fullLifetime),scale,lifetime,0));
+	}
 }
 
 bool updateRainbowCasting(B)(ref RainbowCasting!B rainbowCast,ObjectState!B state){
@@ -11818,7 +11830,11 @@ bool updateRainbowCasting(B)(ref RainbowCasting!B rainbowCast,ObjectState!B stat
 			case CastingStatus.interrupted:
 				return false;
 			case CastingStatus.finished:
-				auto position=state.movingObjectById!(center,()=>Vector3f.init)(manaDrain.wizard);
+				auto position=state.movingObjectById!((ref obj){
+					auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
+					auto offset=Vector3f(0.0f,hbox[1].y+0.75f,hbox[1].z+0.5f);
+					return obj.position+rotate(obj.rotation,offset);
+				},()=>Vector3f.init)(manaDrain.wizard);
 				if(isNaN(position.x)) return false;
 				auto origin=OrderTarget(TargetType.creature,manaDrain.wizard,position);
 				rainbow(side,origin,target,spell,state);
@@ -11829,27 +11845,44 @@ bool updateRainbowCasting(B)(ref RainbowCasting!B rainbowCast,ObjectState!B stat
 
 OrderTarget newRainbowTarget(B)(OrderTarget last,OrderTarget current,SacSpell!B spell,ObjectState!B state){
 	auto position=2.0f*current.position-last.position;
-	auto offset=state.uniform(0.0f,0.25f*spell.range)*state.uniformDirection!(float,2)();
+	auto offset=state.uniform(0.0f,0.25f*spell.effectRange)*state.uniformDirection!(float,2)();
 	position.x+=offset.x, position.y+=offset.y;
+	if((position-current.position).lengthsqr>spell.effectRange^^2)
+		position=current.position+(position-current.position).normalized*spell.effectRange;
 	position.z=state.getHeight(position); // TODO: avoid void?
 	return OrderTarget(TargetType.terrain,0,position);
 }
 
+void updateRainbowTarget(B)(ref OrderTarget target,ObjectState!B state){
+	if(state.isValidTarget(target.id,TargetType.creature)){
+		auto cand=state.movingObjectById!(center,()=>Vector3f.init)(target.id);
+		if(!isNaN(cand.x)) target.position=cand;
+	}
+}
+void predictRainbowTarget(B)(ref OrderTarget target,ref PositionPredictor predictor,float progress,ObjectState!B state){
+	updateRainbowTarget(target,state);
+	auto predicted=predictor.predictCenterAtTime((1.0f-progress)*Rainbow!B.travelFrames/updateFPS,target,state);
+	target.position=(1.0f-progress)*target.position+progress*predicted;
+}
+
+enum rainbowGain=2.0f;
 bool updateRainbow(B)(ref Rainbow!B rainbow,ObjectState!B state){
 	with(rainbow){
-		updateRainbowTarget(current,state);
+		auto progress=float(frame+1)/travelFrames;
+		predictRainbowTarget(current,predictor,progress,state);
 		if(frame==0) state.addEffect(RainbowEffect!B(last,current,spell));
 		if(++frame==travelFrames){
 			if(current.id){
 				heal(current.id,spell,state);
 				addTarget(current.id);
 			}
-			if(++numTargets>6)
+			if(++numTargets>=6)
 				return false;
-			static bool filter(ref CenterProximityEntry entry,Rainbow!B* rainbow){
+			static bool filter(ref CenterProximityEntry entry,ObjectState!B state,Rainbow!B* rainbow){
+				if(state.movingObjectById!((ref obj,state)=>obj.health(state)==0.0f,()=>true)(entry.id,state)) return false;
 				return !rainbow.hasTarget(entry.id);
 			}
-			int newTarget=state.proximity.lowestHealthCreatureInRange!filter(side,0,current.position,spell.effectRange,state,&rainbow);
+			int newTarget=state.proximity.lowestHealthCreatureInRange!filter(side,0,current.position,spell.effectRange,state,state,&rainbow);
 			OrderTarget next;
 			if(newTarget) next=OrderTarget(TargetType.creature,newTarget,state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(newTarget));
 			if(isNaN(next.position.x)) next=newRainbowTarget(last,current,spell,state);
@@ -11864,9 +11897,24 @@ bool updateRainbow(B)(ref Rainbow!B rainbow,ObjectState!B state){
 bool updateRainbowEffect(B)(ref RainbowEffect!B rainbowEffect,ObjectState!B state){
 	with(rainbowEffect){
 		if(frame<=travelFrames){
-			updateRainbowTarget(end,state);
-			end.position=predictor.predictCenterAtTime(float(travelFrames-frame)/updateFPS,end,state);
-		}
+			auto progress=float(frame+1)/travelFrames;
+			predictRainbowTarget(end,predictor,progress,state);
+			auto direction=(end.position-start.position).normalized;
+			auto center=0.5f*(start.position+end.position);
+			auto rotationAxis=cross(Vector3f(0.0f,0.0f,1.0f),end.position-start.position).normalized;
+			if(isNaN(rotationAxis.x)) rotationAxis=Vector3f(0.0f,1.0f,0.0f);
+			auto position=center+rotate(rotationQuaternion(rotationAxis,progress*pi!float),start.position-center);
+			if(--soundTimer<=0) soundTimer=playSoundAt!true("wobr",position,state,rainbowGain); // TODO: move sound with rainbow
+			auto sacParticle=SacParticle!B.get(ParticleType.heal);
+			auto velocity=Vector3f(0.0f,0.0f,0.0f);
+			auto lifetime=63;
+			auto pframe=0;
+			foreach(i;0..3){
+				auto pposition=position+0.6f*state.uniformDirection();
+				auto scale=state.uniform(0.5f,1.5f);
+				state.addParticle(Particle!B(sacParticle,pposition,velocity,scale,lifetime,pframe));
+			}
+		}else if(--soundTimer<=0) soundTimer=playSoundAt!true("wobr",end.position,state,rainbowGain); // TODO: move sound with rainbow
 		return ++frame<=totalFrames;
 	}
 }
@@ -16391,8 +16439,9 @@ void playSoundType(B)(int side,SacObject!B sacObject,SoundType soundType,ObjectS
 	if(auto sset=sacObject.sset) playSset(sset);
 	if(auto sset=sacObject.meleeSset) playSset(sset);
 }
-void playSoundAt(B)(char[4] sound,Vector3f position,ObjectState!B state,float gain=1.0f){
+auto playSoundAt(bool getDuration=false,B)(char[4] sound,Vector3f position,ObjectState!B state,float gain=1.0f){
 	static if(B.hasAudio) if(playAudio) B.playSoundAt(sound,position,gain);
+	static if(getDuration) return getSoundDuration(sound,state);
 }
 auto playSpellSoundTypeAt(bool getDuration=false,B,T)(SoundType soundType,T target,ObjectState!B state,float gain=1.0f){
 	auto sset=SacSpell!B.sset;
@@ -16409,7 +16458,7 @@ auto playSpellSoundTypeAt(bool getDuration=false,B,T)(SoundType soundType,T targ
 	static if(getDuration) return 0;
 }
 
-auto playSoundAt(bool getDuration=false,B,T...)(char[4] sound,int id,ObjectState!B state,float gain=1.0f){
+auto playSoundAt(bool getDuration=false,B)(char[4] sound,int id,ObjectState!B state,float gain=1.0f){
 	static if(B.hasAudio) if(playAudio) B.playSoundAt(sound,id,gain);
 	static if(getDuration) return getSoundDuration(sound,state);
 }
