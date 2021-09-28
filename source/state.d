@@ -421,6 +421,20 @@ struct PositionPredictor{
 		lastPosition=targetPosition;
 		return targetPosition+velocity*timeToImpact;
 	}
+	Vector3f predictCenterAtTime(B)(float timeToImpact,OrderTarget target,ObjectState!B state){
+		if(!state.isValidTarget(target.id)) return target.position;
+		return predictCenterAtTime(timeToImpact,target.id,state);
+	}
+	Vector3f predictCenterAtTime(B)(float timeToImpact,int targetId,ObjectState!B state)in{
+		assert(state.isValidTarget(targetId));
+	}do{
+		static handle(T)(ref T obj,float timeToImpact,ObjectState!B state,PositionPredictor* self){
+			auto hitboxCenter=boxCenter(obj.relativeHitbox);
+			auto predictedPosition=self.predictAtTime(timeToImpact,obj.position);
+			return predictedPosition+hitboxCenter;
+		}
+		return state.objectById!handle(targetId,timeToImpact,state,&this);
+	}
 	Vector3f predict(Vector3f position,float projectileSpeed,Vector3f targetPosition){
 		if(isNaN(lastPosition.x)){
 			lastPosition=targetPosition;
@@ -2526,6 +2540,44 @@ struct SoulMole(B){
 	int soundTimer;
 }
 
+struct RainbowCasting(B){
+	int side;
+	OrderTarget target;
+	ManaDrain!B manaDrain;
+	SacSpell!B spell;
+}
+
+struct Rainbow(B){
+	int side;
+	OrderTarget last,current;
+	SacSpell!B spell;
+	int numTargets=0;
+	int frame=0;
+	enum totTargets=6;
+	int[totTargets] targets=0;
+	bool addTarget(int id){
+		if(!id) return false;
+		foreach(ref x;targets){
+			if(!x){
+				x=id;
+				return true;
+			}
+		}
+		return false;
+	}
+	bool hasTarget(int id){ return id&&targets[].canFind(id); }
+	enum travelFrames=64;
+}
+struct RainbowEffect(B){
+	OrderTarget start,end;
+	SacSpell!B spell;
+	PositionPredictor predictor;
+	enum travelFrames=Rainbow!B.travelFrames;
+	enum delay=32;
+	enum totalFrames=travelFrames+delay+travelFrames;
+	int frame=0;
+}
+
 struct BrainiacProjectile(B){
 	int attacker;
 	int side;
@@ -3383,6 +3435,30 @@ struct Effects(B){
 		if(i+1<soulMoles.length) soulMoles[i]=move(soulMoles[$-1]);
 		soulMoles.length=soulMoles.length-1;
 	}
+	Array!(RainbowCasting!B) rainbowCastings;
+	void addEffect(RainbowCasting!B rainbowCasting){
+		rainbowCastings~=move(rainbowCasting);
+	}
+	void removeRainbowCasting(int i){
+		if(i+1<rainbowCastings.length) rainbowCastings[i]=move(rainbowCastings[$-1]);
+		rainbowCastings.length=rainbowCastings.length-1;
+	}
+	Array!(Rainbow!B) rainbows;
+	void addEffect(Rainbow!B rainbow){
+		rainbows~=move(rainbow);
+	}
+	void removeRainbow(int i){
+		if(i+1<rainbows.length) rainbows[i]=move(rainbows[$-1]);
+		rainbows.length=rainbows.length-1;
+	}
+	Array!(RainbowEffect!B) rainbowEffects;
+	void addEffect(RainbowEffect!B rainbowEffect){
+		rainbowEffects~=move(rainbowEffect);
+	}
+	void removeRainbowEffect(int i){
+		if(i+1<rainbowEffects.length) rainbowEffects[i]=move(rainbowEffects[$-1]);
+		rainbowEffects.length=rainbowEffects.length-1;
+	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
 	void addEffect(BrainiacProjectile!B brainiacProjectile){
@@ -3806,6 +3882,9 @@ struct Effects(B){
 		assignArray(graspingViness,rhs.graspingViness);
 		assignArray(soulMoleCastings,rhs.soulMoleCastings);
 		assignArray(soulMoles,rhs.soulMoles);
+		assignArray(rainbowCastings,rhs.rainbowCastings);
+		assignArray(rainbows,rhs.rainbows);
+		assignArray(rainbowEffects,rhs.rainbowEffects);
 		assignArray(brainiacProjectiles,rhs.brainiacProjectiles);
 		assignArray(brainiacEffects,rhs.brainiacEffects);
 		assignArray(shrikeProjectiles,rhs.shrikeProjectiles);
@@ -5935,6 +6014,10 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 					return stun(castGraspingVines(target.id,manaDrain,spell,state));
 				case SpellTag.soulMole:
 					return stun(castSoulMole(target.id,manaDrain,spell,state));
+				case SpellTag.rainbow:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					if(side==-1) return false;
+					return stun(castRainbow(side,target.id,manaDrain,spell,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -6553,6 +6636,19 @@ bool castSoulMole(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectSta
 }
 bool soulMole(B)(SoulMole!B soulMole,ObjectState!B state){
 	state.addEffect(soulMole);
+	return true;
+}
+
+bool castRainbow(B)(int side,int creature,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	if(!state.isValidTarget(creature,TargetType.creature)) return false;
+	auto target=OrderTarget(TargetType.creature,creature,state.movingObjectById!(center,()=>Vector3f.init)(creature));
+	if(isNaN(target.position.x)) return false;
+	state.addEffect(RainbowCasting!B(side,target,manaDrain,spell));
+	return true;
+}
+
+bool rainbow(B)(int side,OrderTarget origin,OrderTarget target,SacSpell!B spell,ObjectState!B state){
+	state.addEffect(Rainbow!B(side,origin,target,spell));
 	return true;
 }
 
@@ -7409,8 +7505,14 @@ float maxTargetHeight(B)(ref MovingObject!B object,ObjectState!B state){
 int updateTarget(bool advance=false,B,T...)(ref MovingObject!B object,Vector3f position,float range,ObjectState!B state){
 	if(state.frontOfAIQueue(object.side,object.id)){
 		if(object.rangedAttack&&object.rangedAttack.tag==SpellTag.scarabShoot){
-			auto targetId=state.proximity.lowestHealthCreatureInRange(object.side,object.id,position,object.rangedAttack.range,state);
-			if(!targetId) targetId=state.proximity.lowestHealthCreatureInRange(object.side,object.id,position,range,state);
+			static bool filter(ref CenterProximityEntry entry,ObjectState!B state){
+				if(!entry.isVisibleToAI) return false;
+				if(state.movingObjectById!((ref obj)=>obj.creatureStats.health==obj.creatureStats.maxHealth,()=>true)(entry.id))
+					return false;
+				return true;
+			}
+			auto targetId=state.proximity.lowestHealthCreatureInRange!filter(object.side,object.id,position,object.rangedAttack.range,state,state);
+			if(!targetId) targetId=state.proximity.lowestHealthCreatureInRange!filter(object.side,object.id,position,range,state,state);
 			object.creatureAI.targetId=targetId;
 		}else{
 			float maxHeight=object.maxTargetHeight(state);
@@ -11541,7 +11643,6 @@ bool updateSoulMoleCasting(B)(ref SoulMoleCasting!B soulMoleCast,ObjectState!B s
 			case CastingStatus.finished:
 				.soulMole(soulMole,state);
 				return false;
-
 		}
 	}
 }
@@ -11691,6 +11792,85 @@ bool updateSoulMole(B)(ref SoulMole!B soulMole,ObjectState!B state){
 	with(soulMole) dealSplashSpellDamageAt!callback(0,spell,spell.effectRange,wizard,side,position,DamageMod.none,state,side,state);
 	return true;
 }
+
+void updateRainbowTarget(B)(ref OrderTarget target,ObjectState!B state){
+	if(state.isValidTarget(target.id,TargetType.creature)){
+		auto cand=state.movingObjectById!(center,()=>Vector3f.init)(target.id);
+		if(!isNaN(cand.x)) target.position=cand;
+	}
+}
+
+void animateRainbowCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	auto castParticle=SacParticle!B.get(ParticleType.heal);
+	wizard.animateCasting(castParticle,state);
+	// TODO: add particles from below
+}
+
+bool updateRainbowCasting(B)(ref RainbowCasting!B rainbowCast,ObjectState!B state){
+	with(rainbowCast){
+		updateRainbowTarget(target,state);
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				return state.movingObjectById!((ref obj){
+					obj.animateRainbowCasting(state);
+					return true;
+				},()=>false)(manaDrain.wizard);
+			case CastingStatus.interrupted:
+				return false;
+			case CastingStatus.finished:
+				auto position=state.movingObjectById!(center,()=>Vector3f.init)(manaDrain.wizard);
+				if(isNaN(position.x)) return false;
+				auto origin=OrderTarget(TargetType.creature,manaDrain.wizard,position);
+				rainbow(side,origin,target,spell,state);
+				return false;
+		}
+	}
+}
+
+OrderTarget newRainbowTarget(B)(OrderTarget last,OrderTarget current,SacSpell!B spell,ObjectState!B state){
+	auto position=2.0f*current.position-last.position;
+	auto offset=state.uniform(0.0f,0.25f*spell.range)*state.uniformDirection!(float,2)();
+	position.x+=offset.x, position.y+=offset.y;
+	position.z=state.getHeight(position); // TODO: avoid void?
+	return OrderTarget(TargetType.terrain,0,position);
+}
+
+bool updateRainbow(B)(ref Rainbow!B rainbow,ObjectState!B state){
+	with(rainbow){
+		updateRainbowTarget(current,state);
+		if(frame==0) state.addEffect(RainbowEffect!B(last,current,spell));
+		if(++frame==travelFrames){
+			if(current.id){
+				heal(current.id,spell,state);
+				addTarget(current.id);
+			}
+			if(++numTargets>6)
+				return false;
+			static bool filter(ref CenterProximityEntry entry,Rainbow!B* rainbow){
+				return !rainbow.hasTarget(entry.id);
+			}
+			int newTarget=state.proximity.lowestHealthCreatureInRange!filter(side,0,current.position,spell.effectRange,state,&rainbow);
+			OrderTarget next;
+			if(newTarget) next=OrderTarget(TargetType.creature,newTarget,state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(newTarget));
+			if(isNaN(next.position.x)) next=newRainbowTarget(last,current,spell,state);
+			last=current;
+			current=next;
+			frame=0;
+		}
+		return true;
+	}
+}
+
+bool updateRainbowEffect(B)(ref RainbowEffect!B rainbowEffect,ObjectState!B state){
+	with(rainbowEffect){
+		if(frame<=travelFrames){
+			updateRainbowTarget(end,state);
+			end.position=predictor.predictCenterAtTime(float(travelFrames-frame)/updateFPS,end,state);
+		}
+		return ++frame<=totalFrames;
+	}
+}
+
 
 enum brainiacProjectileHitGain=4.0f;
 enum brainiacProjectileSize=0.45f; // TODO: ok?
@@ -13798,6 +13978,27 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 		}
 		i++;
 	}
+	for(int i=0;i<effects.rainbowCastings.length;){
+		if(!updateRainbowCasting(effects.rainbowCastings[i],state)){
+			effects.removeRainbowCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.rainbows.length;){
+		if(!updateRainbow(effects.rainbows[i],state)){
+			effects.removeRainbow(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.rainbowEffects.length;){
+		if(!updateRainbowEffect(effects.rainbowEffects[i],state)){
+			effects.removeRainbowEffect(i);
+			continue;
+		}
+		i++;
+	}
 	for(int i=0;i<effects.brainiacProjectiles.length;){
 		if(!updateBrainiacProjectile(effects.brainiacProjectiles[i],state)){
 			effects.removeBrainiacProjectile(i);
@@ -14861,22 +15062,20 @@ final class Proximity(B){
 	int closestEnemyInRange(int side,Vector3f position,float range,EnemyType type,ObjectState!B state,float maxHeight=float.infinity){
 		return centers.closestInRange!isEnemy(version_,position,range,side,type,state,maxHeight).id;
 	}
-	int lowestHealthCreatureInRange(int side,int ignoredId,Vector3f position,float range,ObjectState!B state){
-		static bool isCreatureOfSide(T...)(ref CenterProximityEntry entry,int side,int ignoredId,ObjectState!B state){
-			if(!entry.isVisibleToAI) return false;
+	int lowestHealthCreatureInRange(alias filter=None,T...)(int side,int ignoredId,Vector3f position,float range,ObjectState!B state,T args){
+		static bool isCreatureOfSide(ref CenterProximityEntry entry,int side,int ignoredId,ObjectState!B state,T args){
 			if(entry.isStatic) return false;
 			//if(entry.zeroHealth) return false;
 			if(entry.id==ignoredId) return false;
-			if(entry.side!=side) return false;
-			if(state.movingObjectById!((ref obj)=>obj.creatureStats.health==obj.creatureStats.maxHealth,()=>true)(entry.id))
-				return false;
+			if(side!=-1&&entry.side!=side) return false;
+			static if(!is(filter==None)) if(!filter(entry,args)) return false;
 			return true;
 		}
-		static float priority(ref CenterProximityEntry entry,int side,int ignoredId,ObjectState!B state){
+		static float priority(ref CenterProximityEntry entry,int side,int ignoredId,ObjectState!B state,T args){
 			auto result=-state.movingObjectById!((ref obj)=>obj.creatureStats.health/obj.creatureStats.maxHealth,()=>float.infinity)(entry.id);
 			return result;
 		}
-		return centers.closestInRange!(isCreatureOfSide,priority)(version_,position,range,side,ignoredId,state).id;
+		return centers.closestInRange!(isCreatureOfSide,priority)(version_,position,range,side,ignoredId,state,args).id;
 	}
 	private static bool isPeasantShelter(ref CenterProximityEntry entry,int side,ObjectState!B state){
 		if(!entry.isStatic) return false;

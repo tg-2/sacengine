@@ -262,6 +262,17 @@ struct Renderer(B){
 		auto mesh=typeof(return).createMesh();
 		return SacVine!B(texture,mat,mesh);
 	}
+	SacRainbow!B rainbow;
+	SacRainbow!B createRainbow(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessBoneMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Additive;
+		mat.energy=10.0f;
+		mat.diffuse=texture;
+		auto mesh=typeof(return).createMesh();
+		return SacRainbow!B(texture,mat,mesh);
+	}
 	SacBrainiacEffect!B brainiacEffect;
 	SacBrainiacEffect!B createBrainiacEffect(){
 		auto texture=typeof(return).loadTexture();
@@ -456,6 +467,7 @@ struct Renderer(B){
 		blightMite=createBlightMite();
 		slime=createSlime();
 		vine=createVine();
+		rainbow=createRainbow();
 	}
 
 	void initialize(){
@@ -1257,6 +1269,38 @@ struct Renderer(B){
 					foreach(ref graspingVines;objects.graspingViness)
 						foreach(ref vine;graspingVines.vines)
 							renderVine(vine,graspingVines.lengthFactor);
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.rainbowEffects.length){
+					auto material=self.rainbow.material;
+					material.bind(rc);
+					B.disableCulling();
+					scope(success){
+						B.enableCulling();
+						material.unbind(rc);
+					}
+					B.shadelessBoneMaterialBackend.setTransformation(Vector3f(0.0f,0.0f,0.0f),Quaternionf.identity(),rc);
+					auto mesh=self.rainbow.mesh;
+					void renderRainbow(ref RainbowEffect!B rainbow){
+						Matrix4x4f[self.rainbow.numSegments+1] pose;
+						auto start=rainbow.start.position, end=rainbow.end.position;
+						auto direction=(end-start).normalized;
+						float startProgress=0.0f,endProgress=1.0f;
+						enum travelFrames=rainbow.travelFrames, delay=rainbow.delay;
+						auto frame=rainbow.frame;
+						if(frame<travelFrames) endProgress=float(frame)/travelFrames;
+						if(travelFrames+delay<=frame) startProgress=float(frame-(travelFrames+delay))/travelFrames;
+						auto cstart=(1.0f-startProgress)*start+startProgress*end,cend=(1.0f-endProgress)*start+endProgress*end;
+						foreach(i,ref x;pose){
+							auto relativePosition=float(i)/self.rainbow.numSegments;
+							auto position=(1.0f-relativePosition)*cstart+relativePosition*cend;
+							auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),direction);
+							x=Transformation(rotation,position).getMatrix4f;
+						}
+						mesh.pose=pose[];
+						scope(exit) mesh.pose=[];
+						mesh.render(rc);
+					}
+					foreach(j;0..objects.rainbowEffects.length) renderRainbow(objects.rainbowEffects[j]);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.brainiacEffects.length){
 					auto material=self.brainiacEffect.material;

@@ -411,6 +411,15 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Sou
 void serialize(alias sink,B)(ref SoulMole!B soulMole){ serializeStruct!sink(soulMole); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SoulMole!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref RainbowCasting!B rainbowCasting){ serializeStruct!sink(rainbowCasting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==RainbowCasting!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref Rainbow!B rainbow){ serializeStruct!sink(rainbow); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Rainbow!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref RainbowEffect!B rainbowEffect){ serializeStruct!sink(rainbowEffect); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==RainbowEffect!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref BrainiacProjectile!B brainiacProjectile){ serializeStruct!sink(brainiacProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BrainiacProjectile!B)){ deserializeStruct(result,state,data); }
 
