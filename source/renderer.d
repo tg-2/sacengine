@@ -1289,12 +1289,17 @@ struct Renderer(B){
 						auto frame=rainbow.frame;
 						if(frame<travelFrames) endProgress=float(frame)/travelFrames;
 						if(travelFrames+delay<=frame) startProgress=float(frame-(travelFrames+delay))/travelFrames;
-						auto cstart=(1.0f-startProgress)*start+startProgress*end,cend=(1.0f-endProgress)*start+endProgress*end;
+						auto defaultRotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),direction);
+						auto positionAt(float x){
+							return (1.0f-x)*start+x*end;
+						}
+						auto rotationAt(float x){
+							return defaultRotation;
+						}
 						foreach(i,ref x;pose){
-							auto relativePosition=float(i)/self.rainbow.numSegments;
-							auto position=(1.0f-relativePosition)*cstart+relativePosition*cend;
-							auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),direction);
-							x=Transformation(rotation,position).getMatrix4f;
+							auto relativeProgress=float(i)/self.rainbow.numSegments;
+							auto progress=(1.0f-relativeProgress)*startProgress+relativeProgress*endProgress;
+							x=Transformation(rotationAt(progress),positionAt(progress)).getMatrix4f;
 						}
 						mesh.pose=pose[];
 						scope(exit) mesh.pose=[];
