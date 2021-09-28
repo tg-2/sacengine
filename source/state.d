@@ -7505,6 +7505,8 @@ float maxTargetHeight(B)(ref MovingObject!B object,ObjectState!B state){
 }
 
 int updateTarget(bool advance=false,B,T...)(ref MovingObject!B object,Vector3f position,float range,ObjectState!B state){
+	auto newPosition=position;
+	newPosition.z=state.getHeight(newPosition)+newPosition.z-state.getHeight(object.position);
 	if(state.frontOfAIQueue(object.side,object.id)){
 		if(object.rangedAttack&&object.rangedAttack.tag==SpellTag.scarabShoot){
 			static bool filter(ref CenterProximityEntry entry,ObjectState!B state){
@@ -7513,13 +7515,13 @@ int updateTarget(bool advance=false,B,T...)(ref MovingObject!B object,Vector3f p
 					return false;
 				return true;
 			}
-			auto targetId=state.proximity.lowestHealthCreatureInRange!filter(object.side,object.id,position,object.rangedAttack.range,state,state);
-			if(!targetId) targetId=state.proximity.lowestHealthCreatureInRange!filter(object.side,object.id,position,range,state,state);
+			auto targetId=state.proximity.lowestHealthCreatureInRange!filter(object.side,object.id,newPosition,object.rangedAttack.range,state,state);
+			if(!targetId) targetId=state.proximity.lowestHealthCreatureInRange!filter(object.side,object.id,newPosition,range,state,state);
 			object.creatureAI.targetId=targetId;
 		}else{
 			float maxHeight=object.maxTargetHeight(state);
-			static if(advance) object.creatureAI.targetId=state.proximity.closestEnemyInRangeAndClosestToPreferringAttackersOf(object.side,object.position,range,position,object.id,EnemyType.all,state,maxHeight);
-			else object.creatureAI.targetId=state.proximity.closestEnemyInRange(object.side,position,range,EnemyType.all,state,maxHeight);
+			static if(advance) object.creatureAI.targetId=state.proximity.closestEnemyInRangeAndClosestToPreferringAttackersOf(object.side,object.position,range,newPosition,object.id,EnemyType.all,state,maxHeight);
+			else object.creatureAI.targetId=state.proximity.closestEnemyInRange(object.side,newPosition,range,EnemyType.all,state,maxHeight);
 		}
 	}
 	if(!state.isValidTarget(object.creatureAI.targetId)) object.creatureAI.targetId=0;
@@ -15369,7 +15371,6 @@ final class ObjectState(B){ // (update logic)
 				}
 				return success;
 			}else{
-				// TODO: add command indicators to scene
 				Order ord;
 				ord.command=command.type;
 				ord.target=OrderTarget(command.target);
