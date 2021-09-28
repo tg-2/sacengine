@@ -1880,7 +1880,7 @@ struct SacRainbow(B){
 		return B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/rnbw.TXTR"));
 	}
 	B.BoneMesh mesh;
-	enum numSegments=20;
+	enum numSegments=31;
 	static B.BoneMesh createMesh(){
 		return makeLineMesh!B(numSegments,0.0f,0.6f,true);
 	}
