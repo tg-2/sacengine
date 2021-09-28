@@ -1290,11 +1290,15 @@ struct Renderer(B){
 						if(frame<travelFrames) endProgress=float(frame)/travelFrames;
 						if(travelFrames+delay<=frame) startProgress=float(frame-(travelFrames+delay))/travelFrames;
 						auto defaultRotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),direction);
+						auto center=0.5f*(start+end);
+						auto rotationAxis=cross(Vector3f(0.0f,0.0f,1.0f),end-start).normalized;
+						if(isNaN(rotationAxis.x)) rotationAxis=Vector3f(0.0f,1.0f,0.0f);
 						auto positionAt(float x){
-							return (1.0f-x)*start+x*end;
+							//return (1.0f-x)*start+x*end;
+							return center+rotate(rotationQuaternion(rotationAxis,x*pi!float),start-center);
 						}
 						auto rotationAt(float x){
-							return defaultRotation;
+							return rotationQuaternion(rotationAxis,-(1.0f-x)*0.5f*pi!float+x*0.5f*pi!float)*defaultRotation;
 						}
 						foreach(i,ref x;pose){
 							auto relativeProgress=float(i)/self.rainbow.numSegments;
