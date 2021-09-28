@@ -1882,7 +1882,7 @@ struct SacRainbow(B){
 	B.BoneMesh mesh;
 	enum numSegments=31;
 	static B.BoneMesh createMesh(){
-		return makeLineMesh!B(numSegments,0.0f,0.6f,true);
+		return makeLineMesh!B(numSegments,0.0f,0.7f,true);
 	}
 }
 

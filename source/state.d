@@ -11912,7 +11912,7 @@ bool updateRainbowEffect(B)(ref RainbowEffect!B rainbowEffect,ObjectState!B stat
 			auto lifetime=63;
 			auto pframe=0;
 			foreach(i;0..3){
-				auto pposition=position+0.6f*state.uniformDirection();
+				auto pposition=position+0.7f*state.uniformDirection();
 				auto scale=state.uniform(0.5f,1.5f);
 				state.addParticle(Particle!B(sacParticle,pposition,velocity,scale,lifetime,pframe));
 			}
