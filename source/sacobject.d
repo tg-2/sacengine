@@ -977,7 +977,7 @@ final class SacParticle(B){
 	}
 	@property bool bumpOffGround(){
 		switch(type) with(ParticleType){
-			case scarabHit,ghostTransition,wrathParticle,gnomeHit,ashParticle,rock,swarmHit,slime,needle,redVortexDroplet,blueVortexDroplet: return true;
+			case scarabHit,ghostTransition,wrathParticle,gnomeHit,ashParticle,rock,swarmHit,slime,needle,redVortexDroplet,blueVortexDroplet,spark: return true;
 			default: return false;
 		}
 	}

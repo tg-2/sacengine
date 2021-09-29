@@ -2546,7 +2546,6 @@ struct RainbowCasting(B){
 	ManaDrain!B manaDrain;
 	SacSpell!B spell;
 }
-
 struct Rainbow(B){
 	int side;
 	OrderTarget last,current;
@@ -2579,6 +2578,37 @@ struct RainbowEffect(B){
 	int frame=0;
 	int soundTimer;
 }
+
+struct ChainLightningCasting(B){
+	int side;
+	OrderTarget target;
+	ManaDrain!B manaDrain;
+	SacSpell!B spell;
+}
+struct ChainLightning(B){
+	int wizard;
+	int side;
+	OrderTarget last,current;
+	SacSpell!B spell;
+	PositionPredictor predictor;
+	int numTargets=0;
+	int frame=0;
+	enum totTargets=6;
+	int[totTargets] targets=0;
+	bool addTarget(int id){
+		if(!id) return false;
+		foreach(ref x;targets){
+			if(!x){
+				x=id;
+				return true;
+			}
+		}
+		return false;
+	}
+	bool hasTarget(int id){ return id&&targets[].canFind(id); }
+	enum travelFrames=20;
+}
+
 
 struct BrainiacProjectile(B){
 	int attacker;
@@ -3461,6 +3491,22 @@ struct Effects(B){
 		if(i+1<rainbowEffects.length) rainbowEffects[i]=move(rainbowEffects[$-1]);
 		rainbowEffects.length=rainbowEffects.length-1;
 	}
+	Array!(ChainLightningCasting!B) chainLightningCastings;
+	void addEffect(ChainLightningCasting!B chainLightningCasting){
+		chainLightningCastings~=move(chainLightningCasting);
+	}
+	void removeChainLightningCasting(int i){
+		if(i+1<chainLightningCastings.length) chainLightningCastings[i]=move(chainLightningCastings[$-1]);
+		chainLightningCastings.length=chainLightningCastings.length-1;
+	}
+	Array!(ChainLightning!B) chainLightnings;
+	void addEffect(ChainLightning!B chainLightning){
+		chainLightnings~=move(chainLightning);
+	}
+	void removeChainLightning(int i){
+		if(i+1<chainLightnings.length) chainLightnings[i]=move(chainLightnings[$-1]);
+		chainLightnings.length=chainLightnings.length-1;
+	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
 	void addEffect(BrainiacProjectile!B brainiacProjectile){
@@ -3887,6 +3933,8 @@ struct Effects(B){
 		assignArray(rainbowCastings,rhs.rainbowCastings);
 		assignArray(rainbows,rhs.rainbows);
 		assignArray(rainbowEffects,rhs.rainbowEffects);
+		assignArray(chainLightningCastings,rhs.chainLightningCastings);
+		assignArray(chainLightnings,rhs.chainLightnings);
 		assignArray(brainiacProjectiles,rhs.brainiacProjectiles);
 		assignArray(brainiacEffects,rhs.brainiacEffects);
 		assignArray(shrikeProjectiles,rhs.shrikeProjectiles);
@@ -6020,6 +6068,10 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
 					if(side==-1) return false;
 					return stun(castRainbow(side,target.id,manaDrain,spell,state));
+				case SpellTag.chainLightning:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					if(side==-1) return false;
+					return stun(castChainLightning(side,target.id,manaDrain,spell,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -6307,16 +6359,18 @@ bool castLightning(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectSt
 	return true;
 }
 
-bool lightning(B)(int wizard,int side,OrderTarget start,OrderTarget end,SacSpell!B spell,ObjectState!B state){
-	auto startCenter=start.center(state),endCenter=end.center(state);
-	static bool filter(ref ProximityEntry entry,int id){ return entry.id!=id; }
-	auto newEnd=state.collideRay!filter(startCenter,endCenter-startCenter,1.0f,wizard);
-	if(newEnd.type!=TargetType.none){
-		end=newEnd;
-		endCenter=end.center(state);
+bool lightning(B)(int wizard,int side,OrderTarget start,OrderTarget end,SacSpell!B spell,ObjectState!B state,bool updateTargets=true){
+	if(updateTargets){
+		auto startCenter=start.center(state),endCenter=end.center(state);
+		static bool filter(ref ProximityEntry entry,int id){ return entry.id!=id; }
+		auto newEnd=state.collideRay!filter(startCenter,endCenter-startCenter,1.0f,wizard);
+		if(newEnd.type!=TargetType.none){
+			end=newEnd;
+			endCenter=end.center(state);
+		}
+		end.position=endCenter;
 	}
-	end.position=endCenter;
-	playSpellSoundTypeAt(SoundType.lightning,0.5f*(startCenter+endCenter),state,4.0f);
+	playSpellSoundTypeAt(SoundType.lightning,0.5f*(start.position+end.position),state,4.0f);
 	auto lightning=Lightning!B(wizard,side,start,end,spell,0);
 	foreach(ref bolt;lightning.bolts)
 		bolt.changeShape(state);
@@ -6648,9 +6702,22 @@ bool castRainbow(B)(int side,int creature,ManaDrain!B manaDrain,SacSpell!B spell
 	state.addEffect(RainbowCasting!B(side,target,manaDrain,spell));
 	return true;
 }
-
 bool rainbow(B)(int side,OrderTarget origin,OrderTarget target,SacSpell!B spell,ObjectState!B state){
 	state.addEffect(Rainbow!B(side,origin,target,spell));
+	return true;
+}
+
+bool castChainLightning(B)(int side,int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	if(!state.isValidTarget(target)) return false;
+	auto orderTarget=state.objectById!((obj){
+		enum type=is(typeof(obj)==MovingObject!B)?TargetType.creature:TargetType.building;
+		return OrderTarget(type,obj.id,obj.center);
+	})(target);
+	state.addEffect(ChainLightningCasting!B(side,orderTarget,manaDrain,spell));
+	return true;
+}
+bool chainLightning(B)(int wizard,int side,OrderTarget origin,OrderTarget target,SacSpell!B spell,ObjectState!B state){
+	state.addEffect(ChainLightning!B(wizard,side,origin,target,spell));
 	return true;
 }
 
@@ -10152,6 +10219,10 @@ bool updateLightning(B)(ref Lightning!B lightning,ObjectState!B state){
 		enum numSparks=128;
 		auto sacParticle=SacParticle!B.get(ParticleType.spark);
 		auto hitbox=lightning.end.hitbox(state);
+		if(hitbox[0]==hitbox[1]){
+			hitbox[0]-=0.5;
+			hitbox[1]+=0.5f;
+		}
 		auto center=boxCenter(hitbox);
 		foreach(i;0..numSparks){
 			auto position=state.uniform(scaleBox(hitbox,1.2f));
@@ -11918,6 +11989,90 @@ bool updateRainbowEffect(B)(ref RainbowEffect!B rainbowEffect,ObjectState!B stat
 			}
 		}else if(--soundTimer<=0) soundTimer=playSoundAt!true("wobr",end.position,state,rainbowGain); // TODO: move sound with rainbow
 		return ++frame<=totalFrames;
+	}
+}
+
+void animateChainLightningCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	wizard.animateLightningCasting(state);
+}
+
+bool updateChainLightningCasting(B)(ref ChainLightningCasting!B chainLightningCast,ObjectState!B state){
+	with(chainLightningCast){
+		target.position=target.center(state);
+		auto status=manaDrain.update(state);
+		return state.movingObjectById!((obj,status){
+			auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
+			auto offset=Vector3f(0.0f,hbox[1].y+0.75f,hbox[1].z+0.5f);
+			final switch(status){
+				case CastingStatus.underway:
+					auto sacParticle=SacParticle!B.get(ParticleType.lightningCasting);
+					enum numParticles=2;
+					foreach(i;0..numParticles){
+						enum uncertainty=0.25f;
+						Vector3f[2] box=[offset-uncertainty*Vector3f(1.0f,1.0f,1.0f),offset+uncertainty*Vector3f(1.0f,1.0f,1.0f)];
+						auto position=state.uniform(box);
+						auto lifetime=sacParticle.numFrames/60.0f;
+						auto velocity=Vector3f(0.0f,0.0f,0.0f);
+						auto scale=1.0f;
+						state.addParticle(Particle!(B,true)(sacParticle,obj.id,true,position,velocity,scale,sacParticle.numFrames,0));
+					}
+					obj.animateChainLightningCasting(state);
+					return true;
+				case CastingStatus.interrupted: return false;
+				case CastingStatus.finished:
+					auto start=OrderTarget(TargetType.terrain,0,rotate(obj.rotation,offset)+obj.position);
+					auto end=chainLightningCast.target;
+					chainLightning(obj.id,obj.side,start,end,spell,state);
+					return false;
+			}
+		},()=>false)(manaDrain.wizard,status);
+	}
+}
+OrderTarget newChainLightningTarget(B)(OrderTarget last,OrderTarget current,SacSpell!B spell,ObjectState!B state){
+	auto position=2.0f*current.position-last.position;
+	auto offset=state.uniform(0.0f,1.5f*spell.effectRange)*state.uniformDirection!(float,2)();
+	position.x+=offset.x, position.y+=offset.y;
+	if((position-current.position).lengthsqr>spell.effectRange^^2)
+		position=current.position+(position-current.position).normalized*spell.effectRange;
+	position.z=state.getHeight(position); // TODO: avoid void?
+	return OrderTarget(TargetType.terrain,0,position);
+}
+
+void updateChainLightningTarget(B)(ref OrderTarget target,ObjectState!B state){
+	if(state.isValidTarget(target.id,TargetType.creature)){
+		auto cand=state.movingObjectById!(center,()=>Vector3f.init)(target.id);
+		if(!isNaN(cand.x)) target.position=cand;
+	}
+}
+void predictChainLightningTarget(B)(ref OrderTarget target,ref PositionPredictor predictor,float progress,ObjectState!B state){
+	updateChainLightningTarget(target,state);
+	auto predicted=predictor.predictCenterAtTime((1.0f-progress)*ChainLightning!B.travelFrames/updateFPS,target,state);
+	target.position=(1.0f-progress)*target.position+progress*predicted;
+}
+
+enum chainLightningGain=2.0f;
+bool updateChainLightning(B)(ref ChainLightning!B chainLightning,ObjectState!B state){
+	with(chainLightning){
+		auto progress=float(frame+1)/travelFrames;
+		predictChainLightningTarget(current,predictor,progress,state);
+		if(frame==0) lightning(wizard,side,last,current,spell,state,false);
+		if(++frame==travelFrames){
+			if(current.id) addTarget(current.id);
+			if(++numTargets>6)
+				return false;
+			static bool filter(ref CenterProximityEntry entry,ObjectState!B state,ChainLightning!B* chainLightning){
+				if(state.movingObjectById!((ref obj,state)=>obj.health(state)==0.0f,()=>true)(entry.id,state)) return false;
+				return !chainLightning.hasTarget(entry.id);
+			}
+			int newTarget=numTargets>=6?0:state.proximity.closestNonAllyInRange!filter(side,current.position,spell.effectRange,EnemyType.creature,state,float.infinity,state,&chainLightning);
+			OrderTarget next;
+			if(newTarget) next=OrderTarget(TargetType.creature,newTarget,state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(newTarget));
+			if(isNaN(next.position.x)) next=newChainLightningTarget(last,current,spell,state);
+			last=current;
+			current=next;
+			frame=0;
+		}
+		return true;
 	}
 }
 
@@ -14049,6 +14204,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 		}
 		i++;
 	}
+	for(int i=0;i<effects.chainLightningCastings.length;){
+		if(!updateChainLightningCasting(effects.chainLightningCastings[i],state)){
+			effects.removeChainLightningCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.chainLightnings.length;){
+		if(!updateChainLightning(effects.chainLightnings[i],state)){
+			effects.removeChainLightning(i);
+			continue;
+		}
+		i++;
+	}
 	for(int i=0;i<effects.brainiacProjectiles.length;){
 		if(!updateBrainiacProjectile(effects.brainiacProjectiles[i],state)){
 			effects.removeBrainiacProjectile(i);
@@ -15105,12 +15274,21 @@ final class Proximity(B){
 	int closestCreatureInRange(Vector3f position,float range,ObjectState!B state,float maxHeight=float.infinity){
 		return centers.closestInRange!isOfType(version_,position,range,EnemyType.creature,state,maxHeight).id;
 	}
-	private static bool isEnemy(T...)(ref CenterProximityEntry entry,int side,EnemyType type,ObjectState!B state,float maxHeight=float.infinity,T ignored=T.init){
-		if(!isOfType(entry,type,state,maxHeight,ignored)) return false;
+	private static bool isEnemy(alias filter=None,T...)(ref CenterProximityEntry entry,int side,EnemyType type,ObjectState!B state,float maxHeight=float.infinity,T args=T.init){
+		if(!isOfType(entry,type,state,maxHeight,args)) return false;
+		static if(!is(filter==None)) if(!filter(entry,args)) return false;
 		return state.sides.getStance(side,entry.side)==Stance.enemy;
 	}
-	int closestEnemyInRange(int side,Vector3f position,float range,EnemyType type,ObjectState!B state,float maxHeight=float.infinity){
-		return centers.closestInRange!isEnemy(version_,position,range,side,type,state,maxHeight).id;
+	int closestEnemyInRange(alias filter=None,T...)(int side,Vector3f position,float range,EnemyType type,ObjectState!B state,float maxHeight=float.infinity,T args=T.init){
+		return centers.closestInRange!(isEnemy!(filter,T))(version_,position,range,side,type,state,maxHeight).id;
+	}
+	private static bool isNonAlly(alias filter=None,T...)(ref CenterProximityEntry entry,int side,EnemyType type,ObjectState!B state,float maxHeight=float.infinity,T args=T.init){
+		if(!isOfType(entry,type,state,maxHeight,args)) return false;
+		static if(!is(filter==None)) if(!filter(entry,args)) return false;
+		return state.sides.getStance(side,entry.side)!=Stance.ally;
+	}
+	int closestNonAllyInRange(alias filter=None,T...)(int side,Vector3f position,float range,EnemyType type,ObjectState!B state,float maxHeight=float.infinity,T args=T.init){
+		return centers.closestInRange!(isNonAlly!(filter,T))(version_,position,range,side,type,state,maxHeight,args).id;
 	}
 	int lowestHealthCreatureInRange(alias filter=None,T...)(int side,int ignoredId,Vector3f position,float range,ObjectState!B state,T args){
 		static bool isCreatureOfSide(ref CenterProximityEntry entry,int side,int ignoredId,ObjectState!B state,T args){
