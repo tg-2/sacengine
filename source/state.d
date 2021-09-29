@@ -2593,7 +2593,7 @@ struct ChainLightning(B){
 	PositionPredictor predictor;
 	int numTargets=0;
 	int frame=0;
-	enum totTargets=6;
+	enum totTargets=7;
 	int[totTargets] targets=0;
 	bool addTarget(int id){
 		if(!id) return false;
@@ -5404,7 +5404,7 @@ bool canDamage(B)(ref Building!B building,ObjectState!B state){
 float damageGuardians(B)(ref Building!B building,float damage,int attackingSide,DamageMod damageMod,ObjectState!B state){
 	if(building.guardianIds.length){
 		auto n=building.guardianIds.length;
-		auto splitDamage=damage/max(n,0.5f*(n+3));
+		auto splitDamage=damage/max(n,0.25f*(n+3));
 		float actualDamage=0.0f;
 		auto attachPosition=building.guardianAttachPosition(state);
 		bool ok=false;
@@ -5424,7 +5424,7 @@ float damageGuardians(B)(ref Building!B building,float damage,int attackingSide,
 float damageGuardians(B)(ref Building!B building,float damage,ref MovingObject!B attacker,DamageMod damageMod,ObjectState!B state){
 	if(building.guardianIds.length){
 		auto n=building.guardianIds.length;
-		auto splitDamage=damage/max(n,0.5f*(n+3));
+		auto splitDamage=damage/max(n,0.25f*(n+3));
 		float actualDamage=0.0f;
 		auto attachPosition=building.guardianAttachPosition(state);
 		bool ok=false;
@@ -5453,7 +5453,7 @@ float damageGuardians(B)(ref Building!B building,float damage,ref MovingObject!B
 float meleeDamageGuardians(B)(ref Building!B building,float damage,ref MovingObject!B attacker,DamageMod damageMod,ObjectState!B state){
 	if(building.guardianIds.length){
 		auto n=building.guardianIds.length;
-		auto splitDamage=damage/max(n,0.5f*(n+3));
+		auto splitDamage=damage/max(n,0.25f*(n+3));
 		float actualDamage=0.0f;
 		auto attachPosition=building.guardianAttachPosition(state);
 		bool ok=false;
@@ -5484,7 +5484,7 @@ float meleeDamageGuardians(B)(ref Building!B building,float damage,ref MovingObj
 float spellDamageGuardians(B)(ref Building!B building,float damage,int attacker,int attackingSide,DamageMod damageMod,ObjectState!B state){
 	if(building.guardianIds.length){
 		auto n=building.guardianIds.length;
-		auto splitDamage=damage/max(n,0.5f*(n+3));
+		auto splitDamage=damage/max(n,0.25f*(n+3));
 		float actualDamage=0.0f;
 		auto attachPosition=building.guardianAttachPosition(state);
 		bool ok=false;
@@ -5505,7 +5505,7 @@ float spellDamageGuardians(B)(ref Building!B building,float damage,int attacker,
 float splashSpellDamageGuardians(B)(ref Building!B building,float damage,int attacker,int attackingSide,DamageMod damageMod,ObjectState!B state){
 	if(building.guardianIds.length){
 		auto n=building.guardianIds.length;
-		auto splitDamage=damage/max(n,0.5f*(n+3));
+		auto splitDamage=damage/max(n,0.25f*(n+3));
 		float actualDamage=0.0f;
 		auto attachPosition=building.guardianAttachPosition(state);
 		bool ok=false;
@@ -5526,7 +5526,7 @@ float splashSpellDamageGuardians(B)(ref Building!B building,float damage,int att
 float rangedDamageGuardians(B)(ref Building!B building,float damage,int attacker,int attackingSide,DamageMod damageMod,ObjectState!B state){
 	if(building.guardianIds.length){
 		auto n=building.guardianIds.length;
-		auto splitDamage=damage/max(n,0.5f*(n+3));
+		auto splitDamage=damage/max(n,0.25f*(n+3));
 		float actualDamage=0.0f;
 		auto attachPosition=building.guardianAttachPosition(state);
 		bool ok=false;
@@ -5547,7 +5547,7 @@ float rangedDamageGuardians(B)(ref Building!B building,float damage,int attacker
 float splashRangedDamageGuardians(B)(ref Building!B building,float damage,int attacker,int attackingSide,DamageMod damageMod,ObjectState!B state){
 	if(building.guardianIds.length){
 		auto n=building.guardianIds.length;
-		auto splitDamage=damage/max(n,0.5f*(n+3));
+		auto splitDamage=damage/max(n,0.25f*(n+3));
 		float actualDamage=0.0f;
 		auto attachPosition=building.guardianAttachPosition(state);
 		bool ok=false;
@@ -11949,7 +11949,7 @@ bool updateRainbow(B)(ref Rainbow!B rainbow,ObjectState!B state){
 				heal(current.id,spell,state);
 				addTarget(current.id);
 			}
-			if(++numTargets>=6)
+			if(++numTargets>=totTargets)
 				return false;
 			static bool filter(ref CenterProximityEntry entry,ObjectState!B state,Rainbow!B* rainbow){
 				if(state.movingObjectById!((ref obj,state)=>obj.health(state)==0.0f,()=>true)(entry.id,state)) return false;
@@ -12030,10 +12030,11 @@ bool updateChainLightningCasting(B)(ref ChainLightningCasting!B chainLightningCa
 }
 OrderTarget newChainLightningTarget(B)(OrderTarget last,OrderTarget current,SacSpell!B spell,ObjectState!B state){
 	auto position=2.0f*current.position-last.position;
-	auto offset=state.uniform(0.0f,1.5f*spell.effectRange)*state.uniformDirection!(float,2)();
+	float limit=state.uniform(0.25f,1.0f)*spell.effectRange;
+	auto offset=1.5f*limit*state.uniform(0.0f,1.0f)*state.uniformDirection!(float,2)();
 	position.x+=offset.x, position.y+=offset.y;
-	if((position-current.position).lengthsqr>spell.effectRange^^2)
-		position=current.position+(position-current.position).normalized*spell.effectRange;
+	if((position-current.position).lengthsqr>limit^^2)
+		position=current.position+(position-current.position).normalized*limit;
 	position.z=state.getHeight(position); // TODO: avoid void?
 	return OrderTarget(TargetType.terrain,0,position);
 }
@@ -12058,13 +12059,13 @@ bool updateChainLightning(B)(ref ChainLightning!B chainLightning,ObjectState!B s
 		if(frame==0) lightning(wizard,side,last,current,spell,state,false);
 		if(++frame==travelFrames){
 			if(current.id) addTarget(current.id);
-			if(++numTargets>6)
+			if(++numTargets>=totTargets)
 				return false;
 			static bool filter(ref CenterProximityEntry entry,ObjectState!B state,ChainLightning!B* chainLightning){
 				if(state.movingObjectById!((ref obj,state)=>obj.health(state)==0.0f,()=>true)(entry.id,state)) return false;
 				return !chainLightning.hasTarget(entry.id);
 			}
-			int newTarget=numTargets>=6?0:state.proximity.closestNonAllyInRange!filter(side,current.position,spell.effectRange,EnemyType.creature,state,float.infinity,state,&chainLightning);
+			int newTarget=state.proximity.closestNonAllyInRange!filter(side,current.position,spell.effectRange,EnemyType.creature,state,float.infinity,state,&chainLightning);
 			OrderTarget next;
 			if(newTarget) next=OrderTarget(TargetType.creature,newTarget,state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(newTarget));
 			if(isNaN(next.position.x)) next=newChainLightningTarget(last,current,spell,state);
