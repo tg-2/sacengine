@@ -2620,6 +2620,22 @@ struct ChainLightning(B){
 	enum travelFrames=20;
 }
 
+struct AnimateDead(B){
+	OrderTarget caster,creature;
+	int lifetime;
+	SacSpell!B spell;
+	int frame=0;
+	int soundTimer;
+}
+struct AnimateDeadEffect(B){
+	OrderTarget start;
+	Vector3f startDirection;
+	OrderTarget end;
+	Vector3f endDirection;
+	SacSpell!B spell;
+	int frame=0;
+	enum totalFrames=64;
+}
 
 struct BrainiacProjectile(B){
 	int attacker;
@@ -3526,6 +3542,22 @@ struct Effects(B){
 		if(i+1<chainLightnings.length) chainLightnings[i]=move(chainLightnings[$-1]);
 		chainLightnings.length=chainLightnings.length-1;
 	}
+	Array!(AnimateDead!B) animateDeads;
+	void addEffect(AnimateDead!B animateDead){
+		animateDeads~=move(animateDead);
+	}
+	void removeAnimateDead(int i){
+		if(i+1<animateDeads.length) animateDeads[i]=move(animateDeads[$-1]);
+		animateDeads.length=animateDeads.length-1;
+	}
+	Array!(AnimateDeadEffect!B) animateDeadEffects;
+	void addEffect(AnimateDeadEffect!B animateDeadEffect){
+		animateDeadEffects~=move(animateDeadEffect);
+	}
+	void removeAnimateDeadEffect(int i){
+		if(i+1<animateDeadEffects.length) animateDeadEffects[i]=move(animateDeadEffects[$-1]);
+		animateDeadEffects.length=animateDeadEffects.length-1;
+	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
 	void addEffect(BrainiacProjectile!B brainiacProjectile){
@@ -3955,6 +3987,8 @@ struct Effects(B){
 		assignArray(chainLightningCastings,rhs.chainLightningCastings);
 		assignArray(chainLightningCastingEffects,rhs.chainLightningCastingEffects);
 		assignArray(chainLightnings,rhs.chainLightnings);
+		assignArray(animateDeads,rhs.animateDeads);
+		assignArray(animateDeadEffects,rhs.animateDeadEffects);
 		assignArray(brainiacProjectiles,rhs.brainiacProjectiles);
 		assignArray(brainiacEffects,rhs.brainiacEffects);
 		assignArray(shrikeProjectiles,rhs.shrikeProjectiles);
@@ -6092,6 +6126,9 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
 					if(side==-1) return false;
 					return stun(castChainLightning(side,target.id,manaDrain,spell,state));
+				case SpellTag.animateDead:
+					ok=animateDead(manaDrain.wizard,target.id,spell,state);
+					goto default;
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -6739,6 +6776,29 @@ bool castChainLightning(B)(int side,int target,ManaDrain!B manaDrain,SacSpell!B 
 }
 bool chainLightning(B)(int wizard,int side,OrderTarget origin,OrderTarget target,SacSpell!B spell,ObjectState!B state){
 	state.addEffect(ChainLightning!B(wizard,side,origin,target,spell));
+	return true;
+}
+
+bool animateDead(B)(int wizard,int creature,SacSpell!B spell,ObjectState!B state){
+	if(state.isValidTarget(creature,TargetType.soul)){
+		auto creatureId=state.soulById!((ref soul)=>soul.creatureId,()=>0)(creature);
+		if(creatureId) creature=creatureId;
+		else return true;
+	}
+	if(!state.isValidTarget(creature,TargetType.creature)) return false;
+	auto start=OrderTarget(TargetType.creature,wizard,Vector3f.init);
+	start.updateAnimateDeadTarget(state);
+	if(isNaN(start.position.x)) return false;
+	auto end=OrderTarget(TargetType.creature,creature,Vector3f.init);
+	end.updateAnimateDeadTarget(state);
+	if(isNaN(end.position.x)) return false;
+	auto reviveTime=state.movingObjectById!((ref obj){
+		obj.revive(state);
+		return cast(int)(obj.creatureStats.reviveTime*updateFPS);
+	},()=>-1)(creature);
+	if(reviveTime==-1) return false;
+	playSoundAt("0cas",creature,state,animateDeadGain);
+	state.addEffect(AnimateDead!B(start,end,reviveTime));
 	return true;
 }
 
@@ -12127,6 +12187,42 @@ bool updateChainLightning(B)(ref ChainLightning!B chainLightning,ObjectState!B s
 	}
 }
 
+enum animateDeadGain=2.0f;
+void updateAnimateDeadTarget(B)(ref OrderTarget target,ObjectState!B state){
+	if(state.isValidTarget(target.id,TargetType.creature)){
+		auto cand=state.movingObjectById!(center,()=>Vector3f.init)(target.id);
+		if(!isNaN(cand.x)) target.position=cand;
+	}
+}
+void animateDeadEffect(B)(OrderTarget start,OrderTarget end,SacSpell!B spell,ObjectState!B state){
+	auto startDirection=(Vector3f(0.0f,0.0f,3.0f)+state.uniformDirection()).normalized;
+	auto endDirection=(Vector3f(0.0f,0.0f,-3.0f)+state.uniformDirection()).normalized;
+	state.addEffect(AnimateDeadEffect!B(start,startDirection,end,endDirection,spell));
+}
+bool updateAnimateDead(B)(ref AnimateDead!B animateDead,ObjectState!B state){
+	with(animateDead){
+		caster.updateAnimateDeadTarget(state);
+		creature.updateAnimateDeadTarget(state);
+		if(--soundTimer<=0){
+			if(state.isValidTarget(creature.id,TargetType.creature)){
+				soundTimer=playSoundAt!true("9cas",creature.id,state,animateDeadGain);
+			}else{
+				soundTimer=playSoundAt!true("9cas",creature.position,state,animateDeadGain);
+			}
+			soundTimer=state.uniform(soundTimer/3,soundTimer);
+		}
+		if(frame+AnimateDeadEffect!B.totalFrames<=lifetime){
+			animateDeadEffect(caster,creature,spell,state);
+		}
+		return ++frame<=lifetime;
+	}
+}
+bool updateAnimateDeadEffect(B)(ref AnimateDeadEffect!B animateDeadEffect,ObjectState!B state){
+	with(animateDeadEffect){
+		end.updateAnimateDeadTarget(state);
+		return ++frame<=totalFrames;
+	}
+}
 
 enum brainiacProjectileHitGain=4.0f;
 enum brainiacProjectileSize=0.45f; // TODO: ok?
@@ -14272,6 +14368,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.chainLightnings.length;){
 		if(!updateChainLightning(effects.chainLightnings[i],state)){
 			effects.removeChainLightning(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.animateDeads.length;){
+		if(!updateAnimateDead(effects.animateDeads[i],state)){
+			effects.removeAnimateDead(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.animateDeadEffects.length;){
+		if(!updateAnimateDeadEffect(effects.animateDeadEffects[i],state)){
+			effects.removeAnimateDeadEffect(i);
 			continue;
 		}
 		i++;
@@ -16680,7 +16790,7 @@ auto playSoundAt(bool getDuration=false,B)(char[4] sound,Vector3f position,Objec
 	static if(B.hasAudio) if(playAudio) B.playSoundAt(sound,position,gain);
 	static if(getDuration) return getSoundDuration(sound,state);
 }
-auto playSpellSoundTypeAt(bool getDuration=false,B,T)(SoundType soundType,T target,ObjectState!B state,float gain=1.0f){
+auto playSpellSoundTypeAt(bool getDuration=false,B,T,L...)(SoundType soundType,T target,ObjectState!B state,float gain=1.0f,L limit=L.init){
 	auto sset=SacSpell!B.sset;
 	if(!sset){
 		static if(getDuration) return 0;
@@ -16689,8 +16799,12 @@ auto playSpellSoundTypeAt(bool getDuration=false,B,T)(SoundType soundType,T targ
 	auto sounds=sset.getSounds(soundType);
 	if(sounds.length){
 		auto sound=sounds[state.uniform(cast(int)$)];
+		static if(getDuration){
+			auto duration=getSoundDuration(sound,state);
+			static if(limit.length) if(duration>limit[0]) return 0;
+		}
 		playSoundAt(sound,target,state,gain);
-		static if(getDuration) return getSoundDuration(sound,state);
+		static if(getDuration) return duration;
 	}
 	static if(getDuration) return 0;
 }

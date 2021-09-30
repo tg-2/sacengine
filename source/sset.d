@@ -108,7 +108,7 @@ enum SoundType:char[4]{
 	gut="tugX",
 	demon="nmdX",
 	wail="lawX",
-	animate="mnaX", // ?
+	animate="mnaX", // (referred to by animate dead)
 	mites="timX",
 	blade="dlbX",
 	thunder="nhtX",

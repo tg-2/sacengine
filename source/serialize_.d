@@ -429,6 +429,12 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Cha
 void serialize(alias sink,B)(ref ChainLightning!B chainLightning){ serializeStruct!sink(chainLightning); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ChainLightning!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref AnimateDead!B animateDead){ serializeStruct!sink(animateDead); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==AnimateDead!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref AnimateDeadEffect!B animateDeadEffect){ serializeStruct!sink(animateDeadEffect); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==AnimateDeadEffect!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref BrainiacProjectile!B brainiacProjectile){ serializeStruct!sink(brainiacProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BrainiacProjectile!B)){ deserializeStruct(result,state,data); }
 
