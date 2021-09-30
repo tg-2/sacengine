@@ -1118,7 +1118,7 @@ struct Soul(B){
 }
 
 int side(B)(ref Soul!B soul,ObjectState!B state){
-	if(soul.creatureId==0) return -1;
+	if(soul.creatureId==0&&soul.collectorId==0) return -1;
 	return soul.preferredSide;
 }
 int soulSide(B)(int id,ObjectState!B state){
@@ -8963,6 +8963,7 @@ void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 			State pstate;
 			state.eachWizard!process(&soul,&pstate,state);
 			if(pstate.collector&&!pstate.tied){
+				if(soul.creatureId==0) soul.preferredSide=-1;
 				soul.collectorId=pstate.collector;
 				soul.state=SoulState.collecting;
 				playSoundAt("rips",soul.collectorId,state,2.0f);
