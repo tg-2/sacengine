@@ -874,6 +874,7 @@ enum ParticleType{
 	ghostTransition,
 	ghost,
 	lightningCasting,
+	chainLightningCasting,
 	needle,
 	freeze,
 	redVortexDroplet,
@@ -925,7 +926,7 @@ final class SacParticle(B){
 				return false;
 			case scarabHit:
 				return true;
-			case relativeHeal,lightningCasting:
+			case relativeHeal,lightningCasting,chainLightningCasting:
 				return false;
 			case ghostTransition:
 				return true;
@@ -959,6 +960,8 @@ final class SacParticle(B){
 				return false;
 			case relativeHeal,lightningCasting:
 				return true;
+			case chainLightningCasting:
+				return false;
 			case needle,etherealFormSpark,shard:
 				return false;
 			case freeze:
@@ -1056,6 +1059,12 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/cst0.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
+			case chainLightningCasting:
+				width=height=1.0f;
+				this.energy=3.0f;
+				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/cst0.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
 			case needle,etherealFormSpark,freeze:
 				width=height=1.0f;
 				this.energy=3.0f;
@@ -1081,7 +1090,7 @@ final class SacParticle(B){
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
 			case spark:
-				width=height=4.0f;
+				width=height=2.0f;
 				this.energy=15.0f;
 				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Stra.FLDR/txtr.FLDR/sprk.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
@@ -1234,7 +1243,9 @@ final class SacParticle(B){
 		switch(type) with(ParticleType){
 			case ghostTransition,ghost: return 2;
 			case speedUp: return 2;
+			case chainLightningCasting: return 2;
 			case redVortexDroplet: return 2;
+			case spark: return 2;
 			case etherealFormSpark: return 2;
 			case gnomeHit: return 2;
 			case ashParticle: return 3;
@@ -1271,9 +1282,9 @@ final class SacParticle(B){
 				return 1.0f;
 			case heal,relativeHeal,ghostTransition:
 				return min(1.0f,(lifetime/(0.75f*numFrames))^^2);
-			case lightningCasting,spark:
+			case lightningCasting:
 				return 1.0;
-			case needle,freeze,etherealFormSpark:
+			case chainLightningCasting,needle,freeze,etherealFormSpark,spark:
 				return min(1.0f,(lifetime/(0.5f*numFrames))^^2);
 			case shard:
 				return 1.0f;
@@ -1318,9 +1329,9 @@ final class SacParticle(B){
 				return 1.0f;
 			case heal,relativeHeal,ghostTransition,ghost:
 				return 1.0f;
-			case lightningCasting,spark:
+			case lightningCasting:
 				return 1.0f;
-			case needle,freeze,etherealFormSpark:
+			case chainLightningCasting,needle,freeze,etherealFormSpark,spark:
 				return min(1.0f,lifetime/(0.5f*numFrames));
 			case shard:
 				return 1.0f;

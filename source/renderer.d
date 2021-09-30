@@ -1293,7 +1293,12 @@ struct Renderer(B){
 						if(isNaN(rotationAxis.x)) rotationAxis=Vector3f(0.0f,1.0f,0.0f);
 						auto positionAt(float x){
 							//return (1.0f-x)*start+x*end;
-							return center+rotate(rotationQuaternion(rotationAxis,x*pi!float),start-center);
+							static Vector3f xy(Vector3f xyz){ return Vector3f(xyz.x,xyz.y,0.0f); }
+							auto position=xy(center)+rotate(rotationQuaternion(rotationAxis,x*pi!float),xy(start-center));
+							auto dstart=(xy(position)-xy(start)).length, dend=(xy(end)-xy(position)).length;
+							if(dstart==0.0f&&dend==0.0f) return start;
+							position.z+=dend/(dstart+dend)*start.z+dstart/(dstart+dend)*end.z;
+							return position;
 						}
 						auto rotationAt(float x){
 							return rotationQuaternion(rotationAxis,-(1.0f-x)*0.5f*pi!float+x*0.5f*pi!float)*defaultRotation;

@@ -10047,6 +10047,7 @@ void animateCasting(bool spread=true,int numParticles=-1,B)(ref MovingObject!B w
 		static if(spread) enum numParticles=2;
 		else enum numParticles=1;
 	}
+	auto numFrames=sacParticle.numFrames;
 	foreach(i;0..2){
 		auto hposition=hands[i];
 		if(isNaN(hposition.x)) continue;
@@ -10060,7 +10061,7 @@ void animateCasting(bool spread=true,int numParticles=-1,B)(ref MovingObject!B w
 				auto velocity=Vector3f(0.0f,0.0f,0.0f);
 			}
 			auto scale=1.0f;
-			auto lifetime=31;
+			auto lifetime=numFrames-1;
 			auto frame=0;
 			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
 		}
@@ -10220,7 +10221,7 @@ bool updateLightning(B)(ref Lightning!B lightning,ObjectState!B state){
 			bolt.changeShape(state);
 	lightning.end.position=lightning.end.center(state);
 	if(lightning.frame==lightning.travelDelay){
-		enum numSparks=128;
+		enum numSparks=192;
 		auto sacParticle=SacParticle!B.get(ParticleType.spark);
 		auto hitbox=lightning.end.hitbox(state);
 		if(hitbox[0]==hitbox[1]){
@@ -10231,9 +10232,9 @@ bool updateLightning(B)(ref Lightning!B lightning,ObjectState!B state){
 		foreach(i;0..numSparks){
 			auto position=state.uniform(scaleBox(hitbox,1.2f));
 			auto velocity=Vector3f(position.x-center.x,position.y-center.y,0.0f).normalized;
-			velocity.z=2.0f;
-			auto scale=1.0f;
-			int lifetime=31;
+			velocity.z=state.uniform(2.0f,6.0f);
+			auto scale=state.uniform(0.5f,1.5f);
+			int lifetime=63;
 			int frame=0;
 			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
 		}
@@ -11980,7 +11981,10 @@ bool updateRainbowEffect(B)(ref RainbowEffect!B rainbowEffect,ObjectState!B stat
 			auto center=0.5f*(start.position+end.position);
 			auto rotationAxis=cross(Vector3f(0.0f,0.0f,1.0f),end.position-start.position).normalized;
 			if(isNaN(rotationAxis.x)) rotationAxis=Vector3f(0.0f,1.0f,0.0f);
-			auto position=center+rotate(rotationQuaternion(rotationAxis,progress*pi!float),start.position-center);
+			static Vector3f xy(Vector3f xyz){ return Vector3f(xyz.x,xyz.y,0.0f); }
+			auto position=xy(center)+rotate(rotationQuaternion(rotationAxis,progress*pi!float),xy(start.position-center));
+			auto dstart=(xy(position)-xy(start.position)).length, dend=(xy(end.position)-xy(position)).length;
+			position.z+=dend/(dstart+dend)*start.position.z+dstart/(dstart+dend)*end.position.z;
 			if(--soundTimer<=0) soundTimer=playSoundAt!true("wobr",position,state,rainbowGain); // TODO: move sound with rainbow
 			auto sacParticle=SacParticle!B.get(ParticleType.heal);
 			auto velocity=Vector3f(0.0f,0.0f,0.0f);
@@ -11997,7 +12001,8 @@ bool updateRainbowEffect(B)(ref RainbowEffect!B rainbowEffect,ObjectState!B stat
 }
 
 void animateChainLightningCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
-	wizard.animateLightningCasting(state);
+	auto castParticle=SacParticle!B.get(ParticleType.chainLightningCasting);
+	wizard.animateCasting(castParticle,state);
 }
 
 bool updateChainLightningCasting(B)(ref ChainLightningCasting!B chainLightningCast,ObjectState!B state){
