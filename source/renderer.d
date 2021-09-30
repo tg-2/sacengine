@@ -989,7 +989,7 @@ struct Renderer(B){
 						}
 					}
 				}
-				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.lightnings.length||objects.rituals.length)){
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.lightnings.length||objects.chainLightningCastingEffects.length||objects.rituals.length)){
 					auto material=self.lightning.material;
 					material.bind(rc);
 					B.disableCulling();
@@ -997,19 +997,18 @@ struct Renderer(B){
 						B.enableCulling();
 						material.unbind(rc);
 					}
-					enum totalFrames=Lightning!B.totalFrames;
-					void renderBolts(LightningBolt[] bolts,Vector3f start,Vector3f end,int frame,float α,float β){
+					void renderBolts(int totalFrames,float scale=1.0f)(LightningBolt[] bolts,Vector3f start,Vector3f end,int frame,float α,float β){
 						auto diff=end-start;
 						auto len=diff.length;
 						auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),diff/len);
-						B.shadelessBoneMaterialBackend.setTransformationScaled(start,rotation,Vector3f(1.0f,1.0f,0.1f*len),rc);
+						B.shadelessBoneMaterialBackend.setTransformationScaled(start,rotation,Vector3f(scale,scale,scale*0.1f*len),rc);
 						auto alpha=pi!float*frame/float(totalFrames);
 						auto energy=0.375f+14.625f*(0.5f+0.25f*cos(7.0f*alpha)+0.25f*sin(11.0f*alpha));
 						B.shadelessBoneMaterialBackend.setEnergy(energy);
 						auto mesh=self.lightning.getFrame(frame%self.lightning.numFrames);
 						foreach(ref bolt;bolts){
 							Matrix4x4f[numLightningSegments+1] pose;
-							foreach(k,ref x;pose) x=Transformation(Quaternionf.identity(),bolt.get(max(α,min(float(k)/numLightningSegments,β)))).getMatrix4f;
+							foreach(k,ref x;pose) x=Transformation(Quaternionf.identity(),(1.0f/scale)*bolt.get(max(α,min(float(k)/numLightningSegments,β)))).getMatrix4f;
 							mesh.pose=pose[];
 							scope(exit) mesh.pose=[];
 							mesh.render(rc);
@@ -1019,6 +1018,7 @@ struct Renderer(B){
 						auto start=objects.lightnings[j].start.center(state);
 						auto end=objects.lightnings[j].end.center(state);
 						auto frame=objects.lightnings[j].frame;
+						enum totalFrames=Lightning!B.totalFrames;
 						enum travelDelay=Lightning!B.travelDelay;
 						auto α=0.0f,β=1.0f;
 						if(frame<travelDelay){
@@ -1026,19 +1026,33 @@ struct Renderer(B){
 						}else if(frame>totalFrames-travelDelay){
 							α=(frame-(totalFrames-travelDelay))/float(travelDelay);
 						}
-						renderBolts(objects.lightnings[j].bolts[],start,end,frame,α,β);
+						renderBolts!totalFrames(objects.lightnings[j].bolts[],start,end,frame,α,β);
+					}
+					foreach(j;0..objects.chainLightningCastingEffects.length){
+						auto start=objects.chainLightningCastingEffects[j].start;
+						auto end=objects.chainLightningCastingEffects[j].end;
+						auto frame=objects.chainLightningCastingEffects[j].frame;
+						enum totalFrames=ChainLightningCastingEffect!B.totalFrames;
+						enum travelDelay=ChainLightningCastingEffect!B.travelDelay;
+						auto α=0.0f,β=1.0f;
+						if(frame<travelDelay){
+							β=frame/float(travelDelay);
+						}else if(frame>totalFrames-travelDelay){
+							α=(frame-(totalFrames-travelDelay))/float(travelDelay);
+						}
+						renderBolts!(totalFrames,0.5f)((&objects.chainLightningCastingEffects[j].bolt)[0..1],start,end,frame,α,β);
 					}
 					foreach(j;0..objects.rituals.length){
 						auto frame=objects.rituals[j].frame;
 						if(!isNaN(objects.rituals[j].altarBolts[0].displacement[0].x)){
 							auto start=state.staticObjectById!((ref obj)=>obj.position+Vector3f(0.0f,0.0f,60.0f),()=>Vector3f.init)(objects.rituals[j].shrine);
 							auto end=state.movingObjectById!(center,()=>Vector3f.init)(objects.rituals[j].creature);
-							if(!isNaN(end.x)&&!isNaN(start.x)) renderBolts(objects.rituals[j].altarBolts[],start,end,frame,0.0f,1.0f);
+							if(!isNaN(end.x)&&!isNaN(start.x)) renderBolts!(Lightning!B.totalFrames)(objects.rituals[j].altarBolts[],start,end,frame,0.0f,1.0f);
 						}
 						if(objects.rituals[j].targetWizard){
 							auto start=objects.rituals[j].vortex.position;
 							auto end=state.movingObjectById!(center,()=>Vector3f.init)(objects.rituals[j].targetWizard);
-							if(!isNaN(end.x)&&!isNaN(start.x)) renderBolts(objects.rituals[j].desecrateBolts[],start,end,frame,0.0f,1.0f);
+							if(!isNaN(end.x)&&!isNaN(start.x)) renderBolts!(Lightning!B.totalFrames)(objects.rituals[j].desecrateBolts[],start,end,frame,0.0f,1.0f);
 						}
 					}
 				}

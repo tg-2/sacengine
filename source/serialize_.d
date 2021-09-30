@@ -423,6 +423,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Rai
 void serialize(alias sink,B)(ref ChainLightningCasting!B chainLightningCasting){ serializeStruct!sink(chainLightningCasting); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ChainLightningCasting!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref ChainLightningCastingEffect!B chainLightningCastingEffect){ serializeStruct!sink(chainLightningCastingEffect); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ChainLightningCastingEffect!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref ChainLightning!B chainLightning){ serializeStruct!sink(chainLightning); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ChainLightning!B)){ deserializeStruct(result,state,data); }
 

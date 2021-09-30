@@ -2217,9 +2217,8 @@ struct LightningCasting(B){
 enum numLightningSegments=10;
 struct LightningBolt{
 	Vector3f[numLightningSegments+1] displacement;
-	void changeShape(B)(ObjectState!B state){
+	void changeShape(float size=2.5f,B)(ObjectState!B state){
 		foreach(k,ref disp;displacement){
-			enum size=2.5f;
 			static immutable Vector3f[2] box=[-0.5f*size*Vector3f(1.0f,1.0f,1.0f),0.5f*size*Vector3f(1.0f,1.0f,1.0f)];
 			disp=Vector3f(0.0f,0.0f,10.0f*k/numLightningSegments);
 			if(0<k&&k<numLightningSegments) disp+=state.uniform(box);
@@ -2588,6 +2587,14 @@ struct ChainLightningCasting(B){
 	OrderTarget target;
 	ManaDrain!B manaDrain;
 	SacSpell!B spell;
+}
+struct ChainLightningCastingEffect(B){
+	Vector3f start,end;
+	int frame;
+	LightningBolt bolt;
+	enum totalFrames=32;
+	enum changeShapeDelay=6;
+	enum travelDelay=24;
 }
 struct ChainLightning(B){
 	int wizard;
@@ -3503,6 +3510,14 @@ struct Effects(B){
 		if(i+1<chainLightningCastings.length) chainLightningCastings[i]=move(chainLightningCastings[$-1]);
 		chainLightningCastings.length=chainLightningCastings.length-1;
 	}
+	Array!(ChainLightningCastingEffect!B) chainLightningCastingEffects;
+	void addEffect(ChainLightningCastingEffect!B chainLightningCastingEffect){
+		chainLightningCastingEffects~=move(chainLightningCastingEffect);
+	}
+	void removeChainLightningCastingEffect(int i){
+		if(i+1<chainLightningCastingEffects.length) chainLightningCastingEffects[i]=move(chainLightningCastingEffects[$-1]);
+		chainLightningCastingEffects.length=chainLightningCastingEffects.length-1;
+	}
 	Array!(ChainLightning!B) chainLightnings;
 	void addEffect(ChainLightning!B chainLightning){
 		chainLightnings~=move(chainLightning);
@@ -3938,6 +3953,7 @@ struct Effects(B){
 		assignArray(rainbows,rhs.rainbows);
 		assignArray(rainbowEffects,rhs.rainbowEffects);
 		assignArray(chainLightningCastings,rhs.chainLightningCastings);
+		assignArray(chainLightningCastingEffects,rhs.chainLightningCastingEffects);
 		assignArray(chainLightnings,rhs.chainLightnings);
 		assignArray(brainiacProjectiles,rhs.brainiacProjectiles);
 		assignArray(brainiacEffects,rhs.brainiacEffects);
@@ -6713,7 +6729,8 @@ bool rainbow(B)(int side,OrderTarget origin,OrderTarget target,SacSpell!B spell,
 
 bool castChainLightning(B)(int side,int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
 	if(!state.isValidTarget(target)) return false;
-	auto orderTarget=state.objectById!((obj){
+	auto orderTarget=state.objectById!((ref obj){
+		playSpellSoundTypeAt(SoundType.lightning,obj.center,state,4.0f);
 		enum type=is(typeof(obj)==MovingObject!B)?TargetType.creature:TargetType.building;
 		return OrderTarget(type,obj.id,obj.center);
 	})(target);
@@ -12005,6 +12022,13 @@ void animateChainLightningCasting(B)(ref MovingObject!B wizard,ObjectState!B sta
 	wizard.animateCasting(castParticle,state);
 }
 
+void chainLightningCastingEffect(B)(Vector3f start,Vector3f end,ObjectState!B state){
+	if(!state.uniform(4)) playSpellSoundTypeAt(SoundType.lightning,0.5f*(start+end),state,4.0f);
+	auto effect=ChainLightningCastingEffect!B(start,end);
+	effect.bolt.changeShape!(0.5f)(state);
+	state.addEffect(effect);
+}
+
 bool updateChainLightningCasting(B)(ref ChainLightningCasting!B chainLightningCast,ObjectState!B state){
 	with(chainLightningCast){
 		target.position=target.center(state);
@@ -12025,6 +12049,13 @@ bool updateChainLightningCasting(B)(ref ChainLightningCasting!B chainLightningCa
 						auto scale=1.0f;
 						state.addParticle(Particle!(B,true)(sacParticle,obj.id,true,position,velocity,scale,sacParticle.numFrames,0));
 					}
+					if(!state.uniform(2)){
+						Vector3f[2] nhbox=scaleBox(hbox,1.5f);
+						auto start=obj.position+state.uniform(nhbox);
+						auto end=start;
+						end.z+=state.uniform(1.0f,3.0f);
+						chainLightningCastingEffect(start,end,state);
+					}
 					obj.animateChainLightningCasting(state);
 					return true;
 				case CastingStatus.interrupted: return false;
@@ -12037,6 +12068,15 @@ bool updateChainLightningCasting(B)(ref ChainLightningCasting!B chainLightningCa
 		},()=>false)(manaDrain.wizard,status);
 	}
 }
+bool updateChainLightningCastingEffect(B)(ref ChainLightningCastingEffect!B castingEffect,ObjectState!B state){
+	with(castingEffect){
+		++frame;
+		if(frame%changeShapeDelay==0)
+			bolt.changeShape!(0.5f)(state);
+		return frame<totalFrames;
+	}
+}
+
 OrderTarget newChainLightningTarget(B)(OrderTarget last,OrderTarget current,SacSpell!B spell,ObjectState!B state){
 	auto position=2.0f*current.position-last.position;
 	float limit=state.uniform(0.25f,1.0f)*spell.effectRange;
@@ -14217,6 +14257,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.chainLightningCastings.length;){
 		if(!updateChainLightningCasting(effects.chainLightningCastings[i],state)){
 			effects.removeChainLightningCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.chainLightningCastingEffects.length;){
+		if(!updateChainLightningCastingEffect(effects.chainLightningCastingEffects[i],state)){
+			effects.removeChainLightningCastingEffect(i);
 			continue;
 		}
 		i++;
