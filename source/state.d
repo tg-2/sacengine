@@ -12053,7 +12053,7 @@ bool updateChainLightningCasting(B)(ref ChainLightningCasting!B chainLightningCa
 						Vector3f[2] nhbox=scaleBox(hbox,1.5f);
 						auto start=obj.position+rotate(obj.rotation,state.uniform(nhbox));
 						auto end=start;
-						end.z+=state.uniform(1.0f,3.0f);
+						end.z+=state.uniform(1.5f,3.25f);
 						chainLightningCastingEffect(start,end,state);
 					}
 					obj.animateChainLightningCasting(state);
