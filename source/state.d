@@ -2216,13 +2216,17 @@ struct LightningCasting(B){
 }
 enum numLightningSegments=10;
 struct LightningBolt{
-	Vector3f[numLightningSegments-1] displacement;
+	Vector3f[numLightningSegments+1] displacement;
 	void changeShape(B)(ObjectState!B state){
-		foreach(ref disp;displacement){
+		foreach(k,ref disp;displacement){
 			enum size=2.5f;
 			static immutable Vector3f[2] box=[-0.5f*size*Vector3f(1.0f,1.0f,1.0f),0.5f*size*Vector3f(1.0f,1.0f,1.0f)];
-			disp=state.uniform(box);
+			disp=Vector3f(0.0f,0.0f,10.0f*k/numLightningSegments);
+			if(0<k&&k<numLightningSegments) disp+=state.uniform(box);
 		}
+	}
+	Vector3f get(float t){
+		return lintp(displacement[],t)[0];
 	}
 }
 struct Lightning(B){

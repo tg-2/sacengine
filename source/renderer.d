@@ -998,7 +998,7 @@ struct Renderer(B){
 						material.unbind(rc);
 					}
 					enum totalFrames=Lightning!B.totalFrames;
-					void renderBolts(LightningBolt[] bolts,Vector3f start,Vector3f end,int frame){
+					void renderBolts(LightningBolt[] bolts,Vector3f start,Vector3f end,int frame,float α,float β){
 						auto diff=end-start;
 						auto len=diff.length;
 						auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),diff/len);
@@ -1009,8 +1009,7 @@ struct Renderer(B){
 						auto mesh=self.lightning.getFrame(frame%self.lightning.numFrames);
 						foreach(ref bolt;bolts){
 							Matrix4x4f[numLightningSegments+1] pose;
-							pose[0]=pose[numLightningSegments]=Matrix4f.identity();
-							foreach(k,ref x;pose[1..$-1]) x=Transformation(Quaternionf.identity(),bolt.displacement[k]).getMatrix4f;
+							foreach(k,ref x;pose) x=Transformation(Quaternionf.identity(),bolt.get(max(α,min(float(k)/numLightningSegments,β)))).getMatrix4f;
 							mesh.pose=pose[];
 							scope(exit) mesh.pose=[];
 							mesh.render(rc);
@@ -1021,26 +1020,25 @@ struct Renderer(B){
 						auto end=objects.lightnings[j].end.center(state);
 						auto frame=objects.lightnings[j].frame;
 						enum travelDelay=Lightning!B.travelDelay;
+						auto α=0.0f,β=1.0f;
 						if(frame<travelDelay){
-							auto α=frame/float(travelDelay);
-							end=α*end+start*(1.0f-α);
+							β=frame/float(travelDelay);
 						}else if(frame>totalFrames-travelDelay){
-							auto α=(frame-(totalFrames-travelDelay))/float(travelDelay);
-							start=α*end+start*(1.0f-α);
+							α=(frame-(totalFrames-travelDelay))/float(travelDelay);
 						}
-						renderBolts(objects.lightnings[j].bolts[],start,end,frame);
+						renderBolts(objects.lightnings[j].bolts[],start,end,frame,α,β);
 					}
 					foreach(j;0..objects.rituals.length){
 						auto frame=objects.rituals[j].frame;
 						if(!isNaN(objects.rituals[j].altarBolts[0].displacement[0].x)){
 							auto start=state.staticObjectById!((ref obj)=>obj.position+Vector3f(0.0f,0.0f,60.0f),()=>Vector3f.init)(objects.rituals[j].shrine);
 							auto end=state.movingObjectById!(center,()=>Vector3f.init)(objects.rituals[j].creature);
-							if(!isNaN(end.x)&&!isNaN(start.x)) renderBolts(objects.rituals[j].altarBolts[],start,end,frame);
+							if(!isNaN(end.x)&&!isNaN(start.x)) renderBolts(objects.rituals[j].altarBolts[],start,end,frame,0.0f,1.0f);
 						}
 						if(objects.rituals[j].targetWizard){
 							auto start=objects.rituals[j].vortex.position;
 							auto end=state.movingObjectById!(center,()=>Vector3f.init)(objects.rituals[j].targetWizard);
-							if(!isNaN(end.x)&&!isNaN(start.x)) renderBolts(objects.rituals[j].desecrateBolts[],start,end,frame);
+							if(!isNaN(end.x)&&!isNaN(start.x)) renderBolts(objects.rituals[j].desecrateBolts[],start,end,frame,0.0f,1.0f);
 						}
 					}
 				}

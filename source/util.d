@@ -502,3 +502,13 @@ Vector3f[2] cintp(Vector3f[] locations,float t){
 	auto m=(6*u^^2-6*u)*p0+(3*u^^2-4*u+1)*m0+(-6*u^^2+6*u)*p1+(3*u^^2-2*u)*m1;
 	return [p,m];
 }
+
+Vector3f[2] lintp(Vector3f[] locations,float t){
+	auto n=locations.length;
+	auto i=max(0,min(cast(int)floor(t*(n-1)),n-2));
+	auto u=max(0.0f,min(t*(n-1)-i,1.0f));
+	auto p0=locations[i], p1=locations[i+1];
+	auto p=(1.0f-u)*p0+u*p1;
+	auto m=p1-p0;
+	return [p,m];
+}

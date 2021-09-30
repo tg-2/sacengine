@@ -1560,7 +1560,7 @@ struct SacLightning(B){
 	static B.BoneMesh[] createMeshes(){
 		enum numSegments=10;
 		enum nU=4,nV=4;
-		return makeLineMeshes!B(numSegments,nU,nV,10.0f,0.3f,true);
+		return makeLineMeshes!B(numSegments,nU,nV,0.0f,0.3f,true);
 	}
 }
 
