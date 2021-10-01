@@ -2620,6 +2620,10 @@ struct ChainLightning(B){
 	enum travelFrames=20;
 }
 
+struct AnimateDeadCasting(B){
+	ManaDrain!B manaDrain;
+	SacSpell!B spell;
+}
 struct AnimateDead(B){
 	OrderTarget caster,creature;
 	int lifetime;
@@ -2632,9 +2636,10 @@ struct AnimateDeadEffect(B){
 	Vector3f startDirection;
 	OrderTarget end;
 	Vector3f endDirection;
+	float relativeLength;
 	SacSpell!B spell;
 	int frame=0;
-	enum totalFrames=64;
+	enum totalFrames=128;
 }
 
 struct BrainiacProjectile(B){
@@ -3542,6 +3547,14 @@ struct Effects(B){
 		if(i+1<chainLightnings.length) chainLightnings[i]=move(chainLightnings[$-1]);
 		chainLightnings.length=chainLightnings.length-1;
 	}
+	Array!(AnimateDeadCasting!B) animateDeadCastings;
+	void addEffect(AnimateDeadCasting!B animateDeadCasting){
+		animateDeadCastings~=move(animateDeadCasting);
+	}
+	void removeAnimateDeadCasting(int i){
+		if(i+1<animateDeadCastings.length) animateDeadCastings[i]=move(animateDeadCastings[$-1]);
+		animateDeadCastings.length=animateDeadCastings.length-1;
+	}
 	Array!(AnimateDead!B) animateDeads;
 	void addEffect(AnimateDead!B animateDead){
 		animateDeads~=move(animateDead);
@@ -3987,6 +4000,7 @@ struct Effects(B){
 		assignArray(chainLightningCastings,rhs.chainLightningCastings);
 		assignArray(chainLightningCastingEffects,rhs.chainLightningCastingEffects);
 		assignArray(chainLightnings,rhs.chainLightnings);
+		assignArray(animateDeadCastings,rhs.animateDeadCastings);
 		assignArray(animateDeads,rhs.animateDeads);
 		assignArray(animateDeadEffects,rhs.animateDeadEffects);
 		assignArray(brainiacProjectiles,rhs.brainiacProjectiles);
@@ -6127,8 +6141,7 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 					if(side==-1) return false;
 					return stun(castChainLightning(side,target.id,manaDrain,spell,state));
 				case SpellTag.animateDead:
-					ok=animateDead(manaDrain.wizard,target.id,spell,state);
-					goto default;
+					return stun(castAnimateDead(target.id,manaDrain,spell,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -6779,6 +6792,28 @@ bool chainLightning(B)(int wizard,int side,OrderTarget origin,OrderTarget target
 	return true;
 }
 
+bool castAnimateDead(B)(int creature,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	if(!animateDead(manaDrain.wizard,creature,spell,state))
+		return false;
+	state.addEffect(AnimateDeadCasting!B(manaDrain,spell));
+	return true;
+}
+void animateAnimateDead(B)(ref MovingObject!B obj,SacSpell!B spell,ObjectState!B state){
+	enum numParticles=128;
+	auto sacParticle=SacParticle!B.get(ParticleType.castCharnel2);
+	auto hitbox=obj.hitbox;
+	auto center=boxCenter(hitbox);
+	foreach(i;0..numParticles){
+		auto position=state.uniform(scaleBox(hitbox,1.2f));
+		auto velocity=Vector3f(position.x-center.x,position.y-center.y,0.0f).normalized;
+		velocity.z=state.uniform(0.0f,2.0f);
+		auto scale=2.0f;
+		int lifetime=31;
+		int frame=0;
+		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+	}
+
+}
 bool animateDead(B)(int wizard,int creature,SacSpell!B spell,ObjectState!B state){
 	if(state.isValidTarget(creature,TargetType.soul)){
 		auto creatureId=state.soulById!((ref soul)=>soul.creatureId,()=>0)(creature);
@@ -6792,10 +6827,11 @@ bool animateDead(B)(int wizard,int creature,SacSpell!B spell,ObjectState!B state
 	auto end=OrderTarget(TargetType.creature,creature,Vector3f.init);
 	end.updateAnimateDeadTarget(state);
 	if(isNaN(end.position.x)) return false;
-	auto reviveTime=state.movingObjectById!((ref obj){
+	auto reviveTime=state.movingObjectById!((ref obj,spell,state){
+		obj.animateAnimateDead(spell,state);
 		obj.revive(state);
 		return cast(int)(obj.creatureStats.reviveTime*updateFPS);
-	},()=>-1)(creature);
+	},()=>-1)(creature,spell,state);
 	if(reviveTime==-1) return false;
 	playSoundAt("0cas",creature,state,animateDeadGain);
 	state.addEffect(AnimateDead!B(start,end,reviveTime));
@@ -12187,7 +12223,33 @@ bool updateChainLightning(B)(ref ChainLightning!B chainLightning,ObjectState!B s
 	}
 }
 
+
+void animateAnimateDeadCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	auto castParticle=SacParticle!B.get(ParticleType.castCharnel2);
+	wizard.animateCasting(castParticle,state);
+}
+bool updateAnimateDeadCasting(B)(ref AnimateDeadCasting!B animateDeadCasting,ObjectState!B state){
+	with(animateDeadCasting){
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				state.movingObjectById!(animateAnimateDeadCasting,(){})(manaDrain.wizard,state);
+				return true;
+			case CastingStatus.interrupted,CastingStatus.finished: return false;
+		}
+	}
+}
+
 enum animateDeadGain=2.0f;
+void updateAnimateDeadCaster(B)(ref OrderTarget target,ObjectState!B state){
+	if(state.isValidTarget(target.id,TargetType.creature)){
+		auto cand=state.movingObjectById!((ref obj){
+			auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
+			auto offset=Vector3f(0.5f*(hbox[0].x+hbox[1].x),0.5f*(hbox[0].y+hbox[1].y),0.2f*hbox[0].z+0.8f*hbox[1].z);
+			return obj.position+rotate(obj.rotation,offset);
+		},()=>Vector3f.init)(target.id);
+		if(!isNaN(cand.x)) target.position=cand;
+	}
+}
 void updateAnimateDeadTarget(B)(ref OrderTarget target,ObjectState!B state){
 	if(state.isValidTarget(target.id,TargetType.creature)){
 		auto cand=state.movingObjectById!(center,()=>Vector3f.init)(target.id);
@@ -12195,24 +12257,27 @@ void updateAnimateDeadTarget(B)(ref OrderTarget target,ObjectState!B state){
 	}
 }
 void animateDeadEffect(B)(OrderTarget start,OrderTarget end,SacSpell!B spell,ObjectState!B state){
-	auto startDirection=(Vector3f(0.0f,0.0f,3.0f)+state.uniformDirection()).normalized;
-	auto endDirection=(Vector3f(0.0f,0.0f,-3.0f)+state.uniformDirection()).normalized;
-	state.addEffect(AnimateDeadEffect!B(start,startDirection,end,endDirection,spell));
+	auto distance=(end.position-start.position).length;
+	auto startDirection=2.0f*(Vector3f(0.0f,0.0f,3.0f)+2.0f*state.uniformDirection()).normalized*distance;
+	auto endDirection=2.0f*(Vector3f(0.0f,0.0f,-3.0f)+2.0f*state.uniformDirection()).normalized*distance;
+	float relativeLength=state.uniform(0.15f,0.5f);
+	state.addEffect(AnimateDeadEffect!B(start,startDirection,end,endDirection,relativeLength,spell));
 }
 bool updateAnimateDead(B)(ref AnimateDead!B animateDead,ObjectState!B state){
 	with(animateDead){
-		caster.updateAnimateDeadTarget(state);
+		caster.updateAnimateDeadCaster(state);
 		creature.updateAnimateDeadTarget(state);
-		if(--soundTimer<=0){
-			if(state.isValidTarget(creature.id,TargetType.creature)){
-				soundTimer=playSoundAt!true("9cas",creature.id,state,animateDeadGain);
-			}else{
-				soundTimer=playSoundAt!true("9cas",creature.position,state,animateDeadGain);
+		if(frame+AnimateDeadEffect!B.totalFrames<=lifetime+3*updateFPS/4){ // TODO: get more precise estimate of duration for lifetime
+			if(frame%(updateFPS/30)==0&&!state.uniform(2))
+				animateDeadEffect(caster,creature,spell,state);
+			if(--soundTimer<=0){
+				if(state.isValidTarget(creature.id,TargetType.creature)){
+					soundTimer=playSoundAt!true("9cas",creature.id,state,animateDeadGain);
+				}else{
+					soundTimer=playSoundAt!true("9cas",creature.position,state,animateDeadGain);
+				}
+				soundTimer=state.uniform(soundTimer/3,soundTimer);
 			}
-			soundTimer=state.uniform(soundTimer/3,soundTimer);
-		}
-		if(frame+AnimateDeadEffect!B.totalFrames<=lifetime){
-			animateDeadEffect(caster,creature,spell,state);
 		}
 		return ++frame<=lifetime;
 	}
@@ -14368,6 +14433,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.chainLightnings.length;){
 		if(!updateChainLightning(effects.chainLightnings[i],state)){
 			effects.removeChainLightning(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.animateDeadCastings.length;){
+		if(!updateAnimateDeadCasting(effects.animateDeadCastings[i],state)){
+			effects.removeAnimateDeadCasting(i);
 			continue;
 		}
 		i++;

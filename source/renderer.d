@@ -273,6 +273,17 @@ struct Renderer(B){
 		auto mesh=typeof(return).createMesh();
 		return SacRainbow!B(texture,mat,mesh);
 	}
+	SacAnimateDead!B animateDead;
+	SacAnimateDead!B createAnimateDead(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessBoneMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Additive;
+		mat.energy=10.0f;
+		mat.diffuse=texture;
+		auto meshes=typeof(return).createMeshes();
+		return SacAnimateDead!B(texture,mat,meshes);
+	}
 	SacBrainiacEffect!B brainiacEffect;
 	SacBrainiacEffect!B createBrainiacEffect(){
 		auto texture=typeof(return).loadTexture();
@@ -468,6 +479,7 @@ struct Renderer(B){
 		slime=createSlime();
 		vine=createVine();
 		rainbow=createRainbow();
+		animateDead=createAnimateDead();
 	}
 
 	void initialize(){
@@ -1327,6 +1339,36 @@ struct Renderer(B){
 						mesh.render(rc);
 					}
 					foreach(j;0..objects.rainbowEffects.length) renderRainbow(objects.rainbowEffects[j]);
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.animateDeadEffects.length){
+					auto material=self.animateDead.material;
+					material.bind(rc);
+					B.disableCulling();
+					scope(success){
+						B.enableCulling();
+						material.unbind(rc);
+					}
+					B.shadelessBoneMaterialBackend.setTransformation(Vector3f(0.0f,0.0f,0.0f),Quaternionf.identity(),rc);
+					void renderAnimateDead(ref AnimateDeadEffect!B animateDead){
+						Matrix4x4f[self.animateDead.numSegments+1] pose;
+						auto start=animateDead.start.position, end=animateDead.end.position;
+						auto direction=(end-start).normalized;
+						auto frame=animateDead.frame;
+						auto relativeLength=animateDead.relativeLength;
+						auto startProgress=(1.0f+relativeLength)*float(frame)/animateDead.totalFrames;
+						auto endProgress=startProgress-relativeLength;
+						foreach(i,ref x;pose){
+							auto relativeProgress=float(i)/self.animateDead.numSegments;
+							auto progress=max(0.0f,min((1.0f-relativeProgress)*startProgress+relativeProgress*endProgress,1.0f));
+							auto location=cintp2([[animateDead.start.position,animateDead.startDirection],[animateDead.end.position,animateDead.endDirection]],progress);
+							x=Transformation(rotationBetween(Vector3f(0.0f,0.0f,1.0f),location[1].normalized),location[0]).getMatrix4f;
+						}
+						auto mesh=self.animateDead.getFrame(frame%self.animateDead.numFrames);
+						mesh.pose=pose[];
+						scope(exit) mesh.pose=[];
+						mesh.render(rc);
+					}
+					foreach(j;0..objects.animateDeadEffects.length) renderAnimateDead(objects.animateDeadEffects[j]);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.brainiacEffects.length){
 					auto material=self.brainiacEffect.material;

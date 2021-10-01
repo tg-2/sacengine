@@ -1515,7 +1515,7 @@ struct SacBlueRing(B){
 	}
 }
 
-B.BoneMesh makeLineMesh(B)(int numSegments,float length,float size,bool pointy,bool flip=true,int nU=1,int nV=1,int u=0,int v=0){
+B.BoneMesh makeLineMesh(B)(int numSegments,float length,float size,bool pointy,bool flip=true,bool repeat=true,int nU=1,int nV=1,int u=0,int v=0){
 	auto mesh=B.makeBoneMesh(3*4*numSegments,3*2*numSegments);
 	enum sqrt34=sqrt(0.75f);
 	immutable Vector3f[3] offsets=[size*Vector3f(0.0f,-1.0f,0.0f),size*Vector3f(sqrt34,0.5f,0.0f),size*Vector3f(-sqrt34,0.5f,0.0f)];
@@ -1537,7 +1537,12 @@ B.BoneMesh makeLineMesh(B)(int numSegments,float length,float size,bool pointy,b
 					mesh.boneIndices[vertex][l]=center;
 				}
 				mesh.weights[vertex]=Vector3f(1.0f,0.0f,0.0f);
-				mesh.texcoords[vertex]=Vector2f(1.0f/nU*(u+((flip?i&1:0)^(k==1||k==2)?1.0f-0.5f/64:0.5f/64)),1.0f/nV*(v+((k==0||k==1)?1.0f-1.0f/64:0.5f/64)));
+				if(repeat){
+					mesh.texcoords[vertex]=Vector2f(1.0f/nU*(u+((flip?i&1:0)^(k==1||k==2)?1.0f-0.5f/(256/nU):0.5f/(256/nU))),1.0f/nV*(v+((k==0||k==1)?1.0f-1.0f/(256/nV):0.5f/(256/nV))));
+				}else{
+					auto progress=float(i+((k==1)||(k==2)))/numSegments;
+					mesh.texcoords[vertex]=Vector2f(1.0f/nU*(u+(progress*(1.0f-0.5f/(256/nU))+(1.0f-progress)*(0.5f/(256/nU)))),1.0f/nV*(v+((k==0||k==1)?1.0f-1.0f/(256/nV):0.5f/(256/nV))));
+				}
 			}
 			int b=3*4*i+4*j;
 			addFace([b+0,b+1,b+2]);
@@ -1550,11 +1555,11 @@ B.BoneMesh makeLineMesh(B)(int numSegments,float length,float size,bool pointy,b
 	return mesh;
 }
 
-B.BoneMesh[] makeLineMeshes(B)(int numSegments,int nU,int nV,float length,float size,bool pointy,bool flip=true){
+B.BoneMesh[] makeLineMeshes(B)(int numSegments,int nU,int nV,float length,float size,bool pointy,bool flip=true,bool repeat=true){
 	auto meshes=new B.BoneMesh[](nU*nV);
 	foreach(t,ref mesh;meshes){
 		int u=cast(int)t%nU,v=cast(int)t/nU;
-		mesh=makeLineMesh!B(numSegments,length,size,pointy,flip,nU,nV,u,v);
+		mesh=makeLineMesh!B(numSegments,length,size,pointy,flip,repeat,nU,nV,u,v);
 	}
 	return meshes;
 }
@@ -1893,10 +1898,25 @@ struct SacRainbow(B){
 	B.BoneMesh mesh;
 	enum numSegments=31;
 	static B.BoneMesh createMesh(){
-		return makeLineMesh!B(numSegments,0.0f,0.7f,true);
+		return makeLineMesh!B(numSegments,0.0f,0.7f,false);
 	}
 }
 
+struct SacAnimateDead(B){
+	B.Texture texture;
+	B.Material material;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/Daniel/DanC.WAD!/char.FLDR/and2.TXTR"));
+	}
+	B.BoneMesh[] frames;
+	enum numSegments=31;
+	enum animationDelay=2;
+	enum numFrames=8*animationDelay*updateAnimFactor;
+	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
+	static B.BoneMesh[] createMeshes(){
+		return makeLineMeshes!B(numSegments,1,8,0.0f,0.6f,false,true,false);
+	}
+}
 
 struct SacBrainiacEffect(B){
 	B.Texture texture;
