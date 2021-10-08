@@ -7690,7 +7690,7 @@ float maxTargetHeight(B)(ref MovingObject!B object,ObjectState!B state){
 
 int updateTarget(bool advance=false,B,T...)(ref MovingObject!B object,Vector3f position,float range,ObjectState!B state){
 	auto newPosition=position;
-	newPosition.z=state.getHeight(newPosition)+newPosition.z-state.getHeight(object.position);
+	newPosition.z=state.getHeight(newPosition)+object.position.z-state.getHeight(object.position);
 	if(state.frontOfAIQueue(object.side,object.id)){
 		if(object.rangedAttack&&object.rangedAttack.tag==SpellTag.scarabShoot){
 			static bool filter(ref CenterProximityEntry entry,ObjectState!B state){
@@ -15799,7 +15799,7 @@ final class ObjectState(B){ // (update logic)
 						// TODO: check whether they stick to creatures of a specific side
 						if(state.movingObjectById!((obj,side,state)=>state.sides.getStance(side,obj.side)==Stance.enemy,()=>false)(ord.target.id,side,state)){
 							auto newPosition=position;
-							newPosition.z=state.getHeight(newPosition)+newPosition.z-state.getHeight(obj.position);
+							newPosition.z=state.getHeight(newPosition)+obj.position.z-state.getHeight(obj.position);
 							auto maxHeight=obj.maxTargetHeight(state);
 							auto target=state.proximity.closestEnemyInRange(side,newPosition,attackDistance,EnemyType.creature,state,maxHeight);
 							if(target) ord.target.id=target;
