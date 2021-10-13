@@ -9,6 +9,7 @@ import animations, ntts, nttData, spells, sacspell, bldg, sset;
 import stats;
 import std.typecons: Tuple, tuple;
 import std.stdio, std.conv;
+static import std.typecons;
 alias Tuple=std.typecons.Tuple;
 
 import dlib.math.portable;
@@ -684,7 +685,7 @@ final class SacObject(B){
 
 	void setFrame(AnimationState animationState,size_t frame)in{
 		assert(frame<numFrames(animationState),text(tag," ",animationState," ",frame," ",numFrames(animationState)));
-	}body{
+	}do{
 		saxsi.setPose(animations[animationState].frames[frame]);
 	}
 }

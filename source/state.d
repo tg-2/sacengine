@@ -1542,7 +1542,7 @@ struct FixedObjects(B){
 
 	void addFixed(FixedObject!B object)in{
 		assert(sacObject==object.sacObject);
-	}body{
+	}do{
 		positions~=object.position;
 		rotations~=object.rotation;
 	}
@@ -17033,7 +17033,7 @@ final class GameState(B){
 	Array!(Array!(Command!B)) commands;
 	this(SacMap!B map,Sides!B sides,Triggers!B triggers,NTTs ntts,Options options)in{
 		assert(!!map);
-	}body{
+	}do{
 		auto proximity=new Proximity!B();
 		auto pathFinder=new PathFinder!B(map);
 		current=new ObjectState!B(map,sides,proximity,pathFinder);
@@ -17178,7 +17178,7 @@ final class GameState(B){
 	}
 	void rollback(int frame)in{
 		assert(frame>=lastCommitted.frame);
-	}body{
+	}do{
 		if(frame<current.frame) rollback(lastCommitted);
 		playAudio=false;
 		simulateTo(frame);
