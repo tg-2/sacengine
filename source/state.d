@@ -3032,6 +3032,17 @@ struct BlightMite(B){
 	enum fadeTime=0.5f;
 }
 
+struct LightningCharge(B){
+	int creature;
+	int side;
+	SacSpell!B spell;
+
+	enum totalFrames=12*updateFPS; // TODO: correct?
+	enum sparkRate=2.0f;
+	enum lightningRate=0.5f;
+	enum range=30.0f; // TODO: correct?
+}
+
 struct Protector(B){
 	int id;
 	SacSpell!B ability;
@@ -3901,6 +3912,14 @@ struct Effects(B){
 		if(i+1<blightMites.length) blightMites[i]=move(blightMites[$-1]);
 		blightMites.length=blightMites.length-1;
 	}
+	Array!(LightningCharge!B) lightningCharges;
+	void addEffect(LightningCharge!B lightningCharge){
+		lightningCharges~=lightningCharge;
+	}
+	void removeLightningCharge(int i){
+		if(i+1<lightningCharges.length) lightningCharges[i]=move(lightningCharges[$-1]);
+		lightningCharges.length=lightningCharges.length-1;
+	}
 	Array!(Protector!B) protectors;
 	void addEffect(Protector!B protector){
 		protectors~=protector;
@@ -4043,6 +4062,7 @@ struct Effects(B){
 		assignArray(steamClouds,rhs.steamClouds);
 		assignArray(poisonClouds,rhs.poisonClouds);
 		assignArray(blightMites,rhs.blightMites);
+		assignArray(lightningCharges,rhs.lightningCharges);
 		assignArray(protectors,rhs.protectors);
 		assignArray(appearances,rhs.appearances);
 		assignArray(disappearances,rhs.disappearances);
@@ -5434,8 +5454,8 @@ float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,
 				actualDamage*=damageFactor;
 				break;
 			case SpellTag.lightningCharge:
+				object.lightningCharge(cast(int)((1.0f/30.0f)*actualDamage*updateFPS),passive,state); // TODO: duration ok?
 				if(damageMod&DamageMod.lightning) actualDamage*=0.3f;
-				// TODO: charge the creature
 				break;
 			default:
 				break;
@@ -7844,6 +7864,13 @@ bool callLightning(B)(ref MovingObject!B object,SacSpell!B spell,ObjectState!B s
 	auto start=OrderTarget(TargetType.terrain,0,position);
 	auto lightningSpell=SacSpell!B.get(SpellTag.lightning);
 	return lightning(object.id,object.side,start,end,lightningSpell,state);
+}
+
+bool lightningCharge(B)(ref MovingObject!B object,int frames,SacSpell!B spell,ObjectState!B state){
+	if(frames<=0) return true;
+	if(object.creatureStats.effects.lightningChargeFrames==0) state.addEffect(LightningCharge!B(object.id,object.side,spell));
+	object.creatureStats.effects.lightningChargeFrames+=frames;
+	return true;
 }
 
 bool protector(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
@@ -10348,6 +10375,23 @@ bool updateLightningCasting(B)(ref LightningCasting!B lightningCast,ObjectState!
 		},()=>false)(manaDrain.wizard,status);
 	}
 }
+void sparkAnimation(int numSparks=192,B)(Vector3f[2] hitbox,ObjectState!B state){
+	auto sacParticle=SacParticle!B.get(ParticleType.spark);
+	if(hitbox[0]==hitbox[1]){
+		hitbox[0]-=0.5;
+		hitbox[1]+=0.5f;
+	}
+	auto center=boxCenter(hitbox);
+	foreach(i;0..numSparks){
+		auto position=state.uniform(scaleBox(hitbox,1.2f));
+		auto velocity=Vector3f(position.x-center.x,position.y-center.y,0.0f).normalized;
+		velocity.z=state.uniform(2.0f,6.0f);
+		auto scale=state.uniform(0.5f,1.5f);
+		int lifetime=63;
+		int frame=0;
+		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+	}
+}
 bool updateLightning(B)(ref Lightning!B lightning,ObjectState!B state){
 	lightning.frame+=1;
 	static assert(updateFPS==60);
@@ -10357,23 +10401,8 @@ bool updateLightning(B)(ref Lightning!B lightning,ObjectState!B state){
 			bolt.changeShape(state);
 	lightning.end.position=lightning.end.center(state);
 	if(lightning.frame==lightning.travelDelay){
-		enum numSparks=192;
-		auto sacParticle=SacParticle!B.get(ParticleType.spark);
 		auto hitbox=lightning.end.hitbox(state);
-		if(hitbox[0]==hitbox[1]){
-			hitbox[0]-=0.5;
-			hitbox[1]+=0.5f;
-		}
-		auto center=boxCenter(hitbox);
-		foreach(i;0..numSparks){
-			auto position=state.uniform(scaleBox(hitbox,1.2f));
-			auto velocity=Vector3f(position.x-center.x,position.y-center.y,0.0f).normalized;
-			velocity.z=state.uniform(2.0f,6.0f);
-			auto scale=state.uniform(0.5f,1.5f);
-			int lifetime=63;
-			int frame=0;
-			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
-		}
+		sparkAnimation(hitbox,state);
 		// TODO: scar
 		auto target=lightning.end.id;
 		if(state.isValidTarget(target)){
@@ -13932,6 +13961,34 @@ bool updateBlightMite(B)(ref BlightMite!B blightMite,ObjectState!B state){
 	}
 }
 
+bool updateLightningCharge(B)(ref LightningCharge!B lightningCharge,ObjectState!B state){
+	with(lightningCharge){
+		static import std.math;
+		enum sparkProb=(1.0f-std.math.exp(-sparkRate/updateFPS));
+		enum lightningProb=(1.0f-std.math.exp(-lightningRate/updateFPS));
+		auto hitbox=state.movingObjectById!(hitbox,()=>(Vector3f[2]).init)(creature);
+		if(isNaN(hitbox[0].x)) return false;
+		auto center=boxCenter(hitbox);
+		if(state.uniform(0.0f,1.0f)<=sparkProb)
+			sparkAnimation!48(hitbox,state);
+		if(state.uniform(0.0f,1.0f)<=lightningProb){
+			auto start=OrderTarget(TargetType.creature,creature,center);
+			OrderTarget end;
+			if(end.type==TargetType.none){
+				auto direction=state.uniformDirection!(float,2)();
+				auto distance=state.uniform(range/5.0f,range);
+				auto offset=direction*distance;
+				auto position=center+Vector3f(offset.x,offset.y,0.0f);
+				position.z=state.getHeight(position);
+				end=OrderTarget(TargetType.terrain,0,position);
+			}
+			// TODO: target nearby ntts
+			lightning(creature,side,start,end,spell,state);
+		}
+		return state.movingObjectById!((ref obj)=>--obj.creatureStats.effects.lightningChargeFrames>0,()=>false)(creature);
+	}
+}
+
 bool updateProtector(B)(ref Protector!B protector,ObjectState!B state){
 	if(!state.isValidTarget(protector.id,TargetType.creature)) return false;
 	static void applyProtector(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
@@ -14764,6 +14821,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.blightMites.length;){
 		if(!updateBlightMite(effects.blightMites[i],state)){
 			effects.removeBlightMite(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.lightningCharges.length;){
+		if(!updateLightningCharge(effects.lightningCharges[i],state)){
+			effects.removeLightningCharge(i);
 			continue;
 		}
 		i++;

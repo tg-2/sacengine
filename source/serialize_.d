@@ -564,6 +564,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Poi
 void serialize(alias sink,B)(ref BlightMite!B blightMite){ serializeStruct!sink(blightMite); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BlightMite!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref LightningCharge!B lightningCharge){ serializeStruct!sink(lightningCharge); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==LightningCharge!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref Protector!B protector){ serializeStruct!sink(protector); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Protector!B)){ deserializeStruct(result,state,data); }
 
