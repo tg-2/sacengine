@@ -5389,6 +5389,7 @@ enum DamageMod{
 	peirceShield=1<<1,
 	lightning=1<<2,
 	ignite=1<<3,
+	desecration=1<<4,
 	// TODO: treat those as modifiers to cut down on pointless code duplication:
 	// ranged=...
 	// splash=...
@@ -5421,15 +5422,23 @@ float dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B at
 	attacker.healFromDrain(actualDamage,state);
 	return actualDamage;
 }
-float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,ObjectState!B state){
+float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,DamageMod damageMod,ObjectState!B state){
 	if(!object.canDamage(state)) return 0.0f;
 	auto actualDamage=damage*state.sideDamageMultiplier(attackingSide,object.side);
 	if(object.creatureStats.effects.isGuardian) actualDamage*=0.5f;
 	if(auto passive=object.sacObject.passiveOnDamage){
-		if(passive.tag==SpellTag.taurockPassive){
-			auto relativeHP=object.creatureStats.health/object.creatureStats.maxHealth;
-			auto damageFactor=0.25f+0.75f*relativeHP;
-			actualDamage*=damageFactor;
+		switch(passive.tag){
+			case SpellTag.taurockPassive:
+				auto relativeHP=object.creatureStats.health/object.creatureStats.maxHealth;
+				auto damageFactor=0.25f+0.75f*relativeHP;
+				actualDamage*=damageFactor;
+				break;
+			case SpellTag.lightningCharge:
+				if(damageMod&DamageMod.lightning) actualDamage*=0.3f;
+				// TODO: charge the creature
+				break;
+			default:
+				break;
 		}
 	}
 	actualDamage=min(object.health,actualDamage);
@@ -5455,11 +5464,11 @@ float dealDamage(B)(ref MovingObject!B object,float damage,int attackingSide,Dam
 	}
 	damageMultiplier*=1.2f^^object.creatureStats.effects.numSlimes;
 	// TODO: bleed, in case of petrification, bleed rocks instead
-	return dealRawDamage(object,damage*damageMultiplier,attackingSide,state);
+	return dealRawDamage(object,damage*damageMultiplier,attackingSide,damageMod,state);
 }
 float dealDesecrationDamage(B)(ref MovingObject!B object,float damage,int attackingSide,ObjectState!B state){
 	if(!object.canDamage(state)) return 0.0f;
-	return dealRawDamage(object,damage,attackingSide,state);
+	return dealRawDamage(object,damage,attackingSide,DamageMod.desecration,state);
 }
 
 bool canDamage(B)(ref Building!B building,ObjectState!B state){
