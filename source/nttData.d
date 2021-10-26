@@ -1128,6 +1128,7 @@ enum SpellTag:char[4]{
 	divineSight="eesd",
 	blightMites="liba",
 	protector="HSba",
+	callLightning="gsba",
 	// passive abilities:
 	steamCloud="goc@",
 	poisonCloud="cen@",

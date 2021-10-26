@@ -7827,6 +7827,16 @@ bool blightMitesShoot(B)(int creature,float accuracy,Vector3f position,Vector3f 
 	return true;
 }
 
+bool callLightning(B)(ref MovingObject!B object,SacSpell!B spell,ObjectState!B state){
+	auto center=object.center;
+	auto direction=(state.uniformDirection()+Vector3f(0.0f,0.0f,4.0f)).normalized;
+	auto position=center+100.0f*direction;
+	auto end=OrderTarget(TargetType.creature,object.id,center);
+	auto start=OrderTarget(TargetType.terrain,0,position);
+	auto lightningSpell=SacSpell!B.get(SpellTag.lightning);
+	return lightning(object.id,object.side,start,end,lightningSpell,state);
+}
+
 bool protector(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
 	if(object.creatureStats.effects.lifeShield) return false;
 	auto lifeShield=SacSpell!B.get(SpellTag.lifeShield);
@@ -7990,6 +8000,9 @@ bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,OrderTarget targ
 			return false;
 		case SpellTag.blightMites:
 			return shoot();
+		case SpellTag.callLightning:
+			if(object.callLightning(ability,state)) apply();
+			return false;
 		case SpellTag.protector:
 			if(object.protector(ability,state)) apply();
 			return false;
