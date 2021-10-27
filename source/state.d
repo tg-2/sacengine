@@ -3039,8 +3039,10 @@ struct LightningCharge(B){
 
 	enum totalFrames=12*updateFPS; // TODO: correct?
 	enum sparkRate=2.0f;
-	enum lightningRate=0.5f;
-	enum range=30.0f; // TODO: correct?
+	enum lightningRate=0.65f;
+	enum range=25.0f; // TODO: correct?
+	enum shortJumpRange=10.0f;
+	enum jumpRange=15.0f; // TODO: correct?
 }
 
 struct Protector(B){
@@ -7733,7 +7735,7 @@ int updateTarget(bool advance=false,B,T...)(ref MovingObject!B object,Vector3f p
 			object.creatureAI.targetId=targetId;
 		}else{
 			float maxHeight=object.maxTargetHeight(state);
-			static if(advance) object.creatureAI.targetId=state.proximity.closestEnemyInRangeAndClosestToPreferringAttackersOf(object.side,object.position,range,newPosition,object.id,EnemyType.all,state,maxHeight);
+			static if(advance) object.creatureAI.targetId=state.proximity.enemyInRangeAndClosestToPreferringAttackersOf(object.side,object.position,range,newPosition,object.id,EnemyType.all,state,maxHeight);
 			else object.creatureAI.targetId=state.proximity.closestEnemyInRange(object.side,newPosition,range,EnemyType.all,state,maxHeight);
 		}
 	}
@@ -13982,7 +13984,12 @@ bool updateLightningCharge(B)(ref LightningCharge!B lightningCharge,ObjectState!
 				position.z=state.getHeight(position);
 				end=OrderTarget(TargetType.terrain,0,position);
 			}
-			// TODO: target nearby ntts
+			if(auto target=state.proximity.anyInRangeAndClosestTo(start.position,range,end.position,creature)){
+				auto jumped=target?centerTarget(target,state):OrderTarget.init;
+				auto jdistsqr=(end.position-jumped.position).lengthsqr;
+				if(jdistsqr<shortJumpRange^^2||jdistsqr<jumpRange^^2&&state.uniform(3)!=0)
+					end=jumped;
+			}
 			lightning(creature,side,start,end,spell,state);
 		}
 		return state.movingObjectById!((ref obj)=>--obj.creatureStats.effects.lightningChargeFrames>0,()=>false)(creature);
@@ -15643,8 +15650,11 @@ final class Proximity(B){
 		if(entry.attackTargetId==id) return 1;
 		return 0;
 	}
-	int closestEnemyInRangeAndClosestToPreferringAttackersOf(int side,Vector3f position,float range,Vector3f targetPosition,int id,EnemyType type,ObjectState!B state,float maxHeight=float.infinity){
+	int enemyInRangeAndClosestToPreferringAttackersOf(int side,Vector3f position,float range,Vector3f targetPosition,int id,EnemyType type,ObjectState!B state,float maxHeight=float.infinity){
 		return centers.inRangeAndClosestTo!(isEnemy,advancePriority)(version_,position,range,targetPosition,side,type,state,maxHeight,id).id;
+	}
+	int anyInRangeAndClosestTo(Vector3f position,float range,Vector3f targetPosition,int ignoredId=0){
+		return centers.inRangeAndClosestTo!((ref entry,int ignoredId)=>entry.id!=ignoredId)(version_,position,range,targetPosition,ignoredId).id;
 	}
 }
 auto collide(alias f,B,T...)(Proximity!B proximity,Vector3f[2] hitbox,T args){
