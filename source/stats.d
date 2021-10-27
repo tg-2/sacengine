@@ -68,6 +68,7 @@ struct Effects{
 	@property bool fixed(){ return vined; }
 	@property bool healBlocked(){ return petrified||frozen||ringsOfFire||slimed||vined; } // TODO: add remaining effects
 	@property bool shieldBlocked(){ return ringsOfFire||slimed||vined; }
+	@property bool lightningCharged(){ return lightningChargeFrames!=0; }
 }
 import dlib.math.portable: pi;
 @property float rotationSpeed(ref CreatureStats stats,bool isFlying){ // in radians per second
@@ -84,7 +85,7 @@ import dlib.math.portable: pi;
 	return 0.25f*pi!float;
 }
 @property float movementSpeed(ref CreatureStats stats,bool isFlying){ // in meters per second
-	auto effectFactor=stats.effects.speedUp*0.25f^^stats.effects.numSlimes*0.8f^^stats.effects.numBlightMites; // TODO: probably slowdowns should be interpolated too
+	auto effectFactor=stats.effects.speedUp*0.25f^^stats.effects.numSlimes*0.8f^^stats.effects.numBlightMites*(stats.effects.lightningCharged?4.0f/3.0f:1.0f); // TODO: probably slowdowns should be interpolated too
 	return (isFlying?stats.flyingSpeed:stats.runningSpeed)*effectFactor;
 }
 @property float movementAcceleration(ref CreatureStats stats,bool isFlying){
