@@ -295,7 +295,7 @@ final class SacScene: Scene{
 
 	Vector3f getCameraDisplacement(Vector3f position){
 		Vector3f result=Vector3f(0.0f,0.0f,0.0f);
-		foreach(ref screenShake;state.current.obj.opaqueObjects.effects.screenShakes){
+		if(state) foreach(ref screenShake;state.current.obj.opaqueObjects.effects.screenShakes){
 			result+=screenShake.getDisplacement(position);
 		}
 		return result;
