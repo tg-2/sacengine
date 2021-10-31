@@ -856,8 +856,12 @@ Vector3f relativeCenter(T)(ref T object){
 }
 
 Vector3f center(T)(ref T object){
-	auto hbox=object.hitbox;
-	return 0.5f*(hbox[0]+hbox[1]);
+	static if(is(T==Soul!B,B)){
+		return object.position+0.5f*object.scaling;
+	}else{
+		auto hbox=object.hitbox;
+		return 0.5f*(hbox[0]+hbox[1]);
+	}
 }
 Vector3f lowCenter(T)(ref T object){
 	auto hbox=object.hitbox;
@@ -911,10 +915,10 @@ SacObject!B.LoadedArrow loadedArrow(B)(ref MovingObject!B object){
 	foreach(ref pos;result.tupleof) pos=object.position+rotate(object.rotation,pos);
 	return result;
 }
-AnimationState shootAnimation(B)(ref MovingObject!B object){
+AnimationState shootAnimation(B)(ref MovingObject!B object,bool isAbility){
 	final switch(object.creatureState.movement) with(CreatureMovement){
 		case onGround:
-			return AnimationState.shoot0;
+			return isAbility?AnimationState.shoot1:AnimationState.shoot0;
 		case flying:
 			if(object.sacObject.mustFly)
 				goto case onGround;
@@ -923,8 +927,8 @@ AnimationState shootAnimation(B)(ref MovingObject!B object){
 			goto case onGround;
 	}
 }
-Vector3f firstShotPosition(B)(ref MovingObject!B object){
-	auto loc=object.sacObject.firstShotPosition(object.shootAnimation);
+Vector3f firstShotPosition(B)(ref MovingObject!B object,bool isAbility){
+	auto loc=object.sacObject.firstShotPosition(object.shootAnimation(isAbility));
 	return object.position+rotate(object.rotation,loc);
 }
 
@@ -1084,6 +1088,7 @@ enum SoulState{
 	emerging,
 	reviving,
 	collecting,
+	devouring,
 }
 
 struct Soul(B){
@@ -4888,11 +4893,11 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 			break;
 		case CreatureMode.shooting:
 			object.frame=0;
-			object.animationState=object.shootAnimation;
+			object.animationState=object.shootAnimation(false);
 			break;
 		case CreatureMode.usingAbility:
 			object.frame=0;
-			object.animationState=object.shootAnimation; // TODO: fix
+			object.animationState=object.shootAnimation(true);
 			break;
 		case CreatureMode.pumping:
 			assert(object.isSacDoctor);
@@ -7408,6 +7413,15 @@ bool moveWithinRange(B)(ref MovingObject!B object,Vector3f targetPosition,float 
 	return true;
 }
 
+bool moveWithinRange2D(B)(ref MovingObject!B object,Vector3f targetPosition,float range,ObjectState!B state,bool evade=true,bool maintainHeight=false,bool stayAboveGround=true,int targetId=0,bool disablePathfinding=false){
+	auto speed=object.speed(state)/updateFPS;
+	auto distancesqr=(object.position.xy-targetPosition.xy).lengthsqr;
+	if(distancesqr<=(range-speed)^^2)
+		return false;
+	object.moveTowards(targetPosition,range,state,evade,maintainHeight,stayAboveGround,targetId,disablePathfinding);
+	return true;
+}
+
 bool retreatTowards(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectState!B state){
 	return object.patrolAround(targetPosition,guardDistance,state) ||
 		object.moveWithinRange(targetPosition,retreatDistance,state) ||
@@ -7423,7 +7437,7 @@ bool isValidAttackTarget(B,T)(ref T obj,ObjectState!B state)if(is(T==MovingObjec
 	return obj.health(state)!=0.0f;
 }
 bool isValidAttackTarget(B)(int targetId,ObjectState!B state){
-	return state.isValidTarget(targetId)&&state.objectById!(.isValidAttackTarget)(targetId,state);
+	with(TargetType) return state.targetTypeFromId(targetId).among(creature,building)&&state.objectById!(.isValidAttackTarget)(targetId,state);
 }
 bool isValidEnemyAttackTarget(B,T)(ref T obj,int side,ObjectState!B state)if(is(T==MovingObject!B)||is(T==StaticObject!B)){
 	if(!obj.isValidAttackTarget(state)) return false;
@@ -7441,16 +7455,19 @@ bool isValidGuardTarget(B)(int targetId,ObjectState!B state){
 	return state.isValidTarget(targetId)&&state.objectById!(.isValidGuardTarget)(targetId,state);
 }
 
-bool hasClearShot(B)(ref MovingObject!B object,Vector3f targetPosition,OrderTarget target,ObjectState!B state){
+bool hasClearShot(B)(ref MovingObject!B object,bool isAbility,Vector3f targetPosition,OrderTarget target,ObjectState!B state){
 	auto offset=target.type==TargetType.terrain?Vector3f(0.0f,0.0f,0.2f):Vector3f(0.0f,0.0f,-0.2f); // TODO: do some sort of cylinder cast instead
-	return state.hasLineOfSightTo(object.firstShotPosition+offset,targetPosition+offset,object.id,target.id);
+	return state.hasLineOfSightTo(object.firstShotPosition(isAbility)+offset,targetPosition+offset,object.id,target.id);
 }
 float shootDistance(B)(ref MovingObject!B object,ObjectState!B state){
 	if(auto ra=object.rangedAttack) return 0.8f*ra.range; // TODO: figure out the range limit for AI
 	return 0.0f;
 }
 float useAbilityDistance(B)(ref MovingObject!B object,ObjectState!B state){
-	if(auto ab=object.ability) return 0.8f*ab.range; // TODO: figure out the range limit for AI
+	if(auto ab=object.ability){
+		if(ab.tag==SpellTag.devour) return 2.5f*object.getScale.length;
+		return 0.8f*ab.range; // TODO: figure out the range limit for AI
+	}
 	return 0.0f;
 }
 
@@ -7462,26 +7479,26 @@ Vector3f getShotTargetPosition(B)(ref MovingObject!B object,OrderTarget target,O
 			auto targetHitbox=state.objectById!((obj,center)=>obj.closestHitbox(center))(target.id,center);
 			return projectToBoxTowardsCenter(targetHitbox,center);
 		case TargetType.soul:
-			return state.soulById!((ref soul)=>soul.position,()=>Vector3f.init)(target.id);
+			return state.soulById!((ref soul)=>soul.center,()=>Vector3f.init)(target.id);
 		default: return Vector3f.init;
 	}
 }
 
-Vector3f predictShotTargetPosition(B)(ref MovingObject!B object,SacSpell!B rangedAttack,OrderTarget target,ObjectState!B state){
+Vector3f predictShotTargetPosition(B)(ref MovingObject!B object,SacSpell!B rangedAttack,bool isAbility,OrderTarget target,ObjectState!B state){
 	switch(target.type){
 		case TargetType.terrain: return target.position;
 		case TargetType.creature,TargetType.building:
 			return rangedAttack.needsPrediction?
-				object.creatureAI.predictor.predictCenter(object.firstShotPosition,rangedAttack.speed,target.id,state) : // TODO: use closest hitbox?
+				object.creatureAI.predictor.predictCenter(object.firstShotPosition(isAbility),rangedAttack.speed,target.id,state) : // TODO: use closest hitbox?
 				state.objectById!center(target.id);
-		case TargetType.soul: return state.soulById!((ref soul)=>soul.position,()=>Vector3f.init)(target.id); // TODO: predict?
+		case TargetType.soul: return state.soulById!((ref soul)=>soul.center,()=>Vector3f.init)(target.id); // TODO: predict?
 		default: return Vector3f.init;
 	}
 }
 
-bool aim(bool ability=false,B)(ref MovingObject!B object,SacSpell!B rangedAttack,OrderTarget target,Vector3f predicted,ObjectState!B state){
+bool aim(bool isAbility=false,B)(ref MovingObject!B object,SacSpell!B rangedAttack,OrderTarget target,Vector3f predicted,ObjectState!B state){
 	// TODO: find a spot from where target can be shot
-	static if(ability){
+	static if(isAbility){
 		auto notShooting=!object.creatureState.mode.isShooting;
 	}else{
 		auto notShooting=!object.creatureState.mode.isUsingAbility;
@@ -7490,13 +7507,20 @@ bool aim(bool ability=false,B)(ref MovingObject!B object,SacSpell!B rangedAttack
 	if(notShooting){
 		targetPosition=object.getShotTargetPosition(target,state);
 		if(isNaN(targetPosition.x)) return false;
-		static if(ability){
+		static if(isAbility){
 			auto distance=object.useAbilityDistance(state);
+			if(rangedAttack.tag==SpellTag.devour){
+				if(object.moveWithinRange2D(targetPosition,distance,state,true,true))
+					return true;
+			}else{
+				if(object.moveWithinRange(targetPosition,distance,state))
+					return true;
+			}
 		}else{
 			auto distance=object.shootDistance(state);
+			if(object.moveWithinRange(targetPosition,distance,state))
+				return true;
 		}
-		if(object.moveWithinRange(targetPosition,distance,state))
-			return true;
 	}
 	bool isFlying=object.creatureState.movement==CreatureMovement.flying;
 	auto flyingHeight=isFlying?object.position.z-state.getHeight(object.position):0.0f;
@@ -7514,7 +7538,7 @@ bool aim(bool ability=false,B)(ref MovingObject!B object,SacSpell!B rangedAttack
 		return object.creatureState.speed==0.0f;
 	}
 	if(notShooting){
-		if(!object.hasClearShot(predicted,target,state)){
+		if(!object.hasClearShot(isAbility,predicted,target,state)){
 			object.moveTowards(targetPosition,0.0f,state,true,true);
 			if(isFlying) object.creatureState.targetFlyingHeight=targetFlyingHeight;
 			return true;
@@ -7523,11 +7547,11 @@ bool aim(bool ability=false,B)(ref MovingObject!B object,SacSpell!B rangedAttack
 			auto rotationThreshold=4.0f*object.creatureStats.rotationSpeed(object.creatureState.movement==CreatureMovement.flying)/updateFPS;
 			bool evading;
 			auto facing=!object.turnToFaceTowardsEvading(predicted,evading,state,rotationThreshold);
-			static if(ability) auto cooldown=object.creatureStats.effects.abilityCooldown;
+			static if(isAbility) auto cooldown=object.creatureStats.effects.abilityCooldown;
 			else auto cooldown=object.creatureStats.effects.rangedCooldown;
 			if(facing&&cooldown==0&&object.creatureStats.mana>=rangedAttack.manaCost){
 				object.creatureAI.targetId=target.id;
-				static if(ability){
+				static if(isAbility){
 					object.startUsingAbility(state);
 				}else{
 					object.startShooting(state); // TODO: should this have a delay?
@@ -7629,6 +7653,9 @@ bool shootOnTick(bool ability=false,B)(ref MovingObject!B object,OrderTarget tar
 				case SpellTag.blightMites:
 					blightMitesShoot(object.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
 					break;
+				case SpellTag.devour:
+					devourSoul(object,target.id,rangedAttack,state);
+					break;
 				default: goto case SpellTag.brainiacShoot;
 			}
 			object.drainMana(drainedMana,state);
@@ -7642,7 +7669,7 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 	if(!isValidAttackTarget(targetId,state)&&(object.creatureState.mode!=CreatureMode.shooting||!state.isValidTarget(targetId))) return false; // TODO
 	if(object.rangedAttack !is rangedAttack) return false; // TODO: multiple ranged attacks?
 	auto target=OrderTarget(state.targetTypeFromId(targetId),targetId,Vector3f.init);
-	auto predicted=object.predictShotTargetPosition(rangedAttack,target,state);
+	auto predicted=object.predictShotTargetPosition(rangedAttack,false,target,state);
 	if(isNaN(predicted.x)) return false;
 	if(!object.aim(rangedAttack,target,predicted,state))
 		return false;
@@ -7875,6 +7902,33 @@ bool lightningCharge(B)(ref MovingObject!B object,int frames,SacSpell!B spell,Ob
 	return true;
 }
 
+bool devourSoul(B)(ref MovingObject!B object,int soulId,SacSpell!B ability,ObjectState!B state){
+	return state.soulById!((ref soul,obj,state){
+		if(soul.state!=SoulState.normal) return false;
+		soul.collectorId=obj.id;
+		soul.state=SoulState.devouring;
+		playSoundAt("ltss",obj.id,state,2.0f);
+		soul.severSoul(state);
+		auto rbow=SacSpell!B.get(SpellTag.rainbow);
+		foreach(_;0..soul.number){
+			obj.creatureStats.health+=500.0f;
+			obj.creatureStats.maxHealth+=500.0f;
+			if(isNaN(obj.creatureStats.effects.devourRegenerationIncrement)) // TODO: needed?
+				obj.creatureStats.effects.devourRegenerationIncrement=0.25f*obj.creatureStats.maxHealth;
+			else obj.creatureStats.effects.devourRegenerationIncrement=0.75*obj.creatureStats.effects.devourRegenerationIncrement+125.0f;
+			obj.creatureStats.regeneration+=obj.creatureStats.effects.devourRegenerationIncrement/60.0f;
+			obj.creatureStats.meleeResistance*=0.9f;
+			obj.creatureStats.directSpellResistance*=0.9f;
+			obj.creatureStats.splashSpellResistance*=0.9f;
+			obj.creatureStats.directRangedResistance*=0.9f;
+			obj.creatureStats.splashRangedResistance*=0.9f;
+			// TODO: make creature bulky
+		}
+		heal(obj.id,rbow,state);
+		return true;
+	},()=>false)(soulId,&object,state);
+}
+
 bool protector(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
 	if(object.creatureStats.effects.lifeShield) return false;
 	auto lifeShield=SacSpell!B.get(SpellTag.lifeShield);
@@ -7979,6 +8033,7 @@ void screenShake(B)(Vector3f position,int lifetime,float strength,float range,Ob
 bool isRangedAbility(B)(SacSpell!B ability){ // TODO: put this directly in SacSpell!B ?
 	switch(ability.tag){
 		case SpellTag.blightMites: return true;
+		case SpellTag.devour: return true;
 		default: return false;
 	}
 }
@@ -7991,7 +8046,7 @@ bool checkAbility(B)(ref MovingObject!B object,SacSpell!B ability,OrderTarget ta
 			return false;
 	}
 	auto status=state.abilityStatus!false(object,ability,target);
-	if(status.among(SpellStatus.notReady,SpellStatus.lowOnMana)) return ability.isRangedAbility;
+	if(status.among(SpellStatus.notReady,SpellStatus.lowOnMana,SpellStatus.outOfRange)) return ability.isRangedAbility;
 	return status==SpellStatus.ready;
 }
 
@@ -8003,7 +8058,7 @@ bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,OrderTarget targ
 		object.creatureStats.effects.abilityCooldown=cast(int)(ability.cooldown*updateFPS);
 	}
 	bool shoot(){
-		auto predicted=object.predictShotTargetPosition(ability,target,state);
+		auto predicted=object.predictShotTargetPosition(ability,true,target,state);
 		if(isNaN(predicted.x)) return false;
 		if(!object.aim!true(ability,target,predicted,state))
 			return false;
@@ -8044,6 +8099,8 @@ bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,OrderTarget targ
 		case SpellTag.protector:
 			if(object.protector(ability,state)) apply();
 			return false;
+		case SpellTag.devour:
+			return shoot();
 		default:
 			object.stun(state);
 			object.clearOrder(state);
@@ -8743,7 +8800,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			rotationSpeed*=0.25f^^object.creatureStats.effects.numSlimes;
 		auto pitchingSpeed=object.creatureStats.pitchingSpeed/updateFPS;
 		bool isRotating=false;
-		if(object.creatureState.mode.among(idle,moving,idleGhost,movingGhost,meleeMoving,casting,castingMoving,shooting,usingAbility,torturing)&&
+		if(object.creatureState.mode.among(idle,moving,idleGhost,movingGhost,meleeMoving,casting,castingMoving,torturing)&&
 		   object.creatureState.movement!=CreatureMovement.tumbling&&!object.creatureStats.effects.immobilized&&!object.creatureStats.effects.fixed
 		){
 			final switch(object.creatureState.rotationDirection){
@@ -9132,13 +9189,17 @@ void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 			if(soul.scaling<=0.0f)
 				soul.scaling=0.0f;
 			break;
-		case SoulState.collecting:
+		case SoulState.collecting,SoulState.devouring:
 			assert(soul.collectorId!=0);
 			auto previousScaling=soul.scaling;
-			soul.scaling-=4.0f/updateFPS;
+			soul.scaling-=soul.state==SoulState.collecting?4.0f/updateFPS:3.0f/updateFPS;
 			// TODO: how to do this more nicely?
 			auto factor=soul.scaling/previousScaling;
-			soul.position=factor*soul.position+(1.0f-factor)*state.movingObjectById!((wiz)=>wiz.center+Vector3f(0.0f,0.0f,0.5f),()=>soul.position)(soul.collectorId);
+			Vector3f targetPosition;
+			if(soul.state==SoulState.collecting)
+				targetPosition=state.movingObjectById!((wiz)=>wiz.center+Vector3f(0.0f,0.0f,0.5f),()=>soul.position)(soul.collectorId);
+			else targetPosition=state.movingObjectById!((wiz)=>wiz.shotPosition,()=>soul.position)(soul.collectorId);
+			soul.position=factor*soul.position+(1.0f-factor)*targetPosition;
 			if(soul.scaling<=0.0f){
 				soul.scaling=0.0f;
 				state.removeLater(soul.id);

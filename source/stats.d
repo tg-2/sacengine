@@ -55,6 +55,7 @@ struct Effects{
 	int numVines=0;
 	int numBlightMites=0;
 	int lightningChargeFrames=0;
+	float devourRegenerationIncrement; // TODO: is this neeeded?
 	@property bool slimed(){ return numSlimes!=0; }
 	@property bool vined(){ return numVines!=0; }
 	@property bool regenerationBlocked(){ return poisonDamage!=0||immobilized||ringsOfFire||slimed||vined; }
