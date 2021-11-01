@@ -983,8 +983,8 @@ struct Renderer(B){
 						if((objects.speedUpShadows[j].age+1)%speedUpShadowSpacing!=0) continue;
 						auto id=objects.speedUpShadows[j].creature;
 						if(!state.isValidTarget(id,TargetType.creature)) continue;
-						auto sacObjectPetrifiedSlimed=state.movingObjectById!((obj)=>tuple(obj.sacObject,obj.creatureStats.effects.stoneEffect,obj.creatureStats.effects.slimed),()=>tuple(SacObject!B.init,false,false))(id); // TODO: store within SpeedUpShadow?
-						auto sacObject=sacObjectPetrifiedSlimed[0], petrified=sacObjectPetrifiedSlimed[1], slimed=sacObjectPetrifiedSlimed[2];
+						auto sacObjectPetrifiedSlimedBulk=state.movingObjectById!((obj)=>tuple(obj.sacObject,obj.creatureStats.effects.stoneEffect,obj.creatureStats.effects.slimed,obj.creatureStats.effects.bulk),()=>tuple(SacObject!B.init,false,false,1.0f))(id); // TODO: store within SpeedUpShadow?
+						auto sacObject=sacObjectPetrifiedSlimedBulk[0], petrified=sacObjectPetrifiedSlimedBulk[1], slimed=sacObjectPetrifiedSlimedBulk[2], bulk=sacObjectPetrifiedSlimedBulk[3];
 						if(!sacObject) continue;
 						auto materials=sacObject.transparentMaterials;
 						foreach(i;0..materials.length){
@@ -995,6 +995,8 @@ struct Renderer(B){
 							material.backend.setTransformation(objects.speedUpShadows[j].position,objects.speedUpShadows[j].rotation,rc);
 							B.shadelessBoneMaterialBackend.setAlpha(0.3f);
 							B.shadelessBoneMaterialBackend.setEnergy(10.0f);
+							if(bulk!=1.0f) B.shadelessBoneMaterialBackend.setBulk(bulk);
+							scope(success) if(bulk!=1.0f) B.shadelessBoneMaterialBackend.setBulk(1.0f);
 							if(petrified) B.shadelessBoneMaterialBackend.setPetrified(true);
 							scope(success) if(petrified) B.shadelessBoneMaterialBackend.setPetrified(false);
 							auto idiffuse = typeof("diffuse" in material.inputs).init;
