@@ -7922,7 +7922,7 @@ bool devourSoul(B)(ref MovingObject!B object,int soulId,SacSpell!B ability,Objec
 			obj.creatureStats.splashSpellResistance*=0.9f;
 			obj.creatureStats.directRangedResistance*=0.9f;
 			obj.creatureStats.splashRangedResistance*=0.9f;
-			// TODO: make creature bulky
+			obj.creatureStats.effects.numBulks+=1;
 		}
 		heal(obj.id,rbow,state);
 		return true;
@@ -8316,6 +8316,12 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.creatureStats.effects.abilityCooldown!=0) --object.creatureStats.effects.abilityCooldown;
 	if(object.creatureStats.effects.infectionCooldown!=0) --object.creatureStats.effects.infectionCooldown;
 	if(object.creatureStats.effects.yellCooldown!=0) --object.creatureStats.effects.yellCooldown;
+	if(object.creatureStats.effects.numBulks!=0){
+		float targetBulk=2.0f-0.5f^^object.creatureStats.effects.numBulks;
+		static import std.math;
+		static immutable float factor=1.0f-std.math.exp(std.math.log(0.1f)/updateFPS);
+		object.creatureStats.effects.bulk=(1.0f-factor)*object.creatureStats.effects.bulk+factor*targetBulk;
+	}
 	int slowdownFactor=object.slowdownFactor;
 	if(state.frame%slowdownFactor) return;
 	auto sacObject=object.sacObject;

@@ -708,12 +708,23 @@ struct Renderer(B){
 								information=Vector4f(0.0f,0.0f,0.0f,0.0f);
 							}else information=Vector4f(2.0f,id>>16,id&((1<<16)-1),1.0f);
 							material.backend.setInformation(information);
+							float bulk=objects.creatureStatss[j].effects.bulk;
 							static if(prepareMaterials==RenderMode.transparent){
 								if(!rc.shadowMode){
 									B.shadelessBoneMaterialBackend.setAlpha(objects.alphas[j]);
 									B.shadelessBoneMaterialBackend.setEnergy(objects.energies[j]);
 								}
+								if(bulk!=1.0f) B.shadelessBoneMaterialBackend.setBulk(bulk);
+								scope(success) if(bulk!=1.0f) B.shadelessBoneMaterialBackend.setBulk(1.0f);
 							}else{
+								if(bulk!=1.0f){
+									if(material.backend is B.boneMaterialBackend) B.boneMaterialBackend.setBulk(bulk);
+									if(material.backend is B.shadelessBoneMaterialBackend) B.shadelessBoneMaterialBackend.setBulk(bulk);
+								}
+								scope(success) if(bulk!=1.0f){
+									if(material.backend is B.boneMaterialBackend) B.boneMaterialBackend.setBulk(1.0f);
+									if(material.backend is B.shadelessBoneMaterialBackend) B.shadelessBoneMaterialBackend.setBulk(1.0f);
+								}
 								bool petrified=!rc.shadowMode && material.backend is B.boneMaterialBackend && objects.creatureStatss[j].effects.stoneEffect;
 								if(petrified) B.boneMaterialBackend.setPetrified(true);
 								scope(success) if(petrified) B.boneMaterialBackend.setPetrified(false);
