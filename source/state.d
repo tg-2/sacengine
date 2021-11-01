@@ -8317,7 +8317,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.creatureStats.effects.infectionCooldown!=0) --object.creatureStats.effects.infectionCooldown;
 	if(object.creatureStats.effects.yellCooldown!=0) --object.creatureStats.effects.yellCooldown;
 	if(object.creatureStats.effects.numBulks!=0){
-		float targetBulk=2.0f-0.5f^^object.creatureStats.effects.numBulks;
+		float targetBulk=2.0f-0.75f^^object.creatureStats.effects.numBulks;
 		static import std.math;
 		static immutable float factor=1.0f-std.math.exp(std.math.log(0.1f)/updateFPS);
 		object.creatureStats.effects.bulk=(1.0f-factor)*object.creatureStats.effects.bulk+factor*targetBulk;
