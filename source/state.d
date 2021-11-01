@@ -7465,7 +7465,7 @@ float shootDistance(B)(ref MovingObject!B object,ObjectState!B state){
 }
 float useAbilityDistance(B)(ref MovingObject!B object,ObjectState!B state){
 	if(auto ab=object.ability){
-		if(ab.tag==SpellTag.devour) return 2.5f*object.getScale.length;
+		if(ab.tag==SpellTag.devour) return boxSize(object.hitbox).length;
 		return 0.8f*ab.range; // TODO: figure out the range limit for AI
 	}
 	return 0.0f;
