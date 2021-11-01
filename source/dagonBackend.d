@@ -1306,6 +1306,7 @@ static:
 	@property TerrainBackend2 terrainMaterialBackend(){ return scene.terrainMaterialBackend; }
 	@property ShadelessBackend shadelessMaterialBackend(){ return scene.shadelessMaterialBackend; }
 	@property ShadelessBoneBackend shadelessBoneMaterialBackend(){ return scene.shadelessBoneMaterialBackend; }
+	@property BoneShadowBackend boneShadowBackend(){ return scene.shadowMap.bsb; }
 	@property BuildingSummonBackend1 buildingSummonMaterialBackend1(){ return scene.buildingSummonMaterialBackend1; }
 	@property BuildingSummonBackend2 buildingSummonMaterialBackend2(){ return scene.buildingSummonMaterialBackend2; }
 	@property SacSkyBackend sacSkyMaterialBackend(){ return scene.sacSkyMaterialBackend; }
