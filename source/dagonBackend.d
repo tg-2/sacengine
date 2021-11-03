@@ -1312,12 +1312,15 @@ static:
 	@property shadowMap(){ return scene.shadowMap; }     // TODO: get rid of this?
 
 	@property GeometryPassBackend defaultMaterialBackend(){ return scene.defaultMaterialBackend; }
+	@property ShadelessBackend shadelessMaterialBackend(){ return scene.shadelessMaterialBackend; }
 
 	@property BoneBackend boneMaterialBackend(){ return scene.boneMaterialBackend; }
-	@property TerrainBackend2 terrainMaterialBackend(){ return scene.terrainMaterialBackend; }
-	@property ShadelessBackend shadelessMaterialBackend(){ return scene.shadelessMaterialBackend; }
 	@property ShadelessBoneBackend shadelessBoneMaterialBackend(){ return scene.shadelessBoneMaterialBackend; }
 	@property BoneShadowBackend boneShadowBackend(){ return scene.shadowMap.bsb; }
+
+	@property TerrainBackend2 terrainMaterialBackend(){ return scene.terrainMaterialBackend; }
+	@property TerrainShadowBackend terrainShadowBackend(){ return scene.shadowMap.tsb; }
+
 	@property BuildingSummonBackend1 buildingSummonMaterialBackend1(){ return scene.buildingSummonMaterialBackend1; }
 	@property BuildingSummonBackend2 buildingSummonMaterialBackend2(){ return scene.buildingSummonMaterialBackend2; }
 	@property SacSkyBackend sacSkyMaterialBackend(){ return scene.sacSkyMaterialBackend; }

@@ -612,8 +612,7 @@ struct Renderer(B){
 			mat.bind(rc);
 			B.terrainMaterialBackend.bindColor(map.color);
 		}else{
-			mat=B.shadowMaterial;
-			mat.bind(rc);
+			B.terrainShadowBackend.bind(null,rc);
 		}
 		foreach(i,mesh;map.meshes){
 			if(!mesh) continue;
