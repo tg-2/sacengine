@@ -564,7 +564,8 @@ class PathFinder(B){
 		enum scale=directWalkDistance;
 		foreach(x;0..xlen){
 			foreach(y;0..ylen){
-				heights[x][y]=map.getHeight(Vector3f(scale*x,scale*y,0.0f));
+				heights[x][y]=map.getHeight(Vector3f(scale*x,scale*y,0.0f),ZeroDisplacement());
+				// TODO: take into account dynamic heights
 			}
 		}
 		determineComponents();
@@ -3104,6 +3105,14 @@ struct ScreenShake{
 	}
 }
 
+struct TestDisplacement{
+	int frame=0;
+	float displacement(float x,float y){
+		float time=float(frame)/updateFPS;
+		return 2.5f*(sin(0.1f*x+time)+sin(0.1f*y+time));
+	}
+}
+
 struct Effects(B){
 	// misc
 	Array!(Debris!B) debris;
@@ -3968,6 +3977,14 @@ struct Effects(B){
 		if(i+1<screenShakes.length) screenShakes[i]=move(screenShakes[$-1]);
 		screenShakes.length=screenShakes.length-1;
 	}
+	Array!TestDisplacement testDisplacements;
+	void addEffect(TestDisplacement testDisplacement){
+		testDisplacements~=testDisplacement;
+	}
+	void removeTestDisplacement(int i){
+		if(i+1<testDisplacements.length) testDisplacements[i]=move(testDisplacements[$-1]);
+		testDisplacements.length=testDisplacements.length-1;
+	}
 	void opAssign(ref Effects!B rhs){
 		assignArray(debris,rhs.debris);
 		assignArray(explosions,rhs.explosions);
@@ -4075,6 +4092,7 @@ struct Effects(B){
 		assignArray(disappearances,rhs.disappearances);
 		assignArray(altarDestructions,rhs.altarDestructions);
 		assignArray(screenShakes,rhs.screenShakes);
+		assignArray(testDisplacements,rhs.testDisplacements);
 	}
 	void opAssign(Effects!B rhs){ this.tupleof=rhs.tupleof; }
 }
@@ -8033,6 +8051,10 @@ bool surrender(B)(int side,ObjectState!B state){ lose(side,state); return true; 
 
 void screenShake(B)(Vector3f position,int lifetime,float strength,float range,ObjectState!B state){
 	state.addEffect(ScreenShake(position,lifetime,strength,range));
+}
+
+void testDisplacement(B)(ObjectState!B state){
+	state.addEffect(TestDisplacement());
 }
 
 bool isRangedAbility(B)(SacSpell!B ability){ // TODO: put this directly in SacSpell!B ?
@@ -14195,6 +14217,13 @@ bool updateScreenShake(B)(ref ScreenShake screenShake,ObjectState!B state){
 	}
 }
 
+bool updateTestDisplacement(B)(ref TestDisplacement testDisplacement,ObjectState!B state){
+	with(testDisplacement){
+		++frame;
+		return true;
+	}
+}
+
 void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.debris.length;){
 		if(!updateDebris(effects.debris[i],state)){
@@ -14942,6 +14971,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.screenShakes.length;){
 		if(!updateScreenShake(effects.screenShakes[i],state)){
 			effects.removeScreenShake(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.testDisplacements.length;){
+		if(!updateTestDisplacement(effects.testDisplacements[i],state)){
+			effects.removeTestDisplacement(i);
 			continue;
 		}
 		i++;
@@ -15762,27 +15798,42 @@ final class ObjectState(B){ // (update logic)
 		this.pathFinder=pathFinder;
 		sid=SideManager!B(32);
 	}
+	static struct Displacement{
+		ObjectState!B state;
+		static Displacement opCall(ObjectState!B state){
+			Displacement r;
+			r.state=state;
+			return r;
+		}
+		float opCall(float x,float y){
+			float result=0.0f;
+			foreach(ref td;state.obj.opaqueObjects.effects.testDisplacements){
+				result+=td.displacement(x,y);
+			}
+			return result;
+		}
+	}
 	bool isOnGround(Vector3f position){
 		return map.isOnGround(position);
 	}
 	Vector3f moveOnGround(Vector3f position,Vector3f direction){
-		return map.moveOnGround(position,direction);
+		return map.moveOnGround(position,direction,Displacement(this));
 	}
 	float getGroundHeight(Vector3f position){
-		return map.getGroundHeight(position);
+		return map.getGroundHeight(position,Displacement(this));
 	}
 	float getHeight(Vector3f position){
-		return map.getHeight(position);
+		return map.getHeight(position,Displacement(this));
 	}
 	float getGroundHeightDerivative(Vector3f position,Vector3f direction){
-		return map.getGroundHeightDerivative(position,direction);
+		return map.getGroundHeightDerivative(position,direction,Displacement(this));
 	}
 	PathFinder!B pathFinder;
 	bool findPath(ref Array!Vector3f path,Vector3f start,Vector3f target,float radius){
 		return pathFinder.findPath(path,start,target,radius,this);
 	}
 	OrderTarget collideRay(alias filter=None,T...)(Vector3f start,Vector3f direction,float limit,T args){
-		auto landscape=map.rayIntersection(start,direction,limit);
+		auto landscape=map.rayIntersection(start,direction,Displacement(this),limit);
 		auto tEntry=proximity.collideRay!filter(start,direction,min(limit,landscape),args);
 		if(landscape<tEntry[0]) return OrderTarget(TargetType.terrain,0,start+landscape*direction);
 		auto targetType=targetTypeFromId(tEntry[1].id);

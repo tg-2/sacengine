@@ -1114,6 +1114,17 @@ final class SacScene: Scene{
 		y=max(0,min(y,height-1));
 		gbuffer.startInformationDownload(x,y);
 	}
+
+	override bool needTerrainDisplacement(){
+		return state&&state.current.obj.opaqueObjects.effects.testDisplacements.length!=0;
+	}
+	override void displaceTerrain(){
+		if(state) foreach(ref td;state.current.obj.opaqueObjects.effects.testDisplacements){
+			float time=float(td.frame)/updateFPS;
+			testDisplacement(time);
+		}
+	}
+
 	override void onUpdate(double dt){
 		super.onUpdate(dt);
 		if(audio&&state) audio.update(dt,fpview.viewMatrix,state.current);

@@ -45,6 +45,11 @@ string getHmap(string filename){
 	return hmap;
 }
 
+struct ZeroDisplacement{
+	static opCall(){ return typeof(this).init; }
+	float opCall(float x,float y){ return 0.0f; }
+}
+
 final class SacMap(B){
 	string hmap;
 	B.TerrainMesh[] meshes;
@@ -102,8 +107,9 @@ final class SacMap(B){
 	Tuple!(int,"j",int,"i") getTile(Vector3f pos){
 		return tuple!("j","i")(cast(int)(n-1-pos.y/10),cast(int)(pos.x/10));
 	}
-	Vector3f getVertex(int j,int i){
-		return Vector3f(10*i,10*(n-1-j),heights[max(0,min(j,cast(int)$-1))][max(0,min(i,cast(int)$-1))]);
+	Vector3f getVertex(T)(int j,int i,T displacement){
+		int x=10*i,y=10*(n-1-j);
+		return Vector3f(x,y,heights[max(0,min(j,cast(int)$-1))][max(0,min(i,cast(int)$-1))]+displacement(x,y));
 	}
 	Tuple!(Tuple!(int,"j",int,"i")[3][2],"tri",int,"nt") getTriangles(bool invert=false)(int j,int i){
 		if(i<0||i+1>=n||j<0||j+1>=m) return typeof(return).init;
@@ -136,16 +142,16 @@ final class SacMap(B){
 		}
 		return tuple!("tri","nt")(tri,nt);
 	}
-	Plane getPlane(Tuple!(int,"j",int,"i")[3] tri){
+	Plane getPlane(T)(Tuple!(int,"j",int,"i")[3] tri,T displacement){
 		static foreach(i;0..3)
-			mixin(text(`auto p`,i,`=getVertex(tri[`,i,`].expand);`));
+			mixin(text(`auto p`,i,`=getVertex(tri[`,i,`].expand,displacement);`));
 		Plane plane;
 		plane.fromPoints(p0,p1,p2); // wtf.
 		return plane;
 	}
 	bool isInside(Tuple!(int,"j",int,"i")[3] tri,Vector3f pos){
 		Vector3f getV(int k){
-			auto v=getVertex(tri[k%$].j,tri[k%$].i)-pos;
+			auto v=getVertex(tri[k%$].j,tri[k%$].i,ZeroDisplacement())-pos;
 			v.z=0;
 			return v;
 		}
@@ -174,34 +180,34 @@ final class SacMap(B){
 		auto triangle=getTriangle(pos);
 		return triangle[0]!=triangle[1];
 	}
-	private float getHeightImpl(Tuple!(int,"j",int,"i")[3] triangle,Vector3f pos){
-		auto plane=getPlane(triangle);
+	private float getHeightImpl(T)(Tuple!(int,"j",int,"i")[3] triangle,Vector3f pos,T displacement){
+		auto plane=getPlane(triangle,displacement);
 		return -(plane.a*pos.x+plane.b*pos.y+plane.d)/plane.c;
 	}
-	float getHeight(Vector3f pos){
+	float getHeight(T)(Vector3f pos,T displacement){
 		auto triangle=getTriangle(pos);
 		if(triangle[0]==triangle[1]) triangle=getTriangle!true(pos);
 		if(triangle[0]==triangle[1]) return 0.0f;
-		return getHeightImpl(triangle,pos);
+		return getHeightImpl(triangle,pos,displacement);
 	}
-	float getGroundHeight(Vector3f pos){
+	float getGroundHeight(T)(Vector3f pos,T displacement){
 		auto triangle=getTriangle(pos);
-		return getHeightImpl(triangle,pos);
+		return getHeightImpl(triangle,pos,displacement);
 	}
-	float getGroundHeightDerivative(Vector3f pos,Vector3f direction){
+	float getGroundHeightDerivative(T)(Vector3f pos,Vector3f direction,T displacement){
 		auto triangle=getTriangle(pos);
 		static foreach(i;0..3)
-			mixin(text(`auto p`,i,`=getVertex(triangle[`,i,`].expand);`));
+			mixin(text(`auto p`,i,`=getVertex(triangle[`,i,`].expand,displacement);`));
 		Plane plane;
 		plane.fromPoints(p0,p1,p2); // wtf.
 		return -(plane.a*direction.x+plane.b*direction.y)/plane.c;
 	}
-	Vector3f moveOnGround(Vector3f position,Vector3f direction)in{
+	Vector3f moveOnGround(T)(Vector3f position,Vector3f direction,T displacement)in{
 		assert(isOnGround(position));
 	}do{
 		auto newPosition=position+direction;
 		if(isOnGround(newPosition)){
-			newPosition.z=getGroundHeight(newPosition);
+			newPosition.z=getGroundHeight(newPosition,displacement);
 			return newPosition;
 		}
 		static immutable Vector2f[8] directions=cartesianProduct([-1,0,1],[-1,0,1]).filter!(x=>x[0]||x[1]).map!(x=>Vector2f(x[0],x[1],0.0f).normalized).array;
@@ -218,10 +224,10 @@ final class SacMap(B){
 				}
 			}
 		}
-		bestNewPosition.z=getGroundHeight(bestNewPosition);
+		bestNewPosition.z=getGroundHeight(bestNewPosition,displacement);
 		return bestNewPosition;
 	}
-	float rayIntersection(Vector3f start,Vector3f direction,float limit=float.infinity){
+	float rayIntersection(T)(Vector3f start,Vector3f direction,T displacement,float limit=float.infinity){
 		float result=float.infinity;
 		auto tile=getTile(start);
 		int dj=direction.y>=0?-1:1, di=direction.x<0?-1:1;
@@ -229,7 +235,7 @@ final class SacMap(B){
 		while(current<=limit&&current<result&&(dj<0?tile.j>=0:tile.j<n)&&(di<0?tile.i>=0:tile.i<m)){
 			auto trianglesNt=getTriangles(tile.expand),triangles=trianglesNt[0],nt=trianglesNt[1];
 			foreach(k;0..nt){
-				auto plane=getPlane(triangles[k]);
+				auto plane=getPlane(triangles[k],displacement);
 				auto t=-plane.distance(start)/plane.dot(direction);
 				if(0<=t&&t<=limit&&t<result){
 					auto intersectionPoint=start+t*direction;
@@ -237,7 +243,7 @@ final class SacMap(B){
 						result=t;
 				}
 			}
-			auto next=getVertex(tile.j+(dj==1),tile.i+(di==1));
+			auto next=getVertex(tile.j+(dj==1),tile.i+(di==1),displacement);
 			auto tj=(next.y-start.y)/direction.y;
 			auto ti=(next.x-start.x)/direction.x;
 			if(isNaN(ti)||tj<ti){

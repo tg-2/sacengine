@@ -582,6 +582,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Alt
 void serialize(alias sink)(ref ScreenShake screenShake){ serializeStruct!sink(screenShake); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ScreenShake)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink)(ref TestDisplacement testDisplacement){ serializeStruct!sink(testDisplacement); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==TestDisplacement)){ deserializeStruct(result,state,data); }
+
 private alias Effects=state.Effects;
 void serialize(alias sink,B)(ref Effects!B effects){ serializeStruct!sink(effects); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Effects!B)){ deserializeStruct(result,state,data); }
