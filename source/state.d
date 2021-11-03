@@ -5513,7 +5513,7 @@ bool canDamage(B)(ref Building!B building,ObjectState!B state){
 float damageGuardians(B)(ref Building!B building,float damage,int attackingSide,DamageMod damageMod,ObjectState!B state){
 	if(building.guardianIds.length){
 		auto n=building.guardianIds.length;
-		auto splitDamage=damage/max(n,0.25f*(n+3));
+		auto splitDamage=damage/min(n,0.5f*(n+3));
 		float actualDamage=0.0f;
 		auto attachPosition=building.guardianAttachPosition(state);
 		bool ok=false;
@@ -5533,7 +5533,7 @@ float damageGuardians(B)(ref Building!B building,float damage,int attackingSide,
 float damageGuardians(B)(ref Building!B building,float damage,ref MovingObject!B attacker,DamageMod damageMod,ObjectState!B state){
 	if(building.guardianIds.length){
 		auto n=building.guardianIds.length;
-		auto splitDamage=damage/max(n,0.25f*(n+3));
+		auto splitDamage=damage/min(n,0.5f*(n+3));
 		float actualDamage=0.0f;
 		auto attachPosition=building.guardianAttachPosition(state);
 		bool ok=false;
@@ -5562,7 +5562,7 @@ float damageGuardians(B)(ref Building!B building,float damage,ref MovingObject!B
 float meleeDamageGuardians(B)(ref Building!B building,float damage,ref MovingObject!B attacker,DamageMod damageMod,ObjectState!B state){
 	if(building.guardianIds.length){
 		auto n=building.guardianIds.length;
-		auto splitDamage=damage/max(n,0.25f*(n+3));
+		auto splitDamage=damage/min(n,0.5f*(n+3));
 		float actualDamage=0.0f;
 		auto attachPosition=building.guardianAttachPosition(state);
 		bool ok=false;
@@ -5593,7 +5593,7 @@ float meleeDamageGuardians(B)(ref Building!B building,float damage,ref MovingObj
 float spellDamageGuardians(B)(ref Building!B building,float damage,int attacker,int attackingSide,DamageMod damageMod,ObjectState!B state){
 	if(building.guardianIds.length){
 		auto n=building.guardianIds.length;
-		auto splitDamage=damage/max(n,0.25f*(n+3));
+		auto splitDamage=damage/min(n,0.5f*(n+3));
 		float actualDamage=0.0f;
 		auto attachPosition=building.guardianAttachPosition(state);
 		bool ok=false;
@@ -5614,7 +5614,7 @@ float spellDamageGuardians(B)(ref Building!B building,float damage,int attacker,
 float splashSpellDamageGuardians(B)(ref Building!B building,float damage,int attacker,int attackingSide,DamageMod damageMod,ObjectState!B state){
 	if(building.guardianIds.length){
 		auto n=building.guardianIds.length;
-		auto splitDamage=damage/max(n,0.25f*(n+3));
+		auto splitDamage=damage/min(n,0.5f*(n+3));
 		float actualDamage=0.0f;
 		auto attachPosition=building.guardianAttachPosition(state);
 		bool ok=false;
@@ -5635,7 +5635,7 @@ float splashSpellDamageGuardians(B)(ref Building!B building,float damage,int att
 float rangedDamageGuardians(B)(ref Building!B building,float damage,int attacker,int attackingSide,DamageMod damageMod,ObjectState!B state){
 	if(building.guardianIds.length){
 		auto n=building.guardianIds.length;
-		auto splitDamage=damage/max(n,0.25f*(n+3));
+		auto splitDamage=damage/min(n,0.5f*(n+3));
 		float actualDamage=0.0f;
 		auto attachPosition=building.guardianAttachPosition(state);
 		bool ok=false;
@@ -5656,7 +5656,7 @@ float rangedDamageGuardians(B)(ref Building!B building,float damage,int attacker
 float splashRangedDamageGuardians(B)(ref Building!B building,float damage,int attacker,int attackingSide,DamageMod damageMod,ObjectState!B state){
 	if(building.guardianIds.length){
 		auto n=building.guardianIds.length;
-		auto splitDamage=damage/max(n,0.25f*(n+3));
+		auto splitDamage=damage/min(n,0.5f*(n+3));
 		float actualDamage=0.0f;
 		auto attachPosition=building.guardianAttachPosition(state);
 		bool ok=false;
