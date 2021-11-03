@@ -8924,6 +8924,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			   ||object.creatureState.mode==CreatureMode.meleeAttacking&&object.position.z-state.getHeight(object.position)>targetFlyingHeight
 			){
 				auto height=state.getHeight(newPosition);
+				if(newPosition.z<height) newPosition.z=height;
 				if(newPosition.z>height+(isNaN(targetFlyingHeight)?0.0f:targetFlyingHeight)){
 					auto downwardSpeed=object.creatureState.mode==CreatureMode.landing?object.creatureStats.landingSpeed/updateFPS:object.creatureStats.downwardHoverSpeed/updateFPS;
 					newPosition.z-=downwardSpeed;
