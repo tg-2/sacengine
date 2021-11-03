@@ -1517,6 +1517,9 @@ struct StaticObjects(B,RenderMode mode){
 			assignArray(thresholdZs,rhs.thresholdZs);
 	}
 	void opAssign(StaticObjects!(B,mode) rhs){ this.tupleof=rhs.tupleof; }
+	StaticObject!B fetch(int i){
+		return StaticObject!B(sacObject,ids[i],buildingIds[i],positions[i],rotations[i],scales[i]);
+	}
 	StaticObject!B opIndex(int i){
 		return StaticObject!B(sacObject,ids[i],buildingIds[i],positions[i],rotations[i],scales[i]);
 	}
@@ -1535,8 +1538,11 @@ struct StaticObjects(B,RenderMode mode){
 	}
 }
 auto each(alias f,B,RenderMode mode,T...)(ref StaticObjects!(B,mode) staticObjects,T args){
-	foreach(i;0..staticObjects.length)
-		f(staticObjects[i],args);
+	foreach(i;0..staticObjects.length){
+		auto obj=staticObjects.fetch(i);
+		f(obj,args);
+		staticObjects[i]=move(obj);
+	}
 }
 
 struct FixedObjects(B){
@@ -4333,7 +4339,7 @@ auto eachMoving(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T a
 	}
 }
 auto eachStatic(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T args){
-	static if(mode==RenderMode.opaque) with(objects){
+	with(objects){
 		foreach(ref staticObject;staticObjects)
 			staticObject.each!f(args);
 	}
@@ -4640,13 +4646,13 @@ auto ref staticObjectById(alias f,alias nonStatic,B,T...)(ref ObjectManager!B ob
 		final switch(nid.mode){
 			case RenderMode.opaque:
 				static if(byRef){
-					auto obj=objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index];
+					auto obj=objectManager.opaqueObjects.staticObjects[nid.type-numMoving].fetch(nid.index);
 					scope(success) objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index]=obj;
 					return f(obj,args);
 				}else return f(objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index],args);
 			case RenderMode.transparent:
 				static if(byRef){
-					auto obj=objectManager.transparentObjects.staticObjects[nid.type-numMoving][nid.index];
+					auto obj=objectManager.transparentObjects.staticObjects[nid.type-numMoving].fetch(nid.index);
 					scope(success) objectManager.transparentObjects.staticObjects[nid.type-numMoving][nid.index]=obj;
 					return f(obj,args);
 				}else return f(objectManager.transparentObjects.staticObjects[nid.type-numMoving][nid.index],args);
@@ -4668,23 +4674,6 @@ auto ref buildingById(alias f,alias noBuilding,B,T...)(ref ObjectManager!B objec
 	enum byRef=!is(typeof(f(Building!B.init,args))); // TODO: find a better way to check whether argument taken by reference!
 	static assert(byRef);
 	return f(objectManager.opaqueObjects.buildings[nid.index],args);
-}
-auto ref buildingByStaticObjectId(alias f,alias nonStatic,B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
-	assert(id>0);
-}do{
-	auto nid=objectManager.ids[id-1];
-	enum byRef=!is(typeof(f(StaticObject!B.init,args))); // TODO: find a better way to check whether argument taken by reference!
-	if(nid.type<numMoving||nid.index==-1) return nonStatic();
-	else if(nid.type<numMoving+numStatic){
-		assert(nid.mode==RenderMode.opaque);
-		assert(nid.type<numMoving+numStatic);
-		static if(byRef){
-			auto obj=objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index];
-			scope(success) objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index]=obj;
-			assert(obj.buildingId);
-			return objectManager.buildingById!(f,nonStatic)(obj.buildingId,args);
-		}else return f(objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index],args);
-	}else return nonStatic();
 }
 
 void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
@@ -15159,6 +15148,10 @@ void updateBuilding(B)(ref Building!B building, ObjectState!B state){
 	}
 }
 
+void updateStructure(B)(ref StaticObject!B structure, ObjectState!B state){
+	structure.position.z=state.getGroundHeight(structure.position);
+}
+
 void animateManahoar(B)(Vector3f location, int side, float rate, ObjectState!B state){
 	auto sacParticle=state.sides.manahoarParticle(side);
 	auto globalAngle=2*pi!float/updateFPS*state.frame;
@@ -16076,6 +16069,7 @@ final class ObjectState(B){ // (update logic)
 		this.eachCommandCones!updateCommandCones(this);
 		foreach(command;frameCommands)
 			applyCommand(command);
+		this.eachStatic!updateStructure(this);
 		this.eachMoving!updateCreature(this);
 		foreach(side;0..cast(int)sid.sides.length) if(auto q=aiQueue(side)) if(!q.empty){
 			this.movingObjectById!((ref obj){ obj.creatureAI.isOnAIQueue=false; },(){})(q.front);
@@ -16459,9 +16453,6 @@ auto ref soulById(alias f,alias noSoul,B,T...)(ObjectState!B objectState,int id,
 }
 auto ref buildingById(alias f,alias noBuilding,B,T...)(ObjectState!B objectState,int id,T args){
 	return objectState.obj.buildingById!(f,noBuilding)(id,args);
-}
-auto ref buildingByStaticObjectId(alias f,alias noStatic,B,T...)(ObjectState!B objectState,int id,T args){
-	return objectState.obj.buildingByStaticObjectId!(f,noStatic)(id,args);
 }
 
 

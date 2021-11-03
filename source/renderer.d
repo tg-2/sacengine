@@ -665,7 +665,8 @@ struct Renderer(B){
 				auto sacObject=objects.sacObject;
 				enum isMoving=is(T==MovingObjects!(B, renderMode), RenderMode renderMode);
 				enum isStatic=is(T==StaticObjects!(B, renderMode), RenderMode renderMode);
-				static if(is(T==FixedObjects!B)) if(!enableWidgets) return;
+				enum isFixed=is(T==FixedObjects!B);
+				static if(isFixed) if(!enableWidgets) return; // TODO: instanced rendering
 
 				static if(objects.renderMode==RenderMode.opaque){
 					enum prepareMaterials=RenderMode.opaque;
@@ -763,9 +764,11 @@ struct Renderer(B){
 									B.buildingSummonMaterialBackend2.setThresholdZ(thresholdZ,thresholdZ+structureCastingGradientSize);
 								}else static assert(0);
 							}
+							auto position=objects.positions[j];
+							static if(isFixed) position.z=state.getGroundHeight(position);
 							static if(isStatic){
-								material.backend.setTransformationScaled(objects.positions[j], objects.rotations[j], objects.scales[j]*Vector3f(1.0f,1.0f,1.0f), rc);
-							}else material.backend.setTransformation(objects.positions[j], objects.rotations[j], rc);
+								material.backend.setTransformationScaled(position, objects.rotations[j], objects.scales[j]*Vector3f(1.0f,1.0f,1.0f), rc);
+							}else material.backend.setTransformation(position, objects.rotations[j], rc);
 							static if(isStatic){
 								auto id=objects.ids[j];
 								material.backend.setInformation(Vector4f(2.0f,id>>16,id&((1<<16)-1),1.0f));
