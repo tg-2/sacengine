@@ -5458,7 +5458,7 @@ float dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B at
 }
 float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,DamageMod damageMod,ObjectState!B state){
 	float actualDamage;
-	if(!(damageMod&DamageMod.fall)){
+	if(!(damageMod&DamageMod.fall)||object.isSacDoctor){ // TODO: do sac doctors take fall damage at all?
 		if(!object.canDamage(state)) return 0.0f;
 		actualDamage=damage*state.sideDamageMultiplier(attackingSide,object.side);
 		if(object.creatureStats.effects.isGuardian) actualDamage*=0.5f;
