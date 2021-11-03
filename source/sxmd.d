@@ -130,7 +130,6 @@ Model parseSXMD(ubyte[] data){
 					if(index!=ushort.max&&index>=numPositions) numPositions=index+1;
 				}
 			}
-			version(change) eoffset=0;
 			edata~=Ring(ringHeader,entries);
 		}
 		ushort[3][] explicitFaces=[];

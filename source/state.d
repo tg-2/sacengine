@@ -5444,30 +5444,33 @@ bool canDamage(B)(ref MovingObject!B object,ObjectState!B state){
 
 float dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B attacker,DamageMod damageMod,ObjectState!B state){
 	auto actualDamage=damage;
-	if(attacker.isGuardian) actualDamage*=1.5f; // TODO: apply twice for poison damage
+	if(attacker.isGuardian) actualDamage*=1.5f;
 	actualDamage=dealDamage(object,actualDamage,attacker.side,damageMod,state);
 	attacker.healFromDrain(actualDamage,state);
 	return actualDamage;
 }
 float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,DamageMod damageMod,ObjectState!B state){
-	if(!object.canDamage(state)) return 0.0f;
-	auto actualDamage=damage*state.sideDamageMultiplier(attackingSide,object.side);
-	if(object.creatureStats.effects.isGuardian) actualDamage*=0.5f;
-	if(auto passive=object.sacObject.passiveOnDamage){
-		switch(passive.tag){
-			case SpellTag.taurockPassive:
-				auto relativeHP=object.creatureStats.health/object.creatureStats.maxHealth;
-				auto damageFactor=0.25f+0.75f*relativeHP;
-				actualDamage*=damageFactor;
-				break;
-			case SpellTag.lightningCharge:
-				object.lightningCharge(cast(int)((1.0f/30.0f)*actualDamage*updateFPS),passive,state); // TODO: duration ok?
-				if(damageMod&DamageMod.lightning) actualDamage*=0.3f;
-				break;
-			default:
-				break;
+	float actualDamage;
+	if(!(damageMod&DamageMod.fall)){
+		if(!object.canDamage(state)) return 0.0f;
+		actualDamage=damage*state.sideDamageMultiplier(attackingSide,object.side);
+		if(object.creatureStats.effects.isGuardian) actualDamage*=0.5f;
+		if(auto passive=object.sacObject.passiveOnDamage){
+			switch(passive.tag){
+				case SpellTag.taurockPassive:
+					auto relativeHP=object.creatureStats.health/object.creatureStats.maxHealth;
+					auto damageFactor=0.25f+0.75f*relativeHP;
+					actualDamage*=damageFactor;
+					break;
+				case SpellTag.lightningCharge:
+					object.lightningCharge(cast(int)((1.0f/30.0f)*actualDamage*updateFPS),passive,state); // TODO: duration ok?
+					if(damageMod&DamageMod.lightning) actualDamage*=0.3f;
+					break;
+				default:
+					break;
+			}
 		}
-	}
+	}else actualDamage=damage;
 	actualDamage=min(object.health,actualDamage);
 	if(actualDamage>0.0f) object.unfreeze(state);
 	object.creatureStats.health-=actualDamage;
@@ -5479,17 +5482,19 @@ float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,
 	return actualDamage;
 }
 float dealDamage(B)(ref MovingObject!B object,float damage,int attackingSide,DamageMod damageMod,ObjectState!B state){
-	if(!object.canDamage(state)) return 0.0f;
 	auto damageMultiplier=1.0f;
-	if(!(damageMod&DamageMod.peirceShield)){
-		if(object.creatureStats.effects.lifeShield) damageMultiplier*=0.5f;
-		if(object.creatureState.mode==CreatureMode.rockForm) damageMultiplier*=0.05f;
-		if(object.creatureStats.effects.petrified) damageMultiplier*=0.2f;
-		if(object.creatureStats.effects.skinOfStone) damageMultiplier*=0.25f;
-		if(object.creatureStats.effects.airShield) damageMultiplier*=0.5f;
-		if(object.creatureStats.effects.protectiveSwarm) damageMultiplier*=0.75f;
+	if(!(damageMod&DamageMod.fall)){
+		if(!object.canDamage(state)) return 0.0f;
+		if(!(damageMod&DamageMod.peirceShield)){
+			if(object.creatureStats.effects.lifeShield) damageMultiplier*=0.5f;
+			if(object.creatureState.mode==CreatureMode.rockForm) damageMultiplier*=0.05f;
+			if(object.creatureStats.effects.petrified) damageMultiplier*=0.2f;
+			if(object.creatureStats.effects.skinOfStone) damageMultiplier*=0.25f;
+			if(object.creatureStats.effects.airShield) damageMultiplier*=0.5f;
+			if(object.creatureStats.effects.protectiveSwarm) damageMultiplier*=0.75f;
+		}
+		damageMultiplier*=1.2f^^object.creatureStats.effects.numSlimes;
 	}
-	damageMultiplier*=1.2f^^object.creatureStats.effects.numSlimes;
 	// TODO: bleed, in case of petrification, bleed rocks instead
 	return dealRawDamage(object,damage*damageMultiplier,attackingSide,damageMod,state);
 }
