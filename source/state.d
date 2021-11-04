@@ -2654,6 +2654,67 @@ struct AnimateDeadEffect(B){
 	enum totalFrames=128;
 }
 
+struct EruptCasting(B){
+	ManaDrain!B manaDrain;
+	Erupt!B erupt;
+
+	enum castingLimit=4*updateFPS;
+}
+struct Erupt(B){
+	Vector3f position;
+	SacSpell!B spell;
+	int frame=0;
+
+	enum range=50.0f, height=15.0f, growDur=4.2f, fallDur=0.15f;
+	enum waveRange=90.0f, waveDur=1.0f, reboundHeight=2.0f;
+	enum throwRange=25.0f, fallRange=45.0f;
+	enum stunMinRange=50.0f,stunMaxRange=75.0f;
+	// TODO: immunity ranges
+
+	enum totalFrames=cast(int)((growDur+waveDur)*updateFPS+0.5f);
+
+	float displacement(float x,float y){
+		enum pi=pi!float;
+		auto time=float(frame)/updateFPS;
+		auto epos=position.xy, pos=Vector2f(x,y);
+		auto dist=(pos-epos).length;
+		float displacement=0.0f;
+		if(dist<range){
+			float scale=0.0f;
+			if(time<growDur){
+				scale=time/growDur;
+			}else if(time<growDur+fallDur){
+				scale=1.0f-(time-growDur)/fallDur;
+			}
+			float shape=0.6f*(1.0f-dist/range);
+			if(dist<0.8f*range && time<=growDur){
+				shape+=0.5f*0.4f*(1.0f+cos(pi*dist/(0.8f*range)));
+			}
+			displacement+=shape*height*scale;
+		}
+		if(growDur<time&&time<growDur+waveDur){
+			float progress=(time-growDur)/waveDur;
+			float waveLoc=waveRange*progress;
+			float waveSize=(0.8f*range)*(1.0f-0.8f*progress);
+			float wavePos=abs(dist-waveLoc)/waveSize;
+			float waveHeight=height*(1.0f-progress);
+			if(wavePos<1.0f) displacement+=0.5f*0.4f*(1.0f+cos(pi*wavePos))*waveHeight;
+			displacement-=(1.0f+cos(pi*dist/waveRange))*sin(pi*progress)*reboundHeight;
+		}
+		return displacement;
+		/*auto shape=0.6f*(1.0f-dist/range);
+		if(dist<0.8f*range){
+			shape+=0.5f*0.4f*(1.0f+cos(pi!float*dist/(0.8f*range)));
+		}
+		return shape*height*scale;*/
+		//return 0.5f*(1.0f+cos(pi!float*dist/range))*height*scale;
+		//return (0.25f*0.5f*(1.0f+cos(pi!float*dist/range))+0.75f*(1.0f-dist/range))*height*scale;
+		//static import std.math;
+		//return std.math.exp(-3.0f*(dist/range)^^2)*height*scale; // !!!
+		//return (0.5f*std.math.exp(-5.0f*(dist/range)^^2)+0.5f*(1.0f-dist/range))*height*scale; // !!!
+	}
+}
+
 struct BrainiacProjectile(B){
 	int attacker;
 	int side;
@@ -3604,6 +3665,22 @@ struct Effects(B){
 		if(i+1<animateDeadEffects.length) animateDeadEffects[i]=move(animateDeadEffects[$-1]);
 		animateDeadEffects.length=animateDeadEffects.length-1;
 	}
+	Array!(EruptCasting!B) eruptCastings;
+	void addEffect(EruptCasting!B eruptCasting){
+		eruptCastings~=move(eruptCasting);
+	}
+	void removeEruptCasting(int i){
+		if(i+1<eruptCastings.length) eruptCastings[i]=move(eruptCastings[$-1]);
+		eruptCastings.length=eruptCastings.length-1;
+	}
+	Array!(Erupt!B) erupts;
+	void addEffect(Erupt!B erupt){
+		erupts~=move(erupt);
+	}
+	void removeErupt(int i){
+		if(i+1<erupts.length) erupts[i]=move(erupts[$-1]);
+		erupts.length=erupts.length-1;
+	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
 	void addEffect(BrainiacProjectile!B brainiacProjectile){
@@ -4052,6 +4129,8 @@ struct Effects(B){
 		assignArray(animateDeadCastings,rhs.animateDeadCastings);
 		assignArray(animateDeads,rhs.animateDeads);
 		assignArray(animateDeadEffects,rhs.animateDeadEffects);
+		assignArray(eruptCastings,rhs.eruptCastings);
+		assignArray(erupts,rhs.erupts);
 		assignArray(brainiacProjectiles,rhs.brainiacProjectiles);
 		assignArray(brainiacEffects,rhs.brainiacEffects);
 		assignArray(shrikeProjectiles,rhs.shrikeProjectiles);
@@ -6190,6 +6269,8 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 					return stun(castChainLightning(side,target.id,manaDrain,spell,state));
 				case SpellTag.animateDead:
 					return stun(castAnimateDead(target.id,manaDrain,spell,state));
+				case SpellTag.erupt:
+					return stun(castErupt(target.position,manaDrain,spell,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -6883,6 +6964,15 @@ bool animateDead(B)(int wizard,int creature,SacSpell!B spell,ObjectState!B state
 	if(reviveTime==-1) return false;
 	playSoundAt("0cas",creature,state,animateDeadGain);
 	state.addEffect(AnimateDead!B(start,end,reviveTime));
+	return true;
+}
+
+bool castErupt(B)(Vector3f position,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	state.addEffect(EruptCasting!B(manaDrain,Erupt!B(position,spell)));
+	return true;
+}
+bool erupt(B)(Erupt!B erupt,ObjectState!B state){
+	state.addEffect(erupt);
 	return true;
 }
 
@@ -12426,6 +12516,44 @@ bool updateAnimateDeadEffect(B)(ref AnimateDeadEffect!B animateDeadEffect,Object
 	}
 }
 
+void animateEruptCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	auto castParticle=SacParticle!B.get(ParticleType.dirt);
+	wizard.animateCasting!(true,1)(castParticle,state);
+	static assert(updateFPS==60);
+	auto hitbox=wizard.relativeHitbox;
+	auto scale=1.0f;
+	enum numParticles=6;
+	foreach(i;0..numParticles){
+		auto position=1.1f*state.uniform(cast(Vector2f[2])[hitbox[0].xy,hitbox[1].xy]);
+		auto distance=(state.uniform(3)?state.uniform(0.3f,0.6f):state.uniform(1.5f,2.5f))*(hitbox[1].z-hitbox[0].z);
+		auto fullLifetime=2.0f*castParticle.numFrames/float(updateFPS);
+		auto lifetime=cast(int)(castParticle.numFrames*state.uniform(0.0f,2.0f));
+		// TODO: particles should accelerate upwards
+		state.addParticle(Particle!B(castParticle,wizard.position+rotate(wizard.rotation,Vector3f(position.x,position.y,state.uniform(0.0f,0.5f*distance))),Vector3f(0.0f,0.0f,distance/fullLifetime),scale,lifetime,0));
+	}
+}
+bool updateEruptCasting(B)(ref EruptCasting!B eruptCast,ObjectState!B state){
+	with(eruptCast){
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				state.movingObjectById!(animateEruptCasting,(){})(manaDrain.wizard,state);
+				erupt.updateErupt(state);
+				erupt.frame=min(castingLimit,erupt.frame);
+				return true;
+			case CastingStatus.interrupted:
+				return false;
+			case CastingStatus.finished:
+				.erupt(erupt,state);
+				return false;
+		}
+	}
+}
+bool updateErupt(B)(ref Erupt!B erupt,ObjectState!B state){
+	with(erupt){
+		return ++frame<=totalFrames;
+	}
+}
+
 enum brainiacProjectileHitGain=4.0f;
 enum brainiacProjectileSize=0.45f; // TODO: ok?
 enum brainiacProjectileSlidingDistance=1.5f;
@@ -14635,6 +14763,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 		}
 		i++;
 	}
+	for(int i=0;i<effects.eruptCastings.length;){
+		if(!updateEruptCasting(effects.eruptCastings[i],state)){
+			effects.removeEruptCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.erupts.length;){
+		if(!updateErupt(effects.erupts[i],state)){
+			effects.removeErupt(i);
+			continue;
+		}
+		i++;
+	}
 	for(int i=0;i<effects.brainiacProjectiles.length;){
 		if(!updateBrainiacProjectile(effects.brainiacProjectiles[i],state)){
 			effects.removeBrainiacProjectile(i);
@@ -15803,6 +15945,12 @@ final class ObjectState(B){ // (update logic)
 			float result=0.0f;
 			foreach(ref td;state.obj.opaqueObjects.effects.testDisplacements){
 				result+=td.displacement(x,y);
+			}
+			foreach(ref ec;state.obj.opaqueObjects.effects.eruptCastings){
+				result+=ec.erupt.displacement(x,y);
+			}
+			foreach(ref e;state.obj.opaqueObjects.effects.erupts){
+				result+=e.displacement(x,y);
 			}
 			return result;
 		}

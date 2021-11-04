@@ -438,6 +438,12 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Ani
 void serialize(alias sink,B)(ref AnimateDeadEffect!B animateDeadEffect){ serializeStruct!sink(animateDeadEffect); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==AnimateDeadEffect!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref EruptCasting!B eruptCasting){ serializeStruct!sink(eruptCasting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==EruptCasting!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref Erupt!B erupt){ serializeStruct!sink(erupt); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Erupt!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref BrainiacProjectile!B brainiacProjectile){ serializeStruct!sink(brainiacProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BrainiacProjectile!B)){ deserializeStruct(result,state,data); }
 

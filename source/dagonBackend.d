@@ -1116,13 +1116,29 @@ final class SacScene: Scene{
 	}
 
 	override bool needTerrainDisplacement(){
-		return state&&state.current.obj.opaqueObjects.effects.testDisplacements.length!=0;
+		return state&&
+			(state.current.obj.opaqueObjects.effects.testDisplacements.length!=0||
+			 state.current.obj.opaqueObjects.effects.eruptCastings.length!=0||
+			 state.current.obj.opaqueObjects.effects.erupts.length!=0);
 	}
 	override void displaceTerrain(){
-		if(state) foreach(ref td;state.current.obj.opaqueObjects.effects.testDisplacements){
+		if(!state) return;
+		bindTestDisplacement();
+		foreach(ref td;state.current.obj.opaqueObjects.effects.testDisplacements){
 			float time=float(td.frame)/updateFPS;
 			testDisplacement(time);
 		}
+		unbindTestDisplacement();
+		bindEruptDisplacement();
+		foreach(ref ec;state.current.obj.opaqueObjects.effects.eruptCastings){
+			float time=float(ec.erupt.frame)/updateFPS;
+			eruptDisplacement(ec.erupt.position.x,ec.erupt.position.y,time);
+		}
+		foreach(ref e;state.current.obj.opaqueObjects.effects.erupts){
+			float time=float(e.frame)/updateFPS;
+			eruptDisplacement(e.position.x,e.position.y,time);
+		}
+		unbindEruptDisplacement();
 	}
 
 	override void onUpdate(double dt){
