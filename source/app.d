@@ -480,6 +480,12 @@ int main(string[] args){
 					auto meshes=loadObj!B(filename);
 					sac.setMeshes(meshes);
 					i+=1;
+				}else if(args[i+1].startsWith("export-skeleton:")){
+					import sxsk,saxs2obj;
+					auto filename=args[i+1]["export-skeleton:".length..$];
+					if(sac.isSaxs) saveSkeletonObj!B(filename,sac.saxsi.saxs,anim?sac.animations[0].frames[0]:Pose.init);
+					else stderr.writeln("no bones");
+					i+=1;
 				}
 			}
 			backend.addObject(sac,position,facingQuaternion(0));
