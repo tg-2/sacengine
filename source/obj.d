@@ -108,10 +108,10 @@ void saveObj(B)(string filename,B.Mesh[] meshes){
 		foreach(tri;mesh.indices){
 			file.writefln!"f %d/%d/%d %d/%d/%d %d/%d/%d"(firstVertex+tri[0],firstVertex+tri[0],
 			                                             firstVertex+tri[0],
-			                                             firstVertex+tri[1],firstVertex+tri[1],
-			                                             firstVertex+tri[1],
 			                                             firstVertex+tri[2],firstVertex+tri[2],
-			                                             firstVertex+tri[2]);
+			                                             firstVertex+tri[2],
+			                                             firstVertex+tri[1],firstVertex+tri[1],
+			                                             firstVertex+tri[1]);
 		}
 	}
 }
