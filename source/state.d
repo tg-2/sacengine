@@ -5271,7 +5271,7 @@ bool damageStun(B)(ref MovingObject!B object, Vector3f attackDirection, ObjectSt
 }
 
 bool canCatapult(B)(ref MovingObject!B object){
-	return object.creatureState.mode.canCatapult;
+	return object.creatureState.mode.canCatapult && !object.creatureStats.effects.fixed;
 }
 void catapult(B)(ref MovingObject!B object, Vector3f velocity, ObjectState!B state){
 	if(!object.canCatapult) return;
@@ -6869,7 +6869,7 @@ bool graspingVines(B)(int target,SacSpell!B spell,ObjectState!B state){
 	auto durationHitbox=state.movingObjectById!((ref obj,state){
 		playSoundAt("toor",obj.position,state,graspingVinesGain);
 		obj.creatureStats.effects.numVines+=1;
-		obj.creatureState.targetFlyingHeight=obj.position.z-state.getGroundHeight(obj.position);
+		obj.creatureState.targetFlyingHeight=max(0.0f,obj.position.z-state.getGroundHeight(obj.position));
 		auto duration=(obj.isWizard?0.25f:1000.0f/obj.health)*spell.duration;
 		return tuple(cast(int)ceil(updateFPS*duration), obj.hitbox);
 	},()=>tuple(-1,(Vector3f[2]).init))(target,state);
@@ -8983,8 +8983,6 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			if(object.creatureStats.effects.immobilized||object.creatureStats.effects.fixed){
 				if(state.isOnGround(newPosition)){
 					auto height=state.getGroundHeight(newPosition);
-					if(object.creatureStats.effects.fixed && !isNaN(object.creatureState.targetFlyingHeight))
-						newPosition.z=state.getGroundHeight(newPosition)+object.creatureState.targetFlyingHeight;
 					if(newPosition.z<=height)
 						newPosition.z=height;
 				}
@@ -9022,6 +9020,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 				object.startTumbling(state);
 				goto case CreatureMovement.tumbling;
 			}
+			if(object.creatureStats.effects.fixed) break;
 			auto targetFlyingHeight=object.creatureState.targetFlyingHeight;
 			if(object.creatureState.mode.among(CreatureMode.landing,CreatureMode.idle)
 			   ||object.creatureState.mode==CreatureMode.meleeAttacking&&object.position.z-state.getHeight(object.position)>targetFlyingHeight
@@ -9089,8 +9088,9 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 				object.creatureState.fallingVelocity.z-=object.creatureStats.fallingAcceleration/updateFPS;
 			enum speedCap=60.0f; // TODO: figure out constant
 			if(object.creatureState.fallingVelocity.lengthsqr>speedCap^^2) object.creatureState.fallingVelocity=object.creatureState.fallingVelocity.normalized*speedCap;
+			if(object.creatureStats.effects.fixed) break;
 			newPosition=object.position+object.creatureState.fallingVelocity/updateFPS;
-			if(object.creatureState.fallingVelocity.z<=0.0f && state.isOnGround(newPosition))
+			if(state.isOnGround(newPosition))
 				newPosition.z=max(newPosition.z,state.getGroundHeight(newPosition));
 			break;
 	}
@@ -9228,6 +9228,15 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			}
 		}
 		if(!object.creatureStats.effects.fixed) object.position=newPosition;
+	}
+	if(object.creatureStats.effects.fixed){
+		if(!isNaN(object.creatureState.targetFlyingHeight))
+			object.position.z=max(object.position.z,height+object.creatureState.targetFlyingHeight); // TODO: ok?
+		if(object.position.z>height && object.creatureState.movement!=CreatureMovement.tumbling){
+			object.creatureState.fallingVelocity=Vector3f(0.0f,0.0f,0.0f);
+			object.creatureState.movement=CreatureMovement.tumbling;
+			object.setCreatureState(state);
+		}
 	}
 }
 
@@ -12026,6 +12035,7 @@ void updateVine(B)(ref Vine vine,float lengthFactor,ObjectState!B state){
 	enum dampFactor=std.math.exp(std.math.log(0.5f)/updateFPS);
 	enum maxVelocity=20.0f;
 	vine.base.z=state.getHeight(vine.base);
+	// TODO: track target creature with vine
 	foreach(i;1..vine.m){
 		auto realTarget=vine.base+lengthFactor*float(i)/(vine.m-1)*(vine.target-vine.base);
 		auto target=vine.locations[$-1]*(1.0f-vine.growthFactor)+vine.growthFactor*realTarget;
