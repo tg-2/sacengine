@@ -1207,8 +1207,8 @@ immutable ST[] heroCreatures=[ST.faestus1,ST.toldor,ST.sirocco,ST.faestus2,ST.ga
 immutable ST[] familiarCreatures=[ST.familiar,ST.zyzyx];
 
 God getSpellGod(char[4] tag){ // TODO: figure out where this is stored
-	static God[char[4]] getIndex(){
-		God[char[4]] index;
+	static God[SpellTag] getIndex(){
+		God[SpellTag] index;
 		import std.traits: EnumMembers;
 		foreach(god;EnumMembers!God){
 			foreach(tag;chain(creatureSpells[god],normalSpells[god]))
