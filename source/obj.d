@@ -53,6 +53,7 @@ B.Mesh[] loadObj(B)(string filename){
 				void addFace(string[3] vertexStrings){
 					int[3][3] vertices;
 					vertexStrings[].map!parseVertex.copy(vertices[]);
+					swap(vertices[1],vertices[2]);
 					faces~=vertices;
 				}
 				if(line.length==4) addFace(line[1..4]);
