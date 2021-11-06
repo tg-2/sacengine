@@ -12025,6 +12025,7 @@ void updateVine(B)(ref Vine vine,float lengthFactor,ObjectState!B state){
 	static import std.math;
 	enum dampFactor=std.math.exp(std.math.log(0.5f)/updateFPS);
 	enum maxVelocity=20.0f;
+	vine.base.z=state.getHeight(vine.base);
 	foreach(i;1..vine.m){
 		auto realTarget=vine.base+lengthFactor*float(i)/(vine.m-1)*(vine.target-vine.base);
 		auto target=vine.locations[$-1]*(1.0f-vine.growthFactor)+vine.growthFactor*realTarget;
