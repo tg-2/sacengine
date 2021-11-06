@@ -18,7 +18,7 @@ B.Mesh[] loadObj(B)(string filename){
 	Array!Vector2f texcoords;
 	static struct Vertex{
 		Vector3f position;
-		Vector2f texcoord;
+		Vector2f texcoord=Vector2f(0.0f,0.0f);
 	}
 	Array!(int[3][3]) faces;
 	while(!file.eof()){
@@ -33,6 +33,7 @@ B.Mesh[] loadObj(B)(string filename){
 				Vector3f position;
 				line[1..4].map!(to!float).copy(position[]);
 				swap(position.y,position.z);
+				position.y=-position.y;
 				positions~=position;
 				break;
 			case "vt":
@@ -53,7 +54,6 @@ B.Mesh[] loadObj(B)(string filename){
 				void addFace(string[3] vertexStrings){
 					int[3][3] vertices;
 					vertexStrings[].map!parseVertex.copy(vertices[]);
-					swap(vertices[1],vertices[2]);
 					faces~=vertices;
 				}
 				if(line.length==4) addFace(line[1..4]);
@@ -101,18 +101,18 @@ void saveObj(B)(string filename,B.Mesh[] meshes){
 		file.writefln!"usemtl bodypart%03d"(i+1);
 		int firstVertex=numVertices+1;
 		foreach(j;0..mesh.vertices.length){
-			file.writefln!"v %.10f %.10f %.10f"(mesh.vertices[j].x,mesh.vertices[j].z,mesh.vertices[j].y);
-			file.writefln!"vn %.10f %.10f %.10f"(mesh.normals[j].x,mesh.normals[j].z,mesh.normals[j].y);
+			file.writefln!"v %.10f %.10f %.10f"(mesh.vertices[j].x,mesh.vertices[j].z,-mesh.vertices[j].y);
+			file.writefln!"vn %.10f %.10f %.10f"(mesh.normals[j].x,mesh.normals[j].z,-mesh.normals[j].y);
 			file.writefln!"vt %.10f %.10f"(mesh.texcoords[j].x,1.0f-mesh.texcoords[j].y);
 			numVertices++;
 		}
 		foreach(tri;mesh.indices){
 			file.writefln!"f %d/%d/%d %d/%d/%d %d/%d/%d"(firstVertex+tri[0],firstVertex+tri[0],
 			                                             firstVertex+tri[0],
-			                                             firstVertex+tri[2],firstVertex+tri[2],
-			                                             firstVertex+tri[2],
 			                                             firstVertex+tri[1],firstVertex+tri[1],
-			                                             firstVertex+tri[1]);
+			                                             firstVertex+tri[1],
+			                                             firstVertex+tri[2],firstVertex+tri[2],
+			                                             firstVertex+tri[2]);
 		}
 	}
 }

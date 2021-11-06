@@ -21,6 +21,6 @@ void saveSkeletonObj(B)(string filename,ref Saxs!B saxs,Pose pose=Pose.init){
 	enforce(pose.rotations.length==saxs.bones.length);
 	foreach(i,ref bone;saxs.bones)
 		transform[i]=transform[bone.parent]*Transformation(pose.rotations[i],bone.position);
-	foreach(t;transform) file.writefln!"v %.10f %.10f %.10f"(t.offset.x,t.offset.z,t.offset.y);
+	foreach(t;transform) file.writefln!"v %.10f %.10f %.10f"(t.offset.x,t.offset.z,-t.offset.y);
 	foreach(i,b;saxs.bones) if(i) file.writefln!"l %d %d"(i+1,b.parent+1);
 }
