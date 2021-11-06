@@ -2661,13 +2661,15 @@ struct EruptCasting(B){
 	enum castingLimit=4*updateFPS;
 }
 struct Erupt(B){
+	int wizard;
+	int side;
 	Vector3f position;
 	SacSpell!B spell;
 	int frame=0;
 
 	enum range=50.0f, height=15.0f, growDur=4.2f, fallDur=0.15f;
 	enum waveRange=90.0f, waveDur=1.0f, reboundHeight=2.0f;
-	enum throwRange=25.0f, fallRange=45.0f;
+	enum throwRange=30.0f, fallRange=45.0f;
 	enum stunMinRange=50.0f,stunMaxRange=75.0f;
 	// TODO: immunity ranges
 
@@ -6270,7 +6272,8 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 				case SpellTag.animateDead:
 					return stun(castAnimateDead(target.id,manaDrain,spell,state));
 				case SpellTag.erupt:
-					return stun(castErupt(target.position,manaDrain,spell,state));
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					return stun(castErupt(side,target.position,manaDrain,spell,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -6967,8 +6970,8 @@ bool animateDead(B)(int wizard,int creature,SacSpell!B spell,ObjectState!B state
 	return true;
 }
 
-bool castErupt(B)(Vector3f position,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
-	state.addEffect(EruptCasting!B(manaDrain,Erupt!B(position,spell)));
+bool castErupt(B)(int side,Vector3f position,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	state.addEffect(EruptCasting!B(manaDrain,Erupt!B(manaDrain.wizard,side,position,spell)));
 	return true;
 }
 bool erupt(B)(Erupt!B erupt,ObjectState!B state){
@@ -12550,7 +12553,38 @@ bool updateEruptCasting(B)(ref EruptCasting!B eruptCast,ObjectState!B state){
 }
 bool updateErupt(B)(ref Erupt!B erupt,ObjectState!B state){
 	with(erupt){
-		return ++frame<=totalFrames;
+		if(++frame==cast(int)(growDur*updateFPS)){
+			static bool callback(int target,Erupt!B* erupt,ObjectState!B state){
+				state.movingObjectById!((ref obj,erupt,state){
+					auto diff=obj.position.xy-erupt.position.xy;
+					auto difflen=diff.length;
+					if(difflen<erupt.throwRange){
+						auto direction=Vector3f(diff.x,diff.y,20.0f).normalized;
+						auto strength=25.0f*(1.0f-difflen/erupt.throwRange);
+						obj.catapult(direction*strength,state);
+						if(difflen<erupt.spell.damageRange)
+							dealSplashSpellDamage(target,erupt.spell,erupt.wizard,erupt.side,direction,difflen,DamageMod.none,state);
+					}
+				},(){})(target,erupt,state);
+				return false;
+			}
+			dealSplashSpellDamageAt!callback(0,spell,spell.range,wizard,side,position,DamageMod.none,state,&erupt,state);
+		}
+		auto waveLoc=waveRange*(float(frame)/updateFPS-growDur)/waveDur;
+		if(stunMinRange<waveLoc&&waveLoc<stunMaxRange){
+			// TODO: more efficient method to query creatures currently on the ring
+			static bool callback2(int target,Erupt!B* erupt,float waveLoc,ObjectState!B state){
+				state.movingObjectById!((ref obj,erupt,waveLoc,state){
+					auto diff=obj.position.xy-erupt.position.xy;
+					auto difflen=diff.length;
+					if(abs(difflen-waveLoc)<1.5f*erupt.waveRange/(erupt.waveDur*updateFPS))
+						obj.stunWithCooldown(stunCooldownFrames,state);
+				},(){})(target,erupt,waveLoc,state);
+				return false;
+			}
+			dealSplashSpellDamageAt!callback2(0,spell,waveLoc+0.1f,wizard,side,position,DamageMod.none,state,&erupt,waveLoc,state);
+		}
+		return frame<=totalFrames;
 	}
 }
 
