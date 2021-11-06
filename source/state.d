@@ -6869,6 +6869,7 @@ bool graspingVines(B)(int target,SacSpell!B spell,ObjectState!B state){
 	auto durationHitbox=state.movingObjectById!((ref obj,state){
 		playSoundAt("toor",obj.position,state,graspingVinesGain);
 		obj.creatureStats.effects.numVines+=1;
+		obj.creatureState.targetFlyingHeight=obj.position.z-state.getGroundHeight(obj.position);
 		auto duration=(obj.isWizard?0.25f:1000.0f/obj.health)*spell.duration;
 		return tuple(cast(int)ceil(updateFPS*duration), obj.hitbox);
 	},()=>tuple(-1,(Vector3f[2]).init))(target,state);
@@ -8979,7 +8980,16 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 	auto facing=facingQuaternion(object.creatureState.facing);
 	final switch(object.creatureState.movement){
 		case CreatureMovement.onGround:
-			if(object.creatureStats.effects.immobilized||object.creatureStats.effects.fixed) break;
+			if(object.creatureStats.effects.immobilized||object.creatureStats.effects.fixed){
+				if(state.isOnGround(newPosition)){
+					auto height=state.getGroundHeight(newPosition);
+					if(object.creatureStats.effects.fixed && !isNaN(object.creatureState.targetFlyingHeight))
+						newPosition.z=state.getGroundHeight(newPosition)+object.creatureState.targetFlyingHeight;
+					if(newPosition.z<=height)
+						newPosition.z=height;
+				}
+				break;
+			}
 			auto groundSpeed=object.speedOnGround(state);
 			auto groundAcceleration=object.accelerationOnGround(state);
 			final switch(object.creatureState.mode.isMoving?object.creatureState.movementDirection:MovementDirection.none){
@@ -9017,14 +9027,13 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			   ||object.creatureState.mode==CreatureMode.meleeAttacking&&object.position.z-state.getHeight(object.position)>targetFlyingHeight
 			){
 				auto height=state.getHeight(newPosition);
-				if(newPosition.z<height) newPosition.z=height;
 				if(newPosition.z>height+(isNaN(targetFlyingHeight)?0.0f:targetFlyingHeight)){
 					auto downwardSpeed=object.creatureState.mode==CreatureMode.landing?object.creatureStats.landingSpeed/updateFPS:object.creatureStats.downwardHoverSpeed/updateFPS;
 					newPosition.z-=downwardSpeed;
-					if(state.isOnGround(newPosition)){
-						if(newPosition.z<=height)
-							newPosition.z=height;
-					}
+				}
+				if(state.isOnGround(newPosition)){
+					if(newPosition.z<=height)
+						newPosition.z=height;
 				}
 				if(object.creatureState.mode==CreatureMode.idle&&!isNaN(targetFlyingHeight)){
 					if(newPosition.z<height+targetFlyingHeight){
