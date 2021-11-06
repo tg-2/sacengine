@@ -1115,11 +1115,14 @@ final class SacScene: Scene{
 		gbuffer.startInformationDownload(x,y);
 	}
 
+	bool displacementDirty=false;
+	private bool hasDisplacement(){
+		return state.current.obj.opaqueObjects.effects.testDisplacements.length!=0||
+			state.current.obj.opaqueObjects.effects.eruptCastings.length!=0||
+			state.current.obj.opaqueObjects.effects.erupts.length!=0;
+	}
 	override bool needTerrainDisplacement(){
-		return state&&
-			(state.current.obj.opaqueObjects.effects.testDisplacements.length!=0||
-			 state.current.obj.opaqueObjects.effects.eruptCastings.length!=0||
-			 state.current.obj.opaqueObjects.effects.erupts.length!=0);
+		return state&&(displacementDirty||hasDisplacement());
 	}
 	override void displaceTerrain(){
 		if(!state) return;
@@ -1139,6 +1142,7 @@ final class SacScene: Scene{
 			eruptDisplacement(e.position.x,e.position.y,time);
 		}
 		unbindEruptDisplacement();
+		displacementDirty=hasDisplacement();
 	}
 
 	override void onUpdate(double dt){
