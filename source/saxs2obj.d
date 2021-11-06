@@ -44,7 +44,7 @@ B.BoneMesh transferModel(B)(size_t meshIndex,B.Mesh mesh,Saxs!B saxs,Pose pose){
 	auto bmesh=B.makeBoneMesh(mesh.vertices.length,mesh.indices.length);
 	auto transform=transformationsOf(saxs,pose);
 	foreach(i,vertex;mesh.vertices){
-		auto bestBone=0, bestDistanceSqr=float.infinity;
+		/*auto bestBone=0, bestDistanceSqr=float.infinity;
 		foreach(j,bone;saxs.bones){
 			if(j==0) continue;
 			auto position=transform[j].offset;
@@ -55,14 +55,58 @@ B.BoneMesh transferModel(B)(size_t meshIndex,B.Mesh mesh,Saxs!B saxs,Pose pose){
 			}
 		}
 		bmesh.vertices[0][i]=rotate(transform[bestBone].rotation.conj(),vertex-transform[bestBone].offset);
-		bmesh.boneIndices[i]=[bestBone,0,0];
+		bmesh.boneIndices[i]=[bestBone,0,0];*/
+		Vector3f bestPosition=Vector3f(0.0f,0.0f,0.0f);
+		uint[3] bestBones=[0,0,0];
+		Vector3f[3] bestOffsets=Vector3f(0.0f,0.0f,0.0f);
+		auto bestWeights=Vector3f(1.0f,0.0f,0.0f);
+		auto bestDistanceSqr=float.infinity;
+		foreach(bp;saxs.bodyParts){
+			foreach(bvertex;bp.vertices){
+				Vector3f bvertexPosition=Vector3f(0.0f,0.0f,0.0f);
+				uint[3] bones=[0,0,0];
+				Vector3f[3] offsets=Vector3f(0.0f,0.0f,0.0f);
+				auto weights=Vector3f(0.0f,0.0f,0.0f);
+				foreach(k,index;bvertex.indices){
+					auto position=saxs.positions[index];
+					bvertexPosition+=transform[position.bone](position.offset)*position.weight;
+					bones[k]=cast(uint)position.bone;
+					offsets[k]=position.offset;
+					weights[k]=position.weight;
+				}
+				auto distanceSqr=(vertex-bvertexPosition).lengthsqr;
+				if(distanceSqr<bestDistanceSqr){
+					bestPosition=bvertexPosition;
+					bestBones=bones;
+					bestOffsets=offsets;
+					bestWeights=weights;
+					bestDistanceSqr=distanceSqr;
+				}
+			}
+		}
+		bmesh.boneIndices[i]=bestBones;
+		//int bestNumOffsets=0;
+		//foreach(k;0..3) bestNumOffsets+=bestWeights[k]!=0.0f;
+		/*int primary=0;
+		float primaryWeight=-1.0f;
+		foreach(k;0..3) if(bestWeights[k]>primaryWeight){
+			primary=k;
+			primaryWeight=bestWeights[k];
+		}*/
+		foreach(k;0..3){
+			if(bestWeights[k]==0.0f) continue;
+			//bmesh.vertices[k][i]=bestOffsets[k]+rotate(transform[bestBones[k]].rotation.conj(),(vertex-bestPosition)/(bestNumOffsets*bestWeights[k]));
+			bmesh.vertices[k][i]=bestOffsets[k]+rotate(transform[bestBones[k]].rotation.conj(),vertex-bestPosition);
+			//if(k==primary) bmesh.vertices[k][i]+=rotate(transform[bestBones[k]].rotation.conj(),(vertex-bestPosition)/bestWeights[k]);
+		}
+		bmesh.weights[i]=bestWeights;
 	}
-	//bmesh.vertices[0][]=mesh.vertices[];
-	//bmesh.boneIndices[]=[0,0,0];
+	/*bmesh.boneIndices[]=[0,0,0];
+	bmesh.vertices[0][]=mesh.vertices[];
 	bmesh.vertices[1][]=Vector3f(0.0f,0.0f,0.0f);
 	bmesh.vertices[2][]=Vector3f(0.0f,0.0f,0.0f);
+	bmesh.weights[]=Vector3f(1.0f,0.0f,0.0f);*/
 	bmesh.texcoords[]=mesh.texcoords[];
-	bmesh.weights[]=Vector3f(1.0f,0.0f,0.0f);
 	bmesh.indices[]=mesh.indices[];
 	bmesh.pose=pose.matrices;
 	bmesh.generateNormals();
