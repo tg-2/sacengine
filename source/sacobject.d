@@ -526,7 +526,18 @@ final class SacObject(B){
 			default: return 0;
 		}
 	}
-
+	static SaxsInstance!B[char[4]] overrides1;
+	static Tuple!(B.Mesh[],B.Texture[])[char[4]] overrides2;
+	void setOverride(){
+		if(isSaxs) overrides1[tag]=saxsi;
+		else overrides2[tag]=tuple(meshes,textures);
+		foreach(obj;objects) if(obj.tag==tag){
+			obj.isSaxs=isSaxs;
+			obj.saxsi=saxsi;
+			obj.meshes=meshes;
+			obj.textures=textures;
+		}
+	}
 	private this(T)(char[4] tag,T* hack) if(is(T==Creature)||is(T==Wizard)){
 		isSaxs=true;
 		auto data=creatureDataByTag(tag);
@@ -565,7 +576,8 @@ final class SacObject(B){
 				}
 			}
 		}
-		saxsi.createMeshes(animations[AnimationState.stance1].frames[0]);
+		if(dat2.saxsModel in overrides1) saxsi=overrides1[dat2.saxsModel];
+		else saxsi.createMeshes(animations[AnimationState.stance1].frames[0]);
 		initializeNTTData(dat2.saxsModel,tag);
 		if(isSacDoctor){
 			animations[AnimationState.death0]=animations[cast(AnimationState)SacDoctorAnimationState.dance];
@@ -657,10 +669,20 @@ final class SacObject(B){
 
 	void setMeshes(B.Mesh[] meshes,Pose pose=Pose.init){
 		if(isSaxs){ // TODO: transfer to BoneMesh using the pose
-			isSaxs=false;
+			/*isSaxs=false;
+			enforce(meshes.length<=meshes.length);
 			this.meshes=meshes;
-			this.textures=saxsi.saxs.bodyParts.map!((ref p)=>p.texture).array;
+			this.textures=saxsi.saxs.bodyParts.map!((ref p)=>p.texture).array[0..meshes.length];*/
 			initializeNTTData(tag,nttTag);
+			import saxs2obj;
+			auto transferred=transferModel!B(meshes,saxsi.saxs,pose);
+			enforce(transferred.length<=saxsi.meshes.length);
+			while(transferred.length<saxsi.meshes.length){
+				auto emptyMesh=B.makeBoneMesh(1,1);
+				B.finalizeBoneMesh(emptyMesh);
+				transferred~=emptyMesh;
+			}
+			saxsi.meshes=transferred;
 		}else{
 			this.meshes=meshes;
 		}

@@ -475,10 +475,11 @@ int main(string[] args){
 					else saveObj!B(filename,sac.meshes);
 					i+=1;
 				}else if(args[i+1].startsWith("import:")){
-					import obj;
+					import obj,sxsk;
 					auto filename=args[i+1]["import:".length..$];
 					auto meshes=loadObj!B(filename);
-					sac.setMeshes(meshes);
+					sac.setMeshes(meshes,anim?sac.animations[0].frames[0]:Pose.init);
+					sac.setOverride();
 					i+=1;
 				}else if(args[i+1].startsWith("export-skeleton:")){
 					import sxsk,saxs2obj;
