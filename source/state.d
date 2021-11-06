@@ -12555,17 +12555,24 @@ bool updateErupt(B)(ref Erupt!B erupt,ObjectState!B state){
 	with(erupt){
 		if(++frame==cast(int)(growDur*updateFPS)){
 			static bool callback(int target,Erupt!B* erupt,ObjectState!B state){
-				state.movingObjectById!((ref obj,erupt,state){
+				if(!state.targetTypeFromId(target).among(TargetType.creature,TargetType.building))
+					return false;
+				state.objectById!((ref obj,erupt,state){
 					auto diff=obj.position.xy-erupt.position.xy;
 					auto difflen=diff.length;
-					if(difflen<erupt.throwRange){
-						auto direction=Vector3f(diff.x,diff.y,20.0f).normalized;
-						auto strength=25.0f*(1.0f-difflen/erupt.throwRange);
-						obj.catapult(direction*strength,state);
+					auto direction=Vector3f(diff.x,diff.y,20.0f).normalized;
+					void dealDamage(){
 						if(difflen<erupt.spell.damageRange)
 							dealSplashSpellDamage(target,erupt.spell,erupt.wizard,erupt.side,direction,difflen,DamageMod.none,state);
 					}
-				},(){})(target,erupt,state);
+					static if(is(typeof(obj)==MovingObject!B,B)){
+						if(difflen<erupt.throwRange){
+							auto strength=25.0f*(1.0f-difflen/erupt.throwRange);
+							obj.catapult(direction*strength,state);
+							dealDamage();
+						}
+					}else dealDamage();
+				})(target,erupt,state);
 				return false;
 			}
 			dealSplashSpellDamageAt!callback(0,spell,spell.range,wizard,side,position,DamageMod.none,state,&erupt,state);
