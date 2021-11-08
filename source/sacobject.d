@@ -500,9 +500,9 @@ final class SacObject(B){
 		// locust wings
 		if(kind.among("bugz")) conf.locustWingPart=3;
 		if(kind.among("bold")) conf.shinyPart=0;
-		materials=B.createMaterials(this,conf);
-		transparentMaterials=B.createTransparentMaterials(this);
-		shadowMaterials=B.createShadowMaterials(this);
+		if(!materials.length) materials=B.createMaterials(this,conf);
+		if(!transparentMaterials.length) transparentMaterials=B.createTransparentMaterials(this);
+		if(!shadowMaterials.length) shadowMaterials=B.createShadowMaterials(this);
 	}
 	final int alphaFlags(char[4] tag){
 		switch(tag){
@@ -526,16 +526,18 @@ final class SacObject(B){
 			default: return 0;
 		}
 	}
-	static SaxsInstance!B[char[4]] overrides1;
-	static Tuple!(B.Mesh[],B.Texture[])[char[4]] overrides2;
+	static SacObject!B[char[4]] overrides;
 	void setOverride(){
-		if(isSaxs) overrides1[tag]=saxsi;
-		else overrides2[tag]=tuple(meshes,textures);
+		overrides[tag]=this;
 		foreach(obj;objects) if(obj.tag==tag){
+			enforce(obj.isSaxs==isSaxs,"unsupported override");
 			obj.isSaxs=isSaxs;
 			obj.saxsi=saxsi;
 			obj.meshes=meshes;
 			obj.textures=textures;
+			obj.materials=materials;
+			obj.transparentMaterials=transparentMaterials;
+			obj.shadowMaterials=shadowMaterials;
 		}
 	}
 	private this(T)(char[4] tag,T* hack) if(is(T==Creature)||is(T==Wizard)){
@@ -576,8 +578,15 @@ final class SacObject(B){
 				}
 			}
 		}
-		if(dat2.saxsModel in overrides1) saxsi=overrides1[dat2.saxsModel];
-		else saxsi.createMeshes(animations[AnimationState.stance1].frames[0]);
+		if(dat2.saxsModel in overrides){
+			auto sac=overrides[dat2.saxsModel];
+			enforce(sac.isSaxs,"unsupported override");
+			saxsi=sac.saxsi;
+			this.textures=sac.textures;
+			this.materials=sac.materials;
+			this.transparentMaterials=sac.transparentMaterials;
+			this.shadowMaterials=sac.shadowMaterials;
+		}else saxsi.createMeshes(animations[AnimationState.stance1].frames[0]);
 		initializeNTTData(dat2.saxsModel,tag);
 		if(isSacDoctor){
 			animations[AnimationState.death0]=animations[cast(AnimationState)SacDoctorAnimationState.dance];
@@ -626,7 +635,7 @@ final class SacObject(B){
 	}
 
 	this(string filename, float zfactorOverride=float.nan,string animation=""){
-		enforce(filename.endsWith(".MRMM")||filename.endsWith(".3DSM")||filename.endsWith(".WIDG")||filename.endsWith(".SXMD"));
+		enforce(filename.endsWith(".MRMM")||filename.endsWith(".3DSM")||filename.endsWith(".WIDG")||filename.endsWith(".SXMD"),filename);
 		char[4] tag=filename[$-9..$-5][0..4];
 		reverse(tag[]);
 		switch(filename[$-4..$]){
@@ -673,7 +682,6 @@ final class SacObject(B){
 			enforce(meshes.length<=meshes.length);
 			this.meshes=meshes;
 			this.textures=saxsi.saxs.bodyParts.map!((ref p)=>p.texture).array[0..meshes.length];*/
-			initializeNTTData(tag,nttTag);
 			import saxs2obj;
 			auto transferred=transferModel!B(meshes,saxsi.saxs,pose);
 			enforce(transferred.length<=saxsi.meshes.length);
@@ -685,6 +693,17 @@ final class SacObject(B){
 			saxsi.meshes=transferred;
 		}else{
 			this.meshes=meshes;
+		}
+	}
+	void setNormal(B.Texture[] textures){
+		foreach(i,t;textures)
+			materials[i].normal=t;
+	}
+	void setDiffuse(B.Texture[] textures){
+		this.textures=textures;
+		foreach(i,t;textures){
+			materials[i].diffuse=t;
+			transparentMaterials[i].diffuse=t;
 		}
 	}
 

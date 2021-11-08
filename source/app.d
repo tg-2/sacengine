@@ -479,8 +479,20 @@ int main(string[] args){
 					auto filename=args[i+1]["import:".length..$];
 					auto meshes=loadObj!B(filename);
 					sac.setMeshes(meshes,anim?sac.animations[0].frames[0]:Pose.init);
-					sac.setOverride();
 					i+=1;
+					bool parseTexture(){
+						import dlib.image.io.png;
+						if(i+1>=args.length||!args[i+1].endsWith(".png")) return false;
+						auto texture=B.makeTexture(loadPNG(args[i+1]));
+						if(args[i+1].canFind("normal")){
+							sac.setNormal([texture]);
+						}else{
+							sac.setDiffuse([texture]);
+						}
+						return true;
+					}
+					while(parseTexture()) i++;
+					sac.setOverride();
 				}else if(args[i+1].startsWith("export-skeleton:")){
 					import sxsk,saxs2obj;
 					auto filename=args[i+1]["export-skeleton:".length..$];
