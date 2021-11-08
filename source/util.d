@@ -265,12 +265,19 @@ float rayBoxIntersect(Vector3f start,Vector3f direction,Vector3f[2] box,float li
 	return result;
 }
 
-import std.container.array;
-T[] data(T)(ref Array!T array){
-	// std.container.array should just provide this functionality...
-	auto implPtr=array.tupleof[0]._refCounted.tupleof[0];
-	if(!implPtr) return [];
-	return implPtr._payload.tupleof[1];
+static import std.container.array;
+struct Array(T){
+	std.container.array.Array!T payload;
+	alias payload this;
+	static if(!is(T==bool)){
+		T[] data(){
+			// std.container.array should just provide this functionality...
+			auto implPtr=payload.tupleof[0]._refCounted.tupleof[0];
+			if(!implPtr) return [];
+			return implPtr._payload._payload;
+		}
+	}
+	Array!T dup(){ return Array!T(payload.dup); }
 }
 
 

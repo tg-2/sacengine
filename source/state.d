@@ -3,7 +3,6 @@
 // https://www.gnu.org/licenses/gpl-3.0.txt
 
 import std.algorithm, std.range;
-import std.container.array: Array;
 import std.exception, std.stdio, std.conv;
 import dlib.math, dlib.math.portable, dlib.image.color;
 import std.typecons;

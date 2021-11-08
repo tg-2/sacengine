@@ -1,7 +1,7 @@
 // copyright © tg
 // distributed under the terms of the gplv3 license
 // https://www.gnu.org/licenses/gpl-3.0.txt
-import std.stdio, std.string, std.container.array, std.exception, std.range, std.algorithm, std.conv;
+import std.stdio, std.string, std.exception, std.range, std.algorithm, std.conv;
 import saxs, sxsk;
 import dlib.math,util;
 

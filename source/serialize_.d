@@ -4,7 +4,7 @@
 
 import nttData,bldg,sacobject,sacspell,stats,state,util;
 import dlib.math;
-import std.algorithm, std.range, std.container, std.traits, std.exception, std.conv, std.stdio, std.typecons: Tuple;
+import std.algorithm, std.range, std.traits, std.exception, std.conv, std.stdio, std.typecons: Tuple;
 import std.random;
 
 

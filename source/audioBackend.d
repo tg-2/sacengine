@@ -3,7 +3,7 @@
 // https://www.gnu.org/licenses/gpl-3.0.txt
 
 import dlib.math;
-import std.container, std.algorithm: sort, swap, among;
+import std.algorithm: sort, swap, among;
 import audio, samp, nttData, sacobject, maps, state;
 import util;
 

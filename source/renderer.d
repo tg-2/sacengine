@@ -2267,7 +2267,6 @@ struct Renderer(B){
 		}
 		B.minimapMaterialBackend.bindDiffuse(sacHud.minimapIcons);
 		 // temporary scratch space. TODO: maybe share memory with other temporary scratch spaces
-		import std.container: Array;
 		static Array!uint creatureArrowIndices;
 		static Array!uint structureArrowIndices;
 		static void render(T)(ref T objects,float minimapFactor,Vector3f minimapCenter,Vector3f mapCenter,float radius,Quaternionf mapRotation,Renderer!B* self,ObjectState!B state,RenderInfo!B* info,B.RenderContext rc){ // TODO: why does this need to be static? DMD bug?

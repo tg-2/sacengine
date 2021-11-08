@@ -3,7 +3,7 @@
 // https://www.gnu.org/licenses/gpl-3.0.txt
 
 import state, util, serialize_;
-import std.exception, std.container, std.stdio;
+import std.exception, std.stdio;
 
 enum EventType{
 	addCommand,
