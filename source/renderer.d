@@ -2646,6 +2646,44 @@ struct Renderer(B){
 		}
 	}
 
+	void renderText(ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
+		import sacfont;
+		auto font=SacFont!B.get(FontType.fn10);
+		B.colorHUDMaterialBackend.bind(null,rc);
+		B.colorHUDMaterialBackend.bindDiffuse(font.texture);
+		void drawLetter(B.SubQuad mesh,float x,float y,float width,float height){
+			B.colorHUDMaterialBackend.setTransformationScaled(Vector3f(x,y,0.0f),Quaternionf.identity(),Vector3f(width,height,0.0f),rc);
+			mesh.render(rc);
+		}
+		/*FormatSettings testSettings = {flowType: FlowType.left, scale: 2.0f*info.hudScaling, maxWidth: 0.5f*info.width};
+		font.write!drawLetter("Test.",0.0f,0.0f,testSettings);*/
+		// number of souls
+		if(info.renderSide!=-1 && statsVisible(state,info)){
+			if(auto wizard=state.getWizard(info.camera.target)){
+				char[32] buffer='\0';
+				import std.format: formattedWrite;
+				buffer[].formattedWrite!"%d"(wizard.souls);
+				import std.algorithm;
+				auto text=buffer[0..buffer[].countUntil('\0')];
+				FormatSettings settings = {flowType:FlowType.left, scale:info.hudScaling};
+				auto size=font.getSize(text,settings);
+				// TODO: get rid of code duplication
+				auto scaling0=Vector2f(64.0f,96.0f);
+				scaling0*=info.hudScaling;
+				auto scaling1=Vector3f(32.0f,96.0f);
+				scaling1*=info.hudScaling;
+				auto position0=Vector2f(info.width-2*scaling1.x-0.5f*scaling0.x,0.5f*scaling0.y);
+				auto soulPositionDark=position0-0.5f*size;
+				B.colorHUDMaterialBackend.setColor(Color4f(0.0f,0.0f,0.0f,1.0f));
+				font.write!drawLetter(text,soulPositionDark.x,soulPositionDark.y,settings);
+				auto soulPosition=position0-0.5f*(size+info.hudScaling);
+				B.colorHUDMaterialBackend.setColor(Color4f(1.0f,1.0f,1.0f,1.0f));
+				font.write!drawLetter(text,soulPosition.x,soulPosition.y,settings);
+			}
+		}
+		B.colorHUDMaterialBackend.unbind(null,rc);
+	}
+
 	void renderShadowCastingEntities3D(R3DOpt options,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
 		renderMap(state,info,rc);
 		renderNTTs!(RenderMode.opaque)(options,state,info,rc);
@@ -2668,6 +2706,7 @@ struct Renderer(B){
 		if(info.mouse.visible){
 			renderTargetFrame(state,info,rc);
 			renderHUD(state,info,rc);
+			renderText(state,info,rc);
 			renderRectangleSelectFrame(state,info,rc);
 			renderCursor(options.cursorSize,state,info,rc);
 		}
