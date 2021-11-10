@@ -1278,7 +1278,7 @@ final class SacParticle(B){
 		foreach(tag,obj;particles) if(obj) obj.stateIndex=-1;
 	}
 	static SacParticle!B get(ParticleType type){
-		if(!particles[type]) particles[type]=new SacParticle(type);
+		if(!particles[type]) particles[type]=new SacParticle!B(type);
 		return particles[type];
 	}
 	@property int delay(){
