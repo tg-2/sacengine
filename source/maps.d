@@ -89,8 +89,6 @@ LMap parseLMap(ubyte[] data){
 LMap loadLMap(string filename){
 	enforce(filename.endsWith(".LMAP"));
 	auto data=readFile(filename);
-	auto tiles=new ubyte[][](256);
-	foreach(y;0..256) tiles[y]=data[256*y..256*(y+1)];
 	return parseLMap(data);
 }
 
