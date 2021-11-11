@@ -2666,6 +2666,8 @@ struct Erupt(B){
 	SacSpell!B spell;
 	int frame=0;
 
+	int soundTimer0=0,soundTimer1=0;
+
 	enum range=50.0f, height=15.0f, growDur=4.2f, fallDur=0.15f;
 	enum waveRange=90.0f, waveDur=1.0f, reboundHeight=2.0f;
 	enum throwRange=30.0f, fallRange=45.0f;
@@ -2714,6 +2716,13 @@ struct Erupt(B){
 		//return std.math.exp(-3.0f*(dist/range)^^2)*height*scale; // !!!
 		//return (0.5f*std.math.exp(-5.0f*(dist/range)^^2)+0.5f*(1.0f-dist/range))*height*scale; // !!!
 	}
+}
+struct EruptDebris(B){
+	Vector3f position; // TODO: better representation?
+	Vector3f velocity;
+	Quaternionf rotationUpdate;
+	Quaternionf rotation;
+	int frame=0;
 }
 
 struct BrainiacProjectile(B){
@@ -3682,6 +3691,14 @@ struct Effects(B){
 		if(i+1<erupts.length) erupts[i]=move(erupts[$-1]);
 		erupts.length=erupts.length-1;
 	}
+	Array!(EruptDebris!B) eruptDebris;
+	void addEffect(EruptDebris!B eruptDebris){
+		this.eruptDebris~=eruptDebris;
+	}
+	void removeEruptDebris(int i){
+		if(i+1<eruptDebris.length) eruptDebris[i]=move(eruptDebris[$-1]);
+		eruptDebris.length=eruptDebris.length-1;
+	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
 	void addEffect(BrainiacProjectile!B brainiacProjectile){
@@ -4132,6 +4149,7 @@ struct Effects(B){
 		assignArray(animateDeadEffects,rhs.animateDeadEffects);
 		assignArray(eruptCastings,rhs.eruptCastings);
 		assignArray(erupts,rhs.erupts);
+		assignArray(eruptDebris,rhs.eruptDebris);
 		assignArray(brainiacProjectiles,rhs.brainiacProjectiles);
 		assignArray(brainiacEffects,rhs.brainiacEffects);
 		assignArray(shrikeProjectiles,rhs.shrikeProjectiles);
@@ -12570,48 +12588,184 @@ bool updateEruptCasting(B)(ref EruptCasting!B eruptCast,ObjectState!B state){
 		}
 	}
 }
+
+void animateErupt(B)(ref Erupt!B erupt,ObjectState!B state){
+	enum numParticles=32;
+	auto sacParticle=SacParticle!B.get(ParticleType.dust);
+	foreach(i;0..numParticles){
+		auto dir=state.uniformDirection!(float,2)();
+		auto dist=state.uniform(2)?erupt.range*(1.0f-state.uniform(0.0f,1.0f)*state.uniform(0.0f,1.0f)):erupt.spell.range*state.uniform(0.0f,1.0f);
+		auto position=erupt.position+dist*Vector3f(dir.x,dir.y,0.0f);
+		if(state.isOnGround(position)){
+			auto velocity=Vector3f(0.0f,0.0f,1.0f)+0.6f*state.uniformDirection();
+			auto lifetime=31;
+			auto scale=4.0f;
+			auto frame=0;
+			position.z=state.getGroundHeight(position)+1.0f;
+			position+=0.6f*state.uniformDirection();
+			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+		}
+	}
+	if(state.uniform(2)==0){
+		auto distance=(1.0f-state.uniform(0.0f,1.0f)*state.uniform(0.0f,1.0f));
+		auto direction=state.uniformDirection!(float,2)();
+		auto position=erupt.position+0.75f*erupt.range*distance*Vector3f(direction.x,direction.y,0.0f);
+		if(state.isOnGround(position)){
+			auto velocity=(1.0f-0.5f*distance)*(30.0f+state.uniform(-10.0f,10.0f))*Vector3f(direction.x,direction.y,state.uniform(0.5f,2.0f)).normalized;
+			auto rotationSpeed=2*pi!float*state.uniform(0.5f,2.0f)/updateFPS;
+			auto rotationAxis=state.uniformDirection();
+			auto rotationUpdate=rotationQuaternion(rotationAxis,rotationSpeed);
+			position.z=state.getGroundHeight(position);
+			auto debris=EruptDebris!B(position,velocity,rotationUpdate,Quaternionf.identity());
+			state.addEffect(debris);
+			if(state.uniform(5)==0) playSoundAt("lpxe",position,state,eruptGain0);
+			enum numParticles3=15;
+			auto sacParticle3=SacParticle!B.get(ParticleType.rock);
+			foreach(i;0..numParticles3){
+				auto pdirection=state.uniformDirection();
+				auto pvelocity=0.6f*state.uniform(7.5f,15.0f)*pdirection;
+				auto scale=0.6f*state.uniform(1.0f,2.5f);
+				auto lifetime=95;
+				auto frame=0;
+				state.addParticle(Particle!B(sacParticle3,position,pvelocity,scale,lifetime,frame));
+			}
+			// TODO: scar
+		}
+	}
+}
+
+void eruptExplosion(B)(ref Erupt!B erupt,ObjectState!B state){
+	static bool callback(int target,Erupt!B* erupt,ObjectState!B state){
+		if(!state.targetTypeFromId(target).among(TargetType.creature,TargetType.building))
+			return false;
+		state.objectById!((ref obj,erupt,state){
+			auto diff=obj.position.xy-erupt.position.xy;
+			auto difflen=diff.length;
+			auto direction=Vector3f(diff.x,diff.y,20.0f).normalized;
+			void dealDamage(){
+				if(difflen<erupt.spell.damageRange)
+					dealSplashSpellDamage(target,erupt.spell,erupt.wizard,erupt.side,direction,difflen,DamageMod.none,state);
+			}
+			static if(is(typeof(obj)==MovingObject!B,B)){
+				if(difflen<erupt.throwRange){
+					auto strength=25.0f*(1.0f-difflen/erupt.throwRange);
+					obj.catapult(direction*strength,state);
+					dealDamage();
+				}
+			}else dealDamage();
+		})(target,erupt,state);
+		return false;
+	}
+	with(erupt){
+		playSoundAt("tpre",position,state,eruptGain2);
+		dealSplashSpellDamageAt!callback(0,spell,spell.range,wizard,side,position,DamageMod.none,state,&erupt,state);
+		state.addEffect(ScreenShake(position,updateFPS/3,4.0f,100.0f));
+	}
+	auto position=erupt.position;
+	position.z=state.getHeight(position);
+	enum numDebris=128;
+	foreach(i;0..numDebris){
+		auto angle=state.uniform(-pi!float,pi!float);
+		auto velocity=(30.0f+state.uniform(-7.5f,7.5f))*Vector3f(cos(angle),sin(angle),state.uniform(-1.0f,2.0f)).normalized;
+		auto rotationSpeed=2*pi!float*state.uniform(0.5f,2.0f)/updateFPS;
+		auto rotationAxis=state.uniformDirection();
+		auto rotationUpdate=rotationQuaternion(rotationAxis,rotationSpeed);
+		auto debris=EruptDebris!B(position,velocity,rotationUpdate,Quaternionf.identity());
+		state.addEffect(debris);
+	}
+	enum numParticles3=300;
+	auto sacParticle3=SacParticle!B.get(ParticleType.rock);
+	foreach(i;0..numParticles3){
+		auto pdirection=(state.uniformDirection()+Vector3f(0.0f,0.0f,0.5f)).normalized;
+		auto pvelocity=3.0f*state.uniform(7.5f,15.0f)*pdirection;
+		auto scale=2.0f*state.uniform(1.0f,2.5f);
+		auto lifetime=127;
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle3,position,pvelocity,scale,lifetime,frame));
+	}
+	// TODO: scar
+}
+
+enum eruptGain0=2.0f, eruptGain1=4.0f, eruptGain2=8.0f;
 bool updateErupt(B)(ref Erupt!B erupt,ObjectState!B state){
 	with(erupt){
-		if(++frame==cast(int)(growDur*updateFPS)){
-			static bool callback(int target,Erupt!B* erupt,ObjectState!B state){
-				if(!state.targetTypeFromId(target).among(TargetType.creature,TargetType.building))
+		if(--soundTimer0<=0) soundTimer0=playSpellSoundTypeAt!true(SoundType.convertRevive,position,state,eruptGain0); // TODO: stop sound
+		if(--soundTimer1<=0) soundTimer1=playSpellSoundTypeAt!true(SoundType.bore,position,state,eruptGain1); // TODO: stop sound
+		if(frame%(updateFPS/10)==0) state.addEffect(ScreenShake(position,updateFPS/10,1.5f,200.0f));
+		auto eruptFrame=cast(int)(growDur*updateFPS);
+		if(++frame<eruptFrame){
+			animateErupt(erupt,state);
+		}else if(frame==eruptFrame){
+			eruptExplosion(erupt,state);
+		}else{
+			auto waveLoc=waveRange*(float(frame)/updateFPS-growDur)/waveDur;
+			if(stunMinRange<waveLoc&&waveLoc<stunMaxRange){
+				// TODO: more efficient method to query creatures currently on the ring
+				static bool callback2(int target,Erupt!B* erupt,float waveLoc,ObjectState!B state){
+					state.movingObjectById!((ref obj,erupt,waveLoc,state){
+							auto diff=obj.position.xy-erupt.position.xy;
+							auto difflen=diff.length;
+							if(abs(difflen-waveLoc)<1.5f*erupt.waveRange/(erupt.waveDur*updateFPS))
+								obj.stunWithCooldown(stunCooldownFrames,state);
+						},(){})(target,erupt,waveLoc,state);
 					return false;
-				state.objectById!((ref obj,erupt,state){
-					auto diff=obj.position.xy-erupt.position.xy;
-					auto difflen=diff.length;
-					auto direction=Vector3f(diff.x,diff.y,20.0f).normalized;
-					void dealDamage(){
-						if(difflen<erupt.spell.damageRange)
-							dealSplashSpellDamage(target,erupt.spell,erupt.wizard,erupt.side,direction,difflen,DamageMod.none,state);
-					}
-					static if(is(typeof(obj)==MovingObject!B,B)){
-						if(difflen<erupt.throwRange){
-							auto strength=25.0f*(1.0f-difflen/erupt.throwRange);
-							obj.catapult(direction*strength,state);
-							dealDamage();
-						}
-					}else dealDamage();
-				})(target,erupt,state);
-				return false;
+				}
+				dealSplashSpellDamageAt!callback2(0,spell,waveLoc+0.1f,wizard,side,position,DamageMod.none,state,&erupt,waveLoc,state);
 			}
-			dealSplashSpellDamageAt!callback(0,spell,spell.range,wizard,side,position,DamageMod.none,state,&erupt,state);
-		}
-		auto waveLoc=waveRange*(float(frame)/updateFPS-growDur)/waveDur;
-		if(stunMinRange<waveLoc&&waveLoc<stunMaxRange){
-			// TODO: more efficient method to query creatures currently on the ring
-			static bool callback2(int target,Erupt!B* erupt,float waveLoc,ObjectState!B state){
-				state.movingObjectById!((ref obj,erupt,waveLoc,state){
-					auto diff=obj.position.xy-erupt.position.xy;
-					auto difflen=diff.length;
-					if(abs(difflen-waveLoc)<1.5f*erupt.waveRange/(erupt.waveDur*updateFPS))
-						obj.stunWithCooldown(stunCooldownFrames,state);
-				},(){})(target,erupt,waveLoc,state);
-				return false;
-			}
-			dealSplashSpellDamageAt!callback2(0,spell,waveLoc+0.1f,wizard,side,position,DamageMod.none,state,&erupt,waveLoc,state);
 		}
 		return frame<=totalFrames;
 	}
+}
+
+enum eruptDebrisFallLimit=1000.0f;
+bool updateEruptDebris(B)(ref EruptDebris!B eruptDebris,ObjectState!B state){
+	auto oldPosition=eruptDebris.position;
+	eruptDebris.position+=eruptDebris.velocity/updateFPS;
+	eruptDebris.velocity.z-=30.0f/updateFPS;
+	eruptDebris.rotation=eruptDebris.rotationUpdate*eruptDebris.rotation;
+	if(++eruptDebris.frame>=updateFPS/2&&state.isOnGround(eruptDebris.position)){
+		auto height=state.getGroundHeight(eruptDebris.position);
+		if(height>eruptDebris.position.z){
+			eruptDebris.position.z=height;
+			enum numParticles3=15;
+			auto sacParticle3=SacParticle!B.get(ParticleType.rock);
+			foreach(i;0..numParticles3){
+				auto direction=state.uniformDirection();
+				auto velocity=0.6f*state.uniform(7.5f,15.0f)*direction;
+				auto scale=0.6f*state.uniform(1.0f,2.5f);
+				auto lifetime=95;
+				auto frame=0;
+				state.addParticle(Particle!B(sacParticle3,eruptDebris.position,velocity,scale,lifetime,frame));
+			}
+			enum numParticles4=4;
+			auto sacParticle4=SacParticle!B.get(ParticleType.dirt);
+			foreach(i;0..numParticles4){
+				auto direction=state.uniformDirection();
+				auto position=eruptDebris.position+0.25f*direction;
+				auto velocity=Vector3f(0.0f,0.0f,0.0f);
+				auto scale=1.0f;
+				auto frame=state.uniform(2)?0:state.uniform(24);
+				auto lifetime=63-frame;
+				state.addParticle(Particle!B(sacParticle4,position,velocity,scale,lifetime,frame));
+			}
+			// TODO: scar
+			if(state.uniform(5)==0) playSoundAt("pmir",eruptDebris.position,state,1.0f);
+			return false;
+		}
+	}else if(eruptDebris.position.z<state.getHeight(eruptDebris.position)-eruptDebrisFallLimit)
+		return false;
+	enum numParticles=3;
+	auto sacParticle=SacParticle!B.get(ParticleType.dirt);
+	auto velocity=Vector3f(0.0f,0.0f,0.0f);
+	auto scale=0.5f;
+	auto lifetime=sacParticle.numFrames-1;
+	auto frame=sacParticle.numFrames/2;
+	foreach(i;0..numParticles){
+		auto position=oldPosition*((cast(float)numParticles-1-i)/(numParticles-1))+eruptDebris.position*(cast(float)i/(numParticles-1));
+		position+=0.1f*state.uniformDirection();
+		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+	}
+	return true;
 }
 
 enum brainiacProjectileHitGain=4.0f;
@@ -14833,6 +14987,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.erupts.length;){
 		if(!updateErupt(effects.erupts[i],state)){
 			effects.removeErupt(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.eruptDebris.length;){
+		if(!updateEruptDebris(effects.eruptDebris[i],state)){
+			effects.removeEruptDebris(i);
 			continue;
 		}
 		i++;

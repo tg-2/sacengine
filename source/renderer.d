@@ -1113,6 +1113,7 @@ struct Renderer(B){
 				}
 				static if(mode==RenderMode.opaque) if(objects.rockCastings.length||objects.rocks.length||
 				                                      objects.soulMoleCastings.length||objects.soulMoles.length||
+				                                      objects.eruptDebris.length||
 				                                      objects.earthflingProjectiles.length||objects.flummoxProjectiles.length||
 				                                      objects.rockForms.length
 				){
@@ -1137,6 +1138,10 @@ struct Renderer(B){
 						}
 						foreach(j;0..objects.soulMoles.length){
 							material.backend.setTransformationScaled(objects.soulMoles[j].position,Quaternionf.identity(),Vector3f(1.0f,1.0f,1.0f),rc);
+							mesh.render(rc);
+						}
+						foreach(j;0..objects.eruptDebris.length){
+							material.backend.setTransformationScaled(objects.eruptDebris[j].position,objects.eruptDebris[j].rotation,0.4f*Vector3f(1.0f,1.0f,1.0f),rc);
 							mesh.render(rc);
 						}
 						foreach(j;0..objects.earthflingProjectiles.length){

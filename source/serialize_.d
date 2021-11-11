@@ -444,6 +444,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Eru
 void serialize(alias sink,B)(ref Erupt!B erupt){ serializeStruct!sink(erupt); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Erupt!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref EruptDebris!B eruptDebris){ serializeStruct!sink(eruptDebris); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==EruptDebris!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref BrainiacProjectile!B brainiacProjectile){ serializeStruct!sink(brainiacProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BrainiacProjectile!B)){ deserializeStruct(result,state,data); }
 
