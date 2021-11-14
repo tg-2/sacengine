@@ -30,4 +30,7 @@ If you simply extract the binary release, there are some build scripts for linux
 To run the engine, symlink your maps and data folder into the sacengine directory, check settings.txt for additional options. (Alternatively, put the executable in the Sacrifice directory.)
 
 On Windows, you may need the following additional DLLs:
-https://openal.org/downloads/
+* https://openal.org/downloads/
+* https://mpg123.org/download/win64/1.29.2/
+* https://www.libsdl.org/download-2.0.php
+* https://github.com/ubawurinna/freetype-windows-binaries
