@@ -471,8 +471,9 @@ int main(string[] args){
 				if(args[i+1].startsWith("export:")){
 					import sxsk,saxs2obj;
 					auto filename=args[i+1]["export:".length..$];
-					if(sac.isSaxs) saveObj!B(filename,sac.saxsi.saxs,anim?sac.animations[0].frames[0]:Pose.init);
-					else saveObj!B(filename,sac.meshes);
+					int frame=0; // TODO: make configurable
+					if(sac.isSaxs) saveObj!B(filename,sac.saxsi.saxs,anim?sac.animations[0].frames[frame]:Pose.init);
+					else saveObj!B(filename,sac.meshes[frame]);
 					i+=1;
 				}else if(args[i+1].startsWith("import:")){
 					import obj,sxsk;

@@ -28,8 +28,9 @@ final class SacObject(B){
 	char[4] nttTag;
 	string name;
 	int[RenderMode.max+1] stateIndex=-1;
-	B.Mesh[] meshes;
+	B.Mesh[][] meshes;
 	B.Texture[] textures;
+	size_t numParts(){ return textures.length; }
 	B.Texture icon;
 	Vector3f[2][] hitboxes_;
 	bool isSaxs=false;
@@ -446,7 +447,7 @@ final class SacObject(B){
 	struct MaterialConfig{
 		int sunBeamPart=-1;
 		int locustWingPart=-1;
-		int transparentShinyPart=-1;
+		int transparentShinyParts=0;
 		int shinyPart=-1;
 	}
 
@@ -483,23 +484,25 @@ final class SacObject(B){
 		// sunbeams
 		if(kind.among("pcsb","casb")) conf.sunBeamPart=0;
 		// manaliths
-		if(kind.among("mana","cama")) conf.transparentShinyPart=0;
-		if(kind.among("jman","stam","pyma")) conf.transparentShinyPart=1;
+		if(kind.among("mana","cama")) conf.transparentShinyParts=1<<0;
+		if(kind.among("jman","stam","pyma")) conf.transparentShinyParts=1<<1;
 		// crystals
-		if(kind.among("crpt","stc1","stc2","stc3","sfir","stst")) conf.transparentShinyPart=0;
-		if(kind.among("sfor")) conf.transparentShinyPart=0;
-		if(kind.among("SAW1","SAW2","SAW3","SAW4","SAW5")) conf.transparentShinyPart=0;
-		if(kind.among("ST01","ST02","ST03")) conf.transparentShinyPart=0;
+		if(kind.among("crpt","stc1","stc2","stc3","sfir","stst")) conf.transparentShinyParts=1<<0;
+		if(kind.among("sfor")) conf.transparentShinyParts=1<<0;
+		if(kind.among("SAW1","SAW2","SAW3","SAW4","SAW5")) conf.transparentShinyParts=1<<0;
+		if(kind.among("ST01","ST02","ST03")) conf.transparentShinyParts=1<<0;
 		// ethereal altar, ethereal sunbeams
 		if(kind.among("ea_b","ea_r","esb1","esb2","esb_","etfn")) conf.sunBeamPart=0;
 		// "eis1","eis2", "eis3", "eis4" ?
 		if(kind.among("st4a")){
-			conf.transparentShinyPart=0;
+			conf.transparentShinyParts=1<<0;
 			conf.sunBeamPart=1;
 		}
 		// locust wings
 		if(kind.among("bugz")) conf.locustWingPart=3;
 		if(kind.among("bold")) conf.shinyPart=0;
+		// dragon fire
+		if(kind.among("dfir")) conf.transparentShinyParts=1<<0|1<<1;
 		if(!materials.length) materials=B.createMaterials(this,conf);
 		if(!transparentMaterials.length) transparentMaterials=B.createTransparentMaterials(this);
 		if(!shadowMaterials.length) shadowMaterials=B.createShadowMaterials(this);
@@ -615,7 +618,7 @@ final class SacObject(B){
 
 	private this(T)(char[4] tag, T* hack) if(is(T==Widgets)){
 		auto mt=loadWIDG!B(widgModls[tag]);
-		meshes=[mt[0]];
+		meshes=[[mt[0]]];
 		textures=[mt[1]];
 		initializeNTTData(tag,tag);
 	}
@@ -647,12 +650,12 @@ final class SacObject(B){
 				break;
 			case "3DSM":
 				auto mt=load3DSM!B(filename, 1.0f);
-				meshes=mt[0];
+				meshes=[mt[0]];
 				textures=mt[1];
 				break;
 			case "WIDG":
 				auto mt=loadWIDG!B(filename);
-				meshes=[mt[0]];
+				meshes=[[mt[0]]];
 				textures=[mt[1]];
 				break;
 			case "SXMD":
@@ -692,7 +695,7 @@ final class SacObject(B){
 			}
 			saxsi.meshes=transferred;
 		}else{
-			this.meshes=meshes;
+			this.meshes=[meshes];
 		}
 	}
 	void setNormal(B.Texture[] textures){
@@ -2476,21 +2479,23 @@ auto convertModel(B,Model)(string dir, Model model, float scaling){
 	foreach(ref face;faces){
 		++sizes[names[face.textureName]];
 	}
-
 	static if(is(typeof(model.vertices))){
+		void setVertices(B.Mesh mesh,size_t frame){
+			foreach(i,ref vertex;model.vertices[frame]){
+				mesh.vertices[i] = fromSac(Vector3f(vertex.pos))*scaling;
+			}
+			foreach(i,ref vertex;model.vertices[frame]){
+				mesh.texcoords[i] = Vector2f(vertex.uv);
+			}
+			foreach(i,ref vertex;model.vertices[frame]){
+				mesh.normals[i] = fromSac(Vector3f(vertex.normal));
+			}
+		}
 		enforce(model.vertices.length>=1);
 		foreach(k,ref mesh;meshes){
 			auto nvertices=model.vertices[0].length;
 			mesh=B.makeMesh(nvertices,sizes[k]);
-			foreach(i,ref vertex;model.vertices[0]){ // TODO: convert all frames
-				mesh.vertices[i] = fromSac(Vector3f(vertex.pos))*scaling;
-			}
-			foreach(i,ref vertex;model.vertices[0]){
-				mesh.texcoords[i] = Vector2f(vertex.uv);
-			}
-			foreach(i,ref vertex;model.vertices[0]){
-				mesh.normals[i] = fromSac(Vector3f(vertex.normal));
-			}
+			setVertices(mesh,0);
 		}
 	}else{
 		foreach(k,ref mesh;meshes){
@@ -2514,5 +2519,24 @@ auto convertModel(B,Model)(string dir, Model model, float scaling){
 	}
 	foreach(mesh;meshes) B.finalizeMesh(mesh);
 	assert(curs==sizes);
-	return tuple(meshes, textures);
+	static if(is(typeof(model.vertices))){
+		void setFaces(B.Mesh mesh,size_t k){
+			mesh.indices[]=meshes[k].indices[];
+		}
+		auto frames=new B.Mesh[][](model.vertices.length);
+		frames[0]=meshes;
+		foreach(i;1..frames.length){
+			frames[i]=new B.Mesh[](meshes.length);
+			foreach(k;0..meshes.length){
+				auto nvertices=model.vertices[i].length;
+				frames[i][k]=B.makeMesh(nvertices,sizes[k]);
+				setVertices(frames[i][k],i);
+				setFaces(frames[i][k],k);
+				B.finalizeMesh(frames[i][k]);
+			}
+		}
+		return tuple(frames, textures);
+	}else{
+		return tuple(meshes, textures);
+	}
 }

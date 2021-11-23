@@ -449,6 +449,7 @@ struct Renderer(B){
 	void createEffects(){
 		sacCommandCone=new SacCommandCone!B();
 		sacDebris=new SacObject!B("extracted/models/MODL.WAD!/bold.MRMC/bold.MRMM");
+		enforce(sacDebris.meshes.length==1);
 		explosion=createExplosion();
 		blueRing=createBlueRing();
 		vortex=createVortex();
@@ -457,6 +458,7 @@ struct Renderer(B){
 		lightning=createLightning();
 		wrath=createWrath();
 		rock=new SacObject!B("extracted/models/MODL.WAD!/rock.MRMC/rock.MRMM");
+		enforce(rock.meshes.length==1);
 		bug=createBug();
 		protectiveBug=createProtectiveBug();
 		airShield=createAirShield();
@@ -746,7 +748,8 @@ struct Renderer(B){
 						}
 					}else{
 						material.backend.setInformation(Vector4f(0.0f,0.0f,0.0f,0.0f));
-						auto mesh=sacObject.meshes[i];
+						int frame=0; // TODO: select frame
+						auto mesh=sacObject.meshes[frame][i];
 						static if(isStatic&&objects.renderMode==RenderMode.transparent&&mode==RenderMode.transparent){
 							auto opaqueMaterial=opaqueMaterials[i];
 							auto opaqueBlending=B.blending(opaqueMaterial);
@@ -814,7 +817,7 @@ struct Renderer(B){
 						auto material=materials[i];
 						material.bind(rc);
 						scope(success) material.unbind(rc);
-						auto mesh=self.sacDebris.meshes[i];
+						auto mesh=self.sacDebris.meshes[0][i];
 						foreach(j;0..objects.debris.length){
 							material.backend.setTransformationScaled(objects.debris[j].position,objects.debris[j].rotation,0.2f*Vector3f(1.0f,1.0f,1.0f),rc);
 							mesh.render(rc);
@@ -1122,7 +1125,7 @@ struct Renderer(B){
 						auto material=materials[i];
 						material.bind(rc);
 						scope(success) material.unbind(rc);
-						auto mesh=self.rock.meshes[i];
+						auto mesh=self.rock.meshes[0][i];
 						foreach(j;0..objects.rockCastings.length){
 							auto scale=1.0f*Vector3f(1.0f,1.0f,1.0f);
 							material.backend.setTransformationScaled(objects.rockCastings[j].rock.position,objects.rockCastings[j].rock.rotation,scale,rc);

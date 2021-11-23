@@ -217,14 +217,19 @@ final class SacScene: Scene{
 	}
 
 	void addObject(SacObject!DagonBackend sobj,Vector3f position,Quaternionf rotation){
-		foreach(i;0..sobj.isSaxs?sobj.saxsi.meshes.length:sobj.meshes.length){
-			auto obj=createEntity3D();
-			obj.drawable = sobj.isSaxs?cast(Drawable)sobj.saxsi.meshes[i]:cast(Drawable)sobj.meshes[i];
-			obj.position = position;
-			obj.rotation = rotation;
-			obj.updateTransformation();
-			obj.material=sobj.materials[i];
-			obj.shadowMaterial=sobj.shadowMaterials[i];
+		auto numFrames=sobj.isSaxs?1:sobj.meshes.length;
+		auto offset=0.0f;
+		foreach(hitbox;sobj.hitboxes_) offset=max(offset,hitbox[1].x-hitbox[0].x);
+		foreach(frame;0..numFrames){
+			foreach(i;0..sobj.numParts){
+				auto obj=createEntity3D();
+				obj.drawable = sobj.isSaxs?cast(Drawable)sobj.saxsi.meshes[i]:cast(Drawable)sobj.meshes[frame][i];
+				obj.position = position-frame*Vector3f(offset+5.0f,0.0f,0.0f);
+				obj.rotation = rotation;
+				obj.updateTransformation();
+				obj.material=sobj.materials[i];
+				obj.shadowMaterial=sobj.shadowMaterials[i];
+			}
 		}
 		sacs.insertBack(sobj);
 	}
@@ -1394,7 +1399,7 @@ static:
 	}
 	Material[] createMaterials(SacObject!DagonBackend sobj,SacObject!DagonBackend.MaterialConfig config){
 		GenericMaterial[] materials;
-		foreach(i;0..sobj.isSaxs?sobj.saxsi.meshes.length:sobj.meshes.length){
+		foreach(i;0..sobj.numParts){
 			GenericMaterial mat;
 			if(i==config.sunBeamPart){
 				mat=makeMaterial(gpuSkinning&&sobj.isSaxs?scene.shadelessBoneMaterialBackend:scene.shadelessMaterialBackend);
@@ -1406,7 +1411,7 @@ static:
 				mat.depthWrite=false;
 				mat.blending=Additive;
 				mat.energy=20.0f;
-			}else if(i==config.transparentShinyPart){
+			}else if((config.transparentShinyParts>>i)&1){
 				mat=makeMaterial(gpuSkinning&&sobj.isSaxs?scene.shadelessBoneMaterialBackend:scene.shadelessMaterialBackend);
 				mat.depthWrite=false;
 				mat.blending=Transparent;
@@ -1431,7 +1436,7 @@ static:
 
 	Material[] createTransparentMaterials(SacObject!DagonBackend sobj){
 		GenericMaterial[] materials;
-		foreach(i;0..sobj.isSaxs?sobj.saxsi.meshes.length:sobj.meshes.length){
+		foreach(i;0..sobj.numParts){
 			if(("blending" in sobj.materials[i].inputs).asInteger==Transparent){
 				materials~=sobj.materials[i];
 				continue;

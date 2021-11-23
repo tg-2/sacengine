@@ -71,7 +71,7 @@ Model parseMRMM(ubyte[] data){
 	return Model(vertices, faces, hitboxes);
 }
 
-Tuple!(B.Mesh[], B.Texture[], Vector3f[2][]) loadMRMM(B)(string filename, float scaling){
+Tuple!(B.Mesh[][], B.Texture[], Vector3f[2][]) loadMRMM(B)(string filename, float scaling){
 	enforce(filename.endsWith(".MRMM"));
 	auto dir = dirName(filename);
 	auto model = parseMRMM(readFile(filename));
