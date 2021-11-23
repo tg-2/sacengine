@@ -30,11 +30,11 @@ final class SacObject(B){
 	int[RenderMode.max+1] stateIndex=-1;
 	B.Mesh[][] meshes;
 	B.Texture[] textures;
-	size_t numParts(){ return textures.length; }
 	B.Texture icon;
 	Vector3f[2][] hitboxes_;
 	bool isSaxs=false;
 	SaxsInstance!B saxsi;
+	size_t numParts(){ return isSaxs?saxsi.meshes.length:meshes[0].length; }
 	B.Material[] materials;
 	B.Material[] transparentMaterials;
 	B.Material[] shadowMaterials;
