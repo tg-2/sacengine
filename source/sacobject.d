@@ -14,7 +14,7 @@ alias Tuple=std.typecons.Tuple;
 
 import dlib.math.portable;
 import std.exception, std.algorithm, std.range, std.path;
-import state:updateAnimFactor;
+import state:updateFPS,updateAnimFactor;
 
 enum animFPS=30;
 
@@ -1960,6 +1960,27 @@ struct SacAnimateDead(B){
 	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
 	static B.BoneMesh[] createMeshes(){
 		return makeLineMeshes!B(numSegments,1,8,0.0f,0.6f,false,true,false);
+	}
+}
+
+struct SacDragonFire(B){
+	SacObject!B obj;
+	static SacObject!B create(){
+		auto dragonFire=new SacObject!B("extracted/models/MODL.WAD!/dfir.MRMC/dfir.MRMM");
+		swap(dragonFire.meshes[$-2],dragonFire.meshes[$-1]);
+		return dragonFire;
+	}
+	enum numFrames=3*updateFPS/2;
+	Tuple!(B.Mesh[],B.Mesh[],float) getFrame(int frame)in{
+		assert(frame<numFrames);
+	}do{
+		auto meshes=obj.meshes;
+		auto indices=chain(iota(0,meshes.length),retro(iota(1,meshes.length-1)));
+		auto numIndices=indices.length;
+		auto i=frame*numIndices/numFrames, j=i+1;
+		float progress=float(frame*numIndices%numFrames)/numFrames;
+		auto all=cycle(indices);
+		return tuple(obj.meshes[all[i]],obj.meshes[all[j]],progress);
 	}
 }
 

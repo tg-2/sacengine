@@ -284,6 +284,11 @@ struct Renderer(B){
 		auto meshes=typeof(return).createMeshes();
 		return SacAnimateDead!B(texture,mat,meshes);
 	}
+	SacDragonFire!B dragonFire;
+	SacDragonFire!B createDragonFire(){
+		auto obj=typeof(return).create();
+		return SacDragonFire!B(obj);
+	}
 	SacBrainiacEffect!B brainiacEffect;
 	SacBrainiacEffect!B createBrainiacEffect(){
 		auto texture=typeof(return).loadTexture();
@@ -482,6 +487,7 @@ struct Renderer(B){
 		vine=createVine();
 		rainbow=createRainbow();
 		animateDead=createAnimateDead();
+		dragonFire=createDragonFire();
 	}
 
 	void initialize(){
@@ -1392,6 +1398,30 @@ struct Renderer(B){
 						mesh.render(rc);
 					}
 					foreach(j;0..objects.animateDeadEffects.length) renderAnimateDead(objects.animateDeadEffects[j]);
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.dragonFires.length){
+					B.disableDepthMask();
+					B.disableCulling();
+					scope(success){
+						B.enableCulling();
+						B.enableDepthMask();
+					}
+					foreach(i,mat;self.dragonFire.obj.materials){
+						B.shadelessMorphMaterialBackend.bind(mat,rc);
+						B.enableTransparency();
+						scope(success) B.shadelessMorphMaterialBackend.unbind(mat,rc);
+						void renderDragonFire(Vector3f position,Vector3f direction,int frame){
+							auto mesh1Mesh2Progress=self.dragonFire.getFrame(frame%self.dragonFire.numFrames);
+							auto mesh1=mesh1Mesh2Progress[0], mesh2=mesh1Mesh2Progress[1], progress=mesh1Mesh2Progress[2];
+							assert(mesh1.length==mesh2.length&&mesh1.length==self.dragonFire.obj.materials.length);
+							auto intermediate=Vector3f(direction.x,direction.y,0.0f).normalized;
+							auto rotation=rotationBetween(intermediate,direction)*rotationBetween(Vector3f(0.0f,1.0f,0.0f),direction);
+							B.shadelessMorphMaterialBackend.setTransformation(position,rotation,rc);
+							B.shadelessMorphMaterialBackend.setMorphProgress(progress);
+							mesh1[i].morph(mesh2[i],rc);
+						}
+						foreach(ref dragonFire;objects.dragonFires) renderDragonFire(dragonFire.position,dragonFire.direction,dragonFire.frame);
+					}
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.brainiacEffects.length){
 					auto material=self.brainiacEffect.material;

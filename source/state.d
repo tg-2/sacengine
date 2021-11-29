@@ -2725,6 +2725,12 @@ struct EruptDebris(B){
 	int frame=0;
 }
 
+struct DragonFire(B){
+	Vector3f position;
+	Vector3f direction;
+	int frame=0;
+}
+
 struct BrainiacProjectile(B){
 	int attacker;
 	int side;
@@ -3699,6 +3705,14 @@ struct Effects(B){
 		if(i+1<eruptDebris.length) eruptDebris[i]=move(eruptDebris[$-1]);
 		eruptDebris.length=eruptDebris.length-1;
 	}
+	Array!(DragonFire!B) dragonFires;
+	void addEffect(DragonFire!B dragonFire){
+		dragonFires~=dragonFire;
+	}
+	void removeDragonFire(int i){
+		if(i+1<dragonFires.length) dragonFires[i]=move(dragonFires[$-1]);
+		dragonFires.length=dragonFires.length-1;
+	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
 	void addEffect(BrainiacProjectile!B brainiacProjectile){
@@ -4150,6 +4164,7 @@ struct Effects(B){
 		assignArray(eruptCastings,rhs.eruptCastings);
 		assignArray(erupts,rhs.erupts);
 		assignArray(eruptDebris,rhs.eruptDebris);
+		assignArray(dragonFires,rhs.dragonFires);
 		assignArray(brainiacProjectiles,rhs.brainiacProjectiles);
 		assignArray(brainiacEffects,rhs.brainiacEffects);
 		assignArray(shrikeProjectiles,rhs.shrikeProjectiles);
@@ -12768,6 +12783,13 @@ bool updateEruptDebris(B)(ref EruptDebris!B eruptDebris,ObjectState!B state){
 	return true;
 }
 
+bool updateDragonFire(B)(ref DragonFire!B dragonFire,ObjectState!B state){
+	with(dragonFire){
+		++frame;
+		return true;
+	}
+}
+
 enum brainiacProjectileHitGain=4.0f;
 enum brainiacProjectileSize=0.45f; // TODO: ok?
 enum brainiacProjectileSlidingDistance=1.5f;
@@ -14994,6 +15016,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.eruptDebris.length;){
 		if(!updateEruptDebris(effects.eruptDebris[i],state)){
 			effects.removeEruptDebris(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.dragonFires.length;){
+		if(!updateDragonFire(effects.dragonFires[i],state)){
+			effects.removeDragonFire(i);
 			continue;
 		}
 		i++;

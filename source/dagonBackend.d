@@ -1338,6 +1338,7 @@ static:
 
 	@property GeometryPassBackend defaultMaterialBackend(){ return scene.defaultMaterialBackend; }
 	@property ShadelessBackend shadelessMaterialBackend(){ return scene.shadelessMaterialBackend; }
+	@property ShadelessMorphBackend shadelessMorphMaterialBackend(){ return scene.shadelessMorphMaterialBackend; }
 
 	@property BoneBackend boneMaterialBackend(){ return scene.boneMaterialBackend; }
 	@property ShadelessBoneBackend shadelessBoneMaterialBackend(){ return scene.shadelessBoneMaterialBackend; }
@@ -1389,6 +1390,13 @@ static:
 	}
 	void disableCulling(){
 		glDisable(GL_CULL_FACE);
+	}
+
+	void enableTransparency(){
+		glEnablei(GL_BLEND, 0);
+		glEnablei(GL_BLEND, 1);
+		glBlendFunci(0, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		glBlendFunci(1, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	}
 
 	@property blending(GenericMaterial material){ return ("blending" in material.inputs).asInteger; }
