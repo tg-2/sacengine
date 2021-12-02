@@ -2280,7 +2280,6 @@ struct Wrath(B){
 }
 struct FireballCasting(B){
 	ManaDrain!B manaDrain;
-	SacSpell!B spell;
 	Fireball!B fireball;
 	int frame=0;
 }
@@ -2725,9 +2724,17 @@ struct EruptDebris(B){
 	int frame=0;
 }
 
-struct DragonFire(B){
+struct DragonfireCasting(B){
+	ManaDrain!B manaDrain;
+	Dragonfire!B dragonfire;
+}
+struct Dragonfire(B){
+	int wizard;
+	int side;
 	Vector3f position;
 	Vector3f direction;
+	OrderTarget target;
+	SacSpell!B spell;
 	int frame=0;
 }
 
@@ -3705,13 +3712,21 @@ struct Effects(B){
 		if(i+1<eruptDebris.length) eruptDebris[i]=move(eruptDebris[$-1]);
 		eruptDebris.length=eruptDebris.length-1;
 	}
-	Array!(DragonFire!B) dragonFires;
-	void addEffect(DragonFire!B dragonFire){
-		dragonFires~=dragonFire;
+	Array!(DragonfireCasting!B) dragonfireCastings;
+	void addEffect(DragonfireCasting!B dragonfireCasting){
+		dragonfireCastings~=move(dragonfireCasting);
 	}
-	void removeDragonFire(int i){
-		if(i+1<dragonFires.length) dragonFires[i]=move(dragonFires[$-1]);
-		dragonFires.length=dragonFires.length-1;
+	void removeDragonfireCasting(int i){
+		if(i+1<dragonfireCastings.length) dragonfireCastings[i]=move(dragonfireCastings[$-1]);
+		dragonfireCastings.length=dragonfireCastings.length-1;
+	}
+	Array!(Dragonfire!B) dragonfires;
+	void addEffect(Dragonfire!B dragonfire){
+		dragonfires~=dragonfire;
+	}
+	void removeDragonfire(int i){
+		if(i+1<dragonfires.length) dragonfires[i]=move(dragonfires[$-1]);
+		dragonfires.length=dragonfires.length-1;
 	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
@@ -4164,7 +4179,8 @@ struct Effects(B){
 		assignArray(eruptCastings,rhs.eruptCastings);
 		assignArray(erupts,rhs.erupts);
 		assignArray(eruptDebris,rhs.eruptDebris);
-		assignArray(dragonFires,rhs.dragonFires);
+		assignArray(dragonfireCastings,rhs.dragonfireCastings);
+		assignArray(dragonfires,rhs.dragonfires);
 		assignArray(brainiacProjectiles,rhs.brainiacProjectiles);
 		assignArray(brainiacEffects,rhs.brainiacEffects);
 		assignArray(shrikeProjectiles,rhs.shrikeProjectiles);
@@ -6306,6 +6322,8 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 				case SpellTag.erupt:
 					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
 					return stun(castErupt(side,target.position,manaDrain,spell,state));
+				case SpellTag.dragonfire:
+					return stun(castDragonfire(target.id,manaDrain,spell,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -6643,7 +6661,7 @@ bool castFireball(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectSta
 	auto positionSide=state.movingObjectById!((obj,state)=>tuple(obj.fireballCastingPosition(state),obj.side),function Tuple!(Vector3f,int){ assert(0); })(manaDrain.wizard,state);
 	auto position=positionSide[0],side=positionSide[1];
 	auto fireball=makeFireball(manaDrain.wizard,side,position,centerTarget(target,state),spell,state);
-	state.addEffect(FireballCasting!B(manaDrain,spell,fireball));
+	state.addEffect(FireballCasting!B(manaDrain,fireball));
 	return true;
 }
 
@@ -7009,6 +7027,19 @@ bool castErupt(B)(int side,Vector3f position,ManaDrain!B manaDrain,SacSpell!B sp
 }
 bool erupt(B)(Erupt!B erupt,ObjectState!B state){
 	state.addEffect(erupt);
+	return true;
+}
+
+bool castDragonfire(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	if(!state.isValidTarget(target)) return false;
+	auto positionDirectionSide=state.movingObjectById!((obj,state)=>tuple(obj.position,rotate(obj.rotation,Vector3f(0.0f,1.0f,0.0f)),obj.side),function Tuple!(Vector3f,Vector3f,int){ assert(0); })(manaDrain.wizard,state);
+	auto position=positionDirectionSide[0],direction=positionDirectionSide[1],side=positionDirectionSide[2];
+	auto dragonfire=Dragonfire!B(manaDrain.wizard,side,position,direction,centerTarget(target,state),spell);
+	state.addEffect(DragonfireCasting!B(manaDrain,dragonfire));
+	return true;
+}
+bool dragonfire(B)(Dragonfire!B dragonfire,ObjectState!B state){
+	state.addEffect(dragonfire);
 	return true;
 }
 
@@ -12783,8 +12814,27 @@ bool updateEruptDebris(B)(ref EruptDebris!B eruptDebris,ObjectState!B state){
 	return true;
 }
 
-bool updateDragonFire(B)(ref DragonFire!B dragonFire,ObjectState!B state){
-	with(dragonFire){
+bool updateDragonfireCasting(B)(ref DragonfireCasting!B dragonfireCast,ObjectState!B state){
+	with(dragonfireCast){
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				if(!dragonfire.updateDragonfire(state)) // TODO
+					return false;
+				return state.movingObjectById!((ref obj){
+					obj.animateRockCasting(state);
+					return true;
+				},()=>false)(manaDrain.wizard);
+			case CastingStatus.interrupted:
+				return false;
+			case CastingStatus.finished:
+				.dragonfire(dragonfire,state);
+				return false;
+		}
+	}
+}
+
+bool updateDragonfire(B)(ref Dragonfire!B dragonfire,ObjectState!B state){
+	with(dragonfire){
 		++frame;
 		return true;
 	}
@@ -15020,9 +15070,16 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 		}
 		i++;
 	}
-	for(int i=0;i<effects.dragonFires.length;){
-		if(!updateDragonFire(effects.dragonFires[i],state)){
-			effects.removeDragonFire(i);
+	for(int i=0;i<effects.dragonfireCastings.length;){
+		if(!updateDragonfireCasting(effects.dragonfireCastings[i],state)){
+			effects.removeDragonfireCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.dragonfires.length;){
+		if(!updateDragonfire(effects.dragonfires[i],state)){
+			effects.removeDragonfire(i);
 			continue;
 		}
 		i++;

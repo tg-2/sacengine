@@ -1963,12 +1963,12 @@ struct SacAnimateDead(B){
 	}
 }
 
-struct SacDragonFire(B){
+struct SacDragonfire(B){
 	SacObject!B obj;
 	static SacObject!B create(){
-		auto dragonFire=new SacObject!B("extracted/models/MODL.WAD!/dfir.MRMC/dfir.MRMM");
-		swap(dragonFire.meshes[$-2],dragonFire.meshes[$-1]);
-		return dragonFire;
+		auto dragonfire=new SacObject!B("extracted/models/MODL.WAD!/dfir.MRMC/dfir.MRMM");
+		swap(dragonfire.meshes[$-2],dragonfire.meshes[$-1]);
+		return dragonfire;
 	}
 	enum numFrames=3*updateFPS/2;
 	Tuple!(B.Mesh[],B.Mesh[],float) getFrame(int frame)in{
