@@ -1410,18 +1410,18 @@ struct Renderer(B){
 						B.shadelessMorphMaterialBackend.bind(mat,rc);
 						B.enableTransparency();
 						scope(success) B.shadelessMorphMaterialBackend.unbind(mat,rc);
-						void renderDragonfire(Vector3f position,Vector3f direction,int frame){
+						void renderDragonfire(Vector3f position,Vector3f direction,int frame,float scale){
 							auto mesh1Mesh2Progress=self.dragonfire.getFrame(frame%self.dragonfire.numFrames);
 							auto mesh1=mesh1Mesh2Progress[0], mesh2=mesh1Mesh2Progress[1], progress=mesh1Mesh2Progress[2];
 							assert(mesh1.length==mesh2.length&&mesh1.length==self.dragonfire.obj.materials.length);
 							auto intermediate=Vector3f(direction.x,direction.y,0.0f).normalized;
-							auto rotation=rotationBetween(intermediate,direction)*rotationBetween(Vector3f(0.0f,1.0f,0.0f),direction);
-							B.shadelessMorphMaterialBackend.setTransformation(position,rotation,rc);
+							auto rotation=rotationBetween(intermediate,direction)*rotationBetween(Vector3f(0.0f,1.0f,0.0f),intermediate);
+							B.shadelessMorphMaterialBackend.setTransformationScaled(position,rotation,scale*Vector3f(1.0f,1.0f,1.0f),rc);
 							B.shadelessMorphMaterialBackend.setMorphProgress(progress);
 							mesh1[i].morph(mesh2[i],rc);
 						}
-						foreach(ref dragonfireCasting;objects.dragonfireCastings) with(dragonfireCasting) renderDragonfire(dragonfire.position,dragonfire.direction,dragonfire.frame);
-						foreach(ref dragonfire;objects.dragonfires) renderDragonfire(dragonfire.position,dragonfire.direction,dragonfire.frame);
+						foreach(ref dragonfireCasting;objects.dragonfireCastings) with(dragonfireCasting) renderDragonfire(dragonfire.position,dragonfire.direction,dragonfire.frame,float(dragonfire.frame)/castingTime);
+						foreach(ref dragonfire;objects.dragonfires) renderDragonfire(dragonfire.position,dragonfire.direction,dragonfire.frame,1.0f);
 					}
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.brainiacEffects.length){

@@ -2725,6 +2725,7 @@ struct EruptDebris(B){
 }
 
 struct DragonfireCasting(B){
+	int castingTime;
 	ManaDrain!B manaDrain;
 	Dragonfire!B dragonfire;
 }
@@ -6323,7 +6324,8 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
 					return stun(castErupt(side,target.position,manaDrain,spell,state));
 				case SpellTag.dragonfire:
-					return stun(castDragonfire(target.id,manaDrain,spell,state));
+					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					return stun(castDragonfire(target.id,manaDrain,spell,castingTime,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -7030,12 +7032,12 @@ bool erupt(B)(Erupt!B erupt,ObjectState!B state){
 	return true;
 }
 
-bool castDragonfire(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+bool castDragonfire(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,ObjectState!B state){
 	if(!state.isValidTarget(target)) return false;
-	auto positionDirectionSide=state.movingObjectById!((obj,state)=>tuple(obj.position,rotate(obj.rotation,Vector3f(0.0f,1.0f,0.0f)),obj.side),function Tuple!(Vector3f,Vector3f,int){ assert(0); })(manaDrain.wizard,state);
+	auto positionDirectionSide=state.movingObjectById!((obj,spell,castingTime,state)=>tuple(obj.dragonfireCastingPosition(spell,0,castingTime,state).expand,obj.side),function Tuple!(Vector3f,Vector3f,int){ assert(0); })(manaDrain.wizard,spell,castingTime,state);
 	auto position=positionDirectionSide[0],direction=positionDirectionSide[1],side=positionDirectionSide[2];
 	auto dragonfire=Dragonfire!B(manaDrain.wizard,side,position,direction,centerTarget(target,state),spell);
-	state.addEffect(DragonfireCasting!B(manaDrain,dragonfire));
+	state.addEffect(DragonfireCasting!B(castingTime,manaDrain,dragonfire));
 	return true;
 }
 bool dragonfire(B)(Dragonfire!B dragonfire,ObjectState!B state){
@@ -12814,14 +12816,27 @@ bool updateEruptDebris(B)(ref EruptDebris!B eruptDebris,ObjectState!B state){
 	return true;
 }
 
+Tuple!(Vector3f,Vector3f) dragonfireCastingPosition(B)(ref MovingObject!B obj,SacSpell!B spell,int frame,int castingTime,ObjectState!B state){
+	auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
+	auto castingHeight=hbox[1].z+4.0f;
+	auto radius=0.5f*float(castingTime)/updateFPS*spell.speed/(2.0f*pi!float)*(0.5f+0.5f*frame/castingTime);
+	auto φ=2.0f*pi!float*frame/castingTime;
+	auto offset=Vector3f(radius*cos(φ),radius*sin(φ),castingHeight*frame/castingTime);
+	auto direction=Vector3f(radius*-2.0f*pi!float*sin(φ),radius*2.0f*pi!float*cos(φ),castingHeight).normalized;
+	return tuple(obj.position+rotate(obj.rotation,offset),rotate(obj.rotation,direction));
+}
+void animateDragonfireCasting(B)(ref MovingObject!B obj,ObjectState!B state){
+	obj.animatePyroCasting(state);
+}
 bool updateDragonfireCasting(B)(ref DragonfireCasting!B dragonfireCast,ObjectState!B state){
 	with(dragonfireCast){
 		final switch(manaDrain.update(state)){
 			case CastingStatus.underway:
-				if(!dragonfire.updateDragonfire(state)) // TODO
-					return false;
+				auto posDir=state.movingObjectById!(dragonfireCastingPosition,()=>Tuple!(Vector3f,Vector3f).init)(dragonfire.wizard,dragonfire.spell,dragonfire.frame,castingTime,state);
+				if(isNaN(posDir[0].x)) return false;
+				dragonfire.animateDragonfire(posDir.expand,state);
 				return state.movingObjectById!((ref obj){
-					obj.animateRockCasting(state);
+					obj.animateDragonfireCasting(state);
 					return true;
 				},()=>false)(manaDrain.wizard);
 			case CastingStatus.interrupted:
@@ -12833,9 +12848,31 @@ bool updateDragonfireCasting(B)(ref DragonfireCasting!B dragonfireCast,ObjectSta
 	}
 }
 
+void animateDragonfire(B)(ref Dragonfire!B dragonfire,Vector3f newPosition,Vector3f newDirection,ObjectState!B state){
+	with(dragonfire){
+		auto oldPosition=position;
+		position=newPosition;
+		direction=newDirection;
+		++frame;
+		enum numParticles=8;
+		auto sacParticle1=SacParticle!B.get(ParticleType.firy);
+		auto sacParticle2=SacParticle!B.get(ParticleType.fireball);
+		auto velocity=Vector3f(0.0f,0.0f,0.0f);
+		auto lifetime=48;
+		auto scale=1.5f;
+		auto frame=0;
+		foreach(i;0..numParticles){
+			auto sacParticle=i!=0?sacParticle1:sacParticle2;
+			auto position=oldPosition*((cast(float)numParticles-1-i)/numParticles)+position*(cast(float)(i+1)/numParticles);
+			position+=0.15f*state.uniformDirection();
+			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+		}
+	}
+}
+
 bool updateDragonfire(B)(ref Dragonfire!B dragonfire,ObjectState!B state){
 	with(dragonfire){
-		++frame;
+		dragonfire.animateDragonfire(dragonfire.position,dragonfire.direction,state);
 		return true;
 	}
 }
