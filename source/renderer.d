@@ -1420,7 +1420,7 @@ struct Renderer(B){
 							B.shadelessMorphMaterialBackend.setMorphProgress(progress);
 							mesh1[i].morph(mesh2[i],rc);
 						}
-						foreach(ref dragonfireCasting;objects.dragonfireCastings) with(dragonfireCasting) renderDragonfire(dragonfire.position,dragonfire.direction,dragonfire.frame,float(dragonfire.frame)/castingTime);
+						foreach(ref dragonfireCasting;objects.dragonfireCastings) with(dragonfireCasting) renderDragonfire(dragonfire.position,dragonfire.direction,dragonfire.frame,scale);
 						foreach(ref dragonfire;objects.dragonfires) renderDragonfire(dragonfire.position,dragonfire.direction,dragonfire.frame,1.0f);
 					}
 				}

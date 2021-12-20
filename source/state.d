@@ -2579,6 +2579,7 @@ struct Rainbow(B){
 		return false;
 	}
 	bool hasTarget(int id){ return id&&targets[].canFind(id); }
+	
 	enum travelFrames=64;
 }
 struct RainbowEffect(B){
@@ -2728,6 +2729,8 @@ struct DragonfireCasting(B){
 	int castingTime;
 	ManaDrain!B manaDrain;
 	Dragonfire!B dragonfire;
+
+	float scale(){ return float(dragonfire.frame)/castingTime; }
 }
 struct Dragonfire(B){
 	int wizard;
@@ -2737,6 +2740,22 @@ struct Dragonfire(B){
 	OrderTarget target;
 	SacSpell!B spell;
 	int frame=0;
+	PositionPredictor predictor;
+
+	enum rotationSpeed=pi!float;
+	enum totTargets=6;
+	int[totTargets] targets=0;
+	bool addTarget(int id){
+		if(!id) return false;
+		foreach(ref x;targets){
+			if(!x){
+				x=id;
+				return true;
+			}
+		}
+		return false;
+	}
+	bool hasTarget(int id){ return id&&targets[].canFind(id); }
 }
 
 struct BrainiacProjectile(B){
@@ -12848,7 +12867,7 @@ bool updateDragonfireCasting(B)(ref DragonfireCasting!B dragonfireCast,ObjectSta
 	}
 }
 
-void animateDragonfire(B)(ref Dragonfire!B dragonfire,Vector3f newPosition,Vector3f newDirection,ObjectState!B state){
+void animateDragonfire(B)(ref Dragonfire!B dragonfire,Vector3f newPosition,Vector3f newDirection,ObjectState!B state,float scale=1.0f){
 	with(dragonfire){
 		auto oldPosition=position;
 		position=newPosition;
@@ -12858,21 +12877,77 @@ void animateDragonfire(B)(ref Dragonfire!B dragonfire,Vector3f newPosition,Vecto
 		auto sacParticle1=SacParticle!B.get(ParticleType.firy);
 		auto sacParticle2=SacParticle!B.get(ParticleType.fireball);
 		auto velocity=Vector3f(0.0f,0.0f,0.0f);
-		auto lifetime=48;
-		auto scale=1.5f;
+		auto lifetime=31;
+		auto pscale=2.0f*scale;
 		auto frame=0;
 		foreach(i;0..numParticles){
 			auto sacParticle=i!=0?sacParticle1:sacParticle2;
 			auto position=oldPosition*((cast(float)numParticles-1-i)/numParticles)+position*(cast(float)(i+1)/numParticles);
-			position+=0.15f*state.uniformDirection();
-			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+			position+=0.3f*state.uniformDirection();
+			state.addParticle(Particle!B(sacParticle,position-0.7f*scale*direction,velocity,pscale,lifetime,frame));
 		}
+	}
+}
+
+bool changeDirectionTowards(T,B)(ref T spell_,float targetFlyingHeight,ObjectState!B state){
+	with(spell_){
+		auto targetCenter=target.center(state);
+		auto predictedCenter=predictor.predictCenter(position,spell.speed,target,state);
+		auto targetRotation=rotationBetween(direction,(predictedCenter-position).normalized);
+		auto actualRotationSpeed=rotationSpeed;
+		auto distancesqr=(targetCenter-position).lengthsqr;
+		if(distancesqr<4.0f^^2) actualRotationSpeed=4.0f*rotationSpeed/sqrt(distancesqr);
+		direction=rotate(limitRotation(targetRotation,actualRotationSpeed/updateFPS),direction).normalized;
+		auto newPosition=position+direction*spell.speed/updateFPS;
+		if(state.isOnGround(newPosition)){
+		   auto height=state.getGroundHeight(newPosition);
+		   if(newPosition.z<height+targetFlyingHeight){
+			   auto ndir=state.getGroundHeightDerivative(position,direction);
+			   direction=Vector3f(direction.x,direction.y,ndir).normalized;
+			   newPosition.z=height+targetFlyingHeight;
+			}
+		}
+		position=newPosition;
+		return (targetCenter-position).lengthsqr<0.5f^^2;
+	}
+}
+
+bool updateDragonfireTarget(B)(ref Dragonfire!B dragonfire,ObjectState!B state){
+	with(dragonfire){
+		if(!target.id){
+			static bool filter(ref CenterProximityEntry entry,ObjectState!B state,Dragonfire!B* dragonfire){
+				if(state.movingObjectById!((ref obj,state)=>obj.health(state)==0.0f,()=>true)(entry.id,state)) return false;
+				return !dragonfire.hasTarget(entry.id);
+			}
+			int newTarget=state.proximity.closestNonAllyInRange!filter(side,position,spell.effectRange,EnemyType.creature,state,float.infinity,state,&dragonfire);
+			if(newTarget){
+				target=OrderTarget(TargetType.creature,newTarget,state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(newTarget));
+				if(!dragonfire.addTarget(newTarget))
+					return false;
+				return true;
+			}
+		}
+		target.id=0;
+		target.position+=0.5f*spell.effectRange*state.uniformDirection();
+		target.position.z=0.5f*spell.effectRange+state.getHeight(target.position);
+		return true;
+	}
+}
+
+bool updateDragonfirePosition(B)(ref Dragonfire!B dragonfire,ObjectState!B state){
+	with(dragonfire){
+		if(dragonfire.changeDirectionTowards(1.0f,state))
+			if(!dragonfire.updateDragonfireTarget(state))
+				return false;
+		return true;
 	}
 }
 
 bool updateDragonfire(B)(ref Dragonfire!B dragonfire,ObjectState!B state){
 	with(dragonfire){
 		dragonfire.animateDragonfire(dragonfire.position,dragonfire.direction,state);
+		if(!dragonfire.updateDragonfirePosition(state))
+			return false;
 		return true;
 	}
 }
