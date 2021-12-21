@@ -2740,8 +2740,13 @@ struct Dragonfire(B){
 	OrderTarget target;
 	SacSpell!B spell;
 	int frame=0;
+	float scale=1.0f;
 	PositionPredictor predictor;
 
+	int unsuccessfulTries=0;
+	enum maxUnsuccessful=1;
+	enum shrinkTime=1.0f;
+	
 	enum rotationSpeed=pi!float;
 	enum totTargets=6;
 	int[totTargets] targets=0;
@@ -7060,6 +7065,8 @@ bool castDragonfire(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,int cas
 	return true;
 }
 bool dragonfire(B)(Dragonfire!B dragonfire,ObjectState!B state){
+	dragonfire.addTarget(dragonfire.target.id);
+	playSoundAt("2ifd",dragonfire.position,state); // TODO: move sound with spell?
 	state.addEffect(dragonfire);
 	return true;
 }
@@ -12853,7 +12860,7 @@ bool updateDragonfireCasting(B)(ref DragonfireCasting!B dragonfireCast,ObjectSta
 			case CastingStatus.underway:
 				auto posDir=state.movingObjectById!(dragonfireCastingPosition,()=>Tuple!(Vector3f,Vector3f).init)(dragonfire.wizard,dragonfire.spell,dragonfire.frame,castingTime,state);
 				if(isNaN(posDir[0].x)) return false;
-				dragonfire.animateDragonfire(posDir.expand,state);
+				dragonfire.animateDragonfire(posDir.expand,state,scale);
 				return state.movingObjectById!((ref obj){
 					obj.animateDragonfireCasting(state);
 					return true;
@@ -12867,7 +12874,7 @@ bool updateDragonfireCasting(B)(ref DragonfireCasting!B dragonfireCast,ObjectSta
 	}
 }
 
-void animateDragonfire(B)(ref Dragonfire!B dragonfire,Vector3f newPosition,Vector3f newDirection,ObjectState!B state,float scale=1.0f){
+void animateDragonfire(B)(ref Dragonfire!B dragonfire,Vector3f newPosition,Vector3f newDirection,ObjectState!B state,float scale_=1.0f){
 	with(dragonfire){
 		auto oldPosition=position;
 		position=newPosition;
@@ -12878,13 +12885,13 @@ void animateDragonfire(B)(ref Dragonfire!B dragonfire,Vector3f newPosition,Vecto
 		auto sacParticle2=SacParticle!B.get(ParticleType.fireball);
 		auto velocity=Vector3f(0.0f,0.0f,0.0f);
 		auto lifetime=31;
-		auto pscale=2.0f*scale;
+		auto pscale=2.0f*scale_;
 		auto frame=0;
 		foreach(i;0..numParticles){
 			auto sacParticle=i!=0?sacParticle1:sacParticle2;
 			auto position=oldPosition*((cast(float)numParticles-1-i)/numParticles)+position*(cast(float)(i+1)/numParticles);
-			position+=0.3f*state.uniformDirection();
-			state.addParticle(Particle!B(sacParticle,position-0.7f*scale*direction,velocity,pscale,lifetime,frame));
+			position+=0.3f*scale_*state.uniformDirection();
+			state.addParticle(Particle!B(sacParticle,position-0.7f*scale_*direction,velocity,pscale,lifetime,frame));
 		}
 	}
 }
@@ -12908,7 +12915,7 @@ bool changeDirectionTowards(T,B)(ref T spell_,float targetFlyingHeight,ObjectSta
 			}
 		}
 		position=newPosition;
-		return (targetCenter-position).lengthsqr<0.5f^^2;
+		return (targetCenter-position).lengthsqr<0.75f^^2;
 	}
 }
 
@@ -12924,30 +12931,60 @@ bool updateDragonfireTarget(B)(ref Dragonfire!B dragonfire,ObjectState!B state){
 				target=OrderTarget(TargetType.creature,newTarget,state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(newTarget));
 				if(!dragonfire.addTarget(newTarget))
 					return false;
+				playSoundAt("2ifd",dragonfire.position,state); // TODO: move sound with spell?
 				return true;
+			}else{
+				++unsuccessfulTries;
 			}
 		}
 		target.id=0;
 		target.position+=0.5f*spell.effectRange*state.uniformDirection();
 		target.position.z=0.5f*spell.effectRange+state.getHeight(target.position);
-		return true;
+		return unsuccessfulTries<=maxUnsuccessful;
 	}
 }
 
 bool updateDragonfirePosition(B)(ref Dragonfire!B dragonfire,ObjectState!B state){
 	with(dragonfire){
-		if(dragonfire.changeDirectionTowards(1.0f,state))
+		auto radius=spell.damageRange;
+		Vector3f[2] hitbox=[position-0.5f*radius*Vector3f(1.0f,1.0f,1.0f),position+0.5f*radius*Vector3f(1.0f,1.0f,1.0f)];
+		static void burn(ProximityEntry target,ObjectState!B state,SacSpell!B spell,int attacker,int side){
+			if(target.id==attacker) return;
+			state.movingObjectById!((ref obj,damage,attacker,side,state){
+					//if(state.sides.getStance(side,obj.side)!=Stance.ally)
+					obj.ignite(damage,attacker,side,state);
+				},(){})(target.id,spell.amount/updateFPS,attacker,side,state);
+		}
+		collisionTargets!burn(hitbox,state,spell,wizard,side);
+		if(dragonfire.changeDirectionTowards(1.0f,state)){
+			playSoundAt("2ifd",dragonfire.position,state); // TODO: move sound with spell?
+			if(target.id&&state.isValidTarget(target.id)){
+				dealSpellDamage(target.id,spell,wizard,side,direction,DamageMod.ignite,state); // TODO: should this be splash spell?
+				setAblaze(target.id,updateFPS,false,0.0f,wizard,side,DamageMod.ignite,state);
+			}
+			static bool callback(int target,int wizard,int side,ObjectState!B state){
+				setAblaze(target,updateFPS,false,0.0f,wizard,side,DamageMod.none,state);
+				return true;
+			}
+			dealSplashSpellDamageAt!callback(target.id,spell,spell.damageRange,wizard,side,position,DamageMod.ignite,state,wizard,side,state);
 			if(!dragonfire.updateDragonfireTarget(state))
 				return false;
+		}
 		return true;
 	}
 }
 
+enum dragonfireGain=4.0f;
 bool updateDragonfire(B)(ref Dragonfire!B dragonfire,ObjectState!B state){
 	with(dragonfire){
-		dragonfire.animateDragonfire(dragonfire.position,dragonfire.direction,state);
+		dragonfire.animateDragonfire(dragonfire.position,dragonfire.direction,state,scale);
+		bool shrinking=scale<1.0f;
 		if(!dragonfire.updateDragonfirePosition(state))
-			return false;
+			shrinking=true;
+		if(shrinking){
+			scale=max(0.0f,scale-(1.0f/shrinkTime)/updateFPS);
+			if(scale==0.0f) return false;
+		}
 		return true;
 	}
 }
