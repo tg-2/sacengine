@@ -12320,16 +12320,17 @@ bool updateSoulMolePosition(B)(ref SoulMole!B soulMole,ObjectState!B state){
 bool updateSoulMole(B)(ref SoulMole!B soulMole,ObjectState!B state){
 	if(!soulMole.updateSoulMolePosition(state))
 		return false;
-	static bool callback(int target,int side,ObjectState!B state){
-		state.movingObjectById!((ref obj,side,state){
-			if(state.sides.getStance(side,obj.side)!=Stance.ally)
-				obj.stunWithCooldown(stunCooldownFrames,state);
-		},(){})(target,side,state);
+	static bool callback(int target,int wizard,int side,ObjectState!B state){
+		state.movingObjectById!((ref obj,wizard,side,state){
+			if(obj.id==wizard) return;
+			//if(state.sides.getStance(side,obj.side)==Stance.ally) return;
+			obj.stunWithCooldown(stunCooldownFrames,state);
+		},(){})(target,wizard,side,state);
 		return false;
 	}
 	auto side=state.movingObjectById!((ref obj)=>obj.side,()=>-1)(soulMole.wizard);
 	if(side==-1) return false;
-	with(soulMole) dealSplashSpellDamageAt!callback(0,spell,spell.effectRange,wizard,side,position,DamageMod.none,state,side,state);
+	with(soulMole) dealSplashSpellDamageAt!callback(0,spell,spell.effectRange,wizard,side,position,DamageMod.none,state,wizard,side,state);
 	return true;
 }
 
