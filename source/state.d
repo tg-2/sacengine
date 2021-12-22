@@ -12855,6 +12855,33 @@ Tuple!(Vector3f,Vector3f) dragonfireCastingPosition(B)(ref MovingObject!B obj,Sa
 void animateDragonfireCasting(B)(ref MovingObject!B obj,ObjectState!B state){
 	obj.animatePyroCasting(state);
 }
+bool animateDragonfireCasting(B)(ref Dragonfire!B dragonfire,int wizard,int castingTime,ObjectState!B state,float scale_=1.0f){
+	auto sacParticle=SacParticle!B.get(ParticleType.firy);
+	auto frameOffset=sacParticle.numFrames;
+	auto ncenter=state.movingObjectById!((ref obj,dragonfire,frameOffset,castingTime,state){
+		obj.animateDragonfireCasting(state);
+		return obj.dragonfireCastingPosition(dragonfire.spell,dragonfire.frame+frameOffset,castingTime,state)[0];
+	},()=>Vector3f.init)(wizard,&dragonfire,frameOffset,castingTime,state);
+	if(isNaN(ncenter.x)) return false;
+	if(dragonfire.frame+frameOffset>castingTime) return true;
+	auto radius=dragonfire.spell.damageRange;
+	Vector3f[2] hitbox=[dragonfire.position-0.25f*radius*Vector3f(1.0f,1.0f,1.0f),dragonfire.position+0.25f*radius*Vector3f(1.0f,1.0f,1.0f)];
+	auto center=dragonfire.position;
+	auto scale=0.5f+0.5f*(scale_);
+	enum numParticles=2;
+	foreach(i;0..numParticles){
+		auto position=state.uniform(hitbox)-center;
+		position.x*=2.0f;
+		position.y*=2.0f;
+		position.z*=2.0f;
+		position*=scale;
+		position+=center;
+		auto lifetime=sacParticle.numFrames/60.0f;
+		auto velocity=(ncenter-position)/lifetime;
+		state.addParticle(Particle!B(sacParticle,position,velocity,scale*0.5f*radius,sacParticle.numFrames,0));
+	}
+	return true;
+}
 bool updateDragonfireCasting(B)(ref DragonfireCasting!B dragonfireCast,ObjectState!B state){
 	with(dragonfireCast){
 		final switch(manaDrain.update(state)){
@@ -12862,10 +12889,7 @@ bool updateDragonfireCasting(B)(ref DragonfireCasting!B dragonfireCast,ObjectSta
 				auto posDir=state.movingObjectById!(dragonfireCastingPosition,()=>Tuple!(Vector3f,Vector3f).init)(dragonfire.wizard,dragonfire.spell,dragonfire.frame,castingTime,state);
 				if(isNaN(posDir[0].x)) return false;
 				dragonfire.animateDragonfire(posDir.expand,state,scale);
-				return state.movingObjectById!((ref obj){
-					obj.animateDragonfireCasting(state);
-					return true;
-				},()=>false)(manaDrain.wizard);
+				return dragonfire.animateDragonfireCasting(manaDrain.wizard,castingTime,state,scale);
 			case CastingStatus.interrupted:
 				return false;
 			case CastingStatus.finished:
