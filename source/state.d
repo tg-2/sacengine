@@ -7066,7 +7066,7 @@ bool castDragonfire(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,int cas
 }
 bool dragonfire(B)(Dragonfire!B dragonfire,ObjectState!B state){
 	dragonfire.addTarget(dragonfire.target.id);
-	playSoundAt("2ifd",dragonfire.position,state); // TODO: move sound with spell?
+	playSoundAt("2ifd",dragonfire.position,state,dragonfireGain); // TODO: move sound with spell?
 	state.addEffect(dragonfire);
 	return true;
 }
@@ -12932,7 +12932,7 @@ bool updateDragonfireTarget(B)(ref Dragonfire!B dragonfire,ObjectState!B state){
 				target=OrderTarget(TargetType.creature,newTarget,state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(newTarget));
 				if(!dragonfire.addTarget(newTarget))
 					return false;
-				playSoundAt("2ifd",dragonfire.position,state); // TODO: move sound with spell?
+				playSoundAt("2ifd",dragonfire.position,state,dragonfireGain); // TODO: move sound with spell?
 				return true;
 			}else{
 				++unsuccessfulTries;
@@ -12958,7 +12958,7 @@ bool updateDragonfirePosition(B)(ref Dragonfire!B dragonfire,ObjectState!B state
 		}
 		collisionTargets!burn(hitbox,state,spell,wizard,side);
 		if(dragonfire.changeDirectionTowards(1.0f,state)){
-			playSoundAt("2ifd",dragonfire.position,state); // TODO: move sound with spell?
+			playSoundAt("2ifd",dragonfire.position,state,dragonfireGain); // TODO: move sound with spell?
 			if(target.id&&state.isValidTarget(target.id)){
 				dealSpellDamage(target.id,spell,wizard,side,direction,DamageMod.ignite,state); // TODO: should this be splash spell?
 				setAblaze(target.id,updateFPS,false,0.0f,wizard,side,DamageMod.ignite,state);
