@@ -14744,7 +14744,7 @@ bool updateAltarDestruction(B)(ref AltarDestruction altarDestruction,ObjectState
 			foreach(id;stalks) if(id) state.setThresholdZ(id,(stalkHeight+structureCastingGradientSize)*(1.0f-progress)+-structureCastingGradientSize*progress);
 			if(shrine) state.setThresholdZ(shrine,(shrineHeight+structureCastingGradientSize)*(1.0f-progress)+-structureCastingGradientSize*progress);
 			if(frame==disappearDuration){
-				state.buildingById!(activate,(){})(manafount,state);
+				state.buildingById!((ref mfnt,state){ if(!mfnt.top) mfnt.activate(state); },(){})(manafount,state);
 				state.staticObjectById!((ref ring,state)=>state.buildingById!((ref altar){ swap(altar.componentIds[0],altar.componentIds[$-1]); altar.componentIds.length=1; },(){})(ring.buildingId),(){})(ring,state);
 				foreach(id;pillars) if(id) state.removeObject(id);
 				foreach(id;stalks) if(id) state.removeObject(id);
