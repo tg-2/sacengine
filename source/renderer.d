@@ -212,10 +212,10 @@ struct Renderer(B){
 		mat.depthWrite=false;
 		mat.blending=B.Blending.Transparent;
 		mat.energy=5.0f;
-		mat.transparency=0.3f;
+		mat.transparency=0.075f;
 		mat.diffuse=texture;
-		auto frames=typeof(return).createMeshes;
-		return SacAirShield!B(texture,mat,frames);
+		auto meshes=typeof(return).createMeshes;
+		return SacAirShield!B(texture,mat,meshes);
 	}
 	SacAirShieldEffect!B airShieldEffect;
 	SacAirShieldEffect!B createAirShieldEffect(){
@@ -1222,10 +1222,15 @@ struct Renderer(B){
 					foreach(j;0..objects.protectiveSwarms.length) renderProtectiveSwarm(objects.protectiveSwarms[j]);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.airShieldCastings.length||objects.airShields.length)){
+					B.disableDepthMask();
+					B.enableCulling();
+					scope(success) B.enableDepthMask();
 					auto material=self.airShield.material;
 					auto effectMaterial=self.airShieldEffect.material;
 					void renderAirShield(ref AirShield!B airShield){
-						material.bind(rc); // TODO: worth separating effects from shield?
+						B.shadelessMorphMaterialBackend.bind(material,rc);
+						B.enableTransparency();
+						B.disableDepthMask();
 						auto target=airShield.target;
 						auto positionRotationBoxSize=state.movingObjectById!((ref obj)=>tuple(center(obj),obj.position,obj.rotation,boxSize(obj.sacObject.largeHitbox(Quaternionf.identity(),obj.animationState,obj.frame/updateAnimFactor))), function Tuple!(Vector3f,Vector3f,Quaternionf,Vector3f)(){ return typeof(return).init; })(target);
 						auto position=positionRotationBoxSize[0], rawPosition=positionRotationBoxSize[1], rotation=positionRotationBoxSize[2], boxSize=positionRotationBoxSize[3];
@@ -1233,10 +1238,14 @@ struct Renderer(B){
 						auto scale=airShield.scale+0.05f*(1.0f*sin(2.0f*pi!float*2.0f*airShield.frame/updateFPS));
 						boxSize.x=boxSize.y=sqrt(0.5f*(boxSize.x^^2+boxSize.y^^2));
 						auto dimensions=Vector3f(2.0f,2.0f,1.5f)*boxSize;
-						material.backend.setTransformationScaled(position,rotation,scale*dimensions,rc);
-						auto mesh=self.airShield.getFrame(airShield.frame%self.airShield.numFrames);
-						mesh.render(rc);
-						material.unbind(rc);
+						B.shadelessMorphMaterialBackend.setTransformationScaled(position,rotation,scale*dimensions,rc);
+						foreach(v;0..3){
+							auto mesh1Mesh2Progress=self.airShield.getFrame(airShield.frame+20*v,airShield.frame);
+							auto mesh1=mesh1Mesh2Progress[0], mesh2=mesh1Mesh2Progress[1], progress=mesh1Mesh2Progress[2];
+							B.shadelessMorphMaterialBackend.setMorphProgress(progress);
+							mesh1.morph(mesh2,rc);
+						}
+						B.shadelessMorphMaterialBackend.unbind(material,rc);
 						effectMaterial.bind(rc);
 						foreach(ref particle;airShield.particles){
 							auto location=Vector3f(particle.radius*cos(particle.θ),particle.radius*sin(particle.θ),particle.height)*airShield.scale;

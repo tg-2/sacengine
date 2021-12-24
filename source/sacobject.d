@@ -1794,19 +1794,76 @@ B.Mesh[] makeSphereMeshes(B)(int numU,int numV,int nU,int nV,float radius,float 
 	}
 	return meshes;
 }
+
+B.Mesh[][] makeNoisySphereMeshes(B)(int numU,int numV,int nU,int nV,float radius,float noiseRadius,int numOffsets,float texWidth=1.0f,float texHeight=1.0f){
+	auto meshes=new B.Mesh[][](numOffsets,nU*nV);
+	import std.random;
+	Mt19937 gen;
+	foreach(offset;0..numOffsets){
+		auto offsets=iota(2+numU*numV).map!(_=>Vector3f(uniform(-1.0f,1.0f,gen),uniform(-1.0f,1.0f,gen),uniform(-1.0f,1.0f,gen))).array;
+		foreach(t,ref mesh;meshes[offset]){
+			int u=cast(int)t%nU,v=cast(int)t/nV;
+			mesh=B.makeMesh(2+numU*numV,2*numU*numV); // TODO: reuse makeSphereMesh here
+			int numFaces=0;
+			void addFace(uint[3] face...){
+				mesh.indices[numFaces++]=face;
+			}
+			mesh.vertices[0]=Vector3f(0.0f,0.0f,radius);
+			mesh.texcoords[0]=Vector2f(texWidth/nU*(u+0.5f),texHeight/nV*(v+0.5f));
+			mesh.vertices[$-1]=Vector3f(0.0f,0.0f,-radius);
+			mesh.texcoords[$-1]=Vector2f(texWidth/nU*(u+0.5f),texHeight/nV*(v+0.5f));
+			int idx(int i,int j){
+				if(i<0) return 0;
+				if(i>=numU) return 1+numU*numV;
+				return 1+numV*i+j;
+			}
+			foreach(i;0..numU){
+				foreach(j;0..numV){
+					auto θ=pi!float*(1+i)/(numU+1);
+					auto φ=2.0f*pi!float*j/numV;
+					auto noise=0.5f*offsets[idx(i,j)];
+					foreach(k;0..4) noise+=1.0f/8*offsets[idx(i-(k==0)+(k==1),j-(k==2)+(k==3))];
+					mesh.vertices[idx(i,j)]=radius*Vector3f(cos(φ)*sin(θ),sin(φ)*sin(θ),cos(θ))+noiseRadius*noise;
+					auto texRadius=2*i<=numU?2.0f*i/numU:2.0f-2.0f*i/numU;
+					mesh.texcoords[idx(i,j)]=Vector3f(texWidth/nU*(u+0.5f*(1.0f+cos(φ)*texRadius)),texHeight/nV*(v+0.5f*(1.0f+sin(φ)*texRadius)));
+					if(i!=0){
+						addFace([idx(i,j),idx(i,j+1),idx(i-1,j)]);
+						addFace([idx(i,j+1),idx(i-1,j+1),idx(i-1,j)]);
+						if(i+1==numU) addFace([idx(i,j),idx(i+1,j),idx(i,j+1)]);
+					}else addFace([idx(i,j),idx(i,j+1),idx(-1,j)]);
+				}
+			}
+			assert(numFaces==2*numU*numV);
+			mesh.generateNormals();
+			B.finalizeMesh(mesh);
+		}
+	}
+	return meshes;
+}
+
 struct SacAirShield(B){
 	B.Texture texture;
 	static B.Texture loadTexture(){
 		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Stra.FLDR/txtr.FLDR/shld.TXTR"));
 	}
 	B.Material material;
-	B.Mesh[] frames;
+	B.Mesh[][] meshes;
 	enum animationDelay=4;
-	enum numFrames=8*updateAnimFactor*animationDelay;
-	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
-	static B.Mesh[] createMeshes(){
-		enum nU=4,nV=2;
-		return makeSphereMeshes!B(24,25,nU,nV,0.5f);
+	enum nU=4,nV=2;
+	enum numTextureFrames=nU*nV*updateAnimFactor*animationDelay;
+	enum numDistortions=16;
+	enum numFrames=updateFPS*numDistortions/2;
+	Tuple!(B.Mesh,B.Mesh,float) getFrame(int frame,int texture){
+		auto textureFrame=(texture/(animationDelay*updateAnimFactor))%8;
+		auto indices=iota(0,meshes.length);
+		auto numIndices=indices.length;
+		auto i=frame*numIndices/numFrames, j=i+1;
+		float progress=float(frame*numIndices%numFrames)/numFrames;
+		auto all=cycle(indices);
+		return tuple(meshes[all[i]][textureFrame],meshes[all[j]][textureFrame],progress);
+	}
+	static B.Mesh[][] createMeshes(){
+		return makeNoisySphereMeshes!B(24,25,nU,nV,0.5f,0.12f,numDistortions);
 	}
 }
 
