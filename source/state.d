@@ -5013,7 +5013,13 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 			break;
 		case CreatureMode.meleeMoving,CreatureMode.meleeAttacking:
 			with(AnimationState)
-				enforce(object.frame==0&&object.animationState.among(attack0,attack1,attack2,flyAttack));
+			if(object.frame!=0
+			   ||!object.animationState.among(attack0,attack1,attack2,flyAttack)
+			   ||object.creatureState.movement!=CreatureMovement.onGround
+			){
+				object.startIdling(state);
+				goto case CreatureMode.idle;
+			}
 			break;
 		case CreatureMode.stunned:
 			if(object.creatureStats.effects.immobilized) break;
