@@ -5015,7 +5015,7 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 			with(AnimationState)
 			if(object.frame!=0
 			   ||!object.animationState.among(attack0,attack1,attack2,flyAttack)
-			   ||object.creatureState.movement!=CreatureMovement.onGround
+			   ||object.creatureState.movement==CreatureMovement.tumbling
 			){
 				object.startIdling(state);
 				goto case CreatureMode.idle;
