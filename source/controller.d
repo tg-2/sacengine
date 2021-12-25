@@ -63,7 +63,8 @@ final class Controller(B){
 	}
 	void updateCommitted(){
 		committedFrame=network.committedFrame;
-		assert(committedFrame<=currentFrame);
+		currentFrame=max(state.current.frame,committedFrame);
+		state.simulateTo(currentFrame);
 		while(state.lastCommitted.frame<committedFrame){
 			state.stepCommitted();
 			if(recording) recording.addCommitted(state.lastCommitted);
