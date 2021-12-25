@@ -9327,9 +9327,10 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 		if(!object.creatureStats.effects.fixed) object.position=newPosition;
 	}
 	if(object.creatureStats.effects.fixed){
+		height=state.getHeight(object.position);
 		if(!isNaN(object.creatureState.targetFlyingHeight))
 			object.position.z=max(object.position.z,height+object.creatureState.targetFlyingHeight); // TODO: ok?
-		if(object.position.z>height && object.creatureState.movement!=CreatureMovement.tumbling){
+		if(object.position.z>height && object.creatureState.movement==CreatureMovement.onGround){
 			object.creatureState.fallingVelocity=Vector3f(0.0f,0.0f,0.0f);
 			object.creatureState.movement=CreatureMovement.tumbling;
 			object.setCreatureState(state);
