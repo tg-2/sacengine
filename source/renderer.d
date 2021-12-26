@@ -206,7 +206,6 @@ struct Renderer(B){
 	}
 	SacAirShield!B airShield;
 	SacAirShield!B createAirShield(){
-		import txtr;
 		auto texture=typeof(return).loadTexture();
 		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
 		mat.depthWrite=false;
@@ -288,6 +287,18 @@ struct Renderer(B){
 	SacDragonfire!B createDragonfire(){
 		auto obj=typeof(return).create();
 		return SacDragonfire!B(obj);
+	}
+	SacSoulWind!B soulWind;
+	SacSoulWind!B createSoulWind(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Transparent;
+		mat.energy=5.0f;
+		mat.transparency=0.75f;
+		mat.diffuse=texture;
+		auto meshes=typeof(return).createMeshes;
+		return SacSoulWind!B(texture,mat,meshes);
 	}
 	SacBrainiacEffect!B brainiacEffect;
 	SacBrainiacEffect!B createBrainiacEffect(){
@@ -488,6 +499,7 @@ struct Renderer(B){
 		rainbow=createRainbow();
 		animateDead=createAnimateDead();
 		dragonfire=createDragonfire();
+		soulWind=createSoulWind();
 	}
 
 	void initialize(){
@@ -793,7 +805,6 @@ struct Renderer(B){
 					material.bind(rc);
 					scope(success) material.unbind(rc);
 					foreach(j;0..objects.length){
-						// TODO: determine soul color based on side
 						auto soul=objects[j];
 						auto mesh=sacSoul.getMesh(soul.color(info.renderSide,state),soul.frame/updateAnimFactor); // TODO: do in shader?
 						auto id=soul.id;
@@ -1025,7 +1036,13 @@ struct Renderer(B){
 						}
 					}
 				}
-				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.lightnings.length||objects.chainLightningCastingEffects.length||objects.rituals.length)){
+				static if(mode==RenderMode.transparent)
+					if(!rc.shadowMode&&
+					   (objects.lightnings.length||
+					    objects.chainLightningCastingEffects.length||
+					    objects.soulWindEffects.length||
+					    objects.rituals.length)
+				){
 					auto material=self.lightning.material;
 					material.bind(rc);
 					B.disableCulling();
@@ -1062,7 +1079,8 @@ struct Renderer(B){
 						}else if(frame>totalFrames-travelDelay){
 							α=(frame-(totalFrames-travelDelay))/float(travelDelay);
 						}
-						renderBolts!totalFrames(objects.lightnings[j].bolts[],start,end,frame,α,β);
+						auto bolts=objects.lightnings[j].bolts[];
+						renderBolts!totalFrames(bolts,start,end,frame,α,β);
 					}
 					foreach(j;0..objects.chainLightningCastingEffects.length){
 						auto start=objects.chainLightningCastingEffects[j].start;
@@ -1076,7 +1094,16 @@ struct Renderer(B){
 						}else if(frame>totalFrames-travelDelay){
 							α=(frame-(totalFrames-travelDelay))/float(travelDelay);
 						}
-						renderBolts!(totalFrames,0.5f)((&objects.chainLightningCastingEffects[j].bolt)[0..1],start,end,frame,α,β);
+						auto bolts=(&objects.chainLightningCastingEffects[j].bolt)[0..1];
+						renderBolts!(totalFrames,0.5f)(bolts,start,end,frame,α,β);
+					}
+					foreach(j;0..objects.soulWindEffects.length){
+						auto start=objects.soulWindEffects[j].start.center(state);
+						auto end=objects.soulWindEffects[j].end.center(state);
+						auto frame=objects.soulWindEffects[j].frame;
+						enum totalFrames=SoulWindEffect.totalFrames;
+						auto bolts=objects.soulWindEffects[j].bolts[];
+						renderBolts!totalFrames(bolts,start,end,frame,0.0f,1.0f);
 					}
 					foreach(j;0..objects.rituals.length){
 						auto frame=objects.rituals[j].frame;
@@ -1432,6 +1459,23 @@ struct Renderer(B){
 						foreach(ref dragonfireCasting;objects.dragonfireCastings) with(dragonfireCasting) renderDragonfire(dragonfire.position,dragonfire.direction,dragonfire.frame,scale);
 						foreach(ref dragonfire;objects.dragonfires) renderDragonfire(dragonfire.position,dragonfire.direction,dragonfire.frame,dragonfire.scale);
 					}
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.soulWindCastings.length||objects.soulWinds.length)){
+					auto material=self.soulWind.material;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
+					void renderSoulWind(ref SoulWind!B soulWind){
+						auto frame=soulWind.frame;
+						auto position=soulWind.position;
+						auto rotation=facingQuaternion(2*pi!float*frame/(4*updateFPS));
+						B.shadelessMaterialBackend.setTransformation(position,rotation,rc);
+						auto mesh=self.soulWind.getFrame(frame%self.soulWind.numFrames);
+						mesh.render(rc);
+					}
+					foreach(ref soulWindCasting;objects.soulWindCastings)
+						renderSoulWind(soulWindCasting.soulWind);
+					foreach(ref soulWind;objects.soulWinds)
+						renderSoulWind(soulWind);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.brainiacEffects.length){
 					auto material=self.brainiacEffect.material;

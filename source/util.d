@@ -487,6 +487,7 @@ struct SmallArray(T,size_t n){
 	auto opSlice(){
 		return chain(elements[0..min($,length)],rest[]);
 	}
+	this(this){ rest=rest.dup; }
 }
 
 Vector3f[2] cintp2(Vector3f[2][2] locations,float t){

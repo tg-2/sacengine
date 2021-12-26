@@ -271,6 +271,9 @@ OrderTarget centerTarget(B)(int id,ObjectState!B state)in{
 	auto position=state.objectById!((obj)=>obj.center)(id);
 	return OrderTarget(state.targetTypeFromId(id),id,position);
 }
+OrderTarget positionTarget(B)(Vector3f position,ObjectState!B state){
+	return OrderTarget(TargetType.terrain,0,position);
+}
 
 Vector3f[2] hitbox(B)(ref OrderTarget target,ObjectState!B state){
 	if(!state.isValidTarget(target.id)) return [target.position,target.position];
@@ -2579,7 +2582,7 @@ struct Rainbow(B){
 		return false;
 	}
 	bool hasTarget(int id){ return id&&targets[].canFind(id); }
-	
+
 	enum travelFrames=64;
 }
 struct RainbowEffect(B){
@@ -2746,7 +2749,7 @@ struct Dragonfire(B){
 	int unsuccessfulTries=0;
 	enum maxUnsuccessful=1;
 	enum shrinkTime=1.0f;
-	
+
 	enum rotationSpeed=pi!float;
 	enum totTargets=6;
 	int[totTargets] targets=0;
@@ -2761,6 +2764,37 @@ struct Dragonfire(B){
 		return false;
 	}
 	bool hasTarget(int id){ return id&&targets[].canFind(id); }
+}
+
+struct SoulWindCasting(B){
+	ManaDrain!B manaDrain;
+	SoulWind!B soulWind;
+}
+struct SoulWind(B){
+	int soul;
+	int wizard;
+	SacSpell!B spell;
+	Vector3f position;
+	Vector3f startPosition;
+	Vector3f targetVelocity;
+	PositionPredictor positionPredictor;
+	int frame=0;
+	enum roundtripTime=9*updateFPS;
+
+	SmallArray!(int,24) targets;
+	bool hasTarget(int id){ return id&&targets[].canFind(id); }
+	bool addTarget(int id){
+		if(!id||hasTarget(id)) return false;
+		targets~=id;
+		return true;
+	}
+}
+struct SoulWindEffect{
+	enum totalFrames=32;
+	enum changeShapeDelay=4;
+	OrderTarget start,end;
+	int frame;
+	LightningBolt[2] bolts;
 }
 
 struct BrainiacProjectile(B){
@@ -3753,6 +3787,30 @@ struct Effects(B){
 		if(i+1<dragonfires.length) dragonfires[i]=move(dragonfires[$-1]);
 		dragonfires.length=dragonfires.length-1;
 	}
+	Array!(SoulWindCasting!B) soulWindCastings;
+	void addEffect(SoulWindCasting!B soulWindCasting){
+		soulWindCastings~=move(soulWindCasting);
+	}
+	void removeSoulWindCasting(int i){
+		if(i+1<soulWindCastings.length) soulWindCastings[i]=move(soulWindCastings[$-1]);
+		soulWindCastings.length=soulWindCastings.length-1;
+	}
+	Array!(SoulWind!B) soulWinds;
+	void addEffect(SoulWind!B soulWind){
+		soulWinds~=move(soulWind);
+	}
+	void removeSoulWind(int i){
+		if(i+1<soulWinds.length) soulWinds[i]=move(soulWinds[$-1]);
+		soulWinds.length=soulWinds.length-1;
+	}
+	Array!SoulWindEffect soulWindEffects;
+	void addEffect(SoulWindEffect soulWindEffect){
+		soulWindEffects~=move(soulWindEffect);
+	}
+	void removeSoulWindEffect(int i){
+		if(i+1<soulWindEffects.length) soulWindEffects[i]=move(soulWindEffects[$-1]);
+		soulWindEffects.length=soulWindEffects.length-1;
+	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
 	void addEffect(BrainiacProjectile!B brainiacProjectile){
@@ -4206,6 +4264,9 @@ struct Effects(B){
 		assignArray(eruptDebris,rhs.eruptDebris);
 		assignArray(dragonfireCastings,rhs.dragonfireCastings);
 		assignArray(dragonfires,rhs.dragonfires);
+		assignArray(soulWindCastings,rhs.soulWindCastings);
+		assignArray(soulWinds,rhs.soulWinds);
+		assignArray(soulWindEffects,rhs.soulWindEffects);
 		assignArray(brainiacProjectiles,rhs.brainiacProjectiles);
 		assignArray(brainiacEffects,rhs.brainiacEffects);
 		assignArray(shrikeProjectiles,rhs.shrikeProjectiles);
@@ -6356,6 +6417,8 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 				case SpellTag.dragonfire:
 					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
 					return stun(castDragonfire(target.id,manaDrain,spell,castingTime,state));
+				case SpellTag.soulWind:
+					return stun(castSoulWind(target.id,manaDrain,spell,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -7074,6 +7137,24 @@ bool dragonfire(B)(Dragonfire!B dragonfire,ObjectState!B state){
 	dragonfire.addTarget(dragonfire.target.id);
 	playSoundAt("2ifd",dragonfire.position,state,dragonfireGain); // TODO: move sound with spell?
 	state.addEffect(dragonfire);
+	return true;
+}
+
+bool castSoulWind(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	auto soulPosition=state.soulById!((ref soul)=>soul.position,()=>Vector3f.init)(target);
+	if(isNaN(soulPosition.x)) return false;
+	auto position=state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(manaDrain.wizard);
+	if(isNaN(position.x)) return false;
+	auto direction=cross(Vector3f(0.0f,0.0f,1.0f),soulPosition-position).normalized;
+	auto targetVelocity=0.75f*(soulPosition-position).length*direction;
+	//auto targetVelocity=Vector3f(0.0f,0.0f,0.0f);
+	playSpellSoundTypeAt(SoundType.fireball,position,state,soulWindGain); // TODO: move sound with soul wind?
+	auto soulWind=SoulWind!B(target,manaDrain.wizard,spell,position,position,targetVelocity);
+	state.addEffect(SoulWindCasting!B(manaDrain,soulWind));
+	return true;
+}
+bool soulWind(B)(SoulWind!B soulWind,ObjectState!B state){
+	state.addEffect(soulWind);
 	return true;
 }
 
@@ -13027,6 +13108,160 @@ bool updateDragonfire(B)(ref Dragonfire!B dragonfire,ObjectState!B state){
 	}
 }
 
+void animateSoulWindCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	auto castParticle=SacParticle!B.get(ParticleType.chainLightningCasting);
+	wizard.animateCasting(castParticle,state);
+}
+
+bool updateSoulWindCasting(B)(ref SoulWindCasting!B soulWindCast,ObjectState!B state){
+	with(soulWindCast){
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				if(!soulWind.updateSoulWindPosition(state))
+					return false;
+				return state.movingObjectById!((ref obj){
+					obj.animateSoulWindCasting(state);
+					return true;
+				},()=>false)(manaDrain.wizard);
+			case CastingStatus.interrupted:
+				return false;
+			case CastingStatus.finished:
+				.soulWind(soulWind,state);
+				return false;
+		}
+	}
+}
+
+void animateSoulWind(B)(ref SoulWind!B soulWind,Vector3f oldPosition,ObjectState!B state){
+	with(soulWind){
+		if(state.isOnGround(soulWind.position)){
+			enum numParticles=2;
+			auto sacParticle=SacParticle!B.get(ParticleType.dust);
+			foreach(i;0..numParticles){
+				auto position=oldPosition*((cast(float)numParticles-1-i)/numParticles)+position*(cast(float)(i+1)/numParticles);
+				auto velocity=Vector3f(0.0f,0.0f,0.0f);
+				auto lifetime=31;
+				auto scale=1.0f;
+				auto frame=0;
+				position+=0.3f*state.uniformDirection();
+				state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+			}
+		}
+	}
+}
+
+enum soulWindGain=2.0f;
+bool updateSoulWindPosition(B)(ref SoulWind!B soulWind,ObjectState!B state){
+	static assert(soulWind.roundtripTime%4==0);
+	enum soulFrame=soulWind.roundtripTime/2;
+	enum backFrame=soulWind.roundtripTime;
+	enum WindPhase{
+		toSoul,
+		back,
+	}
+	static WindPhase windPhase(int frame){
+		if(frame<=soulFrame) return WindPhase.toSoul;
+		return WindPhase.back;
+	}
+	static int nextTransitionFrame(int frame){
+		final switch(windPhase(frame)){
+			case WindPhase.toSoul: return soulFrame;
+			case WindPhase.back: return backFrame;
+		}
+	}
+	static int framesLeft(int frame){ return nextTransitionFrame(frame)-frame; }
+	static float relativeProgress(int frame){
+		if(frame<=soulFrame) return float(frame)/soulFrame;
+		return float(frame-soulFrame)/(backFrame-soulFrame);
+	}
+	auto prevTargetPosition=soulWind.positionPredictor.lastPosition;
+	auto oldPosition=soulWind.position;
+	soulWind.frame+=1;
+	auto soulPosition=state.soulById!((ref soul)=>soul.position,()=>Vector3f.init)(soulWind.soul);
+	if(isNaN(soulPosition.x)) return false;
+	auto wizardPosition=state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(soulWind.wizard);
+	Vector3f[2] windOrigin(int frame){
+		final switch(windPhase(frame)){
+			case WindPhase.toSoul: return [soulWind.startPosition,Vector3f(0.0f,0.0f,0.0f)];
+			case WindPhase.back: return [soulWind.startPosition,soulWind.targetVelocity];
+		}
+	}
+	Vector3f[2] windTarget(int frame){
+		final switch(windPhase(frame)){
+			case WindPhase.toSoul: return [soulPosition,soulWind.targetVelocity];
+			case WindPhase.back: return [wizardPosition,0.75f*(wizardPosition-soulWind.startPosition)];
+		}
+	}
+	auto targetLocation=windTarget(soulWind.frame);
+	auto targetPosition=targetLocation[0],targetVelocity=targetLocation[1];
+	if(isNaN(targetPosition.x)) return false;
+	if(soulWind.frame==soulFrame+1){
+		playSpellSoundTypeAt(SoundType.fireball,oldPosition,state,soulWindGain); // TODO: move sound with soul wind?
+		auto side=state.movingObjectById!((ref obj)=>obj.side,()=>-1)(soulWind.wizard);
+		state.soulById!((ref soul,side,state){
+			soul.severSoul(state);
+			soul.preferredSide=side;
+		},(){})(soulWind.soul,side,state);
+		soulWind.startPosition=oldPosition;
+		soulWind.positionPredictor.lastPosition=targetPosition;
+	}
+	auto curFramesLeft=framesLeft(soulWind.frame);
+	auto predictedTargetPosition=soulWind.positionPredictor.predictAtTime(float(curFramesLeft)/updateFPS,targetPosition);
+	auto relativePosition=1.0f/(curFramesLeft+1);
+	Vector3f[2] newLocation=cintp2([windOrigin(soulWind.frame),windTarget(soulWind.frame)],relativeProgress(soulWind.frame));
+	auto newPosition=newLocation[0], newVelocity=newLocation[1];
+	newPosition.z=state.getHeight(newPosition);
+	if(windPhase(soulWind.frame)>WindPhase.toSoul){
+		state.soulById!((ref soul,windPosition){
+			if(!soul.collectorId) soul.position=windPosition;
+		},(){})(soulWind.soul,newPosition);
+	}
+	soulWind.position=newPosition;
+	soulWind.animateSoulWind(oldPosition,state);
+	return soulWind.frame<backFrame;
+}
+
+bool soulWindEffect(B)(OrderTarget start,OrderTarget end,ObjectState!B state){
+	playSpellSoundTypeAt(SoundType.lightning,0.5f*(start.position+end.position),state,4.0f);
+	auto soulWindEffect=SoulWindEffect(start,end,0);
+	foreach(ref bolt;soulWindEffect.bolts)
+		bolt.changeShape(state);
+	state.addEffect(soulWindEffect);
+	return true;
+}
+
+bool updateSoulWind(B)(ref SoulWind!B soulWind,ObjectState!B state){
+	if(!soulWind.updateSoulWindPosition(state))
+		return false;
+	static bool callback(int target,int wizard,int side,SoulWind!B* soulWind,ObjectState!B state){
+		if(!soulWind.addTarget(target)) return false;
+		return state.movingObjectById!((ref obj,wizard,side,state){
+			if(state.sides.getStance(side,obj.side)==Stance.ally) return false;
+			obj.stunWithCooldown(stunCooldownFrames,state);
+			auto start=positionTarget(soulWind.position+Vector3f(0.0f,0.0f,1.0f),state);
+			auto end=centerTarget(target,state);
+			soulWindEffect(start,end,state);
+			return true;
+		},()=>false)(target,wizard,side,state);
+	}
+	auto side=state.movingObjectById!((ref obj)=>obj.side,()=>-1)(soulWind.wizard);
+	if(side==-1) return false;
+	with(soulWind) dealSplashSpellDamageAt!callback(0,spell,spell.effectRange,wizard,side,position,DamageMod.none,state,wizard,side,&soulWind,state);
+	return true;
+}
+
+bool updateSoulWindEffect(B)(ref SoulWindEffect soulWindEffect,ObjectState!B state){
+	soulWindEffect.frame+=1;
+	static assert(updateFPS==60);
+	if(soulWindEffect.frame>=soulWindEffect.totalFrames) return false;
+	if(soulWindEffect.frame%soulWindEffect.changeShapeDelay==0)
+		foreach(ref bolt;soulWindEffect.bolts)
+			bolt.changeShape(state);
+	//soulWindEffect.start.position=soulWindEffect.start.center(state);
+	soulWindEffect.end.position=soulWindEffect.end.center(state);
+	return true;
+}
+
 enum brainiacProjectileHitGain=4.0f;
 enum brainiacProjectileSize=0.45f; // TODO: ok?
 enum brainiacProjectileSlidingDistance=1.5f;
@@ -15267,6 +15502,27 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.dragonfires.length;){
 		if(!updateDragonfire(effects.dragonfires[i],state)){
 			effects.removeDragonfire(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.soulWindCastings.length;){
+		if(!updateSoulWindCasting(effects.soulWindCastings[i],state)){
+			effects.removeSoulWindCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.soulWinds.length;){
+		if(!updateSoulWind(effects.soulWinds[i],state)){
+			effects.removeSoulWind(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.soulWindEffects.length;){
+		if(!updateSoulWindEffect(effects.soulWindEffects[i],state)){
+			effects.removeSoulWindEffect(i);
 			continue;
 		}
 		i++;

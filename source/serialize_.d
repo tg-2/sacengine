@@ -453,6 +453,15 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Dra
 void serialize(alias sink,B)(ref Dragonfire!B dragonfire){ serializeStruct!sink(dragonfire); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Dragonfire!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref SoulWindCasting!B soulWindCasting){ serializeStruct!sink(soulWindCasting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SoulWindCasting!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref SoulWind!B soulWind){ serializeStruct!sink(soulWind); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SoulWind!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink)(ref SoulWindEffect soulWindEffect){ serializeStruct!sink(soulWindEffect); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SoulWindEffect)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref BrainiacProjectile!B brainiacProjectile){ serializeStruct!sink(brainiacProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BrainiacProjectile!B)){ deserializeStruct(result,state,data); }
 

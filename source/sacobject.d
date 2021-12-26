@@ -2041,6 +2041,46 @@ struct SacDragonfire(B){
 	}
 }
 
+struct SacSoulWind(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Stra.FLDR/txtr.FLDR/swnd.TXTR"),false);
+	}
+	B.Material material;
+	B.Mesh[] frames; // TODO: do in shader instead
+	enum numFrames=32;
+	auto getFrame(int i){ return frames[i]; }
+	enum numFaces=32;
+	enum numSegments=32;
+	enum height=3.0f;
+	enum radius=1.5f;
+	enum texrep=2.0f;
+	static B.Mesh[] createMeshes(){
+		auto meshes=new B.Mesh[](numFrames);
+		foreach(frame,ref mesh;meshes){
+			mesh=B.makeMesh((numFaces+1)*(numSegments+1),2*numFaces*numSegments);
+			foreach(i;0..numSegments+1){
+				foreach(j;0..numFaces+1){
+					auto cradius=radius*(float(i)/numSegments+0.05f*sin(2.0f*pi!float*i/numSegments));
+					auto φ=2.0f*pi!float*j/numFaces;
+					auto θ=pi!float*i/numSegments;
+					mesh.vertices[i*(numFaces+1)+j]=Vector3f(cradius*cos(φ),cradius*sin(φ),height*i/numSegments)+0.5f*cradius*Vector3f(cos(θ),sin(θ),0.0f);
+					mesh.texcoords[i*(numFaces+1)+j]=Vector2f(texrep*float(j)/numFaces,-texrep*(float(i)/numSegments-0.5f*float(frame)/numFrames));
+				}
+			}
+			foreach(i;0..numSegments){
+				foreach(j;0..numFaces){
+					mesh.indices[2*(i*numFaces+j)]=[i*(numFaces+1)+j,(i+1)*(numFaces+1)+j+1,(i+1)*(numFaces+1)+j];
+					mesh.indices[2*(i*numFaces+j)+1]=[i*(numFaces+1)+j,i*(numFaces+1)+j+1,(i+1)*(numFaces+1)+j+1];
+				}
+			}
+			mesh.generateNormals(); // (doesn't actually need normals)
+			B.finalizeMesh(mesh);
+		}
+		return meshes;
+	}
+}
+
 struct SacBrainiacEffect(B){
 	B.Texture texture;
 	static B.Texture loadTexture(){
@@ -2511,9 +2551,9 @@ final class SacCommandCone(B){
 	enum lifetime=0.5f;
 	static immutable colors=[Color4f(1.0f,1.0f,1.0f),Color4f(1.0f,0.05f,0.05f),Color4f(0.05f,0.05f,1.0f)];
 	this(){
-		mesh=B.makeMesh(129,128);
+		mesh=B.makeMesh(numFaces+1,numFaces);
 		foreach(i;0..numFaces){
-			auto φ=2.0f*cast(float)pi!float*i/numFaces;
+			auto φ=2.0f*pi!float*i/numFaces;
 			mesh.vertices[i]=Vector3f(0.01f,0.0f,0.0f)+Vector3f(radius*cos(φ),radius*sin(φ),height);
 			mesh.texcoords[i]=Vector2f(0.5f,0.5f)+0.5f*Vector2f(cos(φ),sin(φ));
 		}
