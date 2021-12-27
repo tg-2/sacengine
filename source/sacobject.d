@@ -75,12 +75,14 @@ final class SacObject(B){
 		return !cre8||cre8.aggressiveness==0||isSacDoctor||isFamiliar;
 	}
 	@property float aggressiveRange(){
-		if(auto ra=rangedAttack) return max(65.0f,1.5f*ra.range); // TODO: ok?
-		return 65.0f;
+		enum aggressiveDistance=65.0f;
+		if(auto ra=rangedAttack) return max(aggressiveDistance,1.5f*ra.range); // TODO: ok?
+		return aggressiveDistance;
 	}
-	@property float advanceRange(){
-		if(auto ra=rangedAttack) return max(100.0f,1.75f*ra.range); // TODO: ok?
-		return 100.0f;
+	@property float advanceAggressiveRange(){
+		enum advanceDistance=100.0f;
+		if(auto ra=rangedAttack) return max(advanceDistance,1.75f*ra.range); // TODO: ok?
+		return advanceDistance;
 	}
 	@property bool canRun(){
 		return hasAnimationState(AnimationState.run);

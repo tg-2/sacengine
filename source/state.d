@@ -819,12 +819,17 @@ bool isAggressive(B)(ref MovingObject!B obj,ObjectState!B state){
 	if(obj.creatureStats.effects.stealth) return false;
 	return true;
 }
-float aggressiveRange(B)(ref MovingObject!B obj,CommandType type,ObjectState!B state){
+float patrolAggressiveRange(B)(ref MovingObject!B obj,ObjectState!B state){
 	return obj.sacObject.aggressiveRange;
 }
-float advanceRange(B)(ref MovingObject!B obj,CommandType type,ObjectState!B state){
-	return obj.sacObject.aggressiveRange;
+float advanceAggressiveRange(B)(ref MovingObject!B obj,ObjectState!B state){
+	return obj.sacObject.advanceAggressiveRange;
 }
+float patrolAroundAggressiveRange(B)(ref MovingObject!B obj,ObjectState!B state){
+	if(auto ra=obj.rangedAttack) return ra.range;
+	return guardDistance;
+}
+
 bool isMeleeAttacking(B)(ref MovingObject!B obj,ObjectState!B state){
 	return !!obj.creatureState.mode.among(CreatureMode.meleeAttacking,CreatureMode.meleeMoving);
 }
@@ -7709,7 +7714,7 @@ bool moveWithinRange2D(B)(ref MovingObject!B object,Vector3f targetPosition,floa
 }
 
 bool retreatTowards(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectState!B state){
-	return object.patrolAround(targetPosition,guardDistance,state) ||
+	return object.patrolAround(targetPosition,state) ||
 		object.moveWithinRange(targetPosition,retreatDistance,state) ||
 		object.stop(float.init,state);
 }
@@ -8061,9 +8066,10 @@ int updateTarget(bool advance=false,B,T...)(ref MovingObject!B object,Vector3f p
 	return object.creatureAI.targetId;
 }
 
-bool patrolAround(B)(ref MovingObject!B object,Vector3f position,float range,ObjectState!B state){
+bool patrolAround(B)(ref MovingObject!B object,Vector3f position,ObjectState!B state){
 	if(!object.isAggressive(state)) return false;
-	if((object.position.xy-position.xy).lengthsqr>range^^2) return false;
+	auto range=object.patrolAroundAggressiveRange(state);
+	if((object.position.xy-position.xy).lengthsqr>(range+object.shootDistance(state))^^2) return false;
 	if(auto targetId=object.updateTarget(position,range+object.shootDistance(state),state))
 		if(object.attack(targetId,state))
 			return true;
@@ -8078,7 +8084,7 @@ bool guard(B)(ref MovingObject!B object,int targetId,ref bool idle,ObjectState!B
 	object.creatureAI.order.targetFacing=targetFacing;
 	auto formationOffset=object.creatureAI.order.formationOffset;
 	targetPosition=getTargetPosition(targetPosition,targetFacing,formationOffset,state);
-	if(!object.patrolAround(targetPosition,guardDistance,state)){ // TODO: prefer enemies that attack the guard target?
+	if(!object.patrolAround(targetPosition,state)){ // TODO: prefer enemies that attack the guard target?
 		idle&=!object.moveTo(targetPosition,targetFacing,state);
 	}
 	return true;
@@ -8087,7 +8093,7 @@ bool guard(B)(ref MovingObject!B object,int targetId,ref bool idle,ObjectState!B
 bool patrol(B)(ref MovingObject!B object,ObjectState!B state){
 	if(!object.isAggressive(state)) return false;
 	auto position=object.position;
-	auto range=object.aggressiveRange(CommandType.none,state);
+	auto range=object.patrolAggressiveRange(state);
 	if(auto targetId=object.updateTarget(position,range,state))
 		if(object.attack(targetId,state))
 			return true;
@@ -8096,7 +8102,7 @@ bool patrol(B)(ref MovingObject!B object,ObjectState!B state){
 
 bool advance(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectState!B state){
 	if(object.isPacifist(state)) return false;
-	auto range=object.advanceRange(CommandType.none,state);
+	auto range=object.advanceAggressiveRange(state);
 	if(auto targetId=object.updateTarget!true(targetPosition,range,state))
 		if(object.attack(object.creatureAI.targetId,state))
 			return true;
@@ -8506,7 +8512,7 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 			break;
 		case CommandType.guardArea:
 			auto targetPosition=object.creatureAI.order.getTargetPosition(state);
-			if(!object.patrolAround(targetPosition,guardDistance,state))
+			if(!object.patrolAround(targetPosition,state))
 				if(!object.moveTo(targetPosition,object.creatureAI.order.targetFacing,state))
 					object.unqueueOrder(state);
 			break;
