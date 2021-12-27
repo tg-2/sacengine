@@ -819,11 +819,16 @@ bool isAggressive(B)(ref MovingObject!B obj,ObjectState!B state){
 	if(obj.creatureStats.effects.stealth) return false;
 	return true;
 }
+
 float patrolAggressiveRange(B)(ref MovingObject!B obj,ObjectState!B state){
 	return obj.sacObject.aggressiveRange;
 }
 float advanceAggressiveRange(B)(ref MovingObject!B obj,ObjectState!B state){
 	return obj.sacObject.advanceAggressiveRange;
+}
+float patrolAroundGuardRange(B)(ref MovingObject!B obj,ObjectState!B state){
+	if(auto ra=obj.rangedAttack) return ra.range;
+	return guardDistance;
 }
 float patrolAroundAggressiveRange(B)(ref MovingObject!B obj,ObjectState!B state){
 	if(auto ra=obj.rangedAttack) return ra.range;
@@ -8068,8 +8073,9 @@ int updateTarget(bool advance=false,B,T...)(ref MovingObject!B object,Vector3f p
 
 bool patrolAround(B)(ref MovingObject!B object,Vector3f position,ObjectState!B state){
 	if(!object.isAggressive(state)) return false;
+	auto guardRange=object.patrolAroundGuardRange(state);
+	if((object.position.xy-position.xy).lengthsqr>guardRange^^2) return false;
 	auto aggressiveRange=object.patrolAroundAggressiveRange(state);
-	if((object.position.xy-position.xy).lengthsqr>aggressiveRange^^2) return false;
 	if(auto targetId=object.updateTarget(position,aggressiveRange,state))
 		if(object.attack(targetId,state))
 			return true;
