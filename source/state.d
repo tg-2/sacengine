@@ -819,20 +819,17 @@ bool isAggressive(B)(ref MovingObject!B obj,ObjectState!B state){
 	if(obj.creatureStats.effects.stealth) return false;
 	return true;
 }
-
-float patrolAggressiveRange(B)(ref MovingObject!B obj,ObjectState!B state){
+float aggressiveRange(B)(ref MovingObject!B obj,ObjectState!B state){
 	return obj.sacObject.aggressiveRange;
+}
+float guardAggressiveRange(B)(ref MovingObject!B obj,ObjectState!B state){
+	return obj.sacObject.guardAggressiveRange;
 }
 float advanceAggressiveRange(B)(ref MovingObject!B obj,ObjectState!B state){
 	return obj.sacObject.advanceAggressiveRange;
 }
-float patrolAroundGuardRange(B)(ref MovingObject!B obj,ObjectState!B state){
-	if(auto ra=obj.rangedAttack) return ra.range;
-	return guardDistance;
-}
-float patrolAroundAggressiveRange(B)(ref MovingObject!B obj,ObjectState!B state){
-	if(auto ra=obj.rangedAttack) return ra.range;
-	return guardDistance;
+float guardRange(B)(ref MovingObject!B obj,ObjectState!B state){
+	return obj.sacObject.guardRange;
 }
 
 bool isMeleeAttacking(B)(ref MovingObject!B obj,ObjectState!B state){
@@ -8073,9 +8070,9 @@ int updateTarget(bool advance=false,B,T...)(ref MovingObject!B object,Vector3f p
 
 bool patrolAround(B)(ref MovingObject!B object,Vector3f position,ObjectState!B state){
 	if(!object.isAggressive(state)) return false;
-	auto guardRange=object.patrolAroundGuardRange(state);
+	auto guardRange=object.guardRange(state);
 	if((object.position.xy-position.xy).lengthsqr>guardRange^^2) return false;
-	auto aggressiveRange=object.patrolAroundAggressiveRange(state);
+	auto aggressiveRange=object.guardAggressiveRange(state);
 	if(auto targetId=object.updateTarget(position,aggressiveRange,state))
 		if(object.attack(targetId,state))
 			return true;
@@ -8099,7 +8096,7 @@ bool guard(B)(ref MovingObject!B object,int targetId,ref bool idle,ObjectState!B
 bool patrol(B)(ref MovingObject!B object,ObjectState!B state){
 	if(!object.isAggressive(state)) return false;
 	auto position=object.position;
-	auto range=object.patrolAggressiveRange(state);
+	auto range=object.aggressiveRange(state);
 	if(auto targetId=object.updateTarget(position,range,state))
 		if(object.attack(targetId,state))
 			return true;
@@ -8455,7 +8452,6 @@ bool poisonCloud(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B s
 }
 
 enum retreatDistance=9.0f;
-enum guardDistance=20.0f; // ok?
 enum attackDistance=100.0f; // ok?
 enum shelterDistance=50.0f;
 enum scareDistance=50.0f;
