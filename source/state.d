@@ -2119,6 +2119,7 @@ struct SacDocTether{
 
 enum SacDocCarryStatus{
 	fall,
+	bounce,
 	walkToTarget,
 	pump,
 	move,
@@ -10168,6 +10169,12 @@ bool updateSacDocCarry(B)(ref SacDocCarry!B sacDocCarry,ObjectState!B state){
 			final switch(status){
 				case SacDocCarryStatus.fall:
 					if(sacDoc.animationState==cast(AnimationState)SacDoctorAnimationState.bounce){
+						status=SacDocCarryStatus.bounce;
+						goto case;
+					}
+					break;
+				case SacDocCarryStatus.bounce:
+					if(sacDoc.animationState!=cast(AnimationState)SacDoctorAnimationState.bounce){
 						sacDoc.creatureStats.flags&=~Flags.cannotDamage;
 						status=SacDocCarryStatus.walkToTarget;
 						goto case;
@@ -10176,7 +10183,6 @@ bool updateSacDocCarry(B)(ref SacDocCarry!B sacDocCarry,ObjectState!B state){
 				case SacDocCarryStatus.walkToTarget:
 					final switch(type){
 						case RitualType.convert:
-							if(sacDoc.animationState==cast(AnimationState)SacDoctorAnimationState.bounce) break;
 							if(shrineDestroyed||!state.soulById!((ref soul)=>soul.state.among(SoulState.normal,SoulState.emerging)||!soul.creatureId,()=>false)(soul)){
 								sacDoc.kill(state);
 								freeSoul();
@@ -10202,7 +10208,6 @@ bool updateSacDocCarry(B)(ref SacDocCarry!B sacDocCarry,ObjectState!B state){
 							}
 							break;
 						case RitualType.desecrate:
-							if(sacDoc.animationState==cast(AnimationState)SacDoctorAnimationState.bounce) break;
 							auto creaturePositionScaleNumSouls=state.movingObjectById!((ref obj,spell,state)=>tuple(obj.position,obj.getScale,obj.sacObject.numSouls),()=>Tuple!(Vector3f,Vector2f,int).init)(creature,spell,state);
 							auto creaturePosition=creaturePositionScaleNumSouls[0], scale=creaturePositionScaleNumSouls[1], numSouls=creaturePositionScaleNumSouls[2];
 							auto creatureTarget=OrderTarget(TargetType.creature,creature,creaturePosition);
