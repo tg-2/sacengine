@@ -8068,9 +8068,9 @@ int updateTarget(bool advance=false,B,T...)(ref MovingObject!B object,Vector3f p
 
 bool patrolAround(B)(ref MovingObject!B object,Vector3f position,ObjectState!B state){
 	if(!object.isAggressive(state)) return false;
-	auto range=object.patrolAroundAggressiveRange(state);
-	if((object.position.xy-position.xy).lengthsqr>range^^2) return false;
-	if(auto targetId=object.updateTarget(position,range+object.shootDistance(state),state))
+	auto aggressiveRange=object.patrolAroundAggressiveRange(state);
+	if((object.position.xy-position.xy).lengthsqr>aggressiveRange^^2) return false;
+	if(auto targetId=object.updateTarget(position,aggressiveRange,state))
 		if(object.attack(targetId,state))
 			return true;
 	return false;
