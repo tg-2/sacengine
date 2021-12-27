@@ -7746,7 +7746,12 @@ bool hasClearShot(B)(ref MovingObject!B object,bool isAbility,Vector3f targetPos
 	return state.hasLineOfSightTo(object.firstShotPosition(isAbility)+offset,targetPosition+offset,object.id,target.id);
 }
 float shootDistance(B)(ref MovingObject!B object,ObjectState!B state){
-	if(auto ra=object.rangedAttack) return 0.8f*ra.range; // TODO: figure out the range limit for AI
+	if(auto ra=object.rangedAttack){
+		with(CommandType)
+			if(object.creatureAI.order.command.among(none,retreat,guard,guardArea))
+				return ra.range;
+		return 0.8f*ra.range; // TODO: figure out the range limit for AI
+	}
 	return 0.0f;
 }
 float useAbilityDistance(B)(ref MovingObject!B object,ObjectState!B state){
