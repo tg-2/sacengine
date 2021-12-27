@@ -12870,7 +12870,8 @@ bool updateErupt(B)(ref Erupt!B erupt,ObjectState!B state){
 		if(--soundTimer0<=0) soundTimer0=playSpellSoundTypeAt!true(SoundType.convertRevive,position,state,eruptGain0); // TODO: stop sound
 		if(--soundTimer1<=0) soundTimer1=playSpellSoundTypeAt!true(SoundType.bore,position,state,eruptGain1); // TODO: stop sound
 		if(frame%(updateFPS/10)==0) state.addEffect(ScreenShake(position,updateFPS/10,1.5f,200.0f));
-		auto eruptFrame=cast(int)(growDur*updateFPS);
+		static assert(growDur==4.2f);
+		enum eruptFrame=42*updateFPS/10;
 		if(++frame<eruptFrame){
 			animateErupt(erupt,state);
 		}else if(frame==eruptFrame){
