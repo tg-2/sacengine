@@ -7753,13 +7753,8 @@ bool hasClearShot(B)(ref MovingObject!B object,bool isAbility,Vector3f targetPos
 	auto offset=target.type==TargetType.terrain?Vector3f(0.0f,0.0f,0.2f):Vector3f(0.0f,0.0f,-0.2f); // TODO: do some sort of cylinder cast instead
 	return state.hasLineOfSightTo(object.firstShotPosition(isAbility)+offset,targetPosition+offset,object.id,target.id);
 }
-float shootDistance(B)(ref MovingObject!B object,ObjectState!B state){
-	if(auto ra=object.rangedAttack){
-		with(CommandType)
-			if(object.creatureAI.order.command.among(none,retreat,guard,guardArea))
-				return ra.range;
-		return 0.8f*ra.range; // TODO: figure out the range limit for AI
-	}
+float shootRange(B)(ref MovingObject!B object,ObjectState!B state){
+	if(auto ra=object.rangedAttack) return 0.8f*ra.range;
 	return 0.0f;
 }
 float useAbilityDistance(B)(ref MovingObject!B object,ObjectState!B state){
@@ -7816,8 +7811,8 @@ bool aim(bool isAbility=false,B)(ref MovingObject!B object,SacSpell!B rangedAtta
 					return true;
 			}
 		}else{
-			auto distance=object.shootDistance(state);
-			if(object.moveWithinRange(targetPosition,distance,state))
+			auto range=object.shootRange(state);
+			if(object.moveWithinRange(targetPosition,range,state))
 				return true;
 		}
 	}
