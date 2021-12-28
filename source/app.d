@@ -151,8 +151,11 @@ void loadMap(B)(ref B backend,ref Options options)in{
 		}
 		auto mapName=network.players[network.host].settings.map;
 		if(!network.isHost){
-			map=loadSacMap!B(mapName,&mapData); // TODO: compute hash without loading map
-			options.mapHash=map.crc32;
+			import std.file: exists;
+			if(exists(mapName)){
+				map=loadSacMap!B(mapName,&mapData); // TODO: compute hash without loading map
+				options.mapHash=map.crc32;
+			}
 			network.updateSetting!"mapHash"(options.mapHash);
 			network.updateStatus(PlayerStatus.mapHashed);
 		}else{
@@ -170,8 +173,9 @@ void loadMap(B)(ref B backend,ref Options options)in{
 				auto crc32=digest!CRC32(network.mapData);
 				static assert(typeof(crc32).sizeof==int.sizeof);
 				if(*cast(int*)&crc32==hash){
+					import std.path: buildPath, baseName, stripExtension;
+					mapName=buildPath("maps",baseName(mapName));
 					import std.file: exists, rename;
-					import std.path;
 					if(exists(mapName)){
 						auto newName=stripExtension(mapName)~text(".",map.crc32)~".scp";
 						rename(mapName,newName);
@@ -180,6 +184,7 @@ void loadMap(B)(ref B backend,ref Options options)in{
 					File mapFile=File(mapName,"w");
 					mapFile.rawWrite(network.mapData);
 					mapFile.close();
+					stderr.writeln("downloaded map '",mapName,"'");
 					network.mapData.length=0;
 					map=loadSacMap!B(mapName,&mapData);
 					enforce(map.crc32==hash,"map hash mismatch");
