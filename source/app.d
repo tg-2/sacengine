@@ -13,18 +13,15 @@ import std.exception, std.conv, std.typecons;
 import speechexport;
 
 GameState!B prepareGameState(B)(ref Options options){
-	auto hmap=getHmap(options.map);
-	auto base=hmap[0..$-".HMAP".length];
-	auto map=new SacMap!B(hmap);
-	auto sids=loadSids(base~".SIDS");
-	Trig trig;
-	try trig=loadTRIG(base~".TRIG");
-	catch(Exception e){ stderr.writeln("warning: failed to parse triggers (",e.msg,")"); }
-	auto ntts=loadNTTs(base~".NTTS");
-	auto sides=new Sides!B(sids);
-	auto triggers=new Triggers!B(trig);
-	return new GameState!B(map,sides,triggers,ntts,options);
+	auto map=loadSacMap!B(options.map);
+	auto state=new GameState!B(map);
+	map.makeMeshes(options.enableMapBottom);
+	return state;
 }
+/+
+GameInit!B gameInit(B)(R playerSettings,ref Options options){
+
+}+/
 
 void loadMap(B)(ref B backend,ref Options options)in{
 	assert(options.map.endsWith(".scp")||options.map.endsWith(".HMAP"));
@@ -184,7 +181,7 @@ void loadMap(B)(ref B backend,ref Options options)in{
 			//printWizardStats(wizard);
 			auto spellbook=getSpellbook!B(settings.spellbook);
 			auto flags=0;
-			auto wizId=state.current.placeWizard(wizard,flags,multiplayerSide(settings.controlledSide),settings.level,settings.souls,move(spellbook));
+			auto wizId=state.current.placeWizard(wizard,settings.name,flags,multiplayerSide(settings.controlledSide),settings.level,settings.souls,move(spellbook));
 			if(settings.controlledSide==controlledSide) id=wizId;
 		}
 		if(network){
@@ -213,8 +210,8 @@ void loadMap(B)(ref B backend,ref Options options)in{
 			}
 		}
 	}else{
-		enforce(playback.committed.length&&playback.committed[0].frame==0);
-		state.current.copyFrom(playback.committed[0]);
+		enforce(playback.core.length&&playback.core[0].frame==0);
+		state.current.copyFrom(playback.core[0]);
 		assignArray(state.commands,playback.commands);
 	}
 	state.commit();
@@ -302,6 +299,10 @@ int main(string[] args){
 			options.recordingFilename=opt["--record=".length..$];
 		}else if(opt.startsWith("--play=")){
 			options.playbackFilename=opt["--play=".length..$];
+		}else if(opt.startsWith("--logCore")){
+			if(opt.startsWith("--logCore=")){
+			   options.logCore=to!int(opt["--logCore=".length..$]);
+			}else options.logCore=120;
 		}else if(opt.startsWith("--export-folder=")){
 			options.exportFolder=opt["--export-folder=".length..$];
 		}else if(opt=="--observer"){

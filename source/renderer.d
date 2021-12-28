@@ -10,7 +10,7 @@ import std.algorithm: min, max, among, map, filter, all;
 import std.range: iota, walkLength, enumerate;
 import std.typecons: tuple,Tuple;
 import std.exception: enforce;
-import state,sacobject,sacspell,nttData,sacmap,maps;
+import state,sacobject,sacspell,nttData,sacmap,levl;
 import util;
 
 struct Camera{

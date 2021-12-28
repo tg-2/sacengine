@@ -1,64 +1,65 @@
-// copyright © tg
+ // copyright © tg
 // distributed under the terms of the gplv3 license
 // https://www.gnu.org/licenses/gpl-3.0.txt
 
 import state, util, serialize_;
 import std.exception, std.stdio;
 
-enum EventType{
-	addCommand,
-	addExternalCommand,
-	stepCommitted,
-	step,
-}
-
-struct Event(B){
-	EventType event;
-	int frame;
-	Command!B command;
-}
-
 class Recording(B){
 	string mapName;
 	this(string mapName){
 		this.mapName=mapName;
 	}
+	GameInit!B gameInit;
 	bool finalized=false;
-	Sides!B sides=null;
-	int committedIndex=0;
-	Array!(ObjectState!B) committed;
 	Array!(Array!(Command!B)) commands;
-	Array!(Event!B) events;
-
-	bool logCore=false;
-	void addCommitted(ObjectState!B state){
-		if(!logCore&&sides) return;
-		if(!sides) sides=state.sides;
-		else enforce(sides is state.sides);
-		if(committed.length<120){
-			auto copy=new ObjectState!B(state.map,state.sides,state.proximity,state.pathFinder);
-			copy.copyFrom(state);
-			committed~=copy;
-		}else{
-			committedIndex=committedIndex+1;
-			if(committedIndex>=committed.length) committedIndex=1;
-			committed[committedIndex].copyFrom(state);
-		}
-	}
-	void addCommand(int frame,Command!B command){
-		events~=Event!B(EventType.addCommand,frame,command);
-	}
-	void addExternalCommand(int frame,Command!B command){
-		events~=Event!B(EventType.addExternalCommand,frame,command);
-	}
-	void step(){ events~=Event!B(EventType.step); }
-
-	void finalize(Array!(Array!(Command!B)) commands)in{
-		assert(sides);
-	}do{
+	void finalize(Array!(Array!(Command!B)) commands){
 		assignArray(this.commands,commands);
 		finalized=true;
 	}
+
+	enum EventType{
+		addCommand,
+		addExternalCommand,
+		stepCommitted,
+		step,
+	}
+	static struct Event{
+		EventType event;
+		int frame;
+		Command!B command;
+	}
+	Array!Event events;
+
+	int logCore=0;
+	int coreIndex=0;
+	Array!(ObjectState!B) core;
+	void stepCommitted(ObjectState!B state){
+		events~=Event(EventType.stepCommitted);
+		if(!logCore&&core.length!=0) return;
+		if(core.length<logCore||core.length==0){
+			auto copy=new ObjectState!B(state.map,state.sides,state.proximity,state.pathFinder);
+			copy.copyFrom(state);
+			core~=copy;
+		}else{
+			coreIndex=coreIndex+1;
+			if(coreIndex>=core.length) coreIndex=1;
+			core[coreIndex].copyFrom(state);
+		}
+	}
+	void addCommand(int frame,Command!B command){
+		events~=Event(EventType.addCommand,frame,command);
+	}
+	void addExternalCommand(int frame,Command!B command){
+		events~=Event(EventType.addExternalCommand,frame,command);
+	}
+	void step(){ events~=Event(EventType.step); }
+
+	static struct Desynch{
+		int side;
+		ObjectState!B desynchedState;
+	}
+	Array!Desynch desynchs;
 
 	void save(string filename){
 		ubyte[] data;

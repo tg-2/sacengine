@@ -65,14 +65,14 @@ struct Envi{
 	float fogDensity;
 }
 
-Envi parseENVI(ubyte[] data){	
+Envi parseEnvi(ubyte[] data){
 	enforce(data.length==Envi.sizeof);
 	auto envi=cast(Envi*)data.ptr;
 	enforce(envi.size==Envi.sizeof);
 	return *envi;
 }
 
-Envi loadENVI(string filename){
+Envi loadEnvi(string filename){
 	enforce(filename.endsWith(".ENVI"));
-	return parseENVI(readFile(filename));
+	return parseEnvi(readFile(filename));
 }

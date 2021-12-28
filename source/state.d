@@ -1767,6 +1767,7 @@ Spellbook!B getDefaultSpellbook(B)(God god){
 
 struct WizardInfo(B){
 	int id;
+	string name=null;
 	int level;
 	int souls;
 	float experience;
@@ -1805,7 +1806,7 @@ void applyCooldown(B)(ref WizardInfo!B wizard,SacSpell!B spell,ObjectState!B sta
 		else entry.setCooldown(otherCooldown);
 	}
 }
-WizardInfo!B makeWizard(B)(int id,int level,int souls,Spellbook!B spellbook,ObjectState!B state){
+WizardInfo!B makeWizard(B)(int id,string name,int level,int souls,Spellbook!B spellbook,ObjectState!B state){
 	state.movingObjectById!((ref wizard,level,state){
 		wizard.creatureStats.maxHealth+=50.0f*level;
 		wizard.creatureStats.health+=50.0f*level;
@@ -1813,7 +1814,7 @@ WizardInfo!B makeWizard(B)(int id,int level,int souls,Spellbook!B spellbook,Obje
 		wizard.creatureStats.maxMana+=100*level;
 		// TODO: boons
 	},(){ assert(0); })(id,level,state);
-	return WizardInfo!B(id,level,souls,0.0f,move(spellbook));
+	return WizardInfo!B(id,name,level,souls,0.0f,move(spellbook));
 }
 
 int placeCreature(B)(ObjectState!B state,SacObject!B sacObject,int flags,int side,Vector3f position,float facing){
@@ -1839,19 +1840,19 @@ int placeCreature(T=Creature,B)(ObjectState!B state,char[4] tag,int flags,int si
 	return state.placeCreature(SacObject!B.getSAXS!T(tag),flags,side,position,facing);
 }
 
-int placeWizard(B)(ObjectState!B state,SacObject!B wizard,int flags,int side,int level,int souls,Spellbook!B spellbook,Vector3f position,float facing){
+int placeWizard(B)(ObjectState!B state,SacObject!B wizard,string name,int flags,int side,int level,int souls,Spellbook!B spellbook,Vector3f position,float facing){
 	auto id=state.placeCreature(wizard,flags,side,position,facing);
-	state.addWizard(makeWizard(id,level,souls,move(spellbook),state));
+	state.addWizard(makeWizard(id,name,level,souls,move(spellbook),state));
 	return id;
 }
 
 enum wizardAltarDistance=15.0f;
-int placeWizard(B)(ObjectState!B state,SacObject!B wizard,int flags,int side,int level,int souls,Spellbook!B spellbook)in{
+int placeWizard(B)(ObjectState!B state,SacObject!B wizard,string name,int flags,int side,int level,int souls,Spellbook!B spellbook)in{
 	assert(wizard.isWizard);
 }do{
 	bool flag=false;
 	int id=0;
-	state.eachBuilding!((ref bldg,state,id,wizard,flags,side,level,souls,spellbook){
+	state.eachBuilding!((ref bldg,state,id,wizard,name,flags,side,level,souls,spellbook){
 		if(*id||bldg.componentIds.length==0) return;
 		if(bldg.side==side && bldg.isAltar){
 			auto altar=state.staticObjectById!((obj)=>obj, function StaticObject!B(){ assert(0); })(bldg.componentIds[0]);
@@ -1878,9 +1879,9 @@ int placeWizard(B)(ObjectState!B state,SacObject!B wizard,int flags,int side,int
 				facing=bldg.facing+facingOffset;
 				position=altar.position+rotate(facingQuaternion(facing),Vector3f(0.0f,distance,0.0f));
 			}
-			*id=state.placeWizard(wizard,flags,side,level,souls,move(spellbook),position,facing);
+			*id=state.placeWizard(wizard,name,flags,side,level,souls,move(spellbook),position,facing);
 		}
-	})(state,&id,wizard,flags,side,level,souls,move(spellbook));
+	})(state,&id,wizard,name,flags,side,level,souls,move(spellbook));
 	return id;
 }
 
@@ -18149,6 +18150,25 @@ struct Command(B){
 	auto queueing=CommandQueueing.none;
 }
 
+struct GameInit(B){
+	struct Wizard{
+		string name;
+		int side=-1;
+		int level=1;
+		int souls=0;
+		float experience=0.0f;
+		Spellbook!B spellbook;
+	}
+	Wizard[] wizards;
+	struct StanceSetting{
+		int from, towards;
+		Stance stance;
+	}
+	StanceSetting[] stanceSettings;
+	int replicateCreatures=1;
+	int protectManafounts=0;
+}
+
 bool playAudio=true;
 final class GameState(B){
 	ObjectState!B lastCommitted;
@@ -18156,31 +18176,30 @@ final class GameState(B){
 	ObjectState!B next;
 	Triggers!B triggers;
 	Array!(Array!(Command!B)) commands;
-	this(SacMap!B map,Sides!B sides,Triggers!B triggers,NTTs ntts,Options options)in{
+	this(SacMap!B map)in{
 		assert(!!map);
 	}do{
+		auto sides=new Sides!B(map.sids);
 		auto proximity=new Proximity!B();
 		auto pathFinder=new PathFinder!B(map);
 		current=new ObjectState!B(map,sides,proximity,pathFinder);
 		next=new ObjectState!B(map,sides,proximity,pathFinder);
 		lastCommitted=new ObjectState!B(map,sides,proximity,pathFinder);
-		this.triggers=triggers;
+		triggers=new Triggers!B(map.trig);
 		commands.length=1;
-		foreach(ref structure;ntts.structures)
+		foreach(ref structure;map.ntts.structures)
 			placeStructure(structure);
-		foreach(ref wizard;ntts.wizards)
+		foreach(ref wizard;map.ntts.wizards)
 			placeNTT(wizard);
-		foreach(ref spirit;ntts.spirits)
+		foreach(ref spirit;map.ntts.spirits)
 			placeSpirit(spirit);
-		foreach(ref creature;ntts.creatures)
-			foreach(k;0..options.replicateCreatures) placeNTT(creature);
-		foreach(widgets;ntts.widgetss) // TODO: improve engine to be able to handle this
+		foreach(ref creature;map.ntts.creatures)
+			placeNTT(creature);
+		foreach(widgets;map.ntts.widgetss) // TODO: improve engine to be able to handle this
 			placeWidgets(widgets);
 		current.eachMoving!((ref MovingObject!B object, ObjectState!B state){
 			if(object.creatureState.mode==CreatureMode.dead) object.createSoul(state);
 		})(current);
-		map.meshes=createMeshes!B(map.edges,map.heights,map.tiles,options.enableMapBottom); // TODO: allow dynamic retexturing
-		map.minimapMeshes=createMinimapMeshes!B(map.edges,map.tiles);
 		commit();
 	}
 	void placeStructure(ref Structure ntt){
@@ -18253,7 +18272,8 @@ final class GameState(B){
 			triggers.associateId(ntt.id,id);
 		static if(is(T==Wizard)){
 			auto spellbook=getDefaultSpellbook!B(ntt.allegiance);
-			current.addWizard(makeWizard(id,ntt.level,ntt.souls,move(spellbook),current));
+			string name=null; // unnamed wizard
+			current.addWizard(makeWizard(id,name,ntt.level,ntt.souls,move(spellbook),current));
 		}
 	}
 	void placeSpirit(ref Spirit spirit){

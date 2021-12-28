@@ -2,7 +2,7 @@
 // distributed under the terms of the gplv3 license
 // https://www.gnu.org/licenses/gpl-3.0.txt
 
-import nttData,bldg,sacobject,sacspell,stats,state,util;
+import nttData,bldg,sacmap,sacobject,sacspell,stats,state,util;
 import dlib.math;
 import std.algorithm, std.range, std.traits, std.exception, std.conv, std.stdio, std.typecons: Tuple;
 import std.random;
@@ -653,6 +653,28 @@ void deserialize(T,R)(T state,ref R data)if(is(T==ObjectState!B,B)){
 	if(state.toRemove.length!=0) stderr.writeln("warning: deserialize: toRemove not empty");
 	deserializeClass!noserialize(state,state,data);
 }
+ObjectState!B deserializeObjectState(B,R)(SacMap!B map,Sides!B sides,Proximity!B proximity,PathFinder!B pathFinder,ref R data){
+	auto state=new ObjectState!B(map,sides,proximity,pathFinder);
+	foreach(w;map.ntts.widgetss){ // TODO: get rid of code duplication
+		auto curObj=SacObject!B.getWIDG(w.tag);
+		foreach(pos;w.positions){
+			auto position=Vector3f(pos[0],pos[1],0);
+			if(!state.isOnGround(position)) continue;
+			position.z=state.getGroundHeight(position);
+			auto rotation=facingQuaternion(-pos[2]);
+			state.addFixed(FixedObject!B(curObj,position,rotation));
+		}
+	}
+	deserialize(state,data);
+	return state;
+}
+
+void serialize(alias sink,B)(ref GameInit!B gameInit){ serializeStruct!sink(gameInit); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==GameInit!B)){ deserializeStruct(result,state,data); }
+void serialize(alias sink,B)(ref GameInit!B.Wizard wizard){ serializeStruct!sink(wizard); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==GameInit!B.Wizard)){ deserializeStruct(result,state,data); }
+void serialize(alias sink,B)(ref GameInit!B.StanceSetting stanceSetting){ serializeStruct!sink(stanceSetting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==GameInit!B.StanceSetting)){ deserializeStruct(result,state,data); }
 
 void serialize(alias sink)(ref Target target){ serializeStruct!sink(target); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Target)){ deserializeStruct(result,state,data); }
@@ -665,47 +687,53 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Sid
 
 import recording_;
 
-void serialize(alias sink,B)(Event!B event){ serializeStruct!sink(event); }
-void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Event!B)){ deserializeStruct(result,state,data); }
+void serialize(alias sink,B)(Recording!B.Event event){ serializeStruct!sink(event); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Recording!B.Event)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(Recording!B.Desynch desynch){ serializeStruct!sink(desynch); }
 
 void serialize(alias sink,B)(Recording!B recording)in{
 	assert(recording.finalized);
 }do{
 	serialize!sink(recording.mapName);
-	serializeClass!(sink,["manaParticles","shrineParticles","manahoarParticles"])(recording.sides);
-	serialize!sink(recording.committed);
+	serialize!sink(recording.gameInit);
+
+	serialize!sink(recording.finalized);
 	serialize!sink(recording.commands);
 	serialize!sink(recording.events);
+
+	serialize!sink(recording.logCore);
+	serialize!sink(recording.coreIndex);
+	serialize!sink(recording.core);
+
+	serialize!sink(recording.desynchs);
 }
 void deserialize(T,R)(T recording,ref R data)if(is(T==Recording!B,B)){
 	enum _=is(T==Recording!B,B);
 	deserialize(recording.mapName,ObjectState!B.init,data);
-	import sacmap, ntts;
-	auto hmap=getHmap(recording.mapName);
-	auto map=new SacMap!B(hmap);
-	auto nttData=loadNTTs(hmap[0..$-".HMAP".length]~".NTTS");
-	auto sides=new Sides!B();
-	deserializeClass!(["manaParticles","shrineParticles","manahoarParticles"])(sides,ObjectState!B.init,data);
+	deserialize(recording.gameInit,ObjectState!B.init,data);
+
+	import sacmap;
+	auto map=loadSacMap!B(recording.mapName);
+	auto sides=new Sides!B(map.sids);
 	auto proximity=new Proximity!B();
 	auto pathFinder=new PathFinder!B(map);
-	ulong len;
-	deserialize(len,ObjectState!B.init,data);
-	enforce(len!=0);
-	foreach(i;0..len){
-		auto state=new ObjectState!B(map,sides,proximity,pathFinder);
-		foreach(w;nttData.widgetss){ // TODO: get rid of code duplication
-			auto curObj=SacObject!B.getWIDG(w.tag);
-			foreach(pos;w.positions){
-				auto position=Vector3f(pos[0],pos[1],0);
-				if(!state.isOnGround(position)) continue;
-				position.z=state.getGroundHeight(position);
-				auto rotation=facingQuaternion(-pos[2]);
-				state.addFixed(FixedObject!B(curObj,position,rotation));
-			}
-		}
-		deserialize(state,data);
-		recording.committed~=state;
-	}
+
+	deserialize(recording.finalized,ObjectState!B.init,data);
 	deserialize(recording.commands,ObjectState!B.init,data);
 	deserialize(recording.events,ObjectState!B.init,data);
+
+	deserialize(recording.logCore,ObjectState!B.init,data);
+	deserialize(recording.coreIndex,ObjectState!B.init,data);
+	ulong len;
+	deserialize(len,ObjectState!B.init,data);
+	foreach(i;0..len) recording.core~=deserializeObjectState!B(map,sides,proximity,pathFinder,data);
+
+	deserialize(len,ObjectState!B.init,data);
+	foreach(i;0..len){
+		int side;
+		deserialize(side,ObjectState!B.init,data);
+		auto state=deserializeObjectState!B(map,sides,proximity,pathFinder,data);
+		recording.desynchs~=Recording!B.Desynch(side,state);
+	}
 }

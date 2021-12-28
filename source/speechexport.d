@@ -16,8 +16,8 @@ void exportSpeech(B)(ref Options options){
 	auto state=prepareGameState!B(options);
 	auto triggers=state.triggers;
 	import nttData,text_,std.path;
-	auto folder=dirName(state.current.map.hmap);
-	auto texts=makeByTag!loadText(options.enableReadFromWads,[buildPath(folder,"ENGL.LANG","TRIG.FLDR")],"TEXT");
+	auto folder=state.current.map.mapFolder;
+	auto texts=makeByTag!loadText(true,[buildPath(folder,"ENGL.LANG","TRIG.FLDR")],"TEXT");
 	static ubyte[] loadWAV(string filename){ return readFile(filename)[32..$]; }
 	auto samps=makeByTag!loadWAV(options.enableReadFromWads,[buildPath(folder,"SAMP.FLDR")],"SAMP");
 	auto sampTexts=makeByTag!loadText(options.enableReadFromWads,[buildPath(folder,"SAMP.FLDR")],"TEXT");

@@ -3,13 +3,83 @@
 // https://www.gnu.org/licenses/gpl-3.0.txt
 
 import dlib.image, dlib.math, dlib.math.portable, dlib.geometry;
-import util;
-import maps,txtr,envi,trig;
+import util,txtr;
+import levl,envi,maps,sids,ntts,trig;
 import std.exception, std.string, std.algorithm, std.conv, std.range;
 import std.stdio, std.path;
 import std.typecons: tuple,Tuple;
 
 import sacobject;
+
+SacMap!B loadSacMap(B)(string filename){
+	string levlName,enviName;
+	string hmapName,tmapName,lmapName;
+	string sidsName,nttsName;
+	string trigName;
+	if(filename.endsWith(".scp")){
+		import wadmanager;
+		if(!wadManager) wadManager=new WadManager();
+		static void handle(string name,string* levlName,string* enviName,string* hmapName,string* tmapName,string* lmapName,string* sidsName,string* nttsName,string* trigName,){
+			if(name.endsWith(".LEVL")){
+				if(*levlName) stderr.writeln("warning: multiple level specifications in scp file");
+				else *levlName=name;
+			}else if(name.endsWith(".ENVI")){
+				if(*enviName) stderr.writeln("warning: multiple environment specifications in scp file");
+				else *enviName=name;
+			}else if(name.endsWith(".HMAP")){
+				if(*hmapName) stderr.writeln("warning: multiple height maps in scp file"); // TODO: just create multiple meshes from those?
+				else *hmapName=name;
+			}else if(name.endsWith(".TMAP")){
+				if(*tmapName) stderr.writeln("warning: multiple tile maps in scp file"); // TODO: just create multiple meshes from those?
+				else *tmapName=name;
+			}else if(name.endsWith(".LMAP")){
+				if(*lmapName) stderr.writeln("warning: multiple light maps in scp file"); // TODO: just create multiple meshes from those?
+				else *lmapName=name;
+			}else if(name.endsWith(".SIDS")){
+				if(*sidsName) stderr.writeln("warning: multiple side specifications in scp file");
+				else *sidsName=name;
+			}else if(name.endsWith(".NTTS")){
+				if(*nttsName) stderr.writeln("warning: multiple ntt specifications in scp file"); // TODO: just place all?
+				else *nttsName=name;
+			}else if(name.endsWith(".TRIG")){
+				if(*trigName) stderr.writeln("warning: multiple trigger specifications in scp file"); // TODO: just use all?
+				else *trigName=name;
+			}
+		}
+		static int curMapNum=0; // TODO: needed?
+		wadManager.indexWAD!handle(filename,text("`_map",curMapNum++),&levlName,&enviName,&hmapName,&tmapName,&lmapName,&sidsName,&nttsName,&trigName);
+		enforce(levlName!="","No level specification in scp file");
+		enforce(enviName!="","No environment specification in scp file");
+		enforce(hmapName!="","No height map in scp file");
+		enforce(tmapName!="","No tile map in scp file");
+		enforce(sidsName!="","No side specification in scp file");
+		enforce(nttsName!="","No ntt specification in scp file");
+		enforce(trigName!="","No trigger specification in scp file");
+	}else{
+		enforce(filename.endsWith(".HMAP"));
+		auto base=filename[0..$-".HMAP".length];
+		levlName=base~".LEVL";
+		enviName=base~".ENVI";
+		hmapName=filename;
+		tmapName=base~".TMAP";
+		lmapName=base~".LMAP";
+		sidsName=base~".SIDS";
+		nttsName=base~".NTTS";
+		trigName=base~".TRIG";
+	}
+	auto mapFolder=dirName(levlName);
+	auto levl=loadLevl(levlName);
+	auto envi=loadEnvi(enviName);
+	auto hmap=loadHMap(hmapName);
+	auto tmap=loadTMap(tmapName);
+	auto lmap=loadLMap(lmapName);
+	auto sids=loadSids(sidsName);
+	auto ntts=loadNTTs(nttsName);
+	Trig trig;
+	try trig=loadTRIG(trigName);
+	catch(Exception e){ stderr.writeln("warning: failed to parse triggers (",e.msg,")"); }
+	return new SacMap!B(mapFolder,levl,envi,hmap,tmap,lmap,sids,ntts,trig);
+}
 
 enum{
 	numMapTextures=256,
@@ -27,51 +97,35 @@ enum{
 }
 enum mapDepth=50.0f;
 
-string getHmap(string filename){
-	string hmap="";
-	if(filename.endsWith(".scp")){
-		import wadmanager;
-		if(!wadManager) wadManager=new WadManager();
-		static void handle(string name,string* hmap){
-			if(name.endsWith(".HMAP")) *hmap=name;
-		}
-		static int curMapNum=0; // TODO: needed?
-		wadManager.indexWAD!handle(filename,text("`_map",curMapNum++),&hmap);
-		enforce(hmap!="","No height map in scp file");
-	}else{
-		enforce(filename.endsWith(".HMAP"));
-		hmap=filename;
-	}
-	return hmap;
-}
-
 struct ZeroDisplacement{
 	static opCall(){ return typeof(this).init; }
 	float opCall(float x,float y){ return 0.0f; }
 }
 
 final class SacMap(B){
-	string hmap;
+	Levl levl;
+	Envi envi;
+	int n,m;
+	bool[][] edges;
+	float[][] heights;
+	Tileset tileset;
+	ubyte[][] tiles;
+	ubyte[] dti;
 	B.TerrainMesh[] meshes;
 	B.MinimapMesh[] minimapMeshes;
 	B.Texture[] textures;
 	B.Texture[] details;
 	B.Texture color;
 	B.Material material; // TODO: get rid of this completely?
-	ubyte[] dti;
-	int n,m;
-	bool[][] edges;
-	float[][] heights;
-	Tileset tileset;
-	ubyte[][] tiles;
-	Envi envi;
+	Side[] sids;
+	NTTs ntts;
+	Trig trig;
 
-	this(string filename){
-		enforce(filename.endsWith(".HMAP"));
-		this.hmap=filename;
-		auto hmap=loadHMap(filename);
-		envi=loadENVI(filename[0..$-".HMAP".length]~".ENVI");
-		auto tmap=loadTMap(filename[0..$-".HMAP".length]~".TMAP");
+	string mapFolder;
+
+	this(LMap)(string mapFolder,Levl levl,Envi envi,HMap hmap,TMap tmap,LMap lmap,Side[] sids,NTTs ntts,Trig trig){
+		this.levl=levl;
+		this.envi=envi;
 		edges=hmap.edges;
 		heights=hmap.heights;
 		tiles=tmap.tiles;
@@ -84,7 +138,7 @@ final class SacMap(B){
 		enforce(edges.all!(x=>x.length==m));
 		enforce(heights.all!(x=>x.length==m));
 		import nttData: landFolders;
-		tileset=detectTileset(filename[0..$-".HMAP".length]~".LEVL");
+		tileset=levl.detectTileset;
 		auto land=landFolders[tileset];
 		dti=loadDTIndex(land).dts;
 		auto mapts=loadMAPTs(land);
@@ -99,9 +153,15 @@ final class SacMap(B){
 		auto mirroredRepeat=iota(numSacMapTextures).map!(i=>i!=skyIndex);
 		textures=zip(chain(mapts,only(edge,edge,sky_,skyb,skyt,sun_,undr)),mirroredRepeat).map!(x=>B.makeTexture(x.expand)).array;
 		details=bumps.map!(B.makeTexture).array;
-		auto lmap=loadLMap(filename[0..$-".HMAP".length]~".LMAP");
 		color=B.makeTexture(lmap);
 		material=B.createMaterial(this);
+		this.sids=sids;
+		this.ntts=ntts;
+		this.trig=trig;
+	}
+	void makeMeshes(bool enableMapBottom){
+		meshes=createMeshes!B(edges,heights,tiles,enableMapBottom); // TODO: allow dynamic retexturing
+		minimapMeshes=createMinimapMeshes!B(edges,tiles);
 	}
 
 	Tuple!(int,"j",int,"i") getTile(Vector3f pos){

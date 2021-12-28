@@ -62,7 +62,7 @@ struct Options{
 	bool dumpTraffic=false;
 	bool checkDesynch=true;
 	string recordingFilename="";
-	bool logCore=false;
+	int logCore=0;
 	string playbackFilename="";
 	string exportFolder="sacengine-exports";
 	alias settings this;

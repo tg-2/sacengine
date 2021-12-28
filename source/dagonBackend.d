@@ -8,7 +8,7 @@ import options,util;
 import std.stdio;
 import std.algorithm, std.range, std.exception, std.typecons, std.conv;
 
-import sacobject, sacspell, mrmm, nttData, sacmap, maps, state, controller, network;
+import sacobject, sacspell, mrmm, nttData, sacmap, levl, state, controller, network;
 import sxsk : gpuSkinning;
 import renderer,audioBackend;
 

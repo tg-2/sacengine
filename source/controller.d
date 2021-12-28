@@ -24,7 +24,7 @@ final class Controller(B){
 		currentFrame=state.current.frame;
 		firstUpdatedFrame=currentFrame;
 		this.recording=recording;
-		if(recording) recording.addCommitted(state.lastCommitted);
+		if(recording) recording.stepCommitted(state.lastCommitted);
 	}
 	void addCommand(int frame,Command!B command)in{
 		assert(command.id==0);
@@ -67,7 +67,7 @@ final class Controller(B){
 		state.simulateTo(currentFrame);
 		while(state.lastCommitted.frame<committedFrame){
 			state.stepCommitted();
-			if(recording) recording.addCommitted(state.lastCommitted);
+			if(recording) recording.stepCommitted(state.lastCommitted);
 			if(network.isHost) network.addSynch(state.lastCommitted.frame,state.lastCommitted.hash);
 		}
 		assert(committedFrame==state.lastCommitted.frame);
@@ -97,7 +97,7 @@ final class Controller(B){
 		state.step();
 		if(recording){
 			recording.step();
-			if(!network) recording.addCommitted(state.current);
+			if(!network) recording.stepCommitted(state.current);
 		}
 		currentFrame=state.current.frame;
 		firstUpdatedFrame=currentFrame;

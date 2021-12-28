@@ -4,7 +4,7 @@
 
 import dlib.math;
 import std.algorithm: sort, swap, among;
-import audio, samp, nttData, sacobject, maps, state;
+import audio, samp, nttData, sacobject, levl, state;
 import util;
 
 enum Theme{
