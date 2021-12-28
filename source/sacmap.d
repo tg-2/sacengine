@@ -11,15 +11,16 @@ import std.typecons: tuple,Tuple;
 
 import sacobject;
 
-SacMap!B loadSacMap(B)(string filename){
+SacMap!B loadSacMap(B)(string filename,ubyte[]* mapData=null){
 	string levlName,enviName;
 	string hmapName,tmapName,lmapName;
 	string sidsName,nttsName;
 	string trigName;
+	int crc32;
 	if(filename.endsWith(".scp")){
 		import wadmanager;
 		if(!wadManager) wadManager=new WadManager();
-		static void handle(string name,string* levlName,string* enviName,string* hmapName,string* tmapName,string* lmapName,string* sidsName,string* nttsName,string* trigName,){
+		static void handle(ubyte[] data,string name,string* levlName,string* enviName,string* hmapName,string* tmapName,string* lmapName,string* sidsName,string* nttsName,string* trigName,int* crc32,ubyte[]* mapData){
 			if(name.endsWith(".LEVL")){
 				if(*levlName) stderr.writeln("warning: multiple level specifications in scp file");
 				else *levlName=name;
@@ -46,8 +47,15 @@ SacMap!B loadSacMap(B)(string filename){
 				else *trigName=name;
 			}
 		}
+		static void handleData(ubyte[] data,string* levlName,string* enviName,string* hmapName,string* tmapName,string* lmapName,string* sidsName,string* nttsName,string* trigName,int* crc32,ubyte[]* mapData){
+			import std.digest.crc;
+			auto result=digest!CRC32(data);
+			static assert(result.sizeof==int.sizeof);
+			*crc32=*cast(int*)&result;
+			if(mapData) *mapData=data;
+		}
 		static int curMapNum=0; // TODO: needed?
-		wadManager.indexWAD!handle(filename,text("`_map",curMapNum++),&levlName,&enviName,&hmapName,&tmapName,&lmapName,&sidsName,&nttsName,&trigName);
+		wadManager.indexWAD!(handle,handleData)(filename,text("`_map",curMapNum++),&levlName,&enviName,&hmapName,&tmapName,&lmapName,&sidsName,&nttsName,&trigName,&crc32,mapData);
 		enforce(levlName!="","No level specification in scp file");
 		enforce(enviName!="","No environment specification in scp file");
 		enforce(hmapName!="","No height map in scp file");
@@ -78,7 +86,7 @@ SacMap!B loadSacMap(B)(string filename){
 	Trig trig;
 	try trig=loadTRIG(trigName);
 	catch(Exception e){ stderr.writeln("warning: failed to parse triggers (",e.msg,")"); }
-	return new SacMap!B(mapFolder,levl,envi,hmap,tmap,lmap,sids,ntts,trig);
+	return new SacMap!B(mapFolder,crc32,levl,envi,hmap,tmap,lmap,sids,ntts,trig);
 }
 
 enum{
@@ -103,6 +111,9 @@ struct ZeroDisplacement{
 }
 
 final class SacMap(B){
+	string mapFolder;
+	int crc32;
+
 	Levl levl;
 	Envi envi;
 	int n,m;
@@ -121,9 +132,9 @@ final class SacMap(B){
 	NTTs ntts;
 	Trig trig;
 
-	string mapFolder;
-
-	this(LMap)(string mapFolder,Levl levl,Envi envi,HMap hmap,TMap tmap,LMap lmap,Side[] sids,NTTs ntts,Trig trig){
+	this(LMap)(string mapFolder,int crc32,Levl levl,Envi envi,HMap hmap,TMap tmap,LMap lmap,Side[] sids,NTTs ntts,Trig trig){
+		this.mapFolder=mapFolder;
+		this.crc32=crc32;
 		this.levl=levl;
 		this.envi=envi;
 		edges=hmap.edges;

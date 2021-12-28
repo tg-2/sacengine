@@ -4,6 +4,7 @@
 
 import std.algorithm, std.range, std.stdio, std.conv, std.exception, core.thread;
 import std.traits: Unqual;
+import util;
 import options,sacspell,state,controller;
 import ntts: God;
 
@@ -68,10 +69,14 @@ enum PacketType{
 	ack,
 	// host message
 	updatePlayerId,
+	sendMap,
+	sendState,
+	initGame,
 	loadGame,
 	startGame,
 	// host query
 	checkSynch,
+	logDesynch,
 	// broadcast
 	updateSetting,
 	clearArraySetting,
@@ -90,9 +95,19 @@ enum arrayLengthLimit=4096;
 PacketPurpose purposeFromType(PacketType type){
 	final switch(type) with(PacketType) with(PacketPurpose){
 		case nop,disconnect,ping,ack: return peerToPeer;
-		case updatePlayerId,loadGame,startGame: return hostMessage;
-		case checkSynch: return hostQuery;
+		case updatePlayerId,sendMap,sendState,initGame,loadGame,startGame: return hostMessage;
+		case checkSynch,logDesynch: return hostQuery;
 		case updateSetting,clearArraySetting,appendArraySetting,confirmArraySetting,setMap,appendMap,confirmMap,updateStatus,command,commit: return broadcast;
+	}
+}
+
+bool isHeaderType(PacketType type){
+	final switch(type) with(PacketType){
+		case nop,disconnect,ping,ack,updatePlayerId: return false;
+		case sendMap,sendState,initGame: return true;
+		case loadGame,startGame,checkSynch: return false;
+		case logDesynch: return true;
+		case updateSetting,clearArraySetting,appendArraySetting,confirmArraySetting,setMap,appendMap,confirmMap,updateStatus,command,commit: return false;
 	}
 }
 
@@ -104,9 +119,13 @@ struct Packet{
 			case ping: return text("Packet.ping(",id,")");
 			case ack: return text("Packet.ack(",pingId,")");
 			case updatePlayerId: return text("Packet.updatePlayerId(",id,")");
+			case sendMap: return text("Packet.sendMap(...)");
+			case sendState: return text("Packet.sendState(...)");
+			case initGame: return text("Packet.initGame(...)");
 			case loadGame: return text("Packet.loadGame()");
 			case startGame: return text("Packet.startGame(",startDelay,")");
 			case checkSynch: return text("Packet.checkSynch(",synchFrame,",",synchHash,")");
+			case logDesynch: return text("Packet.logDesynch(...)");
 			case updateSetting:
 				auto len=0;
 				while(len<optionName.length&&optionName[len]!='\0') ++len;
@@ -197,6 +216,9 @@ struct Packet{
 			int commitPlayer;
 			int commitFrame;
 		}
+		struct{ // sendMap, sendState, initGame, logDesynch
+			ulong rawDataSize;
+		}
 	}
 	static Packet nop(){ return Packet.init; }
 	static Packet disconnect(){
@@ -222,6 +244,24 @@ struct Packet{
 		p.id=id;
 		return p;
 	}
+	static Packet sendMap(ulong rawDataSize){
+		Packet p;
+		p.type=PacketType.sendMap;
+		p.rawDataSize=rawDataSize;
+		return p;
+	}
+	static Packet sendState(ulong rawDataSize){
+		Packet p;
+		p.type=PacketType.sendState;
+		p.rawDataSize=rawDataSize;
+		return p;
+	}
+	static Packet initGame(ulong rawDataSize){
+		Packet p;
+		p.type=PacketType.initGame;
+		p.rawDataSize=rawDataSize;
+		return p;
+	}
 	static Packet loadGame(){
 		Packet p;
 		p.type=PacketType.loadGame;
@@ -238,6 +278,12 @@ struct Packet{
 		p.type=PacketType.checkSynch;
 		p.synchFrame=frame;
 		p.synchHash=hash;
+		return p;
+	}
+	static Packet logDesynch(ulong rawDataSize){
+		Packet p;
+		p.type=PacketType.logDesynch;
+		p.rawDataSize=rawDataSize;
 		return p;
 	}
 	void setValue(T)(T value){
@@ -349,8 +395,11 @@ public import std.socket;
 abstract class Connection{
 	abstract bool alive();
 	abstract bool ready();
+	abstract bool rawReady();
 	abstract Packet receive();
+	abstract void receiveRaw(void delegate(scope ubyte[]));
 	abstract void send(Packet packet);
+	abstract void send(Packet packet,scope ubyte[] rawData);
 }
 class TCPConnection: Connection{
 	Socket tcpSocket;
@@ -365,42 +414,83 @@ class TCPConnection: Connection{
 		return alive_;
 	}
 	bool ready_=false;
+	bool rawReady_=false;
 	override bool ready(){
 		if(!ready_&&alive) receiveData;
+		if(ready_&&rawData.length) return rawDataIndex==rawData.length;
 		return ready_;
+	}
+	override bool rawReady(){
+		return rawReady_;
+	}
+	override void receiveRaw(void delegate(scope ubyte[]) dg){
+		assert(rawReady_);
+		dg(rawData.data);
+		rawData.length=0;
+		rawDataIndex=0;
+		rawReady_=false;
 	}
 	union{
 		Packet packet;
 		ubyte[packet.sizeof] data;
 	}
 	int dataIndex=0;
+	Array!ubyte rawData;
+	int rawDataIndex=0;
 	override Packet receive(){
 		assert(ready);
 		auto result=packet;
 		ready_=false;
 		dataIndex=0;
+		if(isHeaderType(packet.type)) rawReady_=true;
 		return result;
 	}
 	void receiveData(){
-		assert(dataIndex<data.length);
-		auto ret=tcpSocket.receive(data[dataIndex..$]);
-		if(ret==Socket.ERROR){
-			if(wouldHaveBlocked()) return;
-			stderr.writeln(lastSocketError());
-			ret=0;
+		if(dataIndex<data.length){
+			auto ret=tcpSocket.receive(data[dataIndex..$]);
+			if(ret==Socket.ERROR){
+				if(wouldHaveBlocked()) return;
+				stderr.writeln(lastSocketError());
+				ret=0;
+			}
+			if(ret==0){
+				alive_=false;
+				tcpSocket.close();
+				return;
+			}
+			dataIndex+=ret;
 		}
-		if(ret==0){
-			alive_=false;
-			tcpSocket.close();
-			return;
-		}
-		dataIndex+=ret;
 		if(dataIndex==data.length){
-			ready_=true;
+			if(isHeaderType(packet.type)){
+				if(rawData.length==0) rawData.length=packet.rawDataSize;
+				assert(rawDataIndex<rawData.length);
+				auto ret=tcpSocket.receive(rawData.data[rawDataIndex..$]);
+				if(ret==Socket.ERROR){
+					if(wouldHaveBlocked()) return;
+					stderr.writeln(lastSocketError());
+					ret=0;
+				}
+				if(ret==0){
+					alive_=false;
+					tcpSocket.close();
+					return;
+				}
+				rawDataIndex+=ret;
+				if(rawDataIndex==rawData.length){
+					ready_=true;
+				}
+			}else ready_=true;
 		}
 	}
 	override void send(Packet packet){
+		assert(!isHeaderType(packet.type));
 		tcpSocket.send((cast(ubyte*)&packet)[0..packet.sizeof]);
+	}
+	override void send(Packet packet,scope ubyte[] rawData){
+		assert(isHeaderType(packet.type));
+		assert(packet.rawDataSize==rawData.length);
+		tcpSocket.send((cast(ubyte*)&packet)[0..packet.sizeof]);
+		tcpSocket.send(rawData);
 	}
 }
 
@@ -408,6 +498,7 @@ enum PlayerStatus{
 	connected,
 	synched,
 	readyToLoad,
+	mapHashed,
 	loading,
 	readyToStart,
 	playing,
@@ -425,11 +516,21 @@ struct Player{
 		if(alive)
 			connection.send(p);
 	}
+	void send(Packet p,scope ubyte[] rawData){
+		if(alive)
+			connection.send(p,rawData);
+	}
 	bool ready(){ return connection&&connection.ready; }
 	Packet receive()in{
 		assert(ready);
 	}do{
 		return connection.receive;
+	}
+	bool rawReady(){ return connection&&connection.rawReady; }
+	void receiveRaw(void delegate(scope ubyte[]) dg)in{
+		assert(rawReady);
+	}do{
+		return connection.receiveRaw(dg);
 	}
 
 	int committedFrame=0;
@@ -508,6 +609,9 @@ final class Network(B){
 	bool readyToLoad(){
 		return players.all!(p=>p.status>=PlayerStatus.readyToLoad);
 	}
+	bool mapHashed(){
+		return players.all!(p=>p.status>=PlayerStatus.mapHashed);
+	}
 	bool clientsReadyToLoad(){
 		return iota(players.length).filter!(i=>i!=host).map!(i=>players[i]).all!(p=>p.status>=PlayerStatus.readyToLoad);
 	}
@@ -547,7 +651,7 @@ final class Network(B){
 		assert(player==me||isHost);
 	}do{
 		auto oldStatus=players[player].status;
-		if(oldStatus>=newStatus) return;
+		if(oldStatus>=newStatus&&!(oldStatus==PlayerStatus.mapHashed&&newStatus==PlayerStatus.readyToLoad)) return;
 		broadcast(Packet.updateStatus(player,newStatus));
 		players[player].status=newStatus;
 	}
@@ -572,6 +676,9 @@ final class Network(B){
 			broadcast(Packet.confirmArraySetting!setting(player));
 		}else broadcast(Packet.updateSetting!setting(player,value));
 		mixin(`players[player].settings.`~setting)=value;
+	}
+	void updateSetting(string setting,T)(T value){
+		updateSetting!setting(me,value);
 	}
 	void synchronizeSetting(string setting)()in{
 		assert(isHost);
@@ -652,6 +759,42 @@ final class Network(B){
 				me=p.id;
 				updateStatus(PlayerStatus.synched);
 				break;
+			case PacketType.sendMap:
+				if(sender!=host){
+					stderr.writeln("non-host player ",sender," attempted to update map: ",p);
+					break;
+				}
+				assert(players[sender].rawReady);
+				if(!mapData){
+					mapData=new ubyte[](p.rawDataSize); // TODO: don't leak this memory
+					players[sender].receiveRaw((scope ubyte[] data){ mapData[]=data[]; });
+				}else{
+					players[sender].receiveRaw((scope ubyte[] data){ });
+					stderr.writeln("map data already pending, ignoring new data");
+				}
+				break;
+			case PacketType.sendState:
+				if(sender!=host){
+					stderr.writeln("non-host player ",sender," attempted to update state: ",p);
+					break;
+				}
+				assert(players[sender].rawReady);
+				players[sender].receiveRaw(&controller.replaceState);
+				break;
+			case PacketType.initGame:
+				if(sender!=host){
+					stderr.writeln("non-host player ",sender," attempted to initialize the game: ",p);
+					break;
+				}
+				assert(players[sender].rawReady);
+				if(!gameInitData){
+					gameInitData=new ubyte[](p.rawDataSize); // TODO: don't leak this memory
+					players[sender].receiveRaw((scope ubyte[] data){ gameInitData[]=data[]; });
+				}else{
+					players[sender].receiveRaw((scope ubyte[] data){ });
+					stderr.writeln("game init data already pending, ignoring new data");
+				}
+				break;
 			case PacketType.loadGame:
 				if(sender!=host){
 					stderr.writeln("non-host player ",sender," attempted to initiate loading: ",p);
@@ -694,6 +837,14 @@ final class Network(B){
 					updateStatus(sender,PlayerStatus.desynched);
 				}
 				break;
+			case PacketType.logDesynch:
+				if(!isHost){
+					stderr.writeln("logDesynch packet sent to non-host player ",me,": ",p);
+					break;
+				}
+				assert(players[sender].rawReady);
+				players[sender].receiveRaw((scope ubyte[] data){ controller.logDesynch(players[sender].settings.controlledSide,data); });
+				break;
 			// broadcast:
 			case PacketType.updateSetting,PacketType.clearArraySetting,PacketType.appendArraySetting,PacketType.confirmArraySetting,PacketType.setMap,PacketType.appendMap,PacketType.confirmMap:
 				if(!isHost&&sender!=host){
@@ -710,8 +861,8 @@ final class Network(B){
 					break;
 				}
 				if(p.player>=players.length) players.length=p.player+1;
-				if(players[sender].status>=PlayerStatus.readyToLoad){
-					stderr.writeln("attempt to change settings after marked ready to load: ",p);
+				if(players[sender].status>=PlayerStatus.mapHashed){ // TODO: if >=PlayerStatus.readyToLoad, only mapHash may change
+					stderr.writeln("attempt to change settings after marked ready to load and map was hashed: ",p);
 					break;
 				}
 				if(p.type==PacketType.updateSetting){
@@ -765,7 +916,9 @@ final class Network(B){
 			case PacketType.updateStatus:
 				if(p.player<0||p.player>=playerLimit) break;
 				if(p.player>=players.length) players.length=p.player+1;
-				players[p.player].status=max(players[p.player].status,p.newStatus);
+				if(players[p.player].status==PlayerStatus.mapHashed && p.newStatus==PlayerStatus.readyToLoad) // TODO: get rid of this
+					players[p.player].status=PlayerStatus.readyToLoad;
+				else players[p.player].status=max(players[p.player].status,p.newStatus);
 				break;
 			case PacketType.command:
 				if(controller) controller.addExternalCommand(p.frame,fromNetwork!B(p.networkCommand));
@@ -880,10 +1033,45 @@ final class Network(B){
 		}
 	}
 	void idleLobby()in{
-		assert(me==-1||players[me].status<PlayerStatus.loading);
+		assert(me==-1||players[me].status<=PlayerStatus.loading);
 	}do{
 		update(null);
 		Thread.sleep(1.msecs);
+	}
+
+	void sendMap(int i,scope ubyte[] mapData){
+		players[i].send(Packet.sendMap(mapData.length),mapData);
+	}
+	void sendState(int i,scope ubyte[] stateData){
+		players[i].send(Packet.sendState(stateData.length),stateData);
+	}
+	ubyte[] gameInitData;
+	void initGame(scope ubyte[] gameInitData)in{
+		assert(isHost);
+	}do{
+		foreach(i;0..players.length){
+			if(i==me) continue;
+			players[i].send(Packet.initGame(gameInitData.length),gameInitData);
+		}
+	}
+	ubyte[] mapData;
+	bool synchronizeMap(){
+		idleLobby();
+		auto hash=players[host].settings.mapHash;
+		if(isHost){
+			if(mapData){
+				foreach(i,ref player;players){
+					if(i==host) continue;
+					if(player.settings.mapHash==hash) continue;
+					updateStatus(cast(int)i,PlayerStatus.readyToLoad);
+					sendMap(cast(int)i,mapData);
+				}
+				mapData=null;
+			}
+			return players.all!(p=>p.settings.mapHash==hash)&&mapHashed;
+		}else{
+			return players[me].settings.mapHash==hash&&mapHashed;
+		}
 	}
 	void load()in{
 		assert(isHost);

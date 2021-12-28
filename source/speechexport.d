@@ -1,5 +1,5 @@
 import std.stdio, std.string, std.algorithm, std.exception;
-import trig, text_, samp, sacobject, state, app, options, util;
+import trig, text_, samp, sacmap, sacobject, state, app, options, util;
 
 void exportSpeech(B)(ref Options options){
 	if(!(options.map.endsWith(".scp")||options.map.endsWith(".HMAP"))){
@@ -13,7 +13,7 @@ void exportSpeech(B)(ref Options options){
 		}
 		return;
 	}
-	auto state=prepareGameState!B(options);
+	auto state=new GameState!B(loadSacMap!B(options.map));
 	auto triggers=state.triggers;
 	import nttData,text_,std.path;
 	auto folder=state.current.map.mapFolder;

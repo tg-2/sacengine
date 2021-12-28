@@ -55,11 +55,24 @@ class Recording(B){
 	}
 	void step(){ events~=Event(EventType.step); }
 
+	Array!(ObjectState!B) stateReplacements;
+	void replaceState(ObjectState!B state){
+		auto copy=new ObjectState!B(state.map,state.sides,state.proximity,state.pathFinder);
+		copy.copyFrom(state);
+		stateReplacements~=copy;
+	}
+
 	static struct Desynch{
 		int side;
 		ObjectState!B desynchedState;
 	}
 	Array!Desynch desynchs;
+
+	void logDesynch(int side,scope ubyte[] serialized,ObjectState!B state){
+		auto desynchedState=new ObjectState!B(state.map,state.sides,state.proximity,state.pathFinder);
+		deserialize(desynchedState,serialized);
+		desynchs~=Desynch(side,desynchedState);
+	}
 
 	void save(string filename,bool zlib=true){
 		ubyte[] data;

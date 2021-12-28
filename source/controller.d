@@ -52,6 +52,18 @@ final class Controller(B){
 		state.addCommandInconsistent(frame,command);
 		if(recording) recording.addExternalCommand(frame,command);
 	}
+	void replaceState(scope ubyte[] serialized){
+		import serialize_;
+		deserialize(state.lastCommitted,serialized);
+		state.current.copyFrom(state.lastCommitted);
+		committedFrame=state.lastCommitted.frame;
+		currentFrame=state.current.frame;
+		firstUpdatedFrame=currentFrame;
+		if(recording) recording.replaceState(state.lastCommitted);
+	}
+	void logDesynch(int side,scope ubyte[] serialized){
+		if(recording) recording.logDesynch(side,serialized,state.current);
+	}
 	void setSelection(int side,int wizard,CreatureGroup selection,TargetLocation loc){
 		if(side!=controlledSide) return;
 		addCommand(Command!B(CommandType.clearSelection,side,wizard,0,Target.init,float.init));

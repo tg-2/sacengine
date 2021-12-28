@@ -12,12 +12,6 @@ import std.exception, std.conv, std.typecons;
 
 import speechexport;
 
-GameState!B prepareGameState(B)(ref Options options){
-	auto map=loadSacMap!B(options.map);
-	auto state=new GameState!B(map);
-	return state;
-}
-
 GameInit!B gameInit(alias multiplayerSide,B,R)(R playerSettings,ref Options options){
 	GameInit!B gameInit;
 	void placeWizard(Settings settings){
@@ -64,6 +58,12 @@ void loadMap(B)(ref B backend,ref Options options)in{
 		options.map=playback.mapName;
 		controlledSide=-1;
 	}
+	ubyte[] mapData;
+	SacMap!B map;
+	if(!network||network.isHost){
+		map=loadSacMap!B(options.map,&mapData); // TODO: compute hash without loading map
+		options.mapHash=map.crc32;
+	}
 	if(network){
 		network.dumpTraffic=options.dumpTraffic;
 		network.checkDesynch=options.checkDesynch;
@@ -77,8 +77,7 @@ void loadMap(B)(ref B backend,ref Options options)in{
 			network.idleLobby();
 			if(!backend.processEvents()) return;
 			if(network.isHost&&network.players.length>=options.host&&network.clientsReadyToLoad()){
-				//network.acceptingNewConnections=false; // TODO: accept observers later
-				network.stopListening();
+				network.stopListening(); // TODO: accept observers later
 				network.synchronizeSetting!"map"();
 				bool[32] sideTaken=false;
 				foreach(ref player;network.players){
@@ -150,6 +149,47 @@ void loadMap(B)(ref B backend,ref Options options)in{
 				break;
 			}
 		}
+		auto mapName=network.players[network.host].settings.map;
+		if(!network.isHost){
+			map=loadSacMap!B(mapName,&mapData); // TODO: compute hash without loading map
+			options.mapHash=map.crc32;
+			network.updateSetting!"mapHash"(options.mapHash);
+			network.updateStatus(PlayerStatus.mapHashed);
+		}else{
+			network.mapData=mapData;
+			network.updateStatus(PlayerStatus.mapHashed);
+			while(!network.mapHashed){
+				network.idleLobby();
+				if(!backend.processEvents()) return;
+			}
+		}
+		while(!network.synchronizeMap()){
+			if(!network.isHost && network.mapData.length){
+				auto hash=network.players[network.host].settings.mapHash;
+				import std.digest.crc;
+				auto crc32=digest!CRC32(network.mapData);
+				static assert(typeof(crc32).sizeof==int.sizeof);
+				if(*cast(int*)&crc32==hash){
+					import std.file: exists, rename;
+					import std.path;
+					if(exists(mapName)){
+						auto newName=stripExtension(mapName)~text(".",map.crc32)~".scp";
+						rename(mapName,newName);
+						stderr.writeln("existing map '",mapName,"' moved to '",newName,"'");
+					}
+					File mapFile=File(mapName,"w");
+					mapFile.rawWrite(network.mapData);
+					mapFile.close();
+					network.mapData.length=0;
+					map=loadSacMap!B(mapName,&mapData);
+					enforce(map.crc32==hash,"map hash mismatch");
+					network.updateSetting!"mapHash"(map.crc32);
+					network.updateStatus(PlayerStatus.mapHashed);
+				}
+				network.mapData=null;
+			}
+			if(!backend.processEvents()) return;
+		}
 		if(network.isHost){
 			network.load();
 		}else{
@@ -161,7 +201,7 @@ void loadMap(B)(ref B backend,ref Options options)in{
 		options.settings=network.settings;
 		controlledSide=options.settings.controlledSide;
 	}
-	auto state=prepareGameState!B(options);
+	auto state=new GameState!B(map);
 	auto sides=state.current.sides;
 	int[32] multiplayerSides=-1;
 	bool[32] matchedSides=false;
@@ -192,8 +232,22 @@ void loadMap(B)(ref B backend,ref Options options)in{
 	}
 	GameInit!B gameInit;
 	if(!playback||network){
-		if(network) gameInit=.gameInit!(multiplayerSide,B)(network.players.map!(x=>x.settings),options);
-		else gameInit=.gameInit!(multiplayerSide,B)(only(options.settings),options);
+		if(network){
+			import serialize_;
+			if(network.isHost){
+				gameInit=.gameInit!(multiplayerSide,B)(network.players.map!(x=>x.settings),options);
+				Array!ubyte gameInitData;
+				serialize!((scope ubyte[] data){ gameInitData~=data; })(gameInit);
+				network.initGame(gameInitData.data);
+			}else{
+				while(!network.gameInitData){
+					network.idleLobby();
+					if(!backend.processEvents()) return;
+				}
+				deserialize(gameInit,state.current,network.gameInitData);
+				network.gameInitData=null;
+			}
+		}else gameInit=.gameInit!(multiplayerSide,B)(only(options.settings),options);
 	}else{
 		gameInit=playback.gameInit;
 		assignArray(state.commands,playback.commands);

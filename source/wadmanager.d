@@ -14,8 +14,8 @@ class WadManager{
 	private void toFile(alias filenameCallback,T...)(ubyte[] data,string name,T args){
 		files[name]=data;
 		byExt[name[$-4..$][0..4]]~=name;
-		static if(is(typeof(filenameCallback(name,args))))
-			filenameCallback(name,args);
+		static if(!is(typeof(filenameCallback)==int))
+			filenameCallback(data,name,args);
 	}
 	void indexWADs(string dataDir){
 		import std.file:dirEntries,SpanMode;
@@ -28,10 +28,12 @@ class WadManager{
 		}
 		writeln();
 	}
-	void indexWAD(alias filenameCallback=0,T...)(string wadPath,string dirPath,T args){
+	void indexWAD(alias filenameCallback=0,alias dataCallback=0,T...)(string wadPath,string dirPath,T args){
 		auto wad=new MmFile(wadPath);
 		wads~=wad;
 		auto input=cast(ubyte[])wad[];
+		static if(!is(typeof(dataCallback)==int))
+			dataCallback(input,args);
 		auto infoOff=parseLE(input[4..8]);
 		auto infoSize=parseLE(input[8..12]);
 		auto unknown1=parseLE(input[12..16]);

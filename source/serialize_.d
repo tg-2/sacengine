@@ -1,4 +1,4 @@
-// copyright © tg
+ // copyright © tg
 // distributed under the terms of the gplv3 license
 // https://www.gnu.org/licenses/gpl-3.0.txt
 
@@ -706,6 +706,8 @@ void serialize(alias sink,B)(Recording!B recording)in{
 	serialize!sink(recording.coreIndex);
 	serialize!sink(recording.core);
 
+	serialize!sink(recording.stateReplacements);
+
 	serialize!sink(recording.desynchs);
 }
 void deserialize(T,R)(T recording,ref R data)if(is(T==Recording!B,B)){
@@ -728,6 +730,10 @@ void deserialize(T,R)(T recording,ref R data)if(is(T==Recording!B,B)){
 	ulong len;
 	deserialize(len,ObjectState!B.init,data);
 	foreach(i;0..len) recording.core~=deserializeObjectState!B(map,sides,proximity,pathFinder,data);
+
+	deserialize(len,ObjectState!B.init,data);
+	foreach(i;0..len)
+		recording.stateReplacements~=deserializeObjectState!B(map,sides,proximity,pathFinder,data);
 
 	deserialize(len,ObjectState!B.init,data);
 	foreach(i;0..len){

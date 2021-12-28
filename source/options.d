@@ -56,15 +56,18 @@ struct Options{
 	int replicateCreatures=1;
 	int protectManafounts=0;
 	int delayStart=0;
+	// multiplayer
 	int host=0;
 	string joinIP="";
 	bool testLag=false;
 	bool dumpTraffic=false;
 	bool checkDesynch=true;
+	// recording and playback
 	string recordingFilename="";
 	bool compressRecording=true;
 	int logCore=0;
 	string playbackFilename="";
+	// asset export
 	string exportFolder="sacengine-exports";
 	alias settings this;
 }
@@ -75,6 +78,7 @@ struct SpellSpec{
 }
 struct Settings{
 	string map="";
+	int mapHash=0;
 	bool observer=false;
 	int controlledSide=-1;
 	int team=-1;
