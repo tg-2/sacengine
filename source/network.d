@@ -503,6 +503,8 @@ enum PlayerStatus{
 	readyToStart,
 	playing,
 	desynched,
+	readyToResynch,
+	resynched,
 	disconnected,
 }
 
@@ -545,6 +547,11 @@ final class SynchQueue{
 	enum maxLength=1024;
 	int[maxLength] hashes;
 	int start=0,end=0;
+	void capReferences(int frame)in{
+		assert(frame<=end);
+	}do{
+		end=frame;
+	}
 	void addReference(int frame,int hash)in{
 		assert(frame==end,text(frame," ",end));
 	}do{
@@ -626,7 +633,13 @@ final class Network(B){
 	}
 	bool desynched(){
 		//return me!=-1&&players[me].status==PlayerStatus.desynched;
-		return players.any!(p=>p.status==PlayerStatus.desynched);
+		return players.any!(p=>p.status==PlayerStatus.desynched||p.status==PlayerStatus.readyToResynch||p.status==PlayerStatus.resynched);
+	}
+	bool readyToResynch(){
+		return players.all!(p=>p.status==PlayerStatus.readyToResynch);
+	}
+	bool resynched(){
+		return players.all!(p=>p.status==PlayerStatus.resynched);
 	}
 	int committedFrame(){
 		auto valid=players.filter!((ref p)=>!p.status.among(PlayerStatus.disconnected,PlayerStatus.desynched));
@@ -651,7 +664,7 @@ final class Network(B){
 		assert(player==me||isHost);
 	}do{
 		auto oldStatus=players[player].status;
-		if(oldStatus>=newStatus&&!(isHost&&oldStatus==PlayerStatus.mapHashed&&newStatus==PlayerStatus.readyToLoad)) return;
+		if(oldStatus>=newStatus&&!(isHost&&newStatus==PlayerStatus.readyToLoad)&&!(oldStatus==PlayerStatus.resynched&&newStatus==PlayerStatus.loading)) return;
 		broadcast(Packet.updateStatus(player,newStatus));
 		players[player].status=newStatus;
 	}
@@ -704,7 +717,7 @@ final class Network(B){
 		broadcast(Packet.command(frame,command));
 	}
 	void commit(int frame)in{
-		assert(playing&&players[me].committedFrame<frame);
+		assert(playing&&players[me].committedFrame<frame,text(playing," ",players[me].committedFrame," ",frame));
 	}do{
 		broadcast(Packet.commit(me,frame));
 		players[me].committedFrame=frame;
@@ -916,9 +929,11 @@ final class Network(B){
 			case PacketType.updateStatus:
 				if(p.player<0||p.player>=playerLimit) break;
 				if(p.player>=players.length) players.length=p.player+1;
-				if(sender==host&&players[p.player].status==PlayerStatus.mapHashed && p.newStatus==PlayerStatus.readyToLoad)
-					players[p.player].status=PlayerStatus.readyToLoad;
-				else players[p.player].status=max(players[p.player].status,p.newStatus);
+				if(sender==host&&p.newStatus==PlayerStatus.readyToLoad
+				   || players[p.player].status==PlayerStatus.resynched&&p.newStatus==PlayerStatus.loading
+				){
+					players[p.player].status=p.newStatus;
+				}else players[p.player].status=max(players[p.player].status,p.newStatus);
 				break;
 			case PacketType.command:
 				if(controller) controller.addExternalCommand(p.frame,fromNetwork!B(p.networkCommand));
@@ -1101,6 +1116,11 @@ final class Network(B){
 		assert(isHost);
 	}do{
 		synchQueue.addReference(frame,hash);
+	}
+	void capSynch(int frame)in{
+		assert(isHost);
+	}do{
+		synchQueue.capReferences(frame);
 	}
 	void checkSynch(int frame,int hash)in{
 		assert(!isHost);

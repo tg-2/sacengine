@@ -390,6 +390,13 @@ struct Queue(T){
 	}
 	void opAssign(Queue!T rhs){ this.tupleof=rhs.tupleof; }
 	void clear(){ payload.length=first=last=0; }
+	void compactify(){
+		if(!payload.length) return;
+		bringToFront(payload.data[0..first%$],payload.data[first%$..$]);
+		last-=first;
+		first=0;
+		payload.length=last;
+	}
 }
 
 struct Heap(T,size_t N=4){

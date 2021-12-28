@@ -130,7 +130,10 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Sma
 	deserializeStruct(result,state,data);
 }
 
-void serialize(alias sink,T)(ref Queue!T queue){ serializeStruct!sink(queue); } // TODO: compactify?
+void serialize(alias sink,T)(ref Queue!T queue){
+	queue.compactify();
+	serializeStruct!sink(queue);
+}
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Queue!S,S)){
 	deserializeStruct(result,state,data);
 }

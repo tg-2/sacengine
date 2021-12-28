@@ -3,7 +3,7 @@
 // https://www.gnu.org/licenses/gpl-3.0.txt
 
 import dlib.math;
-import std.algorithm, std.range, std.container, std.traits, std.exception, std.conv, std.stdio;;
+import std.algorithm, std.range, std.traits, std.exception, std.conv, std.stdio;;
 import nttData,bldg,sacobject,sacspell,stats,state,util;
 
 bool diffData(string[] noserialize=[],T)(ref T a,ref T b,lazy string path)if(is(T==struct)&&!is(T==Vector!(S,n),S,size_t n)&&!is(T==Array!S,S)){

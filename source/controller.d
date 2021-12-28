@@ -55,11 +55,17 @@ final class Controller(B){
 	void replaceState(scope ubyte[] serialized){
 		import serialize_;
 		deserialize(state.lastCommitted,serialized);
-		state.current.copyFrom(state.lastCommitted);
 		committedFrame=state.lastCommitted.frame;
+		state.current.copyFrom(state.lastCommitted);
+		static if(B.hasAudio) B.updateAudioAfterRollback();
 		currentFrame=state.current.frame;
+		state.commands.length=currentFrame;
+		import util: Array;
+		state.commands~=Array!(Command!B)();
 		firstUpdatedFrame=currentFrame;
+		if(network) network.players.each!((ref p){ p.committedFrame=committedFrame; }); // TODO: solve in a better way
 		if(recording) recording.replaceState(state.lastCommitted);
+		network.updateStatus(PlayerStatus.resynched);
 	}
 	void logDesynch(int side,scope ubyte[] serialized){
 		if(recording) recording.logDesynch(side,serialized,state.current);
@@ -87,8 +93,29 @@ final class Controller(B){
 		playAudio=false;
 		if(network){
 			network.update(this);
-			if(network.desynched)
+			if(network.desynched){
+				if(!network.players[network.me].status.among(PlayerStatus.readyToResynch,PlayerStatus.resynched,PlayerStatus.loading))
+					network.updateStatus(PlayerStatus.readyToResynch);
+				if(network.isHost && network.readyToResynch){
+					state.rollback(state.lastCommitted);
+					currentFrame=state.current.frame;
+					network.capSynch(currentFrame);
+					state.commands.length=currentFrame;
+					import util: Array;
+					state.commands~=Array!(Command!B)();
+					firstUpdatedFrame=currentFrame;
+					network.players.each!((ref p){ p.committedFrame=committedFrame; }); // TODO: solve in a better way
+					import util: Array;
+					Array!ubyte stateData;
+					import serialize_;
+					serialize!((scope ubyte[] data){ stateData~=data; })(state.lastCommitted);
+					foreach(i,ref player;network.players) network.sendState(cast(int)i,stateData.data);
+					network.updateStatus(PlayerStatus.resynched);
+				}
+				if(network.isHost && network.resynched)
+					network.load();
 				return false;
+			}
 			if(!network.playing){
 				network.updateStatus(PlayerStatus.readyToStart);
 				if(network.isHost&&network.readyToStart()){
