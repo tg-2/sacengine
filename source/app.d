@@ -4,7 +4,7 @@
 
 import options;
 import dagonBackend;
-import sids, trig, ntts, sacobject, sacmap, state, controller, network, recording_;
+import sids, ntts, sacobject, sacmap, state, controller, network, recording_;
 import wadmanager,util;
 import dlib.math;
 import std.string, std.array, std.range, std.algorithm, std.stdio;
@@ -15,13 +15,30 @@ import speechexport;
 GameState!B prepareGameState(B)(ref Options options){
 	auto map=loadSacMap!B(options.map);
 	auto state=new GameState!B(map);
-	map.makeMeshes(options.enableMapBottom);
 	return state;
 }
-/+
-GameInit!B gameInit(B)(R playerSettings,ref Options options){
 
-}+/
+GameInit!B gameInit(alias multiplayerSide,B,R)(R playerSettings,ref Options options){
+	GameInit!B gameInit;
+	void placeWizard(Settings settings){
+		if(settings.observer) return;
+		char[4] tag=settings.wizard[0..4];
+		auto name=settings.name;
+		auto side=multiplayerSide(settings.controlledSide);
+		auto level=settings.level;
+		auto souls=settings.souls;
+		float experience=0.0f;
+		auto spellbook=getSpellbook!B(settings.spellbook);
+		import nttData:WizardTag;
+		gameInit.wizards~=GameInit!B.Wizard(to!WizardTag(tag),name,side,level,souls,experience,spellbook);
+	}
+	foreach(settings;playerSettings){
+		placeWizard(settings);
+	}
+	gameInit.replicateCreatures=options.replicateCreatures;
+	gameInit.protectManafounts=options.protectManafounts;
+	return gameInit;
+}
 
 void loadMap(B)(ref B backend,ref Options options)in{
 	assert(options.map.endsWith(".scp")||options.map.endsWith(".HMAP"));
@@ -173,56 +190,27 @@ void loadMap(B)(ref B backend,ref Options options)in{
 			}
 		}
 	}
-	int id=0;
-	if(!playback){
-		void placeWizard(Settings settings){
-			if(settings.observer) return;
-			auto wizard=SacObject!B.getSAXS!Wizard(settings.wizard[0..4]);
-			//printWizardStats(wizard);
-			auto spellbook=getSpellbook!B(settings.spellbook);
-			auto flags=0;
-			auto wizId=state.current.placeWizard(wizard,settings.name,flags,multiplayerSide(settings.controlledSide),settings.level,settings.souls,move(spellbook));
-			if(settings.controlledSide==controlledSide) id=wizId;
-		}
-		if(network){
-			foreach(ref player;network.players)
-				placeWizard(player.settings);
-		}else{
-			placeWizard(options.settings);
-			if(options.protectManafounts){
-				foreach(i;0..options.protectManafounts) state.current.uniform(2);
-				state.current.eachBuilding!((bldg,state){
-					if(bldg.componentIds.length==0||!bldg.isManafount) return;
-					auto bpos=bldg.position(state);
-					import nttData;
-					static immutable lv1Creatures=[persephoneCreatures[0..3],pyroCreatures[0..3],jamesCreatures[0..3],stratosCreatures[0..3],charnelCreatures[0..3]];
-					auto tags=lv1Creatures[state.uniform(cast(int)$)];
-					foreach(i;0..10){
-						auto tag=tags[state.uniform(cast(int)$)];
-						int flags=0;
-						int side=1;
-						auto position=bpos+10.0f*state.uniformDirection();
-						import dlib.math.portable;
-						auto facing=state.uniform(-pi!float,pi!float);
-						state.placeCreature(tag,flags,side,position,facing);
-					}
-				})(state.current);
-			}
-		}
+	GameInit!B gameInit;
+	if(!playback||network){
+		if(network) gameInit=.gameInit!(multiplayerSide,B)(network.players.map!(x=>x.settings),options);
+		else gameInit=.gameInit!(multiplayerSide,B)(only(options.settings),options);
 	}else{
-		enforce(playback.core.length&&playback.core[0].frame==0);
-		state.current.copyFrom(playback.core[0]);
+		gameInit=playback.gameInit;
 		assignArray(state.commands,playback.commands);
 	}
-	state.commit();
 	Recording!B recording=null;
-	if(!playback&&options.recordingFilename.length){
+	if((!playback||network)&&options.recordingFilename.length){
 		recording=new Recording!B(options.map);
+		recording.gameInit=gameInit;
 		recording.logCore=options.logCore;
 	}
+	int wizId=state.initGame(gameInit,multiplayerSide(controlledSide));
+	state.current.map.makeMeshes(options.enableMapBottom);
+	state.commit();
+	if(recording) recording.stepCommitted(state.lastCommitted);
 	auto controller=new Controller!B(multiplayerSide(controlledSide),state,network,recording);
 	backend.setState(state);
-	if(id) backend.focusCamera(id);
+	if(wizId) backend.focusCamera(wizId);
 	else backend.scene.fpview.active=true;
 	backend.setController(controller);
 	if(options.observer) controller.controlledSide=-1;
@@ -518,7 +506,7 @@ int main(string[] args){
 	scope(exit) if(B.controller&&B.controller.recording){
 		B.controller.recording.finalize(B.state.commands);
 		writeln("saving recording to '",options.recordingFilename,"'");
-		B.controller.recording.save(options.recordingFilename);
+		B.controller.recording.save(options.recordingFilename,options.compressRecording);
 	}
 	backend.run();
 	return 0;

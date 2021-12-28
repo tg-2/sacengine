@@ -24,7 +24,6 @@ final class Controller(B){
 		currentFrame=state.current.frame;
 		firstUpdatedFrame=currentFrame;
 		this.recording=recording;
-		if(recording) recording.stepCommitted(state.lastCommitted);
 	}
 	void addCommand(int frame,Command!B command)in{
 		assert(command.id==0);

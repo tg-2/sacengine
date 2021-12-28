@@ -278,6 +278,8 @@ struct Array(T){
 		}
 	}
 	Array!T dup(){ return Array!T(payload.dup); }
+
+	static if(!is(T==bool)) string toString()(){ import std.conv; return text(data); }
 }
 
 

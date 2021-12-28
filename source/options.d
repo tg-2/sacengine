@@ -62,6 +62,7 @@ struct Options{
 	bool dumpTraffic=false;
 	bool checkDesynch=true;
 	string recordingFilename="";
+	bool compressRecording=true;
 	int logCore=0;
 	string playbackFilename="";
 	string exportFolder="sacengine-exports";

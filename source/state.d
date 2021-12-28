@@ -18152,6 +18152,7 @@ struct Command(B){
 
 struct GameInit(B){
 	struct Wizard{
+		WizardTag tag;
 		string name;
 		int side=-1;
 		int level=1;
@@ -18187,20 +18188,6 @@ final class GameState(B){
 		lastCommitted=new ObjectState!B(map,sides,proximity,pathFinder);
 		triggers=new Triggers!B(map.trig);
 		commands.length=1;
-		foreach(ref structure;map.ntts.structures)
-			placeStructure(structure);
-		foreach(ref wizard;map.ntts.wizards)
-			placeNTT(wizard);
-		foreach(ref spirit;map.ntts.spirits)
-			placeSpirit(spirit);
-		foreach(ref creature;map.ntts.creatures)
-			placeNTT(creature);
-		foreach(widgets;map.ntts.widgetss) // TODO: improve engine to be able to handle this
-			placeWidgets(widgets);
-		current.eachMoving!((ref MovingObject!B object, ObjectState!B state){
-			if(object.creatureState.mode==CreatureMode.dead) object.createSoul(state);
-		})(current);
-		commit();
 	}
 	void placeStructure(ref Structure ntt){
 		import nttData;
@@ -18294,6 +18281,52 @@ final class GameState(B){
 			auto rotation=facingQuaternion(-pos[2]);
 			current.addFixed(FixedObject!B(curObj,position,rotation));
 		}
+	}
+
+	int initGame(GameInit!B gameInit,int controlledSide){ // returns id of controlled wizard
+		foreach(ref structure;current.map.ntts.structures)
+			placeStructure(structure);
+		foreach(ref wizard;current.map.ntts.wizards)
+			placeNTT(wizard);
+		foreach(ref spirit;current.map.ntts.spirits)
+			placeSpirit(spirit);
+		foreach(ref creature;current.map.ntts.creatures)
+			foreach(_;0..gameInit.replicateCreatures) placeNTT(creature);
+		foreach(widgets;current.map.ntts.widgetss) // TODO: improve engine to be able to handle this
+			placeWidgets(widgets);
+		current.eachMoving!((ref MovingObject!B object, ObjectState!B state){
+			if(object.creatureState.mode==CreatureMode.dead) object.createSoul(state);
+		})(current);
+
+		if(gameInit.protectManafounts){
+			foreach(i;0..gameInit.protectManafounts) current.uniform(2);
+			current.eachBuilding!((bldg,state){
+				if(bldg.componentIds.length==0||!bldg.isManafount) return;
+				auto bpos=bldg.position(state);
+				import nttData;
+				static immutable lv1Creatures=[persephoneCreatures[0..3],pyroCreatures[0..3],jamesCreatures[0..3],stratosCreatures[0..3],charnelCreatures[0..3]];
+				auto tags=lv1Creatures[state.uniform(cast(int)$)];
+				foreach(i;0..10){
+					auto tag=tags[state.uniform(cast(int)$)];
+					int flags=0;
+					int side=1;
+					auto position=bpos+10.0f*state.uniformDirection();
+					import dlib.math.portable;
+					auto facing=state.uniform(-pi!float,pi!float);
+					state.placeCreature(tag,flags,side,position,facing);
+				}
+			})(current);
+		}
+
+		int id=0;
+		foreach(ref wiz;gameInit.wizards){
+			auto wizard=SacObject!B.getSAXS!Wizard(wiz.tag);
+			//printWizardStats(wizard);
+			auto flags=0;
+			auto wizId=current.placeWizard(wizard,wiz.name,flags,wiz.side,wiz.level,wiz.souls,wiz.spellbook);
+			if(controlledSide==wiz.side) id=wizId;
+		}
+		return id;
 	}
 
 	void step(){

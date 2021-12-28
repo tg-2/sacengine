@@ -36,8 +36,8 @@ class Recording(B){
 	Array!(ObjectState!B) core;
 	void stepCommitted(ObjectState!B state){
 		events~=Event(EventType.stepCommitted);
-		if(!logCore&&core.length!=0) return;
-		if(core.length<logCore||core.length==0){
+		if(!logCore) return;
+		if(core.length<logCore){
 			auto copy=new ObjectState!B(state.map,state.sides,state.proximity,state.pathFinder);
 			copy.copyFrom(state);
 			core~=copy;
@@ -61,13 +61,18 @@ class Recording(B){
 	}
 	Array!Desynch desynchs;
 
-	void save(string filename){
+	void save(string filename,bool zlib=true){
 		ubyte[] data;
 		void sink(scope ubyte[] bytes){ data~=bytes; }
 		serialize!sink(this);
 		auto file=File(filename,"wb");
-		//import std.zlib; // TOOD: compress on the fly
-		//file.rawWrite(compress(data));
+		if(zlib){
+			import std.zlib; // TOOD: compress on the fly
+			data=compress(data);
+			file.rawWrite("RCPC");
+		}else{
+			file.rawWrite("RCP_");
+		}
 		file.rawWrite(data);
 	}
 }
@@ -78,8 +83,14 @@ Recording!B loadRecording(B)(string filename){
 		rawData~=chunk;
 	auto recording=new Recording!B("");
 	auto consumed=rawData.data;
+	import std.algorithm;
+	if(consumed.startsWith("RCPC")){
+		import std.zlib;
+		consumed=cast(ubyte[])uncompress(consumed[4..$]); // TODO: uncompress on the fly
+	}else{
+		enforce(consumed.startsWith("RCP_"));
+		consumed=consumed[4..$];
+	}
 	deserialize(recording,consumed);
-	//import std.zlub;
-	//deserialize(loadRecording,uncompress(rawData.data));
 	return recording;
 }
