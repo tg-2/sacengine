@@ -81,7 +81,21 @@ void loadMap(B)(ref B backend,ref Options options)in{
 			if(!backend.processEvents()) return;
 		}
 		network.updateSettings(options.settings);
-		if(!network.isHost) network.updateStatus(PlayerStatus.readyToLoad);
+		network.updateStatus(PlayerStatus.commitHashReady);
+		if(!network.isHost){
+			while(!network.hostCommitHashReady){
+				network.idleLobby();
+				if(!backend.processEvents()) return;
+			}
+			writeln(network.hostSettings);
+			if(network.hostSettings.commit!=options.commit){
+				writeln("incompatible version #");
+				writeln("host is using version ",network.hostSettings.commit);
+				network.disconnectPlayer(network.host,null);
+				return;
+			}
+			network.updateStatus(PlayerStatus.readyToLoad);
+		}
 		while(!network.readyToLoad){
 			network.idleLobby();
 			if(!backend.processEvents()) return;
@@ -317,7 +331,9 @@ int main(string[] args){
 		return tuple!("width","height")(16*to!int(s)/9,to!int(s));
 	}
 	foreach(opt;opts){
-		if(opt.startsWith("--resolution=")){
+		if(opt.startsWith("--spoof-commit-hash=")){ // for testing
+			options.commit=opt["--spoof-commit-hash=".length..$];
+		}else if(opt.startsWith("--resolution=")){
 			auto resolution=parseResolution(opt["--resolution=".length..$]);
 			options.width=resolution.width;
 			options.height=resolution.height;

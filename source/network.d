@@ -497,6 +497,7 @@ class TCPConnection: Connection{
 enum PlayerStatus{
 	connected,
 	synched,
+	commitHashReady,
 	readyToLoad,
 	mapHashed,
 	loading,
@@ -619,6 +620,12 @@ final class Network(B){
 	bool mapHashed(){
 		return players.all!(p=>p.status>=PlayerStatus.mapHashed);
 	}
+	bool hostCommitHashReady(){
+		return players[host].status>=PlayerStatus.commitHashReady;
+	}
+	bool hostReadyToLoad(){
+		return players[host].status>=PlayerStatus.readyToLoad;
+	}
 	bool clientsReadyToLoad(){
 		return iota(players.length).filter!(i=>i!=host).map!(i=>players[i]).all!(p=>p.status>=PlayerStatus.readyToLoad);
 	}
@@ -647,10 +654,13 @@ final class Network(B){
 		return valid.map!(p=>p.committedFrame).reduce!min;
 	}
 	int me=-1;
-	@property settings()in{
+	@property ref settings()in{
 		assert(readyToLoad());
 	}do{
 		return players[me].settings;
+	}
+	@property ref hostSettings(){
+		return players[host].settings;
 	}
 	void broadcast(Packet p)in{
 		assert(purposeFromType(p.type)==PacketPurpose.broadcast);
@@ -930,17 +940,17 @@ final class Network(B){
 			case PacketType.updateStatus:
 				if(p.player<0||p.player>=playerLimit) break;
 				if(p.player>=players.length) players.length=p.player+1;
+				if(isHost&&p.newStatus==PlayerStatus.readyToLoad&&players[p.player].settings.commit!=hostSettings.commit){
+					report!true(p.player,"tried to join with incompatible version #");
+					stderr.writeln("they were using version ",players[p.player].settings.commit);
+					disconnectPlayer(p.player,controller);
+					break;
+				}
 				if(sender==host&&p.newStatus==PlayerStatus.readyToLoad
 				   || players[p.player].status==PlayerStatus.resynched&&p.newStatus==PlayerStatus.loading
 				){
 					players[p.player].status=p.newStatus;
 				}else players[p.player].status=max(players[p.player].status,p.newStatus);
-				if(p.newStatus==PlayerStatus.readyToLoad){
-					if(players[p.player].settings.commit!=.commit){
-						disconnectPlayer(p.player,controller);
-						report!true(p.player,"tried to join with incompatible version #");
-					}
-				}
 				break;
 			case PacketType.command:
 				if(controller) controller.addExternalCommand(p.frame,fromNetwork!B(p.networkCommand));
@@ -1047,15 +1057,18 @@ final class Network(B){
 			if(!player.connection) continue;
 			if(!player.alive){
 				player.connection=null;
+				if(player.settings.commit!=hostSettings.commit){
+					report!true(cast(int)i,"tried to join with incompatible version #");
+					stderr.writeln("they were using version ",player.settings.commit);
+				}else report!true(cast(int)i,"dropped");
 				disconnectPlayer(cast(int)i,controller);
-				report!true(cast(int)i,"dropped");
 				continue;
 			}
 			while(player.ready) handlePacket(cast(int)i,player.receive,controller);
 		}
 	}
 	bool idleLobby()in{
-		assert(me==-1||players[me].status<=PlayerStatus.loading||players[me].status==PlayerStatus.disconnected);
+		assert(me==-1||players[me].status<=PlayerStatus.loading||players[me].status==PlayerStatus.disconnected,text(me," ",me!=-1?text(players[me].status):""));
 	}do{
 		if(me!=-1&&players[me].status==PlayerStatus.disconnected) return false;
 		update(null);
