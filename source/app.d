@@ -37,7 +37,7 @@ GameInit!B gameInit(alias multiplayerSide,B,R)(R playerSettings,ref Options opti
 void loadMap(B)(ref Options options)in{
 	assert(options.map.endsWith(".scp")||options.map.endsWith(".HMAP"));
 }do{
-	auto controlledSide=options.settings.controlledSide;
+	auto controlledSide=options.observer?-1:options.settings.controlledSide;
 	Network!B network=null;
 	if(options.host){
 		network=new Network!B();
@@ -98,8 +98,9 @@ void loadMap(B)(ref Options options)in{
 		while(!network.readyToLoad){
 			network.idleLobby();
 			if(!B.processEvents()) return;
-			if(network.isHost&&network.numActivePlayers+1>=options.host&&network.clientsReadyToLoad()){
-				network.stopListening(); // TODO: accept observers later
+			if(network.isHost&&network.numActivePlayers>=options.host&&network.clientsReadyToLoad()){
+				//network.acceptingNewConnections=false; // TODO: accept observers later
+				network.stopListening();
 				network.synchronizeSetting!"map"();
 				bool[32] sideTaken=false;
 				foreach(ref player;network.players){
@@ -183,12 +184,10 @@ void loadMap(B)(ref Options options)in{
 		}else{
 			network.mapData=mapData;
 			network.updateStatus(PlayerStatus.mapHashed);
-			while(!network.mapHashed){
-				network.idleLobby();
-				if(!B.processEvents()) return;
-			}
 		}
 		while(!network.synchronizeMap()){
+			network.idleLobby();
+			if(!B.processEvents()) return;
 			if(!network.isHost && network.mapData.length){
 				auto hash=network.players[network.host].settings.mapHash;
 				import std.digest.crc;
@@ -215,7 +214,6 @@ void loadMap(B)(ref Options options)in{
 				}
 				network.mapData=null;
 			}
-			if(!B.processEvents()) return;
 		}
 		if(network.isHost){
 			network.load();
@@ -295,7 +293,6 @@ void loadMap(B)(ref Options options)in{
 	if(wizId) B.focusCamera(wizId);
 	else B.scene.fpview.active=true;
 	B.setController(controller);
-	if(options.observer) controller.controlledSide=-1;
 }
 
 int main(string[] args){
