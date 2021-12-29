@@ -98,9 +98,9 @@ void loadMap(B)(ref Options options)in{
 		while(!network.readyToLoad){
 			network.idleLobby();
 			if(!B.processEvents()) return;
-			if(network.isHost&&network.numActivePlayers>=options.host&&network.clientsReadyToLoad()){
-				//network.acceptingNewConnections=false; // TODO: accept observers later
-				network.stopListening();
+			if(network.isHost&&network.numReadyPlayers+(network.players[network.host].allowedToControlState)>=options.host&&network.clientsReadyToLoad()){
+				network.acceptingNewConnections=false; // TODO: accept observers later
+				//network.stopListening();
 				network.synchronizeSetting!"map"();
 				bool[32] sideTaken=false;
 				foreach(ref player;network.players){
@@ -218,7 +218,7 @@ void loadMap(B)(ref Options options)in{
 		if(network.isHost){
 			network.load();
 		}else{
-			while(!network.loading){
+			while(!network.loading&&network.players[network.me].status!=PlayerStatus.desynched){ // desynched at start if late join
 				network.idleLobby();
 				if(!B.processEvents()) return;
 			}
@@ -287,6 +287,7 @@ void loadMap(B)(ref Options options)in{
 	int wizId=state.initGame(gameInit,multiplayerSide(controlledSide));
 	state.current.map.makeMeshes(options.enableMapBottom);
 	state.commit();
+	if(network && network.isHost) network.addSynch(state.lastCommitted.frame,state.lastCommitted.hash);
 	if(recording) recording.stepCommitted(state.lastCommitted);
 	auto controller=new Controller!B(multiplayerSide(controlledSide),state,network,recording,playback);
 	B.setState(state);

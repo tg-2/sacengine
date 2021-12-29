@@ -400,6 +400,7 @@ abstract class Connection{
 	abstract void receiveRaw(scope void delegate(scope ubyte[]));
 	abstract void send(Packet packet);
 	abstract void send(Packet packet,scope ubyte[] rawData);
+	abstract void send(Packet packet,scope ubyte[] rawData1,scope ubyte[] rawData2);
 }
 class TCPConnection: Connection{
 	Socket tcpSocket;
@@ -492,6 +493,13 @@ class TCPConnection: Connection{
 		tcpSocket.send((cast(ubyte*)&packet)[0..packet.sizeof]);
 		tcpSocket.send(rawData);
 	}
+	override void send(Packet packet,scope ubyte[] rawData1,scope ubyte[] rawData2){
+		assert(isHeaderType(packet.type));
+		assert(packet.rawDataSize==rawData1.length+rawData2.length);
+		tcpSocket.send((cast(ubyte*)&packet)[0..packet.sizeof]);
+		tcpSocket.send(rawData1);
+		tcpSocket.send(rawData2);
+	}
 }
 
 enum PlayerStatus{
@@ -501,14 +509,26 @@ enum PlayerStatus{
 	commitHashReady,
 	readyToLoad,
 	mapHashed,
+	pendingLoad,
 	loading,
 	readyToStart,
+	pendingStart,
 	playing,
 	dropped,
 	desynched,
 	readyToResynch,
 	resynched,
 	disconnected,
+}
+
+bool isConnectedStatus(PlayerStatus status){
+	return !status.among(PlayerStatus.unconnected,PlayerStatus.dropped,PlayerStatus.disconnected);
+}
+bool isReadyStatus(PlayerStatus status){
+	return status>=PlayerStatus.readyToLoad;
+}
+bool isActiveStatus(PlayerStatus status){
+	return PlayerStatus.pendingStart<=status && status<PlayerStatus.dropped;
 }
 
 struct Player{
@@ -524,6 +544,10 @@ struct Player{
 	void send(Packet p,scope ubyte[] rawData){
 		if(alive)
 			connection.send(p,rawData);
+	}
+	void send(Packet p,scope ubyte[] rawData1,scope ubyte[] rawData2){
+		if(alive)
+			connection.send(p,rawData1,rawData2);
 	}
 	bool ready(){ return connection&&connection.ready; }
 	Packet receive()in{
@@ -541,6 +565,20 @@ struct Player{
 	int committedFrame=0;
 	int synchronizedFrame=0;
 	int ping=-1;
+
+	bool allowedToControlState(){
+		if(settings.observer) return false;
+		if(settings.controlledSide==-1) return false;
+		return true;
+	}
+	bool isReadyToControlState(){
+		if(!allowedToControlState) return false;
+		return isReadyStatus(status);
+	}
+	bool isControllingState(){
+		if(!allowedToControlState) return false;
+		return isActiveStatus(status);
+	}
 }
 
 enum playerLimit=256;
@@ -569,22 +607,20 @@ final class SynchQueue{
 	}
 }
 
-bool isPlayingStatus(PlayerStatus status){
-	return PlayerStatus.readyToLoad<=status && status<PlayerStatus.disconnected;
-}
-
 final class Network(B){
 	Player[] players;
-	auto connectedPlayerIds(){
-		return iota(players.length).filter!(i=>!players[i].status.among(PlayerStatus.unconnected,PlayerStatus.dropped,PlayerStatus.disconnected));
-	}
+	auto connectedPlayerIds(){ return iota(players.length).filter!(i=>isConnectedStatus(players[i].status)); }
 	auto connectedPlayers(){
 		ref Player index(size_t i){ return players[i]; }
 		return connectedPlayerIds.map!index;
 	}
-	auto activePlayerIds(){
-		return connectedPlayerIds.filter!(i=>(i==host||isPlayingStatus(players[i].status)) && !players[i].settings.observer && players[i].settings.controlledSide!=-1);
+	auto readyPlayerIds(){ return iota(players.length).filter!(i=>players[i].isReadyToControlState); }
+	auto readyPlayers(){
+		ref Player index(size_t i){ return players[i]; }
+		return connectedPlayerIds.map!index;
 	}
+	size_t numReadyPlayers(){ return readyPlayerIds.walkLength; }
+	auto activePlayerIds(){ return connectedPlayerIds.filter!(i=>players[i].isControllingState); }
 	auto activePlayers(){
 		ref Player index(size_t i){ return players[i]; }
 		return activePlayerIds.map!index;
@@ -648,7 +684,7 @@ final class Network(B){
 		return players[host].status>=PlayerStatus.readyToLoad;
 	}
 	bool clientsReadyToLoad(){
-		return iota(players.length).filter!(i=>i!=host&&players[i].connection).all!(i=>players[i].status>=PlayerStatus.readyToLoad);
+		return iota(players.length).filter!(i=>i!=host&&players[i].connection).all!(i=>isReadyStatus(players[i].status));
 	}
 	bool loading(){
 		return me!=-1&&players[me].status==PlayerStatus.loading;
@@ -660,29 +696,19 @@ final class Network(B){
 		return me!=-1&&players[me].status==PlayerStatus.playing;
 	}
 	bool desynched(){
-		//return me!=-1&&players[me].status==PlayerStatus.desynched;
 		return connectedPlayers.any!(p=>p.status==PlayerStatus.desynched||p.status==PlayerStatus.readyToResynch||p.status==PlayerStatus.resynched);
 	}
-	bool readyToResynch(){
-		return connectedPlayers.all!(p=>p.status==PlayerStatus.readyToResynch);
-	}
-	bool resynched(){
-		return connectedPlayers.all!(p=>p.status==PlayerStatus.resynched);
-	}
-	int committedFrame(){
-		auto valid=connectedPlayers.filter!((ref p)=>p.status!=PlayerStatus.desynched);
-		if(valid.empty) return 0;
-		return valid.map!((ref p)=>p.committedFrame).reduce!min;
-	}
+	bool readyToResynch(){ return connectedPlayers.all!(p=>p.status==PlayerStatus.readyToResynch); }
+	bool resynched(){ return connectedPlayers.all!(p=>p.status==PlayerStatus.resynched); }
+	int committedFrame(){ return activePlayers.map!((ref p)=>p.committedFrame).fold!min(players[host].committedFrame); }
+	int maxCommittedFrame(){ return activePlayers.map!((ref p)=>p.committedFrame).fold!max(players[host].committedFrame); }
 	int me=-1;
 	@property ref settings()in{
 		assert(readyToLoad());
 	}do{
 		return players[me].settings;
 	}
-	@property ref hostSettings(){
-		return players[host].settings;
-	}
+	@property ref hostSettings(){ return players[host].settings; }
 	void broadcast(Packet p)in{
 		assert(purposeFromType(p.type)==PacketPurpose.broadcast);
 	}do{
@@ -752,11 +778,16 @@ final class Network(B){
 	}do{
 		broadcast(Packet.command(frame,command));
 	}
+	void commit(int i,int frame)in{
+		assert(isHost||i==me&&playing);
+	}do{
+		broadcast(Packet.commit(i,frame));
+		players[i].committedFrame=max(players[i].committedFrame,frame);
+	}
 	void commit(int frame)in{
 		assert(playing&&players[me].committedFrame<frame,text(playing," ",players[me].committedFrame," ",frame));
 	}do{
-		broadcast(Packet.commit(me,frame));
-		players[me].committedFrame=frame;
+		commit(me,frame);
 	}
 	enum AckHandler{
 		none,
@@ -901,17 +932,17 @@ final class Network(B){
 					stderr.writeln("non-host player ",sender," attempted to update settings: ",p);
 					break;
 				}
-				if(me!=-1&&players[me].status>=PlayerStatus.loading){
-					stderr.writeln("attempt to change settings after game started loading: ",p);
-					break;
-				}
 				static assert(p.player.offsetof is p.mapPlayer.offsetof);
 				if(p.player<0||p.player>=playerLimit){
 					stderr.writeln("player id out of range: ",p);
 					break;
 				}
 				if(p.player>=players.length) players.length=p.player+1;
-				if(players[sender].status>=PlayerStatus.mapHashed){ // TODO: if >=PlayerStatus.readyToLoad, only mapHash may change
+				if(players[p.player].status>=PlayerStatus.loading){
+					stderr.writeln("attempt to change settings after game started loading: ",p);
+					break;
+				}
+				if(players[p.player].status>=PlayerStatus.mapHashed){ // TODO: if >=PlayerStatus.readyToLoad, only mapHash may change
 					stderr.writeln("attempt to change settings after marked ready to load and map was hashed: ",p);
 					break;
 				}
@@ -1059,8 +1090,7 @@ final class Network(B){
 		if(listener) listener.close();
 	}
 	void acceptNewConnections(){
-		if(!listener) return;
-		if(!acceptingNewConnections) return; // TODO: allow observers to join and dropped players to reconnect
+		if(!acceptingNewConnections||!listener) return; // TODO: allow observers to join and dropped players to reconnect
 		if(isHost){
 			if(players.length>=playerLimit) return;
 			for(Socket newSocket=null;;newSocket=null){
@@ -1109,7 +1139,7 @@ final class Network(B){
 		}
 	}
 	bool idleLobby()in{
-		assert(me==-1||players[me].status<=PlayerStatus.loading||players[me].status==PlayerStatus.disconnected,text(me," ",me!=-1?text(players[me].status):""));
+		assert(me==-1||players[me].status<=PlayerStatus.loading||players[me].status>PlayerStatus.dropped,text(me," ",me!=-1?text(players[me].status):""));
 	}do{
 		if(me!=-1&&players[me].status==PlayerStatus.disconnected) return false;
 		update(null);
@@ -1120,17 +1150,24 @@ final class Network(B){
 	void sendMap(int i,scope ubyte[] mapData){
 		players[i].send(Packet.sendMap(mapData.length),mapData);
 	}
-	void sendState(int i,scope ubyte[] stateData){
+	void sendState(int i,scope ubyte[] stateData,scope ubyte[] commandData){
 		players[i].send(Packet.sendState(stateData.length),stateData);
 	}
 	ubyte[] gameInitData;
+	void initGame(int i,scope ubyte[] gameInitData)in{
+		assert(isHost);
+	}do{
+		players[i].send(Packet.initGame(gameInitData.length),gameInitData);
+	}
 	void initGame(scope ubyte[] gameInitData)in{
 		assert(isHost);
 	}do{
 		foreach(i;0..players.length){
 			if(i==me) continue;
-			players[i].send(Packet.initGame(gameInitData.length),gameInitData);
+			initGame(cast(int)i,gameInitData);
 		}
+		// for late joining:
+		this.gameInitData=gameInitData.dup; // TODO: don't leak this memory
 	}
 	ubyte[] mapData;
 	bool synchronizeMap(){
@@ -1151,11 +1188,16 @@ final class Network(B){
 			return mapHashed&&players[me].settings.mapHash==hash;
 		}
 	}
+	void load(int i)in{
+		assert(isHost&&isReadyStatus(players[i].status));
+	}do{
+		updateStatus(i,PlayerStatus.pendingLoad);
+		players[i].send(Packet.loadGame);
+	}
 	void load()in{
 		assert(isHost&&readyToLoad);
 	}do{
-		foreach(ref player;players)
-			player.send(Packet.loadGame);
+		foreach(i;0..players.length) if(i!=me) load(cast(int)i);
 		updateStatus(PlayerStatus.loading);
 	}
 	void start(Controller!B controller)in{
@@ -1165,13 +1207,16 @@ final class Network(B){
 		players[me].ping=0;
 		foreach(ref player;players)
 			player.send(Packet.ping(B.ticks()));
-		while(connectedPlayers.any!((ref p)=>!p.status.among(PlayerStatus.disconnected,PlayerStatus.desynched)&&p.ping==-1))
+		while(connectedPlayers.any!((ref p)=>p.status!=PlayerStatus.desynched&&p.ping==-1))
 			update(controller);
 		auto maxPing=connectedPlayers.map!(p=>p.ping).reduce!max;
 		writeln("pings: ",players.map!(p=>p.ping));
-		foreach(ref player;players)
-			if(player.ping!=-1)
+		foreach(i,ref player;players){
+			if(player.ping!=-1){
+				updateStatus(cast(int)i,PlayerStatus.pendingStart);
 				player.send(Packet.startGame((maxPing-player.ping)/2));
+			}
+		}
 		Thread.sleep((maxPing/2).msecs);
 		updateStatus(PlayerStatus.playing);
 		B.unpause();

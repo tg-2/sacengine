@@ -2,7 +2,7 @@
 // distributed under the terms of the gplv3 license
 // https://www.gnu.org/licenses/gpl-3.0.txt
 
-import std.stdio, std.algorithm;
+import std.stdio, std.algorithm, std.exception;
 import util: Array, assignArray;
 import state, network, recording_;
 
@@ -59,17 +59,17 @@ final class Controller(B){
 		assert(network&&!network.isHost);
 	}do{
 		import serialize_;
-		state.lastCommitted.serialized(&network.logDesynch);
+		state.lastCommitted.serialized(&network.logDesynch); // TODO: don't log if late join
 		deserialize(state.lastCommitted,serialized);
+		deserialize(state.commands,state.lastCommitted,serialized);
 		committedFrame=state.lastCommitted.frame;
 		state.current.copyFrom(state.lastCommitted);
 		static if(B.hasAudio) B.updateAudioAfterRollback();
-		currentFrame=state.current.frame;
-		state.commands.length=currentFrame;
-		state.commands~=Array!(Command!B)();
-		firstUpdatedFrame=currentFrame;
+		currentFrame=committedFrame;
+		if(state.commands.length<currentFrame+1) state.commands.length=currentFrame+1;
+		firstUpdatedFrame=committedFrame;
 		if(network) network.players.each!((ref p){ p.committedFrame=committedFrame; }); // TODO: solve in a better way
-		if(recording) recording.replaceState(state.lastCommitted);
+		if(recording) recording.replaceState(state.lastCommitted,state.commands);
 		network.updateStatus(PlayerStatus.resynched);
 	}
 	void logDesynch(int side,scope ubyte[] serialized){
@@ -92,40 +92,59 @@ final class Controller(B){
 			if(recording) recording.stepCommitted(state.lastCommitted);
 			if(network.isHost) network.addSynch(state.lastCommitted.frame,state.lastCommitted.hash);
 		}
-		assert(committedFrame==state.lastCommitted.frame);
+		if(committedFrame!=state.lastCommitted.frame){
+			writeln(network.activePlayerIds);
+			writeln(network.players.map!((ref p)=>p.committedFrame));
+			writeln(committedFrame," ",state.lastCommitted.frame);
+		}
+		enforce(committedFrame==state.lastCommitted.frame);
 	}
 	bool step(){
 		playAudio=false;
 		if(network){
 			network.update(this);
+			if(network.isHost){ // handle new connections
+				network.synchronizeMap();
+				if(network.gameInitData){
+					auto hash=network.hostSettings.mapHash;
+					foreach(i,ref player;network.players){
+						if(player.status==PlayerStatus.mapHashed && player.settings.mapHash==hash){
+							network.load(cast(int)i);
+							network.initGame(cast(int)i,network.gameInitData);
+							network.updateStatus(cast(int)i,PlayerStatus.desynched);
+						}
+					}
+				}
+			}
 			if(network.desynched){
+				network.acceptingNewConnections=false;
 				if(!network.players[network.me].status.among(PlayerStatus.readyToResynch,PlayerStatus.resynched,PlayerStatus.loading))
 					network.updateStatus(PlayerStatus.readyToResynch);
 				if(network.isHost && network.readyToResynch){
-					state.rollback(state.lastCommitted);
-					currentFrame=state.current.frame;
-					network.capSynch(currentFrame);
-					state.commands.length=currentFrame;
-					import util: Array;
-					state.commands~=Array!(Command!B)();
-					firstUpdatedFrame=currentFrame;
-					network.players.each!((ref p){ p.committedFrame=committedFrame; }); // TODO: solve in a better way
 					import serialize_;
+					committedFrame=network.maxCommittedFrame; // commits have to be monotone
+					if(state.commands.length<committedFrame+1)
+						state.commands.length=committedFrame+1;
 					state.lastCommitted.serialized((scope ubyte[] stateData){
-						foreach(i,ref player;network.players) network.sendState(cast(int)i,stateData);
+						state.commands.serialized((scope ubyte[] commandData){
+							foreach(i,ref player;network.players){
+								network.commit(cast(int)i,committedFrame);
+								network.sendState(cast(int)i,stateData,commandData);
+							}
+						});
 					});
 					network.updateStatus(PlayerStatus.resynched);
 				}
 				if(network.isHost && network.resynched)
 					network.load();
-				return false;
+				return true; // ignore passed time in next frame
 			}
-			if(!network.playing){
+			if(!network.playing){ // start game
 				network.updateStatus(PlayerStatus.readyToStart);
 				if(network.isHost&&network.readyToStart()){
-					network.addSynch(state.lastCommitted.frame,state.lastCommitted.hash);
 					network.start(this);
 				}
+				network.acceptingNewConnections=true;
 				return true; // ignore passed time in next frame
 			}
 			updateCommitted();

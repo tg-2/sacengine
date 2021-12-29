@@ -76,12 +76,13 @@ class Recording(B){
 	void step(){ events~=Event(EventType.step); }
 
 	Array!(ObjectState!B) stateReplacements;
-	void replaceState(ObjectState!B state)in{
+	void replaceState(ObjectState!B state,Array!(Array!(Command!B)) commands)in{
 		assert(!finalized);
 	}do{
 		auto copy=new ObjectState!B(map,sides,proximity,pathFinder,triggers);
 		copy.copyFrom(state);
 		stateReplacements~=copy;
+		// ignore commands for now
 	}
 
 	static struct Desynch{
