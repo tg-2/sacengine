@@ -110,6 +110,10 @@ class Recording(B){
 			}else{
 				file.rawWrite("RCP_");
 			}
+			import std.conv: to;
+			auto len=to!uint(commit.length);
+			file.rawWrite((*cast(ubyte[4]*)&len)[]);
+			file.rawWrite(commit);
 			file.rawWrite(data);
 		});
 	}
@@ -150,12 +154,21 @@ Recording!B loadRecording(B)(string filename)out(r){
 	auto recording=new Recording!B;
 	auto consumed=rawData.data;
 	import std.algorithm;
-	if(consumed.startsWith("RCPC")){
+	bool zlib=consumed.startsWith("RCPC");
+	if(!zlib) enforce(consumed.startsWith("RCP_"));
+	consumed=consumed[4..$];
+	auto commitLength=consumed.parseUint;
+	auto recordingCommit=consumed[0..commitLength];
+	consumed=consumed[commitLength..$];
+	if(recordingCommit!=commit){
+		stderr.writeln("warning: recording '",filename,"' was saved with engine version:");
+		stderr.writeln(recordingCommit);
+		stderr.writeln("this may be incompatible with the current version:");
+		stderr.writeln(commit);
+	}
+	if(zlib){
 		import std.zlib;
-		consumed=cast(ubyte[])uncompress(consumed[4..$]); // TODO: uncompress on the fly
-	}else{
-		enforce(consumed.startsWith("RCP_"));
-		consumed=consumed[4..$];
+		consumed=cast(ubyte[])uncompress(consumed); // TODO: uncompress on the fly
 	}
 	deserialize(recording,consumed);
 	enforce(recording.finalized);

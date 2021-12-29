@@ -184,7 +184,7 @@ struct Packet{
 		struct{ uint startDelay; } // startGame
 		struct{ // checkSynch
 			int synchFrame;
-			int synchHash;
+			uint synchHash;
 		}
 		struct{ int pingId; } // ack
 		struct{ // updateStatus, updateSetting, clearArraySetting, appendArraySetting, confirmArraySetting
@@ -914,6 +914,7 @@ final class Network(B){
 					auto len=0;
 					while(len<p.optionName.length&&p.optionName[len]!='\0') ++len;
 					if(p.optionName[0..len]=="name" && players[p.player].settings.name!="") writeln("player ",p.player," is ",players[p.player].settings.name);
+					if(p.optionName[0..len]=="commit" && players[p.player].settings.commit!="") report(p.player,"is at commit ",players[p.player].settings.commit);
 				}else if(p.type==PacketType.setMap){
 					auto len=0;
 					while(len<p.mapName.length&&p.mapName[len]!='\0') ++len;
@@ -934,6 +935,12 @@ final class Network(B){
 				){
 					players[p.player].status=p.newStatus;
 				}else players[p.player].status=max(players[p.player].status,p.newStatus);
+				if(p.newStatus==PlayerStatus.readyToLoad){
+					if(players[p.player].settings.commit!=.commit){
+						disconnectPlayer(p.player,controller);
+						report!true(p.player,"tried to join with incompatible version #");
+					}
+				}
 				break;
 			case PacketType.command:
 				if(controller) controller.addExternalCommand(p.frame,fromNetwork!B(p.networkCommand));
@@ -1047,11 +1054,13 @@ final class Network(B){
 			while(player.ready) handlePacket(cast(int)i,player.receive,controller);
 		}
 	}
-	void idleLobby()in{
-		assert(me==-1||players[me].status<=PlayerStatus.loading);
+	bool idleLobby()in{
+		assert(me==-1||players[me].status<=PlayerStatus.loading||players[me].status==PlayerStatus.disconnected);
 	}do{
+		if(players[me].status==PlayerStatus.disconnected) return false;
 		update(null);
 		Thread.sleep(1.msecs);
+		return true;
 	}
 
 	void sendMap(int i,scope ubyte[] mapData){

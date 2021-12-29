@@ -77,6 +77,7 @@ struct SpellSpec{
 	char[4] tag;
 }
 struct Settings{
+	string commit;
 	string map="";
 	int mapHash=0;
 	bool observer=false;

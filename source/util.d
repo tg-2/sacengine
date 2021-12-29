@@ -8,6 +8,11 @@ import std.exception:enforce;
 
 alias Seq(T...)=T;
 
+enum head=import(".git/HEAD")["ref: ".length..$].strip;
+enum commit=import(".git/"~head).strip;
+
+version(LittleEndian){}else static assert(0,"some reinterpret-casts still assume little-endianness");
+
 uint parseLE(const ubyte[] raw)in{
 	assert(raw.length<=4);
 }do{
@@ -447,11 +452,6 @@ struct Stack(T){
 		data=data[0..$-1];
 		data.assumeSafeAppend();
 	}
-}
-
-template tryImport(string filename,string alt=""){
-	static if(__traits(compiles,import(filename))) enum tryImport = import(filename)[0..$-1];
-	else enum tryImport = alt;
 }
 
 import std.string,std.path,std.algorithm,std.range;

@@ -303,6 +303,7 @@ int main(string[] args){
 	auto opts=args[1..$].filter!(x=>x.startsWith("--")).array;
 	args=chain(args[0..1],args[1..$].filter!(x=>!x.startsWith("--"))).array;
 	Options options={
+		settings: { commit: commit },
 		//shadowMapResolution: 8192,
 		//shadowMapResolution: 4096,
 		//shadowMapResolution: 2048,
@@ -456,8 +457,7 @@ int main(string[] args){
 	if(options.randomSpellbook||options.randomSpellbooks){
 		options.spellbook=randomSpells();
 	}else options.spellbook=defaultSpells[options.god];
-	enum commit = tryImport!("git/"~tryImport!("git/HEAD","ref: ")["ref: ".length..$],"");
-	writeln("SacEngine ",commit.length?text("commit ",commit):"","build ",__DATE__," ",__TIME__);
+	writeln("SacEngine build ",__DATE__," ",__TIME__,commit.length?text(", commit ",commit):"");
 	import audio;
 	if(!loadAudio()){
 		stderr.writeln("failed to initialize audio");

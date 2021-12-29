@@ -10,8 +10,9 @@
 		"derelict-mpg123": "~>0.1.2",
 		"derelict-al": "~>2.0.0-beta.2",
 	},
+	"stringImportPaths": ["."],
 	"buildRequirements": ["requireBoundsCheck","requireContracts"],
 	"description": "SacEngine.",
 	"copyright": "Copyright © 2018, tg",
-	"license": "proprietary"
+	"license": "GPL 3.0"
 }
