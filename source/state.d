@@ -6033,7 +6033,6 @@ float dealMeleeDamage(B)(ref Building!B building,ref MovingObject!B attacker,flo
 	auto guardianDamage=meleeDamageGuardians(building,damage,attacker,damageMod,state);
 	if(!isNaN(guardianDamage)) return guardianDamage;
 	auto actualDamage=damage*building.meleeResistance*attacker.sacObject.buildingMeleeDamageMultiplier;
-	if(building.guardianIds.length) actualDamage*=2.0f; // compensates for higher resistances of guardians
 	actualDamage=building.dealDamage(actualDamage,attacker,damageMod,state);
 	playSoundTypeAt(attacker.sacObject,attacker.id,SoundType.hitWall,state);
 	return actualDamage;
