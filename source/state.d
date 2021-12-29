@@ -5847,7 +5847,6 @@ float meleeDamageGuardians(B)(ref Building!B building,float damage,ref MovingObj
 					obj.damageAnimation(attackDirection,state,false);
 					*ok=true;
 					auto actualDamage=splitDamage*obj.creatureStats.meleeResistance;
-					actualDamage*=2.0f; // compensates for higher guardian resistance to all damage
 					return dealDamage(obj,actualDamage,*attacker,damageMod,state);
 				},()=>0.0f)(id,splitDamage,&attacker,attachPosition,damageMod,state,&ok);
 			}
@@ -6001,7 +6000,6 @@ void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,fl
 	bool fromBehind=direction==DamageDirection.back;
 	bool fromSide=!!direction.among(DamageDirection.left,DamageDirection.right);
 	if(fromBehind) actualDamage*=2.0f;
-	if(object.isGuardian) actualDamage*=2.0f; // compensates for higher guardian resistance to all damage
 	object.dealDamage(actualDamage,attacker,damageMod,state);
 	if(stunBehavior==StunBehavior.always || fromBehind && stunBehavior==StunBehavior.fromBehind){
 		if(actualDamage>=0.5f*damage){
