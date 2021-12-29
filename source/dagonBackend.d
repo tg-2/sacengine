@@ -295,7 +295,7 @@ final class SacScene: Scene{
 		camera.distance=max(camera.distance,4.5f);
 		camera.floatingHeight=1.75f*height-1.15f;
 		camera.focusHeight=camera.floatingHeight-0.3f*(height-1.0f);
-		updateCameraPosition(0.0f,true);
+		updateCameraPosition(0.0f,true,false);
 	}
 
 	Vector3f getCameraDisplacement(Vector3f position){
@@ -346,8 +346,9 @@ final class SacScene: Scene{
 		positionFPCamera();
 	}
 
-	void updateCameraPosition(float dt,bool center){
+	void updateCameraPosition(float dt,bool center,bool uncenter){
 		if(center) camera.centering=true;
+		if(uncenter) camera.centering=false;
 		if(!state.current.isValidTarget(camera.target,TargetType.creature)) camera.target=0;
 		while(camera.pitch>180.0f) camera.pitch-=360.0f;
 		while(camera.pitch<-180.0f) camera.pitch+=360.0f;
@@ -839,6 +840,7 @@ final class SacScene: Scene{
 	}do{
 		if(!options.debugHotkeys) return;
 		auto ostate=state.current;
+		//auto ostate=state.lastCommitted;
 		static void applyToMoving(alias f,B)(ObjectState!B state,Camera camera,Target target){
 			if(!state.isValidTarget(camera.target,TargetType.creature)) camera.target=0;
 			static void perform(T)(ref T obj,ObjectState!B state){ f(obj,state); }
@@ -970,7 +972,7 @@ final class SacScene: Scene{
 			if(!state.current.isValidTarget(camera.target,TargetType.creature)) camera.target=0;
 			if(camera.target){
 				auto targetFacing=state.current.movingObjectById!((obj)=>obj.creatureState.facing, function float(){ assert(0); })(camera.target);
-				updateCameraPosition(dt,targetFacing!=camera.lastTargetFacing && !mouse.dragging);
+				updateCameraPosition(dt,targetFacing!=camera.lastTargetFacing,mouse.dragging);
 				camera.lastTargetFacing=targetFacing;
 			}
 			updateHUD(dt);
