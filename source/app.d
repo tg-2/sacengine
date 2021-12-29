@@ -87,7 +87,6 @@ void loadMap(B)(ref B backend,ref Options options)in{
 				network.idleLobby();
 				if(!backend.processEvents()) return;
 			}
-			writeln(network.hostSettings);
 			if(network.hostSettings.commit!=options.commit){
 				writeln("incompatible version #");
 				writeln("host is using version ",network.hostSettings.commit);
@@ -99,7 +98,7 @@ void loadMap(B)(ref B backend,ref Options options)in{
 		while(!network.readyToLoad){
 			network.idleLobby();
 			if(!backend.processEvents()) return;
-			if(network.isHost&&network.players.length>=options.host&&network.clientsReadyToLoad()){
+			if(network.isHost&&network.numActivePlayers+1>=options.host&&network.clientsReadyToLoad()){
 				network.stopListening(); // TODO: accept observers later
 				network.synchronizeSetting!"map"();
 				bool[32] sideTaken=false;
@@ -230,7 +229,7 @@ void loadMap(B)(ref B backend,ref Options options)in{
 		controlledSide=options.settings.controlledSide;
 	}
 	if(!playback){
-		// map already loaded
+		enforce(!!map); // map already loaded
 		sides=new Sides!B(map.sids);
 		proximity=new Proximity!B();
 		pathFinder=new PathFinder!B(map);
