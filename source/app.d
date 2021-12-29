@@ -34,7 +34,7 @@ GameInit!B gameInit(alias multiplayerSide,B,R)(R playerSettings,ref Options opti
 	return gameInit;
 }
 
-void loadMap(B)(ref B backend,ref Options options)in{
+void loadMap(B)(ref Options options)in{
 	assert(options.map.endsWith(".scp")||options.map.endsWith(".HMAP"));
 }do{
 	auto controlledSide=options.settings.controlledSide;
@@ -48,7 +48,7 @@ void loadMap(B)(ref B backend,ref Options options)in{
 		while(!network.joinGame(address)){
 			import core.thread;
 			Thread.sleep(200.msecs);
-			if(!backend.processEvents()) return;
+			if(!B.processEvents()) return;
 		}
 	}
 	Recording!B playback=null;
@@ -78,14 +78,14 @@ void loadMap(B)(ref B backend,ref Options options)in{
 		network.checkDesynch=options.checkDesynch;
 		while(!network.synched){
 			network.idleLobby();
-			if(!backend.processEvents()) return;
+			if(!B.processEvents()) return;
 		}
 		network.updateSettings(options.settings);
 		network.updateStatus(PlayerStatus.commitHashReady);
 		if(!network.isHost){
 			while(!network.hostCommitHashReady){
 				network.idleLobby();
-				if(!backend.processEvents()) return;
+				if(!B.processEvents()) return;
 			}
 			if(network.hostSettings.commit!=options.commit){
 				writeln("incompatible version #");
@@ -97,7 +97,7 @@ void loadMap(B)(ref B backend,ref Options options)in{
 		}
 		while(!network.readyToLoad){
 			network.idleLobby();
-			if(!backend.processEvents()) return;
+			if(!B.processEvents()) return;
 			if(network.isHost&&network.numActivePlayers+1>=options.host&&network.clientsReadyToLoad()){
 				network.stopListening(); // TODO: accept observers later
 				network.synchronizeSetting!"map"();
@@ -185,7 +185,7 @@ void loadMap(B)(ref B backend,ref Options options)in{
 			network.updateStatus(PlayerStatus.mapHashed);
 			while(!network.mapHashed){
 				network.idleLobby();
-				if(!backend.processEvents()) return;
+				if(!B.processEvents()) return;
 			}
 		}
 		while(!network.synchronizeMap()){
@@ -215,14 +215,14 @@ void loadMap(B)(ref B backend,ref Options options)in{
 				}
 				network.mapData=null;
 			}
-			if(!backend.processEvents()) return;
+			if(!B.processEvents()) return;
 		}
 		if(network.isHost){
 			network.load();
 		}else{
 			while(!network.loading){
 				network.idleLobby();
-				if(!backend.processEvents()) return;
+				if(!B.processEvents()) return;
 			}
 		}
 		options.settings=network.settings;
@@ -273,7 +273,7 @@ void loadMap(B)(ref B backend,ref Options options)in{
 			}else{
 				while(!network.gameInitData){
 					network.idleLobby();
-					if(!backend.processEvents()) return;
+					if(!B.processEvents()) return;
 				}
 				deserialize(gameInit,state.current,network.gameInitData);
 				network.gameInitData=null;
@@ -291,10 +291,10 @@ void loadMap(B)(ref B backend,ref Options options)in{
 	state.commit();
 	if(recording) recording.stepCommitted(state.lastCommitted);
 	auto controller=new Controller!B(multiplayerSide(controlledSide),state,network,recording,playback);
-	backend.setState(state);
-	if(wizId) backend.focusCamera(wizId);
-	else backend.scene.fpview.active=true;
-	backend.setController(controller);
+	B.setState(state);
+	if(wizId) B.focusCamera(wizId);
+	else B.scene.fpview.active=true;
+	B.setController(controller);
 	if(options.observer) controller.controlledSide=-1;
 }
 
@@ -491,7 +491,7 @@ int main(string[] args){
 		options.hotkeys=loadHotkeys(options.hotkeyFilename);
 	}else options.hotkeys=defaultHotkeys();
 	alias B=DagonBackend;
-	auto backend=B(options);
+	B.initialize(options);
 	foreach(arg;args){
 		if(arg.endsWith(".scp")||arg.endsWith(".HMAP")||arg.startsWith("export-speech:")){
 			options.map=arg;
@@ -509,8 +509,8 @@ int main(string[] args){
 		options.map=options.map["export-speech:".length..$];
 		exportSpeech!B(options);
 		return 0;
-	}else if(options.map!=""&&!options.noMap) loadMap(backend,options);
-	else backend.scene.fpview.active=true;
+	}else if(options.map!=""&&!options.noMap) loadMap!B(options);
+	else B.scene.fpview.active=true;
 
 	foreach(ref i;1..args.length){
 		if(args[i].endsWith(".SAMP")){
@@ -575,7 +575,7 @@ int main(string[] args){
 					i+=1;
 				}
 			}
-			backend.addObject(sac,position,facingQuaternion(0));
+			B.addObject(sac,position,facingQuaternion(0));
 		}
 	}
 	if(!B.network||B.network.isHost){
@@ -592,6 +592,6 @@ int main(string[] args){
 		writeln("saving recording to '",options.recordingFilename,"'");
 		B.controller.recording.save(options.recordingFilename,options.compressRecording);
 	}
-	backend.run();
+	B.run();
 	return 0;
 }

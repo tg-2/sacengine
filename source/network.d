@@ -857,6 +857,7 @@ final class Network(B){
 				}
 				Thread.sleep(p.startDelay.msecs);
 				updateStatus(PlayerStatus.playing);
+				B.unpause();
 				break;
 			// host query:
 			case PacketType.checkSynch:
@@ -1165,6 +1166,7 @@ final class Network(B){
 				player.send(Packet.startGame((maxPing-player.ping)/2));
 		Thread.sleep((maxPing/2).msecs);
 		updateStatus(PlayerStatus.playing);
+		B.unpause();
 	}
 	void addSynch(int frame,uint hash)in{
 		assert(isHost);

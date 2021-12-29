@@ -942,6 +942,9 @@ final class SacScene: Scene{
 			hudSoulFrame=0;
 	}
 
+	final void pause(){}
+	final void unpause(){ eventManager.update(); eventManager.update(); }
+
 	override void onLogicsUpdate(double dt){
 		assert(dt==1.0f/updateFPS);
 		//writeln(DagonBackend.getTotalGPUMemory()," ",DagonBackend.getAvailableGPUMemory());
@@ -1188,29 +1191,30 @@ class MyApplication: SceneApplication{
 }
 
 struct DagonBackend{
-	static MyApplication app;
-	static @property SacScene scene(){
+static:
+	MyApplication app;
+	@property SacScene scene(){
 		if(!app) return null;
 		return app.scene;
 	}
-	static @property GameState!DagonBackend state(){
+	@property GameState!DagonBackend state(){
 		if(!app) return null;
 		if(!app.scene) return null;
 		return app.scene.state;
 	}
-	static @property Controller!DagonBackend controller(){
+	@property Controller!DagonBackend controller(){
 		if(!app) return null;
 		if(!app.scene) return null;
 		return app.scene.controller;
 	}
-	static @property Network!DagonBackend network(){
+	@property Network!DagonBackend network(){
 		if(!app) return null;
 		if(!app.scene) return null;
 		if(!app.scene.controller) return null;
 		return app.scene.controller.network;
 	}
-	this(Options options){
-		enforce(!app,"can only have one DagonBackend"); // TODO: fix?
+	void initialize(Options options){
+		enforce(!app,"DagonBackend already initialized"); // TODO: fix?
 		app = New!MyApplication(options);
 	}
 	void setState(GameState!DagonBackend state){
@@ -1231,12 +1235,16 @@ struct DagonBackend{
 		return app.eventManager.running;
 	}
 	void run(){
+		if(!app) return;
 		app.sceneManager.goToScene("Sacrifice");
+		if(!app.scene) return;
 		app.scene.initializeMouse();
 		app.run();
 	}
+	void pause(){ if(app&&app.scene) app.scene.pause(); }
+	void unpause(){ if(app&&app.scene) app.scene.unpause(); }
 	~this(){ Delete(app); }
-static:
+
 	alias RenderContext=RenderingContext*;
 
 	Matrix4f getModelViewProjectionMatrix(Vector3f position,Quaternionf rotation){ // TODO: compute this in the renderer?
