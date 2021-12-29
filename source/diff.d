@@ -6,7 +6,7 @@ import dlib.math;
 import std.algorithm, std.range, std.traits, std.exception, std.conv, std.stdio;;
 import nttData,bldg,sacobject,sacspell,stats,state,util;
 
-bool diffData(string[] noserialize=[],T)(ref T a,ref T b,lazy string path)if(is(T==struct)&&!is(T==Vector!(S,n),S,size_t n)&&!is(T==Array!S,S)){
+bool diffData(string[] noserialize=[],T)(ref T a,ref T b,lazy string path)if(is(T==struct)&&!is(T==Vector!(S,n),S,size_t n)&&!is(T==Array!S,S)&&!is(T==Queue!S,S)){
 	bool r=false;
 	static foreach(member;__traits(allMembers,T)){
 		static if(is(typeof(__traits(getMember,a,member).offsetof))){
@@ -73,6 +73,12 @@ bool diffData(T)(Array!T a,Array!T b,lazy string path){
 	bool r=false;
 	r|=diffData(a.length,b.length,text(path,".length"));
 	if(a.length==b.length) foreach(i;0..a.length) r|=diffData(a[i],b[i],text(path,"[",i,"]"));
+	else static if(is(T==Particles!(B,relative),B,bool relative)){
+		writeln("a",path,":");
+		foreach(ref x;a) writeln(x.sacParticle.type," ",x.sacParticle.side);
+		writeln("b",path,":");
+		foreach(ref y;b) writeln(y.sacParticle.type," ",y.sacParticle.side);
+	}
 	return r;
 }
 bool diffData(T)(T[] a,T[] b,lazy string path)if(!is(Unqual!T==char)){
@@ -81,9 +87,17 @@ bool diffData(T)(T[] a,T[] b,lazy string path)if(!is(Unqual!T==char)){
 	if(a.length==b.length) foreach(i;0..a.length) r|=diffData(a[i],b[i],text(path,"[",i,"]"));
 	return r;
 }
-bool diffData(T,size_t n)(ref Vector!(T,n) a, ref Vector!(T,n) b,lazy string path){
+bool diffData(T,size_t n)(ref Vector!(T,n) a,ref Vector!(T,n) b,lazy string path){
 	bool r=false;
 	static foreach(i;0..n) r|=diffData(a[i],b[i],text(path,"[",i,"]"));
+	return r;
+}
+bool diffData(T)(ref Queue!T a,ref Queue!T b,lazy string path){
+	bool r=false;
+	a.compactify();
+	b.compactify();
+	r|=diffData(a.payload.length,b.payload.length,text(path,".length"));
+	if(a.payload.length==b.payload.length) foreach(i;0..a.payload.length) r|=diffData(a.payload[i],b.payload[i],text(path,"[",i,"]"));
 	return r;
 }
 bool diffData(immutable(Bldg)* a,immutable(Bldg)* b,lazy string path){
@@ -93,5 +107,5 @@ bool diffData(immutable(Bldg)* a,immutable(Bldg)* b,lazy string path){
 }
 
 bool diffStates(B)(ObjectState!B a,ObjectState!B b){
-	return diffData!(["map","sides","proximity","toRemove"])(a,b,"c");
+	return diffData!(["map","sides","proximity","pathFinder","triggers","toRemove"])(a,b,"c");
 }

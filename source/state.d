@@ -6,10 +6,10 @@ import std.algorithm, std.range;
 import std.exception, std.stdio, std.conv;
 import dlib.math, dlib.math.portable, dlib.image.color;
 import std.typecons;
+import util, options: SpellSpec;
 import sids, trig, ntts, nttData, bldg, sset;
 import sacmap, sacobject, animations, sacspell;
 import stats;
-import util,options;
 enum int updateFPS=60;
 static assert(updateFPS%animFPS==0);
 enum updateAnimFactor=updateFPS/animFPS;
@@ -1778,13 +1778,14 @@ struct WizardInfo(B){
 	int closestEnemyAltar=0;
 
 	void opAssign(ref WizardInfo!B rhs){
-		id=rhs.id;
-		level=rhs.level;
-		souls=rhs.souls;
-		experience=rhs.experience;
-		spellbook=rhs.spellbook;
+		this.tupleof=rhs.tupleof;
 	}
-	void opAssign(WizardInfo!B rhs){ this.tupleof=rhs.tupleof; }
+	void opAssign(WizardInfo!B rhs){
+		static assert(__traits(identifier,this.tupleof[5])=="spellbook");
+		this.tupleof[0..5]=rhs.tupleof[0..5];
+		this.spellbook=move(rhs.spellbook);
+		this.tupleof[6..$]=rhs.tupleof[6..$];
+	}
 	void addSpell(int level,SacSpell!B spell){
 		spellbook.addSpell(level,spell);
 	}
@@ -4527,7 +4528,7 @@ struct Objects(B,RenderMode mode){
 			commandCones.addCommandCone(cone);
 		}
 	}
-	void opAssign(Objects!(B,mode) rhs){
+	void opAssign(ref Objects!(B,mode) rhs){
 		assignArray(movingObjects,rhs.movingObjects);
 		assignArray(staticObjects,rhs.staticObjects);
 		static if(mode == RenderMode.opaque){
@@ -4540,6 +4541,32 @@ struct Objects(B,RenderMode mode){
 			assignArray(relativeParticles,rhs.relativeParticles);
 			assignArray(filteredParticles,rhs.filteredParticles);
 			commandCones=rhs.commandCones;
+			static assert(this.tupleof.length==11);
+		}else static assert(this.tupleof.length==2);
+	}
+	void opAssign(Objects!(B,mode) rhs){
+		movingObjects=move(rhs.movingObjects);
+		staticObjects=move(rhs.staticObjects);
+		static if(mode == RenderMode.opaque){
+			fixedObjects=rhs.fixedObjects; // by reference
+			souls=move(rhs.souls);
+			buildings=move(rhs.buildings);
+			wizards=move(rhs.wizards);
+			effects=move(rhs.effects);
+			particles=move(rhs.particles);
+			relativeParticles=move(rhs.relativeParticles);
+			filteredParticles=move(rhs.filteredParticles);
+			commandCones=move(rhs.commandCones);
+			static assert(this.tupleof.length==11);
+		}else static assert(this.tupleof.length==2);
+	}
+	this(this){
+		movingObjects=movingObjects.dup;
+		staticObjects=staticObjects.dup;
+		static if(mode == RenderMode.opaque){
+			particles=particles.dup;
+			relativeParticles=relativeParticles.dup;
+			filteredParticles=filteredParticles.dup;
 		}
 	}
 }
@@ -16684,6 +16711,8 @@ final class ObjectState(B){ // (update logic)
 	SacMap!B map;
 	Sides!B sides;
 	Proximity!B proximity;
+	PathFinder!B pathFinder;
+	Triggers!B triggers;
 	float manaRegenAt(int side,Vector3f position){
 		return proximity.manaRegenAt(side,position,this);
 	}
@@ -16694,11 +16723,12 @@ final class ObjectState(B){ // (update logic)
 			default: return 1.0f;
 		}
 	}
-	this(SacMap!B map, Sides!B sides, Proximity!B proximity, PathFinder!B pathFinder){
+	this(SacMap!B map,Sides!B sides,Proximity!B proximity,PathFinder!B pathFinder,Triggers!B triggers){
 		this.map=map;
 		this.sides=sides;
 		this.proximity=proximity;
 		this.pathFinder=pathFinder;
+		this.triggers=triggers;
 		sid=SideManager!B(32);
 	}
 	static struct Displacement{
@@ -16737,10 +16767,6 @@ final class ObjectState(B){ // (update logic)
 	float getGroundHeightDerivative(Vector3f position,Vector3f direction){
 		return map.getGroundHeightDerivative(position,direction,Displacement(this));
 	}
-	PathFinder!B pathFinder;
-	bool findPath(ref Array!Vector3f path,Vector3f start,Vector3f target,float radius){
-		return pathFinder.findPath(path,start,target,radius,this);
-	}
 	OrderTarget collideRay(alias filter=None,T...)(Vector3f start,Vector3f direction,float limit,T args){
 		auto landscape=map.rayIntersection(start,direction,Displacement(this),limit);
 		auto tEntry=proximity.collideRay!filter(start,direction,min(limit,landscape),args);
@@ -16767,19 +16793,15 @@ final class ObjectState(B){ // (update logic)
 		auto result=lineOfSight!filter(start,target,ignoredId);
 		return result.type==TargetType.none||result.type.among(TargetType.creature,TargetType.building,TargetType.soul)&&result.id==targetId;
 	}
+	bool findPath(ref Array!Vector3f path,Vector3f start,Vector3f target,float radius){
+		return pathFinder.findPath(path,start,target,radius,this);
+	}
 	int frame=0;
 	auto rng=MinstdRand0(1); // TODO: figure out what rng to use
-	// @property int hash(){ return rng.tupleof[0]; } // rng seed as proxy for state hash.
-	@property int hash(){
-		import std.digest.crc;
-		CRC32 crc;
-		crc.start();
-		void sink(scope ubyte[] data){ copy(data,&crc); }
+	// @property uint hash(){ return rng.tupleof[0]; } // rng seed as proxy for state hash.
+	@property uint hash(){
 		import serialize_;
-		serialize!sink(this);
-		auto result=crc.finish();
-		static assert(result.sizeof==int.sizeof);
-		return *cast(int*)&result;
+		return this.crc32;
 	}
 	int uniform(int n){
 		import std.random: uniform;
@@ -17392,6 +17414,7 @@ final class Sides(B){
 	private SacParticle!B[32] shrineParticles;
 	private SacParticle!B[32] manahoarParticles;
 	this(Side[] sids...){
+		static int num=0;
 		foreach(ref side;sids){
 			enforce(0<=side.id&&side.id<32);
 			sides[side.id]=side;
@@ -18175,7 +18198,6 @@ final class GameState(B){
 	ObjectState!B lastCommitted;
 	ObjectState!B current;
 	ObjectState!B next;
-	Triggers!B triggers;
 	Array!(Array!(Command!B)) commands;
 	this(SacMap!B map)in{
 		assert(!!map);
@@ -18183,10 +18205,19 @@ final class GameState(B){
 		auto sides=new Sides!B(map.sids);
 		auto proximity=new Proximity!B();
 		auto pathFinder=new PathFinder!B(map);
-		current=new ObjectState!B(map,sides,proximity,pathFinder);
-		next=new ObjectState!B(map,sides,proximity,pathFinder);
-		lastCommitted=new ObjectState!B(map,sides,proximity,pathFinder);
-		triggers=new Triggers!B(map.trig);
+		auto triggers=new Triggers!B(map.trig);
+		this(map,sides,proximity,pathFinder,triggers);
+	}
+	this(SacMap!B map,Sides!B sides,Proximity!B proximity,PathFinder!B pathFinder,Triggers!B triggers){
+		auto current=new ObjectState!B(map,sides,proximity,pathFinder,triggers);
+		auto next=new ObjectState!B(map,sides,proximity,pathFinder,triggers);
+		auto lastCommitted=new ObjectState!B(map,sides,proximity,pathFinder,triggers);
+		this(current,next,lastCommitted);
+	}
+	this(ObjectState!B current,ObjectState!B next,ObjectState!B lastCommitted){
+		this.current=current;
+		this.next=next;
+		this.lastCommitted=lastCommitted;
 		commands.length=1;
 	}
 	void placeStructure(ref Structure ntt){
@@ -18197,8 +18228,8 @@ final class GameState(B){
 		auto facing=2*pi!float/360.0f*ntt.facing;
 		auto buildingId=current.addObject(Building!B(data,ntt.side,flags,facing));
 		assert(!!buildingId);
-		if(ntt.id !in triggers.objectIds) // e.g. for some reason, the two altars on ferry have the same id
-			triggers.associateId(ntt.id,buildingId);
+		if(ntt.id !in current.triggers.objectIds) // e.g. for some reason, the two altars on ferry have the same id
+			current.triggers.associateId(ntt.id,buildingId);
 		auto position=Vector3f(ntt.x,ntt.y,ntt.z);
 		auto ci=cast(int)(position.x/10+0.5);
 		auto cj=cast(int)(position.y/10+0.5);
@@ -18228,8 +18259,8 @@ final class GameState(B){
 				building.componentIds~=current.addObject(StaticObject!B(curObj,building.id,cposition,rotation,1.0f));
 			}
 			if(ntt.base){
-				enforce(ntt.base in triggers.objectIds);
-				current.buildingById!((ref manafount,state){ putOnManafount(building,manafount,state); },(){})(triggers.objectIds[ntt.base],current);
+				enforce(ntt.base in current.triggers.objectIds);
+				current.buildingById!((ref manafount,state){ putOnManafount(building,manafount,state); },(){})(current.triggers.objectIds[ntt.base],current);
 			}
 			building.loopingSoundSetup(current);
 		},(){ assert(0); })(buildingId);
@@ -18255,8 +18286,8 @@ final class GameState(B){
 			state=cast(AnimationState)uniform(0,64);
 		}while(!curObj.hasAnimationState(state));+/
 		auto id=current.addObject(obj);
-		if(ntt.id !in triggers.objectIds) // e.g. for some reason, the two altars on ferry have the same id
-			triggers.associateId(ntt.id,id);
+		if(ntt.id !in current.triggers.objectIds) // e.g. for some reason, the two altars on ferry have the same id
+			current.triggers.associateId(ntt.id,id);
 		static if(is(T==Wizard)){
 			auto spellbook=getDefaultSpellbook!B(ntt.allegiance);
 			string name=null; // unnamed wizard

@@ -273,7 +273,7 @@ struct Packet{
 		p.startDelay=startDelay;
 		return p;
 	}
-	static Packet checkSynch(int frame,int hash){
+	static Packet checkSynch(int frame,uint hash){
 		Packet p;
 		p.type=PacketType.checkSynch;
 		p.synchFrame=frame;
@@ -397,7 +397,7 @@ abstract class Connection{
 	abstract bool ready();
 	abstract bool rawReady();
 	abstract Packet receive();
-	abstract void receiveRaw(void delegate(scope ubyte[]));
+	abstract void receiveRaw(scope void delegate(scope ubyte[]));
 	abstract void send(Packet packet);
 	abstract void send(Packet packet,scope ubyte[] rawData);
 }
@@ -423,7 +423,7 @@ class TCPConnection: Connection{
 	override bool rawReady(){
 		return rawReady_;
 	}
-	override void receiveRaw(void delegate(scope ubyte[]) dg){
+	override void receiveRaw(scope void delegate(scope ubyte[]) dg){
 		assert(rawReady_);
 		dg(rawData.data);
 		rawData.length=0;
@@ -529,7 +529,7 @@ struct Player{
 		return connection.receive;
 	}
 	bool rawReady(){ return connection&&connection.rawReady; }
-	void receiveRaw(void delegate(scope ubyte[]) dg)in{
+	void receiveRaw(scope void delegate(scope ubyte[]) dg)in{
 		assert(rawReady);
 	}do{
 		return connection.receiveRaw(dg);
@@ -545,21 +545,21 @@ enum listeningPort=9116;
 
 final class SynchQueue{
 	enum maxLength=1024;
-	int[maxLength] hashes;
+	uint[maxLength] hashes;
 	int start=0,end=0;
 	void capReferences(int frame)in{
 		assert(frame<=end);
 	}do{
 		end=frame;
 	}
-	void addReference(int frame,int hash)in{
+	void addReference(int frame,uint hash)in{
 		assert(frame==end,text(frame," ",end));
 	}do{
 		while(end+1-start>cast(int)hashes.length)
 			start++;
 		hashes[(end++)%$]=hash;
 	}
-	bool check(int frame,int hash){
+	bool check(int frame,uint hash){
 		if(frame<start) return false; // too old. TODO: count this as a desynch?
 		if(frame>=end) return false; // impossibly recent
 		return hashes[frame%$]==hash;
@@ -1112,7 +1112,7 @@ final class Network(B){
 		Thread.sleep((maxPing/2).msecs);
 		updateStatus(PlayerStatus.playing);
 	}
-	void addSynch(int frame,int hash)in{
+	void addSynch(int frame,uint hash)in{
 		assert(isHost);
 	}do{
 		synchQueue.addReference(frame,hash);
@@ -1122,9 +1122,14 @@ final class Network(B){
 	}do{
 		synchQueue.capReferences(frame);
 	}
-	void checkSynch(int frame,int hash)in{
+	void checkSynch(int frame,uint hash)in{
 		assert(!isHost);
 	}do{
 		players[host].send(Packet.checkSynch(frame,hash));
+	}
+	void logDesynch(scope ubyte[] stateData)in{
+		assert(!isHost);
+	}do{
+		players[host].send(Packet.logDesynch(stateData.length),stateData);
 	}
 }

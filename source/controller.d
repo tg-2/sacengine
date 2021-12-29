@@ -3,20 +3,21 @@
 // https://www.gnu.org/licenses/gpl-3.0.txt
 
 import std.stdio, std.algorithm;
+import util: Array, assignArray;
 import state, network, recording_;
 
 
 final class Controller(B){
 	GameState!B state;
 	Network!B network;
-	Recording!B recording;
+	Recording!B recording, playback;
 	int controlledSide;
 	int commandId=0;
 	int committedFrame;
 	int lastCheckSynch=-1;
 	int firstUpdatedFrame;
 	int currentFrame;
-	this(int controlledSide,GameState!B state,Network!B network,Recording!B recording){
+	this(int controlledSide,GameState!B state,Network!B network,Recording!B recording,Recording!B playback){
 		this.controlledSide=controlledSide;
 		this.state=state;
 		this.network=network;
@@ -24,6 +25,8 @@ final class Controller(B){
 		currentFrame=state.current.frame;
 		firstUpdatedFrame=currentFrame;
 		this.recording=recording;
+		this.playback=playback;
+		if(playback) assignArray(state.commands,playback.commands);
 	}
 	void addCommand(int frame,Command!B command)in{
 		assert(command.id==0);
@@ -52,15 +55,17 @@ final class Controller(B){
 		state.addCommandInconsistent(frame,command);
 		if(recording) recording.addExternalCommand(frame,command);
 	}
-	void replaceState(scope ubyte[] serialized){
+	void replaceState(scope ubyte[] serialized)in{
+		assert(network&&!network.isHost);
+	}do{
 		import serialize_;
+		state.lastCommitted.serialized(&network.logDesynch);
 		deserialize(state.lastCommitted,serialized);
 		committedFrame=state.lastCommitted.frame;
 		state.current.copyFrom(state.lastCommitted);
 		static if(B.hasAudio) B.updateAudioAfterRollback();
 		currentFrame=state.current.frame;
 		state.commands.length=currentFrame;
-		import util: Array;
 		state.commands~=Array!(Command!B)();
 		firstUpdatedFrame=currentFrame;
 		if(network) network.players.each!((ref p){ p.committedFrame=committedFrame; }); // TODO: solve in a better way
@@ -105,11 +110,10 @@ final class Controller(B){
 					state.commands~=Array!(Command!B)();
 					firstUpdatedFrame=currentFrame;
 					network.players.each!((ref p){ p.committedFrame=committedFrame; }); // TODO: solve in a better way
-					import util: Array;
-					Array!ubyte stateData;
 					import serialize_;
-					serialize!((scope ubyte[] data){ stateData~=data; })(state.lastCommitted);
-					foreach(i,ref player;network.players) network.sendState(cast(int)i,stateData.data);
+					state.lastCommitted.serialized((scope ubyte[] stateData){
+						foreach(i,ref player;network.players) network.sendState(cast(int)i,stateData);
+					});
 					network.updateStatus(PlayerStatus.resynched);
 				}
 				if(network.isHost && network.resynched)
@@ -146,6 +150,21 @@ final class Controller(B){
 			if(!network.isHost&&lastCheckSynch<committedFrame){
 				network.checkSynch(state.lastCommitted.frame,state.lastCommitted.hash);
 				lastCheckSynch=committedFrame;
+			}
+		}else if(playback){
+			if(auto replacement=playback.stateReplacement(state.current.frame)){
+				assert(replacement.frame==state.current.frame);
+				writeln("enountered state replacement at frame ",state.current.frame,":");
+				import diff;
+				diffStates(state.current,replacement);
+				state.current.copyFrom(replacement);
+			}
+			int side=-1;
+			if(auto desynch=playback.desynch(state.current.frame,side)){
+				writeln("player ",side," desynched at frame ",state.current.frame);
+				writeln("their state was replaced:");
+				import diff;
+				diffStates(desynch,state.current);
 			}
 		}
 		return false;

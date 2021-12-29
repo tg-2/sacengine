@@ -14,7 +14,7 @@ void exportSpeech(B)(ref Options options){
 		return;
 	}
 	auto state=new GameState!B(loadSacMap!B(options.map));
-	auto triggers=state.triggers;
+	auto triggers=state.current.triggers;
 	import nttData,text_,std.path;
 	auto folder=state.current.map.mapFolder;
 	auto texts=makeByTag!loadText(true,[buildPath(folder,"ENGL.LANG","TRIG.FLDR")],"TEXT");

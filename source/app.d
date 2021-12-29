@@ -52,15 +52,24 @@ void loadMap(B)(ref B backend,ref Options options)in{
 		}
 	}
 	Recording!B playback=null;
+	SacMap!B map;
+	Sides!B sides;
+	Proximity!B proximity;
+	PathFinder!B pathFinder;
+	Triggers!B triggers;
 	if(!network&&options.playbackFilename.length){
 		playback=loadRecording!B(options.playbackFilename);
 		enforce(playback.mapName.endsWith(".scp")||playback.mapName.endsWith(".HMAP"));
 		options.map=playback.mapName;
 		controlledSide=-1;
+		map=playback.map;
+		sides=playback.sides;
+		proximity=playback.proximity;
+		pathFinder=playback.pathFinder;
+		triggers=playback.triggers;
 	}
 	ubyte[] mapData;
-	SacMap!B map;
-	if(!network||network.isHost){
+	if(!playback&&(!network||network.isHost)){
 		map=loadSacMap!B(options.map,&mapData); // TODO: compute hash without loading map
 		options.mapHash=map.crc32;
 	}
@@ -107,11 +116,11 @@ void loadMap(B)(ref B backend,ref Options options)in{
 					auto π=iota(network.players.length).array;
 					import std.random:randomShuffle;
 					randomShuffle(π);
-					auto sides=network.players.map!((ref p)=>p.settings.controlledSide).array;
-					auto teams=network.players.map!((ref p)=>p.settings.team).array;
+					auto playerSides=network.players.map!((ref p)=>p.settings.controlledSide).array;
+					auto playerTeams=network.players.map!((ref p)=>p.settings.team).array;
 					foreach(i,j;π){
-						network.updateSetting!"controlledSide"(cast(int)i,sides[j]);
-						network.updateSetting!"team"(cast(int)i,teams[j]);
+						network.updateSetting!"controlledSide"(cast(int)i,playerSides[j]);
+						network.updateSetting!"team"(cast(int)i,playerTeams[j]);
 					}
 				}
 				if(options.shuffleTeams){
@@ -206,8 +215,14 @@ void loadMap(B)(ref B backend,ref Options options)in{
 		options.settings=network.settings;
 		controlledSide=options.settings.controlledSide;
 	}
-	auto state=new GameState!B(map);
-	auto sides=state.current.sides;
+	if(!playback){
+		// map already loaded
+		sides=new Sides!B(map.sids);
+		proximity=new Proximity!B();
+		pathFinder=new PathFinder!B(map);
+		triggers=new Triggers!B(map.trig);
+	}
+	auto state=new GameState!B(map,sides,proximity,pathFinder,triggers);
 	int[32] multiplayerSides=-1;
 	bool[32] matchedSides=false;
 	foreach(i,ref side;sides){
@@ -241,9 +256,7 @@ void loadMap(B)(ref B backend,ref Options options)in{
 			import serialize_;
 			if(network.isHost){
 				gameInit=.gameInit!(multiplayerSide,B)(network.players.map!(x=>x.settings),options);
-				Array!ubyte gameInitData;
-				serialize!((scope ubyte[] data){ gameInitData~=data; })(gameInit);
-				network.initGame(gameInitData.data);
+				gameInit.serialized(&network.initGame);
 			}else{
 				while(!network.gameInitData){
 					network.idleLobby();
@@ -253,13 +266,10 @@ void loadMap(B)(ref B backend,ref Options options)in{
 				network.gameInitData=null;
 			}
 		}else gameInit=.gameInit!(multiplayerSide,B)(only(options.settings),options);
-	}else{
-		gameInit=playback.gameInit;
-		assignArray(state.commands,playback.commands);
-	}
+	}else gameInit=playback.gameInit;
 	Recording!B recording=null;
 	if((!playback||network)&&options.recordingFilename.length){
-		recording=new Recording!B(options.map);
+		recording=new Recording!B(options.map,map,sides,proximity,pathFinder,triggers);
 		recording.gameInit=gameInit;
 		recording.logCore=options.logCore;
 	}
@@ -267,7 +277,7 @@ void loadMap(B)(ref B backend,ref Options options)in{
 	state.current.map.makeMeshes(options.enableMapBottom);
 	state.commit();
 	if(recording) recording.stepCommitted(state.lastCommitted);
-	auto controller=new Controller!B(multiplayerSide(controlledSide),state,network,recording);
+	auto controller=new Controller!B(multiplayerSide(controlledSide),state,network,recording,playback);
 	backend.setState(state);
 	if(wizId) backend.focusCamera(wizId);
 	else backend.scene.fpview.active=true;

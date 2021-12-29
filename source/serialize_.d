@@ -645,19 +645,19 @@ void serialize(alias sink,B)(ref SideManager!B sides){ serializeStruct!sink(side
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SideManager!B)){ deserializeStruct(result,state,data); }
 
 void serialize(alias sink,B)(ObjectState!B state){
-	enum noserialize=["map","sides","proximity","pathFinder","toRemove"];
+	enum noserialize=["map","sides","proximity","pathFinder","triggers","toRemove"];
 	if(state.proximity.active) stderr.writeln("warning: serialize: proximity active");
 	if(state.toRemove.length!=0) stderr.writeln("warning: serialize: toRemove not empty");
 	serializeClass!(sink,noserialize)(state);
 }
 void deserialize(T,R)(T state,ref R data)if(is(T==ObjectState!B,B)){
-	enum noserialize=["map","sides","proximity","pathFinder","toRemove"];
+	enum noserialize=["map","sides","proximity","pathFinder","triggers","toRemove"];
 	if(state.proximity.active) stderr.writeln("warning: deserialize: proximity active");
 	if(state.toRemove.length!=0) stderr.writeln("warning: deserialize: toRemove not empty");
 	deserializeClass!noserialize(state,state,data);
 }
-ObjectState!B deserializeObjectState(B,R)(SacMap!B map,Sides!B sides,Proximity!B proximity,PathFinder!B pathFinder,ref R data){
-	auto state=new ObjectState!B(map,sides,proximity,pathFinder);
+ObjectState!B deserializeObjectState(B,R)(SacMap!B map,Sides!B sides,Proximity!B proximity,PathFinder!B pathFinder,Triggers!B triggers,ref R data){
+	auto state=new ObjectState!B(map,sides,proximity,pathFinder,triggers);
 	foreach(w;map.ntts.widgetss){ // TODO: get rid of code duplication
 		auto curObj=SacObject!B.getWIDG(w.tag);
 		foreach(pos;w.positions){
@@ -723,6 +723,13 @@ void deserialize(T,R)(T recording,ref R data)if(is(T==Recording!B,B)){
 	auto sides=new Sides!B(map.sids);
 	auto proximity=new Proximity!B();
 	auto pathFinder=new PathFinder!B(map);
+	auto triggers=new Triggers!B(map.trig);
+
+	recording.map=map;
+	recording.sides=sides;
+	recording.proximity=proximity;
+	recording.pathFinder=pathFinder;
+	recording.triggers=triggers;
 
 	deserialize(recording.finalized,ObjectState!B.init,data);
 	deserialize(recording.commands,ObjectState!B.init,data);
@@ -732,17 +739,49 @@ void deserialize(T,R)(T recording,ref R data)if(is(T==Recording!B,B)){
 	deserialize(recording.coreIndex,ObjectState!B.init,data);
 	ulong len;
 	deserialize(len,ObjectState!B.init,data);
-	foreach(i;0..len) recording.core~=deserializeObjectState!B(map,sides,proximity,pathFinder,data);
+	foreach(i;0..len) recording.core~=deserializeObjectState!B(map,sides,proximity,pathFinder,triggers,data);
 
 	deserialize(len,ObjectState!B.init,data);
 	foreach(i;0..len)
-		recording.stateReplacements~=deserializeObjectState!B(map,sides,proximity,pathFinder,data);
+		recording.stateReplacements~=deserializeObjectState!B(map,sides,proximity,pathFinder,triggers,data);
 
 	deserialize(len,ObjectState!B.init,data);
 	foreach(i;0..len){
 		int side;
 		deserialize(side,ObjectState!B.init,data);
-		auto state=deserializeObjectState!B(map,sides,proximity,pathFinder,data);
+		auto state=deserializeObjectState!B(map,sides,proximity,pathFinder,triggers,data);
 		recording.desynchs~=Recording!B.Desynch(side,state);
 	}
+}
+
+
+void serialized(T)(ref T value,scope void delegate(scope ubyte[] data) dg)if(!is(T==class)){
+	Array!ubyte data;
+	serialize!((scope ubyte[] part){ data~=part; })(value);
+	dg(data.data);
+}
+void serialized(T)(T value,scope void delegate(scope ubyte[] data) dg)if(is(T==class)){ // TODO: get rid of code duplication
+	Array!ubyte data;
+	serialize!((scope ubyte[] part){ data~=part; })(value);
+	dg(data.data);
+}
+
+uint crc32(T)(ref T value)if(!is(T==class)){
+	import std.digest.crc;
+	CRC32 crc;
+	crc.start();
+	serialize!((scope ubyte[] data){ copy(data,&crc); })(value);
+	auto result=crc.finish();
+	static assert(result.sizeof==uint.sizeof);
+	return *cast(uint*)&result;
+}
+
+uint crc32(T)(T value)if(is(T==class)){ // TODO: get rid of code duplication
+	import std.digest.crc;
+	CRC32 crc;
+	crc.start();
+	serialize!((scope ubyte[] data){ copy(data,&crc); })(value);
+	auto result=crc.finish();
+	static assert(result.sizeof==uint.sizeof);
+	return *cast(uint*)&result;
 }
