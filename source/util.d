@@ -8,8 +8,8 @@ import std.exception:enforce;
 
 alias Seq(T...)=T;
 
-enum head=import(".git/HEAD")["ref: ".length..$].strip;
-enum commit=import(".git/"~head).strip;
+enum head=import("HEAD")["ref: ".length..$].strip;
+enum commit=import(head).strip;
 
 version(LittleEndian){}else static assert(0,"some reinterpret-casts still assume little-endianness");
 

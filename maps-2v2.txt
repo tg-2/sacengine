@@ -135,6 +135,21 @@ maps/(4) WM-Veiled Island.scp
 maps/(4) WM-Vex.scp
 maps/(4) WM-Wildland Pass.scp
 maps/(4) WM-Winter Siege.scp
+maps/(4) TM-Dancing Pines.scp
+maps/(4) TM-Ethereal Startling.scp
+maps/(4) TM-Evening Tide.scp
+maps/(4) TM-Hourglass.scp
+maps/(4) TM-Mute City.scp
+maps/(4) TM-Phoney War.scp
+maps/(4) TM-Red Hot v1.scp
+maps/(4) TM-Red Hot v2.scp
+maps/(4) TM-Sunhair.scp
+maps/(4) TM-The Two Towers.scp
+maps/(4) TM-Urknall.scp
+maps/(4) TM-Urknall v1.scp
+maps/(4) TM-Urknall v2.scp
+maps/(4) TM-Urknall v3.scp
 maps/(4) Ferry.scp
 maps/(4) Arctic Realm 2v2.scp
 maps/(4) Aztec.scp
+maps/(4) Cherry8.scp

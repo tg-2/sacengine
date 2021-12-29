@@ -1,0 +1,21 @@
+maps/(3) Gladiator.scp
+maps/(3) Fool's Demise v2.scp
+maps/(3) Molehill.scp
+maps/(3) The Arena.scp
+maps/(3) GO - Sea Islands 2.scp
+maps/(3) Rotation.scp
+maps/(3) This Island Burnt.scp
+maps/(3) Colour Hurl.scp
+maps/(3) Gladiator.scp
+maps/(3) Sacred Glade.scp
+maps/(3) Trenches.scp
+maps/(3) Firefight.scp
+maps/(3) Sin.scp
+maps/(3) Tri-Mongor.scp
+maps/(3) Flower.scp
+maps/(3) Telemachus.scp
+maps/(3) Triad.scp
+maps/(3) Flowwer.scp
+maps/(3) Medium.scp
+maps/(3) Terror Sombrero.scp
+maps/(3) Zoom!.scp
