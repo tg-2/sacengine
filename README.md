@@ -10,7 +10,7 @@ Building
 -----------
 
 Building sacengine from scratch:
-Set up some D compiler, ideally LDC, version 1.28 is known to work:
+Set up some D compiler, ideally LDC, version 1.28.0 is known to work:
 https://github.com/ldc-developers/ldc/releases/tag/v1.28.0
 
 ```bash
