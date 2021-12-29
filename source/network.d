@@ -1057,7 +1057,7 @@ final class Network(B){
 	bool idleLobby()in{
 		assert(me==-1||players[me].status<=PlayerStatus.loading||players[me].status==PlayerStatus.disconnected);
 	}do{
-		if(players[me].status==PlayerStatus.disconnected) return false;
+		if(me!=-1&&players[me].status==PlayerStatus.disconnected) return false;
 		update(null);
 		Thread.sleep(1.msecs);
 		return true;
