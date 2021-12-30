@@ -672,7 +672,7 @@ final class Network(B){
 		return me!=-1&&players[me].status>=PlayerStatus.synched;
 	}
 	bool readyToLoad(){
-		return connectedPlayers.all!(p=>p.status>=PlayerStatus.readyToLoad);
+		return connectedPlayers.all!(p=>isReadyStatus(p.status));
 	}
 	bool mapHashed(){
 		return connectedPlayers.all!(p=>p.status>=PlayerStatus.mapHashed);
@@ -681,7 +681,7 @@ final class Network(B){
 		return players[host].status>=PlayerStatus.commitHashReady;
 	}
 	bool hostReadyToLoad(){
-		return players[host].status>=PlayerStatus.readyToLoad;
+		return isReadyStatus(players[host].status);
 	}
 	bool clientsReadyToLoad(){
 		return iota(players.length).filter!(i=>i!=host&&players[i].connection).all!(i=>isReadyStatus(players[i].status));
@@ -779,13 +779,14 @@ final class Network(B){
 		broadcast(Packet.command(frame,command));
 	}
 	void commit(int i,int frame)in{
-		assert(isHost||i==me&&playing);
+		assert(isHost||i==me&&players[me].status.among(PlayerStatus.playing,PlayerStatus.readyToResynch));
 	}do{
 		broadcast(Packet.commit(i,frame));
 		players[i].committedFrame=max(players[i].committedFrame,frame);
 	}
 	void commit(int frame)in{
-		assert(playing&&players[me].committedFrame<frame,text(playing," ",players[me].committedFrame," ",frame));
+		assert(players[me].status.among(PlayerStatus.playing,PlayerStatus.readyToResynch)&&
+		       players[me].committedFrame<frame,text(playing," ",players[me].committedFrame," ",frame));
 	}do{
 		commit(me,frame);
 	}
@@ -1197,7 +1198,7 @@ final class Network(B){
 	void load()in{
 		assert(isHost&&readyToLoad);
 	}do{
-		foreach(i;0..players.length) if(i!=me) load(cast(int)i);
+		foreach(i;connectedPlayerIds) if(i!=me) load(cast(int)i);
 		updateStatus(PlayerStatus.loading);
 	}
 	void start(Controller!B controller)in{

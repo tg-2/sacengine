@@ -68,9 +68,12 @@ final class Controller(B){
 		currentFrame=committedFrame;
 		if(state.commands.length<currentFrame+1) state.commands.length=currentFrame+1;
 		firstUpdatedFrame=committedFrame;
-		if(network) network.players.each!((ref p){ p.committedFrame=committedFrame; }); // TODO: solve in a better way
 		if(recording) recording.replaceState(state.lastCommitted,state.commands);
-		network.updateStatus(PlayerStatus.resynched);
+		if(network){
+			if(network.players[network.me].committedFrame<committedFrame)
+				network.commit(committedFrame);
+			network.updateStatus(PlayerStatus.resynched);
+		}
 	}
 	void logDesynch(int side,scope ubyte[] serialized){
 		if(recording) recording.logDesynch(side,serialized,state.current);
@@ -127,10 +130,8 @@ final class Controller(B){
 						state.commands.length=committedFrame+1;
 					state.lastCommitted.serialized((scope ubyte[] stateData){
 						state.commands.serialized((scope ubyte[] commandData){
-							foreach(i,ref player;network.players){
-								network.commit(cast(int)i,committedFrame);
+							foreach(i,ref player;network.players)
 								network.sendState(cast(int)i,stateData,commandData);
-							}
 						});
 					});
 					network.updateStatus(PlayerStatus.resynched);
