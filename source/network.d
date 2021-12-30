@@ -695,9 +695,7 @@ final class Network(B){
 	bool playing(){
 		return me!=-1&&players[me].status==PlayerStatus.playing;
 	}
-	bool desynched(){
-		return connectedPlayers.any!(p=>p.status==PlayerStatus.desynched||p.status==PlayerStatus.readyToResynch||p.status==PlayerStatus.resynched);
-	}
+	bool desynched(){ return connectedPlayers.any!(p=>p.status.among(PlayerStatus.desynched,PlayerStatus.readyToResynch,PlayerStatus.resynched)); }
 	bool readyToResynch(){ return connectedPlayers.all!(p=>p.status==PlayerStatus.readyToResynch); }
 	bool resynched(){ return connectedPlayers.all!(p=>p.status==PlayerStatus.resynched); }
 	int committedFrame(){ return activePlayers.map!((ref p)=>p.committedFrame).fold!min(players[host].committedFrame); }
