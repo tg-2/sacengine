@@ -69,11 +69,7 @@ final class Controller(B){
 		if(state.commands.length<currentFrame+1) state.commands.length=currentFrame+1;
 		firstUpdatedFrame=committedFrame;
 		if(recording) recording.replaceState(state.lastCommitted,state.commands);
-		if(network){
-			if(network.players[network.me].committedFrame<committedFrame)
-				network.commit(committedFrame);
-			network.updateStatus(PlayerStatus.resynched);
-		}
+		if(network) network.updateStatus(PlayerStatus.stateResynched);
 	}
 	void logDesynch(int side,scope ubyte[] serialized){
 		if(recording) recording.logDesynch(side,serialized,state.current);
@@ -88,10 +84,15 @@ final class Controller(B){
 	}
 	void updateCommitted(){
 		committedFrame=network.committedFrame;
-		currentFrame=max(state.current.frame,committedFrame);
-		state.simulateTo(currentFrame);
+		if(committedFrame<state.lastCommitted.frame){
+			import std.conv: text;
+			enforce(network.players[network.me].status.among(PlayerStatus.readyToResynch,PlayerStatus.stateResynched),text(committedFrame," ",state.lastCommitted.frame," ",network.players.map!((ref p)=>p.committedFrame)," ",network.activePlayerIds," ",network.players.map!((ref p)=>p.status)));
+			return;
+		}
+		if(state.commands.length<committedFrame+1)
+			state.commands.length=committedFrame+1;
 		while(state.lastCommitted.frame<committedFrame){
-			state.stepCommitted();
+			state.stepCommittedUnsafe();
 			if(recording) recording.stepCommitted(state.lastCommitted);
 			if(network.isHost) network.addSynch(state.lastCommitted.frame,state.lastCommitted.hash);
 		}
@@ -99,6 +100,9 @@ final class Controller(B){
 		enforce(committedFrame==state.lastCommitted.frame,
 		        text(network.activePlayerIds," ",network.players.map!((ref p)=>p.committedFrame)," ",
 		             committedFrame," ",state.lastCommitted.frame));
+		if(state.current.frame<committedFrame)
+			state.current.copyFrom(state.lastCommitted); // restore invariant
+		currentFrame=max(currentFrame,committedFrame);
 	}
 	bool step(){
 		playAudio=false;
@@ -110,28 +114,37 @@ final class Controller(B){
 					auto hash=network.hostSettings.mapHash;
 					foreach(i,ref player;network.players){
 						if(player.status==PlayerStatus.mapHashed && player.settings.mapHash==hash){
-							network.load(cast(int)i);
-							network.initGame(cast(int)i,network.gameInitData);
+							//network.load(cast(int)i);
 							network.updateStatus(cast(int)i,PlayerStatus.desynched);
+							network.initGame(cast(int)i,network.gameInitData);
 						}
 					}
 				}
 			}
 			if(network.desynched){
 				network.acceptingNewConnections=false;
-				if(!network.players[network.me].status.among(PlayerStatus.readyToResynch,PlayerStatus.resynched,PlayerStatus.loading))
+				if(!network.players[network.me].status.among(PlayerStatus.readyToResynch,PlayerStatus.stateResynched,PlayerStatus.resynched,PlayerStatus.loading))
 					network.updateStatus(PlayerStatus.readyToResynch);
 				if(network.isHost && network.readyToResynch){
 					import serialize_;
-					committedFrame=network.maxCommittedFrame; // commits have to be monotone
-					if(state.commands.length<committedFrame+1)
-						state.commands.length=committedFrame+1;
-					state.lastCommitted.serialized((scope ubyte[] stateData){
+					currentFrame=network.resynchCommittedFrame; // commits have to be monotone
+					writeln("SENDING STATE AT FRAME: ",currentFrame," ",network.players.map!((ref p)=>p.committedFrame));
+					if(state.commands.length<currentFrame+1)
+						state.commands.length=currentFrame+1;
+					state.simulateTo(currentFrame);
+					assert(state.current.frame==currentFrame);
+					state.current.serialized((scope ubyte[] stateData){
 						state.commands.serialized((scope ubyte[] commandData){
 							foreach(i,ref player;network.players)
 								network.sendState(cast(int)i,stateData,commandData);
 						});
 					});
+					network.updateStatus(PlayerStatus.stateResynched);
+				}
+				if(network.stateResynched && network.players[network.me].status==PlayerStatus.stateResynched){
+					writeln("STATE IS ACTUALLY AT FRAME: ",currentFrame);
+					if(network.players[network.me].committedFrame<currentFrame)
+						network.commit(currentFrame);
 					network.updateStatus(PlayerStatus.resynched);
 				}
 				if(network.isHost && network.resynched)

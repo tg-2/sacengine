@@ -504,6 +504,7 @@ class TCPConnection: Connection{
 
 enum PlayerStatus{
 	unconnected,
+	dropped,
 	connected,
 	synched,
 	commitHashReady,
@@ -514,9 +515,9 @@ enum PlayerStatus{
 	readyToStart,
 	pendingStart,
 	playing,
-	dropped,
 	desynched,
 	readyToResynch,
+	stateResynched,
 	resynched,
 	disconnected,
 }
@@ -528,7 +529,7 @@ bool isReadyStatus(PlayerStatus status){
 	return status>=PlayerStatus.readyToLoad;
 }
 bool isActiveStatus(PlayerStatus status){
-	return PlayerStatus.pendingStart<=status && status<PlayerStatus.dropped;
+	return PlayerStatus.pendingStart<=status && status<PlayerStatus.disconnected;
 }
 
 struct Player{
@@ -563,8 +564,14 @@ struct Player{
 	}
 
 	int committedFrame=0;
-	int synchronizedFrame=0;
 	int ping=-1;
+
+	void drop()in{
+		assert(!connection);
+	}do{
+		committedFrame=0;
+		ping=-1;
+	}
 
 	bool allowedToControlState(){
 		if(settings.observer) return false;
@@ -695,11 +702,12 @@ final class Network(B){
 	bool playing(){
 		return me!=-1&&players[me].status==PlayerStatus.playing;
 	}
-	bool desynched(){ return connectedPlayers.any!(p=>p.status.among(PlayerStatus.desynched,PlayerStatus.readyToResynch,PlayerStatus.resynched)); }
+	bool desynched(){ return connectedPlayers.any!(p=>p.status.among(PlayerStatus.desynched,PlayerStatus.readyToResynch,PlayerStatus.stateResynched,PlayerStatus.resynched)); }
 	bool readyToResynch(){ return connectedPlayers.all!(p=>p.status==PlayerStatus.readyToResynch); }
-	bool resynched(){ return connectedPlayers.all!(p=>p.status==PlayerStatus.resynched); }
+	bool stateResynched(){ return connectedPlayers.all!(p=>p.status.among(PlayerStatus.stateResynched,PlayerStatus.resynched)); }
+	int resynchCommittedFrame(){ return connectedPlayers.map!((ref p)=>p.committedFrame).fold!max(players[host].committedFrame); }
+	bool resynched(){ return connectedPlayers.all!((ref p)=>p.status==PlayerStatus.resynched)/+ && connectedPlayers.all!((ref p)=>p.committedFrame==players[host].committedFrame)+/; }
 	int committedFrame(){ return activePlayers.map!((ref p)=>p.committedFrame).fold!min(players[host].committedFrame); }
-	int maxCommittedFrame(){ return activePlayers.map!((ref p)=>p.committedFrame).fold!max(players[host].committedFrame); }
 	int me=-1;
 	@property ref settings()in{
 		assert(readyToLoad());
@@ -777,13 +785,13 @@ final class Network(B){
 		broadcast(Packet.command(frame,command));
 	}
 	void commit(int i,int frame)in{
-		assert(isHost||i==me&&players[me].status.among(PlayerStatus.playing,PlayerStatus.readyToResynch));
+		assert(isHost||i==me&&players[me].status.among(PlayerStatus.playing,PlayerStatus.stateResynched));
 	}do{
 		broadcast(Packet.commit(i,frame));
 		players[i].committedFrame=max(players[i].committedFrame,frame);
 	}
 	void commit(int frame)in{
-		assert(players[me].status.among(PlayerStatus.playing,PlayerStatus.readyToResynch)&&
+		assert(players[me].status.among(PlayerStatus.playing,PlayerStatus.stateResynched)&&
 		       players[me].committedFrame<frame,text(playing," ",players[me].committedFrame," ",frame));
 	}do{
 		commit(me,frame);
@@ -1005,7 +1013,13 @@ final class Network(B){
 				}
 				if(mayUpdateStatus(sender,p.player,p.newStatus)){
 					players[p.player].status=p.newStatus;
-					if(p.newStatus==PlayerStatus.dropped||p.newStatus==PlayerStatus.unconnected) report(p.player,"dropped");
+					if(p.newStatus==PlayerStatus.dropped||p.newStatus==PlayerStatus.unconnected){
+						if(players[p.player].settings.commit!=hostSettings.commit){
+							report!true(p.player,"tried to join with incompatible version #");
+							stderr.writeln("they were using version ",players[p.player].settings.commit);
+						}else report(p.player,"dropped");
+						players[p.player].drop();
+					}
 				}
 				break;
 			case PacketType.command:
@@ -1057,6 +1071,7 @@ final class Network(B){
 				connection.send(Packet.confirmArraySetting!setting(player));
 			}else connection.send(Packet.updateSetting!setting(player,mixin(`players[player].settings.`~setting)));
 		}}
+		if(players[player].committedFrame!=0) connection.send(Packet.commit(player,players[player].committedFrame)); // for late joins
 		connection.send(Packet.updateStatus(player,players[player].status));
 		// TODO: send address to attempt to establish peer to peer connection
 	}
@@ -1080,6 +1095,7 @@ final class Network(B){
 			sendPlayerData(players[other].connection,newId);
 		foreach(other;0..cast(int)players.length)
 			sendPlayerData(players[newId].connection,other);
+		commit(newId,resynchCommittedFrame);
 		players[newId].send(Packet.updatePlayerId(newId));
 		return newId;
 	}
@@ -1118,8 +1134,14 @@ final class Network(B){
 		if(isHost) updateStatus(cast(int)i,PlayerStatus.disconnected);
 	}
 	void dropPlayer(int i,Controller!B controller){
+		if(!isHost&&i!=host) return;
+		if(players[i].settings.commit!=hostSettings.commit){
+			report!true(cast(int)i,"tried to join with incompatible version #");
+			stderr.writeln("they were using version ",players[i].settings.commit);
+		}else report(cast(int)i,"dropped");
 		if(!isHost) return;
 		updateStatus(cast(int)i,playing?PlayerStatus.dropped:PlayerStatus.unconnected);
+		players[i].drop();
 	}
 	void update(Controller!B controller){
 		acceptNewConnections();
@@ -1127,10 +1149,6 @@ final class Network(B){
 			if(!player.connection) continue;
 			if(!player.alive){
 				player.connection=null;
-				if(player.settings.commit!=hostSettings.commit){
-					report!true(cast(int)i,"tried to join with incompatible version #");
-					stderr.writeln("they were using version ",player.settings.commit);
-				}else report(cast(int)i,"dropped");
 				dropPlayer(cast(int)i,controller);
 				continue;
 			}
@@ -1138,7 +1156,7 @@ final class Network(B){
 		}
 	}
 	bool idleLobby()in{
-		assert(me==-1||players[me].status<=PlayerStatus.loading||players[me].status>PlayerStatus.dropped,text(me," ",me!=-1?text(players[me].status):""));
+		assert(me==-1||players[me].status<=PlayerStatus.loading||players[me].status>PlayerStatus.playing,text(me," ",me!=-1?text(players[me].status):""));
 	}do{
 		if(me!=-1&&players[me].status==PlayerStatus.disconnected) return false;
 		update(null);
@@ -1210,10 +1228,10 @@ final class Network(B){
 			update(controller);
 		auto maxPing=connectedPlayers.map!(p=>p.ping).reduce!max;
 		writeln("pings: ",players.map!(p=>p.ping));
-		foreach(i,ref player;players){
-			if(player.ping!=-1){
+		foreach(i;connectedPlayerIds){
+			if(players[i].ping!=-1){
 				updateStatus(cast(int)i,PlayerStatus.pendingStart);
-				player.send(Packet.startGame((maxPing-player.ping)/2));
+				players[i].send(Packet.startGame((maxPing-players[i].ping)/2));
 			}
 		}
 		Thread.sleep((maxPing/2).msecs);

@@ -18370,6 +18370,13 @@ final class GameState(B){
 		//next.updateFrom(lastCommitted,commands[lastCommitted.frame].data);
 		//swap(lastCommitted,next);
 	}
+	// may violate invariant lastCommitted.frame<=current.frame, should be restored
+	// may go out of command bounds
+	void stepCommittedUnsafe()in{
+		assert(lastCommitted.frame<commands.length);
+	}do{
+		lastCommitted.update(commands[lastCommitted.frame].data);
+	}
 	void commit(){
 		lastCommitted.copyFrom(current);
 	}
