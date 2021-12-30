@@ -1152,7 +1152,7 @@ final class Network(B){
 		players[i].send(Packet.sendMap(mapData.length),mapData);
 	}
 	void sendState(int i,scope ubyte[] stateData,scope ubyte[] commandData){
-		players[i].send(Packet.sendState(stateData.length),stateData);
+		players[i].send(Packet.sendState(stateData.length+commandData.length),stateData,commandData);
 	}
 	ubyte[] gameInitData;
 	void initGame(int i,scope ubyte[] gameInitData)in{

@@ -95,12 +95,10 @@ final class Controller(B){
 			if(recording) recording.stepCommitted(state.lastCommitted);
 			if(network.isHost) network.addSynch(state.lastCommitted.frame,state.lastCommitted.hash);
 		}
-		if(committedFrame!=state.lastCommitted.frame){
-			writeln(network.activePlayerIds);
-			writeln(network.players.map!((ref p)=>p.committedFrame));
-			writeln(committedFrame," ",state.lastCommitted.frame);
-		}
-		enforce(committedFrame==state.lastCommitted.frame);
+		import std.conv: text;
+		enforce(committedFrame==state.lastCommitted.frame,
+		        text(network.activePlayerIds," ",network.players.map!((ref p)=>p.committedFrame)," ",
+		             committedFrame," ",state.lastCommitted.frame));
 	}
 	bool step(){
 		playAudio=false;
