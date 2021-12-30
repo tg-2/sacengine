@@ -60,14 +60,12 @@ final class Controller(B){
 	}do{
 		import serialize_;
 		state.lastCommitted.serialized(&network.logDesynch); // TODO: don't log if late join
-		deserialize(state.lastCommitted,serialized);
-		deserialize(state.commands,state.lastCommitted,serialized);
-		committedFrame=state.lastCommitted.frame;
-		state.current.copyFrom(state.lastCommitted);
+		deserialize(state.current,serialized);
+		enforce(currentFrame<=state.current.frame);
+		currentFrame=state.current.frame;
 		static if(B.hasAudio) B.updateAudioAfterRollback();
-		currentFrame=committedFrame;
-		if(state.commands.length<currentFrame+1) state.commands.length=currentFrame+1;
-		firstUpdatedFrame=committedFrame;
+		deserialize(state.commands,state.current,serialized);
+		firstUpdatedFrame=state.current.frame;
 		if(recording) recording.replaceState(state.lastCommitted,state.commands);
 		if(network) network.updateStatus(PlayerStatus.stateResynched);
 	}
@@ -86,7 +84,7 @@ final class Controller(B){
 		committedFrame=network.committedFrame;
 		if(committedFrame<state.lastCommitted.frame){
 			import std.conv: text;
-			enforce(network.players[network.me].status.among(PlayerStatus.readyToResynch,PlayerStatus.stateResynched),text(committedFrame," ",state.lastCommitted.frame," ",network.players.map!((ref p)=>p.committedFrame)," ",network.activePlayerIds," ",network.players.map!((ref p)=>p.status)));
+			enforce(network.players[network.me].status.among(PlayerStatus.readyToResynch,PlayerStatus.stateResynched,PlayerStatus.resynched),text(committedFrame," ",state.lastCommitted.frame," ",network.players.map!((ref p)=>p.committedFrame)," ",network.activePlayerIds," ",network.players.map!((ref p)=>p.status)));
 			return;
 		}
 		if(state.commands.length<committedFrame+1)
@@ -128,7 +126,7 @@ final class Controller(B){
 				if(network.isHost && network.readyToResynch){
 					import serialize_;
 					currentFrame=network.resynchCommittedFrame; // commits have to be monotone
-					writeln("SENDING STATE AT FRAME: ",currentFrame," ",network.players.map!((ref p)=>p.committedFrame));
+					//writeln("SENDING STATE AT FRAME: ",currentFrame," ",network.players.map!((ref p)=>p.committedFrame));
 					if(state.commands.length<currentFrame+1)
 						state.commands.length=currentFrame+1;
 					state.simulateTo(currentFrame);
@@ -142,7 +140,7 @@ final class Controller(B){
 					network.updateStatus(PlayerStatus.stateResynched);
 				}
 				if(network.stateResynched && network.players[network.me].status==PlayerStatus.stateResynched){
-					writeln("STATE IS ACTUALLY AT FRAME: ",currentFrame);
+					//writeln("STATE IS ACTUALLY AT FRAME: ",currentFrame);
 					if(network.players[network.me].committedFrame<currentFrame)
 						network.commit(currentFrame);
 					network.updateStatus(PlayerStatus.resynched);

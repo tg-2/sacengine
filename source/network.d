@@ -910,6 +910,10 @@ final class Network(B){
 			// host query:
 			case PacketType.checkSynch:
 				if(!checkDesynch) return;
+				if(desynched){
+					stderr.writeln("checkSynch packet sent while desynched: ",p);
+					return;
+				}
 				if(!isHost){
 					stderr.writeln("checkSynch packet sent to non-host player ",me,": ",p);
 					break;
@@ -1251,6 +1255,7 @@ final class Network(B){
 	void checkSynch(int frame,uint hash)in{
 		assert(!isHost);
 	}do{
+		if(desynched) return;
 		players[host].send(Packet.checkSynch(frame,hash));
 	}
 	void logDesynch(scope ubyte[] stateData)in{
