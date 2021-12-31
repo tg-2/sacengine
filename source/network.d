@@ -1150,16 +1150,17 @@ final class Network(B){
 	int addPlayer(Player player)in{
 		assert(isHost);
 	}do{
-		bool canReplace(ref Player cand,ref Player old){
+		bool canReplace(ref Player cand,ref Player old,bool replaceUnnamed){
 			if(old.connection) return false;
 			if(old.status==PlayerStatus.unconnected) return true;
-			if(old.settings.name=="") return true;
-			if(old.settings.name==cand.settings.name) return true;
 			if(old.settings.observer!=cand.settings.observer) return false;
+			if(old.settings.name==cand.settings.name) return true;
+			if(replaceUnnamed&&old.settings.name=="") return true;
 			// TODO: more reliable authentication, e.g. with randomly-generated id or public key
 			return false;
 		}
-		auto validSpots=iota(players.length+1).filter!(i=>i!=host&&(i==players.length||canReplace(player,players[i])));
+		auto validSpots=chain(iota(players.length).filter!(i=>i!=host&&canReplace(player,players[i],false)),
+		                      iota(players.length+1).filter!(i=>i!=host&&(i==players.length||canReplace(player,players[i],false))));
 		assert(!validSpots.empty);
 		int newId=cast(int)validSpots.front;
 		if(newId<players.length){
