@@ -1888,12 +1888,16 @@ int placeWizard(B)(ObjectState!B state,SacObject!B wizard,string name,int flags,
 
 struct WizardInfos(B){
 	Array!(WizardInfo!B) wizards;
+	this(this){ wizards=wizards.dup; }
 	@property int length(){ assert(wizards.length<=int.max); return cast(int)wizards.length; }
 	@property void length(int l){
 		wizards.length=l;
 	}
-	void addWizard(WizardInfo!B wizard){
+	void addWizard(ref WizardInfo!B wizard){
 		wizards~=wizard;
+	}
+	void addWizard(WizardInfo!B wizard){
+		wizards~=move(wizard);
 	}
 	void removeWizard(int id){
 		auto index=indexForId(id);
@@ -1903,9 +1907,7 @@ struct WizardInfos(B){
 			wizards.length=wizards.length-1;
 		}
 	}
-	void opAssign(ref WizardInfos!B rhs){
-		assignArray(wizards,rhs.wizards);
-	}
+	void opAssign(ref WizardInfos!B rhs){ assignArray(wizards,rhs.wizards); }
 	void opAssign(WizardInfos!B rhs){ this.tupleof=rhs.tupleof; }
 	ref WizardInfo!B opIndex(int i){
 		return wizards[i];
@@ -18354,6 +18356,8 @@ final class GameState(B){
 			auto wizId=current.placeWizard(wizard,wiz.name,flags,wiz.side,wiz.level,wiz.souls,wiz.spellbook);
 			if(controlledSide==wiz.side) id=wizId;
 		}
+		foreach(ref stanceSetting;gameInit.stanceSettings)
+			current.sides.setStance(stanceSetting.from,stanceSetting.towards,stanceSetting.stance);
 		return id;
 	}
 

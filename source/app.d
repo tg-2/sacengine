@@ -14,7 +14,7 @@ import speechexport;
 
 GameInit!B gameInit(alias multiplayerSide,B,R)(R playerSettings,ref Options options){
 	GameInit!B gameInit;
-	void placeWizard(Settings settings){
+	void placeWizard(ref Settings settings){
 		if(settings.observer) return;
 		char[4] tag=settings.wizard[0..4];
 		auto name=settings.name;
@@ -26,8 +26,18 @@ GameInit!B gameInit(alias multiplayerSide,B,R)(R playerSettings,ref Options opti
 		import nttData:WizardTag;
 		gameInit.wizards~=GameInit!B.Wizard(to!WizardTag(tag),name,side,level,souls,experience,spellbook);
 	}
-	foreach(settings;playerSettings){
-		placeWizard(settings);
+	foreach(ref settings;playerSettings) placeWizard(settings);
+	foreach(i,ref a;enumerate(playerSettings)){
+		if(a.observer) continue;
+		foreach(ref b;playerSettings[i+1..$]){
+			if(b.observer) continue;
+			int s=multiplayerSide(a.controlledSide), t=multiplayerSide(b.controlledSide);
+			enforce(s!=t);
+			int x=a.team, y=b.team;
+			auto stance=x!=-1&&y!=-1&&x==y?Stance.ally:Stance.enemy;
+			gameInit.stanceSettings~=GameInit!B.StanceSetting(s,t,stance);
+			gameInit.stanceSettings~=GameInit!B.StanceSetting(t,s,stance);
+		}
 	}
 	gameInit.replicateCreatures=options.replicateCreatures;
 	gameInit.protectManafounts=options.protectManafounts;
@@ -247,26 +257,12 @@ void loadMap(B)(ref Options options)in{
 		if(side<0||side>=multiplayerSides.length) return side;
 		return multiplayerSides[side];
 	}
-	if(network){ // TODO: factor out relevant parts for local games
-		foreach(i,ref a;network.players){
-			if(a.settings.observer) continue;
-			foreach(ref b;network.players[i+1..$]){
-				if(b.settings.observer) continue;
-				int s=multiplayerSide(a.settings.controlledSide), t=multiplayerSide(b.settings.controlledSide);
-				assert(s!=t);
-				int x=a.settings.team, y=b.settings.team;
-				auto stance=x!=-1&&y!=-1&&x==y?Stance.ally:Stance.enemy;
-				sides.setStance(s,t,stance);
-				sides.setStance(t,s,stance);
-			}
-		}
-	}
 	GameInit!B gameInit;
 	if(!playback||network){
 		if(network){
 			import serialize_;
 			if(network.isHost){
-				gameInit=.gameInit!(multiplayerSide,B)(network.players.map!(x=>x.settings),options);
+				gameInit=.gameInit!(multiplayerSide,B)(network.players.map!(ref(return ref x)=>x.settings),options);
 				gameInit.serialized(&network.initGame);
 			}else{
 				while(!network.gameInitData){
