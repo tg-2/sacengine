@@ -1234,8 +1234,7 @@ final class Network(B){
 			report!true(cast(int)i,"tried to join with incompatible version #");
 			stderr.writeln("they were using version ",players[i].settings.commit);
 		}else report(cast(int)i,"dropped");
-		if(!isHost) return;
-		updateStatus(cast(int)i,playing?PlayerStatus.dropped:PlayerStatus.unconnected);
+		if(isHost) updateStatus(cast(int)i,playing?PlayerStatus.dropped:PlayerStatus.unconnected);
 		players[i].connection.close();
 		players[i].connection=null;
 		players[i].drop();
