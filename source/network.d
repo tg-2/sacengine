@@ -741,7 +741,7 @@ final class Network(B){
 	bool stateResynched(){ return connectedPlayers.all!(p=>p.status.among(PlayerStatus.stateResynched,PlayerStatus.resynched)); }
 	int resynchCommittedFrame(){ return connectedPlayers.map!((ref p)=>p.committedFrame).fold!max(players[host].committedFrame); }
 	bool resynched(){ return connectedPlayers.all!((ref p)=>p.status==PlayerStatus.resynched)/+ && connectedPlayers.all!((ref p)=>p.committedFrame==players[host].committedFrame)+/; }
-	int committedFrame(){ return activePlayers.map!((ref p)=>p.committedFrame).fold!min(players[host].committedFrame); }
+	int committedFrame(){ return activePlayers.map!((ref p)=>p.committedFrame).fold!min(players[isConnectedStatus(players[host].status)?host:me].committedFrame); }
 	int me=-1;
 	@property ref settings(){ return players[me].settings; }
 	@property int slot(){ return players[me].slot; }
@@ -1155,6 +1155,7 @@ final class Network(B){
 			if(old.status==PlayerStatus.unconnected) return true;
 			if(old.settings.name=="") return true;
 			if(old.settings.name==cand.settings.name) return true;
+			if(old.settings.observer!=cand.settings.observer) return false;
 			// TODO: more reliable authentication, e.g. with randomly-generated id or public key
 			return false;
 		}
@@ -1234,7 +1235,11 @@ final class Network(B){
 			report!true(cast(int)i,"tried to join with incompatible version #");
 			stderr.writeln("they were using version ",players[i].settings.commit);
 		}else report(cast(int)i,"dropped");
-		if(isHost) updateStatus(cast(int)i,playing?PlayerStatus.dropped:PlayerStatus.unconnected);
+		if(!isHost){
+			assert(i==host);
+			players[i].status=PlayerStatus.dropped;
+			foreach(ref player;players) if(!players[i].connection) player.status=PlayerStatus.dropped;
+		}else updateStatus(cast(int)i,playing?PlayerStatus.dropped:PlayerStatus.unconnected);
 		players[i].connection.close();
 		players[i].connection=null;
 		players[i].drop();
