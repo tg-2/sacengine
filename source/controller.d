@@ -79,9 +79,11 @@ final class Controller(B){
 			addCommand(Command!B(CommandType.automaticToggleSelection,side,wizard,id,Target.init,float.init));
 		}
 	}
-	void updateCommitted(){
+	void updateCommitted()in{
+		assert(!!network);
+	}do{
 		committedFrame=network.committedFrame;
-		if(network.players[network.me].status==PlayerStatus.desynched) return; // avoid simulating entire game after rejoin
+		if(!network.isHost&&network.desynched) return; // avoid simulating entire game after rejoin
 		import std.conv: text;
 		enforce(state.lastCommitted.frame<=committedFrame,text(state.lastCommitted.frame,text(committedFrame)," ",network.players.map!((ref p)=>p.committedFrame)," ",network.activePlayerIds," ",network.players.map!((ref p)=>p.status)));
 		if(state.commands.length<committedFrame+1)

@@ -709,11 +709,7 @@ final class Network(B){
 	bool resynched(){ return connectedPlayers.all!((ref p)=>p.status==PlayerStatus.resynched)/+ && connectedPlayers.all!((ref p)=>p.committedFrame==players[host].committedFrame)+/; }
 	int committedFrame(){ return activePlayers.map!((ref p)=>p.committedFrame).fold!min(players[host].committedFrame); }
 	int me=-1;
-	@property ref settings()in{
-		assert(readyToLoad());
-	}do{
-		return players[me].settings;
-	}
+	@property ref settings(){ return players[me].settings; }
 	@property ref hostSettings(){ return players[host].settings; }
 	void broadcast(Packet p)in{
 		assert(purposeFromType(p.type)==PacketPurpose.broadcast);
