@@ -61,7 +61,6 @@ final class Controller(B){
 		import serialize_;
 		state.lastCommitted.serialized(&network.logDesynch); // TODO: don't log if late join
 		deserialize(state.current,serialized);
-		enforce(currentFrame<=state.current.frame);
 		currentFrame=state.current.frame;
 		static if(B.hasAudio) B.updateAudioAfterRollback();
 		deserialize(state.commands,state.current,serialized);
@@ -82,30 +81,35 @@ final class Controller(B){
 	}
 	void updateCommitted(){
 		committedFrame=network.committedFrame;
-		if(committedFrame<state.lastCommitted.frame){
-			import std.conv: text;
-			enforce(network.players[network.me].status.among(PlayerStatus.readyToResynch,PlayerStatus.stateResynched,PlayerStatus.resynched),text(committedFrame," ",state.lastCommitted.frame," ",network.players.map!((ref p)=>p.committedFrame)," ",network.activePlayerIds," ",network.players.map!((ref p)=>p.status)));
-			return;
-		}
+		if(network.players[network.me].status==PlayerStatus.desynched) return; // avoid simulating entire game after rejoin
+		import std.conv: text;
+		enforce(state.lastCommitted.frame<=committedFrame,text(state.lastCommitted.frame,text(committedFrame)," ",network.players.map!((ref p)=>p.committedFrame)," ",network.activePlayerIds," ",network.players.map!((ref p)=>p.status)));
 		if(state.commands.length<committedFrame+1)
 			state.commands.length=committedFrame+1;
+		assert(state.lastCommitted.frame<=firstUpdatedFrame);
 		while(state.lastCommitted.frame<committedFrame){
 			state.stepCommittedUnsafe();
 			if(recording) recording.stepCommitted(state.lastCommitted);
 			if(network.isHost) network.addSynch(state.lastCommitted.frame,state.lastCommitted.hash);
 		}
-		import std.conv: text;
 		enforce(committedFrame==state.lastCommitted.frame,
 		        text(network.activePlayerIds," ",network.players.map!((ref p)=>p.committedFrame)," ",
 		             committedFrame," ",state.lastCommitted.frame));
 		if(state.current.frame<committedFrame)
 			state.current.copyFrom(state.lastCommitted); // restore invariant
 		currentFrame=max(currentFrame,committedFrame);
+		firstUpdatedFrame=max(firstUpdatedFrame,committedFrame);
 	}
 	bool step(){
 		playAudio=false;
 		if(network){
 			network.update(this);
+			if(firstUpdatedFrame<currentFrame){
+				// TODO: save multiple states, pick most recent with frame<=firstUpdatedFrame?
+				import std.conv: text;
+				enforce(state.lastCommitted.frame<=firstUpdatedFrame,text(state.lastCommitted.frame," ",firstUpdatedFrame," ",currentFrame));
+				state.rollback();
+			}
 			if(network.isHost){ // handle new connections
 				network.synchronizeMap();
 				if(network.gameInitData){
@@ -127,10 +131,11 @@ final class Controller(B){
 					import serialize_;
 					currentFrame=network.resynchCommittedFrame; // commits have to be monotone
 					//writeln("SENDING STATE AT FRAME: ",currentFrame," ",network.players.map!((ref p)=>p.committedFrame));
-					if(state.commands.length<currentFrame+1)
-						state.commands.length=currentFrame+1;
-					state.simulateTo(currentFrame);
+					//if(state.commands.length<currentFrame+1)
+					state.commands.length=currentFrame+1;
+					state.rollback(currentFrame);
 					assert(state.current.frame==currentFrame);
+					firstUpdatedFrame=currentFrame;
 					state.current.serialized((scope ubyte[] stateData){
 						state.commands.serialized((scope ubyte[] commandData){
 							foreach(i,ref player;network.players)
@@ -141,12 +146,21 @@ final class Controller(B){
 				}
 				if(network.stateResynched && network.players[network.me].status==PlayerStatus.stateResynched){
 					//writeln("STATE IS ACTUALLY AT FRAME: ",currentFrame);
+					enforce(firstUpdatedFrame==currentFrame);
 					if(network.players[network.me].committedFrame<currentFrame)
 						network.commit(currentFrame);
 					network.updateStatus(PlayerStatus.resynched);
 				}
-				if(network.isHost && network.resynched)
-					network.load();
+				if(network.resynched){
+					if(!network.isHost){
+						state.lastCommitted.copyFrom(state.current);
+						committedFrame=currentFrame;
+					}else{
+						updateCommitted();
+						enforce(committedFrame==currentFrame);
+						network.load();
+					}
+				}
 				return true; // ignore passed time in next frame
 			}
 			if(!network.playing){ // start game
@@ -156,11 +170,6 @@ final class Controller(B){
 				}
 				network.acceptingNewConnections=true;
 				return true; // ignore passed time in next frame
-			}
-			updateCommitted();
-			if(firstUpdatedFrame<currentFrame){
-				// TODO: save multiple states, pick most recent with frame<=firstUpdatedFrame?
-				state.rollback(state.lastCommitted);
 			}
 		}else committedFrame=currentFrame;
 		state.simulateTo(currentFrame);

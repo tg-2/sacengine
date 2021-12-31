@@ -529,7 +529,7 @@ bool isReadyStatus(PlayerStatus status){
 	return status>=PlayerStatus.readyToLoad;
 }
 bool isActiveStatus(PlayerStatus status){
-	return PlayerStatus.pendingStart<=status && status<PlayerStatus.disconnected;
+	return PlayerStatus.pendingStart<=status && status<PlayerStatus.desynched;
 }
 
 struct Player{
@@ -1099,7 +1099,6 @@ final class Network(B){
 			sendPlayerData(players[other].connection,newId);
 		foreach(other;0..cast(int)players.length)
 			sendPlayerData(players[newId].connection,other);
-		commit(newId,resynchCommittedFrame);
 		players[newId].send(Packet.updatePlayerId(newId));
 		return newId;
 	}
@@ -1256,6 +1255,7 @@ final class Network(B){
 		assert(!isHost);
 	}do{
 		if(desynched) return;
+		if(!checkDesynch) return;
 		players[host].send(Packet.checkSynch(frame,hash));
 	}
 	void logDesynch(scope ubyte[] stateData)in{
