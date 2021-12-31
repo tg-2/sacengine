@@ -14,29 +14,87 @@ import speechexport;
 
 GameInit!B gameInit(alias multiplayerSide,B,R)(R playerSettings,ref Options options){
 	GameInit!B gameInit;
+	auto numSlots=options.numSlots;
+	if(options._2v2) enforce(numSlots>=4);
+	if(options._3v3) enforce(numSlots>=6);
+	gameInit.slots=new GameInit!B.Slot[](numSlots);
+	auto teams=(-1).repeat(numSlots).array;
+	if(options.ffa||options._2v2||options._3v3){
+		int teamSize=1;
+		if(options._2v2) teamSize=2;
+		if(options._3v3) teamSize=3;
+		foreach(slot,ref team;teams)
+			team=cast(int)slot/teamSize;
+	}else{
+		foreach(ref settings;playerSettings)
+			teams[settings.slot]=settings.team;
+	}
+	if(options.shuffleTeams){
+		import std.random: randomShuffle;
+		randomShuffle(teams);
+	}
 	void placeWizard(ref Settings settings){
 		if(settings.observer) return;
+		import std.random: uniform;
+		int slot=settings.slot;
+		if(slot<0||slot>=numSlots||gameInit.slots[slot].wizardIndex!=-1)
+			return;
 		char[4] tag=settings.wizard[0..4];
+		if(options.randomWizards){
+			import nttData:wizards;
+			tag=cast(char[4])wizards[uniform!"[)"(0,$)];
+		}
 		auto name=settings.name;
-		auto side=multiplayerSide(settings.controlledSide);
+		auto side=multiplayerSide(settings.slot);
 		auto level=settings.level;
 		auto souls=settings.souls;
 		float experience=0.0f;
+		auto spells=settings.spellbook;
+		if(options.randomGods) spells=defaultSpells[uniform!"[]"(1,5)];
+		if(options.randomSpellbooks) spells=randomSpells();
 		auto spellbook=getSpellbook!B(settings.spellbook);
 		import nttData:WizardTag;
+		assert(gameInit.slots[slot]==GameInit!B.Slot(-1,-1));
+		int wizardIndex=cast(int)gameInit.wizards.length;
+		gameInit.slots[slot]=GameInit!B.Slot(wizardIndex,side);
 		gameInit.wizards~=GameInit!B.Wizard(to!WizardTag(tag),name,side,level,souls,experience,spellbook);
 	}
 	foreach(ref settings;playerSettings) placeWizard(settings);
-	foreach(i,ref a;enumerate(playerSettings)){
-		if(a.observer) continue;
-		foreach(ref b;playerSettings[i+1..$]){
-			if(b.observer) continue;
-			int s=multiplayerSide(a.controlledSide), t=multiplayerSide(b.controlledSide);
-			enforce(s!=t);
-			int x=a.team, y=b.team;
+	if(options.shuffleSlots){
+		import std.random: randomShuffle;
+		randomShuffle(zip(gameInit.slots,teams));
+	}
+	foreach(i;0..numSlots){
+		foreach(j;i+1..numSlots){
+			int s=gameInit.slots[i].controlledSide, t=gameInit.slots[j].controlledSide;
+			if(s==-1||t==-1) continue;
+			assert(s!=t);
+			int x=teams[i], y=teams[j];
 			auto stance=x!=-1&&y!=-1&&x==y?Stance.ally:Stance.enemy;
 			gameInit.stanceSettings~=GameInit!B.StanceSetting(s,t,stance);
 			gameInit.stanceSettings~=GameInit!B.StanceSetting(t,s,stance);
+		}
+	}
+	if(options.mirrorMatch){
+		int[int] teamLoc;
+		int[][] teamIndex;
+		foreach(slot;0..numSlots) if(teams[slot]!=-1){
+			if(teams[slot]!in teamLoc){
+				teamLoc[teams[slot]]=cast(int)teamIndex.length;
+				teamIndex~=[[]];
+			}
+			teamIndex[teamLoc[teams[slot]]]~=slot;
+		}
+		foreach(slot;0..numSlots) if(teams[slot]<0) teamIndex~=[slot];
+		teamIndex.sort!("a.length > b.length",SwapStrategy.stable);
+		foreach(t;teamIndex[1..$]){
+			foreach(i;0..t.length){
+				void copyWizard(T)(ref T a,ref T b){
+					if(options.randomWizards) a.tag=b.tag;
+					a.spellbook=b.spellbook;
+				}
+				copyWizard(gameInit.wizards[t[i]],gameInit.wizards[teamIndex[0][i]]);
+			}
 		}
 	}
 	gameInit.replicateCreatures=options.replicateCreatures;
@@ -47,15 +105,15 @@ GameInit!B gameInit(alias multiplayerSide,B,R)(R playerSettings,ref Options opti
 void loadMap(B)(ref Options options)in{
 	assert(options.map.endsWith(".scp")||options.map.endsWith(".HMAP"));
 }do{
-	auto controlledSide=options.observer?-1:options.settings.controlledSide;
+	auto slot=options.observer?-1:options.slot;
 	Network!B network=null;
 	if(options.host){
 		network=new Network!B();
-		network.hostGame();
+		network.hostGame(options.settings);
 	}else if(options.joinIP!=""){
 		network=new Network!B();
 		auto address=new InternetAddress(options.joinIP,listeningPort);
-		while(!network.joinGame(address)){
+		while(!network.joinGame(address,options.settings)){
 			import core.thread;
 			Thread.sleep(200.msecs);
 			if(!B.processEvents()) return;
@@ -71,7 +129,7 @@ void loadMap(B)(ref Options options)in{
 		playback=loadRecording!B(options.playbackFilename);
 		enforce(playback.mapName.endsWith(".scp")||playback.mapName.endsWith(".HMAP"));
 		options.map=playback.mapName;
-		controlledSide=-1;
+		slot=-1;
 		map=playback.map;
 		sides=playback.sides;
 		proximity=playback.proximity;
@@ -90,7 +148,7 @@ void loadMap(B)(ref Options options)in{
 			network.idleLobby();
 			if(!B.processEvents()) return;
 		}
-		network.updateSettings(options.settings);
+		network.updateSetting!"mapHash"(options.mapHash);
 		network.updateStatus(PlayerStatus.commitHashReady);
 		if(!network.isHost){
 			while(!network.hostCommitHashReady){
@@ -108,85 +166,42 @@ void loadMap(B)(ref Options options)in{
 		while(!network.readyToLoad){
 			network.idleLobby();
 			if(!B.processEvents()) return;
-			if(network.isHost&&network.numReadyPlayers+(network.players[network.host].allowedToControlState)>=options.host&&network.clientsReadyToLoad()){
-				network.acceptingNewConnections=false; // TODO: accept observers later
+			if(network.isHost&&network.numReadyPlayers+(network.players[network.host].wantsToControlState)>=options.numSlots&&network.clientsReadyToLoad()){
+				network.acceptingNewConnections=false;
 				//network.stopListening();
 				network.synchronizeSetting!"map"();
-				bool[32] sideTaken=false;
-				foreach(ref player;network.players){
-					if(player.settings.observer) continue;
-					auto side=player.settings.controlledSide;
-					if(side<0||side>=sideTaken.length||sideTaken[side]) player.settings.controlledSide=-1;
-					else sideTaken[side]=true;
-				}
-				auto freeSides=iota(32).filter!(i=>!sideTaken[i]);
+				auto numSlots=options.numSlots;
+				auto slotTaken=new bool[](numSlots);
 				foreach(i,ref player;network.players){
 					if(player.settings.observer) continue;
-					if(freeSides.empty) break;
-					if(player.settings.controlledSide!=-1) continue;
-					network.updateSetting!"controlledSide"(cast(int)i,freeSides.front);
-					freeSides.popFront();
+					auto pslot=player.settings.slot;
+					if(0<=pslot && pslot<options.numSlots && !slotTaken[pslot])
+						slotTaken[pslot]=true;
+					else pslot=-1;
+					network.updateSlot(cast(int)i,pslot);
 				}
-				if(options._2v2||options._3v3){
-					int teamSize=1;
-					if(options._2v2) teamSize=2;
-					if(options._3v3) teamSize=3;
-					foreach(i,ref player;network.players){
-						auto side=player.settings.controlledSide;
-						if(side>=0) network.updateSetting!"team"(cast(int)i,side/teamSize);
+				auto freeSlots=iota(numSlots).filter!(i=>!slotTaken[i]);
+				foreach(i,ref player;network.players){
+					if(player.settings.observer) continue;
+					if(freeSlots.empty) break;
+					if(player.slot==-1){
+						network.updateSlot(cast(int)i,freeSlots.front);
+						freeSlots.popFront();
 					}
-				}
-				if(options.shuffleSides){
-					auto π=iota(network.players.length).array;
-					import std.random:randomShuffle;
-					randomShuffle(π);
-					auto playerSides=network.players.map!((ref p)=>p.settings.controlledSide).array;
-					auto playerTeams=network.players.map!((ref p)=>p.settings.team).array;
-					foreach(i,j;π){
-						network.updateSetting!"controlledSide"(cast(int)i,playerSides[j]);
-						network.updateSetting!"team"(cast(int)i,playerTeams[j]);
-					}
-				}
-				if(options.shuffleTeams){
-					auto π=iota(network.players.length).array;
-					import std.random:randomShuffle;
-					randomShuffle(π);
-					auto teams=network.players.map!((ref p)=>p.settings.team).array;
-					foreach(i,j;π) network.updateSetting!"team"(cast(int)i,teams[j]);
 				}
 				if(options.synchronizeLevel) network.synchronizeSetting!"level"();
 				if(options.synchronizeSouls) network.synchronizeSetting!"souls"();
-				foreach(player;0..cast(int)network.players.length){
-					if(player==network.me) continue;
-					import std.random: uniform;
-					if(options.randomGods) network.updateSetting!"spellbook"(player,defaultSpells[uniform!"[]"(1,5)]);
-					if(options.randomSpellbooks) network.updateSetting!"spellbook"(player,randomSpells());
-					import nttData:wizards;
-					if(options.randomWizards) network.updateSetting!"wizard"(player,cast(char[4])wizards[uniform!"[)"(0,$)]);
-				}
-				if(options.mirrorMatch){ // TODO: this is a hack
-					foreach(player;0..cast(int)network.players.length){
-						auto team=network.players[player].settings.team;
-						if(team==0) continue;
-						auto index=network.players[0..player].count!((ref player)=>player.settings.team==team);
-						auto team0=network.players.filter!((ref player)=>player.settings.team==0);
-						if(team0.save.walkLength>index){
-							team0.popFrontN(index);
-							if(options.randomSpellbooks||options.randomGods) network.updateSetting!"spellbook"(player,team0.front.settings.spellbook);
-							if(options.randomWizards) network.updateSetting!"wizard"(player,team0.front.settings.wizard);
-						}
-					}
-				}
 				network.updateStatus(PlayerStatus.readyToLoad);
 				assert(network.readyToLoad());
 				break;
 			}
 		}
 		auto mapName=network.players[network.host].settings.map;
+		auto hash=network.players[network.host].settings.mapHash;
 		if(!network.isHost){
 			import std.file: exists;
 			if(exists(mapName)){
-				map=loadSacMap!B(mapName,&mapData); // TODO: compute hash without loading map
+				map=loadSacMap!B(mapName); // TODO: compute hash without loading map
 				options.mapHash=map.crc32;
 			}
 			network.updateSetting!"mapHash"(options.mapHash);
@@ -195,35 +210,16 @@ void loadMap(B)(ref Options options)in{
 			network.mapData=mapData;
 			network.updateStatus(PlayerStatus.mapHashed);
 		}
-		while(!network.synchronizeMap()){
+		void loadMap(string name){
+			mapName=name;
+			map=loadSacMap!B(mapName);
+			enforce(map.crc32==hash,"map hash mismatch");
+			network.updateSetting!"mapHash"(map.crc32);
+			network.updateStatus(PlayerStatus.mapHashed);
+		}
+		while(!network.synchronizeMap(&loadMap)){
 			network.idleLobby();
 			if(!B.processEvents()) return;
-			if(!network.isHost && network.mapData.length){
-				auto hash=network.players[network.host].settings.mapHash;
-				import std.digest.crc;
-				auto crc32=digest!CRC32(network.mapData);
-				static assert(typeof(crc32).sizeof==int.sizeof);
-				if(*cast(int*)&crc32==hash){
-					import std.path: buildPath, baseName, stripExtension;
-					mapName=buildPath("maps",baseName(mapName));
-					import std.file: exists, rename;
-					if(exists(mapName)){
-						auto newName=stripExtension(mapName)~text(".",map.crc32)~".scp";
-						rename(mapName,newName);
-						stderr.writeln("existing map '",mapName,"' moved to '",newName,"'");
-					}
-					File mapFile=File(mapName,"w");
-					mapFile.rawWrite(network.mapData);
-					mapFile.close();
-					stderr.writeln("downloaded map '",mapName,"'");
-					network.mapData.length=0;
-					map=loadSacMap!B(mapName,&mapData);
-					enforce(map.crc32==hash,"map hash mismatch");
-					network.updateSetting!"mapHash"(map.crc32);
-					network.updateStatus(PlayerStatus.mapHashed);
-				}
-				network.mapData=null;
-			}
 		}
 		if(network.isHost){
 			network.load();
@@ -234,7 +230,7 @@ void loadMap(B)(ref Options options)in{
 			}
 		}
 		options.settings=network.settings;
-		controlledSide=options.settings.controlledSide;
+		slot=network.slot;
 	}
 	if(!playback){
 		enforce(!!map); // map already loaded
@@ -253,9 +249,9 @@ void loadMap(B)(ref Options options)in{
 		matchedSides[i]=true;
 	}
 	iota(32).filter!(i=>!matchedSides[i]).copy(multiplayerSides[].filter!(x=>x==-1));
-	int multiplayerSide(int side){
-		if(side<0||side>=multiplayerSides.length) return side;
-		return multiplayerSides[side];
+	int multiplayerSide(int slot){
+		if(slot<0||slot>=multiplayerSides.length) return slot;
+		return multiplayerSides[slot];
 	}
 	GameInit!B gameInit;
 	if(!playback||network){
@@ -280,12 +276,12 @@ void loadMap(B)(ref Options options)in{
 		recording.gameInit=gameInit;
 		recording.logCore=options.logCore;
 	}
-	int wizId=state.initGame(gameInit,multiplayerSide(controlledSide));
+	int wizId=state.initGame(gameInit,slot);
 	state.current.map.makeMeshes(options.enableMapBottom);
 	state.commit();
 	if(network && network.isHost) network.addSynch(state.lastCommitted.frame,state.lastCommitted.hash);
 	if(recording) recording.stepCommitted(state.lastCommitted);
-	auto controller=new Controller!B(multiplayerSide(controlledSide),state,network,recording,playback);
+	auto controller=new Controller!B(multiplayerSide(slot),state,network,recording,playback);
 	B.setState(state);
 	if(wizId) B.focusCamera(wizId);
 	else B.scene.fpview.active=true;
@@ -317,7 +313,7 @@ int main(string[] args){
 		shadowMapResolution: 1024,
 		enableWidgets: true,
 	};
-	options.controlledSide=int.min;
+	options.slot=int.min;
 	static Tuple!(int,"width",int,"height") parseResolution(string s){
 		auto t=s.split('x');
 		if(t.length==2) return tuple!("width","height")(to!int(t[0]),to!int(t[1]));
@@ -374,8 +370,8 @@ int main(string[] args){
 			options.exportFolder=opt["--export-folder=".length..$];
 		}else if(opt=="--observer"){
 			options.observer=true;
-		}else if(opt.startsWith("--side=")){
-			options.controlledSide=to!int(opt["--side=".length..$]);
+		}else if(opt.startsWith("--slot=")){
+			options.slot=to!int(opt["--slot=".length..$]);
 		}else if(opt.startsWith("--team=")){
 			options.team=to!int(opt["--team=".length..$]);
 		}else if(opt.startsWith("--name=")){
@@ -413,16 +409,20 @@ int main(string[] args){
 		}else if(opt.startsWith("--delay-start=")){
 			options.delayStart=to!int(opt["--delay-start=".length..$]);
 		}else if(opt=="--host"){
-			options.host=2;
+			options.host=true;
+			options.numSlots=2;
 		}else if(opt.startsWith("--host=")){
-			options.host=to!int(opt["--host=".length..$]);
+			options.host=true;
+			options.numSlots=to!int(opt["--host=".length..$]);
+		}else if(opt.startsWith("--num-slots=")){
+			options.numSlots=to!int(opt["--num-slots=".length..$]);
 		}else LoptSwitch: switch(opt){
 			static string getOptionName(string memberName){
 				import std.ascii;
 				auto m=memberName;
 				if(m.startsWith("_")) m=m["_".length..$];
 				if(m.startsWith("enable")) m=m["enable".length..$];
-				else if(m.startsWith("disable")) m=m["disable".length..$];
+				//else if(m.startsWith("disable")) m=m["disable".length..$]; // TODO: flip setting
 				string r;
 				foreach(char c;m){
 					if(isUpper(c)) r~="-"~toLower(c);
@@ -449,11 +449,9 @@ int main(string[] args){
 				return 1;
 		}
 	}
-	if(options.controlledSide==int.min){
-		options.controlledSide=options.observer?-1:0;
-	}
-	if(options.host&&options._2v2) options.host=max(options.host,4);
-	if(options.host&&options._3v3) options.host=max(options.host,6);
+	if(options.slot==int.min) options.slot=options.observer?-1:0;
+	if(options._2v2) options.numSlots=max(options.numSlots,4);
+	if(options._3v3) options.numSlots=max(options.numSlots,6);
 	if(options.wizard=="\0\0\0\0"||options.randomWizards){
 		import std.random: uniform;
 		import nttData:wizards;

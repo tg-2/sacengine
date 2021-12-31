@@ -49,7 +49,8 @@ final class Controller(B){
 		addCommand(command);
 	}
 	void addExternalCommand(int frame,Command!B command)in{
-		assert(committedFrame<=frame);
+		import std.conv: text;
+		assert(committedFrame<=frame,text(committedFrame," ",frame," ",command));
 	}do{
 		firstUpdatedFrame=min(firstUpdatedFrame,frame);
 		state.addCommandInconsistent(frame,command);
@@ -85,7 +86,7 @@ final class Controller(B){
 		committedFrame=network.committedFrame;
 		if(!network.isHost&&network.desynched) return; // avoid simulating entire game after rejoin
 		import std.conv: text;
-		enforce(state.lastCommitted.frame<=committedFrame,text(state.lastCommitted.frame,text(committedFrame)," ",network.players.map!((ref p)=>p.committedFrame)," ",network.activePlayerIds," ",network.players.map!((ref p)=>p.status)));
+		enforce(state.lastCommitted.frame<=committedFrame,text(state.lastCommitted.frame," ",committedFrame," ",network.players.map!((ref p)=>p.committedFrame)," ",network.activePlayerIds," ",network.players.map!((ref p)=>p.status)));
 		if(state.commands.length<committedFrame+1)
 			state.commands.length=committedFrame+1;
 		assert(state.lastCommitted.frame<=firstUpdatedFrame);
@@ -113,7 +114,7 @@ final class Controller(B){
 				state.rollback();
 			}
 			if(network.isHost){ // handle new connections
-				network.synchronizeMap();
+				network.synchronizeMap(null);
 				if(network.gameInitData){
 					auto hash=network.hostSettings.mapHash;
 					foreach(i,ref player;network.players){
@@ -149,19 +150,18 @@ final class Controller(B){
 				if(network.stateResynched && network.players[network.me].status==PlayerStatus.stateResynched){
 					//writeln("STATE IS ACTUALLY AT FRAME: ",currentFrame);
 					enforce(firstUpdatedFrame==currentFrame);
+					if(!network.isHost){
+						state.lastCommitted.copyFrom(state.current);
+						committedFrame=currentFrame;
+					}
 					if(network.players[network.me].committedFrame<currentFrame)
 						network.commit(currentFrame);
 					network.updateStatus(PlayerStatus.resynched);
 				}
-				if(network.resynched){
-					if(!network.isHost){
-						state.lastCommitted.copyFrom(state.current);
-						committedFrame=currentFrame;
-					}else{
-						updateCommitted();
-						enforce(committedFrame==currentFrame);
-						network.load();
-					}
+				if(network.isHost && network.resynched){
+					updateCommitted();
+					enforce(committedFrame==currentFrame);
+					network.load();
 				}
 				return true; // ignore passed time in next frame
 			}

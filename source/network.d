@@ -69,12 +69,14 @@ enum PacketType{
 	ack,
 	// host message
 	updatePlayerId,
+	updateSlot,
 	sendMap,
 	sendState,
 	initGame,
 	loadGame,
 	startGame,
 	// host query
+	join,
 	checkSynch,
 	logDesynch,
 	// broadcast
@@ -95,17 +97,19 @@ enum arrayLengthLimit=4096;
 PacketPurpose purposeFromType(PacketType type){
 	final switch(type) with(PacketType) with(PacketPurpose){
 		case nop,disconnect,ping,ack: return peerToPeer;
-		case updatePlayerId,sendMap,sendState,initGame,loadGame,startGame: return hostMessage;
-		case checkSynch,logDesynch: return hostQuery;
+		case updatePlayerId,updateSlot,sendMap,sendState,initGame,loadGame,startGame: return hostMessage;
+		case join,checkSynch,logDesynch: return hostQuery;
 		case updateSetting,clearArraySetting,appendArraySetting,confirmArraySetting,setMap,appendMap,confirmMap,updateStatus,command,commit: return broadcast;
 	}
 }
 
 bool isHeaderType(PacketType type){
 	final switch(type) with(PacketType){
-		case nop,disconnect,ping,ack,updatePlayerId: return false;
+		case nop,disconnect,ping,ack,updatePlayerId,updateSlot: return false;
 		case sendMap,sendState,initGame: return true;
-		case loadGame,startGame,checkSynch: return false;
+		case loadGame,startGame: return false;
+		case join: return true;
+		case checkSynch: return false;
 		case logDesynch: return true;
 		case updateSetting,clearArraySetting,appendArraySetting,confirmArraySetting,setMap,appendMap,confirmMap,updateStatus,command,commit: return false;
 	}
@@ -119,11 +123,13 @@ struct Packet{
 			case ping: return text("Packet.ping(",id,")");
 			case ack: return text("Packet.ack(",pingId,")");
 			case updatePlayerId: return text("Packet.updatePlayerId(",id,")");
+			case updateSlot: return text("Packet.updateSlot(",player,",",intValue,")");
 			case sendMap: return text("Packet.sendMap(...)");
 			case sendState: return text("Packet.sendState(...)");
 			case initGame: return text("Packet.initGame(...)");
 			case loadGame: return text("Packet.loadGame()");
 			case startGame: return text("Packet.startGame(",startDelay,")");
+			case join: return text("Packet.join(...)");
 			case checkSynch: return text("Packet.checkSynch(",synchFrame,",",synchHash,")");
 			case logDesynch: return text("Packet.logDesynch(...)");
 			case updateSetting:
@@ -187,7 +193,7 @@ struct Packet{
 			uint synchHash;
 		}
 		struct{ int pingId; } // ack
-		struct{ // updateStatus, updateSetting, clearArraySetting, appendArraySetting, confirmArraySetting
+		struct{ // updateSlot, updateStatus, updateSetting, clearArraySetting, appendArraySetting, confirmArraySetting
 			int player;
 			union{
 				struct{// updateSetting, clearArraySetting, appendArraySetting, confirmArraySetting
@@ -216,7 +222,7 @@ struct Packet{
 			int commitPlayer;
 			int commitFrame;
 		}
-		struct{ // sendMap, sendState, initGame, logDesynch
+		struct{ // sendMap, sendState, initGame, join, logDesynch
 			ulong rawDataSize;
 		}
 	}
@@ -242,6 +248,13 @@ struct Packet{
 		Packet p;
 		p.type=PacketType.updatePlayerId;
 		p.id=id;
+		return p;
+	}
+	static Packet updateSlot(int player,int slot){
+		Packet p;
+		p.type=PacketType.updateSlot;
+		p.player=player;
+		p.intValue=slot;
 		return p;
 	}
 	static Packet sendMap(ulong rawDataSize){
@@ -271,6 +284,12 @@ struct Packet{
 		Packet p;
 		p.type=PacketType.startGame;
 		p.startDelay=startDelay;
+		return p;
+	}
+	static Packet join(ulong rawDataSize){
+		Packet p;
+		p.type=PacketType.join;
+		p.rawDataSize=rawDataSize;
 		return p;
 	}
 	static Packet checkSynch(int frame,uint hash){
@@ -401,6 +420,7 @@ abstract class Connection{
 	abstract void send(Packet packet);
 	abstract void send(Packet packet,scope ubyte[] rawData);
 	abstract void send(Packet packet,scope ubyte[] rawData1,scope ubyte[] rawData2);
+	abstract void close();
 }
 class TCPConnection: Connection{
 	Socket tcpSocket;
@@ -500,6 +520,10 @@ class TCPConnection: Connection{
 		tcpSocket.send(rawData1);
 		tcpSocket.send(rawData2);
 	}
+	override void close(){
+		tcpSocket.shutdown(SocketShutdown.BOTH);
+		tcpSocket.close();
+	}
 }
 
 enum PlayerStatus{
@@ -518,6 +542,7 @@ enum PlayerStatus{
 	desynched,
 	readyToResynch,
 	stateResynched,
+	commitResynched,
 	resynched,
 	disconnected,
 }
@@ -525,16 +550,20 @@ enum PlayerStatus{
 bool isConnectedStatus(PlayerStatus status){
 	return !status.among(PlayerStatus.unconnected,PlayerStatus.dropped,PlayerStatus.disconnected);
 }
+bool isDesynchedStatus(PlayerStatus status){
+	return PlayerStatus.desynched<=status && status<PlayerStatus.resynched;
+}
 bool isReadyStatus(PlayerStatus status){
-	return status>=PlayerStatus.readyToLoad;
+	return isConnectedStatus(status) && !isDesynchedStatus(status) && PlayerStatus.readyToLoad<=status;
 }
 bool isActiveStatus(PlayerStatus status){
-	return PlayerStatus.pendingStart<=status && status<PlayerStatus.desynched;
+	return isConnectedStatus(status) && !isDesynchedStatus(status) && PlayerStatus.pendingLoad<=status;
 }
 
 struct Player{
 	PlayerStatus status;
 	Settings settings;
+	int slot=-1;
 
 	Connection connection;
 	bool alive(){ return connection&&connection.alive; }
@@ -572,14 +601,17 @@ struct Player{
 		committedFrame=0;
 		ping=-1;
 	}
-
-	bool allowedToControlState(){
+	bool wantsToControlState(){
 		if(settings.observer) return false;
-		if(settings.controlledSide==-1) return false;
+		return true;
+	}
+	bool allowedToControlState(){
+		if(!wantsToControlState) return false;
+		if(slot==-1) return false;
 		return true;
 	}
 	bool isReadyToControlState(){
-		if(!allowedToControlState) return false;
+		if(!wantsToControlState) return false;
 		return isReadyStatus(status);
 	}
 	bool isControllingState(){
@@ -653,26 +685,30 @@ final class Network(B){
 	bool checkDesynch=true;
 	bool isHost(){ return me==host; }
 	SynchQueue synchQueue;
-	void hostGame()in{
+	void hostGame(Settings settings)in{
 		assert(!players.length);
 	}do{
 		makeListener();
 		enforce(listener!is null,text("cannot host on port ",listeningPort));
 		static assert(host==0);
-		players=[Player(PlayerStatus.synched,Settings.init,null)];
+		players=[Player(PlayerStatus.synched,settings,settings.slot,null)];
 		me=0;
 		if(checkDesynch) synchQueue=new SynchQueue();
 	}
 	Socket joinSocket=null;
-	bool joinGame(InternetAddress hostAddress)in{
+	bool joinGame(InternetAddress hostAddress,Settings playerSettings)in{
 		assert(!players.length);
 	}do{
 		if(!joinSocket) joinSocket=new Socket(AddressFamily.INET,SocketType.STREAM);
 		try joinSocket.connect(hostAddress);
 		catch(Exception){ return false; }
 		joinSocket.blocking=false;
-		players=[Player(PlayerStatus.connected,Settings.init,new TCPConnection(joinSocket))];
+		players=[Player(PlayerStatus.connected,Settings.init,-1,new TCPConnection(joinSocket))];
 		joinSocket=null;
+		import serialize_;
+		playerSettings.serialized((scope ubyte[] settingsData){
+			players[host].connection.send(Packet.join(settingsData.length),settingsData);
+		});
 		return true;
 	}
 	bool synched(){
@@ -696,13 +732,11 @@ final class Network(B){
 	bool loading(){
 		return me!=-1&&players[me].status==PlayerStatus.loading;
 	}
-	bool readyToStart(){
-		return connectedPlayers.all!(p=>p.status>=PlayerStatus.readyToStart);
-	}
+	bool readyToStart(){ return connectedPlayers.all!(p=>isReadyStatus(p.status)); }
 	bool playing(){
 		return me!=-1&&players[me].status==PlayerStatus.playing;
 	}
-	bool desynched(){ return connectedPlayers.any!(p=>p.status.among(PlayerStatus.desynched,PlayerStatus.readyToResynch,PlayerStatus.stateResynched,PlayerStatus.resynched)); }
+	bool desynched(){ return connectedPlayers.any!(p=>isDesynchedStatus(p.status)||p.status==PlayerStatus.resynched); }
 	bool readyToResynch(){ return connectedPlayers.all!(p=>p.status==PlayerStatus.readyToResynch); }
 	bool stateResynched(){ return connectedPlayers.all!(p=>p.status.among(PlayerStatus.stateResynched,PlayerStatus.resynched)); }
 	int resynchCommittedFrame(){ return connectedPlayers.map!((ref p)=>p.committedFrame).fold!max(players[host].committedFrame); }
@@ -710,6 +744,7 @@ final class Network(B){
 	int committedFrame(){ return activePlayers.map!((ref p)=>p.committedFrame).fold!min(players[host].committedFrame); }
 	int me=-1;
 	@property ref settings(){ return players[me].settings; }
+	@property int slot(){ return players[me].slot; }
 	@property ref hostSettings(){ return players[host].settings; }
 	void broadcast(Packet p)in{
 		assert(purposeFromType(p.type)==PacketPurpose.broadcast);
@@ -719,7 +754,8 @@ final class Network(B){
 				players[i].send(p);
 		}else players[host].send(p);
 	}
-	bool mayUpdateStatus(int actor,int player,PlayerStatus newStatus){
+	bool allowedToUpdateStatus(int actor,int player,PlayerStatus newStatus){
+		if(!actor.among(host,player)) return false;
 		auto oldStatus=players[player].status;
 		return oldStatus<newStatus||
 			oldStatus==PlayerStatus.resynched&&newStatus==PlayerStatus.loading||
@@ -728,7 +764,7 @@ final class Network(B){
 	void updateStatus(int player,PlayerStatus newStatus)in{
 		assert(player==me||isHost);
 	}do{
-		if(!mayUpdateStatus(me,player,newStatus)) return;
+		if(!allowedToUpdateStatus(me,player,newStatus)) return;
 		broadcast(Packet.updateStatus(player,newStatus));
 		players[player].status=newStatus;
 	}
@@ -812,7 +848,6 @@ final class Network(B){
 			// peer to peer:
 			case PacketType.nop: break;
 			case PacketType.disconnect:
-				players[sender].connection=null;
 				disconnectPlayer(sender,controller);
 				report(sender,"disconnected");
 				break;
@@ -841,6 +876,19 @@ final class Network(B){
 				}
 				me=p.id;
 				updateStatus(PlayerStatus.synched);
+				break;
+			case PacketType.updateSlot:
+				if(sender!=host){
+					stderr.writeln("non-host player ",sender," attempted to update slot: ",p);
+					break;
+				}
+				int slot=p.intValue;
+				if(slot!=-1 && players.any!((ref p)=>p.slot==slot)){
+					stderr.writeln("host attempted to put multiple players on same slot: ",p);
+					break;
+				}
+				players[p.player].settings.slot=slot;
+				players[p.player].slot=slot;
 				break;
 			case PacketType.sendMap:
 				if(sender!=host){
@@ -904,6 +952,11 @@ final class Network(B){
 				B.unpause();
 				break;
 			// host query:
+			case PacketType.join:
+				stderr.writeln("stray join packet: ",p);
+				assert(players[sender].rawReady);
+				players[sender].receiveRaw((scope ubyte[] data){ controller.logDesynch(players[sender].settings.slot,data); });
+				break;
 			case PacketType.checkSynch:
 				if(!checkDesynch) return;
 				if(desynched){
@@ -918,7 +971,7 @@ final class Network(B){
 				if(!synchQueue.check(p.synchFrame,p.synchHash)){
 					report!true(sender,"desynchronized at frame ",p.synchFrame);
 					if(p.synchFrame>=synchQueue.end){
-						stderr.writeln("tried to synch on non-committed frame (after ",synchQueue.end,")");
+						stderr.writeln("tried to synch on non-committed frame (after ",synchQueue.end,") ",players.map!((ref p)=>p.committedFrame)," ",players.map!((ref p)=>p.status));
 					}else{
 						stderr.writeln("expected hash ",synchQueue.hashes[p.frame%$],", got ",p.synchHash);
 					}
@@ -931,7 +984,7 @@ final class Network(B){
 					break;
 				}
 				assert(players[sender].rawReady);
-				players[sender].receiveRaw((scope ubyte[] data){ controller.logDesynch(players[sender].settings.controlledSide,data); });
+				players[sender].receiveRaw((scope ubyte[] data){ controller.logDesynch(players[sender].settings.slot,data); });
 				break;
 			// broadcast:
 			case PacketType.updateSetting,PacketType.clearArraySetting,PacketType.appendArraySetting,PacketType.confirmArraySetting,PacketType.setMap,PacketType.appendMap,PacketType.confirmMap:
@@ -1011,7 +1064,7 @@ final class Network(B){
 					disconnectPlayer(p.player,controller);
 					break;
 				}
-				if(mayUpdateStatus(sender,p.player,p.newStatus)){
+				if(allowedToUpdateStatus(sender,p.player,p.newStatus)){
 					players[p.player].status=p.newStatus;
 					if(p.newStatus==PlayerStatus.dropped||p.newStatus==PlayerStatus.unconnected){
 						if(players[p.player].settings.commit!=hostSettings.commit){
@@ -1071,9 +1124,28 @@ final class Network(B){
 				connection.send(Packet.confirmArraySetting!setting(player));
 			}else connection.send(Packet.updateSetting!setting(player,mixin(`players[player].settings.`~setting)));
 		}}
+		connection.send(Packet.updateSlot(player,players[player].slot));
 		if(players[player].committedFrame!=0) connection.send(Packet.commit(player,players[player].committedFrame)); // for late joins
 		connection.send(Packet.updateStatus(player,players[player].status));
 		// TODO: send address to attempt to establish peer to peer connection
+	}
+	void updatePlayerId(int newId)in{
+		assert(isHost);
+		assert(players[newId].status==PlayerStatus.connected);
+	}do{
+		players[newId].send(Packet.updatePlayerId(newId));
+	}
+	void updateSlot(int i,int slot)in{
+		assert(isHost);
+	}do{
+		if(players[i].slot==slot){
+			updateSetting!"slot"(i,slot);
+			return;
+		}
+		foreach(j;0..players.length)
+			players[j].send(Packet.updateSlot(i,slot));
+		players[i].settings.slot=slot;
+		players[i].slot=slot;
 	}
 	int addPlayer(Player player)in{
 		assert(isHost);
@@ -1089,8 +1161,11 @@ final class Network(B){
 		auto validSpots=iota(players.length+1).filter!(i=>i!=host&&(i==players.length||canReplace(player,players[i])));
 		assert(!validSpots.empty);
 		int newId=cast(int)validSpots.front;
-		if(newId==players.length) players~=player;
-		else players[newId]=player;
+		if(newId<players.length){
+			player.slot=players[newId].slot;
+			player.settings.slot=player.slot;
+			players[newId]=player;
+		}else players~=player;
 		foreach(other;iota(cast(int)players.length).filter!(i=>i!=newId))
 			sendPlayerData(players[other].connection,newId);
 		foreach(other;0..cast(int)players.length)
@@ -1103,6 +1178,7 @@ final class Network(B){
 		acceptingNewConnections=false;
 		if(listener) listener.close();
 	}
+	Array!Player pendingJoin;
 	void acceptNewConnections(){
 		if(!acceptingNewConnections||!listener) return; // TODO: allow observers to join and dropped players to reconnect
 		if(isHost){
@@ -1113,24 +1189,44 @@ final class Network(B){
 				if(!newSocket||!newSocket.isAlive) break;
 				newSocket.blocking=false;
 				// TODO: detect reconnection attempts
-				auto newPlayer=Player(PlayerStatus.connected,Settings.init,new TCPConnection(newSocket));
-				auto newId=addPlayer(newPlayer);
-				writeln("player ",newId," joined");
+				auto status=PlayerStatus.connected, settings=Settings.init, slot=-1;
+				auto connection=new TCPConnection(newSocket);
+				auto newPlayer=Player(status,settings,slot,connection);
+				pendingJoin~=newPlayer;
 			}
 		}else{
 			// TODO: accept peer-to-peer connections to decrease latency
 		}
+		for(int i=0;i<pendingJoin.length;){
+			if(pendingJoin[i].ready){
+				auto p=pendingJoin[i].receive();
+				if(p.type==PacketType.join){
+					assert(pendingJoin[i].rawReady);
+					import serialize_;
+					pendingJoin[i].receiveRaw((scope ubyte[] data){ deserialize(pendingJoin[i].settings,ObjectState!B.init,data); });
+					auto newId=addPlayer(pendingJoin[i]);
+					report(newId,"joined");
+				}else{
+					stderr.writeln("bad join attempt");
+					pendingJoin[i].connection.close();
+				}
+				swap(pendingJoin[i],pendingJoin[$-1]);
+				pendingJoin.length=pendingJoin.length-1;
+			}else i++;
+		}
 	}
 	void disconnectPlayer(int i,Controller!B controller){
-		if(isHost||i==host){
+		/+if(isHost||i==host){
 			if(controller&&!players[i].settings.observer&&players[i].settings.controlledSide!=-1){// surrender
 				auto controlledSide=controller.controlledSide;
 				controller.controlledSide=players[i].settings.controlledSide;
 				scope(exit) controller.controlledSide=controlledSide;
 				controller.addCommand(max(controller.currentFrame,players[i].committedFrame),Command!B(players[i].settings.controlledSide));
 			}
-		}
+		}+/
 		if(isHost) updateStatus(cast(int)i,PlayerStatus.disconnected);
+		players[i].connection.close();
+		players[i].connection=null;
 	}
 	void dropPlayer(int i,Controller!B controller){
 		if(!isHost&&i!=host) return;
@@ -1140,6 +1236,8 @@ final class Network(B){
 		}else report(cast(int)i,"dropped");
 		if(!isHost) return;
 		updateStatus(cast(int)i,playing?PlayerStatus.dropped:PlayerStatus.unconnected);
+		players[i].connection.close();
+		players[i].connection=null;
 		players[i].drop();
 	}
 	void update(Controller!B controller){
@@ -1147,7 +1245,6 @@ final class Network(B){
 		foreach(i,ref player;players){
 			if(!player.connection) continue;
 			if(!player.alive){
-				player.connection=null;
 				dropPlayer(cast(int)i,controller);
 				continue;
 			}
@@ -1186,8 +1283,11 @@ final class Network(B){
 		this.gameInitData=gameInitData.dup; // TODO: don't leak this memory
 	}
 	ubyte[] mapData;
-	bool synchronizeMap(){
+	bool synchronizeMap(scope void delegate(string name) load)in{
+		assert(isHost||load!is null);
+	}do{
 		if(!mapHashed) return false;
+		auto name=players[host].settings.map;
 		auto hash=players[host].settings.mapHash;
 		if(isHost){
 			if(mapData){
@@ -1197,11 +1297,31 @@ final class Network(B){
 					updateStatus(cast(int)i,PlayerStatus.readyToLoad);
 					sendMap(cast(int)i,mapData);
 				}
+			}
+			return mapHashed&&connectedPlayers.all!((ref p)=>p.settings.map==name&&p.settings.mapHash==hash);
+		}else{
+			if(mapData){
+				import std.digest.crc;
+				auto crc32=digest!CRC32(mapData);
+				static assert(typeof(crc32).sizeof==int.sizeof);
+				if(*cast(int*)&crc32==hash){
+					import std.path: buildPath, baseName, stripExtension;
+					name=buildPath("maps",baseName(name));
+					import std.file: exists, rename;
+					if(exists(name)){
+						auto newName=stripExtension(name)~text(".",players[me].settings.mapHash)~".scp";
+						rename(name,newName);
+						stderr.writeln("existing map '",name,"' moved to '",newName,"'");
+					}
+					File mapFile=File(name,"w");
+					mapFile.rawWrite(mapData);
+					mapFile.close();
+					stderr.writeln("downloaded map '",name,"'");
+					if(load!is null) load(name);
+				}
 				mapData=null;
 			}
-			return mapHashed&&connectedPlayers.all!(p=>p.settings.mapHash==hash);
-		}else{
-			return mapHashed&&players[me].settings.mapHash==hash;
+			return mapHashed&&players[me].settings.map==name&&players[me].settings.mapHash==hash;
 		}
 	}
 	void load(int i)in{
@@ -1253,6 +1373,7 @@ final class Network(B){
 		if(desynched) return;
 		if(!checkDesynch) return;
 		players[host].send(Packet.checkSynch(frame,hash));
+		//writeln("checkDesynch(",frame,",",hash,"): ",committedFrame," ",players.map!((ref p)=>p.status)," ",players.map!((ref p)=>p.slot)," ",players.map!((ref p)=>p.committedFrame)," ",activePlayerIds);
 	}
 	void logDesynch(scope ubyte[] stateData)in{
 		assert(!isHost);

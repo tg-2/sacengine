@@ -18173,6 +18173,11 @@ struct Command(B){
 }
 
 struct GameInit(B){
+	struct Slot{
+		int wizardIndex=-1;
+		int controlledSide=-1;
+	}
+	Slot[] slots;
 	struct Wizard{
 		WizardTag tag;
 		string name;
@@ -18313,7 +18318,7 @@ final class GameState(B){
 		}
 	}
 
-	int initGame(GameInit!B gameInit,int controlledSide){ // returns id of controlled wizard
+	int initGame(GameInit!B gameInit,int slot){ // returns id of controlled wizard
 		foreach(ref structure;current.map.ntts.structures)
 			placeStructure(structure);
 		foreach(ref wizard;current.map.ntts.wizards)
@@ -18349,12 +18354,12 @@ final class GameState(B){
 		}
 
 		int id=0;
-		foreach(ref wiz;gameInit.wizards){
+		foreach(currentSlot,ref wiz;gameInit.wizards){
 			auto wizard=SacObject!B.getSAXS!Wizard(wiz.tag);
 			//printWizardStats(wizard);
 			auto flags=0;
 			auto wizId=current.placeWizard(wizard,wiz.name,flags,wiz.side,wiz.level,wiz.souls,wiz.spellbook);
-			if(controlledSide==wiz.side) id=wizId;
+			if(slot==currentSlot) id=wizId;
 		}
 		foreach(ref stanceSetting;gameInit.stanceSettings)
 			current.sides.setStance(stanceSetting.from,stanceSetting.towards,stanceSetting.stance);

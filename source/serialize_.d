@@ -674,6 +674,8 @@ ObjectState!B deserializeObjectState(B,R)(SacMap!B map,Sides!B sides,Proximity!B
 
 void serialize(alias sink,B)(ref GameInit!B gameInit){ serializeStruct!sink(gameInit); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==GameInit!B)){ deserializeStruct(result,state,data); }
+void serialize(alias sink,B)(ref GameInit!B.Slot slot){ serializeStruct!sink(slot); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==GameInit!B.Slot)){ deserializeStruct(result,state,data); }
 void serialize(alias sink,B)(ref GameInit!B.Wizard wizard){ serializeStruct!sink(wizard); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==GameInit!B.Wizard)){ deserializeStruct(result,state,data); }
 void serialize(alias sink,B)(ref GameInit!B.StanceSetting stanceSetting){ serializeStruct!sink(stanceSetting); }
@@ -687,6 +689,12 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Com
 import sids;
 void serialize(alias sink)(ref Side side){ serializeStruct!sink(side); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Side)){ deserializeStruct(result,state,data); }
+
+import options;
+void serialize(alias sink)(ref SpellSpec spellSpec){ serializeStruct!sink(spellSpec); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SpellSpec)){ deserializeStruct(result,state,data); }
+void serialize(alias sink)(ref Settings settings){ serializeStruct!sink(settings); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Settings)){ deserializeStruct(result,state,data); }
 
 import recording_;
 

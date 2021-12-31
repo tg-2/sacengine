@@ -42,10 +42,11 @@ struct Options{
 	// global settings
 	bool noMap=false;
 	string mapList;
+	bool ffa=false;
 	bool _2v2=false;
 	bool _3v3=false;
 	bool mirrorMatch=false;
-	bool shuffleSides=false;
+	bool shuffleSlots=false;
 	bool shuffleTeams=false;
 	bool randomWizards=false;
 	bool randomSpellbooks=false;
@@ -57,7 +58,8 @@ struct Options{
 	int protectManafounts=0;
 	int delayStart=0;
 	// multiplayer
-	int host=0;
+	bool host=false;
+	int numSlots=2;
 	string joinIP="";
 	bool testLag=false;
 	bool dumpTraffic=false;
@@ -81,7 +83,7 @@ struct Settings{
 	string map="";
 	int mapHash=0;
 	bool observer=false;
-	int controlledSide=-1;
+	int slot=-1;
 	int team=-1;
 	string name="";
 	char[4] wizard="";
