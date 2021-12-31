@@ -194,17 +194,21 @@ final class Controller(B){
 		}else if(playback){
 			if(auto replacement=playback.stateReplacement(state.current.frame)){
 				assert(replacement.frame==state.current.frame);
-				writeln("enountered state replacement at frame ",state.current.frame,":");
-				import diff;
-				diffStates(state.current,replacement);
-				state.current.copyFrom(replacement);
+				writeln("enountered state replacement at frame ",state.current.frame,replacement.hash!=state.current.hash?":":"");
+				if(replacement.hash!=state.current.hash){
+					import diff;
+					diffStates(state.current,replacement);
+					state.current.copyFrom(replacement);
+				}
 			}
 			int side=-1;
 			if(auto desynch=playback.desynch(state.current.frame,side)){
 				writeln("player ",side," desynched at frame ",state.current.frame);
-				writeln("their state was replaced:");
-				import diff;
-				diffStates(desynch,state.current);
+				if(desynch.hash!=state.current.hash){
+					writeln("their state was replaced:");
+					import diff;
+					diffStates(desynch,state.current);
+				}
 			}
 		}
 		return false;
