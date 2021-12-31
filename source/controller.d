@@ -3,7 +3,7 @@
 // https://www.gnu.org/licenses/gpl-3.0.txt
 
 import std.stdio, std.algorithm, std.exception;
-import util: Array, assignArray;
+import util: Array;
 import state, network, recording_;
 
 
@@ -27,6 +27,7 @@ final class Controller(B){
 		this.recording=recording;
 		this.playback=playback;
 		if(playback) assignArray(state.commands,playback.commands);
+		//initSynchState();
 	}
 	void addCommand(int frame,Command!B command)in{
 		assert(command.id==0);
@@ -71,6 +72,11 @@ final class Controller(B){
 	}
 	void logDesynch(int side,scope ubyte[] serialized){
 		if(recording) recording.logDesynch(side,serialized,state.current);
+		/+if(recording){
+			synchState.update(state.commands[synchState.frame].data);
+			lastConfirmSynch=synchState.frame;
+			recording.logDesynch(side,serialized,synchState);
+		}+/
 	}
 	void setSelection(int side,int wizard,CreatureGroup selection,TargetLocation loc){
 		if(side!=controlledSide) return;
@@ -80,6 +86,25 @@ final class Controller(B){
 			addCommand(Command!B(CommandType.automaticToggleSelection,side,wizard,id,Target.init,float.init));
 		}
 	}
+	/+int lastConfirmSynch=-1;
+	ObjectState!B synchState;
+	void initSynchState(){
+		if(lastConfirmSynch==-1){
+			synchState=new ObjectState!B(state.lastCommitted.map,state.lastCommitted.sides,state.lastCommitted.proximity,state.lastCommitted.pathFinder,state.lastCommitted.triggers);
+			synchState.copyFrom(state.current);
+			lastConfirmSynch=state.current.frame;
+		}
+	}
+	void confirmSynch(int frame,int hash){
+		import std.conv: text;
+		enforce(synchState.frame<=lastConfirmSynch);
+		enforce(lastConfirmSynch<=frame,text(lastConfirmSynch," ",frame));
+		lastConfirmSynch=frame;
+		while(synchState.frame<frame){
+			synchState.update(state.commands[synchState.frame].data);
+		}
+		enforce(synchState.frame==frame && synchState.hash==hash,text("confirmed ",synchState.frame," ",synchState.hash,", but was ",hash));
+	}+/
 	void updateCommitted()in{
 		assert(!!network);
 	}do{
@@ -153,6 +178,8 @@ final class Controller(B){
 					if(!network.isHost){
 						state.lastCommitted.copyFrom(state.current);
 						committedFrame=currentFrame;
+						/+synchState.copyFrom(state.current);
+						lastConfirmSynch=currentFrame;+/
 					}
 					if(network.players[network.me].committedFrame<currentFrame)
 						network.commit(currentFrame);
@@ -208,6 +235,7 @@ final class Controller(B){
 					writeln("their state was replaced:");
 					import diff;
 					diffStates(desynch,state.current);
+					//enforce(0);
 				}
 			}
 		}

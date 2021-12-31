@@ -75,6 +75,7 @@ enum PacketType{
 	initGame,
 	loadGame,
 	startGame,
+	confirmSynch,
 	// host query
 	join,
 	checkSynch,
@@ -97,7 +98,7 @@ enum arrayLengthLimit=4096;
 PacketPurpose purposeFromType(PacketType type){
 	final switch(type) with(PacketType) with(PacketPurpose){
 		case nop,disconnect,ping,ack: return peerToPeer;
-		case updatePlayerId,updateSlot,sendMap,sendState,initGame,loadGame,startGame: return hostMessage;
+		case updatePlayerId,updateSlot,sendMap,sendState,initGame,loadGame,startGame,confirmSynch: return hostMessage;
 		case join,checkSynch,logDesynch: return hostQuery;
 		case updateSetting,clearArraySetting,appendArraySetting,confirmArraySetting,setMap,appendMap,confirmMap,updateStatus,command,commit: return broadcast;
 	}
@@ -107,7 +108,7 @@ bool isHeaderType(PacketType type){
 	final switch(type) with(PacketType){
 		case nop,disconnect,ping,ack,updatePlayerId,updateSlot: return false;
 		case sendMap,sendState,initGame: return true;
-		case loadGame,startGame: return false;
+		case loadGame,startGame,confirmSynch: return false;
 		case join: return true;
 		case checkSynch: return false;
 		case logDesynch: return true;
@@ -129,6 +130,7 @@ struct Packet{
 			case initGame: return text("Packet.initGame(...)");
 			case loadGame: return text("Packet.loadGame()");
 			case startGame: return text("Packet.startGame(",startDelay,")");
+			case confirmSynch: return text("Packet.confirmSynch(",synchFrame,",",synchHash,")");
 			case join: return text("Packet.join(...)");
 			case checkSynch: return text("Packet.checkSynch(",synchFrame,",",synchHash,")");
 			case logDesynch: return text("Packet.logDesynch(...)");
@@ -188,7 +190,7 @@ struct Packet{
 		struct{ int id; }// ping, updatePlayerId
 		struct{}// loadGame
 		struct{ uint startDelay; } // startGame
-		struct{ // checkSynch
+		struct{ // checkSynch, confirmSynch
 			int synchFrame;
 			uint synchHash;
 		}
@@ -284,6 +286,13 @@ struct Packet{
 		Packet p;
 		p.type=PacketType.startGame;
 		p.startDelay=startDelay;
+		return p;
+	}
+	static Packet confirmSynch(int frame,uint hash){
+		Packet p;
+		p.type=PacketType.confirmSynch;
+		p.synchFrame=frame;
+		p.synchHash=hash;
 		return p;
 	}
 	static Packet join(ulong rawDataSize){
@@ -951,6 +960,18 @@ final class Network(B){
 				updateStatus(PlayerStatus.playing);
 				B.unpause();
 				break;
+			case PacketType.confirmSynch:
+				if(!checkDesynch) return;
+				if(desynched){
+					stderr.writeln("confirmSynch packet sent while desynched: ",p);
+					return;
+				}
+				if(isHost){
+					stderr.writeln("checkSynch packet sent to host ",me,": ",p);
+					break;
+				}
+				//if(controller) controller.confirmSynch(p.synchFrame,p.synchHash);
+				break;
 			// host query:
 			case PacketType.join:
 				stderr.writeln("stray join packet: ",p);
@@ -976,7 +997,7 @@ final class Network(B){
 						stderr.writeln("expected hash ",synchQueue.hashes[p.frame%$],", got ",p.synchHash);
 					}
 					updateStatus(sender,PlayerStatus.desynched);
-				}
+				}//else confirmSynch(sender,p.synchFrame,p.synchHash);
 				break;
 			case PacketType.logDesynch:
 				if(!isHost){
@@ -1380,6 +1401,13 @@ final class Network(B){
 		players[host].send(Packet.checkSynch(frame,hash));
 		//writeln("checkDesynch(",frame,",",hash,"): ",committedFrame," ",players.map!((ref p)=>p.status)," ",players.map!((ref p)=>p.slot)," ",players.map!((ref p)=>p.committedFrame)," ",activePlayerIds);
 	}
+	/+void confirmSynch(int player,int frame,uint hash)in{
+		assert(isHost);
+	}do{
+		if(desynched) return;
+		if(!checkDesynch) return;
+		players[player].send(Packet.confirmSynch(frame,hash));
+	}+/
 	void logDesynch(scope ubyte[] stateData)in{
 		assert(!isHost);
 	}do{
