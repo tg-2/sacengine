@@ -167,9 +167,11 @@ final class Controller(B){
 					import std.conv: text;
 					enforce(currentFrame<=network.resynchCommittedFrame,text(currentFrame," ",network.resynchCommittedFrame," ",network.players.map!((ref p)=>p.status),network.players.map!((ref p)=>p.committedFrame)));
 					currentFrame=network.resynchCommittedFrame;
+					enforce(state.current.frame<=firstUpdatedFrame);
 					if(state.commands.length<currentFrame+1)
 						state.commands.length=currentFrame+1;
 					state.simulateTo(currentFrame);
+					firstUpdatedFrame=currentFrame;
 					assert(state.current.frame==currentFrame);
 					state.current.serialized((scope ubyte[] stateData){
 						state.commands.serialized((scope ubyte[] commandData){
