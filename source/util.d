@@ -295,6 +295,17 @@ struct Array(T){
 	static if(!is(T==bool)) string toString()(){ import std.conv; return text(data); }
 }
 
+mixin template Assign(){
+	void opAssign(ref typeof(this) rhs){
+		foreach(i,ref x;this.tupleof)
+			x=rhs.tupleof[i];
+	}
+	void opAssign(typeof(this) rhs){
+		foreach(i,ref x;this.tupleof)
+			x=move(rhs.tupleof[i]);
+	}
+}
+
 import dlib.image;
 auto imageFromData(const(ubyte)[] data,int width,int height,int channels)in{
 	assert(data.length==width*height*channels);

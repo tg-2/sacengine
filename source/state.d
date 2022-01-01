@@ -471,6 +471,7 @@ struct Path{
 	Vector3f targetPosition;
 	int age=0;
 	private Array!Vector3f path;
+	mixin Assign;
 	void reset(){
 		age=0;
 		path.length=0;
@@ -719,6 +720,7 @@ struct CreatureAI{
 	PositionPredictor predictor;
 	bool isOnAIQueue=false;
 	Path path;
+	mixin Assign;
 }
 
 struct MovingObject(B){
@@ -733,6 +735,7 @@ struct MovingObject(B){
 	CreatureStats creatureStats;
 	int side=0;
 	int soulId=0;
+	mixin Assign;
 
 	this(SacObject!B sacObject,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame,CreatureState creatureState,CreatureStats creatureStats,int side){
 		this.sacObject=sacObject;
@@ -1172,6 +1175,7 @@ struct Building(B){
 	enum directRangedResistance=1.0f;
 	enum splashRangedResistance=1.0f;
 	Array!int guardianIds;
+	mixin Assign;
 	this(immutable(Bldg)* bldg,int side,int flags,float facing){
 		this.bldg=bldg;
 		this.side=side;
@@ -1337,6 +1341,7 @@ struct MovingObjects(B,RenderMode mode){
 		Array!float alphas;
 		Array!float energies;
 	}
+	mixin Assign;
 
 	@property int length(){ assert(ids.length<=int.max); return cast(int)ids.length; }
 	@property void length(int l){
@@ -1435,7 +1440,6 @@ auto each(alias f,B,RenderMode mode,T...)(ref MovingObjects!(B,mode) movingObjec
 	}
 }
 
-
 struct StaticObjects(B,RenderMode mode){
 	enum renderMode=mode;
 	SacObject!B sacObject;
@@ -1447,6 +1451,7 @@ struct StaticObjects(B,RenderMode mode){
 	static if(mode==RenderMode.transparent){
 		Array!float thresholdZs;
 	}
+	mixin Assign;
 	@property int length(){ assert(ids.length<=int.max); return cast(int)ids.length; }
 	@property void length(int l){
 		ids.length=l;
@@ -1513,6 +1518,7 @@ struct FixedObjects(B){
 	SacObject!B sacObject;
 	Array!Vector3f positions;
 	Array!Quaternionf rotations;
+	mixin Assign;
 	@property int length(){ assert(positions.length<=int.max); return cast(int)positions.length; }
 
 	void addFixed(FixedObject!B object)in{
@@ -1532,6 +1538,7 @@ auto each(alias f,B,T...)(ref FixedObjects!B fixedObjects,T args){
 
 struct Souls(B){
 	Array!(Soul!B) souls;
+	mixin Assign;
 	@property int length(){ return cast(int)souls.length; }
 	@property void length(int l){ souls.length=l; }
 	void addObject(Soul!B soul){
@@ -1556,6 +1563,7 @@ auto each(alias f,B,T...)(ref Souls!B souls,T args){
 
 struct Buildings(B){
 	Array!(Building!B) buildings;
+	mixin Assign;
 	@property int length(){ return cast(int)buildings.length; }
 	@property void length(int l){ buildings.length=l; }
 	void addObject(Building!B building){
@@ -1598,6 +1606,7 @@ struct SpellInfo(B){
 }
 struct Spellbook(B){
 	Array!(SpellInfo!B) spells;
+	mixin Assign;
 	void addSpell(int level,SacSpell!B spell){
 		spells~=SpellInfo!B(spell,level,0.0f,0.0f);
 		if(spells.length>=2&&spells[$-1].spell.spellOrder<spells[$-2].spell.spellOrder) sort();
@@ -1719,6 +1728,7 @@ struct WizardInfo(B){
 	int closestShrine=0;
 	int closestAltar=0;
 	int closestEnemyAltar=0;
+	mixin Assign;
 
 	void addSpell(int level,SacSpell!B spell){
 		spellbook.addSpell(level,spell);
@@ -1822,6 +1832,7 @@ int placeWizard(B)(ObjectState!B state,SacObject!B wizard,string name,int flags,
 
 struct WizardInfos(B){
 	Array!(WizardInfo!B) wizards;
+	mixin Assign;
 	@property int length(){ assert(wizards.length<=int.max); return cast(int)wizards.length; }
 	@property void length(int l){
 		wizards.length=l;
@@ -1883,6 +1894,7 @@ struct Particles(B,bool relative,bool sideFiltered=false){
 	Array!int lifetimes;
 	Array!int frames;
 	static if(sideFiltered) Array!int sideFilters;
+	mixin Assign;
 	@property int length(){ assert(positions.length<=int.max); return cast(int)positions.length; }
 	@property void length(int l){
 		static if(relative){
@@ -4084,6 +4096,7 @@ struct Effects(B){
 		if(i+1<testDisplacements.length) testDisplacements[i]=move(testDisplacements[$-1]);
 		testDisplacements.length=testDisplacements.length-1;
 	}
+	mixin Assign;
 }
 
 struct CommandCone(B){
@@ -4102,6 +4115,7 @@ struct CommandCones(B){
 		}
 	}
 	Array!(Array!(CommandConeElement)[CommandConeColor.max+1]) cones;
+	mixin Assign;
 	this(int numSides){
 		initialize(numSides);
 	}
@@ -4131,6 +4145,7 @@ struct Objects(B,RenderMode mode){
 		Effects!B effects;
 		CommandCones!B commandCones;
 	}
+	mixin Assign;
 	int getIndex(T)(SacObject!B sacObject,bool insert) if(is(T==MovingObject!B)||is(T==StaticObject!B)){
 		static if(is(T==MovingObject!B)){
 			// cache, does not change semantics
@@ -4381,6 +4396,7 @@ struct ObjectManager(B){
 	Array!Id ids;
 	Objects!(B,RenderMode.opaque) opaqueObjects;
 	Objects!(B,RenderMode.transparent) transparentObjects;
+	mixin Assign;
 	int addObject(T)(T object) if(is(T==MovingObject!B)||is(T==StaticObject!B)||is(T==Soul!B)||is(T==Building!B))in{
 		assert(object.id==0);
 	}do{
@@ -16104,6 +16120,7 @@ struct ManaEntry{
 struct ManaEntries{
 	int version_=0;
 	Array!ManaEntry entries; // TODO: be more clever here if many entries
+	mixin Assign;
 	void insert(int version_,ManaEntry entry){
 		if(this.version_!=version_){
 			entries.length=0;
@@ -16144,6 +16161,7 @@ struct ManaProximity(B){
 	}
 	int manalithVersion;
 	Array!ManalithEntry manaliths;
+	mixin Assign;
 	void addEntry(int version_,ManaEntry entry){
 		auto tile=getTile(entry.position);
 		if(tile.j+offMapSlack<0||tile.i+offMapSlack<0||tile.j+offMapSlack>=size||tile.i+offMapSlack>=size) offMap.insert(version_,entry);
@@ -17293,6 +17311,7 @@ struct SideData(B){
 	int lastSelected=0;
 	int selectionMultiplicity=0;
 	Queue!int aiQueue;
+	mixin Assign;
 	void updateLastSelected(int id){
 		if(lastSelected!=id){
 			lastSelected=id;
@@ -17351,6 +17370,7 @@ struct SideData(B){
 
 struct SideManager(B){
 	Array!(SideData!B) sides;
+	mixin Assign;
 	this(int numSides){
 		sides.length=numSides;
 	}
