@@ -26,7 +26,7 @@ final class Controller(B){
 		firstUpdatedFrame=currentFrame;
 		this.recording=recording;
 		this.playback=playback;
-		if(playback) assignArray(state.commands,playback.commands);
+		if(playback) state.commands=playback.commands;
 		//initSynchState();
 	}
 	void addCommand(int frame,Command!B command)in{

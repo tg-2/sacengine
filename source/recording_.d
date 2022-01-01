@@ -24,9 +24,9 @@ class Recording(B){
 	GameInit!B gameInit;
 	bool finalized=false;
 	Array!(Array!(Command!B)) commands;
-	void finalize(Array!(Array!(Command!B)) commands){
+	void finalize(ref Array!(Array!(Command!B)) commands){
 		if(finalized) return;
-		assignArray(this.commands,commands);
+		this.commands=commands;
 		sort!((a,b)=>a.frame<b.frame,SwapStrategy.stable)(stateReplacements.data);
 		sort!((a,b)=>a.desynchedState.frame<b.desynchedState.frame,SwapStrategy.stable)(desynchs.data);
 		finalized=true;

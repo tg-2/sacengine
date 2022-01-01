@@ -282,30 +282,18 @@ struct Array(T){
 			return implPtr._payload._payload;
 		}
 	}
-	Array!T dup(){ return Array!T(payload.dup); }
+	void opAssign(ref Array!T rhs){
+		this.length=rhs.length;
+		foreach(i;0..length)
+			this[i]=rhs[i];
+	}
+	void opAssign(Array!T rhs){
+		payload=move(rhs.payload);
+	}
+	this(this){ payload=payload.dup; }
 
 	static if(!is(T==bool)) string toString()(){ import std.conv; return text(data); }
 }
-
-
-void assignArray(T)(ref Array!T to, ref Array!T from){
-	to.length=from.length;
-	foreach(i;0..from.length){ // TODO: this is slow!
-		static if(is(T:Array!S,S)) // TODO: wrap array with different opAssign?
-			assignArray(to[i],from[i]);
-		else static if(is(T:Array!S[n],S,int n)){
-			foreach(j;0..n) assignArray(to[i][j],from[i][j]);
-		}else static if(is(T:Array!S[],S)){
-			static assert(0);
-		}else to[i]=from[i];
-	}
-}
-/+ // TODO: use this for structs that are not arrays and have no opAssign
-void assignArray(T)(ref Array!T to, ref Array!T from){
-	to.length=from.length;
-	to.data[]=from.data[];
-}
-+/
 
 import dlib.image;
 auto imageFromData(const(ubyte)[] data,int width,int height,int channels)in{
@@ -374,17 +362,7 @@ struct Queue(T){
 	void popBack(){ --last; }
 	T removeBack(){ return payload[--last%$]; }
 	bool empty(){ return first==last; }
-	this(this){
-		auto oldPayload=payload;
-		auto oldFirst=first;
-		auto oldLast=last;
-		payload=Array!T.init;
-		first=0;
-		payload.length=last=oldLast-oldFirst;
-		foreach(i;oldFirst..oldLast){
-			payload[i-oldFirst]=oldPayload[i%$];
-		}
-	}
+	this(this){ compactify(); }
 	void opAssign(ref Queue!T rhs){
 		if(&this is &rhs) return;
 		first=0;
@@ -393,7 +371,7 @@ struct Queue(T){
 			payload[i-rhs.first]=rhs.payload[i%$];
 		}
 	}
-	void opAssign(Queue!T rhs){ this.tupleof=rhs.tupleof; }
+	void opAssign(Queue!T rhs){ this.tupleof=move(rhs).tupleof; }
 	void clear(){ payload.length=first=last=0; }
 	void compactify(){
 		if(!payload.length) return;
@@ -408,9 +386,6 @@ struct Heap(T,size_t N=4){
 	private Array!T payload;
 	void clear(){ payload.length=0; }
 	bool empty(){ return payload.length==0; }
-	this(this){ payload=payload.dup; }
-	void opAssign(Heap!T rhs){ this.payload=rhs.payload; }
-	void opAssign(ref Heap!T rhs){ assignArray(payload,rhs.payload); }
 	void push(T value){
 		payload~=move(value);
 		for(size_t i=payload.length-1;i;i=(i-1)/N){
@@ -496,7 +471,6 @@ struct SmallArray(T,size_t n){
 	auto opSlice(){
 		return chain(elements[0..min($,length)],rest[]);
 	}
-	this(this){ rest=rest.dup; }
 }
 
 Vector3f[2] cintp2(Vector3f[2][2] locations,float t){

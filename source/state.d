@@ -471,9 +471,6 @@ struct Path{
 	Vector3f targetPosition;
 	int age=0;
 	private Array!Vector3f path;
-	this(this){ path=path.dup; }
-	void opAssign(Path rhs){ this.path=rhs.path; }
-	void opAssign(ref Path rhs){ assignArray(path,rhs.path); }
 	void reset(){
 		age=0;
 		path.length=0;
@@ -1182,20 +1179,6 @@ struct Building(B){
 		this.facing=facing;
 		this.health=bldg.maxHealth;
 	}
-	void opAssign(ref Building!B rhs){
-		this.bldg=rhs.bldg;
-		this.id=rhs.id;
-		this.side=rhs.side;
-		assignArray(componentIds,rhs.componentIds);
-		health=rhs.health;
-		flags=rhs.flags;
-		facing=rhs.facing;
-		top=rhs.top;
-		base=rhs.base;
-		assignArray(guardianIds,rhs.guardianIds);
-	}
-	void opAssign(Building!B rhs){ this.tupleof=move(rhs).tupleof; }
-	this(this){ componentIds=componentIds.dup; } // TODO: needed?
 }
 int maxHealth(B)(ref Building!B building,ObjectState!B state){
 	return building.bldg.maxHealth;
@@ -1410,7 +1393,7 @@ struct MovingObjects(B,RenderMode mode){
 			energies~=1.0f;
 		}
 	}
-	void removeObject(int index, ObjectManager!B manager){
+	void removeObject(int index, ref ObjectManager!B manager){
 		manager.ids[ids[index]-1]=Id.init;
 		if(index+1<length){
 			this[index]=this.fetch(length-1); // TODO: swap?
@@ -1420,24 +1403,6 @@ struct MovingObjects(B,RenderMode mode){
 		}
 		length=length-1;
 	}
-	void opAssign(ref MovingObjects!(B,mode) rhs){
-		sacObject = rhs.sacObject;
-		assignArray(ids,rhs.ids);
-		assignArray(positions,rhs.positions);
-		assignArray(rotations,rhs.rotations);
-		assignArray(animationStates,rhs.animationStates);
-		assignArray(frames,rhs.frames);
-		assignArray(creatureAIs,rhs.creatureAIs);
-		assignArray(creatureStates,rhs.creatureStates);
-		assignArray(creatureStatss,rhs.creatureStatss);
-		assignArray(sides,rhs.sides);
-		assignArray(soulIds,rhs.soulIds);
-		static if(mode==RenderMode.transparent){
-			assignArray(alphas,rhs.alphas);
-			assignArray(energies,rhs.energies);
-		}
-	}
-	void opAssign(MovingObjects!(B,mode) rhs){ this.tupleof=rhs.tupleof; }
 	MovingObject!B fetch(int i){
 		return MovingObject!B(sacObject,ids[i],positions[i],rotations[i],animationStates[i],frames[i],move(creatureAIs[i]),creatureStates[i],creatureStatss[i],sides[i],soulIds[i]);
 	}
@@ -1505,7 +1470,7 @@ struct StaticObjects(B,RenderMode mode){
 		static if(mode==RenderMode.transparent)
 			thresholdZs~=0.0f;
 	}
-	void removeObject(int index, ObjectManager!B manager){
+	void removeObject(int index, ref ObjectManager!B manager){
 		manager.ids[ids[index]-1]=Id.init;
 		if(index+1<length){
 			this[index]=this[length-1];
@@ -1515,17 +1480,6 @@ struct StaticObjects(B,RenderMode mode){
 		}
 		length=length-1;
 	}
-	void opAssign(ref StaticObjects!(B,mode) rhs){
-		sacObject=rhs.sacObject;
-		assignArray(ids,rhs.ids);
-		assignArray(buildingIds,rhs.buildingIds);
-		assignArray(positions,rhs.positions);
-		assignArray(rotations,rhs.rotations);
-		assignArray(scales,rhs.scales);
-		static if(mode==RenderMode.transparent)
-			assignArray(thresholdZs,rhs.thresholdZs);
-	}
-	void opAssign(StaticObjects!(B,mode) rhs){ this.tupleof=rhs.tupleof; }
 	StaticObject!B fetch(int i){
 		return StaticObject!B(sacObject,ids[i],buildingIds[i],positions[i],rotations[i],scales[i]);
 	}
@@ -1583,7 +1537,7 @@ struct Souls(B){
 	void addObject(Soul!B soul){
 		souls~=soul;
 	}
-	void removeObject(int index, ObjectManager!B manager){
+	void removeObject(int index, ref ObjectManager!B manager){
 		manager.ids[souls[index].id-1]=Id.init;
 		if(index+1<length){
 			this[index]=move(this[length-1]);
@@ -1591,8 +1545,6 @@ struct Souls(B){
 		}
 		length=length-1;
 	}
-	void opAssign(ref Souls!B rhs){ assignArray(souls,rhs.souls); }
-	void opAssign(Souls!B rhs){ this.tupleof=rhs.tupleof; }
 	ref Soul!B opIndex(int i){
 		return souls[i];
 	}
@@ -1609,7 +1561,7 @@ struct Buildings(B){
 	void addObject(Building!B building){
 		buildings~=move(building);
 	}
-	void removeObject(int index, ObjectManager!B manager){
+	void removeObject(int index, ref ObjectManager!B manager){
 		manager.ids[buildings[index].id-1]=Id.init;
 		if(index+1<length){
 			swap(this[index],this[length-1]); // TODO: reuse memory?
@@ -1617,12 +1569,6 @@ struct Buildings(B){
 		}
 		length=length-1;
 	}
-	void opAssign(ref Buildings!B rhs){
-		buildings.length=rhs.buildings.length;
-		foreach(i;0..buildings.length)
-			buildings[i]=rhs.buildings[i];
-	}
-	void opAssign(Buildings!B rhs){ this.tupleof=rhs.tupleof; }
 	ref Building!B opIndex(int i){
 		return buildings[i];
 	}
@@ -1652,9 +1598,6 @@ struct SpellInfo(B){
 }
 struct Spellbook(B){
 	Array!(SpellInfo!B) spells;
-	void opAssign(ref Spellbook!B rhs){ assignArray(spells,rhs.spells); }
-	void opAssign(Spellbook!B rhs){ this.tupleof=rhs.tupleof; }
-	this(this){ spells=spells.dup; }
 	void addSpell(int level,SacSpell!B spell){
 		spells~=SpellInfo!B(spell,level,0.0f,0.0f);
 		if(spells.length>=2&&spells[$-1].spell.spellOrder<spells[$-2].spell.spellOrder) sort();
@@ -1777,15 +1720,6 @@ struct WizardInfo(B){
 	int closestAltar=0;
 	int closestEnemyAltar=0;
 
-	void opAssign(ref WizardInfo!B rhs){
-		this.tupleof=rhs.tupleof;
-	}
-	void opAssign(WizardInfo!B rhs){
-		static assert(__traits(identifier,this.tupleof[5])=="spellbook");
-		this.tupleof[0..5]=rhs.tupleof[0..5];
-		this.spellbook=move(rhs.spellbook);
-		this.tupleof[6..$]=rhs.tupleof[6..$];
-	}
 	void addSpell(int level,SacSpell!B spell){
 		spellbook.addSpell(level,spell);
 	}
@@ -1888,7 +1822,6 @@ int placeWizard(B)(ObjectState!B state,SacObject!B wizard,string name,int flags,
 
 struct WizardInfos(B){
 	Array!(WizardInfo!B) wizards;
-	this(this){ wizards=wizards.dup; }
 	@property int length(){ assert(wizards.length<=int.max); return cast(int)wizards.length; }
 	@property void length(int l){
 		wizards.length=l;
@@ -1907,8 +1840,6 @@ struct WizardInfos(B){
 			wizards.length=wizards.length-1;
 		}
 	}
-	void opAssign(ref WizardInfos!B rhs){ assignArray(wizards,rhs.wizards); }
-	void opAssign(WizardInfos!B rhs){ this.tupleof=rhs.tupleof; }
 	ref WizardInfo!B opIndex(int i){
 		return wizards[i];
 	}
@@ -1995,20 +1926,6 @@ struct Particles(B,bool relative,bool sideFiltered=false){
 		if(index+1<length) this[index]=this[length-1];
 		length=length-1;
 	}
-	void opAssign(ref Particles!(B,relative,sideFiltered) rhs){
-		sacParticle = rhs.sacParticle;
-		static if(relative){
-			assignArray(baseIds,rhs.baseIds);
-			assignArray(rotates,rhs.rotates);
-		}
-		assignArray(positions,rhs.positions);
-		assignArray(velocities,rhs.velocities);
-		assignArray(scales,rhs.scales);
-		assignArray(lifetimes,rhs.lifetimes);
-		assignArray(frames,rhs.frames);
-		static if(sideFiltered) assignArray(sideFilters,rhs.sideFilters);
-	}
-	void opAssign(Particles!(B,relative,sideFiltered) rhs){ this.tupleof=rhs.tupleof; }
 	Particle!(B,relative,sideFiltered) opIndex(int i){
 		static if(sideFiltered){
 			static if(relative) return Particle!(B,true,true)(sacParticle,baseIds[i],!!rotates[i],positions[i],velocities[i],scales[i],lifetimes[i],frames[i],sideFilters[i]);
@@ -2355,14 +2272,6 @@ struct Swarm(B){
 	auto status=SwarmStatus.casting;
 	PositionPredictor predictor;
 	Array!(Bug!B) bugs; // TODO: pull out bugs into separate array?
-
-	void opAssign(ref Swarm!B rhs){
-		this.tupleof[0..$-1]=rhs.tupleof[0..$-1];
-		static assert(__traits(isSame,this.tupleof[$-1],this.bugs));
-		assignArray(bugs,rhs.bugs);
-	}
-	void opAssign(Swarm!B rhs){ this.tupleof=rhs.tupleof; }
-	this(this){ bugs=bugs.dup; } // TODO: needed?
 }
 
 struct SkinOfStoneCasting(B){
@@ -2438,14 +2347,6 @@ struct ProtectiveSwarm(B){
 	float alpha=1.0f;
 	auto status=ProtectiveSwarmStatus.casting;
 	Array!(ProtectiveBug!B) bugs; // TODO: pull out bugs into separate array?
-
-	void opAssign(ref ProtectiveSwarm!B rhs){
-		this.tupleof[0..$-1]=rhs.tupleof[0..$-1];
-		static assert(__traits(isSame,this.tupleof[$-1],this.bugs));
-		assignArray(bugs,rhs.bugs);
-	}
-	void opAssign(ProtectiveSwarm!B rhs){ this.tupleof=rhs.tupleof; }
-	this(this){ bugs=bugs.dup; } // TODO: needed?
 }
 
 struct AirShieldCasting(B){
@@ -2467,16 +2368,6 @@ struct AirShield(B){
 		int frame=0;
 	}
 	Array!Particle particles;
-
-	void opAssign(ref AirShield!B rhs){
-			this.tupleof[0..$-1]=rhs.tupleof[0..$-1];
-		static assert(__traits(isSame,this.tupleof[$-1],this.particles));
-		assignArray(particles,rhs.particles);
-	}
-	void opAssign(AirShield!B rhs){
-		this.tupleof=rhs.tupleof;
-	}
-	this(this){ particles=particles.dup; } // TODO: needed?
 }
 
 struct FreezeCasting(B){
@@ -2915,14 +2806,6 @@ struct FallenProjectile(B){
 	int frame;
 	auto status=SwarmStatus.flying;
 	Array!(Bug!B) bugs; // TODO: pull out bugs into separate array?
-
-	void opAssign(ref FallenProjectile!B rhs){
-		this.tupleof[0..$-1]=rhs.tupleof[0..$-1];
-		static assert(__traits(isSame,this.tupleof[$-1],this.bugs));
-		assignArray(bugs,rhs.bugs);
-	}
-	void opAssign(FallenProjectile!B rhs){ this.tupleof=rhs.tupleof; }
-	this(this){ bugs=bugs.dup; } // TODO: needed?
 }
 
 struct SylphEffect(B){
@@ -3050,15 +2933,6 @@ struct VortexEffect(B){
 		int frame=0;
 	}
 	Array!Particle particles;
-	void opAssign(ref VortexEffect!B rhs){
-		this.tupleof[0..$-1]=rhs.tupleof[0..$-1];
-		static assert(__traits(isSame,this.tupleof[$-1],this.particles));
-		assignArray(particles,rhs.particles);
-	}
-	void opAssign(VortexEffect!B rhs){
-		this.tupleof=rhs.tupleof;
-	}
-	this(this){ particles=particles.dup; } // TODO: needed?
 	enum duration=2.0f;
 	enum radiusFactor=1;
 	enum maxHeight=4.0f;
@@ -4210,124 +4084,6 @@ struct Effects(B){
 		if(i+1<testDisplacements.length) testDisplacements[i]=move(testDisplacements[$-1]);
 		testDisplacements.length=testDisplacements.length-1;
 	}
-	void opAssign(ref Effects!B rhs){
-		assignArray(debris,rhs.debris);
-		assignArray(explosions,rhs.explosions);
-		assignArray(fires,rhs.fires);
-		assignArray(manaDrains,rhs.manaDrains);
-		assignArray(buildingDestructions,rhs.buildingDestructions);
-		assignArray(ghostKills,rhs.ghostKills);
-		assignArray(creatureCasts,rhs.creatureCasts);
-		assignArray(structureCasts,rhs.structureCasts);
-		assignArray(blueRings,rhs.blueRings);
-		assignArray(sacDocCastings,rhs.sacDocCastings);
-		assignArray(sacDocCarries,rhs.sacDocCarries);
-		assignArray(rituals,rhs.rituals);
-		assignArray(teleportCastings,rhs.teleportCastings);
-		assignArray(teleportEffects,rhs.teleportEffects);
-		assignArray(teleportRings,rhs.teleportRings);
-		assignArray(guardianCastings,rhs.guardianCastings);
-		assignArray(guardians,rhs.guardians);
-		assignArray(speedUps,rhs.speedUps);
-		assignArray(speedUpShadows,rhs.speedUpShadows);
-		assignArray(healCastings,rhs.healCastings);
-		assignArray(heals,rhs.heals);
-		assignArray(lightningCastings,rhs.lightningCastings);
-		assignArray(lightnings,rhs.lightnings);
-		assignArray(wrathCastings,rhs.wrathCastings);
-		assignArray(wraths,rhs.wraths);
-		assignArray(fireballCastings,rhs.fireballCastings);
-		assignArray(fireballs,rhs.fireballs);
-		assignArray(rockCastings,rhs.rockCastings);
-		assignArray(rocks,rhs.rocks);
-		assignArray(swarmCastings,rhs.swarmCastings);
-		assignArray(swarms,rhs.swarms);
-		assignArray(skinOfStoneCastings,rhs.skinOfStoneCastings);
-		assignArray(skinOfStones,rhs.skinOfStones);
-		assignArray(etherealFormCastings,rhs.etherealFormCastings);
-		assignArray(etherealForms,rhs.etherealForms);
-		assignArray(fireformCastings,rhs.fireformCastings);
-		assignArray(fireforms,rhs.fireforms);
-		assignArray(protectiveSwarmCastings,rhs.protectiveSwarmCastings);
-		assignArray(protectiveSwarms,rhs.protectiveSwarms);
-		assignArray(airShieldCastings,rhs.airShieldCastings);
-		assignArray(airShields,rhs.airShields);
-		assignArray(freezeCastings,rhs.freezeCastings);
-		assignArray(freezes,rhs.freezes);
-		assignArray(ringsOfFireCastings,rhs.ringsOfFireCastings);
-		assignArray(ringsOfFires,rhs.ringsOfFires);
-		assignArray(slimeCastings,rhs.slimeCastings);
-		assignArray(slimes,rhs.slimes);
-		assignArray(graspingVinesCastings,rhs.graspingVinesCastings);
-		assignArray(graspingViness,rhs.graspingViness);
-		assignArray(soulMoleCastings,rhs.soulMoleCastings);
-		assignArray(soulMoles,rhs.soulMoles);
-		assignArray(rainbowCastings,rhs.rainbowCastings);
-		assignArray(rainbows,rhs.rainbows);
-		assignArray(rainbowEffects,rhs.rainbowEffects);
-		assignArray(chainLightningCastings,rhs.chainLightningCastings);
-		assignArray(chainLightningCastingEffects,rhs.chainLightningCastingEffects);
-		assignArray(chainLightnings,rhs.chainLightnings);
-		assignArray(animateDeadCastings,rhs.animateDeadCastings);
-		assignArray(animateDeads,rhs.animateDeads);
-		assignArray(animateDeadEffects,rhs.animateDeadEffects);
-		assignArray(eruptCastings,rhs.eruptCastings);
-		assignArray(erupts,rhs.erupts);
-		assignArray(eruptDebris,rhs.eruptDebris);
-		assignArray(dragonfireCastings,rhs.dragonfireCastings);
-		assignArray(dragonfires,rhs.dragonfires);
-		assignArray(soulWindCastings,rhs.soulWindCastings);
-		assignArray(soulWinds,rhs.soulWinds);
-		assignArray(soulWindEffects,rhs.soulWindEffects);
-		assignArray(brainiacProjectiles,rhs.brainiacProjectiles);
-		assignArray(brainiacEffects,rhs.brainiacEffects);
-		assignArray(shrikeProjectiles,rhs.shrikeProjectiles);
-		assignArray(shrikeEffects,rhs.shrikeEffects);
-		assignArray(locustProjectiles,rhs.locustProjectiles);
-		assignArray(spitfireProjectiles,rhs.spitfireProjectiles);
-		assignArray(spitfireEffects,rhs.spitfireEffects);
-		assignArray(gargoyleProjectiles,rhs.gargoyleProjectiles);
-		assignArray(gargoyleEffects,rhs.gargoyleEffects);
-		assignArray(earthflingProjectiles,rhs.earthflingProjectiles);
-		assignArray(flameMinionProjectiles,rhs.flameMinionProjectiles);
-		assignArray(fallenProjectiles,rhs.fallenProjectiles);
-		assignArray(sylphEffects,rhs.sylphEffects);
-		assignArray(sylphProjectiles,rhs.sylphProjectiles);
-		assignArray(rangerEffects,rhs.rangerEffects);
-		assignArray(rangerProjectiles,rhs.rangerProjectiles);
-		assignArray(necrylProjectiles,rhs.necrylProjectiles);
-		assignArray(poisons,rhs.poisons);
-		assignArray(scarabProjectiles,rhs.scarabProjectiles);
-		assignArray(basiliskProjectiles,rhs.basiliskProjectiles);
-		assignArray(basiliskEffects,rhs.basiliskEffects);
-		assignArray(petrifications,rhs.petrifications);
-		assignArray(tickfernoProjectiles,rhs.tickfernoProjectiles);
-		assignArray(tickfernoEffects,rhs.tickfernoEffects);
-		assignArray(vortickProjectiles,rhs.vortickProjectiles);
-		assignArray(vortickEffects,rhs.vortickEffects);
-		assignArray(vortexEffects,rhs.vortexEffects);
-		assignArray(squallProjectiles,rhs.squallProjectiles);
-		assignArray(squallEffects,rhs.squallEffects);
-		assignArray(pushbacks,rhs.pushbacks);
-		assignArray(flummoxProjectiles,rhs.flummoxProjectiles);
-		assignArray(pyromaniacRockets,rhs.pyromaniacRockets);
-		assignArray(gnomeEffects,rhs.gnomeEffects);
-		assignArray(poisonDarts,rhs.poisonDarts);
-		assignArray(rockForms,rhs.rockForms);
-		assignArray(stealths,rhs.stealths);
-		assignArray(lifeShields,rhs.lifeShields);
-		assignArray(steamClouds,rhs.steamClouds);
-		assignArray(poisonClouds,rhs.poisonClouds);
-		assignArray(blightMites,rhs.blightMites);
-		assignArray(lightningCharges,rhs.lightningCharges);
-		assignArray(protectors,rhs.protectors);
-		assignArray(appearances,rhs.appearances);
-		assignArray(disappearances,rhs.disappearances);
-		assignArray(altarDestructions,rhs.altarDestructions);
-		assignArray(screenShakes,rhs.screenShakes);
-		assignArray(testDisplacements,rhs.testDisplacements);
-	}
-	void opAssign(Effects!B rhs){ this.tupleof=rhs.tupleof; }
 }
 
 struct CommandCone(B){
@@ -4359,8 +4115,6 @@ struct CommandCones(B){
 		if(index+1<cones[side][color].length) cones[side][color][index]=cones[side][color][$-1];
 		cones[side][color].length=cones[side][color].length-1;
 	}
-	void opAssign(ref CommandCones!B rhs){ assignArray(cones,rhs.cones); }
-	void opAssign(CommandCones!B rhs){ this.tupleof=rhs.tupleof; }
 }
 
 struct Objects(B,RenderMode mode){
@@ -4528,47 +4282,6 @@ struct Objects(B,RenderMode mode){
 		void addCommandCone(CommandCone!B cone){
 			if(!commandCones.cones.length) commandCones.initialize(32); // TODO: do this eagerly?
 			commandCones.addCommandCone(cone);
-		}
-	}
-	void opAssign(ref Objects!(B,mode) rhs){
-		assignArray(movingObjects,rhs.movingObjects);
-		assignArray(staticObjects,rhs.staticObjects);
-		static if(mode == RenderMode.opaque){
-			fixedObjects=rhs.fixedObjects; // by reference
-			souls=rhs.souls;
-			buildings=rhs.buildings;
-			wizards=rhs.wizards;
-			effects=rhs.effects;
-			assignArray(particles,rhs.particles);
-			assignArray(relativeParticles,rhs.relativeParticles);
-			assignArray(filteredParticles,rhs.filteredParticles);
-			commandCones=rhs.commandCones;
-			static assert(this.tupleof.length==11);
-		}else static assert(this.tupleof.length==2);
-	}
-	void opAssign(Objects!(B,mode) rhs){
-		movingObjects=move(rhs.movingObjects);
-		staticObjects=move(rhs.staticObjects);
-		static if(mode == RenderMode.opaque){
-			fixedObjects=rhs.fixedObjects; // by reference
-			souls=move(rhs.souls);
-			buildings=move(rhs.buildings);
-			wizards=move(rhs.wizards);
-			effects=move(rhs.effects);
-			particles=move(rhs.particles);
-			relativeParticles=move(rhs.relativeParticles);
-			filteredParticles=move(rhs.filteredParticles);
-			commandCones=move(rhs.commandCones);
-			static assert(this.tupleof.length==11);
-		}else static assert(this.tupleof.length==2);
-	}
-	this(this){
-		movingObjects=movingObjects.dup;
-		staticObjects=staticObjects.dup;
-		static if(mode == RenderMode.opaque){
-			particles=particles.dup;
-			relativeParticles=relativeParticles.dup;
-			filteredParticles=filteredParticles.dup;
 		}
 	}
 }
@@ -4779,12 +4492,6 @@ struct ObjectManager(B){
 	}
 	void addCommandCone(CommandCone!B cone){
 		opaqueObjects.addCommandCone(cone);
-	}
-
-	void opAssign(ObjectManager!B rhs){
-		assignArray(ids,rhs.ids);
-		opaqueObjects=rhs.opaqueObjects;
-		transparentObjects=rhs.transparentObjects;
 	}
 }
 auto each(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
@@ -17646,9 +17353,6 @@ struct SideManager(B){
 	Array!(SideData!B) sides;
 	this(int numSides){
 		sides.length=numSides;
-	}
-	void opAssign(SideManager!B rhs){
-		assignArray(sides,rhs.sides);
 	}
 	Queue!int* aiQueue(int side){
 		if(!(0<=side&&side<sides.length)) return null;
