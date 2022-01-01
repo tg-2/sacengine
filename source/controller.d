@@ -165,7 +165,8 @@ final class Controller(B){
 					import serialize_;
 					//writeln("SENDING STATE AT FRAME: ",currentFrame," ",network.players.map!((ref p)=>p.committedFrame));
 					import std.conv: text;
-					enforce(network.resynchCommittedFrame==currentFrame,text(network.resynchCommittedFrame," ",currentFrame," ",network.players.map!((ref p)=>p.status),network.players.map!((ref p)=>p.committedFrame)));
+					enforce(currentFrame<=network.resynchCommittedFrame,text(currentFrame," ",network.resynchCommittedFrame," ",network.players.map!((ref p)=>p.status),network.players.map!((ref p)=>p.committedFrame)));
+					currentFrame=network.resynchCommittedFrame;
 					if(state.commands.length<currentFrame+1)
 						state.commands.length=currentFrame+1;
 					state.simulateTo(currentFrame);
