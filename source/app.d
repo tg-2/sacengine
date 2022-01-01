@@ -137,8 +137,37 @@ void loadMap(B)(ref Options options)in{
 		triggers=playback.triggers;
 	}
 	ubyte[] mapData;
+	Recording!B toContinue;
 	if(!playback&&(!network||network.isHost)){
-		map=loadSacMap!B(options.map,&mapData); // TODO: compute hash without loading map
+		if((!network||network.isHost)&&options.continueFilename.length){
+			toContinue=loadRecording!B(options.continueFilename);
+			if(options.continueFrame!=-1){
+				toContinue.commands.length=options.continueFrame;
+				toContinue.commands~=Array!(Command!B)();
+			}else{
+				if(toContinue.commands[$-1].length) toContinue.commands~=Array!(Command!B)();
+				options.continueFrame=max(0,to!int(toContinue.commands.length)-1);
+			}
+			options.map=toContinue.mapName;
+			options.numSlots=to!int(toContinue.gameInit.slots.length);
+			map=toContinue.map;
+			sides=toContinue.sides;
+			proximity=toContinue.proximity;
+			pathFinder=toContinue.pathFinder;
+			triggers=toContinue.triggers;
+			if(network){
+				static struct SlotData{
+					int slot;
+					string name;
+				}
+				SlotData toSlotData(int i){
+					return SlotData(i,toContinue.gameInit.wizards[toContinue.gameInit.slots[i].wizardIndex].name);
+				}
+				assert(network.players.length==1);
+				network.players[network.me].committedFrame=options.continueFrame;
+				network.initSlots(iota(options.numSlots).map!toSlotData);
+			}
+		}else map=loadSacMap!B(options.map,&mapData); // TODO: compute hash without loading map
 		options.mapHash=map.crc32;
 	}
 	if(network){
@@ -221,18 +250,18 @@ void loadMap(B)(ref Options options)in{
 			network.idleLobby();
 			if(!B.processEvents()) return;
 		}
-		if(network.isHost){
+		/+if(network.isHost){
 			network.load();
 		}else{
 			while(!network.loading&&network.players[network.me].status!=PlayerStatus.desynched){ // desynched at start if late join
 				network.idleLobby();
 				if(!B.processEvents()) return;
 			}
-		}
+		}+/
 		options.settings=network.settings;
 		slot=network.slot;
 	}
-	if(!playback){
+	if(!playback&&!toContinue){
 		enforce(!!map); // map already loaded
 		sides=new Sides!B(map.sids);
 		proximity=new Proximity!B();
@@ -258,7 +287,8 @@ void loadMap(B)(ref Options options)in{
 		if(network){
 			import serialize_;
 			if(network.isHost){
-				gameInit=.gameInit!(multiplayerSide,B)(network.players.map!(ref(return ref x)=>x.settings),options);
+				if(toContinue) gameInit=toContinue.gameInit;
+				else gameInit=.gameInit!(multiplayerSide,B)(network.players.map!(ref(return ref x)=>x.settings),options);
 				gameInit.serialized(&network.initGame);
 			}else{
 				while(!network.gameInitData){
@@ -268,7 +298,10 @@ void loadMap(B)(ref Options options)in{
 				deserialize(gameInit,state.current,network.gameInitData);
 				network.gameInitData=null;
 			}
-		}else gameInit=.gameInit!(multiplayerSide,B)(only(options.settings),options);
+		}else{
+			if(toContinue) gameInit=toContinue.gameInit;
+			else gameInit=.gameInit!(multiplayerSide,B)(only(options.settings),options);
+		}
 	}else gameInit=playback.gameInit;
 	Recording!B recording=null;
 	if((!playback||network)&&options.recordingFilename.length){
@@ -278,6 +311,23 @@ void loadMap(B)(ref Options options)in{
 	}
 	int wizId=state.initGame(gameInit,slot);
 	state.current.map.makeMeshes(options.enableMapBottom);
+	if(toContinue){
+		state.commands=toContinue.commands;
+		playAudio=false;
+		while(state.current.frame+1<state.commands.length){
+			state.step();
+			if(state.current.frame%1000==0){
+				writeln("continue: simulated ",state.current.frame," of ",state.commands.length-1," frames");
+			}
+		}
+		playAudio=true;
+		assert(state.current.frame==options.continueFrame);
+		if(network){
+			assert(network.isHost);
+			foreach(i;network.connectedPlayerIds) if(i!=network.host) network.updateStatus(cast(int)i,PlayerStatus.desynched);
+			network.continueSynchAt(options.continueFrame);
+		}
+	}
 	state.commit();
 	if(network && network.isHost) network.addSynch(state.lastCommitted.frame,state.lastCommitted.hash);
 	if(recording) recording.stepCommitted(state.lastCommitted);
@@ -362,6 +412,10 @@ int main(string[] args){
 			options.recordingFilename=opt["--record=".length..$];
 		}else if(opt.startsWith("--play=")){
 			options.playbackFilename=opt["--play=".length..$];
+		}else if(opt.startsWith("--continue=")){
+			options.continueFilename=opt["--continue=".length..$];
+		}else if(opt.startsWith("--continue-at=")){
+			options.continueFrame=to!int(opt["--continue-at=".length..$]);
 		}else if(opt.startsWith("--logCore")){
 			if(opt.startsWith("--logCore=")){
 			   options.logCore=to!int(opt["--logCore=".length..$]);

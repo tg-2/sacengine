@@ -640,6 +640,12 @@ final class SynchQueue{
 		assert(frame<=end);
 	}do{
 		end=frame;
+		start=min(start,end);
+	}
+	void continueAt(int frame)in{
+		assert(start==end);
+	}do{
+		start=end=frame;
 	}
 	void addReference(int frame,uint hash)in{
 		assert(frame==end,text(frame," ",end));
@@ -738,13 +744,9 @@ final class Network(B){
 	bool clientsReadyToLoad(){
 		return iota(players.length).filter!(i=>i!=host&&players[i].connection).all!(i=>isReadyStatus(players[i].status));
 	}
-	bool loading(){
-		return me!=-1&&players[me].status==PlayerStatus.loading;
-	}
+	bool loading(){ return me!=-1&&players[me].status==PlayerStatus.loading; }
 	bool readyToStart(){ return connectedPlayers.all!(p=>isReadyStatus(p.status)); }
-	bool playing(){
-		return me!=-1&&players[me].status==PlayerStatus.playing;
-	}
+	bool playing(){ return me!=-1&&players[me].status==PlayerStatus.playing; }
 	bool desynched(){ return connectedPlayers.any!(p=>isDesynchedStatus(p.status)||p.status==PlayerStatus.resynched); }
 	bool readyToResynch(){ return connectedPlayers.all!(p=>p.status==PlayerStatus.readyToResynch); }
 	bool stateResynched(){ return connectedPlayers.all!(p=>p.status.among(PlayerStatus.stateResynched,PlayerStatus.resynched)); }
@@ -892,7 +894,7 @@ final class Network(B){
 					break;
 				}
 				int slot=p.intValue;
-				if(slot!=-1 && players.any!((ref p)=>p.slot==slot)){
+				if(slot!=-1 && players[p.player].slot!=slot && players.any!((ref p)=>p.slot==slot)){
 					stderr.writeln("host attempted to put multiple players on same slot: ",p);
 					break;
 				}
@@ -1168,10 +1170,7 @@ final class Network(B){
 		players[i].settings.slot=slot;
 		players[i].slot=slot;
 	}
-	int addPlayer(Player player)in{
-		assert(isHost);
-	}do{
-		bool canReplace(ref Player cand,ref Player old,bool replaceUnnamed){
+	private static bool canReplacePlayer(ref Player cand,ref Player old,bool replaceUnnamed){
 			if(old.connection) return false;
 			if(old.status==PlayerStatus.unconnected) return true;
 			if(old.settings.observer!=cand.settings.observer) return false;
@@ -1180,8 +1179,11 @@ final class Network(B){
 			// TODO: more reliable authentication, e.g. with randomly-generated id or public key
 			return false;
 		}
-		auto validSpots=chain(iota(players.length).filter!(i=>i!=host&&canReplace(player,players[i],false)),
-		                      iota(players.length+1).filter!(i=>i!=host&&(i==players.length||canReplace(player,players[i],false))));
+	int addPlayer(Player player)in{
+		assert(isHost);
+	}do{
+		auto validSpots=chain(iota(players.length).filter!(i=>i!=host&&canReplacePlayer(player,players[i],false)),
+		                      iota(players.length+1).filter!(i=>i!=host&&(i==players.length||canReplacePlayer(player,players[i],true))));
 		assert(!validSpots.empty);
 		int newId=cast(int)validSpots.front;
 		if(newId<players.length){
@@ -1286,6 +1288,42 @@ final class Network(B){
 		return true;
 	}
 
+	void initSlots(R)(R slotData)in{
+		assert(isHost&&players.length==1);
+	}do{
+		assert(host==0);
+		players.length=slotData.length+1;
+		foreach(i,ref p;players[1..$]){
+			p.status=PlayerStatus.dropped;
+			p.settings.name=slotData[i].name;
+			p.settings.slot=slotData[i].slot;
+			p.slot=p.settings.slot;
+		}
+		players[0].slot=-1;
+		Lreplace: foreach(replaceUnnamed;0..2){
+			foreach(i,ref p;players[1..$]){
+				if(canReplacePlayer(players[host],p,!!replaceUnnamed)){
+					auto hostCommit=players[host].settings.commit;
+					auto hostMap=players[host].settings.map;
+					auto hostMapHash=players[host].settings.mapHash;
+					auto hostName=players[host].settings.name;
+					swap(players[host].settings,p.settings);
+					players[host].settings.commit=hostCommit;
+					players[host].settings.map=hostMap;
+					players[host].settings.mapHash=hostMapHash;
+					players[host].settings.name=hostName;
+					swap(players[host].slot,p.slot);
+					swap(p,players[$-1]);
+					players.length=players.length-1;
+					players.assumeSafeAppend();
+					break Lreplace;
+				}
+			}
+		}
+		sort!"a.slot<b.slot"(players[1..$]);
+		players[host].settings.slot=players[host].slot;
+		foreach(ref p;players[1..$]) p.settings.commit=players[host].settings.commit;
+	}
 	void sendMap(int i,scope ubyte[] mapData){
 		players[i].send(Packet.sendMap(mapData.length),mapData);
 	}
@@ -1392,6 +1430,11 @@ final class Network(B){
 		assert(isHost);
 	}do{
 		synchQueue.capReferences(frame);
+	}
+	void continueSynchAt(int frame)in{
+		assert(isHost);
+	}do{
+		synchQueue.continueAt(frame);
 	}
 	void checkSynch(int frame,uint hash)in{
 		assert(!isHost);

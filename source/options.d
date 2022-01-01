@@ -69,6 +69,8 @@ struct Options{
 	bool compressRecording=true;
 	int logCore=0;
 	string playbackFilename="";
+	string continueFilename="";
+	int continueFrame=-1;
 	// asset export
 	string exportFolder="sacengine-exports";
 	alias settings this;
@@ -82,10 +84,10 @@ struct Settings{
 	string commit;
 	string map="";
 	int mapHash=0;
+	string name="";
 	bool observer=false;
 	int slot=-1;
 	int team=-1;
-	string name="";
 	char[4] wizard="";
 	immutable(SpellSpec)[] spellbook;
 	int level=9;
