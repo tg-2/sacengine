@@ -57,27 +57,6 @@ final class Controller(B){
 		state.addCommandInconsistent(frame,command);
 		if(recording) recording.addExternalCommand(frame,command);
 	}
-	void replaceState(scope ubyte[] serialized)in{
-		assert(network&&!network.isHost);
-	}do{
-		import serialize_;
-		state.lastCommitted.serialized(&network.logDesynch); // TODO: don't log if late join
-		deserialize(state.current,serialized);
-		currentFrame=state.current.frame;
-		static if(B.hasAudio) B.updateAudioAfterRollback();
-		deserialize(state.commands,state.current,serialized);
-		firstUpdatedFrame=state.current.frame;
-		if(recording) recording.replaceState(state.lastCommitted,state.commands);
-		if(network) network.updateStatus(PlayerStatus.stateResynched);
-	}
-	void logDesynch(int side,scope ubyte[] serialized){
-		if(recording) recording.logDesynch(side,serialized,state.current);
-		/+if(recording){
-			synchState.update(state.commands[synchState.frame].data);
-			lastConfirmSynch=synchState.frame;
-			recording.logDesynch(side,serialized,synchState);
-		}+/
-	}
 	void setSelection(int side,int wizard,CreatureGroup selection,TargetLocation loc){
 		if(side!=controlledSide) return;
 		addCommand(Command!B(CommandType.clearSelection,side,wizard,0,Target.init,float.init));
@@ -85,6 +64,33 @@ final class Controller(B){
 			if(id==0) continue;
 			addCommand(Command!B(CommandType.automaticToggleSelection,side,wizard,id,Target.init,float.init));
 		}
+	}
+	void replaceState(scope ubyte[] serialized)in{
+		assert(network&&!network.isHost);
+	}do{
+		import serialize_;
+		deserialize(state.current,serialized);
+		currentFrame=state.current.frame;
+		static if(B.hasAudio) B.updateAudioAfterRollback();
+		deserialize(state.commands,state.current,serialized);
+		firstUpdatedFrame=state.current.frame;
+		/+if(synchState.frame!=0){
+			synchState.update(state.commands[synchState.frame].data);
+			lastConfirmSynch=synchState.frame;
+			synchState.serialized(&network.logDesynch);
+			import std.conv:text;
+			while(synchState.frame<state.current.frame){
+				synchState.update(state.commands[synchState.frame].data);
+			}
+			enforce(synchState.frame==state.current.frame,text(synchState.frame," ",state.current.frame));
+			writeln("SYNCHSTATE: ",synchState.frame," ",synchState.hash," CURRENTSTATE: ",state.current.frame," ",state.current.hash);
+		}+/
+		state.lastCommitted.serialized(&network.logDesynch); // TODO: don't log if late join
+		if(recording) recording.replaceState(state.lastCommitted,state.commands);
+		if(network) network.updateStatus(PlayerStatus.stateResynched);
+	}
+	void logDesynch(int side,scope ubyte[] serialized){
+		if(recording) recording.logDesynch(side,serialized,state.current);
 	}
 	/+int lastConfirmSynch=-1;
 	ObjectState!B synchState;
@@ -123,7 +129,7 @@ final class Controller(B){
 		enforce(committedFrame==state.lastCommitted.frame,
 		        text(network.activePlayerIds," ",network.players.map!((ref p)=>p.committedFrame)," ",
 		             committedFrame," ",state.lastCommitted.frame));
-		if(state.current.frame<committedFrame)
+		if(state.current.frame<committedFrame||state.current.frame==committedFrame&&firstUpdatedFrame<committedFrame)
 			state.current.copyFrom(state.lastCommitted); // restore invariant
 		currentFrame=max(currentFrame,committedFrame);
 		firstUpdatedFrame=max(firstUpdatedFrame,committedFrame);
@@ -157,13 +163,13 @@ final class Controller(B){
 					network.updateStatus(PlayerStatus.readyToResynch);
 				if(network.isHost && network.readyToResynch){
 					import serialize_;
-					currentFrame=network.resynchCommittedFrame; // commits have to be monotone
 					//writeln("SENDING STATE AT FRAME: ",currentFrame," ",network.players.map!((ref p)=>p.committedFrame));
-					//if(state.commands.length<currentFrame+1)
-					state.commands.length=currentFrame+1;
-					state.rollback(currentFrame);
+					import std.conv: text;
+					enforce(network.resynchCommittedFrame==currentFrame,text(network.resynchCommittedFrame," ",currentFrame," ",network.players.map!((ref p)=>p.status),network.players.map!((ref p)=>p.committedFrame)));
+					if(state.commands.length<currentFrame+1)
+						state.commands.length=currentFrame+1;
+					state.simulateTo(currentFrame);
 					assert(state.current.frame==currentFrame);
-					firstUpdatedFrame=currentFrame;
 					state.current.serialized((scope ubyte[] stateData){
 						state.commands.serialized((scope ubyte[] commandData){
 							foreach(i,ref player;network.players)
@@ -188,6 +194,8 @@ final class Controller(B){
 				if(network.isHost && network.resynched){
 					updateCommitted();
 					enforce(committedFrame==currentFrame);
+					import std.conv: text;
+					enforce(state.lastCommitted.hash==state.current.hash,text(state.lastCommitted.hash," ",state.current.hash));
 					network.load();
 				}
 				return true; // ignore passed time in next frame
@@ -197,9 +205,9 @@ final class Controller(B){
 				if(network.isHost&&network.readyToStart()){
 					network.start(this);
 				}
-				network.acceptingNewConnections=true;
 				return true; // ignore passed time in next frame
 			}
+			network.acceptingNewConnections=true;
 		}else committedFrame=currentFrame;
 		state.simulateTo(currentFrame);
 		playAudio=true;
