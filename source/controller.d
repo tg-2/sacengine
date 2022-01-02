@@ -87,7 +87,7 @@ final class Controller(B){
 		}+/
 		state.lastCommitted.serialized(&network.logDesynch); // TODO: don't log if late join
 		if(recording) recording.replaceState(state.lastCommitted,state.commands);
-		if(network) network.updateStatus(PlayerStatus.stateResynched);
+		network.updateStatus(PlayerStatus.stateResynched);
 	}
 	void logDesynch(int side,scope ubyte[] serialized){
 		if(recording) recording.logDesynch(side,serialized,state.current);
@@ -166,7 +166,7 @@ final class Controller(B){
 				}
 			}
 			if(network.desynched){
-				if(!network.players[network.me].status.among(PlayerStatus.readyToResynch,PlayerStatus.stateResynched,PlayerStatus.resynched,PlayerStatus.loading))
+				if(network.isHost&&!network.players[network.me].status.among(PlayerStatus.readyToResynch,PlayerStatus.stateResynched,PlayerStatus.resynched)||network.players[network.host].status==PlayerStatus.readyToResynch)
 					network.updateStatus(PlayerStatus.readyToResynch);
 				if(network.isHost && network.readyToResynch){
 					network.acceptingNewConnections=false;

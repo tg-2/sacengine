@@ -251,14 +251,14 @@ void loadMap(B)(ref Options options)in{
 			network.idleLobby();
 			if(!B.processEvents()) return;
 		}
-		/+if(network.isHost){
+		if(network.isHost){
 			network.load();
 		}else{
 			while(!network.loading&&network.players[network.me].status!=PlayerStatus.desynched){ // desynched at start if late join
 				network.idleLobby();
 				if(!B.processEvents()) return;
 			}
-		}+/
+		}
 		options.settings=network.settings;
 		slot=network.slot;
 	}

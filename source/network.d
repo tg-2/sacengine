@@ -1412,8 +1412,8 @@ final class Network(B){
 	void load()in{
 		assert(isHost&&readyToLoad);
 	}do{
-		foreach(i;connectedPlayerIds) if(i!=me) load(cast(int)i);
 		updateStatus(PlayerStatus.loading);
+		foreach(i;connectedPlayerIds) if(i!=me) load(cast(int)i);
 	}
 	void start(Controller!B controller)in{
 		assert(isHost&&readyToStart);
