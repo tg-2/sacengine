@@ -200,7 +200,6 @@ void loadMap(B)(ref Options options)in{
 			if(network.isHost&&network.numReadyPlayers+(network.players[network.host].wantsToControlState)>=options.numSlots&&network.clientsReadyToLoad()){
 				network.acceptingNewConnections=false;
 				//network.stopListening();
-				network.synchronizeSetting!"map"();
 				auto numSlots=options.numSlots;
 				auto slotTaken=new bool[](numSlots);
 				foreach(i,ref player;network.players){
@@ -228,6 +227,8 @@ void loadMap(B)(ref Options options)in{
 			}
 		}
 		auto mapName=network.players[network.host].settings.map;
+		if(network.settings.map!=mapName)
+			network.updateSetting!"map"(mapName);
 		auto hash=network.players[network.host].settings.mapHash;
 		if(!network.isHost){
 			import std.file: exists;

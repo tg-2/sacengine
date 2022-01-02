@@ -1422,6 +1422,7 @@ final class Network(B){
 			}
 			return mapHashed&&connectedPlayers.all!((ref p)=>p.settings.map==name&&p.settings.mapHash==hash);
 		}else{
+			enforce(players[me].settings.map==hostSettings.map,"bad map");
 			if(players[me].settings.mapHash!=hash&&mapData){
 				import std.digest.crc;
 				auto crc32=digest!CRC32(mapData);
