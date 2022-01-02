@@ -85,7 +85,7 @@ final class Controller(B){
 			enforce(synchState.frame==state.current.frame,text(synchState.frame," ",state.current.frame));
 			writeln("SYNCHSTATE: ",synchState.frame," ",synchState.hash," CURRENTSTATE: ",state.current.frame," ",state.current.hash);
 		}+/
-		state.lastCommitted.serialized(&network.logDesynch); // TODO: don't log if late join
+		if(network.logDesynch_) state.lastCommitted.serialized(&network.logDesynch); // TODO: don't log if late join
 		if(recording) recording.replaceState(state.lastCommitted,state.commands);
 		network.updateStatus(PlayerStatus.stateResynched);
 	}

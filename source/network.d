@@ -1478,9 +1478,11 @@ final class Network(B){
 		if(!checkDesynch) return;
 		players[player].send(Packet.confirmSynch(frame,hash));
 	}+/
+	bool logDesynch_=true;
 	void logDesynch(scope ubyte[] stateData)in{
 		assert(!isHost);
 	}do{
+		if(!logDesynch_) return;
 		players[host].send(Packet.logDesynch(stateData.length),stateData);
 	}
 }
