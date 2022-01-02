@@ -64,6 +64,7 @@ struct Options{
 	bool testLag=false;
 	bool dumpTraffic=false;
 	bool checkDesynch=true;
+	bool pauseOnDrop=false;
 	// recording and playback
 	string recordingFilename="";
 	bool compressRecording=true;

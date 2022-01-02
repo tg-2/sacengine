@@ -548,6 +548,8 @@ enum PlayerStatus{
 	readyToStart,
 	pendingStart,
 	playing,
+	pausedOnDrop,
+	paused,
 	desynched,
 	readyToResynch,
 	stateResynched,
@@ -558,6 +560,9 @@ enum PlayerStatus{
 
 bool isConnectedStatus(PlayerStatus status){
 	return !status.among(PlayerStatus.unconnected,PlayerStatus.dropped,PlayerStatus.disconnected);
+}
+bool isPausedStatus(PlayerStatus status){
+	return !!status.among(PlayerStatus.pausedOnDrop,PlayerStatus.paused);
 }
 bool isDesynchedStatus(PlayerStatus status){
 	return PlayerStatus.desynched<=status && status<PlayerStatus.resynched;
@@ -674,6 +679,11 @@ final class Network(B){
 		return connectedPlayerIds.map!index;
 	}
 	size_t numReadyPlayers(){ return readyPlayerIds.walkLength; }
+	auto potentialPlayerIds(){ return iota(players.length).filter!(i=>players[i].allowedToControlState); }
+	auto potentialPlayers(){
+		ref Player index(size_t i){ return players[i]; }
+		return potentialPlayerIds.map!index;
+	}
 	auto activePlayerIds(){ return connectedPlayerIds.filter!(i=>players[i].isControllingState); }
 	auto activePlayers(){
 		ref Player index(size_t i){ return players[i]; }
@@ -698,6 +708,7 @@ final class Network(B){
 	enum host=0;
 	bool dumpTraffic=false;
 	bool checkDesynch=true;
+	bool pauseOnDrop=false;
 	bool isHost(){ return me==host; }
 	SynchQueue synchQueue;
 	void hostGame(Settings settings)in{
@@ -747,6 +758,8 @@ final class Network(B){
 	bool loading(){ return me!=-1&&players[me].status==PlayerStatus.loading; }
 	bool readyToStart(){ return connectedPlayers.all!(p=>isReadyStatus(p.status)); }
 	bool playing(){ return me!=-1&&players[me].status==PlayerStatus.playing; }
+	bool paused(){ return isPausedStatus(players[host].status); }
+	bool anyoneDropped(){ return potentialPlayers.any!(p=>p.status==PlayerStatus.dropped); }
 	bool desynched(){ return connectedPlayers.any!(p=>isDesynchedStatus(p.status)||p.status==PlayerStatus.resynched); }
 	bool readyToResynch(){ return connectedPlayers.all!(p=>p.status==PlayerStatus.readyToResynch); }
 	bool stateResynched(){ return connectedPlayers.all!(p=>p.status.among(PlayerStatus.stateResynched,PlayerStatus.resynched)); }
@@ -768,6 +781,7 @@ final class Network(B){
 	bool allowedToUpdateStatus(int actor,int player,PlayerStatus newStatus){
 		if(!actor.among(host,player)) return false;
 		auto oldStatus=players[player].status;
+		if(isPausedStatus(oldStatus)&&newStatus==PlayerStatus.readyToResynch||isPausedStatus(newStatus)) return actor==host;
 		return oldStatus<newStatus||
 			oldStatus==PlayerStatus.resynched&&newStatus==PlayerStatus.loading||
 			actor==host&&newStatus.among(PlayerStatus.readyToLoad,PlayerStatus.unconnected,PlayerStatus.dropped);
@@ -775,6 +789,7 @@ final class Network(B){
 	void updateStatus(int player,PlayerStatus newStatus)in{
 		assert(player==me||isHost);
 	}do{
+		if(players[player].status==newStatus) return;
 		if(!allowedToUpdateStatus(me,player,newStatus)) return;
 		broadcast(Packet.updateStatus(player,newStatus));
 		players[player].status=newStatus;
@@ -1420,6 +1435,18 @@ final class Network(B){
 		Thread.sleep((maxPing/2).msecs);
 		updateStatus(PlayerStatus.playing);
 		B.unpause();
+	}
+	void pause(PlayerStatus status)in{
+		assert(isHost);
+		assert(isPausedStatus(status));
+	}do{
+		updateStatus(status);
+	}
+	void unpause()in{
+		assert(isHost);
+		assert(paused);
+	}do{
+		updateStatus(PlayerStatus.readyToStart);
 	}
 	void addSynch(int frame,uint hash)in{
 		assert(isHost);

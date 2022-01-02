@@ -173,6 +173,7 @@ void loadMap(B)(ref Options options)in{
 	if(network){
 		network.dumpTraffic=options.dumpTraffic;
 		network.checkDesynch=options.checkDesynch;
+		network.pauseOnDrop=options.pauseOnDrop;
 		while(!network.synched){
 			network.idleLobby();
 			if(!B.processEvents()) return;

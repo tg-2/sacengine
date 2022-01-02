@@ -157,11 +157,19 @@ final class Controller(B){
 					}
 				}
 			}
+			if(network.isHost&&network.pauseOnDrop){
+				if(network.anyoneDropped){
+					network.pause(PlayerStatus.pausedOnDrop);
+					network.acceptingNewConnections=true;
+				}else if(network.players[network.me].status==PlayerStatus.pausedOnDrop){
+					network.unpause();
+				}
+			}
 			if(network.desynched){
-				network.acceptingNewConnections=false;
 				if(!network.players[network.me].status.among(PlayerStatus.readyToResynch,PlayerStatus.stateResynched,PlayerStatus.resynched,PlayerStatus.loading))
 					network.updateStatus(PlayerStatus.readyToResynch);
 				if(network.isHost && network.readyToResynch){
+					network.acceptingNewConnections=false;
 					import serialize_;
 					//writeln("SENDING STATE AT FRAME: ",currentFrame," ",network.players.map!((ref p)=>p.committedFrame));
 					import std.conv: text;
@@ -203,6 +211,7 @@ final class Controller(B){
 				}
 				return true; // ignore passed time in next frame
 			}
+			if(network.paused) return true;
 			if(!network.playing){ // start game
 				network.updateStatus(PlayerStatus.readyToStart);
 				if(network.isHost&&network.readyToStart()){
