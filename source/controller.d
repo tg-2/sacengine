@@ -150,7 +150,6 @@ final class Controller(B){
 					auto hash=network.hostSettings.mapHash;
 					foreach(i,ref player;network.players){
 						if(player.status==PlayerStatus.mapHashed && player.settings.mapHash==hash){
-							//network.load(cast(int)i);
 							network.updateStatus(cast(int)i,PlayerStatus.desynched);
 							network.initGame(cast(int)i,network.gameInitData);
 						}
@@ -165,9 +164,9 @@ final class Controller(B){
 					network.unpause();
 				}
 			}
+			if(network.paused) return true;
 			if(network.desynched){
-				if(network.isHost&&!network.players[network.me].status.among(PlayerStatus.readyToResynch,PlayerStatus.stateResynched,PlayerStatus.resynched)||network.players[network.host].status==PlayerStatus.readyToResynch)
-					network.updateStatus(PlayerStatus.readyToResynch);
+				if(network.pendingResynch) network.updateStatus(PlayerStatus.readyToResynch);
 				if(network.isHost && network.readyToResynch){
 					network.acceptingNewConnections=false;
 					import serialize_;
@@ -211,7 +210,6 @@ final class Controller(B){
 				}
 				return true; // ignore passed time in next frame
 			}
-			if(network.paused) return true;
 			if(!network.playing){ // start game
 				network.updateStatus(PlayerStatus.readyToStart);
 				if(network.isHost&&network.readyToStart()){

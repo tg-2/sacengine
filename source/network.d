@@ -476,6 +476,7 @@ class TCPConnection: Connection{
 		return result;
 	}
 	void receiveData(){
+		sendRemaining();
 		if(dataIndex<data.length){
 			auto ret=tcpSocket.receive(data[dataIndex..$]);
 			if(ret==Socket.ERROR){
@@ -512,26 +513,60 @@ class TCPConnection: Connection{
 			}else ready_=true;
 		}
 	}
+	Array!ubyte remainingData;
+	long remainingIndex=0;
+	private long trySend(scope ubyte[] data){
+		auto sent=tcpSocket.send(data);
+		if(sent==Socket.ERROR){
+			if(!wouldHaveBlocked()){
+				stderr.writeln(lastSocketError());
+			}
+			sent=0;
+		}
+		return sent;
+	}
+	void sendRemaining(){
+		while(remainingIndex<remainingData.length){
+			auto sent=trySend(remainingData.data[remainingIndex..$]);
+			if(sent==0) return;
+			remainingIndex+=sent;
+		}
+	}
+	private void sendImpl(scope ubyte[] data){
+		sendRemaining();
+		if(remainingIndex==remainingData.length){
+			auto sent=trySend(data);
+			if(sent<data.length){
+				remainingData~=data[sent..$];
+				if(remainingData.length>4096 && remainingData.length/2<=remainingIndex){
+					remainingData.data[0..$-remainingIndex]=remainingData.data[remainingIndex..$];
+					remainingData.length=remainingData.length-remainingIndex;
+					remainingIndex=0;
+				}
+			}
+		}
+	}
 	override void send(Packet packet){
 		assert(!isHeaderType(packet.type));
-		tcpSocket.send((cast(ubyte*)&packet)[0..packet.sizeof]);
+		sendImpl((cast(ubyte*)&packet)[0..packet.sizeof]);
 	}
 	override void send(Packet packet,scope ubyte[] rawData){
 		assert(isHeaderType(packet.type));
 		assert(packet.rawDataSize==rawData.length);
-		tcpSocket.send((cast(ubyte*)&packet)[0..packet.sizeof]);
-		tcpSocket.send(rawData);
+		sendImpl((cast(ubyte*)&packet)[0..packet.sizeof]);
+		sendImpl(rawData);
 	}
 	override void send(Packet packet,scope ubyte[] rawData1,scope ubyte[] rawData2){
 		assert(isHeaderType(packet.type));
 		assert(packet.rawDataSize==rawData1.length+rawData2.length);
-		tcpSocket.send((cast(ubyte*)&packet)[0..packet.sizeof]);
-		tcpSocket.send(rawData1);
-		tcpSocket.send(rawData2);
+		sendImpl((cast(ubyte*)&packet)[0..packet.sizeof]);
+		sendImpl(rawData1);
+		sendImpl(rawData2);
 	}
 	override void close(){
 		tcpSocket.shutdown(SocketShutdown.BOTH);
 		tcpSocket.close();
+		destroy(remainingData);
 	}
 }
 
@@ -761,6 +796,14 @@ final class Network(B){
 	bool paused(){ return isPausedStatus(players[host].status); }
 	bool anyoneDropped(){ return potentialPlayers.any!(p=>p.status==PlayerStatus.dropped); }
 	bool desynched(){ return connectedPlayers.any!(p=>isDesynchedStatus(p.status)||p.status==PlayerStatus.resynched); }
+	bool pendingResynch(){
+		if(isHost){
+			if(players[me].status.among(PlayerStatus.readyToResynch,PlayerStatus.stateResynched,PlayerStatus.resynched)) // resynch already initiated
+				return false;
+			return players.any!((ref p)=>isDesynchedStatus(p.status));
+		}
+		return players[host].status==PlayerStatus.readyToResynch;
+	}
 	bool readyToResynch(){ return connectedPlayers.all!(p=>p.status==PlayerStatus.readyToResynch); }
 	bool stateResynched(){ return connectedPlayers.all!(p=>p.status.among(PlayerStatus.stateResynched,PlayerStatus.resynched)); }
 	int resynchCommittedFrame(){ return connectedPlayers.map!((ref p)=>p.committedFrame).fold!max(players[host].committedFrame); }
@@ -957,7 +1000,7 @@ final class Network(B){
 					stderr.writeln("non-host player ",sender," attempted to initiate loading: ",p);
 					break;
 				}
-				if(!readyToLoad){
+				if(!isReadyStatus(players[me].status)){
 					stderr.writeln("attempt to load game before ready: ",p);
 					break;
 				}
@@ -1365,13 +1408,13 @@ final class Network(B){
 	bool synchronizeMap(scope void delegate(string name) load)in{
 		assert(isHost||load!is null);
 	}do{
-		if(!mapHashed) return false;
 		auto name=players[host].settings.map;
 		auto hash=players[host].settings.mapHash;
 		if(isHost){
 			if(mapData){
 				foreach(i,ref player;players){
 					if(i==host) continue;
+					if(!player.status==PlayerStatus.mapHashed) continue;
 					if(player.settings.mapHash==hash) continue;
 					updateStatus(cast(int)i,PlayerStatus.readyToLoad);
 					sendMap(cast(int)i,mapData);
@@ -1379,7 +1422,7 @@ final class Network(B){
 			}
 			return mapHashed&&connectedPlayers.all!((ref p)=>p.settings.map==name&&p.settings.mapHash==hash);
 		}else{
-			if(mapData){
+			if(players[me].settings.mapHash!=hash&&mapData){
 				import std.digest.crc;
 				auto crc32=digest!CRC32(mapData);
 				static assert(typeof(crc32).sizeof==int.sizeof);
@@ -1446,7 +1489,7 @@ final class Network(B){
 		assert(isHost);
 		assert(paused);
 	}do{
-		updateStatus(PlayerStatus.readyToStart);
+		updateStatus(PlayerStatus.readyToResynch); // TODO: a full resynch may be overkill
 	}
 	void addSynch(int frame,uint hash)in{
 		assert(isHost);
