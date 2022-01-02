@@ -1414,7 +1414,7 @@ final class Network(B){
 			if(mapData){
 				foreach(i,ref player;players){
 					if(i==host) continue;
-					if(!player.status==PlayerStatus.mapHashed) continue;
+					if(player.status!=PlayerStatus.mapHashed) continue;
 					if(player.settings.mapHash==hash) continue;
 					updateStatus(cast(int)i,PlayerStatus.readyToLoad);
 					sendMap(cast(int)i,mapData);
