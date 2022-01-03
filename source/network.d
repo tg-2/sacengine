@@ -125,15 +125,15 @@ struct Packet{
 			case ack: return text("Packet.ack(",pingId,")");
 			case updatePlayerId: return text("Packet.updatePlayerId(",id,")");
 			case updateSlot: return text("Packet.updateSlot(",player,",",intValue,")");
-			case sendMap: return text("Packet.sendMap(...)");
-			case sendState: return text("Packet.sendState(...)");
-			case initGame: return text("Packet.initGame(...)");
+			case sendMap: return text("Packet.sendMap(",rawDataSize,",...)");
+			case sendState: return text("Packet.sendState(",rawDataSize,",...)");
+			case initGame: return text("Packet.initGame(",rawDataSize,",...)");
 			case loadGame: return text("Packet.loadGame()");
 			case startGame: return text("Packet.startGame(",startDelay,")");
 			case confirmSynch: return text("Packet.confirmSynch(",synchFrame,",",synchHash,")");
-			case join: return text("Packet.join(...)");
+			case join: return text("Packet.join(",rawDataSize,",...)");
 			case checkSynch: return text("Packet.checkSynch(",synchFrame,",",synchHash,")");
-			case logDesynch: return text("Packet.logDesynch(...)");
+			case logDesynch: return text("Packet.logDesynch(",rawDataSize,"...)");
 			case updateSetting:
 				auto len=0;
 				while(len<optionName.length&&optionName[len]!='\0') ++len;
@@ -444,29 +444,18 @@ class TCPConnection: Connection{
 		return alive_;
 	}
 	bool ready_=false;
-	bool rawReady_=false;
 	override bool ready(){
-		if(!ready_&&alive) receiveData;
-		if(ready_&&rawData.length) return rawDataIndex==rawData.length;
+		if(!alive) return false;
+		sendRemaining();
+		if(ready_) return true;
+		receiveData();
 		return ready_;
-	}
-	override bool rawReady(){
-		return rawReady_;
-	}
-	override void receiveRaw(scope void delegate(scope ubyte[]) dg){
-		assert(rawReady_);
-		dg(rawData.data);
-		rawData.length=0;
-		rawDataIndex=0;
-		rawReady_=false;
 	}
 	union{
 		Packet packet;
 		ubyte[packet.sizeof] data;
 	}
 	int dataIndex=0;
-	Array!ubyte rawData;
-	int rawDataIndex=0;
 	override Packet receive(){
 		assert(ready);
 		auto result=packet;
@@ -475,93 +464,101 @@ class TCPConnection: Connection{
 		if(isHeaderType(packet.type)) rawReady_=true;
 		return result;
 	}
-	void receiveData(){
-		sendRemaining();
-		if(dataIndex<data.length){
-			auto ret=tcpSocket.receive(data[dataIndex..$]);
-			if(ret==Socket.ERROR){
-				if(wouldHaveBlocked()) return;
-				stderr.writeln(lastSocketError());
-				ret=0;
-			}
-			if(ret==0){
-				alive_=false;
-				tcpSocket.close();
-				return;
-			}
-			dataIndex+=ret;
+	bool rawReady_=false;
+	Array!ubyte rawData;
+	int rawDataIndex=0;
+	override bool rawReady(){ return rawReady_; }
+	override void receiveRaw(scope void delegate(scope ubyte[]) dg){
+		assert(rawReady_);
+		dg(rawData.data);
+		rawData.length=0;
+		rawDataIndex=0;
+		rawReady_=false;
+	}
+	private long tryReceive(scope ubyte[] data){
+		auto ret=tcpSocket.receive(data);
+		if(ret==Socket.ERROR){
+			if(wouldHaveBlocked()) return 0;
+			stderr.writeln(lastSocketError());
+			alive_=false;
+			tcpSocket.close();
+			return 0;
 		}
+		return ret;
+	}
+	private void receiveData(){
+		if(dataIndex<data.length) dataIndex+=tryReceive(data[dataIndex..$]);
 		if(dataIndex==data.length){
 			if(isHeaderType(packet.type)){
 				if(rawData.length==0) rawData.length=packet.rawDataSize;
 				assert(rawDataIndex<rawData.length);
-				auto ret=tcpSocket.receive(rawData.data[rawDataIndex..$]);
-				if(ret==Socket.ERROR){
-					if(wouldHaveBlocked()) return;
-					stderr.writeln(lastSocketError());
-					ret=0;
-				}
-				if(ret==0){
-					alive_=false;
-					tcpSocket.close();
-					return;
-				}
-				rawDataIndex+=ret;
-				if(rawDataIndex==rawData.length){
+				rawDataIndex+=tryReceive(rawData.data[rawDataIndex..$]);
+				if(rawDataIndex==rawData.length)
 					ready_=true;
-				}
 			}else ready_=true;
 		}
 	}
 	Array!ubyte remainingData;
 	long remainingIndex=0;
 	private long trySend(scope ubyte[] data){
+		/+import std.datetime.stopwatch;
+		static sw=StopWatch(AutoStart.no);
+		if(!sw.running) sw.start();
+		static long amountSent=0;
+		auto rateLimit=100000; // 100 kbps
+		auto limit=rateLimit*sw.peek.total!"msecs"()/1000;
+		writeln(sw.peek.total!"msecs");
+		auto allowedToSend=max(0,limit-amountSent);
+		auto sent=tcpSocket.send(data[0..min(allowedToSend,$)]);
+		scope(success) amountSent+=sent;+/
 		auto sent=tcpSocket.send(data);
 		if(sent==Socket.ERROR){
 			if(!wouldHaveBlocked()){
 				stderr.writeln(lastSocketError());
+				alive_=false;
+				tcpSocket.close();
 			}
 			sent=0;
 		}
 		return sent;
 	}
-	void sendRemaining(){
+	private bool sendRemaining(){
 		while(remainingIndex<remainingData.length){
 			auto sent=trySend(remainingData.data[remainingIndex..$]);
-			if(sent==0) return;
+			if(sent==0) return false;
 			remainingIndex+=sent;
 		}
+		return true;
 	}
-	private void sendImpl(scope ubyte[] data){
-		sendRemaining();
-		if(remainingIndex==remainingData.length){
-			auto sent=trySend(data);
-			if(sent<data.length){
-				remainingData~=data[sent..$];
-				if(remainingData.length>4096 && remainingData.length/2<=remainingIndex){
-					remainingData.data[0..$-remainingIndex]=remainingData.data[remainingIndex..$];
-					remainingData.length=remainingData.length-remainingIndex;
-					remainingIndex=0;
-				}
-			}
+	private void bufferData(scope ubyte[] data){
+		if(!alive_||!data.length) return;
+		remainingData~=data;
+		if(remainingData.length>4096 && remainingData.length/2<=remainingIndex){
+			remainingData.data[0..$-remainingIndex]=remainingData.data[remainingIndex..$];
+			remainingData.length=remainingData.length-remainingIndex;
+			remainingIndex=0;
 		}
+	}
+	private void send(scope ubyte[] data){
+		auto sent=sendRemaining()?trySend(data):0;
+		bufferData(data[sent..$]);
 	}
 	override void send(Packet packet){
 		assert(!isHeaderType(packet.type));
-		sendImpl((cast(ubyte*)&packet)[0..packet.sizeof]);
+		send((cast(ubyte*)&packet)[0..packet.sizeof]);
 	}
 	override void send(Packet packet,scope ubyte[] rawData){
 		assert(isHeaderType(packet.type));
 		assert(packet.rawDataSize==rawData.length);
-		sendImpl((cast(ubyte*)&packet)[0..packet.sizeof]);
-		sendImpl(rawData);
+		send((cast(ubyte*)&packet)[0..packet.sizeof]);
+		send(rawData);
 	}
 	override void send(Packet packet,scope ubyte[] rawData1,scope ubyte[] rawData2){
 		assert(isHeaderType(packet.type));
 		assert(packet.rawDataSize==rawData1.length+rawData2.length);
-		sendImpl((cast(ubyte*)&packet)[0..packet.sizeof]);
-		sendImpl(rawData1);
-		sendImpl(rawData2);
+		send((cast(ubyte*)&packet)[0..packet.sizeof]);
+		send(rawData1);
+		send(rawData2);
 	}
 	override void close(){
 		tcpSocket.shutdown(SocketShutdown.BOTH);
@@ -866,7 +863,7 @@ final class Network(B){
 		assert(isHost);
 	}do{
 		foreach(player;0..cast(int)players.length)
-			updateSetting!setting(player,mixin(`players[host].settings.`~setting));
+			updateSetting!setting(player,mixin(`hostSettings.`~setting));
 	}
 	void updateSettings(int player,Settings newSettings)in{
 		assert(0<=player&&player<players.length);
@@ -1281,6 +1278,7 @@ final class Network(B){
 			// TODO: accept peer-to-peer connections to decrease latency
 		}
 		for(int i=0;i<pendingJoin.length;){
+			writeln(pendingJoin.length);
 			if(pendingJoin[i].ready){
 				auto p=pendingJoin[i].receive();
 				if(p.type==PacketType.join){
@@ -1361,15 +1359,15 @@ final class Network(B){
 		Lreplace: foreach(replaceUnnamed;0..2){
 			foreach(i,ref p;players[1..$]){
 				if(canReplacePlayer(players[host],p,!!replaceUnnamed)){
-					auto hostCommit=players[host].settings.commit;
-					auto hostMap=players[host].settings.map;
-					auto hostMapHash=players[host].settings.mapHash;
-					auto hostName=players[host].settings.name;
-					swap(players[host].settings,p.settings);
-					players[host].settings.commit=hostCommit;
-					players[host].settings.map=hostMap;
-					players[host].settings.mapHash=hostMapHash;
-					players[host].settings.name=hostName;
+					auto hostCommit=hostSettings.commit;
+					auto hostMap=hostSettings.map;
+					auto hostMapHash=hostSettings.mapHash;
+					auto hostName=hostSettings.name;
+					swap(hostSettings,p.settings);
+					hostSettings.commit=hostCommit;
+					hostSettings.map=hostMap;
+					hostSettings.mapHash=hostMapHash;
+					hostSettings.name=hostName;
 					swap(players[host].slot,p.slot);
 					swap(p,players[$-1]);
 					players.length=players.length-1;
@@ -1379,8 +1377,8 @@ final class Network(B){
 			}
 		}
 		sort!"a.slot<b.slot"(players[1..$]);
-		players[host].settings.slot=players[host].slot;
-		foreach(ref p;players[1..$]) p.settings.commit=players[host].settings.commit;
+		hostSettings.slot=players[host].slot;
+		foreach(ref p;players[1..$]) p.settings.commit=hostSettings.commit;
 	}
 	void sendMap(int i,scope ubyte[] mapData){
 		players[i].send(Packet.sendMap(mapData.length),mapData);
@@ -1408,8 +1406,8 @@ final class Network(B){
 	bool synchronizeMap(scope void delegate(string name) load)in{
 		assert(isHost||load!is null);
 	}do{
-		auto name=players[host].settings.map;
-		auto hash=players[host].settings.mapHash;
+		auto name=hostSettings.map;
+		auto hash=hostSettings.mapHash;
 		if(isHost){
 			if(mapData){
 				foreach(i,ref player;players){
@@ -1422,8 +1420,8 @@ final class Network(B){
 			}
 			return mapHashed&&connectedPlayers.all!((ref p)=>p.settings.map==name&&p.settings.mapHash==hash);
 		}else{
-			enforce(players[me].settings.map==hostSettings.map,"bad map");
-			if(players[me].settings.mapHash!=hash&&mapData){
+			enforce(settings.map==hostSettings.map,"bad map");
+			if(settings.mapHash!=hash&&mapData){
 				import std.digest.crc;
 				auto crc32=digest!CRC32(mapData);
 				static assert(typeof(crc32).sizeof==int.sizeof);
@@ -1432,7 +1430,7 @@ final class Network(B){
 					name=buildPath("maps",baseName(name));
 					import std.file: exists, rename;
 					if(exists(name)){
-						auto newName=stripExtension(name)~text(".",players[me].settings.mapHash)~".scp";
+						auto newName=stripExtension(name)~text(".",settings.mapHash)~".scp";
 						rename(name,newName);
 						stderr.writeln("existing map '",name,"' moved to '",newName,"'");
 					}
@@ -1444,7 +1442,7 @@ final class Network(B){
 				}
 				mapData=null;
 			}
-			return mapHashed&&players[me].settings.map==name&&players[me].settings.mapHash==hash;
+			return mapHashed&&settings.map==name&&settings.mapHash==hash;
 		}
 	}
 	void load(int i)in{

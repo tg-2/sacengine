@@ -226,10 +226,10 @@ void loadMap(B)(ref Options options)in{
 				break;
 			}
 		}
-		auto mapName=network.players[network.host].settings.map;
+		auto mapName=network.hostSettings.map;
 		if(network.settings.map!=mapName)
 			network.updateSetting!"map"(mapName);
-		auto hash=network.players[network.host].settings.mapHash;
+		auto hash=network.hostSettings.mapHash;
 		if(!network.isHost){
 			import std.file: exists;
 			if(exists(mapName)){
