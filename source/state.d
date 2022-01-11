@@ -3115,7 +3115,7 @@ enum PullStatus{
 struct Pull(PullType which,B){
 	int creature;
 	int target;
-	SacSpell!B spell;
+	SacSpell!B ability;
 	PullStatus status;
 	int frame=0;
 	int numPulls=0;
@@ -14786,9 +14786,9 @@ bool updatePull(PullType type,B)(ref Pull!(type,B) pull,ObjectState!B state){
 			return state.movingObjectById!((ref tobj,obj,state){
 				auto thread=tobj.center-(*obj).center;
 				auto threadDir=thread.normalized;
+				auto velocity=-pullSpeed*threadDir;
 				if((*obj).hasShootTick(state)){
 					numPulls++;
-					auto velocity=-pullSpeed*threadDir;
 					velocity.z+=5.0f*tobj.creatureStats.fallingAcceleration/updateFPS;
 					//velocity.z+=0.7f*thread.length/pullSpeed*tobj.creatureStats.fallingAcceleration;
 					//if(velocity.lengthsqr>pullSpeed^^2) velocity=pullSpeed*velocity.normalized;
@@ -14797,7 +14797,9 @@ bool updatePull(PullType type,B)(ref Pull!(type,B) pull,ObjectState!B state){
 					pullFrames=numPullFrames;
 				}else if(--pullFrames>0){
 					//tobj.creatureState.fallingVelocity=-pullSpeed*threadDir+Vector3f(0.0f,0.0f,1.5f*tobj.creatureStats.fallingAcceleration/updateFPS);
-					tobj.creatureState.fallingVelocity.z+=tobj.creatureStats.fallingAcceleration/updateFPS;
+					//tobj.creatureState.fallingVelocity.z+=tobj.creatureStats.fallingAcceleration/updateFPS;
+					if(tobj.creatureState.movement==CreatureMovement.tumbling) tobj.creatureState.fallingVelocity=velocity;
+					else tobj.push(velocity,state);
 				}
 				if(numPulls>=4 && (*obj).frame+1>=obj.sacObject.numFrames(obj.animationState)){
 					(*obj).frame=0;
@@ -14810,8 +14812,9 @@ bool updatePull(PullType type,B)(ref Pull!(type,B) pull,ObjectState!B state){
 					tobj.position+=0.5f*diff;
 					//tobj.catapult(-pullSpeed*threadDir/updateFPS,state);
 					auto badSpeed=dot(threadDir,tobj.creatureState.fallingVelocity);
-					if(badSpeed>0) tobj.creatureState.fallingVelocity-=threadDir*badSpeed;
-				}else radius=dist;
+					if(badSpeed>0) tobj.creatureState.fallingVelocity-=0.5f*threadDir*badSpeed;
+				}
+				radius=(tobj.center-(*obj).center).length;
 				if(thread.length<minThreadLength){
 					(*obj).frame=0;
 					(*obj).startIdling(state);
