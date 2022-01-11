@@ -3110,12 +3110,15 @@ enum PullType{
 }
 enum PullStatus{
 	shooting,
+	growing,
 	pulling,
 }
 struct Pull(PullType which,B){
 	int creature;
 	int target;
 	SacSpell!B ability;
+	enum numShootFrames=20;
+	enum numGrowFrames=20;
 	PullStatus status;
 	int frame=0;
 	int numPulls=0;
@@ -7667,7 +7670,7 @@ bool aim(bool isAbility=false,B)(ref MovingObject!B object,SacSpell!B rangedAtta
 	return true;
 }
 
-void loadOnTick(B)(ref MovingObject!B object,SacSpell!B rangedAttack,ObjectState!B state){
+void loadOnTick(B)(ref MovingObject!B object,OrderTarget target,SacSpell!B rangedAttack,ObjectState!B state){
 	if(object.hasLoadTick(state)){
 		switch(rangedAttack.tag){
 			case SpellTag.sylphShoot:
@@ -7678,6 +7681,20 @@ void loadOnTick(B)(ref MovingObject!B object,SacSpell!B rangedAttack,ObjectState
 				break;
 			case SpellTag.flummoxShoot:
 				flummoxLoad(object.id,state);
+				break;
+			case SpellTag.webPull:
+				auto drainedMana=rangedAttack.manaCost;
+				if(object.creatureStats.mana>=drainedMana){
+					webPull(object,target.id,rangedAttack,state);
+					object.drainMana(rangedAttack.manaCost,state);
+				}
+				break;
+			case SpellTag.cagePull:
+				auto drainedMana=rangedAttack.manaCost;
+				if(object.creatureStats.mana>=drainedMana){
+					cagePull(object,target.id,rangedAttack,state);
+					object.drainMana(drainedMana,state);
+				}
 				break;
 			default: break;
 		}
@@ -7759,12 +7776,8 @@ bool shootOnTick(bool ability=false,B)(ref MovingObject!B object,OrderTarget tar
 				case SpellTag.devour:
 					devourSoul(object,target.id,rangedAttack,state);
 					break;
-				case SpellTag.webPull:
-					webPull(object,target.id,rangedAttack,state);
-					break;
-				case SpellTag.cagePull:
-					cagePull(object,target.id,rangedAttack,state);
-					break;
+				case SpellTag.webPull,SpellTag.cagePull:
+					return true;
 				default: goto case SpellTag.brainiacShoot;
 			}
 			object.drainMana(drainedMana,state);
@@ -7783,7 +7796,7 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 	if(!object.aim(rangedAttack,target,predicted,state))
 		return false;
 	if(object.creatureState.mode.isShooting){
-		object.loadOnTick(rangedAttack,state);
+		object.loadOnTick(target,rangedAttack,state);
 		if(object.shootOnTick(target,predicted,rangedAttack,state)){
 			if(object.creatureStats.effects.rangedCooldown==0)
 				object.creatureStats.effects.rangedCooldown=cast(int)(rangedAttack.cooldown*updateFPS);
@@ -8187,7 +8200,7 @@ bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,OrderTarget targ
 		if(!object.aim!true(ability,target,predicted,state))
 			return false;
 		if(object.creatureState.mode.isUsingAbility){
-			object.loadOnTick(ability,state);
+			object.loadOnTick(target,ability,state);
 			if(object.shootOnTick!true(target,predicted,ability,state)){
 				if(object.creatureStats.effects.abilityCooldown==0)
 					object.creatureStats.effects.abilityCooldown=cast(int)(ability.cooldown*updateFPS);
@@ -14778,9 +14791,15 @@ AnimationState pullAnimation(B)(ref MovingObject!B object){
 	}
 }
 
+enum webGain=4.0f, cageGain=4.0f;
 bool updatePull(PullType type,B)(ref Pull!(type,B) pull,ObjectState!B state){
 	with(pull){
 		++frame;
+		if(frame==numShootFrames){
+			static if(type==PullType.webPull) playSoundAt("hbew",target,state,webGain);
+			else static if(type==PullType.cagePull) playSoundAt("hgac",target,state,cageGain);
+			else static assert(0);
+		}
 		return state.movingObjectById!((ref obj,state){
 			if(!obj.creatureState.mode.isPulling) return false;
 			return state.movingObjectById!((ref tobj,obj,state){

@@ -340,7 +340,7 @@ final class SacObject(B){
 	}
 	Vector3f shotPosition(AnimationState animationState,int frame){
 		auto hand=animations[animationState].hands[0];
-		if(hand.bone==0) return Vector3f(0.0f,0.0f,0.0f);
+		if(hand.bone<0||hand.bone>=animations[animationState].frames[frame].matrices.length) return Vector3f(0.0f,0.0f,0.0f);
 		return hand.position*animations[animationState].frames[frame].matrices[hand.bone];
 	}
 	Vector3f firstShotPosition(AnimationState animationState){
@@ -1589,10 +1589,10 @@ B.BoneMesh makeLineMesh(B)(int numSegments,float length,float size,bool pointy,b
 				}
 				mesh.weights[vertex]=Vector3f(1.0f,0.0f,0.0f);
 				if(repeat){
-					mesh.texcoords[vertex]=Vector2f(1.0f/nU*(u+((flip?i&1:0)^(k==1||k==2)?1.0f-0.5f/(256/nU):0.5f/(256/nU))),1.0f/nV*(v+((k==0||k==1)?1.0f-1.0f/(256/nV):0.5f/(256/nV))));
+					mesh.texcoords[vertex]=Vector2f(1.0f/nU*(u+((flip?i&1:0)^(k==1||k==2)?1.0f-0.5f/(256/nU):0.5f/(256/nU))),1.0f/nV*(v+((k==0||k==1)?1.0f-0.5f/(256/nV):0.5f/(256/nV))));
 				}else{
 					auto progress=float(i+((k==1)||(k==2)))/numSegments;
-					mesh.texcoords[vertex]=Vector2f(1.0f/nU*(u+(progress*(1.0f-0.5f/(256/nU))+(1.0f-progress)*(0.5f/(256/nU)))),1.0f/nV*(v+((k==0||k==1)?1.0f-1.0f/(256/nV):0.5f/(256/nV))));
+					mesh.texcoords[vertex]=Vector2f(1.0f/nU*(u+(progress*(1.0f-0.5f/(256/nU))+(1.0f-progress)*(0.5f/(256/nU)))),1.0f/nV*(v+((k==0||k==1)?1.0f-0.5f/(256/nV):0.5f/(256/nV))));
 				}
 			}
 			int b=3*4*i+4*j;
@@ -2154,7 +2154,7 @@ struct SacArrow(B){
 					auto center=((k==1||k==2)?1:0);
 					auto position=getCenter(center)+((k==2||k==3)&&center!=1?offsets[j]:Vector3f(0.0f,0.0f,0.0f));
 					mesh.vertices[vertex]=position;
-					mesh.texcoords[vertex]=Vector2f(1.0f/nU*(u+((k==1||k==2)?1.0f-0.5f/64:0.5f/64)),1.0f/nV*(v+((k==0||k==1)?1.0f-1.0f/64:0.5f/64)));
+					mesh.texcoords[vertex]=Vector2f(1.0f/nU*(u+((k==1||k==2)?1.0f-0.5f/64:0.5f/64)),1.0f/nV*(v+((k==0||k==1)?1.0f-0.5f/64:0.5f/64)));
 				}
 				int b=4*j;
 				addFace([b+0,b+1,b+2]);
@@ -2193,6 +2193,10 @@ struct SacLifeShield(B){
 	enum animationDelay=2;
 	enum numFrames=16*updateAnimFactor*animationDelay;
 	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
+	static B.Mesh[16] createMeshes(){
+		enum nU=4,nV=4;
+		return makeSphereMeshes!B(24,25,nU,nV,0.5f)[0..16];
+	}
 }
 
 struct SacDivineSight(B){
@@ -2222,6 +2226,57 @@ struct SacBlightMite(B){
 	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
 	static B.Mesh[] createMeshes(){
 		return makeSpriteMeshes!B(4,4,1.0f,1.0f);
+	}
+}
+
+struct SacCord(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/cord.TXTR"));
+	}
+	B.Material material;
+	B.Mesh mesh;
+	static B.Mesh createMesh(){
+		auto mesh=B.makeMesh(3*4,3*2);
+		enum length=1.0f;
+		enum size=1.0f;
+		enum sqrt34=sqrt(0.75f);
+		static immutable Vector3f[3] offsets=[size*Vector3f(0.0f,-1.0f,0.0f),size*Vector3f(sqrt34,0.5f,0.0f),size*Vector3f(-sqrt34,0.5f,0.0f)];
+		int numFaces=0;
+		void addFace(uint[3] face...){
+			mesh.indices[numFaces++]=face;
+		}
+		static Vector3f getCenter(int i){
+			return Vector3f(0.0f,0.0f,length*i);
+		}
+		foreach(j;0..3){
+			foreach(k;0..4){
+				int vertex=4*j+k;
+				auto center=((k==1||k==2)?1:0);
+				auto position=getCenter(center)+((k==2||k==3)?offsets[j]:Vector3f(0.0f,0.0f,0.0f));
+				mesh.vertices[vertex]=position;
+				mesh.texcoords[vertex]=Vector2f((k==1||k==2)?1.0f-0.5f/32:0.5f/32,(k==0||k==1)?1.0f-0.5f/32:0.5f/32);
+			}
+			int b=4*j;
+			addFace([b+0,b+1,b+2]);
+			addFace([b+2,b+3,b+0]);
+		}
+		assert(numFaces==2*3);
+		mesh.normals[]=Vector3f(0.0f,0.0f,0.0f);
+		B.finalizeMesh(mesh);
+		return mesh;
+	}
+}
+
+struct SacWeb(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/webc.TXTR"));
+	}
+	B.Material material;
+	B.Mesh mesh;
+	static B.Mesh createMesh(){
+		return makeSphereMesh!B(24,25,0.5f);
 	}
 }
 
@@ -2387,7 +2442,7 @@ struct SacPyromaniacRocket(B){
 					int center=(k==1||k==2);
 					auto position=getCenter(center)+((k==2||k==3)?offsets[j]:Vector3f(0.0f,0.0f,0.0f));
 					mesh.vertices[vertex]=position;
-					mesh.texcoords[vertex]=Vector2f(1.0f/nU*(u+((k==1||k==2)?1.0f-0.5f/256:0.5f/256)),1.0f/nV*(v+((k==0||k==1)?1.0f-1.0f/64:0.5f/64)));
+					mesh.texcoords[vertex]=Vector2f(1.0f/nU*(u+((k==1||k==2)?1.0f-0.5f/256:0.5f/256)),1.0f/nV*(v+((k==0||k==1)?1.0f-0.5f/64:0.5f/64)));
 				}
 				int b=4*j;
 				addFace([b+0,b+1,b+2]);
@@ -2430,7 +2485,7 @@ struct SacPoisonDart(B){
 				int center=(k==1||k==2);
 				auto position=getCenter(center)+((k==2||k==3)?offsets[j]:Vector3f(0.0f,0.0f,0.0f));
 				mesh.vertices[vertex]=position;
-				mesh.texcoords[vertex]=Vector2f(1.0f/nU*(u+((k==1||k==2)?1.0f-0.5f/256:0.5f/256)),1.0f/nV*(v+((k==0||k==1)?1.0f-1.0f/256:0.5f/256)));
+				mesh.texcoords[vertex]=Vector2f(1.0f/nU*(u+((k==1||k==2)?1.0f-0.5f/256:0.5f/256)),1.0f/nV*(v+((k==0||k==1)?1.0f-0.5f/256:0.5f/256)));
 			}
 			int b=4*j;
 			addFace([b+0,b+1,b+2]);
@@ -2477,7 +2532,7 @@ struct SacGnomeEffect(B){
 						int center=((k==1||k==2)?i+1:i);
 						auto position=getCenter(center)+((k==2||k==3)?offsets[j]:Vector3f(0.0f,0.0f,0.0f));
 						mesh.vertices[vertex]=position;
-						mesh.texcoords[vertex]=Vector2f(1.0f/nU*(u+((!(i&1))^(k==1||k==2)?1.0f-0.5f/64:0.5f/64)),1.0f/nV*(v+((k==0||k==1)?0.5f/64:1.0f-1.0f/64)));
+						mesh.texcoords[vertex]=Vector2f(1.0f/nU*(u+((!(i&1))^(k==1||k==2)?1.0f-0.5f/64:0.5f/64)),1.0f/nV*(v+((k==0||k==1)?0.5f/64:1.0f-0.5f/64)));
 					}
 					int b=3*4*i+4*j;
 					addFace([b+0,b+1,b+2]);
@@ -2495,7 +2550,7 @@ struct SacGnomeEffect(B){
 						int ci=((k==1||k==2)?i+1:i),cj=((k==0||k==1)?j:j+1);
 						auto position=getPos(ci,cj);
 						mesh.vertices[vertex]=position;
-						mesh.texcoords[vertex]=Vector2f(1.0f/nU*(u+((!(i&1))^(k==1||k==2)?1.0f-0.5f/64:0.5f/64)),1.0f/nV*(v+((!(j&1))^(k==0||k==1)?0.5f/64:1.0f-1.0f/64)));
+						mesh.texcoords[vertex]=Vector2f(1.0f/nU*(u+((!(i&1))^(k==1||k==2)?1.0f-0.5f/64:0.5f/64)),1.0f/nV*(v+((!(j&1))^(k==0||k==1)?0.5f/64:1.0f-0.5f/64)));
 					}
 					int b=3*4*2+2*4*i+4*j;
 					addFace([b+0,b+1,b+2]);

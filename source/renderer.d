@@ -429,7 +429,6 @@ struct Renderer(B){
 	}
 	SacLifeShield!B lifeShield;
 	SacLifeShield!B createLifeShield(){
-		enum nU=4,nV=4;
 		import txtr;
 		auto texture=typeof(return).loadTexture();
 		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
@@ -437,7 +436,7 @@ struct Renderer(B){
 		mat.blending=B.Blending.Additive;
 		mat.energy=10.0f;
 		mat.diffuse=texture;
-		B.Mesh[16] frames=makeSphereMeshes!B(24,25,nU,nV,0.5f)[0..16];
+		auto frames=typeof(return).createMeshes();
 		return SacLifeShield!B(texture,mat,frames);
 	}
 	SacDivineSight!B divineSight;
@@ -461,6 +460,28 @@ struct Renderer(B){
 		mat.diffuse=texture;
 		auto frames=typeof(return).createMeshes();
 		return SacBlightMite!B(texture,mat,frames);
+	}
+	SacCord!B cord;
+	SacCord!B createCord(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Transparent;
+		mat.energy=3.0f;
+		mat.diffuse=texture;
+		auto mesh=typeof(return).createMesh();
+		return SacCord!B(texture,mat,mesh);
+	}
+	SacWeb!B web;
+	SacWeb!B createWeb(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Transparent;
+		mat.energy=3.0f;
+		mat.diffuse=texture;
+		auto mesh=typeof(return).createMesh();
+		return SacWeb!B(texture,mat,mesh);
 	}
 	void createEffects(){
 		sacCommandCone=new SacCommandCone!B();
@@ -494,6 +515,8 @@ struct Renderer(B){
 		lifeShield=createLifeShield();
 		divineSight=createDivineSight();
 		blightMite=createBlightMite();
+		cord=createCord();
+		web=createWeb();
 		slime=createSlime();
 		vine=createVine();
 		rainbow=createRainbow();
@@ -1757,6 +1780,40 @@ struct Renderer(B){
 						material.backend.setAlpha(alpha);
 						mesh.render(rc);
 					}
+				}
+				static if(mode==RenderMode.transparent) if(objects.webPulls.length){
+					auto material=self.cord.material;
+					material.bind(rc);
+					auto mesh=self.cord.mesh;
+					void renderCord(Vector3f start,Vector3f end,float scale=1.0f){
+						auto direction=end-start;
+						auto len=direction.length;
+						auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),direction/len);
+						B.shadelessMaterialBackend.setTransformationScaled(start,rotation,Vector3f(scale,scale,len),rc);
+						mesh.render(rc);
+					}
+					foreach(ref webPull;objects.webPulls){
+						auto start=state.movingObjectById!((ref obj)=>obj.shotPosition,()=>Vector3f.init)(webPull.creature);
+						auto end=state.movingObjectById!((ref obj)=>obj.center,()=>Vector3f.init)(webPull.target);
+						auto α=min(1.0f,float(webPull.frame)/webPull.numShootFrames);
+						renderCord(start,(1-α)*start+α*end);
+					}
+					material.unbind(rc);
+					material=self.web.material;
+					material.bind(rc);
+					mesh=self.web.mesh;
+					void renderWeb(int target,float scale){
+						auto positionRotationBoxSize=state.movingObjectById!((ref obj)=>tuple(center(obj),obj.rotation,boxSize(obj.sacObject.largeHitbox(Quaternionf.identity(),obj.animationState,obj.frame/updateAnimFactor))), function Tuple!(Vector3f,Quaternionf,Vector3f)(){ return typeof(return).init; })(target);
+						auto position=positionRotationBoxSize[0], rotation=positionRotationBoxSize[1], boxSize=positionRotationBoxSize[2];
+						if(isNaN(position.x)) return;
+						material.backend.setTransformationScaled(position,rotation,scale*1.4f*boxSize,rc);
+						mesh.render(rc);
+					}
+					foreach(ref webPull;objects.webPulls){
+						auto scale=max(0.0f,min(1.0f,float(webPull.frame-webPull.numShootFrames)/webPull.numGrowFrames));
+						renderWeb(webPull.target,scale);
+					}
+					material.unbind(rc);
 				}
 			}else static if(is(T==Particles!(B,relative,sideFiltered),bool relative,bool sideFiltered)){
 				static if(mode==RenderMode.transparent){
