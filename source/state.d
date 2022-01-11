@@ -3098,6 +3098,24 @@ struct LightningCharge(B){
 	enum jumpRange=15.0f; // TODO: correct?
 }
 
+enum PullType{
+	webPull,
+	cagePull,
+}
+enum PullStatus{
+	shooting,
+	pulling,
+}
+struct Pull(PullType which,B){
+	int creature;
+	int target;
+	SacSpell!B spell;
+	PullStatus status;
+	int frame=0;
+}
+alias WebPull(B)=Pull!(PullType.webPull,B);
+alias CagePull(B)=Pull!(PullType.cagePull,B);
+
 struct Protector(B){
 	int id;
 	SacSpell!B ability;
@@ -4046,6 +4064,22 @@ struct Effects(B){
 	void removeLightningCharge(int i){
 		if(i+1<lightningCharges.length) lightningCharges[i]=move(lightningCharges[$-1]);
 		lightningCharges.length=lightningCharges.length-1;
+	}
+	Array!(WebPull!B) webPulls;
+	void addEffect(WebPull!B webPull){
+		webPulls~=webPull;
+	}
+	void removeWebPull(int i){
+		if(i+1<webPulls.length) webPulls[i]=move(webPulls[$-1]);
+		webPulls.length=webPulls.length-1;
+	}
+	Array!(CagePull!B) cagePulls;
+	void addEffect(CagePull!B cagePull){
+		cagePulls~=cagePull;
+	}
+	void removeCagePull(int i){
+		if(i+1<cagePulls.length) cagePulls[i]=move(cagePulls[$-1]);
+		cagePulls.length=cagePulls.length-1;
 	}
 	Array!(Protector!B) protectors;
 	void addEffect(Protector!B protector){
@@ -7700,6 +7734,12 @@ bool shootOnTick(bool ability=false,B)(ref MovingObject!B object,OrderTarget tar
 				case SpellTag.devour:
 					devourSoul(object,target.id,rangedAttack,state);
 					break;
+				case SpellTag.webPull:
+					webPull(object.id,target.id,rangedAttack,state);
+					break;
+				case SpellTag.cagePull:
+					cagePull(object.id,target.id,rangedAttack,state);
+					break;
 				default: goto case SpellTag.brainiacShoot;
 			}
 			object.drainMana(drainedMana,state);
@@ -7975,6 +8015,13 @@ bool devourSoul(B)(ref MovingObject!B object,int soulId,SacSpell!B ability,Objec
 	},()=>false)(soulId,&object,state);
 }
 
+bool pull(PullType type,B)(int creature,int target,SacSpell!B ability,ObjectState!B state){
+	state.addEffect(Pull!(type,B)(creature,target,ability));
+	return true;
+}
+bool webPull(B)(int creature,int target,SacSpell!B ability,ObjectState!B state){ return pull!(PullType.webPull)(creature,target,ability,state); }
+bool cagePull(B)(int creature,int target,SacSpell!B ability,ObjectState!B state){ return pull!(PullType.cagePull)(creature,target,ability,state); }
+
 bool protector(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
 	if(object.creatureStats.effects.lifeShield) return false;
 	auto lifeShield=SacSpell!B.get(SpellTag.lifeShield);
@@ -8084,6 +8131,7 @@ bool isRangedAbility(B)(SacSpell!B ability){ // TODO: put this directly in SacSp
 	switch(ability.tag){
 		case SpellTag.blightMites: return true;
 		case SpellTag.devour: return true;
+		case SpellTag.webPull, SpellTag.cagePull: return true;
 		default: return false;
 	}
 }
@@ -8146,6 +8194,8 @@ bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,OrderTarget targ
 		case SpellTag.callLightning:
 			if(object.callLightning(ability,state)) apply();
 			return false;
+		case SpellTag.webPull,SpellTag.cagePull:
+			return shoot();
 		case SpellTag.protector:
 			if(object.protector(ability,state)) apply();
 			return false;
@@ -14682,6 +14732,14 @@ bool updateLightningCharge(B)(ref LightningCharge!B lightningCharge,ObjectState!
 	}
 }
 
+bool updatePull(PullType type,B)(ref Pull!(type,B) pull,ObjectState!B state){
+	with(pull){
+		return true;
+	}
+}
+bool updateWebPull(B)(ref WebPull!B webPull,ObjectState!B state){ return updatePull(webPull,state); }
+bool updateCagePull(B)(ref CagePull!B cagePull,ObjectState!B state){ return updatePull(cagePull,state); }
+
 bool updateProtector(B)(ref Protector!B protector,ObjectState!B state){
 	if(!state.isValidTarget(protector.id,TargetType.creature)) return false;
 	static void applyProtector(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
@@ -15584,6 +15642,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.lightningCharges.length;){
 		if(!updateLightningCharge(effects.lightningCharges[i],state)){
 			effects.removeLightningCharge(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.webPulls.length;){
+		if(!updateWebPull!B(effects.webPulls[i],state)){
+			effects.removeWebPull(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.cagePulls.length;){
+		if(!updateCagePull!B(effects.cagePulls[i],state)){
+			effects.removeCagePull(i);
 			continue;
 		}
 		i++;

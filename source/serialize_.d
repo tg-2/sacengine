@@ -594,6 +594,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Bli
 void serialize(alias sink,B)(ref LightningCharge!B lightningCharge){ serializeStruct!sink(lightningCharge); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==LightningCharge!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B,PullType type)(ref Pull!(type,B) pull){ serializeStruct!sink(pull); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Pull!(type,B),PullType type)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref Protector!B protector){ serializeStruct!sink(protector); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Protector!B)){ deserializeStruct(result,state,data); }
 

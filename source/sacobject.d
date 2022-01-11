@@ -344,9 +344,7 @@ final class SacObject(B){
 		return hand.position*animations[animationState].frames[frame].matrices[hand.bone];
 	}
 	Vector3f firstShotPosition(AnimationState animationState){
-		auto tick=animations[animationState].firstShootTick;
-		if(tick==-1) return Vector3f(0.0f,0.0f,0.0f);
-		return shotPosition(animationState,tick);
+		return shotPosition(animationState,firstShootTick(animationState));
 	}
 	int castingTime(AnimationState animationState){
 		return max(0,min(numFrames(animationState)-1,animations[animationState].castingTime));
