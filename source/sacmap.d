@@ -176,10 +176,10 @@ final class SacMap(B){
 	}
 
 	Tuple!(int,"j",int,"i") getTile(Vector3f pos){
-		return tuple!("j","i")(cast(int)(n-1-pos.y/10),cast(int)(pos.x/10));
+		return tuple!("j","i")(cast(int)(pos.y/10),cast(int)(pos.x/10));
 	}
 	Vector3f getVertex(T)(int j,int i,T displacement){
-		int x=10*i,y=10*(n-1-j);
+		int x=10*i,y=10*j;
 		return Vector3f(x,y,heights[max(0,min(j,cast(int)$-1))][max(0,min(i,cast(int)$-1))]+displacement(x,y));
 	}
 	Tuple!(Tuple!(int,"j",int,"i")[3][2],"tri",int,"nt") getTriangles(bool invert=false)(int j,int i){
@@ -194,21 +194,21 @@ final class SacMap(B){
 		}
 		static if(!invert){
 			if(!edges[j][i]){
-				if(!edges[j+1][i+1]&&!edges[j][i+1]) makeTri!([0,2,1]);
-			}else if(!edges[j][i+1]&&!edges[j+1][i+1]&&!edges[j+1][i]) makeTri!([1,3,2]);
+				if(!edges[j+1][i+1]&&!edges[j][i+1]) makeTri!([0,1,2]);
+			}else if(!edges[j][i+1]&&!edges[j+1][i+1]&&!edges[j+1][i]) makeTri!([1,2,3]);
 			if(!edges[j+1][i+1]){
-				if(!edges[j][i]&&!edges[j+1][i]) makeTri!([2,0,3]);
-			}else if(!edges[j][i]&&!edges[j][i+1]&&!edges[j+1][i]) makeTri!([0,3,1]);
+				if(!edges[j][i]&&!edges[j+1][i]) makeTri!([2,3,0]);
+			}else if(!edges[j][i]&&!edges[j][i+1]&&!edges[j+1][i]) makeTri!([0,1,3]);
 		}else{
 			if(edges[j][i]){
-				if(!edges[j+1][i+1]&&!edges[j][i+1]) makeTri!([2,0,3]);
-			}else if(!edges[j][i+1]&&!edges[j+1][i+1]&&!edges[j+1][i]) makeTri!([0,3,1]);
+				if(!edges[j+1][i+1]&&!edges[j][i+1]) makeTri!([2,3,0]);
+			}else if(!edges[j][i+1]&&!edges[j+1][i+1]&&!edges[j+1][i]) makeTri!([0,1,3]);
 			if(!edges[j+1][i+1]){
-				if(!edges[j][i]&&!edges[j+1][i]) makeTri!([0,2,1]);
-			}else if(!edges[j][i]&&!edges[j][i+1]&&!edges[j+1][i]) makeTri!([1,3,2]);
+				if(!edges[j][i]&&!edges[j+1][i]) makeTri!([0,1,2]);
+			}else if(!edges[j][i]&&!edges[j][i+1]&&!edges[j+1][i]) makeTri!([1,2,3]);
 			if(nt==0){
-				makeTri!([0,2,1]);
-				makeTri!([2,0,3]);
+				makeTri!([0,1,2]);
+				makeTri!([2,3,0]);
 			}
 		}
 		return tuple!("tri","nt")(tri,nt);
@@ -373,14 +373,14 @@ int di(int k)@nogc{ return k==1||k==2; }
 int dj(int k)@nogc{ return k==2||k==3; }
 void getFaces(O)(bool[][] edges,int j,int i,O o){
 	if(!edges[j][i]){
-		if(!edges[j+1][i+1]&&!edges[j][i+1]) o.put([0,2,1]);
-	}else if(!edges[j][i+1]&&!edges[j+1][i+1]&&!edges[j+1][i]) o.put([1,3,2]);
+		if(!edges[j+1][i+1]&&!edges[j][i+1]) o.put([0,1,2]);
+	}else if(!edges[j][i+1]&&!edges[j+1][i+1]&&!edges[j+1][i]) o.put([1,2,3]);
 	if(!edges[j+1][i+1]){
-		if(!edges[j][i]&&!edges[j+1][i]) o.put([2,0,3]);
-	}else if(!edges[j][i]&&!edges[j][i+1]&&!edges[j+1][i]) o.put([0,3,1]);
+		if(!edges[j][i]&&!edges[j+1][i]) o.put([2,3,0]);
+	}else if(!edges[j][i]&&!edges[j][i+1]&&!edges[j+1][i]) o.put([0,1,3]);
 }
-Vector3f getVertex(int n,int m,float[][] heights,int j,int i){ return Vector3f(10*i,10*(n-1-j),heights[j][i]); }
-Vector2f getVertex2D(int n,int m,int j,int i){ return Vector2f(10*i,10*(n-1-j)); }
+Vector3f getVertex(int n,int m,float[][] heights,int j,int i){ return Vector3f(10*i,10*j,heights[j][i]); }
+Vector2f getVertex2D(int n,int m,int j,int i){ return Vector2f(10*i,10*j); }
 
 Vector3f[][] generateNormals(int n,int m,bool[][] edges, float[][] heights){
 	auto normals=new Vector3f[][](n,m);
@@ -413,7 +413,7 @@ Tuple!(uint[],uint[]) getVertexAndFaceCount(int n,int m,bool[][] edges,ubyte[][]
 	auto numFaces=new uint[](257);
 	foreach(j;0..n-1){
 		foreach(i;0..m-1){
-			auto t=tiles[n-2-j][i];
+			auto t=tiles[j][i];
 			int faces=0;
 			struct FaceCounter{
 				void put(uint[3]){
@@ -452,7 +452,7 @@ B.TerrainMesh[] createMeshes(B)(bool[][] edges, float[][] heights, ubyte[][] til
 	auto meshes=new B.TerrainMesh[](numMapMeshes);
 	foreach(j;0..n-1){
 		foreach(i;0..m-1){
-			auto t=tiles[n-2-j][i];
+			auto t=tiles[j][i];
 			if(!meshes[t]){
 				if(!numFaces[t]) continue;
 				meshes[t]=B.makeTerrainMesh(numVertices[t], numFaces[t]);
@@ -470,12 +470,12 @@ B.TerrainMesh[] createMeshes(B)(bool[][] edges, float[][] heights, ubyte[][] til
 			foreach(k;0..4){
 				meshes[t].vertices[curVertex[t]+k]=getVertex(j+dj(k),i+di(k));
 				meshes[t].normals[curVertex[t]+k]=normals[j+dj(k)][i+di(k)];
-				meshes[t].coords[curVertex[t]+k]=Vector2f(i+di(k),n-1-(j+dj(k)))/256.0f;
-				meshes[t].texcoords[curVertex[t]+k]=Vector2f(di(k),!dj(k));
+				meshes[t].coords[curVertex[t]+k]=Vector2f(i+di(k),j+dj(k))/256.0f;
+				meshes[t].texcoords[curVertex[t]+k]=Vector2f(di(k),dj(k));
 				if(addBottom){
 					meshes[bottomIndex].vertices[curVertex[bottomIndex]+k]=getVertex(j+dj(k),i+di(k))+Vector3f(0,0,-mapDepth);
 					meshes[bottomIndex].normals[curVertex[bottomIndex]+k]=-normals[j+dj(k)][i+di(k)];
-					meshes[bottomIndex].coords[curVertex[bottomIndex]+k]=Vector2f(i+di(k),n-1-(j+dj(k)))/256.0f;
+					meshes[bottomIndex].coords[curVertex[bottomIndex]+k]=Vector2f(i+di(k),j+dj(k))/256.0f;
 					meshes[bottomIndex].texcoords[curVertex[bottomIndex]+k]=Vector2f(di(k),1);
 				}
 			}
@@ -505,11 +505,11 @@ B.TerrainMesh[] createMeshes(B)(bool[][] edges, float[][] heights, ubyte[][] til
 				   edges[y1][x1]||edges[y2][x2]||!someNonEdge.any!((k)=>!edges[k[1]][k[0]])) return;
 				auto off=to!uint(edgeVertices.length);
 				edgeVertices~=[getVertex(y1,x1),getVertex(y2,x2),getVertex(y2,x2)+Vector3f(0,0,-mapDepth),getVertex(y1,x1)+Vector3f(0,0,-mapDepth)];
-				auto normal=cross(edgeVertices[$-3]-edgeVertices[$-1],edgeVertices[$-2]-edgeVertices[$-1]);
+				auto normal=cross(edgeVertices[$-2]-edgeVertices[$-1],edgeVertices[$-3]-edgeVertices[$-1]);
 				foreach(k;0..4) edgeNormals~=normal.normalized;
-				edgeCoords~=[Vector2f(x1,n-1-y1)/256.0,Vector2f(x2,n-1-y2)/256.0,Vector2f(x2,n-1-y2)/256.0,Vector2f(x1,n-1-y1)/256.0];
+				edgeCoords~=[Vector2f(x1,y1)/256.0,Vector2f(x2,y2)/256.0,Vector2f(x2,y2)/256.0,Vector2f(x1,y1)/256.0];
 				edgeTexcoords~=[Vector2f(0,0),Vector2f(1,0),Vector2f(1,1),Vector2f(0,1)];
-				edgeFaces~=[[off+0,off+1,off+2],[off+2,off+3,off+0]];
+				edgeFaces~=[[off+0,off+2,off+1],[off+2,off+0,off+3]];
 			}
 			makeEdge(i,j,i+1,j,only(tuple(i,j-1),tuple(i+1,j-1)).filter!(x=>!!j),only(tuple(i,j+1),tuple(i+1,j+1)));
 			makeEdge(i+1,j+1,i,j+1,only(tuple(i+1,j+2),tuple(i,j+2)).filter!(x=>j+1!=n-1),only(tuple(i,j),tuple(i+1,j)));
@@ -549,7 +549,7 @@ B.MinimapMesh[] createMinimapMeshes(B)(bool[][] edges, ubyte[][] tiles){
 	auto meshes=new B.MinimapMesh[](numMapMeshes);
 	foreach(j;0..n-1){
 		foreach(i;0..m-1){
-			auto t=tiles[n-2-j][i];
+			auto t=tiles[j][i];
 			if(!meshes[t]){
 				if(!numFaces[t]) continue;
 				meshes[t]=B.makeMinimapMesh(numVertices[t], numFaces[t]);
@@ -564,7 +564,7 @@ B.MinimapMesh[] createMinimapMeshes(B)(bool[][] edges, ubyte[][] tiles){
 			if(!faces) continue;
 			foreach(k;0..4){
 				meshes[t].vertices[curVertex[t]+k]=getVertex(j+dj(k),i+di(k));
-				meshes[t].texcoords[curVertex[t]+k]=Vector2f(di(k),!dj(k));
+				meshes[t].texcoords[curVertex[t]+k]=Vector2f(di(k),dj(k));
 			}
 			struct ProcessFaces2{
 				void put(uint[3] f){

@@ -20,7 +20,7 @@ HMap parseHMap(ubyte[] data){
 	auto heights=new float[][](width,height);
 	foreach(y;0..height){
 		foreach(x;0..width){
-			auto elevation=hmapData[(height-1-y)*width+x];
+			auto elevation=hmapData[y*width+x];
 			auto isVoid=!!(elevation&(1<<15));
 			elevation&=~(1<<15);
 			edges[y][x]=isVoid;

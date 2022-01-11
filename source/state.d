@@ -506,7 +506,7 @@ class PathFinder(B){
 	bool[512][512] free;
 	private static bool isFree(int x,int y,bool[][] edges){
 		if(x<=0||y<=0||x+1>=xlen||y+1>=ylen) return false;
-		int nx=x/2, ny=cast(int)ylen/2-1-(y+1)/2;
+		int nx=x/2, ny=y/2;
 		if(!(x&1)&&!(y&1)) return !edges[ny][nx]&&!edges[ny][nx-1]&&!edges[ny-1][nx]&&!edges[ny][nx+1]&&!edges[ny+1][nx];
 		if((x&1)&&(y&1)) return !edges[ny][nx]&&!edges[ny][nx+1]&&!edges[ny+1][nx]&&!edges[ny+1][nx+1];
 		if(x&1&&!(y&1)){
