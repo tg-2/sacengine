@@ -1510,7 +1510,7 @@ static:
 
 	Material createMaterial(SacParticle!DagonBackend particle){
 		final switch(particle.type) with(ParticleType){
-			case manafount, manalith, manahoar, shrine, firy, fire, fireball, explosion, explosion2, speedUp, heal, scarabHit, relativeHeal, ghostTransition, ghost, lightningCasting, chainLightningCasting, needle, freeze, etherealFormSpark, shard, redVortexDroplet, blueVortexDroplet, spark, castPersephone, castPersephone2, castPyro, castJames, castStratos, castCharnel, castCharnel2, wrathCasting, wrathExplosion1, wrathExplosion2, wrathParticle, gnomeHit, steam, ashParticle, smoke, dirt, dust, rock, poison, relativePoison, swarmHit, slime, locustBlood, locustDebris:
+			case manafount, manalith, manahoar, shrine, firy, fire, fireball, explosion, explosion2, speedUp, heal, scarabHit, relativeHeal, ghostTransition, ghost, lightningCasting, chainLightningCasting, needle, freeze, etherealFormSpark, shard, redVortexDroplet, blueVortexDroplet, spark, castPersephone, castPersephone2, castPyro, castJames, castStratos, castCharnel, castCharnel2, wrathCasting, wrathExplosion1, wrathExplosion2, wrathParticle, gnomeHit, steam, ashParticle, smoke, dirt, dust, rock, webDebris, poison, relativePoison, swarmHit, slime, locustBlood, locustDebris:
 				auto mat=makeMaterial(scene.shadelessMaterialBackend);
 				mat.depthWrite=false;
 				mat.blending=particle.type.among(ashParticle,smoke,dirt,dust,rock,poison,relativePoison,swarmHit,slime,locustBlood)?Transparent:Additive;

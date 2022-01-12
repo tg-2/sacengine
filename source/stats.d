@@ -62,9 +62,11 @@ struct Effects{
 	@property bool vined(){ return numVines!=0; }
 	@property bool regenerationBlocked(){ return poisonDamage!=0||immobilized||ringsOfFire||slimed||vined; }
 	@property bool manaBlocked(){ return numManaBlocks!=0; }
+	@property bool shielded(){
+		return lifeShield||skinOfStone||etherealForm||fireform||protectiveSwarm||airShield;
+	}
 	@property bool ccProtected(){
-		return lifeShield||skinOfStone||etherealForm||fireform||protectiveSwarm||airShield
-			||petrified||frozen||ringsOfFire||slimed||vined;
+		return shielded||petrified||frozen||ringsOfFire||slimed||vined;
 	}
 	@property bool stoneEffect(){ return petrified||skinOfStone; }
 	@property bool immobilized(){ return petrified||frozen; }

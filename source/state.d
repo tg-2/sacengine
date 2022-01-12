@@ -804,6 +804,7 @@ bool isSacDoctor(B)(ref MovingObject!B obj){ return obj.sacObject.isSacDoctor; }
 bool isHero(B)(ref MovingObject!B obj){ return obj.sacObject.isHero; }
 bool isFamiliar(B)(ref MovingObject!B obj){ return obj.sacObject.isFamiliar; }
 
+bool isShielded(B)(ref MovingObject!B obj){ return obj.creatureStats.effects.shielded; }
 bool isCCProtected(B)(ref MovingObject!B obj){ return obj.creatureStats.effects.ccProtected; }
 bool isHealBlocked(B)(ref MovingObject!B obj){ return obj.creatureStats.effects.healBlocked; }
 bool isGuardian(B)(ref MovingObject!B obj){ return obj.creatureStats.effects.isGuardian; }
@@ -2178,11 +2179,13 @@ struct LightningCasting(B){
 enum numLightningSegments=10;
 struct LightningBolt{
 	Vector3f[numLightningSegments+1] displacement;
-	void changeShape(float size=2.5f,B)(ObjectState!B state){
+	void changeShape(float size=2.5f,B,T...)(ObjectState!B state,T sizeFactor) if(T.length<=1){
 		foreach(k,ref disp;displacement){
 			static immutable Vector3f[2] box=[-0.5f*size*Vector3f(1.0f,1.0f,1.0f),0.5f*size*Vector3f(1.0f,1.0f,1.0f)];
 			disp=Vector3f(0.0f,0.0f,10.0f*k/numLightningSegments);
-			if(0<k&&k<numLightningSegments) disp+=state.uniform(box);
+			static if(!sizeFactor.length) enum factor=1.0f;
+			else auto factor=sizeFactor[0];
+			if(0<k&&k<numLightningSegments) disp+=factor*state.uniform(box);
 		}
 	}
 	Vector3f get(float t){
@@ -3108,18 +3111,12 @@ enum PullType{
 	webPull,
 	cagePull,
 }
-enum PullStatus{
-	shooting,
-	growing,
-	pulling,
-}
 struct Pull(PullType which,B){
 	int creature;
 	int target;
 	SacSpell!B ability;
 	enum numShootFrames=20;
 	enum numGrowFrames=20;
-	PullStatus status;
 	int frame=0;
 	int numPulls=0;
 	float radius=float.infinity;
@@ -3127,6 +3124,18 @@ struct Pull(PullType which,B){
 	enum numPullFrames=30;
 	enum minThreadLength=5.0f;
 	int pullFrames=0;
+
+	static if(which==PullType.cagePull){
+		enum maxBoltScale=1.0f;
+		float boltScale=maxBoltScale;
+		enum boltScaleGrowth=2.0f;
+		enum totalFrames=64;
+		enum changeShapeDelay=6;
+		LightningBolt bolt;
+		void changeShape(ObjectState!B state){
+			bolt.changeShape!(2.5f)(state,boltScale);
+		}
+	}
 }
 alias WebPull(B)=Pull!(PullType.webPull,B);
 alias CagePull(B)=Pull!(PullType.cagePull,B);
@@ -5225,7 +5234,7 @@ bool damageStun(B)(ref MovingObject!B object, Vector3f attackDirection, ObjectSt
 }
 
 bool canCatapult(B)(ref MovingObject!B object){
-	return object.creatureState.mode.canCatapult && !object.creatureStats.effects.fixed;
+	return object.creatureState.mode.canCatapult;
 }
 void catapult(B)(ref MovingObject!B object, Vector3f velocity, ObjectState!B state){
 	if(!object.canCatapult) return;
@@ -5235,15 +5244,18 @@ void catapult(B)(ref MovingObject!B object, Vector3f velocity, ObjectState!B sta
 		object.creatureState.mode=CreatureMode.stunned;
 	if(object.creatureState.movement!=CreatureMovement.tumbling){
 		object.creatureState.movement=CreatureMovement.tumbling;
-		object.creatureState.fallingVelocity=velocity;
+		if(!object.creatureStats.effects.fixed)
+			object.creatureState.fallingVelocity=velocity;
 		object.setCreatureState(state);
-	}else object.creatureState.fallingVelocity+=velocity;
+	}else if(!object.creatureStats.effects.fixed)
+		object.creatureState.fallingVelocity+=velocity;
 }
 
 bool canPush(B)(ref MovingObject!B object){
 	return object.creatureState.mode.canPush;
 }
 void push(B)(ref MovingObject!B object, Vector3f velocity, ObjectState!B state){
+	if(object.creatureStats.effects.fixed) return;
 	auto newPosition=object.position+velocity/updateFPS;
 	if(object.creatureState.movement==CreatureMovement.onGround){
 		if(!state.isOnGround(newPosition)) return;
@@ -7513,7 +7525,7 @@ bool moveTo(B)(ref MovingObject!B object,Vector3f targetPosition,float targetFac
 bool moveWithinRange(B)(ref MovingObject!B object,Vector3f targetPosition,float range,ObjectState!B state,bool evade=true,bool maintainHeight=false,bool stayAboveGround=true,int targetId=0,bool disablePathfinding=false){
 	auto speed=object.speed(state)/updateFPS;
 	auto distancesqr=(object.position-targetPosition).lengthsqr;
-	if(distancesqr<=(range-speed)^^2)
+	if(distancesqr<=range^^2)
 		return false;
 	object.moveTowards(targetPosition,range,state,evade,maintainHeight,stayAboveGround,targetId,disablePathfinding);
 	return true;
@@ -7572,7 +7584,7 @@ float shootRange(B)(ref MovingObject!B object,ObjectState!B state){
 float useAbilityDistance(B)(ref MovingObject!B object,ObjectState!B state){
 	if(auto ab=object.ability){
 		if(ab.tag==SpellTag.devour) return boxSize(object.hitbox).length;
-		return 0.8f*ab.range; // TODO: figure out the range limit for AI
+		return ab.range;
 	}
 	return 0.0f;
 }
@@ -8054,6 +8066,11 @@ bool devourSoul(B)(ref MovingObject!B object,int soulId,SacSpell!B ability,Objec
 }
 
 bool pull(PullType type,B)(ref MovingObject!B object,int target,SacSpell!B ability,ObjectState!B state){
+	auto startPos=object.shotPosition,endPos=state.movingObjectById!((ref tobj)=>tobj.center,()=>Vector3f.init)(target);
+	if(isNaN(endPos.x)) return false;
+	static bool filter(ref ProximityEntry entry,int id){ return entry.id!=id; }
+	auto newTarget=state.collideRay!filter(startPos,startPos-endPos,1.0f,object.id);
+	if(newTarget.type!=TargetType.none) target=newTarget.id;
 	object.startPulling(state);
 	state.addEffect(Pull!(type,B)(object.id,target,ability));
 	return true;
@@ -8170,7 +8187,7 @@ bool isRangedAbility(B)(SacSpell!B ability){ // TODO: put this directly in SacSp
 	switch(ability.tag){
 		case SpellTag.blightMites: return true;
 		case SpellTag.devour: return true;
-		case SpellTag.webPull, SpellTag.cagePull: return true;
+		case SpellTag.webPull,SpellTag.cagePull: return true;
 		default: return false;
 	}
 }
@@ -8189,7 +8206,7 @@ bool checkAbility(B)(ref MovingObject!B object,SacSpell!B ability,OrderTarget ta
 
 bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,OrderTarget target,ObjectState!B state){
 	if(object.ability!is ability) return false;
-	if(!object.checkAbility(ability,target,state)) return false;
+	if(!isRangedAbility(ability)&&!object.checkAbility(ability,target,state)) return false;
 	void apply(){
 		object.drainMana(ability.manaCost,state);
 		object.creatureStats.effects.abilityCooldown=cast(int)(ability.cooldown*updateFPS);
@@ -14791,6 +14808,38 @@ AnimationState pullAnimation(B)(ref MovingObject!B object){
 	}
 }
 
+void animateWebPullBreaking(B)(Vector3f[2] hitbox,ObjectState!B state){
+	if(isNaN(hitbox[0].x)) return;
+	enum numParticles=64;
+	auto sacParticle=SacParticle!B.get(ParticleType.webDebris);
+	auto center=boxCenter(hitbox);
+	foreach(i;0..numParticles){
+		auto position=state.uniform(scaleBox(hitbox,0.9f));
+		auto direction=state.uniformDirection();
+		auto velocity=state.uniform(7.5f,15.0f)*direction;
+		auto scale=state.uniform(1.0f,1.5f)*boxSize(hitbox).length;
+		int lifetime=95;
+		int frame=0;
+		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+	}
+}
+
+void animateCagePullBreaking(B)(Vector3f[2] hitbox,ObjectState!B state){
+	if(isNaN(hitbox[0].x)) return;
+	enum numParticles=64;
+	auto sacParticle=SacParticle!B.get(ParticleType.spark);
+	auto center=boxCenter(hitbox);
+	foreach(i;0..numParticles){
+		auto position=state.uniform(scaleBox(hitbox,0.9f));
+		auto direction=state.uniformDirection();
+		auto velocity=state.uniform(7.5f,15.0f)*direction;
+		auto scale=state.uniform(0.5f,1.0f)*boxSize(hitbox).length;
+		int lifetime=95;
+		int frame=0;
+		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+	}
+}
+
 enum webGain=4.0f, cageGain=4.0f;
 bool updatePull(PullType type,B)(ref Pull!(type,B) pull,ObjectState!B state){
 	with(pull){
@@ -14800,13 +14849,22 @@ bool updatePull(PullType type,B)(ref Pull!(type,B) pull,ObjectState!B state){
 			else static if(type==PullType.cagePull) playSoundAt("hgac",target,state,cageGain);
 			else static assert(0);
 		}
-		return state.movingObjectById!((ref obj,state){
+		static if(type==PullType.cagePull){
+			if(pullFrames<=0){
+				boltScale=min(maxBoltScale,boltScale+boltScaleGrowth/updateFPS);
+				if(frame%changeShapeDelay==0) changeShape(state);
+			}
+		}
+		auto keep=frame<numShootFrames||state.movingObjectById!((ref obj,state){
 			if(!obj.creatureState.mode.isPulling) return false;
-			return state.movingObjectById!((ref tobj,obj,state){
+			if(!state.isValidTarget(target)) return false;
+			bool pullNow=obj.hasShootTick(state) && obj.animationState==obj.pullAnimation;
+			if(pullNow&&!checkAbility(obj,ability,centerTarget(target,state),state)) return false;
+			return state.movingObjectById!((ref tobj,obj,pullNow,state){
 				auto thread=tobj.center-(*obj).center;
 				auto threadDir=thread.normalized;
 				auto velocity=-pullSpeed*threadDir;
-				if((*obj).hasShootTick(state)){
+				if(pullNow){
 					numPulls++;
 					velocity.z+=5.0f*tobj.creatureStats.fallingAcceleration/updateFPS;
 					//velocity.z+=0.7f*thread.length/pullSpeed*tobj.creatureStats.fallingAcceleration;
@@ -14814,34 +14872,48 @@ bool updatePull(PullType type,B)(ref Pull!(type,B) pull,ObjectState!B state){
 					tobj.stunWithCooldown(stunCooldownFrames,state);
 					tobj.catapult(velocity,state);
 					pullFrames=numPullFrames;
+					static if(type==PullType.cagePull){
+						boltScale=0.0f;
+						changeShape(state);
+					}
 				}else if(--pullFrames>0){
 					//tobj.creatureState.fallingVelocity=-pullSpeed*threadDir+Vector3f(0.0f,0.0f,1.5f*tobj.creatureStats.fallingAcceleration/updateFPS);
 					//tobj.creatureState.fallingVelocity.z+=tobj.creatureStats.fallingAcceleration/updateFPS;
 					if(tobj.creatureState.movement==CreatureMovement.tumbling) tobj.creatureState.fallingVelocity=velocity;
 					else tobj.push(velocity,state);
 				}
-				if(numPulls>=4 && (*obj).frame+1>=obj.sacObject.numFrames(obj.animationState)){
-					(*obj).frame=0;
-					(*obj).startIdling(state);
+				if(numPulls>=4 && (*obj).frame+1>=obj.sacObject.numFrames(obj.animationState)*updateAnimFactor)
 					return false;
-				}
 				auto dist=thread.length;
-				if(dist>radius){
+				if(!tobj.creatureStats.effects.fixed && dist>radius){
 					auto diff=radius*threadDir-thread;
 					tobj.position+=0.5f*diff;
 					//tobj.catapult(-pullSpeed*threadDir/updateFPS,state);
 					auto badSpeed=dot(threadDir,tobj.creatureState.fallingVelocity);
 					if(badSpeed>0) tobj.creatureState.fallingVelocity-=0.5f*threadDir*badSpeed;
+					static if(type==PullType.cagePull){
+						static assert(updateFPS==60);
+						boltScale*=0.9f;
+					}
 				}
 				radius=(tobj.center-(*obj).center).length;
-				if(thread.length<minThreadLength){
-					(*obj).frame=0;
-					(*obj).startIdling(state);
+				if(numPulls>=1 && pullFrames<=0 && thread.length<minThreadLength)
 					return false;
-				}
 				return true;
-			},()=>false)(target,&obj,state);
+			},()=>false)(target,&obj,pullNow,state);
 		},()=>false)(creature,state);
+		if(!keep){
+			state.movingObjectById!((ref obj,state){
+				obj.frame=0;
+				obj.startIdling(state);
+			},(){})(creature,state);
+			state.movingObjectById!((ref tobj,state){
+				static if(type==PullType.webPull) animateWebPullBreaking(tobj.hitbox,state);
+				else animateCagePullBreaking(tobj.hitbox,state);
+			},(){})(target,state);
+			return false;
+		}
+		return keep;
 	}
 }
 bool updateWebPull(B)(ref WebPull!B webPull,ObjectState!B state){ return updatePull(webPull,state); }
@@ -17701,6 +17773,7 @@ TargetFlags summarize(bool simplified=false,B)(ref OrderTarget target,int side,O
 					if(obj.isHero) result|=TargetFlags.hero;
 					if(obj.isFamiliar) result|=TargetFlags.familiar;
 					if(obj.isSacDoctor) result|=TargetFlags.sacDoctor;
+					if(obj.isShielded) result|=TargetFlags.shielded;
 					if(obj.isCCProtected) result|=TargetFlags.ccProtected;
 					if(obj.isHealBlocked) result|=TargetFlags.healBlocked;
 					if(obj.isGuardian) result|=TargetFlags.guardian;

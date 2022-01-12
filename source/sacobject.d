@@ -587,6 +587,8 @@ final class SacObject(B){
 				}
 			}
 		}
+		if(tag.among(SpellTag.gremlin,SpellTag.seraph))
+			with(AnimationState) swap(animations[shoot0],animations[shoot1]);
 		if(dat2.saxsModel in overrides){
 			auto sac=overrides[dat2.saxsModel];
 			enforce(sac.isSaxs,"unsupported override");
@@ -866,7 +868,7 @@ B.Mesh[] makeSpriteMeshes(B,bool doubleSided=false,bool reverseOrder=false)(int 
 	foreach(i,ref mesh;meshes){
 		mesh=B.makeMesh(4,doubleSided?4:2);
 		static if(reverseOrder) int u=cast(int)(meshes.length-1-i)%nU,v=cast(int)(meshes.length-1-i)/nU;
-		else int u=cast(int)i%nU,v=cast(int)i/nV;
+		else int u=cast(int)i%nU,v=cast(int)i/nU;
 		foreach(k;0..4) mesh.vertices[k]=Vector3f(-0.5f*width+width*(k==1||k==2),-0.5f*height+height*(k==2||k==3),0.0f);
 		foreach(k;0..4) mesh.texcoords[k]=Vector2f(texWidth/nU*(u+(k==1||k==2)),texHeight/nV*(v+(k==0||k==1)));
 		static if(doubleSided) static immutable uint[3][] indices=[[0,1,2],[2,3,0],[0,2,1],[2,0,3]];
@@ -949,6 +951,7 @@ enum ParticleType{
 	dirt,
 	dust,
 	rock,
+	webDebris,
 	steam,
 	smoke,
 	poison,
@@ -995,7 +998,7 @@ final class SacParticle(B){
 				return true;
 			case smoke,dirt,dust:
 				return false;
-			case rock:
+			case rock,webDebris:
 				return true;
 			case poison,relativePoison:
 				return false;
@@ -1021,7 +1024,7 @@ final class SacParticle(B){
 				return false;
 			case castPersephone,castPersephone2,castPyro,castJames,castStratos,castCharnel,castCharnel2:
 				return false;
-			case wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,gnomeHit,ashParticle,steam,smoke,dirt,dust,rock,poison,swarmHit,slime:
+			case wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,gnomeHit,ashParticle,steam,smoke,dirt,dust,rock,webDebris,poison,swarmHit,slime:
 				return false;
 			case relativePoison:
 				return true;
@@ -1031,7 +1034,7 @@ final class SacParticle(B){
 	}
 	@property bool bumpOffGround(){
 		switch(type) with(ParticleType){
-			case scarabHit,ghostTransition,wrathParticle,gnomeHit,ashParticle,rock,swarmHit,slime,needle,redVortexDroplet,blueVortexDroplet,spark: return true;
+			case scarabHit,ghostTransition,wrathParticle,gnomeHit,ashParticle,rock,webDebris,swarmHit,slime,needle,redVortexDroplet,blueVortexDroplet,spark: return true;
 			default: return false;
 		}
 	}
@@ -1249,6 +1252,12 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/rock.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
+			case webDebris:
+				width=height=1.0f;
+				this.energy=1.0f;
+				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/gend.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
 			case poison,relativePoison:
 				width=height=1.0f;
 				this.energy=1.0f;
@@ -1352,6 +1361,8 @@ final class SacParticle(B){
 				return 0.75f*(lifetime>=numFrames-(delay-1)?(numFrames-lifetime)/float(delay):(lifetime/float(numFrames-delay)))^^2;
 			case rock:
 				return min(1.0f,(lifetime/(1.5f*numFrames)));
+			case webDebris:
+				return min(1.0f,(lifetime/(1.5f*numFrames)));
 			case dirt:
 				return min(1.0f,(lifetime/(0.25f*numFrames)));
 			case dust:
@@ -1401,6 +1412,8 @@ final class SacParticle(B){
 			case smoke:
 				return 1.0f/(lifetime/float(numFrames)+0.2f);
 			case rock:
+				return min(1.0f,lifetime/(3.0f*numFrames));
+			case webDebris:
 				return min(1.0f,lifetime/(3.0f*numFrames));
 			case dirt,dust:
 				return 1.0f;
@@ -1765,7 +1778,7 @@ B.Mesh makeSphereMesh(B)(int numU,int numV,float radius,float u1=0.0f,float v1=0
 B.Mesh[] makeSphereMeshes(B)(int numU,int numV,int nU,int nV,float radius,float texWidth=1.0f,float texHeight=1.0f){
 	auto meshes=new B.Mesh[](nU*nV);
 	foreach(t,ref mesh;meshes){
-		int u=cast(int)t%nU,v=cast(int)t/nV;
+		int u=cast(int)t%nU,v=cast(int)t/nU;
 		mesh=B.makeMesh(2+numU*numV,2*numU*numV); // TODO: reuse makeSphereMesh here
 		int numFaces=0;
 		void addFace(uint[3] face...){
@@ -2277,6 +2290,22 @@ struct SacWeb(B){
 	B.Mesh mesh;
 	static B.Mesh createMesh(){
 		return makeSphereMesh!B(24,25,0.5f);
+	}
+}
+
+struct SacCage(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Stra.FLDR/txtr.FLDR/eweb.TXTR"));
+	}
+	B.Material material;
+	B.Mesh[8] frames;
+	enum animationDelay=2;
+	enum numFrames=8*updateAnimFactor*animationDelay;
+	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
+	static B.Mesh[8] createMeshes(){
+		enum nU=4,nV=2;
+		return makeSphereMeshes!B(24,25,nU,nV,0.5f)[0..8];
 	}
 }
 

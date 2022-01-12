@@ -483,6 +483,18 @@ struct Renderer(B){
 		auto mesh=typeof(return).createMesh();
 		return SacWeb!B(texture,mat,mesh);
 	}
+	SacCage!B cage;
+	SacCage!B createCage(){
+		import txtr;
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Additive;
+		mat.energy=10.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacCage!B(texture,mat,frames);
+	}
 	void createEffects(){
 		sacCommandCone=new SacCommandCone!B();
 		sacDebris=new SacObject!B("extracted/models/MODL.WAD!/bold.MRMC/bold.MRMM");
@@ -517,6 +529,7 @@ struct Renderer(B){
 		blightMite=createBlightMite();
 		cord=createCord();
 		web=createWeb();
+		cage=createCage();
 		slime=createSlime();
 		vine=createVine();
 		rainbow=createRainbow();
@@ -1064,6 +1077,7 @@ struct Renderer(B){
 					   (objects.lightnings.length||
 					    objects.chainLightningCastingEffects.length||
 					    objects.soulWindEffects.length||
+					    objects.cagePulls.length||
 					    objects.rituals.length)
 				){
 					auto material=self.lightning.material;
@@ -1127,6 +1141,21 @@ struct Renderer(B){
 						enum totalFrames=SoulWindEffect.totalFrames;
 						auto bolts=objects.soulWindEffects[j].bolts[];
 						renderBolts!totalFrames(bolts,start,end,frame,0.0f,1.0f);
+					}
+					foreach(j;0..objects.cagePulls.length){
+						auto creature=objects.cagePulls[j].creature;
+						auto start=state.movingObjectById!((ref obj)=>obj.shotPosition,()=>Vector3f.init)(creature);
+						if(isNaN(start.x)) continue;
+						auto target=objects.cagePulls[j].target;
+						auto end=state.movingObjectById!((ref obj)=>obj.center,()=>Vector3f.init)(target);
+						if(isNaN(end.x)) continue;
+						auto frame=objects.cagePulls[j].frame;
+						enum totalFrames=typeof(objects.cagePulls[j]).totalFrames;
+						enum travelDelay=typeof(objects.cagePulls[j]).numShootFrames;
+						auto α=0.0f,β=1.0f;
+						if(frame<travelDelay) β=frame/float(travelDelay);
+						auto bolts=(&objects.cagePulls[j].bolt)[0..1];
+						renderBolts!(totalFrames,0.75f)(bolts,start,end,frame,α,β);
 					}
 					foreach(j;0..objects.rituals.length){
 						auto frame=objects.rituals[j].frame;
@@ -1812,6 +1841,23 @@ struct Renderer(B){
 					foreach(ref webPull;objects.webPulls){
 						auto scale=max(0.0f,min(1.0f,float(webPull.frame-webPull.numShootFrames)/webPull.numGrowFrames));
 						renderWeb(webPull.target,scale);
+					}
+					material.unbind(rc);
+				}
+				static if(mode==RenderMode.transparent) if(objects.cagePulls.length){
+					auto material=self.cage.material;
+					material.bind(rc);
+					void renderCage(int target,int frame,float scale){
+						auto positionRotationBoxSize=state.movingObjectById!((ref obj)=>tuple(center(obj),obj.rotation,boxSize(obj.sacObject.largeHitbox(Quaternionf.identity(),obj.animationState,obj.frame/updateAnimFactor))), function Tuple!(Vector3f,Quaternionf,Vector3f)(){ return typeof(return).init; })(target);
+						auto position=positionRotationBoxSize[0], rotation=positionRotationBoxSize[1], boxSize=positionRotationBoxSize[2];
+						if(isNaN(position.x)) return;
+						material.backend.setTransformationScaled(position,rotation,scale*1.4f*boxSize,rc);
+						auto mesh=self.cage.getFrame(frame%self.cage.numFrames);
+						mesh.render(rc);
+					}
+					foreach(ref cagePull;objects.cagePulls){
+						auto scale=max(0.0f,min(1.0f,float(cagePull.frame-cagePull.numShootFrames)/cagePull.numGrowFrames));
+						renderCage(cagePull.target,cagePull.frame,scale);
 					}
 					material.unbind(rc);
 				}
