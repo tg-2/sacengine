@@ -14846,7 +14846,7 @@ enum webGain=4.0f, cageGain=4.0f;
 bool updatePull(PullType type,B)(ref Pull!(type,B) pull,ObjectState!B state){
 	with(pull){
 		++frame;
-		if(frame==numShootFrames){
+		if(frame==numShootFrames&&target){
 			static if(type==PullType.webPull) playSoundAt("hbew",target,state,webGain);
 			else static if(type==PullType.cagePull) playSoundAt("hgac",target,state,cageGain);
 			else static assert(0);
@@ -14909,7 +14909,7 @@ bool updatePull(PullType type,B)(ref Pull!(type,B) pull,ObjectState!B state){
 				obj.frame=0;
 				obj.startIdling(state);
 			},(){})(creature,state);
-			state.movingObjectById!((ref tobj,state){
+			if(target) state.movingObjectById!((ref tobj,state){
 				static if(type==PullType.webPull) animateWebPullBreaking(tobj.hitbox,state);
 				else animateCagePullBreaking(tobj.hitbox,state);
 			},(){})(target,state);
