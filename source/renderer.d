@@ -1147,7 +1147,7 @@ struct Renderer(B){
 						auto start=state.movingObjectById!((ref obj)=>obj.shotPosition,()=>Vector3f.init)(creature);
 						if(isNaN(start.x)) continue;
 						auto target=objects.cagePulls[j].target;
-						auto end=state.movingObjectById!((ref obj)=>obj.center,()=>Vector3f.init)(target);
+						auto end=target?state.movingObjectById!((ref obj)=>obj.center,()=>Vector3f.init)(target):Vector3f.init;
 						if(isNaN(end.x)) continue;
 						auto frame=objects.cagePulls[j].frame;
 						enum totalFrames=typeof(objects.cagePulls[j]).totalFrames;
@@ -1848,7 +1848,7 @@ struct Renderer(B){
 					auto material=self.cage.material;
 					material.bind(rc);
 					void renderCage(int target,int frame,float scale){
-						auto positionRotationBoxSize=state.movingObjectById!((ref obj)=>tuple(center(obj),obj.rotation,boxSize(obj.sacObject.largeHitbox(Quaternionf.identity(),obj.animationState,obj.frame/updateAnimFactor))), function Tuple!(Vector3f,Quaternionf,Vector3f)(){ return typeof(return).init; })(target);
+						auto positionRotationBoxSize=target?state.movingObjectById!((ref obj)=>tuple(center(obj),obj.rotation,boxSize(obj.sacObject.largeHitbox(Quaternionf.identity(),obj.animationState,obj.frame/updateAnimFactor))), function Tuple!(Vector3f,Quaternionf,Vector3f)(){ return typeof(return).init; })(target):Tuple!(Vector3f,Quaternionf,Vector3f).init;
 						auto position=positionRotationBoxSize[0], rotation=positionRotationBoxSize[1], boxSize=positionRotationBoxSize[2];
 						if(isNaN(position.x)) return;
 						material.backend.setTransformationScaled(position,rotation,scale*1.4f*boxSize,rc);

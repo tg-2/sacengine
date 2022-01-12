@@ -14859,7 +14859,7 @@ bool updatePull(PullType type,B)(ref Pull!(type,B) pull,ObjectState!B state){
 		}
 		auto keep=frame<numShootFrames||state.movingObjectById!((ref obj,state){
 			if(!obj.creatureState.mode.isPulling) return false;
-			if(!state.isValidTarget(target)) return false;
+			if(!target||!state.isValidTarget(target)) return false;
 			bool pullNow=obj.hasShootTick(state) && obj.animationState==obj.pullAnimation;
 			if(pullNow&&!checkAbility(obj,ability,centerTarget(target,state),state)) return false;
 			return state.movingObjectById!((ref tobj,obj,pullNow,state){
