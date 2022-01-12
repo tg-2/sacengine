@@ -7804,6 +7804,7 @@ bool shootOnTick(bool ability=false,B)(ref MovingObject!B object,OrderTarget tar
 bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,ObjectState!B state){
 	if(!isValidAttackTarget(targetId,state)&&(object.creatureState.mode!=CreatureMode.shooting||!state.isValidTarget(targetId))) return false; // TODO
 	if(object.rangedAttack !is rangedAttack) return false; // TODO: multiple ranged attacks?
+	if(!isValidAttackTarget(targetId,state)) return false;
 	auto target=OrderTarget(state.targetTypeFromId(targetId),targetId,Vector3f.init);
 	auto predicted=object.predictShotTargetPosition(rangedAttack,false,target,state);
 	if(isNaN(predicted.x)) return false;
@@ -8214,6 +8215,7 @@ bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,OrderTarget targ
 		object.creatureStats.effects.abilityCooldown=cast(int)(ability.cooldown*updateFPS);
 	}
 	bool shoot(){
+		if(!isValidAttackTarget(target.id,state)) return false;
 		auto predicted=object.predictShotTargetPosition(ability,true,target,state);
 		if(isNaN(predicted.x)) return false;
 		if(!object.aim!true(ability,target,predicted,state))
