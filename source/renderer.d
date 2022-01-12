@@ -495,6 +495,17 @@ struct Renderer(B){
 		auto frames=typeof(return).createMeshes();
 		return SacCage!B(texture,mat,frames);
 	}
+	SacStickyBomb!B stickyBomb;
+	SacStickyBomb!B createStickyBomb(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Transparent;
+		mat.energy=3.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacStickyBomb!B(texture,mat,frames);
+	}
 	void createEffects(){
 		sacCommandCone=new SacCommandCone!B();
 		sacDebris=new SacObject!B("extracted/models/MODL.WAD!/bold.MRMC/bold.MRMM");
@@ -530,6 +541,7 @@ struct Renderer(B){
 		cord=createCord();
 		web=createWeb();
 		cage=createCage();
+		stickyBomb=createStickyBomb();
 		slime=createSlime();
 		vine=createVine();
 		rainbow=createRainbow();
@@ -1865,6 +1877,24 @@ struct Renderer(B){
 						renderCage(cagePull.target,cagePull.frame,scale);
 					}
 					material.unbind(rc);
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.stickyBombs.length){
+					auto material=self.stickyBomb.material;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
+					foreach(j;0..objects.stickyBombs.length){
+						auto position=objects.stickyBombs[j].position;
+						if(auto target=objects.stickyBombs[j].target){
+							auto targetPositionTargetRotation=state.movingObjectById!((ref obj)=>tuple(obj.position,obj.rotation),()=>Tuple!(Vector3f,Quaternionf).init)(target);
+							auto targetPosition=targetPositionTargetRotation[0], targetRotation=targetPositionTargetRotation[1];
+							position=targetPosition+rotate(targetRotation,position);
+						}
+						auto frame=objects.stickyBombs[j].frame;
+						auto mesh=self.stickyBomb.getFrame(frame%self.stickyBomb.numFrames);
+						auto scale=objects.stickyBombs[j].scale;
+						material.backend.setSpriteTransformationScaled(position,scale*Vector3f(1.0f,1.0f,1.0f),rc);
+						mesh.render(rc);
+					}
 				}
 			}else static if(is(T==Particles!(B,relative,sideFiltered),bool relative,bool sideFiltered)){
 				static if(mode==RenderMode.transparent){

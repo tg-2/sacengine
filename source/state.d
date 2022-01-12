@@ -165,6 +165,7 @@ bool canBePoisoned(CreatureMode mode){
 	}
 }
 bool canBeInfectedByMites(CreatureMode mode){ return canBePoisoned(mode); }
+bool canBeStickyBombed(CreatureMode mode){ return canBePoisoned(mode); }
 bool canBePetrified(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
@@ -3142,6 +3143,20 @@ struct Pull(PullType which,B){
 alias WebPull(B)=Pull!(PullType.webPull,B);
 alias CagePull(B)=Pull!(PullType.cagePull,B);
 
+struct StickyBomb(B){
+	int creature;
+	int side;
+	Vector3f position;
+	Vector3f velocity;
+	SacSpell!B ability;
+	int target=0;
+	int infectionTime=0;
+	// int bone; // TODO: stick on bones
+	int frame=0;
+	float scale=1.0f;
+	enum fadeTime=0.5f;
+}
+
 struct Protector(B){
 	int id;
 	SacSpell!B ability;
@@ -4106,6 +4121,14 @@ struct Effects(B){
 	void removeCagePull(int i){
 		if(i+1<cagePulls.length) cagePulls[i]=move(cagePulls[$-1]);
 		cagePulls.length=cagePulls.length-1;
+	}
+	Array!(StickyBomb!B) stickyBombs;
+	void addEffect(StickyBomb!B stickyBomb){
+		stickyBombs~=stickyBomb;
+	}
+	void removeStickyBomb(int i){
+		if(i+1<stickyBombs.length) stickyBombs[i]=move(stickyBombs[$-1]);
+		stickyBombs.length=stickyBombs.length-1;
 	}
 	Array!(Protector!B) protectors;
 	void addEffect(Protector!B protector){
@@ -7792,6 +7815,9 @@ bool shootOnTick(bool ability=false,B)(ref MovingObject!B object,OrderTarget tar
 					break;
 				case SpellTag.webPull,SpellTag.cagePull:
 					return true;
+				case SpellTag.stickyBomb:
+					stickyBombShoot(object.id,object.side,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
+					break;
 				default: goto case SpellTag.brainiacShoot;
 			}
 			object.drainMana(drainedMana,state);
@@ -8081,6 +8107,16 @@ bool pull(PullType type,B)(ref MovingObject!B object,int target,SacSpell!B abili
 bool webPull(B)(ref MovingObject!B object,int target,SacSpell!B ability,ObjectState!B state){ return pull!(PullType.webPull)(object,target,ability,state); }
 bool cagePull(B)(ref MovingObject!B object,int target,SacSpell!B ability,ObjectState!B state){ return pull!(PullType.cagePull)(object,target,ability,state); }
 
+bool stickyBombShoot(B)(int creature,int side,float accuracy,Vector3f position,Vector3f target,SacSpell!B ability,ObjectState!B state){
+	playSoundAt("klab",position,state,4.0f); // TODO: move sound with projectile
+	foreach(i;0..10){
+		auto direction=getShotDirectionWithGravity(accuracy,position,target,ability,state);
+		direction+=0.2f*state.uniformDirection();
+		state.addEffect(StickyBomb!B(creature,side,position,direction*ability.speed,ability));
+	}
+	return true;
+}
+
 bool protector(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
 	if(object.creatureStats.effects.lifeShield) return false;
 	auto lifeShield=SacSpell!B.get(SpellTag.lifeShield);
@@ -8191,6 +8227,7 @@ bool isRangedAbility(B)(SacSpell!B ability){ // TODO: put this directly in SacSp
 		case SpellTag.blightMites: return true;
 		case SpellTag.devour: return true;
 		case SpellTag.webPull,SpellTag.cagePull: return true;
+		case SpellTag.stickyBomb: return true;
 		default: return false;
 	}
 }
@@ -8215,7 +8252,7 @@ bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,OrderTarget targ
 		object.creatureStats.effects.abilityCooldown=cast(int)(ability.cooldown*updateFPS);
 	}
 	bool shoot(){
-		if(!isValidAttackTarget(target.id,state)) return false;
+		if(target.id&&!isValidAttackTarget(target.id,state)) return false;
 		auto predicted=object.predictShotTargetPosition(ability,true,target,state);
 		if(isNaN(predicted.x)) return false;
 		if(!object.aim!true(ability,target,predicted,state))
@@ -8254,13 +8291,15 @@ bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,OrderTarget targ
 		case SpellTag.callLightning:
 			if(object.callLightning(ability,state)) apply();
 			return false;
+		case SpellTag.devour:
+			return shoot();
 		case SpellTag.webPull,SpellTag.cagePull:
+			return shoot();
+		case SpellTag.stickyBomb:
 			return shoot();
 		case SpellTag.protector:
 			if(object.protector(ability,state)) apply();
 			return false;
-		case SpellTag.devour:
-			return shoot();
 		default:
 			object.stun(state);
 			object.clearOrder(state);
@@ -14923,6 +14962,62 @@ bool updatePull(PullType type,B)(ref Pull!(type,B) pull,ObjectState!B state){
 bool updateWebPull(B)(ref WebPull!B webPull,ObjectState!B state){ return updatePull(webPull,state); }
 bool updateCagePull(B)(ref CagePull!B cagePull,ObjectState!B state){ return updatePull(cagePull,state); }
 
+enum stickyBombSize=0.25f;
+static immutable Vector3f[2] stickyBombHitbox=[-0.5f*stickyBombSize*Vector3f(1.0f,1.0f,1.0f),0.5f*stickyBombSize*Vector3f(1.0f,1.0f,1.0f)];
+int stickyBombCollisionTarget(B)(Vector3f position,int side,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state,int side){
+		return entry.isProjectileObstacle&&state.isValidTarget(entry.id,TargetType.building)&&state.staticObjectById!((ref obj,side)=>obj.side(state)!=side,()=>false)(entry.id,side)||
+			state.isValidTarget(entry.id,TargetType.creature)&&state.movingObjectById!((ref obj,side)=>obj.side!=side&&obj.creatureState.mode.canBeStickyBombed,()=>false)(entry.id,side);
+	}
+	return collisionTarget!(stickyBombHitbox,filter)(side,position,state,side);
+}
+bool updateStickyBomb(B)(ref StickyBomb!B stickyBomb,ObjectState!B state){
+	with(stickyBomb){
+		++frame;
+		bool vanish(){
+			velocity=Vector3f(0.0f,0.0f,0.0f);
+			scale-=1.0f/(fadeTime*updateFPS);
+			if(scale<=0.0f)
+				return false;
+			return true;
+		}
+		if(target){
+			auto keep=++infectionTime<=updateFPS*ability.duration;
+			if(!keep||state.movingObjectById!((ref obj,side)=>!obj.creatureState.mode.canBeStickyBombed,()=>true)(target,side)){
+				keep=false;
+				if(scale==1.0f) state.movingObjectById!((ref obj){ obj.creatureStats.effects.numStickyBombs-=1; },(){})(target);
+			}
+			if(!keep) return vanish();
+			return true;
+		}else{
+			if(scale==1.0f){
+				position+=velocity/updateFPS;
+				velocity.z-=ability.fallingAcceleration/updateFPS;
+			}else return vanish();
+			if(state.isOnGround(position)){
+				auto height=state.getGroundHeight(position);
+				if(height>=position.z){
+					position.z=height;
+					return vanish();
+				}
+			}
+			if(auto collisionTarget=stickyBombCollisionTarget(position,side,state)){
+				auto targetPositionTargetRotation=state.movingObjectById!((ref obj){
+						obj.creatureStats.effects.numStickyBombs+=1;
+						return tuple(obj.position,obj.rotation);
+					},()=>Tuple!(Vector3f,Quaternionf).init)(collisionTarget);
+				auto targetPosition=targetPositionTargetRotation[0], targetRotation=targetPositionTargetRotation[1];
+				if(!isNaN(targetPosition.x)){
+					playSoundAt("hlab",position,state,1.0f); // TODO: move sound with projectile
+					position=rotate(targetRotation.conj(),position-targetPosition);
+					target=collisionTarget;
+				}else return vanish();
+			}
+			return true;
+		}
+	}
+}
+
 bool updateProtector(B)(ref Protector!B protector,ObjectState!B state){
 	if(!state.isValidTarget(protector.id,TargetType.creature)) return false;
 	static void applyProtector(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
@@ -15839,6 +15934,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.cagePulls.length;){
 		if(!updateCagePull!B(effects.cagePulls[i],state)){
 			effects.removeCagePull(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.stickyBombs.length;){
+		if(!updateStickyBomb(effects.stickyBombs[i],state)){
+			effects.removeStickyBomb(i);
 			continue;
 		}
 		i++;

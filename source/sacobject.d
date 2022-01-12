@@ -2309,6 +2309,21 @@ struct SacCage(B){
 	}
 }
 
+struct SacStickyBomb(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Jame.FLDR/tex_ZERO_.FLDR/stky.TXTR"));
+	}
+	B.Material material;
+	B.Mesh[] frames;
+	enum animationDelay=2;
+	enum numFrames=16*animationDelay*updateAnimFactor;
+	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
+	static B.Mesh[] createMeshes(){
+		return makeSpriteMeshes!B(4,4,0.5f,0.5f);
+	}
+}
+
 struct SacLaser(B){
 	B.Texture texture;
 	B.Material material;

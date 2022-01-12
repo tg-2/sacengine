@@ -597,6 +597,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Lig
 void serialize(alias sink,B,PullType type)(ref Pull!(type,B) pull){ serializeStruct!sink(pull); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Pull!(type,B),PullType type)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref StickyBomb!B stickyBomb){ serializeStruct!sink(stickyBomb); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==StickyBomb!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref Protector!B protector){ serializeStruct!sink(protector); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Protector!B)){ deserializeStruct(result,state,data); }
 

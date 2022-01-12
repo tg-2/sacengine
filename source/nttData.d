@@ -1131,6 +1131,7 @@ enum SpellTag:char[4]{
 	devour="ifna",
 	webPull="psla",
 	cagePull="psaa",
+	stickyBomb="acia",
 	protector="HSba",
 	// passive abilities:
 	steamCloud="goc@",
