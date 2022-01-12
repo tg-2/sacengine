@@ -2200,13 +2200,15 @@ struct Lightning(B){
 	int side;
 	OrderTarget start,end;
 	SacSpell!B spell;
+	DamageMod damageMod;
 	int frame;
-	this(int wizard,int side,OrderTarget start,OrderTarget end,SacSpell!B spell,int frame){
+	this(int wizard,int side,OrderTarget start,OrderTarget end,SacSpell!B spell,DamageMod damageMod,int frame){
 		this.wizard=wizard;
 		this.side=side;
 		this.start=start;
 		this.end=end;
 		this.spell=spell;
+		this.damageMod=damageMod;
 		this.frame=frame;
 	}
 	LightningBolt[2] bolts;
@@ -6540,7 +6542,7 @@ bool castLightning(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectSt
 	return true;
 }
 
-bool lightning(B)(int wizard,int side,OrderTarget start,OrderTarget end,SacSpell!B spell,ObjectState!B state,bool updateTargets=true){
+bool lightning(B)(int wizard,int side,OrderTarget start,OrderTarget end,SacSpell!B spell,ObjectState!B state,bool updateTargets=true,DamageMod damageMod=DamageMod.lightning){
 	if(updateTargets){
 		auto startCenter=start.center(state),endCenter=end.center(state);
 		static bool filter(ref ProximityEntry entry,int id){ return entry.id!=id; }
@@ -6552,7 +6554,7 @@ bool lightning(B)(int wizard,int side,OrderTarget start,OrderTarget end,SacSpell
 		end.position=endCenter;
 	}
 	playSpellSoundTypeAt(SoundType.lightning,0.5f*(start.position+end.position),state,4.0f);
-	auto lightning=Lightning!B(wizard,side,start,end,spell,0);
+	auto lightning=Lightning!B(wizard,side,start,end,spell,damageMod,0);
 	foreach(ref bolt;lightning.bolts)
 		bolt.changeShape(state);
 	state.addEffect(lightning);
@@ -10661,7 +10663,7 @@ bool updateLightning(B)(ref Lightning!B lightning,ObjectState!B state){
 		auto target=lightning.end.id;
 		if(state.isValidTarget(target)){
 			auto direction=lightning.end.position-lightning.start.position;
-			dealSpellDamage(target,lightning.spell,lightning.wizard,lightning.side,direction,DamageMod.lightning,state);
+			dealSpellDamage(target,lightning.spell,lightning.wizard,lightning.side,direction,lightning.damageMod,state);
 		}
 	}
 	return true;
@@ -14789,7 +14791,7 @@ bool updateLightningCharge(B)(ref LightningCharge!B lightningCharge,ObjectState!
 				if(jdistsqr<shortJumpRange^^2||jdistsqr<jumpRange^^2&&state.uniform(3)!=0)
 					end=jumped;
 			}
-			lightning(creature,side,start,end,spell,state);
+			lightning(creature,side,start,end,spell,state,true,DamageMod.none);
 		}
 		return state.movingObjectById!((ref obj)=>--obj.creatureStats.effects.lightningChargeFrames>0,()=>false)(creature);
 	}
