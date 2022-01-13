@@ -1278,7 +1278,6 @@ final class Network(B){
 			// TODO: accept peer-to-peer connections to decrease latency
 		}
 		for(int i=0;i<pendingJoin.length;){
-			writeln(pendingJoin.length);
 			if(pendingJoin[i].ready){
 				auto p=pendingJoin[i].receive();
 				if(p.type==PacketType.join){
