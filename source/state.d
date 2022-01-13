@@ -12714,7 +12714,7 @@ void eruptExplosion(B)(ref Erupt!B erupt,ObjectState!B state){
 			auto direction=Vector3f(diff.x,diff.y,20.0f).normalized;
 			void dealDamage(){
 				if(difflen<erupt.spell.damageRange)
-					dealSplashSpellDamage(target,erupt.spell,erupt.wizard,erupt.side,direction,difflen,DamageMod.none,state);
+					dealSplashSpellDamage(obj,erupt.spell,erupt.wizard,erupt.side,direction,difflen,DamageMod.none,state);
 			}
 			static if(is(typeof(obj)==MovingObject!B,B)){
 				if(difflen<erupt.throwRange){
