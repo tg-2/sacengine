@@ -108,7 +108,7 @@ import dlib.math.portable: pi;
 	return 2.0f;
 }
 @property float fallingAcceleration(ref CreatureStats stats){
-	return 15.0f;
+	return 10.0f;
 }
 @property float landingSpeed(ref CreatureStats stats){
 	return 0.5f*stats.movementSpeed(true);

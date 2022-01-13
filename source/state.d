@@ -3123,7 +3123,7 @@ struct Pull(PullType which,B){
 	int frame=0;
 	int numPulls=0;
 	float radius=float.infinity;
-	enum pullSpeed=20.0f;
+	enum pullSpeed=17.5f;
 	enum numPullFrames=30;
 	enum minThreadLength=5.0f;
 	int pullFrames=0;
@@ -9167,7 +9167,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 		case CreatureMovement.tumbling:
 			if(object.creatureStats.effects.antiGravityTime<state.frame)
 				object.creatureState.fallingVelocity.z-=object.creatureStats.fallingAcceleration/updateFPS;
-			enum speedCap=60.0f; // TODO: figure out constant
+			enum speedCap=40.0f; // TODO: figure out constant
 			if(object.creatureState.fallingVelocity.lengthsqr>speedCap^^2) object.creatureState.fallingVelocity=object.creatureState.fallingVelocity.normalized*speedCap;
 			if(object.creatureStats.effects.fixed) break;
 			newPosition=object.position+object.creatureState.fallingVelocity/updateFPS;
@@ -12718,7 +12718,7 @@ void eruptExplosion(B)(ref Erupt!B erupt,ObjectState!B state){
 			}
 			static if(is(typeof(obj)==MovingObject!B,B)){
 				if(difflen<erupt.throwRange){
-					auto strength=25.0f*(1.0f-difflen/erupt.throwRange);
+					auto strength=20.0f*(1.0f-difflen/erupt.throwRange);
 					obj.catapult(direction*strength,state);
 					dealDamage();
 				}
@@ -14215,10 +14215,10 @@ bool updateVortexEffect(B)(ref VortexEffect!B vortex,ObjectState!B state){
 		static void influence(ProximityEntry target,ObjectState!B state,VortexEffect!B *vortex,float radius,float height){
 			state.movingObjectById!((ref obj,vortex,radius,height,state){
 				if(obj.creatureState.movement!=CreatureMovement.tumbling){
-					auto direction=(vortex.position.xy-obj.center.xy).normalized*5.0f;
-					//obj.catapult(Vector3f(1.5f*direction.x,1.5f*direction.y,4.5f),state);
-					//obj.catapult(Vector3f(1.5f*direction.y,-1.5f*direction.x,4.5f),state);
-					obj.catapult(Vector3f(direction.y,-direction.x,4.5f),state);
+					auto direction=(vortex.position.xy-obj.center.xy).normalized*3.0f;
+					//obj.catapult(Vector3f(1.5f*direction.x,1.5f*direction.y,3.5f),state);
+					//obj.catapult(Vector3f(1.5f*direction.y,-1.5f*direction.x,3.5f),state);
+					obj.catapult(Vector3f(direction.y,-direction.x,3.5f),state);
 				}
 				if(obj.creatureState.movement==CreatureMovement.tumbling){
 					auto acceleration=vortexForceField(obj.center-vortex.position,radius,height);
