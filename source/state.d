@@ -9231,6 +9231,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 					if(cand<minOverlap||cand==minOverlap&&state.uniform(2))
 						object.creatureState.fallingVelocity.z=0.0f;
 				}
+				object.creatureState.fallingVelocity.x=object.creatureState.fallingVelocity.y=0.0f;
 				break;
 		}
 		final switch(collisionDirection){
