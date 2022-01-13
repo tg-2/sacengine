@@ -9168,7 +9168,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 		case CreatureMovement.tumbling:
 			if(object.creatureStats.effects.antiGravityTime<state.frame)
 				object.creatureState.fallingVelocity.z-=object.creatureStats.fallingAcceleration/updateFPS;
-			enum speedCap=40.0f; // TODO: figure out constant
+			enum speedCap=20.0f; // TODO: figure out constant
 			if(object.creatureState.fallingVelocity.lengthsqr>speedCap^^2) object.creatureState.fallingVelocity=object.creatureState.fallingVelocity.normalized*speedCap;
 			if(object.creatureStats.effects.fixed) break;
 			newPosition=object.position+object.creatureState.fallingVelocity/updateFPS;
