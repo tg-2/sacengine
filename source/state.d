@@ -14217,10 +14217,10 @@ bool updateVortexEffect(B)(ref VortexEffect!B vortex,ObjectState!B state){
 		static void influence(ProximityEntry target,ObjectState!B state,VortexEffect!B *vortex,float radius,float height){
 			state.movingObjectById!((ref obj,vortex,radius,height,state){
 				if(obj.creatureState.movement!=CreatureMovement.tumbling){
-					auto direction=(vortex.position.xy-obj.center.xy).normalized*3.0f;
-					//obj.catapult(Vector3f(1.5f*direction.x,1.5f*direction.y,3.5f),state);
-					//obj.catapult(Vector3f(1.5f*direction.y,-1.5f*direction.x,3.5f),state);
-					obj.catapult(Vector3f(direction.y,-direction.x,3.5f),state);
+					auto direction=(vortex.position.xy-obj.center.xy).normalized*1.5f;
+					//obj.catapult(Vector3f(1.5f*direction.x,1.5f*direction.y,2.5f),state);
+					//obj.catapult(Vector3f(1.5f*direction.y,-1.5f*direction.x,2.5f),state);
+					obj.catapult(Vector3f(direction.y,-direction.x,2.5f),state);
 				}
 				if(obj.creatureState.movement==CreatureMovement.tumbling){
 					auto acceleration=vortexForceField(obj.center-vortex.position,radius,height);
