@@ -8678,25 +8678,16 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 			auto reviveTime=cast(int)(object.creatureStats.reviveTime*updateFPS);
 			auto fast=object.creatureState.mode!=CreatureMode.reviving;
 			if(fast) reviveTime/=2;
-			auto totalNumFrames=0;
-			foreach(i,animationState;reviveSequence)
-				if(sacObject.hasAnimationState(animationState))
-					while(totalNumFrames<reviveTime){
-						totalNumFrames+=sacObject.numFrames(animationState)*updateAnimFactor;
-						if(i+1!=reviveSequence.length) break;
-					}
-
-			if(totalNumFrames==0) totalNumFrames=reviveTime;
-			assert(totalNumFrames!=0);
 			object.creatureState.timer+=1;
-			object.creatureState.facing+=(fast?2.0f*pi!float:4.0f*pi!float)/totalNumFrames;
+			object.creatureState.facing+=(fast?2.0f*pi!float:4.0f*pi!float)/reviveTime;
 			while(object.creatureState.facing>pi!float) object.creatureState.facing-=2*pi!float;
-			if(object.creatureState.timer<totalNumFrames/2){
+			if(object.creatureState.timer<reviveTime/2){
 				object.creatureState.movement=CreatureMovement.flying;
-				object.position.z+=object.creatureStats.reviveHeight/(totalNumFrames/2);
+				object.position.z+=object.creatureStats.reviveHeight/(reviveTime/2);
 			}
 			object.rotation=facingQuaternion(object.creatureState.facing);
-			void finish(){
+			if(object.creatureState.timer>=reviveTime){
+				object.frame=0;
 				if(object.soulId){
 					state.removeLater(object.soulId);
 					object.soulId=0;
@@ -8706,17 +8697,12 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 				object.creatureState.fallingVelocity=Vector3f(0.0f,0.0f,0.0f);
 				object.startIdling(state);
 				state.newCreatureAddToSelection(object.side,object.id);
-			}
-			if(reviveSequence.canFind(object.animationState)){
+			}else if(reviveSequence.canFind(object.animationState)){
 				object.frame+=1;
 				if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
 					object.frame=0;
-					if(object.creatureState.timer<totalNumFrames) object.pickNextAnimation(reviveSequence,state);
-					else finish();
+					object.pickNextAnimation(reviveSequence,state);
 				}
-			}else if(object.creatureState.timer>=totalNumFrames){
-				object.frame=0;
-				finish();
 			}
 			break;
 		case CreatureMode.pretendingToRevive:
