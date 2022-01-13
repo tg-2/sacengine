@@ -14918,6 +14918,7 @@ bool updatePull(PullType type,B)(ref Pull!(type,B) pull,ObjectState!B state){
 				auto dist=thread.length;
 				if(!tobj.creatureStats.effects.fixed && dist>radius){
 					auto diff=radius*threadDir-thread;
+					if(diff.lengthsqr>1.0f) diff.normalize;
 					tobj.position+=0.5f*diff;
 					//tobj.catapult(-pullSpeed*threadDir/updateFPS,state);
 					auto badSpeed=dot(threadDir,tobj.creatureState.fallingVelocity);
