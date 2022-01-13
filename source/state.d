@@ -12604,7 +12604,7 @@ bool updateAnimateDead(B)(ref AnimateDead!B animateDead,ObjectState!B state){
 	with(animateDead){
 		caster.updateAnimateDeadCaster(state);
 		creature.updateAnimateDeadTarget(state);
-		if(frame+AnimateDeadEffect!B.totalFrames<=lifetime+3*updateFPS/4){ // TODO: get more precise estimate of duration for lifetime
+		if(frame<=lifetime){
 			if(frame%(updateFPS/30)==0&&!state.uniform(2))
 				animateDeadEffect(caster,creature,spell,state);
 			if(--soundTimer<=0){
