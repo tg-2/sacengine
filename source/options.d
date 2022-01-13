@@ -50,8 +50,6 @@ struct Options{
 	bool shuffleTeams=false;
 	bool randomWizards=false;
 	bool randomSpellbooks=false;
-	bool synchronizeLevel=true;
-	bool synchronizeSouls=true;
 	// just for testing:
 	bool enableReadFromWads=true;
 	int replicateCreatures=1;
@@ -65,6 +63,8 @@ struct Options{
 	bool dumpTraffic=false;
 	bool checkDesynch=true;
 	bool logDesynch=true;
+	bool synchronizeLevel=true;
+	bool synchronizeSouls=true;
 	bool pauseOnDrop=true;
 	// recording and playback
 	string recordingFilename="";
