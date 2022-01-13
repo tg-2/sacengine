@@ -4940,7 +4940,7 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 					object.animationState=sacObject.hasFlyDamage?AnimationState.flyDamage:AnimationState.hover;
 					break;
 				case CreatureMovement.tumbling:
-					if(object.animationState!=AnimationState.knocked2Floor && !object.isSacDoctor){
+					if(!object.animationState.among(AnimationState.knocked2Floor,AnimationState.getUp) && !object.isSacDoctor){
 						object.frame=0;
 						object.animationState=AnimationState.stance1;
 						bool hasFalling=sacObject.hasFalling;
@@ -8762,7 +8762,8 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 							object.animationState=AnimationState.hitFloor;
 						}else object.startIdling(state);
 						object.dealFallDamage(state);
-					}else object.startIdling(state);
+					}else if(!object.animationState.among(AnimationState.knocked2Floor,AnimationState.getUp))
+						object.startIdling(state);
 					break;
 				}
 			}
