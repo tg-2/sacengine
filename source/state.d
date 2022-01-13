@@ -3123,9 +3123,9 @@ struct Pull(PullType which,B){
 	int frame=0;
 	int numPulls=0;
 	float radius=float.infinity;
-	enum pullSpeed=20.0f;
-	enum numPullFrames=25;
-	enum minThreadLength=5.0f;
+	enum pullSpeed=16.5f;
+	enum numPullFrames=20;
+	enum minThreadLength=3.0f;
 	int pullFrames=0;
 
 	static if(which==PullType.cagePull){
@@ -14895,6 +14895,25 @@ bool updatePull(PullType type,B)(ref Pull!(type,B) pull,ObjectState!B state){
 				auto thread=tobj.center-(*obj).center;
 				auto threadDir=thread.normalized;
 				auto velocity=-pullSpeed*threadDir;
+				if(numPulls>=1 && boxPointDistance(tobj.hitbox,(*obj).center)<minThreadLength && (pullFrames<=0||thread.z>=-0.5f*minThreadLength))
+					return false;
+				auto dist=thread.length;
+				if(!tobj.creatureStats.effects.fixed && dist>1.2f*radius){
+					/+auto diff=radius*threadDir-thread;
+					if(diff.lengthsqr>1.0f) diff.normalize;
+					tobj.position+=0.5f*diff;+/
+					//tobj.catapult(-pullSpeed*threadDir/updateFPS,state);
+					if(tobj.creatureState.movement==CreatureMovement.tumbling){
+						auto badSpeed=dot(threadDir,tobj.creatureState.fallingVelocity);
+						/+if(badSpeed>0) tobj.creatureState.fallingVelocity-=0.5f*threadDir*badSpeed;
+						 static if(type==PullType.cagePull){
+						 static assert(updateFPS==60);
+						 boltScale*=0.9f;
+						 }+/
+						if(badSpeed>1.5f) pullNow=true;
+					}
+				}
+				radius=min(radius,(tobj.center-(*obj).center).length);
 				if(pullNow){
 					numPulls++;
 					velocity.z+=5.0f*tobj.creatureStats.fallingAcceleration/updateFPS;
@@ -14914,22 +14933,6 @@ bool updatePull(PullType type,B)(ref Pull!(type,B) pull,ObjectState!B state){
 					else tobj.push(velocity,state);
 				}
 				if(numPulls>=4 && (*obj).frame+1>=obj.sacObject.numFrames(obj.animationState)*updateAnimFactor)
-					return false;
-				auto dist=thread.length;
-				if(!tobj.creatureStats.effects.fixed && dist>radius){
-					auto diff=radius*threadDir-thread;
-					if(diff.lengthsqr>1.0f) diff.normalize;
-					tobj.position+=0.5f*diff;
-					//tobj.catapult(-pullSpeed*threadDir/updateFPS,state);
-					auto badSpeed=dot(threadDir,tobj.creatureState.fallingVelocity);
-					if(badSpeed>0) tobj.creatureState.fallingVelocity-=0.5f*threadDir*badSpeed;
-					static if(type==PullType.cagePull){
-						static assert(updateFPS==60);
-						boltScale*=0.9f;
-					}
-				}
-				radius=(tobj.center-(*obj).center).length;
-				if(numPulls>=1 && pullFrames<=0 && thread.length<minThreadLength)
 					return false;
 				return true;
 			},()=>false)(target,&obj,pullNow,state);
