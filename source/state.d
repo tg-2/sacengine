@@ -3123,8 +3123,8 @@ struct Pull(PullType which,B){
 	int frame=0;
 	int numPulls=0;
 	float radius=float.infinity;
-	enum pullSpeed=17.5f;
-	enum numPullFrames=30;
+	enum pullSpeed=20.0f;
+	enum numPullFrames=25;
 	enum minThreadLength=5.0f;
 	int pullFrames=0;
 
