@@ -14892,25 +14892,31 @@ bool updatePull(PullType type,B)(ref Pull!(type,B) pull,ObjectState!B state){
 			bool pullNow=obj.hasShootTick(state) && obj.animationState==obj.pullAnimation;
 			if(pullNow&&!checkAbility(obj,ability,centerTarget(target,state),state)) return false;
 			return state.movingObjectById!((ref tobj,obj,pullNow,state){
-				auto thread=tobj.center-(*obj).center;
+				auto forwardDir=rotate(facingQuaternion(obj.creatureState.facing),Vector3f(0.0f,1.0f,0.0f));
+				auto thread=tobj.center-((*obj).center+0.5f*forwardDir);
 				auto threadDir=thread.normalized;
 				auto velocity=-pullSpeed*threadDir;
 				if(numPulls>=1 && boxPointDistance(tobj.hitbox,(*obj).center)<minThreadLength && (pullFrames<=0||thread.z>=-0.5f*minThreadLength))
 					return false;
-				auto dist=thread.length;
-				if(!tobj.creatureStats.effects.fixed && dist>1.05f*radius){
-					/+auto diff=radius*threadDir-thread;
-					if(diff.lengthsqr>1.0f) diff.normalize;
-					tobj.position+=0.5f*diff;+/
-					//tobj.catapult(-pullSpeed*threadDir/updateFPS,state);
-					if(tobj.creatureState.movement==CreatureMovement.tumbling){
+				if(tobj.creatureState.movement==CreatureMovement.tumbling){
+					auto dist=thread.length;
+					if(!tobj.creatureStats.effects.fixed && dist>1.05f*radius){
+						/+auto diff=radius*threadDir-thread;
+						 if(diff.lengthsqr>1.0f) diff.normalize;
+						 tobj.position+=0.5f*diff;+/
+						//tobj.catapult(-pullSpeed*threadDir/updateFPS,state);
 						auto badSpeed=dot(threadDir,tobj.creatureState.fallingVelocity);
 						/+if(badSpeed>0) tobj.creatureState.fallingVelocity-=0.5f*threadDir*badSpeed;
 						 static if(type==PullType.cagePull){
-						 static assert(updateFPS==60);
-						 boltScale*=0.9f;
+							 static assert(updateFPS==60);
+							 boltScale*=0.9f;
 						 }+/
 						if(badSpeed>1.5f) pullNow=true;
+					}
+					auto forwardDist=dot(forwardDir,thread);
+					if(forwardDist<-0.2f*thread.z){
+						auto backwardSpeed=dot(-forwardDir,tobj.creatureState.fallingVelocity);
+						if(backwardSpeed>0.2f*tobj.creatureState.fallingVelocity.z) pullNow=true;
 					}
 				}
 				radius=min(radius,(tobj.center-(*obj).center).length);
