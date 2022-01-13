@@ -3124,7 +3124,7 @@ struct Pull(PullType which,B){
 	int numPulls=0;
 	float radius=float.infinity;
 	enum pullSpeed=16.5f;
-	enum numPullFrames=20;
+	enum numPullFrames=25;
 	enum minThreadLength=3.0f;
 	int pullFrames=0;
 
@@ -8098,7 +8098,7 @@ bool pull(PullType type,B)(ref MovingObject!B object,int target,SacSpell!B abili
 	auto startPos=object.shotPosition,endPos=state.movingObjectById!((ref tobj)=>tobj.center,()=>Vector3f.init)(target);
 	if(isNaN(endPos.x)) return false;
 	static bool filter(ref ProximityEntry entry,int id){ return entry.id!=id; }
-	auto newTarget=state.collideRay!filter(startPos,startPos-endPos,1.0f,object.id);
+	auto newTarget=state.collideRay!filter(startPos,endPos-startPos,1.0f,object.id);
 	if(newTarget.type!=TargetType.none) target=newTarget.id;
 	object.startPulling(state);
 	state.addEffect(Pull!(type,B)(object.id,target,ability));
@@ -14898,7 +14898,7 @@ bool updatePull(PullType type,B)(ref Pull!(type,B) pull,ObjectState!B state){
 				if(numPulls>=1 && boxPointDistance(tobj.hitbox,(*obj).center)<minThreadLength && (pullFrames<=0||thread.z>=-0.5f*minThreadLength))
 					return false;
 				auto dist=thread.length;
-				if(!tobj.creatureStats.effects.fixed && dist>1.2f*radius){
+				if(!tobj.creatureStats.effects.fixed && dist>1.05f*radius){
 					/+auto diff=radius*threadDir-thread;
 					if(diff.lengthsqr>1.0f) diff.normalize;
 					tobj.position+=0.5f*diff;+/
