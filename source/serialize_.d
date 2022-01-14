@@ -600,6 +600,12 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Pul
 void serialize(alias sink,B)(ref StickyBomb!B stickyBomb){ serializeStruct!sink(stickyBomb); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==StickyBomb!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref OilProjectile!B oilProjectile){ serializeStruct!sink(oilProjectile); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==OilProjectile!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref Oil!B oil){ serializeStruct!sink(oil); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Oil!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref Protector!B protector){ serializeStruct!sink(protector); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Protector!B)){ deserializeStruct(result,state,data); }
 

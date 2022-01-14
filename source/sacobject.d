@@ -952,6 +952,7 @@ enum ParticleType{
 	dust,
 	rock,
 	webDebris,
+	oil,
 	steam,
 	smoke,
 	poison,
@@ -998,7 +999,7 @@ final class SacParticle(B){
 				return true;
 			case smoke,dirt,dust:
 				return false;
-			case rock,webDebris:
+			case rock,webDebris,oil:
 				return true;
 			case poison,relativePoison:
 				return false;
@@ -1024,7 +1025,7 @@ final class SacParticle(B){
 				return false;
 			case castPersephone,castPersephone2,castPyro,castJames,castStratos,castCharnel,castCharnel2:
 				return false;
-			case wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,gnomeHit,ashParticle,steam,smoke,dirt,dust,rock,webDebris,poison,swarmHit,slime:
+			case wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,gnomeHit,ashParticle,steam,smoke,dirt,dust,rock,webDebris,oil,poison,swarmHit,slime:
 				return false;
 			case relativePoison:
 				return true;
@@ -1034,7 +1035,7 @@ final class SacParticle(B){
 	}
 	@property bool bumpOffGround(){
 		switch(type) with(ParticleType){
-			case scarabHit,ghostTransition,wrathParticle,gnomeHit,ashParticle,rock,webDebris,swarmHit,slime,needle,redVortexDroplet,blueVortexDroplet,spark: return true;
+			case scarabHit,ghostTransition,wrathParticle,gnomeHit,ashParticle,rock,webDebris,oil,swarmHit,slime,needle,redVortexDroplet,blueVortexDroplet,spark: return true;
 			default: return false;
 		}
 	}
@@ -1258,6 +1259,12 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/gend.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
+			case oil:
+				width=height=1.0f;
+				this.energy=1.0f;
+				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pyro.FLDR/txtr.FLDR/oile.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
 			case poison,relativePoison:
 				width=height=1.0f;
 				this.energy=1.0f;
@@ -1363,6 +1370,8 @@ final class SacParticle(B){
 				return min(1.0f,(lifetime/(1.5f*numFrames)));
 			case webDebris:
 				return min(1.0f,(lifetime/(1.5f*numFrames)));
+			case oil:
+				return 1.0f;
 			case dirt:
 				return min(1.0f,(lifetime/(0.25f*numFrames)));
 			case dust:
@@ -1414,6 +1423,8 @@ final class SacParticle(B){
 			case rock:
 				return min(1.0f,lifetime/(3.0f*numFrames));
 			case webDebris:
+				return min(1.0f,lifetime/(3.0f*numFrames));
+			case oil:
 				return min(1.0f,lifetime/(3.0f*numFrames));
 			case dirt,dust:
 				return 1.0f;
@@ -2321,6 +2332,21 @@ struct SacStickyBomb(B){
 	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
 	static B.Mesh[] createMeshes(){
 		return makeSpriteMeshes!B(4,4,0.5f,0.5f);
+	}
+}
+
+struct SacOil(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pyro.FLDR/txtr.FLDR/oile.TXTR"));
+	}
+	B.Material material;
+	B.Mesh[] frames;
+	enum animationDelay=2;
+	enum numFrames=16*animationDelay*updateAnimFactor;
+	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
+	static B.Mesh[] createMeshes(){
+		return makeSpriteMeshes!B(4,4,2.0f,2.0f);
 	}
 }
 

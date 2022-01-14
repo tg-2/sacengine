@@ -112,7 +112,7 @@ class SacSpell(B){
 	@property float fallingAcceleration(){
 		switch(tag){
 			case SpellTag.fallenShoot: return 10.0f;
-			case SpellTag.blightMites,SpellTag.stickyBomb: return 20.0f;
+			case SpellTag.blightMites,SpellTag.stickyBomb,SpellTag.oil: return 20.0f;
 			default: return 30.0f;
 		}
 	}

@@ -21,6 +21,11 @@ struct CreatureStats{
 	float splashRangedResistance;
 	Effects effects;
 }
+enum OilStatus{
+	none,
+	oiled,
+	ignited,
+}
 struct Effects{
 	int numSpeedUps=0;
 	float speedUp=1.0f;
@@ -59,6 +64,7 @@ struct Effects{
 	int numBulks=0;
 	float bulk=1.0f;
 	int numStickyBombs=0;
+	OilStatus oilStatus;
 	@property bool slimed(){ return numSlimes!=0; }
 	@property bool vined(){ return numVines!=0; }
 	@property bool regenerationBlocked(){ return poisonDamage!=0||immobilized||ringsOfFire||slimed||vined; }
@@ -75,6 +81,11 @@ struct Effects{
 	@property bool healBlocked(){ return petrified||frozen||ringsOfFire||slimed||vined; } // TODO: add remaining effects
 	@property bool shieldBlocked(){ return ringsOfFire||slimed||vined; }
 	@property bool lightningCharged(){ return lightningChargeFrames!=0; }
+	@property bool oiled(){ return oilStatus!=OilStatus.none; }
+	@property void oiled(bool x){
+		if(!x) oilStatus=OilStatus.none;
+		else if(oilStatus==OilStatus.none) oilStatus=OilStatus.oiled;
+	}
 }
 import dlib.math.portable: pi;
 @property float rotationSpeed(ref CreatureStats stats,bool isFlying){ // in radians per second

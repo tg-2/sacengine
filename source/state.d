@@ -166,6 +166,7 @@ bool canBePoisoned(CreatureMode mode){
 }
 bool canBeInfectedByMites(CreatureMode mode){ return canBePoisoned(mode); }
 bool canBeStickyBombed(CreatureMode mode){ return canBePoisoned(mode); }
+bool canBeOiled(CreatureMode mode){ return canBePoisoned(mode); }
 bool canBePetrified(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
@@ -3157,6 +3158,26 @@ struct StickyBomb(B){
 	enum fadeTime=0.5f;
 }
 
+struct OilProjectile(B){
+	int creature;
+	int side;
+	Vector3f position;
+	Vector3f velocity;
+	SacSpell!B ability;
+	int frame=0;
+}
+struct Oil(B){
+	int creature;
+	int attacker;
+	int attackerSide;
+	SacSpell!B ability;
+	// TODO: add data to render oil particles
+	// int bone; // TODO: stick on bones
+	int frame=0;
+	float alpha=1.0f;
+	enum fadeTime=0.5f;
+}
+
 struct Protector(B){
 	int id;
 	SacSpell!B ability;
@@ -4129,6 +4150,22 @@ struct Effects(B){
 	void removeStickyBomb(int i){
 		if(i+1<stickyBombs.length) stickyBombs[i]=move(stickyBombs[$-1]);
 		stickyBombs.length=stickyBombs.length-1;
+	}
+	Array!(OilProjectile!B) oilProjectiles;
+	void addEffect(OilProjectile!B oilProjectile){
+		oilProjectiles~=oilProjectile;
+	}
+	void removeOilProjectile(int i){
+		if(i+1<oilProjectiles.length) oilProjectiles[i]=move(oilProjectiles[$-1]);
+		oilProjectiles.length=oilProjectiles.length-1;
+	}
+	Array!(Oil!B) oils;
+	void addEffect(Oil!B oil){
+		oils~=oil;
+	}
+	void removeOil(int i){
+		if(i+1<oils.length) oils[i]=move(oils[$-1]);
+		oils.length=oils.length-1;
 	}
 	Array!(Protector!B) protectors;
 	void addEffect(Protector!B protector){
@@ -5551,6 +5588,10 @@ float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,
 				default:
 					break;
 			}
+		}
+		if((damageMod&DamageMod.ignite)&&object.creatureStats.effects.oiled){
+			object.igniteOil(state);
+			actualDamage*=2.0f;
 		}
 	}else actualDamage=damage;
 	actualDamage=min(object.health,actualDamage);
@@ -7393,6 +7434,10 @@ bool order(B)(ref MovingObject!B object,Order order,CommandQueueing queueing,Obj
 }
 
 void stop(B)(ref MovingObject!B object,ObjectState!B state){
+	if(object.creatureState.movementDirection==MovementDirection.none&&
+	   object.creatureState.rotationDirection==RotationDirection.none&&
+	   object.creatureState.pitchingDirection==PitchingDirection.none)
+		return;
 	object.stopMovement(state);
 	object.stopTurning(state);
 	object.stopPitching(state);
@@ -7818,6 +7863,9 @@ bool shootOnTick(bool ability=false,B)(ref MovingObject!B object,OrderTarget tar
 				case SpellTag.stickyBomb:
 					stickyBombShoot(object.id,object.side,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
 					break;
+				case SpellTag.oil:
+					oilShoot(object.id,object.side,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
+					break;
 				default: goto case SpellTag.brainiacShoot;
 			}
 			object.drainMana(drainedMana,state);
@@ -8117,6 +8165,13 @@ bool stickyBombShoot(B)(int creature,int side,float accuracy,Vector3f position,V
 	return true;
 }
 
+bool oilShoot(B)(int creature,int side,float accuracy,Vector3f position,Vector3f target,SacSpell!B ability,ObjectState!B state){
+	playSoundAt("slio",position,state,4.0f); // TODO: move sound with projectile
+	auto direction=getShotDirectionWithGravity(accuracy,position,target,ability,state);
+	state.addEffect(OilProjectile!B(creature,side,position,direction*ability.speed,ability));
+	return true;
+}
+
 bool protector(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
 	if(object.creatureStats.effects.lifeShield) return false;
 	auto lifeShield=SacSpell!B.get(SpellTag.lifeShield);
@@ -8228,6 +8283,7 @@ bool isRangedAbility(B)(SacSpell!B ability){ // TODO: put this directly in SacSp
 		case SpellTag.devour: return true;
 		case SpellTag.webPull,SpellTag.cagePull: return true;
 		case SpellTag.stickyBomb: return true;
+		case SpellTag.oil: return true;
 		default: return false;
 	}
 }
@@ -8297,6 +8353,8 @@ bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,OrderTarget targ
 			return shoot();
 		case SpellTag.stickyBomb:
 			return shoot();
+		case SpellTag.oil:
+			return shoot();
 		case SpellTag.protector:
 			if(object.protector(ability,state)) apply();
 			return false;
@@ -8364,6 +8422,7 @@ bool requiresAI(CreatureMode mode){
 
 void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 	if(!requiresAI(object.creatureState.mode)) return;
+	if(object.creatureStats.effects.oiled) return;
 	if(!object.creatureAI.isOnAIQueue) object.creatureAI.isOnAIQueue=state.pushToAIQueue(object.side,object.id);
 	if(object.creatureState.mode.isShooting){
 		if(!object.shoot(object.rangedAttack,object.creatureAI.targetId,state))
@@ -11551,7 +11610,7 @@ bool updateFireformCasting(B)(ref FireformCasting!B fireformCast,ObjectState!B s
 
 void ignite(B)(ref MovingObject!B obj,float damage,int attacker,int side,ObjectState!B state){
 	enum numParticles=5;
-	obj.dealFireDamage(0.0f,damage,attacker,side,DamageMod.peirceShield,state); // TODO: peirce shield?
+	obj.dealFireDamage(0.0f,damage,attacker,side,DamageMod.peirceShield,state);
 	obj.spawnFireParticles(numParticles,state);
 	if(obj.creatureStats.effects.ignitionTime+updateFPS/3<state.frame)
 		playSoundAt("1ngi",obj.id,state,2.0f);
@@ -11873,6 +11932,7 @@ bool updateFreezeCasting(B)(ref FreezeCasting!B freezeCast,ObjectState!B state){
 
 void unfreeze(B)(ref MovingObject!B obj,ObjectState!B state){
 	if(!obj.creatureStats.effects.frozen) return;
+	// TODO: deal unfreeze damage
 	obj.creatureStats.effects.frozen=false;
 	obj.startIdling(state);
 }
@@ -15016,6 +15076,102 @@ bool updateStickyBomb(B)(ref StickyBomb!B stickyBomb,ObjectState!B state){
 	}
 }
 
+enum oilProjectileSize=1.0f;
+static immutable Vector3f[2] oilProjectileHitbox=[-0.5f*oilProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*oilProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
+int oilProjectileCollisionTarget(B)(Vector3f position,int creature,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state,int creature){
+		if(entry.id==creature) return false;
+		return entry.isProjectileObstacle&&state.movingObjectById!((ref obj)=>obj.creatureState.mode.canBeOiled,()=>false)(entry.id);
+	}
+	return collisionTarget!(oilProjectileHitbox,filter)(-1,position,state,creature);
+}
+
+void oilExplosion(B)(ref OilProjectile!B oilProjectile,ObjectState!B state){
+	with(oilProjectile){
+		static bool callback(int target,int attacker,int attackerSide,SacSpell!B ability,ObjectState!B state){
+			auto canOil=state.movingObjectById!((ref obj){
+				auto ok=!obj.creatureStats.effects.oiled&&obj.creatureState.mode.canBeOiled;
+				if(ok) obj.creatureStats.effects.oiled=true;
+				return ok;
+			},()=>false)(target);
+			if(canOil) state.addEffect(Oil!B(target,attacker,attackerSide,ability));
+			return false;
+		}
+		dealSplashRangedDamageAt!callback(0,ability,ability.effectRange,creature,side,position,DamageMod.none,state,creature,side,ability,state);
+		// TODO: scar
+		enum numParticles3=100;
+		auto sacParticle3=SacParticle!B.get(ParticleType.oil);
+		foreach(i;0..numParticles3){
+			auto direction=state.uniformDirection();
+			auto velocity=state.uniform(5.0f,10.0f)*direction;
+			auto scale=state.uniform(1.0f,2.5f);
+			auto lifetime=95;
+			auto frame=0;
+			state.addParticle(Particle!B(sacParticle3,position,velocity,scale,lifetime,frame));
+		}
+	}
+}
+
+bool updateOilProjectile(B)(ref OilProjectile!B oilProjectile,ObjectState!B state){
+	with(oilProjectile){
+		++frame;
+		position+=velocity/updateFPS;
+		velocity.z-=ability.fallingAcceleration/updateFPS;
+		if(state.isOnGround(position)){
+			auto height=state.getGroundHeight(position);
+			if(height>=position.z){
+				position.z=height;
+				oilExplosion(oilProjectile,state);
+				return false;
+			}
+		}
+		if(oilProjectileCollisionTarget(position,creature,state)){
+			oilExplosion(oilProjectile,state);
+			return false;
+		}
+		return true;
+	}
+}
+
+void igniteOil(B)(ref MovingObject!B object,ObjectState!B state){
+	if(object.creatureStats.effects.oiled)
+		object.creatureStats.effects.oilStatus=OilStatus.ignited;
+}
+void igniteOil(B)(ref Oil!B oil,ObjectState!B state){
+	with(oil){
+		static bool callback(int target,int attacker,int attackerSide,ObjectState!B state){
+			setAblaze(target,updateFPS,false,0.0f,attacker,attackerSide,DamageMod.none,state);
+			return true;
+		}
+		auto positionScale=state.movingObjectById!((ref obj)=>tuple(obj.center,obj.getScale.length),()=>Tuple!(Vector3f,float).init)(creature);
+		auto position=positionScale[0], scale=positionScale[1];
+		if(isNaN(position.x)) return;
+		dealSplashRangedDamageAt!callback(0,ability,ability.damageRange,attacker,attackerSide,position,DamageMod.ignite,state,attacker,attackerSide,state);
+		animateFireballExplosion(position,state,scale);
+	}
+}
+
+bool updateOil(B)(ref Oil!B oil,ObjectState!B state){
+	with(oil){
+		auto status=++frame<=updateFPS*ability.duration?state.movingObjectById!((ref obj,state){
+			if(!obj.isWizard) obj.clearOrderQueue(state);
+			return obj.creatureState.mode.canBeOiled?obj.creatureStats.effects.oilStatus:OilStatus.none;
+		},()=>OilStatus.none)(creature,state):OilStatus.none;
+		if(status==OilStatus.ignited){
+			igniteOil(oil,state);
+			state.movingObjectById!((ref obj){ obj.creatureStats.effects.oiled=false; },(){})(creature);
+			return false;
+		}
+		if(status!=OilStatus.oiled){
+			if(alpha==1.0f) state.movingObjectById!((ref obj){ obj.creatureStats.effects.oiled=false; },(){})(creature);
+			alpha-=1.0f/(fadeTime*updateFPS);
+			if(alpha<=0.0f)
+				return false;
+		}
+		return true;
+	}
+}
+
 bool updateProtector(B)(ref Protector!B protector,ObjectState!B state){
 	if(!state.isValidTarget(protector.id,TargetType.creature)) return false;
 	static void applyProtector(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
@@ -15939,6 +16095,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.stickyBombs.length;){
 		if(!updateStickyBomb(effects.stickyBombs[i],state)){
 			effects.removeStickyBomb(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.oilProjectiles.length;){
+		if(!updateOilProjectile(effects.oilProjectiles[i],state)){
+			effects.removeOilProjectile(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.oils.length;){
+		if(!updateOil(effects.oils[i],state)){
+			effects.removeOil(i);
 			continue;
 		}
 		i++;

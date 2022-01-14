@@ -506,6 +506,17 @@ struct Renderer(B){
 		auto frames=typeof(return).createMeshes();
 		return SacStickyBomb!B(texture,mat,frames);
 	}
+	SacOil!B oil;
+	SacOil!B createOil(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Transparent;
+		mat.energy=3.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacOil!B(texture,mat,frames);
+	}
 	void createEffects(){
 		sacCommandCone=new SacCommandCone!B();
 		sacDebris=new SacObject!B("extracted/models/MODL.WAD!/bold.MRMC/bold.MRMM");
@@ -542,6 +553,7 @@ struct Renderer(B){
 		web=createWeb();
 		cage=createCage();
 		stickyBomb=createStickyBomb();
+		oil=createOil();
 		slime=createSlime();
 		vine=createVine();
 		rainbow=createRainbow();
@@ -1893,6 +1905,20 @@ struct Renderer(B){
 						auto mesh=self.stickyBomb.getFrame(frame%self.stickyBomb.numFrames);
 						auto scale=objects.stickyBombs[j].scale;
 						material.backend.setSpriteTransformationScaled(position,scale*Vector3f(1.0f,1.0f,1.0f),rc);
+						mesh.render(rc);
+					}
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.oilProjectiles.length){
+					auto material=self.oil.material;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
+					foreach(j;0..objects.oilProjectiles.length){
+						auto position=objects.oilProjectiles[j].position;
+						auto frame=objects.oilProjectiles[j].frame;
+						auto mesh=self.oil.getFrame(frame%self.oil.numFrames);
+						//auto scale=objects.oilProjectiles[j].scale;
+						//material.backend.setSpriteTransformationScaled(position,scale*Vector3f(1.0f,1.0f,1.0f),rc);
+						material.backend.setSpriteTransformation(position,rc);
 						mesh.render(rc);
 					}
 				}
