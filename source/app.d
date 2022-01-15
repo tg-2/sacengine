@@ -149,6 +149,7 @@ void loadMap(B)(ref Options options)in{
 				options.continueFrame=max(0,to!int(toContinue.commands.length)-1);
 			}
 			options.map=toContinue.mapName;
+			if(network) network.hostSettings=options.settings;
 			options.numSlots=to!int(toContinue.gameInit.slots.length);
 			map=toContinue.map;
 			sides=toContinue.sides;
