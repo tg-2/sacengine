@@ -1,8 +1,10 @@
+*~
 extracted
 source/extracted
 replays
 .dub
 3d
+SacEngine-*
 ldc2*
 dub_platform*
 settings.txt
@@ -12,3 +14,11 @@ zeroip.txt
 *.7z
 data
 maps
+data-orig
+maps-orig
+*.zip
+*.exe
+*.dll
+logs
+*.obj
+*.mtl
