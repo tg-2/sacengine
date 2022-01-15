@@ -595,9 +595,11 @@ final class SacScene: Scene{
 				}+/
 				case castManalith,castManahoar,castSpeedUp,castGuardian,castConvert,castDesecrate,castTeleport,castHeal,castShrine:
 					selectSpell(command);
+					break;
 				// SacEngine extensions
 				case surrender:
 					controller.addCommand(Command!DagonBackend(renderSide));
+					break;
 			}
 		}
 		foreach(ref hotkey;options.hotkeys[modifiers]){
