@@ -12002,7 +12002,9 @@ bool updateRingsOfFireCasting(B)(ref RingsOfFireCasting!B ringsOfFireCast,Object
 				state.movingObjectById!(animateRingsOfFireCastingTarget,(){})(creature,state);
 				state.movingObjectById!(animateRingsOfFireCasting,(){})(manaDrain.wizard,state);
 				return true;
-			case CastingStatus.interrupted: return false;
+			case CastingStatus.interrupted:
+				state.movingObjectById!(removeRingsOfFire,(){})(creature,state);
+				return false;
 			case CastingStatus.finished:
 				state.movingObjectById!((ref obj,creature,spell,state){
 					ringsOfFire(obj.id,obj.side,creature,spell,state);
