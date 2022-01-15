@@ -5589,7 +5589,7 @@ float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,
 					break;
 			}
 		}
-		if((damageMod&DamageMod.ignite)&&object.creatureStats.effects.oiled){
+		if((damageMod&DamageMod.ignite)&&object.creatureStats.effects.oilStatus==OilStatus.oiled){
 			object.igniteOil(state);
 			actualDamage*=2.0f;
 		}
