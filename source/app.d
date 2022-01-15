@@ -195,7 +195,7 @@ void loadMap(B)(ref Options options)in{
 			}
 			network.updateStatus(PlayerStatus.readyToLoad);
 		}
-		while(!network.readyToLoad){
+		while(!network.readyToLoad&&!network.pendingResynch){
 			network.idleLobby();
 			if(!B.processEvents()) return;
 			if(network.isHost&&network.numReadyPlayers+(network.players[network.host].wantsToControlState)>=options.numSlots&&network.clientsReadyToLoad()){
