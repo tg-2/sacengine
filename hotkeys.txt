@@ -74,3 +74,5 @@ Cast Convert: Ctrl-c
 Cast Desecrate: Shift-g
 Cast Teleport: g
 Cast Shrine: Shift-Alt
+## SacEngine extensions
+Surrender: Shift-Ctrl-Escape

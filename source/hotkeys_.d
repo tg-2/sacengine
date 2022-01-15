@@ -121,6 +121,8 @@ enum Bindable:char[4]{
 	// TODO
 	// cast charnel's minions
 	// TODO
+	// SacEngine extensions
+	surrender="rrus",
 }
 
 string defaultName(Bindable bindable){
@@ -180,6 +182,8 @@ string defaultName(Bindable bindable){
 		case castTeleport: return "Cast Teleport";
 		case castHeal: return "Cast Heal";
 		case castShrine: return "Cast Shrine";
+		// SacEngine extensions
+		case surrender: return "Surrender";
 	}
 }
 
