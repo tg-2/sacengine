@@ -1908,7 +1908,7 @@ struct Renderer(B){
 						mesh.render(rc);
 					}
 				}
-				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.oilProjectiles.length){
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.oilProjectiles.length||objects.oils.length)){
 					auto material=self.oil.material;
 					material.bind(rc);
 					scope(success) material.unbind(rc);
@@ -1920,6 +1920,25 @@ struct Renderer(B){
 						//material.backend.setSpriteTransformationScaled(position,scale*Vector3f(1.0f,1.0f,1.0f),rc);
 						material.backend.setSpriteTransformation(position,rc);
 						mesh.render(rc);
+					}
+					foreach(j;0..objects.oils.length){
+						import std.random:MinstdRand0,uniform;
+						auto rng=MinstdRand0(1);
+						auto creature=objects.oils[j].creature;
+						auto alpha=objects.oils[j].alpha;
+						auto frame=objects.oils[j].frame;
+						auto hitboxScale=state.movingObjectById!((ref obj)=>tuple(obj.hitbox,obj.getScale.length),()=>Tuple!(Vector3f[2],float).init)(creature);
+						auto hitbox=hitboxScale[0], scale=hitboxScale[1];
+						if(isNaN(hitbox[0].x)) continue;
+						enum numParticles=10;
+						foreach(_;0..numParticles){
+							Vector3f position;
+							foreach(i,ref x;position) x=uniform(hitbox[0][i],hitbox[1][i],rng);
+							auto mesh=self.oil.getFrame((frame+uniform(0,self.oil.numFrames-1,rng))%self.oil.numFrames);
+							material.backend.setSpriteTransformationScaled(position,0.5f*scale*Vector3f(1.0f,1.0f,1.0f),rc);
+							material.backend.setAlpha(alpha);
+							mesh.render(rc);
+						}
 					}
 				}
 			}else static if(is(T==Particles!(B,relative,sideFiltered),bool relative,bool sideFiltered)){
