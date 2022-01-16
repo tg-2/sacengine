@@ -102,7 +102,7 @@ import dlib.math.portable: pi;
 	return 0.25f*pi!float;
 }
 @property float movementSpeed(ref CreatureStats stats,bool isFlying){ // in meters per second
-	auto effectFactor=stats.effects.speedUp*0.25f^^stats.effects.numSlimes*0.8f^^stats.effects.numBlightMites*0.75f^^stats.effects.numStickyBombs*(stats.effects.lightningCharged?4.0f/3.0f:1.0f); // TODO: probably slowdowns should be interpolated too
+	auto effectFactor=stats.effects.speedUp*(isFlying?1.0f:0.25f^^stats.effects.numSlimes)*0.8f^^stats.effects.numBlightMites*0.75f^^stats.effects.numStickyBombs*(stats.effects.lightningCharged?4.0f/3.0f:1.0f); // TODO: probably slowdowns should be interpolated too
 	return (isFlying?stats.flyingSpeed:stats.runningSpeed)*effectFactor;
 }
 @property float movementAcceleration(ref CreatureStats stats,bool isFlying){
