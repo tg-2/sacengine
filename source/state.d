@@ -1011,6 +1011,11 @@ bool isHidden(B)(ref MovingObject!B object){
 	return false;
 }
 
+enum StaticObjectFlags{
+	none=0,
+	hovering=1<<0,
+}
+
 struct StaticObject(B){
 	SacObject!B sacObject;
 	int id=0;
@@ -1018,16 +1023,18 @@ struct StaticObject(B){
 	Vector3f position;
 	Quaternionf rotation;
 	float scale;
-	this(SacObject!B sacObject,int buildingId,Vector3f position,Quaternionf rotation,float scale){
+	int flags;
+	this(SacObject!B sacObject,int buildingId,Vector3f position,Quaternionf rotation,float scale,int flags){
 		this.sacObject=sacObject;
 		this.buildingId=buildingId;
 		this.position=position;
 		this.rotation=rotation;
 		this.scale=scale;
+		this.flags=flags;
 	}
-	this(SacObject!B sacObject,int id,int buildingId,Vector3f position,Quaternionf rotation,float scale){
+	this(SacObject!B sacObject,int id,int buildingId,Vector3f position,Quaternionf rotation,float scale,int flags){
 		this.id=id;
-		this(sacObject,buildingId,position,rotation,scale);
+		this(sacObject,buildingId,position,rotation,scale,flags);
 	}
 }
 float healthFromBuildingId(B)(int buildingId,ObjectState!B state){
@@ -1457,6 +1464,7 @@ struct StaticObjects(B,RenderMode mode){
 	Array!Vector3f positions;
 	Array!Quaternionf rotations;
 	Array!float scales;
+	Array!int flagss;
 	static if(mode==RenderMode.transparent){
 		Array!float thresholdZs;
 	}
@@ -1481,6 +1489,7 @@ struct StaticObjects(B,RenderMode mode){
 		positions~=object.position;
 		rotations~=object.rotation;
 		scales~=object.scale;
+		flagss~=object.flags;
 		static if(mode==RenderMode.transparent)
 			thresholdZs~=0.0f;
 	}
@@ -1495,10 +1504,10 @@ struct StaticObjects(B,RenderMode mode){
 		length=length-1;
 	}
 	StaticObject!B fetch(int i){
-		return StaticObject!B(sacObject,ids[i],buildingIds[i],positions[i],rotations[i],scales[i]);
+		return StaticObject!B(sacObject,ids[i],buildingIds[i],positions[i],rotations[i],scales[i],flagss[i]);
 	}
 	StaticObject!B opIndex(int i){
-		return StaticObject!B(sacObject,ids[i],buildingIds[i],positions[i],rotations[i],scales[i]);
+		return StaticObject!B(sacObject,ids[i],buildingIds[i],positions[i],rotations[i],scales[i],flagss[i]);
 	}
 	void opIndexAssign(StaticObject!B obj,int i){
 		assert(sacObject is obj.sacObject);
@@ -1507,6 +1516,7 @@ struct StaticObjects(B,RenderMode mode){
 		positions[i]=obj.position;
 		rotations[i]=obj.rotation;
 		scales[i]=obj.scale;
+		flagss[i]=obj.flags;
 	}
 	static if(mode==RenderMode.transparent){
 		void setThresholdZ(int i,float thresholdZ){
@@ -5227,7 +5237,7 @@ int makeBuilding(B)(ref MovingObject!B caster,char[4] tag,int flags,int base,Obj
 			cposition.z=state.getGroundHeight(cposition);
 			float facing=0.0f; // TODO: ok?
 			auto rotation=facingQuaternion(2*pi!float/360.0f*(facing+component.facing));
-			building.componentIds~=state.addObject(StaticObject!B(curObj,building.id,cposition,rotation,1.0f));
+			building.componentIds~=state.addObject(StaticObject!B(curObj,building.id,cposition,rotation,1.0f,0));
 		}
 		if(base) state.buildingById!((ref manafount,state){ putOnManafount(building,manafount,state); },(){})(base,state);
 	},(){ assert(0); })(buildingId);
@@ -5256,7 +5266,7 @@ int makeBuilding(B)(int side,char[4] tag,Vector3f position,int flags,ObjectState
 			cposition.z=state.getGroundHeight(cposition);
 			float facing=0.0f; // TODO: ok?
 			auto rotation=facingQuaternion(2*pi!float/360.0f*(facing+component.facing));
-			building.componentIds~=state.addObject(StaticObject!B(curObj,building.id,cposition,rotation,1.0f));
+			building.componentIds~=state.addObject(StaticObject!B(curObj,building.id,cposition,rotation,1.0f,0));
 		}
 	},(){ assert(0); })(buildingId);
 	return buildingId;
@@ -9624,9 +9634,9 @@ bool updateBuildingDestruction(B)(ref BuildingDestruction buildingDestruction,Ob
 			auto destroyed=building.bldg.components[i].destroyed;
 			if(destroyed!="\0\0\0\0"){
 				auto destObj=SacObject!B.getBLDG(destroyed);
-				auto positionRotationScale=state.staticObjectById!((ref StaticObject!B object)=>tuple(object.position,object.rotation,object.scale),()=>Tuple!(Vector3f,Quaternionf,float).init)(id);
-				if(!isNaN(positionRotationScale[2]))
-					building.componentIds[newLength++]=state.addObject(StaticObject!B(destObj,building.id,positionRotationScale.expand));
+				auto positionRotationScaleFlags=state.staticObjectById!((ref StaticObject!B object)=>tuple(object.position,object.rotation,object.scale,object.flags),()=>Tuple!(Vector3f,Quaternionf,float,int).init)(id);
+				if(!isNaN(positionRotationScaleFlags[2]))
+					building.componentIds[newLength++]=state.addObject(StaticObject!B(destObj,building.id,positionRotationScaleFlags.expand));
 			}
 			state.staticObjectById!((ref StaticObject!B object,state){
 				auto destruction=building.bldg.components[i].destruction;
@@ -15230,6 +15240,7 @@ bool updateAltarDestruction(B)(ref AltarDestruction altarDestruction,ObjectState
 			if(!manafount) manafount=makeManafount(position,AdditionalBuildingFlags.inactive,state);
 			foreach(id;chain(pillars[],stalks[])) if(id) state.setRenderMode!(StaticObject!B,RenderMode.transparent)(id);
 			if(shrine) state.setRenderMode!(StaticObject!B,RenderMode.transparent)(shrine);
+			state.addEffect(ScreenShake(position,disappearDuration+2*updateFPS,2.0f,100.0f));
 		}
 		++frame;
 		if(frame<=disappearDuration+floatDuration){
@@ -15265,6 +15276,7 @@ bool updateAltarDestruction(B)(ref AltarDestruction altarDestruction,ObjectState
 			if(ring) state.staticObjectById!((ref ring,position,progress){
 				ring.position=position+Vector3f(0.0f,0.0f,finalHeight*progress^^2);
 				ring.scale=1.0f-progress;
+				ring.flags|=StaticObjectFlags.hovering;
 			},(){})(ring,position,progress);
 			if(frame==disappearDuration+floatDuration){
 				if(ring){
@@ -16335,7 +16347,8 @@ void updateBuilding(B)(ref Building!B building, ObjectState!B state){
 }
 
 void updateStructure(B)(ref StaticObject!B structure, ObjectState!B state){
-	structure.position.z=state.getGroundHeight(structure.position);
+	if(!(structure.flags&StaticObjectFlags.hovering))
+		structure.position.z=state.getGroundHeight(structure.position);
 }
 
 void animateManahoar(B)(Vector3f location, int side, float rate, ObjectState!B state){
@@ -18513,7 +18526,7 @@ final class GameState(B){
 				if(!current.isOnGround(cposition)) continue;
 				cposition.z=current.getGroundHeight(cposition);
 				auto rotation=facingQuaternion(2*pi!float/360.0f*(ntt.facing+component.facing));
-				building.componentIds~=current.addObject(StaticObject!B(curObj,building.id,cposition,rotation,1.0f));
+				building.componentIds~=current.addObject(StaticObject!B(curObj,building.id,cposition,rotation,1.0f,0));
 			}
 			if(ntt.base){
 				enforce(ntt.base in current.triggers.objectIds);
