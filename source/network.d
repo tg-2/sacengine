@@ -794,6 +794,7 @@ final class Network(B){
 	bool playing(){ return me!=-1&&players[me].status==PlayerStatus.playing && !paused; }
 	bool paused(){ return isPausedStatus(players[host].status); }
 	bool anyoneDropped(){ return potentialPlayers.any!(p=>p.status==PlayerStatus.dropped); }
+	bool hostDropped(){ return players[host].status==PlayerStatus.dropped; }
 	bool desynched(){ return connectedPlayers.any!(p=>isDesynchedStatus(p.status)||p.status==PlayerStatus.resynched); }
 	bool pendingResynch(){
 		if(isHost){

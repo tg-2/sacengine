@@ -179,7 +179,7 @@ final class Controller(B){
 					network.unpause();
 				}
 			}
-			if(network.paused) return true;
+			if(network.paused||network.hostDropped) return true;
 			if(network.desynched){
 				if(network.pendingResynch) network.updateStatus(PlayerStatus.readyToResynch);
 				if(network.isHost && network.readyToResynch){

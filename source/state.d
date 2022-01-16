@@ -17122,8 +17122,9 @@ final class ObjectState(B){ // (update logic)
 						auto scale=hitbox[1].xy-hitbox[0].xy;
 						return tuple(object.creatureAI.formation,scale);
 					}
-					auto curFormationCurScale=state.movingObjectById!(get,function Tuple!(Formation,Vector2f)(){ assert(0); })(selectedId,state);
+					auto curFormationCurScale=state.movingObjectById!(get,()=>Tuple!(Formation,Vector2f).init)(selectedId,state);
 					auto curFormation=curFormationCurScale[0],curScale=curFormationCurScale[1];
+					if(isNaN(curScale.x)) return false;
 					if(curScale.x>formationScale.x) formationScale.x=curScale.x;
 					if(curScale.y>formationScale.y) formationScale.y=curScale.y;
 					num[curFormation]+=1;
