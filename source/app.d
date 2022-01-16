@@ -27,7 +27,8 @@ GameInit!B gameInit(alias multiplayerSide,B,R)(R playerSettings,ref Options opti
 			team=cast(int)slot/teamSize;
 	}else{
 		foreach(ref settings;playerSettings)
-			teams[settings.slot]=settings.team;
+			if(settings.slot!=-1)
+				teams[settings.slot]=settings.team;
 	}
 	if(options.shuffleTeams){
 		import std.random: randomShuffle;
@@ -313,7 +314,8 @@ void loadMap(B)(ref Options options)in{
 		recording.gameInit=gameInit;
 		recording.logCore=options.logCore;
 	}
-	int wizId=state.initGame(gameInit,slot);
+	state.initGame(gameInit);
+	int wizId=state.slots[slot].wizard;
 	state.current.map.makeMeshes(options.enableMapBottom);
 	if(toContinue){
 		state.commands=toContinue.commands;

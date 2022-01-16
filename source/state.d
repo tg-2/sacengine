@@ -18571,7 +18571,9 @@ final class GameState(B){
 		}
 	}
 
-	int initGame(GameInit!B gameInit,int slot){ // returns id of controlled wizard
+	struct SlotInfo{ int controlledSide=-1; int wizard=0; }
+	Array!SlotInfo slots;
+	void initGame(GameInit!B gameInit){ // returns id of controlled wizard
 		foreach(ref structure;current.map.ntts.structures)
 			placeStructure(structure);
 		foreach(ref wizard;current.map.ntts.wizards)
@@ -18605,18 +18607,25 @@ final class GameState(B){
 				}
 			})(current);
 		}
-
-		int id=0;
-		foreach(currentSlot,ref wiz;gameInit.wizards){
+		slots.length=gameInit.slots.length;
+		slots.data[]=SlotInfo.init;
+		Array!int slotForWiz;
+		slotForWiz.length=gameInit.wizards.length;
+		slotForWiz.data[]=-1;
+		foreach(i,ref slot;gameInit.slots){
+			slots[i].controlledSide=slot.controlledSide;
+			if(slot.wizardIndex!=-1) slotForWiz[slot.wizardIndex]=cast(int)i;
+		}
+		foreach(wizardIndex,ref wiz;gameInit.wizards){
 			auto wizard=SacObject!B.getSAXS!Wizard(wiz.tag);
 			//printWizardStats(wizard);
 			auto flags=0;
 			auto wizId=current.placeWizard(wizard,wiz.name,flags,wiz.side,wiz.level,wiz.souls,wiz.spellbook);
-			if(slot==currentSlot) id=wizId;
+			auto slot=slotForWiz[wizardIndex];
+			if(slot!=-1) slots[slot].wizard=wizId;
 		}
 		foreach(ref stanceSetting;gameInit.stanceSettings)
 			current.sides.setStance(stanceSetting.from,stanceSetting.towards,stanceSetting.stance);
-		return id;
 	}
 
 	void step(){

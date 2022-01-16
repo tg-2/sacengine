@@ -40,6 +40,8 @@ final class Controller(B){
 		state.addCommandInconsistent(frame,command);
 		if(network) network.addCommand(frame,command);
 		if(recording) recording.addCommand(frame,command);
+		if(network && command.type==CommandType.surrender)
+			updateNetworkOnSurrender(command.side);
 	}
 	void addCommand(Command!B command){
 		if(network&&!network.playing) return;
@@ -56,6 +58,8 @@ final class Controller(B){
 		firstUpdatedFrame=min(firstUpdatedFrame,frame);
 		state.addCommandInconsistent(frame,command);
 		if(recording) recording.addExternalCommand(frame,command);
+		if(network && command.type==CommandType.surrender)
+			updateNetworkOnSurrender(command.side);
 	}
 	void setSelection(int side,int wizard,CreatureGroup selection,TargetLocation loc){
 		if(side!=controlledSide) return;
@@ -133,6 +137,17 @@ final class Controller(B){
 			state.current.copyFrom(state.lastCommitted); // restore invariant
 		currentFrame=max(currentFrame,committedFrame);
 		firstUpdatedFrame=max(firstUpdatedFrame,committedFrame);
+	}
+	void updateNetworkGameState()in{
+		assert(!!network);
+	}do{
+		foreach(ref p;network.players){
+			if(p.slot==-1) continue;
+			p.lostWizard|=!state.lastCommitted.isValidTarget(state.slots[p.slot].wizard,TargetType.creature);
+		}
+	}
+	void updateNetworkOnSurrender(int side){
+		foreach(ref p;network.players) if(p.slot!=-1&&state.slots[p.slot].controlledSide==side) p.lostWizard=true;
 	}
 	bool step(){
 		playAudio=false;
@@ -232,6 +247,7 @@ final class Controller(B){
 			network.commit(currentFrame);
 			playAudio=false;
 			updateCommitted();
+			updateNetworkGameState();
 			if(!network.isHost&&lastCheckSynch<committedFrame){
 				network.checkSynch(state.lastCommitted.frame,state.lastCommitted.hash);
 				lastCheckSynch=committedFrame;

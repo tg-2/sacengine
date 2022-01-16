@@ -638,6 +638,7 @@ struct Player{
 		return connection.receiveRaw(dg);
 	}
 
+	bool lostWizard=false;
 	int committedFrame=0;
 	int ping=-1;
 
@@ -654,6 +655,7 @@ struct Player{
 	bool allowedToControlState(){
 		if(!wantsToControlState) return false;
 		if(slot==-1) return false;
+		if(lostWizard) return false;
 		return true;
 	}
 	bool isReadyToControlState(){
