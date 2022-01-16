@@ -18442,7 +18442,6 @@ struct Command(B){
 struct GameInit(B){
 	struct Slot{
 		int wizardIndex=-1;
-		int controlledSide=-1;
 	}
 	Slot[] slots;
 	struct Wizard{
@@ -18626,17 +18625,18 @@ final class GameState(B){
 		Array!int slotForWiz;
 		slotForWiz.length=gameInit.wizards.length;
 		slotForWiz.data[]=-1;
-		foreach(i,ref slot;gameInit.slots){
-			slots[i].controlledSide=slot.controlledSide;
+		foreach(i,ref slot;gameInit.slots)
 			if(slot.wizardIndex!=-1) slotForWiz[slot.wizardIndex]=cast(int)i;
-		}
 		foreach(wizardIndex,ref wiz;gameInit.wizards){
 			auto wizard=SacObject!B.getSAXS!Wizard(wiz.tag);
 			//printWizardStats(wizard);
 			auto flags=0;
 			auto wizId=current.placeWizard(wizard,wiz.name,flags,wiz.side,wiz.level,wiz.souls,wiz.spellbook);
 			auto slot=slotForWiz[wizardIndex];
-			if(slot!=-1) slots[slot].wizard=wizId;
+			if(slot!=-1){
+				slots[slot].controlledSide=wiz.side;
+				slots[slot].wizard=wizId;
+			}
 		}
 		foreach(ref stanceSetting;gameInit.stanceSettings)
 			current.sides.setStance(stanceSetting.from,stanceSetting.towards,stanceSetting.stance);

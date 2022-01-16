@@ -55,9 +55,9 @@ GameInit!B gameInit(alias multiplayerSide,B,R)(R playerSettings,ref Options opti
 		if(options.randomSpellbooks) spells=randomSpells();
 		auto spellbook=getSpellbook!B(settings.spellbook);
 		import nttData:WizardTag;
-		assert(gameInit.slots[slot]==GameInit!B.Slot(-1,-1));
+		assert(gameInit.slots[slot]==GameInit!B.Slot(-1));
 		int wizardIndex=cast(int)gameInit.wizards.length;
-		gameInit.slots[slot]=GameInit!B.Slot(wizardIndex,side);
+		gameInit.slots[slot]=GameInit!B.Slot(wizardIndex);
 		gameInit.wizards~=GameInit!B.Wizard(to!WizardTag(tag),name,side,level,souls,experience,spellbook);
 	}
 	foreach(ref settings;playerSettings) placeWizard(settings);
@@ -67,7 +67,7 @@ GameInit!B gameInit(alias multiplayerSide,B,R)(R playerSettings,ref Options opti
 	}
 	foreach(i;0..numSlots){
 		foreach(j;i+1..numSlots){
-			int s=gameInit.slots[i].controlledSide, t=gameInit.slots[j].controlledSide;
+			int s=gameInit.wizards[gameInit.slots[i].wizardIndex].side, t=gameInit.wizards[gameInit.slots[j].wizardIndex].side;
 			if(s==-1||t==-1) continue;
 			assert(s!=t);
 			int x=teams[i], y=teams[j];
@@ -337,7 +337,7 @@ void loadMap(B)(ref Options options)in{
 	state.commit();
 	if(network && network.isHost) network.addSynch(state.lastCommitted.frame,state.lastCommitted.hash);
 	if(recording) recording.stepCommitted(state.lastCommitted);
-	auto controller=new Controller!B(multiplayerSide(slot),state,network,recording,playback);
+	auto controller=new Controller!B(state.slots[slot].controlledSide,state,network,recording,playback);
 	B.setState(state);
 	if(wizId) B.focusCamera(wizId);
 	else B.scene.fpview.active=true;
