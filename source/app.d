@@ -53,7 +53,7 @@ GameInit!B gameInit(alias multiplayerSide,B,R)(R playerSettings,ref Options opti
 		auto spells=settings.spellbook;
 		if(options.randomGods) spells=defaultSpells[uniform!"[]"(1,5)];
 		if(options.randomSpellbooks) spells=randomSpells();
-		auto spellbook=getSpellbook!B(settings.spellbook);
+		auto spellbook=getSpellbook!B(spells);
 		import nttData:WizardTag;
 		assert(gameInit.slots[slot]==GameInit!B.Slot(-1));
 		int wizardIndex=cast(int)gameInit.wizards.length;
