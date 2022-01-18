@@ -57,7 +57,7 @@ struct Options{
 	int delayStart=0;
 	// multiplayer
 	bool host=false;
-	int numSlots=2;
+	int numSlots=1;
 	string joinIP="";
 	bool testLag=false;
 	bool dumpTraffic=false;

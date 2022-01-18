@@ -67,7 +67,9 @@ GameInit!B gameInit(alias multiplayerSide,B,R)(R playerSettings,ref Options opti
 	}
 	foreach(i;0..numSlots){
 		foreach(j;i+1..numSlots){
-			int s=gameInit.wizards[gameInit.slots[i].wizardIndex].side, t=gameInit.wizards[gameInit.slots[j].wizardIndex].side;
+			int wi=gameInit.slots[i].wizardIndex, wj=gameInit.slots[j].wizardIndex;
+			if(wi==-1||wj==-1) continue;
+			int s=gameInit.wizards[wi].side, t=gameInit.wizards[wj].side;
 			if(s==-1||t==-1) continue;
 			assert(s!=t);
 			int x=teams[i], y=teams[j];
