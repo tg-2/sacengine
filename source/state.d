@@ -3096,6 +3096,7 @@ struct PoisonCloud(B){
 
 struct BlightMite(B){
 	int creature;
+	int intendedTarget;
 	Vector3f position;
 	Vector3f velocity;
 	SacSpell!B ability;
@@ -7761,7 +7762,7 @@ bool shootOnTick(bool ability=false,B)(ref MovingObject!B object,OrderTarget tar
 					break;
 				// abilities:
 				case SpellTag.blightMites:
-					blightMitesShoot(object.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
+					blightMitesShoot(object.id,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
 					break;
 				case SpellTag.devour:
 					devourSoul(object,target.id,rangedAttack,state);
@@ -7996,12 +7997,12 @@ bool divineSight(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B s
 	return true;
 }
 
-bool blightMitesShoot(B)(int creature,float accuracy,Vector3f position,Vector3f target,SacSpell!B ability,ObjectState!B state){
+bool blightMitesShoot(B)(int creature,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B ability,ObjectState!B state){
 	playSoundAt("ltim",position,state,4.0f); // TODO: move sound with projectile
 	foreach(i;0..10){
 		auto direction=getShotDirectionWithGravity(accuracy,position,target,ability,state);
 		direction+=0.2f*state.uniformDirection();
-		state.addEffect(BlightMite!B(creature,position,direction*ability.speed,ability));
+		state.addEffect(BlightMite!B(creature,intendedTarget,position,direction*ability.speed,ability));
 	}
 	return true;
 }
@@ -14726,10 +14727,19 @@ bool updateBlightMite(B)(ref BlightMite!B blightMite,ObjectState!B state){
 					}else{
 						if(auto closeCreature=state.proximity.closestCreatureInRange(position,ability.effectRange,state,10.0f)){
 							auto creaturePosition=state.movingObjectById!((ref obj)=>obj.center,()=>Vector3f.init)(closeCreature);
-							auto direction=creaturePosition-position;
-							velocity=4.5f*direction.normalized+0.5f*state.uniformDirection();
-							velocity.z+=0.5f*ability.fallingAcceleration*direction.length/velocity.length;
-							velocity.z=min(velocity.z,10.0f);
+							if(intendedTarget&&closeCreature!=intendedTarget){
+								auto intendedPosition=state.movingObjectById!((ref obj)=>obj.center,()=>Vector3f.init)(intendedTarget);
+								if(!isNaN(intendedPosition.x)&&(intendedPosition-position).lengthsqr<=ability.effectRange^^2){
+									closeCreature=intendedTarget;
+									creaturePosition=intendedPosition;
+								}
+							}
+							if(!isNaN(creaturePosition.x)){
+								auto direction=creaturePosition-position;
+								velocity=4.5f*direction.normalized+0.5f*state.uniformDirection();
+								velocity.z+=0.5f*ability.fallingAcceleration*direction.length/velocity.length;
+								velocity.z=min(velocity.z,10.0f);
+							}
 						}else{
 							velocity=5.0f*state.uniformDirection();
 							velocity.z=10.0f;
