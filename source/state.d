@@ -2888,6 +2888,7 @@ struct Poison{
 	bool infectuous;
 	int attacker;
 	int attackerSide;
+	DamageMod damageMod;
 	int frame=0;
 	enum manaBlockDelay=2*updateFPS;
 }
@@ -5999,7 +6000,7 @@ float dealDesecrationDamage(B)(ref MovingObject!B object,float damage,int attack
 float dealPoisonDamage(B)(ref MovingObject!B object,float damage,int attacker,int attackerSide,DamageMod damageMod,ObjectState!B state){
 	if(object.id==attacker?object.isGuardian:state.movingObjectById!((ref attacker)=>attacker.isGuardian,()=>false)(attacker))
 		damage*=1.5f;
-	return object.dealDamage(damage,attacker,attackerSide,damageMod|DamageMod.ranged,state);
+	return object.dealDamage(damage,attacker,attackerSide,damageMod,state);
 }
 
 float dealFireDamage(T,B)(ref T object,float rangedDamage,float spellDamage,int attacker,int attackerSide,DamageMod damageMod,ObjectState!B state){
@@ -7073,14 +7074,14 @@ bool necrylShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vect
 	return true;
 }
 
-bool poison(B)(ref MovingObject!B obj,float poisonDamage,int lifetime,bool infectuous,int attacker,int attackerSide,ObjectState!B state){
+bool poison(B)(ref MovingObject!B obj,float poisonDamage,int lifetime,bool infectuous,int attacker,int attackerSide,DamageMod damageMod,ObjectState!B state){
 	obj.creatureStats.effects.poisonDamage+=cast(int)poisonDamage;
-	state.addEffect(Poison(obj.id,poisonDamage,lifetime,infectuous,attacker,attackerSide));
+	state.addEffect(Poison(obj.id,poisonDamage,lifetime,infectuous,attacker,attackerSide,damageMod));
 	return true;
 }
 
-bool poison(B)(ref MovingObject!B obj,SacSpell!B rangedAttack,bool infectuous,int attacker,int attackerSide,ObjectState!B state){
-	return poison(obj,rangedAttack.amount/rangedAttack.duration,cast(int)(rangedAttack.duration*updateFPS),infectuous,attacker,attackerSide,state);
+bool poison(B)(ref MovingObject!B obj,SacSpell!B rangedAttack,bool infectuous,int attacker,int attackerSide,DamageMod damageMod,ObjectState!B state){
+	return poison(obj,rangedAttack.amount/rangedAttack.duration,cast(int)(rangedAttack.duration*updateFPS),infectuous,attacker,attackerSide,damageMod,state);
 }
 
 bool scarabShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
@@ -10767,7 +10768,7 @@ int wrathCollisionTarget(B)(int side,Vector3f position,ObjectState!B state){
 void wrathExplosion(B)(ref Wrath!B wrath,int target,ObjectState!B state){
 	wrath.status=WrathStatus.exploding;
 	playSoundAt("hhtr",wrath.position,state,4.0f);
-	if(state.isValidTarget(target)) dealSpellDamage(target,wrath.spell,wrath.wizard,wrath.side,wrath.velocity,DamageMod.none,state);
+	if(state.isValidTarget(target)) dealSpellDamage(target,wrath.spell,wrath.wizard,wrath.side,wrath.velocity,DamageMod.splash,state);
 	else target=0;
 	dealSplashSpellDamageAt(target,wrath.spell,wrath.spell.damageRange,wrath.wizard,wrath.side,wrath.position,DamageMod.none,state);
 	enum numParticles1=200;
@@ -10930,7 +10931,7 @@ void animateFireballExplosion(B)(Vector3f position,ObjectState!B state,float sca
 void fireballExplosion(B)(ref Fireball!B fireball,int target,ObjectState!B state){
 	playSpellSoundTypeAt(SoundType.explodingFireball,fireball.position,state,8.0f);
 	if(state.isValidTarget(target)){
-		dealSpellDamage(target,fireball.spell,fireball.wizard,fireball.side,fireball.velocity,DamageMod.ignite,state);
+		dealSpellDamage(target,fireball.spell,fireball.wizard,fireball.side,fireball.velocity,DamageMod.ignite|DamageMod.splash,state);
 		setAblaze(target,updateFPS,false,0.0f,fireball.wizard,fireball.side,DamageMod.ignite,state);
 	}else target=0;
 	static bool callback(int target,int wizard,int side,ObjectState!B state){
@@ -11242,7 +11243,7 @@ void swarmHit(B)(ref Swarm!B swarm,int target,ObjectState!B state){
 	swarm.status=SwarmStatus.dispersing;
 	playSoundAt("zzub",swarm.position,state,4.0f);
 	if(state.isValidTarget(target)){
-		dealSpellDamage(target,swarm.spell,swarm.wizard,swarm.side,swarm.velocity,DamageMod.none,state);
+		dealSpellDamage(target,swarm.spell,swarm.wizard,swarm.side,swarm.velocity,DamageMod.splash,state);
 		static void hit(T)(ref T obj,Swarm!B *swarm,ObjectState!B state){
 			static if(is(T==MovingObject!B)){
 				obj.creatureStats.mana=max(0.0f,obj.creatureStats.mana-0.25f*obj.creatureStats.maxMana);
@@ -13297,7 +13298,7 @@ bool updateSpitfireProjectile(B)(ref SpitfireProjectile!B spitfireProjectile,Obj
 			return true;
 		}
 		auto radius=finalSpitfireProjectileSize*frame/(updateFPS*rangedAttack.range/rangedAttack.speed);
-		dealSplashRangedDamageAt!callback(0,rangedAttack,radius,attacker,side,position,DamageMod.ignite,state,&damagedTargets,attacker,side,intendedTarget,rangedAttack,direction,state);
+		dealDamageAt!callback(0,rangedAttack.amount,radius,attacker,side,position,DamageMod.ignite|DamageMod.ranged,state,&damagedTargets,attacker,side,intendedTarget,rangedAttack,direction,state);
 		static assert(updateFPS==60);
 		if(frame<12){
 			enum numEffects=3;
@@ -13346,7 +13347,7 @@ bool updateGargoyleProjectile(B)(ref GargoyleProjectile!B gargoyleProjectile,Obj
 			return true;
 		}
 		auto radius=finalGargoyleProjectileSize*frame/(updateFPS*rangedAttack.range/rangedAttack.speed);
-		dealSplashRangedDamageAt!callback(0,rangedAttack,radius,attacker,side,position,DamageMod.none,state,&damagedTargets,attacker,side,intendedTarget,rangedAttack,direction,state);
+		dealDamageAt!callback(0,rangedAttack.amount,radius,attacker,side,position,DamageMod.ranged,state,&damagedTargets,attacker,side,intendedTarget,rangedAttack,direction,state);
 		static assert(updateFPS==60);
 		if(frame<12){
 			enum numEffects=3;
@@ -13766,7 +13767,7 @@ bool updateNecrylProjectile(B)(ref NecrylProjectile!B necrylProjectile,ObjectSta
 		switch(target.type){
 			case TargetType.terrain: return terminate();
 			case TargetType.creature:
-				state.movingObjectById!(poison,()=>false)(target.id,rangedAttack,true,attacker,side,state);
+				state.movingObjectById!(poison,()=>false)(target.id,rangedAttack,true,attacker,side,DamageMod.ranged,state);
 				return terminate();
 			case TargetType.building:
 				dealRangedDamage(target.id,rangedAttack,attacker,side,direction,DamageMod.none,state);
@@ -13786,15 +13787,15 @@ bool updatePoison(B)(ref Poison poison,ObjectState!B state){
 			auto hitbox=obj.hitbox;
 			hitbox[0]-=2.0f, hitbox[1]+=2.0f;
 			auto poisonDamage=obj.creatureStats.effects.poisonDamage;
-			static void infect(ProximityEntry target,ObjectState!B state,int creature,float poisonDamage,int lifetime,int attacker,int attackerSide){
+			static void infect(ProximityEntry target,ObjectState!B state,int creature,float poisonDamage,int lifetime,int attacker,int attackerSide,DamageMod damageMod){
 				if(target.id==creature) return;
-				state.movingObjectById!((ref next,creature,poisonDamage,lifetime,attacker,attackerSide,state){
+				state.movingObjectById!((ref next,creature,poisonDamage,lifetime,attacker,attackerSide,damageMod,state){
 					if(next.creatureStats.effects.infectionCooldown) return;
-					next.poison(poisonDamage,lifetime,true,attacker,attackerSide,state);
+					next.poison(poisonDamage,lifetime,true,attacker,attackerSide,damageMod,state);
 					next.creatureStats.effects.infectionCooldown=lifetime+3*updateFPS;
-				},(){})(target.id,creature,poisonDamage,lifetime,attacker,attackerSide,state);
+				},(){})(target.id,creature,poisonDamage,lifetime,attacker,attackerSide,damageMod,state);
 			}
-			collisionTargets!infect(hitbox,state,obj.id,poisonDamage,poison.lifetime-poison.frame,poison.attacker,poison.attackerSide);
+			collisionTargets!infect(hitbox,state,obj.id,poisonDamage,poison.lifetime-poison.frame,poison.attacker,poison.attackerSide,poison.damageMod);
 		},(){})(poison.creature,&poison,state);
 	}
 	return state.movingObjectById!((ref obj,poison,state){
@@ -13822,7 +13823,7 @@ bool updatePoison(B)(ref Poison poison,ObjectState!B state){
 			}
 		}
 		with(*poison){
-			obj.dealPoisonDamage(poisonDamage/updateFPS,attacker,attackerSide,DamageMod.none,state);
+			obj.dealPoisonDamage(poisonDamage/updateFPS,attacker,attackerSide,damageMod,state);
 			if(frame++>=lifetime) return removePoison();
 			return true;
 		}
@@ -14452,7 +14453,7 @@ bool updatePoisonDart(B)(ref PoisonDart!B poisonDart,ObjectState!B state){
 		switch(target.type){
 			case TargetType.terrain: return terminate();
 			case TargetType.creature:
-				state.movingObjectById!(poison,()=>false)(target.id,rangedAttack,false,attacker,side,state);
+				state.movingObjectById!(poison,()=>false)(target.id,rangedAttack,false,attacker,side,DamageMod.ranged,state);
 				return terminate();
 			case TargetType.building:
 				dealRangedDamage(target.id,rangedAttack,attacker,side,direction,DamageMod.none,state);
@@ -14665,7 +14666,7 @@ bool updatePoisonCloud(B)(ref PoisonCloud!B poisonCloud,ObjectState!B state){
 			if(target.id==attacker) return;
 			auto distance=boxPointDistance(target.hitbox,position);
 			if(distance>radius) return;
-			state.movingObjectById!(poison,()=>false)(target.id,ability,true,attacker,attackerSide,state);
+			state.movingObjectById!(poison,()=>false)(target.id,ability,false,attacker,attackerSide,DamageMod.splash|DamageMod.spell,state); // TODO: poison from cloud should be completely independent of other poison
 		}
 		auto position=boxCenter(hitbox);
 		auto radius=ability.effectRange;
@@ -15010,7 +15011,7 @@ void oilExplosion(B)(ref OilProjectile!B oilProjectile,ObjectState!B state){
 			if(canOil) state.addEffect(Oil!B(target,attacker,attackerSide,ability));
 			return false;
 		}
-		dealSplashRangedDamageAt!callback(0,ability,ability.effectRange,creature,side,position,DamageMod.none,state,creature,side,ability,state);
+		dealDamageAt!callback(0,0.0f,ability.effectRange,creature,side,position,DamageMod.none,state,creature,side,ability,state);
 		// TODO: scar
 		enum numParticles3=100;
 		auto sacParticle3=SacParticle!B.get(ParticleType.oil);
