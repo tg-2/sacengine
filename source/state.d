@@ -14750,7 +14750,7 @@ bool updateDivineSight(B)(ref DivineSight!B divineSight,ObjectState!B state){
 
 bool updateSteamCloud(B)(ref SteamCloud!B steamCloud,ObjectState!B state){
 	with(steamCloud){
-		dealSplashRangedDamageAt(id,ability,ability.damageRange,id,side,boxCenter(hitbox),DamageMod.ignite,state);
+		dealSplashSpellDamageAt(id,ability,ability.damageRange,id,side,boxCenter(hitbox),DamageMod.ignite,state);
 		enum numParticles2=100;
 		auto sacParticle2=SacParticle!B.get(ParticleType.steam);
 		auto scale=0.3f*boxSize(hitbox).length;
