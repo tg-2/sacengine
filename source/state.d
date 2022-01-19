@@ -5657,9 +5657,9 @@ float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,
 		if(!object.canDamage(state)) return 0.0f;
 		actualDamage=damage*state.sideDamageMultiplier(attackingSide,object.side);
 		if(object.creatureStats.effects.isGuardian){
-			actualDamage*=0.5f;
-			if(damageMod&DamageMod.ranged)
-				actualDamage*=0.5f;
+			if(damageMod&DamageMod.melee) actualDamage*=0.4f;
+			else if(damageMod&DamageMod.spell) actualDamage*=0.5f;
+			else if(damageMod&DamageMod.ranged) actualDamage*=0.25f;
 		}
 		if(auto passive=object.sacObject.passiveOnDamage){
 			switch(passive.tag){
