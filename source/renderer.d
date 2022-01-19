@@ -93,7 +93,7 @@ struct Renderer(B){
 		mat.blending=B.Blending.Additive;
 		mat.energy=1.0f;
 		mat.diffuse=texture;
-		B.Mesh[16] frames=makeSphereMeshes!B(24,25,nU,nV,1.0f)[0..16];
+		auto frames=typeof(return).createMeshes();
 		return SacExplosion!B(texture,mat,frames);
 	}
 	SacExplosion!B explosion;

@@ -1571,8 +1571,13 @@ struct SacExplosion(B){
 		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pyro.FLDR/txtr.FLDR/exeg.TXTR"));
 	}
 	B.Material material;
-	B.Mesh[16] frames;
+	enum numFrames=16;
+	B.Mesh[numFrames] frames;
 	auto getFrame(int i){ return frames[i/updateAnimFactor]; }
+	static B.Mesh[numFrames] createMeshes(){
+		enum nU=4,nV=4;
+		return makeSphereMeshes!B(24,25,nU,nV,1.0f)[0..16];
+	}
 }
 
 struct SacBlueRing(B){
