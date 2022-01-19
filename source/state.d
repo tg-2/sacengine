@@ -5528,6 +5528,29 @@ void damageAnimation(B)(ref MovingObject!B object,Vector3f attackDirection,Objec
 }
 
 
+bool canHeal(B)(ref MovingObject!B object,ObjectState!B state){
+	if(object.health(state)==object.creatureStats.maxHealth) return false;
+	if(object.health(state)==0.0f) return false;
+	return object.creatureState.mode.canHeal;
+}
+void heal(B)(ref MovingObject!B object,float amount,ObjectState!B state){
+	object.health=min(object.health+amount,object.creatureStats.maxHealth);
+}
+void heal(B)(ref Building!B building,float amount,ObjectState!B state){
+	building.health=min(building.health+amount,building.maxHealth(state));
+}
+
+void drainMana(B)(ref MovingObject!B object,float amount,ObjectState!B state){
+	object.creatureStats.mana=max(0.0f,object.creatureStats.mana-amount);
+}
+
+enum ghostHealthPerMana=4.2f;
+void giveMana(B)(ref MovingObject!B object,float amount,ObjectState!B state){
+	if(object.creatureStats.effects.manaBlocked) return;
+	object.creatureStats.mana=min(object.creatureStats.mana+amount,object.creatureStats.maxMana);
+	if(object.isWizard&&object.isGhost) object.heal(ghostHealthPerMana*amount,state);
+}
+
 void healFromDrain(B)(ref MovingObject!B attacker,float actualDamage,ObjectState!B state){
 	if(actualDamage) attacker.heal(actualDamage*attacker.creatureStats.drain,state);
 }
@@ -5536,24 +5559,42 @@ void healFromDrain(B)(int attacker,float actualDamage,ObjectState!B state){
 		return state.movingObjectById!(healFromDrain,(){})(attacker,actualDamage,state);
 }
 
+
 enum DamageMod{
 	none=0,
-	fall=1<<0,
-	peirceShield=1<<1,
-	lightning=1<<2,
-	ignite=1<<3,
-	desecration=1<<4,
-	// TODO: treat those as modifiers to cut down on pointless code duplication:
-	// ranged=...
-	// splash=...
+	melee=1<<0,
+	spell=1<<1,
+	ranged=1<<2,
+	splash=1<<3,
+	fall=1<<4,
+	lightning=1<<5,
+	ignite=1<<6,
+	desecration=1<<7,
+	peirceShield=1<<8,
+}
+
+float attackDamageFactor(B)(ref MovingObject!B attacker,bool targetIsCreature,DamageMod damageMod,ObjectState!B state){
+	float result=1.0f;
+	if(attacker.isGuardian) result*=1.5f;
+	if(!targetIsCreature&&damageMod&DamageMod.melee) result*=attacker.sacObject.buildingMeleeDamageMultiplier;
+	if(auto passive=attacker.sacObject.passiveOnDamage){
+		if(passive.tag==SpellTag.firefistPassive&&damageMod&DamageMod.melee){
+			auto relativeHP=attacker.creatureStats.health/attacker.creatureStats.maxHealth;
+			result*=1.0f+1.5f*(1.0f-relativeHP);
+		}
+	}
+	return result;
+}
+
+float dealDamage(T,B)(ref T object,float damage,int attacker,int attackingSide,Vector3f attackDirection,DamageMod damageMod,ObjectState!B state,bool checkIdle=false)if(is(T==MovingObject!B)||is(T==Building!B)){
+	auto actualDamage=dealDamage(object,damage,attacker,attackingSide,damageMod,state);
+	static if(is(T==MovingObject!B)) if(actualDamage>0.0f) object.damageAnimation(attackDirection,state,checkIdle);
+	return actualDamage;
 }
 
 float dealDamage(T,B)(ref T object,float damage,int attacker,int attackingSide,DamageMod damageMod,ObjectState!B state)if(is(T==MovingObject!B)||is(T==Building!B)){
 	auto actualDamage=damage;
-	static if(is(T==MovingObject!B)){
-		if(object.id==attacker)
-			if(object.isGuardian) actualDamage*=1.5f;
-	}
+	static if(is(T==MovingObject!B)) if(object.id==attacker) actualDamage*=object.attackDamageFactor(true,damageMod,state);
 	if(object.id!=attacker&&state.isValidTarget(attacker,TargetType.creature))
 		return state.movingObjectById!((ref atk,obj,dmg,damageMod,state)=>dealDamage(*obj,dmg,atk,damageMod,state),()=>0.0f)(attacker,&object,actualDamage,damageMod,state);
 	return dealDamage(object,actualDamage,attackingSide,damageMod,state);
@@ -5569,13 +5610,45 @@ bool canDamage(B)(ref MovingObject!B object,ObjectState!B state){
 	}
 }
 
-float dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B attacker,DamageMod damageMod,ObjectState!B state){
-	auto actualDamage=damage;
-	if(attacker.isGuardian) actualDamage*=1.5f;
+float dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B attacker,Vector3f attackDirection,DamageMod damageMod,ObjectState!B state,bool checkIdle=false){
+	auto actualDamage=dealDamage(object,damage,attacker,damageMod,state,checkIdle);
+	if(actualDamage>0.0f) object.damageAnimation(attackDirection,state,checkIdle);
+	return actualDamage;
+
+}
+
+float dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B attacker,DamageMod damageMod,ObjectState!B state,bool checkIdle=false){
+	auto actualDamage=damage*attacker.attackDamageFactor(true,damageMod,state);
 	actualDamage=dealDamage(object,actualDamage,attacker.side,damageMod,state);
 	attacker.healFromDrain(actualDamage,state);
 	return actualDamage;
 }
+float dealDamage(B)(ref MovingObject!B object,float damage,int attackingSide,DamageMod damageMod,ObjectState!B state){
+	auto damageMultiplier=1.0f;
+	if(damageMod&DamageMod.melee) damageMultiplier*=object.creatureStats.meleeResistance;
+	else if(damageMod&DamageMod.ranged){
+		if(damageMod&DamageMod.splash) damageMultiplier*=object.creatureStats.splashRangedResistance;
+		else damageMultiplier*=object.creatureStats.directRangedResistance;
+	}else if(damageMod&DamageMod.spell){
+		if(damageMod&DamageMod.splash) damageMultiplier*=object.creatureStats.splashSpellResistance;
+		else damageMultiplier*=object.creatureStats.directSpellResistance;
+	}
+	if(!(damageMod&DamageMod.fall)){
+		if(!object.canDamage(state)) return 0.0f;
+		if(!(damageMod&DamageMod.peirceShield)){
+			if(object.creatureStats.effects.lifeShield) damageMultiplier*=0.5f;
+			if(object.creatureState.mode==CreatureMode.rockForm) damageMultiplier*=0.05f;
+			if(object.creatureStats.effects.petrified) damageMultiplier*=0.2f;
+			if(object.creatureStats.effects.skinOfStone) damageMultiplier*=0.25f;
+			if(object.creatureStats.effects.airShield) damageMultiplier*=0.5f;
+			if(object.creatureStats.effects.protectiveSwarm) damageMultiplier*=0.75f;
+		}
+		damageMultiplier*=1.2f^^object.creatureStats.effects.numSlimes;
+	}
+	// TODO: bleed, in case of petrification, bleed rocks instead
+	return dealRawDamage(object,damage*damageMultiplier,attackingSide,damageMod,state);
+}
+
 float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,DamageMod damageMod,ObjectState!B state){
 	float actualDamage;
 	if(!(damageMod&DamageMod.fall)||object.isSacDoctor){ // TODO: do sac doctors take fall damage at all?
@@ -5614,26 +5687,43 @@ float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,
 		object.kill(state);
 	return actualDamage;
 }
-float dealDamage(B)(ref MovingObject!B object,float damage,int attackingSide,DamageMod damageMod,ObjectState!B state){
-	auto damageMultiplier=1.0f;
-	if(!(damageMod&DamageMod.fall)){
-		if(!object.canDamage(state)) return 0.0f;
-		if(!(damageMod&DamageMod.peirceShield)){
-			if(object.creatureStats.effects.lifeShield) damageMultiplier*=0.5f;
-			if(object.creatureState.mode==CreatureMode.rockForm) damageMultiplier*=0.05f;
-			if(object.creatureStats.effects.petrified) damageMultiplier*=0.2f;
-			if(object.creatureStats.effects.skinOfStone) damageMultiplier*=0.25f;
-			if(object.creatureStats.effects.airShield) damageMultiplier*=0.5f;
-			if(object.creatureStats.effects.protectiveSwarm) damageMultiplier*=0.75f;
-		}
-		damageMultiplier*=1.2f^^object.creatureStats.effects.numSlimes;
-	}
-	// TODO: bleed, in case of petrification, bleed rocks instead
-	return dealRawDamage(object,damage*damageMultiplier,attackingSide,damageMod,state);
+
+float dealDamage(B)(ref MovingObject!B object,float amount,float radius,int attacker,int attackerSide,Vector3f attackDirection,float distance,DamageMod damageMod,ObjectState!B state){
+	auto damage=amount*(radius>0.0f?max(0.0f,1.0f-distance/radius):1.0f);
+	object.damageAnimation(attackDirection,state);
+	return object.dealDamage(damage,attacker,attackerSide,attackDirection,damageMod|DamageMod.splash,state);
 }
-float dealDesecrationDamage(B)(ref MovingObject!B object,float damage,int attackingSide,ObjectState!B state){
-	if(!object.canDamage(state)) return 0.0f;
-	return dealRawDamage(object,damage,attackingSide,DamageMod.desecration,state);
+
+float dealDamage(B)(ref StaticObject!B object,float amount,float radius,int attacker,int attackerSide,Vector3f attackDirection,float distance,DamageMod damageMod,ObjectState!B state){
+	return state.buildingById!(dealDamage,()=>0.0f)(object.buildingId,amount,radius,attacker,attackerSide,attackDirection,distance,damageMod,state);
+}
+
+float dealDamage(B)(ref Building!B building,float amount,float radius,int attacker,int attackerSide,Vector3f attackDirection,float distance,DamageMod damageMod,ObjectState!B state){
+	auto damage=amount*(radius>0.0f?max(0.0f,1.0f-distance/radius):1.0f);
+	return building.dealDamage(damage,attacker,attackerSide,damageMod|DamageMod.splash,state);
+}
+
+float dealDamage(B)(int target,float amount,float radius,int attacker,int attackerSide,Vector3f attackDirection,float distance,DamageMod damageMod,ObjectState!B state){
+	if(state.isValidBuilding(target))
+		return state.buildingById!(dealDamage,()=>0.0f)(target,amount,radius,attacker,attackerSide,attackDirection,distance,damageMod,state);
+	if(!state.isValidId(target)) return 0.0f;
+	return state.objectById!dealDamage(target,amount,radius,attacker,attackerSide,attackDirection,distance,damageMod,state);
+}
+
+float dealDamageAt(alias callback=(id)=>true,B,T...)(int directTarget,float amount,float radius,int attacker,int attackerSide,Vector3f position,DamageMod damageMod,ObjectState!B state,T args){
+	static void hit(ProximityEntry target,ObjectState!B state,int directTarget,float amount,int attacker,int attackerSide,Vector3f position,float* sum,float radius,DamageMod damageMod,T args){
+		if(target.id==directTarget) return;
+		auto distance=boxPointDistance(target.hitbox,position);
+		if(distance>radius) return;
+		auto attackDirection=state.objectById!((obj)=>obj.center)(target.id)-position;
+		if(callback(target.id,args))
+			*sum+=dealDamage(target.id,amount,radius,attacker,attackerSide,attackDirection,distance,damageMod,state);
+	}
+	auto offset=Vector3f(radius,radius,radius);
+	Vector3f[2] hitbox=[position-offset,position+offset];
+	float sum=0.0f;
+	collisionTargets!(hit,None,true)(hitbox,state,directTarget,amount,attacker,attackerSide,position,&sum,radius,damageMod,args);
+	return sum;
 }
 
 bool canDamage(B)(ref Building!B building,ObjectState!B state){
@@ -5682,142 +5772,30 @@ float damageGuardians(B)(ref Building!B building,float damage,ref MovingObject!B
 				actualDamage+=state.movingObjectById!((ref obj,splitDamage,attacker,attachPosition,damageMod,state,ok){
 					if(!obj.isValidGuard(state)) return 0.0f;
 					auto attackDirection=obj.center-attachPosition;
-					obj.damageAnimation(attackDirection,state,false);
 					*ok=true;
-					return dealDamage(obj,splitDamage,*attacker,damageMod,state);
+					return dealDamage(obj,splitDamage,*attacker,attackDirection,damageMod,state,false);
 				},()=>0.0f)(id,splitDamage,&attacker,attachPosition,damageMod,state,&ok);
 			}
-		}
-		if(ok) return actualDamage;
-	}
-	return float.nan;
-}
-float meleeDamageGuardians(B)(ref Building!B building,float damage,ref MovingObject!B attacker,DamageMod damageMod,ObjectState!B state){
-	if(building.guardianIds.length){
-		auto n=building.guardianIds.length;
-		auto splitDamage=damage/min(n,0.5f*(n+3));
-		float actualDamage=0.0f;
-		auto attachPosition=building.guardianAttachPosition(state);
-		bool ok=false;
-		foreach(id;building.guardianIds.data){
-			if(id==attacker.id){
-				if(!attacker.isValidGuard(state))
-					continue;
-				auto attackDirection=attacker.center-attachPosition;
-				attacker.damageAnimation(attackDirection,state,false);
-				actualDamage+=attacker.dealDamage(splitDamage,attacker,damageMod,state);
-				ok=true;
-			}else{
-				actualDamage+=state.movingObjectById!((ref obj,splitDamage,attacker,attachPosition,damageMod,state,ok){
-					if(!obj.isValidGuard(state)) return 0.0f;
-					auto attackDirection=obj.center-attachPosition;
-					obj.damageAnimation(attackDirection,state,false);
-					*ok=true;
-					auto actualDamage=splitDamage*obj.creatureStats.meleeResistance;
-					return dealDamage(obj,actualDamage,*attacker,damageMod,state);
-				},()=>0.0f)(id,splitDamage,&attacker,attachPosition,damageMod,state,&ok);
-			}
-		}
-		if(ok) return actualDamage;
-	}
-	return float.nan;
-}
-float spellDamageGuardians(B)(ref Building!B building,float damage,int attacker,int attackingSide,DamageMod damageMod,ObjectState!B state){
-	if(building.guardianIds.length){
-		auto n=building.guardianIds.length;
-		auto splitDamage=damage/min(n,0.5f*(n+3));
-		float actualDamage=0.0f;
-		auto attachPosition=building.guardianAttachPosition(state);
-		bool ok=false;
-		foreach(id;building.guardianIds.data){
-			actualDamage+=state.movingObjectById!((ref obj,splitDamage,attacker,attackingSide,attachPosition,damageMod,state,ok){
-				if(!obj.isValidGuard(state)) return 0.0f;
-				auto attackDirection=obj.center-attachPosition;
-				obj.damageAnimation(attackDirection,state,false);
-				*ok=true;
-				auto actualDamage=splitDamage*obj.creatureStats.directSpellResistance;
-				return dealDamage(obj,actualDamage,attacker,attackingSide,damageMod,state);
-			},()=>0.0f)(id,splitDamage,attacker,attackingSide,attachPosition,damageMod,state,&ok);
-		}
-		if(ok) return actualDamage;
-	}
-	return float.nan;
-}
-float splashSpellDamageGuardians(B)(ref Building!B building,float damage,int attacker,int attackingSide,DamageMod damageMod,ObjectState!B state){
-	if(building.guardianIds.length){
-		auto n=building.guardianIds.length;
-		auto splitDamage=damage/min(n,0.5f*(n+3));
-		float actualDamage=0.0f;
-		auto attachPosition=building.guardianAttachPosition(state);
-		bool ok=false;
-		foreach(id;building.guardianIds.data){
-			actualDamage+=state.movingObjectById!((ref obj,splitDamage,attacker,attackingSide,attachPosition,damageMod,state,ok){
-				if(!obj.isValidGuard(state)) return 0.0f;
-				auto attackDirection=obj.center-attachPosition;
-				obj.damageAnimation(attackDirection,state,false);
-				*ok=true;
-				auto actualDamage=splitDamage*obj.creatureStats.splashSpellResistance;
-				return dealDamage(obj,actualDamage,attacker,attackingSide,damageMod,state);
-			},()=>0.0f)(id,splitDamage,attacker,attackingSide,attachPosition,damageMod,state,&ok);
-		}
-		if(ok) return actualDamage;
-	}
-	return float.nan;
-}
-float rangedDamageGuardians(B)(ref Building!B building,float damage,int attacker,int attackingSide,DamageMod damageMod,ObjectState!B state){
-	if(building.guardianIds.length){
-		auto n=building.guardianIds.length;
-		auto splitDamage=damage/min(n,0.5f*(n+3));
-		float actualDamage=0.0f;
-		auto attachPosition=building.guardianAttachPosition(state);
-		bool ok=false;
-		foreach(id;building.guardianIds.data){
-			actualDamage+=state.movingObjectById!((ref obj,splitDamage,attacker,attackingSide,attachPosition,damageMod,state,ok){
-				if(!obj.isValidGuard(state)) return 0.0f;
-				auto attackDirection=obj.center-attachPosition;
-				obj.damageAnimation(attackDirection,state,false);
-				*ok=true;
-				auto actualDamage=splitDamage*obj.creatureStats.directRangedResistance;
-				return dealDamage(obj,actualDamage,attacker,attackingSide,damageMod,state);
-			},()=>0.0f)(id,splitDamage,attacker,attackingSide,attachPosition,damageMod,state,&ok);
-		}
-		if(ok) return actualDamage;
-	}
-	return float.nan;
-}
-float splashRangedDamageGuardians(B)(ref Building!B building,float damage,int attacker,int attackingSide,DamageMod damageMod,ObjectState!B state){
-	if(building.guardianIds.length){
-		auto n=building.guardianIds.length;
-		auto splitDamage=damage/min(n,0.5f*(n+3));
-		float actualDamage=0.0f;
-		auto attachPosition=building.guardianAttachPosition(state);
-		bool ok=false;
-		foreach(id;building.guardianIds.data){
-			actualDamage+=state.movingObjectById!((ref obj,splitDamage,attacker,attackingSide,attachPosition,damageMod,state,ok){
-				if(!obj.isValidGuard(state)) return 0.0f;
-				auto attackDirection=obj.center-attachPosition;
-				*ok=true;
-				obj.damageAnimation(attackDirection,state,false);
-				auto actualDamage=splitDamage*obj.creatureStats.splashRangedResistance;
-				return dealDamage(obj,actualDamage,attacker,attackingSide,damageMod,state);
-				},()=>0.0f)(id,splitDamage,attacker,attackingSide,attachPosition,damageMod,state,&ok);
 		}
 		if(ok) return actualDamage;
 	}
 	return float.nan;
 }
 
-float dealDamage(B)(ref Building!B building,float damage,ref MovingObject!B attacker,DamageMod damageMod,ObjectState!B state){
-	auto guardianDamage=damageGuardians(building,damage,attacker,damageMod,state);
-	if(!isNaN(guardianDamage)) return guardianDamage;
-	auto actualDamage=dealDamage(building,damage,attacker.side,damageMod,state);
-	return actualDamage;
-}
-float dealDamage(B)(ref Building!B building,float damage,int attackingSide,DamageMod damageMod,ObjectState!B state){
-	auto guardianDamage=damageGuardians(building,damage,attackingSide,damageMod,state);
-	if(!isNaN(guardianDamage)) return guardianDamage;
+float dealDamageNoGuardians(B)(ref Building!B building,float damage,int attackingSide,DamageMod damageMod,ObjectState!B state)in{
+	assert(!building.guardianIds.length);
+}do{
 	if(!building.canDamage(state)) return 0.0f;
-	auto actualDamage=min(building.health,damage*state.sideDamageMultiplier(attackingSide,building.side));
+	auto damageMultiplier=1.0f;
+	if(damageMod&DamageMod.melee) damageMultiplier*=building.meleeResistance;
+	else if(damageMod&DamageMod.ranged){
+		if(damageMod&DamageMod.splash) damageMultiplier*=building.splashRangedResistance;
+		else damageMultiplier*=building.directRangedResistance;
+	}else if(damageMod&DamageMod.spell){
+		if(damageMod&DamageMod.splash) damageMultiplier*=building.splashSpellResistance;
+		else damageMultiplier*=building.directSpellResistance;
+	}
+	auto actualDamage=min(building.health,damageMultiplier*damage*state.sideDamageMultiplier(attackingSide,building.side));
 	building.health-=actualDamage;
 	if(building.flags&Flags.cannotDestroyKill)
 		building.health=max(building.health,1.0f);
@@ -5827,49 +5805,39 @@ float dealDamage(B)(ref Building!B building,float damage,int attackingSide,Damag
 	return actualDamage;
 }
 
-bool canHeal(B)(ref MovingObject!B object,ObjectState!B state){
-	if(object.health(state)==object.creatureStats.maxHealth) return false;
-	if(object.health(state)==0.0f) return false;
-	return object.creatureState.mode.canHeal;
-}
-void heal(B)(ref MovingObject!B object,float amount,ObjectState!B state){
-	object.health=min(object.health+amount,object.creatureStats.maxHealth);
-}
-void heal(B)(ref Building!B building,float amount,ObjectState!B state){
-	building.health=min(building.health+amount,building.maxHealth(state));
+float dealDamage(B)(ref Building!B building,float damage,ref MovingObject!B attacker,DamageMod damageMod,ObjectState!B state){
+	auto guardianDamage=damageGuardians(building,damage,attacker,damageMod,state);
+	if(!isNaN(guardianDamage)) return guardianDamage;
+	damage*=attacker.attackDamageFactor(false,damageMod,state);
+	return dealDamageNoGuardians(building,damage,attacker.side,damageMod,state);
 }
 
-void drainMana(B)(ref MovingObject!B object,float amount,ObjectState!B state){
-	object.creatureStats.mana=max(0.0f,object.creatureStats.mana-amount);
-}
-
-enum ghostHealthPerMana=4.2f;
-void giveMana(B)(ref MovingObject!B object,float amount,ObjectState!B state){
-	if(object.creatureStats.effects.manaBlocked) return;
-	object.creatureStats.mana=min(object.creatureStats.mana+amount,object.creatureStats.maxMana);
-	if(object.isWizard&&object.isGhost) object.heal(ghostHealthPerMana*amount,state);
+float dealDamage(B)(ref Building!B building,float damage,int attackingSide,DamageMod damageMod,ObjectState!B state){
+	auto guardianDamage=damageGuardians(building,damage,attackingSide,damageMod,state);
+	if(!isNaN(guardianDamage)) return guardianDamage;
+	if(!building.canDamage(state)) return 0.0f;
+	return dealDamageNoGuardians(building,damage,attackingSide,damageMod,state);
 }
 
 float meleeDistanceSqr(Vector3f[2] objectHitbox,Vector3f[2] attackerHitbox){
 	return boxBoxDistanceSqr(objectHitbox,attackerHitbox);
 }
 
-void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,float damageFactor,DamageMod damageMod,ObjectState!B state){
-	auto damage=damageFactor*attacker.meleeStrength/attacker.numAttackTicks; // TODO: figure this out
+void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,DamageMod damageMod,ObjectState!B state){
+	auto damage=attacker.meleeStrength/attacker.numAttackTicks; // TODO: figure this out
 	auto objectHitbox=object.hitbox, attackerHitbox=attacker.meleeHitbox, attackerSizeSqr=0.25f*boxSize(attackerHitbox).lengthsqr;
 	auto distanceSqr=meleeDistanceSqr(objectHitbox,attackerHitbox);
 	//auto damageMultiplier=max(0.0f,1.0f-max(0.0f,sqrt(distanceSqr/attackerSizeSqr)));
 	auto damageMultiplier=max(0.0f,1.0f-max(0.0f,(sqrt(distanceSqr)+state.uniform(0.5f,1.0f))/sqrt(attackerSizeSqr)));
-	auto actualDamage=damageMultiplier*damage*object.creatureStats.meleeResistance;
 	auto attackDirection=object.center-attacker.center; // TODO: good?
 	auto stunBehavior=attacker.stunBehavior;
 	auto direction=getDamageDirection(object,attackDirection,state);
 	bool fromBehind=direction==DamageDirection.back;
 	bool fromSide=!!direction.among(DamageDirection.left,DamageDirection.right);
-	if(fromBehind) actualDamage*=2.0f;
-	object.dealDamage(actualDamage,attacker,damageMod,state);
+	if(fromBehind) damage*=2.0f;
+	auto actualDamage=object.dealDamage(damage,attacker,damageMod|DamageMod.melee,state);
 	if(stunBehavior==StunBehavior.always || fromBehind && stunBehavior==StunBehavior.fromBehind){
-		if(actualDamage>=0.5f*damage){
+		if(actualDamage>=0.5f*attacker.meleeStrength){ // TODO: figure out actual condition
 			playSoundTypeAt(attacker.sacObject,attacker.id,SoundType.stun,state);
 			object.damageStun(attackDirection,state);
 			return;
@@ -5887,41 +5855,28 @@ void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,fl
 	playSoundTypeAt(attacker.sacObject,attacker.id,SoundType.hit,state);
 }
 
-float dealMeleeDamage(B)(ref StaticObject!B object,ref MovingObject!B attacker,float damageFactor,DamageMod damageMod,ObjectState!B state){
-	return state.buildingById!((ref Building!B building,MovingObject!B* attacker,float damageFactor,DamageMod damageMod,ObjectState!B state){
-		return building.dealMeleeDamage(*attacker,damageFactor,damageMod,state);
-	},()=>0.0f)(object.buildingId,&attacker,damageFactor,damageMod,state);
+float dealMeleeDamage(B)(ref StaticObject!B object,ref MovingObject!B attacker,DamageMod damageMod,ObjectState!B state){
+	return state.buildingById!((ref Building!B building,MovingObject!B* attacker,DamageMod damageMod,ObjectState!B state){
+		return building.dealMeleeDamage(*attacker,damageMod,state);
+	},()=>0.0f)(object.buildingId,&attacker,damageMod,state);
 }
 
-float dealMeleeDamage(B)(ref Building!B building,ref MovingObject!B attacker,float damageFactor,DamageMod damageMod,ObjectState!B state){
-	auto damage=damageFactor*attacker.meleeStrength/attacker.numAttackTicks;
-	auto guardianDamage=meleeDamageGuardians(building,damage,attacker,damageMod,state);
-	if(!isNaN(guardianDamage)) return guardianDamage;
-	auto actualDamage=damage*building.meleeResistance*attacker.sacObject.buildingMeleeDamageMultiplier;
-	actualDamage=building.dealDamage(actualDamage,attacker,damageMod,state);
-	playSoundTypeAt(attacker.sacObject,attacker.id,SoundType.hitWall,state);
+float dealMeleeDamage(B)(ref Building!B building,ref MovingObject!B attacker,DamageMod damageMod,ObjectState!B state){
+	auto damage=attacker.meleeStrength/attacker.numAttackTicks;
+	auto actualDamage=building.dealDamage(damage,attacker,damageMod|DamageMod.melee,state);
+	if(actualDamage>0.0f) playSoundTypeAt(attacker.sacObject,attacker.id,SoundType.hitWall,state);
 	return actualDamage;
 }
 
 float dealSpellDamage(B)(ref MovingObject!B object,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,DamageMod damageMod,ObjectState!B state){
-	auto damage=spell.amount;
-	return dealSpellDamage(object,damage,attacker,attackerSide,attackDirection,damageMod,state);
+	return dealSpellDamage(object,spell.amount,attacker,attackerSide,attackDirection,damageMod,state);
 }
 float dealSpellDamage(B)(ref MovingObject!B object,float damage,int attacker,int attackerSide,Vector3f attackDirection,DamageMod damageMod,ObjectState!B state){
-	auto actualDamage=damage*object.creatureStats.directSpellResistance;
-	object.damageAnimation(attackDirection,state);
-	actualDamage=object.dealDamage(actualDamage,attacker,attackerSide,damageMod,state);
-	healFromDrain(attacker,actualDamage,state);
-	return actualDamage;
+	return object.dealDamage(damage,attacker,attackerSide,attackDirection,damageMod|DamageMod.spell,state);
 }
-
 float dealSpellDamage(B)(ref MovingObject!B object,float damage,int attacker,int attackerSide,DamageMod damageMod, ObjectState!B state){
-	auto actualDamage=damage*object.creatureStats.directSpellResistance;
-	actualDamage=object.dealDamage(actualDamage,attacker,attackerSide,damageMod,state);
-	healFromDrain(attacker,actualDamage,state);
-	return actualDamage;
+	return object.dealDamage(damage,attacker,attackerSide,damageMod|DamageMod.spell,state);
 }
-
 
 float dealSpellDamage(B)(ref StaticObject!B object,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,DamageMod damageMod,ObjectState!B state){
 	return dealSpellDamage(object,spell.amount,attacker,attackerSide,attackDirection,damageMod,state);
@@ -5934,19 +5889,13 @@ float dealSpellDamage(B)(ref StaticObject!B object,float damage,int attacker,int
 }
 
 float dealSpellDamage(B)(ref Building!B building,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,DamageMod damageMod,ObjectState!B state){
-	auto damage=spell.amount;
-	return dealSpellDamage(spell,attacker,attackerSide,attackDirection,damageMod,state);
+	return dealSpellDamage(building,spell.amount,attacker,attackerSide,attackDirection,damageMod,state);
 }
-
 float dealSpellDamage(B)(ref Building!B building,float damage,int attacker,int attackerSide,Vector3f attackDirection,DamageMod damageMod,ObjectState!B state){
 	return dealSpellDamage(building,damage,attacker,attackerSide,damageMod,state);
 }
-
 float dealSpellDamage(B)(ref Building!B building,float damage,int attacker,int attackerSide,DamageMod damageMod,ObjectState!B state){
-	auto guardianDamage=spellDamageGuardians(building,damage,attacker,attackerSide,damageMod,state);
-	if(!isNaN(guardianDamage)) return guardianDamage;
-	auto actualDamage=damage*building.directSpellResistance;
-	return building.dealDamage(actualDamage,attacker,attackerSide,damageMod,state);
+	return building.dealDamage(damage,attacker,attackerSide,damageMod|DamageMod.spell,state);
 }
 
 
@@ -5956,12 +5905,7 @@ float dealSpellDamage(B)(int target,SacSpell!B spell,int attacker,int attackerSi
 }
 
 float dealSplashSpellDamage(B)(ref MovingObject!B object,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,float distance,DamageMod damageMod,ObjectState!B state){
-	auto damage=spell.amount*(spell.damageRange>0.0f?max(0.0f,1.0f-distance/spell.damageRange):1.0f);
-	auto actualDamage=damage*object.creatureStats.splashSpellResistance;
-	object.damageAnimation(attackDirection,state);
-	actualDamage=object.dealDamage(actualDamage,attacker,attackerSide,damageMod,state);
-	healFromDrain(attacker,actualDamage,state);
-	return actualDamage;
+	return dealSplashDamage(object,spell,attacker,attackerSide,attackDirection,distance,damageMod|DamageMod.spell,state);
 }
 
 float dealSplashSpellDamage(B)(ref StaticObject!B object,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,float distance,DamageMod damageMod,ObjectState!B state){
@@ -5969,11 +5913,7 @@ float dealSplashSpellDamage(B)(ref StaticObject!B object,SacSpell!B spell,int at
 }
 
 float dealSplashSpellDamage(B)(ref Building!B building,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,float distance,DamageMod damageMod,ObjectState!B state){
-	auto damage=spell.amount*(spell.damageRange>0.0f?max(0.0f,1.0f-distance/spell.damageRange):1.0f);
-	auto guardianDamage=splashSpellDamageGuardians(building,damage,attacker,attackerSide,damageMod,state);
-	if(!isNaN(guardianDamage)) return guardianDamage;
-	auto actualDamage=damage*building.splashSpellResistance;
-	return building.dealDamage(actualDamage,attacker,attackerSide,damageMod,state);
+	return dealSplashDamage(building,spell,attacker,attackerSide,attackDirection,distance,damageMod|DamageMod.spell,state);
 }
 
 float dealSplashSpellDamage(B)(int target,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,float distance,DamageMod damageMod,ObjectState!B state){
@@ -5984,67 +5924,20 @@ float dealSplashSpellDamage(B)(int target,SacSpell!B spell,int attacker,int atta
 }
 
 float dealSplashSpellDamageAt(alias callback=(id)=>true,B,T...)(int directTarget,SacSpell!B spell,float radius,int attacker,int attackerSide,Vector3f position,DamageMod damageMod,ObjectState!B state,T args){
-	static void dealDamage(ProximityEntry target,ObjectState!B state,int directTarget,SacSpell!B spell,int attacker,int attackerSide,Vector3f position,float* sum,float radius,DamageMod damageMod,T args){
-		if(target.id==directTarget) return;
-		auto distance=boxPointDistance(target.hitbox,position);
-		if(distance>radius) return;
-		auto attackDirection=state.objectById!((obj)=>obj.center)(target.id)-position;
-		if(callback(target.id,args))
-			*sum+=dealSplashSpellDamage(target.id,spell,attacker,attackerSide,attackDirection,distance,damageMod,state);
-	}
-	auto offset=Vector3f(radius,radius,radius);
-	Vector3f[2] hitbox=[position-offset,position+offset];
-	float sum=0.0f;
-	collisionTargets!(dealDamage,None,true)(hitbox,state,directTarget,spell,attacker,attackerSide,position,&sum,radius,damageMod,args);
-	return sum;
+	return dealSplashDamageAt!callback(directTarget,spell,radius,attacker,attackerSide,position,damageMod|DamageMod.spell,state,args);
 }
 
 float dealRangedDamage(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,DamageMod damageMod,ObjectState!B state){
-	auto damage=rangedAttack.amount;
-	return dealRangedDamage(object,damage,attacker,attackerSide,attackDirection,damageMod,state);
+	return dealRangedDamage(object,rangedAttack.amount,attacker,attackerSide,attackDirection,damageMod,state);
 }
 float dealRangedDamage(B)(ref MovingObject!B object,float damage,int attacker,int attackerSide,Vector3f attackDirection,DamageMod damageMod,ObjectState!B state){
-	auto actualDamage=damage*object.creatureStats.directRangedResistance;
-	object.damageAnimation(attackDirection,state);
-	actualDamage=object.dealDamage(actualDamage,attacker,attackerSide,damageMod,state);
-	healFromDrain(attacker,actualDamage,state);
-	return actualDamage;
+	return object.dealDamage(damage,attacker,attackerSide,attackDirection,damageMod|DamageMod.ranged,state);
 }
 
 float dealRangedDamage(B)(ref MovingObject!B object,float damage,int attacker,int attackerSide,DamageMod damageMod,ObjectState!B state){
-	auto actualDamage=damage*object.creatureStats.directRangedResistance;
-	actualDamage=object.dealDamage(actualDamage,attacker,attackerSide,damageMod,state);
-	healFromDrain(attacker,actualDamage,state);
-	return actualDamage;
+	return object.dealDamage(damage,attacker,attackerSide,damageMod|DamageMod.ranged,state);
 }
 
-float dealPoisonDamage(B)(ref MovingObject!B object,float damage,int attacker,int attackerSide,DamageMod damageMod,ObjectState!B state){
-	if(object.id==attacker?object.isGuardian:state.movingObjectById!((ref attacker)=>attacker.isGuardian,()=>false)(attacker))
-		damage*=1.5f;
-	auto actualDamage=damage*object.creatureStats.directRangedResistance;
-	actualDamage=object.dealDamage(actualDamage,attacker,attackerSide,damageMod,state);
-	healFromDrain(attacker,actualDamage,state);
-	return actualDamage;
-}
-
-float dealFireDamage(T,B)(ref T object,float rangedDamage,float spellDamage,int attacker,int attackerSide,DamageMod damageMod,ObjectState!B state){
-	auto actualRangedDamage=0.0f;
-	if(rangedDamage>0.0f){
-		actualRangedDamage=object.dealRangedDamage(rangedDamage,attacker,attackerSide,damageMod,state);
-	}
-	healFromDrain(attacker,actualRangedDamage,state);
-	auto actualSpellDamage=0.0f;
-	if(spellDamage>0.0f) actualSpellDamage=object.dealSpellDamage(spellDamage,attacker,attackerSide,damageMod,state);
-	healFromDrain(attacker,actualSpellDamage,state);
-	return actualRangedDamage+actualSpellDamage;
-}
-
-float dealFallDamage(B)(ref MovingObject!B object,ObjectState!B state){
-	enum fallDamageFactor=20.0f;
-	//auto damage=sqrt(max(0.0f,-object.creatureState.fallingVelocity.z))*fallDamageFactor;
-	auto damage=max(0.0f,-object.creatureState.fallingVelocity.z-5.0f)*60.0/55.0*fallDamageFactor; // TODO: correct?
-	return object.dealDamage(damage,-1,DamageMod.fall,state); // TODO: properly attribute fall damage to sides
-}
 float dealRangedDamage(B)(ref StaticObject!B object,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,DamageMod damageMod,ObjectState!B state){
 	return dealRangedDamage(object,rangedAttack.amount,attacker,attackerSide,attackDirection,damageMod,state);
 }
@@ -6064,10 +5957,7 @@ float dealRangedDamage(B)(ref Building!B building,float damage,int attacker,int 
 	return dealRangedDamage(building,damage,attacker,attackerSide,damageMod,state);
 }
 float dealRangedDamage(B)(ref Building!B building,float damage,int attacker,int attackerSide,DamageMod damageMod,ObjectState!B state){
-	auto guardianDamage=rangedDamageGuardians(building,damage,attacker,attackerSide,damageMod,state);
-	if(!isNaN(guardianDamage)) return guardianDamage;
-	auto actualDamage=damage*building.directRangedResistance;
-	return building.dealDamage(actualDamage,attacker,attackerSide,damageMod,state);
+	return dealDamage(building,damage,attacker,attackerSide,damageMod|DamageMod.ranged,state);
 }
 
 float dealRangedDamage(B)(int target,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,DamageMod damageMod,ObjectState!B state){
@@ -6075,49 +5965,53 @@ float dealRangedDamage(B)(int target,SacSpell!B rangedAttack,int attacker,int at
 	return state.objectById!dealRangedDamage(target,rangedAttack,attacker,attackerSide,attackDirection,damageMod,state);
 }
 
-float dealSplashRangedDamage(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,float distance,DamageMod damageMod,ObjectState!B state){
-	auto damage=rangedAttack.amount*(rangedAttack.damageRange>0.0f?max(0.0f,1.0f-distance/rangedAttack.damageRange):1.0f);
-	auto actualDamage=damage*object.creatureStats.splashRangedResistance;
-	object.damageAnimation(attackDirection,state);
-	actualDamage=object.dealDamage(actualDamage,attacker,attackerSide,damageMod,state);
-	healFromDrain(attacker,actualDamage,state);
-	return actualDamage;
+
+float dealSplashDamage(B)(ref MovingObject!B object,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,float distance,DamageMod damageMod,ObjectState!B state){
+	return dealSplashDamage(object,spell.amount,spell.damageRange,attacker,attackerSide,attackDirection,distance,damageMod,state);
 }
 
-float dealSplashRangedDamage(B)(ref StaticObject!B object,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,float distance,DamageMod damageMod,ObjectState!B state){
-	return state.buildingById!(dealSplashRangedDamage,()=>0.0f)(object.buildingId,rangedAttack,attacker,attackerSide,attackDirection,distance,damageMod,state);
+float dealSplashDamage(B)(ref MovingObject!B object,float amount,float damageRange,int attacker,int attackerSide,Vector3f attackDirection,float distance,DamageMod damageMod,ObjectState!B state){
+	return object.dealDamage(amount,damageRange,attacker,attackerSide,attackDirection,distance,damageMod|DamageMod.splash,state);
 }
 
-float dealSplashRangedDamage(B)(ref Building!B building,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,float distance,DamageMod damageMod,ObjectState!B state){
-	auto damage=rangedAttack.amount*(rangedAttack.damageRange>0.0f?max(0.0f,1.0f-distance/rangedAttack.damageRange):1.0f);
-	auto guardianDamage=splashRangedDamageGuardians(building,damage,attacker,attackerSide,damageMod,state);
-	if(!isNaN(guardianDamage)) return guardianDamage;
-	auto actualDamage=damage*building.splashRangedResistance;
-	return building.dealDamage(actualDamage,attacker,attackerSide,damageMod,state);
+float dealSplashDamage(B)(ref Building!B building,SacSpell!B spell,int attacker,int attackerSide,Vector3f attackDirection,float distance,DamageMod damageMod,ObjectState!B state){
+	return building.dealDamage(spell.amount,spell.damageRange,attacker,attackerSide,attackDirection,distance,damageMod,state);
 }
 
-float dealSplashRangedDamage(B)(int target,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,float distance,DamageMod damageMod,ObjectState!B state){
-	if(state.isValidBuilding(target))
-		return state.buildingById!(dealSplashRangedDamage,()=>0.0f)(target,rangedAttack,attacker,attackerSide,attackDirection,distance,damageMod,state);
-	if(!state.isValidId(target)) return 0.0f;
-	return state.objectById!dealSplashRangedDamage(target,rangedAttack,attacker,attackerSide,attackDirection,distance,damageMod,state);
+float dealSplashDamageAt(alias callback=(id)=>true,B,T...)(int directTarget,SacSpell!B spell,float radius,int attacker,int attackerSide,Vector3f position,DamageMod damageMod,ObjectState!B state,T args){
+	return dealDamageAt!callback(directTarget,spell.amount,radius,attacker,attackerSide,position,damageMod|DamageMod.splash,state,args);
 }
 
 float dealSplashRangedDamageAt(alias callback=(id)=>true,B,T...)(int directTarget,SacSpell!B rangedAttack,float radius,int attacker,int attackerSide,Vector3f position,DamageMod damageMod,ObjectState!B state,T args){
-	static void dealDamage(ProximityEntry target,ObjectState!B state,int directTarget,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f position,float* sum,float radius,DamageMod damageMod,T args){
-		if(target.id==directTarget) return;
-		auto distance=boxPointDistance(target.hitbox,position);
-		if(distance>radius) return;
-		auto attackDirection=state.objectById!((obj)=>obj.center)(target.id)-position;
-		if(callback(target.id,args))
-			*sum+=dealSplashRangedDamage(target.id,rangedAttack,attacker,attackerSide,attackDirection,distance,damageMod,state);
-	}
-	auto offset=Vector3f(radius,radius,radius);
-	Vector3f[2] hitbox=[position-offset,position+offset];
-	float sum=0.0f;
-	collisionTargets!(dealDamage,None,true)(hitbox,state,directTarget,rangedAttack,attacker,attackerSide,position,&sum,radius,damageMod,args);
-	return sum;
+	return dealSplashDamageAt!callback(directTarget,rangedAttack,radius,attacker,attackerSide,position,damageMod|DamageMod.ranged,state,args);
 }
+
+float dealDesecrationDamage(B)(ref MovingObject!B object,float damage,int attackingSide,ObjectState!B state){
+	if(!object.canDamage(state)) return 0.0f;
+	return dealRawDamage(object,damage,attackingSide,DamageMod.desecration,state);
+}
+
+float dealPoisonDamage(B)(ref MovingObject!B object,float damage,int attacker,int attackerSide,DamageMod damageMod,ObjectState!B state){
+	if(object.id==attacker?object.isGuardian:state.movingObjectById!((ref attacker)=>attacker.isGuardian,()=>false)(attacker))
+		damage*=1.5f;
+	return object.dealDamage(damage,attacker,attackerSide,damageMod|DamageMod.ranged,state);
+}
+
+float dealFireDamage(T,B)(ref T object,float rangedDamage,float spellDamage,int attacker,int attackerSide,DamageMod damageMod,ObjectState!B state){
+	auto actualRangedDamage=0.0f;
+	if(rangedDamage>0.0f) actualRangedDamage=object.dealRangedDamage(rangedDamage,attacker,attackerSide,damageMod,state);
+	auto actualSpellDamage=0.0f;
+	if(spellDamage>0.0f) actualSpellDamage=object.dealSpellDamage(spellDamage,attacker,attackerSide,damageMod,state);
+	return actualRangedDamage+actualSpellDamage;
+}
+
+float dealFallDamage(B)(ref MovingObject!B object,ObjectState!B state){
+	enum fallDamageFactor=20.0f;
+	//auto damage=sqrt(max(0.0f,-object.creatureState.fallingVelocity.z))*fallDamageFactor;
+	auto damage=max(0.0f,-object.creatureState.fallingVelocity.z-5.0f)*60.0/55.0*fallDamageFactor; // TODO: correct?
+	return object.dealDamage(damage,-1,DamageMod.fall,state); // TODO: properly attribute fall damage to sides
+}
+
 
 void setMovement(B)(ref MovingObject!B object,MovementDirection direction,ObjectState!B state,int side=-1){
 	if(!object.canOrder(side,state)) return;
@@ -9035,14 +8929,7 @@ void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 		object.creatureState.mode=CreatureMode.meleeAttacking;
 		if(auto target=object.meleeAttackTarget(state)){ // TODO: factor this out into its own function?
 			static void dealDamage(T)(ref T target,MovingObject!B* attacker,ObjectState!B state){
-				float damageFactor=1.0f;
-				if(auto passive=attacker.sacObject.passiveOnDamage){
-					if(passive.tag==SpellTag.firefistPassive){
-						auto relativeHP=attacker.creatureStats.health/attacker.creatureStats.maxHealth;
-						damageFactor=1.0f+1.5f*(1.0f-relativeHP);
-					}
-				}
-				target.dealMeleeDamage(*attacker,damageFactor,DamageMod.none,state); // TODO: maybe those functions should be local
+				target.dealMeleeDamage(*attacker,DamageMod.none,state); // TODO: maybe those functions should be local
 			}
 			state.objectById!dealDamage(target,&object,state);
 			if(auto passive=object.sacObject.passiveAbility){
