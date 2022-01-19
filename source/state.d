@@ -8923,8 +8923,10 @@ int meleeAttackTarget(B)(ref MovingObject!B object,ObjectState!B state){
 }
 
 void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
-	if(object.isRegenerating)
-		object.heal(object.creatureStats.regeneration/updateFPS,state);
+	if(object.isRegenerating) with(object.creatureStats){
+		auto factor=maxMana==0.0f?1.0f:mana/maxMana;
+		object.heal(factor*regeneration/updateFPS,state);
+	}
 	if(object.creatureState.mode==CreatureMode.playingDead)
 		object.heal(30.0f/updateFPS,state); // TODO: ok?
 	if(object.isGuardian)
