@@ -5654,7 +5654,11 @@ float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,
 	if(!(damageMod&DamageMod.fall)||object.isSacDoctor){ // TODO: do sac doctors take fall damage at all?
 		if(!object.canDamage(state)) return 0.0f;
 		actualDamage=damage*state.sideDamageMultiplier(attackingSide,object.side);
-		if(object.creatureStats.effects.isGuardian) actualDamage*=0.5f;
+		if(object.creatureStats.effects.isGuardian){
+			actualDamage*=0.5f;
+			if(damageMod&DamageMod.ranged)
+				actualDamage*=0.5f;
+		}
 		if(auto passive=object.sacObject.passiveOnDamage){
 			switch(passive.tag){
 				case SpellTag.taurockPassive:
