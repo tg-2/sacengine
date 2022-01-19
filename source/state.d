@@ -11835,7 +11835,6 @@ bool updateFreezeCasting(B)(ref FreezeCasting!B freezeCast,ObjectState!B state){
 
 void unfreeze(B)(ref MovingObject!B obj,ObjectState!B state){
 	if(!obj.creatureStats.effects.frozen) return;
-	// TODO: deal unfreeze damage
 	obj.creatureStats.effects.frozen=false;
 	obj.startIdling(state);
 }
