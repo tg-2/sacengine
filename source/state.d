@@ -8217,7 +8217,7 @@ bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,OrderTarget targ
 		object.creatureStats.effects.abilityCooldown=cast(int)(ability.cooldown*updateFPS);
 	}
 	bool shoot(){
-		if(target.id&&!isValidAttackTarget(target.id,state)) return false;
+		if(target.id&&!isValidAttackTarget(target.id,state)&&!state.isValidTarget(target.id,TargetType.soul)) return false;
 		auto predicted=object.predictShotTargetPosition(ability,true,target,state);
 		if(isNaN(predicted.x)) return false;
 		if(!object.aim!true(ability,target,predicted,state))
