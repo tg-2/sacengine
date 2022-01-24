@@ -172,11 +172,6 @@ final class SacObject(B){
 		return 1.0f;
 	}
 
-	@property StunBehavior stunBehavior(){
-		if(!data) return StunBehavior.none;
-		return data.stunBehavior;
-	}
-
 	@property StunnedBehavior stunnedBehavior(){
 		if(!data) return StunnedBehavior.normal;
 		return data.stunnedBehavior;

@@ -986,10 +986,6 @@ SacSpell!B ability(B)(ref MovingObject!B object){
 }
 SacSpell!B passiveAbility(B)(ref MovingObject!B object){ return object.sacObject.passiveAbility; }
 
-StunBehavior stunBehavior(B)(ref MovingObject!B object){
-	return object.sacObject.stunBehavior;
-}
-
 StunnedBehavior stunnedBehavior(B)(ref MovingObject!B object){
 	return object.sacObject.stunnedBehavior;
 }
@@ -5834,29 +5830,27 @@ void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,Da
 	//auto damageMultiplier=max(0.0f,1.0f-max(0.0f,sqrt(distanceSqr/attackerSizeSqr)));
 	auto damageMultiplier=max(0.0f,1.0f-max(0.0f,(sqrt(distanceSqr)+state.uniform(0.5f,1.0f))/sqrt(attackerSizeSqr)));
 	auto attackDirection=object.center-attacker.center; // TODO: good?
-	auto stunBehavior=attacker.stunBehavior;
 	auto direction=getDamageDirection(object,attackDirection,state);
 	bool fromBehind=direction==DamageDirection.back;
 	bool fromSide=!!direction.among(DamageDirection.left,DamageDirection.right);
 	if(fromBehind) damage*=2.0f;
 	auto actualDamage=object.dealDamage(damage,attacker,damageMod|DamageMod.melee,state);
-	if(stunBehavior==StunBehavior.always || fromBehind && stunBehavior==StunBehavior.fromBehind){
-		if(actualDamage>=0.5f*attacker.meleeStrength){ // TODO: figure out actual condition
-			playSoundTypeAt(attacker.sacObject,attacker.id,SoundType.stun,state);
-			object.damageStun(attackDirection,state);
-			return;
-		}
-	}
-	object.damageAnimation(attackDirection,state);
+	bool stunned;
 	final switch(object.stunnedBehavior){
 		case StunnedBehavior.normal:
+			stunned=actualDamage>=0.25f*object.creatureStats.maxHealth;
 			break;
 		case StunnedBehavior.onMeleeDamage,StunnedBehavior.onDamage:
-			playSoundTypeAt(attacker.sacObject,attacker.id,SoundType.stun,state);
-			object.damageStun(attackDirection,state);
-			return;
+			stunned=true;
+			break;
 	}
-	playSoundTypeAt(attacker.sacObject,attacker.id,SoundType.hit,state);
+	if(stunned){
+		playSoundTypeAt(attacker.sacObject,attacker.id,SoundType.stun,state);
+		object.damageStun(attackDirection,state);
+	}else{
+		playSoundTypeAt(attacker.sacObject,attacker.id,SoundType.hit,state);
+		object.damageAnimation(attackDirection,state);
+	}
 }
 
 float dealMeleeDamage(B)(ref StaticObject!B object,ref MovingObject!B attacker,DamageMod damageMod,ObjectState!B state){
