@@ -29,12 +29,17 @@ final class Controller(B){
 		if(playback) state.commands=playback.commands;
 		//initSynchState();
 	}
+	bool isControllingSide(int side){
+		if(network&&!network.players[network.me].isControllingState)
+			return false;
+		return side==controlledSide;
+	}
 	void addCommand(int frame,Command!B command)in{
 		assert(command.id==0);
 		assert(!network||network.playing||command.type==CommandType.surrender);
 		assert(committedFrame<=frame);
 	}do{
-		if(command.side!=controlledSide) return;
+		if(!isControllingSide(command.side)) return;
 		command.id=++commandId;
 		firstUpdatedFrame=min(firstUpdatedFrame,frame);
 		state.addCommandInconsistent(frame,command);
@@ -55,6 +60,7 @@ final class Controller(B){
 		import std.conv: text;
 		assert(committedFrame<=frame,text(committedFrame," ",frame," ",command));
 	}do{
+		// TODO: check if player that issued the command is allowed to do so
 		firstUpdatedFrame=min(firstUpdatedFrame,frame);
 		state.addCommandInconsistent(frame,command);
 		if(recording) recording.addExternalCommand(frame,command);
@@ -62,7 +68,7 @@ final class Controller(B){
 			updateNetworkOnSurrender(command.side);
 	}
 	void setSelection(int side,int wizard,CreatureGroup selection,TargetLocation loc){
-		if(side!=controlledSide) return;
+		if(!isControllingSide(side)) return;
 		addCommand(Command!B(CommandType.clearSelection,side,wizard,0,Target.init,float.init));
 		foreach_reverse(id;selection.creatureIds){
 			if(id==0) continue;
