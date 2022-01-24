@@ -13108,20 +13108,21 @@ bool soulWindEffect(B)(OrderTarget start,OrderTarget end,ObjectState!B state){
 bool updateSoulWind(B)(ref SoulWind!B soulWind,ObjectState!B state){
 	if(!soulWind.updateSoulWindPosition(state))
 		return false;
-	static bool callback(int target,int wizard,int side,SoulWind!B* soulWind,ObjectState!B state){
+	static bool callback(int target,SacSpell!B spell,int wizard,int side,SoulWind!B* soulWind,ObjectState!B state){
 		if(!soulWind.addTarget(target)) return false;
-		return state.movingObjectById!((ref obj,wizard,side,state){
+		return state.movingObjectById!((ref obj,spell,wizard,side,state){
 			if(state.sides.getStance(side,obj.side)==Stance.ally) return false;
 			obj.stunWithCooldown(stunCooldownFrames,state);
 			auto start=positionTarget(soulWind.position+Vector3f(0.0f,0.0f,1.0f),state);
 			auto end=centerTarget(target,state);
 			soulWindEffect(start,end,state);
-			return true;
-		},()=>false)(target,wizard,side,state);
+			obj.dealSpellDamage(spell,wizard,side,end.position-start.position,DamageMod.none,state);
+			return false;
+		},()=>false)(target,spell,wizard,side,state);
 	}
 	auto side=state.movingObjectById!((ref obj)=>obj.side,()=>-1)(soulWind.wizard);
 	if(side==-1) return false;
-	with(soulWind) dealSplashSpellDamageAt!callback(0,spell,spell.effectRange,wizard,side,position,DamageMod.none,state,wizard,side,&soulWind,state);
+	with(soulWind) dealSplashSpellDamageAt!callback(0,spell,spell.effectRange,wizard,side,position,DamageMod.none,state,spell,wizard,side,&soulWind,state);
 	return true;
 }
 
