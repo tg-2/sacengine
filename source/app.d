@@ -317,7 +317,8 @@ void loadMap(B)(ref Options options)in{
 		recording.logCore=options.logCore;
 	}
 	state.initGame(gameInit);
-	int wizId=state.slots[slot].wizard;
+	bool hasSlot=0<=slot&&slot<=state.slots.length;
+	int wizId=hasSlot?state.slots[slot].wizard:0;
 	state.current.map.makeMeshes(options.enableMapBottom);
 	if(toContinue){
 		state.commands=toContinue.commands;
@@ -339,7 +340,7 @@ void loadMap(B)(ref Options options)in{
 	state.commit();
 	if(network && network.isHost) network.addSynch(state.lastCommitted.frame,state.lastCommitted.hash);
 	if(recording) recording.stepCommitted(state.lastCommitted);
-	auto controller=new Controller!B(state.slots[slot].controlledSide,state,network,recording,playback);
+	auto controller=new Controller!B(hasSlot?state.slots[slot].controlledSide:-1,state,network,recording,playback);
 	B.setState(state);
 	if(wizId) B.focusCamera(wizId);
 	else B.scene.fpview.active=true;
