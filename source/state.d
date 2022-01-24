@@ -5788,9 +5788,8 @@ float damageGuardians(B)(ref Building!B building,float damage,ref MovingObject!B
 	return float.nan;
 }
 
-float dealDamageNoGuardians(B)(ref Building!B building,float damage,int attackingSide,DamageMod damageMod,ObjectState!B state)in{
-	assert(!building.guardianIds.length);
-}do{
+float dealDamageNoGuardians(B)(ref Building!B building,float damage,int attackingSide,DamageMod damageMod,ObjectState!B state){
+	if(building.guardianIds.length) return 0.0f;
 	if(!building.canDamage(state)) return 0.0f;
 	auto damageMultiplier=1.0f;
 	if(damageMod&DamageMod.melee) damageMultiplier*=building.meleeResistance;
@@ -5814,6 +5813,7 @@ float dealDamageNoGuardians(B)(ref Building!B building,float damage,int attackin
 float dealDamage(B)(ref Building!B building,float damage,ref MovingObject!B attacker,DamageMod damageMod,ObjectState!B state){
 	auto guardianDamage=damageGuardians(building,damage,attacker,damageMod,state);
 	if(!isNaN(guardianDamage)) return guardianDamage;
+	if(!building.canDamage(state)) return 0.0f;
 	damage*=attacker.attackDamageFactor(false,damageMod,state);
 	return dealDamageNoGuardians(building,damage,attacker.side,damageMod,state);
 }
@@ -5821,7 +5821,6 @@ float dealDamage(B)(ref Building!B building,float damage,ref MovingObject!B atta
 float dealDamage(B)(ref Building!B building,float damage,int attackingSide,DamageMod damageMod,ObjectState!B state){
 	auto guardianDamage=damageGuardians(building,damage,attackingSide,damageMod,state);
 	if(!isNaN(guardianDamage)) return guardianDamage;
-	if(!building.canDamage(state)) return 0.0f;
 	return dealDamageNoGuardians(building,damage,attackingSide,damageMod,state);
 }
 
