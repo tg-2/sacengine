@@ -5788,8 +5788,7 @@ float damageGuardians(B)(ref Building!B building,float damage,ref MovingObject!B
 	return float.nan;
 }
 
-float dealDamageNoGuardians(B)(ref Building!B building,float damage,int attackingSide,DamageMod damageMod,ObjectState!B state){
-	if(building.guardianIds.length) return 0.0f;
+float dealDamageIgnoreGuardians(B)(ref Building!B building,float damage,int attackingSide,DamageMod damageMod,ObjectState!B state){
 	if(!building.canDamage(state)) return 0.0f;
 	auto damageMultiplier=1.0f;
 	if(damageMod&DamageMod.melee) damageMultiplier*=building.meleeResistance;
@@ -5815,13 +5814,13 @@ float dealDamage(B)(ref Building!B building,float damage,ref MovingObject!B atta
 	if(!isNaN(guardianDamage)) return guardianDamage;
 	if(!building.canDamage(state)) return 0.0f;
 	damage*=attacker.attackDamageFactor(false,damageMod,state);
-	return dealDamageNoGuardians(building,damage,attacker.side,damageMod,state);
+	return dealDamageIgnoreGuardians(building,damage,attacker.side,damageMod,state);
 }
 
 float dealDamage(B)(ref Building!B building,float damage,int attackingSide,DamageMod damageMod,ObjectState!B state){
 	auto guardianDamage=damageGuardians(building,damage,attackingSide,damageMod,state);
 	if(!isNaN(guardianDamage)) return guardianDamage;
-	return dealDamageNoGuardians(building,damage,attackingSide,damageMod,state);
+	return dealDamageIgnoreGuardians(building,damage,attackingSide,damageMod,state);
 }
 
 float meleeDistanceSqr(Vector3f[2] objectHitbox,Vector3f[2] attackerHitbox){
@@ -9838,7 +9837,7 @@ bool updateRedVortex(B)(ref RedVortex vortex,ObjectState!B state,float height=Re
 }
 
 Vector3f getFallingVelocity(B)(Vector3f direction,float upwardsVelocity,ObjectState!B state){
-	enum g=30.0f;
+	enum g=10.0f;
 	auto fallingHeight=-direction.z;
 	auto fallingTime=upwardsVelocity/g+sqrt(max(0.0f,upwardsVelocity^^2+2.0f*g*fallingHeight))/g;
 	return Vector3f(direction.x/fallingTime,direction.y/fallingTime,upwardsVelocity);
@@ -9853,7 +9852,7 @@ int spawnSacDoctor(B)(int side,Vector3f position,Vector3f landingPosition,Object
 	auto mode=CreatureMode.stunned;
 	auto movement=CreatureMovement.tumbling;
 	auto creatureState=CreatureState(mode, movement, facing);
-	enum jumpVelocity=15.0f;
+	enum jumpVelocity=10.0f;
 	creatureState.fallingVelocity=getFallingVelocity(direction,jumpVelocity,state);
 	auto rotation=facingQuaternion(facing);
 	auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState,curObj.creatureStats(Flags.cannotDamage),side);
