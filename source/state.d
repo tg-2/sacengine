@@ -5588,7 +5588,7 @@ float attackDamageFactor(B)(ref MovingObject!B attacker,bool targetIsCreature,Da
 	return result;
 }
 
-float dealDamage(T,B)(ref T object,float damage,int attacker,int attackingSide,Vector3f attackDirection,DamageMod damageMod,ObjectState!B state,bool checkIdle=false)if(is(T==MovingObject!B)||is(T==Building!B)){
+float dealDamage(T,B)(ref T object,float damage,int attacker,int attackingSide,Vector3f attackDirection,DamageMod damageMod,ObjectState!B state,bool checkIdle=true)if(is(T==MovingObject!B)||is(T==Building!B)){
 	auto actualDamage=dealDamage(object,damage,attacker,attackingSide,damageMod,state);
 	static if(is(T==MovingObject!B)) if(actualDamage>0.0f) object.damageAnimation(attackDirection,state,checkIdle);
 	return actualDamage;
@@ -5612,14 +5612,14 @@ bool canDamage(B)(ref MovingObject!B object,ObjectState!B state){
 	}
 }
 
-float dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B attacker,Vector3f attackDirection,DamageMod damageMod,ObjectState!B state,bool checkIdle=false){
+float dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B attacker,Vector3f attackDirection,DamageMod damageMod,ObjectState!B state,bool checkIdle=true){
 	auto actualDamage=dealDamage(object,damage,attacker,damageMod,state,checkIdle);
 	if(actualDamage>0.0f) object.damageAnimation(attackDirection,state,checkIdle);
 	return actualDamage;
 
 }
 
-float dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B attacker,DamageMod damageMod,ObjectState!B state,bool checkIdle=false){
+float dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B attacker,DamageMod damageMod,ObjectState!B state,bool checkIdle=true){
 	auto actualDamage=damage*attacker.attackDamageFactor(true,damageMod,state);
 	actualDamage=dealDamage(object,actualDamage,attacker.side,damageMod,state);
 	attacker.healFromDrain(actualDamage,state);
