@@ -654,6 +654,8 @@ int run(string[] args){
 int main(string[] args){
 	int r;
 	version(Windows){
+		import core.sys.windows.windows;
+		SetConsoleOutputCP(CP_UTF8);
 		try r=run(args);
 		catch(Throwable e){
 			writeln(e.toString());
