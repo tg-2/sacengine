@@ -348,6 +348,12 @@ void loadMap(B)(ref Options options)in{
 }
 
 int main(string[] args){
+	version(Windows){
+		scope(failure){
+			import core.stdc.stdlib;
+			system("pause");
+		}
+	}
 	import core.memory;
 	GC.disable(); // TODO: figure out where GC memory is used incorrectly
 	if(args.length==0) args~="";
