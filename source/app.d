@@ -347,13 +347,7 @@ void loadMap(B)(ref Options options)in{
 	B.setController(controller);
 }
 
-int main(string[] args){
-	version(Windows){
-		scope(failure){
-			import core.stdc.stdlib;
-			system("pause");
-		}
-	}
+int run(string[] args){
 	import core.memory;
 	GC.disable(); // TODO: figure out where GC memory is used incorrectly
 	if(args.length==0) args~="";
@@ -655,4 +649,18 @@ int main(string[] args){
 	}
 	B.run();
 	return 0;
+}
+
+int main(string[] args){
+	int r;
+	version(Windows){
+		try r=run(args);
+		catch(Throwable e){
+			writeln(e.toString());
+			import core.stdc.stdlib;
+			system("pause");
+			return 1;
+		}
+	}else r=run(args);
+	return r;
 }
