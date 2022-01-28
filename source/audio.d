@@ -13,17 +13,22 @@ import util,samp;
 __gshared ALCdevice* device;
 __gshared ALCcontext* context;
 bool loadAudio(){
-	DerelictAL.load();
-	device=alcOpenDevice(null);
-	if(!device) return false;
-	context=alcCreateContext(device,null);
-	auto ok=alcMakeContextCurrent(context);
-	enforce(ok);
-	listenerPosition=Vector3f(0.0f,0.0f,0.0f);
-	listenerVelocity=Vector3f(0.0f,0.0f,0.0f);
-	listenerOrientation=Quaternionf.identity();
-	DerelictMPG123.load();
-	mpg123_init();
+	import derelict.util.exception: DerelictException;
+	try{
+		DerelictAL.load();
+		device=alcOpenDevice(null);
+		if(!device) return false;
+		context=alcCreateContext(device,null);
+		auto ok=alcMakeContextCurrent(context);
+		enforce(ok);
+		listenerPosition=Vector3f(0.0f,0.0f,0.0f);
+		listenerVelocity=Vector3f(0.0f,0.0f,0.0f);
+		listenerOrientation=Quaternionf.identity();
+		DerelictMPG123.load();
+		mpg123_init();
+	}catch(DerelictException){
+		return false;
+	}
 	return true;
 }
 void unloadAudio(){
