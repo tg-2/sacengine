@@ -54,13 +54,14 @@ private{
 
 struct Buffer{
 	ALuint id=-1;
-	void release(){ if(alIsBuffer(id)){ alDeleteBuffers(1,&id); id=-1; } } // TODO: do this better?
+	void release(){ if(device&&alIsBuffer(id)){ alDeleteBuffers(1,&id); id=-1; } } // TODO: do this better?
 }
 
 Buffer makeBuffer(Samp samp){
 	Buffer buffer;
-	alGetError();
+	if(!device) return buffer;
 	alGenBuffers(1,&buffer.id);
+	alGetError();
 	if(alGetError()==AL_NO_ERROR)
 		alBufferData(buffer.id,AL_FORMAT_MONO16,samp.data.ptr,cast(int)samp.data.length,samp.header.sampleRate);
 	return buffer;
@@ -85,13 +86,14 @@ struct Source{
 	void play(){ alSourcePlay(id); }
 	void pause(){ alSourcePause(id); }
 	void stop(){ alSourceStop(id); }
-	void release(){ if(alIsSource(id)){ alDeleteSources(1,&id); id=-1; } } // TODO: do this better?
+	void release(){ if(device&&alIsSource(id)){ alDeleteSources(1,&id); id=-1; } } // TODO: do this better?
 }
 
 Source makeSource(){
 	Source source;
-	alGetError();
+	if(!device) return source;
 	alGenSources(1,&source.id);
+	alGetError();
 	if(alGetError()==AL_NO_ERROR){
 		source.pitch=1.0f;
 		source.gain=1.0f;
