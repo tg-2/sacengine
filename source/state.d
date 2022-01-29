@@ -7010,7 +7010,7 @@ bool explosion(B)(int attacker,int side,ref ExplosionEffect[5] effects,SacSpell!
 	foreach(ref effect;effects){
 		animateAsh(effect.position,state,150);
 		animateDebris(effect.position,state,15);
-		explosionAnimation(effect.position+Vector3f(0.0f,0.0f,effect.maxRadius),state,2.0f);
+		explosionAnimation(effect.position+Vector3f(0.0f,0.0f,effect.maxRadius),state,1.75f);
 		animateFireballExplosion!10(effect.position,state,2.0f);
 		static bool callback(int target,int attacker,int side,ObjectState!B state){
 			setAblaze(target,updateFPS,false,0.0f,attacker,side,DamageMod.none,state);

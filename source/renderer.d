@@ -307,7 +307,7 @@ struct Renderer(B){
 		mat.depthWrite=false;
 		mat.blending=B.Blending.Additive;
 		mat.energy=5.0f;
-		mat.transparency=1.0f/3.0f;
+		mat.transparency=0.2f;
 		mat.diffuse=texture;
 		auto meshes=typeof(return).createMeshes;
 		return SacExplosionEffect!B(texture,mat,meshes);
