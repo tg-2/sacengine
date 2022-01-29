@@ -1878,22 +1878,22 @@ struct SacAirShield(B){
 	}
 	B.Material material;
 	B.Mesh[][] meshes;
+	static B.Mesh[][] createMeshes(){
+		return makeNoisySphereMeshes!B(24,25,nU,nV,0.5f,0.12f,numDistortions);
+	}
 	enum animationDelay=4;
 	enum nU=4,nV=2;
 	enum numTextureFrames=nU*nV*updateAnimFactor*animationDelay;
 	enum numDistortions=16;
 	enum numFrames=updateFPS*numDistortions/2;
 	Tuple!(B.Mesh,B.Mesh,float) getFrame(int frame,int texture){
-		auto textureFrame=(texture/(animationDelay*updateAnimFactor))%8;
+		auto textureFrame=(texture/(animationDelay*updateAnimFactor))%(nU*nV);
 		auto indices=iota(0,meshes.length);
 		auto numIndices=indices.length;
 		auto i=frame*numIndices/numFrames, j=i+1;
 		float progress=float(frame*numIndices%numFrames)/numFrames;
 		auto all=cycle(indices);
 		return tuple(meshes[all[i]][textureFrame],meshes[all[j]][textureFrame],progress);
-	}
-	static B.Mesh[][] createMeshes(){
-		return makeNoisySphereMeshes!B(24,25,nU,nV,0.5f,0.12f,numDistortions);
 	}
 }
 
@@ -2108,6 +2108,32 @@ struct SacSoulWind(B){
 			B.finalizeMesh(mesh);
 		}
 		return meshes;
+	}
+}
+
+struct SacExplosionEffect(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pyro.FLDR/txtr.FLDR/exeg.TXTR"));
+	}
+	B.Material material;
+	B.Mesh[][] meshes;
+	static B.Mesh[][] createMeshes(){
+		return makeNoisySphereMeshes!B(24,25,nU,nV,1.0f,0.24f,numDistortions,2.0f,2.0f);
+	}
+	enum animationDelay=1;
+	enum nU=4,nV=4;
+	enum numTextureFrames=nU*nV*updateAnimFactor*animationDelay;
+	enum numDistortions=16;
+	enum numFrames=updateFPS*numDistortions/2;
+	Tuple!(B.Mesh,B.Mesh,float) getFrame(int frame,int texture){
+		auto textureFrame=(texture/(animationDelay*updateAnimFactor))%(nU*nV);
+		auto indices=iota(0,meshes.length);
+		auto numIndices=indices.length;
+		auto i=frame*numIndices/numFrames, j=i+1;
+		float progress=float(frame*numIndices%numFrames)/numFrames;
+		auto all=cycle(indices);
+		return tuple(meshes[all[i]][textureFrame],meshes[all[j]][textureFrame],progress);
 	}
 }
 

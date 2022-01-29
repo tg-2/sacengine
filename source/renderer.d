@@ -300,6 +300,18 @@ struct Renderer(B){
 		auto meshes=typeof(return).createMeshes;
 		return SacSoulWind!B(texture,mat,meshes);
 	}
+	SacExplosionEffect!B explosionEffect;
+	SacExplosionEffect!B createExplosionEffect(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Additive;
+		mat.energy=5.0f;
+		mat.transparency=1.0f/3.0f;
+		mat.diffuse=texture;
+		auto meshes=typeof(return).createMeshes;
+		return SacExplosionEffect!B(texture,mat,meshes);
+	}
 	SacBrainiacEffect!B brainiacEffect;
 	SacBrainiacEffect!B createBrainiacEffect(){
 		auto texture=typeof(return).loadTexture();
@@ -560,6 +572,7 @@ struct Renderer(B){
 		animateDead=createAnimateDead();
 		dragonfire=createDragonfire();
 		soulWind=createSoulWind();
+		explosionEffect=createExplosionEffect();
 	}
 
 	void initialize(){
@@ -1553,6 +1566,35 @@ struct Renderer(B){
 						renderSoulWind(soulWindCasting.soulWind);
 					foreach(ref soulWind;objects.soulWinds)
 						renderSoulWind(soulWind);
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.explosionCastings.length){
+					B.disableDepthMask();
+					B.enableCulling();
+					scope(success){
+						B.enableCulling();
+						B.enableDepthMask();
+					}
+					auto material=self.explosionEffect.material;
+					B.shadelessMorphMaterialBackend.bind(material,rc);
+					B.enableTransparency();
+					scope(success) B.shadelessMorphMaterialBackend.unbind(material,rc);
+					void renderExplosionEffect(ref ExplosionEffect effect){
+						auto frame=effect.frame;
+						auto rotation=facingQuaternion(effect.rotationSpeed*frame/updateFPS);
+						auto scale=effect.scale;
+						auto radius=scale*effect.maxRadius;
+						auto position=effect.position+Vector3f(0.0f,0.0f,radius);
+						B.shadelessMorphMaterialBackend.setTransformationScaled(position,rotation,radius*Vector3f(1.1f,1.1f,0.9f),rc);
+						foreach(v;0..3){ // TODO
+							auto mesh1Mesh2Progress=self.explosionEffect.getFrame(frame+20*v,frame);
+							auto mesh1=mesh1Mesh2Progress[0], mesh2=mesh1Mesh2Progress[1], progress=mesh1Mesh2Progress[2];
+							B.shadelessMorphMaterialBackend.setMorphProgress(progress);
+							mesh1.morph(mesh2,rc);
+						}
+					}
+					foreach(ref explosionCasting;objects.explosionCastings)
+						foreach(ref effect;explosionCasting.effects)
+							renderExplosionEffect(effect);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.brainiacEffects.length){
 					auto material=self.brainiacEffect.material;

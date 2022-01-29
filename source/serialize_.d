@@ -465,6 +465,12 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Sou
 void serialize(alias sink)(ref SoulWindEffect soulWindEffect){ serializeStruct!sink(soulWindEffect); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SoulWindEffect)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink)(ref ExplosionEffect explosionEffect){ serializeStruct!sink(explosionEffect); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ExplosionEffect)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref ExplosionCasting!B explosionCasting){ serializeStruct!sink(explosionCasting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ExplosionCasting!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref BrainiacProjectile!B brainiacProjectile){ serializeStruct!sink(brainiacProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BrainiacProjectile!B)){ deserializeStruct(result,state,data); }
 
