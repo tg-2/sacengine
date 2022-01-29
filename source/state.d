@@ -6999,7 +6999,7 @@ bool castExplosion(B)(int side,Vector3f position,ManaDrain!B manaDrain,SacSpell!
 	effects[0].position=position;
 	playSoundAt("malf",position,state,4.0f);
 	foreach(ref effect;effects[1..$]){
-		auto offset=(spell.effectRange-0.5f*spell.damageRange)*state.uniformDirection!(float,2)();
+		auto offset=state.uniformDisk(Vector2f(0.0f,0.0f),spell.effectRange);
 		effect.position=position+Vector3f(offset.x,offset.y,0.0f);
 		effect.position.z=state.getHeight(effect.position);
 	}
@@ -7039,7 +7039,7 @@ bool explosion(B)(int attacker,int side,ref ExplosionEffect[5] effects,SacSpell!
 		},(){})(id,effects,state);
 		return false;
 	}
-	dealDamageAt!catapultCallback(0,0.0f,spell.effectRange+0.5f*spell.damageRange,attacker,side,effects[0].position,DamageMod.none,state,&effects,spell,state);
+	dealDamageAt!catapultCallback(0,0.0f,spell.effectRange+spell.damageRange,attacker,side,effects[0].position,DamageMod.none,state,&effects,spell,state);
 	return true;
 }
 
@@ -17108,6 +17108,13 @@ final class ObjectState(B){ // (update logic)
 		// TODO: fix bias
 		static if(n==2) return Vector2f(uniform(-1.0f,1.0f),uniform(-1.0f,1.0f)).normalized;
 		else return Vector3f(uniform(-1.0f,1.0f),uniform(-1.0f,1.0f),uniform(-1.0f,1.0f)).normalized;
+	}
+	Vector!(T,n) uniformDisk(T=float,int n=3)(Vector!(T,n) position,float radius){
+		Vector!(T,n)[2] box=[position-radius,position+radius];
+		Vector!(T,n) r;
+		do r=uniform!("[]")(box);
+		while((r-position).lengthsqr>radius^^2);
+		return r;
 	}
 	void copyFrom(ObjectState!B rhs){
 		frame=rhs.frame;
