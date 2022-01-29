@@ -17,7 +17,7 @@ final class SacScene: Scene{
 	//Texture txta;
 	Options options;
 	this(SceneManager smngr, Options options){
-		super(options.width, options.height, options.scale, options.aspectDistortion, smngr);
+		super(max(1,options.width), max(1,options.height), options.scale, options.aspectDistortion, smngr);
 		this.shadowMapResolution=options.shadowMapResolution;
 		this.options=options;
 		if(options.volume!=0.0f) initializeAudio();

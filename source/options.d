@@ -6,7 +6,7 @@ import ntts: God;
 import hotkeys_: Hotkeys;
 struct Options{
 	// graphics options
-	int width,height;
+	int width=1280, height=720;
 	bool enableFullscreen=false;
 	float scale=1.0f;
 	bool scaleToFit=true;
