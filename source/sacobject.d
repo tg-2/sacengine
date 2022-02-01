@@ -2091,10 +2091,11 @@ struct SacSoulWind(B){
 			mesh=B.makeMesh((numFaces+1)*(numSegments+1),2*numFaces*numSegments);
 			foreach(i;0..numSegments+1){
 				foreach(j;0..numFaces+1){
-					auto cradius=radius*(float(i)/numSegments+0.05f*sin(2.0f*pi!float*i/numSegments));
+					auto wradius=radius*(float(i)/numSegments+0.05f*sin(2.0f*pi!float*i/numSegments));
+					auto cradius=wradius+0.5f*radius*(float(i)/numSegments)^^4;
 					auto φ=2.0f*pi!float*j/numFaces;
 					auto θ=pi!float*i/numSegments;
-					mesh.vertices[i*(numFaces+1)+j]=Vector3f(cradius*cos(φ),cradius*sin(φ),height*i/numSegments)+0.5f*cradius*Vector3f(cos(θ),sin(θ),0.0f);
+					mesh.vertices[i*(numFaces+1)+j]=Vector3f(cradius*cos(φ),cradius*sin(φ),height*i/numSegments)+0.5f*wradius*Vector3f(cos(θ),sin(θ),0.0f);
 					mesh.texcoords[i*(numFaces+1)+j]=Vector2f(texrep*float(j)/numFaces,-texrep*(float(i)/numSegments-0.5f*float(frame)/numFrames));
 				}
 			}
