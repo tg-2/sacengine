@@ -301,7 +301,7 @@ final class SacMap(B){
 	float rayIntersection(T)(Vector3f start,Vector3f direction,T displacement,float limit=float.infinity){
 		float result=float.infinity;
 		auto tile=getTile(start);
-		int dj=direction.y>=0?-1:1, di=direction.x<0?-1:1;
+		int dj=direction.y<0?-1:1, di=direction.x<0?-1:1;
 		float current=0.0f;
 		while(current<=limit&&current<result&&(dj<0?tile.j>=0:tile.j<n)&&(di<0?tile.i>=0:tile.i<m)){
 			auto trianglesNt=getTriangles(tile.expand),triangles=trianglesNt[0],nt=trianglesNt[1];

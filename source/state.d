@@ -7046,7 +7046,7 @@ bool explosion(B)(int attacker,int side,ref ExplosionEffect[5] effects,SacSpell!
 
 Vector3f getShotDirection(B)(float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
 	auto φ=2.0f*pi!float*accuracy*state.normal(); // TODO: ok?
-	return rotate(facingQuaternion(φ),(target-position+5.0f*accuracy*state.normal()).normalized); // TODO: ok?
+	return rotate(facingQuaternion(φ),(target-position+Vector3f(0.0f,0.0f,5.0f*accuracy*state.normal())).normalized); // TODO: ok?
 }
 
 Vector3f getShotDirectionWithGravity(B)(float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
@@ -7630,8 +7630,13 @@ bool isValidGuardTarget(B)(int targetId,ObjectState!B state){
 }
 
 bool hasClearShot(B)(ref MovingObject!B object,bool isAbility,Vector3f targetPosition,OrderTarget target,ObjectState!B state){
-	auto offset=target.type==TargetType.terrain?Vector3f(0.0f,0.0f,0.2f):Vector3f(0.0f,0.0f,-0.2f); // TODO: do some sort of cylinder cast instead
+	auto offset=target.type==TargetType.terrain?Vector3f(0.0f,0.0f,0.2f):Vector3f(0.0f,0.0f,-0.2f); // TODO: do some sort of cylinder/cone cast instead
 	return state.hasLineOfSightTo(object.firstShotPosition(isAbility)+offset,targetPosition+offset,object.id,target.id);
+	/+auto adjustedTarget=targetPosition;
+	adjustedTarget.z=targetPosition.z-4.0f;
+	if(state.isOnGround(adjustedTarget)) adjustedTarget.z=max(adjustedTarget.z,state.getGroundHeight(adjustedTarget)+0.2f);
+	return state.hasLineOfSightTo(object.firstShotPosition(isAbility),targetPosition,object.id,target.id)&&
+		state.hasLineOfSightTo(object.firstShotPosition(isAbility),adjustedTarget,object.id,target.id);+/
 }
 float shootRange(B)(ref MovingObject!B object,ObjectState!B state){
 	if(auto ra=object.rangedAttack) return 0.8f*ra.range;
