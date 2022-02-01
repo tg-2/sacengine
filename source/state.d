@@ -2607,7 +2607,8 @@ struct Erupt(B){
 
 	enum range=50.0f, height=15.0f, growDur=4.2f, fallDur=0.15f;
 	enum waveRange=90.0f, waveDur=1.0f, reboundHeight=2.0f;
-	enum throwRange=30.0f, fallRange=45.0f;
+	//enum throwRange=30.0f, fallRange=45.0f;
+	enum throwRange=42.5f;
 	enum stunMinRange=50.0f,stunMaxRange=75.0f;
 	// TODO: immunity ranges
 
@@ -12714,11 +12715,11 @@ bool updateEruptCasting(B)(ref EruptCasting!B eruptCast,ObjectState!B state){
 }
 
 void animateErupt(B)(ref Erupt!B erupt,ObjectState!B state){
-	enum numParticles=32;
+	enum numParticles=24;
 	auto sacParticle=SacParticle!B.get(ParticleType.dust);
 	foreach(i;0..numParticles){
 		auto dir=state.uniformDirection!(float,2)();
-		auto dist=state.uniform(2)?erupt.range*(1.0f-state.uniform(0.0f,1.0f)*state.uniform(0.0f,1.0f)):erupt.spell.range*state.uniform(0.0f,1.0f);
+		auto dist=state.uniform(4)?erupt.range*(1.0f-state.uniform(0.0f,1.0f)*state.uniform(0.0f,1.0f)):erupt.spell.damageRange*state.uniform(0.0f,1.0f);
 		auto position=erupt.position+dist*Vector3f(dir.x,dir.y,0.0f);
 		if(state.isOnGround(position)){
 			auto velocity=Vector3f(0.0f,0.0f,1.0f)+0.6f*state.uniformDirection();
@@ -12730,7 +12731,7 @@ void animateErupt(B)(ref Erupt!B erupt,ObjectState!B state){
 			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
 		}
 	}
-	if(state.uniform(2)==0){
+	if(state.uniform(3)==0){
 		auto distance=(1.0f-state.uniform(0.0f,1.0f)*state.uniform(0.0f,1.0f));
 		auto direction=state.uniformDirection!(float,2)();
 		auto position=erupt.position+0.75f*erupt.range*distance*Vector3f(direction.x,direction.y,0.0f);
@@ -12782,12 +12783,12 @@ void eruptExplosion(B)(ref Erupt!B erupt,ObjectState!B state){
 	}
 	with(erupt){
 		playSoundAt("tpre",position,state,eruptGain2);
-		dealSplashSpellDamageAt!callback(0,spell,spell.range,wizard,side,position,DamageMod.none,state,&erupt,state);
+		dealSplashSpellDamageAt!callback(0,spell,spell.effectRange,wizard,side,position,DamageMod.none,state,&erupt,state);
 		state.addEffect(ScreenShake(position,updateFPS/3,4.0f,100.0f));
 	}
 	auto position=erupt.position;
 	position.z=state.getHeight(position);
-	enum numDebris=128;
+	enum numDebris=64;
 	foreach(i;0..numDebris){
 		auto angle=state.uniform(-pi!float,pi!float);
 		auto velocity=(30.0f+state.uniform(-7.5f,7.5f))*Vector3f(cos(angle),sin(angle),state.uniform(-1.0f,2.0f)).normalized;
@@ -12797,7 +12798,7 @@ void eruptExplosion(B)(ref Erupt!B erupt,ObjectState!B state){
 		auto debris=EruptDebris!B(position,velocity,rotationUpdate,Quaternionf.identity());
 		state.addEffect(debris);
 	}
-	enum numParticles3=300;
+	enum numParticles3=200;
 	auto sacParticle3=SacParticle!B.get(ParticleType.rock);
 	foreach(i;0..numParticles3){
 		auto pdirection=(state.uniformDirection()+Vector3f(0.0f,0.0f,0.5f)).normalized;
@@ -12830,7 +12831,7 @@ bool updateErupt(B)(ref Erupt!B erupt,ObjectState!B state){
 					state.movingObjectById!((ref obj,erupt,waveLoc,state){
 							auto diff=obj.position.xy-erupt.position.xy;
 							auto difflen=diff.length;
-							if(abs(difflen-waveLoc)<1.5f*erupt.waveRange/(erupt.waveDur*updateFPS))
+							if(erupt.stunMinRange<difflen&&abs(difflen-waveLoc)<1.5f*erupt.waveRange/(erupt.waveDur*updateFPS))
 								obj.stunWithCooldown(stunCooldownFrames,state);
 						},(){})(target,erupt,waveLoc,state);
 					return false;
