@@ -2778,6 +2778,7 @@ struct HaloOfEarth(B){
 	int wizard;
 	int side;
 	SacSpell!B spell;
+	bool isAbility=false;
 	enum numRocks=6;
 	HaloRock!B[numRocks] rocks;
 	int numSpawned=0;
@@ -7100,7 +7101,7 @@ bool explosion(B)(int attacker,int side,ref ExplosionEffect[5] effects,SacSpell!
 }
 
 bool castHaloOfEarth(B)(int wizard,int side,ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,ObjectState!B state){
-	auto haloOfEarth=HaloOfEarth!B(wizard,side,spell);
+	auto haloOfEarth=HaloOfEarth!B(wizard,side,spell,false);
 	state.addEffect(HaloOfEarthCasting!B(manaDrain,castingTime,haloOfEarth));
 	return true;
 }
@@ -8237,6 +8238,12 @@ bool protector(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B sta
 	return true;
 }
 
+bool haloOfEarth(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
+	playSoundAt("tlep",object.id,state,2.0f*haloOfEarthGain);
+	state.addEffect(HaloOfEarth!B(object.id,object.side,ability,true));
+	return true;
+}
+
 void appear(B)(int id,int lifetime,ObjectState!B state){
 	if(!state.movingObjectById!((ref object){
 		if(object.creatureStats.effects.appearing) return false;
@@ -8414,6 +8421,9 @@ bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,OrderTarget targ
 			return shoot();
 		case SpellTag.protector:
 			if(object.protector(ability,state)) apply();
+			return false;
+		case SpellTag.haloOfEarthAbility:
+			if(object.haloOfEarth(ability,state)) apply();
 			return false;
 		default:
 			object.stun(state);
@@ -13328,8 +13338,8 @@ int haloRockCollisionTarget(B)(int side,Vector3f position,ObjectState!B state){
 	return collisionTarget!(haloRockHitbox,filter)(side,position,state,side);
 }
 
-void haloRockExplosion(B)(ref HaloRock!B haloRock,int target,ObjectState!B state){
-	playSpellSoundTypeAt(SoundType.explodingRock,haloRock.position,state,2.0f);
+void haloRockExplosion(B)(ref HaloRock!B haloRock,int target,ObjectState!B state,bool isAbility){
+	playSpellSoundTypeAt(isAbility?SoundType.bombardmentHit:SoundType.explodingRock,haloRock.position,state,2.0f);
 	if(state.isValidTarget(target)) dealSpellDamage(target,haloRock.spell,haloRock.wizard,haloRock.side,haloRock.velocity,DamageMod.none,state);
 	enum numParticles3=50;
 	auto sacParticle3=SacParticle!B.get(ParticleType.rock);
@@ -13359,7 +13369,7 @@ bool updateHaloOfEarthCasting(B)(ref HaloOfEarthCasting!B haloOfEarthCast,Object
 		frame+=1;
 		auto center=state.movingObjectById!(haloRockCenterPosition,()=>Vector3f.init)(haloOfEarth.wizard,state);
 		foreach(ref haloRock;haloOfEarth.rocks[haloOfEarth.numDespawned..haloOfEarth.numSpawned]){
-			haloRock.updateHaloRock(center,state,true);
+			haloRock.updateHaloRock(center,state,true,haloOfEarth.isAbility);
 		}
 		auto rockDelay=castingTime/(haloOfEarth.numRocks+2);
 		if(haloOfEarth.numSpawned<haloOfEarth.numRocks&&!((frame-rockDelay/2)%rockDelay))
@@ -13383,8 +13393,8 @@ bool updateHaloOfEarthCasting(B)(ref HaloOfEarthCasting!B haloOfEarthCast,Object
 }
 
 enum haloRockBuryDepth=0.25f;
-Vector3f haloRockSpawnPosition(B)(ref MovingObject!B obj,ObjectState!B state){
-	auto box=scaleBox(obj.hitbox,2.5f);
+Vector3f haloRockSpawnPosition(B)(ref MovingObject!B obj,ObjectState!B state,bool isAbility){
+	auto box=scaleBox(obj.hitbox,isAbility?1.25f:2.5f); // TODO: improve
 	auto position=state.uniform(box);
 	position.z=state.getHeight(position)-haloRockBuryDepth;
 	return position;
@@ -13396,8 +13406,8 @@ Vector3f haloRockCenterPosition(B)(ref MovingObject!B obj,ObjectState!B state){
 	return Vector3f(cpos.x,cpos.y,hitbox[1].z+HaloRock!B.centerHeight);
 }
 
-HaloRock!B makeHaloRock(B)(int wizard,int side,SacSpell!B spell,ObjectState!B state){
-	auto position=state.movingObjectById!(haloRockSpawnPosition,()=>Vector3f.init)(wizard,state);
+HaloRock!B makeHaloRock(B)(int wizard,int side,SacSpell!B spell,ObjectState!B state,bool isAbility){
+	auto position=state.movingObjectById!(haloRockSpawnPosition,()=>Vector3f.init)(wizard,state,isAbility);
 	auto rotationSpeed=2*pi!float*state.uniform(0.2f,0.8f)/updateFPS;
 	auto velocity=Vector3f(0.0f,0.0f,0.0f);
 	auto rotationAxis=state.uniformDirection();
@@ -13446,7 +13456,7 @@ void animateEmergingHaloRock(B)(ref HaloRock!B haloRock,ObjectState!B state){
 
 void spawnHaloRock(B)(ref HaloOfEarth!B haloOfEarth,Vector3f centerPosition,ObjectState!B state){
 	with(haloOfEarth){
-		rocks[numSpawned++]=makeHaloRock(wizard,side,spell,state);
+		rocks[numSpawned++]=makeHaloRock(wizard,side,spell,state,isAbility);
 		animateEmergingHaloRock(rocks[numSpawned-1],state);
 	}
 }
@@ -13467,7 +13477,7 @@ void animateHaloRock(B)(ref HaloRock!B haloRock,Vector3f oldPosition,ObjectState
 	}
 }
 
-bool updateHaloRock(B)(ref HaloRock!B haloRock,Vector3f centerPosition,ObjectState!B state,bool isCasting=false){
+bool updateHaloRock(B)(ref HaloRock!B haloRock,Vector3f centerPosition,ObjectState!B state,bool isCasting,bool isAbility){
 	with(haloRock){
 		if(!target.id){
 			if(isNaN(lastPosition[0].x)){
@@ -13500,7 +13510,7 @@ bool updateHaloRock(B)(ref HaloRock!B haloRock,Vector3f centerPosition,ObjectSta
 			auto newPosition=position+velocity/updateFPS;
 			position=newPosition;
 			if(distance.length<0.05f){
-				haloRock.haloRockExplosion(haloRock.target.id,state);
+				haloRock.haloRockExplosion(haloRock.target.id,state,isAbility);
 				return false;
 			}
 			haloRock.animateHaloRock(oldPosition,state);
@@ -13508,17 +13518,19 @@ bool updateHaloRock(B)(ref HaloRock!B haloRock,Vector3f centerPosition,ObjectSta
 		if(!isCasting){
 			auto target=haloRockCollisionTarget(side,position,state);
 			if(state.isValidTarget(target)){
-				haloRock.haloRockExplosion(target,state);
+				haloRock.haloRockExplosion(target,state,isAbility);
 				return false;
 			}
-			if(state.isOnGround(position)){
-				if(position.z<state.getGroundHeight(position)){
-					haloRock.haloRockExplosion(0,state);
-					return false;
+			if(!isAbility||frame>=updateFPS/interpolationSpeed){
+				if(state.isOnGround(position)){
+					if(position.z<state.getGroundHeight(position)){
+						haloRock.haloRockExplosion(0,state,isAbility);
+						return false;
+					}
 				}
 			}
 			if(++frame>spell.duration*updateFPS){
-				haloRock.haloRockExplosion(0,state);
+				haloRock.haloRockExplosion(0,state,isAbility);
 				return false;
 			}
 		}
@@ -13529,7 +13541,7 @@ void despawnHaloOfEarth(B)(ref HaloOfEarth!B haloOfEarth,ObjectState!B state){
 	with(haloOfEarth){
 		for(int i=numDespawned;i<numSpawned;){
 			if(!rocks[i].target.id){
-				rocks[i].haloRockExplosion(0,state);
+				rocks[i].haloRockExplosion(0,state,isAbility);
 				swap(rocks[i],rocks[numDespawned++]);
 				i=max(i,numDespawned);
 			}else i++;
@@ -13543,25 +13555,26 @@ bool updateHaloOfEarth(B)(ref HaloOfEarth!B haloOfEarth,ObjectState!B state){
 		if(!isNaN(center.x)) while(numSpawned<numRocks) haloOfEarth.spawnHaloRock(center,state);
 		else haloOfEarth.despawnHaloOfEarth(state);
 		for(int i=numDespawned;i<numSpawned;){
-			if(!rocks[i].updateHaloRock(center,state)){
+			if(!rocks[i].updateHaloRock(center,state,false,isAbility)){
 				swap(rocks[i],rocks[numDespawned++]);
 				i=max(i,numDespawned);
 			}else{
 				if(!rocks[i].target.id){
-					static bool callback(int target,HaloRock!B[] rocks,int i,ObjectState!B state){
+					static bool callback(int target,HaloRock!B[] rocks,int i,ObjectState!B state,bool isAbility){
 						if(rocks.any!((ref rock)=>rock.target.id==target)) return false;
-						return state.movingObjectById!((ref obj,rocks,i,state){
+						return state.movingObjectById!((ref obj,rocks,i,state,isAbility){
 							if(state.sides.getStance(rocks[i].side,obj.side)==Stance.ally) return false;
 							if(!obj.isValidAttackTarget(state)) return false;
 							auto position=obj.center;
 							if(!state.hasHitboxLineOfSightTo(scaleBox(haloRockHitbox,1.25f),rocks[i].position,position,0,target)) return false;
 							//if(!state.hasLineOfSightTo(rocks[i].position,position,0,target)) return false;
-							playSoundAt("olah",rocks[i].position,state,haloOfEarthGain);
+							if(isAbility) playSpellSoundTypeAt(SoundType.fireball,position,state,haloOfEarthGain);
+							else playSoundAt("olah",rocks[i].position,state,haloOfEarthGain);
 							rocks[i].target=OrderTarget(TargetType.creature,obj.id,position);
 							return false;
-						},()=>false)(target,rocks,i,state);
+							},()=>false)(target,rocks,i,state,isAbility);
 					}
-					dealSplashSpellDamageAt!callback(0,spell,spell.effectRange,wizard,side,rocks[i].position,DamageMod.none,state,rocks[numDespawned..numSpawned],i-numDespawned,state);
+					dealSplashSpellDamageAt!callback(0,spell,spell.effectRange,wizard,side,rocks[i].position,DamageMod.none,state,rocks[numDespawned..numSpawned],i-numDespawned,state,isAbility);
 				}
 				i++;
 			}
