@@ -13441,6 +13441,7 @@ void animateEmergingHaloRock(B)(ref HaloRock!B haloRock,ObjectState!B state){
 		auto scale=sizeScale*state.uniform(0.5f,1.0f);
 		state.addParticle(Particle!B(sacParticle5,pposition,velocity,sizeScale,lifetime,frame));
 	}
+	// TODO: scar
 }
 
 void spawnHaloRock(B)(ref HaloOfEarth!B haloOfEarth,Vector3f centerPosition,ObjectState!B state){
