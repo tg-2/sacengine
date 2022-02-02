@@ -161,19 +161,19 @@ bool boxesIntersect(Vector3f[2] a,Vector3f[2] b){
 		&& intervalsIntersect([a[0].z,a[1].z], [b[0].z,b[1].z]);
 }
 
-Vector3f[2] moveBox(Vector3f[2] box, Vector3f offset){
+Vector!(T,n)[2] moveBox(T,size_t n)(Vector!(T,n)[2] box, Vector!(T,n) offset){
 	box[0]+=offset;
 	box[1]+=offset;
 	return box;
 }
 
-Vector3f boxCenter(Vector3f[2] box){
+Vector!(T,n) boxCenter(T,size_t n)(Vector!(T,n)[2] box){
 	return 0.5f*(box[0]+box[1]);
 }
-Vector3f boxSize(Vector3f[2] box){
+Vector!(T,n) boxSize(T,size_t n)(Vector!(T,n)[2] box){
 	return box[1]-box[0];
 }
-Vector3f[2] scaleBox(Vector3f[2] box, float factor){
+Vector!(T,n)[2] scaleBox(T,size_t n)(Vector!(T,n)[2] box, float factor){
 	auto size=box[1]-box[0];
 	auto center=0.5f*(box[0]+box[1]);
 	size*=factor;

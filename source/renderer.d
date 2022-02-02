@@ -1239,6 +1239,7 @@ struct Renderer(B){
 				}
 				static if(mode==RenderMode.opaque) if(objects.rockCastings.length||objects.rocks.length||
 				                                      objects.soulMoleCastings.length||objects.soulMoles.length||
+													  objects.haloOfEarthCastings.length||objects.haloOfEarths.length||
 				                                      objects.eruptDebris.length||
 				                                      objects.earthflingProjectiles.length||objects.flummoxProjectiles.length||
 				                                      objects.rockForms.length
@@ -1265,6 +1266,18 @@ struct Renderer(B){
 						foreach(j;0..objects.soulMoles.length){
 							material.backend.setTransformationScaled(objects.soulMoles[j].position,Quaternionf.identity(),Vector3f(1.0f,1.0f,1.0f),rc);
 							mesh.render(rc);
+						}
+						foreach(j;0..objects.haloOfEarthCastings.length){
+							foreach(k;objects.haloOfEarthCastings[j].haloOfEarth.numDespawned..objects.haloOfEarthCastings[j].haloOfEarth.numSpawned){
+								material.backend.setTransformationScaled(objects.haloOfEarthCastings[j].haloOfEarth.rocks[k].position,objects.haloOfEarthCastings[j].haloOfEarth.rocks[k].rotation,haloRockSize/2.0f*Vector3f(1.0f,1.0f,1.0f),rc);
+								mesh.render(rc);
+							}
+						}
+						foreach(j;0..objects.haloOfEarths.length){
+							foreach(k;objects.haloOfEarths[j].numDespawned..objects.haloOfEarths[j].numSpawned){
+								material.backend.setTransformationScaled(objects.haloOfEarths[j].rocks[k].position,objects.haloOfEarths[j].rocks[k].rotation,haloRockSize/2.0f*Vector3f(1.0f,1.0f,1.0f),rc);
+								mesh.render(rc);
+							}
 						}
 						foreach(j;0..objects.eruptDebris.length){
 							material.backend.setTransformationScaled(objects.eruptDebris[j].position,objects.eruptDebris[j].rotation,0.4f*Vector3f(1.0f,1.0f,1.0f),rc);

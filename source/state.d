@@ -276,7 +276,7 @@ Vector3f lowCenter(B)(ref OrderTarget target,ObjectState!B state){
 OrderTarget centerTarget(B)(int id,ObjectState!B state)in{
 	assert(state.isValidTarget(id));
 }do{
-	auto position=state.objectById!((obj)=>obj.center)(id);
+	auto position=state.objectById!((ref obj)=>obj.center)(id);
 	return OrderTarget(state.targetTypeFromId(id),id,position);
 }
 OrderTarget positionTarget(B)(Vector3f position,ObjectState!B state){
@@ -2751,6 +2751,40 @@ struct ExplosionCasting(B){
 	bool failed=false;
 }
 
+struct HaloOfEarthCasting(B){
+	ManaDrain!B manaDrain;
+	int castingTime;
+	HaloOfEarth!B haloOfEarth;
+	int frame=0;
+}
+struct HaloRock(B){
+	int wizard;
+	int side;
+	Vector3f position; // TODO: better representation?
+	Vector3f velocity;
+	OrderTarget target;
+	SacSpell!B spell;
+	Quaternionf rotationUpdate;
+	Quaternionf rotation;
+	Vector3f[2] lastPosition,nextPosition;
+	enum centerHeight=3.0f;
+	enum radius=2.0f;
+	enum speedRadius=3.0f;
+	enum interpolationSpeed=1.75f;
+	float progress=0.0f;
+	int frame=0;
+}
+struct HaloOfEarth(B){
+	int wizard;
+	int side;
+	SacSpell!B spell;
+	enum numRocks=6;
+	HaloRock!B[numRocks] rocks;
+	int numSpawned=0;
+	int numDespawned=0;
+	int frame=0;
+}
+
 struct BrainiacProjectile(B){
 	int attacker;
 	int side;
@@ -3824,6 +3858,22 @@ struct Effects(B){
 	void removeExplosionCasting(int i){
 		if(i+1<explosionCastings.length) explosionCastings[i]=move(explosionCastings[$-1]);
 		explosionCastings.length=explosionCastings.length-1;
+	}
+	Array!(HaloOfEarthCasting!B) haloOfEarthCastings;
+	void addEffect(HaloOfEarthCasting!B haloOfEarthCasting){
+		haloOfEarthCastings~=move(haloOfEarthCasting);
+	}
+	void removeHaloOfEarthCasting(int i){
+		if(i+1<haloOfEarthCastings.length) haloOfEarthCastings[i]=move(haloOfEarthCastings[$-1]);
+		haloOfEarthCastings.length=haloOfEarthCastings.length-1;
+	}
+	Array!(HaloOfEarth!B) haloOfEarths;
+	void addEffect(HaloOfEarth!B haloOfEarth){
+		haloOfEarths~=move(haloOfEarth);
+	}
+	void removeHaloOfEarth(int i){
+		if(i+1<haloOfEarths.length) haloOfEarths[i]=move(haloOfEarths[$-1]);
+		haloOfEarths.length=haloOfEarths.length-1;
 	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
@@ -6244,10 +6294,15 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 				case SpellTag.explosion:
 					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
 					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
-					if(castingTime==-1) return false;
+					if(side==-1||castingTime==-1) return false;
 
 					auto position=target.type==TargetType.building?target.center(state):target.position;
 					return stun(castExplosion(side,position,manaDrain,spell,castingTime,state));
+				case SpellTag.haloOfEarth:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					if(side==-1||castingTime==-1) return false;
+					return stun(castHaloOfEarth(caster,side,manaDrain,spell,castingTime,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -6604,7 +6659,7 @@ bool fireball(B)(Fireball!B fireball,ObjectState!B state){
 }
 
 Rock!B makeRock(B)(int wizard,int side,Vector3f position,OrderTarget target,SacSpell!B spell,ObjectState!B state){
-	auto rotationSpeed=2*pi!float*state.uniform(0.1f,0.4f)/updateFPS;
+	auto rotationSpeed=2*pi!float*state.uniform(0.2f,0.8f)/updateFPS;
 	auto velocity=Vector3f(0.0f,0.0f,0.0f);
 	auto rotationAxis=state.uniformDirection();
 	auto rotationUpdate=rotationQuaternion(rotationAxis,rotationSpeed);
@@ -7044,6 +7099,15 @@ bool explosion(B)(int attacker,int side,ref ExplosionEffect[5] effects,SacSpell!
 	return true;
 }
 
+bool castHaloOfEarth(B)(int wizard,int side,ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,ObjectState!B state){
+	auto haloOfEarth=HaloOfEarth!B(wizard,side,spell);
+	state.addEffect(HaloOfEarthCasting!B(manaDrain,castingTime,haloOfEarth));
+	return true;
+}
+bool haloOfEarth(B)(HaloOfEarth!B haloOfEarth,ObjectState!B state){
+	state.addEffect(move(haloOfEarth));
+	return true;
+}
 
 Vector3f getShotDirection(B)(float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
 	auto φ=2.0f*pi!float*accuracy*state.normal(); // TODO: ok?
@@ -7631,7 +7695,8 @@ bool isValidGuardTarget(B)(int targetId,ObjectState!B state){
 }
 
 bool hasClearShot(B)(ref MovingObject!B object,bool isAbility,Vector3f targetPosition,OrderTarget target,ObjectState!B state){
-	auto offset=target.type==TargetType.terrain?Vector3f(0.0f,0.0f,0.2f):Vector3f(0.0f,0.0f,-0.2f); // TODO: do some sort of cylinder/cone cast instead
+	// TODO: use hasHitboxLineOfSightTo for this, with projectile hitbox
+	auto offset=target.type==TargetType.terrain?Vector3f(0.0f,0.0f,0.2f):Vector3f(0.0f,0.0f,-0.2f);
 	return state.hasLineOfSightTo(object.firstShotPosition(isAbility)+offset,targetPosition+offset,object.id,target.id);
 	/+auto adjustedTarget=targetPosition;
 	adjustedTarget.z=targetPosition.z-4.0f;
@@ -11084,6 +11149,7 @@ bool updateRockCasting(B)(ref RockCasting!B rockCast,ObjectState!B state){
 	}
 }
 void animateEmergingRock(B)(ref Rock!B rock,ObjectState!B state){
+	screenShake(rock.position,updateFPS/2,0.75f,25.0f,state);
 	enum numParticles=50;
 	auto sacParticle=SacParticle!B.get(ParticleType.rock);
 	foreach(i;0..numParticles){
@@ -11165,6 +11231,7 @@ bool updateRock(B)(ref Rock!B rock,ObjectState!B state){
 	with(rock){
 		auto oldPosition=position;
 		auto targetCenter=target.center(state);
+		target.position=targetCenter;
 		auto distance=targetCenter-position;
 		auto acceleration=distance.normalized*spell.acceleration;
 		velocity+=acceleration;
@@ -11183,7 +11250,6 @@ bool updateRock(B)(ref Rock!B rock,ObjectState!B state){
 			newPosition=position+capVelocity(nvel)/updateFPS;
 		}
 		position=newPosition;
-		rotation=rotationUpdate*rotation;
 		rock.animateRock(oldPosition,state);
 		if(++rock.frame<rockWarmupTime) return true;
 		auto target=rockCollisionTarget(wizard,side,position,state);
@@ -13250,6 +13316,256 @@ bool updateExplosionCasting(B)(ref ExplosionCasting!B explosionCast,ObjectState!
 				explosion(manaDrain.wizard,side,effects,spell,state);
 				return false;
 		}
+	}
+}
+
+enum haloRockSize=0.7f; // TODO: use bounding box from sac object
+static immutable Vector3f[2] haloRockHitbox=[-0.5f*haloRockSize*Vector3f(1.0f,1.0f,1.0f),0.5f*haloRockSize*Vector3f(1.0f,1.0f,1.0f)];
+int haloRockCollisionTarget(B)(int side,Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state,int side){
+		return entry.isProjectileObstacle&&state.objectById!(.side)(entry.id,state)!=side;
+	}
+	return collisionTarget!(haloRockHitbox,filter)(side,position,state,side);
+}
+
+void haloRockExplosion(B)(ref HaloRock!B haloRock,int target,ObjectState!B state){
+	playSpellSoundTypeAt(SoundType.explodingRock,haloRock.position,state,2.0f);
+	if(state.isValidTarget(target)) dealSpellDamage(target,haloRock.spell,haloRock.wizard,haloRock.side,haloRock.velocity,DamageMod.none,state);
+	enum numParticles3=50;
+	auto sacParticle3=SacParticle!B.get(ParticleType.rock);
+	foreach(i;0..numParticles3){
+		auto direction=state.uniformDirection();
+		auto velocity=state.uniform(7.5f,15.0f)*haloRockSize/2.0f*direction;
+		auto scale=state.uniform(1.0f,2.5f)*haloRockSize/2.0f;
+		auto lifetime=95;
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle3,haloRock.position,velocity,scale,lifetime,frame));
+	}
+	enum numParticles4=10;
+	auto sacParticle4=SacParticle!B.get(ParticleType.dirt);
+	foreach(i;0..numParticles4){
+		auto direction=state.uniformDirection();
+		auto position=haloRock.position+0.75f*haloRockSize/2.0f*direction;
+		auto velocity=Vector3f(0.0f,0.0f,0.0f);
+		auto scale=3.0f*haloRockSize/2.0f;
+		auto frame=state.uniform(2)?0:state.uniform(24);
+		auto lifetime=63-frame;
+		state.addParticle(Particle!B(sacParticle4,position,velocity,scale,lifetime,frame));
+	}
+}
+
+bool updateHaloOfEarthCasting(B)(ref HaloOfEarthCasting!B haloOfEarthCast,ObjectState!B state){
+	with(haloOfEarthCast){
+		frame+=1;
+		auto center=state.movingObjectById!(haloRockCenterPosition,()=>Vector3f.init)(haloOfEarth.wizard,state);
+		foreach(ref haloRock;haloOfEarth.rocks[haloOfEarth.numDespawned..haloOfEarth.numSpawned]){
+			haloRock.updateHaloRock(center,state,true);
+		}
+		auto rockDelay=castingTime/(haloOfEarth.numRocks+2);
+		if(haloOfEarth.numSpawned<haloOfEarth.numRocks&&!((frame-rockDelay/2)%rockDelay))
+			if(!isNaN(center.x)) haloOfEarth.spawnHaloRock(center,state);
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				return state.movingObjectById!((obj){
+					//obj.animateHaloOfEarthCasting(state);
+					return true;
+				},()=>false)(manaDrain.wizard);
+			case CastingStatus.interrupted:
+				haloOfEarth.despawnHaloOfEarth(state);
+				if(haloOfEarth.numDespawned<haloOfEarth.numSpawned)
+					.haloOfEarth(haloOfEarth,state);
+				return false;
+			case CastingStatus.finished:
+				.haloOfEarth(haloOfEarth,state);
+				return false;
+		}
+	}
+}
+
+enum haloRockBuryDepth=0.25f;
+Vector3f haloRockSpawnPosition(B)(ref MovingObject!B obj,ObjectState!B state){
+	auto box=scaleBox(obj.hitbox,2.5f);
+	auto position=state.uniform(box);
+	position.z=state.getHeight(position)-haloRockBuryDepth;
+	return position;
+}
+Vector3f haloRockCenterPosition(B)(ref MovingObject!B obj,ObjectState!B state){
+	auto hitbox=moveBox(obj.sacObject.hitbox(obj.rotation,AnimationState.stance1,0),obj.position);
+	Vector2f[2] b2d=[Vector2f(hitbox[0].x,hitbox[0].y),Vector2f(hitbox[1].x,hitbox[1].y)];
+	auto cpos=boxCenter(b2d);
+	return Vector3f(cpos.x,cpos.y,hitbox[1].z+HaloRock!B.centerHeight);
+}
+
+HaloRock!B makeHaloRock(B)(int wizard,int side,SacSpell!B spell,ObjectState!B state){
+	auto position=state.movingObjectById!(haloRockSpawnPosition,()=>Vector3f.init)(wizard,state);
+	auto rotationSpeed=2*pi!float*state.uniform(0.2f,0.8f)/updateFPS;
+	auto velocity=Vector3f(0.0f,0.0f,0.0f);
+	auto rotationAxis=state.uniformDirection();
+	auto rotationUpdate=rotationQuaternion(rotationAxis,rotationSpeed);
+	return HaloRock!B(wizard,side,position,velocity,OrderTarget.init,spell,rotationUpdate,Quaternionf.identity());
+}
+
+void animateEmergingHaloRock(B)(ref HaloRock!B haloRock,ObjectState!B state){
+	screenShake(haloRock.position,updateFPS/2,0.5f,25.0f,state);
+	enum numParticles=20;
+	auto sacParticle=SacParticle!B.get(ParticleType.rock);
+	foreach(i;0..numParticles){
+		auto direction=state.uniformDirection();
+		auto velocity=state.uniform(3.0f,6.0f)*haloRockSize/2.0f*direction;
+		velocity.z*=2.5f;
+		auto scale=state.uniform(0.25f,0.75f);
+		auto lifetime=159;
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle,haloRock.position,velocity,scale,lifetime,frame));
+	}
+	enum numParticles4=8;
+	auto sacParticle4=SacParticle!B.get(ParticleType.dust);
+	foreach(i;0..numParticles4){
+		auto direction=state.uniformDirection();
+		auto position=haloRock.position+0.75f*haloRockSize/2.0f*direction;
+		auto velocity=0.2f*direction;
+		auto scale=3.0f*haloRockSize/2.0f;
+		auto frame=0;
+		auto lifetime=31;
+		state.addParticle(Particle!B(sacParticle4,position,velocity,scale,lifetime,frame));
+	}
+	enum numParticles5=24;
+	auto sacParticle5=SacParticle!B.get(ParticleType.dirt);
+	auto sizeScale=2.0f;
+	foreach(i;0..numParticles5){
+		auto direction=state.uniformDirection();
+		auto pposition=haloRock.position+sizeScale*0.25f*direction-sizeScale*Vector3f(0.0f,0.0f,state.uniform(0.0f,1.0f));
+		auto velocity=sizeScale*Vector3f(0.0f,0.0f,1.0f);
+		auto frame=state.uniform(2)?0:state.uniform(24);
+		auto lifetime=63-frame;
+		auto scale=sizeScale*state.uniform(0.5f,1.0f);
+		state.addParticle(Particle!B(sacParticle5,pposition,velocity,sizeScale,lifetime,frame));
+	}
+}
+
+void spawnHaloRock(B)(ref HaloOfEarth!B haloOfEarth,Vector3f centerPosition,ObjectState!B state){
+	with(haloOfEarth){
+		rocks[numSpawned++]=makeHaloRock(wizard,side,spell,state);
+		animateEmergingHaloRock(rocks[numSpawned-1],state);
+	}
+}
+void animateHaloRock(B)(ref HaloRock!B haloRock,Vector3f oldPosition,ObjectState!B state){
+	with(haloRock){
+		rotation=rotationUpdate*rotation;
+		enum numParticles=2;
+		auto sacParticle=SacParticle!B.get(ParticleType.dust);
+		auto velocity=Vector3f(0.0f,0.0f,0.0f);
+		auto lifetime=31;
+		auto scale=1.5f*haloRockSize/2.0f;
+		auto frame=0;
+		foreach(i;0..numParticles){
+			auto position=oldPosition*((cast(float)numParticles-1-i)/numParticles)+position*(cast(float)(i+1)/numParticles);
+			position+=0.3f*haloRockSize/2.0f*state.uniformDirection();
+			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+		}
+	}
+}
+
+bool updateHaloRock(B)(ref HaloRock!B haloRock,Vector3f centerPosition,ObjectState!B state,bool isCasting=false){
+	with(haloRock){
+		if(!target.id){
+			if(isNaN(lastPosition[0].x)){
+				nextPosition=[position-centerPosition,Vector3f(0.0f,0.0f,0.0f)];
+				progress=1.0f;
+			}
+			if(progress>=1.0f){
+				progress-=1.0f;
+				lastPosition=nextPosition;
+				nextPosition[0]=state.uniformDisk(Vector3f(0.0f,0.0f,0.0f),radius);
+				//nextPosition[1]=state.uniformDisk(Vector3f(0.0f,0.0f,0.0f),speedRadius);
+				nextPosition[1]=state.uniformDirection()*speedRadius;
+			}
+			progress+=interpolationSpeed/updateFPS;
+			position=cintp2([lastPosition,nextPosition],progress)[0]+centerPosition;
+			rotation=rotationUpdate*rotation;
+		}else{
+			auto oldPosition=position;
+			auto targetCenter=target.center(state);
+			target.position=targetCenter;
+			auto distance=targetCenter-position;
+			auto acceleration=distance.normalized*spell.acceleration;
+			velocity+=acceleration;
+			Vector3f capVelocity(Vector3f velocity){
+				if(velocity.length>spell.speed) velocity=velocity.normalized*spell.speed; // TODO: why?
+				if(velocity.length>updateFPS*distance.length) velocity=velocity.normalized*distance.length*updateFPS;
+				return velocity;
+			}
+			velocity=capVelocity(velocity);
+			auto newPosition=position+velocity/updateFPS;
+			position=newPosition;
+			if(distance.length<0.05f){
+				haloRock.haloRockExplosion(haloRock.target.id,state);
+				return false;
+			}
+			haloRock.animateHaloRock(oldPosition,state);
+		}
+		if(!isCasting){
+			auto target=haloRockCollisionTarget(side,position,state);
+			if(state.isValidTarget(target)){
+				haloRock.haloRockExplosion(target,state);
+				return false;
+			}
+			if(state.isOnGround(position)){
+				if(position.z<state.getGroundHeight(position)){
+					haloRock.haloRockExplosion(0,state);
+					return false;
+				}
+			}
+			if(++frame>spell.duration*updateFPS){
+				haloRock.haloRockExplosion(0,state);
+				return false;
+			}
+		}
+		return true;
+	}
+}
+void despawnHaloOfEarth(B)(ref HaloOfEarth!B haloOfEarth,ObjectState!B state){
+	with(haloOfEarth){
+		for(int i=numDespawned;i<numSpawned;){
+			if(!rocks[i].target.id){
+				rocks[i].haloRockExplosion(0,state);
+				swap(rocks[i],rocks[numDespawned++]);
+				i=max(i,numDespawned);
+			}else i++;
+		}
+	}
+}
+enum haloOfEarthGain=2.0f;
+bool updateHaloOfEarth(B)(ref HaloOfEarth!B haloOfEarth,ObjectState!B state){
+	with(haloOfEarth){
+		auto center=state.movingObjectById!(haloRockCenterPosition,()=>Vector3f.init)(wizard,state);
+		if(!isNaN(center.x)) while(numSpawned<numRocks) haloOfEarth.spawnHaloRock(center,state);
+		else haloOfEarth.despawnHaloOfEarth(state);
+		for(int i=numDespawned;i<numSpawned;){
+			if(!rocks[i].updateHaloRock(center,state)){
+				swap(rocks[i],rocks[numDespawned++]);
+				i=max(i,numDespawned);
+			}else{
+				if(!rocks[i].target.id){
+					static bool callback(int target,HaloRock!B[] rocks,int i,ObjectState!B state){
+						if(rocks.any!((ref rock)=>rock.target.id==target)) return false;
+						return state.movingObjectById!((ref obj,rocks,i,state){
+							if(state.sides.getStance(rocks[i].side,obj.side)==Stance.ally) return false;
+							if(!obj.isValidAttackTarget(state)) return false;
+							auto position=obj.center;
+							if(!state.hasHitboxLineOfSightTo(scaleBox(haloRockHitbox,1.25f),rocks[i].position,position,0,target)) return false;
+							//if(!state.hasLineOfSightTo(rocks[i].position,position,0,target)) return false;
+							playSoundAt("olah",rocks[i].position,state,haloOfEarthGain);
+							rocks[i].target=OrderTarget(TargetType.creature,obj.id,position);
+							return false;
+						},()=>false)(target,rocks,i,state);
+					}
+					dealSplashSpellDamageAt!callback(0,spell,spell.effectRange,wizard,side,rocks[i].position,DamageMod.none,state,rocks[numDespawned..numSpawned],i-numDespawned,state);
+				}
+				i++;
+			}
+		}
+		return !(numSpawned&&numDespawned==numSpawned);
 	}
 }
 
@@ -15822,6 +16138,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 		}
 		i++;
 	}
+	for(int i=0;i<effects.haloOfEarthCastings.length;){
+		if(!updateHaloOfEarthCasting(effects.haloOfEarthCastings[i],state)){
+			effects.removeHaloOfEarthCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.haloOfEarths.length;){
+		if(!updateHaloOfEarth(effects.haloOfEarths[i],state)){
+			effects.removeHaloOfEarth(i);
+			continue;
+		}
+		i++;
+	}
 	for(int i=0;i<effects.brainiacProjectiles.length;){
 		if(!updateBrainiacProjectile(effects.brainiacProjectiles[i],state)){
 			effects.removeBrainiacProjectile(i);
@@ -17079,6 +17409,18 @@ final class ObjectState(B){ // (update logic)
 		static bool filter(ref ProximityEntry entry,int id){ return entry.isObstacle&&entry.isProjectileObstacle&&entry.id!=id; }
 		auto result=lineOfSight!filter(start,target,ignoredId);
 		return result.type==TargetType.none||result.type.among(TargetType.creature,TargetType.building,TargetType.soul)&&result.id==targetId;
+	}
+	bool hasHitboxLineOfSightTo(Vector3f[2] hitbox,Vector3f start,Vector3f target,int ignoredId,int targetId){
+		bool hasLineOfSight=true;
+		foreach(i;0..2){
+			foreach(j;0..2){
+				foreach(k;0..2){
+					auto offset=Vector3f(hitbox[i].x,hitbox[j].y,hitbox[k].z);
+					hasLineOfSight&=hasLineOfSightTo(start+offset,target+offset,ignoredId,targetId);
+				}
+			}
+		}
+		return hasLineOfSight;
 	}
 	bool findPath(ref Array!Vector3f path,Vector3f start,Vector3f target,float radius){
 		return pathFinder.findPath(path,start,target,radius,this);
