@@ -1641,7 +1641,7 @@ struct Renderer(B){
 						B.shadelessMorphMaterialBackend.setTransformationScaled(position,Quaternionf.identity(),radius*(0.5f+0.5f*scale)*Vector3f(1.1f,1.1f,0.4f),rc);
 						B.shadelessMorphMaterialBackend.setAlpha(scale);
 						foreach(v;0..20){
-							auto mesh1Mesh2Progress=self.cloud.getFrame(frame+2*updateFPS*v);
+							auto mesh1Mesh2Progress=self.cloud.getFrame(frame+4*updateFPS*v);
 							auto mesh1=mesh1Mesh2Progress[0], mesh2=mesh1Mesh2Progress[1], progress=mesh1Mesh2Progress[2];
 							B.shadelessMorphMaterialBackend.setMorphProgress(progress);
 							mesh1.morph(mesh2,rc);

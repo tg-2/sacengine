@@ -2145,7 +2145,7 @@ struct SacCloud(B){
 		return makeNoisySphereMeshes!B(24,25,1,1,1.0f/1.48f,0.48f/1.48f,numDistortions,2.0f,2.0f).map!(m=>m[0]).array;
 	}
 	enum numDistortions=20;
-	enum numFrames=4*updateFPS*numDistortions;
+	enum numFrames=8*updateFPS*numDistortions;
 	Tuple!(B.Mesh,B.Mesh,float) getFrame(int frame){
 		auto indices=iota(0,meshes.length);
 		auto numIndices=indices.length;
