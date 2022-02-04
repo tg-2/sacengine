@@ -312,6 +312,19 @@ struct Renderer(B){
 		auto meshes=typeof(return).createMeshes;
 		return SacExplosionEffect!B(texture,mat,meshes);
 	}
+	SacCloud!B cloud;
+	SacCloud!B createCloud(){
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Transparent;
+		import dlib.core.memory, dlib.image.unmanaged, dlib.image.render.shapes; // TODO: move to util?
+		auto img=New!UnmanagedImageRGBA8(8, 8);
+        img.fillColor(Color4f(0.0f,0.0f,0.0f,0.15f));
+        auto tex=New!(B.Texture)(img, mat);
+		mat.diffuse=tex;
+		auto meshes=typeof(return).createMeshes;
+		return SacCloud!B(mat,meshes);
+	}
 	SacBrainiacEffect!B brainiacEffect;
 	SacBrainiacEffect!B createBrainiacEffect(){
 		auto texture=typeof(return).loadTexture();
@@ -573,6 +586,7 @@ struct Renderer(B){
 		dragonfire=createDragonfire();
 		soulWind=createSoulWind();
 		explosionEffect=createExplosionEffect();
+		cloud=createCloud();
 	}
 
 	void initialize(){
@@ -1608,6 +1622,35 @@ struct Renderer(B){
 					foreach(ref explosionCasting;objects.explosionCastings)
 						foreach(ref effect;explosionCasting.effects)
 							renderExplosionEffect(effect);
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&& // TODO: cloud shadows?
+														   (objects.rainOfFrogsCastings.length||
+															objects.rainOfFrogss.length)
+				){
+					B.disableDepthMask();
+					B.enableCulling();
+					scope(success){
+						B.enableCulling();
+						B.enableDepthMask();
+					}
+					auto material=self.cloud.material;
+					B.shadelessMorphMaterialBackend.bind(material,rc);
+					B.enableTransparency();
+					scope(success) B.shadelessMorphMaterialBackend.unbind(material,rc);
+					void renderCloud(Vector3f position,float radius,float scale,int frame){
+						B.shadelessMorphMaterialBackend.setTransformationScaled(position,Quaternionf.identity(),radius*(0.5f+0.5f*scale)*Vector3f(1.1f,1.1f,0.4f),rc);
+						B.shadelessMorphMaterialBackend.setAlpha(scale);
+						foreach(v;0..20){
+							auto mesh1Mesh2Progress=self.cloud.getFrame(frame+2*updateFPS*v);
+							auto mesh1=mesh1Mesh2Progress[0], mesh2=mesh1Mesh2Progress[1], progress=mesh1Mesh2Progress[2];
+							B.shadelessMorphMaterialBackend.setMorphProgress(progress);
+							mesh1.morph(mesh2,rc);
+						}
+					}
+					foreach(ref rainOfFrogsCasting;objects.rainOfFrogsCastings)
+						with(rainOfFrogsCasting.rainOfFrogs) renderCloud(position,spell.effectRange,cloudScale,cloudFrame);
+					foreach(ref rainOfFrogs;objects.rainOfFrogss)
+						with(rainOfFrogs) renderCloud(position,spell.effectRange,cloudScale,cloudFrame);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.brainiacEffects.length){
 					auto material=self.brainiacEffect.material;

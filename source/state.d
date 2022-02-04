@@ -2786,6 +2786,36 @@ struct HaloOfEarth(B){
 	int frame=0;
 }
 
+struct RainOfFrogsCasting(B){
+	ManaDrain!B manaDrain;
+	RainOfFrogs!B rainOfFrogs;
+	bool interrupted=false;
+}
+struct RainOfFrogs(B){
+	int wizard;
+	int side;
+	Vector3f position;
+	SacSpell!B spell;
+	float cloudScale=0.0f;
+	int cloudFrame=0;
+	int frame=0;
+	enum cloudHeight=100.0f;
+	enum cloudGrowSpeed=1.0f;
+	enum cloudShrinkSpeed=1.0f;
+}
+struct RainFrog(B){
+	int creature;
+	//int intendedTarget;
+	Vector3f position;
+	Vector3f velocity;
+	SacSpell!B ability;
+	int target=0;
+	int infectionTime=0;
+	// int bone; // TODO: stick on bones
+	int frame=0;
+	int numJumps=0;
+}
+
 struct BrainiacProjectile(B){
 	int attacker;
 	int side;
@@ -3875,6 +3905,30 @@ struct Effects(B){
 	void removeHaloOfEarth(int i){
 		if(i+1<haloOfEarths.length) haloOfEarths[i]=move(haloOfEarths[$-1]);
 		haloOfEarths.length=haloOfEarths.length-1;
+	}
+	Array!(RainOfFrogsCasting!B) rainOfFrogsCastings;
+	void addEffect(RainOfFrogsCasting!B RainOfFrogsCasting){
+		rainOfFrogsCastings~=move(RainOfFrogsCasting);
+	}
+	void removeRainOfFrogsCasting(int i){
+		if(i+1<rainOfFrogsCastings.length) rainOfFrogsCastings[i]=move(rainOfFrogsCastings[$-1]);
+		rainOfFrogsCastings.length=rainOfFrogsCastings.length-1;
+	}
+	Array!(RainOfFrogs!B) rainOfFrogss;
+	void addEffect(RainOfFrogs!B RainOfFrogs){
+		rainOfFrogss~=move(RainOfFrogs);
+	}
+	void removeRainOfFrogs(int i){
+		if(i+1<rainOfFrogss.length) rainOfFrogss[i]=move(rainOfFrogss[$-1]);
+		rainOfFrogss.length=rainOfFrogss.length-1;
+	}
+	Array!(RainFrog!B) rainFrogs;
+	void addEffect(RainFrog!B rainFrog){
+		rainFrogs~=move(rainFrog);
+	}
+	void removeRainFrog(int i){
+		if(i+1<rainFrogs.length) rainFrogs[i]=move(rainFrogs[$-1]);
+		rainFrogs.length=rainFrogs.length-1;
 	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
@@ -6304,6 +6358,9 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
 					if(side==-1||castingTime==-1) return false;
 					return stun(castHaloOfEarth(caster,side,manaDrain,spell,castingTime,state));
+				case SpellTag.rainOfFrogs:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					return stun(castRainOfFrogs(side,target.position,manaDrain,spell,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -7107,6 +7164,16 @@ bool castHaloOfEarth(B)(int wizard,int side,ManaDrain!B manaDrain,SacSpell!B spe
 }
 bool haloOfEarth(B)(HaloOfEarth!B haloOfEarth,ObjectState!B state){
 	state.addEffect(move(haloOfEarth));
+	return true;
+}
+
+bool castRainOfFrogs(B)(int side,Vector3f position,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	position.z=state.getHeight(position)+RainOfFrogs!B.cloudHeight;
+	state.addEffect(RainOfFrogsCasting!B(manaDrain,RainOfFrogs!B(manaDrain.wizard,side,position,spell)));
+	return true;
+}
+bool rainOfFrogs(B)(RainOfFrogs!B rainOfFrogs,ObjectState!B state){
+	state.addEffect(rainOfFrogs);
 	return true;
 }
 
@@ -11295,11 +11362,13 @@ bool updateSwarmCasting(B)(ref SwarmCasting!B swarmCast,ObjectState!B state){
 		swarm.target.position=swarm.target.center(state);
 			final switch(manaDrain.update(state)){
 				case CastingStatus.underway:
-					return state.movingObjectById!((ref obj){
+					if(!state.movingObjectById!((ref obj){
 						swarm.relocate(obj.swarmCastingPosition(state));
 						if(swarm.frame>0) swarm.addBugs(obj,state);
 						return swarm.updateSwarm(state);
-					},()=>false)(manaDrain.wizard);
+					},()=>false)(manaDrain.wizard))
+						goto case CastingStatus.interrupted;
+					return true;
 				case CastingStatus.interrupted:
 					swarm.status=SwarmStatus.dispersing;
 					.swarm(swarm,state);
@@ -13376,10 +13445,7 @@ bool updateHaloOfEarthCasting(B)(ref HaloOfEarthCasting!B haloOfEarthCast,Object
 			if(!isNaN(center.x)) haloOfEarth.spawnHaloRock(center,state);
 		final switch(manaDrain.update(state)){
 			case CastingStatus.underway:
-				return state.movingObjectById!((obj){
-					//obj.animateHaloOfEarthCasting(state);
-					return true;
-				},()=>false)(manaDrain.wizard);
+				return true;
 			case CastingStatus.interrupted:
 				haloOfEarth.despawnHaloOfEarth(state);
 				if(haloOfEarth.numDespawned<haloOfEarth.numSpawned)
@@ -13389,6 +13455,70 @@ bool updateHaloOfEarthCasting(B)(ref HaloOfEarthCasting!B haloOfEarthCast,Object
 				.haloOfEarth(haloOfEarth,state);
 				return false;
 		}
+	}
+}
+
+void animateRainOfFrogsCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	auto castParticle=SacParticle!B.get(ParticleType.wrathCasting);
+	static assert(updateFPS==60);
+	auto hitbox=wizard.relativeHitbox;
+	auto scale=1.0f;
+	enum numParticles=6;
+	foreach(i;0..numParticles){
+		auto position=1.1f*state.uniform(cast(Vector2f[2])[hitbox[0].xy,hitbox[1].xy]);
+		auto distance=(state.uniform(3)?state.uniform(0.3f,0.6f):state.uniform(1.5f,2.5f))*(hitbox[1].z-hitbox[0].z);
+		auto fullLifetime=2.0f*castParticle.numFrames/float(updateFPS);
+		auto lifetime=cast(int)(castParticle.numFrames*state.uniform(0.0f,2.0f));
+		// TODO: particles should accelerate upwards
+		state.addParticle(Particle!B(castParticle,wizard.position+rotate(wizard.rotation,Vector3f(position.x,position.y,state.uniform(0.0f,0.5f*distance))),Vector3f(0.0f,0.0f,distance/fullLifetime),scale,lifetime,0));
+	}
+
+}
+
+bool updateRainOfFrogsCasting(B)(ref RainOfFrogsCasting!B rainOfFrogsCast,ObjectState!B state){
+	with(rainOfFrogsCast){
+		++rainOfFrogs.cloudFrame;
+		if(!interrupted) final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				if(!state.movingObjectById!((ref obj,state){
+					obj.animateRainOfFrogsCasting(state);
+					return true;
+				},()=>false)(manaDrain.wizard,state))
+					goto case CastingStatus.interrupted;
+				break;
+			case CastingStatus.interrupted:
+				interrupted=true;
+				break;
+			case CastingStatus.finished:
+				.rainOfFrogs(rainOfFrogs,state);
+				return false;
+		}
+		if(interrupted){
+			rainOfFrogs.cloudScale=max(0.0f,rainOfFrogs.cloudScale-rainOfFrogs.cloudShrinkSpeed/updateFPS);
+			return rainOfFrogs.cloudScale!=0.0f;
+		}else{
+			rainOfFrogs.cloudScale=min(1.0f,rainOfFrogs.cloudScale+rainOfFrogs.cloudGrowSpeed/updateFPS);
+			return true;
+		}
+	}
+}
+bool updateRainOfFrogs(B)(ref RainOfFrogs!B rainOfFrogs,ObjectState!B state){
+	with(rainOfFrogs){
+		++frame;
+		++cloudFrame;
+		if(frame<=spell.duration*updateFPS){
+			// TODO: spawn frogs
+			return true;
+		}else{
+			cloudScale=max(0.0f,cloudScale-cloudShrinkSpeed/updateFPS);
+			return cloudScale!=0.0f;
+		}
+	}
+}
+bool updateRainFrog(B)(ref RainFrog!B rainFrog,ObjectState!B state){
+	with(rainFrog){
+		// TODO
+		return true;
 	}
 }
 
@@ -16162,6 +16292,27 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.haloOfEarths.length;){
 		if(!updateHaloOfEarth(effects.haloOfEarths[i],state)){
 			effects.removeHaloOfEarth(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.rainOfFrogsCastings.length;){
+		if(!updateRainOfFrogsCasting(effects.rainOfFrogsCastings[i],state)){
+			effects.removeRainOfFrogsCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.rainOfFrogss.length;){
+		if(!updateRainOfFrogs(effects.rainOfFrogss[i],state)){
+			effects.removeRainOfFrogs(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.rainFrogs.length;){
+		if(!updateRainFrog(effects.rainFrogs[i],state)){
+			effects.removeRainFrog(i);
 			continue;
 		}
 		i++;

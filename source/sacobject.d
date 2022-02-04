@@ -1838,9 +1838,9 @@ B.Mesh[][] makeNoisySphereMeshes(B)(int numU,int numV,int nU,int nV,float radius
 			void addFace(uint[3] face...){
 				mesh.indices[numFaces++]=face;
 			}
-			mesh.vertices[0]=Vector3f(0.0f,0.0f,radius);
+			mesh.vertices[0]=Vector3f(0.0f,0.0f,radius)+noiseRadius*offsets[0];
 			mesh.texcoords[0]=Vector2f(texWidth/nU*(u+0.5f),texHeight/nV*(v+0.5f));
-			mesh.vertices[$-1]=Vector3f(0.0f,0.0f,-radius);
+			mesh.vertices[$-1]=Vector3f(0.0f,0.0f,-radius)+noiseRadius*offsets[$-1];
 			mesh.texcoords[$-1]=Vector2f(texWidth/nU*(u+0.5f),texHeight/nV*(v+0.5f));
 			int idx(int i,int j){
 				if(i<0) return 0;
@@ -2135,6 +2135,24 @@ struct SacExplosionEffect(B){
 		float progress=float(frame*numIndices%numFrames)/numFrames;
 		auto all=cycle(indices);
 		return tuple(meshes[all[i]][textureFrame],meshes[all[j]][textureFrame],progress);
+	}
+}
+
+struct SacCloud(B){
+	B.Material material;
+	B.Mesh[] meshes;
+	static B.Mesh[] createMeshes(){
+		return makeNoisySphereMeshes!B(24,25,1,1,1.0f/1.48f,0.48f/1.48f,numDistortions,2.0f,2.0f).map!(m=>m[0]).array;
+	}
+	enum numDistortions=20;
+	enum numFrames=4*updateFPS*numDistortions;
+	Tuple!(B.Mesh,B.Mesh,float) getFrame(int frame){
+		auto indices=iota(0,meshes.length);
+		auto numIndices=indices.length;
+		auto i=frame*numIndices/numFrames, j=i+1;
+		float progress=float(frame*numIndices%numFrames)/numFrames;
+		auto all=cycle(indices);
+		return tuple(meshes[all[i]],meshes[all[j]],progress);
 	}
 }
 
