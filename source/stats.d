@@ -65,6 +65,7 @@ struct Effects{
 	float bulk=1.0f;
 	int numStickyBombs=0;
 	OilStatus oilStatus;
+	int numRainFrogs=0;
 	@property bool slimed(){ return numSlimes!=0; }
 	@property bool vined(){ return numVines!=0; }
 	@property bool regenerationBlocked(){ return poisonDamage!=0||immobilized||ringsOfFire||slimed||vined; }
@@ -102,7 +103,7 @@ import dlib.math.portable: pi;
 	return 0.25f*pi!float;
 }
 @property float movementSpeed(ref CreatureStats stats,bool isFlying){ // in meters per second
-	auto effectFactor=stats.effects.speedUp*(isFlying?1.0f:0.25f^^stats.effects.numSlimes)*0.8f^^stats.effects.numBlightMites*0.75f^^stats.effects.numStickyBombs*(stats.effects.lightningCharged?4.0f/3.0f:1.0f); // TODO: probably slowdowns should be interpolated too
+	auto effectFactor=stats.effects.speedUp*(isFlying?1.0f:0.25f^^stats.effects.numSlimes)*0.8f^^stats.effects.numBlightMites*0.75f^^stats.effects.numStickyBombs*0.6f^^stats.effects.numRainFrogs*(stats.effects.lightningCharged?4.0f/3.0f:1.0f); // TODO: probably slowdowns should be interpolated too
 	return (isFlying?stats.flyingSpeed:stats.runningSpeed)*effectFactor;
 }
 @property float movementAcceleration(ref CreatureStats stats,bool isFlying){

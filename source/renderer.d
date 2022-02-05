@@ -325,6 +325,17 @@ struct Renderer(B){
 		auto meshes=typeof(return).createMeshes;
 		return SacCloud!B(mat,meshes);
 	}
+	SacRainFrog!B rainFrog;
+	SacRainFrog!B createRainFrog(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Transparent;
+		mat.energy=3.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacRainFrog!B(texture,mat,frames);
+	}
 	SacBrainiacEffect!B brainiacEffect;
 	SacBrainiacEffect!B createBrainiacEffect(){
 		auto texture=typeof(return).loadTexture();
@@ -587,6 +598,7 @@ struct Renderer(B){
 		soulWind=createSoulWind();
 		explosionEffect=createExplosionEffect();
 		cloud=createCloud();
+		rainFrog=createRainFrog();
 	}
 
 	void initialize(){
@@ -1638,7 +1650,7 @@ struct Renderer(B){
 					B.enableTransparency();
 					scope(success) B.shadelessMorphMaterialBackend.unbind(material,rc);
 					void renderCloud(Vector3f position,float radius,float scale,int frame){
-						B.shadelessMorphMaterialBackend.setTransformationScaled(position,Quaternionf.identity(),radius*(0.5f+0.5f*scale)*Vector3f(1.1f,1.1f,0.4f),rc);
+						B.shadelessMorphMaterialBackend.setTransformationScaled(position,Quaternionf.identity(),radius*(0.5f+0.5f*scale)*Vector3f(1.3f,1.3f,0.4f),rc);
 						B.shadelessMorphMaterialBackend.setAlpha(scale);
 						foreach(v;0..20){
 							auto mesh1Mesh2Progress=self.cloud.getFrame(frame+4*updateFPS*v);
@@ -1651,6 +1663,23 @@ struct Renderer(B){
 						with(rainOfFrogsCasting.rainOfFrogs) renderCloud(position,spell.effectRange,cloudScale,cloudFrame);
 					foreach(ref rainOfFrogs;objects.rainOfFrogss)
 						with(rainOfFrogs) renderCloud(position,spell.effectRange,cloudScale,cloudFrame);
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.rainFrogs.length){
+					auto material=self.rainFrog.material;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
+					foreach(j;0..objects.rainFrogs.length){
+						auto position=objects.rainFrogs[j].position+Vector3f(0.0f,0.0f,0.5f*self.rainFrog.size);
+						if(auto target=objects.rainFrogs[j].target){
+							auto targetPositionTargetRotation=state.movingObjectById!((ref obj)=>tuple(obj.position,obj.rotation),()=>Tuple!(Vector3f,Quaternionf).init)(target);
+							auto targetPosition=targetPositionTargetRotation[0], targetRotation=targetPositionTargetRotation[1];
+							position=targetPosition+rotate(targetRotation,position);
+						}
+						auto frame=objects.rainFrogs[j].animationFrame;
+						auto mesh=self.rainFrog.getFrame(frame%self.rainFrog.numFrames);
+						material.backend.setSpriteTransformation(position,rc);
+						mesh.render(rc);
+					}
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.brainiacEffects.length){
 					auto material=self.brainiacEffect.material;

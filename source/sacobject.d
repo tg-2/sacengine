@@ -941,6 +941,7 @@ enum ParticleType{
 	wrathExplosion1,
 	wrathExplosion2,
 	wrathParticle,
+	rainOfFrogsCasting,
 	gnomeHit,
 	ashParticle,
 	dirt,
@@ -988,7 +989,7 @@ final class SacParticle(B){
 				return true;
 			case castPersephone,castPersephone2,castPyro,castJames,castStratos,castCharnel,castCharnel2:
 				return false;
-			case wrathCasting,wrathExplosion1,wrathExplosion2,steam:
+			case wrathCasting,wrathExplosion1,wrathExplosion2,rainOfFrogsCasting,steam:
 				return false;
 			case wrathParticle,gnomeHit,ashParticle:
 				return true;
@@ -1020,7 +1021,7 @@ final class SacParticle(B){
 				return false;
 			case castPersephone,castPersephone2,castPyro,castJames,castStratos,castCharnel,castCharnel2:
 				return false;
-			case wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,gnomeHit,ashParticle,steam,smoke,dirt,dust,rock,webDebris,oil,poison,swarmHit,slime:
+			case wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,rainOfFrogsCasting,gnomeHit,ashParticle,steam,smoke,dirt,dust,rock,webDebris,oil,poison,swarmHit,slime:
 				return false;
 			case relativePoison:
 				return true;
@@ -1206,6 +1207,12 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/prth.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
+			case rainOfFrogsCasting:
+				width=height=1.0f;
+				this.energy=7.5f;
+				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/frgl.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
 			case gnomeHit:
 				width=height=0.5f;
 				this.energy=5.0f;
@@ -1356,6 +1363,8 @@ final class SacParticle(B){
 				return 1.0f;
 			case wrathCasting:
 				return min(1.0f,lifetime/(1.5f*numFrames));
+			case rainOfFrogsCasting:
+				return min(1.0f,lifetime/(1.5f*numFrames));
 			case steam:
 				return 1.0f;
 			case smoke:
@@ -1409,6 +1418,8 @@ final class SacParticle(B){
 				return min(1.0f,0.4f+0.6f*lifetime/(1.5f*numFrames));
 			case wrathParticle,gnomeHit:
 				return min(1.0f,lifetime/(0.5f*numFrames));
+			case rainOfFrogsCasting:
+				return min(1.0f,0.4f+0.6f*lifetime/(1.5f*numFrames));
 			case steam:
 				return 1.0f;
 			case ashParticle:
@@ -2153,6 +2164,22 @@ struct SacCloud(B){
 		float progress=float(frame*numIndices%numFrames)/numFrames;
 		auto all=cycle(indices);
 		return tuple(meshes[all[i]],meshes[all[j]],progress);
+	}
+}
+
+struct SacRainFrog(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/fhop.TXTR"));
+	}
+	B.Material material;
+	B.Mesh[] frames;
+	enum animationDelay=2;
+	enum numFrames=16*animationDelay*updateAnimFactor;
+	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
+	enum size=0.75f;
+	static B.Mesh[] createMeshes(){
+		return makeSpriteMeshes!B(4,4,size,size);
 	}
 }
 
