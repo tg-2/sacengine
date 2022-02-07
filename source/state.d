@@ -2821,8 +2821,10 @@ struct RainFrog(B){
 	SacSpell!B spell;
 	int target=0;
 	int infectionTime=0;
+	enum infectTime=5*updateFPS;
 	// int bone; // TODO: stick on bones
-	int animationFrame=11*4;
+	int animationFrame=11*updateAnimFactor;
+	enum maxAnimationFrame=16*updateAnimFactor-1;
 	int frame=0;
 	int sitTimer=0;
 	enum sitTime=updateFPS/2;
@@ -13548,8 +13550,8 @@ bool updateRainFrog(B)(ref RainFrog!B rainFrog,ObjectState!B state){
 		++frame;
 		final switch(status){
 			case FrogStatus.falling: break;
-			case FrogStatus.jumping,FrogStatus.sitting: if(animationFrame<63) animationFrame++; break;
-			case FrogStatus.infecting: animationFrame=63; break;
+			case FrogStatus.jumping,FrogStatus.sitting: if(animationFrame<maxAnimationFrame) animationFrame++; break;
+			case FrogStatus.infecting: animationFrame=maxAnimationFrame; break;
 		}
 		bool explode(){
 			// TODO
@@ -13557,7 +13559,7 @@ bool updateRainFrog(B)(ref RainFrog!B rainFrog,ObjectState!B state){
 			return false;
 		}
 		if(target){
-			auto keep=++infectionTime<=updateFPS*spell.duration; // TODO: what is the infection time?
+			auto keep=++infectionTime<=infectTime;
 			if(!keep||state.movingObjectById!((ref obj)=>!obj.creatureState.mode.canBeInfectedByMites,()=>true)(target)){
 				keep=false;
 			}
@@ -13603,10 +13605,11 @@ bool updateRainFrog(B)(ref RainFrog!B rainFrog,ObjectState!B state){
 				}
 			}
 			if(auto collisionTarget=rainFrogCollisionTarget(position,state)){
-				auto targetPositionTargetRotation=state.movingObjectById!((ref obj){
+				auto targetPositionTargetRotation=state.movingObjectById!((ref obj,velocity,state){
 					obj.creatureStats.effects.numRainFrogs+=1;
+					obj.damageAnimation(velocity,state);
 					return tuple(obj.position,obj.rotation);
-				},()=>Tuple!(Vector3f,Quaternionf).init)(collisionTarget);
+				},()=>Tuple!(Vector3f,Quaternionf).init)(collisionTarget,velocity,state);
 				auto targetPosition=targetPositionTargetRotation[0], targetRotation=targetPositionTargetRotation[1];
 				if(!isNaN(targetPosition.x)){
 					position=rotate(targetRotation.conj(),position-targetPosition);

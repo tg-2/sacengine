@@ -2174,7 +2174,7 @@ struct SacRainFrog(B){
 	}
 	B.Material material;
 	B.Mesh[] frames;
-	enum animationDelay=2;
+	enum animationDelay=1;
 	enum numFrames=16*animationDelay*updateAnimFactor;
 	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
 	enum size=0.75f;
