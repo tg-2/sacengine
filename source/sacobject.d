@@ -942,6 +942,7 @@ enum ParticleType{
 	wrathExplosion2,
 	wrathParticle,
 	rainOfFrogsCasting,
+	frogExplosion,
 	gnomeHit,
 	ashParticle,
 	dirt,
@@ -991,7 +992,7 @@ final class SacParticle(B){
 				return false;
 			case wrathCasting,wrathExplosion1,wrathExplosion2,rainOfFrogsCasting,steam:
 				return false;
-			case wrathParticle,gnomeHit,ashParticle:
+			case wrathParticle,frogExplosion,gnomeHit,ashParticle:
 				return true;
 			case smoke,dirt,dust:
 				return false;
@@ -1021,7 +1022,7 @@ final class SacParticle(B){
 				return false;
 			case castPersephone,castPersephone2,castPyro,castJames,castStratos,castCharnel,castCharnel2:
 				return false;
-			case wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,rainOfFrogsCasting,gnomeHit,ashParticle,steam,smoke,dirt,dust,rock,webDebris,oil,poison,swarmHit,slime:
+			case wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,rainOfFrogsCasting,frogExplosion,gnomeHit,ashParticle,steam,smoke,dirt,dust,rock,webDebris,oil,poison,swarmHit,slime:
 				return false;
 			case relativePoison:
 				return true;
@@ -1213,6 +1214,12 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/frgl.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
+			case frogExplosion:
+				width=height=1.0f;
+				this.energy=5.0f;
+				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/brst.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
 			case gnomeHit:
 				width=height=0.5f;
 				this.energy=5.0f;
@@ -1345,7 +1352,7 @@ final class SacParticle(B){
 				return 1.0f;
 			case fire:
 				return min(1.0f,(float(lifetime)/numFrames)^^2);
-			case speedUp,ghost,wrathParticle,gnomeHit:
+			case speedUp,ghost,wrathParticle,frogExplosion,gnomeHit:
 				return min(1.0f,(lifetime/(0.5f*numFrames))^^2);
 			case ashParticle:
 				return 1.0f;
@@ -1416,7 +1423,7 @@ final class SacParticle(B){
 				return 1.0f;
 			case wrathCasting:
 				return min(1.0f,0.4f+0.6f*lifetime/(1.5f*numFrames));
-			case wrathParticle,gnomeHit:
+			case wrathParticle,frogExplosion,gnomeHit:
 				return min(1.0f,lifetime/(0.5f*numFrames));
 			case rainOfFrogsCasting:
 				return min(1.0f,0.4f+0.6f*lifetime/(1.5f*numFrames));

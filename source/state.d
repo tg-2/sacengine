@@ -13545,6 +13545,29 @@ int rainFrogCollisionTarget(B)(Vector3f position,ObjectState!B state){
 	}
 	return collisionTarget!(rainFrogHitbox,filter)(-1,position,state);
 }
+void frogExplosion(B)(ref RainFrog!B rainFrog,ObjectState!B state){
+	with(rainFrog){
+		if(state.isValidTarget(target)) dealSpellDamage(target,spell,wizard,side,velocity,DamageMod.splash,state);
+		else target=0;
+		dealSplashSpellDamageAt(target,spell,spell.damageRange,wizard,side,position,DamageMod.none,state);
+		auto pposition=position;
+		if(target){
+			auto targetPositionTargetRotation=state.movingObjectById!((ref obj)=>tuple(obj.position,obj.rotation),()=>Tuple!(Vector3f,Quaternionf).init)(target);
+			auto targetPosition=targetPositionTargetRotation[0], targetRotation=targetPositionTargetRotation[1];
+			pposition=targetPosition+rotate(targetRotation,position);
+		}
+		enum numParticles3=200;
+		auto sacParticle3=SacParticle!B.get(ParticleType.frogExplosion);
+		foreach(i;0..numParticles3){
+			auto direction=(state.uniformDirection()+Vector3f(0.0f,0.0f,0.5f)).normalized;
+			auto pvelocity=velocity+state.uniform(2.5f,7.5f)*direction;
+			auto scale=state.uniform(0.75f,1.5f);
+			auto lifetime=31;
+			auto frame=0;
+			state.addParticle(Particle!B(sacParticle3,pposition,pvelocity,scale,lifetime,frame));
+		}
+	}
+}
 bool updateRainFrog(B)(ref RainFrog!B rainFrog,ObjectState!B state){
 	with(rainFrog){
 		++frame;
@@ -13554,7 +13577,7 @@ bool updateRainFrog(B)(ref RainFrog!B rainFrog,ObjectState!B state){
 			case FrogStatus.infecting: animationFrame=maxAnimationFrame; break;
 		}
 		bool explode(){
-			// TODO
+			frogExplosion(rainFrog,state);
 			if(target) state.movingObjectById!((ref obj){ obj.creatureStats.effects.numRainFrogs-=1; },(){})(target);
 			return false;
 		}
@@ -13566,7 +13589,7 @@ bool updateRainFrog(B)(ref RainFrog!B rainFrog,ObjectState!B state){
 			if(!keep) return explode();
 			return true;
 		}else{
-			if(numJumps>=8) return explode(); // TODO: explode in middle of jump
+			if(numJumps==7&&animationFrame==10*updateAnimFactor||numJumps>=8) return explode();
 			position+=velocity/updateFPS;
 			velocity.z-=spell.fallingAcceleration/updateFPS;
 			if(state.isOnGround(position)){
