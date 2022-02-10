@@ -2805,6 +2805,7 @@ struct RainOfFrogs(B){
 	enum cloudShrinkSpeed=1.0f;
 	enum frogRate=4;
 	enum fallDuration=2.0f;
+	enum jumpRange=25.0f, shortJumpRange=10.0f; // TODO: correct?
 }
 enum FrogStatus{
 	falling,
@@ -13523,10 +13524,19 @@ bool updateRainOfFrogs(B)(ref RainOfFrogs!B rainOfFrogs,ObjectState!B state){
 		++frame;
 		++cloudFrame;
 		if(frame<=spell.duration*updateFPS){
-			if(state.uniform!"[)"(0,updateFPS)<frogRate){
+			auto gposition=position;
+			gposition.z=state.getHeight(gposition);
+			foreach(_;0..frogRate/updateFPS+(state.uniform!"[)"(0,updateFPS)<frogRate%updateFPS)){
 				auto offset=state.uniformDisk!(float,2)(Vector2f(0.0f,0.0f),spell.effectRange);
 				auto fposition=position+Vector3f(offset.x,offset.y);
 				auto fvelocity=Vector3f(0.0f,0.0f,-cloudHeight/fallDuration);
+				// TODO: the following might be unnecessarily inefficient
+				if(auto target=state.proximity.creatureInRangeAndClosestTo(gposition,spell.range,fposition)){
+					auto jumped=target?centerTarget(target,state):OrderTarget.init;
+					auto jdistsqr=(fposition-jumped.position).lengthsqr;
+					if(jdistsqr<shortJumpRange^^2||jdistsqr<jumpRange^^2&&state.uniform(3)!=0)
+						fposition=jumped.position;
+				}
 				state.addEffect(RainFrog!B(wizard,side,fposition,fvelocity,spell));
 			}
 			return true;
@@ -17598,6 +17608,9 @@ final class Proximity(B){
 	}
 	int anyInRangeAndClosestTo(Vector3f position,float range,Vector3f targetPosition,int ignoredId=0){
 		return centers.inRangeAndClosestTo!((ref entry,int ignoredId)=>entry.id!=ignoredId)(version_,position,range,targetPosition,ignoredId).id;
+	}
+	int creatureInRangeAndClosestTo(Vector3f position,float range,Vector3f targetPosition,int ignoredId=0){
+		return centers.inRangeAndClosestTo!((ref entry,int ignoredId)=>!entry.isStatic&&entry.id!=ignoredId)(version_,position,range,targetPosition,ignoredId).id;
 	}
 }
 auto collide(alias f,B,T...)(Proximity!B proximity,Vector3f[2] hitbox,T args){
