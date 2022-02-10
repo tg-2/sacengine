@@ -2803,7 +2803,7 @@ struct RainOfFrogs(B){
 	enum cloudHeight=90.0f;
 	enum cloudGrowSpeed=0.5f;
 	enum cloudShrinkSpeed=1.0f;
-	enum frogRate=4;
+	enum frogRate=15;
 	enum fallDuration=2.0f;
 	enum jumpRange=25.0f, shortJumpRange=10.0f; // TODO: correct?
 }
@@ -13528,14 +13528,16 @@ bool updateRainOfFrogs(B)(ref RainOfFrogs!B rainOfFrogs,ObjectState!B state){
 			gposition.z=state.getHeight(gposition);
 			foreach(_;0..frogRate/updateFPS+(state.uniform!"[)"(0,updateFPS)<frogRate%updateFPS)){
 				auto offset=state.uniformDisk!(float,2)(Vector2f(0.0f,0.0f),spell.effectRange);
-				auto fposition=position+Vector3f(offset.x,offset.y);
+				auto fposition=position+Vector3f(offset.x,offset.y,0.0f);
 				auto fvelocity=Vector3f(0.0f,0.0f,-cloudHeight/fallDuration);
 				// TODO: the following might be unnecessarily inefficient
-				if(auto target=state.proximity.creatureInRangeAndClosestTo(gposition,spell.range,fposition)){
+				if(auto target=state.proximity.creatureInRangeAndClosestTo(gposition,spell.effectRange,fposition)){
 					auto jumped=target?centerTarget(target,state):OrderTarget.init;
-					auto jdistsqr=(fposition-jumped.position).lengthsqr;
-					if(jdistsqr<shortJumpRange^^2||jdistsqr<jumpRange^^2&&state.uniform(3)!=0)
+					auto jdistsqr=(fposition.xy-jumped.position.xy).lengthsqr;
+					if(jdistsqr<shortJumpRange^^2||jdistsqr<jumpRange^^2&&state.uniform(3)!=0){
 						fposition=jumped.position;
+						fposition.z=position.z;
+					}
 				}
 				state.addEffect(RainFrog!B(wizard,side,fposition,fvelocity,spell));
 			}
@@ -13555,7 +13557,7 @@ int rainFrogCollisionTarget(B)(Vector3f position,ObjectState!B state){
 	}
 	return collisionTarget!(rainFrogHitbox,filter)(-1,position,state);
 }
-void frogExplosion(B)(ref RainFrog!B rainFrog,ObjectState!B state){
+void rainFrogExplosion(B)(ref RainFrog!B rainFrog,ObjectState!B state){
 	with(rainFrog){
 		if(state.isValidTarget(target)) dealSpellDamage(target,spell,wizard,side,velocity,DamageMod.splash,state);
 		else target=0;
@@ -13587,7 +13589,7 @@ bool updateRainFrog(B)(ref RainFrog!B rainFrog,ObjectState!B state){
 			case FrogStatus.infecting: animationFrame=maxAnimationFrame; break;
 		}
 		bool explode(){
-			frogExplosion(rainFrog,state);
+			rainFrogExplosion(rainFrog,state);
 			if(target) state.movingObjectById!((ref obj){ obj.creatureStats.effects.numRainFrogs-=1; },(){})(target);
 			return false;
 		}
@@ -13617,7 +13619,7 @@ bool updateRainFrog(B)(ref RainFrog!B rainFrog,ObjectState!B state){
 						status=FrogStatus.jumping;
 						animationFrame=0;
 						numJumps+=1;
-						if(state.uniform(2)) playSpellSoundTypeAt(SoundType.frog,position,state,1.0f);
+						if(!state.uniform(5)) playSpellSoundTypeAt(SoundType.frog,position,state,1.0f);
 						if(numJumps>=8){
 							velocity=Vector3f(0.0f,0.0f,0.0f);
 						}else{
