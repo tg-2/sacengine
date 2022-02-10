@@ -12611,6 +12611,22 @@ void predictRainbowTarget(B)(ref OrderTarget target,ref PositionPredictor predic
 	target.position=(1.0f-progress)*target.position+progress*predicted;
 }
 
+void animateRainbowHit(B)(ref MovingObject!B obj,ObjectState!B state){
+	auto hitbox=obj.hitbox;
+	enum numParticles=128;
+	auto sacParticle=SacParticle!B.get(ParticleType.rainbowParticle);
+	auto center=boxCenter(hitbox);
+	foreach(i;0..numParticles){
+		auto position=state.uniform(scaleBox(hitbox,0.9f));
+		//auto velocity=1.5f*state.uniform(0.5f,2.0f)*Vector3f(position.x-center.x,position.y-center.y,2.0f);
+		auto velocity=1.5f*state.uniform(0.5f,2.0f)*Vector3f(state.uniform(hitbox[0].x,hitbox[1].x)-center.x,state.uniform(hitbox[0].y,hitbox[1].y)-center.y,2.5f); // TODO: add velocity of target?
+		auto scale=state.uniform(0.5f,1.5f);
+		int lifetime=63;
+		int frame=0;
+		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+	}
+}
+
 enum rainbowGain=2.0f;
 bool updateRainbow(B)(ref Rainbow!B rainbow,ObjectState!B state){
 	with(rainbow){
@@ -12619,6 +12635,7 @@ bool updateRainbow(B)(ref Rainbow!B rainbow,ObjectState!B state){
 		if(frame==0) state.addEffect(RainbowEffect!B(last,current,spell));
 		if(++frame==travelFrames){
 			if(current.id){
+				state.movingObjectById!(animateRainbowHit,(){})(current.id,state);
 				heal(current.id,spell,state);
 				addTarget(current.id);
 			}

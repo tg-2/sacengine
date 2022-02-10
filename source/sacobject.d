@@ -941,6 +941,7 @@ enum ParticleType{
 	wrathExplosion1,
 	wrathExplosion2,
 	wrathParticle,
+	rainbowParticle,
 	rainOfFrogsCasting,
 	frogExplosion,
 	gnomeHit,
@@ -992,7 +993,7 @@ final class SacParticle(B){
 				return false;
 			case wrathCasting,wrathExplosion1,wrathExplosion2,rainOfFrogsCasting,steam:
 				return false;
-			case wrathParticle,frogExplosion,gnomeHit,ashParticle:
+			case wrathParticle,rainbowParticle,frogExplosion,gnomeHit,ashParticle:
 				return true;
 			case smoke,dirt,dust:
 				return false;
@@ -1022,7 +1023,7 @@ final class SacParticle(B){
 				return false;
 			case castPersephone,castPersephone2,castPyro,castJames,castStratos,castCharnel,castCharnel2:
 				return false;
-			case wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,rainOfFrogsCasting,frogExplosion,gnomeHit,ashParticle,steam,smoke,dirt,dust,rock,webDebris,oil,poison,swarmHit,slime:
+			case wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,rainbowParticle,rainOfFrogsCasting,frogExplosion,gnomeHit,ashParticle,steam,smoke,dirt,dust,rock,webDebris,oil,poison,swarmHit,slime:
 				return false;
 			case relativePoison:
 				return true;
@@ -1032,7 +1033,7 @@ final class SacParticle(B){
 	}
 	@property bool bumpOffGround(){
 		switch(type) with(ParticleType){
-			case scarabHit,ghostTransition,wrathParticle,gnomeHit,ashParticle,rock,webDebris,oil,swarmHit,slime,needle,redVortexDroplet,blueVortexDroplet,spark: return true;
+			case scarabHit,ghostTransition,wrathParticle,rainbowParticle,gnomeHit,ashParticle,rock,webDebris,oil,swarmHit,slime,needle,redVortexDroplet,blueVortexDroplet,spark: return true;
 			default: return false;
 		}
 	}
@@ -1208,6 +1209,12 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/prth.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
+			case rainbowParticle:
+				width=height=1.0f;
+				this.energy=5.0f;
+				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/prbw.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
 			case rainOfFrogsCasting:
 				width=height=1.0f;
 				this.energy=7.5f;
@@ -1323,6 +1330,7 @@ final class SacParticle(B){
 			case redVortexDroplet: return 2;
 			case spark: return 2;
 			case etherealFormSpark: return 2;
+			case rainbowParticle: return 2;
 			case gnomeHit: return 2;
 			case ashParticle: return 3;
 			case smoke: return 4;
@@ -1352,7 +1360,7 @@ final class SacParticle(B){
 				return 1.0f;
 			case fire:
 				return min(1.0f,(float(lifetime)/numFrames)^^2);
-			case speedUp,ghost,wrathParticle,frogExplosion,gnomeHit:
+			case speedUp,ghost,wrathParticle,rainbowParticle,frogExplosion,gnomeHit:
 				return min(1.0f,(lifetime/(0.5f*numFrames))^^2);
 			case ashParticle:
 				return 1.0f;
@@ -1423,7 +1431,7 @@ final class SacParticle(B){
 				return 1.0f;
 			case wrathCasting:
 				return min(1.0f,0.4f+0.6f*lifetime/(1.5f*numFrames));
-			case wrathParticle,frogExplosion,gnomeHit:
+			case wrathParticle,rainbowParticle,frogExplosion,gnomeHit:
 				return min(1.0f,lifetime/(0.5f*numFrames));
 			case rainOfFrogsCasting:
 				return min(1.0f,0.4f+0.6f*lifetime/(1.5f*numFrames));
