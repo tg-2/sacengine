@@ -2833,6 +2833,52 @@ struct RainFrog(B){
 	auto status=FrogStatus.falling;
 }
 
+struct DemonicRiftCasting(B){
+	ManaDrain!B manaDrain;
+	DemonicRift!B demonicRift;
+}
+struct DemonicRiftSpirit(B){
+	int wizard;
+	int side;
+	Vector3f position;
+	Vector3f velocity;
+	OrderTarget target;
+	enum numSpiritFrames=60;
+	Vector3f[numSpiritFrames] locations;
+}
+enum DemonicRiftStatus{
+	emerging,
+	active,
+	shrinking,
+}
+struct DemonicRift(B){
+	int wizard;
+	int side;
+	Vector3f position;
+	OrderTarget target;
+	SacSpell!B spell;
+	int frame=0;
+	DemonicRiftStatus status;
+	int numSpawned=0, numDespawned;
+	enum maxNumSpirits=24;
+	DemonicRiftSpirit!B[maxNumSpirits] spirits;
+	enum effectRate=6;
+	int lastEffectTime=0;
+	enum maxEffectDelay=30;
+	enum radius=2.0f;
+	enum emergenceTime=120;
+}
+struct DemonicRiftEffect(B){
+	Vector3f position;
+	float scale=1.0f;
+	int frame=0;
+	enum shrinkSpeed=0.5f;
+	enum lifetime=1.0f/shrinkSpeed;
+	enum startHoverHeight=0.25f;
+	enum endHoverHeight=1.5f;
+	enum upwardsVelocity=shrinkSpeed*(endHoverHeight-startHoverHeight);
+}
+
 struct BrainiacProjectile(B){
 	int attacker;
 	int side;
@@ -3946,6 +3992,30 @@ struct Effects(B){
 	void removeRainFrog(int i){
 		if(i+1<rainFrogs.length) rainFrogs[i]=move(rainFrogs[$-1]);
 		rainFrogs.length=rainFrogs.length-1;
+	}
+	Array!(DemonicRiftCasting!B) demonicRiftCastings;
+	void addEffect(DemonicRiftCasting!B demonicRiftCasting){
+		demonicRiftCastings~=move(demonicRiftCasting);
+	}
+	void removeDemonicRiftCasting(int i){
+		if(i+1<demonicRiftCastings.length) demonicRiftCastings[i]=move(demonicRiftCastings[$-1]);
+		demonicRiftCastings.length=demonicRiftCastings.length-1;
+	}
+	Array!(DemonicRift!B) demonicRifts;
+	void addEffect(DemonicRift!B demonicRift){
+		demonicRifts~=move(demonicRift);
+	}
+	void removeDemonicRift(int i){
+		if(i+1<demonicRifts.length) demonicRifts[i]=move(demonicRifts[$-1]);
+		demonicRifts.length=demonicRifts.length-1;
+	}
+	Array!(DemonicRiftEffect!B) demonicRiftEffects;
+	void addEffect(DemonicRiftEffect!B demonicRiftEffect){
+		demonicRiftEffects~=move(demonicRiftEffect);
+	}
+	void removeDemonicRiftEffect(int i){
+		if(i+1<demonicRiftEffects.length) demonicRiftEffects[i]=move(demonicRiftEffects[$-1]);
+		demonicRiftEffects.length=demonicRiftEffects.length-1;
 	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
@@ -6378,6 +6448,11 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 				case SpellTag.rainOfFrogs:
 					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
 					return stun(castRainOfFrogs(side,target.position,manaDrain,spell,state));
+				case SpellTag.demonicRift:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					auto position=state.movingObjectById!((ref object)=>object.position,()=>Vector3f.init)(caster);
+					if(isNaN(position.x)) return false;
+					return stun(castDemonicRift(side,position,target,manaDrain,spell,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -7191,6 +7266,16 @@ bool castRainOfFrogs(B)(int side,Vector3f position,ManaDrain!B manaDrain,SacSpel
 }
 bool rainOfFrogs(B)(RainOfFrogs!B rainOfFrogs,ObjectState!B state){
 	state.addEffect(rainOfFrogs);
+	return true;
+}
+
+bool castDemonicRift(B)(int side,Vector3f position,OrderTarget target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	position.z=state.getHeight(position);
+	state.addEffect(DemonicRiftCasting!B(manaDrain,DemonicRift!B(manaDrain.wizard,side,position,target,spell)));
+	return true;
+}
+bool demonicRift(B)(DemonicRift!B demonicRift,ObjectState!B state){
+	state.addEffect(demonicRift);
 	return true;
 }
 
@@ -13492,188 +13577,6 @@ bool updateHaloOfEarthCasting(B)(ref HaloOfEarthCasting!B haloOfEarthCast,Object
 	}
 }
 
-void animateRainOfFrogsCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
-	auto castParticle=SacParticle!B.get(ParticleType.rainOfFrogsCasting);
-	static assert(updateFPS==60);
-	auto hitbox=wizard.relativeHitbox;
-	auto scale=1.0f;
-	enum numParticles=6;
-	foreach(i;0..numParticles){
-		auto position=1.1f*state.uniform(cast(Vector2f[2])[hitbox[0].xy,hitbox[1].xy]);
-		auto distance=(state.uniform(3)?state.uniform(0.3f,0.6f):state.uniform(1.5f,2.5f))*(hitbox[1].z-hitbox[0].z);
-		auto fullLifetime=2.0f*castParticle.numFrames/float(updateFPS);
-		auto lifetime=cast(int)(castParticle.numFrames*state.uniform(0.0f,2.0f));
-		// TODO: particles should accelerate upwards
-		state.addParticle(Particle!B(castParticle,wizard.position+rotate(wizard.rotation,Vector3f(position.x,position.y,state.uniform(0.0f,0.5f*distance))),Vector3f(0.0f,0.0f,distance/fullLifetime),scale,lifetime,0));
-	}
-
-}
-
-bool updateRainOfFrogsCasting(B)(ref RainOfFrogsCasting!B rainOfFrogsCast,ObjectState!B state){
-	with(rainOfFrogsCast){
-		++rainOfFrogs.cloudFrame;
-		if(!interrupted) final switch(manaDrain.update(state)){
-			case CastingStatus.underway:
-				if(!state.movingObjectById!((ref obj,state){
-					obj.animateRainOfFrogsCasting(state);
-					return true;
-				},()=>false)(manaDrain.wizard,state))
-					goto case CastingStatus.interrupted;
-				break;
-			case CastingStatus.interrupted:
-				interrupted=true;
-				break;
-			case CastingStatus.finished:
-				.rainOfFrogs(rainOfFrogs,state);
-				return false;
-		}
-		if(interrupted){
-			rainOfFrogs.cloudScale=max(0.0f,rainOfFrogs.cloudScale-rainOfFrogs.cloudShrinkSpeed/updateFPS);
-			return rainOfFrogs.cloudScale!=0.0f;
-		}else{
-			rainOfFrogs.cloudScale=min(1.0f,rainOfFrogs.cloudScale+rainOfFrogs.cloudGrowSpeed/updateFPS);
-			return true;
-		}
-	}
-}
-bool updateRainOfFrogs(B)(ref RainOfFrogs!B rainOfFrogs,ObjectState!B state){
-	with(rainOfFrogs){
-		++frame;
-		++cloudFrame;
-		if(frame<=spell.duration*updateFPS){
-			auto gposition=position;
-			gposition.z=state.getHeight(gposition);
-			foreach(_;0..frogRate/updateFPS+(state.uniform!"[)"(0,updateFPS)<frogRate%updateFPS)){
-				auto offset=state.uniformDisk!(float,2)(Vector2f(0.0f,0.0f),spell.effectRange);
-				auto fposition=position+Vector3f(offset.x,offset.y,0.0f);
-				auto fvelocity=Vector3f(0.0f,0.0f,-cloudHeight/fallDuration);
-				// TODO: the following might be unnecessarily inefficient
-				if(auto target=state.proximity.creatureInRangeAndClosestTo(gposition,spell.effectRange,fposition)){
-					auto jumped=target?centerTarget(target,state):OrderTarget.init;
-					auto jdistsqr=(fposition.xy-jumped.position.xy).lengthsqr;
-					if(jdistsqr<shortJumpRange^^2||jdistsqr<jumpRange^^2&&state.uniform(3)!=0){
-						fposition=jumped.position;
-						fposition.z=position.z;
-					}
-				}
-				state.addEffect(RainFrog!B(wizard,side,fposition,fvelocity,spell));
-			}
-			return true;
-		}else{
-			cloudScale=max(0.0f,cloudScale-cloudShrinkSpeed/updateFPS);
-			return cloudScale!=0.0f;
-		}
-	}
-}
-
-enum rainFrogSize=0.5f;
-static immutable Vector3f[2] rainFrogHitbox=[-0.5f*rainFrogSize*Vector3f(1.0f,1.0f,1.0f),0.5f*rainFrogSize*Vector3f(1.0f,1.0f,1.0f)];
-int rainFrogCollisionTarget(B)(Vector3f position,ObjectState!B state){
-	static bool filter(ProximityEntry entry,ObjectState!B state){
-		return entry.isProjectileObstacle&&state.movingObjectById!((ref obj)=>obj.creatureState.mode.canBeInfectedByMites,()=>false)(entry.id);
-	}
-	return collisionTarget!(rainFrogHitbox,filter)(-1,position,state);
-}
-void rainFrogExplosion(B)(ref RainFrog!B rainFrog,ObjectState!B state){
-	with(rainFrog){
-		if(state.isValidTarget(target)) dealSpellDamage(target,spell,wizard,side,velocity,DamageMod.splash,state);
-		else target=0;
-		dealSplashSpellDamageAt(target,spell,spell.damageRange,wizard,side,position,DamageMod.none,state);
-		auto pposition=position;
-		if(target){
-			auto targetPositionTargetRotation=state.movingObjectById!((ref obj)=>tuple(obj.position,obj.rotation),()=>Tuple!(Vector3f,Quaternionf).init)(target);
-			auto targetPosition=targetPositionTargetRotation[0], targetRotation=targetPositionTargetRotation[1];
-			pposition=targetPosition+rotate(targetRotation,position);
-		}
-		enum numParticles3=200;
-		auto sacParticle3=SacParticle!B.get(ParticleType.frogExplosion);
-		foreach(i;0..numParticles3){
-			auto direction=(state.uniformDirection()+Vector3f(0.0f,0.0f,0.5f)).normalized;
-			auto pvelocity=velocity+state.uniform(2.5f,7.5f)*direction;
-			auto scale=state.uniform(0.75f,1.5f);
-			auto lifetime=31;
-			auto frame=0;
-			state.addParticle(Particle!B(sacParticle3,pposition,pvelocity,scale,lifetime,frame));
-		}
-	}
-}
-bool updateRainFrog(B)(ref RainFrog!B rainFrog,ObjectState!B state){
-	with(rainFrog){
-		++frame;
-		final switch(status){
-			case FrogStatus.falling: break;
-			case FrogStatus.jumping,FrogStatus.sitting: if(animationFrame<maxAnimationFrame) animationFrame++; break;
-			case FrogStatus.infecting: animationFrame=maxAnimationFrame; break;
-		}
-		bool explode(){
-			rainFrogExplosion(rainFrog,state);
-			if(target) state.movingObjectById!((ref obj){ obj.creatureStats.effects.numRainFrogs-=1; },(){})(target);
-			return false;
-		}
-		if(target){
-			auto keep=++infectionTime<=infectTime;
-			if(!keep||state.movingObjectById!((ref obj)=>!obj.creatureState.mode.canBeInfectedByMites,()=>true)(target)){
-				keep=false;
-			}
-			if(!keep) return explode();
-			return true;
-		}else{
-			if(numJumps==7&&animationFrame==10*updateAnimFactor||numJumps>=8) return explode();
-			position+=velocity/updateFPS;
-			velocity.z-=spell.fallingAcceleration/updateFPS;
-			if(state.isOnGround(position)){
-				auto height=state.getGroundHeight(position);
-				if(status.among(FrogStatus.falling,FrogStatus.jumping)){
-					if(height>position.z){
-						status=FrogStatus.sitting;
-						velocity=Vector3f(0.0f,0.0f,0.0f);
-					}
-				}
-				if(status==FrogStatus.sitting){
-					position.z=height;
-					if(++sitTimer>sitTime){
-						sitTimer=0;
-						status=FrogStatus.jumping;
-						animationFrame=0;
-						numJumps+=1;
-						if(!state.uniform(5)) playSpellSoundTypeAt(SoundType.frog,position,state,1.0f);
-						if(numJumps>=8){
-							velocity=Vector3f(0.0f,0.0f,0.0f);
-						}else{
-							if(auto closeCreature=state.proximity.closestCreatureInRange(position,spell.effectRange,state,10.0f)){
-								auto creaturePosition=state.movingObjectById!((ref obj)=>obj.center,()=>Vector3f.init)(closeCreature);
-								if(!isNaN(creaturePosition.x)){
-									auto direction=creaturePosition-position;
-									velocity=4.5f*direction.normalized+0.5f*state.uniformDirection();
-									velocity.z+=0.5f*spell.fallingAcceleration*direction.length/velocity.length;
-									velocity.z=min(velocity.z,10.0f);
-								}
-							}else{
-								velocity=5.0f*state.uniformDirection();
-								velocity.z=10.0f;
-							}
-						}
-					}
-				}
-			}
-			if(auto collisionTarget=rainFrogCollisionTarget(position,state)){
-				auto targetPositionTargetRotation=state.movingObjectById!((ref obj,velocity,state){
-					obj.creatureStats.effects.numRainFrogs+=1;
-					obj.damageAnimation(velocity,state);
-					return tuple(obj.position,obj.rotation);
-				},()=>Tuple!(Vector3f,Quaternionf).init)(collisionTarget,velocity,state);
-				auto targetPosition=targetPositionTargetRotation[0], targetRotation=targetPositionTargetRotation[1];
-				if(!isNaN(targetPosition.x)){
-					position=rotate(targetRotation.conj(),position-targetPosition);
-					target=collisionTarget;
-					status=FrogStatus.infecting;
-				}
-			}
-			return true;
-		}
-	}
-}
-
 enum haloRockBuryDepth=0.25f;
 Vector3f haloRockSpawnPosition(B)(ref MovingObject!B obj,ObjectState!B state,bool isAbility){
 	auto box=scaleBox(obj.hitbox,isAbility?1.25f:2.5f); // TODO: improve
@@ -13864,6 +13767,234 @@ bool updateHaloOfEarth(B)(ref HaloOfEarth!B haloOfEarth,ObjectState!B state){
 		return !(numSpawned&&numDespawned==numSpawned);
 	}
 }
+
+
+void animateRainOfFrogsCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	auto castParticle=SacParticle!B.get(ParticleType.rainOfFrogsCasting);
+	static assert(updateFPS==60);
+	auto hitbox=wizard.relativeHitbox;
+	auto scale=1.0f;
+	enum numParticles=6;
+	foreach(i;0..numParticles){
+		auto position=1.1f*state.uniform(cast(Vector2f[2])[hitbox[0].xy,hitbox[1].xy]);
+		auto distance=(state.uniform(3)?state.uniform(0.3f,0.6f):state.uniform(1.5f,2.5f))*(hitbox[1].z-hitbox[0].z);
+		auto fullLifetime=2.0f*castParticle.numFrames/float(updateFPS);
+		auto lifetime=cast(int)(castParticle.numFrames*state.uniform(0.0f,2.0f));
+		// TODO: particles should accelerate upwards
+		state.addParticle(Particle!B(castParticle,wizard.position+rotate(wizard.rotation,Vector3f(position.x,position.y,state.uniform(0.0f,0.5f*distance))),Vector3f(0.0f,0.0f,distance/fullLifetime),scale,lifetime,0));
+	}
+
+}
+
+bool updateRainOfFrogsCasting(B)(ref RainOfFrogsCasting!B rainOfFrogsCast,ObjectState!B state){
+	with(rainOfFrogsCast){
+		++rainOfFrogs.cloudFrame;
+		if(!interrupted) final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				if(!state.movingObjectById!((ref obj,state){
+					obj.animateRainOfFrogsCasting(state);
+					return true;
+				},()=>false)(manaDrain.wizard,state))
+					goto case CastingStatus.interrupted;
+				break;
+			case CastingStatus.interrupted:
+				interrupted=true;
+				break;
+			case CastingStatus.finished:
+				.rainOfFrogs(rainOfFrogs,state);
+				return false;
+		}
+		if(interrupted){
+			rainOfFrogs.cloudScale=max(0.0f,rainOfFrogs.cloudScale-rainOfFrogs.cloudShrinkSpeed/updateFPS);
+			return rainOfFrogs.cloudScale!=0.0f;
+		}else{
+			rainOfFrogs.cloudScale=min(1.0f,rainOfFrogs.cloudScale+rainOfFrogs.cloudGrowSpeed/updateFPS);
+			return true;
+		}
+	}
+}
+bool updateRainOfFrogs(B)(ref RainOfFrogs!B rainOfFrogs,ObjectState!B state){
+	with(rainOfFrogs){
+		++frame;
+		++cloudFrame;
+		if(frame<=spell.duration*updateFPS){
+			auto gposition=position;
+			gposition.z=state.getHeight(gposition);
+			foreach(_;0..frogRate/updateFPS+(state.uniform!"[)"(0,updateFPS)<frogRate%updateFPS)){
+				auto offset=state.uniformDisk!(float,2)(Vector2f(0.0f,0.0f),spell.effectRange);
+				auto fposition=position+Vector3f(offset.x,offset.y,0.0f);
+				auto fvelocity=Vector3f(0.0f,0.0f,-cloudHeight/fallDuration);
+				// TODO: the following might be unnecessarily inefficient
+				if(auto target=state.proximity.creatureInRangeAndClosestTo(gposition,spell.effectRange,fposition)){
+					auto jumped=target?centerTarget(target,state):OrderTarget.init;
+					auto jdistsqr=(fposition.xy-jumped.position.xy).lengthsqr;
+					if(jdistsqr<shortJumpRange^^2||jdistsqr<jumpRange^^2&&state.uniform(3)!=0){
+						fposition=jumped.position;
+						fposition.z=position.z;
+					}
+				}
+				state.addEffect(RainFrog!B(wizard,side,fposition,fvelocity,spell));
+			}
+			return true;
+		}else{
+			cloudScale=max(0.0f,cloudScale-cloudShrinkSpeed/updateFPS);
+			return cloudScale!=0.0f;
+		}
+	}
+}
+
+enum rainFrogSize=0.5f;
+static immutable Vector3f[2] rainFrogHitbox=[-0.5f*rainFrogSize*Vector3f(1.0f,1.0f,1.0f),0.5f*rainFrogSize*Vector3f(1.0f,1.0f,1.0f)];
+int rainFrogCollisionTarget(B)(Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state){
+		return entry.isProjectileObstacle&&state.movingObjectById!((ref obj)=>obj.creatureState.mode.canBeInfectedByMites,()=>false)(entry.id);
+	}
+	return collisionTarget!(rainFrogHitbox,filter)(-1,position,state);
+}
+void rainFrogExplosion(B)(ref RainFrog!B rainFrog,ObjectState!B state){
+	with(rainFrog){
+		if(state.isValidTarget(target)) dealSpellDamage(target,spell,wizard,side,velocity,DamageMod.splash,state);
+		else target=0;
+		dealSplashSpellDamageAt(target,spell,spell.damageRange,wizard,side,position,DamageMod.none,state);
+		auto pposition=position;
+		if(target){
+			auto targetPositionTargetRotation=state.movingObjectById!((ref obj)=>tuple(obj.position,obj.rotation),()=>Tuple!(Vector3f,Quaternionf).init)(target);
+			auto targetPosition=targetPositionTargetRotation[0], targetRotation=targetPositionTargetRotation[1];
+			pposition=targetPosition+rotate(targetRotation,position);
+		}
+		enum numParticles3=200;
+		auto sacParticle3=SacParticle!B.get(ParticleType.frogExplosion);
+		foreach(i;0..numParticles3){
+			auto direction=(state.uniformDirection()+Vector3f(0.0f,0.0f,0.5f)).normalized;
+			auto pvelocity=velocity+state.uniform(2.5f,7.5f)*direction;
+			auto scale=state.uniform(0.75f,1.5f);
+			auto lifetime=31;
+			auto frame=0;
+			state.addParticle(Particle!B(sacParticle3,pposition,pvelocity,scale,lifetime,frame));
+		}
+	}
+}
+bool updateRainFrog(B)(ref RainFrog!B rainFrog,ObjectState!B state){
+	with(rainFrog){
+		++frame;
+		final switch(status){
+			case FrogStatus.falling: break;
+			case FrogStatus.jumping,FrogStatus.sitting: if(animationFrame<maxAnimationFrame) animationFrame++; break;
+			case FrogStatus.infecting: animationFrame=maxAnimationFrame; break;
+		}
+		bool explode(){
+			rainFrogExplosion(rainFrog,state);
+			if(target) state.movingObjectById!((ref obj){ obj.creatureStats.effects.numRainFrogs-=1; },(){})(target);
+			return false;
+		}
+		if(target){
+			auto keep=++infectionTime<=infectTime;
+			if(!keep||state.movingObjectById!((ref obj)=>!obj.creatureState.mode.canBeInfectedByMites,()=>true)(target)){
+				keep=false;
+			}
+			if(!keep) return explode();
+			return true;
+		}else{
+			if(numJumps==7&&animationFrame==10*updateAnimFactor||numJumps>=8) return explode();
+			position+=velocity/updateFPS;
+			velocity.z-=spell.fallingAcceleration/updateFPS;
+			if(state.isOnGround(position)){
+				auto height=state.getGroundHeight(position);
+				if(status.among(FrogStatus.falling,FrogStatus.jumping)){
+					if(height>position.z){
+						status=FrogStatus.sitting;
+						velocity=Vector3f(0.0f,0.0f,0.0f);
+					}
+				}
+				if(status==FrogStatus.sitting){
+					position.z=height;
+					if(++sitTimer>sitTime){
+						sitTimer=0;
+						status=FrogStatus.jumping;
+						animationFrame=0;
+						numJumps+=1;
+						if(!state.uniform(5)) playSpellSoundTypeAt(SoundType.frog,position,state,1.0f);
+						if(numJumps>=8){
+							velocity=Vector3f(0.0f,0.0f,0.0f);
+						}else{
+							if(auto closeCreature=state.proximity.closestCreatureInRange(position,spell.effectRange,state,10.0f)){
+								auto creaturePosition=state.movingObjectById!((ref obj)=>obj.center,()=>Vector3f.init)(closeCreature);
+								if(!isNaN(creaturePosition.x)){
+									auto direction=creaturePosition-position;
+									velocity=4.5f*direction.normalized+0.5f*state.uniformDirection();
+									velocity.z+=0.5f*spell.fallingAcceleration*direction.length/velocity.length;
+									velocity.z=min(velocity.z,10.0f);
+								}
+							}else{
+								velocity=5.0f*state.uniformDirection();
+								velocity.z=10.0f;
+							}
+						}
+					}
+				}
+			}
+			if(auto collisionTarget=rainFrogCollisionTarget(position,state)){
+				auto targetPositionTargetRotation=state.movingObjectById!((ref obj,velocity,state){
+					obj.creatureStats.effects.numRainFrogs+=1;
+					obj.damageAnimation(velocity,state);
+					return tuple(obj.position,obj.rotation);
+				},()=>Tuple!(Vector3f,Quaternionf).init)(collisionTarget,velocity,state);
+				auto targetPosition=targetPositionTargetRotation[0], targetRotation=targetPositionTargetRotation[1];
+				if(!isNaN(targetPosition.x)){
+					position=rotate(targetRotation.conj(),position-targetPosition);
+					target=collisionTarget;
+					status=FrogStatus.infecting;
+				}
+			}
+			return true;
+		}
+	}
+}
+
+void animateDemonicRiftCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	auto castParticle=SacParticle!B.get(ParticleType.castCharnel2);
+	wizard.animateCasting(castParticle,state);
+}
+bool updateDemonicRiftCasting(B)(ref DemonicRiftCasting!B demonicRiftCasting,ObjectState!B state){
+	with(demonicRiftCasting){
+		demonicRift.updateDemonicRift(state);
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				state.movingObjectById!(animateDemonicRiftCasting,(){})(manaDrain.wizard,state);
+				return true;
+			case CastingStatus.interrupted:
+				demonicRift.status=DemonicRiftStatus.active;
+				.demonicRift(demonicRift,state);
+				return false;
+			case CastingStatus.finished:
+				demonicRift.status=DemonicRiftStatus.shrinking;
+				.demonicRift(demonicRift,state);
+				return false;
+		}
+	}
+}
+
+bool updateDemonicRift(B)(ref DemonicRift!B demonicRift,ObjectState!B state){
+	with(demonicRift){
+		++frame;
+		auto numEffects=effectRate/updateFPS+(state.uniform!"[)"(0,updateFPS)<effectRate%updateFPS);
+		if(numEffects!=0) lastEffectTime=0;
+		else ++lastEffectTime;
+		foreach(_;0..numEffects) state.addEffect(DemonicRiftEffect!B(position));
+		return true;
+	}
+}
+
+bool updateDemonicRiftEffect(B)(ref DemonicRiftEffect!B demonicRiftEffect,ObjectState!B state){
+	with(demonicRiftEffect){
+		frame+=1;
+		scale-=shrinkSpeed/updateFPS;
+		position.z+=upwardsVelocity/updateFPS;
+		if(scale<=0) return false;
+		return true;
+	}
+}
+
 
 enum brainiacProjectileHitGain=4.0f;
 enum brainiacProjectileSize=0.45f; // TODO: ok?
@@ -16465,6 +16596,27 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.rainFrogs.length;){
 		if(!updateRainFrog(effects.rainFrogs[i],state)){
 			effects.removeRainFrog(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.demonicRiftCastings.length;){
+		if(!updateDemonicRiftCasting(effects.demonicRiftCastings[i],state)){
+			effects.removeDemonicRiftCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.demonicRifts.length;){
+		if(!updateDemonicRift(effects.demonicRifts[i],state)){
+			effects.removeDemonicRift(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.demonicRiftEffects.length;){
+		if(!updateDemonicRiftEffect(effects.demonicRiftEffects[i],state)){
+			effects.removeDemonicRiftEffect(i);
 			continue;
 		}
 		i++;

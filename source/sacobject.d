@@ -1612,7 +1612,7 @@ struct SacBlueRing(B){
 	enum numFrames=16*ringAnimationDelay*updateAnimFactor;
 	auto getFrame(int i){ return frames[i/(ringAnimationDelay*updateAnimFactor)]; }
 	static B.Mesh[] createMeshes(){
-		return makeSpriteMeshes!(B,true)(4,4,28,28);
+		return makeSpriteMeshes!B(4,4,28,28);
 	}
 }
 
@@ -2195,6 +2195,73 @@ struct SacRainFrog(B){
 	enum size=0.75f;
 	static B.Mesh[] createMeshes(){
 		return makeSpriteMeshes!B(4,4,size,size);
+	}
+}
+
+struct SacDemonicRiftSpirit(B){
+	B.Texture texture;
+	B.Material material;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/Daniel/DanC.WAD!/char.FLDR/rift.TXTR"));
+	}
+	B.BoneMesh[] frames;
+	enum numSegments=31;
+	enum animationDelay=2;
+	enum numFrames=8*animationDelay*updateAnimFactor;
+	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
+	static B.BoneMesh[] createMeshes(){
+		return makeLineMeshes!B(numSegments,1,8,0.0f,0.6f,false,true,false);
+	}
+}
+
+struct SacDemonicRiftBorder(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/Daniel/DanC.WAD!/char.FLDR/rif2.TXTR"));
+	}
+	B.Material material;
+	B.Mesh[] frames; // TODO: do in shader instead
+	enum animationDelay=2;
+	enum numFrames=8*animationDelay*updateAnimFactor;
+	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
+	enum numFaces=128;
+	enum radius=1.0f;
+	enum height=0.5f;
+	enum texrep=1.0f;
+	static B.Mesh[] createMeshes(){
+		auto meshes=new B.Mesh[](numFrames);
+		foreach(frame,ref mesh;meshes){
+			mesh=B.makeMesh(2*(numFaces+1),4*numFaces);
+			foreach(i;0..2){
+				foreach(j;0..numFaces+1){
+					auto φ=2.0f*pi!float*j/numFaces;
+					mesh.vertices[i*(numFaces+1)+j]=Vector3f(radius*cos(φ),radius*sin(φ),height*i);
+					mesh.texcoords[i*(numFaces+1)+j]=Vector2f(texrep*float(j)/numFaces,1.0f/8.0f*(frame+1-i));
+				}
+			}
+			foreach(j;0..numFaces){
+				mesh.indices[2*(numFaces+j)]=[j,(numFaces+1)+j+1,(numFaces+1)+j];
+				mesh.indices[2*(numFaces+j)+1]=[j,j+1,(numFaces+1)+j+1];
+			}
+			mesh.generateNormals(); // (doesn't actually need normals)
+			B.finalizeMesh(mesh);
+		}
+		return meshes;
+	}
+}
+
+struct SacDemonicRiftEffect(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/Daniel/DanC.WAD!/char.FLDR/rif3.TXTR"));
+	}
+	B.Material material;
+	B.Mesh[] frames;
+	enum ringAnimationDelay=4;
+	enum numFrames=16*ringAnimationDelay*updateAnimFactor;
+	auto getFrame(int i){ return frames[i/(ringAnimationDelay*updateAnimFactor)]; }
+	static B.Mesh[] createMeshes(){
+		return makeSpriteMeshes!(B,true)(4,4,2.5f,2.5f);
 	}
 }
 

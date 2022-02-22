@@ -489,6 +489,18 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Rai
 void serialize(alias sink,B)(ref RainFrog!B rainFrog){ serializeStruct!sink(rainFrog); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==RainFrog!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref DemonicRiftCasting!B demonicRiftCasting){ serializeStruct!sink(demonicRiftCasting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==DemonicRiftCasting!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref DemonicRiftSpirit!B demonicRiftSpirit){ serializeStruct!sink(demonicRiftSpirit); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==DemonicRiftSpirit!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref DemonicRift!B demonicRift){ serializeStruct!sink(demonicRift); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==DemonicRift!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref DemonicRiftEffect!B demonicRiftEffect){ serializeStruct!sink(demonicRiftEffect); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==DemonicRiftEffect!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref BrainiacProjectile!B brainiacProjectile){ serializeStruct!sink(brainiacProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BrainiacProjectile!B)){ deserializeStruct(result,state,data); }
 

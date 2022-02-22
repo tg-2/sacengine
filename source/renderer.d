@@ -336,6 +336,40 @@ struct Renderer(B){
 		auto frames=typeof(return).createMeshes();
 		return SacRainFrog!B(texture,mat,frames);
 	}
+	SacDemonicRiftSpirit!B demonicRiftSpirit;
+	SacDemonicRiftSpirit!B createDemonicRiftSpirit(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Additive;
+		mat.energy=20.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacDemonicRiftSpirit!B(texture,mat,frames);
+	}
+	SacDemonicRiftBorder!B demonicRiftBorder;
+	SacDemonicRiftBorder!B createDemonicRiftBorder(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Additive;
+		mat.energy=-3.0f;
+		//mat.transparency=0.75f;
+		mat.diffuse=texture;
+		auto meshes=typeof(return).createMeshes;
+		return SacDemonicRiftBorder!B(texture,mat,meshes);
+	}
+	SacDemonicRiftEffect!B demonicRiftEffect;
+	SacDemonicRiftEffect!B createDemonicRiftEffect(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Additive;
+		mat.energy=20.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacDemonicRiftEffect!B(texture,mat,frames);
+	}
 	SacBrainiacEffect!B brainiacEffect;
 	SacBrainiacEffect!B createBrainiacEffect(){
 		auto texture=typeof(return).loadTexture();
@@ -599,6 +633,9 @@ struct Renderer(B){
 		explosionEffect=createExplosionEffect();
 		cloud=createCloud();
 		rainFrog=createRainFrog();
+		demonicRiftSpirit=createDemonicRiftSpirit();
+		demonicRiftBorder=createDemonicRiftBorder();
+		demonicRiftEffect=createDemonicRiftEffect();
 	}
 
 	void initialize(){
@@ -1678,6 +1715,41 @@ struct Renderer(B){
 						auto frame=objects.rainFrogs[j].animationFrame;
 						auto mesh=self.rainFrog.getFrame(frame%self.rainFrog.numFrames);
 						material.backend.setSpriteTransformation(position,rc);
+						mesh.render(rc);
+					}
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.demonicRifts.length||objects.demonicRiftCastings.length)){
+					auto material=self.demonicRiftBorder.material;
+					material.bind(rc);
+					B.disableCulling();
+					scope(success){
+						B.enableCulling();
+						material.unbind(rc);
+					}
+					void renderDemonicRiftBorder(ref DemonicRift!B rift){
+						auto position=rift.position;
+						auto heightScale=min(1.0f,float(rift.frame)/rift.emergenceTime);
+						auto radius=rift.radius;
+						B.shadelessMaterialBackend.setTransformationScaled(position,Quaternionf.identity(),radius*Vector3f(1.0f,1.0f,heightScale),rc);
+						B.shadelessMaterialBackend.setAlpha(heightScale^^2);
+						auto mesh=self.demonicRiftBorder.getFrame(rift.frame%self.demonicRiftBorder.numFrames);
+						mesh.render(rc);
+					}
+					foreach(j;0..objects.demonicRiftCastings.length) renderDemonicRiftBorder(objects.demonicRiftCastings[j].demonicRift);
+					foreach(j;0..objects.demonicRifts.length) renderDemonicRiftBorder(objects.demonicRifts[j]);
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.demonicRiftEffects.length){
+					auto material=self.demonicRiftEffect.material;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
+					foreach(j;0..objects.demonicRiftEffects.length){
+						auto position=objects.demonicRiftEffects[j].position;
+						//auto radius=objects.demonicRiftEffects[j].radius;
+						auto radius=DemonicRift!B.radius;
+						auto scale=objects.demonicRiftEffects[j].scale;
+						B.shadelessMaterialBackend.setTransformationScaled(position,Quaternionf.identity(),scale*radius*Vector3f(1.0f,1.0f,1.0f),rc);
+						B.shadelessMaterialBackend.setEnergy(20.0f*scale^^4);
+						auto mesh=self.demonicRiftEffect.getFrame(objects.demonicRiftEffects[j].frame%self.demonicRiftEffect.numFrames);
 						mesh.render(rc);
 					}
 				}
