@@ -1118,7 +1118,11 @@ struct Renderer(B){
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.blueRings.length||objects.teleportRings.length)){
 					auto material=self.blueRing.material;
 					material.bind(rc);
-					scope(success) material.unbind(rc);
+					B.disableCulling();
+					scope(success){
+						B.enableCulling();
+						material.unbind(rc);
+					}
 					foreach(j;0..objects.blueRings.length){
 						auto position=objects.blueRings[j].position;
 						auto scale=objects.blueRings[j].scale;
