@@ -14057,14 +14057,13 @@ bool updateDemonicRiftSpirit(B)(ref DemonicRiftSpirit!B spirit,ref DemonicRift!B
 				status=DemonicRiftSpiritStatus.movingAway;
 				auto offset=state.uniformDisk(Vector2f(0.0f,0.0f),spell.effectRange);
 				target.type=TargetType.terrain;
-				target.id=0;
 				target.position=position+Vector3f(offset.x,offset.y,0.0f);
 				target.position.z=state.getHeight(target.position)+movingAwayHeight;
 			}
 		}
 		if(frame++<targetingCooldown||status==DemonicRiftSpiritStatus.vanishing) position+=velocity/updateFPS;
 		else if(spirit.accelerateTowards(targetCenter,predictedCenter,status==DemonicRiftSpiritStatus.rising?0.0f:riftFlyingHeight,state)||(target.position-position).lengthsqr<1.0f^^2){
-			playSoundAt("htfr",position,state,demonicRiftGain); // TODO: move with spirit?
+			if(status!=DemonicRiftSpiritStatus.rising) playSoundAt("htfr",position,state,demonicRiftGain); // TODO: move with spirit?
 			if(status==DemonicRiftSpiritStatus.targeting){
 				status=DemonicRiftSpiritStatus.rising;
 				if(target.id&&state.isValidTarget(target.id)) dealSpellDamage(target.id,spell,wizard,side,velocity,DamageMod.none,state);
