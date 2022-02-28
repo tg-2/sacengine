@@ -2837,14 +2837,34 @@ struct DemonicRiftCasting(B){
 	ManaDrain!B manaDrain;
 	DemonicRift!B demonicRift;
 }
+enum DemonicRiftSpiritStatus{
+	targeting,
+	rising,
+	movingAway,
+	movingBack,
+	vanishing,
+}
 struct DemonicRiftSpirit(B){
 	int wizard;
 	int side;
 	Vector3f position;
 	Vector3f velocity;
+	SacSpell!B spell;
 	OrderTarget target;
-	enum numSpiritFrames=60;
+	enum numSpiritFrames=120;
 	Vector3f[numSpiritFrames] locations;
+	Vector3f[2] get(float t){ return cintp(locations[].stride(3),t); }
+	int frame=0;
+	DemonicRiftSpiritStatus status;
+	int risingTimer=0;
+	float scale=1.0f;
+	enum vanishSpeed=1.0f;
+	enum risingFrames=4*updateFPS;
+	enum numRotations=5;
+	enum risingHeight=7.5f;
+	enum targetingCooldown=updateFPS/3;
+	enum movingAwayHeight=20.0f;
+	PositionPredictor predictor;
 }
 enum DemonicRiftStatus{
 	emerging,
@@ -2859,14 +2879,21 @@ struct DemonicRift(B){
 	SacSpell!B spell;
 	int frame=0;
 	DemonicRiftStatus status;
+	float heightScale=0.0f;
 	int numSpawned=0, numDespawned;
 	enum maxNumSpirits=24;
 	DemonicRiftSpirit!B[maxNumSpirits] spirits;
 	enum effectRate=6;
 	int lastEffectTime=0;
-	enum maxEffectDelay=30;
+	enum maxEffectDelay=updateFPS/2;
 	enum radius=2.0f;
-	enum emergenceTime=120;
+	enum emergenceSpeed=0.5f;
+	enum vanishSpeed=1.0f;
+	enum spiritCooldown=updateFPS/3;
+	enum unsuccessfulSpiritCooldown=updateFPS;
+	int spiritTimer=0;
+
+	bool hasTarget(int id){ return spirits[0..numSpawned].any!((ref spirit)=>spirit.target.id==id); }
 }
 struct DemonicRiftEffect(B){
 	Vector3f position;
@@ -11130,10 +11157,8 @@ void wrathExplosion(B)(ref Wrath!B wrath,int target,ObjectState!B state){
 	}
 }
 enum wrathFlyingHeight=0.5f;
-bool accelerateTowards(T,B)(ref T spell_,float targetFlyingHeight,ObjectState!B state){
+bool accelerateTowards(T,B)(ref T spell_,Vector3f targetCenter,Vector3f predictedCenter,float targetFlyingHeight,ObjectState!B state){
 	with(spell_){
-		auto targetCenter=target.center(state);
-		auto predictedCenter=predictor.predictCenter(position,spell.speed,target,state);
 		auto predictedDistance=predictedCenter-position;
 		auto acceleration=predictedDistance.normalized*spell.acceleration;
 		velocity+=acceleration;
@@ -11155,6 +11180,14 @@ bool accelerateTowards(T,B)(ref T spell_,float targetFlyingHeight,ObjectState!B 
 		}
 		position=newPosition;
 		return (targetCenter-position).lengthsqr<0.05f^^2;
+	}
+}
+bool accelerateTowards(T,B)(ref T spell_,float targetFlyingHeight,ObjectState!B state){
+	with(spell_){
+		auto targetCenter=target.center(state);
+		target.position=targetCenter;
+		auto predictedCenter=predictor.predictCenter(position,spell.speed,target,state);
+		return accelerateTowards(spell_,targetCenter,predictedCenter,targetFlyingHeight,state);
 	}
 }
 bool updateWrath(B)(ref Wrath!B wrath,ObjectState!B state){
@@ -13561,7 +13594,7 @@ bool updateHaloOfEarthCasting(B)(ref HaloOfEarthCasting!B haloOfEarthCast,Object
 		}
 		auto rockDelay=castingTime/(haloOfEarth.numRocks+2);
 		if(haloOfEarth.numSpawned<haloOfEarth.numRocks&&!((frame-rockDelay/2)%rockDelay))
-			if(!isNaN(center.x)) haloOfEarth.spawnHaloRock(center,state);
+			if(!isNaN(center.x)) haloOfEarth.spawnHaloRock(state);
 		final switch(manaDrain.update(state)){
 			case CastingStatus.underway:
 				return true;
@@ -13639,7 +13672,7 @@ void animateEmergingHaloRock(B)(ref HaloRock!B haloRock,ObjectState!B state){
 	// TODO: scar
 }
 
-void spawnHaloRock(B)(ref HaloOfEarth!B haloOfEarth,Vector3f centerPosition,ObjectState!B state){
+void spawnHaloRock(B)(ref HaloOfEarth!B haloOfEarth,ObjectState!B state){
 	with(haloOfEarth){
 		rocks[numSpawned++]=makeHaloRock(wizard,side,spell,state,isAbility);
 		animateEmergingHaloRock(rocks[numSpawned-1],state);
@@ -13737,7 +13770,7 @@ enum haloOfEarthGain=2.0f;
 bool updateHaloOfEarth(B)(ref HaloOfEarth!B haloOfEarth,ObjectState!B state){
 	with(haloOfEarth){
 		auto center=state.movingObjectById!(haloRockCenterPosition,()=>Vector3f.init)(wizard,state);
-		if(!isNaN(center.x)) while(numSpawned<numRocks) haloOfEarth.spawnHaloRock(center,state);
+		if(!isNaN(center.x)) while(numSpawned<numRocks) haloOfEarth.spawnHaloRock(state);
 		else haloOfEarth.despawnHaloOfEarth(state);
 		for(int i=numDespawned;i<numSpawned;){
 			if(!rocks[i].updateHaloRock(center,state,false,isAbility)){
@@ -13757,7 +13790,7 @@ bool updateHaloOfEarth(B)(ref HaloOfEarth!B haloOfEarth,ObjectState!B state){
 							else playSoundAt("olah",rocks[i].position,state,haloOfEarthGain);
 							rocks[i].target=OrderTarget(TargetType.creature,obj.id,position);
 							return false;
-							},()=>false)(target,rocks,i,state,isAbility);
+						},()=>false)(target,rocks,i,state,isAbility);
 					}
 					dealSplashSpellDamageAt!callback(0,spell,spell.effectRange,wizard,side,rocks[i].position,DamageMod.none,state,rocks[numDespawned..numSpawned],i-numDespawned,state,isAbility);
 				}
@@ -13951,6 +13984,7 @@ bool updateRainFrog(B)(ref RainFrog!B rainFrog,ObjectState!B state){
 	}
 }
 
+enum demonicRiftGain=2.0f;
 void animateDemonicRiftCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
 	auto castParticle=SacParticle!B.get(ParticleType.castCharnel2);
 	wizard.animateCasting(castParticle,state);
@@ -13963,14 +13997,93 @@ bool updateDemonicRiftCasting(B)(ref DemonicRiftCasting!B demonicRiftCasting,Obj
 				state.movingObjectById!(animateDemonicRiftCasting,(){})(manaDrain.wizard,state);
 				return true;
 			case CastingStatus.interrupted:
-				demonicRift.status=DemonicRiftStatus.active;
-				.demonicRift(demonicRift,state);
-				return false;
-			case CastingStatus.finished:
 				demonicRift.status=DemonicRiftStatus.shrinking;
 				.demonicRift(demonicRift,state);
 				return false;
+			case CastingStatus.finished:
+				demonicRift.status=DemonicRiftStatus.active;
+				.demonicRift(demonicRift,state);
+				return false;
 		}
+	}
+}
+
+OrderTarget demonicRiftTarget(B)(ref DemonicRift!B demonicRift,ObjectState!B state,bool targetCreature=true){
+	auto spell=demonicRift.spell;
+	auto offset=state.uniformDisk(Vector2f(0.0f,0.0f),spell.effectRange);
+	auto position=demonicRift.target.position+Vector3f(offset.x,offset.y,0.0f);
+	position.z=state.getHeight(position);
+	static bool filter(ref CenterProximityEntry entry,ObjectState!B state,DemonicRift!B* demonicRift){
+		if(state.movingObjectById!((ref obj,state)=>obj.health(state)==0.0f,()=>true)(entry.id,state)) return false;
+		return !demonicRift.hasTarget(entry.id);
+	}
+	// TODO: look for target in original bounds?
+	int newTarget=state.proximity.closestNonAllyInRange!filter(demonicRift.side,position,spell.effectRange,EnemyType.creature,state,float.infinity,state,&demonicRift);
+	if(newTarget) return OrderTarget(TargetType.creature,newTarget,state.movingObjectById!(center,()=>position)(newTarget));
+	else return OrderTarget(TargetType.terrain,0,position);
+}
+
+DemonicRiftSpirit!B makeDemonicRiftSpirit(B)(ref DemonicRift!B demonicRift,int wizard,int side,ObjectState!B state){
+	auto target=demonicRiftTarget(demonicRift,state);
+	auto offset=0.6f*demonicRift.radius*(target.position.xy-demonicRift.position.xy).normalized;
+	if(isNaN(offset.x)||isNaN(offset.y)) offset=Vector2f(0.0f,0.0f);
+	auto position=demonicRift.position+Vector3f(offset.x,offset.y,0.0f);
+	position.z=state.getHeight(position);
+	auto spell=demonicRift.spell;
+	auto velocity=spell.speed*Vector3f(offset.x,offset.y,5.0f).normalized;
+	auto result=DemonicRiftSpirit!B(wizard,side,position,velocity,spell,target);
+	result.locations[]=result.position;
+	return result;
+}
+
+bool spawnDemonicRiftSpirit(B)(ref DemonicRift!B demonicRift,ObjectState!B state){
+	with(demonicRift){
+		spirits[numSpawned++]=makeDemonicRiftSpirit(demonicRift,wizard,side,state);
+		if(numSpawned==1||state.uniform(3)==0) playSoundAt("stfr",spirits[numSpawned-1].position,state,demonicRiftGain); // TODO: move with spirit?
+		return spirits[numSpawned-1].target.type!=TargetType.terrain;
+	}
+}
+enum riftFlyingHeight=0.3f;
+bool updateDemonicRiftSpirit(B)(ref DemonicRiftSpirit!B spirit,ref DemonicRift!B demonicRift,ObjectState!B state){
+	with(spirit){
+		auto targetCenter=target.center(state);
+		target.position=targetCenter;
+		auto predictedCenter=predictor.predictCenter(position,spell.speed,target,state);
+		if(status==DemonicRiftSpiritStatus.rising){
+			if(risingTimer++<risingFrames){
+				auto θ=2.0f*pi!float*numRotations*risingTimer/risingFrames;
+				predictedCenter+=Vector3f(cos(θ),sin(θ),risingHeight*float(risingTimer)/risingFrames);
+			}else{
+				status=DemonicRiftSpiritStatus.movingAway;
+				auto offset=state.uniformDisk(Vector2f(0.0f,0.0f),spell.effectRange);
+				target.type=TargetType.terrain;
+				target.id=0;
+				target.position=position+Vector3f(offset.x,offset.y,0.0f);
+				target.position.z=state.getHeight(target.position)+movingAwayHeight;
+			}
+		}
+		if(frame++<targetingCooldown||status==DemonicRiftSpiritStatus.vanishing) position+=velocity/updateFPS;
+		else if(spirit.accelerateTowards(targetCenter,predictedCenter,status==DemonicRiftSpiritStatus.rising?0.0f:riftFlyingHeight,state)||(target.position-position).lengthsqr<1.0f^^2){
+			playSoundAt("htfr",position,state,demonicRiftGain); // TODO: move with spirit?
+			if(status==DemonicRiftSpiritStatus.targeting){
+				status=DemonicRiftSpiritStatus.rising;
+				if(target.id&&state.isValidTarget(target.id)) dealSpellDamage(target.id,spell,wizard,side,velocity,DamageMod.none,state);
+				else risingTimer=risingFrames;
+			}else if(status==DemonicRiftSpiritStatus.movingAway){
+				status=DemonicRiftSpiritStatus.movingBack;
+				target.position=demonicRift.position;
+			}else if(status==DemonicRiftSpiritStatus.movingBack){
+				status=DemonicRiftSpiritStatus.vanishing;
+				velocity=spell.speed*Vector3f(0.0f,0.0f,-1.0f);
+			}
+		}
+		foreach_reverse(i;1..numSpiritFrames) locations[i]=locations[i-1];
+		locations[0]=position;
+		if(status==DemonicRiftSpiritStatus.vanishing){
+			scale-=vanishSpeed/updateFPS;
+			return scale>=0.0f;
+		}
+		return true;
 	}
 }
 
@@ -13981,6 +14094,25 @@ bool updateDemonicRift(B)(ref DemonicRift!B demonicRift,ObjectState!B state){
 		if(numEffects!=0) lastEffectTime=0;
 		else ++lastEffectTime;
 		foreach(_;0..numEffects) state.addEffect(DemonicRiftEffect!B(position));
+		if(status==DemonicRiftStatus.emerging){
+			heightScale=min(1.0f,heightScale+emergenceSpeed/updateFPS);
+		}else if(status==DemonicRiftStatus.active){
+			if(numSpawned<maxNumSpirits&&--spiritTimer<=0){
+				if(spawnDemonicRiftSpirit(demonicRift,state)) spiritTimer=spiritCooldown;
+				else spiritTimer=unsuccessfulSpiritCooldown;
+			}
+			for(int i=numDespawned;i<numSpawned;){
+				if(!spirits[i].updateDemonicRiftSpirit(demonicRift,state)){
+					swap(spirits[i],spirits[numDespawned++]);
+					i=max(i,numDespawned);
+				}else i++;
+			}
+			if(numSpawned&&numDespawned==numSpawned)
+				status=DemonicRiftStatus.shrinking;
+		}else if(status==DemonicRiftStatus.shrinking){
+			heightScale-=vanishSpeed/updateFPS;
+			if(heightScale<=0.0f) return false;
+		}
 		return true;
 	}
 }

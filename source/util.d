@@ -492,7 +492,7 @@ Vector3f[2] cintp2(Vector3f[2][2] locations,float t){
 	return [p,m];
 }
 
-Vector3f[2] cintp(Vector3f[] locations,float t){
+Vector3f[2] cintp(R)(R locations,float t){
 	auto n=locations.length;
 	auto i=max(0,min(cast(int)floor(t*(n-1)),n-2));
 	auto u=max(0.0f,min(t*(n-1)-i,1.0f));

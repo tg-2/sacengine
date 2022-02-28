@@ -339,7 +339,7 @@ struct Renderer(B){
 	SacDemonicRiftSpirit!B demonicRiftSpirit;
 	SacDemonicRiftSpirit!B createDemonicRiftSpirit(){
 		auto texture=typeof(return).loadTexture();
-		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		auto mat=B.makeMaterial(B.shadelessBoneMaterialBackend);
 		mat.depthWrite=false;
 		mat.blending=B.Blending.Additive;
 		mat.energy=20.0f;
@@ -1722,6 +1722,35 @@ struct Renderer(B){
 						mesh.render(rc);
 					}
 				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.demonicRifts.length){
+					auto material=self.demonicRiftSpirit.material;
+					material.bind(rc);
+					B.disableCulling();
+					scope(success){
+						B.enableCulling();
+						material.unbind(rc);
+					}
+					B.shadelessBoneMaterialBackend.setTransformation(Vector3f(0.0f,0.0f,0.0f),Quaternionf.identity(),rc);
+					void renderDemonicRiftSpirit(ref DemonicRiftSpirit!B demonicRiftSpirit){
+						auto scale=demonicRiftSpirit.scale;
+						auto frame=demonicRiftSpirit.frame;
+						Matrix4x4f[self.demonicRiftSpirit.numSegments+1] pose;
+						foreach(i,ref x;pose){
+							auto progress=float(i)/self.demonicRiftSpirit.numSegments;
+							auto curve=demonicRiftSpirit.get(progress);
+							x=Transformation(rotationBetween(Vector3f(0.0f,0.0f,1.0f),curve[1].normalized),curve[0]).getMatrix4f;
+							foreach(k;0..3) foreach(l;0..3) x.arrayof[k*4+l]*=scale;
+							// TODO: scale
+						}
+						auto mesh=self.demonicRiftSpirit.getFrame(frame%self.demonicRiftSpirit.numFrames);
+						mesh.pose=pose[];
+						scope(exit) mesh.pose=[];
+						mesh.render(rc);
+					}
+					foreach(ref demonicRift;objects.demonicRifts)
+						foreach(ref spirit;demonicRift.spirits[demonicRift.numDespawned..demonicRift.numSpawned])
+							renderDemonicRiftSpirit(spirit);
+				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.demonicRifts.length||objects.demonicRiftCastings.length)){
 					auto material=self.demonicRiftBorder.material;
 					material.bind(rc);
@@ -1732,7 +1761,7 @@ struct Renderer(B){
 					}
 					void renderDemonicRiftBorder(ref DemonicRift!B rift){
 						auto position=rift.position;
-						auto heightScale=min(1.0f,float(rift.frame)/rift.emergenceTime);
+						auto heightScale=rift.heightScale;
 						auto radius=rift.radius;
 						B.shadelessMaterialBackend.setTransformationScaled(position,Quaternionf.identity(),radius*Vector3f(1.0f,1.0f,heightScale),rc);
 						B.shadelessMaterialBackend.setAlpha(heightScale^^2);
