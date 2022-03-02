@@ -267,11 +267,11 @@ struct OrderTarget{
 	}
 }
 Vector3f center(B)(ref OrderTarget target,ObjectState!B state){
-	if(!state.isValidTarget(target.id)) return target.position;
+	if(target.type==TargetType.terrain||!state.isValidTarget(target.id)) return target.position;
 	return state.objectById!((obj)=>obj.center)(target.id);
 }
 Vector3f lowCenter(B)(ref OrderTarget target,ObjectState!B state){
-	if(!state.isValidTarget(target.id)) return target.position;
+	if(target.type==TargetType.terrain||!state.isValidTarget(target.id)) return target.position;
 	return state.objectById!((obj)=>obj.lowCenter)(target.id);
 }
 OrderTarget centerTarget(B)(int id,ObjectState!B state)in{
@@ -285,7 +285,7 @@ OrderTarget positionTarget(B)(Vector3f position,ObjectState!B state){
 }
 
 Vector3f[2] hitbox(B)(ref OrderTarget target,ObjectState!B state){
-	if(!state.isValidTarget(target.id)) return [target.position,target.position];
+	if(target.type==TargetType.terrain||!state.isValidTarget(target.id)) return [target.position,target.position];
 	return state.objectById!((obj)=>obj.hitbox)(target.id);
 }
 
@@ -433,7 +433,7 @@ struct PositionPredictor{
 		return targetPosition+velocity*timeToImpact;
 	}
 	Vector3f predictCenterAtTime(B)(float timeToImpact,OrderTarget target,ObjectState!B state){
-		if(!state.isValidTarget(target.id)) return target.position;
+		if(target.type==TargetType.terrain||!state.isValidTarget(target.id)) return target.position;
 		return predictCenterAtTime(timeToImpact,target.id,state);
 	}
 	Vector3f predictCenterAtTime(B)(float timeToImpact,int targetId,ObjectState!B state)in{
@@ -460,7 +460,7 @@ struct PositionPredictor{
 		return targetPosition+velocity*timeToImpact;
 	}
 	Vector3f predictCenter(B)(Vector3f position,float projectileSpeed,ref OrderTarget target,ObjectState!B state){
-		if(!state.isValidTarget(target.id)) return target.position;
+		if(target.type==TargetType.terrain||!state.isValidTarget(target.id)) return target.position;
 		return predictCenter(position,projectileSpeed,target.id,state);
 	}
 	Vector3f predictCenter(B)(Vector3f position,float projectileSpeed,int targetId,ObjectState!B state)in{
