@@ -1114,6 +1114,7 @@ enum SpellTag:char[4]{
 	taurockPassive="korq",
 	firefistPassive="ahtf",
 	lightningCharge="gcil",
+	healingShower="tum@",
 	// ranged attacks:
 	brainiacShoot="bsba",
 	shrikeShoot="absh",

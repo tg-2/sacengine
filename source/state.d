@@ -3361,6 +3361,13 @@ struct Oil(B){
 	enum fadeTime=0.5f;
 }
 
+struct HealingShower(B){
+	int id;
+	int side;
+	Vector3f[2] hitbox;
+	SacSpell!B ability;
+}
+
 struct Protector(B){
 	int id;
 	SacSpell!B ability;
@@ -4422,6 +4429,14 @@ struct Effects(B){
 		if(i+1<oils.length) oils[i]=move(oils[$-1]);
 		oils.length=oils.length-1;
 	}
+	Array!(HealingShower!B) healingShowers;
+	void addEffect(HealingShower!B healingShower){
+		healingShowers~=healingShower;
+	}
+	void removeHealingShower(int i){
+		if(i+1<healingShowers.length) healingShowers[i]=move(healingShowers[$-1]);
+		healingShowers.length=healingShowers.length-1;
+	}
 	Array!(Protector!B) protectors;
 	void addEffect(Protector!B protector){
 		protectors~=protector;
@@ -5345,6 +5360,7 @@ bool kill(B,bool pretending=false)(ref MovingObject!B object, ObjectState!B stat
 				switch(ability.tag){
 					case SpellTag.steamCloud: object.steamCloud(ability,state); break;
 					case SpellTag.poisonCloud: object.poisonCloud(ability,state); break;
+					case SpellTag.healingShower: object.healingShower(ability,state); break;
 					default: break;
 				}
 			}
@@ -8664,6 +8680,11 @@ bool steamCloud(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B st
 
 bool poisonCloud(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
 	state.addEffect(PoisonCloud!B(object.id,object.side,object.hitbox,ability));
+	return true;
+}
+
+bool healingShower(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
+	state.addEffect(HealingShower!B(object.id,object.side,object.hitbox,ability));
 	return true;
 }
 
@@ -16076,6 +16097,30 @@ bool updateOil(B)(ref Oil!B oil,ObjectState!B state){
 	}
 }
 
+bool updateHealingShower(B)(ref HealingShower!B healingShower,ObjectState!B state){
+	with(healingShower){
+		static bool callback(int target,int side,SacSpell!B ability,ObjectState!B state){
+			if(state.movingObjectById!((ref obj)=>obj.side,()=>-1)(target)==side)
+				heal(target,ability,state);
+			return false;
+		}
+		dealSplashSpellDamageAt!callback(0,ability,ability.effectRange,id,side,boxCenter(hitbox),DamageMod.none,state,side,ability,state);
+		enum numParticles=128;
+		auto sacParticle=SacParticle!B.get(ParticleType.rainbowParticle);
+		auto center=boxCenter(hitbox);
+		foreach(i;0..numParticles){
+			auto position=state.uniform(scaleBox(hitbox,0.9f));
+			//auto velocity=1.5f*state.uniform(0.5f,2.0f)*Vector3f(position.x-center.x,position.y-center.y,2.0f);
+			auto velocity=1.5f*state.uniform(0.5f,2.0f)*Vector3f(state.uniform(hitbox[0].x,hitbox[1].x)-center.x,state.uniform(hitbox[0].y,hitbox[1].y)-center.y,2.5f);
+			auto scale=state.uniform(0.5f,1.5f);
+			int lifetime=63;
+			int frame=0;
+			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+		}
+		return false;
+	}
+}
+
 bool updateProtector(B)(ref Protector!B protector,ObjectState!B state){
 	if(!state.isValidTarget(protector.id,TargetType.creature)) return false;
 	static void applyProtector(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
@@ -17078,6 +17123,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.oils.length;){
 		if(!updateOil(effects.oils[i],state)){
 			effects.removeOil(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.healingShowers.length;){
+		if(!updateHealingShower(effects.healingShowers[i],state)){
+			effects.removeHealingShower(i);
 			continue;
 		}
 		i++;
