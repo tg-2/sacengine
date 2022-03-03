@@ -7045,6 +7045,17 @@ bool freeze(B)(int wizard,int side,int target,SacSpell!B spell,ObjectState!B sta
 	return true;
 }
 
+enum maxFreezeCooldown=10*updateFPS;
+bool freezeWithCooldown(B)(int wizard,int side,int target,SacSpell!B spell,ObjectState!B state){
+	auto cooldown=state.movingObjectById!((ref obj)=>obj.creatureStats.effects.freezeCooldown,()=>maxFreezeCooldown)(target);
+	if(cooldown<=0||cooldown<=state.uniform(maxFreezeCooldown)){
+		auto r=freeze(wizard,side,target,spell,state);
+		state.movingObjectById!((ref obj){ obj.creatureStats.effects.freezeCooldown=maxFreezeCooldown; },(){})(target);
+		return r;
+	}
+	return false;
+}
+
 bool castRingsOfFire(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
 	if(!state.movingObjectById!((ref obj){
 		if(obj.creatureStats.effects.ccProtected||!obj.creatureState.mode.canCC) return false;
@@ -8888,6 +8899,7 @@ bool unghost(B)(ref MovingObject!B wizard,ObjectState!B state){
 
 void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.creatureStats.effects.stunCooldown!=0) --object.creatureStats.effects.stunCooldown;
+	if(object.creatureStats.effects.freezeCooldown!=0) --object.creatureStats.effects.freezeCooldown;
 	if(object.creatureStats.effects.rangedCooldown!=0) --object.creatureStats.effects.rangedCooldown;
 	if(object.creatureStats.effects.abilityCooldown!=0) --object.creatureStats.effects.abilityCooldown;
 	if(object.creatureStats.effects.infectionCooldown!=0) --object.creatureStats.effects.infectionCooldown;
@@ -9345,16 +9357,27 @@ void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.creatureState.mode.among(CreatureMode.meleeMoving,CreatureMode.meleeAttacking) && object.hasAttackTick(state)){
 		object.creatureState.mode=CreatureMode.meleeAttacking;
 		if(auto target=object.meleeAttackTarget(state)){ // TODO: factor this out into its own function?
-			static void dealDamage(T)(ref T target,MovingObject!B* attacker,ObjectState!B state){
+			bool wasFrozen=false;
+			static void dealDamage(T)(ref T target,MovingObject!B* attacker,ObjectState!B state,bool* wasFrozen){
+				static if(is(T==MovingObject!B)) *wasFrozen=target.creatureStats.effects.frozen;
 				target.dealMeleeDamage(*attacker,DamageMod.none,state); // TODO: maybe those functions should be local
 			}
-			state.objectById!dealDamage(target,&object,state);
+			state.objectById!dealDamage(target,&object,state,&wasFrozen);
 			if(auto passive=object.sacObject.passiveAbility){
-				if(passive.tag==SpellTag.graspingVines){
-					auto tref=OrderTarget(state.targetTypeFromId(target),target,Vector3f.init);
-					auto summary=summarize(tref,-1,state);
-					if(passive.isApplicable(summary))
-						graspingVines(target,passive,state);
+				switch(passive.tag){
+					case SpellTag.graspingVines,SpellTag.freeze:
+						auto tref=OrderTarget(state.targetTypeFromId(target),target,Vector3f.init);
+						auto summary=summarize(tref,-1,state);
+						if(passive.isApplicable(summary)){
+							if(passive.tag==SpellTag.graspingVines){
+								graspingVines(target,passive,state);
+							}else if(passive.tag==SpellTag.freeze){
+								if(!wasFrozen) freezeWithCooldown(object.id,object.side,target,passive,state); // TODO: ok?
+							}
+							else assert(0);
+						}
+						break;
+					default: break;
 				}
 			}
 		}

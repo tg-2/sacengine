@@ -32,6 +32,7 @@ struct Effects{
 	int speedUpUpdateFrame=-1;
 	int speedUpFrame=-1;
 	int stunCooldown=0;
+	int freezeCooldown=0;
 	int rangedCooldown=0;
 	int abilityCooldown=0;
 	int yellCooldown=0;
