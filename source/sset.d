@@ -78,7 +78,7 @@ enum SoundType:char[4]{
 	frog="grfX",
 	bow="wobX",
 	arrow="rraX",
-	abomination="babX",
+	mutant="babX",
 	sylphBow="obsX",
 	fireball="lbfX",
 	explodingFireball="xbfX",

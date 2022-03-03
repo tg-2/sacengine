@@ -1515,10 +1515,10 @@ static:
 
 	Material createMaterial(SacParticle!DagonBackend particle){
 		final switch(particle.type) with(ParticleType){
-			case manafount, manalith, manahoar, shrine, firy, fire, fireball, explosion, explosion2, speedUp, heal, scarabHit, relativeHeal, ghostTransition, ghost, lightningCasting, chainLightningCasting, needle, freeze, etherealFormSpark, shard, redVortexDroplet, blueVortexDroplet, spark, castPersephone, castPersephone2, castPyro, castJames, castStratos, castCharnel, castCharnel2, wrathCasting, wrathExplosion1, wrathExplosion2, wrathParticle, rainbowParticle, rainOfFrogsCasting, frogExplosion, gnomeHit, steam, ashParticle, smoke, dirt, dust, rock, webDebris, oil, poison, relativePoison, swarmHit, slime, locustBlood, locustDebris:
+			case manafount, manalith, manahoar, shrine, firy, fire, fireball, explosion, explosion2, speedUp, heal, scarabHit, relativeHeal, ghostTransition, ghost, lightningCasting, chainLightningCasting, needle, freeze, etherealFormSpark, shard, redVortexDroplet, blueVortexDroplet, spark, castPersephone, castPersephone2, castPyro, castJames, castStratos, castCharnel, castCharnel2, wrathCasting, wrathExplosion1, wrathExplosion2, wrathParticle, rainbowParticle, rainOfFrogsCasting, frogExplosion, gnomeHit, steam, ashParticle, smoke, dirt, dust, splat, rock, webDebris, oil, poison, relativePoison, swarmHit, slime, locustBlood, locustDebris:
 				auto mat=makeMaterial(scene.shadelessMaterialBackend);
 				mat.depthWrite=false;
-				mat.blending=particle.type.among(ashParticle,smoke,dirt,dust,rock,oil,poison,relativePoison,swarmHit,slime,locustBlood)?Transparent:Additive;
+				mat.blending=particle.type.among(ashParticle,smoke,dirt,dust,splat,rock,oil,poison,relativePoison,swarmHit,slime,locustBlood)?Transparent:Additive;
 				if(particle.type==dust) mat.alpha=0.25f;
 				mat.energy=particle.energy;
 				mat.diffuse=particle.texture;

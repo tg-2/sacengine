@@ -587,6 +587,17 @@ struct Renderer(B){
 		auto frames=typeof(return).createMeshes();
 		return SacOil!B(texture,mat,frames);
 	}
+	SacMutantProjectile!B mutantProjectile;
+	SacMutantProjectile!B createMutantProjectile(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Transparent;
+		mat.energy=3.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacMutantProjectile!B(texture,mat,frames);
+	}
 	void createEffects(){
 		sacCommandCone=new SacCommandCone!B();
 		sacDebris=new SacObject!B("extracted/models/MODL.WAD!/bold.MRMC/bold.MRMM");
@@ -636,6 +647,7 @@ struct Renderer(B){
 		demonicRiftSpirit=createDemonicRiftSpirit();
 		demonicRiftBorder=createDemonicRiftBorder();
 		demonicRiftEffect=createDemonicRiftEffect();
+		mutantProjectile=createMutantProjectile();
 	}
 
 	void initialize(){
@@ -2013,6 +2025,18 @@ struct Renderer(B){
 						mesh.render(rc);
 					}
 					foreach(ref effect;objects.poisonDarts.data) renderPoisonDart(effect.position,effect.direction);
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.mutantProjectiles.length){
+					auto material=self.mutantProjectile.material;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
+					foreach(j;0..objects.mutantProjectiles.length){
+						auto position=objects.mutantProjectiles[j].position;
+						auto frame=objects.mutantProjectiles[j].frame;
+						auto mesh=self.mutantProjectile.getFrame(frame%self.mutantProjectile.numFrames);
+						material.backend.setSpriteTransformation(position,rc);
+						mesh.render(rc);
+					}
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.lifeShields.length){
 					auto material=self.lifeShield.material;

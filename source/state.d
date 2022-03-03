@@ -3211,6 +3211,16 @@ struct PoisonDart(B){
 	float remainingDistance;
 }
 
+struct MutantProjectile(B){
+	int attacker;
+	int side;
+	int intendedTarget;
+	Vector3f position;
+	Vector3f velocity;
+	SacSpell!B rangedAttack;
+	int frame=0;
+}
+
 enum RockFormStatus{ growing, stationary, shrinking }
 struct RockForm(B){
 	int target;
@@ -4323,6 +4333,14 @@ struct Effects(B){
 	void removePoisonDart(int i){
 		if(i+1<poisonDarts.length) poisonDarts[i]=move(poisonDarts[$-1]);
 		poisonDarts.length=poisonDarts.length-1;
+	}
+	Array!(MutantProjectile!B) mutantProjectiles;
+	void addEffect(MutantProjectile!B mutantProjectile){
+		mutantProjectiles~=mutantProjectile;
+	}
+	void removeMutantProjectile(int i){
+		if(i+1<mutantProjectiles.length) swap(mutantProjectiles[i],mutantProjectiles[$-1]);
+		mutantProjectiles.length=mutantProjectiles.length-1; // TODO: reuse memory?
 	}
 	// abilities
 	Array!(RockForm!B) rockForms;
@@ -7561,6 +7579,17 @@ bool deadeyeShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vec
 	return true;
 }
 
+enum mutantShootGain=4.0f;
+void mutantLoad(B)(int attacker,ObjectState!B state){
+	playSpellSoundTypeAt(SoundType.gut,attacker,state,mutantShootGain);
+}
+bool mutantShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	playSpellSoundTypeAt(SoundType.mutant,position,state,mutantShootGain); // TODO: move sound with projectile
+	auto direction=getShotDirectionWithGravity(accuracy,position,target,rangedAttack,state);
+	state.addEffect(MutantProjectile!B(attacker,side,intendedTarget,position,direction*rangedAttack.speed,rangedAttack));
+	return true;
+}
+
 enum defaultFaceThreshold=1e-3;
 bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state,float threshold=defaultFaceThreshold){
 	auto angle=facing-object.creatureState.facing;
@@ -8048,6 +8077,9 @@ void loadOnTick(B)(ref MovingObject!B object,OrderTarget target,SacSpell!B range
 					object.drainMana(drainedMana,state);
 				}
 				break;
+			case SpellTag.mutantShoot:
+				mutantLoad(object.id,state);
+				break;
 			default: break;
 		}
 	}
@@ -8120,6 +8152,9 @@ bool shootOnTick(bool ability=false,B)(ref MovingObject!B object,OrderTarget tar
 					break;
 				case SpellTag.deadeyeShoot:
 					deadeyeShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
+					break;
+				case SpellTag.mutantShoot:
+					mutantShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
 					break;
 				// abilities:
 				case SpellTag.blightMites:
@@ -15475,6 +15510,57 @@ bool updatePoisonDart(B)(ref PoisonDart!B poisonDart,ObjectState!B state){
 	}
 }
 
+enum mutantProjectileSize=1.25f; // TODO: ok?
+enum mutantProjectileSlidingDistance=0.0f;
+static immutable Vector3f[2] mutantProjectileHitbox=[-0.5f*mutantProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*mutantProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
+int mutantProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
+		return entry.isProjectileObstacle&&(entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side);
+	}
+	return collisionTarget!(mutantProjectileHitbox,filter)(side,position,state,side,intendedTarget);
+}
+
+void mutantProjectileExplosion(B)(ref MutantProjectile!B mutantProjectile,int target,ObjectState!B state){
+	//playSpellSoundTypeAt(SoundType.gib,mutantProjectile.position,state,mutantShootGain);
+	with(mutantProjectile){
+		if(state.isValidTarget(target)) dealRangedDamage(target,rangedAttack,attacker,side,velocity,DamageMod.splash,state);
+		dealSplashRangedDamageAt(target,rangedAttack,rangedAttack.damageRange,attacker,side,position,DamageMod.none,state);
+	}
+	enum numParticles4=20; // TODO: improve splat animation
+	auto sacParticle4=SacParticle!B.get(ParticleType.splat);
+	foreach(i;0..numParticles4){
+		auto position=mutantProjectile.position;
+		if(i) position+=1.75f*state.uniformDirection();
+		auto velocity=Vector3f(0.0f,0.0f,-0.5f);
+		auto scale=2.25f;
+		auto frame=state.uniform(2)?0:state.uniform(24);
+		auto lifetime=95-frame;
+		state.addParticle(Particle!B(sacParticle4,position,velocity,scale,lifetime,frame));
+	}
+}
+
+bool updateMutantProjectile(B)(ref MutantProjectile!B mutantProjectile,ObjectState!B state){
+	with(mutantProjectile){
+		++frame;
+		auto oldPosition=position;
+		position+=velocity/updateFPS;
+		velocity.z-=rangedAttack.fallingAcceleration/updateFPS;
+		auto target=mutantProjectileCollisionTarget(side,intendedTarget,position,state);
+		if(state.isValidTarget(target)){
+			mutantProjectile.mutantProjectileExplosion(target,state);
+			return false;
+		}
+		if(state.isOnGround(position)){
+			if(position.z<state.getGroundHeight(position)){
+				mutantProjectile.mutantProjectileExplosion(0,state);
+				return false;
+			}
+		}else if(position.z<state.getHeight(position)-rangedAttack.fallLimit)
+			return false;
+		return true;
+	}
+}
+
 
 bool updateRockForm(B)(ref RockForm!B rockForm,ObjectState!B state){
 	with(rockForm){
@@ -17032,6 +17118,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.poisonDarts.length;){
 		if(!updatePoisonDart(effects.poisonDarts[i],state)){
 			effects.removePoisonDart(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.mutantProjectiles.length;){
+		if(!updateMutantProjectile(effects.mutantProjectiles[i],state)){
+			effects.removeMutantProjectile(i);
 			continue;
 		}
 		i++;

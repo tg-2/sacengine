@@ -645,6 +645,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Oil
 void serialize(alias sink,B)(ref HealingShower!B healingShower){ serializeStruct!sink(healingShower); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==HealingShower!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref MutantProjectile!B mutantProjectile){ serializeStruct!sink(mutantProjectile); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==MutantProjectile!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref Protector!B protector){ serializeStruct!sink(protector); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Protector!B)){ deserializeStruct(result,state,data); }
 
