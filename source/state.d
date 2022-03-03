@@ -9357,12 +9357,14 @@ void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.creatureState.mode.among(CreatureMode.meleeMoving,CreatureMode.meleeAttacking) && object.hasAttackTick(state)){
 		object.creatureState.mode=CreatureMode.meleeAttacking;
 		if(auto target=object.meleeAttackTarget(state)){ // TODO: factor this out into its own function?
-			bool wasFrozen=false;
-			static void dealDamage(T)(ref T target,MovingObject!B* attacker,ObjectState!B state,bool* wasFrozen){
-				static if(is(T==MovingObject!B)) *wasFrozen=target.creatureStats.effects.frozen;
+			bool canFreeze=false;
+			static void dealDamage(T)(ref T target,MovingObject!B* attacker,ObjectState!B state,bool* canFreeze){
+				bool frozen=false;
+				static if(is(T==MovingObject!B)) frozen=target.creatureStats.effects.frozen;
 				target.dealMeleeDamage(*attacker,DamageMod.none,state); // TODO: maybe those functions should be local
+				static if(is(T==MovingObject!B)) *canFreeze=!frozen&&isValidAttackTarget(target,state);
 			}
-			state.objectById!dealDamage(target,&object,state,&wasFrozen);
+			state.objectById!dealDamage(target,&object,state,&canFreeze);
 			if(auto passive=object.sacObject.passiveAbility){
 				switch(passive.tag){
 					case SpellTag.graspingVines,SpellTag.freeze:
@@ -9372,7 +9374,7 @@ void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 							if(passive.tag==SpellTag.graspingVines){
 								graspingVines(target,passive,state);
 							}else if(passive.tag==SpellTag.freeze){
-								if(!wasFrozen) freezeWithCooldown(object.id,object.side,target,passive,state); // TODO: ok?
+								if(canFreeze) freezeWithCooldown(object.id,object.side,target,passive,state); // TODO: ok?
 							}
 							else assert(0);
 						}
