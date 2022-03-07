@@ -15693,7 +15693,8 @@ void abominationProjectileExplosion(B)(ref AbominationProjectile!B abominationPr
 
 void animateAbominationProjectile(B)(ref AbominationProjectile!B abominationProjectile,Vector3f oldPosition,ObjectState!B state){
 	with(abominationProjectile){
-		auto numParticles=state.frame%2;
+		static assert(updateFPS==60);
+		auto numParticles=!!state.uniform(4);
 		auto velocity=Vector3f(0.0f,0.0f,0.0f);
 		foreach(i;0..numParticles){
 			auto position=oldPosition*((cast(float)numParticles-1-i)/numParticles)+position*(cast(float)(i+1)/numParticles);
