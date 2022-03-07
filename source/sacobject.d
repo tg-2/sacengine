@@ -958,6 +958,8 @@ enum ParticleType{
 	relativePoison,
 	swarmHit,
 	slime,
+	hoverBlood,
+	blood,
 	locustBlood,
 	locustDebris,
 }
@@ -1004,6 +1006,10 @@ final class SacParticle(B){
 				return false;
 			case swarmHit,slime:
 				return true;
+			case hoverBlood:
+				return false;
+			case blood:
+				return true;
 			case locustBlood,locustDebris:
 				return false;
 		}
@@ -1028,7 +1034,7 @@ final class SacParticle(B){
 				return false;
 			case relativePoison:
 				return true;
-			case locustBlood,locustDebris:
+			case hoverBlood,blood,locustBlood,locustDebris:
 				return false;
 		}
 	}
@@ -1306,6 +1312,12 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/Daniel/DanC.WAD!/char.FLDR/lth2.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
+			case hoverBlood,blood:
+				width=height=0.75f;
+				this.energy=8.0f;
+				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/blud.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
 			case locustBlood:
 				width=height=0.4f;
 				this.energy=8.0f;
@@ -1347,6 +1359,8 @@ final class SacParticle(B){
 			case scarabHit: return 2;
 			case swarmHit: return 2;
 			case slime: return 2;
+			case hoverBlood: return 2;
+			case blood: return 4;
 			case locustBlood, locustDebris: return 1;
 			default: return 1;
 		}
@@ -1408,6 +1422,8 @@ final class SacParticle(B){
 				return 0.5f*min(1.0f,(lifetime/(0.5f*numFrames)));
 			case swarmHit,scarabHit,slime:
 				return min(1.0f,(lifetime/(0.75f*numFrames)));
+			case hoverBlood,blood:
+				return 1.0f;
 			case locustBlood,locustDebris:
 				return min(1.0f,(lifetime/(0.5f*numFrames)));
 		}
@@ -1460,7 +1476,7 @@ final class SacParticle(B){
 				return 1.0f;
 			case swarmHit,scarabHit,slime:
 				return min(1.0f,(lifetime/(0.75f*numFrames)));
-			case locustBlood,locustDebris:
+			case hoverBlood,blood,locustBlood,locustDebris:
 				return 1.0f;
 		}
 	}
@@ -2809,6 +2825,21 @@ struct SacMutantProjectile(B){
 	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
 	static B.Mesh[] createMeshes(){
 		return makeSpriteMeshes!B(4,4,2.25f,2.25f);
+	}
+}
+
+struct SacAbominationProjectile(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Char.FLDR/tex_ZERO_.FLDR/guts.TXTR"));
+	}
+	B.Material material;
+	B.Mesh[] frames;
+	enum animationDelay=2;
+	enum numFrames=16*updateAnimFactor*animationDelay;
+	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
+	static B.Mesh[] createMeshes(){
+		return makeSpriteMeshes!B(4,4,1.75f,1.75f);
 	}
 }
 

@@ -598,6 +598,17 @@ struct Renderer(B){
 		auto frames=typeof(return).createMeshes();
 		return SacMutantProjectile!B(texture,mat,frames);
 	}
+	SacAbominationProjectile!B abominationProjectile;
+	SacAbominationProjectile!B createAbominationProjectile(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Transparent;
+		mat.energy=3.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacAbominationProjectile!B(texture,mat,frames);
+	}
 	void createEffects(){
 		sacCommandCone=new SacCommandCone!B();
 		sacDebris=new SacObject!B("extracted/models/MODL.WAD!/bold.MRMC/bold.MRMM");
@@ -648,6 +659,7 @@ struct Renderer(B){
 		demonicRiftBorder=createDemonicRiftBorder();
 		demonicRiftEffect=createDemonicRiftEffect();
 		mutantProjectile=createMutantProjectile();
+		abominationProjectile=createAbominationProjectile();
 	}
 
 	void initialize(){
@@ -2034,6 +2046,32 @@ struct Renderer(B){
 						auto position=objects.mutantProjectiles[j].position;
 						auto frame=objects.mutantProjectiles[j].frame;
 						auto mesh=self.mutantProjectile.getFrame(frame%self.mutantProjectile.numFrames);
+						material.backend.setSpriteTransformation(position,rc);
+						mesh.render(rc);
+					}
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.abominationProjectiles.length){
+					auto material=self.abominationProjectile.material;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
+					foreach(j;0..objects.abominationProjectiles.length){
+						auto position=objects.abominationProjectiles[j].position;
+						auto frame=objects.abominationProjectiles[j].frame;
+						auto mesh=self.abominationProjectile.getFrame(frame%self.abominationProjectile.numFrames);
+						material.backend.setSpriteTransformation(position,rc);
+						mesh.render(rc);
+					}
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.abominationDroplets.length){
+					auto sacParticle=SacParticle!B.get(ParticleType.blood);
+					auto frame=10; // TODO: ok?
+					auto material=sacParticle.material;
+					material.bind(rc);
+					B.shadelessMaterialBackend.setEnergy(10.0f);
+					scope(success) material.unbind(rc);
+					auto mesh=sacParticle.getMesh(frame);
+					foreach(j;0..objects.abominationDroplets.length){
+						auto position=objects.abominationDroplets[j].position;
 						material.backend.setSpriteTransformation(position,rc);
 						mesh.render(rc);
 					}

@@ -3221,6 +3221,24 @@ struct MutantProjectile(B){
 	int frame=0;
 }
 
+struct AbominationProjectile(B){
+	int attacker;
+	int side;
+	int intendedTarget;
+	Vector3f position;
+	Vector3f velocity;
+	SacSpell!B rangedAttack;
+	int frame=0;
+}
+struct AbominationDroplet(B){
+	int attacker;
+	int side;
+	Vector3f position;
+	Vector3f velocity;
+	SacSpell!B rangedAttack;
+	enum amount=50.0f; // TODO: ok?
+}
+
 enum RockFormStatus{ growing, stationary, shrinking }
 struct RockForm(B){
 	int target;
@@ -4342,6 +4360,22 @@ struct Effects(B){
 		if(i+1<mutantProjectiles.length) swap(mutantProjectiles[i],mutantProjectiles[$-1]);
 		mutantProjectiles.length=mutantProjectiles.length-1; // TODO: reuse memory?
 	}
+	Array!(AbominationProjectile!B) abominationProjectiles;
+	void addEffect(AbominationProjectile!B abominationProjectile){
+		abominationProjectiles~=abominationProjectile;
+	}
+	void removeAbominationProjectile(int i){
+		if(i+1<abominationProjectiles.length) swap(abominationProjectiles[i],abominationProjectiles[$-1]);
+		abominationProjectiles.length=abominationProjectiles.length-1; // TODO: reuse memory?
+	}
+	Array!(AbominationDroplet!B) abominationDroplets;
+	void addEffect(AbominationDroplet!B abominationDroplet){
+		abominationDroplets~=abominationDroplet;
+	}
+	void removeAbominationDroplet(int i){
+		if(i+1<abominationDroplets.length) swap(abominationDroplets[i],abominationDroplets[$-1]);
+		abominationDroplets.length=abominationDroplets.length-1; // TODO: reuse memory?
+	}
 	// abilities
 	Array!(RockForm!B) rockForms;
 	void addEffect(RockForm!B rockForm){
@@ -5408,7 +5442,39 @@ bool playDead(B)(ref MovingObject!B object, ObjectState!B state){
 	return object.kill!(B,true)(state);
 }
 
+void gibAnimation(B)(Vector3f position,ObjectState!B state,float gain=4.0f){
+	playSpellSoundTypeAt(SoundType.gib,position,state,gain);
+	enum numParticles4=40;
+	auto sacParticle4=SacParticle!B.get(ParticleType.hoverBlood);
+	foreach(i;0..numParticles4){
+		auto pposition=position;
+		if(i) pposition+=state.uniformDisk(Vector3f(0.0f,0.0f,0.0f),1.25f);
+		auto velocity=Vector3f(0.0f,0.0f,0.0f);
+		auto scale=1.25f;
+		auto frame=0;
+		auto lifetime=63;
+		state.addParticle(Particle!B(sacParticle4,pposition,velocity,scale,lifetime,frame));
+	}
+	enum numSprays=20;
+	auto sacParticle5=SacParticle!B.get(ParticleType.blood);
+	foreach(k;0..numSprays){
+		auto direction=state.uniformDirection();
+		enum numParticles=10;
+		enum maxSpeed=15.0f;
+		foreach(i;0..numParticles){
+			auto pposition=position;
+			auto velocity=(i+1)*maxSpeed/numParticles*direction;
+			velocity.z+=(0.05f+0.25f*float(numParticles-i)/numParticles)*maxSpeed;
+			auto scale=1.0f;
+			auto frame=0;
+			auto lifetime=127; // TODO: infinite lifetime
+			state.addParticle(Particle!B(sacParticle5,pposition,velocity,scale,lifetime,frame));
+		}
+	}
+}
+
 bool gib(B)(ref MovingObject!B object, ObjectState!B state,int giveSoulsTo=-1){ // giveSoulsTo=-2: don't spawn soul
+	gibAnimation(object.center,state);
 	object.unselect(state);
 	object.removeFromGroups(state);
 	int numSouls=object.sacObject.numSouls;
@@ -5430,8 +5496,6 @@ bool gib(B)(ref MovingObject!B object, ObjectState!B state,int giveSoulsTo=-1){ 
 		}
 	}
 	state.removeLater(object.id);
-	playSpellSoundTypeAt(SoundType.gib,object.position,state,4.0f);
-	// TODO: gib animation
 	return true;
 }
 
@@ -6242,6 +6306,11 @@ float dealRangedDamage(B)(ref Building!B building,float damage,int attacker,int 
 float dealRangedDamage(B)(int target,SacSpell!B rangedAttack,int attacker,int attackerSide,Vector3f attackDirection,DamageMod damageMod,ObjectState!B state){
 	if(!state.isValidTarget(target)) return 0.0f;
 	return state.objectById!dealRangedDamage(target,rangedAttack,attacker,attackerSide,attackDirection,damageMod,state);
+}
+
+float dealRangedDamage(B)(int target,float amount,int attacker,int attackerSide,Vector3f attackDirection,DamageMod damageMod,ObjectState!B state){
+	if(!state.isValidTarget(target)) return 0.0f;
+	return state.objectById!dealRangedDamage(target,amount,attacker,attackerSide,attackDirection,damageMod,state);
 }
 
 
@@ -7601,6 +7670,17 @@ bool mutantShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vect
 	return true;
 }
 
+enum abominationShootGain=4.0f;
+void abominationLoad(B)(int attacker,ObjectState!B state){
+	playSpellSoundTypeAt(SoundType.gut,attacker,state,abominationShootGain);
+}
+bool abominationShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	playSoundAt("tugt",position,state,abominationShootGain); // TODO: move sound with projectile
+	auto direction=getShotDirectionWithGravity(accuracy,position,target,rangedAttack,state);
+	state.addEffect(AbominationProjectile!B(attacker,side,intendedTarget,position,direction*rangedAttack.speed,rangedAttack));
+	return true;
+}
+
 enum defaultFaceThreshold=1e-3;
 bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state,float threshold=defaultFaceThreshold){
 	auto angle=facing-object.creatureState.facing;
@@ -8091,6 +8171,9 @@ void loadOnTick(B)(ref MovingObject!B object,OrderTarget target,SacSpell!B range
 			case SpellTag.mutantShoot:
 				mutantLoad(object.id,state);
 				break;
+			case SpellTag.abominationShoot:
+				abominationLoad(object.id,state);
+				break;
 			default: break;
 		}
 	}
@@ -8166,6 +8249,9 @@ bool shootOnTick(bool ability=false,B)(ref MovingObject!B object,OrderTarget tar
 					break;
 				case SpellTag.mutantShoot:
 					mutantShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
+					break;
+				case SpellTag.abominationShoot:
+					abominationShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
 					break;
 				// abilities:
 				case SpellTag.blightMites:
@@ -15536,7 +15622,6 @@ bool updatePoisonDart(B)(ref PoisonDart!B poisonDart,ObjectState!B state){
 }
 
 enum mutantProjectileSize=1.25f; // TODO: ok?
-enum mutantProjectileSlidingDistance=0.0f;
 static immutable Vector3f[2] mutantProjectileHitbox=[-0.5f*mutantProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*mutantProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
 int mutantProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
 	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
@@ -15547,6 +15632,7 @@ int mutantProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f posi
 
 void mutantProjectileExplosion(B)(ref MutantProjectile!B mutantProjectile,int target,ObjectState!B state){
 	//playSpellSoundTypeAt(SoundType.gib,mutantProjectile.position,state,mutantShootGain);
+	//playSoundAt("hbab",mutantProjectile.position,state,mutantShootGain);
 	with(mutantProjectile){
 		if(state.isValidTarget(target)) dealRangedDamage(target,rangedAttack,attacker,side,velocity,DamageMod.splash,state);
 		dealSplashRangedDamageAt(target,rangedAttack,rangedAttack.damageRange,attacker,side,position,DamageMod.none,state);
@@ -15580,6 +15666,88 @@ bool updateMutantProjectile(B)(ref MutantProjectile!B mutantProjectile,ObjectSta
 				mutantProjectile.mutantProjectileExplosion(0,state);
 				return false;
 			}
+		}else if(position.z<state.getHeight(position)-rangedAttack.fallLimit)
+			return false;
+		return true;
+	}
+}
+
+enum abominationProjectileSize=1.25f; // TODO: ok?
+static immutable Vector3f[2] abominationProjectileHitbox=[-0.5f*abominationProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*abominationProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
+int abominationProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
+		return entry.isProjectileObstacle&&(entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side);
+	}
+	return collisionTarget!(abominationProjectileHitbox,filter)(side,position,state,side,intendedTarget);
+}
+
+void abominationProjectileExplosion(B)(ref AbominationProjectile!B abominationProjectile,int target,ObjectState!B state){
+	//playSpellSoundTypeAt(SoundType.gib,abominationProjectile.position,state,abominationShootGain);
+	gibAnimation(abominationProjectile.position,state,abominationShootGain);
+	//playSoundAt("hbab",abominationProjectile.position,state,abominationShootGain);
+	with(abominationProjectile){
+		if(state.isValidTarget(target)) dealRangedDamage(target,rangedAttack,attacker,side,velocity,DamageMod.splash,state);
+		dealSplashRangedDamageAt(target,rangedAttack,rangedAttack.damageRange,attacker,side,position,DamageMod.none,state);
+	}
+}
+
+void animateAbominationProjectile(B)(ref AbominationProjectile!B abominationProjectile,Vector3f oldPosition,ObjectState!B state){
+	with(abominationProjectile){
+		auto numParticles=state.frame%2;
+		auto velocity=Vector3f(0.0f,0.0f,0.0f);
+		foreach(i;0..numParticles){
+			auto position=oldPosition*((cast(float)numParticles-1-i)/numParticles)+position*(cast(float)(i+1)/numParticles);
+			//position+=0.3f*state.uniformDirection();
+			state.addEffect(AbominationDroplet!B(attacker,side,position,velocity));
+		}
+	}
+}
+
+bool updateAbominationProjectile(B)(ref AbominationProjectile!B abominationProjectile,ObjectState!B state){
+	with(abominationProjectile){
+		++frame;
+		auto oldPosition=position;
+		position+=velocity/updateFPS;
+		velocity.z-=rangedAttack.fallingAcceleration/updateFPS;
+		animateAbominationProjectile(abominationProjectile,oldPosition,state);
+		auto target=abominationProjectileCollisionTarget(side,intendedTarget,position,state);
+		if(state.isValidTarget(target)){
+			abominationProjectile.abominationProjectileExplosion(target,state);
+			return false;
+		}
+		if(state.isOnGround(position)){
+			if(position.z<state.getGroundHeight(position)){
+				abominationProjectile.abominationProjectileExplosion(0,state);
+				return false;
+			}
+		}else if(position.z<state.getHeight(position)-rangedAttack.fallLimit)
+			return false;
+		return true;
+	}
+}
+
+
+enum abominationDropletSize=0.25f; // TODO: ok?
+static immutable Vector3f[2] abominationDropletHitbox=[-0.5f*abominationDropletSize*Vector3f(1.0f,1.0f,1.0f),0.5f*abominationDropletSize*Vector3f(1.0f,1.0f,1.0f)];
+int abominationDropletCollisionTarget(B)(int side,Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state){
+		return entry.isProjectileObstacle;
+	}
+	return collisionTarget!(abominationDropletHitbox,filter)(side,position,state);
+}
+
+bool updateAbominationDroplet(B)(ref AbominationDroplet!B abominationDroplet,ObjectState!B state){
+	with(abominationDroplet){
+		position+=velocity/updateFPS;
+		velocity.z-=10.0f/updateFPS;
+		auto target=abominationDropletCollisionTarget(side,position,state);
+		if(state.isValidTarget(target)){
+			dealRangedDamage(target,amount,attacker,side,velocity,DamageMod.none,state);
+			return false;
+		}
+		if(state.isOnGround(position)){
+			if(position.z<state.getGroundHeight(position))
+				return false; // TODO: scar
 		}else if(position.z<state.getHeight(position)-rangedAttack.fallLimit)
 			return false;
 		return true;
@@ -17150,6 +17318,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.mutantProjectiles.length;){
 		if(!updateMutantProjectile(effects.mutantProjectiles[i],state)){
 			effects.removeMutantProjectile(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.abominationProjectiles.length;){
+		if(!updateAbominationProjectile(effects.abominationProjectiles[i],state)){
+			effects.removeAbominationProjectile(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.abominationDroplets.length;){
+		if(!updateAbominationDroplet(effects.abominationDroplets[i],state)){
+			effects.removeAbominationDroplet(i);
 			continue;
 		}
 		i++;
