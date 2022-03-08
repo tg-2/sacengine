@@ -1169,7 +1169,7 @@ final class SacParticle(B){
 				break;
 			case castPyro:
 				width=height=1.0f;
-				this.energy=5.0f;
+				this.energy=15.0f;
 				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pyro.FLDR/txtr.FLDR/cstp.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
