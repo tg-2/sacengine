@@ -415,7 +415,7 @@ struct Renderer(B){
 		auto mat=B.makeMaterial(B.shadelessBoneMaterialBackend);
 		mat.depthWrite=false;
 		mat.blending=B.Blending.Additive;
-		mat.energy=5.0f;
+		mat.energy=15.0f;
 		mat.diffuse=texture;
 		auto frames=typeof(return).createMeshes();
 		return SacLaser!B(texture,mat,frames);
