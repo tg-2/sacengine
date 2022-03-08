@@ -12055,7 +12055,7 @@ void spawnFireformParticles(B)(ref MovingObject!B wizard,int numParticles,Object
 	}
 }
 
-enum fireformParticleRate=50;
+enum fireformParticleRate=10;
 void animateFireformCasting(B)(ref FireformCasting!B fireformCast,ObjectState!B state){
 	with(fireformCast){
 		auto progress=min(float(frame)/castingTime,1.0f);
