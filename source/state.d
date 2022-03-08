@@ -2750,6 +2750,9 @@ struct ExplosionCasting(B){
 	enum numEffecs=5;
 	ExplosionEffect[5] effects;
 	bool failed=false;
+	bool succeeded=false;
+	int frame=0;
+	enum totalDelay=38*updateFPS/10;
 }
 
 struct HaloOfEarthCasting(B){
@@ -13732,6 +13735,7 @@ void animateExplosionCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
 
 bool updateExplosionCasting(B)(ref ExplosionCasting!B explosionCast,ObjectState!B state){
 	with(explosionCast){
+		frame+=1;
 		foreach(ref effect;effects){
 			effect.frame+=1;
 			if(!failed) effect.scale=min(effect.scale+1.0f/castingTime,1.0f);
@@ -13739,15 +13743,21 @@ bool updateExplosionCasting(B)(ref ExplosionCasting!B explosionCast,ObjectState!
 			if(--effect.soundTimer<=0) effect.soundTimer=playSoundAt!true("5plf",effect.position,state,1.0f);
 		}
 		if(failed) return effects[].any!((ref effect)=>effect.scale!=0.0f);
-		final switch(manaDrain.update(state)){
+		if(succeeded){
+			if(frame>=totalDelay){
+				explosion(manaDrain.wizard,side,effects,spell,state);
+				return false;
+			}
+			return true;
+		}else final switch(manaDrain.update(state)){
 			case CastingStatus.underway:
 				state.movingObjectById!(animateExplosionCasting,{})(manaDrain.wizard,state);
 				return true;
 			case CastingStatus.interrupted:
 				return false;
 			case CastingStatus.finished:
-				explosion(manaDrain.wizard,side,effects,spell,state);
-				return false;
+				succeeded=true;
+				return true;
 		}
 	}
 }
