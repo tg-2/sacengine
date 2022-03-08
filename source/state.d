@@ -10045,7 +10045,7 @@ bool updateFire(B)(ref Fire!B fire,ObjectState!B state){
 			state.objectById!dealFireDamage(target,rangedDamagePerFrame,spellDamagePerFrame,attacker,side,damageMod,state);
 		if(manaDrainPerFrame>0.0f) state.movingObjectById!(drainMana,(){})(target,manaDrainPerFrame,state);
 		static assert(updateFPS==60);
-		enum numParticles=5;
+		enum numParticles=3;
 		state.objectById!spawnFireParticles(target,numParticles,state);
 		return lifetime-->0;
 	}
@@ -12083,7 +12083,7 @@ bool updateFireformCasting(B)(ref FireformCasting!B fireformCast,ObjectState!B s
 }
 
 void ignite(B)(ref MovingObject!B obj,float damage,int attacker,int side,ObjectState!B state){
-	enum numParticles=5;
+	enum numParticles=3;
 	obj.dealFireDamage(0.0f,damage,attacker,side,DamageMod.peirceShield,state);
 	obj.spawnFireParticles(numParticles,state);
 	if(obj.creatureStats.effects.ignitionTime+updateFPS/3<state.frame)
@@ -15813,7 +15813,7 @@ void bombardProjectileExplosion(B)(ref BombardProjectile!B bombardProjectile,int
 		dealSplashRangedDamageAt!callback(target,rangedAttack,rangedAttack.damageRange,attacker,side,position,DamageMod.ignite,state,attacker,side,state);
 	}
 	auto rangedAttack=bombardProjectile.rangedAttack;
-	enum numParticles=120;
+	enum numParticles=80;
 	auto range=rangedAttack.effectRange;
 	auto minScale=2.0f,maxScale=10.0f;
 	auto sacParticle=SacParticle!B.get(ParticleType.fire);

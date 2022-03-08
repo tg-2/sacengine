@@ -1073,31 +1073,31 @@ final class SacParticle(B){
 				break;
 			case firy:
 				width=height=0.5f;
-				this.energy=3.0f;
+				this.energy=8.0f;
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/firy.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
 			case fire:
 				width=height=1.0f;
-				this.energy=1.0f;
+				this.energy=8.0f;
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/firy.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
 			case fireball:
 				width=height=0.5f;
-				this.energy=3.0f;
+				this.energy=8.0f;
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/fbal.TXTR"));
 				meshes=makeSpriteMeshes!B(3,3,width,height);
 				break;
 			case explosion:
 				width=height=3.0f;
-				this.energy=3.0f;
+				this.energy=8.0f;
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/xplo.TXTR"));
 				meshes=makeSpriteMeshes!B(5,5,width,height,239.5f/256.0f,239.5f/256.0f);
 				break;
 			case explosion2:
 				width=height=3.0f;
-				this.energy=3.0f;
+				this.energy=8.0f;
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/exp2.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
