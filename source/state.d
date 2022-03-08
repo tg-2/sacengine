@@ -3239,6 +3239,16 @@ struct AbominationDroplet(B){
 	enum amount=50.0f; // TODO: ok?
 }
 
+struct BombardProjectile(B){
+	int attacker;
+	int side;
+	int intendedTarget;
+	Vector3f position;
+	Vector3f velocity;
+	SacSpell!B rangedAttack;
+	int frame=0;
+}
+
 enum RockFormStatus{ growing, stationary, shrinking }
 struct RockForm(B){
 	int target;
@@ -4375,6 +4385,14 @@ struct Effects(B){
 	void removeAbominationDroplet(int i){
 		if(i+1<abominationDroplets.length) swap(abominationDroplets[i],abominationDroplets[$-1]);
 		abominationDroplets.length=abominationDroplets.length-1; // TODO: reuse memory?
+	}
+	Array!(BombardProjectile!B) bombardProjectiles;
+	void addEffect(BombardProjectile!B bombardProjectile){
+		bombardProjectiles~=bombardProjectile;
+	}
+	void removeBombardProjectile(int i){
+		if(i+1<bombardProjectiles.length) swap(bombardProjectiles[i],bombardProjectiles[$-1]);
+		bombardProjectiles.length=bombardProjectiles.length-1; // TODO: reuse memory?
 	}
 	// abilities
 	Array!(RockForm!B) rockForms;
@@ -7681,6 +7699,17 @@ bool abominationShoot(B)(int attacker,int side,int intendedTarget,float accuracy
 	return true;
 }
 
+enum bombardShootGain=4.0f;
+void bombardLoad(B)(int attacker,ObjectState!B state){
+	playSoundAt("walc",attacker,state,bombardShootGain);
+}
+bool bombardShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	playSoundAt("lfni",position,state,bombardShootGain); // TODO: move sound with projectile
+	auto direction=getShotDirectionWithGravity(accuracy,position,target,rangedAttack,state);
+	state.addEffect(BombardProjectile!B(attacker,side,intendedTarget,position,direction*rangedAttack.speed,rangedAttack));
+	return true;
+}
+
 enum defaultFaceThreshold=1e-3;
 bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state,float threshold=defaultFaceThreshold){
 	auto angle=facing-object.creatureState.facing;
@@ -8174,6 +8203,9 @@ void loadOnTick(B)(ref MovingObject!B object,OrderTarget target,SacSpell!B range
 			case SpellTag.abominationShoot:
 				abominationLoad(object.id,state);
 				break;
+			case SpellTag.bombardShoot:
+				bombardLoad(object.id,state);
+				break;
 			default: break;
 		}
 	}
@@ -8252,6 +8284,9 @@ bool shootOnTick(bool ability=false,B)(ref MovingObject!B object,OrderTarget tar
 					break;
 				case SpellTag.abominationShoot:
 					abominationShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
+					break;
+				case SpellTag.bombardShoot:
+					bombardShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
 					break;
 				// abilities:
 				case SpellTag.blightMites:
@@ -15755,6 +15790,67 @@ bool updateAbominationDroplet(B)(ref AbominationDroplet!B abominationDroplet,Obj
 	}
 }
 
+enum bombardProjectileSize=1.75f; // TODO: ok?
+static immutable Vector3f[2] bombardProjectileHitbox=[-0.5f*bombardProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*bombardProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
+int bombardProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
+		return entry.isProjectileObstacle&&(entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side);
+	}
+	return collisionTarget!(bombardProjectileHitbox,filter)(side,position,state,side,intendedTarget);
+}
+
+void bombardProjectileExplosion(B)(ref BombardProjectile!B bombardProjectile,int target,ObjectState!B state){
+	playSoundAt("2xbf",bombardProjectile.position,state,bombardShootGain);
+	with(bombardProjectile){
+		if(state.isValidTarget(target)){
+			dealRangedDamage(target,rangedAttack,attacker,side,velocity,DamageMod.ignite|DamageMod.splash,state);
+			setAblaze(target,updateFPS,false,0.0f,attacker,side,DamageMod.none,state);
+		}else target=0;
+		static bool callback(int target,int attacker,int side,ObjectState!B state){
+			setAblaze(target,updateFPS,false,0.0f,attacker,side,DamageMod.none,state);
+			return true;
+		}
+		dealSplashRangedDamageAt!callback(target,rangedAttack,rangedAttack.damageRange,attacker,side,position,DamageMod.ignite,state,attacker,side,state);
+	}
+	auto rangedAttack=bombardProjectile.rangedAttack;
+	enum numParticles=120;
+	auto range=rangedAttack.effectRange;
+	auto minScale=2.0f,maxScale=10.0f;
+	auto sacParticle=SacParticle!B.get(ParticleType.fire);
+	foreach(i;0..numParticles){
+		auto scale=state.uniform(minScale,maxScale);
+		auto position=state.uniformDisk(bombardProjectile.position,range-0.6f*scale);
+		auto distance=(state.uniform(3)?state.uniform(0.3f,0.6f):state.uniform(1.5f,2.5f))*range;
+		enum lifetimeFactor=2.0f;
+		auto fullLifetime=lifetimeFactor*sacParticle.numFrames/float(updateFPS);
+		auto lifetime=cast(int)(lifetimeFactor*sacParticle.numFrames*state.uniform(0.0f,1.0f));
+		auto velocity=Vector3f(0.0f,0.0f,distance/fullLifetime);
+		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,state.uniform(sacParticle.numFrames)));
+	}
+}
+
+bool updateBombardProjectile(B)(ref BombardProjectile!B bombardProjectile,ObjectState!B state){
+	with(bombardProjectile){
+		++frame;
+		auto oldPosition=position;
+		position+=velocity/updateFPS;
+		velocity.z-=rangedAttack.fallingAcceleration/updateFPS;
+		auto target=bombardProjectileCollisionTarget(side,intendedTarget,position,state);
+		if(state.isValidTarget(target)){
+			bombardProjectile.bombardProjectileExplosion(target,state);
+			return false;
+		}
+		if(state.isOnGround(position)){
+			if(position.z<state.getGroundHeight(position)){
+				bombardProjectile.bombardProjectileExplosion(0,state);
+				return false;
+			}
+		}else if(position.z<state.getHeight(position)-rangedAttack.fallLimit)
+			return false;
+		return true;
+	}
+}
+
 
 bool updateRockForm(B)(ref RockForm!B rockForm,ObjectState!B state){
 	with(rockForm){
@@ -17333,6 +17429,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.abominationDroplets.length;){
 		if(!updateAbominationDroplet(effects.abominationDroplets[i],state)){
 			effects.removeAbominationDroplet(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.bombardProjectiles.length;){
+		if(!updateBombardProjectile(effects.bombardProjectiles[i],state)){
+			effects.removeBombardProjectile(i);
 			continue;
 		}
 		i++;

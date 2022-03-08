@@ -609,6 +609,17 @@ struct Renderer(B){
 		auto frames=typeof(return).createMeshes();
 		return SacAbominationProjectile!B(texture,mat,frames);
 	}
+	SacBombardProjectile!B bombardProjectile;
+	SacBombardProjectile!B createBombardProjectile(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Additive;
+		mat.energy=20.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacBombardProjectile!B(texture,mat,frames);
+	}
 	void createEffects(){
 		sacCommandCone=new SacCommandCone!B();
 		sacDebris=new SacObject!B("extracted/models/MODL.WAD!/bold.MRMC/bold.MRMM");
@@ -660,6 +671,7 @@ struct Renderer(B){
 		demonicRiftEffect=createDemonicRiftEffect();
 		mutantProjectile=createMutantProjectile();
 		abominationProjectile=createAbominationProjectile();
+		bombardProjectile=createBombardProjectile();
 	}
 
 	void initialize(){
@@ -2072,6 +2084,18 @@ struct Renderer(B){
 					auto mesh=sacParticle.getMesh(frame);
 					foreach(j;0..objects.abominationDroplets.length){
 						auto position=objects.abominationDroplets[j].position;
+						material.backend.setSpriteTransformation(position,rc);
+						mesh.render(rc);
+					}
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.bombardProjectiles.length){
+					auto material=self.bombardProjectile.material;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
+					foreach(j;0..objects.bombardProjectiles.length){
+						auto position=objects.bombardProjectiles[j].position;
+						auto frame=objects.bombardProjectiles[j].frame;
+						auto mesh=self.bombardProjectile.getFrame(frame%self.bombardProjectile.numFrames);
 						material.backend.setSpriteTransformation(position,rc);
 						mesh.render(rc);
 					}

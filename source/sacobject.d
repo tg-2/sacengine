@@ -2843,6 +2843,21 @@ struct SacAbominationProjectile(B){
 	}
 }
 
+struct SacBombardProjectile(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pyro.FLDR/txtr.FLDR/bbrd.TXTR"));
+	}
+	B.Material material;
+	B.Mesh[] frames;
+	enum animationDelay=2;
+	enum numFrames=16*updateAnimFactor*animationDelay;
+	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
+	static B.Mesh[] createMeshes(){
+		return makeSpriteMeshes!B(4,4,2.75f,2.75f);
+	}
+}
+
 struct SacTether(B){
 	B.Texture texture;
 	B.Material material;

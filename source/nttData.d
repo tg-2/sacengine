@@ -1143,6 +1143,7 @@ enum SpellTag:char[4]{
 
 	mutantShoot="babt",
 	abominationShoot="tugt",
+	bombardShoot="cfba",
 }
 
 enum WizardTag:char[4]{
