@@ -13,6 +13,7 @@ map=--map-list=maps-1v1.txt
 # map=--map-list=maps-5ffa.txt
 
 # map='maps/(2) Ferry.scp'
+# map='maps/(2) EM-Greed.scp'
 # map='maps/(2) WM-ColdKiss.scp'
 # map='maps/(2) TM-Chain of Being.scp'
 # map='maps/(2) TM-Glaciers.scp'
