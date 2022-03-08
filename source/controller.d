@@ -132,12 +132,12 @@ final class Controller(B){
 			state.commands.length=committedFrame+1;
 		assert(state.lastCommitted.frame<=firstUpdatedFrame);
 		while(state.lastCommitted.frame<committedFrame){
-			playAudio=firstUpdatedFrame<=state.lastCommitted.frame;
+			//playAudio=firstUpdatedFrame<=state.lastCommitted.frame;
 			state.stepCommittedUnsafe();
 			if(recording) recording.stepCommitted(state.lastCommitted);
 			if(network.isHost) network.addSynch(state.lastCommitted.frame,state.lastCommitted.hash);
 		}
-		playAudio=false;
+		//playAudio=false;
 		enforce(committedFrame==state.lastCommitted.frame,
 		        text(network.activePlayerIds," ",network.players.map!((ref p)=>p.committedFrame)," ",
 		             committedFrame," ",state.lastCommitted.frame));
