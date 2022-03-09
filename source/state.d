@@ -13940,7 +13940,7 @@ bool updateHaloRock(B)(ref HaloRock!B haloRock,Vector3f centerPosition,ObjectSta
 			auto newPosition=position+velocity/updateFPS;
 			position=newPosition;
 			if(distance.length<0.05f){
-				haloRock.haloRockExplosion(haloRock.target.id,state,isAbility);
+				haloRock.haloRockExplosion(target.id,state,isAbility);
 				return false;
 			}
 			haloRock.animateHaloRock(oldPosition,state);

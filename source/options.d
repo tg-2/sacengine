@@ -46,8 +46,9 @@ struct Options{
 	bool _2v2=false;
 	bool _3v3=false;
 	bool mirrorMatch=false;
-	bool shuffleSlots=false;
+	bool shuffleSides=false;
 	bool shuffleTeams=false;
+	bool shuffleSlots=false;
 	bool randomWizards=false;
 	bool randomSpellbooks=false;
 	// just for testing:

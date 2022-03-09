@@ -18,6 +18,11 @@ GameInit!B gameInit(alias multiplayerSide,B,R)(R playerSettings,ref Options opti
 	if(options._2v2) enforce(numSlots>=4);
 	if(options._3v3) enforce(numSlots>=6);
 	gameInit.slots=new GameInit!B.Slot[](numSlots);
+	auto sides=iota(numSlots).map!(i=>multiplayerSide(i)).array;
+	if(options.shuffleSides){
+		import std.random: randomShuffle;
+		randomShuffle(sides);
+	}
 	auto teams=(-1).repeat(numSlots).array;
 	if(options.ffa||options._2v2||options._3v3){
 		int teamSize=1;
@@ -46,7 +51,7 @@ GameInit!B gameInit(alias multiplayerSide,B,R)(R playerSettings,ref Options opti
 			tag=cast(char[4])wizards[uniform!"[)"(0,$)];
 		}
 		auto name=settings.name;
-		auto side=multiplayerSide(settings.slot);
+		auto side=sides[settings.slot];
 		auto level=settings.level;
 		auto souls=settings.souls;
 		float experience=0.0f;
