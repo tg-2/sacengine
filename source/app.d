@@ -555,6 +555,8 @@ int run(string[] args){
 	foreach(arg;args){
 		if(arg.endsWith(".scp")||arg.endsWith(".HMAP")||arg.startsWith("export-speech:")){
 			options.map=arg;
+		}else if(arg.endsWith(".rcp")){
+			options.playbackFilename=arg;
 		}
 	}
 	if(options.map==""&&!options.noMap){
