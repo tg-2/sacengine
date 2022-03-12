@@ -840,7 +840,8 @@ final class SacScene: Scene{
 				foreach(key;KEY_1..KEY_0+1){
 					if(keyDown[key]){
 						int slot=key==KEY_0?9:key-KEY_1;
-						int wizard=0<=slot && slot<state.slots.length?state.slots[slot].wizard:0;
+						int wizard=0<=slot&&slot<state.slots.length?state.slots[slot].wizard:0;
+						renderSide=wizard==0?-1:state.slots[slot].controlledSide;
 						focusCamera(wizard);
 					}
 				}
