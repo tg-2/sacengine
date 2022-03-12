@@ -279,17 +279,24 @@ final class SacScene: Scene{
 	}
 	MovementState targetMovementState;
 	void focusCamera(int target){
-		fpview.active=false;
-		mouse.visible=true;
 		camera.target=target;
 		targetMovementState=MovementState.init;
-		if(!target) return;
-		import std.typecons;
+		if(!target){
+			fpview.active=true;
+			mouse.visible=false;
+			return;
+		}
 		alias Tuple=std.typecons.Tuple;
 		auto size=state.current.movingObjectById!((obj){
-			auto hitbox=obj.relativeHitbox;
+			import animations:AnimationState;
+			auto hitbox=obj.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
 			return hitbox[1]-hitbox[0];
-		},function Vector3f(){ assert(0); })(target);
+		},()=>Vector3f.init)(target);
+		if(isNaN(size.x)){ camera.target=0; return; }
+		if(!mouse.visible) camera.pitch=-90.0f;
+		fpview.active=false;
+		mouse.visible=true;
+		import std.typecons;
 		auto width=size.x,depth=size.y,height=size.z;
 		height=max(height,1.5f);
 		camera.distance=0.6f+2.32f*height;
@@ -814,7 +821,7 @@ final class SacScene: Scene{
 			if(state) camera.position.z=max(camera.position.z, state.current.getHeight(camera.position));
 		}
 		positionCamera();
-		if(options.observer||options.debugHotkeys){
+		if(options.observer||options.debugHotkeys||!controller||controller.controlledSide==-1){
 			if(!eventManager.keyPressed[KEY_LSHIFT] && !eventManager.keyPressed[KEY_LCTRL] && !eventManager.keyPressed[KEY_CAPSLOCK]){
 				if(state) foreach(_;0..keyDown[KEY_M]){
 					if(mouse.target.type==TargetType.creature&&mouse.target.id){
@@ -826,23 +833,33 @@ final class SacScene: Scene{
 					renderSide=-1;
 					camera.target=0;
 				}
-				if(keyDown[KEY_K]){
+				void showMouse(){
 					fpview.active=false;
 					mouse.visible=true;
 					if(!state) SDL_ShowCursor(SDL_ENABLE);
 				}
-				if(keyDown[KEY_L]){
+				void hideMouse(){
 					fpview.active=true;
 					mouse.visible=false;
 					fpview.mouseFactor=0.25f;
 					if(!state) SDL_ShowCursor(SDL_DISABLE);
 				}
-				foreach(key;KEY_1..KEY_0+1){
-					if(keyDown[key]){
+				void toggleMouse(){
+					if(mouse.visible) hideMouse();
+					else showMouse();
+				}
+				if(keyDown[KEY_K]) showMouse();
+				if(keyDown[KEY_L]) hideMouse();
+				if(state&&(options.observer||!controller||controller.controlledSide==-1)) foreach(key;KEY_1..KEY_0+1){
+					foreach(_;0..keyDown[key]){
 						int slot=key==KEY_0?9:key-KEY_1;
 						int wizard=0<=slot&&slot<state.slots.length?state.slots[slot].wizard:0;
+						if(camera.target==wizard){
+							if(wizard==0) toggleMouse();
+							wizard=0;
+						}
 						renderSide=wizard==0?-1:state.slots[slot].controlledSide;
-						focusCamera(wizard);
+						if(camera.target!=wizard) focusCamera(wizard);
 					}
 				}
 			}
@@ -963,7 +980,7 @@ final class SacScene: Scene{
 		assert(dt==1.0f/updateFPS);
 		//writeln(DagonBackend.getTotalGPUMemory()," ",DagonBackend.getAvailableGPUMemory());
 		//writeln(eventManager.fps);
-		if(options.observer||camera.target==0||!controller||!controller.network) observerControl(dt);
+		if(options.observer||camera.target==0||!controller||!controller.network||controller.controlledSide==-1) observerControl(dt);
 		if(state&&!controller.network&&options.playbackFilename=="") stateTestControl();
 		control(dt);
 		cameraControl(dt);
