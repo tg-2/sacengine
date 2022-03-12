@@ -135,16 +135,16 @@ final class SacScene: Scene{
 	}
 	bool selectAbility(SacSpell!DagonBackend newAbility,CommandQueueing queueing,bool playAudio=true){
 		if(renderSide==-1) return false;
-		if(mouse.status==MouseStatus.icon){
-			if(mouse.icon==MouseIcon.ability&&mouse.spell is newAbility) return false;
-			if(playAudio&&audio) audio.playSound("kabI");
-		}
 		auto status=state.current.abilityStatus!true(renderSide,newAbility);
 		if(status!=SpellStatus.ready){
 			if(playAudio) spellAdvisorHelpSpeech(status);
 			return false;
 		}
 		if(newAbility.requiresTarget){
+			if(mouse.status==MouseStatus.icon){
+				if(mouse.icon==MouseIcon.ability&&mouse.spell is newAbility) return false;
+				if(playAudio&&audio) audio.playSound("kabI");
+			}
 			import std.random:uniform; // TODO: put selected spells in game state?
 			auto whichClick=uniform(0,2);
 			if(playAudio&&audio) audio.playSound(commandAppliedSoundTags[whichClick]);
@@ -153,7 +153,6 @@ final class SacScene: Scene{
 			mouse.spell=newAbility;
 			return true;
 		}else{
-			mouse.status=MouseStatus.standard;
 			return useAbility(newAbility,Target.init,queueing);
 		}
 	}
