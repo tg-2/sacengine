@@ -14005,21 +14005,22 @@ bool updateHaloOfEarth(B)(ref HaloOfEarth!B haloOfEarth,ObjectState!B state){
 				i=max(i,numDespawned);
 			}else{
 				if(!rocks[i].target.id){
-					static bool callback(int target,HaloRock!B[] rocks,int i,ObjectState!B state,bool isAbility){
-						if(rocks.any!((ref rock)=>rock.target.id==target)) return false;
+					static bool filter(ref CenterProximityEntry entry,ObjectState!B state,HaloRock!B[] rocks,int i,bool isAbility){
+						if(rocks.any!((ref rock)=>rock.target.id==entry.id)) return false;
 						return state.movingObjectById!((ref obj,rocks,i,state,isAbility){
 							if(state.sides.getStance(rocks[i].side,obj.side)==Stance.ally) return false;
 							if(!obj.isValidAttackTarget(state)) return false;
 							auto position=obj.center;
-							if(!state.hasHitboxLineOfSightTo(scaleBox(haloRockHitbox,1.25f),rocks[i].position,position,0,target)) return false;
+							if(!state.hasHitboxLineOfSightTo(scaleBox(haloRockHitbox,1.25f),rocks[i].position,position,0,obj.id)) return false;
 							//if(!state.hasLineOfSightTo(rocks[i].position,position,0,target)) return false;
-							if(isAbility) playSpellSoundTypeAt(SoundType.fireball,position,state,haloOfEarthGain);
-							else playSoundAt("olah",rocks[i].position,state,haloOfEarthGain);
-							rocks[i].target=OrderTarget(TargetType.creature,obj.id,position);
-							return false;
-						},()=>false)(target,rocks,i,state,isAbility);
+							return true;
+						},()=>false)(entry.id,rocks,i,state,isAbility);
 					}
-					dealSplashSpellDamageAt!callback(0,spell,spell.effectRange,wizard,side,rocks[i].position,DamageMod.none,state,rocks[numDespawned..numSpawned],i-numDespawned,state,isAbility);
+					if(int target=state.proximity.closestNonAllyInRange!filter(side,rocks[i].position,spell.effectRange,EnemyType.creature,state,float.infinity,state,rocks[numDespawned..numSpawned],i-numDespawned,isAbility)){
+						if(isAbility) playSpellSoundTypeAt(SoundType.fireball,rocks[i].position,state,haloOfEarthGain);
+						else playSoundAt("olah",rocks[i].position,state,haloOfEarthGain);
+						rocks[i].target=centerTarget(target,state);
+					}
 				}
 				i++;
 			}
