@@ -596,7 +596,7 @@ int run(string[] args){
 		string anim="";
 		if(i+1<args.length&&args[i+1].endsWith(".SXSK"))
 			anim=args[i+1];
-		if(!(args[i].endsWith(".scp")||args[i].endsWith(".HMAP"))){
+		if(!(args[i].endsWith(".scp")||args[i].endsWith(".rcp")||args[i].endsWith(".HMAP"))){
 			auto sac=new SacObject!B(args[i],float.nan,anim);
 			auto position=Vector3f(1270.0f, 1270.0f, 0.0f);
 			if(B.state && B.state.current.isOnGround(position))
