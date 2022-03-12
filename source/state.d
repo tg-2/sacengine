@@ -454,9 +454,24 @@ struct PositionPredictor{
 		auto velocity=updateFPS*(targetPosition-lastPosition);
 		lastPosition=targetPosition;
 		if(velocity==Vector3f(0.0f,0.0f,0.0f)) return targetPosition;
-		auto remainingSpeedSqr=projectileSpeed^^2-velocity.lengthsqr;
+		// predicted = targetPosition+t*velocity
+		// (predicted-position).length=t*projectileSpeed
+		// (predicted-position).lengthsqr=t^^2*projectileSpeed^^2
+		// (t*velocity+(targetPosition-position)).lengthsqr=t^^2*projectileSpeed^^2
+		auto direction=targetPosition-position;
+		// (t*velocity+direction).lengthsqr=t^^2*projectileSpeed
+		// dot(t*velocity+direction,t*velocity+direction)=t^^2*projectileSpeed^^2
+		// dot(velocity*velocity)*t^^2+2*dot(velocity,direction)*t+dot(direction,direction)=t^^2*projectileSpeed^^2
+		// (velocity.lengthsqr-projectileSpeed^^2)*t^^2+2*dot(velocity,direction)*t+direction.lengthsqr=0;
+		auto a=velocity.lengthsqr-projectileSpeed^^2, b=dot(velocity,direction), c=direction.lengthsqr;
+		auto disc=b^^2-a*c, sqdisc=disc>0.0f?sqrt(disc):0.0f; // TODO: what does original do if shooting is impossible?
+		auto t1=(-b-sqdisc)/a, t2=(-b+sqdisc)/a;
+		float timeToImpact=0.0f;
+		if(t1>=0.0f) timeToImpact=t1;
+		else if(t2>=0.0f) timeToImpact=t2;
+		/*auto remainingSpeedSqr=projectileSpeed^^2-velocity.lengthsqr;
 		if(remainingSpeedSqr<=0) return targetPosition; // TODO: what does original do here?
-		auto timeToImpact=sqrt((targetPosition-position).lengthsqr/remainingSpeedSqr);
+		auto timeToImpact=sqrt((targetPosition-position).lengthsqr/remainingSpeedSqr);*/
 		return targetPosition+velocity*timeToImpact;
 	}
 	Vector3f predictCenter(B)(Vector3f position,float projectileSpeed,ref OrderTarget target,ObjectState!B state){
