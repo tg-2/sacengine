@@ -283,6 +283,7 @@ final class SacScene: Scene{
 		mouse.visible=true;
 		camera.target=target;
 		targetMovementState=MovementState.init;
+		if(!target) return;
 		import std.typecons;
 		alias Tuple=std.typecons.Tuple;
 		auto size=state.current.movingObjectById!((obj){
@@ -835,6 +836,13 @@ final class SacScene: Scene{
 					mouse.visible=false;
 					fpview.mouseFactor=0.25f;
 					if(!state) SDL_ShowCursor(SDL_DISABLE);
+				}
+				foreach(key;KEY_1..KEY_0+1){
+					if(keyDown[key]){
+						int slot=key==KEY_0?9:key-KEY_1;
+						int wizard=0<=slot && slot<state.slots.length?state.slots[slot].wizard:0;
+						focusCamera(wizard);
+					}
 				}
 			}
 		}
