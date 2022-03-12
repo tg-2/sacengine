@@ -531,16 +531,16 @@ class PathFinder(B){
 	private static bool isFree(int x,int y,bool[][] edges){
 		if(x<=0||y<=0||x+1>=xlen||y+1>=ylen) return false;
 		int nx=x/2, ny=y/2;
-		if(!(x&1)&&!(y&1)) return !edges[ny][nx]&&!edges[ny][nx-1]&&!edges[ny-1][nx]&&!edges[ny][nx+1]&&!edges[ny+1][nx];
-		if((x&1)&&(y&1)) return !edges[ny][nx]&&!edges[ny][nx+1]&&!edges[ny+1][nx]&&!edges[ny+1][nx+1];
+		if(!(x&1)&&!(y&1)) return !edges[ny][nx]&&(!nx||!edges[ny][nx-1])&&(!ny||!edges[ny-1][nx])&&(nx+1>=256||!edges[ny][nx+1])&&(ny+1>=256||!edges[ny+1][nx]);
+		if((x&1)&&(y&1)) return !edges[ny][nx]&&(nx+1>=256||!edges[ny][nx+1])&&(ny+1>=256||!edges[ny+1][nx])&&(nx+1>=256||ny+1>=256||!edges[ny+1][nx+1]);
 		if(x&1&&!(y&1)){
-			if(edges[ny][nx]||edges[ny][nx+1]) return false;
-			if((!ny||edges[ny-1][nx])&&(!ny||edges[ny-1][nx+1])) return false;
-			if(edges[ny+1][nx]&&edges[ny+1][nx+1]) return false;
+			if(edges[ny][nx]||(nx+1>=256||edges[ny][nx+1])) return false;
+			if(!ny||edges[ny-1][nx]&&(nx+1>=256||edges[ny-1][nx+1])) return false;
+			if(ny+1>=256||edges[ny+1][nx]&&(nx+1>=256||edges[ny+1][nx+1])) return false;
 		}else{
-			if(edges[ny][nx]||edges[ny+1][nx]) return false;
-			if(edges[ny][nx-1]&&edges[ny+1][nx-1]) return false;
-			if(edges[ny][nx+1]&&(ny+1>=256||edges[ny+1][nx+1])) return false;
+			if(edges[ny][nx]||(ny+1>=256||edges[ny+1][nx])) return false;
+			if(!nx||edges[ny][nx-1]&&(ny+1>=256||edges[ny+1][nx-1])) return false;
+			if(nx+1>=256||edges[ny][nx+1]&&(ny+1>=256||edges[ny+1][nx+1])) return false;
 		}
 		return true;
 	}
