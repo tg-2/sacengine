@@ -243,7 +243,7 @@ final class Controller(B){
 			network.acceptingNewConnections=true;
 		}else committedFrame=currentFrame;
 		while(state.current.frame<currentFrame){
-			playAudio=firstUpdatedFrame<=state.current.frame;
+			//playAudio=firstUpdatedFrame<=state.current.frame;
 			state.step();
 		}
 		//state.simulateTo(currentFrame);
