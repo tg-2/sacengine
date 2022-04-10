@@ -8686,7 +8686,61 @@ bool hasAltar(B)(int side,ObjectState!B state){
 	return found;
 }
 
+
 bool destroyAltar(B)(ref StaticObject!B shrine,ObjectState!B state){
+	static struct AltarTags{
+		char[4] ring="\0\0\0\0";
+		char[4] shrine="\0\0\0\0";
+		char[4] pillar="\0\0\0\0";
+		char[4] stalk="\0\0\0\0";
+	}
+	static AltarTags getAltarTags(ref Building!B building,StaticObject!B* shrine,ObjectState!B state){
+		AltarTags r;
+		auto data=building.bldg;
+		assert(!!data);
+		r.shrine=data.components[0].tag;
+		if(data.components.length>=6){
+			r.pillar=data.components[1].tag;
+			enforce(data.components[1..5].all!((ref c)=>c.tag==r.pillar));
+			r.ring=data.components[5].tag;
+		}else r.ring=data.components[1].tag;
+		if(data.components.length>=10){
+			assert(data.components.length==10);
+			r.stalk=data.components[6].tag;
+			enforce(data.components[6..10].all!((ref c)=>c.tag==r.stalk));
+		}
+		return r;
+	}
+	static struct AltarIds{
+		int ring=0;
+		int shrine=0;
+		int[4] pillars=0;
+		int npillars=0;
+		int[4] stalks=0;
+		int nstalks=0;
+	}
+	static AltarIds getAltarIds(ref Building!B building,StaticObject!B* shrine,ObjectState!B state){
+		auto tags=getAltarTags(building,shrine,state);
+		AltarIds r;
+		foreach(id;building.componentIds){
+			auto tag=state.staticObjectById!((ref obj)=>obj.sacObject.tag,()=>cast(char[4])("\0\0\0\0"))(id);
+			if(tag=="\0\0\0\0") continue;
+			if(tag==tags.shrine && r.shrine==0){
+				assert(shrine.sacObject.tag==tags.shrine);
+				assert(id==shrine.id);
+				r.shrine=id;
+			}else if(tag==tags.ring && r.ring==0){
+				assert(r.ring==0);
+				r.ring=id;
+			}else if(tag==tags.pillar && r.npillars<4){
+				r.pillars[r.npillars++]=id;
+			}else if(tag==tags.stalk && r.nstalks<4){
+				r.stalks[r.nstalks++]=id;
+			}else assert(0,text("failed to assign altar component ",tag));
+		}
+		assert(building.componentIds.length==!!r.shrine+!!r.ring+r.npillars+r.nstalks);
+		return r;
+	}
 	static bool destroy(ref Building!B building,StaticObject!B* shrine,ObjectState!B state){
 		if(!isAltar(building)) return false;
 		if(building.flags&AdditionalBuildingFlags.inactive) return false;
@@ -8694,12 +8748,11 @@ bool destroyAltar(B)(ref StaticObject!B shrine,ObjectState!B state){
 		enforce(building.componentIds[0]==shrine.id);
 		enforce(building.componentIds.length>=2);
 		float shrineHeight=(*shrine).relativeHitbox[1].z;
-		int ring=building.componentIds.length>=6?building.componentIds[5]:building.componentIds[1];
-		int[4] pillars;
-		if(building.componentIds.length>=6) pillars[]=building.componentIds.data[1..5];
+		auto ids=getAltarIds(building,shrine,state);
+		int ring=ids.ring;
+		int[4] pillars=ids.pillars;
 		float pillarHeight=pillars[0]?state.staticObjectById!((ref pillar,state)=>pillar.relativeHitbox[1].z,()=>0.0f)(pillars[0],state):0.0f;
-		int[4] stalks;
-		if(building.componentIds.length>=10) stalks[]=building.componentIds.data[6..10];
+		int[4] stalks=ids.stalks;
 		float stalkHeight=stalks[0]?state.staticObjectById!((ref pillar,state)=>pillar.relativeHitbox[1].z,()=>0.0f)(stalks[0],state):0.0f;
 		state.addEffect(AltarDestruction(ring,shrine.position,Quaternionf.identity(),Quaternionf.identity(),shrine.id,shrineHeight,pillars,pillarHeight,stalks,stalkHeight));
 		return true;
@@ -19951,6 +20004,7 @@ final class GameState(B){
 		import nttData;
 		auto data=ntt.tag in bldgs;
 		enforce(!!data);
+		enforce(!data.isAltar||data.components.length<=10);
 		auto flags=ntt.flags&~Flags.damaged&~ntt.flags.destroyed;
 		auto facing=2*pi!float/360.0f*ntt.facing;
 		auto buildingId=current.addObject(Building!B(data,ntt.side,flags,facing));
