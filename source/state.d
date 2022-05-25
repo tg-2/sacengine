@@ -4828,11 +4828,31 @@ auto eachParticles(alias f,B,T...)(ref Objects!(B,RenderMode.opaque) objects,T a
 auto eachCommandCones(alias f,B,T...)(ref Objects!(B,RenderMode.opaque) objects,T args){
 	f(objects.commandCones,args);
 }
-auto eachByType(alias f,bool movingFirst=true,bool particlesBeforeEffects=false,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T args){
+enum EachByTypeFlags{
+	none=0,
+	movingFirst=1,
+	particlesBeforeEffects=2,
+	wizardsLast=4,
+}
+auto eachByType(alias f,EachByTypeFlags flags,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T args){
 	with(objects){
-		static if(movingFirst)
-			foreach(ref movingObject;movingObjects)
-				f(movingObject,args);
+		enum movingFirst=!!(flags&EachByTypeFlags.movingFirst);
+		enum particlesBeforeEffects=!!(flags&EachByTypeFlags.particlesBeforeEffects);
+		enum wizardsLast=!!(flags&EachByTypeFlags.wizardsLast);
+		enum processMoving=q{
+			static if(wizardsLast){
+				foreach(ref movingObject;movingObjects)
+					if(!movingObject.sacObject.isWizard)
+						f(movingObject,args);
+				foreach(ref movingObject;movingObjects)
+					if(movingObject.sacObject.isWizard)
+						f(movingObject,args);
+			}else{
+				foreach(ref movingObject;movingObjects)
+					f(movingObject,args);
+			}
+		};
+		static if(movingFirst) mixin(processMoving);
 		foreach(ref staticObject;staticObjects)
 			f(staticObject,args);
 		static if(mode == RenderMode.opaque){
@@ -4850,9 +4870,7 @@ auto eachByType(alias f,bool movingFirst=true,bool particlesBeforeEffects=false,
 			static if(particlesBeforeEffects) f(effects,args);
 			f(commandCones,args);
 		}
-		static if(!movingFirst)
-			foreach(ref movingObject;movingObjects)
-				f(movingObject,args);
+		static if(!movingFirst) mixin(processMoving);
 	}
 }
 auto eachMovingOf(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,SacObject!B sacObject,T args){
@@ -5024,10 +5042,10 @@ auto eachParticles(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
 auto eachCommandCones(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
 	with(objectManager) opaqueObjects.eachCommandCones!f(args);
 }
-auto eachByType(alias f,bool movingFirst=true,bool particlesBeforeEffects=false,B,T...)(ref ObjectManager!B objectManager,T args){
-	with(objectManager){
-		opaqueObjects.eachByType!(f,movingFirst,particlesBeforeEffects)(args);
-		transparentObjects.eachByType!(f,movingFirst,particlesBeforeEffects)(args);
+auto eachByType(alias f,EachByTypeFlags flags,bool particlesBeforeEffects=false,B,T...)(ref ObjectManager!B objectManager,T args){
+	with(objectManager){ // TODO: interleave opaque and transparent objects according to flags
+		opaqueObjects.eachByType!(f,flags)(args);
+		transparentObjects.eachByType!(f,flags)(args);
 	}
 }
 auto eachMovingOf(alias f,B,T...)(ref ObjectManager!B objectManager,SacObject!B sacObject,T args){
@@ -6844,7 +6862,7 @@ int findClosestBuilding(B)(int side,Vector3f position,ObjectState!B state){
 		}
 	}
 	Result result;
-	state.eachByType!find(side,position,state,&result);
+	state.eachByType!(find,EachByTypeFlags.none)(side,position,state,&result);
 	return result.currentId;
 }
 
@@ -8682,7 +8700,7 @@ bool hasAltar(B)(int side,ObjectState!B state){
 		}
 	}
 	bool found=false;
-	state.eachByType!find(side,state,&found);
+	state.eachByType!(find,EachByTypeFlags.none)(side,state,&found);
 	return found;
 }
 
@@ -8773,7 +8791,7 @@ void destroyAltars(B)(int side,ObjectState!B state){
 			}
 		}
 	}
-	state.eachByType!destroy(side,state);
+	state.eachByType!(destroy,EachByTypeFlags.none)(side,state);
 }
 
 void lose(B)(int side,ObjectState!B state){
@@ -17910,7 +17928,7 @@ int[4] findClosestBuildings(B)(int side,Vector3f position,ObjectState!B state){ 
 	}
 	auto componentId=state.pathFinder.getComponentId(position,state);
 	Result result;
-	state.eachByType!find(side,position,componentId,state,&result);
+	state.eachByType!(find,EachByTypeFlags.none)(side,position,componentId,state,&result);
 	return result.currentIds;
 }
 
@@ -18776,7 +18794,7 @@ final class ObjectState(B){ // (update logic)
 	void update(Command!B[] frameCommands){
 		frame+=1;
 		proximity.start();
-		this.eachByType!(addToProximity,false)(this);
+		this.eachByType!(addToProximity,EachByTypeFlags.none)(this);
 		this.eachEffects!updateEffects(this);
 		this.eachParticles!updateParticles(this);
 		this.eachCommandCones!updateCommandCones(this);
@@ -19138,8 +19156,8 @@ auto eachParticles(alias f,B,T...)(ObjectState!B objectState,T args){
 auto eachCommandCones(alias f,B,T...)(ObjectState!B objectState,T args){
 	return objectState.obj.eachCommandCones!f(args);
 }
-auto eachByType(alias f,bool movingFirst=true,bool particlesBeforeEffects=false,B,T...)(ObjectState!B objectState,T args){
-	return objectState.obj.eachByType!(f,movingFirst,particlesBeforeEffects)(args);
+auto eachByType(alias f,EachByTypeFlags flags,B,T...)(ObjectState!B objectState,T args){
+	return objectState.obj.eachByType!(f,flags)(args);
 }
 auto eachMovingOf(alias f,B,T...)(ObjectState!B objectState,SacObject!B sacObject,T args){
 	return objectState.obj.eachMovingOf!f(sacObject,args);

@@ -2327,7 +2327,7 @@ struct Renderer(B){
 				}
 			}else static assert(0);
 		}
-		state.eachByType!(render,true,true)(&this,options.enableWidgets,state,&info,rc);
+		state.eachByType!(render,EachByTypeFlags.movingFirst|EachByTypeFlags.particlesBeforeEffects)(&this,options.enableWidgets,state,&info,rc);
 	}
 
 	bool selectionUpdated=false;
@@ -2500,7 +2500,7 @@ struct Renderer(B){
 			hitboxMaterial.diffuse=Color4f(1.0f,1.0f,1.0f,1.0f);
 		}
 		hitboxMaterial.bind(rc); scope(exit) hitboxMaterial.unbind(rc);
-		state.eachByType!render(&this,state,&info,rc);
+		state.eachByType!(render,EachByTypeFlags.none)(&this,state,&info,rc);
 	}
 
 	void renderFrame(Vector2f position,Vector2f size,Color4f color,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
@@ -2975,7 +2975,7 @@ struct Renderer(B){
 				// do nothing
 			}else static assert(0);
 		}
-		state.eachByType!render(minimapFactor,minimapCenter,mapCenter,radius,mapRotation,&this,state,&info,rc);
+		state.eachByType!(render,EachByTypeFlags.movingFirst|EachByTypeFlags.wizardsLast)(minimapFactor,minimapCenter,mapCenter,radius,mapRotation,&this,state,&info,rc);
 		static void renderArrow(T)(T object,float minimapFactor,Vector3f minimapCenter,Vector3f mapCenter,float radius,Quaternionf mapRotation,Renderer!B* self,ObjectState!B state,RenderInfo!B* info,B.RenderContext rc){ // TODO: why does this need to be static? DMD bug?
 			static if(is(typeof(object.sacObject))&&!is(T==FixedObjects!B)){
 				auto sacObject=object.sacObject;
