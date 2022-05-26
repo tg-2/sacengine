@@ -55,6 +55,7 @@ struct Options{
 	bool enableReadFromWads=true;
 	int replicateCreatures=1;
 	int protectManafounts=0;
+	bool terrainSineWave=false;
 	int delayStart=0;
 	// multiplayer
 	bool host=false;

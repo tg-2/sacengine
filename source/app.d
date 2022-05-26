@@ -107,6 +107,7 @@ GameInit!B gameInit(alias multiplayerSide,B,R)(R playerSettings,ref Options opti
 	}
 	gameInit.replicateCreatures=options.replicateCreatures;
 	gameInit.protectManafounts=options.protectManafounts;
+	gameInit.terrainSineWave=options.terrainSineWave;
 	return gameInit;
 }
 

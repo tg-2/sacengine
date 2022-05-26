@@ -19989,6 +19989,7 @@ struct GameInit(B){
 	StanceSetting[] stanceSettings;
 	int replicateCreatures=1;
 	int protectManafounts=0;
+	bool terrainSineWave=false;
 }
 
 bool playAudio=true;
@@ -20149,6 +20150,7 @@ final class GameState(B){
 				}
 			})(current);
 		}
+		if(gameInit.terrainSineWave) current.addEffect(TestDisplacement());
 		slots.length=gameInit.slots.length;
 		slots.data[]=SlotInfo.init;
 		Array!int slotForWiz;
