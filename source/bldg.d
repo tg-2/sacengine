@@ -27,10 +27,11 @@ struct BldgComponent{
 	char[4] tag;
 	char[4] unknown0;
 	char[4] destroyed;
-	float unknown1;
+	char[4] unknown1;
 	float x,y,z;
 	float facing;
-	ubyte[8] unknown2;
+	char[4] spell;
+	char[4] unknown2;
 	char[4] destruction;
 }
 static assert(BldgComponent.sizeof==48);
