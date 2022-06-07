@@ -176,6 +176,14 @@ bool canBePetrified(CreatureMode mode){
 		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return false;
 	}
 }
+bool canCarryHaloOfEarth(CreatureMode mode){
+	final switch(mode) with(CreatureMode){
+		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
+			shooting,usingAbility,pulling,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
+		case dying,dead,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
+		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return false;
+	}
+}
 bool canShield(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
@@ -14067,7 +14075,11 @@ void despawnHaloOfEarth(B)(ref HaloOfEarth!B haloOfEarth,ObjectState!B state){
 enum haloOfEarthGain=2.0f;
 bool updateHaloOfEarth(B)(ref HaloOfEarth!B haloOfEarth,ObjectState!B state){
 	with(haloOfEarth){
-		auto center=state.movingObjectById!(haloRockCenterPosition,()=>Vector3f.init)(wizard,state);
+		auto center=state.movingObjectById!((ref obj,ObjectState!B state){
+			if(!obj.creatureState.mode.canCarryHaloOfEarth)
+				return Vector3f.init;
+			return obj.haloRockCenterPosition(state);
+		},()=>Vector3f.init)(wizard,state);
 		if(!isNaN(center.x)) while(numSpawned<numRocks) haloOfEarth.spawnHaloRock(state);
 		else haloOfEarth.despawnHaloOfEarth(state);
 		for(int i=numDespawned;i<numSpawned;){
