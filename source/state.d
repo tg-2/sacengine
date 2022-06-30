@@ -15152,7 +15152,6 @@ void scarabProjectileHit(B)(ref ScarabProjectile!B scarabProjectile,int target,O
 	Vector3f[2] hitbox;
 	if(state.isValidTarget(target,TargetType.creature)){
 		hitbox=state.movingObjectById!(.hitbox,()=>typeof(hitbox).init)(target);
-		heal(target,scarabProjectile.rangedAttack,state);
 	}else if(state.isValidTarget(target,TargetType.building)){
 		hitbox=state.staticObjectById!(.hitbox,()=>typeof(hitbox).init)(target);
 	}else{
@@ -15164,7 +15163,7 @@ void scarabProjectileHit(B)(ref ScarabProjectile!B scarabProjectile,int target,O
 			heal(target,rangedAttack,state);
 		return false;
 	}
-	with(scarabProjectile) dealSplashSpellDamageAt!callback(target,rangedAttack,rangedAttack.effectRange,attacker,side,position,DamageMod.none,state,side,rangedAttack,state);
+	with(scarabProjectile) dealSplashSpellDamageAt!callback(-1,rangedAttack,rangedAttack.effectRange,attacker,side,position,DamageMod.none,state,side,rangedAttack,state);
 	scarabProjectile.animateScarabProjectileHit(hitbox,state);
 }
 
