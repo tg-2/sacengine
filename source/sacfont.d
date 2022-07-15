@@ -42,11 +42,14 @@ class SacFont(B){
 			if(rightMost==0) rightMost=1;
 			letter.width=rightMost+1;
 			letter.height=letterHeight-1;
-			if(type==FontType.fndb){
-				widthSlack=0.5f;
-				lineHeight=8; // TODO: ok?
-			}
 			letter.mesh=B.makeSubQuad(float(u-widthSlack)/width,float(v+0.5f)/height,float(u+letter.width+widthSlack)/width,float(v+letterHeight-0.5f)/height);
+		}
+		if(type==FontType.fndb){
+			widthSlack=0.5f;
+			lineHeight=8; // TODO: ok?
+		}else if(type==FontType.fnwt){
+			// widthSlack?
+			lineHeight=11;
 		}
 	}
 	static SacFont!B[FontType.max+1] fonts;
@@ -96,25 +99,26 @@ Vector2f getSize(B)(SacFont!B font,const(char)[] text,FormatSettings settings){ 
 	with(font) with(settings){
 		float cX=0.0f, cY=0.0f;
 		auto ptext=text;
-		size_t lastSpace=0;
+		size_t writePos=0;
 		float width=0.0f;
+		void lineBreak(){
+			cY+=scale*font.lineHeight;
+			cX=0.0f;
+			if(text[writePos].among(' ','\n')) writePos++;
+		}
 		for(;;){
-			if(!ptext.length||ptext[0]==' '){
+			if(!ptext.length||ptext[0].among(' ','\n')){
 				auto cur=text.length-ptext.length;
-				auto word=text[lastSpace..cur];
-				auto spaceWordWidth=scale*font.getTextWidth(text[lastSpace..cur]);
-				auto writePos=lastSpace;
-				if(cX+spaceWordWidth>maxWidth){
-					cY+=scale*font.lineHeight;
-					cX=0.0f;
-					if(text[lastSpace]==' ') writePos++;
-				}
+				auto word=text[writePos..cur];
+				auto spaceWordWidth=scale*font.getTextWidth(text[writePos..cur]);
+				if(cX+spaceWordWidth>maxWidth) lineBreak();
 				cX+=scale*font.getTextWidth(text[writePos..cur]);
+				writePos=cur;
 				width=max(width,cX);
-				lastSpace=cur;
+				if(ptext.length&&ptext[0]=='\n') lineBreak();
 			}
 			if(!ptext.length) break;
-			ptext=ptext[1..$];		
+			ptext=ptext[1..$];
 		}
 		return Vector2f(width,cY+scale*font.lineHeight);
 	}
@@ -125,20 +129,21 @@ void write(alias draw,B)(SacFont!B font,const(char)[] text,float left,float top,
 	with(font) with(settings){
 		float cX=left, cY=top;
 		auto ptext=text;
-		size_t lastSpace=0;
+		size_t writePos=0;
+		void lineBreak(){
+			cY+=scale*font.lineHeight;
+			cX=left;
+			if(text[writePos].among(' ','\n')) writePos++;
+		}
 		for(;;){
-			if(!ptext.length||ptext[0]==' '){
+			if(!ptext.length||ptext[0].among(' ','\n')){
 				auto cur=text.length-ptext.length;
-				auto word=text[lastSpace..cur];
-				auto spaceWordWidth=scale*font.getTextWidth(text[lastSpace..cur]);
-				auto writePos=lastSpace;
-				if(cX+spaceWordWidth>maxWidth){
-					cY+=scale*font.lineHeight;
-					cX=left;
-					if(text[lastSpace]==' ') writePos++;
-				}
+				auto word=text[writePos..cur];
+				auto spaceWordWidth=scale*font.getTextWidth(text[writePos..cur]);
+				if(cX+spaceWordWidth>maxWidth) lineBreak();
 				cX+=font.rawWrite!draw(text[writePos..cur],cX,cY,scale);
-				lastSpace=cur;
+				writePos=cur;
+				if(ptext.length&&ptext[0]=='\n') lineBreak();
 			}
 			if(!ptext.length) break;
 			ptext=ptext[1..$];

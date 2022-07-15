@@ -635,14 +635,13 @@ final class SacScene: Scene{
 					case MouseStatus.standard:
 						if(mouse.target.type==TargetType.creature&&canSelect(renderSide,mouse.target.id,state.current)){
 							auto type=mouse.additiveSelect?CommandType.toggleSelection:CommandType.select;
-							enum doubleClickDelay=0.3f; // in seconds
-							enum delta=targetCacheDelta;
+							auto delta=mouse.targetCacheDelta;
 							if(ctrl){
 								type=CommandType.selectAll;
 							}else if(type==CommandType.select&&(lastSelectedId==mouse.target.id||
 							                              abs(lastSelectedX-mouse.x)<delta &&
 							                              abs(lastSelectedY-mouse.y)<delta) &&
-							         state.current.frame-lastSelectedFrame<=doubleClickDelay*updateFPS){
+							         state.current.frame-lastSelectedFrame<=mouse.doubleClickDelay*updateFPS){
 								type=CommandType.automaticSelectAll;
 							}
 							controller.addCommand(Command!DagonBackend(type,renderSide,camera.target,mouse.target.id,Target.init,cameraFacing));
@@ -1065,36 +1064,38 @@ final class SacScene: Scene{
 			return Target(TargetType.soul,id,cur.soulById!((soul)=>soul.position,function Vector3f(){ assert(0); })(id),TargetLocation.scene);
 		}else return Target.init;
 	}
-	Target cachedTarget;
-	float cachedTargetX,cachedTargetY;
-	int cachedTargetFrame;
-	enum targetCacheDelta=10.0f;
-	enum minimapTargetCacheDelta=2.0f;
-	enum targetCacheDuration=0.6f*updateFPS;
 	void updateMouseTarget(){
 		auto target=computeMouseTarget();
 		if(target.id!=0&&!state.current.isValidTarget(target.id,target.type)) target=Target.init;
 		auto targetValid=mouseTargetValid(target);
 		static immutable importantTargets=[TargetType.creature,TargetType.soul];
-		if(cachedTarget.id!=0&&!state.current.isValidTarget(cachedTarget.id,cachedTarget.type)) cachedTarget=Target.init;
+		if(mouse.cachedTarget.id!=0&&!state.current.isValidTarget(mouse.cachedTarget.id,mouse.cachedTarget.type)) mouse.cachedTarget=Target.init;
 		if(target.location.among(TargetLocation.scene,TargetLocation.minimap)){
 			if(!importantTargets.canFind(target.type)&&!(target.location==TargetLocation.minimap&&target.type==TargetType.building)){
-				auto delta=cachedTarget.location!=TargetLocation.minimap?targetCacheDelta:minimapTargetCacheDelta;
-				if(cachedTarget.type!=TargetType.none){
-					if((mouse.inHitbox || abs(cachedTargetX-mouse.x)<delta &&
-					    abs(cachedTargetY-mouse.y)<delta)&&
-					   cachedTargetFrame+(mouse.inHitbox?2:1)*targetCacheDuration>state.current.frame){
-						target=cachedTarget;
+				auto delta=mouse.cachedTarget.location!=TargetLocation.minimap?mouse.targetCacheDelta:mouse.minimapTargetCacheDelta;
+				if(mouse.cachedTarget.type!=TargetType.none){
+					if((mouse.inHitbox || abs(mouse.cachedTargetX-mouse.x)<delta &&
+					    abs(mouse.cachedTargetY-mouse.y)<delta)&&
+					   mouse.cachedTargetFrame+(mouse.inHitbox?2:1)*mouse.targetCacheDuration>state.current.frame){
+						target=mouse.cachedTarget;
 						targetValid=mouseTargetValid(target);
-					}else cachedTarget=Target.init;
+					}else mouse.cachedTarget=Target.init;
 				}
 			}else if(targetValid){
-				cachedTarget=target;
-				cachedTargetX=mouse.x;
-				cachedTargetY=mouse.y;
-				cachedTargetFrame=state.current.frame;
+				mouse.cachedTarget=target;
+				mouse.cachedTargetX=mouse.x;
+				mouse.cachedTargetY=mouse.y;
+				mouse.cachedTargetFrame=state.current.frame;
 			}
 		}
+		static bool targetsEquiv(ref Target a,ref Target b){
+			return (a.type==b.type||
+			        a.type.among(TargetType.soulStat, TargetType.manaStat, TargetType.healthStat)
+			        && b.type.among(TargetType.soulStat, TargetType.manaStat, TargetType.healthStat))
+				&& a.id==b.id;
+		}
+		if(!targetsEquiv(mouse.target, target))
+			mouse.targetUpdateFrame=state.current.frame;
 		mouse.target=target;
 		if(mouse.target.type==TargetType.spell)
 			mouse.targetSpell=renderer.spellbookTargetSpell;

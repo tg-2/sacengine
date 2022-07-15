@@ -50,6 +50,15 @@ struct Mouse(B){
 	SacSpell!B targetSpell;
 	bool targetValid;
 	bool inHitbox=false;
+	int targetUpdateFrame=0;
+	enum mouseoverBoxDelay=0.5f*updateFPS;
+	enum doubleClickDelay=0.3f; // in seconds
+	Target cachedTarget;
+	float cachedTargetX,cachedTargetY;
+	int cachedTargetFrame;
+	enum targetCacheDelta=10.0f;
+	enum minimapTargetCacheDelta=2.0f;
+	enum targetCacheDuration=0.6f*updateFPS;
 	enum Location{
 		scene,
 		minimap,
@@ -3239,6 +3248,149 @@ struct Renderer(B){
 		}
 	}
 
+
+	void renderMouseoverBox(int cursorSize,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
+		auto target=info.mouse.target;
+		static bool requiresDelay(TargetType type){
+			final switch(type) with(TargetType){
+				case none,terrain,creatureTab,spellTab,structureTab,spell,ability: return false;
+				case creature,building,soul,soulStat,manaStat,healthStat: return true;
+			}
+		}
+		if(requiresDelay(target.type)&&info.mouse.targetUpdateFrame+info.mouse.mouseoverBoxDelay>state.frame)
+			return;
+		final switch(target.type){
+			case TargetType.none, TargetType.terrain: break;
+			case TargetType.creature, TargetType.building:
+				if(!target.id) break;
+				static struct NTTInfo{
+					bool valid=false;
+					B.Texture icon=null;
+					string name=null;
+					string sideName=null;
+					float relativeHealth;
+					int foesKilled=-1;
+					int foesGibbed=-1;
+					int level=-1;
+					float relativeXP;
+				}
+				auto getNTTInfo(int id){
+					static string getSideName(int side,ObjectState!B state){
+						if(auto wiz=state.getWizardForSide(side)){
+							if(wiz.name.length) return wiz.name;
+							return state.movingObjectById!((ref obj)=>obj.sacObject.name,()=>null)(wiz.id);
+						}
+						return null;
+					}
+					if(target.type==TargetType.creature){
+						return state.movingObjectById!((ref obj,renderSide){
+							auto icon=obj.sacObject.icon;
+							string name=obj.sacObject.name;
+							string sideName=null;
+							int level=-1;
+							float relativeHealth=obj.health/obj.creatureStats.maxHealth;
+							auto relativeXP=float.init;
+							if(obj.isWizard){
+								if(auto wiz=state.getWizard(obj.id)){
+									if(wiz.name.length) name=wiz.name;
+									level=wiz.level;
+									if(obj.side==renderSide)
+										relativeXP=0.0f; // TODO
+									sideName=null;
+								}
+							}else sideName=getSideName(obj.side,state);
+							auto foesKilled=-1; // TODO
+							auto foesGibbed=-1; // TODO
+							if(obj.side==renderSide){
+								foesKilled=0; // TODO
+								foesGibbed=0; // TODO
+							}
+							return NTTInfo(true,icon,name,sideName,relativeHealth,foesKilled,foesGibbed,level,relativeXP);
+						},()=>NTTInfo.init)(id,info.renderSide);
+					}else if(target.type==TargetType.building){
+						return state.staticObjectById!((ref obj,state){
+							return state.buildingById!((ref bldg,state){
+								B.Texture icon=null; // TODO: building icons
+								string name=null; // TODO: building names
+								string sideName=getSideName(bldg.side,state);
+								float relativeHealth=bldg.health/bldg.maxHealth(state);
+								return NTTInfo(true,icon,name,sideName,relativeHealth);
+							},()=>NTTInfo.init)(obj.buildingId,state);
+						},()=>NTTInfo.init)(id,state);
+					}else assert(0);
+				}
+				auto nttInfo=getNTTInfo(target.id);
+				bool renderHealth=!isNaN(nttInfo.relativeHealth);
+				bool renderXP=!isNaN(nttInfo.relativeXP);
+				auto hudScaling=info.hudScaling;
+				auto cursor=Vector3f(info.mouse.x, info.mouse.y, 0.0f);
+				auto boxScale=Vector3f(220*hudScaling,(renderXP?103:renderHealth?(nttInfo.icon?70:56):40)*hudScaling, 0.0f);
+				auto offset=Vector3f(cursorSize==-1?16*hudScaling:0.5f*cursorSize,(renderXP?-44:renderHealth?(nttInfo.icon?-27:-20):-12)*hudScaling, 0.0f);
+				if(info.mouse.x+offset.x+boxScale.x>info.width) offset.x=-boxScale.x;
+				auto upperLeft=cursor+offset;
+				B.colorHUDMaterialBackend.bind(null,rc);
+				B.colorHUDMaterialBackend.bindDiffuse(whiteTexture);
+				B.colorHUDMaterialBackend.setColor(Color4f(0.0f,0.0f,0.0f,0.68f));
+				B.colorHUDMaterialBackend.setTransformationScaled(upperLeft,Quaternionf.identity(),boxScale,rc);
+				quad.render(rc);
+				B.colorHUDMaterialBackend.setColor(Color4f(1.0f,1.0f,1.0f,1.0f));
+				if(nttInfo.icon){
+					B.colorHUDMaterialBackend.bindDiffuse(nttInfo.icon);
+					auto iconPos=upperLeft+Vector3f(3.0f*hudScaling,3.0f*hudScaling,0.0f);
+					auto iconScale=Vector3f(32*hudScaling,32.0f*hudScaling,0.0f);
+					B.colorHUDMaterialBackend.setTransformationScaled(iconPos,Quaternionf.identity(),iconScale,rc);
+					quad.render(rc);
+				}
+				B.colorHUDMaterialBackend.unbind(null,rc);
+				import sacfont;
+				auto font=SacFont!B.get(FontType.fnwt);
+				B.colorHUDMaterialBackend.bind(null,rc);
+				B.colorHUDMaterialBackend.bindDiffuse(font.texture);
+				char[4096] buffer='\0';
+				auto buf=buffer[];
+				// TODO: localization!
+				import std.format: formattedWrite;
+				if(nttInfo.sideName.length) buf.formattedWrite!"%s's %s"(nttInfo.sideName,nttInfo.name);
+				else buf.formattedWrite!"%s"(nttInfo.name);
+				if(nttInfo.level!=-1) buf.formattedWrite!"\nLevel %d"(nttInfo.level);
+				if(nttInfo.foesKilled!=-1) buf.formattedWrite!"\nFoes killed: %d"(nttInfo.foesKilled);
+				if(nttInfo.foesGibbed!=-1) buf.formattedWrite!"\nFoes gibbed: %d"(nttInfo.foesGibbed);
+				auto text=buffer[0..buf.ptr-buffer.ptr];
+				FormatSettings settings = {flowType:FlowType.left, scale:info.hudScaling};
+				auto infoPos=upperLeft+Vector3f((3.0f+32.0f+4.0f)*hudScaling,2.0f*hudScaling,0.0f);
+				void drawLetter(B.SubQuad mesh,float x,float y,float width,float height){
+					B.colorHUDMaterialBackend.setTransformationScaled(Vector3f(x,y,0.0f),Quaternionf.identity(),Vector3f(width,height,0.0f),rc);
+					mesh.render(rc);
+				}
+				font.write!drawLetter(text,infoPos.x,infoPos.y,settings);
+				if(renderXP){
+					// TODO: render "Experience:"
+					auto xpPos=upperLeft+Vector3f(9.0f*hudScaling,75.0f*hudScaling);
+					font.write!drawLetter("Experience:",xpPos.x,xpPos.y,settings);
+				}
+			case TargetType.soul:
+				// TODO: render mouseover text "Soul"
+				break;
+			case TargetType.creatureTab:
+				// TODO: render mouseover text "Creation spells"
+				break;
+			case TargetType.spellTab:
+				// TODO: render mouseover text "Spells"
+			case TargetType.structureTab:
+				// TODO: render mouseover text "Structure spells"
+			case TargetType.spell:
+				// TODO: render mouseover text "Spell name\nMana: needed/available[\nSouls: <n>]"
+			case TargetType.ability:
+				// TODO: render mouseover text "Ability name"
+			case TargetType.soulStat:
+				// TODO: render mouseover text "Soul counter"
+			case TargetType.manaStat:
+				// TODO: render mouseover text "Mana bar"
+			case TargetType.healthStat:
+				// TODO: render mouseover text "Health bar"
+		}
+	}
+
 	void renderText(ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
 		import sacfont;
 		auto font=SacFont!B.get(FontType.fn10);
@@ -3302,6 +3454,7 @@ struct Renderer(B){
 			renderText(state,info,rc);
 			renderRectangleSelectFrame(state,info,rc);
 			renderCursor(options.cursorSize,state,info,rc);
+			renderMouseoverBox(options.cursorSize,state,info,rc);
 		}
 	}
 }
