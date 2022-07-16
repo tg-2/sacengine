@@ -3314,12 +3314,15 @@ struct Renderer(B){
 								string name=null; // TODO: building names
 								string sideName=getSideName(bldg.side,state);
 								float relativeHealth=bldg.health/bldg.maxHealth(state);
+								if(isNaN(relativeHealth) && !(bldg.isAltar || bldg.isManafount))
+									return NTTInfo.init;
 								return NTTInfo(true,icon,name,sideName,relativeHealth);
 							},()=>NTTInfo.init)(obj.buildingId,state);
 						},()=>NTTInfo.init)(id,state);
 					}else assert(0);
 				}
 				auto nttInfo=getNTTInfo(target.id);
+				if(!nttInfo.valid) break;
 				bool renderHealth=!isNaN(nttInfo.relativeHealth);
 				bool renderXP=!isNaN(nttInfo.relativeXP);
 				auto hudScaling=info.hudScaling;
@@ -3364,10 +3367,10 @@ struct Renderer(B){
 				}
 				font.write!drawLetter(text,infoPos.x,infoPos.y,settings);
 				if(renderXP){
-					// TODO: render "Experience:"
 					auto xpPos=upperLeft+Vector3f(9.0f*hudScaling,75.0f*hudScaling);
 					font.write!drawLetter("Experience:",xpPos.x,xpPos.y,settings);
 				}
+				break;
 			case TargetType.soul:
 				// TODO: render mouseover text "Soul"
 				break;
