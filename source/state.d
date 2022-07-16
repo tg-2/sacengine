@@ -1195,7 +1195,7 @@ enum AdditionalBuildingFlags{
 	occupied=64, // TODO: make sure this doesn't clash with anything
 }
 struct Building(B){
-	immutable(Bldg)* bldg; // TODO: replace by SacBuilding class
+	SacBuilding!B sacBuilding;
 	int id=0;
 	int side;
 	Array!int componentIds;
@@ -1212,16 +1212,16 @@ struct Building(B){
 	enum splashRangedResistance=1.0f;
 	Array!int guardianIds;
 	mixin Assign;
-	this(immutable(Bldg)* bldg,int side,int flags,float facing){
-		this.bldg=bldg;
+	this(SacBuilding!B sacBuilding,int side,int flags,float facing){
+		this.sacBuilding=sacBuilding;
 		this.side=side;
 		this.flags=flags;
 		this.facing=facing;
-		this.health=bldg.maxHealth;
+		this.health=sacBuilding.maxHealth;
 	}
 }
 int maxHealth(B)(ref Building!B building,ObjectState!B state){
-	return building.bldg.maxHealth;
+	return building.sacBuilding.maxHealth;
 }
 Vector3f position(B)(ref Building!B building,ObjectState!B state){
 	return state.staticObjectById!((obj)=>obj.position,()=>Vector3f.init)(building.componentIds[0]);
@@ -1236,48 +1236,26 @@ float height(B)(ref Building!B building,ObjectState!B state){
 	}
 	return maxZ;
 }
-// TODO: the following functionality is duplicated in SacObject
-bool isManafount(immutable(Bldg)* bldg){ // TODO: store in SacBuilding class
-	return bldg.header.numComponents==1&&manafountTags.canFind(bldg.components[0].tag);
-}
 bool isManafount(B)(ref Building!B building){
-	return building.bldg.isManafount;
-}
-bool isManalith(immutable(Bldg)* bldg){ // TODO: store in SacBuilding class
-	return bldg.header.numComponents==1&&manalithTags.canFind(bldg.components[0].tag);
+	return building.sacBuilding.isManafount;
 }
 bool isManalith(B)(ref Building!B building){
-	return building.bldg.isManalith;
-}
-bool isShrine(immutable(Bldg)* bldg){ // TODO: store in SacBuilding class
-	return bldg.header.numComponents==1&&shrineTags.canFind(bldg.components[0].tag);
+	return building.sacBuilding.isManalith;
 }
 bool isShrine(B)(ref Building!B building){
-	return building.bldg.isShrine;
-}
-bool isAltar(immutable(Bldg)* bldg){ // TODO: store in SacBuilding class
-	return bldg.header.numComponents>=1&&altarBaseTags.canFind(bldg.components[0].tag);
+	return building.sacBuilding.isShrine;
 }
 bool isAltar(B)(ref Building!B building){
-	return building.bldg.isAltar;
-}
-bool isStratosAltar(immutable(Bldg)* bldg){ // TODO: store in SacBuilding class
-	return bldg.header.numComponents>=1&&bldg.components[0].tag=="tprc";
+	return building.sacBuilding.isAltar;
 }
 bool isStratosAltar(B)(ref Building!B building){
-	return building.bldg.isStratosAltar;
-}
-bool isEtherealAltar(immutable(Bldg)* bldg){ // TODO: store in SacBuilding class
-	return bldg.header.numComponents>=1&&bldg.components[0].tag=="b_ae";
+	return building.sacBuilding.isStratosAltar;
 }
 bool isEtherealAltar(B)(ref Building!B building){
-	return building.bldg.isEtherealAltar;
-}
-bool isPeasantShelter(immutable(Bldg)* bldg){
-	return !!(bldg.header.flags&BldgFlags.shelter)||bldg.isAltar;
+	return building.sacBuilding.isEtherealAltar;
 }
 bool isPeasantShelter(B)(ref Building!B building){
-	return building.bldg.isPeasantShelter;
+	return building.sacBuilding.isPeasantShelter;
 }
 
 void putOnManafount(B)(ref Building!B building,ref Building!B manafount,ObjectState!B state)in{
@@ -5621,19 +5599,19 @@ int spawn(T=Creature,B)(int wizard,char[4] tag,int flags,ObjectState!B state,boo
 int makeBuilding(B)(ref MovingObject!B caster,char[4] tag,int flags,int base,ObjectState!B state)in{
 	assert(base>0);
 }do{
-	auto data=tag in bldgs;
-	enforce(!!data&&!(data.flags&BldgFlags.ground));
+	auto sacBuilding=SacBuilding!B.get(tag);
+	enforce(!!sacBuilding&&!(sacBuilding.flags&BldgFlags.ground));
 	auto position=state.buildingById!(
 		(ref bldg,state)=>state.staticObjectById!(
 			(obj)=>obj.position,
 			function Vector3f(){ assert(0); })(bldg.componentIds[0]),
 		function Vector3f(){ assert(0); })(base,state);
 	float facing=0.0f; // TODO: ok?
-	auto buildingId=state.addObject(Building!B(data,caster.side,flags,facing));
+	auto buildingId=state.addObject(Building!B(sacBuilding,caster.side,flags,facing));
 	state.buildingById!((ref Building!B building){
 		if(flags&Flags.damaged) building.health/=10.0f;
 		if(flags&Flags.destroyed) building.health=0.0f;
-		foreach(ref component;data.components){
+		foreach(ref component;sacBuilding.components){
 			auto curObj=SacObject!B.getBLDG(flags&Flags.destroyed&&component.destroyed!="\0\0\0\0"?component.destroyed:component.tag);
 			auto offset=Vector3f(component.x,component.y,component.z);
 			offset=rotate(facingQuaternion(building.facing), offset);
@@ -5655,14 +5633,14 @@ int makeBuilding(B)(int casterId,char[4] tag,int flags,int base,ObjectState!B st
 }
 
 int makeBuilding(B)(int side,char[4] tag,Vector3f position,int flags,ObjectState!B state){
-	auto data=tag in bldgs;
-	enforce(!!data);
+	auto sacBuilding=SacBuilding!B.get(tag);
+	enforce(!!sacBuilding);
 	float facing=0.0f; // TODO: ok?
-	auto buildingId=state.addObject(Building!B(data,side,flags,facing));
+	auto buildingId=state.addObject(Building!B(sacBuilding,side,flags,facing));
 	state.buildingById!((ref Building!B building){
 		if(flags&Flags.damaged) building.health/=10.0f;
 		if(flags&Flags.destroyed) building.health=0.0f;
-		foreach(ref component;data.components){
+		foreach(ref component;sacBuilding.components){
 			auto curObj=SacObject!B.getBLDG(flags&Flags.destroyed&&component.destroyed!="\0\0\0\0"?component.destroyed:component.tag);
 			auto offset=Vector3f(component.x,component.y,component.z);
 			offset=rotate(facingQuaternion(building.facing), offset);
@@ -8722,18 +8700,18 @@ bool destroyAltar(B)(ref StaticObject!B shrine,ObjectState!B state){
 	}
 	static AltarTags getAltarTags(ref Building!B building,StaticObject!B* shrine,ObjectState!B state){
 		AltarTags r;
-		auto data=building.bldg;
-		assert(!!data);
-		r.shrine=data.components[0].tag;
-		if(data.components.length>=6){
-			r.pillar=data.components[1].tag;
-			enforce(data.components[1..5].all!((ref c)=>c.tag==r.pillar));
-			r.ring=data.components[5].tag;
-		}else r.ring=data.components[1].tag;
-		if(data.components.length>=10){
-			assert(data.components.length==10);
-			r.stalk=data.components[6].tag;
-			enforce(data.components[6..10].all!((ref c)=>c.tag==r.stalk));
+		auto sacBuilding=building.sacBuilding;
+		assert(!!sacBuilding);
+		r.shrine=sacBuilding.components[0].tag;
+		if(sacBuilding.components.length>=6){
+			r.pillar=sacBuilding.components[1].tag;
+			enforce(sacBuilding.components[1..5].all!((ref c)=>c.tag==r.pillar));
+			r.ring=sacBuilding.components[5].tag;
+		}else r.ring=sacBuilding.components[1].tag;
+		if(sacBuilding.components.length>=10){
+			assert(sacBuilding.components.length==10);
+			r.stalk=sacBuilding.components[6].tag;
+			enforce(sacBuilding.components[6..10].all!((ref c)=>c.tag==r.stalk));
 		}
 		return r;
 	}
@@ -10178,7 +10156,7 @@ bool updateBuildingDestruction(B)(ref BuildingDestruction buildingDestruction,Ob
 		int newLength=0;
 		foreach(i,id;building.componentIds.data){
 			state.removeLater(id);
-			auto destroyed=building.bldg.components[i].destroyed;
+			auto destroyed=building.sacBuilding.components[i].destroyed;
 			if(destroyed!="\0\0\0\0"){
 				auto destObj=SacObject!B.getBLDG(destroyed);
 				auto positionRotationScaleFlags=state.staticObjectById!((ref StaticObject!B object)=>tuple(object.position,object.rotation,object.scale,object.flags),()=>Tuple!(Vector3f,Quaternionf,float,int).init)(id);
@@ -10186,7 +10164,7 @@ bool updateBuildingDestruction(B)(ref BuildingDestruction buildingDestruction,Ob
 					building.componentIds[newLength++]=state.addObject(StaticObject!B(destObj,building.id,positionRotationScaleFlags.expand));
 			}
 			state.staticObjectById!((ref StaticObject!B object,state){
-				auto destruction=building.bldg.components[i].destruction;
+				auto destruction=building.sacBuilding.components[i].destruction;
 				destructionAnimation(destruction,object.center,state);
 			},(){})(id,state);
 		}
@@ -20032,12 +20010,12 @@ final class GameState(B){
 	}
 	void placeStructure(ref Structure ntt){
 		import nttData;
-		auto data=ntt.tag in bldgs;
-		enforce(!!data);
-		enforce(!data.isAltar||data.components.length<=10);
+		auto sacBuilding=SacBuilding!B.get(ntt.tag);
+		enforce(!!sacBuilding);
+		enforce(!sacBuilding.isAltar||sacBuilding.components.length<=10);
 		auto flags=ntt.flags&~Flags.damaged&~ntt.flags.destroyed;
 		auto facing=2*pi!float/360.0f*ntt.facing;
-		auto buildingId=current.addObject(Building!B(data,ntt.side,flags,facing));
+		auto buildingId=current.addObject(Building!B(sacBuilding,ntt.side,flags,facing));
 		assert(!!buildingId);
 		if(ntt.id !in current.triggers.objectIds) // e.g. for some reason, the two altars on ferry have the same id
 			current.triggers.associateId(ntt.id,buildingId);
@@ -20045,8 +20023,8 @@ final class GameState(B){
 		auto ci=cast(int)(position.x/10+0.5);
 		auto cj=cast(int)(position.y/10+0.5);
 		import bldg;
-		if(data.flags&BldgFlags.ground){
-			auto ground=data.ground;
+		if(sacBuilding.flags&BldgFlags.ground){
+			auto ground=sacBuilding.ground;
 			auto n=current.map.n,m=current.map.m;
 			foreach(j;max(0,cj-4)..min(n,cj+4)){
 				foreach(i;max(0,ci-4)..min(m,ci+4)){
@@ -20059,7 +20037,7 @@ final class GameState(B){
 		current.buildingById!((ref Building!B building){
 			if(ntt.flags&Flags.damaged) building.health/=10.0f;
 			if(ntt.flags&Flags.destroyed) building.health=0.0f;
-			foreach(ref component;data.components){
+			foreach(ref component;sacBuilding.components){
 				auto curObj=SacObject!B.getBLDG(ntt.flags&Flags.destroyed&&component.destroyed!="\0\0\0\0"?component.destroyed:component.tag);
 				auto offset=Vector3f(component.x,component.y,component.z);
 				offset=rotate(facingQuaternion(building.facing), offset);

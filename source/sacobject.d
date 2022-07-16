@@ -767,6 +767,48 @@ void printWizardStats(B)(SacObject!B wizard){
 	writeln("hitbox: ",boxSize(hb)[].map!text.join("×"));
 }
 
+final class SacBuilding(B){
+	char[4] tag;
+	immutable(Bldg)* bldg;
+	@property int flags(){ return bldg.flags; }
+	@property int maxHealth(){ return bldg.maxHealth; }
+	@property immutable(BldgComponent)[] components(){ return bldg.components; }
+	@property ref immutable(ubyte[8][8]) ground(){ return bldg.ground; }
+	// TODO: some of the following functionality is duplicated in SacObject
+	bool isManafount(){
+		return bldg.header.numComponents==1&&manafountTags.canFind(bldg.components[0].tag);
+	}
+	bool isManalith(){
+		return bldg.header.numComponents==1&&manalithTags.canFind(bldg.components[0].tag);
+	}
+	bool isShrine(){
+		return bldg.header.numComponents==1&&shrineTags.canFind(bldg.components[0].tag);
+	}
+	bool isAltar(){
+		return bldg.header.numComponents>=1&&altarBaseTags.canFind(bldg.components[0].tag);
+	}
+	bool isStratosAltar(){
+		return bldg.header.numComponents>=1&&bldg.components[0].tag=="tprc";
+	}
+	bool isEtherealAltar(){
+		return bldg.header.numComponents>=1&&bldg.components[0].tag=="b_ae";
+	}
+	bool isPeasantShelter(){
+		return !!(bldg.header.flags&BldgFlags.shelter)||isAltar;
+	}
+
+	static SacBuilding!B[char[4]] buildings;
+	static SacBuilding!B get(char[4] tag){
+		if(auto r=tag in buildings) return *r;
+		return buildings[tag]=new SacBuilding!B(tag);
+	}
+	this(char[4] tag){
+		this.tag=tag;
+		this.bldg=tag in bldgs;
+		enforce(!!bldg,text("bad tag: ",tag));
+	}
+}
+
 final class SacSky(B){
 	enum scaling=4*10.0f*256.0f;
 	enum dZ=-0.05, undrZ=-0.25, skyZ=0.25, relCloudLoc=0.7;

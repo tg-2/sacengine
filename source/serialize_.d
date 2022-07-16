@@ -146,6 +146,14 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Sac
 	else result=null;
 }
 
+void serialize(alias sink,B)(SacBuilding!B obj){ serialize!sink(obj?obj.tag:cast(char[4])"\0\0\0\0"); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SacBuilding!B)){
+	char[4] tag;
+	deserialize(tag,state,data);
+	if(tag!="\0\0\0\0") result=T.get(tag);
+	else result=null;
+}
+
 void serialize(alias sink)(ref OrderTarget orderTarget){ serializeStruct!sink(orderTarget); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==OrderTarget)){
 	deserializeStruct(result,state,data);
@@ -185,9 +193,6 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Sou
 
 void serialize(alias sink,B)(ref Souls!B souls){ serializeStruct!sink(souls); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Souls!B)){ deserializeStruct(result,state,data); }
-
-void serialize(alias sink)(immutable(Bldg)* bldg){ auto tag=cast(char[4])bldgTags[bldg]; serialize!sink(tag); }
-void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==immutable(Bldg)*)){ char[4] tag; deserialize(tag,state,data); result=&bldgs[tag]; }
 
 void serialize(alias sink,B)(ref Building!B building){ serializeStruct!sink(building); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Building!B)){ deserializeStruct(result,state,data); }

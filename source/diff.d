@@ -22,7 +22,7 @@ bool diffData(string[] noserialize=[],T)(ref T a,ref T b,lazy string path)if(is(
 	}
 	return r;
 }
-bool diffData(string[] noserialize=[],T)(T a,T b,lazy string path)if(is(T==class)&&!is(T==SacObject!B,B)&&!is(T==SacSpell!B,B)&&!is(T==SacParticle!B,B)){
+bool diffData(string[] noserialize=[],T)(T a,T b,lazy string path)if(is(T==class)&&!is(T==SacObject!B,B)&&!is(T==SacBuilding!B,B)&&!is(T==SacSpell!B,B)&&!is(T==SacParticle!B,B)){
 	bool r=false;
 	static foreach(member;__traits(allMembers,T)){
 		static if(is(typeof(__traits(getMember,a,member).offsetof))){
@@ -33,7 +33,7 @@ bool diffData(string[] noserialize=[],T)(T a,T b,lazy string path)if(is(T==class
 	}
 	return r;
 }
-bool diffData(T)(T a,T b,lazy string path)if(is(T==SacObject!B,B)||is(T==SacSpell!B,B)){
+bool diffData(T)(T a,T b,lazy string path)if(is(T==SacObject!B,B)||is(T==SacBuilding!B,B)||is(T==SacSpell!B,B)){
 	static if(is(T==SacObject!B,B)) return diffData(a.nttTag,b.nttTag,path);
 	else return diffData(a.tag,b.tag,path);
 }
@@ -99,11 +99,6 @@ bool diffData(T)(ref Queue!T a,ref Queue!T b,lazy string path){
 	r|=diffData(a.payload.length,b.payload.length,text(path,".length"));
 	if(a.payload.length==b.payload.length) foreach(i;0..a.payload.length) r|=diffData(a.payload[i],b.payload[i],text(path,"[",i,"]"));
 	return r;
-}
-bool diffData(immutable(Bldg)* a,immutable(Bldg)* b,lazy string path){
-	auto taga=cast(char[4])bldgTags[a];
-	auto tagb=cast(char[4])bldgTags[b];
-	return diffData(taga,tagb,path);
 }
 
 bool diffStates(B)(ObjectState!B a,ObjectState!B b){
