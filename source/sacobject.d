@@ -455,7 +455,7 @@ final class SacObject(B){
 	private void initializeNTTData(char[4] tag,char[4] nttTag){
 		this.tag=tag;
 		this.nttTag=nttTag;
-		this.name=texts.get(nttTag,"(Unknown)");
+		this.name=texts.get(nttTag,"");
 		cre8=nttTag in cre8s;
 		wizd=nttTag in wizds;
 		strc=nttTag in strcs;
@@ -769,6 +769,8 @@ void printWizardStats(B)(SacObject!B wizard){
 
 final class SacBuilding(B){
 	char[4] tag;
+	B.Texture icon;
+	string name;
 	immutable(Bldg)* bldg;
 	@property int flags(){ return bldg.flags; }
 	@property int maxHealth(){ return bldg.maxHealth; }
@@ -806,6 +808,12 @@ final class SacBuilding(B){
 		this.tag=tag;
 		this.bldg=tag in bldgs;
 		enforce(!!bldg,text("bad tag: ",tag));
+		if(isAltar){
+			icon=B.makeTexture(loadTXTR(icons["1tla"]));
+			name=texts.get("1tla","Altar");
+		}else if(isManafount){
+			name=texts.get("tnof","Mana Fountain");
+		}
 	}
 }
 

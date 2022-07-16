@@ -39,7 +39,10 @@ class SacFont(B){
 					if(alpha!=0) rightMost=max(rightMost,i-u);
 				}
 			}
-			if(rightMost==0) rightMost=1;
+			if(k==' '){
+				if(type==FontType.fnwt) rightMost=4;
+				else rightMost=1;
+			}
 			letter.width=rightMost+1;
 			letter.height=letterHeight-1;
 			letter.mesh=B.makeSubQuad(float(u-widthSlack)/width,float(v+0.5f)/height,float(u+letter.width+widthSlack)/width,float(v+letterHeight-0.5f)/height);
@@ -83,19 +86,19 @@ struct FormatSettings{
 int getCharWidth(B)(SacFont!B font,dchar c){
 	with(font){
 		if(c>=0x100) return font.getCharWidth('?');
-		return letters[c].width;
+		return letters[c].width+1;
 	}
 }
-int getTextWidth(B)(SacFont!B font,const(char)[] text){
+int getTextWidth(B)(SacFont!B font,scope const(char)[] text){
 	with(font){
 		int r=0;
-		foreach(dchar c;text)
+		foreach(i,dchar c;text)
 			r+=font.getCharWidth(c);
 		return r;
 	}
 }
 
-Vector2f getSize(B)(SacFont!B font,const(char)[] text,FormatSettings settings){ // TODO: get rid of code duplication
+Vector2f getSize(B)(SacFont!B font,scope const(char)[] text,FormatSettings settings){ // TODO: get rid of code duplication
 	with(font) with(settings){
 		float cX=0.0f, cY=0.0f;
 		auto ptext=text;
@@ -124,7 +127,7 @@ Vector2f getSize(B)(SacFont!B font,const(char)[] text,FormatSettings settings){ 
 	}
 }
 
-void write(alias draw,B)(SacFont!B font,const(char)[] text,float left,float top,FormatSettings settings){
+void write(alias draw,B)(SacFont!B font,scope const(char)[] text,float left,float top,FormatSettings settings){
 	if(!text.length) return;
 	with(font) with(settings){
 		float cX=left, cY=top;

@@ -71,6 +71,7 @@ enum SpellType:int{
 
 class SacSpell(B){
 	char[4] tag;
+	string name;
 	B.Texture icon;
 	immutable(Cre8)* cre8;
 	immutable(Spel)* spel;
@@ -167,6 +168,7 @@ class SacSpell(B){
 			icon=B.makeTexture(loadTXTR(icons[iconTag]));
 		}
 		void setStats(T)(T arg){
+			name=texts.get(arg.name,"");
 			spellOrder=arg.spellOrder;
 			manaCost=max(1.0f,arg.manaCost);
 			range=arg.range;

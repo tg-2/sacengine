@@ -905,7 +905,10 @@ struct Renderer(B){
 							auto id=objects.ids[j];
 							Vector4f information;
 							if(info.renderSide!=objects.sides[j]&&objects.creatureStates[j].mode.isGhost) continue;
-							if(info.renderSide!=objects.sides[j]&&(!objects.creatureStates[j].mode.isVisibleToOtherSides||objects.creatureStatss[j].effects.stealth)){
+							if(info.renderSide!=objects.sides[j]
+							   &&(!objects.creatureStates[j].mode.isVisibleToOtherSides||objects.creatureStatss[j].effects.stealth)
+							   &&objects.creatureStates[j].mode!=CreatureMode.dead // TODO: dead creatures should not hide their own souls
+							){
 								information=Vector4f(0.0f,0.0f,0.0f,0.0f);
 							}else information=Vector4f(2.0f,id>>16,id&((1<<16)-1),1.0f);
 							material.backend.setInformation(information);
@@ -3248,17 +3251,49 @@ struct Renderer(B){
 		}
 	}
 
+	void renderMouseoverText(scope const(char)[] text,int cursorSize,ref RenderInfo!B info,B.RenderContext rc,int yoffset=-1){
+		import sacfont;
+		auto font=SacFont!B.get(FontType.fnwt);
+		auto hudScaling=info.hudScaling;
+		auto cursor=Vector3f(info.mouse.x, info.mouse.y, 0.0f);
+		FormatSettings settings = {flowType:FlowType.left, scale:hudScaling};
+		auto size=font.getSize(text,settings)+Vector2f((3.0f+3.0f)*hudScaling,(2.0f+4.0f)*hudScaling);
+		auto boxScale=Vector3f(size.x,size.y, 0.0f);
+		auto offset=Vector3f(cursorSize==-1?16*hudScaling:0.5f*cursorSize,yoffset*hudScaling, 0.0f);
+		if(info.mouse.x+offset.x+boxScale.x>info.width) offset.x=-boxScale.x;
+		auto upperLeft=cursor+offset;
+		upperLeft.y=min(upperLeft.y,info.height-boxScale.y);
+		upperLeft.y=max(upperLeft.y,0.0f);
+		B.colorHUDMaterialBackend.bind(null,rc);
+		B.colorHUDMaterialBackend.bindDiffuse(whiteTexture);
+		B.colorHUDMaterialBackend.setColor(Color4f(0.0f,0.0f,0.0f,0.68f));
+		B.colorHUDMaterialBackend.setTransformationScaled(upperLeft,Quaternionf.identity(),boxScale,rc);
+		quad.render(rc);
+		B.colorHUDMaterialBackend.setColor(Color4f(1.0f,1.0f,1.0f,1.0f));
+		B.colorHUDMaterialBackend.bindDiffuse(font.texture);
+		void drawLetter(B.SubQuad mesh,float x,float y,float width,float height){
+			B.colorHUDMaterialBackend.setTransformationScaled(Vector3f(x,y,0.0f),Quaternionf.identity(),Vector3f(width,height,0.0f),rc);
+			mesh.render(rc);
+		}
+		auto textPos=upperLeft+Vector3f(3.0f*hudScaling,2.0f*hudScaling);
+		font.write!drawLetter(text,textPos.x,textPos.y,settings);
+		B.colorHUDMaterialBackend.unbind(null,rc);
+	}
 
 	void renderMouseoverBox(int cursorSize,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
 		auto target=info.mouse.target;
 		static bool requiresDelay(TargetType type){
 			final switch(type) with(TargetType){
-				case none,terrain,creatureTab,spellTab,structureTab,spell,ability: return false;
-				case creature,building,soul,soulStat,manaStat,healthStat: return true;
+				case none,terrain,creatureTab,spellTab,structureTab,spell: return false;
+				case creature,building,soul,ability,soulStat,manaStat,healthStat: return true;
 			}
 		}
 		if(requiresDelay(target.type)&&info.mouse.targetUpdateFrame+info.mouse.mouseoverBoxDelay>state.frame)
 			return;
+		char[4096] buffer='\0';
+		auto buf=buffer[];
+		// TODO: localization!
+		import std.format: formattedWrite;
 		final switch(target.type){
 			case TargetType.none, TargetType.terrain: break;
 			case TargetType.creature, TargetType.building:
@@ -3269,6 +3304,7 @@ struct Renderer(B){
 					string name=null;
 					string sideName=null;
 					float relativeHealth;
+					bool dead=false;
 					int foesKilled=-1;
 					int foesGibbed=-1;
 					int level=-1;
@@ -3285,7 +3321,7 @@ struct Renderer(B){
 					if(target.type==TargetType.creature){
 						return state.movingObjectById!((ref obj,renderSide){
 							auto icon=obj.sacObject.icon;
-							string name=obj.sacObject.name;
+							auto name=obj.sacObject.name;
 							string sideName=null;
 							int level=-1;
 							float relativeHealth=obj.health/obj.creatureStats.maxHealth;
@@ -3299,30 +3335,38 @@ struct Renderer(B){
 									sideName=null;
 								}
 							}else sideName=getSideName(obj.side,state);
+							bool dead=obj.isDead;
 							auto foesKilled=-1; // TODO
 							auto foesGibbed=-1; // TODO
 							if(obj.side==renderSide){
 								foesKilled=0; // TODO
 								foesGibbed=0; // TODO
 							}
-							return NTTInfo(true,icon,name,sideName,relativeHealth,foesKilled,foesGibbed,level,relativeXP);
+							return NTTInfo(true,icon,name,sideName,relativeHealth,dead,foesKilled,foesGibbed,level,relativeXP);
 						},()=>NTTInfo.init)(id,info.renderSide);
 					}else if(target.type==TargetType.building){
 						return state.staticObjectById!((ref obj,state){
-							return state.buildingById!((ref bldg,state){
-								B.Texture icon=null; // TODO: building icons
-								string name=null; // TODO: building names
+							return state.buildingById!((ref bldg,sacObject,state){
+								auto icon=sacObject.icon;
+								auto name=sacObject.name;
+								if(!icon) icon=bldg.sacBuilding.icon;
+								if(!name.length) name=bldg.sacBuilding.name;
 								string sideName=getSideName(bldg.side,state);
 								float relativeHealth=bldg.health/bldg.maxHealth(state);
-								if(isNaN(relativeHealth) && !(bldg.isAltar || bldg.isManafount))
+								if(isNaN(relativeHealth) && !name.length)
 									return NTTInfo.init;
 								return NTTInfo(true,icon,name,sideName,relativeHealth);
-							},()=>NTTInfo.init)(obj.buildingId,state);
+							},()=>NTTInfo.init)(obj.buildingId,obj.sacObject,state);
 						},()=>NTTInfo.init)(id,state);
 					}else assert(0);
 				}
 				auto nttInfo=getNTTInfo(target.id);
 				if(!nttInfo.valid) break;
+				if(nttInfo.dead){
+					buf.formattedWrite!"%s's corpse"(nttInfo.name);
+					renderMouseoverText(buffer[0..buf.ptr-buffer.ptr],cursorSize,info,rc);
+					break;
+				}
 				bool renderHealth=!isNaN(nttInfo.relativeHealth);
 				bool renderXP=!isNaN(nttInfo.relativeXP);
 				auto hudScaling=info.hudScaling;
@@ -3331,6 +3375,8 @@ struct Renderer(B){
 				auto offset=Vector3f(cursorSize==-1?16*hudScaling:0.5f*cursorSize,(renderXP?-44:renderHealth?(nttInfo.icon?-27:-20):-12)*hudScaling, 0.0f);
 				if(info.mouse.x+offset.x+boxScale.x>info.width) offset.x=-boxScale.x;
 				auto upperLeft=cursor+offset;
+				upperLeft.y=min(upperLeft.y,info.height-boxScale.y);
+				upperLeft.y=max(upperLeft.y,0.0f);
 				B.colorHUDMaterialBackend.bind(null,rc);
 				B.colorHUDMaterialBackend.bindDiffuse(whiteTexture);
 				B.colorHUDMaterialBackend.setColor(Color4f(0.0f,0.0f,0.0f,0.68f));
@@ -3349,17 +3395,13 @@ struct Renderer(B){
 				auto font=SacFont!B.get(FontType.fnwt);
 				B.colorHUDMaterialBackend.bind(null,rc);
 				B.colorHUDMaterialBackend.bindDiffuse(font.texture);
-				char[4096] buffer='\0';
-				auto buf=buffer[];
-				// TODO: localization!
-				import std.format: formattedWrite;
 				if(nttInfo.sideName.length) buf.formattedWrite!"%s's %s"(nttInfo.sideName,nttInfo.name);
 				else buf.formattedWrite!"%s"(nttInfo.name);
 				if(nttInfo.level!=-1) buf.formattedWrite!"\nLevel %d"(nttInfo.level);
 				if(nttInfo.foesKilled!=-1) buf.formattedWrite!"\nFoes killed: %d"(nttInfo.foesKilled);
 				if(nttInfo.foesGibbed!=-1) buf.formattedWrite!"\nFoes gibbed: %d"(nttInfo.foesGibbed);
 				auto text=buffer[0..buf.ptr-buffer.ptr];
-				FormatSettings settings = {flowType:FlowType.left, scale:info.hudScaling};
+				FormatSettings settings = {flowType:FlowType.left, scale:hudScaling};
 				auto infoPos=upperLeft+Vector3f((3.0f+32.0f+4.0f)*hudScaling,2.0f*hudScaling,0.0f);
 				void drawLetter(B.SubQuad mesh,float x,float y,float width,float height){
 					B.colorHUDMaterialBackend.setTransformationScaled(Vector3f(x,y,0.0f),Quaternionf.identity(),Vector3f(width,height,0.0f),rc);
@@ -3372,25 +3414,51 @@ struct Renderer(B){
 				}
 				break;
 			case TargetType.soul:
-				// TODO: render mouseover text "Soul"
+				renderMouseoverText("Soul",cursorSize,info,rc);
 				break;
 			case TargetType.creatureTab:
-				// TODO: render mouseover text "Creation spells"
+				renderMouseoverText("Creation spells",cursorSize,info,rc);
 				break;
 			case TargetType.spellTab:
-				// TODO: render mouseover text "Spells"
+				renderMouseoverText("Spells",cursorSize,info,rc);
+				break;
 			case TargetType.structureTab:
-				// TODO: render mouseover text "Structure spells"
+				renderMouseoverText("Structure spells",cursorSize,info,rc);
+				break;
 			case TargetType.spell:
-				// TODO: render mouseover text "Spell name\nMana: needed/available[\nSouls: <n>]"
+				auto wizard=state.getWizard(info.camera.target);
+				if(!wizard) break;
+				auto availableMana=state.movingObjectById!((ref obj)=>obj.creatureStats.mana,()=>float.init)(info.camera.target);
+				if(isNaN(availableMana)) break;
+				auto availableSouls=wizard.souls;
+				auto targetSpell=info.mouse.targetSpell;
+				if(!targetSpell||!targetSpell.name.length) break;
+				auto mana=targetSpell.manaCost;
+				auto souls=targetSpell.soulCost;
+				int yoffset=-6;
+				bool manaRed=availableMana<mana; // TODO: color mana text red if needed
+				buf.formattedWrite!"%s\nMana: %d/%d"(targetSpell.name,cast(int)floor(mana),cast(int)floor(availableMana));
+				if(targetSpell.type==SpellType.creature){
+					bool soulsRed=availableSouls<souls; // TODO: color souls text red if needed
+					buf.formattedWrite!"\nSouls: %d"(souls);
+					yoffset=-12;
+				}
+				renderMouseoverText(buffer[0..buf.ptr-buffer.ptr],cursorSize,info,rc,yoffset);
+				break;
 			case TargetType.ability:
-				// TODO: render mouseover text "Ability name"
+				auto targetSpell=info.mouse.targetSpell;
+				if(!targetSpell||!targetSpell.name.length) break;
+				renderMouseoverText(targetSpell.name,cursorSize,info,rc);
+				break;
 			case TargetType.soulStat:
-				// TODO: render mouseover text "Soul counter"
+				renderMouseoverText("Soul counter",cursorSize,info,rc);
+				break;
 			case TargetType.manaStat:
-				// TODO: render mouseover text "Mana bar"
+				renderMouseoverText("Mana bar",cursorSize,info,rc);
+				break;
 			case TargetType.healthStat:
-				// TODO: render mouseover text "Health bar"
+				renderMouseoverText("Health bar",cursorSize,info,rc);
+				break;
 		}
 	}
 
