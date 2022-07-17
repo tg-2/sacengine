@@ -6,7 +6,7 @@ import dlib.math.portable;
 import dlib.math.vector, dlib.math.matrix, dlib.math.quaternion, dlib.math.transformation, dlib.math.utils: Axis, degtorad;
 import dlib.image.color;
 import std.stdio;
-import std.algorithm: min, max, among, map, filter, all;
+import std.algorithm: min, max, among, map, filter, all, splitter;
 import std.range: iota, walkLength, enumerate;
 import std.typecons: tuple,Tuple;
 import std.exception: enforce;
@@ -3251,7 +3251,7 @@ struct Renderer(B){
 		}
 	}
 
-	void renderMouseoverText(scope const(char)[] text,int cursorSize,ref RenderInfo!B info,B.RenderContext rc,int yoffset=-1){
+	void renderMouseoverText(scope const(char)[] text,int cursorSize,ref RenderInfo!B info,B.RenderContext rc,int yoffset=-1,scope Color4f[] lineColors=null){
 		import sacfont;
 		auto font=SacFont!B.get(FontType.fnwt);
 		auto hudScaling=info.hudScaling;
@@ -3276,7 +3276,12 @@ struct Renderer(B){
 			mesh.render(rc);
 		}
 		auto textPos=upperLeft+Vector3f(3.0f*hudScaling,2.0f*hudScaling);
-		font.write!drawLetter(text,textPos.x,textPos.y,settings);
+		if(lineColors){
+			foreach(i,line;enumerate(text.splitter('\n'))){
+				B.colorHUDMaterialBackend.setColor(lineColors[i]);
+				font.write!drawLetter(line,textPos.x,textPos.y+i*hudScaling*font.lineHeight,settings);
+			}
+		}else font.write!drawLetter(text,textPos.x,textPos.y,settings);
 		B.colorHUDMaterialBackend.unbind(null,rc);
 	}
 
@@ -3436,14 +3441,20 @@ struct Renderer(B){
 				auto mana=targetSpell.manaCost;
 				auto souls=targetSpell.soulCost;
 				int yoffset=-6;
-				bool manaRed=availableMana<mana; // TODO: color mana text red if needed
+				auto red=Color4f(1.0f,0.0f,0.0f,1.0f);
+				Color4f[3] lineColors=Color4f(1.0f,1.0f,1.0f,1.0);
 				buf.formattedWrite!"%s\nMana: %d/%d"(targetSpell.name,cast(int)floor(mana),cast(int)floor(availableMana));
+				int numLines=2;
+				bool manaRed=availableMana<mana;
+				if(manaRed) lineColors[1]=red;
 				if(targetSpell.type==SpellType.creature){
-					bool soulsRed=availableSouls<souls; // TODO: color souls text red if needed
 					buf.formattedWrite!"\nSouls: %d"(souls);
+					numLines++;
+					bool soulsRed=availableSouls<souls;
+					if(soulsRed) lineColors[2]=red;
 					yoffset=-12;
 				}
-				renderMouseoverText(buffer[0..buf.ptr-buffer.ptr],cursorSize,info,rc,yoffset);
+				renderMouseoverText(buffer[0..buf.ptr-buffer.ptr],cursorSize,info,rc,yoffset,lineColors[0..numLines]);
 				break;
 			case TargetType.ability:
 				auto targetSpell=info.mouse.targetSpell;
