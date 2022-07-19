@@ -1579,7 +1579,7 @@ static:
 		auto materials=new Material[](sacHud.textures.length);
 		foreach(i;0..materials.length){
 			bool spellReady=i==SacHud!DagonBackend.spellReadyIndex;
-			auto mat=makeMaterial(spellReady?scene.hudMaterialBackend2:scene.hudMaterialBackend);
+			auto mat=makeMaterial(spellReady?scene.hudMaterialBackend2:scene.colorHUDMaterialBackend);
 			mat.blending=spellReady?Additive:Transparent;
 			mat.diffuse=sacHud.textures[i];
 			materials[i]=mat;

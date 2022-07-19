@@ -3072,11 +3072,11 @@ struct Renderer(B){
 			void renderStatBar(Vector3f origin,float relativeSize,B.Material top,B.Material mid,B.Material bot){
 				auto maxScaling=info.hudScaling*Vector3f(32.0f,68.0f,0.0f);
 				auto position=origin+Vector3f(0.0f,info.hudScaling*14.0f+(1.0f-relativeSize)*maxScaling.y,0.0f);
-				auto scaling=Vector3f(maxScaling.x,maxScaling.y*relativeSize,maxScaling.y);
+				auto scaling=Vector3f(maxScaling.x,maxScaling.y*relativeSize,0.0f);
 				auto topPosition=position+Vector3f(0.0f,-info.hudScaling*4.0f,0.0f);
-				auto topScaling=Vector3f(maxScaling.x,info.hudScaling*4.0f,maxScaling.y);
+				auto topScaling=Vector3f(maxScaling.x,info.hudScaling*4.0f,0.0f);
 				auto bottomPosition=position+Vector3f(0.0f,scaling.y,0.0f);
-				auto bottomScaling=Vector3f(maxScaling.x,info.hudScaling*6.0f,maxScaling.y);
+				auto bottomScaling=Vector3f(maxScaling.x,info.hudScaling*6.0f,0.0f);
 
 				B.Material[3] materials=[top,mid,bot];
 				Vector3f[3] positions=[topPosition,position,bottomPosition];
@@ -3395,7 +3395,7 @@ struct Renderer(B){
 					B.colorHUDMaterialBackend.setTransformationScaled(iconPos,Quaternionf.identity(),iconScale,rc);
 					quad.render(rc);
 				}
-				B.colorHUDMaterialBackend.unbind(null,rc);
+
 				import sacfont;
 				auto font=SacFont!B.get(FontType.fnwt);
 				B.colorHUDMaterialBackend.bind(null,rc);
@@ -3414,12 +3414,63 @@ struct Renderer(B){
 				}
 				font.write!drawLetter(text,infoPos.x,infoPos.y,settings);
 				if(renderXP){
-					auto xpPos=upperLeft+Vector3f(9.0f*hudScaling,75.0f*hudScaling);
+					auto xpPos=upperLeft+Vector3f(9*hudScaling,75*hudScaling);
 					font.write!drawLetter("Experience:",xpPos.x,xpPos.y,settings);
+				}
+				B.colorHUDMaterialBackend.unbind(null,rc);
+				void renderStatBar(Vector3f position,Vector3f maxScaling,float endScaling,float emptyScaling,float relativeSize){
+					auto rotation=rotationQuaternion(Axis.z,-pi!float/2);
+					auto emptyOffset=0.5f*(maxScaling.x-emptyScaling);
+					auto emptyPosition=position+rotate(rotation,Vector3f(emptyOffset,maxScaling.y*relativeSize+endScaling,0.0f));
+					auto fullEmptyScaling=Vector3f(emptyScaling,maxScaling.y*(1.0f-relativeSize),0.0f);
+					auto scaling=Vector3f(maxScaling.x,maxScaling.y*relativeSize,0.0f);
+					auto topPosition=position+rotate(rotation,Vector3f(0.0f,-endScaling,0.0f));
+					auto topScaling=Vector3f(maxScaling.x,endScaling,0.0f);
+					auto bottomPosition=position+rotate(rotation,Vector3f(0.0f,scaling.y,0.0f));
+					auto bottomScaling=Vector3f(maxScaling.x,endScaling,0.0f);
+
+					B.Material empty=sacHud.manaTopMaterial;
+					B.Material[3] materials=[sacHud.healthTopMaterial,sacHud.healthMaterial,sacHud.healthBottomMaterial];
+					Vector3f[3] positions=[topPosition,position,bottomPosition];
+					Vector3f[3] scalings=[topScaling,scaling,bottomScaling];
+					assert(empty.backend is B.colorHUDMaterialBackend);
+					B.colorHUDMaterialBackend.bind(null,rc);
+					B.disableCulling();
+					B.colorHUDMaterialBackend.bindDiffuse(sacHud.mana[0]);
+					B.colorHUDMaterialBackend.setColor(Color4f(0.25f,0.75f,1.5f,1.0f)); // TODO: alpha gradient
+					B.colorHUDMaterialBackend.setTransformationScaled(emptyPosition, rotation, fullEmptyScaling, rc);
+					quad.render(rc);
+					B.enableCulling();
+					B.colorHUDMaterialBackend.unbind(null,rc);
+					static foreach(i;0..3){
+						materials[i].bind(rc);
+						B.disableCulling();
+						materials[i].backend.setTransformationScaled(positions[i], rotation, scalings[i], rc);
+						quad.render(rc);
+						B.enableCulling();
+						materials[i].unbind(rc);
+					}
+				}
+				if(renderHealth){
+					auto healthBarOffset=Vector3f(11*hudScaling,(nttInfo.icon?49:41)*hudScaling,0.0f);
+					auto healthBarScaling=Vector3f(-11*hudScaling,boxScale.x-2*11*hudScaling,0.0f);
+					renderStatBar(upperLeft+healthBarOffset,healthBarScaling,2*hudScaling,-(5+2)*hudScaling,nttInfo.relativeHealth);
+				}
+				if(renderXP){
+					auto xpBarOffset=Vector3f(11*hudScaling,89*hudScaling,0.0f);
+					auto xpBarScaling=Vector3f(-7*hudScaling,boxScale.x-2*11*hudScaling,0.0f);
+					renderStatBar(upperLeft+xpBarOffset,xpBarScaling,2*hudScaling,-(3+2)*hudScaling,nttInfo.relativeXP);
 				}
 				break;
 			case TargetType.soul:
-				renderMouseoverText("Soul",cursorSize,info,rc);
+				final switch(color(info.mouse.target.id,info.renderSide,state)){
+					case SoulColor.blue:
+						renderMouseoverText("Soul",cursorSize,info,rc);
+						break;
+					case SoulColor.red:
+						renderMouseoverText("Heathen soul\nConvert this.",cursorSize,info,rc,-6);
+						break;
+				}
 				break;
 			case TargetType.creatureTab:
 				renderMouseoverText("Creation spells",cursorSize,info,rc);
