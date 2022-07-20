@@ -809,8 +809,10 @@ final class SacBuilding(B){
 		this.bldg=tag in bldgs;
 		enforce(!!bldg,text("bad tag: ",tag));
 		if(isAltar){
-			icon=B.makeTexture(loadTXTR(icons["1tla"]));
-			name=texts.get("1tla","Altar");
+			icon=B.makeTexture(loadTXTR(icons["1tla"])); // SacEngine extension: original has altar icons only for persephone altar
+			name=texts.get("1tla","Altar"); // TODO: ultimate altars
+		}else if(isManalith){
+			icon=B.makeTexture(loadTXTR(icons["anam"])); // SacEngine extension: original does not have manalith icons
 		}else if(isManafount){
 			name=texts.get("tnof","Mana Fountain");
 		}
