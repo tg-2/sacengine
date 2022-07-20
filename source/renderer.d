@@ -117,6 +117,28 @@ struct Renderer(B){
 		return SacBlueRing!B(texture,mat,frames);
 	}
 	SacBlueRing!B blueRing;
+	SacLevelUpRing!B createLevelUpRing(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Additive;
+		mat.energy=20.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacLevelUpRing!B(texture,mat,frames);
+	}
+	SacLevelUpRing!B levelUpRing;
+	SacLevelDownRing!B createLevelDownRing(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Additive;
+		mat.energy=20.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacLevelDownRing!B(texture,mat,frames);
+	}
+	SacLevelDownRing!B levelDownRing;
 	SacVortex!B createVortex(){
 		SacVortex!B result;
 		result.loadTextures();
@@ -635,6 +657,8 @@ struct Renderer(B){
 		enforce(sacDebris.meshes.length==1);
 		explosion=createExplosion();
 		blueRing=createBlueRing();
+		levelUpRing=createLevelUpRing();
+		levelDownRing=createLevelDownRing();
 		vortex=createVortex();
 		tether=createTether();
 		guardianTether=createGuardianTether();
@@ -1185,6 +1209,40 @@ struct Renderer(B){
 						B.shadelessMaterialBackend.setTransformationScaled(position,Quaternionf.identity(),0.08f*scale*Vector3f(1.0f,1.0f,1.0f),rc);
 						B.shadelessMaterialBackend.setEnergy(20.0f*scale^^2);
 						auto mesh=self.blueRing.getFrame(objects.teleportRings[j].frame%self.blueRing.numFrames);
+						mesh.render(rc);
+					}
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.levelUpRings.length){
+					auto material=self.levelUpRing.material;
+					material.bind(rc);
+					B.disableCulling();
+					scope(success){
+						B.enableCulling();
+						material.unbind(rc);
+					}
+					foreach(j;0..objects.levelUpRings.length){
+						auto position=objects.levelUpRings[j].position;
+						auto scale=objects.levelUpRings[j].scale*sqrt(1.0f-float(max(0,objects.levelUpRings[j].frame))/levelUpRingLifetime);
+						B.shadelessMaterialBackend.setTransformationScaled(position,Quaternionf.identity(),0.08f*scale*Vector3f(1.0f,1.0f,1.0f),rc);
+						B.shadelessMaterialBackend.setEnergy(20.0f*scale);
+						auto mesh=self.levelUpRing.getFrame(objects.levelUpRings[j].spriteFrame%self.levelUpRing.numFrames);
+						mesh.render(rc);
+					}
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.levelDownRings.length){
+					auto material=self.levelDownRing.material;
+					material.bind(rc);
+					B.disableCulling();
+					scope(success){
+						B.enableCulling();
+						material.unbind(rc);
+					}
+					foreach(j;0..objects.levelDownRings.length){
+						auto position=objects.levelDownRings[j].position;
+						auto scale=objects.levelDownRings[j].scale*sqrt(1.0f-float(objects.levelDownRings[j].frame)/levelDownRingLifetime);
+						B.shadelessMaterialBackend.setTransformationScaled(position,Quaternionf.identity(),0.08f*scale*Vector3f(1.0f,1.0f,1.0f),rc);
+						B.shadelessMaterialBackend.setEnergy(20.0f*scale^^2);
+						auto mesh=self.levelDownRing.getFrame(objects.levelDownRings[j].spriteFrame%self.levelUpRing.numFrames);
 						mesh.render(rc);
 					}
 				}

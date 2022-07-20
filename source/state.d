@@ -2133,6 +2133,30 @@ struct TeleportRing(B){
 	float scale;
 	int frame=0;
 }
+struct LevelUpEffect(B){
+	Vector3f position;
+	float scale;
+	float height;
+	int frame=0;
+}
+struct LevelUpRing(B){
+	Vector3f position;
+	float scale;
+	int frame=0;
+	int spriteFrame=0;
+}
+struct LevelDownEffect(B){
+	Vector3f position;
+	float scale;
+	float height;
+	int frame=0;
+}
+struct LevelDownRing(B){
+	Vector3f position;
+	float scale;
+	int frame=0;
+	int spriteFrame=0;
+}
 struct GuardianCasting(B){
 	ManaDrain!B manaDrain;
 	SacSpell!B spell;
@@ -3595,6 +3619,38 @@ struct Effects(B){
 	void removeTeleportRing(int i){
 		if(i+1<teleportRings.length) teleportRings[i]=move(teleportRings[$-1]);
 		teleportRings.length=teleportRings.length-1;
+	}
+	Array!(LevelUpEffect!B) levelUpEffects;
+	void addEffect(LevelUpEffect!B levelUpEffect){
+		levelUpEffects~=levelUpEffect;
+	}
+	void removeLevelUpEffect(int i){
+		if(i+1<levelUpEffects.length) levelUpEffects[i]=move(levelUpEffects[$-1]);
+		levelUpEffects.length=levelUpEffects.length-1;
+	}
+	Array!(LevelUpRing!B) levelUpRings;
+	void addEffect(LevelUpRing!B levelUpRing){
+		levelUpRings~=levelUpRing;
+	}
+	void removeLevelUpRing(int i){
+		if(i+1<levelUpRings.length) levelUpRings[i]=move(levelUpRings[$-1]);
+		levelUpRings.length=levelUpRings.length-1;
+	}
+	Array!(LevelDownEffect!B) levelDownEffects;
+	void addEffect(LevelDownEffect!B levelDownEffect){
+		levelDownEffects~=levelDownEffect;
+	}
+	void removeLevelDownEffect(int i){
+		if(i+1<levelDownEffects.length) levelDownEffects[i]=move(levelDownEffects[$-1]);
+		levelDownEffects.length=levelDownEffects.length-1;
+	}
+	Array!(LevelDownRing!B) levelDownRings;
+	void addEffect(LevelDownRing!B levelDownRing){
+		levelDownRings~=levelDownRing;
+	}
+	void removeLevelDownRing(int i){
+		if(i+1<levelDownRings.length) levelDownRings[i]=move(levelDownRings[$-1]);
+		levelDownRings.length=levelDownRings.length-1;
 	}
 	Array!(GuardianCasting!B) guardianCastings;
 	void addEffect(GuardianCasting!B guardianCasting){
@@ -6777,7 +6833,7 @@ void animateTeleport(B)(bool isOut,Vector3f[2] hitbox,ObjectState!B state,bool s
 	foreach(i;0..50){
 		auto pposition=state.uniform(scaleBox(hitbox,1.3f));
 		auto npscale=pscale*state.uniform(0.5f,1.5f);
-		state.addParticle(Particle!B(sacParticle,pposition,velocity,pscale,lifetime,frame));
+		state.addParticle(Particle!B(sacParticle,pposition,velocity,npscale,lifetime,frame));
 	}
 }
 
@@ -6785,7 +6841,7 @@ void animateWizardVoidTeleport(B)(bool isOut,Vector3f[2] hitbox,ObjectState!B st
 	return animateTeleport(isOut,hitbox,state,false);
 }
 
-bool teleport(B)(ref MovingObject!B obj,Vector3f newPosition,ObjectState!B state,bool wizardVoid=false){ // TODO: get rid of startPosition parameter
+bool teleport(B)(ref MovingObject!B obj,Vector3f newPosition,ObjectState!B state,bool wizardVoid=false){
 	if(!obj.isWizard&&!obj.isSacDoctor&&!obj.creatureAI.order.command.among(CommandType.guard,CommandType.retreat))
 		obj.clearOrderQueue(state);
 	auto oldHeight=obj.position.z-state.getHeight(obj.position);
@@ -6817,6 +6873,44 @@ bool teleport(B)(int side,Vector3f startPosition,Vector3f targetPosition,SacSpel
 		state.movingObjectById!(doIt,(){})(entry.id,startPosition,targetPosition,state);
 	}
 	state.proximity.eachInRange!teleport(startPosition,spell.effectRange,side,startPosition,targetPosition,state);
+	return true;
+}
+
+void animateLevelUp(B)(Vector3f[2] hitbox,ObjectState!B state,bool soundEffect=true){
+	auto position=boxCenter([hitbox[0],Vector3f(hitbox[1].x,hitbox[1].y,hitbox[0].z)]);
+	auto size=boxSize(hitbox);
+	auto scale=max(size.x,size.y);
+	if(soundEffect) playSoundAt("puvl",position,state,2.0f);
+	state.addEffect(LevelUpEffect!B(position,scale,size.z));
+	// TODO: is there a particle effect at all?
+	auto sacParticle=SacParticle!B.get(ParticleType.heal);
+	auto pscale=0.5f*size.length;
+	auto velocity=Vector3f(0.0f,0.0f,0.0f);
+	auto lifetime=31;
+	auto frame=0;
+	foreach(i;0..50){
+		auto pposition=state.uniform(scaleBox(hitbox,1.3f));
+		auto npscale=pscale*state.uniform(0.5f,1.5f);
+		state.addParticle(Particle!B(sacParticle,pposition,velocity,npscale,lifetime,frame));
+	}
+}
+bool levelUp(B)(ref MovingObject!B obj,ObjectState!B state){
+	animateLevelUp(obj.hitbox,state);
+	// TODO: reset XP?
+	return true;
+}
+
+void animateLevelDown(B)(Vector3f[2] hitbox,ObjectState!B state,bool soundEffect=true){
+	auto position=boxCenter([Vector3f(hitbox[0].x,hitbox[0].y,hitbox[1].z),hitbox[1]]);
+	auto size=boxSize(hitbox);
+	auto scale=max(size.x,size.y);
+	// if(soundEffect) playSoundAt("????",position,state,2.0f); // TODO
+	state.addEffect(LevelDownEffect!B(position,scale,size.z));
+	// TODO: is there a particle effect?
+}
+bool levelDown(B)(ref MovingObject!B obj,ObjectState!B state){
+	animateLevelDown(obj.hitbox,state);
+	// TODO: reset XP?
 	return true;
 }
 
@@ -11071,6 +11165,58 @@ bool updateTeleportRing(B)(ref TeleportRing!B teleportRing,ObjectState!B state){
 		++frame;
 		position+=Vector3f(0.0f,0.0f,0.25f)/teleportRingLifetime;
 		return frame<teleportRingLifetime;
+	}
+}
+
+enum levelUpEffectLifetime=16;
+bool updateLevelUpEffect(B)(ref LevelUpEffect!B levelUpEffect,ObjectState!B state){
+	with(levelUpEffect){
+		position+=Vector3f(0.0f,0.0f,height)/levelUpEffectLifetime;
+		++frame;
+		foreach(i;0..state.uniform(1,2)){
+			auto pos=position+state.uniform(-0.5f,0.5f)*height/levelUpEffectLifetime;
+			auto scl=scale*state.uniform(0.65f,1.35f);
+			auto frm=frame-levelUpEffectLifetime;
+			auto sfrm=state.uniform(0,64);
+			state.addEffect(LevelUpRing!B(pos,scale,frm,sfrm));
+		}
+		return frame<levelUpEffectLifetime;
+	}
+}
+
+enum levelUpRingLifetime=64;
+bool updateLevelUpRing(B)(ref LevelUpRing!B levelUpRing,ObjectState!B state){
+	with(levelUpRing){
+		++frame;
+		++spriteFrame;
+		position+=Vector3f(0.0f,0.0f,-0.25f)/levelUpRingLifetime;
+		return frame<levelUpRingLifetime;
+	}
+}
+
+enum levelDownEffectLifetime=16;
+bool updateLevelDownEffect(B)(ref LevelDownEffect!B levelDownEffect,ObjectState!B state){
+	with(levelDownEffect){
+		position-=Vector3f(0.0f,0.0f,height)/levelDownEffectLifetime;
+		++frame;
+		foreach(i;0..state.uniform(1,2)){
+			auto pos=position+state.uniform(-0.5f,0.5f)*height/levelUpEffectLifetime;
+			auto scl=scale*state.uniform(0.65f,1.35f);
+			auto frm=frame-levelUpEffectLifetime;
+			auto sfrm=state.uniform(0,64);
+			state.addEffect(LevelDownRing!B(pos,scale,frm,sfrm));
+		}
+		return frame<levelDownEffectLifetime;
+	}
+}
+
+enum levelDownRingLifetime=48;
+bool updateLevelDownRing(B)(ref LevelDownRing!B levelDownRing,ObjectState!B state){
+	with(levelDownRing){
+		++frame;
+		++spriteFrame;
+		position+=Vector3f(0.0f,0.0f,0.25f)/levelDownRingLifetime;
+		return frame<levelDownRingLifetime;
 	}
 }
 
@@ -16821,6 +16967,34 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.teleportRings.length;){
 		if(!updateTeleportRing(effects.teleportRings[i],state)){
 			effects.removeTeleportRing(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.levelUpEffects.length;){
+		if(!updateLevelUpEffect(effects.levelUpEffects[i],state)){
+			effects.removeLevelUpEffect(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.levelUpRings.length;){
+		if(!updateLevelUpRing(effects.levelUpRings[i],state)){
+			effects.removeLevelUpRing(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.levelDownEffects.length;){
+		if(!updateLevelDownEffect(effects.levelDownEffects[i],state)){
+			effects.removeLevelDownEffect(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.levelDownRings.length;){
+		if(!updateLevelDownRing(effects.levelDownRings[i],state)){
+			effects.removeLevelDownRing(i);
 			continue;
 		}
 		i++;

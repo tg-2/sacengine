@@ -296,6 +296,19 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Tel
 void serialize(alias sink,B)(ref TeleportRing!B teleportRing){ serializeStruct!sink(teleportRing); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==TeleportRing!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref LevelUpEffect!B levelUpEffect){ serializeStruct!sink(levelUpEffect); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==LevelUpEffect!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref LevelUpRing!B levelUpRing){ serializeStruct!sink(levelUpRing); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==LevelUpRing!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref LevelDownEffect!B levelDownEffect){ serializeStruct!sink(levelDownEffect); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==LevelDownEffect!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref LevelDownRing!B levelDownRing){ serializeStruct!sink(levelDownRing); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==LevelDownRing!B)){ deserializeStruct(result,state,data); }
+
+
 void serialize(alias sink,B)(ref GuardianCasting!B guardianCasting){ serializeStruct!sink(guardianCasting); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==GuardianCasting!B)){ deserializeStruct(result,state,data); }
 

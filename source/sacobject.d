@@ -1691,6 +1691,35 @@ struct SacBlueRing(B){
 	}
 }
 
+struct SacLevelUpRing(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Misc.FLDR/txtr.FLDR/lvlp.TXTR"));
+	}
+	B.Material material;
+	B.Mesh[] frames;
+	enum ringAnimationDelay=4;
+	enum numFrames=16*ringAnimationDelay*updateAnimFactor;
+	auto getFrame(int i){ return frames[i/(ringAnimationDelay*updateAnimFactor)]; }
+	static B.Mesh[] createMeshes(){
+		return makeSpriteMeshes!B(4,4,28,28);
+	}
+}
+struct SacLevelDownRing(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Misc.FLDR/txtr.FLDR/lvld.TXTR"));
+	}
+	B.Material material;
+	B.Mesh[] frames;
+	enum ringAnimationDelay=4;
+	enum numFrames=16*ringAnimationDelay*updateAnimFactor;
+	auto getFrame(int i){ return frames[i/(ringAnimationDelay*updateAnimFactor)]; }
+	static B.Mesh[] createMeshes(){
+		return makeSpriteMeshes!B(4,4,28,28);
+	}
+}
+
 B.BoneMesh makeLineMesh(B)(int numSegments,float length,float size,bool pointy,bool flip=true,bool repeat=true,int nU=1,int nV=1,int u=0,int v=0){
 	auto mesh=B.makeBoneMesh(3*4*numSegments,3*2*numSegments);
 	enum sqrt34=sqrt(0.75f);
