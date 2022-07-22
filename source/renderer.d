@@ -1739,7 +1739,11 @@ struct Renderer(B){
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.soulWindCastings.length||objects.soulWinds.length)){
 					auto material=self.soulWind.material;
 					material.bind(rc);
-					scope(success) material.unbind(rc);
+					B.disableCulling();
+					scope(success){
+						B.enableCulling();
+						material.unbind(rc);
+					}
 					void renderSoulWind(ref SoulWind!B soulWind){
 						auto frame=soulWind.frame;
 						auto position=soulWind.position;
