@@ -5838,7 +5838,7 @@ bool convertRevive(B)(ref MovingObject!B object,ObjectState!B state){
 		return false;
 	},()=>false)(object.soulId))
 		return false;
-	object.health=min(max(300.0f,0.5f*object.creatureStats.maxHealth),object.creatureStats.maxHealth); // TODO: ok?
+	object.health=min(max(400.0f,0.5f*object.creatureStats.maxHealth),object.creatureStats.maxHealth); // TODO: ok?
 	object.creatureState.mode=CreatureMode.convertReviving;
 	object.setCreatureState(state);
 	return true;
