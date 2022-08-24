@@ -19114,7 +19114,7 @@ final class ObjectState(B){ // (update logic)
 					}
 				}
 				import spells:SpelFlags1;
-				if(obj.creatureStats.effects.shieldBlocked && spell.flags1&SpelFlags1.shield)
+				if(obj.creatureStats.effects.shieldBlocked && spell.isShield)
 					return SpellStatus.disabled;
 				return SpellStatus.ready;
 			},function()=>SpellStatus.inexistent)(wizard.id,spell,this,target);

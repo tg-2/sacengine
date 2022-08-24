@@ -124,6 +124,8 @@ class SacSpell(B){
 	int flags1;
 	int flags2;
 
+	bool isShield=false;
+
 	bool needsPrediction=true;
 
 	@property bool stationary(){ return !!(flags2&SpelFlags2.stationaryCasting); }
@@ -188,13 +190,14 @@ class SacSpell(B){
 			duration=spel.duration;
 			if(tag==SpellTag.heal) duration=4.5f;
 			if(tag==SpellTag.scarabShoot||tag==SpellTag.rainbow||tag==SpellTag.healingShower) amount=float.infinity;
-			if(tag==SpellTag.teleport) flags1&=~cast(int)SpelFlags1.shield;
+			if(tag==SpellTag.teleport||tag==SpellTag.haloOfEarth) flags1&=~cast(int)SpelFlags1.shield;
 			effectRange=spel.effectRange;
 			damageRange=spel.damageRange;
 			speed=60.0f*spel.speed;
 			if(tag==SpellTag.flummoxShoot) speed*=0.75f;
 			acceleration=60.0f*spel.acceleration;
 			needsPrediction=tag!=SpellTag.locustShoot;
+			isShield=!!(flags1&SpelFlags1.shield);
 		}else if(strc) setStats(strc);
 	}
 	static SacSpell!B[char[4]] spells;
