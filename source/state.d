@@ -10047,14 +10047,20 @@ void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 	}
 	final switch(soul.state){
 		case SoulState.normal:
+			enum CollectStance{
+				own,
+				ally,
+				neutral,
+				enemy,
+			}
 			static struct State{
 				int collector=0;
 				int side=-1;
 				float distancesqr=float.infinity;
+				CollectStance stance=CollectStance.max;
 				bool tied=false;
 			}
-			enum collectDistance=4.0f; // TODO: measure this
-			enum preferredBonus=3.0f; // TODO: measure this?
+			enum collectDistance=5.0f;
 			static void process(B)(ref WizardInfo!B wizard,Soul!B* soul,State* pstate,ObjectState!B state){ // TODO: use proximity data structure?
 				auto sidePositionValid=state.movingObjectById!((obj)=>tuple(obj.side,obj.center,obj.canCollectSouls),()=>Tuple!(int,Vector3f,bool).init)(wizard.id);
 				auto side=sidePositionValid[0],position=sidePositionValid[1],valid=sidePositionValid[2];
@@ -10062,13 +10068,21 @@ void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 				if((soul.position.xy-position.xy).lengthsqr>collectDistance^^2) return;
 				if(abs(soul.position.z-position.z)>collectDistance) return;
 				auto distancesqr=(soul.position-position).lengthsqr;
-				if(soul.preferredSide!=-1&&side!=soul.preferredSide){
-					if(soul.creatureId) return;
-					distancesqr+=preferredBonus;
+				auto stance=CollectStance.neutral;
+				if(soul.preferredSide!=-1){
+					if(side==soul.preferredSide) stance=CollectStance.own;
+					else final switch(state.sides.getStance(soul.preferredSide,side)){
+						case Stance.neutral: stance=CollectStance.neutral; break;
+						case Stance.ally: stance=CollectStance.ally; break;
+						case Stance.enemy: stance=CollectStance.enemy; break;
+					}
 				}
-				if(distancesqr>pstate.distancesqr) return;
-				if(distancesqr==pstate.distancesqr){ pstate.tied=true; return; }
-				*pstate=State(wizard.id,side,distancesqr,false);
+				if(stance>pstate.stance) return;
+				if(stance==pstate.stance){
+					if(distancesqr>pstate.distancesqr) return;
+					if(distancesqr==pstate.distancesqr){ pstate.tied=true; return; }
+				}
+				*pstate=State(wizard.id,side,distancesqr,stance,false);
 			}
 			State pstate;
 			state.eachWizard!process(&soul,&pstate,state);
