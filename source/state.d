@@ -10061,6 +10061,7 @@ void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 				bool tied=false;
 			}
 			enum collectDistance=5.0f;
+
 			static void process(B)(ref WizardInfo!B wizard,Soul!B* soul,State* pstate,ObjectState!B state){ // TODO: use proximity data structure?
 				auto sidePositionValid=state.movingObjectById!((obj)=>tuple(obj.side,obj.center,obj.canCollectSouls),()=>Tuple!(int,Vector3f,bool).init)(wizard.id);
 				auto side=sidePositionValid[0],position=sidePositionValid[1],valid=sidePositionValid[2];
@@ -10070,12 +10071,14 @@ void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 				auto distancesqr=(soul.position-position).lengthsqr;
 				auto stance=CollectStance.neutral;
 				if(soul.preferredSide!=-1){
-					if(side==soul.preferredSide) stance=CollectStance.own;
-					else final switch(state.sides.getStance(soul.preferredSide,side)){
-						case Stance.neutral: stance=CollectStance.neutral; break;
-						case Stance.ally: stance=CollectStance.ally; break;
-						case Stance.enemy: stance=CollectStance.enemy; break;
-					}
+					if(side!=soul.preferredSide){
+						if(soul.creatureId) return;
+						final switch(state.sides.getStance(soul.preferredSide,side)){
+							case Stance.neutral: stance=CollectStance.neutral; break;
+							case Stance.ally: stance=CollectStance.ally; break;
+							case Stance.enemy: stance=CollectStance.enemy; break;
+						}
+					}else stance=CollectStance.own;
 				}
 				if(stance>pstate.stance) return;
 				if(stance==pstate.stance){
