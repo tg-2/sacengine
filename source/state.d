@@ -195,8 +195,8 @@ bool canShield(CreatureMode mode){
 bool canCC(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
-			shooting,usingAbility,pulling,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
-		case dying,dead,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
+			shooting,usingAbility,pulling,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm,dying: return true;
+		case dead,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
 		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return false;
 	}
 }
