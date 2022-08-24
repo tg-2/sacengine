@@ -13716,7 +13716,7 @@ bool changeDirectionTowards(T,B)(ref T spell_,float targetFlyingHeight,ObjectSta
 		auto targetRotation=rotationBetween(direction,(predictedCenter-position).normalized);
 		auto actualRotationSpeed=rotationSpeed;
 		auto distancesqr=(targetCenter-position).lengthsqr;
-		if(distancesqr<4.0f^^2) actualRotationSpeed=4.0f*rotationSpeed/sqrt(distancesqr);
+		if(distancesqr<4.0f^^2) actualRotationSpeed=max(rotationSpeed,1.1f*spell.speed/sqrt(distancesqr));
 		direction=rotate(limitRotation(targetRotation,actualRotationSpeed/updateFPS),direction).normalized;
 		auto newPosition=position+direction*spell.speed/updateFPS;
 		if(state.isOnGround(newPosition)){
