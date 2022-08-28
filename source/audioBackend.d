@@ -99,7 +99,10 @@ final class AudioBackend(B){
 					themes[currentTheme].stop();
 					themes[currentTheme].source.gain=musicGain;
 					currentTheme=nextTheme;
-					if(currentTheme!=Theme.none) themes[currentTheme].play();
+					if(currentTheme!=Theme.none){
+						themes[currentTheme].source.gain=musicGain;
+						themes[currentTheme].play();
+					}
 				}else themes[currentTheme].source.gain=themeGain*musicGain;
 			}
 		}
