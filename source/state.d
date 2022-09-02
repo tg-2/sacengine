@@ -1015,7 +1015,7 @@ StunnedBehavior stunnedBehavior(B)(ref MovingObject!B object){
 }
 
 bool isRegenerating(B)(ref MovingObject!B object){
-	return (object.creatureState.mode.among(CreatureMode.idle,CreatureMode.playingDead,CreatureMode.rockForm)
+	return (object.creatureState.mode.among(CreatureMode.idle,CreatureMode.cower,CreatureMode.playingDead,CreatureMode.rockForm)
 	        ||object.creatureState.mode==CreatureMode.moving&&object.creatureState.movement==CreatureMovement.flying
 	        ||object.sacObject.continuousRegeneration&&object.creatureState.mode.canHeal)
 		&& !object.creatureStats.effects.regenerationBlocked;
