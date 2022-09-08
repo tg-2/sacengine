@@ -1209,3 +1209,8 @@ God getSpellGod(char[4] tag){ // TODO: figure out where this is stored
 
 import std.traits:EnumMembers;
 static immutable wizards=[EnumMembers!WizardTag];
+
+static immutable manalithCastingTimes=[15.0f,13.0f,12.0f,12.0f,10.0f,9.0f,8.5f,8.0f,8.0f,8.0f];
+static immutable shrineCastingTimes=[15.0f,15.0f,15.0f,13.0f,12.0f,11.5f,10.0f,8.0f,8.0f,8.0f];
+
+static immutable xpForLevel=[0,0,16000,24000,32000,48000,64000,80000,96000,120000,132000];

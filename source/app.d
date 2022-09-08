@@ -55,6 +55,9 @@ GameInit!B gameInit(alias multiplayerSide,B,R)(R playerSettings,ref Options opti
 		auto level=settings.level;
 		auto souls=settings.souls;
 		float experience=0.0f;
+		auto minLevel=settings.minLevel;
+		auto maxLevel=settings.maxLevel;
+		auto xpRate=settings.xpRate;
 		auto spells=settings.spellbook;
 		if(options.randomGods) spells=defaultSpells[uniform!"[]"(1,5)];
 		if(options.randomSpellbooks) spells=randomSpells();
@@ -63,7 +66,7 @@ GameInit!B gameInit(alias multiplayerSide,B,R)(R playerSettings,ref Options opti
 		assert(gameInit.slots[slot]==GameInit!B.Slot(-1));
 		int wizardIndex=cast(int)gameInit.wizards.length;
 		gameInit.slots[slot]=GameInit!B.Slot(wizardIndex);
-		gameInit.wizards~=GameInit!B.Wizard(to!WizardTag(tag),name,side,level,souls,experience,spellbook);
+		gameInit.wizards~=GameInit!B.Wizard(to!WizardTag(tag),name,side,level,souls,experience,minLevel,maxLevel,xpRate,spellbook);
 	}
 	foreach(ref settings;playerSettings) placeWizard(settings);
 	if(options.shuffleSlots){
@@ -231,6 +234,13 @@ void loadMap(B)(ref Options options)in{
 				}
 				if(options.synchronizeLevel) network.synchronizeSetting!"level"();
 				if(options.synchronizeSouls) network.synchronizeSetting!"souls"();
+
+				if(options.synchronizeLevelBounds){
+					network.synchronizeSetting!"minLevel"();
+					network.synchronizeSetting!"maxLevel"();
+				}
+				if(options.synchronizeXPRate) network.synchronizeSetting!"xpRate"();
+
 				network.updateStatus(PlayerStatus.readyToLoad);
 				assert(network.readyToLoad());
 				break;
@@ -473,6 +483,12 @@ int run(string[] args){
 			options.level=to!int(opt["--level=".length..$]);
 		}else if(opt.startsWith("--souls=")){
 			options.souls=to!int(opt["--souls=".length..$]);
+		}else if(opt.startsWith("--min-level=")){
+			options.minLevel=to!int(opt["--min-level=".length..$]);
+		}else if(opt.startsWith("--max-level=")){
+			options.maxLevel=to!int(opt["--max-level=".length..$]);
+		}else if(opt.startsWith("--xp-rate=")){
+			options.xpRate=to!float(opt["--xp-rate=".length..$]);
 		}else if(opt.startsWith("--map-list=")){
 			options.mapList=opt["--map-list=".length..$];
 		}else if(opt.startsWith("--delay-start=")){

@@ -67,6 +67,8 @@ struct Options{
 	bool logDesynch=true;
 	bool synchronizeLevel=true;
 	bool synchronizeSouls=true;
+	bool synchronizeLevelBounds=true;
+	bool synchronizeXPRate=true;
 	bool pauseOnDrop=true;
 	// recording and playback
 	string recordingFilename="";
@@ -96,4 +98,8 @@ struct Settings{
 	immutable(SpellSpec)[] spellbook;
 	int level=9;
 	int souls=12;
+
+	int minLevel=1;
+	int maxLevel=9;
+	float xpRate=1.0f;
 }

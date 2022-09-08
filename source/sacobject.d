@@ -182,6 +182,30 @@ final class SacObject(B){
 		return data.continuousRegeneration;
 	}
 
+	@property float xpOnKill(){ // TODO: correct?
+		// estimated from XP bar screenshots:
+		if(isPeasant) return 250.0f;
+		if(isManahoar) return 300.0f;
+		if(isSacDoctor) return 500.0f;
+		// sac wiki (rafradek):
+		if(cre8){
+			auto level=cre8.spellOrder/100;
+			switch(level){
+				case 1: return 1500;
+				case 2: return 3000;
+				case 3: return 3500;
+				case 4: return 5000;
+				case 5: return 5000;
+				case 6: return 5500;
+				case 7: return 6500;
+				case 9: return 10000;
+				default: break;
+			}
+		}
+		if(isWizard) return 5000.0f;
+		return 500; // ?
+	}
+
 	@property bool hasKnockdown(){
 		return hasAnimationState(AnimationState.knocked2Floor);
 	}
@@ -798,6 +822,8 @@ final class SacBuilding(B){
 	bool isPeasantShelter(){
 		return !!(bldg.header.flags&BldgFlags.shelter)||isAltar;
 	}
+
+	float xpOnDestruction(){ return 5000.0f; } // TODO: ok?
 
 	static SacBuilding!B[char[4]] buildings;
 	static SacBuilding!B get(char[4] tag){

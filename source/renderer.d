@@ -3397,8 +3397,10 @@ struct Renderer(B){
 								if(auto wiz=state.getWizard(obj.id)){
 									if(wiz.name.length) name=wiz.name;
 									level=wiz.level;
-									if(obj.side==renderSide)
-										relativeXP=0.0f; // TODO
+									if(obj.side==renderSide){
+										enforce(1<=wiz.level&&wiz.level<=9);
+										relativeXP=max(0.0f,min(wiz.experience/xpForLevel[wiz.level+1],1.0f));
+									}
 									sideName=null;
 								}
 							}else sideName=getSideName(obj.side,state);

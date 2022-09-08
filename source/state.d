@@ -1025,6 +1025,10 @@ bool isDamaged(B)(ref MovingObject!B object){
 	return object.health<=0.25f*object.creatureStats.maxHealth;
 }
 
+float xpOnKill(B)(ref MovingObject!B object){
+	return object.sacObject.xpOnKill;
+}
+
 bool isHidden(B)(ref MovingObject!B object){
 	if(object.creatureState.mode.isHidden) return true;
 	if(object.creatureStats.effects.stealth) return true;
@@ -1222,6 +1226,9 @@ struct Building(B){
 }
 int maxHealth(B)(ref Building!B building,ObjectState!B state){
 	return building.sacBuilding.maxHealth;
+}
+float xpOnDestruction(B)(ref Building!B building){
+	return building.sacBuilding.xpOnDestruction;
 }
 Vector3f position(B)(ref Building!B building,ObjectState!B state){
 	return state.staticObjectById!((obj)=>obj.position,()=>Vector3f.init)(building.componentIds[0]);
@@ -1740,6 +1747,11 @@ struct WizardInfo(B){
 	int level;
 	int souls;
 	float experience;
+
+	int minLevel=1;
+	int maxLevel=9;
+	float xpRate=1.0f;
+
 	Spellbook!B spellbook;
 	int closestBuilding=0;
 	int closestShrine=0;
@@ -1768,7 +1780,7 @@ void applyCooldown(B)(ref WizardInfo!B wizard,SacSpell!B spell,ObjectState!B sta
 		else entry.setCooldown(otherCooldown);
 	}
 }
-WizardInfo!B makeWizard(B)(int id,string name,int level,int souls,Spellbook!B spellbook,ObjectState!B state){
+WizardInfo!B makeWizard(B)(int id,string name,int level,int souls,float experience,int minLevel,int maxLevel,float xpRate,Spellbook!B spellbook,ObjectState!B state){
 	state.movingObjectById!((ref wizard,level,state){
 		wizard.creatureStats.maxHealth+=50.0f*level;
 		wizard.creatureStats.health+=50.0f*level;
@@ -1776,7 +1788,21 @@ WizardInfo!B makeWizard(B)(int id,string name,int level,int souls,Spellbook!B sp
 		wizard.creatureStats.maxMana+=100*level;
 		// TODO: boons
 	},(){ assert(0); })(id,level,state);
-	return WizardInfo!B(id,name,level,souls,0.0f,move(spellbook));
+	if(minLevel<1) minLevel=1;
+	if(maxLevel>9) maxLevel=9;
+	if(minLevel>maxLevel) maxLevel=minLevel;
+	if(level<minLevel) level=minLevel;
+	if(level>maxLevel) level=maxLevel;
+	auto wizard=WizardInfo!B(id,name,level,souls,experience,minLevel,maxLevel,xpRate,move(spellbook));
+	if(wizard.level<1){
+		wizard.level=1;
+		wizard.experience=0.0f;
+	}
+	if(wizard.level>9){
+		wizard.level=9;
+		wizard.experience=xpForLevel[9];
+	}
+	return wizard;
 }
 
 int placeCreature(B)(ObjectState!B state,SacObject!B sacObject,int flags,int side,Vector3f position,float facing){
@@ -1802,14 +1828,14 @@ int placeCreature(T=Creature,B)(ObjectState!B state,char[4] tag,int flags,int si
 	return state.placeCreature(SacObject!B.getSAXS!T(tag),flags,side,position,facing);
 }
 
-int placeWizard(B)(ObjectState!B state,SacObject!B wizard,string name,int flags,int side,int level,int souls,Spellbook!B spellbook,Vector3f position,float facing){
+int placeWizard(B)(ObjectState!B state,SacObject!B wizard,string name,int flags,int side,int level,int souls,float experience,int minLevel,int maxLevel,float xpRate,Spellbook!B spellbook,Vector3f position,float facing){
 	auto id=state.placeCreature(wizard,flags,side,position,facing);
-	state.addWizard(makeWizard(id,name,level,souls,move(spellbook),state));
+	state.addWizard(makeWizard(id,name,level,souls,experience,minLevel,maxLevel,xpRate,move(spellbook),state));
 	return id;
 }
 
 enum wizardAltarDistance=15.0f;
-int placeWizard(B)(ObjectState!B state,SacObject!B wizard,string name,int flags,int side,int level,int souls,Spellbook!B spellbook)in{
+int placeWizard(B)(ObjectState!B state,SacObject!B wizard,string name,int flags,int side,int level,int souls,float experience,int minLevel,int maxLevel,float xpRate,Spellbook!B spellbook)in{
 	assert(wizard.isWizard);
 }do{
 	bool flag=false;
@@ -1841,7 +1867,7 @@ int placeWizard(B)(ObjectState!B state,SacObject!B wizard,string name,int flags,
 				facing=bldg.facing+facingOffset;
 				position=altar.position+rotate(facingQuaternion(facing),Vector3f(0.0f,distance,0.0f));
 			}
-			*id=state.placeWizard(wizard,name,flags,side,level,souls,move(spellbook),position,facing);
+			*id=state.placeWizard(wizard,name,flags,side,level,souls,experience,minLevel,maxLevel,xpRate,move(spellbook),position,facing);
 		}
 	})(state,&id,wizard,name,flags,side,level,souls,move(spellbook));
 	return id;
@@ -5998,6 +6024,14 @@ void healFromDrain(B)(int attacker,float actualDamage,ObjectState!B state){
 		return state.movingObjectById!(healFromDrain,(){})(attacker,actualDamage,state);
 }
 
+void giveXPToSide(B)(int side,float xp,ObjectState!B state){
+	auto wizard=state.getWizardForSide(side);
+	if(!wizard) return;
+	wizard.experience+=xp*wizard.xpRate;
+}
+void drainXPFromSide(B)(int side,float xp,ObjectState!B state){
+	return giveXPToSide(side,-xp,state);
+}
 
 enum DamageMod{
 	none=0,
@@ -6125,9 +6159,13 @@ float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,
 	object.creatureStats.health-=actualDamage;
 	if(object.creatureStats.flags&Flags.cannotDestroyKill)
 		object.creatureStats.health=max(object.health,1.0f);
-	// TODO: give xp to wizard of attacking side
-	if(object.health==0.0f)
+	if(state.sides.getStance(attackingSide,object.side)==Stance.enemy)
+		giveXPToSide(attackingSide,actualDamage,state);
+	if(object.health==0.0f){
+		if(state.sides.getStance(attackingSide,object.side)==Stance.enemy)
+			giveXPToSide(attackingSide,object.xpOnKill,state);
 		object.kill(state);
+	}
 	return actualDamage;
 }
 
@@ -6240,9 +6278,13 @@ float dealDamageIgnoreGuardians(B)(ref Building!B building,float damage,int atta
 	building.health-=actualDamage;
 	if(building.flags&Flags.cannotDestroyKill)
 		building.health=max(building.health,1.0f);
-	// TODO: give xp to attacker
-	if(building.health==0.0f)
+	if(state.sides.getStance(attackingSide,building.side)==Stance.enemy)
+		giveXPToSide(attackingSide,actualDamage,state);
+	if(building.health==0.0f){
+		if(state.sides.getStance(attackingSide,building.side)==Stance.enemy)
+			giveXPToSide(attackingSide,building.xpOnDestruction,state);
 		building.destroy(state);
+	}
 	return actualDamage;
 }
 
@@ -6894,9 +6936,8 @@ void animateLevelUp(B)(Vector3f[2] hitbox,ObjectState!B state,bool soundEffect=t
 		state.addParticle(Particle!B(sacParticle,pposition,velocity,npscale,lifetime,frame));
 	}
 }
-bool levelUp(B)(ref MovingObject!B obj,ObjectState!B state){
+bool levelUpEffect(B)(ref MovingObject!B obj,ObjectState!B state){
 	animateLevelUp(obj.hitbox,state);
-	// TODO: reset XP?
 	return true;
 }
 
@@ -6904,13 +6945,12 @@ void animateLevelDown(B)(Vector3f[2] hitbox,ObjectState!B state,bool soundEffect
 	auto position=boxCenter([Vector3f(hitbox[0].x,hitbox[0].y,hitbox[1].z),hitbox[1]]);
 	auto size=boxSize(hitbox);
 	auto scale=max(size.x,size.y);
-	// if(soundEffect) playSoundAt("????",position,state,2.0f); // TODO
+	if(soundEffect) playSoundAt("ddog",position,state,2.0f); // TODO: correct?
 	state.addEffect(LevelDownEffect!B(position,scale,size.z));
 	// TODO: is there a particle effect?
 }
-bool levelDown(B)(ref MovingObject!B obj,ObjectState!B state){
+bool levelDownEffect(B)(ref MovingObject!B obj,ObjectState!B state){
 	animateLevelDown(obj.hitbox,state);
-	// TODO: reset XP?
 	return true;
 }
 
@@ -11083,6 +11123,9 @@ bool updateRitual(B)(ref Ritual!B ritual,ObjectState!B state){
 				enum boltDelay=updateAnimFactor*5;
 				enum changeShapeDelay=9;
 				if(progress>=walkTime+boltDelay+tortureStart&&progress<walkTime+boltDelay+tortureEnd){
+					enum tortureFrames=tortureEnd-tortureStart;
+					auto maxHealth=creature?state.movingObjectById!((ref obj)=>obj.creatureStats.maxHealth,()=>0.0f)(creature):0.0f;
+					giveXPToSide(side,maxHealth/tortureFrames,state);
 					if(progress==walkTime+boltDelay+tortureStart||frame%changeShapeDelay==0){
 						foreach(ref bolt;altarBolts) bolt.changeShape(state);
 					}
@@ -11092,9 +11135,9 @@ bool updateRitual(B)(ref Ritual!B ritual,ObjectState!B state){
 								foreach(ref bolt;desecrateBolts) bolt.changeShape(state);
 						auto numSouls=creature?state.movingObjectById!((ref obj)=>obj.sacObject.numSouls,()=>0)(creature):0;
 						static void drain(ref MovingObject!B wizard,int side,int numSouls,ObjectState!B state){
-							dealDesecrationDamage(wizard,(200.0f*(1+numSouls))/(tortureEnd-tortureStart),side,state);
-							drainMana(wizard,(40.0f*(1+numSouls))/(tortureEnd-tortureStart),state);
-							// TODO: desecration XP drain
+							dealDesecrationDamage(wizard,(200.0f*(1+numSouls))/tortureFrames,side,state);
+							drainMana(wizard,(40.0f*(1+numSouls))/tortureFrames,state);
+							drainXPFromSide(wizard.side,(3000.0f*(1+numSouls))/tortureFrames,state); // TODO: correct?
 						}
 						state.movingObjectById!(drain,(){})(targetWizard,side,numSouls,state);
 					}
@@ -18153,6 +18196,63 @@ void updateWizard(B)(ref WizardInfo!B wizard,ObjectState!B state){
 		}
 	}
 	if(spellbookVisible(wizard.id,state)) playSpellbookSound(side,flags,"vaps",state);
+	enforce(1<=wizard.level&&wizard.level<=9);
+	if(wizard.experience<0.0f){
+		if(wizard.level<=wizard.minLevel){
+			wizard.experience=0.0f;
+		}else{
+			while(wizard.level>=wizard.minLevel&&wizard.experience<0.0f){
+				enforce(0<=wizard.level&&wizard.level<=9);
+				wizard.level-=1;
+				wizard.experience+=xpForLevel[wizard.level+1];
+				if(wizard.level>=wizard.minLevel){
+					state.movingObjectById!((ref wizard,state){
+						float relativeHealth=wizard.creatureStats.health/wizard.creatureStats.maxHealth;
+						wizard.creatureStats.maxHealth-=50.0f;
+						wizard.creatureStats.health=relativeHealth*wizard.creatureStats.maxHealth;
+						float relativeMana=wizard.creatureStats.mana/wizard.creatureStats.maxMana;
+						wizard.creatureStats.maxMana-=100;
+						wizard.creatureStats.mana=relativeMana*wizard.creatureStats.maxMana;
+					},(){ })(wizard.id,state);
+				}else break;
+			}
+			if(wizard.level<wizard.minLevel){
+				wizard.level=wizard.minLevel;
+				wizard.experience=0.0f;
+			}
+			if(wizard.experience>=xpForLevel[wizard.level+1])
+				wizard.experience=xpForLevel[wizard.level+1]-1e-3f;
+			state.movingObjectById!(levelDownEffect,()=>false)(wizard.id,state);
+		}
+	}
+	if(wizard.experience>=xpForLevel[wizard.level+1]){
+		if(wizard.level>=wizard.maxLevel){
+			wizard.experience=xpForLevel[wizard.level+1];
+		}else{
+			while(wizard.level<=wizard.maxLevel&&wizard.experience>=xpForLevel[wizard.level+1]){
+				enforce(0<=wizard.level&&wizard.level<=9);
+				wizard.experience-=xpForLevel[wizard.level+1];
+				wizard.level+=1;
+				if(wizard.level<=wizard.maxLevel){
+					state.movingObjectById!((ref wizard,state){
+						float relativeHealth=wizard.creatureStats.health/wizard.creatureStats.maxHealth;
+						wizard.creatureStats.maxHealth+=50.0f;
+						wizard.creatureStats.health=relativeHealth*wizard.creatureStats.maxHealth;
+						float relativeMana=wizard.creatureStats.mana/wizard.creatureStats.maxMana;
+						wizard.creatureStats.maxMana+=100;
+						wizard.creatureStats.mana=relativeMana*wizard.creatureStats.maxMana;
+					},(){ })(wizard.id,state);
+				}else break;
+			}
+			if(wizard.level>wizard.maxLevel){
+				wizard.level=wizard.maxLevel;
+				wizard.experience=xpForLevel[wizard.level+1];
+			}
+			if(wizard.experience<0.0f)
+				wizard.experience=0.0f;
+			state.movingObjectById!(levelUpEffect,()=>false)(wizard.id,state);
+		}
+	}
 }
 
 void addToProximity(T,B)(ref T objects, ObjectState!B state){
@@ -20159,6 +20259,9 @@ struct GameInit(B){
 		int level=1;
 		int souls=0;
 		float experience=0.0f;
+		int minLevel=1;
+		int maxLevel=9;
+		float xpRate=1.0f;
 		Spellbook!B spellbook;
 	}
 	Wizard[] wizards;
@@ -20271,7 +20374,10 @@ final class GameState(B){
 		static if(is(T==Wizard)){
 			auto spellbook=getDefaultSpellbook!B(ntt.allegiance);
 			string name=null; // unnamed wizard
-			current.addWizard(makeWizard(id,name,ntt.level,ntt.souls,move(spellbook),current));
+			float experience=0.0f;
+			int minLevel=ntt.level, maxLevel=ntt.level; // TODO: correct?
+			float xpRate=1.0f; // TODO: correct?
+			current.addWizard(makeWizard(id,name,ntt.level,ntt.souls,experience,minLevel,maxLevel,xpRate,move(spellbook),current));
 		}
 	}
 	void placeSpirit(ref Spirit spirit){
@@ -20342,7 +20448,7 @@ final class GameState(B){
 			auto wizard=SacObject!B.getSAXS!Wizard(wiz.tag);
 			//printWizardStats(wizard);
 			auto flags=0;
-			auto wizId=current.placeWizard(wizard,wiz.name,flags,wiz.side,wiz.level,wiz.souls,wiz.spellbook);
+			auto wizId=current.placeWizard(wizard,wiz.name,flags,wiz.side,wiz.level,wiz.souls,wiz.experience,wiz.minLevel,wiz.maxLevel,wiz.xpRate,wiz.spellbook);
 			auto slot=slotForWiz[wizardIndex];
 			if(slot!=-1){
 				slots[slot].controlledSide=wiz.side;

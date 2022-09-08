@@ -93,11 +93,9 @@ class SacSpell(B){
 		if(spel) return spel.castingTime/60.0f;
 		switch(tag){
 			case "htlm":
-				immutable static manalithCastingTimes=[15.0f,13.0f,12.0f,12.0f,10.0f,9.0f,8.5f,8.0f,8.0f,8.0f];
 				static assert(manalithCastingTimes.length==10);
 				return manalithCastingTimes[max(0,min(9,level))];
 			case "pcas":
-				immutable static shrineCastingTimes=[15.0f,15.0f,15.0f,13.0f,12.0f,11.5f,10.0f,8.0f,8.0f,8.0f];
 				static assert(shrineCastingTimes.length==10);
 				return shrineCastingTimes[max(0,min(9,level))];
 			default: return strc.castingTime/60.0f;
