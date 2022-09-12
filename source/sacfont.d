@@ -41,6 +41,7 @@ class SacFont(B){
 			}
 			if(k==' '){
 				if(type==FontType.fnwt) rightMost=4;
+				else if(type==FontType.fn12) rightMost=6;
 				else rightMost=1;
 			}
 			letter.width=rightMost+1;

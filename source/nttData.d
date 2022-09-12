@@ -276,6 +276,14 @@ immutable(string)[char[4]] makeTextByTag(bool readFromWads){
 	return makeByTag!loadText(readFromWads,textFolders,"TEXT",false);
 }
 
+immutable string[] menuTextFolders=["extracted/local/lang_english/LANG.WAD!/ENGL.LANG/menu.FLDR"];
+immutable(string)[char[4]] menuTexts;
+immutable(string)[char[4]] makeMenuTextByTag(bool readFromWads){
+	import text_;
+	// TODO: split into even more tables to avoid duplicate tags...
+	return makeByTag!loadText(readFromWads,menuTextFolders,"TEXT",false);
+}
+
 immutable string[] formFolders=["extracted/menus/MENU.WAD!"].fixPaths;
 
 import form: loadForm, Form;
@@ -308,6 +316,7 @@ void initNTTData(bool readFromWads){
 	samps=makeSampByTag(readFromWads);
 
 	texts=makeTextByTag(readFromWads);
+	menuTexts=makeMenuTextByTag(readFromWads);
 	forms=makeFormByTag(readFromWads);
 }
 

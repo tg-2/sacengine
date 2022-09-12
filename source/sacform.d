@@ -1,17 +1,14 @@
 import std.exception, std.algorithm;
 import dlib.math;
 
-import form,txtr;
+import form,txtr,sacfont;
 import nttData;
 
-struct SacFormText{
-	Vector3f position;
-	string text;
-}
 
 enum FormTexture{
 	formBackground,
 	formBorder,
+	formTitlebar,
 	formPart1,
 	formPart2,
 }
@@ -20,13 +17,19 @@ struct SacFormPart(B){
 	B.Mesh2D mesh;
 	FormTexture texture;
 }
-
+struct SacFormText{
+	string text;
+	Vector2f position;
+	bool isLarge;
+}
 struct SacFormElement(B){
 	SacFormPart!B[] parts;
-	//string text;
-	//bool bigText;
+	SacFormText[] texts;
 }
 
+SacFont!B formFont(B)(bool largeFont){
+	return SacFont!B.get(largeFont?FontType.fn12:FontType.fnwt);
+}
 
 B.Mesh2D makeQuad(B)(Vector2f offset,Vector2f size,Vector2f texOffset,Vector2f texSize,bool flippedX,bool flippedY,bool swapCoords=false){
 	auto mesh=B.makeMesh2D(4,2);
@@ -46,7 +49,7 @@ B.Mesh2D makeQuad(B)(Vector2f offset,Vector2f size,Vector2f texOffset,Vector2f t
 	return mesh;
 }
 
-auto makeForm(B)(int width,int height,bool title,bool border){
+auto makeForm(B)(int width,int height,string title,bool largeTitle,bool border){
 	auto offset=Vector2f(0.0f,0.0f);
 	auto backOffset=offset;
 	auto backSize=Vector2f(width,height);
@@ -68,7 +71,7 @@ auto makeForm(B)(int width,int height,bool title,bool border){
 		if(title) topCornerOffset.y+=16;
 
 		auto cornerSize=Vector2f(32.0f,32.0f);
-		auto cornerTexOff=Vector2f(0.5f+(0.5f/64.0f),(0.5f/64.0f));
+		auto cornerTexOff=Vector2f(0.5f+(0.5f/64.0f),(0.5f/64.0f)); // TODO: this also has an inactive version
 		auto cornerTexSize=Vector2f(0.5f-1.0f/64.0f,0.5f-1.0f/64.0f);
 
 
@@ -85,18 +88,24 @@ auto makeForm(B)(int width,int height,bool title,bool border){
 		if(title) verticalBorderSize.y-=16.0f;
 
 		if(horizontalBorderSize.x>0.0f){
-			auto topBorder=makeQuad!B(topCornerOffset+Vector2f(cornerSize.x+outerEdgeSize.x+innerEdgeSize.x,0.0f),horizontalBorderSize,Vector2f(0.0f,0.0f),(1.0f/16.0f)*horizontalBorderSize,false,true);
+			auto horizontalBorderTexOff=(1.0f/16.0f)*Vector2f(0.5f,0.5f);
+			auto horizontalBorderTexSize=(1.0f/16.0f)*(horizontalBorderSize-Vector2f(1.0f,1.0f));
+
+			auto topBorder=makeQuad!B(topCornerOffset+Vector2f(cornerSize.x+outerEdgeSize.x+innerEdgeSize.x,0.0f),horizontalBorderSize,horizontalBorderTexOff,horizontalBorderTexSize,false,true);
 			parts~=SacFormPart!B(topBorder,FormTexture.formBorder);
 
-			auto bottomBorder=makeQuad!B(cornerOffset+Vector2f(cornerSize.x+outerEdgeSize.x+innerEdgeSize.x,height-horizontalBorderSize.y),horizontalBorderSize,Vector2f(0.0f,0.0f),(1.0f/16.0f)*horizontalBorderSize,false,false);
+			auto bottomBorder=makeQuad!B(cornerOffset+Vector2f(cornerSize.x+outerEdgeSize.x+innerEdgeSize.x,height-horizontalBorderSize.y),horizontalBorderSize,horizontalBorderTexOff,horizontalBorderTexSize,false,false);
 			parts~=SacFormPart!B(bottomBorder,FormTexture.formBorder);
 		}
 
 		if(verticalBorderSize.y>0.0f){
-			auto leftBorder=makeQuad!B(topCornerOffset+Vector2f(0.0f,cornerSize.y+outerEdgeSize.y+innerEdgeSize.y),verticalBorderSize,Vector2f(0.0f,0.0f),(1.0f/16.0f)*verticalBorderSize,true,false,true);
+			auto verticalBorderTexOff=(1.0f/16.0f)*Vector2f(0.5f,0.5f);
+			auto verticalBorderTexSize=(1.0f/16.0f)*(verticalBorderSize-Vector2f(1.0f,1.0f));
+
+			auto leftBorder=makeQuad!B(topCornerOffset+Vector2f(0.0f,cornerSize.y+outerEdgeSize.y+innerEdgeSize.y),verticalBorderSize,verticalBorderTexOff,verticalBorderTexSize,true,false,true);
 			parts~=SacFormPart!B(leftBorder,FormTexture.formBorder);
 
-			auto rightBorder=makeQuad!B(topCornerOffset+Vector2f(width-verticalBorderSize.x,cornerSize.y+outerEdgeSize.y+innerEdgeSize.y),verticalBorderSize,Vector2f(0.0f,0.0f),(1.0f/16.0f)*verticalBorderSize,false,false,true);
+			auto rightBorder=makeQuad!B(topCornerOffset+Vector2f(width-verticalBorderSize.x,cornerSize.y+outerEdgeSize.y+innerEdgeSize.y),verticalBorderSize,verticalBorderTexOff,verticalBorderTexSize,false,false,true);
 			parts~=SacFormPart!B(rightBorder,FormTexture.formBorder);
 		}
 
@@ -164,7 +173,31 @@ auto makeForm(B)(int width,int height,bool title,bool border){
 		auto bottomRight=makeQuad!B(cornerOffset+Vector2f(width-cornerSize.x,height-cornerSize.y),cornerSize,cornerTexOff,cornerTexSize,true,true);
 		parts~=SacFormPart!B(bottomRight,FormTexture.formPart1);
 	}
-	return SacFormElement!B(parts);
+	SacFormText[] texts;
+	if(title){
+		auto titleOffset=offset;
+		auto cornerSize=Vector2f(32.0f,32.0f);
+		auto cornerTexOff=Vector2f(0.5f+(0.5f/64.0f),0.5f+(0.5f/64.0f)); // TODO: this also has an inactive version
+		auto cornerTexSize=Vector2f(0.5f-1.0f/64.0f,0.5f-1.0f/64.0f);
+
+		auto cornerLeft=makeQuad!B(titleOffset,cornerSize,cornerTexOff,cornerTexSize,false,false);
+		parts~=SacFormPart!B(cornerLeft,FormTexture.formPart1);
+
+		auto cornerRight=makeQuad!B(titleOffset+Vector2f(width-cornerSize.x,0.0f),cornerSize,cornerTexOff,cornerTexSize,true,false);
+		parts~=SacFormPart!B(cornerRight,FormTexture.formPart1);
+
+		auto titlebarSize=Vector2f(width-2.0f*cornerSize.x,32.0f);
+		auto titlebarTexOff=(1.0f/32.0f)*Vector2f(0.5f,0.5f);
+		auto titlebarTexSize=(1.0f/32.0f)*(titlebarSize-Vector2f(1.0f,1.0f));
+		auto titlebar=makeQuad!B(titleOffset+Vector2f(cornerSize.x,0.0f),titlebarSize,titlebarTexOff,titlebarTexSize,false,false);
+		parts~=SacFormPart!B(titlebar,FormTexture.formTitlebar);
+		auto font=formFont!B(largeTitle);
+		auto settings=FormatSettings();
+		auto titleSize=font.getSize(title,settings);
+		auto position=titleOffset+Vector2f(0.5f*(width-titleSize.x),0.5f*(32.0f-titleSize.y));
+		texts~=SacFormText(title,position,largeTitle);
+	}
+	return SacFormElement!B(parts,texts);
 }
 
 auto makeSacFormElement(B)(Vector2f globalOffset,Element element){
@@ -204,6 +237,7 @@ final class SacForm(B){
 	static immutable string[] formTexturePaths=[
 		FormTexture.formBackground: "extracted/interfac/ifac.WAD!/form.FLDR/FMbg.TXTR",
 		FormTexture.formBorder: "extracted/interfac/ifac.WAD!/form.FLDR/FMbo.TXTR",
+		FormTexture.formTitlebar: "extracted/interfac/ifac.WAD!/form.FLDR/FMtb.TXTR",
 		FormTexture.formPart1: "extracted/interfac/ifac.WAD!/form.FLDR/FMp1.TXTR",
 		FormTexture.formPart2: "extracted/interfac/ifac.WAD!/form.FLDR/FMp2.TXTR",
 	];
@@ -224,9 +258,9 @@ final class SacForm(B){
 	private this(char[4] tag){
 		form=tag in forms;
 		enforce(!!form);
-		auto title=!!(form.flags&FormFlags.title);
+		auto title=!!(form.flags&FormFlags.title)?menuTexts.get(form.title,null):null;
 		auto border=!!(form.flags&FormFlags.border);
-		sacElements~=makeForm!B(width,height,title,border);
+		sacElements~=makeForm!B(width,height,title,true,border);
 		auto globalOffset=Vector2f(0.0f,0.0f);
 		if(title) globalOffset.y+=16;
 		if(border) globalOffset+=Vector2f(16.0f,16.0f);

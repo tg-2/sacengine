@@ -3632,18 +3632,35 @@ struct Renderer(B){
 		auto scale=Vector3f(info.hudScaling,info.hudScaling,0.0f);
 		B.colorHUDMaterialBackend.bind(null,rc);
 		B.colorHUDMaterialBackend.setTransformationScaled(offset,rotation,scale,rc);
+		auto smallFont=formFont!B(false);
+		auto largeFont=formFont!B(true);
 		foreach(ref sacElement;sacForm.sacElements){
 			foreach(ref part;sacElement.parts){
 				auto texture=SacForm!B.getTexture(part.texture);
 				B.colorHUDMaterialBackend.bindDiffuse(texture);
 				part.mesh.render(rc);
 			}
+			foreach(ref text;sacElement.texts){
+				auto font=text.isLarge?largeFont:smallFont;
+				B.colorHUDMaterialBackend.bindDiffuse(font.texture);
+				void drawLetter(B.SubQuad mesh,float x,float y,float width,float height){
+					B.colorHUDMaterialBackend.setTransformationScaled(Vector3f(x,y,0.0f),Quaternionf.identity(),Vector3f(width,height,0.0f),rc);
+					mesh.render(rc);
+				}
+				import sacfont;
+				auto settings=FormatSettings(FlowType.left,info.hudScaling);
+				font.write!drawLetter(text.text,offset.x+text.position.x*info.hudScaling,offset.y+text.position.y*info.hudScaling,settings);
+			}
+			if(sacElement.texts.length){
+				B.colorHUDMaterialBackend.setTransformationScaled(offset,rotation,scale,rc);
+			}
 		}
 		B.colorHUDMaterialBackend.unbind(null,rc);
 	}
 
 	void renderForms(ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
-		/+auto sacForm=SacForm!B.get("tsor");
+		/+//auto sacForm=SacForm!B.get("tsor");
+		auto sacForm=SacForm!B.get("thci");
 		renderForm(sacForm,state,info,rc);+/
 	}
 
