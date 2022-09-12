@@ -276,6 +276,15 @@ immutable(string)[char[4]] makeTextByTag(bool readFromWads){
 	return makeByTag!loadText(readFromWads,textFolders,"TEXT",false);
 }
 
+immutable string[] formFolders=["extracted/menus/MENU.WAD!"].fixPaths;
+
+import form: loadForm, Form;
+immutable(Form)[char[4]] forms;
+immutable(Form)[char[4]] makeFormByTag(bool readFromWads){
+	return makeByTag!loadForm(readFromWads,formFolders,"FORM",true);
+}
+
+
 void initNTTData(bool readFromWads){
 	bldgs=makeBldgByTag(readFromWads);
 	bldgTags=makeBldgTags();
@@ -299,6 +308,7 @@ void initNTTData(bool readFromWads){
 	samps=makeSampByTag(readFromWads);
 
 	texts=makeTextByTag(readFromWads);
+	forms=makeFormByTag(readFromWads);
 }
 
 

@@ -1350,16 +1350,22 @@ static:
 		mesh.dataReady=true;
 		mesh.prepareVAO();
 	}
-	MinimapMesh makeMinimapMesh(size_t numVertices, size_t numFaces){
+	Mesh2D makeMesh2D(size_t numVertices,size_t numFaces){
 		auto m=new MinimapMesh(null); // TODO: set owner
 		m.vertices=New!(Vector2f[])(numVertices);
 		m.texcoords=New!(Vector2f[])(numVertices);
 		m.indices=New!(uint[3][])(numFaces);
 		return m;
 	}
-	void finalizeMinimapMesh(MinimapMesh mesh){
+	void finalizeMesh2D(Mesh2D mesh){
 		mesh.dataReady=true;
 		mesh.prepareVAO();
+	}
+	MinimapMesh makeMinimapMesh(size_t numVertices, size_t numFaces){
+		return makeMesh2D(numVertices,numFaces);
+	}
+	void finalizeMinimapMesh(MinimapMesh mesh){
+		return finalizeMesh2D(mesh);
 	}
 
 	alias Quad=ShapeQuad;

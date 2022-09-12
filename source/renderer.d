@@ -10,7 +10,7 @@ import std.algorithm: min, max, among, map, filter, all, splitter;
 import std.range: iota, walkLength, enumerate;
 import std.typecons: tuple,Tuple;
 import std.exception: enforce;
-import state,sacobject,sacspell,nttData,sacmap,levl;
+import state,sacobject,sacspell,nttData,sacmap,levl,sacform;
 import util;
 
 struct Camera{
@@ -3626,6 +3626,27 @@ struct Renderer(B){
 		B.colorHUDMaterialBackend.unbind(null,rc);
 	}
 
+	void renderForm(SacForm!B sacForm,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
+		auto offset=Vector3f(0.5f*(info.width-info.hudScaling*sacForm.width),0.5f*(info.height-info.hudScaling*sacForm.height),0.0f);
+		auto rotation=Quaternionf.identity();
+		auto scale=Vector3f(info.hudScaling,info.hudScaling,0.0f);
+		B.colorHUDMaterialBackend.bind(null,rc);
+		B.colorHUDMaterialBackend.setTransformationScaled(offset,rotation,scale,rc);
+		foreach(ref sacElement;sacForm.sacElements){
+			foreach(ref part;sacElement.parts){
+				auto texture=SacForm!B.getTexture(part.texture);
+				B.colorHUDMaterialBackend.bindDiffuse(texture);
+				part.mesh.render(rc);
+			}
+		}
+		B.colorHUDMaterialBackend.unbind(null,rc);
+	}
+
+	void renderForms(ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
+		/+auto sacForm=SacForm!B.get("tsor");
+		renderForm(sacForm,state,info,rc);+/
+	}
+
 	void renderShadowCastingEntities3D(R3DOpt options,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
 		renderMap(state,info,rc);
 		renderNTTs!(RenderMode.opaque)(options,state,info,rc);
@@ -3649,6 +3670,7 @@ struct Renderer(B){
 			renderTargetFrame(state,info,rc);
 			renderHUD(state,info,rc);
 			renderText(state,info,rc);
+			renderForms(state,info,rc);
 			renderRectangleSelectFrame(state,info,rc);
 			renderCursor(options.cursorSize,state,info,rc);
 			renderMouseoverBox(options.cursorSize,state,info,rc);
