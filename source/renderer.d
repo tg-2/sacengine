@@ -3632,22 +3632,29 @@ struct Renderer(B){
 		auto scale=Vector3f(info.hudScaling,info.hudScaling,0.0f);
 		B.colorHUDMaterialBackend.bind(null,rc);
 		B.colorHUDMaterialBackend.setTransformationScaled(offset,rotation,scale,rc);
-		auto smallFont=formFont!B(false);
-		auto largeFont=formFont!B(true);
-		foreach(ref sacElement;sacForm.sacElements){
-			foreach(ref part;sacElement.parts){
-				auto texture=SacForm!B.getTexture(part.texture);
-				B.colorHUDMaterialBackend.bindDiffuse(texture);
-				part.mesh.render(rc);
+		import sacfont,form;
+		SacFont!B[FormFont.max+1] fonts;
+		import std.traits: EnumMembers;
+		foreach(formFont;EnumMembers!FormFont)
+			fonts[formFont]=formSacFont!B(formFont);
+		foreach(element,ref sacElement;sacForm.sacElements){
+			auto active=sacElement.type==ElementType.form||sacElement.id==sacForm.default_; // TODO: fix
+			// auto active=state.frame/60%2==1;
+			foreach(i,ref part;sacElement.parts){
+				B.colorHUDMaterialBackend.bindDiffuse(part.texture);
+				if(i==0&&sacElement.type==ElementType.canvas){
+					B.colorHUDMaterialBackend.setColor(Color4f(0.0f,0.0f,0.0f,1.0f));
+					part.mesh[active].render(rc); // TODO: actually get correct canvas contents
+					B.colorHUDMaterialBackend.setColor(Color4f(1.0f,1.0f,1.0f,1.0f));
+				}else part.mesh[active].render(rc);
 			}
 			foreach(ref text;sacElement.texts){
-				auto font=text.isLarge?largeFont:smallFont;
+				auto font=fonts[text.font];
 				B.colorHUDMaterialBackend.bindDiffuse(font.texture);
 				void drawLetter(B.SubQuad mesh,float x,float y,float width,float height){
 					B.colorHUDMaterialBackend.setTransformationScaled(Vector3f(x,y,0.0f),Quaternionf.identity(),Vector3f(width,height,0.0f),rc);
 					mesh.render(rc);
 				}
-				import sacfont;
 				auto settings=FormatSettings(FlowType.left,info.hudScaling);
 				font.write!drawLetter(text.text,offset.x+text.position.x*info.hudScaling,offset.y+text.position.y*info.hudScaling,settings);
 			}
@@ -3660,7 +3667,10 @@ struct Renderer(B){
 
 	void renderForms(ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
 		/+//auto sacForm=SacForm!B.get("tsor");
+		//auto sacForm=SacForm!B.get("tpok");
 		auto sacForm=SacForm!B.get("thci");
+		//auto sacForm=SacForm!B.get("nsol");
+		//auto sacForm=SacForm!B.get("rniw");
 		renderForm(sacForm,state,info,rc);+/
 	}
 

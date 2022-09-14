@@ -276,12 +276,21 @@ immutable(string)[char[4]] makeTextByTag(bool readFromWads){
 	return makeByTag!loadText(readFromWads,textFolders,"TEXT",false);
 }
 
-immutable string[] menuTextFolders=["extracted/local/lang_english/LANG.WAD!/ENGL.LANG/menu.FLDR"];
-immutable(string)[char[4]] menuTexts;
-immutable(string)[char[4]] makeMenuTextByTag(bool readFromWads){
+immutable string[] formTextFolders=["extracted/local/lang_english/LANG.WAD!/ENGL.LANG/menu.FLDR",
+                                    "extracted/local/langp3_english/LNG+.WAD!/addl.LANG"].fixPaths;
+immutable(string)[char[4]] formTexts;
+immutable(string)[char[4]] makeFormTextByTag(bool readFromWads){
 	import text_;
 	// TODO: split into even more tables to avoid duplicate tags...
-	return makeByTag!loadText(readFromWads,menuTextFolders,"TEXT",false);
+	return makeByTag!loadText(readFromWads,formTextFolders,"TEXT",false);
+}
+
+immutable string[] formIconFolders=["extracted/local/gfx_english/GFX_.WAD!",
+                                    "extracted/main/MAIN.WAD!/icon.FLDR"].fixPaths;
+immutable(string)[char[4]] formIcons;
+immutable(string)[char[4]] makeFormIconByTag(bool readFromWads){
+	// TODO: split into even more tables to avoid duplicate tags...
+	return makeByTag!(x=>x)(readFromWads,formIconFolders,"ICON",false);
 }
 
 immutable string[] formFolders=["extracted/menus/MENU.WAD!"].fixPaths;
@@ -316,7 +325,8 @@ void initNTTData(bool readFromWads){
 	samps=makeSampByTag(readFromWads);
 
 	texts=makeTextByTag(readFromWads);
-	menuTexts=makeMenuTextByTag(readFromWads);
+	formTexts=makeFormTextByTag(readFromWads);
+	formIcons=makeFormIconByTag(readFromWads);
 	forms=makeFormByTag(readFromWads);
 }
 

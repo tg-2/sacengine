@@ -11,8 +11,8 @@ enum ElementType{
 	form=2,
 	picture=3,
 	slider=4,
-	scrollbox=5,
-	textbox=6,
+	textbox=5,
+	entrybox=6,
 	checkbox=7,
 	text=10,
 	dropdown=11,
@@ -21,18 +21,24 @@ enum ElementType{
 }
 
 enum FormFlags{
-	unknown0=1<<0,
-	unknown1=1<<1,
-	unknown2=1<<2,
-	unknown3=1<<3,
 	unknown6=1<<6,
-	background0=1<<7, // setting to 0 removes background
+	background0=1<<7,
 	title=1<<8,
 	border=1<<9,
-	background1=1<<10, // setting to 0 removes background
+	background1=1<<10,
+	centerVertically=1<<12,
+	centerHorizontally=1<<13,
+}
+
+enum ElementFlags{
+	centerHorizontally=1<<1,
+	centerVertically=1<<2,
+	hidden=1<<3,
+	noScrollbar=1<<5,
+	disabled=1<<8,
+	whiteText=1<<9,
+	largerText=1<<10,
 	largeText=1<<11,
-	centerVertically=1<<12, // setting to zero top-aligns the window
-	centerHorizontally=1<<13, // setting to zero left-aligns the window
 	unknown14=1<<14,
 	unknown15=1<<15,
 	unknown16=1<<16,

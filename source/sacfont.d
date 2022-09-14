@@ -40,13 +40,14 @@ class SacFont(B){
 				}
 			}
 			if(k==' '){
-				if(type==FontType.fnwt) rightMost=4;
-				else if(type==FontType.fn12) rightMost=6;
+				if(type==FontType.fnwt||type==FontType.fn08) rightMost=4;
+				else if(type==FontType.fn10) rightMost=5;
+				else if(type==FontType.fn12||type==FontType.ft12) rightMost=6;
 				else rightMost=1;
 			}
 			letter.width=rightMost+1;
-			letter.height=letterHeight-1;
-			letter.mesh=B.makeSubQuad(float(u-widthSlack)/width,float(v+0.5f)/height,float(u+letter.width+widthSlack)/width,float(v+letterHeight-0.5f)/height);
+			letter.height=letterHeight;
+			letter.mesh=B.makeSubQuad(float(u-widthSlack)/width,float(v)/height,float(u+letter.width+widthSlack)/width,float(v+letterHeight)/height);
 		}
 		if(type==FontType.fndb){
 			widthSlack=0.5f;
