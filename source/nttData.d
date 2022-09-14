@@ -293,6 +293,14 @@ immutable(string)[char[4]] makeFormIconByTag(bool readFromWads){
 	return makeByTag!(x=>x)(readFromWads,formIconFolders,"ICON",false);
 }
 
+immutable string[] formTxtrFolders=["extracted/main/MAIN.WAD!/titl.FLDR"].fixPaths;
+immutable(string)[char[4]] formTxtrs;
+immutable(string)[char[4]] makeFormTxtrByTag(bool readFromWads){
+	// TODO: split into even more tables to avoid duplicate tags...
+	return makeByTag!(x=>x)(readFromWads,formTxtrFolders,"TXTR",false);
+}
+
+
 immutable string[] formFolders=["extracted/menus/MENU.WAD!"].fixPaths;
 
 import form: loadForm, Form;
@@ -327,6 +335,7 @@ void initNTTData(bool readFromWads){
 	texts=makeTextByTag(readFromWads);
 	formTexts=makeFormTextByTag(readFromWads);
 	formIcons=makeFormIconByTag(readFromWads);
+	formTxtrs=makeFormTxtrByTag(readFromWads);
 	forms=makeFormByTag(readFromWads);
 }
 

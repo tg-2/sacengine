@@ -3627,50 +3627,58 @@ struct Renderer(B){
 	}
 
 	void renderForm(SacForm!B sacForm,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
+		B.colorHUDMaterialBackend.bind(null,rc);
+		void doIt(SacForm!B sacForm,Vector3f offset,Quaternionf rotation,Vector3f scale){
+			B.colorHUDMaterialBackend.setTransformationScaled(offset,rotation,scale,rc);
+			import sacfont,form;
+			SacFont!B[FormFont.max+1] fonts;
+			import std.traits: EnumMembers;
+			foreach(formFont;EnumMembers!FormFont)
+				fonts[formFont]=formSacFont!B(formFont);
+			foreach(element,ref sacElement;sacForm.sacElements){
+				auto active=sacElement.type==ElementType.form||sacElement.id==sacForm.default_; // TODO: fix
+				// auto active=state.frame/60%2==1;
+				foreach(i,ref part;sacElement.parts){
+					B.colorHUDMaterialBackend.bindDiffuse(part.texture);
+					if(i==0&&sacElement.type==ElementType.canvas){
+						B.colorHUDMaterialBackend.setColor(Color4f(0.0f,0.0f,0.0f,1.0f));
+						part.mesh[active].render(rc); // TODO: actually get correct canvas contents
+						B.colorHUDMaterialBackend.setColor(Color4f(1.0f,1.0f,1.0f,1.0f));
+					}else part.mesh[active].render(rc);
+				}
+				foreach(i,ref subForm;sacElement.subForms){
+					doIt(subForm.form,offset+Vector3f(subForm.offset.x*scale.x,subForm.offset.y*scale.y,0.0f),rotation,scale);
+				}
+				foreach(ref text;sacElement.texts){
+					auto font=fonts[text.font];
+					B.colorHUDMaterialBackend.bindDiffuse(font.texture);
+					void drawLetter(B.SubQuad mesh,float x,float y,float width,float height){
+						B.colorHUDMaterialBackend.setTransformationScaled(Vector3f(x,y,0.0f),Quaternionf.identity(),Vector3f(width,height,0.0f),rc);
+						mesh.render(rc);
+					}
+					auto settings=FormatSettings(FlowType.left,scale.x);
+					font.write!drawLetter(text.text,offset.x+text.position.x*scale.x,offset.y+text.position.y*scale.y,settings);
+				}
+				if(sacElement.subForms.length||sacElement.texts.length){
+					B.colorHUDMaterialBackend.setTransformationScaled(offset,rotation,scale,rc);
+				}
+			}
+		}
 		auto offset=Vector3f(0.5f*(info.width-info.hudScaling*sacForm.width),0.5f*(info.height-info.hudScaling*sacForm.height),0.0f);
 		auto rotation=Quaternionf.identity();
 		auto scale=Vector3f(info.hudScaling,info.hudScaling,0.0f);
-		B.colorHUDMaterialBackend.bind(null,rc);
-		B.colorHUDMaterialBackend.setTransformationScaled(offset,rotation,scale,rc);
-		import sacfont,form;
-		SacFont!B[FormFont.max+1] fonts;
-		import std.traits: EnumMembers;
-		foreach(formFont;EnumMembers!FormFont)
-			fonts[formFont]=formSacFont!B(formFont);
-		foreach(element,ref sacElement;sacForm.sacElements){
-			auto active=sacElement.type==ElementType.form||sacElement.id==sacForm.default_; // TODO: fix
-			// auto active=state.frame/60%2==1;
-			foreach(i,ref part;sacElement.parts){
-				B.colorHUDMaterialBackend.bindDiffuse(part.texture);
-				if(i==0&&sacElement.type==ElementType.canvas){
-					B.colorHUDMaterialBackend.setColor(Color4f(0.0f,0.0f,0.0f,1.0f));
-					part.mesh[active].render(rc); // TODO: actually get correct canvas contents
-					B.colorHUDMaterialBackend.setColor(Color4f(1.0f,1.0f,1.0f,1.0f));
-				}else part.mesh[active].render(rc);
-			}
-			foreach(ref text;sacElement.texts){
-				auto font=fonts[text.font];
-				B.colorHUDMaterialBackend.bindDiffuse(font.texture);
-				void drawLetter(B.SubQuad mesh,float x,float y,float width,float height){
-					B.colorHUDMaterialBackend.setTransformationScaled(Vector3f(x,y,0.0f),Quaternionf.identity(),Vector3f(width,height,0.0f),rc);
-					mesh.render(rc);
-				}
-				auto settings=FormatSettings(FlowType.left,info.hudScaling);
-				font.write!drawLetter(text.text,offset.x+text.position.x*info.hudScaling,offset.y+text.position.y*info.hudScaling,settings);
-			}
-			if(sacElement.texts.length){
-				B.colorHUDMaterialBackend.setTransformationScaled(offset,rotation,scale,rc);
-			}
-		}
+		doIt(sacForm,offset,rotation,scale);
 		B.colorHUDMaterialBackend.unbind(null,rc);
 	}
 
 	void renderForms(ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
 		/+//auto sacForm=SacForm!B.get("tsor");
 		//auto sacForm=SacForm!B.get("tpok");
-		auto sacForm=SacForm!B.get("thci");
+		//auto sacForm=SacForm!B.get("thci");
 		//auto sacForm=SacForm!B.get("nsol");
 		//auto sacForm=SacForm!B.get("rniw");
+		auto sacForm=SacForm!B.get("ybol");
+		//auto sacForm=SacForm!B.get("stls");
 		renderForm(sacForm,state,info,rc);+/
 	}
 

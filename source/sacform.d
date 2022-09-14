@@ -82,12 +82,18 @@ string formTextFromTag(char[4] tag){
 	return formTexts.get(tag,"");
 }
 
+struct SubSacForm(B){
+	Vector2f offset;
+	SacForm!B form;
+}
+
 struct SacFormElement(B){
 	ElementType type;
 	char[4] id;
 	SacFormPart!B[] parts;
 	SacFormText[] texts;
 	string hoverText;
+	SubSacForm!B[] subForms;
 }
 
 
@@ -109,7 +115,7 @@ B.Mesh2D makeQuad(B)(Vector2f offset,Vector2f size,Vector2f texOffset,Vector2f t
 	return mesh;
 }
 
-auto makeForm(B)(Vector2f offset,char[4] id,Vector2f size,string title,bool largeTitle,bool border){
+auto makeForm(B)(Vector2f offset,char[4] id,Vector2f size,string title,bool largeTitle,bool background,bool border){
 	SacFormPart!B[] parts;
 	auto backOffset=offset;
 	auto backSize=size;
@@ -121,8 +127,10 @@ auto makeForm(B)(Vector2f offset,char[4] id,Vector2f size,string title,bool larg
 		backOffset+=Vector2f(8.0f,8.0f);
 		backSize-=Vector2f(16.0f,16.0f);
 	}
-	auto back=makeQuad!B(backOffset,backSize,Vector2f(0.0f,0.0f),(1.0f/32.0f)*backSize,false,false);
-	parts~=SacFormPart!B(back,FormTexture.formBackground);
+	if(background){
+		auto back=makeQuad!B(backOffset,backSize,Vector2f(0.0f,0.0f),(1.0f/32.0f)*backSize,false,false);
+		parts~=SacFormPart!B(back,FormTexture.formBackground);
+	}
 
 	if(border){
 		auto cornerOffset=offset;
@@ -318,6 +326,11 @@ auto makeCheckbox(B)(Vector2f offset,char[4] id,Vector2f size,string text,bool l
 	return makeBasicElement!B(ElementType.checkbox,offset,id,size,text,largeText,hoverText);
 }
 
+auto makeSubSacForm(B)(Vector2f offset,char[4] id,Vector2f size,SacForm!B subForm,string hoverText){
+	// TODO: does size matter?
+	return SacFormElement!B(ElementType.form,id,[],[],hoverText,[SubSacForm!B(offset,subForm)]);
+}
+
 auto makePicture(B)(Vector2f offset,char[4] id,Vector2f size,B.Texture texture,string hoverText){
 	SacFormPart!B[] parts;
 	auto picture=makeQuad!B(offset,size,Vector2f(0.0f,0.0f),Vector2f(1.0f,1.0f),false,false);
@@ -458,6 +471,11 @@ auto makeTextbox(B)(Vector2f offset,char[4] id,Vector2f size,string title,bool l
 	return SacFormElement!B(ElementType.textbox,id,parts,texts,hoverText);
 }
 
+auto formPicturePath(Element element){
+	auto tag=element.picture=="\0\0\0\0"?element.pictureOrForm:element.picture;
+	return formIcons.get(tag,formTxtrs.get(tag,null));
+}
+
 auto makeSacFormElement(B)(Vector2f globalOffset,Vector2f backgroundSize,Element element){
 	auto centerX=!!(element.flags&ElementFlags.centerHorizontally);
 	auto centerY=!!(element.flags&ElementFlags.centerVertically);
@@ -475,13 +493,17 @@ auto makeSacFormElement(B)(Vector2f globalOffset,Vector2f backgroundSize,Element
 			auto hoverText=formTextFromTag(element.mouseover);
 			return makeButton!B(offset,element.id,size,text,largeText,hoverText);
 		case form:
-			break;
+			auto offset=globalOffset+Vector2f(element.left,element.top);
+			auto size=Vector2f(element.width,element.height);
+			mixin(center);
+			auto form=SacForm!B.get(element.pictureOrForm);
+			auto hoverText=formTextFromTag(element.mouseover);
+			return makeSubSacForm!B(offset,element.id,size,form,hoverText);
 		case picture:
 			auto offset=globalOffset+Vector2f(element.left,element.top);
 			auto size=Vector2f(element.width,element.height);
-			auto tag=element.picture=="\0\0\0\0"?element.pictureOrForm:element.picture;
 			mixin(center);
-			auto filename=formIcons.get(tag,null);
+			auto filename=formPicturePath(element);
 			auto hoverText=formTextFromTag(element.mouseover);
 			if(filename){
 				auto texture=B.makeTexture(loadTXTR(filename));
@@ -589,10 +611,11 @@ final class SacForm(B){
 		form=tag in forms;
 		enforce(!!form);
 		auto title=!!(form.flags&FormFlags.title)?formTextFromTag(form.title):null;
+		auto background=!!(form.flags&FormFlags.background1);
 		auto border=!!(form.flags&FormFlags.border);
 		auto offset=Vector2f(0.0f,0.0f);
 		auto size=Vector2f(width,height);
-		sacElements~=makeForm!B(offset,form.id,size,title,true,border);
+		sacElements~=makeForm!B(offset,form.id,size,title,true,background,border);
 		auto globalOffset=Vector2f(0.0f,0.0f);
 		if(title) globalOffset.y+=16;
 		if(border) globalOffset+=Vector2f(16.0f,16.0f);
