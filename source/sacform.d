@@ -259,7 +259,7 @@ auto makeForm(B)(Vector2f offset,char[4] id,Vector2f size,string title,bool larg
 }
 
 auto makeBasicElement(B)(ElementType type,Vector2f offset,char[4] id,Vector2f size,string text,bool largeText,string hoverText)in{
-	assert(type==ElementType.button||type==ElementType.entrybox||type==ElementType.checkbox);
+	assert(type==ElementType.button||type==ElementType.entrybox||type==ElementType.checkbox||type==ElementType.slider||type==ElementType.dropdown);
 }do{
 	SacFormPart!B[] parts;
 	auto cornerSize=Vector2f(16.0f,size.y);
@@ -267,13 +267,15 @@ auto makeBasicElement(B)(ElementType type,Vector2f offset,char[4] id,Vector2f si
 	auto cornerTexOffActive=Vector2f(0.5f+0.5f/32.0f,0.5f/32.0f);
 	auto cornerTexSize=Vector2f(0.5f-1.0f/32.0f,0.5f-1.0f/32.0f);
 
+	auto cornerTexture=type==ElementType.slider?FormTexture.formPart5:FormTexture.formPart2;
+
 	auto cornerLeftInactive=makeQuad!B(offset,cornerSize,cornerTexOffInactive,cornerTexSize,false,false);
 	auto cornerLeftActive=makeQuad!B(offset,cornerSize,cornerTexOffActive,cornerTexSize,false,false);
-	parts~=SacFormPart!B(cornerLeftInactive,cornerLeftActive,FormTexture.formPart2);
+	parts~=SacFormPart!B(cornerLeftInactive,cornerLeftActive,cornerTexture);
 
 	auto cornerRightInactive=makeQuad!B(offset+Vector2f(size.x-cornerSize.x,0.0f),cornerSize,cornerTexOffInactive,cornerTexSize,true,false);
 	auto cornerRightActive=makeQuad!B(offset+Vector2f(size.x-cornerSize.x,0.0f),cornerSize,cornerTexOffActive,cornerTexSize,true,false);
-	parts~=SacFormPart!B(cornerRightInactive,cornerRightActive,FormTexture.formPart2);
+	parts~=SacFormPart!B(cornerRightInactive,cornerRightActive,cornerTexture);
 
 	auto barOffset=offset;
 	auto barSize=Vector2f(size.x-2.0f*cornerSize.x,size.y);
@@ -282,12 +284,15 @@ auto makeBasicElement(B)(ElementType type,Vector2f offset,char[4] id,Vector2f si
 	if(type==ElementType.checkbox){
 		barOffset.x+=checkSize.x;
 		barSize.x-=checkSize.x;
+	}else if(type==ElementType.dropdown){
+		barSize.x-=cornerSize.x;
 	}
 
 	auto barTexOff=(1.0f/16.0f)*Vector2f(0.5f,0.5f);
 	auto barTexSize=(1.0f/16.0f)*(barSize-Vector2f(1.0f,1.0f));
+	auto barTexture=type==ElementType.entrybox||type==ElementType.dropdown?FormTexture.entryboxBackground:type==ElementType.slider?FormTexture.sliderBackground:FormTexture.buttonBackground;
 	auto bar=makeQuad!B(barOffset+Vector2f(cornerSize.x,0.0f),barSize,barTexOff,barTexSize,false,false);
-	parts~=SacFormPart!B(bar,type==ElementType.entrybox?FormTexture.entryboxBackground:FormTexture.buttonBackground);
+	parts~=SacFormPart!B(bar,barTexture);
 
 	if(type==ElementType.checkbox){
 		auto checkOffset=offset+Vector2f(cornerSize.x,0.0f);
@@ -298,18 +303,32 @@ auto makeBasicElement(B)(ElementType type,Vector2f offset,char[4] id,Vector2f si
 		auto checkInactive=makeQuad!B(checkOffset,checkSize,checkTexOffInactive,checkTexSize,false,false);
 		auto checkActive=makeQuad!B(checkOffset,checkSize,checkTexOffActive,checkTexSize,false,false);
 		parts~=SacFormPart!B(checkInactive,checkActive,FormTexture.formPart4);
+	}else if(type==ElementType.slider){
+		auto sliderOffset=offset+Vector2f(cornerSize.x,0.0f);
+		auto sliderSize=Vector2f(16.0f,16.0f);
+		auto sliderTexOff=Vector2f(0.5f/32.0f,0.5f+0.5f/32.0f);
+		auto sliderTexSize=Vector2f(0.5f-1.0f/32.0f,0.5f-1.0f/32.0f);
+
+		auto slider=makeQuad!B(sliderOffset,sliderSize,sliderTexOff,sliderTexSize,false,false); // TODO: this should be moveable
+		parts~=SacFormPart!B(slider,FormTexture.formPart5);
+	}else if(type==ElementType.dropdown){
+		auto arrowOffset=offset+Vector2f(size.x-2*cornerSize.x,0.0f);
+
+		auto arrowInactive=makeQuad!B(arrowOffset,cornerSize,cornerTexOffInactive,cornerTexSize,true,true,true);
+		auto arrowActive=makeQuad!B(arrowOffset,cornerSize,cornerTexOffActive,cornerTexSize,true,true,true);
+		parts~=SacFormPart!B(arrowInactive,arrowActive,FormTexture.formPart5);
 	}
 
 	SacFormText[] texts;
-	if(type!=ElementType.entrybox){
+	if(type!=ElementType.entrybox&&type!=ElementType.slider){
 		auto font=titleSacFont!B(largeText);
 		Vector2f position;
 		if(type!=ElementType.checkbox){
 			auto settings=FormatSettings();
 			auto textSize=font.getSize(text,settings);
-			position=offset+Vector2f(0.5f*(size.x-textSize.x),1);
+			position=offset+Vector2f(0.5f*(size.x-textSize.x),1.0f);
 		}else{
-			position=offset+Vector2f(cornerSize.x+checkSize.x+4.0f,0.0f);
+			position=offset+Vector2f(cornerSize.x+checkSize.x+4.0f,1.0f);
 		}
 		texts~=SacFormText(text,position,titleFont(largeText));
 	}
@@ -325,12 +344,22 @@ auto makeEntrybox(B)(Vector2f offset,char[4] id,Vector2f size,string text,bool l
 auto makeCheckbox(B)(Vector2f offset,char[4] id,Vector2f size,string text,bool largeText,string hoverText){
 	return makeBasicElement!B(ElementType.checkbox,offset,id,size,text,largeText,hoverText);
 }
+auto makeSlider(B)(Vector2f offset,char[4] id,Vector2f size,string hoverText){
+	return makeBasicElement!B(ElementType.slider,offset,id,size,null,false,hoverText);
+}
+auto makeDropdown(B)(Vector2f offset,char[4] id,Vector2f size,string text,bool largeText,string hoverText){
+	return makeBasicElement!B(ElementType.dropdown,offset,id,size,text,largeText,hoverText);
+}
 
 auto makeSubSacForm(B)(Vector2f offset,char[4] id,Vector2f size,SacForm!B subForm,string hoverText){
 	// TODO: does size matter?
 	return SacFormElement!B(ElementType.form,id,[],[],hoverText,[SubSacForm!B(offset,subForm)]);
 }
 
+auto formPicturePath(Element element){
+	auto tag=element.picture=="\0\0\0\0"?element.pictureOrForm:element.picture;
+	return formIcons.get(tag,formTxtrs.get(tag,null));
+}
 auto makePicture(B)(Vector2f offset,char[4] id,Vector2f size,B.Texture texture,string hoverText){
 	SacFormPart!B[] parts;
 	auto picture=makeQuad!B(offset,size,Vector2f(0.0f,0.0f),Vector2f(1.0f,1.0f),false,false);
@@ -471,9 +500,17 @@ auto makeTextbox(B)(Vector2f offset,char[4] id,Vector2f size,string title,bool l
 	return SacFormElement!B(ElementType.textbox,id,parts,texts,hoverText);
 }
 
-auto formPicturePath(Element element){
-	auto tag=element.picture=="\0\0\0\0"?element.pictureOrForm:element.picture;
-	return formIcons.get(tag,formTxtrs.get(tag,null));
+auto makeText(B)(Vector2f offset,char[4] id,Vector2f size,string text,FormFont formFont,bool centerX,bool centerY,string hoverText){
+	SacFormPart!B[] parts;
+	SacFormText[] texts;
+	auto font=formSacFont!B(formFont);
+	auto settings=FormatSettings();
+	auto textSize=font.getSize(text,settings);
+	auto textOffset=offset;
+	if(centerX) textOffset.x=offset.x+0.5f*(size.x-textSize.x);
+	if(centerY) textOffset.y=offset.y+0.5f*(size.y-textSize.y);
+	texts~=SacFormText(text,textOffset,formFont); // TODO: this offset is not fully accurate, but it is not so clear why
+	return SacFormElement!B(ElementType.text,id,parts,texts,hoverText);
 }
 
 auto makeSacFormElement(B)(Vector2f globalOffset,Vector2f backgroundSize,Element element){
@@ -514,7 +551,11 @@ auto makeSacFormElement(B)(Vector2f globalOffset,Vector2f backgroundSize,Element
 				return makePicture!B(offset,element.id,size,texture,hoverText);
 			}
 		case slider:
-			break;
+			auto offset=globalOffset+Vector2f(element.left,element.top);
+			auto size=Vector2f(element.width,element.height);
+			mixin(center);
+			auto hoverText=formTextFromTag(element.mouseover);
+			return makeSlider!B(offset,element.id,size,hoverText);
 		case textbox:
 			auto offset=globalOffset+Vector2f(element.left,element.top);
 			auto size=Vector2f(element.width,element.height);
@@ -543,9 +584,26 @@ auto makeSacFormElement(B)(Vector2f globalOffset,Vector2f backgroundSize,Element
 			auto hoverText=formTextFromTag(element.mouseover);
 			return makeCheckbox!B(offset,element.id,size,text,largeText,hoverText);
 		case text:
-			break;
+			import std.stdio;
+			auto offset=globalOffset+Vector2f(element.left,element.top);
+			auto size=Vector2f(element.width,element.height);
+			mixin(center);
+			auto text=formTextFromTag(element.text);
+			//auto whiteText=!!(element.flags&ElementFlags.whiteText); // TODO: does this do anything for basic text?
+			auto largerText=!!(element.flags&ElementFlags.largerText);
+			enforce(!largerText,"TODO");
+			auto largeText=!!(element.flags&ElementFlags.largeText);
+			auto font=largeText?FormFont.largeTitle:FormFont.standard;
+			auto hoverText=formTextFromTag(element.mouseover);
+			return makeText!B(offset,element.id,size,text,font,true,true,hoverText);
 		case dropdown:
-			break;
+			auto offset=globalOffset+Vector2f(element.left,element.top);
+			auto size=Vector2f(element.width,16.0f);
+			mixin(center);
+			auto text=formTextFromTag(element.text);
+			auto largeText=!!(element.flags&ElementFlags.largeText);
+			auto hoverText=formTextFromTag(element.mouseover);
+			return makeDropdown!B(offset,element.id,size,text,largeText,hoverText);
 		case canvas:
 			auto offset=globalOffset+Vector2f(element.left,element.top);
 			auto size=Vector2f(element.width,element.height);
@@ -608,6 +666,7 @@ final class SacForm(B){
 	char[4] escape(){ return form.escape; }
 
 	private this(char[4] tag){
+		this.tag=tag;
 		form=tag in forms;
 		enforce(!!form);
 		auto title=!!(form.flags&FormFlags.title)?formTextFromTag(form.title):null;

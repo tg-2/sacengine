@@ -3673,12 +3673,18 @@ struct Renderer(B){
 
 	void renderForms(ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
 		/+//auto sacForm=SacForm!B.get("tsor");
-		//auto sacForm=SacForm!B.get("tpok");
-		//auto sacForm=SacForm!B.get("thci");
+		auto sacForm=SacForm!B.get("thci");
 		//auto sacForm=SacForm!B.get("nsol");
 		//auto sacForm=SacForm!B.get("rniw");
-		auto sacForm=SacForm!B.get("ybol");
 		//auto sacForm=SacForm!B.get("stls");
+		//auto sacForm=SacForm!B.get("ybol");
+		//auto sacForm=SacForm!B.get("unmg");
+		//auto sacForm=SacForm!B.get("stpo");
+		//auto sacForm=SacForm!B.get("tpog");
+		//auto sacForm=SacForm!B.get("tpos");
+		//auto sacForm=SacForm!B.get("tpok");
+		//auto sacForm=SacForm!B.get("tpoc");
+		//auto sacForm=SacForm!B.get("tpmc");
 		renderForm(sacForm,state,info,rc);+/
 	}
 
