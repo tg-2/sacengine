@@ -1,8 +1,7 @@
-import std.exception, std.algorithm;
+import std.exception, std.algorithm, std.conv: to;
 import dlib.math;
-
-import form,txtr,sacfont;
-import nttData;
+import util;
+import form,txtr,sacfont,nttData;
 
 
 enum FormTexture{
@@ -82,6 +81,11 @@ string formTextFromTag(char[4] tag){
 	return formTexts.get(tag,"");
 }
 
+string mouseoverTextFromTag(char[4] tag){
+	if(tag=="\0\0\0\0") return null;
+	return mouseoverTexts.get(tag,formTexts.get(tag,""));
+}
+
 struct SubSacForm(B){
 	Vector2f offset;
 	SacForm!B form;
@@ -90,9 +94,12 @@ struct SubSacForm(B){
 struct SacFormElement(B){
 	ElementType type;
 	char[4] id;
+	Vector2f offset;
+	Vector2f size;
 	SacFormPart!B[] parts;
 	SacFormText[] texts;
-	string hoverText;
+	string mouseoverText;
+	int formIndex=-1;
 	SubSacForm!B[] subForms;
 }
 
@@ -254,11 +261,12 @@ auto makeForm(B)(Vector2f offset,char[4] id,Vector2f size,string title,bool larg
 		auto position=titleOffset+Vector2f(0.5f*(size.x-titleSize.x),7);
 		texts~=SacFormText(title,position,titleFont(largeTitle));
 	}
-	string hoverText=null;
-	return SacFormElement!B(ElementType.form,id,parts,texts,hoverText);
+	string mouseoverText=null;
+	int formIndex=-1;
+	return SacFormElement!B(ElementType.form,id,offset,size,parts,texts,mouseoverText,formIndex);
 }
 
-auto makeBasicElement(B)(ElementType type,Vector2f offset,char[4] id,Vector2f size,string text,bool largeText,string hoverText)in{
+auto makeBasicElement(B)(ElementType type,Vector2f offset,char[4] id,Vector2f size,string text,bool largeText,string mouseoverText,int formIndex)in{
 	assert(type==ElementType.button||type==ElementType.entrybox||type==ElementType.checkbox||type==ElementType.slider||type==ElementType.dropdown);
 }do{
 	SacFormPart!B[] parts;
@@ -332,43 +340,43 @@ auto makeBasicElement(B)(ElementType type,Vector2f offset,char[4] id,Vector2f si
 		}
 		texts~=SacFormText(text,position,titleFont(largeText));
 	}
-	return SacFormElement!B(type,id,parts,texts,hoverText);
+	return SacFormElement!B(type,id,offset,size,parts,texts,mouseoverText,formIndex);
 }
 
-auto makeButton(B)(Vector2f offset,char[4] id,Vector2f size,string text,bool largeText,string hoverText){
-	return makeBasicElement!B(ElementType.button,offset,id,size,text,largeText,hoverText);
+auto makeButton(B)(Vector2f offset,char[4] id,Vector2f size,string text,bool largeText,string mouseoverText,int formIndex){
+	return makeBasicElement!B(ElementType.button,offset,id,size,text,largeText,mouseoverText,formIndex);
 }
-auto makeEntrybox(B)(Vector2f offset,char[4] id,Vector2f size,string text,bool largeText,string hoverText){
-	return makeBasicElement!B(ElementType.entrybox,offset,id,size,text,largeText,hoverText);
+auto makeEntrybox(B)(Vector2f offset,char[4] id,Vector2f size,string text,bool largeText,string mouseoverText,int formIndex){
+	return makeBasicElement!B(ElementType.entrybox,offset,id,size,text,largeText,mouseoverText,formIndex);
 }
-auto makeCheckbox(B)(Vector2f offset,char[4] id,Vector2f size,string text,bool largeText,string hoverText){
-	return makeBasicElement!B(ElementType.checkbox,offset,id,size,text,largeText,hoverText);
+auto makeCheckbox(B)(Vector2f offset,char[4] id,Vector2f size,string text,bool largeText,string mouseoverText,int formIndex){
+	return makeBasicElement!B(ElementType.checkbox,offset,id,size,text,largeText,mouseoverText,formIndex);
 }
-auto makeSlider(B)(Vector2f offset,char[4] id,Vector2f size,string hoverText){
-	return makeBasicElement!B(ElementType.slider,offset,id,size,null,false,hoverText);
+auto makeSlider(B)(Vector2f offset,char[4] id,Vector2f size,string mouseoverText,int formIndex){
+	return makeBasicElement!B(ElementType.slider,offset,id,size,null,false,mouseoverText,formIndex);
 }
-auto makeDropdown(B)(Vector2f offset,char[4] id,Vector2f size,string text,bool largeText,string hoverText){
-	return makeBasicElement!B(ElementType.dropdown,offset,id,size,text,largeText,hoverText);
+auto makeDropdown(B)(Vector2f offset,char[4] id,Vector2f size,string text,bool largeText,string mouseoverText,int formIndex){
+	return makeBasicElement!B(ElementType.dropdown,offset,id,size,text,largeText,mouseoverText,formIndex);
 }
 
-auto makeSubSacForm(B)(Vector2f offset,char[4] id,Vector2f size,SacForm!B subForm,string hoverText){
+auto makeSubSacForm(B)(Vector2f offset,char[4] id,Vector2f size,SacForm!B subForm,string mouseoverText,int formIndex){
 	// TODO: does size matter?
-	return SacFormElement!B(ElementType.form,id,[],[],hoverText,[SubSacForm!B(offset,subForm)]);
+	return SacFormElement!B(ElementType.form,id,offset,size,[],[],mouseoverText,formIndex,[SubSacForm!B(offset,subForm)]);
 }
 
 auto formPicturePath(Element element){
 	auto tag=element.picture=="\0\0\0\0"?element.pictureOrForm:element.picture;
 	return formIcons.get(tag,formTxtrs.get(tag,null));
 }
-auto makePicture(B)(Vector2f offset,char[4] id,Vector2f size,B.Texture texture,string hoverText){
+auto makePicture(B)(Vector2f offset,char[4] id,Vector2f size,B.Texture texture,string mouseoverText,int formIndex){
 	SacFormPart!B[] parts;
 	auto picture=makeQuad!B(offset,size,Vector2f(0.0f,0.0f),Vector2f(1.0f,1.0f),false,false);
 	parts~=SacFormPart!B(picture,texture);
 	SacFormText[] texts;
-	return SacFormElement!B(ElementType.picture,id,parts,texts,hoverText);
+	return SacFormElement!B(ElementType.picture,id,offset,size,parts,texts,mouseoverText,formIndex);
 }
 
-auto makeTextbox(B)(Vector2f offset,char[4] id,Vector2f size,string title,bool largeTitle,bool border,bool scrollbar,string hoverText){
+auto makeTextbox(B)(Vector2f offset,char[4] id,Vector2f size,string title,bool largeTitle,bool border,bool scrollbar,string mouseoverText,int formIndex){
 	SacFormPart!B[] parts;
 	auto backOffset=offset;
 	auto backSize=size;
@@ -497,10 +505,10 @@ auto makeTextbox(B)(Vector2f offset,char[4] id,Vector2f size,string title,bool l
 		texts~=SacFormText(title,position,titleFont(largeTitle));
 	}
 
-	return SacFormElement!B(ElementType.textbox,id,parts,texts,hoverText);
+	return SacFormElement!B(ElementType.textbox,id,offset,size,parts,texts,mouseoverText,formIndex);
 }
 
-auto makeText(B)(Vector2f offset,char[4] id,Vector2f size,string text,FormFont formFont,bool centerX,bool centerY,string hoverText){
+auto makeText(B)(Vector2f offset,char[4] id,Vector2f size,string text,FormFont formFont,bool centerX,bool centerY,string mouseoverText,int formIndex){
 	SacFormPart!B[] parts;
 	SacFormText[] texts;
 	auto font=formSacFont!B(formFont);
@@ -510,10 +518,10 @@ auto makeText(B)(Vector2f offset,char[4] id,Vector2f size,string text,FormFont f
 	if(centerX) textOffset.x=offset.x+0.5f*(size.x-textSize.x);
 	if(centerY) textOffset.y=offset.y+0.5f*(size.y-textSize.y);
 	texts~=SacFormText(text,textOffset,formFont); // TODO: this offset is not fully accurate, but it is not so clear why
-	return SacFormElement!B(ElementType.text,id,parts,texts,hoverText);
+	return SacFormElement!B(ElementType.text,id,offset,size,parts,texts,mouseoverText,formIndex);
 }
 
-auto makeSacFormElement(B)(Vector2f globalOffset,Vector2f backgroundSize,Element element){
+auto makeSacFormElement(B)(Vector2f globalOffset,Vector2f backgroundSize,Element element,int formIndex){
 	auto centerX=!!(element.flags&ElementFlags.centerHorizontally);
 	auto centerY=!!(element.flags&ElementFlags.centerVertically);
 	enum center=q{
@@ -527,35 +535,35 @@ auto makeSacFormElement(B)(Vector2f globalOffset,Vector2f backgroundSize,Element
 			mixin(center);
 			auto text=formTextFromTag(element.text);
 			auto largeText=!!(element.flags&ElementFlags.largeText);
-			auto hoverText=formTextFromTag(element.mouseover);
-			return makeButton!B(offset,element.id,size,text,largeText,hoverText);
+			auto mouseoverText=mouseoverTextFromTag(element.mouseover);
+			return makeButton!B(offset,element.id,size,text,largeText,mouseoverText,formIndex);
 		case form:
 			auto offset=globalOffset+Vector2f(element.left,element.top);
 			auto size=Vector2f(element.width,element.height);
 			mixin(center);
 			auto form=SacForm!B.get(element.pictureOrForm);
-			auto hoverText=formTextFromTag(element.mouseover);
-			return makeSubSacForm!B(offset,element.id,size,form,hoverText);
+			auto mouseoverText=mouseoverTextFromTag(element.mouseover);
+			return makeSubSacForm!B(offset,element.id,size,form,mouseoverText,formIndex);
 		case picture:
 			auto offset=globalOffset+Vector2f(element.left,element.top);
 			auto size=Vector2f(element.width,element.height);
 			mixin(center);
 			auto filename=formPicturePath(element);
-			auto hoverText=formTextFromTag(element.mouseover);
+			auto mouseoverText=mouseoverTextFromTag(element.mouseover);
 			if(filename){
 				auto texture=B.makeTexture(loadTXTR(filename));
-				return makePicture!B(offset,element.id,size,texture,hoverText);
+				return makePicture!B(offset,element.id,size,texture,mouseoverText,formIndex);
 			}else{
 				// TODO: fix
 				auto texture=SacForm!B.getTexture(FormTexture.textboxBackground);
-				return makePicture!B(offset,element.id,size,texture,hoverText);
+				return makePicture!B(offset,element.id,size,texture,mouseoverText,formIndex);
 			}
 		case slider:
 			auto offset=globalOffset+Vector2f(element.left,element.top);
 			auto size=Vector2f(element.width,element.height);
 			mixin(center);
-			auto hoverText=formTextFromTag(element.mouseover);
-			return makeSlider!B(offset,element.id,size,hoverText);
+			auto mouseoverText=mouseoverTextFromTag(element.mouseover);
+			return makeSlider!B(offset,element.id,size,mouseoverText,formIndex);
 		case textbox:
 			auto offset=globalOffset+Vector2f(element.left,element.top);
 			auto size=Vector2f(element.width,element.height);
@@ -565,24 +573,24 @@ auto makeSacFormElement(B)(Vector2f globalOffset,Vector2f backgroundSize,Element
 			//auto border=!!(element.flags&ElementFlags.border);
 			auto border=true;
 			auto scrollbar=!(element.flags&ElementFlags.noScrollbar);
-			auto hoverText=formTextFromTag(element.mouseover);
-			return makeTextbox!B(offset,element.id,size,title,largeTitle,border,scrollbar,hoverText);
+			auto mouseoverText=mouseoverTextFromTag(element.mouseover);
+			return makeTextbox!B(offset,element.id,size,title,largeTitle,border,scrollbar,mouseoverText,formIndex);
 		case entrybox:
 			auto offset=globalOffset+Vector2f(element.left,element.top);
 			auto size=Vector2f(element.width,16.0f);
 			mixin(center);
 			auto text=formTextFromTag(element.text);
 			auto largeText=!!(element.flags&ElementFlags.largeText);
-			auto hoverText=formTextFromTag(element.mouseover);
-			return makeEntrybox!B(offset,element.id,size,text,largeText,hoverText);
+			auto mouseoverText=mouseoverTextFromTag(element.mouseover);
+			return makeEntrybox!B(offset,element.id,size,text,largeText,mouseoverText,formIndex);
 		case checkbox:
 			auto offset=globalOffset+Vector2f(element.left,element.top);
 			auto size=Vector2f(element.width,16.0f);
 			mixin(center);
 			auto text=formTextFromTag(element.text);
 			auto largeText=!!(element.flags&ElementFlags.largeText);
-			auto hoverText=formTextFromTag(element.mouseover);
-			return makeCheckbox!B(offset,element.id,size,text,largeText,hoverText);
+			auto mouseoverText=mouseoverTextFromTag(element.mouseover);
+			return makeCheckbox!B(offset,element.id,size,text,largeText,mouseoverText,formIndex);
 		case text:
 			import std.stdio;
 			auto offset=globalOffset+Vector2f(element.left,element.top);
@@ -594,16 +602,16 @@ auto makeSacFormElement(B)(Vector2f globalOffset,Vector2f backgroundSize,Element
 			enforce(!largerText,"TODO");
 			auto largeText=!!(element.flags&ElementFlags.largeText);
 			auto font=largeText?FormFont.largeTitle:FormFont.standard;
-			auto hoverText=formTextFromTag(element.mouseover);
-			return makeText!B(offset,element.id,size,text,font,true,true,hoverText);
+			auto mouseoverText=mouseoverTextFromTag(element.mouseover);
+			return makeText!B(offset,element.id,size,text,font,true,true,mouseoverText,formIndex);
 		case dropdown:
 			auto offset=globalOffset+Vector2f(element.left,element.top);
 			auto size=Vector2f(element.width,16.0f);
 			mixin(center);
 			auto text=formTextFromTag(element.text);
 			auto largeText=!!(element.flags&ElementFlags.largeText);
-			auto hoverText=formTextFromTag(element.mouseover);
-			return makeDropdown!B(offset,element.id,size,text,largeText,hoverText);
+			auto mouseoverText=mouseoverTextFromTag(element.mouseover);
+			return makeDropdown!B(offset,element.id,size,text,largeText,mouseoverText,formIndex);
 		case canvas:
 			auto offset=globalOffset+Vector2f(element.left,element.top);
 			auto size=Vector2f(element.width,element.height);
@@ -615,8 +623,8 @@ auto makeSacFormElement(B)(Vector2f globalOffset,Vector2f backgroundSize,Element
 			auto border=true;
 			//auto scrollbar=!(element.flags&ElementFlags.noScrollbar);
 			auto scrollbar=false;
-			auto hoverText=formTextFromTag(element.mouseover);
-			auto canvas=makeTextbox!B(offset,element.id,size,title,largeTitle,border,scrollbar,hoverText);
+			auto mouseoverText=mouseoverTextFromTag(element.mouseover);
+			auto canvas=makeTextbox!B(offset,element.id,size,title,largeTitle,border,scrollbar,mouseoverText,formIndex);
 			canvas.type=ElementType.canvas;
 			return canvas;
 		case progressbar:
@@ -665,6 +673,8 @@ final class SacForm(B){
 	char[4] default_(){ return form.default_; }
 	char[4] escape(){ return form.escape; }
 
+	string mouseoverText(){ return null; }
+
 	private this(char[4] tag){
 		this.tag=tag;
 		form=tag in forms;
@@ -678,8 +688,8 @@ final class SacForm(B){
 		auto globalOffset=Vector2f(0.0f,0.0f);
 		if(title) globalOffset.y+=16;
 		if(border) globalOffset+=Vector2f(16.0f,16.0f);
-		foreach(ref e;form.elements){
-			sacElements~=makeSacFormElement!B(globalOffset,size,e);
+		foreach(i,ref e;form.elements){
+			sacElements~=makeSacFormElement!B(globalOffset,size,e,to!int(i));
 		}
 	}
 
@@ -688,4 +698,52 @@ final class SacForm(B){
 		if(auto r=tag in sacForms) return *r;
 		return sacForms[tag]=new SacForm!B(tag);
 	}
+}
+
+struct ElementState{
+	ElementType type;
+	char[4] id;
+	string mouseoverText;
+	int numChildren=0;
+	int parent=-1;
+	int sacFormIndex=-1;
+	bool enabled=true;
+	bool visible=true;
+	Array!char textInput;
+}
+
+struct SacFormState(B){
+	SacForm!B sacForm;
+	Array!ElementState elements;
+	int activeElement;
+}
+
+SacFormState!B sacFormInstance(B)(char[4] tag){
+	return sacFormInstance(SacForm!B.get(tag));
+}
+
+SacFormState!B sacFormInstance(B)(SacForm!B form){
+	Array!ElementState elements;
+	int activeElement=-1;
+	void addForm(SacForm!B currentForm,int parent,int parentSacFormIndex){
+		int current=to!int(elements.length);
+		elements~=ElementState(ElementType.form,currentForm.tag,currentForm.mouseoverText,0,parent,parentSacFormIndex); // TODO: enabled, visible?
+		foreach(sacFormIndex,ref sacElement;currentForm.sacElements){
+			if(sacFormIndex==0) continue; // form itself is always first sacElement
+			if(sacElement.type!=ElementType.form){
+				enforce(sacElement.subForms.length==0);
+				if(sacElement.id==currentForm.default_) activeElement=to!int(elements.length);
+				auto flags=currentForm.form.elements[sacElement.formIndex].flags;
+				auto enabled=!(flags&ElementFlags.disabled);
+				auto visible=!(flags&ElementFlags.hidden);
+				elements~=ElementState(sacElement.type,sacElement.id,sacElement.mouseoverText,0,parent,to!int(sacFormIndex),enabled,visible);
+			}else{
+				enforce(sacElement.subForms.length==1);
+				addForm(sacElement.subForms[0].form,current,to!int(sacFormIndex));
+			}
+		}
+		elements[current].numChildren=to!int(elements.length)-(current+1);
+	}
+	addForm(form,-1,-1);
+	return SacFormState!B(form,move(elements),activeElement);
 }

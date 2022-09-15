@@ -19281,6 +19281,7 @@ final class ObjectState(B){ // (update logic)
 		return obj.isValidTarget(id);
 	}
 	bool isValidTarget(int id,TargetType type){
+		if(type==TargetType.formElement) return true; // TODO: ok?
 		return obj.isValidTarget(id,type);
 	}
 	TargetType targetTypeFromId(int id){
@@ -19812,6 +19813,8 @@ enum TargetType{
 	soulStat,
 	manaStat,
 	healthStat,
+
+	formElement,
 }
 
 enum TargetLocation{
@@ -19828,10 +19831,18 @@ struct Target{
 	int id;
 	Vector3f position;
 	auto location=TargetLocation.scene;
+
+	// for type==TargetType.formElement:
+	ushort formIndex(){ return id&((1<<16)-1); }
+	ushort elementIndex(){ return cast(uint)id>>16; }
+
+	static Target onForm(short formIndex,short elementIndex){
+		return Target(TargetType.formElement,formIndex|elementIndex<<16,Vector3f.init,TargetLocation.hud);
+	}
 }
 TargetFlags summarize(bool simplified=false,B)(ref OrderTarget target,int side,ObjectState!B state){
 	final switch(target.type) with(TargetType){
-		case none,creatureTab,spellTab,structureTab,spell,ability,soulStat,manaStat,healthStat: return TargetFlags.none;
+		case none,creatureTab,spellTab,structureTab,spell,ability,soulStat,manaStat,healthStat,formElement: return TargetFlags.none;
 		case terrain: return TargetFlags.ground;
 		case creature,building:
 			static TargetFlags handle(T)(T obj,int side,ObjectState!B state){

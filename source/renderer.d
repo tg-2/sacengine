@@ -8,9 +8,10 @@ import dlib.image.color;
 import std.stdio;
 import std.algorithm: min, max, among, map, filter, all, splitter;
 import std.range: iota, walkLength, enumerate;
-import std.typecons: tuple,Tuple;
+import std.typecons: tuple, Tuple;
+import std.conv: to;
 import std.exception: enforce;
-import state,sacobject,sacspell,nttData,sacmap,levl,sacform;
+import state,sacobject,sacspell,nttData,sacmap,levl,form,sacform;
 import util;
 
 struct Camera{
@@ -66,6 +67,7 @@ struct Mouse(B){
 		spellbook,
 	}
 	Location loc;
+	bool menuMode;
 	@property bool onMinimap(){ return loc==Location.minimap; }
 	@property bool onSelectionRoster(){ return loc==Location.selectionRoster; }
 	@property bool onSpellbook(){ return loc==Location.spellbook; }
@@ -2765,6 +2767,7 @@ struct Renderer(B){
 	auto selectionRosterTarget=Target.init;
 	SacSpell!B selectionRosterTargetAbility=null;
 	auto minimapTarget=Target.init;
+	auto formTarget=Target.init;
 
 	bool isOnSelectionRoster(Vector2f center,ref RenderInfo!B info){
 		auto scaling=info.hudScaling*Vector3f(138.0f,256.0f-64.0f,1.0f);
@@ -3347,12 +3350,12 @@ struct Renderer(B){
 		B.colorHUDMaterialBackend.unbind(null,rc);
 	}
 
-	void renderMouseoverBox(int cursorSize,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
+	void renderMouseoverBox(int cursorSize,ObjectState!B state,scope SacFormState!B[] forms,ref RenderInfo!B info,B.RenderContext rc){
 		auto target=info.mouse.target;
 		static bool requiresDelay(TargetType type){
 			final switch(type) with(TargetType){
 				case none,terrain,creatureTab,spellTab,structureTab,spell: return false;
-				case creature,building,soul,ability,soulStat,manaStat,healthStat: return true;
+				case creature,building,soul,ability,soulStat,manaStat,healthStat,formElement: return true;
 			}
 		}
 		if(requiresDelay(target.type)&&info.mouse.targetUpdateFrame+info.mouse.mouseoverBoxDelay>state.frame)
@@ -3585,6 +3588,10 @@ struct Renderer(B){
 			case TargetType.healthStat:
 				renderMouseoverText("Health bar",cursorSize,info,rc);
 				break;
+			case TargetType.formElement:
+				auto mouseoverText=forms[target.formIndex].elements[target.elementIndex].mouseoverText;
+				if(mouseoverText) renderMouseoverText(mouseoverText,cursorSize,info,rc);
+				break;
 		}
 	}
 
@@ -3626,7 +3633,7 @@ struct Renderer(B){
 		B.colorHUDMaterialBackend.unbind(null,rc);
 	}
 
-	void renderForm(SacForm!B sacForm,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
+	void renderSacForm(SacForm!B sacForm,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
 		B.colorHUDMaterialBackend.bind(null,rc);
 		void doIt(SacForm!B sacForm,Vector3f offset,Quaternionf rotation,Vector3f scale){
 			B.colorHUDMaterialBackend.setTransformationScaled(offset,rotation,scale,rc);
@@ -3671,7 +3678,85 @@ struct Renderer(B){
 		B.colorHUDMaterialBackend.unbind(null,rc);
 	}
 
-	void renderForms(ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
+	void updateFormTarget(Target target,Vector2f position,Vector2f size,ref RenderInfo!B info){
+		if(!info.mouse.menuMode) return;
+		auto topLeft=position;
+		auto bottomRight=position+size;
+		if(floor(topLeft.x)<=info.mouse.x&&info.mouse.x<=ceil(bottomRight.x)
+		   && floor(topLeft.y)<=info.mouse.y&&info.mouse.y<=ceil(bottomRight.y)){
+			formTarget=target;
+		}
+	}
+
+	void renderForm(ref SacFormState!B form,ushort formIndex,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
+		import sacfont;
+		SacFont!B[FormFont.max+1] fonts;
+		import std.traits: EnumMembers;
+		foreach(formFont;EnumMembers!FormFont)
+			fonts[formFont]=formSacFont!B(formFont);
+		void renderFormElements(SacForm!B sacForm,scope ElementState[] elements,int s,int e,int activeElement,Vector3f offset,Quaternionf rotation,Vector3f scale){
+			enforce(elements[s].type==ElementType.form&&elements[s].numChildren+1==e-s);
+			B.colorHUDMaterialBackend.setTransformationScaled(offset,rotation,scale,rc);
+			void renderElement(ref SacFormElement!B sacElement,ushort elementIndex,bool active){
+				auto elementTarget=Target.onForm(formIndex,elementIndex);
+				assert(elementTarget.formIndex==formIndex&&elementTarget.elementIndex==elementIndex);
+				auto scaledOffset=Vector2f(sacElement.offset.x*scale.x,sacElement.offset.y*scale.y);
+				auto scaledSize=Vector2f(sacElement.size.x*scale.x,sacElement.size.y*scale.y);
+				updateFormTarget(elementTarget,Vector2f(offset.x,offset.y)+scaledOffset,scaledSize,info);
+				// active=state.frame/60%2==1;
+				foreach(i,ref part;sacElement.parts){
+					B.colorHUDMaterialBackend.bindDiffuse(part.texture);
+					if(i==0&&sacElement.type==ElementType.canvas){
+						B.colorHUDMaterialBackend.setColor(Color4f(0.0f,0.0f,0.0f,1.0f));
+						part.mesh[active].render(rc); // TODO: actually get correct canvas contents
+						B.colorHUDMaterialBackend.setColor(Color4f(1.0f,1.0f,1.0f,1.0f));
+					}else part.mesh[active].render(rc);
+				}
+				foreach(ref text;sacElement.texts){
+					auto font=fonts[text.font];
+					B.colorHUDMaterialBackend.bindDiffuse(font.texture);
+					void drawLetter(B.SubQuad mesh,float x,float y,float width,float height){
+						B.colorHUDMaterialBackend.setTransformationScaled(Vector3f(x,y,0.0f),Quaternionf.identity(),Vector3f(width,height,0.0f),rc);
+						mesh.render(rc);
+					}
+					auto settings=FormatSettings(FlowType.left,scale.x);
+					font.write!drawLetter(text.text,offset.x+text.position.x*scale.x,offset.y+text.position.y*scale.y,settings);
+				}
+				if(sacElement.texts.length){
+					B.colorHUDMaterialBackend.setTransformationScaled(offset,rotation,scale,rc);
+				}
+			}
+			renderElement(sacForm.sacElements[0],to!ushort(s),true); // render form itself
+			for(int i=s+1;i<e;i++){
+				if(elements[i].type!=ElementType.form){
+					enforce(sacForm.sacElements[elements[i].sacFormIndex].subForms.length==0);
+					renderElement(sacForm.sacElements[elements[i].sacFormIndex],to!ushort(i),i==activeElement);
+				}else{
+					enforce(sacForm.sacElements[elements[i].sacFormIndex].subForms.length==1);
+					enforce(sacForm.sacElements[elements[i].sacFormIndex].parts.length==0);
+					enforce(sacForm.sacElements[elements[i].sacFormIndex].texts.length==0);
+					auto subOffsetRaw=sacForm.sacElements[elements[i].sacFormIndex].subForms[0].offset;
+					auto subOffset=Vector3f(subOffsetRaw.x*scale.x,subOffsetRaw.y*scale.y,0.0f);
+					auto subSacForm=sacForm.sacElements[elements[i].sacFormIndex].subForms[0].form;
+					auto numChildren=elements[i].numChildren;
+					auto subActiveElement=activeElement-i;
+					if(subActiveElement<0||subActiveElement>=1+numChildren) subActiveElement=-1;
+					renderFormElements(subSacForm,elements,i,i+1+numChildren,subActiveElement,offset+subOffset,rotation,scale);
+					B.colorHUDMaterialBackend.setTransformationScaled(offset,rotation,scale,rc);
+					i+=numChildren;
+				}
+			}
+		}
+		auto sacForm=form.sacForm;
+		auto offset=Vector3f(0.5f*(info.width-info.hudScaling*sacForm.width),0.5f*(info.height-info.hudScaling*sacForm.height),0.0f);
+		auto rotation=Quaternionf.identity();
+		auto scale=Vector3f(info.hudScaling,info.hudScaling,0.0f);
+		renderFormElements(sacForm,form.elements.data,0,to!int(form.elements.data.length),form.activeElement,offset,rotation,scale);
+	}
+
+	void renderForms(scope SacFormState!B[] forms,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
+		if(info.mouse.menuMode) formTarget=Target.init;
+		B.colorHUDMaterialBackend.bind(null,rc);
 		/+//auto sacForm=SacForm!B.get("tsor");
 		auto sacForm=SacForm!B.get("thci");
 		//auto sacForm=SacForm!B.get("nsol");
@@ -3685,7 +3770,13 @@ struct Renderer(B){
 		//auto sacForm=SacForm!B.get("tpok");
 		//auto sacForm=SacForm!B.get("tpoc");
 		//auto sacForm=SacForm!B.get("tpmc");
-		renderForm(sacForm,state,info,rc);+/
+		renderSacForm(sacForm,state,info,rc);+/
+		/+auto formInstance=sacFormInstance!B("thci");
+		renderForm(formInstance,state,info,rc);+/
+		foreach(i,ref form;forms){
+			renderForm(form,to!ushort(i),state,info,rc);
+		}
+		B.colorHUDMaterialBackend.unbind(null,rc);
 	}
 
 	void renderShadowCastingEntities3D(R3DOpt options,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
@@ -3706,15 +3797,15 @@ struct Renderer(B){
 	static struct R2DOpt{
 		int cursorSize;
 	}
-	void renderEntities2D(R2DOpt options,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
+	void renderEntities2D(R2DOpt options,ObjectState!B state,scope SacFormState!B[] forms,ref RenderInfo!B info,B.RenderContext rc){
 		if(info.mouse.visible){
 			renderTargetFrame(state,info,rc);
 			renderHUD(state,info,rc);
 			renderText(state,info,rc);
-			renderForms(state,info,rc);
+			renderForms(forms,state,info,rc);
 			renderRectangleSelectFrame(state,info,rc);
 			renderCursor(options.cursorSize,state,info,rc);
-			renderMouseoverBox(options.cursorSize,state,info,rc);
+			renderMouseoverBox(options.cursorSize,state,forms,info,rc);
 		}
 	}
 }

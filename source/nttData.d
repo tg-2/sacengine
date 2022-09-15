@@ -285,6 +285,13 @@ immutable(string)[char[4]] makeFormTextByTag(bool readFromWads){
 	return makeByTag!loadText(readFromWads,formTextFolders,"TEXT",false);
 }
 
+immutable string[] mouseoverTextFolders=["extracted/local/lang_english/LANG.WAD!/ENGL.LANG/hlpt.FLDR"].fixPaths;
+immutable(string)[char[4]] mouseoverTexts;
+immutable(string)[char[4]] makeMouseoverTextByTag(bool readFromWads){
+	import text_;
+	return makeByTag!loadText(readFromWads,mouseoverTextFolders,"TEXT",true);
+}
+
 immutable string[] formIconFolders=["extracted/local/gfx_english/GFX_.WAD!",
                                     "extracted/main/MAIN.WAD!/icon.FLDR"].fixPaths;
 immutable(string)[char[4]] formIcons;
@@ -334,6 +341,7 @@ void initNTTData(bool readFromWads){
 
 	texts=makeTextByTag(readFromWads);
 	formTexts=makeFormTextByTag(readFromWads);
+	mouseoverTexts=makeMouseoverTextByTag(readFromWads);
 	formIcons=makeFormIconByTag(readFromWads);
 	formTxtrs=makeFormTxtrByTag(readFromWads);
 	forms=makeFormByTag(readFromWads);

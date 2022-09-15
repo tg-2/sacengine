@@ -8,7 +8,7 @@ import options,util;
 import std.stdio;
 import std.algorithm, std.range, std.exception, std.typecons, std.conv;
 
-import sacobject, sacspell, mrmm, nttData, sacmap, levl, state, controller, network;
+import sacobject, sacspell, mrmm, nttData, sacmap, levl, state, sacform, controller, network;
 import sxsk : gpuSkinning;
 import renderer,audioBackend;
 
@@ -30,6 +30,8 @@ final class SacScene: Scene{
 		//txta.createFromImage(txta.image);
 	}
 	GameState!DagonBackend state;
+	util.Array!(SacFormState!DagonBackend) forms;
+
 	Controller!DagonBackend controller;
 	DynamicArray!(SacObject!DagonBackend) sacs;
 	RenderInfo!DagonBackend info;
@@ -190,7 +192,7 @@ final class SacScene: Scene{
 		mouse.x=max(0,min(mouse.x,width-1));
 		mouse.y=max(0,min(mouse.y,height-1));
 		typeof(renderer).R2DOpt r2dopt={cursorSize: options.cursorSize};
-		renderer.renderEntities2D(r2dopt,state.current,info,rc);
+		renderer.renderEntities2D(r2dopt,state.current,forms.data,info,rc);
 	}
 
 	void setState(GameState!DagonBackend state)in{
@@ -395,16 +397,34 @@ final class SacScene: Scene{
 	override void onMouseButtonDown(int button){ mouseButtonDown[button]+=1; }
 	override void onMouseButtonUp(int button){ mouseButtonUp[button]+=1; }
 
+	void control(double dt){
+		if(mouse.menuMode){
+			menuControl(dt);
+		}else{
+			gameControl(dt);
+		}
+		keyDown[]=0;
+		keyUp[]=0;
+		mouseButtonDown[]=0;
+		mouseButtonUp[]=0;
+	}
+
+	void menuControl(double dt){
+		enforce(forms.length);
+		if(mouse.target.type!=TargetType.formElement)
+			return;
+		if(mouseButtonDown[MB_LEFT]!=0){
+			forms[mouse.target.formIndex].activeElement=mouse.target.elementIndex;
+		}
+		if(mouseButtonUp[MB_LEFT]!=0){
+			// TODO: form actions
+		}
+	}
+
 	int lastSelectedId=0,lastSelectedFrame=0;
 	float lastSelectedX,lastSelectedY;
-	void control(double dt){
+	void gameControl(double dt){
 		auto oldMouseStatus=mouse.status;
-		scope(success){
-			keyDown[]=0;
-			keyUp[]=0;
-			mouseButtonDown[]=0;
-			mouseButtonUp[]=0;
-		}
 		if(mouse.status.among(MouseStatus.standard,MouseStatus.icon)&&!mouse.dragging){
 			if(renderer.isOnSpellbook(Vector2f(mouse.x,mouse.y),info)) mouse.loc=MouseLocation.spellbook;
 			else if(renderer.isOnSelectionRoster(Vector2f(mouse.x,mouse.y),info)) mouse.loc=MouseLocation.selectionRoster;
@@ -551,7 +571,15 @@ final class SacScene: Scene{
 				case openStructureSpells:
 					switchSpellbookTab(SpellType.structure);
 					break;
-				case quickSave,quickLoad,pause,changeCamera,sendChatMessage,gammaCorrectionPlus,gammaCorrectionMinus,screenShot: unsupported(); break;
+				case quickSave,quickLoad,pause,changeCamera: unsupported(); break;
+				case sendChatMessage:
+					if(mouse.status==MouseStatus.standard&&!mouse.dragging){
+						enforce(!mouse.menuMode);
+						forms~=sacFormInstance!DagonBackend("thci");
+						mouse.menuMode=true;
+					}
+					break;
+				case gammaCorrectionPlus,gammaCorrectionMinus,screenShot: unsupported(); break;
 				// formations
 				case semicircleFormation:
 					controller.addCommand(Command!DagonBackend(renderSide,camera.target,Formation.semicircle));
@@ -766,7 +794,7 @@ final class SacScene: Scene{
 			}
 		}
 		bool ctrl=eventManager.keyPressed[KEY_LCTRL]||options.hotkeys.capsIsCtrl&&eventManager.keyPressed[KEY_CAPSLOCK];
-		if(mouse.visible && mouse.status.among(MouseStatus.standard,MouseStatus.icon)){
+		if(mouse.visible && !mouse.menuMode && mouse.status.among(MouseStatus.standard,MouseStatus.icon)){
 			if(ctrl && eventManager.mouseButtonPressed[MB_LEFT]||
 			   eventManager.mouseButtonPressed[MB_MIDDLE]
 			){
@@ -1038,6 +1066,7 @@ final class SacScene: Scene{
 		eventManager.setMouse(cast(int)mouse.x, cast(int)mouse.y);
 	}
 	Target computeMouseTarget(){
+		if(mouse.menuMode) return renderer.formTarget;
 		if(mouse.onSpellbook) return renderer.spellbookTarget;
 		if(mouse.onSelectionRoster) return renderer.selectionRosterTarget;
 		if(mouse.onMinimap) return renderer.minimapTarget;
@@ -1066,7 +1095,15 @@ final class SacScene: Scene{
 	}
 	void updateMouseTarget(){
 		auto target=computeMouseTarget();
-		if(target.id!=0&&!state.current.isValidTarget(target.id,target.type)) target=Target.init;
+		if(mouse.menuMode){
+			if(mouse.target.type==TargetType.formElement){
+				auto formIndex=mouse.target.formIndex;
+				auto elementIndex=mouse.target.elementIndex;
+				if(formIndex>=forms.length||elementIndex>=forms[formIndex].elements.length) mouse.target=Target.init;
+			}else mouse.target=Target.init;
+		}else{
+			if(target.id!=0&&!state.current.isValidTarget(target.id,target.type)) target=Target.init;
+		}
 		auto targetValid=mouseTargetValid(target);
 		static immutable importantTargets=[TargetType.creature,TargetType.soul];
 		if(mouse.cachedTarget.id!=0&&!state.current.isValidTarget(mouse.cachedTarget.id,mouse.cachedTarget.type)) mouse.cachedTarget=Target.init;
