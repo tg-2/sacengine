@@ -1,4 +1,5 @@
 import std.exception, std.algorithm, std.conv: to;
+import std.range: iota,chain;
 import dlib.math;
 import util;
 import form,txtr,sacfont,nttData;
@@ -674,6 +675,7 @@ final class SacForm(B){
 	char[4] escape(){ return form.escape; }
 
 	string mouseoverText(){ return null; }
+	bool returnIsOk(){ return tag=="thci"; } // TODO: is there some flag for this?
 
 	private this(char[4] tag){
 		this.tag=tag;
@@ -709,13 +711,165 @@ struct ElementState{
 	int sacFormIndex=-1;
 	bool enabled=true;
 	bool visible=true;
+	bool checked=false;
+	enum maxTextInputLength=194;
+	int textInputWidth;
 	Array!char textInput;
+	int textCursor;
+	int textStart=0;
+	int textEnd=0;
+}
+
+bool activate(ref ElementState element){
+	if(!element.enabled) return false;
+	final switch(element.type) with(ElementType){
+		case unknown0: return false;
+		case button: element.checked=true; return true;
+		case form: return false;
+		case picture: return false;
+		case slider: return false;
+		case textbox: return false;
+		case entrybox: return false;
+		case checkbox: element.checked^=1; return true;
+		case text: return false;
+		case dropdown: return false;
+		case canvas: return false;
+		case progressbar: return false;
+	}
+}
+
+void fitTextStart(B)(ref ElementState element,bool expand=true){
+	// TODO: faster algorithm?
+	auto font=formSacFont!B(FormFont.standard);
+	auto smallData=expand?element.textInput.data[0..element.textEnd]:element.textInput.data[element.textStart..element.textEnd];
+	int curWidth=0;
+	while(curWidth<=element.textInputWidth){
+		element.textStart=to!int(smallData.ptr+smallData.length-element.textInput.data.ptr);
+		if(!smallData.length) break;
+		import std.utf,std.typecons;
+		dchar c=smallData.decodeBack!(Yes.useReplacementDchar);
+		curWidth+=font.getCharWidth(c);
+	}
+}
+
+void fitTextEnd(B)(ref ElementState element,bool expand=true){
+	// TODO: faster algorithm?
+	auto font=formSacFont!B(FormFont.standard);
+	auto smallData=expand?element.textInput.data[element.textStart..$]:element.textInput.data[element.textStart..element.textEnd];
+	int curWidth=0;
+	while(curWidth<=element.textInputWidth){
+		element.textEnd=to!int(smallData.ptr-element.textInput.data.ptr);
+		if(!smallData.length) break;
+		import std.utf,std.typecons;
+		dchar c=smallData.decodeFront!(Yes.useReplacementDchar);
+		curWidth+=font.getCharWidth(c);
+	}
+}
+
+bool moveLeft(B)(ref ElementState element){
+	if(element.textCursor<=0) return false;
+	element.textCursor-=1;
+	auto left=element.textCursor;
+	if(left<element.textStart){
+		element.textStart=left;
+		element.fitTextEnd!B(false);
+	}
+	return true;
+}
+bool moveRight(B)(ref ElementState element){
+	if(element.textCursor>=element.textInput.length) return false;
+	element.textCursor+=1;
+	auto right=min(element.textInput.length,element.textCursor+1);
+	if(element.textEnd<right){
+		element.textEnd=max(element.textEnd,right);
+		element.fitTextStart!B(false);
+	}
+	return true;
+}
+
+bool enterDchar(B)(ref ElementState element,dchar d){
+	if(d>=0x80) return false; // TODO
+	auto c=to!char(d);
+	if(element.textInput.length>=element.maxTextInputLength)
+		return false;
+	element.textInput~=c;
+	import std.algorithm;
+	bringToFront(element.textInput.data[element.textCursor..$-1],element.textInput.data[$-1..$]); // TODO: faster algorithm?
+	element.moveRight!B();
+	element.fitTextEnd!B();
+	return true;
+}
+
+bool deleteDchar(B)(ref ElementState element){
+	if(element.textCursor<=0) return false;
+	import std.algorithm;
+	bringToFront(element.textInput.data[element.textCursor-1..element.textCursor],element.textInput.data[element.textCursor..$]);
+	element.textInput.length=element.textInput.length-1;
+	element.textEnd=min(element.textEnd,to!int(element.textInput.length));
+	element.textStart=min(element.textStart,element.textEnd);
+	element.textCursor-=1;
+	element.textStart=min(element.textStart,element.textCursor);
+	element.fitTextEnd!B();
+	return true;
+}
+bool deleteDcharForward(B)(ref ElementState element){
+	if(element.textCursor>=element.textInput.length) return false;
+	element.textCursor+=1;
+	return element.deleteDchar!B();
 }
 
 struct SacFormState(B){
 	SacForm!B sacForm;
 	Array!ElementState elements;
-	int activeElement;
+	int activeIndex;
+	int defaultIndex=-1;
+	int escapeIndex=-1;
+	int okIndex=-1;
+
+	ref activeElement(){ return elements[activeIndex]; }
+	@property bool returnIsOk(){ return sacForm.returnIsOk; }
+}
+
+bool activeOk(B)(ref SacFormState!B form){
+	if(form.okIndex<0||form.okIndex>=form.elements.length) return false;
+	form.activeIndex=form.okIndex;
+	return true;
+}
+bool activeDefault(B)(ref SacFormState!B form){
+	if(form.defaultIndex<0||form.defaultIndex>=form.elements.length) return false;
+	form.activeIndex=form.defaultIndex;
+	return true;
+}
+bool activeEscape(B)(ref SacFormState!B form){
+	if(form.escapeIndex<0||form.escapeIndex>=form.elements.length) return false;
+	form.activeIndex=form.escapeIndex;
+	return true;
+}
+
+void focusType(B)(ref SacFormState!B form,ElementType type){
+	if(form.elements[form.activeIndex].type==type) return;
+	foreach(i;chain(iota(form.activeIndex+1,to!int(form.elements.length)),iota(0,form.activeIndex))){
+		if(form.elements[i].type==type){
+			form.activeIndex=i;
+			break;
+		}
+	}
+}
+bool isTabbable(ElementType type){
+	final switch(type) with(ElementType){
+		case unknown0,form,picture,text,canvas,progressbar:
+			return false;
+		case button,slider,textbox,entrybox,checkbox,dropdown:
+			return true;
+	}
+}
+void tabActive(B)(ref SacFormState!B form){
+	foreach(i;chain(iota(form.activeIndex+1,to!int(form.elements.length)),iota(0,form.activeIndex))){
+		if(form.elements[i].type.isTabbable){
+			form.activeIndex=i;
+			break;
+		}
+	}
 }
 
 SacFormState!B sacFormInstance(B)(char[4] tag){
@@ -724,7 +878,10 @@ SacFormState!B sacFormInstance(B)(char[4] tag){
 
 SacFormState!B sacFormInstance(B)(SacForm!B form){
 	Array!ElementState elements;
-	int activeElement=-1;
+	int activeIndex=0;
+	int defaultIndex=-1;
+	int escapeIndex=-1;
+	int okIndex=-1;
 	void addForm(SacForm!B currentForm,int parent,int parentSacFormIndex){
 		int current=to!int(elements.length);
 		elements~=ElementState(ElementType.form,currentForm.tag,currentForm.mouseoverText,0,parent,parentSacFormIndex); // TODO: enabled, visible?
@@ -732,11 +889,23 @@ SacFormState!B sacFormInstance(B)(SacForm!B form){
 			if(sacFormIndex==0) continue; // form itself is always first sacElement
 			if(sacElement.type!=ElementType.form){
 				enforce(sacElement.subForms.length==0);
-				if(sacElement.id==currentForm.default_) activeElement=to!int(elements.length);
+				if(sacElement.id==currentForm.default_){
+					defaultIndex=to!int(elements.length);
+					activeIndex=defaultIndex;
+				}
+				if(sacElement.id==currentForm.escape){
+					escapeIndex=to!int(elements.length);
+				}
+				if(sacElement.id=="__ko"||sacElement.id=="dnes"){
+					okIndex=to!int(elements.length);
+				}
 				auto flags=currentForm.form.elements[sacElement.formIndex].flags;
 				auto enabled=!(flags&ElementFlags.disabled);
 				auto visible=!(flags&ElementFlags.hidden);
 				elements~=ElementState(sacElement.type,sacElement.id,sacElement.mouseoverText,0,parent,to!int(sacFormIndex),enabled,visible);
+				if(sacElement.type==ElementType.entrybox){
+					elements[$-1].textInputWidth=max(0,cast(int)(sacElement.size.x+0.5f)-40);
+				}
 			}else{
 				enforce(sacElement.subForms.length==1);
 				addForm(sacElement.subForms[0].form,current,to!int(sacFormIndex));
@@ -745,5 +914,5 @@ SacFormState!B sacFormInstance(B)(SacForm!B form){
 		elements[current].numChildren=to!int(elements.length)-(current+1);
 	}
 	addForm(form,-1,-1);
-	return SacFormState!B(form,move(elements),activeElement);
+	return SacFormState!B(form,move(elements),activeIndex,defaultIndex,escapeIndex,okIndex);
 }

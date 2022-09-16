@@ -8,7 +8,7 @@ import options,util;
 import std.stdio;
 import std.algorithm, std.range, std.exception, std.typecons, std.conv;
 
-import sacobject, sacspell, mrmm, nttData, sacmap, levl, state, sacform, controller, network;
+import sacobject, sacspell, mrmm, nttData, sacmap, levl, state, form, sacform, controller, network;
 import sxsk : gpuSkinning;
 import renderer,audioBackend;
 
@@ -87,6 +87,11 @@ final class SacScene: Scene{
 		import std.random:uniform; // TODO: put selected spells in game state?
 		auto whichClick=uniform(0,2);
 		if(audio) audio.playSound(commandAppliedSoundTags[whichClick]);
+	}
+	void playMenuActionSound(){
+		import std.random:uniform;
+		auto whichSound=uniform(0,4);
+		if(audio) audio.playSound(menuActionSoundTags[whichSound]);
 	}
 	bool selectSpell(SacSpell!DagonBackend newSpell,bool playAudio=true){
 		switchSpellbookTab(newSpell.type);
@@ -392,10 +397,32 @@ final class SacScene: Scene{
 	int[512] keyDown,keyUp;
 	int[255] mouseButtonDown,mouseButtonUp;
 
+	override void onTextInput(dchar d){
+		if(!mouse.menuMode) return;
+		auto formIndex=0;
+		ref form(){ return forms[formIndex]; }
+		ref activeElement(){ return form.activeElement; }
+		if(mouse.target.type==TargetType.formElement){
+			formIndex=mouse.target.formIndex;
+		}else if(forms.length!=1) return; // TODO?
+		if(d!=' ') form.focusType(.form.ElementType.entrybox);
+		if(activeElement.type==.form.ElementType.entrybox){
+			activeElement.enterDchar!DagonBackend(d);
+		}
+	}
 	override void onKeyDown(int key){ keyDown[key]+=1; }
 	override void onKeyUp(int key){ keyUp[key]+=1; }
 	override void onMouseButtonDown(int button){ mouseButtonDown[button]+=1; }
 	override void onMouseButtonUp(int button){ mouseButtonUp[button]+=1; }
+
+	void enableMenu(){
+		mouse.menuMode=true;
+		eventManager.enableTextInput();
+	}
+	void disableMenu(){
+		eventManager.disableTextInput();
+		mouse.menuMode=false;
+	}
 
 	void control(double dt){
 		if(mouse.menuMode){
@@ -411,13 +438,47 @@ final class SacScene: Scene{
 
 	void menuControl(double dt){
 		enforce(forms.length);
-		if(mouse.target.type!=TargetType.formElement)
-			return;
-		if(mouseButtonDown[MB_LEFT]!=0){
-			forms[mouse.target.formIndex].activeElement=mouse.target.elementIndex;
+		auto formIndex=0;
+		ref form(){ return forms[formIndex]; }
+		ref activeElement(){ return form.activeElement; }
+		if(mouse.target.type==TargetType.formElement){
+			formIndex=mouse.target.formIndex;
+			auto elementIndex=mouse.target.elementIndex;
+			ref element(){ return form.elements[elementIndex]; }
+			auto mbDown=mouseButtonDown[MB_LEFT]+mouseButtonDown[MB_MIDDLE]+mouseButtonDown[MB_RIGHT];
+			auto mbUp=mouseButtonUp[MB_LEFT]+mouseButtonUp[MB_MIDDLE]+mouseButtonUp[MB_RIGHT];
+			if(mbDown!=0){
+				form.activeIndex=mouse.target.elementIndex;
+			}
+			if(mbUp!=0){
+				if(elementIndex==form.activeIndex){
+					if(element.activate())
+						playMenuActionSound();
+				}
+			}
+		}else if(forms.length!=1) return; // TODO?
+		foreach(_;0..keyDown[KEY_TAB]) form.tabActive();
+		foreach(_;0..keyDown[KEY_SPACE]) if(activeElement.activate()) playMenuActionSound();
+		foreach(_;0..keyDown[KEY_RETURN]){
+			if(form.returnIsOk&&form.activeIndex!=form.escapeIndex) form.activeOk();
+			if(activeElement.activate()) playMenuActionSound();
 		}
-		if(mouseButtonUp[MB_LEFT]!=0){
-			// TODO: form actions
+		foreach(_;0..keyDown[KEY_ESCAPE]){
+			if(form.activeEscape()&&activeElement.activate())
+				playMenuActionSound();
+		}
+		if(keyDown[KEY_BACKSPACE]!=0||keyDown[KEY_DELETE]!=0||keyDown[KEY_LEFT]!=0||keyDown[KEY_RIGHT]!=0){
+			form.focusType(.form.ElementType.entrybox);
+			if(activeElement.type==.form.ElementType.entrybox){
+				foreach(_;0..keyDown[KEY_BACKSPACE])
+					activeElement.deleteDchar!DagonBackend();
+				foreach(_;0..keyDown[KEY_DELETE])
+					activeElement.deleteDcharForward!DagonBackend();
+				foreach(_;0..keyDown[KEY_LEFT])
+					activeElement.moveLeft!DagonBackend();
+				foreach(_;0..keyDown[KEY_RIGHT])
+					activeElement.moveRight!DagonBackend();
+			}
 		}
 	}
 
@@ -576,7 +637,7 @@ final class SacScene: Scene{
 					if(mouse.status==MouseStatus.standard&&!mouse.dragging){
 						enforce(!mouse.menuMode);
 						forms~=sacFormInstance!DagonBackend("thci");
-						mouse.menuMode=true;
+						enableMenu();
 					}
 					break;
 				case gammaCorrectionPlus,gammaCorrectionMinus,screenShot: unsupported(); break;

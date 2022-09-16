@@ -257,6 +257,7 @@ immutable(Sset)[char[4]] makeSsetByTag(bool readFromWads){
 immutable string[] sampFolders=["extracted/sounds/SFX_.WAD!",
                                 "extracted/local/sfx_english/SFXe.WAD!"].fixPaths;
 immutable char[4][] commandAppliedSoundTags=["1lcI","2lcI"];
+immutable char[4][] menuActionSoundTags=["1lcM","2lcM","3lcM","4lcM"];
 
 string[char[4]] samps;
 string[char[4]] makeSampByTag(bool readFromWads){

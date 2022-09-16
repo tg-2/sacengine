@@ -40,7 +40,7 @@ class SacFont(B){
 				}
 			}
 			if(k==' '){
-				if(type==FontType.fnwt||type==FontType.fn08) rightMost=4;
+				if(type==FontType.fnwt||type==FontType.fn08) rightMost=3;
 				else if(type==FontType.fn10) rightMost=5;
 				else if(type==FontType.fn12||type==FontType.ft12) rightMost=6;
 				else rightMost=1;
