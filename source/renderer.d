@@ -84,6 +84,7 @@ struct RenderInfo(B){
 	@property int height(){ return camera.height; }
 	float screenScaling;
 	auto spellbookTab=SpellType.creature;
+	int chatMessageIndex=0;
 }
 
 struct Renderer(B){
@@ -3668,8 +3669,15 @@ struct Renderer(B){
 	void renderChatMessages(ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
 		B.colorHUDMaterialBackend.bind(null,rc);
 		int currentOffset=93;
-		foreach(ref message;state.obj.opaqueObjects.chatMessages.messages.data){
-			auto height=renderChatMessage(message,currentOffset,info,rc)+ChatMessage!B.gapSize;
+		scope messages=state.obj.opaqueObjects.chatMessages.messages.data;
+		for(int i=info.chatMessageIndex;i<messages.length;i++){
+			if(messages[i].startFrame>state.frame) break;
+			if(!messages[i].visible(-1,state)){ // TODO: filter correctly
+				if(i==info.chatMessageIndex) info.chatMessageIndex++;
+				continue;
+			}
+			// TODO: persistent offset for each message, avoiding collisions
+			auto height=renderChatMessage(messages[i],currentOffset,info,rc)+ChatMessage!B.gapSize;
 			currentOffset+=height;
 		}
 		B.colorHUDMaterialBackend.unbind(null,rc);

@@ -4710,6 +4710,11 @@ struct ChatMessage(B){
 	int textWidth,textHeight;
 	int startFrame;
 	int lifetime;
+
+	bool visible(int slot,ObjectState!B state){
+		enforce(slot==-1,"TODO");
+		return startFrame<=state.frame&&state.frame<=startFrame+lifetime;
+	}
 }
 
 ChatMessage!B makeChatMessage(B,R,S)(int senderSlot,int slotFilter,ChatMessageType type,scope R title,scope S message,int startFrame){
