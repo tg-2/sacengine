@@ -951,7 +951,6 @@ final class Network(B){
 		if(!isCommandWithRaw(command.type))
 			broadcast(Packet.command(frame,command),[]);
 		else{
-			writeln("sending message: ",command);
 			command.withRawCommandData((scope ubyte[] rawData){
 				broadcast(Packet.commandRaw(frame,command,rawData.length),rawData);
 			});
@@ -1228,7 +1227,6 @@ final class Network(B){
 				if(controller) controller.addExternalCommand(p.frame,fromNetwork!B(p.networkCommand));
 				break;
 			case PacketType.commandRaw:
-				writeln("received message: ",fromNetworkRaw!B(p.networkCommand,rawData));
 				if(controller) controller.addExternalCommand(p.frame,fromNetworkRaw!B(p.networkCommand,rawData));
 				break;
 			case PacketType.commit:
