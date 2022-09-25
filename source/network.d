@@ -26,15 +26,49 @@ bool isValidCommand(B)(ref Command!B command){
 	// TODO: defend comprehensively
 	return CommandType.min<=command.type&&command.type<=CommandType.max;
 }
+bool isCommandWithRaw(CommandType type)nothrow{
+	final switch(type) with(CommandType){
+		case none: return false;
+		case moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning: return false;
+		case clearSelection,select,selectAll,automaticSelectAll,toggleSelection,automaticToggleSelection: return false;
+		case defineGroup,addToGroup,selectGroup,automaticSelectGroup: return false;
+		case setFormation: return false;
+		case retreat,move,guard,guardArea,attack,advance: return false;
+		case castSpell,useAbility: return false;
+		case surrender: return false;
+		case chatMessage: return true;
+	}
+}
 
-Command!B fromNetwork(B)(NetworkCommand networkCommand){
+Command!B fromNetworkImpl(B)(NetworkCommand networkCommand){
 	Command!B command;
-	static assert(networkCommand.tupleof.length==command.tupleof.length);
-	static foreach(i;0..command.tupleof.length){
+	static assert(networkCommand.tupleof.length==command.tupleof.length-1);
+	static assert(__traits(identifier,command.tupleof[$-1])=="chatMessage");
+	static foreach(i;0..command.tupleof.length-1){
 		static assert(__traits(identifier,command.tupleof[i])==__traits(identifier,networkCommand.tupleof[i]));
 		static if(is(typeof(command.tupleof[i])==SacSpell!B)){
 			command.tupleof[i]=networkCommand.tupleof[i]!="\0\0\0\0"?SacSpell!B.get(networkCommand.tupleof[i]):null;
 		}else command.tupleof[i]=networkCommand.tupleof[i];
+	}
+	return command;
+}
+
+Command!B fromNetwork(B)(NetworkCommand networkCommand){
+	enforce(!isCommandWithRaw(networkCommand.type));
+	auto command=fromNetworkImpl!B(networkCommand);
+	if(isValidCommand(command)) return command;
+	return Command!B.init;
+}
+
+Command!B fromNetworkRaw(B)(NetworkCommand networkCommand,scope ubyte[] rawData){
+	enforce(isCommandWithRaw(networkCommand.type));
+	auto command=fromNetworkImpl!B(networkCommand);
+	switch(command.type){
+		case CommandType.chatMessage:
+			import serialize_;
+			deserialize(command.chatMessage,ObjectState!B.init,rawData);
+			break;
+		default: enforce(0,"TODO");
 	}
 	if(isValidCommand(command)) return command;
 	return Command!B.init;
@@ -44,14 +78,29 @@ NetworkCommand toNetwork(B)(Command!B command)in{
 	assert(isValidCommand(command));
 }do{
 	NetworkCommand networkCommand;
-	static assert(networkCommand.tupleof.length==command.tupleof.length);
-	static foreach(i;0..command.tupleof.length){
+	static assert(networkCommand.tupleof.length==command.tupleof.length-1);
+	static assert(__traits(identifier,command.tupleof[$-1])=="chatMessage");
+	static foreach(i;0..command.tupleof.length-1){
 		static assert(__traits(identifier,command.tupleof[i])==__traits(identifier,networkCommand.tupleof[i]));
 		static if(is(typeof(command.tupleof[i])==SacSpell!B)){
 			networkCommand.tupleof[i]=command.tupleof[i]?command.tupleof[i].tag:"\0\0\0\0";
 		}else networkCommand.tupleof[i]=command.tupleof[i];
 	}
 	return networkCommand;
+}
+
+void withRawCommandData(B)(ref Command!B command,scope void delegate(scope ubyte[]) dg)in{
+	assert(isValidCommand(command));
+	assert(isCommandWithRaw(command.type));
+}do{
+	enforce(isCommandWithRaw(command.type));
+	switch(command.type){
+		case CommandType.chatMessage:
+			import serialize_;
+			command.chatMessage.serialized(dg);
+			break;
+		default: enforce(0,"TODO");
+	}
 }
 
 enum PacketPurpose{
@@ -90,6 +139,7 @@ enum PacketType{
 	confirmMap,
 	updateStatus,
 	command,
+	commandRaw,
 	commit,
 }
 
@@ -100,7 +150,7 @@ PacketPurpose purposeFromType(PacketType type){
 		case nop,disconnect,ping,ack: return peerToPeer;
 		case updatePlayerId,updateSlot,sendMap,sendState,initGame,loadGame,startGame,confirmSynch: return hostMessage;
 		case join,checkSynch,logDesynch: return hostQuery;
-		case updateSetting,clearArraySetting,appendArraySetting,confirmArraySetting,setMap,appendMap,confirmMap,updateStatus,command,commit: return broadcast;
+		case updateSetting,clearArraySetting,appendArraySetting,confirmArraySetting,setMap,appendMap,confirmMap,updateStatus,command,commandRaw,commit: return broadcast;
 	}
 }
 
@@ -112,7 +162,9 @@ bool isHeaderType(PacketType type){
 		case join: return true;
 		case checkSynch: return false;
 		case logDesynch: return true;
-		case updateSetting,clearArraySetting,appendArraySetting,confirmArraySetting,setMap,appendMap,confirmMap,updateStatus,command,commit: return false;
+		case updateSetting,clearArraySetting,appendArraySetting,confirmArraySetting,setMap,appendMap,confirmMap,updateStatus,command: return false;
+		case commandRaw: return true;
+		case commit: return false;
 	}
 }
 
@@ -179,6 +231,7 @@ struct Packet{
 			case confirmMap: return text("Packet.confirmMap(",player,")");
 			case updateStatus: return text("Packet.updateStatus(",player,`,PlayerStatus.`,newStatus,")");
 			case command: return text("Packet.command(fromNetwork(",networkCommand,"))");
+			case commandRaw: return text("Packet.commandRaw(fromNetwork(",networkCommand,"))");
 			case commit: return text("Packet.commit(",commitPlayer,",",commitFrame,")");
 		}
 	}
@@ -216,16 +269,14 @@ struct Packet{
 			}
 		}
 		struct{ int mapPlayer; char[32] mapName; } // setMap, appendMap, confirmMap
-		struct{ // command
-			int frame;
-			NetworkCommand networkCommand;
+		struct{ // command, commandRaw. sendMap, sendState, initGame, join, logDesynch
+			ulong rawDataSize; // commandRaw, sendMap, sendState, initGame, join, logDesynch
+			int frame; // command, commandRaw
+			NetworkCommand networkCommand; // command, commandRaw
 		}
 		struct{ // commit
 			int commitPlayer;
 			int commitFrame;
-		}
-		struct{ // sendMap, sendState, initGame, join, logDesynch
-			ulong rawDataSize;
 		}
 	}
 	static Packet nop(){ return Packet.init; }
@@ -404,8 +455,20 @@ struct Packet{
 		return p;
 	}
 	static Packet command(B)(int frame,Command!B command){
+		enforce(!isCommandWithRaw(command.type));
 		Packet p;
 		p.type=PacketType.command;
+		p.rawDataSize=0;
+		p.frame=frame;
+		enforce(command.type!=CommandType.chatMessage);
+		p.networkCommand=toNetwork(command);
+		return p;
+	}
+	static Packet commandRaw(B)(int frame,Command!B command,ulong rawDataSize){
+		enforce(isCommandWithRaw(command.type));
+		Packet p;
+		p.type=PacketType.commandRaw;
+		p.rawDataSize=rawDataSize;
 		p.frame=frame;
 		p.networkCommand=toNetwork(command);
 		return p;
@@ -548,14 +611,14 @@ class TCPConnection: Connection{
 		send((cast(ubyte*)&packet)[0..packet.sizeof]);
 	}
 	override void send(Packet packet,scope ubyte[] rawData){
-		assert(isHeaderType(packet.type));
-		assert(packet.rawDataSize==rawData.length);
+		assert(isHeaderType(packet.type)||rawData.length==0);
+		assert(!isHeaderType(packet.type)||packet.rawDataSize==rawData.length);
 		send((cast(ubyte*)&packet)[0..packet.sizeof]);
 		send(rawData);
 	}
 	override void send(Packet packet,scope ubyte[] rawData1,scope ubyte[] rawData2){
-		assert(isHeaderType(packet.type));
-		assert(packet.rawDataSize==rawData1.length+rawData2.length);
+		assert(isHeaderType(packet.type)||rawData1.length+rawData2.length==0);
+		assert(!isHeaderType(packet.type)||packet.rawDataSize==rawData1.length+rawData2.length);
 		send((cast(ubyte*)&packet)[0..packet.sizeof]);
 		send(rawData1);
 		send(rawData2);
@@ -813,13 +876,15 @@ final class Network(B){
 	@property ref settings(){ return players[me].settings; }
 	@property int slot(){ return players[me].slot; }
 	@property ref hostSettings(){ return players[host].settings; }
-	void broadcast(Packet p)in{
+	void broadcast(Packet p,scope ubyte[] rawData)in{
 		assert(purposeFromType(p.type)==PacketPurpose.broadcast);
+		if(isHeaderType(p.type)) assert(p.rawDataSize==rawData.length);
+		else assert(rawData.length==0);
 	}do{
 		if(isHost){
 			foreach(i;0..players.length)
-				players[i].send(p);
-		}else players[host].send(p);
+				players[i].send(p,rawData);
+		}else players[host].send(p,rawData);
 	}
 	bool allowedToUpdateStatus(int actor,int player,PlayerStatus newStatus){
 		if(!actor.among(host,player)) return false;
@@ -834,7 +899,7 @@ final class Network(B){
 	}do{
 		if(players[player].status==newStatus) return;
 		if(!allowedToUpdateStatus(me,player,newStatus)) return;
-		broadcast(Packet.updateStatus(player,newStatus));
+		broadcast(Packet.updateStatus(player,newStatus),[]);
 		players[player].status=newStatus;
 	}
 	void updateStatus(PlayerStatus newStatus)in{
@@ -848,15 +913,15 @@ final class Network(B){
 			enum blockSize=Packet.mapName.length;
 			foreach(i;0..(value.length+blockSize-1)/blockSize){
 				auto part=value[i*blockSize..min($,(i+1)*blockSize)];
-				if(i==0) broadcast(Packet.setMap(player,part));
-				else broadcast(Packet.appendMap(player,part));
+				if(i==0) broadcast(Packet.setMap(player,part),[]);
+				else broadcast(Packet.appendMap(player,part),[]);
 			}
-			broadcast(Packet.confirmMap(player));
+			broadcast(Packet.confirmMap(player),[]);
 		}else static if(is(typeof(mixin(`players[player].settings.`~setting))==S[],S)){ // TODO: generalize
-			broadcast(Packet.clearArraySetting!setting(player));
-			foreach(entry;value) broadcast(Packet.appendArraySetting!setting(player,entry));
-			broadcast(Packet.confirmArraySetting!setting(player));
-		}else broadcast(Packet.updateSetting!setting(player,value));
+			broadcast(Packet.clearArraySetting!setting(player),[]);
+			foreach(entry;value) broadcast(Packet.appendArraySetting!setting(player,entry),[]);
+			broadcast(Packet.confirmArraySetting!setting(player),[]);
+		}else broadcast(Packet.updateSetting!setting(player,value),[]);
 		mixin(`players[player].settings.`~setting)=value;
 	}
 	void updateSetting(string setting,T)(T value){
@@ -883,12 +948,19 @@ final class Network(B){
 	void addCommand(int frame,Command!B command)in{
 		assert(playing&&players[me].committedFrame<=frame||command.type==CommandType.surrender);
 	}do{
-		broadcast(Packet.command(frame,command));
+		if(!isCommandWithRaw(command.type))
+			broadcast(Packet.command(frame,command),[]);
+		else{
+			writeln("sending message: ",command);
+			command.withRawCommandData((scope ubyte[] rawData){
+				broadcast(Packet.commandRaw(frame,command,rawData.length),rawData);
+			});
+		}
 	}
 	void commit(int i,int frame)in{
 		assert(isHost||i==me&&players[me].status.among(PlayerStatus.playing,PlayerStatus.stateResynched));
 	}do{
-		broadcast(Packet.commit(i,frame));
+		broadcast(Packet.commit(i,frame),[]);
 		players[i].committedFrame=max(players[i].committedFrame,frame);
 	}
 	void commit(int frame)in{
@@ -911,7 +983,10 @@ final class Network(B){
 			else writeln(players[player].settings.name," (player ",player,") ",action);
 		}
 	}
-	void performPacketAction(int sender,Packet p,Controller!B controller){
+	void performPacketAction(int sender,Packet p,scope ubyte[] rawData,Controller!B controller)in{
+		if(isHeaderType(p.type)) assert(p.rawDataSize==rawData.length);
+		else assert(rawData.length==0);
+	}do{
 		if(dumpTraffic) writeln("from ",sender,": ",p);
 		final switch(p.type){
 			// peer to peer:
@@ -964,12 +1039,10 @@ final class Network(B){
 					stderr.writeln("non-host player ",sender," attempted to update map: ",p);
 					break;
 				}
-				assert(players[sender].rawReady);
 				if(!mapData){
 					mapData=new ubyte[](p.rawDataSize); // TODO: don't leak this memory
-					players[sender].receiveRaw((scope ubyte[] data){ mapData[]=data[]; });
+					mapData[]=rawData[];
 				}else{
-					players[sender].receiveRaw((scope ubyte[] data){ });
 					stderr.writeln("map data already pending, ignoring new data");
 				}
 				break;
@@ -978,20 +1051,17 @@ final class Network(B){
 					stderr.writeln("non-host player ",sender," attempted to update state: ",p);
 					break;
 				}
-				assert(players[sender].rawReady);
-				players[sender].receiveRaw(&controller.replaceState);
+				controller.replaceState(rawData);
 				break;
 			case PacketType.initGame:
 				if(sender!=host){
 					stderr.writeln("non-host player ",sender," attempted to initialize the game: ",p);
 					break;
 				}
-				assert(players[sender].rawReady);
 				if(!gameInitData){
 					gameInitData=new ubyte[](p.rawDataSize); // TODO: don't leak this memory
-					players[sender].receiveRaw((scope ubyte[] data){ gameInitData[]=data[]; });
+					gameInitData[]=rawData[];
 				}else{
-					players[sender].receiveRaw((scope ubyte[] data){ });
 					stderr.writeln("game init data already pending, ignoring new data");
 				}
 				break;
@@ -1035,8 +1105,7 @@ final class Network(B){
 			// host query:
 			case PacketType.join:
 				stderr.writeln("stray join packet: ",p);
-				assert(players[sender].rawReady);
-				players[sender].receiveRaw((scope ubyte[] data){ controller.logDesynch(players[sender].settings.slot,data); });
+				controller.logDesynch(players[sender].settings.slot,rawData);
 				break;
 			case PacketType.checkSynch:
 				if(!checkDesynch) return;
@@ -1064,8 +1133,7 @@ final class Network(B){
 					stderr.writeln("logDesynch packet sent to non-host player ",me,": ",p);
 					break;
 				}
-				assert(players[sender].rawReady);
-				players[sender].receiveRaw((scope ubyte[] data){ controller.logDesynch(players[sender].settings.slot,data); });
+				controller.logDesynch(players[sender].settings.slot,rawData);
 				break;
 			// broadcast:
 			case PacketType.updateSetting,PacketType.clearArraySetting,PacketType.appendArraySetting,PacketType.confirmArraySetting,PacketType.setMap,PacketType.appendMap,PacketType.confirmMap:
@@ -1159,13 +1227,17 @@ final class Network(B){
 			case PacketType.command:
 				if(controller) controller.addExternalCommand(p.frame,fromNetwork!B(p.networkCommand));
 				break;
+			case PacketType.commandRaw:
+				writeln("received message: ",fromNetworkRaw!B(p.networkCommand,rawData));
+				if(controller) controller.addExternalCommand(p.frame,fromNetworkRaw!B(p.networkCommand,rawData));
+				break;
 			case PacketType.commit:
 				players[p.commitPlayer].committedFrame=max(players[p.commitPlayer].committedFrame,p.commitFrame);
 				if(controller) controller.updateCommitted();
 				break;
 		}
 	}
-	void forwardPacket(int sender,Packet p,Controller!B controller){
+	void forwardPacket(int sender,Packet p,scope ubyte[] rawData,Controller!B controller){
 		if(!isHost) return;
 		// host forwards state updates to all clients
 		// TODO: for commands, allow direct connections, to decrease latency
@@ -1175,15 +1247,15 @@ final class Network(B){
 			case broadcast:
 				foreach(other;0..players.length){
 					if(other==sender) continue;
-					players[other].send(p);
+					players[other].send(p,rawData);
 				}
 				break;
 			case hostQuery: break;
 		}
 	}
-	void handlePacket(int sender,Packet p,Controller!B controller){
-		performPacketAction(sender,p,controller);
-		forwardPacket(sender,p,controller);
+	void handlePacket(int sender,Packet p,scope ubyte[] rawData,Controller!B controller){
+		performPacketAction(sender,p,rawData,controller);
+		forwardPacket(sender,p,rawData,controller);
 	}
 	void sendPlayerData(Connection connection,int player)in{
 		assert(isHost);
@@ -1334,7 +1406,13 @@ final class Network(B){
 				dropPlayer(cast(int)i,controller);
 				continue;
 			}
-			while(player.ready) handlePacket(cast(int)i,player.receive,controller);
+			while(player.ready){
+				auto packet=player.receive;
+				if(isHeaderType(packet.type)){
+					assert(player.rawReady);
+					player.receiveRaw((scope ubyte[] rawData){ handlePacket(cast(int)i,packet,rawData,controller); });
+				}else handlePacket(cast(int)i,packet,[],controller);
+			}
 		}
 	}
 	bool idleLobby()in{

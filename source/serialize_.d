@@ -707,6 +707,16 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(T.stringo
 void serialize(alias sink,B)(ref CommandCones!B commandCones){ serializeStruct!sink(commandCones); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==CommandCones!B)){ deserializeStruct(result,state,data); }
 
+
+void serialize(alias sink,B)(ref ChatMessageContent!B chatMessage){ serializeStruct!sink(chatMessage); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ChatMessageContent!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref ChatMessage!B chatMessage){ serializeStruct!sink(chatMessage); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ChatMessage!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref ChatMessages!B chatMessages){ serializeStruct!sink(chatMessages); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ChatMessages!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B,RenderMode mode)(ref Objects!(B,mode) objects){ serializeStruct!(sink,["fixedObjects"])(objects); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Objects!(B,mode),RenderMode mode)){ deserializeStruct!(["fixedObjects"])(result,state,data); }
 

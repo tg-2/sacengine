@@ -11,14 +11,18 @@ final class Controller(B){
 	GameState!B state;
 	Network!B network;
 	Recording!B recording, playback;
+	int controlledSlot;
 	int controlledSide;
 	int commandId=0;
 	int committedFrame;
 	int lastCheckSynch=-1;
 	int firstUpdatedFrame;
 	int currentFrame;
-	this(int controlledSide,GameState!B state,Network!B network,Recording!B recording,Recording!B playback){
-		this.controlledSide=controlledSide;
+	this(int controlledSlot,GameState!B state,Network!B network,Recording!B recording,Recording!B playback)in{
+		assert(controlledSlot==-1||0<=controlledSlot&&controlledSlot<state.slots.length);
+	}do{
+		this.controlledSlot=controlledSlot;
+		this.controlledSide=controlledSlot==-1?-1:state.slots[controlledSlot].controlledSide;
 		this.state=state;
 		this.network=network;
 		committedFrame=state.lastCommitted.frame;

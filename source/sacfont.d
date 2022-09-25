@@ -55,6 +55,8 @@ class SacFont(B){
 		}else if(type==FontType.fnwt){
 			// widthSlack?
 			lineHeight=11;
+		}else if(type==FontType.fn10){
+			lineHeight=14; // TODO: correct?
 		}
 	}
 	static SacFont!B[FontType.max+1] fonts;
@@ -145,7 +147,7 @@ void write(alias draw,B)(SacFont!B font,scope const(char)[] text,float left,floa
 				auto cur=text.length-ptext.length;
 				auto word=text[writePos..cur];
 				auto spaceWordWidth=scale*font.getTextWidth(text[writePos..cur]);
-				if(cX+spaceWordWidth>maxWidth) lineBreak();
+				if(cX+spaceWordWidth>left+maxWidth) lineBreak();
 				cX+=font.rawWrite!draw(text[writePos..cur],cX,cY,scale);
 				writePos=cur;
 				if(ptext.length&&ptext[0]=='\n') lineBreak();

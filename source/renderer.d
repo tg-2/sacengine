@@ -3633,6 +3633,48 @@ struct Renderer(B){
 		B.colorHUDMaterialBackend.unbind(null,rc);
 	}
 
+	int renderChatMessage(ref ChatMessage!B message,int yOffset,ref RenderInfo!B info,B.RenderContext rc){
+		B.colorHUDMaterialBackend.bindDiffuse(whiteTexture);
+		B.colorHUDMaterialBackend.setColor(Color4f(0.0f,0.0f,0.0f,174.0f/255.0f));
+		auto width=ChatMessage!B.boxWidth*info.hudScaling;
+		auto pixelHeight=ChatMessage!B.additionalBoxHeight+message.textHeight;
+		auto height=pixelHeight*info.hudScaling;
+		auto offset=Vector3f(0.5f*(info.width-width),yOffset*info.hudScaling,0.0f);
+		B.colorHUDMaterialBackend.setTransformationScaled(offset,Quaternionf.identity(),Vector3f(width,height,0.0f),rc);
+		quad.render(rc);
+		import sacfont;
+		void drawLetter(B.SubQuad mesh,float x,float y,float width,float height){
+			B.colorHUDMaterialBackend.setTransformationScaled(Vector3f(x,y,0.0f),Quaternionf.identity(),Vector3f(width,height,0.0f),rc);
+			mesh.render(rc);
+		}
+		auto titleFont=SacFont!B.get(FontType.fn12);
+		B.colorHUDMaterialBackend.bindDiffuse(titleFont.texture);
+		auto titleSettings=FormatSettings(FlowType.left,info.hudScaling);
+		auto titleSize=titleFont.getSize(message.content.title.data,titleSettings);
+		auto titleOffset=Vector3f(0.5f*(info.width-titleSize.x),(yOffset+ChatMessage!B.titleOffset)*info.hudScaling,0.0f);
+		B.colorHUDMaterialBackend.setColor(Color4f(0.0f,1.0f,1.0f,1.0f));
+		titleFont.write!drawLetter(message.content.title.data,titleOffset.x,titleOffset.y,titleSettings);
+		auto font=SacFont!B.get(FontType.fn10);
+		B.colorHUDMaterialBackend.bindDiffuse(font.texture);
+		auto settings=FormatSettings(FlowType.left,info.hudScaling,ChatMessage!B.maxWidth*info.hudScaling);
+		auto textSize=Vector2f(message.textWidth*info.hudScaling,message.textHeight*info.hudScaling);
+		auto textOffset=Vector3f(floor(0.5f*(info.width-textSize.x)),floor((yOffset+ChatMessage!B.messageOffset)*info.hudScaling),0.0f); // TODO: should be a bit further to the left?
+		B.colorHUDMaterialBackend.setColor(Color4f(1.0f,1.0f,1.0f,1.0f));
+		font.write!drawLetter(message.content.message.data,textOffset.x,textOffset.y,settings);
+		//int xOffset=ChatMessage!B.minOffset+(ChatMessage!B.maxWidth-message.textWidth)/2;
+		return pixelHeight;
+	}
+
+	void renderChatMessages(ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
+		B.colorHUDMaterialBackend.bind(null,rc);
+		int currentOffset=93;
+		foreach(ref message;state.obj.opaqueObjects.chatMessages.messages.data){
+			auto height=renderChatMessage(message,currentOffset,info,rc)+ChatMessage!B.gapSize;
+			currentOffset+=height;
+		}
+		B.colorHUDMaterialBackend.unbind(null,rc);
+	}
+
 	void renderSacForm(SacForm!B sacForm,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
 		B.colorHUDMaterialBackend.bind(null,rc);
 		void doIt(SacForm!B sacForm,Vector3f offset,Quaternionf rotation,Vector3f scale){
@@ -3814,6 +3856,7 @@ struct Renderer(B){
 			renderTargetFrame(state,info,rc);
 			renderHUD(state,info,rc);
 			renderText(state,info,rc);
+			renderChatMessages(state,info,rc);
 			renderForms(forms,state,info,rc);
 			renderRectangleSelectFrame(state,info,rc);
 			renderCursor(options.cursorSize,state,info,rc);

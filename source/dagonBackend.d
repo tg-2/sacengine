@@ -415,7 +415,22 @@ final class SacScene: Scene{
 	override void onMouseButtonDown(int button){ mouseButtonDown[button]+=1; }
 	override void onMouseButtonUp(int button){ mouseButtonUp[button]+=1; }
 
+	void stopMoving(){
+		auto cameraFacing=-degtorad(camera.turn);
+		if(state&&camera.target){
+			if(targetMovementState.movement!=MovementDirection.none){
+				targetMovementState.movement=MovementDirection.none;
+				controller.addCommand(Command!DagonBackend(CommandType.stopMoving,renderSide,camera.target,camera.target,Target.init,cameraFacing));
+			}
+			if(targetMovementState.rotation!=RotationDirection.none){
+				targetMovementState.rotation=RotationDirection.none;
+				controller.addCommand(Command!DagonBackend(CommandType.stopTurning,renderSide,camera.target,camera.target,Target.init,cameraFacing));
+			}
+		}
+	}
+
 	void enableMenu(){
+		stopMoving();
 		mouse.menuMode=true;
 		eventManager.enableTextInput();
 	}
@@ -478,6 +493,28 @@ final class SacScene: Scene{
 					activeElement.moveLeft!DagonBackend();
 				foreach(_;0..keyDown[KEY_RIGHT])
 					activeElement.moveRight!DagonBackend();
+			}
+		}
+		if(form.sacForm.isChatForm){
+			if(activeElement.checked){
+				if(activeElement.id=="dnes"){
+					auto defaultIndex=form.defaultIndex;
+					enforce(0<=defaultIndex&&defaultIndex<form.elements.length);
+					enforce(form.elements[defaultIndex].id=="thci");
+					if(form.elements[defaultIndex].textInput.length!=0){
+						string name=null;
+						if(renderSide!=-1) name=getSideName(renderSide,state.current);
+						if(name is null) name=options.name;
+						int slotFilter=-1; // TODO
+						auto chatMessage=makeChatMessage!DagonBackend(controller.controlledSlot,slotFilter,ChatMessageType.standard,name,form.elements[defaultIndex].textInput.data[],state.current.frame);
+						controller.addCommand(Command!DagonBackend(controller.controlledSide,move(chatMessage)));
+					}
+					forms.length=0;
+					disableMenu();
+				}else if(activeElement.id=="lcnc"){
+					forms.length=0;
+					disableMenu();
+				}
 			}
 		}
 	}

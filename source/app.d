@@ -356,7 +356,7 @@ void loadMap(B)(ref Options options)in{
 	state.commit();
 	if(network && network.isHost) network.addSynch(state.lastCommitted.frame,state.lastCommitted.hash);
 	if(recording) recording.stepCommitted(state.lastCommitted);
-	auto controller=new Controller!B(hasSlot?state.slots[slot].controlledSide:-1,state,network,recording,playback);
+	auto controller=new Controller!B(hasSlot?slot:-1,state,network,recording,playback);
 	B.setState(state);
 	if(wizId) B.focusCamera(wizId);
 	else B.scene.fpview.active=true;

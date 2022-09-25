@@ -343,7 +343,7 @@ static getScale(T)(ref T obj){
 		return 0.5f*(hitbox[1].xy-hitbox[0].xy);
 	}else return 0.0f;
 }
-Vector2f[numCreaturesInGroup] getFormationOffsets(R)(R ids,CommandType commandType,Formation formation,Vector2f formationScale,Vector2f targetScale){
+Vector2f[numCreaturesInGroup] getFormationOffsets(R)(scope R ids,CommandType commandType,Formation formation,Vector2f formationScale,Vector2f targetScale){
 	auto unitDistance=1.75f*max(formationScale.x,formationScale.y);
 	auto targetDistance=0.5f*(1.25f*unitDistance+max(targetScale.x,targetScale.y));
 	if(targetDistance!=0.0f) targetDistance=max(targetDistance, unitDistance);
@@ -1918,6 +1918,13 @@ struct WizardInfos(B){
 		if(index==-1) return null;
 		return &wizards[index];
 	}
+}
+string getSideName(B)(int side,ObjectState!B state){
+	if(auto wiz=state.getWizardForSide(side)){
+		if(wiz.name.length) return wiz.name;
+		return state.movingObjectById!((ref obj)=>obj.sacObject.name,()=>null)(wiz.id);
+	}
+	return null;
 }
 auto each(alias f,B,T...)(ref WizardInfos!B wizards,T args){
 	foreach(i;0..wizards.length)
@@ -4677,6 +4684,59 @@ struct CommandCones(B){
 	}
 }
 
+enum ChatMessageType{
+	standard,
+}
+
+struct ChatMessageContent(B){
+	ChatMessageType type; // TODO: add messages with buttons, etc.
+	//God god; // TODO: actually render god animation
+	//GodEmotion godEmotion; // TODO: actually render god animation
+	Array!char title;
+	Array!char message;
+}
+
+struct ChatMessage(B){
+	int senderSlot;
+	int slotFilter;
+	ChatMessageContent!B content;
+	enum boxWidth=220;
+	enum additionalBoxHeight=30;
+	enum titleOffset=2;
+	enum messageOffset=24;
+	enum gapSize=5;
+	enum minOffset=3;
+	enum maxWidth=209;
+	int textWidth,textHeight;
+	int startFrame;
+	int lifetime;
+}
+
+ChatMessage!B makeChatMessage(B,R,S)(int senderSlot,int slotFilter,ChatMessageType type,scope R title,scope S message,int startFrame){
+	Array!char titleArray;
+	Array!char messageArray;
+	foreach(char c;title) titleArray~=c;
+	foreach(char c;message) messageArray~=c;
+	import sacfont;
+	auto font=SacFont!B.get(FontType.fn10);
+	auto scale=1.0f;
+	auto settings=FormatSettings(FlowType.left,scale,ChatMessage!B.maxWidth);
+	auto textSize=font.getSize(message,settings);
+	int textWidth=to!int(textSize.x);
+	int textHeight=to!int(textSize.y);
+	int lifetime=to!int(updateFPS+messageArray.length*updateFPS/10);
+	auto content=ChatMessageContent!B(type,move(titleArray),move(messageArray));
+	return ChatMessage!B(senderSlot,slotFilter,move(content),textWidth,textHeight,startFrame,lifetime);
+}
+
+struct ChatMessages(B){
+	Array!(ChatMessage!B) messages;
+
+	void addChatMessage(ChatMessage!B message){
+		messages~=move(message);
+	}
+}
+
 struct Objects(B,RenderMode mode){
 	Array!(MovingObjects!(B,mode)) movingObjects;
 	Array!(StaticObjects!(B,mode)) staticObjects;
@@ -4690,6 +4750,7 @@ struct Objects(B,RenderMode mode){
 		Array!(Particles!(B,false,true)) filteredParticles;
 		Effects!B effects;
 		CommandCones!B commandCones;
+		ChatMessages!B chatMessages;
 	}
 	mixin Assign;
 	int getIndex(T)(SacObject!B sacObject,bool insert) if(is(T==MovingObject!B)||is(T==StaticObject!B)){
@@ -4843,6 +4904,9 @@ struct Objects(B,RenderMode mode){
 		void addCommandCone(CommandCone!B cone){
 			if(!commandCones.cones.length) commandCones.initialize(32); // TODO: do this eagerly?
 			commandCones.addCommandCone(cone);
+		}
+		void addChatMessage(B)(ChatMessage!B message){
+			chatMessages.addChatMessage(move(message));
 		}
 	}
 }
@@ -5072,6 +5136,9 @@ struct ObjectManager(B){
 	}
 	void addCommandCone(CommandCone!B cone){
 		opaqueObjects.addCommandCone(cone);
+	}
+	void addChatMessage(ChatMessage!B message){
+		opaqueObjects.addChatMessage(move(message));
 	}
 }
 auto each(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
@@ -8927,6 +8994,11 @@ void screenShake(B)(Vector3f position,int lifetime,float strength,float range,Ob
 
 void testDisplacement(B)(ObjectState!B state){
 	state.addEffect(TestDisplacement());
+}
+
+bool sendChatMessage(B)(ChatMessage!B message,ObjectState!B state){
+	state.addChatMessage(move(message));
+	return true;
 }
 
 bool isRangedAbility(B)(SacSpell!B ability){ // TODO: put this directly in SacSpell!B ?
@@ -18959,7 +19031,8 @@ final class ObjectState(B){ // (update logic)
 					state.eachMovingOfSide!retreat(command.side,command,state,&success);
 				}else{
 					auto selection=state.getSelection(command.side);
-					auto ids=selection.creatureIds[].filter!(x=>x!=command.target.id);
+					auto targetId=command.target.id;
+					auto ids=zip(selection.creatureIds[],repeat(targetId)).filter!(x=>x[0]!=x[1]).map!(x=>x[0]);
 					Vector3f[numCreaturesInGroup] positions,targetPositions;
 					Vector2f[numCreaturesInGroup] formationOffsets;
 					if(!command.type.among(CommandType.setFormation,CommandType.useAbility)){
@@ -18982,7 +19055,7 @@ final class ObjectState(B){ // (update logic)
 						foreach(j;0..numCreatures){
 							foreach(k;0..numCreatures){
 								auto distanceSqr=(positions[j]-targetPositions[k]).lengthsqr;
-								assert(!isNaN(distanceSqr),text(command.type," ",j," ",k," ",positions," ",targetPositions));
+								assert(!isNaN(distanceSqr),text(command.type," ",j," ",k," ",positions[0..numCreatures]," ",targetPositions[0..numCreatures]));
 								distances[j*numCreatures+k]=tuple(distanceSqr,j,k);
 							}
 						}
@@ -19069,6 +19142,7 @@ final class ObjectState(B){ // (update logic)
 			case retreat,move,guard,guardArea,attack,advance,useAbility: success=applyOrder(command,this); break;
 			case castSpell: success=startCasting(command.wizard,command.spell,OrderTarget(command.target),this); break;
 			case surrender: success=.surrender(command.side,this); break;
+			case chatMessage: success=sendChatMessage(command.chatMessage,this); break;
 		}
 	}
 	void update(Command!B[] frameCommands){
@@ -19299,6 +19373,10 @@ final class ObjectState(B){ // (update logic)
 	void addCommandCone(CommandCone!B cone){
 		obj.addCommandCone(cone);
 	}
+	void addChatMessage(ChatMessage!B message){
+		obj.addChatMessage(move(message));
+	}
+
 	SideManager!B sid;
 	Queue!int* aiQueue(int side){
 		return sid.aiQueue(side);
@@ -19960,11 +20038,13 @@ enum CommandType{
 	useAbility,
 
 	surrender,
+
+	chatMessage,
 }
 
 bool hasClickSound(CommandType type){
 	final switch(type) with(CommandType){
-		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,clearSelection,automaticToggleSelection,automaticSelectGroup,setFormation,retreat,surrender: return false;
+		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,clearSelection,automaticToggleSelection,automaticSelectGroup,setFormation,retreat,surrender,chatMessage: return false;
 		case select,selectAll,automaticSelectAll,toggleSelection,defineGroup,addToGroup,selectGroup,move,guard,guardArea,attack,advance,castSpell,useAbility: return true;
 	}
 }
@@ -20001,11 +20081,12 @@ SoundType soundType(B)(Command!B command){
 		case advance: return SoundType.advance;
 		case castSpell,useAbility: return SoundType.none;
 		case surrender: return SoundType.none;
+		case chatMessage: return SoundType.none;
 	}
 }
 SoundType responseSoundType(B)(Command!B command){
 	final switch(command.type) with(CommandType){
-		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,setFormation,clearSelection,automaticSelectAll,automaticToggleSelection,defineGroup,addToGroup,automaticSelectGroup,retreat,castSpell,useAbility,surrender:
+			case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,setFormation,clearSelection,automaticSelectAll,automaticToggleSelection,defineGroup,addToGroup,automaticSelectGroup,retreat,castSpell,useAbility,surrender,chatMessage:
 			return SoundType.none;
 		case select,selectAll,toggleSelection,selectGroup:
 			return SoundType.selected;
@@ -20183,6 +20264,8 @@ struct Command(B){
 				assert(0);
 			case surrender:
 				assert(0);
+			case chatMessage:
+				assert(0);
 		}
 	}do{
 		this.type=type;
@@ -20235,6 +20318,12 @@ struct Command(B){
 		this.side=side;
 	}
 
+	this(int side,ChatMessage!B chatMessage){
+		this.type=CommandType.chatMessage;
+		this.side=side;
+		this.chatMessage=move(chatMessage);
+	}
+
 	CommandType type;
 	int side;
 	int wizard;
@@ -20256,6 +20345,9 @@ struct Command(B){
 		return tuple(side,id).opCmp(tuple(rhs.side,rhs.id));
 	}
 	auto queueing=CommandQueueing.none;
+
+	// stored as rawData when sent over network:
+	ChatMessage!B chatMessage;
 }
 
 struct GameInit(B){

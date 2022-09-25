@@ -677,6 +677,8 @@ final class SacForm(B){
 	string mouseoverText(){ return null; }
 	bool returnIsOk(){ return tag=="thci"; } // TODO: is there some flag for this?
 
+	bool isChatForm(){ return tag=="thci"; }
+
 	private this(char[4] tag){
 		this.tag=tag;
 		form=tag in forms;
