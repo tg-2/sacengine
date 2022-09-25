@@ -4700,13 +4700,14 @@ struct ChatMessage(B){
 	int senderSlot;
 	int slotFilter;
 	ChatMessageContent!B content;
-	enum boxWidth=220;
+	//enum boxWidth=220; // matches 640x480
+	enum boxWidth=287;   // matches 1920x1080
 	enum additionalBoxHeight=30;
 	enum titleOffset=2;
 	enum messageOffset=24;
 	enum gapSize=5;
 	enum minOffset=3;
-	enum maxWidth=209;
+	enum maxWidth=boxWidth-11;
 	int textWidth,textHeight;
 	int startFrame;
 	int lifetime;
