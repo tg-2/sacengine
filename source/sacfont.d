@@ -102,58 +102,47 @@ int getTextWidth(B)(SacFont!B font,scope const(char)[] text){
 	}
 }
 
-Vector2f getSize(B)(SacFont!B font,scope const(char)[] text,FormatSettings settings){ // TODO: get rid of code duplication
+auto writeImpl(alias draw=void,B)(SacFont!B font,scope const(char)[] text,float left,float top,FormatSettings settings){
 	with(font) with(settings){
-		float cX=0.0f, cY=0.0f;
-		auto ptext=text;
-		size_t writePos=0;
-		float width=0.0f;
-		void lineBreak(){
-			cY+=scale*font.lineHeight;
-			cX=0.0f;
-			if(text[writePos].among(' ','\n')) writePos++;
+		if(!text.length){
+			static if(is(draw==void)) return Vector2f(0.0f,scale*font.lineHeight);
+			else return;
 		}
-		for(;;){
-			if(!ptext.length||ptext[0].among(' ','\n')){
-				auto cur=text.length-ptext.length;
-				auto word=text[writePos..cur];
-				auto spaceWordWidth=scale*font.getTextWidth(text[writePos..cur]);
-				if(cX+spaceWordWidth>maxWidth) lineBreak();
-				cX+=scale*font.getTextWidth(text[writePos..cur]);
-				writePos=cur;
-				width=max(width,cX);
-				if(ptext.length&&ptext[0]=='\n') lineBreak();
-			}
-			if(!ptext.length) break;
-			ptext=ptext[1..$];
-		}
-		return Vector2f(width,cY+scale*font.lineHeight);
-	}
-}
-
-void write(alias draw,B)(SacFont!B font,scope const(char)[] text,float left,float top,FormatSettings settings){
-	if(!text.length) return;
-	with(font) with(settings){
 		float cX=left, cY=top;
-		auto ptext=text;
 		size_t writePos=0;
+		static if(is(draw==void)) float width=0.0f;
+		void write(scope const(char)[] text){
+			static if(!is(draw==void)) cX+=font.rawWrite!draw(text,cX,cY,scale);
+			else cX+=scale*font.getTextWidth(text);
+		}
 		void lineBreak(){
 			cY+=scale*font.lineHeight;
 			cX=left;
 			if(text[writePos].among(' ','\n')) writePos++;
 		}
-		for(;;){
+		for(auto ptext=text;;){
 			if(!ptext.length||ptext[0].among(' ','\n')){
 				auto cur=text.length-ptext.length;
 				auto word=text[writePos..cur];
 				auto spaceWordWidth=scale*font.getTextWidth(text[writePos..cur]);
 				if(cX+spaceWordWidth>left+maxWidth) lineBreak();
-				cX+=font.rawWrite!draw(text[writePos..cur],cX,cY,scale);
+				write(text[writePos..cur]);
 				writePos=cur;
+				static if(is(draw==void)) width=max(width,cX);
 				if(ptext.length&&ptext[0]=='\n') lineBreak();
 			}
 			if(!ptext.length) break;
 			ptext=ptext[1..$];
 		}
+		static if(is(draw==void)) return Vector2f(width,cY+scale*font.lineHeight);
 	}
+}
+
+Vector2f getSize(B)(SacFont!B font,scope const(char)[] text,FormatSettings settings){
+	return writeImpl!void(font,text,0.0f,0.0f,settings);
+}
+
+void write(alias draw,B)(SacFont!B font,scope const(char)[] text,float left,float top,FormatSettings settings){
+	static assert(!is(draw==void));
+	writeImpl!draw(font,text,left,top,settings);
 }
