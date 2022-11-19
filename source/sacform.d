@@ -791,6 +791,8 @@ bool moveRight(B)(ref ElementState element){
 
 bool enterDchar(B)(ref ElementState element,dchar d){
 	if(d>=0x80) return false; // TODO
+	import std.uni:isWhite;
+	if(isWhite(d)&&d!=' ') return false;
 	auto c=to!char(d);
 	if(element.textInput.length>=element.maxTextInputLength)
 		return false;
