@@ -472,6 +472,23 @@ final class SacScene: Scene{
 				}
 			}
 		}else if(forms.length!=1) return; // TODO?
+		import hotkeys_;
+		Modifiers modifiers;
+		if(eventManager.keyPressed[KEY_LCTRL]||options.hotkeys.capsIsCtrl&&eventManager.keyPressed[KEY_CAPSLOCK]) modifiers|=Modifiers.ctrl;
+		if(eventManager.keyPressed[KEY_LSHIFT]) modifiers|=Modifiers.shift;
+		if(modifiers&Modifiers.ctrl){
+			foreach(_;0..keyDown[KEY_V]){
+				if(SDL_HasClipboardText()){
+					auto str=SDL_GetClipboardText();
+					scope(exit) SDL_free(str);
+					import core.stdc.string: strlen;
+					auto view=str[0..strlen(str)];
+					form.focusType(.form.ElementType.entrybox);
+					if(activeElement.type==.form.ElementType.entrybox)
+						foreach(dchar d;view) activeElement.enterDchar!DagonBackend(d);
+				}
+			}
+		}
 		foreach(_;0..keyDown[KEY_TAB]) form.tabActive();
 		foreach(_;0..keyDown[KEY_SPACE]) if(activeElement.activate()) playMenuActionSound();
 		foreach(_;0..keyDown[KEY_RETURN]){
