@@ -112,23 +112,41 @@ auto writeImpl(alias draw=void,B)(SacFont!B font,scope const(char)[] text,float 
 		size_t writePos=0;
 		static if(is(draw==void)) float width=0.0f;
 		void write(scope const(char)[] text){
-			static if(!is(draw==void)) cX+=font.rawWrite!draw(text,cX,cY,scale);
-			else cX+=scale*font.getTextWidth(text);
+			static if(is(draw==void)){
+				cX+=scale*font.getTextWidth(text);
+				width=max(width,cX);
+			}else cX+=font.rawWrite!draw(text,cX,cY,scale);
 		}
 		void lineBreak(){
 			cY+=scale*font.lineHeight;
 			cX=left;
-			if(text[writePos].among(' ','\n')) writePos++;
+			if(writePos<text.length&&text[writePos].among(' ','\n')) writePos++;
 		}
 		for(auto ptext=text;;){
 			if(!ptext.length||ptext[0].among(' ','\n')){
 				auto cur=text.length-ptext.length;
-				auto word=text[writePos..cur];
-				auto spaceWordWidth=scale*font.getTextWidth(text[writePos..cur]);
-				if(cX+spaceWordWidth>left+maxWidth) lineBreak();
-				write(text[writePos..cur]);
-				writePos=cur;
-				static if(is(draw==void)) width=max(width,cX);
+				bool hasSpace=writePos<cur&&text[writePos]==' ';
+				auto word=hasSpace?text[writePos+1..cur]:text[writePos..cur];
+				auto wordWidth=scale*font.getTextWidth(word);
+				auto spaceWidth=hasSpace?scale*font.getCharWidth(' '):0;
+				auto spaceWordWidth=spaceWidth+wordWidth;
+				if(writePos>0&&cX+spaceWordWidth>left+maxWidth) lineBreak();
+				if(wordWidth<=maxWidth){
+					write(text[writePos..cur]);
+					writePos=cur;
+				}else{ // TODO: improve elegance
+					auto ncX=cX;
+					size_t splitPos=writePos;
+					while(splitPos<cur&&ncX<=left+maxWidth){
+						size_t numCodeUnits=0;
+						auto c=decodeFront(word,numCodeUnits);
+						ncX+=scale*font.getCharWidth(c);
+						splitPos+=numCodeUnits;
+					}
+					write(text[writePos..splitPos]);
+					writePos=splitPos;
+					if(writePos<cur) continue;
+				}
 				if(ptext.length&&ptext[0]=='\n') lineBreak();
 			}
 			if(!ptext.length) break;
