@@ -496,7 +496,7 @@ final class SacScene: Scene{
 			}
 		}
 		if(form.sacForm.isChatForm){
-			if(activeElement.checked){
+			if(state&&activeElement.checked){
 				if(activeElement.id=="dnes"){
 					auto defaultIndex=form.defaultIndex;
 					enforce(0<=defaultIndex&&defaultIndex<form.elements.length);
@@ -506,7 +506,8 @@ final class SacScene: Scene{
 						if(renderSide!=-1) name=getSideName(renderSide,state.current);
 						if(name is null) name=options.name;
 						int slotFilter=-1; // TODO
-						auto chatMessage=makeChatMessage!DagonBackend(controller.controlledSlot,slotFilter,ChatMessageType.standard,name,form.elements[defaultIndex].textInput.data[],state.current.frame);
+						auto controlledSlot=controller?controller.controlledSlot:0;
+						auto chatMessage=makeChatMessage!DagonBackend(controlledSlot,slotFilter,ChatMessageType.standard,name,form.elements[defaultIndex].textInput.data[],state.current.frame);
 						controller.addCommand(Command!DagonBackend(controller.controlledSide,move(chatMessage)));
 					}
 					forms.length=0;
@@ -671,8 +672,7 @@ final class SacScene: Scene{
 					break;
 				case quickSave,quickLoad,pause,changeCamera: unsupported(); break;
 				case sendChatMessage:
-					if(mouse.status==MouseStatus.standard&&!mouse.dragging){
-						enforce(!mouse.menuMode);
+					if(mouse.status==MouseStatus.standard&&!mouse.dragging&&!mouse.menuMode){
 						forms~=sacFormInstance!DagonBackend("thci");
 						enableMenu();
 					}

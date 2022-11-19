@@ -6,7 +6,7 @@ import dlib.math.portable;
 import dlib.math.vector, dlib.math.matrix, dlib.math.quaternion, dlib.math.transformation, dlib.math.utils: Axis, degtorad;
 import dlib.image.color;
 import std.stdio;
-import std.algorithm: min, max, among, map, filter, all, splitter;
+import std.algorithm: min, max, among, map, filter, all, splitter, swap;
 import std.range: iota, walkLength, enumerate;
 import std.typecons: tuple, Tuple;
 import std.conv: to;
@@ -73,6 +73,36 @@ struct Mouse(B){
 	@property bool onSpellbook(){ return loc==Location.spellbook; }
 }
 
+struct ActiveChatMessage{
+	int index;
+	int offset;
+	int height;
+}
+struct ActiveChatMessages{
+	Array!ActiveChatMessage messages;
+	int chatMessageIndex=0;
+	bool[480] occupied=false;
+	void add(int index,int height,int topOffset,int gapSize){
+		int offset=topOffset; // TODO: delay messages instead if nothing is found
+		int curGap=gapSize;
+		foreach(i,x;occupied){
+			if(x) curGap=0;
+			else ++curGap;
+			if(i>=topOffset+height&&curGap>=gapSize+height&&(i+1>=occupied.length||!occupied[i+1])){
+				occupied[i-height..i]=true;
+				offset=to!int(i-height);
+				break;
+			}
+		}
+		messages~=ActiveChatMessage(index,offset,height);
+	}
+	void remove(int localIndex){
+		occupied[messages[localIndex].offset..messages[localIndex].offset+messages[localIndex].height]=false;
+		swap(messages[localIndex],messages[$-1]);
+		messages.length=messages.length-1;
+	}
+}
+
 struct RenderInfo(B){
 	int renderSide=-1;
 	float hudScaling;
@@ -84,7 +114,7 @@ struct RenderInfo(B){
 	@property int height(){ return camera.height; }
 	float screenScaling;
 	auto spellbookTab=SpellType.creature;
-	int chatMessageIndex=0;
+	ActiveChatMessages activeChatMessages;
 }
 
 struct Renderer(B){
@@ -3634,7 +3664,7 @@ struct Renderer(B){
 		B.colorHUDMaterialBackend.unbind(null,rc);
 	}
 
-	int renderChatMessage(ref ChatMessage!B message,int yOffset,ref RenderInfo!B info,B.RenderContext rc){
+	void renderChatMessage(ref ChatMessage!B message,int yOffset,ref RenderInfo!B info,B.RenderContext rc){
 		B.colorHUDMaterialBackend.bindDiffuse(whiteTexture);
 		B.colorHUDMaterialBackend.setColor(Color4f(0.0f,0.0f,0.0f,174.0f/255.0f));
 		auto width=ChatMessage!B.boxWidth*info.hudScaling;
@@ -3663,22 +3693,28 @@ struct Renderer(B){
 		B.colorHUDMaterialBackend.setColor(Color4f(1.0f,1.0f,1.0f,1.0f));
 		font.write!drawLetter(message.content.message.data,textOffset.x,textOffset.y,settings);
 		//int xOffset=ChatMessage!B.minOffset+(ChatMessage!B.maxWidth-message.textWidth)/2;
-		return pixelHeight;
 	}
 
 	void renderChatMessages(ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
+		int slot=-1; // TODO
 		B.colorHUDMaterialBackend.bind(null,rc);
-		int currentOffset=93;
 		scope messages=state.obj.opaqueObjects.chatMessages.messages.data;
-		for(int i=info.chatMessageIndex;i<messages.length;i++){
+		while(info.activeChatMessages.chatMessageIndex&&messages[info.activeChatMessages.chatMessageIndex-1].startFrame>=state.frame)
+			--info.activeChatMessages.chatMessageIndex;
+		for(;info.activeChatMessages.chatMessageIndex<messages.length;++info.activeChatMessages.chatMessageIndex){
+			auto i=info.activeChatMessages.chatMessageIndex;
 			if(messages[i].startFrame>state.frame) break;
-			if(!messages[i].visible(-1,state)){ // TODO: filter correctly
-				if(i==info.chatMessageIndex) info.chatMessageIndex++;
-				continue;
-			}
-			// TODO: persistent offset for each message, avoiding collisions
-			auto height=renderChatMessage(messages[i],currentOffset,info,rc)+ChatMessage!B.gapSize;
-			currentOffset+=height;
+			auto height=ChatMessage!B.additionalBoxHeight+messages[i].textHeight;
+			if(messages[i].visible(slot,state))
+				info.activeChatMessages.add(i,height,ChatMessage!B.topOffset,ChatMessage!B.gapSize);
+		}
+		for(int i=0;i<info.activeChatMessages.messages.length;){
+			auto index=info.activeChatMessages.messages[i].index;
+			if(messages[index].visible(slot,state)){
+				auto currentOffset=info.activeChatMessages.messages[i].offset;
+				renderChatMessage(messages[index],currentOffset,info,rc);
+				i++;
+			}else info.activeChatMessages.remove(i);
 		}
 		B.colorHUDMaterialBackend.unbind(null,rc);
 	}

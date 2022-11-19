@@ -4702,6 +4702,7 @@ struct ChatMessage(B){
 	ChatMessageContent!B content;
 	//enum boxWidth=220; // matches 640x480
 	enum boxWidth=287;   // matches 1920x1080
+	enum topOffset=93;
 	enum additionalBoxHeight=30;
 	enum titleOffset=2;
 	enum messageOffset=24;
@@ -4712,9 +4713,16 @@ struct ChatMessage(B){
 	int startFrame;
 	int lifetime;
 
-	bool visible(int slot,ObjectState!B state){
+	bool visibleToSlot(int slot,ObjectState!B state){
 		enforce(slot==-1,"TODO");
+		return true;
+	}
+	bool currentlyVisible(ObjectState!B state){
 		return startFrame<=state.frame&&state.frame<=startFrame+lifetime;
+	}
+
+	bool visible(int slot,ObjectState!B state){
+		return visibleToSlot(slot,state)&&currentlyVisible(state);
 	}
 }
 
