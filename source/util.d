@@ -53,6 +53,20 @@ float[3] fromSXMD(float[3] v){
 	return [-v[0],-v[2],v[1]];
 }
 
+import std.encoding;
+enum placeholderLetter=cast(Windows1252Char)0x81;
+bool canRenderDchar(dchar c){
+	return canEncode!Windows1252Char(c)&&encodedLength!Windows1252Char(c)==1;
+}
+// US version uses code page 1252
+// TODO: polish probably uses 1250 and russian 1251?
+Windows1252Char convertDchar(dchar c){
+	if(!canRenderDchar(c)) return placeholderLetter;
+	Windows1252Char[1] result;
+	encode(c,result[]);
+	return result[0];
+}
+
 import wadmanager;
 WadManager wadManager;
 bool fileExists(string filename){

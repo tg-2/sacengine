@@ -11,9 +11,6 @@ enum FontType{
 	ft12,
 }
 
-
-auto byLatin1(R)(R r){ return r.byDchar.map!(c=>c>=0x100?'?':c); }
-
 class SacFont(B){
 	B.Texture texture;
 	struct Letter{
@@ -69,8 +66,8 @@ class SacFont(B){
 float rawWrite(alias draw,B,R)(SacFont!B font,R text,float left,float top,float scale){
 	with(font){
 		float cursor=0.0f;
-		foreach(dchar c;text){
-			if(c>=0x100) c='?';
+		foreach(dchar d;text){
+			auto c=convertDchar(d);
 			draw(letters[c].mesh,left+cursor-widthSlack,top,scale*(letters[c].width+2.0f*widthSlack),scale*(letters[c].height));
 			cursor+=scale*(letters[c].width+1);
 		}
@@ -88,10 +85,7 @@ struct FormatSettings{
 }
 
 int getCharWidth(B)(SacFont!B font,dchar c){
-	with(font){
-		if(c>=0x100) return font.getCharWidth('?');
-		return letters[c].width+1;
-	}
+	with(font) return letters[convertDchar(c)].width+1;
 }
 int getTextWidth(B)(SacFont!B font,scope const(char)[] text){
 	with(font){

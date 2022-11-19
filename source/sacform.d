@@ -770,7 +770,8 @@ void fitTextEnd(B)(ref ElementState element,bool expand=true){
 
 bool moveLeft(B)(ref ElementState element){
 	if(element.textCursor<=0) return false;
-	element.textCursor-=1;
+	import std.utf:strideBack;
+	element.textCursor-=element.textInput.data[].strideBack(element.textCursor);
 	auto left=element.textCursor;
 	if(left<element.textStart){
 		element.textStart=left;
@@ -780,7 +781,8 @@ bool moveLeft(B)(ref ElementState element){
 }
 bool moveRight(B)(ref ElementState element){
 	if(element.textCursor>=element.textInput.length) return false;
-	element.textCursor+=1;
+	import std.utf:stride;
+	element.textCursor+=element.textInput.data[].stride(element.textCursor);
 	auto right=min(element.textInput.length,element.textCursor+1);
 	if(element.textEnd<right){
 		element.textEnd=max(element.textEnd,right);
@@ -790,15 +792,16 @@ bool moveRight(B)(ref ElementState element){
 }
 
 bool enterDchar(B)(ref ElementState element,dchar d){
-	if(d>=0x80) return false; // TODO
 	import std.uni:isWhite;
 	if(isWhite(d)&&d!=' ') return false;
-	auto c=to!char(d);
-	if(element.textInput.length>=element.maxTextInputLength)
+	import std.utf:encode;
+	char[4] buf;
+	auto numCodeUnits=encode(buf,d);
+	if(element.textInput.length+numCodeUnits>element.maxTextInputLength)
 		return false;
-	element.textInput~=c;
+	foreach(c;buf[0..numCodeUnits]) element.textInput~=c;
 	import std.algorithm;
-	bringToFront(element.textInput.data[element.textCursor..$-1],element.textInput.data[$-1..$]); // TODO: faster algorithm?
+	bringToFront(element.textInput.data[element.textCursor..$-numCodeUnits],element.textInput.data[$-numCodeUnits..$]); // TODO: faster algorithm?
 	element.moveRight!B();
 	element.fitTextEnd!B();
 	return true;
@@ -806,19 +809,22 @@ bool enterDchar(B)(ref ElementState element,dchar d){
 
 bool deleteDchar(B)(ref ElementState element){
 	if(element.textCursor<=0) return false;
-	import std.algorithm;
-	bringToFront(element.textInput.data[element.textCursor-1..element.textCursor],element.textInput.data[element.textCursor..$]);
-	element.textInput.length=element.textInput.length-1;
+	import std.utf:strideBack;
+	auto numCodeUnits=element.textInput.data[].strideBack(element.textCursor);
+	import std.algorithm:bringToFront;
+	bringToFront(element.textInput.data[element.textCursor-numCodeUnits..element.textCursor],element.textInput.data[element.textCursor..$]);
+	element.textInput.length=element.textInput.length-numCodeUnits;
 	element.textEnd=min(element.textEnd,to!int(element.textInput.length));
 	element.textStart=min(element.textStart,element.textEnd);
-	element.textCursor-=1;
+	element.textCursor-=numCodeUnits;
 	element.textStart=min(element.textStart,element.textCursor);
 	element.fitTextEnd!B();
 	return true;
 }
 bool deleteDcharForward(B)(ref ElementState element){
 	if(element.textCursor>=element.textInput.length) return false;
-	element.textCursor+=1;
+	import std.utf:stride;
+	element.textCursor+=element.textInput.data[].stride(element.textCursor);
 	return element.deleteDchar!B();
 }
 

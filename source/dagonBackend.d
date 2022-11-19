@@ -481,8 +481,9 @@ final class SacScene: Scene{
 				if(SDL_HasClipboardText()){
 					auto str=SDL_GetClipboardText();
 					scope(exit) SDL_free(str);
+					import std.uni: normalize, NFKC;
 					import core.stdc.string: strlen;
-					auto view=str[0..strlen(str)];
+					auto view=normalize!NFKC(str[0..strlen(str)]); // TODO: would be better without GC leak
 					form.focusType(.form.ElementType.entrybox);
 					if(activeElement.type==.form.ElementType.entrybox)
 						foreach(dchar d;view) activeElement.enterDchar!DagonBackend(d);
