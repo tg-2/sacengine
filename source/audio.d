@@ -27,7 +27,9 @@ bool loadAudio(){
 		DerelictMPG123.load();
 		mpg123_init();
 		return true;
-	}catch(DerelictException){
+	}catch(DerelictException e){
+		import std.stdio;
+		stderr.writeln(e.msg);
 		return false;
 	}
 }
