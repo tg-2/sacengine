@@ -1005,8 +1005,11 @@ bool hasShootTick(B)(ref MovingObject!B object,ObjectState!B state){
 }
 
 SacSpell!B ability(B)(ref MovingObject!B object){
-	if(object.isGuardian||object.isDying) return null;
 	return object.sacObject.ability;
+}
+SacSpell!B activeAbility(B)(ref MovingObject!B object){
+	if(object.isGuardian||object.isDying) return null;
+	return object.ability;
 }
 SacSpell!B passiveAbility(B)(ref MovingObject!B object){ return object.sacObject.passiveAbility; }
 
@@ -8308,7 +8311,7 @@ float shootRange(B)(ref MovingObject!B object,ObjectState!B state){
 	return 0.0f;
 }
 float useAbilityDistance(B)(ref MovingObject!B object,ObjectState!B state){
-	if(auto ab=object.ability){
+	if(auto ab=object.activeAbility){
 		if(ab.tag==SpellTag.devour) return boxSize(object.hitbox).length;
 		return ab.range;
 	}
@@ -9039,6 +9042,7 @@ bool checkAbility(B)(ref MovingObject!B object,SacSpell!B ability,OrderTarget ta
 }
 
 bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,OrderTarget target,ObjectState!B state){
+	if(!ability) return false;
 	if(object.ability!is ability) return false;
 	if(!isRangedAbility(ability)&&!object.checkAbility(ability,target,state)) return false;
 	void apply(){
@@ -9107,7 +9111,7 @@ bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,OrderTarget targ
 }
 
 bool runAwayBug(B)(ref MovingObject!B object,ObjectState!B state){
-	auto ability=object.ability;
+	auto ability=object.activeAbility;
 	if(!ability||ability.tag!=SpellTag.runAway) return false;
 	if(object.creatureAI.order.command!=CommandType.useAbility) return false;
 	auto targetId=object.creatureAI.targetId;
@@ -9123,7 +9127,7 @@ bool runAwayBug(B)(ref MovingObject!B object,ObjectState!B state){
 
 bool shootAbilityBug(B)(ref MovingObject!B object,ObjectState!B state){
 	if(runAwayBug(object,state)) return true;
-	auto ability=object.ability;
+	auto ability=object.activeAbility;
 	if(!ability||object.creatureAI.order.command!=CommandType.useAbility) return false;
 	auto id=object.creatureAI.targetId;
 	auto targetType=state.targetTypeFromId(id);
@@ -9263,7 +9267,7 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 			}
 			break;
 		case CommandType.useAbility:
-			auto ability=object.ability;
+			auto ability=object.activeAbility;
 			if(!ability||!object.useAbility(ability,object.creatureAI.order.target,state)){
 				object.clearOrder(state);
 				object.updateCreatureAI(state);
@@ -19115,7 +19119,7 @@ final class ObjectState(B){ // (update logic)
 							if(target) ord.target.id=target;
 						}
 					}
-					if(ord.command==CommandType.useAbility && obj.ability !is ability) return false;
+					if(ord.command==CommandType.useAbility && obj.activeAbility !is ability) return false;
 					if(updateFormation) obj.creatureAI.formation=formation;
 					if(ord.command!=CommandType.setFormation){
 						if(obj.order(ord,command.queueing,state,side)){
@@ -19735,7 +19739,7 @@ struct CreatureGroup{
 		int bestPriority=-1;
 		foreach(id;creatureIds){
 			if(id){
-				auto prioritySpell=state.movingObjectById!((obj)=>tuple(obj.sacObject.creaturePriority,obj.ability),()=>tuple(-1,SacSpell!B.init))(id);
+				auto prioritySpell=state.movingObjectById!((obj)=>tuple(obj.sacObject.creaturePriority,obj.activeAbility),()=>tuple(-1,SacSpell!B.init))(id);
 				auto priority=prioritySpell[0],spell=prioritySpell[1];
 				if(spell&&priority>bestPriority){
 					ability=spell;
