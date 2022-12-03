@@ -3325,7 +3325,7 @@ struct WarmongerGun(B){
 	int frame=0;
 	enum animationDelay=1;
 	enum numFrames=4*animationDelay*updateAnimFactor/2;
-	enum maxNumShots=10;
+	enum maxNumShots=20;
 }
 
 enum RockFormStatus{ growing, stationary, shrinking }
@@ -8000,8 +8000,10 @@ bool warmongerShootSingle(B)(int attacker,int side,int intendedTarget,float accu
 	static bool filter(ref ProximityEntry entry,int id){ return entry.id!=id; }
 	auto end=state.collideRay!filter(position,direction,rangedAttack.range,attacker);
 	if(end.type==TargetType.none) end.position=position+rangedAttack.range*direction;
-	if(end.type==TargetType.creature||end.type==TargetType.building)
-		dealRangedDamage(end.id,rangedAttack,attacker,side,direction,DamageMod.none,state);
+	if(end.type==TargetType.creature||end.type==TargetType.building){
+		if(end.id==intendedTarget||state.objectById!(.side)(end.id,state)!=side)
+			dealRangedDamage(end.id,rangedAttack,attacker,side,direction,DamageMod.none,state);
+	}
 	animateWarmongerHit(end.position,rangedAttack,state);
 	return true;
 }
