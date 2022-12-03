@@ -3313,6 +3313,21 @@ struct BombardProjectile(B){
 	int frame=0;
 }
 
+struct WarmongerGun(B){
+	Vector3f position;
+	Vector3f direction;
+	int attacker;
+	int side;
+	int intendedTarget;
+	float accuracy;
+	Vector3f target;
+	SacSpell!B rangedAttack;
+	int frame=0;
+	enum animationDelay=1;
+	enum numFrames=4*animationDelay*updateAnimFactor/2;
+	enum maxNumShots=10;
+}
+
 enum RockFormStatus{ growing, stationary, shrinking }
 struct RockForm(B){
 	int target;
@@ -4489,6 +4504,14 @@ struct Effects(B){
 	void removeBombardProjectile(int i){
 		if(i+1<bombardProjectiles.length) swap(bombardProjectiles[i],bombardProjectiles[$-1]);
 		bombardProjectiles.length=bombardProjectiles.length-1; // TODO: reuse memory?
+	}
+	Array!(WarmongerGun!B) warmongerGuns;
+	void addEffect(WarmongerGun!B warmongerGun){
+		warmongerGuns~=warmongerGun;
+	}
+	void removeWarmongerGun(int i){
+		if(i+1<warmongerGuns.length) warmongerGuns[i]=move(warmongerGuns[$-1]);
+		warmongerGuns.length=warmongerGuns.length-1;
 	}
 	// abilities
 	Array!(RockForm!B) rockForms;
@@ -7902,7 +7925,7 @@ bool gnomeShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vecto
 	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
 	static bool filter(ref ProximityEntry entry,int id){ return entry.id!=id; }
 	auto end=state.collideRay!filter(position,direction,rangedAttack.range,attacker);
-	if(end.type==TargetType.none) end.position=position+0.5f*rangedAttack.range*direction;
+	if(end.type==TargetType.none) end.position=position+rangedAttack.range*direction;
 	if(end.type==TargetType.creature||end.type==TargetType.building)
 		dealRangedDamage(end.id,rangedAttack,attacker,side,direction,DamageMod.none,state);
 	animateGnomeShot(position,direction,rangedAttack,state);
@@ -7947,6 +7970,39 @@ bool bombardShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vec
 	playSoundAt("lfni",position,state,bombardShootGain); // TODO: move sound with projectile
 	auto direction=getShotDirectionWithGravity(accuracy,position,target,rangedAttack,state);
 	state.addEffect(BombardProjectile!B(attacker,side,intendedTarget,position,direction*rangedAttack.speed,rangedAttack));
+	return true;
+}
+
+void warmongerLoad(B)(int attacker,ObjectState!B state){
+	playSoundAt("esuf",attacker,state,2.0f);
+	// TODO: actually light fuse
+}
+bool warmongerShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	playSoundAt("gnmw",position,state,2.0f);
+	auto direction=(target-position).normalized;
+	state.addEffect(WarmongerGun!B(position,direction,attacker,side,intendedTarget,accuracy,target,rangedAttack));
+	return true;
+}
+void animateWarmongerHit(B)(Vector3f position,SacSpell!B rangedAttack,ObjectState!B state){
+	enum numParticles3=20;
+	auto sacParticle3=SacParticle!B.get(ParticleType.warmongerHit);
+	foreach(i;0..numParticles3){
+		auto direction=state.uniformDirection();
+		auto velocity=state.uniform(0.8f,3.2f)*direction;
+		auto scale=state.uniform(1.0f,2.5f);
+		auto lifetime=31;
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle3,position,velocity,scale,lifetime,frame));
+	}
+}
+bool warmongerShootSingle(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
+	static bool filter(ref ProximityEntry entry,int id){ return entry.id!=id; }
+	auto end=state.collideRay!filter(position,direction,rangedAttack.range,attacker);
+	if(end.type==TargetType.none) end.position=position+rangedAttack.range*direction;
+	if(end.type==TargetType.creature||end.type==TargetType.building)
+		dealRangedDamage(end.id,rangedAttack,attacker,side,direction,DamageMod.none,state);
+	animateWarmongerHit(end.position,rangedAttack,state);
 	return true;
 }
 
@@ -8446,6 +8502,9 @@ void loadOnTick(B)(ref MovingObject!B object,OrderTarget target,SacSpell!B range
 			case SpellTag.bombardShoot:
 				bombardLoad(object.id,state);
 				break;
+			case SpellTag.warmongerShoot:
+				warmongerLoad(object.id,state);
+				break;
 			default: break;
 		}
 	}
@@ -8527,6 +8586,9 @@ bool shootOnTick(bool ability=false,B)(ref MovingObject!B object,OrderTarget tar
 					break;
 				case SpellTag.bombardShoot:
 					bombardShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
+					break;
+				case SpellTag.warmongerShoot:
+					warmongerShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
 					break;
 				// abilities:
 				case SpellTag.blightMites:
@@ -15931,6 +15993,22 @@ bool updateGnomeEffect(B)(ref GnomeEffect!B gnomeEffect,ObjectState!B state){
 	}
 }
 
+bool updateWarmongerGun(B)(ref WarmongerGun!B warmongerGun,ObjectState!B state){
+	if(!state.movingObjectById!((ref obj,gun){
+		with(gun) position=obj.shotPosition;
+		return obj.creatureState.mode.isShooting;
+	},()=>false)(warmongerGun.attacker,&warmongerGun))
+		return false;
+	with(warmongerGun){
+		if(frame%numFrames==1){
+			foreach(shot;0..3+state.uniform(2)){
+				warmongerShootSingle(attacker,side,intendedTarget,accuracy,position,target,rangedAttack,state);
+			}
+		}
+		return ++frame<=numFrames*maxNumShots;
+	}
+}
+
 enum pyromaniacRocketHitGain=2.0f;
 enum pyromaniacRocketSize=0.1; // TODO: ok?
 enum pyromaniacRocketSlidingDistance=0.0f;
@@ -17846,6 +17924,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.bombardProjectiles.length;){
 		if(!updateBombardProjectile(effects.bombardProjectiles[i],state)){
 			effects.removeBombardProjectile(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.warmongerGuns.length;){
+		if(!updateWarmongerGun(effects.warmongerGuns[i],state)){
+			effects.removeWarmongerGun(i);
 			continue;
 		}
 		i++;

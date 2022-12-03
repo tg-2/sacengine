@@ -550,6 +550,17 @@ struct Renderer(B){
 		auto frames=typeof(return).createMeshes();
 		return SacGnomeEffect!B(texture,mat,frames);
 	}
+	SacWarmongerEffect!B warmongerEffect;
+	SacWarmongerEffect!B createWarmongerEffect(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Additive;
+		mat.energy=10.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacWarmongerEffect!B(texture,mat,frames);
+	}
 	SacPoisonDart!B poisonDart;
 	SacPoisonDart!B createPoisonDart(){
 		auto texture=typeof(return).loadTexture();
@@ -714,6 +725,7 @@ struct Renderer(B){
 		squallEffect=createSquallEffect();
 		pyromaniacRocket=createPyromaniacRocket();
 		gnomeEffect=createGnomeEffect();
+		warmongerEffect=createWarmongerEffect();
 		poisonDart=createPoisonDart();
 		lifeShield=createLifeShield();
 		divineSight=createDivineSight();
@@ -2140,6 +2152,22 @@ struct Renderer(B){
 						mesh.render(rc);
 					}
 					foreach(ref effect;objects.gnomeEffects.data) renderGnomeEffect(effect.position,effect.direction,effect.frame);
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.warmongerGuns.length){
+					auto material=self.warmongerEffect.material;
+					material.bind(rc);
+					B.disableCulling();
+					scope(success){
+						B.enableCulling();
+						material.unbind(rc);
+					}
+					void renderWarmongerEffect(Vector3f position,Vector3f direction,int frame){
+						auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),direction); // TODO: precompute this?
+						B.shadelessMaterialBackend.setTransformation(position,rotation,rc);
+						auto mesh=self.warmongerEffect.getFrame(frame%self.warmongerEffect.numFrames);
+						mesh.render(rc);
+					}
+					foreach(ref effect;objects.warmongerGuns.data) renderWarmongerEffect(effect.position,effect.direction,effect.frame);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.poisonDarts.length){
 					auto material=self.poisonDart.material;

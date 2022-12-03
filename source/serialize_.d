@@ -675,6 +675,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Abo
 void serialize(alias sink,B)(ref BombardProjectile!B bombardProjectile){ serializeStruct!sink(bombardProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BombardProjectile!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref WarmongerGun!B warmongerGun){ serializeStruct!sink(warmongerGun); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==WarmongerGun!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref Protector!B protector){ serializeStruct!sink(protector); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Protector!B)){ deserializeStruct(result,state,data); }
 
