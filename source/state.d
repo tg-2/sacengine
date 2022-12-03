@@ -947,8 +947,8 @@ Vector3f[2] needle(B)(ref MovingObject!B object){
 	return needle;
 }
 
-Vector3f shotPosition(B)(ref MovingObject!B object){
-	auto loc=object.sacObject.shotPosition(object.animationState,object.frame/updateAnimFactor);
+Vector3f shotPosition(B)(ref MovingObject!B object,bool fix=false){
+	auto loc=object.sacObject.shotPosition(object.animationState,object.frame/updateAnimFactor,fix);
 	return object.position+rotate(object.rotation,loc);
 }
 Vector3f[2] basiliskShotPositions(B)(ref MovingObject!B object){ return object.hands; }
@@ -3325,7 +3325,7 @@ struct WarmongerGun(B){
 	int frame=0;
 	enum animationDelay=1;
 	enum numFrames=4*animationDelay*updateAnimFactor/2;
-	enum maxNumShots=20;
+	enum maxNumShots=16;
 }
 
 enum RockFormStatus{ growing, stationary, shrinking }
@@ -15997,13 +15997,13 @@ bool updateGnomeEffect(B)(ref GnomeEffect!B gnomeEffect,ObjectState!B state){
 
 bool updateWarmongerGun(B)(ref WarmongerGun!B warmongerGun,ObjectState!B state){
 	if(!state.movingObjectById!((ref obj,gun){
-		with(gun) position=obj.shotPosition;
-		return obj.creatureState.mode.isShooting;
+		with(gun) position=obj.shotPosition(true);
+		return true;
 	},()=>false)(warmongerGun.attacker,&warmongerGun))
 		return false;
 	with(warmongerGun){
 		if(frame%numFrames==1){
-			foreach(shot;0..3+state.uniform(2)){
+			foreach(shot;0..2){
 				warmongerShootSingle(attacker,side,intendedTarget,accuracy,position,target,rangedAttack,state);
 			}
 		}

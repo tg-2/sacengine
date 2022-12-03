@@ -357,8 +357,8 @@ final class SacObject(B){
 		result.hand=Vector3f(0.0f,0.1f,0.05f)*matrices[handBone];
 		return result;
 	}
-	Vector3f shotPosition(AnimationState animationState,int frame){
-		auto hand=animations[animationState].hands[0];
+	Vector3f shotPosition(AnimationState animationState,int frame,bool fix=false){
+		auto hand=animations[fix?AnimationState.shoot0:animationState].hands[0];
 		if(hand.bone<0||hand.bone>=animations[animationState].frames[frame].matrices.length) return Vector3f(0.0f,0.0f,0.0f);
 		return hand.position*animations[animationState].frames[frame].matrices[hand.bone];
 	}
