@@ -678,6 +678,12 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Bom
 void serialize(alias sink,B)(ref WarmongerGun!B warmongerGun){ serializeStruct!sink(warmongerGun); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==WarmongerGun!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref PhoenixProjectile!B phoenixProjectile){ serializeStruct!sink(phoenixProjectile); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==PhoenixProjectile!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink)(ref PhoenixEffect phoenixEffect){ serializeStruct!sink(phoenixEffect); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==PhoenixEffect)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref Protector!B protector){ serializeStruct!sink(protector); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Protector!B)){ deserializeStruct(result,state,data); }
 

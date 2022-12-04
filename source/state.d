@@ -3328,6 +3328,25 @@ struct WarmongerGun(B){
 	enum maxNumShots=16;
 }
 
+struct PhoenixProjectile(B){
+	int attacker;
+	int side;
+	int intendedTarget;
+	Vector3f position;
+	Vector3f direction;
+	SacSpell!B rangedAttack;
+	float remainingDistance;
+	Vector3f startPosition;
+	int frame=0;
+	int hitframe=-1;
+}
+struct PhoenixEffect{
+	Vector3f position;
+	Vector3f direction;
+	int frame=0;
+}
+
+
 enum RockFormStatus{ growing, stationary, shrinking }
 struct RockForm(B){
 	int target;
@@ -4512,6 +4531,22 @@ struct Effects(B){
 	void removeWarmongerGun(int i){
 		if(i+1<warmongerGuns.length) warmongerGuns[i]=move(warmongerGuns[$-1]);
 		warmongerGuns.length=warmongerGuns.length-1;
+	}
+	Array!(PhoenixProjectile!B) phoenixProjectiles;
+	void addEffect(PhoenixProjectile!B phoenixProjectile){
+		phoenixProjectiles~=phoenixProjectile;
+	}
+	void removePhoenixProjectile(int i){
+		if(i+1<phoenixProjectiles.length) phoenixProjectiles[i]=move(phoenixProjectiles[$-1]);
+		phoenixProjectiles.length=phoenixProjectiles.length-1;
+	}
+	Array!PhoenixEffect phoenixEffects;
+	void addEffect(PhoenixEffect phoenixEffect){
+		phoenixEffects~=phoenixEffect;
+	}
+	void removePhoenixEffect(int i){
+		if(i+1<phoenixEffects.length) phoenixEffects[i]=move(phoenixEffects[$-1]);
+		phoenixEffects.length=phoenixEffects.length-1;
 	}
 	// abilities
 	Array!(RockForm!B) rockForms;
@@ -8008,6 +8043,13 @@ bool warmongerShootSingle(B)(int attacker,int side,int intendedTarget,float accu
 	return true;
 }
 
+bool phoenixShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	playSoundAt("xnhp",position,state,4.0f);
+	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
+	state.addEffect(PhoenixProjectile!B(attacker,side,intendedTarget,position,direction,rangedAttack,rangedAttack.range,position));
+	return true;
+}
+
 enum defaultFaceThreshold=1e-3;
 bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state,float threshold=defaultFaceThreshold){
 	auto angle=facing-object.creatureState.facing;
@@ -8591,6 +8633,9 @@ bool shootOnTick(bool ability=false,B)(ref MovingObject!B object,OrderTarget tar
 					break;
 				case SpellTag.warmongerShoot:
 					warmongerShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
+					break;
+				case SpellTag.phoenixShoot:
+					phoenixShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
 					break;
 				// abilities:
 				case SpellTag.blightMites:
@@ -16015,6 +16060,72 @@ bool updateWarmongerGun(B)(ref WarmongerGun!B warmongerGun,ObjectState!B state){
 	}
 }
 
+enum phoenixProjectileHitGain=4.0f;
+enum phoenixProjectileSize=0.35f; // TODO: ok?
+enum phoenixProjectileSlidingDistance=1.5f;
+static immutable Vector3f[2] phoenixProjectileHitbox=[-0.5f*phoenixProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*phoenixProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
+int phoenixProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
+		return entry.isProjectileObstacle&&(entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side);
+	}
+	return collisionTarget!(phoenixProjectileHitbox,filter)(side,position,state,side,intendedTarget);
+}
+bool updatePhoenixProjectile(B)(ref PhoenixProjectile!B phoenixProjectile,ObjectState!B state){
+	with(phoenixProjectile){
+		++frame;
+		auto velocity=rangedAttack.speed/updateFPS*direction;
+		if(remainingDistance>0.0f){
+			void terminate(){
+				playSoundAt("3fno",position,state,phoenixProjectileHitGain);
+				remainingDistance=0.0f;
+				hitframe=frame;
+			}
+			auto oldPosition=position;
+			position+=velocity;
+			remainingDistance-=rangedAttack.speed/updateFPS;
+			if(remainingDistance<0.0f) terminate();
+			static assert(updateFPS==60);
+			if(!state.uniform(4)) state.addEffect(PhoenixEffect(oldPosition,direction));
+			OrderTarget target;
+			if(auto targetId=phoenixProjectileCollisionTarget(side,intendedTarget,position,state)){
+				target.id=targetId;
+				target.type=state.targetTypeFromId(targetId);
+			}else{
+				target=state.lineOfSightWithoutSide(oldPosition,position,side,intendedTarget);
+			}
+			float manaDrain=0.0f;
+			switch(target.type){
+				case TargetType.terrain:
+					flameEffect(position,state,2.0f);
+					terminate();
+					break;
+				case TargetType.creature:
+					manaDrain=state.movingObjectById!((ref object)=>0.5f*object.creatureStats.maxMana,()=>0.0f)(target.id);
+					goto case;
+				case TargetType.building:
+					// TODO: ignite oil?
+					setAblazeWithManaDrain(target.id,cast(int)(updateFPS*rangedAttack.duration),rangedAttack.amount,manaDrain,attacker,side,DamageMod.none,state);
+					terminate();
+					break;
+				default: break;
+			}
+		}
+		if(hitframe!=-1&&frame>=hitframe+updateFPS/2||frame>=updateFPS){
+			startPosition+=velocity;
+			if(dot(position-startPosition,direction)<0.0f)
+				return false;
+		}
+		return true;
+	}
+}
+bool updatePhoenixEffect(B)(ref PhoenixEffect effect,ObjectState!B state){
+	with(effect){
+		static assert(updateFPS==60);
+		return ++frame<64; // TODO: fix timing on this
+	}
+}
+
+
 enum pyromaniacRocketHitGain=2.0f;
 enum pyromaniacRocketSize=0.1; // TODO: ok?
 enum pyromaniacRocketSlidingDistance=0.0f;
@@ -17937,6 +18048,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.warmongerGuns.length;){
 		if(!updateWarmongerGun(effects.warmongerGuns[i],state)){
 			effects.removeWarmongerGun(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.phoenixProjectiles.length;){
+		if(!updatePhoenixProjectile(effects.phoenixProjectiles[i],state)){
+			effects.removePhoenixProjectile(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.phoenixEffects.length;){
+		if(!updatePhoenixEffect(effects.phoenixEffects[i],state)){
+			effects.removePhoenixEffect(i);
 			continue;
 		}
 		i++;

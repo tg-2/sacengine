@@ -1192,6 +1192,7 @@ enum SpellTag:char[4]{
 	abominationShoot="tugt",
 	bombardShoot="cfba",
 	warmongerShoot="fhga",
+	phoenixShoot="rdra",
 }
 
 enum WizardTag:char[4]{

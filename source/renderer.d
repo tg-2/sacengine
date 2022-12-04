@@ -2045,7 +2045,7 @@ struct Renderer(B){
 						mesh.render(rc);
 					}
 				}
-				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.tickfernoProjectiles.length){
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.tickfernoProjectiles.length||objects.phoenixProjectiles.length)){
 					auto material=self.laser.material;
 					material.bind(rc);
 					B.disableCulling();
@@ -2072,8 +2072,9 @@ struct Renderer(B){
 						mesh.render(rc);
 					}
 					foreach(ref projectile;objects.tickfernoProjectiles) renderLaser(2.0f/3.0f,projectile.frame,projectile.startPosition,projectile.position);
+					foreach(ref projectile;objects.phoenixProjectiles) renderLaser(2.0f/3.0f,projectile.frame,projectile.startPosition,projectile.position);
 				}
-				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.tickfernoEffects.length||objects.vortickEffects.length)){
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.tickfernoEffects.length||objects.vortickEffects.length||objects.phoenixEffects.length)){
 					auto material=self.tube.material;
 					material.bind(rc);
 					scope(success) material.unbind(rc);
@@ -2088,6 +2089,7 @@ struct Renderer(B){
 					}
 					foreach(ref effect;objects.tickfernoEffects.data) renderTube(effect.position,effect.direction,effect.frame,1.2f,2.0f);
 					foreach(ref effect;objects.vortickEffects.data) renderTube(effect.position,effect.direction,effect.frame,0.6f,2.0f);
+					foreach(ref effect;objects.phoenixEffects.data) renderTube(effect.position,effect.direction,effect.frame,1.2f,2.0f);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.vortexEffects.length){
 					auto material=self.vortexEffect.material;
