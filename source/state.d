@@ -9872,6 +9872,118 @@ void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 
 enum gibDepth=0.5f*mapDepth;
 
+Vector3f positionAfterCollision(B)(ref MovingObject!B object, Vector3f newPosition, ObjectState!B state){
+	auto proximity=state.proximity;
+	auto relativeHitbox=object.relativeHitbox;
+	Vector3f[2] hitbox=[relativeHitbox[0]+newPosition,relativeHitbox[1]+newPosition];
+	bool posChanged=false, needsFixup=false, isColliding=false;
+	auto fixupDirection=Vector3f(0.0f,0.0f,0.0f);
+	void handleCollision(bool fixup)(ProximityEntry entry){
+		if(!entry.isObstacle) return;
+		if(entry.id==object.id) return;
+		isColliding=true;
+		enum CollisionDirection{ // which face of obstacle's hitbox was hit
+			left,
+			right,
+			back,
+			front,
+			bottom,
+			top,
+		}
+		auto collisionDirection=CollisionDirection.left;
+		auto minOverlap=hitbox[1].x-entry.hitbox[0].x;
+		auto cand=entry.hitbox[1].x-hitbox[0].x;
+		if(cand<minOverlap||cand==minOverlap&&state.uniform(2)){
+			minOverlap=cand;
+			collisionDirection=CollisionDirection.right;
+		}
+		cand=hitbox[1].y-entry.hitbox[0].y;
+		if(cand<minOverlap||cand==minOverlap&&state.uniform(2)){
+			minOverlap=cand;
+			collisionDirection=CollisionDirection.back;
+		}
+		cand=entry.hitbox[1].y-hitbox[0].y;
+		if(cand<minOverlap||cand==minOverlap&&state.uniform(2)){
+			minOverlap=cand;
+			collisionDirection=CollisionDirection.front;
+		}
+		final switch(object.creatureState.movement){
+			case CreatureMovement.onGround:
+				break;
+			case CreatureMovement.flying:
+				if(object.creatureState.mode==CreatureMode.landing) break;
+				cand=hitbox[1].z-entry.hitbox[0].z;
+				if(cand<minOverlap||cand==minOverlap&&state.uniform(2)){
+					minOverlap=cand;
+					collisionDirection=CollisionDirection.bottom;
+				}
+				cand=entry.hitbox[1].z-hitbox[0].z;
+				if(cand<minOverlap||cand==minOverlap&&state.uniform(2)){
+					minOverlap=cand;
+					collisionDirection=CollisionDirection.top;
+				}
+				break;
+			case CreatureMovement.tumbling:
+				static if(!fixup){
+					cand=entry.hitbox[1].z-hitbox[0].z;
+					if(cand<minOverlap||cand==minOverlap&&state.uniform(2))
+						object.creatureState.fallingVelocity.z=0.0f;
+				}
+				object.creatureState.fallingVelocity.x=object.creatureState.fallingVelocity.y=0.0f;
+				break;
+		}
+		final switch(collisionDirection){
+			case CollisionDirection.left:
+				static if(fixup) fixupDirection.x-=minOverlap;
+				else newPosition.x=min(newPosition.x,object.position.x);
+				break;
+			case CollisionDirection.right:
+				static if(fixup) fixupDirection.x+=minOverlap;
+				else newPosition.x=max(newPosition.x,object.position.x);
+				break;
+			case CollisionDirection.back:
+				static if(fixup) fixupDirection.y-=minOverlap;
+				else newPosition.y=min(newPosition.y,object.position.y);
+				break;
+			case CollisionDirection.front:
+				static if(fixup) fixupDirection.y+=minOverlap;
+				else newPosition.y=max(newPosition.y,object.position.y);
+				break;
+			case CollisionDirection.bottom:
+				static if(fixup) fixupDirection.z-=minOverlap;
+				else newPosition.z=min(newPosition.z,object.position.z);
+				break;
+			case CollisionDirection.top:
+				static if(fixup) fixupDirection.z+=minOverlap;
+				else newPosition.z=max(newPosition.z,object.position.z);
+				break;
+		}
+		static if(!fixup) posChanged=true;
+		else needsFixup=true;
+	}
+	if(!object.creatureState.mode.among(CreatureMode.dead,CreatureMode.dissolving,CreatureMode.convertReviving,CreatureMode.thrashing)){ // dead creatures do not participate in collision handling
+		proximity.collide!(handleCollision!false)(hitbox);
+		object.creatureAI.isColliding=isColliding;
+		hitbox=[relativeHitbox[0]+newPosition,relativeHitbox[1]+newPosition];
+		proximity.collide!(handleCollision!true)(hitbox);
+		if(needsFixup){
+			auto fixupSpeed=object.creatureStats.collisionFixupSpeed/updateFPS;
+			if(fixupDirection.length>fixupSpeed)
+				fixupDirection=fixupDirection.normalized*object.creatureStats.collisionFixupSpeed/updateFPS;
+			final switch(object.creatureState.movement){
+				case CreatureMovement.onGround:
+					if(state.isOnGround(newPosition)) newPosition=state.moveOnGround(newPosition,fixupDirection);
+					break;
+				case CreatureMovement.flying, CreatureMovement.tumbling:
+					newPosition+=fixupDirection;
+					break;
+			}
+			posChanged=true;
+		}
+	}
+	return newPosition;
+}
+
 void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 	auto newPosition=object.position;
 	with(CreatureMode) if(object.creatureState.mode.among(idle,moving,idleGhost,movingGhost,stunned,landing,dying,meleeMoving,casting,castingMoving,shooting,usingAbility)){
@@ -10058,114 +10170,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 				newPosition.z=max(newPosition.z,state.getGroundHeight(newPosition));
 			break;
 	}
-	auto proximity=state.proximity;
-	auto relativeHitbox=object.relativeHitbox;
-	Vector3f[2] hitbox=[relativeHitbox[0]+newPosition,relativeHitbox[1]+newPosition];
-	bool posChanged=false, needsFixup=false, isColliding=false;
-	auto fixupDirection=Vector3f(0.0f,0.0f,0.0f);
-	void handleCollision(bool fixup)(ProximityEntry entry){
-		if(!entry.isObstacle) return;
-		if(entry.id==object.id) return;
-		isColliding=true;
-		enum CollisionDirection{ // which face of obstacle's hitbox was hit
-			left,
-			right,
-			back,
-			front,
-			bottom,
-			top,
-		}
-		auto collisionDirection=CollisionDirection.left;
-		auto minOverlap=hitbox[1].x-entry.hitbox[0].x;
-		auto cand=entry.hitbox[1].x-hitbox[0].x;
-		if(cand<minOverlap||cand==minOverlap&&state.uniform(2)){
-			minOverlap=cand;
-			collisionDirection=CollisionDirection.right;
-		}
-		cand=hitbox[1].y-entry.hitbox[0].y;
-		if(cand<minOverlap||cand==minOverlap&&state.uniform(2)){
-			minOverlap=cand;
-			collisionDirection=CollisionDirection.back;
-		}
-		cand=entry.hitbox[1].y-hitbox[0].y;
-		if(cand<minOverlap||cand==minOverlap&&state.uniform(2)){
-			minOverlap=cand;
-			collisionDirection=CollisionDirection.front;
-		}
-		final switch(object.creatureState.movement){
-			case CreatureMovement.onGround:
-				break;
-			case CreatureMovement.flying:
-				if(object.creatureState.mode==CreatureMode.landing) break;
-				cand=hitbox[1].z-entry.hitbox[0].z;
-				if(cand<minOverlap||cand==minOverlap&&state.uniform(2)){
-					minOverlap=cand;
-					collisionDirection=CollisionDirection.bottom;
-				}
-				cand=entry.hitbox[1].z-hitbox[0].z;
-				if(cand<minOverlap||cand==minOverlap&&state.uniform(2)){
-					minOverlap=cand;
-					collisionDirection=CollisionDirection.top;
-				}
-				break;
-			case CreatureMovement.tumbling:
-				static if(!fixup){
-					cand=entry.hitbox[1].z-hitbox[0].z;
-					if(cand<minOverlap||cand==minOverlap&&state.uniform(2))
-						object.creatureState.fallingVelocity.z=0.0f;
-				}
-				object.creatureState.fallingVelocity.x=object.creatureState.fallingVelocity.y=0.0f;
-				break;
-		}
-		final switch(collisionDirection){
-			case CollisionDirection.left:
-				static if(fixup) fixupDirection.x-=minOverlap;
-				else newPosition.x=min(newPosition.x,object.position.x);
-				break;
-			case CollisionDirection.right:
-				static if(fixup) fixupDirection.x+=minOverlap;
-				else newPosition.x=max(newPosition.x,object.position.x);
-				break;
-			case CollisionDirection.back:
-				static if(fixup) fixupDirection.y-=minOverlap;
-				else newPosition.y=min(newPosition.y,object.position.y);
-				break;
-			case CollisionDirection.front:
-				static if(fixup) fixupDirection.y+=minOverlap;
-				else newPosition.y=max(newPosition.y,object.position.y);
-				break;
-			case CollisionDirection.bottom:
-				static if(fixup) fixupDirection.z-=minOverlap;
-				else newPosition.z=min(newPosition.z,object.position.z);
-				break;
-			case CollisionDirection.top:
-				static if(fixup) fixupDirection.z+=minOverlap;
-				else newPosition.z=max(newPosition.z,object.position.z);
-				break;
-		}
-		static if(!fixup) posChanged=true;
-		else needsFixup=true;
-	}
-	if(!object.creatureState.mode.among(CreatureMode.dead,CreatureMode.dissolving,CreatureMode.convertReviving,CreatureMode.thrashing)){ // dead creatures do not participate in collision handling
-		proximity.collide!(handleCollision!false)(hitbox);
-		object.creatureAI.isColliding=isColliding;
-		hitbox=[relativeHitbox[0]+newPosition,relativeHitbox[1]+newPosition];
-		proximity.collide!(handleCollision!true)(hitbox);
-		if(needsFixup){
-			auto fixupSpeed=object.creatureStats.collisionFixupSpeed/updateFPS;
-			if(fixupDirection.length>fixupSpeed)
-				fixupDirection=fixupDirection.normalized*object.creatureStats.collisionFixupSpeed/updateFPS;
-			final switch(object.creatureState.movement){
-				case CreatureMovement.onGround:
-					if(state.isOnGround(newPosition)) newPosition=state.moveOnGround(newPosition,fixupDirection);
-					break;
-				case CreatureMovement.flying, CreatureMovement.tumbling:
-					newPosition+=fixupDirection;
-					break;
-			}
-			posChanged=true;
-		}
-	}
+	newPosition=object.positionAfterCollision(newPosition,state);
 	bool onGround=state.isOnGround(newPosition);
 	auto height=state.getHeight(newPosition);
 	if(!onGround&&newPosition.z<height-gibDepth){
@@ -10180,17 +10185,16 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			newPosition=object.position;
 		}
 		if(tpId==0) object.gib(state,-2);
-	}			// TODO: improve? original engine does this, but it can cause ultrafast ascending for flying creatures
+	}
+	// TODO: improve? original engine does this, but it can cause ultrafast ascending for flying creatures
 	if(object.creatureState.movement!=CreatureMovement.onGround||onGround){
-		if(posChanged){
-			final switch(object.creatureState.movement){
-				case CreatureMovement.onGround:
-					newPosition.z=height;
-					break;
-				case CreatureMovement.flying, CreatureMovement.tumbling:
-					if(onGround) newPosition.z=max(newPosition.z,height);
-					break;
-			}
+		final switch(object.creatureState.movement){
+			case CreatureMovement.onGround:
+				newPosition.z=height;
+				break;
+			case CreatureMovement.flying, CreatureMovement.tumbling:
+				if(onGround) newPosition.z=max(newPosition.z,height);
+				break;
 		}
 		if(!object.creatureStats.effects.fixed) object.position=newPosition;
 	}
