@@ -15732,7 +15732,7 @@ bool updateTickfernoProjectile(B)(ref TickfernoProjectile!B tickfernoProjectile,
 					manaDrain=state.movingObjectById!((ref object)=>0.5f*object.creatureStats.maxMana,()=>0.0f)(target.id);
 					goto case;
 				case TargetType.building:
-					// TODO: ignite oil?
+					// tickferno attack does not ignite oil
 					setAblazeWithManaDrain(target.id,cast(int)(updateFPS*rangedAttack.duration),rangedAttack.amount,manaDrain,attacker,side,DamageMod.none,state);
 					terminate();
 					break;
@@ -16103,7 +16103,7 @@ bool updatePhoenixProjectile(B)(ref PhoenixProjectile!B phoenixProjectile,Object
 					manaDrain=state.movingObjectById!((ref object)=>0.5f*object.creatureStats.maxMana,()=>0.0f)(target.id);
 					goto case;
 				case TargetType.building:
-					// TODO: ignite oil?
+					// phoenix attack does not ignite oil
 					setAblazeWithManaDrain(target.id,cast(int)(updateFPS*rangedAttack.duration),rangedAttack.amount,manaDrain,attacker,side,DamageMod.none,state);
 					terminate();
 					break;
