@@ -2237,6 +2237,20 @@ struct Renderer(B){
 						mesh.render(rc);
 					}
 				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.silverbackEffects.length){
+					auto cold=SacParticle!B.get(ParticleType.cold);
+					auto material=cold.material;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
+					foreach(j;0..objects.silverbackEffects.length){
+						auto position=objects.silverbackEffects[j].position;
+						auto frame=objects.silverbackEffects[j].frame;
+						auto scale=objects.silverbackEffects[j].scale;
+						material.backend.setSpriteTransformationScaled(position,scale,rc);
+						auto mesh=cold.getMesh(objects.silverbackEffects[j].frame%cold.numFrames);
+						mesh.render(rc);
+					}
+				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.lifeShields.length){
 					auto material=self.lifeShield.material;
 					material.bind(rc);

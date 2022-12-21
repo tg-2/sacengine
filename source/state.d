@@ -3346,6 +3346,24 @@ struct PhoenixEffect{
 	int frame=0;
 }
 
+struct SilverbackProjectile(B){
+	int attacker;
+	int side;
+	int intendedTarget;
+	Vector3f position;
+	Vector3f direction;
+	SacSpell!B rangedAttack;
+	float remainingDistance;
+	int frame=0;
+	SmallArray!(int,16) damagedTargets;
+}
+struct SilverbackEffect{
+	Vector3f position;
+	Vector3f velocity;
+	int lifetime;
+	float scale=initialSilverbackProjectileSize;
+	int frame=0;
+}
 
 enum RockFormStatus{ growing, stationary, shrinking }
 struct RockForm(B){
@@ -4547,6 +4565,22 @@ struct Effects(B){
 	void removePhoenixEffect(int i){
 		if(i+1<phoenixEffects.length) phoenixEffects[i]=move(phoenixEffects[$-1]);
 		phoenixEffects.length=phoenixEffects.length-1;
+	}
+	Array!(SilverbackProjectile!B) silverbackProjectiles;
+	void addEffect(SilverbackProjectile!B SilverbackProjectile){
+		silverbackProjectiles~=SilverbackProjectile;
+	}
+	void removeSilverbackProjectile(int i){
+		if(i+1<silverbackProjectiles.length) swap(silverbackProjectiles[i],silverbackProjectiles[$-1]);
+		silverbackProjectiles.length=silverbackProjectiles.length-1; // TODO: reuse memory?
+	}
+	Array!SilverbackEffect silverbackEffects;
+	void addEffect(SilverbackEffect SilverbackEffect){
+		silverbackEffects~=SilverbackEffect;
+	}
+	void removeSilverbackEffect(int i){
+		if(i+1<silverbackEffects.length) silverbackEffects[i]=move(silverbackEffects[$-1]);
+		silverbackEffects.length=silverbackEffects.length-1;
 	}
 	// abilities
 	Array!(RockForm!B) rockForms;
@@ -7417,6 +7451,7 @@ enum freezeGain=4.0f;
 bool freeze(B)(int wizard,int side,int target,SacSpell!B spell,ObjectState!B state){
 	auto duration=state.movingObjectById!((ref obj){
 		if(obj.creatureStats.effects.frozen) return -1;
+		if(obj.isDying||obj.isDead) return -1;
 		assert(!obj.creatureStats.effects.frozen);
 		obj.creatureStats.effects.frozen=true;
 		obj.creatureState.mode=CreatureMode.stunned;
@@ -8050,6 +8085,13 @@ bool phoenixShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vec
 	return true;
 }
 
+bool silverbackShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	playSoundAt("gxtv",position,state,4.0f); // TODO: correct?
+	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
+	state.addEffect(SilverbackProjectile!B(attacker,side,intendedTarget,position,direction,rangedAttack,rangedAttack.range));
+	return true;
+}
+
 enum defaultFaceThreshold=1e-3;
 bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state,float threshold=defaultFaceThreshold){
 	auto angle=facing-object.creatureState.facing;
@@ -8636,6 +8678,9 @@ bool shootOnTick(bool ability=false,B)(ref MovingObject!B object,OrderTarget tar
 					break;
 				case SpellTag.phoenixShoot:
 					phoenixShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
+					break;
+				case SpellTag.silverbackShoot:
+					silverbackShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
 					break;
 				// abilities:
 				case SpellTag.blightMites:
@@ -16429,6 +16474,81 @@ bool updateBombardProjectile(B)(ref BombardProjectile!B bombardProjectile,Object
 }
 
 
+enum initialSilverbackProjectileSize=4.0f;
+enum finalSilverbackProjectileSize=7.5f;
+bool updateSilverbackProjectile(B)(ref SilverbackProjectile!B silverbackProjectile,ObjectState!B state){
+	with(silverbackProjectile){
+		auto oldPosition=position;
+		position+=rangedAttack.speed/updateFPS*direction;
+		remainingDistance-=rangedAttack.speed/updateFPS;
+		SmallArray!(int,16) toFreeze;
+		static bool callback(T,S)(int id,T* targets,S* toFreeze,int attacker,int side,int intendedTarget,SacSpell!B rangedAttack,Vector3f attackDirection,ObjectState!B state){
+			auto recordedId=id;
+			if(state.isValidTarget(id,TargetType.building)){
+				if(auto cand=state.staticObjectById!((ref obj)=>obj.buildingId,()=>0)(id))
+					recordedId=cand;
+			}
+			if((*targets)[].canFind(recordedId)) return false;
+			bool validTarget=!!state.targetTypeFromId(id).among(TargetType.creature,TargetType.building);
+			*targets~=recordedId;
+			if(validTarget&&id==intendedTarget){
+				dealRangedDamage(intendedTarget,rangedAttack,attacker,side,attackDirection,DamageMod.none,state); // TODO: ok?
+				auto spell=SacSpell!B.get("zerf");
+				freezeWithCooldown(attacker,side,id,spell,state);
+				return false;
+			}
+			if(validTarget&&state.objectById!(.side)(id,state)==side)
+				return false;
+			bool canFreeze=state.movingObjectById!((ref obj)=>!obj.creatureStats.effects.frozen,()=>false)(id);
+			if(canFreeze) *toFreeze~=id;
+			return true;
+		}
+		auto radius=finalSilverbackProjectileSize*frame/(updateFPS*rangedAttack.range/rangedAttack.speed);
+		dealDamageAt!callback(0,rangedAttack.amount,radius,attacker,side,position,DamageMod.ranged,state,&damagedTargets,&toFreeze,attacker,side,intendedTarget,rangedAttack,direction,state);
+		if(toFreeze.length){
+			auto spell=SacSpell!B.get("zerf");
+			foreach(id;toFreeze) freezeWithCooldown(attacker,side,id,spell,state);
+		}
+		static assert(updateFPS==60);
+		if(frame<16){
+			enum numEffects=3;
+			foreach(i;0..numEffects){
+				auto effectPosition=position-frame*rangedAttack.speed/updateFPS*direction;
+				auto effectDirection=direction+0.05f*state.uniformDirection();
+				auto effectScale=1.0f;
+				auto speed=rangedAttack.speed*state.uniform(0.9f,1.1f);
+				auto lifetime=cast(int)(updateFPS*rangedAttack.range/rangedAttack.speed);
+				state.addEffect(SilverbackEffect(effectPosition,effectDirection*speed,lifetime,effectScale));
+			}
+		}
+		if(frame<32){
+			auto numParticles=min(10,frame);
+			auto sacParticle=SacParticle!B.get(ParticleType.freeze);
+			foreach(i;0..numParticles){
+				auto particlePosition=position-frame*rangedAttack.speed/updateFPS*direction;
+				auto particleDirection=i<numParticles/3?direction:direction+0.12f*state.uniformDirection();
+				auto particleScale=state.uniform(1.0f,3.0f);
+				auto speed=rangedAttack.speed*state.uniform(0.9f,1.1f);
+				auto lifetime=cast(int)(updateFPS*rangedAttack.range/rangedAttack.speed);
+				auto particleFrame=0;
+				state.addParticle(Particle!B(sacParticle,particlePosition,particleDirection*speed,particleScale,lifetime,particleFrame));
+			}
+		}
+		++frame;
+		return remainingDistance>0.0f;
+	}
+}
+bool updateSilverbackEffect(B)(ref SilverbackEffect effect,ObjectState!B state){
+	with(effect){
+		static assert(updateFPS==60);
+		position+=velocity/updateFPS;
+		enum numFrames=64;
+		scale+=finalSilverbackProjectileSize/numFrames;
+		return ++frame<min(lifetime,numFrames);
+	}
+}
+
+
 bool updateRockForm(B)(ref RockForm!B rockForm,ObjectState!B state){
 	with(rockForm){
 		if(!state.isValidTarget(target,TargetType.creature)) return false;
@@ -18062,6 +18182,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.phoenixEffects.length;){
 		if(!updatePhoenixEffect(effects.phoenixEffects[i],state)){
 			effects.removePhoenixEffect(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.silverbackProjectiles.length;){
+		if(!updateSilverbackProjectile(effects.silverbackProjectiles[i],state)){
+			effects.removeSilverbackProjectile(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.silverbackEffects.length;){
+		if(!updateSilverbackEffect(effects.silverbackEffects[i],state)){
+			effects.removeSilverbackEffect(i);
 			continue;
 		}
 		i++;
