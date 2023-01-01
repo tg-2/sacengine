@@ -1103,13 +1103,26 @@ struct Renderer(B){
 						}
 					}
 				}
-				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.explosions.length){
+				static if(mode==RenderMode.transparent)
+				if(!rc.shadowMode&&
+				   (objects.explosions.length||
+				    objects.styxExplosions.length)
+				){
 					auto material=self.explosion.material;
 					material.bind(rc);
 					scope(success) material.unbind(rc);
 					foreach(j;0..objects.explosions.length){
 						auto mesh=self.explosion.getFrame(objects.explosions[j].frame);
 						material.backend.setTransformationScaled(objects.explosions[j].position,Quaternionf.identity(),objects.explosions[j].scale*Vector3f(1.1f,1.1f,0.9f),rc);
+						mesh.render(rc);
+					}
+					if(objects.styxExplosions.length){
+						assert(material.backend is B.shadelessMaterialBackend);
+						B.shadelessMaterialBackend.setEnergy(-1.0f);
+					}
+					foreach(j;0..objects.styxExplosions.length){
+						auto mesh=self.explosion.getFrame(objects.styxExplosions[j].frame);
+						material.backend.setTransformationScaled(objects.styxExplosions[j].position,Quaternionf.identity(),objects.styxExplosions[j].scale*Vector3f(1.1f,1.1f,0.9f),rc);
 						mesh.render(rc);
 					}
 				}
@@ -1333,7 +1346,8 @@ struct Renderer(B){
 					    objects.chainLightningCastingEffects.length||
 					    objects.soulWindEffects.length||
 					    objects.cagePulls.length||
-					    objects.rituals.length)
+					    objects.rituals.length||
+					    objects.styxBolts.length)
 				){
 					auto material=self.lightning.material;
 					material.bind(rc);
@@ -1342,13 +1356,14 @@ struct Renderer(B){
 						B.enableCulling();
 						material.unbind(rc);
 					}
-					void renderBolts(int totalFrames,float scale=1.0f)(LightningBolt[] bolts,Vector3f start,Vector3f end,int frame,float α,float β){
+					void renderBolts(int totalFrames,float scale=1.0f,bool negativeEnergy=false)(LightningBolt[] bolts,Vector3f start,Vector3f end,int frame,float α,float β){
 						auto diff=end-start;
 						auto len=diff.length;
 						auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),diff/len);
 						B.shadelessBoneMaterialBackend.setTransformationScaled(start,rotation,Vector3f(scale,scale,scale*0.1f*len),rc);
 						auto alpha=pi!float*frame/float(totalFrames);
 						auto energy=0.375f+14.625f*(0.5f+0.25f*cos(7.0f*alpha)+0.25f*sin(11.0f*alpha));
+						static if(negativeEnergy) energy*=-2.0f/15.0f;
 						B.shadelessBoneMaterialBackend.setEnergy(energy);
 						auto mesh=self.lightning.getFrame(frame%self.lightning.numFrames);
 						foreach(ref bolt;bolts){
@@ -1425,6 +1440,14 @@ struct Renderer(B){
 							auto end=state.movingObjectById!(center,()=>Vector3f.init)(objects.rituals[j].targetWizard);
 							if(!isNaN(end.x)&&!isNaN(start.x)) renderBolts!(Lightning!B.totalFrames)(objects.rituals[j].desecrateBolts[],start,end,frame,0.0f,1.0f);
 						}
+					}
+					foreach(j;0..objects.styxBolts.length){
+						auto start=objects.styxBolts[j].position;
+						auto end=objects.styxBolts[j].targetPosition;
+						auto frame=objects.styxBolts[j].frame;
+						enum totalFrames=StyxBolt!B.totalFrames;
+						auto bolts=(&objects.styxBolts[j].bolt)[0..1];
+						renderBolts!(totalFrames,1.5f,true)(bolts,start,end,frame,0.0f,1.0f);
 					}
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.wraths.length||objects.altarDestructions.length)){

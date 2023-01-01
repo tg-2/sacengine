@@ -1191,9 +1191,11 @@ enum SpellTag:char[4]{
 	mutantShoot="babt",
 	abominationShoot="tugt",
 	bombardShoot="cfba",
-	warmongerShoot="fhga",
-	phoenixShoot="rdra",
 
+	warmongerShoot="fhga",
+	styxShoot="dhga",
+
+	phoenixShoot="rdra",
 	silverbackShoot="rdba",
 }
 

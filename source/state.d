@@ -3328,6 +3328,23 @@ struct WarmongerGun(B){
 	enum maxNumShots=16;
 }
 
+struct StyxExplosion(B){
+	Vector3f position;
+	float scale,maxScale,expansionSpeed;
+	int frame;
+}
+struct StyxBolt(B){
+	enum totalFrames=64;
+	enum changeShapeDelay=6;
+	int attacker;
+	Vector3f position;
+	int target;
+	Vector3f targetPosition;
+	SacSpell!B rangedAttack;
+	LightningBolt bolt;
+	int frame=0;
+}
+
 struct PhoenixProjectile(B){
 	int attacker;
 	int side;
@@ -4549,6 +4566,22 @@ struct Effects(B){
 	void removeWarmongerGun(int i){
 		if(i+1<warmongerGuns.length) warmongerGuns[i]=move(warmongerGuns[$-1]);
 		warmongerGuns.length=warmongerGuns.length-1;
+	}
+	Array!(StyxExplosion!B) styxExplosions;
+	void addEffect(StyxExplosion!B styxExplosion){
+		styxExplosions~=styxExplosion;
+	}
+	void removeStyxExplosion(int i){
+		if(i+1<styxExplosions.length) styxExplosions[i]=move(styxExplosions[$-1]);
+		styxExplosions.length=styxExplosions.length-1;
+	}
+	Array!(StyxBolt!B) styxBolts;
+	void addEffect(StyxBolt!B styxBolt){
+		styxBolts~=styxBolt;
+	}
+	void removeStyxBolt(int i){
+		if(i+1<styxBolts.length) styxBolts[i]=move(styxBolts[$-1]);
+		styxBolts.length=styxBolts.length-1;
 	}
 	Array!(PhoenixProjectile!B) phoenixProjectiles;
 	void addEffect(PhoenixProjectile!B phoenixProjectile){
@@ -8078,6 +8111,57 @@ bool warmongerShootSingle(B)(int attacker,int side,int intendedTarget,float accu
 	return true;
 }
 
+void styxLoad(B)(int attacker,ObjectState!B state){
+	playSoundAt("esuf",attacker,state,2.0f);
+	// TODO: actually light fuse
+}
+void styxSparkAnimation(int numSparks=192,B)(Vector3f[2] hitbox,ObjectState!B state){
+	auto sacParticle=SacParticle!B.get(ParticleType.styxSpark);
+	if(hitbox[0]==hitbox[1]){
+		hitbox[0]-=0.5;
+		hitbox[1]+=0.5f;
+	}
+	auto center=boxCenter(hitbox);
+	foreach(i;0..numSparks){
+		auto position=state.uniform(scaleBox(hitbox,1.2f));
+		auto velocity=Vector3f(position.x-center.x,position.y-center.y,0.0f).normalized*5.0f;
+		velocity.z+=state.uniform(0.0f,8.0f);
+		auto scale=state.uniform(0.5f,1.5f);
+		int lifetime=state.uniform!"[]"(15,95);
+		int frame=0;
+		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+	}
+}
+bool styxShoot(B)(int attacker,int side,int target,float accuracy,Vector3f position,Vector3f targetPosition,SacSpell!B rangedAttack,ObjectState!B state){
+	playSoundAt("sxts",position,state,1.0f);
+	playSoundAt("hxts",target,state,2.0f);
+	Vector3f[2] hitbox=[targetPosition,targetPosition];
+	if(state.isValidTarget(target))
+		state.objectById!((ref obj,pos,hb,state){*pos=obj.center, *hb=obj.hitbox;})(target,&targetPosition,&hitbox,state);
+	state.addEffect(StyxBolt!B(attacker,position,target,targetPosition,rangedAttack));
+	state.addEffect(StyxExplosion!B(targetPosition,0.0f,10.0f,30.0f,0));
+	state.addEffect(StyxExplosion!B(targetPosition,0.0f,6.0f,20,0));
+	/+state.addEffect(StyxExplosion!B(targetPosition,0.0f,8.5f*10/8.5,30.0f*10/8.5,0));
+	state.addEffect(StyxExplosion!B(targetPosition,0.0f,5.0f*10/8.5,20f*10/8.5,0));+/
+	styxSparkAnimation(hitbox,state);
+	auto direction=targetPosition-position;
+	if(state.isValidTarget(target)) dealRangedDamage(target,rangedAttack,attacker,side,direction,DamageMod.splash,state);
+	dealSplashRangedDamageAt(target,rangedAttack,rangedAttack.damageRange,attacker,side,targetPosition,DamageMod.none,state);
+	return true;
+}
+void animateStyxHit(B)(Vector3f position,SacSpell!B rangedAttack,ObjectState!B state){
+	enum numParticles3=20;
+	auto sacParticle3=SacParticle!B.get(ParticleType.styxHit);
+	foreach(i;0..numParticles3){
+		auto direction=state.uniformDirection();
+		auto velocity=state.uniform(0.8f,3.2f)*direction;
+		auto scale=state.uniform(1.0f,2.5f);
+		auto lifetime=31;
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle3,position,velocity,scale,lifetime,frame));
+	}
+}
+
 bool phoenixShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
 	playSoundAt("xnhp",position,state,4.0f);
 	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
@@ -8591,6 +8675,9 @@ void loadOnTick(B)(ref MovingObject!B object,OrderTarget target,SacSpell!B range
 			case SpellTag.warmongerShoot:
 				warmongerLoad(object.id,state);
 				break;
+			case SpellTag.styxShoot:
+				styxLoad(object.id,state);
+				break;
 			default: break;
 		}
 	}
@@ -8675,6 +8762,9 @@ bool shootOnTick(bool ability=false,B)(ref MovingObject!B object,OrderTarget tar
 					break;
 				case SpellTag.warmongerShoot:
 					warmongerShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
+					break;
+				case SpellTag.styxShoot:
+					styxShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
 					break;
 				case SpellTag.phoenixShoot:
 					phoenixShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
@@ -16105,6 +16195,30 @@ bool updateWarmongerGun(B)(ref WarmongerGun!B warmongerGun,ObjectState!B state){
 	}
 }
 
+bool updateStyxExplosion(B)(ref StyxExplosion!B explosion,ObjectState!B state){
+	with(explosion){
+		frame+=1;
+		if(frame>=32) frame=0;
+		scale+=expansionSpeed/updateFPS;
+		return scale<maxScale;
+	}
+}
+
+bool updateStyxBolt(B)(ref StyxBolt!B bolt,ObjectState!B state){
+	if(state.isValidTarget(bolt.attacker))
+		state.movingObjectById!((ref obj,pos){ *pos=obj.shotPosition(true); },(){})(bolt.attacker,&bolt.position);
+	if(state.isValidTarget(bolt.target))
+	   state.objectById!((ref obj,pos){ *pos=obj.center; })(bolt.target,&bolt.targetPosition);
+	bolt.frame+=1;
+	if(bolt.frame>=bolt.totalFrames) return false;
+	if(bolt.frame%bolt.changeShapeDelay==0){
+		bolt.bolt.changeShape(state);
+		foreach(ref disp;bolt.bolt.displacement) disp.x*=0.2f, disp.y*=0.2f;
+	}
+	return true;
+}
+
+
 enum phoenixProjectileHitGain=4.0f;
 enum phoenixProjectileSize=0.35f; // TODO: ok?
 enum phoenixProjectileSlidingDistance=1.5f;
@@ -18168,6 +18282,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.warmongerGuns.length;){
 		if(!updateWarmongerGun(effects.warmongerGuns[i],state)){
 			effects.removeWarmongerGun(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.styxExplosions.length;){
+		if(!updateStyxExplosion(effects.styxExplosions[i],state)){
+			effects.removeStyxExplosion(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.styxBolts.length;){
+		if(!updateStyxBolt(effects.styxBolts[i],state)){
+			effects.removeStyxBolt(i);
 			continue;
 		}
 		i++;
