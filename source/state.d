@@ -9134,21 +9134,21 @@ void rendSparkAnimation(int numSparks=192,B)(Vector3f targetPosition,ObjectState
 }
 bool rendShoot(B)(int attacker,int side,int target,float accuracy,Vector3f position,Vector3f targetPosition,SacSpell!B rangedAttack,ObjectState!B state){
 	bool ok=false;
-	state.soulById!((ref soul,pos,ok,state){
+	state.soulById!((ref soul,pos,ok,side,state){
 		*pos=soul.center;
-		*ok=!!soul.state.among(SoulState.normal,SoulState.emerging);
+		*ok=!!soul.state.among(SoulState.normal,SoulState.emerging)&&(soul.creatureId==0||soul.preferredSide==side);
 		if(*ok){
 			soul.state=SoulState.exploding;
 			soul.severSoul(state);
 		}
-	},(){})(target,&targetPosition,&ok,state);
+	},(){})(target,&targetPosition,&ok,side,state);
 	if(!ok) return false;
 	playSpellSoundTypeAt(SoundType.lightning,position,state,1.0f);
 	playSoundAt("pxbf",targetPosition,state,10.0f);
 	state.removeLater(target);
 	state.addEffect(StyxBolt!B(attacker,position,target,targetPosition,rangedAttack));
-	state.addEffect(StyxExplosion!B(targetPosition,0.0f,40.0f,30.0f,0));
-	state.addEffect(StyxExplosion!B(targetPosition,0.0f,24.0f,20,0));
+	state.addEffect(StyxExplosion!B(targetPosition,0.0f,40.0f,90.0f,0));
+	state.addEffect(StyxExplosion!B(targetPosition,0.0f,24.0f,60,0));
 	rendSparkAnimation(targetPosition,state);
 	auto direction=targetPosition-position;
 	dealSplashRangedDamageAt(0,rangedAttack,rangedAttack.damageRange,attacker,side,targetPosition,DamageMod.none,state);
