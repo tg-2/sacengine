@@ -6512,12 +6512,18 @@ float dealDamage(B)(ref Building!B building,float damage,int attackingSide,Damag
 	return dealDamageIgnoreGuardians(building,damage,attackingSide,damageMod,state);
 }
 
+
+float meleeDamageModifier(B)(ref MovingObject!B attacker){
+	float result=1.0f;
+	if(attacker.creatureStats.effects.lightningCharged) result*=1.5f;
+	return result;
+}
 float meleeDistanceSqr(Vector3f[2] objectHitbox,Vector3f[2] attackerHitbox){
 	return boxBoxDistanceSqr(objectHitbox,attackerHitbox);
 }
 
 void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,DamageMod damageMod,ObjectState!B state){
-	auto damage=attacker.meleeStrength/attacker.numAttackTicks; // TODO: figure this out
+	auto damage=meleeDamageModifier(attacker)*attacker.meleeStrength/attacker.numAttackTicks; // TODO: figure this out
 	auto objectHitbox=object.hitbox, attackerHitbox=attacker.meleeHitbox, attackerSizeSqr=0.25f*boxSize(attackerHitbox).lengthsqr;
 	auto distanceSqr=meleeDistanceSqr(objectHitbox,attackerHitbox);
 	//auto damageMultiplier=max(0.0f,1.0f-max(0.0f,sqrt(distanceSqr/attackerSizeSqr)));
@@ -6553,7 +6559,7 @@ float dealMeleeDamage(B)(ref StaticObject!B object,ref MovingObject!B attacker,D
 }
 
 float dealMeleeDamage(B)(ref Building!B building,ref MovingObject!B attacker,DamageMod damageMod,ObjectState!B state){
-	auto damage=attacker.meleeStrength/attacker.numAttackTicks;
+	auto damage=meleeDamageModifier(attacker)*attacker.meleeStrength/attacker.numAttackTicks;
 	auto actualDamage=building.dealDamage(damage,attacker,damageMod|DamageMod.melee,state);
 	if(actualDamage>0.0f) playSoundTypeAt(attacker.sacObject,attacker.id,SoundType.hitWall,state);
 	return actualDamage;
