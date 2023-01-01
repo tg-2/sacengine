@@ -900,7 +900,7 @@ Vector3f relativeCenter(T)(ref T object){
 
 Vector3f center(T)(ref T object){
 	static if(is(T==Soul!B,B)){
-		return object.position+0.5f*object.scaling;
+		return object.position+0.5f*1.25f*object.scaling;
 	}else{
 		auto hbox=object.hitbox;
 		return 0.5f*(hbox[0]+hbox[1]);
@@ -958,10 +958,10 @@ SacObject!B.LoadedArrow loadedArrow(B)(ref MovingObject!B object){
 	foreach(ref pos;result.tupleof) pos=object.position+rotate(object.rotation,pos);
 	return result;
 }
-AnimationState shootAnimation(B)(ref MovingObject!B object,bool isAbility){
+AnimationState shootAnimation(B)(ref MovingObject!B object,bool useSecondShootAnimation){
 	final switch(object.creatureState.movement) with(CreatureMovement){
 		case onGround:
-			return isAbility?AnimationState.shoot1:AnimationState.shoot0;
+			return useSecondShootAnimation?AnimationState.shoot1:AnimationState.shoot0;
 		case flying:
 			if(object.sacObject.mustFly)
 				goto case onGround;
@@ -1142,6 +1142,7 @@ enum SoulState{
 	reviving,
 	collecting,
 	devouring,
+	exploding,
 }
 
 struct Soul(B){
@@ -6960,12 +6961,13 @@ bool startShooting(B)(ref MovingObject!B object,ObjectState!B state){
 	return true;
 }
 
-bool startUsingAbility(B)(ref MovingObject!B object,ObjectState!B state){
+bool startUsingAbility(B)(ref MovingObject!B object,ObjectState!B state,bool useSecondShootAnimation=true){
 	if(!object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving))
 		return false;
 	object.stopMovement(state);
 	object.creatureState.mode=CreatureMode.usingAbility;
-	object.setCreatureState(state);
+	object.frame=0;
+	object.animationState=object.shootAnimation(useSecondShootAnimation);
 	return true;
 }
 
@@ -8134,7 +8136,7 @@ void styxSparkAnimation(int numSparks=192,B)(Vector3f[2] hitbox,ObjectState!B st
 }
 bool styxShoot(B)(int attacker,int side,int target,float accuracy,Vector3f position,Vector3f targetPosition,SacSpell!B rangedAttack,ObjectState!B state){
 	playSoundAt("sxts",position,state,1.0f);
-	playSoundAt("hxts",target,state,2.0f);
+	playSoundAt("hxts",target,state,4.0f);
 	Vector3f[2] hitbox=[targetPosition,targetPosition];
 	if(state.isValidTarget(target))
 		state.objectById!((ref obj,pos,hb,state){*pos=obj.center, *hb=obj.hitbox;})(target,&targetPosition,&hitbox,state);
@@ -8569,7 +8571,9 @@ Vector3f predictShotTargetPosition(B)(ref MovingObject!B object,SacSpell!B range
 	}
 }
 
-bool aim(bool isAbility=false,B)(ref MovingObject!B object,SacSpell!B rangedAttack,OrderTarget target,Vector3f predicted,ObjectState!B state){
+bool aim(bool isAbility=false,B)(ref MovingObject!B object,SacSpell!B rangedAttack,OrderTarget target,Vector3f predicted,ObjectState!B state,bool useSecondShootAnimation=isAbility)in{
+	static if(!isAbility) assert(!useSecondShootAnimation);
+}do{
 	// TODO: find a spot from where target can be shot
 	static if(isAbility){
 		auto notShooting=!object.creatureState.mode.isShooting;
@@ -8625,7 +8629,7 @@ bool aim(bool isAbility=false,B)(ref MovingObject!B object,SacSpell!B rangedAtta
 			if(facing&&cooldown==0&&object.creatureStats.mana>=rangedAttack.manaCost){
 				object.creatureAI.targetId=target.id;
 				static if(isAbility){
-					object.startUsingAbility(state);
+					object.startUsingAbility(state,useSecondShootAnimation);
 				}else{
 					object.startShooting(state); // TODO: should this have a delay?
 				}
@@ -8786,6 +8790,9 @@ bool shootOnTick(bool ability=false,B)(ref MovingObject!B object,OrderTarget tar
 					break;
 				case SpellTag.oil:
 					oilShoot(object.id,object.side,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
+					break;
+				case SpellTag.rend:
+					rendShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
 					break;
 				default: goto case SpellTag.brainiacShoot;
 			}
@@ -9101,6 +9108,43 @@ bool protector(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B sta
 	return true;
 }
 
+void rendSparkAnimation(int numSparks=192,B)(Vector3f targetPosition,ObjectState!B state){
+	auto sacParticle=SacParticle!B.get(ParticleType.rend);
+	Vector3f[2] hitbox=[targetPosition-0.5f,targetPosition+0.5];
+	auto center=boxCenter(hitbox);
+	foreach(i;0..numSparks){
+		auto position=state.uniform(scaleBox(hitbox,1.2f));
+		auto velocity=(position-center).normalized*15.0f;
+		velocity.z+=state.uniform(0.0f,8.0f);
+		auto scale=state.uniform(0.5f,1.5f);
+		int lifetime=state.uniform!"[]"(15,95);
+		int frame=0;
+		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+	}
+}
+bool rendShoot(B)(int attacker,int side,int target,float accuracy,Vector3f position,Vector3f targetPosition,SacSpell!B rangedAttack,ObjectState!B state){
+	bool ok=false;
+	state.soulById!((ref soul,pos,ok,state){
+		*pos=soul.center;
+		*ok=!!soul.state.among(SoulState.normal,SoulState.emerging);
+		if(*ok){
+			soul.state=SoulState.exploding;
+			soul.severSoul(state);
+		}
+	},(){})(target,&targetPosition,&ok,state);
+	if(!ok) return false;
+	playSpellSoundTypeAt(SoundType.lightning,position,state,1.0f);
+	playSoundAt("pxbf",targetPosition,state,10.0f);
+	state.removeLater(target);
+	state.addEffect(StyxBolt!B(attacker,position,target,targetPosition,rangedAttack));
+	state.addEffect(StyxExplosion!B(targetPosition,0.0f,40.0f,30.0f,0));
+	state.addEffect(StyxExplosion!B(targetPosition,0.0f,24.0f,20,0));
+	rendSparkAnimation(targetPosition,state);
+	auto direction=targetPosition-position;
+	dealSplashRangedDamageAt(0,rangedAttack,rangedAttack.damageRange,attacker,side,targetPosition,DamageMod.none,state);
+	return true;
+}
+
 bool haloOfEarth(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
 	playSoundAt("tlep",object.id,state,2.0f*haloOfEarthGain);
 	state.addEffect(HaloOfEarth!B(object.id,object.side,ability,true));
@@ -9269,6 +9313,7 @@ bool isRangedAbility(B)(SacSpell!B ability){ // TODO: put this directly in SacSp
 		case SpellTag.webPull,SpellTag.cagePull: return true;
 		case SpellTag.stickyBomb: return true;
 		case SpellTag.oil: return true;
+		case SpellTag.rend: return true;
 		default: return false;
 	}
 }
@@ -9297,7 +9342,15 @@ bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,OrderTarget targ
 		if(target.id&&!isValidAttackTarget(target.id,state)&&!state.isValidTarget(target.id,TargetType.soul)) return false;
 		auto predicted=object.predictShotTargetPosition(ability,true,target,state);
 		if(isNaN(predicted.x)) return false;
-		if(!object.aim!true(ability,target,predicted,state))
+		bool useSecondShootAnimation=true;
+		switch(ability.tag){
+			case SpellTag.rend:
+				useSecondShootAnimation=false;
+				break;
+			default:
+				break;
+		}
+		if(!object.aim!true(ability,target,predicted,state,useSecondShootAnimation))
 			return false;
 		if(object.creatureState.mode.isUsingAbility){
 			object.loadOnTick(target,ability,state);
@@ -9344,6 +9397,8 @@ bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,OrderTarget targ
 		case SpellTag.protector:
 			if(object.protector(ability,state)) apply();
 			return false;
+		case SpellTag.rend:
+			return shoot();
 		case SpellTag.haloOfEarthAbility:
 			if(object.haloOfEarth(ability,state)) apply();
 			return false;
@@ -10506,6 +10561,8 @@ void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 				state.removeLater(soul.id);
 				soul.number=0;
 			}
+			break;
+		case SoulState.exploding:
 			break;
 	}
 }

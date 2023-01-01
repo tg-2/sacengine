@@ -1154,6 +1154,7 @@ enum SpellTag:char[4]{
 	stickyBomb="acia",
 	oil="kcfa",
 	protector="HSba",
+	rend="dner",
 	haloOfEarthAbility="HRba",
 	// passive abilities:
 	steamCloud="goc@",

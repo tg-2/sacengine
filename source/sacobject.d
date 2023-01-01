@@ -1009,6 +1009,7 @@ enum ParticleType{
 	spark,
 	etherealFormSpark,
 	styxSpark,
+	rend,
 	shard,
 	castPersephone,
 	castPersephone2,
@@ -1057,7 +1058,7 @@ final class SacParticle(B){
 	float width,height;
 	@property bool gravity(){
 		final switch(type) with(ParticleType){
-			case manafount,spark,styxSpark:
+			case manafount,spark,styxSpark,rend:
 				return true;
 			case manalith,shrine,manahoar,firy,fire,fireball,cold,explosion,explosion2,speedUp,ghost,heal:
 				return false;
@@ -1097,7 +1098,7 @@ final class SacParticle(B){
 	}
 	@property bool relative(){
 		final switch(type) with(ParticleType){
-			case manafount,manalith,shrine,manahoar,firy,fire,fireball,cold,explosion,explosion2,speedUp,ghost,heal,scarabHit,ghostTransition,spark,styxSpark:
+			case manafount,manalith,shrine,manahoar,firy,fire,fireball,cold,explosion,explosion2,speedUp,ghost,heal,scarabHit,ghostTransition,spark,styxSpark,rend:
 				return false;
 			case relativeHeal,lightningCasting:
 				return true;
@@ -1121,7 +1122,7 @@ final class SacParticle(B){
 	}
 	@property bool bumpOffGround(){
 		switch(type) with(ParticleType){
-				case scarabHit,ghostTransition,wrathParticle,rainbowParticle,gnomeHit,warmongerHit,ashParticle,rock,webDebris,oil,swarmHit,slime,needle,redVortexDroplet,blueVortexDroplet,spark,styxSpark: return true;
+			case scarabHit,ghostTransition,wrathParticle,rainbowParticle,gnomeHit,warmongerHit,ashParticle,rock,webDebris,oil,swarmHit,slime,needle,redVortexDroplet,blueVortexDroplet,spark,styxSpark,rend: return true;
 			default: return false;
 		}
 	}
@@ -1247,6 +1248,12 @@ final class SacParticle(B){
 				this.energy=15.0f;
 				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Char.FLDR/tex_ZERO_.FLDR/styx.TXTR"));
 				meshes=makeSpriteMeshes!B(1,1,width,height);
+				break;
+			case rend:
+				width=height=2.0f;
+				this.energy=15.0f;
+				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Char.FLDR/tex_ZERO_.FLDR/rend.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
 			case castPersephone:
 				width=height=1.0f;
@@ -1448,6 +1455,7 @@ final class SacParticle(B){
 			case redVortexDroplet: return 2;
 			case spark: return 2;
 			case styxSpark: return 2;
+			case rend: return 2;
 			case etherealFormSpark: return 2;
 			case rainbowParticle: return 2;
 			case gnomeHit: return 2;
@@ -1491,7 +1499,7 @@ final class SacParticle(B){
 				return min(1.0f,(lifetime/(0.75f*numFrames))^^2);
 			case lightningCasting:
 				return 1.0;
-			case chainLightningCasting,needle,freeze,etherealFormSpark,spark,styxSpark:
+			case chainLightningCasting,needle,freeze,etherealFormSpark,spark,styxSpark,rend:
 				return min(1.0f,(lifetime/(0.5f*numFrames))^^2);
 			case shard:
 				return 1.0f;
@@ -1546,7 +1554,7 @@ final class SacParticle(B){
 				return 1.0f;
 			case lightningCasting:
 				return 1.0f;
-			case chainLightningCasting,needle,freeze,etherealFormSpark,spark,styxSpark:
+			case chainLightningCasting,needle,freeze,etherealFormSpark,spark,styxSpark,rend:
 				return min(1.0f,lifetime/(0.5f*numFrames));
 			case shard:
 				return 1.0f;
