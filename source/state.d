@@ -8685,7 +8685,7 @@ void loadOnTick(B)(ref MovingObject!B object,OrderTarget target,SacSpell!B range
 			case SpellTag.warmongerShoot:
 				warmongerLoad(object.id,state);
 				break;
-			case SpellTag.styxShoot:
+			case SpellTag.styxShoot,SpellTag.rend:
 				styxLoad(object.id,state);
 				break;
 			default: break;
