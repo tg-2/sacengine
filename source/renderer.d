@@ -1482,7 +1482,7 @@ struct Renderer(B){
 				                                      objects.soulMoleCastings.length||objects.soulMoles.length||
 													  objects.haloOfEarthCastings.length||objects.haloOfEarths.length||
 				                                      objects.eruptDebris.length||
-				                                      objects.earthflingProjectiles.length||objects.flummoxProjectiles.length||
+				                                      objects.earthflingProjectiles.length||objects.flummoxProjectiles.length||objects.boulderdashProjectiles.length||
 				                                      objects.rockForms.length
 				){
 					auto materials=self.rock.materials;
@@ -1530,6 +1530,10 @@ struct Renderer(B){
 						}
 						foreach(j;0..objects.flummoxProjectiles.length){
 							material.backend.setTransformationScaled(objects.flummoxProjectiles[j].position,objects.flummoxProjectiles[j].rotation,1.25f*Vector3f(1.0f,1.0f,1.0f),rc);
+							mesh.render(rc);
+						}
+						foreach(j;0..objects.boulderdashProjectiles.length){
+							material.backend.setTransformationScaled(objects.boulderdashProjectiles[j].position,objects.boulderdashProjectiles[j].rotation,0.3f*Vector3f(1.0f,1.0f,1.0f),rc);
 							mesh.render(rc);
 						}
 						foreach(j;0..objects.rockForms.length){

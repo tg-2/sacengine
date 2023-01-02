@@ -3314,6 +3314,21 @@ struct BombardProjectile(B){
 	int frame=0;
 }
 
+struct BoulderdashProjectile(B){
+	int attacker;
+	int side;
+	int intendedTarget;
+	Vector3f position;
+	Vector3f velocity;
+	SacSpell!B rangedAttack;
+	float remainingDistance;
+	Quaternionf rotationUpdate;
+	Quaternionf rotation;
+	float distanceUntilSplit;
+	Vector3f upwards;
+	int which; // one of -1, 0, 1
+}
+
 struct WarmongerGun(B){
 	Vector3f position;
 	Vector3f direction;
@@ -4559,6 +4574,14 @@ struct Effects(B){
 	void removeBombardProjectile(int i){
 		if(i+1<bombardProjectiles.length) swap(bombardProjectiles[i],bombardProjectiles[$-1]);
 		bombardProjectiles.length=bombardProjectiles.length-1; // TODO: reuse memory?
+	}
+	Array!(BoulderdashProjectile!B) boulderdashProjectiles;
+	void addEffect(BoulderdashProjectile!B boulderdashProjectile){
+		boulderdashProjectiles~=boulderdashProjectile;
+	}
+	void removeBoulderdashProjectile(int i){
+		if(i+1<boulderdashProjectiles.length) swap(boulderdashProjectiles[i],boulderdashProjectiles[$-1]);
+		boulderdashProjectiles.length=boulderdashProjectiles.length-1; // TODO: reuse memory?
 	}
 	Array!(WarmongerGun!B) warmongerGuns;
 	void addEffect(WarmongerGun!B warmongerGun){
@@ -8084,6 +8107,25 @@ bool bombardShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vec
 	return true;
 }
 
+enum boulderdashShootGain=4.0f;
+enum boulderdashSplitDistance=60.0f; // TODO: ok?
+bool boulderdashShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	playSoundAt("6tps",position,state,boulderdashShootGain);
+	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
+	auto rotationSpeed=2*pi!float*state.uniform(0.2f,0.8f)/updateFPS;
+	auto rotationAxis=state.uniformDirection();
+	auto remainingDistance=2.0f*rangedAttack.range;
+	auto rotationUpdate=rotationQuaternion(rotationAxis,rotationSpeed);
+	auto rotation=Quaternionf.identity();
+	auto distance=(target-position).length;
+	auto distanceUntilSplit=max(0.0f, distance-boulderdashSplitDistance);
+	auto upwards=rotate(state.movingObjectById!((ref obj)=>obj.rotation,()=>Quaternionf.identity)(attacker),Vector3f(0.0f,0.0f,1.0f));
+	foreach(which;-1..1+1){
+		state.addEffect(BoulderdashProjectile!B(attacker,side,intendedTarget,position,direction*rangedAttack.speed,rangedAttack,remainingDistance,rotationUpdate,rotation,distanceUntilSplit,upwards,which));
+	}
+	return true;
+}
+
 void warmongerLoad(B)(int attacker,ObjectState!B state){
 	playSoundAt("esuf",attacker,state,2.0f);
 	// TODO: actually light fuse
@@ -8769,6 +8811,9 @@ bool shootOnTick(bool ability=false,B)(ref MovingObject!B object,OrderTarget tar
 					break;
 				case SpellTag.bombardShoot:
 					bombardShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
+					break;
+				case SpellTag.boulderdashShoot:
+					boulderdashShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
 					break;
 				case SpellTag.warmongerShoot:
 					warmongerShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
@@ -15266,14 +15311,14 @@ void animateEarthflingProjectile(B)(ref EarthflingProjectile!B earthflingProject
 	with(earthflingProjectile){
 		rotation=rotationUpdate*rotation;
 		enum numParticles=2;
-		auto sacParticle=SacParticle!B.get(ParticleType.dust);
+		auto sacParticle=SacParticle!B.get(ParticleType.dirt);
 		auto velocity=Vector3f(0.0f,0.0f,0.0f);
 		auto lifetime=31;
 		auto scale=0.5f;
 		auto frame=0;
 		foreach(i;0..numParticles){
 			auto position=oldPosition*((cast(float)numParticles-1-i)/numParticles)+position*(cast(float)(i+1)/numParticles);
-			position+=0.3f*state.uniformDirection();
+			position+=0.2f*state.uniformDirection();
 			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
 		}
 	}
@@ -16650,6 +16695,87 @@ bool updateBombardProjectile(B)(ref BombardProjectile!B bombardProjectile,Object
 			}
 		}else if(position.z<state.getHeight(position)-rangedAttack.fallLimit)
 			return false;
+		return true;
+	}
+}
+
+void animateBoulderdashProjectile(B)(ref BoulderdashProjectile!B boulderdashProjectile,Vector3f oldPosition,ObjectState!B state){
+	with(boulderdashProjectile){
+		rotation=rotationUpdate*rotation;
+		enum numParticles=2;
+		auto sacParticle=SacParticle!B.get(ParticleType.dirt);
+		auto velocity=Vector3f(0.0f,0.0f,0.0f);
+		auto lifetime=31;
+		auto scale=0.5f;
+		auto frame=0;
+		foreach(i;0..numParticles){
+			auto position=oldPosition*((cast(float)numParticles-1-i)/numParticles)+position*(cast(float)(i+1)/numParticles);
+			position+=0.2f*state.uniformDirection();
+			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+		}
+	}
+}
+
+enum boulderdashProjectileSize=0.7f; // TODO: ok?
+enum boulderdashProjectileSlidingDistance=0.0f;
+static immutable Vector3f[2] boulderdashProjectileHitbox=[-0.5f*boulderdashProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*boulderdashProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
+int boulderdashProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
+		return entry.isProjectileObstacle&&(entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side);
+	}
+	return collisionTarget!(boulderdashProjectileHitbox,filter)(side,position,state,side,intendedTarget);
+}
+
+void boulderdashProjectileExplosion(B)(ref BoulderdashProjectile!B boulderdashProjectile,int target,ObjectState!B state){
+	playSoundAt("pmir",boulderdashProjectile.position,state,2.0f);
+	if(state.isValidTarget(target)) dealRangedDamage(target,boulderdashProjectile.rangedAttack,boulderdashProjectile.attacker,boulderdashProjectile.side,boulderdashProjectile.velocity,DamageMod.none,state);
+	enum numParticles3=50;
+	auto sacParticle3=SacParticle!B.get(ParticleType.rock);
+	foreach(i;0..numParticles3){
+		auto direction=state.uniformDirection();
+		auto velocity=0.3f*state.uniform(7.5f,15.0f)*direction;
+		auto scale=0.5f*state.uniform(1.0f,2.5f);
+		auto lifetime=95;
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle3,boulderdashProjectile.position,velocity,scale,lifetime,frame));
+	}
+	enum numParticles4=12;
+	auto sacParticle4=SacParticle!B.get(ParticleType.dirt);
+	foreach(i;0..numParticles4){
+		auto direction=state.uniformDirection();
+		auto position=boulderdashProjectile.position+0.25f*direction;
+		auto velocity=Vector3f(0.0f,0.0f,0.0f);
+		auto scale=1.2f;
+		auto frame=state.uniform(2)?0:state.uniform(24);
+		auto lifetime=63-frame;
+		state.addParticle(Particle!B(sacParticle4,position,velocity,scale,lifetime,frame));
+	}
+}
+
+bool updateBoulderdashProjectile(B)(ref BoulderdashProjectile!B boulderdashProjectile,ObjectState!B state){
+	with(boulderdashProjectile){
+		auto oldPosition=position;
+		position+=velocity/updateFPS;
+		rotation=rotationUpdate*rotation;
+		remainingDistance-=rangedAttack.speed/updateFPS;
+		if(distanceUntilSplit>=0.0f){
+			distanceUntilSplit-=rangedAttack.speed/updateFPS;
+			if(distanceUntilSplit<0.0f){
+				if(which==0) playSoundAt("tlps",position,state,1.0f);
+				enum θ=(2.0f*pi!float/360.0f)*3.5f;
+				if(which!=0) velocity=rotate(rotationQuaternion(upwards,which*θ),velocity);
+			}
+		}
+		boulderdashProjectile.animateBoulderdashProjectile(oldPosition,state);
+		auto target=boulderdashProjectileCollisionTarget(side,intendedTarget,position,state);
+		if(state.isValidTarget(target)){
+			boulderdashProjectile.boulderdashProjectileExplosion(target,state);
+			return false;
+		}
+		if(state.isOnGround(position)&&position.z<state.getGroundHeight(position)||remainingDistance<=0.0f){
+			boulderdashProjectile.boulderdashProjectileExplosion(0,state);
+			return false;
+		}
 		return true;
 	}
 }
@@ -18342,6 +18468,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.bombardProjectiles.length;){
 		if(!updateBombardProjectile(effects.bombardProjectiles[i],state)){
 			effects.removeBombardProjectile(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.boulderdashProjectiles.length;){
+		if(!updateBoulderdashProjectile(effects.boulderdashProjectiles[i],state)){
+			effects.removeBoulderdashProjectile(i);
 			continue;
 		}
 		i++;
