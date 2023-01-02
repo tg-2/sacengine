@@ -71,7 +71,7 @@ AnimEvent translateAnimEvent(char[4] tag){
 		case "\0\0\0\0": return AnimEvent.none;
 		case "!xfs": return AnimEvent.sound;
 		case "kcta": return AnimEvent.attack;
-		case "liba": return AnimEvent.load; // TODO: use event
+		case "liba": return AnimEvent.load;
 		case "lrba": return AnimEvent.shoot;
 		case "tsac": return AnimEvent.cast_;
 		case "hted": return AnimEvent.death;

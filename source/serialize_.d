@@ -702,6 +702,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Sil
 void serialize(alias sink,B)(ref Protector!B protector){ serializeStruct!sink(protector); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Protector!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref Quake!B quake){ serializeStruct!sink(quake); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Quake!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink)(ref Appearance appearance){ serializeStruct!sink(appearance); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Appearance)){ deserializeStruct(result,state,data); }
 

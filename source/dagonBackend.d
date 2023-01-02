@@ -1314,7 +1314,8 @@ final class SacScene: Scene{
 	private bool hasDisplacement(){
 		return state.current.obj.opaqueObjects.effects.testDisplacements.length!=0||
 			state.current.obj.opaqueObjects.effects.eruptCastings.length!=0||
-			state.current.obj.opaqueObjects.effects.erupts.length!=0;
+			state.current.obj.opaqueObjects.effects.erupts.length!=0||
+			state.current.obj.opaqueObjects.effects.quakes.length!=0;
 	}
 	override bool needTerrainDisplacement(){
 		return state&&(displacementDirty||hasDisplacement());
@@ -1337,6 +1338,12 @@ final class SacScene: Scene{
 			eruptDisplacement(e.position.x,e.position.y,time);
 		}
 		unbindEruptDisplacement();
+		bindQuakeDisplacement();
+		foreach(ref e;state.current.obj.opaqueObjects.effects.quakes){
+			float time=float(e.frame)/updateFPS;
+			quakeDisplacement(e.position.x,e.position.y,time);
+		}
+		unbindQuakeDisplacement();
 		displacementDirty=hasDisplacement();
 	}
 

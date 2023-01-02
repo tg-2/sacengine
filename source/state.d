@@ -3562,6 +3562,43 @@ struct Protector(B){
 	SacSpell!B ability;
 }
 
+struct Quake(B){
+	int id;
+	int side;
+	Vector3f position;
+	SacSpell!B ability;
+	int frame=0;
+
+	enum waveRange = 50.0f;
+	enum fallDur = 0.15f;
+	enum waveDur = 0.5f;
+	enum waveHeight = 1.5f;
+	enum reboundHeight = 1.5f;
+	enum totalFrames=cast(int)(waveDur*updateFPS+0.5f);
+
+	enum stunMinRange=0.5f,stunMaxRange=10.0f; // TODO: correct?
+
+	float displacement(float x,float y){
+		enum pi=pi!float;
+		auto time=float(frame)/updateFPS;
+		auto epos=position.xy, pos=Vector2f(x,y);
+		auto dist=(pos-epos).length;
+		float displacement=0.0f;
+		// TODO: displacement at time 0 should be constant zero
+		if(time<waveDur){
+			float reboundProgress=time<fallDur?0.5f*time/fallDur:0.5f+0.5f*(time-fallDur)/(waveDur-fallDur);
+			if(dist<waveRange) displacement-=(1.0f+cos(pi*dist/waveRange))*sin(pi*reboundProgress)*reboundHeight;
+			float progress=time/waveDur;
+			float waveLoc=waveRange*progress;
+			float waveSize=(0.15f+0.65f*(1.0f-progress)*(1.0f-progress))*waveRange;
+			float wavePos=abs(dist-waveLoc)/waveSize;
+			float waveHeight=waveHeight*(1.0f-(progress*progress));
+			if(wavePos<1.0f) displacement+=(1.0f+cos(pi*wavePos))*waveHeight;
+		}
+		return displacement;
+	}
+}
+
 struct Appearance{
 	int id;
 	int lifetime;
@@ -4761,6 +4798,14 @@ struct Effects(B){
 	void removeProtector(int i){
 		if(i+1<protectors.length) protectors[i]=move(protectors[$-1]);
 		protectors.length=protectors.length-1;
+	}
+	Array!(Quake!B) quakes;
+	void addEffect(Quake!B quake){
+		quakes~=move(quake);
+	}
+	void removeQuake(int i){
+		if(i+1<quakes.length) quakes[i]=move(quakes[$-1]);
+		quakes.length=quakes.length-1;
 	}
 	// special effects
 	Array!Appearance appearances;
@@ -9165,6 +9210,11 @@ bool protector(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B sta
 	return true;
 }
 
+bool quake(B)(int creature,int side,Vector3f position,SacSpell!B ability,ObjectState!B state){
+	state.addEffect(Quake!B(creature,side,position,ability));
+	return true;
+}
+
 void rendSparkAnimation(int numSparks=192,B)(Vector3f targetPosition,ObjectState!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.rend);
 	Vector3f[2] hitbox=[targetPosition-0.5f,targetPosition+0.5];
@@ -9375,6 +9425,13 @@ bool isRangedAbility(B)(SacSpell!B ability){ // TODO: put this directly in SacSp
 	}
 }
 
+bool isActionAbility(B)(SacSpell!B ability){ // TODO: put this directly in SacSpell!B ?
+	switch(ability.tag){
+		case SpellTag.quake: return true;
+		default: return false;
+	}
+}
+
 bool checkAbility(B)(ref MovingObject!B object,SacSpell!B ability,OrderTarget target,ObjectState!B state){
 	if(ability.requiresTarget&&!ability.isApplicable(summarize(target,object.side,state))){
 		target.id=0;
@@ -9390,7 +9447,7 @@ bool checkAbility(B)(ref MovingObject!B object,SacSpell!B ability,OrderTarget ta
 bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,OrderTarget target,ObjectState!B state){
 	if(!ability) return false;
 	if(object.ability!is ability) return false;
-	if(!isRangedAbility(ability)&&!object.checkAbility(ability,target,state)) return false;
+	if(!isRangedAbility(ability)&&!isActionAbility(ability)&&!object.checkAbility(ability,target,state)) return false;
 	void apply(){
 		object.drainMana(ability.manaCost,state);
 		object.creatureStats.effects.abilityCooldown=cast(int)(ability.cooldown*updateFPS);
@@ -9416,6 +9473,22 @@ bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,OrderTarget targ
 					object.creatureStats.effects.abilityCooldown=cast(int)(ability.cooldown*updateFPS);
 				return false;
 			}
+		}
+		return true;
+	}
+	bool act(alias run)(){
+		if(!object.creatureState.mode.isUsingAbility){
+			if(!object.checkAbility(ability,target,state))
+				return false;
+			if(object.startUsingAbility(state,false)){
+				object.drainMana(ability.manaCost,state);
+			}else return true;
+		}
+		if(object.hasShootTick(state)){
+			run(object,ability,state);
+			if(object.creatureStats.effects.abilityCooldown==0)
+				object.creatureStats.effects.abilityCooldown=cast(int)(ability.cooldown*updateFPS);
+			return false;
 		}
 		return true;
 	}
@@ -9454,6 +9527,8 @@ bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,OrderTarget targ
 		case SpellTag.protector:
 			if(object.protector(ability,state)) apply();
 			return false;
+		case SpellTag.quake:
+			return act!((ref object,ability,state){ quake(object.id,object.side,object.position,ability,state); })();
 		case SpellTag.rend:
 			return shoot();
 		case SpellTag.haloOfEarthAbility:
@@ -17521,6 +17596,49 @@ bool updateProtector(B)(ref Protector!B protector,ObjectState!B state){
 	return false;
 }
 
+void quakeExplosion(B)(ref Quake!B quake,ObjectState!B state){
+	with(quake){
+		playSoundAt("7sms",position,state,quakeGain);
+		state.addEffect(ScreenShake(position,updateFPS/3,4.0f,30.0f));
+	}
+	auto position=quake.position;
+	position.z=state.getHeight(position);
+	enum numParticles3=64;
+	auto sacParticle3=SacParticle!B.get(ParticleType.dirt);
+	foreach(i;0..numParticles3){
+		auto pdirection=(state.uniformDirection()/++Vector3f(0.0f,0.0f,0.25f)+/).normalized;
+		auto pposition=position+pdirection*state.uniform(0.0f,2.5f);
+		auto pvelocity=Vector3f(0.0f,0.0f,0.0f);
+		auto scale=2.0f*state.uniform(1.0f,2.5f);
+		auto lifetime=93;
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle3,pposition,pvelocity,scale,lifetime,frame));
+	}
+	// TODO: scar?
+}
+enum quakeGain=8.0f;
+bool updateQuake(B)(ref Quake!B quake,ObjectState!B state){
+	with(quake){
+		enum quakeFrame=1;
+		if(++frame==quakeFrame) quakeExplosion(quake,state);
+		auto waveLoc=waveRange*(float(frame)/updateFPS)/waveDur;
+		if(stunMinRange<waveLoc&&waveLoc<stunMaxRange){
+			// TODO: more efficient method to query creatures currently on the ring
+			static bool callback2(int target,Quake!B* quake,float waveLoc,ObjectState!B state){
+				state.movingObjectById!((ref obj,quake,waveLoc,state){
+					auto diff=obj.position.xy-quake.position.xy;
+					auto difflen=diff.length;
+					if(quake.stunMinRange<difflen&&abs(difflen-waveLoc)<1.5f*quake.waveRange/(quake.waveDur*updateFPS))
+						obj.stunWithCooldown(stunCooldownFrames,state);
+					},(){})(target,quake,waveLoc,state);
+				return false;
+			}
+			dealSplashSpellDamageAt!callback2(0,ability,waveLoc+0.1f,id,side,position,DamageMod.none,state,&quake,waveLoc,state);
+		}
+		return frame<=totalFrames;
+	}
+}
+
 bool updateAppearance(B)(ref Appearance appearance,ObjectState!B state){
 	with(appearance){
 		if(!state.isValidTarget(id,TargetType.creature)) return false;
@@ -18635,6 +18753,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 		}
 		i++;
 	}
+	for(int i=0;i<effects.quakes.length;){
+		if(!updateQuake(effects.quakes[i],state)){
+			effects.removeQuake(i);
+			continue;
+		}
+		i++;
+	}
 	for(int i=0;i<effects.appearances.length;){
 		if(!updateAppearance(effects.appearances[i],state)){
 			effects.removeAppearance(i);
@@ -19570,6 +19695,9 @@ final class ObjectState(B){ // (update logic)
 				result+=ec.erupt.displacement(x,y);
 			}
 			foreach(ref e;state.obj.opaqueObjects.effects.erupts){
+				result+=e.displacement(x,y);
+			}
+			foreach(ref e;state.obj.opaqueObjects.effects.quakes){
 				result+=e.displacement(x,y);
 			}
 			return result;
