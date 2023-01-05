@@ -7577,8 +7577,13 @@ bool freeze(B)(int wizard,int side,int target,SacSpell!B spell,ObjectState!B sta
 }
 
 enum maxFreezeCooldown=10*updateFPS;
-bool freezeWithCooldown(B)(int wizard,int side,int target,SacSpell!B spell,ObjectState!B state){
-	auto cooldown=state.movingObjectById!((ref obj)=>obj.creatureStats.effects.freezeCooldown,()=>maxFreezeCooldown)(target);
+bool tryFreezeWithCooldown(B)(int wizard,int side,int target,SacSpell!B spell,ObjectState!B state){
+	auto okCooldown=state.movingObjectById!((ref obj){
+		if(obj.creatureStats.effects.ccProtected||!obj.creatureState.mode.canCC) return tuple(false,0);
+		return tuple(true,obj.creatureStats.effects.freezeCooldown);
+	},()=>tuple(false,maxFreezeCooldown))(target);
+	auto ok=okCooldown[0], cooldown=okCooldown[1];
+	if(!ok) return false;
 	if(cooldown<=0||cooldown<=state.uniform(maxFreezeCooldown)){
 		auto r=freeze(wizard,side,target,spell,state);
 		state.movingObjectById!((ref obj){ obj.creatureStats.effects.freezeCooldown=maxFreezeCooldown; },(){})(target);
@@ -10225,7 +10230,7 @@ void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 							if(passive.tag==SpellTag.graspingVines){
 								graspingVines(target,passive,state);
 							}else if(passive.tag==SpellTag.freeze){
-								if(canFreeze) freezeWithCooldown(object.id,object.side,target,passive,state); // TODO: ok?
+								if(canFreeze) tryFreezeWithCooldown(object.id,object.side,target,passive,state); // TODO: ok?
 							}
 							else assert(0);
 						}
@@ -16878,7 +16883,7 @@ bool updateSilverbackProjectile(B)(ref SilverbackProjectile!B silverbackProjecti
 			if(validTarget&&id==intendedTarget){
 				dealRangedDamage(intendedTarget,rangedAttack,attacker,side,attackDirection,DamageMod.none,state); // TODO: ok?
 				auto spell=SacSpell!B.get("zerf");
-				freezeWithCooldown(attacker,side,id,spell,state);
+				tryFreezeWithCooldown(attacker,side,id,spell,state);
 				return false;
 			}
 			if(validTarget&&state.objectById!(.side)(id,state)==side)
@@ -16891,7 +16896,7 @@ bool updateSilverbackProjectile(B)(ref SilverbackProjectile!B silverbackProjecti
 		dealDamageAt!callback(0,rangedAttack.amount,radius,attacker,side,position,DamageMod.ranged,state,&damagedTargets,&toFreeze,attacker,side,intendedTarget,rangedAttack,direction,state);
 		if(toFreeze.length){
 			auto spell=SacSpell!B.get("zerf");
-			foreach(id;toFreeze) freezeWithCooldown(attacker,side,id,spell,state);
+			foreach(id;toFreeze) tryFreezeWithCooldown(attacker,side,id,spell,state);
 		}
 		static assert(updateFPS==60);
 		if(frame<16){
