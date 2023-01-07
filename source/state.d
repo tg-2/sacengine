@@ -3573,7 +3573,8 @@ struct Quake(B){
 	enum fallDur = 0.15f;
 	enum waveDur = 0.5f;
 	enum waveHeight = 1.5f;
-	enum reboundHeight = 1.5f;
+	enum growDur = 0.05f;
+	enum reboundHeight = 2.0f;
 	enum totalFrames=cast(int)(waveDur*updateFPS+0.5f);
 
 	enum stunMinRange=0.5f,stunMaxRange=10.0f; // TODO: correct?
@@ -3593,7 +3594,7 @@ struct Quake(B){
 			float waveSize=(0.15f+0.65f*(1.0f-progress)*(1.0f-progress))*waveRange;
 			float wavePos=abs(dist-waveLoc)/waveSize;
 			float waveHeight=waveHeight*(1.0f-(progress*progress));
-			if(wavePos<1.0f) displacement+=(1.0f+cos(pi*wavePos))*waveHeight;
+			if(wavePos<1.0f) displacement+=(1.0f+cos(pi*wavePos))*waveHeight*min(1.0f,time/growDur);
 		}
 		return displacement;
 	}
