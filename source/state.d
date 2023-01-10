@@ -16964,15 +16964,17 @@ bool updateSilverbackProjectile(B)(ref SilverbackProjectile!B silverbackProjecti
 			if((*targets)[].canFind(recordedId)) return false;
 			bool validTarget=!!state.targetTypeFromId(id).among(TargetType.creature,TargetType.building);
 			*targets~=recordedId;
+			bool canFreeze=validTarget&&state.movingObjectById!((ref obj)=>!obj.creatureStats.effects.frozen,()=>false)(id);
 			if(validTarget&&id==intendedTarget){
 				dealRangedDamage(intendedTarget,rangedAttack,attacker,side,attackDirection,DamageMod.none,state); // TODO: ok?
-				auto spell=SacSpell!B.get("zerf");
-				tryFreezeWithCooldown(attacker,side,id,spell,state);
+				if(canFreeze){
+					auto spell=SacSpell!B.get("zerf");
+					tryFreezeWithCooldown(attacker,side,id,spell,state);
+				}
 				return false;
 			}
 			if(validTarget&&state.objectById!(.side)(id,state)==side)
 				return false;
-			bool canFreeze=state.movingObjectById!((ref obj)=>!obj.creatureStats.effects.frozen,()=>false)(id);
 			if(canFreeze) *toFreeze~=id;
 			return true;
 		}
