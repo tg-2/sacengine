@@ -965,6 +965,12 @@ Vector3f warmongerFlame(B)(ref MovingObject!B object){
 	return result;
 }
 
+Vector3f styxFlame(B)(ref MovingObject!B object){
+	auto result=object.sacObject.styxFlame(object.animationState,object.frame/updateAnimFactor);
+	result=object.position+rotate(object.rotation,result);
+	return result;
+}
+
 Vector3f shotPosition(B)(ref MovingObject!B object,bool fix=false){
 	auto loc=object.sacObject.shotPosition(object.animationState,object.frame/updateAnimFactor,fix);
 	return object.position+rotate(object.rotation,loc);
@@ -9799,13 +9805,13 @@ void warmongerFlame(B)(ref MovingObject!B object,ObjectState!B state){
 }
 
 void styxFlame(B)(ref MovingObject!B object,ObjectState!B state){
-	auto position=object.warmongerFlame;
+	auto position=object.styxFlame;
 	enum numParticles4=12;
 	auto sacParticle4=SacParticle!B.get(ParticleType.castCharnel); // TODO: ok?
-	auto scale=0.5f;
+	auto scale=0.75f;
 	foreach(i;0..numParticles4){
 		auto direction=state.uniformDirection();
-		auto pposition=position+scale*0.3f*direction;
+		auto pposition=position+scale*0.35f*direction;
 		auto velocity=scale*Vector3f(0.0f,0.0f,3.0f);
 		auto frame=state.uniform(2)?0:state.uniform(24);
 		auto lifetime=31-frame;

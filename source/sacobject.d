@@ -362,7 +362,11 @@ final class SacObject(B){
 		return result;
 	}
 	Vector3f warmongerFlame(AnimationState animationState,int frame){
-		auto hand=Hand(6,Vector3f(-0.1f,1.35,0.0f));
+		auto hand=Hand(6,Vector3f(-0.1f,1.35f,0.0f));
+		return hand.position*animations[animationState].frames[frame].matrices[hand.bone];
+	}
+	Vector3f styxFlame(AnimationState animationState,int frame){
+		auto hand=Hand(6,Vector3f(0.0f,1.1f,0.0f));
 		return hand.position*animations[animationState].frames[frame].matrices[hand.bone];
 	}
 	Vector3f shotPosition(AnimationState animationState,int frame,bool fix=false){
