@@ -934,6 +934,12 @@ Vector3f[2] hands(B)(ref MovingObject!B object){
 	return hands;
 }
 
+Vector3f[2] handsFromAnimation(B)(ref MovingObject!B object,AnimationState animationState){
+	auto hands=object.sacObject.handsFromAnimation(animationState,object.animationState,object.frame/updateAnimFactor);
+	foreach(ref hand;hands) hand=object.position+rotate(object.rotation,hand);
+	return hands;
+}
+
 Vector3f randomHand(B)(Vector3f[2] hands,ObjectState!B state){
 	if(isNaN(hands[0].x)) return hands[1];
 	if(isNaN(hands[1].x)) return hands[0];
@@ -9754,6 +9760,38 @@ bool unghost(B)(ref MovingObject!B wizard,ObjectState!B state){
 	return true;
 }
 
+void firefistFlames(B)(ref MovingObject!B object,ObjectState!B state){
+	foreach(hand;object.handsFromAnimation(AnimationState.attack2)){
+		enum numParticles4=6;
+		auto sacParticle4=SacParticle!B.get(ParticleType.fire);
+		auto scale=0.5f;
+		foreach(i;0..numParticles4){
+			auto direction=state.uniformDirection();
+			auto pposition=hand+scale*0.3f*direction;
+			auto velocity=scale*Vector3f(0.0f,0.0f,3.0f);
+			auto frame=state.uniform(2)?0:state.uniform(24);
+			auto lifetime=31-frame;
+			state.addParticle(Particle!B(sacParticle4,pposition,velocity,scale,lifetime,frame));
+		}
+	}
+}
+
+void animateCreature(B)(ref MovingObject!B object,ObjectState!B state){
+	switch(object.sacObject.nttTag){
+		case SpellTag.firefist:
+			firefistFlames(object,state);
+			break;
+		case SpellTag.warmonger:
+			// TODO
+			break;
+		case SpellTag.styx:
+			// TODO
+			break;
+		default:
+			break;
+	}
+}
+
 void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.creatureStats.effects.stunCooldown!=0) --object.creatureStats.effects.stunCooldown;
 	if(object.creatureStats.effects.freezeCooldown!=0) --object.creatureStats.effects.freezeCooldown;
@@ -9761,6 +9799,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.creatureStats.effects.abilityCooldown!=0) --object.creatureStats.effects.abilityCooldown;
 	if(object.creatureStats.effects.infectionCooldown!=0) --object.creatureStats.effects.infectionCooldown;
 	if(object.creatureStats.effects.yellCooldown!=0) --object.creatureStats.effects.yellCooldown;
+	animateCreature(object,state);
 	if(object.creatureStats.effects.numBulks!=0){
 		float targetBulk=2.0f-0.75f^^object.creatureStats.effects.numBulks;
 		static import std.math;

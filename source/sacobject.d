@@ -319,14 +319,18 @@ final class SacObject(B){
 			.joiner.map!(v=>transform(modelViewProjectionMatrix,v)).bbox;
 	}
 
-	Vector3f[2] hands(AnimationState animationState,int frame){
+	Vector3f[2] handsFromAnimation(AnimationState from,AnimationState animationState,int frame){
 		Vector3f[2] result;
 		foreach(i;0..2){
-			auto hand=animations[animationState].hands[i];
+			auto hand=animations[from].hands[i];
 			if(hand.bone==0) continue;
 			result[i]=hand.position*animations[animationState].frames[frame].matrices[hand.bone];
 		}
 		return result;
+	}
+
+	Vector3f[2] hands(AnimationState animationState,int frame){
+		return handsFromAnimation(animationState,animationState,frame);
 	}
 	Vector3f[2] needle(AnimationState animationState,int frame){
 		Vector3f[2] result;
