@@ -953,17 +953,24 @@ Vector3f[2] needle(B)(ref MovingObject!B object){
 	return needle;
 }
 
+SacObject!B.LoadedArrow loadedArrow(B)(ref MovingObject!B object){
+	auto result=object.sacObject.loadedArrow(object.animationState,object.frame/updateAnimFactor);
+	foreach(ref pos;result.tupleof) pos=object.position+rotate(object.rotation,pos);
+	return result;
+}
+
+Vector3f warmongerFlame(B)(ref MovingObject!B object){
+	auto result=object.sacObject.warmongerFlame(object.animationState,object.frame/updateAnimFactor);
+	result=object.position+rotate(object.rotation,result);
+	return result;
+}
+
 Vector3f shotPosition(B)(ref MovingObject!B object,bool fix=false){
 	auto loc=object.sacObject.shotPosition(object.animationState,object.frame/updateAnimFactor,fix);
 	return object.position+rotate(object.rotation,loc);
 }
 Vector3f[2] basiliskShotPositions(B)(ref MovingObject!B object){ return object.hands; }
 
-SacObject!B.LoadedArrow loadedArrow(B)(ref MovingObject!B object){
-	auto result=object.sacObject.loadedArrow(object.animationState,object.frame/updateAnimFactor);
-	foreach(ref pos;result.tupleof) pos=object.position+rotate(object.rotation,pos);
-	return result;
-}
 AnimationState shootAnimation(B)(ref MovingObject!B object,bool useSecondShootAnimation){
 	final switch(object.creatureState.movement) with(CreatureMovement){
 		case onGround:
@@ -9776,16 +9783,47 @@ void firefistFlames(B)(ref MovingObject!B object,ObjectState!B state){
 	}
 }
 
+void warmongerFlame(B)(ref MovingObject!B object,ObjectState!B state){
+	auto position=object.warmongerFlame;
+	enum numParticles4=12;
+	auto sacParticle4=SacParticle!B.get(ParticleType.fire);
+	auto scale=0.5f;
+	foreach(i;0..numParticles4){
+		auto direction=state.uniformDirection();
+		auto pposition=position+scale*0.3f*direction;
+		auto velocity=scale*Vector3f(0.0f,0.0f,5.0f);
+		auto frame=state.uniform(2)?0:state.uniform(24);
+		auto lifetime=31-frame;
+		state.addParticle(Particle!B(sacParticle4,pposition,velocity,scale,lifetime,frame));
+	}
+}
+
+void styxFlame(B)(ref MovingObject!B object,ObjectState!B state){
+	auto position=object.warmongerFlame;
+	enum numParticles4=12;
+	auto sacParticle4=SacParticle!B.get(ParticleType.castCharnel); // TODO: ok?
+	auto scale=0.5f;
+	foreach(i;0..numParticles4){
+		auto direction=state.uniformDirection();
+		auto pposition=position+scale*0.3f*direction;
+		auto velocity=scale*Vector3f(0.0f,0.0f,3.0f);
+		auto frame=state.uniform(2)?0:state.uniform(24);
+		auto lifetime=31-frame;
+		state.addParticle(Particle!B(sacParticle4,pposition,velocity,scale,lifetime,frame));
+	}
+}
+
+
 void animateCreature(B)(ref MovingObject!B object,ObjectState!B state){
 	switch(object.sacObject.nttTag){
 		case SpellTag.firefist:
 			firefistFlames(object,state);
 			break;
 		case SpellTag.warmonger:
-			// TODO
+			warmongerFlame(object,state);
 			break;
 		case SpellTag.styx:
-			// TODO
+			styxFlame(object,state);
 			break;
 		default:
 			break;
