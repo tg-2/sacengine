@@ -31,7 +31,6 @@ void loadMap(B)(ref Options options)in{
 			lobby.continueGame(toContinue,options.continueFrame,options);
 		}
 	}
-	lobby.loadMap(options);
 	if(lobby.network) lobby.initializeNetworking(options);
 	lobby.loadGame(options);
 	B.setState(lobby.state);

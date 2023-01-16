@@ -195,25 +195,13 @@ struct Lobby(B){
 		}
 	}
 
-	void loadMap(ref Options options){
-		if(!map){
-			map=loadSacMap!B(options.map,&mapData); // TODO: compute hash without loading map
-			sides=new Sides!B(map.sids);
-			proximity=new Proximity!B();
-			pathFinder=new PathFinder!B(map);
-			triggers=new Triggers!B(map.trig);
-		}else{
-			enforce(!!sides);
-			enforce(!!proximity);
-			enforce(!!pathFinder);
-			enforce(!!triggers);
-		}
-		options.mapHash=map.crc32; // TODO: store this somewhere else?
-	}
-
 	void initializeNetworking(ref Options options)in{
 		assert(!!network);
 	}do{
+		if(isHost){
+			map=loadSacMap!B(options.map,&mapData); // TODO: compute hash without loading map
+			options.mapHash=map.crc32; // TODO: store this somewhere else?
+		}
 		network.dumpTraffic=options.dumpTraffic;
 		network.checkDesynch=options.checkDesynch;
 		network.logDesynch_=options.logDesynch;
@@ -316,6 +304,10 @@ struct Lobby(B){
 	}
 
 	void loadGame(ref Options options){
+		sides=new Sides!B(map.sids);
+		proximity=new Proximity!B();
+		pathFinder=new PathFinder!B(map);
+		triggers=new Triggers!B(map.trig);
 		state=new GameState!B(map,sides,proximity,pathFinder,triggers);
 		int[32] multiplayerSides=-1;
 		bool[32] matchedSides=false;
