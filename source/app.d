@@ -7,7 +7,7 @@ import dagonBackend;
 import ntts:God;
 import state:randomSpells,defaultSpells;
 import recording_:loadRecording;
-import lobby:Lobby;
+import lobby:Lobby,LobbyState;
 import wadmanager,util;
 import dlib.math;
 import std.string, std.array, std.range, std.algorithm, std.stdio;
@@ -20,20 +20,37 @@ void loadMap(B)(ref Options options)in{
 }do{
 	auto lobby=Lobby!B();
 	auto slot=options.observer?-1:options.slot;
-	lobby.start(slot,options);
+	lobby.initialize(slot,options);
+	assert(lobby.state==LobbyState.initialized);
+	while(!lobby.tryConnect(options)){
+		import core.thread;
+		Thread.sleep(200.msecs);
+		if(!B.processEvents()) return;
+	}
+	assert(lobby.state.among(LobbyState.offline,LobbyState.connected));
 	if(lobby.canPlayRecording&&options.playbackFilename.length){
 		auto recording=loadRecording!B(options.playbackFilename);
 		lobby.initializePlayback(recording,options);
 	}
-	if(lobby.canContinue){
-		if(lobby.isHost&&options.continueFilename.length){
-			auto toContinue=loadRecording!B(options.continueFilename);
-			lobby.continueGame(toContinue,options.continueFrame,options);
-		}
+	if(lobby.canContinue&&options.continueFilename.length){
+		auto recording=loadRecording!B(options.continueFilename);
+		lobby.continueGame(recording,options.continueFrame,options);
 	}
-	if(lobby.network) lobby.initializeNetworking(options);
+	assert(lobby.state.among(LobbyState.offline,LobbyState.connected));
+	if(lobby.network){
+		assert(lobby.state==LobbyState.connected);
+		while(!lobby.trySynch()){
+			import core.thread;
+			Thread.sleep(1.msecs);
+			if(!B.processEvents()) return;
+		}
+		assert(lobby.state==LobbyState.synched);
+		lobby.synchronizeSettings(options);
+	}else lobby.loadMap(options);
+	assert(!!lobby.map);
+	assert(lobby.state==LobbyState.readyToLoad);
 	lobby.loadGame(options);
-	B.setState(lobby.state);
+	B.setState(lobby.gameState);
 	if(lobby.wizId) B.focusCamera(lobby.wizId);
 	else B.scene.fpview.active=true;
 	B.setController(lobby.controller);

@@ -106,8 +106,19 @@ GameInit!B gameInit(alias multiplayerSide,B,R)(R playerSettings,ref Options opti
 	return gameInit;
 }
 
+enum LobbyState{
+	empty,
+	initialized,
+	offline,
+	connected,
+	synched,
+	readyToLoad,
+}
+
 struct Lobby(B){
+	LobbyState state;
 	Network!B network=null;
+	InternetAddress joinAddress=null;
 	int slot;
 	bool isHost(){ return !network||network.isHost; }
 	Recording!B playback=null;
@@ -120,7 +131,7 @@ struct Lobby(B){
 	PathFinder!B pathFinder;
 	Triggers!B triggers;
 
-	GameState!B state;
+	GameState!B gameState;
 	GameInit!B gameInit;
 	Recording!B recording=null;
 
@@ -128,24 +139,44 @@ struct Lobby(B){
 	int wizId;
 	Controller!B controller;
 
-	void start(int slot,ref Options options){
+	void initialize(int slot,ref Options options)in{
+		assert(state==LobbyState.empty);
+	}do{
 		this.slot=slot;
-		if(options.host){
-			network=new Network!B();
-			network.hostGame(options.settings);
-		}else if(options.joinIP!=""){
-			network=new Network!B();
-			auto address=new InternetAddress(options.joinIP,listeningPort);
-			while(!network.joinGame(address,options.settings)){
-				// TODO: loop externally
-				import core.thread;
-				Thread.sleep(200.msecs);
-				if(!B.processEvents()) return;
-			}
-		}
+		state=LobbyState.initialized;
 	}
 
-	bool canPlayRecording(){ return !playback && !toContinue && !network; }
+	private void createNetwork(ref Options options)in{
+		assert(!network);
+	}do{
+		network=new Network!B();
+		network.dumpTraffic=options.dumpTraffic;
+		network.checkDesynch=options.checkDesynch;
+		network.logDesynch_=options.logDesynch;
+		network.pauseOnDrop=options.pauseOnDrop;
+	}
+	
+	bool tryConnect(ref Options options)in{
+		assert(state==LobbyState.initialized);
+	}do{
+		if(options.host){
+			if(!network) createNetwork(options);
+			network.hostGame(options.settings);		
+			state=LobbyState.connected;
+			return true;
+		}
+		if(options.joinIP!=""){
+			if(!network) createNetwork(options);
+			if(!joinAddress) joinAddress=new InternetAddress(options.joinIP,listeningPort);
+			auto result=network.joinGame(joinAddress,options.settings);
+			if(result) state=LobbyState.connected;
+			return result;
+		}
+		state=LobbyState.offline;
+		return true;
+	}
+
+	bool canPlayRecording(){ return state==LobbyState.offline && !playback && !toContinue; }
 	void initializePlayback(Recording!B recording,ref Options options)in{
 		assert(canPlayRecording);
 	}do{
@@ -158,9 +189,10 @@ struct Lobby(B){
 		proximity=playback.proximity;
 		pathFinder=playback.pathFinder;
 		triggers=playback.triggers;
+		options.mapHash=map.crc32;
 	}
 
-	bool canContinue(){ return !toContinue && !playback && isHost; }
+	bool canContinue(){ return state.among(LobbyState.offline, LobbyState.connected) && isHost && !toContinue && !playback; }
 	void continueGame(Recording!B recording,int frame,ref Options options)in{
 		assert(canContinue);
 	}do{
@@ -182,6 +214,7 @@ struct Lobby(B){
 		pathFinder=toContinue.pathFinder;
 		triggers=toContinue.triggers;
 		if(network){
+			assert(state==LobbyState.connected);
 			static struct SlotData{
 				int slot;
 				string name;
@@ -192,24 +225,27 @@ struct Lobby(B){
 			assert(network.players.length==1);
 			network.players[network.me].committedFrame=frame;
 			network.initSlots(iota(options.numSlots).map!toSlotData);
-		}
+		}else assert(state==LobbyState.offline);
+		options.mapHash=map.crc32;
 	}
 
-	void initializeNetworking(ref Options options)in{
+	bool trySynch(){
+		network.update(null);
+		bool result=network.synched;
+		if(result) state=LobbyState.synched;
+		return result;
+	}
+
+	void loadMap(ref Options options){
+		if(!map) map=loadSacMap!B(options.map,&mapData); // TODO: compute hash without loading map
+		options.mapHash=map.crc32; // TODO: store this somewhere else?
+		if(state==LobbyState.offline) state=LobbyState.readyToLoad;
+	}
+	
+	void synchronizeSettings(ref Options options)in{
 		assert(!!network);
 	}do{
-		if(isHost){
-			map=loadSacMap!B(options.map,&mapData); // TODO: compute hash without loading map
-			options.mapHash=map.crc32; // TODO: store this somewhere else?
-		}
-		network.dumpTraffic=options.dumpTraffic;
-		network.checkDesynch=options.checkDesynch;
-		network.logDesynch_=options.logDesynch;
-		network.pauseOnDrop=options.pauseOnDrop;
-		while(!network.synched){
-			network.idleLobby(); // TODO: external looping
-			if(!B.processEvents()) return;
-		}
+		if(isHost) loadMap(options);
 		network.updateSetting!"mapHash"(options.mapHash);
 		network.updateStatus(PlayerStatus.commitHashReady);
 		if(!network.isHost){
@@ -283,8 +319,9 @@ struct Lobby(B){
 		void loadMap(string name){
 			mapName=name;
 			map=loadSacMap!B(mapName);
-			enforce(map.crc32==hash,"map hash mismatch");
-			network.updateSetting!"mapHash"(map.crc32);
+			options.mapHash=map.crc32;
+			enforce(options.mapHash==hash,"map hash mismatch");
+			network.updateSetting!"mapHash"(options.mapHash);
 			network.updateStatus(PlayerStatus.mapHashed);
 		}
 		while(!network.synchronizeMap(&loadMap)){
@@ -301,14 +338,17 @@ struct Lobby(B){
 		}
 		options.settings=network.settings;
 		slot=network.slot;
+		state=LobbyState.readyToLoad;
 	}
 
-	void loadGame(ref Options options){
+	void loadGame(ref Options options)in{
+		assert(!!map);
+	}do{
 		sides=new Sides!B(map.sids);
 		proximity=new Proximity!B();
 		pathFinder=new PathFinder!B(map);
 		triggers=new Triggers!B(map.trig);
-		state=new GameState!B(map,sides,proximity,pathFinder,triggers);
+		gameState=new GameState!B(map,sides,proximity,pathFinder,triggers);
 		int[32] multiplayerSides=-1;
 		bool[32] matchedSides=false;
 		foreach(i,ref side;sides){
@@ -334,7 +374,7 @@ struct Lobby(B){
 						network.idleLobby(); // TODO: external looping
 						if(!B.processEvents()) return;
 					}
-					deserialize(gameInit,state.current,network.gameInitData);
+					deserialize(gameInit,gameState.current,network.gameInitData);
 					network.gameInitData=null;
 				}
 			}else{
@@ -347,31 +387,31 @@ struct Lobby(B){
 			recording.gameInit=gameInit;
 			recording.logCore=options.logCore;
 		}
-		state.initGame(gameInit);
-		hasSlot=0<=slot&&slot<=state.slots.length;
-		wizId=hasSlot?state.slots[slot].wizard:0;
-		state.current.map.makeMeshes(options.enableMapBottom);
+		gameState.initGame(gameInit);
+		hasSlot=0<=slot&&slot<=gameState.slots.length;
+		wizId=hasSlot?gameState.slots[slot].wizard:0;
+		gameState.current.map.makeMeshes(options.enableMapBottom);
 		if(toContinue){
-			state.commands=toContinue.commands;
+			gameState.commands=toContinue.commands;
 			playAudio=false;
-			while(state.current.frame+1<state.commands.length){
-				state.step();
-				if(state.current.frame%1000==0){
-					writeln("continue: simulated ",state.current.frame," of ",state.commands.length-1," frames");
+			while(gameState.current.frame+1<gameState.commands.length){
+				gameState.step();
+				if(gameState.current.frame%1000==0){
+					writeln("continue: simulated ",gameState.current.frame," of ",gameState.commands.length-1," frames");
 				}
 			}
 			playAudio=true;
-			writeln(state.current.frame," ",options.continueFrame);
-			assert(state.current.frame==options.continueFrame);
+			writeln(gameState.current.frame," ",options.continueFrame);
+			assert(gameState.current.frame==options.continueFrame);
 			if(network){
 				assert(network.isHost);
 				foreach(i;network.connectedPlayerIds) if(i!=network.host) network.updateStatus(cast(int)i,PlayerStatus.desynched);
 				network.continueSynchAt(options.continueFrame);
 			}
 		}
-		state.commit();
-		if(network && network.isHost) network.addSynch(state.lastCommitted.frame,state.lastCommitted.hash);
-		if(recording) recording.stepCommitted(state.lastCommitted);
-		controller=new Controller!B(hasSlot?slot:-1,state,network,recording,playback);
+		gameState.commit();
+		if(network && network.isHost) network.addSynch(gameState.lastCommitted.frame,gameState.lastCommitted.hash);
+		if(recording) recording.stepCommitted(gameState.lastCommitted);
+		controller=new Controller!B(hasSlot?slot:-1,gameState,network,recording,playback);
 	}
 }
