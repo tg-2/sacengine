@@ -39,18 +39,11 @@ void loadMap(B)(ref Options options)in{
 		lobby.continueGame(recording,options.continueFrame,options);
 	}
 	assert(lobby.state.among(LobbyState.offline,LobbyState.connected));
-	if(lobby.network){
-		assert(lobby.state==LobbyState.connected);
-		while(!lobby.trySynch())
-			wait();
-		assert(lobby.state==LobbyState.synched);
-		while(!lobby.synchronizeSettings(options))
-			wait();
-	}else lobby.loadMap(options);
-	assert(!!lobby.map);
-	assert(lobby.state==LobbyState.readyToLoad);
-	while(!lobby.loadGame(options))
+	while(!lobby.update(options))
 		wait();
+	if(lobby.state==LobbyState.incompatibleVersion)
+		return;
+	assert(!!lobby.gameState);
 	B.setState(lobby.gameState);
 	if(lobby.wizId) B.focusCamera(lobby.wizId);
 	else B.scene.fpview.active=true;

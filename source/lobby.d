@@ -113,7 +113,7 @@ enum LobbyState{
 	connected,
 	synched,
 	hashesReady,
-	incompatibleVersionId,
+	incompatibleVersion,
 	waitingForClients,
 	readyToLoad,
 }
@@ -241,7 +241,7 @@ struct Lobby(B){
 
 	bool synchronizeSettings(ref Options options)in{
 		assert(!!network);
-		with(LobbyState) assert(state.among(synched,waitingForClients,readyToLoad));
+		with(LobbyState) assert(state.among(synched,hashesReady,waitingForClients,readyToLoad));
 	}do{
 		if(state<LobbyState.hashesReady){
 			if(isHost) loadMap(options);
@@ -258,7 +258,7 @@ struct Lobby(B){
 					writeln("incompatible version #");
 					writeln("host is using version ",network.hostSettings.commit);
 					network.disconnectPlayer(network.host,null);
-					state=LobbyState.incompatibleVersionId;
+					state=LobbyState.incompatibleVersion;
 					return true;
 				}
 				network.updateStatus(PlayerStatus.readyToLoad);
@@ -306,16 +306,18 @@ struct Lobby(B){
 			}
 		}
 		if(!network.isHost){
-			auto mapName=network.hostSettings.map;
-			network.updateSetting!"map"(mapName);
-			auto hash=network.hostSettings.mapHash;
-			import std.file: exists;
-			if(exists(mapName)){
-				map=loadSacMap!B(mapName); // TODO: compute hash without loading map?
-				options.mapHash=map.crc32;
+			if(!map){
+				auto mapName=network.hostSettings.map;
+				network.updateSetting!"map"(mapName);
+				auto hash=network.hostSettings.mapHash;
+				import std.file: exists;
+				if(exists(mapName)){
+					map=loadSacMap!B(mapName); // TODO: compute hash without loading map?
+					options.mapHash=map.crc32;
+				}
+				network.updateSetting!"mapHash"(options.mapHash);
+				network.updateStatus(PlayerStatus.mapHashed);
 			}
-			network.updateSetting!"mapHash"(options.mapHash);
-			network.updateStatus(PlayerStatus.mapHashed);
 		}else{
 			network.mapData=mapData;
 			network.updateStatus(PlayerStatus.mapHashed);
@@ -416,6 +418,29 @@ struct Lobby(B){
 		if(network && network.isHost) network.addSynch(gameState.lastCommitted.frame,gameState.lastCommitted.hash);
 		if(recording) recording.stepCommitted(gameState.lastCommitted);
 		controller=new Controller!B(hasSlot?slot:-1,gameState,network,recording,playback);
+		return true;
+	}
+
+	bool update(ref Options options)in{
+		with(LobbyState)
+		assert(state.among(offline,connected,synched,hashesReady,waitingForClients,readyToLoad));
+	}do{
+		if(network){
+			if(state==LobbyState.connected){
+				if(!trySynch())
+					return false;
+			}
+			with(LobbyState)
+			if(state.among(synched,hashesReady,waitingForClients,readyToLoad)){
+				if(!synchronizeSettings(options))
+					return false;
+			}
+		}else loadMap(options);
+		assert(!!map);
+		if(state==LobbyState.readyToLoad){
+			if(!loadGame(options))
+				return false;
+		}
 		return true;
 	}
 }
