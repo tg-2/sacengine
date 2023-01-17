@@ -4,13 +4,13 @@ import util;
 import std.string, std.range, std.algorithm, std.stdio;
 import std.exception, std.conv;
 
-GameInit!B gameInit(alias multiplayerSide,B,R)(R playerSettings,ref Options options){
+GameInit!B gameInit(B,R)(Sides!B sides_,R playerSettings,ref Options options){
 	GameInit!B gameInit;
 	auto numSlots=options.numSlots;
 	if(options._2v2) enforce(numSlots>=4);
 	if(options._3v3) enforce(numSlots>=6);
 	gameInit.slots=new GameInit!B.Slot[](numSlots);
-	auto sides=iota(numSlots).map!(i=>multiplayerSide(i)).array;
+	auto sides=iota(numSlots).map!(i=>sides_.multiplayerSide(i)).array;
 	if(options.shuffleSides){
 		import std.random: randomShuffle;
 		randomShuffle(sides);
@@ -112,6 +112,9 @@ enum LobbyState{
 	offline,
 	connected,
 	synched,
+	hashesReady,
+	incompatibleVersionId,
+	waitingForClients,
 	readyToLoad,
 }
 
@@ -155,13 +158,13 @@ struct Lobby(B){
 		network.logDesynch_=options.logDesynch;
 		network.pauseOnDrop=options.pauseOnDrop;
 	}
-	
+
 	bool tryConnect(ref Options options)in{
 		assert(state==LobbyState.initialized);
 	}do{
 		if(options.host){
 			if(!network) createNetwork(options);
-			network.hostGame(options.settings);		
+			network.hostGame(options.settings);
 			state=LobbyState.connected;
 			return true;
 		}
@@ -230,84 +233,85 @@ struct Lobby(B){
 	}
 
 	bool trySynch(){
-		network.update(null);
+		network.update(controller); // (may be null)
 		bool result=network.synched;
 		if(result) state=LobbyState.synched;
 		return result;
 	}
 
-	void loadMap(ref Options options){
-		if(!map) map=loadSacMap!B(options.map,&mapData); // TODO: compute hash without loading map
-		options.mapHash=map.crc32; // TODO: store this somewhere else?
-		if(state==LobbyState.offline) state=LobbyState.readyToLoad;
-	}
-	
-	void synchronizeSettings(ref Options options)in{
+	bool synchronizeSettings(ref Options options)in{
 		assert(!!network);
+		with(LobbyState) assert(state.among(synched,waitingForClients,readyToLoad));
 	}do{
-		if(isHost) loadMap(options);
-		network.updateSetting!"mapHash"(options.mapHash);
-		network.updateStatus(PlayerStatus.commitHashReady);
-		if(!network.isHost){
-			while(!network.hostCommitHashReady){
-				network.idleLobby(); // TODO: external looping
-				if(!B.processEvents()) return;
-			}
-			if(network.hostSettings.commit!=options.commit){
-				writeln("incompatible version #");
-				writeln("host is using version ",network.hostSettings.commit);
-				network.disconnectPlayer(network.host,null);
-				return;
-			}
-			network.updateStatus(PlayerStatus.readyToLoad);
+		if(state<LobbyState.hashesReady){
+			if(isHost) loadMap(options);
+			network.updateSetting!"mapHash"(options.mapHash);
+			network.updateStatus(PlayerStatus.commitHashReady);
+			state=LobbyState.hashesReady;
 		}
-		while(!network.readyToLoad&&!network.pendingResynch){
-			network.idleLobby(); // TODO: external looping
-			if(!B.processEvents()) return;
-			if(network.isHost&&network.numReadyPlayers+(network.players[network.host].wantsToControlState)>=options.numSlots&&network.clientsReadyToLoad()){
-				network.acceptingNewConnections=false;
-				//network.stopListening();
-				auto numSlots=options.numSlots;
-				auto slotTaken=new bool[](numSlots);
-				foreach(i,ref player;network.players){
-					if(player.settings.observer) continue;
-					auto pslot=player.settings.slot;
-					if(0<=pslot && pslot<options.numSlots && !slotTaken[pslot])
-						slotTaken[pslot]=true;
-					else pslot=-1;
-					network.updateSlot(cast(int)i,pslot);
+		if(state==LobbyState.hashesReady){
+			if(!network.isHost){
+				network.update(controller); // (may be null)
+				if(!network.hostCommitHashReady)
+					return false;
+				if(network.hostSettings.commit!=options.commit){
+					writeln("incompatible version #");
+					writeln("host is using version ",network.hostSettings.commit);
+					network.disconnectPlayer(network.host,null);
+					state=LobbyState.incompatibleVersionId;
+					return true;
 				}
-				auto freeSlots=iota(numSlots).filter!(i=>!slotTaken[i]);
-				foreach(i,ref player;network.players){
-					if(player.settings.observer) continue;
-					if(freeSlots.empty) break;
-					if(player.slot==-1){
-						network.updateSlot(cast(int)i,freeSlots.front);
-						freeSlots.popFront();
-					}
-				}
-				if(options.synchronizeLevel) network.synchronizeSetting!"level"();
-				if(options.synchronizeSouls) network.synchronizeSetting!"souls"();
-
-				if(options.synchronizeLevelBounds){
-					network.synchronizeSetting!"minLevel"();
-					network.synchronizeSetting!"maxLevel"();
-				}
-				if(options.synchronizeXPRate) network.synchronizeSetting!"xpRate"();
-
 				network.updateStatus(PlayerStatus.readyToLoad);
-				assert(network.readyToLoad());
-				break;
+			}
+			state=LobbyState.waitingForClients;
+		}
+		if(state==LobbyState.waitingForClients){
+			network.update(controller); // (may be null)
+			if(!network.readyToLoad&&!network.pendingResynch){
+				if(network.isHost&&network.numReadyPlayers+(network.players[network.host].wantsToControlState)>=options.numSlots&&network.clientsReadyToLoad()){
+					network.acceptingNewConnections=false;
+					//network.stopListening();
+					auto numSlots=options.numSlots;
+					auto slotTaken=new bool[](numSlots);
+					foreach(i,ref player;network.players){
+						if(player.settings.observer) continue;
+						auto pslot=player.settings.slot;
+						if(0<=pslot && pslot<options.numSlots && !slotTaken[pslot])
+							slotTaken[pslot]=true;
+						else pslot=-1;
+						network.updateSlot(cast(int)i,pslot);
+					}
+					auto freeSlots=iota(numSlots).filter!(i=>!slotTaken[i]);
+					foreach(i,ref player;network.players){
+						if(player.settings.observer) continue;
+						if(freeSlots.empty) break;
+						if(player.slot==-1){
+							network.updateSlot(cast(int)i,freeSlots.front);
+							freeSlots.popFront();
+						}
+					}
+					if(options.synchronizeLevel) network.synchronizeSetting!"level"();
+					if(options.synchronizeSouls) network.synchronizeSetting!"souls"();
+
+					if(options.synchronizeLevelBounds){
+						network.synchronizeSetting!"minLevel"();
+						network.synchronizeSetting!"maxLevel"();
+					}
+					if(options.synchronizeXPRate) network.synchronizeSetting!"xpRate"();
+
+					network.updateStatus(PlayerStatus.readyToLoad);
+					assert(network.readyToLoad());
+					state=LobbyState.readyToLoad;
+				}else return false;
 			}
 		}
-		auto mapName=network.hostSettings.map;
-		if(network.settings.map!=mapName)
-			network.updateSetting!"map"(mapName);
-		auto hash=network.hostSettings.mapHash;
 		if(!network.isHost){
+			auto mapName=network.hostSettings.map;
+			network.updateSetting!"map"(mapName);
+			auto hash=network.hostSettings.mapHash;
 			import std.file: exists;
 			if(exists(mapName)){
-				map=loadSacMap!B(mapName); // TODO: compute hash without loading map
+				map=loadSacMap!B(mapName); // TODO: compute hash without loading map?
 				options.mapHash=map.crc32;
 			}
 			network.updateSetting!"mapHash"(options.mapHash);
@@ -316,70 +320,69 @@ struct Lobby(B){
 			network.mapData=mapData;
 			network.updateStatus(PlayerStatus.mapHashed);
 		}
-		void loadMap(string name){
-			mapName=name;
+		void loadMap(string mapName){
+			options.map=mapName;
 			map=loadSacMap!B(mapName);
 			options.mapHash=map.crc32;
+			auto hash=network.hostSettings.mapHash;
 			enforce(options.mapHash==hash,"map hash mismatch");
 			network.updateSetting!"mapHash"(options.mapHash);
 			network.updateStatus(PlayerStatus.mapHashed);
 		}
-		while(!network.synchronizeMap(&loadMap)){
-			network.idleLobby(); // TODO: external looping
-			if(!B.processEvents()) return;
-		}
+		network.update(controller); // (may be null)
+		if(!network.synchronizeMap(&loadMap))
+			return false;
 		if(network.isHost){
 			network.load();
 		}else{
-			while(!network.loading&&network.players[network.me].status!=PlayerStatus.desynched){ // desynched at start if late join
-				network.idleLobby(); // TODO: external looping
-				if(!B.processEvents()) return;
-			}
+			if(!network.loading&&network.players[network.me].status!=PlayerStatus.desynched) // desynched at start if late join
+				return false;
 		}
 		options.settings=network.settings;
 		slot=network.slot;
 		state=LobbyState.readyToLoad;
+		return true;
 	}
 
-	void loadGame(ref Options options)in{
+	void loadMap(ref Options options){
+		if(!map) map=loadSacMap!B(options.map,&mapData); // TODO: compute hash without loading map?
+		options.mapHash=map.crc32; // TODO: store this somewhere else?
+		if(state==LobbyState.offline) state=LobbyState.readyToLoad;
+	}
+
+	bool loadGame(ref Options options)in{
 		assert(!!map);
+		assert(state==LobbyState.readyToLoad);
 	}do{
-		sides=new Sides!B(map.sids);
-		proximity=new Proximity!B();
-		pathFinder=new PathFinder!B(map);
-		triggers=new Triggers!B(map.trig);
-		gameState=new GameState!B(map,sides,proximity,pathFinder,triggers);
-		int[32] multiplayerSides=-1;
-		bool[32] matchedSides=false;
-		foreach(i,ref side;sides){
-			int mpside=side.assignment&PlayerAssignment.multiplayerMask;
-			if(!mpside) continue;
-			multiplayerSides[mpside-1]=cast(int)i;
-			matchedSides[i]=true;
-		}
-		iota(32).filter!(i=>!matchedSides[i]).copy(multiplayerSides[].filter!(x=>x==-1));
-		int multiplayerSide(int slot){
-			if(slot<0||slot>=multiplayerSides.length) return slot;
-			return multiplayerSides[slot];
+		void initState(){
+			if(!gameState){
+				sides=new Sides!B(map.sids);
+				proximity=new Proximity!B();
+				pathFinder=new PathFinder!B(map);
+				triggers=new Triggers!B(map.trig);
+				gameState=new GameState!B(map,sides,proximity,pathFinder,triggers);
+			}
 		}
 		if(!playback||network){
 			if(network){
 				import serialize_;
 				if(network.isHost){
+					initState();
 					if(toContinue) gameInit=toContinue.gameInit;
-					else gameInit=.gameInit!(multiplayerSide,B)(network.players.map!(ref(return ref x)=>x.settings),options);
+					else gameInit=.gameInit!B(sides,network.players.map!(ref(return ref x)=>x.settings),options);
 					gameInit.serialized(&network.initGame);
 				}else{
-					while(!network.gameInitData){
-						network.idleLobby(); // TODO: external looping
-						if(!B.processEvents()) return;
-					}
+					network.update(controller); // (may be null)
+					if(!network.gameInitData)
+						return false;
+					initState();
 					deserialize(gameInit,gameState.current,network.gameInitData);
 					network.gameInitData=null;
 				}
 			}else{
+				initState();
 				if(toContinue) gameInit=toContinue.gameInit;
-				else gameInit=.gameInit!(multiplayerSide,B)(only(options.settings),options);
+				else gameInit=.gameInit!B(sides,only(options.settings),options);
 			}
 		}else gameInit=playback.gameInit;
 		if((!playback||network)&&options.recordingFilename.length){
@@ -413,5 +416,6 @@ struct Lobby(B){
 		if(network && network.isHost) network.addSynch(gameState.lastCommitted.frame,gameState.lastCommitted.hash);
 		if(recording) recording.stepCommitted(gameState.lastCommitted);
 		controller=new Controller!B(hasSlot?slot:-1,gameState,network,recording,playback);
+		return true;
 	}
 }

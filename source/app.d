@@ -22,11 +22,13 @@ void loadMap(B)(ref Options options)in{
 	auto slot=options.observer?-1:options.slot;
 	lobby.initialize(slot,options);
 	assert(lobby.state==LobbyState.initialized);
-	while(!lobby.tryConnect(options)){
+	void wait(int msecs=1){
 		import core.thread;
-		Thread.sleep(200.msecs);
+		Thread.sleep(msecs.msecs);
 		if(!B.processEvents()) return;
 	}
+	while(!lobby.tryConnect(options))
+		wait(200);
 	assert(lobby.state.among(LobbyState.offline,LobbyState.connected));
 	if(lobby.canPlayRecording&&options.playbackFilename.length){
 		auto recording=loadRecording!B(options.playbackFilename);
@@ -39,17 +41,16 @@ void loadMap(B)(ref Options options)in{
 	assert(lobby.state.among(LobbyState.offline,LobbyState.connected));
 	if(lobby.network){
 		assert(lobby.state==LobbyState.connected);
-		while(!lobby.trySynch()){
-			import core.thread;
-			Thread.sleep(1.msecs);
-			if(!B.processEvents()) return;
-		}
+		while(!lobby.trySynch())
+			wait();
 		assert(lobby.state==LobbyState.synched);
-		lobby.synchronizeSettings(options);
+		while(!lobby.synchronizeSettings(options))
+			wait();
 	}else lobby.loadMap(options);
 	assert(!!lobby.map);
 	assert(lobby.state==LobbyState.readyToLoad);
-	lobby.loadGame(options);
+	while(!lobby.loadGame(options))
+		wait();
 	B.setState(lobby.gameState);
 	if(lobby.wizId) B.focusCamera(lobby.wizId);
 	else B.scene.fpview.active=true;

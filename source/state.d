@@ -20482,6 +20482,9 @@ final class Sides(B){
 	private SacParticle!B[32] manaParticles;
 	private SacParticle!B[32] shrineParticles;
 	private SacParticle!B[32] manahoarParticles;
+
+	private int[32] multiplayerSides=-1;
+
 	this(Side[] sids...){
 		static int num=0;
 		foreach(ref side;sids){
@@ -20492,7 +20495,21 @@ final class Sides(B){
 			sides[i].allies|=(1<<i); // allied to themselves
 			sides[i].enemies&=~(1<<i); // not enemies of themselves
 		}
+		bool[32] matchedSides=false;
+		foreach(i,ref side;sides){
+			int mpside=side.assignment&PlayerAssignment.multiplayerMask;
+			if(!mpside) continue;
+			multiplayerSides[mpside-1]=cast(int)i;
+			matchedSides[i]=true;
+		}
+		iota(32).filter!(i=>!matchedSides[i]).copy(multiplayerSides[].filter!(x=>x==-1));
 	}
+
+	int multiplayerSide(int slot){
+		if(slot<0||slot>=multiplayerSides.length) return slot;
+		return multiplayerSides[slot];
+	}
+
 	int opApply(scope int delegate(ref Side) dg){
 		foreach(side;sides) if(auto r=dg(side)) return r;
 		return 0;
