@@ -191,13 +191,12 @@ final class SacScene: Scene{
 	}
 	override void renderEntities2D(RenderingContext* rc){
 		super.renderEntities2D(rc);
-		if(!state) return;
 		mouse.x=eventManager.mouseX/screenScaling;
 		mouse.y=eventManager.mouseY/screenScaling;
 		mouse.x=max(0,min(mouse.x,width-1));
 		mouse.y=max(0,min(mouse.y,height-1));
 		typeof(renderer).R2DOpt r2dopt={cursorSize: options.cursorSize};
-		renderer.renderEntities2D(r2dopt,state.current,forms.data,info,rc);
+		renderer.renderEntities2D(r2dopt,state?state.current:null,forms.data,info,rc);
 	}
 
 	void setState(GameState!DagonBackend state)in{
@@ -278,6 +277,12 @@ final class SacScene: Scene{
 		//sortEntities(entities3D);
 		//sortEntities(entities2D);
 	}
+
+	void initialize(){
+		initializeMouse();
+		renderer.initialize();
+	}
+
 	//@property float hudScaling(){ return height/480.0f; }
 	struct MovementState{ // to avoid sending too many commands. TODO: react to input events instead.
 		MovementDirection movement;
@@ -978,13 +983,13 @@ final class SacScene: Scene{
 				void showMouse(){
 					fpview.active=false;
 					mouse.visible=true;
-					if(!state) SDL_ShowCursor(SDL_ENABLE);
+					//if(!state) SDL_ShowCursor(SDL_ENABLE);
 				}
 				void hideMouse(){
 					fpview.active=true;
 					mouse.visible=false;
 					fpview.mouseFactor=0.25f;
-					if(!state) SDL_ShowCursor(SDL_DISABLE);
+					//if(!state) SDL_ShowCursor(SDL_DISABLE);
 				}
 				void toggleMouse(){
 					if(mouse.visible) hideMouse();
@@ -1152,6 +1157,8 @@ final class SacScene: Scene{
 				camera.lastTargetFacing=targetFacing;
 			}
 			updateHUD(dt);
+		}else{ // (no state)
+			mouse.frame+=1;
 		}
 		foreach(sac;sacs.data){
 			static float totalTime=0.0f;
@@ -1163,6 +1170,7 @@ final class SacScene: Scene{
 	}
 	bool mouseTargetValid(Target target){
 		if(mouse.status!=MouseStatus.icon||mouse.dragging) return true;
+		if(!state) return false;
 		import spells:SpelFlags;
 		enum orderSpelFlags=SpelFlags.targetWizards|SpelFlags.targetCreatures|SpelFlags.targetCorpses|SpelFlags.targetStructures|SpelFlags.targetGround|AdditionalSpelFlags.targetSacrificed;
 		auto otarget=OrderTarget(target);
@@ -1187,6 +1195,7 @@ final class SacScene: Scene{
 		if(mouse.onSelectionRoster) return renderer.selectionRosterTarget;
 		if(mouse.onMinimap) return renderer.minimapTarget;
 		auto information=gbuffer.getInformation();
+		if(!state) return Target.init;
 		auto cur=state.current;
 		if(information.x==1){
 			Vector3f position=2560.0f*information.yz;
@@ -1218,7 +1227,9 @@ final class SacScene: Scene{
 				if(formIndex>=forms.length||elementIndex>=forms[formIndex].elements.length) mouse.target=Target.init;
 			}else mouse.target=Target.init;
 		}else{
-			if(target.id!=0&&!state.current.isValidTarget(target.id,target.type)) target=Target.init;
+			if(target.location==TargetLocation.scene)
+				if(target.id!=0&&(!state||!state.current.isValidTarget(target.id,target.type)))
+					target=Target.init;
 		}
 		auto targetValid=mouseTargetValid(target);
 		static immutable importantTargets=[TargetType.creature,TargetType.soul];
@@ -1247,22 +1258,26 @@ final class SacScene: Scene{
 			        && b.type.among(TargetType.soulStat, TargetType.manaStat, TargetType.healthStat))
 				&& a.id==b.id;
 		}
+		if(state) mouse.frame=state.current.frame;
 		if(!targetsEquiv(mouse.target, target))
-			mouse.targetUpdateFrame=state.current.frame;
+			mouse.targetUpdateFrame=mouse.frame;
 		mouse.target=target;
 		if(mouse.target.type==TargetType.spell)
 			mouse.targetSpell=renderer.spellbookTargetSpell;
 		if(mouse.target.type==TargetType.ability)
 			mouse.targetSpell=renderer.selectionRosterTargetAbility;
 		mouse.targetValid=targetValid;
-		auto otarget=OrderTarget(mouse.target);
-		auto summary=summarize!true(otarget,renderSide,state.current);
-		with(Cursor)
-			mouse.showFrame=targetValid && target.location==TargetLocation.scene &&
-				!(summary&TargetFlags.corpse) &&
-				((mouse.status.among(MouseStatus.standard,MouseStatus.rectangleSelect)&&!mouse.dragging &&
-				  summary&(TargetFlags.soul|TargetFlags.creature|TargetFlags.wizard)) ||
-				 (mouse.status==MouseStatus.icon&&!mouse.dragging&&!!target.type.among(TargetType.creature,TargetType.building,TargetType.soul)));
+		auto otarget=OrderTarget(target);
+		if(target.type!=TargetType.none && targetValid && target.location==TargetLocation.scene){
+			assert(!!state);
+			auto summary=summarize!true(otarget,renderSide,state.current);
+			with(Cursor)
+				mouse.showFrame=targetValid && target.location==TargetLocation.scene &&
+					!(summary&TargetFlags.corpse) &&
+					((mouse.status.among(MouseStatus.standard,MouseStatus.rectangleSelect)&&!mouse.dragging &&
+					  summary&(TargetFlags.soul|TargetFlags.creature|TargetFlags.wizard)) ||
+					 (mouse.status==MouseStatus.icon&&!mouse.dragging&&!!target.type.among(TargetType.creature,TargetType.building,TargetType.soul)));
+		}else mouse.showFrame=false;
 
 	}
 	void animateTarget(Target target){
@@ -1275,10 +1290,10 @@ final class SacScene: Scene{
 		}
 	}
 	void updateCursor(double dt){
-		if(!state) return;
 		updateMouseTarget();
 		auto otarget=OrderTarget(mouse.target);
 		if(mouse.dragging) mouse.cursor=Cursor.drag;
+		if(!state) mouse.cursor=Cursor.normal;
 		else final switch(mouse.status){
 			case MouseStatus.standard:
 				mouse.cursor=otarget.cursor(renderSide,false,state.current);
@@ -1429,7 +1444,7 @@ static:
 		if(!app) return;
 		app.sceneManager.goToScene("Sacrifice");
 		if(!app.scene) return;
-		app.scene.initializeMouse();
+		app.scene.initialize();
 		app.run();
 	}
 	void pause(){ if(app&&app.scene) app.scene.pause(); }
