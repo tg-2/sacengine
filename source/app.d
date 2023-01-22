@@ -43,11 +43,8 @@ void loadMap(B)(ref Options options)in{
 		wait();
 	if(lobby.state==LobbyState.incompatibleVersion)
 		return;
-	assert(!!lobby.gameState);
-	B.setState(lobby.gameState);
-	if(lobby.wizId) B.focusCamera(lobby.wizId);
-	else B.scene.fpview.active=true;
-	B.setController(lobby.controller);
+	assert(lobby.state==LobbyState.readyToStart);
+	lobby.start(options);
 }
 
 int run(string[] args){

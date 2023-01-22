@@ -21437,6 +21437,11 @@ final class GameState(B){
 		}
 	}
 
+	void initMap(){
+		foreach(widgets;current.map.ntts.widgetss) // TODO: improve engine to be able to handle this
+			placeWidgets(widgets);
+	}
+
 	struct SlotInfo{ int controlledSide=-1; int wizard=0; }
 	Array!SlotInfo slots;
 	void initGame(GameInit!B gameInit){ // returns id of controlled wizard
@@ -21445,15 +21450,12 @@ final class GameState(B){
 		foreach(ref wizard;current.map.ntts.wizards)
 			placeNTT(wizard);
 		foreach(ref spirit;current.map.ntts.spirits)
-			placeSpirit(spirit);
+			placeSpirit(spirit); // TODO:
 		foreach(ref creature;current.map.ntts.creatures)
 			foreach(_;0..gameInit.replicateCreatures) placeNTT(creature);
-		foreach(widgets;current.map.ntts.widgetss) // TODO: improve engine to be able to handle this
-			placeWidgets(widgets);
 		current.eachMoving!((ref MovingObject!B object, ObjectState!B state){
 			if(object.creatureState.mode==CreatureMode.dead) object.createSoul(state);
 		})(current);
-
 		if(gameInit.protectManafounts){
 			foreach(i;0..gameInit.protectManafounts) current.uniform(2);
 			current.eachBuilding!((bldg,state){

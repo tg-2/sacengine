@@ -116,6 +116,7 @@ enum LobbyState{
 	incompatibleVersion,
 	waitingForClients,
 	readyToLoad,
+	readyToStart,
 }
 
 class Lobby(B){
@@ -364,6 +365,8 @@ class Lobby(B){
 				pathFinder=new PathFinder!B(map);
 				triggers=new Triggers!B(map.trig);
 				gameState=new GameState!B(map,sides,proximity,pathFinder,triggers);
+				gameState.initMap();
+				gameState.commit();
 			}
 		}
 		if(!playback||network){
@@ -393,6 +396,7 @@ class Lobby(B){
 			recording.gameInit=gameInit;
 			recording.logCore=options.logCore;
 		}
+		gameState.rollback();
 		gameState.initGame(gameInit);
 		hasSlot=0<=slot&&slot<=gameState.slots.length;
 		wizId=hasSlot?gameState.slots[slot].wizard:0;
@@ -407,7 +411,6 @@ class Lobby(B){
 				}
 			}
 			playAudio=true;
-			writeln(gameState.current.frame," ",options.continueFrame);
 			assert(gameState.current.frame==options.continueFrame);
 			if(network){
 				assert(network.isHost);
@@ -415,10 +418,6 @@ class Lobby(B){
 				network.continueSynchAt(options.continueFrame);
 			}
 		}
-		gameState.commit();
-		if(network && network.isHost) network.addSynch(gameState.lastCommitted.frame,gameState.lastCommitted.hash);
-		if(recording) recording.stepCommitted(gameState.lastCommitted);
-		controller=new Controller!B(hasSlot?slot:-1,gameState,network,recording,playback);
 		return true;
 	}
 
@@ -441,7 +440,24 @@ class Lobby(B){
 		if(state==LobbyState.readyToLoad){
 			if(!loadGame(options))
 				return false;
+			// TODO: this is a bit ugly
+			B.setState(gameState);
+			if(wizId) B.focusCamera(wizId);
+			else B.scene.fpview.active=true;
+			state=LobbyState.readyToStart;
 		}
-		return true;
+		return state==LobbyState.readyToStart;
+	}
+
+	void start(ref Options options)in{
+		assert(state==LobbyState.readyToStart);
+	}do{
+		assert(!!gameState);
+		gameState.commit();
+		if(wizId) B.focusCamera(wizId);
+		if(network && network.isHost) network.addSynch(gameState.lastCommitted.frame,gameState.lastCommitted.hash);
+		if(recording) recording.stepCommitted(gameState.lastCommitted);
+		controller=new Controller!B(hasSlot?slot:-1,gameState,network,recording,playback);
+		B.setController(controller); // TODO: this is a bit ugly
 	}
 }
