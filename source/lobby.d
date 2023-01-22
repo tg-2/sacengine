@@ -339,12 +339,6 @@ class Lobby(B){
 		network.update(controller); // (may be null)
 		if(!network.synchronizeMap(&loadMap))
 			return false;
-		if(network.isHost){
-			network.load();
-		}else{
-			if(!network.loading&&network.players[network.me].status!=PlayerStatus.desynched) // desynched at start if late join
-				return false;
-		}
 		options.settings=network.settings;
 		slot=network.slot;
 		state=LobbyState.readyToLoad;
@@ -361,6 +355,12 @@ class Lobby(B){
 		assert(!!map);
 		assert(state==LobbyState.readyToLoad);
 	}do{
+		if(network.isHost){
+			network.load();
+		}else{
+			if(!network.loading&&network.players[network.me].status!=PlayerStatus.desynched) // desynched at start if late join
+				return false;
+		}
 		void initState(){
 			if(!gameState){
 				sides=new Sides!B(map.sids);
