@@ -8,6 +8,7 @@ import options,util;
 import std.stdio;
 import std.algorithm, std.range, std.exception, std.typecons, std.conv;
 
+import lobby;
 import sacobject, sacspell, mrmm, nttData, sacmap, levl, state, form, sacform, controller, network;
 import sxsk : gpuSkinning;
 import renderer,audioBackend;
@@ -1016,7 +1017,6 @@ final class SacScene: Scene{
 	void stateTestControl()in{
 		assert(!!state);
 	}do{
-		if(!options.debugHotkeys) return;
 		auto ostate=state.current;
 		//auto ostate=state.lastCommitted;
 		static void applyToMoving(alias f,B)(ObjectState!B state,Camera camera,Target target){
@@ -1128,7 +1128,7 @@ final class SacScene: Scene{
 		//writeln(DagonBackend.getTotalGPUMemory()," ",DagonBackend.getAvailableGPUMemory());
 		//writeln(eventManager.fps);
 		if(options.observer||camera.target==0||!controller||!controller.network||controller.controlledSide==-1) observerControl(dt);
-		if(state&&!controller.network&&options.playbackFilename=="") stateTestControl();
+		if(options.debugHotkeys&&state&&controller&&!controller.network&&options.playbackFilename=="") stateTestControl();
 		control(dt);
 		cameraControl(dt);
 		if(state){
@@ -1148,7 +1148,7 @@ final class SacScene: Scene{
 						}
 					}
 				}
-			}else state.step();
+			}//else state.step();
 			// state.commit();
 			if(!state.current.isValidTarget(camera.target,TargetType.creature)) camera.target=0;
 			if(camera.target){
