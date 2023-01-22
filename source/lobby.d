@@ -365,6 +365,7 @@ class Lobby(B){
 				pathFinder=new PathFinder!B(map);
 				triggers=new Triggers!B(map.trig);
 				gameState=new GameState!B(map,sides,proximity,pathFinder,triggers);
+				gameState.current.map.makeMeshes(options.enableMapBottom);
 				gameState.initMap();
 				gameState.commit();
 			}
@@ -400,7 +401,6 @@ class Lobby(B){
 		gameState.initGame(gameInit);
 		hasSlot=0<=slot&&slot<=gameState.slots.length;
 		wizId=hasSlot?gameState.slots[slot].wizard:0;
-		gameState.current.map.makeMeshes(options.enableMapBottom);
 		if(toContinue){
 			gameState.commands=toContinue.commands;
 			playAudio=false;
