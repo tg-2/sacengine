@@ -241,9 +241,39 @@ class Lobby(B){
 		return result;
 	}
 
+	void updateSettings(ref Options options){
+		auto numSlots=options.numSlots;
+		auto slotTaken=new bool[](numSlots);
+		foreach(i,ref player;network.players){
+			if(player.settings.observer) continue;
+			auto pslot=player.settings.slot;
+			if(0<=pslot && pslot<options.numSlots && !slotTaken[pslot])
+				slotTaken[pslot]=true;
+			else pslot=-1;
+			network.updateSlot(cast(int)i,pslot);
+		}
+		auto freeSlots=iota(numSlots).filter!(i=>!slotTaken[i]);
+		foreach(i,ref player;network.players){
+			if(player.settings.observer) continue;
+			if(freeSlots.empty) break;
+			if(player.slot==-1){
+				network.updateSlot(cast(int)i,freeSlots.front);
+				freeSlots.popFront();
+			}
+		}
+		if(options.synchronizeLevel) network.synchronizeSetting!"level"();
+		if(options.synchronizeSouls) network.synchronizeSetting!"souls"();
+
+		if(options.synchronizeLevelBounds){
+			network.synchronizeSetting!"minLevel"();
+			network.synchronizeSetting!"maxLevel"();
+		}
+		if(options.synchronizeXPRate) network.synchronizeSetting!"xpRate"();
+	}
+
 	bool synchronizeSettings(ref Options options)in{
 		assert(!!network);
-		with(LobbyState) assert(state.among(synched,hashesReady,waitingForClients,readyToLoad));
+		with(LobbyState) assert(state.among(synched,hashesReady,waitingForClients,readyToLoad,readyToStart));
 	}do{
 		if(state<LobbyState.hashesReady){
 			if(isHost) loadMap(options);
@@ -273,34 +303,7 @@ class Lobby(B){
 				if(network.isHost&&network.numReadyPlayers+(network.players[network.host].wantsToControlState)>=options.numSlots&&network.clientsReadyToLoad()){
 					network.acceptingNewConnections=false;
 					//network.stopListening();
-					auto numSlots=options.numSlots;
-					auto slotTaken=new bool[](numSlots);
-					foreach(i,ref player;network.players){
-						if(player.settings.observer) continue;
-						auto pslot=player.settings.slot;
-						if(0<=pslot && pslot<options.numSlots && !slotTaken[pslot])
-							slotTaken[pslot]=true;
-						else pslot=-1;
-						network.updateSlot(cast(int)i,pslot);
-					}
-					auto freeSlots=iota(numSlots).filter!(i=>!slotTaken[i]);
-					foreach(i,ref player;network.players){
-						if(player.settings.observer) continue;
-						if(freeSlots.empty) break;
-						if(player.slot==-1){
-							network.updateSlot(cast(int)i,freeSlots.front);
-							freeSlots.popFront();
-						}
-					}
-					if(options.synchronizeLevel) network.synchronizeSetting!"level"();
-					if(options.synchronizeSouls) network.synchronizeSetting!"souls"();
-
-					if(options.synchronizeLevelBounds){
-						network.synchronizeSetting!"minLevel"();
-						network.synchronizeSetting!"maxLevel"();
-					}
-					if(options.synchronizeXPRate) network.synchronizeSetting!"xpRate"();
-
+					updateSettings(options);
 					network.updateStatus(PlayerStatus.readyToLoad);
 					assert(network.readyToLoad());
 					state=LobbyState.readyToLoad;
@@ -431,7 +434,7 @@ class Lobby(B){
 					return false;
 			}
 			with(LobbyState)
-			if(state.among(synched,hashesReady,waitingForClients,readyToLoad)){
+			if(state.among(synched,hashesReady,waitingForClients,readyToLoad,readyToStart)){
 				if(!synchronizeSettings(options))
 					return false;
 			}
