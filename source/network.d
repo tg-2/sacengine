@@ -876,6 +876,7 @@ final class Network(B){
 	@property ref settings(){ return players[me].settings; }
 	@property int slot(){ return players[me].slot; }
 	@property ref hostSettings(){ return players[host].settings; }
+	@property hostStatus(){ return players[host].status; }
 	void broadcast(Packet p,scope ubyte[] rawData)in{
 		assert(purposeFromType(p.type)==PacketPurpose.broadcast);
 		if(isHeaderType(p.type)) assert(p.rawDataSize==rawData.length);
@@ -1299,14 +1300,14 @@ final class Network(B){
 		players[i].slot=slot;
 	}
 	private static bool canReplacePlayer(ref Player cand,ref Player old,bool replaceUnnamed){
-			if(old.connection) return false;
-			if(old.status==PlayerStatus.unconnected) return true;
-			if(old.settings.observer!=cand.settings.observer) return false;
-			if(old.settings.name==cand.settings.name) return true;
-			if(replaceUnnamed&&old.settings.name=="") return true;
-			// TODO: more reliable authentication, e.g. with randomly-generated id or public key
-			return false;
-		}
+		if(old.connection) return false;
+		if(old.status==PlayerStatus.unconnected) return true;
+		if(old.settings.observer!=cand.settings.observer) return false;
+		if(old.settings.name==cand.settings.name) return true;
+		if(replaceUnnamed&&old.settings.name=="") return true;
+		// TODO: more reliable authentication, e.g. with randomly-generated id or public key
+		return false;
+	}
 	int addPlayer(Player player)in{
 		assert(isHost);
 	}do{
