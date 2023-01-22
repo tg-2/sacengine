@@ -118,8 +118,9 @@ enum LobbyState{
 	readyToLoad,
 }
 
-struct Lobby(B){
+class Lobby(B){
 	LobbyState state;
+	this(){}
 	Network!B network=null;
 	InternetAddress joinAddress=null;
 	int slot;

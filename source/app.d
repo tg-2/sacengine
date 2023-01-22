@@ -18,7 +18,7 @@ import speechexport;
 void loadMap(B)(ref Options options)in{
 	assert(options.map.endsWith(".scp")||options.map.endsWith(".HMAP"));
 }do{
-	auto lobby=Lobby!B();
+	auto lobby=new Lobby!B();
 	auto slot=options.observer?-1:options.slot;
 	lobby.initialize(slot,options);
 	assert(lobby.state==LobbyState.initialized);
