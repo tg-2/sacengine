@@ -1308,7 +1308,7 @@ final class SacScene: Scene{
 		updateMouseTarget();
 		auto otarget=OrderTarget(mouse.target);
 		if(mouse.dragging) mouse.cursor=Cursor.drag;
-		if(!state) mouse.cursor=Cursor.normal;
+		else if(!state) mouse.cursor=Cursor.normal;
 		else final switch(mouse.status){
 			case MouseStatus.standard:
 				mouse.cursor=otarget.cursor(renderSide,false,state.current);
