@@ -211,7 +211,6 @@ final class SacScene: Scene{
 			renderer.setupEnvironment(envOpt,state.current.map);
 			if(audio) audio.setTileset(state.current.map.tileset);
 		}
-		renderer.initialize();
 	}
 
 	void setController(Controller!DagonBackend controller)in{
