@@ -336,7 +336,7 @@ class Lobby(B){
 		//writeln(50);
 		options.settings=network.settings;
 		slot=network.slot;
-		if(!isHost) network.updateStatus(PlayerStatus.readyToLoad);
+		if(!isHost) network.updateStatus(PlayerStatus.readyToLoad); // TODO: tie this to thumbs up
 		return true;
 	}
 
@@ -451,7 +451,11 @@ class Lobby(B){
 			B.setState(gameState);
 			if(wizId) B.focusCamera(wizId);
 			else B.scene.fpview.active=true;
-			state=LobbyState.waitingForClients;
+			if(toContinue){
+				network.pauseOnDropOnce=true;
+				network.updateStatus(PlayerStatus.readyToLoad);
+				state=LobbyState.readyToStart;
+			}else state=LobbyState.waitingForClients;
 		}
 		//writeln(4);
 		if(state==LobbyState.waitingForClients){
@@ -464,7 +468,6 @@ class Lobby(B){
 					network.acceptingNewConnections=false;
 					//network.stopListening();
 					network.updateStatus(PlayerStatus.readyToLoad);
-					state=LobbyState.readyToLoad;
 					assert(network.readyToLoad());
 					state=LobbyState.readyToStart;
 				}else return false;

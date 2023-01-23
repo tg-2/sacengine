@@ -809,6 +809,7 @@ final class Network(B){
 	bool dumpTraffic=false;
 	bool checkDesynch=true;
 	bool pauseOnDrop=false;
+	bool pauseOnDropOnce=false;
 	bool isHost(){ return me==host; }
 	SynchQueue synchQueue;
 	void hostGame(Settings settings)in{
@@ -1394,6 +1395,7 @@ final class Network(B){
 				dropPlayer(cast(int)i,controller);
 				continue;
 			}
+			if(!playing) player.send(Packet.ping(B.ticks())); // to detect loss of connectivity
 			while(player.ready){
 				auto packet=player.receive;
 				if(isHeaderType(packet.type)){

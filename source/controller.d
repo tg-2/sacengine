@@ -183,14 +183,6 @@ final class Controller(B){
 					}
 				}
 			}
-			if(network.isHost&&network.pauseOnDrop){
-				if(network.anyoneDropped){
-					network.pause(PlayerStatus.pausedOnDrop);
-					network.acceptingNewConnections=true;
-				}else if(network.players[network.me].status==PlayerStatus.pausedOnDrop){
-					network.unpause();
-				}
-			}
 			if(network.hostDropped) return true;
 			if(network.desynched){
 				if(network.pendingResynch) network.updateStatus(PlayerStatus.readyToResynch);
@@ -236,6 +228,15 @@ final class Controller(B){
 					network.load();
 				}
 				return true; // ignore passed time in next frame
+			}
+			if(network.isHost&&(network.pauseOnDrop||network.pauseOnDropOnce)){
+				if(network.anyoneDropped){
+					network.pause(PlayerStatus.pausedOnDrop);
+					network.acceptingNewConnections=true;
+				}else if(network.players[network.me].status==PlayerStatus.pausedOnDrop){
+					network.unpause();
+					network.pauseOnDropOnce=false;
+				}
 			}
 			if(network.paused) return true;
 			if(!network.playing){ // start game
