@@ -9756,13 +9756,13 @@ void animateGhostTransition(B)(ref MovingObject!B wizard,ObjectState!B state){
 		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
 	}
 }
-void animateGhost(B)(ref MovingObject!B wizard,ObjectState!B state){
+void animateGhost(bool sideFiltered=true,B)(ref MovingObject!B wizard,ObjectState!B state){
 	auto hitbox=wizard.hitbox;
 	auto sacParticle=SacParticle!B.get(ParticleType.ghost);
 	auto scale=1.0f; // TODO: does this differ for different creatures?
 	auto frame=state.uniform!"[)"(0,sacParticle.numFrames);
-	auto particle=Particle!(B,false,true)(sacParticle,state.uniform(hitbox),Vector3f(0.0f,0.0f,0.0f),scale,sacParticle.numFrames,frame);
-	particle.sideFilter=wizard.side;
+	auto particle=Particle!(B,false,sideFiltered)(sacParticle,state.uniform(hitbox),Vector3f(0.0f,0.0f,0.0f),scale,sacParticle.numFrames,frame);
+	static if(sideFiltered) particle.sideFilter=wizard.side;
 	state.addParticle(particle);
 }
 bool unghost(B)(ref MovingObject!B wizard,ObjectState!B state){
@@ -12891,7 +12891,7 @@ bool updateEtherealForm(B)(ref EtherealForm!B etherealForm,ObjectState!B state){
 				updateAlpha();
 				break;
 			case EtherealFormStatus.stationary:
-				state.movingObjectById!(.animateGhost,(){})(target,state);
+				state.movingObjectById!(.animateGhost!(false,B),(){})(target,state);
 				break;
 			case EtherealFormStatus.fadingIn:
 				state.movingObjectById!(.animateGhost,(){})(target,state);
