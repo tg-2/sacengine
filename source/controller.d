@@ -246,7 +246,7 @@ final class Controller(B){
 					network.start(this);
 				}
 				return true; // ignore passed time in next frame
-			}
+			}else if(network.pauseOnDrop&&network.anyonePending) return true;
 			network.acceptingNewConnections=true;
 		}else committedFrame=currentFrame;
 		while(state.current.frame<currentFrame){

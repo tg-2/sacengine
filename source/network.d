@@ -670,7 +670,7 @@ bool isReadyStatus(PlayerStatus status){
 	return isConnectedStatus(status) && !isDesynchedStatus(status) && PlayerStatus.readyToStart<=status;
 }
 bool isActiveStatus(PlayerStatus status){
-	return isConnectedStatus(status) && !isDesynchedStatus(status) && PlayerStatus.pendingLoad<=status;
+	return isConnectedStatus(status) && !isDesynchedStatus(status) && PlayerStatus.pendingStart<=status;
 }
 
 struct Player{
@@ -858,6 +858,7 @@ final class Network(B){
 	bool paused(){ return isPausedStatus(players[host].status); }
 	bool anyoneDropped(){ return potentialPlayers.any!(p=>p.status==PlayerStatus.dropped); }
 	bool hostDropped(){ return players[host].status==PlayerStatus.dropped; }
+	bool anyonePending(){ return potentialPlayers.any!(p=>!isActiveStatus(p.status)); }
 	bool desynched(){ return connectedPlayers.any!(p=>isDesynchedStatus(p.status)||p.status==PlayerStatus.resynched); }
 	bool pendingResynch(){
 		if(isHost){
