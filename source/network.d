@@ -636,8 +636,8 @@ enum PlayerStatus{
 	connected,
 	synched,
 	commitHashReady,
-	readyToLoad,
 	mapHashed,
+	readyToLoad,
 	pendingLoad,
 	loading,
 	readyToStart,
@@ -662,8 +662,11 @@ bool isPausedStatus(PlayerStatus status){
 bool isDesynchedStatus(PlayerStatus status){
 	return PlayerStatus.desynched<=status && status<PlayerStatus.resynched;
 }
+bool isReadyToLoadStatus(PlayerStatus status){
+	return !!status.among(PlayerStatus.readyToLoad,PlayerStatus.resynched);
+}
 bool isReadyStatus(PlayerStatus status){
-	return isConnectedStatus(status) && !isDesynchedStatus(status) && PlayerStatus.readyToLoad<=status;
+	return isConnectedStatus(status) && !isDesynchedStatus(status) && PlayerStatus.readyToStart<=status;
 }
 bool isActiveStatus(PlayerStatus status){
 	return isConnectedStatus(status) && !isDesynchedStatus(status) && PlayerStatus.pendingLoad<=status;
@@ -723,7 +726,7 @@ struct Player{
 	}
 	bool isReadyToControlState(){
 		if(!wantsToControlState) return false;
-		return isReadyStatus(status);
+		return isReadyToLoadStatus(status)||isReadyStatus(status);
 	}
 	bool isControllingState(){
 		if(!allowedToControlState) return false;
@@ -834,25 +837,19 @@ final class Network(B){
 		});
 		return true;
 	}
-	bool synched(){
-		return me!=-1&&players[me].status>=PlayerStatus.synched;
-	}
-	bool readyToLoad(){
-		return connectedPlayers.all!(p=>isReadyStatus(p.status));
-	}
-	bool mapHashed(){
-		return connectedPlayers.all!(p=>p.status>=PlayerStatus.mapHashed);
-	}
-	bool hostCommitHashReady(){
-		return players[host].status>=PlayerStatus.commitHashReady;
-	}
-	bool hostReadyToLoad(){
-		return isReadyStatus(players[host].status);
-	}
+	bool synched(){ return me!=-1&&players[me].status>=PlayerStatus.synched; }
+	bool hostCommitHashReady(){ return players[host].status>=PlayerStatus.commitHashReady; }
+	bool mapHashed(){ return connectedPlayers.all!(p=>p.status>=PlayerStatus.mapHashed); }
+	bool hostReadyToLoad(){ return isReadyToLoadStatus(players[host].status); }
 	bool clientsReadyToLoad(){
+		return iota(players.length).filter!(i=>i!=host&&players[i].connection).all!(i=>isReadyToLoadStatus(players[i].status));
+	}
+	bool readyToLoad(){ return connectedPlayers.all!(p=>isReadyToLoadStatus(p.status)); }
+	bool loading(){ return me!=-1&&players[me].status==PlayerStatus.loading; }
+	bool hostReadyToStart(){ return isReadyStatus(players[host].status); }
+	bool clientsReadyToStart(){
 		return iota(players.length).filter!(i=>i!=host&&players[i].connection).all!(i=>isReadyStatus(players[i].status));
 	}
-	bool loading(){ return me!=-1&&players[me].status==PlayerStatus.loading; }
 	bool readyToStart(){ return connectedPlayers.all!(p=>isReadyStatus(p.status)); }
 	bool playing(){ return me!=-1&&players[me].status==PlayerStatus.playing && !paused; }
 	bool paused(){ return isPausedStatus(players[host].status); }
@@ -1039,12 +1036,8 @@ final class Network(B){
 					stderr.writeln("non-host player ",sender," attempted to update map: ",p);
 					break;
 				}
-				if(!mapData){
-					mapData=new ubyte[](p.rawDataSize); // TODO: don't leak this memory
-					mapData[]=rawData[];
-				}else{
-					stderr.writeln("map data already pending, ignoring new data");
-				}
+				mapData.length=p.rawDataSize;
+				mapData.data[]=rawData[];
 				break;
 			case PacketType.sendState:
 				if(sender!=host){
@@ -1058,19 +1051,15 @@ final class Network(B){
 					stderr.writeln("non-host player ",sender," attempted to initialize the game: ",p);
 					break;
 				}
-				if(!gameInitData){
-					gameInitData=new ubyte[](p.rawDataSize); // TODO: don't leak this memory
-					gameInitData[]=rawData[];
-				}else{
-					stderr.writeln("game init data already pending, ignoring new data");
-				}
+				gameInitData.length=p.rawDataSize;
+				gameInitData.data[]=rawData[];
 				break;
 			case PacketType.loadGame:
 				if(sender!=host){
 					stderr.writeln("non-host player ",sender," attempted to initiate loading: ",p);
 					break;
 				}
-				if(!isReadyStatus(players[me].status)){
+				if(!isReadyToLoadStatus(players[me].status)){
 					stderr.writeln("attempt to load game before ready: ",p);
 					break;
 				}
@@ -1151,8 +1140,8 @@ final class Network(B){
 					stderr.writeln("attempt to change settings after game started loading: ",p);
 					break;
 				}
-				if(players[p.player].status>=PlayerStatus.mapHashed){ // TODO: if >=PlayerStatus.readyToLoad, only mapHash may change
-					stderr.writeln("attempt to change settings after marked ready to load and map was hashed: ",p);
+				if(players[p.player].status>=PlayerStatus.readyToLoad){
+					stderr.writeln("attempt to change settings after marked ready to load:  ",p);
 					break;
 				}
 				if(p.type==PacketType.updateSetting){
@@ -1334,7 +1323,7 @@ final class Network(B){
 	}
 	Array!Player pendingJoin;
 	void acceptNewConnections(){
-		if(!acceptingNewConnections||!listener) return; // TODO: allow observers to join and dropped players to reconnect
+		if(!acceptingNewConnections||!listener) return;
 		if(isHost){
 			if(players.length>=playerLimit) return;
 			for(Socket newSocket=null;;newSocket=null){
@@ -1465,7 +1454,9 @@ final class Network(B){
 	void sendState(int i,scope ubyte[] stateData,scope ubyte[] commandData){
 		players[i].send(Packet.sendState(stateData.length+commandData.length),stateData,commandData);
 	}
-	ubyte[] gameInitData;
+	Array!ubyte gameInitData;
+	bool hasGameInitData(){ return !!gameInitData.length; }
+	void clearGameInitData(){ gameInitData.length=0; }
 	void initGame(int i,scope ubyte[] gameInitData)in{
 		assert(isHost);
 	}do{
@@ -1476,33 +1467,37 @@ final class Network(B){
 	}do{
 		foreach(i;0..players.length){
 			if(i==me) continue;
+			if(players[i].status!=PlayerStatus.readyToLoad) continue;
 			initGame(cast(int)i,gameInitData);
 		}
 		// for late joining:
-		this.gameInitData=gameInitData.dup; // TODO: don't leak this memory
+		this.gameInitData.length=gameInitData.length;
+		this.gameInitData.data[]=gameInitData[];
 	}
-	ubyte[] mapData;
+	Array!ubyte mapData;
+	bool hasMapData(){ return !!mapData.length; }
+	void clearMapData(){ mapData.length=0; }
 	bool synchronizeMap(scope void delegate(string name) load)in{
 		assert(isHost||load!is null);
 	}do{
 		auto name=hostSettings.map;
 		auto hash=hostSettings.mapHash;
 		if(isHost){
-			if(mapData){
+			if(hasMapData()){
 				foreach(i,ref player;players){
 					if(i==host) continue;
 					if(player.status!=PlayerStatus.mapHashed) continue;
 					if(player.settings.mapHash==hash) continue;
 					updateStatus(cast(int)i,PlayerStatus.readyToLoad);
-					sendMap(cast(int)i,mapData);
+					sendMap(cast(int)i,mapData.data);
 				}
 			}
 			return mapHashed&&connectedPlayers.all!((ref p)=>p.settings.map==name&&p.settings.mapHash==hash);
 		}else{
 			enforce(settings.map==hostSettings.map,"bad map");
-			if(settings.mapHash!=hash&&mapData){
+			if(settings.mapHash!=hash&&hasMapData()){
 				import std.digest.crc;
-				auto crc32=digest!CRC32(mapData);
+				auto crc32=digest!CRC32(mapData.data);
 				static assert(typeof(crc32).sizeof==int.sizeof);
 				if(*cast(int*)&crc32==hash){
 					import std.path: buildPath, baseName, stripExtension;
@@ -1514,18 +1509,18 @@ final class Network(B){
 						stderr.writeln("existing map '",name,"' moved to '",newName,"'");
 					}
 					File mapFile=File(name,"w");
-					mapFile.rawWrite(mapData);
+					mapFile.rawWrite(mapData.data);
 					mapFile.close();
 					stderr.writeln("downloaded map '",name,"'");
 					if(load!is null) load(name);
 				}
-				mapData=null;
+				clearMapData();
 			}
 			return mapHashed&&settings.map==name&&settings.mapHash==hash;
 		}
 	}
 	void load(int i)in{
-		assert(isHost&&isReadyStatus(players[i].status));
+		assert(isHost&&isReadyToLoadStatus(players[i].status));
 	}do{
 		updateStatus(i,PlayerStatus.pendingLoad);
 		players[i].send(Packet.loadGame);

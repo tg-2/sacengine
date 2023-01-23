@@ -173,12 +173,12 @@ final class Controller(B){
 			}
 			if(network.isHost){ // handle new connections
 				network.synchronizeMap(null);
-				if(network.gameInitData){
+				if(network.hasGameInitData){
 					auto hash=network.hostSettings.mapHash;
 					foreach(i,ref player;network.players){
-						if(player.status==PlayerStatus.mapHashed && player.settings.mapHash==hash){
+						if(player.status==PlayerStatus.readyToLoad && player.settings.mapHash==hash){
 							network.updateStatus(cast(int)i,PlayerStatus.desynched);
-							network.initGame(cast(int)i,network.gameInitData);
+							network.initGame(cast(int)i,network.gameInitData.data);
 						}
 					}
 				}
@@ -191,7 +191,7 @@ final class Controller(B){
 					network.unpause();
 				}
 			}
-			if(network.paused||network.hostDropped) return true;
+			if(network.hostDropped) return true;
 			if(network.desynched){
 				if(network.pendingResynch) network.updateStatus(PlayerStatus.readyToResynch);
 				if(network.isHost && network.readyToResynch){
@@ -237,6 +237,7 @@ final class Controller(B){
 				}
 				return true; // ignore passed time in next frame
 			}
+			if(network.paused) return true;
 			if(!network.playing){ // start game
 				network.updateStatus(PlayerStatus.readyToStart);
 				if(network.isHost&&network.readyToStart()){

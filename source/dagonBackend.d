@@ -201,7 +201,7 @@ final class SacScene: Scene{
 	}
 
 	void setState(GameState!DagonBackend state)in{
-		assert(this.state is null);
+		//assert(this.state is null);
 	}do{
 		this.state=state;
 		if(state){

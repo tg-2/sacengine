@@ -112,10 +112,10 @@ enum LobbyState{
 	offline,
 	connected,
 	synched,
-	hashesReady,
+	commitHashReady,
 	incompatibleVersion,
-	waitingForClients,
 	readyToLoad,
+	waitingForClients,
 	readyToStart,
 }
 
@@ -241,7 +241,9 @@ class Lobby(B){
 		return result;
 	}
 
-	void updateSettings(ref Options options){
+	void updateSettings(ref Options options)in{
+		assert(network&&isHost);
+	}do{
 		auto numSlots=options.numSlots;
 		auto slotTaken=new bool[](numSlots);
 		foreach(i,ref player;network.players){
@@ -273,15 +275,17 @@ class Lobby(B){
 
 	bool synchronizeSettings(ref Options options)in{
 		assert(!!network);
-		with(LobbyState) assert(state.among(synched,hashesReady,waitingForClients,readyToLoad,readyToStart));
+		with(LobbyState) assert(state.among(synched,commitHashReady,waitingForClients,readyToLoad,readyToStart));
 	}do{
-		if(state<LobbyState.hashesReady){
+		//writeln(10);
+		if(state<LobbyState.commitHashReady){
 			if(isHost) loadMap(options);
 			network.updateSetting!"mapHash"(options.mapHash);
 			network.updateStatus(PlayerStatus.commitHashReady);
-			state=LobbyState.hashesReady;
+			state=LobbyState.commitHashReady;
 		}
-		if(state==LobbyState.hashesReady){
+		//writeln(20);
+		if(state==LobbyState.commitHashReady){
 			if(!network.isHost){
 				network.update(controller); // (may be null)
 				if(!network.hostCommitHashReady)
@@ -293,24 +297,12 @@ class Lobby(B){
 					state=LobbyState.incompatibleVersion;
 					return true;
 				}
-				network.updateStatus(PlayerStatus.readyToLoad);
 			}
-			state=LobbyState.waitingForClients;
+			state=LobbyState.readyToLoad;
 		}
-		if(state==LobbyState.waitingForClients){
-			network.update(controller); // (may be null)
-			if(!network.readyToLoad&&!network.pendingResynch){
-				if(network.isHost&&network.numReadyPlayers+(network.players[network.host].wantsToControlState)>=options.numSlots&&network.clientsReadyToLoad()){
-					network.acceptingNewConnections=false;
-					//network.stopListening();
-					updateSettings(options);
-					network.updateStatus(PlayerStatus.readyToLoad);
-					assert(network.readyToLoad());
-					state=LobbyState.readyToLoad;
-				}else return false;
-			}
-		}
+		//writeln(30);
 		if(!network.isHost){
+			//writeln(map);
 			if(!map){
 				auto mapName=network.hostSettings.map;
 				network.updateSetting!"map"(mapName);
@@ -324,9 +316,11 @@ class Lobby(B){
 				network.updateStatus(PlayerStatus.mapHashed);
 			}
 		}else{
-			network.mapData=mapData;
+			network.mapData.length=mapData.length;
+			network.mapData.data[]=mapData[];
 			network.updateStatus(PlayerStatus.mapHashed);
 		}
+		//writeln(40);
 		void loadMap(string mapName){
 			options.map=mapName;
 			map=loadSacMap!B(mapName);
@@ -339,9 +333,10 @@ class Lobby(B){
 		network.update(controller); // (may be null)
 		if(!network.synchronizeMap(&loadMap))
 			return false;
+		//writeln(50);
 		options.settings=network.settings;
 		slot=network.slot;
-		state=LobbyState.readyToLoad;
+		if(!isHost) network.updateStatus(PlayerStatus.readyToLoad);
 		return true;
 	}
 
@@ -353,14 +348,14 @@ class Lobby(B){
 
 	bool loadGame(ref Options options)in{
 		assert(!!map);
-		assert(state==LobbyState.readyToLoad);
+		assert(state.among(LobbyState.readyToLoad,LobbyState.waitingForClients));
 	}do{
-		if(network.isHost){
+		/+if(network.isHost){
 			network.load();
 		}else{
 			if(!network.loading&&network.players[network.me].status!=PlayerStatus.desynched) // desynched at start if late join
 				return false;
-		}
+		}+/
 		void initState(){
 			if(!gameState){
 				sides=new Sides!B(map.sids);
@@ -368,7 +363,6 @@ class Lobby(B){
 				pathFinder=new PathFinder!B(map);
 				triggers=new Triggers!B(map.trig);
 				gameState=new GameState!B(map,sides,proximity,pathFinder,triggers);
-				gameState.current.map.makeMeshes(options.enableMapBottom);
 				gameState.initMap();
 				gameState.commit();
 			}
@@ -383,11 +377,12 @@ class Lobby(B){
 					gameInit.serialized(&network.initGame);
 				}else{
 					network.update(controller); // (may be null)
-					if(!network.gameInitData)
+					if(!network.hasGameInitData())
 						return false;
 					initState();
-					deserialize(gameInit,gameState.current,network.gameInitData);
-					network.gameInitData=null;
+					scope gameInitData=network.gameInitData.data;
+					deserialize(gameInit,gameState.current,gameInitData);
+					network.clearGameInitData();
 				}
 			}else{
 				initState();
@@ -402,6 +397,9 @@ class Lobby(B){
 		}
 		gameState.rollback();
 		gameState.initGame(gameInit);
+		// TODO: if game init can place additional buildings this would need to be reflected here:
+		if(!gameState.current.map.meshes.length)
+			gameState.current.map.makeMeshes(options.enableMapBottom);
 		hasSlot=0<=slot&&slot<=gameState.slots.length;
 		wizId=hasSlot?gameState.slots[slot].wizard:0;
 		if(toContinue){
@@ -417,37 +415,60 @@ class Lobby(B){
 			assert(gameState.current.frame==options.continueFrame);
 			if(network){
 				assert(network.isHost);
-				foreach(i;network.connectedPlayerIds) if(i!=network.host) network.updateStatus(cast(int)i,PlayerStatus.desynched);
-				network.continueSynchAt(options.continueFrame);
+				//foreach(i;network.connectedPlayerIds) if(i!=network.host) network.updateStatus(cast(int)i,PlayerStatus.desynched);
+				network.continueSynchAt(gameState.current.frame);
 			}
+
 		}
 		return true;
 	}
 
 	bool update(ref Options options)in{
 		with(LobbyState)
-		assert(state.among(offline,connected,synched,hashesReady,waitingForClients,readyToLoad));
+		assert(state.among(offline,connected,synched,commitHashReady,waitingForClients,readyToLoad));
 	}do{
+		//writeln(state," ",network.players.map!((ref p)=>p.status));
 		if(network){
+			//writeln(1);
 			if(state==LobbyState.connected){
 				if(!trySynch())
 					return false;
 			}
+			//writeln(2);
+			if(isHost) updateSettings(options);
 			with(LobbyState)
-			if(state.among(synched,hashesReady,waitingForClients,readyToLoad,readyToStart)){
+			if(state.among(synched,commitHashReady,waitingForClients,readyToLoad,readyToStart)){
 				if(!synchronizeSettings(options))
 					return false;
 			}
 		}else loadMap(options);
 		assert(!!map);
-		if(state==LobbyState.readyToLoad){
+		//writeln(3);
+		if(state==LobbyState.readyToLoad||state==LobbyState.waitingForClients){
 			if(!loadGame(options))
 				return false;
 			// TODO: this is a bit ugly
 			B.setState(gameState);
 			if(wizId) B.focusCamera(wizId);
 			else B.scene.fpview.active=true;
-			state=LobbyState.readyToStart;
+			state=LobbyState.waitingForClients;
+		}
+		//writeln(4);
+		if(state==LobbyState.waitingForClients){
+			network.update(controller); // (may be null)
+			//writeln(network.isHost," ",network.numReadyPlayers," ",(network.players[network.host].wantsToControlState)," ",options.numSlots," ",network.clientsReadyToLoad()," ",network.readyToLoad," ",network.pendingResynch);
+			if(!network.readyToLoad&&!network.pendingResynch){
+				import serialize_;
+				if(network.isHost) gameInit.serialized(&network.initGame);
+				if(network.isHost&&network.numReadyPlayers+(network.players[network.host].wantsToControlState)>=options.numSlots&&network.clientsReadyToLoad()){
+					network.acceptingNewConnections=false;
+					//network.stopListening();
+					network.updateStatus(PlayerStatus.readyToLoad);
+					state=LobbyState.readyToLoad;
+					assert(network.readyToLoad());
+					state=LobbyState.readyToStart;
+				}else return false;
+			}else state=LobbyState.readyToStart;
 		}
 		return state==LobbyState.readyToStart;
 	}
