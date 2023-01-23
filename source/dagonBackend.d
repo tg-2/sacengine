@@ -1122,6 +1122,21 @@ final class SacScene: Scene{
 	final void pause(){}
 	final void unpause(){ eventManager.update(); eventManager.update(); }
 
+	util.Array!(bool delegate()) logicCallbacks; // TODO: use interface instead?
+	void addLogicCallback(bool delegate() dg){
+		logicCallbacks~=dg;
+	}
+	void updateLogicCallbacks(){
+		foreach(ref dg;logicCallbacks){
+			if(dg && !dg())
+				dg=null;
+		}
+		auto nonNull=logicCallbacks.data.filter!(dg=>!!dg);
+		auto num=walkLength(nonNull);
+		copy(nonNull,logicCallbacks.data[0..num]);
+		logicCallbacks.length=num;
+	}
+
 	override void onLogicsUpdate(double dt){
 		assert(dt==1.0f/updateFPS);
 		//writeln(DagonBackend.getTotalGPUMemory()," ",DagonBackend.getAvailableGPUMemory());
@@ -1130,6 +1145,7 @@ final class SacScene: Scene{
 		if(options.debugHotkeys&&state&&controller&&!controller.network&&options.playbackFilename=="") stateTestControl();
 		control(dt);
 		cameraControl(dt);
+		updateLogicCallbacks();
 		if(state){
 			if(controller){
 				if(controller.step()) eventManager.update();
@@ -1421,6 +1437,9 @@ static:
 	void initialize(Options options){
 		enforce(!app,"DagonBackend already initialized"); // TODO: fix?
 		app = New!MyApplication(options);
+	}
+	void addLogicCallback(bool delegate() dg){
+		scene.addLogicCallback(dg);
 	}
 	void setState(GameState!DagonBackend state){
 		scene.setState(state);

@@ -285,7 +285,11 @@ int run(string[] args){
 		options.map=options.map["export-speech:".length..$];
 		exportSpeech!B(options);
 		return 0;
-	}else if(options.map!=""&&!options.noMap) loadGame!B(options);
+	}else if(options.map!=""&&!options.noMap){
+		// loadGame!B(options);
+		auto lobby=makeLobby!B(options);
+		B.addLogicCallback(()=>!updateLobby(lobby,options));
+	}
 	else B.scene.fpview.active=true;
 
 	foreach(ref i;1..args.length){
