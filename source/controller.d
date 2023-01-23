@@ -129,7 +129,7 @@ final class Controller(B){
 		assert(!!network);
 	}do{
 		committedFrame=network.committedFrame;
-		if(!network.isHost&&network.desynched) return; // avoid simulating entire game after rejoin
+		if(!network.isHost&&(network.desynched||network.lateJoining)) return; // avoid simulating entire game after rejoin
 		import std.conv: text;
 		enforce(state.lastCommitted.frame<=committedFrame,text(state.lastCommitted.frame," ",committedFrame," ",network.players.map!((ref p)=>p.committedFrame)," ",network.activePlayerIds," ",network.players.map!((ref p)=>p.status)));
 		if(state.commands.length<committedFrame+1)
