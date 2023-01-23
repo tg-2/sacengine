@@ -638,6 +638,7 @@ enum PlayerStatus{
 	commitHashReady,
 	mapHashed,
 	readyToLoad,
+	lateJoining,
 	pendingLoad,
 	loading,
 	readyToStart,
@@ -846,6 +847,7 @@ final class Network(B){
 		return iota(players.length).filter!(i=>i!=host&&players[i].connection).all!(i=>isReadyToLoadStatus(players[i].status));
 	}
 	bool readyToLoad(){ return connectedPlayers.all!(p=>isReadyToLoadStatus(p.status)); }
+	bool lateJoining(){ return me!=-1&&players[me].status==PlayerStatus.lateJoining; }
 	bool loading(){ return me!=-1&&players[me].status==PlayerStatus.loading; }
 	bool hostReadyToStart(){ return isReadyStatus(players[host].status); }
 	bool clientsReadyToStart(){

@@ -461,10 +461,14 @@ class Lobby(B){
 		if(state==LobbyState.waitingForClients){
 			network.update(controller); // (may be null)
 			//writeln(network.isHost," ",network.numReadyPlayers," ",(network.players[network.host].wantsToControlState)," ",options.numSlots," ",network.clientsReadyToLoad()," ",network.readyToLoad," ",network.pendingResynch);
-			if(!network.readyToLoad&&!network.pendingResynch){
+			if(!network.readyToLoad&&!network.pendingResynch&&!network.lateJoining){
+				if(!network.isHost) return false;
 				import serialize_;
-				if(network.isHost) gameInit.serialized(&network.initGame);
-				if(network.isHost&&network.numReadyPlayers+(network.players[network.host].wantsToControlState)>=options.numSlots&&network.clientsReadyToLoad()){
+				gameInit.serialized(&network.initGame);
+				auto occupiedSlots=network.numReadyPlayers;
+				if(network.players[network.host].wantsToControlState)
+					occupiedSlots+=1;
+				if(occupiedSlots>=options.numSlots&&network.clientsReadyToLoad()){
 					network.acceptingNewConnections=false;
 					//network.stopListening();
 					network.updateStatus(PlayerStatus.readyToLoad);

@@ -177,13 +177,14 @@ final class Controller(B){
 					auto hash=network.hostSettings.mapHash;
 					foreach(i,ref player;network.players){
 						if(player.status==PlayerStatus.readyToLoad && player.settings.mapHash==hash){
-							network.updateStatus(cast(int)i,PlayerStatus.desynched);
+							network.updateStatus(cast(int)i,PlayerStatus.lateJoining);
 							network.initGame(cast(int)i,network.gameInitData.data);
 						}
 					}
 				}
 			}
 			if(network.hostDropped) return true;
+			if(network.lateJoining) network.updateStatus(PlayerStatus.desynched);
 			if(network.desynched){
 				if(network.pendingResynch) network.updateStatus(PlayerStatus.readyToResynch);
 				if(network.isHost && network.readyToResynch){
