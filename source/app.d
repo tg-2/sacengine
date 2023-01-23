@@ -15,20 +15,21 @@ import std.exception, std.conv, std.typecons;
 
 import speechexport;
 
-void loadMap(B)(ref Options options)in{
-	assert(options.map.endsWith(".scp")||options.map.endsWith(".HMAP"));
+void wait(B)(int msecs=1){
+	import core.thread;
+	Thread.sleep(msecs.msecs);
+	if(!B.processEvents()) return;
+}
+
+Lobby!B makeLobby(B)(ref Options options)out(lobby){
+	assert(lobby.state.among(LobbyState.offline,LobbyState.connected));
 }do{
 	auto lobby=new Lobby!B();
 	auto slot=options.observer?-1:options.slot;
 	lobby.initialize(slot,options);
 	assert(lobby.state==LobbyState.initialized);
-	void wait(int msecs=1){
-		import core.thread;
-		Thread.sleep(msecs.msecs);
-		if(!B.processEvents()) return;
-	}
 	while(!lobby.tryConnect(options))
-		wait(200);
+		wait!B(200); // TODO: loop externally
 	assert(lobby.state.among(LobbyState.offline,LobbyState.connected));
 	if(lobby.canPlayRecording&&options.playbackFilename.length){
 		auto recording=loadRecording!B(options.playbackFilename);
@@ -38,13 +39,25 @@ void loadMap(B)(ref Options options)in{
 		auto recording=loadRecording!B(options.continueFilename);
 		lobby.continueGame(recording,options.continueFrame,options);
 	}
-	assert(lobby.state.among(LobbyState.offline,LobbyState.connected));
-	while(!lobby.update(options))
-		wait();
+	return lobby;
+}
+
+bool updateLobby(B)(Lobby!B lobby,ref Options options){
+	if(!lobby.update(options))
+		return false;
 	if(lobby.state==LobbyState.incompatibleVersion)
-		return;
+		return true;
 	assert(lobby.state==LobbyState.readyToStart);
 	lobby.start(options);
+	return true;
+}
+
+void loadGame(B)(ref Options options)in{
+	assert(options.map.endsWith(".scp")||options.map.endsWith(".HMAP"));
+}do{
+	auto lobby=makeLobby!B(options);
+	while(!updateLobby(lobby,options))
+		wait!B();
 }
 
 int run(string[] args){
@@ -272,7 +285,7 @@ int run(string[] args){
 		options.map=options.map["export-speech:".length..$];
 		exportSpeech!B(options);
 		return 0;
-	}else if(options.map!=""&&!options.noMap) loadMap!B(options);
+	}else if(options.map!=""&&!options.noMap) loadGame!B(options);
 	else B.scene.fpview.active=true;
 
 	foreach(ref i;1..args.length){
