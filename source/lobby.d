@@ -451,14 +451,17 @@ class Lobby(B){
 			B.setState(gameState);
 			if(wizId) B.focusCamera(wizId);
 			else B.scene.fpview.active=true;
-			if(toContinue){
-				network.pauseOnDropOnce=true;
-				network.updateStatus(PlayerStatus.readyToLoad);
-				state=LobbyState.readyToStart;
-			}else state=LobbyState.waitingForClients;
+			if(network){
+				if(toContinue){
+					network.pauseOnDropOnce=true;
+					network.updateStatus(PlayerStatus.readyToLoad);
+					state=LobbyState.readyToStart;
+				}else state=LobbyState.waitingForClients;
+			}else state=LobbyState.readyToStart;
 		}
 		//writeln(4);
 		if(state==LobbyState.waitingForClients){
+			assert(!!network);
 			network.update(controller); // (may be null)
 			//writeln(network.isHost," ",network.numReadyPlayers," ",(network.players[network.host].wantsToControlState)," ",options.numSlots," ",network.clientsReadyToLoad()," ",network.readyToLoad," ",network.pendingResynch);
 			if(!network.readyToLoad&&!network.pendingResynch&&!network.lateJoining){
