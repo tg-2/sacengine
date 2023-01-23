@@ -618,10 +618,10 @@ final class SacScene: Scene{
 			controller.setSelection(renderSide,camera.target,renderer.renderedSelection,loc);
 			renderer.selectionUpdated=true;
 		}
-		if(mouse.status.among(MouseStatus.standard,MouseStatus.rectangleSelect)&&!mouse.dragging){
+		if(mouse.status.among(MouseStatus.standard,MouseStatus.rectangleSelect)){
 			if(eventManager.mouseButtonPressed[MB_LEFT]){
 				enum rectangleThreshold=3.0f;
-				if(mouse.status==MouseStatus.standard&&!mouse.dragging){
+				if(mouse.status==MouseStatus.standard&&!fpview.active&&!mouse.dragging){
 					if((abs(mouse.x-mouse.leftButtonX)>=rectangleThreshold||abs(mouse.y-mouse.leftButtonY)>=rectangleThreshold)&&
 					   mouse.loc.among(MouseLocation.scene,MouseLocation.minimap))
 						mouse.status=MouseStatus.rectangleSelect;
