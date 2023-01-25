@@ -1155,6 +1155,7 @@ enum SpellTag:char[4]{
 	oil="kcfa",
 	protector="HSba",
 	quake="kauq",
+	firewalk="wfhg",
 	rend="dner",
 	haloOfEarthAbility="HRba",
 	// passive abilities:

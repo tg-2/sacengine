@@ -2526,7 +2526,7 @@ struct Renderer(B){
 		B.shadelessMaterialBackend.bind(null,rc);
 		scope(success) B.shadelessMaterialBackend.unbind(null,rc);
 		static void renderCreatureStat(B)(ref MovingObject!B obj,Renderer!B* self,bool healthAndMana,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
-			if(obj.creatureState.mode.among(CreatureMode.dying,CreatureMode.dead,CreatureMode.dissolving)) return;
+			if(obj.creatureState.mode.among(CreatureMode.dying,CreatureMode.dead,CreatureMode.dissolving,CreatureMode.firewalk)) return;
 			if(info.renderSide!=obj.side&&(!obj.creatureState.mode.isVisibleToAI||obj.creatureStats.effects.stealth)) return;
 			auto backend=B.shadelessMaterialBackend;
 			backend.bindDiffuse(self.sacHud.statusArrows);

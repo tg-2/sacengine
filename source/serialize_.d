@@ -705,6 +705,12 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Pro
 void serialize(alias sink,B)(ref Quake!B quake){ serializeStruct!sink(quake); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Quake!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink)(ref FirewalkEffect firewalkEffect){ serializeStruct!sink(firewalkEffect); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==FirewalkEffect)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref Firewalk!B firewalk){ serializeStruct!sink(firewalk); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Firewalk!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink)(ref Appearance appearance){ serializeStruct!sink(appearance); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Appearance)){ deserializeStruct(result,state,data); }
 

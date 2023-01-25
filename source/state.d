@@ -54,6 +54,7 @@ enum CreatureMode{
 	playingDead,
 	pretendingToRevive,
 	rockForm,
+	firewalk,
 }
 
 bool isMoving(CreatureMode mode){
@@ -68,7 +69,7 @@ bool isDying(CreatureMode mode){
 bool isAlive(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,idleGhost,movingGhost,ghostToIdle,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
-			shooting,usingAbility,pulling,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
+			shooting,usingAbility,pulling,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm,firewalk: return true;
 		case dying,dead,deadToGhost,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
 	}
 }
@@ -90,21 +91,21 @@ bool isHidden(CreatureMode mode){
 bool isVisibleToAI(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,usingAbility,pulling,pumping,torturing: return true;
-		case dying,dead,deadToGhost,idleGhost,movingGhost,ghostToIdle,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,rockForm,convertReviving,thrashing: return false;
+		case dying,dead,deadToGhost,idleGhost,movingGhost,ghostToIdle,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing,pretendingToDie,playingDead,pretendingToRevive,rockForm,firewalk: return false;
 	}
 }
 bool isVisibleToOtherSides(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,dying,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
 			shooting,usingAbility,pulling,pumping,torturing,convertReviving,thrashing: return true;
-		case dead,deadToGhost,idleGhost,movingGhost,ghostToIdle,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,rockForm: return false;
+		case dead,deadToGhost,idleGhost,movingGhost,ghostToIdle,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,rockForm,firewalk: return false;
 	}
 }
 bool isObstacle(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,dying,spawning,reviving,fastReviving,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
-			shooting,usingAbility,pulling,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm,convertReviving,thrashing: return true;
-		case dead,dissolving,preSpawning: return false;
+			shooting,usingAbility,pulling,pumping,torturing,convertReviving,thrashing,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
+		case dead,dissolving,preSpawning,firewalk: return false;
 		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return true; // ghost has interacting hitbox in original
 	}
 }
@@ -115,19 +116,20 @@ bool isProjectileObstacle(CreatureMode mode){
 		case convertReviving,thrashing: return false; // TODO: correct?
 		case dead,dissolving,preSpawning: return false;
 		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return false;
+		case firewalk: return false;
 	}
 }
 bool isValidAttackTarget(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,usingAbility,pulling,pumping,torturing: return true;
-		case dying,dead,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,rockForm,convertReviving,thrashing: return false;
+		case dying,dead,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing,pretendingToDie,playingDead,pretendingToRevive,rockForm,firewalk: return false;
 		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return false;
 	}
 }
 bool isValidGuardTarget(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
-			shooting,usingAbility,pulling,rockForm,convertReviving,pumping,torturing,thrashing: return true;
+			shooting,usingAbility,pulling,convertReviving,pumping,torturing,thrashing,rockForm,firewalk: return true;
 		case dying,dead,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive: return false;
 		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return true;
 	}
@@ -136,13 +138,13 @@ bool canKill(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,deadToGhost,idleGhost,movingGhost,ghostToIdle,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,
 			castingMoving,shooting,usingAbility,pulling,pumping,torturing,convertReviving,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
-		case dying,dead,dissolving,preSpawning,reviving,fastReviving,thrashing: return false; // TODO: check if reviving creatures die when owner surrenders
+		case dying,dead,dissolving,preSpawning,reviving,fastReviving,thrashing,firewalk: return false; // TODO: check if reviving/firewalking creatures die when owner surrenders
 	}
 }
 bool canHeal(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
-			shooting,usingAbility,pulling,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
+			shooting,usingAbility,pulling,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm,firewalk: return true;
 		case dying,dead,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
 		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return false;
 	}
@@ -150,7 +152,7 @@ bool canHeal(CreatureMode mode){
 bool canRegenerateMana(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
-			shooting,usingAbility,pulling,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
+			shooting,usingAbility,pulling,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm,firewalk: return true;
 		case dying,dead,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
 		case deadToGhost: return false;
 		case idleGhost,movingGhost,ghostToIdle: return true;
@@ -159,7 +161,7 @@ bool canRegenerateMana(CreatureMode mode){
 bool canBePoisoned(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
-			shooting,usingAbility,pulling,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
+			shooting,usingAbility,pulling,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm,firewalk: return true;
 		case dying,dead,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
 		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return false;
 	}
@@ -172,14 +174,14 @@ bool canBePetrified(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
 			shooting,usingAbility,pulling,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
-		case dying,dead,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
+		case dying,dead,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing,firewalk: return false;
 		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return false;
 	}
 }
 bool canCarryHaloOfEarth(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
-			shooting,usingAbility,pulling,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
+			shooting,usingAbility,pulling,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm,firewalk: return true;
 		case dying,dead,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
 		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return false;
 	}
@@ -187,7 +189,7 @@ bool canCarryHaloOfEarth(CreatureMode mode){
 bool canShield(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
-			shooting,usingAbility,pulling,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
+			shooting,usingAbility,pulling,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm,firewalk: return true;
 		case dying,dead,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
 		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return false;
 	}
@@ -196,7 +198,7 @@ bool canCC(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
 			shooting,usingAbility,pulling,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm,dying: return true;
-		case dead,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
+		case dead,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing,firewalk: return false;
 		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return false;
 	}
 }
@@ -204,21 +206,21 @@ bool canCollectSouls(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,ghostToIdle,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
 			shooting,usingAbility,pulling,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
-		case dying,dead,deadToGhost,idleGhost,movingGhost,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
+		case dying,dead,deadToGhost,idleGhost,movingGhost,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing,firewalk: return false;
 	}
 }
 bool canCatapult(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,dying,spawning,takeoff,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
 			shooting,usingAbility,pulling,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
-		case ghostToIdle,landing,dead,deadToGhost,idleGhost,movingGhost,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
+		case ghostToIdle,landing,dead,deadToGhost,idleGhost,movingGhost,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing,firewalk: return false;
 	}
 }
 bool canPush(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,dying,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
 			shooting,usingAbility,pulling,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
-		case ghostToIdle,dead,deadToGhost,idleGhost,movingGhost,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
+		case ghostToIdle,dead,deadToGhost,idleGhost,movingGhost,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing,firewalk: return false;
 	}
 }
 
@@ -3619,6 +3621,20 @@ struct Quake(B){
 	}
 }
 
+struct FirewalkEffect{
+	int creature;
+}
+struct Firewalk(B){
+	int creature;
+	Vector3f endPosition;
+	SacSpell!B ability;
+	Vector3f startPosition;
+	int frame=0;
+	enum numFrames=60;
+	enum animatedDistance=20.0f;
+}
+
+
 struct Appearance{
 	int id;
 	int lifetime;
@@ -4827,6 +4843,22 @@ struct Effects(B){
 		if(i+1<quakes.length) quakes[i]=move(quakes[$-1]);
 		quakes.length=quakes.length-1;
 	}
+	Array!FirewalkEffect firewalkEffects;
+	void addEffect(FirewalkEffect firewalkEffect){
+		firewalkEffects~=move(firewalkEffect);
+	}
+	void removeFirewalkEffect(int i){
+		if(i+1<firewalkEffects.length) firewalkEffects[i]=move(firewalkEffects[$-1]);
+		firewalkEffects.length=firewalkEffects.length-1;
+	}
+	Array!(Firewalk!B) firewalks;
+	void addEffect(Firewalk!B firewalk){
+		firewalks~=move(firewalk);
+	}
+	void removeFirewalk(int i){
+		if(i+1<firewalks.length) firewalks[i]=move(firewalks[$-1]);
+		firewalks.length=firewalks.length-1;
+	}
 	// special effects
 	Array!Appearance appearances;
 	void addEffect(Appearance appearance){
@@ -5793,6 +5825,10 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 				break;
 			}
 			break;
+		case CreatureMode.firewalk:
+			object.frame=0;
+			object.animationState=AnimationState.stance1;
+			break;
 	}
 }
 
@@ -5814,7 +5850,7 @@ bool pickNextAnimation(B)(ref MovingObject!B object,immutable(AnimationState)[] 
 
 bool startIdling(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.creatureState.mode==CreatureMode.idle) return true;
-	with(CreatureMode) if(!object.creatureState.mode.among(moving,spawning,reviving,fastReviving,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,usingAbility,pulling,pumping,torturing,rockForm))
+	with(CreatureMode) if(!object.creatureState.mode.among(moving,spawning,reviving,fastReviving,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,usingAbility,pulling,pumping,torturing,rockForm,firewalk))
 		return false;
 	object.creatureState.mode=CreatureMode.idle;
 	object.setCreatureState(state);
@@ -6042,7 +6078,7 @@ bool canStun(B)(ref MovingObject!B object,ObjectState!B state){
 	if(object.creatureStats.effects.stunCooldown!=0) return false;
 	final switch(object.creatureState.mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,cower,casting,stationaryCasting,castingMoving,shooting,usingAbility,pulling: return true;
-		case dying,dead,deadToGhost,idleGhost,movingGhost,ghostToIdle,dissolving,preSpawning,reviving,fastReviving,stunned,pretendingToDie,playingDead,pretendingToRevive,rockForm,pumping,torturing,convertReviving,thrashing: return false;
+		case dying,dead,deadToGhost,idleGhost,movingGhost,ghostToIdle,dissolving,preSpawning,reviving,fastReviving,stunned,pumping,torturing,convertReviving,thrashing,pretendingToDie,playingDead,pretendingToRevive,rockForm,firewalk: return false;
 	}
 }
 
@@ -6379,7 +6415,7 @@ bool canDamage(B)(ref MovingObject!B object,ObjectState!B state){
 	final switch(object.creatureState.mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
 			shooting,usingAbility,pulling,pumping,torturing,playingDead,pretendingToRevive,rockForm: return true;
-		case dying,dead,deadToGhost,idleGhost,movingGhost,ghostToIdle,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,convertReviving,thrashing: return false;
+		case dying,dead,deadToGhost,idleGhost,movingGhost,ghostToIdle,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,convertReviving,thrashing,firewalk: return false;
 	}
 }
 
@@ -8691,7 +8727,7 @@ Vector3f predictShotTargetPosition(B)(ref MovingObject!B object,SacSpell!B range
 	}
 }
 
-bool aim(bool isAbility=false,B)(ref MovingObject!B object,SacSpell!B rangedAttack,OrderTarget target,Vector3f predicted,ObjectState!B state,bool useSecondShootAnimation=isAbility)in{
+bool aim(bool isAbility=false,bool visibilityRequired=true,B)(ref MovingObject!B object,SacSpell!B rangedAttack,OrderTarget target,Vector3f predicted,ObjectState!B state,bool useSecondShootAnimation=isAbility)in{
 	static if(!isAbility) assert(!useSecondShootAnimation);
 }do{
 	// TODO: find a spot from where target can be shot
@@ -8735,6 +8771,7 @@ bool aim(bool isAbility=false,B)(ref MovingObject!B object,SacSpell!B rangedAtta
 		return object.creatureState.speed==0.0f;
 	}
 	if(notShooting){
+		static if(visibilityRequired)
 		if(!object.hasClearShot(isAbility,predicted,target,state)){
 			object.moveTowards(targetPosition,0.0f,state,true,true);
 			if(isFlying) object.creatureState.targetFlyingHeight=targetFlyingHeight;
@@ -8798,6 +8835,9 @@ void loadOnTick(B)(ref MovingObject!B object,OrderTarget target,SacSpell!B range
 				break;
 			case SpellTag.warmongerShoot:
 				warmongerLoad(object.id,state);
+				break;
+			case SpellTag.firewalk:
+				firewalkLoad(object.id,state);
 				break;
 			case SpellTag.styxShoot,SpellTag.rend:
 				styxLoad(object.id,state);
@@ -8915,6 +8955,9 @@ bool shootOnTick(bool ability=false,B)(ref MovingObject!B object,OrderTarget tar
 					break;
 				case SpellTag.oil:
 					oilShoot(object.id,object.side,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
+					break;
+				case SpellTag.firewalk:
+					firewalk(object.id,shotTarget,rangedAttack,state);
 					break;
 				case SpellTag.rend:
 					rendShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
@@ -9240,6 +9283,16 @@ bool quake(B)(int creature,int side,Vector3f position,SacSpell!B ability,ObjectS
 	return true;
 }
 
+void firewalkLoad(B)(int creature,ObjectState!B state){
+	playSoundAt("malf",creature,state,2.0f);
+	state.addEffect(FirewalkEffect(creature));
+}
+bool firewalk(B)(int creature,Vector3f targetPosition,SacSpell!B ability,ObjectState!B state){
+	if(!state.isOnGround(targetPosition)) return false; // TODO: what does original do in this case?
+	state.addEffect(Firewalk!B(creature,targetPosition,ability));
+	return true; // TODO
+}
+
 void rendSparkAnimation(int numSparks=192,B)(Vector3f targetPosition,ObjectState!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.rend);
 	Vector3f[2] hitbox=[targetPosition-0.5f,targetPosition+0.5];
@@ -9445,6 +9498,7 @@ bool isRangedAbility(B)(SacSpell!B ability){ // TODO: put this directly in SacSp
 		case SpellTag.webPull,SpellTag.cagePull: return true;
 		case SpellTag.stickyBomb: return true;
 		case SpellTag.oil: return true;
+		case SpellTag.firewalk: return true;
 		case SpellTag.rend: return true;
 		default: return false;
 	}
@@ -9477,7 +9531,7 @@ bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,OrderTarget targ
 		object.drainMana(ability.manaCost,state);
 		object.creatureStats.effects.abilityCooldown=cast(int)(ability.cooldown*updateFPS);
 	}
-	bool shoot(){
+	bool shoot(bool visibilityRequired=true)(){
 		if(target.id&&!isValidAttackTarget(target.id,state)&&!state.isValidTarget(target.id,TargetType.soul)) return false;
 		auto predicted=object.predictShotTargetPosition(ability,true,target,state);
 		if(isNaN(predicted.x)) return false;
@@ -9489,7 +9543,7 @@ bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,OrderTarget targ
 			default:
 				break;
 		}
-		if(!object.aim!true(ability,target,predicted,state,useSecondShootAnimation))
+		if(!object.aim!(true,visibilityRequired)(ability,target,predicted,state,useSecondShootAnimation))
 			return false;
 		if(object.creatureState.mode.isUsingAbility){
 			object.loadOnTick(target,ability,state);
@@ -9554,6 +9608,8 @@ bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,OrderTarget targ
 			return false;
 		case SpellTag.quake:
 			return act!((ref object,ability,state){ quake(object.id,object.side,object.position,ability,state); })();
+		case SpellTag.firewalk:
+			return shoot!false();
 		case SpellTag.rend:
 			return shoot();
 		case SpellTag.haloOfEarthAbility:
@@ -9620,7 +9676,7 @@ enum rotationSpeedLimitFactor=1.0f;
 bool requiresAI(CreatureMode mode){
 	with(CreatureMode) final switch(mode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,cower,casting,stationaryCasting,castingMoving,shooting,usingAbility,pulling,playingDead,rockForm: return true;
-		case dying,dead,dissolving,preSpawning,reviving,fastReviving,stunned,pretendingToDie,pretendingToRevive,pumping,torturing,convertReviving,thrashing: return false;
+		case dying,dead,dissolving,preSpawning,reviving,fastReviving,stunned,pretendingToDie,pretendingToRevive,pumping,torturing,convertReviving,thrashing,firewalk: return false;
 		case deadToGhost,ghostToIdle: return false;
 		case idleGhost,movingGhost: return true;
 	}
@@ -9790,6 +9846,7 @@ void firefistFlames(B)(ref MovingObject!B object,ObjectState!B state){
 }
 
 void warmongerFlame(B)(ref MovingObject!B object,ObjectState!B state){
+	if(object.creatureState.mode==CreatureMode.firewalk) return;
 	auto position=object.warmongerFlame;
 	enum numParticles4=12;
 	auto sacParticle4=SacParticle!B.get(ParticleType.fire);
@@ -9883,8 +9940,6 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 				object.animationState=AnimationState.stance1;
 				object.setCreatureState(state);
 			}
-			break;
-		case CreatureMode.rockForm:
 			break;
 		case CreatureMode.dying, CreatureMode.pretendingToDie:
 			with(AnimationState) assert(object.animationState.among(death0,death1,death2,flyDeath,falling,tumble,hitFloor),text(sacObject.tag," ",object.animationState));
@@ -10229,6 +10284,9 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 						object.animationState=AnimationState.stance1;
 				}
 			}
+			break;
+		case CreatureMode.rockForm,CreatureMode.firewalk:
+			break;
 	}
 }
 
@@ -10417,7 +10475,7 @@ Vector3f positionAfterCollision(B)(ref MovingObject!B object, Vector3f newPositi
 		static if(!fixup) posChanged=true;
 		else needsFixup=true;
 	}
-	if(!object.creatureState.mode.among(CreatureMode.dead,CreatureMode.dissolving,CreatureMode.convertReviving,CreatureMode.thrashing)){ // dead creatures do not participate in collision handling
+	if(!object.creatureState.mode.among(CreatureMode.dead,CreatureMode.dissolving,CreatureMode.convertReviving,CreatureMode.thrashing,CreatureMode.firewalk)){ // dead/firewalking creatures do not participate in collision handling
 		proximity.collide!(handleCollision!false)(hitbox);
 		object.creatureAI.isColliding=isColliding;
 		hitbox=[relativeHitbox[0]+newPosition,relativeHitbox[1]+newPosition];
@@ -10441,6 +10499,7 @@ Vector3f positionAfterCollision(B)(ref MovingObject!B object, Vector3f newPositi
 }
 
 void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
+	if(object.creatureState.mode==CreatureMode.firewalk) return;
 	auto newPosition=object.position;
 	with(CreatureMode) if(object.creatureState.mode.among(idle,moving,idleGhost,movingGhost,stunned,landing,dying,meleeMoving,casting,castingMoving,shooting,usingAbility)){
 		auto rotationSpeed=object.creatureStats.rotationSpeed(object.creatureState.movement==CreatureMovement.flying)/updateFPS;
@@ -17058,7 +17117,7 @@ bool checkStealth(B)(ref MovingObject!B obj){
 	if(obj.isGuardian) return false;
 	final switch(obj.creatureState.mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,cower,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
-		case dying,dead,deadToGhost,idleGhost,movingGhost,ghostToIdle,dissolving,preSpawning,reviving,fastReviving,meleeMoving,meleeAttacking,stunned,casting,stationaryCasting,castingMoving,shooting,usingAbility,pulling,pumping,torturing,convertReviving,thrashing: return false;
+		case dying,dead,deadToGhost,idleGhost,movingGhost,ghostToIdle,dissolving,preSpawning,reviving,fastReviving,meleeMoving,meleeAttacking,stunned,casting,stationaryCasting,castingMoving,shooting,usingAbility,pulling,pumping,torturing,convertReviving,thrashing,firewalk: return false;
 	}
 }
 
@@ -17729,6 +17788,99 @@ bool updateQuake(B)(ref Quake!B quake,ObjectState!B state){
 		return frame<=totalFrames;
 	}
 }
+
+void placeFirewalkParticles(B)(Vector3f position,ObjectState!B state){
+	enum numParticles4=6;
+	auto sacParticle4=SacParticle!B.get(ParticleType.fire);
+	foreach(i;0..numParticles4){
+		auto scale=state.uniform(0.3f,1.0f);
+		auto direction=state.uniformDirection();
+		auto pposition=position+scale*0.1f*direction;
+		auto velocity=Vector3f(0.0f,0.0f,0.5f);
+		auto frame=state.uniform(2)?0:state.uniform(24);
+		auto lifetime=32+31-frame;
+		state.addParticle(Particle!B(sacParticle4,pposition,velocity,scale,lifetime,frame));
+	}
+}
+
+bool updateFirewalkEffect(B)(ref FirewalkEffect firewalkEffect,ObjectState!B state){
+	return state.movingObjectById!((ref obj,state){
+		if(obj.animationState!=AnimationState.shoot1)
+			return false;
+		auto position=obj.warmongerFlame;
+		placeFirewalkParticles(position,state);
+		return true;
+	},()=>false)(firewalkEffect.creature,state);
+}
+
+void animateFirewalk(B)(ref MovingObject!B object,ObjectState!B state){
+	playSoundAt("malf",object.id,state,4.0f);
+	enum numParticles=32;
+	auto hitbox=object.hitbox;
+	auto dim=hitbox[1]-hitbox[0];
+	auto volume=dim.x*dim.y*dim.z;
+	auto scale=2.0f*max(1.0f,cbrt(volume));
+	auto sacParticle=SacParticle!B.get(ParticleType.fire);
+	foreach(i;0..numParticles){
+		auto position=state.uniform(scaleBox(hitbox,1.1f));
+		auto fullLifetime=sacParticle.numFrames/float(updateFPS);
+		auto lifetime=cast(int)(sacParticle.numFrames*state.uniform(0.0f,1.0f));
+		auto velocity=Vector3f(0.0f,0.0f,0.5f);
+		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,0));
+	}
+}
+
+bool updateFirewalk(B)(ref Firewalk!B firewalk,ObjectState!B state){
+	if(firewalk.frame==0){
+		state.setRenderMode!(MovingObject!B,RenderMode.transparent)(firewalk.creature);
+		state.setAlpha(firewalk.creature,0.0f,0.0f);
+	}
+	auto result=state.movingObjectById!((ref obj,firewalk,state){
+		with(firewalk){
+			if(frame==0){
+				if(obj.creatureState.mode!=CreatureMode.usingAbility)
+					return false;
+				startPosition=obj.position;
+				obj.creatureState.mode=CreatureMode.firewalk;
+				obj.setCreatureState(state);
+				obj.animateFirewalk(state);
+			}
+			++frame;
+			startPosition.z=state.getHeight(startPosition);
+			endPosition.z=state.getHeight(endPosition);
+			auto position=obj.position+Vector3f(0.0f,0.0f,0.5f);
+			placeFirewalkParticles(position,state);
+			auto direction=endPosition-startPosition;
+			auto distance=direction.length;
+			if(distance!=0.0f) direction*=1.0f/distance;
+			auto progress=float(frame)/numFrames;
+			auto newPosition=obj.position;
+			if(distance<=animatedDistance){
+				newPosition=(1.0f-progress)*startPosition+progress*endPosition;
+			}else if(progress<=0.5f){
+				auto midpoint=startPosition+0.5f*animatedDistance*direction;
+				newPosition=(1.0f-2.0f*progress)*startPosition+2.0f*progress*midpoint;
+			}else{
+				auto midpoint=endPosition-0.5f*animatedDistance*direction;
+				newPosition=(1.0f-2.0f*(progress-0.5f))*midpoint+2.0f*(progress-0.5f)*endPosition;
+			}
+			newPosition.z=state.getHeight(newPosition);
+			obj.position=newPosition;
+			if(frame>=numFrames){
+				obj.position=endPosition;
+				obj.startIdling(state);
+				obj.animateFirewalk(state);
+				if(!state.isOnGround(obj.position))
+					obj.catapult(Vector3f(0.0f,0.0f,0.0f),state);
+				return false;
+			}
+			return true;
+		}
+	},()=>false)(firewalk.creature,&firewalk,state);
+	if(!result) state.setRenderMode!(MovingObject!B,RenderMode.opaque)(firewalk.creature);
+	return result;
+}
+
 
 bool updateAppearance(B)(ref Appearance appearance,ObjectState!B state){
 	with(appearance){
@@ -18851,6 +19003,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 		}
 		i++;
 	}
+	for(int i=0;i<effects.firewalkEffects.length;){
+		if(!updateFirewalkEffect(effects.firewalkEffects[i],state)){
+			effects.removeFirewalkEffect(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.firewalks.length;){
+		if(!updateFirewalk(effects.firewalks[i],state)){
+			effects.removeFirewalk(i);
+			continue;
+		}
+		i++;
+	}
 	for(int i=0;i<effects.appearances.length;){
 		if(!updateAppearance(effects.appearances[i],state)){
 			effects.removeAppearance(i);
@@ -19263,7 +19429,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 		if(objects.sacObject.isManahoar){
 			static bool manahoarAbilityEnabled(CreatureMode mode){
 				final switch(mode) with(CreatureMode){
-					case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,rockForm: return true;
+					case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,rockForm,firewalk: return true;
 					case dying,dead,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,convertReviving,thrashing: return false;
 					case deadToGhost,idleGhost,movingGhost,ghostToIdle,casting,stationaryCasting,castingMoving,shooting,usingAbility,pulling,pumping,torturing: assert(0);
 				}
