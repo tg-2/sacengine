@@ -79,8 +79,12 @@ final class AudioBackend(B){
 		dialogSource=makeSource();
 		dialogQueue.payload.reserve(5);
 	}
+	Tileset currentTileset;
 	void setTileset(Tileset tileset){
+		if(currentTileset==tileset) return;
+		// TODO: just load all themes at startup?
 		themes[Theme.normal]=MP3(godThemes[tileset]);
+		currentTileset=tileset;
 	}
 	void switchTheme(Theme next){
 		nextTheme=next;
