@@ -1141,8 +1141,10 @@ final class SacScene: Scene{
 		assert(dt==1.0f/updateFPS);
 		//writeln(DagonBackend.getTotalGPUMemory()," ",DagonBackend.getAvailableGPUMemory());
 		//writeln(eventManager.fps);
-		if(options.observer||camera.target==0||!controller||!controller.network||controller.controlledSide==-1) observerControl(dt);
-		if(options.debugHotkeys&&state&&controller&&!controller.network&&options.playbackFilename=="") stateTestControl();
+		if(!mouse.menuMode){
+			if(options.observer||camera.target==0||!controller||!controller.network||controller.controlledSide==-1) observerControl(dt);
+			if(options.debugHotkeys&&state&&controller&&!controller.network&&options.playbackFilename=="") stateTestControl();
+		}
 		control(dt);
 		cameraControl(dt);
 		updateLogicCallbacks();
