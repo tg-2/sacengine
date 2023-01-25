@@ -434,14 +434,24 @@ final class SacScene: Scene{
 		}
 	}
 
+	bool oldMouseVisible;
 	void enableMenu(){
+		if(mouse.menuMode) return;
 		stopMoving();
+		oldMouseVisible=mouse.visible;
+		mouse.visible=true;
+		fpview.active=false;
 		mouse.menuMode=true;
 		eventManager.enableTextInput();
 	}
 	void disableMenu(){
+		if(!mouse.menuMode) return;
 		eventManager.disableTextInput();
 		mouse.menuMode=false;
+		if(!oldMouseVisible){
+			mouse.visible=false;
+			fpview.active=true;
+		}
 	}
 
 	void control(double dt){
