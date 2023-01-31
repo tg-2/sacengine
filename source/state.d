@@ -9893,6 +9893,59 @@ void animateCreature(B)(ref MovingObject!B object,ObjectState!B state){
 	}
 }
 
+enum phoenixShieldParticleRate=3;
+void spawnPhoenixShieldParticles(B)(ref MovingObject!B object,int numParticles,ObjectState!B state){
+	auto sacParticle=SacParticle!B.get(ParticleType.fire);
+	auto hitbox=object.sacObject.hitbox(Quaternionf.identity(),object.animationState,object.frame/updateAnimFactor);
+	auto center=boxCenter(hitbox);
+	auto size=boxSize(hitbox);
+	size.x=size.y=0.85f*max(size.x,size.y);
+	size.z*=0.85f;
+	auto scale=1.5f*max(1.0f,cbrt(size.x*size.y*size.z));
+	foreach(k;0..numParticles){
+		auto φ=state.uniform(-pi!float,pi!float);
+		auto pposition=center+state.uniformDirection()*size;
+		auto pvelocity=Vector3f(0.0f,0.0f,0.0f);
+		auto lifetime=31;
+		auto frame=0;
+		state.addParticle(Particle!(B,true)(sacParticle,object.id,true,pposition,pvelocity,scale,lifetime,frame));
+	}
+}
+
+void runPhoenixPassive(B)(ref MovingObject!B object,SacSpell!B passive,ObjectState!B state){
+	if(!object.creatureState.mode.canShield) return;
+	if(object.creatureStats.mana<passive.manaCost) return;
+	auto hitbox=scaleBox(object.hitbox,1.5f);
+	static void burn(ProximityEntry target,ObjectState!B state,SacSpell!B spell,int attacker,int side,bool* hasTarget){
+		if(target.id==attacker) return;
+		state.movingObjectById!((ref obj,damage,attacker,side,hasTarget,state){
+			if(state.sides.getStance(side,obj.side)!=Stance.ally){
+				*hasTarget=true;
+				obj.ignite(damage,attacker,side,state);
+			}
+		},(){})(target.id,spell.amount/updateFPS,attacker,side,hasTarget,state);
+	}
+	auto fireform=SacSpell!B.get(SpellTag.fireform); // TODO: ok?
+	bool hasTarget=false;
+	collisionTargets!burn(hitbox,state,fireform,object.id,object.side,&hasTarget);
+	if(hasTarget){
+		object.drainMana(passive.manaCost,state);
+		spawnPhoenixShieldParticles(object,phoenixShieldParticleRate,state);
+	}
+}
+
+void runPassive(B)(ref MovingObject!B object,ObjectState!B state){
+	auto passive=object.sacObject.passiveOnDamage; // TODO: rename this
+	if(!passive) return;
+	switch(passive.tag){
+		case SpellTag.phoenixShield:
+			runPhoenixPassive(object,passive,state);
+			break;
+		default:
+			break;
+	}
+}
+
 void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.creatureStats.effects.stunCooldown!=0) --object.creatureStats.effects.stunCooldown;
 	if(object.creatureStats.effects.freezeCooldown!=0) --object.creatureStats.effects.freezeCooldown;
@@ -9901,6 +9954,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.creatureStats.effects.infectionCooldown!=0) --object.creatureStats.effects.infectionCooldown;
 	if(object.creatureStats.effects.yellCooldown!=0) --object.creatureStats.effects.yellCooldown;
 	animateCreature(object,state);
+	runPassive(object,state);
 	if(object.creatureStats.effects.numBulks!=0){
 		float targetBulk=2.0f-0.75f^^object.creatureStats.effects.numBulks;
 		static import std.math;

@@ -395,7 +395,7 @@ final class SacObject(B){
 
 	@property bool isRanged(){ return data && data.ranged; }
 	@property SacSpell!B rangedAttack(){ return isRanged?abilities[0]:null; }
-	@property SacSpell!B passiveOnDamage(){ return abilities[2]; }
+	@property SacSpell!B passiveOnDamage(){ return abilities[2]; } // TODO: rename (e.g., has phoenix shield)
 
 	bool hasLoadTick(AnimationState animationState,int frame){
 		return animations[animationState].frames[frame].event==AnimEvent.load;
