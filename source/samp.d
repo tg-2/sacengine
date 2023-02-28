@@ -37,9 +37,9 @@ ubyte[] parseWAV(ubyte[] data){
 	ubyte get_nibble(){
 		ubyte result;
 		if(cur&1){
-			result=buffer[0]&0x0f;
+			result=buffer[0]>>4;
 			buffer=buffer[1..$];
-		}else result=buffer[0]>>4;
+		}else result=buffer[0]&0x0f;
 		cur+=1;
 		return result;
 	}
