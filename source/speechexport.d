@@ -51,6 +51,7 @@ void exportSpeech(B)(ref Options options){
 			textFilename=toHexString(textHash).idup;
 		}
 		auto folder=buildPath(options.exportFolder,success?"done":"todo",name,subfoldername);
+		version(Windows) if(folder.endsWith(" ")) folder~="(space)";
 		mkdirRecurse(folder);
 		theSample.toFile(buildPath(folder,sampFilename~".wav"));
 		if(theText) theText.toFile(buildPath(folder,textFilename~".txt"));
