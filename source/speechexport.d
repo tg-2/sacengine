@@ -14,6 +14,8 @@ void exportSpeech(B)(ref Options options){
 		return;
 	}
 	auto state=new GameState!B(loadSacMap!B(options.map));
+	import lobby:gameInit;
+	state.initGame(gameInit(state.current.sides,(Settings[]).init,options));
 	auto triggers=state.current.triggers;
 	import nttData,text_,std.path;
 	auto folder=state.current.map.mapFolder;
