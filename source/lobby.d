@@ -195,6 +195,9 @@ class Lobby(B){
 		pathFinder=playback.pathFinder;
 		triggers=playback.triggers;
 		options.mapHash=map.crc32;
+		gameState=new GameState!B(map,sides,proximity,pathFinder,triggers);
+		gameState.initMap();
+		gameState.commit();
 	}
 
 	bool canContinue(){ return state.among(LobbyState.offline, LobbyState.connected) && isHost && !toContinue && !playback; }
