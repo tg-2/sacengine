@@ -2,7 +2,7 @@ sacengine
 =========
 Engine reimplementation for the game [Sacrifice](https://en.wikipedia.org/wiki/Sacrifice_(video_game)) from Shiny Entertainment.
 
-Discord server: https://discord.gg/CTkCPnZ (#sacengine-dev channel)
+Discord server: https://discord.gg/CTkCPnZ (#sacengine-dev channel)  
 Trello board: https://trello.com/b/ZcrTsa4O/sacengine
 
 Any help is welcome!
