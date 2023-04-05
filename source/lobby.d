@@ -11,10 +11,6 @@ GameInit!B gameInit(B,R)(Sides!B sides_,R playerSettings,ref Options options){
 	if(options._3v3) enforce(numSlots>=6);
 	gameInit.slots=new GameInit!B.Slot[](numSlots);
 	auto sides=iota(numSlots).map!(i=>sides_.multiplayerSide(i)).array;
-	if(options.shuffleSides){
-		import std.random: randomShuffle;
-		randomShuffle(sides);
-	}
 	auto teams=(-1).repeat(numSlots).array;
 	if(options.ffa||options._2v2||options._3v3){
 		int teamSize=1;
@@ -27,9 +23,17 @@ GameInit!B gameInit(B,R)(Sides!B sides_,R playerSettings,ref Options options){
 			if(settings.slot!=-1)
 				teams[settings.slot]=settings.team;
 	}
+	if(options.shuffleAltars){
+		import std.random: randomShuffle;
+		randomShuffle(sides);
+	}
 	if(options.shuffleTeams){
 		import std.random: randomShuffle;
 		randomShuffle(teams);
+	}
+	if(options.shuffleSides){
+		import std.random: randomShuffle;
+		randomShuffle(zip(sides,teams));
 	}
 	void placeWizard(ref Settings settings){
 		if(settings.observer) return;

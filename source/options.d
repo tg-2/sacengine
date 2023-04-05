@@ -48,6 +48,7 @@ struct Options{
 	bool mirrorMatch=false;
 	bool shuffleSides=false;
 	bool shuffleTeams=false;
+	bool shuffleAltars=false;
 	bool shuffleSlots=false;
 	bool randomWizards=false;
 	bool randomSpellbooks=false;
