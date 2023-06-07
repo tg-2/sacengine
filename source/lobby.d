@@ -302,7 +302,7 @@ class Lobby(B){
 					writeln("host is using version ",network.hostSettings.commit);
 					network.disconnectPlayer(network.host,null);
 					state=LobbyState.incompatibleVersion;
-					return true;
+					return false;
 				}
 			}
 			state=LobbyState.readyToLoad;

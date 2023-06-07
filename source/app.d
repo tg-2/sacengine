@@ -43,10 +43,10 @@ Lobby!B makeLobby(B)(ref Options options)out(lobby){
 }
 
 bool updateLobby(B)(Lobby!B lobby,ref Options options){
-	if(!lobby.update(options))
-		return false;
 	if(lobby.state==LobbyState.incompatibleVersion)
 		return true;
+	if(!lobby.update(options))
+		return false;
 	assert(lobby.state==LobbyState.readyToStart);
 	lobby.start(options);
 	return true;
