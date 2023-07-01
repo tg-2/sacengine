@@ -18,7 +18,7 @@ struct Pose{
 }
 private struct FrameHeader{
 	short unknown;
-	short[2] disp;
+	short[3] disp;
 	uint offset;
 }
 static assert(FrameHeader.sizeof==12);
@@ -59,7 +59,7 @@ Animation parseSXSK(ubyte[] data,float scaling){
 	foreach(i,ref frameHeader;frameHeaders){
 		enforce(frameHeader.offset<=frameHeader.offset+numBones*(short[4]).sizeof && frameHeader.offset+numBones*(short[4]).sizeof<=data.length);
 		auto anim=cast(short[4][])data[frameHeader.offset..frameHeader.offset+numBones*(short[4]).sizeof];
-		auto displacement=fromSXMD(Vector3f(frameHeader.disp[0],frameHeader.disp[1],0))*scaling;
+		auto displacement=fromSXMD(Vector3f(frameHeader.disp[0],frameHeader.disp[1],frameHeader.disp[2]))*scaling;
 		auto rotations=anim.map!(x=>Quaternionf(Vector3f(fromSXMD([x[0],x[1],x[2]])),x[3]).normalized()).array;
 		frames~=Pose(displacement,AnimEvent.none,rotations);
 	}
