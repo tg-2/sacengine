@@ -8861,8 +8861,8 @@ bool shootOnTick(bool ability=false,B)(ref MovingObject!B object,OrderTarget tar
 					break;
 				case SpellTag.locustShoot:
 					locustShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
-					// hack to ensure drain gets applied:
-					object.creatureStats.health=state.movingObjectById!((obj)=>obj.creatureStats.health,()=>0.0f)(object.id);
+					// hack to ensure attacker is updated properly. TODO: make locust damage part of an effect instead
+					state.movingObjectById!((obj,object){ *object=obj; },(){})(object.id,&object);
 					break;
 				case SpellTag.spitfireShoot:
 					spitfireShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
@@ -8932,8 +8932,8 @@ bool shootOnTick(bool ability=false,B)(ref MovingObject!B object,OrderTarget tar
 					break;
 				case SpellTag.styxShoot:
 					styxShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
-					// hack to ensure drain gets applied:
-					object.creatureStats.health=state.movingObjectById!((obj)=>obj.creatureStats.health,()=>0.0f)(object.id);
+					// hack to ensure attacker is updated properly. TODO: make styx damage part of an effect instead
+					state.movingObjectById!((obj,object){ *object=obj; },(){})(object.id,&object);
 					break;
 				case SpellTag.phoenixShoot:
 					phoenixShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
@@ -8961,8 +8961,8 @@ bool shootOnTick(bool ability=false,B)(ref MovingObject!B object,OrderTarget tar
 					break;
 				case SpellTag.rend:
 					rendShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
-					// hack to ensure drain gets applied:
-					object.creatureStats.health=state.movingObjectById!((obj)=>obj.creatureStats.health,()=>0.0f)(object.id);
+					// hack to ensure attacker is updated properly. TODO: make rend damage part of an effect instead
+					state.movingObjectById!((obj,object){ *object=obj; },(){})(object.id,&object);
 					break;
 				default: goto case SpellTag.brainiacShoot;
 			}
