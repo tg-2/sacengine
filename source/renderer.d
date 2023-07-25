@@ -348,6 +348,17 @@ struct Renderer(B){
 		auto meshes=typeof(return).createMeshes();
 		return SacAnimateDead!B(texture,mat,meshes);
 	}
+	SacHellmouthProjectile!B hellmouthProjectile;
+	SacHellmouthProjectile!B createHellmouthProjectile(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessBoneMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Transparent;
+		mat.energy=1.0f;
+		mat.diffuse=texture;
+		auto mesh=typeof(return).createMesh();
+		return SacHellmouthProjectile!B(texture,mat,mesh);
+	}
 	SacDragonfire!B dragonfire;
 	SacDragonfire!B createDragonfire(){
 		auto obj=typeof(return).create();
@@ -740,6 +751,7 @@ struct Renderer(B){
 		vine=createVine();
 		rainbow=createRainbow();
 		animateDead=createAnimateDead();
+		hellmouthProjectile=createHellmouthProjectile();
 		dragonfire=createDragonfire();
 		soulWind=createSoulWind();
 		explosionEffect=createExplosionEffect();
@@ -1783,6 +1795,30 @@ struct Renderer(B){
 						mesh.render(rc);
 					}
 					foreach(j;0..objects.animateDeadEffects.length) renderAnimateDead(objects.animateDeadEffects[j]);
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.hellmouthProjectiles.length){
+					auto material=self.hellmouthProjectile.material;
+					material.bind(rc);
+					B.disableCulling();
+					scope(success){
+						B.enableCulling();
+						material.unbind(rc);
+					}
+					B.shadelessBoneMaterialBackend.setTransformation(Vector3f(0.0f,0.0f,0.0f),Quaternionf.identity(),rc);
+					auto mesh=self.hellmouthProjectile.mesh;
+					void renderHellmouthProjectile(ref HellmouthProjectile!B hellmouthProjectile){
+						Matrix4x4f[self.hellmouthProjectile.numSegments+1] pose;
+						foreach(i,ref x;pose){
+							auto curve=hellmouthProjectile.get(i/float(pose.length-1));
+							auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),curve[1].normalized);
+							x=Transformation(rotation,curve[0]).getMatrix4f;
+						}
+						auto mesh=self.hellmouthProjectile.mesh;
+						mesh.pose=pose[];
+						scope(exit) mesh.pose=[];
+						mesh.render(rc);
+					}
+					foreach(j;0..objects.hellmouthProjectiles.length) renderHellmouthProjectile(objects.hellmouthProjectiles[j]);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.dragonfireCastings.length||objects.dragonfires.length)){
 					B.disableDepthMask();

@@ -3421,6 +3421,33 @@ struct SilverbackEffect{
 	int frame=0;
 }
 
+struct HellmouthProjectile(B){
+	int attacker;
+	int side;
+	int intendedTarget;
+	Vector3f position;
+	Vector3f direction;
+	SacSpell!B rangedAttack;
+	float remainingDistance;
+	int frame=0;
+	int hitframe=-1;
+	int endframe=-1;
+	int targetId=0;
+	Vector3f targetPosition;
+	float targetScale=0.0f;
+	Vector3f[2] lastPosition, nextPosition;
+	float progress=0.0f;
+	enum minHeightOffset=1.0f;
+	enum minHeightFactor=0.2f;
+	enum additionalRadius=2.0f;
+	enum speedRadiusFactor=3.0f;
+	enum interpolationSpeed=1.5f;
+	enum numProjectileFrames=60;
+	Vector3f[numProjectileFrames] locations;
+	Vector3f[2] get(float t){ return cintp(locations[].stride(3),t); }
+}
+
+
 enum RockFormStatus{ growing, stationary, shrinking }
 struct RockForm(B){
 	int target;
@@ -4713,6 +4740,14 @@ struct Effects(B){
 	void removeSilverbackEffect(int i){
 		if(i+1<silverbackEffects.length) silverbackEffects[i]=move(silverbackEffects[$-1]);
 		silverbackEffects.length=silverbackEffects.length-1;
+	}
+	Array!(HellmouthProjectile!B) hellmouthProjectiles;
+	void addEffect(HellmouthProjectile!B hellmouthProjectile){
+		hellmouthProjectiles~=hellmouthProjectile;
+	}
+	void removeHellmouthProjectile(int i){
+		if(i+1<hellmouthProjectiles.length) hellmouthProjectiles[i]=move(hellmouthProjectiles[$-1]);
+		hellmouthProjectiles.length=hellmouthProjectiles.length-1;
 	}
 	// abilities
 	Array!(RockForm!B) rockForms;
@@ -8334,6 +8369,15 @@ bool silverbackShoot(B)(int attacker,int side,int intendedTarget,float accuracy,
 	return true;
 }
 
+bool hellmouthShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	playSoundAt("smlh",position,state,4.0f);
+	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
+	auto projectile=HellmouthProjectile!B(attacker,side,intendedTarget,position,direction,rangedAttack,rangedAttack.range);
+	projectile.locations[]=position;
+	state.addEffect(move(projectile));
+	return true;
+}
+
 enum defaultFaceThreshold=1e-3;
 bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state,float threshold=defaultFaceThreshold){
 	auto angle=facing-object.creatureState.facing;
@@ -8940,6 +8984,9 @@ bool shootOnTick(bool ability=false,B)(ref MovingObject!B object,OrderTarget tar
 					break;
 				case SpellTag.silverbackShoot:
 					silverbackShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
+					break;
+				case SpellTag.hellmouthShoot:
+					hellmouthShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
 					break;
 				// abilities:
 				case SpellTag.blightMites:
@@ -17136,6 +17183,103 @@ bool updateSilverbackEffect(B)(ref SilverbackEffect effect,ObjectState!B state){
 	}
 }
 
+enum hellmouthProjectileHitGain=4.0f;
+enum hellmouthProjectileSize=0.35f; // TODO: ok?
+enum hellmouthProjectileSlidingDistance=1.5f;
+static immutable Vector3f[2] hellmouthProjectileHitbox=[-0.5f*hellmouthProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*hellmouthProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
+int hellmouthProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
+		return entry.isProjectileObstacle&&(entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side);
+	}
+	return collisionTarget!(hellmouthProjectileHitbox,filter)(side,position,state,side,intendedTarget);
+}
+bool updateHellmouthProjectile(B)(ref HellmouthProjectile!B hellmouthProjectile,ObjectState!B state){
+	with(hellmouthProjectile){
+		++frame;
+		auto velocity=rangedAttack.speed/updateFPS*direction;
+		if(remainingDistance>0.0f){
+			void terminate(){
+				playSoundAt("hsid",position,state,hellmouthProjectileHitGain);
+				remainingDistance=0.0f;
+				hitframe=frame;
+				endframe=hitframe+numProjectileFrames;
+				targetPosition=position;
+			}
+			auto oldPosition=position;
+			position+=velocity;
+			remainingDistance-=rangedAttack.speed/updateFPS;
+			if(remainingDistance<0.0f) terminate();
+			static assert(updateFPS==60);
+			OrderTarget target;
+			if(auto targetId=hellmouthProjectileCollisionTarget(side,intendedTarget,position,state)){
+				target.id=targetId;
+				target.type=state.targetTypeFromId(targetId);
+			}else{
+				target=state.lineOfSightWithoutSide(oldPosition,position,side,intendedTarget);
+			}
+			void startFollowing(int newTargetId){
+				targetId=newTargetId;
+				playSpellSoundTypeAt(SoundType.sacrifice,targetId,state,2.0f);
+				terminate();
+				endframe=hitframe+4*numProjectileFrames;
+			}
+			float manaDrain=0.0f;
+			switch(target.type){
+				case TargetType.terrain:
+					terminate();
+					break;
+				case TargetType.creature:
+					state.movingObjectById!(poison,()=>false)(target.id,rangedAttack,false,attacker,side,DamageMod.ranged,state);
+					startFollowing(target.id);
+					break;
+				case TargetType.building:
+					dealRangedDamage(target.id,rangedAttack,attacker,side,direction,DamageMod.none,state);
+					startFollowing(target.id);
+					break;
+				default: break;
+			}
+		}
+		if(targetId&&state.isValidTarget(targetId)){
+			state.objectById!(
+				(ref obj,tPos,tScale){
+					*tPos=obj.center;
+					*tScale=0.5f*boxSize(obj.hitbox).length;
+				})(targetId,&targetPosition,&targetScale);
+		}
+		if(endframe!=-1){
+			if(frame>=endframe)
+				return false;
+			if(frame+numProjectileFrames<endframe){
+				if(isNaN(lastPosition[0].x)){
+					nextPosition=[position-targetPosition,velocity];
+					progress=1.0f;
+				}
+				auto radius=additionalRadius+targetScale;
+				if(progress>=1.0f){
+					progress-=1.0f;
+					lastPosition=nextPosition;
+					if(frame+2*numProjectileFrames<endframe){
+						nextPosition[0]=state.uniformDisk(Vector3f(0.0f,0.0f,0.0f),radius);
+					}else{
+						nextPosition[0]=Vector3f(0.0f,0.0f,0.0f);
+					}
+					nextPosition[1]=state.uniformDirection()*speedRadiusFactor*radius;
+				}
+				auto absoluteNext=nextPosition[0]+targetPosition;
+				auto minHeight=minHeightFactor*radius+minHeightOffset+state.getHeight(absoluteNext);
+				nextPosition[0].z=max(minHeight,absoluteNext.z)-targetPosition.z;
+				progress+=interpolationSpeed/updateFPS;
+			}else if(progress<1.0f)
+				progress+=interpolationSpeed/updateFPS;
+			position=cintp2([lastPosition,nextPosition],progress)[0]+targetPosition;
+		}
+		foreach(k;0..1+(frame+numProjectileFrames>=endframe))
+			foreach_reverse(i;1..numProjectileFrames) locations[i]=locations[i-1];
+		locations[0]=position;
+		return true;
+	}
+}
+
 
 bool updateRockForm(B)(ref RockForm!B rockForm,ObjectState!B state){
 	with(rockForm){
@@ -18941,6 +19085,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.silverbackEffects.length;){
 		if(!updateSilverbackEffect(effects.silverbackEffects[i],state)){
 			effects.removeSilverbackEffect(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.hellmouthProjectiles.length;){
+		if(!updateHellmouthProjectile(effects.hellmouthProjectiles[i],state)){
+			effects.removeHellmouthProjectile(i);
 			continue;
 		}
 		i++;

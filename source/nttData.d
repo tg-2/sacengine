@@ -1202,6 +1202,7 @@ enum SpellTag:char[4]{
 
 	phoenixShoot="rdra",
 	silverbackShoot="rdba",
+	hellmouthShoot="mhba",
 }
 
 enum WizardTag:char[4]{

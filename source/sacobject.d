@@ -3031,6 +3031,19 @@ struct SacWarmongerEffect(B){
 	}
 }
 
+struct SacHellmouthProjectile(B){
+	B.Texture texture;
+	B.Material material;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Char.FLDR/tex_ZERO_.FLDR/mssg.TXTR"));
+	}
+	B.BoneMesh mesh;
+	enum numSegments=31;
+	static B.BoneMesh createMesh(){
+		return makeLineMesh!B(numSegments,0.0f,0.85f,false,false,false);
+	}
+}
+
 struct SacTether(B){
 	B.Texture texture;
 	B.Material material;

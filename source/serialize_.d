@@ -699,6 +699,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Sil
 void serialize(alias sink)(ref SilverbackEffect silverbackEffect){ serializeStruct!sink(silverbackEffect); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SilverbackEffect)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref HellmouthProjectile!B hellmouthProjectile){ serializeStruct!sink(hellmouthProjectile); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==HellmouthProjectile!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref Protector!B protector){ serializeStruct!sink(protector); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Protector!B)){ deserializeStruct(result,state,data); }
 
