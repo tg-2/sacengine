@@ -1722,7 +1722,9 @@ static:
 			auto blending=("blending" in mat.inputs).asInteger;
 			if(blending!=Additive){
 				auto shadowMat=makeMaterial(gpuSkinning&&sobj.isSaxs?scene.shadowMap.bsb:scene.shadowMap.sb); // TODO: use shadowMap.sm if no alpha channel
-				shadowMat.diffuse=("diffuse" in mat.inputs).texture;
+				if(auto diffuse="diffuse" in mat.inputs)
+					if(diffuse.texture)
+						shadowMat.diffuse=diffuse.texture;
 				materials[i]=shadowMat;
 			}
 		}
