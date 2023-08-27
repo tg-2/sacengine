@@ -519,6 +519,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Dem
 void serialize(alias sink,B)(ref DemonicRiftEffect!B demonicRiftEffect){ serializeStruct!sink(demonicRiftEffect); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==DemonicRiftEffect!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref Spike!B spike){ serializeStruct!sink(spike); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Spike!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref BrainiacProjectile!B brainiacProjectile){ serializeStruct!sink(brainiacProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BrainiacProjectile!B)){ deserializeStruct(result,state,data); }
 

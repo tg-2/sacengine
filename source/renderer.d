@@ -446,6 +446,17 @@ struct Renderer(B){
 		auto frames=typeof(return).createMeshes();
 		return SacDemonicRiftEffect!B(texture,mat,frames);
 	}
+	SacSpike!B createSpike(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.defaultMaterialBackend);
+		mat.specular=Color4f(1,1,1,1);
+		mat.roughness=1.0f;
+		mat.metallic=0.5f;
+		mat.diffuse=texture;
+		auto mesh=typeof(return).createMesh();
+		return SacSpike!B(texture,mat,mesh);
+	}
+	SacSpike!B spike;
 	SacBrainiacEffect!B brainiacEffect;
 	SacBrainiacEffect!B createBrainiacEffect(){
 		auto texture=typeof(return).loadTexture();
@@ -727,6 +738,7 @@ struct Renderer(B){
 		airShield=createAirShield();
 		airShieldEffect=createAirShieldEffect();
 		freeze=createFreeze();
+		spike=createSpike();
 		brainiacEffect=createBrainiacEffect();
 		shrikeEffect=createShrikeEffect();
 		arrow=createArrow();
@@ -2004,6 +2016,19 @@ struct Renderer(B){
 						auto mesh=self.demonicRiftEffect.getFrame(objects.demonicRiftEffects[j].frame%self.demonicRiftEffect.numFrames);
 						mesh.render(rc);
 					}
+				}
+				static if(mode==RenderMode.opaque) if(objects.spikes.length){
+					auto material=self.spike.material;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
+					void renderSpike(float scale,Vector3f position,Vector3f direction){
+						auto ndirection=direction/direction.z;
+						auto modelMatrix=translationMatrix(position)*scaleMatrix(Vector3f(scale,scale,scale*direction.z))*shearMatrix(Axis.z,ndirection.x,ndirection.y);
+						B.defaultMaterialBackend.setModelViewMatrix(rc.viewMatrix*modelMatrix);
+						auto mesh=self.spike.mesh;
+						mesh.render(rc);
+					}
+					foreach(ref spike;objects.spikes) renderSpike(spike.currentScale,spike.position,spike.direction);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.brainiacEffects.length){
 					auto material=self.brainiacEffect.material;

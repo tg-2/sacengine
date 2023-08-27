@@ -2994,6 +2994,18 @@ struct DemonicRiftEffect(B){
 	enum upwardsVelocity=shrinkSpeed*(endHoverHeight-startHoverHeight);
 }
 
+struct Spike(B){
+	Vector3f position;
+	Vector3f direction;
+	float scale=1.0f;
+	int frame=0;
+	enum lifetime=2*updateFPS/3;
+	@property float currentScale(){
+		auto t=2.0f*float(frame)/lifetime-1.0f;
+		return scale*(1.0f-t^^2);
+	}
+}
+
 struct BrainiacProjectile(B){
 	int attacker;
 	int side;
@@ -4371,6 +4383,14 @@ struct Effects(B){
 	void removeDemonicRiftEffect(int i){
 		if(i+1<demonicRiftEffects.length) demonicRiftEffects[i]=move(demonicRiftEffects[$-1]);
 		demonicRiftEffects.length=demonicRiftEffects.length-1;
+	}
+	Array!(Spike!B) spikes;
+	void addEffect(Spike!B spike){
+		spikes~=move(spike);
+	}
+	void removeSpike(int i){
+		if(i+1<spikes.length) spikes[i]=move(spikes[$-1]);
+		spikes.length=spikes.length-1;
 	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
@@ -15397,6 +15417,13 @@ bool updateDemonicRiftEffect(B)(ref DemonicRiftEffect!B demonicRiftEffect,Object
 	}
 }
 
+bool updateSpike(B)(ref Spike!B spike,ObjectState!B state){
+	with(spike){
+		position.z=state.getHeight(position);
+		return ++frame<lifetime;
+	}
+}
+
 
 enum brainiacProjectileHitGain=4.0f;
 enum brainiacProjectileSize=0.45f; // TODO: ok?
@@ -18762,6 +18789,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.demonicRiftEffects.length;){
 		if(!updateDemonicRiftEffect(effects.demonicRiftEffects[i],state)){
 			effects.removeDemonicRiftEffect(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.spikes.length;){
+		if(!updateSpike(effects.spikes[i],state)){
+			effects.removeSpike(i);
 			continue;
 		}
 		i++;

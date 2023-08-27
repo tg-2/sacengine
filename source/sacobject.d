@@ -1964,7 +1964,7 @@ B.Mesh makeSphereMesh(B)(int numU,int numV,float radius,float u1=0.0f,float v1=0
 	int idx(int i,int j){
 		if(i==-1) return 0;
 		if(i==numU) return 1+numU*numV;
-		return 1+numV*i+j;
+		return 1+numV*i+j%numV;
 	}
 	foreach(i;0..numU){
 		foreach(j;0..numV){
@@ -2438,6 +2438,57 @@ struct SacDemonicRiftEffect(B){
 		return makeSpriteMeshes!(B,true)(4,4,2.5f,2.5f);
 	}
 }
+
+B.Mesh makeSpikeMesh(B)(int numV,float texBase,float base,float baseRadius,float topRadius){
+	enum numU=2;
+	auto mesh=B.makeMesh((numU+1)*numV,2*numU*numV);
+	int numFaces=0;
+	void addFace(uint[3] face...){
+		mesh.indices[numFaces++]=face;
+	}
+	int idx(int i,int j){
+		return numV*i+j%numV;
+	}
+	foreach(j;0..numV){
+		mesh.vertices[idx(numU,j)]=Vector3f(0.0f,0.0f,1.0f);
+		mesh.texcoords[idx(numU,j)]=Vector2f(0.5f,0.5f);
+	}
+	foreach(i;0..numU){
+		foreach(j;0..numV){
+			auto θ=pi!float*(1+i)/(numU+1);
+			auto φ=2.0f*pi!float*j/numV;
+			auto radius=i?topRadius:baseRadius;
+			mesh.vertices[idx(i,j)]=Vector3f(radius*cos(φ),radius*sin(φ),i*base/(numU-1));
+			auto texDir=Vector2f(cos(φ),sin(φ));
+			texDir/=max(abs(texDir.x),abs(texDir.y));
+			auto texRadius=0.5f*(1.0f-texBase*i/(numU-1));
+			auto texCoord=Vector2f(0.5f,0.5f)+texDir*texRadius;
+			mesh.texcoords[idx(i,j)]=texCoord;
+			if(i!=0){
+				addFace([idx(i,j),idx(i-1,j),idx(i,j+1)]);
+				addFace([idx(i,j+1),idx(i-1,j),idx(i-1,j+1)]);
+			}
+			if(i+1==numU) addFace([idx(i,j),idx(i,j+1),idx(i+1,j)]);
+		}
+	}
+	assert(numFaces==2*(numU-1)*numV+numV);
+	mesh.generateNormals();
+	B.finalizeMesh(mesh);
+	return mesh;
+}
+
+struct SacSpike(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/shawn/shwn.WAD!/jams.FLDR/text.FLDR/jspk.TXTR"));
+	}
+	B.Material material;
+	B.Mesh mesh;
+	static B.Mesh createMesh(){
+		return makeSpikeMesh!B(32,0.6f,0.75f,0.3f,0.25f);
+	}
+}
+
 
 struct SacBrainiacEffect(B){
 	B.Texture texture;
