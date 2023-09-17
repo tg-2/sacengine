@@ -3475,6 +3475,7 @@ struct RhinokProjectile(B){
 		spreading,
 	}
 	Phase phase;
+	int actualTarget=0;
 	enum numProjectileFrames=90;
 	enum maxDamageHeight=10.0f;
 	enum movingRange=2.5f;
@@ -17408,6 +17409,7 @@ bool updateRhinokProjectile(B)(ref RhinokProjectile!B rhinokProjectile,ObjectSta
 					assert(phase==Phase.spreading);
 					dealRangedDamage(target.id,rangedAttack,attacker,side,direction,DamageMod.splash,state);
 					position.z=state.getHeight(position);
+					actualTarget=target.id;
 				}
 				break;
 			case Phase.spreading:
@@ -17421,7 +17423,8 @@ bool updateRhinokProjectile(B)(ref RhinokProjectile!B rhinokProjectile,ObjectSta
 				auto offset=(rangedAttack.effectRange-stripSize-minRadius)/(damageFrames.length-1);
 				auto minRange=minRadius+i*offset;
 				auto maxRange=minRange+stripSize;
-				static bool callback(int id,int attacker,int side,int intendedTarget,SacSpell!B rangedAttack,Vector3f attackPosition,float minRange,float maxRange,ObjectState!B state){
+				static bool callback(int id,int attacker,int side,int intendedTarget,int actualTarget,SacSpell!B rangedAttack,Vector3f attackPosition,float minRange,float maxRange,ObjectState!B state){
+					if(id==actualTarget) return false;
 					auto positionAttackedSide=state.objectById!((obj,state)=>tuple(obj.position,.side(obj,state)))(id,state);
 					auto position=positionAttackedSide[0],attackedSide=positionAttackedSide[1];
 					if(!state.isOnGround(position)) return false;
@@ -17437,7 +17440,7 @@ bool updateRhinokProjectile(B)(ref RhinokProjectile!B rhinokProjectile,ObjectSta
 					dealRangedDamage(id,rangedAttack,attacker,side,attackDirection,DamageMod.splash,state);
 					return false;
 				}
-				dealDamageAt!callback(0,rangedAttack.amount,maxRange,attacker,side,position,DamageMod.ranged,state,attacker,side,intendedTarget,rangedAttack,position,minRange,maxRange,state);
+				dealDamageAt!callback(0,rangedAttack.amount,maxRange,attacker,side,position,DamageMod.ranged,state,attacker,side,intendedTarget,actualTarget,rangedAttack,position,minRange,maxRange,state);
 			}
 		}
 		static assert(updateFPS==60);
