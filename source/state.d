@@ -8414,38 +8414,9 @@ void styxLoad(B)(int attacker,ObjectState!B state){
 	playSoundAt("esuf",attacker,state,2.0f);
 	// TODO: actually light fuse
 }
-void styxSparkAnimation(int numSparks=192,B)(Vector3f[2] hitbox,ObjectState!B state){
-	auto sacParticle=SacParticle!B.get(ParticleType.styxSpark);
-	if(hitbox[0]==hitbox[1]){
-		hitbox[0]-=0.5;
-		hitbox[1]+=0.5f;
-	}
-	auto center=boxCenter(hitbox);
-	foreach(i;0..numSparks){
-		auto position=state.uniform(scaleBox(hitbox,1.2f));
-		auto velocity=Vector3f(position.x-center.x,position.y-center.y,0.0f).normalized*5.0f;
-		velocity.z+=state.uniform(0.0f,8.0f);
-		auto scale=state.uniform(0.5f,1.5f);
-		int lifetime=state.uniform!"[]"(15,95);
-		int frame=0;
-		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
-	}
-}
 bool styxShoot(B)(int attacker,int side,int target,float accuracy,Vector3f position,Vector3f targetPosition,SacSpell!B rangedAttack,ObjectState!B state){
 	state.addEffect(StyxShoot!B(attacker,side,target,position,targetPosition,rangedAttack));
 	return true;
-}
-void animateStyxHit(B)(Vector3f position,SacSpell!B rangedAttack,ObjectState!B state){
-	enum numParticles3=20;
-	auto sacParticle3=SacParticle!B.get(ParticleType.styxHit);
-	foreach(i;0..numParticles3){
-		auto direction=state.uniformDirection();
-		auto velocity=state.uniform(0.8f,3.2f)*direction;
-		auto scale=state.uniform(1.0f,2.5f);
-		auto lifetime=31;
-		auto frame=0;
-		state.addParticle(Particle!B(sacParticle3,position,velocity,scale,lifetime,frame));
-	}
 }
 
 bool phoenixShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
@@ -9438,20 +9409,6 @@ bool firewalk(B)(int creature,Vector3f targetPosition,SacSpell!B ability,ObjectS
 	return true; // TODO
 }
 
-void rendSparkAnimation(int numSparks=192,B)(Vector3f targetPosition,ObjectState!B state){
-	auto sacParticle=SacParticle!B.get(ParticleType.rend);
-	Vector3f[2] hitbox=[targetPosition-0.5f,targetPosition+0.5];
-	auto center=boxCenter(hitbox);
-	foreach(i;0..numSparks){
-		auto position=state.uniform(scaleBox(hitbox,1.2f));
-		auto velocity=(position-center).normalized*15.0f;
-		velocity.z+=state.uniform(0.0f,8.0f);
-		auto scale=state.uniform(0.5f,1.5f);
-		int lifetime=state.uniform!"[]"(15,95);
-		int frame=0;
-		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
-	}
-}
 bool canRend(B)(int attacker,int side,int target,ObjectState!B state){
 	bool ok=false;
 	state.soulById!((ref soul,ok,side,state){
@@ -16741,6 +16698,23 @@ bool updateWarmongerGun(B)(ref WarmongerGun!B warmongerGun,ObjectState!B state){
 	}
 }
 
+void styxSparkAnimation(int numSparks=192,B)(Vector3f[2] hitbox,ObjectState!B state){
+	auto sacParticle=SacParticle!B.get(ParticleType.styxSpark);
+	if(hitbox[0]==hitbox[1]){
+		hitbox[0]-=0.5;
+		hitbox[1]+=0.5f;
+	}
+	auto center=boxCenter(hitbox);
+	foreach(i;0..numSparks){
+		auto position=state.uniform(scaleBox(hitbox,1.2f));
+		auto velocity=Vector3f(position.x-center.x,position.y-center.y,0.0f).normalized*5.0f;
+		velocity.z+=state.uniform(0.0f,8.0f);
+		auto scale=state.uniform(0.5f,1.5f);
+		int lifetime=state.uniform!"[]"(15,95);
+		int frame=0;
+		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+	}
+}
 bool updateStyxShoot(B)(ref StyxShoot!B shoot,ObjectState!B state){
 	with(shoot){
 		playSoundAt("sxts",position,state,1.0f);
@@ -18316,6 +18290,20 @@ bool updateFirewalk(B)(ref Firewalk!B firewalk,ObjectState!B state){
 	return result;
 }
 
+void rendSparkAnimation(int numSparks=192,B)(Vector3f targetPosition,ObjectState!B state){
+	auto sacParticle=SacParticle!B.get(ParticleType.rend);
+	Vector3f[2] hitbox=[targetPosition-0.5f,targetPosition+0.5];
+	auto center=boxCenter(hitbox);
+	foreach(i;0..numSparks){
+		auto position=state.uniform(scaleBox(hitbox,1.2f));
+		auto velocity=(position-center).normalized*15.0f;
+		velocity.z+=state.uniform(0.0f,8.0f);
+		auto scale=state.uniform(0.5f,1.5f);
+		int lifetime=state.uniform!"[]"(15,95);
+		int frame=0;
+		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+	}
+}
 bool updateRendShoot(B)(ref RendShoot!B shoot,ObjectState!B state){
 	with(shoot){
 		if(!canRend(attacker,side,target,state)) return false;
