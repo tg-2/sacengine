@@ -3459,6 +3459,36 @@ struct HellmouthProjectile(B){
 	Vector3f[2] get(float t){ return cintp(locations[].stride(3),t); }
 }
 
+struct RhinokProjectile(B){
+	int attacker;
+	int side;
+	int intendedTarget;
+	Vector3f position;
+	Vector3f direction;
+	SacSpell!B rangedAttack;
+	float remainingDistance;
+	int frame=0;
+	int hitframe=-1;
+	int endframe=-1;
+	enum Phase{
+		moving,
+		spreading,
+	}
+	Phase phase;
+	enum numProjectileFrames=90;
+	enum maxDamageHeight=10.0f;
+	enum movingRange=2.5f;
+	enum movingSpikeRate=3;
+	enum spreadingSpikeRate=30;
+	enum minRadius=1.0f;
+	enum stripSize=6.0f;
+	//enum stripSize=12.0f;
+	//enum stripSize=15.0f;
+	static immutable damageFrames=[15-1,30-1,45-1,60-1,90-1];
+	//static immutable damageFrames=[30-1,60-1,90-1];
+	//static immutable damageFrames=[45-1,90-1];
+}
+
 
 enum RockFormStatus{ growing, stationary, shrinking }
 struct RockForm(B){
@@ -4768,6 +4798,14 @@ struct Effects(B){
 	void removeHellmouthProjectile(int i){
 		if(i+1<hellmouthProjectiles.length) hellmouthProjectiles[i]=move(hellmouthProjectiles[$-1]);
 		hellmouthProjectiles.length=hellmouthProjectiles.length-1;
+	}
+	Array!(RhinokProjectile!B) rhinokProjectiles;
+	void addEffect(RhinokProjectile!B RhinokProjectile){
+		rhinokProjectiles~=RhinokProjectile;
+	}
+	void removeRhinokProjectile(int i){
+		if(i+1<rhinokProjectiles.length) swap(rhinokProjectiles[i],rhinokProjectiles[$-1]);
+		rhinokProjectiles.length=rhinokProjectiles.length-1; // TODO: reuse memory?
 	}
 	// abilities
 	Array!(RockForm!B) rockForms;
@@ -7931,7 +7969,13 @@ bool castExplosion(B)(int side,Vector3f position,ManaDrain!B manaDrain,SacSpell!
 	state.addEffect(ExplosionCasting!B(side,manaDrain,spell,castingTime,effects));
 	return true;
 }
-bool explosion(B)(int attacker,int side,ref ExplosionEffect[5] effects,SacSpell!B spell,ObjectState!B state){
+
+bool explosion(B)(int attacker,int side,Vector3f position,SacSpell!B spell,ObjectState!B state){
+	ExplosionEffect[1] effects=[ExplosionEffect(position)];
+	return explosion(attacker,side,effects,spell,state);
+}
+
+bool explosion(B,size_t n)(int attacker,int side,ref ExplosionEffect[n] effects,SacSpell!B spell,ObjectState!B state){
 	foreach(ref effect;effects){
 		animateAsh(effect.position,state,150);
 		animateDebris(effect.position,state,15);
@@ -7943,7 +7987,7 @@ bool explosion(B)(int attacker,int side,ref ExplosionEffect[5] effects,SacSpell!
 		}
 		dealSplashSpellDamageAt!callback(0,spell,spell.damageRange,attacker,side,effect.position,DamageMod.ignite,state,attacker,side,state);
 	}
-	static bool catapultCallback(int id,ExplosionEffect[5]* effects,SacSpell!B spell,ObjectState!B state){
+	static bool catapultCallback(int id,ExplosionEffect[n]* effects,SacSpell!B spell,ObjectState!B state){
 		state.movingObjectById!((ref obj,effects,state){
 			float best=float.infinity;
 			Vector3f position;
@@ -8383,7 +8427,7 @@ bool phoenixShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vec
 }
 
 bool silverbackShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
-	playSoundAt("gxtv",position,state,4.0f); // TODO: correct?
+	playSoundAt("gxtv",position,state,4.0f);
 	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
 	state.addEffect(SilverbackProjectile!B(attacker,side,intendedTarget,position,direction,rangedAttack,rangedAttack.range));
 	return true;
@@ -8397,6 +8441,14 @@ bool hellmouthShoot(B)(int attacker,int side,int intendedTarget,float accuracy,V
 	state.addEffect(move(projectile));
 	return true;
 }
+
+bool rhinokShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	playSoundAt("1rkq",position,state,4.0f); // TODO: correct?
+	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
+	state.addEffect(RhinokProjectile!B(attacker,side,intendedTarget,position,direction,rangedAttack,rangedAttack.range));
+	return true;
+}
+
 
 enum defaultFaceThreshold=1e-3;
 bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state,float threshold=defaultFaceThreshold){
@@ -9007,6 +9059,9 @@ bool shootOnTick(bool ability=false,B)(ref MovingObject!B object,OrderTarget tar
 					break;
 				case SpellTag.hellmouthShoot:
 					hellmouthShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
+					break;
+				case SpellTag.rhinokShoot:
+					rhinokShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
 					break;
 				// abilities:
 				case SpellTag.blightMites:
@@ -17000,8 +17055,11 @@ int bombardProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f pos
 	return collisionTarget!(bombardProjectileHitbox,filter)(side,position,state,side,intendedTarget);
 }
 
+
+
 void bombardProjectileExplosion(B)(ref BombardProjectile!B bombardProjectile,int target,ObjectState!B state){
 	playSoundAt("2xbf",bombardProjectile.position,state,bombardShootGain);
+	//with(bombardProjectile) explosion(attacker,side,position,rangedAttack,state);
 	with(bombardProjectile){
 		if(state.isValidTarget(target)){
 			dealRangedDamage(target,rangedAttack,attacker,side,velocity,DamageMod.ignite|DamageMod.splash,state);
@@ -17250,7 +17308,6 @@ bool updateHellmouthProjectile(B)(ref HellmouthProjectile!B hellmouthProjectile,
 				terminate();
 				endframe=hitframe+4*numProjectileFrames;
 			}
-			float manaDrain=0.0f;
 			switch(target.type){
 				case TargetType.terrain:
 					terminate();
@@ -17307,6 +17364,111 @@ bool updateHellmouthProjectile(B)(ref HellmouthProjectile!B hellmouthProjectile,
 	}
 }
 
+enum rhinokProjectileHitGain=4.0f;
+enum rhinokProjectileSize=5.0f; // TODO: ok?
+static immutable Vector3f[2] rhinokProjectileHitbox=[-0.5f*rhinokProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*rhinokProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
+int rhinokProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
+		return entry.isProjectileObstacle&&(entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side);
+	}
+	return collisionTarget!(rhinokProjectileHitbox,filter)(side,position,state,side,intendedTarget);
+}
+
+bool updateRhinokProjectile(B)(ref RhinokProjectile!B rhinokProjectile,ObjectState!B state){
+	with(rhinokProjectile){
+		void terminate(){
+			playSoundAt("kpsr",position,state,rhinokProjectileHitGain);
+			remainingDistance=0.0f;
+			phase=Phase.spreading;
+			hitframe=frame;
+			endframe=hitframe+numProjectileFrames;
+		}
+		auto oldPosition=position;
+		float radius;
+		final switch(phase){
+			case Phase.moving:
+				radius=movingRange;
+				OrderTarget target;
+				if(remainingDistance>0.0f){
+					position+=rangedAttack.speed/updateFPS*direction;
+					remainingDistance-=rangedAttack.speed/updateFPS;
+					position.z=state.getHeight(position);
+					if(auto targetId=rhinokProjectileCollisionTarget(side,intendedTarget,position,state)){
+						terminate();
+						target=centerTarget(targetId,state);
+						position=target.position;
+					}
+				}else{
+					terminate();
+					if(state.isValidTarget(intendedTarget)){
+						target=centerTarget(intendedTarget,state);
+					}
+				}
+				if(target.id){
+					assert(phase==Phase.spreading);
+					dealRangedDamage(target.id,rangedAttack,attacker,side,direction,DamageMod.splash,state);
+					position.z=state.getHeight(position);
+				}
+				break;
+			case Phase.spreading:
+				radius=rangedAttack.effectRange*float(frame-hitframe)/(endframe-hitframe);
+				position.z=state.getHeight(position);
+				break;
+		}
+		if(phase==Phase.spreading){
+			foreach(i,damageFrame;damageFrames){
+				if(frame!=damageFrame) continue;
+				auto offset=(rangedAttack.effectRange-stripSize-minRadius)/(damageFrames.length-1);
+				auto minRange=minRadius+i*offset;
+				auto maxRange=minRange+stripSize;
+				static bool callback(int id,int attacker,int side,int intendedTarget,SacSpell!B rangedAttack,Vector3f attackPosition,float minRange,float maxRange,ObjectState!B state){
+					auto positionAttackedSide=state.objectById!((obj,state)=>tuple(obj.position,.side(obj,state)))(id,state);
+					auto position=positionAttackedSide[0],attackedSide=positionAttackedSide[1];
+					if(!state.isOnGround(position)) return false;
+					if(position.z>state.getGroundHeight(position)+RhinokProjectile!B.maxDamageHeight) return false;
+					Vector3f attackDirection=position-attackPosition;
+					auto distsqr=attackDirection.xy.lengthsqr;
+					if(distsqr<minRange*minRange) return false;
+					if(distsqr>maxRange*maxRange) return false;
+					bool validTarget=!!state.targetTypeFromId(id).among(TargetType.creature,TargetType.building);
+					if(!validTarget) return false;
+					if(!(id==intendedTarget||state.sides.getStance(side,attackedSide)!=Stance.ally))
+						return false;
+					dealRangedDamage(id,rangedAttack,attacker,side,attackDirection,DamageMod.splash,state);
+					return false;
+				}
+				dealDamageAt!callback(0,rangedAttack.amount,maxRange,attacker,side,position,DamageMod.ranged,state,attacker,side,intendedTarget,rangedAttack,position,minRange,maxRange,state);
+			}
+		}
+		static assert(updateFPS==60);
+		void placeSpike(Vector3f spikePosition,float spikeHeight){
+			if(!state.isOnGround(spikePosition)) return;
+			spikePosition.z=state.getGroundHeight(spikePosition);
+			auto offset=state.uniformDisk(Vector2f(0.0f,0.0f),2.0f);
+			auto direction=Vector3f(0.0f,0.0f,spikeHeight)+Vector3f(offset.x,offset.y,0.0f);
+			direction*=state.uniform(0.85f,1.15f);
+			auto scale=1.0f;
+			state.addEffect(Spike!B(spikePosition,direction,scale));
+		}
+		final switch(phase){
+			case Phase.moving:
+				foreach(i;0..movingSpikeRate){
+					auto spikePosition=state.uniformDisk(position,radius);
+					placeSpike(spikePosition,2.0f);
+				}
+				break;
+			case Phase.spreading:
+				auto numSpikes=cast(int)(spreadingSpikeRate*radius/rangedAttack.effectRange);
+				foreach(i;0..numSpikes){
+					auto offset=state.uniformDisk(Vector2f(0.0f,0.0f),1.0f).normalized()*(radius*0.8f+0.35f*rangedAttack.effectRange*state.normal());
+					auto spikePosition=position+Vector3f(offset.x,offset.y,0.0f);
+					placeSpike(spikePosition,2.5f);
+				}
+				break;
+		}
+		return endframe==-1||++frame<=endframe;
+	}
+}
 
 bool updateRockForm(B)(ref RockForm!B rockForm,ObjectState!B state){
 	with(rockForm){
@@ -19126,6 +19288,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.hellmouthProjectiles.length;){
 		if(!updateHellmouthProjectile(effects.hellmouthProjectiles[i],state)){
 			effects.removeHellmouthProjectile(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.rhinokProjectiles.length;){
+		if(!updateRhinokProjectile(effects.rhinokProjectiles[i],state)){
+			effects.removeRhinokProjectile(i);
 			continue;
 		}
 		i++;
