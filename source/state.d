@@ -3037,6 +3037,14 @@ struct ShrikeEffect{
 	int frame=0;
 }
 
+struct LocustShoot(B){
+	int attacker;
+	int side;
+	Vector3f position;
+	Vector3f direction;
+	SacSpell!B rangedAttack;
+}
+
 struct LocustProjectile(B){
 	SacSpell!B rangedAttack;
 	Vector3f position;
@@ -3379,6 +3387,14 @@ struct WarmongerGun(B){
 	enum maxNumShots=16;
 }
 
+struct StyxShoot(B){
+	int attacker;
+	int side;
+	int target;
+	Vector3f position;
+	Vector3f targetPosition;
+	SacSpell!B rangedAttack;
+}
 struct StyxExplosion(B){
 	Vector3f position;
 	float scale,maxScale,expansionSpeed;
@@ -3704,6 +3720,14 @@ struct Firewalk(B){
 	enum animatedDistance=20.0f;
 }
 
+struct RendShoot(B){
+	int attacker;
+	int side;
+	int target;
+	Vector3f position;
+	Vector3f targetPosition;
+	SacSpell!B rangedAttack;
+}
 
 struct Appearance{
 	int id;
@@ -4456,6 +4480,14 @@ struct Effects(B){
 		if(i+1<shrikeEffects.length) shrikeEffects[i]=move(shrikeEffects[$-1]);
 		shrikeEffects.length=shrikeEffects.length-1;
 	}
+	Array!(LocustShoot!B) locustShoots;
+	void addEffect(LocustShoot!B locustShoot){
+		locustShoots~=locustShoot;
+	}
+	void removeLocustShoot(int i){
+		if(i+1<locustShoots.length) locustShoots[i]=move(locustShoots[$-1]);
+		locustShoots.length=locustShoots.length-1;
+	}
 	Array!(LocustProjectile!B) locustProjectiles;
 	void addEffect(LocustProjectile!B locustProjectile){
 		locustProjectiles~=locustProjectile;
@@ -4744,6 +4776,14 @@ struct Effects(B){
 		if(i+1<warmongerGuns.length) warmongerGuns[i]=move(warmongerGuns[$-1]);
 		warmongerGuns.length=warmongerGuns.length-1;
 	}
+	Array!(StyxShoot!B) styxShoots;
+	void addEffect(StyxShoot!B styxShoot){
+		styxShoots~=styxShoot;
+	}
+	void removeStyxShoot(int i){
+		if(i+1<styxShoots.length) styxShoots[i]=move(styxShoots[$-1]);
+		styxShoots.length=styxShoots.length-1;
+	}
 	Array!(StyxExplosion!B) styxExplosions;
 	void addEffect(StyxExplosion!B styxExplosion){
 		styxExplosions~=styxExplosion;
@@ -4952,6 +4992,14 @@ struct Effects(B){
 	void removeFirewalk(int i){
 		if(i+1<firewalks.length) firewalks[i]=move(firewalks[$-1]);
 		firewalks.length=firewalks.length-1;
+	}
+	Array!(RendShoot!B) rendShoots;
+	void addEffect(RendShoot!B rendShoot){
+		rendShoots~=move(rendShoot);
+	}
+	void removeRendShoot(int i){
+		if(i+1<rendShoots.length) rendShoots[i]=move(rendShoots[$-1]);
+		rendShoots.length=rendShoots.length-1;
 	}
 	// special effects
 	Array!Appearance appearances;
@@ -8069,15 +8117,8 @@ bool shrikeShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vect
 }
 
 bool locustShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
-	playSoundAt("tscl",position,state,4.0f);
 	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
-	static bool filter(ref ProximityEntry entry,int id){ return entry.id!=id; }
-	auto end=state.collideRay!filter(position,direction,rangedAttack.range,attacker);
-	if(end.type==TargetType.none) end.position=position+0.5f*rangedAttack.range*direction;
-	else end.position=end.lowCenter(state);
-	if(end.type==TargetType.creature||end.type==TargetType.building)
-		dealRangedDamage(end.id,rangedAttack,attacker,side,direction,DamageMod.none,state);
-	state.addEffect(LocustProjectile!B(rangedAttack,end.position,position,end.type==TargetType.creature));
+	state.addEffect(LocustShoot!B(attacker,side,position,direction,rangedAttack));
 	return true;
 }
 
@@ -8391,20 +8432,7 @@ void styxSparkAnimation(int numSparks=192,B)(Vector3f[2] hitbox,ObjectState!B st
 	}
 }
 bool styxShoot(B)(int attacker,int side,int target,float accuracy,Vector3f position,Vector3f targetPosition,SacSpell!B rangedAttack,ObjectState!B state){
-	playSoundAt("sxts",position,state,1.0f);
-	playSoundAt("hxts",target,state,4.0f);
-	Vector3f[2] hitbox=[targetPosition,targetPosition];
-	if(state.isValidTarget(target))
-		state.objectById!((ref obj,pos,hb,state){*pos=obj.center, *hb=obj.hitbox;})(target,&targetPosition,&hitbox,state);
-	state.addEffect(StyxBolt!B(attacker,position,target,targetPosition,rangedAttack));
-	state.addEffect(StyxExplosion!B(targetPosition,0.0f,10.0f,30.0f,0));
-	state.addEffect(StyxExplosion!B(targetPosition,0.0f,6.0f,20,0));
-	/+state.addEffect(StyxExplosion!B(targetPosition,0.0f,8.5f*10/8.5,30.0f*10/8.5,0));
-	state.addEffect(StyxExplosion!B(targetPosition,0.0f,5.0f*10/8.5,20f*10/8.5,0));+/
-	styxSparkAnimation(hitbox,state);
-	auto direction=targetPosition-position;
-	if(state.isValidTarget(target)) dealRangedDamage(target,rangedAttack,attacker,side,direction,DamageMod.splash,state);
-	dealSplashRangedDamageAt(target,rangedAttack,rangedAttack.damageRange,attacker,side,targetPosition,DamageMod.none,state);
+	state.addEffect(StyxShoot!B(attacker,side,target,position,targetPosition,rangedAttack));
 	return true;
 }
 void animateStyxHit(B)(Vector3f position,SacSpell!B rangedAttack,ObjectState!B state){
@@ -8978,8 +9006,6 @@ bool shootOnTick(bool ability=false,B)(ref MovingObject!B object,OrderTarget tar
 					break;
 				case SpellTag.locustShoot:
 					locustShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
-					// hack to ensure attacker is updated properly. TODO: make locust damage part of an effect instead
-					state.movingObjectById!((obj,object){ *object=obj; },(){})(object.id,&object);
 					break;
 				case SpellTag.spitfireShoot:
 					spitfireShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
@@ -9049,8 +9075,6 @@ bool shootOnTick(bool ability=false,B)(ref MovingObject!B object,OrderTarget tar
 					break;
 				case SpellTag.styxShoot:
 					styxShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
-					// hack to ensure attacker is updated properly. TODO: make styx damage part of an effect instead
-					state.movingObjectById!((obj,object){ *object=obj; },(){})(object.id,&object);
 					break;
 				case SpellTag.phoenixShoot:
 					phoenixShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
@@ -9084,8 +9108,6 @@ bool shootOnTick(bool ability=false,B)(ref MovingObject!B object,OrderTarget tar
 					break;
 				case SpellTag.rend:
 					rendShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
-					// hack to ensure attacker is updated properly. TODO: make rend damage part of an effect instead
-					state.movingObjectById!((obj,object){ *object=obj; },(){})(object.id,&object);
 					break;
 				default: goto case SpellTag.brainiacShoot;
 			}
@@ -9430,26 +9452,16 @@ void rendSparkAnimation(int numSparks=192,B)(Vector3f targetPosition,ObjectState
 		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
 	}
 }
-bool rendShoot(B)(int attacker,int side,int target,float accuracy,Vector3f position,Vector3f targetPosition,SacSpell!B rangedAttack,ObjectState!B state){
+bool canRend(B)(int attacker,int side,int target,ObjectState!B state){
 	bool ok=false;
-	state.soulById!((ref soul,pos,ok,side,state){
-		*pos=soul.center;
+	state.soulById!((ref soul,ok,side,state){
 		*ok=!!soul.state.among(SoulState.normal,SoulState.emerging)&&(soul.creatureId==0||soul.preferredSide==side);
-		if(*ok){
-			soul.state=SoulState.exploding;
-			soul.severSoul(state);
-		}
-	},(){})(target,&targetPosition,&ok,side,state);
-	if(!ok) return false;
-	playSpellSoundTypeAt(SoundType.lightning,position,state,1.0f);
-	playSoundAt("pxbf",targetPosition,state,10.0f);
-	state.removeLater(target);
-	state.addEffect(StyxBolt!B(attacker,position,target,targetPosition,rangedAttack));
-	state.addEffect(StyxExplosion!B(targetPosition,0.0f,40.0f,90.0f,0));
-	state.addEffect(StyxExplosion!B(targetPosition,0.0f,24.0f,60,0));
-	rendSparkAnimation(targetPosition,state);
-	auto direction=targetPosition-position;
-	dealSplashRangedDamageAt(0,rangedAttack,rangedAttack.damageRange,attacker,side,targetPosition,DamageMod.none,state);
+	},(){})(target,&ok,side,state);
+	return ok;
+}
+bool rendShoot(B)(int attacker,int side,int target,float accuracy,Vector3f position,Vector3f targetPosition,SacSpell!B rangedAttack,ObjectState!B state){
+	if(!canRend(attacker,side,target,state)) return false;
+	state.addEffect(RendShoot!B(attacker,side,target,position,targetPosition,rangedAttack));
 	return true;
 }
 
@@ -15599,6 +15611,19 @@ bool updateShrikeEffect(B)(ref ShrikeEffect effect,ObjectState!B state){
 	}
 }
 
+bool updateLocustShoot(B)(ref LocustShoot!B shoot,ObjectState!B state){
+	with(shoot){
+		playSoundAt("tscl",position,state,4.0f);
+		static bool filter(ref ProximityEntry entry,int id){ return entry.id!=id; }
+		auto end=state.collideRay!filter(position,direction,rangedAttack.range,attacker);
+		if(end.type==TargetType.none) end.position=position+0.5f*rangedAttack.range*direction;
+		else end.position=end.lowCenter(state);
+		if(end.type==TargetType.creature||end.type==TargetType.building)
+			dealRangedDamage(end.id,rangedAttack,attacker,side,direction,DamageMod.none,state);
+		state.addEffect(LocustProjectile!B(rangedAttack,end.position,position,end.type==TargetType.creature));
+		return false;
+	}
+}
 bool updateLocustProjectile(B)(ref LocustProjectile!B locustProjectile,ObjectState!B state){
 	with(locustProjectile){
 		static assert(updateFPS==60);
@@ -16713,6 +16738,26 @@ bool updateWarmongerGun(B)(ref WarmongerGun!B warmongerGun,ObjectState!B state){
 			}
 		}
 		return ++frame<=numFrames*maxNumShots;
+	}
+}
+
+bool updateStyxShoot(B)(ref StyxShoot!B shoot,ObjectState!B state){
+	with(shoot){
+		playSoundAt("sxts",position,state,1.0f);
+		playSoundAt("hxts",target,state,4.0f);
+		Vector3f[2] hitbox=[targetPosition,targetPosition];
+		if(state.isValidTarget(target))
+			state.objectById!((ref obj,pos,hb,state){*pos=obj.center, *hb=obj.hitbox;})(target,&targetPosition,&hitbox,state);
+		state.addEffect(StyxBolt!B(attacker,position,target,targetPosition,rangedAttack));
+		state.addEffect(StyxExplosion!B(targetPosition,0.0f,10.0f,30.0f,0));
+		state.addEffect(StyxExplosion!B(targetPosition,0.0f,6.0f,20,0));
+		/+state.addEffect(StyxExplosion!B(targetPosition,0.0f,8.5f*10/8.5,30.0f*10/8.5,0));
+		state.addEffect(StyxExplosion!B(targetPosition,0.0f,5.0f*10/8.5,20f*10/8.5,0));+/
+		styxSparkAnimation(hitbox,state);
+		auto direction=targetPosition-position;
+		if(state.isValidTarget(target)) dealRangedDamage(target,rangedAttack,attacker,side,direction,DamageMod.splash,state);
+		dealSplashRangedDamageAt(target,rangedAttack,rangedAttack.damageRange,attacker,side,targetPosition,DamageMod.none,state);
+		return false;
 	}
 }
 
@@ -18271,6 +18316,30 @@ bool updateFirewalk(B)(ref Firewalk!B firewalk,ObjectState!B state){
 	return result;
 }
 
+bool updateRendShoot(B)(ref RendShoot!B shoot,ObjectState!B state){
+	with(shoot){
+		if(!canRend(attacker,side,target,state)) return false;
+		bool ok=false;
+		state.soulById!((ref soul,pos,ok,side,state){
+			if(!soul.state.among(SoulState.normal,SoulState.emerging)) return;
+			soul.state=SoulState.exploding;
+			soul.severSoul(state);
+			*pos=soul.center;
+			*ok=true;
+		},(){})(target,&targetPosition,&ok,side,state);
+		if(!ok) return false;
+		playSpellSoundTypeAt(SoundType.lightning,position,state,1.0f);
+		playSoundAt("pxbf",targetPosition,state,10.0f);
+		state.removeLater(target);
+		state.addEffect(StyxBolt!B(attacker,position,target,targetPosition,rangedAttack));
+		state.addEffect(StyxExplosion!B(targetPosition,0.0f,40.0f,90.0f,0));
+		state.addEffect(StyxExplosion!B(targetPosition,0.0f,24.0f,60,0));
+		rendSparkAnimation(targetPosition,state);
+		auto direction=targetPosition-position;
+		dealSplashRangedDamageAt(0,rangedAttack,rangedAttack.damageRange,attacker,side,targetPosition,DamageMod.none,state);
+		return false;
+	}
+}
 
 bool updateAppearance(B)(ref Appearance appearance,ObjectState!B state){
 	with(appearance){
@@ -18993,6 +19062,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 		}
 		i++;
 	}
+	for(int i=0;i<effects.locustShoots.length;){
+		if(!updateLocustShoot(effects.locustShoots[i],state)){
+			effects.removeLocustShoot(i);
+			continue;
+		}
+		i++;
+	}
 	for(int i=0;i<effects.locustProjectiles.length;){
 		if(!updateLocustProjectile(effects.locustProjectiles[i],state)){
 			effects.removeLocustProjectile(i);
@@ -19246,6 +19322,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 		}
 		i++;
 	}
+	for(int i=0;i<effects.styxShoots.length;){
+		if(!updateStyxShoot(effects.styxShoots[i],state)){
+			effects.removeStyxShoot(i);
+			continue;
+		}
+		i++;
+	}
 	for(int i=0;i<effects.styxExplosions.length;){
 		if(!updateStyxExplosion(effects.styxExplosions[i],state)){
 			effects.removeStyxExplosion(i);
@@ -19424,6 +19507,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.firewalks.length;){
 		if(!updateFirewalk(effects.firewalks[i],state)){
 			effects.removeFirewalk(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.rendShoots.length;){
+		if(!updateRendShoot(effects.rendShoots[i],state)){
+			effects.removeRendShoot(i);
 			continue;
 		}
 		i++;

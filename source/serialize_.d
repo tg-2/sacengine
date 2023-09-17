@@ -534,6 +534,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Shr
 void serialize(alias sink)(ref ShrikeEffect shrikeEffect){ serializeStruct!sink(shrikeEffect); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ShrikeEffect)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref LocustShoot!B locustShoot){ serializeStruct!sink(locustShoot); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==LocustShoot!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref LocustProjectile!B locustProjectile){ serializeStruct!sink(locustProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==LocustProjectile!B)){ deserializeStruct(result,state,data); }
 
@@ -684,6 +687,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Bou
 void serialize(alias sink,B)(ref WarmongerGun!B warmongerGun){ serializeStruct!sink(warmongerGun); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==WarmongerGun!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref StyxShoot!B styxShoot){ serializeStruct!sink(styxShoot); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==StyxShoot!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref StyxExplosion!B styxExplosion){ serializeStruct!sink(styxExplosion); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==StyxExplosion!B)){ deserializeStruct(result,state,data); }
 
@@ -719,6 +725,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Fir
 
 void serialize(alias sink,B)(ref Firewalk!B firewalk){ serializeStruct!sink(firewalk); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Firewalk!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref RendShoot!B rend){ serializeStruct!sink(rend); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==RendShoot!B)){ deserializeStruct(result,state,data); }
 
 void serialize(alias sink)(ref Appearance appearance){ serializeStruct!sink(appearance); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Appearance)){ deserializeStruct(result,state,data); }
