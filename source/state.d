@@ -22001,7 +22001,9 @@ final class GameState(B){
 		enforce(!sacBuilding.isAltar||sacBuilding.components.length<=10);
 		auto flags=ntt.flags&~Flags.damaged&~ntt.flags.destroyed;
 		auto facing=2*pi!float/360.0f*ntt.facing;
-		auto buildingId=current.addObject(Building!B(sacBuilding,ntt.side,flags,facing));
+		auto side=ntt.side;
+		if(side<0||side>=32) side=31; // TODO: investigate. e.g. EM-Volcano Teamplay has side 117114099.
+		auto buildingId=current.addObject(Building!B(sacBuilding,side,flags,facing));
 		assert(!!buildingId);
 		if(ntt.id !in current.triggers.objectIds) // e.g. for some reason, the two altars on ferry have the same id
 			current.triggers.associateId(ntt.id,buildingId);
