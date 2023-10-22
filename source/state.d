@@ -346,7 +346,7 @@ static getScale(T)(ref T obj){
 	}else return 0.0f;
 }
 Vector2f[numCreaturesInGroup] getFormationOffsets(R)(scope R ids,CommandType commandType,Formation formation,Vector2f formationScale,Vector2f targetScale){
-	auto unitDistance=1.05f*max(formationScale.x,formationScale.y)+1.2f;
+	auto unitDistance=1.25f*max(formationScale.x,formationScale.y)+0.85f;
 	unitDistance=min(unitDistance, 10.0f);
 	auto targetDistance=0.5f*(1.25f*unitDistance+max(targetScale.x,targetScale.y));
 	if(targetDistance!=0.0f) targetDistance=max(targetDistance, unitDistance);
