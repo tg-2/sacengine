@@ -11173,7 +11173,11 @@ bool updateCreatureCasting(B)(ref CreatureCasting!B creatureCast,ObjectState!B s
 				return true;
 			case CastingStatus.interrupted:
 				stopSoundsAt(creature,state);
-				state.removeObject(creatureCast.creature);
+				state.movingObjectById!((ref obj,state){
+					obj.unselect(state);
+					obj.removeFromGroups(state);
+				},function(){})(creature,state);
+				state.removeObject(creature);
 				return false;
 			case CastingStatus.finished:
 				stopSoundsAt(creature,state);
