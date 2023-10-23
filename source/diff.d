@@ -35,7 +35,11 @@ bool diffData(string[] noserialize=[],T)(T a,T b,lazy string path)if(is(T==class
 }
 bool diffData(T)(T a,T b,lazy string path)if(is(T==SacObject!B,B)||is(T==SacBuilding!B,B)||is(T==SacSpell!B,B)){
 	static if(is(T==SacObject!B,B)) return diffData(a.nttTag,b.nttTag,path);
-	else return diffData(a.tag,b.tag,path);
+	else if(a&&b) return diffData(a.tag,b.tag,path);
+	else if(!!a!=!!b){
+		writeln(path, "differs: ",!!a?"is not null":"is null",", but ",!!b?"is not null":"is null");
+		return true;
+	}else return false;
 }
 bool diffData(B)(SacParticle!B a,SacParticle!B b,lazy string path){
 	bool r=false;
