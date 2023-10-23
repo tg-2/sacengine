@@ -500,5 +500,6 @@ class Lobby(B){
 		if(recording) recording.stepCommitted(gameState.lastCommitted);
 		if(!controller) controller=new Controller!B(hasSlot?slot:-1,gameState,network,recording,playback);
 		B.setController(controller); // TODO: this is a bit ugly
+		B.unpause();
 	}
 }

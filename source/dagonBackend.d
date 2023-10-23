@@ -179,6 +179,14 @@ final class SacScene: Scene{
 	}
 
 	override void renderOpaqueEntities3D(RenderingContext* rc){
+		if(options.testRenderDelay){
+			static bool delayed=false;
+			if(!delayed){
+				delayed=true;
+				import core.thread;
+				Thread.sleep(2.seconds);
+			}
+		}
 		super.renderOpaqueEntities3D(rc);
 		if(!state) return;
 		typeof(renderer).R3DOpt r3dopt={enableWidgets: options.enableWidgets};

@@ -63,6 +63,7 @@ struct Options{
 	int numSlots=1;
 	string joinIP="";
 	bool testLag=false;
+	bool testRenderDelay=false;
 	bool dumpTraffic=false;
 	bool checkDesynch=true;
 	bool logDesynch=true;
