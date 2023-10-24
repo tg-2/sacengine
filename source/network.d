@@ -1218,10 +1218,18 @@ final class Network(B){
 				}
 				break;
 			case PacketType.command:
-				if(controller) controller.addExternalCommand(p.frame,fromNetwork!B(p.networkCommand));
+				if(controller){
+					if(controller.committedFrame<=p.frame){
+						controller.addExternalCommand(p.frame,fromNetwork!B(p.networkCommand));
+					}else stderr.writeln("warning: invalid command ignored (frame: ",p.frame,", committed: ",controller.committedFrame,").");
+				}
 				break;
 			case PacketType.commandRaw:
-				if(controller) controller.addExternalCommand(p.frame,fromNetworkRaw!B(p.networkCommand,rawData));
+				if(controller){
+					if(controller.committedFrame<=p.frame){
+						controller.addExternalCommand(p.frame,fromNetworkRaw!B(p.networkCommand,rawData));
+					}else stderr.writeln("warning: invalid command ignored (frame: ",p.frame,", committed: ",controller.committedFrame,").");
+				}
 				break;
 			case PacketType.commit:
 				players[p.commitPlayer].committedFrame=max(players[p.commitPlayer].committedFrame,p.commitFrame);
