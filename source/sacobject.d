@@ -3064,6 +3064,64 @@ struct SacBombardProjectile(B){
 	}
 }
 
+
+B.Mesh makeCrystalMesh(B)(int numSpikes, float spikeWidth, float spikeLength){
+	auto mesh=B.makeMesh(3*4*numSpikes, 3*2*numSpikes);
+	enum sqrt34=sqrt(0.75f);
+	immutable Vector3f[3] offsets=[spikeWidth*Vector3f(0.0f,-1.0f,0.0f),spikeWidth*Vector3f(sqrt34,0.5f,0.0f),spikeWidth*Vector3f(-sqrt34,0.5f,0.0f)];
+	int numFaces=0;
+	void addFace(uint[3] face...){
+		mesh.indices[numFaces++]=face;
+	}
+	Vector3f getCenter(int i){
+		return Vector3f(0.0f,0.0f,spikeLength*i);
+	}
+	import std.random: MinstdRand0;
+	auto rng=MinstdRand0(1);
+	T normal(T=float)(){
+		enum n=10;
+		T r=0;
+		enum T sqrt3n=sqrt(3.0f)/n;
+		import std.random: uniform;
+		foreach(i;0..n) r+=uniform(T(-sqrt3n),T(sqrt3n),rng);
+		return r;
+	}
+	Vector3f randomDirection(){
+		return Vector3f(normal(),normal(),normal()).normalized;
+	}
+	foreach(i;0..numSpikes){
+		auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),randomDirection());
+		foreach(j;0..3){
+			foreach(k;0..4){
+				int vertex=3*4*i+4*j+k;
+				auto center=((k==1||k==2)?1:0);
+				auto position=rotate(rotation, getCenter(center)+((k==2||k==3)?offsets[j]:Vector3f(0.0f,0.0f,0.0f)));
+				mesh.vertices[vertex]=position;
+				mesh.texcoords[vertex]=Vector2f((!(k==0||k==1)?1.0f-0.5f/64:0.5f/64),((k==1||k==2)?1.0f-0.5f/64:0.5f/64.0f));
+			}
+			int b=3*4*i+4*j;
+			addFace([b+0,b+1,b+2]);
+			addFace([b+2,b+3,b+0]);
+		}
+	}
+	assert(numFaces==2*3*numSpikes);
+	mesh.normals[]=Vector3f(0.0f, 0.0f, 0.0f);
+	B.finalizeMesh(mesh);
+	return mesh;
+}
+
+struct SacFlurryProjectile(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/iplt.TXTR"));
+	}
+	B.Material material;
+	B.Mesh mesh;
+	static B.Mesh createMesh(){
+		return makeCrystalMesh!B(64, 0.175f, 1.75f);
+	}
+}
+
 struct SacWarmongerEffect(B){
 	B.Texture texture;
 	B.Material material;

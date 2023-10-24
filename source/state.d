@@ -3358,6 +3358,17 @@ struct BombardProjectile(B){
 	int frame=0;
 }
 
+struct FlurryProjectile(B){
+	int attacker;
+	int side;
+	int intendedTarget;
+	Vector3f position;
+	Vector3f velocity;
+	SacSpell!B rangedAttack;
+	Quaternionf rotationUpdate;
+	Quaternionf rotation;
+}
+
 struct BoulderdashProjectile(B){
 	int attacker;
 	int side;
@@ -4760,6 +4771,14 @@ struct Effects(B){
 	void removeBombardProjectile(int i){
 		if(i+1<bombardProjectiles.length) swap(bombardProjectiles[i],bombardProjectiles[$-1]);
 		bombardProjectiles.length=bombardProjectiles.length-1; // TODO: reuse memory?
+	}
+	Array!(FlurryProjectile!B) flurryProjectiles;
+	void addEffect(FlurryProjectile!B flurryProjectile){
+		flurryProjectiles~=flurryProjectile;
+	}
+	void removeFlurryProjectile(int i){
+		if(i+1<flurryProjectiles.length) swap(flurryProjectiles[i],flurryProjectiles[$-1]);
+		flurryProjectiles.length=flurryProjectiles.length-1; // TODO: reuse memory?
 	}
 	Array!(BoulderdashProjectile!B) boulderdashProjectiles;
 	void addEffect(BoulderdashProjectile!B boulderdashProjectile){
@@ -8357,6 +8376,21 @@ bool bombardShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vec
 	return true;
 }
 
+enum flurryShootGain=4.0f;
+void flurryLoad(B)(int attacker,ObjectState!B state){
+	playSoundAt("walc",attacker,state,flurryShootGain);
+}
+bool flurryShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	playSoundAt("thsv",position,state,4.0f);
+	auto direction=getShotDirectionWithGravity(accuracy,position,target,rangedAttack,state);
+	auto rotationSpeed=2*pi!float*state.uniform(0.2f,0.8f)/updateFPS;
+	auto rotationAxis=state.uniformDirection();
+	auto rotationUpdate=rotationQuaternion(rotationAxis,rotationSpeed);
+	state.addEffect(FlurryProjectile!B(attacker,side,intendedTarget,position,direction*rangedAttack.speed,rangedAttack,rotationUpdate,Quaternionf.identity()));
+	return true;
+}
+
+
 enum boulderdashShootGain=4.0f;
 enum boulderdashSplitDistance=60.0f; // TODO: ok?
 bool boulderdashShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
@@ -8950,6 +8984,9 @@ void loadOnTick(B)(ref MovingObject!B object,OrderTarget target,SacSpell!B range
 			case SpellTag.bombardShoot:
 				bombardLoad(object.id,state);
 				break;
+			case SpellTag.flurryShoot:
+				flurryLoad(object.id,state);
+				break;
 			case SpellTag.warmongerShoot:
 				warmongerLoad(object.id,state);
 				break;
@@ -9038,6 +9075,9 @@ bool shootOnTick(bool ability=false,B)(ref MovingObject!B object,OrderTarget tar
 					break;
 				case SpellTag.bombardShoot:
 					bombardShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
+					break;
+				case SpellTag.flurryShoot:
+					flurryShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
 					break;
 				case SpellTag.boulderdashShoot:
 					boulderdashShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
@@ -17071,6 +17111,7 @@ bool updateAbominationDroplet(B)(ref AbominationDroplet!B abominationDroplet,Obj
 	}
 }
 
+
 enum bombardProjectileSize=1.75f; // TODO: ok?
 static immutable Vector3f[2] bombardProjectileHitbox=[-0.5f*bombardProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*bombardProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
 int bombardProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
@@ -17079,8 +17120,6 @@ int bombardProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f pos
 	}
 	return collisionTarget!(bombardProjectileHitbox,filter)(side,position,state,side,intendedTarget);
 }
-
-
 
 void bombardProjectileExplosion(B)(ref BombardProjectile!B bombardProjectile,int target,ObjectState!B state){
 	playSoundAt("2xbf",bombardProjectile.position,state,bombardShootGain);
@@ -17134,6 +17173,54 @@ bool updateBombardProjectile(B)(ref BombardProjectile!B bombardProjectile,Object
 		return true;
 	}
 }
+
+
+enum flurryProjectileSize=1.75f; // TODO: ok?
+static immutable Vector3f[2] flurryProjectileHitbox=[-0.5f*flurryProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*flurryProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
+int flurryProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state,int side,int intendedTarget){
+		return entry.isProjectileObstacle&&(entry.id==intendedTarget||state.objectById!(.side)(entry.id,state)!=side);
+	}
+	return collisionTarget!(flurryProjectileHitbox,filter)(side,position,state,side,intendedTarget);
+}
+
+void flurryProjectileExplosion(B)(ref FlurryProjectile!B flurryProjectile,int target,ObjectState!B state){
+	playSoundAt("rulf",flurryProjectile.position,state,flurryShootGain);
+	with(flurryProjectile){
+		if(state.isValidTarget(target)){
+			dealRangedDamage(target,rangedAttack,attacker,side,velocity,DamageMod.splash,state);
+		}else target=0;
+		static bool callback(int target,int attacker,int side,ObjectState!B state){
+			setAblaze(target,updateFPS,false,0.0f,attacker,side,DamageMod.none,state);
+			return true;
+		}
+		dealSplashRangedDamageAt!callback(target,rangedAttack,rangedAttack.damageRange,attacker,side,position,DamageMod.ignite,state,attacker,side,state);
+	}
+	// TODO: implode
+}
+
+bool updateFlurryProjectile(B)(ref FlurryProjectile!B flurryProjectile,ObjectState!B state){
+	with(flurryProjectile){
+		auto oldPosition=position;
+		position+=velocity/updateFPS;
+		velocity.z-=rangedAttack.fallingAcceleration/updateFPS;
+		rotation=rotationUpdate*rotation;
+		auto target=flurryProjectileCollisionTarget(side,intendedTarget,position,state);
+		if(state.isValidTarget(target)){
+			flurryProjectile.flurryProjectileExplosion(target,state);
+			return false;
+		}
+		if(state.isOnGround(position)){
+			if(position.z<state.getGroundHeight(position)){
+				flurryProjectile.flurryProjectileExplosion(0,state);
+				return false;
+			}
+		}else if(position.z<state.getHeight(position)-rangedAttack.fallLimit)
+			return false;
+		return true;
+	}
+}
+
 
 void animateBoulderdashProjectile(B)(ref BoulderdashProjectile!B boulderdashProjectile,Vector3f oldPosition,ObjectState!B state){
 	with(boulderdashProjectile){
@@ -19297,6 +19384,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.bombardProjectiles.length;){
 		if(!updateBombardProjectile(effects.bombardProjectiles[i],state)){
 			effects.removeBombardProjectile(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.flurryProjectiles.length;){
+		if(!updateFlurryProjectile(effects.flurryProjectiles[i],state)){
+			effects.removeFlurryProjectile(i);
 			continue;
 		}
 		i++;
