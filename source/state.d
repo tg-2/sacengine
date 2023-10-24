@@ -7808,7 +7808,7 @@ enum freezeGain=4.0f;
 bool freeze(B)(int wizard,int side,int target,SacSpell!B spell,ObjectState!B state){
 	auto duration=state.movingObjectById!((ref obj){
 		if(obj.creatureStats.effects.frozen) return -1;
-		if(obj.isDying||obj.isDead) return -1;
+		if(!obj.creatureState.mode.canBeFrozen) return -1;
 		assert(!obj.creatureStats.effects.frozen);
 		obj.creatureStats.effects.frozen=true;
 		obj.creatureState.mode=CreatureMode.stunned;
