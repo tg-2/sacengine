@@ -3376,7 +3376,7 @@ struct FlurryImplosion(B){
 	Vector3f position;
 	SacSpell!B rangedAttack;
 	float scale,implosionSpeed;
-	enum influenceSpeed=10.0f;
+	enum influenceSpeed=15.0f;
 }
 
 struct BoulderdashProjectile(B){
