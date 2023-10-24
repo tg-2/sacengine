@@ -3376,6 +3376,7 @@ struct FlurryImplosion(B){
 	Vector3f position;
 	SacSpell!B rangedAttack;
 	float scale,implosionSpeed;
+	enum influenceSpeed=10.0f;
 }
 
 struct BoulderdashProjectile(B){
@@ -17261,8 +17262,39 @@ bool updateFlurryImplosion(B)(ref FlurryImplosion!B flurryImplosion,ObjectState!
 			auto scale=state.uniform(0.5f,2.0f);
 			state.addParticle(Particle!B(sacParticle,position+relativePosition+0.5f*state.uniformDirection(),velocity,scale,lifetime,frame));
 		}
-		// TODO: apply momentum
-		return scale>0.0f;
+		if(scale<=0.0f) return false;
+		Vector3f[2] hitbox=[Vector3f(position.x-scale,position.y-scale,position.z-scale),Vector3f(position.x+scale,position.y+scale,position.z+scale)];
+		static void influence(ProximityEntry target,ObjectState!B state,FlurryImplosion!B *implosion,float radius){
+			state.movingObjectById!((ref obj,implosion,radius,state){
+				auto distance=implosion.position-obj.center;
+				auto range=implosion.rangedAttack.effectRange;
+				if(distance.lengthsqr>range^^2) return;
+				auto direction=distance.normalized;
+				auto speed=sqrt(max(10.0f,distance.length)*max(10.0f,radius))/range*FlurryImplosion!B.influenceSpeed/updateFPS;
+				auto tumblingVelocity=2.0f*speed*direction;
+				tumblingVelocity.z=max(-1.0f/updateFPS,tumblingVelocity.z);
+				if(obj.creatureState.movement!=CreatureMovement.tumbling){
+					// TODO: integrate different sources of influence
+					auto newPosition=obj.position+speed*direction;
+					auto newHeight=state.getHeight(newPosition);
+					if(newPosition.z-newHeight<=FlurryImplosion!B.influenceSpeed/(2*updateFPS)){
+						if(obj.creatureState.movement==CreatureMovement.onGround){
+							if(state.isOnGround(newPosition)){
+								newPosition.z=newHeight;
+								obj.position=newPosition;
+							}
+						}else obj.position=newPosition;
+					}else obj.catapult(tumblingVelocity,state);
+				}
+				if(obj.creatureState.movement==CreatureMovement.tumbling){
+					obj.position+=tumblingVelocity;
+					if(tumblingVelocity.z>0.0f&&obj.creatureState.fallingVelocity.z<0.0f) // TODO: this is a hack
+						obj.creatureState.fallingVelocity.z=0.0f;
+				}
+			},(){})(target.id,implosion,radius,state);
+		}
+		collisionTargets!influence(hitbox,state,&flurryImplosion,scale);
+		return true;
 	}
 }
 
