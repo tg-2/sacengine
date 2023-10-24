@@ -1023,6 +1023,7 @@ enum ParticleType{
 	styxSpark,
 	rend,
 	shard,
+	flurryShard,
 	castPersephone,
 	castPersephone2,
 	castPyro,
@@ -1082,6 +1083,8 @@ final class SacParticle(B){
 				return true;
 			case needle,etherealFormSpark,shard:
 				return true;
+			case flurryShard:
+				return false;
 			case freeze:
 				return false;
 			case redVortexDroplet,blueVortexDroplet:
@@ -1116,7 +1119,7 @@ final class SacParticle(B){
 				return true;
 			case chainLightningCasting:
 				return false;
-			case needle,etherealFormSpark,shard:
+			case needle,etherealFormSpark,shard,flurryShard:
 				return false;
 			case freeze:
 				return true;
@@ -1232,6 +1235,12 @@ final class SacParticle(B){
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
 			case shard:
+				width=height=1.0f;
+				this.energy=3.0f;
+				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Stra.FLDR/txtr.FLDR/shrd.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
+			case flurryShard:
 				width=height=1.0f;
 				this.energy=3.0f;
 				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Stra.FLDR/txtr.FLDR/shrd.TXTR"));
@@ -1467,6 +1476,7 @@ final class SacParticle(B){
 			case redVortexDroplet: return 2;
 			case spark: return 2;
 			case styxSpark: return 2;
+			case flurryShard: return 2;
 			case rend: return 2;
 			case etherealFormSpark: return 2;
 			case rainbowParticle: return 2;
@@ -1515,6 +1525,8 @@ final class SacParticle(B){
 				return min(1.0f,(lifetime/(0.5f*numFrames))^^2);
 			case shard:
 				return 1.0f;
+			case flurryShard:
+				return 0.5f;
 			case redVortexDroplet,blueVortexDroplet:
 				return min(1.0f,(lifetime/(0.75f*numFrames))^^2);
 			case castPersephone,castPersephone2,castPyro,castJames,castStratos,castCharnel,castCharnel2:
@@ -1568,7 +1580,7 @@ final class SacParticle(B){
 				return 1.0f;
 			case chainLightningCasting,needle,freeze,etherealFormSpark,spark,styxSpark,rend:
 				return min(1.0f,lifetime/(0.5f*numFrames));
-			case shard:
+			case shard,flurryShard:
 				return 1.0f;
 			case redVortexDroplet,blueVortexDroplet:
 				return min(1.0f,(lifetime/(0.75f*numFrames)));
@@ -3119,6 +3131,17 @@ struct SacFlurryProjectile(B){
 	B.Mesh mesh;
 	static B.Mesh createMesh(){
 		return makeCrystalMesh!B(64, 0.175f, 1.75f);
+	}
+}
+struct SacFlurryImplosion(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Stra.FLDR/txtr.FLDR/icec.TXTR"));
+	}
+	B.Material material;
+	B.Mesh mesh;
+	static B.Mesh createMesh(){
+		return makeSphereMesh!B(24,25,1.0f);
 	}
 }
 

@@ -3369,6 +3369,15 @@ struct FlurryProjectile(B){
 	Quaternionf rotation;
 }
 
+struct FlurryImplosion(B){
+	int attacker;
+	int side;
+	int intendedTarget;
+	Vector3f position;
+	SacSpell!B rangedAttack;
+	float scale,implosionSpeed;
+}
+
 struct BoulderdashProjectile(B){
 	int attacker;
 	int side;
@@ -4779,6 +4788,14 @@ struct Effects(B){
 	void removeFlurryProjectile(int i){
 		if(i+1<flurryProjectiles.length) swap(flurryProjectiles[i],flurryProjectiles[$-1]);
 		flurryProjectiles.length=flurryProjectiles.length-1; // TODO: reuse memory?
+	}
+	Array!(FlurryImplosion!B) flurryImplosions;
+	void addEffect(FlurryImplosion!B flurryImplosion){
+		flurryImplosions~=flurryImplosion;
+	}
+	void removeFlurryImplosion(int i){
+		if(i+1<flurryImplosions.length) swap(flurryImplosions[i],flurryImplosions[$-1]);
+		flurryImplosions.length=flurryImplosions.length-1; // TODO: reuse memory?
 	}
 	Array!(BoulderdashProjectile!B) boulderdashProjectiles;
 	void addEffect(BoulderdashProjectile!B boulderdashProjectile){
@@ -17184,19 +17201,27 @@ int flurryProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f posi
 	return collisionTarget!(flurryProjectileHitbox,filter)(side,position,state,side,intendedTarget);
 }
 
-void flurryProjectileExplosion(B)(ref FlurryProjectile!B flurryProjectile,int target,ObjectState!B state){
+void flurryProjectileImplosion(B)(ref FlurryProjectile!B flurryProjectile,int target,ObjectState!B state){
 	playSoundAt("rulf",flurryProjectile.position,state,flurryShootGain);
 	with(flurryProjectile){
 		if(state.isValidTarget(target)){
 			dealRangedDamage(target,rangedAttack,attacker,side,velocity,DamageMod.splash,state);
 		}else target=0;
-		static bool callback(int target,int attacker,int side,ObjectState!B state){
-			setAblaze(target,updateFPS,false,0.0f,attacker,side,DamageMod.none,state);
-			return true;
+		dealSplashRangedDamageAt(target,rangedAttack,rangedAttack.damageRange,attacker,side,position,DamageMod.none,state);
+		auto sacParticle=SacParticle!B.get(ParticleType.flurryShard);
+		enum numParticles=200;
+		foreach(i;0..numParticles){
+			auto direction=state.uniformDirection();
+			auto velocity=state.uniform(15.0f,30.0f)*direction;
+			int lifetime=63;
+			int frame=0;
+			auto scale=state.uniform(1.0f,2.0f);
+			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
 		}
-		dealSplashRangedDamageAt!callback(target,rangedAttack,rangedAttack.damageRange,attacker,side,position,DamageMod.ignite,state,attacker,side,state);
+		auto scale=rangedAttack.effectRange;
+		auto duration=rangedAttack.duration;
+		state.addEffect(FlurryImplosion!B(attacker,side,intendedTarget,position,rangedAttack,scale,scale/duration));
 	}
-	// TODO: implode
 }
 
 bool updateFlurryProjectile(B)(ref FlurryProjectile!B flurryProjectile,ObjectState!B state){
@@ -17207,17 +17232,37 @@ bool updateFlurryProjectile(B)(ref FlurryProjectile!B flurryProjectile,ObjectSta
 		rotation=rotationUpdate*rotation;
 		auto target=flurryProjectileCollisionTarget(side,intendedTarget,position,state);
 		if(state.isValidTarget(target)){
-			flurryProjectile.flurryProjectileExplosion(target,state);
+			flurryProjectile.flurryProjectileImplosion(target,state);
 			return false;
 		}
 		if(state.isOnGround(position)){
 			if(position.z<state.getGroundHeight(position)){
-				flurryProjectile.flurryProjectileExplosion(0,state);
+				flurryProjectile.flurryProjectileImplosion(0,state);
 				return false;
 			}
 		}else if(position.z<state.getHeight(position)-rangedAttack.fallLimit)
 			return false;
 		return true;
+	}
+}
+
+bool updateFlurryImplosion(B)(ref FlurryImplosion!B flurryImplosion,ObjectState!B state){
+	with(flurryImplosion){
+		scale-=implosionSpeed/updateFPS;
+		static assert(updateFPS==60);
+		auto sacParticle=SacParticle!B.get(ParticleType.flurryShard);
+		auto numParticles=cast(int)(3*scale);
+		foreach(i;0..numParticles){
+			auto direction=state.uniformDirection();
+			auto relativePosition=state.uniform(0.75f,1.0f)*max(15.0f,1.25f*scale)*direction;
+			auto velocity=-30.0f*relativePosition.normalized;
+			int lifetime=cast(int)(relativePosition.length*(updateFPS/30.0f));
+			int frame=0;
+			auto scale=state.uniform(0.5f,2.0f);
+			state.addParticle(Particle!B(sacParticle,position+relativePosition+0.5f*state.uniformDirection(),velocity,scale,lifetime,frame));
+		}
+		// TODO: apply momentum
+		return scale>0.0f;
 	}
 }
 
@@ -19391,6 +19436,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.flurryProjectiles.length;){
 		if(!updateFlurryProjectile(effects.flurryProjectiles[i],state)){
 			effects.removeFlurryProjectile(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.flurryImplosions.length;){
+		if(!updateFlurryImplosion(effects.flurryImplosions[i],state)){
+			effects.removeFlurryImplosion(i);
 			continue;
 		}
 		i++;

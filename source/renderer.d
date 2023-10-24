@@ -729,6 +729,17 @@ struct Renderer(B){
 		auto mesh=typeof(return).createMesh();
 		return SacFlurryProjectile!B(texture,mat,mesh);
 	}
+	SacFlurryImplosion!B flurryImplosion;
+	SacFlurryImplosion!B createFlurryImplosion(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Additive;
+		mat.energy=0.5f;
+		mat.diffuse=texture;
+		auto mesh=typeof(return).createMesh();
+		return SacFlurryImplosion!B(texture,mat,mesh);
+	}
 	void createEffects(){
 		sacCommandCone=new SacCommandCone!B();
 		sacDebris=new SacObject!B("extracted/models/MODL.WAD!/bold.MRMC/bold.MRMM");
@@ -787,6 +798,7 @@ struct Renderer(B){
 		abominationProjectile=createAbominationProjectile();
 		bombardProjectile=createBombardProjectile();
 		flurryProjectile=createFlurryProjectile();
+		flurryImplosion=createFlurryImplosion();
 	}
 
 	void initialize(){
@@ -2351,6 +2363,22 @@ struct Renderer(B){
 						auto rotation=objects.flurryProjectiles[j].rotation;
 						auto mesh=self.flurryProjectile.mesh;
 						material.backend.setTransformation(position,rotation,rc);
+						mesh.render(rc);
+					}
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.flurryImplosions.length){
+					auto material=self.flurryImplosion.material;
+					material.bind(rc);
+					B.disableCulling();
+					scope(success){
+						B.enableCulling();
+						material.unbind(rc);
+					}
+					foreach(j;0..objects.flurryImplosions.length){
+						auto position=objects.flurryImplosions[j].position;
+						auto scale=objects.flurryImplosions[j].scale*Vector3f(1.1f,1.1f,0.9f);
+						auto mesh=self.flurryImplosion.mesh;
+						material.backend.setTransformationScaled(position,Quaternionf.identity(),scale,rc);
 						mesh.render(rc);
 					}
 				}
