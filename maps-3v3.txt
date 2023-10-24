@@ -1,1 +1,3 @@
 maps/(6) EM-Greed.scp
+maps/(6) Hill 401K.scp
+maps/(6) XM-Burned Desire.scp

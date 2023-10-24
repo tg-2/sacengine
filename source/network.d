@@ -1302,7 +1302,7 @@ final class Network(B){
 	}
 	private static bool canReplacePlayer(ref Player cand,ref Player old,bool replaceUnnamed){
 		if(old.connection) return false;
-		if(old.status==PlayerStatus.unconnected) return true;
+		//if(old.status==PlayerStatus.unconnected) return true;
 		if(old.settings.observer!=cand.settings.observer) return false;
 		if(old.settings.name==cand.settings.name) return true;
 		if(replaceUnnamed&&old.settings.name=="") return true;
@@ -1317,8 +1317,10 @@ final class Network(B){
 		assert(!validSpots.empty);
 		int newId=cast(int)validSpots.front;
 		if(newId<players.length){
+			enforce(players[newId].settings.name.among("",player.settings.name));
+			players[newId].settings.name=player.settings.name;
+			player.settings=players[newId].settings;
 			player.slot=players[newId].slot;
-			player.settings.slot=player.slot;
 			players[newId]=player;
 		}else players~=player;
 		foreach(other;iota(cast(int)players.length).filter!(i=>i!=newId))
@@ -1393,7 +1395,7 @@ final class Network(B){
 			assert(i==host);
 			players[i].status=PlayerStatus.dropped;
 			foreach(ref player;players) if(!players[i].connection) player.status=PlayerStatus.dropped;
-		}else updateStatus(cast(int)i,playing?PlayerStatus.dropped:PlayerStatus.unconnected);
+		}else updateStatus(cast(int)i,PlayerStatus.dropped);
 		players[i].connection.close();
 		players[i].connection=null;
 		players[i].drop();
