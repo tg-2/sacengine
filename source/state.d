@@ -170,7 +170,7 @@ bool canBeInfectedByMites(CreatureMode mode){ return canBePoisoned(mode); }
 bool canBeStickyBombed(CreatureMode mode){ return canBePoisoned(mode); }
 bool canBeOiled(CreatureMode mode){ return canBePoisoned(mode); }
 bool canBeInfectedByFrogs(CreatureMode mode){ return canBePoisoned(mode); }
-bool canBePetrified(CreatureMode mode){
+bool canBeImmobilized(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
 			shooting,usingAbility,pulling,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
@@ -178,6 +178,8 @@ bool canBePetrified(CreatureMode mode){
 		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return false;
 	}
 }
+bool canBePetrified(CreatureMode mode){ return canBeImmobilized(mode); }
+bool canBeFrozen(CreatureMode mode){ return canBeImmobilized(mode); }
 bool canCarryHaloOfEarth(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
@@ -5729,7 +5731,15 @@ auto ref buildingById(alias f,alias noBuilding,B,T...)(ref ObjectManager!B objec
 }
 
 void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
-	if(object.creatureStats.effects.immobilized) object.creatureState.mode=CreatureMode.stunned;
+	if(object.creatureStats.effects.immobilized){
+		if(object.creatureStats.effects.petrified){
+			if(canBePetrified(object.creatureState.mode)) object.creatureState.mode=CreatureMode.stunned;
+			else object.creatureStats.effects.petrified=false;
+		}else if(object.creatureStats.effects.frozen){
+			if(canBeFrozen(object.creatureState.mode)) object.creatureState.mode=CreatureMode.stunned;
+			else object.creatureStats.effects.frozen=false;
+		}
+	}
 	auto sacObject=object.sacObject;
 	final switch(object.creatureState.mode){
 		case CreatureMode.idle, CreatureMode.rockForm:
