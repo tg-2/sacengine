@@ -4,6 +4,7 @@
 
 import dlib.math;
 import std.algorithm: sort, swap, among;
+import core.time: Duration;
 import audio, samp, nttData, sacobject, levl, state;
 import util;
 
@@ -90,14 +91,14 @@ final class AudioBackend(B){
 		nextTheme=next;
 	}
 	enum fadeOutTime=0.5f;
-	void updateTheme(float dt){
+	void updateTheme(Duration dt){
 		if(nextTheme!=currentTheme){
 			if(currentTheme==Theme.none){
 				currentTheme=nextTheme;
 				themes[currentTheme].source.gain=musicGain;
 				themes[currentTheme].play();
 			}else{
-				themeGain-=(1.0f/fadeOutTime)*dt;
+				themeGain-=(1.0f/fadeOutTime)*(dt.total!"hnsecs"*1e-7);
 				if(themeGain<=0.0f){
 					themeGain=1.0f;
 					themes[currentTheme].stop();
@@ -278,7 +279,7 @@ final class AudioBackend(B){
 				oldSounds3[i].source.release();
 	}
 
-	void updateSounds(float dt,Matrix4f viewMatrix,ObjectState!B state){
+	void updateSounds(Duration dt,Matrix4f viewMatrix,ObjectState!B state){
 		if(!dialogSource.isPlaying){
 			currentDialogSound=DialogSound.init;
 			if(!dialogQueue.empty){
@@ -339,7 +340,7 @@ final class AudioBackend(B){
 		}
 	}
 
-	void update(float dt,Matrix4f viewMatrix,ObjectState!B state){
+	void update(Duration dt,Matrix4f viewMatrix,ObjectState!B state){
 		updateTheme(dt);
 		updateSounds(dt,viewMatrix,state);
 	}

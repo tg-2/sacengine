@@ -7,6 +7,7 @@ import dlib.math.portable;
 import options,util;
 import std.stdio;
 import std.algorithm, std.range, std.exception, std.typecons, std.conv;
+import core.time: Duration, dur;
 
 import lobby;
 import sacobject, sacspell, mrmm, nttData, sacmap, levl, state, form, sacform, controller, network;
@@ -322,7 +323,7 @@ final class SacScene: Scene{
 		camera.distance=max(camera.distance,4.5f);
 		camera.floatingHeight=1.75f*height-1.15f;
 		camera.focusHeight=camera.floatingHeight-0.3f*(height-1.0f);
-		updateCameraPosition(0.0f,true,false);
+		updateCameraPosition(Duration.zero,true,false);
 	}
 
 	Vector3f getCameraDisplacement(Vector3f position){
@@ -373,7 +374,7 @@ final class SacScene: Scene{
 		positionFPCamera();
 	}
 
-	void updateCameraPosition(float dt,bool center,bool uncenter){
+	void updateCameraPosition(Duration dt,bool center,bool uncenter){
 		if(center) camera.centering=true;
 		if(uncenter) camera.centering=false;
 		if(!state.current.isValidTarget(camera.target,TargetType.creature)) camera.target=0;
@@ -390,8 +391,8 @@ final class SacScene: Scene{
 				auto diff=newTurn-camera.turn;
 				while(diff>180.0f) diff-=360.0f;
 				while(diff<-180.0f) diff+=360.0f;
-				auto speed=radtodeg(camera.rotationSpeed)*dt;
-				if(dt==0.0f||abs(diff)<speed){
+				auto speed=radtodeg(camera.rotationSpeed)*(dt.total!"hnsecs"*1e-7);
+				if(dt==Duration.zero||abs(diff)<speed){
 					camera.turn=newTurn;
 					camera.centering=false;
 				}else camera.turn+=sign(diff)*speed;
@@ -462,7 +463,7 @@ final class SacScene: Scene{
 		}
 	}
 
-	void control(double dt){
+	void control(Duration dt){
 		if(mouse.menuMode){
 			menuControl(dt);
 		}else{
@@ -474,7 +475,7 @@ final class SacScene: Scene{
 		mouseButtonUp[]=0;
 	}
 
-	void menuControl(double dt){
+	void menuControl(Duration dt){
 		enforce(forms.length);
 		auto formIndex=0;
 		ref form(){ return forms[formIndex]; }
@@ -563,7 +564,7 @@ final class SacScene: Scene{
 
 	int lastSelectedId=0,lastSelectedFrame=0;
 	float lastSelectedX,lastSelectedY;
-	void gameControl(double dt){
+	void gameControl(Duration dt){
 		auto oldMouseStatus=mouse.status;
 		if(mouse.status.among(MouseStatus.standard,MouseStatus.icon)&&!mouse.dragging){
 			if(renderer.isOnSpellbook(Vector2f(mouse.x,mouse.y),info)) mouse.loc=MouseLocation.spellbook;
@@ -907,14 +908,14 @@ final class SacScene: Scene{
 					case MouseStatus.icon:
 						mouse.status=MouseStatus.standard;
 						if(audio) audio.playSound("kabI");
-						updateCursor(0.0f);
+						updateCursor(Duration.zero);
 						break;
 				}
 			}
 		}
 	}
 
-	void cameraControl(double dt){
+	void cameraControl(Duration dt){
 		if(fpview.active){
 			float turn_m =  (eventManager.mouseRelX) * fpview.mouseFactor * options.cameraMouseSensitivity;
 			float pitch_m = (eventManager.mouseRelY) * fpview.mouseFactor * options.cameraMouseSensitivity;
@@ -965,7 +966,7 @@ final class SacScene: Scene{
 	}
 
 
-	void observerControl(double dt){
+	void observerControl(Duration dt){
 		Vector3f forward = fpview.camera.worldTrans.forward;
 		Vector3f right = fpview.camera.worldTrans.right;
 		Vector3f dir = Vector3f(0, 0, 0);
@@ -982,7 +983,7 @@ final class SacScene: Scene{
 			if(eventManager.keyPressed[KEY_I]) speed = 10.0f;
 			if(eventManager.keyPressed[KEY_O]) speed = 100.0f;
 			if(eventManager.keyPressed[KEY_P]) speed = 1000.0f;
-			camera.position += dir.normalized * speed * dt;
+			camera.position += dir.normalized * speed * (dt.total!"hnsecs"*1e-7);
 			if(state) camera.position.z=max(camera.position.z, state.current.getHeight(camera.position));
 		}
 		positionCamera();
@@ -1126,12 +1127,12 @@ final class SacScene: Scene{
 		}+/
 	}
 
-	override void onViewUpdate(double dt){
+	override void onViewUpdate(Duration dt){
 		if(options.scaleToFit) screenScaling=super.screenScaling=min(float(eventManager.windowWidth)/width,float(eventManager.windowHeight)/height);
 		super.onViewUpdate(dt);
 	}
 
-	void updateHUD(float dt){
+	void updateHUD(Duration dt){
 		hudSoulFrame+=1;
 		if(hudSoulFrame>=renderer.sacSoul.numFrames*updateAnimFactor)
 			hudSoulFrame=0;
@@ -1155,8 +1156,8 @@ final class SacScene: Scene{
 		logicCallbacks.length=num;
 	}
 
-	override void onLogicsUpdate(double dt){
-		assert(dt==1.0f/updateFPS);
+	override void onLogicsUpdate(Duration dt){
+		assert(dt==1.dur!"seconds"/60);
 		//writeln(DagonBackend.getTotalGPUMemory()," ",DagonBackend.getAvailableGPUMemory());
 		//writeln(eventManager.fps);
 		if(!mouse.menuMode){
@@ -1196,9 +1197,9 @@ final class SacScene: Scene{
 			mouse.frame+=1;
 		}
 		foreach(sac;sacs.data){
-			static float totalTime=0.0f;
+			static totalTime=Duration.zero;
 			totalTime+=dt;
-			auto frame=totalTime*animFPS;
+			auto frame=(totalTime.total!"hnsecs"*1e-7)*animFPS;
 			import animations;
 			if(sac.numFrames(cast(AnimationState)0)) sac.setFrame(cast(AnimationState)0,cast(size_t)(frame%sac.numFrames(cast(AnimationState)0)));
 		}
@@ -1324,7 +1325,7 @@ final class SacScene: Scene{
 			default: assert(target.location!=TargetLocation.scene); break;
 		}
 	}
-	void updateCursor(double dt){
+	void updateCursor(Duration dt){
 		updateMouseTarget();
 		auto otarget=OrderTarget(mouse.target);
 		if(mouse.dragging) mouse.cursor=Cursor.drag;
@@ -1397,7 +1398,7 @@ final class SacScene: Scene{
 		displacementDirty=hasDisplacement();
 	}
 
-	override void onUpdate(double dt){
+	override void onUpdate(Duration dt){
 		super.onUpdate(dt);
 		if(audio&&state) audio.update(dt,fpview.viewMatrix,state.current);
 		updateCursor(dt);
@@ -1985,7 +1986,7 @@ class ShapeSacCreatureFrame: Owner, Drawable{
 		glDeleteBuffers(1, &eao);
 	}
 
-	void update(double dt){}
+	void update(Duration dt){}
 
 	void render(RenderingContext* rc){
 		glDepthMask(0);
@@ -2061,7 +2062,7 @@ class ShapeSubQuad: Owner, Drawable{
 		glDeleteBuffers(1, &eao);
 	}
 
-	void update(double dt){ }
+	void update(Duration dt){ }
 
 	void render(RenderingContext* rc){
 		glDepthMask(0);
@@ -2155,7 +2156,7 @@ class ShapeSacStatsFrame: Owner, Drawable{
 		glDeleteBuffers(1, &eao);
 	}
 
-	void update(double dt){ }
+	void update(Duration dt){ }
 
 	void render(RenderingContext* rc){
 		glDepthMask(0);
@@ -2227,7 +2228,7 @@ class ShapeCooldown: Owner, Drawable{
 		glDeleteBuffers(1, &eao);
 	}
 
-	void update(double dt){ }
+	void update(Duration dt){ }
 
 	void render(RenderingContext* rc){
 		glDepthMask(0);
