@@ -197,6 +197,20 @@ class SacSpell(B){
 			needsPrediction=tag!=SpellTag.locustShoot;
 			isShield=!!(flags1&SpelFlags1.shield);
 		}else if(strc) setStats(strc);
+		// preload assets:
+		import sacobject:SacObject,SacBuilding;
+		if(cre8) SacObject!B.getSAXS!Creature(tag); // preload
+		if(strc){
+			foreach(god;EnumMembers!God){
+				if(god!=God.none){
+					auto bldg=SacBuilding!B.get(buildingTag(god));
+					foreach(ref component;bldg.components){
+						SacObject!B.getBLDG(component.tag);
+						if(component.destroyed!="\0\0\0\0") SacObject!B.getBLDG(component.destroyed);
+					}
+				}
+			}
+		}
 	}
 	static SacSpell!B[char[4]] spells;
 	static SacSpell!B get(char[4] tag){

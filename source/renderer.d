@@ -741,6 +741,8 @@ struct Renderer(B){
 		return SacFlurryImplosion!B(texture,mat,mesh);
 	}
 	void createEffects(){
+		import std.traits:EnumMembers;
+		foreach(ptype;EnumMembers!ParticleType) SacParticle!B.get(ptype);
 		sacCommandCone=new SacCommandCone!B();
 		sacDebris=new SacObject!B("extracted/models/MODL.WAD!/bold.MRMC/bold.MRMM");
 		enforce(sacDebris.meshes.length==1);
