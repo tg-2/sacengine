@@ -57,6 +57,7 @@ struct Options{
 	int replicateCreatures=1;
 	int protectManafounts=0;
 	bool terrainSineWave=false;
+	bool enableParticles=true;
 	int delayStart=0;
 	// multiplayer
 	bool host=false;

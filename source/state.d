@@ -14389,6 +14389,7 @@ bool updateEruptCasting(B)(ref EruptCasting!B eruptCast,ObjectState!B state){
 }
 
 void animateErupt(B)(ref Erupt!B erupt,ObjectState!B state){
+	if(!state.enableParticles) return;
 	enum numParticles=24;
 	auto sacParticle=SacParticle!B.get(ParticleType.dust);
 	foreach(i;0..numParticles){
@@ -14472,6 +14473,7 @@ void eruptExplosion(B)(ref Erupt!B erupt,ObjectState!B state){
 		auto debris=EruptDebris!B(position,velocity,rotationUpdate,Quaternionf.identity());
 		state.addEffect(debris);
 	}
+	if(!state.enableParticles) return;
 	enum numParticles3=200;
 	auto sacParticle3=SacParticle!B.get(ParticleType.rock);
 	foreach(i;0..numParticles3){
@@ -14527,6 +14529,8 @@ bool updateEruptDebris(B)(ref EruptDebris!B eruptDebris,ObjectState!B state){
 		auto height=state.getGroundHeight(eruptDebris.position);
 		if(height>eruptDebris.position.z){
 			eruptDebris.position.z=height;
+			if(state.uniform(5)==0) playSoundAt("pmir",eruptDebris.position,state,1.0f);
+			if(!state.enableParticles) return false;
 			enum numParticles3=15;
 			auto sacParticle3=SacParticle!B.get(ParticleType.rock);
 			foreach(i;0..numParticles3){
@@ -14549,11 +14553,11 @@ bool updateEruptDebris(B)(ref EruptDebris!B eruptDebris,ObjectState!B state){
 				state.addParticle(Particle!B(sacParticle4,position,velocity,scale,lifetime,frame));
 			}
 			// TODO: scar
-			if(state.uniform(5)==0) playSoundAt("pmir",eruptDebris.position,state,1.0f);
 			return false;
 		}
 	}else if(eruptDebris.position.z<state.getHeight(eruptDebris.position)-eruptDebrisFallLimit)
 		return false;
+	if(!state.enableParticles) return true;
 	enum numParticles=3;
 	auto sacParticle=SacParticle!B.get(ParticleType.dirt);
 	auto velocity=Vector3f(0.0f,0.0f,0.0f);
@@ -19818,6 +19822,7 @@ void updateCommandCones(B)(ref CommandCones!B commandCones, ObjectState!B state)
 }
 
 void animateManafount(B)(Vector3f location, ObjectState!B state){
+	if(!state.enableParticles) return;
 	auto sacParticle=SacParticle!B.get(ParticleType.manafount);
 	auto globalAngle=1.5f*2*pi!float/updateFPS*(state.frame+1000*location.x+location.y);
 	auto globalMagnitude=0.25f;
@@ -19841,6 +19846,7 @@ void animateManafount(B)(Vector3f location, ObjectState!B state){
 }
 
 void animateManalith(B)(Vector3f location, int side, ObjectState!B state){
+	if(!state.enableParticles) return;
 	auto sacParticle=state.sides.manaParticle(side);
 	auto globalAngle=2*pi!float/updateFPS*(state.frame+1000*location.x+location.y);
 	auto globalMagnitude=0.5f;
@@ -19861,6 +19867,7 @@ void animateManalith(B)(Vector3f location, int side, ObjectState!B state){
 }
 
 void animateShrine(B)(bool active,Vector3f location, int side, ObjectState!B state){
+	if(!state.enableParticles) return;
 	auto sacParticle=state.sides.shrineParticle(side);
 	auto globalAngle=2*pi!float/updateFPS*(state.frame+1000*location.x+location.y);
 	auto globalMagnitude=0.1f;
@@ -20742,6 +20749,7 @@ final class ObjectState(B){ // (update logic)
 		rng=rhs.rng;
 		obj=rhs.obj;
 		sid=rhs.sid;
+		settings=rhs.settings;
 	}
 	void updateFrom(ObjectState!B rhs,Command!B[] frameCommands){
 		copyFrom(rhs);
@@ -20933,6 +20941,12 @@ final class ObjectState(B){ // (update logic)
 		proximity.end();
 	}
 	ObjectManager!B obj;
+	struct Settings{
+		bool enableParticles=true;
+	}
+	Settings settings;
+	@property bool enableParticles(){ return settings.enableParticles; }
+	void disableParticles(){ settings.enableParticles=false; }
 	int addObject(T)(T object) if(is(T==MovingObject!B)||is(T==StaticObject!B)||is(T==Soul!B)||is(T==Building!B)){
 		return obj.addObject(move(object));
 	}
@@ -22158,6 +22172,7 @@ struct GameInit(B){
 	int replicateCreatures=1;
 	int protectManafounts=0;
 	bool terrainSineWave=false;
+	bool enableParticles=true;
 }
 
 bool playAudio=true;
@@ -22326,6 +22341,7 @@ final class GameState(B){
 			})(current);
 		}
 		if(gameInit.terrainSineWave) current.addEffect(TestDisplacement());
+		if(!gameInit.enableParticles) current.disableParticles();
 		slots.length=gameInit.slots.length;
 		slots.data[]=SlotInfo.init;
 		Array!int slotForWiz;

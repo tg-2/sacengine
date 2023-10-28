@@ -792,6 +792,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Sid
 void serialize(alias sink,B)(ref SideManager!B sides){ serializeStruct!sink(sides); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SideManager!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref ObjectState!B.Settings settings){ serializeStruct!sink(settings); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ObjectState!B.Settings)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ObjectState!B state){
 	enum noserialize=["map","sides","proximity","pathFinder","triggers","toRemove"];
 	if(state.proximity.active) stderr.writeln("warning: serialize: proximity active");

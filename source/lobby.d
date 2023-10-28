@@ -107,6 +107,7 @@ GameInit!B gameInit(B,R)(Sides!B sides_,R playerSettings,ref Options options){
 	gameInit.replicateCreatures=options.replicateCreatures;
 	gameInit.protectManafounts=options.protectManafounts;
 	gameInit.terrainSineWave=options.terrainSineWave;
+	gameInit.enableParticles=options.enableParticles;
 	return gameInit;
 }
 
