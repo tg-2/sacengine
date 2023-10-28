@@ -154,6 +154,10 @@ PacketPurpose purposeFromType(PacketType type){
 	}
 }
 
+bool isPacketType(int type){
+	return PacketType.min<=type && type<=PacketType.max;
+}
+
 bool isHeaderType(PacketType type){
 	final switch(type) with(PacketType){
 		case nop,disconnect,ping,ack,updatePlayerId,updateSlot: return false;
@@ -167,6 +171,8 @@ bool isHeaderType(PacketType type){
 		case commit: return false;
 	}
 }
+
+
 
 struct Packet{
 	string toString(){
@@ -552,6 +558,7 @@ class TCPConnection: Connection{
 	private void receiveData(){
 		if(dataIndex<data.length) dataIndex+=tryReceive(data[dataIndex..$]);
 		if(dataIndex==data.length){
+			if(!isPacketType(packet.type)){ close(); return; }
 			if(isHeaderType(packet.type)){
 				if(rawData.length==0) rawData.length=packet.rawDataSize;
 				assert(rawDataIndex<rawData.length);
