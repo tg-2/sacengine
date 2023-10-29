@@ -458,7 +458,7 @@ class Lobby(B){
 			// TODO: this is a bit ugly
 			B.setState(gameState);
 			if(wizId) B.focusCamera(wizId);
-			else B.scene.fpview.active=true;
+			else if(!B.scene.mouse.visible&&!B.scene.fpview.active) B.scene.fpview.active=true;
 			if(network){
 				if(toContinue){
 					network.pauseOnDropOnce=true;
