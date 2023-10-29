@@ -1271,15 +1271,22 @@ final class Network(B){
 				case cmd:
 					if(controller){
 						if(controller.committedFrame<=p.frame){
-							static if(cmd==PacketType.command) auto command=fromNetwork!B(p.networkCommand);
-							else auto command=fromNetworkRaw!B(p.networkCommand,rawData);
-							if(isHost){
-								if(!players[sender].allowedToControlSide(command.side,controller)){
-									report!true(sender," sent an unauthorized command");
-									break Lptype;
+							try{
+								static if(cmd==PacketType.command) auto command=fromNetwork!B(p.networkCommand);
+								else auto command=fromNetworkRaw!B(p.networkCommand,rawData);
+								if(isHost){
+									if(!players[sender].allowedToControlSide(command.side,controller)){
+										report!true(sender," sent an unauthorized command");
+										disconnectPlayer(sender,controller);
+										break Lptype;
+									}
 								}
+								controller.addExternalCommand(p.frame,move(command));
+							}catch(Exception e){
+								report!true(sender," sent an invalid command: ",e.msg);
+								disconnectPlayer(sender,controller);
+								break Lptype;
 							}
-							controller.addExternalCommand(p.frame,move(command));
 						}else stderr.writeln("warning: invalid command ignored (frame: ",p.frame,", committed: ",controller.committedFrame,").");
 					}
 					break Lptype;
@@ -1412,10 +1419,15 @@ final class Network(B){
 				auto p=pendingJoin[i].receive();
 				if(p.type==PacketType.join){
 					assert(pendingJoin[i].rawReady);
-					import serialize_;
-					pendingJoin[i].receiveRaw((scope ubyte[] data){ deserialize(pendingJoin[i].settings,ObjectState!B.init,data); });
-					auto newId=addPlayer(pendingJoin[i]);
-					report(newId,"joined");
+					try{
+						import serialize_;
+						pendingJoin[i].receiveRaw((scope ubyte[] data){ deserialize(pendingJoin[i].settings,ObjectState!B.init,data); });
+						auto newId=addPlayer(pendingJoin[i]);
+						report(newId,"joined");
+					}catch(Exception e){
+						stderr.writeln("bad join attempt: ",e.msg);
+						pendingJoin[i].connection.close();
+					}
 				}else{
 					stderr.writeln("bad join attempt");
 					pendingJoin[i].connection.close();

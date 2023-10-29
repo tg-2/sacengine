@@ -104,7 +104,7 @@ final class Controller(B){
 		network.updateStatus(PlayerStatus.stateResynched);
 	}
 	void logDesynch(int side,scope ubyte[] serialized){
-		if(recording) recording.logDesynch(side,serialized,state.current);
+		if(recording) try{ recording.logDesynch(side,serialized,state.current); }catch(Exception e){ stderr.writeln("bad desynch log: ",e.msg); }
 	}
 	/+int lastConfirmSynch=-1;
 	ObjectState!B synchState;
