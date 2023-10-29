@@ -87,6 +87,7 @@ void serialize(alias sink,T)(ref Array!T values)if(!is(T==bool)){
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Array!S,S)&&!is(S==bool)){
 	ulong len;
 	deserialize(len,state,data);
+	enforce(len<=data.length,"array too long");
 	result.length=cast(size_t)len;
 	foreach(ref v;result.data) deserialize(v,state,data);
 }
@@ -105,6 +106,7 @@ void serialize(alias sink,T)(T[] values){
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==S[],S)){
 	ulong len;
 	deserialize(len,state,data);
+	enforce(len<=data.length,"array too long");
 	result.length=cast(size_t)len;
 	foreach(ref v;result) deserialize(*cast(Unqual!(typeof(v))*)&v,state,data);
 }
@@ -898,6 +900,7 @@ void deserialize(T,R)(T recording,ref R data)if(is(T==Recording!B,B)){
 	deserialize(recording.coreIndex,ObjectState!B.init,data);
 	ulong len;
 	deserialize(len,ObjectState!B.init,data);
+	enforce(len<=data.length,"array too long");
 	foreach(i;0..len) recording.core~=deserializeObjectState!B(map,sides,proximity,pathFinder,triggers,data);
 
 	deserialize(len,ObjectState!B.init,data);

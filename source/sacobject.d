@@ -584,8 +584,13 @@ final class SacObject(B){
 		isSaxs=true;
 		auto data=creatureDataByTag(tag);
 		enforce(!!data, tag[]);
-		static if(is(T==Creature)) auto dat2=&cre8s[tag];
-		else static if(is(T==Wizard)) auto dat2=&wizds[tag];
+		static if(is(T==Creature)){
+			enforce(!!(tag in cre8s),text("unknown creature tag '",tag,"'"));
+			auto dat2=&cre8s[tag];
+		}else static if(is(T==Wizard)){
+			enforce(!!(tag in wizds),text("unknown wizard tag '",tag,"'"));
+			auto dat2=&wizds[tag];
+		}
 		else static assert(0);
 		auto model=saxsModls[dat2.saxsModel];
 		saxsi=SaxsInstance!B(loadSaxs!B(model,alphaFlags(dat2.saxsModel)));
@@ -644,6 +649,7 @@ final class SacObject(B){
 	}
 
 	private this(T)(char[4] tag, T* hack) if(is(T==Structure)){
+		enforce(!!(tag in bldgModls),text("unknown structure tag '",tag,"'"));
 		auto mt=loadMRMM!B(bldgModls[tag],1.0f);
 		meshes=mt[0];
 		textures=mt[1];
@@ -656,6 +662,7 @@ final class SacObject(B){
 	}
 
 	private this(T)(char[4] tag, T* hack) if(is(T==Widgets)){
+		enforce(!!(tag in widgModls),text("unknown widget tag '",tag,"'"));
 		auto mt=loadWIDG!B(widgModls[tag]);
 		meshes=[[mt[0]]];
 		textures=[mt[1]];
