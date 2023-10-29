@@ -775,6 +775,14 @@ struct Player{
 		if(!allowedToControlState) return false;
 		return isActiveStatus(status);
 	}
+	bool allowedToControlSide(B)(int side,Controller!B controller){
+		if(!allowedToControlState()) return false;
+		if(!controller) return false;
+		auto slot=settings.slot;
+		if(slot<0||slot>=controller.state.slots.length) return false;
+		auto controlledSide=controller.state.slots[slot].controlledSide;
+		return controlledSide==side;
+	}
 }
 
 enum playerLimit=256;
@@ -1031,7 +1039,7 @@ final class Network(B){
 		else assert(rawData.length==0);
 	}do{
 		if(dumpTraffic) writeln("from ",sender,": ",p);
-		final switch(p.type){
+		Lptype:final switch(p.type){
 			// peer to peer:
 			case PacketType.nop: break;
 			case PacketType.disconnect:
@@ -1259,20 +1267,23 @@ final class Network(B){
 					}
 				}
 				break;
-			case PacketType.command:
-				if(controller){
-					if(controller.committedFrame<=p.frame){
-						controller.addExternalCommand(p.frame,fromNetwork!B(p.networkCommand));
-					}else stderr.writeln("warning: invalid command ignored (frame: ",p.frame,", committed: ",controller.committedFrame,").");
-				}
-				break;
-			case PacketType.commandRaw:
-				if(controller){
-					if(controller.committedFrame<=p.frame){
-						controller.addExternalCommand(p.frame,fromNetworkRaw!B(p.networkCommand,rawData));
-					}else stderr.writeln("warning: invalid command ignored (frame: ",p.frame,", committed: ",controller.committedFrame,").");
-				}
-				break;
+			static foreach(cmd;[PacketType.command,PacketType.commandRaw]){
+				case cmd:
+					if(controller){
+						if(controller.committedFrame<=p.frame){
+							static if(cmd==PacketType.command) auto command=fromNetwork!B(p.networkCommand);
+							else auto command=fromNetworkRaw!B(p.networkCommand,rawData);
+							if(isHost){
+								if(!players[sender].allowedToControlSide(command.side,controller)){
+									report!true(sender," sent an unauthorized command");
+									break Lptype;
+								}
+							}
+							controller.addExternalCommand(p.frame,move(command));
+						}else stderr.writeln("warning: invalid command ignored (frame: ",p.frame,", committed: ",controller.committedFrame,").");
+					}
+					break Lptype;
+			}
 			case PacketType.commit:
 				players[p.commitPlayer].committedFrame=max(players[p.commitPlayer].committedFrame,p.commitFrame);
 				if(controller) controller.updateCommitted();
