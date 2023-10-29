@@ -74,7 +74,7 @@ Command!B fromNetworkRaw(B)(NetworkCommand networkCommand,scope ubyte[] rawData)
 	return Command!B.init;
 }
 
-NetworkCommand toNetwork(B)(Command!B command)in{
+NetworkCommand toNetwork(B)(ref Command!B command)in{
 	assert(isValidCommand(command));
 }do{
 	NetworkCommand networkCommand;
@@ -241,7 +241,7 @@ struct Packet{
 			case commit: return text("Packet.commit(",commitPlayer,",",commitFrame,")");
 		}
 	}
-	int size=Packet.sizeof;
+	int size=0;
 	PacketType type;
 	union{
 		struct{}// nop
@@ -285,28 +285,40 @@ struct Packet{
 			int commitFrame;
 		}
 	}
+	private template memberSize(Members...){
+		template getSize(alias member){
+			enum workaround=__traits(getMember, Packet, __traits(identifier, member)).offsetof; // member.offsetof does not work
+			enum getSize=workaround+member.sizeof;
+		}
+		import std.traits: staticMap;
+		enum memberSize=[staticMap!(getSize,Members)].reduce!max;
+	}
 	static Packet nop(){ return Packet.init; }
 	static Packet disconnect(){
 		Packet p;
 		p.type=PacketType.disconnect;
+		p.size=memberSize!type;
 		return p;
 	}
 	static Packet ping(int id){
 		Packet p;
 		p.type=PacketType.ping;
 		p.id=id;
+		p.size=memberSize!(type,id);
 		return p;
 	}
 	static Packet ack(int pingId){
 		Packet p;
 		p.type=PacketType.ack;
 		p.pingId=pingId;
+		p.size=memberSize!(type,pingId);
 		return p;
 	}
 	static Packet updatePlayerId(int id){
 		Packet p;
 		p.type=PacketType.updatePlayerId;
 		p.id=id;
+		p.size=memberSize!(type,id);
 		return p;
 	}
 	static Packet updateSlot(int player,int slot){
@@ -314,35 +326,41 @@ struct Packet{
 		p.type=PacketType.updateSlot;
 		p.player=player;
 		p.intValue=slot;
+		p.size=memberSize!(type,player,intValue);
 		return p;
 	}
 	static Packet sendMap(ulong rawDataSize){
 		Packet p;
 		p.type=PacketType.sendMap;
 		p.rawDataSize=rawDataSize;
+		p.size=memberSize!(type,rawDataSize);
 		return p;
 	}
 	static Packet sendState(ulong rawDataSize){
 		Packet p;
 		p.type=PacketType.sendState;
 		p.rawDataSize=rawDataSize;
+		p.size=memberSize!(type,rawDataSize);
 		return p;
 	}
 	static Packet initGame(ulong rawDataSize){
 		Packet p;
 		p.type=PacketType.initGame;
 		p.rawDataSize=rawDataSize;
+		p.size=memberSize!(type,rawDataSize);
 		return p;
 	}
 	static Packet loadGame(){
 		Packet p;
 		p.type=PacketType.loadGame;
+		p.size=memberSize!type;
 		return p;
 	}
 	static Packet startGame(uint startDelay){
 		Packet p;
 		p.type=PacketType.startGame;
 		p.startDelay=startDelay;
+		p.size=memberSize!(type,startDelay);
 		return p;
 	}
 	static Packet confirmSynch(int frame,uint hash){
@@ -350,12 +368,14 @@ struct Packet{
 		p.type=PacketType.confirmSynch;
 		p.synchFrame=frame;
 		p.synchHash=hash;
+		p.size=memberSize!(type,synchFrame,synchHash);
 		return p;
 	}
 	static Packet join(ulong rawDataSize){
 		Packet p;
 		p.type=PacketType.join;
 		p.rawDataSize=rawDataSize;
+		p.size=memberSize!(type,rawDataSize);
 		return p;
 	}
 	static Packet checkSynch(int frame,uint hash){
@@ -363,31 +383,29 @@ struct Packet{
 		p.type=PacketType.checkSynch;
 		p.synchFrame=frame;
 		p.synchHash=hash;
+		p.size=memberSize!(type,synchFrame,synchHash);
 		return p;
 	}
 	static Packet logDesynch(ulong rawDataSize){
 		Packet p;
 		p.type=PacketType.logDesynch;
 		p.rawDataSize=rawDataSize;
+		p.size=memberSize!(type,rawDataSize);
 		return p;
 	}
-	void setValue(T)(T value){
-		static if(is(T==int)) intValue=value;
-		else static if(is(T==bool)) boolValue=value;
-		else static if(is(T==float)) floatValue=value;
-		else static if(is(Unqual!T==char)) charValue=value;
-		else static if(is(T==char[4])) char4Value=value;
-		else static if(is(Unqual!T==SpellSpec)) spellSpecValue=value;
+	template valueMember(T){
+		static if(is(T==int)) alias valueMember=intValue;
+		else static if(is(T==bool)) alias valueMember=boolValue;
+		else static if(is(T==float)) alias valueMember=floatValue;
+		else static if(is(Unqual!T==char)) alias valueMember=charValue;
+		else static if(is(T==char[4])) alias valueMember=char4Value;
+		else static if(is(Unqual!T==SpellSpec)) alias valueMember=spellSpecValue;
 		else static assert(0,T.stringof);
 	}
-	auto getValue(T)(){
-		static if(is(T==int)) return intValue;
-		else static if(is(T==bool)) return !!boolValue;
-		else static if(is(T==float)) return floatValue;
-		else static if(is(Unqual!T==char)) return charValue;
-		else static if(is(T==char[4])) return char4Value;
-		else static if(is(Unqual!T==SpellSpec)) return spellSpecValue;
-		else static assert(0,T.stringof);
+	void setValue(T)(T value){ valueMember!T=value; }
+	T getValue(T)(){
+		static if(is(T==bool)) return !!boolValue;
+		else return valueMember!T;
 	}
 	static Packet updateSetting(string name)(int player,typeof(mixin(`Options.`~name)) value){
 		Packet p;
@@ -397,6 +415,7 @@ struct Packet{
 		p.optionName[0..name.length]=name[];
 		static assert(name.length<optionName.length);
 		p.setValue(value);
+		p.size=memberSize!(type,player,optionName,valueMember!(typeof(value)));
 		return p;
 	}
 	static Packet clearArraySetting(string name)(int player){
@@ -406,6 +425,7 @@ struct Packet{
 		p.optionName[]='\0';
 		p.optionName[0..name.length]=name[];
 		static assert(name.length<optionName.length);
+		p.size=memberSize!(type,player,optionName);
 		return p;
 	}
 	static Packet appendArraySetting(string name)(int player,typeof(mixin(`Options.`~name~`[0]`)) value){
@@ -416,6 +436,7 @@ struct Packet{
 		p.optionName[0..name.length]=name[];
 		static assert(name.length<optionName.length);
 		p.setValue(value);
+		p.size=memberSize!(type,player,optionName,valueMember!(typeof(value)));
 		return p;
 	}
 	static Packet confirmArraySetting(string name)(int player){
@@ -425,6 +446,7 @@ struct Packet{
 		p.optionName[]='\0';
 		p.optionName[0..name.length]=name[];
 		static assert(name.length<optionName.length);
+		p.size=memberSize!(type,player,optionName);
 		return p;
 	}
 	static Packet setMap(int player,string part)in{
@@ -435,6 +457,7 @@ struct Packet{
 		p.mapPlayer=player;
 		p.mapName[0..part.length]=part;
 		p.mapName[part.length..$]=0;
+		p.size=memberSize!(type,mapPlayer,mapName);
 		return p;
 	}
 	static Packet appendMap(int player,string part)in{
@@ -445,12 +468,14 @@ struct Packet{
 		p.mapPlayer=player;
 		p.mapName[0..part.length]=part;
 		p.mapName[part.length..$]=0;
+		p.size=memberSize!(type,mapPlayer,mapName);
 		return p;
 	}
 	static Packet confirmMap(int player){
 		Packet p;
 		p.type=PacketType.confirmMap;
 		p.player=player;
+		p.size=memberSize!(type,player);
 		return p;
 	}
 	static Packet updateStatus(int player,PlayerStatus newStatus){
@@ -458,6 +483,7 @@ struct Packet{
 		p.type=PacketType.updateStatus;
 		p.player=player;
 		p.newStatus=newStatus;
+		p.size=memberSize!(type,player,newStatus);
 		return p;
 	}
 	static Packet command(B)(int frame,Command!B command){
@@ -466,8 +492,8 @@ struct Packet{
 		p.type=PacketType.command;
 		p.rawDataSize=0;
 		p.frame=frame;
-		enforce(command.type!=CommandType.chatMessage);
 		p.networkCommand=toNetwork(command);
+		p.size=memberSize!(type,rawDataSize,frame,networkCommand);
 		return p;
 	}
 	static Packet commandRaw(B)(int frame,Command!B command,ulong rawDataSize){
@@ -477,6 +503,7 @@ struct Packet{
 		p.rawDataSize=rawDataSize;
 		p.frame=frame;
 		p.networkCommand=toNetwork(command);
+		p.size=memberSize!(type,rawDataSize,frame,networkCommand);
 		return p;
 	}
 	static Packet commit(int player,int frame){
@@ -484,6 +511,7 @@ struct Packet{
 		p.type=PacketType.commit;
 		p.commitPlayer=player;
 		p.commitFrame=frame;
+		p.size=memberSize!(type,commitPlayer,commitFrame);
 		return p;
 	}
 }
@@ -556,17 +584,24 @@ class TCPConnection: Connection{
 		return ret;
 	}
 	private void receiveData(){
-		if(dataIndex<data.length) dataIndex+=tryReceive(data[dataIndex..$]);
-		if(dataIndex==data.length){
-			if(!isPacketType(packet.type)){ close(); return; }
-			if(isHeaderType(packet.type)){
-				if(rawData.length==0) rawData.length=packet.rawDataSize;
-				assert(rawDataIndex<rawData.length);
-				rawDataIndex+=tryReceive(rawData.data[rawDataIndex..$]);
-				if(rawDataIndex==rawData.length)
-					ready_=true;
-			}else ready_=true;
-		}
+		enum sizeAmount=Packet.size.offsetof+Packet.size.sizeof;
+		static assert(sizeAmount==4);
+		if(dataIndex<sizeAmount) dataIndex+=tryReceive(data[dataIndex..sizeAmount]);
+		if(dataIndex<sizeAmount) return;
+		if(dataIndex<packet.size) dataIndex+=tryReceive(data[dataIndex..packet.size]);
+		if(dataIndex<packet.size) return;
+		enum typeAmount=Packet.type.offsetof+Packet.type.sizeof;
+		static assert(typeAmount==8);
+		if(packet.size<typeAmount){ close(); return; }
+		if(!isPacketType(packet.type)){ close(); return; }
+		data[packet.size..$]=0;
+		if(isHeaderType(packet.type)){
+			if(rawData.length==0) rawData.length=packet.rawDataSize;
+			assert(rawDataIndex<rawData.length);
+			rawDataIndex+=tryReceive(rawData.data[rawDataIndex..$]);
+			if(rawDataIndex==rawData.length)
+				ready_=true;
+		}else ready_=true;
 	}
 	Array!ubyte remainingData;
 	long remainingIndex=0;
@@ -615,18 +650,18 @@ class TCPConnection: Connection{
 	}
 	override void send(Packet packet){
 		assert(!isHeaderType(packet.type));
-		send((cast(ubyte*)&packet)[0..packet.sizeof]);
+		send((cast(ubyte*)&packet)[0..packet.size]);
 	}
 	override void send(Packet packet,scope ubyte[] rawData){
 		assert(isHeaderType(packet.type)||rawData.length==0);
 		assert(!isHeaderType(packet.type)||packet.rawDataSize==rawData.length);
-		send((cast(ubyte*)&packet)[0..packet.sizeof]);
+		send((cast(ubyte*)&packet)[0..packet.size]);
 		send(rawData);
 	}
 	override void send(Packet packet,scope ubyte[] rawData1,scope ubyte[] rawData2){
 		assert(isHeaderType(packet.type)||rawData1.length+rawData2.length==0);
 		assert(!isHeaderType(packet.type)||packet.rawDataSize==rawData1.length+rawData2.length);
-		send((cast(ubyte*)&packet)[0..packet.sizeof]);
+		send((cast(ubyte*)&packet)[0..packet.size]);
 		send(rawData1);
 		send(rawData2);
 	}
