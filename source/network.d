@@ -588,12 +588,25 @@ class TCPConnection: Connection{
 		static assert(sizeAmount==4);
 		if(dataIndex<sizeAmount) dataIndex+=tryReceive(data[dataIndex..sizeAmount]);
 		if(dataIndex<sizeAmount) return;
+		if(packet.size>data.length){
+			stderr.writeln("packet too long (",packet.size,")");
+			close();
+			return;
+		}
 		if(dataIndex<packet.size) dataIndex+=tryReceive(data[dataIndex..packet.size]);
 		if(dataIndex<packet.size) return;
 		enum typeAmount=Packet.type.offsetof+Packet.type.sizeof;
 		static assert(typeAmount==8);
-		if(packet.size<typeAmount){ close(); return; }
-		if(!isPacketType(packet.type)){ close(); return; }
+		if(packet.size<typeAmount){
+			stderr.writeln("packet too short (",packet.size,")");
+			close();
+			return;
+		}
+		if(!isPacketType(packet.type)){
+			stderr.writeln("invalid packet type ",packet.type);
+			close();
+			return;
+		}
 		data[packet.size..$]=0;
 		if(isHeaderType(packet.type)){
 			if(rawData.length==0) rawData.length=packet.rawDataSize;
