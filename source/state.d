@@ -7024,11 +7024,11 @@ float dealFireDamage(T,B)(ref T object,float rangedDamage,float spellDamage,int 
 }
 
 float dealFallDamage(B)(ref MovingObject!B object,ObjectState!B state){
-	//enum fallDamageFactor=20.0f;
+	enum fallDamageFactor=20.0f;
 	//auto damage=sqrt(max(0.0f,-object.creatureState.fallingVelocity.z))*fallDamageFactor;
-	//auto damage=max(0.0f,-object.creatureState.fallingVelocity.z-5.0f)*20.0/15.0*fallDamageFactor;
-	enum fallDamageCap=1000.0f;
-	auto damage=min(fallDamageCap,(max(0.0f,-object.creatureState.fallingVelocity.z-5.0f)*1.0f/15.0f)^^2*fallDamageCap); // TODO: correct?
+	auto damage=max(0.0f,-object.creatureState.fallingVelocity.z-5.0f)*20.0/15.0*fallDamageFactor;
+	//enum fallDamageCap=1000.0f;
+	//auto damage=min(fallDamageCap,(max(0.0f,-object.creatureState.fallingVelocity.z-5.0f)*1.0f/15.0f)^^2*fallDamageCap); // TODO: correct?
 	return object.dealDamage(damage,-1,DamageMod.fall,state); // TODO: properly attribute fall damage to sides
 }
 
