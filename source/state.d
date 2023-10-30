@@ -7024,7 +7024,7 @@ float dealFireDamage(T,B)(ref T object,float rangedDamage,float spellDamage,int 
 }
 
 float dealFallDamage(B)(ref MovingObject!B object,ObjectState!B state){
-	enum fallDamageFactor=14.0f;
+	enum fallDamageFactor=20.0f;
 	enum fallDamageLimit=3.0f;
 	//auto damage=sqrt(max(0.0f,-object.creatureState.fallingVelocity.z))*fallDamageFactor;
 	auto damage=max(0.0f,-object.creatureState.fallingVelocity.z-fallDamageLimit)*fallDamageFactor;
@@ -10895,7 +10895,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 		case CreatureMovement.tumbling:
 			static import std.math;
 			enum dampFactorXY=std.math.exp(std.math.log(0.7f)/updateFPS);
-			enum dampFactorZ=std.math.exp(std.math.log(0.9f)/updateFPS);
+			enum dampFactorZ=std.math.exp(std.math.log(0.85f)/updateFPS);
 			if(object.creatureStats.effects.antiGravityTime<state.frame)
 				object.creatureState.fallingVelocity.z-=object.creatureStats.fallingAcceleration/updateFPS;
 			/+enum speedCap=20.0f; // TODO: figure out constant
