@@ -62,7 +62,7 @@ void loadGame(B)(ref Options options)in{
 
 int run(string[] args){
 	import core.memory;
-	GC.disable(); // TODO: figure out where GC memory is used incorrectly
+	GC.disable();
 	if(args.length==0) args~="";
 	import std.file:exists;
 	static string stripComment(string s){
@@ -373,6 +373,7 @@ int run(string[] args){
 		writeln("saving recording to '",options.recordingFilename,"'");
 		B.controller.recording.save(options.recordingFilename,options.compressRecording);
 	}
+	GC.collect();
 	B.run();
 	return 0;
 }

@@ -1416,7 +1416,7 @@ final class SacScene: Scene{
 	}
 }
 
-class MyApplication: SceneApplication{
+class SacApplication: SceneApplication{
 	SacScene scene;
 	this(Options options){
 		auto width=cast(int)(options.width*options.scale);
@@ -1426,15 +1426,20 @@ class MyApplication: SceneApplication{
 			options.width=width;
 			options.height=height;
 		}
-		scene = New!SacScene(sceneManager, options);
-		sceneManager.addScene(scene, "Sacrifice");
+		scene = new SacScene(sceneManager, options);
 		scene.load();
+	}
+	override void onUpdate(Duration dt){
+		scene.update(dt);
+	}
+	override void onRender(){
+		scene.render();
 	}
 }
 
 struct DagonBackend{
 static:
-	MyApplication app;
+	SacApplication app;
 	@property SacScene scene(){
 		if(!app) return null;
 		return app.scene;
@@ -1457,7 +1462,7 @@ static:
 	}
 	void initialize(Options options){
 		enforce(!app,"DagonBackend already initialized"); // TODO: fix?
-		app = New!MyApplication(options);
+		app = new SacApplication(options);
 	}
 	void addLogicCallback(bool delegate() dg){
 		scene.addLogicCallback(dg);
@@ -1481,9 +1486,9 @@ static:
 	}
 	void run(){
 		if(!app) return;
-		app.sceneManager.goToScene("Sacrifice");
 		if(!app.scene) return;
 		app.scene.initialize();
+		app.scene.start();
 		app.run();
 	}
 	void pause(){ if(app&&app.scene) app.scene.pause(); }
