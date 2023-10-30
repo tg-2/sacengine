@@ -7024,9 +7024,10 @@ float dealFireDamage(T,B)(ref T object,float rangedDamage,float spellDamage,int 
 }
 
 float dealFallDamage(B)(ref MovingObject!B object,ObjectState!B state){
-	enum fallDamageFactor=20.0f;
+	enum fallDamageFactor=14.0f;
+	enum fallDamageLimit=3.0f;
 	//auto damage=sqrt(max(0.0f,-object.creatureState.fallingVelocity.z))*fallDamageFactor;
-	auto damage=max(0.0f,-object.creatureState.fallingVelocity.z-5.0f)*20.0/15.0*fallDamageFactor;
+	auto damage=max(0.0f,-object.creatureState.fallingVelocity.z-fallDamageLimit)*fallDamageFactor;
 	//enum fallDamageCap=1000.0f;
 	//auto damage=min(fallDamageCap,(max(0.0f,-object.creatureState.fallingVelocity.z-5.0f)*1.0f/15.0f)^^2*fallDamageCap); // TODO: correct?
 	return object.dealDamage(damage,-1,DamageMod.fall,state); // TODO: properly attribute fall damage to sides
@@ -10892,10 +10893,16 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			}
 			break;
 		case CreatureMovement.tumbling:
+			static import std.math;
+			enum dampFactorXY=std.math.exp(std.math.log(0.7f)/updateFPS);
+			enum dampFactorZ=std.math.exp(std.math.log(0.9f)/updateFPS);
 			if(object.creatureStats.effects.antiGravityTime<state.frame)
 				object.creatureState.fallingVelocity.z-=object.creatureStats.fallingAcceleration/updateFPS;
-			enum speedCap=20.0f; // TODO: figure out constant
-			if(object.creatureState.fallingVelocity.lengthsqr>speedCap^^2) object.creatureState.fallingVelocity=object.creatureState.fallingVelocity.normalized*speedCap;
+			/+enum speedCap=20.0f; // TODO: figure out constant
+			if(object.creatureState.fallingVelocity.lengthsqr>speedCap^^2) object.creatureState.fallingVelocity=object.creatureState.fallingVelocity.normalized*speedCap;+/
+			object.creatureState.fallingVelocity.x*=dampFactorXY;
+			object.creatureState.fallingVelocity.y*=dampFactorXY;
+			object.creatureState.fallingVelocity.z*=dampFactorZ;
 			if(object.creatureStats.effects.fixed) break;
 			newPosition=object.position+object.creatureState.fallingVelocity/updateFPS;
 			if(state.isOnGround(newPosition))
