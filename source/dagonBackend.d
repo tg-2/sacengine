@@ -374,10 +374,15 @@ final class SacScene: Scene{
 		positionFPCamera();
 	}
 
+	void updateCameraTarget(){
+		if(camera.target!=0&&(!state||!state.current.isValidTarget(camera.target,TargetType.creature)))
+			focusCamera(0);
+	}
+
 	void updateCameraPosition(Duration dt,bool center,bool uncenter){
 		if(center) camera.centering=true;
 		if(uncenter) camera.centering=false;
-		if(!state.current.isValidTarget(camera.target,TargetType.creature)) camera.target=0;
+		updateCameraTarget();
 		while(camera.pitch>180.0f) camera.pitch-=360.0f;
 		while(camera.pitch<-180.0f) camera.pitch+=360.0f;
 		while(camera.turn>180.0f) camera.turn-=360.0f;
@@ -572,7 +577,7 @@ final class SacScene: Scene{
 			else if(renderer.isOnMinimap(Vector2f(mouse.x,mouse.y),info)) mouse.loc=MouseLocation.minimap;
 			else mouse.loc=MouseLocation.scene;
 		}
-		if(camera.target!=0&&(!state||!state.current.isValidTarget(camera.target,TargetType.creature))) camera.target=0;
+		updateCameraTarget();
 		if(observing) return;
 		auto cameraFacing=-degtorad(camera.turn);
 		import hotkeys_;
@@ -974,7 +979,7 @@ final class SacScene: Scene{
 		//if(eventManager.keyPressed[KEY_Y]) dir += Vector3f(0,1,0);
 		//if(eventManager.keyPressed[KEY_Z]) dir += Vector3f(0,0,1);
 		bool pressed(int[] keyCodes){ return keyCodes.any!(key=>eventManager.keyPressed[key]);}
-		if(camera.target!=0&&(!state||!state.current.isValidTarget(camera.target,TargetType.creature))) camera.target=0;
+		updateCameraTarget();
 		if(camera.target==0){
 			if(pressed(options.hotkeys.moveForward)) dir += -forward;
 			if(pressed(options.hotkeys.moveBackward)) dir += forward;
@@ -1037,8 +1042,8 @@ final class SacScene: Scene{
 	}do{
 		auto ostate=state.current;
 		//auto ostate=state.lastCommitted;
+		updateCameraTarget();
 		static void applyToMoving(alias f,B)(ObjectState!B state,Camera camera,Target target){
-			if(!state.isValidTarget(camera.target,TargetType.creature)) camera.target=0;
 			static void perform(T)(ref T obj,ObjectState!B state){ f(obj,state); }
 			if(camera.target==0){
 				if(!state.isValidTarget(target.id,target.type)) target=Target.init;
@@ -1194,7 +1199,7 @@ final class SacScene: Scene{
 				}
 			}//else state.step();
 			// state.commit();
-			if(!state.current.isValidTarget(camera.target,TargetType.creature)) camera.target=0;
+			updateCameraTarget();
 			if(camera.target){
 				auto targetFacing=state.current.movingObjectById!((obj)=>obj.creatureState.facing, function float(){ assert(0); })(camera.target);
 				updateCameraPosition(dt,targetFacing!=camera.lastTargetFacing,mouse.dragging);
