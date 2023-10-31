@@ -572,8 +572,8 @@ final class SacScene: Scene{
 			else if(renderer.isOnMinimap(Vector2f(mouse.x,mouse.y),info)) mouse.loc=MouseLocation.minimap;
 			else mouse.loc=MouseLocation.scene;
 		}
-		if(options.observer||!controller) return;
 		if(camera.target!=0&&(!state||!state.current.isValidTarget(camera.target,TargetType.creature))) camera.target=0;
+		if(observing) return;
 		auto cameraFacing=-degtorad(camera.turn);
 		import hotkeys_;
 		Modifiers modifiers;
@@ -987,7 +987,7 @@ final class SacScene: Scene{
 			if(state) camera.position.z=max(camera.position.z, state.current.getHeight(camera.position));
 		}
 		positionCamera();
-		if(options.observer||options.debugHotkeys||!controller||controller.controlledSide==-1){
+		if(observing||options.debugHotkeys&&!controller.network){
 			if(!eventManager.keyPressed[KEY_LSHIFT] && !eventManager.keyPressed[KEY_LCTRL] && !eventManager.keyPressed[KEY_CAPSLOCK]){
 				if(state) foreach(_;0..keyDown[KEY_M]){
 					if(mouse.target.type==TargetType.creature&&mouse.target.id){
@@ -996,7 +996,7 @@ final class SacScene: Scene{
 					}
 				}
 				foreach(_;0..keyDown[KEY_N]){
-					renderSide=-1;
+					renderSide=controller?controller.controlledSide:-1;
 					camera.target=0;
 				}
 				void showMouse(){
@@ -1016,7 +1016,7 @@ final class SacScene: Scene{
 				}
 				if(keyDown[KEY_K]) showMouse();
 				if(keyDown[KEY_L]) hideMouse();
-				if(state&&(options.observer||!controller||controller.controlledSide==-1)) foreach(key;KEY_1..KEY_0+1){
+				if(state) foreach(key;KEY_1..KEY_0+1){
 					foreach(_;0..keyDown[key]){
 						int slot=key==KEY_0?9:key-KEY_1;
 						int wizard=0<=slot&&slot<state.slots.length?state.slots[slot].wizard:0;
@@ -1024,7 +1024,7 @@ final class SacScene: Scene{
 							if(wizard==0) toggleMouse();
 							wizard=0;
 						}
-						renderSide=wizard==0?-1:state.slots[slot].controlledSide;
+						renderSide=wizard==0?(controller?controller.controlledSide:-1):state.slots[slot].controlledSide;
 						if(camera.target!=wizard) focusCamera(wizard);
 					}
 				}
@@ -1156,12 +1156,20 @@ final class SacScene: Scene{
 		logicCallbacks.length=num;
 	}
 
+	final bool observing(){
+		if(options.observer||camera.target==0||!controller||controller.controlledSide==-1||!state) return true;
+		int slot=controller.controlledSlot;
+		int wizard=0<=slot&&slot<state.slots.length?state.slots[slot].wizard:0;
+		if(!wizard||!state.current.isValidTarget(wizard)) return true;
+		return false;
+	}
+
 	override void onLogicsUpdate(Duration dt){
 		assert(dt==1.dur!"seconds"/60);
 		//writeln(DagonBackend.getTotalGPUMemory()," ",DagonBackend.getAvailableGPUMemory());
 		//writeln(eventManager.fps);
 		if(!mouse.menuMode){
-			if(options.observer||camera.target==0||!controller||!controller.network||controller.controlledSide==-1) observerControl(dt);
+			if(observing) observerControl(dt);
 			if(options.debugHotkeys&&state&&controller&&!controller.network&&options.playbackFilename=="") stateTestControl();
 		}
 		control(dt);
