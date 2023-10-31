@@ -675,9 +675,9 @@ final class SacForm(B){
 	char[4] escape(){ return form.escape; }
 
 	string mouseoverText(){ return null; }
-	bool returnIsOk(){ return tag=="thci"; } // TODO: is there some flag for this?
+	bool returnIsOk(){ return tag=="thci"||tag=="thco"; } // TODO: is there some flag for this?
 
-	bool isChatForm(){ return tag=="thci"; }
+	bool isChatForm(){ return tag=="thci"||tag=="thco"; }
 
 	private this(char[4] tag){
 		this.tag=tag;

@@ -1011,7 +1011,7 @@ final class Network(B){
 		updateSettings(me,newSettings);
 	}
 	void addCommand(int frame,Command!B command)in{
-		assert(playing&&players[me].committedFrame<=frame||command.type==CommandType.surrender);
+		assert(playing&&players[me].committedFrame<=frame||command.type==CommandType.surrender||!isHost&&frame==-1&&command.type==CommandType.chatMessage);
 	}do{
 		if(!isCommandWithRaw(command.type))
 			broadcast(Packet.command(frame,command),[]);
@@ -1047,131 +1047,130 @@ final class Network(B){
 			else writeln(players[player].settings.name," (player ",player,") ",action);
 		}
 	}
-	void performPacketAction(int sender,Packet p,scope ubyte[] rawData,Controller!B controller)in{
+	bool performPacketAction(int sender,ref Packet p,scope ubyte[] rawData,Controller!B controller)in{
 		if(isHeaderType(p.type)) assert(p.rawDataSize==rawData.length);
 		else assert(rawData.length==0);
 	}do{
 		if(dumpTraffic) writeln("from ",sender,": ",p);
-		Lptype:final switch(p.type){
+		final switch(p.type){
 			// peer to peer:
-			case PacketType.nop: break;
+			case PacketType.nop: return true;
 			case PacketType.disconnect:
 				disconnectPlayer(sender,controller);
 				report(sender,"disconnected");
-				break;
-			case PacketType.ping: players[sender].send(Packet.ack(p.id)); break;
+				return true;
+			case PacketType.ping: players[sender].send(Packet.ack(p.id)); return true;
 			case PacketType.ack:
 				final switch(ackHandler) with(AckHandler){
-					case none: break;
+					case none: return true;
 					case measurePing:
 						players[sender].ping=B.ticks()-p.pingId; // TODO: use a median over some window
-						break;
+						return true;
 				}
-				break;
 			// host message:
 			case PacketType.updatePlayerId:
 				if(sender!=host){
 					stderr.writeln("non-host player ",sender," attempted to update id: ",p);
-					break;
+					return false;
 				}
 				if(me!=-1){
 					stderr.writeln("host attempted to identify already identified player ",me,": ",p);
-					break;
+					return false;
 				}
 				if(p.id<0||p.id>=players.length){
 					stderr.writeln("attempt to identify to invalid id ",p.id);
-					break;
+					return false;
 				}
 				me=p.id;
 				updateStatus(PlayerStatus.synched);
-				break;
+				return true;
 			case PacketType.updateSlot:
 				if(sender!=host){
 					stderr.writeln("non-host player ",sender," attempted to update slot: ",p);
-					break;
+					return false;
 				}
 				int slot=p.intValue;
 				if(slot!=-1 && players[p.player].slot!=slot && players.any!((ref p)=>p.slot==slot)){
 					stderr.writeln("host attempted to put multiple players on same slot: ",p);
-					break;
+					return false;
 				}
 				players[p.player].settings.slot=slot;
 				players[p.player].slot=slot;
-				break;
+				return true;
 			case PacketType.sendMap:
 				if(sender!=host){
 					stderr.writeln("non-host player ",sender," attempted to update map: ",p);
-					break;
+					return false;
 				}
 				mapData.length=p.rawDataSize;
 				mapData.data[]=rawData[];
-				break;
+				return true;
 			case PacketType.sendState:
 				if(sender!=host){
 					stderr.writeln("non-host player ",sender," attempted to update state: ",p);
-					break;
+					return false;
 				}
 				controller.replaceState(rawData);
-				break;
+				return true;
 			case PacketType.initGame:
 				if(sender!=host){
 					stderr.writeln("non-host player ",sender," attempted to initialize the game: ",p);
-					break;
+					return false;
 				}
 				gameInitData.length=p.rawDataSize;
 				gameInitData.data[]=rawData[];
-				break;
+				return true;
 			case PacketType.loadGame:
 				if(sender!=host){
 					stderr.writeln("non-host player ",sender," attempted to initiate loading: ",p);
-					break;
+					return false;
 				}
 				if(!isReadyToLoadStatus(players[me].status)){
 					stderr.writeln("attempt to load game before ready: ",p);
-					break;
+					return false;
 				}
 				updateStatus(PlayerStatus.loading);
-				break;
+				return true;
 			case PacketType.startGame:
 				// TODO: wait for the specified amount of time
 				if(sender!=host){
 					stderr.writeln("non-host player ",sender," attempted to start game: ",p);
-					break;
+					return false;
 				}
 				if(!readyToStart){
 					stderr.writeln("attempt to start game before ready: ",p);
-					break;
+					return false;
 				}
 				Thread.sleep(p.startDelay.msecs);
 				updateStatus(PlayerStatus.playing);
 				B.unpause();
-				break;
+				return true;
 			case PacketType.confirmSynch:
-				if(!checkDesynch) return;
+				if(!checkDesynch) return true;
 				if(desynched){
 					stderr.writeln("confirmSynch packet sent while desynched: ",p);
-					return;
+					return false;
 				}
 				if(isHost){
-					stderr.writeln("checkSynch packet sent to host ",me,": ",p);
-					break;
+					stderr.writeln("confirmSynch packet sent to host ",me,": ",p);
+					return false;
 				}
 				//if(controller) controller.confirmSynch(p.synchFrame,p.synchHash);
-				break;
+				return true;
 			// host query:
 			case PacketType.join:
 				stderr.writeln("stray join packet: ",p);
 				controller.logDesynch(players[sender].settings.slot,rawData);
-				break;
+				return false;
 			case PacketType.checkSynch:
-				if(!checkDesynch) return;
+				if(!checkDesynch) return true;
 				if(desynched){
 					stderr.writeln("checkSynch packet sent while desynched: ",p);
-					return;
+					return false;
 				}
 				if(!isHost){
 					stderr.writeln("checkSynch packet sent to non-host player ",me,": ",p);
-					break;
+					return false;
 				}
 				assert(!!synchQueue);
 				if(!synchQueue.check(p.synchFrame,p.synchHash)){
@@ -1183,52 +1182,52 @@ final class Network(B){
 					}
 					updateStatus(sender,PlayerStatus.desynched);
 				}//else confirmSynch(sender,p.synchFrame,p.synchHash);
-				break;
+				return true;
 			case PacketType.logDesynch:
 				if(!isHost){
 					stderr.writeln("logDesynch packet sent to non-host player ",me,": ",p);
-					break;
+					return false;
 				}
 				controller.logDesynch(players[sender].settings.slot,rawData);
-				break;
+				return true;
 			// broadcast:
 			case PacketType.updateSetting,PacketType.clearArraySetting,PacketType.appendArraySetting,PacketType.confirmArraySetting,PacketType.setMap,PacketType.appendMap,PacketType.confirmMap:
 				if(!isHost&&sender!=host){
 					stderr.writeln("non-host player ",sender," attempted to update settings: ",p);
-					break;
+					return false;
 				}
 				static assert(p.player.offsetof is p.mapPlayer.offsetof);
 				if(p.player<0||p.player>=playerLimit){
 					stderr.writeln("player id out of range: ",p);
-					break;
+					return false;
 				}
 				if(p.player>=players.length) players.length=p.player+1;
 				if(players[p.player].status>=PlayerStatus.loading){
 					stderr.writeln("attempt to change settings after game started loading: ",p);
-					break;
+					return false;
 				}
 				if(players[p.player].status>=PlayerStatus.readyToLoad){
 					stderr.writeln("attempt to change settings after marked ready to load:  ",p);
-					break;
+					return false;
 				}
 				if(p.type==PacketType.updateSetting){
 					auto len=0;
 					while(len<p.optionName.length&&p.optionName[len]!='\0') ++len;
-				Lswitch:switch(p.optionName[0..len]){
+					switch(p.optionName[0..len]){
 						static foreach(setting;__traits(allMembers,Settings)){{
 							alias T=typeof(mixin(`players[p.player].settings.`~setting));
 							static if(!is(T==S[],S)){
 								case setting:
 									mixin(`players[p.player].settings.`~setting)=p.getValue!T();
-									break Lswitch;
+									return true;
 							}
 						}}
-						default: stderr.writeln("warning: unknown setting '",p.optionName[0..len],"'"); break;
+						default: stderr.writeln("warning: unknown setting '",p.optionName[0..len],"'"); return false;
 					}
 				}else if(p.type==PacketType.clearArraySetting||p.type==PacketType.appendArraySetting){
 					auto len=0;
 					while(len<p.optionName.length&&p.optionName[len]!='\0') ++len;
-				Lswitcha:switch(p.optionName[0..len]){
+					switch(p.optionName[0..len]){
 						static foreach(setting;__traits(allMembers,Settings)){{
 							alias T=typeof(mixin(`players[p.player].settings.`~setting));
 							static if(is(T==S[],S)){
@@ -1238,10 +1237,10 @@ final class Network(B){
 										if(mixin(`players[p.player].settings.`~setting).length<arrayLengthLimit)
 											mixin(`players[p.player].settings.`~setting)~=p.getValue!S();
 									}
-									break Lswitcha;
+									return true;
 							}
 						}}
-						default: stderr.writeln("warning: unknown array setting '",p.optionName[0..len],"'"); break;
+						default: stderr.writeln("warning: unknown array setting '",p.optionName[0..len],"'"); return false;
 					}
 				}else if(p.type==PacketType.confirmArraySetting){
 					auto len=0;
@@ -1259,15 +1258,18 @@ final class Network(B){
 						players[p.mapPlayer].settings.map~=p.mapName[0..len];
 				}else if(p.type==PacketType.confirmMap){
 				}else assert(0);
-				break;
+				return true;
 			case PacketType.updateStatus:
-				if(p.player<0||p.player>=playerLimit) break;
+				if(p.player<0||p.player>=playerLimit){
+					stderr.writeln("player id out of range: ",p);
+					return false;
+				}
 				if(p.player>=players.length) players.length=p.player+1;
 				if(isHost&&p.newStatus==PlayerStatus.readyToLoad&&players[p.player].settings.commit!=hostSettings.commit){
 					report!true(p.player,"tried to join with incompatible version #\n",
 					            "they were using version ",players[p.player].settings.commit);
 					disconnectPlayer(p.player,controller);
-					break;
+					return false;
 				}
 				if(allowedToUpdateStatus(sender,p.player,p.newStatus)){
 					players[p.player].status=p.newStatus;
@@ -1279,35 +1281,57 @@ final class Network(B){
 						players[p.player].drop();
 					}
 				}
-				break;
+				return true;
 			static foreach(cmd;[PacketType.command,PacketType.commandRaw]){
 				case cmd:
 					if(controller){
-						if(controller.committedFrame<=p.frame){
-							try{
-								static if(cmd==PacketType.command) auto command=fromNetwork!B(p.networkCommand);
-								else auto command=fromNetworkRaw!B(p.networkCommand,rawData);
+						try{
+							static if(cmd==PacketType.command) auto command=fromNetwork!B(p.networkCommand);
+							else auto command=fromNetworkRaw!B(p.networkCommand,rawData);
+							if(controller.committedFrame<=p.frame){
 								if(isHost){
 									if(!players[sender].allowedToControlSide(command.side,controller)){
 										report!true(sender," sent an unauthorized command");
 										disconnectPlayer(sender,controller);
-										break Lptype;
+										return false;
 									}
 								}
 								controller.addExternalCommand(p.frame,move(command));
-							}catch(Exception e){
-								report!true(sender," sent an invalid command: ",e.msg);
-								disconnectPlayer(sender,controller);
-								break Lptype;
+							}else if(isHost&&p.frame==-1&&command.type==CommandType.chatMessage){
+								if(!players[sender].isControllingState){
+									if(command.chatMessage.senderSlot==players[sender].slot){
+										if(players[sender].settings.observerChat){
+											controller.addCommand(command);
+											return false;
+										}else{
+											report!true(sender," tried to send an observer chat message while muted");
+											return false;
+										}
+									}else{
+										report!true(sender," tried to impersonate another player (slot ",command.chatMessage.senderSlot,")");
+										disconnectPlayer(sender,controller);
+										return false;
+									}
+								}else{
+									report!true(sender," tried to send an observer chat message while not being an observer");
+									return false;
+								}
+							}else{
+								stderr.writeln("warning: invalid command ignored (frame: ",p.frame,", committed: ",controller.committedFrame,").");
+								return false;
 							}
-						}else stderr.writeln("warning: invalid command ignored (frame: ",p.frame,", committed: ",controller.committedFrame,").");
+						}catch(Exception e){
+							report!true(sender," sent a command with wrong encoding: ",e.msg);
+							disconnectPlayer(sender,controller);
+							return false;
+						}
 					}
-					break Lptype;
+					return true;
 			}
 			case PacketType.commit:
 				players[p.commitPlayer].committedFrame=max(players[p.commitPlayer].committedFrame,p.commitFrame);
 				if(controller) controller.updateCommitted();
-				break;
+				return true;
 		}
 	}
 	void forwardPacket(int sender,Packet p,scope ubyte[] rawData,Controller!B controller){
@@ -1327,8 +1351,8 @@ final class Network(B){
 		}
 	}
 	void handlePacket(int sender,Packet p,scope ubyte[] rawData,Controller!B controller){
-		performPacketAction(sender,p,rawData,controller);
-		forwardPacket(sender,p,rawData,controller);
+		bool ok=performPacketAction(sender,p,rawData,controller);
+		if(ok) forwardPacket(sender,p,rawData,controller);
 	}
 	void sendPlayerData(Connection connection,int player)in{
 		assert(isHost);

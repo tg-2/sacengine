@@ -43,7 +43,14 @@ final class Controller(B){
 		assert(!network||network.playing||command.type==CommandType.surrender);
 		assert(committedFrame<=frame);
 	}do{
-		if(!isControllingSide(command.side)) return;
+		if(!isControllingSide(command.side)){
+			bool observerChat=command.side==-1&&command.type==CommandType.chatMessage;
+			if(!observerChat) return;
+			if(network&&!network.isHost){
+				network.addCommand(-1,command);
+				return;
+			}
+		}
 		command.id=++commandId;
 		firstUpdatedFrame=min(firstUpdatedFrame,frame);
 		state.addCommandInconsistent(frame,command);

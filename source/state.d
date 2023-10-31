@@ -22427,7 +22427,7 @@ final class GameState(B){
 	void addCommandInconsistent(int frame,Command!B command)in{
 		assert(frame>=lastCommitted.frame);
 	}do{
-		if(command.side==-1) return;
+		if(command.side==-1&&command.type!=CommandType.chatMessage) return;
 		if(commands.length<=frame) commands.length=frame+1;
 		commands[frame]~=command;
 		if(!isSorted(commands[frame].data))

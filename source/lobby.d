@@ -271,6 +271,8 @@ class Lobby(B){
 				freeSlots.popFront();
 			}
 		}
+		if(options.synchronizeObserverChat) network.synchronizeSetting!"observerChat"();
+
 		if(options.synchronizeLevel) network.synchronizeSetting!"level"();
 		if(options.synchronizeSouls) network.synchronizeSetting!"souls"();
 

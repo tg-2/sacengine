@@ -146,6 +146,12 @@ int run(string[] args){
 			options.exportFolder=opt["--export-folder=".length..$];
 		}else if(opt=="--observer"){
 			options.observer=true;
+		}else if(opt=="--no-observer"){
+			options.observer=false;
+		}else if(opt=="--observer-chat"){
+			options.observerChat=true;
+		}else if(opt=="--no-observer-chat"){
+			options.observerChat=false;
 		}else if(opt.startsWith("--slot=")){
 			options.slot=to!int(opt["--slot=".length..$]);
 		}else if(opt.startsWith("--team=")){

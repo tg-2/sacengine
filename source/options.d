@@ -68,6 +68,7 @@ struct Options{
 	bool dumpTraffic=false;
 	bool checkDesynch=true;
 	bool logDesynch=true;
+	bool synchronizeObserverChat=true;
 	bool synchronizeLevel=true;
 	bool synchronizeSouls=true;
 	bool synchronizeLevelBounds=true;
@@ -95,6 +96,7 @@ struct Settings{
 	int mapHash=0;
 	string name="";
 	bool observer=false;
+	bool observerChat=true;
 	int slot=-1;
 	int team=-1;
 	char[4] wizard="";

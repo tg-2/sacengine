@@ -555,7 +555,7 @@ final class SacScene: Scene{
 						int slotFilter=-1; // TODO
 						auto controlledSlot=controller?controller.controlledSlot:0;
 						auto chatMessage=makeChatMessage!DagonBackend(controlledSlot,slotFilter,ChatMessageType.standard,name,form.elements[defaultIndex].textInput.data[],state.current.frame);
-						controller.addCommand(Command!DagonBackend(controller.controlledSide,move(chatMessage)));
+						controller.addCommand(Command!DagonBackend(observing?-1:controller.controlledSide,move(chatMessage)));
 					}
 					forms.length=0;
 					disableMenu();
@@ -578,7 +578,8 @@ final class SacScene: Scene{
 			else mouse.loc=MouseLocation.scene;
 		}
 		updateCameraTarget();
-		if(observing) return;
+		if(!controller) return;
+		bool observing=this.observing;
 		auto cameraFacing=-degtorad(camera.turn);
 		import hotkeys_;
 		Modifiers modifiers;
@@ -587,8 +588,7 @@ final class SacScene: Scene{
 		bool ctrl=!!(modifiers&Modifiers.ctrl);
 		bool shift=!!(modifiers&Modifiers.shift);
 		bool pressed(int[] keyCodes){ return keyCodes.any!(key=>eventManager.keyPressed[key]);}
-		if(camera.target){
-			if(!state) return;
+		if(camera.target && !observing){
 			if(pressed(options.hotkeys.moveForward) && !pressed(options.hotkeys.moveBackward)){
 				if(targetMovementState.movement!=MovementDirection.forward){
 					targetMovementState.movement=MovementDirection.forward;
@@ -720,7 +720,10 @@ final class SacScene: Scene{
 				case quickSave,quickLoad,pause,changeCamera: unsupported(); break;
 				case sendChatMessage:
 					if(mouse.status==MouseStatus.standard&&!mouse.dragging&&!mouse.menuMode){
-						forms~=sacFormInstance!DagonBackend("thci");
+						if(observing){
+							if(!options.observerChat) break;
+							forms~=sacFormInstance!DagonBackend("thco");
+						}else forms~=sacFormInstance!DagonBackend("thci");
 						enableMenu();
 					}
 					break;
@@ -1166,6 +1169,10 @@ final class SacScene: Scene{
 		int slot=controller.controlledSlot;
 		int wizard=0<=slot&&slot<state.slots.length?state.slots[slot].wizard:0;
 		if(!wizard||!state.current.isValidTarget(wizard)) return true;
+		auto network=controller.network;
+		// hack to allow chat between surrender and disappearance of wizard
+		// TODO: track surrendering in controller?
+		if(network&&!network.players[network.me].isControllingState) return true;
 		return false;
 	}
 
