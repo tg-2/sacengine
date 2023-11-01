@@ -306,7 +306,7 @@ final class SacScene: Scene{
 			if(!mouse.menuMode){
 				fpview.active=true;
 				mouse.visible=false;
-			}
+			}else oldMouseVisible=false;
 			info.hudVisible=false;
 			return;
 		}
@@ -318,8 +318,10 @@ final class SacScene: Scene{
 		},()=>Vector3f.init)(target);
 		if(isNaN(size.x)){ camera.target=0; return; }
 		if(!mouse.visible) camera.pitch=-90.0f;
-		fpview.active=false;
-		mouse.visible=true;
+		if(!mouse.menuMode){
+			fpview.active=false;
+			mouse.visible=true;
+		}else oldMouseVisible=true;
 		info.hudVisible=true;
 		import std.typecons;
 		auto width=size.x,depth=size.y,height=size.z;
