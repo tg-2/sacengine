@@ -3605,13 +3605,6 @@ struct Renderer(B){
 					float relativeXP;
 				}
 				auto getNTTInfo(int id){
-					static string getSideName(int side,ObjectState!B state){
-						if(auto wiz=state.getWizardForSide(side)){
-							if(wiz.name.length) return wiz.name;
-							return state.movingObjectById!((ref obj)=>obj.sacObject.name,()=>null)(wiz.id);
-						}
-						return null;
-					}
 					if(target.type==TargetType.creature){
 						return state.movingObjectById!((ref obj,renderSide){
 							auto icon=obj.sacObject.icon;

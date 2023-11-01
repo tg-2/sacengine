@@ -1301,6 +1301,11 @@ final class Network(B){
 								if(!players[sender].isControllingState){
 									if(command.chatMessage.senderSlot==players[sender].slot){
 										if(players[sender].settings.observerChat){
+											adjustChatMessage(command.chatMessage,controller.currentFrame);
+											with(command.chatMessage){
+												slotFilter=-1;
+												content.type=ChatMessageType.observer;
+											}
 											controller.addCommand(command);
 											return false;
 										}else{

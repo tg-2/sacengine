@@ -1947,6 +1947,11 @@ struct WizardInfos(B){
 		return &wizards[index];
 	}
 }
+string getCreatureName(B)(int id,ObjectState!B state){
+	if(auto wiz=state.getWizard(id))
+		if(wiz.name.length) return wiz.name;
+	return state.movingObjectById!((ref obj)=>obj.sacObject.name,()=>null)(id);
+}
 string getSideName(B)(int side,ObjectState!B state){
 	if(auto wiz=state.getWizardForSide(side)){
 		if(wiz.name.length) return wiz.name;
@@ -5119,6 +5124,7 @@ struct CommandCones(B){
 
 enum ChatMessageType{
 	standard,
+	observer,
 }
 
 struct ChatMessageContent(B){
@@ -5174,6 +5180,18 @@ ChatMessage!B makeChatMessage(B,R,S)(int senderSlot,int slotFilter,ChatMessageTy
 	int lifetime=to!int(updateFPS+messageArray.length*updateFPS/10);
 	auto content=ChatMessageContent!B(type,move(titleArray),move(messageArray));
 	return ChatMessage!B(senderSlot,slotFilter,move(content),textWidth,textHeight,startFrame,lifetime);
+}
+
+void adjustChatMessage(B)(ref ChatMessage!B chatMessage, int startFrame){
+	import sacfont;
+	auto font=SacFont!B.get(FontType.fn10);
+	auto scale=1.0f;
+	auto settings=FormatSettings(FlowType.left,scale,ChatMessage!B.maxWidth);
+	auto textSize=font.getSize(chatMessage.content.message.data,settings);
+	chatMessage.textWidth=to!int(textSize.x);
+	chatMessage.textHeight=to!int(textSize.y);
+	chatMessage.startFrame=startFrame;
+	chatMessage.lifetime=to!int(updateFPS+chatMessage.content.message.length*updateFPS/10);
 }
 
 struct ChatMessages(B){

@@ -550,8 +550,14 @@ final class SacScene: Scene{
 					enforce(form.elements[defaultIndex].id=="thci");
 					if(form.elements[defaultIndex].textInput.length!=0){
 						string name=null;
-						if(renderSide!=-1) name=getSideName(renderSide,state.current);
-						if(name is null) name=options.name;
+						if(!observing){
+							if(!observing){
+								if(camera.target&&state.current.isValidTarget(camera.target))
+									name=getCreatureName(camera.target,state.current);
+								if(!name.length) name=getSideName(renderSide,state.current);
+							}
+						}else name=options.name;
+						if(!name.length) name="Anonymous";
 						int slotFilter=-1; // TODO
 						auto controlledSlot=controller?controller.controlledSlot:0;
 						auto chatMessage=makeChatMessage!DagonBackend(controlledSlot,slotFilter,ChatMessageType.standard,name,form.elements[defaultIndex].textInput.data[],state.current.frame);
