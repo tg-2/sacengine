@@ -108,6 +108,7 @@ struct RenderInfo(B){
 	int renderSide=-1;
 	float hudScaling;
 	int hudSoulFrame=0;
+	bool hudVisible=true;
 	Mouse!B mouse;
 	Camera camera;
 	int windowHeight;
@@ -2994,6 +2995,7 @@ struct Renderer(B){
 	auto formTarget=Target.init;
 
 	bool isOnSelectionRoster(Vector2f center,ref RenderInfo!B info){
+		if(!info.hudVisible) return false;
 		auto scaling=info.hudScaling*Vector3f(138.0f,256.0f-64.0f,1.0f);
 		auto position=Vector3f(-34.0f*info.hudScaling,0.5*(info.height-scaling.y),0);
 		auto topLeft=position;
@@ -3080,6 +3082,7 @@ struct Renderer(B){
 	}
 	float minimapRadius(ref RenderInfo!B info){ return info.hudScaling*80.0f; }
 	bool isOnMinimap(Vector2f position,ref RenderInfo!B info){
+		if(!info.hudVisible) return false;
 		auto radius=minimapRadius(info);
 		auto center=Vector2f(info.width-radius,info.height-radius);
 		return (position-center).lengthsqr<=radius*radius;
@@ -3387,6 +3390,7 @@ struct Renderer(B){
 
 	int numSpells=0;
 	bool isOnSpellbook(Vector2f center,ref RenderInfo!B info){
+		if(!info.hudVisible) return false;
 		auto hudScaling=info.hudScaling;
 		auto tabScaling=hudScaling*Vector2f(3*48.0f,48.0f);
 		auto tabPosition=Vector2f(0.0f,info.height-hudScaling*80.0f);
@@ -3532,6 +3536,7 @@ struct Renderer(B){
 		return .spellbookVisible(info.camera.target,state);
 	}
 	void renderHUD(ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
+		if(!info.hudVisible) return;
 		renderMinimap(state,info,rc);
 		if(info.renderSide!=-1){
 			if(statsVisible(state,info)) renderStats(state,info,rc);

@@ -262,6 +262,7 @@ final class SacScene: Scene{
 		fpview=New!FirstPersonView2(eventManager, eCamera, assetManager);
 		view=fpview;
 		mouse.visible=false;
+		info.hudVisible=false;
 		fpview.mouseFactor=0.25f;
 		//auto mat = createMaterial();
 		//mat.diffuse = Color4f(0.2, 0.2, 0.2, 0.2);
@@ -302,8 +303,11 @@ final class SacScene: Scene{
 		camera.target=target;
 		targetMovementState=MovementState.init;
 		if(!target){
-			fpview.active=true;
-			mouse.visible=false;
+			if(!mouse.menuMode){
+				fpview.active=true;
+				mouse.visible=false;
+			}
+			info.hudVisible=false;
 			return;
 		}
 		alias Tuple=std.typecons.Tuple;
@@ -316,6 +320,7 @@ final class SacScene: Scene{
 		if(!mouse.visible) camera.pitch=-90.0f;
 		fpview.active=false;
 		mouse.visible=true;
+		info.hudVisible=true;
 		import std.typecons;
 		auto width=size.x,depth=size.y,height=size.z;
 		height=max(height,1.5f);
@@ -1016,11 +1021,13 @@ final class SacScene: Scene{
 				void showMouse(){
 					fpview.active=false;
 					mouse.visible=true;
+					info.hudVisible=true;
 					//if(!state) SDL_ShowCursor(SDL_ENABLE);
 				}
 				void hideMouse(){
 					fpview.active=true;
 					mouse.visible=false;
+					info.hudVisible=false;
 					fpview.mouseFactor=0.25f;
 					//if(!state) SDL_ShowCursor(SDL_DISABLE);
 				}
