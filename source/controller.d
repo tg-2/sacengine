@@ -267,6 +267,7 @@ final class Controller(B){
 		if(updateNetwork()) return true;
 		while(state.current.frame<currentFrame){
 			state.step();
+			firstUpdatedFrame=max(firstUpdatedFrame,state.current.frame);
 			if(updateNetwork()) return true;
 		}
 		playAudio=oldPlayAudio;

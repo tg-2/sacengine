@@ -1,2 +1,2 @@
 #!/bin/bash
-gdb -ex=r -ex=q --args ./SacEngine-current $@
+gdb -ex=r -ex=q --args ./SacEngine-current "$@"
