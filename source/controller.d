@@ -168,11 +168,11 @@ final class Controller(B){
 	void updateNetworkOnSurrender(int side){
 		foreach(ref p;network.players) if(p.slot!=-1&&state.slots[p.slot].controlledSide==side) p.lostWizard=true;
 	}
-	bool step(){
-		playAudio=false;
+
+	bool updateNetwork(){
 		if(network){
 			network.update(this);
-			if(firstUpdatedFrame<currentFrame){
+			if(firstUpdatedFrame<state.current.frame){
 				// TODO: save multiple states, pick most recent with frame<=firstUpdatedFrame?
 				import std.conv: text;
 				enforce(state.lastCommitted.frame<=firstUpdatedFrame,text(state.lastCommitted.frame," ",firstUpdatedFrame," ",currentFrame));
@@ -256,12 +256,20 @@ final class Controller(B){
 			}else if(network.pauseOnDrop&&network.anyonePending) return true;
 			network.acceptingNewConnections=true;
 		}else committedFrame=currentFrame;
+		return false;
+	}
+
+	bool step(){
+		bool oldPlayAudio=playAudio;
+		//playAudio=firstUpdatedFrame<=state.current.frame;
+		playAudio=false;
+		scope(exit) playAudio=oldPlayAudio;
+		if(updateNetwork()) return true;
 		while(state.current.frame<currentFrame){
-			//playAudio=firstUpdatedFrame<=state.current.frame;
 			state.step();
+			if(updateNetwork()) return true;
 		}
-		//state.simulateTo(currentFrame);
-		playAudio=true;
+		playAudio=oldPlayAudio;
 		state.step();
 		if(recording){
 			recording.step();
