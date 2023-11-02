@@ -9572,9 +9572,10 @@ bool destroyAltar(B)(ref StaticObject!B shrine,ObjectState!B state){
 		char[4] stalk="\0\0\0\0";
 	}
 	static AltarTags getAltarTags(ref Building!B building,StaticObject!B* shrine,ObjectState!B state){
-		AltarTags r;
 		auto sacBuilding=building.sacBuilding;
 		assert(!!sacBuilding);
+		if(sacBuilding.components[0].tag=="bauc") return AltarTags("rauc","bauc","pauc","tauc");
+		AltarTags r;
 		r.shrine=sacBuilding.components[0].tag;
 		if(sacBuilding.components.length>=6){
 			r.pillar=sacBuilding.components[1].tag;
