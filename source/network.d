@@ -576,7 +576,8 @@ class TCPConnection: Connection{
 		auto ret=tcpSocket.receive(data);
 		if(ret==Socket.ERROR){
 			if(wouldHaveBlocked()) return 0;
-			stderr.writeln(lastSocketError());
+			try stderr.writeln(lastSocketError());
+			catch(Exception) stderr.writeln("socket error");
 			alive_=false;
 			tcpSocket.close();
 			return 0;
@@ -632,7 +633,8 @@ class TCPConnection: Connection{
 		auto sent=tcpSocket.send(data);
 		if(sent==Socket.ERROR){
 			if(!wouldHaveBlocked()){
-				stderr.writeln(lastSocketError());
+				try stderr.writeln(lastSocketError());
+				catch(Exception) stderr.writeln("socket error");
 				alive_=false;
 				tcpSocket.close();
 			}
