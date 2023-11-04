@@ -648,7 +648,6 @@ abstract class ConnectionImpl: Connection{
 	}
 }
 
-
 import std.socket;
 class TCPConnection: ConnectionImpl{
 	Socket tcpSocket;
@@ -696,6 +695,53 @@ class TCPConnection: ConnectionImpl{
 	override void closeImpl(){
 		tcpSocket.shutdown(SocketShutdown.BOTH);
 		tcpSocket.close();
+	}
+}
+
+struct Joiner{
+	Socket joinSocket=null;
+	Connection tryJoin(string hostIP, ushort port){
+		auto hostAddress = new InternetAddress(hostIP, port);
+		if(!joinSocket) joinSocket=new Socket(AddressFamily.INET,SocketType.STREAM);
+		try joinSocket.connect(hostAddress);
+		catch(Exception){ return null; }
+		joinSocket.blocking=false;
+		auto connection=new TCPConnection(joinSocket);
+		joinSocket=null;
+		return connection;
+	}
+}
+
+struct Listener{
+	Socket listener;
+	void make(){
+		listener=new Socket(AddressFamily.INET,SocketType.STREAM);
+		listener.setOption(SocketOptionLevel.SOCKET,SocketOption.REUSEADDR,true);
+		try{
+			listener.bind(new InternetAddress(listeningPort));
+			listener.listen(playerLimit);
+			listener.blocking=false;
+		}catch(Exception){
+			listener=null;
+		}
+		enforce(listener!is null,text("cannot host on port ",listeningPort));
+	}
+	Connection accept(){
+		Socket socket=null;
+		try socket=listener.accept();
+		catch(Exception){}
+		if(!socket||!socket.isAlive) return null;
+		socket.blocking=false;
+		return new TCPConnection(socket);
+	}
+	void close(){
+		if(listener){
+			listener.close();
+			listener=null;
+		}
+	}
+	bool accepting(){
+		return !!listener;
 	}
 }
 
@@ -868,18 +914,7 @@ final class Network(B){
 		return activePlayerIds.map!index;
 	}
 	size_t numActivePlayers(){ return activePlayerIds.walkLength; }
-	Socket listener;
-	void makeListener(){
-		listener=new Socket(AddressFamily.INET,SocketType.STREAM);
-		listener.setOption(SocketOptionLevel.SOCKET,SocketOption.REUSEADDR,true);
-		try{
-			listener.bind(new InternetAddress(listeningPort));
-			listener.listen(playerLimit);
-			listener.blocking=false;
-		}catch(Exception){
-			listener=null;
-		}
-	}
+	Listener listener;
 	this(){
 		// makeListener
 	}
@@ -893,24 +928,19 @@ final class Network(B){
 	void hostGame(Settings settings)in{
 		assert(!players.length);
 	}do{
-		makeListener();
-		enforce(listener!is null,text("cannot host on port ",listeningPort));
+		listener.make();
 		static assert(host==0);
 		players=[Player(PlayerStatus.synched,settings,settings.slot,null)];
 		me=0;
 		if(checkDesynch) synchQueue=new SynchQueue();
 	}
-	Socket joinSocket=null;
+	Joiner joiner;
 	bool joinGame(string hostIP, ushort port, Settings playerSettings)in{
 		assert(!players.length);
 	}do{
-		auto hostAddress = new InternetAddress(hostIP, port);
-		if(!joinSocket) joinSocket=new Socket(AddressFamily.INET,SocketType.STREAM);
-		try joinSocket.connect(hostAddress);
-		catch(Exception){ return false; }
-		joinSocket.blocking=false;
-		players=[Player(PlayerStatus.connected,Settings.init,-1,new TCPConnection(joinSocket))];
-		joinSocket=null;
+		auto connection=joiner.tryJoin(hostIP, port);
+		if(!connection) return false;
+		players=[Player(PlayerStatus.connected,Settings.init,-1,connection)];
 		import serialize_;
 		playerSettings.serialized((scope ubyte[] settingsData){
 			players[host].connection.send(Packet.join(settingsData.length),settingsData);
@@ -1450,21 +1480,18 @@ final class Network(B){
 	bool acceptingNewConnections=true;
 	void stopListening(){
 		acceptingNewConnections=false;
-		if(listener) listener.close();
+		listener.close();
 	}
 	Array!Player pendingJoin;
 	void acceptNewConnections(){
-		if(!acceptingNewConnections||!listener) return;
+		if(!acceptingNewConnections||!listener.accepting) return;
 		if(isHost){
 			if(players.length>=playerLimit) return;
-			for(Socket newSocket=null;;newSocket=null){
-				try newSocket=listener.accept();
-				catch(Exception){}
-				if(!newSocket||!newSocket.isAlive) break;
-				newSocket.blocking=false;
+			for(;;){
 				// TODO: detect reconnection attempts
+				auto connection=listener.accept();
+				if(!connection) break;
 				auto status=PlayerStatus.connected, settings=Settings.init, slot=-1;
-				auto connection=new TCPConnection(newSocket);
 				auto newPlayer=Player(status,settings,slot,connection);
 				pendingJoin~=newPlayer;
 			}
