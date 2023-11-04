@@ -172,8 +172,6 @@ bool isHeaderType(PacketType type){
 	}
 }
 
-
-
 struct Packet{
 	string toString(){
 		final switch(type) with(PacketType){
@@ -516,7 +514,6 @@ struct Packet{
 	}
 }
 
-public import std.socket;
 abstract class Connection{
 	abstract bool alive();
 	abstract bool ready();
@@ -528,16 +525,15 @@ abstract class Connection{
 	abstract void send(Packet packet,scope ubyte[] rawData1,scope ubyte[] rawData2);
 	abstract void close();
 }
-class TCPConnection: Connection{
-	Socket tcpSocket;
-	this(Socket tcpSocket)in{
-		assert(!tcpSocket.blocking);
-	}do{
-		this.tcpSocket=tcpSocket;
-	}
+
+abstract class ConnectionImpl: Connection{
+	protected abstract bool checkAlive();
+	protected long tryReceive(scope ubyte[] data);
+	protected long trySend(scope ubyte[] data);
+
 	bool alive_=true;
 	override bool alive(){
-		alive_&=tcpSocket.isAlive;
+		alive_&=checkAlive;
 		return alive_;
 	}
 	bool ready_=false;
@@ -571,18 +567,6 @@ class TCPConnection: Connection{
 		rawData.length=0;
 		rawDataIndex=0;
 		rawReady_=false;
-	}
-	private long tryReceive(scope ubyte[] data){
-		auto ret=tcpSocket.receive(data);
-		if(ret==Socket.ERROR){
-			if(wouldHaveBlocked()) return 0;
-			try stderr.writeln(lastSocketError());
-			catch(Exception) stderr.writeln("socket error");
-			alive_=false;
-			tcpSocket.close();
-			return 0;
-		}
-		return ret;
 	}
 	private void receiveData(){
 		enum sizeAmount=Packet.size.offsetof+Packet.size.sizeof;
@@ -619,7 +603,74 @@ class TCPConnection: Connection{
 	}
 	Array!ubyte remainingData;
 	long remainingIndex=0;
-	private long trySend(scope ubyte[] data){
+	private bool sendRemaining(){
+		while(remainingIndex<remainingData.length){
+			auto sent=trySend(remainingData.data[remainingIndex..$]);
+			if(sent==0) return false;
+			remainingIndex+=sent;
+		}
+		return true;
+	}
+	private void bufferData(scope ubyte[] data){
+		if(!alive_||!data.length) return;
+		remainingData~=data;
+		if(remainingData.length>4096 && remainingData.length/2<=remainingIndex){
+			remainingData.data[0..$-remainingIndex]=remainingData.data[remainingIndex..$];
+			remainingData.length=remainingData.length-remainingIndex;
+			remainingIndex=0;
+		}
+	}
+	private void send(scope ubyte[] data){
+		auto sent=sendRemaining()?trySend(data):0;
+		bufferData(data[sent..$]);
+	}
+	final override void send(Packet packet){
+		assert(!isHeaderType(packet.type));
+		send((cast(ubyte*)&packet)[0..packet.size]);
+	}
+	final override void send(Packet packet,scope ubyte[] rawData){
+		assert(isHeaderType(packet.type)||rawData.length==0);
+		assert(!isHeaderType(packet.type)||packet.rawDataSize==rawData.length);
+		send((cast(ubyte*)&packet)[0..packet.size]);
+		send(rawData);
+	}
+	final override void send(Packet packet,scope ubyte[] rawData1,scope ubyte[] rawData2){
+		assert(isHeaderType(packet.type)||rawData1.length+rawData2.length==0);
+		assert(!isHeaderType(packet.type)||packet.rawDataSize==rawData1.length+rawData2.length);
+		send((cast(ubyte*)&packet)[0..packet.size]);
+		send(rawData1);
+		send(rawData2);
+	}
+	protected abstract void closeImpl();
+	final override void close(){
+		closeImpl();
+		destroy(remainingData);
+	}
+}
+
+
+import std.socket;
+class TCPConnection: ConnectionImpl{
+	Socket tcpSocket;
+	this(Socket tcpSocket)in{
+		assert(!tcpSocket.blocking);
+	}do{
+		this.tcpSocket=tcpSocket;
+	}
+	override bool checkAlive(){ return tcpSocket.isAlive;  }
+	override protected long tryReceive(scope ubyte[] data){
+		auto ret=tcpSocket.receive(data);
+		if(ret==Socket.ERROR){
+			if(wouldHaveBlocked()) return 0;
+			try stderr.writeln(lastSocketError());
+			catch(Exception) stderr.writeln("socket error");
+			alive_=false;
+			tcpSocket.close();
+			return 0;
+		}
+		return ret;
+	}
+	override protected long trySend(scope ubyte[] data){
 		/+import std.datetime.stopwatch;
 		static sw=StopWatch(AutoStart.no);
 		if(!sw.running) sw.start();
@@ -642,48 +693,9 @@ class TCPConnection: Connection{
 		}
 		return sent;
 	}
-	private bool sendRemaining(){
-		while(remainingIndex<remainingData.length){
-			auto sent=trySend(remainingData.data[remainingIndex..$]);
-			if(sent==0) return false;
-			remainingIndex+=sent;
-		}
-		return true;
-	}
-	private void bufferData(scope ubyte[] data){
-		if(!alive_||!data.length) return;
-		remainingData~=data;
-		if(remainingData.length>4096 && remainingData.length/2<=remainingIndex){
-			remainingData.data[0..$-remainingIndex]=remainingData.data[remainingIndex..$];
-			remainingData.length=remainingData.length-remainingIndex;
-			remainingIndex=0;
-		}
-	}
-	private void send(scope ubyte[] data){
-		auto sent=sendRemaining()?trySend(data):0;
-		bufferData(data[sent..$]);
-	}
-	override void send(Packet packet){
-		assert(!isHeaderType(packet.type));
-		send((cast(ubyte*)&packet)[0..packet.size]);
-	}
-	override void send(Packet packet,scope ubyte[] rawData){
-		assert(isHeaderType(packet.type)||rawData.length==0);
-		assert(!isHeaderType(packet.type)||packet.rawDataSize==rawData.length);
-		send((cast(ubyte*)&packet)[0..packet.size]);
-		send(rawData);
-	}
-	override void send(Packet packet,scope ubyte[] rawData1,scope ubyte[] rawData2){
-		assert(isHeaderType(packet.type)||rawData1.length+rawData2.length==0);
-		assert(!isHeaderType(packet.type)||packet.rawDataSize==rawData1.length+rawData2.length);
-		send((cast(ubyte*)&packet)[0..packet.size]);
-		send(rawData1);
-		send(rawData2);
-	}
-	override void close(){
+	override void closeImpl(){
 		tcpSocket.shutdown(SocketShutdown.BOTH);
 		tcpSocket.close();
-		destroy(remainingData);
 	}
 }
 
@@ -889,9 +901,10 @@ final class Network(B){
 		if(checkDesynch) synchQueue=new SynchQueue();
 	}
 	Socket joinSocket=null;
-	bool joinGame(InternetAddress hostAddress,Settings playerSettings)in{
+	bool joinGame(string hostIP, ushort port, Settings playerSettings)in{
 		assert(!players.length);
 	}do{
+		auto hostAddress = new InternetAddress(hostIP, port);
 		if(!joinSocket) joinSocket=new Socket(AddressFamily.INET,SocketType.STREAM);
 		try joinSocket.connect(hostAddress);
 		catch(Exception){ return false; }

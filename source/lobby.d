@@ -128,7 +128,6 @@ class Lobby(B){
 	LobbyState state;
 	this(){}
 	Network!B network=null;
-	InternetAddress joinAddress=null;
 	int slot;
 	bool isHost(){ return !network||network.isHost; }
 	Recording!B playback=null;
@@ -177,8 +176,7 @@ class Lobby(B){
 		}
 		if(options.joinIP!=""){
 			if(!network) createNetwork(options);
-			if(!joinAddress) joinAddress=new InternetAddress(options.joinIP,listeningPort);
-			auto result=network.joinGame(joinAddress,options.settings);
+			auto result=network.joinGame(options.joinIP,listeningPort,options.settings);
 			if(result) state=LobbyState.connected;
 			return result;
 		}
