@@ -1443,8 +1443,7 @@ final class Network(B){
 							if(controller.committedFrame<=p.frame){
 								if(isHost){
 									if(!players[sender].allowedToControlSide(command.side,controller)){
-										report!true(sender," sent an unauthorized command");
-										disconnectPlayer(sender,controller);
+										report(sender,"sent an unauthorized command");
 										return false;
 									}
 								}
@@ -1461,16 +1460,16 @@ final class Network(B){
 											controller.addCommand(command);
 											return false;
 										}else{
-											report!true(sender," tried to send an observer chat message while muted");
+											report!true(sender,"tried to send an observer chat message while muted");
 											return false;
 										}
 									}else{
-										report!true(sender," tried to impersonate another player (slot ",command.chatMessage.senderSlot,")");
+										report!true(sender,"tried to impersonate another player (slot ",command.chatMessage.senderSlot,")");
 										disconnectPlayer(sender,controller);
 										return false;
 									}
 								}else{
-									report!true(sender," tried to send an observer chat message while not being an observer");
+									report!true(sender,"tried to send an observer chat message while not being an observer");
 									return false;
 								}
 							}else{
@@ -1478,7 +1477,7 @@ final class Network(B){
 								return false;
 							}
 						}catch(Exception e){
-							report!true(sender," sent a command with wrong encoding: ",e.msg);
+							report!true(sender,"sent a command with wrong encoding: ",e.msg);
 							disconnectPlayer(sender,controller);
 							return false;
 						}
