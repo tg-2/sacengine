@@ -91,12 +91,12 @@ GameInit!B gameInit(B,R)(Sides!B sides_,R playerSettings,ref Options options){
 			int[int] teamLoc;
 			int[][] teamIndex;
 			foreach(slot;0..numSlots) if(teams[slot]!=-1){
-					if(teams[slot]!in teamLoc){
-						teamLoc[teams[slot]]=cast(int)teamIndex.length;
-						teamIndex~=[[]];
-					}
-					teamIndex[teamLoc[teams[slot]]]~=slot;
+				if(teams[slot]!in teamLoc){
+					teamLoc[teams[slot]]=cast(int)teamIndex.length;
+					teamIndex~=[[]];
 				}
+				teamIndex[teamLoc[teams[slot]]]~=slot;
+			}
 			foreach(slot;0..numSlots) if(teams[slot]<0) teamIndex~=[slot];
 			teamIndex.sort!("a.length > b.length",SwapStrategy.stable);
 			foreach(t;teamIndex[1..$]){
@@ -105,7 +105,8 @@ GameInit!B gameInit(B,R)(Sides!B sides_,R playerSettings,ref Options options){
 						if(options.randomWizards) a.tag=b.tag;
 						a.spellbook=b.spellbook;
 					}
-					copyWizard(gameInit.wizards[t[i]],gameInit.wizards[teamIndex[0][i]]);
+					auto w1=gameInit.slots[t[i]].wizardIndex, w2=gameInit.slots[teamIndex[0][i]].wizardIndex;
+					if(w1!=-1&&w2!=-1) copyWizard(gameInit.wizards[w1],gameInit.wizards[w2]);
 				}
 			}
 		}
