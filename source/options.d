@@ -59,6 +59,9 @@ struct Options{
 	bool terrainSineWave=false;
 	bool enableParticles=true;
 	int delayStart=0;
+	// zerotier
+	string zerotierIdentity="zerotier-identity";
+	ulong zerotierNetwork=0;
 	// multiplayer
 	bool host=false;
 	int numSlots=1;

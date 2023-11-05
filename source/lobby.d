@@ -168,15 +168,16 @@ class Lobby(B){
 	bool tryConnect(ref Options options)in{
 		assert(state==LobbyState.initialized);
 	}do{
+		bool useZerotier=!!options.zerotierNetwork;
 		if(options.host){
 			if(!network) createNetwork(options);
-			network.hostGame(options.settings);
+			network.hostGame(options.settings,useZerotier);
 			state=LobbyState.connected;
 			return true;
 		}
 		if(options.joinIP!=""){
 			if(!network) createNetwork(options);
-			auto result=network.joinGame(options.joinIP,listeningPort,options.settings);
+			auto result=network.joinGame(options.joinIP,listeningPort,options.settings,useZerotier);
 			if(result) state=LobbyState.connected;
 			return result;
 		}

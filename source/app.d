@@ -196,6 +196,10 @@ int run(string[] args){
 			options.mapList=opt["--map-list=".length..$];
 		}else if(opt.startsWith("--delay-start=")){
 			options.delayStart=to!int(opt["--delay-start=".length..$]);
+		}else if(opt.startsWith("--zerotier-network=")){
+			options.zerotierNetwork=to!ulong(opt["--zerotier-network=".length..$],0x10);
+		}else if(opt.startsWith("--zerotier-identity=")){
+			options.zerotierIdentity=opt["--zerotier-identity=".length..$];
 		}else if(opt=="--host"){
 			options.host=true;
 			options.numSlots=2;
@@ -291,12 +295,17 @@ int run(string[] args){
 		options.map=options.map["export-speech:".length..$];
 		exportSpeech!B(options);
 		return 0;
-	}else if(options.map!=""&&!options.noMap){
+	}
+
+	if(options.zerotierNetwork&&(options.host||options.joinIP!="")){
+		import zerotier;
+		connectToZerotier(options.zerotierIdentity,options.zerotierNetwork);
+	}
+	if(options.map!=""&&!options.noMap){
 		// loadGame!B(options);
 		auto lobby=makeLobby!B(options);
 		B.addLogicCallback(()=>!updateLobby(lobby,options));
-	}
-	else B.scene.fpview.active=true;
+	}else B.scene.fpview.active=true;
 
 	foreach(ref i;1..args.length){
 		if(args[i].endsWith(".SAMP")){

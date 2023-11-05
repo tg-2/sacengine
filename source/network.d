@@ -698,9 +698,72 @@ class TCPConnection: ConnectionImpl{
 	}
 }
 
+import zerotier;
+import std.string: toStringz;
+class ZerotierTCPConnection: ConnectionImpl{
+	int fd;
+	this(int fd)in{
+		//assert(!zts_get_blocking(fd));
+	}do{
+		this.fd=fd;
+	}
+	override bool checkAlive(){ return true;  }
+	override protected long tryReceive(scope ubyte[] data){
+		auto ret=zts_bsd_read(fd,data.ptr,data.length);
+		if(ret<0){
+			if(zts_would_have_blocked(fd)) return 0;
+			stderr.writeln("zerotier socket error on read");
+			alive_=false;
+			zts_bsd_close(fd);
+			fd=-1;
+			return 0;
+		}
+		return ret;
+	}
+	override protected long trySend(scope ubyte[] data){
+		auto sent=zts_bsd_write(fd,data.ptr,data.length);
+		if(sent<0){
+			if(zts_would_have_blocked(fd)) return 0;
+			stderr.writeln("zerotier socket error on write");
+			alive_=false;
+			zts_bsd_close(fd);
+			fd=-1;
+			return 0;
+		}
+		return sent;
+	}
+	override void closeImpl(){
+		zts_bsd_shutdown(fd,zts_shut_rdwr);
+		zts_bsd_close(fd);
+		fd=-1;
+	}
+}
+
 struct Joiner{
+	int fd=-1;
+	Connection tryJoinZerotier(string hostIP, ushort port){
+		if(fd==-1){
+			int nfd=zts_bsd_socket(zts_af_inet, zts_sock_stream, zts_ipproto_tcp);
+			enforce(nfd!=zts_err_arg,"bad arguments");
+			enforce(nfd!=zts_err_service,"failed to make socket");
+			enforce(nfd!=zts_err_socket,"failed to make socket");
+			fd=nfd;
+		}
+		zts_sockaddr_in saddr;
+		uint addrlen=saddr.sizeof;
+		int err=zts_util_ipstr_to_saddr(hostIP.toStringz,port,&saddr,&addrlen);
+		enforce(err==zts_err_ok,"bad address");
+		err=zts_bsd_connect(fd,&saddr,addrlen);
+		if(err!=zts_err_ok) return null;
+		err=zts_set_blocking(fd, false);
+		enforce(err==zts_err_ok,"failed to set blocking mode");
+		auto connection=new ZerotierTCPConnection(fd);
+		fd=-1;
+		return connection;
+	}
 	Socket joinSocket=null;
-	Connection tryJoin(string hostIP, ushort port){
+	Connection tryJoin(string hostIP, ushort port,bool useZerotier){
+		if(useZerotier) return tryJoinZerotier(hostIP, port);
 		auto hostAddress = new InternetAddress(hostIP, port);
 		if(!joinSocket) joinSocket=new Socket(AddressFamily.INET,SocketType.STREAM);
 		try joinSocket.connect(hostAddress);
@@ -713,8 +776,29 @@ struct Joiner{
 }
 
 struct Listener{
+	int fd=-1;
+	void makeZerotier(){
+		enforce(fd==-1,"zerotier listener already exists");
+		int nfd=zts_bsd_socket(zts_af_inet, zts_sock_stream, zts_ipproto_tcp);
+		enforce(nfd!=zts_err_arg,"bad arguments");
+		enforce(nfd!=zts_err_service,"failed to make socket");
+		enforce(nfd!=zts_err_socket,"failed to make socket");
+		zts_sockaddr_in saddr;
+		uint addrlen=saddr.sizeof;
+		int err=zts_util_ipstr_to_saddr("0.0.0.0",listeningPort,&saddr,&addrlen);
+		enforce(err==zts_err_ok,"bad address");
+		err=zts_bsd_bind(nfd,&saddr,addrlen);
+		enforce(err==zts_err_ok,"failed to bind");
+		zts_bsd_listen(nfd,playerLimit);
+		enforce(err==zts_err_ok,"listen failed");
+		err=zts_set_blocking(nfd, false);
+		enforce(err==zts_err_ok,"failed to set blocking mode");
+		fd=nfd;
+	}
 	Socket listener;
-	void make(){
+	void make(bool useZerotier){
+		if(useZerotier) makeZerotier();
+		enforce(!listener, "listener already exists");
 		listener=new Socket(AddressFamily.INET,SocketType.STREAM);
 		listener.setOption(SocketOptionLevel.SOCKET,SocketOption.REUSEADDR,true);
 		try{
@@ -726,7 +810,22 @@ struct Listener{
 		}
 		enforce(listener!is null,text("cannot host on port ",listeningPort));
 	}
+	Connection acceptZerotier(){
+		zts_sockaddr_in saddr;
+		uint addrlen=saddr.sizeof;
+		auto nfd=zts_bsd_accept(fd,&saddr,&addrlen);
+		if(nfd<0) return null;
+		int err=zts_set_blocking(nfd, false);
+		enforce(err==zts_err_ok,"failed to set blocking mode");
+		return new ZerotierTCPConnection(nfd);
+	}
 	Connection accept(){
+		if(fd!=-1){
+			if(auto connection=acceptZerotier())
+				return connection;
+			if(!listener) return null;
+		}
+		enforce(listener!is null,"cannot accept connections");
 		Socket socket=null;
 		try socket=listener.accept();
 		catch(Exception){}
@@ -735,13 +834,17 @@ struct Listener{
 		return new TCPConnection(socket);
 	}
 	void close(){
+		if(fd!=-1){
+			zts_bsd_close(fd);
+			fd=-1;
+		}
 		if(listener){
 			listener.close();
 			listener=null;
 		}
 	}
 	bool accepting(){
-		return !!listener;
+		return fd!=-1||listener;
 	}
 }
 
@@ -925,20 +1028,20 @@ final class Network(B){
 	bool pauseOnDropOnce=false;
 	bool isHost(){ return me==host; }
 	SynchQueue synchQueue;
-	void hostGame(Settings settings)in{
+	void hostGame(Settings settings,bool useZerotier=false)in{
 		assert(!players.length);
 	}do{
-		listener.make();
+		listener.make(useZerotier);
 		static assert(host==0);
 		players=[Player(PlayerStatus.synched,settings,settings.slot,null)];
 		me=0;
 		if(checkDesynch) synchQueue=new SynchQueue();
 	}
 	Joiner joiner;
-	bool joinGame(string hostIP, ushort port, Settings playerSettings)in{
+	bool joinGame(string hostIP, ushort port, Settings playerSettings,bool useZerotier=false)in{
 		assert(!players.length);
 	}do{
-		auto connection=joiner.tryJoin(hostIP, port);
+		auto connection=joiner.tryJoin(hostIP, port, useZerotier);
 		if(!connection) return false;
 		players=[Player(PlayerStatus.connected,Settings.init,-1,connection)];
 		import serialize_;
