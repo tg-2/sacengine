@@ -55,7 +55,7 @@ SacMap!B loadSacMap(B)(string filename,ubyte[]* mapData=null){
 			if(mapData) *mapData=data;
 		}
 		static int curMapNum=0; // TODO: needed?
-		wadManager.indexWAD!(handle,handleData)(filename,text("`_map",curMapNum++),&levlName,&enviName,&hmapName,&tmapName,&lmapName,&sidsName,&nttsName,&trigName,&crc32,mapData);
+		wadManager.indexWAD!(handle,handleData,false)(filename,text("`_map",curMapNum++),&levlName,&enviName,&hmapName,&tmapName,&lmapName,&sidsName,&nttsName,&trigName,&crc32,mapData);
 		enforce(levlName!="","No level specification in scp file");
 		enforce(enviName!="","No environment specification in scp file");
 		enforce(hmapName!="","No height map in scp file");

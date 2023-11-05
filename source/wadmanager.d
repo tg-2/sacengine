@@ -28,10 +28,15 @@ class WadManager{
 		}
 		writeln();
 	}
-	void indexWAD(alias filenameCallback=0,alias dataCallback=0,T...)(string wadPath,string dirPath,T args){
-		auto wad=new MmFile(wadPath);
-		wads~=wad;
-		auto input=cast(ubyte[])wad[];
+	void indexWAD(alias filenameCallback=0,alias dataCallback=0,bool memoryMap=true,T...)(string wadPath,string dirPath,T args){
+		static if(memoryMap){
+			auto wad=new MmFile(wadPath);
+			wads~=wad;
+			auto input=cast(ubyte[])wad[];
+		}else{
+			static import file=std.file;
+			auto input=cast(ubyte[])file.read(wadPath);
+		}
 		static if(!is(typeof(dataCallback)==int))
 			dataCallback(input,args);
 		auto infoOff=parseLE(input[4..8]);
