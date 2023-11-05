@@ -858,6 +858,7 @@ enum PlayerStatus{
 	synched,
 	commitHashReady,
 	mapHashed,
+	pendingGameInit,
 	readyToLoad,
 	lateJoining,
 	pendingLoad,
@@ -1056,6 +1057,7 @@ final class Network(B){
 	bool synched(){ return me!=-1&&players[me].status>=PlayerStatus.synched; }
 	bool hostCommitHashReady(){ return players[host].status>=PlayerStatus.commitHashReady; }
 	bool mapHashed(){ return connectedPlayers.all!(p=>p.status>=PlayerStatus.mapHashed); }
+	bool pendingGameInit(){ return connectedPlayers.any!(p=>p.status==PlayerStatus.pendingGameInit); }
 	bool hostReadyToLoad(){ return isReadyToLoadStatus(players[host].status); }
 	bool clientsReadyToLoad(){
 		return iota(players.length).filter!(i=>i!=host&&players[i].connection).all!(i=>isReadyToLoadStatus(players[i].status));
@@ -1737,7 +1739,8 @@ final class Network(B){
 	}do{
 		foreach(i;0..players.length){
 			if(i==me) continue;
-			if(players[i].status!=PlayerStatus.readyToLoad) continue;
+			if(!players[i].status.among(PlayerStatus.pendingGameInit,PlayerStatus.readyToLoad))
+				continue;
 			initGame(cast(int)i,gameInitData);
 		}
 		// for late joining:
