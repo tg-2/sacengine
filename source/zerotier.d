@@ -37,7 +37,7 @@ void libztInit(){
 	if(libzt) return;
 	//writeln("loading libzt");
 	version(Windows){
-		libzt=LoadLibraryA("libzt.dll");
+		libzt=LoadLibraryA(".\\libzt.dll");
 	}else{
 		libzt=dlopen("./libzt.so",2); // RTLD_NOW
 	}
