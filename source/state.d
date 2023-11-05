@@ -7365,6 +7365,25 @@ bool freeCreature(B)(ref MovingObject!B object,Vector3f landingPosition,ObjectSt
 	return true;
 }
 
+Vector3f[2] findSacDocPositions(B)(Vector3f targetPosition,Vector3f preferredOffset,ObjectState!B state){
+	enum numSteps=5;
+	Vector3f[2] candidate(bool sign,int step){
+		auto angle=(sign?-1.0f:1.0f)*pi!float*step/(numSteps-1);
+		auto newOffset=rotate(rotationQuaternion(Axis.z,angle),preferredOffset);
+		auto position=targetPosition+newOffset;
+		auto landingPosition=0.5f*(position+targetPosition);
+		return [position,landingPosition];
+	}
+	foreach(step;0..numSteps){
+		foreach(sign;0..2-(step==0||step+1==numSteps)){
+			auto positions=candidate(!!sign,step);
+			if(state.isOnGround(positions[1]))
+				return positions;
+		}
+	}
+	return [targetPosition+0.5f*preferredOffset,targetPosition];
+}
+
 bool castConvert(B)(int side,ManaDrain!B manaDrain,SacSpell!B spell,Vector3f castPosition,int target,int targetShrine,ObjectState!B state){
 	if(!targetShrine) return false;
 	auto targetPosition=state.soulById!((ref soul,int side){
@@ -7374,8 +7393,9 @@ bool castConvert(B)(int side,ManaDrain!B manaDrain,SacSpell!B spell,Vector3f cas
 	},function()=>Vector3f.init)(target,side);
 	if(isNaN(targetPosition.x)) return false;
 	auto direction=(targetPosition-castPosition).normalized;
-	auto position=targetPosition+RedVortex.convertDistance*direction;
-	auto landingPosition=0.5f*(position+targetPosition);
+	auto preferredOffset=RedVortex.convertDistance*direction;
+	auto positions=findSacDocPositions(targetPosition,preferredOffset,state);
+	auto position=positions[0],landingPosition=positions[1];
 	position.z=state.getHeight(position)+RedVortex.convertHeight;
 	state.addEffect(SacDocCasting!B(RitualType.convert,side,manaDrain,spell,target,targetShrine,landingPosition,RedVortex(position)));
 	return true;
@@ -7386,8 +7406,9 @@ bool castDesecrate(B)(int side,ManaDrain!B manaDrain,SacSpell!B spell,Vector3f c
 	auto targetPosition=state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(target);
 	if(isNaN(targetPosition.x)) return false;
 	auto direction=(targetPosition-castPosition).normalized;
-	auto position=targetPosition-20.0f*direction; // TODO: ok?
-	auto landingPosition=0.5f*(position+targetPosition);
+	auto preferredOffset=-20.0f*direction; // TODO: ok?
+	auto positions=findSacDocPositions(targetPosition,preferredOffset,state);
+	auto position=positions[0],landingPosition=positions[1];
 	position.z=state.getHeight(position)+RedVortex.desecrateHeight;
 	state.addEffect(SacDocCasting!B(RitualType.desecrate,side,manaDrain,spell,target,targetShrine,landingPosition,RedVortex(position)));
 	return true;
