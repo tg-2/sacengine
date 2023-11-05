@@ -15,9 +15,13 @@ enum zts_ipproto_tcp=6;
 enum zts_inet6_addrstrlen=46;
 enum zts_max_ip_str_len=46;
 
-static if(is(size_t==ulong)) alias ssize_t=long;
-else static if(is(size_t==uint)) alias ssize_t=int;
-else static assert(0);
+version(Windows){
+	alias ssize_t=int;
+}else{
+	static if(is(size_t==ulong)) alias ssize_t=long;
+	else static if(is(size_t==uint)) alias ssize_t=int;
+	else static assert(0);
+}
 
 struct zts_in_addr {
     uint s_addr;
