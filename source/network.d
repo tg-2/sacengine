@@ -1207,8 +1207,9 @@ final class Network(B){
 			// peer to peer:
 			case PacketType.nop: return true;
 			case PacketType.disconnect:
-				disconnectPlayer(sender,controller);
-				report(sender,"disconnected");
+				/+disconnectPlayer(sender,controller);
+				report(sender,"disconnected");+/
+				dropPlayer(sender,controller);
 				return true;
 			case PacketType.ping: players[sender].send(Packet.ack(p.id)); return true;
 			case PacketType.ack:
