@@ -1008,7 +1008,7 @@ final class SacScene: Scene{
 			if(state) camera.position.z=max(camera.position.z, state.current.getHeight(camera.position));
 		}
 		positionCamera();
-		if(observing||options.debugHotkeys&&!controller.network){
+		if(observing||options.debugHotkeys&&controller&&!controller.network){
 			if(!eventManager.keyPressed[KEY_LSHIFT] && !eventManager.keyPressed[KEY_LCTRL] && !eventManager.keyPressed[KEY_CAPSLOCK]){
 				if(state) foreach(_;0..keyDown[KEY_M]){
 					if(mouse.target.type==TargetType.creature&&mouse.target.id){
@@ -1180,7 +1180,8 @@ final class SacScene: Scene{
 	}
 
 	final bool observing(){
-		if(options.observer||camera.target==0||!controller||controller.controlledSide==-1||!state) return true;
+		if(options.observer||camera.target==0||controller&&controller.controlledSlot==-1||!state) return true;
+		if(!controller) return false;
 		int slot=controller.controlledSlot;
 		int wizard=0<=slot&&slot<state.slots.length?state.slots[slot].wizard:0;
 		if(!wizard||!state.current.isValidTarget(wizard)) return true;

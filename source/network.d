@@ -1821,6 +1821,11 @@ final class Network(B){
 		}
 		Thread.sleep((maxPing/2).msecs);
 		updateStatus(PlayerStatus.playing);
+		if(controller.state){
+			bool hasSlot=0<=slot&&slot<controller.state.slots.length;
+			auto wizId=hasSlot?controller.state.slots[slot].wizard:0;
+			if(wizId) B.focusCamera(wizId);
+		}
 		B.unpause();
 	}
 	void pause(PlayerStatus status)in{

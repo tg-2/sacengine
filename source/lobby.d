@@ -433,7 +433,7 @@ class Lobby(B){
 		// TODO: if game init can place additional buildings this would need to be reflected here:
 		if(!gameState.current.map.meshes.length)
 			gameState.current.map.makeMeshes(options.enableMapBottom);
-		hasSlot=0<=slot&&slot<=gameState.slots.length;
+		hasSlot=0<=slot&&slot<gameState.slots.length;
 		wizId=hasSlot?gameState.slots[slot].wizard:0;
 		if(toContinue){
 			gameState.commands=toContinue.commands;
