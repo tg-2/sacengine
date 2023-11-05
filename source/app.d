@@ -383,6 +383,7 @@ int run(string[] args){
 			Thread.sleep(1.dur!"seconds");
 		}
 	}
+	scope(exit) if(B.network) B.network.shutdown();
 	scope(exit) if(B.controller&&B.controller.recording){
 		B.controller.recording.finalize(B.state.commands);
 		writeln("saving recording to '",options.recordingFilename,"'");

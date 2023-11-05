@@ -643,6 +643,7 @@ abstract class ConnectionImpl: Connection{
 	}
 	protected abstract void closeImpl();
 	final override void close(){
+		if(alive) for(int i=0;alive&&!sendRemaining()&&i<10;i++) Thread.sleep(50.dur!"msecs");
 		closeImpl();
 		destroy(remainingData);
 	}
@@ -707,7 +708,7 @@ class ZerotierTCPConnection: ConnectionImpl{
 	}do{
 		this.fd=fd;
 	}
-	override bool checkAlive(){ return true;  }
+	override bool checkAlive(){ return fd!=-1/+&&zts_socket_alive(fd)+/;  }
 	override protected long tryReceive(scope ubyte[] data){
 		auto ret=zts_bsd_read(fd,data.ptr,data.length);
 		if(ret<0){
@@ -733,10 +734,12 @@ class ZerotierTCPConnection: ConnectionImpl{
 		return sent;
 	}
 	override void closeImpl(){
+		if(fd==-1) return;
 		zts_bsd_shutdown(fd,zts_shut_rdwr);
 		zts_bsd_close(fd);
 		fd=-1;
 	}
+	~this(){ closeImpl(); }
 }
 
 struct Joiner{
@@ -1867,5 +1870,15 @@ final class Network(B){
 	}do{
 		if(!logDesynch_) return;
 		players[host].send(Packet.logDesynch(stateData.length),stateData);
+	}
+
+	void shutdown(){
+		foreach(ref player;players){
+			if(player.alive){
+				player.send(Packet.disconnect());
+				player.connection.close();
+				player.connection=null;
+			}
+		}
 	}
 }

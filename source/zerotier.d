@@ -112,6 +112,11 @@ ssize_t zts_bsd_write(int fd,const void* buf,size_t len){
 	mixin(load);
 	return sym(fd,buf,len);	
 }
+
+int zts_bsd_getsockopt(int fd,int level,int optname,void* optval,uint* optlen){
+	mixin(load);
+	return sym(fd,level,optname,optval,optlen);
+}
 int zts_bsd_close(int fd){
 	mixin(load);
 	return sym(fd);
@@ -130,7 +135,6 @@ int zts_bsd_shutdown(int fd,int how){
 	return sym(milliseconds);
 }+/
 
-
 int zts_get_last_socket_error(int fd){
 	mixin(load);
 	return sym(fd);
@@ -143,6 +147,16 @@ bool zts_would_have_blocked(int fd){
 	import std.stdio;
 	return lasterr==0||lasterr==zts_eagain||lasterr==zts_etimeout;
 }
+
+/+
+enum zts_sol_socket=0x0fff;
+enum zts_so_type=0x1008;
+bool zts_socket_alive(int fd){ // does not seem to work
+	int type;
+	uint typesize=type.sizeof;
+	return !zts_bsd_getsockopt(fd,zts_sol_socket,zts_so_type,&type,&typesize);
+}
++/
 
 version(Windows){
 	string errorStr(){
