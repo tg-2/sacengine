@@ -7609,8 +7609,8 @@ bool castLightning(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectSt
 bool lightning(B)(int wizard,int side,OrderTarget start,OrderTarget end,SacSpell!B spell,ObjectState!B state,bool updateTargets=true,DamageMod damageMod=DamageMod.lightning){
 	if(updateTargets){
 		auto startCenter=start.center(state),endCenter=end.center(state);
-		static bool filter(ref ProximityEntry entry,int id){ return entry.id!=id; }
-		auto newEnd=state.collideRay!filter(startCenter,endCenter-startCenter,1.0f,wizard);
+		static bool filter(ref ProximityEntry entry,int id,ObjectState!B state){ return entry.id!=id&&state.isValidTarget(entry.id); }
+		auto newEnd=state.collideRay!filter(startCenter,endCenter-startCenter,1.0f,wizard,state);
 		if(newEnd.type!=TargetType.none){
 			end=newEnd;
 			endCenter=end.center(state);
@@ -8375,8 +8375,8 @@ void animateGnomeHit(B)(Vector3f position,SacSpell!B rangedAttack,ObjectState!B 
 bool gnomeShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
 	playSoundAt("thsg",position,state,2.0f);
 	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
-	static bool filter(ref ProximityEntry entry,int id){ return entry.id!=id; }
-	auto end=state.collideRay!filter(position,direction,rangedAttack.range,attacker);
+	static bool filter(ref ProximityEntry entry,int id,ObjectState!B state){ return entry.id!=id&&state.isValidTarget(entry.id); }
+	auto end=state.collideRay!filter(position,direction,rangedAttack.range,attacker,state);
 	if(end.type==TargetType.none) end.position=position+rangedAttack.range*direction;
 	if(end.type==TargetType.creature||end.type==TargetType.building)
 		dealRangedDamage(end.id,rangedAttack,attacker,side,direction,DamageMod.none,state);
@@ -8483,8 +8483,8 @@ void animateWarmongerHit(B)(Vector3f position,SacSpell!B rangedAttack,ObjectStat
 }
 bool warmongerShootSingle(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
 	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
-	static bool filter(ref ProximityEntry entry,int id){ return entry.id!=id; }
-	auto end=state.collideRay!filter(position,direction,rangedAttack.range,attacker);
+	static bool filter(ref ProximityEntry entry,int id,ObjectState!B state){ return entry.id!=id&&state.isValidTarget(entry.id); }
+	auto end=state.collideRay!filter(position,direction,rangedAttack.range,attacker,state);
 	if(end.type==TargetType.none) end.position=position+rangedAttack.range*direction;
 	if(end.type==TargetType.creature||end.type==TargetType.building){
 		if(end.id==intendedTarget||state.objectById!(.side)(end.id,state)!=side)
@@ -9449,8 +9449,8 @@ bool devourSoul(B)(ref MovingObject!B object,int soulId,SacSpell!B ability,Objec
 bool pull(PullType type,B)(ref MovingObject!B object,int target,SacSpell!B ability,ObjectState!B state){
 	auto startPos=object.shotPosition,endPos=state.movingObjectById!((ref tobj)=>tobj.center,()=>Vector3f.init)(target);
 	if(isNaN(endPos.x)) return false;
-	static bool filter(ref ProximityEntry entry,int id){ return entry.id!=id; }
-	auto newTarget=state.collideRay!filter(startPos,endPos-startPos,1.0f,object.id);
+	static bool filter(ref ProximityEntry entry,int id,ObjectState!B state){ return entry.id!=id&&state.isValidTarget(entry.id); }
+	auto newTarget=state.collideRay!filter(startPos,endPos-startPos,1.0f,object.id,state);
 	if(newTarget.type!=TargetType.none) target=newTarget.id;
 	object.startPulling(state);
 	state.addEffect(Pull!(type,B)(object.id,target,ability));
@@ -10543,6 +10543,7 @@ auto collisionTargetImpl(bool projectileFilter,bool attackFilter=false,bool retu
 		if(!entry.isObstacle) return;
 		static if(projectileFilter) if(!entry.isProjectileObstacle) return;
 		if(entry.id==collisionState.ownId) return;
+		if(!state.isValidTarget(entry.id)) return;
 		static if(attackFilter){
 			auto validRank=state.objectById!((obj,state,side)=>tuple(obj.isValidAttackTarget(state),rank(state.sides.getStance(side,.side(obj,state)))))(entry.id,state,collisionState.side);
 			auto valid=validRank[0], rank=validRank[1];
@@ -10629,9 +10630,10 @@ Vector3f positionAfterCollision(B)(ref MovingObject!B object, Vector3f newPositi
 	Vector3f[2] hitbox=[relativeHitbox[0]+newPosition,relativeHitbox[1]+newPosition];
 	bool posChanged=false, needsFixup=false, isColliding=false;
 	auto fixupDirection=Vector3f(0.0f,0.0f,0.0f);
-	void handleCollision(bool fixup)(ProximityEntry entry){
+	void handleCollision(bool fixup)(ProximityEntry entry,ObjectState!B state){
 		if(!entry.isObstacle) return;
 		if(entry.id==object.id) return;
+		if(!state.isValidTarget(entry.id)) return;
 		isColliding=true;
 		enum CollisionDirection{ // which face of obstacle's hitbox was hit
 			left,
@@ -10713,10 +10715,10 @@ Vector3f positionAfterCollision(B)(ref MovingObject!B object, Vector3f newPositi
 		else needsFixup=true;
 	}
 	if(!object.creatureState.mode.among(CreatureMode.dead,CreatureMode.dissolving,CreatureMode.convertReviving,CreatureMode.thrashing,CreatureMode.firewalk)){ // dead/firewalking creatures do not participate in collision handling
-		proximity.collide!(handleCollision!false)(hitbox);
+		proximity.collide!(handleCollision!false)(hitbox,state);
 		object.creatureAI.isColliding=isColliding;
 		hitbox=[relativeHitbox[0]+newPosition,relativeHitbox[1]+newPosition];
-		proximity.collide!(handleCollision!true)(hitbox);
+		proximity.collide!(handleCollision!true)(hitbox,state);
 		if(needsFixup){
 			auto fixupSpeed=object.creatureStats.collisionFixupSpeed/updateFPS;
 			if(fixupDirection.length>fixupSpeed)
@@ -12477,6 +12479,7 @@ int collisionTarget(alias hitbox,alias filter=None,B,T...)(int side,Vector3f pos
 	}
 	static void handleCollision(ProximityEntry entry,int side,Vector3f position,CollisionState* collisionState,ObjectState!B state,T args){
 		if(!entry.isObstacle) return;
+		if(!state.isValidTarget(entry.id)) return;
 		static if(!is(filter==None)) if(!filter(entry,state,args)) return;
 		auto distanceSqr=boxPointDistanceSqr(entry.hitbox,position);
 		auto validRank=state.objectById!((obj,state,side)=>tuple(obj.isValidAttackTarget(state),rank(state.sides.getStance(side,.side(obj,state)))))(entry.id,state,side);
@@ -12496,6 +12499,7 @@ void collisionTargets(alias f,alias filter=None,bool uniqueBuildingIds=false,boo
 	static struct CollisionState{ SmallArray!(ProximityEntry,32) targets; }
 	static void handleCollision(ProximityEntry entry,CollisionState* collisionState,ObjectState!B state,T args){
 		static if(!keepNonObstacles) if(!entry.isObstacle) return;
+		if(!state.isValidTarget(entry.id)) return;
 		static if(!is(filter==None)) if(!filter(entry,state,args)) return;
 		collisionState.targets~=entry;
 	}
@@ -15279,7 +15283,7 @@ bool updateRainOfFrogs(B)(ref RainOfFrogs!B rainOfFrogs,ObjectState!B state){
 				auto fposition=position+Vector3f(offset.x,offset.y,0.0f);
 				auto fvelocity=Vector3f(0.0f,0.0f,-cloudHeight/fallDuration);
 				// TODO: the following might be unnecessarily inefficient
-				if(auto target=state.proximity.creatureInRangeAndClosestTo(gposition,spell.effectRange,fposition)){
+				if(auto target=state.proximity.creatureInRangeAndClosestTo(gposition,spell.effectRange,fposition,0,state)){
 					auto jumped=target?centerTarget(target,state):OrderTarget.init;
 					auto jdistsqr=(fposition.xy-jumped.position.xy).lengthsqr;
 					if(jdistsqr<shortJumpRange^^2||jdistsqr<jumpRange^^2&&state.uniform(3)!=0){
@@ -15676,8 +15680,8 @@ bool updateShrikeEffect(B)(ref ShrikeEffect effect,ObjectState!B state){
 bool updateLocustShoot(B)(ref LocustShoot!B shoot,ObjectState!B state){
 	with(shoot){
 		playSoundAt("tscl",position,state,4.0f);
-		static bool filter(ref ProximityEntry entry,int id){ return entry.id!=id; }
-		auto end=state.collideRay!filter(position,direction,rangedAttack.range,attacker);
+		static bool filter(ref ProximityEntry entry,int id,ObjectState!B state){ return entry.id!=id&&state.isValidTarget(entry.id); }
+		auto end=state.collideRay!filter(position,direction,rangedAttack.range,attacker,state);
 		if(end.type==TargetType.none) end.position=position+0.5f*rangedAttack.range*direction;
 		else end.position=end.lowCenter(state);
 		if(end.type==TargetType.creature||end.type==TargetType.building)
@@ -18026,7 +18030,7 @@ bool updateLightningCharge(B)(ref LightningCharge!B lightningCharge,ObjectState!
 				position.z=state.getHeight(position);
 				end=OrderTarget(TargetType.terrain,0,position);
 			}
-			if(auto target=state.proximity.anyInRangeAndClosestTo(start.position,range,end.position,creature)){
+			if(auto target=state.proximity.anyInRangeAndClosestTo(start.position,range,end.position,creature,state)){
 				auto jumped=target?centerTarget(target,state):OrderTarget.init;
 				auto jdistsqr=(end.position-jumped.position).lengthsqr;
 				if(jdistsqr<shortJumpRange^^2||jdistsqr<jumpRange^^2&&state.uniform(3)!=0)
@@ -20559,6 +20563,7 @@ final class Proximity(B){
 		if(type==EnemyType.building&&!entry.isStatic) return false;
 		if(entry.zeroHealth) return false;
 		if(maxHeight<float.infinity && entry.height>state.getHeight(entry.position)+maxHeight) return false;
+		if(!state.isValidTarget(entry.id)) return false;
 		return true;
 	}
 	int closestCreatureInRange(Vector3f position,float range,ObjectState!B state,float maxHeight=float.infinity){
@@ -20586,6 +20591,7 @@ final class Proximity(B){
 			//if(entry.zeroHealth) return false;
 			if(entry.id==ignoredId) return false;
 			if(side!=-1&&entry.side!=side) return false;
+			if(!state.isValidTarget(entry.id)) return false;
 			static if(!is(filter==None)) if(!filter(entry,args)) return false;
 			return true;
 		}
@@ -20598,6 +20604,7 @@ final class Proximity(B){
 	private static bool isPeasantShelter(ref CenterProximityEntry entry,int side,ObjectState!B state){
 		if(!entry.isStatic) return false;
 		if(state.sides.getStance(entry.side,side)==Stance.enemy) return false;
+		if(!state.isValidTarget(entry.id)) return false;
 		return state.staticObjectById!((obj,state)=>state.buildingById!((ref bldg)=>bldg.isPeasantShelter,()=>false)(obj.buildingId),()=>false)(entry.id,state);
 	}
 	int closestPeasantShelterInRange(int side,Vector3f position,float range,ObjectState!B state){
@@ -20610,11 +20617,11 @@ final class Proximity(B){
 	int enemyInRangeAndClosestToPreferringAttackersOf(int side,Vector3f position,float range,Vector3f targetPosition,int id,EnemyType type,ObjectState!B state,float maxHeight=float.infinity){
 		return centers.inRangeAndClosestTo!(isEnemy,advancePriority)(version_,position,range,targetPosition,side,type,state,maxHeight,id).id;
 	}
-	int anyInRangeAndClosestTo(Vector3f position,float range,Vector3f targetPosition,int ignoredId=0){
-		return centers.inRangeAndClosestTo!((ref entry,int ignoredId)=>entry.id!=ignoredId)(version_,position,range,targetPosition,ignoredId).id;
+	int anyInRangeAndClosestTo(Vector3f position,float range,Vector3f targetPosition,int ignoredId,ObjectState!B state){
+		return centers.inRangeAndClosestTo!((ref entry,int ignoredId,state)=>entry.id!=ignoredId&&state.isValidTarget(entry.id))(version_,position,range,targetPosition,ignoredId,state).id;
 	}
-	int creatureInRangeAndClosestTo(Vector3f position,float range,Vector3f targetPosition,int ignoredId=0){
-		return centers.inRangeAndClosestTo!((ref entry,int ignoredId)=>!entry.isStatic&&entry.id!=ignoredId)(version_,position,range,targetPosition,ignoredId).id;
+	int creatureInRangeAndClosestTo(Vector3f position,float range,Vector3f targetPosition,int ignoredId,ObjectState!B state){
+		return centers.inRangeAndClosestTo!((ref entry,int ignoredId,state)=>!entry.isStatic&&entry.id!=ignoredId&&state.isValidTarget(entry.id))(version_,position,range,targetPosition,ignoredId,state).id;
 	}
 }
 auto collide(alias f,B,T...)(Proximity!B proximity,Vector3f[2] hitbox,T args){
