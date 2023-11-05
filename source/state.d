@@ -6,7 +6,7 @@ import std.algorithm, std.range;
 import std.exception, std.stdio, std.conv;
 import dlib.math, dlib.math.portable, dlib.image.color;
 import std.typecons;
-import util, options: SpellSpec;
+import util, options: GameMode, SpellSpec;
 import sids, trig, ntts, nttData, bldg, sset;
 import sacmap, sacobject, animations, sacspell;
 import stats;
@@ -20970,6 +20970,7 @@ final class ObjectState(B){ // (update logic)
 	}
 	ObjectManager!B obj;
 	struct Settings{
+		GameMode gameMode=GameMode.skirmish;
 		bool enableParticles=true;
 	}
 	Settings settings;
@@ -21373,6 +21374,7 @@ final class Sides(B){
 	private SacParticle!B[32] shrineParticles;
 	private SacParticle!B[32] manahoarParticles;
 
+	private int[32] scenarioSides=-1;
 	private int[32] multiplayerSides=-1;
 
 	this(Side[] sids...){
@@ -21393,8 +21395,18 @@ final class Sides(B){
 			matchedSides[i]=true;
 		}
 		iota(32).filter!(i=>!matchedSides[i]).copy(multiplayerSides[].filter!(x=>x==-1));
+		auto singleplayerSides=iota(32).filter!(i=>!!(sides[i].assignment&PlayerAssignment.singleplayerSide));
+		if(!singleplayerSides.empty){
+			auto numSingle=singleplayerSides.walkLength;
+			singleplayerSides.copy(scenarioSides[0..numSingle]);
+			multiplayerSides[].filter!(i=>!scenarioSides[0..numSingle].canFind(i)).copy(scenarioSides[numSingle..$]);
+		}else scenarioSides=multiplayerSides;
 	}
 
+	int scenarioSide(int slot){
+		if(slot<0||slot>=scenarioSides.length) return slot;
+		return scenarioSides[slot];
+	}
 	int multiplayerSide(int slot){
 		if(slot<0||slot>=multiplayerSides.length) return slot;
 		return multiplayerSides[slot];
@@ -22197,6 +22209,7 @@ struct GameInit(B){
 		Stance stance;
 	}
 	StanceSetting[] stanceSettings;
+	GameMode gameMode;
 	int replicateCreatures=1;
 	int protectManafounts=0;
 	bool terrainSineWave=false;
@@ -22338,6 +22351,7 @@ final class GameState(B){
 	struct SlotInfo{ int controlledSide=-1; int wizard=0; }
 	Array!SlotInfo slots;
 	void initGame(GameInit!B gameInit){ // returns id of controlled wizard
+		current.settings.gameMode=gameInit.gameMode;
 		foreach(ref structure;current.map.ntts.structures)
 			placeStructure(structure);
 		foreach(ref wizard;current.map.ntts.wizards)

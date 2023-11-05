@@ -194,6 +194,19 @@ int run(string[] args){
 			options.xpRate=to!float(opt["--xp-rate=".length..$]);
 		}else if(opt.startsWith("--map-list=")){
 			options.mapList=opt["--map-list=".length..$];
+		}else if(opt=="--scenario"){
+			options.gameMode=GameMode.scenario;
+		}else if(opt=="--skirmish"){
+			options.gameMode=GameMode.skirmish;
+		}else if(opt.startsWith("--slaughter=")){
+			options.gameMode=GameMode.slaughter;
+			options.gameModeParam=to!int(opt["--slaughter=".length..$]);
+		}else if(opt.startsWith("--domination=")){
+			options.gameMode=GameMode.domination;
+			options.gameModeParam=to!int(opt["--domination=".length..$]);
+		}else if(opt.startsWith("--soul-harvest=")){
+			options.gameMode=GameMode.soulHarvest;
+			options.gameModeParam=to!int(opt["--soul-harvest=".length..$]);
 		}else if(opt.startsWith("--delay-start=")){
 			options.delayStart=to!int(opt["--delay-start=".length..$]);
 		}else if(opt.startsWith("--zerotier-network=")){

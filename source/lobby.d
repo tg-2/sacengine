@@ -1,4 +1,4 @@
-import options:Options,Settings;
+import options:GameMode,Options,Settings;
 import sids, sacmap, state, controller, network, recording_;
 import util;
 import std.string, std.range, std.algorithm, std.stdio;
@@ -10,18 +10,22 @@ GameInit!B gameInit(B,R)(Sides!B sides_,R playerSettings,ref Options options){
 	if(options._2v2) enforce(numSlots>=4);
 	if(options._3v3) enforce(numSlots>=6);
 	gameInit.slots=new GameInit!B.Slot[](numSlots);
-	auto sides=iota(numSlots).map!(i=>sides_.multiplayerSide(i)).array;
+	auto sides=options.gameMode==GameMode.scenario?
+		iota(numSlots).map!(i=>sides_.scenarioSide(i)).array:
+		iota(numSlots).map!(i=>sides_.multiplayerSide(i)).array;
 	auto teams=(-1).repeat(numSlots).array;
-	if(options.ffa||options._2v2||options._3v3){
-		int teamSize=1;
-		if(options._2v2) teamSize=2;
-		if(options._3v3) teamSize=3;
-		foreach(slot,ref team;teams)
-			team=cast(int)slot/teamSize;
-	}else{
-		foreach(ref settings;playerSettings)
-			if(settings.slot!=-1)
-				teams[settings.slot]=settings.team;
+	if(options.gameMode!=GameMode.scenario){
+		if(options.ffa||options._2v2||options._3v3){
+			int teamSize=1;
+			if(options._2v2) teamSize=2;
+			if(options._3v3) teamSize=3;
+			foreach(slot,ref team;teams)
+				team=cast(int)slot/teamSize;
+		}else{
+			foreach(ref settings;playerSettings)
+				if(settings.slot!=-1)
+					teams[settings.slot]=settings.team;
+		}
 	}
 	if(options.shuffleAltars){
 		import std.random: randomShuffle;
@@ -69,41 +73,44 @@ GameInit!B gameInit(B,R)(Sides!B sides_,R playerSettings,ref Options options){
 		import std.random: randomShuffle;
 		randomShuffle(zip(gameInit.slots,teams));
 	}
-	foreach(i;0..numSlots){
-		foreach(j;i+1..numSlots){
-			int wi=gameInit.slots[i].wizardIndex, wj=gameInit.slots[j].wizardIndex;
-			if(wi==-1||wj==-1) continue;
-			int s=gameInit.wizards[wi].side, t=gameInit.wizards[wj].side;
-			if(s==-1||t==-1) continue;
-			assert(s!=t);
-			int x=teams[i], y=teams[j];
-			auto stance=x!=-1&&y!=-1&&x==y?Stance.ally:Stance.enemy;
-			gameInit.stanceSettings~=GameInit!B.StanceSetting(s,t,stance);
-			gameInit.stanceSettings~=GameInit!B.StanceSetting(t,s,stance);
-		}
-	}
-	if(options.mirrorMatch){
-		int[int] teamLoc;
-		int[][] teamIndex;
-		foreach(slot;0..numSlots) if(teams[slot]!=-1){
-			if(teams[slot]!in teamLoc){
-				teamLoc[teams[slot]]=cast(int)teamIndex.length;
-				teamIndex~=[[]];
+	if(options.gameMode!=GameMode.scenario){
+		foreach(i;0..numSlots){
+			foreach(j;i+1..numSlots){
+				int wi=gameInit.slots[i].wizardIndex, wj=gameInit.slots[j].wizardIndex;
+				if(wi==-1||wj==-1) continue;
+				int s=gameInit.wizards[wi].side, t=gameInit.wizards[wj].side;
+				if(s==-1||t==-1) continue;
+				assert(s!=t);
+				int x=teams[i], y=teams[j];
+				auto stance=x!=-1&&y!=-1&&x==y?Stance.ally:Stance.enemy;
+				gameInit.stanceSettings~=GameInit!B.StanceSetting(s,t,stance);
+				gameInit.stanceSettings~=GameInit!B.StanceSetting(t,s,stance);
 			}
-			teamIndex[teamLoc[teams[slot]]]~=slot;
 		}
-		foreach(slot;0..numSlots) if(teams[slot]<0) teamIndex~=[slot];
-		teamIndex.sort!("a.length > b.length",SwapStrategy.stable);
-		foreach(t;teamIndex[1..$]){
-			foreach(i;0..t.length){
-				void copyWizard(T)(ref T a,ref T b){
-					if(options.randomWizards) a.tag=b.tag;
-					a.spellbook=b.spellbook;
+		if(options.mirrorMatch){
+			int[int] teamLoc;
+			int[][] teamIndex;
+			foreach(slot;0..numSlots) if(teams[slot]!=-1){
+					if(teams[slot]!in teamLoc){
+						teamLoc[teams[slot]]=cast(int)teamIndex.length;
+						teamIndex~=[[]];
+					}
+					teamIndex[teamLoc[teams[slot]]]~=slot;
 				}
-				copyWizard(gameInit.wizards[t[i]],gameInit.wizards[teamIndex[0][i]]);
+			foreach(slot;0..numSlots) if(teams[slot]<0) teamIndex~=[slot];
+			teamIndex.sort!("a.length > b.length",SwapStrategy.stable);
+			foreach(t;teamIndex[1..$]){
+				foreach(i;0..t.length){
+					void copyWizard(T)(ref T a,ref T b){
+						if(options.randomWizards) a.tag=b.tag;
+						a.spellbook=b.spellbook;
+					}
+					copyWizard(gameInit.wizards[t[i]],gameInit.wizards[teamIndex[0][i]]);
+				}
 			}
 		}
 	}
+	gameInit.gameMode=options.gameMode;
 	gameInit.replicateCreatures=options.replicateCreatures;
 	gameInit.protectManafounts=options.protectManafounts;
 	gameInit.terrainSineWave=options.terrainSineWave;
@@ -395,6 +402,22 @@ class Lobby(B){
 				}
 			}else{
 				initState();
+				if(options.gameMode==GameMode.scenario){ // TODO: move to gameInit!B?
+					auto singleplayerSides=iota(map.sids.length).filter!(i=>!!(map.sids[i].assignment&PlayerAssignment.singleplayerSide)).map!(i=>map.sids[i].id);
+					if(!singleplayerSides.empty && options.slot==0){
+						auto side=singleplayerSides.front;
+						if(0<=side&&side<32){
+							options.level=to!int(map.levl.singleStartLevel);
+							options.souls=to!int(map.levl.singleSouls);
+							options.minLevel=to!int(options.level);
+							options.maxLevel=to!int(map.levl.singleMaxLevel);
+							import ntts:God;
+							if(map.levl.singleAssociatedGod && map.levl.singleAssociatedGod<=God.max){
+								options.spellbook=defaultSpells[options.god];
+							}
+						}
+					}
+				}
 				if(toContinue) gameInit=toContinue.gameInit;
 				else gameInit=.gameInit!B(sides,only(options.settings),options);
 			}

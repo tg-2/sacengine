@@ -4,6 +4,15 @@
 
 import ntts: God;
 import hotkeys_: Hotkeys;
+
+enum GameMode{
+	scenario,
+	skirmish,
+	slaughter,
+	domination,
+	soulHarvest,
+}
+
 struct Options{
 	// graphics options
 	int width=1280, height=720;
@@ -42,6 +51,8 @@ struct Options{
 	// global settings
 	bool noMap=false;
 	string mapList;
+	GameMode gameMode=GameMode.skirmish;
+	int gameModeParam;
 	bool ffa=false;
 	bool _2v2=false;
 	bool _3v3=false;
