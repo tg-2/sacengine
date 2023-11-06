@@ -1188,7 +1188,7 @@ final class SacScene: Scene{
 		auto network=controller.network;
 		// hack to allow chat between surrender and disappearance of wizard
 		// TODO: track surrendering in controller?
-		if(network&&!network.players[network.me].isControllingState) return true;
+		if(network&&!network.players[network.me].allowedToControlState) return true;
 		return false;
 	}
 
