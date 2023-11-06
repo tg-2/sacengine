@@ -681,6 +681,7 @@ CreatureData rhinok={
 CreatureData sacDoctor={
 	tag: "dcas",
 	name: "Sac Doctor",
+	continuousRegeneration: true,
 };
 
 CreatureData saraBella={
