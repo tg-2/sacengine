@@ -14978,6 +14978,7 @@ bool updateExplosionCasting(B)(ref ExplosionCasting!B explosionCast,ObjectState!
 			if(!failed) effect.scale=min(effect.scale+1.0f/castingTime,1.0f);
 			else effect.scale=max(0.0f,effect.scale-effect.shrinkSpeed/updateFPS);
 			if(--effect.soundTimer<=0) effect.soundTimer=playSoundAt!true("5plf",effect.position,state,1.0f);
+			effect.position.z=max(effect.position.z,state.getHeight(effect.position));
 		}
 		if(failed) return effects[].any!((ref effect)=>effect.scale!=0.0f);
 		if(succeeded){
