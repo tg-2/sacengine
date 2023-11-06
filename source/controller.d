@@ -183,9 +183,9 @@ final class Controller(B){
 				if(network.hasGameInitData){
 					auto hash=network.hostSettings.mapHash;
 					foreach(i,ref player;network.players){
-						if(player.status==PlayerStatus.readyToLoad && player.settings.mapHash==hash){
-							network.updateStatus(cast(int)i,PlayerStatus.lateJoining);
+						if(player.status==PlayerStatus.pendingGameInit && player.settings.mapHash==hash){
 							network.initGame(cast(int)i,network.gameInitData.data);
+							network.updateStatus(cast(int)i,PlayerStatus.lateJoining);
 						}
 					}
 				}

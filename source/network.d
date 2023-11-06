@@ -1058,11 +1058,11 @@ final class Network(B){
 	bool hostCommitHashReady(){ return players[host].status>=PlayerStatus.commitHashReady; }
 	bool mapHashed(){ return connectedPlayers.all!(p=>p.status>=PlayerStatus.mapHashed); }
 	bool pendingGameInit(){ return connectedPlayers.any!(p=>p.status==PlayerStatus.pendingGameInit); }
-	bool hostReadyToLoad(){ return isReadyToLoadStatus(players[host].status); }
+	bool hostReadyToLoad(){ return isReadyToLoadStatus(players[host].status)||isReadyStatus(players[host].status); }
 	bool clientsReadyToLoad(){
 		return iota(players.length).filter!(i=>i!=host&&players[i].connection).all!(i=>isReadyToLoadStatus(players[i].status));
 	}
-	bool readyToLoad(){ return connectedPlayers.all!(p=>isReadyToLoadStatus(p.status)); }
+	bool readyToLoad(){ return connectedPlayers.all!(p=>isReadyToLoadStatus(p.status)||isReadyStatus(p.status)); }
 	bool lateJoining(){ return me!=-1&&players[me].status==PlayerStatus.lateJoining; }
 	bool loading(){ return me!=-1&&players[me].status==PlayerStatus.loading; }
 	bool hostReadyToStart(){ return isReadyStatus(players[host].status); }
