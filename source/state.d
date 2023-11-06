@@ -204,6 +204,14 @@ bool canCC(CreatureMode mode){
 		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return false;
 	}
 }
+bool canPersistCC(CreatureMode mode){
+	final switch(mode) with(CreatureMode){
+		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
+			shooting,usingAbility,pulling,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
+		case dying,dead,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing,firewalk: return false;
+		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return false;
+	}
+}
 bool canCollectSouls(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,ghostToIdle,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
@@ -13743,7 +13751,7 @@ void removeRingsOfFire(B)(ref MovingObject!B obj,ObjectState!B state){
 bool updateRingsOfFire(B)(ref RingsOfFire!B ringsOfFire,ObjectState!B state){
 	with(ringsOfFire){
 		bool keep=state.movingObjectById!((ref obj,state){
-			if(!obj.creatureState.mode.canCC) return false;
+			if(!obj.creatureState.mode.canPersistCC) return false;
 			static assert(updateFPS==60);
 			if(ringsOfFire.timer%25==0||state.uniform(50)==0) obj.animateRingsOfFire(state);
 			auto damagePerFrame=spell.amount/updateFPS;
@@ -13828,7 +13836,7 @@ void removeSlime(B)(ref MovingObject!B obj,ObjectState!B state){
 bool updateSlime(B)(ref Slime!B slime,ObjectState!B state){
 	with(slime){
 		bool keep=state.movingObjectById!((ref obj,state){
-			if(!obj.creatureState.mode.canCC) return false;
+			if(!obj.creatureState.mode.canPersistCC) return false;
 			static assert(updateFPS==60);
 			if(slime.timer%10==0||state.uniform(20)==0) obj.animateSlime(state);
 			return true;
@@ -13909,7 +13917,7 @@ bool updateGraspingVines(B)(ref GraspingVines!B graspingVines,ObjectState!B stat
 		foreach(ref vine;vines) updateVine(vine,lengthFactor,state);
 		if(active){
 			bool keep=state.movingObjectById!((ref obj,state){
-				if(!obj.creatureState.mode.canCC) return false;
+				if(!obj.creatureState.mode.canPersistCC) return false;
 				return true;
 			},()=>false)(creature,state);
 			if(!keep||--timer<=0){
@@ -16430,8 +16438,10 @@ bool updatePetrification(B)(ref Petrification petrification,ObjectState!B state)
 		bool removePetrification(){
 			obj.creatureStats.effects.petrified=false;
 			obj.creatureStats.effects.stunCooldown=0;
-			obj.startIdling(state);
-			obj.damageStun(petrification.attackDirection,state);
+			if(canBePetrified(obj.creatureState.mode)){
+				obj.startIdling(state);
+				obj.damageStun(petrification.attackDirection,state);
+			}
 			auto hitbox=obj.hitbox;
 			enum numParticles=32;
 			auto sacParticle=SacParticle!B.get(ParticleType.rock);
