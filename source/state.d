@@ -7863,7 +7863,7 @@ bool freeze(B)(int wizard,int side,int target,SacSpell!B spell,ObjectState!B sta
 		obj.creatureStats.effects.frozen=true;
 		obj.creatureState.mode=CreatureMode.stunned;
 		obj.startTumbling(state);
-		auto duration=(obj.isWizard?.25f:1000.0f/obj.health)*spell.duration;
+		auto duration=(obj.isWizard?.25f:1000.0f/obj.creatureStats.maxHealth)*spell.duration;
 		return cast(int)ceil(updateFPS*duration);
 	},()=>-1)(target);
 	if(duration==-1) return false;
@@ -7961,7 +7961,7 @@ bool graspingVines(B)(int target,SacSpell!B spell,ObjectState!B state){
 		playSoundAt("toor",obj.position,state,graspingVinesGain);
 		obj.creatureStats.effects.numVines+=1;
 		obj.creatureState.targetFlyingHeight=max(0.0f,obj.position.z-state.getGroundHeight(obj.position));
-		auto duration=(obj.isWizard?0.25f:1000.0f/obj.health)*spell.duration;
+		auto duration=(obj.isWizard?0.25f:1000.0f/obj.creatureStats.maxHealth)*spell.duration;
 		return tuple(cast(int)ceil(updateFPS*duration), obj.hitbox);
 	},()=>tuple(-1,(Vector3f[2]).init))(target,state);
 	auto duration=durationHitbox[0],hitbox=durationHitbox[1];
