@@ -1450,7 +1450,7 @@ final class Network(B){
 									}
 								}
 								controller.addExternalCommand(p.frame,move(command));
-							}else if(isHost&&p.frame==-1&&command.type==CommandType.chatMessage){
+							}else if(isHost&&p.frame==-1&&command.type==CommandType.chatMessage&&command.id==0){
 								if(!players[sender].isControllingState){
 									if(command.chatMessage.senderSlot==players[sender].slot){
 										if(players[sender].settings.observerChat){
