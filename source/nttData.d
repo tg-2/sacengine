@@ -1275,4 +1275,7 @@ static immutable wizards=[EnumMembers!WizardTag];
 static immutable manalithCastingTimes=[15.0f,13.0f,12.0f,12.0f,10.0f,9.0f,8.5f,8.0f,8.0f,8.0f];
 static immutable shrineCastingTimes=[15.0f,15.0f,15.0f,13.0f,12.0f,11.5f,10.0f,8.0f,8.0f,8.0f];
 
-static immutable xpForLevel=[0,0,16000,24000,32000,48000,64000,80000,96000,120000,132000];
+static immutable xpForLevel=[0,8000,16000,24000,32000,48000,64000,80000,96000,128000,132000,164000,196000,220000,236000,264000,296000]; // TODO: sacrifice wiki states 120000 for lv9
+
+enum globalMinLevel=0, globalMaxLevel=xpForLevel.length-2;
+static assert(globalMaxLevel==15);

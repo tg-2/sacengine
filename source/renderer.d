@@ -3627,7 +3627,7 @@ struct Renderer(B){
 								if(obj.side==renderSide){
 									foesKilled=wiz.wizardStatistics.foesKilled;
 									foesGibbed=wiz.wizardStatistics.foesGibbed;
-									enforce(1<=wiz.level&&wiz.level<=9);
+									enforce(globalMinLevel<=wiz.level&&wiz.level<=globalMaxLevel);
 									relativeXP=max(0.0f,min(wiz.experience/xpForLevel[wiz.level+1],1.0f));
 								}
 								level=wiz.level;

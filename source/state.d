@@ -1663,8 +1663,6 @@ auto each(alias f,B,T...)(ref Buildings!B buildings,T args){
 	}
 }
 
-enum maxLevel=9;
-
 struct SpellInfo(B){
 	SacSpell!B spell;
 	int level;
@@ -1838,6 +1836,14 @@ void applyCooldown(B)(ref WizardInfo!B wizard,SacSpell!B spell,ObjectState!B sta
 	}
 }
 WizardInfo!B makeWizard(B)(int id,string name,int level,int souls,float experience,int minLevel,int maxLevel,float xpRate,Spellbook!B spellbook,ObjectState!B state){
+	if(minLevel<globalMinLevel) minLevel=globalMinLevel;
+	if(minLevel>globalMaxLevel) minLevel=globalMaxLevel;
+	if(maxLevel<globalMinLevel) maxLevel=globalMinLevel;
+	if(maxLevel>globalMaxLevel) maxLevel=globalMaxLevel;
+	if(minLevel>maxLevel) maxLevel=minLevel;
+	auto originalLevel=level;
+	if(level<minLevel) level=minLevel;
+	if(level>maxLevel) level=maxLevel;
 	state.movingObjectById!((ref wizard,level,state){
 		wizard.creatureStats.maxHealth+=50.0f*level;
 		wizard.creatureStats.health+=50.0f*level;
@@ -1845,19 +1851,14 @@ WizardInfo!B makeWizard(B)(int id,string name,int level,int souls,float experien
 		wizard.creatureStats.maxMana+=100*level;
 		// TODO: boons
 	},(){ assert(0); })(id,level,state);
-	if(minLevel<1) minLevel=1;
-	if(maxLevel>9) maxLevel=9;
-	if(minLevel>maxLevel) maxLevel=minLevel;
-	if(level<minLevel) level=minLevel;
-	if(level>maxLevel) level=maxLevel;
 	auto wizard=WizardInfo!B(id,name,level,souls,experience,minLevel,maxLevel,xpRate,move(spellbook));
-	if(wizard.level<1){
-		wizard.level=1;
+	if(originalLevel<minLevel){
+		wizard.level=minLevel;
 		wizard.experience=0.0f;
 	}
-	if(wizard.level>9){
-		wizard.level=9;
-		wizard.experience=xpForLevel[9];
+	if(originalLevel>maxLevel){
+		wizard.level=maxLevel;
+		wizard.experience=xpForLevel[maxLevel+1];
 	}
 	return wizard;
 }
@@ -20163,13 +20164,13 @@ void updateWizard(B)(ref WizardInfo!B wizard,ObjectState!B state){
 		}
 	}
 	if(spellbookVisible(wizard.id,state)) playSpellbookSound(side,flags,"vaps",state);
-	enforce(1<=wizard.level&&wizard.level<=9);
+	enforce(globalMinLevel<=wizard.level&&wizard.level<=globalMaxLevel);
 	if(wizard.experience<0.0f){
 		if(wizard.level<=wizard.minLevel){
 			wizard.experience=0.0f;
 		}else{
 			while(wizard.level>=wizard.minLevel&&wizard.experience<0.0f){
-				enforce(0<=wizard.level&&wizard.level<=9);
+				enforce(globalMinLevel-1<=wizard.level&&wizard.level<=globalMaxLevel);
 				wizard.level-=1;
 				wizard.experience+=xpForLevel[wizard.level+1];
 				if(wizard.level>=wizard.minLevel){
@@ -20197,7 +20198,7 @@ void updateWizard(B)(ref WizardInfo!B wizard,ObjectState!B state){
 			wizard.experience=xpForLevel[wizard.level+1];
 		}else{
 			while(wizard.level<=wizard.maxLevel&&wizard.experience>=xpForLevel[wizard.level+1]){
-				enforce(0<=wizard.level&&wizard.level<=9);
+				enforce(globalMinLevel<=wizard.level&&wizard.level<=globalMaxLevel);
 				wizard.experience-=xpForLevel[wizard.level+1];
 				wizard.level+=1;
 				if(wizard.level<=wizard.maxLevel){
