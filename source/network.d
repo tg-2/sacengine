@@ -141,6 +141,8 @@ enum PacketType{
 	command,
 	commandRaw,
 	commit,
+	jsonCommand,
+	jsonResponse,
 }
 
 enum arrayLengthLimit=4096;
@@ -148,8 +150,8 @@ enum arrayLengthLimit=4096;
 PacketPurpose purposeFromType(PacketType type){
 	final switch(type) with(PacketType) with(PacketPurpose){
 		case nop,disconnect,ping,ack: return peerToPeer;
-		case updatePlayerId,updateSlot,sendMap,sendState,initGame,loadGame,startGame,confirmSynch: return hostMessage;
-		case join,checkSynch,logDesynch: return hostQuery;
+		case updatePlayerId,updateSlot,sendMap,sendState,initGame,loadGame,startGame,confirmSynch,jsonResponse: return hostMessage;
+		case join,checkSynch,logDesynch,jsonCommand: return hostQuery;
 		case updateSetting,clearArraySetting,appendArraySetting,confirmArraySetting,setMap,appendMap,confirmMap,updateStatus,command,commandRaw,commit: return broadcast;
 	}
 }
@@ -169,6 +171,7 @@ bool isHeaderType(PacketType type){
 		case updateSetting,clearArraySetting,appendArraySetting,confirmArraySetting,setMap,appendMap,confirmMap,updateStatus,command: return false;
 		case commandRaw: return true;
 		case commit: return false;
+		case jsonCommand,jsonResponse: return true;
 	}
 }
 
@@ -237,6 +240,8 @@ struct Packet{
 			case command: return text("Packet.command(fromNetwork(",networkCommand,"))");
 			case commandRaw: return text("Packet.commandRaw(fromNetwork(",networkCommand,"))");
 			case commit: return text("Packet.commit(",commitPlayer,",",commitFrame,")");
+			case jsonCommand: return text("Packet.jsonCommand(",rawDataSize,"...)");
+			case jsonResponse: return text("Packet.jsonResponse(",rawDataSize,"...)");
 		}
 	}
 	int size=0;
@@ -273,8 +278,8 @@ struct Packet{
 			}
 		}
 		struct{ int mapPlayer; char[32] mapName; } // setMap, appendMap, confirmMap
-		struct{ // command, commandRaw. sendMap, sendState, initGame, join, logDesynch
-			ulong rawDataSize; // commandRaw, sendMap, sendState, initGame, join, logDesynch
+		struct{ // command, commandRaw. sendMap, sendState, initGame, join, logDesynch, jsonCommand, jsonResponse
+			ulong rawDataSize; // commandRaw, sendMap, sendState, initGame, join, logDesynch, jsonCommand, jsonResponse
 			int frame; // command, commandRaw
 			NetworkCommand networkCommand; // command, commandRaw
 		}
@@ -510,6 +515,20 @@ struct Packet{
 		p.commitPlayer=player;
 		p.commitFrame=frame;
 		p.size=memberSize!(type,commitPlayer,commitFrame);
+		return p;
+	}
+	static Packet jsonCommand(ulong rawDataSize){
+		Packet p;
+		p.type=PacketType.jsonCommand;
+		p.rawDataSize=rawDataSize;
+		p.size=memberSize!(type,rawDataSize);
+		return p;
+	}
+	static Packet jsonResponse(ulong rawDataSize){
+		Packet p;
+		p.type=PacketType.jsonCommand;
+		p.rawDataSize=rawDataSize;
+		p.size=memberSize!(type,rawDataSize);
 		return p;
 	}
 }
@@ -1490,6 +1509,27 @@ final class Network(B){
 				players[p.commitPlayer].committedFrame=max(players[p.commitPlayer].committedFrame,p.commitFrame);
 				if(controller) controller.updateCommitted();
 				return true;
+			case PacketType.jsonCommand:
+				if(!isHost){
+					stderr.writeln("jsonCommand packet sent to non-host player ",me,": ",p);
+					return false;
+				}
+				try{
+					auto str=cast(const(char)[])rawData;
+					import std.utf:validate;
+					validate(str);
+					import jsonInterface:parseJSONCommand,runJSONCommand;
+					runJSONCommand(parseJSONCommand(str),controller,(scope const(char)[] response){
+						players[sender].send(Packet.jsonResponse(response.length),cast(ubyte[])response);
+					});
+					return true;
+				}catch(Exception e){
+					report!true(sender,"sent an invalid json command: ",e.msg);
+					return false;
+				}
+			case PacketType.jsonResponse:
+				report!true(sender,"sent an unsolicited json response");
+				return false;
 		}
 	}
 	void forwardPacket(int sender,Packet p,scope ubyte[] rawData,Controller!B controller){
