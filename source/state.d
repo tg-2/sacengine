@@ -768,6 +768,12 @@ struct CreatureAI{
 	mixin Assign;
 }
 
+struct CreatureStatistics{
+	int foesKilled=0;
+	enum foesGibbed=0; // TODO
+	int buildingsDestroyed=0;
+}
+
 struct MovingObject(B){
 	SacObject!B sacObject;
 	int id=0;
@@ -778,11 +784,12 @@ struct MovingObject(B){
 	CreatureAI creatureAI;
 	CreatureState creatureState;
 	CreatureStats creatureStats;
+	CreatureStatistics creatureStatistics;
 	int side=0;
 	int soulId=0;
 	mixin Assign;
 
-	this(SacObject!B sacObject,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame,CreatureState creatureState,CreatureStats creatureStats,int side){
+	this(SacObject!B sacObject,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame,CreatureState creatureState,CreatureStats creatureStats,CreatureStatistics creatureStatistics,int side){
 		this.sacObject=sacObject;
 		this.position=position;
 		this.rotation=rotation;
@@ -790,16 +797,17 @@ struct MovingObject(B){
 		this.frame=frame;
 		this.creatureState=creatureState;
 		this.creatureStats=creatureStats;
+		this.creatureStatistics=creatureStatistics;
 		this.side=side;
 	}
-	this(SacObject!B sacObject,int id,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame,CreatureState creatureState,CreatureStats creatureStats,int side){
+	this(SacObject!B sacObject,int id,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame,CreatureState creatureState,CreatureStats creatureStats,CreatureStatistics creatureStatistics,int side){
 		this.id=id;
-		this(sacObject,position,rotation,animationState,frame,creatureState,creatureStats,side);
+		this(sacObject,position,rotation,animationState,frame,creatureState,creatureStats,creatureStatistics,side);
 	}
-	this(SacObject!B sacObject,int id,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame,CreatureAI creatureAI,CreatureState creatureState,CreatureStats creatureStats,int side,int soulId){
+	this(SacObject!B sacObject,int id,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame,CreatureAI creatureAI,CreatureState creatureState,CreatureStats creatureStats,CreatureStatistics creatureStatistics,int side,int soulId){
 		this.creatureAI=move(creatureAI);
 		this.soulId=soulId;
-		this(sacObject,id,position,rotation,animationState,frame,creatureState,creatureStats,side);
+		this(sacObject,id,position,rotation,animationState,frame,creatureState,creatureStats,creatureStatistics,side);
 	}
 }
 int side(B)(ref MovingObject!B object,ObjectState!B state){
@@ -1392,6 +1400,7 @@ struct MovingObjects(B,RenderMode mode){
 	Array!CreatureAI creatureAIs;
 	Array!CreatureState creatureStates;
 	Array!CreatureStats creatureStatss;
+	Array!CreatureStatistics creatureStatisticss;
 	Array!int sides;
 	Array!int soulIds;
 	static if(mode==RenderMode.transparent){
@@ -1410,6 +1419,7 @@ struct MovingObjects(B,RenderMode mode){
 		creatureAIs.length=l;
 		creatureStates.length=l;
 		creatureStatss.length=l;
+		creatureStatisticss.length=l;
 		sides.length=l;
 		soulIds.length=l;
 		static if(mode==RenderMode.transparent){
@@ -1427,6 +1437,7 @@ struct MovingObjects(B,RenderMode mode){
 		creatureAIs.reserve(reserveSize);
 		creatureStates.reserve(reserveSize);
 		creatureStatss.reserve(reserveSize);
+		creatureStatisticss.reserve(reserveSize);
 		sides.reserve(reserveSize);
 		soulIds.reserve(reserveSize);
 		static if(mode==RenderMode.transparent){
@@ -1448,6 +1459,7 @@ struct MovingObjects(B,RenderMode mode){
 		creatureAIs~=object.creatureAI;
 		creatureStates~=object.creatureState;
 		creatureStatss~=object.creatureStats;
+		creatureStatisticss~=object.creatureStatistics;
 		sides~=object.side;
 		soulIds~=object.soulId;
 		static if(mode==RenderMode.transparent){
@@ -1466,7 +1478,7 @@ struct MovingObjects(B,RenderMode mode){
 		length=length-1;
 	}
 	MovingObject!B fetch(int i){
-		return MovingObject!B(sacObject,ids[i],positions[i],rotations[i],animationStates[i],frames[i],move(creatureAIs[i]),creatureStates[i],creatureStatss[i],sides[i],soulIds[i]);
+		return MovingObject!B(sacObject,ids[i],positions[i],rotations[i],animationStates[i],frames[i],move(creatureAIs[i]),creatureStates[i],creatureStatss[i],creatureStatisticss[i],sides[i],soulIds[i]);
 	}
 	void opIndexAssign(MovingObject!B obj,int i)in{
 		assert(obj.sacObject is sacObject);
@@ -1479,6 +1491,7 @@ struct MovingObjects(B,RenderMode mode){
 		creatureAIs[i]=move(obj.creatureAI);
 		creatureStates[i]=obj.creatureState;
 		creatureStatss[i]=obj.creatureStats; // TODO: this might be a bit wasteful
+		creatureStatisticss[i]=obj.creatureStatistics; // TODO: this might be a bit wasteful
 		sides[i]=obj.side;
 		soulIds[i]=obj.soulId;
 	}
@@ -1777,6 +1790,12 @@ Spellbook!B getDefaultSpellbook(B)(God god){
 	return getSpellbook!B(defaultSpells[god]);
 }
 
+struct WizardStatistics{
+	int foesKilled=0;
+	int foesGibbed=0;
+	int buildingsDestroyed=0;
+}
+
 struct WizardInfo(B){
 	int id;
 	string name=null;
@@ -1789,6 +1808,8 @@ struct WizardInfo(B){
 	float xpRate=1.0f;
 
 	Spellbook!B spellbook;
+	WizardStatistics wizardStatistics;
+
 	int closestBuilding=0;
 	int closestShrine=0;
 	int closestAltar=0;
@@ -1854,7 +1875,7 @@ int placeCreature(B)(ObjectState!B state,SacObject!B sacObject,int flags,int sid
 	auto creatureState=CreatureState(mode, movement, facing);
 	import animations;
 	auto rotation=facingQuaternion(facing);
-	auto obj=MovingObject!B(sacObject,position,rotation,AnimationState.stance1,0,creatureState,sacObject.creatureStats(flags),side);
+	auto obj=MovingObject!B(sacObject,position,rotation,AnimationState.stance1,0,creatureState,sacObject.creatureStats(flags),CreatureStatistics(),side);
 	obj.setCreatureState(state);
 	obj.updateCreaturePosition(state);
 	return state.addObject(obj);
@@ -6222,7 +6243,7 @@ int spawn(T=Creature,B)(int wizard,char[4] tag,int flags,ObjectState!B state,boo
 	position.z=state.getHeight(position);
 	auto creatureState=CreatureState(mode, movement, facing);
 	auto rotation=facingQuaternion(facing);
-	auto obj=MovingObject!B(curObj,position,rotation,AnimationState.disoriented,0,creatureState,curObj.creatureStats(flags),side);
+	auto obj=MovingObject!B(curObj,position,rotation,AnimationState.disoriented,0,creatureState,curObj.creatureStats(flags),CreatureStatistics(),side);
 	obj.setCreatureState(state);
 	obj.updateCreaturePosition(state);
 	auto ord=Order(CommandType.retreat,OrderTarget(TargetType.creature,wizard,position));
@@ -6622,7 +6643,8 @@ float dealDamage(T,B)(ref T object,float damage,int attacker,int attackingSide,D
 	static if(is(T==MovingObject!B)) if(object.id==attacker) actualDamage*=object.attackDamageFactor(true,damageMod,state);
 	if(object.id!=attacker&&state.isValidTarget(attacker,TargetType.creature))
 		return state.movingObjectById!((ref atk,obj,dmg,damageMod,state)=>dealDamage(*obj,dmg,atk,damageMod,state),()=>0.0f)(attacker,&object,actualDamage,damageMod,state);
-	return dealDamage(object,actualDamage,attackingSide,damageMod,state);
+	bool dummy; // attacker does not exist anymore
+	return dealDamage(object,actualDamage,attackingSide,damageMod,dummy,state);
 }
 
 bool canDamage(B)(ref MovingObject!B object,ObjectState!B state){
@@ -6644,11 +6666,17 @@ float dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B at
 
 float dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B attacker,DamageMod damageMod,ObjectState!B state,bool checkIdle=true){
 	auto actualDamage=damage*attacker.attackDamageFactor(true,damageMod,state);
-	actualDamage=dealDamage(object,actualDamage,attacker.side,damageMod,state);
+	bool killed=0;
+	actualDamage=dealDamage(object,actualDamage,attacker.side,damageMod,killed,state);
 	attacker.healFromDrain(actualDamage,state);
+	if(killed){
+		if(state.sides.getStance(attacker.side,object.side)==Stance.enemy){
+			attacker.creatureStatistics.foesKilled+=1;
+		}
+	}
 	return actualDamage;
 }
-float dealDamage(B)(ref MovingObject!B object,float damage,int attackingSide,DamageMod damageMod,ObjectState!B state){
+float dealDamage(B)(ref MovingObject!B object,float damage,int attackingSide,DamageMod damageMod,ref bool killed,ObjectState!B state){
 	auto damageMultiplier=1.0f;
 	if(damageMod&DamageMod.melee) damageMultiplier*=object.creatureStats.meleeResistance;
 	else if(damageMod&DamageMod.ranged){
@@ -6671,10 +6699,19 @@ float dealDamage(B)(ref MovingObject!B object,float damage,int attackingSide,Dam
 		damageMultiplier*=1.2f^^object.creatureStats.effects.numSlimes;
 	}
 	// TODO: bleed, in case of petrification, bleed rocks instead
-	return dealRawDamage(object,damage*damageMultiplier,attackingSide,damageMod,state);
+	return dealRawDamage(object,damage*damageMultiplier,attackingSide,damageMod,killed,state);
 }
 
-float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,DamageMod damageMod,ObjectState!B state){
+void recordKill(B)(ref MovingObject!B object,int attackingSide,ObjectState!B state){
+	if(state.sides.getStance(attackingSide,object.side)==Stance.enemy){
+		giveXPToSide(attackingSide,object.xpOnKill,state);
+		auto wizard=state.getWizardForSide(attackingSide);
+		if(!wizard) return;
+		wizard.wizardStatistics.foesKilled+=1;
+	}
+}
+
+float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,DamageMod damageMod,ref bool killed,ObjectState!B state){
 	float actualDamage;
 	if(!(damageMod&DamageMod.fall)||object.isSacDoctor){ // TODO: do sac doctors take fall damage at all?
 		if(!object.canDamage(state)) return 0.0f;
@@ -6714,9 +6751,9 @@ float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,
 	if(state.sides.getStance(attackingSide,object.side)==Stance.enemy)
 		giveXPToSide(attackingSide,actualDamage,state);
 	if(object.health==0.0f){
-		if(state.sides.getStance(attackingSide,object.side)==Stance.enemy)
-			giveXPToSide(attackingSide,object.xpOnKill,state);
+		recordKill(object,attackingSide,state);
 		object.kill(state);
+		killed=true;
 	}
 	return actualDamage;
 }
@@ -6779,7 +6816,8 @@ float damageGuardians(B)(ref Building!B building,float damage,int attackingSide,
 				auto attackDirection=obj.center-attachPosition;
 				obj.damageAnimation(attackDirection,state,false);
 				*ok=true;
-				return dealDamage(obj,splitDamage,attackingSide,damageMod,state);
+				bool dummy=false; // attacker does not exist anymore
+				return dealDamage(obj,splitDamage,attackingSide,damageMod,dummy,state);
 			},()=>0.0f)(id,splitDamage,attackingSide,attachPosition,damageMod,state,&ok);
 		}
 		if(ok) return actualDamage;
@@ -6815,7 +6853,16 @@ float damageGuardians(B)(ref Building!B building,float damage,ref MovingObject!B
 	return float.nan;
 }
 
-float dealDamageIgnoreGuardians(B)(ref Building!B building,float damage,int attackingSide,DamageMod damageMod,ObjectState!B state){
+void recordDestruction(B)(ref Building!B building,int attackingSide,ObjectState!B state){
+	if(state.sides.getStance(attackingSide,building.side)==Stance.enemy){
+		giveXPToSide(attackingSide,building.xpOnDestruction,state);
+		auto wizard=state.getWizardForSide(attackingSide);
+		if(!wizard) return;
+		wizard.wizardStatistics.buildingsDestroyed+=1;
+	}
+}
+
+float dealDamageIgnoreGuardians(B)(ref Building!B building,float damage,int attackingSide,DamageMod damageMod,ref bool destroyed,ObjectState!B state){
 	if(!building.canDamage(state)) return 0.0f;
 	auto damageMultiplier=1.0f;
 	if(damageMod&DamageMod.melee) damageMultiplier*=building.meleeResistance;
@@ -6833,9 +6880,9 @@ float dealDamageIgnoreGuardians(B)(ref Building!B building,float damage,int atta
 	if(state.sides.getStance(attackingSide,building.side)==Stance.enemy)
 		giveXPToSide(attackingSide,actualDamage,state);
 	if(building.health==0.0f){
-		if(state.sides.getStance(attackingSide,building.side)==Stance.enemy)
-			giveXPToSide(attackingSide,building.xpOnDestruction,state);
+		recordDestruction(building,attackingSide,state);
 		building.destroy(state);
+		destroyed=true;
 	}
 	return actualDamage;
 }
@@ -6845,13 +6892,21 @@ float dealDamage(B)(ref Building!B building,float damage,ref MovingObject!B atta
 	if(!isNaN(guardianDamage)) return guardianDamage;
 	if(!building.canDamage(state)) return 0.0f;
 	damage*=attacker.attackDamageFactor(false,damageMod,state);
-	return dealDamageIgnoreGuardians(building,damage,attacker.side,damageMod,state);
+	bool destroyed=false;
+	auto actualDamage=dealDamageIgnoreGuardians(building,damage,attacker.side,damageMod,destroyed,state);
+	if(destroyed){
+		if(state.sides.getStance(attacker.side,building.side)==Stance.enemy){
+			attacker.creatureStatistics.buildingsDestroyed+=1;
+		}
+	}
+	return actualDamage;
+
 }
 
-float dealDamage(B)(ref Building!B building,float damage,int attackingSide,DamageMod damageMod,ObjectState!B state){
+float dealDamage(B)(ref Building!B building,float damage,int attackingSide,DamageMod damageMod,ref bool destroyed,ObjectState!B state){
 	auto guardianDamage=damageGuardians(building,damage,attackingSide,damageMod,state);
 	if(!isNaN(guardianDamage)) return guardianDamage;
-	return dealDamageIgnoreGuardians(building,damage,attackingSide,damageMod,state);
+	return dealDamageIgnoreGuardians(building,damage,attackingSide,damageMod,destroyed,state);
 }
 
 
@@ -7030,9 +7085,15 @@ float dealSplashRangedDamageAt(alias callback=(id)=>true,B,T...)(int directTarge
 	return dealSplashDamageAt!callback(directTarget,rangedAttack,radius,attacker,attackerSide,position,damageMod|DamageMod.ranged,state,args);
 }
 
-float dealDesecrationDamage(B)(ref MovingObject!B object,float damage,int attackingSide,ObjectState!B state){
+float dealDesecrationDamage(B)(ref MovingObject!B object,float damage,int caster,int attackingSide,ObjectState!B state){
 	if(!object.canDamage(state)) return 0.0f;
-	return dealRawDamage(object,damage,attackingSide,DamageMod.desecration,state);
+	bool killed=false;
+	auto actualDamage=dealRawDamage(object,damage,attackingSide,DamageMod.desecration,killed,state);
+	if(killed&&caster) state.movingObjectById!((ref attacker,side,state){
+		if(state.sides.getStance(attacker.side,side)==Stance.enemy)
+			attacker.creatureStatistics.foesKilled+=1;
+	},(){})(caster,object.side,state);
+	return actualDamage;
 }
 
 float dealPoisonDamage(B)(ref MovingObject!B object,float damage,int attacker,int attackerSide,DamageMod damageMod,ObjectState!B state){
@@ -7056,7 +7117,8 @@ float dealFallDamage(B)(ref MovingObject!B object,ObjectState!B state){
 	auto damage=max(0.0f,-object.creatureState.fallingVelocity.z-fallDamageLimit)*fallDamageFactor;
 	//enum fallDamageCap=1000.0f;
 	//auto damage=min(fallDamageCap,(max(0.0f,-object.creatureState.fallingVelocity.z-5.0f)*1.0f/15.0f)^^2*fallDamageCap); // TODO: correct?
-	return object.dealDamage(damage,-1,DamageMod.fall,state); // TODO: properly attribute fall damage to sides
+	bool killed=false;
+	return object.dealDamage(damage,-1,DamageMod.fall,killed,state); // TODO: properly attribute fall damage and kills to sides
 }
 
 
@@ -11591,7 +11653,7 @@ int spawnSacDoctor(B)(int side,Vector3f position,Vector3f landingPosition,Object
 	enum jumpVelocity=10.0f;
 	creatureState.fallingVelocity=getFallingVelocity(direction,jumpVelocity,state);
 	auto rotation=facingQuaternion(facing);
-	auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState,curObj.creatureStats(Flags.cannotDamage),side);
+	auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState,curObj.creatureStats(Flags.cannotDamage),CreatureStatistics(),side);
 	obj.setCreatureState(state);
 	obj.updateCreaturePosition(state);
 	obj.animationState=cast(AnimationState)SacDoctorAnimationState.expelled;
@@ -11928,7 +11990,7 @@ int spawnRitualSacDoctor(B)(int side,Vector3f position,float facing,ObjectState!
 	auto movement=CreatureMovement.onGround;
 	auto creatureState=CreatureState(mode, movement, facing);
 	auto rotation=facingQuaternion(facing);
-	auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState,curObj.creatureStats(0),side);
+	auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState,curObj.creatureStats(0),CreatureStatistics(),side);
 	obj.setCreatureState(state);
 	obj.updateCreaturePosition(state);
 	obj.animationState=cast(AnimationState)SacDoctorAnimationState.dance;
@@ -12087,12 +12149,12 @@ bool updateRitual(B)(ref Ritual!B ritual,ObjectState!B state){
 							if(!isNaN(vortex.position.x))
 								foreach(ref bolt;desecrateBolts) bolt.changeShape(state);
 						auto numSouls=creature?state.movingObjectById!((ref obj)=>obj.sacObject.numSouls,()=>0)(creature):0;
-						static void drain(ref MovingObject!B wizard,int side,int numSouls,ObjectState!B state){
-							dealDesecrationDamage(wizard,(200.0f*(1+numSouls))/tortureFrames,side,state);
+						static void drain(ref MovingObject!B wizard,int caster,int side,int numSouls,ObjectState!B state){
+							dealDesecrationDamage(wizard,(200.0f*(1+numSouls))/tortureFrames,caster,side,state);
 							drainMana(wizard,(40.0f*(1+numSouls))/tortureFrames,state);
 							drainXPFromSide(wizard.side,(3000.0f*(1+numSouls))/tortureFrames,state); // TODO: correct?
 						}
-						state.movingObjectById!(drain,(){})(targetWizard,side,numSouls,state);
+						state.movingObjectById!(drain,(){})(targetWizard,caster,side,numSouls,state);
 					}
 				}else if(progress==walkTime+boltDelay+tortureEnd){
 					altarBolts=(LightningBolt[2]).init;
@@ -22343,7 +22405,7 @@ final class GameState(B){
 		if(movement==CreatureMovement.onGround && !onGround)
 			movement=curObj.canFly?CreatureMovement.flying:CreatureMovement.tumbling;
 		auto creatureState=CreatureState(mode, movement, ntt.facing);
-		auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState,curObj.creatureStats(ntt.flags),ntt.side);
+		auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState,curObj.creatureStats(ntt.flags),CreatureStatistics(),ntt.side);
 		obj.setCreatureState(current);
 		obj.updateCreaturePosition(current);
 		/+do{

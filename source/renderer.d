@@ -3618,23 +3618,25 @@ struct Renderer(B){
 							int level=-1;
 							float relativeHealth=obj.health/obj.creatureStats.maxHealth;
 							auto relativeXP=float.init;
-							if(obj.isWizard){
-								if(auto wiz=state.getWizard(obj.id)){
-									if(wiz.name.length) name=wiz.name;
-									level=wiz.level;
-									if(obj.side==renderSide){
-										enforce(1<=wiz.level&&wiz.level<=9);
-										relativeXP=max(0.0f,min(wiz.experience/xpForLevel[wiz.level+1],1.0f));
-									}
-									sideName=null;
-								}
-							}else sideName=getSideName(obj.side,state);
 							bool dead=obj.isDead;
-							auto foesKilled=-1; // TODO
-							auto foesGibbed=-1; // TODO
-							if(obj.side==renderSide){
-								foesKilled=0; // TODO
-								foesGibbed=0; // TODO
+							auto foesKilled=-1;
+							auto foesGibbed=-1;
+							if(auto wiz=obj.isWizard?state.getWizard(obj.id):null){
+								if(wiz.name.length) name=wiz.name;
+								sideName=null;
+								if(obj.side==renderSide){
+									foesKilled=wiz.wizardStatistics.foesKilled;
+									foesGibbed=wiz.wizardStatistics.foesGibbed;
+									enforce(1<=wiz.level&&wiz.level<=9);
+									relativeXP=max(0.0f,min(wiz.experience/xpForLevel[wiz.level+1],1.0f));
+								}
+								level=wiz.level;
+							}else{
+								sideName=getSideName(obj.side,state);
+								if(obj.side==renderSide){
+									foesKilled=obj.creatureStatistics.foesKilled;
+									foesGibbed=obj.creatureStatistics.foesGibbed;
+								}
 							}
 							return NTTInfo(true,icon,name,sideName,relativeHealth,dead,foesKilled,foesGibbed,level,relativeXP);
 						},()=>NTTInfo.init)(id,info.renderSide);

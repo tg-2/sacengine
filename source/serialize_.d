@@ -186,6 +186,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==sta
 void serialize(alias sink)(ref CreatureStats creatureStats){ serializeStruct!sink(creatureStats); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==CreatureStats)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink)(ref CreatureStatistics creatureStatistics){ serializeStruct!sink(creatureStatistics); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==CreatureStatistics)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B,RenderMode mode)(ref MovingObjects!(B,mode) objects){ serializeStruct!sink(objects); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==MovingObjects!(B,mode),RenderMode mode)){ deserializeStruct(result,state,data); }
 
@@ -217,6 +220,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Spe
 
 void serialize(alias sink,B)(ref Spellbook!B spellbook){ serializeStruct!sink(spellbook); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Spellbook!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink)(ref WizardStatistics wizardStatistics){ serializeStruct!sink(wizardStatistics); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==WizardStatistics)){ deserializeStruct(result,state,data); }
 
 void serialize(alias sink,B)(ref WizardInfo!B wizard){ serializeStruct!sink(wizard); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==WizardInfo!B)){ deserializeStruct(result,state,data); }
