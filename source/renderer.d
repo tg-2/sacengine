@@ -3894,6 +3894,7 @@ struct Renderer(B){
 		int slot=-1; // TODO
 		B.colorHUDMaterialBackend.bind(null,rc);
 		scope messages=state.obj.opaqueObjects.chatMessages.messages.data;
+		info.activeChatMessages.chatMessageIndex=min(info.activeChatMessages.chatMessageIndex,messages.length);
 		while(info.activeChatMessages.chatMessageIndex&&messages[info.activeChatMessages.chatMessageIndex-1].startFrame>=state.frame)
 			--info.activeChatMessages.chatMessageIndex;
 		for(;info.activeChatMessages.chatMessageIndex<messages.length;++info.activeChatMessages.chatMessageIndex){
@@ -3905,7 +3906,7 @@ struct Renderer(B){
 		}
 		for(int i=0;i<info.activeChatMessages.messages.length;){
 			auto index=info.activeChatMessages.messages[i].index;
-			if(messages[index].visible(slot,state)){
+			if(index<messages.length&&messages[index].visible(slot,state)){
 				auto currentOffset=info.activeChatMessages.messages[i].offset;
 				renderChatMessage(messages[index],currentOffset,info,rc);
 				i++;
