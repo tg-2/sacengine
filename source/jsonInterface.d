@@ -153,7 +153,7 @@ JSONCommand parseJSONCommand(scope const(char)[] data){
 		expect("[");
 		for(int i=0;;i++){
 			if(i) expect(",");
-			else skipWhitespace();
+			skipWhitespace();
 			if(!data.startsWith(`"`))
 				break;
 			getString(dg);
