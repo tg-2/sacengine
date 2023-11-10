@@ -7678,7 +7678,7 @@ bool castHeal(B)(int creature,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState
 	state.addEffect(HealCasting!B(manaDrain,spell,creature));
 	return true;
 }
-enum healSpeed=250.0f;
+enum healSpeed=240.0f;
 bool heal(B)(int creature,SacSpell!B spell,ObjectState!B state){
 	if(!state.movingObjectById!(canHeal,()=>false)(creature,state)) return false;
 	playSoundAt("laeh",creature,state,2.0f);
