@@ -10917,7 +10917,9 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 				groundSpeed*=0.5f;
 				groundAcceleration*=0.5f;
 			}
-			final switch(object.creatureState.mode.isMoving?object.creatureState.movementDirection:MovementDirection.none){
+			auto movementDirection=object.creatureState.mode.isMoving?object.creatureState.movementDirection:MovementDirection.none;
+			if(object.creatureState.speed>groundSpeed||object.creatureState.speed<-groundSpeed) movementDirection=MovementDirection.none;
+			final switch(movementDirection){
 				case MovementDirection.none:
 					object.creatureState.speed=sign(object.creatureState.speed)*(max(0.0f,abs(object.creatureState.speed)-groundAcceleration/updateFPS));
 					break;
@@ -10975,6 +10977,8 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 				airSpeed*=0.5f;
 				airAcceleration*=0.5f;
 			}
+			auto movementDirection=object.creatureState.mode.isMoving?object.creatureState.movementDirection:MovementDirection.none;
+			if(object.creatureState.speed>airSpeed||object.creatureState.speed<-airSpeed) movementDirection=MovementDirection.none;
 			final switch(object.creatureState.mode.isMoving?object.creatureState.movementDirection:MovementDirection.none){
 				case MovementDirection.none:
 					object.creatureState.speed=sign(object.creatureState.speed)*(max(0.0f,abs(object.creatureState.speed)-airAcceleration/updateFPS));
