@@ -5873,8 +5873,9 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 					object.frame=0;
 					final switch(object.creatureState.movement) with(CreatureMovement){
 						case onGround:
-							assert(!sacObject.mustFly);
-							if(object.creatureState.mode!=CreatureMode.pretendingToDie){
+							if(sacObject.mustFly){
+								object.animationState=AnimationState.hitFloor;
+							}else if(object.creatureState.mode!=CreatureMode.pretendingToDie){
 								object.pickRandomAnimation(deathCandidatesOnGround,state);
 							}else object.animationState=death0;
 							break;
