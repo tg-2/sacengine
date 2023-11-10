@@ -22406,6 +22406,7 @@ final class GameState(B){
 		auto movement=curObj.mustFly?CreatureMovement.flying:CreatureMovement.onGround;
 		if(movement==CreatureMovement.onGround && !onGround)
 			movement=curObj.canFly?CreatureMovement.flying:CreatureMovement.tumbling;
+		if(mode==CreatureMode.dead) movement=onGround?CreatureMovement.onGround:CreatureMovement.tumbling;
 		auto creatureState=CreatureState(mode, movement, ntt.facing);
 		auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState,curObj.creatureStats(ntt.flags),CreatureStatistics(),ntt.side);
 		obj.setCreatureState(current);
