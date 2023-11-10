@@ -1066,7 +1066,10 @@ struct Renderer(B){
 								}
 							}
 							// TODO: interpolate animations to get 60 FPS?
-							sacObject.setFrame(objects.animationStates[j],objects.frames[j]/updateAnimFactor);
+							auto pose=sacObject.getFrame(objects.animationStates[j],objects.frames[j]/updateAnimFactor);
+							if(material.backend is B.boneMaterialBackend) B.boneMaterialBackend.setPose(pose);
+							if(material.backend is B.shadelessBoneMaterialBackend) B.shadelessBoneMaterialBackend.setPose(pose);
+							if(material.backend is B.boneShadowBackend) B.boneShadowBackend.setPose(pose);
 							mesh.render(rc);
 						}
 					}else{
@@ -1261,8 +1264,7 @@ struct Renderer(B){
 							auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),curve[1].normalized);
 							x=Transformation(rotation,curve[0]).getMatrix4f;
 						}
-						mesh.pose=pose[];
-						scope(exit) mesh.pose=[];
+						B.shadelessBoneMaterialBackend.setPose(pose);
 						mesh.render(rc);
 					}
 					foreach(j;0..objects.sacDocCarries.length) renderTether(objects.sacDocCarries[j].tether,objects.sacDocCarries[j].frame);
@@ -1290,8 +1292,7 @@ struct Renderer(B){
 								auto curve=get(i/float(pose.length-1));
 								x=Transformation(Quaternionf.identity(),curve[0]).getMatrix4f;
 							}
-							mesh.pose=pose[];
-							scope(exit) mesh.pose=[];
+							B.shadelessBoneMaterialBackend.setPose(pose);
 							mesh.render(rc);
 						}
 					}
@@ -1387,7 +1388,8 @@ struct Renderer(B){
 							scope(success){
 								if(slimed && idiffuse.texture) B.boneMaterialBackend.bindDiffuse(idiffuse.texture);
 							}
-							sacObject.setFrame(objects.speedUpShadows[j].animationState,objects.speedUpShadows[j].frame/updateAnimFactor);
+							auto pose=sacObject.getFrame(objects.speedUpShadows[j].animationState,objects.speedUpShadows[j].frame/updateAnimFactor);
+							B.shadelessBoneMaterialBackend.setPose(pose);
 							mesh.render(rc);
 						}
 					}
@@ -1421,8 +1423,7 @@ struct Renderer(B){
 						foreach(ref bolt;bolts){
 							Matrix4x4f[numLightningSegments+1] pose;
 							foreach(k,ref x;pose) x=Transformation(Quaternionf.identity(),(1.0f/scale)*bolt.get(max(α,min(float(k)/numLightningSegments,β)))).getMatrix4f;
-							mesh.pose=pose[];
-							scope(exit) mesh.pose=[];
+							B.shadelessBoneMaterialBackend.setPose(pose);
 							mesh.render(rc);
 						}
 					}
@@ -1751,8 +1752,7 @@ struct Renderer(B){
 						}
 						auto scale=vine.scale*lengthFactor*Vector3f(1.0f,1.0f,1.0f);
 						B.boneMaterialBackend.setTransformationScaled(Vector3f(0.0f,0.0f,0.0f),Quaternionf.identity(),scale,rc);
-						mesh.pose=pose[];
-						scope(exit) mesh.pose=[];
+						B.boneMaterialBackend.setPose(pose);
 						mesh.render(rc);
 					}
 					foreach(ref graspingVines;objects.graspingViness)
@@ -1799,8 +1799,7 @@ struct Renderer(B){
 							auto progress=(1.0f-relativeProgress)*startProgress+relativeProgress*endProgress;
 							x=Transformation(rotationAt(progress),positionAt(progress)).getMatrix4f;
 						}
-						mesh.pose=pose[];
-						scope(exit) mesh.pose=[];
+						B.shadelessBoneMaterialBackend.setPose(pose);
 						mesh.render(rc);
 					}
 					foreach(j;0..objects.rainbowEffects.length) renderRainbow(objects.rainbowEffects[j]);
@@ -1829,8 +1828,7 @@ struct Renderer(B){
 							x=Transformation(rotationBetween(Vector3f(0.0f,0.0f,1.0f),location[1].normalized),location[0]).getMatrix4f;
 						}
 						auto mesh=self.animateDead.getFrame(frame%self.animateDead.numFrames);
-						mesh.pose=pose[];
-						scope(exit) mesh.pose=[];
+						B.shadelessBoneMaterialBackend.setPose(pose);
 						mesh.render(rc);
 					}
 					foreach(j;0..objects.animateDeadEffects.length) renderAnimateDead(objects.animateDeadEffects[j]);
@@ -1853,8 +1851,7 @@ struct Renderer(B){
 							x=Transformation(rotation,curve[0]).getMatrix4f;
 						}
 						auto mesh=self.hellmouthProjectile.mesh;
-						mesh.pose=pose[];
-						scope(exit) mesh.pose=[];
+						B.shadelessBoneMaterialBackend.setPose(pose);
 						mesh.render(rc);
 					}
 					foreach(j;0..objects.hellmouthProjectiles.length) renderHellmouthProjectile(objects.hellmouthProjectiles[j]);
@@ -2001,8 +1998,7 @@ struct Renderer(B){
 							// TODO: scale
 						}
 						auto mesh=self.demonicRiftSpirit.getFrame(frame%self.demonicRiftSpirit.numFrames);
-						mesh.pose=pose[];
-						scope(exit) mesh.pose=[];
+						B.shadelessBoneMaterialBackend.setPose(pose);
 						mesh.render(rc);
 					}
 					foreach(ref demonicRift;objects.demonicRifts)
@@ -2183,8 +2179,7 @@ struct Renderer(B){
 							if(i+1==pose[1..$-1].length) curve.z=(1.0f/3.0f)*max(0.0f,1.0f-2.0f/len);
 							x=Transformation(Quaternionf.identity(),curve).getMatrix4f;
 						}
-						mesh.pose=pose[];
-						scope(exit) mesh.pose=[];
+						B.shadelessBoneMaterialBackend.setPose(pose);
 						mesh.render(rc);
 					}
 					foreach(ref projectile;objects.tickfernoProjectiles) renderLaser(2.0f/3.0f,projectile.frame,projectile.startPosition,projectile.position);

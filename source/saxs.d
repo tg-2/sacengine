@@ -199,8 +199,7 @@ B.BoneMesh[] createBoneMeshes(B)(Saxs!B saxs,Pose normalPose){
 			meshes[i].texcoords[j]=vertex.uv;
 		}
 		meshes[i].indices[]=bodyPart.faces[];
-		meshes[i].pose=normalPose.matrices;
-		meshes[i].generateNormals();
+		meshes[i].generateNormals(normalPose.matrices);
 		B.finalizeBoneMesh(meshes[i]);
 	}
 	return meshes;
@@ -213,14 +212,8 @@ struct SaxsInstance(B){
 }
 
 void createMeshes(B)(ref SaxsInstance!B saxsi,Pose normalPose){
-	static if(!gpuSkinning) saxsi.meshes=createMeshes(saxsi.saxs);
+	static if(!gpuSkinning) saxsi.meshes=createMeshes(saxsi.saxs,/+normalPose+/);
 	else saxsi.meshes=createBoneMeshes!B(saxsi.saxs,normalPose);
-}
-
-void setPose(B)(ref Saxs!B saxs,ref B.BoneMesh[] meshes,Pose pose){
-	enforce(saxs.bodyParts.length==meshes.length);
-	foreach(ref mesh;meshes)
-		mesh.pose=pose.matrices;
 }
 
 void setPose(B)(ref Saxs!B saxs,ref B.Mesh[] meshes,Pose pose){
@@ -252,8 +245,4 @@ void setPose(B)(ref Saxs!B saxs,ref B.Mesh[] meshes,Pose pose){
 		B.finalizeMesh(meshes[i]);
 	}
 	//return [low,high];
-}
-
-void setPose(B)(ref SaxsInstance!B saxsi, Pose pose){
-	setPose!B(saxsi.saxs,saxsi.meshes,pose);
 }

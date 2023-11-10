@@ -1237,7 +1237,7 @@ final class SacScene: Scene{
 			totalTime+=dt;
 			auto frame=(totalTime.total!"hnsecs"*1e-7)*animFPS;
 			import animations;
-			if(sac.numFrames(cast(AnimationState)0)) sac.setFrame(cast(AnimationState)0,cast(size_t)(frame%sac.numFrames(cast(AnimationState)0)));
+			// if(sac.numFrames(cast(AnimationState)0)) sac.setFrame(cast(AnimationState)0,cast(size_t)(frame%sac.numFrames(cast(AnimationState)0))); // TODO: fix
 		}
 	}
 	bool mouseTargetValid(Target target){

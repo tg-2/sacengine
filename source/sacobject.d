@@ -762,7 +762,6 @@ final class SacObject(B){
 		static if(gpuSkinning)
 			anim.compile(saxsi.saxs);
 		animations=[anim];
-		if(saxsi.meshes.length) saxsi.setPose(anim.frames[0]);
 	}
 
 	final bool hasAnimationState(AnimationState state){
@@ -773,10 +772,11 @@ final class SacObject(B){
 		return isSaxs?cast(int)animations[animationState].frames.length:0;
 	}
 
-	void setFrame(AnimationState animationState,size_t frame)in{
+	Matrix4x4f[] getFrame(AnimationState animationState,size_t frame)in{
 		assert(frame<numFrames(animationState),text(tag," ",animationState," ",frame," ",numFrames(animationState)));
 	}do{
-		saxsi.setPose(animations[animationState].frames[frame]);
+		// enforce(saxsi.saxs.bodyParts.length==meshes.length); // TODO: why can this fail?
+		return animations[animationState].frames[frame].matrices;
 	}
 }
 
@@ -2219,9 +2219,7 @@ B.BoneMesh makeVineMesh(B)(int numSegments,int numVertices,float length,float si
 	}
 	assert(numFaces==2*(numVertices-1)*numSegments);
 	Matrix4x4f[32] pose=Matrix4f.identity();
-	mesh.pose=pose[];
-	scope(exit) mesh.pose=[];
-	mesh.generateNormals(); // TODO: this will create a seam at the texture boundary
+	mesh.generateNormals(pose); // TODO: this will create a seam at the texture boundary
 	B.finalizeBoneMesh(mesh);
 	return mesh;
 }

@@ -108,8 +108,7 @@ B.BoneMesh transferModel(B)(size_t meshIndex,B.Mesh mesh,Saxs!B saxs,Pose pose){
 	bmesh.weights[]=Vector3f(1.0f,0.0f,0.0f);*/
 	bmesh.texcoords[]=mesh.texcoords[];
 	bmesh.indices[]=mesh.indices[];
-	bmesh.pose=pose.matrices;
-	bmesh.generateNormals();
+	bmesh.generateNormals(pose.matrices);
 	B.finalizeBoneMesh(bmesh);
 	return bmesh;
 }
