@@ -10913,6 +10913,10 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			}
 			auto groundSpeed=object.speedOnGround(state);
 			auto groundAcceleration=object.accelerationOnGround(state);
+			if(object.creatureState.mode==CreatureMode.meleeMoving){
+				groundSpeed*=0.5f;
+				groundAcceleration*=0.5f;
+			}
 			final switch(object.creatureState.mode.isMoving?object.creatureState.movementDirection:MovementDirection.none){
 				case MovementDirection.none:
 					object.creatureState.speed=sign(object.creatureState.speed)*(max(0.0f,abs(object.creatureState.speed)-groundAcceleration/updateFPS));
@@ -10967,6 +10971,10 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			}
 			auto airSpeed=object.speedInAir(state);
 			auto airAcceleration=object.accelerationInAir(state);
+			if(object.creatureState.mode==CreatureMode.meleeMoving){
+				airSpeed*=0.5f;
+				airAcceleration*=0.5f;
+			}
 			final switch(object.creatureState.mode.isMoving?object.creatureState.movementDirection:MovementDirection.none){
 				case MovementDirection.none:
 					object.creatureState.speed=sign(object.creatureState.speed)*(max(0.0f,abs(object.creatureState.speed)-airAcceleration/updateFPS));
