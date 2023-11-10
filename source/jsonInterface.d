@@ -4,6 +4,9 @@ import std.format,std.range,std.exception,std.utf,std.uni,std.string,std.algorit
 import dlib.math;
 
 struct JSONBuilder{
+	bool names=true;
+	bool numSouls=false;
+
 	Array!char message;
 	void put(scope const(char)[] data){
 		message~=data.byChar; // TODO: probably this is quite slow
@@ -87,7 +90,12 @@ struct JSONBuilder{
 		char[4] ntag=obj.tag;
 		reverse(ntag[]);
 		field("tag"); value(ntag);
-		put("}");		
+		if(numSouls){
+			put(",");
+			auto numSouls=obj.numSouls;
+			field("numSouls"); value(numSouls);
+		}
+		put("}");
 	}
 	void value(B)(SacBuilding!B bldg){
 		put("{");
@@ -109,11 +117,14 @@ struct StateFlags{
 	bool sideInfo;
 	bool sideState;
 	bool wizards;
+
 	bool creatures;
+	bool numSouls;
+
 	bool structures;
 	bool buildings;
 	bool souls;
-	bool effects;	
+	bool effects;
 }
 
 
@@ -202,6 +213,7 @@ void runJSONCommand(B)(JSONCommand command,Controller!B controller,scope void de
 			JSONBuilder json;
 			json.begin();
 			auto flags=stateFlags;
+			json.numSouls=flags.numSouls;
 			bool needComma=false;
 			if(flags.state){
 				if(needComma) json.put(",");
