@@ -526,7 +526,7 @@ struct Packet{
 	}
 	static Packet jsonResponse(ulong rawDataSize){
 		Packet p;
-		p.type=PacketType.jsonCommand;
+		p.type=PacketType.jsonResponse;
 		p.rawDataSize=rawDataSize;
 		p.size=memberSize!(type,rawDataSize);
 		return p;
