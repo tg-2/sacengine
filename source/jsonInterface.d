@@ -33,7 +33,7 @@ struct JSONBuilder{
 		put("[");
 	}
 	void arrayElement(T)(ref T val){
-		if(numArrayElements) put(",");
+		if(numArrayElements++) put(",");
 		value(val);
 	}
 	void endArray(){
