@@ -168,6 +168,8 @@ class Lobby(B){
 	}do{
 		network=new Network!B();
 		network.dumpTraffic=options.dumpTraffic;
+		network.dumpNetworkStatus=options.dumpNetworkStatus;
+		network.dumpNetworkSettings=options.dumpNetworkSettings;
 		network.checkDesynch=options.checkDesynch;
 		network.logDesynch_=options.logDesynch;
 		network.pauseOnDrop=options.pauseOnDrop;

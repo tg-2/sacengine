@@ -80,6 +80,8 @@ struct Options{
 	bool testLag=false;
 	bool testRenderDelay=false;
 	bool dumpTraffic=false;
+	bool dumpNetworkStatus=false;
+	bool dumpNetworkSettings=false;
 	bool checkDesynch=true;
 	bool logDesynch=true;
 	bool synchronizeObserverChat=true;

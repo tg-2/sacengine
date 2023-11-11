@@ -1046,6 +1046,8 @@ final class Network(B){
 	}
 	enum host=0;
 	bool dumpTraffic=false;
+	bool dumpNetworkStatus=false;
+	bool dumpNetworkSettings=false;
 	bool checkDesynch=true;
 	bool pauseOnDrop=false;
 	bool pauseOnDropOnce=false;
@@ -1079,7 +1081,7 @@ final class Network(B){
 	bool pendingGameInit(){ return connectedPlayers.any!(p=>p.status==PlayerStatus.pendingGameInit); }
 	bool hostReadyToLoad(){ return isReadyToLoadStatus(players[host].status)||isReadyStatus(players[host].status); }
 	bool clientsReadyToLoad(){
-		return iota(players.length).filter!(i=>i!=host&&players[i].connection).all!(i=>isReadyToLoadStatus(players[i].status));
+		return iota(players.length).filter!(i=>i!=host&&players[i].connection).all!(i=>isReadyToLoadStatus(players[i].status)||isReadyStatus(players[i].status));
 	}
 	bool readyToLoad(){ return connectedPlayers.all!(p=>isReadyToLoadStatus(p.status)||isReadyStatus(p.status)); }
 	bool lateJoining(){ return me!=-1&&players[me].status==PlayerStatus.lateJoining; }
@@ -1298,7 +1300,7 @@ final class Network(B){
 					stderr.writeln("non-host player ",sender," attempted to initiate loading: ",p);
 					return false;
 				}
-				if(!isReadyToLoadStatus(players[me].status)){
+				if(!(isReadyToLoadStatus(players[me].status)||isReadyStatus(players[me].status))){
 					stderr.writeln("attempt to load game before ready: ",p);
 					return false;
 				}
@@ -1699,10 +1701,12 @@ final class Network(B){
 	}
 	void update(Controller!B controller){
 		acceptNewConnections();
+		dumpPlayerInfo();
 		foreach(i,ref player;players){
 			if(!player.connection) continue;
 			if(!player.alive){
 				dropPlayer(cast(int)i,controller);
+				dumpPlayerInfo();
 				continue;
 			}
 			if(!playing) player.send(Packet.ping(B.ticks())); // to detect loss of connectivity
@@ -1712,6 +1716,27 @@ final class Network(B){
 					assert(player.rawReady);
 					player.receiveRaw((scope ubyte[] rawData){ handlePacket(cast(int)i,packet,rawData,controller); });
 				}else handlePacket(cast(int)i,packet,[],controller);
+				dumpPlayerInfo();
+			}
+		}
+	}
+	void dumpPlayerInfo(){
+		if(dumpNetworkStatus){
+			static Array!PlayerStatus curStatus;
+			auto newStatus=players.map!((ref p)=>p.status);
+			if(!equal(newStatus,curStatus.data)){
+				curStatus.length=players.length;
+				copy(newStatus,curStatus.data[]);
+				writeln("player status: ",curStatus);
+			}
+		}
+		if(dumpNetworkSettings){
+			static Array!Settings curSettings;
+			auto newSettings=players.map!((ref p)=>p.settings);
+			if(!equal(newSettings,curSettings.data)){
+				curSettings.length=players.length;
+				copy(newSettings,curSettings.data[]);
+				writeln("player settings: ",curSettings);
 			}
 		}
 	}
@@ -1813,17 +1838,17 @@ final class Network(B){
 				auto crc32=digest!CRC32(mapData.data);
 				static assert(typeof(crc32).sizeof==int.sizeof);
 				if(*cast(int*)&crc32==hash){
-					import std.path: buildPath, baseName, stripExtension;
+					import std.path: buildPath, baseName, setExtension;
+					version(Windows){}else name=name.replace("\\","/"); // hack
 					name=buildPath("maps",baseName(name));
-					import std.file: exists, rename;
-					if(exists(name)){
-						auto newName=stripExtension(name)~text(".",settings.mapHash)~".scp";
-						rename(name,newName);
+					import file=std.file: exists, rename;
+					if(file.exists(name)){
+						import std.format:format;
+						auto newName=setExtension(name,format(".%08x.scp",settings.mapHash));
+						file.rename(name,newName);
 						stderr.writeln("existing map '",name,"' moved to '",newName,"'");
 					}
-					File mapFile=File(name,"w");
-					mapFile.rawWrite(mapData.data);
-					mapFile.close();
+					mapData.data.toFile(name);
 					stderr.writeln("downloaded map '",name,"'");
 					if(load!is null) load(name);
 				}
