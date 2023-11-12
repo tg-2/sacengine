@@ -7897,7 +7897,6 @@ bool castAirShield(B)(ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,Obj
 	if(!state.movingObjectById!((ref object){
 		if(object.creatureStats.effects.shieldBlocked) return false;
 		if(object.creatureStats.effects.airShield) return false;
-		object.creatureStats.effects.airShield=true;
 		return true;
 	},()=>false)(manaDrain.wizard)) return false;
 	auto airShield=AirShield!B(manaDrain.wizard,spell);
@@ -13589,18 +13588,21 @@ bool updateAirShieldCasting(B)(ref AirShieldCasting!B airShieldCast,ObjectState!
 					obj.animateAirShieldCasting(state);
 					obj.animateFreezeCastingTarget(state);
 				},(){})(manaDrain.wizard,state);
-				return airShield.updateAirShield(state,castingTime);
+				return airShield.updateAirShield(state,castingTime,true);
 			case CastingStatus.interrupted:
 				airShield.status=AirShieldStatus.shrinking;
 				state.addEffect(move(airShield));
 				return false;
 			case CastingStatus.finished:
+				state.movingObjectById!((ref obj){
+					obj.creatureStats.effects.airShield=true;
+				},(){})(airShield.target);
 				state.addEffect(move(airShield));
 				return false;
 		}
 	}
 }
-bool updateAirShield(B)(ref AirShield!B airShield,ObjectState!B state,int scaleFrames=15){
+bool updateAirShield(B)(ref AirShield!B airShield,ObjectState!B state,int scaleFrames=15,bool casting=false){
 	with(airShield){
 		if(!state.isValidTarget(target,TargetType.creature)) return false;
 		auto relHitbox=state.movingObjectById!(relativeHitbox,()=>(Vector3f[2]).init)(airShield.target);
@@ -13630,20 +13632,21 @@ bool updateAirShield(B)(ref AirShield!B airShield,ObjectState!B state,int scaleF
 			particles~=AirShield!B.Particle(height,radius,θ);
 		}
 		++frame;
-		if(status!=AirShieldStatus.shrinking){
+		if(!casting&&!status.among(AirShieldStatus.growing,AirShieldStatus.shrinking)){
 			static bool check(ref MovingObject!B obj){
 				assert(obj.creatureStats.effects.airShield);
 				return obj.creatureState.mode.canShield;
 			}
 			if(!state.movingObjectById!(check,()=>false)(target)||frame+scaleFrames>=spell.duration*updateFPS)
 				status=AirShieldStatus.shrinking;
+			auto hitboxSide=state.movingObjectById!((ref obj)=>tuple(obj.hitbox,obj.side),()=>tuple((Vector3f[2]).init,-1))(airShield.target);
+			auto hitbox=hitboxSide[0], side=hitboxSide[1];
+			static bool filter(ref ProximityEntry entry,ObjectState!B state,int side){
+				return state.movingObjectById!((ref obj,side)=>obj.side!=side&&obj.canPush,()=>false)(entry.id,side);
+			}
+
+			pushAll!filter(.boxCenter(hitbox),0.5f*(hitbox[1].xy-hitbox[0].xy).length,0.5f*spell.effectRange,20.0f,state,side);
 		}
-		auto hitboxSide=state.movingObjectById!((ref obj)=>tuple(obj.hitbox,obj.side),()=>tuple((Vector3f[2]).init,-1))(airShield.target);
-		auto hitbox=hitboxSide[0], side=hitboxSide[1];
-		static bool filter(ref ProximityEntry entry,ObjectState!B state,int side){
-			return state.movingObjectById!((ref obj,side)=>obj.side!=side&&obj.canPush,()=>false)(entry.id,side);
-		}
-		pushAll!filter(.boxCenter(hitbox),0.5f*(hitbox[1].xy-hitbox[0].xy).length,0.5f*spell.effectRange,20.0f,state,side);
 		final switch(status){
 			case AirShieldStatus.growing:
 				scale=min(1.0f,scale+1.0f/scaleFrames);
@@ -13655,7 +13658,6 @@ bool updateAirShield(B)(ref AirShield!B airShield,ObjectState!B state,int scaleF
 				scale=max(0.0f,scale-1.0f/scaleFrames);
 				if(scale==0.0f){
 					static void removeAirShield(B)(ref MovingObject!B object){
-						assert(object.creatureStats.effects.airShield);
 						object.creatureStats.effects.airShield=false;
 					}
 					state.movingObjectById!(removeAirShield,(){})(target);
