@@ -6683,7 +6683,7 @@ float dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B at
 }
 float dealDamage(B)(ref MovingObject!B object,float damage,int attackingSide,DamageMod damageMod,ref bool killed,ObjectState!B state){
 	auto damageMultiplier=1.0f;
-	if(damageMod&DamageMod.melee) damageMultiplier*=object.creatureStats.meleeResistance/2.5f;
+	if(damageMod&DamageMod.melee) damageMultiplier*=0.4f*object.creatureStats.meleeResistance;
 	else if(damageMod&DamageMod.ranged){
 		if(damageMod&DamageMod.splash) damageMultiplier*=object.creatureStats.splashRangedResistance;
 		else damageMultiplier*=object.creatureStats.directRangedResistance;
@@ -6722,8 +6722,7 @@ float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,
 		if(!object.canDamage(state)) return 0.0f;
 		actualDamage=damage*state.sideDamageMultiplier(attackingSide,object.side);
 		if(object.creatureStats.effects.isGuardian){
-			if(damageMod&DamageMod.melee) actualDamage*=0.4f;
-			else if(damageMod&DamageMod.spell) actualDamage*=0.5f;
+			if(damageMod&DamageMod.spell) actualDamage*=0.5f;
 			else if(damageMod&DamageMod.ranged) actualDamage*=0.25f;
 		}
 		if(auto passive=object.sacObject.passiveOnDamage){
