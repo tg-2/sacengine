@@ -167,10 +167,6 @@ final class SacObject(B){
 		if(cre8) return cre8.meleeStrength;
 		return 0.0f;
 	}
-	@property float buildingMeleeDamageMultiplier(){
-		if(data) return data.buildingMeleeDamageMultiplier;
-		return 1.0f;
-	}
 
 	@property StunnedBehavior stunnedBehavior(){
 		if(!data) return StunnedBehavior.normal;

@@ -385,7 +385,6 @@ immutable struct CreatureData{
 	auto stunnedBehavior=StunnedBehavior.normal;
 	bool continuousRegeneration=false;
 	auto soulDisplacement=Vector3f(0.0f,0.0f,0.0f);
-	float buildingMeleeDamageMultiplier=1.0f; // TODO: is this in creature stats?
 	RangedType ranged=RangedType.melee; // TODO: is this in creature data?
 }
 
@@ -453,7 +452,6 @@ CreatureData dragon={
 	name: "Dragon",
 	rotateOnGround: RotateOnGround.completely,
 	hitboxType: HitboxType.largeZ,
-	buildingMeleeDamageMultiplier: 2.0f,
 };
 
 CreatureData dragonHatchling={
@@ -728,7 +726,6 @@ CreatureData sirocco={
 	name: "Sirocco",
 	rotateOnGround: RotateOnGround.completely,
 	hitboxType: HitboxType.largeZ,
-	buildingMeleeDamageMultiplier: 2.0f,
 };
 
 CreatureData slave={
@@ -759,7 +756,6 @@ CreatureData squall={
 CreatureData stormGiant={
 	tag: "rgos",
 	name: "Storm Giant",
-	buildingMeleeDamageMultiplier: 0.5f,
 };
 
 CreatureData styx={

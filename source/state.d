@@ -1019,6 +1019,10 @@ int numAttackTicks(B)(ref MovingObject!B object){
 	return object.sacObject.numAttackTicks(object.animationState);
 }
 
+int numAnimationFrames(B)(ref MovingObject!B object){
+	return object.sacObject.numFrames(object.animationState)*updateAnimFactor;
+}
+
 int slowdownFactor(B)(ref MovingObject!B object){
 	return 4^^min(10,object.creatureStats.effects.numSlimes);
 }
@@ -1252,8 +1256,8 @@ struct Building(B){
 	int top=0;
 	int base=0;
 	float health=0.0f;
-	enum regeneration=80.0f;
-	enum meleeResistance=1.5f;
+	enum regeneration=75.0f;
+	enum meleeResistance=1.0f;
 	enum directSpellResistance=1.0f;
 	enum splashSpellResistance=1.0f;
 	enum directRangedResistance=1.0f;
@@ -6624,7 +6628,6 @@ enum DamageMod{
 float attackDamageFactor(B)(ref MovingObject!B attacker,bool targetIsCreature,DamageMod damageMod,ObjectState!B state){
 	float result=1.0f;
 	if(attacker.isGuardian) result*=1.5f;
-	if(!targetIsCreature&&damageMod&DamageMod.melee) result*=attacker.sacObject.buildingMeleeDamageMultiplier;
 	if(auto passive=attacker.sacObject.passiveOnDamage){
 		if(passive.tag==SpellTag.firefistPassive&&damageMod&DamageMod.melee){
 			auto relativeHP=attacker.creatureStats.health/attacker.creatureStats.maxHealth;
@@ -6680,7 +6683,7 @@ float dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B at
 }
 float dealDamage(B)(ref MovingObject!B object,float damage,int attackingSide,DamageMod damageMod,ref bool killed,ObjectState!B state){
 	auto damageMultiplier=1.0f;
-	if(damageMod&DamageMod.melee) damageMultiplier*=object.creatureStats.meleeResistance;
+	if(damageMod&DamageMod.melee) damageMultiplier*=object.creatureStats.meleeResistance/2.5f;
 	else if(damageMod&DamageMod.ranged){
 		if(damageMod&DamageMod.splash) damageMultiplier*=object.creatureStats.splashRangedResistance;
 		else damageMultiplier*=object.creatureStats.directRangedResistance;
@@ -6921,16 +6924,17 @@ float meleeDistanceSqr(Vector3f[2] objectHitbox,Vector3f[2] attackerHitbox){
 	return boxBoxDistanceSqr(objectHitbox,attackerHitbox);
 }
 
-void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,DamageMod damageMod,ObjectState!B state){
-	auto damage=meleeDamageModifier(attacker)*attacker.meleeStrength/attacker.numAttackTicks; // TODO: figure this out
+float dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,DamageMod damageMod,ObjectState!B state){
+	auto damage=meleeDamageModifier(attacker)*attacker.meleeStrength*attacker.numAnimationFrames/(attacker.numAttackTicks*updateFPS);
 	auto objectHitbox=object.hitbox, attackerHitbox=attacker.meleeHitbox, attackerSizeSqr=0.25f*boxSize(attackerHitbox).lengthsqr;
 	auto distanceSqr=meleeDistanceSqr(objectHitbox,attackerHitbox);
 	//auto damageMultiplier=max(0.0f,1.0f-max(0.0f,sqrt(distanceSqr/attackerSizeSqr)));
-	auto damageMultiplier=max(0.0f,1.0f-max(0.0f,(sqrt(distanceSqr)+state.uniform(0.5f,1.0f))/sqrt(attackerSizeSqr)));
+	auto damageMultiplier=max(0.0f,1.0f-max(0.0f,(sqrt(distanceSqr)+state.uniform(0.5f,1.0f))/sqrt(attackerSizeSqr))); // TODO: figure this out
 	auto attackDirection=object.center-attacker.center; // TODO: good?
 	auto direction=getDamageDirection(object,attackDirection,state);
-	bool fromBehind=direction==DamageDirection.back;
 	bool fromSide=!!direction.among(DamageDirection.left,DamageDirection.right);
+	if(fromSide) damage*=1.5f;
+	bool fromBehind=direction==DamageDirection.back;
 	if(fromBehind) damage*=2.0f;
 	auto actualDamage=object.dealDamage(damage,attacker,damageMod|DamageMod.melee,state);
 	bool stunned;
@@ -6949,6 +6953,7 @@ void dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,Da
 		playSoundTypeAt(attacker.sacObject,attacker.id,SoundType.hit,state);
 		object.damageAnimation(attackDirection,state);
 	}
+	return actualDamage;
 }
 
 float dealMeleeDamage(B)(ref StaticObject!B object,ref MovingObject!B attacker,DamageMod damageMod,ObjectState!B state){
@@ -6958,7 +6963,7 @@ float dealMeleeDamage(B)(ref StaticObject!B object,ref MovingObject!B attacker,D
 }
 
 float dealMeleeDamage(B)(ref Building!B building,ref MovingObject!B attacker,DamageMod damageMod,ObjectState!B state){
-	auto damage=meleeDamageModifier(attacker)*attacker.meleeStrength/attacker.numAttackTicks;
+	auto damage=meleeDamageModifier(attacker)*attacker.meleeStrength*attacker.numAnimationFrames/(attacker.numAttackTicks*updateFPS);
 	auto actualDamage=building.dealDamage(damage,attacker,damageMod|DamageMod.melee,state);
 	if(actualDamage>0.0f) playSoundTypeAt(attacker.sacObject,attacker.id,SoundType.hitWall,state);
 	return actualDamage;
@@ -10690,7 +10695,8 @@ void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 			static void dealDamage(T)(ref T target,MovingObject!B* attacker,ObjectState!B state,bool* canFreeze){
 				bool frozen=false;
 				static if(is(T==MovingObject!B)) frozen=target.creatureStats.effects.frozen;
-				target.dealMeleeDamage(*attacker,DamageMod.none,state); // TODO: maybe those functions should be local
+				auto actualDamage=target.dealMeleeDamage(*attacker,DamageMod.none,state); // TODO: maybe those functions should be local
+				//writeln("dealt melee damage: ",actualDamage," ",(*attacker).numAnimationFrames);
 				static if(is(T==MovingObject!B)) *canFreeze=!frozen&&isValidAttackTarget(target,state);
 			}
 			state.objectById!dealDamage(target,&object,state,&canFreeze);
