@@ -1367,8 +1367,8 @@ final class Network(B){
 				return true;
 			// broadcast:
 			case PacketType.updateSetting,PacketType.clearArraySetting,PacketType.appendArraySetting,PacketType.confirmArraySetting,PacketType.setMap,PacketType.appendMap,PacketType.confirmMap:
-				if(!isHost&&sender!=host){
-					stderr.writeln("non-host player ",sender," attempted to update settings: ",p);
+				if(!sender.among(host,p.player)){
+					stderr.writeln("non-host player ",sender," attempted to update another player's settings: ",p);
 					return false;
 				}
 				static assert(p.player.offsetof is p.mapPlayer.offsetof);
