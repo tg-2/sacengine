@@ -5,7 +5,6 @@ maps/(4) EM-Arena.scp
 maps/(4) EM-Bloody Hell.scp
 maps/(4) EM-Breeze.scp
 maps/(4) EM-Bug.scp
-maps/(4) EM-Charnel's Lyke Wake.scp
 maps/(4) EM-Charnel's Reflection.scp
 maps/(4) EM-ChristmasTEST.scp
 maps/(4) EM-Cold Field.scp
@@ -15,7 +14,6 @@ maps/(4) EM-Confusion.scp
 maps/(4) EM-Conifer Forest.scp
 maps/(4) EM-Cross Hill.scp
 maps/(4) EM-Dark Chess.scp
-maps/(4) EM-Darkness In The Middle.scp
 maps/(4) EM-Desert Of Deception [7].scp
 maps/(4) EM-Desert Of Deception.scp
 maps/(4) EM-Diablo's Shell.scp
