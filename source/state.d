@@ -19746,10 +19746,11 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 		i++;
 	}
 	for(int i=0;i<effects.steamClouds.length;){
-		if(!updateSteamCloud(effects.steamClouds[i],state)){
+		auto steamCloud=effects.steamClouds[i];
+		if(!updateSteamCloud(steamCloud,state)){ // careful: may append to steamClouds
 			effects.removeSteamCloud(i);
 			continue;
-		}
+		}else effects.steamClouds[i]=steamCloud;
 		i++;
 	}
 	for(int i=0;i<effects.poisonClouds.length;){
