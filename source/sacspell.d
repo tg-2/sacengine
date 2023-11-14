@@ -184,11 +184,12 @@ class SacSpell(B){
 			soulCost=cre8.souls;
 		}else if(spel){
 			setStats(spel);
+			if(tag==SpellTag.firewalk) range*=0.75f;
+			if(tag==SpellTag.teleport||tag==SpellTag.haloOfEarth) flags1&=~cast(int)SpelFlags1.shield;
 			amount=spel.amount;
+			if(tag==SpellTag.scarabShoot||tag==SpellTag.rainbow||tag==SpellTag.healingShower) amount=short.max;
 			duration=spel.duration;
 			if(tag==SpellTag.heal) duration=4.5f;
-			if(tag==SpellTag.scarabShoot||tag==SpellTag.rainbow||tag==SpellTag.healingShower) amount=short.max;
-			if(tag==SpellTag.teleport||tag==SpellTag.haloOfEarth) flags1&=~cast(int)SpelFlags1.shield;
 			effectRange=spel.effectRange;
 			damageRange=spel.damageRange;
 			speed=60.0f*spel.speed;
