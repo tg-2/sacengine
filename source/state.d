@@ -12699,7 +12699,7 @@ bool accelerateTowards(T,B)(ref T spell_,Vector3f targetCenter,Vector3f predicte
 			}
 		}
 		position=newPosition;
-		return (targetCenter-position).lengthsqr<0.25f^^2||onGround&&(targetCenter.xy-position.xy).lengthsqr<0.25f^^2;
+		return (targetCenter-position).lengthsqr<0.25f^^2||onGround&&targetCenter.z<position.z&&(targetCenter.xy-position.xy).lengthsqr<0.25f^^2;
 	}
 }
 bool accelerateTowards(T,B)(ref T spell_,float targetFlyingHeight,ObjectState!B state){
@@ -14817,7 +14817,7 @@ bool changeDirectionTowards(T,B)(ref T spell_,float targetFlyingHeight,ObjectSta
 			}
 		}
 		position=newPosition;
-		return (targetCenter-position).lengthsqr<0.75f^^2||onGround&&(targetCenter.xy-position.xy).lengthsqr<0.5f^^2;
+		return (targetCenter-position).lengthsqr<0.75f^^2||onGround&&targetCenter.z<position.z&&(targetCenter.xy-position.xy).lengthsqr<0.5f^^2;
 	}
 }
 
