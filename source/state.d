@@ -12687,6 +12687,7 @@ bool accelerateTowards(T,B)(ref T spell_,Vector3f targetCenter,Vector3f predicte
 		}
 		velocity=capVelocity(velocity);
 		auto newPosition=position+velocity/updateFPS;
+		bool onGround=false;
 		if(state.isOnGround(position)){
 			auto height=state.getGroundHeight(position);
 			auto flyingHeight=min(targetFlyingHeight,0.75f*(targetCenter.xy-position.xy).length);
@@ -12694,10 +12695,11 @@ bool accelerateTowards(T,B)(ref T spell_,Vector3f targetCenter,Vector3f predicte
 				auto nvel=velocity;
 				nvel.z+=(height+flyingHeight-newPosition.z)*updateFPS;
 				newPosition=position+capVelocity(nvel)/updateFPS;
+				onGround=true;
 			}
 		}
 		position=newPosition;
-		return (targetCenter-position).lengthsqr<0.05f^^2;
+		return (targetCenter-position).lengthsqr<0.25f^^2||onGround&&(targetCenter.xy-position.xy).lengthsqr<0.25f^^2;
 	}
 }
 bool accelerateTowards(T,B)(ref T spell_,float targetFlyingHeight,ObjectState!B state){
@@ -12993,7 +12995,7 @@ bool updateRock(B)(ref Rock!B rock,ObjectState!B state){
 				return false;
 			}
 		}
-		if(distance.length<0.05f){
+		if(distance.length<0.25f){
 			rock.rockExplosion(rock.target.id,state);
 			return false;
 		}
@@ -15258,7 +15260,7 @@ bool updateHaloRock(B)(ref HaloRock!B haloRock,Vector3f centerPosition,ObjectSta
 			velocity=capVelocity(velocity);
 			auto newPosition=position+velocity/updateFPS;
 			position=newPosition;
-			if(distance.length<0.05f){
+			if(distance.length<0.25f){
 				haloRock.haloRockExplosion(target.id,state,isAbility);
 				return false;
 			}
