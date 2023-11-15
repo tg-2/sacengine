@@ -14804,16 +14804,18 @@ bool changeDirectionTowards(T,B)(ref T spell_,float targetFlyingHeight,ObjectSta
 		if(distancesqr<4.0f^^2) actualRotationSpeed=max(rotationSpeed,1.1f*spell.speed/sqrt(distancesqr));
 		direction=rotate(limitRotation(targetRotation,actualRotationSpeed/updateFPS),direction).normalized;
 		auto newPosition=position+direction*spell.speed/updateFPS;
+		bool onGround=false;
 		if(state.isOnGround(newPosition)){
 		   auto height=state.getGroundHeight(newPosition);
 		   if(newPosition.z<height+targetFlyingHeight){
 			   auto ndir=state.getGroundHeightDerivative(position,direction);
 			   direction=Vector3f(direction.x,direction.y,ndir).normalized;
 			   newPosition.z=height+targetFlyingHeight;
+			   onGround=true;
 			}
 		}
 		position=newPosition;
-		return (targetCenter-position).lengthsqr<0.75f^^2;
+		return (targetCenter-position).lengthsqr<0.75f^^2||onGround&&(targetCenter.xy-position.xy).lengthsqr<0.5f^^2;
 	}
 }
 
