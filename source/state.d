@@ -14855,21 +14855,17 @@ bool updateDragonfirePosition(B)(ref Dragonfire!B dragonfire,ObjectState!B state
 			state.movingObjectById!((ref obj,damage,attacker,side,state){
 				//if(state.sides.getStance(side,obj.side)!=Stance.ally)
 				obj.ignite(damage,attacker,side,state);
-			},(){})(target.id,spell.amount/updateFPS,attacker,side,state);
+			},(){})(target.id,0.5f*spell.amount/updateFPS,attacker,side,state);
 		}
 		collisionTargets!burn(hitbox,state,spell,wizard,side);
 		if(dragonfire.changeDirectionTowards(1.0f,state)){
 			playSoundAt("2ifd",dragonfire.position,state,dragonfireGain); // TODO: move sound with spell?
 			if(target.id){
-				if(state.isValidTarget(target.id)){
-					dealSpellDamage(target.id,spell,wizard,side,direction,DamageMod.ignite,state); // TODO: should this be splash spell?
-					setAblaze(target.id,updateFPS,false,0.0f,wizard,side,DamageMod.ignite,state);
-				}
 				static bool callback(int target,int wizard,int side,ObjectState!B state){
 					setAblaze(target,updateFPS,false,0.0f,wizard,side,DamageMod.none,state);
 					return true;
 				}
-				dealSplashSpellDamageAt!callback(target.id,spell,spell.damageRange,wizard,side,position,DamageMod.ignite,state,wizard,side,state);
+				dealSplashSpellDamageAt!callback(0,spell,spell.damageRange,wizard,side,position,DamageMod.ignite,state,wizard,side,state);
 			}
 			if(!dragonfire.updateDragonfireTarget(state))
 				return false;
