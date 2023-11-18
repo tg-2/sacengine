@@ -1,3 +1,9 @@
 maps/(6) EM-Greed.scp
 maps/(6) Hill 401K.scp
 maps/(6) XM-Burned Desire.scp
+maps/(6) TM-Phoney War2.scp
+maps/(6) Gladiator EXE2.scp
+maps/(6) EM-Eden.scp
+maps/(6) Exe2.scp
+maps/(6) EM-Two Farms.scp
+maps/(6) EM-Arches's Fall.scp
