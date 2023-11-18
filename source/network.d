@@ -249,14 +249,14 @@ struct Packet{
 	union{
 		struct{}// nop
 		struct{}// disconnect
-		struct{ int id; }// ping, updatePlayerId
+		struct{ int id; }// updatePlayerId
 		struct{}// loadGame
-		struct{ uint startDelay; } // startGame
+		struct{ long startDelay; } // startGame
 		struct{ // checkSynch, confirmSynch
 			int synchFrame;
 			uint synchHash;
 		}
-		struct{ int pingId; } // ack
+		struct{ long pingId; } // ping, ack
 		struct{ // updateSlot, updateStatus, updateSetting, clearArraySetting, appendArraySetting, confirmArraySetting
 			int player;
 			union{
@@ -303,14 +303,14 @@ struct Packet{
 		p.size=memberSize!type;
 		return p;
 	}
-	static Packet ping(int id){
+	static Packet ping(long id){
 		Packet p;
 		p.type=PacketType.ping;
-		p.id=id;
-		p.size=memberSize!(type,id);
+		p.pingId=id;
+		p.size=memberSize!(type,pingId);
 		return p;
 	}
-	static Packet ack(int pingId){
+	static Packet ack(long pingId){
 		Packet p;
 		p.type=PacketType.ack;
 		p.pingId=pingId;
@@ -359,7 +359,7 @@ struct Packet{
 		p.size=memberSize!type;
 		return p;
 	}
-	static Packet startGame(uint startDelay){
+	static Packet startGame(long startDelay){
 		Packet p;
 		p.type=PacketType.startGame;
 		p.startDelay=startDelay;
@@ -948,7 +948,9 @@ struct Player{
 
 	bool lostWizard=false;
 	int committedFrame=0;
-	int ping=-1;
+	long pingTicks=-1; // TODO: switch to MonoTime
+	long packetTicks=-1; // TODO: switch to MonoTime
+	long ping=-1; // TODO: switch to Duration
 
 	void drop()in{
 		assert(!connection);
@@ -1049,8 +1051,19 @@ final class Network(B){
 	bool dumpNetworkStatus=false;
 	bool dumpNetworkSettings=false;
 	bool checkDesynch=true;
+	bool dropOnTimeout=true;
 	bool pauseOnDrop=false;
 	bool pauseOnDropOnce=false;
+	this(ref Options options){
+		this.dumpTraffic=options.dumpTraffic;
+		this.dumpNetworkStatus=options.dumpNetworkStatus;
+		this.dumpNetworkSettings=options.dumpNetworkSettings;
+		this.checkDesynch=options.checkDesynch;
+		this.logDesynch_=options.logDesynch;
+		this.dropOnTimeout=options.dropOnTimeout;
+		this.pauseOnDrop=options.pauseOnDrop;
+	}
+
 	bool isHost(){ return me==host; }
 	SynchQueue synchQueue;
 	void hostGame(Settings settings,bool useZerotier=false)in{
@@ -1211,7 +1224,7 @@ final class Network(B){
 		none,
 		measurePing,
 	}
-	AckHandler ackHandler;
+	AckHandler ackHandler=AckHandler.measurePing;
 	void report(bool error=false,T...)(int player,T action){
 		static if(error){
 			if(players[player].settings.name=="") stderr.writeln("player ",player," ",action);
@@ -1234,7 +1247,7 @@ final class Network(B){
 				report(sender,"disconnected");+/
 				dropPlayer(sender,controller);
 				return true;
-			case PacketType.ping: players[sender].send(Packet.ack(p.id)); return true;
+			case PacketType.ping: players[sender].send(Packet.ack(p.pingId)); return true;
 			case PacketType.ack:
 				final switch(ackHandler) with(AckHandler){
 					case none: return true;
@@ -1699,6 +1712,30 @@ final class Network(B){
 		players[i].connection=null;
 		players[i].drop();
 	}
+	enum pingDelay=1000/60; // TODO: switch to Duration
+	enum dropDelay=1000; // TODO: switch to Duration
+	int lastUpdate=-1; // TODO: switch to MonoTime
+	void ping(int i){
+		auto ticks=B.ticks();
+		auto sinceLastPing=ticks-players[i].pingTicks;
+		if(sinceLastPing<pingDelay)
+			return;
+		players[i].send(Packet.ping(ticks));
+		players[i].pingTicks=ticks;
+	}
+	void confirmConnectivity(int i){
+		players[i].packetTicks=B.ticks();
+	}
+	void checkConnectivity(int i,Controller!B controller){
+		if(!playing) ping(cast(int)i);
+		if(!isActiveStatus(players[i].status)) return;
+		auto sinceLastPacket=B.ticks()-players[i].packetTicks;
+		if(dropOnTimeout&&players[i].packetTicks!=-1&&sinceLastPacket>=dropDelay){
+			report!true(i,"timed out");
+			dropPlayer(i,controller);
+			return;
+		}
+	}
 	void update(Controller!B controller){
 		acceptNewConnections();
 		dumpPlayerInfo();
@@ -1709,7 +1746,6 @@ final class Network(B){
 				dumpPlayerInfo();
 				continue;
 			}
-			if(!playing) player.send(Packet.ping(B.ticks())); // to detect loss of connectivity
 			while(player.ready){
 				auto packet=player.receive;
 				if(isHeaderType(packet.type)){
@@ -1717,8 +1753,12 @@ final class Network(B){
 					player.receiveRaw((scope ubyte[] rawData){ handlePacket(cast(int)i,packet,rawData,controller); });
 				}else handlePacket(cast(int)i,packet,[],controller);
 				dumpPlayerInfo();
+				confirmConnectivity(cast(int)i);
 			}
+			auto sinceLastUpdate=B.ticks()-lastUpdate;
+			if(sinceLastUpdate<dropDelay/2) checkConnectivity(cast(int)i,controller);
 		}
+		lastUpdate=B.ticks();
 	}
 	void dumpPlayerInfo(){
 		if(dumpNetworkStatus){
@@ -1874,8 +1914,8 @@ final class Network(B){
 	}do{
 		ackHandler=AckHandler.measurePing;
 		players[me].ping=0;
-		foreach(ref player;players)
-			player.send(Packet.ping(B.ticks()));
+		foreach(i,ref player;players)
+			ping(cast(int)i);
 		while(connectedPlayers.any!((ref p)=>p.status!=PlayerStatus.desynched&&p.ping==-1))
 			update(controller);
 		auto maxPing=connectedPlayers.map!(p=>p.ping).reduce!max;

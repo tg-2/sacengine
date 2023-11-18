@@ -84,12 +84,13 @@ struct Options{
 	bool dumpNetworkSettings=false;
 	bool checkDesynch=true;
 	bool logDesynch=true;
+	bool dropOnTimeout=true;
+	bool pauseOnDrop=true;
 	bool synchronizeObserverChat=true;
 	bool synchronizeLevel=true;
 	bool synchronizeSouls=true;
 	bool synchronizeLevelBounds=true;
 	bool synchronizeXPRate=true;
-	bool pauseOnDrop=true;
 	// recording and playback
 	string recordingFilename="";
 	bool compressRecording=true;
