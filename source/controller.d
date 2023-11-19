@@ -299,7 +299,9 @@ final class Controller(B){
 			}
 			int side=-1;
 			if(auto desynch=playback.desynch(state.current.frame,side)){
-				writeln("player ",side," desynched at frame ",state.current.frame);
+				auto sideName=getSideName(side,state.current);
+				if(sideName=="") writeln("player ",side," desynched at frame ",state.current.frame);
+				else writeln(sideName," (player ",side,") desynched at frame ",state.current.frame);
 				if(desynch.hash!=state.current.hash){
 					writeln("their state was replaced:");
 					import diff;
