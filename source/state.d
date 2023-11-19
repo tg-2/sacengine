@@ -22545,13 +22545,13 @@ final class GameState(B){
 		//swap(current,next);
 		if(commands.length<=current.frame) commands~=Array!(Command!B)();
 	}
-	void stepCommitted()in{
+	/+void stepCommitted()in{
 		assert(lastCommitted.frame<current.frame);
 	}do{
 		lastCommitted.update(commands[lastCommitted.frame].data);
 		//next.updateFrom(lastCommitted,commands[lastCommitted.frame].data);
 		//swap(lastCommitted,next);
-	}
+	}+/
 	// may violate invariant lastCommitted.frame<=current.frame, should be restored
 	// may go out of command bounds
 	void stepCommittedUnsafe()in{
@@ -22584,12 +22584,12 @@ final class GameState(B){
 		while(current.frame<frame)
 			step();
 	}
-	void simulateCommittedTo(int frame)in{
+	/+void simulateCommittedTo(int frame)in{
 		assert(frame<=current.frame);
 	}do{
 		while(lastCommitted.frame<frame)
 			stepCommitted();
-	}
+	}+/
 	void addCommandInconsistent(int frame,Command!B command)in{
 		assert(frame>=lastCommitted.frame);
 	}do{
@@ -22599,7 +22599,7 @@ final class GameState(B){
 		if(!isSorted(commands[frame].data))
 			sort(commands[frame].data);
 	}
-	void addCommand(int frame,Command!B command)in{
+	/+void addCommand(int frame,Command!B command)in{
 		assert(frame<=current.frame);
 		assert(command.id!=0);
 		assert(frame>=lastCommitted.frame);
@@ -22613,5 +22613,5 @@ final class GameState(B){
 		if(frame<currentFrame) rollback(frame);
 		playAudio=false;
 		simulateTo(currentFrame);
-	}
+	}+/
 }
