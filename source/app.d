@@ -33,7 +33,7 @@ Lobby!B makeLobby(B)(ref Options options)out(lobby){
 	assert(lobby.state.among(LobbyState.offline,LobbyState.connected));
 	if(lobby.canPlayRecording&&options.playbackFilename.length){
 		auto recording=loadRecording!B(options.playbackFilename);
-		lobby.initializePlayback(recording,options);
+		lobby.initializePlayback(recording,options.continueFrame,options);
 	}
 	if(lobby.canContinue&&options.continueFilename.length){
 		auto recording=loadRecording!B(options.continueFilename);

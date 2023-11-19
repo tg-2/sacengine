@@ -30,7 +30,6 @@ final class Controller(B){
 		firstUpdatedFrame=currentFrame;
 		this.recording=recording;
 		this.playback=playback;
-		if(playback) state.commands=playback.commands;
 		//initSynchState();
 	}
 	bool isControllingSide(int side){

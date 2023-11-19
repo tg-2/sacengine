@@ -190,7 +190,7 @@ class Lobby(B){
 	}
 
 	bool canPlayRecording(){ return state==LobbyState.offline && !playback && !toContinue; }
-	void initializePlayback(Recording!B recording,ref Options options)in{
+	void initializePlayback(Recording!B recording,int frame,ref Options options)in{
 		assert(canPlayRecording);
 	}do{
 		playback=recording;
@@ -204,6 +204,8 @@ class Lobby(B){
 		triggers=playback.triggers;
 		options.mapHash=map.crc32;
 		gameState=new GameState!B(map,sides,proximity,pathFinder,triggers);
+		gameState.commands=playback.commands;
+		if(gameState.commands.length<frame+1) gameState.commands.length=frame+1;
 		gameState.initMap();
 		gameState.commit();
 	}
@@ -433,15 +435,18 @@ class Lobby(B){
 		wizId=hasSlot?gameState.slots[slot].wizard:0;
 		if(toContinue){
 			gameState.commands=toContinue.commands;
+			assert(options.continueFrame+1==gameState.commands.length);
+		}
+		if(toContinue||playback&&options.continueFrame){
 			playAudio=false;
-			while(gameState.current.frame+1<gameState.commands.length){
+			while(gameState.current.frame<options.continueFrame){
 				gameState.step();
 				if(gameState.current.frame%1000==0){
 					writeln("continue: simulated ",gameState.current.frame," of ",gameState.commands.length-1," frames");
 				}
 			}
 			playAudio=true;
-			assert(gameState.current.frame==options.continueFrame);
+			assert(options.continueFrame==-1||gameState.current.frame==options.continueFrame);
 			if(network){
 				assert(network.isHost);
 				//foreach(i;network.connectedPlayerIds) if(i!=network.host) network.updateStatus(cast(int)i,PlayerStatus.desynched);
