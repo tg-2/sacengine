@@ -21962,45 +21962,6 @@ Cursor cursor(B)(ref OrderTarget target,int renderSide,bool showIcon,ObjectState
 	}
 }
 
-
-enum CommandType{
-	none,
-	moveForward,
-	moveBackward,
-	stopMoving,
-	turnLeft,
-	turnRight,
-	stopTurning,
-
-	clearSelection,
-	select,
-	selectAll,
-	automaticSelectAll,
-	toggleSelection,
-	automaticToggleSelection,
-
-	defineGroup,
-	addToGroup,
-	selectGroup,
-	automaticSelectGroup,
-
-	setFormation,
-
-	retreat,
-	move,
-	guard,
-	guardArea,
-	attack,
-	advance,
-
-	castSpell,
-	useAbility,
-
-	surrender,
-
-	chatMessage,
-}
-
 bool hasClickSound(CommandType type){
 	final switch(type) with(CommandType){
 		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,clearSelection,automaticToggleSelection,automaticSelectGroup,setFormation,retreat,surrender,chatMessage: return false;
@@ -22183,6 +22144,44 @@ auto stopSoundsAt(B)(int id,ObjectState!B state){
 	static if(B.hasAudio) if(playAudio) B.stopSoundsAt(id);
 }
 
+enum CommandType{
+	none,
+	moveForward,
+	moveBackward,
+	stopMoving,
+	turnLeft,
+	turnRight,
+	stopTurning,
+
+	clearSelection,
+	select,
+	selectAll,
+	automaticSelectAll,
+	toggleSelection,
+	automaticToggleSelection,
+
+	defineGroup,
+	addToGroup,
+	selectGroup,
+	automaticSelectGroup,
+
+	setFormation,
+
+	retreat,
+	move,
+	guard,
+	guardArea,
+	attack,
+	advance,
+
+	castSpell,
+	useAbility,
+
+	surrender,
+
+	chatMessage,
+}
+
 enum CommandQueueing{
 	none,
 	post,
@@ -22309,6 +22308,112 @@ struct Command(B){
 	ChatMessage!B chatMessage;
 }
 
+void placeStructure(B)(ObjectState!B state,ref Structure ntt){
+	import nttData;
+	auto sacBuilding=SacBuilding!B.get(ntt.tag);
+	enforce(!!sacBuilding);
+	enforce(!sacBuilding.isAltar||sacBuilding.components.length<=10);
+	auto flags=ntt.flags&~Flags.damaged&~ntt.flags.destroyed;
+	auto facing=2*pi!float/360.0f*ntt.facing;
+	auto side=ntt.side;
+	if(side<0||side>=32) side=31; // TODO: investigate. e.g. EM-Volcano Teamplay has side 117114099.
+	auto buildingId=state.addObject(Building!B(sacBuilding,side,flags,facing));
+	assert(!!buildingId);
+	if(ntt.id !in state.triggers.objectIds) // e.g. for some reason, the two altars on ferry have the same id
+		state.triggers.associateId(ntt.id,buildingId);
+	auto position=Vector3f(ntt.x,ntt.y,ntt.z);
+	auto ci=cast(int)(position.x/10+0.5);
+	auto cj=cast(int)(position.y/10+0.5);
+	import bldg;
+	if(sacBuilding.flags&BldgFlags.ground){
+		auto ground=sacBuilding.ground;
+		auto n=state.map.n,m=state.map.m;
+		foreach(j;max(0,cj-4)..min(n,cj+4)){
+			foreach(i;max(0,ci-4)..min(m,ci+4)){
+				auto dj=j-(cj-4), di=i-(ci-4);
+				if(ground[dj][di])
+					state.map.tiles[j][i]=ground[dj][di];
+			}
+		}
+	}
+	state.buildingById!((ref Building!B building){
+			if(ntt.flags&Flags.damaged) building.health/=10.0f;
+			if(ntt.flags&Flags.destroyed) building.health=0.0f;
+			foreach(ref component;sacBuilding.components){
+				auto curObj=SacObject!B.getBLDG(ntt.flags&Flags.destroyed&&component.destroyed!="\0\0\0\0"?component.destroyed:component.tag);
+				auto offset=Vector3f(component.x,component.y,component.z);
+				offset=rotate(facingQuaternion(building.facing), offset);
+				auto cposition=position+offset;
+				if(!state.isOnGround(cposition)) continue;
+				cposition.z=state.getGroundHeight(cposition);
+				auto rotation=facingQuaternion(2*pi!float/360.0f*(ntt.facing+component.facing));
+				building.componentIds~=state.addObject(StaticObject!B(curObj,building.id,cposition,rotation,1.0f,0));
+			}
+			if(ntt.base){
+				enforce(ntt.base in state.triggers.objectIds);
+				state.buildingById!((ref manafount,state){ putOnManafount(building,manafount,state); },(){})(state.triggers.objectIds[ntt.base],state);
+			}
+			building.loopingSoundSetup(state);
+		},(){ assert(0); })(buildingId);
+}
+
+void placeNTT(B,T)(ObjectState!B state,ref T ntt) if(is(T==Creature)||is(T==Wizard)){
+	auto curObj=SacObject!B.getSAXS!T(ntt.tag);
+	auto position=Vector3f(ntt.x,ntt.y,ntt.z);
+	bool onGround=state.isOnGround(position);
+	if(onGround)
+		position.z=state.getGroundHeight(position);
+	auto rotation=facingQuaternion(ntt.facing);
+	auto mode=ntt.flags & Flags.corpse ? CreatureMode.dead : CreatureMode.idle;
+	auto movement=curObj.mustFly?CreatureMovement.flying:CreatureMovement.onGround;
+	if(movement==CreatureMovement.onGround && !onGround)
+		movement=curObj.canFly?CreatureMovement.flying:CreatureMovement.tumbling;
+	if(mode==CreatureMode.dead) movement=onGround?CreatureMovement.onGround:CreatureMovement.tumbling;
+	auto creatureState=CreatureState(mode, movement, ntt.facing);
+	auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState,curObj.creatureStats(ntt.flags),CreatureStatistics(),ntt.side);
+	obj.setCreatureState(state);
+	obj.updateCreaturePosition(state);
+	/+do{
+	 import std.random: uniform;
+	 state=cast(AnimationState)uniform(0,64);
+	 }while(!curObj.hasAnimationState(state));+/
+	auto id=state.addObject(obj);
+	if(ntt.id !in state.triggers.objectIds) // e.g. for some reason, the two altars on ferry have the same id
+		state.triggers.associateId(ntt.id,id);
+	static if(is(T==Wizard)){
+		auto spellbook=getDefaultSpellbook!B(ntt.allegiance);
+		string name=null; // unnamed wizard
+		float experience=0.0f;
+		int minLevel=ntt.level, maxLevel=ntt.level; // TODO: correct?
+		float xpRate=1.0f; // TODO: correct?
+		state.addWizard(makeWizard(id,name,ntt.level,ntt.souls,experience,minLevel,maxLevel,xpRate,move(spellbook),state));
+	}
+}
+void placeSpirit(B)(ObjectState!B state,ref Spirit spirit){
+	auto position=Vector3f(spirit.x,spirit.y,spirit.z);
+	bool onGround=state.isOnGround(position);
+	if(onGround)
+		position.z=state.getGroundHeight(position);
+	state.addObject(Soul!B(1,position,SoulState.normal));
+}
+void placeWidgets(B)(ObjectState!B state,Widgets w){
+	auto curObj=SacObject!B.getWIDG(w.tag);
+	foreach(pos;w.positions){
+		auto position=Vector3f(pos[0],pos[1],0);
+		if(!state.isOnGround(position)) continue;
+		position.z=state.getGroundHeight(position);
+		// original engine screws up widget rotations
+		// values look like angles in degrees, but they are actually radians
+		auto rotation=facingQuaternion(-pos[2]);
+		state.addFixed(FixedObject!B(curObj,position,rotation));
+	}
+}
+
+void initMap(B)(ObjectState!B state){
+	foreach(widgets;state.map.ntts.widgetss) // TODO: improve engine to be able to handle this
+		state.placeWidgets(widgets);
+}
+
 struct GameInit(B){
 	struct Slot{
 		int wizardIndex=-1;
@@ -22339,157 +22444,28 @@ struct GameInit(B){
 	bool enableParticles=true;
 }
 
-bool playAudio=true;
-final class GameState(B){
-	ObjectState!B lastCommitted;
-	ObjectState!B current;
-	ObjectState!B next;
-	Array!(Array!(Command!B)) commands;
-	this(SacMap!B map)in{
-		assert(!!map);
-	}do{
-		auto sides=new Sides!B(map.sids);
-		auto proximity=new Proximity!B();
-		auto pathFinder=new PathFinder!B(map);
-		auto triggers=new Triggers!B(map.trig);
-		this(map,sides,proximity,pathFinder,triggers);
-	}
-	this(SacMap!B map,Sides!B sides,Proximity!B proximity,PathFinder!B pathFinder,Triggers!B triggers){
-		auto current=new ObjectState!B(map,sides,proximity,pathFinder,triggers);
-		auto next=new ObjectState!B(map,sides,proximity,pathFinder,triggers);
-		auto lastCommitted=new ObjectState!B(map,sides,proximity,pathFinder,triggers);
-		this(current,next,lastCommitted);
-	}
-	this(ObjectState!B current,ObjectState!B next,ObjectState!B lastCommitted){
-		this.current=current;
-		this.next=next;
-		this.lastCommitted=lastCommitted;
-		commands.length=1;
-	}
-	void placeStructure(ref Structure ntt){
-		import nttData;
-		auto sacBuilding=SacBuilding!B.get(ntt.tag);
-		enforce(!!sacBuilding);
-		enforce(!sacBuilding.isAltar||sacBuilding.components.length<=10);
-		auto flags=ntt.flags&~Flags.damaged&~ntt.flags.destroyed;
-		auto facing=2*pi!float/360.0f*ntt.facing;
-		auto side=ntt.side;
-		if(side<0||side>=32) side=31; // TODO: investigate. e.g. EM-Volcano Teamplay has side 117114099.
-		auto buildingId=current.addObject(Building!B(sacBuilding,side,flags,facing));
-		assert(!!buildingId);
-		if(ntt.id !in current.triggers.objectIds) // e.g. for some reason, the two altars on ferry have the same id
-			current.triggers.associateId(ntt.id,buildingId);
-		auto position=Vector3f(ntt.x,ntt.y,ntt.z);
-		auto ci=cast(int)(position.x/10+0.5);
-		auto cj=cast(int)(position.y/10+0.5);
-		import bldg;
-		if(sacBuilding.flags&BldgFlags.ground){
-			auto ground=sacBuilding.ground;
-			auto n=current.map.n,m=current.map.m;
-			foreach(j;max(0,cj-4)..min(n,cj+4)){
-				foreach(i;max(0,ci-4)..min(m,ci+4)){
-					auto dj=j-(cj-4), di=i-(ci-4);
-					if(ground[dj][di])
-						current.map.tiles[j][i]=ground[dj][di];
-				}
-			}
-		}
-		current.buildingById!((ref Building!B building){
-			if(ntt.flags&Flags.damaged) building.health/=10.0f;
-			if(ntt.flags&Flags.destroyed) building.health=0.0f;
-			foreach(ref component;sacBuilding.components){
-				auto curObj=SacObject!B.getBLDG(ntt.flags&Flags.destroyed&&component.destroyed!="\0\0\0\0"?component.destroyed:component.tag);
-				auto offset=Vector3f(component.x,component.y,component.z);
-				offset=rotate(facingQuaternion(building.facing), offset);
-				auto cposition=position+offset;
-				if(!current.isOnGround(cposition)) continue;
-				cposition.z=current.getGroundHeight(cposition);
-				auto rotation=facingQuaternion(2*pi!float/360.0f*(ntt.facing+component.facing));
-				building.componentIds~=current.addObject(StaticObject!B(curObj,building.id,cposition,rotation,1.0f,0));
-			}
-			if(ntt.base){
-				enforce(ntt.base in current.triggers.objectIds);
-				current.buildingById!((ref manafount,state){ putOnManafount(building,manafount,state); },(){})(current.triggers.objectIds[ntt.base],current);
-			}
-			building.loopingSoundSetup(current);
-		},(){ assert(0); })(buildingId);
-	}
+struct SlotInfo{
+	int controlledSide=-1;
+	int wizard=0;
+}
 
-	void placeNTT(T)(ref T ntt) if(is(T==Creature)||is(T==Wizard)){
-		auto curObj=SacObject!B.getSAXS!T(ntt.tag);
-		auto position=Vector3f(ntt.x,ntt.y,ntt.z);
-		bool onGround=current.isOnGround(position);
-		if(onGround)
-			position.z=current.getGroundHeight(position);
-		auto rotation=facingQuaternion(ntt.facing);
-		auto mode=ntt.flags & Flags.corpse ? CreatureMode.dead : CreatureMode.idle;
-		auto movement=curObj.mustFly?CreatureMovement.flying:CreatureMovement.onGround;
-		if(movement==CreatureMovement.onGround && !onGround)
-			movement=curObj.canFly?CreatureMovement.flying:CreatureMovement.tumbling;
-		if(mode==CreatureMode.dead) movement=onGround?CreatureMovement.onGround:CreatureMovement.tumbling;
-		auto creatureState=CreatureState(mode, movement, ntt.facing);
-		auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState,curObj.creatureStats(ntt.flags),CreatureStatistics(),ntt.side);
-		obj.setCreatureState(current);
-		obj.updateCreaturePosition(current);
-		/+do{
-			import std.random: uniform;
-			state=cast(AnimationState)uniform(0,64);
-		}while(!curObj.hasAnimationState(state));+/
-		auto id=current.addObject(obj);
-		if(ntt.id !in current.triggers.objectIds) // e.g. for some reason, the two altars on ferry have the same id
-			current.triggers.associateId(ntt.id,id);
-		static if(is(T==Wizard)){
-			auto spellbook=getDefaultSpellbook!B(ntt.allegiance);
-			string name=null; // unnamed wizard
-			float experience=0.0f;
-			int minLevel=ntt.level, maxLevel=ntt.level; // TODO: correct?
-			float xpRate=1.0f; // TODO: correct?
-			current.addWizard(makeWizard(id,name,ntt.level,ntt.souls,experience,minLevel,maxLevel,xpRate,move(spellbook),current));
-		}
-	}
-	void placeSpirit(ref Spirit spirit){
-		auto position=Vector3f(spirit.x,spirit.y,spirit.z);
-		bool onGround=current.isOnGround(position);
-		if(onGround)
-			position.z=current.getGroundHeight(position);
-		current.addObject(Soul!B(1,position,SoulState.normal));
-	}
-	void placeWidgets(Widgets w){
-		auto curObj=SacObject!B.getWIDG(w.tag);
-		foreach(pos;w.positions){
-			auto position=Vector3f(pos[0],pos[1],0);
-			if(!current.isOnGround(position)) continue;
-			position.z=current.getGroundHeight(position);
-			// original engine screws up widget rotations
-			// values look like angles in degrees, but they are actually radians
-			auto rotation=facingQuaternion(-pos[2]);
-			current.addFixed(FixedObject!B(curObj,position,rotation));
-		}
-	}
-
-	void initMap(){
-		foreach(widgets;current.map.ntts.widgetss) // TODO: improve engine to be able to handle this
-			placeWidgets(widgets);
-	}
-
-	struct SlotInfo{ int controlledSide=-1; int wizard=0; }
-	Array!SlotInfo slots;
-	void initGame(GameInit!B gameInit){ // returns id of controlled wizard
-		current.settings.gameMode=gameInit.gameMode;
-		foreach(ref structure;current.map.ntts.structures)
-			placeStructure(structure);
-		foreach(ref wizard;current.map.ntts.wizards)
-			placeNTT(wizard);
-		foreach(ref spirit;current.map.ntts.spirits)
-			placeSpirit(spirit); // TODO:
-		foreach(ref creature;current.map.ntts.creatures)
-			foreach(_;0..gameInit.replicateCreatures) placeNTT(creature);
-		current.eachMoving!((ref MovingObject!B object, ObjectState!B state){
+void initGame(B)(ObjectState!B state,ref Array!SlotInfo slots,GameInit!B gameInit){ // returns id of controlled wizard
+	state.settings.gameMode=gameInit.gameMode;
+	foreach(ref structure;state.map.ntts.structures)
+		state.placeStructure(structure);
+	foreach(ref wizard;state.map.ntts.wizards)
+		state.placeNTT(wizard);
+	foreach(ref spirit;state.map.ntts.spirits)
+		state.placeSpirit(spirit);
+	foreach(ref creature;state.map.ntts.creatures)
+		foreach(_;0..gameInit.replicateCreatures)
+			state.placeNTT(creature);
+	state.eachMoving!((ref MovingObject!B object, ObjectState!B state){
 			if(object.creatureState.mode==CreatureMode.dead) object.createSoul(state);
-		})(current);
-		if(gameInit.protectManafounts){
-			foreach(i;0..gameInit.protectManafounts) current.uniform(2);
-			current.eachBuilding!((bldg,state){
+		})(state);
+	if(gameInit.protectManafounts){
+		foreach(i;0..gameInit.protectManafounts) state.uniform(2);
+		state.eachBuilding!((bldg,state){
 				if(bldg.componentIds.length==0||!bldg.isManafount) return;
 				auto bpos=bldg.position(state);
 				import nttData;
@@ -22504,30 +22480,63 @@ final class GameState(B){
 					auto facing=state.uniform(-pi!float,pi!float);
 					state.placeCreature(tag,flags,side,position,facing);
 				}
-			})(current);
+			})(state);
+	}
+	if(gameInit.terrainSineWave) state.addEffect(TestDisplacement());
+	if(!gameInit.enableParticles) state.disableParticles();
+	slots.length=gameInit.slots.length;
+	slots.data[]=SlotInfo.init;
+	Array!int slotForWiz;
+	slotForWiz.length=gameInit.wizards.length;
+	slotForWiz.data[]=-1;
+	foreach(i,ref slot;gameInit.slots)
+		if(slot.wizardIndex!=-1) slotForWiz[slot.wizardIndex]=cast(int)i;
+	foreach(wizardIndex,ref wiz;gameInit.wizards){
+		auto wizard=SacObject!B.getSAXS!Wizard(wiz.tag);
+		//printWizardStats(wizard);
+		auto flags=0;
+		auto wizId=state.placeWizard(wizard,wiz.name,flags,wiz.side,wiz.level,wiz.souls,wiz.experience,wiz.minLevel,wiz.maxLevel,wiz.xpRate,wiz.spellbook);
+		auto slot=slotForWiz[wizardIndex];
+		if(slot!=-1){
+			slots[slot].controlledSide=wiz.side;
+			slots[slot].wizard=wizId;
 		}
-		if(gameInit.terrainSineWave) current.addEffect(TestDisplacement());
-		if(!gameInit.enableParticles) current.disableParticles();
-		slots.length=gameInit.slots.length;
-		slots.data[]=SlotInfo.init;
-		Array!int slotForWiz;
-		slotForWiz.length=gameInit.wizards.length;
-		slotForWiz.data[]=-1;
-		foreach(i,ref slot;gameInit.slots)
-			if(slot.wizardIndex!=-1) slotForWiz[slot.wizardIndex]=cast(int)i;
-		foreach(wizardIndex,ref wiz;gameInit.wizards){
-			auto wizard=SacObject!B.getSAXS!Wizard(wiz.tag);
-			//printWizardStats(wizard);
-			auto flags=0;
-			auto wizId=current.placeWizard(wizard,wiz.name,flags,wiz.side,wiz.level,wiz.souls,wiz.experience,wiz.minLevel,wiz.maxLevel,wiz.xpRate,wiz.spellbook);
-			auto slot=slotForWiz[wizardIndex];
-			if(slot!=-1){
-				slots[slot].controlledSide=wiz.side;
-				slots[slot].wizard=wizId;
-			}
-		}
-		foreach(ref stanceSetting;gameInit.stanceSettings)
-			current.sides.setStance(stanceSetting.from,stanceSetting.towards,stanceSetting.stance);
+	}
+	foreach(ref stanceSetting;gameInit.stanceSettings)
+		state.sides.setStance(stanceSetting.from,stanceSetting.towards,stanceSetting.stance);
+}
+
+bool playAudio=true;
+final class GameState(B){
+	ObjectState!B lastCommitted;
+	ObjectState!B current;
+	Array!(Array!(Command!B)) commands;
+	this(SacMap!B map)in{
+		assert(!!map);
+	}do{
+		auto sides=new Sides!B(map.sids);
+		auto proximity=new Proximity!B();
+		auto pathFinder=new PathFinder!B(map);
+		auto triggers=new Triggers!B(map.trig);
+		this(map,sides,proximity,pathFinder,triggers);
+	}
+	this(SacMap!B map,Sides!B sides,Proximity!B proximity,PathFinder!B pathFinder,Triggers!B triggers){
+		auto current=new ObjectState!B(map,sides,proximity,pathFinder,triggers);
+		auto lastCommitted=new ObjectState!B(map,sides,proximity,pathFinder,triggers);
+		this(current,lastCommitted);
+	}
+	this(ObjectState!B current,ObjectState!B lastCommitted){
+		this.current=current;
+		this.lastCommitted=lastCommitted;
+		commands.length=1;
+	}
+
+	void initMap(){
+		current.initMap();
+	}
+	Array!SlotInfo slots;
+	void initGame(GameInit!B gameInit){
+		current.initGame(slots,move(gameInit));
 	}
 
 	void step(){
@@ -22605,5 +22614,4 @@ final class GameState(B){
 		playAudio=false;
 		simulateTo(currentFrame);
 	}
-
 }
