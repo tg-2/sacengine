@@ -22511,18 +22511,18 @@ final class GameState(B){
 	ObjectState!B lastCommitted;
 	ObjectState!B current;
 	Array!(Array!(Command!B)) commands;
-	this(SacMap!B map)in{
+	this(SacMap!B map,bool supportRollback)in{
 		assert(!!map);
 	}do{
 		auto sides=new Sides!B(map.sids);
 		auto proximity=new Proximity!B();
 		auto pathFinder=new PathFinder!B(map);
 		auto triggers=new Triggers!B(map.trig);
-		this(map,sides,proximity,pathFinder,triggers);
+		this(map,sides,proximity,pathFinder,triggers,supportRollback);
 	}
-	this(SacMap!B map,Sides!B sides,Proximity!B proximity,PathFinder!B pathFinder,Triggers!B triggers){
+	this(SacMap!B map,Sides!B sides,Proximity!B proximity,PathFinder!B pathFinder,Triggers!B triggers,bool supportRollback){
 		auto current=new ObjectState!B(map,sides,proximity,pathFinder,triggers);
-		auto lastCommitted=new ObjectState!B(map,sides,proximity,pathFinder,triggers);
+		auto lastCommitted=supportRollback?new ObjectState!B(map,sides,proximity,pathFinder,triggers):current;
 		this(current,lastCommitted);
 	}
 	this(ObjectState!B current,ObjectState!B lastCommitted){

@@ -1476,7 +1476,7 @@ final class Network(B){
 						try{
 							static if(cmd==PacketType.command) auto command=fromNetwork!B(p.networkCommand);
 							else auto command=fromNetworkRaw!B(p.networkCommand,rawData);
-							if(controller.committedFrame<=p.frame){
+							if(controller.state&&controller.state.lastCommitted.frame<=p.frame){
 								if(isHost){
 									if(!players[sender].allowedToControlSide(command.side,controller)){
 										report(sender,"sent an unauthorized command");
@@ -1509,7 +1509,7 @@ final class Network(B){
 									return false;
 								}
 							}else{
-								stderr.writeln("warning: invalid command ignored (frame: ",p.frame,", committed: ",controller.committedFrame,").");
+								stderr.writeln("warning: invalid command ignored (frame: ",p.frame,", committed: ",controller.state.lastCommitted.frame,").");
 								return false;
 							}
 						}catch(Exception e){

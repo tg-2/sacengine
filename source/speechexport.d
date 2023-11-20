@@ -13,7 +13,8 @@ void exportSpeech(B)(ref Options options){
 		}
 		return;
 	}
-	auto state=new GameState!B(loadSacMap!B(options.map));
+	enum supportRollback=false;
+	auto state=new GameState!B(loadSacMap!B(options.map),supportRollback);
 	import lobby:gameInit;
 	state.initGame(gameInit(state.current.sides,(Settings[]).init,options));
 	auto triggers=state.current.triggers;

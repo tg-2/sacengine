@@ -203,7 +203,8 @@ class Lobby(B){
 		pathFinder=playback.pathFinder;
 		triggers=playback.triggers;
 		options.mapHash=map.crc32;
-		gameState=new GameState!B(map,sides,proximity,pathFinder,triggers);
+		enum supportRollback=false;
+		gameState=new GameState!B(map,sides,proximity,pathFinder,triggers,supportRollback);
 		gameState.commands=playback.commands;
 		if(gameState.commands.length<frame+1) gameState.commands.length=frame+1;
 		gameState.initMap();
@@ -377,7 +378,8 @@ class Lobby(B){
 				proximity=new Proximity!B();
 				pathFinder=new PathFinder!B(map);
 				triggers=new Triggers!B(map.trig);
-				gameState=new GameState!B(map,sides,proximity,pathFinder,triggers);
+				auto supportRollback=network !is null;
+				gameState=new GameState!B(map,sides,proximity,pathFinder,triggers,supportRollback);
 				gameState.initMap();
 				gameState.commit();
 			}

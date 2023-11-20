@@ -14,7 +14,6 @@ final class Controller(B){
 	int controlledSlot;
 	int controlledSide;
 	int commandId=0;
-	int committedFrame;
 	int lastCheckSynch=-1;
 	int firstUpdatedFrame;
 	int currentFrame;
@@ -25,7 +24,6 @@ final class Controller(B){
 		this.controlledSide=controlledSlot==-1?-1:state.slots[controlledSlot].controlledSide;
 		this.state=state;
 		this.network=network;
-		committedFrame=state.lastCommitted.frame;
 		currentFrame=state.current.frame;
 		firstUpdatedFrame=currentFrame;
 		this.recording=recording;
@@ -40,7 +38,7 @@ final class Controller(B){
 	void addCommand(int frame,Command!B command)in{
 		assert(command.id==0);
 		assert(!network||network.playing||command.type==CommandType.surrender);
-		assert(committedFrame<=frame);
+		assert(state.lastCommitted.frame<=frame);
 	}do{
 		if(!isControllingSide(command.side)){
 			bool observerChat=command.side==-1&&command.type==CommandType.chatMessage;
@@ -68,7 +66,7 @@ final class Controller(B){
 	}
 	void addExternalCommand(int frame,Command!B command)in{
 		import std.conv: text;
-		assert(committedFrame<=frame,text(committedFrame," ",frame," ",command));
+		assert(state.lastCommitted.frame<=frame,text(state.lastCommitted.frame," ",frame," ",command));
 	}do{
 		// TODO: check if player that issued the command is allowed to do so
 		firstUpdatedFrame=min(firstUpdatedFrame,frame);
@@ -134,7 +132,7 @@ final class Controller(B){
 	void updateCommitted()in{
 		assert(!!network);
 	}do{
-		committedFrame=network.committedFrame;
+		auto committedFrame=network.committedFrame;
 		if(!network.isHost&&(network.desynched||network.lateJoining)) return; // avoid simulating entire game after rejoin
 		import std.conv: text;
 		enforce(state.lastCommitted.frame<=committedFrame,text(state.lastCommitted.frame," ",committedFrame," ",network.players.map!((ref p)=>p.committedFrame)," ",network.activePlayerIds," ",network.players.map!((ref p)=>p.status)));
@@ -219,7 +217,6 @@ final class Controller(B){
 					enforce(firstUpdatedFrame==currentFrame);
 					if(!network.isHost){
 						state.lastCommitted.copyFrom(state.current);
-						committedFrame=currentFrame;
 						/+synchState.copyFrom(state.current);
 						lastConfirmSynch=currentFrame;+/
 					}
@@ -229,7 +226,7 @@ final class Controller(B){
 				}
 				if(network.isHost && network.resynched){
 					updateCommitted();
-					enforce(committedFrame==currentFrame);
+					enforce(state.lastCommitted.frame==currentFrame);
 					import std.conv: text;
 					enforce(state.lastCommitted.hash==state.current.hash,text(state.lastCommitted.hash," ",state.current.hash));
 					network.load();
@@ -254,7 +251,7 @@ final class Controller(B){
 				return true; // ignore passed time in next frame
 			}else if(network.pauseOnDrop&&network.anyonePending) return true;
 			network.acceptingNewConnections=true;
-		}else committedFrame=currentFrame;
+		}else assert(state.lastCommitted.frame==state.current.frame);
 		return false;
 	}
 
@@ -282,9 +279,9 @@ final class Controller(B){
 			playAudio=false;
 			updateCommitted();
 			updateNetworkGameState();
-			if(!network.isHost&&lastCheckSynch<committedFrame){
+			if(!network.isHost&&lastCheckSynch<state.lastCommitted.frame){
 				network.checkSynch(state.lastCommitted.frame,state.lastCommitted.hash);
-				lastCheckSynch=committedFrame;
+				lastCheckSynch=state.lastCommitted.frame;
 			}
 		}else if(playback){
 			if(auto replacement=playback.stateReplacement(state.current.frame)){
