@@ -24,7 +24,6 @@ final class Controller(B){
 		this.network=network;
 		this.recording=recording;
 		this.playback=playback;
-		//initSynchState();
 	}
 	bool isControllingSide(int side){
 		if(network&&!network.players[network.me].isControllingState)
@@ -76,17 +75,6 @@ final class Controller(B){
 		assert(network&&!network.isHost);
 	}do{
 		state.replaceState(serialized);
-		/+if(synchState.frame!=0){
-			synchState.update(state.commands[synchState.frame].data);
-			lastConfirmSynch=synchState.frame;
-			synchState.serialized(&network.logDesynch);
-			import std.conv:text;
-			while(synchState.frame<state.current.frame){
-				synchState.update(state.commands[synchState.frame].data);
-			}
-			enforce(synchState.frame==state.current.frame,text(synchState.frame," ",state.current.frame));
-			writeln("SYNCHSTATE: ",synchState.frame," ",synchState.hash," CURRENTSTATE: ",state.current.frame," ",state.current.hash);
-		}+/
 		import serialize_;
 		if(network.logDesynch_) state.lastCommitted.serialized(&network.logDesynch); // TODO: don't log if late join
 		if(recording) recording.replaceState(state.current,state.commands);
@@ -95,25 +83,6 @@ final class Controller(B){
 	void logDesynch(int side,scope ubyte[] serialized){
 		if(recording) try{ recording.logDesynch(side,serialized,state.current); }catch(Exception e){ stderr.writeln("bad desynch log: ",e.msg); }
 	}
-	/+int lastConfirmSynch=-1;
-	ObjectState!B synchState;
-	void initSynchState(){
-		if(lastConfirmSynch==-1){
-			synchState=new ObjectState!B(state.lastCommitted.map,state.lastCommitted.sides,state.lastCommitted.proximity,state.lastCommitted.pathFinder,state.lastCommitted.triggers);
-			synchState.copyFrom(state.current);
-			lastConfirmSynch=state.current.frame;
-		}
-	}
-	void confirmSynch(int frame,int hash){
-		import std.conv: text;
-		enforce(synchState.frame<=lastConfirmSynch);
-		enforce(lastConfirmSynch<=frame,text(lastConfirmSynch," ",frame));
-		lastConfirmSynch=frame;
-		while(synchState.frame<frame){
-			synchState.update(state.commands[synchState.frame].data);
-		}
-		enforce(synchState.frame==frame && synchState.hash==hash,text("confirmed ",synchState.frame," ",synchState.hash,", but was ",hash));
-	}+/
 	void updateCommitted()in{
 		assert(!!network);
 	}do{
@@ -190,11 +159,8 @@ final class Controller(B){
 				if(network.stateResynched && network.players[network.me].status==PlayerStatus.stateResynched){
 					//writeln("STATE IS ACTUALLY AT FRAME: ",currentFrame);
 					enforce(state.currentReady);
-					if(!network.isHost){
+					if(!network.isHost)
 						state.commit();
-						/+synchState.copyFrom(state.current);
-						lastConfirmSynch=currentFrame;+/
-					}
 					if(network.players[network.me].committedFrame<state.currentFrame)
 						network.commit(state.currentFrame);
 					network.updateStatus(PlayerStatus.resynched);
@@ -279,7 +245,6 @@ final class Controller(B){
 					writeln("their state was replaced:");
 					import diff;
 					diffStates(desynch,state.current);
-					//enforce(0);
 				}
 			}
 		}
