@@ -119,12 +119,6 @@ final class Controller(B){
 	bool updateNetwork(){
 		if(network){
 			network.update(this);
-			if(state.firstUpdatedFrame<state.current.frame){
-				// TODO: save multiple states, pick most recent with frame<=firstUpdatedFrame?
-				import std.conv: text;
-				enforce(state.committedFrame<=state.firstUpdatedFrame,text(state.committedFrame," ",state.firstUpdatedFrame," ",state.currentFrame));
-				state.rollback();
-			}
 			if(network.isHost){ // handle new connections
 				network.synchronizeMap(null);
 				if(network.hasGameInitData){
@@ -206,6 +200,12 @@ final class Controller(B){
 		playAudio=false;
 		scope(exit) playAudio=oldPlayAudio;
 		if(updateNetwork()) return true;
+		if(state.firstUpdatedFrame<state.current.frame){
+			// TODO: save multiple states, pick most recent with frame<=firstUpdatedFrame?
+			import std.conv: text;
+			enforce(state.committedFrame<=state.firstUpdatedFrame,text(state.committedFrame," ",state.firstUpdatedFrame," ",state.currentFrame));
+			state.rollback();
+		}
 		while(state.current.frame<state.currentFrame){
 			state.step();
 			if(updateNetwork()) return true;
