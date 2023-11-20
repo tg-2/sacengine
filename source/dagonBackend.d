@@ -1058,8 +1058,8 @@ final class SacScene: Scene{
 	void stateTestControl()in{
 		assert(!!state);
 	}do{
-		auto ostate=state.current;
-		//auto ostate=state.lastCommitted;
+		//auto ostate=state.current;
+		auto ostate=state.lastCommitted;
 		updateCameraTarget();
 		static void applyToMoving(alias f,B)(ObjectState!B state,Camera camera,Target target){
 			static void perform(T)(ref T obj,ObjectState!B state){ f(obj,state); }

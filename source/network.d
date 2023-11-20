@@ -1476,7 +1476,7 @@ final class Network(B){
 						try{
 							static if(cmd==PacketType.command) auto command=fromNetwork!B(p.networkCommand);
 							else auto command=fromNetworkRaw!B(p.networkCommand,rawData);
-							if(controller.state&&controller.state.lastCommitted.frame<=p.frame){
+							if(controller.state&&controller.state.committedFrame<=p.frame){
 								if(isHost){
 									if(!players[sender].allowedToControlSide(command.side,controller)){
 										report(sender,"sent an unauthorized command");
@@ -1488,7 +1488,7 @@ final class Network(B){
 								if(!players[sender].isControllingState){
 									if(command.chatMessage.senderSlot==players[sender].slot){
 										if(players[sender].settings.observerChat){
-											adjustChatMessage(command.chatMessage,controller.currentFrame);
+											adjustChatMessage(command.chatMessage,controller.state.currentFrame);
 											with(command.chatMessage){
 												slotFilter=-1;
 												content.type=ChatMessageType.observer;
@@ -1509,7 +1509,7 @@ final class Network(B){
 									return false;
 								}
 							}else{
-								stderr.writeln("warning: invalid command ignored (frame: ",p.frame,", committed: ",controller.state.lastCommitted.frame,").");
+								stderr.writeln("warning: invalid command ignored (frame: ",p.frame,", committed: ",controller.state.committedFrame,").");
 								return false;
 							}
 						}catch(Exception e){
