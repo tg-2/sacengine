@@ -22569,14 +22569,12 @@ final class GameState(B){
 	}do{
 		assert(lastCommitted.frame<=firstUpdatedFrame);
 		lastCommitted.update(commands[lastCommitted.frame].data);
-		if(firstUpdatedFrame+1==lastCommitted.frame)
-			firstUpdatedFrame+=1;
-		assert(lastCommitted.frame<=firstUpdatedFrame);
 	}
 	void updateCurrent(){
 		if(current.frame<committedFrame||current.frame==committedFrame&&firstUpdatedFrame<committedFrame)
 			current.copyFrom(lastCommitted); // restore invariant
 		currentFrame=max(currentFrame,committedFrame);
+		firstUpdatedFrame=max(firstUpdatedFrame,committedFrame);
 	}
 	bool currentReady(){ return currentFrame<=firstUpdatedFrame&&currentFrame==current.frame; }
 	void commit()in{
