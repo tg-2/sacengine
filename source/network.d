@@ -1214,11 +1214,18 @@ final class Network(B){
 		broadcast(Packet.commit(i,frame),[]);
 		players[i].committedFrame=max(players[i].committedFrame,frame);
 	}
+	bool canCommit(int frame){
+		return players[me].committedFrame<frame &&
+			players[me].status.among(PlayerStatus.playing,PlayerStatus.stateResynched);
+	}
 	void commit(int frame)in{
-		assert(players[me].status.among(PlayerStatus.playing,PlayerStatus.stateResynched)&&
-		       players[me].committedFrame<frame,text(playing," ",players[me].committedFrame," ",frame));
+		assert(canCommit(frame),text(playing," ",players[me].committedFrame," ",frame));
 	}do{
 		commit(me,frame);
+	}
+	void tryCommit(int frame){
+		if(canCommit(frame))
+			commit(frame);
 	}
 	enum AckHandler{
 		none,

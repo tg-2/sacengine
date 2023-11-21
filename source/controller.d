@@ -133,21 +133,19 @@ final class Controller(B){
 		if(recording) try{ recording.logDesynch(side,serialized,state.current); }catch(Exception e){ stderr.writeln("bad desynch log: ",e.msg); }
 	}
 	void updateCommittedTo(int frame){
-		if(network.players[network.me].committedFrame<currentFrame)
-			network.commit(currentFrame);
+		network.tryCommit(currentFrame);
 		auto committedFrame=network.committedFrame;
-		if(frame==-1) frame=committedFrame;
+		if(committedFrame<=state.committedFrame) return;
 		if(!network.isHost&&(network.desynched||network.lateJoining)) return; // avoid simulating entire game after rejoin
 		import std.conv: text;
-		enforce(state.committedFrame<=committedFrame,text(state.committedFrame," ",committedFrame," ",network.players.map!((ref p)=>p.committedFrame)," ",network.activePlayerIds," ",network.players.map!((ref p)=>p.status)));
+		//enforce(state.committedFrame<=committedFrame,text(state.committedFrame," ",committedFrame," ",network.players.map!((ref p)=>p.committedFrame)," ",network.activePlayerIds," ",network.players.map!((ref p)=>p.status)));
+		if(frame==-1) frame=committedFrame;
 		auto target=min(frame,committedFrame);
-		if(target<state.committedFrame)
-			return;
+		if(target<=state.committedFrame) return;
 		state.simulateCommittedTo!((){
 			if(recording) recording.stepCommitted(state.committed);
 			if(network.isHost) network.addSynch(state.committedFrame,state.committed.hash);
-			if(network.players[network.me].committedFrame<currentFrame)
-				network.commit(currentFrame);
+			network.tryCommit(currentFrame);
 			return false;
 		})(target);
 		enforce(state.committedFrame==target,
@@ -191,6 +189,7 @@ final class Controller(B){
 			if(network.hostDropped) return true;
 			if(network.lateJoining) network.updateStatus(PlayerStatus.desynched);
 			if(network.desynched){
+				updateCommitted();
 				if(network.pendingResynch) network.updateStatus(PlayerStatus.readyToResynch);
 				if(network.isHost && network.readyToResynch){
 					network.acceptingNewConnections=false;
@@ -211,12 +210,10 @@ final class Controller(B){
 					//writeln("STATE IS ACTUALLY AT FRAME: ",currentFrame);
 					if(!network.isHost)
 						state.commit();
-					if(network.players[network.me].committedFrame<state.currentFrame)
-						network.commit(state.currentFrame);
+					network.tryCommit(state.currentFrame);
 					network.updateStatus(PlayerStatus.resynched);
 				}
 				if(network.isHost && network.resynched){
-					updateCommitted();
 					enforce(state.currentReady);
 					import std.conv: text;
 					enforce(state.committed.frame==state.current.frame);
@@ -247,6 +244,7 @@ final class Controller(B){
 			}else if(network.pauseOnDrop&&network.anyonePending) return true;
 			network.acceptingNewConnections=true;
 		}else assert(state.committedFrame==state.current.frame);
+		updateCommitted(0);
 		return false;
 	}
 
