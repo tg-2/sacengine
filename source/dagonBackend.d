@@ -1161,8 +1161,8 @@ final class SacScene: Scene{
 			hudSoulFrame=0;
 	}
 
-	final void pause(){}
-	final void unpause(){ eventManager.update(); eventManager.update(); }
+	final void pause(){ if(controller) controller.pause(); }
+	final void unpause(){ if(controller) controller.unpause(); }
 
 	util.Array!(bool delegate()) logicCallbacks; // TODO: use interface instead?
 	void addLogicCallback(bool delegate() dg){
@@ -1194,6 +1194,11 @@ final class SacScene: Scene{
 
 	override void onLogicsUpdate(Duration dt){
 		assert(dt==1.dur!"seconds"/60);
+		updateHUD(dt);
+		if(!state) mouse.frame+=1;
+	}
+
+	override void onUpdate(Duration dt){
 		//writeln(DagonBackend.getTotalGPUMemory()," ",DagonBackend.getAvailableGPUMemory());
 		//writeln(eventManager.fps);
 		if(!mouse.menuMode){
@@ -1205,7 +1210,7 @@ final class SacScene: Scene{
 		updateLogicCallbacks();
 		if(state){
 			if(controller){
-				if(controller.step()) eventManager.update();
+				controller.run();
 				if(options.testLag){
 					if(controller.network){
 						if(controller.network.isHost&&controller.network.playing){
@@ -1228,9 +1233,6 @@ final class SacScene: Scene{
 				updateCameraPosition(dt,targetFacing!=camera.lastTargetFacing,mouse.dragging);
 				camera.lastTargetFacing=targetFacing;
 			}
-			updateHUD(dt);
-		}else{ // (no state)
-			mouse.frame+=1;
 		}
 		foreach(sac;sacs.data){
 			static totalTime=Duration.zero;
@@ -1239,6 +1241,9 @@ final class SacScene: Scene{
 			import animations;
 			// if(sac.numFrames(cast(AnimationState)0)) sac.setFrame(cast(AnimationState)0,cast(size_t)(frame%sac.numFrames(cast(AnimationState)0))); // TODO: fix
 		}
+		if(audio&&state) audio.update(dt,fpview.viewMatrix,state.current);
+		updateCursor(dt);
+		super.onUpdate(dt);
 	}
 	bool mouseTargetValid(Target target){
 		if(mouse.status!=MouseStatus.icon||mouse.dragging) return true;
@@ -1434,11 +1439,6 @@ final class SacScene: Scene{
 		displacementDirty=hasDisplacement();
 	}
 
-	override void onUpdate(Duration dt){
-		super.onUpdate(dt);
-		if(audio&&state) audio.update(dt,fpview.viewMatrix,state.current);
-		updateCursor(dt);
-	}
 	AudioBackend!DagonBackend audio;
 	void initializeAudio(){
 		audio=New!(AudioBackend!DagonBackend)(options.volume,options.musicVolume,options.soundVolume);

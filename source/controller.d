@@ -3,8 +3,40 @@
 // https://www.gnu.org/licenses/gpl-3.0.txt
 
 import std.stdio, std.algorithm, std.exception;
+import std.datetime.stopwatch, std.conv;
+import core.time;
 import util: Array;
 import state, network, recording_;
+
+struct GameTimer{
+	Duration offset;
+	StopWatch sw;
+	void reset(){ offset=Duration.zero; sw.reset(); }
+	Duration peek(){ return offset+sw.peek(); }
+	bool paused=true;
+	void pause(){
+		if(paused) return;
+		sw.stop();
+		paused=true;
+	}
+	void start(){
+		if(!paused) return;
+		sw.start();
+		paused=false;
+	}
+	void adjust(Duration dur){ offset+=dur; }
+	void set(Duration dur){ offset=dur; sw.reset(); }
+	int _frame=0;
+	@property int frame(){
+		_frame=max(_frame,to!int(peek()*updateFPS/1.dur!"seconds"));
+		return _frame;
+	}
+	void setFrame(int frame){
+		set(((frame*10_000_000L+updateFPS-1)/updateFPS).dur!"hnsecs");
+		assert(offset*updateFPS/1.dur!"seconds"==frame);
+		_frame=frame;
+	}
+}
 
 
 final class Controller(B){
@@ -15,6 +47,8 @@ final class Controller(B){
 	int controlledSide;
 	int commandId=0;
 	int lastCheckSynch=-1;
+	GameTimer timer;
+	int currentFrame(){ return timer.frame; }
 	this(int controlledSlot,GameState!B state,Network!B network,Recording!B recording,Recording!B playback)in{
 		assert(controlledSlot==-1||0<=controlledSlot&&controlledSlot<state.slots.length);
 	}do{
@@ -25,6 +59,21 @@ final class Controller(B){
 		this.recording=recording;
 		this.playback=playback;
 	}
+
+	bool paused=false;
+	bool waitingOnNetwork=false;
+	void pause(){
+		paused=true;
+		timer.pause();
+		timer.setFrame(timer.frame);
+	}
+	void unpause(){
+		paused=false;
+		if(waitingOnNetwork) return;
+		timer.setFrame(state.currentFrame);
+		timer.start();
+	}
+
 	bool isControllingSide(int side){
 		if(network&&!network.players[network.me].isControllingState)
 			return false;
@@ -43,8 +92,8 @@ final class Controller(B){
 			}
 		}
 		command.id=++commandId;
-		state.addCommand(command);
-		auto frame=state.currentFrame;
+		auto frame=currentFrame;
+		state.addCommand(frame,command);
 		if(network) network.addCommand(frame,command);
 		if(recording) recording.addCommand(frame,command);
 		if(network && command.type==CommandType.surrender)
@@ -86,6 +135,8 @@ final class Controller(B){
 	void updateCommitted()in{
 		assert(!!network);
 	}do{
+		if(network.players[network.me].committedFrame<state.currentFrame)
+			network.commit(state.currentFrame);
 		auto committedFrame=network.committedFrame;
 		if(!network.isHost&&(network.desynched||network.lateJoining)) return; // avoid simulating entire game after rejoin
 		import std.conv: text;
@@ -185,24 +236,35 @@ final class Controller(B){
 			}else if(network.pauseOnDrop&&network.anyonePending) return true;
 			network.acceptingNewConnections=true;
 		}else assert(state.committedFrame==state.current.frame);
+		updateCommitted();
 		return false;
 	}
 
-	bool step(){
+	bool run(){
 		bool oldPlayAudio=playAudio;
 		//playAudio=state.firstUpdatedFrame<=state.currentFrame;
 		playAudio=false;
 		scope(exit) playAudio=oldPlayAudio;
-		if(updateNetwork()) return true;
-		if(state.applyCommands!(()=>updateNetwork())) return true;
+		if(updateNetwork()||state.applyCommands!(()=>updateNetwork())){
+			if(!waitingOnNetwork){
+				pause();
+				waitingOnNetwork=true;
+			}
+			return true;
+		}
+		if(waitingOnNetwork){
+			waitingOnNetwork=false;
+			unpause();
+		}
 		playAudio=oldPlayAudio;
-		state.step();
-		if(recording){
-			recording.step();
-			if(!network) recording.stepCommitted(state.current);
+		while(state.currentFrame<currentFrame){
+			state.step();
+			if(recording){
+				recording.step();
+				if(!network) recording.stepCommitted(state.current);
+			}
 		}
 		if(network){
-			network.commit(state.currentFrame);
 			playAudio=false;
 			updateCommitted();
 			updateNetworkGameState();

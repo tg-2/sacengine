@@ -22895,7 +22895,8 @@ final class GameState(B){
 	void replaceState(scope ubyte[] serialized){ .replaceState(states,commands,serialized); }
 
 	void addCommand(int frame,Command!B command)in{
-		assert(frame>=committedFrame);
+		assert(command.id!=0);
+		assert(committedFrame<=frame);
 	}do{
 		if(command.side==-1&&command.type!=CommandType.chatMessage) return;
 		if(commands.length<=frame) commands.length=frame+1;
@@ -22903,11 +22904,6 @@ final class GameState(B){
 		if(!isSorted(commands[frame].data))
 			sort(commands[frame].data);
 		recordCommand(states,frame);
-	}
-	void addCommand(Command!B command)in{
-		assert(command.id!=0);
-	}do{
-		addCommand(currentFrame,command);
 	}
 }
 
