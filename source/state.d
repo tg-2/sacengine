@@ -22572,13 +22572,9 @@ final class GameState(B){
 		lastCommitted.copyFrom(current);
 	}
 	void rollback(){
-		rollback(lastCommitted);
-	}
-	private void rollback(ObjectState!B state)in{
-		assert(state.frame<=current.frame);
-	}do{
-		if(state is current) return;
-		current.copyFrom(state);
+		if(current is lastCommitted) return;
+		assert(lastCommitted.frame<=current.frame);
+		current.copyFrom(lastCommitted);
 		static if(B.hasAudio) B.updateAudioAfterRollback();
 	}
 	void addCommand(int frame,Command!B command)in{
@@ -22645,4 +22641,8 @@ bool simulateCommittedTo(alias f=void,B)(GameState!B state,int frame)in{
 		//playAudio=false;
 		return false;
 	}
+}
+
+bool applyCommands(alias f=void,B)(GameState!B state){
+	return state.simulateTo!f(state.currentFrame);
 }

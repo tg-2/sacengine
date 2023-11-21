@@ -33,7 +33,7 @@ final class Controller(B){
 	void addCommand(Command!B command)in{
 		assert(command.id==0);
 	}do{
-		if(network&&!network.playing&&command.type!=CommandType.surrender) return;
+		if(network&&!network.playing) return;
 		if(!isControllingSide(command.side)){
 			bool observerChat=command.side==-1&&command.type==CommandType.chatMessage;
 			if(!observerChat) return;
@@ -195,15 +195,13 @@ final class Controller(B){
 		playAudio=false;
 		scope(exit) playAudio=oldPlayAudio;
 		if(updateNetwork()) return true;
-		if(state.simulateTo!(()=>updateNetwork())(state.currentFrame))
-			return true;
+		if(state.applyCommands!(()=>updateNetwork())) return true;
 		playAudio=oldPlayAudio;
 		state.step();
 		if(recording){
 			recording.step();
 			if(!network) recording.stepCommitted(state.current);
 		}
-		assert(state.current.frame==state.currentFrame);
 		if(network){
 			network.commit(state.currentFrame);
 			playAudio=false;
