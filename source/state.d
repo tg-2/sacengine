@@ -22675,6 +22675,7 @@ private struct StateHistory(B){
 	}
 	void recordCommand(int frame){
 		auto index=frame-committedFrame;
+		assert(index>=0);
 		auto lastIndex=currentFrame-committedFrame;
 		assert(lastIndex<history.length);
 		foreach(i;index+1..lastIndex+1)
@@ -22700,7 +22701,7 @@ private struct StateHistory(B){
 			stepAt(commands,committedFrame);
 		}
 		assert(committedFrame<currentFrame);
-		assert(history[1].numPending==0);
+		assert(history[1].numPending==0,text(history.data.map!(h=>h.numPending)," ",committedFrame," ",currentFrame));
 		assert(currentFrame-committedFrame<history.length);
 		foreach(i;0..currentFrame-committedFrame)
 			swap(history[i],history[i+1]);
@@ -22736,6 +22737,8 @@ private struct StateHistory(B){
 	pragma(inline,true) ObjectState!B current(){ return history[currentFrame-committedFrame].state; };
 	pragma(inline,true) @property int committedFrame(){ return committed.frame; }
 	int currentFrame;
+
+	int combFrame=0;
 
 	static StateHistory!B make(SacMap!B map,Sides!B sides,Proximity!B proximity,PathFinder!B pathFinder,Triggers!B triggers,bool supportRollback){
 		Array!Entry history;
@@ -22811,8 +22814,35 @@ private bool simulateCommittedTo(alias f=void,B)(ref StateHistory!B states,ref A
 		return false;
 	}
 }
+
+private bool updateComb(alias f=void,B)(ref StateHistory!B states,ref Array!(Array!(Command!B)) commands){
+	with(states){
+		combFrame=max(combFrame,committedFrame);
+		if(combFrame>=currentFrame) combFrame=committedFrame;
+		int find(){
+			foreach(i;combFrame-committedFrame..currentFrame-committedFrame)
+				if(history[i+1].numPending!=history[i].numPending)
+					return i+committedFrame;
+			foreach(i;0..combFrame-committedFrame)
+				if(history[i+1].numPending!=history[i].numPending)
+					return i+committedFrame;
+			return -1;
+		}
+		combFrame=find();
+		if(combFrame==-1||combFrame>=currentFrame) return true;
+		//writeln("combing: ",committedFrame," ",combFrame," ",currentFrame);
+		stepAt(commands,combFrame);
+		return false;
+	}
+}
+
 private bool applyCommands(alias f=void,B)(ref StateHistory!B states,ref Array!(Array!(Command!B)) commands){
-	return simulateTo!f(states,commands,states.currentFrame);
+	// return simulateTo!f(states,commands,states.currentFrame); // fully simulate
+	foreach(i;0..16){
+		if(updateComb!f(states,commands)) return false;
+		static if(!is(f==void)) if(f()) return true;
+	}
+	return false;
 }
 
 private bool currentReady(B)(ref StateHistory!B states,ref Array!(Array!(Command!B)) commands){

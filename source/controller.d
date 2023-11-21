@@ -132,7 +132,7 @@ final class Controller(B){
 	void logDesynch(int side,scope ubyte[] serialized){
 		if(recording) try{ recording.logDesynch(side,serialized,state.current); }catch(Exception e){ stderr.writeln("bad desynch log: ",e.msg); }
 	}
-	void updateCommitted()in{
+	void updateCommitted(int limit=-1)in{
 		assert(!!network);
 	}do{
 		if(network.players[network.me].committedFrame<state.currentFrame)
@@ -141,12 +141,13 @@ final class Controller(B){
 		if(!network.isHost&&(network.desynched||network.lateJoining)) return; // avoid simulating entire game after rejoin
 		import std.conv: text;
 		enforce(state.committedFrame<=committedFrame,text(state.committedFrame," ",committedFrame," ",network.players.map!((ref p)=>p.committedFrame)," ",network.activePlayerIds," ",network.players.map!((ref p)=>p.status)));
+		auto cheaperCommitted=limit!=-1?min(state.committedFrame+limit,committedFrame):committedFrame;
 		state.simulateCommittedTo!((){
 			if(recording) recording.stepCommitted(state.committed);
 			if(network.isHost) network.addSynch(state.committedFrame,state.committed.hash);
 			return false;
-		})(committedFrame);
-		enforce(state.committedFrame==committedFrame,
+		})(cheaperCommitted);
+		enforce(state.committedFrame==cheaperCommitted,
 		        text(network.activePlayerIds," ",network.players.map!((ref p)=>p.committedFrame)," ",
 		             committedFrame," ",state.committedFrame));
 	}
