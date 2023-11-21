@@ -1478,7 +1478,7 @@ final class Network(B){
 							else auto command=fromNetworkRaw!B(p.networkCommand,rawData);
 							if(controller.state&&controller.state.committedFrame<=p.frame){
 								if(isHost){
-									if(!players[sender].allowedToControlSide(command.side,controller)){
+									if(!players[sender].allowedToControlSide(command.side,controller)||!players[sender].isControllingState){
 										report(sender,"sent an unauthorized command");
 										return false;
 									}

@@ -208,7 +208,6 @@ class Lobby(B){
 		gameState.commands=playback.commands;
 		if(gameState.commands.length<frame+1) gameState.commands.length=frame+1;
 		gameState.initMap();
-		gameState.commit();
 	}
 
 	bool canContinue(){ return state.among(LobbyState.offline, LobbyState.connected) && isHost && !toContinue && !playback; }
@@ -381,7 +380,6 @@ class Lobby(B){
 				auto supportRollback=network !is null;
 				gameState=new GameState!B(map,sides,proximity,pathFinder,triggers,supportRollback);
 				gameState.initMap();
-				gameState.commit();
 			}
 		}
 		if(!playback||network){

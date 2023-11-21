@@ -22513,7 +22513,11 @@ private struct TwoState(B){
 	pragma(inline,true) @property int currentFrame(){ return current.frame; }
 	int firstUpdatedFrame;
 
-	static TwoState!B make(B)(SacMap!B map,Sides!B sides,Proximity!B proximity,PathFinder!B pathFinder,Triggers!B triggers,bool supportRollback){
+	bool currentReady(){
+		return currentFrame<=firstUpdatedFrame;
+	}
+
+	static TwoState!B make(SacMap!B map,Sides!B sides,Proximity!B proximity,PathFinder!B pathFinder,Triggers!B triggers,bool supportRollback){
 		auto current=new ObjectState!B(map,sides,proximity,pathFinder,triggers);
 		auto committed=supportRollback?new ObjectState!B(map,sides,proximity,pathFinder,triggers):current;
 		auto firstUpdatedFrame=current.frame;
@@ -22521,11 +22525,10 @@ private struct TwoState(B){
 	}
 }
 
-alias Commands(B)=Array!(Array!(Command!B));
-
 private void initMap(B)(ref TwoState!B states){
 	with(states){
 		current.initMap();
+		committed.copyFrom(current);
 	}
 }
 private void initGame(B)(ref TwoState!B states,ref Array!SlotInfo slots,GameInit!B gameInit){
@@ -22555,8 +22558,10 @@ private bool simulateTo(alias f=void,B)(ref TwoState!B states,ref Array!(Array!(
 			static if(!is(f==void))
 				if(f()) return true;
 		}
-		// note: firstUpdatedFrame may be smaller than frame due to f() adding commands
-		assert(currentFrame==frame);
+		static if(is(f==void)){
+			assert(currentFrame==frame);
+			assert(currentReady);
+		}
 		return false;
 	}
 }
@@ -22599,9 +22604,13 @@ private bool applyCommands(alias f=void,B)(ref TwoState!B states,ref Array!(Arra
 }
 
 private bool currentReady(B)(ref TwoState!B states,ref Array!(Array!(Command!B)) commands){
-	with(states) return currentFrame<=firstUpdatedFrame;
+	with(states) return states.currentReady;
 }
-private void commit(B)(ref TwoState!B states,ref Array!(Array!(Command!B)) commands){
+private void commit(B)(ref TwoState!B states,ref Array!(Array!(Command!B)) commands)in{
+	with(states){
+		assert(currentReady);
+	}
+}do{
 	with(states){
 		committed.copyFrom(current);
 	}
@@ -22618,22 +22627,230 @@ private void rollback(B)(ref TwoState!B states,ref Array!(Array!(Command!B)) com
 private void replaceState(B)(ref TwoState!B states,ref Array!(Array!(Command!B)) commands,scope ubyte[] serialized){
 	with(states){
 		replaceState(current,commands,serialized);
+		static if(B.hasAudio) B.updateAudioAfterRollback();
 		firstUpdatedFrame=current.frame;
 	}
 }
 
-private void recordCommand(B)(ref  TwoState!B states,int frame){
+private void recordCommand(B)(ref TwoState!B states,int frame){
 	with(states){
 		firstUpdatedFrame=min(firstUpdatedFrame,frame);
 	}
 }
 
-alias States=TwoState;
+
+alias Commands(B)=Array!(Array!(Command!B));
+
+private struct StateHistory(B){
+	bool supportRollback;
+	static struct Entry{
+		ObjectState!B state;
+		int numPending=-1;
+	}
+	Array!Entry history;
+
+	bool stepAt(ref Commands!B commands,int frame){
+		if(frame==currentFrame)
+			currentFrame+=1;
+		if(!supportRollback){
+			assert(committedFrame==frame);
+			committed.update(commands[frame].data);
+			return true;
+		}
+		auto index=frame-committedFrame+1;
+		assert(0<index);
+		if(history.length<index+1)
+			history.length=index+1;
+		if(commands.length<frame+1)
+			commands.length=frame+1;
+		if(history[index].state is null)
+			history[index].state=makeState();
+		if(history[index].numPending!=history[index-1].numPending){
+			history[index].state.updateFrom(history[index-1].state,commands[frame].data);
+			assert(history[index].state.frame==frame+1);
+			history[index].numPending=history[index-1].numPending;
+			return true;
+		}
+		return false;
+	}
+	void recordCommand(int frame){
+		auto index=frame-committedFrame;
+		auto lastIndex=currentFrame-committedFrame;
+		assert(lastIndex<history.length);
+		foreach(i;index+1..lastIndex+1)
+			if(history[i].numPending!=-1)
+				history[i].numPending+=1;
+	}
+	bool currentReady(){
+		auto index=currentFrame-committedFrame;
+		return history[index].numPending==0;
+	}
+	void stepCommitted(ref Commands!B commands){ // TODO: use deque data structure?
+		auto currentFrame=this.currentFrame;
+		auto committedFrame=this.committedFrame;
+		if(committedFrame==-1){
+			assert(history.length==2&&currentFrame==0);
+			committed.copyFrom(current);
+		}else{
+			if(currentFrame==committedFrame){
+				this.currentFrame+=1;
+				committed.update(commands[committedFrame].data);
+				return;
+			}
+			stepAt(commands,committedFrame);
+		}
+		assert(committedFrame<currentFrame);
+		assert(history[1].numPending==0);
+		assert(currentFrame-committedFrame<history.length);
+		foreach(i;0..currentFrame-committedFrame)
+			swap(history[i],history[i+1]);
+		history[currentFrame-committedFrame].numPending=-1;
+		assert(history.length&&history[0].numPending==0);
+		assert(currentFrame==this.currentFrame);
+		assert(committedFrame+1==this.committedFrame,text(committedFrame," ",this.committedFrame));
+	}
+	bool rollback(){
+		if(currentFrame==committedFrame)
+			return false;
+		if(committedFrame==-1){
+			current.copyFrom(committed);
+			current.frame=currentFrame;
+			return true;
+		}
+		foreach(i;0..currentFrame-committedFrame)
+			history[i+1].numPending=-1;
+		currentFrame=committedFrame;
+		return true;
+	}
+	void replaceState(ref Commands!B commands,scope ubyte[] serialized){
+		auto index=currentFrame-committedFrame;
+		assert(index<history.length);
+		.replaceState(current,commands,serialized);
+		swap(history[0],history[index]);
+		foreach(i;0..index)
+			history[i+1].numPending=-1;
+		currentFrame=history[0].state.frame;
+	}
+
+	pragma(inline,true) ObjectState!B committed(){ return history[0].state; }
+	pragma(inline,true) ObjectState!B current(){ return history[currentFrame-committedFrame].state; };
+	pragma(inline,true) @property int committedFrame(){ return committed.frame; }
+	int currentFrame;
+
+	static StateHistory!B make(SacMap!B map,Sides!B sides,Proximity!B proximity,PathFinder!B pathFinder,Triggers!B triggers,bool supportRollback){
+		Array!Entry history;
+		auto current=new ObjectState!B(map,sides,proximity,pathFinder,triggers);
+		history~=Entry(current,0);
+		auto currentFrame=current.frame;
+		return StateHistory!B(supportRollback,move(history),currentFrame);
+	}
+	ObjectState!B makeState(){
+		auto committed=this.committed;
+		auto map=committed.map, sides=committed.sides, proximity=committed.proximity;
+		auto pathFinder=committed.pathFinder, triggers=committed.triggers;
+		return new ObjectState!B(map,sides,proximity,pathFinder,triggers);
+	}
+}
+
+private void initMap(B)(ref StateHistory!B states){
+	with(states){
+		current.initMap();
+		if(history.length==1){
+			history~=Entry(states.makeState(),0);
+			history[1].state.copyFrom(history[0].state);
+			history[0].state.frame=-1;
+		}
+	}
+}
+private void initGame(B)(ref StateHistory!B states,ref Array!SlotInfo slots,GameInit!B gameInit){
+	with(states){
+		current.initGame(slots,move(gameInit));
+	}
+}
+
+private void step(B)(ref StateHistory!B states,ref Array!(Array!(Command!B)) commands){
+	with(states){
+		stepAt(commands,currentFrame);
+	}
+}
+
+private bool simulateTo(alias f=void,B)(ref StateHistory!B states,ref Array!(Array!(Command!B)) commands,int frame){
+	with(states){
+		for(int updateFrame=committedFrame;updateFrame<frame;++updateFrame){
+			if(stepAt(commands,updateFrame)){
+				static if(!is(f==void))
+					if(f()) return true;
+			}
+			updateFrame=max(updateFrame,committedFrame);
+		}
+		static if(is(f==void)){
+			assert(currentFrame==frame);
+			assert(currentReady);
+		}
+		return false;
+	}
+}
+
+private void stepCommitted(B)(ref StateHistory!B states,ref Array!(Array!(Command!B)) commands){
+	with(states){
+		stepCommitted(commands);
+	}
+}
+
+private bool simulateCommittedTo(alias f=void,B)(ref StateHistory!B states,ref Array!(Array!(Command!B)) commands,int frame){
+	with(states){
+		if(commands.length<frame+1)
+			commands.length=frame+1;
+		while(committedFrame<frame){
+			//playAudio=firstUpdatedFrame<=state.committedFrame;
+			.stepCommitted(states,commands);
+			static if(!is(f==void))
+				if(f()) return true;
+		}
+		//playAudio=false;
+		return false;
+	}
+}
+private bool applyCommands(alias f=void,B)(ref StateHistory!B states,ref Array!(Array!(Command!B)) commands){
+	return simulateTo!f(states,commands,states.currentFrame);
+}
+
+private bool currentReady(B)(ref StateHistory!B states,ref Array!(Array!(Command!B)) commands){
+	with(states) return states.currentReady;
+}
+private void commit(B)(ref StateHistory!B states,ref Array!(Array!(Command!B)) commands){
+	with(states){
+		simulateCommittedTo(states,commands,currentFrame);
+	}
+}
+private void rollback(B)(ref StateHistory!B states,ref Array!(Array!(Command!B)) commands){
+	with(states){
+		if(rollback()){
+			static if(B.hasAudio) B.updateAudioAfterRollback();
+		}
+	}
+}
+
+private void replaceState(B)(ref StateHistory!B states,ref Array!(Array!(Command!B)) commands,scope ubyte[] serialized){
+	with(states){
+		replaceState(commands,serialized);
+		static if(B.hasAudio) B.updateAudioAfterRollback();
+	}
+}
+
+private void recordCommand(B)(ref StateHistory!B states,int frame){
+	with(states){
+		recordCommand(frame);
+	}
+}
+
+
+//alias States=TwoState;
+alias States=StateHistory;
 
 void replaceState(B)(ObjectState!B state,ref Array!(Array!(Command!B)) commands,scope ubyte[] serialized){
 	import serialize_;
 	deserialize(state,serialized);
-	static if(B.hasAudio) B.updateAudioAfterRollback();
 	deserialize(commands,state,serialized);
 }
 
@@ -22644,6 +22861,12 @@ final class GameState(B){
 	pragma(inline,true) @property ObjectState!B current(){ return states.current; }
 	pragma(inline, true) @property int committedFrame(){ return states.committedFrame; }
 	pragma(inline,true) @property int currentFrame(){ return states.currentFrame; }
+	/+invariant(){
+		assert(states.currentFrame>=(cast()this).states.committedFrame);
+		if(states.history.length>=2&&(cast()this).states.committed&&(cast()this).states.current)
+			assert((cast()this).states.committedFrame<=(cast()this).states.currentFrame);
+	}+/
+
 	Array!(Array!(Command!B)) commands;
 	this(SacMap!B map,bool supportRollback)in{
 		assert(!!map);
@@ -22666,16 +22889,8 @@ final class GameState(B){
 	Array!SlotInfo slots;
 	void initGame(GameInit!B gameInit){ .initGame(states,slots,move(gameInit)); }
 	void step(){ .step(states,commands); }
-	// may violate invariant committed.frame<=current.frame, should be restored
-	// may go out of command bounds
-	private void stepCommitted()in{
-		assert(committed.frame<commands.length);
-	}do{
-		.stepCommitted(states,commands);
-	}
-	private void updateCurrent(){ .updateCurrent(states,commands); }
 	bool currentReady(){ return .currentReady(states,commands); }
-	void commit()in{ assert(currentReady); }do{ .commit(states,commands); }
+	void commit(){ .commit(states,commands); }
 	void rollback(){ .rollback(states,commands); }
 	void replaceState(scope ubyte[] serialized){ .replaceState(states,commands,serialized); }
 

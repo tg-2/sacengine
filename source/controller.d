@@ -147,7 +147,6 @@ final class Controller(B){
 				}
 				if(network.stateResynched && network.players[network.me].status==PlayerStatus.stateResynched){
 					//writeln("STATE IS ACTUALLY AT FRAME: ",currentFrame);
-					enforce(state.currentReady);
 					if(!network.isHost)
 						state.commit();
 					if(network.players[network.me].committedFrame<state.currentFrame)
