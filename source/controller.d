@@ -90,19 +90,14 @@ final class Controller(B){
 		if(!network.isHost&&(network.desynched||network.lateJoining)) return; // avoid simulating entire game after rejoin
 		import std.conv: text;
 		enforce(state.committedFrame<=committedFrame,text(state.committedFrame," ",committedFrame," ",network.players.map!((ref p)=>p.committedFrame)," ",network.activePlayerIds," ",network.players.map!((ref p)=>p.status)));
-		if(state.commands.length<committedFrame+1)
-			state.commands.length=committedFrame+1;
-		while(state.committedFrame<committedFrame){
-			//playAudio=firstUpdatedFrame<=state.committedFrame;
-			state.stepCommittedUnsafe();
+		state.simulateCommittedTo!((){
 			if(recording) recording.stepCommitted(state.lastCommitted);
 			if(network.isHost) network.addSynch(state.committedFrame,state.lastCommitted.hash);
-		}
-		//playAudio=false;
+			return false;
+		})(committedFrame);
 		enforce(state.committedFrame==committedFrame,
 		        text(network.activePlayerIds," ",network.players.map!((ref p)=>p.committedFrame)," ",
 		             committedFrame," ",state.committedFrame));
-		state.updateCurrent();
 	}
 	void updateNetworkGameState()in{
 		assert(!!network);
@@ -200,16 +195,8 @@ final class Controller(B){
 		playAudio=false;
 		scope(exit) playAudio=oldPlayAudio;
 		if(updateNetwork()) return true;
-		if(state.firstUpdatedFrame<state.current.frame){
-			// TODO: save multiple states, pick most recent with frame<=firstUpdatedFrame?
-			import std.conv: text;
-			enforce(state.committedFrame<=state.firstUpdatedFrame,text(state.committedFrame," ",state.firstUpdatedFrame," ",state.currentFrame));
-			state.rollback();
-		}
-		while(state.current.frame<state.currentFrame){
-			state.step();
-			if(updateNetwork()) return true;
-		}
+		if(state.simulateTo!(()=>updateNetwork())(state.currentFrame))
+			return true;
 		playAudio=oldPlayAudio;
 		state.step();
 		if(recording){
@@ -227,26 +214,7 @@ final class Controller(B){
 				lastCheckSynch=state.committedFrame;
 			}
 		}else if(playback){
-			if(auto replacement=playback.stateReplacement(state.current.frame)){
-				assert(replacement.frame==state.current.frame);
-				writeln("enountered state replacement at frame ",state.current.frame,replacement.hash!=state.current.hash?":":"");
-				if(replacement.hash!=state.current.hash){
-					import diff;
-					diffStates(state.current,replacement);
-					state.current.copyFrom(replacement);
-				}
-			}
-			int side=-1;
-			if(auto desynch=playback.desynch(state.current.frame,side)){
-				auto sideName=getSideName(side,state.current);
-				if(sideName=="") writeln("player ",side," desynched at frame ",state.current.frame);
-				else writeln(sideName," (player ",side,") desynched at frame ",state.current.frame);
-				if(desynch.hash!=state.current.hash){
-					writeln("their state was replaced:");
-					import diff;
-					diffStates(desynch,state.current);
-				}
-			}
+			playback.report(state.current);
 		}
 		return false;
 	}

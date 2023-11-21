@@ -144,6 +144,29 @@ class Recording(B){
 		side=desynchs[r].side;
 		return desynchs[r].desynchedState;
 	}
+
+	void report(ObjectState!B state){
+		if(auto replacement=stateReplacement(state.frame)){
+			assert(replacement.frame==state.frame);
+			writeln("enountered state replacement at frame ",state.frame,replacement.hash!=state.hash?":":"");
+			if(replacement.hash!=state.hash){
+				import diff;
+				diffStates(state,replacement);
+				state.copyFrom(replacement);
+			}
+		}
+		int side=-1;
+		if(auto desynch=desynch(state.frame,side)){
+			auto sideName=getSideName(side,state);
+			if(sideName=="") writeln("player ",side," desynched at frame ",state.frame);
+			else writeln(sideName," (player ",side,") desynched at frame ",state.frame);
+			if(desynch.hash!=state.hash){
+				writeln("their state was replaced:");
+				import diff;
+				diffStates(desynch,state);
+			}
+		}
+	}
 }
 
 Recording!B loadRecording(B)(string filename)out(r){

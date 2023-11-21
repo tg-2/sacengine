@@ -22551,28 +22551,22 @@ final class GameState(B){
 		if(currentFrame+1==current.frame)
 			currentFrame+=1;
 		assert(current.frame<=currentFrame);
-		//next.updateFrom(current,commands[current.frame].data);
-		//swap(current,next);
 		if(commands.length<=current.frame) commands~=Array!(Command!B)();
 	}
-	/+void stepCommitted()in{
-		assert(lastCommitted.frame<current.frame);
-	}do{
-		lastCommitted.update(commands[lastCommitted.frame].data);
-		//next.updateFrom(lastCommitted,commands[lastCommitted.frame].data);
-		//swap(lastCommitted,next);
-	}+/
 	// may violate invariant lastCommitted.frame<=current.frame, should be restored
 	// may go out of command bounds
-	void stepCommittedUnsafe()in{
+	private void stepCommitted()in{
 		assert(lastCommitted.frame<commands.length);
 	}do{
 		assert(lastCommitted.frame<=firstUpdatedFrame);
 		lastCommitted.update(commands[lastCommitted.frame].data);
 	}
-	void updateCurrent(){
-		if(current.frame<committedFrame||current.frame==committedFrame&&firstUpdatedFrame<committedFrame)
+	private void updateCurrent(){
+		if(current.frame<committedFrame||current.frame==committedFrame&&firstUpdatedFrame<committedFrame){
+			if(commands.length<committedFrame+1)
+				commands.length=committedFrame+1;
 			current.copyFrom(lastCommitted); // restore invariant
+		}
 		currentFrame=max(currentFrame,committedFrame);
 		firstUpdatedFrame=max(firstUpdatedFrame,committedFrame);
 	}
@@ -22585,37 +22579,19 @@ final class GameState(B){
 	void rollback(){
 		rollback(lastCommitted);
 	}
-	void rollback(ObjectState!B state)in{
+	private void rollback(ObjectState!B state)in{
 		assert(state.frame<=current.frame);
 	}do{
+		if(state is current) return;
 		current.copyFrom(state);
 		static if(B.hasAudio) B.updateAudioAfterRollback();
 	}
-	void rollback(int frame)in{
+	/+void rollback(int frame)in{
 		assert(frame>=lastCommitted.frame);
 	}do{
 		if(frame<current.frame) rollback(lastCommitted);
 		playAudio=false;
 		simulateTo(frame);
-	}
-	void simulateTo(int frame)in{
-		assert(current.frame<=frame);
-	}do{
-		if(commands.length<frame+1)
-			commands.length=frame+1;
-		if(firstUpdatedFrame<current.frame)
-			rollback();
-		assert(current.frame<=firstUpdatedFrame);
-		while(current.frame<frame)
-			step();
-		assert(firstUpdatedFrame==frame);
-		assert(currentFrame==frame);
-	}
-	/+void simulateCommittedTo(int frame)in{
-		assert(frame<=current.frame);
-	}do{
-		while(lastCommitted.frame<frame)
-			stepCommitted();
 	}+/
 	void addCommand(int frame,Command!B command)in{
 		assert(frame>=lastCommitted.frame);
@@ -22654,5 +22630,47 @@ final class GameState(B){
 		static if(B.hasAudio) B.updateAudioAfterRollback();
 		deserialize(commands,current,serialized);
 		firstUpdatedFrame=current.frame;
+	}
+}
+
+bool simulateTo(alias f=void,B)(GameState!B state,int frame)in{
+	with(state){
+		assert(current.frame<=frame);
+	}
+}do{
+	with(state){
+		if(commands.length<frame+1)
+			commands.length=frame+1;
+		if(firstUpdatedFrame<current.frame)
+			rollback();
+		assert(current.frame<=firstUpdatedFrame);
+		while(current.frame<frame){
+			step();
+			static if(!is(f==void))
+				if(f()) return true;
+		}
+		// note: firstUpdatedFrame may be smaller than frame due to f() adding commands
+		assert(currentFrame==frame);
+		return false;
+	}
+}
+bool simulateCommittedTo(alias f=void,B)(GameState!B state,int frame)in{
+	with(state){
+		assert(committedFrame<=frame);
+	}
+}do{
+	with(state){
+		scope(exit) updateCurrent();
+		if(commands.length<frame+1)
+			commands.length=frame+1;
+		assert(lastCommitted.frame<=firstUpdatedFrame);
+		while(committedFrame<frame){
+			//playAudio=firstUpdatedFrame<=state.committedFrame;
+			stepCommitted();
+			static if(!is(f==void))
+				if(f()) return true;
+		}
+		//playAudio=false;
+		return false;
 	}
 }
