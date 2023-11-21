@@ -270,6 +270,9 @@ final class Controller(B){
 		int numSteps=0;
 		while(state.currentFrame<currentFrame){
 			state.step();
+			if(playback){
+				playback.report(state.current);
+			}
 			if(recording){
 				recording.step();
 				if(!network) recording.stepCommitted(state.current);
@@ -284,8 +287,6 @@ final class Controller(B){
 				network.checkSynch(state.committed.frame,state.committed.hash);
 				lastCheckSynch=state.committedFrame;
 			}
-		}else if(playback){
-			playback.report(state.current);
 		}
 		return false;
 	}
