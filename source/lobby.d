@@ -536,8 +536,8 @@ class Lobby(B){
 		assert(!!gameState);
 		gameState.commit();
 		if(wizId) B.focusCamera(wizId);
-		if(network && network.isHost) network.addSynch(gameState.lastCommitted.frame,gameState.lastCommitted.hash);
-		if(recording) recording.stepCommitted(gameState.lastCommitted);
+		if(network && network.isHost) network.addSynch(gameState.committed.frame,gameState.committed.hash);
+		if(recording) recording.stepCommitted(gameState.committed);
 		if(!controller) controller=new Controller!B(hasSlot?slot:-1,gameState,network,recording,playback);
 		B.setController(controller); // TODO: this is a bit ugly
 		B.unpause();

@@ -22508,10 +22508,10 @@ void initGame(B)(ObjectState!B state,ref Array!SlotInfo slots,GameInit!B gameIni
 
 bool playAudio=true;
 final class GameState(B){
-	ObjectState!B lastCommitted;
+	ObjectState!B committed;
 	ObjectState!B current;
 	int firstUpdatedFrame;
-	@property int committedFrame(){ return lastCommitted.frame; }
+	@property int committedFrame(){ return committed.frame; }
 	@property int currentFrame(){ return current.frame; }
 	Array!(Array!(Command!B)) commands;
 	this(SacMap!B map,bool supportRollback)in{
@@ -22525,12 +22525,12 @@ final class GameState(B){
 	}
 	this(SacMap!B map,Sides!B sides,Proximity!B proximity,PathFinder!B pathFinder,Triggers!B triggers,bool supportRollback){
 		auto current=new ObjectState!B(map,sides,proximity,pathFinder,triggers);
-		auto lastCommitted=supportRollback?new ObjectState!B(map,sides,proximity,pathFinder,triggers):current;
-		this(current,lastCommitted);
+		auto committed=supportRollback?new ObjectState!B(map,sides,proximity,pathFinder,triggers):current;
+		this(current,committed);
 	}
-	this(ObjectState!B current,ObjectState!B lastCommitted){
+	this(ObjectState!B current,ObjectState!B committed){
 		this.current=current;
-		this.lastCommitted=lastCommitted;
+		this.committed=committed;
 		commands.length=1;
 		this.firstUpdatedFrame=currentFrame;
 	}
@@ -22549,19 +22549,19 @@ final class GameState(B){
 			firstUpdatedFrame+=1;
 		if(commands.length<=current.frame) commands~=Array!(Command!B)();
 	}
-	// may violate invariant lastCommitted.frame<=current.frame, should be restored
+	// may violate invariant committed.frame<=current.frame, should be restored
 	// may go out of command bounds
 	private void stepCommitted()in{
-		assert(lastCommitted.frame<commands.length);
+		assert(committed.frame<commands.length);
 	}do{
-		assert(lastCommitted.frame<=firstUpdatedFrame);
-		lastCommitted.update(commands[lastCommitted.frame].data);
+		assert(committed.frame<=firstUpdatedFrame);
+		committed.update(commands[committed.frame].data);
 	}
 	private void updateCurrent(){
 		if(current.frame<committedFrame||current.frame==committedFrame&&firstUpdatedFrame<committedFrame){
 			if(commands.length<committedFrame+1)
 				commands.length=committedFrame+1;
-			current.copyFrom(lastCommitted); // restore invariant
+			current.copyFrom(committed); // restore invariant
 		}
 		firstUpdatedFrame=max(firstUpdatedFrame,committedFrame);
 	}
@@ -22569,16 +22569,16 @@ final class GameState(B){
 	void commit()in{
 		assert(currentReady);
 	}do{
-		lastCommitted.copyFrom(current);
+		committed.copyFrom(current);
 	}
 	void rollback(){
-		if(current is lastCommitted) return;
-		assert(lastCommitted.frame<=current.frame);
-		current.copyFrom(lastCommitted);
+		if(current is committed) return;
+		assert(committed.frame<=current.frame);
+		current.copyFrom(committed);
 		static if(B.hasAudio) B.updateAudioAfterRollback();
 	}
 	void addCommand(int frame,Command!B command)in{
-		assert(frame>=lastCommitted.frame);
+		assert(frame>=committed.frame);
 	}do{
 		if(command.side==-1&&command.type!=CommandType.chatMessage) return;
 		if(commands.length<=frame) commands.length=frame+1;
@@ -22631,7 +22631,7 @@ bool simulateCommittedTo(alias f=void,B)(GameState!B state,int frame)in{
 		scope(exit) updateCurrent();
 		if(commands.length<frame+1)
 			commands.length=frame+1;
-		assert(lastCommitted.frame<=firstUpdatedFrame);
+		assert(committed.frame<=firstUpdatedFrame);
 		while(committedFrame<frame){
 			//playAudio=firstUpdatedFrame<=state.committedFrame;
 			stepCommitted();

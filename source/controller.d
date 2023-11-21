@@ -76,7 +76,7 @@ final class Controller(B){
 	}do{
 		state.replaceState(serialized);
 		import serialize_;
-		if(network.logDesynch_) state.lastCommitted.serialized(&network.logDesynch); // TODO: don't log if late join
+		if(network.logDesynch_) state.committed.serialized(&network.logDesynch); // TODO: don't log if late join
 		if(recording) recording.replaceState(state.current,state.commands);
 		network.updateStatus(PlayerStatus.stateResynched);
 	}
@@ -91,8 +91,8 @@ final class Controller(B){
 		import std.conv: text;
 		enforce(state.committedFrame<=committedFrame,text(state.committedFrame," ",committedFrame," ",network.players.map!((ref p)=>p.committedFrame)," ",network.activePlayerIds," ",network.players.map!((ref p)=>p.status)));
 		state.simulateCommittedTo!((){
-			if(recording) recording.stepCommitted(state.lastCommitted);
-			if(network.isHost) network.addSynch(state.committedFrame,state.lastCommitted.hash);
+			if(recording) recording.stepCommitted(state.committed);
+			if(network.isHost) network.addSynch(state.committedFrame,state.committed.hash);
 			return false;
 		})(committedFrame);
 		enforce(state.committedFrame==committedFrame,
@@ -104,7 +104,7 @@ final class Controller(B){
 	}do{
 		foreach(ref p;network.players){
 			if(p.slot==-1) continue;
-			p.lostWizard|=!state.lastCommitted.isValidTarget(state.slots[p.slot].wizard,TargetType.creature);
+			p.lostWizard|=!state.committed.isValidTarget(state.slots[p.slot].wizard,TargetType.creature);
 		}
 	}
 	void updateNetworkOnSurrender(int side){
@@ -158,10 +158,10 @@ final class Controller(B){
 					updateCommitted();
 					enforce(state.currentReady);
 					import std.conv: text;
-					enforce(state.lastCommitted.frame==state.current.frame);
-					if(state.lastCommitted.hash!=state.current.hash){
-						stderr.writeln("warning: local desynch (",state.lastCommitted.hash,"!=",state.current.hash,")");
-						state.current.copyFrom(state.lastCommitted);
+					enforce(state.committed.frame==state.current.frame);
+					if(state.committed.hash!=state.current.hash){
+						stderr.writeln("warning: local desynch (",state.committed.hash,"!=",state.current.hash,")");
+						state.current.copyFrom(state.committed);
 					}
 					network.load();
 				}
@@ -208,7 +208,7 @@ final class Controller(B){
 			updateCommitted();
 			updateNetworkGameState();
 			if(!network.isHost&&lastCheckSynch<state.committedFrame){
-				network.checkSynch(state.committedFrame,state.lastCommitted.hash);
+				network.checkSynch(state.committedFrame,state.committed.hash);
 				lastCheckSynch=state.committedFrame;
 			}
 		}else if(playback){
