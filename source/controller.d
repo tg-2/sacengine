@@ -191,7 +191,7 @@ final class Controller(B){
 
 	bool step(){
 		bool oldPlayAudio=playAudio;
-		//playAudio=firstUpdatedFrame<=state.current.frame;
+		//playAudio=state.firstUpdatedFrame<=state.currentFrame;
 		playAudio=false;
 		scope(exit) playAudio=oldPlayAudio;
 		if(updateNetwork()) return true;
