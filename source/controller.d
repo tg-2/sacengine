@@ -208,7 +208,7 @@ final class Controller(B){
 			updateCommitted();
 			updateNetworkGameState();
 			if(!network.isHost&&lastCheckSynch<state.committedFrame){
-				network.checkSynch(state.committedFrame,state.committed.hash);
+				network.checkSynch(state.committed.frame,state.committed.hash);
 				lastCheckSynch=state.committedFrame;
 			}
 		}else if(playback){
