@@ -132,24 +132,34 @@ final class Controller(B){
 	void logDesynch(int side,scope ubyte[] serialized){
 		if(recording) try{ recording.logDesynch(side,serialized,state.current); }catch(Exception e){ stderr.writeln("bad desynch log: ",e.msg); }
 	}
-	void updateCommitted(int limit=-1)in{
-		assert(!!network);
-	}do{
-		if(network.players[network.me].committedFrame<state.currentFrame)
-			network.commit(state.currentFrame);
+	void updateCommittedTo(int frame){
+		if(network.players[network.me].committedFrame<currentFrame)
+			network.commit(currentFrame);
 		auto committedFrame=network.committedFrame;
+		if(frame==-1) frame=committedFrame;
 		if(!network.isHost&&(network.desynched||network.lateJoining)) return; // avoid simulating entire game after rejoin
 		import std.conv: text;
 		enforce(state.committedFrame<=committedFrame,text(state.committedFrame," ",committedFrame," ",network.players.map!((ref p)=>p.committedFrame)," ",network.activePlayerIds," ",network.players.map!((ref p)=>p.status)));
-		auto cheaperCommitted=limit!=-1?min(state.committedFrame+limit,committedFrame):committedFrame;
+		auto target=min(frame,committedFrame);
+		if(target<state.committedFrame)
+			return;
 		state.simulateCommittedTo!((){
 			if(recording) recording.stepCommitted(state.committed);
 			if(network.isHost) network.addSynch(state.committedFrame,state.committed.hash);
+			if(network.players[network.me].committedFrame<currentFrame)
+				network.commit(currentFrame);
 			return false;
-		})(cheaperCommitted);
-		enforce(state.committedFrame==cheaperCommitted,
+		})(target);
+		enforce(state.committedFrame==target,
 		        text(network.activePlayerIds," ",network.players.map!((ref p)=>p.committedFrame)," ",
 		             committedFrame," ",state.committedFrame));
+
+	}
+	void updateCommitted(int limit=-1)in{
+		assert(!!network);
+	}do{
+		auto cheaperCommitted=limit==-1?-1:state.committedFrame+limit;
+		updateCommittedTo(cheaperCommitted);
 	}
 	void updateNetworkGameState()in{
 		assert(!!network);
@@ -237,7 +247,6 @@ final class Controller(B){
 			}else if(network.pauseOnDrop&&network.anyonePending) return true;
 			network.acceptingNewConnections=true;
 		}else assert(state.committedFrame==state.current.frame);
-		updateCommitted();
 		return false;
 	}
 
@@ -258,16 +267,18 @@ final class Controller(B){
 			unpause();
 		}
 		playAudio=oldPlayAudio;
+		int numSteps=0;
 		while(state.currentFrame<currentFrame){
 			state.step();
 			if(recording){
 				recording.step();
 				if(!network) recording.stepCommitted(state.current);
 			}
+			numSteps+=1;
 		}
 		if(network){
 			playAudio=false;
-			updateCommitted();
+			updateCommitted(1+2*numSteps);
 			updateNetworkGameState();
 			if(!network.isHost&&lastCheckSynch<state.committedFrame){
 				network.checkSynch(state.committed.frame,state.committed.hash);

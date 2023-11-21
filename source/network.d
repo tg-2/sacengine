@@ -1361,6 +1361,7 @@ final class Network(B){
 					return false;
 				}
 				assert(!!synchQueue);
+				if(controller) controller.updateCommittedTo(p.synchFrame);
 				if(!synchQueue.check(p.synchFrame,p.synchHash)){
 					report!true(sender,"desynchronized at frame ",p.synchFrame);
 					if(p.synchFrame>=synchQueue.end){
@@ -1522,7 +1523,7 @@ final class Network(B){
 			}
 			case PacketType.commit:
 				players[p.commitPlayer].committedFrame=max(players[p.commitPlayer].committedFrame,p.commitFrame);
-				if(controller) controller.updateCommitted();
+				//if(controller) controller.updateCommitted();
 				return true;
 			case PacketType.jsonCommand:
 				if(!isHost){
