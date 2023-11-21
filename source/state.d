@@ -22512,7 +22512,7 @@ final class GameState(B){
 	ObjectState!B current;
 	int firstUpdatedFrame;
 	@property int committedFrame(){ return lastCommitted.frame; }
-	int currentFrame;
+	@property int currentFrame(){ return current.frame; }
 	Array!(Array!(Command!B)) commands;
 	this(SacMap!B map,bool supportRollback)in{
 		assert(!!map);
@@ -22532,7 +22532,6 @@ final class GameState(B){
 		this.current=current;
 		this.lastCommitted=lastCommitted;
 		commands.length=1;
-		this.currentFrame=current.frame;
 		this.firstUpdatedFrame=currentFrame;
 	}
 
@@ -22548,9 +22547,6 @@ final class GameState(B){
 		current.update(commands[current.frame].data);
 		if(firstUpdatedFrame+1==current.frame)
 			firstUpdatedFrame+=1;
-		if(currentFrame+1==current.frame)
-			currentFrame+=1;
-		assert(current.frame<=currentFrame);
 		if(commands.length<=current.frame) commands~=Array!(Command!B)();
 	}
 	// may violate invariant lastCommitted.frame<=current.frame, should be restored
@@ -22567,10 +22563,9 @@ final class GameState(B){
 				commands.length=committedFrame+1;
 			current.copyFrom(lastCommitted); // restore invariant
 		}
-		currentFrame=max(currentFrame,committedFrame);
 		firstUpdatedFrame=max(firstUpdatedFrame,committedFrame);
 	}
-	bool currentReady(){ return currentFrame<=firstUpdatedFrame&&currentFrame==current.frame; }
+	bool currentReady(){ return currentFrame<=firstUpdatedFrame; }
 	void commit()in{
 		assert(currentReady);
 	}do{
@@ -22586,13 +22581,6 @@ final class GameState(B){
 		current.copyFrom(state);
 		static if(B.hasAudio) B.updateAudioAfterRollback();
 	}
-	/+void rollback(int frame)in{
-		assert(frame>=lastCommitted.frame);
-	}do{
-		if(frame<current.frame) rollback(lastCommitted);
-		playAudio=false;
-		simulateTo(frame);
-	}+/
 	void addCommand(int frame,Command!B command)in{
 		assert(frame>=lastCommitted.frame);
 	}do{
@@ -22608,25 +22596,9 @@ final class GameState(B){
 	}do{
 		addCommand(currentFrame,command);
 	}
-	/+void addCommand(int frame,Command!B command)in{
-		assert(frame<=current.frame);
-		assert(command.id!=0);
-		assert(frame>=lastCommitted.frame);
-	}do{
-		if(command.side==-1) return;
-		assert(frame<commands.length);
-		auto currentFrame=current.frame;
-		commands[frame]~=command;
-		if(!isSorted(commands[frame].data))
-			sort(commands[frame].data);
-		if(frame<currentFrame) rollback(frame);
-		playAudio=false;
-		simulateTo(currentFrame);
-	}+/
 	void replaceState(scope ubyte[] serialized){
 		import serialize_;
 		deserialize(current,serialized);
-		currentFrame=current.frame;
 		static if(B.hasAudio) B.updateAudioAfterRollback();
 		deserialize(commands,current,serialized);
 		firstUpdatedFrame=current.frame;
