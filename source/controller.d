@@ -243,8 +243,8 @@ final class Controller(B){
 				return true; // ignore passed time in next frame
 			}else if(network.pauseOnDrop&&network.anyonePending) return true;
 			network.acceptingNewConnections=true;
+			updateCommitted(0);
 		}else assert(state.committedFrame==state.current.frame);
-		updateCommitted(0);
 		return false;
 	}
 
