@@ -22850,6 +22850,7 @@ private struct StateHistory(B){
 		assert(index<history.length);
 		.replaceState(current,commands,serialized);
 		swap(history[0],history[index]);
+		history[0].numPending=0;
 		foreach(i;0..index)
 			history[i+1].numPending=-1;
 		currentFrame=history[0].state.frame;
