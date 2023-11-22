@@ -9640,7 +9640,7 @@ int makeManafount(B)(Vector3f position,int flags,ObjectState!B state){
 bool eachAltar(alias f,B,T...)(ObjectState!B state,T args){
 	static void find(S)(ref S objects,T args,ObjectState!B state,bool* found){
 		if(*found) return;
-		static if(is(T==StaticObjects!(B,renderMode),RenderMode renderMode)){
+		static if(is(S==StaticObjects!(B,renderMode),RenderMode renderMode)){
 			if(objects.sacObject.isAltar){
 				foreach(j;0..objects.length){
 					if(state.buildingById!(f,()=>false)(objects.buildingIds[j],args)){
@@ -9656,14 +9656,17 @@ bool eachAltar(alias f,B,T...)(ObjectState!B state,T args){
 	return found;
 }
 
+
 bool hasAltar(B)(int side,ObjectState!B state){
-	return state.eachAltar!((ref bldg,int side){
+	static bool filter(ref Building!B bldg,int side){
 		if(bldg.side!=side) return false;
 		if(!isAltar(bldg)) return false;
 		if(bldg.flags&(AdditionalBuildingFlags.inactive|Flags.notOnMinimap)) return false;
 		return true;
-	})(side);
+	}
+	return state.eachAltar!filter(side);
 }
+
 
 int getAltarSides(B)(ObjectState!B state){
 	int result=0;
