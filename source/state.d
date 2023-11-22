@@ -3805,6 +3805,7 @@ struct Disappearance{
 }
 
 struct AltarDestruction{
+	int side;
 	int ring;
 	Vector3f position;
 	Quaternionf oldRotation;
@@ -5159,6 +5160,7 @@ struct CommandCones(B){
 enum ChatMessageType{
 	standard,
 	observer,
+	system,
 }
 
 struct ChatMessageContent(B){
@@ -5208,7 +5210,7 @@ ChatMessage!B makeChatMessage(B,R,S)(int senderSlot,int slotFilter,ChatMessageTy
 	auto font=SacFont!B.get(FontType.fn10);
 	auto scale=1.0f;
 	auto settings=FormatSettings(FlowType.left,scale,ChatMessage!B.maxWidth);
-	auto textSize=font.getSize(message,settings);
+	auto textSize=font.getSize(messageArray.data,settings);
 	int textWidth=to!int(textSize.x);
 	int textHeight=to!int(textSize.y);
 	int lifetime=to!int(updateFPS+messageArray.length*updateFPS/10);
@@ -9635,18 +9637,13 @@ int makeManafount(B)(Vector3f position,int flags,ObjectState!B state){
 	return makeBuilding(neutralSide,"tnof",position,flags,state);
 }
 
-bool hasAltar(B)(int side,ObjectState!B state){
-	static void find(T)(ref T objects,int side,ObjectState!B state,bool* found){
+bool eachAltar(alias f,B,T...)(ObjectState!B state,T args){
+	static void find(S)(ref S objects,T args,ObjectState!B state,bool* found){
 		if(*found) return;
 		static if(is(T==StaticObjects!(B,renderMode),RenderMode renderMode)){
 			if(objects.sacObject.isAltar){
 				foreach(j;0..objects.length){
-					if(state.buildingById!((ref bldg,side){
-						if(bldg.side!=side) return false;
-						if(!isAltar(bldg)) return false;
-						if(bldg.flags&(AdditionalBuildingFlags.inactive|Flags.notOnMinimap)) return false;
-						return true;
-					},()=>false)(objects.buildingIds[j],side)){
+					if(state.buildingById!(f,()=>false)(objects.buildingIds[j],args)){
 						*found=true;
 						break;
 					}
@@ -9655,10 +9652,28 @@ bool hasAltar(B)(int side,ObjectState!B state){
 		}
 	}
 	bool found=false;
-	state.eachByType!(find,EachByTypeFlags.none)(side,state,&found);
+	state.eachByType!(find,EachByTypeFlags.none)(args,state,&found);
 	return found;
 }
 
+bool hasAltar(B)(int side,ObjectState!B state){
+	return state.eachAltar!((ref bldg,int side){
+		if(bldg.side!=side) return false;
+		if(!isAltar(bldg)) return false;
+		if(bldg.flags&(AdditionalBuildingFlags.inactive|Flags.notOnMinimap)) return false;
+		return true;
+	})(side);
+}
+
+int getAltarSides(B)(ObjectState!B state){
+	int result=0;
+	state.eachAltar!((ref bldg,result){
+		if(0<=bldg.side&&bldg.side<32) // TODO: allow more sides?
+			*result|=1<<bldg.side;
+		return false;
+	})(&result);
+	return result;
+}
 
 bool destroyAltar(B)(ref StaticObject!B shrine,ObjectState!B state){
 	static struct AltarTags{
@@ -9728,7 +9743,7 @@ bool destroyAltar(B)(ref StaticObject!B shrine,ObjectState!B state){
 		float pillarHeight=pillars[0]?state.staticObjectById!((ref pillar,state)=>pillar.relativeHitbox[1].z,()=>0.0f)(pillars[0],state):0.0f;
 		int[4] stalks=ids.stalks;
 		float stalkHeight=stalks[0]?state.staticObjectById!((ref pillar,state)=>pillar.relativeHitbox[1].z,()=>0.0f)(stalks[0],state):0.0f;
-		state.addEffect(AltarDestruction(ring,shrine.position,Quaternionf.identity(),Quaternionf.identity(),shrine.id,shrineHeight,pillars,pillarHeight,stalks,stalkHeight));
+		state.addEffect(AltarDestruction(building.side,ring,shrine.position,Quaternionf.identity(),Quaternionf.identity(),shrine.id,shrineHeight,pillars,pillarHeight,stalks,stalkHeight));
 		return true;
 	}
 	return state.buildingById!(destroy,()=>false)(shrine.buildingId,&shrine,state);
@@ -9755,7 +9770,11 @@ void lose(B)(int side,ObjectState!B state){
 	killAll(side,state);
 }
 
-bool surrender(B)(int side,ObjectState!B state){ lose(side,state); return true; }
+bool surrender(B)(int side,ObjectState!B state){
+	lose(side,state);
+	state.surrender(side);
+	return true;
+}
 
 void screenShake(B)(Vector3f position,int lifetime,float strength,float range,ObjectState!B state){
 	state.addEffect(ScreenShake(position,lifetime,strength,range));
@@ -12070,6 +12089,7 @@ bool updateRitual(B)(ref Ritual!B ritual,ObjectState!B state){
 				if(!isNaN(vortex.position.x))
 					foreach(ref bolt;desecrateBolts) bolt.changeShape(state);
 			}
+			state.desecrate(sideFromBuildingId(shrine,state),side);
 		}
 		if(ritual.stopped){
 			if(!targetWizard||!targetDead) vortex.scale=max(0.0f,vortex.scale-1.0f/vortex.numFramesToDisappear);
@@ -18746,7 +18766,9 @@ bool updateAltarDestruction(B)(ref AltarDestruction altarDestruction,ObjectState
 				animateFireballExplosion(position,state,20.0f);
 			}
 		}
-		return frame<=disappearDuration+floatDuration+explodeDuration;
+		auto r=frame<=disappearDuration+floatDuration+explodeDuration;
+		if(!r) state.defeat(side);
+		return r;
 	}
 }
 
@@ -21330,6 +21352,48 @@ final class ObjectState(B){ // (update logic)
 		if(!canSelect(side,id,this)) return;
 		sid.select(side,id);
 	}
+	bool systemMessagesEnabled(){
+		return settings.gameMode!=GameMode.scenario;
+	}
+	void defeat(int side){
+		if(!(0<=side&&side<sid.sides.length))
+		   return;
+		sid.defeat(side);
+		if(auto r=sid.getNewVictories(this)){
+			foreach(victoriousSide;0..min(sid.sides.length,32)){ // TODO: support?
+				if(r&(1<<victoriousSide))
+					victory(to!int(victoriousSide));
+			}
+		}
+	}
+	void surrender(int side){
+		if(!(0<=side&&side<sid.sides.length))
+		   return;
+		sid.desecrate(side);
+		if(systemMessagesEnabled){
+			auto message=makeChatMessage!B(-1,-1,ChatMessageType.system,getSideName(side,this),"has surrendered.",frame);
+			sendChatMessage(move(message),this);
+		}
+	}
+	void desecrate(int side,int attackerSide){
+		if(!(0<=side&&side<sid.sides.length))
+		   return;
+		sid.desecrate(side);
+		if(systemMessagesEnabled){
+			auto sideName=getSideName(side,this);
+			auto attackerName=getSideName(attackerSide,this);
+			import std.utf:byChar;
+			auto message=makeChatMessage!B(-1,-1,ChatMessageType.system,sideName,chain(sideName.byChar,"'s altar has been desecrated by ".byChar,attackerName.byChar,".".byChar),frame);
+			sendChatMessage(move(message),this);
+		}
+	}
+	void victory(int side){
+		sid.victory(side);
+		if(systemMessagesEnabled){
+			auto message=makeChatMessage!B(-1,-1,ChatMessageType.system,getSideName(side,this),"is victorious!",frame);
+			sendChatMessage(move(message),this);
+		}
+	}
 	int buildingIdForGuardian(int creature){
 		foreach(ref guardian;obj.opaqueObjects.effects.guardians){
 			if(guardian.creature==creature)
@@ -21692,12 +21756,20 @@ struct CreatureGroup{
 	}
 }
 
+enum SideState{
+	playing,
+	desecrated,
+	defeated,
+	victorious,
+}
+
 struct SideData(B){
 	CreatureGroup selection;
 	CreatureGroup[10] groups;
 	int lastSelected=0;
 	int selectionMultiplicity=0;
 	Queue!int aiQueue;
+	SideState state;
 	mixin Assign;
 	void updateLastSelected(int id){
 		if(lastSelected!=id){
@@ -21816,6 +21888,41 @@ struct SideManager(B){
 	void resetSelectionCount(int side){
 		if(!(0<=side&&side<sides.length)) return;
 		return sides[side].resetSelectionCount();
+	}
+
+	int altarSides=0;
+	void desecrate(int side){
+		if(!(0<=side&&side<sides.length)) return;
+		sides[side].state=SideState.desecrated;
+	}
+	int defeatedSides=0;
+	void defeat(int side){
+		if(!(0<=side&&side<sides.length)) return;
+		sides[side].state=SideState.defeated;
+		if(side>=32) return; // TODO: support?
+		defeatedSides|=1<<side;
+	}
+	int victoriousSides=0;
+	void victory(int side){
+		if(!(0<=side&&side<sides.length)) return;
+		sides[side].state=SideState.victorious;
+		if(side>=32) return; // TODO: support?
+		victoriousSides|=1<<side;
+	}
+	int getNewVictories(ObjectState!B state){
+		int result=0;
+		foreach(side;0..min(sides.length,32)){ // TODO: support?
+			if(!(altarSides&(1<<side))) continue;
+			if((defeatedSides|victoriousSides)&(1<<side)) continue;
+			//writefln!"%d %b %b"(side,altarSides,defeatedSides);
+			if(!(state.sides.sides[side].enemies&altarSides&~defeatedSides))
+				result|=1<<side;
+		}
+		return result;
+	}
+	bool isDesecrated(int side,ObjectState!B state){
+		if(!(0<=side&&side<sides.length)) return false;
+		return !!sides[side].state.among(SideState.desecrated,SideState.defeated);
 	}
 }
 
@@ -22491,6 +22598,7 @@ void initGame(B)(ObjectState!B state,ref Array!SlotInfo slots,GameInit!B gameIni
 	slotForWiz.data[]=-1;
 	foreach(i,ref slot;gameInit.slots)
 		if(slot.wizardIndex!=-1) slotForWiz[slot.wizardIndex]=cast(int)i;
+	int altarSides=0;
 	foreach(wizardIndex,ref wiz;gameInit.wizards){
 		auto wizard=SacObject!B.getSAXS!Wizard(wiz.tag);
 		//printWizardStats(wizard);
@@ -22501,9 +22609,13 @@ void initGame(B)(ObjectState!B state,ref Array!SlotInfo slots,GameInit!B gameIni
 			slots[slot].controlledSide=wiz.side;
 			slots[slot].wizard=wizId;
 		}
+		if(0<=wiz.side&&wiz.side<32) // TODO: support?
+			altarSides|=1<<wiz.side;
 	}
 	foreach(ref stanceSetting;gameInit.stanceSettings)
 		state.sides.setStance(stanceSetting.from,stanceSetting.towards,stanceSetting.stance);
+	//state.sid.altarSides=getAltarSides(state);
+	state.sid.altarSides=altarSides;
 }
 
 private struct TwoState(B){
