@@ -1198,6 +1198,7 @@ final class SacScene: Scene{
 		if(!state) mouse.frame+=1;
 	}
 
+	bool gameEnded=false;
 	override void onUpdate(Duration dt){
 		//writeln(DagonBackend.getTotalGPUMemory()," ",DagonBackend.getAvailableGPUMemory());
 		//writeln(eventManager.fps);
@@ -1211,6 +1212,15 @@ final class SacScene: Scene{
 		if(state){
 			if(controller){
 				controller.run();
+				if(!gameEnded){
+					if(state.current.isVictorious(controller.controlledSide)){
+						audio.playThemeOnce(Theme.victory);
+						gameEnded=true;
+					}else if(state.current.isDefeated(controller.controlledSide)){
+						audio.playThemeOnce(Theme.defeat);
+						gameEnded=true;
+					}
+				}
 				if(options.testLag){
 					if(controller.network){
 						if(controller.network.isHost&&controller.network.playing){

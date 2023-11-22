@@ -21929,7 +21929,7 @@ struct SideManager(B){
 	}
 	bool isVictorious(int side,ObjectState!B state){
 		if(!(0<=side&&side<sides.length)) return false;
-		return !!sides[side].state==SideState.victorious;
+		return sides[side].state==SideState.victorious;
 	}
 }
 

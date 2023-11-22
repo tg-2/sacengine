@@ -123,28 +123,30 @@ struct MP3{
 		mpg123_open(handle,filename.toStringz);
 		initialize();
 	}
-	private bool read(ALuint buffer){
+	private bool read(ALuint buffer,bool finish){
 		ubyte[chunkSize] mp3data;
 		size_t done;
 		int err=mpg123_read(handle,mp3data.ptr,chunkSize,&done);
 		bool finished=err==MPG123_DONE;
-		if(finished) mpg123_seek(handle,0,SEEK_SET);
+		if(finished&&!finish) mpg123_seek(handle,0,SEEK_SET);
 		alBufferData(buffer,AL_FORMAT_STEREO16,mp3data.ptr,cast(int)done,44100);
-		return finished;
+		return finished&&finish;
 	}
 	void initialize(){
-		foreach(i;0..buffer.length) read(buffer[i]);
+		foreach(i;0..buffer.length) read(buffer[i],false);
 		alSourceQueueBuffers(source.id,buffer.length,buffer.ptr);		
 	}
-	void feed(){
+	bool feed(bool finish=false){
 		ALint processed;
 		alGetSourcei(source.id,AL_BUFFERS_PROCESSED,&processed);
 		foreach(_;0..processed){
 			ALuint current;
 			alSourceUnqueueBuffers(source.id,1,&current);
-			read(current);
+			auto finished=read(current,finish);
 			alSourceQueueBuffers(source.id,1,&current);
+			if(finished) return true;
 		}
+		return false;
 	}
 	void play(){
 		source.play();

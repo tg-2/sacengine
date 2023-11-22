@@ -16,7 +16,9 @@ enum Theme{
 	battle4,
 	battle5,
 	losing,
+	defeat,
 	winning,
+	victory,
 	menu,
 	none,
 }
@@ -53,6 +55,7 @@ final class AudioBackend(B){
 	MP3 victory;
 	auto currentTheme=Theme.none;
 	auto nextTheme=Theme.none;
+	auto themeAfter=Theme.none;
 	float musicGain;
 	float soundGain;
 	float themeGain=1.0f;
@@ -66,11 +69,11 @@ final class AudioBackend(B){
 		themes[Theme.battle4]=MP3("data/music/Battle 4.mp3");
 		themes[Theme.battle5]=MP3("data/music/Battle 5.mp3");
 		themes[Theme.losing]=MP3("data/music/Sacrifice Losing.mp3");
+		themes[Theme.defeat]=MP3("data/music/Defeat Theme.mp3");
 		themes[Theme.winning]=MP3("data/music/Sacrifice Victory.mp3");
+		themes[Theme.victory]=MP3("data/music/Victory Theme.mp3");
 		themes[Theme.menu]=MP3("data/music/menu.mp3");
 		sacrifice1=MP3("data/music/Sacrifice 1.mp3");
-		defeat=MP3("data/music/Defeat Theme.mp3");
-		victory=MP3("data/music/Victory Theme.mp3");
 
 		sounds1.reserve(20);
 		sounds2.reserve(20);
@@ -89,6 +92,12 @@ final class AudioBackend(B){
 	}
 	void switchTheme(Theme next){
 		nextTheme=next;
+	}
+	void playThemeOnce(Theme next){
+		if(themeAfter==Theme.none) themeAfter=currentTheme;
+		themes[currentTheme].stop();
+		currentTheme=nextTheme=next;
+		themes[currentTheme].play();
 	}
 	enum fadeOutTime=0.5f;
 	void updateTheme(Duration dt){
@@ -112,9 +121,17 @@ final class AudioBackend(B){
 			}
 		}
 		if(currentTheme!=Theme.none){
-			themes[currentTheme].feed();
-			if(!themes[currentTheme].source.isPlaying())
-				themes[currentTheme].source.play();
+			bool finished=themes[currentTheme].feed(themeAfter!=Theme.none);
+			if(!themes[currentTheme].source.isPlaying()){
+				if(!themes[currentTheme].source.isPlaying()){
+					if(finished&&themeAfter!=Theme.none){
+						themes[currentTheme].stop();
+						currentTheme=nextTheme=themeAfter;
+						themeAfter=Theme.none;
+						themes[currentTheme].play();
+					}else themes[currentTheme].source.play();
+				}
+			}
 		}
 	}
 
