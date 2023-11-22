@@ -164,11 +164,13 @@ final class Controller(B){
 	}do{
 		foreach(ref p;network.players){
 			if(p.slot==-1) continue;
-			p.lostWizard|=!state.committed.isValidTarget(state.slots[p.slot].wizard,TargetType.creature);
+			p.lost|=state.committed.isDefeated(state.slots[p.slot].controlledSide);
+			p.won|=state.committed.isVictorious(state.slots[p.slot].controlledSide);
+			p.lost|=!state.committed.isValidTarget(state.slots[p.slot].wizard,TargetType.creature);
 		}
 	}
 	void updateNetworkOnSurrender(int side){
-		foreach(ref p;network.players) if(p.slot!=-1&&state.slots[p.slot].controlledSide==side) p.lostWizard=true;
+		foreach(ref p;network.players) if(p.slot!=-1&&state.slots[p.slot].controlledSide==side) p.lost=true;
 	}
 
 	bool updateNetwork(){

@@ -946,7 +946,7 @@ struct Player{
 		return connection.receiveRaw(dg);
 	}
 
-	bool lostWizard=false;
+	bool lost=false,won=false;
 	int committedFrame=0;
 	long pingTicks=-1; // TODO: switch to MonoTime
 	long packetTicks=-1; // TODO: switch to MonoTime
@@ -965,8 +965,11 @@ struct Player{
 	bool allowedToControlState(){
 		if(!wantsToControlState) return false;
 		if(slot==-1) return false;
-		if(lostWizard) return false;
+		if(lost) return false;
 		return true;
+	}
+	bool requiredToControlState(){
+		return allowedToControlState()&&!won;
 	}
 	bool isReadyToControlState(){
 		if(!wantsToControlState) return false;
@@ -1035,6 +1038,11 @@ final class Network(B){
 	auto potentialPlayers(){
 		ref Player index(size_t i){ return players[i]; }
 		return potentialPlayerIds.map!index;
+	}
+	auto requiredPlayerIds(){ return iota(players.length).filter!(i=>players[i].requiredToControlState); }
+	auto requiredPlayers(){
+		ref Player index(size_t i){ return players[i]; }
+		return requiredPlayerIds.map!index;
 	}
 	auto activePlayerIds(){ return connectedPlayerIds.filter!(i=>players[i].isControllingState); }
 	auto activePlayers(){
@@ -1106,7 +1114,7 @@ final class Network(B){
 	bool readyToStart(){ return connectedPlayers.all!(p=>isReadyStatus(p.status)); }
 	bool playing(){ return me!=-1&&players[me].status==PlayerStatus.playing && !paused; }
 	bool paused(){ return isPausedStatus(players[host].status); }
-	bool anyoneDropped(){ return potentialPlayers.any!(p=>p.status==PlayerStatus.dropped); }
+	bool anyoneDropped(){ return requiredPlayers.any!(p=>p.status==PlayerStatus.dropped); }
 	bool hostDropped(){ return players[host].status==PlayerStatus.dropped; }
 	bool anyonePending(){ return potentialPlayers.any!(p=>!isActiveStatus(p.status)); }
 	bool desynched(){ return connectedPlayers.any!(p=>isDesynchedStatus(p.status)||p.status==PlayerStatus.resynched); }

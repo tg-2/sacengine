@@ -21359,6 +21359,7 @@ final class ObjectState(B){ // (update logic)
 		if(!(0<=side&&side<sid.sides.length))
 		   return;
 		sid.defeat(side);
+		if(settings.gameMode!=GameMode.scenario)
 		if(auto r=sid.getNewVictories(this)){
 			foreach(victoriousSide;0..min(sid.sides.length,32)){ // TODO: support?
 				if(r&(1<<victoriousSide))
@@ -21366,6 +21367,8 @@ final class ObjectState(B){ // (update logic)
 			}
 		}
 	}
+	bool isDefeated(int side){ return sid.isDefeated(side,this); }
+	bool isVictorious(int side){ return sid.isDefeated(side,this); }
 	void surrender(int side){
 		if(!(0<=side&&side<sid.sides.length))
 		   return;
@@ -21920,9 +21923,13 @@ struct SideManager(B){
 		}
 		return result;
 	}
-	bool isDesecrated(int side,ObjectState!B state){
+	bool isDefeated(int side,ObjectState!B state){
 		if(!(0<=side&&side<sides.length)) return false;
 		return !!sides[side].state.among(SideState.desecrated,SideState.defeated);
+	}
+	bool isVictorious(int side,ObjectState!B state){
+		if(!(0<=side&&side<sides.length)) return false;
+		return !!sides[side].state==SideState.victorious;
 	}
 }
 
