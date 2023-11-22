@@ -12084,12 +12084,12 @@ bool updateRitual(B)(ref Ritual!B ritual,ObjectState!B state){
 		if(!state.isValidTarget(targetWizard,TargetType.creature)) targetWizard=0;
 		bool targetDead=!targetWizard||state.movingObjectById!(isDead,()=>true)(targetWizard);
 		if(type==RitualType.desecrate&&targetWizard&&targetDead){
-			state.staticObjectById!(destroyAltar,()=>false)(shrine,state);
+			if(state.staticObjectById!(destroyAltar,()=>false)(shrine,state))
+				state.desecrate(state.staticObjectById!(.side,()=>-1)(shrine,state),side);
 			if(isNaN(desecrateBolts[0].displacement[0].x)||frame%6==0){
 				if(!isNaN(vortex.position.x))
 					foreach(ref bolt;desecrateBolts) bolt.changeShape(state);
 			}
-			state.desecrate(sideFromBuildingId(shrine,state),side);
 		}
 		if(ritual.stopped){
 			if(!targetWizard||!targetDead) vortex.scale=max(0.0f,vortex.scale-1.0f/vortex.numFramesToDisappear);
@@ -21368,7 +21368,7 @@ final class ObjectState(B){ // (update logic)
 		}
 	}
 	bool isDefeated(int side){ return sid.isDefeated(side,this); }
-	bool isVictorious(int side){ return sid.isDefeated(side,this); }
+	bool isVictorious(int side){ return sid.isVictorious(side,this); }
 	void surrender(int side){
 		if(!(0<=side&&side<sid.sides.length))
 		   return;
