@@ -22652,6 +22652,8 @@ private struct StateHistory(B){
 	bool stepAt(ref Commands!B commands,int frame){
 		if(frame==currentFrame)
 			currentFrame+=1;
+		if(commands.length<frame+1)
+			commands.length=frame+1;
 		if(!supportRollback){
 			assert(committedFrame==frame);
 			committed.update(commands[frame].data);
@@ -22661,8 +22663,6 @@ private struct StateHistory(B){
 		assert(0<index);
 		if(history.length<index+1)
 			history.length=index+1;
-		if(commands.length<frame+1)
-			commands.length=frame+1;
 		if(history[index].state is null)
 			history[index].state=makeState();
 		if(history[index].numPending!=history[index-1].numPending){
