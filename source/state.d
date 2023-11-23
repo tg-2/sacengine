@@ -1061,9 +1061,15 @@ StunnedBehavior stunnedBehavior(B)(ref MovingObject!B object){
 	return object.sacObject.stunnedBehavior;
 }
 
+bool isBeingAttacked(B)(ref MovingObject!B object){
+	with(AnimationState)
+		return !!object.animationState.among(damageFront,damageRight,damageBack,damageLeft,damageTop,flyDamage);
+}
+
 bool isRegenerating(B)(ref MovingObject!B object){
-	return (object.creatureState.mode.among(CreatureMode.idle,CreatureMode.cower,CreatureMode.playingDead,CreatureMode.rockForm)
-	        ||object.creatureState.mode==CreatureMode.moving&&object.creatureState.movement==CreatureMovement.flying
+	return ((object.creatureState.mode.among(CreatureMode.idle,CreatureMode.cower,CreatureMode.playingDead,CreatureMode.rockForm)
+	         ||object.creatureState.mode==CreatureMode.moving&&object.creatureState.movement==CreatureMovement.flying)
+	        &&!isBeingAttacked(object)
 	        ||object.sacObject.continuousRegeneration&&object.creatureState.mode.canHeal)
 		&& !object.creatureStats.effects.regenerationBlocked;
 }
