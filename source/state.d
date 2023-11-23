@@ -9780,6 +9780,8 @@ void lose(B)(int side,ObjectState!B state){
 }
 
 bool surrender(B)(int side,ObjectState!B state){
+	if(state.isDefeated(side)||state.isVictorious(side))
+		return false;
 	lose(side,state);
 	state.surrender(side);
 	return true;
@@ -21381,6 +21383,8 @@ final class ObjectState(B){ // (update logic)
 	void surrender(int side){
 		if(!(0<=side&&side<sid.sides.length))
 		   return;
+		if(isDefeated(side)||isVictorious(side))
+			return;
 		sid.desecrate(side);
 		if(systemMessagesEnabled){
 			auto message=makeChatMessage!B(-1,-1,ChatMessageType.system,getSideName(side,this),"has surrendered.",frame);
