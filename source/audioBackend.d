@@ -94,8 +94,11 @@ final class AudioBackend(B){
 		nextTheme=next;
 	}
 	void playThemeOnce(Theme next){
-		if(themeAfter==Theme.none) themeAfter=currentTheme;
-		themes[currentTheme].stop();
+		if(themeAfter==Theme.none){
+			if(nextTheme!=Theme.none) themeAfter=nextTheme;
+			else themeAfter=currentTheme;
+		}
+		if(currentTheme!=Theme.none) themes[currentTheme].stop();
 		currentTheme=nextTheme=next;
 		themes[currentTheme].play();
 	}

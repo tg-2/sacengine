@@ -439,6 +439,7 @@ class Lobby(B){
 		}
 		if(toContinue||playback&&options.continueFrame){
 			playAudio=false;
+			gameState.commit();
 			while(gameState.current.frame<options.continueFrame){
 				gameState.step();
 				(toContinue?toContinue:playback).report(gameState.current);
