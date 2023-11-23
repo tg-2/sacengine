@@ -124,6 +124,7 @@ final class Controller(B){
 		assert(network&&!network.isHost);
 	}do{
 		state.replaceState(serialized);
+		timer.setFrame(state.current.frame);
 		import serialize_;
 		if(network.logDesynch_) state.committed.serialized(&network.logDesynch); // TODO: don't log if late join
 		if(recording) recording.replaceState(state.current,state.commands);
@@ -198,7 +199,13 @@ final class Controller(B){
 					//writeln("SENDING STATE AT FRAME: ",currentFrame," ",network.players.map!((ref p)=>p.committedFrame));
 					import std.conv: text;
 					enforce(state.currentFrame<=network.resynchCommittedFrame,text(state.currentFrame," ",network.resynchCommittedFrame," ",network.players.map!((ref p)=>p.status),network.players.map!((ref p)=>p.committedFrame)));
-					state.simulateTo(network.resynchCommittedFrame);
+					auto newFrame=network.resynchCommittedFrame;
+					state.simulateTo(newFrame);
+					state.simulateCommittedTo!((){
+						if(recording) recording.stepCommitted(state.committed);
+						if(network.isHost) network.addSynch(state.committedFrame,state.committed.hash);
+						return false;
+					})(newFrame);
 					import serialize_;
 					state.current.serialized((scope ubyte[] stateData){
 						state.commands.serialized((scope ubyte[] commandData){
@@ -218,7 +225,7 @@ final class Controller(B){
 				if(network.isHost && network.resynched){
 					enforce(state.currentReady);
 					import std.conv: text;
-					enforce(state.committed.frame==state.current.frame);
+					enforce(state.committed.frame==state.current.frame,text(state.committedFrame," ",state.currentFrame," ",currentFrame));
 					if(state.committed.hash!=state.current.hash){
 						stderr.writeln("warning: local desynch (",state.committed.hash,"!=",state.current.hash,")");
 						state.current.copyFrom(state.committed);
