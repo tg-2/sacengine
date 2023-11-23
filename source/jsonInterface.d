@@ -78,29 +78,29 @@ struct JSONBuilder{
 	}
 	void value(B)(SacSpell!B spell){
 		put("{");
-		field("name"); value(spell.name); put(",");
-		char[4] ntag=spell.tag;
+		field("name"); value(spell?spell.name:""); put(",");
+		char[4] ntag=spell?spell.tag:`\0\0\0\0`;
 		reverse(ntag[]);
 		field("tag"); value(ntag);
 		put("}");
 	}
 	void value(B)(SacObject!B obj){
 		put("{");
-		field("name"); value(obj.name); put(",");
-		char[4] ntag=obj.tag;
+		field("name"); value(obj?obj.name:""); put(",");
+		char[4] ntag=obj?obj.tag:`\0\0\0\0`;
 		reverse(ntag[]);
 		field("tag"); value(ntag);
 		if(numSouls){
 			put(",");
-			auto numSouls=obj.numSouls;
+			auto numSouls=obj?obj.numSouls:-1;
 			field("numSouls"); value(numSouls);
 		}
 		put("}");
 	}
 	void value(B)(SacBuilding!B bldg){
 		put("{");
-		field("name"); value(bldg.name); put(",");
-		char[4] ntag=bldg.tag;
+		field("name"); value(bldg?bldg.name:""); put(",");
+		char[4] ntag=bldg?bldg.tag:`\0\0\0\0`;
 		reverse(ntag[]);
 		field("tag"); value(ntag);
 		put("}");		
