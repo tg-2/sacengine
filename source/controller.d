@@ -60,17 +60,27 @@ final class Controller(B){
 		this.playback=playback;
 	}
 
+	bool resetTimerOnUnpause=false; // TODO: this is a hack
+	void setFrame(int frame){
+		timer.setFrame(frame);
+		if(paused) resetTimerOnUnpause=true;
+	}
 	bool paused=false;
 	bool waitingOnNetwork=false;
+	bool pauseTimerOnPause=true; // TODO: this is a hack
 	void pause(){
 		paused=true;
-		timer.pause();
-		timer.setFrame(timer.frame);
+		if(pauseTimerOnPause){
+			timer.pause();
+			timer.setFrame(timer.frame);
+		}else pauseTimerOnPause=true;
 	}
 	void unpause(){
 		paused=false;
 		if(waitingOnNetwork) return;
-		timer.setFrame(state.currentFrame);
+		if(!resetTimerOnUnpause){
+			timer.setFrame(state.currentFrame);
+		}else resetTimerOnUnpause=false;
 		timer.start();
 	}
 
@@ -124,11 +134,11 @@ final class Controller(B){
 		assert(network&&!network.isHost);
 	}do{
 		state.replaceState(serialized);
-		timer.setFrame(state.current.frame);
+		if(currentFrame<state.committedFrame)
+			timer.setFrame(state.current.frame);
 		import serialize_;
 		if(network.logDesynch_) state.committed.serialized(&network.logDesynch); // TODO: don't log if late join
 		if(recording) recording.replaceState(state.current,state.commands);
-		network.updateStatus(PlayerStatus.stateResynched);
 	}
 	void logDesynch(int side,scope ubyte[] serialized){
 		if(recording) try{ recording.logDesynch(side,serialized,state.current); }catch(Exception e){ stderr.writeln("bad desynch log: ",e.msg); }
@@ -190,7 +200,46 @@ final class Controller(B){
 				}
 			}
 			if(network.hostDropped) return true;
-			if(network.lateJoining) network.updateStatus(PlayerStatus.desynched);
+			if(network.lateJoining){
+				pauseTimerOnPause=false;
+				pause();
+				network.updateStatus(PlayerStatus.pendingLoad);
+				//network.updateStatus(PlayerStatus.desynched);
+				pauseTimerOnPause=false;
+				return true;
+			}
+			if(network.lateJoining||network.players[network.me].status==PlayerStatus.pendingLoad){
+				pauseTimerOnPause=false;
+				return true;
+			}
+			if(network.isHost){
+				bool anyoneLateJoining=false;
+				foreach(i,ref player;network.players){
+					if(player.status!=PlayerStatus.pendingLoad) continue;
+					if(player.ping==-1){ network.ping(cast(int)i); continue; }
+					auto frame=currentFrame;
+					if(network.playing) frame=to!int(frame+player.pingDuration/(1.seconds/updateFPS));
+					network.setFrame(cast(int)i,frame);
+					anyoneLateJoining=true;
+				}
+				if(anyoneLateJoining){
+					updateCommittedTo(network.committedFrame);
+					with(state){
+						import serialize_;
+						committed.serialized((scope ubyte[] stateData){
+							commands.serialized((scope ubyte[] commandData){
+								foreach(i,ref player;network.players){
+									if(player.status!=PlayerStatus.pendingLoad) continue;
+									if(player.ping==-1) continue;
+									network.updateStatus(cast(int)i,PlayerStatus.loading);
+									network.sendState(cast(int)i,stateData,commandData);
+									network.requestStatusUpdate(cast(int)i,PlayerStatus.playing);
+								}
+							});
+						});
+					}
+				}
+			}
 			if(network.desynched){
 				updateCommitted();
 				if(network.pendingResynch) network.updateStatus(PlayerStatus.readyToResynch);
@@ -200,17 +249,21 @@ final class Controller(B){
 					import std.conv: text;
 					enforce(state.currentFrame<=network.resynchCommittedFrame,text(state.currentFrame," ",network.resynchCommittedFrame," ",network.players.map!((ref p)=>p.status),network.players.map!((ref p)=>p.committedFrame)));
 					auto newFrame=network.resynchCommittedFrame;
-					state.simulateTo(newFrame);
 					state.simulateCommittedTo!((){
 						if(recording) recording.stepCommitted(state.committed);
 						if(network.isHost) network.addSynch(state.committedFrame,state.committed.hash);
 						return false;
 					})(newFrame);
+					state.rollback();
+					timer.setFrame(newFrame);
 					import serialize_;
-					state.current.serialized((scope ubyte[] stateData){
+					state.committed.serialized((scope ubyte[] stateData){
 						state.commands.serialized((scope ubyte[] commandData){
-							foreach(i,ref player;network.players)
+							foreach(i,ref player;network.players){
+								network.setFrame(cast(int)i,newFrame);
 								network.sendState(cast(int)i,stateData,commandData);
+								network.requestStatusUpdate(cast(int)i,PlayerStatus.stateResynched);
+							}
 						});
 					});
 					network.updateStatus(PlayerStatus.stateResynched);

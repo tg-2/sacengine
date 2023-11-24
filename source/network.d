@@ -124,6 +124,9 @@ enum PacketType{
 	initGame,
 	loadGame,
 	startGame,
+	setFrame,
+	nudgeTimer,
+	requestStatusUpdate,
 	confirmSynch,
 	// host query
 	join,
@@ -150,7 +153,7 @@ enum arrayLengthLimit=4096;
 PacketPurpose purposeFromType(PacketType type){
 	final switch(type) with(PacketType) with(PacketPurpose){
 		case nop,disconnect,ping,ack: return peerToPeer;
-		case updatePlayerId,updateSlot,sendMap,sendState,initGame,loadGame,startGame,confirmSynch,jsonResponse: return hostMessage;
+		case updatePlayerId,updateSlot,sendMap,sendState,initGame,loadGame,startGame,setFrame,nudgeTimer,requestStatusUpdate,confirmSynch,jsonResponse: return hostMessage;
 		case join,checkSynch,logDesynch,jsonCommand: return hostQuery;
 		case updateSetting,clearArraySetting,appendArraySetting,confirmArraySetting,setMap,appendMap,confirmMap,updateStatus,command,commandRaw,commit: return broadcast;
 	}
@@ -164,7 +167,7 @@ bool isHeaderType(PacketType type){
 	final switch(type) with(PacketType){
 		case nop,disconnect,ping,ack,updatePlayerId,updateSlot: return false;
 		case sendMap,sendState,initGame: return true;
-		case loadGame,startGame,confirmSynch: return false;
+		case loadGame,startGame,setFrame,nudgeTimer,confirmSynch,requestStatusUpdate: return false;
 		case join: return true;
 		case checkSynch: return false;
 		case logDesynch: return true;
@@ -189,7 +192,10 @@ struct Packet{
 			case initGame: return text("Packet.initGame(",rawDataSize,",...)");
 			case loadGame: return text("Packet.loadGame()");
 			case startGame: return text("Packet.startGame(",startDelay,")");
+			case setFrame: return text("Packet.setFrame(",newFrame,")");
+			case nudgeTimer: return text("Packet.nudgeTimer(",timerAdjustHnsecs,")");
 			case confirmSynch: return text("Packet.confirmSynch(",synchFrame,",",synchHash,")");
+			case requestStatusUpdate: return text("Packet.requestStatusUpdate(",requestedStatus,")");
 			case join: return text("Packet.join(",rawDataSize,",...)");
 			case checkSynch: return text("Packet.checkSynch(",synchFrame,",",synchHash,")");
 			case logDesynch: return text("Packet.logDesynch(",rawDataSize,"...)");
@@ -252,10 +258,13 @@ struct Packet{
 		struct{ int id; }// updatePlayerId
 		struct{}// loadGame
 		struct{ long startDelay; } // startGame
+		struct{ int newFrame; } // setFrame
+		struct{ long timerAdjustHnsecs; } // nudgeTimer
 		struct{ // checkSynch, confirmSynch
 			int synchFrame;
 			uint synchHash;
 		}
+		struct{ PlayerStatus requestedStatus; } // requestStatusUpdate
 		struct{ long pingId; } // ping, ack
 		struct{ // updateSlot, updateStatus, updateSetting, clearArraySetting, appendArraySetting, confirmArraySetting
 			int player;
@@ -364,6 +373,27 @@ struct Packet{
 		p.type=PacketType.startGame;
 		p.startDelay=startDelay;
 		p.size=memberSize!(type,startDelay);
+		return p;
+	}
+	static Packet setFrame(int frame){
+		Packet p;
+		p.type=PacketType.setFrame;
+		p.newFrame=frame;
+		p.size=memberSize!(type,newFrame);
+		return p;
+	}
+	static Packet nudgeTimer(long hnsecs){
+		Packet p;
+		p.type=PacketType.setFrame;
+		p.timerAdjustHnsecs=hnsecs;
+		p.size=memberSize!(type,timerAdjustHnsecs);
+		return p;
+	}
+	static Packet requestStatusUpdate(PlayerStatus status){
+		Packet p;
+		p.type=PacketType.requestStatusUpdate;
+		p.requestedStatus=status;
+		p.size=memberSize!(type,requestedStatus);
 		return p;
 	}
 	static Packet confirmSynch(int frame,uint hash){
@@ -951,6 +981,7 @@ struct Player{
 	long pingTicks=-1; // TODO: switch to MonoTime
 	long packetTicks=-1; // TODO: switch to MonoTime
 	long ping=-1; // TODO: switch to Duration
+	Duration pingDuration(){ return ping.msecs; } // TODO: remove
 
 	void drop()in{
 		assert(!connection);
@@ -1155,6 +1186,11 @@ final class Network(B){
 			oldStatus==PlayerStatus.resynched&&newStatus==PlayerStatus.loading||
 			actor==host&&newStatus.among(PlayerStatus.readyToLoad,PlayerStatus.unconnected,PlayerStatus.dropped);
 	}
+	void requestStatusUpdate(int player,PlayerStatus newStatus)in{
+		assert(isHost);
+	}do{
+		players[player].send(Packet.requestStatusUpdate(newStatus));
+	}
 	void updateStatus(int player,PlayerStatus newStatus)in{
 		assert(player==me||isHost);
 	}do{
@@ -1336,7 +1372,6 @@ final class Network(B){
 				updateStatus(PlayerStatus.loading);
 				return true;
 			case PacketType.startGame:
-				// TODO: wait for the specified amount of time
 				if(sender!=host){
 					stderr.writeln("non-host player ",sender," attempted to start game: ",p);
 					return false;
@@ -1349,6 +1384,21 @@ final class Network(B){
 				updateStatus(PlayerStatus.playing);
 				B.unpause();
 				return true;
+			case PacketType.setFrame:
+				if(sender!=host){
+					stderr.writeln("non-host player ",sender," attempted to set frame: ",p);
+					return false;
+				}
+				writeln("setting frame: ",p.newFrame);
+				if(controller) controller.setFrame(p.newFrame);
+				return true;
+			case PacketType.nudgeTimer:
+				if(sender!=host){
+					stderr.writeln("non-host player ",sender," attempted to nudge timer: ",p);
+					return false;
+				}
+				if(controller) controller.timer.adjust(p.timerAdjustHnsecs.hnsecs);
+				return true;
 			case PacketType.confirmSynch:
 				if(!checkDesynch) return true;
 				if(desynched){
@@ -1360,6 +1410,13 @@ final class Network(B){
 					return false;
 				}
 				//if(controller) controller.confirmSynch(p.synchFrame,p.synchHash);
+				return true;
+			case PacketType.requestStatusUpdate:
+				if(sender!=host){
+					stderr.writeln("non-host player ",sender," requested status update: ",p);
+					return false;
+				}
+				updateStatus(p.requestedStatus);
 				return true;
 			// host query:
 			case PacketType.join:
@@ -1385,7 +1442,15 @@ final class Network(B){
 					}else{
 						stderr.writeln("expected hash ",synchQueue.hashes[p.frame%$],", got ",p.synchHash);
 					}
-					updateStatus(sender,PlayerStatus.desynched);
+					//updateStatus(sender,PlayerStatus.desynched);
+					with(controller.state){
+						import serialize_;
+						committed.serialized((scope ubyte[] stateData){
+							commands.serialized((scope ubyte[] commandData){
+								sendState(sender,stateData,commandData);
+							});
+						});
+					}
 				}//else confirmSynch(sender,p.synchFrame,p.synchHash);
 				return true;
 			case PacketType.logDesynch:
@@ -1951,6 +2016,12 @@ final class Network(B){
 			if(wizId) B.focusCamera(wizId);
 		}
 		B.unpause();
+	}
+	void setFrame(int player,int frame){
+		players[player].send(Packet.setFrame(frame));
+	}
+	void nudgeTimer(int player,Duration adjustment){
+		players[player].send(Packet.nudgeTimer(adjustment.total!"hnsecs"));
 	}
 	void pause(PlayerStatus status)in{
 		assert(isHost);
