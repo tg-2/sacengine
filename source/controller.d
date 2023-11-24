@@ -93,10 +93,12 @@ final class Controller(B){
 		assert(command.id==0);
 	}do{
 		if(network&&!network.playing){
-			// TODO: properly authorize observer chat
-			network.addCommand(currentFrame,command);
-			if(network.networkState)
-				network.networkState.chatMessages.addChatMessage(command.chatMessage);
+			if(command.type==CommandType.chatMessage){
+				// TODO: properly authorize observer chat
+				network.addCommand(currentFrame,command);
+				if(network.networkState)
+					network.networkState.chatMessages.addChatMessage(command.chatMessage);
+			}
 			return;
 		}
 		if(!isControllingSide(command.side)){
