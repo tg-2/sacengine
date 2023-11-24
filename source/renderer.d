@@ -3902,7 +3902,7 @@ struct Renderer(B){
 			for(;;++info.activeChatMessages.chatMessageIndex[fromNetwork]){
 				auto i=info.activeChatMessages.chatMessageIndex[fromNetwork];
 				if(i>=messages.length) break;
-				if(messages[i].startFrame>state.frame) break;
+				if(!fromNetwork&&messages[i].startFrame>state.frame) break;
 				auto height=ChatMessage!B.additionalBoxHeight+messages[i].textHeight;
 				if(messages[i].visibleToSlot(slot,state))
 					info.activeChatMessages.add(i,height,ChatMessage!B.topOffset,ChatMessage!B.gapSize,!!fromNetwork,frame);
@@ -3915,7 +3915,7 @@ struct Renderer(B){
 			auto index=info.activeChatMessages.messages[i].index;
 			int messageFrame=info.activeChatMessages.messages[i].frame;
 			scope messages=(fromNetwork?networkState.chatMessages:state.obj.opaqueObjects.chatMessages).messages.data;
-			if(index<messages.length&&messages[index].visibleToSlot(slot,state)&&messageFrame<=frame){
+			if(index<messages.length&&messages[index].visibleToSlot(slot,state)){
 				auto currentOffset=info.activeChatMessages.messages[i].offset;
 				renderChatMessage(messages[index],currentOffset,info,rc);
 			}

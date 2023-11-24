@@ -1083,6 +1083,14 @@ final class Network(B){
 	size_t numActivePlayers(){ return activePlayerIds.walkLength; }
 	Listener listener;
 	NetworkState!B networkState;
+	void sidechannelChatMessage(R,S)(ChatMessageType type,R name,S message,Controller!B controller)in{
+		assert(!!controller);
+	}do{
+		auto controlledSlot=-1,slotFilter=-1;
+		auto chatMessage=makeChatMessage!B(controlledSlot,slotFilter,type,name,message,controller.currentFrame);
+		if(isHost) addCommand(-1,Command!B(-1,chatMessage));
+		if(networkState) networkState.chatMessages.addChatMessage(move(chatMessage));
+	}
 	this(){
 		// makeListener
 		networkState=new NetworkState!B();
@@ -1585,7 +1593,7 @@ final class Network(B){
 									report!true(sender,"tried to send an observer chat message while muted");
 									return false;
 								}
-								adjustChatMessage(command.chatMessage,controller.state.currentFrame);
+								adjustChatMessage(command.chatMessage,controller.currentFrame);
 								with(command.chatMessage){
 									slotFilter=-1;
 									content.type=ChatMessageType.observer;
@@ -1801,6 +1809,10 @@ final class Network(B){
 			report!true(cast(int)i,"tried to join with incompatible version #");
 			stderr.writeln("they were using version ",players[i].settings.commit);
 		}else report(cast(int)i,"dropped");
+		if(controller){
+			auto message=!players[i].allowedToControlState||players[i].won?"has left the game.":"has been dropped from the game.";
+			sidechannelChatMessage(ChatMessageType.network,players[i].settings.name,message,controller);
+		}
 		if(!isHost){
 			assert(i==host);
 			players[i].status=PlayerStatus.dropped;
