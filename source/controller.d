@@ -246,15 +246,16 @@ final class Controller(B){
 				if(network.isHost && network.readyToResynch){
 					network.acceptingNewConnections=false;
 					//writeln("SENDING STATE AT FRAME: ",currentFrame," ",network.players.map!((ref p)=>p.committedFrame));
-					import std.conv: text;
+					/+import std.conv: text;
 					enforce(state.currentFrame<=network.resynchCommittedFrame,text(state.currentFrame," ",network.resynchCommittedFrame," ",network.players.map!((ref p)=>p.status),network.players.map!((ref p)=>p.committedFrame)));
 					auto newFrame=network.resynchCommittedFrame;
 					state.simulateCommittedTo!((){
 						if(recording) recording.stepCommitted(state.committed);
 						if(network.isHost) network.addSynch(state.committedFrame,state.committed.hash);
 						return false;
-					})(newFrame);
+					})(newFrame);+/
 					state.rollback();
+					auto newFrame=state.currentFrame;
 					timer.setFrame(newFrame);
 					import serialize_;
 					state.committed.serialized((scope ubyte[] stateData){
@@ -303,7 +304,7 @@ final class Controller(B){
 					network.start(this);
 				}
 				return true; // ignore passed time in next frame
-			}else if(network.pauseOnDrop&&network.anyonePending) return true;
+			}
 			network.acceptingNewConnections=true;
 			updateCommitted(0);
 		}else assert(state.committedFrame==state.current.frame);
