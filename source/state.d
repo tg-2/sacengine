@@ -22797,7 +22797,7 @@ private struct StateHistory(B){
 			history.length=index+1;
 		if(history[index].state is null)
 			history[index].state=makeState();
-		if(history[index].numPending!=history[index-1].numPending){
+		if(history[index].numPending!=history[index-1].numPending&&history[index-1].numPending!=-1){
 			history[index].state.updateFrom(history[index-1].state,commands[frame].data);
 			assert(history[index].state.frame==frame+1);
 			history[index].numPending=history[index-1].numPending;
@@ -22856,14 +22856,41 @@ private struct StateHistory(B){
 		return true;
 	}
 	void replaceState(ref Commands!B commands,scope ubyte[] serialized){
-		auto index=currentFrame-committedFrame;
-		assert(index<history.length);
-		.replaceState(current,commands,serialized);
-		swap(history[0],history[index]);
-		history[0].numPending=0;
-		foreach(i;0..index)
-			history[i+1].numPending=-1;
-		currentFrame=history[0].state.frame;
+		if(history[$-1].numPending!=-1)
+			history~=Entry(makeState(),-1);
+		auto newIndex=history.length-1;
+		.replaceState(history[newIndex].state,commands,serialized);
+		auto newFrame=history[newIndex].state.frame;
+		if(newFrame<committedFrame){
+			auto targetIndex=currentFrame+1-committedFrame;
+			if(targetIndex!=newIndex){
+				assert(history[targetIndex].numPending==-1);
+				swap(history[targetIndex],history[newIndex]);
+			}
+			int numPrefix=committedFrame-newFrame;
+			while(history.length<targetIndex+numPrefix)
+				history~=Entry(makeState(),-1);
+			bringToFront(history.data[0..targetIndex],history.data[targetIndex..targetIndex+numPrefix]);
+			history[0].numPending=0;
+		}else{
+			auto targetIndex=min(to!int(history.length)-1,newFrame-committedFrame);
+			if(targetIndex!=newIndex){
+				history[targetIndex].numPending=-1;
+				swap(history[targetIndex],history[newIndex]);
+			}
+			history[targetIndex].numPending=0;
+			foreach(i;0..targetIndex)
+				history[i].numPending=-1;
+			bringToFront(history.data[0..targetIndex],history.data[targetIndex..$]);
+			assert(history[0].numPending==0);
+			currentFrame=max(currentFrame,committedFrame);
+		}
+		assert(committedFrame==newFrame);
+		auto currentIndex=currentFrame-committedFrame;
+		assert(currentIndex<history.length&&history[currentIndex].state&&history[currentIndex].state.frame==currentFrame);
+		foreach(i;0..currentIndex)
+			if(history[i+1].numPending!=-1)
+				history[i+1].numPending+=1;
 	}
 
 	pragma(inline,true) ObjectState!B committed(){ return history[0].state; }
@@ -22954,10 +22981,10 @@ private bool updateComb(alias f=void,B)(ref StateHistory!B states,ref Array!(Arr
 		if(combFrame>=currentFrame) combFrame=committedFrame;
 		int find(){
 			foreach(i;combFrame-committedFrame..currentFrame-committedFrame)
-				if(history[i+1].numPending!=history[i].numPending)
+				if(history[i+1].numPending!=history[i].numPending&&history[i].numPending!=-1)
 					return i+committedFrame;
 			foreach(i;0..combFrame-committedFrame)
-				if(history[i+1].numPending!=history[i].numPending)
+				if(history[i+1].numPending!=history[i].numPending&&history[i].numPending!=-1)
 					return i+committedFrame;
 			return -1;
 		}
