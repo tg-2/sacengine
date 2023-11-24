@@ -84,6 +84,7 @@ struct ActiveChatMessage{
 struct ActiveChatMessages{
 	Array!ActiveChatMessage messages;
 	int[2] chatMessageIndex=0;
+	int chatMessageLowerBound=0;
 	bool[480] occupied=false;
 	int frame=0;
 	void update(){ frame+=1; }
@@ -3921,7 +3922,7 @@ struct Renderer(B){
 			}
 			bool removed=false;
 			if(index<messages.length){
-				if(messageFrame+messages[index].lifetime<=frame){
+				if(messageFrame+messages[index].lifetime<=frame||messages[index].startFrame+messages[index].lifetime<=state.frame){
 					info.activeChatMessages.remove(i);
 					removed=true;
 				}

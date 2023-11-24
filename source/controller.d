@@ -60,10 +60,13 @@ final class Controller(B){
 		this.playback=playback;
 	}
 
+	int chatMessageLowerBound=0;
 	bool resetTimerOnUnpause=false; // TODO: this is a hack
 	void setFrame(int frame){
+		int oldFrame=currentFrame;
 		timer.setFrame(frame);
 		if(paused) resetTimerOnUnpause=true;
+		if(oldFrame<=frame+updateFPS) chatMessageLowerBound=frame;
 	}
 	bool paused=false;
 	bool waitingOnNetwork=false;
