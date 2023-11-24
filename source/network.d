@@ -1082,8 +1082,10 @@ final class Network(B){
 	}
 	size_t numActivePlayers(){ return activePlayerIds.walkLength; }
 	Listener listener;
+	NetworkState!B networkState;
 	this(){
 		// makeListener
+		networkState=new NetworkState!B();
 	}
 	enum host=0;
 	bool dumpTraffic=false;
@@ -1103,6 +1105,7 @@ final class Network(B){
 		this.nudgeTimers=options.nudgeTimers;
 		this.dropOnTimeout=options.dropOnTimeout;
 		this.pauseOnDrop=options.pauseOnDrop;
+		this();
 	}
 
 	bool isHost(){ return me==host; }
@@ -1245,7 +1248,7 @@ final class Network(B){
 		updateSettings(me,newSettings);
 	}
 	void addCommand(int frame,Command!B command)in{
-		assert(playing&&players[me].committedFrame<=frame||command.type==CommandType.surrender||!isHost&&frame==-1&&command.type==CommandType.chatMessage);
+		assert(playing&&players[me].committedFrame<=frame||command.type==CommandType.surrender||command.type==CommandType.chatMessage);
 	}do{
 		if(!isCommandWithRaw(command.type))
 			broadcast(Packet.command(frame,command),[]);
@@ -1560,42 +1563,45 @@ final class Network(B){
 						try{
 							static if(cmd==PacketType.command) auto command=fromNetwork!B(p.networkCommand);
 							else auto command=fromNetworkRaw!B(p.networkCommand,rawData);
-							if(controller.state&&controller.state.committedFrame<=p.frame){
-								if(isHost){
-									if(!players[sender].allowedToControlSide(command.side,controller)||!players[sender].isControllingState){
-										report(sender,"sent an unauthorized command");
-										return false;
-									}
+							if(controller.state&&controller.state.committedFrame<=p.frame&&command.id!=0){
+								if(!isHost||(players[sender].allowedToControlSide(command.side,controller)&&players[sender].isControllingState)){
+									controller.addExternalCommand(p.frame,move(command));
+									return true;
 								}
-								controller.addExternalCommand(p.frame,move(command));
-							}else if(isHost&&p.frame==-1&&command.type==CommandType.chatMessage&&command.id==0){
-								if(!players[sender].isControllingState){
-									if(command.chatMessage.senderSlot==players[sender].slot){
-										if(players[sender].settings.observerChat){
-											adjustChatMessage(command.chatMessage,controller.state.currentFrame);
-											with(command.chatMessage){
-												slotFilter=-1;
-												content.type=ChatMessageType.observer;
-											}
-											controller.addCommand(command);
-											return false;
-										}else{
-											report!true(sender,"tried to send an observer chat message while muted");
-											return false;
-										}
-									}else{
-										report!true(sender,"tried to impersonate another player (slot ",command.chatMessage.senderSlot,")");
-										disconnectPlayer(sender,controller);
-										return false;
-									}
-								}else{
+								report(sender,"sent an unauthorized command");
+								return false;
+							}
+							if(isHost&&p.frame==-1&&command.type==CommandType.chatMessage&&command.id==0){
+								if(players[sender].isControllingState){
 									report!true(sender,"tried to send an observer chat message while not being an observer");
 									return false;
 								}
-							}else{
-								stderr.writeln("warning: invalid command ignored (frame: ",p.frame,", committed: ",controller.state.committedFrame,").");
-								return false;
+								if(command.chatMessage.senderSlot!=players[sender].slot){
+									report!true(sender,"tried to impersonate another player (slot ",command.chatMessage.senderSlot,")");
+									disconnectPlayer(sender,controller);
+									return false;
+								}
+								if(!players[sender].settings.observerChat){
+									report!true(sender,"tried to send an observer chat message while muted");
+									return false;
+								}
+								adjustChatMessage(command.chatMessage,controller.state.currentFrame);
+								with(command.chatMessage){
+									slotFilter=-1;
+									content.type=ChatMessageType.observer;
+								}
+								if(controller&&playing){
+									controller.addCommand(command);
+									return false;
+								}
 							}
+							if(command.type==CommandType.chatMessage&&command.id==0&&networkState){
+								// TODO: properly authorize observer chat
+								networkState.chatMessages.addChatMessage(command.chatMessage);
+								return true;
+							}
+							stderr.writeln("warning: invalid command ignored (frame: ",p.frame,", committed: ",controller.state.committedFrame,").");
+							return false;
 						}catch(Exception e){
 							report!true(sender,"sent a command with wrong encoding: ",e.msg);
 							disconnectPlayer(sender,controller);

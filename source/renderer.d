@@ -78,12 +78,13 @@ struct ActiveChatMessage{
 	int index;
 	int offset;
 	int height;
+	bool fromNetwork;
 }
 struct ActiveChatMessages{
 	Array!ActiveChatMessage messages;
-	int chatMessageIndex=0;
+	int[2] chatMessageIndex=0;
 	bool[480] occupied=false;
-	void add(int index,int height,int topOffset,int gapSize){
+	void add(int index,int height,int topOffset,int gapSize,bool fromNetwork){
 		int offset=topOffset; // TODO: delay messages instead if nothing is found
 		int curGap=gapSize;
 		foreach(i,x;occupied){
@@ -95,7 +96,7 @@ struct ActiveChatMessages{
 				break;
 			}
 		}
-		messages~=ActiveChatMessage(index,offset,height);
+		messages~=ActiveChatMessage(index,offset,height,fromNetwork);
 	}
 	void remove(int localIndex){
 		occupied[messages[localIndex].offset..messages[localIndex].offset+messages[localIndex].height]=false;
@@ -3885,27 +3886,38 @@ struct Renderer(B){
 		//int xOffset=ChatMessage!B.minOffset+(ChatMessage!B.maxWidth-message.textWidth)/2;
 	}
 
-	void renderChatMessages(ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
+	void renderChatMessages(ObjectState!B state,NetworkState!B networkState,ref RenderInfo!B info,B.RenderContext rc){
 		int slot=-1; // TODO
 		B.colorHUDMaterialBackend.bind(null,rc);
-		scope messages=state.obj.opaqueObjects.chatMessages.messages.data;
-		info.activeChatMessages.chatMessageIndex=min(info.activeChatMessages.chatMessageIndex,messages.length);
-		while(info.activeChatMessages.chatMessageIndex&&messages[info.activeChatMessages.chatMessageIndex-1].startFrame>=state.frame)
-			--info.activeChatMessages.chatMessageIndex;
-		for(;info.activeChatMessages.chatMessageIndex<messages.length;++info.activeChatMessages.chatMessageIndex){
-			auto i=info.activeChatMessages.chatMessageIndex;
-			if(messages[i].startFrame>state.frame) break;
-			auto height=ChatMessage!B.additionalBoxHeight+messages[i].textHeight;
-			if(messages[i].visible(slot,state))
-				info.activeChatMessages.add(i,height,ChatMessage!B.topOffset,ChatMessage!B.gapSize);
-		}
+		foreach(fromNetwork;0..2){{
+			if(!fromNetwork&&!state) continue;
+			if(fromNetwork&&!networkState) continue;
+			scope messages=(fromNetwork?networkState.chatMessages:state.obj.opaqueObjects.chatMessages).messages.data;
+			info.activeChatMessages.chatMessageIndex[fromNetwork]=min(info.activeChatMessages.chatMessageIndex[fromNetwork],messages.length);
+			/+while(info.activeChatMessages.chatMessageIndex[fromNetwork]&&messages[info.activeChatMessages.chatMessageIndex[fromNetwork]-1].startFrame>=state.frame)
+				--info.activeChatMessages.chatMessageIndex[fromNetwork];+/
+			for(;;++info.activeChatMessages.chatMessageIndex[fromNetwork]){
+				auto i=info.activeChatMessages.chatMessageIndex[fromNetwork];
+				if(i>=messages.length) break;
+				if(messages[i].startFrame>state.frame) break;
+				auto height=ChatMessage!B.additionalBoxHeight+messages[i].textHeight;
+				if(messages[i].visible(slot,state))
+					info.activeChatMessages.add(i,height,ChatMessage!B.topOffset,ChatMessage!B.gapSize,!!fromNetwork);
+			}
+		}}
 		for(int i=0;i<info.activeChatMessages.messages.length;){
+			auto fromNetwork=info.activeChatMessages.messages[i].fromNetwork;
+			if(!fromNetwork&&!state) continue;
+			if(fromNetwork&&!networkState) continue;
 			auto index=info.activeChatMessages.messages[i].index;
+			scope messages=(fromNetwork?networkState.chatMessages:state.obj.opaqueObjects.chatMessages).messages.data;
 			if(index<messages.length&&messages[index].visible(slot,state)){
 				auto currentOffset=info.activeChatMessages.messages[i].offset;
 				renderChatMessage(messages[index],currentOffset,info,rc);
 				i++;
-			}else info.activeChatMessages.remove(i);
+			}
+			if(index<messages.length&&!messages[index].stillAlive(state))
+				info.activeChatMessages.remove(i);
 		}
 		B.colorHUDMaterialBackend.unbind(null,rc);
 	}
@@ -4086,19 +4098,19 @@ struct Renderer(B){
 	static struct R2DOpt{
 		int cursorSize;
 	}
-	void renderEntities2D(R2DOpt options,ObjectState!B state,scope SacFormState!B[] forms,ref RenderInfo!B info,B.RenderContext rc){
+	void renderEntities2D(R2DOpt options,ObjectState!B state,NetworkState!B networkState,scope SacFormState!B[] forms,ref RenderInfo!B info,B.RenderContext rc){
 		if(info.mouse.visible){
 			if(state){
 				renderTargetFrame(state,info,rc);
 				renderHUD(state,info,rc);
 				renderText(state,info,rc);
-				renderChatMessages(state,info,rc);
 			}
+			renderChatMessages(state,networkState,info,rc);
 			renderForms(forms,info,rc);
 			renderRectangleSelectFrame(info,rc);
 			renderCursor(options.cursorSize,state,info,rc);
 			renderMouseoverBox(options.cursorSize,state,forms,info,rc);
-		}else if(state) renderChatMessages(state,info,rc);
+		}else renderChatMessages(state,networkState,info,rc);
 	}
 }
 

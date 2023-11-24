@@ -92,7 +92,13 @@ final class Controller(B){
 	void addCommand(Command!B command)in{
 		assert(command.id==0);
 	}do{
-		if(network&&!network.playing) return;
+		if(network&&!network.playing){
+			// TODO: properly authorize observer chat
+			network.addCommand(currentFrame,command);
+			if(network.networkState)
+				network.networkState.chatMessages.addChatMessage(command.chatMessage);
+			return;
+		}
 		if(!isControllingSide(command.side)){
 			bool observerChat=command.side==-1&&command.type==CommandType.chatMessage;
 			if(!observerChat) return;

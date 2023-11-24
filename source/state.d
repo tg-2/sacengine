@@ -5167,6 +5167,7 @@ enum ChatMessageType{
 	standard,
 	observer,
 	system,
+	network,
 }
 
 struct ChatMessageContent(B){
@@ -5205,6 +5206,9 @@ struct ChatMessage(B){
 	bool visible(int slot,ObjectState!B state){
 		return visibleToSlot(slot,state)&&currentlyVisible(state);
 	}
+	bool stillAlive(ObjectState!B state){
+		return state.frame<=startFrame+lifetime;
+	}
 }
 
 ChatMessage!B makeChatMessage(B,R,S)(int senderSlot,int slotFilter,ChatMessageType type,scope R title,scope S message,int startFrame){
@@ -5242,6 +5246,10 @@ struct ChatMessages(B){
 	void addChatMessage(ChatMessage!B message){
 		messages~=move(message);
 	}
+}
+
+class NetworkState(B){
+	ChatMessages!B chatMessages;
 }
 
 struct Objects(B,RenderMode mode){

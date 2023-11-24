@@ -206,7 +206,8 @@ final class SacScene: Scene{
 		mouse.x=max(0,min(mouse.x,width-1));
 		mouse.y=max(0,min(mouse.y,height-1));
 		typeof(renderer).R2DOpt r2dopt={cursorSize: options.cursorSize};
-		renderer.renderEntities2D(r2dopt,state?state.current:null,forms.data,info,rc);
+		auto networkState=controller&&controller.network?controller.network.networkState:null;
+		renderer.renderEntities2D(r2dopt,state?state.current:null,networkState,forms.data,info,rc);
 	}
 
 	void setState(GameState!DagonBackend state)in{
@@ -1060,6 +1061,11 @@ final class SacScene: Scene{
 	}do{
 		//auto ostate=state.current;
 		auto ostate=state.committed;
+		scope(exit){
+			auto currentFrame=state.currentFrame;
+			state.rollback();
+			state.simulateTo(currentFrame);
+		}
 		updateCameraTarget();
 		static void applyToMoving(alias f,B)(ObjectState!B state,Camera camera,Target target){
 			static void perform(T)(ref T obj,ObjectState!B state){ f(obj,state); }
