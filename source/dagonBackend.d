@@ -1165,6 +1165,7 @@ final class SacScene: Scene{
 		hudSoulFrame+=1;
 		if(hudSoulFrame>=renderer.sacSoul.numFrames*updateAnimFactor)
 			hudSoulFrame=0;
+		info.activeChatMessages.update();
 	}
 
 	final void pause(){ if(controller) controller.pause(); }

@@ -78,13 +78,16 @@ struct ActiveChatMessage{
 	int index;
 	int offset;
 	int height;
+	int frame;
 	bool fromNetwork;
 }
 struct ActiveChatMessages{
 	Array!ActiveChatMessage messages;
 	int[2] chatMessageIndex=0;
 	bool[480] occupied=false;
-	void add(int index,int height,int topOffset,int gapSize,bool fromNetwork){
+	int frame=0;
+	void update(){ frame+=1; }
+	void add(int index,int height,int topOffset,int gapSize,bool fromNetwork,int frame){
 		int offset=topOffset; // TODO: delay messages instead if nothing is found
 		int curGap=gapSize;
 		foreach(i,x;occupied){
@@ -96,7 +99,7 @@ struct ActiveChatMessages{
 				break;
 			}
 		}
-		messages~=ActiveChatMessage(index,offset,height,fromNetwork);
+		messages~=ActiveChatMessage(index,offset,height,frame,fromNetwork);
 	}
 	void remove(int localIndex){
 		occupied[messages[localIndex].offset..messages[localIndex].offset+messages[localIndex].height]=false;
@@ -3889,20 +3892,20 @@ struct Renderer(B){
 	void renderChatMessages(ObjectState!B state,NetworkState!B networkState,ref RenderInfo!B info,B.RenderContext rc){
 		int slot=-1; // TODO
 		B.colorHUDMaterialBackend.bind(null,rc);
+		auto frame=info.activeChatMessages.frame;
 		foreach(fromNetwork;0..2){{
 			if(!fromNetwork&&!state) continue;
 			if(fromNetwork&&!networkState) continue;
 			scope messages=(fromNetwork?networkState.chatMessages:state.obj.opaqueObjects.chatMessages).messages.data;
 			info.activeChatMessages.chatMessageIndex[fromNetwork]=min(info.activeChatMessages.chatMessageIndex[fromNetwork],messages.length);
-			/+while(info.activeChatMessages.chatMessageIndex[fromNetwork]&&messages[info.activeChatMessages.chatMessageIndex[fromNetwork]-1].startFrame>=state.frame)
-				--info.activeChatMessages.chatMessageIndex[fromNetwork];+/
+			// TODO: this may race a bit with game state updating in response to network
 			for(;;++info.activeChatMessages.chatMessageIndex[fromNetwork]){
 				auto i=info.activeChatMessages.chatMessageIndex[fromNetwork];
 				if(i>=messages.length) break;
 				if(messages[i].startFrame>state.frame) break;
 				auto height=ChatMessage!B.additionalBoxHeight+messages[i].textHeight;
-				if(messages[i].visible(slot,state))
-					info.activeChatMessages.add(i,height,ChatMessage!B.topOffset,ChatMessage!B.gapSize,!!fromNetwork);
+				if(messages[i].visibleToSlot(slot,state))
+					info.activeChatMessages.add(i,height,ChatMessage!B.topOffset,ChatMessage!B.gapSize,!!fromNetwork,frame);
 			}
 		}}
 		for(int i=0;i<info.activeChatMessages.messages.length;){
@@ -3910,14 +3913,20 @@ struct Renderer(B){
 			if(!fromNetwork&&!state) continue;
 			if(fromNetwork&&!networkState) continue;
 			auto index=info.activeChatMessages.messages[i].index;
+			int messageFrame=info.activeChatMessages.messages[i].frame;
 			scope messages=(fromNetwork?networkState.chatMessages:state.obj.opaqueObjects.chatMessages).messages.data;
-			if(index<messages.length&&messages[index].visible(slot,state)){
+			if(index<messages.length&&messages[index].visibleToSlot(slot,state)&&messageFrame<=frame){
 				auto currentOffset=info.activeChatMessages.messages[i].offset;
 				renderChatMessage(messages[index],currentOffset,info,rc);
-				i++;
 			}
-			if(index<messages.length&&!messages[index].stillAlive(state))
-				info.activeChatMessages.remove(i);
+			bool removed=false;
+			if(index<messages.length){
+				if(messageFrame+messages[index].lifetime<=frame){
+					info.activeChatMessages.remove(i);
+					removed=true;
+				}
+			}
+			if(!removed) i++;
 		}
 		B.colorHUDMaterialBackend.unbind(null,rc);
 	}

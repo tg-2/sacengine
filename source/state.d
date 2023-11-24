@@ -5206,9 +5206,6 @@ struct ChatMessage(B){
 	bool visible(int slot,ObjectState!B state){
 		return visibleToSlot(slot,state)&&currentlyVisible(state);
 	}
-	bool stillAlive(ObjectState!B state){
-		return state.frame<=startFrame+lifetime;
-	}
 }
 
 ChatMessage!B makeChatMessage(B,R,S)(int senderSlot,int slotFilter,ChatMessageType type,scope R title,scope S message,int startFrame){
