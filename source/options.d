@@ -84,6 +84,7 @@ struct Options{
 	bool dumpNetworkSettings=false;
 	bool checkDesynch=true;
 	bool logDesynch=true;
+	bool nudgeTimers=true;
 	bool dropOnTimeout=true;
 	bool pauseOnDrop=true;
 	bool synchronizeObserverChat=true;

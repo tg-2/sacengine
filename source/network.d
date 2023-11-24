@@ -384,7 +384,7 @@ struct Packet{
 	}
 	static Packet nudgeTimer(long hnsecs){
 		Packet p;
-		p.type=PacketType.setFrame;
+		p.type=PacketType.nudgeTimer;
 		p.timerAdjustHnsecs=hnsecs;
 		p.size=memberSize!(type,timerAdjustHnsecs);
 		return p;
@@ -1090,6 +1090,7 @@ final class Network(B){
 	bool dumpNetworkStatus=false;
 	bool dumpNetworkSettings=false;
 	bool checkDesynch=true;
+	bool nudgeTimers=true;
 	bool dropOnTimeout=true;
 	bool pauseOnDrop=false;
 	bool pauseOnDropOnce=false;
@@ -1099,6 +1100,7 @@ final class Network(B){
 		this.dumpNetworkSettings=options.dumpNetworkSettings;
 		this.checkDesynch=options.checkDesynch;
 		this.logDesynch_=options.logDesynch;
+		this.nudgeTimers=options.nudgeTimers;
 		this.dropOnTimeout=options.dropOnTimeout;
 		this.pauseOnDrop=options.pauseOnDrop;
 	}
@@ -1605,6 +1607,14 @@ final class Network(B){
 			case PacketType.commit:
 				players[p.commitPlayer].committedFrame=max(players[p.commitPlayer].committedFrame,p.commitFrame);
 				//if(controller) controller.updateCommitted();
+				if(isHost&&nudgeTimers){
+					ping(p.commitPlayer);
+					auto frameTime=1.seconds/updateFPS;
+					auto deltaFrames=players[p.commitPlayer].committedFrame-players[host].committedFrame;
+					auto drift=deltaFrames*frameTime+players[p.commitPlayer].pingDuration/2;
+					auto correction=-drift/60;
+					nudgeTimer(p.commitPlayer,correction);
+				}
 				return true;
 			case PacketType.jsonCommand:
 				if(!isHost){
