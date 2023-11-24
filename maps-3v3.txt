@@ -6,4 +6,11 @@ maps/(6) Gladiator EXE2.scp
 maps/(6) EM-Eden.scp
 maps/(6) Exe2.scp
 maps/(6) EM-Two Farms.scp
+maps/(6) EM-Two Farms v2.scp
 maps/(6) EM-Arches's Fall.scp
+maps/(6) EM-Arches's Fall v2.scp
+maps/(6) EM-Arches's Fall v3.scp
+maps/(6) ZM - Stream Line.scp
+maps/(6) EM-Salt Gulch.scp
+maps/(6) EM-Ethereal Conflict.scp
+maps/(6) WM-Passage.scp
