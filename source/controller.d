@@ -61,11 +61,11 @@ final class Controller(B){
 	}
 
 	int chatMessageLowerBound=0;
-	bool resetTimerOnUnpause=false; // TODO: this is a hack
+	bool resetTimerOnUnpause=true; // TODO: this is a hack
 	void setFrame(int frame){
 		int oldFrame=currentFrame;
 		timer.setFrame(frame);
-		if(paused) resetTimerOnUnpause=true;
+		if(paused) resetTimerOnUnpause=false; // persist frame update even if paused
 		if(oldFrame<=frame+updateFPS) chatMessageLowerBound=frame;
 	}
 	bool paused=false;
@@ -81,9 +81,9 @@ final class Controller(B){
 	void unpause(){
 		paused=false;
 		if(waitingOnNetwork) return;
-		if(!resetTimerOnUnpause){
+		if(resetTimerOnUnpause){
 			timer.setFrame(state.currentFrame);
-		}else resetTimerOnUnpause=false;
+		}else resetTimerOnUnpause=true;
 		timer.start();
 	}
 
@@ -144,7 +144,9 @@ final class Controller(B){
 	void replaceState(scope ubyte[] serialized)in{
 		assert(network&&!network.isHost);
 	}do{
+		auto prevCommittedFrame=state.committedFrame;
 		state.replaceState(serialized);
+		assert(prevCommittedFrame<=state.committedFrame);
 		if(currentFrame<state.committedFrame)
 			timer.setFrame(state.current.frame);
 		import serialize_;
@@ -247,7 +249,7 @@ final class Controller(B){
 									if(player.status!=PlayerStatus.pendingLoad) continue;
 									if(player.ping==-1) continue;
 									network.updateStatus(cast(int)i,PlayerStatus.loading);
-									network.sendState(cast(int)i,stateData,commandData);
+									network.sendState(cast(int)i,committed.frame,stateData,commandData);
 									network.requestStatusUpdate(cast(int)i,PlayerStatus.playing);
 								}
 							});
@@ -269,20 +271,17 @@ final class Controller(B){
 						if(network.isHost) network.addSynch(state.committedFrame,state.committed.hash);
 						return false;
 					})(newFrame);
-					//state.rollback();
-					//auto newFrame=state.currentFrame;
+					assert(state.committed.frame==newFrame);
+					state.rollback();
 					timer.setFrame(newFrame);
+					network.setFrameAll(newFrame);
 					import serialize_;
 					state.committed.serialized((scope ubyte[] stateData){
 						state.commands.serialized((scope ubyte[] commandData){
-							foreach(i,ref player;network.players){
-								network.setFrame(cast(int)i,newFrame);
-								network.sendState(cast(int)i,stateData,commandData);
-								network.requestStatusUpdate(cast(int)i,PlayerStatus.stateResynched);
-							}
+							network.sendStateAll(newFrame,stateData,commandData);
 						});
 					});
-					network.updateStatus(PlayerStatus.stateResynched);
+					network.requestStatusUpdateAll(PlayerStatus.stateResynched);
 				}
 				if(network.stateResynched && network.players[network.me].status==PlayerStatus.stateResynched){
 					//writeln("STATE IS ACTUALLY AT FRAME: ",currentFrame);

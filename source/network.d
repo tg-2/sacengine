@@ -126,6 +126,7 @@ enum PacketType{
 	startGame,
 	setFrame,
 	nudgeTimer,
+	resetCommitted,
 	requestStatusUpdate,
 	confirmSynch,
 	// host query
@@ -153,7 +154,7 @@ enum arrayLengthLimit=4096;
 PacketPurpose purposeFromType(PacketType type){
 	final switch(type) with(PacketType) with(PacketPurpose){
 		case nop,disconnect,ping,ack: return peerToPeer;
-		case updatePlayerId,updateSlot,sendMap,sendState,initGame,loadGame,startGame,setFrame,nudgeTimer,requestStatusUpdate,confirmSynch,jsonResponse: return hostMessage;
+		case updatePlayerId,updateSlot,sendMap,sendState,initGame,loadGame,startGame,setFrame,nudgeTimer,resetCommitted,requestStatusUpdate,confirmSynch,jsonResponse: return hostMessage;
 		case join,checkSynch,logDesynch,jsonCommand: return hostQuery;
 		case updateSetting,clearArraySetting,appendArraySetting,confirmArraySetting,setMap,appendMap,confirmMap,updateStatus,command,commandRaw,commit: return broadcast;
 	}
@@ -167,7 +168,7 @@ bool isHeaderType(PacketType type){
 	final switch(type) with(PacketType){
 		case nop,disconnect,ping,ack,updatePlayerId,updateSlot: return false;
 		case sendMap,sendState,initGame: return true;
-		case loadGame,startGame,setFrame,nudgeTimer,confirmSynch,requestStatusUpdate: return false;
+		case loadGame,startGame,setFrame,nudgeTimer,resetCommitted,requestStatusUpdate,confirmSynch: return false;
 		case join: return true;
 		case checkSynch: return false;
 		case logDesynch: return true;
@@ -194,6 +195,7 @@ struct Packet{
 			case startGame: return text("Packet.startGame(",startDelay,")");
 			case setFrame: return text("Packet.setFrame(",newFrame,")");
 			case nudgeTimer: return text("Packet.nudgeTimer(",timerAdjustHnsecs,")");
+			case resetCommitted: return text("Packet.commit(",commitPlayer,",",commitFrame,")");
 			case confirmSynch: return text("Packet.confirmSynch(",synchFrame,",",synchHash,")");
 			case requestStatusUpdate: return text("Packet.requestStatusUpdate(",requestedStatus,")");
 			case join: return text("Packet.join(",rawDataSize,",...)");
@@ -292,7 +294,7 @@ struct Packet{
 			int frame; // command, commandRaw
 			NetworkCommand networkCommand; // command, commandRaw
 		}
-		struct{ // commit
+		struct{ // commit, resetCommitted
 			int commitPlayer;
 			int commitFrame;
 		}
@@ -387,6 +389,14 @@ struct Packet{
 		p.type=PacketType.nudgeTimer;
 		p.timerAdjustHnsecs=hnsecs;
 		p.size=memberSize!(type,timerAdjustHnsecs);
+		return p;
+	}
+	static Packet resetCommitted(int player,int frame){
+		Packet p;
+		p.type=PacketType.resetCommitted;
+		p.commitPlayer=player;
+		p.commitFrame=frame;
+		p.size=memberSize!(type,commitPlayer,commitFrame);
 		return p;
 	}
 	static Packet requestStatusUpdate(PlayerStatus status){
@@ -1200,9 +1210,17 @@ final class Network(B){
 			actor==host&&newStatus.among(PlayerStatus.readyToLoad,PlayerStatus.unconnected,PlayerStatus.dropped);
 	}
 	void requestStatusUpdate(int player,PlayerStatus newStatus)in{
-		assert(isHost);
+		assert(isHost&&player!=me);
 	}do{
 		players[player].send(Packet.requestStatusUpdate(newStatus));
+	}
+	void requestStatusUpdateAll(PlayerStatus newStatus)in{
+		assert(isHost);
+	}do{
+		foreach(i,ref player;players){
+			if(i!=me) player.send(Packet.requestStatusUpdate(newStatus));
+		}
+		updateStatus(newStatus);
 	}
 	void updateStatus(int player,PlayerStatus newStatus)in{
 		assert(player==me||isHost);
@@ -1265,6 +1283,21 @@ final class Network(B){
 				broadcast(Packet.commandRaw(frame,command,rawData.length),rawData);
 			});
 		}
+	}
+	void resetCommitted(int i,int frame)in{
+		// (only meant to be used if player i is not playing)
+		assert(isHost);
+		assert(i==-1||i<players.length);
+	}do{
+		foreach(k,ref player;players){
+			if(i!=me) player.send(Packet.resetCommitted(i,frame));
+			if(i==k||i==-1) player.committedFrame=frame;
+		}
+	}
+	void resetCommitted(int frame)in{
+		assert(isHost&&!playing);
+	}do{
+		resetCommitted(-1,frame);
 	}
 	void commit(int i,int frame)in{
 		assert(isHost||i==me&&players[me].status.among(PlayerStatus.playing,PlayerStatus.stateResynched));
@@ -1402,7 +1435,6 @@ final class Network(B){
 					stderr.writeln("non-host player ",sender," attempted to set frame: ",p);
 					return false;
 				}
-				writeln("setting frame: ",p.newFrame);
 				if(controller) controller.setFrame(p.newFrame);
 				return true;
 			case PacketType.nudgeTimer:
@@ -1411,6 +1443,23 @@ final class Network(B){
 					return false;
 				}
 				if(controller) controller.timer.adjust(p.timerAdjustHnsecs.hnsecs);
+				return true;
+			case PacketType.resetCommitted:
+				if(sender!=host){
+					stderr.writeln("non-host player ",sender," attempted to reset committed frame: ",p);
+					return false;
+				}
+				if(p.commitPlayer==-1){
+					foreach(ref player;players)
+						player.committedFrame=min(player.committedFrame,p.commitFrame);
+				}else players[p.commitPlayer].committedFrame=p.commitFrame;
+				return true;
+			case PacketType.requestStatusUpdate:
+				if(sender!=host){
+					stderr.writeln("non-host player ",sender," requested status update: ",p);
+					return false;
+				}
+				updateStatus(p.requestedStatus);
 				return true;
 			case PacketType.confirmSynch:
 				if(!checkDesynch) return true;
@@ -1423,13 +1472,6 @@ final class Network(B){
 					return false;
 				}
 				//if(controller) controller.confirmSynch(p.synchFrame,p.synchHash);
-				return true;
-			case PacketType.requestStatusUpdate:
-				if(sender!=host){
-					stderr.writeln("non-host player ",sender," requested status update: ",p);
-					return false;
-				}
-				updateStatus(p.requestedStatus);
 				return true;
 			// host query:
 			case PacketType.join:
@@ -1460,7 +1502,7 @@ final class Network(B){
 						import serialize_;
 						committed.serialized((scope ubyte[] stateData){
 							commands.serialized((scope ubyte[] commandData){
-								sendState(sender,stateData,commandData);
+								sendState(sender,committed.frame,stateData,commandData);
 							});
 						});
 					}
@@ -1938,8 +1980,17 @@ final class Network(B){
 	void sendMap(int i,scope ubyte[] mapData){
 		players[i].send(Packet.sendMap(mapData.length),mapData);
 	}
-	void sendState(int i,scope ubyte[] stateData,scope ubyte[] commandData){
+	void sendState(int i,int frame,scope ubyte[] stateData,scope ubyte[] commandData){
+		resetCommitted(i,frame);
 		players[i].send(Packet.sendState(stateData.length+commandData.length),stateData,commandData);
+	}
+	void sendStateAll(int frame,scope ubyte[] stateData,scope ubyte[] commandData){
+		resetCommitted(-1,frame);
+		foreach(i,ref player;players){
+			if(i==me) continue;
+			setFrame(cast(int)i,frame);
+			players[i].send(Packet.sendState(stateData.length+commandData.length),stateData,commandData);
+		}
 	}
 	Array!ubyte gameInitData;
 	bool hasGameInitData(){ return !!gameInitData.length; }
@@ -2047,6 +2098,11 @@ final class Network(B){
 	}
 	void setFrame(int player,int frame){
 		players[player].send(Packet.setFrame(frame));
+	}
+	void setFrameAll(int frame){
+		foreach(i,ref player;players)
+			if(i!=me)
+				player.send(Packet.setFrame(frame));
 	}
 	void nudgeTimer(int player,Duration adjustment){
 		players[player].send(Packet.nudgeTimer(adjustment.total!"hnsecs"));
