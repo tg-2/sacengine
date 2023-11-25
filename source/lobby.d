@@ -508,8 +508,11 @@ class Lobby(B){
 			assert(!!network);
 			network.update(controller); // (may be null)
 			//writeln(network.isHost," ",network.numReadyPlayers," ",(network.players[network.host].wantsToControlState)," ",options.numSlots," ",network.clientsReadyToLoad()," ",network.readyToLoad," ",network.pendingResynch);
-			if(network.lateJoining||network.pendingResynch) state=LobbyState.readyToStart;
-			else if(!network.readyToLoad){
+			if(network.lateJoining||network.pendingResynch){
+				initController(options);
+				controller.lateJoining=true;
+				state=LobbyState.readyToStart;
+			}else if(!network.readyToLoad){
 				if(!network.isHost) return false;
 				auto occupiedSlots=network.numReadyPlayers;
 				if(network.players[network.host].wantsToControlState)
@@ -530,6 +533,10 @@ class Lobby(B){
 		return state==LobbyState.readyToStart;
 	}
 
+	void initController(ref Options options){
+		if(!controller) controller=new Controller!B(hasSlot?slot:-1,gameState,network,recording,playback);
+	}
+
 	void start(ref Options options)in{
 		assert(state==LobbyState.readyToStart);
 	}do{
@@ -538,7 +545,7 @@ class Lobby(B){
 		if(wizId) B.focusCamera(wizId);
 		if(network && network.isHost) network.addSynch(gameState.committed.frame,gameState.committed.hash);
 		if(recording) recording.stepCommitted(gameState.committed);
-		if(!controller) controller=new Controller!B(hasSlot?slot:-1,gameState,network,recording,playback);
+		initController(options);
 		B.setController(controller); // TODO: this is a bit ugly
 		B.unpause();
 	}

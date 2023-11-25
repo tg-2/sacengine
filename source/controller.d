@@ -71,6 +71,7 @@ final class Controller(B){
 	bool paused=false;
 	bool waitingOnNetwork=false;
 	bool pauseTimerOnPause=true; // TODO: this is a hack
+	bool lateJoining=false; // TODO: this is a hack
 	void pause(){
 		paused=true;
 		if(pauseTimerOnPause){
@@ -78,6 +79,7 @@ final class Controller(B){
 			timer.setFrame(timer.frame);
 		}else pauseTimerOnPause=true;
 	}
+
 	void unpause(){
 		paused=false;
 		if(waitingOnNetwork) return;
@@ -149,6 +151,10 @@ final class Controller(B){
 		assert(prevCommittedFrame<=state.committedFrame);
 		if(currentFrame<state.committedFrame)
 			timer.setFrame(state.current.frame);
+		if(lateJoining&&controlledSlot!=-1){
+			B.focusCamera(state.slots[controlledSlot].wizard);
+			lateJoining=false;
+		}
 		import serialize_;
 		if(network.logDesynch_) state.committed.serialized(&network.logDesynch); // TODO: don't log if late join
 		if(recording) recording.replaceState(state.current,state.commands);
