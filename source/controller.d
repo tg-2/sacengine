@@ -157,9 +157,7 @@ final class Controller(B){
 	void replaceState(scope ubyte[] serialized)in{
 		assert(network&&!network.isHost);
 	}do{
-		auto prevCommittedFrame=state.committedFrame;
 		state.replaceState(serialized);
-		assert(prevCommittedFrame<=state.committedFrame);
 		if(currentFrame<state.committedFrame)
 			timer.setFrame(state.current.frame);
 		if(lateJoining&&controlledSlot!=-1){
