@@ -421,6 +421,7 @@ class Lobby(B){
 				else gameInit=.gameInit!B(sides,only(options.settings),options);
 			}
 		}else gameInit=playback.gameInit;
+		initController(options);
 		if((!playback||network)&&options.recordingFilename.length){
 			if(!recording) recording=new Recording!B(options.map,map,sides,proximity,pathFinder,triggers);
 			recording.gameInit=gameInit;
@@ -486,8 +487,13 @@ class Lobby(B){
 					return false;
 				if(network&&network.isHost){
 					foreach(i;0..network.players.length){
-						if(network.players[i].status==PlayerStatus.pendingGameInit)
+						if(network.players[i].status==PlayerStatus.pendingGameInit){
 							network.updateStatus(to!int(i), PlayerStatus.readyToLoad);
+							with(network) if(controller){
+								auto message=players[i].allowedToControlState?"has joined the game.":"will observe.";
+								sidechannelChatMessage(ChatMessageType.network,players[i].settings.name,message,controller);
+							}
+						}
 					}
 				}
 				// TODO: this is a bit ugly
@@ -533,8 +539,13 @@ class Lobby(B){
 		return state==LobbyState.readyToStart;
 	}
 
-	void initController(ref Options options){
+	void initController(ref Options options)in{
+		assert(!!gameState);
+	}do{
 		if(!controller) controller=new Controller!B(hasSlot?slot:-1,gameState,network,recording,playback);
+		controller.setControlledSlot(hasSlot?slot:-1);
+		B.setState(controller.state);
+		B.setController(controller);
 	}
 
 	void start(ref Options options)in{
@@ -546,7 +557,6 @@ class Lobby(B){
 		if(network && network.isHost) network.addSynch(gameState.committed.frame,gameState.committed.hash);
 		if(recording) recording.stepCommitted(gameState.committed);
 		initController(options);
-		B.setController(controller); // TODO: this is a bit ugly
-		B.unpause();
+		controller.start();
 	}
 }

@@ -60,6 +60,11 @@ final class Controller(B){
 		this.playback=playback;
 	}
 
+	void setControlledSlot(int controlledSlot){
+		this.controlledSlot=controlledSlot;
+		this.controlledSide=controlledSlot==-1?-1:state.slots[controlledSlot].controlledSide;
+	}
+
 	int chatMessageLowerBound=0;
 	bool resetTimerOnUnpause=true; // TODO: this is a hack
 	void setFrame(int frame){
@@ -79,7 +84,6 @@ final class Controller(B){
 			timer.setFrame(timer.frame);
 		}else pauseTimerOnPause=true;
 	}
-
 	void unpause(){
 		paused=false;
 		if(waitingOnNetwork) return;
@@ -87,6 +91,13 @@ final class Controller(B){
 			timer.setFrame(state.currentFrame);
 		}else resetTimerOnUnpause=true;
 		timer.start();
+	}
+
+	bool hasStarted=false;
+	void start(){
+		hasStarted=true;
+		waitingOnNetwork=true;
+		B.clearSidechannelMessages(); // TODO: does not work properly yet
 	}
 
 	bool isControllingSide(int side){
@@ -331,7 +342,9 @@ final class Controller(B){
 		return false;
 	}
 
-	bool run(){
+	bool run()in{
+		assert(hasStarted);
+	}do{
 		bool oldPlayAudio=playAudio;
 		//playAudio=state.firstUpdatedFrame<=state.currentFrame;
 		playAudio=false;

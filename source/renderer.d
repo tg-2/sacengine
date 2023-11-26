@@ -107,6 +107,12 @@ struct ActiveChatMessages{
 		swap(messages[localIndex],messages[$-1]);
 		messages.length=messages.length-1;
 	}
+	void clearSidechannelMessages(){
+		for(int i=0;i<messages.length;){
+			if(messages[i].fromNetwork) remove(i);
+			else i++;
+		}
+	}
 }
 
 struct RenderInfo(B){

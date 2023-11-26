@@ -224,7 +224,6 @@ final class SacScene: Scene{
 	}
 
 	void setController(Controller!DagonBackend controller)in{
-		assert(this.controller is null);
 		assert(this.state!is null&&this.state is controller.state);
 	}do{
 		renderSide=controller.controlledSide;
@@ -1218,7 +1217,7 @@ final class SacScene: Scene{
 		cameraControl(dt);
 		updateLogicCallbacks();
 		if(state){
-			if(controller){
+			if(controller&&controller.hasStarted){
 				controller.run();
 				if(!gameEnded){
 					if(state.current.isVictorious(controller.controlledSide)){
@@ -1547,6 +1546,7 @@ static:
 	}
 	void pause(){ if(app&&app.scene) app.scene.pause(); }
 	void unpause(){ if(app&&app.scene) app.scene.unpause(); }
+	void clearSidechannelMessages(){ if(app.scene) app.scene.info.activeChatMessages.clearSidechannelMessages(); }
 	~this(){ Delete(app); }
 
 	alias RenderContext=RenderingContext*;
