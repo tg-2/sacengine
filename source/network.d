@@ -1650,7 +1650,7 @@ final class Network(B){
 								networkState.chatMessages.addChatMessage(command.chatMessage);
 								if(isHost){
 									command.withRawCommandData((scope ubyte[] rawData){
-										forwardPacket(sender,Packet.commandRaw(-1,command,rawData.length),rawData,controller);
+										forwardPacket(sender,Packet.commandRaw(controller.currentFrame,command,rawData.length),rawData,controller);
 									});
 									return false;
 								}

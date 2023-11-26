@@ -421,12 +421,12 @@ class Lobby(B){
 				else gameInit=.gameInit!B(sides,only(options.settings),options);
 			}
 		}else gameInit=playback.gameInit;
-		initController(options);
 		if((!playback||network)&&options.recordingFilename.length){
 			if(!recording) recording=new Recording!B(options.map,map,sides,proximity,pathFinder,triggers);
 			recording.gameInit=gameInit;
 			recording.logCore=options.logCore;
 		}
+		initController(options);
 		gameState.rollback();
 		gameState.initGame(gameInit);
 		// TODO: if game init can place additional buildings this would need to be reflected here:

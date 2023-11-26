@@ -223,12 +223,12 @@ final class Controller(B){
 					auto hash=network.hostSettings.mapHash;
 					foreach(i,ref player;network.players){
 						if(player.status==PlayerStatus.pendingGameInit && player.settings.mapHash==hash){
-							network.initGame(cast(int)i,network.gameInitData.data);
-							network.updateStatus(cast(int)i,PlayerStatus.lateJoining);
 							with(network){
 								auto message=players[i].allowedToControlState?"has rejoined the game.":"is now observing.";
 								sidechannelChatMessage(ChatMessageType.network,players[i].settings.name,message,this);
 							}
+							network.initGame(cast(int)i,network.gameInitData.data);
+							network.updateStatus(cast(int)i,PlayerStatus.lateJoining);
 						}
 					}
 				}
