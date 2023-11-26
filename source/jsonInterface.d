@@ -79,17 +79,23 @@ struct JSONBuilder{
 	void value(B)(SacSpell!B spell){
 		put("{");
 		field("name"); value(spell?spell.name:""); put(",");
-		char[4] ntag=spell?spell.tag:`\0\0\0\0`;
-		reverse(ntag[]);
-		field("tag"); value(ntag);
+		field("tag");
+		if(spell){
+			char[4] ntag=spell.tag;
+			reverse(ntag[]);
+			value(ntag);
+		}else value("");
 		put("}");
 	}
 	void value(B)(SacObject!B obj){
 		put("{");
 		field("name"); value(obj?obj.name:""); put(",");
-		char[4] ntag=obj?obj.tag:`\0\0\0\0`;
-		reverse(ntag[]);
-		field("tag"); value(ntag);
+		field("tag");
+		if(obj){
+			char[4] ntag=obj.tag;
+			reverse(ntag[]);
+			value(ntag);
+		}else value("");
 		if(numSouls){
 			put(",");
 			auto numSouls=obj?obj.numSouls:-1;
@@ -100,9 +106,12 @@ struct JSONBuilder{
 	void value(B)(SacBuilding!B bldg){
 		put("{");
 		field("name"); value(bldg?bldg.name:""); put(",");
-		char[4] ntag=bldg?bldg.tag:`\0\0\0\0`;
-		reverse(ntag[]);
-		field("tag"); value(ntag);
+		field("tag");
+		if(bldg){
+			char[4] ntag=bldg.tag;
+			reverse(ntag[]);
+			value(ntag);
+		}else value("");
 		put("}");		
 	}
 }
