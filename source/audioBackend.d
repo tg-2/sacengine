@@ -100,6 +100,7 @@ final class AudioBackend(B){
 		}
 		if(currentTheme!=Theme.none) themes[currentTheme].stop();
 		currentTheme=nextTheme=next;
+		themes[currentTheme].source.gain=musicGain;
 		themes[currentTheme].play();
 	}
 	enum fadeOutTime=0.5f;
