@@ -1649,7 +1649,9 @@ final class Network(B){
 								// TODO: properly authorize observer chat
 								networkState.chatMessages.addChatMessage(command.chatMessage);
 								if(isHost){
-									addCommand(-1,command);
+									command.withRawCommandData((scope ubyte[] rawData){
+										forwardPacket(sender,Packet.commandRaw(-1,command,rawData.length),rawData,controller);
+									});
 									return false;
 								}
 								return true;
