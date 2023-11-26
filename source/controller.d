@@ -295,7 +295,10 @@ final class Controller(B){
 					import serialize_;
 					state.committed.serialized((scope ubyte[] stateData){
 						state.commands.serialized((scope ubyte[] commandData){
-							network.sendStateAll(newFrame,stateData,commandData);
+							static bool filter(int i,Network!B network){
+								return network.players[i].status==PlayerStatus.readyToResynch;
+							}
+							network.sendStateAll!filter(newFrame,stateData,commandData,network);
 						});
 					});
 					network.requestStatusUpdateAll(PlayerStatus.stateResynched);

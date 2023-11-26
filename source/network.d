@@ -1180,7 +1180,11 @@ final class Network(B){
 		}
 		return players[host].status==PlayerStatus.readyToResynch;
 	}
-	bool readyToResynch(){ return connectedPlayers.all!(p=>p.status==PlayerStatus.readyToResynch); }
+	bool readyToResynch(){
+		if(connectedPlayers.count!((ref p)=>p.status==PlayerStatus.readyToResynch)<=1) return false;
+		if(players[host].status!=PlayerStatus.readyToResynch) return false;
+		return connectedPlayers.all!((ref p)=>p.status.among(PlayerStatus.readyToResynch,PlayerStatus.stateResynched));
+	}
 	bool stateResynched(){ return connectedPlayers.all!(p=>p.status.among(PlayerStatus.stateResynched,PlayerStatus.resynched)); }
 	int resynchCommittedFrame(){ return connectedPlayers.map!((ref p)=>p.committedFrame).fold!max(players[host].committedFrame); }
 	//int resynchCommittedFrame(){ return players[host].committedFrame; }
@@ -1989,9 +1993,10 @@ final class Network(B){
 	void sendState(int i,int frame,scope ubyte[] stateData,scope ubyte[] commandData){
 		players[i].send(Packet.sendState(stateData.length+commandData.length),stateData,commandData);
 	}
-	void sendStateAll(int frame,scope ubyte[] stateData,scope ubyte[] commandData){
+	void sendStateAll(alias filter,T...)(int frame,scope ubyte[] stateData,scope ubyte[] commandData,T args){
 		foreach(i,ref player;players){
 			if(i==me) continue;
+			if(!filter(cast(int)i,args)) continue;
 			setFrame(cast(int)i,frame);
 			players[i].send(Packet.sendState(stateData.length+commandData.length),stateData,commandData);
 		}
