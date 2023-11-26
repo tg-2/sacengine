@@ -300,7 +300,8 @@ final class SacScene: Scene{
 		RotationDirection rotation;
 	}
 	MovementState targetMovementState;
-	void focusCamera(int target){
+	void focusCamera(int target,bool reset=true){
+		if(!reset&&camera.target==target) return;
 		camera.target=target;
 		targetMovementState=MovementState.init;
 		if(!target){
@@ -1523,8 +1524,8 @@ static:
 	void setState(GameState!DagonBackend state){
 		scene.setState(state);
 	}
-	void focusCamera(int id){
-		scene.focusCamera(id);
+	void focusCamera(int id,bool reset=true){
+		scene.focusCamera(id,reset);
 	}
 	void setController(Controller!DagonBackend controller){
 		scene.setController(controller);

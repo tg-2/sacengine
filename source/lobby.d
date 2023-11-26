@@ -492,7 +492,7 @@ class Lobby(B){
 				}
 				// TODO: this is a bit ugly
 				B.setState(gameState);
-				if(wizId) B.focusCamera(wizId);
+				if(wizId) B.focusCamera(wizId,false);
 				else if(!B.scene.mouse.visible&&!B.scene.fpview.active) B.scene.fpview.active=true;
 			}
 			if(network){
