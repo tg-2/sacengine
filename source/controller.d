@@ -233,11 +233,11 @@ final class Controller(B){
 			}
 			if(network.hostDropped) return true;
 			if(network.lateJoining){
-				pauseTimerOnPause=false;
+				//pauseTimerOnPause=false; // stutter-free rejoin. TODO: this is only needed if game is not paused
 				pause();
-				network.updateStatus(PlayerStatus.pendingLoad);
-				//network.updateStatus(PlayerStatus.desynched);
-				pauseTimerOnPause=false;
+				// network.updateStatus(PlayerStatus.pendingLoad); // stutter-free rejoin
+				network.updateStatus(PlayerStatus.desynched);
+				//pauseTimerOnPause=false; // stutter-free rejoin. TODO: this is only needed if game is not paused
 				return true;
 			}
 			if(network.lateJoining||network.players[network.me].status==PlayerStatus.pendingLoad){

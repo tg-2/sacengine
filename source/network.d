@@ -1497,15 +1497,15 @@ final class Network(B){
 					}else{
 						stderr.writeln("expected hash ",synchQueue.hashes[p.frame%$],", got ",p.synchHash);
 					}
-					//updateStatus(sender,PlayerStatus.desynched);
-					with(controller.state){
+					updateStatus(sender,PlayerStatus.desynched);
+					/+with(controller.state){
 						import serialize_;
 						committed.serialized((scope ubyte[] stateData){
 							commands.serialized((scope ubyte[] commandData){
 								sendState(sender,committed.frame,stateData,commandData);
 							});
 						});
-					}
+					}+/ // stutter-free rejoin
 				}//else confirmSynch(sender,p.synchFrame,p.synchHash);
 				return true;
 			case PacketType.logDesynch:
@@ -1987,11 +1987,9 @@ final class Network(B){
 		players[i].send(Packet.sendMap(mapData.length),mapData);
 	}
 	void sendState(int i,int frame,scope ubyte[] stateData,scope ubyte[] commandData){
-		resetCommitted(i,frame);
 		players[i].send(Packet.sendState(stateData.length+commandData.length),stateData,commandData);
 	}
 	void sendStateAll(int frame,scope ubyte[] stateData,scope ubyte[] commandData){
-		resetCommitted(-1,frame);
 		foreach(i,ref player;players){
 			if(i==me) continue;
 			setFrame(cast(int)i,frame);
