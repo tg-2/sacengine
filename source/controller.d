@@ -264,6 +264,7 @@ final class Controller(B){
 									if(player.status!=PlayerStatus.pendingLoad) continue;
 									if(player.ping==-1) continue;
 									network.updateStatus(cast(int)i,PlayerStatus.loading);
+									network.resetCommitted(cast(int)i,committed.frame);
 									network.sendState(cast(int)i,committed.frame,stateData,commandData);
 									network.requestStatusUpdate(cast(int)i,PlayerStatus.playing);
 								}
@@ -290,6 +291,7 @@ final class Controller(B){
 					state.rollback();
 					timer.setFrame(newFrame);
 					network.setFrameAll(newFrame);
+					network.resetCommitted(-1,newFrame);
 					import serialize_;
 					state.committed.serialized((scope ubyte[] stateData){
 						state.commands.serialized((scope ubyte[] commandData){
