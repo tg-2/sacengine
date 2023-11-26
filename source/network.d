@@ -1648,6 +1648,10 @@ final class Network(B){
 							if(command.type==CommandType.chatMessage&&command.id==0&&networkState){
 								// TODO: properly authorize observer chat
 								networkState.chatMessages.addChatMessage(command.chatMessage);
+								if(isHost){
+									addCommand(-1,command);
+									return false;
+								}
 								return true;
 							}
 							stderr.writeln("warning: invalid command ignored (frame: ",p.frame,", committed: ",controller.state.committedFrame,").");
