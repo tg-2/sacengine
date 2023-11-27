@@ -30,7 +30,7 @@ bool isCommandWithRaw(CommandType type)nothrow{
 	final switch(type) with(CommandType){
 		case none: return false;
 		case moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning: return false;
-		case clearSelection,select,selectAll,automaticSelectAll,toggleSelection,automaticToggleSelection: return false;
+		case clearSelection,select,selectAll,automaticSelectAll,toggleSelection,automaticToggleSelection,addAllToSelection,automaticAddAllToSelection: return false;
 		case defineGroup,addToGroup,selectGroup,automaticSelectGroup: return false;
 		case setFormation: return false;
 		case retreat,move,guard,guardArea,attack,advance: return false;

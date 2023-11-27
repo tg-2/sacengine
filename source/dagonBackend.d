@@ -827,15 +827,19 @@ final class SacScene: Scene{
 							auto type=mouse.additiveSelect?CommandType.toggleSelection:CommandType.select;
 							auto delta=mouse.targetCacheDelta;
 							if(ctrl){
-								type=CommandType.selectAll;
-							}else if(type==CommandType.select&&(lastSelectedId==mouse.target.id||
-							                              abs(lastSelectedX-mouse.x)<delta &&
-							                              abs(lastSelectedY-mouse.y)<delta) &&
+								type=mouse.additiveSelect?CommandType.addAllToSelection:CommandType.selectAll;
+							}else if(type.among(CommandType.select,CommandType.toggleSelection)&&
+							         (lastSelectedId==mouse.target.id||
+							          abs(lastSelectedX-mouse.x)<delta &&
+							          abs(lastSelectedY-mouse.y)<delta) &&
 							         state.current.frame-lastSelectedFrame<=mouse.doubleClickDelay*updateFPS){
-								type=CommandType.automaticSelectAll;
+								type=mouse.additiveSelect?
+									(state.current.getSelection(controller?controller.controlledSide:-1).has(mouse.target.id)?
+									 CommandType.automaticAddAllToSelection:CommandType.addAllToSelection):
+									CommandType.automaticSelectAll;
 							}
 							controller.addCommand(Command!DagonBackend(type,renderSide,camera.target,mouse.target.id,Target.init,cameraFacing));
-							if(type==CommandType.select){
+							if(type.among(CommandType.select,CommandType.toggleSelection)){
 								lastSelectedId=mouse.target.id;
 								lastSelectedFrame=state.current.frame;
 							}else{

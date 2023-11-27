@@ -21094,11 +21094,12 @@ final class ObjectState(B){ // (update logic)
 			case stopTurning: this.movingObjectById!(.stopTurning,(){})(command.creature,this,command.side); break;
 
 			case clearSelection: this.clearSelection(command.side); break;
-			static foreach(type;[select,selectAll,toggleSelection]){
+			static foreach(type;[select,selectAll,toggleSelection,addAllToSelection]){
 				case type: mixin(`this.`~to!string(type))(command.side,command.creature); break Lswitch;
 			}
 			case automaticSelectAll: goto case selectAll;
 			case automaticToggleSelection: goto case toggleSelection;
+			case automaticAddAllToSelection: goto case addAllToSelection;
 			static foreach(type;[defineGroup,addToGroup]){
 			    case type: mixin(`this.`~to!string(type))(command.side,command.group); break Lswitch;
 			}
@@ -21466,6 +21467,18 @@ final class ObjectState(B){ // (update logic)
 		}
 		this.movingObjectById!(processObj,(){})(id,side,this);
 	}
+	void addAllToSelection(int side,int id){
+		if(!canSelect(side,id,this)) return;
+		auto selection=getSelection(side);
+		selectAll(side,id); // TODO: this is a bit ugly
+		auto newCreatures=getSelection(side);
+		foreach_reverse(newId;newCreatures.creatureIds){
+			if(newId==0) continue;
+			if(!selection.has(newId))
+				selection.addFront(newId);
+		}
+		setSelection(side,selection);
+	}
 	void addToSelection(int side,int id){
 		if(!canSelect(side,id,this)) return;
 		sid.addToSelection(side,id);
@@ -21496,6 +21509,9 @@ final class ObjectState(B){ // (update logic)
 	}
 	CreatureGroup getSelection(int side){
 		return sid.getSelection(side);
+	}
+	void setSelection(int side,CreatureGroup group){
+		return sid.setSelection(side,group);
 	}
 	int[2] lastSelected(int side){
 		return sid.lastSelected(side);
@@ -21847,6 +21863,9 @@ struct SideData(B){
 	CreatureGroup getSelection(){
 		return selection;
 	}
+	void setSelection(CreatureGroup group){
+		selection=group;
+	}
 	void resetSelectionCount(){
 		selectionMultiplicity=0;
 	}
@@ -21905,6 +21924,10 @@ struct SideManager(B){
 	CreatureGroup getSelection(int side){
 		if(!(0<=side&&side<sides.length)) return CreatureGroup.init;
 		return sides[side].getSelection();
+	}
+	void setSelection(int side,CreatureGroup group){
+		if(!(0<=side&&side<sides.length)) return;
+		return sides[side].setSelection(group);
 	}
 	int[2] lastSelected(int side){
 		if(!(0<=side&&side<sides.length)) return [0,0];
@@ -22101,12 +22124,12 @@ Cursor cursor(B)(ref OrderTarget target,int renderSide,bool showIcon,ObjectState
 bool hasClickSound(CommandType type){
 	final switch(type) with(CommandType){
 		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,clearSelection,automaticToggleSelection,automaticSelectGroup,setFormation,retreat,surrender,chatMessage: return false;
-		case select,selectAll,automaticSelectAll,toggleSelection,defineGroup,addToGroup,selectGroup,move,guard,guardArea,attack,advance,castSpell,useAbility: return true;
+		case select,selectAll,automaticSelectAll,toggleSelection,addAllToSelection,automaticAddAllToSelection,defineGroup,addToGroup,selectGroup,move,guard,guardArea,attack,advance,castSpell,useAbility: return true;
 	}
 }
 SoundType soundType(B)(Command!B command){
 	final switch(command.type) with(CommandType){
-		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,clearSelection,select,selectAll,automaticSelectAll,toggleSelection,automaticToggleSelection,automaticSelectGroup:
+		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,clearSelection,select,selectAll,automaticSelectAll,toggleSelection,automaticToggleSelection,addAllToSelection,automaticAddAllToSelection,automaticSelectGroup:
 			return SoundType.none;
 		case defineGroup,addToGroup:
 			switch(command.group){
@@ -22142,9 +22165,9 @@ SoundType soundType(B)(Command!B command){
 }
 SoundType responseSoundType(B)(Command!B command){
 	final switch(command.type) with(CommandType){
-			case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,setFormation,clearSelection,automaticSelectAll,automaticToggleSelection,defineGroup,addToGroup,automaticSelectGroup,retreat,castSpell,useAbility,surrender,chatMessage:
+			case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,setFormation,clearSelection,automaticSelectAll,automaticToggleSelection,automaticAddAllToSelection,defineGroup,addToGroup,automaticSelectGroup,retreat,castSpell,useAbility,surrender,chatMessage:
 			return SoundType.none;
-		case select,selectAll,toggleSelection,selectGroup:
+		case select,selectAll,toggleSelection,addAllToSelection,selectGroup:
 			return SoundType.selected;
 		case move,guard,guardArea: return SoundType.moving;
 		case attack,advance: return SoundType.attacking;
@@ -22295,6 +22318,8 @@ enum CommandType{
 	automaticSelectAll,
 	toggleSelection,
 	automaticToggleSelection,
+	addAllToSelection,
+	automaticAddAllToSelection,
 
 	defineGroup,
 	addToGroup,
@@ -22335,7 +22360,7 @@ struct Command(B){
 			case clearSelection:
 				assert(!creature && target is Target.init);
 				break;
-			case select,selectAll,automaticSelectAll,toggleSelection,automaticToggleSelection:
+			case select,selectAll,automaticSelectAll,toggleSelection,automaticToggleSelection,addAllToSelection,automaticAddAllToSelection:
 				assert(creature && target is Target.init);
 				break;
 			case move:
