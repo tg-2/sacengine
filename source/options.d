@@ -83,6 +83,7 @@ struct Options{
 	bool dumpNetworkStatus=false;
 	bool dumpNetworkSettings=false;
 	bool checkDesynch=true;
+	bool stutterOnDesynch=false;
 	bool logDesynch=true;
 	bool nudgeTimers=true;
 	bool dropOnTimeout=true;

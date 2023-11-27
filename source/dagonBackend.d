@@ -1065,10 +1065,12 @@ final class SacScene: Scene{
 	}do{
 		//auto ostate=state.current;
 		auto ostate=state.committed;
-		scope(exit){
-			auto currentFrame=state.currentFrame;
-			state.rollback();
-			state.simulateTo(currentFrame);
+		void resimulate(){
+			if(state.committedFrame!=-1){
+				auto currentFrame=state.currentFrame;
+				state.rollback();
+				state.simulateTo(currentFrame);
+			}
 		}
 		updateCameraTarget();
 		static void applyToMoving(alias f,B)(ObjectState!B state,Camera camera,Target target){
@@ -1086,16 +1088,16 @@ final class SacScene: Scene{
 		}
 		if(!eventManager.keyPressed[KEY_LSHIFT] && !eventManager.keyPressed[KEY_LCTRL] && !eventManager.keyPressed[KEY_CAPSLOCK]){
 			//foreach(_;0..keyDown[KEY_A]) applyToMoving!depleteMana(ostate,camera,mouse.target);
-			foreach(_;0..keyDown[KEY_PERIOD]) applyToMoving!kill(ostate,camera,mouse.target);
-			foreach(_;0..keyDown[KEY_J]) applyToMoving!stun(ostate,camera,mouse.target);
+			foreach(_;0..keyDown[KEY_PERIOD]){ applyToMoving!kill(ostate,camera,mouse.target); resimulate(); }
+			foreach(_;0..keyDown[KEY_J]){ applyToMoving!stun(ostate,camera,mouse.target); resimulate(); }
 			static void catapultRandomly(B)(ref MovingObject!B object,ObjectState!B state){
 				import std.random;
 				auto velocity=Vector3f(uniform!"[]"(-10.0f,10.0f), uniform!"[]"(-10.0f,10.0f), uniform!"[]"(10.0f,25.0f));
 				//auto velocity=Vector3f(0.0f,0.0f,25.0f);
 				object.catapult(velocity,state);
 			}
-			foreach(_;0..keyDown[KEY_RSHIFT]) applyToMoving!catapultRandomly(ostate,camera,mouse.target);
-			foreach(_;0..keyDown[KEY_RETURN]) applyToMoving!immediateRevive(ostate,camera,mouse.target);
+			foreach(_;0..keyDown[KEY_RSHIFT]){ applyToMoving!catapultRandomly(ostate,camera,mouse.target); resimulate(); }
+			foreach(_;0..keyDown[KEY_RETURN]){ applyToMoving!immediateRevive(ostate,camera,mouse.target); resimulate(); }
 			//foreach(_;0..keyDown[KEY_G]) applyToMoving!startFlying(ostate,camera,mouse.target);
 			//foreach(_;0..keyDown[KEY_V]) applyToMoving!land(ostate,camera,mouse.target);
 			/+if(!eventManager.keyPressed[KEY_LSHIFT]) foreach(_;0..keyDown[KEY_SPACE]){
@@ -1114,7 +1116,11 @@ final class SacScene: Scene{
 		foreach(_;0..keyDown[KEY_BACKSPACE]){
 			if(eventManager.keyPressed[KEY_LCTRL]||eventManager.keyPressed[KEY_CAPSLOCK]){
 				applyToMoving!fastRevive(ostate,camera,mouse.target);
-			}else if(!eventManager.keyPressed[KEY_LSHIFT]) applyToMoving!revive(ostate,camera,mouse.target);
+				resimulate();
+			}else if(!eventManager.keyPressed[KEY_LSHIFT]){
+				applyToMoving!revive(ostate,camera,mouse.target);
+				resimulate();
+			}
 		}
 		// TODO: enabling the following destroys ESDF controls. Template-related compiler bug?
 		/+if(eventManager.keyPressed[KEY_UP] && !eventManager.keyPressed[KEY_DOWN]){

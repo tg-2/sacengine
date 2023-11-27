@@ -925,6 +925,7 @@ enum PlayerStatus{
 	readyToStart,
 	pendingStart,
 	playing,
+	playingBadSynch,
 	pausedOnDrop,
 	paused,
 	desynched,
@@ -1110,6 +1111,7 @@ final class Network(B){
 	bool dumpNetworkStatus=false;
 	bool dumpNetworkSettings=false;
 	bool checkDesynch=true;
+	bool stutterOnDesynch=false;
 	bool nudgeTimers=true;
 	bool dropOnTimeout=true;
 	bool pauseOnDrop=false;
@@ -1119,6 +1121,7 @@ final class Network(B){
 		this.dumpNetworkStatus=options.dumpNetworkStatus;
 		this.dumpNetworkSettings=options.dumpNetworkSettings;
 		this.checkDesynch=options.checkDesynch;
+		this.stutterOnDesynch=options.stutterOnDesynch;
 		this.logDesynch_=options.logDesynch;
 		this.nudgeTimers=options.nudgeTimers;
 		this.dropOnTimeout=options.dropOnTimeout;
@@ -1166,7 +1169,7 @@ final class Network(B){
 		return iota(players.length).filter!(i=>i!=host&&players[i].connection).all!(i=>isReadyStatus(players[i].status));
 	}
 	bool readyToStart(){ return connectedPlayers.all!(p=>isReadyStatus(p.status)); }
-	bool playing(){ return me!=-1&&players[me].status==PlayerStatus.playing && !paused; }
+	bool playing(){ return me!=-1&&players[me].status.among(PlayerStatus.playing,PlayerStatus.playingBadSynch) && !paused; }
 	bool paused(){ return isPausedStatus(players[host].status); }
 	bool anyoneDropped(){ return requiredPlayers.any!(p=>p.status==PlayerStatus.dropped); }
 	bool hostDropped(){ return players[host].status==PlayerStatus.dropped; }
@@ -1212,6 +1215,7 @@ final class Network(B){
 		auto oldStatus=players[player].status;
 		if(isPausedStatus(oldStatus)&&newStatus==PlayerStatus.readyToResynch||isPausedStatus(newStatus)) return actor==host;
 		return oldStatus<newStatus||
+			oldStatus==PlayerStatus.playingBadSynch&&newStatus==PlayerStatus.playing||
 			oldStatus==PlayerStatus.resynched&&newStatus==PlayerStatus.loading||
 			actor==host&&newStatus.among(PlayerStatus.readyToLoad,PlayerStatus.unconnected,PlayerStatus.dropped);
 	}
@@ -1306,14 +1310,14 @@ final class Network(B){
 		resetCommitted(-1,frame);
 	}
 	void commit(int i,int frame)in{
-		assert(isHost||i==me&&players[me].status.among(PlayerStatus.playing,PlayerStatus.stateResynched));
+		assert(isHost||i==me&&players[me].status.among(PlayerStatus.playing,PlayerStatus.playingBadSynch,PlayerStatus.stateResynched));
 	}do{
 		broadcast(Packet.commit(i,frame),[]);
 		players[i].committedFrame=max(players[i].committedFrame,frame);
 	}
 	bool canCommit(int frame){
 		return players[me].committedFrame<frame &&
-			players[me].status.among(PlayerStatus.playing,PlayerStatus.stateResynched);
+			players[me].status.among(PlayerStatus.playing,PlayerStatus.playingBadSynch,PlayerStatus.stateResynched);
 	}
 	void commit(int frame)in{
 		assert(canCommit(frame),text(playing," ",players[me].committedFrame," ",frame));
@@ -1465,6 +1469,10 @@ final class Network(B){
 					stderr.writeln("non-host player ",sender," requested status update: ",p);
 					return false;
 				}
+				if(isDesynchedStatus(players[me].status)&&!isDesynchedStatus(p.requestedStatus)){
+					stderr.writeln("warning: ignoring request to leave desynched status: ",p);
+					return false;
+				}
 				updateStatus(p.requestedStatus);
 				return true;
 			case PacketType.confirmSynch:
@@ -1486,7 +1494,7 @@ final class Network(B){
 				return false;
 			case PacketType.checkSynch:
 				if(!checkDesynch) return true;
-				if(desynched){
+				if(desynched||players[sender].status==PlayerStatus.playingBadSynch){
 					stderr.writeln("checkSynch packet sent while desynched: ",p);
 					return false;
 				}
@@ -1503,15 +1511,18 @@ final class Network(B){
 					}else{
 						stderr.writeln("expected hash ",synchQueue.hashes[p.frame%$],", got ",p.synchHash);
 					}
-					updateStatus(sender,PlayerStatus.desynched);
-					/+with(controller.state){
-						import serialize_;
-						committed.serialized((scope ubyte[] stateData){
-							commands.serialized((scope ubyte[] commandData){
-								sendState(sender,stateData,commandData);
+					if(!stutterOnDesynch&&players[sender].status==PlayerStatus.playing){
+						updateStatus(sender,PlayerStatus.playingBadSynch);
+						with(controller.state){
+							import serialize_;
+							committed.serialized((scope ubyte[] stateData){
+								commands.serialized((scope ubyte[] commandData){
+									sendState(sender,stateData,commandData);
+								});
 							});
-						});
-					}+/ // stutter-free rejoin
+						}
+						requestStatusUpdate(sender,PlayerStatus.playing); // TODO: this is a bit dangerous
+					}else updateStatus(sender,PlayerStatus.desynched);
 				}//else confirmSynch(sender,p.synchFrame,p.synchHash);
 				return true;
 			case PacketType.logDesynch:
@@ -1892,7 +1903,9 @@ final class Network(B){
 	}
 	void checkConnectivity(int i,Controller!B controller){
 		if(!playing) ping(cast(int)i);
-		if(!isActiveStatus(players[i].status)) return;
+		// TODO: probably even if a player is not active there should be some timeout,
+		// especially for players with status playingBadSynch
+		if(!isActiveStatus(players[i].status)||players[i].status==PlayerStatus.playingBadSynch) return;
 		auto sinceLastPacket=B.ticks()-players[i].packetTicks;
 		if(dropOnTimeout&&players[i].packetTicks!=-1&&sinceLastPacket>=dropDelay){
 			report!true(i,"timed out");
@@ -1945,7 +1958,7 @@ final class Network(B){
 		}
 	}
 	bool idleLobby()in{
-		assert(me==-1||players[me].status<=PlayerStatus.loading||players[me].status>PlayerStatus.playing,text(me," ",me!=-1?text(players[me].status):""));
+		assert(me==-1||players[me].status<=PlayerStatus.loading||players[me].status>max(PlayerStatus.playing,PlayerStatus.playingBadSynch),text(me," ",me!=-1?text(players[me].status):""));
 	}do{
 		if(me!=-1&&players[me].status==PlayerStatus.disconnected) return false;
 		update(null);
