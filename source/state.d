@@ -7558,6 +7558,10 @@ bool teleport(B)(ref MovingObject!B obj,Vector3f newPosition,ObjectState!B state
 	if(wizardVoid){
 		animateWizardVoidTeleport(true,startHitbox,state);
 		animateWizardVoidTeleport(false,newHitbox,state);
+		if(state.isOnGround(obj.position)){ // no fall damage
+			obj.position.z=state.getGroundHeight(obj.position);
+			obj.creatureState.fallingVelocity=Vector3f(0.0f,0.0f,0.0f);
+		}
 	}else{
 		animateTeleport(true,startHitbox,state);
 		animateTeleport(false,newHitbox,state);
