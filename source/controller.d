@@ -126,7 +126,7 @@ final class Controller(B){
 			}
 		}
 		command.id=++commandId;
-		auto frame=currentFrame;
+		auto frame=max(state.committedFrame,currentFrame); // TODO: why max needed?
 		state.addCommand(frame,command);
 		if(network) network.addCommand(frame,command);
 		if(recording) recording.addCommand(frame,command);
