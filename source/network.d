@@ -1875,8 +1875,9 @@ final class Network(B){
 			stderr.writeln("they were using version ",players[i].settings.commit);
 		}else report(cast(int)i,"dropped");
 		if(controller){
-			auto message=!players[i].allowedToControlState||players[i].won?"has left the game.":"has been dropped from the game.";
-			sidechannelChatMessage(ChatMessageType.network,players[i].settings.name,message,controller);
+			auto who=i==host?me:i;
+			auto message=!players[who].allowedToControlState||players[who].won?"has left the game.":"has been dropped from the game.";
+			sidechannelChatMessage(ChatMessageType.network,players[who].settings.name,message,controller);
 		}
 		if(!isHost){
 			assert(i==host);
@@ -1906,6 +1907,7 @@ final class Network(B){
 		// TODO: probably even if a player is not active there should be some timeout,
 		// especially for players with status playingBadSynch
 		if(!isActiveStatus(players[i].status)||players[i].status==PlayerStatus.playingBadSynch) return;
+		if(!isActiveStatus(players[me].status)||players[me].status==PlayerStatus.playingBadSynch) return;
 		auto sinceLastPacket=B.ticks()-players[i].packetTicks;
 		if(dropOnTimeout&&players[i].packetTicks!=-1&&sinceLastPacket>=dropDelay){
 			report!true(i,"timed out");
