@@ -275,7 +275,24 @@ final class Controller(B){
 			}
 			if(network.desynched){
 				updateCommitted();
-				if(network.pendingResynch) network.updateStatus(PlayerStatus.readyToResynch);
+				if(network.pendingResynch){
+					if(!network.isHost&&network.players[network.me].status!=PlayerStatus.desynched){
+						// attempt resynch without assistance from host{
+						auto newFrame=network.resynchCommittedFrame;
+						if(state.committedFrame!=newFrame){
+							state.simulateCommittedTo!((){
+								if(recording) recording.stepCommitted(state.committed);
+								return false;
+							})(newFrame);
+							state.rollback();
+						}
+						if(state.committedFrame==newFrame){
+							network.updateStatus(PlayerStatus.stateResynched);
+						}else{
+							network.updateStatus(PlayerStatus.readyToResynch);
+						}
+					}else network.updateStatus(PlayerStatus.readyToResynch);
+				}
 				if(network.isHost && network.readyToResynch){
 					network.acceptingNewConnections=false;
 					//writeln("SENDING STATE AT FRAME: ",currentFrame," ",network.players.map!((ref p)=>p.committedFrame));
