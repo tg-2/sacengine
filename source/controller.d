@@ -263,7 +263,7 @@ final class Controller(B){
 									if(player.ping==-1) continue;
 									network.updateStatus(cast(int)i,PlayerStatus.loading);
 									network.resetCommitted(cast(int)i,committed.frame);
-									network.sendState(cast(int)i,committed.frame,stateData,commandData);
+									network.sendState(cast(int)i,stateData,commandData);
 									network.requestStatusUpdate(cast(int)i,PlayerStatus.playing);
 								}
 							});
@@ -274,10 +274,11 @@ final class Controller(B){
 			if(network.desynched){
 				updateCommitted();
 				if(network.pendingResynch){
-					if(!network.isHost&&network.players[network.me].status!=PlayerStatus.desynched){
+					if(!network.isHost&&!isDesynchedStatus(network.players[network.me].status)){
 						// attempt resynch without assistance from host{
 						auto newFrame=network.resynchCommittedFrame;
 						if(state.committedFrame!=newFrame){
+							writeln("simulating now: ",state.committedFrame," ",newFrame);
 							state.simulateCommittedTo!((){
 								if(recording) recording.stepCommitted(state.committed);
 								return false;
@@ -313,7 +314,7 @@ final class Controller(B){
 							static bool filter(int i,Network!B network){
 								return network.players[i].status==PlayerStatus.readyToResynch;
 							}
-							network.sendStateAll!filter(newFrame,stateData,commandData,network);
+							network.sendStateAll!filter(stateData,commandData,network);
 						});
 					});
 					network.requestStatusUpdateAll(PlayerStatus.stateResynched);

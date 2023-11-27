@@ -1174,10 +1174,11 @@ final class Network(B){
 	bool desynched(){ return connectedPlayers.any!(p=>isDesynchedStatus(p.status)||p.status==PlayerStatus.resynched); }
 	bool pendingResynch(){
 		if(isHost){
-			if(players[me].status.among(PlayerStatus.readyToResynch,PlayerStatus.stateResynched,PlayerStatus.resynched)) // resynch already initiated
+			if(players[me].status.among(PlayerStatus.readyToResynch,PlayerStatus.stateResynched,PlayerStatus.resynched)) // resynch already initiatedendingresynch
 				return false;
 			return players.any!((ref p)=>isDesynchedStatus(p.status));
 		}
+		if(players[me].status==PlayerStatus.stateResynched) return false;
 		return players[host].status==PlayerStatus.readyToResynch;
 	}
 	bool readyToResynch(){
@@ -1507,7 +1508,7 @@ final class Network(B){
 						import serialize_;
 						committed.serialized((scope ubyte[] stateData){
 							commands.serialized((scope ubyte[] commandData){
-								sendState(sender,committed.frame,stateData,commandData);
+								sendState(sender,stateData,commandData);
 							});
 						});
 					}+/ // stutter-free rejoin
@@ -1991,15 +1992,14 @@ final class Network(B){
 	void sendMap(int i,scope ubyte[] mapData){
 		players[i].send(Packet.sendMap(mapData.length),mapData);
 	}
-	void sendState(int i,int frame,scope ubyte[] stateData,scope ubyte[] commandData){
+	void sendState(int i,scope ubyte[] stateData,scope ubyte[] commandData){
 		players[i].send(Packet.sendState(stateData.length+commandData.length),stateData,commandData);
 	}
-	void sendStateAll(alias filter,T...)(int frame,scope ubyte[] stateData,scope ubyte[] commandData,T args){
+	void sendStateAll(alias filter,T...)(scope ubyte[] stateData,scope ubyte[] commandData,T args){
 		foreach(i,ref player;players){
 			if(i==me) continue;
 			if(!filter(cast(int)i,args)) continue;
-			setFrame(cast(int)i,frame);
-			players[i].send(Packet.sendState(stateData.length+commandData.length),stateData,commandData);
+			sendState(cast(int)i,stateData,commandData);
 		}
 	}
 	Array!ubyte gameInitData;
