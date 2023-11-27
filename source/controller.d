@@ -277,8 +277,7 @@ final class Controller(B){
 					if(!network.isHost&&!isDesynchedStatus(network.players[network.me].status)){
 						// attempt resynch without assistance from host{
 						auto newFrame=network.resynchCommittedFrame;
-						if(state.committedFrame!=newFrame){
-							writeln("simulating now: ",state.committedFrame," ",newFrame);
+						if(state.committedFrame<=newFrame){
 							state.simulateCommittedTo!((){
 								if(recording) recording.stepCommitted(state.committed);
 								return false;
