@@ -112,7 +112,8 @@ Source makeSource(){
 version(SacEngineMPG123){
 struct MP3{
 	ALuint[4] buffer;
-	enum byteRate=44100*2*2;
+	enum channels=2;
+	enum byteRate=44100*channels*short.sizeof;
 	enum chunkSize=byteRate; // one second of playback
 	Source source;
 	mpg123_handle* handle;
@@ -183,7 +184,8 @@ struct MP3{
 }else version(SacEngineAudioFormats){
 struct MP3{
 	ALuint[4] buffer;
-	enum byteRate=44100*2*4;
+	enum channels=2;
+	enum byteRate=44100*channels*float.sizeof;
 	enum chunkSize=byteRate; // one second of playback
 	Source source;
 	AudioStream stream;
@@ -200,7 +202,7 @@ struct MP3{
 		auto done=stream.readSamplesFloat(mp3data[]);
 		bool finished=done==0;
 		if(finished&&!finish) stream.seekPosition(0);
-		alBufferData(buffer,AL_FORMAT_STEREO_FLOAT32,mp3data.ptr,cast(int)(done*float.sizeof),44100);
+		alBufferData(buffer,AL_FORMAT_STEREO_FLOAT32,mp3data.ptr,cast(int)(done*channels*float.sizeof),44100);
 		return finished&&finish;
 	}
 	void initialize(){
