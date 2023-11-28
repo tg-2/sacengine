@@ -1,6 +1,7 @@
 {
 	"fileVersion": 1,
 	"versions": {
+		"audio-formats": "3.0.1",
 		"dagon": "~master",
 		"derelict-al": "2.0.0-beta.2",
 		"derelict-ft": "2.0.0-beta.4",

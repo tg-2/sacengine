@@ -4,7 +4,8 @@
 
 module audio;
 import derelict.openal.al;
-import derelict.mpg123;
+version(SacEngineMPG123) import derelict.mpg123;
+version(SacEngineAudioFormats) import audioformats;
 import core.stdc.stdio;
 import dlib.math;
 import std.exception;
@@ -24,8 +25,10 @@ bool loadAudio(){
 		listenerPosition=Vector3f(0.0f,0.0f,0.0f);
 		listenerVelocity=Vector3f(0.0f,0.0f,0.0f);
 		listenerOrientation=Quaternionf.identity();
-		DerelictMPG123.load();
-		mpg123_init();
+		version(SacEngineMPG123){
+			DerelictMPG123.load();
+			mpg123_init();
+		}
 		return true;
 	}catch(DerelictException e){
 		import std.stdio;
@@ -106,6 +109,7 @@ Source makeSource(){
 	return source;
 }
 
+version(SacEngineMPG123){
 struct MP3{
 	ALuint[4] buffer;
 	enum byteRate=44100*2*2;
@@ -134,7 +138,7 @@ struct MP3{
 	}
 	void initialize(){
 		foreach(i;0..buffer.length) read(buffer[i],false);
-		alSourceQueueBuffers(source.id,buffer.length,buffer.ptr);		
+		alSourceQueueBuffers(source.id,buffer.length,buffer.ptr);
 	}
 	bool feed(bool finish=false){
 		ALint processed;
@@ -176,6 +180,74 @@ struct MP3{
 	}
 	~this(){ release(); }
 }
+}else version(SacEngineAudioFormats){
+struct MP3{
+	ALuint[4] buffer;
+	enum byteRate=44100*2*4;
+	enum chunkSize=byteRate; // one second of playback
+	Source source;
+	AudioStream stream;
+	bool initialized=false;
+	this(string filename){
+		alGenBuffers(buffer.length,buffer.ptr);
+		source=makeSource();
+		stream.openFromFile(filename);
+		initialize();
+		initialized=true;
+	}
+	private bool read(ALuint buffer,bool finish){
+		float[chunkSize/float.sizeof] mp3data;
+		auto done=stream.readSamplesFloat(mp3data[]);
+		bool finished=done==0;
+		if(finished&&!finish) stream.seekPosition(0);
+		alBufferData(buffer,AL_FORMAT_STEREO_FLOAT32,mp3data.ptr,cast(int)(done*float.sizeof),44100);
+		return finished&&finish;
+	}
+	void initialize(){
+		foreach(i;0..buffer.length) read(buffer[i],false);
+		alSourceQueueBuffers(source.id,buffer.length,buffer.ptr);
+	}
+	bool feed(bool finish=false){
+		ALint processed;
+		alGetSourcei(source.id,AL_BUFFERS_PROCESSED,&processed);
+		foreach(_;0..processed){
+			ALuint current;
+			alSourceUnqueueBuffers(source.id,1,&current);
+			auto finished=read(current,finish);
+			alSourceQueueBuffers(source.id,1,&current);
+			if(finished) return true;
+		}
+		return false;
+	}
+	void play(){
+		source.play();
+	}
+	void pause(){
+		source.pause();
+	}
+	void stop(){
+		source.stop();
+		rewind();
+	}
+	void rewind(){
+		stream.seekPosition(0);
+		ALint queued;
+		alGetSourcei(source.id,AL_BUFFERS_QUEUED,&queued);
+		for(ALuint dummy;queued>0;queued--)
+			alSourceUnqueueBuffers(source.id,1,&dummy);
+		initialize();
+	}
+	void release(){
+		if(!initialized) return;
+		alDeleteBuffers(buffer.length,buffer.ptr);
+		source.release();
+		destroy(stream);
+		initialized=false;
+	}
+	~this(){ release(); }
+}
+}else static assert(0,"no mp3 library selected");
+
 
 void testAudio(){
 	auto sample=loadSAMP("extracted/sounds/SFX_.WAD!/ambi.FLDR/afir.SAMP");

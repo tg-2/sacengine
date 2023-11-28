@@ -3,15 +3,32 @@
 	"authors": [
 		"tg"
 	],
-	"dependencies": {
-        "derelict-sdl2": "~>3.1.0-alpha.2",
-        "derelict-ft": "~>2.0.0-beta.2",
-		"derelict-mpg123": "~>0.1.2",
-		"derelict-al": "~>2.0.0-beta.2",
-	},
-	"stringImportPaths": [".git"],
-	"buildRequirements": ["requireBoundsCheck","requireContracts"],
 	"description": "SacEngine.",
 	"copyright": "Copyright © 2018, tg",
-	"license": "GPL 3.0"
+	"license": "GPL 3.0",
+	
+	"buildRequirements": ["requireBoundsCheck","requireContracts"],
+	"stringImportPaths": [".git"],
+	
+	"configurations": [
+		{
+			"name": "application",
+			"dependencies": {
+				"derelict-sdl2": "~>3.1.0-alpha.2",
+				"derelict-ft": "~>2.0.0-beta.2",
+				"derelict-mpg123": "~>0.1.2",
+				"derelict-al": "~>2.0.0-beta.2",
+			},
+			"versions": ["SacEngineMPG123"]
+		}, {
+			"name": "application-audioformats",
+			"dependencies": {
+				"derelict-sdl2": "~>3.1.0-alpha.2",
+				"derelict-ft": "~>2.0.0-beta.2",
+				"audio-formats":  "~>3.0.1",
+				"derelict-al": "~>2.0.0-beta.2",
+			},
+			"versions": ["SacEngineAudioFormats","decodeMP3"]
+		}
+	]
 }
