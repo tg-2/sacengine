@@ -7,7 +7,7 @@ import dlib.math.portable;
 import options,util;
 import std.stdio;
 import std.algorithm, std.range, std.exception, std.typecons, std.conv;
-import core.time: Duration, dur;
+import core.time: Duration, seconds, MonoTime;
 
 import lobby;
 import sacobject, sacspell, mrmm, nttData, sacmap, levl, state, form, sacform, controller, network;
@@ -1210,7 +1210,7 @@ final class SacScene: Scene{
 	}
 
 	override void onLogicsUpdate(Duration dt){
-		assert(dt==1.dur!"seconds"/60);
+		assert(dt==1.seconds/60);
 		updateHUD(dt);
 		if(!state) mouse.frame+=1;
 	}
@@ -1888,7 +1888,8 @@ static:
 		return material;
 	}
 
-	uint ticks(){ return SDL_GetTicks(); }
+	//uint ticks(){ return SDL_GetTicks(); }
+	MonoTime time(){ return MonoTime.currTime(); }
 
 	enum GL_GPU_MEM_INFO_TOTAL_AVAILABLE_MEM_NVX=0x9048;
 	enum GL_GPU_MEM_INFO_CURRENT_AVAILABLE_MEM_NVX=0x9049;

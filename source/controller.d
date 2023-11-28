@@ -246,9 +246,9 @@ final class Controller(B){
 				bool anyoneLateJoining=false;
 				foreach(i,ref player;network.players){
 					if(player.status!=PlayerStatus.pendingLoad) continue;
-					if(player.ping==-1){ network.ping(cast(int)i); continue; }
+					if(player.ping==-1.seconds){ network.ping(cast(int)i); continue; }
 					auto frame=currentFrame;
-					if(network.playing) frame=to!int(frame+player.pingDuration/(1.seconds/updateFPS));
+					if(network.playing) frame=to!int(frame+player.ping/(1.seconds/updateFPS));
 					network.setFrame(cast(int)i,frame);
 					anyoneLateJoining=true;
 				}
@@ -260,7 +260,7 @@ final class Controller(B){
 							commands.serialized((scope ubyte[] commandData){
 								foreach(i,ref player;network.players){
 									if(player.status!=PlayerStatus.pendingLoad) continue;
-									if(player.ping==-1) continue;
+									if(player.ping==-1.seconds) continue;
 									network.updateStatus(cast(int)i,PlayerStatus.loading);
 									network.resetCommitted(cast(int)i,committed.frame);
 									network.sendState(cast(int)i,stateData,commandData);

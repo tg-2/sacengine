@@ -989,16 +989,15 @@ struct Player{
 
 	bool lost=false,won=false;
 	int committedFrame=0;
-	long pingTicks=-1; // TODO: switch to MonoTime
-	long packetTicks=-1; // TODO: switch to MonoTime
-	long ping=-1; // TODO: switch to Duration
-	Duration pingDuration(){ return ping.msecs; } // TODO: remove
+	MonoTime pingTime;
+	MonoTime packetTime;
+	Duration ping=-1.seconds;
 
 	void drop()in{
 		assert(!connection);
 	}do{
 		committedFrame=0;
-		ping=-1;
+		ping=-1.seconds;
 	}
 	bool wantsToControlState(){
 		if(settings.observer) return false;
@@ -1360,7 +1359,7 @@ final class Network(B){
 				final switch(ackHandler) with(AckHandler){
 					case none: return true;
 					case measurePing:
-						players[sender].ping=B.ticks()-p.pingId; // TODO: use a median over some window
+						players[sender].ping=(B.time()-MonoTime.zero)-p.pingId.hnsecs; // TODO: use a median over some window
 						return true;
 				}
 			// host message:
@@ -1436,7 +1435,7 @@ final class Network(B){
 					stderr.writeln("attempt to start game before ready: ",p);
 					return false;
 				}
-				Thread.sleep(p.startDelay.msecs);
+				Thread.sleep(p.startDelay.hnsecs);
 				updateStatus(PlayerStatus.playing);
 				B.unpause();
 				return true;
@@ -1690,7 +1689,7 @@ final class Network(B){
 					ping(p.commitPlayer);
 					auto frameTime=1.seconds/updateFPS;
 					auto deltaFrames=players[p.commitPlayer].committedFrame-players[host].committedFrame;
-					auto drift=deltaFrames*frameTime+players[p.commitPlayer].pingDuration/2;
+					auto drift=deltaFrames*frameTime+players[p.commitPlayer].ping/2;
 					auto correction=-drift/60;
 					nudgeTimer(p.commitPlayer,correction);
 				}
@@ -1888,19 +1887,19 @@ final class Network(B){
 		players[i].connection=null;
 		players[i].drop();
 	}
-	enum pingDelay=1000/60; // TODO: switch to Duration
-	enum dropDelay=1000; // TODO: switch to Duration
-	int lastUpdate=-1; // TODO: switch to MonoTime
+	enum pingDelay=1.seconds/60;
+	enum dropDelay=1.seconds;
+	MonoTime lastUpdate;
 	void ping(int i){
-		auto ticks=B.ticks();
-		auto sinceLastPing=ticks-players[i].pingTicks;
+		auto time=B.time();
+		auto sinceLastPing=time-players[i].pingTime;
 		if(sinceLastPing<pingDelay)
 			return;
-		players[i].send(Packet.ping(ticks));
-		players[i].pingTicks=ticks;
+		players[i].send(Packet.ping((time-MonoTime.zero).total!"hnsecs"));
+		players[i].pingTime=time;
 	}
 	void confirmConnectivity(int i){
-		players[i].packetTicks=B.ticks();
+		players[i].packetTime=B.time();
 	}
 	void checkConnectivity(int i,Controller!B controller){
 		if(!playing) ping(cast(int)i);
@@ -1908,8 +1907,8 @@ final class Network(B){
 		// especially for players with status playingBadSynch
 		if(!isActiveStatus(players[i].status)||players[i].status==PlayerStatus.playingBadSynch) return;
 		if(!isActiveStatus(players[me].status)||players[me].status==PlayerStatus.playingBadSynch) return;
-		auto sinceLastPacket=B.ticks()-players[i].packetTicks;
-		if(dropOnTimeout&&players[i].packetTicks!=-1&&sinceLastPacket>=dropDelay){
+		auto sinceLastPacket=B.time()-players[i].packetTime;
+		if(dropOnTimeout&&players[i].packetTime!=MonoTime.init&&sinceLastPacket>=dropDelay){
 			report!true(i,"timed out");
 			dropPlayer(i,controller);
 			return;
@@ -1934,10 +1933,12 @@ final class Network(B){
 				dumpPlayerInfo();
 				confirmConnectivity(cast(int)i);
 			}
-			auto sinceLastUpdate=B.ticks()-lastUpdate;
-			if(sinceLastUpdate<dropDelay/2) checkConnectivity(cast(int)i,controller);
+			if(lastUpdate!=MonoTime.init){
+				auto sinceLastUpdate=B.time()-lastUpdate;
+				if(sinceLastUpdate<dropDelay/2) checkConnectivity(cast(int)i,controller);
+			}
 		}
-		lastUpdate=B.ticks();
+		lastUpdate=B.time();
 	}
 	void dumpPlayerInfo(){
 		if(dumpNetworkStatus){
@@ -2099,20 +2100,21 @@ final class Network(B){
 		assert(isHost&&readyToStart);
 	}do{
 		ackHandler=AckHandler.measurePing;
-		players[me].ping=0;
+		players[me].ping=Duration.zero;
 		foreach(i,ref player;players)
 			ping(cast(int)i);
-		while(connectedPlayers.any!((ref p)=>p.status!=PlayerStatus.desynched&&p.ping==-1))
+		while(connectedPlayers.any!((ref p)=>p.status!=PlayerStatus.desynched&&p.ping==-1.seconds))
 			update(controller);
 		auto maxPing=connectedPlayers.map!(p=>p.ping).reduce!max;
-		writeln("pings: ",players.map!(p=>p.ping));
+		writeln("pings: ",players.map!(p=>p.ping.total!"msecs").map!(p=>p<0?-1:p));
 		foreach(i;connectedPlayerIds){
-			if(players[i].ping!=-1){
+			if(players[i].ping!=-1.seconds){
 				updateStatus(cast(int)i,PlayerStatus.pendingStart);
-				players[i].send(Packet.startGame((maxPing-players[i].ping)/2));
+				auto delay=(maxPing-players[i].ping)/2;
+				players[i].send(Packet.startGame(delay.total!"hnsecs"));
 			}
 		}
-		Thread.sleep((maxPing/2).msecs);
+		Thread.sleep(maxPing/2);
 		updateStatus(PlayerStatus.playing);
 		if(controller.state){
 			bool hasSlot=0<=slot&&slot<controller.state.slots.length;
