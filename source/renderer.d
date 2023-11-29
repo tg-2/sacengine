@@ -3001,11 +3001,11 @@ struct Renderer(B){
 			fonts[FontType.fn10]=B.loadFont(10*fontScaleFactor,"fonts/bookA.ttf");
 			fonts[FontType.fn12]=B.loadFont(12*fontScaleFactor,"fonts/elgar.ttf");
 			fonts[FontType.fndb]=null; // TODO: find font
-			fonts[FontType.fnwt]=null; //B.loadFont(8*fontScaleFactor,"fonts/verdana.ttf"); // TODO: improve rendering
+			fonts[FontType.fnwt]=B.loadFont(8*fontScaleFactor,"fonts/verdana.ttf"); // TODO: improve rendering
 			fonts[FontType.ft12]=B.loadFont(12*fontScaleFactor,"fonts/bookA.ttf");
 		}
 	}
-	enum fontScaleFactor=32;
+	enum fontScaleFactor=64;
 
 	void bindFont(SacFont!B font,B.RenderContext rc){
 		auto type=font.type;
@@ -3029,33 +3029,72 @@ struct Renderer(B){
 		final switch(type)with(FontType){
 			case FontType.fndb: return Vector2f(0.0f,0.0f); // TODO
 
-			case FontType.fn08: return Vector2f(0.0f,1.5f);
-			case FontType.fnwt: return Vector2f(0.0f,1.5f);
+			case FontType.fn08: return Vector2f(0.0f,2.0f);
+			case FontType.fnwt: return Vector2f(0.0f,2.0f);
 
-			case FontType.fn10: return Vector2f(0.5f,1.5f);
+			case FontType.fn10: return Vector2f(0.5f,1.75f);
 			case FontType.fn12: return Vector2f(0.5f,1.0f);
 			case FontType.ft12: return Vector2f(0.5f,0.5f); // TODO: ok?
 		}
 	}
 	void drawText(SacFont!B font,const(char)[] text,float left,float top,FormatSettings settings,ref RenderInfo!B info,B.RenderContext rc){
 		auto type=font.type;
+		void drawLetter1(dchar c,B.SubQuad mesh,float x,float y,float width,float height){
+			B.colorHUDMaterialBackend.setTransformationScaled(Vector3f(x,y,0.0f),Quaternionf.identity(),Vector3f(width,height,0.0f),rc);
+			mesh.render(rc);
+		}
 		if(!fonts[type]){
-			void drawLetter1(dchar c,B.SubQuad mesh,float x,float y,float width,float height){
-				B.colorHUDMaterialBackend.setTransformationScaled(Vector3f(x,y,0.0f),Quaternionf.identity(),Vector3f(width,height,0.0f),rc);
-				mesh.render(rc);
-			}
 			font.write!drawLetter1(text,left,top,settings);
 		}else{
-			auto ftOffset=settings.scale*info.hudScaling*getFreetypeOffset(font);
-			void drawLetter2(dchar c,B.SubQuad mesh,float x,float y,float width,float height){
-				//fonts[type].setTransformationScaled(Vector3f(x,y,0.0f),0.63f*settings.scale*info.hudScaling/fontScaleFactor*Vector3f(1.0f,1.0f,1.0f),rc);
-				fonts[type].setTransformationScaled(Vector3f(x,y,0.0f),Vector3f(width-3,0.63f*settings.scale*info.hudScaling/fontScaleFactor,0.0f),rc);
-				import std.ascii:isASCII,isPrintable;
-				if(!c.isASCII||c.isPrintable)
-					//fonts[type].renderGlyph(c,0);
-					fonts[type].renderGlyphUnit(c);
+			/+unbindFont(font,rc);
+			B.colorHUDMaterialBackend.bind(null,rc);
+			B.colorHUDMaterialBackend.bindDiffuse(font.texture);
+			B.colorHUDMaterialBackend.setColor(Color4f(0.0f,1.0f,0.0f,1.0f));
+			font.write!drawLetter1(text,left,top,settings);
+			B.colorHUDMaterialBackend.setColor(Color4f(1.0f,1.0f,0.0f,1.0f));
+			B.colorHUDMaterialBackend.unbind(null,rc);
+			bindFont(font,rc);
+			setFontColor(font,Color4f(1.0f,1.0f,1.0f,1.0f));+/
+			auto scale=1.5f*settings.scale;
+			auto ftOffset=scale*getFreetypeOffset(font);
+			if(type.among(FontType.fn08,FontType.fnwt)){
+				void drawLetter2(dchar c,B.SubQuad mesh,float x,float y,float width,float height){
+					switch(c){
+						case 'f': x+=1.0f*scale; break;
+						case 'j': x+=1.0f*scale; break;
+						case 't': x+=0.5f*scale; break;
+						case 'v': x+=1.0f*scale; break;
+						case 'x': x+=1.0f*scale; break;
+						case 'y','ÿ','ý','ỳ': x+=1.0f*scale; break;
+						case 'A','Ä','Á','À','Ą': x+=1.0f*scale; break;
+						case 'H': x+=0.25f*scale; break;
+						case 'J': x+=1.0f*scale; break;
+						case 'M': x+=0.5f*scale; break;
+						case 'O','Ö','Ó','Ò': x+=0.5f*scale; break;
+						case 'T': x+=1.5f*scale; break;
+						case 'V': x+=1.0f*scale; break;
+						case 'X': x+=1.0f*scale; break;
+						case '/': x+=1.0f*scale; break;
+						case '@': x+=1.5f*scale; break;
+						default: break;
+					}
+					fonts[type].setTransformationScaled(Vector3f(x,y,0.0f),scale/fontScaleFactor*Vector3f(0.6f,0.55f,1.0f),rc);
+					import std.ascii:isASCII,isPrintable;
+					if(!c.isASCII||c.isPrintable)
+						fonts[type].renderGlyph(c,0);
+				}
+				font.write!drawLetter2(text,left+ftOffset.x,top+ftOffset.y,settings);
+			}else{
+				void drawLetter3(dchar c,B.SubQuad mesh,float x,float y,float width,float height){
+					//fonts[type].setTransformationScaled(Vector3f(x,y,0.0f),0.63f*scale/fontScaleFactor*Vector3f(1.0f,1.0f,1.0f),rc);
+					fonts[type].setTransformationScaled(Vector3f(x,y,0.0f),Vector3f(width-scale,0.6f*scale/fontScaleFactor,0.0f),rc);
+					import std.ascii:isASCII,isPrintable;
+					if(!c.isASCII||c.isPrintable)
+						//fonts[type].renderGlyph(c,0);
+						fonts[type].renderGlyphUnit(c);
+				}
+				font.write!drawLetter3(text,left+ftOffset.x,top+ftOffset.y,settings);
 			}
-			font.write!drawLetter2(text,left+ftOffset.x,top+ftOffset.y,settings);
 		}
 	}
 
