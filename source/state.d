@@ -8004,7 +8004,7 @@ bool slime(B)(int target,SacSpell!B spell,ObjectState!B state){
 		playSpellSoundTypeAt(SoundType.slime,target,state,slimeGain);
 		obj.animateSlimeTransition(state);
 		obj.creatureStats.effects.numSlimes+=1;
-		auto duration=(obj.isWizard?0.25f:1000.0f/obj.health)*spell.duration;
+		auto duration=(obj.isWizard?0.25f:1000.0f/obj.creatureStats.maxHealth)*spell.duration;
 		return cast(int)ceil(updateFPS*duration);
 	},()=>-1)(target,state);
 	if(duration==-1) return false;
