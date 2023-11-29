@@ -1906,7 +1906,7 @@ final class Network(B){
 		// TODO: probably even if a player is not active there should be some timeout,
 		// especially for players with status playingBadSynch
 		if(!isActiveStatus(players[i].status)||players[i].status==PlayerStatus.playingBadSynch) return;
-		if(!isActiveStatus(players[me].status)||players[me].status==PlayerStatus.playingBadSynch) return;
+		if(me==-1||!isActiveStatus(players[me].status)||players[me].status==PlayerStatus.playingBadSynch) return;
 		auto sinceLastPacket=B.time()-players[i].packetTime;
 		if(dropOnTimeout&&players[i].packetTime!=MonoTime.init&&sinceLastPacket>=dropDelay){
 			report!true(i,"timed out");
