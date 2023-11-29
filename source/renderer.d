@@ -3087,6 +3087,10 @@ struct Renderer(B){
 				font.write!drawLetter2(text,left+ftOffset.x,top+ftOffset.y,settings);
 			}else{
 				void drawLetter3(dchar c,B.SubQuad mesh,float x,float y,float width,float height){
+					switch(c){
+						case '\'': x-=0.75f*scale; break;
+						default: break;
+					}
 					//fonts[type].setTransformationScaled(Vector3f(x,y,0.0f),0.63f*scale/fontScaleFactor*Vector3f(1.0f,1.0f,1.0f),rc);
 					fonts[type].setTransformationScaled(Vector3f(x,y,0.0f),Vector3f(width-scale,0.6f*scale/fontScaleFactor,0.0f),rc);
 					import std.ascii:isASCII,isPrintable;
