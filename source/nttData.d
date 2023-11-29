@@ -995,6 +995,7 @@ Lswitch: switch(name){
 					return mixin(`nttData.`~dataName).tag;
 			}
 		}
+		case "Buta","buta": return tagFromCreatureName("Ambassador Buta");
 		default: return (char[4]).init;
 	}
 }

@@ -166,11 +166,11 @@ int run(string[] args){
 			import nttData:wizards;
 			if(!wizards.canFind(tag)){
 				auto reversed=tag;
-				reverse(tag[]);
+				reverse(cast(ubyte[])tag[]);
 				if(wizards.canFind(reversed)){
 					tag=reversed;
 				}else{
-					stderr.writefln!"error: unknown wizard '%s'"(options.wizard);
+					stderr.writefln!"error: unknown wizard '%s'"(wizard);
 					return 1;
 				}
 			}
