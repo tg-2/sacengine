@@ -41,6 +41,7 @@ final class SacObject(B){
 	Animation[] animations;
 	SacSpell!B[3] abilities;
 	SacSpell!B passiveAbility;
+	SacSpell!B passiveAbility2;
 	immutable(Cre8)* cre8;
 	immutable(CreatureData)* data;
 	immutable(Wizd)* wizd;
@@ -509,6 +510,8 @@ final class SacObject(B){
 			}
 			if(cre8.passiveAbility!="\0\0\0\0")
 				passiveAbility=SacSpell!B.get(cre8.passiveAbility);
+			if(cre8.passiveAbility2!="\0\0\0\0")
+				passiveAbility2=SacSpell!B.get(cre8.passiveAbility2);
 		}
 		MaterialConfig conf;
 		// TODO: this is a hack:

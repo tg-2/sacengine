@@ -1056,6 +1056,7 @@ SacSpell!B activeAbility(B)(ref MovingObject!B object){
 	return object.ability;
 }
 SacSpell!B passiveAbility(B)(ref MovingObject!B object){ return object.sacObject.passiveAbility; }
+SacSpell!B passiveAbility2(B)(ref MovingObject!B object){ return object.sacObject.passiveAbility2; }
 
 StunnedBehavior stunnedBehavior(B)(ref MovingObject!B object){
 	return object.sacObject.stunnedBehavior;
@@ -6122,8 +6123,8 @@ bool kill(B,bool pretending=false)(ref MovingObject!B object, ObjectState!B stat
 		if(object.creatureState.mode!=CreatureMode.convertReviving){
 			object.creatureState.mode=CreatureMode.dying;
 			playSoundTypeAt(object.sacObject,object.id,SoundType.death,state);
-			if(auto ability=object.passiveAbility){
-				switch(ability.tag){
+			foreach(ability;only(object.passiveAbility,object.passiveAbility2)){
+				if(ability) switch(ability.tag){
 					case SpellTag.steamCloud: object.steamCloud(ability,state); break;
 					case SpellTag.poisonCloud: object.poisonCloud(ability,state); break;
 					case SpellTag.healingShower: object.healingShower(ability,state); break;

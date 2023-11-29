@@ -71,7 +71,9 @@ struct Cre8{
 	uint passiveType;
 	uint passiveFlags;
 	char[4] passiveAbility;
-	uint[21] unknown37; // unused
+	uint[2] unknown37;
+	char[4] passiveAbility2;
+	uint[18] unknown38; // unused?
 }
 static assert(Cre8.sizeof==528);
 
