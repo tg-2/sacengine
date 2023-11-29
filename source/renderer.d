@@ -3066,7 +3066,7 @@ struct Renderer(B){
 						case 'v': x+=1.0f*scale; break;
 						case 'x': x+=1.0f*scale; break;
 						case 'y','ÿ','ý','ỳ': x+=1.0f*scale; break;
-						case 'A','Ä','Á','À','Ą': x+=1.0f*scale; break;
+						case 'A','Ä','Á','À','Ą': x+=1.5f*scale; break;
 						case 'H': x+=0.25f*scale; break;
 						case 'J': x+=1.0f*scale; break;
 						case 'M': x+=0.5f*scale; break;
@@ -3078,7 +3078,7 @@ struct Renderer(B){
 						case '@': x+=1.5f*scale; break;
 						default: break;
 					}
-					fonts[type].setTransformationScaled(Vector3f(x,y,0.0f),scale/fontScaleFactor*Vector3f(0.6f,0.55f,1.0f),rc);
+					fonts[type].setTransformationScaled(Vector3f(x,y,0.0f),scale/fontScaleFactor*Vector3f(0.55f,0.55f,1.0f),rc);
 					import std.ascii:isASCII,isPrintable;
 					if(!c.isASCII||c.isPrintable)
 						fonts[type].renderGlyph(c,0);
