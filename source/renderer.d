@@ -3059,6 +3059,7 @@ struct Renderer(B){
 			auto ftOffset=scale*getFreetypeOffset(font);
 			if(type.among(FontType.fn08,FontType.fnwt)){
 				void drawLetter2(dchar c,B.SubQuad mesh,float x,float y,float width,float height){
+					float xscale=0.55f;
 					switch(c){
 						case 'f': x+=1.0f*scale; break;
 						case 'j': x+=1.0f*scale; break;
@@ -3066,7 +3067,7 @@ struct Renderer(B){
 						case 'v': x+=1.0f*scale; break;
 						case 'x': x+=1.0f*scale; break;
 						case 'y','ÿ','ý','ỳ': x+=1.0f*scale; break;
-						case 'A','Ä','Á','À','Ą': x+=1.5f*scale; break;
+						case 'A','Ä','Á','À','Ą': xscale=0.75f; break;
 						case 'H': x+=0.25f*scale; break;
 						case 'J': x+=1.0f*scale; break;
 						case 'M': x+=0.5f*scale; break;
@@ -3078,7 +3079,7 @@ struct Renderer(B){
 						case '@': x+=1.5f*scale; break;
 						default: break;
 					}
-					fonts[type].setTransformationScaled(Vector3f(x,y,0.0f),scale/fontScaleFactor*Vector3f(0.55f,0.55f,1.0f),rc);
+					fonts[type].setTransformationScaled(Vector3f(x,y,0.0f),scale/fontScaleFactor*Vector3f(xscale,0.55f,1.0f),rc);
 					import std.ascii:isASCII,isPrintable;
 					if(!c.isASCII||c.isPrintable)
 						fonts[type].renderGlyph(c,0);
