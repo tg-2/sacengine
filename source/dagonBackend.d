@@ -288,9 +288,10 @@ final class SacScene: Scene{
 		//sortEntities(entities2D);
 	}
 
-	void initialize(){
+	void initialize(Options options){
 		initializeMouse();
-		renderer.initialize();
+		Renderer!DagonBackend.InitOpt initOpt={ freetypeFonts: options.freetypeFonts };
+		renderer.initialize(initOpt);
 	}
 
 	//@property float hudScaling(){ return height/480.0f; }
@@ -1526,6 +1527,8 @@ static:
 	void initialize(Options options){
 		enforce(!app,"DagonBackend already initialized"); // TODO: fix?
 		app = new SacApplication(options);
+		enforce(!!scene,"Scene missing");
+		app.scene.initialize(options);
 	}
 	void addLogicCallback(bool delegate() dg){
 		scene.addLogicCallback(dg);
@@ -1550,7 +1553,6 @@ static:
 	void run(){
 		if(!app) return;
 		if(!app.scene) return;
-		app.scene.initialize();
 		app.scene.start();
 		app.run();
 	}
@@ -1663,6 +1665,17 @@ static:
 	StatsFrame makeStatsFrame(){ return New!ShapeSacStatsFrame(scene.assetManager); }
 	alias Cooldown=ShapeCooldown;
 	Cooldown makeCooldown(){ return New!ShapeCooldown(scene.assetManager); }
+
+	alias Font=FreeTypeFont;
+	Font loadFont(int pointSize,string filename){
+		import file=std.file;
+		if(!file.exists(filename)) return null;
+		auto result=new FreeTypeFont(pointSize,null);
+		result.createFromFile(filename);
+		result.prepareVAO();
+		result.preloadASCII();
+		return result;
+	}
 
 	@property environment(){ return scene.environment; } // TODO: get rid of this?
 	@property shadowMap(){ return scene.shadowMap; }     // TODO: get rid of this?

@@ -12,6 +12,7 @@ enum FontType{
 }
 
 class SacFont(B){
+	FontType type;
 	B.Texture texture;
 	struct Letter{
 		int width;
@@ -22,6 +23,7 @@ class SacFont(B){
 	float widthSlack=1.0f;
 	int lineHeight=16;
 	this(FontType type){
+		this.type=type;
 		auto image=loadTXTR(text("extracted/main/MAIN.WAD!/font.FLDR/",type,".TXTR"));
 		texture=B.makeTexture(image,false);
 		const width=image.width, height=image.height, channels=image.channels, data=image.data;
@@ -68,7 +70,7 @@ float rawWrite(alias draw,B,R)(SacFont!B font,R text,float left,float top,float 
 		float cursor=0.0f;
 		foreach(dchar d;text){
 			auto c=convertDchar(d);
-			draw(letters[c].mesh,left+cursor-widthSlack,top,scale*(letters[c].width+2.0f*widthSlack),scale*(letters[c].height));
+			draw(d,letters[c].mesh,left+cursor-widthSlack,top,scale*(letters[c].width+2.0f*widthSlack),scale*(letters[c].height));
 			cursor+=scale*(letters[c].width+1);
 		}
 		return cursor;

@@ -11,7 +11,7 @@ import std.range: iota, walkLength, enumerate;
 import std.typecons: tuple, Tuple;
 import std.conv: to;
 import std.exception: enforce;
-import state,sacobject,sacspell,nttData,sacmap,levl,form,sacform;
+import state,sacobject,sacspell,nttData,sacmap,levl,form,sacform,sacfont;
 import util;
 
 struct Camera{
@@ -815,11 +815,13 @@ struct Renderer(B){
 		flurryImplosion=createFlurryImplosion();
 	}
 
-	void initialize(){
+	static struct InitOpt{ bool freetypeFonts; }
+	void initialize(InitOpt options){
 		createSky();
 		createSouls();
 		createEffects();
-		initializeHUD();
+		HudOpt hudOpt={freetypeFonts: options.freetypeFonts};
+		initializeHUD(hudOpt);
 	}
 
 	struct EnvOpt{
@@ -2953,7 +2955,9 @@ struct Renderer(B){
 	B.SubQuad minimapQuad;
 	B.SubQuad minimapAltarRing,minimapManalith,minimapWizard,minimapManafount,minimapShrine;
 	B.SubQuad minimapCreatureArrow,minimapStructureArrow;
-	void initializeHUD(){
+	B.Font[FontType.max+1] fonts=null;
+	static struct HudOpt{ bool freetypeFonts; }
+	void initializeHUD(HudOpt options){
 		sacCursor=new SacCursor!B();
 		quad=B.makeQuad();
 		whiteTexture=B.makeTexture(makeOnePixelImage(Color4f(1.0f,1.0f,1.0f)));
@@ -2991,6 +2995,68 @@ struct Renderer(B){
 		minimapShrine=B.makeSubQuad(48.0f/64.0f,0.0/65.0f,60.0f/64.0f,12.0f/64.0f);
 		minimapCreatureArrow=B.makeSubQuad(0.0f/64.0f,13.0/65.0f,11.0f/64.0f,24.0f/64.0f);
 		minimapStructureArrow=B.makeSubQuad(12.0f/64.0f,13.0/65.0f,23.0f/64.0f,24.0f/64.0f);
+		// freetype fonts
+		if(options.freetypeFonts){
+			fonts[FontType.fn08]=null; // B.loadFont(8*fontScaleFactor,"fonts/verdana.ttf"); // TODO: fancy color gradient
+			fonts[FontType.fn10]=B.loadFont(10*fontScaleFactor,"fonts/bookA.ttf");
+			fonts[FontType.fn12]=B.loadFont(12*fontScaleFactor,"fonts/elgar.ttf");
+			fonts[FontType.fndb]=null; // TODO: find font
+			fonts[FontType.fnwt]=null; //B.loadFont(8*fontScaleFactor,"fonts/verdana.ttf"); // TODO: improve rendering
+			fonts[FontType.ft12]=B.loadFont(12*fontScaleFactor,"fonts/bookA.ttf");
+		}
+	}
+	enum fontScaleFactor=32;
+
+	void bindFont(SacFont!B font,B.RenderContext rc){
+		auto type=font.type;
+		if(!fonts[type]){
+			B.colorHUDMaterialBackend.bind(null,rc);
+			B.colorHUDMaterialBackend.bindDiffuse(font.texture);
+		}else fonts[type].bind(rc);
+	}
+	void unbindFont(SacFont!B font,B.RenderContext rc){
+		auto type=font.type;
+		if(fonts[type]) fonts[type].unbind(rc);
+		else B.colorHUDMaterialBackend.unbind(null,rc);
+	}
+	void setFontColor(SacFont!B font,Color4f color){
+		auto type=font.type;
+		if(fonts[type]) fonts[type].setColor(color);
+		else B.colorHUDMaterialBackend.setColor(color);
+	}
+	static Vector2f getFreetypeOffset(SacFont!B font){
+		auto type=font.type;
+		final switch(type)with(FontType){
+			case FontType.fndb: return Vector2f(0.0f,0.0f); // TODO
+
+			case FontType.fn08: return Vector2f(0.0f,1.5f);
+			case FontType.fnwt: return Vector2f(0.0f,1.5f);
+
+			case FontType.fn10: return Vector2f(0.5f,1.5f);
+			case FontType.fn12: return Vector2f(0.5f,1.0f);
+			case FontType.ft12: return Vector2f(0.5f,0.5f); // TODO: ok?
+		}
+	}
+	void drawText(SacFont!B font,const(char)[] text,float left,float top,FormatSettings settings,ref RenderInfo!B info,B.RenderContext rc){
+		auto type=font.type;
+		if(!fonts[type]){
+			void drawLetter1(dchar c,B.SubQuad mesh,float x,float y,float width,float height){
+				B.colorHUDMaterialBackend.setTransformationScaled(Vector3f(x,y,0.0f),Quaternionf.identity(),Vector3f(width,height,0.0f),rc);
+				mesh.render(rc);
+			}
+			font.write!drawLetter1(text,left,top,settings);
+		}else{
+			auto ftOffset=settings.scale*info.hudScaling*getFreetypeOffset(font);
+			void drawLetter2(dchar c,B.SubQuad mesh,float x,float y,float width,float height){
+				//fonts[type].setTransformationScaled(Vector3f(x,y,0.0f),0.63f*settings.scale*info.hudScaling/fontScaleFactor*Vector3f(1.0f,1.0f,1.0f),rc);
+				fonts[type].setTransformationScaled(Vector3f(x,y,0.0f),Vector3f(width-3,0.63f*settings.scale*info.hudScaling/fontScaleFactor,0.0f),rc);
+				import std.ascii:isASCII,isPrintable;
+				if(!c.isASCII||c.isPrintable)
+					//fonts[type].renderGlyph(c,0);
+					fonts[type].renderGlyphUnit(c);
+			}
+			font.write!drawLetter2(text,left+ftOffset.x,top+ftOffset.y,settings);
+		}
 	}
 
 	auto spellbookTarget=Target.init;
@@ -3552,7 +3618,6 @@ struct Renderer(B){
 	}
 
 	void renderMouseoverText(scope const(char)[] text,int cursorSize,ref RenderInfo!B info,B.RenderContext rc,int yoffset=-1,scope Color4f[] lineColors=null){
-		import sacfont;
 		auto font=SacFont!B.get(FontType.fnwt);
 		auto hudScaling=info.hudScaling;
 		auto cursor=Vector3f(info.mouse.x, info.mouse.y, 0.0f);
@@ -3569,20 +3634,27 @@ struct Renderer(B){
 		B.colorHUDMaterialBackend.setColor(Color4f(0.0f,0.0f,0.0f,0.68f));
 		B.colorHUDMaterialBackend.setTransformationScaled(upperLeft,Quaternionf.identity(),boxScale,rc);
 		quad.render(rc);
-		B.colorHUDMaterialBackend.setColor(Color4f(1.0f,1.0f,1.0f,1.0f));
+		B.colorHUDMaterialBackend.unbind(null,rc);
+		/+B.colorHUDMaterialBackend.setColor(Color4f(1.0f,1.0f,1.0f,1.0f));
 		B.colorHUDMaterialBackend.bindDiffuse(font.texture);
-		void drawLetter(B.SubQuad mesh,float x,float y,float width,float height){
+		void drawLetter(dchar c,B.SubQuad mesh,float x,float y,float width,float height){
 			B.colorHUDMaterialBackend.setTransformationScaled(Vector3f(x,y,0.0f),Quaternionf.identity(),Vector3f(width,height,0.0f),rc);
 			mesh.render(rc);
-		}
+		}+/
 		auto textPos=upperLeft+Vector3f(3.0f*hudScaling,2.0f*hudScaling);
+		bindFont(font,rc);
 		if(lineColors){
 			foreach(i,line;enumerate(text.splitter('\n'))){
-				B.colorHUDMaterialBackend.setColor(lineColors[i]);
-				font.write!drawLetter(line,textPos.x,textPos.y+i*hudScaling*font.lineHeight,settings);
+				//B.colorHUDMaterialBackend.setColor(lineColors[i]);
+				//font.write!drawLetter(line,textPos.x,textPos.y+i*hudScaling*font.lineHeight,settings);
+				setFontColor(font,lineColors[i]);
+				drawText(font,line,textPos.x,textPos.y+i*hudScaling*font.lineHeight,settings,info,rc);
 			}
-		}else font.write!drawLetter(text,textPos.x,textPos.y,settings);
-		B.colorHUDMaterialBackend.unbind(null,rc);
+		}else{
+			//font.write!drawLetter(text,textPos.x,textPos.y,settings);
+			drawText(font,text,textPos.x,textPos.y,settings,info,rc);
+		}
+		unbindFont(font,rc);
 	}
 
 	void renderMouseoverBox(int cursorSize,ObjectState!B state,scope SacFormState!B[] forms,ref RenderInfo!B info,B.RenderContext rc){
@@ -3692,11 +3764,11 @@ struct Renderer(B){
 					B.colorHUDMaterialBackend.setTransformationScaled(iconPos,Quaternionf.identity(),iconScale,rc);
 					quad.render(rc);
 				}
+				B.colorHUDMaterialBackend.unbind(null,rc);
 
-				import sacfont;
 				auto font=SacFont!B.get(FontType.fnwt);
-				B.colorHUDMaterialBackend.bind(null,rc);
-				B.colorHUDMaterialBackend.bindDiffuse(font.texture);
+				/+B.colorHUDMaterialBackend.bind(null,rc);
+				B.colorHUDMaterialBackend.bindDiffuse(font.texture);+/
 				if(nttInfo.sideName.length) buf.formattedWrite!"%s's %s"(nttInfo.sideName,nttInfo.name);
 				else buf.formattedWrite!"%s"(nttInfo.name);
 				if(nttInfo.level!=-1) buf.formattedWrite!"\nLevel %d"(nttInfo.level);
@@ -3705,16 +3777,20 @@ struct Renderer(B){
 				auto text=buffer[0..buf.ptr-buffer.ptr];
 				FormatSettings settings = {flowType:FlowType.left, scale:hudScaling};
 				auto infoPos=upperLeft+Vector3f((3.0f+32.0f+4.0f)*hudScaling,2.0f*hudScaling,0.0f);
-				void drawLetter(B.SubQuad mesh,float x,float y,float width,float height){
+				/+void drawLetter(dchar c,B.SubQuad mesh,float x,float y,float width,float height){
 					B.colorHUDMaterialBackend.setTransformationScaled(Vector3f(x,y,0.0f),Quaternionf.identity(),Vector3f(width,height,0.0f),rc);
 					mesh.render(rc);
 				}
-				font.write!drawLetter(text,infoPos.x,infoPos.y,settings);
+				font.write!drawLetter(text,infoPos.x,infoPos.y,settings);+/
+				bindFont(font,rc);
+				setFontColor(font,Color4f(1.0f,1.0f,1.0f,1.0f));
+				drawText(font,text,infoPos.x,infoPos.y,settings,info,rc);
 				if(renderXP){
 					auto xpPos=upperLeft+Vector3f(9*hudScaling,75*hudScaling);
-					font.write!drawLetter("Experience:",xpPos.x,xpPos.y,settings);
+					//font.write!drawLetter("Experience:",xpPos.x,xpPos.y,settings);
+					drawText(font,"Experience:",xpPos.x,xpPos.y,settings,info,rc);
 				}
-				B.colorHUDMaterialBackend.unbind(null,rc);
+				unbindFont(font,rc);
 				void renderStatBar(Vector3f position,Vector3f maxScaling,float endScaling,float emptyScaling,float relativeSize){
 					auto rotation=rotationQuaternion(Axis.z,-pi!float/2);
 					auto emptyOffset=0.5f*(maxScaling.x-emptyScaling);
@@ -3828,14 +3904,13 @@ struct Renderer(B){
 	}
 
 	void renderText(ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
-		import sacfont;
 		auto font=SacFont!B.get(FontType.fn10);
-		B.colorHUDMaterialBackend.bind(null,rc);
+		/+B.colorHUDMaterialBackend.bind(null,rc);
 		B.colorHUDMaterialBackend.bindDiffuse(font.texture);
-		void drawLetter(B.SubQuad mesh,float x,float y,float width,float height){
+		void drawLetter(dchar c,B.SubQuad mesh,float x,float y,float width,float height){
 			B.colorHUDMaterialBackend.setTransformationScaled(Vector3f(x,y,0.0f),Quaternionf.identity(),Vector3f(width,height,0.0f),rc);
 			mesh.render(rc);
-		}
+		}+/
 		/*FormatSettings testSettings = {flowType: FlowType.left, scale: 2.0f*info.hudScaling, maxWidth: 0.5f*info.width};
 		font.write!drawLetter("Test.",0.0f,0.0f,testSettings);*/
 		// number of souls
@@ -3855,17 +3930,24 @@ struct Renderer(B){
 				scaling1*=info.hudScaling;
 				auto position0=Vector2f(info.width-2*scaling1.x-0.5f*scaling0.x,0.5f*scaling0.y);
 				auto soulPositionDark=position0-0.5f*size;
-				B.colorHUDMaterialBackend.setColor(Color4f(0.0f,0.0f,0.0f,1.0f));
-				font.write!drawLetter(text,soulPositionDark.x,soulPositionDark.y,settings);
+				bindFont(font,rc);
+				//B.colorHUDMaterialBackend.setColor(Color4f(0.0f,0.0f,0.0f,1.0f));
+				//font.write!drawLetter(text,soulPositionDark.x,soulPositionDark.y,settings);
+				setFontColor(font,Color4f(0.0f,0.0f,0.0f,1.0f));
+				drawText(font,text,soulPositionDark.x,soulPositionDark.y,settings,info,rc);
 				auto soulPosition=position0-0.5f*(size+info.hudScaling);
-				B.colorHUDMaterialBackend.setColor(Color4f(1.0f,1.0f,1.0f,1.0f));
-				font.write!drawLetter(text,soulPosition.x,soulPosition.y,settings);
+				//B.colorHUDMaterialBackend.setColor(Color4f(1.0f,1.0f,1.0f,1.0f));
+				//font.write!drawLetter(text,soulPosition.x,soulPosition.y,settings);
+				setFontColor(font,Color4f(1.0f,1.0f,1.0f,1.0f));
+				drawText(font,text,soulPosition.x,soulPosition.y,settings,info,rc);
+				unbindFont(font,rc);
 			}
 		}
-		B.colorHUDMaterialBackend.unbind(null,rc);
+		//B.colorHUDMaterialBackend.unbind(null,rc);
 	}
 
 	void renderChatMessage(ref ChatMessage!B message,int yOffset,ref RenderInfo!B info,B.RenderContext rc){
+		B.colorHUDMaterialBackend.bind(null,rc);
 		B.colorHUDMaterialBackend.bindDiffuse(whiteTexture);
 		B.colorHUDMaterialBackend.setColor(Color4f(0.0f,0.0f,0.0f,174.0f/255.0f));
 		auto width=ChatMessage!B.boxWidth*info.hudScaling;
@@ -3874,31 +3956,37 @@ struct Renderer(B){
 		auto offset=Vector3f(0.5f*(info.width-width),yOffset*info.hudScaling,0.0f);
 		B.colorHUDMaterialBackend.setTransformationScaled(offset,Quaternionf.identity(),Vector3f(width,height,0.0f),rc);
 		quad.render(rc);
-		import sacfont;
-		void drawLetter(B.SubQuad mesh,float x,float y,float width,float height){
+		B.colorHUDMaterialBackend.unbind(null,rc);
+		/+void drawLetter(dchar c,B.SubQuad mesh,float x,float y,float width,float height){
 			B.colorHUDMaterialBackend.setTransformationScaled(Vector3f(x,y,0.0f),Quaternionf.identity(),Vector3f(width,height,0.0f),rc);
 			mesh.render(rc);
-		}
+		}+/
 		auto titleFont=SacFont!B.get(FontType.fn12);
-		B.colorHUDMaterialBackend.bindDiffuse(titleFont.texture);
 		auto titleSettings=FormatSettings(FlowType.left,info.hudScaling);
 		auto titleSize=titleFont.getSize(message.content.title.data,titleSettings);
 		auto titleOffset=Vector3f(0.5f*(info.width-titleSize.x),(yOffset+ChatMessage!B.titleOffset)*info.hudScaling,0.0f);
-		B.colorHUDMaterialBackend.setColor(Color4f(0.0f,1.0f,1.0f,1.0f));
-		titleFont.write!drawLetter(message.content.title.data,titleOffset.x,titleOffset.y,titleSettings);
+		//B.colorHUDMaterialBackend.bindDiffuse(titleFont.texture);
+		//B.colorHUDMaterialBackend.setColor(Color4f(0.0f,1.0f,1.0f,1.0f));
+		//titleFont.write!drawLetter(message.content.title.data,titleOffset.x,titleOffset.y,titleSettings);
+		bindFont(titleFont,rc);
+		setFontColor(titleFont,Color4f(0.0f,1.0f,1.0f,1.0f));
+		drawText(titleFont,message.content.title.data,titleOffset.x,titleOffset.y,titleSettings,info,rc);
+		unbindFont(titleFont,rc);
 		auto font=SacFont!B.get(FontType.fn10);
-		B.colorHUDMaterialBackend.bindDiffuse(font.texture);
 		auto settings=FormatSettings(FlowType.left,info.hudScaling,ChatMessage!B.maxWidth*info.hudScaling);
 		auto textSize=Vector2f(message.textWidth*info.hudScaling,message.textHeight*info.hudScaling);
 		auto textOffset=Vector3f(floor(0.5f*(info.width-textSize.x)),floor((yOffset+ChatMessage!B.messageOffset)*info.hudScaling),0.0f); // TODO: should be a bit further to the left?
-		B.colorHUDMaterialBackend.setColor(Color4f(1.0f,1.0f,1.0f,1.0f));
-		font.write!drawLetter(message.content.message.data,textOffset.x,textOffset.y,settings);
-		//int xOffset=ChatMessage!B.minOffset+(ChatMessage!B.maxWidth-message.textWidth)/2;
+		//B.colorHUDMaterialBackend.bindDiffuse(font.texture);
+		//B.colorHUDMaterialBackend.setColor(Color4f(1.0f,1.0f,1.0f,1.0f));
+		//font.write!drawLetter(message.content.message.data,textOffset.x,textOffset.y,settings);
+		bindFont(font,rc);
+		setFontColor(font,Color4f(1.0f,1.0f,1.0f,1.0f));
+		drawText(font,message.content.message.data,textOffset.x,textOffset.y,settings,info,rc);
+		unbindFont(font,rc);
 	}
 
 	void renderChatMessages(ObjectState!B state,NetworkState!B networkState,ref RenderInfo!B info,B.RenderContext rc){
 		int slot=-1; // TODO
-		B.colorHUDMaterialBackend.bind(null,rc);
 		auto frame=info.activeChatMessages.frame;
 		foreach(fromNetwork;0..2){{
 			if(!fromNetwork&&!state) continue;
@@ -3935,14 +4023,13 @@ struct Renderer(B){
 			}
 			if(!removed) i++;
 		}
-		B.colorHUDMaterialBackend.unbind(null,rc);
 	}
 
-	void renderSacForm(SacForm!B sacForm,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
+	/+void renderSacForm(SacForm!B sacForm,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
 		B.colorHUDMaterialBackend.bind(null,rc);
 		void doIt(SacForm!B sacForm,Vector3f offset,Quaternionf rotation,Vector3f scale){
 			B.colorHUDMaterialBackend.setTransformationScaled(offset,rotation,scale,rc);
-			import sacfont,form;
+			//import sacfont,form;
 			SacFont!B[FormFont.max+1] fonts;
 			import std.traits: EnumMembers;
 			foreach(formFont;EnumMembers!FormFont)
@@ -3962,14 +4049,20 @@ struct Renderer(B){
 					doIt(subForm.form,offset+Vector3f(subForm.offset.x*scale.x,subForm.offset.y*scale.y,0.0f),rotation,scale);
 				}
 				foreach(ref text;sacElement.texts){
+					B.colorHUDMaterialBackend.unbind(null,rc);
 					auto font=fonts[text.font];
-					B.colorHUDMaterialBackend.bindDiffuse(font.texture);
-					void drawLetter(B.SubQuad mesh,float x,float y,float width,float height){
+					auto settings=FormatSettings(FlowType.left,scale.x);
+					/+B.colorHUDMaterialBackend.bindDiffuse(font.texture);
+					void drawLetter(dchar c,B.SubQuad mesh,float x,float y,float width,float height){
 						B.colorHUDMaterialBackend.setTransformationScaled(Vector3f(x,y,0.0f),Quaternionf.identity(),Vector3f(width,height,0.0f),rc);
 						mesh.render(rc);
 					}
-					auto settings=FormatSettings(FlowType.left,scale.x);
-					font.write!drawLetter(text.text,offset.x+text.position.x*scale.x,offset.y+text.position.y*scale.y,settings);
+					font.write!drawLetter(text.text,offset.x+text.position.x*scale.x,offset.y+text.position.y*scale.y,settings);+/
+					bindFont(font,rc);
+					setFontColor(font,Color4f(1.0f,1.0f,1.0f,1.0f));
+					drawText(font,text.text,offset.x+text.position.x*scale.x,offset.y+text.position.y*scale.y,settings,info,rc);
+					unbindFont(font,rc);
+					B.colorHUDMaterialBackend.bind(null,rc);
 				}
 				if(sacElement.subForms.length||sacElement.texts.length){
 					B.colorHUDMaterialBackend.setTransformationScaled(offset,rotation,scale,rc);
@@ -3981,7 +4074,7 @@ struct Renderer(B){
 		auto scale=Vector3f(info.hudScaling,info.hudScaling,0.0f);
 		doIt(sacForm,offset,rotation,scale);
 		B.colorHUDMaterialBackend.unbind(null,rc);
-	}
+	}+/
 
 	void updateFormTarget(Target target,Vector2f position,Vector2f size,ref RenderInfo!B info){
 		if(!info.mouse.menuMode) return;
@@ -3994,15 +4087,14 @@ struct Renderer(B){
 	}
 
 	void renderForm(ref SacFormState!B form,ushort formIndex,ref RenderInfo!B info,B.RenderContext rc){
-		import sacfont;
 		SacFont!B[FormFont.max+1] fonts;
 		import std.traits: EnumMembers;
 		foreach(formFont;EnumMembers!FormFont)
 			fonts[formFont]=formSacFont!B(formFont);
-		void drawLetter(B.SubQuad mesh,float x,float y,float width,float height){
+		/+void drawLetter(dchar c,B.SubQuad mesh,float x,float y,float width,float height){
 			B.colorHUDMaterialBackend.setTransformationScaled(Vector3f(x,y,0.0f),Quaternionf.identity(),Vector3f(width,height,0.0f),rc);
 			mesh.render(rc);
-		}
+		}+/
 		void renderFormElements(SacForm!B sacForm,scope ElementState[] elements,int s,int e,int activeElement,Vector3f offset,Quaternionf rotation,Vector3f scale){
 			enforce(elements[s].type==ElementType.form&&elements[s].numChildren+1==e-s);
 			B.colorHUDMaterialBackend.setTransformationScaled(offset,rotation,scale,rc);
@@ -4029,18 +4121,28 @@ struct Renderer(B){
 					}
 				}
 				auto settings=FormatSettings(FlowType.left,scale.x);
+				B.colorHUDMaterialBackend.unbind(null,rc);
 				foreach(ref text;sacElement.texts){
 					auto font=fonts[text.font];
-					B.colorHUDMaterialBackend.bindDiffuse(font.texture);
-					font.write!drawLetter(text.text,offset.x+text.position.x*scale.x,offset.y+text.position.y*scale.y,settings);
+					/+B.colorHUDMaterialBackend.bindDiffuse(font.texture);
+					font.write!drawLetter(text.text,offset.x+text.position.x*scale.x,offset.y+text.position.y*scale.y,settings);+/
+					bindFont(font,rc);
+					setFontColor(font,Color4f(1.0f,1.0f,1.0f,1.0f));
+					drawText(font,text.text,offset.x+text.position.x*scale.x,offset.y+text.position.y*scale.y,settings,info,rc);
+					unbindFont(font,rc);
 				}
 				if(sacElement.type==ElementType.entrybox){
 					auto font=fonts[FormFont.standard];
-					B.colorHUDMaterialBackend.bindDiffuse(font.texture);
 					auto textPosition=Vector2f(offset.x+(sacElement.offset.x+20)*scale.x,offset.y+(sacElement.offset.y+3.0f)*scale.y);
 					const(char)[] text=elements[elementIndex].textInput.data[elements[elementIndex].textStart..elements[elementIndex].textEnd];
-					font.write!drawLetter(text,textPosition.x,textPosition.y,settings);
+					/+B.colorHUDMaterialBackend.bindDiffuse(font.texture);
+					font.write!drawLetter(text,textPosition.x,textPosition.y,settings);+/
+					bindFont(font,rc);
+					setFontColor(font,Color4f(1.0f,1.0f,1.0f,1.0f));
+					drawText(font,text,textPosition.x,textPosition.y,settings,info,rc);
+					unbindFont(font,rc);
 				}
+				B.colorHUDMaterialBackend.bind(null,rc);
 				if(sacElement.texts.length||sacElement.type==ElementType.entrybox){
 					B.colorHUDMaterialBackend.setTransformationScaled(offset,rotation,scale,rc);
 				}
@@ -4074,6 +4176,7 @@ struct Renderer(B){
 	void renderForms(scope SacFormState!B[] forms,ref RenderInfo!B info,B.RenderContext rc){
 		if(info.mouse.menuMode) formTarget=Target.init;
 		B.colorHUDMaterialBackend.bind(null,rc);
+		B.colorHUDMaterialBackend.setColor(Color4f(1.0f,1.0f,1.0f,1.0f));
 		/+//auto sacForm=SacForm!B.get("tsor");
 		auto sacForm=SacForm!B.get("thci");
 		//auto sacForm=SacForm!B.get("nsol");
