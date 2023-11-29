@@ -157,6 +157,8 @@ final class Controller(B){
 	void replaceState(scope ubyte[] serialized)in{
 		assert(network&&!network.isHost);
 	}do{
+		import serialize_;
+		if(network.logDesynch_) state.committed.serialized(&network.logDesynch);
 		state.replaceState(serialized);
 		if(currentFrame<state.committedFrame)
 			timer.setFrame(state.current.frame);
@@ -164,8 +166,6 @@ final class Controller(B){
 			B.focusCamera(state.slots[controlledSlot].wizard);
 			lateJoining=false;
 		}
-		import serialize_;
-		if(network.logDesynch_) state.committed.serialized(&network.logDesynch); // TODO: don't log if late join
 		if(recording) recording.replaceState(state.current,state.commands);
 	}
 	void logDesynch(int side,scope ubyte[] serialized){
