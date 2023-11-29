@@ -383,7 +383,7 @@ final class Controller(B){
 		while(state.currentFrame<currentFrame){
 			state.step();
 			if(playback){
-				playback.report(state.current);
+				playback.report(state);
 			}
 			if(recording){
 				recording.step();

@@ -86,17 +86,17 @@ class Recording(B){
 	}
 
 	static struct Desynch{
-		int side;
+		int slot;
 		ObjectState!B desynchedState;
 	}
 	Array!Desynch desynchs;
 
-	void logDesynch(int side,scope ubyte[] serialized,ObjectState!B state)in{
+	void logDesynch(int slot,scope ubyte[] serialized,ObjectState!B state)in{
 		assert(!finalized);
 	}do{
 		auto desynchedState=new ObjectState!B(map,sides,proximity,pathFinder,triggers);
 		deserialize(desynchedState,serialized);
-		desynchs~=Desynch(side,desynchedState);
+		desynchs~=Desynch(slot,desynchedState);
 	}
 
 	void save(string filename,bool zlib=true)in{
@@ -131,7 +131,7 @@ class Recording(B){
 		if(stateReplacements[l].frame!=frame) return null;
 		return stateReplacements[l];
 	}
-	ObjectState!B desynch(int frame,out int side){
+	ObjectState!B desynch(int frame,out int slot){
 		long l=-1,r=desynchs.length;
 		enforce(l<r);
 		while(l+1<r){
@@ -141,11 +141,12 @@ class Recording(B){
 		}
 		if(r==desynchs.length) return null;
 		if(desynchs[r].desynchedState.frame!=frame) return null;
-		side=desynchs[r].side;
+		slot=desynchs[r].slot;
 		return desynchs[r].desynchedState;
 	}
 
-	void report(ObjectState!B state){
+	void report(GameState!B gameState){
+		auto state=gameState.current;
 		if(auto replacement=stateReplacement(state.frame)){
 			assert(replacement.frame==state.frame);
 			writeln("enountered state replacement at frame ",state.frame,replacement.hash!=state.hash?":":"");
@@ -155,11 +156,15 @@ class Recording(B){
 				state.copyFrom(replacement);
 			}
 		}
-		int side=-1;
-		if(auto desynch=desynch(state.frame,side)){
-			auto sideName=getSideName(side,state);
-			if(sideName=="") writeln("player ",side," desynched at frame ",state.frame);
-			else writeln(sideName," (player ",side,") desynched at frame ",state.frame);
+		int slot=-1;
+		if(auto desynch=desynch(state.frame,slot)){
+			auto slotName="";
+			if(0<=slot&&slot<gameState.slots.length){
+				auto side=gameState.slots[slot].controlledSide;
+				slotName=getSideName(side,state);
+			}
+			if(slotName=="") writeln("player ",slot," desynched at frame ",state.frame);
+			else writeln(slotName," (player ",slot,") desynched at frame ",state.frame);
 			if(desynch.hash!=state.hash){
 				writeln("their state was replaced:");
 				import diff;

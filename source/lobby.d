@@ -443,7 +443,7 @@ class Lobby(B){
 			gameState.commit();
 			while(gameState.current.frame<options.continueFrame){
 				gameState.step();
-				(toContinue?toContinue:playback).report(gameState.current);
+				(toContinue?toContinue:playback).report(gameState);
 				if(gameState.current.frame%1000==0){
 					writeln("continue: simulated ",gameState.current.frame," of ",gameState.commands.length-1," frames");
 				}
