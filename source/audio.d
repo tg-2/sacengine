@@ -106,6 +106,7 @@ Source makeSource(){
 		source.position=Vector3f(0.0f,0.0f,0.0f);
 		source.velocity=Vector3f(0.0f,0.0f,0.0f);
 		source.looping=false;
+		alSourcef(source.id,AL_REFERENCE_DISTANCE,1.0f);
 	}
 	return source;
 }
