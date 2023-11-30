@@ -59,7 +59,7 @@ final class AudioBackend(B){
 	float musicGain;
 	float soundGain;
 	float themeGain=1.0f;
-	enum _3dSoundVolumeMultiplier=6.0f;
+	enum _3dSoundVolumeMultiplier=1.0f;
 	this(float volume,float musicVolume,float soundVolume){
 		musicGain=volume*musicVolume;
 		soundGain=volume*soundVolume;
@@ -241,7 +241,7 @@ final class AudioBackend(B){
 	}
 	void loopingSoundSetup(StaticObject!B object){
 		auto sound=object.sacObject.loopingSound;
-		if(sound!="\0\0\0\0") loopSoundAt(sound,object.id);
+		if(sound!="\0\0\0\0") loopSoundAt(sound,object.id,0.75f);
 	}
 	void deleteLoopingSounds(){
 		foreach(i;0..sounds3.length)

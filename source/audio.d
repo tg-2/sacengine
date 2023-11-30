@@ -25,7 +25,8 @@ bool loadAudio(){
 		listenerPosition=Vector3f(0.0f,0.0f,0.0f);
 		listenerVelocity=Vector3f(0.0f,0.0f,0.0f);
 		listenerOrientation=Quaternionf.identity();
-		alDistanceModel(AL_INVERSE_DISTANCE_CLAMPED);
+		//alDistanceModel(AL_INVERSE_DISTANCE_CLAMPED);
+		alDistanceModel(AL_LINEAR_DISTANCE_CLAMPED);
 		version(SacEngineMPG123){
 			DerelictMPG123.load();
 			mpg123_init();
@@ -107,6 +108,8 @@ Source makeSource(){
 		source.velocity=Vector3f(0.0f,0.0f,0.0f);
 		source.looping=false;
 		alSourcef(source.id,AL_REFERENCE_DISTANCE,1.0f);
+		alSourcef(source.id,AL_MAX_DISTANCE,200.0f);
+		alSourcef(source.id,AL_ROLLOFF_FACTOR,1.0f);
 	}
 	return source;
 }
