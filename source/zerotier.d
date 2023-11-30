@@ -42,6 +42,8 @@ void libztInit(){
 	//writeln("loading libzt");
 	version(Windows){
 		libzt=LoadLibraryA(".\\libzt.dll");
+	}else version(OSX){
+		libzt=dlopen("./libzt.dylib",2); // RTLD_NOW
 	}else{
 		libzt=dlopen("./libzt.so",2); // RTLD_NOW
 	}
