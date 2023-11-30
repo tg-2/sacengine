@@ -1,5 +1,5 @@
 #!/bin/bash
-d=$(date +%Y-%m-%d-%H-%M-%S)
+d=${1:-$(date +%Y-%m-%d-%H-%M-%S)}
 ./build-windows-release.sh
 cp 3d.exe SacEngine-current.exe
 cp 3d.exe SacEngine-$d.exe

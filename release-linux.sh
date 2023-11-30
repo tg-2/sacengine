@@ -1,5 +1,5 @@
 #!/bin/bash
-d=$(date +%Y-%m-%d-%H-%M-%S)
+d=${1:-$(date +%Y-%m-%d-%H-%M-%S)}
 ./build-release.sh
 cp 3d SacEngine-current
 cp 3d SacEngine-$d
