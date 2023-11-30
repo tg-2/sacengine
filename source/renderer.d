@@ -3696,6 +3696,7 @@ struct Renderer(B){
 			}
 		}else{
 			//font.write!drawLetter(text,textPos.x,textPos.y,settings);
+			setFontColor(font,Color4f(1.0f,1.0f,1.0f,1.0f));
 			drawText(font,text,textPos.x,textPos.y,settings,info,rc);
 		}
 		unbindFont(font,rc);
