@@ -25,6 +25,7 @@ bool loadAudio(){
 		listenerPosition=Vector3f(0.0f,0.0f,0.0f);
 		listenerVelocity=Vector3f(0.0f,0.0f,0.0f);
 		listenerOrientation=Quaternionf.identity();
+		alDistanceModel(AL_INVERSE_DISTANCE_CLAMPED);
 		version(SacEngineMPG123){
 			DerelictMPG123.load();
 			mpg123_init();
