@@ -19,6 +19,8 @@ maps-orig
 *.zip
 *.exe
 *.dll
+*.dylib
 logs
 *.obj
 *.mtl
+zerotier-identity
