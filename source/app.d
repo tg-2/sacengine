@@ -61,6 +61,9 @@ void loadGame(B)(ref Options options)in{
 }
 
 int run(string[] args){
+	import std.file:thisExePath,chdir;
+	import std.path:dirName;
+	chdir(dirName(thisExePath()));
 	import core.memory;
 	GC.disable();
 	if(args.length==0) args~="";
