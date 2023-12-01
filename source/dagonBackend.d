@@ -1561,7 +1561,7 @@ static:
 	void clearSidechannelMessages(){ if(app.scene) app.scene.info.activeChatMessages.clearSidechannelMessages(); }
 	~this(){ Delete(app); }
 
-	void grabFocus(){ SDL_SetWindowInputFocus(app.window); }
+	void grabFocus(){ SDL_RaiseWindow(app.window); }
 	void grabMouse(){ SDL_SetWindowGrab(app.window, SDL_TRUE); }
 	void releaseMouse(){ SDL_SetWindowGrab(app.window, SDL_FALSE); }
 	void showMouse(){ SDL_ShowCursor(SDL_DISABLE); }
