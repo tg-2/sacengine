@@ -17,6 +17,8 @@ struct Options{
 	// graphics options
 	int width=1280, height=720;
 	bool enableFullscreen=false;
+	bool grabMouse=false;
+	bool focusOnStart=false;
 	float scale=1.0f;
 	bool scaleToFit=true;
 	float aspectDistortion=1.2f;

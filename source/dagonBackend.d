@@ -1287,7 +1287,7 @@ final class SacScene: Scene{
 		}
 	}
 	void initializeMouse(){
-		SDL_ShowCursor(SDL_DISABLE);
+		DagonBackend.hideMouse();
 		mouse.x=width/2;
 		mouse.y=height/2;
 		fpview.oldMouseX=cast(int)mouse.x;
@@ -1560,6 +1560,12 @@ static:
 	void unpause(){ if(app&&app.scene) app.scene.unpause(); }
 	void clearSidechannelMessages(){ if(app.scene) app.scene.info.activeChatMessages.clearSidechannelMessages(); }
 	~this(){ Delete(app); }
+
+	void grabFocus(){ SDL_SetWindowInputFocus(app.window); }
+	void grabMouse(){ SDL_SetWindowGrab(app.window, SDL_TRUE); }
+	void releaseMouse(){ SDL_SetWindowGrab(app.window, SDL_FALSE); }
+	void showMouse(){ SDL_ShowCursor(SDL_DISABLE); }
+	void hideMouse(){ SDL_ShowCursor(SDL_DISABLE); }
 
 	alias RenderContext=RenderingContext*;
 

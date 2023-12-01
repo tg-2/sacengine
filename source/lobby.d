@@ -558,5 +558,8 @@ class Lobby(B){
 		if(recording) recording.stepCommitted(gameState.committed);
 		initController(options);
 		controller.start();
+		if(options.focusOnStart) B.grabFocus();
+		if(options.grabMouse) B.grabMouse();
+		B.hideMouse(); // (should be hidden already, just to make sure)
 	}
 }
