@@ -1888,7 +1888,7 @@ final class Network(B){
 		players[i].drop();
 	}
 	enum pingDelay=1.seconds/60;
-	enum dropDelay=1.seconds;
+	enum dropDelay=5.seconds;
 	MonoTime lastUpdate;
 	void ping(int i){
 		auto time=B.time();
