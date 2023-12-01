@@ -1037,6 +1037,7 @@ enum ParticleType{
 	castStratos,
 	castCharnel,
 	castCharnel2,
+	breathOfLife,
 	wrathCasting,
 	wrathExplosion1,
 	wrathExplosion2,
@@ -1097,7 +1098,7 @@ final class SacParticle(B){
 				return true;
 			case castPersephone,castPersephone2,castPyro,castJames,castStratos,castCharnel,castCharnel2:
 				return false;
-			case wrathCasting,wrathExplosion1,wrathExplosion2,rainOfFrogsCasting,steam:
+			case breathOfLife,wrathCasting,wrathExplosion1,wrathExplosion2,rainOfFrogsCasting,steam:
 				return false;
 			case wrathParticle,rainbowParticle,frogExplosion,gnomeHit,warmongerHit,ashParticle:
 				return true;
@@ -1133,7 +1134,7 @@ final class SacParticle(B){
 				return false;
 			case castPersephone,castPersephone2,castPyro,castJames,castStratos,castCharnel,castCharnel2:
 				return false;
-			case wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,rainbowParticle,rainOfFrogsCasting,frogExplosion,gnomeHit,warmongerHit,ashParticle,steam,smoke,dirt,dust,splat,rock,webDebris,oil,poison,swarmHit,slime:
+			case breathOfLife,wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,rainbowParticle,rainOfFrogsCasting,frogExplosion,gnomeHit,warmongerHit,ashParticle,steam,smoke,dirt,dust,splat,rock,webDebris,oil,poison,swarmHit,slime:
 				return false;
 			case relativePoison:
 				return true;
@@ -1325,6 +1326,12 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/Daniel/DanC.WAD!/char.FLDR/cfx1.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
+			case breathOfLife:
+				width=height=3.0f;
+				this.energy=7.5f;
+				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/brth.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
 			case wrathCasting,wrathExplosion1:
 				width=height=1.0f;
 				this.energy=7.5f;
@@ -1481,10 +1488,11 @@ final class SacParticle(B){
 			case chainLightningCasting: return 2;
 			case redVortexDroplet: return 2;
 			case spark: return 2;
-			case styxSpark: return 2;
-			case flurryShard: return 2;
-			case rend: return 2;
 			case etherealFormSpark: return 2;
+			case styxSpark: return 2;
+			case rend: return 2;
+			case flurryShard: return 2;
+			case breathOfLife: return 2;
 			case rainbowParticle: return 2;
 			case gnomeHit: return 2;
 			case warmongerHit: return 1;
@@ -1537,6 +1545,8 @@ final class SacParticle(B){
 				return min(1.0f,(lifetime/(0.75f*numFrames))^^2);
 			case castPersephone,castPersephone2,castPyro,castJames,castStratos,castCharnel,castCharnel2:
 				return 1.0f;
+			case breathOfLife:
+				return min(1.0f,lifetime/(1.5f*numFrames));
 			case wrathCasting:
 				return min(1.0f,lifetime/(1.5f*numFrames));
 			case rainOfFrogsCasting:
@@ -1592,6 +1602,8 @@ final class SacParticle(B){
 				return min(1.0f,(lifetime/(0.75f*numFrames)));
 			case castPersephone,castPersephone2,castPyro,castJames,castStratos,castCharnel,castCharnel2:
 				return 1.0f;
+			case breathOfLife:
+				return min(1.0f,0.4f+0.6f*lifetime/(1.5f*numFrames));
 			case wrathCasting:
 				return min(1.0f,0.4f+0.6f*lifetime/(1.5f*numFrames));
 			case wrathParticle,rainbowParticle,frogExplosion,gnomeHit,warmongerHit:

@@ -3799,6 +3799,20 @@ struct RendShoot(B){
 	SacSpell!B rangedAttack;
 }
 
+enum BreathOfLifeStatus{
+	flying,
+	reviving,
+}
+struct BreathOfLife(B){
+	int creature;
+	int side;
+	Vector3f position;
+	OrderTarget target;
+	SacSpell!B spell;
+	auto status=BreathOfLifeStatus.flying;
+	int frame=0;
+}
+
 struct Appearance{
 	int id;
 	int lifetime;
@@ -5087,6 +5101,14 @@ struct Effects(B){
 	void removeRendShoot(int i){
 		if(i+1<rendShoots.length) rendShoots[i]=move(rendShoots[$-1]);
 		rendShoots.length=rendShoots.length-1;
+	}
+	Array!(BreathOfLife!B) breathOfLifes;
+	void addEffect(BreathOfLife!B breathOfLife){
+		breathOfLifes~=move(breathOfLife);
+	}
+	void removeBreathOfLife(int i){
+		if(i+1<breathOfLifes.length) breathOfLifes[i]=move(breathOfLifes[$-1]);
+		breathOfLifes.length=breathOfLifes.length-1;
 	}
 	// special effects
 	Array!Appearance appearances;
@@ -9284,6 +9306,9 @@ bool shootOnTick(bool ability=false,B)(ref MovingObject!B object,OrderTarget tar
 				case SpellTag.rend:
 					rendShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
 					break;
+				case SpellTag.breathOfLife:
+					breathOfLifeShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
+					break;
 				default: goto case SpellTag.brainiacShoot;
 			}
 			object.drainMana(drainedMana,state);
@@ -9632,6 +9657,19 @@ bool haloOfEarth(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B s
 	return true;
 }
 
+bool breathOfLifeShoot(B)(int creature,int side,int targetId,float accuracy,Vector3f position,Vector3f targetPosition,SacSpell!B rangedAttack,ObjectState!B state){
+	if(!state.isValidTarget(targetId)) return false;
+	if(state.targetTypeFromId(targetId)==TargetType.soul){
+		if(auto newTargetId=state.soulById!((ref soul)=>soul.creatureId,()=>0)(targetId))
+			if(state.isValidTarget(newTargetId))
+			   targetId=newTargetId;
+	}
+	auto target=centerTarget(targetId,state);
+	state.addEffect(BreathOfLife!B(creature,side,position,target,rangedAttack));
+	return true;
+}
+
+
 void appear(B)(int id,int lifetime,ObjectState!B state){
 	if(!state.movingObjectById!((ref object){
 		if(object.creatureStats.effects.appearing) return false;
@@ -9819,6 +9857,7 @@ bool isRangedAbility(B)(SacSpell!B ability){ // TODO: put this directly in SacSp
 		case SpellTag.oil: return true;
 		case SpellTag.firewalk: return true;
 		case SpellTag.rend: return true;
+		case SpellTag.breathOfLife: return true;
 		default: return false;
 	}
 }
@@ -9851,7 +9890,7 @@ bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,OrderTarget targ
 		object.creatureStats.effects.abilityCooldown=cast(int)(ability.cooldown*updateFPS);
 	}
 	bool shoot(bool visibilityRequired=true)(){
-		if(target.id&&!isValidAttackTarget(target.id,state)&&!state.isValidTarget(target.id,TargetType.soul)) return false;
+		if(target.id&&!state.isValidTarget(target.id)) return false;
 		auto predicted=object.predictShotTargetPosition(ability,true,target,state);
 		if(isNaN(predicted.x)) return false;
 		bool useSecondShootAnimation=true;
@@ -9930,6 +9969,8 @@ bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,OrderTarget targ
 		case SpellTag.firewalk:
 			return shoot!false();
 		case SpellTag.rend:
+			return shoot();
+		case SpellTag.breathOfLife:
 			return shoot();
 		case SpellTag.haloOfEarthAbility:
 			if(object.haloOfEarth(ability,state)) apply();
@@ -18700,6 +18741,88 @@ bool updateRendShoot(B)(ref RendShoot!B shoot,ObjectState!B state){
 	}
 }
 
+void animateBreathOfLifeHead(B)(ref BreathOfLife!B breathOfLife,Vector3f velocity,ObjectState!B state,int numFrames=31){
+	enum numParticles=20;
+	foreach(i;0..numParticles){
+		auto sacParticle=SacParticle!B.get(ParticleType.breathOfLife);
+		static immutable Vector3f[2] bounds=[-0.3f*Vector3f(1.0f,1.0f,1.0f),0.3f*Vector3f(1.0f,1.0f,1.0f)];
+		auto position=breathOfLife.position+state.uniform(bounds);
+		auto scale=1.2f;
+		auto lifetime=numFrames;
+		auto frame=state.uniform(0,63);
+		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+	}
+}
+
+void animateBreathOfLife(B)(ref BreathOfLife!B breathOfLife,Vector3f velocity,ObjectState!B state){
+	enum numParticles=5;
+	foreach(i;0..numParticles){
+		auto sacParticle=SacParticle!B.get(ParticleType.breathOfLife);
+		static immutable Vector3f[2] bounds=[-0.2f*Vector3f(1.0f,1.0f,1.0f),0.2f*Vector3f(1.0f,1.0f,1.0f)];
+		auto position=breathOfLife.position-state.uniform(0.0f,1.0f)*velocity/updateFPS+state.uniform(bounds);
+		auto pvelocity=Vector3f(0.0f,0.0f,0.0f);
+		auto scale=1.0f;
+		auto lifetime=63;
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle,position,pvelocity,scale,lifetime,frame));
+	}
+	animateBreathOfLifeHead(breathOfLife,velocity,state,min(31,cast(int)((breathOfLife.position-breathOfLife.target.position).length/breathOfLife.spell.speed*updateFPS)));
+}
+
+enum breathOfLifeGain=2.0f;
+bool animateBreathOfLifeReviving(B)(ref MovingObject!B obj,ObjectState!B state){
+	if(!obj.creatureState.mode.among(CreatureMode.reviving,CreatureMode.fastReviving)){
+		playSoundAt("tihb",obj.id,state,breathOfLifeGain);
+		return false;
+	}
+	static assert(updateFPS==60);
+	auto hitbox=obj.relativeHitbox;
+	auto dim=hitbox[1]-hitbox[0];
+	auto volume=dim.x*dim.y*dim.z;
+	auto scale=3.0f*max(1.0f,cbrt(volume));
+	auto sacParticle=SacParticle!B.get(ParticleType.relativeHeal);
+	enum numParticles=2;
+	foreach(i;0..numParticles){
+		auto position=1.3f*state.uniform(hitbox);
+		auto distance=(state.uniform(3)?state.uniform(0.6f,1.2f):state.uniform(1.5f,2.5f))*(hitbox[1].z-hitbox[0].z);
+		auto fullLifetime=sacParticle.numFrames/float(updateFPS);
+		auto lifetime=cast(int)(sacParticle.numFrames*state.uniform(0.0f,1.0f));
+		state.addParticle(Particle!(B,true)(sacParticle,obj.id,false,position,Vector3f(0.0f,0.0f,-distance/fullLifetime),scale,lifetime,0));
+	}
+	return true;
+}
+
+bool updateBreathOfLife(B)(ref BreathOfLife!B breathOfLife,ObjectState!B state){
+	with(breathOfLife){
+		final switch(status){
+			case BreathOfLifeStatus.flying:
+				target.position=target.center(state);
+				auto velocity=updateFPS*(target.position-position);
+				if(velocity.length>spell.speed) velocity=spell.speed*velocity.normalized;
+				position+=velocity/updateFPS;
+				animateBreathOfLife(breathOfLife,velocity,state);
+				if(velocity.lengthsqr<0.01f^^2){
+					animateBreathOfLifeHead(breathOfLife,Vector3f(0.0f,0.0f,0.0f),state,63);
+					status=BreathOfLifeStatus.reviving;
+					if(!state.movingObjectById!((ref obj,state){
+						obj.fastRevive(state);
+						return true;
+					},()=>false)(target.id,state))
+						return false;
+					playSpellSoundTypeAt(SoundType.convertRevive,target.id,state,breathOfLifeGain);
+				}
+				break;
+			case BreathOfLifeStatus.reviving:
+				if(!state.isValidTarget(target.id,TargetType.creature))
+					return false;
+				return state.movingObjectById!((ref obj,state){
+					return obj.animateBreathOfLifeReviving(state);
+				},()=>false)(target.id,state);
+		}
+		return true;
+	}
+}
+
 bool updateAppearance(B)(ref Appearance appearance,ObjectState!B state){
 	with(appearance){
 		if(!state.isValidTarget(id,TargetType.creature)) return false;
@@ -19890,6 +20013,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.rendShoots.length;){
 		if(!updateRendShoot(effects.rendShoots[i],state)){
 			effects.removeRendShoot(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.breathOfLifes.length;){
+		if(!updateBreathOfLife(effects.breathOfLifes[i],state)){
+			effects.removeBreathOfLife(i);
 			continue;
 		}
 		i++;

@@ -1156,6 +1156,7 @@ enum SpellTag:char[4]{
 	firewalk="wfhg",
 	rend="dner",
 	haloOfEarthAbility="HRba",
+	breathOfLife="filb",
 	// passive abilities:
 	steamCloud="goc@",
 	poisonCloud="cen@",

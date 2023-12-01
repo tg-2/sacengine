@@ -746,6 +746,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Fir
 void serialize(alias sink,B)(ref RendShoot!B rend){ serializeStruct!sink(rend); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==RendShoot!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref BreathOfLife!B rend){ serializeStruct!sink(rend); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BreathOfLife!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink)(ref Appearance appearance){ serializeStruct!sink(appearance); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Appearance)){ deserializeStruct(result,state,data); }
 
