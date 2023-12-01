@@ -1485,10 +1485,10 @@ class SacApplication: SceneApplication{
 	this(Options options){
 		auto width=cast(int)(options.width*options.scale);
 		auto height=cast(int)(options.height*options.scale);
-		super(width, height, options.enableFullscreen, "SacEngine", []);
-		if(options.width==0||options.height==0){
-			options.width=width;
-			options.height=height;
+		super(width, height, options.detectResolution, options.resizableWindow, options.enableFullscreen, "SacEngine", []);
+		if(options.detectResolution||options.width==0||options.height==0){
+			options.width=this.width;
+			options.height=this.height;
 		}
 		scene = new SacScene(sceneManager, options);
 		scene.load();

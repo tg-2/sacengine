@@ -16,6 +16,8 @@ enum GameMode{
 struct Options{
 	// graphics options
 	int width=1280, height=720;
+	bool detectResolution=false;
+	bool resizableWindow=false;
 	bool enableFullscreen=false;
 	bool grabMouse=false;
 	bool focusOnStart=false;
