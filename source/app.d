@@ -131,6 +131,10 @@ int run(string[] args){
 			options.cameraMouseSensitivity=to!float(opt["--camera-mouse-sensitivity=".length..$]);
 		}else if(opt.startsWith("--mouse-wheel-sensitivity")){
 			options.mouseWheelSensitivity=to!float(opt["--mouse-wheel-sensitivity=".length..$]);
+		}else if(opt.startsWith("--window-scroll-x-factor=")){
+			options.windowScrollXFactor=to!float(opt["--window-scroll-x-factor=".length..$]);
+		}else if(opt.startsWith("--window-scroll-y-factor=")){
+			options.windowScrollYFactor=to!float(opt["--window-scroll-y-factor=".length..$]);
 		}else if(opt.startsWith("--join=")){
 			options.joinIP=opt["--join=".length..$];
 		}else if(opt.startsWith("--record=")){

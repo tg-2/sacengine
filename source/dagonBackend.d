@@ -990,6 +990,53 @@ final class SacScene: Scene{
 				}
 			}
 		}
+		if((options.windowScrollX||options.windowScrollY)&&mouse.visible&&!mouse.dragging&&!fpview.active){
+			alias B=DagonBackend;
+			enum border=100;
+			bool relative=false,cancelRelative=false;
+			mouse.x+=eventManager.mouseRelX/screenScaling;
+			mouse.y+=eventManager.mouseRelY/screenScaling;
+			mouse.x=max(0,min(mouse.x,width-1));
+			mouse.y=max(0,min(mouse.y,height-1));
+			if(options.windowScrollX){
+				if(mouse.x==0){
+					if(B.isMouseCaptured||B.globalMousePosition[0]<=border){
+						auto speed=radtodeg(camera.slowRotationSpeed)*(dt.total!"hnsecs"*1e-7);
+						auto xspeed=62.0f/float(height)*options.aspectDistortion*options.windowScrollXFactor;
+						camera.turn-=speed-min(0.0f,eventManager.mouseRelX/screenScaling)*xspeed;
+						relative=true;
+					}else cancelRelative=true;
+				}
+				if(mouse.x==width-1){
+					if(B.isMouseCaptured||B.globalMousePosition[0]+border>=B.screenResolution[0]){
+						auto speed=radtodeg(camera.slowRotationSpeed)*(dt.total!"hnsecs"*1e-7);
+						auto xspeed=62.0f/float(height)*options.aspectDistortion*options.windowScrollXFactor;
+						camera.turn+=speed+max(0.0f,eventManager.mouseRelX/screenScaling)*xspeed;
+						relative=true;
+					}else cancelRelative=true;
+				}
+			}
+			if(options.windowScrollY){
+				if(mouse.y==0){
+					if(B.isMouseCaptured||B.globalMousePosition[1]<=border){
+						auto speed=0.5f*(dt.total!"hnsecs"*1e-7);
+						auto yspeed=2.0f/float(height)*options.windowScrollYFactor;
+						camera.targetZoom-=speed-min(0.0f,eventManager.mouseRelY/screenScaling)*yspeed;
+						relative=true;
+					}else cancelRelative=true;
+				}
+				if(mouse.y==height-1){
+					if(B.isMouseCaptured||B.globalMousePosition[1]+border>=B.screenResolution[1]){
+						auto speed=0.5f*(dt.total!"hnsecs"*1e-7);
+						auto yspeed=2.0f/float(height)*options.windowScrollYFactor;
+						camera.targetZoom+=speed+max(0.0f,eventManager.mouseRelY/screenScaling)*yspeed;
+						relative=true;
+					}else cancelRelative=true;
+				}
+				camera.targetZoom=max(0.0f,min(camera.targetZoom,1.0f));
+			}
+			SDL_SetRelativeMouseMode(relative&&!cancelRelative?SDL_TRUE:SDL_FALSE);
+		}
 	}
 
 
@@ -1562,10 +1609,21 @@ static:
 	~this(){ Delete(app); }
 
 	void grabFocus(){ SDL_RaiseWindow(app.window); }
-	void grabMouse(){ SDL_SetWindowGrab(app.window, SDL_TRUE); }
+	void captureMouse(){ SDL_SetWindowGrab(app.window, SDL_TRUE); }
+	bool isMouseCaptured(){ return !!SDL_GetWindowGrab(app.window); }
 	void releaseMouse(){ SDL_SetWindowGrab(app.window, SDL_FALSE); }
 	void showMouse(){ SDL_ShowCursor(SDL_DISABLE); }
 	void hideMouse(){ SDL_ShowCursor(SDL_DISABLE); }
+	int[2] screenResolution(){
+		SDL_DisplayMode dm;
+		SDL_GetCurrentDisplayMode(0,&dm);
+		return [dm.w,dm.h];
+	}
+	int[2] globalMousePosition(){
+		int[2] r;
+		SDL_GetGlobalMouseState(&r[0],&r[1]);
+		return r;
+	}
 
 	alias RenderContext=RenderingContext*;
 

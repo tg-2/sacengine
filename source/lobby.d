@@ -559,7 +559,7 @@ class Lobby(B){
 		initController(options);
 		controller.start();
 		if(options.focusOnStart) B.grabFocus();
-		if(options.grabMouse) B.grabMouse();
+		if(options.captureMouse) B.captureMouse();
 		B.hideMouse(); // (should be hidden already, just to make sure)
 	}
 }

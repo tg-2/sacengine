@@ -19,7 +19,7 @@ struct Options{
 	bool detectResolution=false;
 	bool resizableWindow=false;
 	bool enableFullscreen=false;
-	bool grabMouse=false;
+	bool captureMouse=false;
 	bool focusOnStart=false;
 	float scale=1.0f;
 	bool scaleToFit=true;
@@ -47,6 +47,10 @@ struct Options{
 	Hotkeys hotkeys;
 	float cameraMouseSensitivity=1.0f;
 	float mouseWheelSensitivity=1.0f;
+	bool windowScrollX=true;
+	bool windowScrollY=true;
+	float windowScrollXFactor=1.0f;
+	float windowScrollYFactor=1.0f;
 	bool debugHotkeys=false;
 	// player-specific settings
 	God god;

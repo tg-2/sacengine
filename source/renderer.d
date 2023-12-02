@@ -24,6 +24,7 @@ struct Camera{
 	float focusHeight;
 	bool centering=false;
 	enum rotationSpeed=0.95f*pi!float;
+	enum slowRotationSpeed=0.2f*pi!float;
 	float lastTargetFacing;
 
 	int width,height;
