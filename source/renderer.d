@@ -104,7 +104,7 @@ struct ActiveChatMessages{
 		messages~=ActiveChatMessage(index,offset,height,frame,fromNetwork);
 	}
 	void remove(int localIndex){
-		occupied[messages[localIndex].offset..messages[localIndex].offset+messages[localIndex].height]=false;
+		occupied[messages[localIndex].offset..min(messages[localIndex].offset+messages[localIndex].height,$)]=false;
 		swap(messages[localIndex],messages[$-1]);
 		messages.length=messages.length-1;
 	}
