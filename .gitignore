@@ -12,6 +12,7 @@ settings.txt
 *.rcp
 zeroip.txt
 *.7z
+fonts
 data
 maps
 data-orig
