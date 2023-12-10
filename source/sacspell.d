@@ -89,17 +89,23 @@ class SacSpell(B){
 	float range;
 	float manaCost;
 	float castingTime(int level){
-		if(cre8) return cre8.castingTime/60.0f;
-		if(spel) return spel.castingTime/60.0f;
-		switch(tag){
+		int frames=0;
+		if(cre8) frames=cre8.castingTime;
+		if(spel) frames=spel.castingTime;
+		if(strc) frames=strc.castingTime;
+		int spellLevel=spellOrder/100;
+		auto bonus=min(6,max(0,level+1-spellLevel));
+		frames=(frames*10-frames*bonus)/10;
+		return frames/60.0f;
+		/+switch(tag){
 			case "htlm":
 				static assert(manalithCastingTimes.length==10);
 				return manalithCastingTimes[max(0,min(9,level))];
 			case "pcas":
 				static assert(shrineCastingTimes.length==10);
 				return shrineCastingTimes[max(0,min(9,level))];
-			default: return strc.castingTime/60.0f;
-		}
+			default: return frames/60.0f;
+		}+/
 	}
 	float cooldown;
 	float amount;
