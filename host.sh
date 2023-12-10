@@ -7,7 +7,7 @@ wizard=sorcha
 level=5
 souls=12
 
-map=--map-list=maps-1v1.txt
+map=--map-list=lists/maps-tg-1v1.txt
 # map=--map-list=maps-2v2.txt
 # map=--map-list=maps-3ffa.txt
 # map=--map-list=maps-5ffa.txt

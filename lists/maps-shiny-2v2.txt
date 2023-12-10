@@ -1,0 +1,14 @@
+maps/(4) Devil's Tails.scp
+maps/(4) Exe.scp
+maps/(4) Faceoff Returns.scp
+maps/(4) Genie.scp
+maps/(4) Hamburger Hill.scp
+maps/(4) Iron Cross.scp
+maps/(4) Joust.scp
+maps/(4) Kirwan.scp
+maps/(4) Pinched.scp
+maps/(4) Snowy Plains.scp
+maps/(4) Star.scp
+maps/(4) Web.scp
+maps/(4) WinterWonder.scp
+maps/(4) Hidden Valley.scp

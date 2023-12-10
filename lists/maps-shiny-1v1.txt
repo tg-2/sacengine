@@ -1,0 +1,14 @@
+maps/(2) Alpine Meadow.scp
+maps/(2) Cathedral.scp
+maps/(2) Closest Combat.scp
+maps/(2) Faceoff.scp
+maps/(2) Ferry.scp
+maps/(2) Fork In The Road.scp
+maps/(2) High Noon.scp
+maps/(2) Peaks.scp
+maps/(2) Peasantville.scp
+maps/(2) Roads.scp
+maps/(2) Stone's Throw.scp
+maps/(2) Trial.scp
+maps/(2) Valley of the Dead.scp
+maps/(2) Ring.scp

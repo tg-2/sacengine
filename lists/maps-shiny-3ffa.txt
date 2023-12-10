@@ -1,0 +1,6 @@
+maps/(3) Firefight.scp
+maps/(3) Gladiator.scp
+maps/(3) Molehill.scp
+maps/(3) This Island Burnt.scp
+maps/(3) Trenches.scp
+maps/(3) Triad.scp
