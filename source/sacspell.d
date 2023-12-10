@@ -89,14 +89,14 @@ class SacSpell(B){
 	float range;
 	float manaCost;
 	float castingTime(int level){
-		int frames=0;
-		if(cre8) frames=cre8.castingTime;
-		if(spel) frames=spel.castingTime;
-		if(strc) frames=strc.castingTime;
+		int spellFrames=0;
+		if(cre8) spellFrames=cre8.castingTime;
+		if(spel) spellFrames=spel.castingTime;
+		if(strc) spellFrames=strc.castingTime;
 		int spellLevel=spellOrder/100;
-		auto bonus=min(6,max(0,level+1-spellLevel));
-		frames=(frames*10-frames*bonus)/10;
-		return frames/60.0f;
+		auto bonus=min(5,max(0,level-spellLevel));
+		auto frames=(spellFrames*10-spellFrames*bonus)/10;
+		return frames*(0.76f/60.0f);
 		/+switch(tag){
 			case "htlm":
 				static assert(manalithCastingTimes.length==10);
