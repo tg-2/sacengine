@@ -322,6 +322,7 @@ class Lobby(B){
 				auto mapName=network.hostSettings.map;
 				network.updateSetting!"map"(mapName);
 				auto hash=network.hostSettings.mapHash;
+				version(Windows){}else mapName=mapName.replace("\\","/"); // hack
 				import std.file: exists;
 				if(exists(mapName)){
 					map=loadSacMap!B(mapName); // TODO: compute hash without loading map?
