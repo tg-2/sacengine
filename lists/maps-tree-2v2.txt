@@ -80,8 +80,6 @@ maps/(4) EM-Shadow & Light.scp
 maps/(4) EM-Shell.scp
 maps/(4) EM-Sideralis.scp
 maps/(4) EM-Simplicity Teamplay.scp
-maps/(4) EM-Slaughter Only.scp
-maps/(4) EM-Slaughter.scp
 maps/(4) EM-Square.scp
 maps/(4) EM-Star Of Wisdom.scp
 maps/(4) EM-Stinking Watercourse.scp
