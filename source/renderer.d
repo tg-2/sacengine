@@ -43,6 +43,7 @@ struct Mouse(B){
 		icon,
 	}
 	bool dragging;
+	bool rotating;
 	Status status;
 	MouseIcon icon;
 	SacSpell!B spell;

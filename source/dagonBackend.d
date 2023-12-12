@@ -1035,7 +1035,8 @@ final class SacScene: Scene{
 				}
 				camera.targetZoom=max(0.0f,min(camera.targetZoom,1.0f));
 			}
-			SDL_SetRelativeMouseMode(relative&&!cancelRelative?SDL_TRUE:SDL_FALSE);
+			mouse.rotating=relative&&!cancelRelative;
+			SDL_SetRelativeMouseMode(mouse.rotating?SDL_TRUE:SDL_FALSE);
 		}
 	}
 
@@ -1305,7 +1306,7 @@ final class SacScene: Scene{
 			updateCameraTarget();
 			if(camera.target){
 				auto targetFacing=state.current.movingObjectById!((obj)=>obj.creatureState.facing, function float(){ assert(0); })(camera.target);
-				updateCameraPosition(dt,targetFacing!=camera.lastTargetFacing,mouse.dragging);
+				updateCameraPosition(dt,targetFacing!=camera.lastTargetFacing,mouse.dragging||mouse.rotating);
 				camera.lastTargetFacing=targetFacing;
 			}
 		}
