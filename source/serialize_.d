@@ -872,6 +872,7 @@ void serialize(alias sink,B)(Recording!B recording)in{
 	assert(recording.finalized);
 }do{
 	serialize!sink(recording.mapName);
+	serialize!sink(recording.map?recording.map.crc32:0);
 	serialize!sink(recording.gameInit);
 
 	serialize!sink(recording.finalized);
@@ -889,6 +890,8 @@ void serialize(alias sink,B)(Recording!B recording)in{
 void deserialize(T,R)(T recording,ref R data)if(is(T==Recording!B,B)){
 	enum _=is(T==Recording!B,B);
 	deserialize(recording.mapName,ObjectState!B.init,data);
+	uint crc32;
+	deserialize(crc32,ObjectState!B.init,data);
 	deserialize(recording.gameInit,ObjectState!B.init,data);
 
 	import sacmap;
@@ -897,8 +900,13 @@ void deserialize(T,R)(T recording,ref R data)if(is(T==Recording!B,B)){
 	auto proximity=new Proximity!B();
 	auto pathFinder=new PathFinder!B(map);
 	auto triggers=new Triggers!B(map.trig);
-
 	recording.map=map;
+	if(crc32!=map.crc32){
+		stderr.writeln("warning: recording was saved with map version:");
+		stderr.writeln(crc32);
+		stderr.writeln("this may be incompatible with the current version:");
+		stderr.writeln(map.crc32);
+	}
 	recording.sides=sides;
 	recording.proximity=proximity;
 	recording.pathFinder=pathFinder;
