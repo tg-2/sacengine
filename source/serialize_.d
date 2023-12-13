@@ -893,9 +893,20 @@ void deserialize(T,R)(T recording,ref R data)if(is(T==Recording!B,B)){
 	uint crc32;
 	deserialize(crc32,ObjectState!B.init,data);
 	deserialize(recording.gameInit,ObjectState!B.init,data);
-
+	auto mapName=recording.mapName;
+	version(Windows){}else mapName=mapName.replace("\\","/"); // hack
+	if(mapName.endsWith(".scp")){
+		if(!(mapName.length>=".01234567.scp".length&&mapName[$-".01234567.scp".length]=='.'&&mapName[$-".01234567.scp".length..$].all!(c=>'0'<=c&&c<='9'||'a'<=c&&c<='f'))){
+			import std.path:setExtension;
+			import std.format:format;
+			auto newName=setExtension(mapName,format(".%08x.scp",crc32));
+			import file=std.file;
+			if(file.exists(newName))
+				mapName=newName;
+		}
+	}
 	import sacmap;
-	auto map=loadSacMap!B(recording.mapName);
+	auto map=loadSacMap!B(mapName);
 	auto sides=new Sides!B(map.sids);
 	auto proximity=new Proximity!B();
 	auto pathFinder=new PathFinder!B(map);
@@ -903,9 +914,10 @@ void deserialize(T,R)(T recording,ref R data)if(is(T==Recording!B,B)){
 	recording.map=map;
 	if(crc32!=map.crc32){
 		stderr.writeln("warning: recording was saved with map version:");
-		stderr.writeln(crc32);
+		stderr.writefln!"%08x"(crc32);
 		stderr.writeln("this may be incompatible with the current version:");
-		stderr.writeln(map.crc32);
+		stderr.writefln!"%08x"(map.crc32);
+		stderr.writeln("map read from '",recording.mapName,"'");
 	}
 	recording.sides=sides;
 	recording.proximity=proximity;
