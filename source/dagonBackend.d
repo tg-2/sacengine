@@ -1217,6 +1217,7 @@ final class SacScene: Scene{
 
 	override void onViewUpdate(Duration dt){
 		if(options.scaleToFit) screenScaling=super.screenScaling=min(float(eventManager.windowWidth)/width,float(eventManager.windowHeight)/height);
+		else screenScaling=options.scale;
 		super.onViewUpdate(dt);
 	}
 
