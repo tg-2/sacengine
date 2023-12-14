@@ -1007,7 +1007,7 @@ final class SacScene: Scene{
 						relative=true;
 					}else cancelRelative=true;
 				}
-				if(mouse.x==width-1){
+				if(mouse.x+1.05f/screenScaling>=width){
 					if(B.isMouseCaptured||B.globalMousePosition[0]+border>=B.screenResolution[0]){
 						auto speed=radtodeg(camera.slowRotationSpeed)*(dt.total!"hnsecs"*1e-7);
 						auto xspeed=62.0f/float(height)*options.aspectDistortion*options.windowScrollXFactor;
@@ -1025,7 +1025,7 @@ final class SacScene: Scene{
 						relative=true;
 					}else cancelRelative=true;
 				}
-				if(mouse.y==height-1){
+				if(mouse.y+1.05f/screenScaling>=height){
 					if(B.isMouseCaptured||B.globalMousePosition[1]+border>=B.screenResolution[1]){
 						auto speed=0.5f*(dt.total!"hnsecs"*1e-7);
 						auto yspeed=2.0f/float(height)*options.windowScrollYFactor;
