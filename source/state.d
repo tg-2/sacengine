@@ -10803,6 +10803,7 @@ void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 enum gibDepth=0.5f*mapDepth;
 
 Vector3f positionAfterCollision(B)(ref MovingObject!B object, Vector3f newPosition, ObjectState!B state){
+	auto oldPosition=newPosition;
 	auto proximity=state.proximity;
 	auto relativeHitbox=object.relativeHitbox;
 	Vector3f[2] hitbox=[relativeHitbox[0]+newPosition,relativeHitbox[1]+newPosition];
@@ -10904,6 +10905,7 @@ Vector3f positionAfterCollision(B)(ref MovingObject!B object, Vector3f newPositi
 			final switch(object.creatureState.movement){
 				case CreatureMovement.onGround:
 					if(state.isOnGround(newPosition)) newPosition=state.moveOnGround(newPosition,fixupDirection);
+					else newPosition=oldPosition;
 					break;
 				case CreatureMovement.flying, CreatureMovement.tumbling:
 					newPosition+=fixupDirection;
