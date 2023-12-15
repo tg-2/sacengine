@@ -15828,7 +15828,8 @@ bool updateBrainiacEffect(B)(ref BrainiacEffect effect,ObjectState!B state){
 }
 
 enum shrikeProjectileHitGain=4.0f;
-enum shrikeProjectileSize=0.9f; // TODO: ok?
+//enum shrikeProjectileSize=0.9f; // TODO: ok?
+enum shrikeProjectileSize=0.6f; // TODO: ok?
 enum shrikeProjectileSlidingDistance=0.0f;
 static immutable Vector3f[2] shrikeProjectileHitbox=[-0.5f*shrikeProjectileSize*Vector3f(1.0f,1.0f,1.0f),0.5f*shrikeProjectileSize*Vector3f(1.0f,1.0f,1.0f)];
 int shrikeProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f position,ObjectState!B state){
