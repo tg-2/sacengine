@@ -3924,6 +3924,7 @@ struct Renderer(B){
 						renderMouseoverText("Heathen soul\nConvert this.",cursorSize,info,rc,-6);
 						break;
 					case SoulColor.green:
+						if(!sacGreenSoul) goto case SoulColor.red;
 						renderMouseoverText("Allied soul",cursorSize,info,rc,-6);
 						break;
 				}
