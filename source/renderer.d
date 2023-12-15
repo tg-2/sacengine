@@ -138,10 +138,14 @@ struct Renderer(B){
 		sacSky=new SacSky!B();
 	}
 	SacSoul!B sacSoul;
-	SacGreenSoul!B sacGreenSoul;
-	void createSouls(){
+	SacGreenSoul!B sacGreenSoul=null;
+	static struct SoulOpt{
+		bool refuseGreenSouls;
+	}
+	void createSouls(SoulOpt options){
 		sacSoul=new SacSoul!B();
-		sacGreenSoul=new SacGreenSoul!B();
+		if(!options.refuseGreenSouls)
+			sacGreenSoul=new SacGreenSoul!B();
 	}
 	SacObject!B sacDebris;
 	SacExplosion!B createExplosion(){
@@ -819,10 +823,14 @@ struct Renderer(B){
 		flurryImplosion=createFlurryImplosion();
 	}
 
-	static struct InitOpt{ bool freetypeFonts; }
+	static struct InitOpt{
+		bool freetypeFonts;
+		bool refuseGreenSouls;
+	}
 	void initialize(InitOpt options){
 		createSky();
-		createSouls();
+		SoulOpt soulOpt={refuseGreenSouls: options.refuseGreenSouls};
+		createSouls(soulOpt);
 		createEffects();
 		HudOpt hudOpt={freetypeFonts: options.freetypeFonts};
 		initializeHUD(hudOpt);
@@ -1157,7 +1165,7 @@ struct Renderer(B){
 							}
 						}
 					}
-					if(state.greenAllySouls){
+					if(state.greenAllySouls&&self.sacGreenSoul){
 						self.sacSoul.material.bind(rc);
 						renderSouls!true(self.sacSoul);
 						self.sacSoul.material.unbind(rc);

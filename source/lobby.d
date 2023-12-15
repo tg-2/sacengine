@@ -117,6 +117,11 @@ GameInit!B gameInit(B,R)(Sides!B sides_,R playerSettings,ref Options options){
 	gameInit.terrainSineWave=options.terrainSineWave;
 	gameInit.enableParticles=options.enableParticles;
 	gameInit.greenAllySouls=options.greenAllySouls;
+	if(gameInit.greenAllySouls){
+		foreach(ref settings;playerSettings)
+			if(settings.slot!=-1&&settings.refuseGreenSouls)
+				gameInit.greenAllySouls=false;
+	}
 	return gameInit;
 }
 
@@ -351,6 +356,8 @@ class Lobby(B){
 		if(!network.synchronizeMap(&loadMap))
 			return false;
 		//writeln(50);
+		if(options.refuseGreenSouls)
+			enforce(network.settings.refuseGreenSouls,"host attempted to override --refuse-green-souls");
 		options.settings=network.settings;
 		slot=network.slot;
 		if(!isHost) network.updateStatus(PlayerStatus.pendingGameInit); // TODO: tie this to thumbs up
@@ -423,6 +430,8 @@ class Lobby(B){
 				else gameInit=.gameInit!B(sides,only(options.settings),options);
 			}
 		}else gameInit=playback.gameInit;
+		if(options.refuseGreenSouls)
+			enforce(!gameInit.greenAllySouls||options.slot==-1,"attempted to initialize a game with green souls");
 		if((!playback||network)&&options.recordingFilename.length){
 			if(!recording) recording=new Recording!B(options.map,map,sides,proximity,pathFinder,triggers);
 			recording.gameInit=gameInit;

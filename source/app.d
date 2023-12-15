@@ -243,7 +243,7 @@ int run(string[] args){
 				if(r[0]=='-') r=r[1..$];
 				return r;
 			}
-			static foreach(member;__traits(allMembers,Options)){
+			static foreach(member;[__traits(allMembers,Options),__traits(allMembers,Settings)]){
 				static if(is(typeof(__traits(getMember,options,member))==bool)){
 					case "--no-"~getOptionName(member):
 						__traits(getMember,options,member)=false;

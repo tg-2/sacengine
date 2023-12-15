@@ -136,4 +136,6 @@ struct Settings{
 	int minLevel=1;
 	int maxLevel=9;
 	float xpRate=1.0f;
+
+	bool refuseGreenSouls=false;
 }

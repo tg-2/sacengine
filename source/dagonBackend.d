@@ -290,7 +290,10 @@ final class SacScene: Scene{
 
 	void initialize(Options options){
 		initializeMouse();
-		Renderer!DagonBackend.InitOpt initOpt={ freetypeFonts: options.freetypeFonts };
+		Renderer!DagonBackend.InitOpt initOpt={
+			freetypeFonts: options.freetypeFonts,
+			refuseGreenSouls: options.refuseGreenSouls,
+		};
 		renderer.initialize(initOpt);
 	}
 
