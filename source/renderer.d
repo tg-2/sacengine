@@ -138,8 +138,10 @@ struct Renderer(B){
 		sacSky=new SacSky!B();
 	}
 	SacSoul!B sacSoul;
+	SacGreenSoul!B sacGreenSoul;
 	void createSouls(){
 		sacSoul=new SacSoul!B();
+		sacGreenSoul=new SacGreenSoul!B();
 	}
 	SacObject!B sacDebris;
 	SacExplosion!B createExplosion(){
@@ -1123,29 +1125,51 @@ struct Renderer(B){
 			}else static if(is(T==Souls!B)){
 				static if(mode==RenderMode.transparent){
 					if(rc.shadowMode) return;
-					auto sacSoul=self.sacSoul;
-					auto material=sacSoul.material;
-					material.bind(rc);
-					scope(success) material.unbind(rc);
-					foreach(j;0..objects.length){
-						auto soul=objects[j];
-						auto mesh=sacSoul.getMesh(soul.color(info.renderSide,state),soul.frame/updateAnimFactor); // TODO: do in shader?
-						auto id=soul.id;
-						material.backend.setInformation(Vector4f(3.0f,id>>16,id&((1<<16)-1),1.0f));
-						if(objects[j].number==1){
-							material.backend.setSpriteTransformationScaled(soul.position+soul.scaling*Vector3f(0.0f,0.0f,1.25f*sacSoul.soulHeight),soul.scaling,rc);
-							mesh.render(rc);
-						}else{
-							auto number=objects[j].number;
-							auto soulScaling=max(0.5f,1.0f-0.05f*number);
-							auto radius=soul.scaling*sacSoul.soulRadius;
-							if(number<=3) radius*=0.3*number;
-							foreach(k;0..number){
-								auto position=soul.position+rotate(facingQuaternion(objects[j].facing+2*pi!float*k/number), Vector3f(0.0f,radius,0.0f));
-								material.backend.setSpriteTransformationScaled(position+soul.scaling*Vector3f(0.0f,0.0f,1.25f*sacSoul.soulHeight),soul.scaling*soulScaling,rc);
+					void renderSouls(bool filterGreen,T)(T sacSoul){
+						auto material=sacSoul.material;
+						foreach(j;0..objects.length){
+							auto soul=objects[j];
+							auto color=soul.color(info.renderSide,state);
+							static if(filterGreen){
+								bool isGreen=color==SoulColor.green;
+								static if(is(T==SacSoul!B)){
+									if(isGreen) continue;
+								}else static if(is(T==SacGreenSoul!B)){
+									if(!isGreen) continue;
+								}
+							}
+							auto mesh=sacSoul.getMesh(color,soul.frame/updateAnimFactor); // TODO: do in shader?
+							auto id=soul.id;
+							material.backend.setInformation(Vector4f(3.0f,id>>16,id&((1<<16)-1),1.0f));
+							if(objects[j].number==1){
+								material.backend.setSpriteTransformationScaled(soul.position+soul.scaling*Vector3f(0.0f,0.0f,1.25f*sacSoul.soulHeight),soul.scaling,rc);
 								mesh.render(rc);
+							}else{
+								auto number=objects[j].number;
+								auto soulScaling=max(0.5f,1.0f-0.05f*number);
+								auto radius=soul.scaling*sacSoul.soulRadius;
+								if(number<=3) radius*=0.3*number;
+								foreach(k;0..number){
+									auto position=soul.position+rotate(facingQuaternion(objects[j].facing+2*pi!float*k/number), Vector3f(0.0f,radius,0.0f));
+									material.backend.setSpriteTransformationScaled(position+soul.scaling*Vector3f(0.0f,0.0f,1.25f*sacSoul.soulHeight),soul.scaling*soulScaling,rc);
+									mesh.render(rc);
+								}
 							}
 						}
+					}
+					if(state.greenAllySouls){
+						self.sacSoul.material.bind(rc);
+						renderSouls!true(self.sacSoul);
+						self.sacSoul.material.unbind(rc);
+						self.sacGreenSoul.material.bind(rc);
+						renderSouls!true(self.sacGreenSoul);
+						self.sacGreenSoul.material.unbind(rc);
+					}else{
+						auto sacSoul=self.sacSoul;
+						auto material=sacSoul.material;
+						material.bind(rc);
+						renderSouls!false(sacSoul);
+						material.unbind(rc);
 					}
 				}
 			}else static if(is(T==Buildings!B)){
@@ -2854,7 +2878,7 @@ struct Renderer(B){
 		}else if(info.mouse.target.type==TargetType.soul){
 			static void renderHitbox(B)(Soul!B soul,Renderer!B* self,ObjectState!B state,RenderInfo!B* info,B.RenderContext rc){
 				auto hitbox2d=soul.hitbox2d(B.getSpriteModelViewProjectionMatrix(soul.position+soul.scaling*Vector3f(0.0f,0.0f,1.25f*sacSoul.soulHeight)));
-				auto color=soul.color(info.renderSide,state)==SoulColor.blue?blueSoulFrameColor:redSoulFrameColor;
+				auto color=soulFrameColor[soul.color(info.renderSide,state)];
 				self.renderFrame(hitbox2d,color,state,*info,rc);
 			}
 			state.soulById!(renderHitbox!B,(){})(info.mouse.target.id,&this,state,&info,rc);
@@ -3366,7 +3390,7 @@ struct Renderer(B){
 						}else static if(is(T==Souls!B)){
 							auto soul=objects[j];
 							if(!soul.state.among(SoulState.normal,SoulState.emerging)) continue;
-							auto color=soul.color(info.renderSide,state)==SoulColor.blue?blueSoulMinimapColor:redSoulMinimapColor;
+							auto color=soulMinimapColor[soul.color(info.renderSide,state)];
 							B.minimapMaterialBackend.setColor(color);
 						}
 						quad.render(rc);
@@ -3890,6 +3914,9 @@ struct Renderer(B){
 						break;
 					case SoulColor.red:
 						renderMouseoverText("Heathen soul\nConvert this.",cursorSize,info,rc,-6);
+						break;
+					case SoulColor.green:
+						renderMouseoverText("Allied soul",cursorSize,info,rc,-6);
 						break;
 				}
 				break;

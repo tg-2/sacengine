@@ -78,6 +78,7 @@ struct Options{
 	int protectManafounts=0;
 	bool terrainSineWave=false;
 	bool enableParticles=true;
+	bool greenAllySouls=false;
 	int delayStart=0;
 	// zerotier
 	string zerotierIdentity="zerotier-identity";

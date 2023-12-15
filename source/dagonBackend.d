@@ -921,7 +921,7 @@ final class SacScene: Scene{
 										auto target=Target(TargetType.terrain,0,mouse.target.position,mouse.target.location);
 										controller.addCommand(Command!DagonBackend(CommandType.move,renderSide,camera.target,0,target,cameraFacing),queueing);
 										break;
-									case SoulColor.red:
+									case SoulColor.red,SoulColor.green:
 										castSpell("ccas",mouse.target);
 										break;
 								}
@@ -1901,6 +1901,14 @@ static:
 	}
 
 	Material createMaterial(SacSoul!DagonBackend soul){
+		auto mat=makeMaterial(scene.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=Transparent;
+		mat.energy=20.0f;
+		mat.diffuse=soul.texture;
+		return mat;
+	}
+	Material createMaterial(SacGreenSoul!DagonBackend soul){
 		auto mat=makeMaterial(scene.shadelessMaterialBackend);
 		mat.depthWrite=false;
 		mat.blending=Transparent;

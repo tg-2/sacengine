@@ -44,7 +44,7 @@ SuperImage loadTXTR(string filename){
 	auto data=img.data;
 	static foreach(schannels;3..5){
 		if(channels==schannels){
-			foreach(i;0..img.data.length/schannels){
+			foreach(i;0..data.length/schannels){
 				auto ccol=txt[i];
 				ubyte[3] tcol;
 				if(grayscale) tcol=[ccol,ccol,ccol];

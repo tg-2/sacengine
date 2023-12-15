@@ -1236,7 +1236,12 @@ int soulSide(B)(int id,ObjectState!B state){
 }
 SoulColor color(B)(ref Soul!B soul,int side,ObjectState!B state){
 	auto soulSide=soul.side(state);
-	return soulSide==-1||soulSide==side?SoulColor.blue:SoulColor.red;
+	if(soulSide==-1||soulSide==side) return SoulColor.blue;
+	if(state.greenAllySouls){
+		if(state.sides.getStance(side,soul.side(state))==Stance.ally)
+			return SoulColor.green;
+	}
+	return SoulColor.red;
 }
 SoulColor color(B)(int id,int side,ObjectState!B state){
 	return state.soulById!(color,()=>SoulColor.red)(id,side,state);
@@ -21271,10 +21276,13 @@ final class ObjectState(B){ // (update logic)
 	struct Settings{
 		GameMode gameMode=GameMode.skirmish;
 		bool enableParticles=true;
+		bool greenAllySouls=false;
 	}
 	Settings settings;
 	@property bool enableParticles(){ return settings.enableParticles; }
+	@property bool greenAllySouls(){ return settings.greenAllySouls; }
 	void disableParticles(){ settings.enableParticles=false; }
+	void enableGreenAllySouls(){ settings.greenAllySouls=true; }
 	int addObject(T)(T object) if(is(T==MovingObject!B)||is(T==StaticObject!B)||is(T==Soul!B)||is(T==Building!B)){
 		return obj.addObject(move(object));
 	}
@@ -22736,6 +22744,7 @@ struct GameInit(B){
 	int protectManafounts=0;
 	bool terrainSineWave=false;
 	bool enableParticles=true;
+	bool greenAllySouls=false;
 }
 
 struct SlotInfo{
@@ -22778,6 +22787,7 @@ void initGame(B)(ObjectState!B state,ref Array!SlotInfo slots,GameInit!B gameIni
 	}
 	if(gameInit.terrainSineWave) state.addEffect(TestDisplacement());
 	if(!gameInit.enableParticles) state.disableParticles();
+	if(gameInit.greenAllySouls) state.enableGreenAllySouls();
 	slots.length=gameInit.slots.length;
 	slots.data[]=SlotInfo.init;
 	Array!int slotForWiz;

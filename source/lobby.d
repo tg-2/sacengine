@@ -116,6 +116,7 @@ GameInit!B gameInit(B,R)(Sides!B sides_,R playerSettings,ref Options options){
 	gameInit.protectManafounts=options.protectManafounts;
 	gameInit.terrainSineWave=options.terrainSineWave;
 	gameInit.enableParticles=options.enableParticles;
+	gameInit.greenAllySouls=options.greenAllySouls;
 	return gameInit;
 }
 

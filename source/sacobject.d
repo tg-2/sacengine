@@ -951,7 +951,7 @@ final class SacSky(B){
 enum SoulColor{
 	blue,
 	red,
-	//green,
+	green,
 }
 
 B.Mesh[] makeSpriteMeshes(B,bool doubleSided=false,bool reverseOrder=false)(int nU,int nV,float width,float height,float texWidth=1.0f,float texHeight=1.0f){ // TODO: replace with shader
@@ -971,11 +971,17 @@ B.Mesh[] makeSpriteMeshes(B,bool doubleSided=false,bool reverseOrder=false)(int 
 	return meshes;
 }
 
-auto blueSoulFrameColor=Color4f(0,182.0f/255.0f,1.0f);
-auto redSoulFrameColor=Color4f(1.0f,0.0f,0.0f);
+Color4f[3] soulFrameColor=[
+	SoulColor.blue: Color4f(0,182.0f/255.0f,1.0f),
+	SoulColor.red: Color4f(1.0f,0.0f,0.0f),
+	SoulColor.green: Color4f(0,1.0f,182.0f/255.0f),
+];
 
-auto blueSoulMinimapColor=Color4f(0,165.0f/255.0f,1.0f);
-auto redSoulMinimapColor=Color4f(1.0f,0.0f,0.0f);
+Color4f[3] soulMinimapColor=[
+	SoulColor.blue: Color4f(0,165.0f/255.0f,1.0f),
+	SoulColor.red: Color4f(1.0f,0.0f,0.0f),
+	SoulColor.green: Color4f(0.0f,1.0f,165.0f/255.0f),
+];
 
 auto healthColor=Color4f(192.0f/255.0f,0.0f,0.0f);
 auto manaColor=Color4f(0.0f,96.0f/255.0f,192.0f);
@@ -997,7 +1003,34 @@ final class SacSoul(B){
 	}
 	enum numFrames=16;
 	B.Mesh getMesh(SoulColor color,int frame){
-		return meshes[(color==SoulColor.red?8:0)+frame/2];
+		return meshes[(color==SoulColor.blue?0:8)+frame/2];
+	}
+}
+
+final class SacGreenSoul(B){
+	B.Mesh[] meshes;
+	B.Texture texture;
+	B.Material material;
+
+	enum soulWidth=1.0f;
+	enum soulHeight=1.6f*soulWidth;
+	enum soulRadius=0.3f;
+
+	this(){
+		// TODO: extract soul meshes at all different frames from original game
+		meshes=makeSpriteMeshes!B(4,4,soulWidth,soulHeight);
+		auto img=loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/spir.TXTR");
+		auto data=img.data;
+		auto channels=img.channels;
+		enforce(channels==4);
+		foreach(i;0..data.length/channels)
+			swap(data[channels*i],data[channels*i+1]);
+		texture=B.makeTexture(img);
+		material=B.createMaterial(this);
+	}
+	enum numFrames=16;
+	B.Mesh getMesh(SoulColor color,int frame){
+		return meshes[(color==SoulColor.green?8:0)+frame/2];
 	}
 }
 
