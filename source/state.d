@@ -2945,7 +2945,8 @@ struct RainOfFrogs(B){
 	enum cloudHeight=90.0f;
 	enum cloudGrowSpeed=0.5f;
 	enum cloudShrinkSpeed=1.0f;
-	enum frogRate=15;
+	//enum frogRate=15;
+	enum frogRate=10;
 	enum fallDuration=2.0f;
 	enum jumpRange=25.0f, shortJumpRange=10.0f; // TODO: correct?
 }
