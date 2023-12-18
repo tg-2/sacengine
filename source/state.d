@@ -11626,15 +11626,14 @@ bool updateGuardian(B)(ref Guardian guardian,ObjectState!B state){
 			unguardian(guardian,state);
 			return false;
 		}
-		if((creaturePosition.xy-buildingPosition.xy).lengthsqr>50.0f^^2){
-			auto dir2d=(creaturePosition.xy-buildingPosition.xy).normalized;
-			auto position2d=buildingPosition.xy+20.0f*dir2d;
-			auto position=Vector3f(position2d.x,position2d.y,0.0f);
+		if((creaturePosition-buildingPosition).lengthsqr>50.0f^^2){
+			auto dir=(creaturePosition-buildingPosition).normalized;
+			auto position=buildingPosition+20.0f*dir;
 			position.z=state.getHeight(position);
-			auto facing=atan2(dir2d.x,-dir2d.y);
+			auto facing=atan2(dir.x,-dir.y);
 			auto order=Order(CommandType.move,OrderTarget(TargetType.terrain,0,position),facing);
 			state.movingObjectById!((ref obj,order,state){
-				if(obj.creatureAI.order.command==CommandType.move&&(obj.creatureAI.order.target.position.xy-buildingPosition.xy).length<50.0f)
+				if(obj.creatureAI.order.command==CommandType.move&&(obj.creatureAI.order.target.position-buildingPosition).lengthsqr<50.0f^^2)
 					return true;
 				return obj.order(order,state);
 			},()=>false)(creature,order,state);
