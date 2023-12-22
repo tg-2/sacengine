@@ -6287,7 +6287,7 @@ int spawn(T=Creature,B)(int wizard,char[4] tag,int flags,ObjectState!B state,boo
 	auto mode=pre?CreatureMode.preSpawning:CreatureMode.spawning;
 	auto newPosition=position+rotate(facingQuaternion(facing),Vector3f(0.0f,6.0f,0.0f));
 	if(state.isOnGround(newPosition)||!state.isOnGround(position)) position=newPosition; // TODO: find closest ground to newPosition instead
-	auto movement=state.isOnGround(position)?CreatureMovement.onGround:CreatureMovement.flying;
+	auto movement=state.isOnGround(position)?CreatureMovement.onGround:curObj.canFly?CreatureMovement.flying:CreatureMovement.tumbling;
 	position.z=state.getHeight(position);
 	auto creatureState=CreatureState(mode, movement, facing);
 	auto rotation=facingQuaternion(facing);
@@ -12093,7 +12093,7 @@ int spawnRitualSacDoctor(B)(int side,Vector3f position,float facing,ObjectState!
 	if(isNaN(facing)) facing=0.0f;
 	position.z=state.getHeight(position);
 	auto mode=CreatureMode.idle;
-	auto movement=CreatureMovement.onGround;
+	auto movement=state.isOnGround(position)?CreatureMovement.onGround:curObj.canFly?CreatureMovement.flying:CreatureMovement.tumbling;
 	auto creatureState=CreatureState(mode, movement, facing);
 	auto rotation=facingQuaternion(facing);
 	auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState,curObj.creatureStats(0),CreatureStatistics(),side);
