@@ -14,3 +14,6 @@ maps/(6) ZM - Stream Line.scp
 maps/(6) EM-Salt Gulch.scp
 maps/(6) EM-Ethereal Conflict.scp
 maps/(6) WM-Passage.scp
+maps/(6) Twirlish Dip.scp
+maps/(6) TM-Sunhair.scp
+maps/(6) TM-Red Hot v1.scp
