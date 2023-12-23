@@ -14199,7 +14199,7 @@ bool updateSoulMolePosition(B)(ref SoulMole!B soulMole,ObjectState!B state){
 	auto prevTargetPosition=soulMole.positionPredictor.lastPosition;
 	auto oldPosition=soulMole.position;
 	soulMole.frame+=1;
-	auto soulPosition=state.soulById!((ref soul)=>soul.position,()=>Vector3f.init)(soulMole.soul);
+	auto soulPosition=state.soulById!((ref soul)=>soul.state.among(SoulState.normal,SoulState.emerging)?soul.position:Vector3f.init,()=>Vector3f.init)(soulMole.soul);
 	if(isNaN(soulPosition.x)) return false;
 	auto wizardPosition=state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(soulMole.wizard);
 	Vector3f[2] moleOrigin(int frame){
@@ -15056,7 +15056,7 @@ bool updateSoulWindPosition(B)(ref SoulWind!B soulWind,ObjectState!B state){
 	auto prevTargetPosition=soulWind.positionPredictor.lastPosition;
 	auto oldPosition=soulWind.position;
 	soulWind.frame+=1;
-	auto soulPosition=state.soulById!((ref soul)=>soul.position,()=>Vector3f.init)(soulWind.soul);
+	auto soulPosition=state.soulById!((ref soul)=>soul.state.among(SoulState.normal,SoulState.emerging)?soul.position:Vector3f.init,()=>Vector3f.init)(soulWind.soul);
 	if(isNaN(soulPosition.x)) return false;
 	auto wizardPosition=state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(soulWind.wizard);
 	Vector3f[2] windOrigin(int frame){
