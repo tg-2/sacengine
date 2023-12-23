@@ -6777,7 +6777,7 @@ float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,
 				case SpellTag.lightningCharge:
 					if(damageMod&DamageMod.lightning){
 						object.lightningCharge(cast(int)((1.0f/30.0f)*actualDamage*updateFPS),passive,state); // TODO: duration ok?
-						actualDamage*=0.3f;
+						actualDamage*=0.25f;
 					}
 					break;
 				default:
