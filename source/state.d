@@ -9566,7 +9566,8 @@ bool lightningCharge(B)(ref MovingObject!B object,int frames,SacSpell!B spell,Ob
 
 bool devourSoul(B)(ref MovingObject!B object,int soulId,SacSpell!B ability,ObjectState!B state){
 	return state.soulById!((ref soul,obj,state){
-		if(soul.state!=SoulState.normal) return false;
+		if(!soul.state.among(SoulState.normal,SoulState.emerging))
+			return false;
 		soul.collectorId=obj.id;
 		soul.state=SoulState.devouring;
 		playSoundAt("ltss",obj.id,state,2.0f);
@@ -14225,10 +14226,14 @@ bool updateSoulMolePosition(B)(ref SoulMole!B soulMole,ObjectState!B state){
 	if(soulMole.frame==soulFrame+1){
 		playSoundAt("ltss",oldPosition,state,soulMoleGain); // TODO: sound should follow mole
 		auto side=state.movingObjectById!((ref obj)=>obj.side,()=>-1)(soulMole.wizard);
-		state.soulById!((ref soul,side,state){
+		if(!state.soulById!((ref soul,side,state){
+			if(!soul.state.among(SoulState.normal,SoulState.emerging))
+				return false;
 			soul.severSoul(state);
 			soul.preferredSide=side;
-		},(){})(soulMole.soul,side,state);
+			return true;
+		},()=>false)(soulMole.soul,side,state))
+			return false;
 		soulMole.startPosition=oldPosition;
 		soulMole.positionPredictor.lastPosition=targetPosition;
 	}
@@ -15072,10 +15077,14 @@ bool updateSoulWindPosition(B)(ref SoulWind!B soulWind,ObjectState!B state){
 	if(soulWind.frame==soulFrame+1){
 		playSpellSoundTypeAt(SoundType.fireball,oldPosition,state,soulWindGain); // TODO: move sound with soul wind?
 		auto side=state.movingObjectById!((ref obj)=>obj.side,()=>-1)(soulWind.wizard);
-		state.soulById!((ref soul,side,state){
+		if(!state.soulById!((ref soul,side,state){
+			if(!soul.state.among(SoulState.normal,SoulState.emerging))
+				return false;
 			soul.severSoul(state);
 			soul.preferredSide=side;
-		},(){})(soulWind.soul,side,state);
+			return true;
+		},()=>false)(soulWind.soul,side,state))
+			return false;
 		soulWind.startPosition=oldPosition;
 		soulWind.positionPredictor.lastPosition=targetPosition;
 	}
@@ -18727,15 +18736,15 @@ void rendSparkAnimation(int numSparks=192,B)(Vector3f targetPosition,ObjectState
 bool updateRendShoot(B)(ref RendShoot!B shoot,ObjectState!B state){
 	with(shoot){
 		if(!canRend(attacker,side,target,state)) return false;
-		bool ok=false;
-		state.soulById!((ref soul,pos,ok,side,state){
-			if(!soul.state.among(SoulState.normal,SoulState.emerging)) return;
+		if(!state.soulById!((ref soul,pos,side,state){
+			if(!soul.state.among(SoulState.normal,SoulState.emerging))
+				return false;
 			soul.state=SoulState.exploding;
 			soul.severSoul(state);
 			*pos=soul.center;
-			*ok=true;
-		},(){})(target,&targetPosition,&ok,side,state);
-		if(!ok) return false;
+			return true;
+		},()=>false)(target,&targetPosition,side,state))
+			return false;
 		playSpellSoundTypeAt(SoundType.lightning,position,state,1.0f);
 		playSoundAt("pxbf",targetPosition,state,10.0f);
 		state.removeLater(target);
