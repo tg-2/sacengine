@@ -528,9 +528,10 @@ final class SacScene: Scene{
 			}
 			if(mbUp!=0){
 				if(elementIndex==form.activeIndex){
-					if(element.activate())
+					if(element.activate()){
 						playMenuActionSound();
-					updateForm(formIndex,elementIndex);
+						updateForm(formIndex,form.activeIndex);
+					}
 				}
 			}
 		}else if(forms.length!=1) return; // TODO?
@@ -553,14 +554,24 @@ final class SacScene: Scene{
 			}
 		}
 		foreach(_;0..keyDown[KEY_TAB]) form.tabActive();
-		foreach(_;0..keyDown[KEY_SPACE]) if(activeElement.activate()) playMenuActionSound();
+		foreach(_;0..keyDown[KEY_SPACE]){
+			if(activeElement.activate()){
+				playMenuActionSound();
+				updateForm(formIndex,form.activeIndex);
+			}
+		}
 		foreach(_;0..keyDown[KEY_RETURN]){
 			if(form.returnIsOk&&form.activeIndex!=form.escapeIndex) form.activeOk();
-			if(activeElement.activate()) playMenuActionSound();
+			if(activeElement.activate()){
+				playMenuActionSound();
+				updateForm(formIndex,form.activeIndex);
+			}
 		}
 		foreach(_;0..keyDown[KEY_ESCAPE]){
-			if(form.activeEscape()&&activeElement.activate())
+			if(form.activeEscape()&&activeElement.activate()){
 				playMenuActionSound();
+				updateForm(formIndex,form.activeIndex);
+			}
 		}
 		if(keyDown[KEY_BACKSPACE]!=0||keyDown[KEY_DELETE]!=0||keyDown[KEY_LEFT]!=0||keyDown[KEY_RIGHT]!=0){
 			form.focusType(.form.ElementType.entrybox);
