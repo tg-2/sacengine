@@ -1227,13 +1227,18 @@ enum WizardTag:char[4]{
 
 import ntts: God;
 private alias ST=SpellTag;
+private template cat(args...){ // work around DMD regression: cannot concatenate ST[].
+	enum head=args[0];
+	static if(args.length==1) enum cat=head;
+	else enum cat=head~cat!(args[1..$]);
+}
 immutable ST[] neutralCreatures=[ST.manahoar];
 immutable ST[] persephoneCreatures=[ST.druid,ST.ranger,ST.shrike,ST.scarab,ST.troll,ST.gnome,ST.gremlin,ST.mutant,ST.ent,ST.dragon];
 immutable ST[] pyroCreatures=[ST.cog,ST.flameMinion,ST.spitfire,ST.tickferno,ST.firefist,ST.pyromaniac,ST.pyrodactyl,ST.bombard,ST.warmonger,ST.phoenix];
 immutable ST[] jamesCreatures=[ST.trogg,ST.earthfling,ST.gargoyle,ST.basilisk,ST.taurock,ST.flummox,ST.ikarus,ST.boulderdash,ST.jabberocky,ST.rhinok];
 immutable ST[] stratosCreatures=[ST.frostwolf,ST.sylph,ST.brainiac,ST.vortick,ST.squall,ST.stormGiant,ST.seraph,ST.flurry,ST.yeti,ST.silverback];
 immutable ST[] charnelCreatures=[ST.scythe,ST.fallen,ST.locust,ST.necryl,ST.blight,ST.netherfiend,ST.deadeye,ST.abomination,ST.styx,ST.hellmouth];
-immutable ST[][6] creatureSpells=[neutralCreatures,neutralCreatures~persephoneCreatures,neutralCreatures~pyroCreatures,neutralCreatures~jamesCreatures,neutralCreatures~stratosCreatures,neutralCreatures~charnelCreatures];
+immutable ST[][6] creatureSpells=[neutralCreatures,cat!(neutralCreatures,persephoneCreatures),cat!(neutralCreatures,pyroCreatures),cat!(neutralCreatures,jamesCreatures),cat!(neutralCreatures,stratosCreatures),cat!(neutralCreatures,charnelCreatures)];
 static assert(creatureSpells.length==God.max+1);
 immutable ST[] neutralSpells=[ST.speedup,ST.heal];
 immutable ST[] persephoneSpells=[ST.wrath,ST.etherealForm,ST.graspingVines,ST.rainbow,ST.rainOfFrogs,ST.healingAura,ST.vineWall,ST.charm,ST.meanstalks];
@@ -1241,7 +1246,7 @@ immutable ST[] pyroSpells=[ST.fireball,ST.fireform,ST.ringsOfFire,ST.dragonfire,
 immutable ST[] jamesSpells=[ST.rock,ST.skinOfStone,ST.soulMole,ST.erupt,ST.haloOfEarth,ST.wallOfSpikes,ST.bombardment,ST.bovineIntervention,ST.bore];
 immutable ST[] stratosSpells=[ST.lightning,ST.airShield,ST.freeze,ST.chainLightning,ST.soulWind,ST.frozenGround,ST.fence,ST.cloudkill,ST.tornado];
 immutable ST[] charnelSpells=[ST.insectSwarm,ST.protectiveSwarm,ST.slime,ST.animateDead,ST.demonicRift,ST.wailingWall,ST.plague,ST.intestinalVaporization,ST.death];
-immutable ST[][6] normalSpells=[neutralSpells,neutralSpells~persephoneSpells,neutralSpells~pyroSpells,neutralSpells~jamesSpells,neutralSpells~stratosSpells,neutralSpells~charnelSpells];
+immutable ST[][6] normalSpells=[neutralSpells,cat!(neutralSpells,persephoneSpells),cat!(neutralSpells,pyroSpells),cat!(neutralSpells,jamesSpells),cat!(neutralSpells,stratosSpells),cat!(neutralSpells,charnelSpells)];
 static assert(normalSpells.length==God.max+1);
 immutable ST[] structureSpells=[ST.manalith,ST.guardian,ST.convert,ST.desecrate,ST.teleport,ST.shrine];
 
