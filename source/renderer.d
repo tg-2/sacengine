@@ -4179,10 +4179,10 @@ struct Renderer(B){
 			B.colorHUDMaterialBackend.setTransformationScaled(Vector3f(x,y,0.0f),Quaternionf.identity(),Vector3f(width,height,0.0f),rc);
 			mesh.render(rc);
 		}+/
-		void renderFormElements(SacForm!B sacForm,scope ElementState[] elements,int s,int e,int activeElement,Vector3f offset,Quaternionf rotation,Vector3f scale){
+		void renderFormElements(SacForm!B sacForm,scope ElementState[] elements,int s,int e,int activeElement,int targetElement,Vector3f offset,Quaternionf rotation,Vector3f scale){
 			enforce(elements[s].type==ElementType.form&&elements[s].numChildren+1==e-s);
 			B.colorHUDMaterialBackend.setTransformationScaled(offset,rotation,scale,rc);
-			void renderElement(ref SacFormElement!B sacElement,ushort elementIndex,bool active){
+			void renderElement(ref SacFormElement!B sacElement,ushort elementIndex,bool active,bool target){
 				if(!elements[elementIndex].visible) return;
 				if(!elements[elementIndex].enabled) B.colorHUDMaterialBackend.setAlpha(0.5f);
 				scope(success) if(!elements[elementIndex].enabled) B.colorHUDMaterialBackend.setAlpha(1.0f);
@@ -4211,7 +4211,8 @@ struct Renderer(B){
 					/+B.colorHUDMaterialBackend.bindDiffuse(font.texture);
 					font.write!drawLetter(text.text,offset.x+text.position.x*scale.x,offset.y+text.position.y*scale.y,settings);+/
 					bindFont(font,rc);
-					setFontColor(font,Color4f(1.0f,1.0f,1.0f,1.0f));
+					auto alpha=font.type==FontType.fn08?(target?1.0f:0.75f):1.0f;
+					setFontColor(font,Color4f(1.0f,1.0f,1.0f,alpha));
 					const(char)[] textInput=elements[elementIndex].textInput.data[elements[elementIndex].textStart..elements[elementIndex].textEnd];
 					drawText(font,textInput.length?textInput:text.text,offset.x+text.position.x*scale.x,offset.y+text.position.y*scale.y,settings,info,rc);
 					unbindFont(font,rc);
@@ -4228,15 +4229,16 @@ struct Renderer(B){
 					unbindFont(font,rc);
 				}
 				B.colorHUDMaterialBackend.bind(null,rc);
+				B.colorHUDMaterialBackend.setColor(Color4f(1.0f,1.0f,1.0f,1.0f));
 				if(sacElement.texts.length||sacElement.type==ElementType.entrybox){
 					B.colorHUDMaterialBackend.setTransformationScaled(offset,rotation,scale,rc);
 				}
 			}
-			renderElement(sacForm.sacElements[0],to!ushort(s),true); // render form itself
+			renderElement(sacForm.sacElements[0],to!ushort(s),true,targetElement!=-1); // render form itself
 			for(int i=s+1;i<e;i++){
 				if(elements[i].type!=ElementType.form){
 					enforce(sacForm.sacElements[elements[i].sacFormIndex].subForms.length==0);
-					renderElement(sacForm.sacElements[elements[i].sacFormIndex],to!ushort(i),i==activeElement);
+					renderElement(sacForm.sacElements[elements[i].sacFormIndex],to!ushort(i),i==activeElement,i==targetElement);
 				}else{
 					enforce(sacForm.sacElements[elements[i].sacFormIndex].subForms.length==1);
 					enforce(sacForm.sacElements[elements[i].sacFormIndex].parts.length==0);
@@ -4245,7 +4247,7 @@ struct Renderer(B){
 					auto subOffset=Vector3f(subOffsetRaw.x*scale.x,subOffsetRaw.y*scale.y,0.0f);
 					auto subSacForm=sacForm.sacElements[elements[i].sacFormIndex].subForms[0].form;
 					auto numChildren=elements[i].numChildren;
-					renderFormElements(subSacForm,elements,i,i+1+numChildren,activeElement,offset+subOffset,rotation,scale);
+					renderFormElements(subSacForm,elements,i,i+1+numChildren,activeElement,targetElement,offset+subOffset,rotation,scale);
 					B.colorHUDMaterialBackend.setTransformationScaled(offset,rotation,scale,rc);
 					i+=numChildren;
 				}
@@ -4255,7 +4257,10 @@ struct Renderer(B){
 		auto offset=Vector3f(0.5f*(info.width-info.hudScaling*sacForm.width),0.5f*(info.height-info.hudScaling*sacForm.height),0.0f);
 		auto rotation=Quaternionf.identity();
 		auto scale=Vector3f(info.hudScaling,info.hudScaling,0.0f);
-		renderFormElements(sacForm,form.elements.data,0,to!int(form.elements.data.length),form.activeIndex,offset,rotation,scale);
+		auto elementIndex=-1;
+		if(info.mouse.target.type==TargetType.formElement&&info.mouse.target.formIndex==formIndex)
+			elementIndex=info.mouse.target.elementIndex;
+		renderFormElements(sacForm,form.elements.data,0,to!int(form.elements.data.length),form.activeIndex,elementIndex,offset,rotation,scale);
 	}
 
 	void renderForms(scope SacFormState!B[] forms,ref RenderInfo!B info,B.RenderContext rc){
