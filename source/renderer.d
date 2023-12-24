@@ -118,6 +118,7 @@ struct ActiveChatMessages{
 }
 
 struct RenderInfo(B){
+	int renderSlot=-1;
 	int renderSide=-1;
 	float hudScaling;
 	int hudSoulFrame=0;
@@ -4069,7 +4070,7 @@ struct Renderer(B){
 	}
 
 	void renderChatMessages(ObjectState!B state,NetworkState!B networkState,ref RenderInfo!B info,B.RenderContext rc){
-		int slot=-1; // TODO
+		int slot=info.renderSlot;
 		auto frame=info.activeChatMessages.frame;
 		foreach(fromNetwork;0..2){{
 			if(!fromNetwork&&!state) continue;
@@ -4211,7 +4212,8 @@ struct Renderer(B){
 					font.write!drawLetter(text.text,offset.x+text.position.x*scale.x,offset.y+text.position.y*scale.y,settings);+/
 					bindFont(font,rc);
 					setFontColor(font,Color4f(1.0f,1.0f,1.0f,1.0f));
-					drawText(font,text.text,offset.x+text.position.x*scale.x,offset.y+text.position.y*scale.y,settings,info,rc);
+					const(char)[] textInput=elements[elementIndex].textInput.data[elements[elementIndex].textStart..elements[elementIndex].textEnd];
+					drawText(font,textInput.length?textInput:text.text,offset.x+text.position.x*scale.x,offset.y+text.position.y*scale.y,settings,info,rc);
 					unbindFont(font,rc);
 				}
 				if(sacElement.type==ElementType.entrybox){

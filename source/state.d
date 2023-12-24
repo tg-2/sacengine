@@ -5225,8 +5225,8 @@ struct ChatMessage(B){
 	int lifetime;
 
 	bool visibleToSlot(int slot,ObjectState!B state){
-		enforce(slot==-1,"TODO");
-		return true;
+		if(slot==-1) return !!(slotFilter&(1<<31));
+		return (slotFilter>>slot)&1;
 	}
 	bool currentlyVisible(ObjectState!B state){
 		return startFrame<=state.frame&&state.frame<=startFrame+lifetime;

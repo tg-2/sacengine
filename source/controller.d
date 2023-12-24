@@ -65,6 +65,28 @@ final class Controller(B){
 		this.controlledSide=controlledSlot==-1?-1:state.slots[controlledSlot].controlledSide;
 	}
 
+	int slotFilter(bool allies,bool enemies,bool observers){
+		if(controlledSlot==-1) return -1;
+		int slots=observers?-1:0;
+		if(allies||enemies) foreach(i,ref slot;state.slots.data){
+			int side=slot.controlledSide;
+			if(side==-1) continue;
+			slots&=~(1<<i);
+			final switch(state.current.sides.getStance(controlledSide,side)){
+				case Stance.ally:
+					if(allies) slots|=1<<i;
+					break;
+				case Stance.neutral,Stance.enemy:
+					if(enemies) slots|=1<<i;
+					break;
+			}
+		}
+		assert(controlledSlot!=-1);
+		slots|=1<<controlledSlot;
+		return slots;
+	}
+
+
 	int chatMessageLowerBound=0;
 	bool resetTimerOnUnpause=true; // TODO: this is a hack
 	void setFrame(int frame){

@@ -509,6 +509,7 @@ class Lobby(B){
 				}
 				// TODO: this is a bit ugly
 				B.setState(gameState);
+				B.setSlot(hasSlot?slot:-1);
 				if(wizId) B.focusCamera(wizId,false);
 				else if(!B.scene.mouse.visible&&!B.scene.fpview.active) B.scene.fpview.active=true;
 			}

@@ -39,6 +39,7 @@ final class SacScene: Scene{
 	RenderInfo!DagonBackend info;
 	alias MouseStatus=Mouse!DagonBackend.Status;
 	alias MouseLocation=Mouse!DagonBackend.Location;
+	@property ref int renderSlot(){ return info.renderSlot; }
 	@property ref int renderSide(){ return info.renderSide; }
 	@property ref float hudScaling(){ return info.hudScaling; }
 	@property ref int hudSoulFrame(){ return info.hudSoulFrame; }
@@ -226,6 +227,7 @@ final class SacScene: Scene{
 	void setController(Controller!DagonBackend controller)in{
 		assert(this.state!is null&&this.state is controller.state);
 	}do{
+		renderSlot=controller.controlledSlot;
 		renderSide=controller.controlledSide;
 		this.controller=controller;
 	}
@@ -492,6 +494,24 @@ final class SacScene: Scene{
 		mouseButtonUp[]=0;
 	}
 
+	static struct ChatOptions{
+		bool[4] checked=true;
+	}
+	ChatOptions chatOptions;
+	void updateForm(int formIndex,int elementIndex){
+		if(formIndex>=forms.length) return;
+		switch(forms[formIndex].sacForm.tag){
+			case "thci": // non-observer ingame chat
+				if(2<=elementIndex&&elementIndex<=5){
+					chatOptions.checked[elementIndex-2]=forms[formIndex].elements[elementIndex].checked;
+					if(elementIndex==5) foreach(i;0..3) chatOptions.checked[i]=forms[formIndex].elements[2+i].checked=chatOptions.checked[$-1];
+					else forms[formIndex].elements[5].checked=chatOptions.checked[$-1]=all(chatOptions.checked[0..$-1]);
+				}
+				break;
+			default: break;
+		}
+	}
+
 	void menuControl(Duration dt){
 		enforce(forms.length);
 		auto formIndex=0;
@@ -510,6 +530,7 @@ final class SacScene: Scene{
 				if(elementIndex==form.activeIndex){
 					if(element.activate())
 						playMenuActionSound();
+					updateForm(formIndex,elementIndex);
 				}
 			}
 		}else if(forms.length!=1) return; // TODO?
@@ -570,7 +591,7 @@ final class SacScene: Scene{
 							}
 						}else name=options.name;
 						if(!name.length) name="Anonymous";
-						int slotFilter=-1; // TODO
+						int slotFilter=controller.slotFilter(chatOptions.checked[0],chatOptions.checked[1],chatOptions.checked[2]);
 						auto controlledSlot=controller?controller.controlledSlot:0;
 						auto chatMessage=makeChatMessage!DagonBackend(controlledSlot,slotFilter,ChatMessageType.standard,name,form.elements[defaultIndex].textInput.data[],state.current.frame);
 						controller.addCommand(Command!DagonBackend(observing?-1:controller.controlledSide,move(chatMessage)));
@@ -741,7 +762,20 @@ final class SacScene: Scene{
 						if(observing){
 							if(!options.observerChat) break;
 							forms~=sacFormInstance!DagonBackend("thco");
-						}else forms~=sacFormInstance!DagonBackend("thci");
+						}else{
+							auto form=sacFormInstance!DagonBackend("thci");
+							void set(int i,ref ElementState e,string s){
+								foreach(c;s) e.textInput~=c;
+								e.textStart=0;
+								e.textEnd=to!int(s.length);
+								e.checked=chatOptions.checked[i];
+							}
+							set(0,form.elements[2],"Allies");
+							set(1,form.elements[3],"Enemies");
+							set(2,form.elements[4],"Observers");
+							set(3,form.elements[5],"Everyone");
+							forms~=.move(form);
+						}
 						enableMenu();
 					}
 					break;
@@ -1587,6 +1621,9 @@ static:
 	}
 	void setState(GameState!DagonBackend state){
 		scene.setState(state);
+	}
+	void setSlot(int slot){
+		scene.renderSlot=slot;
 	}
 	void focusCamera(int id,bool reset=true){
 		scene.focusCamera(id,reset);
