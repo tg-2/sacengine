@@ -18,3 +18,4 @@ maps/(6) Twirlish Dip.scp
 maps/(6) TM-Sunhair.scp
 maps/(6) TM-Red Hot v1.scp
 maps/(6) TM-Urknall.scp
+maps/(6) WM-Creeping Place.scp
