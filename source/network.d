@@ -1097,6 +1097,7 @@ final class Network(B){
 		assert(!!controller);
 	}do{
 		auto controlledSlot=-1,slotFilter=-1;
+		if(!name.length) name="Anonymous";
 		auto chatMessage=makeChatMessage!B(controlledSlot,slotFilter,type,name,message,controller.currentFrame);
 		if(isHost) addCommand(-1,Command!B(-1,chatMessage));
 		if(networkState) networkState.chatMessages.addChatMessage(move(chatMessage));
