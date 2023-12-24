@@ -11,8 +11,8 @@ Building
 -----------
 
 Building sacengine from scratch:
-Set up some D compiler, ideally LDC, version 1.28.0 is known to work:
-https://github.com/ldc-developers/ldc/releases/tag/v1.28.0
+Set up some D compiler, ideally LDC, version 1.35.0 is known to work:
+https://github.com/ldc-developers/ldc/releases/tag/v1.35.0
 
 ```bash
 $ git clone https://github.com/tg-2/sacengine
@@ -25,7 +25,7 @@ $ dub build -b release-debug
 If you simply extract the binary release, there are some build scripts for linux already in the repository, on Windows the following command might work:
 
 ```
-ldc2-1.28.0-windows-x64\bin\dub.exe build -b release-debug --compiler=./ldc2-1.28.0-windows-x64/bin/ldc2.exe
+ldc2-1.35.0-windows-x64\bin\dub.exe build -b release-debug --compiler=./ldc2-1.35.0-windows-x64/bin/ldc2.exe
 ```
 
 To run the engine, symlink your maps and data folder into the sacengine directory, check settings.txt for additional options. (Alternatively, put the executable in the Sacrifice directory.)
