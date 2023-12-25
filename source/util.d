@@ -493,8 +493,8 @@ struct SmallArray(T,size_t n){
 		if(i<n) return elements[i];
 		return rest[i-n];
 	}
-	auto opSlice(){
-		return chain(elements[0..min($,length)],rest[]);
+	auto opSlice()return{
+		return chain(elements[0..min($,length)],rest.data[]);
 	}
 }
 
