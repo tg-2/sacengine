@@ -2193,5 +2193,6 @@ final class Network(B){
 				player.connection=null;
 			}
 		}
+		listener.close();
 	}
 }
