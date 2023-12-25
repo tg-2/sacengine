@@ -1,4 +1,4 @@
-// copyright © tg
+ // copyright © tg
 // distributed under the terms of the gplv3 license
 // https://www.gnu.org/licenses/gpl-3.0.txt
 
@@ -910,6 +910,47 @@ struct Listener{
 	}
 }
 
+struct Broadcaster{
+	bool useZerotier=false;
+	void make(bool useZerotier){
+		this.useZerotier=useZerotier;
+	}
+	Address address=null;
+	void initAddress(){
+		if(!address) address=new InternetAddress("224.0.0.1",listeningPort);
+	}
+	Socket listener=null;
+	bool listen(scope ubyte[] buffer,ref string from){
+		enforce(!useZerotier,"TODO");
+		if(!listener){
+			listener=new Socket(AddressFamily.INET,SocketType.DGRAM);
+			listener.setOption(SocketOptionLevel.SOCKET,SocketOption.REUSEADDR, true);
+			initAddress();
+			listener.bind(address);
+			listener.blocking=false;
+		}
+		Address fromAddr;
+		auto err=listener.receiveFrom(buffer,fromAddr);
+		if(err==Socket.ERROR) return false;
+		from=fromAddr.toAddrString();
+		return true;
+	}
+	Socket sender;
+	bool send(scope ubyte[] buffer){
+		enforce(!useZerotier,"TODO");
+		if(!sender){
+			sender=new Socket(AddressFamily.INET,SocketType.DGRAM);
+			sender.setOption(SocketOptionLevel.SOCKET,SocketOption.REUSEADDR, true);
+			sender.setOption(SocketOptionLevel.SOCKET,SocketOption.BROADCAST, true);
+			sender.bind(new InternetAddress(InternetAddress.ADDR_ANY,listeningPort));
+		}
+		initAddress();
+		auto err=sender.sendTo(buffer,address);
+		if(err==Socket.ERROR) return false;
+		return true;
+	}
+}
+
 enum PlayerStatus{
 	unconnected,
 	dropped,
@@ -1091,7 +1132,7 @@ final class Network(B){
 		return activePlayerIds.map!index;
 	}
 	size_t numActivePlayers(){ return activePlayerIds.walkLength; }
-	Listener listener;
+
 	NetworkState!B networkState;
 	void sidechannelChatMessage(R,S)(ChatMessageType type,R name,S message,Controller!B controller)in{
 		assert(!!controller);
@@ -1107,6 +1148,7 @@ final class Network(B){
 		networkState=new NetworkState!B();
 	}
 	enum host=0;
+	bool advertiseGame=true;
 	bool dumpTraffic=false;
 	bool dumpNetworkStatus=false;
 	bool dumpNetworkSettings=false;
@@ -1117,6 +1159,7 @@ final class Network(B){
 	bool pauseOnDrop=false;
 	bool pauseOnDropOnce=false;
 	this(ref Options options){
+		this.advertiseGame=options.advertiseGame;
 		this.dumpTraffic=options.dumpTraffic;
 		this.dumpNetworkStatus=options.dumpNetworkStatus;
 		this.dumpNetworkSettings=options.dumpNetworkSettings;
@@ -1131,10 +1174,13 @@ final class Network(B){
 
 	bool isHost(){ return me==host; }
 	SynchQueue synchQueue;
+	Listener listener;
+	Broadcaster broadcaster;
 	void hostGame(Settings settings,bool useZerotier=false)in{
 		assert(!players.length);
 	}do{
 		listener.make(useZerotier);
+		broadcaster.make(useZerotier);
 		static assert(host==0);
 		players=[Player(PlayerStatus.synched,settings,settings.slot,null)];
 		me=0;
@@ -1144,6 +1190,16 @@ final class Network(B){
 	bool joinGame(string hostIP, ushort port, Settings playerSettings,bool useZerotier=false)in{
 		assert(!players.length);
 	}do{
+		if(hostIP=="255.255.255.255"){
+			broadcaster.make(useZerotier);
+			ubyte[advertisePacketSize] buffer;
+			string from;
+			while(!buffer[].startsWith(chain("SacEngine ",playerSettings.commit," hosted game"))){
+				if(!broadcaster.listen(buffer,from))
+					return false;
+			}
+			hostIP=from;
+		}
 		auto connection=joiner.tryJoin(hostIP, port, useZerotier);
 		if(!connection) return false;
 		players=[Player(PlayerStatus.connected,Settings.init,-1,connection)];
@@ -1817,10 +1873,23 @@ final class Network(B){
 		listener.close();
 	}
 	Array!Player pendingJoin;
+	MonoTime advertiseTime;
+	enum advertiseDelay=2.seconds;
+	enum advertisePacketSize=64;
 	void acceptNewConnections(){
 		if(!acceptingNewConnections||!listener.accepting) return;
 		if(isHost){
 			if(players.length>=playerLimit) return;
+			if(advertiseGame){
+				auto time=B.time();
+				auto sinceLastAdvert=time-advertiseTime;
+				if(advertiseDelay<=sinceLastAdvert){
+					ubyte[advertisePacketSize] buffer;
+					copy(chain("SacEngine ",settings.commit," hosted game"),buffer[]);
+					broadcaster.send(buffer);
+					advertiseTime=time;
+				}
+			}
 			for(;;){
 				// TODO: detect reconnection attempts
 				auto connection=listener.accept();

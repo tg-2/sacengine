@@ -137,6 +137,8 @@ int run(string[] args){
 			options.windowScrollYFactor=to!float(opt["--window-scroll-y-factor=".length..$]);
 		}else if(opt.startsWith("--join=")){
 			options.joinIP=opt["--join=".length..$];
+		}else if(opt=="--join"){
+			options.joinIP="255.255.255.255";
 		}else if(opt.startsWith("--record=")){
 			options.recordingFilename=opt["--record=".length..$];
 		}else if(opt.startsWith("--play=")){

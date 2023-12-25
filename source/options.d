@@ -89,6 +89,7 @@ struct Options{
 	string joinIP="";
 	bool testLag=false;
 	bool testRenderDelay=false;
+	bool advertiseGame=true;
 	bool dumpTraffic=false;
 	bool dumpNetworkStatus=false;
 	bool dumpNetworkSettings=false;
