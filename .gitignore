@@ -21,6 +21,7 @@ maps-orig
 *.exe
 *.dll
 *.dylib
+.DS_Store
 logs
 *.obj
 *.mtl
