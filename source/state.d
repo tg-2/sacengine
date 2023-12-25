@@ -2826,7 +2826,7 @@ struct Dragonfire(B){
 	enum shrinkTime=1.0f;
 
 	enum rotationSpeed=pi!float;
-	enum totTargets=6;
+	enum totTargets=5;
 	int[totTargets] targets=0;
 	bool addTarget(int id){
 		if(!id) return false;
@@ -14953,7 +14953,7 @@ bool updateDragonfirePosition(B)(ref Dragonfire!B dragonfire,ObjectState!B state
 			state.movingObjectById!((ref obj,damage,attacker,side,state){
 				//if(state.sides.getStance(side,obj.side)!=Stance.ally)
 				obj.ignite(damage,attacker,side,state);
-			},(){})(target.id,0.5f*spell.amount/updateFPS,attacker,side,state);
+			},(){})(target.id,0.25f*spell.amount/updateFPS,attacker,side,state);
 		}
 		collisionTargets!burn(hitbox,state,spell,wizard,side);
 		if(dragonfire.changeDirectionTowards(1.0f,state)){
