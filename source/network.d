@@ -802,22 +802,19 @@ class ZerotierTCPConnection: ConnectionImpl{
 }
 
 struct Joiner{
-	int fd=-1;
 	Connection tryJoinZerotier(string hostIP, ushort port){
-		if(fd==-1){
-			int nfd=zts_bsd_socket(zts_af_inet, zts_sock_stream, zts_ipproto_tcp);
-			enforce(nfd!=zts_err_arg,"bad arguments");
-			enforce(nfd!=zts_err_service,"failed to make socket");
-			enforce(nfd!=zts_err_socket,"failed to make socket");
-			fd=nfd;
-		}
+		int fd=zts_bsd_socket(zts_af_inet, zts_sock_stream, zts_ipproto_tcp);
+		enforce(fd!=zts_err_arg,"bad arguments");
+		enforce(fd!=zts_err_service,"failed to make socket");
+		enforce(fd!=zts_err_socket,"failed to make socket");
+		scope(exit) if(fd!=-1) zts_bsd_close(fd);
 		zts_sockaddr_in saddr;
 		uint addrlen=saddr.sizeof;
 		int err=zts_util_ipstr_to_saddr(hostIP.toStringz,port,&saddr,&addrlen);
 		enforce(err==zts_err_ok,"bad address");
 		err=zts_bsd_connect(fd,&saddr,addrlen);
 		if(err!=zts_err_ok) return null;
-		err=zts_set_blocking(fd, false);
+		err=zts_set_blocking(fd,false);
 		enforce(err==zts_err_ok,"failed to set blocking mode");
 		auto connection=new ZerotierTCPConnection(fd);
 		fd=-1;
@@ -845,9 +842,12 @@ struct Listener{
 		enforce(nfd!=zts_err_arg,"bad arguments");
 		enforce(nfd!=zts_err_service,"failed to make socket");
 		enforce(nfd!=zts_err_socket,"failed to make socket");
+		int yes=1;
+		int err=zts_bsd_setsockopt(nfd,zts_sol_socket,zts_so_reuseaddr,&yes,int.sizeof);
+		enforce(err==zts_err_ok,"failed to set socket option");
 		zts_sockaddr_in saddr;
 		uint addrlen=saddr.sizeof;
-		int err=zts_util_ipstr_to_saddr("0.0.0.0",listeningPort,&saddr,&addrlen);
+		err=zts_util_ipstr_to_saddr("0.0.0.0",listeningPort,&saddr,&addrlen);
 		enforce(err==zts_err_ok,"bad address");
 		err=zts_bsd_bind(nfd,&saddr,addrlen);
 		enforce(err==zts_err_ok,"failed to bind");

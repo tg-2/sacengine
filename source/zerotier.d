@@ -9,11 +9,18 @@ enum zts_err_arg=-3;
 
 enum zts_af_inet=2;
 enum zts_sock_stream=1;
+enum zts_sock_dgram=2;
 
 enum zts_ipproto_tcp=6;
+enum zts_ipproto_udp=17;
 
 enum zts_inet6_addrstrlen=46;
 enum zts_max_ip_str_len=46;
+
+enum zts_sol_socket=0xfff;
+enum zts_so_reuseaddr=4;
+enum zts_so_broadcast=32;
+
 
 version(Windows){
 	alias ssize_t=int;
@@ -119,10 +126,15 @@ ssize_t zts_bsd_write(int fd,const void* buf,size_t len){
 	return sym(fd,buf,len);	
 }
 
-int zts_bsd_getsockopt(int fd,int level,int optname,void* optval,uint* optlen){
+int zts_bsd_getsockopt(int fd,int level,int optname,void* optval,uint optlen){
 	mixin(load);
 	return sym(fd,level,optname,optval,optlen);
 }
+int zts_bsd_setsockopt(int fd, int level, int optname, const void* optval, uint optlen){
+	mixin(load);
+	return sym(fd,level,optname,optval,optlen);
+}
+
 int zts_bsd_close(int fd){
 	mixin(load);
 	return sym(fd);
