@@ -21,7 +21,6 @@ enum zts_sol_socket=0xfff;
 enum zts_so_reuseaddr=4;
 enum zts_so_broadcast=32;
 
-
 version(Windows){
 	alias ssize_t=int;
 }else{
@@ -91,6 +90,8 @@ ulong zts_node_get_id(){ mixin(load); return sym(); }
 int zts_net_join(ulong net_id){ mixin(load); return sym(net_id); }
 int zts_net_leave(ulong net_id){ mixin(load); return sym(net_id); }
 int zts_net_transport_is_ready(ulong net_id){ mixin(load); return sym(net_id); }
+int zts_net_get_broadcast(ulong net_id){ mixin(load); return sym(net_id); }
+
 int zts_addr_is_assigned(ulong net_id,uint family){ mixin(load); return sym(net_id,family); }
 int zts_addr_get_str(ulong net_id,uint family,char* dst,uint len){ mixin(load); return sym(net_id,family,dst,len); }
 
@@ -105,7 +106,7 @@ int zts_bsd_connect(int fd,const zts_sockaddr_in* addr,uint addrlen){
 	mixin(load);
 	return sym(fd,addr,addrlen);
 }
-int zts_bsd_bind(int fd,const zts_sockaddr_in* addr, uint addrlen){
+int zts_bsd_bind(int fd,const zts_sockaddr_in* addr,uint addrlen){
 	mixin(load);
 	return sym(fd,addr,addrlen);
 }
@@ -113,10 +114,11 @@ int zts_bsd_listen(int fd,int backlog){
 	mixin(load);
 	return sym(fd,backlog);
 }
-int zts_bsd_accept(int fd,zts_sockaddr_in* addr, uint* addrlen){
+int zts_bsd_accept(int fd,zts_sockaddr_in* addr,uint* addrlen){
 	mixin(load);
 	return sym(fd,addr,addrlen);
 }
+
 ssize_t zts_bsd_read(int fd,void* buf,size_t len){
 	mixin(load);
 	return sym(fd,buf,len);
@@ -125,6 +127,17 @@ ssize_t zts_bsd_write(int fd,const void* buf,size_t len){
 	mixin(load);
 	return sym(fd,buf,len);	
 }
+
+ssize_t zts_bsd_sendto(int fd,const void* buf,size_t len,int flags,const zts_sockaddr_in* addr,uint addrlen){
+	mixin(load);
+	return sym(fd,buf,len,flags,addr,addrlen);
+}
+ssize_t zts_bsd_recvfrom(int fd,void* buf,size_t len,int flags,zts_sockaddr_in* addr,uint* addrlen){
+	mixin(load);
+	return sym(fd,buf,len,flags,addr,addrlen);
+}
+
+
 
 int zts_bsd_getsockopt(int fd,int level,int optname,void* optval,uint optlen){
 	mixin(load);
@@ -225,4 +238,5 @@ void connectToZerotier(string identity_folder,ulong net_id){
 
 	import std.algorithm;
 	writeln("ip address: ",ipstr[].until(0));
+	// writeln("broadcast enabled: ",zts_net_get_broadcast(net_id));
 }

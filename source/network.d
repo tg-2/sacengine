@@ -915,39 +915,163 @@ struct Broadcaster{
 	void make(bool useZerotier){
 		this.useZerotier=useZerotier;
 	}
-	Address address=null;
-	void initAddress(){
-		if(!address) address=new InternetAddress("224.0.0.1",listeningPort);
+
+	enum anyIP="0.0.0.0";
+	//enum broadcastIP="255.255.255.255";
+	//enum broadcastIP="224.0.0.1";
+	//enum broadcastIP="10.243.255.255";
+	bool listen_addr_initialized=false;
+	bool send_addrs_initialized=false;
+	zts_sockaddr_in listen_addr;
+	zts_sockaddr_in[] send_addrs;
+	Address listenAddress=null;
+	Address[] sendAddresses=[];
+	void initListenAddress(){
+		if(listen_addr_initialized) return;
+		if(useZerotier){
+			uint addrlen=listen_addr.sizeof;
+			int err=zts_util_ipstr_to_saddr(anyIP,listeningPort,&listen_addr,&addrlen);
+			enforce(err==zts_err_ok,"bad address");
+		}else{
+			listenAddress=new InternetAddress(anyIP,listeningPort);
+		}
+		listen_addr_initialized=true;
 	}
+	void initSendAddresses(){
+		if(send_addrs_initialized) return; // TODO: network configuration might change
+		sendAddresses=[];
+		import netutil:getBroadcastAddresses;
+		auto broadcastIPs=getBroadcastAddresses();
+		if(!broadcastIPs.length)
+			stderr.writeln("warning: unable to broadcast");
+		foreach(broadcastIP;broadcastIPs){
+			if(useZerotier){
+				zts_sockaddr_in send_addr;
+				uint addrlen=send_addr.sizeof;
+				int err=zts_util_ipstr_to_saddr(broadcastIP.toStringz,listeningPort,&send_addr,&addrlen);
+				enforce(err==zts_err_ok,"bad address");
+				send_addrs~=send_addr;
+			}else{
+				sendAddresses~=new InternetAddress(broadcastIP,listeningPort);
+			}
+		}
+		send_addrs_initialized=true;
+	}
+
+
+	int listen_fd=-1;
+	int listenZerotier(scope ubyte[] buffer,ref string from){
+		if(listen_fd==-1){
+			int fd=zts_bsd_socket(zts_af_inet,zts_sock_dgram,zts_ipproto_udp);
+			enforce(fd!=zts_err_arg,"bad arguments");
+			enforce(fd!=zts_err_service,"failed to make socket");
+			enforce(fd!=zts_err_socket,"failed to make socket");
+			int yes=1;
+			int err=zts_bsd_setsockopt(fd,zts_sol_socket,zts_so_reuseaddr,&yes,int.sizeof);
+			enforce(err==zts_err_ok,"failed to set socket option");
+			//err=zts_bsd_setsockopt(fd,zts_sol_socket,zts_so_broadcast,&yes,int.sizeof);
+			//enforce(err==zts_err_ok,"failed to set socket option");
+			initListenAddress();
+			uint addrlen=listen_addr.sizeof;
+			err=zts_bsd_bind(fd,&listen_addr,addrlen);
+			enforce(err==zts_err_ok,"failed to bind");
+			err=zts_set_blocking(fd,false);
+			enforce(err==zts_err_ok,"failed to set blocking mode");
+			listen_fd=fd;
+		}
+		zts_sockaddr_in from_addr=listen_addr;
+		uint from_addrlen=from_addr.sizeof;
+		int flags=0;
+		auto ret=zts_bsd_recvfrom(listen_fd,buffer.ptr,buffer.length,flags,&from_addr,&from_addrlen);
+		if(ret<=0) return 0;
+		if(from_addr.sin_len!=from_addr.sizeof||from_addr.sin_family!=zts_af_inet)
+			return 0;
+		uint addr=from_addr.sin_addr.s_addr;
+		import std.format:format;
+		from=format("%d.%d.%d.%d",addr&0xff,(addr>>8)&0xff,(addr>>16)&0xff,(addr>>24)&0xff);
+		return to!int(ret);
+	}
+
+	int send_fd=-1;
+	void sendZerotier(scope ubyte[] buffer){
+		if(send_fd==-1){
+			int fd=zts_bsd_socket(zts_af_inet,zts_sock_dgram,zts_ipproto_udp);
+			enforce(fd!=zts_err_arg,"bad arguments");
+			enforce(fd!=zts_err_service,"failed to make socket");
+			enforce(fd!=zts_err_socket,"failed to make socket");
+			int yes=1;
+			int err=zts_bsd_setsockopt(fd,zts_sol_socket,zts_so_reuseaddr,&yes,int.sizeof);
+			enforce(err==zts_err_ok,"failed to set socket option");
+			err=zts_bsd_setsockopt(fd,zts_sol_socket,zts_so_broadcast,&yes,int.sizeof);
+			enforce(err==zts_err_ok,"failed to set socket option");
+			err=zts_set_blocking(fd,false);
+			enforce(err==zts_err_ok,"failed to set blocking mode");
+			send_fd=fd;
+		}
+		initSendAddresses();
+		foreach(ref send_addr;send_addrs){
+			int flags=0;
+			uint send_addrlen=send_addr.sizeof;
+			zts_bsd_sendto(send_fd,buffer.ptr,buffer.length,flags,&send_addr,send_addrlen);
+		}
+	}
+
 	Socket listener=null;
-	bool listen(scope ubyte[] buffer,ref string from){
-		enforce(!useZerotier,"TODO");
+	int listen(scope ubyte[] buffer,ref string from){
+		if(useZerotier) return listenZerotier(buffer,from);
 		if(!listener){
 			listener=new Socket(AddressFamily.INET,SocketType.DGRAM);
 			listener.setOption(SocketOptionLevel.SOCKET,SocketOption.REUSEADDR, true);
-			initAddress();
-			listener.bind(address);
+			initListenAddress();
+			listener.bind(listenAddress);
 			listener.blocking=false;
 		}
 		Address fromAddr;
-		auto err=listener.receiveFrom(buffer,fromAddr);
-		if(err==Socket.ERROR) return false;
+		auto ret=listener.receiveFrom(buffer,fromAddr);
+		if(ret==Socket.ERROR||ret==0) return 0;
 		from=fromAddr.toAddrString();
-		return true;
+		return to!int(ret);
 	}
-	Socket sender;
-	bool send(scope ubyte[] buffer){
-		enforce(!useZerotier,"TODO");
+	Socket sender=null;
+	void send(scope ubyte[] buffer){
+		if(useZerotier) return sendZerotier(buffer);
 		if(!sender){
 			sender=new Socket(AddressFamily.INET,SocketType.DGRAM);
 			sender.setOption(SocketOptionLevel.SOCKET,SocketOption.REUSEADDR, true);
 			sender.setOption(SocketOptionLevel.SOCKET,SocketOption.BROADCAST, true);
-			sender.bind(new InternetAddress(InternetAddress.ADDR_ANY,listeningPort));
+			sender.blocking=false;
 		}
-		initAddress();
-		auto err=sender.sendTo(buffer,address);
-		if(err==Socket.ERROR) return false;
-		return true;
+		initSendAddresses();
+		foreach(sendAddress;sendAddresses){
+			auto ret=sender.sendTo(buffer,sendAddress);
+		}
+	}
+
+	void closeListener(){
+		if(listen_fd!=-1){
+			zts_bsd_close(listen_fd);
+			listen_fd=-1;
+		}
+		if(listener){
+			listener.close();
+			listener=null;
+		}
+	}
+	void closeSender(){
+		if(send_fd!=-1){
+			zts_bsd_close(send_fd);
+			send_fd=-1;
+		}
+		if(sender){
+			sender.close();
+			sender=null;
+		}
+
+	}
+
+	void close(){
+		closeListener();
+		closeSender();
 	}
 }
 
@@ -1199,6 +1323,7 @@ final class Network(B){
 					return false;
 			}
 			hostIP=from;
+			broadcaster.closeListener();
 		}
 		auto connection=joiner.tryJoin(hostIP, port, useZerotier);
 		if(!connection) return false;
@@ -1874,7 +1999,7 @@ final class Network(B){
 	}
 	Array!Player pendingJoin;
 	MonoTime advertiseTime;
-	enum advertiseDelay=2.seconds;
+	enum advertiseDelay=200.msecs;
 	enum advertisePacketSize=64;
 	void acceptNewConnections(){
 		if(!acceptingNewConnections||!listener.accepting) return;
@@ -2263,5 +2388,6 @@ final class Network(B){
 			}
 		}
 		listener.close();
+		broadcaster.close();
 	}
 }
