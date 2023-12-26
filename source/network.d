@@ -944,8 +944,10 @@ struct Broadcaster{
 		sendAddresses=[];
 		string[] broadcastIPs;
 		if(useZerotier){
-			zts_sockaddr_in address;
-			zts_addr_get(net_id,zts_af_inet,&address);
+			zts_sockaddr_storage storage;
+			zts_addr_get(net_id,zts_af_inet,&storage);
+			enforce(storage.s2_len<=zts_sockaddr_in.sizeof);
+			zts_sockaddr_in address=*cast(zts_sockaddr_in*)&storage;
 			uint addr=address.sin_addr.s_addr;
 			foreach(netmask;only(0x00ffffffu,0x0000ffffu)){ // TODO: is there a way to get netmask? for now we just try /24 and /16
 				uint broadcast=addr|~netmask;

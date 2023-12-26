@@ -42,6 +42,15 @@ struct zts_sockaddr_in {
 }
 alias zts_sockaddr=zts_sockaddr_in;
 
+struct zts_sockaddr_storage {
+    ubyte s2_len;
+    ubyte ss_family;
+    char[2] s2_data1;
+    uint[3] s2_data2;
+    uint[3] s2_data3;
+}
+
+
 void* libzt;
 void libztInit(){
 	if(libzt) return;
@@ -93,7 +102,7 @@ int zts_net_transport_is_ready(ulong net_id){ mixin(load); return sym(net_id); }
 int zts_net_get_broadcast(ulong net_id){ mixin(load); return sym(net_id); }
 
 int zts_addr_is_assigned(ulong net_id,uint family){ mixin(load); return sym(net_id,family); }
-int zts_addr_get(ulong net_id,uint family,zts_sockaddr_in* addr){ mixin(load); return sym(net_id,family,addr); }
+int zts_addr_get(ulong net_id,uint family,zts_sockaddr_storage* addr){ mixin(load); return sym(net_id,family,addr); }
 int zts_addr_get_str(ulong net_id,uint family,char* dst,uint len){ mixin(load); return sym(net_id,family,dst,len); }
 
 int zts_util_ipstr_to_saddr(const char* src_ipstr,ushort port,zts_sockaddr_in* dstaddr,uint* addrlen){
