@@ -911,8 +911,10 @@ struct Listener{
 }
 
 struct Broadcaster{
+	ulong net_id;
 	bool useZerotier=false;
-	void make(bool useZerotier){
+	void make(ulong net_id,bool useZerotier){
+		this.net_id=net_id;
 		this.useZerotier=useZerotier;
 	}
 
@@ -940,8 +942,20 @@ struct Broadcaster{
 	void initSendAddresses(){
 		if(send_addrs_initialized) return; // TODO: network configuration might change
 		sendAddresses=[];
-		import netutil:getBroadcastAddresses;
-		auto broadcastIPs=getBroadcastAddresses();
+		string[] broadcastIPs;
+		if(useZerotier){
+			zts_sockaddr_in address;
+			zts_addr_get(net_id,zts_af_inet,&address);
+			uint addr=address.sin_addr.s_addr;
+			foreach(netmask;only(0x00ffffffu,0x0000ffffu)){ // TODO: is there a way to get netmask? for now we just try /24 and /16
+				uint broadcast=addr|~netmask;
+				import std.format:format;
+				broadcastIPs~=format!"%d.%d.%d.%d"(broadcast&0xff,(broadcast>>8)&0xff,(broadcast>>16)&0xff,(broadcast>>24)&0xff);
+			}
+		}else{
+			import netutil:getBroadcastAddresses;
+			broadcastIPs=getBroadcastAddresses();
+		}
 		if(!broadcastIPs.length)
 			stderr.writeln("warning: unable to broadcast");
 		foreach(broadcastIP;broadcastIPs){
@@ -1272,6 +1286,7 @@ final class Network(B){
 		networkState=new NetworkState!B();
 	}
 	enum host=0;
+	ulong zerotier_net_id=0;
 	bool advertiseGame=true;
 	bool dumpTraffic=false;
 	bool dumpNetworkStatus=false;
@@ -1283,6 +1298,7 @@ final class Network(B){
 	bool pauseOnDrop=false;
 	bool pauseOnDropOnce=false;
 	this(ref Options options){
+		this.zerotier_net_id=options.zerotierNetwork;
 		this.advertiseGame=options.advertiseGame;
 		this.dumpTraffic=options.dumpTraffic;
 		this.dumpNetworkStatus=options.dumpNetworkStatus;
@@ -1304,7 +1320,7 @@ final class Network(B){
 		assert(!players.length);
 	}do{
 		listener.make(useZerotier);
-		broadcaster.make(useZerotier);
+		broadcaster.make(zerotier_net_id,useZerotier);
 		static assert(host==0);
 		players=[Player(PlayerStatus.synched,settings,settings.slot,null)];
 		me=0;
@@ -1315,7 +1331,7 @@ final class Network(B){
 		assert(!players.length);
 	}do{
 		if(hostIP=="255.255.255.255"){
-			broadcaster.make(useZerotier);
+			broadcaster.make(zerotier_net_id,useZerotier);
 			ubyte[advertisePacketSize] buffer;
 			string from;
 			while(!buffer[].startsWith(chain("SacEngine ",playerSettings.commit," hosted game"))){

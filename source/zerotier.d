@@ -93,6 +93,7 @@ int zts_net_transport_is_ready(ulong net_id){ mixin(load); return sym(net_id); }
 int zts_net_get_broadcast(ulong net_id){ mixin(load); return sym(net_id); }
 
 int zts_addr_is_assigned(ulong net_id,uint family){ mixin(load); return sym(net_id,family); }
+int zts_addr_get(ulong net_id,uint family,zts_sockaddr_in* addr){ mixin(load); return sym(net_id,family,addr); }
 int zts_addr_get_str(ulong net_id,uint family,char* dst,uint len){ mixin(load); return sym(net_id,family,dst,len); }
 
 int zts_util_ipstr_to_saddr(const char* src_ipstr,ushort port,zts_sockaddr_in* dstaddr,uint* addrlen){
