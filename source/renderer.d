@@ -857,15 +857,18 @@ struct Renderer(B){
 			case charnel: sunStrength=4.0f; break;
 		}
 		env.sunEnergy=min(sunStrength*envi.sunDirectStrength,30.0f)*options.sunFactor;
-		Color4f fixColor(Color4f sacColor){
+		static Color4f fixColor(Color4f sacColor){
 			return Color4f(0,0.3,1,1)*0.2+sacColor*0.8;
 		}
 		//env.ambientConstant = fixColor(Color4f(envi.ambientRed*ambi,envi.ambientGreen*ambi,envi.ambientBlue*ambi,1.0f));
-		auto ambi=min(envi.sunAmbientStrength,2.0f)*options.ambientFactor;
+		auto ambi=envi.sunAmbientStrength;
 		//auto ambi=1.5f*envi.sunAmbientStrength;
 		//env.ambientConstant = fixColor(Color4f(envi.sunColorRed/255.0f*ambi,envi.sunColorGreen/255.0f*ambi,envi.sunColorBlue/255.0f*ambi,1.0f));
-		env.ambientConstant = Color4f(ambi*envi.ambientRed/255.0f,ambi*envi.ambientGreen/255.0f,ambi*envi.ambientBlue/255.0f,1.0f);
-		env.backgroundColor = Color4f(envi.skyRed/255.0f,envi.skyGreen/255.0f,envi.skyBlue/255.0f,1.0f);
+		Color4f capColor(Color4f sacColor){
+			return Color4f(max(0.0f,min(sacColor.r,1.0f)),max(0.0f,min(sacColor.g,1.0f)),max(0.0f,min(sacColor.b,1.0f)),max(0.0f,min(sacColor.a,1.0f)));
+		}
+		env.ambientConstant = Color4f(options.ambientFactor*capColor(Color4f(ambi*envi.ambientRed/255.0f,ambi*envi.ambientGreen/255.0f,ambi*envi.ambientBlue/255.0f,1.0f)));
+		env.backgroundColor = capColor(Color4f(envi.skyRed/255.0f,envi.skyGreen/255.0f,envi.skyBlue/255.0f,1.0f));
 		// envi.minAlphaInt, envi.maxAlphaInt, envi.minAlphaFloat ?
 		// envi.maxAlphaFloat used for sky alpha
 		// sky_, skyt, skyb, sun_, undr used above
@@ -880,9 +883,11 @@ struct Renderer(B){
 		//env.sunColor=Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f);
 		/+env.sunColor=0.5f*Color4f(envi.ambientRed/255.0f,envi.ambientGreen/255.0f,envi.ambientBlue/255.0f,1.0f)+
 			0.5f*Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f);+/
-		auto sunColor=envi.sunAmbientStrength/(envi.sunDirectStrength+envi.sunAmbientStrength)*Color4f(envi.ambientRed/255.0f,envi.ambientGreen/255.0f,envi.ambientBlue/255.0f,1.0f)+
-			envi.sunDirectStrength/(envi.sunDirectStrength+envi.sunAmbientStrength)*Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f);
-		env.sunColor=Color4f(sunColor);
+		/+auto sunColor=envi.sunAmbientStrength/(envi.sunDirectStrength+envi.sunAmbientStrength)*Color4f(envi.ambientRed/255.0f,envi.ambientGreen/255.0f,envi.ambientBlue/255.0f,1.0f)+
+			envi.sunDirectStrength/(envi.sunDirectStrength+envi.sunAmbientStrength)*Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f);+/
+		auto sunColor=3.0f*envi.sunAmbientStrength/(envi.sunDirectStrength+3.0f*envi.sunAmbientStrength)*capColor(Color4f(envi.ambientRed/255.0f,envi.ambientGreen/255.0f,envi.ambientBlue/255.0f,1.0f))+
+			envi.sunDirectStrength/(envi.sunDirectStrength+6.0f*envi.sunAmbientStrength)*capColor(Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f));
+		env.sunColor=capColor(Color4f(sunColor));
 		// TODO: figure this out
 		/+if(exp(envi.sunDirectStrength)==float.infinity)
 			env.sunColor=Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f);
@@ -899,8 +904,8 @@ struct Renderer(B){
 		// landscapeGlossiness used for terrain material.
 		//env.atmosphericFog=true;
 		B.shadowMap.shadowColor=Color4f(envi.ambientRed/255.0f,envi.ambientGreen/255.0f,envi.ambientBlue/255.0f,1.0f);
-		B.shadowMap.shadowBrightness=1.0f-envi.shadowStrength;
-		env.fogColor=Color4f(envi.fogRed/255.0f,envi.fogGreen/255.0f,envi.fogBlue/255.0f,1.0f);
+		B.shadowMap.shadowBrightness=max(0.0f,min(1.0f,1.0f-envi.shadowStrength));
+		env.fogColor=capColor(Color4f(envi.fogRed/255.0f,envi.fogGreen/255.0f,envi.fogBlue/255.0f,1.0f));
 		// fogType ?
 		if(options.enableFog){
 			env.fogStart=envi.fogNearZ;
