@@ -1329,10 +1329,10 @@ final class SacScene: Scene{
 				controller.run();
 				if(!gameEnded){
 					if(state.current.isVictorious(controller.controlledSide)){
-						audio.playThemeOnce(Theme.victory);
+						if(audio) audio.playThemeOnce(Theme.victory);
 						gameEnded=true;
 					}else if(state.current.isDefeated(controller.controlledSide)){
-						audio.playThemeOnce(Theme.defeat);
+						if(audio) audio.playThemeOnce(Theme.defeat);
 						gameEnded=true;
 					}
 				}
