@@ -885,8 +885,8 @@ struct Renderer(B){
 			0.5f*Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f);+/
 		/+auto sunColor=envi.sunAmbientStrength/(envi.sunDirectStrength+envi.sunAmbientStrength)*Color4f(envi.ambientRed/255.0f,envi.ambientGreen/255.0f,envi.ambientBlue/255.0f,1.0f)+
 			envi.sunDirectStrength/(envi.sunDirectStrength+envi.sunAmbientStrength)*Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f);+/
-		auto sunColor=3.0f*envi.sunAmbientStrength/(envi.sunDirectStrength+3.0f*envi.sunAmbientStrength)*capColor(Color4f(envi.ambientRed/255.0f,envi.ambientGreen/255.0f,envi.ambientBlue/255.0f,1.0f))+
-			envi.sunDirectStrength/(envi.sunDirectStrength+6.0f*envi.sunAmbientStrength)*capColor(Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f));
+		auto sunColor=envi.sunAmbientStrength/(envi.sunDirectStrength+envi.sunAmbientStrength)*capColor(Color4f(ambi*envi.ambientRed/255.0f,ambi*envi.ambientGreen/255.0f,ambi*envi.ambientBlue/255.0f,1.0f))+
+			envi.sunDirectStrength/(envi.sunDirectStrength+envi.sunAmbientStrength)*capColor(Color4f(envi.sunColorRed/255.0f,envi.sunColorGreen/255.0f,envi.sunColorBlue/255.0f,1.0f));
 		env.sunColor=capColor(Color4f(sunColor));
 		// TODO: figure this out
 		/+if(exp(envi.sunDirectStrength)==float.infinity)
