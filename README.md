@@ -15,10 +15,8 @@ Set up some D compiler, ideally LDC, version 1.35.0 is known to work:
 https://github.com/ldc-developers/ldc/releases/tag/v1.35.0
 
 ```bash
-$ git clone https://github.com/tg-2/sacengine
+$ git clone --recursive https://github.com/tg-2/sacengine
 $ cd sacengine
-$ git submodule init
-$ git submodule update
 $ dub build -b release-debug
 ```
 

@@ -3,7 +3,9 @@
 // https://www.gnu.org/licenses/gpl-3.0.txt
 module netutil;
 
-version(Posix){
+version(Android){
+string[] getBroadcastAddresses(){ return []; } // TODO
+}else version(Posix){
 import core.sys.posix.sys.socket;
 import core.stdc.string;
 struct ifaddrs{

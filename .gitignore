@@ -5,6 +5,9 @@ replays
 .dub
 3d
 SacEngine-*
+SacEnginePi*
+SacEngineA*
+SacEngine.*.txt
 ldc2*
 dub_platform*
 settings.txt
@@ -21,8 +24,10 @@ maps-orig
 *.exe
 *.dll
 *.dylib
+*.so
 .DS_Store
 logs
 *.obj
 *.mtl
-zerotier-identity
+zerotier-identity*
+android-ndk-r21e
