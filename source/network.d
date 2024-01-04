@@ -1389,9 +1389,9 @@ final class Network(B){
 		return connectedPlayers.all!((ref p)=>p.status.among(PlayerStatus.readyToResynch,PlayerStatus.stateResynched));
 	}
 	bool stateResynched(){ return connectedPlayers.all!(p=>p.status.among(PlayerStatus.stateResynched,PlayerStatus.resynched)); }
-	//int resynchCommittedFrame(){ return connectedPlayers.map!((ref p)=>p.committedFrame).fold!max(players[host].committedFrame); }
+	int resynchCommittedFrame(){ return connectedPlayers.map!((ref p)=>p.committedFrame).fold!max(players[host].committedFrame); }
 	//int resynchCommittedFrame(){ return players[host].committedFrame; }
-	int resynchCommittedFrame(){ return committedFrame; }
+	//int resynchCommittedFrame(){ return committedFrame; } // TODO
 	bool resynched(){ return connectedPlayers.all!((ref p)=>p.status==PlayerStatus.resynched)/+ && connectedPlayers.all!((ref p)=>p.committedFrame==players[host].committedFrame)+/; }
 	int committedFrame(){ return activePlayers.map!((ref p)=>p.committedFrame).fold!min(players[isConnectedStatus(players[host].status)?host:me].committedFrame); }
 	int me=-1;
@@ -1704,6 +1704,7 @@ final class Network(B){
 				assert(!!synchQueue);
 				if(controller) controller.updateCommittedTo(p.synchFrame);
 				if(!synchQueue.check(p.synchFrame,p.synchHash)){
+					sidechannelChatMessage(ChatMessageType.network,players[sender].settings.name,"desynchronized.",controller);
 					report!true(sender,"desynchronized at frame ",p.synchFrame);
 					if(p.synchFrame>=synchQueue.end){
 						stderr.writeln("tried to synch on non-committed frame (after ",synchQueue.end,") ",players.map!((ref p)=>p.committedFrame)," ",players.map!((ref p)=>p.status));
