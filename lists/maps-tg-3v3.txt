@@ -19,3 +19,6 @@ maps/(6) TM-Sunhair.scp
 maps/(6) TM-Red Hot v1.scp
 maps/(6) TM-Urknall.scp
 maps/(6) WM-Creeping Place.scp
+maps/(6) After Life3.scp
+maps/(6) EM-Stinking Watercourse.scp
+maps/(6) EM-North Pole.scp
