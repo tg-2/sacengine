@@ -10,6 +10,7 @@ import util;
 
 enum Theme{
 	normal,
+	sacrifice,
 	battle1,
 	battle2,
 	battle3,
@@ -63,6 +64,7 @@ final class AudioBackend(B){
 	this(float volume,float musicVolume,float soundVolume){
 		musicGain=volume*musicVolume;
 		soundGain=volume*soundVolume;
+		themes[Theme.sacrifice]=MP3("data/music/Sacrifice 1.mp3");
 		themes[Theme.battle1]=MP3("data/music/Battle 1.mp3");
 		themes[Theme.battle2]=MP3("data/music/Battle 2.mp3");
 		themes[Theme.battle3]=MP3("data/music/Battle 3.mp3");
@@ -91,7 +93,14 @@ final class AudioBackend(B){
 		currentTileset=tileset;
 	}
 	void switchTheme(Theme next){
-		nextTheme=next;
+		if(currentTheme.among(Theme.defeat,Theme.victory)){
+			themeAfter=next;
+		}else nextTheme=next;
+	}
+	void setNextTheme(Theme next){
+		if(currentTheme.among(Theme.losing,Theme.winning)){
+			switchTheme(next);
+		}else themeAfter=next;
 	}
 	void playThemeOnce(Theme next){
 		if(themeAfter==Theme.none){

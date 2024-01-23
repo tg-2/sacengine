@@ -1336,6 +1336,46 @@ final class SacScene: Scene{
 						gameEnded=true;
 					}
 				}
+				if(audio){
+					if(renderSide==-1){
+						audio.switchTheme(Theme.normal);
+					}else{
+						auto wizard=state.current.getWizardForSide(renderSide);
+						int smallestRitualFrame=int.max;
+						bool victory=false;
+						bool sacrificeTheme=false;
+						foreach(ref ritual;state.current.obj.opaqueObjects.effects.rituals){
+							if(ritual.frame<ritual.setupTime) continue;
+							auto ritualPosition=state.current.staticObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(ritual.shrine);
+							sacrificeTheme|=(ritualPosition-camera.position).lengthsqr<70.0f^^2;
+							if(ritual.type!=RitualType.desecrate) continue;
+							if(!ritual.targetWizard) continue;
+							if(smallestRitualFrame<=ritual.frame) continue;
+							auto desecratedSide=ritual.shrine?state.current.staticObjectById!(side,()=>-1)(ritual.shrine,state.current):-1;
+							if(ritual.side==renderSide) victory=true;
+							else if(ritual.shrine&&desecratedSide==renderSide) victory=false;
+							else continue;
+							smallestRitualFrame=ritual.frame;
+						}
+						if(smallestRitualFrame<int.max){
+							auto theme=victory?Theme.winning:Theme.losing;
+							audio.switchTheme(theme);
+							audio.setNextTheme(theme);
+						}else{
+							if(!sacrificeTheme&&wizard&&wizard.lastDamageFrame!=-1&&state.current.frame<=wizard.lastDamageFrame+120*updateFPS){
+								import std.random;
+								if(!audio.nextTheme.among(Theme.battle1,Theme.battle2,Theme.battle3,Theme.battle4,Theme.battle5))
+									audio.switchTheme(uniform!"[]"(Theme.battle1,Theme.battle5));
+								if(!audio.themeAfter.among(Theme.battle1,Theme.battle2,Theme.battle3,Theme.battle4,Theme.battle5))
+									audio.setNextTheme(uniform!"[]"(Theme.battle1,Theme.battle5));
+							}else if(sacrificeTheme||audio.currentTheme==Theme.sacrifice){
+								auto theme=sacrificeTheme?Theme.sacrifice:Theme.normal;
+								audio.switchTheme(theme);
+								audio.setNextTheme(theme);
+							}else audio.setNextTheme(Theme.normal);
+						}
+					}
+				}
 				if(options.testLag){
 					if(controller.network){
 						if(controller.network.isHost&&controller.network.playing){

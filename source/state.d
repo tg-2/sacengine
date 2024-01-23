@@ -1828,6 +1828,8 @@ struct WizardInfo(B){
 	int closestShrine=0;
 	int closestAltar=0;
 	int closestEnemyAltar=0;
+
+	int lastDamageFrame=-1;
 	mixin Assign;
 
 	void addSpell(int level,SacSpell!B spell){
@@ -6749,12 +6751,19 @@ float dealDamage(B)(ref MovingObject!B object,float damage,int attackingSide,Dam
 	return dealRawDamage(object,damage*damageMultiplier,attackingSide,damageMod,killed,state);
 }
 
+void recordDamage(B)(ref MovingObject!B object,int attackingSide,float damage,ObjectState!B state){
+	if(state.sides.getStance(attackingSide,object.side)==Stance.enemy){
+		giveXPToSide(attackingSide,damage,state);
+		if(auto wizard=state.getWizardForSide(object.side))
+			wizard.lastDamageFrame=state.frame;
+	}
+}
+
 void recordKill(B)(ref MovingObject!B object,int attackingSide,ObjectState!B state){
 	if(state.sides.getStance(attackingSide,object.side)==Stance.enemy){
 		giveXPToSide(attackingSide,object.xpOnKill,state);
-		auto wizard=state.getWizardForSide(attackingSide);
-		if(!wizard) return;
-		wizard.wizardStatistics.foesKilled+=1;
+		if(auto wizard=state.getWizardForSide(attackingSide))
+			wizard.wizardStatistics.foesKilled+=1;
 	}
 }
 
@@ -6794,8 +6803,7 @@ float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,
 	object.creatureStats.health-=actualDamage;
 	if(object.creatureStats.flags&Flags.cannotDestroyKill)
 		object.creatureStats.health=max(object.health,1.0f);
-	if(state.sides.getStance(attackingSide,object.side)==Stance.enemy)
-		giveXPToSide(attackingSide,actualDamage,state);
+	recordDamage(object,attackingSide,actualDamage,state);
 	if(object.health==0.0f){
 		recordKill(object,attackingSide,state);
 		object.kill(state);
