@@ -638,6 +638,11 @@ final class SacScene: Scene{
 		bool ctrl=!!(modifiers&Modifiers.ctrl);
 		bool shift=!!(modifiers&Modifiers.shift);
 		bool pressed(int[] keyCodes){ return keyCodes.any!(key=>eventManager.keyPressed[key]);}
+		if(options.testLag&&camera.target){
+			static immutable commands=[CommandType.moveForward,CommandType.moveBackward,CommandType.turnLeft,CommandType.turnRight];
+			import std.random;
+			controller.addCommand(Command!DagonBackend(commands[uniform(0,$)],renderSide,camera.target,camera.target,Target.init,cameraFacing));
+		}
 		if(camera.target && !observing){
 			if(pressed(options.hotkeys.moveForward) && !pressed(options.hotkeys.moveBackward)){
 				if(targetMovementState.movement!=MovementDirection.forward){
@@ -1376,7 +1381,7 @@ final class SacScene: Scene{
 						}
 					}
 				}
-				if(options.testLag){
+				/+if(options.testLag){
 					if(controller.network){
 						if(controller.network.isHost&&controller.network.playing){
 							static bool delayed=false;
@@ -1389,7 +1394,7 @@ final class SacScene: Scene{
 							}
 						}
 					}
-				}
+				}+/
 			}//else state.step();
 			// state.commit();
 			updateCameraTarget();

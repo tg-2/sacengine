@@ -587,8 +587,8 @@ abstract class Connection{
 
 abstract class ConnectionImpl: Connection{
 	protected abstract bool checkAlive();
-	protected long tryReceive(scope ubyte[] data);
-	protected long trySend(scope ubyte[] data);
+	protected abstract long tryReceive(scope ubyte[] data);
+	protected abstract long trySend(scope ubyte[] data);
 
 	bool alive_=true;
 	override bool alive(){
@@ -799,6 +799,60 @@ class ZerotierTCPConnection: ConnectionImpl{
 		fd=-1;
 	}
 	~this(){ closeImpl(); }
+}
+
+class DelayedConnection(B): ConnectionImpl{
+	ConnectionImpl base;
+	this(Connection base){
+		this.base=cast(ConnectionImpl)base;
+		enforce(!!this.base,text("delaying ",base," not supported."));
+	}
+	override bool checkAlive(){
+		updateSent();
+		return base.checkAlive();
+	}
+	override long tryReceive(scope ubyte[] data){
+		if(!alive) return 0;
+		return base.tryReceive(data);
+	}
+	static struct WithDelay{
+		MonoTime time;
+		imported!"std.container.array".Array!ubyte data;
+	}
+	Queue!WithDelay toSend;
+	MonoTime lastSpike;
+	override long trySend(scope ubyte[] data){
+		if(!alive) return 0;
+		import std.random;
+		auto time=B.time();
+		Duration delay;
+		/+if(time-lastSpike>4000.msecs&&uniform(0,100)){
+			delay=uniform!"[]"(1500,2000).msecs;
+			lastSpike=time;
+		}else+/ delay=uniform!"[]"(230,250).msecs;
+		//auto delay=uniform!"[]"(230,250).msecs;
+		auto msg=WithDelay(B.time()+delay);
+		msg.data.length=data.length;
+		Array!ubyte(msg.data).data[]=data[];
+		toSend.push(move(msg));
+		updateSent();
+		return data.length;
+	}
+	private void updateSent(){
+		auto time=B.time();
+		while(!toSend.empty&&toSend.front.time<=time){
+			base.send(Array!ubyte(toSend.front.data).data);
+			toSend.popFront();
+		}
+	}
+	override void closeImpl(){
+		if(!alive) return;
+		while(!toSend.empty){
+			base.send(Array!ubyte(toSend.front.data).data);;
+			toSend.popFront();
+		}
+		return base.closeImpl();
+	}
 }
 
 struct Joiner{
@@ -1299,6 +1353,7 @@ final class Network(B){
 	bool dropOnTimeout=true;
 	bool pauseOnDrop=false;
 	bool pauseOnDropOnce=false;
+	bool testLag=false;
 	this(ref Options options){
 		this.zerotier_net_id=options.zerotierNetwork;
 		this.advertiseGame=options.advertiseGame;
@@ -1311,6 +1366,7 @@ final class Network(B){
 		this.nudgeTimers=options.nudgeTimers;
 		this.dropOnTimeout=options.dropOnTimeout;
 		this.pauseOnDrop=options.pauseOnDrop;
+		this.testLag=options.testLag;
 		this();
 	}
 
@@ -1345,6 +1401,7 @@ final class Network(B){
 		}
 		auto connection=joiner.tryJoin(hostIP, port, useZerotier);
 		if(!connection) return false;
+		if(testLag) connection=new DelayedConnection!B(connection);
 		players=[Player(PlayerStatus.connected,Settings.init,-1,connection)];
 		import serialize_;
 		playerSettings.serialized((scope ubyte[] settingsData){
@@ -2038,6 +2095,7 @@ final class Network(B){
 				// TODO: detect reconnection attempts
 				auto connection=listener.accept();
 				if(!connection) break;
+				if(testLag) connection=new DelayedConnection!B(connection);
 				auto status=PlayerStatus.connected, settings=Settings.init, slot=-1;
 				auto newPlayer=Player(status,settings,slot,connection);
 				pendingJoin~=newPlayer;

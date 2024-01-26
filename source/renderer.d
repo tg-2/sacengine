@@ -4032,7 +4032,26 @@ struct Renderer(B){
 				unbindFont(font,rc);
 			}
 		}
-		//B.colorHUDMaterialBackend.unbind(null,rc);
+		/+auto gameState=B.scene.state;
+		auto controller=B.scene.controller;
+		if(gameState&&controller&&controller.network){
+			char[256] buf=0;
+			import std.format: formattedWrite;
+			buf[].formattedWrite!"%s %s (%s)\n%s\n%s (%s)\n%s"(
+				gameState.committedFrame,gameState.currentFrame,gameState.currentFrame-gameState.committedFrame,
+				controller.network.committedFrame-gameState.committedFrame,
+				controller.network.players.map!(x=>x.committedFrame),controller.network.players.map!(x=>x.committedFrame-gameState.committedFrame),
+				controller.network.players.map!(x=>x.ping.total!"msecs"),
+			);
+			bindFont(font,rc);
+			setFontColor(font,Color4f(1.0f,1.0f,1.0f,1.0f));
+			import std.range,std.algorithm;
+			auto text=buf[0..buf[].countUntil(0)];
+			FormatSettings settings = {flowType:FlowType.left, scale:info.hudScaling};
+			drawText(font,text,2,2,settings,info,rc);
+			unbindFont(font,rc);
+			//B.colorHUDMaterialBackend.unbind(null,rc);
+		}+/
 	}
 
 	void renderChatMessage(ref ChatMessage!B message,int yOffset,ref RenderInfo!B info,B.RenderContext rc){
