@@ -1542,6 +1542,7 @@ final class Network(B){
 	void addCommand(int frame,Command!B command)in{
 		assert(playing&&players[me].committedFrame<=frame||command.type==CommandType.surrender||command.type==CommandType.chatMessage);
 	}do{
+		tryCommit(frame);
 		if(!isCommandWithRaw(command.type))
 			broadcast(Packet.command(frame,command),[]);
 		else{
