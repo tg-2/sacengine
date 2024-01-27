@@ -23312,7 +23312,7 @@ final class GameState(B){
 		if(command.side==-1&&command.type!=CommandType.chatMessage) return;
 		if(commands.length<=frame) commands.length=frame+1;
 		commands[frame]~=command;
-		if(!isSorted(commands[frame].data)){
+		/+if(!isSorted(commands[frame].data)){
 			/+writeln("adding command: ",text("(",command.side,",",command.id,",",command.type,")"));
 			writeln("before:");
 			foreach(cframe,ref inFrame;commands.data){
@@ -23325,15 +23325,19 @@ final class GameState(B){
 					writeln(cframe,": ", inFrame.data.map!((ref c)=>text("(",c.side,",",c.id,",",c.type,")")).joiner(","));
 					stdout.flush();
 				}
-			}
-			//sort(commands[frame].data);+/
-			while(!isSorted(commands[frame].data)){
-				foreach(i;1..commands[frame].length){
-					if(commands[frame][i]<commands[frame][i-1])
-						swap(commands[frame][i-1],commands[frame][i]);
+			}+/
+			sort(commands[frame].data);
+		}+/
+		bool done;
+		do{
+			done=true;
+			foreach_reverse(i;1..commands[frame].length){
+				if(commands[frame][i]<commands[frame][i-1]){
+					swap(commands[frame][i-1],commands[frame][i]);
+					done=false;
 				}
 			}
-		}
+		}while(!done);
 		recordCommand(states,frame);
 		/+bool found=false;
 		foreach(ref excommand;commands[frame].data){
