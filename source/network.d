@@ -1767,7 +1767,7 @@ final class Network(B){
 					if(p.synchFrame>=synchQueue.end){
 						stderr.writeln("tried to synch on non-committed frame (after ",synchQueue.end,") ",players.map!((ref p)=>p.committedFrame)," ",players.map!((ref p)=>p.status));
 					}else{
-						stderr.writeln("expected hash ",synchQueue.hashes[p.frame%$],", got ",p.synchHash);
+						stderr.writeln("expected hash ",synchQueue.hashes[p.synchFrame%$],", got ",p.synchHash);
 					}
 					if(!stutterOnDesynch&&players[sender].status==PlayerStatus.playing){
 						updateStatus(sender,PlayerStatus.playingBadSynch);
