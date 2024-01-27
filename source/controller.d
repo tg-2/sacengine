@@ -297,7 +297,7 @@ final class Controller(B){
 				updateCommitted();
 				if(network.pendingResynch){
 					if(!network.isHost&&!isDesynchedStatus(network.players[network.me].status)){
-						// attempt resynch without assistance from host{
+						// attempt resynch without assistance from host
 						auto newFrame=network.resynchCommittedFrame;
 						if(state.committedFrame<=newFrame){
 							state.simulateCommittedTo!((){

@@ -405,6 +405,12 @@ int run(string[] args){
 			Thread.sleep(1.dur!"seconds");
 		}
 	}
+	/+scope(exit){
+		foreach(frame,ref inFrame;B.state.commands.data){
+			writeln(frame,": ", inFrame.data.map!((ref c)=>text("(",c.side,",",c.id,",",c.type,")")).joiner(","));
+			stdout.flush();
+		}
+	}+/
 	scope(exit) if(B.network) B.network.shutdown();
 	scope(exit) if(B.controller&&B.controller.recording){
 		B.controller.recording.finalize(B.state.commands);

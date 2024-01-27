@@ -21057,8 +21057,16 @@ final class ObjectState(B){ // (update logic)
 	int frame=0;
 	auto rng=MinstdRand0(1); // TODO: figure out what rng to use
 	// @property uint hash(){ return rng.tupleof[0]; } // rng seed as proxy for state hash.
+	/+bool hashCached=false;
+	uint cachedHash=0;
+	ObjectState!B cachedState;+/
 	@property uint hash(){
+		/+if(hashCached) return cachedHash;
+		//cachedState=new ObjectState!B(map,sides,proximity,pathFinder,triggers);
+		//cachedState.copyFrom(this);
+		hashCached=true;+/
 		import serialize_;
+		//return cachedHash=this.crc32;
 		return this.crc32;
 	}
 	int uniform(int n){
@@ -21099,6 +21107,8 @@ final class ObjectState(B){ // (update logic)
 		obj=rhs.obj;
 		sid=rhs.sid;
 		settings=rhs.settings;
+		/+hashCached=rhs.hashCached;
+		cachedHash=rhs.cachedHash;+/
 	}
 	void updateFrom(ObjectState!B rhs,Command!B[] frameCommands){
 		copyFrom(rhs);
@@ -21269,6 +21279,19 @@ final class ObjectState(B){ // (update logic)
 		}
 	}
 	void update(Command!B[] frameCommands){
+		/+if(hashCached){
+			auto cached=cachedHash;
+			hashCached=false;
+			if(hash!=cached){
+				writeln("hash at frame ",frame," changed from ",cached," to ",hash);
+				writeln("DIFF-------");
+				import diff;
+				//diffStates(cachedState,this);
+				writeln("-------DIFF");
+			}
+			hashCached=false;
+			//cachedState=null;
+		}+/
 		frame+=1;
 		proximity.start();
 		this.eachByType!(addToProximity,EachByTypeFlags.none)(this);
@@ -22993,6 +23016,8 @@ private struct StateHistory(B){
 		if(history[index].state is null)
 			history[index].state=makeState();
 		if(history[index].numPending!=history[index-1].numPending&&history[index-1].numPending!=-1){
+			/+writeln("stepping: ",frame," [",history[].map!(x=>text("(",x.state.frame,"; ",x.state.hash,",",x.numPending,")")).joiner(","),"]");
+			scope(exit) writeln("stepped: [",history[].map!(x=>text("(",x.state.frame,"; ",x.state.hash,",",x.numPending,")")).joiner(","),"]");+/
 			history[index].state.updateFrom(history[index-1].state,commands[frame].data);
 			assert(history[index].state.frame==frame+1);
 			history[index].numPending=history[index-1].numPending;
@@ -23282,13 +23307,40 @@ final class GameState(B){
 	void addCommand(int frame,Command!B command)in{
 		assert(command.id!=0);
 		assert(committedFrame<=frame);
+		//assert(command.type!=CommandType.none);
 	}do{
 		if(command.side==-1&&command.type!=CommandType.chatMessage) return;
 		if(commands.length<=frame) commands.length=frame+1;
 		commands[frame]~=command;
-		if(!isSorted(commands[frame].data))
-			sort(commands[frame].data);
+		if(!isSorted(commands[frame].data)){
+			/+writeln("adding command: ",text("(",command.side,",",command.id,",",command.type,")"));
+			writeln("before:");
+			foreach(cframe,ref inFrame;commands.data){
+				writeln(cframe,": ", inFrame.data.map!((ref c)=>text("(",c.side,",",c.id,",",c.type,")")).joiner(","));
+				stdout.flush();
+			}
+			scope(exit){
+				writeln("after:");
+				foreach(cframe,ref inFrame;commands.data){
+					writeln(cframe,": ", inFrame.data.map!((ref c)=>text("(",c.side,",",c.id,",",c.type,")")).joiner(","));
+					stdout.flush();
+				}
+			}
+			//sort(commands[frame].data);+/
+			while(!isSorted(commands[frame].data)){
+				foreach(i;1..commands[frame].length){
+					if(commands[frame][i]<commands[frame][i-1])
+						swap(commands[frame][i-1],commands[frame][i]);
+				}
+			}
+		}
 		recordCommand(states,frame);
+		/+bool found=false;
+		foreach(ref excommand;commands[frame].data){
+			found|=command.side==excommand.side&&command.id==excommand.id&&command.type==excommand.type;
+			assert(excommand.type!=CommandType.none);
+		}
+		enforce(found,text("(",command.side,",",command.id,",",command.type,")"));+/
 	}
 }
 

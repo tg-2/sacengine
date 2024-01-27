@@ -106,5 +106,5 @@ bool diffData(T)(ref Queue!T a,ref Queue!T b,lazy string path){
 }
 
 bool diffStates(B)(ObjectState!B a,ObjectState!B b){
-	return diffData!(["map","sides","proximity","pathFinder","triggers","toRemove"])(a,b,"c");
+	return diffData!(["map","sides","proximity","pathFinder","triggers","toRemove",/+"cachedState","cachedHash","hashCached"+/])(a,b,"c");
 }

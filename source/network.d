@@ -634,6 +634,7 @@ abstract class ConnectionImpl: Connection{
 		if(dataIndex<sizeAmount) return;
 		if(packet.size>data.length){
 			stderr.writeln("packet too long (",packet.size,")");
+			stderr.flush();
 			close();
 			return;
 		}
@@ -643,11 +644,13 @@ abstract class ConnectionImpl: Connection{
 		static assert(typeAmount==8);
 		if(packet.size<typeAmount){
 			stderr.writeln("packet too short (",packet.size,")");
+			stderr.flush();
 			close();
 			return;
 		}
 		if(!isPacketType(packet.type)){
 			stderr.writeln("invalid packet type ",packet.type);
+			stderr.flush();
 			close();
 			return;
 		}
@@ -684,6 +687,13 @@ abstract class ConnectionImpl: Connection{
 		bufferData(data[sent..$]);
 	}
 	final override void send(Packet packet){
+		/+if(packet.type==PacketType.commit){
+			writeln("sending: commit(",packet.commitFrame,",",packet.commitPlayer,")");
+			stdout.flush();
+		}else if(packet.type==PacketType.command||packet.type==PacketType.commandRaw){
+			writeln("sending: command(",packet.frame,",(",packet.networkCommand.side,",",packet.networkCommand.id,",",packet.networkCommand.type,"))");
+			stdout.flush();
+		}+/
 		assert(!isHeaderType(packet.type));
 		send((cast(ubyte*)&packet)[0..packet.size]);
 	}
@@ -721,8 +731,13 @@ class TCPConnection: ConnectionImpl{
 		auto ret=tcpSocket.receive(data);
 		if(ret==Socket.ERROR){
 			if(wouldHaveBlocked()) return 0;
-			try stderr.writeln(lastSocketError());
-			catch(Exception) stderr.writeln("socket error");
+			try{
+				stderr.writeln(lastSocketError());
+				stderr.flush();
+			}catch(Exception){
+				stderr.writeln("socket error");
+				stderr.flush();
+			}
 			alive_=false;
 			tcpSocket.close();
 			return 0;
@@ -743,8 +758,13 @@ class TCPConnection: ConnectionImpl{
 		auto sent=tcpSocket.send(data);
 		if(sent==Socket.ERROR){
 			if(!wouldHaveBlocked()){
-				try stderr.writeln(lastSocketError());
-				catch(Exception) stderr.writeln("socket error");
+				try{
+					stderr.writeln(lastSocketError());
+					stderr.flush();
+				}catch(Exception){
+					stderr.writeln("socket error");
+					stderr.flush();
+				}
 				alive_=false;
 				tcpSocket.close();
 			}
@@ -773,6 +793,7 @@ class ZerotierTCPConnection: ConnectionImpl{
 		if(ret<0){
 			if(zts_would_have_blocked(fd)) return 0;
 			stderr.writeln("zerotier socket error on read");
+			stderr.flush();
 			alive_=false;
 			zts_bsd_close(fd);
 			fd=-1;
@@ -785,6 +806,7 @@ class ZerotierTCPConnection: ConnectionImpl{
 		if(sent<0){
 			if(zts_would_have_blocked(fd)) return 0;
 			stderr.writeln("zerotier socket error on write");
+			stderr.flush();
 			alive_=false;
 			zts_bsd_close(fd);
 			fd=-1;
@@ -1012,8 +1034,10 @@ struct Broadcaster{
 			import netutil:getBroadcastAddresses;
 			broadcastIPs=getBroadcastAddresses();
 		}
-		if(!broadcastIPs.length)
+		if(!broadcastIPs.length){
 			stderr.writeln("warning: unable to broadcast");
+			stderr.flush();
+		}
 		foreach(broadcastIP;broadcastIPs){
 			if(useZerotier){
 				zts_sockaddr_in send_addr;
@@ -1594,16 +1618,28 @@ final class Network(B){
 		static if(error){
 			if(players[player].settings.name=="") stderr.writeln("player ",player," ",action);
 			else stderr.writeln(players[player].settings.name," (player ",player,") ",action);
+			stderr.flush();
 		}else{
 			if(players[player].settings.name=="") writeln("player ",player," ",action);
 			else writeln(players[player].settings.name," (player ",player,") ",action);
+			stdout.flush();
 		}
 	}
 	bool performPacketAction(int sender,ref Packet p,scope ubyte[] rawData,Controller!B controller)in{
 		if(isHeaderType(p.type)) assert(p.rawDataSize==rawData.length);
 		else assert(rawData.length==0);
 	}do{
-		if(dumpTraffic) writeln("from ",sender,": ",p);
+		if(dumpTraffic){
+			writeln("from ",sender,": ",p);
+			stdout.flush();
+		}
+		/+if(p.type==PacketType.commit){
+			writeln("commit(",p.commitFrame,",",p.commitPlayer,")");
+			stdout.flush();
+		}else if(p.type==PacketType.command||p.type==PacketType.commandRaw){
+			writeln("command(",p.frame,",(",p.networkCommand.side,",",p.networkCommand.id,",",p.networkCommand.type,"))");
+			stdout.flush();
+		}+/
 		final switch(p.type){
 			// peer to peer:
 			case PacketType.nop: return true;
@@ -1624,14 +1660,17 @@ final class Network(B){
 			case PacketType.updatePlayerId:
 				if(sender!=host){
 					stderr.writeln("non-host player ",sender," attempted to update id: ",p);
+					stderr.flush();
 					return false;
 				}
 				if(me!=-1){
 					stderr.writeln("host attempted to identify already identified player ",me,": ",p);
+					stderr.flush();
 					return false;
 				}
 				if(p.id<0||p.id>=players.length){
 					stderr.writeln("attempt to identify to invalid id ",p.id);
+					stderr.flush();
 					return false;
 				}
 				me=p.id;
@@ -1640,11 +1679,13 @@ final class Network(B){
 			case PacketType.updateSlot:
 				if(sender!=host){
 					stderr.writeln("non-host player ",sender," attempted to update slot: ",p);
+					stderr.flush();
 					return false;
 				}
 				int slot=p.intValue;
 				if(slot!=-1 && players[p.player].slot!=slot && players.any!((ref p)=>p.slot==slot)){
 					stderr.writeln("host attempted to put multiple players on same slot: ",p);
+					stderr.flush();
 					return false;
 				}
 				players[p.player].settings.slot=slot;
@@ -1653,6 +1694,7 @@ final class Network(B){
 			case PacketType.sendMap:
 				if(sender!=host){
 					stderr.writeln("non-host player ",sender," attempted to update map: ",p);
+					stderr.flush();
 					return false;
 				}
 				mapData.length=p.rawDataSize;
@@ -1661,6 +1703,7 @@ final class Network(B){
 			case PacketType.sendState:
 				if(sender!=host){
 					stderr.writeln("non-host player ",sender," attempted to update state: ",p);
+					stderr.flush();
 					return false;
 				}
 				controller.replaceState(rawData);
@@ -1668,6 +1711,7 @@ final class Network(B){
 			case PacketType.initGame:
 				if(sender!=host){
 					stderr.writeln("non-host player ",sender," attempted to initialize the game: ",p);
+					stderr.flush();
 					return false;
 				}
 				gameInitData.length=p.rawDataSize;
@@ -1676,10 +1720,12 @@ final class Network(B){
 			case PacketType.loadGame:
 				if(sender!=host){
 					stderr.writeln("non-host player ",sender," attempted to initiate loading: ",p);
+					stderr.flush();
 					return false;
 				}
 				if(!(isReadyToLoadStatus(players[me].status)||isReadyStatus(players[me].status))){
 					stderr.writeln("attempt to load game before ready: ",p);
+					stderr.flush();
 					return false;
 				}
 				updateStatus(PlayerStatus.loading);
@@ -1687,10 +1733,12 @@ final class Network(B){
 			case PacketType.startGame:
 				if(sender!=host){
 					stderr.writeln("non-host player ",sender," attempted to start game: ",p);
+					stderr.flush();
 					return false;
 				}
 				if(!readyToStart){
 					stderr.writeln("attempt to start game before ready: ",p);
+					stderr.flush();
 					return false;
 				}
 				Thread.sleep(p.startDelay.hnsecs);
@@ -1700,6 +1748,7 @@ final class Network(B){
 			case PacketType.setFrame:
 				if(sender!=host){
 					stderr.writeln("non-host player ",sender," attempted to set frame: ",p);
+					stderr.flush();
 					return false;
 				}
 				if(controller) controller.setFrame(p.newFrame);
@@ -1707,6 +1756,7 @@ final class Network(B){
 			case PacketType.nudgeTimer:
 				if(sender!=host){
 					stderr.writeln("non-host player ",sender," attempted to nudge timer: ",p);
+					stderr.flush();
 					return false;
 				}
 				if(controller) controller.timer.adjust(p.timerAdjustHnsecs.hnsecs);
@@ -1714,6 +1764,7 @@ final class Network(B){
 			case PacketType.resetCommitted:
 				if(sender!=host){
 					stderr.writeln("non-host player ",sender," attempted to reset committed frame: ",p);
+					stderr.flush();
 					return false;
 				}
 				if(p.commitPlayer==-1){
@@ -1724,10 +1775,12 @@ final class Network(B){
 			case PacketType.requestStatusUpdate:
 				if(sender!=host){
 					stderr.writeln("non-host player ",sender," requested status update: ",p);
+					stderr.flush();
 					return false;
 				}
 				if(isDesynchedStatus(players[me].status)&&!isDesynchedStatus(p.requestedStatus)){
 					stderr.writeln("warning: ignoring request to leave desynched status: ",p);
+					stderr.flush();
 					return false;
 				}
 				updateStatus(p.requestedStatus);
@@ -1736,10 +1789,12 @@ final class Network(B){
 				if(!checkDesynch) return true;
 				if(desynched){
 					stderr.writeln("confirmSynch packet sent while desynched: ",p);
+					stderr.flush();
 					return false;
 				}
 				if(isHost){
 					stderr.writeln("confirmSynch packet sent to host ",me,": ",p);
+					stderr.flush();
 					return false;
 				}
 				//if(controller) controller.confirmSynch(p.synchFrame,p.synchHash);
@@ -1747,16 +1802,19 @@ final class Network(B){
 			// host query:
 			case PacketType.join:
 				stderr.writeln("stray join packet: ",p);
+				stderr.flush();
 				controller.logDesynch(players[sender].settings.slot,rawData);
 				return false;
 			case PacketType.checkSynch:
 				if(!checkDesynch) return true;
 				if(desynched||players[sender].status==PlayerStatus.playingBadSynch){
 					stderr.writeln("checkSynch packet sent while desynched: ",p);
+					stderr.flush();
 					return false;
 				}
 				if(!isHost){
 					stderr.writeln("checkSynch packet sent to non-host player ",me,": ",p);
+					stderr.flush();
 					return false;
 				}
 				assert(!!synchQueue);
@@ -1766,8 +1824,10 @@ final class Network(B){
 					report!true(sender,"desynchronized at frame ",p.synchFrame);
 					if(p.synchFrame>=synchQueue.end){
 						stderr.writeln("tried to synch on non-committed frame (after ",synchQueue.end,") ",players.map!((ref p)=>p.committedFrame)," ",players.map!((ref p)=>p.status));
+						stderr.flush();
 					}else{
 						stderr.writeln("expected hash ",synchQueue.hashes[p.synchFrame%$],", got ",p.synchHash);
+						stderr.flush();
 					}
 					if(!stutterOnDesynch&&players[sender].status==PlayerStatus.playing){
 						updateStatus(sender,PlayerStatus.playingBadSynch);
@@ -1786,6 +1846,7 @@ final class Network(B){
 			case PacketType.logDesynch:
 				if(!isHost){
 					stderr.writeln("logDesynch packet sent to non-host player ",me,": ",p);
+					stderr.flush();
 					return false;
 				}
 				controller.logDesynch(players[sender].settings.slot,rawData);
@@ -1794,20 +1855,24 @@ final class Network(B){
 			case PacketType.updateSetting,PacketType.clearArraySetting,PacketType.appendArraySetting,PacketType.confirmArraySetting,PacketType.setMap,PacketType.appendMap,PacketType.confirmMap:
 				if(!sender.among(host,p.player)){
 					stderr.writeln("non-host player ",sender," attempted to update another player's settings: ",p);
+					stderr.flush();
 					return false;
 				}
 				static assert(p.player.offsetof is p.mapPlayer.offsetof);
 				if(p.player<0||p.player>=playerLimit){
 					stderr.writeln("player id out of range: ",p);
+					stderr.flush();
 					return false;
 				}
 				if(p.player>=players.length) players.length=p.player+1;
 				if(players[p.player].status>=PlayerStatus.loading){
 					stderr.writeln("attempt to change settings after game started loading: ",p);
+					stderr.flush();
 					return false;
 				}
 				if(players[p.player].status>=PlayerStatus.readyToLoad){
 					stderr.writeln("attempt to change settings after marked ready to load:  ",p);
+					stderr.flush();
 					return false;
 				}
 				if(p.type==PacketType.updateSetting){
@@ -1822,7 +1887,10 @@ final class Network(B){
 									return true;
 							}
 						}}
-						default: stderr.writeln("warning: unknown setting '",p.optionName[0..len],"'"); return false;
+						default:
+							stderr.writeln("warning: unknown setting '",p.optionName[0..len],"'");
+							stderr.flush();
+							return false;
 					}
 				}else if(p.type==PacketType.clearArraySetting||p.type==PacketType.appendArraySetting){
 					auto len=0;
@@ -1840,12 +1908,18 @@ final class Network(B){
 									return true;
 							}
 						}}
-						default: stderr.writeln("warning: unknown array setting '",p.optionName[0..len],"'"); return false;
+						default:
+							stderr.writeln("warning: unknown array setting '",p.optionName[0..len],"'");
+							stderr.flush();
+							return false;
 					}
 				}else if(p.type==PacketType.confirmArraySetting){
 					auto len=0;
 					while(len<p.optionName.length&&p.optionName[len]!='\0') ++len;
-					if(p.optionName[0..len]=="name" && players[p.player].settings.name!="") writeln("player ",p.player," is ",players[p.player].settings.name);
+					if(p.optionName[0..len]=="name" && players[p.player].settings.name!=""){
+						writeln("player ",p.player," is ",players[p.player].settings.name);
+						stdout.flush();
+					}
 					if(p.optionName[0..len]=="commit" && players[p.player].settings.commit!="") report(p.player,"is at commit ",players[p.player].settings.commit);
 				}else if(p.type==PacketType.setMap){
 					auto len=0;
@@ -1862,6 +1936,7 @@ final class Network(B){
 			case PacketType.updateStatus:
 				if(p.player<0||p.player>=playerLimit){
 					stderr.writeln("player id out of range: ",p);
+					stderr.flush();
 					return false;
 				}
 				if(p.player>=players.length) players.length=p.player+1;
@@ -1877,6 +1952,7 @@ final class Network(B){
 						if(players[p.player].settings.commit!=hostSettings.commit){
 							report!true(p.player,"tried to join with incompatible version #");
 							stderr.writeln("they were using version ",players[p.player].settings.commit);
+							stderr.flush();
 						}else report(p.player,"dropped");
 						players[p.player].drop();
 					}
@@ -1932,6 +2008,7 @@ final class Network(B){
 								return true;
 							}
 							stderr.writeln("warning: invalid command ignored (frame: ",p.frame,", committed: ",controller.state.committedFrame,").");
+							stderr.flush();
 							return false;
 						}catch(Exception e){
 							report!true(sender,"sent a command with wrong encoding: ",e.msg);
@@ -1956,6 +2033,7 @@ final class Network(B){
 			case PacketType.jsonCommand:
 				if(!isHost){
 					stderr.writeln("jsonCommand packet sent to non-host player ",me,": ",p);
+					stderr.flush();
 					return false;
 				}
 				try{
@@ -1982,7 +2060,10 @@ final class Network(B){
 		// TODO: for commands, allow direct connections, to decrease latency
 		final switch(purposeFromType(p.type)) with(PacketPurpose){
 			case peerToPeer: break;
-			case hostMessage: stderr.writeln("host message sent to host: ",p); break;
+			case hostMessage:
+				stderr.writeln("host message sent to host: ",p);
+				stderr.flush();
+				break;
 			case broadcast:
 				foreach(other;0..players.length){
 					if(other==sender) continue;
@@ -2116,10 +2197,12 @@ final class Network(B){
 						report(newId,"joined");
 					}catch(Exception e){
 						stderr.writeln("bad join attempt: ",e.msg);
+						stderr.flush();
 						pendingJoin[i].connection.close();
 					}
 				}else{
 					stderr.writeln("bad join attempt");
+					stderr.flush();
 					pendingJoin[i].connection.close();
 				}
 				swap(pendingJoin[i],pendingJoin[$-1]);
@@ -2145,6 +2228,7 @@ final class Network(B){
 		if(players[i].settings.commit!=hostSettings.commit){
 			report!true(cast(int)i,"tried to join with incompatible version #");
 			stderr.writeln("they were using version ",players[i].settings.commit);
+			stderr.flush();
 		}else report(cast(int)i,"dropped");
 		if(controller){
 			auto who=i==host?me:i;
@@ -2221,6 +2305,7 @@ final class Network(B){
 				curStatus.length=players.length;
 				copy(newStatus,curStatus.data[]);
 				writeln("player status: ",curStatus);
+				stdout.flush();
 			}
 		}
 		if(dumpNetworkSettings){
@@ -2230,6 +2315,7 @@ final class Network(B){
 				curSettings.length=players.length;
 				copy(newSettings,curSettings.data[]);
 				writeln("player settings: ",curSettings);
+				stdout.flush();
 			}
 		}
 	}
@@ -2347,9 +2433,11 @@ final class Network(B){
 						auto newName=setExtension(name,format(".%08x.scp",settings.mapHash));
 						file.rename(name,newName);
 						stderr.writeln("existing map '",name,"' moved to '",newName,"'");
+						stderr.flush();
 					}
 					mapData.data.toFile(name);
 					stderr.writeln("downloaded map '",name,"'");
+					stderr.flush();
 					if(load!is null) load(name);
 				}
 				clearMapData();
@@ -2380,6 +2468,7 @@ final class Network(B){
 			update(controller);
 		auto maxPing=connectedPlayers.map!(p=>p.ping).reduce!max;
 		writeln("pings: ",players.map!(p=>p.ping.total!"msecs").map!(p=>p<0?-1:p));
+		stdout.flush();
 		foreach(i;connectedPlayerIds){
 			if(players[i].ping!=-1.seconds){
 				updateStatus(cast(int)i,PlayerStatus.pendingStart);
