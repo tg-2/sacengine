@@ -112,7 +112,7 @@ struct JSONBuilder{
 			reverse(ntag[]);
 			value(ntag);
 		}else value("");
-		put("}");		
+		put("}");
 	}
 }
 
@@ -122,9 +122,13 @@ enum JSONCommandType{
 }
 
 struct StateFlags{
+	bool engineVersion;
+
+	bool gameInit;
 	bool state;
 	bool sideInfo;
 	bool sideState;
+	bool triggerState;
 	bool wizards;
 
 	bool creatures;
@@ -224,6 +228,28 @@ void runJSONCommand(B)(JSONCommand command,Controller!B controller,scope void de
 			auto flags=stateFlags;
 			json.numSouls=flags.numSouls;
 			bool needComma=false;
+			if(flags.engineVersion){
+				if(needComma) json.put(",");
+				struct EngineVersion{
+					string date;
+					string time;
+					string commit;
+				}
+				EngineVersion engineVersion={
+					date: __DATE__,
+					time: __TIME__,
+					commit: commit,
+				};
+				json.field("engineVersion");
+				json.value(engineVersion);
+				needComma=true;
+			}
+			if(flags.gameInit){
+				if(needComma) json.put(",");
+				json.field("gameInit");
+				json.value(gameState.gameInit);
+				needComma=true;
+			}
 			if(flags.state){
 				if(needComma) json.put(",");
 				json.field("state");
@@ -242,7 +268,13 @@ void runJSONCommand(B)(JSONCommand command,Controller!B controller,scope void de
 				if(needComma) json.put(",");
 				json.field("sideState");
 				json.value(state.sid);
-				needComma=true;				
+				needComma=true;
+			}
+			if(flags.triggerState){
+				if(needComma) json.put(",");
+				json.field("triggerState");
+				json.value(state.trig);
+				needComma=true;
 			}
 			if(flags.wizards){
 				if(needComma) json.put(",");

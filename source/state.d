@@ -23524,8 +23524,9 @@ final class GameState(B){
 	}
 
 	void initMap(){ .initMap(states); }
+	GameInit!B gameInit;
 	Array!SlotInfo slots;
-	void initGame(GameInit!B gameInit){ .initGame(states,slots,move(gameInit)); }
+	void initGame(GameInit!B gameInit){ this.gameInit=gameInit; .initGame(states,slots,move(gameInit)); }
 	void step(){ .step(states,commands); }
 	bool currentReady(){ return .currentReady(states,commands); }
 	void commit(){ .commit(states,commands); }
