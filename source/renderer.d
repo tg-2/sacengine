@@ -4052,6 +4052,16 @@ struct Renderer(B){
 			unbindFont(font,rc);
 			//B.colorHUDMaterialBackend.unbind(null,rc);
 		}+/
+		static Array!char triggerBuffer;
+		triggerBuffer.length=0;
+		triggerText((scope const(char)[] text){ foreach(c;text) triggerBuffer~=c; },state.trig,state);
+		if(triggerBuffer.length){
+			bindFont(font,rc);
+			setFontColor(font,Color4f(1.0f,1.0f,1.0f,1.0f));
+			FormatSettings settings = {flowType:FlowType.left, scale:info.hudScaling};
+			drawText(font,triggerBuffer.data,5*info.hudScaling,5*info.hudScaling,settings,info,rc);
+			unbindFont(font,rc);
+		}
 	}
 
 	void renderChatMessage(ref ChatMessage!B message,int yOffset,ref RenderInfo!B info,B.RenderContext rc){

@@ -20973,6 +20973,7 @@ final class ObjectState(B){ // (update logic)
 		this.pathFinder=pathFinder;
 		this.triggers=triggers;
 		sid=SideManager!B(32);
+		// trig=TriggerState!B();
 	}
 	static struct Displacement{
 		ObjectState!B state;
@@ -21106,6 +21107,7 @@ final class ObjectState(B){ // (update logic)
 		rng=rhs.rng;
 		obj=rhs.obj;
 		sid=rhs.sid;
+		trig=rhs.trig;
 		settings=rhs.settings;
 		/+hashCached=rhs.hashCached;
 		cachedHash=rhs.cachedHash;+/
@@ -21294,6 +21296,7 @@ final class ObjectState(B){ // (update logic)
 		}+/
 		frame+=1;
 		proximity.start();
+		trig.beginTriggers(this);
 		this.eachByType!(addToProximity,EachByTypeFlags.none)(this);
 		this.eachEffects!updateEffects(this);
 		this.eachParticles!updateParticles(this);
@@ -21301,21 +21304,32 @@ final class ObjectState(B){ // (update logic)
 		foreach(command;frameCommands)
 			applyCommand(command);
 		this.eachStatic!updateStructure(this);
-		this.eachMoving!updateCreature(this);
+		this.eachMoving!((ref obj,state){
+			obj.updateCreature(state);
+			obj.countNTT(state);
+		})(this);
 		foreach(side;0..cast(int)sid.sides.length) if(auto q=aiQueue(side)) if(!q.empty){
 			this.movingObjectById!((ref obj){ obj.creatureAI.isOnAIQueue=false; },(){})(q.front);
 			q.popFront();
 		}
 		this.eachSoul!updateSoul(this);
-		this.eachBuilding!updateBuilding(this);
-		this.eachWizard!updateWizard(this);
+		this.eachBuilding!((ref obj,state){
+			obj.updateBuilding(state);
+			obj.countNTT(state);
+		})(this);
+		this.eachWizard!((ref wiz,state){
+			wiz.updateWizard(state);
+			wiz.countWizard(state);
+		})(this);
 		this.performRenderModeUpdates();
 		this.performRemovals();
+		trig.endTriggers(this);
 		proximity.end();
 	}
 	ObjectManager!B obj;
 	struct Settings{
 		GameMode gameMode=GameMode.skirmish;
+		int gameModeParam=0;
 		bool enableParticles=true;
 		bool greenAllySouls=false;
 	}
@@ -21561,6 +21575,8 @@ final class ObjectState(B){ // (update logic)
 	void defeat(int side){
 		if(!(0<=side&&side<sid.sides.length))
 		   return;
+		if(isDefeated(side)||isVictorious(side))
+			return;
 		sid.defeat(side);
 		if(settings.gameMode!=GameMode.scenario)
 		if(auto r=sid.getNewVictories(this)){
@@ -21596,12 +21612,20 @@ final class ObjectState(B){ // (update logic)
 		}
 	}
 	void victory(int side){
+		if(!(0<=side&&side<sid.sides.length))
+		   return;
+		if(isDefeated(side)||isVictorious(side))
+			return;
 		sid.victory(side);
 		if(systemMessagesEnabled){
 			auto message=makeChatMessage!B(-1,-1,ChatMessageType.system,getSideName(side,this),"is victorious!",frame);
 			sendChatMessage(move(message),this);
 		}
 	}
+
+	TriggerState!B trig;
+
+
 	int buildingIdForGuardian(int creature){
 		foreach(ref guardian;obj.opaqueObjects.effects.guardians){
 			if(guardian.creature==creature)
@@ -22172,6 +22196,203 @@ final class Triggers(B){
 	}
 	Trig trig;
 	this(Trig trig){ this.trig=trig; }
+}
+
+struct TriggerState(B){
+	int[32] numSouls;
+	int[32] numManaliths;
+}
+
+void beginTriggers(B)(ref TriggerState!B triggerState,ObjectState!B state){
+	with(triggerState){
+		numSouls[]=0;
+		numManaliths[]=0;
+	}
+}
+void countNTT(T,B)(ref T obj,ObjectState!B state){
+	int side=obj.side;
+	if(!(0<=side&&side<32)) return;
+	static if(is(T==MovingObject!B)){
+		final switch(obj.creatureState.mode)with(CreatureMode){
+			case idle,moving,dying,dead,deadToGhost,idleGhost,movingGhost,ghostToIdle,dissolving,reviving,fastReviving,
+				takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
+				shooting,usingAbility,pulling,pumping,torturing,convertReviving,thrashing,pretendingToDie,
+				playingDead,pretendingToRevive,rockForm,firewalk:
+				break;
+			case preSpawning,spawning: return; // do not count souls of spawning creatures
+		}
+		state.trig.numSouls[side]+=obj.sacObject.numSouls;
+	}else static if(is(T==Building!B)){
+		state.trig.numManaliths[side]+=!(obj.flags&AdditionalBuildingFlags.inactive)&obj.isManalith;
+	}else static assert(0,"unsupported");
+}
+void countWizard(B)(ref WizardInfo!B wiz,ObjectState!B state){
+	int side=state.movingObjectById!(.side,()=>-1)(wiz.id,state);
+	if(!(0<=side&&side<32)) return;
+	state.trig.numSouls[side]+=wiz.souls;
+}
+
+struct Teams{
+	int[32] teams;
+	int numTeams;
+}
+
+Teams computeTeams(B)(ObjectState!B state){
+	Teams r;
+	int altarSides=state.sid.altarSides;
+	int visited=0;
+	foreach(i;0..to!int(state.sides.sides.length)){
+		if(!((altarSides>>i)&1)) continue;
+		if(((visited>>i)&1)) continue;
+		int team=state.sides.sides[i].allies&altarSides;
+		r.teams[r.numTeams++]=team;
+		visited|=team;
+	}
+	return r;
+}
+
+int numTeamKills(B)(int team,ObjectState!B state){
+	int numKills=0;
+	foreach(i;0..to!int(state.sides.sides.length)){
+		if(!((team>>i)&1)) continue;
+		if(auto wiz=state.getWizardForSide(i))
+			numKills+=wiz.wizardStatistics.foesKilled;
+	}
+	return numKills;
+}
+
+int numTeamManaliths(B)(int team,ObjectState!B state){
+	int numManaliths=0;
+	foreach(i;0..to!int(state.sides.sides.length)){
+		if(!((team>>i)&1)) continue;
+		numManaliths+=state.trig.numManaliths[i];
+	}
+	return numManaliths;
+}
+
+int numTeamSouls(B)(int team,ObjectState!B state){
+	int numSouls=0;
+	foreach(i;0..to!int(state.sides.sides.length)){
+		if(!((team>>i)&1)) continue;
+		numSouls+=state.trig.numSouls[i];
+	}
+	return numSouls;
+}
+
+void checkWinConditions(B)(ref TriggerState!B triggerState,ObjectState!B state){
+	int winners=0;
+	final switch(state.settings.gameMode){
+		case GameMode.scenario: break;
+		case GameMode.skirmish: break; // fully handled in state.defeat
+		case GameMode.slaughter:
+			auto requiredNumKills=state.settings.gameModeParam;
+			auto t=computeTeams(state);
+			foreach(team;t.teams[0..t.numTeams]){
+				if(numTeamKills(team,state)>=requiredNumKills)
+					winners|=team;
+			}
+			break;
+		case GameMode.domination:
+			auto requiredNumManaliths=state.settings.gameModeParam;
+			auto t=computeTeams(state);
+			foreach(team;t.teams[0..t.numTeams]){
+				if(numTeamManaliths(team,state)>=requiredNumManaliths)
+					winners|=team;
+			}
+			break;
+		case GameMode.soulHarvest:
+			auto requiredNumSouls=state.settings.gameModeParam;
+			auto t=computeTeams(state);
+			foreach(team;t.teams[0..t.numTeams]){
+				if(numTeamSouls(team,state)>=requiredNumSouls)
+					winners|=team;
+			}
+			break;
+	}
+	if(winners){
+		int altarSides=state.sid.altarSides;
+		int losers=altarSides&~winners;
+		foreach(i;0..to!int(state.sides.sides.length)){
+			if((losers>>i)&1){
+				lose(i,state);
+				state.defeat(i);
+			}
+		}
+		foreach(i;0..to!int(state.sides.sides.length)){
+			if((winners>>i)&1)
+				state.victory(i);
+		}
+	}
+}
+
+void triggerText(B)(scope void delegate(scope const(char)[]) sink,ref TriggerState!B triggerState,ObjectState!B state){
+	void putTeam(int team){
+		bool first=true;
+		bool hasComma=false;
+		foreach(i;0..to!int(state.sides.sides.length)){
+			if(!((team>>i)&1)) continue;
+			static assert(state.sides.sides.length<=32);
+			bool last=i>=state.sides.sides.length||team<(1<<(i+1));
+			if(!first&&(!last||hasComma)){
+				sink(", ");
+				hasComma=true;
+			}
+			if(!first&&last) sink(hasComma?"and ":" and ");
+			first=false;
+			auto name=getSideName(i,state);
+			if(name=="") name="Anonymous";
+			sink(name);
+			sink("'s");
+		}
+	}
+	void putNumber(int number){
+		import std.format:formattedWrite;
+		sink.formattedWrite!"%s"(number);
+	}
+	final switch(state.settings.gameMode){
+		case GameMode.scenario: break;
+		case GameMode.skirmish: break;
+		case GameMode.slaughter:
+			auto requiredNumKills=state.settings.gameModeParam;
+			putNumber(requiredNumKills);
+			sink(" kills required\n");
+			auto t=computeTeams(state);
+			foreach(team;t.teams[0..t.numTeams]){
+				putTeam(team);
+				sink(" kills: ");
+				putNumber(numTeamKills(team,state));
+				sink("\n");
+			}
+			break;
+		case GameMode.domination:
+			auto requiredNumManaliths=state.settings.gameModeParam;
+			putNumber(requiredNumManaliths);
+			sink(" Manaliths required\n");
+			auto t=computeTeams(state);
+			foreach(team;t.teams[0..t.numTeams]){
+				putTeam(team);
+				sink(" Manaliths: ");
+				putNumber(numTeamManaliths(team,state));
+				sink("\n");
+			}
+			break;
+		case GameMode.soulHarvest:
+			auto requiredNumSouls=state.settings.gameModeParam;
+			putNumber(requiredNumSouls);
+			sink(" souls required\n");
+			auto t=computeTeams(state);
+			foreach(team;t.teams[0..t.numTeams]){
+				putTeam(team);
+				sink(" souls: ");
+				putNumber(numTeamSouls(team,state));
+				sink("\n");
+			}
+			break;
+	}
+}
+
+void endTriggers(B)(ref TriggerState!B triggerState,ObjectState!B state){
+	checkWinConditions(triggerState,state);
 }
 
 enum TargetType{
@@ -22781,6 +23002,7 @@ struct GameInit(B){
 	}
 	StanceSetting[] stanceSettings;
 	GameMode gameMode;
+	int gameModeParam;
 	int replicateCreatures=1;
 	int protectManafounts=0;
 	bool terrainSineWave=false;
@@ -22795,6 +23017,7 @@ struct SlotInfo{
 
 void initGame(B)(ObjectState!B state,ref Array!SlotInfo slots,GameInit!B gameInit){ // returns id of controlled wizard
 	state.settings.gameMode=gameInit.gameMode;
+	state.settings.gameModeParam=gameInit.gameModeParam;
 	foreach(ref structure;state.map.ntts.structures)
 		state.placeStructure(structure);
 	foreach(ref wizard;state.map.ntts.wizards)
@@ -22854,6 +23077,11 @@ void initGame(B)(ObjectState!B state,ref Array!SlotInfo slots,GameInit!B gameIni
 		state.sides.setStance(stanceSetting.from,stanceSetting.towards,stanceSetting.stance);
 	//state.sid.altarSides=getAltarSides(state);
 	state.sid.altarSides=altarSides;
+
+	state.trig.beginTriggers(state);
+	state.eachMoving!countNTT(state);
+	state.eachBuilding!countNTT(state);
+	state.eachWizard!countWizard(state);
 }
 
 private struct TwoState(B){
