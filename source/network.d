@@ -870,7 +870,7 @@ class DelayedConnection(B): ConnectionImpl{
 	override void closeImpl(){
 		if(!alive) return;
 		while(!toSend.empty){
-			base.send(Array!ubyte(toSend.front.data).data);;
+			base.send(Array!ubyte(toSend.front.data).data);
 			toSend.popFront();
 		}
 		return base.closeImpl();
