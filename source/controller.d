@@ -123,9 +123,12 @@ final class Controller(B){
 	}
 
 	bool isControllingSide(int side){
+		if(side!=controlledSide) return false;
 		if(network&&!network.players[network.me].isControllingState)
 			return false;
-		return side==controlledSide;
+		if(state.current.isDefeated(side))
+			return false;
+		return true;
 	}
 	void addCommand(Command!B command)in{
 		assert(command.id==0);
