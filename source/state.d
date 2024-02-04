@@ -2316,8 +2316,6 @@ struct HealCasting(B){
 }
 struct Heal(B){
 	int creature;
-	float healthRegenerationPerFrame;
-	int timer;
 }
 struct LightningCasting(B){
 	ManaDrain!B manaDrain;
@@ -7737,14 +7735,24 @@ bool castHeal(B)(int creature,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState
 	return true;
 }
 enum healSpeed=240.0f;
-bool heal(B)(int creature,SacSpell!B spell,ObjectState!B state){
-	if(!state.movingObjectById!(canHeal,()=>false)(creature,state)) return false;
-	playSoundAt("laeh",creature,state,2.0f);
+bool heal(B)(ref MovingObject!B object,SacSpell!B spell,ObjectState!B state){
+	if(!object.canHeal(state)) return false;
+	playSoundAt("laeh",object.id,state,2.0f);
 	auto amount=spell.amount;
 	auto duration=spell.amount==float.infinity?int.max:cast(int)ceil(amount/healSpeed*updateFPS);
 	auto healthRegenerationPerFrame=spell.amount==float.infinity?healSpeed/updateFPS:amount/duration;
-	state.addEffect(Heal!B(creature,healthRegenerationPerFrame,duration));
+	if(object.creatureStats.effects.healTimer==-1){
+		object.creatureStats.effects.healTimer=duration;
+		object.creatureStats.effects.healPerFrame=healthRegenerationPerFrame;
+		state.addEffect(Heal!B(object.id));
+	}else{
+		object.creatureStats.effects.healTimer=satAdd(object.creatureStats.effects.healTimer,duration);
+		object.creatureStats.effects.healPerFrame=max(object.creatureStats.effects.healPerFrame,healthRegenerationPerFrame);
+	}
 	return true;
+}
+bool heal(B)(int creature,SacSpell!B spell,ObjectState!B state){
+	return state.movingObjectById!(heal,()=>false)(creature,spell,state);
 }
 
 bool castLightning(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
@@ -12548,12 +12556,18 @@ void animateHeal(B)(ref MovingObject!B obj,ObjectState!B state){
 }
 
 bool updateHeal(B)(ref Heal!B heal,ObjectState!B state){
-	heal.timer-=1;
-	if(heal.timer<0) return false;
 	return state.movingObjectById!((ref obj,heal,state){
-		if(!obj.canHeal(state)) return false;
-		obj.heal(heal.healthRegenerationPerFrame,state);
-		if(obj.health(state)==obj.creatureStats.maxHealth) return false;
+		bool end(){
+			obj.creatureStats.effects.healPerFrame=0.0f;
+			obj.creatureStats.effects.healTimer=-1;
+			return false;
+		}
+		if(!obj.canHeal(state)) return end();
+		obj.creatureStats.effects.healTimer-=1;
+		if(obj.creatureStats.effects.healTimer<0) return end();
+		obj.heal(obj.creatureStats.effects.healPerFrame,state);
+		if(obj.health(state)==obj.creatureStats.maxHealth)
+			return end();
 		obj.animateHeal(state);
 		return true;
 	},function bool(){ return false; })(heal.creature,heal,state);

@@ -498,6 +498,16 @@ struct SmallArray(T,size_t n){
 	}
 }
 
+T satAdd(T)(T a,T b)in{
+	assert(a>=0&&b>=0);
+}do{
+	import core.checkedint:adds;
+	bool overflow=false;
+	auto r=adds(a,b,overflow);
+	if(overflow) return T.max;
+	return r;
+}
+
 Vector3f[2] cintp2(Vector3f[2][2] locations,float t){
 	auto p0=locations[0][0], m0=locations[0][1];
 	auto p1=locations[1][0], m1=locations[1][1];
