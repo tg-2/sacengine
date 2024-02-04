@@ -193,7 +193,7 @@ class SacSpell(B){
 			if(tag==SpellTag.firewalk) range*=0.75f;
 			if(tag==SpellTag.teleport||tag==SpellTag.haloOfEarth) flags1&=~cast(int)SpelFlags1.shield;
 			amount=spel.amount;
-			if(tag==SpellTag.scarabShoot||tag==SpellTag.rainbow||tag==SpellTag.healingShower) amount=short.max;
+			if(tag==SpellTag.scarabShoot||tag==SpellTag.rainbow||tag==SpellTag.healingShower) amount=float.infinity;
 			duration=spel.duration;
 			if(tag==SpellTag.heal) duration=4.5f;
 			effectRange=spel.effectRange;

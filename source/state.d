@@ -7739,9 +7739,9 @@ enum healSpeed=240.0f;
 bool heal(B)(ref MovingObject!B object,SacSpell!B spell,ObjectState!B state){
 	if(!object.canHeal(state)) return false;
 	playSoundAt("laeh",object.id,state,2.0f);
-	auto amount=spell.amount;
-	auto duration=spell.amount==float.infinity?int.max:cast(int)ceil(amount/healSpeed*updateFPS);
-	auto healthRegenerationPerFrame=spell.amount==float.infinity?healSpeed/updateFPS:amount/duration;
+	auto amount=spell.amount==float.infinity?object.creatureStats.maxHealth:spell.amount;
+	auto duration=amount==float.infinity?int.max:cast(int)ceil(amount/healSpeed*updateFPS);
+	auto healthRegenerationPerFrame=amount==float.infinity?healSpeed/updateFPS:amount/duration;
 	if(object.creatureStats.effects.healTimer==-1){
 		object.creatureStats.effects.healTimer=duration;
 		object.creatureStats.effects.healPerFrame=healthRegenerationPerFrame;
