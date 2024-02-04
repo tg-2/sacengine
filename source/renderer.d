@@ -4353,7 +4353,10 @@ struct Renderer(B){
 			renderRectangleSelectFrame(info,rc);
 			renderCursor(options.cursorSize,state,info,rc);
 			renderMouseoverBox(options.cursorSize,state,forms,info,rc);
-		}else renderChatMessages(state,networkState,info,rc);
+		}else{
+			renderChatMessages(state,networkState,info,rc);
+			if(state) renderText(state,info,rc);
+		}
 	}
 }
 
