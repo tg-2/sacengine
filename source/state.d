@@ -6665,6 +6665,7 @@ enum DamageMod{
 	ignite=1<<6,
 	desecration=1<<7,
 	peirceShield=1<<8,
+	ignoreFriendly=1<<9,
 }
 
 float attackDamageFactor(B)(ref MovingObject!B attacker,bool targetIsCreature,DamageMod damageMod,ObjectState!B state){
@@ -6769,7 +6770,7 @@ float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,
 	float actualDamage;
 	if(!(damageMod&DamageMod.fall)||object.isSacDoctor){ // TODO: do sac doctors take fall damage at all?
 		if(!object.canDamage(state)) return 0.0f;
-		actualDamage=damage*state.sideDamageMultiplier(attackingSide,object.side);
+		actualDamage=damage*state.sideDamageMultiplier(attackingSide,object.side,damageMod);
 		if(object.creatureStats.effects.isGuardian){
 			if(damageMod&DamageMod.spell) actualDamage*=0.5f;
 			else if(damageMod&DamageMod.ranged) actualDamage*=0.25f;
@@ -6925,7 +6926,7 @@ float dealDamageIgnoreGuardians(B)(ref Building!B building,float damage,int atta
 		if(damageMod&DamageMod.splash) damageMultiplier*=building.splashSpellResistance;
 		else damageMultiplier*=building.directSpellResistance;
 	}
-	auto actualDamage=min(building.health,damageMultiplier*damage*state.sideDamageMultiplier(attackingSide,building.side));
+	auto actualDamage=min(building.health,damageMultiplier*damage*state.sideDamageMultiplier(attackingSide,building.side,damageMod));
 	building.health-=actualDamage;
 	if(building.flags&Flags.cannotDestroyKill)
 		building.health=max(building.health,1.0f);
@@ -7153,7 +7154,7 @@ float dealDesecrationDamage(B)(ref MovingObject!B object,float damage,int caster
 float dealPoisonDamage(B)(ref MovingObject!B object,float damage,int attacker,int attackerSide,DamageMod damageMod,ObjectState!B state){
 	if(object.id==attacker?object.isGuardian:state.movingObjectById!((ref attacker)=>attacker.isGuardian,()=>false)(attacker))
 		damage*=1.5f;
-	return object.dealDamage(damage,attacker,attackerSide,damageMod,state);
+	return object.dealDamage(damage,attacker,attackerSide,damageMod|DamageMod.ignoreFriendly,state);
 }
 
 float dealFireDamage(T,B)(ref T object,float rangedDamage,float spellDamage,int attacker,int attackerSide,DamageMod damageMod,ObjectState!B state){
@@ -8423,8 +8424,9 @@ bool poison(B)(ref MovingObject!B obj,float poisonDamage,int lifetime,bool infec
 	return true;
 }
 
+enum poisonNerfFactor=1.3f;
 bool poison(B)(ref MovingObject!B obj,SacSpell!B rangedAttack,bool infectuous,int attacker,int attackerSide,DamageMod damageMod,ObjectState!B state){
-	return poison(obj,rangedAttack.amount/rangedAttack.duration,cast(int)(rangedAttack.duration*updateFPS),infectuous,attacker,attackerSide,damageMod,state);
+	return poison(obj,rangedAttack.amount/rangedAttack.duration/poisonNerfFactor,cast(int)(rangedAttack.duration*updateFPS),infectuous,attacker,attackerSide,damageMod,state);
 }
 
 bool scarabShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
@@ -16435,6 +16437,7 @@ bool updateNecrylProjectile(B)(ref NecrylProjectile!B necrylProjectile,ObjectSta
 		switch(target.type){
 			case TargetType.terrain: return terminate();
 			case TargetType.creature:
+				state.movingObjectById!(healFromDrain,(){})(attacker,rangedAttack.amount,state);
 				state.movingObjectById!(poison,()=>false)(target.id,rangedAttack,true,attacker,side,DamageMod.ranged,state);
 				return terminate();
 			case TargetType.building:
@@ -17265,6 +17268,7 @@ bool updatePoisonDart(B)(ref PoisonDart!B poisonDart,ObjectState!B state){
 		switch(target.type){
 			case TargetType.terrain: return terminate();
 			case TargetType.creature:
+				state.movingObjectById!(healFromDrain,(){})(attacker,rangedAttack.amount,state);
 				state.movingObjectById!(poison,()=>false)(target.id,rangedAttack,false,attacker,side,DamageMod.ranged,state);
 				return terminate();
 			case TargetType.building:
@@ -17783,6 +17787,7 @@ bool updateHellmouthProjectile(B)(ref HellmouthProjectile!B hellmouthProjectile,
 					terminate();
 					break;
 				case TargetType.creature:
+					state.movingObjectById!(healFromDrain,(){})(attacker,rangedAttack.amount,state);
 					state.movingObjectById!(poison,()=>false)(target.id,rangedAttack,false,attacker,side,DamageMod.ranged,state);
 					startFollowing(target.id);
 					break;
@@ -20972,10 +20977,12 @@ final class ObjectState(B){ // (update logic)
 	float manaRegenAt(int side,Vector3f position){
 		return proximity.manaRegenAt(side,position,this);
 	}
-	float sideDamageMultiplier(int attackerSide,int defenderSide){
+	float sideDamageMultiplier(int attackerSide,int defenderSide,DamageMod damageMod){
 		if(attackerSide==-1) return 1.0f;
 		switch(sides.getStance(attackerSide,defenderSide)){
-			case Stance.ally: return 0.5f; // TODO: option
+			case Stance.ally:
+				if(damageMod&DamageMod.ignoreFriendly) goto default;
+				return 0.5f; // TODO: option
 			default: return 1.0f;
 		}
 	}
