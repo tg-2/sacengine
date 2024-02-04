@@ -11699,34 +11699,33 @@ bool updateSpeedUp(B)(ref SpeedUp!B speedUp,ObjectState!B state){
 		framesLeft-=1;
 		return state.movingObjectById!((ref obj,framesLeft,state){
 			enum coolDownTime=(1.0f*updateFPS);
-			if(obj.health==0.0f){
-				if(framesLeft>=coolDownTime)
+			void remove(){
+				if(framesLeft+1>=coolDownTime){
 					obj.creatureStats.effects.numSpeedUps-=1;
+					if(!obj.creatureStats.effects.numSpeedUps)
+						obj.creatureStats.effects.speedUpFrame=-1;
+				}
+			}
+			if(obj.health==0.0f){
+				remove();
 				framesLeft=0;
 			}
 			if(obj.creatureStats.effects.speedUpUpdateFrame!=state.frame){
 				obj.creatureStats.effects.speedUp=1.0f;
 				obj.creatureStats.effects.speedUpUpdateFrame=state.frame;
 			}
-			if(!framesLeft){
-				if(!obj.creatureStats.effects.speedUp)
-					obj.creatureStats.effects.speedUpFrame=-1;
-				return false;
-			}
+			if(!framesLeft) return false;
 			//float speedUpFactor=1.75f^^min(1.0f,framesLeft*(1.0f/(0.5f*updateFPS)));
 			float speedUpFactor=1.0f+0.75f*min(1.0f,framesLeft*(1.0f/coolDownTime));
 			obj.creatureStats.effects.speedUp*=speedUpFactor;
-			if(framesLeft<coolDownTime){
-				if(framesLeft+1>=coolDownTime)
-					obj.creatureStats.effects.numSpeedUps-=1;
-				if(framesLeft) return true;
-			}
-			auto hitbox=obj.hitbox;
-			auto sacParticle=SacParticle!B.get(ParticleType.speedUp);
-			auto scale=1.0f; // TODO: does this differ for different creatures?
-			auto frame=state.uniform!"[)"(0,sacParticle.numFrames);
-			state.addParticle(Particle!B(sacParticle,state.uniform(hitbox),Vector3f(0.0f,0.0f,0.0f),scale,sacParticle.numFrames,frame));
-			state.addEffect(SpeedUpShadow!B(obj.id,obj.position,obj.rotation,obj.animationState,obj.frame));
+			if(framesLeft>=coolDownTime){
+				auto hitbox=obj.hitbox;
+				auto sacParticle=SacParticle!B.get(ParticleType.speedUp);
+				auto scale=1.0f; // TODO: does this differ for different creatures?
+				auto frame=state.uniform!"[)"(0,sacParticle.numFrames);
+				state.addParticle(Particle!B(sacParticle,state.uniform(hitbox),Vector3f(0.0f,0.0f,0.0f),scale,sacParticle.numFrames,frame));
+				state.addEffect(SpeedUpShadow!B(obj.id,obj.position,obj.rotation,obj.animationState,obj.frame));
+			}else remove();
 			return true;
 		},()=>false)(creature,framesLeft,state);
 	}
