@@ -10630,8 +10630,10 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 			if(object.animationState.among(AnimationState.spellcastEnd,AnimationState.runSpellcastEnd)){
 				if(!(sacObject.castingTime(object.animationState)*updateAnimFactor<=object.frame))
 					goto Lcasting;
-			}else if(object.frame!=0)
-				goto Lcasting;
+			}else if(!object.animationState.among(AnimationState.spellcast,AnimationState.runSpellcast)){
+				if(object.frame!=0)
+					goto Lcasting;
+			}
 			if(newMode==CreatureMode.castingMoving){
 				if(object.animationState.among(AnimationState.spellcastStart,AnimationState.runSpellcastStart))
 					object.animationState=AnimationState.runSpellcastStart;
