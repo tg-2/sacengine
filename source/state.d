@@ -7258,12 +7258,12 @@ int getCastingTime(B)(ref MovingObject!B object,int numFrames,bool stationary,Ob
 	auto mid=sacObject.numFrames(stationary?AnimationState.spellcast:AnimationState.runSpellcast)*updateAnimFactor;
 	//auto end=sacObject.numFrames(stationary?AnimationState.spellcastEnd:AnimationState.runSpellcastEnd)*updateAnimFactor;
 	auto castingTime=sacObject.castingTime(stationary?AnimationState.spellcastEnd:AnimationState.runSpellcastEnd)*updateAnimFactor;
-	return start+max(0,numFrames-start-castingTime+mid-1)/mid*mid+castingTime;
+	return start+max(0,numFrames-start+mid-1)/mid*mid+castingTime;
 }
 int getCastingTime(B)(ref MovingObject!B object,SacSpell!B spell,bool stationary,ObjectState!B state){
 	auto wizard=state.getWizard(object.id);
 	int numFrames=cast(int)ceil(updateFPS*spell.castingTime(wizard.level));
-	return getCastingTime(object,spell,stationary,state);
+	return getCastingTime(object,numFrames,stationary,state);
 }
 
 enum manaEpsilon=1e-2f;
