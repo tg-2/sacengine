@@ -10672,8 +10672,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 				else if(object.animationState==AnimationState.runSpellcastStart)
 					object.animationState=AnimationState.runSpellcast;
 				auto endAnimation=object.animationState==AnimationState.runSpellcast?AnimationState.runSpellcastEnd:AnimationState.spellcastEnd;
-				if(sacObject.castingTime(endAnimation)*updateAnimFactor>=object.creatureState.timer)
-					object.animationState=endAnimation;
+				if(object.creatureState.timer<=0) object.animationState=endAnimation;
 			}
 			break;
 		case CreatureMode.shooting:
