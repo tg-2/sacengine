@@ -10627,6 +10627,11 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 		case CreatureMode.casting,CreatureMode.castingMoving:
 			auto newMode=object.creatureState.movementDirection==MovementDirection.none||object.creatureStats.effects.fixed?CreatureMode.casting:CreatureMode.castingMoving;
 			object.creatureState.mode=newMode;
+			if(object.animationState.among(AnimationState.spellcastEnd,AnimationState.runSpellcastEnd)){
+				if(!(sacObject.castingTime(object.animationState)*updateAnimFactor<=object.frame))
+					goto Lcasting;
+			}else if(object.frame!=0)
+				goto Lcasting;
 			if(newMode==CreatureMode.castingMoving){
 				if(object.animationState.among(AnimationState.spellcastStart,AnimationState.runSpellcastStart))
 					object.animationState=AnimationState.runSpellcastStart;
@@ -10666,7 +10671,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 					object.animationState=AnimationState.spellcast;
 				else if(object.animationState==AnimationState.runSpellcastStart)
 					object.animationState=AnimationState.runSpellcast;
-				auto endAnimation=object.creatureState.mode==CreatureMode.castingMoving?AnimationState.runSpellcastEnd:AnimationState.spellcastEnd;
+				auto endAnimation=object.animationState==AnimationState.runSpellcast?AnimationState.runSpellcastEnd:AnimationState.spellcastEnd;
 				if(sacObject.castingTime(endAnimation)*updateAnimFactor>=object.creatureState.timer)
 					object.animationState=endAnimation;
 			}
