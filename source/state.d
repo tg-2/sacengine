@@ -16856,9 +16856,9 @@ bool updateVortexEffect(B)(ref VortexEffect!B vortex,ObjectState!B state){
 		}
 		auto diag=sqrt(2.0f)*radius;
 		Vector3f[2] hitbox=[Vector3f(position.x-diag,position.y-diag,position.z-0.25f*height),Vector3f(position.x+diag,position.y+diag,position.z+height)];
-		static void influence(ProximityEntry target,ObjectState!B state,VortexEffect!B *vortex,float radius,float height){
+		static void influence(ProximityEntry target,ObjectState!B state,VortexEffect!B *vortex,float radius,float height,int frame){
 			state.movingObjectById!((ref obj,vortex,radius,height,state){
-				if(obj.creatureState.movement!=CreatureMovement.tumbling){
+				if(frame<0.75f*updateFPS&&obj.creatureState.movement!=CreatureMovement.tumbling){
 					auto direction=(vortex.position.xy-obj.center.xy).normalized*1.5f;
 					//obj.catapult(Vector3f(1.5f*direction.x,1.5f*direction.y,2.5f),state);
 					//obj.catapult(Vector3f(1.5f*direction.y,-1.5f*direction.x,2.5f),state);
@@ -16872,7 +16872,7 @@ bool updateVortexEffect(B)(ref VortexEffect!B vortex,ObjectState!B state){
 				}
 			},(){})(target.id,vortex,radius,height,state);
 		}
-		if(frame<0.75f*duration*updateFPS) collisionTargets!influence(hitbox,state,&vortex,radius,height);
+		if(frame<0.75f*duration*updateFPS) collisionTargets!influence(hitbox,state,&vortex,radius,height,frame);
 		return ++frame<=duration*updateFPS;
 	}
 }
