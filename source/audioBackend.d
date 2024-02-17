@@ -140,6 +140,7 @@ final class AudioBackend(B){
 					if(finished&&themeAfter!=Theme.none){
 						themes[currentTheme].stop();
 						currentTheme=nextTheme=themeAfter;
+						themes[currentTheme].source.gain=musicGain;
 						themeAfter=Theme.none;
 						themes[currentTheme].play();
 					}else themes[currentTheme].source.play();
