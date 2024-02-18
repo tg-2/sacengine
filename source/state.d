@@ -10678,7 +10678,6 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 					return;
 				}
 				auto endAnimation=object.animationState==AnimationState.runSpellcast?AnimationState.runSpellcastEnd:AnimationState.spellcastEnd;
-				writeln(object.creatureState.timer);
 				if(object.creatureState.timer<=0) object.animationState=endAnimation;
 			}
 			break;
