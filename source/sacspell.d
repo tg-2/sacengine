@@ -96,7 +96,7 @@ class SacSpell(B){
 		int spellLevel=spellOrder/100;
 		auto bonus=min(5,max(0,level-spellLevel));
 		auto frames=(spellFrames*10-spellFrames*bonus)/10;
-		return frames*(0.76f/60.0f);
+		return frames/(1.35f*60.0f);
 		/+switch(tag){
 			case "htlm":
 				static assert(manalithCastingTimes.length==10);

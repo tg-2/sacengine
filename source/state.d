@@ -7262,7 +7262,7 @@ int getCastingTime(B)(ref MovingObject!B object,int numFrames,bool stationary,Ob
 }
 int getCastingTime(B)(ref MovingObject!B object,SacSpell!B spell,bool stationary,ObjectState!B state){
 	auto wizard=state.getWizard(object.id);
-	int numFrames=cast(int)ceil(updateFPS*spell.castingTime(wizard.level));
+	int numFrames=cast(int)floor(updateFPS*spell.castingTime(wizard.level));
 	return getCastingTime(object,numFrames,stationary,state);
 }
 
@@ -7272,7 +7272,7 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 	auto wizard=state.getWizard(caster);
 	if(!wizard) return false;
 	if(state.spellStatus!false(wizard,spell,target)!=SpellStatus.ready) return false;
-	int numFrames=cast(int)ceil(updateFPS*spell.castingTime(wizard.level));
+	int numFrames=cast(int)floor(updateFPS*spell.castingTime(wizard.level));
 	if(!state.movingObjectById!((ref object,numFrames,spell,state)=>object.startCasting(numFrames,spell.stationary,state),()=>false)(caster,numFrames,spell,state))
 		return false;
 	auto drainSpeed=spell.isBuilding?125.0f:500.0f;
@@ -10664,16 +10664,21 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 			}
 			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
 				object.frame=0;
-				if(object.animationState.among(AnimationState.spellcastEnd,AnimationState.runSpellcastEnd)){
+				if(object.animationState.among(AnimationState.spellcastStart,AnimationState.runSpellcastStart)){
+					object.creatureState.timer2-=3;
+					if(object.animationState==AnimationState.spellcastStart)
+						object.animationState=AnimationState.spellcast;
+					else if(object.animationState==AnimationState.runSpellcastStart)
+						object.animationState=AnimationState.runSpellcast;
+				}else if(object.animationState.among(AnimationState.spellcast,AnimationState.runSpellcast)){
+					object.creatureState.timer2-=1;
+				}else if(object.animationState.among(AnimationState.spellcastEnd,AnimationState.runSpellcastEnd)){
 					object.creatureState.mode=object.creatureState.mode==CreatureMode.castingMoving?CreatureMode.moving:CreatureMode.idle;
 					object.setCreatureState(state);
 					return;
 				}
-				if(object.animationState==AnimationState.spellcastStart)
-					object.animationState=AnimationState.spellcast;
-				else if(object.animationState==AnimationState.runSpellcastStart)
-					object.animationState=AnimationState.runSpellcast;
 				auto endAnimation=object.animationState==AnimationState.runSpellcast?AnimationState.runSpellcastEnd:AnimationState.spellcastEnd;
+				writeln(object.creatureState.timer);
 				if(object.creatureState.timer<=0) object.animationState=endAnimation;
 			}
 			break;
