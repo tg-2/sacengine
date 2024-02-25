@@ -39,7 +39,7 @@ function typical_baggage {
     echo "--random-gods" >> settings.txt
     echo "--shuffle-sides" >> settings.txt
     echo "--stutter-on-desynch" >> settings.txt
-    # TODO parametrize particles
+
     particles=""
     read -p "Disable particles (use --no-particles) ? (Y/N): " particles
     case $particles in
