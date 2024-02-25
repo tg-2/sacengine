@@ -41,10 +41,10 @@ function typical_baggage {
     echo "--stutter-on-desynch" >> settings.txt
 
     particles=""
-    read -p "Disable particles (use --no-particles) ? (Y/N): " particles
+    read -p "Enable particles (do NOT use --no-particles) ? (Y/N): " particles
     case $particles in
-        [Yy]) echo "--no-particles" >> settings.txt ;;
-        *) echo "#--no-particles" >> settings.txt ;;
+        [Yy]) echo "#--no-particles" >> settings.txt ;;
+        *) echo "--no-particles" >> settings.txt ;;
     esac
 }
 
