@@ -459,7 +459,7 @@ esac
 
 
 # Prompt for enabling Slaughter
-read -p "Enable Slaughter (Y/N): " slaughter_choice
+read -p "Enable Slaughter ? (Y/N): " slaughter_choice
 if [[ $slaughter_choice =~ ^[Yy]$ ]]; then
     echo "Choose the number of kills required to win:"
     echo "1. 100 kills"
