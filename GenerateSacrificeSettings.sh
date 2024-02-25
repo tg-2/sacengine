@@ -6,14 +6,14 @@
 ####
 
 function observer {
-	# Prompt for enabling observer mode
-	read -p "Do you want to observe ? (Y/N): " observe_choice
-	case $observe_choice in
-		[Yy]) echo "--observer" >> settings.txt ;;
-		*) echo "# --observer" >> settings.txt ;;
-	esac
+    # Prompt for enabling observer mode
+    read -p "Do you want to observe ? (Y/N): " observe_choice
+    case $observe_choice in
+        [Yy]) echo "--observer" >> settings.txt ;;
+        *) echo "# --observer" >> settings.txt ;;
+    esac
 
-	final_crap
+    final_crap
 }
 
 function final_crap {
@@ -73,8 +73,35 @@ echo "### game options ###" >> settings.txt
 read -p "Nickname: " answer
 echo "--name=$answer" >> settings.txt
 
-read -p "Wizard: " answer
-echo "--wizard=$answer" >> settings.txt
+# Prompt for wizard, with error-handling
+echo "0. Random"
+echo "1. Abraxus"
+echo "2. Acheron"
+echo "3. Ambassador Buta"
+echo "4. Charlotte"
+echo "5. Eldred"
+echo "6. Grakkus"
+echo "7. Hachimen"
+echo "8. Jadugarr"
+echo "9. Marduk"
+echo "10. Mithras"
+echo "11. Seerix"
+echo "12. Shakti"
+echo "13. Sorcha"
+echo "14. The Ragman"
+echo "15. Yogo"
+# We're comparing by using a regex, not an actual value. so 1+[0-5] or 0-9 matches it.
+while [[ ! $answer =~ ^(1[0-5]|[0-9])$ && ! $answer =~ ^[sS]$ ]]; do
+    read -p "Choose Wizard [0-15] (or 's' for skip, defaults to Random): " answer
+    if [[ ! $answer =~ ^(1[0-5]|[0-9])$ && ! $answer =~ ^[sS]$ ]]; then
+        print_error_message
+    fi
+done
+if [[ $answer =~ ^[sS]$ || $answer == 0 ]]; then
+    echo "# --wizard=eldred                  # choose wizard model (default: random)" >> settings.txt
+else
+    echo "--wizard=${answer}                  # choose wizard model (default: random)" >> settings.txt
+fi
 
 # Prompt for choosing starting level with error handling
 level=""
@@ -130,12 +157,12 @@ while [[ ! $god_choice =~ ^[1-6]$ && ! $god_choice =~ ^[sS]$ ]]; do
 done
 god=""
 case $god_choice in
-	6) god="random" ;;
-	5) god="charnel" ;;
-	4) god="pyro" ;;
-	3) god="stratos" ;;
-	2) god="james" ;;
-	1) god="persephone" ;;
+    6) god="random" ;;
+    5) god="charnel" ;;
+    4) god="pyro" ;;
+    3) god="stratos" ;;
+    2) god="james" ;;
+    1) god="persephone" ;;
 esac
 if [[ $god_choice =~ ^[sS]$ || $god_choice == 6 ]]; then
     echo "# --god=persephone                           # choose god (default: random god)" >> settings.txt
@@ -160,16 +187,35 @@ echo "2. 1080p"
 echo "3. 1440p"
 echo "4. 2160p"
 echo "5. Detect resolution"
+echo "6. Enter resolution (WARNING: advanced functionality)"
 # Prompt for choosing resolution with error handling
 resolution=""
-while [[ ! $resolution =~ ^[1-5]$ ]]; do
-    read -p "Enter a number between 1 and 5: " resolution
-    if [[ ! $resolution =~ ^[1-5]$ ]]; then
+while [[ ! $resolution =~ ^[1-6]$ ]]; do
+    read -p "Enter a number between 1 and 6: " resolution
+    if [[ ! $resolution =~ ^[1-6]$ ]]; then
         print_error_message
     fi
 done
 
 case $resolution in
+    6) ## enter width x height
+        width=""
+        height=""
+        while [[ ! $width =~ ^[0-9]{3,4}$ ]]; do
+            read -p "Enter a resolution width: " width
+            if [[ ! $width =~ ^[0-9]{3,4}$ ]]; then
+                print_error_message
+            fi
+        done
+        while [[ ! $height =~ ^[0-9]{3,4}$ ]]; do
+            read -p "Enter a resolution width: " height
+            if [[ ! $height =~ ^[0-9]{3,4}$ ]]; then
+                print_error_message
+            fi
+        done
+
+        # finally, print it out
+        echo "--resolution=${width}x${height}" >> settings.txt ;;
     5) echo "--detect-resolution" >> settings.txt ;;
     4) echo "--resolution=2160" >> settings.txt ;;
     3) echo "--resolution=1440" >> settings.txt ;;
@@ -181,13 +227,13 @@ esac
 
 # Prompt for scale factor
 scale_factor=""
-while [[ ! $scale_factor =~ ^[0-5]\.[0-9]+$ && ! $scale_factor =~ ^[sS]$ ]]; do
+while [[ ! $scale_factor =~ ^[0-5]\.[0-9]+$ && ! $scale_factor =~ ^[sS]$ && ! -z "$scale_factor" ]]; do
     read -p "Enter a floating-point number between 0.1 and 5.0 for scale factor (values smaller than 1 can be used for supersampling, use 1.0 for default or 's' for skip) : " scale_factor
-    if [[ ! $scale_factor =~ ^[0-5]\.[0-9]+$  && ! $scale_factor =~ ^[sS]$ ]]; then
+    if [[ ! $scale_factor =~ ^[0-5]\.[0-9]+$  && ! $scale_factor =~ ^[sS]$ && ! -z "$scale_factor" ]]; then
         print_error_message
     fi
 done
-if [[ $scale_factor =~ ^[sS]$ ]]; then
+if [[ -z "$scale_factor" || $scale_factor =~ ^[sS]$ ]]; then
     echo "# --scale=1.0                                # scale width and height of window (values smaller than 1 can be used for supersampling)" >> settings.txt
 else
     echo " --scale=$scale_factor                                # scale width and height of window (values smaller than 1 can be used for supersampling)" >> settings.txt
@@ -223,13 +269,13 @@ echo "# --sun-factor=1.0                           # tweak strength of sun light
 echo "### audio options ###" >> settings.txt
 # Prompt for music volume with error handling
 volume_choice=""
-while [[ ! $volume_choice =~ ^[0-5]\.[0-9]+$ && ! $volume_choice =~ ^[sS]$ ]]; do
+while [[ ! $volume_choice =~ ^[0-5]\.[0-9]+$ && ! $volume_choice =~ ^[sS]$ && -z "$volume_choice" ]]; do
     read -p "Enter a floating-point number between 0.0 and 5.0 to be used as factor for global volume (or 's' for skip and use default): " volume_choice
-    if [[ ! $volume_choice =~ ^[0-5]\.[0-9]+$ && ! $volume_choice =~ ^[sS]$ ]]; then
+    if [[ ! $volume_choice =~ ^[0-5]\.[0-9]+$ && ! $volume_choice =~ ^[sS]$ && -z "$volume_choice" ]]; then
         print_error_message
     fi
 done
-if [[ $music_volume =~ ^[sS]$ ]]; then
+if [[ -z "$volume_choice" || $volume_choice =~ ^[sS]$ ]]; then
     echo "# --volume=0.5                               # global factor on volume" >> settings.txt
 else
     echo "--volume=$volume_choice                               # global factor on volume" >> settings.txt
@@ -237,13 +283,13 @@ fi
 
 # Prompt for music volume with error handling
 music_volume=""
-while [[ ! $music_volume =~ ^[0-5]\.[0-9]+$ && ! $music_volume =~ ^[sS]$ ]]; do
+while [[ ! $music_volume =~ ^[0-5]\.[0-9]+$ && ! $music_volume =~ ^[sS]$ && -z "$music_volume" ]]; do
     read -p "Enter a floating-point number between 0.0 and 5.0 to be used as factor for music volume (or 's' for skip and use default): " music_volume
-    if [[ ! $music_volume =~ ^[0-5]\.[0-9]+$ && ! $music_volume =~ ^[sS]$ ]]; then
+    if [[ ! $music_volume =~ ^[0-5]\.[0-9]+$ && ! $music_volume =~ ^[sS]$ && -z "$music_volume" ]]; then
         print_error_message
     fi
 done
-if [[ $music_volume =~ ^[sS]$ ]]; then
+if [[ -z "$music_volume" || $music_volume =~ ^[sS]$ ]]; then
     echo "# --music-volume=0.5                           # additional factor on music volume" >> settings.txt
 else
     echo "--music-volume=$music_volume                           # additional factor on music volume" >> settings.txt
@@ -251,13 +297,13 @@ fi
 
 # Prompt for sound volume
 sound_volume=""
-while [[ ! $sound_volume =~ ^[0-5]\.[0-9]+$ && ! $sound_volume =~ ^[sS]$ ]]; do
+while [[ ! $sound_volume =~ ^[0-5]\.[0-9]+$ && ! $sound_volume =~ ^[sS]$ && -z "$sound_volume" ]]; do
     read -p "Enter a floating-point number between 0.0 and 5.0 to be used as factor for sound volume (or 's' for skip and use default): " sound_volume
-    if [[ ! $sound_volume =~ ^[0-5]\.[0-9]+$ && ! $sound_volume =~ ^[sS]$ ]]; then
+    if [[ ! $sound_volume =~ ^[0-5]\.[0-9]+$ && ! $sound_volume =~ ^[sS]$ && -z "sound_volume" ]]; then
         print_error_message
     fi
 done
-if [[ $sound_volume =~ ^[sS]$ ]]; then
+if [[ -z "$sound_volume" || $sound_volume =~ ^[sS]$ ]]; then
     echo "# --sound-volume=0.5                           # additional factor on sound volume" >> settings.txt
 else
     echo "--sound-volume=$sound_volume                           # additional factor on sound volume" >> settings.txt
@@ -287,129 +333,128 @@ done
 case $hostmode in
     # FFA
     5)  
-		echo "1. Host for 3"
-		echo "2. Host for 4"
-		echo "3. Host for 5"
-		echo "Hosting FFA for 6 is not available due to lack of maps and maplists"
-		ffamode=""
-		while [[ ! $ffamode =~ ^[1-3]$ ]]; do
-			read -p "Enter a number between 1 and 3: " ffamode
-			if [[ ! $ffamode =~ ^[1-3]$ ]]; then
-				print_error_message
-			fi
-		done
-		ffaplayers=""
-		case $ffamode in
-			1) ffaplayers=3 ;;
-			2) ffaplayers=4 ;;
-			3) ffaplayers=5 ;;
-		esac
+        echo "1. Host for 3"
+        echo "2. Host for 4"
+        echo "3. Host for 5"
+        echo "Hosting FFA for 6 is not available due to lack of maps and maplists"
+        ffamode=""
+        while [[ ! $ffamode =~ ^[1-3]$ ]]; do
+            read -p "Enter a number between 1 and 3: " ffamode
+            if [[ ! $ffamode =~ ^[1-3]$ ]]; then
+                print_error_message
+            fi
+        done
+        ffaplayers=""
+        case $ffamode in
+            1) ffaplayers=3 ;;
+            2) ffaplayers=4 ;;
+            3) ffaplayers=5 ;;
+        esac
 
-		# Finally, echo everything to settings.txt
-		echo "--host=$ffaplayers" >> settings.txt
-		echo "--ffa                                        # host ffa (overrides team settings)" >> settings.txt
-		typical_baggage
-		# if there's only 3 ffa players, offer another choice, otherwise use tg-{$ffaplayers}ffa.txt maplist
-		if [ $ffaplayers != 3 ]; then
-			echo "--map-list=maps-tg-{ffaplayers}ffa.txt" >> settings.txt
-		else
-			# another maplist choice
-			echo "1. shiny's 3ffa map list"
-			echo "2. tg's 3ffa map list"
-			echo "3. tree's 3ffa map list"
-			maplist=""
-			while [[ ! $maplist =~ ^[1-3]$ ]]; do
-				read -p "Enter a number between 1 and 3: " maplist
-				if [[ ! $maplist =~ ^[1-3]$ ]]; then
-					print_error_message
-				fi
-			done
-			case $maplist in
-				1) # shiny ffa3
-					echo "--map-list=maps-shiny-3ffa.txt" >> settings.txt
-					;;
-				2) # tg ffa3
-					echo "--map-list=maps-tg-3ffa.txt" >> settings.txt
-					;;
-				3) # tree ffa3
-					echo "--map-list=maps-tree-3ffa.txt" >> settings.txt
-					;;
-			esac
-		fi
-		;;
-	# join
-	4)
-		echo "--join" >> settings.txt
-		# call the observer() function we declared at the top of the file
-		observer
-		;;
-	# 3v3
-	3)
-		echo "--host=6" >> settings.txt
-		echo "--map-list=maps-tg-3v3.txt" >> settings.txt
-		echo "--3v3                                        # host 3v3 (overrides team settings)" >> settings.txt
-		typical_baggage
-		;;
-	# 2v2
-	2)
-		echo "--host=4" >> settings.txt
-		echo "--2v2                                        # host 2v2 (overrides team settings)" >> settings.txt
-		typical_baggage
-		
-		# another map selection ...
-		echo "1. shiny's 2v2 map list"
-		echo "2. tg's 2v2 map list"
-		echo "3. tree's 2v2 map list"
-	
-		maplist=""
-		while [[ ! $maplist =~ ^[1-3]$ ]]; do
-			read -p "Enter a number between 1 and 3: " maplist
-			if [[ ! $maplist =~ ^[1-3]$ ]]; then
-				print_error_message
-			fi
-		done
-		case $maplist in
-			1) # shiny 2v2
-				echo "--map-list=maps-shiny-2v2.txt" >> settings.txt
-				;;
-			2) # tg 2v2
-				echo "--map-list=maps-tg-2v2.txt" >> settings.txt
-				;;
-			3) # tree 2v2
-				echo "--map-list=maps-tree-2v2.txt" >> settings.txt
-				;;
-		esac
-		;;
-	# 1v1
-	1)
-		echo --host=2 >> settings.txt
-		typical_baggage
+        # Finally, echo everything to settings.txt
+        echo "--host=$ffaplayers" >> settings.txt
+        echo "--ffa                                        # host ffa (overrides team settings)" >> settings.txt
+        typical_baggage
+        # if there's only 3 ffa players, offer another choice, otherwise use tg-{$ffaplayers}ffa.txt maplist
+        if [ $ffaplayers != 3 ]; then
+            echo "--map-list=maps-tg-{ffaplayers}ffa.txt" >> settings.txt
+        else
+            # another maplist choice
+            echo "1. shiny's 3ffa map list"
+            echo "2. tg's 3ffa map list"
+            echo "3. tree's 3ffa map list"
+            maplist=""
+            while [[ ! $maplist =~ ^[1-3]$ ]]; do
+                read -p "Enter a number between 1 and 3: " maplist
+                if [[ ! $maplist =~ ^[1-3]$ ]]; then
+                    print_error_message
+                fi
+            done
+            case $maplist in
+                1) # shiny ffa3
+                    echo "--map-list=maps-shiny-3ffa.txt" >> settings.txt
+                    ;;
+                2) # tg ffa3
+                    echo "--map-list=maps-tg-3ffa.txt" >> settings.txt
+                    ;;
+                3) # tree ffa3
+                    echo "--map-list=maps-tree-3ffa.txt" >> settings.txt
+                    ;;
+            esac
+        fi
+        ;;
+    # join
+    4)
+        echo "--join" >> settings.txt
+        # call the observer() function we declared at the top of the file
+        observer
+        ;;
+    # 3v3
+    3)
+        echo "--host=6" >> settings.txt
+        echo "--map-list=maps-tg-3v3.txt" >> settings.txt
+        echo "--3v3                                        # host 3v3 (overrides team settings)" >> settings.txt
+        typical_baggage
+        ;;
+    # 2v2
+    2)
+        echo "--host=4" >> settings.txt
+        echo "--2v2                                        # host 2v2 (overrides team settings)" >> settings.txt
+        typical_baggage
 
-		# another 1v1 map selection...
-		echo "1. shiny's 1v1 map list"
-		echo "2. tg's 1v1 map list"
-		echo "3. tree's 1v1 map list"
-		echo "4. (2) Ferry.scp"
-		maplist=""
-		while [[ ! $maplist =~ ^[1-4]$ ]]; do
-			read -p "Enter a number between 1 and 4: " maplist
-			if [[ ! $maplist =~ ^[1-4]$ ]]; then
-				print_error_message
-			fi
-		done
-		case $maplist in
-			1) # shiny 1v1
-				echo "--map-list=maps-shiny-1v1.txt" >> settings.txt
-				;;
-			2) # tg 1v1
-				echo "--map-list=maps-tg-1v1.txt" >> settings.txt
-				;;
-			3) # tree 1v1
-				echo "--map-list=maps-tree-1v1.txt" >> settings.txt
-				;;
-		esac
-		;;
-	
+        # another map selection ...
+        echo "1. shiny's 2v2 map list"
+        echo "2. tg's 2v2 map list"
+        echo "3. tree's 2v2 map list"
+
+        maplist=""
+        while [[ ! $maplist =~ ^[1-3]$ ]]; do
+            read -p "Enter a number between 1 and 3: " maplist
+            if [[ ! $maplist =~ ^[1-3]$ ]]; then
+                print_error_message
+            fi
+        done
+        case $maplist in
+            1) # shiny 2v2
+                echo "--map-list=maps-shiny-2v2.txt" >> settings.txt
+                ;;
+            2) # tg 2v2
+                echo "--map-list=maps-tg-2v2.txt" >> settings.txt
+                ;;
+            3) # tree 2v2
+                echo "--map-list=maps-tree-2v2.txt" >> settings.txt
+                ;;
+        esac
+        ;;
+    # 1v1
+    1)
+        echo --host=2 >> settings.txt
+        typical_baggage
+
+        # another 1v1 map selection...
+        echo "1. shiny's 1v1 map list"
+        echo "2. tg's 1v1 map list"
+        echo "3. tree's 1v1 map list"
+        echo "4. (2) Ferry.scp"
+        maplist=""
+        while [[ ! $maplist =~ ^[1-4]$ ]]; do
+            read -p "Enter a number between 1 and 4: " maplist
+            if [[ ! $maplist =~ ^[1-4]$ ]]; then
+                print_error_message
+            fi
+        done
+        case $maplist in
+            1) # shiny 1v1
+                echo "--map-list=maps-shiny-1v1.txt" >> settings.txt
+                ;;
+            2) # tg 1v1
+                echo "--map-list=maps-tg-1v1.txt" >> settings.txt
+                ;;
+            3) # tree 1v1
+                echo "--map-list=maps-tree-1v1.txt" >> settings.txt
+                ;;
+        esac
+        ;;
 esac
 
 
