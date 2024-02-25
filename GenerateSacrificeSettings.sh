@@ -7,7 +7,7 @@
 
 function observer {
 	# Prompt for enabling observer mode
-	read -p "Do you want to observe (Y/N): " observe_choice
+	read -p "Do you want to observe ? (Y/N): " observe_choice
 	case $observe_choice in
 		[Yy]) echo "--observer" >> settings.txt ;;
 		*) echo "# --observer" >> settings.txt ;;
@@ -35,13 +35,27 @@ function final_crap {
     echo "# --terrain-sine-wave                        # displace the terrain using a moving sine wave" >> settings.txt
 }
 
+function typical_baggage {
+    echo "--random-gods" >> settings.txt
+    echo "--shuffle-sides" >> settings.txt
+    echo "--stutter-on-desynch" >> settings.txt
+    # TODO parametrize particles
+    particles=""
+    read -p "Disable particles (use --no-particles) ? (Y/N): " particles
+    case $particles in
+        [Yy]) echo "--no-particles" >> settings.txt ;;
+        *) echo "#--no-particles" >> settings.txt ;;
+    esac
+}
 
 # Function for error message
 function print_error_message {
     echo "Invalid input. Please enter a valid choice."
 }
 
-
+#########################
+## START OF THE SCRIPT ##
+#########################
 
 # Reuse the existing portion of the bash script
 echo "### input options ###" > settings.txt
@@ -131,7 +145,7 @@ fi
 random_spellbook=""
 read -p "Use random spellbook ? (Y/N): " random_spellbook
 case $random_spellbook in
-    [Yy]) "--random-spellbook                         # choose fully random spellbook" >> settings.txt ;;
+    [Yy]) echo "--random-spellbook                         # choose fully random spellbook" >> settings.txt ;;
     *) echo "# --random-spellbook                         # choose fully random spellbook" >> settings.txt ;;
 esac
 
@@ -294,10 +308,7 @@ case $hostmode in
 		# Finally, echo everything to settings.txt
 		echo "--host=$ffaplayers" >> settings.txt
 		echo "--ffa                                        # host ffa (overrides team settings)" >> settings.txt
-		echo "--random-gods" >> settings.txt
-		echo "--shuffle-sides" >> settings.txt
-		echo "--stutter-on-desynch" >> settings.txt
-		echo "--no-particles" >> settings.txt
+		typical_baggage
 		# if there's only 3 ffa players, offer another choice, otherwise use tg-{$ffaplayers}ffa.txt maplist
 		if [ $ffaplayers != 3 ]; then
 			echo "--map-list=maps-tg-{ffaplayers}ffa.txt" >> settings.txt
@@ -326,10 +337,10 @@ case $hostmode in
 			esac
 		fi
 		;;
-    # join
-    4)
+	# join
+	4)
 		echo "--join" >> settings.txt
-		# call the observer() function we declared at the bottom of the file
+		# call the observer() function we declared at the top of the file
 		observer
 		;;
 	# 3v3
@@ -337,18 +348,13 @@ case $hostmode in
 		echo "--host=6" >> settings.txt
 		echo "--map-list=maps-tg-3v3.txt" >> settings.txt
 		echo "--3v3                                        # host 3v3 (overrides team settings)" >> settings.txt
-		echo "--random-gods" >> settings.txt
-		echo "--shuffle-sides" >> settings.txt
-		echo "--stutter-on-desynch" >> settings.txt
-		echo "--no-particles" >> settings.txt
+		typical_baggage
 		;;
 	# 2v2
 	2)
 		echo "--host=4" >> settings.txt
 		echo "--2v2                                        # host 2v2 (overrides team settings)" >> settings.txt
-		echo "--random-gods" >> settings.txt
-		echo "--shuffle-sides" >> settings.txt
-		echo "--stutter-on-desynch" >> settings.txt
+		typical_baggage
 		
 		# another map selection ...
 		echo "1. shiny's 2v2 map list"
@@ -377,9 +383,7 @@ case $hostmode in
 	# 1v1
 	1)
 		echo --host=2 >> settings.txt
-		echo --random-gods >> settings.txt
-		echo --shuffle-sides >> settings.txt
-		echo --stutter-on-desynch >> settings.txt
+		typical_baggage
 
 		# another 1v1 map selection...
 		echo "1. shiny's 1v1 map list"
@@ -427,14 +431,12 @@ if [[ $slaughter_choice =~ ^[Yy]$ ]]; then
 else
     echo "# --slaughter" >> settings.txt
 fi
-# with everything done, call the observer() function located at the end of the file
+# with everything done, call the observer() function located at the top of the file
 observer
 
 # Prompt for miscellaneous options
 echo "Press enter to continue..."
 read -r
-
-# Additional miscellaneous options can be added here as needed
 
 # End of the script
 echo "Script execution completed."
