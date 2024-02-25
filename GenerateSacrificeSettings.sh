@@ -91,13 +91,13 @@ echo "13. Sorcha"
 echo "14. The Ragman"
 echo "15. Yogo"
 # We're comparing by using a regex, not an actual value. so 1+[0-5] or 0-9 matches it.
-while [[ ! $answer =~ ^(1[0-5]|[0-9])$ && ! $answer =~ ^[sS]$ ]]; do
+while [[ ! $answer =~ ^(1[0-5]|[0-9])$ && ! $answer =~ ^[sS]$ && ! -z "$answer" ]]; do
     read -p "Choose Wizard [0-15] (or 's' for skip, defaults to Random): " answer
-    if [[ ! $answer =~ ^(1[0-5]|[0-9])$ && ! $answer =~ ^[sS]$ ]]; then
+    if [[ ! $answer =~ ^(1[0-5]|[0-9])$ && ! $answer =~ ^[sS]$ && ! -z "$answer" ]]; then
         print_error_message
     fi
 done
-if [[ $answer =~ ^[sS]$ || $answer == 0 ]]; then
+if [[ -z "$answer" || $answer =~ ^[sS]$ || $answer == 0 ]]; then
     echo "# --wizard=eldred                  # choose wizard model (default: random)" >> settings.txt
 else
     echo "--wizard=${answer}                  # choose wizard model (default: random)" >> settings.txt
@@ -149,9 +149,9 @@ echo "3. Stratos"
 echo "4. Pyro"
 echo "5. Charnel"
 echo "6. Random"
-while [[ ! $god_choice =~ ^[1-6]$ && ! $god_choice =~ ^[sS]$ ]]; do
+while [[ ! $god_choice =~ ^[1-6]$ && ! $god_choice =~ ^[sS]$ && ! -z "$god_choice" ]]; do
     read -p "Choose God [1-6] or 's' for skip (which defaults to random): " god_choice
-    if [[ ! $god_choice =~ ^[1-6]$ && ! $god_choice =~ ^[sS]$ ]]; then
+    if [[ ! $god_choice =~ ^[1-6]$ && ! $god_choice =~ ^[sS]$ && ! -z "$god_choice" ]]; then
         print_error_message
     fi
 done
@@ -164,7 +164,7 @@ case $god_choice in
     2) god="james" ;;
     1) god="persephone" ;;
 esac
-if [[ $god_choice =~ ^[sS]$ || $god_choice == 6 ]]; then
+if [[ -z "$god_choice" || $god_choice =~ ^[sS]$ || $god_choice == 6 ]]; then
     echo "# --god=persephone                           # choose god (default: random god)" >> settings.txt
 else
     echo "--god=${god}                           # choose god (default: random god)" >> settings.txt
@@ -269,9 +269,9 @@ echo "# --sun-factor=1.0                           # tweak strength of sun light
 echo "### audio options ###" >> settings.txt
 # Prompt for music volume with error handling
 volume_choice=""
-while [[ ! $volume_choice =~ ^[0-5]\.[0-9]+$ && ! $volume_choice =~ ^[sS]$ && -z "$volume_choice" ]]; do
+while [[ ! $volume_choice =~ ^[0-5]\.[0-9]+$ && ! $volume_choice =~ ^[sS]$ && ! -z "$volume_choice" ]]; do
     read -p "Enter a floating-point number between 0.0 and 5.0 to be used as factor for global volume (or 's' for skip and use default): " volume_choice
-    if [[ ! $volume_choice =~ ^[0-5]\.[0-9]+$ && ! $volume_choice =~ ^[sS]$ && -z "$volume_choice" ]]; then
+    if [[ ! $volume_choice =~ ^[0-5]\.[0-9]+$ && ! $volume_choice =~ ^[sS]$ && ! -z "$volume_choice" ]]; then
         print_error_message
     fi
 done
@@ -283,9 +283,9 @@ fi
 
 # Prompt for music volume with error handling
 music_volume=""
-while [[ ! $music_volume =~ ^[0-5]\.[0-9]+$ && ! $music_volume =~ ^[sS]$ && -z "$music_volume" ]]; do
+while [[ ! $music_volume =~ ^[0-5]\.[0-9]+$ && ! $music_volume =~ ^[sS]$ && ! -z "$music_volume" ]]; do
     read -p "Enter a floating-point number between 0.0 and 5.0 to be used as factor for music volume (or 's' for skip and use default): " music_volume
-    if [[ ! $music_volume =~ ^[0-5]\.[0-9]+$ && ! $music_volume =~ ^[sS]$ && -z "$music_volume" ]]; then
+    if [[ ! $music_volume =~ ^[0-5]\.[0-9]+$ && ! $music_volume =~ ^[sS]$ && ! -z "$music_volume" ]]; then
         print_error_message
     fi
 done
@@ -297,9 +297,9 @@ fi
 
 # Prompt for sound volume
 sound_volume=""
-while [[ ! $sound_volume =~ ^[0-5]\.[0-9]+$ && ! $sound_volume =~ ^[sS]$ && -z "$sound_volume" ]]; do
+while [[ ! $sound_volume =~ ^[0-5]\.[0-9]+$ && ! $sound_volume =~ ^[sS]$ && ! -z "$sound_volume" ]]; do
     read -p "Enter a floating-point number between 0.0 and 5.0 to be used as factor for sound volume (or 's' for skip and use default): " sound_volume
-    if [[ ! $sound_volume =~ ^[0-5]\.[0-9]+$ && ! $sound_volume =~ ^[sS]$ && -z "sound_volume" ]]; then
+    if [[ ! $sound_volume =~ ^[0-5]\.[0-9]+$ && ! $sound_volume =~ ^[sS]$ && ! -z "sound_volume" ]]; then
         print_error_message
     fi
 done
