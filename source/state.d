@@ -9689,7 +9689,8 @@ bool breathOfLifeShoot(B)(int creature,int side,int targetId,float accuracy,Vect
 			if(state.isValidTarget(newTargetId))
 			   targetId=newTargetId;
 	}
-	auto target=centerTarget(targetId,state);
+	auto soulTarget=OrderTarget(TargetType.soul,targetId,targetPosition+Vector3f(0.0f,0.0f,0.75f*SacSoul!B.soulHeight));
+	auto target=state.targetTypeFromId(targetId)==TargetType.soul?soulTarget:centerTarget(targetId,state);
 	state.addEffect(BreathOfLife!B(creature,side,position,target,rangedAttack));
 	return true;
 }
@@ -18849,7 +18850,7 @@ bool updateBreathOfLife(B)(ref BreathOfLife!B breathOfLife,ObjectState!B state){
 	with(breathOfLife){
 		final switch(status){
 			case BreathOfLifeStatus.flying:
-				target.position=target.center(state);
+				if(target.type!=TargetType.soul) target.position=target.center(state);
 				auto velocity=updateFPS*(target.position-position);
 				if(velocity.length>spell.speed) velocity=spell.speed*velocity.normalized;
 				position+=velocity/updateFPS;
