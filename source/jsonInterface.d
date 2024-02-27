@@ -126,6 +126,7 @@ struct StateFlags{
 
 	bool gameInit;
 	bool state;
+	bool mapInfo;
 	bool sideInfo;
 	bool sideState;
 	bool triggerState;
@@ -255,6 +256,15 @@ void runJSONCommand(B)(JSONCommand command,Controller!B controller,scope void de
 				json.field("state");
 				json.put("{");
 				json.field("frame"); json.value(state.frame);
+				json.put("}");
+				needComma=true;
+			}
+			if(flags.mapInfo){
+				if(needComma) json.put(",");
+				json.field("mapInfo");
+				json.put("{");
+				json.field("path"); json.value(state.map.path);
+				json.field("crc32"); json.value(format(".%08x.scp",state.map.crc32));
 				json.put("}");
 				needComma=true;
 			}

@@ -86,7 +86,7 @@ SacMap!B loadSacMap(B)(string filename,ubyte[]* mapData=null){
 	Trig trig;
 	try trig=loadTRIG(trigName);
 	catch(Exception e){ stderr.writeln("warning: failed to parse triggers (",e.msg,")"); }
-	return new SacMap!B(mapFolder,crc32,levl,envi,hmap,tmap,lmap,sids,ntts,trig);
+	return new SacMap!B(filename,mapFolder,crc32,levl,envi,hmap,tmap,lmap,sids,ntts,trig);
 }
 
 enum{
@@ -111,6 +111,7 @@ struct ZeroDisplacement{
 }
 
 final class SacMap(B){
+	string path;
 	string mapFolder;
 	uint crc32;
 
@@ -132,7 +133,8 @@ final class SacMap(B){
 	NTTs ntts;
 	Trig trig;
 
-	this(LMap)(string mapFolder,uint crc32,Levl levl,Envi envi,HMap hmap,TMap tmap,LMap lmap,Side[] sids,NTTs ntts,Trig trig){
+	this(LMap)(string path,string mapFolder,uint crc32,Levl levl,Envi envi,HMap hmap,TMap tmap,LMap lmap,Side[] sids,NTTs ntts,Trig trig){
+		this.path=path;
 		this.mapFolder=mapFolder;
 		this.crc32=crc32;
 		this.levl=levl;
