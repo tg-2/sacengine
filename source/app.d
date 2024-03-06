@@ -60,6 +60,26 @@ void loadGame(B)(ref Options options)in{
 		wait!B();
 }
 
+string stripComment(string s){
+	auto i=s.indexOf('#');
+	if(i==-1) return s;
+	return s[0..i];
+}
+string[] importSettings(string filename){
+	return expandSettings(File(filename).byLineCopy.map!stripComment.map!strip.filter!(l=>l.length!=0).array);
+}
+string[] expandSettings(string[] settings){
+	if(!settings.any!(setting=>setting.startsWith("--import="))) return settings;
+	string[] result;
+	foreach(setting;settings){
+		if(setting.startsWith("--import=")){
+			auto filename=setting["--import=".length..$];
+			result~=importSettings(filename);
+		}else result~=setting;
+	}
+	return result;
+}
+
 int run(string[] args){
 	import std.file:thisExePath,chdir;
 	import std.path:dirName;
@@ -67,17 +87,21 @@ int run(string[] args){
 	import core.memory;
 	GC.disable();
 	if(args.length==0) args~="";
+	bool redirected=false;
+	void redirect(){
+		if(redirected) return;
+		if(args.canFind("--redirect-output")){
+			stdout.reopen("SacEngine.out.txt","w");
+			stderr.reopen("SacEngine.err.txt","w");
+		}
+		redirected=true;
+	}
+	redirect();
+	args=expandSettings(args);
+	redirect();
 	import std.file:exists;
-	static string stripComment(string s){
-		auto i=s.indexOf('#');
-		if(i==-1) return s;
-		return s[0..i];
-	}
-	if(!args.canFind("--ignore-settings")&&exists("settings.txt")) args=chain(args[0..1],File("settings.txt").byLineCopy.map!stripComment.map!strip.filter!(l=>l.length!=0),args[1..$]).array;
-	if(args.canFind("--redirect-output")){
-		stdout.reopen("SacEngine.out.txt","w");
-		stderr.reopen("SacEngine.err.txt","w");
-	}
+	if(!args.canFind("--ignore-settings")&&exists("settings.txt")) args=chain(args[0..1],importSettings("settings.txt"),args[1..$]).array;
+	redirect();
 	auto opts=args[1..$].filter!(x=>x.startsWith("--")).array;
 	args=chain(args[0..1],args[1..$].filter!(x=>!x.startsWith("--"))).array;
 	Options options={
