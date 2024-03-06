@@ -6113,6 +6113,9 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 		case CreatureMode.firewalk:
 			object.frame=0;
 			object.animationState=AnimationState.stance1;
+			/+if(object.creatureAI.order.command==CommandType.useAbility) // TODO: handle shooting the same way?
+				object.clearOrder(state);+/
+			object.clearOrderQueue(state);
 			break;
 	}
 }
