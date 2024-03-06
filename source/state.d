@@ -2163,6 +2163,7 @@ enum RitualType{
 
 struct SacDocCasting(B){
 	RitualType type;
+	God god;
 	int side;
 	ManaDrain!B manaDrain;
 	SacSpell!B spell;
@@ -7525,7 +7526,9 @@ bool castConvert(B)(int side,ManaDrain!B manaDrain,SacSpell!B spell,Vector3f cas
 	auto positions=findSacDocPositions(targetPosition,preferredOffset,state);
 	auto position=positions[0],landingPosition=positions[1];
 	position.z=state.getHeight(position)+RedVortex.convertHeight;
-	state.addEffect(SacDocCasting!B(RitualType.convert,side,manaDrain,spell,target,targetShrine,landingPosition,RedVortex(position)));
+	auto god=state.getCurrentGod(manaDrain.wizard);
+	if(god==God.none) god=God.persephone;
+	state.addEffect(SacDocCasting!B(RitualType.convert,god,side,manaDrain,spell,target,targetShrine,landingPosition,RedVortex(position)));
 	return true;
 }
 
@@ -7538,7 +7541,9 @@ bool castDesecrate(B)(int side,ManaDrain!B manaDrain,SacSpell!B spell,Vector3f c
 	auto positions=findSacDocPositions(targetPosition,preferredOffset,state);
 	auto position=positions[0],landingPosition=positions[1];
 	position.z=state.getHeight(position)+RedVortex.desecrateHeight;
-	state.addEffect(SacDocCasting!B(RitualType.desecrate,side,manaDrain,spell,target,targetShrine,landingPosition,RedVortex(position)));
+	auto god=state.getCurrentGod(manaDrain.wizard);
+	if(god==God.none) god=God.persephone;
+	state.addEffect(SacDocCasting!B(RitualType.desecrate,god,side,manaDrain,spell,target,targetShrine,landingPosition,RedVortex(position)));
 	return true;
 }
 
@@ -11816,6 +11821,7 @@ bool updateSacDocCasting(B)(ref SacDocCasting!B sacDocCast,ObjectState!B state){
 			vortex.scale=min(1.0,vortex.scale+1.0f/vortex.numFramesToEmerge);
 			final switch(manaDrain.update(state)){
 				case CastingStatus.underway:
+					state.movingObjectById!(animateCastingForGod,(){})(manaDrain.wizard,god,state);
 					return true;
 				case CastingStatus.interrupted:
 					underway=false;
