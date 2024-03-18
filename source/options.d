@@ -106,6 +106,7 @@ struct Options{
 	bool synchronizeXPRate=true;
 	// recording and playback
 	string recordingFilename="";
+	string recordingFolder="";
 	bool compressRecording=true;
 	int logCore=0;
 	string playbackFilename="";

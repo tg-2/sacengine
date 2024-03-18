@@ -165,6 +165,8 @@ int run(string[] args){
 			options.joinIP="255.255.255.255";
 		}else if(opt.startsWith("--record=")){
 			options.recordingFilename=opt["--record=".length..$];
+		}else if(opt.startsWith("--record-folder=")){
+			options.recordingFolder=opt["--record-folder=".length..$];
 		}else if(opt.startsWith("--play=")){
 			options.playbackFilename=opt["--play=".length..$];
 		}else if(opt.startsWith("--continue=")){
@@ -436,6 +438,27 @@ int run(string[] args){
 		}
 	}+/
 	scope(exit) if(B.network) B.network.shutdown();
+	if(options.recordingFolder.length){
+		if(!options.recordingFilename.length){
+			auto recordingFolder=options.recordingFolder;
+			string tag="";
+			if(options.recordingFolder.canFind(':')){
+				auto index=recordingFolder.indexOf(':');
+				tag=recordingFolder[index+1..$];
+				recordingFolder=recordingFolder[0..index];
+			}
+			auto recordingName="";
+			if(tag.length){
+				recordingName~=tag;
+				recordingName~='-';
+			}
+			import std.datetime, std.utf;
+			recordingName~=Clock.currTime.toISOExtString.byChar.until('.').text.replace('T','-').replace(':','-');
+			import std.path:buildPath;
+			recordingName=buildPath(recordingFolder,recordingName~".rcp");
+			options.recordingFilename=recordingName;
+		}else stderr.writeln("warning: used both --record=... and --record-folder=... options.");
+	}
 	scope(exit) if(B.controller&&B.controller.recording){
 		B.controller.recording.finalize(B.state.commands);
 		writeln("saving recording to '",options.recordingFilename,"'");
