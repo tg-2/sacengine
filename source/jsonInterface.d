@@ -263,7 +263,7 @@ void runJSONCommand(B)(JSONCommand command,Controller!B controller,scope void de
 				if(needComma) json.put(",");
 				json.field("mapInfo");
 				json.put("{");
-				json.field("path"); json.value(state.map.path);
+				json.field("path"); json.value(state.map.path); json.put(",");
 				json.field("crc32"); json.value(format(".%08x.scp",state.map.crc32));
 				json.put("}");
 				needComma=true;
