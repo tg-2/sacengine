@@ -8504,7 +8504,7 @@ bool pushback(B)(int creature, Vector3f direction,SacSpell!B rangedAttack,Object
 }
 
 void flummoxLoad(B)(int attacker,ObjectState!B state){
-	playSoundAt("walc",attacker,state,2.0f);
+	// playSoundAt("walc",attacker,state,2.0f);
 }
 bool flummoxShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
 	playSoundAt("3tps",position,state,4.0f);
@@ -8595,7 +8595,7 @@ bool bombardShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vec
 
 enum flurryShootGain=4.0f;
 void flurryLoad(B)(int attacker,ObjectState!B state){
-	playSoundAt("walc",attacker,state,flurryShootGain);
+	// playSoundAt("walc",attacker,state,flurryShootGain);
 }
 bool flurryShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
 	playSoundAt("thsv",position,state,4.0f);
