@@ -6739,7 +6739,7 @@ float dealDamage(B)(ref MovingObject!B object,float damage,int attackingSide,Dam
 		else damageMultiplier*=object.creatureStats.directSpellResistance;
 	}
 	if(!(damageMod&DamageMod.fall)){
-		if(!object.canDamage(state)) return 0.0f;
+		if(!object.canDamage(state)){ object.unfreeze(state); return 0.0f; }
 		if(!(damageMod&DamageMod.peirceShield)){
 			if(object.creatureStats.effects.lifeShield) damageMultiplier*=0.5f;
 			if(object.creatureState.mode==CreatureMode.rockForm) damageMultiplier*=0.05f;
@@ -6773,7 +6773,7 @@ void recordKill(B)(ref MovingObject!B object,int attackingSide,ObjectState!B sta
 float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,DamageMod damageMod,ref bool killed,ObjectState!B state){
 	float actualDamage;
 	if(!(damageMod&DamageMod.fall)||object.isSacDoctor){ // TODO: do sac doctors take fall damage at all?
-		if(!object.canDamage(state)) return 0.0f;
+		if(!object.canDamage(state)){ object.unfreeze(state); return 0.0f; }
 		actualDamage=damage*state.sideDamageMultiplier(attackingSide,object.side,damageMod);
 		if(object.creatureStats.effects.isGuardian){
 			if(damageMod&DamageMod.spell) actualDamage*=0.5f;
@@ -6802,7 +6802,7 @@ float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,
 		}
 	}else actualDamage=damage;
 	actualDamage=min(object.health,actualDamage);
-	if(actualDamage>0.0f) object.unfreeze(state);
+	if(actualDamage>0.0f||!(damageMod&DamageMod.fall)) object.unfreeze(state);
 	object.creatureStats.health-=actualDamage;
 	if(object.creatureStats.flags&Flags.cannotDestroyKill)
 		object.creatureStats.health=max(object.health,1.0f);
@@ -7145,7 +7145,7 @@ float dealSplashRangedDamageAt(alias callback=(id)=>true,B,T...)(int directTarge
 }
 
 float dealDesecrationDamage(B)(ref MovingObject!B object,float damage,int caster,int attackingSide,ObjectState!B state){
-	if(!object.canDamage(state)) return 0.0f;
+	if(!object.canDamage(state)){ object.unfreeze(state); return 0.0f; } // TODO: does it actually unfreeze?
 	bool killed=false;
 	auto actualDamage=dealRawDamage(object,damage,attackingSide,DamageMod.desecration,killed,state);
 	if(killed&&caster) state.movingObjectById!((ref attacker,side,state){
