@@ -293,6 +293,8 @@ class Lobby(B){
 			network.synchronizeSetting!"maxLevel"();
 		}
 		if(options.synchronizeXPRate) network.synchronizeSetting!"xpRate"();
+
+		network.synchronizeSetting!"pauseOnDrop"();
 	}
 
 	bool synchronizeSettings(ref Options options)in{

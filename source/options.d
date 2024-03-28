@@ -98,7 +98,6 @@ struct Options{
 	bool logDesynch=true;
 	bool nudgeTimers=true;
 	bool dropOnTimeout=true;
-	bool pauseOnDrop=true;
 	bool synchronizeObserverChat=true;
 	bool synchronizeLevel=true;
 	bool synchronizeSouls=true;
@@ -139,5 +138,6 @@ struct Settings{
 	int maxLevel=9;
 	float xpRate=1.0f;
 
+	bool pauseOnDrop=true;
 	bool refuseGreenSouls=false;
 }

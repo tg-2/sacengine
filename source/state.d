@@ -23347,6 +23347,13 @@ private struct StateHistory(B){
 		currentFrame=committedFrame;
 		return true;
 	}
+	void removeFuture(ref Commands!B commands){
+		commands.length=currentFrame+1;
+		commands[$-1].length=0;
+		auto index=currentFrame-committedFrame;
+		foreach(i;index+1..history.length)
+			history[i].numPending=-1;
+	}
 	void replaceState(ref Commands!B commands,scope ubyte[] serialized){
 		if(history[$-1].numPending!=-1)
 			history~=Entry(makeState(),-1);
@@ -23512,6 +23519,9 @@ private void rollback(B)(ref StateHistory!B states,ref Array!(Array!(Command!B))
 		}
 	}
 }
+private void removeFuture(B)(ref StateHistory!B states,ref Array!(Array!(Command!B)) commands){
+	states.removeFuture(commands);
+}
 
 private void replaceState(B)(ref StateHistory!B states,ref Array!(Array!(Command!B)) commands,scope ubyte[] serialized){
 	with(states){
@@ -23575,6 +23585,7 @@ final class GameState(B){
 	bool currentReady(){ return .currentReady(states,commands); }
 	void commit(){ .commit(states,commands); }
 	void rollback(){ .rollback(states,commands); }
+	void removeFuture(){ .removeFuture(states,commands); }
 	void replaceState(scope ubyte[] serialized){ .replaceState(states,commands,serialized); }
 
 	void addCommand(int frame,Command!B command)in{

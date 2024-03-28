@@ -831,7 +831,8 @@ class DelayedConnection(B): ConnectionImpl{
 	}
 	override bool checkAlive(){
 		updateSent();
-		return base.checkAlive();
+		//return base.checkAlive();
+		return true;
 	}
 	override long tryReceive(scope ubyte[] data){
 		if(!alive) return 0;
@@ -1255,7 +1256,6 @@ struct Player{
 	void drop()in{
 		assert(!connection);
 	}do{
-		committedFrame=0;
 		ping=-1.seconds;
 	}
 	bool wantsToControlState(){
@@ -1457,7 +1457,7 @@ final class Network(B){
 	bool desynched(){ return connectedPlayers.any!(p=>isDesynchedStatus(p.status)||p.status==PlayerStatus.resynched); }
 	bool pendingResynch(){
 		if(isHost){
-			if(players[me].status.among(PlayerStatus.readyToResynch,PlayerStatus.stateResynched,PlayerStatus.resynched)) // resynch already initiatedendingresynch
+			if(players[me].status.among(PlayerStatus.readyToResynch,PlayerStatus.stateResynched,PlayerStatus.resynched)) // resynch already initiated
 				return false;
 			return players.any!((ref p)=>isDesynchedStatus(p.status));
 		}
@@ -1474,7 +1474,10 @@ final class Network(B){
 	//int resynchCommittedFrame(){ return players[host].committedFrame; }
 	//int resynchCommittedFrame(){ return committedFrame; } // TODO
 	bool resynched(){ return connectedPlayers.all!((ref p)=>p.status==PlayerStatus.resynched)/+ && connectedPlayers.all!((ref p)=>p.committedFrame==players[host].committedFrame)+/; }
-	int committedFrame(){ return activePlayers.map!((ref p)=>p.committedFrame).fold!min(players[isConnectedStatus(players[host].status)?host:me].committedFrame); }
+	int committedFrame(){
+		if(pauseOnDrop) return requiredPlayers.map!((ref p)=>p.committedFrame).fold!min(players[isConnectedStatus(players[host].status)?host:me].committedFrame);
+		return activePlayers.map!((ref p)=>p.committedFrame).fold!min(players[isConnectedStatus(players[host].status)?host:me].committedFrame);
+	}
 	int me=-1;
 	@property ref settings(){ return players[me].settings; }
 	@property int slot(){ return players[me].slot; }
@@ -1541,6 +1544,10 @@ final class Network(B){
 			broadcast(Packet.confirmArraySetting!setting(player),[]);
 		}else broadcast(Packet.updateSetting!setting(player,value),[]);
 		mixin(`players[player].settings.`~setting)=value;
+
+		static if(setting=="pauseOnDrop"){
+			if(player==me) pauseOnDrop=players[me].settings.pauseOnDrop;
+		}
 	}
 	void updateSetting(string setting,T)(T value){
 		updateSetting!setting(me,value);
@@ -1564,7 +1571,7 @@ final class Network(B){
 		updateSettings(me,newSettings);
 	}
 	void addCommand(int frame,Command!B command)in{
-		assert(playing&&players[me].committedFrame<=frame||command.type==CommandType.surrender||command.type==CommandType.chatMessage);
+		assert(playing&&players[me].committedFrame<=frame||command.type==CommandType.surrender||command.type==CommandType.chatMessage,text(players[me].status," ",players[me].committedFrame," ",frame));
 	}do{
 		tryCommit(frame);
 		if(!isCommandWithRaw(command.type))
@@ -1580,6 +1587,8 @@ final class Network(B){
 		assert(isHost);
 		assert(i==-1||i<players.length);
 	}do{
+		if(i!=-1&&players[i].committedFrame==frame) return;
+		if(i==-1&&players.all!((ref player)=>player.committedFrame==frame)) return;
 		foreach(k,ref player;players){
 			if(i!=me) player.send(Packet.resetCommitted(i,frame));
 			if(i==k||i==-1) player.committedFrame=frame;
@@ -1597,6 +1606,7 @@ final class Network(B){
 		players[i].committedFrame=max(players[i].committedFrame,frame);
 	}
 	bool canCommit(int frame){
+		if(paused||pauseOnDrop&&anyoneDropped) return false;
 		return players[me].committedFrame<frame &&
 			players[me].status.among(PlayerStatus.playing,PlayerStatus.playingBadSynch,PlayerStatus.stateResynched);
 	}
@@ -1819,7 +1829,7 @@ final class Network(B){
 				}
 				assert(!!synchQueue);
 				if(controller) controller.updateCommittedTo(p.synchFrame);
-				if(!synchQueue.check(p.synchFrame,p.synchHash)){
+				if(!synchQueue.check(p.synchFrame,p.synchHash)&&(playing||p.synchFrame<synchQueue.end)){
 					sidechannelChatMessage(ChatMessageType.network,players[sender].settings.name,"desynchronized.",controller);
 					report!true(sender,"desynchronized at frame ",p.synchFrame);
 					if(p.synchFrame>=synchQueue.end){
@@ -2141,6 +2151,7 @@ final class Network(B){
 			players[newId].settings.name=player.settings.name;
 			player.settings=players[newId].settings;
 			player.slot=players[newId].slot;
+			player.committedFrame=players[newId].committedFrame;
 			players[newId]=player;
 		}else players~=player;
 		foreach(other;iota(cast(int)players.length).filter!(i=>i!=newId))
@@ -2506,7 +2517,7 @@ final class Network(B){
 		assert(isHost);
 		assert(paused);
 	}do{
-		updateStatus(PlayerStatus.readyToResynch); // TODO: a full resynch may be overkill
+		updateStatus(PlayerStatus.readyToResynch);
 	}
 	void addSynch(int frame,uint hash)in{
 		assert(isHost);
