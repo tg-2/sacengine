@@ -898,6 +898,15 @@ struct Joiner{
 		if(err!=zts_err_ok) return null;
 		err=zts_set_blocking(fd,false);
 		enforce(err==zts_err_ok,"failed to set blocking mode");
+		int idletime=5;
+		err=zts_bsd_setsockopt(fd,zts_ipproto_tcp,zts_tcp_keepidle,&idletime,int.sizeof);
+		enforce(err==zts_err_ok,"failed to set socket option");
+		int idleintvl=1;
+		err=zts_bsd_setsockopt(fd,zts_ipproto_tcp,zts_tcp_keepintvl,&idleintvl,int.sizeof);
+		enforce(err==zts_err_ok,"failed to set socket option");
+		int yes=1;
+		err=zts_bsd_setsockopt(fd,zts_ipproto_tcp,zts_tcp_keepalive,&yes,int.sizeof);
+		enforce(err==zts_err_ok,"failed to set socket option");
 		auto connection=new ZerotierTCPConnection(fd);
 		fd=-1;
 		return connection;
@@ -910,6 +919,7 @@ struct Joiner{
 		try joinSocket.connect(hostAddress);
 		catch(Exception){ return null; }
 		joinSocket.blocking=false;
+		joinSocket.setKeepAlive(5,1);
 		auto connection=new TCPConnection(joinSocket);
 		joinSocket=null;
 		return connection;
@@ -961,6 +971,15 @@ struct Listener{
 		if(nfd<0) return null;
 		int err=zts_set_blocking(nfd, false);
 		enforce(err==zts_err_ok,"failed to set blocking mode");
+		int idletime=5;
+		err=zts_bsd_setsockopt(nfd,zts_ipproto_tcp,zts_tcp_keepidle,&idletime,int.sizeof);
+		enforce(err==zts_err_ok,"failed to set socket option");
+		int idleintvl=1;
+		err=zts_bsd_setsockopt(nfd,zts_ipproto_tcp,zts_tcp_keepintvl,&idleintvl,int.sizeof);
+		enforce(err==zts_err_ok,"failed to set socket option");
+		int yes=1;
+		err=zts_bsd_setsockopt(nfd,zts_ipproto_tcp,zts_tcp_keepalive,&yes,int.sizeof);
+		enforce(err==zts_err_ok,"failed to set socket option");
 		return new ZerotierTCPConnection(nfd);
 	}
 	Connection accept(){
@@ -975,6 +994,7 @@ struct Listener{
 		catch(Exception){}
 		if(!socket||!socket.isAlive) return null;
 		socket.blocking=false;
+		socket.setKeepAlive(5,1);
 		return new TCPConnection(socket);
 	}
 	void close(){
@@ -2147,6 +2167,17 @@ final class Network(B){
 	int addPlayer(Player player)in{
 		assert(isHost);
 	}do{
+		// this seems to help somewhat with detecting reconnection attempts
+		// TODO: add reliable player authentication
+		foreach(i;0..players.length){
+			if(!players[i].connection) continue;
+			foreach(j;0..10) if(players[i].connection.alive) players[i].connection.send(Packet.nop);
+			if(!players[i].alive){
+				dropPlayer(cast(int)i,null);
+				dumpPlayerInfo();
+			}
+		}
+
 		auto validSpots=chain(iota(players.length).filter!(i=>i!=host&&canReplacePlayer(player,players[i],false)),
 		                      iota(players.length+1).filter!(i=>i!=host&&(i==players.length||canReplacePlayer(player,players[i],true))));
 		assert(!validSpots.empty);
@@ -2163,7 +2194,7 @@ final class Network(B){
 			sendPlayerData(players[other].connection,newId);
 		foreach(other;0..cast(int)players.length)
 			sendPlayerData(players[newId].connection,other);
-		players[newId].send(Packet.updatePlayerId(newId));
+		updatePlayerId(newId);
 		return newId;
 	}
 	bool acceptingNewConnections=true;
@@ -2202,7 +2233,13 @@ final class Network(B){
 			// TODO: accept peer-to-peer connections to decrease latency
 		}
 		for(int i=0;i<pendingJoin.length;){
-			if(pendingJoin[i].ready){
+			if(!pendingJoin[i].alive){
+				stderr.writeln("failed join attempt");
+				stderr.flush();
+				pendingJoin[i].connection.close();
+				swap(pendingJoin[i],pendingJoin[$-1]);
+				pendingJoin.length=pendingJoin.length-1;
+			}else if(pendingJoin[i].ready){
 				auto p=pendingJoin[i].receive();
 				if(p.type==PacketType.join){
 					assert(pendingJoin[i].rawReady);
