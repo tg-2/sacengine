@@ -307,7 +307,12 @@ struct Packet{
 		import std.traits: staticMap;
 		enum memberSize=[staticMap!(getSize,Members)].reduce!max;
 	}
-	static Packet nop(){ return Packet.init; }
+	static Packet nop(){
+		Packet p;
+		p.type=PacketType.nop;
+		p.size=memberSize!type;
+		return p;
+	}
 	static Packet disconnect(){
 		Packet p;
 		p.type=PacketType.disconnect;
@@ -2266,11 +2271,19 @@ final class Network(B){
 		players[i].send(Packet.ping((time-MonoTime.zero).total!"hnsecs"));
 		players[i].pingTime=time;
 	}
+	void nop(int i){
+		auto time=B.time();
+		auto sinceLastPing=time-players[i].pingTime;
+		if(sinceLastPing<pingDelay)
+			return;
+		players[i].send(Packet.nop);
+		players[i].pingTime=time;
+	}
 	void confirmConnectivity(int i){
 		players[i].packetTime=B.time();
 	}
 	void checkConnectivity(int i,Controller!B controller){
-		if(!playing) ping(cast(int)i);
+		if(!playing) nop(cast(int)i);
 		// TODO: probably even if a player is not active there should be some timeout,
 		// especially for players with status playingBadSynch
 		if(!isActiveStatus(players[i].status)||players[i].status==PlayerStatus.playingBadSynch) return;
@@ -2473,10 +2486,11 @@ final class Network(B){
 	}do{
 		ackHandler=AckHandler.measurePing;
 		players[me].ping=Duration.zero;
-		foreach(i,ref player;players)
-			ping(cast(int)i);
-		while(connectedPlayers.any!((ref p)=>p.status!=PlayerStatus.desynched&&p.ping==-1.seconds))
+		while(connectedPlayers.any!((ref p)=>p.status!=PlayerStatus.desynched&&p.ping==-1.seconds)){
+			foreach(i,ref player;players)
+				ping(cast(int)i);
 			update(controller);
+		}
 		auto maxPing=connectedPlayers.map!(p=>p.ping).reduce!max;
 		writeln("pings: ",players.map!(p=>p.ping.total!"msecs").map!(p=>p<0?-1:p));
 		stdout.flush();
