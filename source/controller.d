@@ -304,6 +304,7 @@ final class Controller(B){
 					network.resetCommitted(state.committedFrame);
 				}
 				auto newFrame=network.resynchCommittedFrame;
+				if(network.isHost) network.resetCommitted(network.me,newFrame);
 				// if(network.isHost) network.resetCommitted(newFrame); // TODO
 				if(state.committedFrame<=newFrame){
 					state.simulateCommittedTo!((){
@@ -316,17 +317,16 @@ final class Controller(B){
 					stderr.writeln("warning: rolling back over network: ",newFrame," from ",state.committedFrame);
 					network.updateStatus(PlayerStatus.desynched);
 				}
-				if(state.currentFrame!=newFrame&&state.committedFrame==newFrame){
-					state.rollback();
-					// state.removeFuture(); // TODO
-				}
+				// state.rollback();
+				// state.removeFuture(); // TODO
 				return newFrame;
 			}
 			if(network.desynched){
+				updateCommitted(); // TODO: needed?
 				if(network.pendingResynch){
 					if(!network.isHost&&!isDesynchedStatus(network.players[network.me].status)){
 						// attempt resynch without assistance from host
-						auto newFrame=rollbackToResynchCommittedFrame(); // TODO: remove race condition on `commitedFrame`s
+						auto newFrame=rollbackToResynchCommittedFrame(); // TODO: remove race condition on `committedFrame`s
 						if(network.playing||state.committedFrame==newFrame){
 							network.updateStatus(PlayerStatus.stateResynched);
 						}else{

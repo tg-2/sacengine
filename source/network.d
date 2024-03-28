@@ -1495,7 +1495,10 @@ final class Network(B){
 		return connectedPlayers.all!((ref p)=>p.status.among(PlayerStatus.readyToResynch,PlayerStatus.stateResynched));
 	}
 	bool stateResynched(){ return connectedPlayers.all!(p=>p.status.among(PlayerStatus.stateResynched,PlayerStatus.resynched)); }
-	int resynchCommittedFrame(){ return connectedPlayers.map!((ref p)=>p.committedFrame).fold!max(players[host].committedFrame); }
+	int resynchCommittedFrame(){
+		if(pauseOnDrop) return requiredPlayers.map!((ref p)=>p.committedFrame).fold!max(players[host].committedFrame);
+		return connectedPlayers.map!((ref p)=>p.committedFrame).fold!max(players[host].committedFrame);
+	}
 	//int resynchCommittedFrame(){ return players[host].committedFrame; }
 	//int resynchCommittedFrame(){ return committedFrame; } // TODO
 	bool resynched(){ return connectedPlayers.all!((ref p)=>p.status==PlayerStatus.resynched)/+ && connectedPlayers.all!((ref p)=>p.committedFrame==players[host].committedFrame)+/; }
@@ -1631,7 +1634,7 @@ final class Network(B){
 		players[i].committedFrame=max(players[i].committedFrame,frame);
 	}
 	bool canCommit(int frame){
-		if(paused||pauseOnDrop&&anyoneDropped) return false;
+		if(paused||pauseOnDrop&&anyoneDropped||desynched) return false;
 		return players[me].committedFrame<frame &&
 			players[me].status.among(PlayerStatus.playing,PlayerStatus.playingBadSynch,PlayerStatus.stateResynched);
 	}

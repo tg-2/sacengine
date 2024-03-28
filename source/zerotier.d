@@ -21,6 +21,12 @@ enum zts_sol_socket=0xfff;
 enum zts_so_reuseaddr=4;
 enum zts_so_broadcast=32;
 
+//enum zts_ipproto_tcp=6;
+enum zts_tcp_keepalive=2;
+enum zts_tcp_keepidle=3;
+enum zts_tcp_keepintvl=4;
+
+
 version(Windows){
 	alias ssize_t=int;
 }else{
