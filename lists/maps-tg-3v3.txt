@@ -27,3 +27,7 @@ maps/(6) EM-North Pole.scp
 maps/(6) EM-Conifer Forest.scp
 maps/(6) EM-Arena.scp
 maps/(6) EM-Diablo's Shell.scp
+maps/(6) TM-Dancing Pines.scp
+maps/(6) DD - Scar Trek.scp
+maps/(6) TM-Evening Tide.scp
+maps/(6) EM-Humanaptra.scp
