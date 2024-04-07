@@ -7613,10 +7613,17 @@ bool teleport(B)(ref MovingObject!B obj,Vector3f newPosition,ObjectState!B state
 	return true;
 }
 
+bool canTeleport(B)(ref MovingObject!B obj,ObjectState!B state){
+	if(!obj.isAlive) return false;
+	if(obj.isSacDoctor) return false;
+	if(obj.isGuardian) return false;
+	return true;
+}
+
 bool teleport(B)(int side,Vector3f startPosition,Vector3f targetPosition,SacSpell!B spell,ObjectState!B state){
 	static void teleport(ref CenterProximityEntry entry,int side,Vector3f startPosition,Vector3f targetPosition,ObjectState!B state){
 		static void doIt(ref MovingObject!B obj,Vector3f startPosition,Vector3f targetPosition,ObjectState!B state){
-			if(obj.isSacDoctor||obj.isGuardian||obj.isDying||obj.isDead) return;
+			if(!obj.canTeleport(state)) return;
 			auto newPosition=obj.position-startPosition+targetPosition;
 			if(obj.creatureState.movement!=CreatureMovement.flying&&!state.isOnGround(newPosition)){
 				newPosition=targetPosition; // TODO: fix
