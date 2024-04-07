@@ -709,6 +709,19 @@ final class SacScene: Scene{
 				finishRectangleSelect();
 			}
 		}
+		if(options.xmenu&&mouse.status.among(MouseStatus.standard,MouseStatus.xmenu)){
+			if(eventManager.mouseButtonPressed[MB_RIGHT]){
+				if(mouse.status!=MouseStatus.xmenu){
+					mouse.status=MouseStatus.xmenu;
+					mouse.xmenuTarget=mouse.target;
+					mouse.target=Target.init; // TODO
+					mouse.targetUpdateFrame=mouse.frame;
+				}
+			}else if(mouse.status==MouseStatus.xmenu&&!mouseButtonUp[MB_RIGHT]){
+				mouse.status=MouseStatus.standard;
+				mouse.xmenuTarget=Target.init;
+			}
+		}
 		foreach(key;KEY_1..KEY_0+1){
 			foreach(_;0..keyDown[key]){
 				auto type=!shift && ctrl ? CommandType.defineGroup:
@@ -876,6 +889,7 @@ final class SacScene: Scene{
 					}else done=false;
 				}else done=false;
 				if(!done&&!mouse.dragging) final switch(mouse.status){
+					case MouseStatus.xmenu: break; // TOOD: ok?
 					case MouseStatus.standard:
 						if(mouse.target.type==TargetType.creature&&canSelect(renderSide,mouse.target.id,state.current)){
 							auto type=mouse.additiveSelect?CommandType.toggleSelection:CommandType.select;
@@ -949,6 +963,11 @@ final class SacScene: Scene{
 			}
 			foreach(_;0..mouseButtonUp[MB_RIGHT]){
 				if(!mouse.dragging) final switch(mouse.status){
+					case MouseStatus.xmenu:
+						mouse.target=mouse.xmenuTarget;
+						mouse.status=MouseStatus.standard;
+						mouse.xmenuTarget=Target.init;
+						goto case; // TODO
 					case MouseStatus.standard:
 						switch(mouse.target.type) with(TargetType){
 							case terrain: controller.addCommand(Command!DagonBackend(CommandType.move,renderSide,camera.target,0,mouse.target,cameraFacing),queueing); break;
@@ -1315,6 +1334,7 @@ final class SacScene: Scene{
 	override void onLogicsUpdate(Duration dt){
 		assert(dt==1.seconds/60);
 		updateHUD(dt);
+		updateMouseSparkles();
 		if(!state) mouse.frame+=1;
 	}
 
@@ -1466,14 +1486,16 @@ final class SacScene: Scene{
 		}else return Target.init;
 	}
 	void updateMouseTarget(){
-		auto target=computeMouseTarget();
 		if(mouse.menuMode){
+			if(mouse.status==MouseStatus.xmenu) mouse.status=MouseStatus.standard;
 			if(mouse.target.type==TargetType.formElement){
 				auto formIndex=mouse.target.formIndex;
 				auto elementIndex=mouse.target.elementIndex;
 				if(formIndex>=forms.length||elementIndex>=forms[formIndex].elements.length) mouse.target=Target.init;
 			}else mouse.target=Target.init;
-		}else{
+		}
+		auto target=mouse.status==MouseStatus.xmenu?Target.init:computeMouseTarget();
+		if(!mouse.menuMode){
 			if(target.location==TargetLocation.scene)
 				if(target.id!=0&&(!state||!state.current.isValidTarget(target.id,target.type)))
 					target=Target.init;
@@ -1536,7 +1558,23 @@ final class SacScene: Scene{
 			default: assert(target.location!=TargetLocation.scene); break;
 		}
 	}
+	void addMouseSparkle(){
+		auto size=options.cursorSize;
+		float scale=size==-1?32*info.hudScaling:size;
+		import std.random:uniform;
+		auto offset=scale*Vector2f(uniform(-0.25f,0.25f),uniform(-0.25f,0.25f));
+		info.mouseSparkles~=RenderInfo!DagonBackend.MouseSparkle(mouse.x+offset.x,mouse.y+offset.y);
+	}
+	void updateMouseSparkles(){
+		for(int i=0;i<info.mouseSparkles.length;){
+			if(++info.mouseSparkles[i].frame>=SacCursor!DagonBackend.numSparkleFrames){
+				swap(info.mouseSparkles[i],info.mouseSparkles[$-1]);
+				info.mouseSparkles.length=info.mouseSparkles.length-1;
+			}else i++;
+		}
+	}
 	void updateCursor(Duration dt){
+		updateMouseSparkles();
 		updateMouseTarget();
 		auto otarget=OrderTarget(mouse.target);
 		if(mouse.dragging) mouse.cursor=Cursor.drag;
@@ -1544,6 +1582,15 @@ final class SacScene: Scene{
 		else final switch(mouse.status){
 			case MouseStatus.standard:
 				mouse.cursor=otarget.cursor(renderSide,false,state.current);
+				break;
+			case MouseStatus.xmenu:
+				mouse.cursor=Cursor.normal;
+				// TODO
+				if(eventManager.mouseRelX||eventManager.mouseRelY){
+					import std.random:uniform;
+					if(uniform(0,2)==0)
+						addMouseSparkle();
+				}
 				break;
 			case MouseStatus.rectangleSelect:
 				mouse.cursor=Cursor.rectangleSelect;
@@ -2027,7 +2074,7 @@ static:
 		}
 	}
 
-	std.typecons.Tuple!(Material[],Material[],Material) createMaterials(SacCursor!DagonBackend sacCursor){
+	std.typecons.Tuple!(Material[],Material[],Material,Material) createMaterials(SacCursor!DagonBackend sacCursor){
 		auto materials=new Material[](sacCursor.textures.length);
 		foreach(i;0..materials.length){
 			auto mat=makeMaterial(scene.hudMaterialBackend);
@@ -2046,7 +2093,12 @@ static:
 		mat.blending=Transparent;
 		mat.diffuse=sacCursor.invalidTargetIconTexture;
 		auto invalidTargetIconMaterial=mat;
-		return tuple(materials,iconMaterials,invalidTargetIconMaterial);
+		mat=makeMaterial(scene.hudMaterialBackend2);
+		mat.blending=Additive;
+		mat.diffuse=sacCursor.sparkleTexture;
+		mat.energy=20.0f;
+		auto sparkleMaterial=mat;
+		return tuple(materials,iconMaterials,invalidTargetIconMaterial,sparkleMaterial);
 	}
 
 	Material[] createMaterials(SacHud!DagonBackend sacHud){

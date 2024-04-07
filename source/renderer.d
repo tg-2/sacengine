@@ -40,6 +40,7 @@ struct Mouse(B){
 	enum Status{
 		standard,
 		rectangleSelect,
+		xmenu,
 		icon,
 	}
 	bool dragging;
@@ -50,6 +51,7 @@ struct Mouse(B){
 	bool additiveSelect=false;
 	auto cursor=Cursor.normal;
 	Target target;
+	Target xmenuTarget;
 	SacSpell!B targetSpell;
 	bool targetValid;
 	bool inHitbox=false;
@@ -123,6 +125,11 @@ struct RenderInfo(B){
 	int hudSoulFrame=0;
 	bool hudVisible=true;
 	Mouse!B mouse;
+	struct MouseSparkle{
+		float x,y;
+		int frame=0;
+	}
+	Array!MouseSparkle mouseSparkles;
 	Camera camera;
 	int windowHeight;
 	@property int width(){ return camera.width; }
@@ -2975,6 +2982,18 @@ struct Renderer(B){
 		material.backend.setTransformationScaled(position, Quaternionf.identity(), scaling, rc);
 		quad.render(rc);
 		material.unbind(rc);
+		if(info.mouseSparkles.length){
+			auto mat=sacCursor.sparkleMaterial;
+			mat.bind(rc);
+			scope(exit) mat.unbind(rc);
+			foreach(ref sparkle;info.mouseSparkles.data){
+				auto spposition=Vector3f(sparkle.x,sparkle.y,0);
+				auto spscaling=Vector3f(scale,-scale,1.0f);
+				mat.backend.setTransformationScaled(spposition, Quaternionf.identity(), spscaling, rc);
+				auto mesh=sacCursor.getSparkleMesh(sparkle.frame);
+				mesh.render(rc);
+			}
+		}
 	}
 
 	SacCursor!B sacCursor;

@@ -46,6 +46,7 @@ struct Options{
 	string hotkeyFilename="";
 	Hotkeys hotkeys;
 	int doubleClickSpeed=20;
+	bool xmenu=true;
 	// int xmenuTime=15; // TODO
 	// int keyRepeatStarDelay=50; // TODO?
 	// int keyRepeatDelay=10;

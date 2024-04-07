@@ -356,6 +356,18 @@ string flagText(E)(E arg)if(is(E==enum)){
 	return r;
 }
 
+int enumIndex(E)(E arg)if(is(E==enum)){
+	final switch(arg){
+		static foreach(i,e;EnumMembers!E)
+		case e: return i;
+	}
+}
+E enumFromIndex(E)(int index)if(is(E==enum)){
+	static immutable es=[EnumMembers!E];
+	return es[index];
+}
+
+
 struct Queue(T){
 	Array!T payload;
 	size_t first=0,last=0;

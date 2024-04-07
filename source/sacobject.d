@@ -1701,6 +1701,13 @@ final class SacCursor(B){
 	B.Material[] iconMaterials;
 	B.Texture invalidTargetIconTexture;
 	B.Material invalidTargetIconMaterial;
+	B.Texture sparkleTexture;
+	B.Material sparkleMaterial;
+	B.Mesh[] sparkleMeshes;
+	enum numSparkleFrames=updateAnimFactor*2*4*4;
+	B.Mesh getSparkleMesh(int frame){
+		return sparkleMeshes[frame/(2*updateAnimFactor)];
+	}
 	this(){
 		textures[Cursor.normal]=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/curs.FLDR/Cnor.ICON"));
 		textures[Cursor.friendlyUnit]=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/curs.FLDR/Cfun.ICON"));
@@ -1727,12 +1734,20 @@ final class SacCursor(B){
 		assert(iconTextures[].all!(t=>t!is null));
 
 		invalidTargetIconTexture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/icon.FLDR/ncst.ICON"));
+		sparkleTexture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/curs.FLDR/Ctrl.TXTR"));
 
 		auto materialsIconMaterials=B.createMaterials(this);
 		materials=materialsIconMaterials[0], iconMaterials=materialsIconMaterials[1];
 		invalidTargetIconMaterial=materialsIconMaterials[2];
+		sparkleMaterial=materialsIconMaterials[3];
+		sparkleMeshes=makeSpriteMeshes!B(4,4,1.0f,1.0f);
 	}
 }
+
+/+class SacXmenu(B){
+	// TODO
+}+/
+
 
 final class SacHud(B){
 	union{

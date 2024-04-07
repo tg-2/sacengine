@@ -245,7 +245,7 @@ string getSaxsAnim(string saxsModlFile, char[4] tag){
 immutable string[] iconFolders=["extracted/main/MAIN.WAD!/icon.FLDR"].fixPaths;
 string[char[4]] icons;
 string[char[4]] makeIconByTag(bool readFromWads){
-	 // some icons seem to be replicated, e.g. rded.ICON
+	// some icons seem to be replicated, e.g. rded.ICON
 	return makeFileIndex(readFromWads,iconFolders,"ICON",false);
 }
 
