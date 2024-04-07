@@ -97,8 +97,8 @@ bool isVisibleToAI(CreatureMode mode){
 bool isVisibleToOtherSides(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,dying,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
-			shooting,usingAbility,pulling,pumping,torturing,convertReviving,thrashing: return true;
-		case dead,deadToGhost,idleGhost,movingGhost,ghostToIdle,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,rockForm,firewalk: return false;
+			shooting,usingAbility,pulling,pumping,torturing,convertReviving,thrashing,reviving,fastReviving,pretendingToRevive: return true;
+		case dead,deadToGhost,idleGhost,movingGhost,ghostToIdle,dissolving,preSpawning,pretendingToDie,playingDead,rockForm,firewalk: return false;
 	}
 }
 bool isObstacle(CreatureMode mode){
