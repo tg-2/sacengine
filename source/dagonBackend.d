@@ -886,7 +886,7 @@ final class SacScene: Scene{
 							         (lastSelectedId==mouse.target.id||
 							          abs(lastSelectedX-mouse.x)<delta &&
 							          abs(lastSelectedY-mouse.y)<delta) &&
-							         state.current.frame-lastSelectedFrame<=mouse.doubleClickDelay*updateFPS){
+							         state.current.frame-lastSelectedFrame<=options.doubleClickSpeed){
 								type=mouse.additiveSelect?
 									(state.current.getSelection(controller?controller.controlledSide:-1).has(mouse.target.id)?
 									 CommandType.automaticAddAllToSelection:CommandType.addAllToSelection):

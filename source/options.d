@@ -45,12 +45,18 @@ struct Options{
 	// input options
 	string hotkeyFilename="";
 	Hotkeys hotkeys;
+	int doubleClickSpeed=20;
+	// int xmenuTime=15; // TODO
+	// int keyRepeatStarDelay=50; // TODO?
+	// int keyRepeatDelay=10;
+	// float mouseSpeed=1.0f; // TODO?
 	float cameraMouseSensitivity=1.0f;
 	float mouseWheelSensitivity=1.0f;
 	bool windowScrollX=true;
 	bool windowScrollY=true;
 	float windowScrollXFactor=1.0f;
 	float windowScrollYFactor=1.0f;
+	// bool mouseWheelZoom=true; // TODO
 	bool debugHotkeys=false;
 	// player-specific settings
 	God god;

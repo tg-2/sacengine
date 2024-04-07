@@ -56,7 +56,6 @@ struct Mouse(B){
 	int frame=0;
 	int targetUpdateFrame=0;
 	enum mouseoverBoxDelay=0.5f*updateFPS;
-	enum doubleClickDelay=0.3f; // in seconds
 	Target cachedTarget;
 	float cachedTargetX,cachedTargetY;
 	int cachedTargetFrame;
