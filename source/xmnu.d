@@ -8,7 +8,7 @@ struct Xmnl{
 	}
 	static struct Entry{
 		char[4][2] entries;
-		Dir number;
+		Dir dir;
 	}
 	Entry[] entries;
 }
@@ -78,7 +78,8 @@ struct Xmnu{
 	char[4] tag;
 	char[4] name;
 	char[4] icon;
-	XmnuAction action;
+	//XmnuAction action;
+	char[4] action;
 	char[4] arg; // spell or formation tag
 	char[4] unknown;
 }

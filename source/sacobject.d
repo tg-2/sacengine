@@ -1744,9 +1744,46 @@ final class SacCursor(B){
 	}
 }
 
-/+class SacXmenu(B){
-	// TODO
-}+/
+class SacXmenu(B){
+	import xmnu;
+	static struct Entry{
+		Xmnu xmnu;
+		string name;
+		B.Texture icon;
+		int[4] next=-1;
+	}
+	Array!Entry entries;
+	private int load(char[4] tag){
+		foreach(i,ref entry;entries.data)
+			if(entry.xmnu.tag==tag)
+				return to!int(i);
+		char[4] rev=tag;
+		reverse(rev[]);
+		auto xmnu=loadXmnu(text("extracted/xmenu/XMNU.WAD!/",rev[],".XMNU"));
+		auto name=texts.get(xmnu.name,null);
+		auto icon=B.makeTexture(loadTXTR(icons[xmnu.icon]));
+		entries~=Entry(xmnu,name,icon);
+		return to!int(entries.length)-1;
+	}
+	ref Entry get(char[4] tag){ return entries[load(tag)]; }
+	static immutable centerTags=[imported!"std.traits".EnumMembers!XmnuCenterTag];
+	this(){
+		auto xmnl=loadXmnl("extracted/xmenu/XMNU.WAD!/lnk1.XMNL");
+		int center=load(XmnuTag.center);
+		foreach(ref entry;xmnl.entries){
+			auto parent=load(entry.entries[0]);
+			auto child=load(entry.entries[1]);
+			enforce(entries[parent].next[entry.dir]==-1);
+			enforce(entries[child].next[entry.dir^1]==-1);
+			entries[parent].next[entry.dir]=child;
+			entries[child].next[entry.dir^1]=parent;
+		}
+		foreach(i,e;centerTags){
+			int entry=load(e);
+			entries[entry].next=entries[center].next;
+		}
+	}
+}
 
 
 final class SacHud(B){

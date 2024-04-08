@@ -22460,6 +22460,8 @@ enum TargetType{
 	spell,
 	ability,
 
+	xmenu,
+
 	soulStat,
 	manaStat,
 	healthStat,
@@ -22474,6 +22476,7 @@ enum TargetLocation{
 	selectionRoster,
 	spellbook,
 	hud,
+	xmenu,
 }
 
 struct Target{
@@ -22492,7 +22495,7 @@ struct Target{
 }
 TargetFlags summarize(bool simplified=false,B)(ref OrderTarget target,int side,ObjectState!B state){
 	final switch(target.type) with(TargetType){
-		case none,creatureTab,spellTab,structureTab,spell,ability,soulStat,manaStat,healthStat,formElement: return TargetFlags.none;
+		case none,creatureTab,spellTab,structureTab,spell,ability,xmenu,soulStat,manaStat,healthStat,formElement: return TargetFlags.none;
 		case terrain: return TargetFlags.ground;
 		case creature,building:
 			static TargetFlags handle(T)(T obj,int side,ObjectState!B state){

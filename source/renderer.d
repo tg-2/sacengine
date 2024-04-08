@@ -53,6 +53,7 @@ struct Mouse(B){
 	Target target;
 	Target xmenuTarget;
 	SacSpell!B targetSpell;
+	char[4] xmenuTargetId;
 	bool targetValid;
 	bool inHitbox=false;
 	int frame=0;
@@ -2997,6 +2998,7 @@ struct Renderer(B){
 	}
 
 	SacCursor!B sacCursor;
+	SacXmenu!B sacXmenu;
 	B.Quad quad;
 	B.Texture whiteTexture;
 	B.CreatureFrame border;
@@ -3017,6 +3019,7 @@ struct Renderer(B){
 	static struct HudOpt{ bool freetypeFonts; }
 	void initializeHUD(HudOpt options){
 		sacCursor=new SacCursor!B();
+		sacXmenu=new SacXmenu!B();
 		quad=B.makeQuad();
 		whiteTexture=B.makeTexture(makeOnePixelImage(Color4f(1.0f,1.0f,1.0f)));
 		border=B.makeCreatureFrame();
@@ -3765,7 +3768,7 @@ struct Renderer(B){
 		static bool requiresDelay(TargetType type){
 			final switch(type) with(TargetType){
 				case none,terrain,creatureTab,spellTab,structureTab,spell: return false;
-				case creature,building,soul,ability,soulStat,manaStat,healthStat,formElement: return true;
+				case creature,building,soul,ability,xmenu,soulStat,manaStat,healthStat,formElement: return true;
 			}
 		}
 		if(requiresDelay(target.type)&&info.mouse.targetUpdateFrame+info.mouse.mouseoverBoxDelay>info.mouse.frame)
@@ -3993,6 +3996,9 @@ struct Renderer(B){
 				auto targetSpell=info.mouse.targetSpell;
 				if(!targetSpell||!targetSpell.name.length) break;
 				renderMouseoverText(targetSpell.name,cursorSize,info,rc);
+				break;
+			case TargetType.xmenu:
+				renderMouseoverText(sacXmenu.get(info.mouse.xmenuTargetId).name,cursorSize,info,rc);
 				break;
 			case TargetType.soulStat:
 				renderMouseoverText("Soul counter",cursorSize,info,rc);

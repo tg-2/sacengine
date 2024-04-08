@@ -617,6 +617,131 @@ final class SacScene: Scene{
 		}
 	}
 
+	Target xmenuTarget(){
+		return Target(TargetType.xmenu,0,Vector3f.init,TargetLocation.xmenu);
+	}
+	char[4] xmenuCenter(){
+		auto xtarget=mouse.xmenuTarget;
+		import xmnu;
+		switch(xtarget.type) with(TargetType) with(XmnuCenterTag){
+			case terrain: return move;
+			case creature,building:
+				auto otarget=OrderTarget(xtarget);
+				auto summary=otarget.summarize(renderSide,state.current);
+				if(!(summary&TargetFlags.untargetable)){
+					if(summary&TargetFlags.corpse){
+						return guard;
+					}else if(summary&TargetFlags.enemy){
+						return attack;
+					}else if(summary&TargetFlags.manafount){
+						return manalith;
+					}else{
+						return guard;
+					}
+				}
+				goto default;
+				case soul:
+					final switch(color(xtarget.id,renderSide,state.current)){
+						case SoulColor.blue:
+							return move;
+						case SoulColor.red,SoulColor.green:
+							return convert;
+					}
+				default: return none;
+
+		}
+	}
+
+	void performXmenuAction(float cameraFacing,CommandQueueing queueing){
+		if(mouse.target.type!=TargetType.xmenu) return;
+		import xmnu;
+		auto xtarget=mouse.xmenuTarget;
+		auto xmnux=renderer.sacXmenu.get(mouse.xmenuTargetId).xmnu;
+		mouse.target=mouse.xmenuTarget;
+		mouse.status=MouseStatus.standard;
+		mouse.xmenuTarget=Target.init;
+		mouse.xmenuTargetId="\0\0\0\0";
+		final switch(cast(XmnuAction)xmnux.action) with(XmnuAction){
+			case abort: return;
+			case moveDefault:
+				if(xtarget.type==TargetType.terrain){
+					controller.addCommand(Command!DagonBackend(CommandType.move,renderSide,camera.target,0,xtarget,cameraFacing),queueing);
+				}else{
+					auto target=Target(TargetType.terrain,0,xtarget.position,xtarget.location);
+					controller.addCommand(Command!DagonBackend(CommandType.move,renderSide,camera.target,0,target,cameraFacing),queueing);
+				}
+				return;
+			case guardDefault:
+				if(xtarget.type.among(TargetType.creature,TargetType.building)){
+					auto otarget=OrderTarget(xtarget);
+					auto summary=otarget.summarize(renderSide,state.current);
+					if(summary&TargetFlags.corpse){
+						auto target=Target(TargetType.terrain,0,xtarget.position,xtarget.location);
+						controller.addCommand(Command!DagonBackend(CommandType.guardArea,renderSide,camera.target,0,target,cameraFacing),queueing);
+						return;
+					}else{
+						controller.addCommand(Command!DagonBackend(CommandType.guard,renderSide,camera.target,0,xtarget,cameraFacing),queueing);
+						return;
+					}
+				}
+				return;
+			case attackDefault:
+				if(xtarget.type.among(TargetType.creature,TargetType.building)){
+					auto otarget=OrderTarget(xtarget);
+					auto summary=otarget.summarize(renderSide,state.current);
+					if(summary&TargetFlags.corpse){
+					}else if(summary&TargetFlags.enemy){
+						controller.addCommand(Command!DagonBackend(CommandType.attack,renderSide,camera.target,0,xtarget,cameraFacing),queueing);
+						return;
+					}
+				}
+				return;
+			case spell:
+				castSpell(SacSpell!DagonBackend.get(xmnux.arg),xtarget);
+				return;
+			case attack:
+				mouse.status=MouseStatus.icon;
+				mouse.icon=MouseIcon.attack;
+				return;
+			case guard:
+				mouse.status=MouseStatus.icon;
+				mouse.icon=MouseIcon.guard;
+				return;
+			case move:
+				with(TargetType) if(xtarget.type.among(terrain,creature,building,soul)){ // TODO: sky
+					auto target=Target(terrain,0,xtarget.position,xtarget.location);
+					target.position.z=state.current.getHeight(target.position);
+					controller.addCommand(Command!DagonBackend(CommandType.move,renderSide,camera.target,0,target,cameraFacing),queueing);
+				}
+				return;
+			case retreat:
+				auto target=Target(TargetType.creature,camera.target);
+				controller.addCommand(Command!DagonBackend(CommandType.retreat,renderSide,camera.target,0,target,float.init));
+				return;
+			case ability:
+				selectAbility(CommandQueueing.none);
+				return;
+			case formation:
+				Formation formation;
+				Lswitch:switch(xmnux.arg) with(FormationTag){
+						import std.traits:EnumMembers;
+						static foreach(alias tag;EnumMembers!FormationTag){
+							case tag:
+								formation=__traits(getMember,Formation,__traits(identifier,tag));
+								break Lswitch;
+						}
+					default:
+						stderr.writeln("formation not yet supported: ",xmnux.arg);
+						return;
+				}
+				controller.addCommand(Command!DagonBackend(renderSide,camera.target,formation));
+				return;
+			case changeCamera:
+				stderr.writeln("xmenu command not yet supported: change camera");
+				return;
+		}
+	}
+
 	int lastSelectedId=0,lastSelectedFrame=0;
 	float lastSelectedX,lastSelectedY;
 	void gameControl(Duration dt){
@@ -714,7 +839,8 @@ final class SacScene: Scene{
 				if(mouse.status!=MouseStatus.xmenu){
 					mouse.status=MouseStatus.xmenu;
 					mouse.xmenuTarget=mouse.target;
-					mouse.target=Target.init; // TODO
+					mouse.target=xmenuTarget();
+					mouse.xmenuTargetId=xmenuCenter();
 					mouse.targetUpdateFrame=mouse.frame;
 				}
 			}else if(mouse.status==MouseStatus.xmenu&&!mouseButtonUp[MB_RIGHT]){
@@ -964,10 +1090,8 @@ final class SacScene: Scene{
 			foreach(_;0..mouseButtonUp[MB_RIGHT]){
 				if(!mouse.dragging) final switch(mouse.status){
 					case MouseStatus.xmenu:
-						mouse.target=mouse.xmenuTarget;
-						mouse.status=MouseStatus.standard;
-						mouse.xmenuTarget=Target.init;
-						goto case; // TODO
+						performXmenuAction(cameraFacing,queueing);
+						break;
 					case MouseStatus.standard:
 						switch(mouse.target.type) with(TargetType){
 							case terrain: controller.addCommand(Command!DagonBackend(CommandType.move,renderSide,camera.target,0,mouse.target,cameraFacing),queueing); break;
@@ -1494,7 +1618,7 @@ final class SacScene: Scene{
 				if(formIndex>=forms.length||elementIndex>=forms[formIndex].elements.length) mouse.target=Target.init;
 			}else mouse.target=Target.init;
 		}
-		auto target=mouse.status==MouseStatus.xmenu?Target.init:computeMouseTarget();
+		auto target=mouse.status==MouseStatus.xmenu?mouse.target:computeMouseTarget();
 		if(!mouse.menuMode){
 			if(target.location==TargetLocation.scene)
 				if(target.id!=0&&(!state||!state.current.isValidTarget(target.id,target.type)))
