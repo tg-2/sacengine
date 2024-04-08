@@ -286,14 +286,20 @@ int run(string[] args){
 			case "--ignore-settings": break;
 			case "--redirect-output": break;
 			case "--no-join": options.joinIP=""; break;
+			case "--ffa": options.teamSizes=[1]; break;
 			default:
+				import std.utf:byChar;
+				if(opt.startsWith("--")&&opt[2..$].byChar.all!(c=>c=='v'||'0'<=c&&c<='9')&&'0'<=opt[2]&&opt[2]<='9'&&'0'<=opt[$-1]&&opt[$-1]<='9'){
+					options.teamSizes=opt[2..$].split('v').to!(int[]);
+					break;
+				}
 				stderr.writeln("unknown option: ",opt);
 				return 1;
 		}
 	}
 	if(options.slot==int.min) options.slot=options.observer?-1:0;
-	if(options._2v2) options.numSlots=max(options.numSlots,4);
-	if(options._3v3) options.numSlots=max(options.numSlots,6);
+	if(options.teamSizes.length)
+		options.numSlots=max(options.numSlots,std.algorithm.sum(options.teamSizes));
 	if(options.wizard=="\0\0\0\0"||options.randomWizards){
 		import std.random: uniform;
 		import nttData:wizards;

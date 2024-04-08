@@ -69,9 +69,7 @@ struct Options{
 	string mapList;
 	GameMode gameMode=GameMode.skirmish;
 	int gameModeParam;
-	bool ffa=false;
-	bool _2v2=false;
-	bool _3v3=false;
+	int[] teamSizes;
 	bool mirrorMatch=false;
 	bool shuffleSides=false;
 	bool shuffleTeams=false;

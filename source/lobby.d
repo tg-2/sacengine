@@ -7,20 +7,23 @@ import std.exception, std.conv;
 GameInit!B gameInit(B,R)(Sides!B sides_,R playerSettings,ref Options options){
 	GameInit!B gameInit;
 	auto numSlots=options.numSlots;
-	if(options._2v2) enforce(numSlots>=4);
-	if(options._3v3) enforce(numSlots>=6);
+	enforce(numSlots>=sum(options.teamSizes));
 	gameInit.slots=new GameInit!B.Slot[](numSlots);
 	auto sides=options.gameMode==GameMode.scenario?
 		iota(numSlots).map!(i=>sides_.scenarioSide(i)).array:
 		iota(numSlots).map!(i=>sides_.multiplayerSide(i)).array;
 	auto teams=(-1).repeat(numSlots).array;
 	if(options.gameMode!=GameMode.scenario){
-		if(options.ffa||options._2v2||options._3v3){
-			int teamSize=1;
-			if(options._2v2) teamSize=2;
-			if(options._3v3) teamSize=3;
-			foreach(slot,ref team;teams)
-				team=cast(int)slot/teamSize;
+		if(options.teamSizes.length){
+			int sumSiz=sum(options.teamSizes);
+			zip(zip(iota(to!int(options.teamSizes.length)),options.teamSizes)
+			    .map!(tn=>tn[0].repeat(tn[1]))
+			    .joiner.repeat.joiner,
+			    recurrence!((a,n)=>a[n-1]+options.teamSizes.length)(0)
+			    .map!(i=>i.repeat(sumSiz)).joiner
+			).map!(x=>x[0]+x[1])
+				.take(teams.length)
+				.copy(teams);
 		}else{
 			foreach(ref settings;playerSettings)
 				if(settings.slot!=-1)
