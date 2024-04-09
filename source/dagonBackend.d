@@ -763,8 +763,8 @@ final class SacScene: Scene{
 	}
 
 	void performXmenuAction(float cameraFacing,CommandQueueing queueing){
-		if(mouse.target.type!=TargetType.xmenu) return;
 		scope(exit) updateCursor(Duration.zero);
+		if(mouse.target.type!=TargetType.xmenu){ hideXmenu(); return; }
 		import xmnu;
 		auto xtarget=mouse.xmenuTarget;
 		auto xtargetId=mouse.xmenuTargetId;
@@ -960,8 +960,8 @@ final class SacScene: Scene{
 					updateXmenu();
 				}
 			}else if(mouse.status==MouseStatus.xmenu&&!mouseButtonUp[MB_RIGHT]){
+				hideXmenu();
 				mouse.status=MouseStatus.standard;
-				mouse.xmenuTarget=Target.init;
 			}
 		}
 		foreach(key;KEY_1..KEY_0+1){
