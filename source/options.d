@@ -47,7 +47,8 @@ struct Options{
 	Hotkeys hotkeys;
 	int doubleClickSpeed=20;
 	bool xmenu=true;
-	// int xmenuTime=15; // TODO
+	int xmenuTime=15;
+	float xmenuHiddenScale=0.4f;
 	// int keyRepeatStarDelay=50; // TODO?
 	// int keyRepeatDelay=10;
 	// float mouseSpeed=1.0f; // TODO?

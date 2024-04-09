@@ -651,6 +651,60 @@ final class SacScene: Scene{
 
 		}
 	}
+	void updateXmenu(){
+		if(mouse.status!=MouseStatus.xmenu||mouse.xmenuTargetId=="\0\0\0\0")
+			return;
+		float size=32.0f*hudScaling;
+		bool xmenuShouldBeVisible(){
+			// return mouse.frame-mouse.xmenuFrame>=options.xmenuTime;
+			return false;
+		}
+		if(xmenuShouldBeVisible()){
+			if(!mouse.xmenuVisible){
+				mouse.xmenuVisible=true;
+				mouse.xmenuOffsetX=mouse.x;
+				mouse.xmenuOffsetY=mouse.y;
+			}
+		}else{
+			if(mouse.xmenuVisible){
+				mouse.xmenuVisible=false;
+				mouse.xmenuOffsetX=mouse.xmenuOffsetY=0.0f;
+			}
+		}
+		if(!mouse.xmenuVisible){
+			float scale=options.xmenuHiddenScale;
+			auto sacXmenu=renderer.sacXmenu;
+			import xmnu;
+			auto xmnux=sacXmenu.get(mouse.xmenuTargetId);
+			mouse.xmenuOffsetX+=eventManager.mouseRelX/scale;
+			mouse.xmenuOffsetY+=eventManager.mouseRelY/scale;
+			int next=-1;
+			if(abs(mouse.xmenuOffsetX)>=abs(mouse.xmenuOffsetY)){
+				if(abs(mouse.xmenuOffsetX)>=0.5f*size){
+					if(mouse.xmenuOffsetX<0.0f){
+						next=xmnux.next[Xmnl.Dir.left];
+					}else{
+						next=xmnux.next[Xmnl.Dir.right];
+					}
+					mouse.xmenuOffsetX=mouse.xmenuOffsetY=0.0f;
+				}
+			}else{
+				if(abs(mouse.xmenuOffsetY)>=0.5f*size){
+					if(mouse.xmenuOffsetY<0.0f){
+						next=xmnux.next[Xmnl.Dir.up];
+					}else{
+						next=xmnux.next[Xmnl.Dir.down];
+					}
+					mouse.xmenuOffsetX=mouse.xmenuOffsetY=0.0f;
+				}
+			}
+			if(next!=-1){
+				mouse.xmenuTargetId=sacXmenu.entries[next].xmnu.tag;
+			}
+			if(mouse.xmenuTargetId==XmnuTag.center)
+				mouse.xmenuTargetId=xmenuCenter();
+		}
+	}
 
 	void performXmenuAction(float cameraFacing,CommandQueueing queueing){
 		if(mouse.target.type!=TargetType.xmenu) return;
@@ -661,6 +715,8 @@ final class SacScene: Scene{
 		mouse.status=MouseStatus.standard;
 		mouse.xmenuTarget=Target.init;
 		mouse.xmenuTargetId="\0\0\0\0";
+		mouse.xmenuOffsetX=mouse.xmenuOffsetY=0.0f;
+		mouse.xmenuFrame=mouse.frame;
 		final switch(cast(XmnuAction)xmnux.action) with(XmnuAction){
 			case abort: return;
 			case moveDefault:
@@ -708,11 +764,8 @@ final class SacScene: Scene{
 				mouse.icon=MouseIcon.guard;
 				return;
 			case move:
-				with(TargetType) if(xtarget.type.among(terrain,creature,building,soul)){ // TODO: sky
-					auto target=Target(terrain,0,xtarget.position,xtarget.location);
-					target.position.z=state.current.getHeight(target.position);
-					controller.addCommand(Command!DagonBackend(CommandType.move,renderSide,camera.target,0,target,cameraFacing),queueing);
-				}
+				mouse.status=MouseStatus.icon;
+				mouse.icon=MouseIcon.move;
 				return;
 			case retreat:
 				auto target=Target(TargetType.creature,camera.target);
@@ -834,13 +887,14 @@ final class SacScene: Scene{
 				finishRectangleSelect();
 			}
 		}
-		if(options.xmenu&&mouse.status.among(MouseStatus.standard,MouseStatus.xmenu)){
+		if(mouse.status.among(MouseStatus.standard,MouseStatus.xmenu)){
 			if(eventManager.mouseButtonPressed[MB_RIGHT]){
 				if(mouse.status!=MouseStatus.xmenu){
 					mouse.status=MouseStatus.xmenu;
 					mouse.xmenuTarget=mouse.target;
 					mouse.target=xmenuTarget();
 					mouse.xmenuTargetId=xmenuCenter();
+					mouse.xmenuOffsetX=mouse.xmenuOffsetY=0.0f;
 					mouse.targetUpdateFrame=mouse.frame;
 				}
 			}else if(mouse.status==MouseStatus.xmenu&&!mouseButtonUp[MB_RIGHT]){
@@ -1048,8 +1102,15 @@ final class SacScene: Scene{
 						finishRectangleSelect();
 						break;
 					case MouseStatus.icon:
-						auto otarget=OrderTarget(mouse.target);
-						if(mouse.targetValid){
+						if(mouse.icon==MouseIcon.move){
+							with(TargetType) if(mouse.target.type.among(terrain,creature,building,soul)){ // TODO: sky
+								auto target=Target(terrain,0,mouse.target.position,mouse.target.location);
+								target.position.z=state.current.getHeight(target.position);
+								controller.addCommand(Command!DagonBackend(CommandType.move,renderSide,camera.target,0,target,cameraFacing),queueing);
+								mouse.status=MouseStatus.standard;
+							}
+						}else if(mouse.targetValid){
+							auto otarget=OrderTarget(mouse.target);
 							auto summary=otarget.summarize(renderSide,state.current);
 							final switch(mouse.icon){
 								case MouseIcon.attack:
@@ -1070,6 +1131,8 @@ final class SacScene: Scene{
 									}
 									mouse.status=MouseStatus.standard;
 									break;
+								case MouseIcon.move:
+									assert(0);
 								case MouseIcon.spell:
 									if(castSpell(mouse.spell,mouse.target))
 										mouse.status=MouseStatus.standard;
@@ -1080,6 +1143,7 @@ final class SacScene: Scene{
 									break;
 							}
 						}else{
+							auto otarget=OrderTarget(mouse.target);
 							auto status=mouse.icon==MouseIcon.spell?state.current.spellStatus!false(camera.target,mouse.spell,otarget):
 								mouse.icon==MouseIcon.ability?state.current.abilityStatus!false(renderSide,mouse.spell,otarget):SpellStatus.invalidTarget;
 							spellAdvisorHelpSpeech(status);
@@ -1568,6 +1632,7 @@ final class SacScene: Scene{
 		final switch(mouse.icon){
 			case MouseIcon.guard: return isApplicable(orderSpelFlags,otarget.summarize(renderSide,state.current));
 			case MouseIcon.attack: return isApplicable(orderSpelFlags,otarget.summarize(renderSide,state.current));
+			case MouseIcon.move: return isApplicable(orderSpelFlags,otarget.summarize(renderSide,state.current));
 			case MouseIcon.spell: return !!state.current.spellStatus!false(camera.target,mouse.spell,otarget).among(SpellStatus.ready,SpellStatus.mustBeNearBuilding,SpellStatus.mustBeNearEnemyAltar,SpellStatus.mustBeConnectedToConversion);
 			case MouseIcon.ability: return state.current.abilityStatus!false(renderSide,mouse.spell,otarget)==SpellStatus.ready;
 		}
@@ -1709,12 +1774,12 @@ final class SacScene: Scene{
 				break;
 			case MouseStatus.xmenu:
 				mouse.cursor=Cursor.normal;
-				// TODO
 				if(eventManager.mouseRelX||eventManager.mouseRelY){
 					import std.random:uniform;
 					if(uniform(0,2)==0)
 						addMouseSparkle();
 				}
+				if(options.xmenu) updateXmenu();
 				break;
 			case MouseStatus.rectangleSelect:
 				mouse.cursor=Cursor.rectangleSelect;

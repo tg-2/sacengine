@@ -1690,6 +1690,7 @@ enum Cursor{
 enum MouseIcon{
 	attack,
 	guard,
+	move,
 	spell,
 	ability,
 }
@@ -1697,7 +1698,7 @@ enum MouseIcon{
 final class SacCursor(B){
 	B.Texture[Cursor.max+1] textures;
 	B.Material[] materials;
-	B.Texture[MouseIcon.guard+1] iconTextures;
+	B.Texture[MouseIcon.move+1] iconTextures;
 	B.Material[] iconMaterials;
 	B.Texture invalidTargetIconTexture;
 	B.Material invalidTargetIconMaterial;
@@ -1731,6 +1732,7 @@ final class SacCursor(B){
 
 		iconTextures[MouseIcon.attack]=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/icon.FLDR/Matt.ICON"));
 		iconTextures[MouseIcon.guard]=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/icon.FLDR/Mgua.ICON"));
+		iconTextures[MouseIcon.move]=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/icon.FLDR/Mgot.ICON"));
 		assert(iconTextures[].all!(t=>t!is null));
 
 		invalidTargetIconTexture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/icon.FLDR/ncst.ICON"));

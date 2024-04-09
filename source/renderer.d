@@ -54,6 +54,9 @@ struct Mouse(B){
 	Target xmenuTarget;
 	SacSpell!B targetSpell;
 	char[4] xmenuTargetId;
+	float xmenuOffsetX=0,xmenuOffsetY=0;
+	int xmenuFrame;
+	bool xmenuVisible=false;
 	bool targetValid;
 	bool inHitbox=false;
 	int frame=0;

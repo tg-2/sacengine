@@ -153,6 +153,8 @@ int run(string[] args){
 			options.hotkeyFilename=opt["--hotkeys=".length..$];
 		}else if(opt.startsWith("--double-click-speed=")){
 			options.doubleClickSpeed=to!int(opt["--double-click-speed=".length..$]);
+		}else if(opt.startsWith("--xmenu-time=")){
+			options.xmenuTime=to!int(opt["--xmenu-time=".length..$]);
 		}else if(opt.startsWith("--camera-mouse-sensitivity")){
 			options.cameraMouseSensitivity=to!float(opt["--camera-mouse-sensitivity=".length..$]);
 		}else if(opt.startsWith("--mouse-wheel-sensitivity")){
