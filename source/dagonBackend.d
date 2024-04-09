@@ -653,79 +653,128 @@ final class SacScene: Scene{
 	}
 	int xmnuSoundFrame=-updateFPS;
 	enum xmnuSoundGap=updateFPS/2;
+	void showXmenu(){
+		if(mouse.xmenuVisible) return;
+		mouse.xmenuVisible=true;
+		mouse.xmenuOffsetX=mouse.x;
+		mouse.xmenuOffsetY=mouse.y;
+		mouse.xmenuMiddleTargetId=mouse.xmenuTargetId;
+		renderer.xmenuTargetId=mouse.xmenuTargetId;
+	}
+	void hideXmenu(){
+		if(!mouse.xmenuVisible) return;
+		mouse.xmenuVisible=false;
+		mouse.status=MouseStatus.standard;
+		mouse.xmenuTarget=Target.init;
+		mouse.xmenuTargetId="\0\0\0\0";
+		mouse.xmenuCenterTargetId="\0\0\0\0";
+		mouse.xmenuMiddleTargetId="\0\0\0\0";
+		mouse.xmenuOffsetX=mouse.xmenuOffsetY=0.0f;
+		mouse.xmenuFrame=mouse.frame;
+	}
 	void updateXmenu(){
-		if(mouse.status!=MouseStatus.xmenu||mouse.xmenuTargetId=="\0\0\0\0")
+		if(mouse.status!=MouseStatus.xmenu){
+			hideXmenu();
 			return;
+		}
 		float size=32.0f*hudScaling;
-		bool xmenuShouldBeVisible(){
-			// return mouse.frame-mouse.xmenuFrame>=options.xmenuTime;
-			return false;
-		}
-		if(xmenuShouldBeVisible()){
-			if(!mouse.xmenuVisible){
-				mouse.xmenuVisible=true;
-				mouse.xmenuOffsetX=mouse.x;
-				mouse.xmenuOffsetY=mouse.y;
-			}
-		}else{
-			if(mouse.xmenuVisible){
-				mouse.xmenuVisible=false;
-				mouse.xmenuOffsetX=mouse.xmenuOffsetY=0.0f;
-			}
-		}
+		bool xmenuShouldBeVisible=mouse.frame-mouse.xmenuFrame>=options.xmenuTime;
+		if(xmenuShouldBeVisible) showXmenu();
+		else hideXmenu();
 		void playXmenuSound(){
 			if(mouse.frame-xmnuSoundFrame>=xmnuSoundGap){
 				if(audio) audio.playSound("unmx");
 				xmnuSoundFrame=mouse.frame;
 			}
 		}
+		char[4] transformTag(char[4] tag){
+			import xmnu:XmnuTag;
+			if(tag==XmnuTag.center) return mouse.xmenuCenterTargetId;
+			return tag;
+		}
 		if(!mouse.xmenuVisible){
-			float scale=options.xmenuHiddenScale;
-			auto sacXmenu=renderer.sacXmenu;
-			import xmnu;
-			auto xmnux=sacXmenu.get(mouse.xmenuTargetId);
-			mouse.xmenuOffsetX+=eventManager.mouseRelX/scale;
-			mouse.xmenuOffsetY+=eventManager.mouseRelY/scale;
-			int next=-1;
-			if(abs(mouse.xmenuOffsetX)>=abs(mouse.xmenuOffsetY)){
-				if(abs(mouse.xmenuOffsetX)>=0.5f*size){
-					if(mouse.xmenuOffsetX<0.0f){
-						next=xmnux.next[Xmnl.Dir.left];
-					}else{
-						next=xmnux.next[Xmnl.Dir.right];
+			if(mouse.xmenuTargetId!="\0\0\0\0"){
+				float scale=options.xmenuHiddenScale;
+				auto sacXmenu=renderer.sacXmenu;
+				import xmnu;
+				auto xmnux=sacXmenu.get(mouse.xmenuTargetId);
+				mouse.xmenuOffsetX+=eventManager.mouseRelX/scale;
+				mouse.xmenuOffsetY+=eventManager.mouseRelY/scale;
+				int next=-1;
+				if(abs(mouse.xmenuOffsetX)>=abs(mouse.xmenuOffsetY)){
+					if(abs(mouse.xmenuOffsetX)>=0.5f*size){
+						if(mouse.xmenuOffsetX<0.0f){
+							next=xmnux.next[Xmnl.Dir.left];
+						}else{
+							next=xmnux.next[Xmnl.Dir.right];
+						}
+						mouse.xmenuOffsetX=mouse.xmenuOffsetY=0.0f;
 					}
-					mouse.xmenuOffsetX=mouse.xmenuOffsetY=0.0f;
+				}else{
+					if(abs(mouse.xmenuOffsetY)>=0.5f*size){
+						if(mouse.xmenuOffsetY<0.0f){
+							next=xmnux.next[Xmnl.Dir.up];
+						}else{
+							next=xmnux.next[Xmnl.Dir.down];
+						}
+						mouse.xmenuOffsetX=mouse.xmenuOffsetY=0.0f;
+					}
 				}
-			}else{
-				if(abs(mouse.xmenuOffsetY)>=0.5f*size){
-					if(mouse.xmenuOffsetY<0.0f){
-						next=xmnux.next[Xmnl.Dir.up];
-					}else{
-						next=xmnux.next[Xmnl.Dir.down];
-					}
-					mouse.xmenuOffsetX=mouse.xmenuOffsetY=0.0f;
+				if(next!=-1){
+					mouse.xmenuTargetId=transformTag(sacXmenu.entries[next].xmnu.tag);
+					playXmenuSound();
 				}
 			}
-			if(next!=-1){
-				mouse.xmenuTargetId=sacXmenu.entries[next].xmnu.tag;
-				playXmenuSound();
+		}else{
+			if(renderer.xmenuTargetId!=mouse.xmenuTargetId){
+				if(mouse.xmenuTargetId!="\0\0\0\0")
+					mouse.xmenuMiddleTargetId=mouse.xmenuTargetId;
+				auto newTargetId=renderer.xmenuTargetId;
+				if(newTargetId!=mouse.xmenuTargetId){
+					if(mouse.xmenuMiddleTargetId!="\0\0\0\0"){
+						import xmnu;
+						auto sacXmenu=renderer.sacXmenu;
+						auto xmnux=sacXmenu.get(mouse.xmenuMiddleTargetId);
+						auto up=xmnux.next[Xmnl.Dir.up];
+						if(up!=-1&&transformTag(sacXmenu.entries[up].xmnu.tag)==newTargetId){
+							mouse.xmenuOffsetY-=size;
+						}
+						auto down=xmnux.next[Xmnl.Dir.down];
+						if(down!=-1&&transformTag(sacXmenu.entries[down].xmnu.tag)==newTargetId){
+							mouse.xmenuOffsetY+=size;
+						}
+						auto left=xmnux.next[Xmnl.Dir.left];
+						if(left!=-1&&transformTag(sacXmenu.entries[left].xmnu.tag)==newTargetId){
+							mouse.xmenuOffsetX-=size;
+						}
+						auto right=xmnux.next[Xmnl.Dir.right];
+						if(right!=-1&&transformTag(sacXmenu.entries[right].xmnu.tag)==newTargetId){
+							mouse.xmenuOffsetX+=size;
+						}
+					}
+					mouse.xmenuTargetId=transformTag(newTargetId);
+				}
+				if(mouse.xmenuTargetId!="\0\0\0\0"&&mouse.xmenuTargetId!=mouse.xmenuMiddleTargetId){
+					mouse.xmenuMiddleTargetId=mouse.xmenuTargetId;
+					playXmenuSound();
+				}
 			}
-			if(mouse.xmenuTargetId==XmnuTag.center)
-				mouse.xmenuTargetId=xmenuCenter();
 		}
 	}
 
 	void performXmenuAction(float cameraFacing,CommandQueueing queueing){
 		if(mouse.target.type!=TargetType.xmenu) return;
+		scope(exit) updateCursor(Duration.zero);
 		import xmnu;
 		auto xtarget=mouse.xmenuTarget;
-		auto xmnux=renderer.sacXmenu.get(mouse.xmenuTargetId).xmnu;
+		auto xtargetId=mouse.xmenuTargetId;
 		mouse.target=mouse.xmenuTarget;
-		mouse.status=MouseStatus.standard;
-		mouse.xmenuTarget=Target.init;
-		mouse.xmenuTargetId="\0\0\0\0";
-		mouse.xmenuOffsetX=mouse.xmenuOffsetY=0.0f;
-		mouse.xmenuFrame=mouse.frame;
+		hideXmenu();
+		if(xtargetId=="\0\0\0\0"){
+			if(audio) audio.playSound("kabI");
+			return;
+		}
+		auto xmnux=renderer.sacXmenu.get(xtargetId).xmnu;
 		final switch(cast(XmnuAction)xmnux.action) with(XmnuAction){
 			case abort: return;
 			case moveDefault:
@@ -902,9 +951,13 @@ final class SacScene: Scene{
 					mouse.status=MouseStatus.xmenu;
 					mouse.xmenuTarget=mouse.target;
 					mouse.target=xmenuTarget();
-					mouse.xmenuTargetId=xmenuCenter();
+					mouse.xmenuCenterTargetId=xmenuCenter();
+					mouse.xmenuMiddleTargetId=mouse.xmenuCenterTargetId;
+					mouse.xmenuTargetId=mouse.xmenuCenterTargetId;
 					mouse.xmenuOffsetX=mouse.xmenuOffsetY=0.0f;
 					mouse.targetUpdateFrame=mouse.frame;
+					mouse.xmenuFrame=mouse.frame;
+					updateXmenu();
 				}
 			}else if(mouse.status==MouseStatus.xmenu&&!mouseButtonUp[MB_RIGHT]){
 				mouse.status=MouseStatus.standard;

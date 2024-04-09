@@ -53,7 +53,9 @@ struct Mouse(B){
 	Target target;
 	Target xmenuTarget;
 	SacSpell!B targetSpell;
-	char[4] xmenuTargetId;
+	char[4] xmenuTargetId=0;
+	char[4] xmenuCenterTargetId=0;
+	char[4] xmenuMiddleTargetId=0;
 	float xmenuOffsetX=0,xmenuOffsetY=0;
 	int xmenuFrame;
 	bool xmenuVisible=false;
@@ -2946,7 +2948,53 @@ struct Renderer(B){
 		B.colorHUDMaterialBackend.setTransformationScaled(position4, Quaternionf.identity(), scaling2, rc);
 		quad.render(rc);
 	}
+	char[4] xmenuTargetId="\0\0\0\0";
+	void updateXmenuTarget(char[4] targetId,Vector2f position,Vector2f scaling,ref RenderInfo!B info){
+		if(!info.mouse.xmenuVisible) return;
+		auto topLeft=position;
+		auto bottomRight=position+scaling;
+		if(floor(topLeft.x)<=info.mouse.x&&info.mouse.x<=ceil(bottomRight.x)
+		   && floor(topLeft.y)<=info.mouse.y&&info.mouse.y<=ceil(bottomRight.y)){
+			xmenuTargetId=targetId;
+		}
+	}
+	void renderXmenu(ref RenderInfo!B info,B.RenderContext rc){
+		auto hudScaling=info.hudScaling;
+		float scale=32*hudScaling;
+		xmenuTargetId="\0\0\0\0";
+		if(info.mouse.xmenuMiddleTargetId=="\0\0\0\0")
+			return;
+		B.hudMaterialBackend.bind(null,rc);
+		scope(exit) B.hudMaterialBackend.unbind(null, rc);
+		auto scaling=hudScaling*Vector3f(32.0f,32.0f,0.0f);
+		void renderIcon(char[4] tag,Vector2f offset){
+			if(tag=="\0\0\0\0") return;
+			auto position=Vector3f(info.mouse.xmenuOffsetX-0.5f*scaling.x+offset.x,info.mouse.xmenuOffsetY-0.5f*scaling.y+offset.y,0.0f);
+			auto target=Target(TargetType.spell,0,Vector3f.init,TargetLocation.spellbook);
+			updateXmenuTarget(tag,position.xy,scaling.xy,info);
+			B.hudMaterialBackend.setTransformationScaled(position,Quaternionf.identity(),scaling,rc);
+			B.hudMaterialBackend.bindDiffuse(sacXmenu.get(tag).icon);
+			B.hudMaterialBackend.setAlpha(1.0f);
+			quad.render(rc);
+		}
+		import xmnu;
+		char[4] transformTag(char[4] tag){
+			if(tag==XmnuTag.center) return info.mouse.xmenuCenterTargetId;
+			return tag;
+		}
+		renderIcon(info.mouse.xmenuMiddleTargetId,Vector2f(0.0f,0.0f));
+		auto xmnux=sacXmenu.get(info.mouse.xmenuMiddleTargetId);
+		auto up=xmnux.next[Xmnl.Dir.up];
+		if(up!=-1) renderIcon(transformTag(sacXmenu.entries[up].xmnu.tag),Vector2f(0.0f,-scale));
+		auto down=xmnux.next[Xmnl.Dir.down];
+		if(down!=-1) renderIcon(transformTag(sacXmenu.entries[down].xmnu.tag),Vector2f(0.0f,scale));
+		auto left=xmnux.next[Xmnl.Dir.left];
+		if(left!=-1) renderIcon(transformTag(sacXmenu.entries[left].xmnu.tag),Vector2f(-scale,0.0f));
+		auto right=xmnux.next[Xmnl.Dir.right];
+		if(right!=-1) renderIcon(transformTag(sacXmenu.entries[right].xmnu.tag),Vector2f(scale,0.0f));
+	}
 	void renderCursor(int size,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
+		if(info.mouse.xmenuVisible) renderXmenu(info,rc);
 		float scale=size==-1?32*info.hudScaling:size;
 		if(state&&info.mouse.target.location.among(TargetLocation.minimap,TargetLocation.scene)&&
 		   info.mouse.target.id&&!state.isValidTarget(info.mouse.target.id,info.mouse.target.type))
@@ -4001,7 +4049,8 @@ struct Renderer(B){
 				renderMouseoverText(targetSpell.name,cursorSize,info,rc);
 				break;
 			case TargetType.xmenu:
-				renderMouseoverText(sacXmenu.get(info.mouse.xmenuTargetId).name,cursorSize,info,rc);
+				if(info.mouse.xmenuTargetId!="\0\0\0\0")
+					renderMouseoverText(sacXmenu.get(info.mouse.xmenuTargetId).name,cursorSize,info,rc);
 				break;
 			case TargetType.soulStat:
 				renderMouseoverText("Soul counter",cursorSize,info,rc);
