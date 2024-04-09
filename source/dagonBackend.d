@@ -1012,7 +1012,9 @@ final class SacScene: Scene{
 				case useAbility:
 					selectAbility(CommandQueueing.none);
 					break;
-				case dropSoul: unsupported(); break;
+				case dropSoul:
+					controller.addCommand(Command!DagonBackend(renderSide,camera.target));
+					break;
 				// miscellanneous
 				case optionsMenu,skipSpeech: unsupported(); break;
 				case openNextSpellTab:

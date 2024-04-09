@@ -68,8 +68,6 @@ struct Options{
 	// global settings
 	bool noMap=false;
 	string mapList;
-	GameMode gameMode=GameMode.skirmish;
-	int gameModeParam;
 	int[] teamSizes;
 	bool mirrorMatch=false;
 	bool shuffleSides=false;
@@ -78,11 +76,15 @@ struct Options{
 	bool shuffleSlots=false;
 	bool randomWizards=false;
 	bool randomSpellbooks=false;
-	// just for testing:
+	// global game mode settings:
+	GameMode gameMode=GameMode.skirmish;
+	int gameModeParam;
 	bool enableReadFromWads=true;
 	int replicateCreatures=1;
 	int protectManafounts=0;
 	bool terrainSineWave=false;
+	bool enableDropSoul=true;
+	bool targetDroppedSouls=false;
 	bool enableParticles=true;
 	bool greenAllySouls=false;
 	int delayStart=0;

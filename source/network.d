@@ -35,6 +35,7 @@ bool isCommandWithRaw(CommandType type)nothrow{
 		case setFormation: return false;
 		case retreat,move,guard,guardArea,attack,advance: return false;
 		case castSpell,useAbility: return false;
+		case dropSoul: return false;
 		case surrender: return false;
 		case chatMessage: return true;
 	}

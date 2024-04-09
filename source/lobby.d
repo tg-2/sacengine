@@ -119,6 +119,8 @@ GameInit!B gameInit(B,R)(Sides!B sides_,R playerSettings,ref Options options){
 	gameInit.replicateCreatures=options.replicateCreatures;
 	gameInit.protectManafounts=options.protectManafounts;
 	gameInit.terrainSineWave=options.terrainSineWave;
+	gameInit.enableDropSoul=options.enableDropSoul;
+	gameInit.targetDroppedSouls=options.targetDroppedSouls;
 	gameInit.enableParticles=options.enableParticles;
 	gameInit.greenAllySouls=options.greenAllySouls;
 	if(gameInit.greenAllySouls){

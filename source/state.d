@@ -1208,6 +1208,7 @@ struct Soul(B){
 	int frame=0;
 	float facing=0.0f;
 	float scaling=1.0f;
+	bool dropped=false;
 
 	this(int number,Vector3f position,SoulState state){
 		this.number=number;
@@ -1233,6 +1234,9 @@ int side(B)(ref Soul!B soul,ObjectState!B state){
 }
 int soulSide(B)(int id,ObjectState!B state){
 	return state.soulById!(side,()=>-1)(id,state);
+}
+bool isDroppedSoul(B)(int id,ObjectState!B state){
+	return state.soulById!((ref soul)=>soul.dropped,()=>false)(id);
 }
 SoulColor color(B)(ref Soul!B soul,int side,ObjectState!B state){
 	auto soulSide=soul.side(state);
@@ -7239,6 +7243,25 @@ bool isAlive(B)(ref MovingObject!B object){
 	return object.creatureState.mode.isAlive;
 }
 
+bool dropSoul(B)(ref MovingObject!B object,ObjectState!B state){
+	if(!state.enableDropSoul) return false;
+	if(auto wiz=state.getWizard(object.id)){
+		if(wiz.souls>=1){
+			wiz.souls-=1;
+			auto soul=Soul!B(0,object.side,1,object.position,SoulState.emerging);
+			if(!state.targetDroppedSouls)
+				soul.dropped=true;
+			state.addObject(soul);
+			return true;
+		}
+	}
+	return false;
+}
+bool dropSoul(B)(int wizard,ObjectState!B state){
+	return state.movingObjectById!(.dropSoul,()=>false)(wizard,state);
+}
+
+
 bool canCast(B)(ref MovingObject!B object,ObjectState!B state){
 	if(!object.isWizard) return false;
 	if(!object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving)&&object.castStatus(state)!=CastingStatus.finished)
@@ -8118,6 +8141,7 @@ bool graspingVines(B)(int target,SacSpell!B spell,ObjectState!B state){
 }
 
 bool castSoulMole(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	if(isDroppedSoul(target,state)) return false;
 	auto soulPosition=state.soulById!((ref soul)=>soul.position,()=>Vector3f.init)(target);
 	if(isNaN(soulPosition.x)) return false;
 	auto position=state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(manaDrain.wizard);
@@ -8232,6 +8256,7 @@ bool dragonfire(B)(Dragonfire!B dragonfire,ObjectState!B state){
 }
 
 bool castSoulWind(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	if(isDroppedSoul(target,state)) return false;
 	auto soulPosition=state.soulById!((ref soul)=>soul.position,()=>Vector3f.init)(target);
 	if(isNaN(soulPosition.x)) return false;
 	auto position=state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(manaDrain.wizard);
@@ -9680,7 +9705,7 @@ bool firewalk(B)(int creature,Vector3f targetPosition,SacSpell!B ability,ObjectS
 bool canRend(B)(int attacker,int side,int target,ObjectState!B state){
 	bool ok=false;
 	state.soulById!((ref soul,ok,side,state){
-		*ok=!!soul.state.among(SoulState.normal,SoulState.emerging)&&(soul.creatureId==0||soul.preferredSide==side);
+		*ok=!!soul.state.among(SoulState.normal,SoulState.emerging)&&(soul.creatureId==0||soul.preferredSide==side)&&!soul.dropped;
 	},(){})(target,&ok,side,state);
 	return ok;
 }
@@ -21322,6 +21347,7 @@ final class ObjectState(B){ // (update logic)
 			case setFormation: success=applyOrder(command,this,true); break;
 			case retreat,move,guard,guardArea,attack,advance,useAbility: success=applyOrder(command,this); break;
 			case castSpell: success=startCasting(command.wizard,command.spell,OrderTarget(command.target),this); break;
+			case dropSoul: success=.dropSoul(command.wizard,this); break;
 			case surrender: success=.surrender(command.side,this); break;
 			case chatMessage: success=sendChatMessage(command.chatMessage,this); break;
 		}
@@ -21376,12 +21402,18 @@ final class ObjectState(B){ // (update logic)
 	struct Settings{
 		GameMode gameMode=GameMode.skirmish;
 		int gameModeParam=0;
+		bool enableDropSoul=true;
+		bool targetDroppedSouls=false;
 		bool enableParticles=true;
 		bool greenAllySouls=false;
 	}
 	Settings settings;
+	@property bool enableDropSoul(){ return settings.enableDropSoul; }
+	@property bool targetDroppedSouls(){ return settings.targetDroppedSouls; }
 	@property bool enableParticles(){ return settings.enableParticles; }
 	@property bool greenAllySouls(){ return settings.greenAllySouls; }
+	void disableDropSoul(){ settings.enableDropSoul=false; }
+	void allowTargetingDroppedSouls(){ settings.targetDroppedSouls=true; }
 	void disableParticles(){ settings.enableParticles=false; }
 	void enableGreenAllySouls(){ settings.greenAllySouls=true; }
 	int addObject(T)(T object) if(is(T==MovingObject!B)||is(T==StaticObject!B)||is(T==Soul!B)||is(T==Building!B)){
@@ -22545,7 +22577,7 @@ TargetFlags summarize(bool simplified=false,B)(ref OrderTarget target,int side,O
 			if(!state.targetTypeFromId(target.id).among(TargetType.creature,TargetType.building)) return TargetFlags.none;
 			return state.objectById!handle(target.id,side,state);
 		case soul:
-			auto result=TargetFlags.soul;
+			auto result=isDroppedSoul(target.id,state)?TargetFlags.droppedSoul:TargetFlags.soul;
 			auto objSide=soulSide(target.id,state);
 			if(objSide==-1||objSide==side) result|=TargetFlags.owned|TargetFlags.ally; // TODO: ok? (not exactly what is going on with free souls.)
 			else result|=TargetFlags.enemy;
@@ -22580,7 +22612,7 @@ Cursor cursor(B)(ref OrderTarget target,int renderSide,bool showIcon,ObjectState
 
 bool hasClickSound(CommandType type){
 	final switch(type) with(CommandType){
-		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,clearSelection,automaticToggleSelection,automaticSelectGroup,setFormation,retreat,surrender,chatMessage: return false;
+		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,clearSelection,automaticToggleSelection,automaticSelectGroup,setFormation,retreat,dropSoul,surrender,chatMessage: return false;
 		case select,selectAll,automaticSelectAll,toggleSelection,addAllToSelection,automaticAddAllToSelection,defineGroup,addToGroup,selectGroup,move,guard,guardArea,attack,advance,castSpell,useAbility: return true;
 	}
 }
@@ -22616,13 +22648,14 @@ SoundType soundType(B)(Command!B command){
 		case attack: return command.target.type==TargetType.building?SoundType.attackBuilding:SoundType.attack;
 		case advance: return SoundType.advance;
 		case castSpell,useAbility: return SoundType.none;
+		case dropSoul: return SoundType.none;
 		case surrender: return SoundType.none;
 		case chatMessage: return SoundType.none;
 	}
 }
 SoundType responseSoundType(B)(Command!B command){
 	final switch(command.type) with(CommandType){
-			case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,setFormation,clearSelection,automaticSelectAll,automaticToggleSelection,automaticAddAllToSelection,defineGroup,addToGroup,automaticSelectGroup,retreat,castSpell,useAbility,surrender,chatMessage:
+			case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,setFormation,clearSelection,automaticSelectAll,automaticToggleSelection,automaticAddAllToSelection,defineGroup,addToGroup,automaticSelectGroup,retreat,castSpell,useAbility,dropSoul,surrender,chatMessage:
 			return SoundType.none;
 		case select,selectAll,toggleSelection,addAllToSelection,selectGroup:
 			return SoundType.selected;
@@ -22795,6 +22828,8 @@ enum CommandType{
 	castSpell,
 	useAbility,
 
+	dropSoul,
+
 	surrender,
 
 	chatMessage,
@@ -22836,7 +22871,7 @@ struct Command(B){
 				break;
 				case defineGroup,addToGroup,selectGroup,automaticSelectGroup:
 				assert(0);
-			case castSpell,useAbility:
+			case castSpell,useAbility,dropSoul:
 				assert(0);
 			case surrender:
 				assert(0);
@@ -22887,6 +22922,12 @@ struct Command(B){
 		this.side=side;
 		this.spell=ability;
 		this.target=target;
+	}
+
+	this(int side,int wizard){
+		this.type=CommandType.dropSoul;
+		this.side=side;
+		this.wizard=wizard;
 	}
 
 	this(int side){
@@ -23060,6 +23101,8 @@ struct GameInit(B){
 	int replicateCreatures=1;
 	int protectManafounts=0;
 	bool terrainSineWave=false;
+	bool enableDropSoul=true;
+	bool targetDroppedSouls=false;
 	bool enableParticles=true;
 	bool greenAllySouls=false;
 }
@@ -23104,6 +23147,8 @@ void initGame(B)(ObjectState!B state,ref Array!SlotInfo slots,GameInit!B gameIni
 			})(state);
 	}
 	if(gameInit.terrainSineWave) state.addEffect(TestDisplacement());
+	if(!gameInit.enableDropSoul) state.disableDropSoul();
+	if(gameInit.targetDroppedSouls) state.allowTargetingDroppedSouls();
 	if(!gameInit.enableParticles) state.disableParticles();
 	if(gameInit.greenAllySouls) state.enableGreenAllySouls();
 	slots.length=gameInit.slots.length;

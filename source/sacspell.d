@@ -12,6 +12,7 @@ enum TargetFlags{
 	creature=1<<2,
 	corpse=1<<3,
 	building=1<<4,
+	droppedSoul=1<<5,
 	manafount=1<<11,
 	enemy=1<<12,
 	ally=1<<13,
@@ -48,6 +49,7 @@ bool isApplicable(int sflags,int tflags)in{
 		if(tflags&ground) return !!(sflags&targetGround);
 		if(!(sflags&targetWizards)&&(tflags&wizard)) return false;
 		if(!(sflags&targetSouls)&&(tflags&soul)) return false;
+		if(tflags&droppedSoul) return false;
 		if(!(sflags&targetCreatures)&&(tflags&creature)&&!(tflags&corpse)) return false;
 		if(!(sflags&targetCorpses)&&(tflags&corpse)) return false;
 		if(!(sflags&targetStructures)&&(tflags&building)) return false;
