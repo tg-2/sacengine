@@ -971,6 +971,15 @@ B.Mesh[] makeSpriteMeshes(B,bool doubleSided=false,bool reverseOrder=false)(int 
 	return meshes;
 }
 
+B.SubQuad[] makeSpriteMeshes2d(B)(int nU,int nV,float width,float height,float texWidth=1.0f,float texHeight=1.0f){ // TODO: replace with shader
+	auto meshes=new B.SubQuad[](nU*nV);
+	foreach(i,ref mesh;meshes){
+		int u=cast(int)i%nU,v=cast(int)i/nU;
+		mesh=B.makeSubQuad(texWidth/nU*u,texHeight/nV*v,texWidth/nU*(u+1),texHeight/nV*(v+1));
+	}
+	return meshes;
+}
+
 Color4f[3] soulFrameColor=[
 	SoulColor.blue: Color4f(0,182.0f/255.0f,1.0f),
 	SoulColor.red: Color4f(1.0f,0.0f,0.0f),
@@ -1769,6 +1778,8 @@ class SacXmenu(B){
 	}
 	ref Entry get(char[4] tag){ return entries[load(tag)]; }
 	static immutable centerTags=[imported!"std.traits".EnumMembers!XmnuCenterTag];
+	B.Texture sparkleTexture;
+	B.SubQuad[] sparkleMeshes; // TODO: do in shader instead
 	this(){
 		auto xmnl=loadXmnl("extracted/xmenu/XMNU.WAD!/lnk1.XMNL");
 		int center=load(XmnuTag.center);
@@ -1784,6 +1795,8 @@ class SacXmenu(B){
 			int entry=load(e);
 			entries[entry].next=entries[center].next;
 		}
+		sparkleTexture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/iglo.TXTR"));
+		sparkleMeshes=makeSpriteMeshes2d!B(3,3,1.0f,1.0f,120.0f/128.0f,120.0f/128.0f);
 	}
 }
 

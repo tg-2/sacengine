@@ -2961,21 +2961,27 @@ struct Renderer(B){
 	void renderXmenu(ref RenderInfo!B info,B.RenderContext rc){
 		auto hudScaling=info.hudScaling;
 		float scale=32*hudScaling;
+		float sparkleScale=40*hudScaling;
 		xmenuTargetId="\0\0\0\0";
 		if(info.mouse.xmenuMiddleTargetId=="\0\0\0\0")
 			return;
 		B.hudMaterialBackend.bind(null,rc);
 		scope(exit) B.hudMaterialBackend.unbind(null, rc);
-		auto scaling=hudScaling*Vector3f(32.0f,32.0f,0.0f);
 		void renderIcon(char[4] tag,Vector2f offset){
 			if(tag=="\0\0\0\0") return;
-			auto position=Vector3f(info.mouse.xmenuOffsetX-0.5f*scaling.x+offset.x,info.mouse.xmenuOffsetY-0.5f*scaling.y+offset.y,0.0f);
 			auto target=Target(TargetType.spell,0,Vector3f.init,TargetLocation.spellbook);
-			updateXmenuTarget(tag,position.xy,scaling.xy,info);
-			B.hudMaterialBackend.setTransformationScaled(position,Quaternionf.identity(),scaling,rc);
+			auto position=Vector3f(info.mouse.xmenuOffsetX-0.5f*scale+offset.x,info.mouse.xmenuOffsetY-0.5f*scale+offset.y,0.0f);
+			updateXmenuTarget(tag,position.xy,Vector2f(scale,scale),info);
+			B.hudMaterialBackend.setTransformationScaled(position,Quaternionf.identity(),Vector3f(scale,scale,0.0f),rc);
 			B.hudMaterialBackend.bindDiffuse(sacXmenu.get(tag).icon);
 			B.hudMaterialBackend.setAlpha(1.0f);
+			B.enableTransparency();
 			quad.render(rc);
+			B.hudMaterialBackend.bindDiffuse(sacXmenu.sparkleTexture);
+			auto sparklePosition=Vector3f(info.mouse.xmenuOffsetX-0.5f*sparkleScale+offset.x,info.mouse.xmenuOffsetY-0.5f*sparkleScale+offset.y,0.0f);
+			B.enableAdditive();
+			B.hudMaterialBackend.setTransformationScaled(sparklePosition,Quaternionf.identity(),Vector3f(sparkleScale,sparkleScale,0.0f),rc);
+			sacXmenu.sparkleMeshes[info.mouse.frame%$].render(rc);
 		}
 		import xmnu;
 		char[4] transformTag(char[4] tag){
