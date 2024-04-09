@@ -651,6 +651,8 @@ final class SacScene: Scene{
 
 		}
 	}
+	int xmnuSoundFrame=-updateFPS;
+	enum xmnuSoundGap=updateFPS/2;
 	void updateXmenu(){
 		if(mouse.status!=MouseStatus.xmenu||mouse.xmenuTargetId=="\0\0\0\0")
 			return;
@@ -669,6 +671,12 @@ final class SacScene: Scene{
 			if(mouse.xmenuVisible){
 				mouse.xmenuVisible=false;
 				mouse.xmenuOffsetX=mouse.xmenuOffsetY=0.0f;
+			}
+		}
+		void playXmenuSound(){
+			if(mouse.frame-xmnuSoundFrame>=xmnuSoundGap){
+				if(audio) audio.playSound("unmx");
+				xmnuSoundFrame=mouse.frame;
 			}
 		}
 		if(!mouse.xmenuVisible){
@@ -700,6 +708,7 @@ final class SacScene: Scene{
 			}
 			if(next!=-1){
 				mouse.xmenuTargetId=sacXmenu.entries[next].xmnu.tag;
+				playXmenuSound();
 			}
 			if(mouse.xmenuTargetId==XmnuTag.center)
 				mouse.xmenuTargetId=xmenuCenter();
