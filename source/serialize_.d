@@ -530,6 +530,12 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Dem
 void serialize(alias sink,B)(ref DemonicRiftEffect!B demonicRiftEffect){ serializeStruct!sink(demonicRiftEffect); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==DemonicRiftEffect!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref HealingAuraCasting!B healingAuraCasting){ serializeStruct!sink(healingAuraCasting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==HealingAuraCasting!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref HealingAura!B particle){ serializeStruct!sink(particle); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==HealingAura!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref Spike!B spike){ serializeStruct!sink(spike); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Spike!B)){ deserializeStruct(result,state,data); }
 

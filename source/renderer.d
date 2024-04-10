@@ -479,6 +479,18 @@ struct Renderer(B){
 		auto frames=typeof(return).createMeshes();
 		return SacDemonicRiftEffect!B(texture,mat,frames);
 	}
+	SacHealingAura!B healingAura;
+	SacHealingAura!B createHealingAura(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Additive;
+		mat.energy=5.0f;
+		mat.transparency=0.075f;
+		mat.diffuse=texture;
+		auto meshes=typeof(return).createMeshes;
+		return SacHealingAura!B(texture,mat,meshes);
+	}
 	SacSpike!B createSpike(){
 		auto texture=typeof(return).loadTexture();
 		auto mat=B.makeMaterial(B.defaultMaterialBackend);
@@ -829,6 +841,7 @@ struct Renderer(B){
 		demonicRiftSpirit=createDemonicRiftSpirit();
 		demonicRiftBorder=createDemonicRiftBorder();
 		demonicRiftEffect=createDemonicRiftEffect();
+		healingAura=createHealingAura();
 		mutantProjectile=createMutantProjectile();
 		abominationProjectile=createAbominationProjectile();
 		bombardProjectile=createBombardProjectile();
@@ -2104,6 +2117,34 @@ struct Renderer(B){
 						auto mesh=self.demonicRiftEffect.getFrame(objects.demonicRiftEffects[j].frame%self.demonicRiftEffect.numFrames);
 						mesh.render(rc);
 					}
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.healingAuras.length){
+					B.disableDepthMask();
+					B.enableCulling();
+					auto material=self.healingAura.material;
+					B.shadelessMorphMaterialBackend.bind(material,rc);
+					B.enableAdditive();
+					scope(success){
+						B.enableDepthMask();
+						B.shadelessMorphMaterialBackend.unbind(material,rc);
+					}
+					void renderHealingAura(ref HealingAura!B healingAura){
+						auto target=healingAura.target;
+						auto positionRotationBoxSize=state.movingObjectById!((ref obj)=>tuple(center(obj),obj.position,obj.rotation,boxSize(obj.sacObject.largeHitbox(Quaternionf.identity(),obj.animationState,obj.frame/updateAnimFactor))), function Tuple!(Vector3f,Vector3f,Quaternionf,Vector3f)(){ return typeof(return).init; })(target);
+						auto position=positionRotationBoxSize[0], rawPosition=positionRotationBoxSize[1], rotation=positionRotationBoxSize[2], boxSize=positionRotationBoxSize[3];
+						if(isNaN(position.x)) return;
+						auto scale=healingAura.scale;//+0.05f*(1.0f*sin(2.0f*pi!float*2.0f*healingAura.frame/updateFPS));
+						boxSize.x=boxSize.y=sqrt(0.5f*(boxSize.x^^2+boxSize.y^^2));
+						auto dimensions=Vector3f(1.9f,1.9f,1.45f)*boxSize;
+						B.shadelessMorphMaterialBackend.setTransformationScaled(position,rotation,-scale*dimensions,rc);
+						foreach(v;0..3){
+							auto mesh1Mesh2Progress=self.healingAura.getFrame(healingAura.frame+20*v,healingAura.frame);
+							auto mesh1=mesh1Mesh2Progress[0], mesh2=mesh1Mesh2Progress[1], progress=mesh1Mesh2Progress[2];
+							B.shadelessMorphMaterialBackend.setMorphProgress(progress);
+							mesh1.morph(mesh2,rc);
+						}
+					}
+					foreach(ref healingAura;objects.healingAuras) renderHealingAura(healingAura);
 				}
 				static if(mode==RenderMode.opaque) if(objects.spikes.length){
 					auto material=self.spike.material;

@@ -188,6 +188,14 @@ bool canCarryHaloOfEarth(CreatureMode mode){
 		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return false;
 	}
 }
+bool canCarryHealingAura(CreatureMode mode){
+	final switch(mode) with(CreatureMode){
+		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
+			shooting,usingAbility,pulling,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm,firewalk: return true;
+		case dying,dead,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
+		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return false;
+	}
+}
 bool canShield(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
@@ -3054,6 +3062,23 @@ struct DemonicRiftEffect(B){
 	enum upwardsVelocity=shrinkSpeed*(endHoverHeight-startHoverHeight);
 }
 
+struct HealingAuraCasting(B){
+	int side;
+	int target;
+	SacSpell!B spell;
+	ManaDrain!B manaDrain;
+}
+enum HealingAuraStatus{ growing, stationary, shrinking }
+struct HealingAura(B){
+	int side;
+	int target;
+	SacSpell!B spell;
+	int soundTimer;
+	int frame=0;
+	float scale=0.0f;
+	HealingAuraStatus status;
+}
+
 struct Spike(B){
 	Vector3f position;
 	Vector3f direction;
@@ -4534,6 +4559,22 @@ struct Effects(B){
 	void removeDemonicRiftEffect(int i){
 		if(i+1<demonicRiftEffects.length) demonicRiftEffects[i]=move(demonicRiftEffects[$-1]);
 		demonicRiftEffects.length=demonicRiftEffects.length-1;
+	}
+	Array!(HealingAuraCasting!B) healingAuraCastings;
+	void addEffect(HealingAuraCasting!B healingAuraCasting){
+		healingAuraCastings~=move(healingAuraCasting);
+	}
+	void removeHealingAuraCasting(int i){
+		if(i+1<healingAuraCastings.length) healingAuraCastings[i]=move(healingAuraCastings[$-1]);
+		healingAuraCastings.length=healingAuraCastings.length-1;
+	}
+	Array!(HealingAura!B) healingAuras;
+	void addEffect(HealingAura!B healingAura){
+		healingAuras~=move(healingAura);
+	}
+	void removeHealingAura(int i){
+		if(i+1<healingAuras.length) healingAuras[i]=move(healingAuras[$-1]);
+		healingAuras.length=healingAuras.length-1;
 	}
 	Array!(Spike!B) spikes;
 	void addEffect(Spike!B spike){
@@ -7426,6 +7467,9 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 					auto position=state.movingObjectById!((ref object)=>object.position,()=>Vector3f.init)(caster);
 					if(isNaN(position.x)) return false;
 					return stun(castDemonicRift(side,position,target,manaDrain,spell,state));
+				case SpellTag.healingAura:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					return stun(castHealingAura(side,target.id,manaDrain,spell,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -8356,6 +8400,21 @@ bool castDemonicRift(B)(int side,Vector3f position,OrderTarget target,ManaDrain!
 }
 bool demonicRift(B)(DemonicRift!B demonicRift,ObjectState!B state){
 	state.addEffect(demonicRift);
+	return true;
+}
+
+enum healingAuraGain=1.0f;
+bool castHealingAura(B)(int side,int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	if(!state.isValidTarget(target,TargetType.creature)) return false;
+	state.addEffect(HealingAuraCasting!B(side,target,spell,manaDrain));
+	return true;
+}
+
+bool healingAura(B)(int side,int target,SacSpell!B spell,ObjectState!B state){
+	if(!state.isValidTarget(target,TargetType.creature)) return false;
+	auto soundTimer=playSoundAt!true("arua",target,state,healingAuraGain);
+	auto healingAura=HealingAura!B(side,target,spell,soundTimer);
+	state.addEffect(move(healingAura));
 	return true;
 }
 
@@ -15526,7 +15585,6 @@ void animateRainOfFrogsCasting(B)(ref MovingObject!B wizard,ObjectState!B state)
 		// TODO: particles should accelerate upwards
 		state.addParticle(Particle!B(castParticle,wizard.position+rotate(wizard.rotation,Vector3f(position.x,position.y,state.uniform(0.0f,0.5f*distance))),Vector3f(0.0f,0.0f,distance/fullLifetime),scale,lifetime,0));
 	}
-
 }
 
 bool updateRainOfFrogsCasting(B)(ref RainOfFrogsCasting!B rainOfFrogsCast,ObjectState!B state){
@@ -15832,6 +15890,97 @@ bool updateDemonicRiftEffect(B)(ref DemonicRiftEffect!B demonicRiftEffect,Object
 		scale-=shrinkSpeed/updateFPS;
 		position.z+=upwardsVelocity/updateFPS;
 		if(scale<=0) return false;
+		return true;
+	}
+}
+
+void animateHealingAuraCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	auto castParticle=SacParticle!B.get(ParticleType.heal);
+	wizard.animateCasting(castParticle,state);
+	static assert(updateFPS==60);
+	auto hitbox=wizard.relativeHitbox;
+	enum numParticles=6;
+	foreach(i;0..numParticles){
+		auto position=1.1f*state.uniform(cast(Vector2f[2])[hitbox[0].xy,hitbox[1].xy]);
+		auto distance=(state.uniform(3)?state.uniform(0.3f,0.6f):state.uniform(1.5f,2.5f))*(hitbox[1].z-hitbox[0].z);
+		auto fullLifetime=2.0f*castParticle.numFrames/float(updateFPS);
+		auto scale=state.uniform(1.5f,2.0f);
+		auto lifetime=cast(int)(castParticle.numFrames*state.uniform(0.0f,2.0f));
+		// TODO: particles should accelerate upwards
+		state.addParticle(Particle!B(castParticle,wizard.position+rotate(wizard.rotation,Vector3f(position.x,position.y,state.uniform(0.0f,0.5f*distance))),Vector3f(0.0f,0.0f,distance/fullLifetime),scale,lifetime,0));
+	}
+}
+
+bool updateHealingAuraCasting(B)(ref HealingAuraCasting!B healingAuraCast,ObjectState!B state){
+	with(healingAuraCast){
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				state.movingObjectById!((ref obj,state){
+					obj.animateHealingAuraCasting(state);
+				},(){})(manaDrain.wizard,state);
+				return true;
+			case CastingStatus.interrupted:
+				return false;
+			case CastingStatus.finished:
+				healingAura(side,target,spell,state);
+				return false;
+		}
+	}
+}
+bool updateHealingAura(B)(ref HealingAura!B healingAura,ObjectState!B state){
+	with(healingAura){
+		if(!state.isValidTarget(target,TargetType.creature)) return false;
+		++frame;
+		if(--soundTimer==0) soundTimer=playSoundAt!true("arua",target,state,healingAuraGain);
+		enum scaleFrames=30;
+		if(!status.among(HealingAuraStatus.growing,HealingAuraStatus.shrinking)){
+			static bool check(ref MovingObject!B obj){
+				return obj.creatureState.mode.canCarryHealingAura;
+			}
+			if(!state.movingObjectById!(check,()=>false)(target)||frame+scaleFrames>=spell.duration*updateFPS)
+				status=HealingAuraStatus.shrinking;
+			auto hitboxSide=state.movingObjectById!((ref obj)=>tuple(obj.hitbox,obj.side),()=>tuple((Vector3f[2]).init,-1))(healingAura.target);
+			auto hitbox=hitboxSide[0], side=hitboxSide[1];
+			static void doHeal(ref MovingObject!B obj,ObjectState!B state){
+				if(!obj.canHeal(state)) return;
+				static assert(updateFPS==60);
+				enum duration=256*updateFPS/60;
+				enum healthRegenerationPerFrame=60/updateFPS;
+				if(obj.creatureStats.effects.healTimer==-1){
+					playSoundAt("laeh",obj.id,state,1.0f);
+					obj.creatureStats.effects.healTimer=duration;
+					obj.creatureStats.effects.healPerFrame=healthRegenerationPerFrame;
+					state.addEffect(Heal!B(obj.id));
+				}else{
+					obj.creatureStats.effects.healTimer=max(obj.creatureStats.effects.healTimer,duration);
+					obj.creatureStats.effects.healPerFrame=max(obj.creatureStats.effects.healPerFrame,healthRegenerationPerFrame);
+				}
+			}
+			state.movingObjectById!(doHeal,(){})(target,state);
+			static bool doHealEntry(int target,int side,ObjectState!B state){
+				if(!state.isValidTarget(target,TargetType.creature)) return false;
+				state.movingObjectById!((ref obj,side,state){
+					if(obj.side!=side) return;
+					doHeal(obj,state);
+				},(){})(target,side,state);
+				return false;
+			}
+			state.movingObjectById!(doHeal,(){})(target,state);
+			auto position=state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(target);
+			dealDamageAt!doHealEntry(target,0.0f,spell.effectRange,target,side,position,DamageMod.none,state,side,state);
+		}
+		final switch(status){
+			case HealingAuraStatus.growing:
+				scale=min(1.0f,scale+1.0f/scaleFrames);
+				if(scale==1.0f) status=HealingAuraStatus.stationary;
+				break;
+			case HealingAuraStatus.stationary:
+				break;
+			case HealingAuraStatus.shrinking:
+				scale=max(0.0f,scale-1.0f/scaleFrames);
+				if(scale==0.0f) return false;
+				break;
+		}
 		return true;
 	}
 }
@@ -19601,6 +19750,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.demonicRiftEffects.length;){
 		if(!updateDemonicRiftEffect(effects.demonicRiftEffects[i],state)){
 			effects.removeDemonicRiftEffect(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.healingAuraCastings.length;){
+		if(!updateHealingAuraCasting(effects.healingAuraCastings[i],state)){
+			effects.removeHealingAuraCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.healingAuras.length;){
+		if(!updateHealingAura(effects.healingAuras[i],state)){
+			effects.removeHealingAura(i);
 			continue;
 		}
 		i++;
