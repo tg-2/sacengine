@@ -1339,6 +1339,7 @@ final class SacScene: Scene{
 						relative=true;
 					}else cancelRelative=true;
 				}
+				mouse.rotating=relative&&!cancelRelative;
 			}
 			if(options.windowScrollY){
 				if(mouse.y==0){
@@ -1359,8 +1360,7 @@ final class SacScene: Scene{
 				}
 				camera.targetZoom=max(0.0f,min(camera.targetZoom,1.0f));
 			}
-			mouse.rotating=relative&&!cancelRelative;
-			SDL_SetRelativeMouseMode(mouse.rotating?SDL_TRUE:SDL_FALSE);
+			SDL_SetRelativeMouseMode(relative&&!cancelRelative?SDL_TRUE:SDL_FALSE);
 		}
 	}
 
