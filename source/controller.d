@@ -298,14 +298,20 @@ final class Controller(B){
 				}
 			}
 			int rollbackToResynchCommittedFrame(){
-				if(network.playing) return state.committedFrame;
+				auto newFrame=max(state.committedFrame,network.resynchCommittedFrame);
+				if(state.currentFrame!=newFrame){
+					state.rollback();
+					state.simulateTo(newFrame);
+				}
+				return newFrame;
+			}
+			int resetToResynchCommittedFrame(){
 				if(network.isHost&&network.resynchCommittedFrame<state.committedFrame){
 					stderr.writeln("warning: skipping frames on resynch: ",network.resynchCommittedFrame," to ",state.committedFrame);
 					network.resetCommitted(state.committedFrame);
 				}
 				auto newFrame=network.resynchCommittedFrame;
 				if(network.isHost) network.resetCommitted(network.me,newFrame);
-				// if(network.isHost) network.resetCommitted(newFrame); // TODO
 				if(state.committedFrame<=newFrame){
 					state.simulateCommittedTo!((){
 						if(recording) recording.stepCommitted(state.committed);
@@ -317,19 +323,22 @@ final class Controller(B){
 					stderr.writeln("warning: rolling back over network: ",newFrame," from ",state.committedFrame);
 					network.updateStatus(PlayerStatus.desynched);
 				}
-				// state.rollback();
+				state.rollback();
 				// state.removeFuture(); // TODO
+				timer.setFrame(newFrame);
 				return newFrame;
 			}
+			// writeln(network.players.map!((ref p)=>p.status)," ",network.pendingResynch," ",network.resynchCommittedFrame," ",network.players.map!((ref p)=>p.committedFrame));
 			if(network.desynched){
 				updateCommitted(); // TODO: needed?
 				if(network.pendingResynch){
+					auto newFrame=resetToResynchCommittedFrame();
 					if(!network.isHost&&!isDesynchedStatus(network.players[network.me].status)){
 						// attempt resynch without assistance from host
-						auto newFrame=rollbackToResynchCommittedFrame(); // TODO: remove race condition on `committedFrame`s
-						if(network.playing||state.committedFrame==newFrame){
+						if(state.committedFrame==newFrame){
 							network.updateStatus(PlayerStatus.stateResynched);
 						}else{
+							timer.setFrame(newFrame);
 							network.updateStatus(PlayerStatus.readyToResynch);
 						}
 					}else network.updateStatus(PlayerStatus.readyToResynch);
@@ -337,12 +346,11 @@ final class Controller(B){
 				if(network.isHost && network.readyToResynch){
 					network.acceptingNewConnections=false;
 					//writeln("SENDING STATE AT FRAME: ",currentFrame," ",network.players.map!((ref p)=>p.committedFrame));
+					auto newFrame=state.committedFrame;
 					import std.conv: text;
-					enforce(state.currentFrame<=network.resynchCommittedFrame,text(state.currentFrame," ",network.resynchCommittedFrame," ",network.players.map!((ref p)=>p.status),network.players.map!((ref p)=>p.committedFrame)));
-					auto newFrame=rollbackToResynchCommittedFrame();
-					assert(state.committed.frame==newFrame&&state.current.frame==newFrame);
-					timer.setFrame(newFrame);
-					network.setFrameAll(newFrame);
+					enforce(state.currentFrame==newFrame,text(state.currentFrame," ",newFrame));
+					enforce(state.currentFrame==network.resynchCommittedFrame,text(state.currentFrame," ",network.resynchCommittedFrame," ",network.players.map!((ref p)=>p.status),network.players.map!((ref p)=>p.committedFrame)));
+					network.setFrameAll(state.currentFrame);
 					network.resetCommitted(-1,newFrame);
 					import serialize_;
 					state.committed.serialized((scope ubyte[] stateData){
@@ -384,9 +392,8 @@ final class Controller(B){
 				}
 			}
 			if(network.paused){
-				/+// TODO: wait for every player to pause before rolling back. (could avoid network resynch)
-				auto newFrame=rollbackToResynchCommittedFrame(); // TODO: remove race condition on `commitedFrame`s
-				timer.setFrame(newFrame);+/
+				auto newFrame=rollbackToResynchCommittedFrame();
+				timer.setFrame(newFrame);
 				return true;
 			}
 			if(!network.playing){ // start game

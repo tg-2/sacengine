@@ -836,12 +836,13 @@ class DelayedConnection(B): ConnectionImpl{
 		enforce(!!this.base,text("delaying ",base," not supported."));
 	}
 	override bool checkAlive(){
-		updateSent();
+		if(base.checkAlive())
+			updateSent();
 		//return base.checkAlive();
 		return true;
 	}
 	override long tryReceive(scope ubyte[] data){
-		if(!alive) return 0;
+		if(!base.checkAlive) return 0;
 		return base.tryReceive(data);
 	}
 	static struct WithDelay{
@@ -851,7 +852,7 @@ class DelayedConnection(B): ConnectionImpl{
 	Queue!WithDelay toSend;
 	MonoTime lastSpike;
 	override long trySend(scope ubyte[] data){
-		if(!alive) return 0;
+		if(!base.checkAlive) return 0;
 		import std.random;
 		auto time=B.time();
 		Duration delay;
@@ -1497,13 +1498,16 @@ final class Network(B){
 	}
 	bool stateResynched(){ return connectedPlayers.all!(p=>p.status.among(PlayerStatus.stateResynched,PlayerStatus.resynched)); }
 	int resynchCommittedFrame(){
+		if(!isHost) return players[host].committedFrame;
+		/+if(pauseOnDrop) return requiredPlayers.map!((ref p)=>p.committedFrame).fold!min(players[host].committedFrame); // TODO
+		return connectedPlayers.map!((ref p)=>p.committedFrame).fold!min(players[host].committedFrame);+/
 		if(pauseOnDrop) return requiredPlayers.map!((ref p)=>p.committedFrame).fold!max(players[host].committedFrame);
 		return connectedPlayers.map!((ref p)=>p.committedFrame).fold!max(players[host].committedFrame);
 	}
-	//int resynchCommittedFrame(){ return players[host].committedFrame; }
 	//int resynchCommittedFrame(){ return committedFrame; } // TODO
 	bool resynched(){ return connectedPlayers.all!((ref p)=>p.status==PlayerStatus.resynched)/+ && connectedPlayers.all!((ref p)=>p.committedFrame==players[host].committedFrame)+/; }
 	int committedFrame(){
+		if(pauseOnDrop) return requiredPlayers.map!((ref p)=>p.committedFrame).fold!min(players[isConnectedStatus(players[host].status)?host:me].committedFrame);
 		return activePlayers.map!((ref p)=>p.committedFrame).fold!min(players[isConnectedStatus(players[host].status)?host:me].committedFrame);
 	}
 	int me=-1;
@@ -2432,6 +2436,7 @@ final class Network(B){
 		players[i].send(Packet.sendMap(mapData.length),mapData);
 	}
 	void sendState(int i,scope ubyte[] stateData,scope ubyte[] commandData){
+		// stderr.writeln("sending state to player ",i);
 		players[i].send(Packet.sendState(stateData.length+commandData.length),stateData,commandData);
 	}
 	void sendStateAll(alias filter,T...)(scope ubyte[] stateData,scope ubyte[] commandData,T args){
@@ -2571,7 +2576,7 @@ final class Network(B){
 		assert(isHost);
 		assert(paused);
 	}do{
-		updateStatus(PlayerStatus.readyToResynch);
+		updateStatus(PlayerStatus.playing);
 	}
 	void addSynch(int frame,uint hash)in{
 		assert(isHost);
