@@ -309,6 +309,7 @@ final class Controller(B){
 			}
 			int rollbackToResynchCommittedFrame(){
 				auto newFrame=max(state.committedFrame,network.resynchCommittedFrame);
+				if(network.isHost) network.resetCommitted(network.me,newFrame);
 				if(state.currentFrame!=newFrame){
 					state.rollback();
 					state.simulateTo(newFrame);
@@ -343,9 +344,12 @@ final class Controller(B){
 			if(network.desynched){
 				updateCommitted(); // TODO: needed?
 				if(network.pendingResynch){
-					auto newFrame=resetToResynchCommittedFrame();
-					if(!network.isHost&&!isDesynchedStatus(network.players[network.me].status)){
+					if(network.isHost){
+						resetToResynchCommittedFrame();
+						network.updateStatus(PlayerStatus.readyToResynch);
+					}else if(!isDesynchedStatus(network.players[network.me].status)){
 						// attempt resynch without assistance from host
+						auto newFrame=resetToResynchCommittedFrame();
 						if(state.committedFrame==newFrame){
 							network.updateStatus(PlayerStatus.stateResynched);
 						}else{

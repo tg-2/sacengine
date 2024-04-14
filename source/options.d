@@ -106,6 +106,7 @@ struct Options{
 	bool logDesynch=true;
 	bool nudgeTimers=true;
 	bool dropOnTimeout=true;
+	bool resetOnRejoin=true;
 	bool synchronizeObserverChat=true;
 	bool synchronizeLevel=true;
 	bool synchronizeSouls=true;

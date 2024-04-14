@@ -1407,6 +1407,7 @@ final class Network(B){
 	bool dropOnTimeout=true;
 	bool pauseOnDrop=false;
 	bool pauseOnDropOnce=false;
+	bool resetOnRejoin=true;
 	bool testLag=false;
 	this(ref Options options){
 		this.zerotier_net_id=options.zerotierNetwork;
@@ -1420,6 +1421,7 @@ final class Network(B){
 		this.nudgeTimers=options.nudgeTimers;
 		this.dropOnTimeout=options.dropOnTimeout;
 		this.pauseOnDrop=options.pauseOnDrop;
+		this.resetOnRejoin=options.resetOnRejoin;
 		this.testLag=options.testLag;
 		this();
 	}
@@ -1502,7 +1504,7 @@ final class Network(B){
 	bool stateResynched(){ return connectedPlayers.all!(p=>p.status.among(PlayerStatus.stateResynched,PlayerStatus.resynched)); }
 	int resynchCommittedFrame(){
 		if(!isHost) return players[host].committedFrame;
-		//if(pauseOnDrop) return requiredOrActivePlayers.map!((ref p)=>p.committedFrame).fold!min(players[host].committedFrame); // TODO
+		if(resetOnRejoin) return requiredOrActivePlayers.map!((ref p)=>p.committedFrame).fold!min(players[host].committedFrame);
 		if(pauseOnDrop) return requiredOrActivePlayers.map!((ref p)=>p.committedFrame).fold!max(players[host].committedFrame);
 		return connectedPlayers.map!((ref p)=>p.committedFrame).fold!max(players[host].committedFrame);
 	}
