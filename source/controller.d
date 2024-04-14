@@ -186,11 +186,13 @@ final class Controller(B){
 		import serialize_;
 		if(network.logDesynch_) state.committed.serialized(&network.logDesynch);
 		state.replaceState(serialized);
+		//writeln("replacing state: ",state.committedFrame," ",state.currentFrame," ",currentFrame);
+		//scope(exit) writeln("finished replacing state: ",state.committedFrame," ",state.currentFrame," ",currentFrame);
+		state.rollback();
 		if(currentFrame<state.committedFrame)
-			timer.setFrame(state.current.frame);
-		state.commit();
+			timer.setFrame(state.committedFrame);
 		while(state.currentFrame<currentFrame){
-			updateCommitted();
+			updateCommitted(0);
 			state.step();
 			B.processEvents();
 		}
@@ -309,7 +311,10 @@ final class Controller(B){
 			}
 			int rollbackToResynchCommittedFrame(){
 				auto newFrame=max(state.committedFrame,network.resynchCommittedFrame);
-				if(network.isHost) network.resetCommitted(network.me,newFrame);
+				if(network.isHost){
+					//writeln("resetting committed on rollback: ",newFrame);
+					network.resetCommitted(network.me,newFrame);
+				}
 				if(state.currentFrame!=newFrame){
 					state.rollback();
 					state.simulateTo(newFrame);
@@ -322,7 +327,10 @@ final class Controller(B){
 					network.resetCommitted(state.committedFrame);
 				}
 				auto newFrame=network.resynchCommittedFrame;
-				if(network.isHost) network.resetCommitted(network.me,newFrame);
+				if(network.isHost){
+					//writeln("resetting committed on reset: ",newFrame);
+					network.resetCommitted(network.me,newFrame);
+				}
 				if(state.committedFrame<=newFrame){
 					state.simulateCommittedTo!((){
 						if(recording) recording.stepCommitted(state.committed);
@@ -340,9 +348,9 @@ final class Controller(B){
 				timer.setFrame(newFrame);
 				return newFrame;
 			}
-			//writeln(network.players.map!((ref p)=>p.status)," ",network.pendingResynch," ",network.resynchCommittedFrame," ",network.players.map!((ref p)=>p.committedFrame));
+			//writeln(network.players.map!((ref p)=>p.status)," ",network.pendingResynch," ",network.resynchCommittedFrame," ",network.players.map!((ref p)=>p.committedFrame)," ",state.committedFrame," ",network.committedFrame);
 			if(network.desynched){
-				updateCommitted(); // TODO: needed?
+				updateCommitted(0); // TODO: needed?
 				if(network.pendingResynch){
 					if(network.isHost){
 						resetToResynchCommittedFrame();
@@ -351,8 +359,10 @@ final class Controller(B){
 						// attempt resynch without assistance from host
 						auto newFrame=resetToResynchCommittedFrame();
 						if(state.committedFrame==newFrame){
+							//writeln("successfully resynched without host assistance:",state.committedFrame," ",newFrame);
 							network.updateStatus(PlayerStatus.stateResynched);
 						}else{
+							//writeln("need host assistance to resynch: ",state.committedFrame," ",newFrame);
 							network.updateStatus(PlayerStatus.readyToResynch);
 						}
 					}else network.updateStatus(PlayerStatus.readyToResynch);
@@ -360,7 +370,7 @@ final class Controller(B){
 				if(network.isHost && network.readyToResynch){
 					network.acceptingNewConnections=false;
 					auto newFrame=state.committedFrame;
-					//writeln("SENDING STATE AT FRAME: ",newFrame," ",network.players.map!((ref p)=>p.committedFrame));
+					//writeln("SENDING STATE AT FRAME: ",newFrame," ",state.committed.frame," ",network.players.map!((ref p)=>p.committedFrame));
 					import std.conv: text;
 					enforce(state.currentFrame==newFrame,text(state.currentFrame," ",newFrame));
 					network.setFrameAll(newFrame);
