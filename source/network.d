@@ -2358,6 +2358,7 @@ final class Network(B){
 			Duration sinceLastPacket;
 			if(playing){
 				if(k==me) continue;
+				if(!isConnectedStatus(player.status)) continue;
 				sinceLastPacket=max(0,players[me].committedFrame-player.committedFrame)*1.dur!"seconds"/60;
 			}else{
 				if(!player.connection) continue;
