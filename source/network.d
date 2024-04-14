@@ -1323,10 +1323,8 @@ final class SynchQueue{
 	enum maxLength=1024;
 	uint[maxLength] hashes;
 	int start=0,end=0;
-	void capReferences(int frame)in{
-		assert(frame<=end);
-	}do{
-		end=frame;
+	void capReferences(int frame){
+		end=min(end,frame+1);
 		start=min(start,end);
 	}
 	void continueAt(int frame)in{
@@ -1626,9 +1624,10 @@ final class Network(B){
 		if(i!=-1&&players[i].committedFrame==frame) return;
 		if(i==-1&&players.all!((ref player)=>player.committedFrame==frame)) return;
 		foreach(k,ref player;players){
-			if(i!=me) player.send(Packet.resetCommitted(i,frame));
+			if(k!=me) player.send(Packet.resetCommitted(i,frame));
 			if(i==k||i==-1) player.committedFrame=frame;
 		}
+		if(i==me||i==-1) capSynch(frame);
 	}
 	void resetCommitted(int frame)in{
 		assert(isHost&&!playing);
@@ -2595,6 +2594,7 @@ final class Network(B){
 	}
 	void capSynch(int frame)in{
 		assert(isHost);
+		assert(!!synchQueue);
 	}do{
 		synchQueue.capReferences(frame);
 	}

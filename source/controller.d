@@ -334,11 +334,12 @@ final class Controller(B){
 					network.updateStatus(PlayerStatus.desynched);
 				}
 				state.rollback();
-				// state.removeFuture(); // TODO
+				//writeln("removing future at frame: ",state.committedFrame," ",state.currentFrame);
+				state.removeFuture();
 				timer.setFrame(newFrame);
 				return newFrame;
 			}
-			// writeln(network.players.map!((ref p)=>p.status)," ",network.pendingResynch," ",network.resynchCommittedFrame," ",network.players.map!((ref p)=>p.committedFrame));
+			//writeln(network.players.map!((ref p)=>p.status)," ",network.pendingResynch," ",network.resynchCommittedFrame," ",network.players.map!((ref p)=>p.committedFrame));
 			if(network.desynched){
 				updateCommitted(); // TODO: needed?
 				if(network.pendingResynch){
@@ -348,15 +349,14 @@ final class Controller(B){
 						if(state.committedFrame==newFrame){
 							network.updateStatus(PlayerStatus.stateResynched);
 						}else{
-							timer.setFrame(newFrame);
 							network.updateStatus(PlayerStatus.readyToResynch);
 						}
 					}else network.updateStatus(PlayerStatus.readyToResynch);
 				}
 				if(network.isHost && network.readyToResynch){
 					network.acceptingNewConnections=false;
-					//writeln("SENDING STATE AT FRAME: ",currentFrame," ",network.players.map!((ref p)=>p.committedFrame));
 					auto newFrame=state.committedFrame;
+					//writeln("SENDING STATE AT FRAME: ",newFrame," ",network.players.map!((ref p)=>p.committedFrame));
 					import std.conv: text;
 					enforce(state.currentFrame==newFrame,text(state.currentFrame," ",newFrame));
 					network.setFrameAll(newFrame);
