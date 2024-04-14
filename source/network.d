@@ -2591,11 +2591,11 @@ final class Network(B){
 		writeln("pings: ",players.map!(p=>p.ping.total!"msecs").map!(p=>p<0?-1:p));
 		stdout.flush();
 		foreach(i;connectedPlayerIds){
-			if(players[i].ping!=-1.seconds){
-				updateStatus(cast(int)i,PlayerStatus.pendingStart);
-				auto delay=(maxPing-players[i].ping)/2;
-				players[i].send(Packet.startGame(delay.total!"hnsecs"));
-			}
+			if(players[i].ping==-1.seconds) continue;
+			if(players[i].status!=PlayerStatus.readyToStart) continue;
+			updateStatus(cast(int)i,PlayerStatus.pendingStart);
+			auto delay=(maxPing-players[i].ping)/2;
+			players[i].send(Packet.startGame(delay.total!"hnsecs"));
 		}
 		Thread.sleep(maxPing/2);
 		updateStatus(PlayerStatus.playing);
