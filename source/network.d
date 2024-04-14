@@ -2317,6 +2317,7 @@ final class Network(B){
 	}
 	enum pingDelay=1.seconds/60;
 	enum dropDelay=5.seconds;
+	enum ldDelay=1.seconds;
 	MonoTime lastUpdate;
 	void ping(int i){
 		auto time=B.time();
@@ -2348,6 +2349,44 @@ final class Network(B){
 			report!true(i,"timed out");
 			dropPlayer(i,controller);
 			return;
+		}
+	}
+	void timeoutText(scope void delegate(scope const(char)[]) sink){
+		if(!dropOnTimeout) return;
+		auto time=B.time();
+		foreach(k,ref player;players){
+			Duration sinceLastPacket;
+			if(playing){
+				if(k==me) continue;
+				sinceLastPacket=max(0,players[me].committedFrame-player.committedFrame)*1.dur!"seconds"/60;
+			}else{
+				if(!player.connection) continue;
+				sinceLastPacket=time-player.packetTime;
+			}
+			if(sinceLastPacket>=ldDelay){
+				sink(player.settings.name==""?"Anonymous":player.settings.name);
+				sink(" LD ");
+				auto number=(sinceLastPacket-ldDelay).total!"msecs"/100;
+				char[64] nm=0;
+				int i=0;
+				if(number==0){
+					nm[0]='0';
+					i=1;
+				}
+				for(i=0;i<nm.length&&number;i++){
+					nm[i]='0'+number%10;
+					number/=10;
+				}
+				if(i<2){
+					nm[i..2]='0';
+					i=2;
+				}
+				reverse(nm[0..i]);
+				sink(nm[0..i-1]);
+				sink(".");
+				sink(nm[i-1..i]);
+				sink("s\n");
+			}
 		}
 	}
 	void update(Controller!B controller){

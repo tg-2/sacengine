@@ -4116,7 +4116,6 @@ struct Renderer(B){
 	}
 
 	void renderText(ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
-		auto font=SacFont!B.get(FontType.fn10);
 		/+B.colorHUDMaterialBackend.bind(null,rc);
 		B.colorHUDMaterialBackend.bindDiffuse(font.texture);
 		void drawLetter(dchar c,B.SubQuad mesh,float x,float y,float width,float height){
@@ -4128,6 +4127,7 @@ struct Renderer(B){
 		// number of souls
 		if(info.renderSide!=-1 && statsVisible(state,info)){
 			if(auto wizard=state.getWizard(info.camera.target)){
+				auto font=SacFont!B.get(FontType.fn10);
 				char[32] buffer='\0';
 				import std.format: formattedWrite;
 				buffer[].formattedWrite!"%d"(wizard.souls);
@@ -4155,6 +4155,24 @@ struct Renderer(B){
 				unbindFont(font,rc);
 			}
 		}
+		static Array!char triggerBuffer;
+		if(state&&B.scene){
+			auto controller=B.scene.controller; // TODO: pass this in some other way?
+			if(controller&&controller.network){
+				triggerBuffer.length=0;
+				controller.network.timeoutText((scope const(char)[] text){ foreach(c;text) triggerBuffer~=c; });
+				if(triggerBuffer.length){
+					auto font=SacFont!B.get(FontType.fnwt);
+					bindFont(font,rc);
+					setFontColor(font,Color4f(1.0f,1.0f,1.0f,1.0f));
+					FormatSettings settings = {flowType:FlowType.left, scale:info.hudScaling};
+					auto size=font.getSize(triggerBuffer.data,settings);
+					auto offset=Vector2f(0.5f*(info.width-size.x),10*info.hudScaling);
+					drawText(font,triggerBuffer.data,offset.x,offset.y,settings,info,rc);
+					unbindFont(font,rc);
+				}
+			}
+		}
 		/+auto gameState=B.scene.state;
 		auto controller=B.scene.controller;
 		if(gameState&&controller&&controller.network){
@@ -4168,6 +4186,7 @@ struct Renderer(B){
 				controller.network.players.map!(x=>x.ping.total!"msecs"),
 				controller.network.pauseOnDrop, controller.network.settings.pauseOnDrop
 			);
+			auto font=SacFont!B.get(FontType.fn10);
 			bindFont(font,rc);
 			setFontColor(font,Color4f(1.0f,1.0f,1.0f,1.0f));
 			import std.range,std.algorithm;
@@ -4177,10 +4196,10 @@ struct Renderer(B){
 			unbindFont(font,rc);
 			//B.colorHUDMaterialBackend.unbind(null,rc);
 		}+/
-		static Array!char triggerBuffer;
 		triggerBuffer.length=0;
 		triggerText((scope const(char)[] text){ foreach(c;text) triggerBuffer~=c; },state.trig,state);
 		if(triggerBuffer.length){
+			auto font=SacFont!B.get(FontType.fn10);
 			bindFont(font,rc);
 			setFontColor(font,Color4f(1.0f,1.0f,1.0f,1.0f));
 			FormatSettings settings = {flowType:FlowType.left, scale:info.hudScaling};
