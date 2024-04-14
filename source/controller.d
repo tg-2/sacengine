@@ -188,6 +188,12 @@ final class Controller(B){
 		state.replaceState(serialized);
 		if(currentFrame<state.committedFrame)
 			timer.setFrame(state.current.frame);
+		state.commit();
+		while(state.currentFrame<currentFrame){
+			updateCommitted();
+			state.step();
+			B.processEvents();
+		}
 		if(lateJoining&&controlledSlot!=-1){
 			B.focusCamera(state.slots[controlledSlot].wizard);
 			lateJoining=false;
@@ -251,6 +257,7 @@ final class Controller(B){
 								auto message=players[i].allowedToControlState?"has rejoined the game.":"is now observing.";
 								sidechannelChatMessage(ChatMessageType.network,players[i].settings.name,message,this);
 							}
+							network.updateSetting!"pauseOnDrop"(cast(int)i,network.pauseOnDrop);
 							network.initGame(cast(int)i,network.gameInitData.data);
 							network.updateStatus(cast(int)i,PlayerStatus.lateJoining);
 						}
@@ -265,6 +272,7 @@ final class Controller(B){
 				}else network.updateStatus(PlayerStatus.desynched);
 			}
 			if(network.lateJoining||network.players[network.me].status==PlayerStatus.pendingLoad){
+				timer.start();
 				pauseTimerOnPause=false;
 				return true;
 			}
@@ -287,8 +295,10 @@ final class Controller(B){
 								foreach(i,ref player;network.players){
 									if(player.status!=PlayerStatus.pendingLoad) continue;
 									if(player.ping==-1.seconds) continue;
+									auto frame=state.currentFrame;
 									network.updateStatus(cast(int)i,PlayerStatus.loading);
-									network.resetCommitted(cast(int)i,committed.frame);
+									network.resetCommitted(cast(int)i,frame);
+									network.setFrame(cast(int)i,frame);
 									network.sendState(cast(int)i,stateData,commandData);
 									network.requestStatusUpdate(cast(int)i,PlayerStatus.playing);
 								}
@@ -349,9 +359,9 @@ final class Controller(B){
 					auto newFrame=state.committedFrame;
 					import std.conv: text;
 					enforce(state.currentFrame==newFrame,text(state.currentFrame," ",newFrame));
-					enforce(state.currentFrame==network.resynchCommittedFrame,text(state.currentFrame," ",network.resynchCommittedFrame," ",network.players.map!((ref p)=>p.status),network.players.map!((ref p)=>p.committedFrame)));
-					network.setFrameAll(state.currentFrame);
+					network.setFrameAll(newFrame);
 					network.resetCommitted(-1,newFrame);
+					enforce(state.currentFrame==network.resynchCommittedFrame,text(state.currentFrame," ",network.resynchCommittedFrame," ",network.players.map!((ref p)=>p.status),network.players.map!((ref p)=>p.committedFrame)));
 					import serialize_;
 					state.committed.serialized((scope ubyte[] stateData){
 						state.commands.serialized((scope ubyte[] commandData){
@@ -365,8 +375,6 @@ final class Controller(B){
 				}
 				if(network.stateResynched && network.players[network.me].status==PlayerStatus.stateResynched){
 					//writeln("STATE IS ACTUALLY AT FRAME: ",currentFrame);
-					if(!network.isHost)
-						state.commit();
 					network.tryCommit(state.currentFrame);
 					network.updateStatus(PlayerStatus.resynched);
 				}
@@ -392,8 +400,10 @@ final class Controller(B){
 				}
 			}
 			if(network.paused){
-				auto newFrame=rollbackToResynchCommittedFrame();
-				timer.setFrame(newFrame);
+				if(state.committedFrame>0){
+					auto newFrame=rollbackToResynchCommittedFrame();
+					timer.setFrame(newFrame);
+				}
 				return true;
 			}
 			if(!network.playing){ // start game

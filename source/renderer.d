@@ -4158,13 +4158,15 @@ struct Renderer(B){
 		/+auto gameState=B.scene.state;
 		auto controller=B.scene.controller;
 		if(gameState&&controller&&controller.network){
-			char[256] buf=0;
+			char[1024] buf=0;
 			import std.format: formattedWrite;
-			buf[].formattedWrite!"%s %s (%s)\n%s\n%s (%s)\n%s"(
+			buf[].formattedWrite!"%s %s (%s)\n%s\n%s (%s)\n%s\n%s\n%s %s"(
 				gameState.committedFrame,gameState.currentFrame,gameState.currentFrame-gameState.committedFrame,
 				controller.network.committedFrame-gameState.committedFrame,
 				controller.network.players.map!(x=>x.committedFrame),controller.network.players.map!(x=>x.committedFrame-gameState.committedFrame),
+				controller.network.players.map!(x=>x.status),
 				controller.network.players.map!(x=>x.ping.total!"msecs"),
+				controller.network.pauseOnDrop, controller.network.settings.pauseOnDrop
 			);
 			bindFont(font,rc);
 			setFontColor(font,Color4f(1.0f,1.0f,1.0f,1.0f));

@@ -466,6 +466,7 @@ class Lobby(B){
 				if(gameState.current.frame%1000==0){
 					writeln("continue: simulated ",gameState.current.frame," of ",gameState.commands.length-1," frames");
 				}
+				B.processEvents();
 			}
 			playAudio=true;
 			assert(options.continueFrame==-1||gameState.current.frame==options.continueFrame);

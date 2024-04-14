@@ -1304,7 +1304,7 @@ struct Player{
 	}
 	bool isControllingState(){
 		if(!allowedToControlState) return false;
-		return isActiveStatus(status);
+		return isConnectedStatus(status);
 	}
 	bool allowedToControlSide(B)(int side,Controller!B controller){
 		if(!allowedToControlState()) return false;
@@ -1377,6 +1377,11 @@ final class Network(B){
 		return activePlayerIds.map!index;
 	}
 	size_t numActivePlayers(){ return activePlayerIds.walkLength; }
+	auto requiredOrActivePlayerIds(){ return iota(players.length).filter!(i=>players[i].requiredToControlState||players[i].isControllingState); }
+	auto requiredOrActivePlayers(){
+		ref Player index(size_t i){ return players[i]; }
+		return requiredOrActivePlayerIds.map!index;
+	}
 
 	NetworkState!B networkState;
 	void sidechannelChatMessage(R,S)(ChatMessageType type,R name,S message,Controller!B controller)in{
@@ -1499,15 +1504,14 @@ final class Network(B){
 	bool stateResynched(){ return connectedPlayers.all!(p=>p.status.among(PlayerStatus.stateResynched,PlayerStatus.resynched)); }
 	int resynchCommittedFrame(){
 		if(!isHost) return players[host].committedFrame;
-		/+if(pauseOnDrop) return requiredPlayers.map!((ref p)=>p.committedFrame).fold!min(players[host].committedFrame); // TODO
-		return connectedPlayers.map!((ref p)=>p.committedFrame).fold!min(players[host].committedFrame);+/
-		if(pauseOnDrop) return requiredPlayers.map!((ref p)=>p.committedFrame).fold!max(players[host].committedFrame);
+		//if(pauseOnDrop) return requiredOrActivePlayers.map!((ref p)=>p.committedFrame).fold!min(players[host].committedFrame); // TODO
+		if(pauseOnDrop) return requiredOrActivePlayers.map!((ref p)=>p.committedFrame).fold!max(players[host].committedFrame);
 		return connectedPlayers.map!((ref p)=>p.committedFrame).fold!max(players[host].committedFrame);
 	}
 	//int resynchCommittedFrame(){ return committedFrame; } // TODO
 	bool resynched(){ return connectedPlayers.all!((ref p)=>p.status==PlayerStatus.resynched)/+ && connectedPlayers.all!((ref p)=>p.committedFrame==players[host].committedFrame)+/; }
 	int committedFrame(){
-		if(pauseOnDrop) return requiredPlayers.map!((ref p)=>p.committedFrame).fold!min(players[isConnectedStatus(players[host].status)?host:me].committedFrame);
+		if(pauseOnDrop) return requiredOrActivePlayers.map!((ref p)=>p.committedFrame).fold!min(players[isConnectedStatus(players[host].status)?host:me].committedFrame);
 		return activePlayers.map!((ref p)=>p.committedFrame).fold!min(players[isConnectedStatus(players[host].status)?host:me].committedFrame);
 	}
 	int me=-1;
@@ -1716,6 +1720,7 @@ final class Network(B){
 					return false;
 				}
 				me=p.id;
+				pauseOnDrop=settings.pauseOnDrop;
 				updateStatus(PlayerStatus.synched);
 				return true;
 			case PacketType.updateSlot:
@@ -1926,6 +1931,9 @@ final class Network(B){
 							static if(!is(T==S[],S)){
 								case setting:
 									mixin(`players[p.player].settings.`~setting)=p.getValue!T();
+									static if(setting=="pauseOnDrop"){
+										if(p.player==me) pauseOnDrop=players[me].settings.pauseOnDrop;
+									}
 									return true;
 							}
 						}}
@@ -2194,7 +2202,9 @@ final class Network(B){
 			players[newId].settings.name=player.settings.name;
 			player.settings=players[newId].settings;
 			player.slot=players[newId].slot;
-			player.committedFrame=players[newId].committedFrame;
+			player.settings.pauseOnDrop=pauseOnDrop;
+			if(pauseOnDrop) player.committedFrame=players[newId].committedFrame;
+			else player.committedFrame=players[me].committedFrame;
 			players[newId]=player;
 		}else players~=player;
 		foreach(other;iota(cast(int)players.length).filter!(i=>i!=newId))
