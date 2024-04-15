@@ -1235,6 +1235,9 @@ bool isDesynchedStatus(PlayerStatus status){
 bool isReadyToLoadStatus(PlayerStatus status){
 	return !!status.among(PlayerStatus.readyToLoad,PlayerStatus.resynched);
 }
+bool isUnresponsiveStatus(PlayerStatus status){
+	return PlayerStatus.connected<=status && status<=PlayerStatus.loading;
+}
 bool isReadyStatus(PlayerStatus status){
 	return isConnectedStatus(status) && !isDesynchedStatus(status) && PlayerStatus.readyToStart<=status;
 }
@@ -1473,7 +1476,7 @@ final class Network(B){
 	bool synched(){ return me!=-1&&players[me].status>=PlayerStatus.synched; }
 	bool hostCommitHashReady(){ return players[host].status>=PlayerStatus.commitHashReady; }
 	bool mapHashed(){ return players[host].status>=PlayerStatus.mapHashed&&me!=-1&&players[me].status>=PlayerStatus.mapHashed; }
-	bool pendingGameInit(){ return connectedPlayers.any!(p=>p.status==PlayerStatus.pendingGameInit); }
+	bool pendingGameInit(){ return requiredAndActivePlayers.any!(p=>p.status==PlayerStatus.pendingGameInit); }
 	bool hostReadyToLoad(){ return isReadyToLoadStatus(players[host].status)||isReadyStatus(players[host].status); }
 	bool clientsReadyToLoad(){
 		return requiredAndActivePlayerIds.filter!(i=>i!=host&&players[i].connection).all!(i=>isReadyToLoadStatus(players[i].status)||isReadyStatus(players[i].status));
@@ -1513,7 +1516,6 @@ final class Network(B){
 		if(pauseOnDrop) return requiredOrActivePlayers.map!((ref p)=>p.committedFrame).fold!max(players[host].committedFrame);
 		return connectedPlayers.map!((ref p)=>p.committedFrame).fold!max(players[host].committedFrame);
 	}
-	//int resynchCommittedFrame(){ return committedFrame; } // TODO
 	bool resynched(){ return connectedPlayers.all!((ref p)=>p.status==PlayerStatus.resynched)/+ && connectedPlayers.all!((ref p)=>p.committedFrame==players[host].committedFrame)+/; }
 	int committedFrame(){
 		if(pauseOnDrop) return requiredOrActivePlayers.map!((ref p)=>p.committedFrame).fold!min(players[isConnectedStatus(players[host].status)?host:me].committedFrame);
@@ -2322,6 +2324,7 @@ final class Network(B){
 	}
 	enum pingDelay=1.seconds/60;
 	enum dropDelay=5.seconds;
+	enum unresponsiveDropDelay=31.seconds;
 	enum ldDelay=1.seconds;
 	MonoTime lastUpdate;
 	void ping(int i){
@@ -2345,12 +2348,11 @@ final class Network(B){
 	}
 	void checkConnectivity(int i,Controller!B controller){
 		if(!playing) nop(cast(int)i);
-		// TODO: probably even if a player is not active there should be some timeout,
-		// especially for players with status playingBadSynch
-		if(!isActiveStatus(players[i].status)||players[i].status==PlayerStatus.playingBadSynch) return;
-		if(me==-1||!isActiveStatus(players[me].status)||players[me].status==PlayerStatus.playingBadSynch) return;
+		bool isUnresponsive=isUnresponsiveStatus(players[i].status);
+		if(isUnresponsive&&!desynched) return;
 		auto sinceLastPacket=B.time()-players[i].packetTime;
-		if(dropOnTimeout&&players[i].packetTime!=MonoTime.init&&sinceLastPacket>=dropDelay){
+		auto limit=isUnresponsive?unresponsiveDropDelay:dropDelay;
+		if(dropOnTimeout&&players[i].packetTime!=MonoTime.init&&sinceLastPacket>=limit){
 			report!true(i,"timed out");
 			dropPlayer(i,controller);
 			return;
