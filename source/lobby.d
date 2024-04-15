@@ -187,6 +187,8 @@ class Lobby(B){
 		bool useZerotier=!!options.zerotierNetwork;
 		if(options.host){
 			if(!network) createNetwork(options);
+			if(options.continueFilename!=""||options.playbackFilename!=""&&options.continueFrame)
+				network.acceptingNewConnections=false;
 			network.hostGame(options.settings,useZerotier);
 			state=LobbyState.connected;
 			return true;
@@ -248,9 +250,10 @@ class Lobby(B){
 			static struct SlotData{
 				int slot;
 				string name;
+				int committedFrame;
 			}
 			SlotData toSlotData(int i){
-				return SlotData(i,toContinue.gameInit.wizards[toContinue.gameInit.slots[i].wizardIndex].name);
+				return SlotData(i,toContinue.gameInit.wizards[toContinue.gameInit.slots[i].wizardIndex].name,frame);
 			}
 			assert(network.players.length==1);
 			network.players[network.me].committedFrame=frame;
@@ -262,7 +265,7 @@ class Lobby(B){
 	bool trySynch(){
 		network.update(controller); // (may be null)
 		bool result=network.synched;
-		if(result) state=LobbyState.synched;
+		if(result||network.isHost) state=LobbyState.synched;
 		return result;
 	}
 
@@ -474,8 +477,11 @@ class Lobby(B){
 				assert(network.isHost);
 				//foreach(i;network.connectedPlayerIds) if(i!=network.host) network.updateStatus(cast(int)i,PlayerStatus.desynched);
 				network.continueSynchAt(gameState.current.frame);
+				if(controller){
+					assert(network is controller.network);
+					controller.updateNetworkGameState();
+				}
 			}
-
 		}
 		return true;
 	}

@@ -1353,7 +1353,7 @@ final class Network(B){
 		ref Player index(size_t i){ return players[i]; }
 		return connectedPlayerIds.map!index;
 	}
-	auto readyPlayerIds(){ return iota(players.length).filter!(i=>players[i].isReadyToControlState); }
+	auto readyPlayerIds(){ return iota(players.length).filter!(i=>players[i].isReadyToControlState||players[i].wantsToControlState&&(players[i].lost||players[i].won)); }
 	auto readyPlayers(){
 		ref Player index(size_t i){ return players[i]; }
 		return connectedPlayerIds.map!index;
@@ -1379,6 +1379,11 @@ final class Network(B){
 	auto requiredOrActivePlayers(){
 		ref Player index(size_t i){ return players[i]; }
 		return requiredOrActivePlayerIds.map!index;
+	}
+	auto requiredAndActivePlayerIds(){ return iota(players.length).filter!(i=>players[i].requiredToControlState&&players[i].isControllingState); }
+	auto requiredAndActivePlayers(){
+		ref Player index(size_t i){ return players[i]; }
+		return requiredAndActivePlayerIds.map!index;
 	}
 
 	NetworkState!B networkState;
@@ -1467,20 +1472,20 @@ final class Network(B){
 	}
 	bool synched(){ return me!=-1&&players[me].status>=PlayerStatus.synched; }
 	bool hostCommitHashReady(){ return players[host].status>=PlayerStatus.commitHashReady; }
-	bool mapHashed(){ return connectedPlayers.all!(p=>p.status>=PlayerStatus.mapHashed); }
+	bool mapHashed(){ return players[host].status>=PlayerStatus.mapHashed&&me!=-1&&players[me].status>=PlayerStatus.mapHashed; }
 	bool pendingGameInit(){ return connectedPlayers.any!(p=>p.status==PlayerStatus.pendingGameInit); }
 	bool hostReadyToLoad(){ return isReadyToLoadStatus(players[host].status)||isReadyStatus(players[host].status); }
 	bool clientsReadyToLoad(){
-		return iota(players.length).filter!(i=>i!=host&&players[i].connection).all!(i=>isReadyToLoadStatus(players[i].status)||isReadyStatus(players[i].status));
+		return requiredAndActivePlayerIds.filter!(i=>i!=host&&players[i].connection).all!(i=>isReadyToLoadStatus(players[i].status)||isReadyStatus(players[i].status));
 	}
-	bool readyToLoad(){ return connectedPlayers.all!(p=>isReadyToLoadStatus(p.status)||isReadyStatus(p.status)); }
+	bool readyToLoad(){ return requiredAndActivePlayers.all!(p=>isReadyToLoadStatus(p.status)||isReadyStatus(p.status)); }
 	bool lateJoining(){ return me!=-1&&players[me].status==PlayerStatus.lateJoining; }
 	bool loading(){ return me!=-1&&players[me].status==PlayerStatus.loading; }
 	bool hostReadyToStart(){ return isReadyStatus(players[host].status); }
 	bool clientsReadyToStart(){
-		return iota(players.length).filter!(i=>i!=host&&players[i].connection).all!(i=>isReadyStatus(players[i].status));
+		return requiredOrActivePlayerIds.filter!(i=>i!=host&&players[i].connection).all!(i=>isReadyStatus(players[i].status));
 	}
-	bool readyToStart(){ return connectedPlayers.all!(p=>isReadyStatus(p.status)); }
+	bool readyToStart(){ return requiredOrActivePlayers.all!(p=>isReadyStatus(p.status)); }
 	bool playing(){ return me!=-1&&players[me].status.among(PlayerStatus.playing,PlayerStatus.playingBadSynch) && !paused; }
 	bool paused(){ return isPausedStatus(players[host].status); }
 	bool anyoneDropped(){ return requiredPlayers.any!(p=>p.status==PlayerStatus.dropped); }
@@ -2356,9 +2361,8 @@ final class Network(B){
 		auto time=B.time();
 		foreach(k,ref player;players){
 			Duration sinceLastPacket;
-			if(playing){
+			if(playing&&player.committedFrame!=0&&isConnectedStatus(player.status)){
 				if(k==me) continue;
-				if(!isConnectedStatus(player.status)) continue;
 				sinceLastPacket=max(0,players[me].committedFrame-player.committedFrame)*1.dur!"seconds"/60;
 			}else{
 				if(!player.connection) continue;
@@ -2457,6 +2461,7 @@ final class Network(B){
 			p.settings.name=slotData[i].name;
 			p.settings.slot=slotData[i].slot;
 			p.slot=p.settings.slot;
+			p.committedFrame=slotData[i].committedFrame;
 		}
 		players[0].slot=-1;
 		Lreplace: foreach(replaceUnnamed;0..2){
@@ -2536,7 +2541,7 @@ final class Network(B){
 					sendMap(cast(int)i,mapData.data);
 				}
 			}
-			return mapHashed&&connectedPlayers.all!((ref p)=>p.settings.map==name&&p.settings.mapHash==hash);
+			return mapHashed;//&&requiredAndActivePlayers.all!((ref p)=>p.settings.map==name&&p.settings.mapHash==hash);
 		}else{
 			enforce(settings.map==hostSettings.map,"bad map");
 			if(settings.mapHash!=hash&&hasMapData()){
@@ -2575,14 +2580,19 @@ final class Network(B){
 		assert(isHost&&readyToLoad);
 	}do{
 		updateStatus(PlayerStatus.loading);
-		foreach(i;connectedPlayerIds) if(i!=me) load(cast(int)i);
+		foreach(i;connectedPlayerIds){
+			if(i==me) continue;
+			auto status=players[i].status;
+			if(isReadyToLoadStatus(status)||isReadyStatus(status))
+				load(cast(int)i);
+		}
 	}
 	void start(Controller!B controller)in{
 		assert(isHost&&readyToStart);
 	}do{
 		ackHandler=AckHandler.measurePing;
 		players[me].ping=Duration.zero;
-		while(connectedPlayers.any!((ref p)=>p.status!=PlayerStatus.desynched&&p.ping==-1.seconds)){
+		while(requiredOrActivePlayers.any!((ref p)=>p.status!=PlayerStatus.desynched&&p.ping==-1.seconds)){
 			foreach(i,ref player;players)
 				ping(cast(int)i);
 			update(controller);

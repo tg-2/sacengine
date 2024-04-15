@@ -414,6 +414,7 @@ final class Controller(B){
 				}
 			}
 			if(network.paused){
+				updateNetworkGameState();
 				if(state.committedFrame>0){
 					auto newFrame=rollbackToResynchCommittedFrame();
 					timer.setFrame(newFrame);
@@ -421,6 +422,7 @@ final class Controller(B){
 				return true;
 			}
 			if(!network.playing){ // start game
+				updateNetworkGameState();
 				network.updateStatus(PlayerStatus.readyToStart);
 				if(network.isHost&&network.readyToStart()){
 					network.start(this);
