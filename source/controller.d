@@ -279,14 +279,23 @@ final class Controller(B){
 				return true;
 			}
 			if(network.isHost){
+				bool playing=network.playing;
 				bool anyoneLateJoining=false;
 				foreach(i,ref player;network.players){
-					if(player.status!=PlayerStatus.pendingLoad) continue;
-					if(player.ping==-1.seconds){ network.ping(cast(int)i); continue; }
-					auto frame=currentFrame;
-					if(network.playing) frame=to!int(frame+player.ping/(1.seconds/updateFPS));
-					network.setFrame(cast(int)i,frame);
-					anyoneLateJoining=true;
+					void ping(){ network.ping(cast(int)i); }
+					if(playing&&player.status==PlayerStatus.readyToStart){
+						if(player.ping!=-1.seconds){
+							network.updateStatus(cast(int)i,PlayerStatus.loading);
+							auto frame=to!int(currentFrame+player.ping/(1.seconds/updateFPS));
+							network.setFrame(cast(int)i,frame);
+							network.requestStatusUpdate(cast(int)i,PlayerStatus.playing);
+						}else ping();
+					}
+					if(player.status==PlayerStatus.pendingLoad){
+						if(player.ping!=-1.seconds){
+							anyoneLateJoining=true;
+						}else ping();
+					}
 				}
 				if(anyoneLateJoining){
 					updateCommittedTo(network.committedFrame);
@@ -297,7 +306,8 @@ final class Controller(B){
 								foreach(i,ref player;network.players){
 									if(player.status!=PlayerStatus.pendingLoad) continue;
 									if(player.ping==-1.seconds) continue;
-									auto frame=state.currentFrame;
+									auto frame=currentFrame;
+									if(playing) frame=to!int(frame+player.ping/(1.seconds/updateFPS));
 									network.updateStatus(cast(int)i,PlayerStatus.loading);
 									network.resetCommitted(cast(int)i,frame);
 									network.setFrame(cast(int)i,frame);
