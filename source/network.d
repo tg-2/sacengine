@@ -2324,7 +2324,9 @@ final class Network(B){
 	}
 	enum pingDelay=1.seconds/60;
 	enum dropDelay=5.seconds;
-	enum unresponsiveDropDelay=31.seconds;
+	enum unresponsiveDropDelay=61.seconds;
+	enum desynchedDropDelay=61.seconds;
+	enum unresponsiveDesynchedDropDelay=31.seconds;
 	enum ldDelay=1.seconds;
 	MonoTime lastUpdate;
 	void ping(int i){
@@ -2348,14 +2350,16 @@ final class Network(B){
 	}
 	void checkConnectivity(int i,Controller!B controller){
 		if(!playing) nop(cast(int)i);
-		bool isUnresponsive=isUnresponsiveStatus(players[i].status);
-		if(isUnresponsive&&!desynched) return;
+		// ignore players in unresponsive state unless we need to resynch:
+		bool isUnresponsive=isUnresponsiveStatus(players[i].status)||me!=-1&&isUnresponsiveStatus(players[me].status);
+		bool isDesynched=isDesynchedStatus(players[i].status)||me!=-1&&isDesynchedStatus(players[me].status);
 		auto sinceLastPacket=B.time()-players[i].packetTime;
-		auto limit=isUnresponsive?unresponsiveDropDelay:dropDelay;
+		auto limit=isDesynched?
+			(isUnresponsive?unresponsiveDesynchedDropDelay:desynchedDropDelay) :
+			(isUnresponsive?unresponsiveDropDelay:dropDelay);
 		if(dropOnTimeout&&players[i].packetTime!=MonoTime.init&&sinceLastPacket>=limit){
 			report!true(i,"timed out");
 			dropPlayer(i,controller);
-			return;
 		}
 	}
 	void timeoutText(scope void delegate(scope const(char)[]) sink){
