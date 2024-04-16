@@ -8546,6 +8546,7 @@ bool basiliskShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Ve
 bool petrify(B)(ref MovingObject!B obj,int lifetime,Vector3f attackDirection,ObjectState!B state){
 	if(obj.creatureStats.effects.ccProtected) return false;
 	assert(!obj.creatureStats.effects.petrified);
+	if(!obj.creatureState.mode.canBePetrified) return false;
 	obj.creatureStats.effects.petrified=true;
 	obj.creatureState.mode=CreatureMode.stunned;
 	obj.startTumbling(state);
