@@ -1631,10 +1631,10 @@ final class Network(B){
 		assert(i==-1||i<players.length);
 	}do{
 		if(i!=-1&&players[i].committedFrame==frame) return;
-		if(i==-1&&players.all!((ref player)=>player.committedFrame==frame)) return;
+		if(i==-1&&players.all!((ref player)=>player.committedFrame==frame||player.committedFrame==0)) return;
 		foreach(k,ref player;players){
 			if(k!=me) player.send(Packet.resetCommitted(i,frame));
-			if(i==k||i==-1) player.committedFrame=frame;
+			if(i==k||i==-1&&player.committedFrame!=0) player.committedFrame=frame;
 		}
 		if(i==me||i==-1) capSynch(frame);
 	}
