@@ -123,6 +123,7 @@ GameInit!B gameInit(B,R)(Sides!B sides_,R playerSettings,ref Options options){
 	gameInit.targetDroppedSouls=options.targetDroppedSouls;
 	gameInit.enableParticles=options.enableParticles;
 	gameInit.greenAllySouls=options.greenAllySouls;
+	gameInit.fasterStandupTimes=options.fasterStandupTimes;
 	if(gameInit.greenAllySouls){
 		foreach(ref settings;playerSettings)
 			if(settings.slot!=-1&&settings.refuseGreenSouls)

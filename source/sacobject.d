@@ -92,13 +92,13 @@ final class SacObject(B){
 		return guardDistance;
 	}
 	@property bool canRun(){
-		return hasAnimationState(AnimationState.run);
+		return hasAnimationState(AnimationState.run,false);
 	}
 	@property bool canDie(){
-		return hasAnimationState(AnimationState.death0);
+		return hasAnimationState(AnimationState.death0,false);
 	}
 	@property bool canFly(){
-		return hasAnimationState(AnimationState.fly);
+		return hasAnimationState(AnimationState.fly,false);
 	}
 	@property bool canFlyBackward(){
 		return tag=="zgub";
@@ -203,23 +203,23 @@ final class SacObject(B){
 		return 500; // ?
 	}
 
-	@property bool hasKnockdown(){
-		return hasAnimationState(AnimationState.knocked2Floor);
+	@property bool hasKnockdown(bool fasterStandupTimes){
+		return hasAnimationState(AnimationState.knocked2Floor,fasterStandupTimes);
 	}
 	@property bool hasFalling(){
-		return hasAnimationState(AnimationState.falling);
+		return hasAnimationState(AnimationState.falling,false);
 	}
-	@property bool hasHitFloor(){
-		return hasAnimationState(AnimationState.hitFloor);
+	@property bool hasHitFloor(bool fasterStandupTimes){
+		return hasAnimationState(AnimationState.hitFloor,fasterStandupTimes);
 	}
-	@property bool hasGetUp(){
-		return hasAnimationState(AnimationState.getUp);
+	@property bool hasGetUp(bool fasterStandupTimes){
+		return hasAnimationState(AnimationState.getUp,fasterStandupTimes);
 	}
 	@property bool hasFlyDamage(){
-		return hasAnimationState(AnimationState.flyDamage);
+		return hasAnimationState(AnimationState.flyDamage,false);
 	}
 	@property bool canTumble(){
-		return hasAnimationState(AnimationState.tumble);
+		return hasAnimationState(AnimationState.tumble,false);
 	}
 
 	@property bool isManahoar(){
@@ -763,19 +763,65 @@ final class SacObject(B){
 		animations=[anim];
 	}
 
-	final bool hasAnimationState(AnimationState state){
+	private bool needsAnimationFix(AnimationState state,bool fasterStandupTimes){
+		if(!fasterStandupTimes) return false;
+		switch(nttTag)with(WizardTag){
+			default: return false;
+			case yogo,seerix,acheron,ambassadorButa,charlotte:
+				switch(state)with(AnimationState){
+					default: return false;
+					case hitFloor: return true;
+				}
+			case abraxus:
+				switch(state)with(AnimationState){
+					default: return false;
+					case hitFloor,knocked2Floor: return true;
+				}
+		}
+	}
+	private AnimationState fixAnimation(AnimationState state){
+		switch(nttTag)with(WizardTag){
+			default: return state;
+			case yogo,seerix,acheron,ambassadorButa,charlotte:
+				switch(state)with(AnimationState){
+					default: return state;
+					case hitFloor: return knocked2Floor;
+				}
+			case abraxus:
+				switch(state)with(AnimationState){
+					default: return state;
+					case hitFloor,knocked2Floor: return cast(AnimationState)(AnimationState.max+1);
+				}
+		}
+	}
+	final bool hasAnimationState(AnimationState state)in{
+		assert(!needsAnimationFix(state,true));
+	}do{
 		return state<animations.length&&animations[state].frames.length;
 	}
-
-	final int numFrames(AnimationState animationState){
-		return isSaxs?cast(int)animations[animationState].frames.length:0;
+	final bool hasAnimationState(AnimationState state,bool fasterStandupTimes){
+		if(!needsAnimationFix(state,fasterStandupTimes)) return state<animations.length&&animations[state].frames.length;
+		auto fixed=fixAnimation(state);
+		return fixed<animations.length&&animations[fixed].frames.length;
+	}
+	final int numFrames(AnimationState state)in{
+		assert(!needsAnimationFix(state,true));
+	}do{
+		return isSaxs?cast(int)animations[state].frames.length:0;
+	}
+	final int numFrames(AnimationState state,bool fasterStandupTimes){
+		if(!isSaxs) return 0;
+		if(!needsAnimationFix(state,fasterStandupTimes)) return cast(int)animations[state].frames.length;
+		return cast(int)animations[fixAnimation(state)].frames.length;
 	}
 
-	Matrix4x4f[] getFrame(AnimationState animationState,size_t frame)in{
-		assert(frame<numFrames(animationState),text(tag," ",animationState," ",frame," ",numFrames(animationState)));
+	Matrix4x4f[] getFrame(AnimationState state,size_t frame,bool fasterStandupTimes)in{
+		if(!needsAnimationFix(state,fasterStandupTimes)) assert(frame<numFrames(state,fasterStandupTimes),text(tag," ",state," ",frame," ",numFrames(state)));
+		else assert(frame<numFrames(fixAnimation(state),fasterStandupTimes));
 	}do{
 		// enforce(saxsi.saxs.bodyParts.length==meshes.length); // TODO: why can this fail?
-		return animations[animationState].frames[frame].matrices;
+		if(!needsAnimationFix(state,fasterStandupTimes)) return animations[state].frames[frame].matrices;
+		return animations[fixAnimation(state)].frames[frame].matrices;
 	}
 }
 

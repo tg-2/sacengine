@@ -1075,6 +1075,7 @@ struct Renderer(B){
 					material.bind(rc);
 					scope(success) material.unbind(rc);
 					static if(isMoving){
+						bool fasterStandupTimes=state.fasterStandupTimes;
 						auto mesh=sacObject.saxsi.meshes[i];
 						foreach(j;0..objects.length){ // TODO: use instanced rendering instead
 							if(rc.shadowMode&&objects.creatureStatss[j].effects.stealth) continue;
@@ -1122,7 +1123,7 @@ struct Renderer(B){
 								}
 							}
 							// TODO: interpolate animations to get 60 FPS?
-							auto pose=sacObject.getFrame(objects.animationStates[j],objects.frames[j]/updateAnimFactor);
+							auto pose=sacObject.getFrame(objects.animationStates[j],objects.frames[j]/updateAnimFactor,fasterStandupTimes);
 							if(material.backend is B.boneMaterialBackend) B.boneMaterialBackend.setPose(pose);
 							if(material.backend is B.shadelessBoneMaterialBackend) B.shadelessBoneMaterialBackend.setPose(pose);
 							if(material.backend is B.boneShadowBackend) B.boneShadowBackend.setPose(pose);
@@ -1436,6 +1437,7 @@ struct Renderer(B){
 					}
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode){
+					auto fasterStandupTimes=state.fasterStandupTimes;
 					foreach(j;0..objects.speedUpShadows.length){
 						if((objects.speedUpShadows[j].age+1)%speedUpShadowSpacing!=0) continue;
 						auto id=objects.speedUpShadows[j].creature;
@@ -1466,7 +1468,7 @@ struct Renderer(B){
 							scope(success){
 								if(slimed && idiffuse.texture) B.boneMaterialBackend.bindDiffuse(idiffuse.texture);
 							}
-							auto pose=sacObject.getFrame(objects.speedUpShadows[j].animationState,objects.speedUpShadows[j].frame/updateAnimFactor);
+							auto pose=sacObject.getFrame(objects.speedUpShadows[j].animationState,objects.speedUpShadows[j].frame/updateAnimFactor,fasterStandupTimes);
 							B.shadelessBoneMaterialBackend.setPose(pose);
 							mesh.render(rc);
 						}

@@ -6075,8 +6075,9 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 			final switch(object.creatureState.movement){
 				case CreatureMovement.onGround:
 					object.frame=0;
-					object.animationState=sacObject.hasKnockdown?AnimationState.knocked2Floor
-						:sacObject.hasGetUp?AnimationState.getUp:AnimationState.stance1;
+					bool fasterStandupTimes=state.fasterStandupTimes;
+					object.animationState=sacObject.hasKnockdown(fasterStandupTimes)?AnimationState.knocked2Floor
+						:sacObject.hasGetUp(fasterStandupTimes)?AnimationState.getUp:AnimationState.stance1;
 					break;
 				case CreatureMovement.flying:
 					object.frame=0;
@@ -10667,6 +10668,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 			}
 			break;
 		case CreatureMode.stunned:
+			auto fasterStandupTimes=state.fasterStandupTimes;
 			auto immobilized=object.creatureStats.effects.immobilized;
 			with(AnimationState) assert(immobilized||object.isSacDoctor||object.animationState.among(stance1,knocked2Floor,falling,tumble,hitFloor,getUp,damageFront,damageRight,damageBack,damageLeft,damageTop,flyDamage));
 			if(object.creatureState.movement==CreatureMovement.tumbling&&object.creatureState.fallingVelocity.z<=0.0f){
@@ -10679,11 +10681,14 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 				}else if(state.isOnGround(object.position)&&object.position.z+object.creatureState.fallingVelocity.z/updateFPS<=state.getGroundHeight(object.position)){
 					object.creatureState.movement=CreatureMovement.onGround;
 					if(object.animationState.among(AnimationState.falling,AnimationState.tumble)||immobilized){
-						if(sacObject.hasHitFloor&&!immobilized&&
+						if(sacObject.hasHitFloor(fasterStandupTimes)&&!immobilized&&
 						   (!object.isSacDoctor||object.animationState==cast(AnimationState)SacDoctorAnimationState.expelled)
 						){
 							object.frame=0;
 							object.animationState=AnimationState.hitFloor;
+						}else if(sacObject.hasGetUp(fasterStandupTimes)){
+							object.frame=0;
+							object.animationState=AnimationState.getUp;
 						}else object.startIdling(state);
 						object.dealFallDamage(state);
 					}else if(!object.animationState.among(AnimationState.knocked2Floor,AnimationState.getUp))
@@ -10693,11 +10698,11 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 			}
 			if(immobilized) break;
 			object.frame+=1;
-			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
+			if(object.frame>=sacObject.numFrames(object.animationState,fasterStandupTimes)*updateAnimFactor){
 				object.frame=0;
 				final switch(object.creatureState.movement){
 					case CreatureMovement.onGround:
-						if(object.animationState.among(AnimationState.knocked2Floor,AnimationState.hitFloor)&&sacObject.hasGetUp){
+						if(object.animationState.among(AnimationState.knocked2Floor,AnimationState.hitFloor)&&sacObject.hasGetUp(fasterStandupTimes)){
 							object.animationState=AnimationState.getUp;
 						}else if(!object.isSacDoctor||object.animationState==AnimationState.hitFloor)
 							object.startIdling(state);
@@ -21570,16 +21575,19 @@ final class ObjectState(B){ // (update logic)
 		bool targetDroppedSouls=false;
 		bool enableParticles=true;
 		bool greenAllySouls=false;
+		bool fasterStandupTimes=true;
 	}
 	Settings settings;
 	@property bool enableDropSoul(){ return settings.enableDropSoul; }
 	@property bool targetDroppedSouls(){ return settings.targetDroppedSouls; }
 	@property bool enableParticles(){ return settings.enableParticles; }
 	@property bool greenAllySouls(){ return settings.greenAllySouls; }
+	@property bool fasterStandupTimes(){ return settings.fasterStandupTimes; }
 	void disableDropSoul(){ settings.enableDropSoul=false; }
 	void allowTargetingDroppedSouls(){ settings.targetDroppedSouls=true; }
 	void disableParticles(){ settings.enableParticles=false; }
 	void enableGreenAllySouls(){ settings.greenAllySouls=true; }
+	void disableFasterStandupTimes(){ settings.fasterStandupTimes=false; }
 	int addObject(T)(T object) if(is(T==MovingObject!B)||is(T==StaticObject!B)||is(T==Soul!B)||is(T==Building!B)){
 		return obj.addObject(move(object));
 	}
@@ -23269,6 +23277,7 @@ struct GameInit(B){
 	bool targetDroppedSouls=false;
 	bool enableParticles=true;
 	bool greenAllySouls=false;
+	bool fasterStandupTimes=true;
 }
 
 struct SlotInfo{
@@ -23315,6 +23324,7 @@ void initGame(B)(ObjectState!B state,ref Array!SlotInfo slots,GameInit!B gameIni
 	if(gameInit.targetDroppedSouls) state.allowTargetingDroppedSouls();
 	if(!gameInit.enableParticles) state.disableParticles();
 	if(gameInit.greenAllySouls) state.enableGreenAllySouls();
+	if(!gameInit.fasterStandupTimes) state.disableFasterStandupTimes();
 	slots.length=gameInit.slots.length;
 	slots.data[]=SlotInfo.init;
 	Array!int slotForWiz;
