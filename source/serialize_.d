@@ -536,6 +536,12 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Hea
 void serialize(alias sink,B)(ref HealingAura!B particle){ serializeStruct!sink(particle); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==HealingAura!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref FirewallCasting!B firewallCasting){ serializeStruct!sink(firewallCasting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==FirewallCasting!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref Firewall!B particle){ serializeStruct!sink(particle); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Firewall!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref Spike!B spike){ serializeStruct!sink(spike); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Spike!B)){ deserializeStruct(result,state,data); }
 

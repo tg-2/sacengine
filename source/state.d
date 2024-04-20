@@ -3079,6 +3079,25 @@ struct HealingAura(B){
 	HealingAuraStatus status;
 }
 
+struct FirewallCasting(B){
+	ManaDrain!B manaDrain;
+	Firewall!B firewall;
+
+	enum castingLimit=4*updateFPS; // TODO
+}
+enum FirewallStatus{ growing, stationary, shrinking, }
+struct Firewall(B){
+	int wizard;
+	int side;
+	Vector3f center;
+	Vector2f direction;
+	SacSpell!B spell;
+	float left=0.0f,right=0.0f;
+	float top=0.0f;
+	int frame=0;
+	FirewallStatus status;
+}
+
 struct Spike(B){
 	Vector3f position;
 	Vector3f direction;
@@ -4575,6 +4594,22 @@ struct Effects(B){
 	void removeHealingAura(int i){
 		if(i+1<healingAuras.length) healingAuras[i]=move(healingAuras[$-1]);
 		healingAuras.length=healingAuras.length-1;
+	}
+	Array!(FirewallCasting!B) firewallCastings;
+	void addEffect(FirewallCasting!B firewallCasting){
+		firewallCastings~=move(firewallCasting);
+	}
+	void removeFirewallCasting(int i){
+		if(i+1<firewallCastings.length) firewallCastings[i]=move(firewallCastings[$-1]);
+		firewallCastings.length=firewallCastings.length-1;
+	}
+	Array!(Firewall!B) firewalls;
+	void addEffect(Firewall!B firewall){
+		firewalls~=move(firewall);
+	}
+	void removeFirewall(int i){
+		if(i+1<firewalls.length) firewalls[i]=move(firewalls[$-1]);
+		firewalls.length=firewalls.length-1;
 	}
 	Array!(Spike!B) spikes;
 	void addEffect(Spike!B spike){
@@ -7471,6 +7506,9 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 				case SpellTag.healingAura:
 					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
 					return stun(castHealingAura(side,target.id,manaDrain,spell,state));
+				case SpellTag.firewall:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					return stun(castFirewall(side,target.position,manaDrain,spell,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -8416,6 +8454,20 @@ bool healingAura(B)(int side,int target,SacSpell!B spell,ObjectState!B state){
 	auto soundTimer=playSoundAt!true("arua",target,state,healingAuraGain);
 	auto healingAura=HealingAura!B(side,target,spell,soundTimer);
 	state.addEffect(move(healingAura));
+	return true;
+}
+
+bool castFirewall(B)(int side,Vector3f position,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	auto duration=cast(int)ceil(updateFPS*spell.duration);
+	auto casterPosition=state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(manaDrain.wizard);
+	if(isNaN(casterPosition.x)) return false;
+	auto casterDirection=position.xy-casterPosition.xy;
+	auto direction=Vector2f(-casterDirection.y,casterDirection.x);
+	state.addEffect(FirewallCasting!B(manaDrain,Firewall!B(manaDrain.wizard,side,position,direction,spell)));
+	return true;
+}
+bool firewall(B)(Firewall!B firewall,ObjectState!B state){
+	state.addEffect(firewall);
 	return true;
 }
 
@@ -15991,6 +16043,47 @@ bool updateHealingAura(B)(ref HealingAura!B healingAura,ObjectState!B state){
 	}
 }
 
+void animateFirewallCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	auto castParticle=SacParticle!B.get(ParticleType.firy); // TODO ok?
+	wizard.animateCasting(castParticle,state);
+	static assert(updateFPS==60);
+	auto hitbox=wizard.relativeHitbox;
+	enum numParticles=6;
+	foreach(i;0..numParticles){
+		auto position=1.1f*state.uniform(cast(Vector2f[2])[hitbox[0].xy,hitbox[1].xy]);
+		auto distance=(state.uniform(3)?state.uniform(0.3f,0.6f):state.uniform(1.5f,2.5f))*(hitbox[1].z-hitbox[0].z);
+		auto fullLifetime=2.0f*castParticle.numFrames/float(updateFPS);
+		auto scale=state.uniform(1.5f,2.0f);
+		auto lifetime=cast(int)(castParticle.numFrames*state.uniform(0.0f,2.0f));
+		// TODO: particles should accelerate upwards
+		state.addParticle(Particle!B(castParticle,wizard.position+rotate(wizard.rotation,Vector3f(position.x,position.y,state.uniform(0.0f,0.5f*distance))),Vector3f(0.0f,0.0f,distance/fullLifetime),scale,lifetime,0));
+	}
+}
+bool updateFirewallCasting(B)(ref FirewallCasting!B firewallCast,ObjectState!B state){
+	with(firewallCast){
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				state.movingObjectById!(animateFirewallCasting,(){})(manaDrain.wizard,state);
+				firewall.updateFirewall(state);
+				firewall.frame=min(castingLimit,firewall.frame);
+				return true;
+			case CastingStatus.interrupted:
+				firewall.status=FirewallStatus.shrinking;
+				.firewall(firewall,state); // TODO: interrupt
+				return false;
+			case CastingStatus.finished:
+				.firewall(firewall,state);
+				return false;
+		}
+	}
+}
+bool updateFirewall(B)(ref Firewall!B firewall,ObjectState!B state){
+	with(firewall){
+		//writeln(spell.range," ",spell.effectRange);
+		return ++frame<FirewallCasting!B.castingLimit+spell.duration*updateFPS;
+	}
+}
+
 bool updateSpike(B)(ref Spike!B spike,ObjectState!B state){
 	with(spike){
 		position.z=state.getHeight(position);
@@ -19770,6 +19863,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.healingAuras.length;){
 		if(!updateHealingAura(effects.healingAuras[i],state)){
 			effects.removeHealingAura(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.firewallCastings.length;){
+		if(!updateFirewallCasting(effects.firewallCastings[i],state)){
+			effects.removeFirewallCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.firewalls.length;){
+		if(!updateFirewall(effects.firewalls[i],state)){
+			effects.removeFirewall(i);
 			continue;
 		}
 		i++;
