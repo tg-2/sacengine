@@ -33,3 +33,6 @@ maps/(6) TM-Evening Tide.scp
 maps/(6) EM-Humanaptra.scp
 maps/(6) EM-Hamburger Hill2.scp
 maps/(6) EM-Majestic.scp
+maps/(6) EM-Sunny Fields.scp
+maps/(6 -GS) Banzai.scp
+maps/(6) Sacred Glade.scp
