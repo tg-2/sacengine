@@ -1820,6 +1820,7 @@ struct WizardStatistics{
 	int foesKilled=0;
 	int foesGibbed=0;
 	int buildingsDestroyed=0;
+	int buildingsCreated=0;
 }
 
 struct WizardInfo(B){
@@ -11722,7 +11723,9 @@ bool updateStructureCasting(B)(ref StructureCasting!B structureCast,ObjectState!
 				state.buildingById!((ref building,state){
 					building.activate(state);
 					building.flags&=~Flags.cannotDamage;
-			},function(){})(building,state); return false;
+			},function(){})(building,state);
+				wizard.wizardStatistics.buildingsCreated+=1;
+				return false;
 		}
 	}
 }
