@@ -312,6 +312,7 @@ final class SacScene: Scene{
 		if(!target){
 			if(!mouse.menuMode){
 				fpview.active=true;
+				fpview.mouseFactor=0.25f;
 				mouse.visible=false;
 			}else oldMouseVisible=false;
 			info.hudVisible=false;
@@ -479,6 +480,7 @@ final class SacScene: Scene{
 		if(!oldMouseVisible){
 			mouse.visible=false;
 			fpview.active=true;
+			fpview.mouseFactor=0.25f;
 		}
 	}
 
@@ -1406,9 +1408,9 @@ final class SacScene: Scene{
 				}
 				void hideMouse(){
 					fpview.active=true;
+					fpview.mouseFactor=0.25f;
 					mouse.visible=false;
 					info.hudVisible=false;
-					fpview.mouseFactor=0.25f;
 					//if(!state) SDL_ShowCursor(SDL_DISABLE);
 				}
 				void toggleMouse(){
