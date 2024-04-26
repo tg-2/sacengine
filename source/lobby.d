@@ -427,16 +427,21 @@ class Lobby(B){
 					if(!singleplayerSides.empty && options.slot==0){
 						auto side=singleplayerSides.front;
 						if(0<=side&&side<32){
-							options.level=to!int(map.levl.singleStartLevel);
-							options.souls=to!int(map.levl.singleSouls);
-							options.minLevel=to!int(options.level);
+							options.minLevel=to!int(map.levl.singleStartLevel);
+							options.level=options.minLevel;;
 							options.maxLevel=to!int(map.levl.singleMaxLevel);
+							options.souls=to!int(map.levl.singleSouls);
 							import ntts:God;
 							if(map.levl.singleAssociatedGod && map.levl.singleAssociatedGod<=God.max){
 								options.spellbook=defaultSpells[options.god];
 							}
 						}
 					}
+				}else if(options.useMapSettings){
+					options.minLevel=to!int(map.levl.multiMinLevel);
+					options.level=options.minLevel;
+					options.maxLevel=to!int(map.levl.multiMaxLevel);
+					options.souls=to!int(map.levl.multiSouls);
 				}
 				if(toContinue) gameInit=toContinue.gameInit;
 				else gameInit=.gameInit!B(sides,only(options.settings),options);

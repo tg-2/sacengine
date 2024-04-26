@@ -113,6 +113,7 @@ struct Options{
 	bool synchronizeSouls=true;
 	bool synchronizeLevelBounds=true;
 	bool synchronizeXPRate=true;
+	bool useMapSettings=false;
 	// recording and playback
 	string recordingFilename="";
 	string recordingFolder="";
