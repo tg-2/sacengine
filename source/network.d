@@ -1824,7 +1824,8 @@ final class Network(B){
 				}
 				if(p.commitPlayer==-1){
 					foreach(ref player;players)
-						player.committedFrame=p.commitFrame;
+						if(player.committedFrame!=0)
+							player.committedFrame=p.commitFrame;
 				}else players[p.commitPlayer].committedFrame=p.commitFrame;
 				return true;
 			case PacketType.requestStatusUpdate:
