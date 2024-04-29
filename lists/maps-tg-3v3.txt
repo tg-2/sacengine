@@ -36,3 +36,6 @@ maps/(6) EM-Majestic.scp
 maps/(6) EM-Sunny Fields.scp
 maps/(6 -GS) Banzai.scp
 maps/(6) Sacred Glade.scp
+maps/(6) Mesa.scp
+maps/(6) DD - Eternal Autumn.scp
+maps/(6) Kirwan.scp
