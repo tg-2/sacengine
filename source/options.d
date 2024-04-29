@@ -67,7 +67,6 @@ struct Options{
 	bool randomSpellbook=false;
 	// global settings
 	bool noMap=false;
-	string mapList;
 	int[] teamSizes;
 	bool mirrorMatch=false;
 	bool shuffleSides=false;
