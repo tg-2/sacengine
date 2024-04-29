@@ -63,10 +63,13 @@ void loadGame(B)(ref Options options)in{
 string stripComment(string s){
 	auto i=s.indexOf('#');
 	if(i==-1) return s;
-	return s[0..i];
+	return s[0..i].strip;
+}
+string[] importSettings(R)(R settings){
+	return expandSettings(settings.map!stripComment.map!strip.filter!(l=>l.length!=0).array);
 }
 string[] importSettings(string filename){
-	return expandSettings(File(filename).byLineCopy.map!stripComment.map!strip.filter!(l=>l.length!=0).array);
+	return importSettings(File(filename).byLineCopy);
 }
 string[] expandSettings(string[] settings){
 	if(!settings.any!(setting=>setting.startsWith("--import="))) return settings;
@@ -80,48 +83,28 @@ string[] expandSettings(string[] settings){
 	return result;
 }
 
-int run(string[] args){
-	import std.file:thisExePath,chdir;
-	import std.path:dirName;
-	chdir(dirName(thisExePath()));
-	import core.memory;
-	GC.disable();
-	if(args.length==0) args~="";
-	bool redirected=false;
-	void redirect(){
-		if(redirected) return;
-		if(args.canFind("--redirect-output")){
-			stdout.reopen("SacEngine.out.txt","w");
-			stderr.reopen("SacEngine.err.txt","w");
+bool isEarlySetting(string opt){
+	return opt.startsWith("--")||opt.endsWith(".scp")||opt.endsWith(".HMAP")||opt.startsWith("export-speech:");
+}
+
+int applySettings(string[] args,ref Options options){
+	foreach(opt;args){
+		if(!opt.startsWith("--")){
+			if(isEarlySetting(opt)){
+				options.map=opt;
+			}else if(opt.endsWith(".rcp")){
+				options.playbackFilename=opt;
+			}
+			continue;
 		}
-		redirected=true;
-	}
-	redirect();
-	args=expandSettings(args);
-	redirect();
-	import std.file:exists;
-	if(!args.canFind("--ignore-settings")&&exists("settings.txt")) args=chain(args[0..1],importSettings("settings.txt"),args[1..$]).array;
-	redirect();
-	auto opts=args[1..$].filter!(x=>x.startsWith("--")).array;
-	args=chain(args[0..1],args[1..$].filter!(x=>!x.startsWith("--"))).array;
-	Options options={
-		settings: { commit: commit },
-		//shadowMapResolution: 8192,
-		//shadowMapResolution: 4096,
-		//shadowMapResolution: 2048,
-		shadowMapResolution: 1024,
-		enableWidgets: true,
-	};
-	options.slot=int.min;
-	static Tuple!(int,"width",int,"height") parseResolution(string s){
-		auto t=s.split('x');
-		if(t.length==2) return tuple!("width","height")(to!int(t[0]),to!int(t[1]));
-		return tuple!("width","height")(16*to!int(s)/9,to!int(s));
-	}
-	foreach(opt;opts){
 		if(opt.startsWith("--spoof-commit-hash=")){ // for testing
 			options.commit=opt["--spoof-commit-hash=".length..$];
 		}else if(opt.startsWith("--resolution=")){
+			static Tuple!(int,"width",int,"height") parseResolution(string s){
+				auto t=s.split('x');
+				if(t.length==2) return tuple!("width","height")(to!int(t[0]),to!int(t[1]));
+				return tuple!("width","height")(16*to!int(s)/9,to!int(s));
+			}
 			auto resolution=parseResolution(opt["--resolution=".length..$]);
 			options.width=resolution.width;
 			options.height=resolution.height;
@@ -232,7 +215,8 @@ int run(string[] args){
 		}else if(opt.startsWith("--xp-rate=")){
 			options.xpRate=to!float(opt["--xp-rate=".length..$]);
 		}else if(opt.startsWith("--map-list=")){
-			options.mapList=opt["--map-list=".length..$];
+			auto mapList=opt["--map-list=".length..$];
+			pickMap(File(mapList).byLineCopy.map!(l=>stripComment(l.strip)).filter!(l=>!l.empty).array,options);
 		}else if(opt=="--scenario"){
 			options.gameMode=GameMode.scenario;
 		}else if(opt=="--skirmish"){
@@ -299,7 +283,22 @@ int run(string[] args){
 				return 1;
 		}
 	}
-	if(options.slot==int.min) options.slot=options.observer?-1:0;
+	return 0;
+}
+
+int pickMap(string[] candidates,ref Options options){
+	import std.random:uniform;
+	auto candidate=stripComment(candidates.length?candidates[uniform!"[)"(0,$)]:"");
+	if(candidate!="") stdout.writefln!"selected map '%s'"(candidate);
+	string[] settings;
+	if(candidate.canFind(".scp")){
+		auto index=candidate.indexOf(".scp")+".scp".length;
+		settings=candidate[0..index]~candidate[index..$].split(' ');
+	}else settings=candidate.split(' ');
+	return applySettings(settings,options); // TODO: support quotes
+}
+
+int finalizeSettings(ref Options options){
 	if(options.teamSizes.length)
 		options.numSlots=max(options.numSlots,std.algorithm.sum(options.teamSizes));
 	if(options.wizard=="\0\0\0\0"||options.randomWizards){
@@ -314,58 +313,18 @@ int run(string[] args){
 	if(options.randomSpellbook||options.randomSpellbooks){
 		options.spellbook=randomSpells();
 	}else options.spellbook=defaultSpells[options.god];
-	writeln("SacEngine build ",__DATE__," ",__TIME__,commit.length?text(", commit ",commit):"");
-	import audio;
-	if(!loadAudio()){
-		stderr.writeln("failed to initialize audio");
-		options.volume=0.0f;
-	}
-	scope(exit) unloadAudio();
-	if(options.enableReadFromWads){
-		wadManager=new WadManager;
-		wadManager.indexWADs("data");
-	}
-	import nttData:initNTTData;
-	initNTTData(options.enableReadFromWads);
-	import hotkeys_:initHotkeys,defaultHotkeys,loadHotkeys;
-	initHotkeys();
-	if(options.hotkeyFilename.length){
-		options.hotkeys=loadHotkeys(options.hotkeyFilename);
-	}else options.hotkeys=defaultHotkeys();
-	alias B=DagonBackend;
-	B.initialize(options);
-	foreach(arg;args){
-		if(arg.endsWith(".scp")||arg.endsWith(".HMAP")||arg.startsWith("export-speech:")){
-			options.map=arg;
-		}else if(arg.endsWith(".rcp")){
-			options.playbackFilename=arg;
-		}
-	}
+
 	if(options.map==""&&!options.noMap){
-		import std.file;
-		auto candidates=!options.mapList?dirEntries("maps","*.scp",SpanMode.depth).map!(x=>cast(string)x).array:File(options.mapList).byLineCopy.map!(l=>stripComment(l.strip)).filter!(l=>!l.empty).array;
-		import std.random:uniform;
-		auto map=candidates.length?candidates[uniform!"[)"(0,$)]:"";
-		if(map!="") stdout.writefln!"selected map '%s'"(map);
-		options.map=map;
+		import std.file:dirEntries,SpanMode;
+		if(auto r=pickMap(dirEntries("maps","*.scp",SpanMode.depth).map!(x=>cast(string)x).array,options))
+			return r;
 	}
-	if(options.map.startsWith("export-speech:")){
-		options.map=options.map["export-speech:".length..$];
-		exportSpeech!B(options);
-		return 0;
-	}
+	return 0;
+}
 
-	if(options.zerotierNetwork&&(options.host||options.joinIP!="")){
-		import zerotier;
-		connectToZerotier(options.zerotierIdentity,options.zerotierNetwork);
-	}
-	if(options.map!=""&&!options.noMap){
-		// loadGame!B(options);
-		auto lobby=makeLobby!B(options);
-		B.addLogicCallback(()=>!updateLobby(lobby,options));
-	}else B.scene.fpview.active=true;
-
-	foreach(ref i;1..args.length){
+int applyLateSettings(B)(string[] args){
+	for(int i=1;i<args.length;i++){
+		if(args[i].startsWith("--")) continue;
 		if(args[i].endsWith(".SAMP")){
 			import samp,audio;
 			auto filename=args[i];
@@ -387,7 +346,7 @@ int run(string[] args){
 		string anim="";
 		if(i+1<args.length&&args[i+1].endsWith(".SXSK"))
 			anim=args[i+1];
-		if(!(args[i].endsWith(".scp")||args[i].endsWith(".rcp")||args[i].endsWith(".HMAP"))){
+		if(!isEarlySetting(args[i])){
 			import sacobject:SacObject;
 			auto sac=new SacObject!B(args[i],float.nan,anim);
 			auto position=Vector3f(1270.0f, 1270.0f, 0.0f);
@@ -432,6 +391,74 @@ int run(string[] args){
 			B.addObject(sac,position,facingQuaternion(0));
 		}
 	}
+	return 0;
+}
+
+int run(string[] args){
+	import std.file:thisExePath,chdir;
+	import std.path:dirName;
+	chdir(dirName(thisExePath()));
+	import core.memory;
+	GC.disable();
+	if(args.length==0) args~="";
+	bool redirected=false;
+	void redirect(){
+		if(redirected) return;
+		if(args.canFind("--redirect-output")){
+			stdout.reopen("SacEngine.out.txt","w");
+			stderr.reopen("SacEngine.err.txt","w");
+		}
+		redirected=true;
+	}
+	redirect();
+	args=expandSettings(args);
+	redirect();
+	import std.file:exists;
+	if(!args.canFind("--ignore-settings")&&exists("settings.txt")) args=chain(args[0..1],importSettings("settings.txt"),args[1..$]).array;
+	redirect();
+	Options options={ settings: { commit: commit } };
+	options.slot=int.min;
+	if(auto r=applySettings(args[1..$],options)) return r;
+	if(options.slot==int.min) options.slot=options.observer?-1:0;
+	if(auto r=finalizeSettings(options)) return r;
+	writeln("SacEngine build ",__DATE__," ",__TIME__,commit.length?text(", commit ",commit):"");
+	import audio;
+	if(!loadAudio()){
+		stderr.writeln("failed to initialize audio");
+		options.volume=0.0f;
+	}
+	scope(exit) unloadAudio();
+	if(options.enableReadFromWads){
+		wadManager=new WadManager;
+		wadManager.indexWADs("data");
+	}
+	import nttData:initNTTData;
+	initNTTData(options.enableReadFromWads);
+	import hotkeys_:initHotkeys,defaultHotkeys,loadHotkeys;
+	initHotkeys();
+	if(options.hotkeyFilename.length){
+		options.hotkeys=loadHotkeys(options.hotkeyFilename);
+	}else options.hotkeys=defaultHotkeys();
+	alias B=DagonBackend;
+	B.initialize(options);
+	if(options.map.startsWith("export-speech:")){
+		options.map=options.map["export-speech:".length..$];
+		exportSpeech!B(options);
+		return 0;
+	}
+
+	if(options.zerotierNetwork&&(options.host||options.joinIP!="")){
+		import zerotier;
+		connectToZerotier(options.zerotierIdentity,options.zerotierNetwork);
+	}
+	if(options.map!=""&&!options.noMap){
+		// loadGame!B(options);
+		auto lobby=makeLobby!B(options);
+		B.addLogicCallback(()=>!updateLobby(lobby,options));
+	}else B.scene.fpview.active=true;
+
+	if(auto r=applyLateSettings!B(args)) return r;
+
 	if(!B.network||B.network.isHost){
 		auto delay=options.delayStart;
 		while(delay){

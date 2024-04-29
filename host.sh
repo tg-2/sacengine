@@ -33,7 +33,7 @@ map=--map-list=lists/maps-tg-1v1.txt
 # map='maps/(5) Flower Power.scp'
 
 date=$(date +%Y-%m-%d-%H-%M-%S)
-args=("$map" --name="$name" --host="$nplayers" --resolution=2160 --level="$level" --souls="$souls" --wizard="$wizard" --record=replays/"$tag"-"$date".rcp --random-gods --shuffle-sides --2v2 "$@")
+args=(--name="$name" --host="$nplayers" --resolution=2160 --level="$level" --souls="$souls" --wizard="$wizard" --record=replays/"$tag"-"$date".rcp --random-gods --shuffle-sides "$map" "$@")
 echo "${args[@]}"
 
 ./run-current.sh "${args[@]}"
