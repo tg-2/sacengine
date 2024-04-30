@@ -502,6 +502,7 @@ int run(string[] args){
 		B.controller.recording.save(options.recordingFilename,options.compressRecording);
 	}
 	GC.collect();
+	if(options.lowmem) GC.enable();
 	B.run();
 	return 0;
 }

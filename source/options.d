@@ -124,6 +124,8 @@ struct Options{
 	// asset export
 	string exportFolder="sacengine-exports";
 	alias settings this;
+	// compatibility options
+	bool lowmem=false;
 }
 
 struct SpellSpec{
