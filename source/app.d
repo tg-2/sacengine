@@ -511,13 +511,14 @@ int main(string[] args){
 	version(Windows){
 		import core.sys.windows.windows;
 		SetConsoleOutputCP(CP_UTF8);
+		import core.stdc.stdlib:system;
 		try r=run(args);
 		catch(Throwable e){
 			writeln(e.toString());
-			import core.stdc.stdlib;
 			system("pause");
 			return 1;
 		}
+		if(r) system("pause");
 	}else r=run(args);
 	return r;
 }
