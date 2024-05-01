@@ -21,16 +21,8 @@ enum Bindable:char[4]{
 	moveBackward="kabM",
 	turnLeft="tflM",
 	turnRight="tgrM",
-	moveUp="puvM",		//FIXME
-	moveDown="nwdM",	//FIXME
 	cameraZoomIn="imzM",
 	cameraZoomOut="omzM",
-	cameraUp="upcM",
-	cameraDown="dncM",
-	cameraForward="wfcM",
-	cameraBackward="wbcM",
-	cameraLeft="tlcM",
-	cameraRight="trcM",
 	// orders
 	attack="ttat",
 	guard="augt",
@@ -131,6 +123,14 @@ enum Bindable:char[4]{
 	// TODO
 	// SacEngine extensions
 	surrender="rrus",
+	moveUp="puvM",
+	moveDown="nwdM",
+	cameraUp="upcM",
+	cameraDown="dncM",
+	cameraForward="wfcM",
+	cameraBackward="wbcM",
+	cameraLeft="tlcM",
+	cameraRight="trcM",
 }
 
 string defaultName(Bindable bindable){
@@ -141,14 +141,6 @@ string defaultName(Bindable bindable){
 		case moveBackward: return "Move Backward";
 		case turnLeft: return "Turn Left";
 		case turnRight: return "Turn Right";
-		case moveUp: return "Move Up";
-		case moveDown: return "Move Down";
-		case cameraForward: return "Camera Move Forward";
-		case cameraBackward: return "Camera Move Backward";
-		case cameraUp: return "Camera Move Up";
-		case cameraDown: return "Camera Move Down";
-		case cameraLeft: return "Camera Move Left";
-		case cameraRight: return "Camera Move Right";
 		case cameraZoomIn: return "Camera zoom in";
 		case cameraZoomOut: return "Camera zoom out";
 		// orders
@@ -200,6 +192,15 @@ string defaultName(Bindable bindable){
 		case castShrine: return "Cast Shrine";
 		// SacEngine extensions
 		case surrender: return "Surrender";
+		case moveUp: return "Move Up";
+		case moveDown: return "Move Down";
+		case cameraForward: return "Camera Move Forward";
+		case cameraBackward: return "Camera Move Backward";
+		case cameraUp: return "Camera Move Up";
+		case cameraDown: return "Camera Move Down";
+		case cameraLeft: return "Camera Move Left";
+		case cameraRight: return "Camera Move Right";
+
 	}
 }
 
@@ -225,8 +226,10 @@ struct ModHotkey{
 
 struct Hotkeys{
 	bool capsIsCtrl=true;
-	int[] moveForward,moveBackward,turnLeft,turnRight, moveUp, moveDown;
-	int[] cameraZoomIn,cameraZoomOut, cameraUp, cameraDown, cameraLeft, cameraRight, cameraForward, cameraBackward;
+	int[] moveForward,moveBackward,turnLeft,turnRight;
+	int[] moveUp,moveDown;
+	int[] cameraZoomIn,cameraZoomOut;
+	int[] cameraUp,cameraDown,cameraLeft,cameraRight,cameraForward,cameraBackward;
 	Hotkey[][Modifiers.max+1] hotkeys;
 	alias hotkeys this;
 	void add(ModHotkey modHotkey){

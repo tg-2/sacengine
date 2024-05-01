@@ -986,7 +986,11 @@ final class SacScene: Scene{
 			Lswitch: final switch(command) with(Bindable){
 				case unknown: break;
 				// control keys
-				case moveForward,moveBackward,turnLeft,turnRight,cameraZoomIn,cameraZoomOut: enforce(0,"bad hotkeys"); break;
+				case moveForward,moveBackward,turnLeft,turnRight,cameraZoomIn,cameraZoomOut:
+				case moveUp, moveDown:
+				case cameraUp, cameraDown, cameraLeft, cameraRight, cameraForward, cameraBackward:
+					enforce(0,"bad hotkeys");
+					break;
 				// orders
 				case attack:
 					if(mouse.status==MouseStatus.standard&&!mouse.dragging){
@@ -1109,12 +1113,6 @@ final class SacScene: Scene{
 				// SacEngine extensions
 				case surrender:
 					controller.addCommand(Command!DagonBackend(renderSide));
-					break;
-				case moveUp, moveDown:
-					enforce(0,"bad hotkeys");
-					break;
-				case cameraUp, cameraDown, cameraLeft, cameraRight, cameraForward, cameraBackward:
-					enforce(0,"bad hotkeys");
 					break;
 			}
 		}
