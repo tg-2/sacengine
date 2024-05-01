@@ -1110,6 +1110,9 @@ final class SacScene: Scene{
 				case surrender:
 					controller.addCommand(Command!DagonBackend(renderSide));
 					break;
+				case moveUp, moveDown:
+					enforce(0,"bad hotkeys");
+					break;
 			}
 		}
 		foreach(ref hotkey;options.hotkeys[modifiers]){
@@ -1370,6 +1373,7 @@ final class SacScene: Scene{
 	void observerControl(Duration dt){
 		Vector3f forward = fpview.camera.worldTrans.forward;
 		Vector3f right = fpview.camera.worldTrans.right;
+		Vector3f upVector = fpview.camera.worldTrans.up;
 		Vector3f dir = Vector3f(0, 0, 0);
 		//if(eventManager.keyPressed[KEY_X]) dir += Vector3f(1,0,0);
 		//if(eventManager.keyPressed[KEY_Y]) dir += Vector3f(0,1,0);
@@ -1381,6 +1385,8 @@ final class SacScene: Scene{
 			if(pressed(options.hotkeys.moveBackward)) dir += forward;
 			if(pressed(options.hotkeys.turnLeft)) dir += -right;
 			if(pressed(options.hotkeys.turnRight)) dir += right;
+			if(pressed(options.hotkeys.moveUp)) dir += -upVector;
+			if(pressed(options.hotkeys.moveDown)) dir += upVector;
 			if(eventManager.keyPressed[KEY_I]) speed = 10.0f;
 			if(eventManager.keyPressed[KEY_O]) speed = 100.0f;
 			if(eventManager.keyPressed[KEY_P]) speed = 1000.0f;
