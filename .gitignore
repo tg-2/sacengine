@@ -4,7 +4,6 @@ source/extracted
 .dub
 3d
 dub_platform*
-*.scr
 zeroip.txt
 *.7z
 *.zip
