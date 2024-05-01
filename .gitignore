@@ -7,11 +7,6 @@ dub_platform*
 zeroip.txt
 *.7z
 *.zip
-*.exe
-*.dll
-*.dylib
-*.so
-.DS_Store
 logs
 *.obj
 *.mtl
@@ -31,6 +26,12 @@ data-orig
 maps-orig
 fonts
 
+# ignore binaries
+*.exe
+*.dll
+*.so
+*.dylib
+
 # replays
 replays
 *.rcp
@@ -41,3 +42,6 @@ android-ndk-r21e
 
 # windows pdb files
 *.pdb
+
+# MacOS garbage
+.DS_Store
