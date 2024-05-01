@@ -1,33 +1,47 @@
 *~
 extracted
 source/extracted
-replays
 .dub
 3d
-SacEngine-*
-SacEnginePi*
-SacEngineA*
-SacEngine.*.txt
-ldc2*
 dub_platform*
-settings.txt
-*.scr
-*.rcp
 zeroip.txt
 *.7z
-fonts
-data
-maps
-data-orig
-maps-orig
 *.zip
-*.exe
-*.dll
-*.dylib
-*.so
-.DS_Store
 logs
 *.obj
 *.mtl
 zerotier-identity*
+
+# ignore SacEngine files
+SacEngine-*
+SacEnginePi*
+SacEngineA*
+SacEngine.*.txt
+settings.txt
+
+# ignore sacrifice files
+data
+maps
+data-orig
+maps-orig
+fonts
+
+# ignore binaries
+*.exe
+*.dll
+*.so
+*.dylib
+
+# replays
+replays
+*.rcp
+
+# ignore toolchains
+ldc2*
 android-ndk-r21e
+
+# windows pdb files
+*.pdb
+
+# MacOS garbage
+.DS_Store
