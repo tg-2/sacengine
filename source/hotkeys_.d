@@ -23,6 +23,8 @@ enum Bindable:char[4]{
 	turnRight="tgrM",
 	cameraZoomIn="imzM",
 	cameraZoomOut="omzM",
+	moveUp="puvM",		//FIXME
+	moveDown="nwdM",	//FIXME
 	// orders
 	attack="ttat",
 	guard="augt",
@@ -135,6 +137,8 @@ string defaultName(Bindable bindable){
 		case turnRight: return "Turn Right";
 		case cameraZoomIn: return "Camera zoom in";
 		case cameraZoomOut: return "Camera zoom out";
+		case moveUp: return "Move Up";
+		case moveDown: return "Move Down";
 		// orders
 		case attack: return "Attack";
 		case guard: return "Guard";
@@ -227,6 +231,9 @@ Hotkeys defaultHotkeys(){
 	result.turnRight=[KEY_F,KEY_RIGHT];
 	result.cameraZoomIn=[KEY_KP_PLUS,KEY_EQUALS];
 	result.cameraZoomOut=[KEY_KP_MINUS,KEY_MINUS];
+	// new controls
+	result[Modifiers.ctrl]~=Hotkey(KEY_Q,Bindable.moveUp);
+	result[Modifiers.ctrl]~=Hotkey(KEY_E,Bindable.moveDown);
 	// orders
 	result[Modifiers.ctrl]~=Hotkey(KEY_R,Bindable.attack);
 	result[Modifiers.ctrl]~=Hotkey(KEY_A,Bindable.guard);
