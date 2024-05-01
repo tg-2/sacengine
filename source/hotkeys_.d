@@ -228,8 +228,8 @@ struct Hotkeys{
 	bool capsIsCtrl=true;
 	int[] moveForward,moveBackward,turnLeft,turnRight;
 	int[] moveUp,moveDown;
-	int[] cameraZoomIn,cameraZoomOut;
 	int[] cameraUp,cameraDown,cameraLeft,cameraRight,cameraForward,cameraBackward;
+	int[] cameraZoomIn,cameraZoomOut;
 	Hotkey[][Modifiers.max+1] hotkeys;
 	alias hotkeys this;
 	void add(ModHotkey modHotkey){
@@ -388,14 +388,14 @@ Hotkeys parseHotkeys(string hotkeys){
 				case moveUp: result.moveUp~=modKeycode.keycode; break;
 				case moveDown: result.moveDown~=modKeycode.keycode; break;
 
-				case cameraZoomIn: result.cameraZoomIn~=modKeycode.keycode; break;
-				case cameraZoomOut: result.cameraZoomOut~=modKeycode.keycode; break;
 				case cameraUp: result.cameraUp~=modKeycode.keycode; break;
 				case cameraDown: result.cameraDown~=modKeycode.keycode; break;
 				case cameraLeft: result.cameraLeft~=modKeycode.keycode; break;
 				case cameraRight: result.cameraRight~=modKeycode.keycode; break;
 				case cameraForward: result.cameraForward~=modKeycode.keycode; break;
 				case cameraBackward: result.cameraBackward~=modKeycode.keycode; break;
+				case cameraZoomIn: result.cameraZoomIn~=modKeycode.keycode; break;
+				case cameraZoomOut: result.cameraZoomOut~=modKeycode.keycode; break;
 
 				default: result.add(ModHotkey(modKeycode.mod,Hotkey(modKeycode.keycode,bindable)));
 			}
