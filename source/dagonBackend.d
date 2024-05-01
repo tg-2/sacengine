@@ -1113,6 +1113,9 @@ final class SacScene: Scene{
 				case moveUp, moveDown:
 					enforce(0,"bad hotkeys");
 					break;
+				case cameraUp, cameraDown, cameraLeft, cameraRight, cameraForward, cameraBackward:
+					enforce(0,"bad hotkeys");
+					break;
 			}
 		}
 		foreach(ref hotkey;options.hotkeys[modifiers]){
@@ -1374,6 +1377,9 @@ final class SacScene: Scene{
 		Vector3f forward = fpview.camera.worldTrans.forward;
 		Vector3f right = fpview.camera.worldTrans.right;
 		Vector3f upVector = fpview.camera.worldTrans.up;
+		Vector3f cameraForward = fpview.camera.observerTrans.forward;
+		Vector3f cameraRight = fpview.camera.observerTrans.right;
+		Vector3f cameraUpVector = fpview.camera.observerTrans.up;
 		Vector3f dir = Vector3f(0, 0, 0);
 		//if(eventManager.keyPressed[KEY_X]) dir += Vector3f(1,0,0);
 		//if(eventManager.keyPressed[KEY_Y]) dir += Vector3f(0,1,0);
@@ -1381,12 +1387,21 @@ final class SacScene: Scene{
 		bool pressed(int[] keyCodes){ return keyCodes.any!(key=>eventManager.keyPressed[key]);}
 		updateCameraTarget();
 		if(camera.target==0){
+			// Normal (camera-dependant) movement
 			if(pressed(options.hotkeys.moveForward)) dir += -forward;
 			if(pressed(options.hotkeys.moveBackward)) dir += forward;
 			if(pressed(options.hotkeys.turnLeft)) dir += -right;
 			if(pressed(options.hotkeys.turnRight)) dir += right;
 			if(pressed(options.hotkeys.moveUp)) dir += -upVector;
 			if(pressed(options.hotkeys.moveDown)) dir += upVector;
+			// Absolute (camera-agnostic) movement
+			if(pressed(options.hotkeys.cameraForward)) dir += -cameraForward;
+			if(pressed(options.hotkeys.cameraBackward)) dir += cameraForward;
+			if(pressed(options.hotkeys.cameraLeft)) dir += -cameraRight;
+			if(pressed(options.hotkeys.cameraRight)) dir += cameraRight;
+			if(pressed(options.hotkeys.cameraUp)) dir += -cameraUpVector;
+			if(pressed(options.hotkeys.cameraDown)) dir += cameraUpVector;
+
 			if(eventManager.keyPressed[KEY_I]) speed = 10.0f;
 			if(eventManager.keyPressed[KEY_O]) speed = 100.0f;
 			if(eventManager.keyPressed[KEY_P]) speed = 1000.0f;
