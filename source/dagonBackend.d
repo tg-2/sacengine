@@ -1376,7 +1376,7 @@ final class SacScene: Scene{
 		Vector3f right = fpview.camera.worldTrans.right;
 		Vector3f down = fpview.camera.worldTrans.up;
 		Vector3f cameraForward = fpview.camera.observerTrans.forward;
-		Vector3f cameraDown = fpview.camera.observerTrans.up;
+		Vector3f cameraUp = fpview.camera.observerTrans.up;
 		Vector3f dir = Vector3f(0, 0, 0);
 
 		//if(eventManager.keyPressed[KEY_X]) dir += Vector3f(1,0,0);
@@ -1395,8 +1395,8 @@ final class SacScene: Scene{
 			// Absolute ("look at" agnostic) helicopter-like movement
 			if(pressed(options.hotkeys.cameraForward)) dir += -cameraForward;
 			if(pressed(options.hotkeys.cameraBackward)) dir += cameraForward;
-			if(pressed(options.hotkeys.cameraUp)) dir += -cameraDown;
-			if(pressed(options.hotkeys.cameraDown)) dir += cameraDown;
+			if(pressed(options.hotkeys.cameraUp)) dir += cameraUp;
+			if(pressed(options.hotkeys.cameraDown)) dir -= cameraUp;
 
 			if(eventManager.keyPressed[KEY_I]) speed = 10.0f;
 			if(eventManager.keyPressed[KEY_O]) speed = 100.0f;
