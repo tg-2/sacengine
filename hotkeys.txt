@@ -75,4 +75,10 @@ Cast Desecrate: Shift-g
 Cast Teleport: g
 Cast Shrine: Shift-Alt
 ## SacEngine extensions
+Move Up:
+Move Down:
+Camera Move Forward:
+Camera Move Backward:
+Camera Move Up:
+Camera Move Down:
 Surrender: Shift-Ctrl-Escape

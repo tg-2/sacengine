@@ -122,13 +122,13 @@ enum Bindable:char[4]{
 	// cast charnel's minions
 	// TODO
 	// SacEngine extensions
-	surrender="rrus",
 	moveUp="puvM",
 	moveDown="nwdM",
 	cameraUp="upcM",
 	cameraDown="dncM",
 	cameraForward="wfcM",
 	cameraBackward="wbcM",
+	surrender="rrus",
 }
 
 string defaultName(Bindable bindable){
@@ -189,14 +189,13 @@ string defaultName(Bindable bindable){
 		case castHeal: return "Cast Heal";
 		case castShrine: return "Cast Shrine";
 		// SacEngine extensions
-		case surrender: return "Surrender";
 		case moveUp: return "Move Up";
 		case moveDown: return "Move Down";
 		case cameraForward: return "Camera Move Forward";
 		case cameraBackward: return "Camera Move Backward";
 		case cameraUp: return "Camera Move Up";
 		case cameraDown: return "Camera Move Down";
-
+		case surrender: return "Surrender";
 	}
 }
 

@@ -987,8 +987,8 @@ final class SacScene: Scene{
 				case unknown: break;
 				// control keys
 				case moveForward,moveBackward,turnLeft,turnRight,cameraZoomIn,cameraZoomOut:
-				case moveUp, moveDown:
-				case cameraUp, cameraDown, cameraForward, cameraBackward:
+				case moveUp, moveDown: // SacEngine extensions
+				case cameraUp, cameraDown, cameraForward, cameraBackward: // SacEngine extensions
 					enforce(0,"bad hotkeys");
 					break;
 				// orders
@@ -1374,7 +1374,7 @@ final class SacScene: Scene{
 	void observerControl(Duration dt){
 		Vector3f forward = fpview.camera.worldTrans.forward;
 		Vector3f right = fpview.camera.worldTrans.right;
-		Vector3f down = fpview.camera.worldTrans.up;
+		Vector3f up = fpview.camera.worldTrans.up;
 		Vector3f cameraForward = fpview.camera.observerTrans.forward;
 		Vector3f cameraUp = fpview.camera.observerTrans.up;
 		Vector3f dir = Vector3f(0, 0, 0);
@@ -1390,8 +1390,8 @@ final class SacScene: Scene{
 			if(pressed(options.hotkeys.moveBackward)) dir += forward;
 			if(pressed(options.hotkeys.turnLeft)) dir += -right;
 			if(pressed(options.hotkeys.turnRight)) dir += right;
-			if(pressed(options.hotkeys.moveUp)) dir += -down;
-			if(pressed(options.hotkeys.moveDown)) dir += down;
+			if(pressed(options.hotkeys.moveUp)) dir += up;
+			if(pressed(options.hotkeys.moveDown)) dir += -up;
 			// Absolute ("look at" agnostic) helicopter-like movement
 			if(pressed(options.hotkeys.cameraForward)) dir += -cameraForward;
 			if(pressed(options.hotkeys.cameraBackward)) dir += cameraForward;

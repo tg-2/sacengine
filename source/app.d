@@ -84,16 +84,15 @@ string[] expandSettings(string[] settings){
 }
 
 bool isEarlySetting(string opt){
-	return opt.startsWith("--")||opt.endsWith(".scp")||opt.endsWith(".HMAP")||opt.startsWith("export-speech:");
+	return opt.startsWith("--")||opt.endsWith(".scp")||opt.endsWith(".HMAP")||opt.startsWith("export-speech:")||opt.endsWith(".rcp");
 }
 
 int applySettings(string[] args,ref Options options){
 	foreach(opt;args){
 		if(!opt.startsWith("--")){
 			if(isEarlySetting(opt)){
-				options.map=opt;
-			}else if(opt.endsWith(".rcp")){
-				options.playbackFilename=opt;
+				if(opt.endsWith(".rcp")) options.playbackFilename=opt;
+				else options.map=opt;
 			}
 			continue;
 		}
