@@ -123,6 +123,14 @@ enum Bindable:char[4]{
 	// TODO
 	// SacEngine extensions
 	surrender="rrus",
+	moveUp="puvM",
+	moveDown="nwdM",
+	cameraUp="upcM",
+	cameraDown="dncM",
+	cameraForward="wfcM",
+	cameraBackward="wbcM",
+	cameraLeft="tlcM",
+	cameraRight="trcM",
 }
 
 string defaultName(Bindable bindable){
@@ -184,6 +192,15 @@ string defaultName(Bindable bindable){
 		case castShrine: return "Cast Shrine";
 		// SacEngine extensions
 		case surrender: return "Surrender";
+		case moveUp: return "Move Up";
+		case moveDown: return "Move Down";
+		case cameraForward: return "Camera Move Forward";
+		case cameraBackward: return "Camera Move Backward";
+		case cameraUp: return "Camera Move Up";
+		case cameraDown: return "Camera Move Down";
+		case cameraLeft: return "Camera Move Left";
+		case cameraRight: return "Camera Move Right";
+
 	}
 }
 
@@ -210,6 +227,8 @@ struct ModHotkey{
 struct Hotkeys{
 	bool capsIsCtrl=true;
 	int[] moveForward,moveBackward,turnLeft,turnRight;
+	int[] moveUp,moveDown;
+	int[] cameraUp,cameraDown,cameraLeft,cameraRight,cameraForward,cameraBackward;
 	int[] cameraZoomIn,cameraZoomOut;
 	Hotkey[][Modifiers.max+1] hotkeys;
 	alias hotkeys this;
@@ -366,8 +385,18 @@ Hotkeys parseHotkeys(string hotkeys){
 				case moveBackward: result.moveBackward~=modKeycode.keycode; break;
 				case turnLeft: result.turnLeft~=modKeycode.keycode; break;
 				case turnRight: result.turnRight~=modKeycode.keycode; break;
+				case moveUp: result.moveUp~=modKeycode.keycode; break;
+				case moveDown: result.moveDown~=modKeycode.keycode; break;
+
+				case cameraUp: result.cameraUp~=modKeycode.keycode; break;
+				case cameraDown: result.cameraDown~=modKeycode.keycode; break;
+				case cameraLeft: result.cameraLeft~=modKeycode.keycode; break;
+				case cameraRight: result.cameraRight~=modKeycode.keycode; break;
+				case cameraForward: result.cameraForward~=modKeycode.keycode; break;
+				case cameraBackward: result.cameraBackward~=modKeycode.keycode; break;
 				case cameraZoomIn: result.cameraZoomIn~=modKeycode.keycode; break;
 				case cameraZoomOut: result.cameraZoomOut~=modKeycode.keycode; break;
+
 				default: result.add(ModHotkey(modKeycode.mod,Hotkey(modKeycode.keycode,bindable)));
 			}
 		}
