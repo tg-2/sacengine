@@ -1385,7 +1385,7 @@ final class SacScene: Scene{
 		bool pressed(int[] keyCodes){ return keyCodes.any!(key=>eventManager.keyPressed[key]);}
 		updateCameraTarget();
 		if(camera.target==0){
-			// Normal (camera-dependant) movement
+			// Normal (camera-dependent) movement
 			if(pressed(options.hotkeys.moveForward)) dir += -forward;
 			if(pressed(options.hotkeys.moveBackward)) dir += forward;
 			if(pressed(options.hotkeys.turnLeft)) dir += -right;
