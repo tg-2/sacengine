@@ -1379,6 +1379,7 @@ final class SacScene: Scene{
 		Vector3f cameraRight = fpview.camera.observerTrans.right;
 		Vector3f cameraDown = fpview.camera.observerTrans.up;
 		Vector3f dir = Vector3f(0, 0, 0);
+
 		//if(eventManager.keyPressed[KEY_X]) dir += Vector3f(1,0,0);
 		//if(eventManager.keyPressed[KEY_Y]) dir += Vector3f(0,1,0);
 		//if(eventManager.keyPressed[KEY_Z]) dir += Vector3f(0,0,1);
@@ -1403,7 +1404,10 @@ final class SacScene: Scene{
 			if(eventManager.keyPressed[KEY_I]) speed = 10.0f;
 			if(eventManager.keyPressed[KEY_O]) speed = 100.0f;
 			if(eventManager.keyPressed[KEY_P]) speed = 1000.0f;
-			if(dir.lengthsqr>0.001f^^2) camera.position += dir.normalized * speed * (dt.total!"hnsecs"*1e-7);
+
+			float factor = 1.0f;
+			if(eventManager.keyPressed[KEY_LSHIFT]) factor *= 2.0f;
+			if(dir.lengthsqr>0.001f^^2) camera.position += dir.normalized * factor * speed * (dt.total!"hnsecs"*1e-7);
 			if(state) camera.position.z=max(camera.position.z, state.current.getHeight(camera.position));
 		}
 		positionCamera();
