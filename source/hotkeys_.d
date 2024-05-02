@@ -129,8 +129,6 @@ enum Bindable:char[4]{
 	cameraDown="dncM",
 	cameraForward="wfcM",
 	cameraBackward="wbcM",
-	cameraLeft="tlcM",
-	cameraRight="trcM",
 }
 
 string defaultName(Bindable bindable){
@@ -198,8 +196,6 @@ string defaultName(Bindable bindable){
 		case cameraBackward: return "Camera Move Backward";
 		case cameraUp: return "Camera Move Up";
 		case cameraDown: return "Camera Move Down";
-		case cameraLeft: return "Camera Move Left";
-		case cameraRight: return "Camera Move Right";
 
 	}
 }
@@ -390,8 +386,6 @@ Hotkeys parseHotkeys(string hotkeys){
 
 				case cameraUp: result.cameraUp~=modKeycode.keycode; break;
 				case cameraDown: result.cameraDown~=modKeycode.keycode; break;
-				case cameraLeft: result.cameraLeft~=modKeycode.keycode; break;
-				case cameraRight: result.cameraRight~=modKeycode.keycode; break;
 				case cameraForward: result.cameraForward~=modKeycode.keycode; break;
 				case cameraBackward: result.cameraBackward~=modKeycode.keycode; break;
 				case cameraZoomIn: result.cameraZoomIn~=modKeycode.keycode; break;
