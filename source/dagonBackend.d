@@ -988,7 +988,7 @@ final class SacScene: Scene{
 				// control keys
 				case moveForward,moveBackward,turnLeft,turnRight,cameraZoomIn,cameraZoomOut:
 				case moveUp, moveDown:
-				case cameraUp, cameraDown, cameraLeft, cameraRight, cameraForward, cameraBackward:
+				case cameraUp, cameraDown, cameraForward, cameraBackward:
 					enforce(0,"bad hotkeys");
 					break;
 				// orders
