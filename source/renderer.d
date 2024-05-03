@@ -2690,7 +2690,8 @@ struct Renderer(B){
 				static if(mode==RenderMode.transparent){
 					if(rc.shadowMode) return;
 					if(objects.cones.length<=info.renderSide) return;
-					if(iota(CommandConeColor.max+1).map!(i=>objects.cones[info.renderSide][i].length).all!(l=>l==0)) return;
+					//if(iota(CommandConeColor.max+1).all!(i=>objects.cones[info.renderSide][i].empty)) return;
+					if(iota(CommandConeColor.max+1).allf(closure!((i,info,objects)=>objects.cones[info.renderSide][i].empty)(info,&objects))) return;
 					sacCommandCone.material.bind(rc);
 					assert(sacCommandCone.material.backend is B.shadelessMaterialBackend);
 					B.shadelessMaterialBackend.setInformation(Vector4f(0.0f,0.0f,0.0f,0.0f));
@@ -3115,7 +3116,7 @@ struct Renderer(B){
 	B.SubQuad minimapQuad;
 	B.SubQuad minimapAltarRing,minimapManalith,minimapWizard,minimapManafount,minimapShrine;
 	B.SubQuad minimapCreatureArrow,minimapStructureArrow;
-	B.Font[FontType.max+1] fonts=null;
+	B.Font[FontType.max+1] fonts;
 	static struct HudOpt{ bool freetypeFonts; }
 	void initializeHUD(HudOpt options){
 		sacCursor=new SacCursor!B();
@@ -3703,7 +3704,8 @@ struct Renderer(B){
 		}
 		auto hudScaling=info.hudScaling;
 		auto wizard=state.getWizard(info.camera.target);
-		auto spells=state.getSpells(wizard).filter!(x=>x.spell.type==info.spellbookTab);
+		//auto spells=state.getSpells(wizard).filter!(x=>x.spell.type==info.spellbookTab);
+		auto spells=state.getSpells(wizard).filterf(closure!((x,info)=>x.spell.type==info.spellbookTab)(&info));
 		numSpells=cast(int)spells.walkLength;
 		auto material=sacHud.frameMaterial; // TODO: share material binding with other drawing commands (or at least the backend binding)
 		material.bind(rc);

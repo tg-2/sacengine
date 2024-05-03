@@ -1029,9 +1029,9 @@ struct Broadcaster{
 	bool listen_addr_initialized=false;
 	bool send_addrs_initialized=false;
 	zts_sockaddr_in listen_addr;
-	zts_sockaddr_in[] send_addrs;
+	Array!zts_sockaddr_in send_addrs;
 	Address listenAddress=null;
-	Address[] sendAddresses=[];
+	Array!Address sendAddresses;
 	void initListenAddress(){
 		if(listen_addr_initialized) return;
 		if(useZerotier){
@@ -1045,8 +1045,9 @@ struct Broadcaster{
 	}
 	void initSendAddresses(){
 		if(send_addrs_initialized) return; // TODO: network configuration might change
-		sendAddresses=[];
-		string[] broadcastIPs;
+		send_addrs.length=0;
+		sendAddresses.length=0;
+		Array!string broadcastIPs;
 		if(useZerotier){
 			zts_sockaddr_storage storage;
 			zts_addr_get(net_id,zts_af_inet,&storage);
@@ -1131,7 +1132,7 @@ struct Broadcaster{
 			send_fd=fd;
 		}
 		initSendAddresses();
-		foreach(ref send_addr;send_addrs){
+		foreach(ref send_addr;send_addrs.data){
 			int flags=0;
 			uint send_addrlen=send_addr.sizeof;
 			zts_bsd_sendto(send_fd,buffer.ptr,buffer.length,flags,&send_addr,send_addrlen);
@@ -1164,7 +1165,7 @@ struct Broadcaster{
 			sender.blocking=false;
 		}
 		initSendAddresses();
-		foreach(sendAddress;sendAddresses){
+		foreach(sendAddress;sendAddresses.data){
 			auto ret=sender.sendTo(buffer,sendAddress);
 		}
 	}
@@ -1223,25 +1224,25 @@ enum PlayerStatus{
 	disconnected,
 }
 
-bool isConnectedStatus(PlayerStatus status){
+bool isConnectedStatus(PlayerStatus status)@nogc{
 	return !status.among(PlayerStatus.unconnected,PlayerStatus.dropped,PlayerStatus.disconnected);
 }
-bool isPausedStatus(PlayerStatus status){
+bool isPausedStatus(PlayerStatus status)@nogc{
 	return !!status.among(PlayerStatus.pausedOnDrop,PlayerStatus.paused);
 }
-bool isDesynchedStatus(PlayerStatus status){
+bool isDesynchedStatus(PlayerStatus status)@nogc{
 	return PlayerStatus.desynched<=status && status<PlayerStatus.resynched;
 }
-bool isReadyToLoadStatus(PlayerStatus status){
+bool isReadyToLoadStatus(PlayerStatus status)@nogc{
 	return !!status.among(PlayerStatus.readyToLoad,PlayerStatus.resynched);
 }
-bool isUnresponsiveStatus(PlayerStatus status){
+bool isUnresponsiveStatus(PlayerStatus status)@nogc{
 	return PlayerStatus.connected<=status && status<=PlayerStatus.loading;
 }
-bool isReadyStatus(PlayerStatus status){
+bool isReadyStatus(PlayerStatus status)@nogc{
 	return isConnectedStatus(status) && !isDesynchedStatus(status) && PlayerStatus.readyToStart<=status;
 }
-bool isActiveStatus(PlayerStatus status){
+bool isActiveStatus(PlayerStatus status)@nogc{
 	return isConnectedStatus(status) && !isDesynchedStatus(status) && PlayerStatus.pendingStart<=status;
 }
 
@@ -1288,6 +1289,7 @@ struct Player{
 	}do{
 		ping=-1.seconds;
 	}
+	@nogc:
 	bool wantsToControlState(){
 		if(settings.observer) return false;
 		return true;
@@ -1350,40 +1352,47 @@ final class SynchQueue{
 }
 
 final class Network(B){
-	Player[] players;
-	auto connectedPlayerIds(){ return iota(players.length).filter!(i=>isConnectedStatus(players[i].status)); }
+	Array!Player players;
+	//auto connectedPlayerIds(){ return iota(players.length).filter!(i=>isConnectedStatus(players[i].status)); }
+	auto connectedPlayerIds(){ return iota(players.length).filterf(closure!((i,self)=>isConnectedStatus(self.players[i].status))(this)); }
 	auto connectedPlayers(){
 		ref Player index(size_t i){ return players[i]; }
 		return connectedPlayerIds.map!index;
 	}
-	auto readyPlayerIds(){ return iota(players.length).filter!(i=>players[i].isReadyToControlState||players[i].wantsToControlState&&(players[i].lost||players[i].won)); }
+	//auto readyPlayerIds(){ return iota(players.length).filter!(i=>players[i].isReadyToControlState||players[i].wantsToControlState&&(players[i].lost||players[i].won)); }
+	auto readyPlayerIds(){ return iota(players.length).filterf(closure!((i,self)=>self.players[i].isReadyToControlState||self.players[i].wantsToControlState&&(self.players[i].lost||self.players[i].won))(this)); }
 	auto readyPlayers(){
 		ref Player index(size_t i){ return players[i]; }
 		return connectedPlayerIds.map!index;
 	}
 	size_t numReadyPlayers(){ return readyPlayerIds.walkLength; }
-	auto potentialPlayerIds(){ return iota(players.length).filter!(i=>players[i].allowedToControlState); }
+	//auto potentialPlayerIds(){ return iota(players.length).filter!(i=>players[i].allowedToControlState); }
+	auto potentialPlayerIds(){ return iota(players.length).filterf(closure!((i,self)=>self.players[i].allowedToControlState)(this)); }
 	auto potentialPlayers(){
 		ref Player index(size_t i){ return players[i]; }
 		return potentialPlayerIds.map!index;
 	}
-	auto requiredPlayerIds(){ return iota(players.length).filter!(i=>players[i].requiredToControlState); }
+	//auto requiredPlayerIds(){ return iota(players.length).filter!(i=>players[i].requiredToControlState); }
+	auto requiredPlayerIds(){ return iota(players.length).filterf(closure!((i,self)=>self.players[i].requiredToControlState)(this)); }
 	auto requiredPlayers(){
 		ref Player index(size_t i){ return players[i]; }
 		return requiredPlayerIds.map!index;
 	}
-	auto activePlayerIds(){ return connectedPlayerIds.filter!(i=>players[i].isControllingState); }
+	//auto activePlayerIds(){ return connectedPlayerIds.filter!(i=>players[i].isControllingState); }
+	auto activePlayerIds(){ return connectedPlayerIds.filterf(closure!((i,self)=>self.players[i].isControllingState)(this)); }
 	auto activePlayers(){
 		ref Player index(size_t i){ return players[i]; }
 		return activePlayerIds.map!index;
 	}
 	size_t numActivePlayers(){ return activePlayerIds.walkLength; }
-	auto requiredOrActivePlayerIds(){ return iota(players.length).filter!(i=>players[i].requiredToControlState||players[i].isControllingState); }
+	//auto requiredOrActivePlayerIds(){ return iota(players.length).filter!(i=>players[i].requiredToControlState||players[i].isControllingState); }
+	auto requiredOrActivePlayerIds(){ return iota(players.length).filterf(closure!((i,self)=>self.players[i].requiredToControlState||self.players[i].isControllingState)(this)); }
 	auto requiredOrActivePlayers(){
 		ref Player index(size_t i){ return players[i]; }
 		return requiredOrActivePlayerIds.map!index;
 	}
-	auto requiredAndActivePlayerIds(){ return iota(players.length).filter!(i=>players[i].requiredToControlState&&players[i].isControllingState); }
+	//auto requiredAndActivePlayerIds(){ return iota(players.length).filter!(i=>players[i].requiredToControlState&&players[i].isControllingState); }
+	auto requiredAndActivePlayerIds(){ return iota(players.length).filterf(closure!((i,self)=>self.players[i].requiredToControlState&&self.players[i].isControllingState)(this)); }
 	auto requiredAndActivePlayers(){
 		ref Player index(size_t i){ return players[i]; }
 		return requiredAndActivePlayerIds.map!index;
@@ -1444,7 +1453,7 @@ final class Network(B){
 		listener.make(useZerotier);
 		broadcaster.make(zerotier_net_id,useZerotier);
 		static assert(host==0);
-		players=[Player(PlayerStatus.synched,settings,settings.slot,null)];
+		players~=Player(PlayerStatus.synched,settings,settings.slot,null);
 		me=0;
 		if(checkDesynch) synchQueue=new SynchQueue();
 	}
@@ -1466,7 +1475,7 @@ final class Network(B){
 		auto connection=joiner.tryJoin(hostIP, port, useZerotier);
 		if(!connection) return false;
 		if(testLag) connection=new DelayedConnection!B(connection);
-		players=[Player(PlayerStatus.connected,Settings.init,-1,connection)];
+		players~=Player(PlayerStatus.connected,Settings.init,-1,connection);
 		import serialize_;
 		playerSettings.serialized((scope ubyte[] settingsData){
 			players[host].connection.send(Packet.join(settingsData.length),settingsData);
@@ -1478,15 +1487,22 @@ final class Network(B){
 	bool mapHashed(){ return players[host].status>=PlayerStatus.mapHashed&&me!=-1&&players[me].status>=PlayerStatus.mapHashed; }
 	bool pendingGameInit(){ return requiredAndActivePlayers.any!(p=>p.status==PlayerStatus.pendingGameInit); }
 	bool hostReadyToLoad(){ return isReadyToLoadStatus(players[host].status)||isReadyStatus(players[host].status); }
-	bool clientsReadyToLoad(){
+	/+bool clientsReadyToLoad(){
 		return requiredAndActivePlayerIds.filter!(i=>i!=host&&players[i].connection).all!(i=>isReadyToLoadStatus(players[i].status)||isReadyStatus(players[i].status));
+	}+/
+	bool clientsReadyToLoad(){
+		return requiredAndActivePlayerIds.filterf(closure!((i,host,self)=>i!=host&&self.players[i].connection)(host,this))
+			.allf(closure!((i,self)=>isReadyToLoadStatus(self.players[i].status)||isReadyStatus(self.players[i].status))(this));
 	}
 	bool readyToLoad(){ return requiredAndActivePlayers.all!(p=>isReadyToLoadStatus(p.status)||isReadyStatus(p.status)); }
 	bool lateJoining(){ return me!=-1&&players[me].status==PlayerStatus.lateJoining; }
 	bool loading(){ return me!=-1&&players[me].status==PlayerStatus.loading; }
 	bool hostReadyToStart(){ return isReadyStatus(players[host].status); }
-	bool clientsReadyToStart(){
+	/+bool clientsReadyToStart(){
 		return requiredOrActivePlayerIds.filter!(i=>i!=host&&players[i].connection).all!(i=>isReadyStatus(players[i].status));
+	}+/
+	bool clientsReadyToStart(){
+		return requiredOrActivePlayerIds.filterf(closure!((i,host,self)=>i!=host&&self.players[i].connection)(host,this)).allf(closure!((i,self)=>isReadyStatus(self.players[i].status))(this));
 	}
 	bool readyToStart(){ return requiredOrActivePlayers.all!(p=>isReadyStatus(p.status)); }
 	bool playing(){ return me!=-1&&players[me].status.among(PlayerStatus.playing,PlayerStatus.playingBadSynch) && !paused; }
@@ -1499,7 +1515,7 @@ final class Network(B){
 		if(isHost){
 			if(players[me].status.among(PlayerStatus.readyToResynch,PlayerStatus.stateResynched,PlayerStatus.resynched)) // resynch already initiated
 				return false;
-			return players.any!((ref p)=>isDesynchedStatus(p.status));
+			return players.data.any!((ref p)=>isDesynchedStatus(p.status));
 		}
 		if(players[me].status==PlayerStatus.stateResynched) return false;
 		return players[host].status==PlayerStatus.readyToResynch;
@@ -1553,7 +1569,7 @@ final class Network(B){
 	void requestStatusUpdateAll(PlayerStatus newStatus)in{
 		assert(isHost);
 	}do{
-		foreach(i,ref player;players){
+		foreach(i,ref player;players.data){
 			if(i!=me) player.send(Packet.requestStatusUpdate(newStatus));
 		}
 		updateStatus(newStatus);
@@ -1631,8 +1647,9 @@ final class Network(B){
 		assert(i==-1||i<players.length);
 	}do{
 		if(i!=-1&&players[i].committedFrame==frame) return;
-		if(i==-1&&players.all!((ref player)=>player.committedFrame==frame||player.committedFrame==0)) return;
-		foreach(k,ref player;players){
+		//if(i==-1&&players.data.all!((ref player)=>player.committedFrame==frame||player.committedFrame==0)) return;
+		if(i==-1&&iota(players.length).allf(closure!((i,self,frame)=>self.players[i].committedFrame==frame||self.players[i].committedFrame==0)(this,frame))) return;
+		foreach(k,ref player;players.data){
 			if(k!=me) player.send(Packet.resetCommitted(i,frame));
 			if(i==k||i==-1&&player.committedFrame!=0) player.committedFrame=frame;
 		}
@@ -1738,7 +1755,8 @@ final class Network(B){
 					return false;
 				}
 				int slot=p.intValue;
-				if(slot!=-1 && players[p.player].slot!=slot && players.any!((ref p)=>p.slot==slot)){
+				//if(slot!=-1 && players[p.player].slot!=slot && players.any!((ref p)=>p.slot==slot)){
+				if(slot!=-1 && players[p.player].slot!=slot && iota(players.length).anyf(closure!((i,self,slot)=>self.players[i].slot==slot)(this,slot))){
 					stderr.writeln("host attempted to put multiple players on same slot: ",p);
 					stderr.flush();
 					return false;
@@ -1823,7 +1841,7 @@ final class Network(B){
 					return false;
 				}
 				if(p.commitPlayer==-1){
-					foreach(ref player;players)
+					foreach(ref player;players.data)
 						if(player.committedFrame!=0)
 							player.committedFrame=p.commitFrame;
 				}else players[p.commitPlayer].committedFrame=p.commitFrame;
@@ -1879,7 +1897,7 @@ final class Network(B){
 					sidechannelChatMessage(ChatMessageType.network,players[sender].settings.name,"desynchronized.",controller);
 					report!true(sender,"desynchronized at frame ",p.synchFrame);
 					if(p.synchFrame>=synchQueue.end){
-						stderr.writeln("tried to synch on non-committed frame (after ",synchQueue.end,") ",players.map!((ref p)=>p.committedFrame)," ",players.map!((ref p)=>p.status));
+						stderr.writeln("tried to synch on non-committed frame (after ",synchQueue.end,") ",players.data.map!((ref p)=>p.committedFrame)," ",players.data.map!((ref p)=>p.status));
 						stderr.flush();
 					}else{
 						stderr.writeln("expected hash ",synchQueue.hashes[p.synchFrame%$],", got ",p.synchHash);
@@ -1961,8 +1979,11 @@ final class Network(B){
 								case setting:
 									if(p.type==PacketType.clearArraySetting) mixin(`players[p.player].settings.`~setting)=[];
 									else if(p.type==PacketType.appendArraySetting){
-										if(mixin(`players[p.player].settings.`~setting).length<arrayLengthLimit)
-											mixin(`players[p.player].settings.`~setting)~=p.getValue!S();
+										void append(string setting)(){ // (uses GC)
+											if(mixin(`players[p.player].settings.`~setting).length<arrayLengthLimit)
+												mixin(`players[p.player].settings.`~setting)~=p.getValue!S();
+										}
+										append!setting();
 									}
 									return true;
 							}
@@ -1987,8 +2008,11 @@ final class Network(B){
 				}else if(p.type==PacketType.appendMap){
 					auto len=0;
 					while(len<p.mapName.length&&p.mapName[len]!='\0') ++len;
-					if(players[p.mapPlayer].settings.map.length<arrayLengthLimit)
-						players[p.mapPlayer].settings.map~=p.mapName[0..len];
+					void append(){ // (uses GC)
+						if(players[p.mapPlayer].settings.map.length<arrayLengthLimit)
+							players[p.mapPlayer].settings.map~=p.mapName[0..len];
+					}
+					append();
 				}else if(p.type==PacketType.confirmMap){
 				}else assert(0);
 				return true;
@@ -2202,8 +2226,11 @@ final class Network(B){
 			}
 		}
 
-		auto validSpots=chain(iota(players.length).filter!(i=>i!=host&&canReplacePlayer(player,players[i],false)),
-		                      iota(players.length+1).filter!(i=>i!=host&&(i==players.length||canReplacePlayer(player,players[i],true))));
+		/+auto validSpots=chain(iota(players.length).filter!(i=>i!=host&&canReplacePlayer(player,players[i],false)),
+		                      iota(players.length+1).filter!(i=>i!=host&&(i==players.length||canReplacePlayer(player,players[i],true))));+/
+		auto fltr1=closure!((i,host,player,players)=>i!=host&&canReplacePlayer(player,players[i],false))(host,player,players.data);
+		auto fltr2=closure!((i,host,player,players)=>i!=host&&(i==players.length||canReplacePlayer(player,players[i],true)))(host,player,players.data);
+		auto validSpots=chain(iota(players.length).filterf(fltr1),iota(players.length+1).filterf(fltr2));
 		assert(!validSpots.empty);
 		int newId=cast(int)validSpots.front;
 		if(newId<players.length){
@@ -2216,7 +2243,8 @@ final class Network(B){
 			else player.committedFrame=players[me].committedFrame;
 			players[newId]=player;
 		}else players~=player;
-		foreach(other;iota(cast(int)players.length).filter!(i=>i!=newId))
+		//foreach(other;iota(cast(int)players.length).filter(i=>i!=newId))
+		foreach(other;iota(cast(int)players.length).filterf(closure!((i,newId)=>i!=newId)(newId)))
 			sendPlayerData(players[other].connection,newId);
 		foreach(other;0..cast(int)players.length)
 			sendPlayerData(players[newId].connection,other);
@@ -2317,7 +2345,7 @@ final class Network(B){
 		if(!isHost){
 			assert(i==host);
 			players[i].status=PlayerStatus.dropped;
-			foreach(ref player;players) if(!players[i].connection) player.status=PlayerStatus.dropped;
+			foreach(ref player;players.data) if(!players[i].connection) player.status=PlayerStatus.dropped;
 		}else updateStatus(cast(int)i,PlayerStatus.dropped);
 		players[i].connection.close();
 		players[i].connection=null;
@@ -2366,7 +2394,7 @@ final class Network(B){
 	void timeoutText(scope void delegate(scope const(char)[]) sink){
 		if(!dropOnTimeout) return;
 		auto time=B.time();
-		foreach(k,ref player;players){
+		foreach(k,ref player;players.data){
 			Duration sinceLastPacket;
 			if(playing&&player.committedFrame!=0&&isConnectedStatus(player.status)){
 				if(k==me) continue;
@@ -2404,7 +2432,7 @@ final class Network(B){
 	void update(Controller!B controller){
 		acceptNewConnections();
 		dumpPlayerInfo();
-		foreach(i,ref player;players){
+		foreach(i,ref player;players.data){
 			if(!player.connection) continue;
 			if(!player.alive){
 				dropPlayer(cast(int)i,controller);
@@ -2430,20 +2458,20 @@ final class Network(B){
 	void dumpPlayerInfo(){
 		if(dumpNetworkStatus){
 			static Array!PlayerStatus curStatus;
-			auto newStatus=players.map!((ref p)=>p.status);
+			auto newStatus=players.data.map!((ref p)=>p.status);
 			if(!equal(newStatus,curStatus.data)){
 				curStatus.length=players.length;
-				copy(newStatus,curStatus.data[]);
+				copy(newStatus,curStatus.data);
 				writeln("player status: ",curStatus);
 				stdout.flush();
 			}
 		}
 		if(dumpNetworkSettings){
 			static Array!Settings curSettings;
-			auto newSettings=players.map!((ref p)=>p.settings);
+			auto newSettings=players.data.map!((ref p)=>p.settings);
 			if(!equal(newSettings,curSettings.data)){
 				curSettings.length=players.length;
-				copy(newSettings,curSettings.data[]);
+				copy(newSettings,curSettings.data);
 				writeln("player settings: ",curSettings);
 				stdout.flush();
 			}
@@ -2463,7 +2491,7 @@ final class Network(B){
 	}do{
 		assert(host==0);
 		players.length=slotData.length+1;
-		foreach(i,ref p;players[1..$]){
+		foreach(i,ref p;players.data[1..$]){
 			p.status=PlayerStatus.dropped;
 			p.settings.name=slotData[i].name;
 			p.settings.slot=slotData[i].slot;
@@ -2472,7 +2500,7 @@ final class Network(B){
 		}
 		players[0].slot=-1;
 		Lreplace: foreach(replaceUnnamed;0..2){
-			foreach(i,ref p;players[1..$]){
+			foreach(i,ref p;players.data[1..$]){
 				if(canReplacePlayer(players[host],p,!!replaceUnnamed)){
 					auto hostCommit=hostSettings.commit;
 					auto hostMap=hostSettings.map;
@@ -2486,14 +2514,13 @@ final class Network(B){
 					swap(players[host].slot,p.slot);
 					swap(p,players[$-1]);
 					players.length=players.length-1;
-					players.assumeSafeAppend();
 					break Lreplace;
 				}
 			}
 		}
 		sort!"a.slot<b.slot"(players[1..$]);
 		hostSettings.slot=players[host].slot;
-		foreach(ref p;players[1..$]) p.settings.commit=hostSettings.commit;
+		foreach(ref p;players.data[1..$]) p.settings.commit=hostSettings.commit;
 	}
 	void sendMap(int i,scope ubyte[] mapData){
 		players[i].send(Packet.sendMap(mapData.length),mapData);
@@ -2503,7 +2530,7 @@ final class Network(B){
 		players[i].send(Packet.sendState(stateData.length+commandData.length),stateData,commandData);
 	}
 	void sendStateAll(alias filter,T...)(scope ubyte[] stateData,scope ubyte[] commandData,T args){
-		foreach(i,ref player;players){
+		foreach(i,ref player;players.data){
 			if(i==me) continue;
 			if(!filter(cast(int)i,args)) continue;
 			sendState(cast(int)i,stateData,commandData);
@@ -2540,7 +2567,7 @@ final class Network(B){
 		auto hash=hostSettings.mapHash;
 		if(isHost){
 			if(hasMapData()){
-				foreach(i,ref player;players){
+				foreach(i,ref player;players.data){
 					if(i==host) continue;
 					if(player.status!=PlayerStatus.mapHashed) continue;
 					if(player.settings.mapHash==hash) continue;
@@ -2600,12 +2627,12 @@ final class Network(B){
 		ackHandler=AckHandler.measurePing;
 		players[me].ping=Duration.zero;
 		while(requiredOrActivePlayers.any!((ref p)=>p.status!=PlayerStatus.desynched&&p.ping==-1.seconds)){
-			foreach(i,ref player;players)
+			foreach(i,ref player;players.data)
 				ping(cast(int)i);
 			update(controller);
 		}
 		auto maxPing=connectedPlayers.map!(p=>p.ping).reduce!max;
-		writeln("pings: ",players.map!(p=>p.ping.total!"msecs").map!(p=>p<0?-1:p));
+		writeln("pings: ",players.data.map!(p=>p.ping.total!"msecs").map!(p=>p<0?-1:p));
 		stdout.flush();
 		foreach(i;connectedPlayerIds){
 			if(players[i].ping==-1.seconds) continue;
@@ -2627,7 +2654,7 @@ final class Network(B){
 		players[player].send(Packet.setFrame(frame));
 	}
 	void setFrameAll(int frame){
-		foreach(i,ref player;players)
+		foreach(i,ref player;players.data)
 			if(i!=me)
 				player.send(Packet.setFrame(frame));
 	}
@@ -2686,7 +2713,7 @@ final class Network(B){
 	}
 
 	void shutdown(){
-		foreach(ref player;players){
+		foreach(ref player;players.data){
 			if(player.alive){
 				player.send(Packet.disconnect());
 				player.connection.close();

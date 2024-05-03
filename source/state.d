@@ -1731,7 +1731,7 @@ enum SpellStatus{
 	ready,
 }
 
-immutable(SpellSpec)[][God.max+1] computeDefaultSpells(){
+immutable(SpellSpec)[][God.max+1] computeDefaultSpells(){ // (uses GC)
 	import std.traits:EnumMembers;
 	typeof(return) result;
 	foreach(god;[EnumMembers!God]){
@@ -1770,7 +1770,7 @@ immutable(SpellSpec)[][God.max+1] computeDefaultSpells(){
 
 immutable defaultSpells=computeDefaultSpells();
 
-immutable(SpellSpec)[] randomSpells(){
+immutable(SpellSpec)[] randomSpells(){ // (uses GC)
 	import std.random;
 	char[4] workaround(SpellTag tag){ return [tag[0],tag[1],tag[2],tag[3]]; } // ???
 	God god(){ return cast(God)uniform!"[]"(1,cast(int)God.max); }
@@ -2766,7 +2766,7 @@ struct Erupt(B){
 
 	enum totalFrames=cast(int)((growDur+waveDur)*updateFPS+0.5f);
 
-	float displacement(float x,float y){
+	float displacement(float x,float y)@nogc{
 		enum pi=pi!float;
 		auto time=float(frame)/updateFPS;
 		auto epos=position.xy, pos=Vector2f(x,y);
@@ -3812,7 +3812,7 @@ struct Quake(B){
 
 	enum stunMinRange=0.5f,stunMaxRange=10.0f; // TODO: correct?
 
-	float displacement(float x,float y){
+	float displacement(float x,float y)@nogc{
 		enum pi=pi!float;
 		auto time=float(frame)/updateFPS;
 		auto epos=position.xy, pos=Vector2f(x,y);
@@ -3921,7 +3921,7 @@ struct ScreenShake{
 
 struct TestDisplacement{
 	int frame=0;
-	float displacement(float x,float y){
+	float displacement(float x,float y)@nogc{
 		float time=float(frame)/updateFPS;
 		return 2.5f*(sin(0.1f*x+time)+sin(0.1f*y+time));
 	}
@@ -5449,6 +5449,11 @@ struct Objects(B,RenderMode mode){
 		}
 	}
 	static if(mode==RenderMode.opaque){
+		private int insertFixed(SacObject!B sacObject){ // (uses GC)
+			fixedObjects.length=fixedObjects.length+1;
+			fixedObjects[$-1].sacObject=sacObject;
+			return sacObject.stateIndex[mode]=cast(int)fixedObjects.length-1;
+		}
 		int getIndexFixed(SacObject!B sacObject,bool insert){
 			// cache, does not change semantics
 			auto cand=sacObject.stateIndex[mode];
@@ -5458,11 +5463,7 @@ struct Objects(B,RenderMode mode){
 			foreach(i,ref obj;fixedObjects)
 				if(obj.sacObject is sacObject)
 					return sacObject.stateIndex[mode]=cast(int)i;
-			if(insert){
-				fixedObjects.length=fixedObjects.length+1;
-				fixedObjects[$-1].sacObject=sacObject;
-				return sacObject.stateIndex[mode]=cast(int)fixedObjects.length-1;
-			}
+			if(insert) return insertFixed(sacObject);
 			return sacObject.stateIndex[mode]=-1;
 		}
 		void addFixed(FixedObject!B object){
@@ -6204,14 +6205,18 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 }
 
 void pickRandomAnimation(B)(ref MovingObject!B object,immutable(AnimationState)[] candidates,ObjectState!B state){
-	auto filtered=candidates.filter!(x=>object.sacObject.hasAnimationState(x));
+	// auto filtered=candidates.filter!(x=>object.sacObject.hasAnimationState(x));
+	auto fltr=closure!((x,object)=>object.sacObject.hasAnimationState(x))(&object);
+	auto filtered=candidates.filterf(fltr);
 	int len=cast(int)filtered.walkLength;
 	assert(!!len&&object.frame==0);
 	object.animationState=filtered.drop(state.uniform(len)).front;
 }
 
 bool pickNextAnimation(B)(ref MovingObject!B object,immutable(AnimationState)[] sequence,ObjectState!B state){
-	auto filtered=sequence.filter!(x=>object.sacObject.hasAnimationState(x)).find!(x=>x==object.animationState);
+	// auto filtered=sequence.filter!(x=>object.sacObject.hasAnimationState(x)).find!(x=>x==object.animationState);
+	auto fltr=closure!((x,object)=>object.sacObject.hasAnimationState(x))(&object);
+	auto filtered=sequence.filterf(fltr).find(object.animationState);
 	if(filtered.empty) return false;
 	filtered.popFront();
 	if(filtered.empty) return false;
@@ -12898,7 +12903,7 @@ void collisionTargets(alias f,alias filter=None,bool uniqueBuildingIds=false,boo
 	}
 	auto collisionState=CollisionState();
 	state.proximity.collide!handleCollision(hitbox,&collisionState,state,args);
-	auto id(ref ProximityEntry entry){ // TODO: only compute this once?
+	static id(ref ProximityEntry entry,ObjectState!B state){ // TODO: only compute this once?
 		static if(uniqueBuildingIds){
 			if(state.isValidTarget(entry.id,TargetType.building)){
 				auto cand=state.staticObjectById!((ref obj)=>obj.buildingId,()=>0)(entry.id);
@@ -12908,16 +12913,18 @@ void collisionTargets(alias f,alias filter=None,bool uniqueBuildingIds=false,boo
 		return entry.id;
 	}
 	auto center=boxCenter(hitbox); // TODO: pass this as argument?
-	auto compare(string op)(ref ProximityEntry a,ref ProximityEntry b){
-		static if(op=="==") return id(a)==id(b);
+	static compare(string op)(ref ProximityEntry a,ref ProximityEntry b,Vector3f center,ObjectState!B state){
+		static if(op=="==") return id(a,state)==id(b,state);
 		static if(op=="<"){
-			auto ida=id(a),idb=id(b);
+			auto ida=id(a,state),idb=id(b,state);
 			if(ida<idb) return true;
 			if(ida>idb) return false;
 			return boxPointDistanceSqr(a.hitbox,center)<boxPointDistanceSqr(b.hitbox,center);
 		}
 	}
-	foreach(ref entry;collisionState.targets[].sort!(compare!"<").uniq!(compare!"==")) f(entry,state,args);
+	auto less=closure!(compare!"<")(center,state);
+	auto equal=closure!(compare!"==")(center,state);
+	foreach(ref entry;collisionState.targets[].sortf(less).uniqf(equal)) f(entry,state,args);
 }
 enum wrathSize=0.1f;
 static immutable Vector3f[2] wrathHitbox=[-0.5f*wrathSize*Vector3f(1.0f,1.0f,1.0f),0.5f*wrathSize*Vector3f(1.0f,1.0f,1.0f)];
@@ -21327,12 +21334,12 @@ final class ObjectState(B){ // (update logic)
 	}
 	static struct Displacement{
 		ObjectState!B state;
-		static Displacement opCall(ObjectState!B state){
+		static Displacement opCall(ObjectState!B state)@nogc{
 			Displacement r;
 			r.state=state;
 			return r;
 		}
-		float opCall(float x,float y){
+		float opCall(float x,float y)@nogc{
 			float result=0.0f;
 			foreach(ref td;state.obj.opaqueObjects.effects.testDisplacements){
 				result+=td.displacement(x,y);
@@ -22189,12 +22196,17 @@ final class Sides(B){
 			multiplayerSides[mpside-1]=cast(int)i;
 			matchedSides[i]=true;
 		}
-		iota(32).filter!(i=>!matchedSides[i]).copy(multiplayerSides[].filter!(x=>x==-1));
-		auto singleplayerSides=iota(32).filter!(i=>!!(sides[i].assignment&PlayerAssignment.singleplayerSide));
+		// iota(32).filter!(i=>!matchedSides[i]).copy(multiplayerSides[].filter!(x=>x==-1));
+		auto fltr=closure!((i,matchedSides)=>!matchedSides[i])(matchedSides[]);
+		iota(32).filterf(fltr).copy(multiplayerSides[].filter!(x=>x==-1));
+		// iota(32).filter!(i=>!!(sides[i].assignment&PlayerAssignment.singleplayerSide));
+		auto fltr2=closure!((i,sides)=>!!(sides[i].assignment&PlayerAssignment.singleplayerSide))(sides[]);
+		auto singleplayerSides=iota(32).filterf(fltr2);
 		if(!singleplayerSides.empty){
 			auto numSingle=singleplayerSides.walkLength;
 			singleplayerSides.copy(scenarioSides[0..numSingle]);
-			multiplayerSides[].filter!(i=>!scenarioSides[0..numSingle].canFind(i)).copy(scenarioSides[numSingle..$]);
+			auto fltr3=closure!((i,scenarioSides,numSingle)=>!scenarioSides[0..numSingle].canFind(i))(scenarioSides[],numSingle);
+			multiplayerSides[].filterf(fltr3).copy(scenarioSides[numSingle..$]);
 		}else scenarioSides=multiplayerSides;
 	}
 
@@ -22551,7 +22563,7 @@ struct SideManager(B){
 
 final class Triggers(B){
 	int[int] objectIds;
-	void associateId(int triggerId,int objectId)in{
+	void associateId(int triggerId,int objectId)in{ // (uses GC)
 		assert(triggerId !in objectIds);
 	}do{
 		objectIds[triggerId]=objectId;

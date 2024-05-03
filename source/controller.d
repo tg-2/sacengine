@@ -222,7 +222,7 @@ final class Controller(B){
 			return false;
 		})(target);
 		enforce(state.committedFrame==target,
-		        text(network.activePlayerIds," ",network.players.map!((ref p)=>p.committedFrame)," ",
+		        text(network.activePlayerIds," ",network.players.data.map!((ref p)=>p.committedFrame)," ",
 		             committedFrame," ",state.committedFrame));
 
 	}
@@ -235,7 +235,7 @@ final class Controller(B){
 	void updateNetworkGameState()in{
 		assert(!!network);
 	}do{
-		foreach(ref p;network.players){
+		foreach(ref p;network.players.data){
 			if(p.slot==-1) continue;
 			p.lost|=state.committed.isDefeated(state.slots[p.slot].controlledSide);
 			p.won|=state.committed.isVictorious(state.slots[p.slot].controlledSide);
@@ -243,7 +243,7 @@ final class Controller(B){
 		}
 	}
 	void updateNetworkOnSurrender(int side){
-		foreach(ref p;network.players) if(p.slot!=-1&&state.slots[p.slot].controlledSide==side) p.lost=true;
+		foreach(ref p;network.players.data) if(p.slot!=-1&&state.slots[p.slot].controlledSide==side) p.lost=true;
 	}
 
 	bool updateNetwork(){
@@ -253,7 +253,7 @@ final class Controller(B){
 				network.synchronizeMap(null);
 				if(network.hasGameInitData){
 					auto hash=network.hostSettings.mapHash;
-					foreach(i,ref player;network.players){
+					foreach(i,ref player;network.players.data){
 						if(player.status==PlayerStatus.pendingGameInit && player.settings.mapHash==hash){
 							with(network){
 								auto message=players[i].allowedToControlState?"has rejoined the game.":"is now observing.";
@@ -281,7 +281,7 @@ final class Controller(B){
 			if(network.isHost){
 				bool playing=network.playing;
 				bool anyoneLateJoining=false;
-				foreach(i,ref player;network.players){
+				foreach(i,ref player;network.players.data){
 					void ping(){ network.ping(cast(int)i); }
 					if(playing&&player.status==PlayerStatus.readyToStart){
 						if(player.ping!=-1.seconds){
@@ -303,7 +303,7 @@ final class Controller(B){
 						import serialize_;
 						committed.serialized((scope ubyte[] stateData){
 							commands.serialized((scope ubyte[] commandData){
-								foreach(i,ref player;network.players){
+								foreach(i,ref player;network.players.data){
 									if(player.status!=PlayerStatus.pendingLoad) continue;
 									if(player.ping==-1.seconds) continue;
 									auto frame=currentFrame;
@@ -385,7 +385,7 @@ final class Controller(B){
 					enforce(state.currentFrame==newFrame,text(state.currentFrame," ",newFrame));
 					network.setFrameAll(newFrame);
 					network.resetCommitted(-1,newFrame);
-					enforce(state.currentFrame==network.resynchCommittedFrame,text(state.currentFrame," ",network.resynchCommittedFrame," ",network.players.map!((ref p)=>p.status),network.players.map!((ref p)=>p.committedFrame)));
+					enforce(state.currentFrame==network.resynchCommittedFrame,text(state.currentFrame," ",network.resynchCommittedFrame," ",network.players.data.map!((ref p)=>p.status),network.players.data.map!((ref p)=>p.committedFrame)));
 					import serialize_;
 					state.committed.serialized((scope ubyte[] stateData){
 						state.commands.serialized((scope ubyte[] commandData){

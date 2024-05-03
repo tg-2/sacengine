@@ -275,7 +275,7 @@ class Lobby(B){
 	}do{
 		auto numSlots=options.numSlots;
 		auto slotTaken=new bool[](numSlots);
-		foreach(i,ref player;network.players){
+		foreach(i,ref player;network.players.data){
 			if(player.settings.observer) continue;
 			auto pslot=player.settings.slot;
 			if(0<=pslot && pslot<options.numSlots && !slotTaken[pslot])
@@ -284,7 +284,7 @@ class Lobby(B){
 			network.updateSlot(cast(int)i,pslot);
 		}
 		auto freeSlots=iota(numSlots).filter!(i=>!slotTaken[i]);
-		foreach(i,ref player;network.players){
+		foreach(i,ref player;network.players.data){
 			if(player.settings.observer) continue;
 			if(freeSlots.empty) break;
 			if(player.slot==-1){
@@ -409,7 +409,7 @@ class Lobby(B){
 				if(network.isHost){
 					initState();
 					if(toContinue) gameInit=toContinue.gameInit;
-					else gameInit=.gameInit!B(sides,network.players.map!(ref(return ref x)=>x.settings),options);
+					else gameInit=.gameInit!B(sides,network.players.data.map!(ref(return ref x)=>x.settings),options);
 					gameInit.serialized(&network.initGame);
 				}else{
 					network.update(controller); // (may be null)
@@ -428,7 +428,7 @@ class Lobby(B){
 						auto side=singleplayerSides.front;
 						if(0<=side&&side<32){
 							options.minLevel=to!int(map.levl.singleStartLevel);
-							options.level=options.minLevel;;
+							options.level=options.minLevel;
 							options.maxLevel=to!int(map.levl.singleMaxLevel);
 							options.souls=to!int(map.levl.singleSouls);
 							import ntts:God;

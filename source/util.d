@@ -92,11 +92,11 @@ Quaternionf pitchQuaternion(float pitch){
 	return rotationQuaternion(Axis.x,pitch);
 }
 
-Vector3f rotate(Quaternionf rotation, Vector3f v){
+Vector3f rotate(Quaternionf rotation, Vector3f v)@nogc{
 	return rotation.rotate(v);
 }
 
-Vector3f transform(Matrix4f m, Vector3f v){
+Vector3f transform(Matrix4f m, Vector3f v)@nogc{
 	auto w=Vector4f(v.x,v.y,v.z,1.0f)*m;
 	return w.xyz/w.w;
 }
@@ -123,21 +123,21 @@ Vector3f limitLengthInPlane(Vector3f v,float len){
 struct Transformation{
 	Quaternionf rotation;
 	Vector3f offset;
-	this(Quaternionf rotation,Vector3f offset){
+	this(Quaternionf rotation,Vector3f offset)@nogc{
 		this.rotation=rotation;
 		this.offset=offset;
 	}
-	Vector3f rotate(Vector3f v){
+	Vector3f rotate(Vector3f v)@nogc{
 		return .rotate(rotation,v);
 	}
-	Vector3f opCall(Vector3f v){
+	Vector3f opCall(Vector3f v)@nogc{
 		auto rotated=rotate(v);
 		return rotated+offset;
 	}
-	Transformation opBinary(string op:"*")(Transformation rhs){
+	Transformation opBinary(string op:"*")(Transformation rhs)@nogc{
 		return Transformation(rotation*rhs.rotation,opCall(rhs.offset));
 	}
-	Matrix4f getMatrix4f(){
+	Matrix4f getMatrix4f()@nogc{
 		auto id=Matrix3f.identity();
 		Matrix4f result;
 		result.arrayof[0..3]=rotate(Vector3f(id.arrayof[0..3])).arrayof[];
@@ -549,4 +549,60 @@ Vector3f[2] lintp(Vector3f[] locations,float t){
 	auto p=(1.0f-u)*p0+u*p1;
 	auto m=p1-p0;
 	return [p,m];
+}
+
+@nogc:
+struct Closure(alias f,T...){
+	T data;
+	auto opCall(S...)(S args){
+		return f(args,data);
+	}
+}
+auto closure(alias f,T...)(T data){
+	Closure!(f,T) r;
+	r.data=data;
+	return r;
+}
+
+auto mapf(R,F)(R r,F f){
+	static struct Map{
+		R r;
+		F f;
+		@nogc:
+		bool empty(){ return r.empty; }
+		auto front(){ return f(r.front); }
+		void popFront(){ r.popFront(); }
+	}
+	return Map(r,f);
+}
+
+auto filterf(R,F)(R r,F f){
+	static struct Filter{
+		R r;
+		F f;
+		@nogc:
+		private void run(){ while(!r.empty&&!f(r.front)) r.popFront(); }
+		bool empty(){ run(); return r.empty; }
+		auto front(){ run(); return r.front; }
+		void popFront(){ r.popFront(); }
+	}
+	return Filter(r,f);
+}
+
+auto anyf(R,F)(R r,F f){
+	foreach(x;r) if(f(x)) return true;
+	return false;
+}
+auto allf(R,F)(R r,F f){
+	foreach(x;r) if(!f(x)) return false;
+	return true;
+}
+
+auto sortf(R,T)(R range,T f){
+	static T ff; ff=f; // TODO: ugly hack
+	return range.sort!ff;
+}
+auto uniqf(R,T)(R range,T f){
+	static T ff; ff=f; // TODO: ugly hack
+	return range.uniq!ff;
 }

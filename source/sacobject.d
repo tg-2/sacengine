@@ -255,25 +255,31 @@ final class SacObject(B){
 		return "\0\0\0\0";
 	}
 
-	Vector3f[2] smallHitbox(Quaternionf rotation,AnimationState animationState,int frame)in{
+	Vector3f[2] smallHitbox(Quaternionf rotation,AnimationState animationState,int frame)@nogc in{
 		assert(isSaxs);
 	}do{
 		auto transforms=animations[animationState].frames[frame].matrices;
-		return saxsi.saxs.hitboxBones
+		/+return saxsi.saxs.hitboxBones
 			.map!(i=>Vector3f(0,0,0)*transforms[i])
-			.map!(v=>rotate(rotation,v)).bbox;
+			.map!(v=>rotate(rotation,v)).bbox;+/
+		return saxsi.saxs.hitboxBones
+			.mapf(closure!((i,transforms)=>Vector3f(0,0,0)*transforms[i])(transforms))
+			.mapf(closure!((v,rotation)=>rotate(rotation,v))(rotation)).bbox;
 	}
 
-	Vector3f[2] largeHitbox(Quaternionf rotation,AnimationState animationState,int frame)in{
+	Vector3f[2] largeHitbox(Quaternionf rotation,AnimationState animationState,int frame)@nogc in{
 		assert(isSaxs);
 	}do{
 		auto transforms=animations[animationState].frames[frame].matrices;
-		return saxsi.saxs.hitboxBones
+		/+return saxsi.saxs.hitboxBones
 			.map!(i=>saxsi.saxs.bones[i].hitbox[].map!(x=>x*transforms[i]))
-			.joiner.map!(v=>rotate(rotation,v)).bbox;
+			.joiner.map!(v=>rotate(rotation,v)).bbox;+/
+		return saxsi.saxs.hitboxBones
+			.mapf(closure!((i,saxsi,transforms)=>saxsi.saxs.bones[i].hitbox[].mapf(closure!((x,i,transforms)=>x*transforms[i])(i,transforms)))(saxsi,transforms))
+			.joiner.mapf(closure!((v,rotation)=>rotate(rotation,v))(rotation)).bbox;
 	}
 
-	Vector3f[2] hitbox(Quaternionf rotation,AnimationState animationState,int frame)in{
+	Vector3f[2] hitbox(Quaternionf rotation,AnimationState animationState,int frame)@nogc in{
 		assert(isSaxs);
 	}do{
 		if(!data) return largeHitbox(rotation,animationState,frame);
@@ -296,27 +302,32 @@ final class SacObject(B){
 		}
 	}
 
-	Vector3f[2] hitbox2d(AnimationState animationState,int frame,Matrix4f modelViewProjectionMatrix)in{
+	Vector3f[2] hitbox2d(AnimationState animationState,int frame,Matrix4f modelViewProjectionMatrix)@nogc in{
 		assert(isSaxs);
 	}do{
 		auto transforms=animations[animationState].frames[frame].matrices;
-		return iota(saxsi.saxs.bones.length)
+		/+return iota(saxsi.saxs.bones.length)
 			.map!(i=>saxsi.saxs.bones[i].hitbox[].map!(x=>x*transforms[i]))
-			.joiner.map!(v=>transform(modelViewProjectionMatrix,v)).bbox;
+			.joiner.map!(v=>transform(modelViewProjectionMatrix,v)).bbox;+/
+		return iota(saxsi.saxs.bones.length)
+			.mapf(closure!((i,saxsi,transforms)=>saxsi.saxs.bones[i].hitbox[].mapf(closure!((x,i,transforms)=>x*transforms[i])(i,transforms)))(saxsi,transforms))
+			.joiner.mapf(closure!((v,modelViewProjectionMatrix)=>transform(modelViewProjectionMatrix,v))(modelViewProjectionMatrix)).bbox;
 	}
 
-	Vector3f[2] hitbox2d(Quaternionf rotation,Matrix4f modelViewProjectionMatrix)in{
+	Vector3f[2] hitbox2d(Quaternionf rotation,Matrix4f modelViewProjectionMatrix)@nogc in{
 		assert(!isSaxs);
 	}do{
-		static Vector3f[2] fix(Vector3f[2] hitbox){
+		static Vector3f[2] fix(Vector3f[2] hitbox)@nogc {
 			hitbox[0].z=max(0,hitbox[0].z);
 			return hitbox;
 		}
-		return hitboxes(rotation).map!fix.map!(hbox=>cartesianProduct(only(0,1),only(0,1),only(0,1)).map!(x=>Vector3f(hbox[x[0]].x,hbox[x[1]].y,hbox[x[2]].z)))
-			.joiner.map!(v=>transform(modelViewProjectionMatrix,v)).bbox;
+		/+return hitboxes(rotation).map!fix.map!(hbox=>cartesianProduct(only(0,1),only(0,1),only(0,1)).map!(x=>Vector3f(hbox[x[0]].x,hbox[x[1]].y,hbox[x[2]].z)))
+			.joiner.map!(v=>transform(modelViewProjectionMatrix,v)).bbox;+/
+		return hitboxes(rotation).map!fix.map!(hbox=>cartesianProduct(only(0,1),only(0,1),only(0,1)).mapf(closure!((x,hbox)=>Vector3f(hbox[x[0]].x,hbox[x[1]].y,hbox[x[2]].z))(hbox)))
+			.joiner.mapf(closure!((v,modelViewProjectionMatrix)=>transform(modelViewProjectionMatrix,v))(modelViewProjectionMatrix)).bbox;
 	}
 
-	Vector3f[2] handsFromAnimation(AnimationState from,AnimationState animationState,int frame){
+	Vector3f[2] handsFromAnimation(AnimationState from,AnimationState animationState,int frame)@nogc{
 		Vector3f[2] result;
 		foreach(i;0..2){
 			auto hand=animations[from].hands[i];
@@ -566,7 +577,7 @@ final class SacObject(B){
 		}
 	}
 	static SacObject!B[char[4]] overrides;
-	void setOverride(){
+	void setOverride(){ // (uses GC)
 		overrides[tag]=this;
 		foreach(obj;objects) if(obj.tag==tag){
 			enforce(obj.isSaxs==isSaxs,"unsupported override");
@@ -642,7 +653,7 @@ final class SacObject(B){
 	static void resetStateIndex(){
 		foreach(tag,obj;objects) obj.stateIndex[]=-1;
 	}
-	static SacObject!B getSAXS(T)(char[4] tag)if(is(T==Creature)||is(T==Wizard)){
+	static SacObject!B getSAXS(T)(char[4] tag)if(is(T==Creature)||is(T==Wizard)){ // (uses GC)
 		if(auto r=tag in objects) return *r;
 		return objects[tag]=new SacObject!B(tag,(T*).init); // hack
 	}
@@ -655,19 +666,19 @@ final class SacObject(B){
 		hitboxes_=mt[2];
 		initializeNTTData(tag,tag);
 	}
-	static SacObject!B getBLDG(char[4] tag){
+	static SacObject!B getBLDG(char[4] tag){ // (uses GC)
 		if(auto r=tag in objects) return *r;
 		return objects[tag]=new SacObject!B(tag,(Structure*).init); // hack
 	}
 
-	private this(T)(char[4] tag, T* hack) if(is(T==Widgets)){
+	private this(T)(char[4] tag, T* hack) if(is(T==Widgets)){ // (uses GC)
 		enforce(!!(tag in widgModls),text("unknown widget tag '",tag,"'"));
 		auto mt=loadWIDG!B(widgModls[tag]);
 		meshes=[[mt[0]]];
 		textures=[mt[1]];
 		initializeNTTData(tag,tag);
 	}
-	static SacObject!B getWIDG(char[4] tag){
+	static SacObject!B getWIDG(char[4] tag){ // (uses GC)
 		if(auto r=tag in objects) return *r;
 		return objects[tag]=new SacObject!B(tag,(Widgets*).init); // hack
 	}
@@ -682,7 +693,7 @@ final class SacObject(B){
 		assert(0);
 	}
 
-	this(string filename, float zfactorOverride=float.nan,string animation=""){
+	this(string filename, float zfactorOverride=float.nan,string animation=""){ // (uses GC)
 		enforce(filename.endsWith(".MRMM")||filename.endsWith(".3DSM")||filename.endsWith(".WIDG")||filename.endsWith(".SXMD"),filename);
 		char[4] tag=filename[$-9..$-5][0..4];
 		reverse(tag[]);
@@ -724,7 +735,7 @@ final class SacObject(B){
 		initializeNTTData(tag,tag in tagsFromModel?tagsFromModel[tag]:tag);
 	}
 
-	void setMeshes(B.Mesh[] meshes,Pose pose=Pose.init){
+	void setMeshes(B.Mesh[] meshes,Pose pose=Pose.init){ // (uses GC)
 		if(isSaxs){ // TODO: transfer to BoneMesh using the pose
 			/*isSaxs=false;
 			enforce(meshes.length<=meshes.length);
@@ -755,7 +766,7 @@ final class SacObject(B){
 		}
 	}
 
-	void loadAnimation(string animation){ // (just for testing)
+	void loadAnimation(string animation){ // (just for testing) (uses GC)
 		enforce(animations.length<=1);
 		auto anim=loadSXSK(animation,saxsi.saxs.scaling);
 		static if(gpuSkinning)
@@ -890,7 +901,7 @@ final class SacBuilding(B){
 	float xpOnDestruction(){ return 5000.0f; } // TODO: ok?
 
 	static SacBuilding!B[char[4]] buildings;
-	static SacBuilding!B get(char[4] tag){
+	static SacBuilding!B get(char[4] tag){ // (uses GC)
 		if(auto r=tag in buildings) return *r;
 		return buildings[tag]=new SacBuilding!B(tag);
 	}
@@ -2201,7 +2212,7 @@ B.Mesh[] makeSphereMeshes(B)(int numU,int numV,int nU,int nV,float radius,float 
 	return meshes;
 }
 
-B.Mesh[][] makeNoisySphereMeshes(B)(int numU,int numV,int nU,int nV,float radius,float noiseRadius,int numOffsets,float texWidth=1.0f,float texHeight=1.0f){
+B.Mesh[][] makeNoisySphereMeshes(B)(int numU,int numV,int nU,int nV,float radius,float noiseRadius,int numOffsets,float texWidth=1.0f,float texHeight=1.0f){ // (uses GC)
 	auto meshes=new B.Mesh[][](numOffsets,nU*nV);
 	import std.random;
 	Mt19937 gen;
@@ -3431,7 +3442,7 @@ final class SacCommandCone(B){
 	}
 }
 
-auto convertModel(B,Model)(string dir, Model model, float scaling){
+auto convertModel(B,Model)(string dir, Model model, float scaling){ // (uses GC)
 	int[string] names;
 	int cur=0;
 	foreach(f;model.faces){

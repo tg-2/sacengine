@@ -2,9 +2,10 @@
 // distributed under the terms of the gplv3 license
 // https://www.gnu.org/licenses/gpl-3.0.txt
 module netutil;
+import util;
 
 version(Android){
-string[] getBroadcastAddresses(){ return []; } // TODO
+Array!string getBroadcastAddresses(){ return typeof(result).init; } // TODO
 }else version(Posix){
 import core.sys.posix.sys.socket;
 import core.stdc.string;
@@ -30,8 +31,8 @@ struct sockaddr_in {
 	ushort sin_port;
 	in_addr sin_addr;
 }
-string[] getBroadcastAddresses(){
-	string[] result=[];
+Array!string getBroadcastAddresses(){
+	Array!string result;
 	ifaddrs* list=null;
 	getifaddrs(&list);
 	scope(exit) if(list) freeifaddrs(list);
@@ -58,8 +59,8 @@ string[] getBroadcastAddresses(){
 	import core.sys.windows.winerror;
 	import std.windows.syserror;
 	import core.stdc.stdlib;
-	string[] getBroadcastAddresses(){
-		string[] result=[];
+	Array!string getBroadcastAddresses(){
+		Array!string result;
 		static void* iphlpapi=null;
 		iphlpapi=LoadLibraryA("iphlpapi.dll");
 		if(!iphlpapi) return result;
@@ -81,7 +82,7 @@ string[] getBroadcastAddresses(){
 			pAdapterInfo=cast(IP_ADAPTER_INFO*)malloc(ulOutBufLen);
 		}
 		if((dwRetVal=GetAdaptersInfo(pAdapterInfo,&ulOutBufLen))!=ERROR_SUCCESS)
-			return [];
+			return result;
 		for(auto pAdapter=pAdapterInfo;pAdapter;pAdapter=pAdapter.Next) {
 			//import std.stdio;
 			//writeln("name: ",pAdapter.AdapterName);

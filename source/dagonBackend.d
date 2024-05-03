@@ -126,7 +126,9 @@ final class SacScene: Scene{
 	}
 	bool selectSpell(SpellType tab,int index,bool playAudio=true){
 		if(!renderer.spellbookVisible(state.current,info)) return false;
-		auto spells=state.current.getSpells(camera.target).filter!(x=>x.spell.type==tab);
+		// auto spells=state.current.getSpells(camera.target).filter!(x=>x.spell.type==tab);
+		auto fltr=closure!((x,tab)=>x.spell.type==tab)(tab);
+		auto spells=state.current.getSpells(camera.target).filterf(fltr);
 		foreach(i,entry;enumerate(spells)) if(i==index) return selectSpell(entry.spell,playAudio);
 		return false;
 	}
@@ -2245,7 +2247,7 @@ static:
 		enum Additive=.Additive;
 	}
 	Material[] createMaterials(SacObject!DagonBackend sobj,SacObject!DagonBackend.MaterialConfig config){
-		GenericMaterial[] materials;
+		auto materials=new GenericMaterial[](sobj.numParts);
 		foreach(i;0..sobj.numParts){
 			GenericMaterial mat;
 			if(i==config.sunBeamPart){
@@ -2276,16 +2278,16 @@ static:
 				mat.emission=diffuse;
 				mat.energy=0.5f;
 			}
-			materials~=mat;
+			materials[i]=mat;
 		}
 		return materials;
 	}
 
 	Material[] createTransparentMaterials(SacObject!DagonBackend sobj){
-		GenericMaterial[] materials;
+		auto materials=new GenericMaterial[](sobj.numParts);
 		foreach(i;0..sobj.numParts){
 			if(("blending" in sobj.materials[i].inputs).asInteger==Transparent){
-				materials~=sobj.materials[i];
+				materials[i]=sobj.materials[i];
 				continue;
 			}
 			auto mat=makeMaterial(gpuSkinning&&sobj.isSaxs?scene.shadelessBoneMaterialBackend:scene.shadelessMaterialBackend);
@@ -2296,7 +2298,7 @@ static:
 			mat.specular=sobj.isSaxs?Color4f(1,1,1,1):Color4f(0,0,0,1);
 			mat.roughness=1.0f;
 			mat.metallic=0.5f;
-			materials~=mat;
+			materials[i]=mat;
 		}
 		return materials;
 	}

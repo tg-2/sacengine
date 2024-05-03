@@ -106,8 +106,8 @@ enum{
 enum mapDepth=50.0f;
 
 struct ZeroDisplacement{
-	static opCall(){ return typeof(this).init; }
-	float opCall(float x,float y){ return 0.0f; }
+	static opCall()@nogc{ return typeof(this).init; }
+	float opCall(float x,float y)@nogc{ return 0.0f; }
 }
 
 final class SacMap(B){
@@ -177,14 +177,14 @@ final class SacMap(B){
 		minimapMeshes=createMinimapMeshes!B(edges,tiles);
 	}
 
-	Tuple!(int,"j",int,"i") getTile(Vector3f pos){
+	Tuple!(int,"j",int,"i") getTile(Vector3f pos)@nogc{
 		return tuple!("j","i")(cast(int)(pos.y/10),cast(int)(pos.x/10));
 	}
-	Vector3f getVertex(T)(int j,int i,T displacement){
+	Vector3f getVertex(T)(int j,int i,T displacement)@nogc{
 		int x=10*i,y=10*j;
 		return Vector3f(x,y,heights[max(0,min(j,cast(int)$-1))][max(0,min(i,cast(int)$-1))]+displacement(x,y));
 	}
-	Tuple!(Tuple!(int,"j",int,"i")[3][2],"tri",int,"nt") getTriangles(bool invert=false)(int j,int i){
+	Tuple!(Tuple!(int,"j",int,"i")[3][2],"tri",int,"nt") getTriangles(bool invert=false)(int j,int i)@nogc{
 		if(i<0||i+1>=n||j<0||j+1>=m) return typeof(return).init;
 		Tuple!(int,"j",int,"i")[3][2] tri;
 		int nt=0;
@@ -215,14 +215,14 @@ final class SacMap(B){
 		}
 		return tuple!("tri","nt")(tri,nt);
 	}
-	Plane getPlane(T)(Tuple!(int,"j",int,"i")[3] tri,T displacement){
+	Plane getPlane(T)(Tuple!(int,"j",int,"i")[3] tri,T displacement)@nogc{
 		static foreach(i;0..3)
 			mixin(text(`auto p`,i,`=getVertex(tri[`,i,`].expand,displacement);`));
 		Plane plane;
 		plane.fromPoints(p0,p1,p2); // wtf.
 		return plane;
 	}
-	bool isInside(Tuple!(int,"j",int,"i")[3] tri,Vector3f pos){
+	bool isInside(Tuple!(int,"j",int,"i")[3] tri,Vector3f pos)@nogc{
 		Vector3f getV(int k){
 			auto v=getVertex(tri[k%$].j,tri[k%$].i,ZeroDisplacement())-pos;
 			v.z=0;
@@ -234,7 +234,7 @@ final class SacMap(B){
 		}
 		return true;
 	}
-	Tuple!(int,"j",int,"i")[3] getTriangle(bool invert=false)(Vector3f pos){
+	Tuple!(int,"j",int,"i")[3] getTriangle(bool invert=false)(Vector3f pos)@nogc{
 		auto tile=getTile(pos);
 		int i=tile.i,j=tile.j;
 		auto triNt=getTriangles!invert(j,i),tri=triNt[0],nt=triNt[1];
@@ -249,25 +249,25 @@ final class SacMap(B){
 		}
 	}
 
-	bool isOnGround(Vector3f pos){
+	bool isOnGround(Vector3f pos)@nogc{
 		auto triangle=getTriangle(pos);
 		return triangle[0]!=triangle[1];
 	}
-	private float getHeightImpl(T)(Tuple!(int,"j",int,"i")[3] triangle,Vector3f pos,T displacement){
+	private float getHeightImpl(T)(Tuple!(int,"j",int,"i")[3] triangle,Vector3f pos,T displacement)@nogc{
 		auto plane=getPlane(triangle,displacement);
 		return -(plane.a*pos.x+plane.b*pos.y+plane.d)/plane.c;
 	}
-	float getHeight(T)(Vector3f pos,T displacement){
+	float getHeight(T)(Vector3f pos,T displacement)@nogc{
 		auto triangle=getTriangle(pos);
 		if(triangle[0]==triangle[1]) triangle=getTriangle!true(pos);
 		if(triangle[0]==triangle[1]) return 0.0f;
 		return getHeightImpl(triangle,pos,displacement);
 	}
-	float getGroundHeight(T)(Vector3f pos,T displacement){
+	float getGroundHeight(T)(Vector3f pos,T displacement)@nogc{
 		auto triangle=getTriangle(pos);
 		return getHeightImpl(triangle,pos,displacement);
 	}
-	float getGroundHeightDerivative(T)(Vector3f pos,Vector3f direction,T displacement){
+	float getGroundHeightDerivative(T)(Vector3f pos,Vector3f direction,T displacement)@nogc{
 		auto triangle=getTriangle(pos);
 		static foreach(i;0..3)
 			mixin(text(`auto p`,i,`=getVertex(triangle[`,i,`].expand,displacement);`));
@@ -275,7 +275,7 @@ final class SacMap(B){
 		plane.fromPoints(p0,p1,p2); // wtf.
 		return -(plane.a*direction.x+plane.b*direction.y)/plane.c;
 	}
-	Vector3f moveOnGround(T)(Vector3f position,Vector3f direction,T displacement)in{
+	Vector3f moveOnGround(T)(Vector3f position,Vector3f direction,T displacement)@nogc in{
 		assert(isOnGround(position));
 	}do{
 		auto newPosition=position+direction;
@@ -300,7 +300,7 @@ final class SacMap(B){
 		bestNewPosition.z=getGroundHeight(bestNewPosition,displacement);
 		return bestNewPosition;
 	}
-	float rayIntersection(T)(Vector3f start,Vector3f direction,T displacement,float limit=float.infinity){
+	float rayIntersection(T)(Vector3f start,Vector3f direction,T displacement,float limit=float.infinity)@nogc{
 		float result=float.infinity;
 		auto tile=getTile(start);
 		int dj=direction.y<0?-1:1, di=direction.x<0?-1:1;
