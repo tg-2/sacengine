@@ -7,7 +7,6 @@ import dlib.math;
 import std.algorithm, std.range, std.traits, std.exception, std.conv, std.stdio, std.typecons: Tuple;
 import std.random;
 
-
 void serializeStruct(alias sink,string[] noserialize=[],T)(ref T t)if(is(T==struct)){
 	static foreach(member;__traits(allMembers,T)){
 		static if(is(typeof(__traits(getMember,t,member).offsetof))){
@@ -105,7 +104,7 @@ void serialize(alias sink,T)(T[] values){
 	serialize!sink(cast(ulong)values.length);
 	foreach(ref v;values) serialize!sink(cast()v);
 }
-void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==S[],S)){
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==S[],S)){ // (uses GC)
 	ulong len;
 	deserialize(len,state,data);
 	enforce(len<=data.length,"not enough data");
@@ -965,12 +964,14 @@ void deserialize(T,R)(T recording,ref R data)if(is(T==Recording!B,B)){
 
 
 void serialized(T)(ref T value,scope void delegate(scope ubyte[] data) dg)if(!is(T==class)){
-	Array!ubyte data;
+	//Array!ubyte data;
+	static Array!ubyte data; data.length=0; // hack to avoid a closure
 	serialize!((scope ubyte[] part){ data~=part; })(value);
 	dg(data.data);
 }
 void serialized(T)(T value,scope void delegate(scope ubyte[] data) dg)if(is(T==class)){ // TODO: get rid of code duplication
-	Array!ubyte data;
+	//Array!ubyte data;
+	static Array!ubyte data; data.length=0; // hack to avoid a closure
 	serialize!((scope ubyte[] part){ data~=part; })(value);
 	dg(data.data);
 }
@@ -987,7 +988,8 @@ uint crc32(T)(ref T value)if(!is(T==class)){
 
 uint crc32(T)(T value)if(is(T==class)){ // TODO: get rid of code duplication
 	import std.digest.crc;
-	CRC32 crc;
+	// CRC32 crc;
+	static CRC32 crc; crc=CRC32.init; // hack to avoid a closure
 	crc.start();
 	serialize!((scope ubyte[] data){ copy(data,&crc); })(value);
 	auto result=crc.finish();

@@ -552,10 +552,11 @@ Vector3f[2] lintp(Vector3f[] locations,float t){
 }
 
 @nogc:
+import core.lifetime:forward;
 struct Closure(alias f,T...){
 	T data;
-	auto opCall(S...)(S args){
-		return f(args,data);
+	auto ref opCall(S...)(auto ref S args){
+		return f(forward!args,data);
 	}
 }
 auto closure(alias f,T...)(T data){
@@ -570,7 +571,7 @@ auto mapf(R,F)(R r,F f){
 		F f;
 		@nogc:
 		bool empty(){ return r.empty; }
-		auto front(){ return f(r.front); }
+		auto ref front(){ return f(r.front); }
 		void popFront(){ r.popFront(); }
 	}
 	return Map(r,f);
