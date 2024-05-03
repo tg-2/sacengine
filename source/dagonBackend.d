@@ -1405,7 +1405,7 @@ final class SacScene: Scene{
 			if(eventManager.keyPressed[KEY_P]) speed = 1000.0f;
 
 			float factor = 1.0f;
-			if(eventManager.keyPressed[KEY_LSHIFT]) factor *= 2.0f;
+			if(eventManager.keyPressed[KEY_LSHIFT]||eventManager.keyPressed[KEY_RSHIFT]) factor *= 2.0f;
 			if(dir.lengthsqr>0.001f^^2) camera.position += dir.normalized * factor * speed * (dt.total!"hnsecs"*1e-7);
 			if(state) camera.position.z=max(camera.position.z, state.current.getHeight(camera.position));
 		}
