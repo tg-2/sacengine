@@ -2624,6 +2624,32 @@ struct SacDemonicRiftEffect(B){
 	}
 }
 
+struct SacHealingAura(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/haur.TXTR"));
+	}
+	B.Material material;
+	B.Mesh[][] meshes;
+	static B.Mesh[][] createMeshes(){
+		return makeNoisySphereMeshes!B(24,25,nU,nV,0.5f,0.06f,numDistortions);
+	}
+	enum animationDelay=2;
+	enum nU=4,nV=4;
+	enum numTextureFrames=nU*nV*updateAnimFactor*animationDelay;
+	enum numDistortions=16;
+	enum numFrames=updateFPS*numDistortions/2;
+	Tuple!(B.Mesh,B.Mesh,float) getFrame(int frame,int texture){
+		auto textureFrame=(texture/(animationDelay*updateAnimFactor))%(nU*nV);
+		auto indices=iota(0,meshes.length);
+		auto numIndices=indices.length;
+		auto i=frame*numIndices/numFrames, j=i+1;
+		float progress=float(frame*numIndices%numFrames)/numFrames;
+		auto all=cycle(indices);
+		return tuple(meshes[all[i]][textureFrame],meshes[all[j]][textureFrame],progress);
+	}
+}
+
 B.Mesh makeSpikeMesh(B)(int numV,float texBase,float base,float baseRadius,float topRadius){
 	enum numU=2;
 	auto mesh=B.makeMesh((numU+1)*numV,2*numU*numV);
@@ -2660,32 +2686,6 @@ B.Mesh makeSpikeMesh(B)(int numV,float texBase,float base,float baseRadius,float
 	mesh.generateNormals();
 	B.finalizeMesh(mesh);
 	return mesh;
-}
-
-struct SacHealingAura(B){
-	B.Texture texture;
-	static B.Texture loadTexture(){
-		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/haur.TXTR"));
-	}
-	B.Material material;
-	B.Mesh[][] meshes;
-	static B.Mesh[][] createMeshes(){
-		return makeNoisySphereMeshes!B(24,25,nU,nV,0.5f,0.06f,numDistortions);
-	}
-	enum animationDelay=2;
-	enum nU=4,nV=4;
-	enum numTextureFrames=nU*nV*updateAnimFactor*animationDelay;
-	enum numDistortions=16;
-	enum numFrames=updateFPS*numDistortions/2;
-	Tuple!(B.Mesh,B.Mesh,float) getFrame(int frame,int texture){
-		auto textureFrame=(texture/(animationDelay*updateAnimFactor))%(nU*nV);
-		auto indices=iota(0,meshes.length);
-		auto numIndices=indices.length;
-		auto i=frame*numIndices/numFrames, j=i+1;
-		float progress=float(frame*numIndices%numFrames)/numFrames;
-		auto all=cycle(indices);
-		return tuple(meshes[all[i]][textureFrame],meshes[all[j]][textureFrame],progress);
-	}
 }
 
 struct SacSpike(B){
