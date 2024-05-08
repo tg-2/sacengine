@@ -95,6 +95,7 @@ class SacSpell(B){
 		if(cre8) spellFrames=cre8.castingTime;
 		if(spel) spellFrames=spel.castingTime;
 		if(strc) spellFrames=strc.castingTime;
+		if(tag==SpellTag.basilisk) spellFrames=19*spellFrames/20;
 		int spellLevel=spellOrder/100;
 		auto bonus=min(5,max(0,level-spellLevel));
 		auto frames=(spellFrames*10-spellFrames*bonus)/10;

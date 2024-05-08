@@ -10828,13 +10828,13 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 			if(object.frame>=sacObject.numFrames(object.animationState)*updateAnimFactor){
 				object.frame=0;
 				if(object.animationState.among(AnimationState.spellcastStart,AnimationState.runSpellcastStart)){
-					object.creatureState.timer-=3;
+					//object.creatureState.timer-=1;
 					if(object.animationState==AnimationState.spellcastStart)
 						object.animationState=AnimationState.spellcast;
 					else if(object.animationState==AnimationState.runSpellcastStart)
 						object.animationState=AnimationState.runSpellcast;
 				}else if(object.animationState.among(AnimationState.spellcast,AnimationState.runSpellcast)){
-					object.creatureState.timer-=1;
+					//object.creatureState.timer-=1;
 				}else if(object.animationState.among(AnimationState.spellcastEnd,AnimationState.runSpellcastEnd)){
 					object.creatureState.mode=object.creatureState.mode==CreatureMode.castingMoving?CreatureMode.moving:CreatureMode.idle;
 					object.setCreatureState(state);
