@@ -1791,7 +1791,7 @@ final class SacScene: Scene{
 						targetValid=mouseTargetValid(target);
 					}else mouse.cachedTarget=Target.init;
 				}
-			}else if(targetValid){
+			}else if(targetValid&&mouse.status!=MouseStatus.xmenu){
 				mouse.cachedTarget=target;
 				mouse.cachedTargetX=mouse.x;
 				mouse.cachedTargetY=mouse.y;

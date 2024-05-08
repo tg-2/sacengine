@@ -2923,7 +2923,7 @@ struct Renderer(B){
 	}
 
 	void renderFrame(Vector3f[2] hitbox2d,Color4f color,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
-		if(hitbox2d[0].z>1.0f) return;
+		if(hitbox2d[0].z>1.0f){ info.mouse.inHitbox=false; return; }
 		Vector2f[2] position=[Vector2f(0.5f*(hitbox2d[0].x+1.0f)*info.width,0.5f*(1.0f-hitbox2d[1].y)*info.height),
 		                      Vector2f(0.5f*(hitbox2d[1].x+1.0f)*info.width,0.5f*(1.0f-hitbox2d[0].y)*info.height)];
 		position=fixHitbox2dSize(position);
