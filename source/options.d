@@ -126,6 +126,8 @@ struct Options{
 	alias settings this;
 	// compatibility options
 	bool lowmem=false;
+	// testing
+	bool testCastingTimes=false;
 }
 
 struct SpellSpec{

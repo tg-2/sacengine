@@ -594,5 +594,6 @@ class Lobby(B){
 		if(options.focusOnStart) B.grabFocus();
 		if(options.captureMouse) B.captureMouse();
 		B.hideMouse(); // (should be hidden already, just to make sure)
+		if(options.testCastingTimes){ import testCastingTimes_; testCastingTimes!B(); }
 	}
 }
