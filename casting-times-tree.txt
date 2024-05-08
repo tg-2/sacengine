@@ -1,0 +1,760 @@
+Abraxus
+spell	level	cycles
+guardian	1, 2, 3	1
+guardian	4, 5, 6, 7, 8, 9	0
+teleport	1, 2, 3, 4	1
+teleport	5, 6, 7, 8, 9	0
+ethereal form, skin of stone, fireform, protective swarm	2, 3	1
+ethereal form, skin of stone, fireform, protective swarm	4, 5, 6, 7, 8, 9	0
+air shield	2, 3, 4, 5, 6, 7, 8, 9	0
+slime, rings of fire, grasping vines	3, 4, 5, 6	1
+slime, rings of fire, grasping vines	7, 8, 9	0
+freeze	3, 4, 5, 6, 7, 8, 9	0
+dragonfire	4	2
+dragonfire	5, 6, 7, 8, 9	1
+demonic rift, halo of earth, rain of frogs	5, 6	2
+demonic rift, halo of earth, rain of frogs	7, 8, 9	1
+healing aura	6, 7, 8	2
+healing aura	9	1
+firewall, wall of spikes	6, 7, 8	2
+firewall, wall of spikes	9	1
+wailing wall	6, 7, 8, 9	1
+fence	7, 8	2
+fence	9	1
+vinewall	7	3
+vinewall	8, 9	2
+rain of fire, plague	7	3
+rain of fire, plague	8, 9	2
+bombardment	7	3
+bombardment	8, 9	2
+charm	8	    4
+charm	9	    3
+meanstalks, bovine intervention, bore, blind rage, volcano, intestinal vaporization, death	8, 9	3
+cloudkill, tornado	8	3
+cloudkill, tornado	9	2
+necryl, scarab, tickferno	2	1
+necryl, scarab, tickferno	3, 4, 5, 6, 7, 8, 9	0
+vortick	2, 3, 4, 5, 6, 7, 8, 9	0
+basilisk	2, 3	1
+basilisk	4, 5, 6, 7, 8, 9	0
+firefist, troll, blight	3, 4, 5, 6	1
+firefist, troll, blight	7, 8, 9	0
+taurock	3, 4, 5, 6, 7	1
+taurock	8, 9	0
+squall	3	1
+squall	4, 5, 6, 7, 8, 9	0
+storm giant	4, 5, 6, 7	1
+storm giant	8, 9	0
+boulderdash	6, 7	2
+boulderdash	8, 9	1
+bombard, mutant, abomination	6	2
+bombard, mutant, abomination	7, 8, 9	1
+yeti	7, 8, 9	1
+ent	7, 8	2
+ent	9	1
+jabberocky	7, 8, 9	2
+warmonger, styx	7, 8	2
+warmonger, styx	9	1
+dragon, rhinok, phoenix, hellmouth, silverback	9	2
+Acheron
+spell	level	cycles
+guardian	1, 2, 3, 4	1
+guardian	5, 6, 7, 8, 9	0
+teleport	1, 2, 3, 4, 5	1
+teleport	6, 7, 8, 9	0
+ethereal form, skin of stone, fireform, protective swarm	2, 3, 4, 5	1
+ethereal form, skin of stone, fireform, protective swarm	6, 7, 8, 9	0
+air shield	2	1
+air shield	3, 4, 5, 6, 7, 8, 9	0
+slime, rings of fire, grasping vines	3, 4, 5, 6, 7	1
+slime, rings of fire, grasping vines	8, 9	0
+freeze	3	1
+freeze	4, 5, 6, 7, 8, 9	0
+dragonfire	4	2
+dragonfire	5, 6, 7, 8, 9	1
+demonic rift, halo of earth, rain of frogs	5	2
+demonic rift, halo of earth, rain of frogs	6, 7, 8, 9	1
+healing aura	6, 7, 8	2
+healing aura	9	1
+firewall, wall of spikes	6, 7, 8	2
+firewall, wall of spikes	9	1
+wailing wall	6, 7, 8, 9	1
+fence	7	2
+fence	8, 9	1
+vinewall	7, 8, 9	2
+rain of fire, plague	7, 8, 9	2
+bombardment	7	3
+bombardment	8, 9	2
+charm, meanstalks, bovine intervention, bore, blind rage, volcano, intestinal vaporization, death	8, 9	3
+cloudkill	8	3
+cloudkill	9	2
+tornado	8, 9	2
+necryl, scarab, tickferno	2	1
+necryl, scarab, tickferno	3, 4, 5, 6, 7, 8, 9	0
+vortick	2, 3, 4, 5, 6, 7, 8, 9	0
+basilisk	2, 3	1
+basilisk	4, 5, 6, 7, 8, 9	0
+firefist, troll, blight	3, 4, 5, 6	1
+firefist, troll, blight	7, 8, 9	0
+taurock	3, 4, 5, 6, 7	1
+taurock	8, 9	0
+squall	3	1
+squall	4, 5, 6, 7, 8, 9	0
+storm giant	4, 5, 6, 7	1
+storm giant	8, 9	0
+boulderdash	6, 7	2
+boulderdash	8, 9	1
+bombard	6, 7, 8, 9	1
+yeti	7, 8, 9	1
+ent	7, 8	2
+ent	9	1
+jabberocky	7, 8, 9	2
+warmonger, styx	7, 8	2
+warmonger, styx	9	1
+dragon, rhinok, phoenix, hellmouth, silverback	9	2
+Ambassador Buta
+spell	level	cycles
+guardian	1	1
+guardian	2, 3, 4, 5, 6, 7, 8, 9	0
+teleport	1, 2	1
+teleport	3, 4, 5, 6, 7, 8, 9	0
+ethereal form, skin of stone, fireform, protective swarm, air shield	2, 3, 4, 5, 6, 7, 8, 9	0
+slime, rings of fire, grasping vines	3, 4	1
+slime, rings of fire, grasping vines	5, 6, 7, 8, 9	0
+freeze	3, 4, 5, 6, 7, 8, 9	0
+dragonfire	4, 5, 6, 7, 8, 9	1
+demonic rift, halo of earth, rain of frogs	5	2
+demonic rift, halo of earth, rain of frogs	6, 7, 8, 9	1
+healing aura	6, 7	2
+healing aura	8, 9	1
+firewall, wall of spikes	6, 7	2
+firewall, wall of spikes	8, 9	1
+wailing wall	6, 7, 8, 9	1
+fence	7	2
+fence	8, 9	1
+vinewall	7, 8, 9	2
+rain of fire, plague	7, 8, 9	2
+bombardment	7, 8, 9	2
+meanstalks, bovine intervention, bore, blind rage, volcano, intestinal vaporization, death	8	3
+meanstalks, bovine intervention, bore, blind rage, volcano, intestinal vaporization, death	9	2
+charm	8, 9	3
+cloudkill, tornado	8, 9	2
+necryl, scarab, tickferno	2	1
+necryl, scarab, tickferno	3, 4, 5, 6, 7, 8, 9	0
+vortick	2, 3, 4, 5, 6, 7, 8, 9	0
+basilisk	2, 3	1
+basilisk	4, 5, 6, 7, 8, 9	0
+firefist, troll, blight	3, 4, 5, 6	1
+firefist, troll, blight	7, 8, 9	0
+taurock	3, 4, 5, 6, 7	1
+taurock	8, 9	0
+squall	3	1
+squall	4, 5, 6, 7, 8, 9	0
+storm giant	4, 5, 6, 7	1
+storm giant	8, 9	0
+boulderdash	6	2
+boulderdash	7, 8, 9	1
+bombard	6, 7, 8, 9	1
+yeti	7, 8, 9	1
+ent	7	2
+ent	8, 9	1
+jabberocky	7, 8, 9	2
+warmonger, styx	7	2
+warmonger, styx	8, 9	1
+dragon, rhinok, phoenix, hellmouth, silverback	9	2
+Charlotte
+spell	level	cycles
+guardian	1, 2, 3, 4	1
+guardian	5, 6, 7, 8, 9	0
+teleport	1, 2, 3, 4, 5	1
+teleport	6, 7, 8, 9	0
+ethereal form, skin of stone, fireform, protective swarm	2, 3, 4, 5	1
+ethereal form, skin of stone, fireform, protective swarm	6, 7, 8, 9	0
+air shield	2	1
+air shield	3, 4, 5, 6, 7, 8, 9	0
+slime, rings of fire, grasping vines	3, 4, 5, 6, 7	1
+slime, rings of fire, grasping vines	8, 9	0
+freeze	3	1
+freeze	4, 5, 6, 7, 8, 9	0
+dragonfire	4	2
+dragonfire	5, 6, 7, 8, 9	1
+demonic rift, halo of earth, rain of frogs	5	2
+demonic rift, halo of earth, rain of frogs	6, 7, 8, 9	1
+healing aura	6, 7, 8	2
+healing aura	9	1
+firewall, wall of spikes	6, 7, 8	2
+firewall, wall of spikes	9	1
+wailing wall	6, 7, 8, 9	1
+fence	7	2
+fence	8, 9	1
+vinewall	7, 8, 9	2
+rain of fire, plague	7, 8, 9	2
+bombardment	7	3
+bombardment	8, 9	2
+charm, meanstalks, bovine intervention, bore, blind rage, volcano, intestinal vaporization, death	8, 9	3
+cloudkill	8	3
+cloudkill	9	2
+tornado	8, 9	2
+necryl, scarab, tickferno	2	1
+necryl, scarab, tickferno	3, 4, 5, 6, 7, 8, 9	0
+vortick	2, 3, 4, 5, 6, 7, 8, 9	0
+basilisk	2, 3	1
+basilisk	4, 5, 6, 7, 8, 9	0
+firefist, troll, blight	3, 4, 5, 6	1
+firefist, troll, blight	7, 8, 9	0
+taurock	3, 4, 5, 6, 7	1
+taurock	8, 9	0
+squall	3	1
+squall	4, 5, 6, 7, 8, 9	0
+storm giant	4, 5, 6, 7	1
+storm giant	8, 9	0
+boulderdash	6, 7	2
+boulderdash	8, 9	1
+bombard	6, 7, 8, 9	1
+yeti	7, 8, 9	1
+ent	7, 8	2
+ent	9	1
+jabberocky	7, 8, 9	2
+warmonger, styx	7, 8	2
+warmonger, styx	9	1
+dragon, rhinok, phoenix, hellmouth, silverback	9	2
+Eldred
+spell	level	cycles
+guardian	1, 2, 3, 4	1
+guardian	5, 6, 7, 8, 9	0
+teleport	1, 2, 3, 4, 5	1
+teleport	6, 7, 8, 9	0
+ethereal form, skin of stone, fireform, protective swarm	2, 3, 4, 5	1
+ethereal form, skin of stone, fireform, protective swarm	6, 7, 8, 9	0
+air shield	2	1
+air shield	3, 4, 5, 6, 7, 8, 9	0
+slime, rings of fire, grasping vines	3, 4, 5, 6, 7	1
+slime, rings of fire, grasping vines	8, 9	0
+freeze	3	1
+freeze	4, 5, 6, 7, 8, 9	0
+dragonfire	4	2
+dragonfire	5, 6, 7, 8, 9	1
+demonic rift, halo of earth, rain of frogs	5	2
+demonic rift, halo of earth, rain of frogs	6, 7, 8, 9	1
+healing aura	6, 7, 8	2
+healing aura	9	1
+firewall, wall of spikes	6, 7, 8	2
+firewall, wall of spikes	9	1
+wailing wall	6, 7, 8, 9	1
+fence	7	2
+fence	8, 9	1
+vinewall	7, 8, 9	2
+rain of fire, plague	7, 8, 9	2
+bombardment	7	3
+bombardment	8, 9	2
+charm, meanstalks, bovine intervention, bore, blind rage, volcano, intestinal vaporization, death	8, 9	3
+cloudkill	8	3
+cloudkill	9	2
+tornado	8, 9	2
+necryl, scarab, tickferno	2	1
+necryl, scarab, tickferno	3, 4, 5, 6, 7, 8, 9	0
+vortick	2, 3, 4, 5, 6, 7, 8, 9	0
+basilisk	2, 3	1
+basilisk	4, 5, 6, 7, 8, 9	0
+firefist, troll, blight	3, 4, 5, 6	1
+firefist, troll, blight	7, 8, 9	0
+taurock	3, 4, 5, 6, 7	1
+taurock	8, 9	0
+squall	3	1
+squall	4, 5, 6, 7, 8, 9	0
+storm giant	4, 5, 6, 7	1
+storm giant	8, 9	0
+boulderdash	6, 7	2
+boulderdash	8, 9	1
+bombard	6, 7, 8, 9	1
+yeti	7, 8, 9	1
+ent	7, 8	2
+ent	9	1
+jabberocky	7, 8, 9	2
+warmonger, styx	7, 8	2
+warmonger, styx	9	1
+dragon, rhinok, phoenix, hellmouth, silverback	9	2
+Grakkus
+spell	level	cycles
+guardian	1, 2, 3, 4	1
+guardian	5, 6, 7, 8, 9	0
+teleport	1, 2, 3, 4, 5	1
+teleport	6, 7, 8, 9	0
+ethereal form, skin of stone, fireform, protective swarm	2, 3, 4, 5	1
+ethereal form, skin of stone, fireform, protective swarm	6, 7, 8, 9	0
+air shield	2	1
+air shield	3, 4, 5, 6, 7, 8, 9	0
+slime, rings of fire, grasping vines	3, 4, 5, 6, 7	1
+slime, rings of fire, grasping vines	8, 9	0
+freeze	3	1
+freeze	4, 5, 6, 7, 8, 9	0
+dragonfire	4	2
+dragonfire	5, 6, 7, 8, 9	1
+demonic rift, halo of earth, rain of frogs	5	2
+demonic rift, halo of earth, rain of frogs	6, 7, 8, 9	1
+healing aura	6, 7, 8	2
+healing aura	9	1
+firewall, wall of spikes	6, 7, 8	2
+firewall, wall of spikes	9	1
+wailing wall	6, 7, 8, 9	1
+fence	7	2
+fence	8, 9	1
+vinewall	7, 8, 9	2
+rain of fire, plague	7, 8, 9	2
+bombardment	7	3
+bombardment	8, 9	2
+charm, meanstalks, bovine intervention, bore, blind rage, volcano, intestinal vaporization, death	8, 9	3
+cloudkill	8	3
+cloudkill	9	2
+tornado	8, 9	2
+necryl, scarab, tickferno	2	1
+necryl, scarab, tickferno	3, 4, 5, 6, 7, 8, 9	0
+vortick	2, 3, 4, 5, 6, 7, 8, 9	0
+basilisk	2, 3	1
+basilisk	4, 5, 6, 7, 8, 9	0
+firefist, troll, blight	3, 4, 5, 6	1
+firefist, troll, blight	7, 8, 9	0
+taurock	3, 4, 5, 6, 7	1
+taurock	8, 9	0
+squall	3	1
+squall	4, 5, 6, 7, 8, 9	0
+storm giant	4, 5, 6, 7	1
+storm giant	8, 9	0
+boulderdash	6, 7	2
+boulderdash	8, 9	1
+bombard	6, 7, 8, 9	1
+yeti	7, 8, 9	1
+ent	7, 8	2
+ent	9	1
+jabberocky	7, 8, 9	2
+warmonger, styx	7, 8	2
+warmonger, styx	9	1
+dragon, rhinok, phoenix, hellmouth, silverback	9	2
+Hachimen
+spell	level	cycles
+guardian	1, 2, 3, 4	1
+guardian	5, 6, 7, 8, 9	0
+teleport	1, 2, 3, 4, 5	1
+teleport	6, 7, 8, 9	0
+ethereal form, skin of stone, fireform, protective swarm	2, 3, 4, 5	1
+ethereal form, skin of stone, fireform, protective swarm	6, 7, 8, 9	0
+air shield	2	1
+air shield	3, 4, 5, 6, 7, 8, 9	0
+slime, rings of fire, grasping vines	3, 4, 5, 6, 7	1
+slime, rings of fire, grasping vines	8, 9	0
+freeze	3	1
+freeze	4, 5, 6, 7, 8, 9	0
+dragonfire	4	2
+dragonfire	5, 6, 7, 8, 9	1
+demonic rift, halo of earth, rain of frogs	5	2
+demonic rift, halo of earth, rain of frogs	6, 7, 8, 9	1
+healing aura	6, 7, 8	2
+healing aura	9	1
+firewall, wall of spikes	6, 7, 8	2
+firewall, wall of spikes	9	1
+wailing wall	6, 7, 8, 9	1
+fence	7	2
+fence	8, 9	1
+vinewall	7, 8, 9	2
+rain of fire, plague	7, 8, 9	2
+bombardment	7	3
+bombardment	8, 9	2
+charm, meanstalks, bovine intervention, bore, blind rage, volcano, intestinal vaporization, death	8, 9	3
+cloudkill	8	3
+cloudkill	9	2
+tornado	8, 9	2
+necryl, scarab, tickferno	2	1
+necryl, scarab, tickferno	3, 4, 5, 6, 7, 8, 9	0
+vortick	2, 3, 4, 5, 6, 7, 8, 9	0
+basilisk	2, 3	1
+basilisk	4, 5, 6, 7, 8, 9	0
+firefist, troll, blight	3, 4, 5, 6	1
+firefist, troll, blight	7, 8, 9	0
+taurock	3, 4, 5, 6, 7	1
+taurock	8, 9	0
+squall	3	1
+squall	4, 5, 6, 7, 8, 9	0
+storm giant	4, 5, 6, 7	1
+storm giant	8, 9	0
+boulderdash	6, 7	2
+boulderdash	8, 9	1
+bombard	6, 7, 8, 9	1
+yeti	7, 8, 9	1
+ent	7, 8	2
+ent	9	1
+jabberocky	7, 8, 9	2
+warmonger, styx	7, 8	2
+warmonger, styx	9	1
+dragon, rhinok, phoenix, hellmouth, silverback	9	2
+Marduk
+spell	level	cycles
+guardian	1, 2, 3, 4, 5	1
+guardian	6, 7, 8, 9	0
+teleport	1, 2, 3, 4, 5	1
+teleport	6, 7, 8, 9	0
+ethereal form, skin of stone, fireform, protective swarm	2, 3, 4, 5	1
+ethereal form, skin of stone, fireform, protective swarm	6, 7, 8, 9	0
+air shield	2, 3	1
+air shield	4, 5, 6, 7, 8, 9	0
+slime, rings of fire, grasping vines	3, 4, 5, 6, 7	1
+slime, rings of fire, grasping vines	8, 9	0
+freeze	3, 4	1
+freeze	5, 6, 7, 8, 9	0
+dragonfire	4, 5, 6, 7, 8, 9	1
+demonic rift, halo of earth, rain of frogs	5, 6, 7, 8, 9	1
+healing aura	6, 7	2
+healing aura	8, 9	1
+firewall, wall of spikes	6, 7	2
+firewall, wall of spikes	8, 9	1
+wailing wall	6, 7, 8, 9	1
+fence	7, 8, 9	1
+vinewall	7, 8, 9	2
+rain of fire, plague	7, 8, 9	2
+bombardment	7, 8, 9	2
+meanstalks, bovine intervention, bore, blind rage, volcano, intestinal vaporization, death, cloudkill, tornado	8, 9	2
+charm	8, 9	3
+necryl, scarab, tickferno	2	1
+necryl, scarab, tickferno	3, 4, 5, 6, 7, 8, 9	0
+vortick	2, 3, 4, 5, 6, 7, 8, 9	0
+basilisk	2, 3	1
+basilisk	4, 5, 6, 7, 8, 9	0
+firefist, troll, blight	3, 4, 5, 6	1
+firefist, troll, blight	7, 8, 9	0
+taurock	3, 4, 5, 6, 7	1
+taurock	8, 9	0
+squall	3	1
+squall	4, 5, 6, 7, 8, 9	0
+storm giant	4, 5, 6, 7	1
+storm giant	8, 9	0
+boulderdash	6	2
+boulderdash	7, 8, 9	1
+bombard	6, 7, 8, 9	1
+yeti	7, 8, 9	1
+ent	7	2
+ent	8, 9	1
+jabberocky	7, 8	2
+jabberocky	9	1
+warmonger, styx	7	2
+warmonger, styx	8, 9	1
+dragon, rhinok, phoenix, hellmouth, silverback	9	2
+Mithras
+spell	level	cycles
+guardian	1, 2, 3, 4	1
+guardian	5, 6, 7, 8, 9	0
+teleport	1, 2, 3, 4, 5	1
+teleport	6, 7, 8, 9	0
+ethereal form, skin of stone, fireform, protective swarm	2, 3, 4, 5	1
+ethereal form, skin of stone, fireform, protective swarm	6, 7, 8, 9	0
+air shield	2	1
+air shield	3, 4, 5, 6, 7, 8, 9	0
+slime, rings of fire, grasping vines	3, 4, 5, 6, 7	1
+slime, rings of fire, grasping vines	8, 9	0
+freeze	3	1
+freeze	4, 5, 6, 7, 8, 9	0
+dragonfire	4	2
+dragonfire	5, 6, 7, 8, 9	1
+demonic rift, halo of earth, rain of frogs	5	2
+demonic rift, halo of earth, rain of frogs	6, 7, 8, 9	1
+healing aura	6, 7, 8	2
+healing aura	9	1
+firewall, wall of spikes	6, 7, 8	2
+firewall, wall of spikes	9	1
+wailing wall	6, 7, 8, 9	1
+fence	7	2
+fence	8, 9	1
+vinewall	7, 8, 9	2
+rain of fire, plague	7, 8, 9	2
+bombardment	7	3
+bombardment	8, 9	2
+charm, meanstalks, bovine intervention, bore, blind rage, volcano, intestinal vaporization, death	8, 9	3
+cloudkill	8	3
+cloudkill	9	2
+tornado	8, 9	2
+necryl, scarab, tickferno	2	1
+necryl, scarab, tickferno	3, 4, 5, 6, 7, 8, 9	0
+vortick	2, 3, 4, 5, 6, 7, 8, 9	0
+basilisk	2, 3	1
+basilisk	4, 5, 6, 7, 8, 9	0
+firefist, troll, blight	3, 4, 5, 6	1
+firefist, troll, blight	7, 8, 9	0
+taurock	3, 4, 5, 6, 7	1
+taurock	8, 9	0
+squall	3	1
+squall	4, 5, 6, 7, 8, 9	0
+storm giant	4, 5, 6, 7	1
+storm giant	8, 9	0
+boulderdash	6, 7	2
+boulderdash	8, 9	1
+bombard	6, 7, 8, 9	1
+yeti	7, 8, 9	1
+ent	7, 8	2
+ent	9	1
+jabberocky	7, 8, 9	2
+warmonger, styx	7, 8	2
+warmonger, styx	9	1
+dragon, rhinok, phoenix, hellmouth, silverback	9	2
+Seerix
+spell	level	cycles
+guardian	1, 2, 3, 4	1
+guardian	5, 6, 7, 8, 9	0
+teleport	1, 2, 3, 4, 5	1
+teleport	6, 7, 8, 9	0
+ethereal form, skin of stone, fireform, protective swarm	2, 3, 4, 5	1
+ethereal form, skin of stone, fireform, protective swarm	6, 7, 8, 9	0
+air shield	2	1
+air shield	3, 4, 5, 6, 7, 8, 9	0
+slime, rings of fire, grasping vines	3, 4, 5, 6, 7	1
+slime, rings of fire, grasping vines	8, 9	0
+freeze	3	1
+freeze	4, 5, 6, 7, 8, 9	0
+dragonfire	4	2
+dragonfire	5, 6, 7, 8, 9	1
+demonic rift, halo of earth, rain of frogs	5	2
+demonic rift, halo of earth, rain of frogs	6, 7, 8, 9	1
+healing aura	6, 7, 8	2
+healing aura	9	1
+firewall, wall of spikes	6, 7, 8	2
+firewall, wall of spikes	9	1
+wailing wall	6, 7, 8, 9	1
+fence	7	2
+fence	8, 9	1
+vinewall	7, 8, 9	2
+rain of fire, plague	7, 8, 9	2
+bombardment	7	3
+bombardment	8, 9	2
+charm, meanstalks, bovine intervention, bore, blind rage, volcano, intestinal vaporization, death	8, 9	3
+cloudkill	8	3
+cloudkill	9	2
+tornado	8, 9	2
+necryl, scarab, tickferno	2	1
+necryl, scarab, tickferno	3, 4, 5, 6, 7, 8, 9	0
+vortick	2, 3, 4, 5, 6, 7, 8, 9	0
+basilisk	2, 3	1
+basilisk	4, 5, 6, 7, 8, 9	0
+firefist, troll, blight	3, 4, 5, 6	1
+firefist, troll, blight	7, 8, 9	0
+taurock	3, 4, 5, 6, 7	1
+taurock	8, 9	0
+squall	3	1
+squall	4, 5, 6, 7, 8, 9	0
+storm giant	4, 5, 6, 7	1
+storm giant	8, 9	0
+boulderdash	6, 7	2
+boulderdash	8, 9	1
+bombard	6, 7, 8, 9	1
+yeti	7, 8, 9	1
+ent	7, 8	2
+ent	9	1
+jabberocky	7, 8, 9	2
+warmonger, styx	7, 8	2
+warmonger, styx	9	1
+dragon, rhinok, phoenix, hellmouth, silverback	9	2
+Seerix
+spell	level	cycles
+guardian	1, 2, 3, 4	1
+guardian	5, 6, 7, 8, 9	0
+teleport	1, 2, 3, 4, 5	1
+teleport	6, 7, 8, 9	0
+ethereal form, skin of stone, fireform, protective swarm	2, 3, 4, 5	1
+ethereal form, skin of stone, fireform, protective swarm	6, 7, 8, 9	0
+air shield	2	1
+air shield	3, 4, 5, 6, 7, 8, 9	0
+slime, rings of fire, grasping vines	3, 4, 5, 6, 7	1
+slime, rings of fire, grasping vines	8, 9	0
+freeze	3	1
+freeze	4, 5, 6, 7, 8, 9	0
+dragonfire	4	2
+dragonfire	5, 6, 7, 8, 9	1
+demonic rift, halo of earth, rain of frogs	5	2
+demonic rift, halo of earth, rain of frogs	6, 7, 8, 9	1
+healing aura	6, 7, 8	2
+healing aura	9	1
+firewall, wall of spikes	6, 7, 8	2
+firewall, wall of spikes	9	1
+wailing wall	6, 7, 8, 9	1
+fence	7	2
+fence	8, 9	1
+vinewall	7, 8, 9	2
+rain of fire, plague	7, 8, 9	2
+bombardment	7	3
+bombardment	8, 9	2
+charm, meanstalks, bovine intervention, bore, blind rage, volcano, intestinal vaporization, death	8, 9	3
+cloudkill	8	3
+cloudkill	9	2
+tornado	8, 9	2
+necryl, scarab, tickferno	2	1
+necryl, scarab, tickferno	3, 4, 5, 6, 7, 8, 9	0
+vortick	2, 3, 4, 5, 6, 7, 8, 9	0
+basilisk	2, 3	1
+basilisk	4, 5, 6, 7, 8, 9	0
+firefist, troll, blight	3, 4, 5, 6	1
+firefist, troll, blight	7, 8, 9	0
+taurock	3, 4, 5, 6, 7	1
+taurock	8, 9	0
+squall	3	1
+squall	4, 5, 6, 7, 8, 9	0
+storm giant	4, 5, 6, 7	1
+storm giant	8, 9	0
+boulderdash	6, 7	2
+boulderdash	8, 9	1
+bombard	6, 7, 8, 9	1
+yeti	7, 8, 9	1
+ent	7, 8	2
+ent	9	1
+jabberocky	7, 8, 9	2
+warmonger, styx	7, 8	2
+warmonger, styx	9	1
+dragon, rhinok, phoenix, hellmouth, silverback	9	2
+Shakti
+spell	level	cycles
+manalith	3, 4, 5	3
+manalith	6, 7, 8, 9	2
+guardian	1, 2, 3	1
+guardian	4, 5, 6, 7, 8, 9	0
+teleport	1, 2, 3, 4	1
+teleport	5, 6, 7, 8, 9	0
+ethereal form, skin of stone, fireform, protective swarm	2, 3, 4	1
+ethereal form, skin of stone, fireform, protective swarm	5, 6, 7, 8, 9	0
+air shield	2, 3, 4, 5, 6, 7, 8, 9	0
+slime, rings of fire, grasping vines	3, 4, 5, 6	1
+slime, rings of fire, grasping vines	7, 8, 9	0
+freeze	3, 4, 5, 6, 7, 8, 9	0
+dragonfire, chain lightning	4, 5, 6, 7, 8, 9	1
+demonic rift, halo of earth, rain of frogs, explosion	5, 6, 7, 8, 9	1
+firewall, wall of spikes, wailing wall, healing aura	6, 7, 8, 9	1
+fence	7, 8, 9	1
+vinewall, rain of fire, plague, bombardment	7	2
+vinewall, rain of fire, plague, bombardment	8, 9	1
+charm, meanstalks, bovine intervention, bore, blind rage, volcano, intestinal vaporization, death	8, 9	2
+cloudkill, tornado	8	2
+cloudkill, tornado	9	1
+necryl, scarab, tickferno, vortick	2, 3, 4, 5, 6, 7, 8, 9	0
+basilisk	2	1
+basilisk	3, 4, 5, 6, 7, 8, 9	0
+firefist, troll, blight	3, 4, 5	1
+firefist, troll, blight	6, 7, 8, 9	0
+taurock	3, 4, 5, 6	1
+taurock	7, 8, 9	0
+squall	3, 4, 5, 6, 7, 8, 9	0
+storm giant	4, 5, 6	1
+storm giant	7, 8, 9	0
+netherfiend	4, 5, 6, 7, 8	1
+netherfiend	9	0
+gnome, pyromaniac	4, 5, 6, 7, 8	1
+gnome, pyromaniac	9	0
+pyrodactyl, ikarus, gremlin, deadeye	5, 6, 7, 8, 9	1
+seraph	5, 6, 7, 8	1
+seraph	9	0
+boulderdash, bombard, mutant, abomination, flurry	6, 7, 8, 9	1
+yeti, ent, jabberocky, warmonger, styx	7, 8, 9	1
+dragon, rhinok, phoenix, hellmouth, silverback	9	1
+The Ragman
+spell	level	cycles
+guardian	1, 2, 3, 4	1
+guardian	5, 6, 7, 8, 9	0
+teleport	1, 2, 3, 4, 5	1
+teleport	6, 7, 8, 9	0
+ethereal form, skin of stone, fireform, protective swarm	2, 3, 4, 5	1
+ethereal form, skin of stone, fireform, protective swarm	6, 7, 8, 9	0
+air shield	2	1
+air shield	3, 4, 5, 6, 7, 8, 9	0
+slime, rings of fire, grasping vines	3, 4, 5, 6, 7	1
+slime, rings of fire, grasping vines	8, 9	0
+freeze	3	1
+freeze	4, 5, 6, 7, 8, 9	0
+dragonfire	4	2
+dragonfire	5, 6, 7, 8, 9	1
+demonic rift, halo of earth, rain of frogs	5	2
+demonic rift, halo of earth, rain of frogs	6, 7, 8, 9	1
+healing aura	6, 7, 8	2
+healing aura	9	1
+firewall, wall of spikes	6, 7, 8	2
+firewall, wall of spikes	9	1
+wailing wall	6, 7, 8, 9	1
+fence	7	2
+fence	8, 9	1
+vinewall	7, 8, 9	2
+rain of fire, plague	7, 8, 9	2
+bombardment	7	3
+bombardment	8, 9	2
+charm, meanstalks, bovine intervention, bore, blind rage, volcano, intestinal vaporization, death	8, 9	3
+cloudkill	8	3
+cloudkill	9	2
+tornado	8, 9	2
+necryl, scarab, tickferno	2	1
+necryl, scarab, tickferno	3, 4, 5, 6, 7, 8, 9	0
+vortick	2, 3, 4, 5, 6, 7, 8, 9	0
+basilisk	2, 3	1
+basilisk	4, 5, 6, 7, 8, 9	0
+firefist, troll, blight	3, 4, 5, 6	1
+firefist, troll, blight	7, 8, 9	0
+taurock	3, 4, 5, 6, 7	1
+taurock	8, 9	0
+squall	3	1
+squall	4, 5, 6, 7, 8, 9	0
+storm giant	4, 5, 6, 7	1
+storm giant	8, 9	0
+boulderdash	6, 7	2
+boulderdash	8, 9	1
+bombard	6, 7, 8, 9	1
+yeti	7, 8, 9	1
+ent	7, 8	2
+ent	9	1
+jabberocky	7, 8, 9	2
+warmonger, styx	7, 8	2
+warmonger, styx	9	1
+dragon, rhinok, phoenix, hellmouth, silverback	9	2
+Yogo
+spell	level	cycles
+guardian	1, 2, 3	1
+guardian	4, 5, 6, 7, 8, 9	0
+teleport	1, 2, 3, 4	1
+teleport	5, 6, 7, 8, 9	0
+ethereal form, skin of stone, fireform, protective swarm	2, 3	1
+ethereal form, skin of stone, fireform, protective swarm	4, 5, 6, 7, 8, 9	0
+air shield	2, 3, 4, 5, 6, 7, 8, 9	0
+slime, rings of fire, grasping vines	3, 4, 5, 6	1
+slime, rings of fire, grasping vines	7, 8, 9	0
+freeze	3, 4, 5, 6, 7, 8, 9	0
+dragonfire	4, 5, 6	2
+dragonfire	7, 8, 9	1
+chain lightning	4	2
+chain lightning	5, 6, 7, 8, 9	1
+explosion	5	2
+explosion	6, 7, 8, 9	1
+demonic rift, halo of earth, rain of frogs	5, 6, 7	2
+demonic rift, halo of earth, rain of frogs	8, 9	1
+healing aura	6, 7, 8, 9	2
+firewall, wall of spikes	6, 7, 8, 9	2
+wailing wall	6	2
+wailing wall	7, 8, 9	1
+fence	7, 8, 9	2
+vinewall	7, 8	3
+vinewall	9	2
+rain of fire, plague	7, 8	3
+rain of fire, plague	9	2
+bombardment	7, 8, 9	3
+charm, meanstalks, bovine intervention, bore, blind rage, volcano, intestinal vaporization, death	8	4
+charm, meanstalks, bovine intervention, bore, blind rage, volcano, intestinal vaporization, death	9	3
+cloudkill, tornado	8, 9	3
+necryl, scarab, tickferno	2, 3	1
+necryl, scarab, tickferno	4, 5, 6, 7, 8, 9	0
+vortick	2, 3, 4, 5, 6, 7, 8, 9	0
+basilisk	2, 3, 4, 5	1
+basilisk	6, 7, 8, 9	0
+firefist, troll, blight	3, 4, 5, 6, 7	1
+firefist, troll, blight	8, 9	0
+taurock	3, 4, 5, 6, 7, 8, 9	1
+squall	3, 4	1
+squall	5, 6, 7, 8, 9	0
+storm giant	4, 5, 6, 7, 8	1
+storm giant	9	0
+ikarus	5, 6	2
+ikarus	7, 8, 9	1
+boulderdash	6, 7, 8	2
+boulderdash	9	1
+mutant, abomination, bombard	6, 7	2
+mutant, abomination, bombard	8, 9	1
+yeti	7, 8, 9	1
+warmonger, styx, jabberocky, ent	7, 8, 9	2
+dragon, rhinok, phoenix, hellmouth, silverback	9	3
