@@ -1396,16 +1396,16 @@ final class Network(B){
 		return activePlayerIds.mapf(closure!index(this));
 	}
 	size_t numActivePlayers(){ return activePlayerIds.walkLength; }
-	//auto requiredOrActivePlayerIds(){ return iota(players.length).filter!(i=>players[i].requiredToControlState||players[i].isControllingState); }
-	auto requiredOrActivePlayerIds(){ return iota(players.length).filterf(closure!((i,self)=>self.players[i].requiredToControlState||self.players[i].isControllingState)(this)); }
+	//auto requiredOrActivePlayerIds(){ return iota(players.length).filter!(i=>i==host||players[i].requiredToControlState||players[i].isControllingState); }
+	auto requiredOrActivePlayerIds(){ return iota(players.length).filterf(closure!((i,self)=>i==host||self.players[i].requiredToControlState||self.players[i].isControllingState)(this)); }
 	auto requiredOrActivePlayers(){
 		//ref Player index(size_t i){ return players[i]; }
 		//return requiredOrActivePlayerIds.map!index;
 		static ref Player index(size_t i,typeof(this) self){ return self.players.data[i]; }
 		return requiredOrActivePlayerIds.mapf(closure!index(this));
 	}
-	//auto requiredAndActivePlayerIds(){ return iota(players.length).filter!(i=>players[i].requiredToControlState&&players[i].isControllingState); }
-	auto requiredAndActivePlayerIds(){ return iota(players.length).filterf(closure!((i,self)=>self.players[i].requiredToControlState&&self.players[i].isControllingState)(this)); }
+	//auto requiredAndActivePlayerIds(){ return iota(players.length).filter!(i=>i==host||players[i].requiredToControlState&&players[i].isControllingState); }
+	auto requiredAndActivePlayerIds(){ return iota(players.length).filterf(closure!((i,self)=>i==host||self.players[i].requiredToControlState&&self.players[i].isControllingState)(this)); }
 	auto requiredAndActivePlayers(){
 		//ref Player index(size_t i){ return players[i]; }
 		//return requiredAndActivePlayerIds.map!index;
