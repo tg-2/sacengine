@@ -19,7 +19,7 @@ maps/(6) TM-Sunhair.scp
 maps/(6) TM-Red Hot v1.scp
 maps/(6) TM-Urknall.scp
 maps/(6) WM-Creeping Place.scp
-maps/(6) EM-Andes.scp
+maps/(6) EM-Andes.scp --level=7 --souls=18
 maps/(6) EM-Shadow & Light.scp
 maps/(6) After Life3.scp
 maps/(6) EM-Stinking Watercourse.scp
