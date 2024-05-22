@@ -198,7 +198,7 @@ int applySettings(string[] args,ref Options options){
 			options.wizard=tag;
 		}else if(opt.startsWith("--god=")){
 			try{
-				options.god=to!God(opt["--god=".length..$]);
+				options.god=to!God(toLower(opt["--god=".length..$]));
 			}catch(Exception e){
 				stderr.writefln!"error: unknown god '%s'"(opt["--god=".length..$]);
 				return 1;
