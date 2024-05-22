@@ -2447,18 +2447,18 @@ final class Network(B){
 	void update(Controller!B controller){
 		acceptNewConnections();
 		dumpPlayerInfo();
-		foreach(i,ref player;players.data){
-			if(!player.connection) continue;
-			if(!player.alive){
+		for(int i=0;i<players.length;i++){
+			if(!players[i].connection) continue;
+			if(!players[i].alive){
 				dropPlayer(cast(int)i,controller);
 				dumpPlayerInfo();
 				continue;
 			}
-			while(player.ready){
-				auto packet=player.receive;
+			while(players[i].ready){
+				auto packet=players[i].receive;
 				if(isHeaderType(packet.type)){
-					assert(player.rawReady);
-					player.receiveRaw((scope ubyte[] rawData){ handlePacket(cast(int)i,packet,rawData,controller); });
+					assert(players[i].rawReady);
+					players[i].receiveRaw((scope ubyte[] rawData){ handlePacket(cast(int)i,packet,rawData,controller); });
 				}else handlePacket(cast(int)i,packet,[],controller);
 				dumpPlayerInfo();
 				confirmConnectivity(cast(int)i);
