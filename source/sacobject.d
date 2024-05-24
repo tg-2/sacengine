@@ -2700,6 +2700,74 @@ struct SacSpike(B){
 	}
 }
 
+B.BoneMesh makeWallMesh(B)(int numSegments,bool flip=false,int nU=1,int nV=1,int u=0,int v=0){
+	enum segmentLength=1.0f;
+	enum size=0.5f;
+	auto mesh=B.makeBoneMesh(2*3*2*numSegments,2*2*2*numSegments);
+	immutable Vector3f[3][2] offsets=[
+		[Vector3f(-size,0.0f,0.0f),Vector3f(-0.4f*size,0.0f,0.4f),Vector3f(0.0f,0.0f,1.0f)],
+		[Vector3f( size,0.0f,0.0f),Vector3f( 0.4f*size,0.0f,0.4f),Vector3f(0.0f,0.0f,1.0f)],
+	];
+	int numFaces=0;
+	void addFace(bool swap,uint[3] face...){
+		mesh.indices[numFaces++]=face;
+		if(swap) .swap(mesh.indices[numFaces-1][1],mesh.indices[numFaces-1][2]);
+	}
+	void addQuad(bool swap,uint[4] face...){
+		addFace(swap,face[0],face[1],face[2]);
+		addFace(swap,face[0],face[2],face[3]);
+	}
+	foreach(i;0..numSegments){
+		foreach(s;0..2){
+			foreach(j;0..3){
+				foreach(k;0..2){
+					int vertex=2*3*2*i+3*2*s+2*j+k;
+					auto center=i+k;
+					auto position=offsets[s][j];
+					foreach(l;0..3){
+						mesh.vertices[l][vertex]=position;
+						mesh.boneIndices[vertex][l]=center;
+					}
+					mesh.weights[vertex]=Vector3f(1.0f,0.0f,0.0f);
+					float[3] texOffsets=[1.0f-0.5f/(256/nV),0.6f,0.5f/(256/nV)];
+					mesh.texcoords[vertex]=Vector2f(1.0f/nU*(u+((flip?i&1:0)^k?1.0f-0.5f/(256/nU):0.5f/(256/nU))),
+					                                1.0f/nV*(v+texOffsets[j]));
+				}
+			}
+			int b=2*3*2*i+3*2*s;
+			foreach(j;0..2) addQuad(!!s,[b+2*j,b+2*(j+1),b+2*(j+1)+1,b+2*j+1]);
+		}
+	}
+	assert(numFaces==2*2*2*numSegments);
+	mesh.normals[]=Vector3f(0.0f, 0.0f, 0.0f);
+	B.finalizeBoneMesh(mesh);
+	return mesh;
+}
+
+B.BoneMesh[] makeWallMeshes(B)(int numSegments,int nU,int nV,bool flip=false){
+	auto meshes=new B.BoneMesh[](nU*nV);
+	foreach(t,ref mesh;meshes){
+		int u=cast(int)t%nU,v=cast(int)t/nU;
+		mesh=makeWallMesh!B(numSegments,flip,nU,nV,u,v);
+	}
+	return meshes;
+}
+
+struct SacFirewall(B){
+	B.Texture texture;
+	B.Material material;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pyro.FLDR/txtr.FLDR/fwal.TXTR"));
+	}
+	B.BoneMesh[] frames;
+	enum numFrames=16*2*updateAnimFactor;
+	auto getFrame(int i){ return frames[i/(2*updateAnimFactor)]; }
+	enum numSegments=16;
+	static B.BoneMesh[] createMeshes(){
+		enum nU=4,nV=4;
+		return makeWallMeshes!B(numSegments,nU,nV,true);
+	}
+}
 
 struct SacBrainiacEffect(B){
 	B.Texture texture;

@@ -502,6 +502,17 @@ struct Renderer(B){
 		return SacSpike!B(texture,mat,mesh);
 	}
 	SacSpike!B spike;
+	SacFirewall!B createFirewall(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessBoneMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Additive;
+		mat.energy=15.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacFirewall!B(texture,mat,frames);
+	}
+	SacFirewall!B firewall;
 	SacBrainiacEffect!B brainiacEffect;
 	SacBrainiacEffect!B createBrainiacEffect(){
 		auto texture=typeof(return).loadTexture();
@@ -808,6 +819,7 @@ struct Renderer(B){
 		airShieldEffect=createAirShieldEffect();
 		freeze=createFreeze();
 		spike=createSpike();
+		firewall=createFirewall();
 		brainiacEffect=createBrainiacEffect();
 		shrikeEffect=createShrikeEffect();
 		arrow=createArrow();
@@ -2160,6 +2172,41 @@ struct Renderer(B){
 						mesh.render(rc);
 					}
 					foreach(ref spike;objects.spikes) renderSpike(spike.currentScale,spike.position,spike.direction);
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.firewalls.length||objects.firewallCastings.length)){
+					auto material=self.firewall.material;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
+					void renderFirewall(ref Firewall!B firewall){
+						auto direction=firewall.direction;
+						auto rotation=rotationBetween(Vector3f(0.0f,1.0f,0.0f),Vector3f(direction.x,direction.y,0.0f));
+						B.shadelessBoneMaterialBackend.setTransformation(Vector3f(0.0f,0.0f,0.0f),Quaternionf.identity(),rc);
+						//auto alpha=pi!float*frame/float(totalFrames);
+						//auto energy=0.375f+14.625f*(0.5f+0.25f*cos(7.0f*alpha)+0.25f*sin(11.0f*alpha));
+						//B.shadelessBoneMaterialBackend.setEnergy(energy);
+						auto frame=firewall.frame;
+						auto mesh=self.firewall.getFrame(frame%self.firewall.numFrames);
+						enum numSegments=self.firewall.numSegments;
+						enum thickness=firewall.wallThickness;
+						auto range=firewall.spell.effectRange;
+						auto left=firewall.left,right=firewall.right;
+						Matrix4x4f[numSegments+1] pose;
+						foreach(k,ref x;pose){
+							auto dist=(range-2.5f)*(float(numSegments)/(numSegments-2)*2.0f)*(float(k)/numSegments-0.5f);
+							dist=max(left,dist);
+							dist=min(right,dist);
+							auto leftScale=0.2f*(dist-left);
+							auto rightScale=0.2f*(right-dist);
+							auto scale=min(leftScale,rightScale,1.0f);
+							x=Transformation(rotation,firewall.get(dist,state)).getMatrix4f*scaleMatrix(scale*Vector3f(thickness,0.0f,firewall.top));
+						}
+						B.shadelessBoneMaterialBackend.setPose(pose);
+						mesh.render(rc);
+					}
+					foreach(j;0..objects.firewallCastings.length)
+						renderFirewall(objects.firewallCastings[j].firewall);
+					foreach(j;0..objects.firewalls.length)
+						renderFirewall(objects.firewalls[j]);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.brainiacEffects.length){
 					auto material=self.brainiacEffect.material;

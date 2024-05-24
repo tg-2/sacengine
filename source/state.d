@@ -3094,9 +3094,22 @@ struct Firewall(B){
 	Vector2f direction;
 	SacSpell!B spell;
 	float left=0.0f,right=0.0f;
+	bool leftStopped=false, rightStopped=false;
 	float top=0.0f;
 	int frame=0;
 	FirewallStatus status;
+
+	Vector3f get(float t,ObjectState!B state){
+		auto position=center+t*Vector3f(direction.x,direction.y,0.0f);
+		position.z=state.getGroundHeight(position);
+		return position;
+	}
+
+	enum segmentLength=7.5f;
+	enum wallHeight=7.5f;
+	enum wallThickness=3.0f;
+	enum growSpeed=wallHeight/(2*updateFPS);
+	enum shrinkSpeed=wallHeight/updateFPS;
 }
 
 struct Spike(B){
@@ -8465,10 +8478,14 @@ bool healingAura(B)(int side,int target,SacSpell!B spell,ObjectState!B state){
 
 bool castFirewall(B)(int side,Vector3f position,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
 	auto duration=cast(int)ceil(updateFPS*spell.duration);
-	auto casterPosition=state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(manaDrain.wizard);
+	auto casterPositionFacing=state.movingObjectById!((ref obj)=>tuple(obj.position,obj.creatureState.facing),()=>Tuple!(Vector3f,float).init)(manaDrain.wizard);
+	auto casterPosition=casterPositionFacing[0],casterFacing=casterPositionFacing[1];
 	if(isNaN(casterPosition.x)) return false;
+	position.z=state.getGroundHeight(position);
 	auto casterDirection=position.xy-casterPosition.xy;
 	auto direction=Vector2f(-casterDirection.y,casterDirection.x);
+	if(direction.lengthsqr>0.001^^2) direction=direction.normalized;
+	else direction=rotate(facingQuaternion(casterFacing),Vector3f(0.0f,1.0f,0.0f));
 	state.addEffect(FirewallCasting!B(manaDrain,Firewall!B(manaDrain.wizard,side,position,direction,spell)));
 	return true;
 }
@@ -16079,7 +16096,7 @@ bool updateFirewallCasting(B)(ref FirewallCasting!B firewallCast,ObjectState!B s
 				return true;
 			case CastingStatus.interrupted:
 				firewall.status=FirewallStatus.shrinking;
-				.firewall(firewall,state); // TODO: interrupt
+				.firewall(firewall,state);
 				return false;
 			case CastingStatus.finished:
 				.firewall(firewall,state);
@@ -16089,8 +16106,38 @@ bool updateFirewallCasting(B)(ref FirewallCasting!B firewallCast,ObjectState!B s
 }
 bool updateFirewall(B)(ref Firewall!B firewall,ObjectState!B state){
 	with(firewall){
-		//writeln(spell.range," ",spell.effectRange);
-		return ++frame<FirewallCasting!B.castingLimit+spell.duration*updateFPS;
+		final switch(status){
+			case FirewallStatus.growing:
+				top=min(top+growSpeed,wallHeight);
+				auto expansionSpeed=spell.effectRange/FirewallCasting!B.castingLimit;
+				bool check(Vector3f position){
+					if((position-center).lengthsqr>spell.effectRange^^2) return false;
+					// TODO: hit buildings
+					return state.isOnGround(position);
+				}
+				if(!leftStopped){
+					auto cand=left-expansionSpeed;
+					if(check(get(cand,state))) left=cand;
+					else leftStopped=true;
+				}
+				if(!rightStopped){
+					auto cand=right+expansionSpeed;
+					if(check(get(cand,state))) right=cand;
+					else rightStopped=true;
+				}
+				if(leftStopped&&rightStopped&&top==wallHeight)
+					status=FirewallStatus.stationary;
+				break;
+			case FirewallStatus.stationary:
+				break;
+			case FirewallStatus.shrinking:
+				top=max(top-shrinkSpeed,0.0f);
+				if(top==0.0f) return false;
+				break;
+		}
+		if(++frame>=FirewallCasting!B.castingLimit+spell.duration*updateFPS)
+			status=FirewallStatus.shrinking;
+		return true;
 	}
 }
 
