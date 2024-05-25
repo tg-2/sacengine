@@ -3102,7 +3102,9 @@ struct Firewall(B){
 
 	Vector3f get(float t,ObjectState!B state){
 		auto position=center+t*Vector3f(direction.x,direction.y,0.0f);
-		position.z=state.getGroundHeight(position);
+		auto orthogonal=Vector3f(direction.y,-direction.x,0.0f);
+		position.z=min(state.getGroundHeight(position-0.5f*wallThickness*orthogonal),
+		               state.getGroundHeight(position+0.5f*wallThickness*orthogonal));
 		return position;
 	}
 	float scale(float t){
