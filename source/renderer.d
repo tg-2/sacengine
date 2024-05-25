@@ -2194,7 +2194,7 @@ struct Renderer(B){
 						foreach(k,ref x;pose){
 							auto t=(range-2.5f)*(float(numSegments)/(numSegments-2)*2.0f)*(float(k)/numSegments-0.5f);
 							auto scale=firewall.scale(t);
-							x=Transformation(rotation,firewall.get(t,state)).getMatrix4f*scaleMatrix(scale*Vector3f(thickness,0.0f,firewall.top));
+							x=Transformation(rotation,firewall.get(t,state)).getMatrix4f*scaleMatrix(scale*Vector3f(thickness,0.0f,firewall.height(t)));
 						}
 						B.shadelessBoneMaterialBackend.setPose(pose);
 						mesh.render(rc);

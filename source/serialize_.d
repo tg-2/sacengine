@@ -538,7 +538,10 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Hea
 void serialize(alias sink,B)(ref FirewallCasting!B firewallCasting){ serializeStruct!sink(firewallCasting); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==FirewallCasting!B)){ deserializeStruct(result,state,data); }
 
-void serialize(alias sink,B)(ref Firewall!B particle){ serializeStruct!sink(particle); }
+void serialize(alias sink,B)(ref Firewall!B.WallTarget target){ serializeStruct!sink(target); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Firewall!B.WallTarget)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref Firewall!B firewall){ serializeStruct!sink(firewall); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Firewall!B)){ deserializeStruct(result,state,data); }
 
 void serialize(alias sink,B)(ref Spike!B spike){ serializeStruct!sink(spike); }

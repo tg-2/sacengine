@@ -3109,6 +3109,31 @@ struct Firewall(B){
 		auto rightScale=0.2f*max(0.0f,right-t);
 		return min(leftScale,rightScale,1.0f);
 	}
+	float height(float t){
+		return top*(1.0f+0.1f*sin(2.0f*pi!float*(0.125f*t-float(frame)/updateFPS)));
+	}
+
+	static struct WallTarget{
+		int id;
+		int firstFrame=-1;
+		int lastFrame=-1;
+	}
+
+	SmallArray!(WallTarget,24) targets;
+	int numTargetFrames(int id,ObjectState!B state){
+		if(!id) return 0;
+		int frame=state.frame;
+		foreach(ref target;targets){
+			if(target.id==id){
+				if(target.lastFrame+1<frame)
+					target.firstFrame=frame;
+				target.lastFrame=frame;
+				return target.lastFrame-target.firstFrame+1;
+			}
+		}
+		targets~=WallTarget(id,frame,frame);
+		return 1;
+	}
 
 	enum segmentLength=7.5f;
 	enum wallHeight=7.5f;
@@ -16108,8 +16133,82 @@ bool updateFirewallCasting(B)(ref FirewallCasting!B firewallCast,ObjectState!B s
 		}
 	}
 }
+
+struct WallPosition{
+	Vector3f center;
+	Vector2f direction;
+	float left,right;
+	float top;
+	float thickness;
+}
+
+bool isInWall(B)(Vector3f[2] hitbox,WallPosition wall,ObjectState!B state){
+	// TODO: more precise check?
+	auto center=boxCenter(hitbox);
+	auto height=state.getHeight(center);
+	if(hitbox[1].z<height||hitbox[1].z>height+wall.top)
+		return false;
+	Vector2f[4] corners=[Vector2f(hitbox[0].x,hitbox[0].y)-wall.center.xy,
+	                     Vector2f(hitbox[0].x,hitbox[1].y)-wall.center.xy,
+	                     Vector2f(hitbox[1].x,hitbox[0].y)-wall.center.xy,
+	                     Vector2f(hitbox[1].x,hitbox[1].y)-wall.center.xy];
+	auto orthogonal=Vector2f(wall.direction.y,-wall.direction.x);
+	auto left=float.infinity,right=-float.infinity;
+	auto front=float.infinity,back=-float.infinity;
+	foreach(corner;corners){
+		auto horz=dot(corner,wall.direction);
+		left=min(left,horz);
+		right=max(right,horz);
+		auto vert=dot(corner,orthogonal);
+		front=min(front,vert);
+		back=max(back,vert);
+	}
+	return !(back<-0.5f*wall.thickness||front>0.5f*wall.thickness)&&
+		!(right<wall.left||left>wall.right);
+}
+
+void wallTargets(alias f,alias filter=None,bool keepNonObstacles=false,B,T...)(WallPosition wall,ObjectState!B state,T args){
+	// TODO: more precise collision query?
+	auto left=wall.center.xy+wall.left*wall.direction;
+	auto right=wall.center.xy+wall.right*wall.direction;
+	Vector3f[2] hitbox=[Vector3f(min(left.x,right.x),min(left.y,right.y),-1.0f/0.0f),
+	                    Vector3f(max(left.x,right.x),max(left.y,right.y), 1.0f/0.0f)];
+	hitbox[0].x-=1.5f*wall.thickness;
+	hitbox[1].x+=1.5f*wall.thickness;
+	hitbox[0].y-=1.5f*wall.thickness;
+	hitbox[1].y+=1.5f*wall.thickness;
+	static void newF(ProximityEntry entry,ObjectState!B state,WallPosition wall,T args){
+		return f(entry,state,args);
+	}
+	static bool newFilter(ProximityEntry entry,ObjectState!B state,WallPosition wall,T args){
+		//if(entry.isStatic) return false;
+		if(!isInWall(entry.hitbox,wall,state)) return false;
+		static if(!is(filter==None))
+			if(!filter(entry,args)) return false;
+		return true;
+	}
+	collisionTargets!(newF,newFilter,false,keepNonObstacles,B,WallPosition,T)(hitbox,state,wall,args);
+}
+
 bool updateFirewall(B)(ref Firewall!B firewall,ObjectState!B state){
 	with(firewall){
+		static void burn(ProximityEntry target,ObjectState!B state,SacSpell!B spell,int attacker,int side,Firewall!B* firewall){
+			state.movingObjectById!((ref obj,attacker,side,state,firewall){
+				float damage=1200.0f/updateFPS;
+				auto targetFrames=firewall.numTargetFrames(obj.id,state);
+				if(targetFrames<2*updateFPS){
+					static assert(updateFPS==60);
+					auto a=1.0f/9.0f,b=59.0f/18.0f;
+					// 400 damage in first second
+					// 800 damage in second second
+					// 1200 damage in every second after
+					damage=a*targetFrames+b;
+				}
+				obj.ignite(damage,attacker,side,state);
+			},(){})(target.id,attacker,side,state,firewall);
+		}
+		auto wall=WallPosition(center,direction,left,right,top,wallThickness);
+		wallTargets!burn(wall,state,firewall.spell,firewall.wizard,firewall.side,&firewall);
 		auto orthogonal=Vector3f(direction.y,-direction.x,0.0f);
 		final switch(status){
 			case FirewallStatus.growing:
@@ -16163,7 +16262,7 @@ bool updateFirewall(B)(ref Firewall!B firewall,ObjectState!B state){
 			if(!state.uniform(0,2)) continue;
 			auto t=state.uniform(left,right);
 			auto wscale=scale(t);
-			auto height=top*wscale;
+			auto height=firewall.height(t)*wscale;
 			auto position=get(t,state)+Vector3f(0.0f,0.0f,state.uniform(0.25f,0.75f)*height)+wallThickness*state.uniform(-0.45f,0.45f)*orthogonal;
 			auto velocity=Vector3f(0.0f,0.0f,(0.8f*height+0.15f*wallHeight)*0.5f*state.uniform(0.6f,2.0f));
 			auto scale=(state.uniform(0,3)?state.uniform(0.8f,2.5f):state.uniform(0.8f,3.75f))*wscale;
