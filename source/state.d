@@ -3103,8 +3103,11 @@ struct Firewall(B){
 	Vector3f get(float t,ObjectState!B state){
 		auto position=center+t*Vector3f(direction.x,direction.y,0.0f);
 		auto orthogonal=Vector3f(direction.y,-direction.x,0.0f);
-		position.z=min(state.getGroundHeight(position-0.5f*wallThickness*orthogonal),
-		               state.getGroundHeight(position+0.5f*wallThickness*orthogonal));
+		position.z=min(
+			state.getHeight(position),
+			state.getHeight(position-0.5f*wallThickness*orthogonal),
+			state.getHeight(position+0.5f*wallThickness*orthogonal),
+		);
 		return position;
 	}
 	float scale(float t){
@@ -16150,7 +16153,7 @@ bool isInWall(B)(Vector3f[2] hitbox,WallPosition wall,ObjectState!B state){
 	// TODO: more precise check?
 	auto center=boxCenter(hitbox);
 	auto height=state.getHeight(center);
-	if(hitbox[1].z<height||hitbox[1].z>height+wall.top)
+	if(hitbox[1].z<height||hitbox[0].z>height+wall.top)
 		return false;
 	Vector2f[4] corners=[Vector2f(hitbox[0].x,hitbox[0].y)-wall.center.xy,
 	                     Vector2f(hitbox[0].x,hitbox[1].y)-wall.center.xy,
