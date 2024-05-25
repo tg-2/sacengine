@@ -16220,8 +16220,14 @@ bool updateFirewall(B)(ref Firewall!B firewall,ObjectState!B state){
 				auto expansionSpeed=spell.effectRange/FirewallCasting!B.castingLimit;
 				bool check(Vector3f position){
 					if((position-center).lengthsqr>spell.effectRange^^2) return false;
-					// TODO: hit buildings
-					return state.isOnGround(position);
+					static void handleCollision(ProximityEntry entry,bool* found,ObjectState!B state){
+						if(state.isValidTarget(entry.id,TargetType.building))
+							*found=true;
+					}
+					Vector3f[2] hitbox=[position,position];
+					bool found=false;
+					state.proximity.collide!handleCollision(hitbox,&found,state);
+					return !found&&state.isOnGround(position);
 				}
 				auto sacParticle=SacParticle!B.get(ParticleType.firy);
 				auto numFrames=sacParticle.numFrames;
