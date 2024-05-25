@@ -2192,13 +2192,9 @@ struct Renderer(B){
 						auto left=firewall.left,right=firewall.right;
 						Matrix4x4f[numSegments+1] pose;
 						foreach(k,ref x;pose){
-							auto dist=(range-2.5f)*(float(numSegments)/(numSegments-2)*2.0f)*(float(k)/numSegments-0.5f);
-							dist=max(left,dist);
-							dist=min(right,dist);
-							auto leftScale=0.2f*(dist-left);
-							auto rightScale=0.2f*(right-dist);
-							auto scale=min(leftScale,rightScale,1.0f);
-							x=Transformation(rotation,firewall.get(dist,state)).getMatrix4f*scaleMatrix(scale*Vector3f(thickness,0.0f,firewall.top));
+							auto t=(range-2.5f)*(float(numSegments)/(numSegments-2)*2.0f)*(float(k)/numSegments-0.5f);
+							auto scale=firewall.scale(t);
+							x=Transformation(rotation,firewall.get(t,state)).getMatrix4f*scaleMatrix(scale*Vector3f(thickness,0.0f,firewall.top));
 						}
 						B.shadelessBoneMaterialBackend.setPose(pose);
 						mesh.render(rc);

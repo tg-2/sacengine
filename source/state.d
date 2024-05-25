@@ -3104,10 +3104,15 @@ struct Firewall(B){
 		position.z=state.getGroundHeight(position);
 		return position;
 	}
+	float scale(float t){
+		auto leftScale=0.2f*max(0.0f,t-left);
+		auto rightScale=0.2f*max(0.0f,right-t);
+		return min(leftScale,rightScale,1.0f);
+	}
 
 	enum segmentLength=7.5f;
 	enum wallHeight=7.5f;
-	enum wallThickness=3.0f;
+	enum wallThickness=5.0f;
 	enum growSpeed=wallHeight/(2*updateFPS);
 	enum shrinkSpeed=wallHeight/updateFPS;
 }
@@ -16092,20 +16097,20 @@ bool updateFirewallCasting(B)(ref FirewallCasting!B firewallCast,ObjectState!B s
 			case CastingStatus.underway:
 				state.movingObjectById!(animateFirewallCasting,(){})(manaDrain.wizard,state);
 				firewall.updateFirewall(state);
-				firewall.frame=min(castingLimit,firewall.frame);
 				return true;
 			case CastingStatus.interrupted:
 				firewall.status=FirewallStatus.shrinking;
-				.firewall(firewall,state);
+				.firewall(move(firewall),state);
 				return false;
 			case CastingStatus.finished:
-				.firewall(firewall,state);
+				.firewall(move(firewall),state);
 				return false;
 		}
 	}
 }
 bool updateFirewall(B)(ref Firewall!B firewall,ObjectState!B state){
 	with(firewall){
+		auto orthogonal=Vector3f(direction.y,-direction.x,0.0f);
 		final switch(status){
 			case FirewallStatus.growing:
 				top=min(top+growSpeed,wallHeight);
@@ -16115,15 +16120,32 @@ bool updateFirewall(B)(ref Firewall!B firewall,ObjectState!B state){
 					// TODO: hit buildings
 					return state.isOnGround(position);
 				}
+				auto sacParticle=SacParticle!B.get(ParticleType.firy);
+				auto numFrames=sacParticle.numFrames;
+				void firyParticle(float t){
+					auto position=get(t,state)+2.0f*state.uniform(-0.45f,0.45f)*Vector3f(direction.x,direction.y,0.0f)+wallThickness*state.uniform(-0.45f,0.45f)*orthogonal;
+					position.z=state.getGroundHeight(position);
+					auto velocity=Vector3f(0.0f,0.0f,0.5f*wallHeight*0.5f*state.uniform(0.6f,2.0f));
+					auto scale=3.5f*(state.uniform(0,3)?state.uniform(1.5f,2.5f):state.uniform(1.8f,3.75f));
+					auto lifetime=2*numFrames;
+					state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,0));
+					// TODO: scar
+				}
 				if(!leftStopped){
 					auto cand=left-expansionSpeed;
-					if(check(get(cand,state))) left=cand;
-					else leftStopped=true;
+					if(check(get(cand,state))){
+						if(!state.uniform(0,120/updateFPS))
+							firyParticle(cand);
+						left=cand;
+					}else leftStopped=true;
 				}
 				if(!rightStopped){
 					auto cand=right+expansionSpeed;
-					if(check(get(cand,state))) right=cand;
-					else rightStopped=true;
+					if(check(get(cand,state))){
+						if(!state.uniform(0,120/updateFPS))
+							firyParticle(cand);
+						right=cand;
+					}else rightStopped=true;
 				}
 				if(leftStopped&&rightStopped&&top==wallHeight)
 					status=FirewallStatus.stationary;
@@ -16134,6 +16156,19 @@ bool updateFirewall(B)(ref Firewall!B firewall,ObjectState!B state){
 				top=max(top-shrinkSpeed,0.0f);
 				if(top==0.0f) return false;
 				break;
+		}
+		auto sacParticle=SacParticle!B.get(ParticleType.firewall);
+		auto numFrames=sacParticle.numFrames;
+		foreach(i;0..120/updateFPS){
+			if(!state.uniform(0,2)) continue;
+			auto t=state.uniform(left,right);
+			auto wscale=scale(t);
+			auto height=top*wscale;
+			auto position=get(t,state)+Vector3f(0.0f,0.0f,state.uniform(0.25f,0.75f)*height)+wallThickness*state.uniform(-0.45f,0.45f)*orthogonal;
+			auto velocity=Vector3f(0.0f,0.0f,(0.8f*height+0.15f*wallHeight)*0.5f*state.uniform(0.6f,2.0f));
+			auto scale=(state.uniform(0,3)?state.uniform(0.8f,2.5f):state.uniform(0.8f,3.75f))*wscale;
+			auto lifetime=numFrames;
+			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,0));
 		}
 		if(++frame>=FirewallCasting!B.castingLimit+spell.duration*updateFPS)
 			status=FirewallStatus.shrinking;
