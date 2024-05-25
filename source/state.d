@@ -3093,6 +3093,7 @@ struct Firewall(B){
 	Vector3f center;
 	Vector2f direction;
 	SacSpell!B spell;
+	int soundTimer;
 	float left=0.0f,right=0.0f;
 	bool leftStopped=false, rightStopped=false;
 	float top=0.0f;
@@ -8516,7 +8517,8 @@ bool castFirewall(B)(int side,Vector3f position,ManaDrain!B manaDrain,SacSpell!B
 	auto direction=Vector2f(-casterDirection.y,casterDirection.x);
 	if(direction.lengthsqr>0.001^^2) direction=direction.normalized;
 	else direction=rotate(facingQuaternion(casterFacing),Vector3f(0.0f,1.0f,0.0f));
-	state.addEffect(FirewallCasting!B(manaDrain,Firewall!B(manaDrain.wizard,side,position,direction,spell)));
+	auto soundTimer=playSoundAt!true("2ngi",manaDrain.wizard,state,firewallGain);
+	state.addEffect(FirewallCasting!B(manaDrain,Firewall!B(manaDrain.wizard,side,position,direction,spell,soundTimer)));
 	return true;
 }
 bool firewall(B)(Firewall!B firewall,ObjectState!B state){
@@ -16190,8 +16192,10 @@ void wallTargets(alias f,alias filter=None,bool keepNonObstacles=false,B,T...)(W
 	collisionTargets!(newF,newFilter,false,keepNonObstacles,B,WallPosition,T)(hitbox,state,wall,args);
 }
 
+enum firewallGain=3.0f;
 bool updateFirewall(B)(ref Firewall!B firewall,ObjectState!B state){
 	with(firewall){
+		if(--soundTimer==0) soundTimer=playSoundAtRange!true("5plf",get(left,state),get(right,state),state,firewallGain); // TODO: original picks one of multiple effects?
 		static void burn(ProximityEntry target,ObjectState!B state,SacSpell!B spell,int attacker,int side,Firewall!B* firewall){
 			state.movingObjectById!((ref obj,attacker,side,state,firewall){
 				float damage=1200.0f/updateFPS;
@@ -23219,6 +23223,16 @@ void playSoundType(B)(int side,SacObject!B sacObject,SoundType soundType,ObjectS
 }
 auto playSoundAt(bool getDuration=false,B)(char[4] sound,Vector3f position,ObjectState!B state,float gain=1.0f){
 	static if(B.hasAudio) if(playAudio) B.playSoundAt(sound,position,gain);
+	static if(getDuration) return getSoundDuration(sound,state);
+}
+auto playSoundAtRange(bool getDuration=false,B)(char[4] sound,Vector3f a,Vector3f b,ObjectState!B state,float gain){
+	enum numSounds=8;
+	static if(B.hasAudio) if(playAudio){
+		foreach(k;0..numSounds){
+			auto position=(numSounds-1-k)*1.0f/(numSounds-1)*a+k*1.0f/(numSounds-1)*b;
+			B.playSoundAt(sound,position,gain/numSounds);
+		}
+	}
 	static if(getDuration) return getSoundDuration(sound,state);
 }
 auto playSpellSoundTypeAt(bool getDuration=false,B,T,L...)(SoundType soundType,T target,ObjectState!B state,float gain=1.0f,L limit=L.init){
