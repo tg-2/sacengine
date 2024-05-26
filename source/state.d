@@ -3159,16 +3159,21 @@ struct WailingWallCasting(B){
 }
 enum WailingWallSpiritStatus{
 	patrolling,
-	tarrgetting,
+	targeting,
 }
 struct WailingWallSpirit(B){
-	int wizard;
-	int side;
 	Vector3f position;
 	Vector3f velocity;
-	SacSpell!B spell;
-	OrderTarget target;
 	WailingWallSpiritStatus status;
+	OrderTarget target;
+	float targetScale=0.0f;
+	Vector3f[2] lastPosition, nextPosition;
+	float progress=0.0f;
+	enum minHeightOffset=1.0f;
+	enum minHeightFactor=0.2f;
+	enum additionalRadius=0.5f;
+	enum speedRadiusFactor=3.0f;
+	enum interpolationSpeed=1.5f;
 	enum numSpiritFrames=120;
 	Vector3f[numSpiritFrames] locations;
 	Vector3f[2] get(float t){ return cintp(locations[].stride(3),t); }
@@ -16445,9 +16450,65 @@ bool updateWailingWallCasting(B)(ref WailingWallCasting!B wailingWallCast,Object
 	}
 }
 
-bool updateWailingWallSpirit(B)(ref WailingWallSpirit!B,ObjectState!B state){
-	// TODO
-	return false;
+bool updateWailingWallSpirit(B)(ref WailingWallSpirit!B spirit,ObjectState!B state){
+	with(spirit){
+		enum numFrames=8*updateFPS;
+		if(status==WailingWallSpiritStatus.targeting){
+			if(target.id&&state.isValidTarget(target.id)){
+				state.objectById!(
+					(ref obj,tPos,tScale){
+						*tPos=obj.center;
+						*tScale=0.5f*boxSize(obj.hitbox).length;
+					})(target.id,&target.position,&targetScale);
+			}
+			if(frame>=numFrames){
+				if(target.id) state.movingObjectById!((ref obj){ obj.creatureStats.effects.wailingWall=false; },(){})(target.id);
+				return false;
+			}
+			if(frame+numSpiritFrames<numFrames){
+				if(isNaN(lastPosition[0].x)){
+					nextPosition=[position-target.position,velocity];
+					progress=1.0f;
+				}
+				auto radius=additionalRadius+targetScale;
+				if(progress>=1.0f){
+					progress-=1.0f;
+					lastPosition=nextPosition;
+					if(frame+2*numSpiritFrames<numFrames){
+						nextPosition[0]=state.uniformDisk(Vector3f(0.0f,0.0f,0.0f),radius);
+					}else{
+						nextPosition[0]=Vector3f(0.0f,0.0f,0.0f);
+					}
+					nextPosition[1]=state.uniformDirection()*speedRadiusFactor*radius;
+				}
+				auto absoluteNext=nextPosition[0]+target.position;
+				auto minHeight=minHeightFactor*radius+minHeightOffset+state.getHeight(absoluteNext);
+				nextPosition[0].z=max(minHeight,absoluteNext.z)-target.position.z;
+				progress+=interpolationSpeed/updateFPS;
+			}else if(progress<1.0f)
+				progress+=interpolationSpeed/updateFPS;
+			position=cintp2([lastPosition,nextPosition],progress)[0]+target.position;
+		}
+		foreach_reverse(i;1..numSpiritFrames) locations[i]=locations[i-1];
+		locations[0]=position;
+		if(frame+numSpiritFrames>numFrames)
+			locations[numFrames-frame+1..$]=locations[numFrames-frame];
+		++frame;
+		return true;
+	}
+}
+
+bool spawnWailingWallSpirit(B)(ref MovingObject!B obj,ObjectState!B state){
+	if(obj.creatureStats.effects.wailingWall) return false;
+	obj.creatureStats.effects.wailingWall=true;
+	auto target=OrderTarget(TargetType.creature,obj.id,obj.center);
+	auto direction=Vector3f(0.0f,0.0f,0.0f);
+	auto position=target.position;
+	auto spirit=WailingWallSpirit!B(position,direction,WailingWallSpiritStatus.targeting,target);
+	spirit.locations[]=position;
+	spirit.scale=1.0f;
+	state.addEffect(move(spirit));
+	return true;
 }
 
 enum wailingWallGain=3.0f;
@@ -16462,7 +16523,7 @@ bool updateWailingWall(B)(ref WailingWall!B wailingWall,ObjectState!B state){
 		static void drain(ProximityEntry target,ObjectState!B state,SacSpell!B spell){
 			state.movingObjectById!((ref obj,spell,state){
 				obj.drainMana(500.0f,state);
-				// TODO: spawn spirit
+				obj.spawnWailingWallSpirit(state);
 			},(){})(target.id,spell,state);
 		}
 		auto wall=WallPosition(center,direction,left,right,top,wallThickness);
@@ -18562,9 +18623,12 @@ bool updateHellmouthProjectile(B)(ref HellmouthProjectile!B hellmouthProjectile,
 				progress+=interpolationSpeed/updateFPS;
 			position=cintp2([lastPosition,nextPosition],progress)[0]+targetPosition;
 		}
-		foreach(k;0..1+(frame+numProjectileFrames>=endframe))
-			foreach_reverse(i;1..numProjectileFrames) locations[i]=locations[i-1];
+		foreach_reverse(i;1..numProjectileFrames) locations[i]=locations[i-1];
 		locations[0]=position;
+		if(endframe!=-1){
+			if(frame+numProjectileFrames>endframe)
+				locations[endframe-frame+1..$]=locations[endframe-frame];
+		}
 		return true;
 	}
 }

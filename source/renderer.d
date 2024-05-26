@@ -2231,8 +2231,7 @@ struct Renderer(B){
 					foreach(j;0..objects.firewalls.length)
 						renderFirewall(objects.firewalls[j]);
 				}
-				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.wailingWalls.length||objects.wailingWallCastings.length)){
-				{
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.wailingWallSpirits.length||objects.wailingWalls.length||objects.wailingWallCastings.length)){
 					auto material=self.wailingWallSpirit.material;
 					material.bind(rc);
 					B.disableCulling();
@@ -2255,6 +2254,8 @@ struct Renderer(B){
 						B.shadelessBoneMaterialBackend.setPose(pose);
 						mesh.render(rc);
 					}
+					foreach(ref spirit;objects.wailingWallSpirits.data)
+						renderWailingWallSpirit(spirit);
 					foreach(j;0..objects.wailingWallCastings.length){
 						auto wailingWall=&objects.wailingWallCastings[j].wailingWall;
 						foreach(ref spirit;wailingWall.spirits[wailingWall.numDespawned..wailingWall.numSpawned])
@@ -2263,7 +2264,8 @@ struct Renderer(B){
 					foreach(ref wailingWall;objects.wailingWalls)
 						foreach(ref spirit;wailingWall.spirits[wailingWall.numDespawned..wailingWall.numSpawned])
 							renderWailingWallSpirit(spirit);
-				}{
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.wailingWalls.length||objects.wailingWallCastings.length)){
 					auto material=self.wailingWall.material;
 					material.bind(rc);
 					scope(success) material.unbind(rc);
@@ -2295,7 +2297,7 @@ struct Renderer(B){
 						renderWailingWall(objects.wailingWallCastings[j].wailingWall);
 					foreach(j;0..objects.wailingWalls.length)
 						renderWailingWall(objects.wailingWalls[j]);
-				}}
+				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.brainiacEffects.length){
 					auto material=self.brainiacEffect.material;
 					material.bind(rc);
