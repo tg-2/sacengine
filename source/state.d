@@ -3102,13 +3102,16 @@ struct Firewall(B){
 
 	Vector3f get(float t,ObjectState!B state){
 		auto position=center+t*Vector3f(direction.x,direction.y,0.0f);
+		position.z=state.getHeight(position);
+		return position;
+	}
+	float low(float t,ObjectState!B state){
+		auto position=center+t*Vector3f(direction.x,direction.y,0.0f);
 		auto orthogonal=Vector3f(direction.y,-direction.x,0.0f);
-		position.z=min(
-			state.getHeight(position),
+		return min(
 			state.getHeight(position-0.5f*wallThickness*orthogonal),
 			state.getHeight(position+0.5f*wallThickness*orthogonal),
 		);
-		return position;
 	}
 	float scale(float t){
 		auto leftScale=0.2f*max(0.0f,t-left);
@@ -3152,7 +3155,7 @@ struct WailingWallCasting(B){
 	ManaDrain!B manaDrain;
 	WailingWall!B wailingWall;
 
-	enum castingLimit=4*updateFPS; // TODO
+	enum castingLimit=3*updateFPS; // TODO
 }
 enum WailingWallSpiritStatus{
 	patrolling,
@@ -3188,13 +3191,16 @@ struct WailingWall(B){
 
 	Vector3f get(float t,ObjectState!B state){
 		auto position=center+t*Vector3f(direction.x,direction.y,0.0f);
+		position.z=state.getHeight(position);
+		return position;
+	}
+	float low(float t,ObjectState!B state){
+		auto position=center+t*Vector3f(direction.x,direction.y,0.0f);
 		auto orthogonal=Vector3f(direction.y,-direction.x,0.0f);
-		position.z=min(
-			state.getHeight(position),
+		return min(
 			state.getHeight(position-0.5f*wallThickness*orthogonal),
 			state.getHeight(position+0.5f*wallThickness*orthogonal),
 		);
-		return position;
 	}
 	float scale(float t){
 		auto leftScale=0.2f*max(0.0f,t-left);
