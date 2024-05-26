@@ -513,6 +513,29 @@ struct Renderer(B){
 		return SacFirewall!B(texture,mat,frames);
 	}
 	SacFirewall!B firewall;
+	SacWailingWallSpirit!B wailingWallSpirit;
+	SacWailingWallSpirit!B createWailingWallSpirit(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessBoneMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Additive;
+		mat.energy=20.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacWailingWallSpirit!B(texture,mat,frames);
+	}
+	SacWailingWall!B createWailingWall(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessBoneMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Transparent;
+		mat.energy=1.0f;
+		mat.transparency=0.8f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacWailingWall!B(texture,mat,frames);
+	}
+	SacWailingWall!B wailingWall;
 	SacBrainiacEffect!B brainiacEffect;
 	SacBrainiacEffect!B createBrainiacEffect(){
 		auto texture=typeof(return).loadTexture();
@@ -820,6 +843,8 @@ struct Renderer(B){
 		freeze=createFreeze();
 		spike=createSpike();
 		firewall=createFirewall();
+		wailingWallSpirit=createWailingWallSpirit();
+		wailingWall=createWailingWall();
 		brainiacEffect=createBrainiacEffect();
 		shrikeEffect=createShrikeEffect();
 		arrow=createArrow();
@@ -2096,7 +2121,7 @@ struct Renderer(B){
 					foreach(ref demonicRift;objects.demonicRifts)
 						foreach(ref spirit;demonicRift.spirits[demonicRift.numDespawned..demonicRift.numSpawned])
 							renderDemonicRiftSpirit(spirit);
-				}
+				} 
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.demonicRifts.length||objects.demonicRiftCastings.length)){
 					auto material=self.demonicRiftBorder.material;
 					material.bind(rc);
@@ -2204,6 +2229,69 @@ struct Renderer(B){
 					foreach(j;0..objects.firewalls.length)
 						renderFirewall(objects.firewalls[j]);
 				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.wailingWalls.length||objects.wailingWallCastings.length)){
+				{
+					auto material=self.wailingWallSpirit.material;
+					material.bind(rc);
+					B.disableCulling();
+					scope(success){
+						B.enableCulling();
+						material.unbind(rc);
+					}
+					B.shadelessBoneMaterialBackend.setTransformation(Vector3f(0.0f,0.0f,0.0f),Quaternionf.identity(),rc);
+					void renderWailingWallSpirit(ref WailingWallSpirit!B wailingWallSpirit){
+						auto scale=wailingWallSpirit.scale;
+						auto frame=wailingWallSpirit.frame;
+						Matrix4x4f[self.wailingWallSpirit.numSegments+1] pose;
+						foreach(i,ref x;pose){
+							auto progress=float(i)/self.wailingWallSpirit.numSegments;
+							auto curve=wailingWallSpirit.get(progress);
+							x=Transformation(rotationBetween(Vector3f(0.0f,0.0f,1.0f),curve[1].normalized),curve[0]).getMatrix4f;
+							foreach(k;0..3) foreach(l;0..3) x.arrayof[k*4+l]*=scale;
+						}
+						auto mesh=self.wailingWallSpirit.getFrame(frame%self.wailingWallSpirit.numFrames);
+						B.shadelessBoneMaterialBackend.setPose(pose);
+						mesh.render(rc);
+					}
+					foreach(j;0..objects.wailingWallCastings.length){
+						auto wailingWall=&objects.wailingWallCastings[j].wailingWall;
+						foreach(ref spirit;wailingWall.spirits[wailingWall.numDespawned..wailingWall.numSpawned])
+							renderWailingWallSpirit(spirit);
+					}
+					foreach(ref wailingWall;objects.wailingWalls)
+						foreach(ref spirit;wailingWall.spirits[wailingWall.numDespawned..wailingWall.numSpawned])
+							renderWailingWallSpirit(spirit);
+				}{
+					auto material=self.wailingWall.material;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
+					void renderWailingWall(ref WailingWall!B wailingWall){
+						auto direction=wailingWall.direction;
+						auto rotation=rotationBetween(Vector3f(0.0f,1.0f,0.0f),Vector3f(direction.x,direction.y,0.0f));
+						B.shadelessBoneMaterialBackend.setTransformation(Vector3f(0.0f,0.0f,0.0f),Quaternionf.identity(),rc);
+						//auto alpha=pi!float*frame/float(totalFrames);
+						//auto energy=0.375f+14.625f*(0.5f+0.25f*cos(7.0f*alpha)+0.25f*sin(11.0f*alpha));
+						//B.shadelessBoneMaterialBackend.setEnergy(energy);
+						auto frame=wailingWall.frame;
+						auto mesh=self.wailingWall.getFrame(frame%self.wailingWall.numFrames);
+						enum numSegments=self.wailingWall.numSegments;
+						enum thickness=wailingWall.wallThickness;
+						auto range=wailingWall.spell.effectRange;
+						auto left=wailingWall.left,right=wailingWall.right;
+						Matrix4x4f[numSegments+1] pose;
+						foreach(k,ref x;pose){
+							auto t=(range-2.5f)*(float(numSegments)/(numSegments-2)*2.0f)*(float(k)/numSegments-0.5f);
+							auto scale=wailingWall.scale(t);
+							x=Transformation(rotation,wailingWall.get(t,state)).getMatrix4f*scaleMatrix(scale*Vector3f(thickness,0.0f,wailingWall.height(t)));
+						}
+						B.shadelessBoneMaterialBackend.setPose(pose);
+						mesh.render(rc);
+					}
+					foreach(j;0..objects.wailingWallCastings.length)
+						renderWailingWall(objects.wailingWallCastings[j].wailingWall);
+					foreach(j;0..objects.wailingWalls.length)
+						renderWailingWall(objects.wailingWalls[j]);
+				}}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.brainiacEffects.length){
 					auto material=self.brainiacEffect.material;
 					material.bind(rc);

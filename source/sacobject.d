@@ -2777,6 +2777,38 @@ struct SacFirewall(B){
 	}
 }
 
+struct SacWailingWallSpirit(B){
+	B.Texture texture;
+	B.Material material;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Char.FLDR/tex_ZERO_.FLDR/wlsp.TXTR"));
+	}
+	B.BoneMesh[] frames;
+	enum numSegments=31;
+	enum animationDelay=2;
+	enum numFrames=8*animationDelay*updateAnimFactor;
+	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
+	static B.BoneMesh[] createMeshes(){
+		return makeLineMeshes!B(numSegments,1,8,0.0f,0.6f,false,true,false);
+	}
+}
+
+struct SacWailingWall(B){
+	B.Texture texture;
+	B.Material material;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/wwal.TXTR"));
+	}
+	B.BoneMesh[] frames;
+	enum numFrames=16*2*updateAnimFactor;
+	auto getFrame(int i){ return frames[i/(2*updateAnimFactor)]; }
+	enum numSegments=16;
+	static B.BoneMesh[] createMeshes(){
+		enum nU=4,nV=4;
+		return makeWallMeshes!B(numSegments,nU,nV,true);
+	}
+}
+
 struct SacBrainiacEffect(B){
 	B.Texture texture;
 	static B.Texture loadTexture(){

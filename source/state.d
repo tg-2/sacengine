@@ -3148,6 +3148,75 @@ struct Firewall(B){
 	enum shrinkSpeed=wallHeight/updateFPS;
 }
 
+struct WailingWallCasting(B){
+	ManaDrain!B manaDrain;
+	WailingWall!B wailingWall;
+
+	enum castingLimit=4*updateFPS; // TODO
+}
+enum WailingWallSpiritStatus{
+	patrolling,
+	tarrgetting,
+}
+struct WailingWallSpirit(B){
+	int wizard;
+	int side;
+	Vector3f position;
+	Vector3f velocity;
+	SacSpell!B spell;
+	OrderTarget target;
+	WailingWallSpiritStatus status;
+	enum numSpiritFrames=120;
+	Vector3f[numSpiritFrames] locations;
+	Vector3f[2] get(float t){ return cintp(locations[].stride(3),t); }
+	int frame=0;
+	float scale=1.0f;
+}
+enum WailingWallStatus{ growing, stationary, shrinking, }
+struct WailingWall(B){
+	int wizard;
+	int side;
+	Vector3f center;
+	Vector2f direction;
+	SacSpell!B spell;
+	int soundTimer;
+	float left=0.0f,right=0.0f;
+	bool leftStopped=false, rightStopped=false;
+	float top=0.0f;
+	int frame=0;
+	WailingWallStatus status;
+
+	Vector3f get(float t,ObjectState!B state){
+		auto position=center+t*Vector3f(direction.x,direction.y,0.0f);
+		auto orthogonal=Vector3f(direction.y,-direction.x,0.0f);
+		position.z=min(
+			state.getHeight(position),
+			state.getHeight(position-0.5f*wallThickness*orthogonal),
+			state.getHeight(position+0.5f*wallThickness*orthogonal),
+		);
+		return position;
+	}
+	float scale(float t){
+		auto leftScale=0.2f*max(0.0f,t-left);
+		auto rightScale=0.2f*max(0.0f,right-t);
+		return min(leftScale,rightScale,1.0f);
+	}
+	float height(float t){
+		return top*(1.0f+0.1f*sin(2.0f*pi!float*(0.125f*t-0.25f*float(frame)/updateFPS)));
+	}
+
+	int numSpawned=0, numDespawned;
+	enum maxNumSpirits=16;
+	WailingWallSpirit!B[maxNumSpirits] spirits;
+
+	enum segmentLength=7.5f;
+	enum wallHeight=6.0f;
+	enum wallThickness=5.0f;
+	enum growSpeed=wallHeight/(2*updateFPS);
+	enum shrinkSpeed=wallHeight/updateFPS;
+}
+
+
 struct Spike(B){
 	Vector3f position;
 	Vector3f direction;
@@ -4660,6 +4729,30 @@ struct Effects(B){
 	void removeFirewall(int i){
 		if(i+1<firewalls.length) firewalls[i]=move(firewalls[$-1]);
 		firewalls.length=firewalls.length-1;
+	}
+	Array!(WailingWallCasting!B) wailingWallCastings;
+	void addEffect(WailingWallCasting!B wailingWallCasting){
+		wailingWallCastings~=move(wailingWallCasting);
+	}
+	void removeWailingWallCasting(int i){
+		if(i+1<wailingWallCastings.length) wailingWallCastings[i]=move(wailingWallCastings[$-1]);
+		wailingWallCastings.length=wailingWallCastings.length-1;
+	}
+	Array!(WailingWall!B) wailingWalls;
+	void addEffect(WailingWall!B wailingWall){
+		wailingWalls~=move(wailingWall);
+	}
+	void removeWailingWall(int i){
+		if(i+1<wailingWalls.length) wailingWalls[i]=move(wailingWalls[$-1]);
+		wailingWalls.length=wailingWalls.length-1;
+	}
+	Array!(WailingWallSpirit!B) wailingWallSpirits;
+	void addEffect(WailingWallSpirit!B wailingWallSpirit){
+		wailingWallSpirits~=move(wailingWallSpirit);
+	}
+	void removeWailingWallSpirit(int i){
+		if(i+1<wailingWallSpirits.length) wailingWallSpirits[i]=move(wailingWallSpirits[$-1]);
+		wailingWallSpirits.length=wailingWallSpirits.length-1;
 	}
 	Array!(Spike!B) spikes;
 	void addEffect(Spike!B spike){
@@ -7564,6 +7657,9 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 				case SpellTag.firewall:
 					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
 					return stun(castFirewall(side,target.position,manaDrain,spell,state));
+				case SpellTag.wailingWall:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					return stun(castWailingWall(side,target.position,manaDrain,spell,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -8528,6 +8624,25 @@ bool castFirewall(B)(int side,Vector3f position,ManaDrain!B manaDrain,SacSpell!B
 }
 bool firewall(B)(Firewall!B firewall,ObjectState!B state){
 	state.addEffect(firewall);
+	return true;
+}
+
+bool castWailingWall(B)(int side,Vector3f position,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	auto duration=cast(int)ceil(updateFPS*spell.duration);
+	auto casterPositionFacing=state.movingObjectById!((ref obj)=>tuple(obj.position,obj.creatureState.facing),()=>Tuple!(Vector3f,float).init)(manaDrain.wizard);
+	auto casterPosition=casterPositionFacing[0],casterFacing=casterPositionFacing[1];
+	if(isNaN(casterPosition.x)) return false;
+	position.z=state.getGroundHeight(position);
+	auto casterDirection=position.xy-casterPosition.xy;
+	auto direction=Vector2f(-casterDirection.y,casterDirection.x);
+	if(direction.lengthsqr>0.001^^2) direction=direction.normalized;
+	else direction=rotate(facingQuaternion(casterFacing),Vector3f(0.0f,1.0f,0.0f));
+	playSoundAt("lwwc",manaDrain.wizard,state,wailingWallGain);
+	state.addEffect(WailingWallCasting!B(manaDrain,WailingWall!B(manaDrain.wizard,side,position,direction,spell)));
+	return true;
+}
+bool wailingWall(B)(WailingWall!B wailingWall,ObjectState!B state){
+	state.addEffect(wailingWall);
 	return true;
 }
 
@@ -16290,6 +16405,110 @@ bool updateFirewall(B)(ref Firewall!B firewall,ObjectState!B state){
 	}
 }
 
+void animateWailingWallCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	auto castParticle=SacParticle!B.get(ParticleType.castCharnel2);
+	wizard.animateCasting(castParticle,state);
+	static assert(updateFPS==60);
+	auto hitbox=wizard.relativeHitbox;
+	enum numParticles=6;
+	foreach(i;0..numParticles){
+		auto position=1.1f*state.uniform(cast(Vector2f[2])[hitbox[0].xy,hitbox[1].xy]);
+		auto distance=(state.uniform(3)?state.uniform(0.3f,0.6f):state.uniform(1.5f,2.5f))*(hitbox[1].z-hitbox[0].z);
+		auto fullLifetime=2.0f*castParticle.numFrames/float(updateFPS);
+		auto scale=state.uniform(1.5f,2.0f);
+		auto lifetime=cast(int)(castParticle.numFrames*state.uniform(0.0f,2.0f));
+		// TODO: particles should accelerate upwards
+		state.addParticle(Particle!B(castParticle,wizard.position+rotate(wizard.rotation,Vector3f(position.x,position.y,state.uniform(0.0f,0.5f*distance))),Vector3f(0.0f,0.0f,distance/fullLifetime),scale,lifetime,0));
+	}
+}
+bool updateWailingWallCasting(B)(ref WailingWallCasting!B wailingWallCast,ObjectState!B state){
+	with(wailingWallCast){
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				state.movingObjectById!(animateWailingWallCasting,(){})(manaDrain.wizard,state);
+				wailingWall.updateWailingWall(state);
+				return true;
+			case CastingStatus.interrupted:
+				wailingWall.status=WailingWallStatus.shrinking;
+				.wailingWall(move(wailingWall),state);
+				return false;
+			case CastingStatus.finished:
+				.wailingWall(move(wailingWall),state);
+				return false;
+		}
+	}
+}
+
+bool updateWailingWallSpirit(B)(ref WailingWallSpirit!B,ObjectState!B state){
+	// TODO
+	return false;
+}
+
+enum wailingWallGain=3.0f;
+bool updateWailingWall(B)(ref WailingWall!B wailingWall,ObjectState!B state){
+	with(wailingWall){
+		if(--soundTimer<=0) soundTimer=playSoundAtRange!true("lwwl",get(left,state),get(right,state),state,0.5f*wailingWallGain); // TODO: original picks one of multiple effects
+		if(state.uniform!"[)"(0,updateFPS/2)==0){
+			auto t=state.uniform(left,right);
+			auto position=get(t,state)+state.uniform(0.0f,top);
+			playSpellSoundTypeAt(SoundType.wail,position,state,wailingWallGain);
+		}
+		static void drain(ProximityEntry target,ObjectState!B state,SacSpell!B spell){
+			state.movingObjectById!((ref obj,spell,state){
+				obj.drainMana(500.0f,state);
+				// TODO: spawn spirit
+			},(){})(target.id,spell,state);
+		}
+		auto wall=WallPosition(center,direction,left,right,top,wallThickness);
+		wallTargets!drain(wall,state,wailingWall.spell);
+		auto orthogonal=Vector3f(direction.y,-direction.x,0.0f);
+		final switch(status){
+			case WailingWallStatus.growing:
+				top=min(top+growSpeed,wallHeight);
+				auto expansionSpeed=spell.effectRange/WailingWallCasting!B.castingLimit;
+				bool check(Vector3f position){
+					if((position-center).lengthsqr>spell.effectRange^^2) return false;
+					static void handleCollision(ProximityEntry entry,bool* found,ObjectState!B state){
+						if(state.isValidTarget(entry.id,TargetType.building))
+							*found=true;
+					}
+					Vector3f[2] hitbox=[position,position];
+					bool found=false;
+					state.proximity.collide!handleCollision(hitbox,&found,state);
+					return !found&&state.isOnGround(position);
+				}
+				if(!leftStopped){
+					auto cand=left-expansionSpeed;
+					if(check(get(cand,state))){
+						left=cand;
+					}else leftStopped=true;
+				}
+				if(!rightStopped){
+					auto cand=right+expansionSpeed;
+					if(check(get(cand,state))){
+						right=cand;
+					}else rightStopped=true;
+				}
+				// TODO:spawn spirits
+				if(leftStopped&&rightStopped&&top==wallHeight)
+					status=WailingWallStatus.stationary;
+				break;
+			case WailingWallStatus.stationary:
+				break;
+			case WailingWallStatus.shrinking:
+				top=max(top-shrinkSpeed,0.0f);
+				// TODO: despawn spirits
+				if(top==0.0f) return false;
+				break;
+		}
+		// TODO: update spirits
+		if(++frame>=WailingWallCasting!B.castingLimit+spell.duration*updateFPS)
+			status=WailingWallStatus.shrinking;
+		return true;
+	}
+}
+
+
 bool updateSpike(B)(ref Spike!B spike,ObjectState!B state){
 	with(spike){
 		position.z=state.getHeight(position);
@@ -20083,6 +20302,27 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.firewalls.length;){
 		if(!updateFirewall(effects.firewalls[i],state)){
 			effects.removeFirewall(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.wailingWallCastings.length;){
+		if(!updateWailingWallCasting(effects.wailingWallCastings[i],state)){
+			effects.removeWailingWallCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.wailingWallSpirits.length;){
+		if(!updateWailingWallSpirit(effects.wailingWallSpirits[i],state)){
+			effects.removeWailingWallSpirit(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.wailingWalls.length;){
+		if(!updateWailingWall(effects.wailingWalls[i],state)){
+			effects.removeWailingWall(i);
 			continue;
 		}
 		i++;
