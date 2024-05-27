@@ -2247,6 +2247,8 @@ struct Renderer(B){
 						foreach(i,ref x;pose){
 							auto progress=float(i)/self.wailingWallSpirit.numSegments;
 							auto curve=wailingWallSpirit.get(progress);
+							if(wailingWallSpirit.status==WailingWallSpiritStatus.patrolling)
+								curve[0].z+=state.getHeight(curve[0]);
 							x=Transformation(rotationBetween(Vector3f(0.0f,0.0f,1.0f),curve[1].normalized),curve[0]).getMatrix4f;
 							foreach(k;0..3) foreach(l;0..3) x.arrayof[k*4+l]*=scale;
 						}
@@ -2270,6 +2272,7 @@ struct Renderer(B){
 					material.bind(rc);
 					scope(success) material.unbind(rc);
 					void renderWailingWall(ref WailingWall!B wailingWall){
+						if(wailingWall.top==0.0f) return;
 						auto direction=wailingWall.direction;
 						auto rotation=rotationBetween(Vector3f(0.0f,1.0f,0.0f),Vector3f(direction.x,direction.y,0.0f));
 						B.shadelessBoneMaterialBackend.setTransformation(Vector3f(0.0f,0.0f,0.0f),Quaternionf.identity(),rc);

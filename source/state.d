@@ -3159,6 +3159,7 @@ struct WailingWallCasting(B){
 }
 enum WailingWallSpiritStatus{
 	patrolling,
+	despawning,
 	targeting,
 }
 struct WailingWallSpirit(B){
@@ -3174,11 +3175,12 @@ struct WailingWallSpirit(B){
 	enum additionalRadius=0.5f;
 	enum speedRadiusFactor=3.0f;
 	enum interpolationSpeed=1.5f;
-	enum numSpiritFrames=120;
+	enum numSpiritFrames=90;
 	Vector3f[numSpiritFrames] locations;
 	Vector3f[2] get(float t){ return cintp(locations[].stride(3),t); }
 	int frame=0;
-	float scale=1.0f;
+	int endframe=-1;
+	enum scale=1.0f;
 }
 enum WailingWallStatus{ growing, stationary, shrinking, }
 struct WailingWall(B){
@@ -3217,7 +3219,7 @@ struct WailingWall(B){
 	}
 
 	int numSpawned=0, numDespawned;
-	enum maxNumSpirits=16;
+	enum maxNumSpirits=12;
 	WailingWallSpirit!B[maxNumSpirits] spirits;
 
 	enum segmentLength=7.5f;
@@ -16506,19 +16508,74 @@ bool spawnWailingWallSpirit(B)(ref MovingObject!B obj,ObjectState!B state){
 	auto position=target.position;
 	auto spirit=WailingWallSpirit!B(position,direction,WailingWallSpiritStatus.targeting,target);
 	spirit.locations[]=position;
-	spirit.scale=1.0f;
+	static assert(spirit.scale==1.0f);
 	state.addEffect(move(spirit));
 	return true;
+}
+
+Vector3f firstWailingWallTarget(B)(ref WailingWall!B wailingWall,ObjectState!B state){
+	auto t=state.uniform(2)?state.uniform(1.2f*wailingWall.left,min(1.2f*wailingWall.left+15.0f,1.2f*wailingWall.right)):
+		state.uniform(max(1.2f*wailingWall.right-15.0f,1.2f*wailingWall.left),1.2f*wailingWall.right);
+	//auto t=1.2f*state.uniform(wailingWall.left,wailingWall.right);
+	auto direction=Vector3f(wailingWall.direction.x,wailingWall.direction.y,0.0f);
+	auto orthogonal=Vector3f(direction.y,-direction.x,0.0f);
+	auto position=wailingWall.get(t,state)+Vector3f(0.0f,0.0f,state.uniform(0.2f*wailingWall.top,wailingWall.top))+0.45f*wailingWall.wallThickness*1.5f*state.uniform(-1.0f,1.0f)*orthogonal;
+	position.z-=state.getHeight(position);
+	return position;
+}
+
+Vector3f nextWailingWallTarget(B)(Vector3f lastPosition,ref WailingWall!B wailingWall,ObjectState!B state){
+	auto lastt=dot(lastPosition.xy-wailingWall.center.xy,wailingWall.direction);
+	auto t=state.uniform(2)?state.uniform(lastt,min(lastt+20.0f,1.2f*wailingWall.right)):
+		state.uniform(max(lastt-20.0f,1.2f*wailingWall.left),lastt);
+	auto direction=Vector3f(wailingWall.direction.x,wailingWall.direction.y,0.0f);
+	auto orthogonal=Vector3f(direction.y,-direction.x,0.0f);
+	auto position=wailingWall.get(t,state)+Vector3f(0.0f,0.0f,state.uniform(0.2f*wailingWall.top,wailingWall.top))+0.45f*wailingWall.wallThickness*state.uniform(-1.0f,1.0f)*orthogonal;
+	position.z-=state.getHeight(position);
+	return position;
+}
+
+bool updateWailingWallSpirit(B)(ref WailingWallSpirit!B spirit,ref WailingWall!B wailingWall,ObjectState!B state){
+	with(spirit){
+		++frame;
+		auto orthogonal=Vector3f(wailingWall.direction.y,-wailingWall.direction.y,0.0f);
+		auto distance=target.position-position;
+		auto acceleration=90.0f*distance.normalized;
+		velocity+=acceleration/updateFPS;
+		if(velocity.lengthsqr>5.0f^^2) velocity=20.0f*velocity.normalized;
+		position+=velocity/updateFPS;
+		if((target.position-position).lengthsqr<5.0f^^2){
+			target.position=nextWailingWallTarget(target.position,wailingWall,state);
+		}
+		foreach_reverse(i;1..numSpiritFrames) locations[i]=locations[i-1];
+		locations[0]=position;
+		if(endframe!=-1&&frame+numSpiritFrames>endframe)
+			locations[endframe-frame+1..$]=locations[endframe-frame];
+		return endframe==-1||frame<endframe;
+	}
+}
+
+WailingWallSpirit!B makeWailingWallSpirit(B)(ref WailingWall!B wailingWall,ObjectState!B state){
+	//auto positionVelocity=firstWailingWallTarget(wailingWall,state);
+	auto position=firstWailingWallTarget(wailingWall,state);
+	auto target=OrderTarget(TargetType.terrain,0,position);
+	auto velocity=Vector3f(0.0f,0.0f,0.0f);
+	auto spirit=WailingWallSpirit!B(position,velocity,WailingWallSpiritStatus.patrolling,target);
+	spirit.locations[]=position;
+	static assert(spirit.scale==1.0f);
+	return spirit;
 }
 
 enum wailingWallGain=3.0f;
 bool updateWailingWall(B)(ref WailingWall!B wailingWall,ObjectState!B state){
 	with(wailingWall){
-		if(--soundTimer<=0) soundTimer=playSoundAtRange!true("lwwl",get(left,state),get(right,state),state,0.5f*wailingWallGain); // TODO: original picks one of multiple effects
-		if(state.uniform!"[)"(0,updateFPS/2)==0){
-			auto t=state.uniform(left,right);
-			auto position=get(t,state)+state.uniform(0.0f,top);
-			playSpellSoundTypeAt(SoundType.wail,position,state,wailingWallGain);
+		if(status!=WailingWallStatus.shrinking||top!=0.0f){
+			if(--soundTimer<=0) soundTimer=playSoundAtRange!true("lwwl",get(left,state),get(right,state),state,0.5f*wailingWallGain);
+			if(state.uniform!"[)"(0,updateFPS/2)==0){
+				auto t=state.uniform(left,right);
+				auto position=get(t,state)+state.uniform(0.0f,top);
+				playSpellSoundTypeAt(SoundType.wail,position,state,wailingWallGain);
+			}
 		}
 		static void drain(ProximityEntry target,ObjectState!B state,SacSpell!B spell){
 			state.movingObjectById!((ref obj,spell,state){
@@ -16556,19 +16613,27 @@ bool updateWailingWall(B)(ref WailingWall!B wailingWall,ObjectState!B state){
 						right=cand;
 					}else rightStopped=true;
 				}
-				// TODO:spawn spirits
-				if(leftStopped&&rightStopped&&top==wallHeight)
+				if(numSpawned<maxNumSpirits&&frame*maxNumSpirits>=WailingWallCasting!B.castingLimit*numSpawned){
+					spirits[numSpawned++]=wailingWall.makeWailingWallSpirit(state);
+				}
+				if(leftStopped&&rightStopped&&top==wallHeight&&numSpawned==maxNumSpirits)
 					status=WailingWallStatus.stationary;
 				break;
 			case WailingWallStatus.stationary:
 				break;
 			case WailingWallStatus.shrinking:
 				top=max(top-shrinkSpeed,0.0f);
-				// TODO: despawn spirits
-				if(top==0.0f) return false;
+				foreach(i,ref spirit;spirits[numDespawned..numSpawned]){
+					if(spirit.endframe!=-1) continue;
+					spirit.endframe=spirit.frame+spirit.numSpiritFrames+4*updateFPS*to!int(i)/(numSpawned-numDespawned);
+				}
+				if(top==0.0f&&numDespawned==numSpawned) return false;
 				break;
 		}
-		// TODO: update spirits
+		foreach(i,ref spirit;spirits[numDespawned..numSpawned]){
+			if(!spirit.updateWailingWallSpirit(wailingWall,state))
+				swap(spirits[numDespawned++],spirit);
+		}
 		if(++frame>=WailingWallCasting!B.castingLimit+spell.duration*updateFPS)
 			status=WailingWallStatus.shrinking;
 		return true;
@@ -18625,10 +18690,8 @@ bool updateHellmouthProjectile(B)(ref HellmouthProjectile!B hellmouthProjectile,
 		}
 		foreach_reverse(i;1..numProjectileFrames) locations[i]=locations[i-1];
 		locations[0]=position;
-		if(endframe!=-1){
-			if(frame+numProjectileFrames>endframe)
-				locations[endframe-frame+1..$]=locations[endframe-frame];
-		}
+		if(endframe!=-1&&frame+numProjectileFrames>endframe)
+			locations[endframe-frame+1..$]=locations[endframe-frame];
 		return true;
 	}
 }
