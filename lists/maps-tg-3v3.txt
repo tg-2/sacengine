@@ -28,7 +28,7 @@ maps/(6) EM-Conifer Forest.scp --level=7 --souls=18
 maps/(6) EM-Arena.scp
 maps/(6) EM-Diablo's Shell.scp
 maps/(6) TM-Dancing Pines.scp
-maps/(6) DD - Scar Trek.scp
+maps/(6) DD - Scar Trek.scp --level=5 --souls=14
 maps/(6) TM-Evening Tide.scp
 maps/(6) EM-Humanaptra.scp
 maps/(6) Hamburger Hill2.scp
