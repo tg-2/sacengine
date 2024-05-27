@@ -24,7 +24,7 @@ maps/(6) EM-Shadow & Light.scp
 maps/(6) After Life3.scp
 maps/(6) EM-Stinking Watercourse.scp
 maps/(6) EM-North Pole.scp
-maps/(6) EM-Conifer Forest.scp
+maps/(6) EM-Conifer Forest.scp --level=7 --souls=18
 maps/(6) EM-Arena.scp
 maps/(6) EM-Diablo's Shell.scp
 maps/(6) TM-Dancing Pines.scp
