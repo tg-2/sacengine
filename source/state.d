@@ -16256,7 +16256,7 @@ bool updateFirewallCasting(B)(ref FirewallCasting!B firewallCast,ObjectState!B s
 		final switch(manaDrain.update(state)){
 			case CastingStatus.underway:
 				state.movingObjectById!(animateFirewallCasting,(){})(manaDrain.wizard,state);
-				firewall.updateFirewall(state);
+				firewall.updateFirewall(state,false);
 				return true;
 			case CastingStatus.interrupted:
 				firewall.status=FirewallStatus.shrinking;
@@ -16326,7 +16326,7 @@ void wallTargets(alias f,alias filter=None,bool keepNonObstacles=false,B,T...)(W
 }
 
 enum firewallGain=3.0f;
-bool updateFirewall(B)(ref Firewall!B firewall,ObjectState!B state){
+bool updateFirewall(B)(ref Firewall!B firewall,ObjectState!B state,bool active=true){
 	with(firewall){
 		if(--soundTimer==0) soundTimer=playSoundAtRange!true("5plf",get(left,state),get(right,state),state,firewallGain); // TODO: original picks one of multiple effects?
 		static void burn(ProximityEntry target,ObjectState!B state,SacSpell!B spell,int attacker,int side,Firewall!B* firewall){
@@ -16345,7 +16345,7 @@ bool updateFirewall(B)(ref Firewall!B firewall,ObjectState!B state){
 			},(){})(target.id,attacker,side,state,firewall);
 		}
 		auto wall=WallPosition(center,direction,left,right,top,wallThickness);
-		wallTargets!burn(wall,state,firewall.spell,firewall.wizard,firewall.side,&firewall);
+		if(active) wallTargets!burn(wall,state,firewall.spell,firewall.wizard,firewall.side,&firewall);
 		auto orthogonal=Vector3f(direction.y,-direction.x,0.0f);
 		final switch(status){
 			case FirewallStatus.growing:
@@ -16439,7 +16439,7 @@ bool updateWailingWallCasting(B)(ref WailingWallCasting!B wailingWallCast,Object
 		final switch(manaDrain.update(state)){
 			case CastingStatus.underway:
 				state.movingObjectById!(animateWailingWallCasting,(){})(manaDrain.wizard,state);
-				wailingWall.updateWailingWall(state);
+				wailingWall.updateWailingWall(state,false);
 				return true;
 			case CastingStatus.interrupted:
 				wailingWall.status=WailingWallStatus.shrinking;
@@ -16567,7 +16567,7 @@ WailingWallSpirit!B makeWailingWallSpirit(B)(ref WailingWall!B wailingWall,Objec
 }
 
 enum wailingWallGain=3.0f;
-bool updateWailingWall(B)(ref WailingWall!B wailingWall,ObjectState!B state){
+bool updateWailingWall(B)(ref WailingWall!B wailingWall,ObjectState!B state,bool active=true){
 	with(wailingWall){
 		if(status!=WailingWallStatus.shrinking||top!=0.0f){
 			if(--soundTimer<=0) soundTimer=playSoundAtRange!true("lwwl",get(left,state),get(right,state),state,0.5f*wailingWallGain);
@@ -16584,7 +16584,7 @@ bool updateWailingWall(B)(ref WailingWall!B wailingWall,ObjectState!B state){
 			},(){})(target.id,spell,state);
 		}
 		auto wall=WallPosition(center,direction,left,right,top,wallThickness);
-		wallTargets!drain(wall,state,wailingWall.spell);
+		if(active) wallTargets!drain(wall,state,wailingWall.spell);
 		auto orthogonal=Vector3f(direction.y,-direction.x,0.0f);
 		final switch(status){
 			case WailingWallStatus.growing:
