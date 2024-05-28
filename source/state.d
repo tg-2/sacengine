@@ -16579,7 +16579,7 @@ bool updateWailingWall(B)(ref WailingWall!B wailingWall,ObjectState!B state,bool
 		}
 		static void drain(ProximityEntry target,ObjectState!B state,SacSpell!B spell){
 			state.movingObjectById!((ref obj,spell,state){
-				obj.drainMana(500.0f,state);
+				obj.drainMana(obj.creatureStats.maxMana/updateFPS,state);
 				obj.spawnWailingWallSpirit(state);
 			},(){})(target.id,spell,state);
 		}
