@@ -490,14 +490,21 @@ string unnormalizeFilename(string name){
 }
 
 struct SmallArray(T,size_t n){
-	size_t length;
+	@property size_t length(){ return _length; }
+	alias opDollar=length;
+	@property void length(size_t l){
+		if(l<n) rest.length=0;
+		else rest.length=l-n;
+		_length=l;
+	}
+	private size_t _length;
 	T[n] elements;
 	Array!T rest;
 	void opOpAssign(string op:"~")(T elem){
-		if(length<n){
-			elements[length++]=elem;
+		if(_length<n){
+			elements[_length++]=elem;
 		}else{
-			length+=1;
+			_length+=1;
 			rest~=elem;
 		}
 	}
@@ -506,7 +513,7 @@ struct SmallArray(T,size_t n){
 		return rest[i-n];
 	}
 	auto opSlice()return{
-		return chain(elements[0..min($,length)],rest.data[]);
+		return chain(elements[0..min($,_length)],rest.data[]);
 	}
 }
 

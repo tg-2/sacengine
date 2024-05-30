@@ -3229,6 +3229,90 @@ struct WailingWall(B){
 	enum shrinkSpeed=wallHeight/updateFPS;
 }
 
+struct VinewallCasting(B){
+	ManaDrain!B manaDrain;
+	Vinewall!B vinewall;
+
+	enum castingLimit=4*updateFPS; // TODO
+}
+enum VinewallStatus{ growing, stationary, shrinking, }
+struct Vinewall(B){
+	int wizard;
+	int side;
+	Vector3f center;
+	Vector2f direction;
+	SacSpell!B spell;
+	float left=0.0f,right=0.0f;
+	bool leftStopped=false, rightStopped=false;
+	float top=0.0f;
+	int frame=0;
+	VinewallStatus status;
+
+	Vector3f get(float t,ObjectState!B state){
+		auto position=center+t*Vector3f(direction.x,direction.y,0.0f);
+		position.z=state.getHeight(position);
+		return position;
+	}
+	float low(float t,ObjectState!B state){
+		auto position=center+t*Vector3f(direction.x,direction.y,0.0f);
+		auto orthogonal=Vector3f(direction.y,-direction.x,0.0f);
+		return min(
+			state.getHeight(position-0.5f*wallThickness*orthogonal),
+			state.getHeight(position+0.5f*wallThickness*orthogonal),
+		);
+	}
+	float scale(float t){
+		auto leftScale=0.2f*max(0.0f,t-left);
+		auto rightScale=0.2f*max(0.0f,right-t);
+		return min(leftScale,rightScale,1.0f);
+	}
+	float height(float t){
+		return top*(1.0f+0.1f*sin(2.0f*pi!float*(0.125f*t-float(frame)/updateFPS)));
+	}
+
+	enum maxNumVines=180;
+	int numSpawned=0,numDespawned=0;
+	Vine[maxNumVines] vines;
+	float[maxNumVines] lengthFactors;
+
+	int vanishFrame=-1;
+
+	enum cooldownTime=6*updateFPS;
+
+	static struct WallTarget{
+		int id;
+		int cooldownFrame;
+	}
+	SmallArray!(WallTarget,24) targets;
+	void applyCooldown(int id,ObjectState!B state){
+		foreach(ref target;targets)
+			if(target.id==id)
+				target.cooldownFrame=state.frame+cooldownTime;
+		targets~=WallTarget(id,state.frame+cooldownTime);
+	}
+	int cooldown(int id,ObjectState!B state){
+		if(!id) return 0;
+		int frame=state.frame;
+		for(int i=0;i<targets.length;){
+			if(targets[i].cooldownFrame<=state.frame){
+				swap(targets[i],targets[$-1]);
+				targets.length=targets.length-1;
+				continue;
+			}
+			if(targets[i].id==id) return targets[i].cooldownFrame-state.frame;
+			i++;
+		}
+		return 0;
+	}
+
+	enum vineScale=4.5f;
+	enum wallHeight=7.5f;
+	enum wallThickness=5.0f;
+	enum growthTime=updateFPS;
+	enum vanishTime=updateFPS;
+	enum growSpeed=wallHeight/growthTime;
+	enum shrinkSpeed=wallHeight/vanishTime;
+}
 
 struct Spike(B){
 	Vector3f position;
@@ -4766,6 +4850,22 @@ struct Effects(B){
 	void removeWailingWallSpirit(int i){
 		if(i+1<wailingWallSpirits.length) wailingWallSpirits[i]=move(wailingWallSpirits[$-1]);
 		wailingWallSpirits.length=wailingWallSpirits.length-1;
+	}
+	Array!(VinewallCasting!B) vinewallCastings;
+	void addEffect(VinewallCasting!B vinewallCasting){
+		vinewallCastings~=move(vinewallCasting);
+	}
+	void removeVinewallCasting(int i){
+		if(i+1<vinewallCastings.length) vinewallCastings[i]=move(vinewallCastings[$-1]);
+		vinewallCastings.length=vinewallCastings.length-1;
+	}
+	Array!(Vinewall!B) vinewalls;
+	void addEffect(Vinewall!B vinewall){
+		vinewalls~=move(vinewall);
+	}
+	void removeVinewall(int i){
+		if(i+1<vinewalls.length) vinewalls[i]=move(vinewalls[$-1]);
+		vinewalls.length=vinewalls.length-1;
 	}
 	Array!(Spike!B) spikes;
 	void addEffect(Spike!B spike){
@@ -7673,6 +7773,9 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 				case SpellTag.wailingWall:
 					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
 					return stun(castWailingWall(side,target.position,manaDrain,spell,state));
+				case SpellTag.vinewall:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					return stun(castVinewall(side,target.position,manaDrain,spell,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -8351,15 +8454,8 @@ bool castGraspingVines(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,Obje
 	state.addEffect(GraspingVinesCasting!B(manaDrain,spell,target));
 	return true;
 }
-Vine spawnVine(B)(Vector3f[2] hitbox,ObjectState!B state){
-	float scale=boxSize(hitbox).length/2.0f;
-	Vector3f[2] nhitbox=[Vector3f(hitbox[0].x,hitbox[0].y,0.5f*(hitbox[0].z+hitbox[1].z)),hitbox[1]];
-	auto target=state.uniform(nhitbox);
-	enum displacement=1.0f;
-	auto base=target+state.uniform(0.0f,displacement)*Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),0.0f);
-	// TODO: snap base to ground
-	base.z=state.getHeight(base);
-	target.z=max(target.z,base.z+displacement);
+Vine spawnVine(B)(Vector3f base,Vector3f target,float scale,ObjectState!B state){
+	target.z=max(target.z,base.z+1.0f);
 	base.z-=0.1f*scale;
 	auto result=Vine(base,target,scale);
 	foreach(i,ref x;result.locations){
@@ -8369,6 +8465,16 @@ Vine spawnVine(B)(Vector3f[2] hitbox,ObjectState!B state){
 		result.velocities[i].z=0.1f;
 	}
 	return result;
+}
+Vine spawnVine(B)(Vector3f[2] hitbox,ObjectState!B state){
+	float scale=boxSize(hitbox).length/2.0f;
+	Vector3f[2] nhitbox=[Vector3f(hitbox[0].x,hitbox[0].y,0.5f*(hitbox[0].z+hitbox[1].z)),hitbox[1]];
+	auto target=state.uniform(nhitbox);
+	enum displacement=1.0f;
+	auto base=target+state.uniform(0.0f,displacement)*Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),0.0f);
+	// TODO: snap base to ground
+	base.z=state.getHeight(base);
+	return spawnVine(base,target,scale,state);
 }
 enum graspingVinesGain=4.0f;
 bool graspingVines(B)(int target,SacSpell!B spell,ObjectState!B state){
@@ -8656,6 +8762,25 @@ bool castWailingWall(B)(int side,Vector3f position,ManaDrain!B manaDrain,SacSpel
 }
 bool wailingWall(B)(WailingWall!B wailingWall,ObjectState!B state){
 	state.addEffect(wailingWall);
+	return true;
+}
+
+bool castVinewall(B)(int side,Vector3f position,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	auto duration=cast(int)ceil(updateFPS*spell.duration);
+	auto casterPositionFacing=state.movingObjectById!((ref obj)=>tuple(obj.position,obj.creatureState.facing),()=>Tuple!(Vector3f,float).init)(manaDrain.wizard);
+	auto casterPosition=casterPositionFacing[0],casterFacing=casterPositionFacing[1];
+	if(isNaN(casterPosition.x)) return false;
+	position.z=state.getGroundHeight(position);
+	auto casterDirection=position.xy-casterPosition.xy;
+	auto direction=Vector2f(-casterDirection.y,casterDirection.x);
+	if(direction.lengthsqr>0.001^^2) direction=direction.normalized;
+	else direction=rotate(facingQuaternion(casterFacing),Vector3f(0.0f,1.0f,0.0f));
+	playSoundAt("toor",manaDrain.wizard,state,vinewallGain);
+	state.addEffect(VinewallCasting!B(manaDrain,Vinewall!B(manaDrain.wizard,side,position,direction,spell)));
+	return true;
+}
+bool vinewall(B)(Vinewall!B vinewall,ObjectState!B state){
+	state.addEffect(vinewall);
 	return true;
 }
 
@@ -16640,6 +16765,165 @@ bool updateWailingWall(B)(ref WailingWall!B wailingWall,ObjectState!B state,bool
 	}
 }
 
+void animateVinewallCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	auto castParticle=SacParticle!B.get(ParticleType.castPersephone2);
+	wizard.animateCasting(castParticle,state);
+}
+bool updateVinewallCasting(B)(ref VinewallCasting!B vinewallCast,ObjectState!B state){
+	with(vinewallCast){
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				state.movingObjectById!(animateVinewallCasting,(){})(manaDrain.wizard,state);
+				vinewall.updateVinewall(state,false);
+				return true;
+			case CastingStatus.interrupted:
+				vinewall.status=VinewallStatus.shrinking;
+				.vinewall(move(vinewall),state);
+				return false;
+			case CastingStatus.finished:
+				.vinewall(move(vinewall),state);
+				return false;
+		}
+	}
+}
+
+Vector3f vinewallVineSpawnPosition(B)(ref Vinewall!B vinewall,ObjectState!B state){
+	bool left=!!state.uniform(2);
+	if(left&&vinewall.leftStopped) return Vector3f.init;
+	if(!left&&vinewall.rightStopped) return Vector3f.init;
+	auto t=left?state.uniform(vinewall.left,min(vinewall.left+1.5f,vinewall.right)):
+		state.uniform(max(vinewall.right-1.5f,vinewall.left),vinewall.right);
+	auto direction=Vector3f(vinewall.direction.x,vinewall.direction.y,0.0f);
+	auto orthogonal=Vector3f(direction.y,-direction.x,0.0f);
+	auto position=vinewall.get(t,state)+0.5f*vinewall.wallThickness*state.uniform(-1.0f,1.0f)*orthogonal;
+	position.z=state.getHeight(position);
+	return position;
+}
+
+Vine makeVinewallVine(B)(ref Vinewall!B vinewall,ObjectState!B state){
+	auto base=vinewallVineSpawnPosition(vinewall,state);
+	auto sacParticle=SacParticle!B.get(ParticleType.castPersephone2);
+	enum numParticles=5;
+	foreach(i;0..numParticles){
+		auto phi=2.0f*pi!float*i/numParticles;
+		auto offset=0.5f*vinewall.vineScale*Vector3f(cos(phi),sin(phi),0.0f);
+		auto position=base+offset;
+		position.z=state.getHeight(position);
+		auto velocity=Vector3f(0.0f,0.0f,0.2f)+0.3f*offset;
+		auto frame=0;
+		auto lifetime=31;
+		auto scale=1.25f*vinewall.vineScale;
+		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+		// TODO: particles should rotate around base instead?
+	}
+	auto target=base+Vector3f(0.0f,0.0f,vinewall.wallHeight);
+	return spawnVine(base,target,state.uniform(0.9f,1.1f)*vinewall.vineScale,state);
+}
+
+bool vinewallGraspingVines(B)(ref MovingObject!B obj,ref Vinewall!B vinewall,SacSpell!B spell,ObjectState!B state){
+	auto progress=float(vinewall.frame-VinewallCasting!B.castingLimit)/updateFPS;
+	auto cap=max(0.0f,spell.duration-progress);
+	auto factor=cap/spell.duration;
+	playSoundAt("toor",obj.position,state,graspingVinesGain);
+	obj.creatureStats.effects.numVines+=1;
+	obj.creatureState.targetFlyingHeight=max(0.0f,obj.position.z-state.getGroundHeight(obj.position));
+	auto fduration=(obj.isWizard?0.25f:1000.0f/obj.creatureStats.maxHealth)*factor*spell.duration;
+	auto duration=cast(int)ceil(updateFPS*min(cap,fduration));
+	Vine[GraspingVines!B.vines.length] vines;
+	foreach(ref vine;vines) vine=spawnVine(obj.hitbox,state);
+	state.addEffect(GraspingVines!B(obj.id,spell,duration,vines));
+	return true;
+}
+
+enum vinewallGain=3.0f;
+bool updateVinewall(B)(ref Vinewall!B vinewall,ObjectState!B state,bool active=true){
+	with(vinewall){
+		static void grasp(ProximityEntry target,ObjectState!B state,SacSpell!B spell,int attacker,int side,Vinewall!B* vinewall){
+			state.movingObjectById!((ref obj,attacker,side,state,vinewall){
+				if(state.sides.getStance(side,obj.side)==Stance.ally) return;
+				if(vinewall.cooldown(obj.id,state)!=0){
+					if(obj.creatureStats.effects.vined) vinewall.applyCooldown(obj.id,state);
+					return;
+				}
+				if(obj.creatureStats.effects.ccProtected||!obj.creatureState.mode.canCC) return;
+				auto orthogonal=Vector3f(vinewall.direction.y,-vinewall.direction.x,0.0f);
+				auto distance=abs(dot(obj.position-vinewall.center,orthogonal));
+				if(distance<0.5f*vinewall.wallThickness){
+					animateGraspingVinesCastingTarget(obj,state);
+					if(distance<0.35f*vinewall.wallThickness){
+						vinewallGraspingVines(obj,*vinewall,vinewall.spell,state);
+						vinewall.applyCooldown(obj.id,state);
+					}
+				}
+				// TODO: spawn grasping vines
+			},(){})(target.id,attacker,side,state,vinewall);
+		}
+		auto wall=WallPosition(center,direction,left,right,top,wallThickness);
+		if(active&&vinewall.status!=VinewallStatus.shrinking)
+			wallTargets!grasp(wall,state,vinewall.spell,vinewall.wizard,vinewall.side,&vinewall);
+		auto orthogonal=Vector3f(direction.y,-direction.x,0.0f);
+		final switch(status){
+			case VinewallStatus.growing:
+				top=min(top+growSpeed,wallHeight);
+				auto expansionSpeed=spell.effectRange/VinewallCasting!B.castingLimit;
+				bool check(Vector3f position){
+					if((position-center).lengthsqr>spell.effectRange^^2) return false;
+					static void handleCollision(ProximityEntry entry,bool* found,ObjectState!B state){
+						if(state.isValidTarget(entry.id,TargetType.building))
+							*found=true;
+					}
+					Vector3f[2] hitbox=[position,position];
+					bool found=false;
+					state.proximity.collide!handleCollision(hitbox,&found,state);
+					return !found&&state.isOnGround(position);
+				}
+				if(!leftStopped){
+					auto cand=left-expansionSpeed;
+					if(check(get(cand,state))) left=cand;
+					else leftStopped=true;
+				}
+				if(!rightStopped){
+					auto cand=right+expansionSpeed;
+					if(check(get(cand,state))) right=cand;
+					else rightStopped=true;
+				}
+				if(numSpawned<maxNumVines&&frame*maxNumVines>=VinewallCasting!B.castingLimit*numSpawned){
+					vines[numSpawned++]=vinewall.makeVinewallVine(state);
+					if(isNaN(vines[numSpawned-1].base.x))
+						vines[numSpawned-1]=vines[numDespawned++];
+				}
+				foreach(i,ref vine;vines[numDespawned..numSpawned]){
+					lengthFactors[numDespawned+i]=min(1.0f,lengthFactors[numDespawned+i]+1.0f/float(vanishTime));
+				}
+				if(leftStopped&&rightStopped&&top==wallHeight&&numSpawned==maxNumVines){
+					status=VinewallStatus.stationary;
+					foreach(i,ref vine;vines[numDespawned..numSpawned]){
+						if(lengthFactors[numDespawned+i]!=1.0f) status=VinewallStatus.growing;
+					}
+				}
+				break;
+			case VinewallStatus.stationary:
+				break;
+			case VinewallStatus.shrinking:
+				if(vanishFrame==-1) vanishFrame=frame;
+				top=max(top-shrinkSpeed,0.0f);
+				foreach(i,ref vine;vines[numDespawned..numSpawned]){
+					lengthFactors[numDespawned+i]=max(0.0f,lengthFactors[numDespawned+i]-1.0f/float(vanishTime));
+				}
+				while(numDespawned<vines.length&&lengthFactors[numDespawned]==0.0f)
+					++numDespawned;
+				if(top==0.0f&&numDespawned==numSpawned) return false;
+				break;
+		}
+		foreach(i,ref vine;vines[numDespawned..numSpawned]) updateVine(vine,lengthFactors[numDespawned+i],state);
+		if(vanishFrame==-1&&++frame>=VinewallCasting!B.castingLimit+spell.duration*updateFPS){
+			playSoundAtRange("dafr",get(left,state),get(right,state),state,vinewallGain);
+			status=VinewallStatus.shrinking;
+		}
+		return true;
+	}
+}
+
 
 bool updateSpike(B)(ref Spike!B spike,ObjectState!B state){
 	with(spike){
@@ -20456,6 +20740,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.wailingWalls.length;){
 		if(!updateWailingWall(effects.wailingWalls[i],state)){
 			effects.removeWailingWall(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.vinewallCastings.length;){
+		if(!updateVinewallCasting(effects.vinewallCastings[i],state)){
+			effects.removeVinewallCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.vinewalls.length;){
+		if(!updateVinewall(effects.vinewalls[i],state)){
+			effects.removeVinewall(i);
 			continue;
 		}
 		i++;

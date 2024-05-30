@@ -1854,7 +1854,7 @@ struct Renderer(B){
 					}
 					foreach(ref slime;objects.slimeCastings) renderSlime(slime);
 				}
-				static if(mode==RenderMode.opaque) if(objects.graspingViness.length){
+				static if(mode==RenderMode.opaque) if(objects.graspingViness.length||objects.vinewallCastings.length||objects.vinewalls.length){
 					auto material=self.vine.material; // TODO: shadowMaterial?
 					auto mesh=self.vine.mesh;
 					material.bind(rc);
@@ -1875,6 +1875,12 @@ struct Renderer(B){
 					foreach(ref graspingVines;objects.graspingViness)
 						foreach(ref vine;graspingVines.vines)
 							renderVine(vine,graspingVines.lengthFactor);
+					foreach(ref vinewallCasting;objects.vinewallCastings)
+						foreach(i,ref vine;vinewallCasting.vinewall.vines[vinewallCasting.vinewall.numDespawned..vinewallCasting.vinewall.numSpawned])
+							renderVine(vine,vinewallCasting.vinewall.lengthFactors[vinewallCasting.vinewall.numDespawned+i]);
+					foreach(ref vinewall;objects.vinewalls)
+						foreach(i,ref vine;vinewall.vines[vinewall.numDespawned..vinewall.numSpawned])
+							renderVine(vine,vinewall.lengthFactors[vinewall.numDespawned+i]);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.rainbowEffects.length){
 					auto material=self.rainbow.material;

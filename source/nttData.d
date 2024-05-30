@@ -1032,7 +1032,7 @@ enum SpellTag:char[4]{
 	rainbow="wobr",
 	rainOfFrogs="grfr",
 	healingAura="ruah",
-	vineWall="lawv",
+	vinewall="lawv",
 	charm="mrhc",
 	meanstalks="rter",
 	// pyro creatures:
@@ -1241,7 +1241,7 @@ immutable ST[] charnelCreatures=[ST.scythe,ST.fallen,ST.locust,ST.necryl,ST.blig
 immutable ST[][6] creatureSpells=[neutralCreatures,cat!(neutralCreatures,persephoneCreatures),cat!(neutralCreatures,pyroCreatures),cat!(neutralCreatures,jamesCreatures),cat!(neutralCreatures,stratosCreatures),cat!(neutralCreatures,charnelCreatures)];
 static assert(creatureSpells.length==God.max+1);
 immutable ST[] neutralSpells=[ST.speedup,ST.heal];
-immutable ST[] persephoneSpells=[ST.wrath,ST.etherealForm,ST.graspingVines,ST.rainbow,ST.rainOfFrogs,ST.healingAura,ST.vineWall,ST.charm,ST.meanstalks];
+immutable ST[] persephoneSpells=[ST.wrath,ST.etherealForm,ST.graspingVines,ST.rainbow,ST.rainOfFrogs,ST.healingAura,ST.vinewall,ST.charm,ST.meanstalks];
 immutable ST[] pyroSpells=[ST.fireball,ST.fireform,ST.ringsOfFire,ST.dragonfire,ST.explosion,ST.firewall,ST.rainOfFire,ST.blindRage,ST.volcano];
 immutable ST[] jamesSpells=[ST.rock,ST.skinOfStone,ST.soulMole,ST.erupt,ST.haloOfEarth,ST.wallOfSpikes,ST.bombardment,ST.bovineIntervention,ST.bore];
 immutable ST[] stratosSpells=[ST.lightning,ST.airShield,ST.freeze,ST.chainLightning,ST.soulWind,ST.frozenGround,ST.fence,ST.cloudkill,ST.tornado];

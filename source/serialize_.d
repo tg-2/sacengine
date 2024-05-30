@@ -553,6 +553,15 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Wai
 void serialize(alias sink,B)(ref WailingWall!B wailingWall){ serializeStruct!sink(wailingWall); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==WailingWall!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref VinewallCasting!B vinewallCasting){ serializeStruct!sink(vinewallCasting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==VinewallCasting!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref Vinewall!B.WallTarget target){ serializeStruct!sink(target); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Vinewall!B.WallTarget)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref Vinewall!B vinewall){ serializeStruct!sink(vinewall); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Vinewall!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref Spike!B spike){ serializeStruct!sink(spike); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Spike!B)){ deserializeStruct(result,state,data); }
 
