@@ -565,6 +565,18 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Vin
 void serialize(alias sink,B)(ref Spike!B spike){ serializeStruct!sink(spike); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Spike!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref WallOfSpikesCasting!B wallOfSpikesCasting){ serializeStruct!sink(wallOfSpikesCasting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==WallOfSpikesCasting!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref WallOfSpikes!B.Spike target){ serializeStruct!sink(target); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==WallOfSpikes!B.Spike)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref WallOfSpikes!B.WallTarget target){ serializeStruct!sink(target); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==WallOfSpikes!B.WallTarget)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref WallOfSpikes!B wallOfSpikes){ serializeStruct!sink(wallOfSpikes); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==WallOfSpikes!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref BrainiacProjectile!B brainiacProjectile){ serializeStruct!sink(brainiacProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BrainiacProjectile!B)){ deserializeStruct(result,state,data); }
 

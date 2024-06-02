@@ -70,6 +70,7 @@ struct Effects{
 	OilStatus oilStatus;
 	int numRainFrogs=0;
 	bool wailingWall=false;
+	bool spikeWall=false;
 	@property bool slimed(){ return numSlimes!=0; }
 	@property bool vined(){ return numVines!=0; }
 	@property bool regenerationBlocked(){ return poisonDamage!=0||immobilized||ringsOfFire||slimed||vined; }

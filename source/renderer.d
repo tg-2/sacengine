@@ -2191,7 +2191,7 @@ struct Renderer(B){
 					}
 					foreach(ref healingAura;objects.healingAuras) renderHealingAura(healingAura);
 				}
-				static if(mode==RenderMode.opaque) if(objects.spikes.length){
+				static if(mode==RenderMode.opaque) if(objects.spikes.length||objects.wallOfSpikesCastings.length||objects.wallOfSpikess.length){
 					auto material=self.spike.material;
 					material.bind(rc);
 					scope(success) material.unbind(rc);
@@ -2203,6 +2203,24 @@ struct Renderer(B){
 						mesh.render(rc);
 					}
 					foreach(ref spike;objects.spikes) renderSpike(spike.currentScale,spike.position,spike.direction);
+					foreach(ref wallOfSpikesCasting;objects.wallOfSpikesCastings){
+						foreach(i,ref spike;wallOfSpikesCasting.wallOfSpikes.spikes[wallOfSpikesCasting.wallOfSpikes.numDespawned..wallOfSpikesCasting.wallOfSpikes.numSpawned]){
+							renderSpike(
+								spike.scale*wallOfSpikesCasting.wallOfSpikes.spikeScale,
+								spike.position,
+								spike.direction/wallOfSpikesCasting.wallOfSpikes.spikeScale,
+							);
+						}
+					}
+					foreach(ref wallOfSpikes;objects.wallOfSpikess){
+						foreach(i,ref spike;wallOfSpikes.spikes[wallOfSpikes.numDespawned..wallOfSpikes.numSpawned]){
+							renderSpike(
+								spike.scale*wallOfSpikes.spikeScale,
+								spike.position,
+								spike.direction/wallOfSpikes.spikeScale,
+							);
+						}
+						}
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.firewalls.length||objects.firewallCastings.length)){
 					auto material=self.firewall.material;

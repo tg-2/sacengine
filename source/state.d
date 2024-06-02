@@ -3253,22 +3253,6 @@ struct Vinewall(B){
 		position.z=state.getHeight(position);
 		return position;
 	}
-	float low(float t,ObjectState!B state){
-		auto position=center+t*Vector3f(direction.x,direction.y,0.0f);
-		auto orthogonal=Vector3f(direction.y,-direction.x,0.0f);
-		return min(
-			state.getHeight(position-0.5f*wallThickness*orthogonal),
-			state.getHeight(position+0.5f*wallThickness*orthogonal),
-		);
-	}
-	float scale(float t){
-		auto leftScale=0.2f*max(0.0f,t-left);
-		auto rightScale=0.2f*max(0.0f,right-t);
-		return min(leftScale,rightScale,1.0f);
-	}
-	float height(float t){
-		return top*(1.0f+0.1f*sin(2.0f*pi!float*(0.125f*t-float(frame)/updateFPS)));
-	}
 
 	enum maxNumVines=180;
 	int numSpawned=0,numDespawned=0;
@@ -3325,6 +3309,81 @@ struct Spike(B){
 		return scale*(1.0f-t^^2);
 	}
 }
+
+struct WallOfSpikesCasting(B){
+	ManaDrain!B manaDrain;
+	WallOfSpikes!B wallOfSpikes;
+
+	enum castingLimit=4*updateFPS; // TODO
+}
+enum WallOfSpikesStatus{ growing, stationary, shrinking, }
+struct WallOfSpikes(B){
+	int wizard;
+	int side;
+	Vector3f center;
+	Vector2f direction;
+	SacSpell!B spell;
+	float left=0.0f,right=0.0f;
+	bool leftStopped=false, rightStopped=false;
+	float top=0.0f;
+	int frame=0;
+	WallOfSpikesStatus status;
+
+	Vector3f get(float t,ObjectState!B state){
+		auto position=center+t*Vector3f(direction.x,direction.y,0.0f);
+		position.z=state.getHeight(position);
+		return position;
+	}
+
+	enum maxNumSpikes=180;
+	int numSpawned=0,numDespawned=0;
+	static struct Spike{
+		float scale;
+		Vector3f position;
+		Vector3f direction;
+	}
+	Spike[maxNumSpikes] spikes;
+
+	int vanishFrame=-1;
+
+	enum cooldownTime=6*updateFPS;
+
+	static struct WallTarget{
+		int id;
+		int cooldownFrame;
+	}
+	SmallArray!(WallTarget,24) targets;
+	void applyCooldown(int id,ObjectState!B state){
+		foreach(ref target;targets)
+			if(target.id==id)
+				target.cooldownFrame=state.frame+cooldownTime;
+		targets~=WallTarget(id,state.frame+cooldownTime);
+	}
+	int cooldown(int id,ObjectState!B state){
+		if(!id) return 0;
+		int frame=state.frame;
+		for(int i=0;i<targets.length;){
+			if(targets[i].cooldownFrame<=state.frame){
+				swap(targets[i],targets[$-1]);
+				targets.length=targets.length-1;
+				continue;
+			}
+			if(targets[i].id==id) return targets[i].cooldownFrame-state.frame;
+			i++;
+		}
+		return 0;
+	}
+
+	enum spikeScale=1.5f;
+	enum wallHeight=5.0f;
+	enum spikeHeight=2.5f;
+	enum wallThickness=5.0f;
+	enum growthTime=updateFPS/2;
+	enum vanishTime=updateFPS;
+	enum growSpeed=wallHeight/growthTime;
+	enum shrinkSpeed=wallHeight/vanishTime;
+}
+
 
 struct BrainiacProjectile(B){
 	int attacker;
@@ -4874,6 +4933,22 @@ struct Effects(B){
 	void removeSpike(int i){
 		if(i+1<spikes.length) spikes[i]=move(spikes[$-1]);
 		spikes.length=spikes.length-1;
+	}
+	Array!(WallOfSpikesCasting!B) wallOfSpikesCastings;
+	void addEffect(WallOfSpikesCasting!B wallOfSpikesCasting){
+		wallOfSpikesCastings~=move(wallOfSpikesCasting);
+	}
+	void removeWallOfSpikesCasting(int i){
+		if(i+1<wallOfSpikesCastings.length) wallOfSpikesCastings[i]=move(wallOfSpikesCastings[$-1]);
+		wallOfSpikesCastings.length=wallOfSpikesCastings.length-1;
+	}
+	Array!(WallOfSpikes!B) wallOfSpikess;
+	void addEffect(WallOfSpikes!B wallOfSpikes){
+		wallOfSpikess~=move(wallOfSpikes);
+	}
+	void removeWallOfSpikes(int i){
+		if(i+1<wallOfSpikess.length) wallOfSpikess[i]=move(wallOfSpikess[$-1]);
+		wallOfSpikess.length=wallOfSpikess.length-1;
 	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
@@ -6704,24 +6779,24 @@ int makeBuilding(B)(int side,char[4] tag,Vector3f position,int flags,ObjectState
 	return buildingId;
 }
 
-bool canStun(B)(ref MovingObject!B object,ObjectState!B state){
+bool canStun(B)(ref MovingObject!B object,ObjectState!B state,bool force=false){
 	if(object.isSacDoctor) return false;
-	if(object.creatureStats.effects.stunCooldown!=0) return false;
+	if(!force&&object.creatureStats.effects.stunCooldown!=0) return false;
 	final switch(object.creatureState.mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,cower,casting,stationaryCasting,castingMoving,shooting,usingAbility,pulling: return true;
 		case dying,dead,deadToGhost,idleGhost,movingGhost,ghostToIdle,dissolving,preSpawning,reviving,fastReviving,stunned,pumping,torturing,convertReviving,thrashing,pretendingToDie,playingDead,pretendingToRevive,rockForm,firewalk: return false;
 	}
 }
 
-bool stun(B)(ref MovingObject!B object, ObjectState!B state){
-	if(!object.canStun(state)) return false;
+bool stun(B)(ref MovingObject!B object, ObjectState!B state,bool force=false){
+	if(!object.canStun(state,force)) return false;
 	object.creatureState.mode=CreatureMode.stunned;
 	object.setCreatureState(state);
 	return true;
 }
 enum stunCooldownFrames=8*updateFPS;
-bool stunWithCooldown(B)(ref MovingObject!B object, int cooldownFrames, ObjectState!B state){
-	if(object.stun(state)){
+bool stunWithCooldown(B)(ref MovingObject!B object, int cooldownFrames, ObjectState!B state,bool force=false){
+	if(object.stun(state,force)){
 		object.creatureStats.effects.stunCooldown=cooldownFrames;
 		return true;
 	}
@@ -7776,6 +7851,9 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 				case SpellTag.vinewall:
 					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
 					return stun(castVinewall(side,target.position,manaDrain,spell,state));
+				case SpellTag.wallOfSpikes:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					return stun(castWallOfSpikes(side,target.position,manaDrain,spell,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -8781,6 +8859,25 @@ bool castVinewall(B)(int side,Vector3f position,ManaDrain!B manaDrain,SacSpell!B
 }
 bool vinewall(B)(Vinewall!B vinewall,ObjectState!B state){
 	state.addEffect(vinewall);
+	return true;
+}
+
+bool castWallOfSpikes(B)(int side,Vector3f position,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	auto duration=cast(int)ceil(updateFPS*spell.duration);
+	auto casterPositionFacing=state.movingObjectById!((ref obj)=>tuple(obj.position,obj.creatureState.facing),()=>Tuple!(Vector3f,float).init)(manaDrain.wizard);
+	auto casterPosition=casterPositionFacing[0],casterFacing=casterPositionFacing[1];
+	if(isNaN(casterPosition.x)) return false;
+	position.z=state.getGroundHeight(position);
+	auto casterDirection=position.xy-casterPosition.xy;
+	auto direction=Vector2f(-casterDirection.y,casterDirection.x);
+	if(direction.lengthsqr>0.001^^2) direction=direction.normalized;
+	else direction=rotate(facingQuaternion(casterFacing),Vector3f(0.0f,1.0f,0.0f));
+	playSoundAt("ukps",manaDrain.wizard,state,wallOfSpikesGain);
+	state.addEffect(WallOfSpikesCasting!B(manaDrain,WallOfSpikes!B(manaDrain.wizard,side,position,direction,spell)));
+	return true;
+}
+bool wallOfSpikes(B)(WallOfSpikes!B wallOfSpikes,ObjectState!B state){
+	state.addEffect(wallOfSpikes);
 	return true;
 }
 
@@ -16855,7 +16952,6 @@ bool updateVinewall(B)(ref Vinewall!B vinewall,ObjectState!B state,bool active=t
 						vinewall.applyCooldown(obj.id,state);
 					}
 				}
-				// TODO: spawn grasping vines
 			},(){})(target.id,attacker,side,state,vinewall);
 		}
 		auto wall=WallPosition(center,direction,left,right,top,wallThickness);
@@ -16893,7 +16989,7 @@ bool updateVinewall(B)(ref Vinewall!B vinewall,ObjectState!B state,bool active=t
 						vines[numSpawned-1]=vines[numDespawned++];
 				}
 				foreach(i,ref vine;vines[numDespawned..numSpawned]){
-					lengthFactors[numDespawned+i]=min(1.0f,lengthFactors[numDespawned+i]+1.0f/float(vanishTime));
+					lengthFactors[numDespawned+i]=min(1.0f,lengthFactors[numDespawned+i]+1.0f/float(growthTime));
 				}
 				if(leftStopped&&rightStopped&&top==wallHeight&&numSpawned==maxNumVines){
 					status=VinewallStatus.stationary;
@@ -16924,11 +17020,165 @@ bool updateVinewall(B)(ref Vinewall!B vinewall,ObjectState!B state,bool active=t
 	}
 }
 
-
 bool updateSpike(B)(ref Spike!B spike,ObjectState!B state){
 	with(spike){
 		position.z=state.getHeight(position);
 		return ++frame<lifetime;
+	}
+}
+
+
+void animateWallOfSpikesCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	auto castParticle=SacParticle!B.get(ParticleType.castPersephone2);
+	wizard.animateCasting(castParticle,state);
+}
+bool updateWallOfSpikesCasting(B)(ref WallOfSpikesCasting!B wallOfSpikesCast,ObjectState!B state){
+	with(wallOfSpikesCast){
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				state.movingObjectById!(animateWallOfSpikesCasting,(){})(manaDrain.wizard,state);
+				wallOfSpikes.updateWallOfSpikes(state,false);
+				return true;
+			case CastingStatus.interrupted:
+				wallOfSpikes.status=WallOfSpikesStatus.shrinking;
+				.wallOfSpikes(move(wallOfSpikes),state);
+				return false;
+			case CastingStatus.finished:
+				.wallOfSpikes(move(wallOfSpikes),state);
+				return false;
+		}
+	}
+}
+
+Vector3f wallOfSpikesSpikeSpawnPosition(B)(ref WallOfSpikes!B wallOfSpikes,ObjectState!B state){
+	bool left=!!state.uniform(2);
+	if(left&&wallOfSpikes.leftStopped) return Vector3f.init;
+	if(!left&&wallOfSpikes.rightStopped) return Vector3f.init;
+	auto t=left?state.uniform(wallOfSpikes.left,min(wallOfSpikes.left+1.5f,wallOfSpikes.right)):
+		state.uniform(max(wallOfSpikes.right-1.5f,wallOfSpikes.left),wallOfSpikes.right);
+	auto direction=Vector3f(wallOfSpikes.direction.x,wallOfSpikes.direction.y,0.0f);
+	auto orthogonal=Vector3f(direction.y,-direction.x,0.0f);
+	auto position=wallOfSpikes.get(t,state)+0.5f*wallOfSpikes.wallThickness*state.uniform(-1.0f,1.0f)*orthogonal;
+	position.z=state.getHeight(position);
+	return position;
+}
+
+WallOfSpikes!B.Spike makeWallOfSpikesSpike(B)(ref WallOfSpikes!B wallOfSpikes,ObjectState!B state){
+	auto base=wallOfSpikesSpikeSpawnPosition(wallOfSpikes,state);
+	auto sacParticle=SacParticle!B.get(ParticleType.dirt);
+	enum numParticles=5;
+	foreach(i;0..numParticles){
+		auto phi=2.0f*pi!float*i/numParticles;
+		auto offset=0.5f*wallOfSpikes.spikeScale*Vector3f(cos(phi),sin(phi),0.0f);
+		auto position=base+offset;
+		position.z=state.getHeight(position);
+		auto velocity=Vector3f(0.0f,0.0f,0.2f)+0.3f*offset;
+		auto frame=0;
+		auto lifetime=31;
+		auto scale=1.25f*wallOfSpikes.spikeScale;
+		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+	}
+	auto offset=state.uniformDisk(Vector2f(0.0f,0.0f),2.0f);
+	auto direction=Vector3f(offset.x,offset.y,wallOfSpikes.spikeHeight);
+	// auto maxScale=state.uniform(0.9f,1.1f);
+	// TODO: scar
+	return WallOfSpikes!B.Spike(0.0f,base,direction);
+}
+
+bool wallOfSpikesSpike(B)(ref MovingObject!B obj,ref WallOfSpikes!B wallOfSpikes,SacSpell!B spell,ObjectState!B state){
+	playSoundAt("skps",obj.position,state,wallOfSpikesGain); // TODO: ok?
+	obj.stunWithCooldown(stunCooldownFrames,state,true);
+	auto center=obj.center;
+	auto spikeHeight=min(center.z-state.getHeight(center)+1.5f,1.5f*wallOfSpikes.spikeHeight);
+	auto offset=state.uniformDisk(Vector2f(0.0f,0.0f),2.0f);
+	auto spikePosition=obj.position-Vector3f(offset.x,offset.y,0.0f);
+	spikePosition.z=state.getHeight(spikePosition);
+	auto direction=Vector3f(0.0f,0.0f,spikeHeight)+Vector3f(offset.x,offset.y,0.0f);
+	direction*=state.uniform(0.85f,1.15f);
+	auto scale=1.0f;
+	state.addEffect(Spike!B(spikePosition,direction,scale));
+	obj.dealSpellDamage(spell,wallOfSpikes.wizard,wallOfSpikes.side,direction,DamageMod.none,state);
+	return true;
+}
+
+enum wallOfSpikesGain=3.0f;
+bool updateWallOfSpikes(B)(ref WallOfSpikes!B wallOfSpikes,ObjectState!B state,bool active=true){
+	with(wallOfSpikes){
+		static void doSpike(ProximityEntry target,ObjectState!B state,SacSpell!B spell,int attacker,int side,WallOfSpikes!B* wallOfSpikes){
+			state.movingObjectById!((ref obj,attacker,side,state,wallOfSpikes){
+				if(wallOfSpikes.cooldown(obj.id,state)!=0) return;
+				auto orthogonal=Vector3f(wallOfSpikes.direction.y,-wallOfSpikes.direction.x,0.0f);
+				auto distance=abs(dot(obj.position-wallOfSpikes.center,orthogonal));
+				if(distance<0.4f*wallOfSpikes.wallThickness){
+					wallOfSpikesSpike(obj,*wallOfSpikes,spell,state);
+					// TODO: apply slow
+					wallOfSpikes.applyCooldown(obj.id,state);
+				}
+			},(){})(target.id,attacker,side,state,wallOfSpikes);
+		}
+		auto wall=WallPosition(center,direction,left,right,top,wallThickness);
+		if(active&&wallOfSpikes.status!=WallOfSpikesStatus.shrinking)
+			wallTargets!doSpike(wall,state,wallOfSpikes.spell,wallOfSpikes.wizard,wallOfSpikes.side,&wallOfSpikes);
+		auto orthogonal=Vector3f(direction.y,-direction.x,0.0f);
+		final switch(status){
+			case WallOfSpikesStatus.growing:
+				top=min(top+growSpeed,wallHeight);
+				auto expansionSpeed=spell.effectRange/WallOfSpikesCasting!B.castingLimit;
+				bool check(Vector3f position){
+					if((position-center).lengthsqr>spell.effectRange^^2) return false;
+					static void handleCollision(ProximityEntry entry,bool* found,ObjectState!B state){
+						if(state.isValidTarget(entry.id,TargetType.building))
+							*found=true;
+					}
+					Vector3f[2] hitbox=[position,position];
+					bool found=false;
+					state.proximity.collide!handleCollision(hitbox,&found,state);
+					return !found&&state.isOnGround(position);
+				}
+				if(!leftStopped){
+					auto cand=left-expansionSpeed;
+					if(check(get(cand,state))) left=cand;
+					else leftStopped=true;
+				}
+				if(!rightStopped){
+					auto cand=right+expansionSpeed;
+					if(check(get(cand,state))) right=cand;
+					else rightStopped=true;
+				}
+				if(numSpawned<maxNumSpikes&&frame*maxNumSpikes>=WallOfSpikesCasting!B.castingLimit*numSpawned){
+					spikes[numSpawned++]=wallOfSpikes.makeWallOfSpikesSpike(state);
+					if(isNaN(spikes[numSpawned-1].position.x))
+						spikes[numSpawned-1]=spikes[numDespawned++];
+				}
+				foreach(i,ref spike;spikes[numDespawned..numSpawned]){
+					spikes[numDespawned+i].scale=min(1.0f,spikes[numDespawned+i].scale+1.0f/float(growthTime));
+				}
+				if(leftStopped&&rightStopped&&top==wallHeight&&numSpawned==maxNumSpikes){
+					status=WallOfSpikesStatus.stationary;
+					foreach(i,ref spike;spikes[numDespawned..numSpawned]){
+						if(spikes[numDespawned+i].scale!=1.0f) status=WallOfSpikesStatus.growing;
+					}
+				}
+				break;
+			case WallOfSpikesStatus.stationary:
+				break;
+			case WallOfSpikesStatus.shrinking:
+				if(vanishFrame==-1) vanishFrame=frame;
+				top=max(top-shrinkSpeed,0.0f);
+				foreach(i,ref spike;spikes[numDespawned..numSpawned]){
+					spikes[numDespawned+i].scale=max(0.0f,spikes[numDespawned+i].scale-1.0f/float(vanishTime));
+				}
+				while(numDespawned<spikes.length&&spikes[numDespawned].scale==0.0f)
+					++numDespawned;
+				if(top==0.0f&&numDespawned==numSpawned) return false;
+				break;
+		}
+		// foreach(i,ref spike;spikes[numDespawned..numSpawned]) updateSpike(spike,lengthFactors[numDespawned+i],state);
+		if(vanishFrame==-1&&++frame>=WallOfSpikesCasting!B.castingLimit+spell.duration*updateFPS){
+			playSoundAtRange("dkps",get(left,state),get(right,state),state,wallOfSpikesGain);
+			status=WallOfSpikesStatus.shrinking;
+		}
+		return true;
 	}
 }
 
@@ -20761,6 +21011,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.spikes.length;){
 		if(!updateSpike(effects.spikes[i],state)){
 			effects.removeSpike(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.wallOfSpikesCastings.length;){
+		if(!updateWallOfSpikesCasting(effects.wallOfSpikesCastings[i],state)){
+			effects.removeWallOfSpikesCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.wallOfSpikess.length;){
+		if(!updateWallOfSpikes(effects.wallOfSpikess[i],state)){
+			effects.removeWallOfSpikes(i);
 			continue;
 		}
 		i++;
