@@ -16888,6 +16888,7 @@ Vector3f vinewallVineSpawnPosition(B)(ref Vinewall!B vinewall,ObjectState!B stat
 
 Vine makeVinewallVine(B)(ref Vinewall!B vinewall,ObjectState!B state){
 	auto base=vinewallVineSpawnPosition(vinewall,state);
+	if(isNaN(base.x)) return Vine.init;
 	auto sacParticle=SacParticle!B.get(ParticleType.castPersephone2);
 	enum numParticles=5;
 	foreach(i;0..numParticles){
@@ -17055,6 +17056,7 @@ Vector3f wallOfSpikesSpikeSpawnPosition(B)(ref WallOfSpikes!B wallOfSpikes,Objec
 
 WallOfSpikes!B.Spike makeWallOfSpikesSpike(B)(ref WallOfSpikes!B wallOfSpikes,ObjectState!B state){
 	auto base=wallOfSpikesSpikeSpawnPosition(wallOfSpikes,state);
+	if(isNaN(base.x)) return typeof(return).init;
 	auto sacParticle=SacParticle!B.get(ParticleType.dirt);
 	enum numParticles=5;
 	foreach(i;0..numParticles){
