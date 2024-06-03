@@ -17015,8 +17015,9 @@ bool updateSpike(B)(ref Spike!B spike,ObjectState!B state){
 
 
 void animateWallOfSpikesCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
-	auto castParticle=SacParticle!B.get(ParticleType.castPersephone2);
-	wizard.animateCasting(castParticle,state);
+	// TODO: improve
+	auto castParticle=SacParticle!B.get(ParticleType.castJames);
+	wizard.animateCasting!(false,1,false)(castParticle,state);
 }
 bool updateWallOfSpikesCasting(B)(ref WallOfSpikesCasting!B wallOfSpikesCast,ObjectState!B state){
 	with(wallOfSpikesCast){
