@@ -2617,6 +2617,7 @@ struct GraspingVines(B){
 	int creature;
 	SacSpell!B spell;
 	int timer;
+	Vector3f position;
 	Vine[16] vines;
 	bool active=true;
 	float lengthFactor=0.1f;
@@ -8542,18 +8543,18 @@ Vine spawnVine(B)(Vector3f[2] hitbox,ObjectState!B state){
 }
 enum graspingVinesGain=4.0f;
 bool graspingVines(B)(int target,SacSpell!B spell,ObjectState!B state){
-	auto durationHitbox=state.movingObjectById!((ref obj,state){
+	auto durationPositionHitbox=state.movingObjectById!((ref obj,state){
 		playSoundAt("toor",obj.position,state,graspingVinesGain);
 		obj.creatureStats.effects.numVines+=1;
 		obj.creatureState.targetFlyingHeight=max(0.0f,obj.position.z-state.getGroundHeight(obj.position));
 		auto duration=(obj.isWizard?0.25f:1000.0f/obj.creatureStats.maxHealth)*spell.duration;
-		return tuple(cast(int)ceil(updateFPS*duration), obj.hitbox);
-	},()=>tuple(-1,(Vector3f[2]).init))(target,state);
-	auto duration=durationHitbox[0],hitbox=durationHitbox[1];
+		return tuple(cast(int)ceil(updateFPS*duration), obj.position, obj.hitbox);
+	},()=>tuple(-1,Vector3f.init,(Vector3f[2]).init))(target,state);
+	auto duration=durationPositionHitbox[0],position=durationPositionHitbox[1],hitbox=durationPositionHitbox[2];
 	if(duration==-1) return false;
 	Vine[GraspingVines!B.vines.length] vines;
 	foreach(ref vine;vines) vine=spawnVine(hitbox,state);
-	state.addEffect(GraspingVines!B(target,spell,duration,vines));
+	state.addEffect(GraspingVines!B(target,spell,duration,position-Vector3f(0.0f,0.0f,state.getHeight(position)),vines));
 	return true;
 }
 
@@ -14659,8 +14660,9 @@ void updateVine(B)(ref Vine vine,float lengthFactor,ObjectState!B state){
 	static import std.math;
 	enum dampFactor=std.math.exp(std.math.log(0.5f)/updateFPS);
 	enum maxVelocity=20.0f;
+	auto direction=vine.target-vine.base;
 	vine.base.z=state.getHeight(vine.base);
-	// TODO: track target creature with vine
+	vine.target=vine.base+direction; // TODO: store direction instead of target?
 	foreach(i;1..vine.m){
 		auto realTarget=vine.base+lengthFactor*float(i)/(vine.m-1)*(vine.target-vine.base);
 		auto target=vine.locations[$-1]*(1.0f-vine.growthFactor)+vine.growthFactor*realTarget;
@@ -14682,10 +14684,11 @@ bool updateGraspingVines(B)(ref GraspingVines!B graspingVines,ObjectState!B stat
 	with(graspingVines){
 		foreach(ref vine;vines) updateVine(vine,lengthFactor,state);
 		if(active){
-			bool keep=state.movingObjectById!((ref obj,state){
+			bool keep=state.movingObjectById!((ref obj,position,state){
 				if(!obj.creatureState.mode.canPersistCC) return false;
+				obj.position=position+Vector3f(0.0f,0.0f,state.getHeight(position));;
 				return true;
-			},()=>false)(creature,state);
+			},()=>false)(creature,position,state);
 			if(!keep||--timer<=0){
 				active=false;
 				state.movingObjectById!((ref obj){
@@ -16914,7 +16917,7 @@ bool vinewallGraspingVines(B)(ref MovingObject!B obj,ref Vinewall!B vinewall,Sac
 	auto duration=cast(int)ceil(updateFPS*min(cap,fduration));
 	Vine[GraspingVines!B.vines.length] vines;
 	foreach(ref vine;vines) vine=spawnVine(obj.hitbox,state);
-	state.addEffect(GraspingVines!B(obj.id,spell,duration,vines));
+	state.addEffect(GraspingVines!B(obj.id,spell,duration,obj.position-Vector3f(0.0f,0.0f,state.getHeight(obj.position)),vines));
 	return true;
 }
 
@@ -17121,6 +17124,10 @@ bool wallOfSpikesSpike(B)(ref MovingObject!B obj,ref WallOfSpikes!B wallOfSpikes
 	return true;
 }
 
+void updateWallOfSpikesSpike(B)(ref WallOfSpikes!B.Spike spike,ObjectState!B state){
+	with(spike) position.z=state.getHeight(position);
+}
+
 enum wallOfSpikesGain=3.0f;
 bool updateWallOfSpikes(B)(ref WallOfSpikes!B wallOfSpikes,ObjectState!B state,bool active=true){
 	with(wallOfSpikes){
@@ -17190,7 +17197,7 @@ bool updateWallOfSpikes(B)(ref WallOfSpikes!B wallOfSpikes,ObjectState!B state,b
 				if(top==0.0f&&numDespawned==numSpawned) return false;
 				break;
 		}
-		// foreach(i,ref spike;spikes[numDespawned..numSpawned]) updateSpike(spike,lengthFactors[numDespawned+i],state);
+		foreach(i,ref spike;spikes[numDespawned..numSpawned]) updateWallOfSpikesSpike(spike,state);
 		if(vanishFrame==-1&&++frame>=WallOfSpikesCasting!B.castingLimit+spell.duration*updateFPS){
 			playSoundAtRange("dkps",get(left,state),get(right,state),state,wallOfSpikesGain);
 			status=WallOfSpikesStatus.shrinking;
