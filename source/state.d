@@ -3316,6 +3316,10 @@ struct WallOfSpikesCasting(B){
 
 	enum castingLimit=4*updateFPS; // TODO
 }
+struct WallOfSpikesSlowdown{
+	int id;
+	int lifetime;
+}
 enum WallOfSpikesStatus{ growing, stationary, shrinking, }
 struct WallOfSpikes(B){
 	int wizard;
@@ -3348,35 +3352,9 @@ struct WallOfSpikes(B){
 
 	enum cooldownTime=6*updateFPS;
 
-	static struct WallTarget{
-		int id;
-		int cooldownFrame;
-	}
-	SmallArray!(WallTarget,24) targets;
-	void applyCooldown(int id,ObjectState!B state){
-		foreach(ref target;targets)
-			if(target.id==id)
-				target.cooldownFrame=state.frame+cooldownTime;
-		targets~=WallTarget(id,state.frame+cooldownTime);
-	}
-	int cooldown(int id,ObjectState!B state){
-		if(!id) return 0;
-		int frame=state.frame;
-		for(int i=0;i<targets.length;){
-			if(targets[i].cooldownFrame<=state.frame){
-				swap(targets[i],targets[$-1]);
-				targets.length=targets.length-1;
-				continue;
-			}
-			if(targets[i].id==id) return targets[i].cooldownFrame-state.frame;
-			i++;
-		}
-		return 0;
-	}
-
 	enum spikeScale=1.5f;
 	enum wallHeight=5.0f;
-	enum spikeHeight=2.5f;
+	enum spikeHeight=3.0f;
 	enum wallThickness=5.0f;
 	enum growthTime=updateFPS/2;
 	enum vanishTime=updateFPS;
@@ -4941,6 +4919,14 @@ struct Effects(B){
 	void removeWallOfSpikesCasting(int i){
 		if(i+1<wallOfSpikesCastings.length) wallOfSpikesCastings[i]=move(wallOfSpikesCastings[$-1]);
 		wallOfSpikesCastings.length=wallOfSpikesCastings.length-1;
+	}
+	Array!(WallOfSpikesSlowdown) wallOfSpikesSlowdowns;
+	void addEffect(WallOfSpikesSlowdown wallOfSpikesSlowdown){
+		wallOfSpikesSlowdowns~=move(wallOfSpikesSlowdown);
+	}
+	void removeWallOfSpikesSlowdown(int i){
+		if(i+1<wallOfSpikesSlowdowns.length) wallOfSpikesSlowdowns[i]=move(wallOfSpikesSlowdowns[$-1]);
+		wallOfSpikesSlowdowns.length=wallOfSpikesSlowdowns.length-1;
 	}
 	Array!(WallOfSpikes!B) wallOfSpikess;
 	void addEffect(WallOfSpikes!B wallOfSpikes){
@@ -17078,26 +17064,59 @@ WallOfSpikes!B.Spike makeWallOfSpikesSpike(B)(ref WallOfSpikes!B wallOfSpikes,Ob
 		auto scale=1.25f*wallOfSpikes.spikeScale;
 		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
 	}
-	auto offset=state.uniformDisk(Vector2f(0.0f,0.0f),2.0f);
-	auto direction=Vector3f(offset.x,offset.y,wallOfSpikes.spikeHeight);
+	auto offset=wallOfSpikes.spikeScale*state.uniformDisk(Vector2f(0.0f,0.0f),2.0f);
+	auto direction=Vector3f(offset.x,offset.y,state.uniform(0.4f,1.6f)*wallOfSpikes.spikeHeight);
 	// auto maxScale=state.uniform(0.9f,1.1f);
 	// TODO: scar
 	return WallOfSpikes!B.Spike(0.0f,base,direction);
 }
 
+bool updateWallOfSpikesSlowdown(B)(ref WallOfSpikesSlowdown wallOfSpikesSlowdown,ObjectState!B state){
+	with(wallOfSpikesSlowdown){
+		if(--lifetime<=0){
+			state.movingObjectById!((ref obj){ obj.creatureStats.effects.wallOfSpikes=false; },(){})(id);
+			return false;
+		}
+		return true;
+	}
+}
+
 bool wallOfSpikesSpike(B)(ref MovingObject!B obj,ref WallOfSpikes!B wallOfSpikes,SacSpell!B spell,ObjectState!B state){
-	playSoundAt("skps",obj.position,state,wallOfSpikesGain); // TODO: ok?
+	if(obj.creatureStats.effects.wallOfSpikes) return false;
+	obj.creatureStats.effects.wallOfSpikes=true;
 	obj.stunWithCooldown(stunCooldownFrames,state,true);
+	state.addEffect(WallOfSpikesSlowdown(obj.id,wallOfSpikes.cooldownTime));
 	auto center=obj.center;
-	auto spikeHeight=min(center.z-state.getHeight(center)+1.5f,1.5f*wallOfSpikes.spikeHeight);
-	auto offset=state.uniformDisk(Vector2f(0.0f,0.0f),2.0f);
+	auto offset=wallOfSpikes.spikeScale*state.uniformDisk(Vector2f(0.0f,0.0f),2.0f);
 	auto spikePosition=obj.position-Vector3f(offset.x,offset.y,0.0f);
+	auto orthogonal=Vector3f(wallOfSpikes.direction.y,-wallOfSpikes.direction.x,0.0f);
+	auto distance=dot(spikePosition-wallOfSpikes.center,orthogonal);
+	if(abs(distance)>0.4f*wallOfSpikes.wallThickness){
+		auto correction=-2.0f*sign(distance)*(abs(distance)-0.4f*wallOfSpikes.wallThickness)*orthogonal;
+		spikePosition+=correction;
+		offset-=correction.xy;
+	}
 	spikePosition.z=state.getHeight(spikePosition);
-	auto direction=Vector3f(0.0f,0.0f,spikeHeight)+Vector3f(offset.x,offset.y,0.0f);
+	auto spikeHeight=min(center.z-state.getHeight(center),1.5f*wallOfSpikes.spikeHeight);
+	auto direction=state.uniform(1.0f,2.0f)*(Vector3f(0.0f,0.0f,spikeHeight)+Vector3f(offset.x,offset.y,0.0f));
 	direction*=state.uniform(0.85f,1.15f);
 	auto scale=1.0f;
+	playSoundAt("skps",obj.position,state,wallOfSpikesGain); // TODO: ok?
 	state.addEffect(Spike!B(spikePosition,direction,scale));
 	obj.dealSpellDamage(spell,wallOfSpikes.wizard,wallOfSpikes.side,direction,DamageMod.none,state);
+	auto sacParticle=SacParticle!B.get(ParticleType.dirt);
+	enum numParticles=25;
+	foreach(i;0..numParticles){
+		auto phi=2.0f*pi!float*i/numParticles;
+		auto poffset=state.uniform(0.0f,1.5f)*wallOfSpikes.spikeScale*Vector3f(cos(phi),sin(phi),0.0f);
+		auto position=spikePosition+poffset;
+		position.z=state.getHeight(position);
+		auto velocity=Vector3f(0.0f,0.0f,0.2f)+0.3f*poffset;
+		auto frame=0;
+		auto lifetime=63;
+		auto pscale=state.uniform(1.0f,1.5f)*wallOfSpikes.spikeScale;
+		state.addParticle(Particle!B(sacParticle,position,velocity,pscale,lifetime,frame));
+	}
 	return true;
 }
 
@@ -17106,14 +17125,11 @@ bool updateWallOfSpikes(B)(ref WallOfSpikes!B wallOfSpikes,ObjectState!B state,b
 	with(wallOfSpikes){
 		static void doSpike(ProximityEntry target,ObjectState!B state,SacSpell!B spell,int attacker,int side,WallOfSpikes!B* wallOfSpikes){
 			state.movingObjectById!((ref obj,attacker,side,state,wallOfSpikes){
-				if(wallOfSpikes.cooldown(obj.id,state)!=0) return;
+				if(obj.creatureStats.effects.wallOfSpikes) return;
 				auto orthogonal=Vector3f(wallOfSpikes.direction.y,-wallOfSpikes.direction.x,0.0f);
 				auto distance=abs(dot(obj.position-wallOfSpikes.center,orthogonal));
-				if(distance<0.4f*wallOfSpikes.wallThickness){
+				if(distance<0.4f*wallOfSpikes.wallThickness)
 					wallOfSpikesSpike(obj,*wallOfSpikes,spell,state);
-					// TODO: apply slow
-					wallOfSpikes.applyCooldown(obj.id,state);
-				}
 			},(){})(target.id,attacker,side,state,wallOfSpikes);
 		}
 		auto wall=WallPosition(center,direction,left,right,top,wallThickness);
@@ -21018,6 +21034,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.wallOfSpikesCastings.length;){
 		if(!updateWallOfSpikesCasting(effects.wallOfSpikesCastings[i],state)){
 			effects.removeWallOfSpikesCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.wallOfSpikesSlowdowns.length;){
+		if(!updateWallOfSpikesSlowdown(effects.wallOfSpikesSlowdowns[i],state)){
+			effects.removeWallOfSpikesSlowdown(i);
 			continue;
 		}
 		i++;
