@@ -17361,10 +17361,9 @@ void plagueDropExplosion(B)(ref PlagueDrop!B plagueDrop,int target,ObjectState!B
 		Vector3f[2] hitbox=scaleBox(plagueDropHitbox,1.75f);
 		hitbox[]+=position;
 		if(target&&state.isValidTarget(target)){
-			dealSpellDamage(target,spell,wizard,side,velocity,DamageMod.splash,state);
 			state.movingObjectById!((ref obj,hitbox,position,spell,attacker,side,state){
 				playSoundAt("hsid",obj.id,state,plagueGain);
-				obj.poison(spell,false,attacker,side,DamageMod.spell,state);
+				obj.poison(spell.amount,10*updateFPS,false,attacker,side,DamageMod.spell|DamageMod.splash,state);
 				*hitbox=obj.hitbox;
 				*position=boxCenter(*hitbox);
 			},(){})(target,&hitbox,&position,spell,wizard,side,state);
