@@ -3363,6 +3363,33 @@ struct WallOfSpikes(B){
 	enum shrinkSpeed=wallHeight/vanishTime;
 }
 
+struct PlagueCasting(B){
+	ManaDrain!B manaDrain;
+	Plague!B plague;
+	bool interrupted=false;
+}
+struct Plague(B){
+	int wizard;
+	int side;
+	Vector3f position;
+	SacSpell!B spell;
+	float cloudScale=0.0f;
+	int cloudFrame=0;
+	int frame=0;
+	enum cloudHeight=90.0f;
+	enum cloudGrowSpeed=0.5f;
+	enum cloudShrinkSpeed=1.0f;
+	enum dropRate=3;
+	enum fallDuration=2.0f;
+	enum jumpRange=25.0f, shortJumpRange=10.0f; // TODO: correct?
+}
+struct PlagueDrop(B){
+	int wizard;
+	int side;
+	Vector3f position;
+	Vector3f velocity;
+	SacSpell!B spell;
+}
 
 struct BrainiacProjectile(B){
 	int attacker;
@@ -4936,6 +4963,30 @@ struct Effects(B){
 	void removeWallOfSpikes(int i){
 		if(i+1<wallOfSpikess.length) wallOfSpikess[i]=move(wallOfSpikess[$-1]);
 		wallOfSpikess.length=wallOfSpikess.length-1;
+	}
+	Array!(PlagueCasting!B) plagueCastings;
+	void addEffect(PlagueCasting!B PlagueCasting){
+		plagueCastings~=move(PlagueCasting);
+	}
+	void removePlagueCasting(int i){
+		if(i+1<plagueCastings.length) plagueCastings[i]=move(plagueCastings[$-1]);
+		plagueCastings.length=plagueCastings.length-1;
+	}
+	Array!(Plague!B) plagues;
+	void addEffect(Plague!B Plague){
+		plagues~=move(Plague);
+	}
+	void removePlague(int i){
+		if(i+1<plagues.length) plagues[i]=move(plagues[$-1]);
+		plagues.length=plagues.length-1;
+	}
+	Array!(PlagueDrop!B) plagueDrops;
+	void addEffect(PlagueDrop!B plagueDrop){
+		plagueDrops~=move(plagueDrop);
+	}
+	void removePlagueDrop(int i){
+		if(i+1<plagueDrops.length) plagueDrops[i]=move(plagueDrops[$-1]);
+		plagueDrops.length=plagueDrops.length-1;
 	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
@@ -7841,6 +7892,9 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 				case SpellTag.wallOfSpikes:
 					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
 					return stun(castWallOfSpikes(side,target.position,manaDrain,spell,state));
+				case SpellTag.plague:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					return stun(castPlague(side,target.position,manaDrain,spell,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -8764,6 +8818,16 @@ bool castRainOfFrogs(B)(int side,Vector3f position,ManaDrain!B manaDrain,SacSpel
 }
 bool rainOfFrogs(B)(RainOfFrogs!B rainOfFrogs,ObjectState!B state){
 	state.addEffect(rainOfFrogs);
+	return true;
+}
+
+bool castPlague(B)(int side,Vector3f position,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	position.z=state.getHeight(position)+Plague!B.cloudHeight;
+	state.addEffect(PlagueCasting!B(manaDrain,Plague!B(manaDrain.wizard,side,position,spell)));
+	return true;
+}
+bool plague(B)(Plague!B plague,ObjectState!B state){
+	state.addEffect(plague);
 	return true;
 }
 
@@ -17208,6 +17272,154 @@ bool updateWallOfSpikes(B)(ref WallOfSpikes!B wallOfSpikes,ObjectState!B state,b
 	}
 }
 
+void animatePlagueCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	auto castParticle=SacParticle!B.get(ParticleType.poison);
+	// TODO: standard castCharnel2 animation on top of this?
+	static assert(updateFPS==60);
+	auto hitbox=wizard.relativeHitbox;
+	auto scale=1.0f;
+	enum numParticles=4;
+	foreach(i;0..numParticles){
+		auto position=1.1f*state.uniform(cast(Vector2f[2])[hitbox[0].xy,hitbox[1].xy]);
+		auto distance=(state.uniform(3)?state.uniform(0.3f,0.6f):state.uniform(1.5f,2.5f))*(hitbox[1].z-hitbox[0].z);
+		auto fullLifetime=2.0f*castParticle.numFrames/float(updateFPS);
+		auto lifetime=cast(int)(castParticle.numFrames*state.uniform(0.0f,2.0f));
+		// TODO: particles should accelerate upwards
+		state.addParticle(Particle!B(castParticle,wizard.position+rotate(wizard.rotation,Vector3f(position.x,position.y,state.uniform(0.0f,0.5f*distance))),Vector3f(0.0f,0.0f,distance/fullLifetime),scale,lifetime,0));
+	}
+}
+
+bool updatePlagueCasting(B)(ref PlagueCasting!B plagueCast,ObjectState!B state){
+	with(plagueCast){
+		++plague.cloudFrame;
+		if(!interrupted) final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				if(!state.movingObjectById!((ref obj,state){
+					obj.animatePlagueCasting(state);
+					return true;
+				},()=>false)(manaDrain.wizard,state))
+					goto case CastingStatus.interrupted;
+				break;
+			case CastingStatus.interrupted:
+				interrupted=true;
+				break;
+			case CastingStatus.finished:
+				.plague(plague,state);
+				return false;
+		}
+		if(interrupted){
+			plague.cloudScale=max(0.0f,plague.cloudScale-plague.cloudShrinkSpeed/updateFPS);
+			return plague.cloudScale!=0.0f;
+		}else{
+			plague.cloudScale=min(1.0f,plague.cloudScale+plague.cloudGrowSpeed/updateFPS);
+			return true;
+		}
+	}
+}
+bool updatePlague(B)(ref Plague!B plague,ObjectState!B state){
+	with(plague){
+		++frame;
+		++cloudFrame;
+		if(frame<=spell.duration*updateFPS){
+			auto gposition=position;
+			gposition.z=state.getHeight(gposition);
+			foreach(_;0..dropRate/updateFPS+(state.uniform!"[)"(0,updateFPS)<dropRate%updateFPS)){
+				auto offset=state.uniformDisk!(float,2)(Vector2f(0.0f,0.0f),spell.effectRange);
+				auto fposition=position+Vector3f(offset.x,offset.y,0.0f);
+				auto fvelocity=Vector3f(0.0f,0.0f,-cloudHeight/fallDuration);
+				// TODO: the following might be unnecessarily inefficient
+				if(auto target=state.proximity.creatureInRangeAndClosestTo(gposition,spell.effectRange,fposition,0,state)){
+					auto jumped=target?centerTarget(target,state):OrderTarget.init;
+					auto jdistsqr=(fposition.xy-jumped.position.xy).lengthsqr;
+					if(jdistsqr<shortJumpRange^^2||jdistsqr<jumpRange^^2&&state.uniform(3)!=0){
+						fposition=jumped.position;
+						fposition.z=position.z;
+					}
+				}
+				state.addEffect(PlagueDrop!B(wizard,side,fposition,fvelocity,spell));
+			}
+			return true;
+		}else{
+			cloudScale=max(0.0f,cloudScale-cloudShrinkSpeed/updateFPS);
+			return cloudScale!=0.0f;
+		}
+	}
+}
+
+enum plagueDropSize=1.5f;
+static immutable Vector3f[2] plagueDropHitbox=[-0.5f*plagueDropSize*Vector3f(1.0f,1.0f,1.0f),0.5f*plagueDropSize*Vector3f(1.0f,1.0f,1.0f)];
+int plagueDropCollisionTarget(B)(Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state){
+		return entry.isProjectileObstacle&&state.movingObjectById!((ref obj)=>obj.creatureState.mode.canBeInfectedByMites,()=>false)(entry.id);
+	}
+	return collisionTarget!(plagueDropHitbox,filter)(-1,position,state);
+}
+enum plagueGain=1.0f;
+void plagueDropExplosion(B)(ref PlagueDrop!B plagueDrop,int target,ObjectState!B state){
+	with(plagueDrop){
+		playSoundAt("xdlb",position,state,plagueGain);
+		Vector3f[2] hitbox=scaleBox(plagueDropHitbox,1.75f);
+		hitbox[]+=position;
+		if(target&&state.isValidTarget(target)){
+			dealSpellDamage(target,spell,wizard,side,velocity,DamageMod.splash,state);
+			state.movingObjectById!((ref obj,hitbox,position,spell,attacker,side,state){
+				playSoundAt("hsid",obj.id,state,plagueGain);
+				obj.poison(spell,false,attacker,side,DamageMod.spell,state);
+				*hitbox=obj.hitbox;
+				*position=boxCenter(*hitbox);
+			},(){})(target,&hitbox,&position,spell,wizard,side,state);
+		}else target=0;
+		enum numParticles2=50;
+		auto sacParticle2=SacParticle!B.get(ParticleType.poison);
+		auto scale=boxSize(hitbox).length;
+		foreach(i;0..numParticles2){
+			auto pposition=state.uniform(scaleBox(hitbox,2.0f));
+			auto direction=0.5f*(pposition-position).normalized;
+			auto velocity=scale*state.uniform(0.25f,0.75f)*direction;
+			auto lifetime=state.uniform(95,127);
+			auto frame=0;
+			state.addParticle(Particle!B(sacParticle2,pposition,velocity,scale,lifetime,frame));
+		}
+	}
+}
+void animatePlagueDrop(B)(ref PlagueDrop!B plagueDrop,ObjectState!B state){
+	auto tscale=boxSize(plagueDropHitbox).length;
+	enum numParticles=2;
+	auto sacParticle=SacParticle!B.get(ParticleType.blood);
+	foreach(i;0..numParticles){
+		auto dist=state.uniform(0.0f,1.0f);
+		auto scale=(1.5f-dist)*tscale;
+		auto position=state.uniformDisk(plagueDrop.position,0.25*scale)-5.0f*dist*plagueDrop.velocity.normalized;
+		auto velocity=plagueDrop.velocity;
+		auto lifetime=sacParticle.numFrames-1;
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+	}
+}
+bool updatePlagueDrop(B)(ref PlagueDrop!B plagueDrop,ObjectState!B state){
+	with(plagueDrop){
+		animatePlagueDrop(plagueDrop,state);
+		position+=velocity/updateFPS;
+		velocity.z-=spell.fallingAcceleration/updateFPS;
+		if(state.isOnGround(position)){
+			auto height=state.getGroundHeight(position);
+			if(height>position.z){
+				position.z=height;
+				plagueDropExplosion(plagueDrop,0,state);
+				return false;;
+			}
+		}
+		if(auto collisionTarget=plagueDropCollisionTarget(position,state)){
+			state.movingObjectById!((ref obj,velocity,state){
+					obj.damageAnimation(velocity,state);
+				},(){})(collisionTarget,velocity,state);
+			plagueDropExplosion(plagueDrop,collisionTarget,state);
+			return false;
+		}
+		return true;
+	}
+}
+
 
 enum brainiacProjectileHitGain=4.0f;
 enum brainiacProjectileSize=0.45f; // TODO: ok?
@@ -21058,6 +21270,27 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.wallOfSpikess.length;){
 		if(!updateWallOfSpikes(effects.wallOfSpikess[i],state)){
 			effects.removeWallOfSpikes(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.plagueCastings.length;){
+		if(!updatePlagueCasting(effects.plagueCastings[i],state)){
+			effects.removePlagueCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.plagues.length;){
+		if(!updatePlague(effects.plagues[i],state)){
+			effects.removePlague(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.plagueDrops.length;){
+		if(!updatePlagueDrop(effects.plagueDrops[i],state)){
+			effects.removePlagueDrop(i);
 			continue;
 		}
 		i++;

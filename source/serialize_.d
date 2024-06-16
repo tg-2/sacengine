@@ -577,6 +577,15 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Wal
 void serialize(alias sink,B)(ref WallOfSpikes!B wallOfSpikes){ serializeStruct!sink(wallOfSpikes); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==WallOfSpikes!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref PlagueCasting!B plagueCasting){ serializeStruct!sink(plagueCasting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==PlagueCasting!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref Plague!B plague){ serializeStruct!sink(plague); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Plague!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref PlagueDrop!B plagueDrop){ serializeStruct!sink(plagueDrop); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==PlagueDrop!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref BrainiacProjectile!B brainiacProjectile){ serializeStruct!sink(brainiacProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BrainiacProjectile!B)){ deserializeStruct(result,state,data); }
 

@@ -2056,7 +2056,9 @@ struct Renderer(B){
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&& // TODO: cloud shadows?
 														   (objects.rainOfFrogsCastings.length||
-															objects.rainOfFrogss.length)
+															objects.rainOfFrogss.length||
+														    objects.plagueCastings.length||
+														    objects.plagues.length)
 				){
 					B.disableDepthMask();
 					B.enableCulling();
@@ -2082,6 +2084,10 @@ struct Renderer(B){
 						with(rainOfFrogsCasting.rainOfFrogs) renderCloud(position,spell.effectRange,cloudScale,cloudFrame);
 					foreach(ref rainOfFrogs;objects.rainOfFrogss)
 						with(rainOfFrogs) renderCloud(position,spell.effectRange,cloudScale,cloudFrame);
+					foreach(ref plagueCasting;objects.plagueCastings)
+						with(plagueCasting.plague) renderCloud(position,spell.effectRange,cloudScale,cloudFrame);
+					foreach(ref plague;objects.plagues)
+						with(plague) renderCloud(position,spell.effectRange,cloudScale,cloudFrame);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.rainFrogs.length){
 					auto material=self.rainFrog.material;
