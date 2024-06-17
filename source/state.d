@@ -17363,7 +17363,7 @@ void plagueDropExplosion(B)(ref PlagueDrop!B plagueDrop,int target,ObjectState!B
 		if(target&&state.isValidTarget(target)){
 			state.movingObjectById!((ref obj,hitbox,position,spell,attacker,side,state){
 				playSoundAt("hsid",obj.id,state,plagueGain);
-				obj.poison(spell.amount,10*updateFPS,false,attacker,side,DamageMod.spell|DamageMod.splash,state);
+				obj.poison(0.1f*spell.amount,10*updateFPS,false,attacker,side,DamageMod.spell|DamageMod.splash,state);
 				*hitbox=obj.hitbox;
 				*position=boxCenter(*hitbox);
 			},(){})(target,&hitbox,&position,spell,wizard,side,state);
