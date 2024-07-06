@@ -2058,7 +2058,9 @@ struct Renderer(B){
 														   (objects.rainOfFrogsCastings.length||
 															objects.rainOfFrogss.length||
 														    objects.plagueCastings.length||
-														    objects.plagues.length)
+														    objects.plagues.length||
+														    objects.rainOfFireCastings.length||
+														    objects.rainOfFires.length)
 				){
 					B.disableDepthMask();
 					B.enableCulling();
@@ -2088,6 +2090,10 @@ struct Renderer(B){
 						with(plagueCasting.plague) renderCloud(position,spell.effectRange,cloudScale,cloudFrame);
 					foreach(ref plague;objects.plagues)
 						with(plague) renderCloud(position,spell.effectRange,cloudScale,cloudFrame);
+					foreach(ref rainOfFireCasting;objects.rainOfFireCastings)
+						with(rainOfFireCasting.rainOfFire) renderCloud(position,0.5f*spell.effectRange,cloudScale,cloudFrame);
+					foreach(ref rainOfFire;objects.rainOfFires)
+						with(rainOfFire) renderCloud(position,0.5f*spell.effectRange,cloudScale,cloudFrame);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.rainFrogs.length){
 					auto material=self.rainFrog.material;
@@ -2614,7 +2620,7 @@ struct Renderer(B){
 						mesh.render(rc);
 					}
 				}
-				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.bombardProjectiles.length){
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.bombardProjectiles.length||objects.rainOfFireDrops.length)){
 					auto material=self.bombardProjectile.material;
 					material.bind(rc);
 					scope(success) material.unbind(rc);
@@ -2623,6 +2629,13 @@ struct Renderer(B){
 						auto frame=objects.bombardProjectiles[j].frame;
 						auto mesh=self.bombardProjectile.getFrame(frame%self.bombardProjectile.numFrames);
 						material.backend.setSpriteTransformation(position,rc);
+						mesh.render(rc);
+					}
+					foreach(j;0..objects.rainOfFireDrops.length){
+						auto position=objects.rainOfFireDrops[j].position;
+						auto frame=objects.rainOfFireDrops[j].frame;
+						auto mesh=self.bombardProjectile.getFrame(frame%self.bombardProjectile.numFrames);
+						material.backend.setSpriteTransformationScaled(position,2.5f,rc);
 						mesh.render(rc);
 					}
 				}

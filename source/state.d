@@ -3391,6 +3391,36 @@ struct PlagueDrop(B){
 	SacSpell!B spell;
 }
 
+struct RainOfFireCasting(B){
+	ManaDrain!B manaDrain;
+	RainOfFire!B rainOfFire;
+	bool interrupted=false;
+}
+struct RainOfFire(B){
+	int wizard;
+	int side;
+	Vector3f position;
+	SacSpell!B spell;
+	float cloudScale=0.0f;
+	int cloudFrame=0;
+	int frame=0;
+	enum cloudHeight=90.0f;
+	enum cloudGrowSpeed=0.5f;
+	enum cloudShrinkSpeed=1.0f;
+	enum dropRate=3;
+	enum fallDuration=1.4f;
+	enum jumpRange=25.0f, shortJumpRange=10.0f; // TODO: correct?
+}
+struct RainOfFireDrop(B){
+	int wizard;
+	int side;
+	Vector3f position;
+	Vector3f velocity;
+	SacSpell!B spell;
+	int frame=0;
+}
+
+
 struct BrainiacProjectile(B){
 	int attacker;
 	int side;
@@ -4987,6 +5017,30 @@ struct Effects(B){
 	void removePlagueDrop(int i){
 		if(i+1<plagueDrops.length) plagueDrops[i]=move(plagueDrops[$-1]);
 		plagueDrops.length=plagueDrops.length-1;
+	}
+	Array!(RainOfFireCasting!B) rainOfFireCastings;
+	void addEffect(RainOfFireCasting!B RainOfFireCasting){
+		rainOfFireCastings~=move(RainOfFireCasting);
+	}
+	void removeRainOfFireCasting(int i){
+		if(i+1<rainOfFireCastings.length) rainOfFireCastings[i]=move(rainOfFireCastings[$-1]);
+		rainOfFireCastings.length=rainOfFireCastings.length-1;
+	}
+	Array!(RainOfFire!B) rainOfFires;
+	void addEffect(RainOfFire!B RainOfFire){
+		rainOfFires~=move(RainOfFire);
+	}
+	void removeRainOfFire(int i){
+		if(i+1<rainOfFires.length) rainOfFires[i]=move(rainOfFires[$-1]);
+		rainOfFires.length=rainOfFires.length-1;
+	}
+	Array!(RainOfFireDrop!B) rainOfFireDrops;
+	void addEffect(RainOfFireDrop!B rainOfFireDrop){
+		rainOfFireDrops~=move(rainOfFireDrop);
+	}
+	void removeRainOfFireDrop(int i){
+		if(i+1<rainOfFireDrops.length) rainOfFireDrops[i]=move(rainOfFireDrops[$-1]);
+		rainOfFireDrops.length=rainOfFireDrops.length-1;
 	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
@@ -7895,6 +7949,9 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 				case SpellTag.plague:
 					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
 					return stun(castPlague(side,target.position,manaDrain,spell,state));
+				case SpellTag.rainOfFire:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					return stun(castRainOfFire(side,target.position,manaDrain,spell,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -8827,7 +8884,17 @@ bool castPlague(B)(int side,Vector3f position,ManaDrain!B manaDrain,SacSpell!B s
 	return true;
 }
 bool plague(B)(Plague!B plague,ObjectState!B state){
-	state.addEffect(plague);
+	state.addEffect(move(plague));
+	return true;
+}
+
+bool castRainOfFire(B)(int side,Vector3f position,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	position.z=state.getHeight(position)+RainOfFire!B.cloudHeight;
+	state.addEffect(RainOfFireCasting!B(manaDrain,RainOfFire!B(manaDrain.wizard,side,position,spell)));
+	return true;
+}
+bool rainOfFire(B)(RainOfFire!B rainOfFire,ObjectState!B state){
+	state.addEffect(move(rainOfFire));
 	return true;
 }
 
@@ -17419,6 +17486,144 @@ bool updatePlagueDrop(B)(ref PlagueDrop!B plagueDrop,ObjectState!B state){
 	}
 }
 
+void animateRainOfFireCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	auto castParticle=SacParticle!B.get(ParticleType.firy);
+	wizard.animateCasting(castParticle,state);
+	static assert(updateFPS==60);
+	auto hitbox=wizard.relativeHitbox;
+	enum numParticles=6;
+	foreach(i;0..numParticles){
+		auto position=1.1f*state.uniform(cast(Vector2f[2])[hitbox[0].xy,hitbox[1].xy]);
+		auto distance=(state.uniform(3)?state.uniform(0.3f,0.6f):state.uniform(1.5f,2.5f))*(hitbox[1].z-hitbox[0].z);
+		auto fullLifetime=2.0f*castParticle.numFrames/float(updateFPS);
+		auto scale=state.uniform(1.5f,2.0f);
+		auto lifetime=cast(int)(castParticle.numFrames*state.uniform(0.0f,2.0f));
+		// TODO: particles should accelerate upwards
+		state.addParticle(Particle!B(castParticle,wizard.position+rotate(wizard.rotation,Vector3f(position.x,position.y,state.uniform(0.0f,0.5f*distance))),Vector3f(0.0f,0.0f,distance/fullLifetime),scale,lifetime,0));
+	}
+}
+
+bool updateRainOfFireCasting(B)(ref RainOfFireCasting!B rainOfFireCast,ObjectState!B state){
+	with(rainOfFireCast){
+		++rainOfFire.cloudFrame;
+		if(!interrupted) final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				if(!state.movingObjectById!((ref obj,state){
+					obj.animateRainOfFireCasting(state);
+					return true;
+				},()=>false)(manaDrain.wizard,state))
+					goto case CastingStatus.interrupted;
+				break;
+			case CastingStatus.interrupted:
+				interrupted=true;
+				break;
+			case CastingStatus.finished:
+				.rainOfFire(rainOfFire,state);
+				return false;
+		}
+		if(interrupted){
+			rainOfFire.cloudScale=max(0.0f,rainOfFire.cloudScale-rainOfFire.cloudShrinkSpeed/updateFPS);
+			return rainOfFire.cloudScale!=0.0f;
+		}else{
+			rainOfFire.cloudScale=min(1.0f,rainOfFire.cloudScale+rainOfFire.cloudGrowSpeed/updateFPS);
+			return true;
+		}
+	}
+}
+bool updateRainOfFire(B)(ref RainOfFire!B rainOfFire,ObjectState!B state){
+	with(rainOfFire){
+		++frame;
+		++cloudFrame;
+		// TODO: ash particles in the air
+		if(frame<=spell.duration*updateFPS){
+			auto gposition=position;
+			gposition.z=state.getHeight(gposition);
+			foreach(_;0..dropRate/updateFPS+(state.uniform!"[)"(0,updateFPS)<dropRate%updateFPS)){
+				auto soffset=state.uniformDisk!(float,2)(Vector2f(0.0f,0.0f),0.5f*spell.effectRange);
+				auto sposition=position+Vector3f(soffset.x,soffset.y,0.0f);
+				auto offset=state.uniformDisk!(float,2)(Vector2f(0.0f,0.0f),spell.effectRange);
+				auto fposition=position+Vector3f(offset.x,offset.y,0.0f);
+				// TODO: the following might be unnecessarily inefficient
+				if(auto target=state.proximity.creatureInRangeAndClosestTo(gposition,spell.effectRange,fposition,0,state)){
+					auto jumped=target?centerTarget(target,state):OrderTarget.init;
+					auto jdistsqr=(fposition.xy-jumped.position.xy).lengthsqr;
+					if(jdistsqr<shortJumpRange^^2||jdistsqr<jumpRange^^2&&state.uniform(3)!=0){
+						fposition=jumped.position;
+						fposition.z=position.z;
+					}
+				}
+				fposition.z=state.getHeight(fposition);
+				auto fvelocity=(fposition-sposition)/fallDuration;
+				state.addEffect(RainOfFireDrop!B(wizard,side,sposition,fvelocity,spell));
+			}
+			return true;
+		}else{
+			cloudScale=max(0.0f,cloudScale-cloudShrinkSpeed/updateFPS);
+			return cloudScale!=0.0f;
+		}
+	}
+}
+
+enum rainOfFireDropSize=1.5f;
+static immutable Vector3f[2] rainOfFireDropHitbox=[-0.5f*rainOfFireDropSize*Vector3f(1.0f,1.0f,1.0f),0.5f*rainOfFireDropSize*Vector3f(1.0f,1.0f,1.0f)];
+int rainOfFireDropCollisionTarget(B)(Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state){
+		return entry.isProjectileObstacle&&state.movingObjectById!((ref obj)=>obj.creatureState.mode.canBeInfectedByMites,()=>false)(entry.id);
+	}
+	return collisionTarget!(rainOfFireDropHitbox,filter)(-1,position,state);
+}
+enum rainOfFireGain=1.0f;
+void rainOfFireDropExplosion(B)(ref RainOfFireDrop!B rainOfFireDrop,int target,ObjectState!B state){
+	playSpellSoundTypeAt(SoundType.explodingFireball,rainOfFireDrop.position,state,8.0f);
+	static bool callback(int target,int wizard,int side,ObjectState!B state){
+		setAblaze(target,updateFPS,false,0.0f,wizard,side,DamageMod.none,state);
+		return true;
+	}
+	dealSplashSpellDamageAt!callback(target,rainOfFireDrop.spell,rainOfFireDrop.spell.damageRange,rainOfFireDrop.wizard,rainOfFireDrop.side,rainOfFireDrop.position,DamageMod.ignite,state,rainOfFireDrop.wizard,rainOfFireDrop.side,state);
+	animateFireballExplosion(rainOfFireDrop.position,state);
+}
+void animateRainOfFireDrop(B)(ref RainOfFireDrop!B rainOfFireDrop,Vector3f oldPosition,ObjectState!B state){
+	with(rainOfFireDrop){
+		enum numParticles=8;
+		auto sacParticle1=SacParticle!B.get(ParticleType.firy);
+		auto sacParticle2=SacParticle!B.get(ParticleType.fireball);
+		auto velocity=Vector3f(0.0f,0.0f,0.0f);
+		auto lifetime=31;
+		auto scale=4.0f;
+		auto frame=0;
+		foreach(i;0..numParticles){
+			auto sacParticle=i!=0?sacParticle1:sacParticle2;
+			auto position=oldPosition*((cast(float)numParticles-1-i)/numParticles)+position*(cast(float)(i+1)/numParticles);
+			position+=0.6f*state.uniformDirection();
+			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+		}
+	}
+}
+bool updateRainOfFireDrop(B)(ref RainOfFireDrop!B rainOfFireDrop,ObjectState!B state){
+	with(rainOfFireDrop){
+		++frame;
+		auto oldPosition=position;
+		position+=velocity/updateFPS;
+		animateRainOfFireDrop(rainOfFireDrop,oldPosition,state);
+		if(state.isOnGround(position)){
+			auto height=state.getGroundHeight(position);
+			if(height>position.z){
+				position.z=height;
+				rainOfFireDropExplosion(rainOfFireDrop,0,state);
+				return false;;
+			}
+		}
+		if(auto collisionTarget=rainOfFireDropCollisionTarget(position,state)){
+			state.movingObjectById!((ref obj,velocity,state){
+				obj.damageAnimation(velocity,state);
+			},(){})(collisionTarget,velocity,state);
+			rainOfFireDropExplosion(rainOfFireDrop,collisionTarget,state);
+			return false;
+		}
+		return true;
+	}
+}
+
 
 enum brainiacProjectileHitGain=4.0f;
 enum brainiacProjectileSize=0.45f; // TODO: ok?
@@ -21290,6 +21495,27 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.plagueDrops.length;){
 		if(!updatePlagueDrop(effects.plagueDrops[i],state)){
 			effects.removePlagueDrop(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.rainOfFireCastings.length;){
+		if(!updateRainOfFireCasting(effects.rainOfFireCastings[i],state)){
+			effects.removeRainOfFireCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.rainOfFires.length;){
+		if(!updateRainOfFire(effects.rainOfFires[i],state)){
+			effects.removeRainOfFire(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.rainOfFireDrops.length;){
+		if(!updateRainOfFireDrop(effects.rainOfFireDrops[i],state)){
+			effects.removeRainOfFireDrop(i);
 			continue;
 		}
 		i++;
