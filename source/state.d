@@ -660,6 +660,27 @@ class PathFinder(B){
 		//p.z=state.getHeight(p);
 		return p;
 	}
+
+
+	enum blockingTolerance=1.5f;
+	bool[512][512] blocked;
+	void updateBlocked(ObjectState!B state){
+		foreach(ref b;blocked) b[]=false;
+		state.eachStatic!((ref obj,blocked){
+			foreach(hitbox;obj.hitboxes){
+				if(hitbox[0].z>state.getHeight(obj.position)+2.0f)
+					continue;
+				auto xy1=roundToGrid(hitbox[0]+0.5f*directWalkDistance-blockingTolerance,state);
+				auto xy2=roundToGrid(hitbox[1]-0.5f*directWalkDistance+blockingTolerance,state);
+				auto x1=xy1.x,y1=xy1.y;
+				auto x2=xy2.x,y2=xy2.y;
+				foreach(i;x1..x2+1)
+					foreach(j;y1..y2+1)
+						(*blocked)[i][j]=true;
+			}
+		})(&blocked);
+	}
+
 	static bool unblocked(Vector3f position,ObjectState!B state){
 		enum eps=1.0f;
 		static immutable Vector3f[3] offsets=[Vector3f(-0.5f*eps,eps,0.0f),Vector3f(0.5f*eps,eps,0.0f),Vector3f(0.0f,-eps,0.0f)];
@@ -667,7 +688,7 @@ class PathFinder(B){
 		return true;
 	}
 	bool unblocked(short x,short y,ObjectState!B state){
-		return free[x][y];
+		return free[x][y]&&!blocked[x][y];
 	}
 	Tuple!(short,"x",short,"y") closestUnblocked(short x,short y,short limit,ObjectState!B state){
 		int dist=int.max;
@@ -700,7 +721,7 @@ class PathFinder(B){
 		auto nstart=roundToGrid(start,state);
 		auto nend=roundToGrid(end,state);
 		if(!unblocked(nend.expand,state)){
-			auto cand=closestUnblocked(nend.expand,2,state);
+			auto cand=closestUnblocked(nend.expand,3,state);
 			if(nend==cand) return false; // TODO
 			nend=cand;
 		}
@@ -16325,7 +16346,8 @@ bool updateRainFrog(B)(ref RainFrog!B rainFrog,ObjectState!B state){
 						}
 					}
 				}
-			}
+			}else if(position.z<state.getHeight(position)-1000.0f)
+				return false;
 			if(auto collisionTarget=rainFrogCollisionTarget(position,state)){
 				auto targetPositionTargetRotation=state.movingObjectById!((ref obj,velocity,state){
 					obj.creatureStats.effects.numRainFrogs+=1;
@@ -17474,7 +17496,8 @@ bool updatePlagueDrop(B)(ref PlagueDrop!B plagueDrop,ObjectState!B state){
 				plagueDropExplosion(plagueDrop,0,state);
 				return false;;
 			}
-		}
+		}else if(position.z<state.getHeight(position)-1000.0f)
+			return false;
 		if(auto collisionTarget=plagueDropCollisionTarget(position,state)){
 			state.movingObjectById!((ref obj,velocity,state){
 					obj.damageAnimation(velocity,state);
@@ -17612,7 +17635,8 @@ bool updateRainOfFireDrop(B)(ref RainOfFireDrop!B rainOfFireDrop,ObjectState!B s
 				rainOfFireDropExplosion(rainOfFireDrop,0,state);
 				return false;;
 			}
-		}
+		}else if(position.z<state.getHeight(position)-1000.0f)
+			return false;
 		if(auto collisionTarget=rainOfFireDropCollisionTarget(position,state)){
 			state.movingObjectById!((ref obj,velocity,state){
 				obj.damageAnimation(velocity,state);
@@ -23276,6 +23300,7 @@ final class ObjectState(B){ // (update logic)
 		}+/
 		frame+=1;
 		proximity.start();
+		pathFinder.updateBlocked(this);
 		trig.beginTriggers(this);
 		this.eachByType!(addToProximity,EachByTypeFlags.none)(this);
 		this.eachEffects!updateEffects(this);
