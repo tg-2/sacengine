@@ -17597,7 +17597,11 @@ int rainOfFireDropCollisionTarget(B)(Vector3f position,ObjectState!B state){
 }
 enum rainOfFireGain=1.0f;
 void rainOfFireDropExplosion(B)(ref RainOfFireDrop!B rainOfFireDrop,int target,ObjectState!B state){
-	playSpellSoundTypeAt(SoundType.explodingFireball,rainOfFireDrop.position,state,8.0f);
+	playSpellSoundTypeAt(SoundType.explodingFireball,rainOfFireDrop.position,state,3.0f);
+	if(state.isValidTarget(target)){
+		dealSpellDamage(target,rainOfFireDrop.spell,rainOfFireDrop.wizard,rainOfFireDrop.side,rainOfFireDrop.velocity,DamageMod.ignite|DamageMod.splash,state);
+		setAblaze(target,updateFPS,false,0.0f,rainOfFireDrop.wizard,rainOfFireDrop.side,DamageMod.ignite,state);
+	}else target=0;
 	static bool callback(int target,int wizard,int side,ObjectState!B state){
 		setAblaze(target,updateFPS,false,0.0f,wizard,side,DamageMod.none,state);
 		return true;
