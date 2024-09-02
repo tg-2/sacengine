@@ -111,7 +111,7 @@ struct Options{
 	bool synchronizeLevel=true;
 	bool synchronizeSouls=true;
 	bool synchronizeLevelBounds=true;
-	bool synchronizeXPRate=true;
+	bool synchronizeXpRate=true;
 	bool useMapSettings=false;
 	// recording and playback
 	string recordingFilename="";

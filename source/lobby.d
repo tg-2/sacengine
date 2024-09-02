@@ -301,7 +301,7 @@ class Lobby(B){
 			network.synchronizeSetting!"minLevel"();
 			network.synchronizeSetting!"maxLevel"();
 		}
-		if(options.synchronizeXPRate) network.synchronizeSetting!"xpRate"();
+		if(options.synchronizeXpRate) network.synchronizeSetting!"xpRate"();
 
 		network.synchronizeSetting!"pauseOnDrop"();
 	}
