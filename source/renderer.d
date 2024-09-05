@@ -69,7 +69,7 @@ struct Mouse(B){
 	int cachedTargetFrame;
 	enum targetCacheDelta=10.0f;
 	enum minimapTargetCacheDelta=2.0f;
-	enum targetCacheDuration=0.6f*updateFPS;
+	enum targetCacheDuration=3*updateFPS/4;
 	enum Location{
 		scene,
 		minimap,
