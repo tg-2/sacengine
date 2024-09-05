@@ -8180,8 +8180,32 @@ bool teleport(B)(ref MovingObject!B obj,Vector3f newPosition,ObjectState!B state
 		animateTeleport(true,startHitbox,state);
 		animateTeleport(false,newHitbox,state);
 	}
+	if(obj.creatureStats.effects.vined){
+		foreach(ref vines;state.obj.opaqueObjects.effects.graspingViness.data){
+			if(obj.id!=vines.creature) continue;
+			teleportGraspingVines(vines,newPosition,state);
+			break;
+		}
+	}
 	return true;
 }
+
+void teleportGraspingVines(B)(ref GraspingVines!B vines,Vector3f newPosition,ObjectState!B state){
+	newPosition.z=state.getHeight(newPosition);
+	auto oldPosition=vines.position;
+	oldPosition.z=state.getHeight(oldPosition);
+	auto direction=newPosition-oldPosition;
+	vines.position.x=newPosition.x;
+	vines.position.y=newPosition.y;
+	foreach(ref vine;vines.vines){
+		vine.base+=direction;
+		vine.base.z=state.getHeight(vine.base);
+		vine.target+=direction;
+		vine.locations[]+=direction;
+	}
+	// TODO: store old location too
+}
+
 
 bool canTeleport(B)(ref MovingObject!B obj,ObjectState!B state){
 	if(!obj.isAlive) return false;
@@ -8669,7 +8693,6 @@ Vine spawnVine(B)(Vector3f[2] hitbox,ObjectState!B state){
 	auto target=state.uniform(nhitbox);
 	enum displacement=1.0f;
 	auto base=target+state.uniform(0.0f,displacement)*Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),0.0f);
-	// TODO: snap base to ground
 	base.z=state.getHeight(base);
 	return spawnVine(base,target,scale,state);
 }
