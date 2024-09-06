@@ -296,16 +296,16 @@ struct OrderTarget{
 }
 Vector3f center(B)(ref OrderTarget target,ObjectState!B state){
 	if(target.type==TargetType.terrain||!state.isValidTarget(target.id)) return target.position;
-	return state.objectById!((obj)=>obj.center)(target.id);
+	return state.objectById!((ref obj,state)=>obj.center)(target.id,state);
 }
 Vector3f lowCenter(B)(ref OrderTarget target,ObjectState!B state){
 	if(target.type==TargetType.terrain||!state.isValidTarget(target.id)) return target.position;
-	return state.objectById!((obj)=>obj.lowCenter)(target.id);
+	return state.objectById!((ref obj,state)=>obj.lowCenter)(target.id,state);
 }
 OrderTarget centerTarget(B)(int id,ObjectState!B state)in{
 	assert(state.isValidTarget(id));
 }do{
-	auto position=state.objectById!((ref obj)=>obj.center)(id);
+	auto position=state.objectById!((ref obj,state)=>obj.center)(id,state);
 	return OrderTarget(state.targetTypeFromId(id),id,position);
 }
 OrderTarget positionTarget(B)(Vector3f position,ObjectState!B state){
@@ -503,19 +503,21 @@ struct PositionPredictor{
 		auto timeToImpact=sqrt((targetPosition-position).lengthsqr/remainingSpeedSqr);*/
 		return targetPosition+velocity*timeToImpact;
 	}
-	Vector3f predictCenter(B)(Vector3f position,float projectileSpeed,ref OrderTarget target,ObjectState!B state){
+	Vector3f predictCenter(B)(Vector3f position,float projectileSpeed,ref OrderTarget target,int attackerSide,ObjectState!B state){
 		if(target.type==TargetType.terrain||!state.isValidTarget(target.id)) return target.position;
-		return predictCenter(position,projectileSpeed,target.id,state);
+		return predictCenter(position,projectileSpeed,target.id,attackerSide,state);
 	}
-	Vector3f predictCenter(B)(Vector3f position,float projectileSpeed,int targetId,ObjectState!B state)in{
+	Vector3f predictCenter(B)(Vector3f position,float projectileSpeed,int targetId,int attackerSide,ObjectState!B state)in{
 		assert(state.isValidTarget(targetId));
 	}do{
-		static handle(T)(ref T obj,Vector3f position,float projectileSpeed,ObjectState!B state,PositionPredictor* self){
+		static handle(T)(ref T obj,Vector3f position,float projectileSpeed,int attackerSide,ObjectState!B state,PositionPredictor* self){
 			auto hitboxCenter=boxCenter(obj.relativeHitbox);
 			auto predictedPosition=self.predict(position,projectileSpeed,obj.position);
+			static if(is(T==MovingObject!B))
+				hitboxCenter+=graspingVinesOffset(obj,attackerSide,state);
 			return predictedPosition+hitboxCenter;
 		}
-		return state.objectById!handle(targetId,position,projectileSpeed,state,&this);
+		return state.objectById!handle(targetId,position,projectileSpeed,attackerSide,state,&this);
 	}
 }
 
@@ -946,6 +948,22 @@ Vector3f[2] hitbox2d(B)(ref MovingObject!B object,Matrix4f modelViewProjectionMa
 Vector3f relativeCenter(T)(ref T object){
 	auto hbox=object.relativeHitbox;
 	return 0.5f*(hbox[0]+hbox[1]);
+}
+
+Vector3f graspingVinesOffset(B)(ref MovingObject!B object,int attackerSide,ObjectState!B state){
+	if(!object.creatureStats.effects.vined) return Vector3f(0.0f,0.0f,0.0f);
+	if(state.sides.getStance(attackerSide,object.side)==Stance.ally)
+		return Vector3f(0.0f,0.0f,0.0f);
+	foreach(ref vines;state.obj.opaqueObjects.effects.graspingViness.data){
+		if(vines.creature!=object.id) continue;
+		if(isNaN(vines.preTeleportPosition.x)) break;
+		auto preTeleportPosition=vines.preTeleportPosition;
+		auto position=object.position;
+		auto z=state.getHeight(preTeleportPosition)+position.z-state.getHeight(position);
+		position=preTeleportPosition+Vector3f(0.0f,0.0f,z);
+		return position-object.position;
+	}
+	return Vector3f(0.0f,0.0f,0.0f);
 }
 
 Vector3f center(T)(ref T object){
@@ -2644,6 +2662,7 @@ struct GraspingVines(B){
 	float lengthFactor=0.1f;
 	enum growthTime=updateFPS;
 	enum vanishTime=updateFPS;
+	Vector3f preTeleportPosition;
 }
 
 struct SoulMoleCasting(B){
@@ -7372,7 +7391,7 @@ float dealDamageAt(alias callback=(id)=>true,B,T...)(int directTarget,float amou
 		if(target.id==directTarget) return;
 		auto distance=boxPointDistance(target.hitbox,position);
 		if(distance>radius) return;
-		auto attackDirection=state.objectById!((obj)=>obj.center)(target.id)-position;
+		auto attackDirection=state.objectById!center(target.id)-position;
 		if(callback(target.id,args))
 			*sum+=dealDamage(target.id,amount,radius,attacker,attackerSide,attackDirection,distance,damageMod,state);
 	}
@@ -8191,6 +8210,8 @@ bool teleport(B)(ref MovingObject!B obj,Vector3f newPosition,ObjectState!B state
 }
 
 void teleportGraspingVines(B)(ref GraspingVines!B vines,Vector3f newPosition,ObjectState!B state){
+	if(isNaN(vines.preTeleportPosition.x))
+		vines.preTeleportPosition=vines.position;
 	newPosition.z=state.getHeight(newPosition);
 	auto oldPosition=vines.position;
 	oldPosition.z=state.getHeight(oldPosition);
@@ -8203,7 +8224,6 @@ void teleportGraspingVines(B)(ref GraspingVines!B vines,Vector3f newPosition,Obj
 		vine.target+=direction;
 		vine.locations[]+=direction;
 	}
-	// TODO: store old location too
 }
 
 
@@ -9792,7 +9812,13 @@ Vector3f getShotTargetPosition(B)(ref MovingObject!B object,OrderTarget target,O
 		case TargetType.terrain: return target.position;
 		case TargetType.creature,TargetType.building:
 			auto center=object.center;
-			auto targetHitbox=state.objectById!((obj,center)=>obj.closestHitbox(center))(target.id,center);
+			auto targetHitbox=state.objectById!((ref obj,center,attackerSide,state){
+				static if(is(typeof(obj)==MovingObject!B)){
+					auto hbox=obj.hitbox;
+					hbox[]+=graspingVinesOffset(obj,attackerSide,state);
+					return hbox;
+				}else return obj.closestHitbox(center);
+			})(target.id,center,object.side,state);
 			return projectToBoxTowardsCenter(targetHitbox,center);
 		case TargetType.soul:
 			return state.soulById!((ref soul)=>soul.center,()=>Vector3f.init)(target.id);
@@ -9805,7 +9831,7 @@ Vector3f predictShotTargetPosition(B)(ref MovingObject!B object,SacSpell!B range
 		case TargetType.terrain: return target.position;
 		case TargetType.creature,TargetType.building:
 			return rangedAttack.needsPrediction?
-				object.creatureAI.predictor.predictCenter(object.firstShotPosition(isAbility),rangedAttack.speed,target.id,state) : // TODO: use closest hitbox?
+				object.creatureAI.predictor.predictCenter(object.firstShotPosition(isAbility),rangedAttack.speed,target.id,object.side,state) : // TODO: use closest hitbox?
 				state.objectById!center(target.id);
 		case TargetType.soul: return state.soulById!((ref soul)=>soul.center,()=>Vector3f.init)(target.id); // TODO: predict?
 		default: return Vector3f.init;
@@ -10090,9 +10116,12 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 	enum meleeHitboxFactor=0.8f;
 	auto meleeHitbox=scaleBox(object.meleeHitbox,meleeHitboxFactor);
 	auto meleeHitboxCenter=boxCenter(meleeHitbox);
-	static bool intersects(T)(T obj,Vector3f[2] hitbox){
+	static bool intersects(T)(T obj,Vector3f[2] hitbox,int attackerSide,ObjectState!B state){
 		static if(is(T==MovingObject!B)){
-			return boxesIntersect(obj.hitbox,hitbox);
+			auto hbox=obj.hitbox;
+			static if(is(T==MovingObject!B))
+				hbox[]+=graspingVinesOffset(obj,attackerSide,state);
+			return boxesIntersect(hbox,hitbox);
 		}else{
 			foreach(bhitb;obj.hitboxes)
 				if(boxesIntersect(bhitb,hitbox))
@@ -10101,12 +10130,18 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 		}
 	}
 	int target=0;
-	if(state.objectById!intersects(targetId,meleeHitbox)){
+	if(state.objectById!intersects(targetId,meleeHitbox,object.side,state)){
 		target=meleeAttackTarget(object,state); // TODO: share melee hitbox computation?
 		if(target&&target!=targetId&&!isValidEnemyAttackTarget(targetId,object.side,state))
 			target=0;
 	}
-	auto targetHitbox=state.objectById!((ref obj,meleeHitboxCenter)=>obj.closestHitbox(meleeHitboxCenter))(targetId,meleeHitboxCenter);
+	auto targetHitbox=state.objectById!((ref obj,meleeHitboxCenter,attackerSide){
+		static if(is(typeof(obj)==MovingObject!B)){
+			auto hbox=obj.hitbox;
+			hbox[]+=graspingVinesOffset(obj,attackerSide,state);
+			return hbox;
+		}else return obj.closestHitbox(meleeHitboxCenter);
+	})(targetId,meleeHitboxCenter,object.side);
 	auto targetPosition=boxCenter(targetHitbox);
 	auto hitbox=object.hitbox;
 	auto position=boxCenter(hitbox);
@@ -12576,7 +12611,7 @@ bool updateSacDocCasting(B)(ref SacDocCasting!B sacDocCast,ObjectState!B state){
 Vector3f[SacDocTether.m] getSacDocTetherTargetLocations(B)(ref MovingObject!B sacDoc,int target,ObjectState!B state,float needleExpansion=1.5f){
 	Vector3f[SacDocTether.m] locations;
 	auto needle = sacDoc.needle;
-	auto center = state.movingObjectById!((ref obj)=>obj.center,()=>Vector3f.init)(target);
+	auto center = state.movingObjectById!((ref obj,state)=>obj.center,()=>Vector3f.init)(target,state);
 	if(isNaN(needle[0].x)||isNaN(center.x)) return locations;
 	locations[0]=needle[0];
 	auto start=isNaN(needleExpansion)?needle[0]:needle[0]+needleExpansion*needle[1];
@@ -13559,11 +13594,11 @@ bool accelerateTowards(T,B)(ref T spell_,Vector3f targetCenter,Vector3f predicte
 		return (targetCenter-position).lengthsqr<0.25f^^2||onGround&&targetCenter.z<position.z&&(targetCenter.xy-position.xy).lengthsqr<0.25f^^2;
 	}
 }
-bool accelerateTowards(T,B)(ref T spell_,float targetFlyingHeight,ObjectState!B state){
+bool accelerateTowards(T,B)(ref T spell_,float targetFlyingHeight,int attackerSide,ObjectState!B state){
 	with(spell_){
 		auto targetCenter=target.center(state);
 		target.position=targetCenter;
-		auto predictedCenter=predictor.predictCenter(position,spell.speed,target,state);
+		auto predictedCenter=predictor.predictCenter(position,spell.speed,target,attackerSide,state);
 		return accelerateTowards(spell_,targetCenter,predictedCenter,targetFlyingHeight,state);
 	}
 }
@@ -13571,7 +13606,7 @@ bool updateWrath(B)(ref Wrath!B wrath,ObjectState!B state){
 	with(wrath){
 		final switch(wrath.status){
 			case WrathStatus.flying:
-				bool closeToTarget=wrath.accelerateTowards(wrathFlyingHeight,state);
+				bool closeToTarget=wrath.accelerateTowards(wrathFlyingHeight,wrath.side,state);
 				wrath.animateWrath(state);
 				auto target=wrathCollisionTarget(side,position,state);
 				if(state.isValidTarget(target)) wrath.wrathExplosion(target,state);
@@ -13689,7 +13724,7 @@ enum fireballFlyingHeight=0.5f;
 bool updateFireball(B)(ref Fireball!B fireball,ObjectState!B state){
 	with(fireball){
 		auto oldPosition=position;
-		bool closeToTarget=fireball.accelerateTowards(fireballFlyingHeight,state);
+		bool closeToTarget=fireball.accelerateTowards(fireballFlyingHeight,fireball.side,state);
 		rotation=rotationUpdate*rotation;
 		fireball.animateFireball(oldPosition,state);
 		auto target=fireballCollisionTarget(side,position,state);
@@ -13819,7 +13854,8 @@ enum rockFloatingHeight=7.0f;
 bool updateRock(B)(ref Rock!B rock,ObjectState!B state){
 	with(rock){
 		auto oldPosition=position;
-		auto targetCenter=target.center(state);
+		auto vinesOffset=state.movingObjectById!(graspingVinesOffset,()=>Vector3f(0.0f,0.0f,0.0f))(target.id,rock.side,state);
+		auto targetCenter=target.center(state)+vinesOffset;
 		target.position=targetCenter;
 		auto distance=targetCenter-position;
 		auto acceleration=distance.normalized*spell.acceleration;
@@ -14021,7 +14057,7 @@ bool updateSwarm(B)(ref Swarm!B swarm,ObjectState!B state){
 				frame-=1;
 				return swarm.updateBugs(state);
 			case SwarmStatus.flying:
-				bool closeToTarget=swarm.accelerateTowards(swarmFlyingHeight,state);
+				bool closeToTarget=swarm.accelerateTowards(swarmFlyingHeight,swarm.side,state);
 				auto target=swarmCollisionTarget(side,position,state);
 				if(state.isValidTarget(target)) swarm.swarmHit(target,state);
 				else if(state.isOnGround(position)){
@@ -15659,10 +15695,10 @@ void animateDragonfire(B)(ref Dragonfire!B dragonfire,Vector3f newPosition,Vecto
 	}
 }
 
-bool changeDirectionTowards(T,B)(ref T spell_,float targetFlyingHeight,ObjectState!B state){
+bool changeDirectionTowards(T,B)(ref T spell_,float targetFlyingHeight,int attackerSide,ObjectState!B state){
 	with(spell_){
 		auto targetCenter=target.center(state);
-		auto predictedCenter=predictor.predictCenter(position,spell.speed,target,state);
+		auto predictedCenter=predictor.predictCenter(position,spell.speed,target,attackerSide,state);
 		auto targetRotation=rotationBetween(direction,(predictedCenter-position).normalized);
 		auto actualRotationSpeed=rotationSpeed;
 		auto distancesqr=(targetCenter-position).lengthsqr;
@@ -15725,7 +15761,7 @@ bool updateDragonfirePosition(B)(ref Dragonfire!B dragonfire,ObjectState!B state
 			},(){})(target.id,0.25f*spell.amount/updateFPS,attacker,side,state);
 		}
 		collisionTargets!burn(hitbox,state,spell,wizard,side);
-		if(dragonfire.changeDirectionTowards(1.0f,state)){
+		if(dragonfire.changeDirectionTowards(1.0f,dragonfire.side,state)){
 			playSoundAt("2ifd",dragonfire.position,state,dragonfireGain); // TODO: move sound with spell?
 			if(target.id){
 				static bool callback(int target,int wizard,int side,ObjectState!B state){
@@ -16453,7 +16489,7 @@ bool updateDemonicRiftSpirit(B)(ref DemonicRiftSpirit!B spirit,ref DemonicRift!B
 	with(spirit){
 		auto targetCenter=target.center(state);
 		target.position=targetCenter;
-		auto predictedCenter=predictor.predictCenter(position,spell.speed,target,state);
+		auto predictedCenter=predictor.predictCenter(position,spell.speed,target,spirit.side,state);
 		if(status==DemonicRiftSpiritStatus.rising){
 			if(risingTimer++<risingFrames){
 				auto θ=2.0f*pi!float*numRotations*risingTimer/risingFrames;
@@ -22470,6 +22506,14 @@ void updateWizard(B)(ref WizardInfo!B wizard,ObjectState!B state){
 	}
 }
 
+bool manahoarAbilityEnabled(CreatureMode mode){
+	final switch(mode) with(CreatureMode){
+		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,rockForm,firewalk: return true;
+		case dying,dead,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,convertReviving,thrashing: return false;
+		case deadToGhost,idleGhost,movingGhost,ghostToIdle,casting,stationaryCasting,castingMoving,shooting,usingAbility,pulling,pumping,torturing: assert(0);
+	}
+}
+
 void addToProximity(T,B)(ref T objects, ObjectState!B state){
 	auto proximity=state.proximity;
 	enum isMoving=is(T==MovingObjects!(B, renderMode), RenderMode renderMode);
@@ -22490,13 +22534,6 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 			proximity.insertCenter(CenterProximityEntry(false,isVisibleToAI,objects.ids[j],objects.sides[j],boxCenter(hitbox),hitbox[0].z,attackTargetId));
 		}
 		if(objects.sacObject.isManahoar){
-			static bool manahoarAbilityEnabled(CreatureMode mode){
-				final switch(mode) with(CreatureMode){
-					case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,rockForm,firewalk: return true;
-					case dying,dead,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,convertReviving,thrashing: return false;
-					case deadToGhost,idleGhost,movingGhost,ghostToIdle,casting,stationaryCasting,castingMoving,shooting,usingAbility,pulling,pumping,torturing: assert(0);
-				}
-			}
 			foreach(j;0..objects.length){
 				auto mode=objects.creatureStates[j].mode;
 				if(!manahoarAbilityEnabled(mode)) continue;
@@ -22540,6 +22577,51 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 	}else static if(is(T==Souls!B)||is(T==Buildings!B)||is(T==FixedObjects!B)||is(T==Effects!B)||is(T==Particles!(B,relative),bool relative)||is(T==CommandCones!B)){
 		// do nothing
 	}else static assert(0);
+}
+
+void addToProximitySingle(T,B)(ref T obj, ObjectState!B state){
+	auto proximity=state.proximity;
+	enum isMoving=is(T==MovingObject!B);
+	enum isStatic=is(T==StaticObject!B);
+	static if(isMoving){
+		bool isObstacle=obj.creatureState.mode.isObstacle;
+		bool isVisibleToAI=obj.creatureState.mode.isVisibleToAI&&!(obj.creatureStats.flags&Flags.notOnMinimap)&&!obj.creatureStats.effects.stealth;
+		auto hitbox=obj.sacObject.hitbox(obj.rotation,obj.animationState,obj.frame/updateAnimFactor);
+		auto position=obj.position;
+		hitbox[0]+=position;
+		hitbox[1]+=position;
+		bool isProjectileObstacle=obj.creatureState.mode.isProjectileObstacle;
+		proximity.insert(ProximityEntry(obj.id,hitbox,isObstacle,isProjectileObstacle));
+		int attackTargetId=0;
+		if(obj.creatureAI.order.command==CommandType.attack)
+			attackTargetId=obj.creatureAI.order.target.id;
+		proximity.insertCenter(CenterProximityEntry(false,isVisibleToAI,obj.id,obj.side,boxCenter(hitbox),hitbox[0].z,attackTargetId));
+		if(obj.sacObject.isManahoar){
+			auto mode=obj.creatureState.mode;
+			if(manahoarAbilityEnabled(mode)){
+				auto flamePosition=obj.position+rotate(obj.rotation,obj.sacObject.manahoarManaOffset(obj.animationState,obj.frame/updateAnimFactor));
+				auto rate=proximity.addManahoar(obj.side,obj.id,obj.position,state);
+				animateManahoar(flamePosition,obj.side,rate,state);
+			}
+		}
+	}else static if(isStatic){ // TODO: cache those?
+		static assert(0,"TODO");
+	}else static if(is(T==Souls!B)||is(T==Buildings!B)||is(T==FixedObj!B)||is(T==Effects!B)||is(T==Particles!(B,relative),bool relative)||is(T==CommandCones!B)){
+		// do nothing
+	}else static assert(0);
+}
+
+void addVinesToProximity(B)(ObjectState!B state){
+	foreach(ref vines;state.obj.opaqueObjects.effects.graspingViness.data){
+		if(isNaN(vines.preTeleportPosition.x)) continue;
+		state.movingObjectById!((ref obj,preTeleportPosition,state){
+			auto position=obj.position;
+			auto z=state.getHeight(preTeleportPosition)+position.z-state.getHeight(position);
+			obj.position=preTeleportPosition+Vector3f(0.0f,0.0f,z);
+			scope(exit) obj.position=position;
+			addToProximitySingle(obj,state);
+		},(){})(vines.creature,vines.preTeleportPosition,state);
+	}
 }
 
 struct ProximityEntry{
@@ -23330,6 +23412,7 @@ final class ObjectState(B){ // (update logic)
 		pathFinder.updateBlocked(this);
 		trig.beginTriggers(this);
 		this.eachByType!(addToProximity,EachByTypeFlags.none)(this);
+		addVinesToProximity(this);
 		this.eachEffects!updateEffects(this);
 		this.eachParticles!updateParticles(this);
 		this.eachCommandCones!updateCommandCones(this);
