@@ -1165,6 +1165,19 @@ struct Renderer(B){
 							if(material.backend is B.shadelessBoneMaterialBackend) B.shadelessBoneMaterialBackend.setPose(pose);
 							if(material.backend is B.boneShadowBackend) B.boneShadowBackend.setPose(pose);
 							mesh.render(rc);
+							if(objects.creatureStatss[j].effects.vined){ // TODO: this is a bit hacky
+								foreach(ref vines;state.obj.opaqueObjects.effects.graspingViness.data){
+									if(vines.creature!=objects.ids[j]) continue;
+									if(isNaN(vines.preTeleportPosition.x)) break;
+									auto preTeleportPosition=vines.preTeleportPosition;
+									auto position=objects.positions[j];
+									auto z=state.getHeight(preTeleportPosition)+position.z-state.getHeight(position);
+									position=preTeleportPosition+Vector3f(0.0f,0.0f,z);
+									material.backend.setTransformation(position, objects.rotations[j], rc);
+									mesh.render(rc);
+									break;
+								}
+							}
 						}
 					}else{
 						material.backend.setInformation(Vector4f(0.0f,0.0f,0.0f,0.0f));
