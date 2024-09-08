@@ -9,24 +9,27 @@
 	
 	"buildRequirements": ["requireBoundsCheck","requireContracts"],
 	"stringImportPaths": [".git"],
+
+	"dependencies": {
+		"derelict-ft": "~>2.0.0-beta.2",
+		"derelict-al": "~>2.0.0-beta.2",
+		"dlib": {"path": "dlib", "version": "*"},
+		"dagon": {"path": "dagon", "version": "*"},
+	},
 	
 	"configurations": [
 		{
 			"name": "application",
 			"targetType": "executable",
 			"dependencies": {
-				"derelict-ft": "~>2.0.0-beta.2",
 				"derelict-mpg123": "~>0.1.2",
-				"derelict-al": "~>2.0.0-beta.2",
 			},
 			"versions": ["SacEngineMPG123"]
 		}, {
 			"name": "application-audioformats",
 			"targetType": "executable",
 			"dependencies": {
-				"derelict-ft": "~>2.0.0-beta.2",
 				"audio-formats":  "~>3.0.1",
-				"derelict-al": "~>2.0.0-beta.2",
 			},
 			"versions": ["SacEngineAudioFormats","decodeMP3"]
 		}
