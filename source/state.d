@@ -14897,7 +14897,7 @@ bool updateGraspingVines(B)(ref GraspingVines!B graspingVines,ObjectState!B stat
 		if(active){
 			bool keep=state.movingObjectById!((ref obj,position,state){
 				if(!obj.creatureState.mode.canPersistCC) return false;
-				obj.position=position+Vector3f(0.0f,0.0f,state.getHeight(position));;
+				obj.position=position+Vector3f(0.0f,0.0f,state.getHeight(position));
 				return true;
 			},()=>false)(creature,position,state);
 			if(!keep||--timer<=0){
@@ -17553,7 +17553,7 @@ bool updatePlagueDrop(B)(ref PlagueDrop!B plagueDrop,ObjectState!B state){
 			if(height>position.z){
 				position.z=height;
 				plagueDropExplosion(plagueDrop,0,state);
-				return false;;
+				return false;
 			}
 		}else if(position.z<state.getHeight(position)-1000.0f)
 			return false;
@@ -17696,7 +17696,7 @@ bool updateRainOfFireDrop(B)(ref RainOfFireDrop!B rainOfFireDrop,ObjectState!B s
 			if(height>position.z){
 				position.z=height;
 				rainOfFireDropExplosion(rainOfFireDrop,0,state);
-				return false;;
+				return false;
 			}
 		}else if(position.z<state.getHeight(position)-1000.0f)
 			return false;
