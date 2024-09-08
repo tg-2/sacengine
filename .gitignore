@@ -4,6 +4,7 @@ source/extracted
 .dub
 3d
 dub_platform*
+*.redub_cache
 zeroip.txt
 *.7z
 *.zip
