@@ -31,6 +31,7 @@ ubyte[] parseWAV(ubyte[] data){
 	}
 	Header header;
 	(cast(ubyte*)&header)[0..Header.sizeof]=data[0..Header.sizeof];
+	auto blockAlign=header.blockAlign;
 	auto buffer=data[Header.sizeof..$];
 	enforce(header.channels==1);
 	uint cur=0;
@@ -53,33 +54,37 @@ ubyte[] parseWAV(ubyte[] data){
 	                                      2272, 2499, 2749, 3024, 3327, 3660, 4026, 4428, 4871, 5358,
 	                                      5894, 6484, 7132, 7845, 8630, 9493, 10442, 11487, 12635, 13899,
 	                                      15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767];
-	short[] result;
-	result.length=2*(buffer.length-4)+1;
-	int predictor=result[0]=parseShort(buffer);
-	int step_index=parseShort(buffer);
-	int step=0;
-
-	short clampToShort(int x){
+	static short clampToShort(int x){
 		if(x<=short.min) return short.min;
 		if(x>=short.max) return short.max;
 		return cast(short)x;
 	}
+	int predictor,step_index,step;
+	short[] result;
+	auto numBlocks=(buffer.length+blockAlign-1)/blockAlign;
+	result.length=numBlocks+2*(buffer.length-4*numBlocks);
 	// decode ima adpcm
-	// TODO: this is noisy
-	foreach(ref x;result[1..$]){
-		auto nibble=get_nibble();
-		step=ima_step_table[step_index];
-		step_index+=ima_index_table[nibble];
-		if(step_index<0) step_index=0;
-		if(step_index>88) step_index=88;
-		auto sign=nibble&8;
-		auto delta=nibble&7;
-		auto diff=((2*delta+1)*step)>>3;
-		if(sign) predictor-=diff;
-		else predictor+=diff;
-		x=clampToShort(predictor);
-		predictor=x;
+	auto origBuffer=buffer;
+	foreach(i,ref x;result){
+		if((buffer.ptr-origBuffer.ptr)%blockAlign==0){
+			predictor=x=cast(short)(buffer[1]<<8|buffer[0]);
+			step_index=buffer[2];
+			buffer=buffer[4..$];
+		}else{
+			auto nibble=get_nibble();
+			if(step_index<0) step_index=0;
+			if(step_index>88) step_index=88;
+			step=ima_step_table[step_index];
+			auto sign=nibble&8;
+			auto delta=nibble&7;
+			auto diff=((2*delta+1)*step)>>3;
+			if(sign) predictor-=diff;
+			else predictor+=diff;
+			predictor=x=clampToShort(predictor);
+			step_index+=ima_index_table[nibble];
+		}
 	}
+	enforce(buffer.length==0);
 	return cast(ubyte[])result;
 }
 
