@@ -18414,7 +18414,8 @@ bool updatePoison(B)(ref Poison poison,ObjectState!B state){
 		}
 		with(*poison){
 			obj.dealPoisonDamage(poisonDamage/updateFPS,attacker,attackerSide,damageMod,state);
-			if(frame++>=lifetime) return removePoison();
+			if(frame>=lifetime) return removePoison();
+			frame+=1;
 			return true;
 		}
 	},()=>false)(poison.creature,&poison,state);
