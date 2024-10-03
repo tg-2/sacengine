@@ -149,7 +149,7 @@ class Recording(B){
 		auto state=gameState.current;
 		if(auto replacement=stateReplacement(state.frame)){
 			assert(replacement.frame==state.frame);
-			writeln("enountered state replacement at frame ",state.frame,replacement.hash!=state.hash?":":"");
+			writeln("encountered state replacement at frame ",state.frame,replacement.hash!=state.hash?":":"");
 			if(replacement.hash!=state.hash){
 				import diff;
 				diffStates(state,replacement);
