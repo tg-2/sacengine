@@ -5,7 +5,7 @@ module netutil;
 import util;
 
 version(Android){
-Array!string getBroadcastAddresses(){ return typeof(result).init; } // TODO
+Array!string getBroadcastAddresses(){ return typeof(return).init; } // TODO
 }else version(Posix){
 import core.sys.posix.sys.socket;
 import core.stdc.string;
