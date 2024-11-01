@@ -211,6 +211,7 @@ enum Modifiers{
 struct Hotkey{
 	int keycode;
 	Bindable action;
+	string parameter;
 }
 
 struct ModHotkey{
@@ -366,9 +367,24 @@ Hotkeys parseHotkeys(string hotkeys){
 			continue;
 		}
 		auto command=line[0..colon].strip;
+		auto quote=line.indexOf('"');
+		string parameter;
+		if(quote!=-1){
+			parameter=command[quote+1..$];
+			if(!parameter.endsWith('"')){
+				stderr.writeln("malformed hotkey description, missing '\"' before ':': ",line);
+				continue;
+			}
+			parameter=parameter[0..$-1];
+			command=command[0..quote].strip;
+		}
 		auto bindable=parseBindable(command);
 		if(bindable==Bindable.unknown){
 			stderr.writeln("unknown bindable command: ",command);
+			continue;
+		}
+		if(quote!=-1&&bindable!=bindable.sendChatMessage){
+			stderr.writeln("malformed hotkey description, unexpected string parameter: ",line);
 			continue;
 		}
 		foreach(key;line[colon+1..$].strip.splitter(" or ")){
@@ -390,7 +406,7 @@ Hotkeys parseHotkeys(string hotkeys){
 				case cameraZoomIn: result.cameraZoomIn~=modKeycode.keycode; break;
 				case cameraZoomOut: result.cameraZoomOut~=modKeycode.keycode; break;
 
-				default: result.add(ModHotkey(modKeycode.mod,Hotkey(modKeycode.keycode,bindable)));
+				default: result.add(ModHotkey(modKeycode.mod,Hotkey(modKeycode.keycode,bindable,parameter)));
 			}
 		}
 	}

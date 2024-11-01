@@ -596,21 +596,8 @@ final class SacScene: Scene{
 					auto defaultIndex=form.defaultIndex;
 					enforce(0<=defaultIndex&&defaultIndex<form.elements.length);
 					enforce(form.elements[defaultIndex].id=="thci");
-					if(form.elements[defaultIndex].textInput.length!=0){
-						string name=null;
-						if(!observing){
-							if(!observing){
-								if(camera.target&&state.current.isValidTarget(camera.target))
-									name=getCreatureName(camera.target,state.current);
-								if(!name.length) name=getSideName(renderSide,state.current);
-							}
-						}else name=options.name;
-						if(!name.length) name="Anonymous";
-						int slotFilter=controller.slotFilter(chatOptions.checked[0],chatOptions.checked[1],chatOptions.checked[2]);
-						auto controlledSlot=controller?controller.controlledSlot:0;
-						auto chatMessage=makeChatMessage!DagonBackend(controlledSlot,slotFilter,ChatMessageType.standard,name,form.elements[defaultIndex].textInput.data[],state.current.frame);
-						controller.addCommand(Command!DagonBackend(observing?-1:controller.controlledSide,move(chatMessage)));
-					}
+					if(form.elements[defaultIndex].textInput.length!=0)
+						sendChatMessage(form.elements[defaultIndex].textInput.data[]);
 					forms.length=0;
 					disableMenu();
 				}else if(activeElement.id=="lcnc"){
@@ -619,6 +606,22 @@ final class SacScene: Scene{
 				}
 			}
 		}
+	}
+
+	void sendChatMessage(scope const(char)[] message){
+		string name=null;
+		if(!observing){
+			if(!observing){
+				if(camera.target&&state.current.isValidTarget(camera.target))
+					name=getCreatureName(camera.target,state.current);
+				if(!name.length) name=getSideName(renderSide,state.current);
+			}
+		}else name=options.name;
+		if(!name.length) name="Anonymous";
+		int slotFilter=controller.slotFilter(chatOptions.checked[0],chatOptions.checked[1],chatOptions.checked[2]);
+		auto controlledSlot=controller?controller.controlledSlot:0;
+		auto chatMessage=makeChatMessage!DagonBackend(controlledSlot,slotFilter,ChatMessageType.standard,name,message,state.current.frame);
+		controller.addCommand(Command!DagonBackend(observing?-1:controller.controlledSide,move(chatMessage)));
 	}
 
 	Target xmenuTarget(){
@@ -981,7 +984,7 @@ final class SacScene: Scene{
 			}
 		}
 		auto queueing=shift?CommandQueueing.post:CommandQueueing.none;
-		void triggerBindable(Bindable command){
+		void triggerBindable(Bindable command,string parameter){
 			void unsupported(){
 				stderr.writeln("bindable command not yet supported: ",defaultName(command));
 			}
@@ -1039,7 +1042,10 @@ final class SacScene: Scene{
 					break;
 				case quickSave,quickLoad,pause,changeCamera: unsupported(); break;
 				case sendChatMessage:
-					if(mouse.status==MouseStatus.standard&&!mouse.dragging&&!mouse.menuMode){
+					if(parameter){
+						playMenuActionSound();
+						this.sendChatMessage(parameter);
+					}else if(mouse.status==MouseStatus.standard&&!mouse.dragging&&!mouse.menuMode){
 						if(observing){
 							if(!options.observerChat) break;
 							forms~=sacFormInstance!DagonBackend("thco");
@@ -1120,7 +1126,7 @@ final class SacScene: Scene{
 		}
 		foreach(ref hotkey;options.hotkeys[modifiers]){
 			foreach(_;0..keyDown[hotkey.keycode])
-				triggerBindable(hotkey.action);
+				triggerBindable(hotkey.action,hotkey.parameter);
 		}
 		mouse.additiveSelect=shift;
 		renderer.selectionUpdated=false;
