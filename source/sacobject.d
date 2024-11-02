@@ -743,6 +743,10 @@ final class SacObject(B){
 			this.textures=saxsi.saxs.bodyParts.map!((ref p)=>p.texture).array[0..meshes.length];*/
 			import saxs2obj;
 			auto transferred=transferModel!B(meshes,saxsi.saxs,pose);
+			if(transferred.length>saxsi.meshes.length){ // TODO: handle
+				stderr.writeln("warning: ",transferred.length," body parts given, taking first ",saxsi.meshes.length);
+				transferred=transferred[0..saxsi.meshes.length];
+			}
 			enforce(transferred.length<=saxsi.meshes.length);
 			while(transferred.length<saxsi.meshes.length){
 				auto emptyMesh=B.makeBoneMesh(1,1);
@@ -754,8 +758,8 @@ final class SacObject(B){
 			this.meshes=[meshes];
 		}
 	}
-	void setNormal(B.Texture[] textures){
-		foreach(i,t;textures)
+	void setNormal(B.Texture[] normals){
+		foreach(i,t;normals)
 			materials[i].normal=t;
 	}
 	void setDiffuse(B.Texture[] textures){
