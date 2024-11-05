@@ -87,6 +87,7 @@ struct Options{
 	bool enableParticles=true;
 	bool greenAllySouls=false;
 	bool fasterStandupTimes=true;
+	bool fasterCastingTimes=true;
 	int delayStart=0;
 	// zerotier
 	string zerotierIdentity="zerotier-identity";

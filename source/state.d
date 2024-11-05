@@ -7823,6 +7823,208 @@ bool startCasting(B)(ref MovingObject!B object,int numFrames,bool stationary,Obj
 	object.setCreatureState(state);
 	return true;
 }
+int getCastingNumFramesFromCycles(B)(ref MovingObject!B object,int cycles,bool stationary,ObjectState!B state){
+	auto sacObject=object.sacObject;
+	auto start=sacObject.numFrames(stationary?AnimationState.spellcastStart:AnimationState.runSpellcastStart)*updateAnimFactor;
+	auto mid=sacObject.numFrames(stationary?AnimationState.spellcast:AnimationState.runSpellcast)*updateAnimFactor;
+	return start+max(0,cycles*mid-mid/2);
+}
+int getCastingNumFrames(B)(ref MovingObject!B object,SacSpell!B spell,WizardInfo!B* wizard,ObjectState!B state){
+	auto result=cast(int)floor(updateFPS*spell.castingTime(wizard.level));
+	if(!state.fasterCastingTimes) return result;
+	int cycles(int cycles){
+		return min(result,getCastingNumFramesFromCycles(object,cycles,spell.stationary,state));
+	}
+	switch(object.sacObject.nttTag)with(WizardTag){
+		default: break;
+		case yogo:
+			switch(spell.tag)with(SpellTag){
+				default: break;
+				case dragonfire:
+					if(5<=wizard.level) return cycles(1);
+					break;
+				case chainLightning:
+					if(4<=wizard.level) return cycles(1);
+					break;
+				case explosion:
+					if(5<=wizard.level) return cycles(1);
+					break;
+				case demonicRift,haloOfEarth,rainOfFrogs:
+					if(6<=wizard.level) return cycles(1);
+					break;
+				case healingAura:
+					if(9<=wizard.level) return cycles(1);
+					break;
+				case firewall,wallOfSpikes:
+					if(9<=wizard.level) return cycles(1);
+					break;
+				case fence:
+					if(8<=wizard.level) return cycles(1);
+					break;
+				case vinewall:
+					if(7<=wizard.level) return cycles(2);
+					break;
+				case rainOfFire,plague:
+					if(7<=wizard.level) return cycles(2);
+					break;
+				case bombardment:
+					if(8<=wizard.level) return cycles(2);
+					break;
+				case charm,meanstalks,bovineIntervention,bore,blindRage,volcano,intestinalVaporization,death:
+					if(8<=wizard.level) return cycles(3);
+					break;
+				case cloudkill:
+					if(9<=wizard.level) return cycles(2);
+					break;
+				case tornado:
+					if(8<=wizard.level) return cycles(2);
+					break;
+				case basilisk:
+					if(5<=wizard.level) return cycles(0);
+					break;
+				case firefist,troll,blight:
+					if(7<=wizard.level) return cycles(0);
+					break;
+				case taurock:
+					if(8<=wizard.level) return cycles(0);
+					break;
+				case stormGiant:
+					if(8<=wizard.level) return cycles(0);
+					break;
+				case ikarus:
+					if(5<=wizard.level) return cycles(1);
+					break;
+				case boulderdash:
+					if(8<=wizard.level) return cycles(1);
+					break;
+				case mutant,abomination,bombard:
+					if(7<=wizard.level) return cycles(1);
+					break;
+				case warmonger,styx,ent:
+					if(9<=wizard.level) return cycles(1);
+					break;
+				case dragon,rhinok,phoenix,hellmouth,silverback:
+					if(9<=wizard.level) return cycles(2);
+					break;
+			}
+			break;
+		case shakti:
+			switch(spell.tag)with(SpellTag){
+				default: break;
+				case manalith:
+					if(5<=wizard.level) return cycles(2);
+					break;
+				case chainLightning:
+					if(5<=wizard.level) return cycles(0);
+					break;
+				case explosion:
+					if(5<=wizard.level) return cycles(0);
+					break;
+				case vinewall,rainOfFire,plague,bombardment:
+					if(7<=wizard.level) return cycles(1);
+					break;
+				case charm,meanstalks,bovineIntervention,bore,blindRage,volcano,intestinalVaporization,death:
+					if(9<=wizard.level) return cycles(1);
+					break;
+				case cloudkill,tornado:
+					if(8<=wizard.level) return cycles(1);
+					break;
+				case firefist,troll,blight:
+					if(4<=wizard.level) return cycles(0);
+					break;
+				case taurock:
+					if(5<=wizard.level) return cycles(0);
+					break;
+				case stormGiant:
+					if(5<=wizard.level) return cycles(0);
+					break;
+				case netherfiend:
+					if(5<=wizard.level) return cycles(0);
+					break;
+				case gnome,pyromaniac:
+					if(5<=wizard.level) return cycles(0);
+					break;
+				case pyrodactyl,ikarus,gremlin,deadeye:
+					if(6<=wizard.level) return cycles(0);
+					break;
+				case seraph:
+					if(5<=wizard.level) return cycles(0);
+					break;
+			}
+			break;
+		case theRagman:
+			switch(spell.tag)with(SpellTag){
+				default: break;
+				case dragonfire:
+					if(4<=wizard.level) return cycles(1);
+					break;
+				case demonicRift,haloOfEarth,rainOfFrogs:
+					if(5<=wizard.level) return cycles(1);
+					break;
+				case charm,meanstalks,bovineIntervention,bore,blindRage,volcano,intestinalVaporization,death:
+					if(9<=wizard.level) return cycles(2);
+					break;
+				case firefist,troll,blight:
+					if(4<=wizard.level) return cycles(0);
+					break;
+				case taurock:
+					if(5<=wizard.level) return cycles(0);
+					break;
+				case stormGiant:
+					if(5<=wizard.level) return cycles(0);
+					break;
+				case boulderdash:
+					if(7<=wizard.level) return cycles(1);
+					break;
+				case ent:
+					if(8<=wizard.level) return cycles(1);
+					break;
+				case jabberocky:
+					if(9<=wizard.level) return cycles(1);
+					break;
+				case warmonger,styx:
+					if(8<=wizard.level) return cycles(1);
+					break;
+			}
+			break;
+		case grakkus:
+			switch(spell.tag)with(SpellTag){
+				default: break;
+				case dragonfire:
+					if(4<=wizard.level) return cycles(1);
+					break;
+				case demonicRift,haloOfEarth,rainOfFrogs:
+					if(5<=wizard.level) return cycles(1);
+					break;
+				case charm,meanstalks,bovineIntervention,bore,blindRage,volcano,intestinalVaporization,death:
+					if(9<=wizard.level) return cycles(2);
+					break;
+				case firefist,troll,blight:
+					if(4<=wizard.level) return cycles(0);
+					break;
+				case taurock:
+					if(5<=wizard.level) return cycles(0);
+					break;
+				case stormGiant:
+					if(5<=wizard.level) return cycles(0);
+					break;
+				case boulderdash:
+					if(7<=wizard.level) return cycles(1);
+					break;
+				case ent:
+					if(8<=wizard.level) return cycles(1);
+					break;
+				case jabberocky:
+					if(9<=wizard.level) return cycles(1);
+					break;
+				case warmonger,styx:
+					if(8<=wizard.level) return cycles(1);
+					break;
+			}
+			break;
+	}
+	return result;
+}
 int getCastingTime(B)(ref MovingObject!B object,int numFrames,bool stationary,ObjectState!B state){
 	// TODO: "stationary" parameter is probably unnecessary
 	auto sacObject=object.sacObject;
@@ -7834,7 +8036,7 @@ int getCastingTime(B)(ref MovingObject!B object,int numFrames,bool stationary,Ob
 }
 int getCastingTime(B)(ref MovingObject!B object,SacSpell!B spell,bool stationary,ObjectState!B state){
 	auto wizard=state.getWizard(object.id);
-	int numFrames=cast(int)floor(updateFPS*spell.castingTime(wizard.level));
+	int numFrames=getCastingNumFrames(object,spell,wizard,state);
 	return getCastingTime(object,numFrames,stationary,state);
 }
 
@@ -7844,9 +8046,11 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 	auto wizard=state.getWizard(caster);
 	if(!wizard) return false;
 	if(state.spellStatus!false(wizard,spell,target)!=SpellStatus.ready) return false;
-	int numFrames=cast(int)floor(updateFPS*spell.castingTime(wizard.level));
-	if(!state.movingObjectById!((ref object,numFrames,spell,state)=>object.startCasting(numFrames,spell.stationary,state),()=>false)(caster,numFrames,spell,state))
-		return false;
+	int numFrames=state.movingObjectById!((ref object,spell,wizard,state){
+		int numFrames=getCastingNumFrames(object,spell,wizard,state);
+		return object.startCasting(numFrames,spell.stationary,state)?numFrames:-1;
+	},()=>-1)(caster,spell,wizard,state);
+	if(numFrames==-1) return false;
 	auto drainSpeed=spell.isBuilding?125.0f:500.0f;
 	auto numManaDrainFrames=min(numFrames,cast(int)ceil(spell.manaCost*(updateFPS/drainSpeed)));
 	auto manaCostPerFrame=spell.manaCost/numManaDrainFrames;
@@ -23451,6 +23655,7 @@ final class ObjectState(B){ // (update logic)
 		bool enableParticles=true;
 		bool greenAllySouls=false;
 		bool fasterStandupTimes=true;
+		bool fasterCastingTimes=true;
 	}
 	Settings settings;
 	@property bool enableDropSoul(){ return settings.enableDropSoul; }
@@ -23458,11 +23663,13 @@ final class ObjectState(B){ // (update logic)
 	@property bool enableParticles(){ return settings.enableParticles; }
 	@property bool greenAllySouls(){ return settings.greenAllySouls; }
 	@property bool fasterStandupTimes(){ return settings.fasterStandupTimes; }
+	@property bool fasterCastingTimes(){ return settings.fasterCastingTimes; }
 	void disableDropSoul(){ settings.enableDropSoul=false; }
 	void allowTargetingDroppedSouls(){ settings.targetDroppedSouls=true; }
 	void disableParticles(){ settings.enableParticles=false; }
 	void enableGreenAllySouls(){ settings.greenAllySouls=true; }
 	void disableFasterStandupTimes(){ settings.fasterStandupTimes=false; }
+	void disableFasterCastingTimes(){ settings.fasterCastingTimes=false; }
 	int addObject(T)(T object) if(is(T==MovingObject!B)||is(T==StaticObject!B)||is(T==Soul!B)||is(T==Building!B)){
 		return obj.addObject(move(object));
 	}
@@ -25168,6 +25375,7 @@ struct GameInit(B){
 	bool enableParticles=true;
 	bool greenAllySouls=false;
 	bool fasterStandupTimes=true;
+	bool fasterCastingTimes=true;
 }
 
 struct SlotInfo{
@@ -25215,6 +25423,7 @@ void initGame(B)(ObjectState!B state,ref Array!SlotInfo slots,GameInit!B gameIni
 	if(!gameInit.enableParticles) state.disableParticles();
 	if(gameInit.greenAllySouls) state.enableGreenAllySouls();
 	if(!gameInit.fasterStandupTimes) state.disableFasterStandupTimes();
+	if(!gameInit.fasterCastingTimes) state.disableFasterCastingTimes();
 	slots.length=gameInit.slots.length;
 	slots.data[]=SlotInfo.init;
 	Array!int slotForWiz;

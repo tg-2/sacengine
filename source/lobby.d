@@ -124,6 +124,7 @@ GameInit!B gameInit(B,R)(Sides!B sides_,R playerSettings,ref Options options){
 	gameInit.enableParticles=options.enableParticles;
 	gameInit.greenAllySouls=options.greenAllySouls;
 	gameInit.fasterStandupTimes=options.fasterStandupTimes;
+	gameInit.fasterCastingTimes=options.fasterCastingTimes;
 	if(gameInit.greenAllySouls){
 		foreach(ref settings;playerSettings)
 			if(settings.slot!=-1&&settings.refuseGreenSouls)
