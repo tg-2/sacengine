@@ -7915,10 +7915,10 @@ int getCastingNumFrames(B)(ref MovingObject!B object,SacSpell!B spell,WizardInfo
 					if(5<=wizard.level) return cycles(2);
 					break;
 				case chainLightning:
-					if(5<=wizard.level) return cycles(0);
+					if(7<=wizard.level) return cycles(0);
 					break;
 				case explosion:
-					if(5<=wizard.level) return cycles(0);
+					if(8<=wizard.level) return cycles(0);
 					break;
 				case vinewall,rainOfFire,plague,bombardment:
 					if(7<=wizard.level) return cycles(1);
@@ -7926,8 +7926,8 @@ int getCastingNumFrames(B)(ref MovingObject!B object,SacSpell!B spell,WizardInfo
 				case charm,meanstalks,bovineIntervention,bore,blindRage,volcano,intestinalVaporization,death:
 					if(9<=wizard.level) return cycles(1);
 					break;
-				case cloudkill,tornado:
-					if(8<=wizard.level) return cycles(1);
+				case cloudkill:
+					if(9<=wizard.level) return cycles(1);
 					break;
 				case firefist,troll,blight:
 					if(4<=wizard.level) return cycles(0);
@@ -7945,7 +7945,7 @@ int getCastingNumFrames(B)(ref MovingObject!B object,SacSpell!B spell,WizardInfo
 					if(5<=wizard.level) return cycles(0);
 					break;
 				case pyrodactyl,ikarus,gremlin,deadeye:
-					if(6<=wizard.level) return cycles(0);
+					if(7<=wizard.level) return cycles(0);
 					break;
 				case seraph:
 					if(5<=wizard.level) return cycles(0);
