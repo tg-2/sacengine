@@ -7929,6 +7929,9 @@ int getCastingNumFrames(B)(ref MovingObject!B object,SacSpell!B spell,WizardInfo
 				case cloudkill:
 					if(9<=wizard.level) return cycles(1);
 					break;
+				case tornado:
+					if(8<=wizard.level) return cycles(1);
+					break;
 				case firefist,troll,blight:
 					if(4<=wizard.level) return cycles(0);
 					break;
