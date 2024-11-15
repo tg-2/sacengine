@@ -782,7 +782,7 @@ final class SacObject(B){
 		if(!fasterStandupTimes) return false;
 		switch(nttTag)with(WizardTag){
 			default: return false;
-			case yogo,seerix,acheron,ambassadorButa,charlotte:
+			case yogo,seerix,acheron,ambassadorButa,charlotte,shakti,marduk:
 				switch(state)with(AnimationState){
 					default: return false;
 					case hitFloor: return true;
@@ -797,7 +797,7 @@ final class SacObject(B){
 	private AnimationState fixAnimation(AnimationState state){
 		switch(nttTag)with(WizardTag){
 			default: return state;
-			case yogo,seerix,acheron,ambassadorButa,charlotte:
+			case yogo,seerix,acheron,ambassadorButa,charlotte,shakti,marduk:
 				switch(state)with(AnimationState){
 					default: return state;
 					case hitFloor: return knocked2Floor;
@@ -840,7 +840,7 @@ final class SacObject(B){
 	}
 }
 
-void printWizardStats(B)(SacObject!B wizard){
+void printWizardStats(B)(SacObject!B wizard,bool fasterStandupTimes){
 	import animations;
 	writeln("casting:");
 	foreach(stationary;[true,false]){
@@ -861,9 +861,11 @@ void printWizardStats(B)(SacObject!B wizard){
 	auto rv=wizard.numFrames(AnimationState.float2Stance)*updateAnimFactor;
 	writeln("revive: ",rv);
 	writeln("death with rise and revive: ",d0+cr+rv," ",d1+cr+rv," ",d2+cr+rv);
-	auto fd=(wizard.hasAnimationState(AnimationState.knocked2Floor)?wizard.numFrames(AnimationState.knocked2Floor):0)*updateAnimFactor;
-	auto gu=(wizard.hasAnimationState(AnimationState.getUp)?wizard.numFrames(AnimationState.getUp):0)*updateAnimFactor;
-	writeln("fall and get up: ",fd,"+",gu,"=",fd+gu);
+	auto kd=(wizard.hasAnimationState(AnimationState.knocked2Floor,fasterStandupTimes)?wizard.numFrames(AnimationState.knocked2Floor,fasterStandupTimes):0)*updateAnimFactor;
+	auto fd=(wizard.hasAnimationState(AnimationState.hitFloor,fasterStandupTimes)?wizard.numFrames(AnimationState.hitFloor,fasterStandupTimes):0)*updateAnimFactor;
+	auto gu=(wizard.hasAnimationState(AnimationState.getUp,fasterStandupTimes)?wizard.numFrames(AnimationState.getUp):0)*updateAnimFactor;
+	writeln("fall down and get up: ",fd,"+",gu,"=",fd+gu);
+	writeln("knockdown and get up: ",kd,"+",gu,"=",kd+gu);
 	auto ds=wizard.numFrames(AnimationState.damageBack)*updateAnimFactor;
 	writeln("damage stun: ",ds);
 	auto hb=wizard.hitbox(Quaternionf.identity(),AnimationState.stance1,0);

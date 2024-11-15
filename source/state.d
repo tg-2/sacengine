@@ -25440,7 +25440,7 @@ void initGame(B)(ObjectState!B state,ref Array!SlotInfo slots,GameInit!B gameIni
 	int altarSides=0;
 	foreach(wizardIndex,ref wiz;gameInit.wizards){
 		auto wizard=SacObject!B.getSAXS!Wizard(wiz.tag);
-		//printWizardStats(wizard);
+		//printWizardStats(wizard,state.fasterStandupTimes);
 		auto flags=0;
 		auto wizId=state.placeWizard(wizard,wiz.name,flags,wiz.side,wiz.level,wiz.souls,wiz.experience,wiz.minLevel,wiz.maxLevel,wiz.xpRate,wiz.spellbook);
 		auto slot=slotForWiz[wizardIndex];
