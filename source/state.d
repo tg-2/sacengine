@@ -7953,6 +7953,9 @@ int getCastingNumFrames(B)(ref MovingObject!B object,SacSpell!B spell,WizardInfo
 				case seraph:
 					if(5<=wizard.level) return cycles(0);
 					break;
+				case dragonfire:
+					if(8<=wizard.level) return cycles(0);
+					break;
 			}
 			break;
 		case theRagman:
