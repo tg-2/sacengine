@@ -8029,6 +8029,28 @@ int getCastingNumFrames(B)(ref MovingObject!B object,SacSpell!B spell,WizardInfo
 					break;
 			}
 			break;
+		case abraxus:
+			switch(spell.tag)with(SpellTag){
+				default: break;
+				case demonicRift,haloOfEarth,rainOfFrogs:
+					if(6<=wizard.level) return cycles(1);
+					break;
+				case vinewall:
+					if(7<=wizard.level) return cycles(2);
+					break;
+				case rainOfFire,plague:
+					if(7<=wizard.level) return cycles(2);
+					break;
+				case fence:
+					if(8<=wizard.level) return cycles(1);
+					break;
+				case charm:
+					if(8<=wizard.level) return cycles(3);
+					break;
+				case tornado:
+					if(8<=wizard.level) return cycles(2);
+					break;
+			}
 	}
 	return result;
 }
