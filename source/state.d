@@ -24815,7 +24815,7 @@ struct Target{
 }
 
 bool isHitboxFlying(B)(Vector3f position,Vector3f[2] hitbox,ObjectState!B state){
-	enum hitboxFlyingLimit=3.0f; // TODO: measure this.
+	enum hitboxFlyingLimit=4.0f; // TODO: measure this.
 	return !state.isOnGround(position)||hitbox[0].z>=state.getGroundHeight(position)+hitboxFlyingLimit;
 }
 TargetFlags summarize(bool simplified=false,B)(ref OrderTarget target,int side,ObjectState!B state){
