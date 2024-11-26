@@ -147,6 +147,7 @@ maps/(4) TM-Urknall.scp
 maps/(4) TM-Urknall v1.scp
 maps/(4) TM-Urknall v2.scp
 maps/(4) TM-Urknall v3.scp
+maps/(4) TM-Cyberpunk.scp
 maps/(4) Ferry.scp
 maps/(4) Arctic Realm 2v2.scp
 maps/(4) Aztec.scp

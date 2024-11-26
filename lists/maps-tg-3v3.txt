@@ -40,3 +40,4 @@ maps/(6) Mesa.scp
 maps/(6) DD - Eternal Autumn.scp
 maps/(6) Kirwan.scp
 maps/(6) Snow White v2.scp
+maps/(6) TM-Cyberpunk.scp
