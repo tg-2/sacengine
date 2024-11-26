@@ -72,3 +72,4 @@ maps/(2) Stone's Throw.scp
 maps/(2) Trial.scp
 maps/(2) Valley of the Dead.scp
 maps/(2) Ring.scp
+maps/(2) Hamburger Hill2.scp

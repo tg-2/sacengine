@@ -40,3 +40,4 @@ maps/(2) TM-Urknall.scp
 maps/(2) Ferry.scp
 maps/(2) Arctic Realm.scp
 maps/(2) Cherry10.scp
+maps/(2) Hamburger Hill2.scp
