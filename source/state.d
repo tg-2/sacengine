@@ -8959,7 +8959,7 @@ bool graspingVines(B)(int target,SacSpell!B spell,ObjectState!B state){
 		return tuple(cast(int)ceil(updateFPS*duration), obj.position, obj.hitbox);
 	},()=>tuple(-1,Vector3f.init,(Vector3f[2]).init))(target,state);
 	auto duration=durationPositionHitbox[0],position=durationPositionHitbox[1],hitbox=durationPositionHitbox[2];
-	if(duration==-1) return false;
+	if(duration==-1||isHitboxFlying(position,hitbox,state)) return false;
 	Vine[GraspingVines!B.vines.length] vines;
 	foreach(ref vine;vines) vine=spawnVine(hitbox,state);
 	state.addEffect(GraspingVines!B(target,spell,duration,position-Vector3f(0.0f,0.0f,state.getHeight(position)),vines));
@@ -24813,6 +24813,11 @@ struct Target{
 		return Target(TargetType.formElement,formIndex|elementIndex<<16,Vector3f.init,TargetLocation.hud);
 	}
 }
+
+bool isHitboxFlying(B)(Vector3f position,Vector3f[2] hitbox,ObjectState!B state){
+	enum hitboxFlyingLimit=3.0f; // TODO: measure this.
+	return !state.isOnGround(position)||hitbox[0].z>=state.getGroundHeight(position)+hitboxFlyingLimit;
+}
 TargetFlags summarize(bool simplified=false,B)(ref OrderTarget target,int side,ObjectState!B state){
 	final switch(target.type) with(TargetType){
 		case none,creatureTab,spellTab,structureTab,spell,ability,xmenu,soulStat,manaStat,healthStat,formElement: return TargetFlags.none;
@@ -24844,8 +24849,7 @@ TargetFlags summarize(bool simplified=false,B)(ref OrderTarget target,int side,O
 					static if(isMoving) if(stance!=Stance.enemy&&obj.creatureStats.flags&Flags.rescuable) result|=TargetFlags.rescuable;
 				}else result|=TargetFlags.owned|TargetFlags.ally;
 				static if(isMoving&&!simplified){
-					enum flyingLimit=1.0f; // TODO: measure this.
-					if(!state.isOnGround(obj.position)||obj.hitbox[0].z>=state.getGroundHeight(obj.position)+flyingLimit) result|=TargetFlags.flying;
+					if(isHitboxFlying(obj.position,obj.hitbox,state)) result|=TargetFlags.flying;
 					if(obj.isWizard){
 						result&=~TargetFlags.creature;
 						result|=TargetFlags.wizard;
