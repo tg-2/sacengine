@@ -8953,13 +8953,15 @@ enum graspingVinesGain=4.0f;
 bool graspingVines(B)(int target,SacSpell!B spell,ObjectState!B state){
 	auto durationPositionHitbox=state.movingObjectById!((ref obj,state){
 		playSoundAt("toor",obj.position,state,graspingVinesGain);
+		auto position=obj.position, hitbox=obj.hitbox;
+		if(isHitboxFlying(position,hitbox,state)) return tuple(-1,Vector3f.init,(Vector3f[2]).init);
 		obj.creatureStats.effects.numVines+=1;
-		obj.creatureState.targetFlyingHeight=max(0.0f,obj.position.z-state.getGroundHeight(obj.position));
+		obj.creatureState.targetFlyingHeight=max(0.0f,position.z-state.getGroundHeight(position));
 		auto duration=(obj.isWizard?0.25f:1000.0f/obj.creatureStats.maxHealth)*spell.duration;
-		return tuple(cast(int)ceil(updateFPS*duration), obj.position, obj.hitbox);
+		return tuple(cast(int)ceil(updateFPS*duration), position, hitbox);
 	},()=>tuple(-1,Vector3f.init,(Vector3f[2]).init))(target,state);
 	auto duration=durationPositionHitbox[0],position=durationPositionHitbox[1],hitbox=durationPositionHitbox[2];
-	if(duration==-1||isHitboxFlying(position,hitbox,state)) return false;
+	if(duration==-1) return false;
 	Vine[GraspingVines!B.vines.length] vines;
 	foreach(ref vine;vines) vine=spawnVine(hitbox,state);
 	state.addEffect(GraspingVines!B(target,spell,duration,position-Vector3f(0.0f,0.0f,state.getHeight(position)),vines));
@@ -12184,8 +12186,6 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 	}
 	if(object.creatureStats.effects.fixed){
 		height=state.getHeight(object.position);
-		if(!isNaN(object.creatureState.targetFlyingHeight))
-			object.position.z=max(object.position.z,height+object.creatureState.targetFlyingHeight); // TODO: ok?
 		if(object.position.z>height && object.creatureState.movement==CreatureMovement.onGround){
 			object.creatureState.fallingVelocity=Vector3f(0.0f,0.0f,0.0f);
 			object.creatureState.movement=CreatureMovement.tumbling;
