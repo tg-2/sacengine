@@ -19,16 +19,16 @@ maps/(6) TM-Sunhair.scp
 maps/(6) TM-Red Hot v1.scp
 maps/(6) TM-Urknall.scp
 maps/(6) WM-Creeping Place.scp
-maps/(6) EM-Andes.scp --level=7 --souls=18
+maps/(6) EM-Andes.scp --min-level=7 --level=7 --max-level=9 --souls=18
 maps/(6) EM-Shadow & Light.scp
 maps/(6) After Life3.scp
 maps/(6) EM-Stinking Watercourse.scp
 maps/(6) EM-North Pole.scp
-maps/(6) EM-Conifer Forest.scp --level=7 --souls=18
+maps/(6) EM-Conifer Forest.scp --min-level=7 --level=7 --max-level=9 --souls=18
 maps/(6) EM-Arena.scp
 maps/(6) EM-Diablo's Shell.scp
 maps/(6) TM-Dancing Pines.scp
-maps/(6) DD - Scar Trek.scp --level=5 --souls=14
+maps/(6) DD - Scar Trek.scp --min-level=7 --level=7 --max-level=9 --souls=14
 maps/(6) TM-Evening Tide.scp
 maps/(6) EM-Humanaptra.scp
 maps/(6) Hamburger Hill2.scp
