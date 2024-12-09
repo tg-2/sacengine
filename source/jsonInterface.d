@@ -119,6 +119,7 @@ struct JSONBuilder{
 enum JSONCommandType{
 	nop,
 	getState,
+	getReplay,
 }
 
 struct StateFlags{
@@ -212,6 +213,7 @@ JSONCommand parseJSONCommand(scope const(char)[] data){
 			});
 			finish();
 			return JSONCommand(type,flags);
+		case getReplay: finish(); return JSONCommand(type);
 	}
 }
 
@@ -335,5 +337,23 @@ void runJSONCommand(B)(JSONCommand command,Controller!B controller,scope void de
 				needComma=true;
 			}
 			return json.end(respond);
+		case getReplay:
+			Array!ubyte recData;
+			import recording_;
+			recData.length=__traits(classInstanceSize,Recording!B);
+			import core.lifetime;
+			auto gameState=controller.state;
+			if(!gameState||!gameState.current||!gameState.current.map) return respond("{}");
+			auto recording=emplace!(Recording!B)(recData.data,gameState);
+			Array!ubyte recordingData;
+			recording.save((scope const(ubyte)[] data){ recordingData~=data; });
+			import std.base64;
+			respond(`{"base64":"`);
+			scope(exit){
+				respond(`"}`);
+				destroy(recording);
+			}
+			Base64.encoder(recordingData.data.chunks(57)).each!respond;
+			break;
 	}
 }

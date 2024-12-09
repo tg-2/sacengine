@@ -31,6 +31,13 @@ class Recording(B){
 		sort!((a,b)=>a.desynchedState.frame<b.desynchedState.frame,SwapStrategy.stable)(desynchs.data);
 		finalized=true;
 	}
+	this(GameState!B gameState,bool finalized=true){
+		auto state=gameState.current;
+		enforce(state&&state.map);
+		this(state.map.path,state.map,state.sides,state.proximity,state.pathFinder,state.triggers);
+		this.gameInit=gameState.gameInit;
+		if(finalized) finalize(gameState.commands);
+	}
 
 	enum EventType{
 		addCommand,
@@ -99,24 +106,28 @@ class Recording(B){
 		desynchs~=Desynch(slot,desynchedState);
 	}
 
-	void save(string filename,bool zlib=true)in{
-		assert(finalized);
-	}do{
+	void save(scope void delegate(scope const(ubyte)[]) sink,bool zlib=true){
 		this.serialized((scope ubyte[] data){
-			auto file=File(filename,"wb");
 			if(zlib){
 				import std.zlib; // TOOD: compress on the fly
 				data=compress(data);
-				file.rawWrite("RCPC");
+				sink(cast(const(ubyte)[])"RCPC");
 			}else{
-				file.rawWrite("RCP_");
+				sink(cast(const(ubyte)[])"RCP_");
 			}
 			import std.conv: to;
 			auto len=to!uint(commit.length);
-			file.rawWrite((*cast(ubyte[4]*)&len)[]);
-			file.rawWrite(commit);
-			file.rawWrite(data);
+			sink((*cast(const(ubyte)[4]*)&len)[]);
+			sink(cast(const(ubyte)[])commit);
+			sink(data);
 		});
+	}
+
+	void save(string filename,bool zlib=true)in{
+		assert(finalized);
+	}do{
+		auto file=File(filename,"wb");
+		save(&file.rawWrite!ubyte,zlib);
 	}
 
 	ObjectState!B stateReplacement(int frame){
