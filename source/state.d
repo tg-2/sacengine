@@ -12930,6 +12930,7 @@ bool updateSacDocCarry(B)(ref SacDocCarry!B sacDocCarry,ObjectState!B state){
 				sacDoc.kill(state);
 				return false;
 			}
+			sacDoc.frame=0;
 			sacDoc.animationState=cast(AnimationState)SacDoctorAnimationState.pickUpCorpse;
 			if(!state.movingObjectById!(startThrashing,()=>false)(creature,state)){
 				if(soul) freeSoulImpl(&sacDocCarry,state);
@@ -25429,8 +25430,8 @@ void initGame(B)(ObjectState!B state,ref Array!SlotInfo slots,GameInit!B gameIni
 		foreach(_;0..gameInit.replicateCreatures)
 			state.placeNTT(creature);
 	state.eachMoving!((ref MovingObject!B object, ObjectState!B state){
-			if(object.creatureState.mode==CreatureMode.dead) object.createSoul(state);
-		})(state);
+		if(object.creatureState.mode==CreatureMode.dead) object.createSoul(state);
+	})(state);
 	if(gameInit.protectManafounts){
 		foreach(i;0..gameInit.protectManafounts) state.uniform(2);
 		state.eachBuilding!((bldg,state){
