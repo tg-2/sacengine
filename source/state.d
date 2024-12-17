@@ -17750,6 +17750,16 @@ void plagueDropExplosion(B)(ref PlagueDrop!B plagueDrop,int target,ObjectState!B
 				*position=boxCenter(*hitbox);
 			},(){})(target,&hitbox,&position,spell,wizard,side,state);
 		}else target=0;
+		static void process(ProximityEntry target,ObjectState!B state,int directTarget,SacSpell!B spell,int attacker,int attackerSide,Vector3f position,float radius){
+			if(target.id==directTarget) return;
+			auto distance=boxPointDistance(target.hitbox,position);
+			if(distance>radius) return;
+			state.movingObjectById!(poison,()=>false)(target.id,0.1f*spell.amount*0.1f*(1.0f-distance/radius),10*updateFPS,true,attacker,attackerSide,DamageMod.spell|DamageMod.splash,state);
+		}
+		auto radius=spell.damageRange;
+		auto offset=Vector3f(radius,radius,radius);
+		Vector3f[2] phitbox=[position-offset,position+offset];
+		collisionTargets!process(phitbox,state,target,spell,wizard,side,position,radius);
 		enum numParticles2=50;
 		auto sacParticle2=SacParticle!B.get(ParticleType.poison);
 		auto scale=boxSize(hitbox).length;
