@@ -38,6 +38,7 @@ maps/(2) TM-Glaciers.scp
 maps/(2) TM-Sunhair.scp
 maps/(2) TM-Urknall.scp
 maps/(2) TM-A Lesser Fate.scp
+maps/(2) TM-Sulphur.scp
 maps/(2) Ferry.scp
 maps/(2) Arctic Realm.scp
 maps/(2) Cherry10.scp
