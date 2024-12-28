@@ -181,8 +181,7 @@ final class SacMap(B){
 		return tuple!("j","i")(cast(int)(pos.y/10),cast(int)(pos.x/10));
 	}
 	Vector3f getVertex(T)(int j,int i,T displacement)@nogc{
-		int x=10*i,y=10*j;
-		return Vector3f(x,y,heights[max(0,min(j,cast(int)$-1))][max(0,min(i,cast(int)$-1))]+displacement(x,y));
+		return Vector3f(10.0f*i,10.0f*j,heights[max(0,min(j,cast(int)$-1))][max(0,min(i,cast(int)$-1))]+displacement(i,j));
 	}
 	Tuple!(Tuple!(int,"j",int,"i")[3][2],"tri",int,"nt") getTriangles(bool invert=false)(int j,int i)@nogc{
 		if(i<0||i+1>=n||j<0||j+1>=m) return typeof(return).init;

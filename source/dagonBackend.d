@@ -1904,7 +1904,9 @@ final class SacScene: Scene{
 
 	bool displacementDirty=false;
 	private bool hasDisplacement(){
-		return state.current.obj.opaqueObjects.effects.testDisplacements.length!=0||
+		return (state.current.obj.opaqueObjects.permanentDisplacement.hash!=
+		        state.current.obj.opaqueObjects.permanentDisplacement.emptyHash)||
+			state.current.obj.opaqueObjects.effects.testDisplacements.length!=0||
 			state.current.obj.opaqueObjects.effects.eruptCastings.length!=0||
 			state.current.obj.opaqueObjects.effects.erupts.length!=0||
 			state.current.obj.opaqueObjects.effects.quakes.length!=0;
@@ -1914,28 +1916,39 @@ final class SacScene: Scene{
 	}
 	override void displaceTerrain(){
 		if(!state) return;
-		bindTestDisplacement();
-		foreach(ref td;state.current.obj.opaqueObjects.effects.testDisplacements){
-			float time=float(td.frame)/updateFPS;
-			testDisplacement(time);
+		bindPermanentDisplacement();
+		permanentDisplacement(state.current.obj.opaqueObjects.permanentDisplacement.hash,
+		                      state.current.obj.opaqueObjects.permanentDisplacement.displacement);
+		unbindPermanentDisplacement();
+		if(state.current.obj.opaqueObjects.effects.testDisplacements.length){
+			bindTestDisplacement();
+			foreach(ref td;state.current.obj.opaqueObjects.effects.testDisplacements){
+				float time=float(td.frame)/updateFPS;
+				testDisplacement(time);
+			}
+			unbindTestDisplacement();
 		}
-		unbindTestDisplacement();
-		bindEruptDisplacement();
-		foreach(ref ec;state.current.obj.opaqueObjects.effects.eruptCastings){
-			float time=float(ec.erupt.frame)/updateFPS;
-			eruptDisplacement(ec.erupt.position.x,ec.erupt.position.y,time);
+		if(state.current.obj.opaqueObjects.effects.eruptCastings.length||
+		   state.current.obj.opaqueObjects.effects.erupts.length){
+			bindEruptDisplacement();
+			foreach(ref ec;state.current.obj.opaqueObjects.effects.eruptCastings){
+				float time=float(ec.erupt.frame)/updateFPS;
+				eruptDisplacement(ec.erupt.position.x,ec.erupt.position.y,time);
+			}
+			foreach(ref e;state.current.obj.opaqueObjects.effects.erupts){
+				float time=float(e.frame)/updateFPS;
+				eruptDisplacement(e.position.x,e.position.y,time);
+			}
+			unbindEruptDisplacement();
 		}
-		foreach(ref e;state.current.obj.opaqueObjects.effects.erupts){
-			float time=float(e.frame)/updateFPS;
-			eruptDisplacement(e.position.x,e.position.y,time);
+		if(state.current.obj.opaqueObjects.effects.quakes.length){
+			bindQuakeDisplacement();
+			foreach(ref e;state.current.obj.opaqueObjects.effects.quakes){
+				float time=float(e.frame)/updateFPS;
+				quakeDisplacement(e.position.x,e.position.y,time);
+			}
+			unbindQuakeDisplacement();
 		}
-		unbindEruptDisplacement();
-		bindQuakeDisplacement();
-		foreach(ref e;state.current.obj.opaqueObjects.effects.quakes){
-			float time=float(e.frame)/updateFPS;
-			quakeDisplacement(e.position.x,e.position.y,time);
-		}
-		unbindQuakeDisplacement();
 		displacementDirty=hasDisplacement();
 	}
 

@@ -534,7 +534,8 @@ struct Path{
 		targetPosition=Vector3f.init;
 	}
 	Vector3f nextTarget(B)(Vector3f currentPosition,Vector3f[2] hitbox,Vector3f newTarget,float radius,bool frontOfAIQueue,ObjectState!B state){
-		if((newTarget-targetPosition).lengthsqr>directWalkDistance^^2)
+		// TODO: .xy is a hack to work around dynamic map shape
+		if((newTarget-targetPosition).xy.lengthsqr>directWalkDistance^^2)
 			reset();
 		++age;
 		if(frontOfAIQueue){
@@ -552,7 +553,8 @@ struct Path{
 			state.proximity.collide!handleCollision(movedHitbox);
 			return collision;
 		}
-		while(path.length&&((path.back()-currentPosition).lengthsqr<2.0f*directWalkDistance^^2||blocked(path.back())))
+		// TODO: .xy is a hack to work around dynamic map shape
+		while(path.length&&((path.back()-currentPosition).xy.lengthsqr<2.0f*directWalkDistance^^2||blocked(path.back())))
 			path.removeBack(1);
 		if(path.length) return path.back();
 		return newTarget;
@@ -618,10 +620,9 @@ class PathFinder(B){
 			}
 		}
 		enum scale=directWalkDistance;
-		foreach(x;0..xlen){
-			foreach(y;0..ylen){
-				heights[x][y]=map.getHeight(Vector3f(scale*x,scale*y,0.0f),ZeroDisplacement());
-				// TODO: take into account dynamic heights
+		foreach(y;0..ylen){
+			foreach(x;0..xlen){
+				heights[y][x]=map.getHeight(Vector3f(scale*x,scale*y,0.0f),ZeroDisplacement());
 			}
 		}
 		determineComponents();
@@ -659,7 +660,7 @@ class PathFinder(B){
 		//auto b=scale*(0.5f*(x+y)-127.5f);
 		auto a=scale*x;
 		auto b=scale*y;
-		auto p=Vector3f(a,b,heights[x][y]);
+		auto p=Vector3f(a,b,heights[y][x]);
 		//p.z=state.getHeight(p);
 		return p;
 	}
@@ -3486,6 +3487,14 @@ struct BombardmentDrop(B){
 	SacSpell!B spell;
 	Quaternionf rotationUpdate;
 	Quaternionf rotation;
+
+	enum dentRadius = 15.0f;
+	enum dentHeight = 0.6f;
+	static float dentDisplacement(float x0,float y0,float x,float y){
+		auto distSq=(x-x0)^^2+(y-y0)^^2;
+		if(distSq>=dentRadius^^2) return 0.0f;
+		return -sqrt(1.0f-(1.0f/dentRadius^^2)*distSq)*dentHeight;
+	}
 }
 
 
@@ -5874,6 +5883,36 @@ class NetworkState(B){
 	ChatMessages!B chatMessages;
 }
 
+struct PermanentDisplacement(B){
+	enum emptyHash = 0xe20eea22; // crc32 hash of 4*256*256 zero bytes
+	uint hash = emptyHash;
+	float[256][256] displacement = 0.0f;
+
+	void recomputeHash(){
+		import serialize_;
+		enum dlen=displacement.length*displacement[0].length;
+		hash = (*cast(float[dlen]*)&displacement).crc32;
+	}
+
+	void bombardmentDent(float x,float y){
+		enum radius=BombardmentDrop!B.dentRadius;
+		auto minY=cast(int)max(0.0f, ceil((y-radius)/10.0f)), maxY=cast(int)min(displacement.length-1,floor((y+radius)/10.0f));
+		auto minX=cast(int)max(0.0f, ceil((x-radius)/10.0f)), maxX=cast(int)min(displacement[0].length-1,floor((x+radius)/10.0f));
+		foreach(j;minY..maxY+1){
+			foreach(i;minX..maxX+1){
+				displacement[j][i]+=BombardmentDrop!B.dentDisplacement(x,y,10.0f*i,10.0f*j);
+			}
+		}
+		recomputeHash();
+	}
+
+	float get(int i,int j){
+		if(j<0||j>=displacement.length) return 0.0f;
+		if(i<0||i>=displacement[j].length) return 0.0f;
+		return displacement[j][i];
+	}
+}
+
 struct Objects(B,RenderMode mode){
 	Array!(MovingObjects!(B,mode)) movingObjects;
 	Array!(StaticObjects!(B,mode)) staticObjects;
@@ -5886,6 +5925,7 @@ struct Objects(B,RenderMode mode){
 		Array!(Particles!(B,true)) relativeParticles;
 		Array!(Particles!(B,false,true)) filteredParticles;
 		Effects!B effects;
+		PermanentDisplacement!B permanentDisplacement;
 		CommandCones!B commandCones;
 		ChatMessages!B chatMessages;
 	}
@@ -18082,7 +18122,7 @@ BombardmentDrop!B makeBombardmentDrop(B)(int wizard,int side,SacSpell!B spell,Ve
 
 void animateEmergingBombardmentDrop(B)(ref BombardmentDrop!B bombardmentDrop,ObjectState!B state){
 	playSoundAt("3tps",bombardmentDrop.position,state,3.0f);
-	screenShake(bombardmentDrop.position,updateFPS/2,0.5f,40.0f,state);
+	screenShake(bombardmentDrop.position,updateFPS/2,0.25f,40.0f,state);
 	enum numParticles=20;
 	auto sacParticle=SacParticle!B.get(ParticleType.rock);
 	foreach(i;0..numParticles){
@@ -18195,8 +18235,10 @@ void bombardmentDropExplosion(B)(ref BombardmentDrop!B bombardmentDrop,int targe
 		auto lifetime=63-frame;
 		state.addParticle(Particle!B(sacParticle4,position,velocity,scale,lifetime,frame));
 	}
-	screenShake(bombardmentDrop.position,60,1.5f,250.0f,state);
+	screenShake(bombardmentDrop.position,60,0.75f,250.0f,state);
 	// TODO: add scar
+	if(!target||state.movingObjectById!((ref obj)=>obj.creatureState.movement==CreatureMovement.onGround,()=>true)(target))
+		state.obj.opaqueObjects.permanentDisplacement.bombardmentDent(bombardmentDrop.position.x,bombardmentDrop.position.y);
 }
 void animateBombardmentDrop(B)(ref BombardmentDrop!B bombardmentDrop,Vector3f oldPosition,ObjectState!B state){
 	with(bombardmentDrop){
@@ -23646,8 +23688,9 @@ final class ObjectState(B){ // (update logic)
 			r.state=state;
 			return r;
 		}
-		float opCall(float x,float y)@nogc{
-			float result=0.0f;
+		float opCall(int i,int j)@nogc{
+			float result=state.obj.opaqueObjects.permanentDisplacement.get(i,j);
+			float x=10*i,y=10*j;
 			foreach(ref td;state.obj.opaqueObjects.effects.testDisplacements){
 				result+=td.displacement(x,y);
 			}

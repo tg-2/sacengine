@@ -835,6 +835,39 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Scr
 void serialize(alias sink)(ref TestDisplacement testDisplacement){ serializeStruct!sink(testDisplacement); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==TestDisplacement)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref PermanentDisplacement!B permanentDisplacement){
+	enum dlen=permanentDisplacement.displacement.length*permanentDisplacement.displacement[0].length;
+	auto data=cast(uint[])(*cast(float[dlen]*)&permanentDisplacement.displacement)[];
+	ulong i=0;
+	while(i<data.length){
+		auto cur=i;
+		while(i<data.length&&data[i]==0) i++;
+		ulong len=i-cur;
+		serialize!sink(len);
+		cur=i;
+		while(i<data.length&&data[i]!=0) i++;
+		serialize!sink(data[cur..i]);
+	}
+}
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==PermanentDisplacement!B)){
+	enum dlen=result.displacement.length*result.displacement[0].length;
+	auto disp=cast(uint[])(*cast(float[dlen]*)&result.displacement)[];
+	ulong i=0;
+	while(i<dlen){
+		ulong len;
+		deserialize(len,state,data);
+		disp[i..i+len]=0;
+		i+=len;
+		deserialize(len,state,data);
+		enforce(4*len<=data.length,"not enough data");
+		disp[i..i+len]=cast(uint[])data[0..4*len];
+		data=data[4*len..$];
+		i+=len;
+	}
+	enforce(i==dlen);
+	result.recomputeHash();
+}
+
 private alias Effects=state.Effects;
 void serialize(alias sink,B)(ref Effects!B effects){ serializeStruct!sink(effects); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Effects!B)){ deserializeStruct(result,state,data); }
