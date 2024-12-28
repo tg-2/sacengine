@@ -3461,6 +3461,33 @@ struct RainOfFireDrop(B){
 	int frame=0;
 }
 
+struct BombardmentCasting(B){
+	ManaDrain!B manaDrain;
+	Bombardment!B bombardment;
+}
+struct Bombardment(B){
+	int wizard;
+	int side;
+	Vector3f position;
+	SacSpell!B spell;
+	int frame=0;
+	enum cloudHeight=90.0f;
+	enum cloudGrowSpeed=0.5f;
+	enum cloudShrinkSpeed=1.0f;
+	enum dropRate=2;
+	enum fallDuration=12.0f;
+	enum jumpRange=25.0f, shortJumpRange=10.0f; // TODO: correct?
+}
+struct BombardmentDrop(B){
+	int wizard;
+	int side;
+	Vector3f position;
+	Vector3f velocity;
+	SacSpell!B spell;
+	Quaternionf rotationUpdate;
+	Quaternionf rotation;
+}
+
 
 struct BrainiacProjectile(B){
 	int attacker;
@@ -5082,6 +5109,30 @@ struct Effects(B){
 	void removeRainOfFireDrop(int i){
 		if(i+1<rainOfFireDrops.length) rainOfFireDrops[i]=move(rainOfFireDrops[$-1]);
 		rainOfFireDrops.length=rainOfFireDrops.length-1;
+	}
+	Array!(BombardmentCasting!B) bombardmentCastings;
+	void addEffect(BombardmentCasting!B BombardmentCasting){
+		bombardmentCastings~=move(BombardmentCasting);
+	}
+	void removeBombardmentCasting(int i){
+		if(i+1<bombardmentCastings.length) bombardmentCastings[i]=move(bombardmentCastings[$-1]);
+		bombardmentCastings.length=bombardmentCastings.length-1;
+	}
+	Array!(Bombardment!B) bombardments;
+	void addEffect(Bombardment!B Bombardment){
+		bombardments~=move(Bombardment);
+	}
+	void removeBombardment(int i){
+		if(i+1<bombardments.length) bombardments[i]=move(bombardments[$-1]);
+		bombardments.length=bombardments.length-1;
+	}
+	Array!(BombardmentDrop!B) bombardmentDrops;
+	void addEffect(BombardmentDrop!B bombardmentDrop){
+		bombardmentDrops~=move(bombardmentDrop);
+	}
+	void removeBombardmentDrop(int i){
+		if(i+1<bombardmentDrops.length) bombardmentDrops[i]=move(bombardmentDrops[$-1]);
+		bombardmentDrops.length=bombardmentDrops.length-1;
 	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
@@ -8225,6 +8276,9 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 				case SpellTag.rainOfFire:
 					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
 					return stun(castRainOfFire(side,target.position,manaDrain,spell,state));
+				case SpellTag.bombardment:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					return stun(castBombardment(side,target.position,manaDrain,spell,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -9194,6 +9248,16 @@ bool castRainOfFire(B)(int side,Vector3f position,ManaDrain!B manaDrain,SacSpell
 }
 bool rainOfFire(B)(RainOfFire!B rainOfFire,ObjectState!B state){
 	state.addEffect(move(rainOfFire));
+	return true;
+}
+
+bool castBombardment(B)(int side,Vector3f position,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	position.z=state.getHeight(position)+Bombardment!B.cloudHeight;
+	state.addEffect(BombardmentCasting!B(manaDrain,Bombardment!B(manaDrain.wizard,side,position,spell)));
+	return true;
+}
+bool bombardment(B)(Bombardment!B bombardment,ObjectState!B state){
+	state.addEffect(move(bombardment));
 	return true;
 }
 
@@ -17955,6 +18019,228 @@ bool updateRainOfFireDrop(B)(ref RainOfFireDrop!B rainOfFireDrop,ObjectState!B s
 	}
 }
 
+void animateBombardmentCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	auto castParticle=SacParticle!B.get(ParticleType.rock);
+	wizard.animateCasting(castParticle,state);
+	auto sacParticle=SacParticle!B.get(ParticleType.rock);
+	static assert(updateFPS==60);
+	auto hitbox=wizard.relativeHitbox;
+	enum numParticles=6;
+	foreach(i;0..numParticles){
+		auto position=1.1f*state.uniform(cast(Vector2f[2])[hitbox[0].xy,hitbox[1].xy]);
+		auto distance=(state.uniform(3)?state.uniform(0.3f,0.6f):state.uniform(1.5f,2.5f))*(hitbox[1].z-hitbox[0].z);
+		auto fullLifetime=2.0f*sacParticle.numFrames/float(updateFPS);
+		auto scale=state.uniform(1.5f,2.0f);
+		auto lifetime=cast(int)(sacParticle.numFrames*state.uniform(0.0f,2.0f));
+		// TODO: particles should accelerate upwards
+		state.addParticle(Particle!B(sacParticle,wizard.position+rotate(wizard.rotation,Vector3f(position.x,position.y,state.uniform(0.0f,0.5f*distance))),Vector3f(0.0f,0.0f,distance/fullLifetime),scale,lifetime,0));
+	}
+}
+
+bool updateBombardmentCasting(B)(ref BombardmentCasting!B bombardmentCast,ObjectState!B state){
+	with(bombardmentCast){
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				if(!state.movingObjectById!((ref obj,state){
+					obj.animateBombardmentCasting(state);
+					return true;
+				},()=>false)(manaDrain.wizard,state))
+					goto case CastingStatus.interrupted;
+				return true;
+			case CastingStatus.interrupted:
+				return false;
+			case CastingStatus.finished:
+				.bombardment(bombardment,state);
+				return false;
+		}
+	}
+}
+
+enum bombardmentDropBuryDepth=1.0f;
+Vector3f bombardmentDropSpawnPosition(B)(ref MovingObject!B obj,SacSpell!B spell,ObjectState!B state){
+	auto offset=state.uniformDisk!(float,2)(Vector2f(0.0f,0.0f),0.25f*spell.effectRange);
+	auto position=obj.position+Vector3f(offset.x,offset.y,0.0f);
+	position.z=state.getHeight(position)-bombardmentDropBuryDepth;
+	return position;
+}
+Vector3f bombardmentDropSpawnVelocity(B)(Vector3f position,Vector3f target,SacSpell!B spell,ObjectState!B state){
+	float accuracy=0.0f;
+	auto direction=getShotDirection(accuracy,position,target,spell,state);
+	auto speed=(target-position).length/Bombardment!B.fallDuration;
+	direction.z+=0.5f*spell.fallingAcceleration*(target-position).length/speed^^2;
+	return direction*speed;
+}
+BombardmentDrop!B makeBombardmentDrop(B)(int wizard,int side,SacSpell!B spell,Vector3f target,ObjectState!B state){
+	auto position=state.movingObjectById!(bombardmentDropSpawnPosition,()=>Vector3f.init)(wizard,spell,state);
+	auto rotationSpeed=2*pi!float*state.uniform(0.2f,0.8f)/updateFPS;
+	float accuracy=0.0f;
+	auto velocity=bombardmentDropSpawnVelocity(position,target,spell,state);
+	auto rotationAxis=state.uniformDirection();
+	auto rotationUpdate=rotationQuaternion(rotationAxis,rotationSpeed);
+	return BombardmentDrop!B(wizard,side,position,velocity,spell,rotationUpdate,Quaternionf.identity());
+}
+
+void animateEmergingBombardmentDrop(B)(ref BombardmentDrop!B bombardmentDrop,ObjectState!B state){
+	playSoundAt("3tps",bombardmentDrop.position,state,3.0f);
+	screenShake(bombardmentDrop.position,updateFPS/2,1.5f,25.0f,state);
+	enum numParticles=20;
+	auto sacParticle=SacParticle!B.get(ParticleType.rock);
+	foreach(i;0..numParticles){
+		auto direction=state.uniformDirection();
+		auto velocity=state.uniform(3.0f,6.0f)*bombardmentDropSize/2.0f*direction;
+		velocity.z*=2.5f;
+		auto scale=2.0f*state.uniform(0.25f,0.75f);
+		auto lifetime=159;
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle,bombardmentDrop.position,velocity,scale,lifetime,frame));
+	}
+	enum numParticles4=8;
+	auto sacParticle4=SacParticle!B.get(ParticleType.dust);
+	foreach(i;0..numParticles4){
+		auto direction=state.uniformDirection();
+		auto position=bombardmentDrop.position+0.75f*bombardmentDropSize/2.0f*direction;
+		auto velocity=0.6f*direction;
+		auto scale=3.0f*bombardmentDropSize/2.0f;
+		auto frame=0;
+		auto lifetime=31;
+		state.addParticle(Particle!B(sacParticle4,position,velocity,scale,lifetime,frame));
+	}
+	enum numParticles5=24;
+	auto sacParticle5=SacParticle!B.get(ParticleType.dirt);
+	auto sizeScale=2.5f;
+	foreach(i;0..numParticles5){
+		auto direction=state.uniformDirection();
+		auto pposition=bombardmentDrop.position+sizeScale*0.25f*direction-sizeScale*Vector3f(0.0f,0.0f,state.uniform(0.0f,1.0f));
+		auto velocity=3.0f*sizeScale*Vector3f(0.0f,0.0f,1.0f)+0.75f*sizeScale*direction*state.uniform(0.5f,1.25f);
+		auto frame=state.uniform(2)?0:state.uniform(24);
+		auto lifetime=63-frame;
+		auto scale=sizeScale*state.uniform(0.5f,1.0f);
+		state.addParticle(Particle!B(sacParticle5,pposition,velocity,sizeScale,lifetime,frame));
+	}
+	// TODO: scar
+}
+
+bool updateBombardment(B)(ref Bombardment!B bombardment,ObjectState!B state){
+	with(bombardment){
+		++frame;
+		// TODO: ash particles in the air
+		if(frame>spell.duration*updateFPS) return false;
+		auto gposition=position;
+		gposition.z=state.getHeight(gposition);
+		foreach(_;0..dropRate/updateFPS+(state.uniform!"[)"(0,updateFPS)<dropRate%updateFPS)){
+			auto offset=state.uniformDisk!(float,2)(Vector2f(0.0f,0.0f),spell.effectRange);
+			auto fposition=position+Vector3f(offset.x,offset.y,0.0f);
+			// TODO: the following might be unnecessarily inefficient
+			if(auto target=state.proximity.creatureInRangeAndClosestTo(gposition,spell.effectRange,fposition,0,state)){
+				auto jumped=target?centerTarget(target,state):OrderTarget.init;
+				auto jdistsqr=(fposition.xy-jumped.position.xy).lengthsqr;
+				if(jdistsqr<shortJumpRange^^2||jdistsqr<jumpRange^^2&&state.uniform(3)!=0){
+					fposition=jumped.position;
+					fposition.z=position.z;
+				}
+			}
+			fposition.z=state.getHeight(fposition);
+
+			//auto fvelocity=(fposition-sposition)/fallDuration;
+			auto rotationSpeed=2*pi!float*state.uniform(0.05f,0.2f)/updateFPS;
+			auto rotationAxis=state.uniformDirection();
+			auto rotationUpdate=rotationQuaternion(rotationAxis,rotationSpeed);
+			auto drop=makeBombardmentDrop(wizard,side,spell,fposition,state);
+			animateEmergingBombardmentDrop(drop,state);
+			state.addEffect(move(drop));
+		}
+		return true;
+	}
+}
+
+enum bombardmentDropSize=2.5f;
+static immutable Vector3f[2] bombardmentDropHitbox=[-0.5f*bombardmentDropSize*Vector3f(1.0f,1.0f,1.0f),0.5f*bombardmentDropSize*Vector3f(1.0f,1.0f,1.0f)];
+int bombardmentDropCollisionTarget(B)(Vector3f position,ObjectState!B state){
+	static bool filter(ProximityEntry entry,ObjectState!B state){
+		return entry.isProjectileObstacle&&state.movingObjectById!((ref obj)=>obj.creatureState.mode.canBeInfectedByMites,()=>false)(entry.id);
+	}
+	return collisionTarget!(bombardmentDropHitbox,filter)(-1,position,state);
+}
+enum bombardmentGain=1.0f;
+void bombardmentDropExplosion(B)(ref BombardmentDrop!B bombardmentDrop,int target,ObjectState!B state){
+	playSpellSoundTypeAt(SoundType.bombardmentHit,bombardmentDrop.position,state,3.0f);
+	if(state.isValidTarget(target)){
+		dealSpellDamage(target,bombardmentDrop.spell,bombardmentDrop.wizard,bombardmentDrop.side,bombardmentDrop.velocity,DamageMod.ignite|DamageMod.splash,state);
+	}else target=0;
+	static bool callback(int target,int wizard,int side,ObjectState!B state){
+		state.movingObjectById!(stunWithCooldown,()=>false)(target,stunCooldownFrames,state);
+		return true;
+	}
+	dealSplashSpellDamageAt!callback(target,bombardmentDrop.spell,bombardmentDrop.spell.damageRange,bombardmentDrop.wizard,bombardmentDrop.side,bombardmentDrop.position,DamageMod.ignite,state,bombardmentDrop.wizard,bombardmentDrop.side,state);
+	enum numParticles3=100;
+	auto sacParticle3=SacParticle!B.get(ParticleType.rock);
+	foreach(i;0..numParticles3){
+		auto direction=state.uniformDirection();
+		auto velocity=state.uniform(10.0f,20.0f)*direction;
+		auto scale=state.uniform(1.0f,1.5f);
+		auto lifetime=95;
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle3,bombardmentDrop.position,velocity,scale,lifetime,frame));
+	}
+	enum numParticles4=20;
+	auto sacParticle4=SacParticle!B.get(ParticleType.dirt);
+	foreach(i;0..numParticles4){
+		auto direction=state.uniformDirection();
+		auto position=bombardmentDrop.position+direction;
+		auto velocity=Vector3f(0.0f,0.0f,0.0f);
+		auto scale=3.75f;
+		auto frame=state.uniform(2)?0:state.uniform(24);
+		auto lifetime=63-frame;
+		state.addParticle(Particle!B(sacParticle4,position,velocity,scale,lifetime,frame));
+	}
+	screenShake(bombardmentDrop.position,60,0.5f,250.0f,state);
+	// TODO: add scar
+}
+void animateBombardmentDrop(B)(ref BombardmentDrop!B bombardmentDrop,Vector3f oldPosition,ObjectState!B state){
+	with(bombardmentDrop){
+		enum numParticles=5;
+		auto sacParticle1=SacParticle!B.get(ParticleType.dirt);
+		auto sacParticle2=SacParticle!B.get(ParticleType.dust);
+		auto velocity=Vector3f(0.0f,0.0f,0.0f);
+		auto lifetime=31;
+		auto scale=2.5f;
+		auto frame=0;
+		foreach(i;0..numParticles){
+			auto sacParticle=i!=0?sacParticle1:sacParticle2;
+			auto position=oldPosition*((cast(float)numParticles-1-i)/numParticles)+position*(cast(float)(i+1)/numParticles);
+			position+=0.4f*state.uniformDirection();
+			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+		}
+	}
+}
+bool updateBombardmentDrop(B)(ref BombardmentDrop!B bombardmentDrop,ObjectState!B state){
+	with(bombardmentDrop){
+		auto oldPosition=position;
+		velocity.z-=spell.fallingAcceleration/updateFPS;
+		position+=velocity/updateFPS;
+		animateBombardmentDrop(bombardmentDrop,oldPosition,state);
+		if(velocity.z<0.0f){
+			if(state.isOnGround(position)){
+				auto height=state.getGroundHeight(position);
+				if(height>position.z){
+					position.z=height;
+					bombardmentDropExplosion(bombardmentDrop,0,state);
+					return false;
+				}
+			}else if(position.z<state.getHeight(position)-1000.0f)
+				return false;
+			if(auto collisionTarget=bombardmentDropCollisionTarget(position,state)){
+				state.movingObjectById!((ref obj,velocity,state){
+						obj.damageAnimation(velocity,state);
+					},(){})(collisionTarget,velocity,state);
+				bombardmentDropExplosion(bombardmentDrop,collisionTarget,state);
+				return false;
+			}
+		}
+		return true;
+	}
+}
+
 
 enum brainiacProjectileHitGain=4.0f;
 enum brainiacProjectileSize=0.45f; // TODO: ok?
@@ -21848,6 +22134,27 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.rainOfFireDrops.length;){
 		if(!updateRainOfFireDrop(effects.rainOfFireDrops[i],state)){
 			effects.removeRainOfFireDrop(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.bombardmentCastings.length;){
+		if(!updateBombardmentCasting(effects.bombardmentCastings[i],state)){
+			effects.removeBombardmentCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.bombardments.length;){
+		if(!updateBombardment(effects.bombardments[i],state)){
+			effects.removeBombardment(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.bombardmentDrops.length;){
+		if(!updateBombardmentDrop(effects.bombardmentDrops[i],state)){
+			effects.removeBombardmentDrop(i);
 			continue;
 		}
 		i++;

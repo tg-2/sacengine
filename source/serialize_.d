@@ -595,6 +595,15 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Rai
 void serialize(alias sink,B)(ref RainOfFireDrop!B rainOfFireDrop){ serializeStruct!sink(rainOfFireDrop); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==RainOfFireDrop!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref BombardmentCasting!B bombardmentCasting){ serializeStruct!sink(bombardmentCasting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BombardmentCasting!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref Bombardment!B bombardment){ serializeStruct!sink(bombardment); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Bombardment!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref BombardmentDrop!B bombardmentDrop){ serializeStruct!sink(bombardmentDrop); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BombardmentDrop!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref BrainiacProjectile!B brainiacProjectile){ serializeStruct!sink(brainiacProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BrainiacProjectile!B)){ deserializeStruct(result,state,data); }
 
