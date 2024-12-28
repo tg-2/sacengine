@@ -1721,7 +1721,7 @@ struct Renderer(B){
 							mesh.render(rc);
 						}
 						foreach(j;0..objects.bombardmentDrops.length){
-							material.backend.setTransformationScaled(objects.bombardmentDrops[j].position,objects.bombardmentDrops[j].rotation,1.5f*Vector3f(1.0f,1.0f,1.0f),rc);
+							material.backend.setTransformationScaled(objects.bombardmentDrops[j].position,objects.bombardmentDrops[j].rotation,1.875f*Vector3f(1.0f,1.0f,1.0f),rc);
 							mesh.render(rc);
 						}
 						foreach(j;0..objects.rockForms.length){

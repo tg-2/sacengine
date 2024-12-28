@@ -18020,9 +18020,9 @@ bool updateRainOfFireDrop(B)(ref RainOfFireDrop!B rainOfFireDrop,ObjectState!B s
 }
 
 void animateBombardmentCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
-	auto castParticle=SacParticle!B.get(ParticleType.rock);
-	wizard.animateCasting(castParticle,state);
-	auto sacParticle=SacParticle!B.get(ParticleType.rock);
+	auto castParticle=SacParticle!B.get(ParticleType.dirt);
+	wizard.animateCasting!(false,1)(castParticle,state);
+	auto sacParticle=SacParticle!B.get(ParticleType.bombardmentCasting);
 	static assert(updateFPS==60);
 	auto hitbox=wizard.relativeHitbox;
 	enum numParticles=6;
@@ -18082,7 +18082,7 @@ BombardmentDrop!B makeBombardmentDrop(B)(int wizard,int side,SacSpell!B spell,Ve
 
 void animateEmergingBombardmentDrop(B)(ref BombardmentDrop!B bombardmentDrop,ObjectState!B state){
 	playSoundAt("3tps",bombardmentDrop.position,state,3.0f);
-	screenShake(bombardmentDrop.position,updateFPS/2,1.5f,25.0f,state);
+	screenShake(bombardmentDrop.position,updateFPS/2,0.5f,40.0f,state);
 	enum numParticles=20;
 	auto sacParticle=SacParticle!B.get(ParticleType.rock);
 	foreach(i;0..numParticles){
@@ -18146,14 +18146,16 @@ bool updateBombardment(B)(ref Bombardment!B bombardment,ObjectState!B state){
 			auto rotationAxis=state.uniformDirection();
 			auto rotationUpdate=rotationQuaternion(rotationAxis,rotationSpeed);
 			auto drop=makeBombardmentDrop(wizard,side,spell,fposition,state);
-			animateEmergingBombardmentDrop(drop,state);
-			state.addEffect(move(drop));
+			if(!isNaN(drop.position.x)){
+				animateEmergingBombardmentDrop(drop,state);
+				state.addEffect(move(drop));
+			}
 		}
 		return true;
 	}
 }
 
-enum bombardmentDropSize=2.5f;
+enum bombardmentDropSize=3.0f;
 static immutable Vector3f[2] bombardmentDropHitbox=[-0.5f*bombardmentDropSize*Vector3f(1.0f,1.0f,1.0f),0.5f*bombardmentDropSize*Vector3f(1.0f,1.0f,1.0f)];
 int bombardmentDropCollisionTarget(B)(Vector3f position,ObjectState!B state){
 	static bool filter(ProximityEntry entry,ObjectState!B state){
@@ -18176,8 +18178,8 @@ void bombardmentDropExplosion(B)(ref BombardmentDrop!B bombardmentDrop,int targe
 	auto sacParticle3=SacParticle!B.get(ParticleType.rock);
 	foreach(i;0..numParticles3){
 		auto direction=state.uniformDirection();
-		auto velocity=state.uniform(10.0f,20.0f)*direction;
-		auto scale=state.uniform(1.0f,1.5f);
+		auto velocity=1.5f*state.uniform(10.0f,20.0f)*direction;
+		auto scale=1.5f*state.uniform(1.0f,1.5f);
 		auto lifetime=95;
 		auto frame=0;
 		state.addParticle(Particle!B(sacParticle3,bombardmentDrop.position,velocity,scale,lifetime,frame));
@@ -18185,28 +18187,26 @@ void bombardmentDropExplosion(B)(ref BombardmentDrop!B bombardmentDrop,int targe
 	enum numParticles4=20;
 	auto sacParticle4=SacParticle!B.get(ParticleType.dirt);
 	foreach(i;0..numParticles4){
-		auto direction=state.uniformDirection();
+		auto direction=1.5f*state.uniformDirection();
 		auto position=bombardmentDrop.position+direction;
 		auto velocity=Vector3f(0.0f,0.0f,0.0f);
-		auto scale=3.75f;
+		auto scale=1.5f*3.75f;
 		auto frame=state.uniform(2)?0:state.uniform(24);
 		auto lifetime=63-frame;
 		state.addParticle(Particle!B(sacParticle4,position,velocity,scale,lifetime,frame));
 	}
-	screenShake(bombardmentDrop.position,60,0.5f,250.0f,state);
+	screenShake(bombardmentDrop.position,60,1.5f,250.0f,state);
 	// TODO: add scar
 }
 void animateBombardmentDrop(B)(ref BombardmentDrop!B bombardmentDrop,Vector3f oldPosition,ObjectState!B state){
 	with(bombardmentDrop){
-		enum numParticles=5;
-		auto sacParticle1=SacParticle!B.get(ParticleType.dirt);
-		auto sacParticle2=SacParticle!B.get(ParticleType.dust);
+		enum numParticles=4;
+		auto sacParticle=SacParticle!B.get(ParticleType.dirt);
 		auto velocity=Vector3f(0.0f,0.0f,0.0f);
 		auto lifetime=31;
 		auto scale=2.5f;
 		auto frame=0;
 		foreach(i;0..numParticles){
-			auto sacParticle=i!=0?sacParticle1:sacParticle2;
 			auto position=oldPosition*((cast(float)numParticles-1-i)/numParticles)+position*(cast(float)(i+1)/numParticles);
 			position+=0.4f*state.uniformDirection();
 			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));

@@ -1158,6 +1158,7 @@ enum ParticleType{
 	dust,
 	splat,
 	rock,
+	bombardmentCasting,
 	webDebris,
 	oil,
 	steam,
@@ -1210,7 +1211,11 @@ final class SacParticle(B){
 				return true;
 			case smoke,dirt,dust,splat:
 				return false;
-			case rock,webDebris,oil:
+			case rock:
+				return true;
+			case bombardmentCasting:
+				return false;
+			case webDebris,oil:
 				return true;
 			case poison,relativePoison:
 				return false;
@@ -1240,7 +1245,7 @@ final class SacParticle(B){
 				return false;
 			case castPersephone,castPersephone2,castPyro,castJames,castStratos,castCharnel,castCharnel2:
 				return false;
-			case breathOfLife,wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,rainbowParticle,rainOfFrogsCasting,frogExplosion,gnomeHit,warmongerHit,ashParticle,steam,smoke,dirt,dust,splat,rock,webDebris,oil,poison,swarmHit,slime:
+			case breathOfLife,wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,rainbowParticle,rainOfFrogsCasting,frogExplosion,gnomeHit,warmongerHit,ashParticle,steam,smoke,dirt,dust,splat,rock,bombardmentCasting,webDebris,oil,poison,swarmHit,slime:
 				return false;
 			case relativePoison:
 				return true;
@@ -1534,6 +1539,12 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/rock.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
+			case bombardmentCasting:
+				width=height=1.5f;
+				this.energy=1.0f;
+				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/rock.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
 			case webDebris:
 				width=height=1.0f;
 				this.energy=1.0f;
@@ -1669,7 +1680,7 @@ final class SacParticle(B){
 			case smoke:
 				enum delay=64;
 				return 0.75f*(lifetime>=numFrames-(delay-1)?(numFrames-lifetime)/float(delay):(lifetime/float(numFrames-delay)))^^2;
-			case rock:
+			case rock,bombardmentCasting:
 				return min(1.0f,(lifetime/(1.5f*numFrames)));
 			case webDebris:
 				return min(1.0f,(lifetime/(1.5f*numFrames)));
@@ -1729,7 +1740,7 @@ final class SacParticle(B){
 				return 1.0f;
 			case smoke:
 				return 1.0f/(lifetime/float(numFrames)+0.2f);
-			case rock:
+			case rock,bombardmentCasting:
 				return min(1.0f,lifetime/(3.0f*numFrames));
 			case webDebris:
 				return min(1.0f,lifetime/(3.0f*numFrames));
