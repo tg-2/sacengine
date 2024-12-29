@@ -18148,10 +18148,11 @@ void animateEmergingBombardmentDrop(B)(ref BombardmentDrop!B bombardmentDrop,Obj
 	enum numParticles5=24;
 	auto sacParticle5=SacParticle!B.get(ParticleType.dirt);
 	auto sizeScale=2.5f;
+	auto departureDirection=bombardmentDrop.velocity.normalized;
 	foreach(i;0..numParticles5){
 		auto direction=state.uniformDirection();
 		auto pposition=bombardmentDrop.position+sizeScale*0.25f*direction-sizeScale*Vector3f(0.0f,0.0f,state.uniform(0.0f,1.0f));
-		auto velocity=3.0f*sizeScale*Vector3f(0.0f,0.0f,1.0f)+0.75f*sizeScale*direction*state.uniform(0.5f,1.25f);
+		auto velocity=3.0f*sizeScale*departureDirection+0.75f*sizeScale*direction*state.uniform(0.5f,1.25f);
 		auto frame=state.uniform(2)?0:state.uniform(24);
 		auto lifetime=63-frame;
 		auto scale=sizeScale*state.uniform(0.5f,1.0f);
