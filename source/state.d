@@ -3123,6 +3123,37 @@ struct HealingAura(B){
 	HealingAuraStatus status;
 }
 
+struct FrozenGroundCasting(B){
+	ManaDrain!B manaDrain;
+	SacSpell!B spell;
+	FrozenGroundSnowball!B snowball;
+	Vector3f target;
+	int frame;
+	int castingTime;
+
+	float scale(){
+		return float(frame)/castingTime;
+	}
+}
+struct FrozenGroundSnowball(B){
+	int wizard;
+	int side;
+	Vector3f position;
+	Vector3f velocity;
+	SacSpell!B spell;
+	Quaternionf rotationUpdate;
+	Quaternionf rotation;
+
+	enum fallDuration=1.25f;
+}
+struct FrozenGround(B){
+	int wizard;
+	int side;
+	Vector3f center;
+	SacSpell!B spell;
+	// TODO
+}
+
 struct FirewallCasting(B){
 	ManaDrain!B manaDrain;
 	Firewall!B firewall;
@@ -4982,6 +5013,30 @@ struct Effects(B){
 	void removeHealingAura(int i){
 		if(i+1<healingAuras.length) healingAuras[i]=move(healingAuras[$-1]);
 		healingAuras.length=healingAuras.length-1;
+	}
+	Array!(FrozenGroundCasting!B) frozenGroundCastings;
+	void addEffect(FrozenGroundCasting!B frozenGroundCasting){
+		frozenGroundCastings~=move(frozenGroundCasting);
+	}
+	void removeFrozenGroundCasting(int i){
+		if(i+1<frozenGroundCastings.length) frozenGroundCastings[i]=move(frozenGroundCastings[$-1]);
+		frozenGroundCastings.length=frozenGroundCastings.length-1;
+	}
+	Array!(FrozenGroundSnowball!B) frozenGroundSnowballs;
+	void addEffect(FrozenGroundSnowball!B frozenGroundSnowball){
+		frozenGroundSnowballs~=move(frozenGroundSnowball);
+	}
+	void removeFrozenGroundSnowball(int i){
+		if(i+1<frozenGroundSnowballs.length) frozenGroundSnowballs[i]=move(frozenGroundSnowballs[$-1]);
+		frozenGroundSnowballs.length=frozenGroundSnowballs.length-1;
+	}
+	Array!(FrozenGround!B) frozenGrounds;
+	void addEffect(FrozenGround!B frozenGround){
+		frozenGrounds~=move(frozenGround);
+	}
+	void removeFrozenGround(int i){
+		if(i+1<frozenGrounds.length) frozenGrounds[i]=move(frozenGrounds[$-1]);
+		frozenGrounds.length=frozenGrounds.length-1;
 	}
 	Array!(FirewallCasting!B) firewallCastings;
 	void addEffect(FirewallCasting!B firewallCasting){
@@ -8298,6 +8353,11 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 				case SpellTag.healingAura:
 					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
 					return stun(castHealingAura(side,target.id,manaDrain,spell,state));
+				case SpellTag.frozenGround:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					if(side==-1||castingTime==-1) return false;
+					return stun(castFrozenGround(target.position,manaDrain,spell,castingTime,state));
 				case SpellTag.firewall:
 					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
 					return stun(castFirewall(side,target.position,manaDrain,spell,state));
@@ -9323,6 +9383,30 @@ bool healingAura(B)(int side,int target,SacSpell!B spell,ObjectState!B state){
 	auto soundTimer=playSoundAt!true("arua",target,state,healingAuraGain);
 	auto healingAura=HealingAura!B(side,target,spell,soundTimer);
 	state.addEffect(move(healingAura));
+	return true;
+}
+
+FrozenGroundSnowball!B makeFrozenGroundSnowball(B)(int wizard,int side,Vector3f position,Vector3f target,SacSpell!B spell,ObjectState!B state){
+	auto rotationSpeed=2*pi!float*state.uniform(0.5f,1.5f)/updateFPS;
+	auto velocity=Vector3f(0.0f,0.0f,0.0f);
+	auto rotationAxis=state.uniformDirection();
+	auto rotationUpdate=rotationQuaternion(rotationAxis,rotationSpeed);
+	return FrozenGroundSnowball!B(wizard,side,position,velocity,spell,rotationUpdate,Quaternionf.identity());
+}
+Vector3f frozenGroundSnowballCastingPosition(B)(ref MovingObject!B obj,float progress,ObjectState!B state){
+	auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
+	auto position=obj.position+rotate(obj.rotation,Vector3f(0.0f,hbox[1].y+0.75f,0.0f));
+	position.z=state.getHeight(position)+progress*(hbox[1].z+0.5f);
+	return position;
+}
+bool castFrozenGround(B)(Vector3f target,ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,ObjectState!B state){
+	if(isNaN(target.x)) return false;
+	target.z=state.getHeight(target);
+	playSpellSoundTypeAt(SoundType.convertRevive,manaDrain.wizard,state,1.0f);
+	auto positionSide=state.movingObjectById!((obj,state)=>tuple(obj.frozenGroundSnowballCastingPosition(0.0f,state),obj.side),function Tuple!(Vector3f,int){ assert(0); })(manaDrain.wizard,state);
+	auto position=positionSide[0],side=positionSide[1];
+	auto frozenGroundSnowball=makeFrozenGroundSnowball(manaDrain.wizard,side,position,Vector3f(0.0f,0.0f,0.0f),spell,state);
+	state.addEffect(FrozenGroundCasting!B(manaDrain,spell,frozenGroundSnowball,target,0,castingTime));
 	return true;
 }
 
@@ -16996,6 +17080,104 @@ bool updateHealingAura(B)(ref HealingAura!B healingAura,ObjectState!B state){
 	}
 }
 
+void animateFrozenGroundCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	auto castParticle=SacParticle!B.get(ParticleType.lightningCasting);
+	wizard.animateCasting!(true,1)(castParticle,state);
+}
+
+Vector3f frozenGroundSnowballSpawnVelocity(B)(Vector3f position,Vector3f target,SacSpell!B spell,ObjectState!B state){
+	float accuracy=0.0f;
+	auto direction=getShotDirection(accuracy,position,target,spell,state);
+	auto speed=max(0.01f,(target-position).length/FrozenGroundSnowball!B.fallDuration);
+	direction.z+=0.5f*spell.fallingAcceleration*(target-position).length/speed^^2;
+	return direction*speed;
+}
+
+bool updateFrozenGroundCasting(B)(ref FrozenGroundCasting!B frozenGroundCast,ObjectState!B state){
+	with(frozenGroundCast){
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				return state.movingObjectById!((obj){
+					snowball.position=obj.frozenGroundSnowballCastingPosition(min(1.0f,float(frame)/castingTime),state);
+					snowball.rotation=snowball.rotationUpdate*snowball.rotation;
+					obj.animateFrozenGroundCasting(state);
+					frame+=1;
+					return true;
+				},()=>false)(manaDrain.wizard);
+			case CastingStatus.interrupted:
+				return false;
+			case CastingStatus.finished:
+				snowball.position.z=max(snowball.position.z,state.getHeight(snowball.position)); // for robustness
+				snowball.velocity=frozenGroundSnowballSpawnVelocity(snowball.position,target,spell,state);
+				state.addEffect(snowball);
+				return false;
+		}
+	}
+}
+void animateFrozenGroundSnowball(B)(ref FrozenGroundSnowball!B frozenGroundSnowball,Vector3f oldPosition,ObjectState!B state){
+	with(frozenGroundSnowball){
+		rotation=rotationUpdate*rotation;
+		enum numParticles=2;
+		auto sacParticle=SacParticle!B.get(ParticleType.lightningCasting);
+		auto velocity=Vector3f(0.0f,0.0f,0.0f);
+		auto lifetime=31;
+		auto scale=state.uniform(1.5f,2.5f);
+		auto frame=0;
+		foreach(i;0..numParticles){
+			auto position=oldPosition*((cast(float)numParticles-1-i)/numParticles)+position*(cast(float)(i+1)/numParticles);
+			position+=0.25f*state.uniformDirection();
+			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+		}
+	}
+}
+void frozenGroundSnowballExplosion(B)(ref FrozenGroundSnowball!B frozenGroundSnowball,ObjectState!B state){
+	with(frozenGroundSnowball){
+		auto sacParticle1=SacParticle!B.get(ParticleType.shard);
+		enum numParticles1=150;
+		foreach(i;0..numParticles1){
+			auto direction=state.uniformDirection();
+			auto velocity=2.0f*state.uniform(7.5f,15.0f)*direction;
+			auto scale=state.uniform(0.75f,1.25f);
+			auto lifetime=31;
+			auto frame=0;
+			state.addParticle(Particle!B(sacParticle1,position,velocity,scale,lifetime,frame));
+		}
+		auto sacParticle2=SacParticle!B.get(ParticleType.snowballShard);
+		enum numParticles2=150;
+		foreach(i;0..numParticles2){
+			auto direction=state.uniformDirection();
+			auto velocity=1.5f*state.uniform(7.5f,15.0f)*direction;
+			auto scale=state.uniform(0.75f,1.25f);
+			auto lifetime=63;
+			auto frame=0;
+			state.addParticle(Particle!B(sacParticle2,position,velocity,scale,lifetime,frame));
+		}
+	}
+}
+
+bool updateFrozenGroundSnowball(B)(ref FrozenGroundSnowball!B frozenGroundSnowball,ObjectState!B state){
+	with(frozenGroundSnowball){
+		auto oldPosition=position;
+		position+=velocity/updateFPS;
+		velocity.z-=spell.fallingAcceleration/updateFPS;
+		frozenGroundSnowball.animateFrozenGroundSnowball(oldPosition,state);
+		if(state.isOnGround(position)){
+			if(position.z<state.getGroundHeight(position)){
+				frozenGroundSnowballExplosion(frozenGroundSnowball,state);
+				// frozenGround(position); // TODO
+				return false;
+			}
+		}else if(position.z<state.getHeight(position)-spell.fallLimit)
+			return false;
+		return true;
+	}
+}
+bool updateFrozenGround(B)(ref FrozenGround!B frozenGround,ObjectState!B state){
+	with(frozenGround){
+		return false; // TODO
+	}
+}
+
 void animateFirewallCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
 	auto castParticle=SacParticle!B.get(ParticleType.firy); // TODO ok?
 	wizard.animateCasting(castParticle,state);
@@ -18106,7 +18288,7 @@ Vector3f bombardmentDropSpawnPosition(B)(ref MovingObject!B obj,SacSpell!B spell
 Vector3f bombardmentDropSpawnVelocity(B)(Vector3f position,Vector3f target,SacSpell!B spell,ObjectState!B state){
 	float accuracy=0.0f;
 	auto direction=getShotDirection(accuracy,position,target,spell,state);
-	auto speed=(target-position).length/Bombardment!B.fallDuration;
+	auto speed=max(0.01f,(target-position).length/Bombardment!B.fallDuration);
 	direction.z+=0.5f*spell.fallingAcceleration*(target-position).length/speed^^2;
 	return direction*speed;
 }
@@ -22058,6 +22240,27 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.healingAuras.length;){
 		if(!updateHealingAura(effects.healingAuras[i],state)){
 			effects.removeHealingAura(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.frozenGroundCastings.length;){
+		if(!updateFrozenGroundCasting(effects.frozenGroundCastings[i],state)){
+			effects.removeFrozenGroundCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.frozenGroundSnowballs.length;){
+		if(!updateFrozenGroundSnowball(effects.frozenGroundSnowballs[i],state)){
+			effects.removeFrozenGroundSnowball(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.frozenGrounds.length;){
+		if(!updateFrozenGround(effects.frozenGrounds[i],state)){
+			effects.removeFrozenGround(i);
 			continue;
 		}
 		i++;

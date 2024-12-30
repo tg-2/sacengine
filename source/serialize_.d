@@ -535,6 +535,15 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Hea
 void serialize(alias sink,B)(ref HealingAura!B particle){ serializeStruct!sink(particle); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==HealingAura!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref FrozenGroundCasting!B frozenGroundCasting){ serializeStruct!sink(frozenGroundCasting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==FrozenGroundCasting!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref FrozenGroundSnowball!B frozenGroundSnowball){ serializeStruct!sink(frozenGroundSnowball); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==FrozenGroundSnowball!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref FrozenGround!B frozenGround){ serializeStruct!sink(frozenGround); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==FrozenGround!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref FirewallCasting!B firewallCasting){ serializeStruct!sink(firewallCasting); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==FirewallCasting!B)){ deserializeStruct(result,state,data); }
 

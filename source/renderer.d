@@ -819,6 +819,7 @@ struct Renderer(B){
 		auto mesh=typeof(return).createMesh();
 		return SacFlurryImplosion!B(texture,mat,mesh);
 	}
+	SacObject!B snowball;
 	void createEffects(){
 		import std.traits:EnumMembers;
 		foreach(ptype;EnumMembers!ParticleType) SacParticle!B.get(ptype);
@@ -884,6 +885,7 @@ struct Renderer(B){
 		bombardProjectile=createBombardProjectile();
 		flurryProjectile=createFlurryProjectile();
 		flurryImplosion=createFlurryImplosion();
+		snowball=new SacObject!B("extracted/models/MODL.WAD!/sbll.MRMC/sbll.MRMM");
 	}
 
 	static struct InitOpt{
@@ -2687,6 +2689,36 @@ struct Renderer(B){
 						auto mesh=self.flurryImplosion.mesh;
 						material.backend.setTransformationScaled(position,Quaternionf.identity(),scale,rc);
 						mesh.render(rc);
+					}
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(
+					                                           objects.frozenGroundCastings.length||
+					                                           objects.frozenGroundSnowballs.length
+				                                           )
+				){
+					B.disableDepthMask();
+					B.enableCulling();
+					scope(success){
+						B.enableDepthMask();
+					}
+					auto materials=self.snowball.materials;
+					foreach(i,mat;materials){
+						B.shadelessMaterialBackend.bind(mat,rc);
+						B.enableAdditive();
+						B.shadelessMaterialBackend.setEnergy(10.0f);
+						scope(success) B.shadelessMaterialBackend.unbind(mat,rc);
+						auto mesh=self.snowball.meshes[0][i];
+						void renderSnowball(ref FrozenGroundSnowball!B snowball,float scale){
+							B.shadelessMaterialBackend.setTransformationScaled(snowball.position,snowball.rotation,scale*Vector3f(1.0f,1.0f,1.0f),rc);
+							mesh.render(rc);
+						}
+						foreach(ref frozenGroundCasting;objects.frozenGroundCastings){
+							auto scale=frozenGroundCasting.scale;
+							renderSnowball(frozenGroundCasting.snowball,scale);
+						}
+						foreach(ref frozenGroundSnowball;objects.frozenGroundSnowballs){
+							renderSnowball(frozenGroundSnowball,1.0f);
+						}
 					}
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.silverbackEffects.length){

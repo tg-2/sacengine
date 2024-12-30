@@ -1135,6 +1135,7 @@ enum ParticleType{
 	styxSpark,
 	rend,
 	shard,
+	snowballShard,
 	flurryShard,
 	castPersephone,
 	castPersephone2,
@@ -1195,7 +1196,7 @@ final class SacParticle(B){
 				return false;
 			case ghostTransition:
 				return true;
-			case needle,etherealFormSpark,shard:
+			case needle,etherealFormSpark,shard,snowballShard:
 				return true;
 			case flurryShard:
 				return false;
@@ -1237,7 +1238,7 @@ final class SacParticle(B){
 				return true;
 			case chainLightningCasting:
 				return false;
-			case needle,etherealFormSpark,shard,flurryShard:
+			case needle,etherealFormSpark,shard,snowballShard,flurryShard:
 				return false;
 			case freeze:
 				return true;
@@ -1359,6 +1360,12 @@ final class SacParticle(B){
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
 			case shard:
+				width=height=1.0f;
+				this.energy=3.0f;
+				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Stra.FLDR/txtr.FLDR/shrd.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
+			case snowballShard:
 				width=height=1.0f;
 				this.energy=3.0f;
 				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Stra.FLDR/txtr.FLDR/shrd.TXTR"));
@@ -1615,6 +1622,7 @@ final class SacParticle(B){
 			case etherealFormSpark: return 2;
 			case styxSpark: return 2;
 			case rend: return 2;
+			case snowballShard: return 2;
 			case flurryShard: return 2;
 			case breathOfLife: return 2;
 			case rainbowParticle: return 2;
@@ -1661,7 +1669,7 @@ final class SacParticle(B){
 				return 1.0;
 			case chainLightningCasting,needle,freeze,etherealFormSpark,spark,styxSpark,rend:
 				return min(1.0f,(lifetime/(0.5f*numFrames))^^2);
-			case shard:
+			case shard,snowballShard:
 				return 1.0f;
 			case flurryShard:
 				return 0.5f;
@@ -1720,7 +1728,7 @@ final class SacParticle(B){
 				return 1.0f;
 			case chainLightningCasting,needle,freeze,etherealFormSpark,spark,styxSpark,rend:
 				return min(1.0f,lifetime/(0.5f*numFrames));
-			case shard,flurryShard:
+			case shard,snowballShard,flurryShard:
 				return 1.0f;
 			case redVortexDroplet,blueVortexDroplet:
 				return min(1.0f,(lifetime/(0.75f*numFrames)));
