@@ -1975,7 +1975,7 @@ class SacApplication: SceneApplication{
 			options.width=this.width;
 			options.height=this.height;
 		}
-		scene = new SacScene(sceneManager, options);
+		scene = New!SacScene(sceneManager, options);
 		scene.load();
 	}
 	override void onUpdate(Duration dt){
@@ -2011,7 +2011,7 @@ static:
 	}
 	void initialize(Options options){
 		enforce(!app,"DagonBackend already initialized"); // TODO: fix?
-		app = new SacApplication(options);
+		app = New!SacApplication(options);
 		enforce(!!scene,"Scene missing");
 		app.scene.initialize(options);
 	}
@@ -2091,14 +2091,14 @@ static:
 
 	Texture makeTexture(SuperImage i,bool mirroredRepeat=true){
 		auto repeat=mirroredRepeat?GL_MIRRORED_REPEAT:GL_REPEAT;
-		auto texture=New!Texture(null); // TODO: set owner
+		auto texture=New!Texture(scene.assetManager);
 		texture.image=i;
 		texture.createFromImage(texture.image,true,repeat);
 		return texture;
 	}
 
 	Mesh makeMesh(size_t numVertices,size_t numFaces){
-		auto m=new Mesh(null); // TODO: set owner
+		auto m=New!Mesh(scene.assetManager);
 		m.vertices=New!(Vector3f[])(numVertices);
 		m.normals=New!(Vector3f[])(numVertices);
 		m.texcoords=New!(Vector2f[])(numVertices);
@@ -2110,7 +2110,7 @@ static:
 		mesh.prepareVAO();
 	}
 	BoneMesh makeBoneMesh(size_t numVertices, size_t numFaces){
-		auto m=new BoneMesh(null); // TODO: set owner
+		auto m=New!BoneMesh(scene.assetManager);
 		foreach(j;0..3){
 			m.vertices[j]=New!(Vector3f[])(numVertices);
 			m.vertices[j][]=Vector3f(0,0,0);
@@ -2128,7 +2128,7 @@ static:
 		mesh.prepareVAO();
 	}
 	TerrainMesh makeTerrainMesh(size_t numVertices, size_t numFaces){
-		auto m=new TerrainMesh(null); // TODO: set owner
+		auto m=New!TerrainMesh(scene.assetManager);
 		m.vertices=New!(Vector3f[])(numVertices);
 		m.normals=New!(Vector3f[])(numVertices);
 		m.texcoords=New!(Vector2f[])(numVertices);
@@ -2141,7 +2141,7 @@ static:
 		mesh.prepareVAO();
 	}
 	Mesh2D makeMesh2D(size_t numVertices,size_t numFaces){
-		auto m=new MinimapMesh(null); // TODO: set owner
+		auto m=New!MinimapMesh(scene.assetManager);
 		m.vertices=New!(Vector2f[])(numVertices);
 		m.texcoords=New!(Vector2f[])(numVertices);
 		m.indices=New!(uint[3][])(numFaces);
@@ -2175,7 +2175,7 @@ static:
 	Font loadFont(int pointSize,string filename){
 		import file=std.file;
 		if(!file.exists(filename)) return null;
-		auto result=new FreeTypeFont(pointSize,null);
+		auto result=New!FreeTypeFont(pointSize,scene.assetManager);
 		result.createFromFile(filename);
 		result.prepareVAO();
 		result.preloadASCII();
