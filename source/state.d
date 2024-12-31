@@ -3520,7 +3520,7 @@ struct BombardmentDrop(B){
 	Quaternionf rotation;
 
 	enum dentRadius = 15.0f;
-	enum dentHeight = 0.6f;
+	enum dentHeight = 1.2f;
 	static float dentDisplacement(float x0,float y0,float x,float y){
 		auto distSq=(x-x0)^^2+(y-y0)^^2;
 		if(distSq>=dentRadius^^2) return 0.0f;
