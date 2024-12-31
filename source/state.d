@@ -8758,7 +8758,7 @@ bool heal(B)(ref MovingObject!B object,SacSpell!B spell,ObjectState!B state){
 	auto amount=spell.amount==float.infinity?object.creatureStats.maxHealth:spell.amount;
 	auto duration=amount==float.infinity?int.max:cast(int)ceil(amount/healSpeed*updateFPS);
 	auto healthRegenerationPerFrame=amount==float.infinity?healSpeed/updateFPS:amount/duration;
-	if(object.creatureStats.effects.healTimer==-1){
+	if(object.creatureStats.effects.healTimer<0){
 		object.creatureStats.effects.healTimer=duration;
 		object.creatureStats.effects.healPerFrame=healthRegenerationPerFrame;
 		state.addEffect(Heal!B(object.id));
@@ -11521,6 +11521,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.creatureStats.effects.abilityCooldown!=0) --object.creatureStats.effects.abilityCooldown;
 	if(object.creatureStats.effects.infectionCooldown!=0) --object.creatureStats.effects.infectionCooldown;
 	if(object.creatureStats.effects.yellCooldown!=0) --object.creatureStats.effects.yellCooldown;
+	if(object.creatureStats.effects.healTimer<-1) ++object.creatureStats.effects.healTimer;
 	animateCreature(object,state);
 	runPassive(object,state);
 	if(object.creatureStats.effects.numBulks!=0){
@@ -13760,7 +13761,7 @@ bool updateHeal(B)(ref Heal!B heal,ObjectState!B state){
 	return state.movingObjectById!((ref obj,heal,state){
 		bool end(){
 			obj.creatureStats.effects.healPerFrame=0.0f;
-			obj.creatureStats.effects.healTimer=-1;
+			obj.creatureStats.effects.healTimer=-updateFPS/2;
 			return false;
 		}
 		if(!obj.canHeal(state)) return end();
@@ -17041,8 +17042,9 @@ bool updateHealingAura(B)(ref HealingAura!B healingAura,ObjectState!B state){
 				static assert(updateFPS==60);
 				enum duration=256*updateFPS/60;
 				enum healthRegenerationPerFrame=60/updateFPS;
-				if(obj.creatureStats.effects.healTimer==-1){
-					playSoundAt("laeh",obj.id,state,1.0f);
+				if(obj.creatureStats.effects.healTimer<0){
+					if(obj.creatureStats.effects.healTimer==-1)
+						playSoundAt("laeh",obj.id,state,1.0f);
 					obj.creatureStats.effects.healTimer=duration;
 					obj.creatureStats.effects.healPerFrame=healthRegenerationPerFrame;
 					state.addEffect(Heal!B(obj.id));
