@@ -200,6 +200,7 @@ class SacSpell(B){
 			if(tag==SpellTag.scarabShoot||tag==SpellTag.rainbow||tag==SpellTag.healingShower) amount=float.infinity;
 			duration=spel.duration;
 			if(tag==SpellTag.heal) duration=4.5f;
+			if(tag==SpellTag.frozenGround) duration=15.0f;
 			effectRange=spel.effectRange;
 			damageRange=spel.damageRange;
 			speed=60.0f*spel.speed;

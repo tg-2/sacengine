@@ -2088,6 +2088,7 @@ static:
 	alias BoneMesh=.BoneMesh;
 	alias TerrainMesh=.TerrainMesh;
 	alias MinimapMesh=.Mesh2D;
+	alias GroundPatch=.GroundPatch;
 
 	Texture makeTexture(SuperImage i,bool mirroredRepeat=true){
 		auto repeat=mirroredRepeat?GL_MIRRORED_REPEAT:GL_REPEAT;
@@ -2156,6 +2157,9 @@ static:
 	}
 	void finalizeMinimapMesh(MinimapMesh mesh){
 		return finalizeMesh2D(mesh);
+	}
+	GroundPatch makeGroundPatch(int u,int v,int tu,int tv){
+		return New!GroundPatch(u,v,tu,tv,scene.assetManager);
 	}
 
 	alias Quad=ShapeQuad;
@@ -2495,6 +2499,92 @@ static:
 	void stopSoundsAt(int id){
 		if(!audio) return;
 		audio.stopSoundsAt(id);
+	}
+}
+
+class GroundPatch: Owner, Drawable{
+	Vector3f[] vertices;
+	Vector2f[] texcoords;
+	uint[3][] indices;
+
+	GLuint vao = 0;
+	GLuint vbo = 0;
+	GLuint tbo = 0;
+	GLuint eao = 0;
+
+	int u,v,tu,tv;
+	this(int u,int v,int tu,int tv,Owner o){
+		super(o);
+
+		this.u=u, this.v=v;
+		this.tu=tu, this.tv=tv;
+		vertices=new Vector3f[]((u+1)*(v+1));
+		texcoords=new Vector2f[]((u+1)*(v+1));
+		indices=new uint[3][](2*u*v);
+
+		glGenBuffers(1, &vbo);
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		glBufferData(GL_ARRAY_BUFFER, vertices.length * float.sizeof * 2, /+vertices.ptr+/null, GL_DYNAMIC_DRAW);
+
+		glGenBuffers(1, &tbo);
+		glBindBuffer(GL_ARRAY_BUFFER, tbo);
+		glBufferData(GL_ARRAY_BUFFER, texcoords.length * float.sizeof * 2, /+texcoords.ptr+/null, GL_DYNAMIC_DRAW);
+
+		foreach(i;0..v){
+			foreach(j;0..u){
+				indices[2*(i*u+j)]=[i*(u+1)+j,(i+1)*(u+1)+j,(i+1)*(u+1)+j+1];
+				indices[2*(i*u+j)+1]=[i*(u+1)+j,(i+1)*(u+1)+j+1,i*(u+1)+j+1];
+			}
+		}
+		glGenBuffers(1, &eao);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, eao);
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.length * uint.sizeof * 3, indices.ptr, GL_STATIC_DRAW);
+
+		glGenVertexArrays(1, &vao);
+		glBindVertexArray(vao);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, eao);
+
+		glEnableVertexAttribArray(0);
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, null);
+
+		glEnableVertexAttribArray(2);
+		glBindBuffer(GL_ARRAY_BUFFER, tbo);
+		glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 0, null);
+
+		glBindVertexArray(0);
+	}
+
+	~this(){
+		glDeleteVertexArrays(1, &vao);
+		glDeleteBuffers(1, &vbo);
+		glDeleteBuffers(1, &tbo);
+		glDeleteBuffers(1, &eao);
+	}
+
+	void prepare(Vector3f position,float innerRadius,float outerRadius,float maxRadius,ObjectState!DagonBackend state,float floatHeight){
+		foreach(i;0..v+1){
+			auto radius=(innerRadius*(v-i)+outerRadius*i)/v;
+			foreach(j;0..u+1){
+				auto φ=2.0f*pi!float*j/u;
+				auto dir=Vector3f(cos(φ),sin(φ),0.0f);
+				vertices[i*(u+1)+j]=position+radius*dir;
+				vertices[i*(u+1)+j].z=state.getHeight(vertices[i*(u+1)+j])+floatHeight;
+				texcoords[i*(u+1)+j]=Vector2f(float(tu)*j/u,tv*radius/maxRadius); // TODO: figure this out
+			}
+		}
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		glBufferData(GL_ARRAY_BUFFER, vertices.length * float.sizeof * 3, vertices.ptr, GL_DYNAMIC_DRAW);
+		glBindBuffer(GL_ARRAY_BUFFER, tbo);
+		glBufferData(GL_ARRAY_BUFFER, texcoords.length * float.sizeof * 2, texcoords.ptr, GL_DYNAMIC_DRAW);
+	}
+
+	void update(Duration dt){}
+
+	void render(RenderingContext* rc){
+		glBindVertexArray(vao);
+		glDrawElements(GL_TRIANGLES, cast(uint)indices.length * 3, GL_UNSIGNED_INT, cast(void*)0);
+		glBindVertexArray(0);
 	}
 }
 

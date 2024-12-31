@@ -820,6 +820,18 @@ struct Renderer(B){
 		return SacFlurryImplosion!B(texture,mat,mesh);
 	}
 	SacObject!B snowball;
+	SacFrozenGround!B frozenGround;
+	SacFrozenGround!B createFrozenGround(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Transparent;
+		mat.energy=10.0f;
+		mat.transparency=0.2f;
+		mat.diffuse=texture;
+		auto mesh=typeof(return).createMesh();
+		return SacFrozenGround!B(texture,mat,mesh);
+	}
 	void createEffects(){
 		import std.traits:EnumMembers;
 		foreach(ptype;EnumMembers!ParticleType) SacParticle!B.get(ptype);
@@ -886,6 +898,7 @@ struct Renderer(B){
 		flurryProjectile=createFlurryProjectile();
 		flurryImplosion=createFlurryImplosion();
 		snowball=new SacObject!B("extracted/models/MODL.WAD!/sbll.MRMC/sbll.MRMM");
+		frozenGround=createFrozenGround();
 	}
 
 	static struct InitOpt{
@@ -2159,7 +2172,7 @@ struct Renderer(B){
 					foreach(ref demonicRift;objects.demonicRifts)
 						foreach(ref spirit;demonicRift.spirits[demonicRift.numDespawned..demonicRift.numSpawned])
 							renderDemonicRiftSpirit(spirit);
-				} 
+				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.demonicRifts.length||objects.demonicRiftCastings.length)){
 					auto material=self.demonicRiftBorder.material;
 					material.bind(rc);
@@ -2719,6 +2732,20 @@ struct Renderer(B){
 						foreach(ref frozenGroundSnowball;objects.frozenGroundSnowballs){
 							renderSnowball(frozenGroundSnowball,1.0f);
 						}
+					}
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.frozenGrounds.length){
+					auto mat=self.frozenGround.material;
+					mat.bind(rc);
+					mat.backend.setTransformation(Vector3f(0.0f,0.0f,0.0f),Quaternionf.identity(),rc); // TODO: don't create rotation matrix
+					scope(success) mat.unbind(rc);
+					auto mesh=self.frozenGround.mesh;
+					foreach(ref frozenGround;objects.frozenGrounds){
+						auto maxRadius=frozenGround.maxRadius;
+						auto minRadius=frozenGround.minRadius;
+						auto curRadius=frozenGround.curRadius;
+						mesh.prepare(frozenGround.center,minRadius,curRadius,maxRadius,state,0.5f);
+						mesh.render(rc);
 					}
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.silverbackEffects.length){

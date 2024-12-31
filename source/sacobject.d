@@ -2683,6 +2683,22 @@ struct SacHealingAura(B){
 	}
 }
 
+struct SacFrozenGround(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Stra.FLDR/txtr.FLDR/icec.TXTR"));
+	}
+	B.Material material;
+	B.GroundPatch mesh;
+	enum numSegmentsU=32;
+	enum numSegmentsV=32;
+	enum numRepetitionsU=12;
+	enum numRepetitionsV=6;
+	static B.GroundPatch createMesh(){
+		return B.makeGroundPatch(numSegmentsU,numSegmentsV,numRepetitionsU,numRepetitionsV);
+	}
+}
+
 B.Mesh makeSpikeMesh(B)(int numV,float texBase,float base,float baseRadius,float topRadius){
 	enum numU=2;
 	auto mesh=B.makeMesh((numU+1)*numV,2*numU*numV);

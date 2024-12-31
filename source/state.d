@@ -3151,7 +3151,34 @@ struct FrozenGround(B){
 	int side;
 	Vector3f center;
 	SacSpell!B spell;
-	// TODO
+
+	enum growFrames=updateFPS/2;
+	enum shrinkFrames=updateFPS/2;
+	int frame=0;
+
+	float maxRadius(){ return spell.effectRange; }
+	float minRadius(){
+		auto minScale=0.0f;
+		auto lifetime=spell.duration*updateFPS;
+		if(frame>lifetime){
+			minScale=min(1.0f,(frame-lifetime)/shrinkFrames);
+			minScale=floor(minScale*6.0f)/6.0f;
+		}
+		return minScale*maxRadius;
+	}
+	float curRadius(){
+		auto curScale=1.0f;
+		if(frame<growFrames) curScale=sqrt(1.0f-(1.0f-float(frame)/growFrames)^^2);
+		return curScale*maxRadius;
+	}
+
+	SmallArray!(int,24) targets;
+	bool hasTarget(int id){ return id&&targets[].canFind(id); }
+	bool addTarget(int id){
+		if(!id||hasTarget(id)) return false;
+		targets~=id;
+		return true;
+	}
 }
 
 struct FirewallCasting(B){
@@ -9408,6 +9435,10 @@ bool castFrozenGround(B)(Vector3f target,ManaDrain!B manaDrain,SacSpell!B spell,
 	auto frozenGroundSnowball=makeFrozenGroundSnowball(manaDrain.wizard,side,position,Vector3f(0.0f,0.0f,0.0f),spell,state);
 	state.addEffect(FrozenGroundCasting!B(manaDrain,spell,frozenGroundSnowball,target,0,castingTime));
 	return true;
+}
+void frozenGround(B)(int wizard,int side,Vector3f center,SacSpell!B spell,ObjectState!B state){
+	playSpellSoundTypeAt(SoundType.freeze,center,state,4.0f);
+	state.addEffect(FrozenGround!B(wizard,side,center,spell));
 }
 
 bool castFirewall(B)(int side,Vector3f position,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
@@ -17166,7 +17197,7 @@ bool updateFrozenGroundSnowball(B)(ref FrozenGroundSnowball!B frozenGroundSnowba
 		if(state.isOnGround(position)){
 			if(position.z<state.getGroundHeight(position)){
 				frozenGroundSnowballExplosion(frozenGroundSnowball,state);
-				// frozenGround(position); // TODO
+				frozenGround(wizard,side,position,spell,state);
 				return false;
 			}
 		}else if(position.z<state.getHeight(position)-spell.fallLimit)
@@ -17176,7 +17207,68 @@ bool updateFrozenGroundSnowball(B)(ref FrozenGroundSnowball!B frozenGroundSnowba
 }
 bool updateFrozenGround(B)(ref FrozenGround!B frozenGround,ObjectState!B state){
 	with(frozenGround){
-		return false; // TODO
+		++frame;
+		if(frame<=growFrames){
+			center.z=state.getHeight(center);
+			auto curDist=maxRadius;
+			// TODO: more efficient method to query creatures currently on the ring
+			auto spell=SacSpell!B.get("zerf");
+			static bool callback(int target,FrozenGround!B* frozenGround,SacSpell!B spell,float curDist,ObjectState!B state){
+				if(target==frozenGround.wizard) return false;
+				if(state.movingObjectById!((ref obj,frozenGround,spell,curDist,state){
+					auto hitbox=obj.hitbox;
+					if(boxPointDistanceSqr([hitbox[0].xy,hitbox[1].xy],frozenGround.center.xy)>curDist^^2)
+						return false;
+					if(isHitboxFlying(obj.position,hitbox,state))
+						return false;
+					if(!frozenGround.addTarget(target)) return false;
+					return true;
+				},()=>false)(target,frozenGround,spell,curDist,state)){
+					freeze(frozenGround.wizard,frozenGround.side,target,spell,state); // TODO: ok?
+				}
+				return false;
+			}
+			// TODO: curDist+15 is a hack (frozen ground may be elongated due to terrain conditions)
+			dealSplashSpellDamageAt!callback(0,spell,curDist+15.0f,wizard,side,center,DamageMod.none,state,&frozenGround,spell,curDist,state);
+			if(frame==growFrames) targets.length=0;
+		}
+		auto lifetime=ceil(frozenGround.spell.duration*updateFPS);
+		static assert(shrinkFrames%6==0);
+		if(frame>lifetime&&(frame-lifetime)%(shrinkFrames/6)==0){
+			center.z=state.getHeight(center);
+			playSpellSoundTypeAt(SoundType.breakingIce,center,state,3.0f+2.0f*(frame-lifetime)/shrinkFrames);
+			auto curDist=minRadius;
+			// TODO: more efficient method to query creatures currently on the ring
+			static bool callback2(int target,FrozenGround!B* frozenGround,float curDist,ObjectState!B state){
+				return state.movingObjectById!((ref obj,frozenGround,curDist,state){
+					auto hitbox=obj.hitbox;
+					if(boxPointDistanceSqr([hitbox[0].xy,hitbox[1].xy],frozenGround.center.xy)>curDist^^2)
+						return false;
+					if(isHitboxFlying(obj.position,hitbox,state))
+						return false;
+					if(!frozenGround.addTarget(target)) return false;
+					obj.dealSpellDamage(frozenGround.spell,frozenGround.wizard,frozenGround.side,boxCenter(hitbox)-frozenGround.center,DamageMod.splash,state);
+					return false;
+				},()=>false)(target,frozenGround,curDist,state);
+			}
+			// TODO: curDist+15 is a hack (frozen ground may be elongated due to terrain conditions)
+			dealSplashSpellDamageAt!callback2(0,spell,curDist+15.0f,wizard,side,center,DamageMod.none,state,&frozenGround,curDist,state);
+			auto prevDist=curDist-maxRadius/6.0f;
+			auto sacParticle=SacParticle!B.get(ParticleType.shard);
+			enum numParticles=150;
+			foreach(i;0..numParticles){
+				auto radius=state.uniform(prevDist,curDist);
+				auto φ=state.uniform(0.0f,2.0f*pi!float);
+				auto position=center+radius*Vector3f(cos(φ),sin(φ),0.0f);
+				position.z=state.getHeight(position)+0.5f;
+				auto velocity=Vector3f(0.0f,0.0f,10.0f);
+				auto scale=state.uniform(2.0f,4.0f);
+				int plifetime=31;
+				int frame=0;
+				state.addParticle(Particle!B(sacParticle,position,velocity,scale,plifetime,frame));
+			}
+		}
+		return frame<lifetime+shrinkFrames;
 	}
 }
 
