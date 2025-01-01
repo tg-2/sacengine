@@ -189,6 +189,7 @@ final class Controller(B){
 		//writeln("replacing state: ",state.committedFrame," ",state.currentFrame," ",currentFrame);
 		//scope(exit) writeln("finished replacing state: ",state.committedFrame," ",state.currentFrame," ",currentFrame);
 		state.rollback();
+		if(recording) recording.replaceState(state.committed,state.commands);
 		if(currentFrame<state.committedFrame)
 			timer.setFrame(state.committedFrame);
 		while(state.currentFrame<currentFrame){
@@ -200,7 +201,6 @@ final class Controller(B){
 			B.focusCamera(state.slots[controlledSlot].wizard);
 			lateJoining=false;
 		}
-		if(recording) recording.replaceState(state.current,state.commands);
 	}
 	void logDesynch(int side,scope ubyte[] serialized){
 		if(recording) try{ recording.logDesynch(side,serialized,state.current); }catch(Exception e){ stderr.writeln("bad desynch log: ",e.msg); }

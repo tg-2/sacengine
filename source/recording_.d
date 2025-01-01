@@ -164,7 +164,7 @@ class Recording(B){
 			if(replacement.hash!=state.hash){
 				import diff;
 				diffStates(state,replacement);
-				state.copyFrom(replacement);
+				// state.copyFrom(replacement);
 			}
 		}
 		int slot=-1;
