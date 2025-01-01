@@ -17215,6 +17215,9 @@ bool updateFrozenGround(B)(ref FrozenGround!B frozenGround,ObjectState!B state){
 			auto spell=SacSpell!B.get("zerf");
 			static bool callback(int target,FrozenGround!B* frozenGround,SacSpell!B spell,float curDist,ObjectState!B state){
 				if(target==frozenGround.wizard) return false;
+				auto tref=OrderTarget(state.targetTypeFromId(target),target,Vector3f.init);
+				auto summary=summarize(tref,-1,state);
+				if(!spell.isApplicable(summary)) return false;
 				if(state.movingObjectById!((ref obj,frozenGround,spell,curDist,state){
 					auto hitbox=obj.hitbox;
 					if(boxPointDistanceSqr([hitbox[0].xy,hitbox[1].xy],frozenGround.center.xy)>curDist^^2)
