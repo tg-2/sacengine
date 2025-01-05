@@ -43,3 +43,4 @@ maps/(6) Snow White v2.scp
 maps/(6) TM-Cyberpunk.scp
 maps/(6) TM-Salley Gardens.scp
 maps/(6) Poltergeist.scp
+maps/(6) EM-The Two Towers.scp
