@@ -318,6 +318,10 @@ int finalizeSettings(ref Options options){
 		if(auto r=pickMap(dirEntries("maps","*.scp",SpanMode.depth).map!(x=>cast(string)x).array,options))
 			return r;
 	}
+	if(options.noMap&&options.host){
+		stderr.writeln("error: host must specify a map"); // TODO: allow map to be selected in lobby
+		return 1;
+	}
 	return 0;
 }
 
