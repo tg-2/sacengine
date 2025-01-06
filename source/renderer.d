@@ -3110,7 +3110,8 @@ struct Renderer(B){
 					hitbox[0]+=objects.positions[j];
 					hitbox[1]+=objects.positions[j];
 					self.renderBox(hitbox,true,rc);
-					auto meleeHitbox=sacObject.meleeHitbox(objects.rotations[j],objects.animationStates[j],objects.frames[j]/updateAnimFactor);
+					bool isFlying=objects.creatureStates[j].movement!=CreatureMovement.onGround;
+					auto meleeHitbox=sacObject.meleeHitbox(isFlying,objects.rotations[j],objects.animationStates[j],objects.frames[j]/updateAnimFactor);
 					meleeHitbox[0]+=objects.positions[j];
 					meleeHitbox[1]+=objects.positions[j];
 					self.renderBox(meleeHitbox,true,rc);

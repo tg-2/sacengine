@@ -424,7 +424,7 @@ final class SacObject(B){
 
 	@property SacSpell!B ability(){ return isRanged?abilities[1]:abilities[0]; }
 
-	Vector3f[2] meleeHitbox(Quaternionf rotation,AnimationState animationState,int frame)in{
+	Vector3f[2] defaultMeleeHitbox(Quaternionf rotation,AnimationState animationState,int frame)in{
 		assert(isSaxs);
 	}do{
 		// TODO: this is a guess. what does the game actually do?
@@ -435,16 +435,68 @@ final class SacObject(B){
 		auto height=hbox[1].z-hbox[0].z;
 		auto size=0.25f*(width+depth);
 		auto hitboxCenter=size*rotate(rotation,Vector3f(0.0f,1.0f,0.0f));
-		if(tag=="raeb") hitboxCenter*=3.0f;
-		else if(tag=="elab") hitboxCenter*=2.0f;
+		if(nttTag==SpellTag.taurock) hitboxCenter*=3.0f;
+		if(nttTag==SpellTag.netherfiend) hitboxCenter*=3.0f;
+		else if(nttTag==SpellTag.boulderdash) hitboxCenter*=2.0f;
+		else if(nttTag==SpellTag.phoenix) hitboxCenter*=1.5f;
+		else if(nttTag==SpellTag.hellmouth) hitboxCenter*=1.5f;
 		else hitboxCenter*=1.3f;
 		hitboxCenter+=center;
 		auto hitboxDimensions=Vector3f(width,depth,height*1.5f);
-		if(tag=="grdf"){
+		if(nttTag==SpellTag.phoenix){
 			hitboxCenter.z-=5.0f;
 			hitboxDimensions.z*=1.2f;
 		}
 		return [hitboxCenter-0.5f*hitboxDimensions,hitboxCenter+0.5f*hitboxDimensions];
+	}
+
+	Vector3f[2] meleeHitbox(bool isFlying,Quaternionf rotation,AnimationState animationState,int frame)in{
+		assert(isSaxs);
+	}do{
+		// TODO: do we even want this at all?
+		auto hbox=hitbox(rotation,animationState.stance1,0);
+		if(nttTag!=SpellTag.dragon){
+			auto size=0.5f*boxSize(hbox).length;
+			Vector3f[6] fistLoc;
+			int nFistLoc=0;
+			AnimationState[1] currentAnimation=animationState;
+			scope const(AnimationState)[] attackAnimations;
+			with(AnimationState){
+				static immutable attackCandidatesOnGround=[attack0,attack1,attack2];
+				static immutable attackCandidatesInAir=[flyAttack];
+				immutable const(AnimationState)[] animations;
+				if(isFlying) attackAnimations=attackCandidatesInAir;
+				else attackAnimations=attackCandidatesOnGround;
+			}
+			foreach(attackAnimation;attackAnimations)
+				if(animationState==attackAnimation)
+					attackAnimations=currentAnimation[];
+			foreach(attackAnimation;attackAnimations){
+				if(!hasAnimationState(attackAnimation)) continue;
+				auto hands=hands(attackAnimation,firstAttackTick(attackAnimation));
+				foreach(i;0..2){
+					fistLoc[nFistLoc++]=hands[i];
+					if(!isNaN(fistLoc[nFistLoc-1].x)){
+						fistLoc[nFistLoc-1]=rotate(rotation,fistLoc[nFistLoc-1]);
+					}else nFistLoc--;
+				}
+			}
+			if(nFistLoc>0){
+				Vector3f[2] hitbox=[fistLoc[0],fistLoc[0]];
+				foreach(i;1..nFistLoc){
+					hitbox[0].x=min(hitbox[0].x,fistLoc[i].x);
+					hitbox[0].y=min(hitbox[0].y,fistLoc[i].y);
+					hitbox[0].z=min(hitbox[0].z,fistLoc[i].z);
+					hitbox[1].x=max(hitbox[1].x,fistLoc[i].x);
+					hitbox[1].y=max(hitbox[1].y,fistLoc[i].y);
+					hitbox[1].z=max(hitbox[1].z,fistLoc[i].z);
+				}
+				hitbox[0]-=0.5f*size;
+				hitbox[1]+=0.5f*size;
+				return hitbox;
+			}
+		}
+		return defaultMeleeHitbox(rotation,animationState,frame);
 	}
 
 	auto hitboxes(Quaternionf rotation)/+@nogc+/ in{

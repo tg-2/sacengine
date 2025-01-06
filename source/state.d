@@ -981,10 +981,20 @@ Vector3f lowCenter(T)(ref T object){
 	return Vector3f(0.5f*(hbox[0].x+hbox[1].x),0.5f*(hbox[0].y+hbox[1].y),0.25f*(3.0f*hbox[0].z+hbox[1].z));
 }
 Vector3f[2] relativeMeleeHitbox(B)(ref MovingObject!B object){
-	return object.sacObject.meleeHitbox(object.rotation,object.animationState,object.frame/updateAnimFactor);
+	bool isFlying=object.creatureState.movement!=CreatureMovement.onGround;
+	return object.sacObject.meleeHitbox(isFlying,object.rotation,object.animationState,object.frame/updateAnimFactor);
 }
 Vector3f[2] meleeHitbox(B)(ref MovingObject!B object){
 	auto hitbox=object.relativeMeleeHitbox;
+	hitbox[0]+=object.position;
+	hitbox[1]+=object.position;
+	return hitbox;
+}
+Vector3f[2] relativeDefaultMeleeHitbox(B)(ref MovingObject!B object){
+	return object.sacObject.defaultMeleeHitbox(object.rotation,object.animationState,object.frame/updateAnimFactor);
+}
+Vector3f[2] defaultMeleeHitbox(B)(ref MovingObject!B object){
+	auto hitbox=object.relativeDefaultMeleeHitbox;
 	hitbox[0]+=object.position;
 	hitbox[1]+=object.position;
 	return hitbox;
@@ -7698,13 +7708,27 @@ float meleeDamageModifier(B)(ref MovingObject!B attacker){
 float meleeDistanceSqr(Vector3f[2] objectHitbox,Vector3f[2] attackerHitbox){
 	return boxBoxDistanceSqr(objectHitbox,attackerHitbox);
 }
+float meleeDistanceSqr(B)(Vector3f[2] objectHitbox,ref MovingObject!B attacker){
+	auto center=boxCenter(objectHitbox);
+	if(attacker.sacObject.nttTag!=SpellTag.dragon){
+		auto distSqr=float.infinity;
+		auto hands=attacker.hands;
+		foreach(ref hand;hands)
+			if(!isNaN(hand.x)) distSqr=min(distSqr,(center-hand).lengthsqr);
+		if(distSqr<float.infinity)
+			return distSqr;
+	}
+	return meleeDistanceSqr(objectHitbox,attacker.defaultMeleeHitbox);
+}
 
 float dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,DamageMod damageMod,ObjectState!B state){
 	auto damage=meleeDamageModifier(attacker)*attacker.meleeStrength*attacker.numAnimationFrames/(attacker.numAttackTicks*updateFPS);
-	auto objectHitbox=object.hitbox, attackerHitbox=attacker.meleeHitbox, attackerSizeSqr=0.25f*boxSize(attackerHitbox).lengthsqr;
-	auto distanceSqr=meleeDistanceSqr(objectHitbox,attackerHitbox);
+	auto objectHitbox=object.hitbox, attackerHitbox=attacker.hitbox, attackerSizeSqr=0.25f*boxSize(attackerHitbox).lengthsqr;
+	//auto distanceSqr=meleeDistanceSqr(objectHitbox,attackerMeleeHitbox);
+	auto distanceSqr=meleeDistanceSqr(objectHitbox,attacker);
 	//auto damageMultiplier=max(0.0f,1.0f-max(0.0f,sqrt(distanceSqr/attackerSizeSqr)));
-	auto damageMultiplier=max(0.0f,1.0f-max(0.0f,(sqrt(distanceSqr)+state.uniform(0.5f,1.0f))/sqrt(attackerSizeSqr))); // TODO: figure this out
+	//auto damageMultiplier=max(0.0f,1.0f-max(0.0f,(sqrt(distanceSqr)+state.uniform(0.5f,1.0f))/sqrt(attackerSizeSqr)));
+	auto damageMultiplier=state.uniform(0.0f,1.0f)*max(0.0f,1.0f-max(0.0f,(sqrt(distanceSqr)+state.uniform(0.5f,1.0f))/sqrt(attackerSizeSqr))); // TODO: figure this out
 	auto attackDirection=object.center-attacker.center; // TODO: good?
 	auto direction=getDamageDirection(object,attackDirection,state);
 	bool fromSide=!!direction.among(DamageDirection.left,DamageDirection.right);
@@ -10597,6 +10621,34 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 	return true;
 }
 
+bool meleeAttackIsDownward(B)(ref MovingObject!B object,Vector3f target,ObjectState!B state){
+	bool isFlying=object.creatureState.movement!=CreatureMovement.onGround;
+	if(isFlying) return false;
+	static immutable attackCandidatesOnGround=[AnimationState.attack0,AnimationState.attack1,AnimationState.attack2];
+	float distSqr=float.infinity;
+	AnimationState best=AnimationState.attack0;
+	auto sacObject=object.sacObject;
+	foreach(attackAnimation;attackCandidatesOnGround){
+		if(!sacObject.hasAnimationState(attackAnimation)) continue;
+		auto hands=sacObject.hands(attackAnimation,sacObject.firstAttackTick(attackAnimation));
+		foreach(ref hand;hands){
+			if(!isNaN(hand.x)){
+				hand=object.position+rotate(object.rotation,hand);
+				auto cand=(target-hand).lengthsqr;
+				if(cand<distSqr){
+					distSqr=cand;
+					best=attackAnimation;
+				}
+			}
+		}
+	}
+	if(distSqr==float.infinity){
+		enum downwardThreshold=0.25f;
+		return target.z+downwardThreshold<object.center.z;
+	}
+	return best==AnimationState.attack2;
+}
+
 bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 	if(!isValidAttackTarget(targetId,state)) return false;
 	enum meleeHitboxFactor=0.8f;
@@ -10652,8 +10704,8 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 		}
 	}
 	if(target){
-		enum downwardThreshold=0.25f;
-		object.startMeleeAttacking(targetPosition.z+downwardThreshold<position.z,state);
+		bool downward=object.meleeAttackIsDownward(targetPosition,state);
+		object.startMeleeAttacking(downward,state);
 		object.creatureState.targetFlyingHeight=float.nan;
 	}else if(!object.rangedAttack){
 		if(object.creatureState.movement==CreatureMovement.flying){
