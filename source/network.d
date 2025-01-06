@@ -1500,7 +1500,10 @@ final class Network(B){
 	bool synched(){ return me!=-1&&players[me].status>=PlayerStatus.synched; }
 	bool hostCommitHashReady(){ return players[host].status>=PlayerStatus.commitHashReady; }
 	bool mapHashed(){ return players[host].status>=PlayerStatus.mapHashed&&me!=-1&&players[me].status>=PlayerStatus.mapHashed; }
-	bool pendingGameInit(){ return requiredAndActivePlayers.any!(p=>p.status==PlayerStatus.pendingGameInit); }
+	bool pendingGameInit(){
+		if(isHost) return requiredAndActivePlayers.any!(p=>p.status==PlayerStatus.pendingGameInit);
+		return hasGameInitData();
+	}
 	bool hostReadyToLoad(){ return isReadyToLoadStatus(players[host].status)||isReadyStatus(players[host].status); }
 	/+bool clientsReadyToLoad(){
 		return requiredAndActivePlayerIds.filter!(i=>i!=host&&players[i].connection).all!(i=>isReadyToLoadStatus(players[i].status)||isReadyStatus(players[i].status));

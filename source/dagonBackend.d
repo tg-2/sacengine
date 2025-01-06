@@ -229,8 +229,10 @@ final class SacScene: Scene{
 	void setController(Controller!DagonBackend controller)in{
 		assert(this.state!is null&&this.state is controller.state);
 	}do{
-		renderSlot=controller.controlledSlot;
-		renderSide=controller.controlledSide;
+		if(controller.controlledSlot!=-1){
+			renderSlot=controller.controlledSlot;
+			renderSide=controller.controlledSide;
+		}
 		this.controller=controller;
 	}
 

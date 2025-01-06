@@ -455,14 +455,14 @@ class Lobby(B){
 			recording.gameInit=gameInit;
 			recording.logCore=options.logCore;
 		}
-		initController(options);
 		gameState.rollback();
 		gameState.initGame(gameInit);
+		hasSlot=0<=slot&&slot<gameState.slots.length;
+		wizId=hasSlot?gameState.slots[slot].wizard:0;
+		initController(options);
 		// TODO: if game init can place additional buildings this would need to be reflected here:
 		if(!gameState.current.map.meshes.length)
 			gameState.current.map.makeMeshes(options.enableMapBottom);
-		hasSlot=0<=slot&&slot<gameState.slots.length;
-		wizId=hasSlot?gameState.slots[slot].wizard:0;
 		if(toContinue){
 			gameState.commands=toContinue.commands;
 			assert(options.continueFrame+1==gameState.commands.length);
@@ -515,12 +515,19 @@ class Lobby(B){
 		assert(!!map);
 		//writeln(3);
 		if(state==LobbyState.readyToLoad||state==LobbyState.waitingForClients){
-			if(state==LobbyState.readyToLoad||network&&(!network.isHost||network.pendingGameInit)){
-				if(!loadGame(false,options))
-					return false;
+			if(state==LobbyState.readyToLoad||network){
+				bool reinitialize=!gameState||network.pendingGameInit;
+				if(reinitialize){
+					if(!loadGame(false,options))
+						return false;
+				}
 				if(network&&network.isHost){
 					foreach(i;0..network.players.length){
 						if(network.players[i].status==PlayerStatus.pendingGameInit){
+							if(!reinitialize&&!network.players[i].allowedToControlState){
+								import serialize_;
+								gameInit.serialized((scope ubyte[] gameInitData)=>network.initGame(to!int(i), gameInitData));
+							}
 							network.updateStatus(to!int(i), PlayerStatus.readyToLoad);
 							with(network) if(controller){
 								auto message=players[i].allowedToControlState?"has joined the game.":"will observe.";
@@ -529,11 +536,12 @@ class Lobby(B){
 						}
 					}
 				}
-				// TODO: this is a bit ugly
-				B.setState(gameState);
-				B.setSlot(hasSlot?slot:-1);
-				if(wizId) B.focusCamera(wizId,false);
-				else if(!B.scene.mouse.visible&&!B.scene.fpview.active) B.scene.fpview.active=true;
+				if(reinitialize){
+					B.setState(gameState);
+					if(hasSlot) B.setSlot(slot);
+					if(wizId) B.focusCamera(wizId,false);
+					else if(!B.scene.mouse.visible&&!B.scene.fpview.active) B.scene.fpview.active=true;
+				}
 			}
 			if(network){
 				if(toContinue){
@@ -577,7 +585,7 @@ class Lobby(B){
 		assert(!!gameState);
 	}do{
 		if(!controller) controller=new Controller!B(hasSlot?slot:-1,gameState,network,recording,playback);
-		controller.setControlledSlot(hasSlot?slot:-1);
+		if(hasSlot) controller.setControlledSlot(slot);
 		B.setState(controller.state);
 		B.setController(controller);
 	}
