@@ -180,6 +180,9 @@ bool canBeImmobilized(CreatureMode mode){
 }
 bool canBePetrified(CreatureMode mode){ return canBeImmobilized(mode); }
 bool canBeFrozen(CreatureMode mode){ return canBeImmobilized(mode); }
+bool canBeAffectedByWall(CreatureMode mode){
+	return isValidAttackTarget(mode);
+}
 bool canCarryHaloOfEarth(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
@@ -17426,6 +17429,14 @@ bool isInWall(B)(Vector3f[2] hitbox,WallPosition wall,ObjectState!B state){
 		!(right<wall.left||left>wall.right);
 }
 
+bool defaultWallFilter(B,T...)(MovingObject!B obj){
+	return obj.creatureState.mode.canBeAffectedByWall;
+}
+
+bool defaultWallFilter(B,T...)(ProximityEntry entry,ObjectState!B state,auto ref T args){
+	return state.movingObjectById!(.defaultWallFilter,()=>true)(entry.id);
+}
+
 void wallTargets(alias f,alias filter=None,bool keepNonObstacles=false,B,T...)(WallPosition wall,ObjectState!B state,T args){
 	// TODO: more precise collision query?
 	auto left=wall.center.xy+wall.left*wall.direction;
@@ -17443,7 +17454,7 @@ void wallTargets(alias f,alias filter=None,bool keepNonObstacles=false,B,T...)(W
 		//if(entry.isStatic) return false;
 		if(!isInWall(entry.hitbox,wall,state)) return false;
 		static if(!is(filter==None))
-			if(!filter(entry,args)) return false;
+			if(!filter(entry,state,wall,args)) return false;
 		return true;
 	}
 	collisionTargets!(newF,newFilter,false,keepNonObstacles,B,WallPosition,T)(hitbox,state,wall,args);
@@ -17469,7 +17480,7 @@ bool updateFirewall(B)(ref Firewall!B firewall,ObjectState!B state,bool active=t
 			},(){})(target.id,attacker,side,state,firewall);
 		}
 		auto wall=WallPosition(center,direction,left,right,top,wallThickness);
-		if(active) wallTargets!burn(wall,state,firewall.spell,firewall.wizard,firewall.side,&firewall);
+		if(active) wallTargets!(burn,defaultWallFilter)(wall,state,firewall.spell,firewall.wizard,firewall.side,&firewall);
 		auto orthogonal=Vector3f(direction.y,-direction.x,0.0f);
 		final switch(status){
 			case FirewallStatus.growing:
@@ -17708,7 +17719,7 @@ bool updateWailingWall(B)(ref WailingWall!B wailingWall,ObjectState!B state,bool
 			},(){})(target.id,spell,state);
 		}
 		auto wall=WallPosition(center,direction,left,right,top,wallThickness);
-		if(active) wallTargets!drain(wall,state,wailingWall.spell);
+		if(active) wallTargets!(drain,defaultWallFilter)(wall,state,wailingWall.spell);
 		auto orthogonal=Vector3f(direction.y,-direction.x,0.0f);
 		final switch(status){
 			case WailingWallStatus.growing:
@@ -17859,7 +17870,7 @@ bool updateVinewall(B)(ref Vinewall!B vinewall,ObjectState!B state,bool active=t
 		}
 		auto wall=WallPosition(center,direction,left,right,top,wallThickness);
 		if(active&&vinewall.status!=VinewallStatus.shrinking)
-			wallTargets!grasp(wall,state,vinewall.spell,vinewall.wizard,vinewall.side,&vinewall);
+			wallTargets!(grasp,defaultWallFilter)(wall,state,vinewall.spell,vinewall.wizard,vinewall.side,&vinewall);
 		auto orthogonal=Vector3f(direction.y,-direction.x,0.0f);
 		final switch(status){
 			case VinewallStatus.growing:
@@ -18057,7 +18068,7 @@ bool updateWallOfSpikes(B)(ref WallOfSpikes!B wallOfSpikes,ObjectState!B state,b
 		}
 		auto wall=WallPosition(center,direction,left,right,top,wallThickness);
 		if(active&&wallOfSpikes.status!=WallOfSpikesStatus.shrinking)
-			wallTargets!doSpike(wall,state,wallOfSpikes.spell,wallOfSpikes.wizard,wallOfSpikes.side,&wallOfSpikes);
+			wallTargets!(doSpike,defaultWallFilter)(wall,state,wallOfSpikes.spell,wallOfSpikes.wizard,wallOfSpikes.side,&wallOfSpikes);
 		auto orthogonal=Vector3f(direction.y,-direction.x,0.0f);
 		final switch(status){
 			case WallOfSpikesStatus.growing:
