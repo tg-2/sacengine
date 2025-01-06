@@ -136,7 +136,8 @@ final class SacObject(B){
 				maxMana=ntt.mana;
 				runningSpeed=ntt.runningSpeed*1e-2f;
 				flyingSpeed=ntt.flyingSpeed*1e-2f;
-				rangedAccuracy=ntt.rangedAccuracy*(1.0f/short.max);
+				rangedAccuracy=ntt.rangedAccuracy*(1.0f/ushort.max);
+				if(nttTag==SpellTag.tickferno) rangedAccuracy/=1.6f; // TODO: make configurable
 				meleeResistance=ntt.meleeResistance*1e-3f;
 				splashSpellResistance=ntt.splashSpellResistance*1e-3f;
 				directSpellResistance=ntt.directSpellResistance*1e-3f;
