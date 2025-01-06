@@ -8224,6 +8224,38 @@ int getCastingNumFrames(B)(ref MovingObject!B object,SacSpell!B spell,WizardInfo
 					if(8<=wizard.level) return cycles(2);
 					break;
 			}
+			break;
+		case marduk:
+			switch(spell.tag)with(SpellTag){
+				default: break;
+				case guardian:
+					if(5<=wizard.level) return cycles(0);
+					break;
+				case teleport:
+					if(5<=wizard.level) return cycles(0);
+					break;
+				case etherealForm,skinOfStone,fireform,protectiveSwarm:
+					if(5<=wizard.level) return cycles(0);
+					break;
+				case slime,ringsOfFire,graspingVines:
+					if(5<=wizard.level) return cycles(0);
+					break;
+				case charm:
+					if(8<=wizard.level) return cycles(2);
+					break;
+				case firefist,troll,blight:
+					if(5<=wizard.level) return cycles(0);
+					break;
+				case taurock:
+					if(6<=wizard.level) return cycles(0);
+					break;
+				case stormGiant:
+					if(6<=wizard.level) return cycles(0);
+					break;
+				case netherfiend:
+					if(7<=wizard.level) return cycles(0);
+					break;
+			}
 	}
 	return result;
 }
