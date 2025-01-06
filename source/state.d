@@ -20742,7 +20742,7 @@ bool updateRhinokProjectile(B)(ref RhinokProjectile!B rhinokProjectile,ObjectSta
 			case Phase.spreading:
 				auto numSpikes=cast(int)(spreadingSpikeRate*radius/rangedAttack.effectRange);
 				foreach(i;0..numSpikes){
-					auto offset=state.uniformDisk(Vector2f(0.0f,0.0f),1.0f).normalized()*(radius*0.8f+0.35f*rangedAttack.effectRange*state.normal());
+					auto offset=state.uniformDisk(Vector2f(0.0f,0.0f),1.0f).normalized()*(radius*0.8f+0.11f*rangedAttack.effectRange*state.normal());
 					auto spikePosition=position+Vector3f(offset.x,offset.y,0.0f);
 					placeSpike(spikePosition,2.5f);
 				}
@@ -24121,7 +24121,7 @@ final class ObjectState(B){ // (update logic)
 	T normal(T=float)(){
 		enum n=10;
 		T r=0;
-		enum T sqrt3n=sqrt(3.0f)/n;
+		enum T sqrt3n=sqrt(3.0f/n);
 		foreach(i;0..n) r+=uniform(T(-sqrt3n),T(sqrt3n));
 		return r;
 	}
