@@ -10867,7 +10867,7 @@ bool blightMitesShoot(B)(int creature,int intendedTarget,float accuracy,Vector3f
 
 bool callLightning(B)(ref MovingObject!B object,SacSpell!B spell,ObjectState!B state){
 	auto center=object.center;
-	auto direction=(state.uniformDirection()+Vector3f(0.0f,0.0f,4.0f)).normalized;
+	auto direction=(state.uniformDirection()+Vector3f(0.0f,0.0f,6.0f)).normalized;
 	auto position=center+100.0f*direction;
 	auto end=OrderTarget(TargetType.creature,object.id,center);
 	auto start=OrderTarget(TargetType.terrain,0,position);
