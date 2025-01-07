@@ -188,6 +188,7 @@ final class Controller(B){
 		state.replaceState(serialized);
 		//writeln("replacing state: ",state.committedFrame," ",state.currentFrame," ",currentFrame);
 		//scope(exit) writeln("finished replacing state: ",state.committedFrame," ",state.currentFrame," ",currentFrame);
+		//writeln("SLEEPING AFTER STATE REPLACEMENT"); imported!"core.thread".Thread.sleep(10.seconds);
 		state.rollback();
 		if(recording) recording.replaceState(state.committed,state.commands);
 		if(currentFrame<state.committedFrame)
@@ -273,7 +274,7 @@ final class Controller(B){
 					network.updateStatus(PlayerStatus.pendingLoad);
 				}else network.updateStatus(PlayerStatus.desynched);
 			}
-			if(network.lateJoining||network.players[network.me].status==PlayerStatus.pendingLoad){
+			if(network.lateJoining||network.players[network.me].status.among(PlayerStatus.pendingLoad,PlayerStatus.waitingOnData)){
 				timer.start();
 				pauseTimerOnPause=false;
 				return true;
@@ -308,11 +309,10 @@ final class Controller(B){
 									if(player.ping==-1.seconds) continue;
 									auto frame=currentFrame;
 									if(playing) frame=to!int(frame+player.ping/(1.seconds/updateFPS));
-									network.updateStatus(cast(int)i,PlayerStatus.loading);
+									network.updateStatus(cast(int)i,PlayerStatus.waitingOnData);
 									network.resetCommitted(cast(int)i,frame);
 									network.setFrame(cast(int)i,frame);
-									network.sendState(cast(int)i,stateData,commandData);
-									network.requestStatusUpdate(cast(int)i,PlayerStatus.playing);
+									network.sendState(cast(int)i,stateData,commandData,PlayerStatus.loading);
 								}
 							});
 						});
@@ -392,10 +392,10 @@ final class Controller(B){
 							static bool filter(int i,Network!B network){
 								return network.players[i].status==PlayerStatus.readyToResynch;
 							}
-							network.sendStateAll!filter(stateData,commandData,network);
+							network.sendStateAll!filter(stateData,commandData,PlayerStatus.stateResynched,network);
 						});
 					});
-					network.requestStatusUpdateAll(PlayerStatus.stateResynched);
+					network.updateStatus(PlayerStatus.stateResynched);
 				}
 				if(network.stateResynched && network.players[network.me].status==PlayerStatus.stateResynched){
 					//writeln("STATE IS ACTUALLY AT FRAME: ",currentFrame);

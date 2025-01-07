@@ -1209,6 +1209,7 @@ enum PlayerStatus{
 	readyToLoad,
 	lateJoining,
 	pendingLoad,
+	waitingOnData,
 	loading,
 	readyToStart,
 	pendingStart,
@@ -1577,6 +1578,8 @@ final class Network(B){
 		return oldStatus<newStatus||
 			oldStatus==PlayerStatus.playingBadSynch&&newStatus==PlayerStatus.playing||
 			oldStatus==PlayerStatus.resynched&&newStatus==PlayerStatus.loading||
+			oldStatus==PlayerStatus.waitingOnData&&newStatus==PlayerStatus.loading|| // waiting on game state
+			oldStatus==PlayerStatus.waitingOnData&&newStatus==PlayerStatus.commitHashReady|| // waiting on map data
 			actor==host&&newStatus.among(PlayerStatus.readyToLoad,PlayerStatus.unconnected,PlayerStatus.dropped);
 	}
 	void requestStatusUpdate(int player,PlayerStatus newStatus)in{
@@ -1927,11 +1930,10 @@ final class Network(B){
 							import serialize_;
 							committed.serialized((scope ubyte[] stateData){
 								commands.serialized((scope ubyte[] commandData){
-									sendState(sender,stateData,commandData);
+									sendState(sender,stateData,commandData,PlayerStatus.playing); // TODO: setting to playing is a bit dangerous
 								});
 							});
 						}
-						requestStatusUpdate(sender,PlayerStatus.playing); // TODO: this is a bit dangerous
 					}else updateStatus(sender,PlayerStatus.desynched);
 				}//else confirmSynch(sender,p.synchFrame,p.synchHash);
 				return true;
@@ -2414,7 +2416,7 @@ final class Network(B){
 		auto time=B.time();
 		foreach(k,ref player;players.data){
 			Duration sinceLastPacket;
-			if(playing&&player.committedFrame!=0&&isConnectedStatus(player.status)){
+			if(playing&&player.committedFrame!=0&&isConnectedStatus(player.status)&&!isUnresponsiveStatus(player.status)){
 				if(k==me) continue;
 				sinceLastPacket=max(0,players[me].committedFrame-player.committedFrame)*1.dur!"seconds"/60;
 			}else{
@@ -2540,18 +2542,24 @@ final class Network(B){
 		hostSettings.slot=players[host].slot;
 		foreach(ref p;players.data[1..$]) p.settings.commit=hostSettings.commit;
 	}
-	void sendMap(int i,scope ubyte[] mapData){
+	void sendMap(int i,scope ubyte[] mapData,PlayerStatus nextStatus)in{
+		assert(allowedToUpdateStatus(i,i,nextStatus));
+	}do{
 		players[i].send(Packet.sendMap(mapData.length),mapData);
+		requestStatusUpdate(cast(int)i,nextStatus);
 	}
-	void sendState(int i,scope ubyte[] stateData,scope ubyte[] commandData){
+	void sendState(int i,scope ubyte[] stateData,scope ubyte[] commandData,PlayerStatus nextStatus)in{
+		assert(allowedToUpdateStatus(i,i,nextStatus));
+	}do{
 		// stderr.writeln("sending state to player ",i);
 		players[i].send(Packet.sendState(stateData.length+commandData.length),stateData,commandData);
+		requestStatusUpdate(cast(int)i,nextStatus);
 	}
-	void sendStateAll(alias filter,T...)(scope ubyte[] stateData,scope ubyte[] commandData,T args){
+	void sendStateAll(alias filter,T...)(scope ubyte[] stateData,scope ubyte[] commandData,PlayerStatus nextStatus,T args){
 		foreach(i,ref player;players.data){
 			if(i==me) continue;
 			if(!filter(cast(int)i,args)) continue;
-			sendState(cast(int)i,stateData,commandData);
+			sendState(cast(int)i,stateData,commandData,nextStatus);
 		}
 	}
 	Array!ubyte gameInitData;
@@ -2589,14 +2597,15 @@ final class Network(B){
 					if(i==host) continue;
 					if(player.status!=PlayerStatus.mapHashed) continue;
 					if(player.settings.mapHash==hash) continue;
-					updateStatus(cast(int)i,PlayerStatus.commitHashReady);
-					sendMap(cast(int)i,mapData.data);
+					updateStatus(cast(int)i,PlayerStatus.waitingOnData);
+					sendMap(cast(int)i,mapData.data,PlayerStatus.commitHashReady);
 				}
 			}
 			return mapHashed;//&&requiredAndActivePlayers.all!((ref p)=>p.settings.map==name&&p.settings.mapHash==hash);
 		}else{
 			enforce(settings.map==hostSettings.map,"bad map");
 			if(settings.mapHash!=hash&&hasMapData()){
+				// writeln("SLEEPING AFTER MAP DOWNLOAD"); imported!"core.thread".Thread.sleep(5.seconds);
 				import std.digest.crc;
 				auto crc32=digest!CRC32(mapData.data);
 				static assert(typeof(crc32).sizeof==int.sizeof);
