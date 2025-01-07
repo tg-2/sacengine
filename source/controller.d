@@ -312,7 +312,7 @@ final class Controller(B){
 									network.updateStatus(cast(int)i,PlayerStatus.waitingOnData);
 									network.resetCommitted(cast(int)i,frame);
 									network.setFrame(cast(int)i,frame);
-									network.sendState(cast(int)i,stateData,commandData,PlayerStatus.loading);
+									network.sendState(cast(int)i,stateData,commandData,PlayerStatus.playing);
 								}
 							});
 						});

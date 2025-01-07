@@ -1206,10 +1206,10 @@ enum PlayerStatus{
 	commitHashReady,
 	mapHashed,
 	pendingGameInit,
+	waitingOnData,
 	readyToLoad,
 	lateJoining,
 	pendingLoad,
-	waitingOnData,
 	loading,
 	readyToStart,
 	pendingStart,
@@ -2604,7 +2604,7 @@ final class Network(B){
 			return mapHashed;//&&requiredAndActivePlayers.all!((ref p)=>p.settings.map==name&&p.settings.mapHash==hash);
 		}else{
 			enforce(settings.map==hostSettings.map,"bad map");
-			if(settings.mapHash!=hash&&hasMapData()){
+			if(mapHashed&&settings.mapHash!=hash&&hasMapData()){
 				// writeln("SLEEPING AFTER MAP DOWNLOAD"); imported!"core.thread".Thread.sleep(5.seconds);
 				import std.digest.crc;
 				auto crc32=digest!CRC32(mapData.data);
