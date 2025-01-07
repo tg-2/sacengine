@@ -335,25 +335,26 @@ class Lobby(B){
 			state=LobbyState.readyToLoad;
 		}
 		//writeln(30);
-		if(!network.isHost){
-			//writeln(map);
-			if(!map){
-				auto mapName=network.hostSettings.map;
-				network.updateSetting!"map"(mapName);
-				auto hash=network.hostSettings.mapHash;
-				version(Windows){}else mapName=mapName.replace("\\","/"); // hack
-				import std.file: exists;
-				if(exists(mapName)){
-					map=loadSacMap!B(mapName); // TODO: compute hash without loading map?
-					options.mapHash=map.crc32;
+		if(!network.mapHashed){
+			if(!network.isHost){
+				if(!network.waitingOnData&&!network.hasMapData){
+					auto mapName=network.hostSettings.map;
+					network.updateSetting!"map"(mapName);
+					auto hash=network.hostSettings.mapHash;
+					version(Windows){}else mapName=mapName.replace("\\","/"); // hack
+					import std.file: exists;
+					if(exists(mapName)){
+						map=loadSacMap!B(mapName); // TODO: compute hash without loading map?
+						options.mapHash=map.crc32;
+					}
+					network.updateSetting!"mapHash"(options.mapHash);
+					network.updateStatus(PlayerStatus.mapHashed);
 				}
-				network.updateSetting!"mapHash"(options.mapHash);
+			}else{
+				network.mapData.length=mapData.length;
+				network.mapData.data[]=mapData[];
 				network.updateStatus(PlayerStatus.mapHashed);
 			}
-		}else{
-			network.mapData.length=mapData.length;
-			network.mapData.data[]=mapData[];
-			network.updateStatus(PlayerStatus.mapHashed);
 		}
 		//writeln(40);
 		void loadMap(string mapName){

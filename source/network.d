@@ -1500,7 +1500,9 @@ final class Network(B){
 	}
 	bool synched(){ return me!=-1&&players[me].status>=PlayerStatus.synched; }
 	bool hostCommitHashReady(){ return players[host].status>=PlayerStatus.commitHashReady; }
-	bool mapHashed(){ return players[host].status>=PlayerStatus.mapHashed&&me!=-1&&players[me].status>=PlayerStatus.mapHashed; }
+	bool hostMapHashed(){ return players[host].status>=PlayerStatus.mapHashed; }
+	bool mapHashed(){ return me!=-1&&players[me].status>=PlayerStatus.mapHashed; }
+	bool waitingOnData(){ return me!=-1&&players[me].status==PlayerStatus.waitingOnData; }
 	bool pendingGameInit(){
 		if(isHost) return requiredAndActivePlayers.any!(p=>p.status==PlayerStatus.pendingGameInit);
 		return hasGameInitData();
@@ -2589,6 +2591,7 @@ final class Network(B){
 	bool synchronizeMap(scope void delegate(string name) load)in{
 		assert(isHost||load!is null);
 	}do{
+		if(!hostMapHashed) return false;
 		auto name=hostSettings.map;
 		auto hash=hostSettings.mapHash;
 		if(isHost){
@@ -2597,6 +2600,7 @@ final class Network(B){
 					if(i==host) continue;
 					if(player.status!=PlayerStatus.mapHashed) continue;
 					if(player.settings.mapHash==hash) continue;
+					// writeln("SENDING MAP: ",player.settings.mapHash," != ",hash);
 					updateStatus(cast(int)i,PlayerStatus.waitingOnData);
 					sendMap(cast(int)i,mapData.data,PlayerStatus.commitHashReady);
 				}
@@ -2604,7 +2608,7 @@ final class Network(B){
 			return mapHashed;//&&requiredAndActivePlayers.all!((ref p)=>p.settings.map==name&&p.settings.mapHash==hash);
 		}else{
 			enforce(settings.map==hostSettings.map,"bad map");
-			if(mapHashed&&settings.mapHash!=hash&&hasMapData()){
+			if(settings.mapHash!=hash&&hasMapData()){
 				// writeln("SLEEPING AFTER MAP DOWNLOAD"); imported!"core.thread".Thread.sleep(5.seconds);
 				import std.digest.crc;
 				auto crc32=digest!CRC32(mapData.data);
