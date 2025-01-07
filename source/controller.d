@@ -312,6 +312,7 @@ final class Controller(B){
 									network.updateStatus(cast(int)i,PlayerStatus.waitingOnData);
 									network.resetCommitted(cast(int)i,frame);
 									network.setFrame(cast(int)i,frame);
+									//writeln("sending state to late-joining player ",i,": ",state.committedFrame," ",state.currentFrame," ",currentFrame);
 									network.sendState(cast(int)i,stateData,commandData,PlayerStatus.playing);
 								}
 							});

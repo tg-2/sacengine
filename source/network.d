@@ -857,15 +857,25 @@ class DelayedConnection(B): ConnectionImpl{
 	MonoTime lastSpike;
 	override long trySend(scope ubyte[] data){
 		if(!base.checkAlive) return 0;
+		if(data.length>1){
+			long r=0;
+			for(int i=0;i<data.length;i++){
+				if(long cur=trySend(data[i..i+1]))
+					r+=cur;
+				else return r;
+			}
+			return r;
+		}
 		import std.random;
 		auto time=B.time();
 		Duration delay;
-		/+if(time-lastSpike>4000.msecs&&uniform(0,100)){
+		if(time-lastSpike>4000.msecs&&uniform(0,100)){
 			delay=uniform!"[]"(1500,2000).msecs;
 			lastSpike=time;
-		}else+/ delay=uniform!"[]"(230,250).msecs;
+		}else delay=uniform!"[]"(230,250).msecs;
 		//auto delay=uniform!"[]"(230,250).msecs;
 		auto msg=WithDelay(B.time()+delay);
+		if(!toSend.empty) msg.time=max(msg.time,toSend.back.time+msg.data.length*50.msecs); // limit bandwidth
 		msg.data.length=data.length;
 		Array!ubyte(msg.data).data[]=data[];
 		toSend.push(move(msg));
@@ -1592,7 +1602,8 @@ final class Network(B){
 		return oldStatus<newStatus||
 			oldStatus==PlayerStatus.playingBadSynch&&newStatus==PlayerStatus.playing||
 			oldStatus==PlayerStatus.resynched&&newStatus==PlayerStatus.loading||
-			oldStatus==PlayerStatus.waitingOnData&&newStatus==PlayerStatus.loading|| // waiting on game state
+			oldStatus==PlayerStatus.pendingLoad&&newStatus==PlayerStatus.waitingOnData|| // late joining
+			oldStatus==PlayerStatus.waitingOnData&&newStatus==PlayerStatus.playing|| // waiting on game state
 			oldStatus==PlayerStatus.waitingOnData&&newStatus==PlayerStatus.commitHashReady|| // waiting on map data
 			actor==host&&newStatus.among(PlayerStatus.readyToLoad,PlayerStatus.unconnected,PlayerStatus.dropped);
 	}
