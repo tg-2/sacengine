@@ -390,6 +390,7 @@ final class Controller(B){
 					state.committed.serialized((scope ubyte[] stateData){
 						state.commands.serialized((scope ubyte[] commandData){
 							static bool filter(int i,Network!B network){
+								if(!network.players[i].initialized) return false;
 								return network.players[i].status==PlayerStatus.readyToResynch;
 							}
 							network.sendStateAll!filter(stateData,commandData,PlayerStatus.stateResynched,network);

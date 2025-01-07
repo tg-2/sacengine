@@ -456,7 +456,11 @@ struct Packet{
 		static if(is(T==bool)) return !!boolValue;
 		else return valueMember!T;
 	}
-	static Packet updateSetting(string name)(int player,typeof(mixin(`Options.`~name)) value){
+	alias settingType(string name:"initialized")=bool;
+	alias settingType(string name:"lost")=bool;
+	alias settingType(string name:"won")=bool;
+	alias settingType(string name)=typeof(mixin(`Options.`~name));
+	static Packet updateSetting(string name)(int player, settingType!name value){
 		Packet p;
 		p.type=PacketType.updateSetting;
 		p.player=player;
@@ -1279,6 +1283,7 @@ struct Player{
 		return connection.receiveRaw(dg);
 	}
 
+	bool initialized=false;
 	bool lost=false,won=false;
 	int committedFrame=0;
 	MonoTime pingTime;
@@ -1361,6 +1366,13 @@ final class Network(B){
 		//return connectedPlayerIds.map!index;
 		static ref Player index(size_t i,typeof(this) self){ return self.players.data[i]; }
 		return connectedPlayerIds.mapf(closure!index(this));
+	}
+	auto initializedPlayerIds(){
+		return iota(players.length).filterf(closure!((i,self)=>isConnectedStatus(self.players[i].status)&&self.players[i].initialized)(this));
+	}
+	auto initializedPlayers(){
+		static ref Player index(size_t i,typeof(this) self){ return self.players.data[i]; }
+		return initializedPlayerIds.mapf(closure!index(this));
 	}
 	//auto readyPlayerIds(){ return iota(players.length).filter!(i=>players[i].isReadyToControlState||players[i].wantsToControlState&&(players[i].lost||players[i].won)); }
 	auto readyPlayerIds(){ return iota(players.length).filterf(closure!((i,self)=>self.players[i].isReadyToControlState||self.players[i].wantsToControlState&&(self.players[i].lost||self.players[i].won))(this)); }
@@ -1504,7 +1516,7 @@ final class Network(B){
 	bool mapHashed(){ return me!=-1&&players[me].status>=PlayerStatus.mapHashed; }
 	bool waitingOnData(){ return me!=-1&&players[me].status==PlayerStatus.waitingOnData; }
 	bool pendingGameInit(){
-		if(isHost) return requiredAndActivePlayers.any!(p=>p.status==PlayerStatus.pendingGameInit);
+		if(isHost) return requiredAndActivePlayers.any!((ref p)=>p.status==PlayerStatus.pendingGameInit);
 		return hasGameInitData();
 	}
 	bool hostReadyToLoad(){ return isReadyToLoadStatus(players[host].status)||isReadyStatus(players[host].status); }
@@ -1515,7 +1527,7 @@ final class Network(B){
 		return requiredAndActivePlayerIds.filterf(closure!((i,host,self)=>i!=host&&self.players[i].connection)(host,this))
 			.allf(closure!((i,self)=>isReadyToLoadStatus(self.players[i].status)||isReadyStatus(self.players[i].status))(this));
 	}
-	bool readyToLoad(){ return requiredAndActivePlayers.all!(p=>isReadyToLoadStatus(p.status)||isReadyStatus(p.status)); }
+	bool readyToLoad(){ return requiredAndActivePlayers.all!((ref p)=>isReadyToLoadStatus(p.status)||isReadyStatus(p.status)); }
 	bool lateJoining(){ return me!=-1&&players[me].status==PlayerStatus.lateJoining; }
 	bool loading(){ return me!=-1&&players[me].status==PlayerStatus.loading; }
 	bool hostReadyToStart(){ return isReadyStatus(players[host].status); }
@@ -1525,35 +1537,35 @@ final class Network(B){
 	bool clientsReadyToStart(){
 		return requiredOrActivePlayerIds.filterf(closure!((i,host,self)=>i!=host&&self.players[i].connection)(host,this)).allf(closure!((i,self)=>isReadyStatus(self.players[i].status))(this));
 	}
-	bool readyToStart(){ return requiredOrActivePlayers.all!(p=>isReadyStatus(p.status)); }
+	bool readyToStart(){ return requiredOrActivePlayers.all!((ref p)=>isReadyStatus(p.status)); }
 	bool playing(){ return me!=-1&&players[me].status.among(PlayerStatus.playing,PlayerStatus.playingBadSynch) && !paused; }
 	bool paused(){ return isPausedStatus(players[host].status); }
-	bool anyoneDropped(){ return requiredPlayers.any!(p=>p.status==PlayerStatus.dropped); }
+	bool anyoneDropped(){ return requiredPlayers.any!((ref p)=>p.status==PlayerStatus.dropped); }
 	bool hostDropped(){ return players[host].status==PlayerStatus.dropped; }
-	bool anyonePending(){ return potentialPlayers.any!(p=>!isActiveStatus(p.status)); }
-	bool desynched(){ return connectedPlayers.any!(p=>isDesynchedStatus(p.status)||p.status==PlayerStatus.resynched); }
+	bool anyonePending(){ return potentialPlayers.any!((ref p)=>!isActiveStatus(p.status)); }
+	bool desynched(){ return initializedPlayers.any!((ref p)=>isDesynchedStatus(p.status)||p.status==PlayerStatus.resynched); }
 	bool pendingResynch(){
 		if(isHost){
 			if(players[me].status.among(PlayerStatus.readyToResynch,PlayerStatus.stateResynched,PlayerStatus.resynched)) // resynch already initiated
 				return false;
-			return players.data.any!((ref p)=>isDesynchedStatus(p.status));
+			return initializedPlayers.any!((ref p)=>isDesynchedStatus(p.status));
 		}
 		if(players[me].status==PlayerStatus.stateResynched) return false;
 		return players[host].status==PlayerStatus.readyToResynch;
 	}
 	bool readyToResynch(){
-		if(connectedPlayers.count!((ref p)=>p.status==PlayerStatus.readyToResynch)<=1) return false;
+		if(initializedPlayers.count!((ref p)=>p.status==PlayerStatus.readyToResynch)<=1) return false;
 		if(players[host].status!=PlayerStatus.readyToResynch) return false;
-		return connectedPlayers.all!((ref p)=>p.status.among(PlayerStatus.readyToResynch,PlayerStatus.stateResynched));
+		return initializedPlayers.all!((ref p)=>p.status.among(PlayerStatus.readyToResynch,PlayerStatus.stateResynched));
 	}
-	bool stateResynched(){ return connectedPlayers.all!(p=>p.status.among(PlayerStatus.stateResynched,PlayerStatus.resynched)); }
+	bool stateResynched(){ return initializedPlayers.all!((ref p)=>p.status.among(PlayerStatus.stateResynched,PlayerStatus.resynched)); }
 	int resynchCommittedFrame(){
 		if(!isHost) return players[host].committedFrame;
 		if(resetOnRejoin) return requiredOrActivePlayers.map!((ref p)=>p.committedFrame).fold!min(players[host].committedFrame);
 		if(pauseOnDrop) return requiredOrActivePlayers.map!((ref p)=>p.committedFrame).fold!max(players[host].committedFrame);
-		return connectedPlayers.map!((ref p)=>p.committedFrame).fold!max(players[host].committedFrame);
+		return initializedPlayers.map!((ref p)=>p.committedFrame).fold!max(players[host].committedFrame);
 	}
-	bool resynched(){ return connectedPlayers.all!((ref p)=>p.status==PlayerStatus.resynched)/+ && connectedPlayers.all!((ref p)=>p.committedFrame==players[host].committedFrame)+/; }
+	bool resynched(){ return initializedPlayers.all!((ref p)=>p.status==PlayerStatus.resynched)/+ && initializedPlayers.all!((ref p)=>p.committedFrame==players[host].committedFrame)+/; }
 	int committedFrame(){
 		if(pauseOnDrop) return requiredOrActivePlayers.map!((ref p)=>p.committedFrame).fold!min(players[isConnectedStatus(players[host].status)?host:me].committedFrame);
 		return activePlayers.map!((ref p)=>p.committedFrame).fold!min(players[isConnectedStatus(players[host].status)?host:me].committedFrame);
@@ -1611,7 +1623,9 @@ final class Network(B){
 		updateStatus(me,newStatus);
 	}
 	void updateSetting(string setting,T)(int player,T value){
-		if(mixin(`players[player].settings.`~setting)==value) return;
+		static if(setting.among("initialized","lost","won")) enum path="";
+		else enum path=".settings";
+		if(mixin(`players[player]`~path~`.`~setting)==value) return;
 		static if(setting=="map"){ // TODO: generalize
 			enum blockSize=Packet.mapName.length;
 			foreach(i;0..(value.length+blockSize-1)/blockSize){
@@ -1620,12 +1634,12 @@ final class Network(B){
 				else broadcast(Packet.appendMap(player,part),[]);
 			}
 			broadcast(Packet.confirmMap(player),[]);
-		}else static if(is(typeof(mixin(`players[player].settings.`~setting))==S[],S)){ // TODO: generalize
+		}else static if(is(typeof(mixin(`players[player]`~path~`.`~setting))==S[],S)){ // TODO: generalize
 			broadcast(Packet.clearArraySetting!setting(player),[]);
 			foreach(entry;value) broadcast(Packet.appendArraySetting!setting(player,entry),[]);
 			broadcast(Packet.confirmArraySetting!setting(player),[]);
 		}else broadcast(Packet.updateSetting!setting(player,value),[]);
-		mixin(`players[player].settings.`~setting)=value;
+		mixin(`players[player]`~path~`.`~setting)=value;
 
 		static if(setting=="pauseOnDrop"){
 			if(player==me) pauseOnDrop=players[me].settings.pauseOnDrop;
@@ -1986,6 +2000,12 @@ final class Network(B){
 									return true;
 							}
 						}}
+						static foreach(status;["initialized","lost","won"]){{
+							alias T=bool;
+							case status:
+								mixin(`players[p.player].`~status)=p.getValue!T();
+								return true;
+						}}
 						default:
 							stderr.writeln("warning: unknown setting '",p.optionName[0..len],"'");
 							stderr.flush();
@@ -2203,6 +2223,8 @@ final class Network(B){
 			}else connection.send(Packet.updateSetting!setting(player,mixin(`players[player].settings.`~setting)));
 		}}
 		connection.send(Packet.updateSlot(player,players[player].slot));
+		static foreach(status;["initialized","lost","won"])
+			connection.send(Packet.updateSetting!status(player,mixin(`players[player].`~status)));
 		if(players[player].committedFrame!=0) connection.send(Packet.commit(player,players[player].committedFrame)); // for late joins
 		connection.send(Packet.updateStatus(player,players[player].status));
 		// TODO: send address to attempt to establish peer to peer connection
@@ -2261,6 +2283,9 @@ final class Network(B){
 			player.settings=players[newId].settings;
 			player.slot=players[newId].slot;
 			player.settings.pauseOnDrop=pauseOnDrop;
+			player.initialized=players[newId].initialized;
+			player.lost=players[newId].lost;
+			player.won=players[newId].won;
 			if(pauseOnDrop) player.committedFrame=players[newId].committedFrame;
 			else player.committedFrame=players[me].committedFrame;
 			players[newId]=player;
@@ -2484,7 +2509,7 @@ final class Network(B){
 			if(!equal(newStatus,curStatus.data)){
 				curStatus.length=players.length;
 				copy(newStatus,curStatus.data);
-				writeln("player status: ",curStatus);
+				writeln("player status: ",curStatus," ",players.data.map!((ref p)=>p.initialized));
 				stdout.flush();
 			}
 		}
@@ -2571,6 +2596,7 @@ final class Network(B){
 		assert(isHost);
 	}do{
 		players[i].send(Packet.initGame(gameInitData.length),gameInitData);
+		updateSetting!"initialized"(i,true);
 	}
 	void initGame(scope ubyte[] gameInitData)in{
 		assert(isHost);
@@ -2582,6 +2608,7 @@ final class Network(B){
 			initGame(cast(int)i,gameInitData);
 		}
 		// for late joining:
+		updateSetting!"initialized"(true);
 		this.gameInitData.length=gameInitData.length;
 		this.gameInitData.data[]=gameInitData[];
 	}
@@ -2662,8 +2689,8 @@ final class Network(B){
 				ping(cast(int)i);
 			update(controller);
 		}
-		auto maxPing=connectedPlayers.map!(p=>p.ping).reduce!max;
-		writeln("pings: ",players.data.map!(p=>p.ping.total!"msecs").map!(p=>p<0?-1:p));
+		auto maxPing=initializedPlayers.map!((ref p)=>p.ping).reduce!max;
+		writeln("pings: ",players.data.map!((ref p)=>p.ping.total!"msecs").map!(p=>p<0?-1:p));
 		stdout.flush();
 		foreach(i;connectedPlayerIds){
 			if(players[i].ping==-1.seconds) continue;
