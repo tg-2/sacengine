@@ -8033,8 +8033,9 @@ int getCastingNumFramesFromCycles(B)(ref MovingObject!B object,int cycles,bool s
 int getCastingNumFrames(B)(ref MovingObject!B object,SacSpell!B spell,WizardInfo!B* wizard,ObjectState!B state){
 	auto result=cast(int)floor(updateFPS*spell.castingTime(wizard.level));
 	if(!state.fasterCastingTimes) return result;
+	bool stationary=spell.stationary||object.creatureState.movementDirection!=MovementDirection.none;
 	int cycles(int cycles){
-		return min(result,getCastingNumFramesFromCycles(object,cycles,spell.stationary,state));
+		return min(result,getCastingNumFramesFromCycles(object,cycles,stationary,state));
 	}
 	switch(object.sacObject.nttTag)with(WizardTag){
 		default: break;
@@ -8115,11 +8116,27 @@ int getCastingNumFrames(B)(ref MovingObject!B object,SacSpell!B spell,WizardInfo
 				case manalith:
 					if(5<=wizard.level) return cycles(2);
 					break;
+				case convert:
+					if(!stationary){
+						if(5<=wizard.level) return cycles(0);
+					}
+					break;
 				case chainLightning:
-					if(7<=wizard.level) return cycles(0);
+					if(5<=wizard.level) return cycles(0);
+					break;
+				case dragonfire:
+					if(5<=wizard.level) return cycles(0);
 					break;
 				case explosion:
-					if(8<=wizard.level) return cycles(0);
+					if(5<=wizard.level) return cycles(0);
+					break;
+				case demonicRift,haloOfEarth,rainOfFrogs:
+					if(7<=wizard.level) return cycles(0);
+					break;
+				case frozenGround:
+					if(!stationary){
+						if(6<=wizard.level) return cycles(0);
+					}
 					break;
 				case vinewall,rainOfFire,plague,bombardment:
 					if(7<=wizard.level) return cycles(1);
@@ -8149,13 +8166,10 @@ int getCastingNumFrames(B)(ref MovingObject!B object,SacSpell!B spell,WizardInfo
 					if(5<=wizard.level) return cycles(0);
 					break;
 				case pyrodactyl,ikarus,gremlin,deadeye:
-					if(7<=wizard.level) return cycles(0);
+					if(6<=wizard.level) return cycles(0);
 					break;
 				case seraph:
 					if(5<=wizard.level) return cycles(0);
-					break;
-				case dragonfire:
-					if(8<=wizard.level) return cycles(0);
 					break;
 			}
 			break;
@@ -8265,7 +8279,23 @@ int getCastingNumFrames(B)(ref MovingObject!B object,SacSpell!B spell,WizardInfo
 					if(5<=wizard.level) return cycles(0);
 					break;
 				case slime,ringsOfFire,graspingVines:
+					if(!stationary){
+						if(5<=wizard.level) return cycles(0);
+					}else{
+						if(7<=wizard.level) return cycles(0);
+					}
+					break;
+				case dragonfire,chainLightning:
 					if(5<=wizard.level) return cycles(0);
+					break;
+				case explosion,demonicRift,haloOfEarth,rainOfFrogs:
+					if(6<=wizard.level) return cycles(0);
+					break;
+				case healingAura:
+					if(7<=wizard.level) return cycles(1);
+					break;
+				case firewall,wallOfSpikes:
+					if(7<=wizard.level) return cycles(1);
 					break;
 				case charm:
 					if(8<=wizard.level) return cycles(2);
@@ -8274,15 +8304,25 @@ int getCastingNumFrames(B)(ref MovingObject!B object,SacSpell!B spell,WizardInfo
 					if(5<=wizard.level) return cycles(0);
 					break;
 				case taurock:
-					if(6<=wizard.level) return cycles(0);
+					if(5<=wizard.level) return cycles(0);
 					break;
 				case stormGiant:
-					if(6<=wizard.level) return cycles(0);
+					if(5<=wizard.level) return cycles(0);
 					break;
 				case netherfiend:
-					if(7<=wizard.level) return cycles(0);
+					if(5<=wizard.level) return cycles(0);
+					break;
+				case gnome,pyromaniac:
+					if(5<=wizard.level) return cycles(0);
+					break;
+				case seraph:
+					if(5<=wizard.level) return cycles(0);
+					break;
+				case pyrodactyl,ikarus,gremlin,deadeye:
+					if(6<=wizard.level) return cycles(0);
 					break;
 			}
+
 	}
 	return result;
 }
