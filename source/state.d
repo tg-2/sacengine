@@ -8033,7 +8033,7 @@ int getCastingNumFramesFromCycles(B)(ref MovingObject!B object,int cycles,bool s
 int getCastingNumFrames(B)(ref MovingObject!B object,SacSpell!B spell,WizardInfo!B* wizard,ObjectState!B state){
 	auto result=cast(int)floor(updateFPS*spell.castingTime(wizard.level));
 	if(!state.fasterCastingTimes) return result;
-	bool stationary=spell.stationary||object.creatureState.movementDirection!=MovementDirection.none;
+	bool stationary=spell.stationary||object.creatureState.movementDirection==MovementDirection.none;
 	int cycles(int cycles){
 		return min(result,getCastingNumFramesFromCycles(object,cycles,stationary,state));
 	}
