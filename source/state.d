@@ -8142,10 +8142,10 @@ int getCastingNumFrames(B)(ref MovingObject!B object,SacSpell!B spell,WizardInfo
 					if(7<=wizard.level) return cycles(1);
 					break;
 				case charm,meanstalks,bovineIntervention,bore,blindRage,volcano,intestinalVaporization,death:
-					if(9<=wizard.level) return cycles(1);
+					if(8<=wizard.level) return cycles(1);
 					break;
 				case cloudkill:
-					if(9<=wizard.level) return cycles(1);
+					if(8<=wizard.level) return cycles(1);
 					break;
 				case tornado:
 					if(8<=wizard.level) return cycles(1);
@@ -8172,6 +8172,7 @@ int getCastingNumFrames(B)(ref MovingObject!B object,SacSpell!B spell,WizardInfo
 					if(5<=wizard.level) return cycles(0);
 					break;
 			}
+
 			break;
 		case theRagman:
 			switch(spell.tag)with(SpellTag){
