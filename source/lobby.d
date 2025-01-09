@@ -517,7 +517,7 @@ class Lobby(B){
 		//writeln(3);
 		if(state==LobbyState.readyToLoad||state==LobbyState.waitingForClients){
 			if(state==LobbyState.readyToLoad||network){
-				bool reinitialize=!gameState||network.pendingGameInit;
+				bool reinitialize=!gameState||!network||network.pendingGameInit;
 				if(reinitialize){
 					if(!loadGame(false,options))
 						return false;

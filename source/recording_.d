@@ -200,7 +200,7 @@ Recording!B loadRecording(B)(string filename)out(r){
 	auto commitLength=consumed.parseUint;
 	auto recordingCommit=consumed[0..commitLength];
 	consumed=consumed[commitLength..$];
-	if(recordingCommit!=commit){
+	if(recordingCommit!=commit&&recordingCommit!="1f2dcc868277ad6d57ef4b5d5c09f77d00bee26c"){
 		stderr.writeln("warning: recording '",filename,"' was saved with engine version:");
 		stderr.writeln(cast(string)recordingCommit);
 		stderr.writeln("this may be incompatible with the current version:");
