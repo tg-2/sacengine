@@ -3476,6 +3476,59 @@ struct WallOfSpikes(B){
 	enum shrinkSpeed=wallHeight/vanishTime;
 }
 
+struct FenceCasting(B){
+	ManaDrain!B manaDrain;
+	Fence!B fence;
+
+	enum castingLimit=5*32*60/updateFPS;
+}
+enum FenceStatus{ growing, stationary, shrinking, }
+struct Fence(B){
+	int wizard;
+	int side;
+	Vector3f center;
+	Vector2f direction;
+	SacSpell!B spell;
+	float left=-5.0f,right=5.0f;
+	bool leftStopped=false, rightStopped=false;
+	int frame=0;
+	FenceStatus status;
+
+	Vector3f get(float t,ObjectState!B state){
+		auto position=center+t*Vector3f(direction.x,direction.y,0.0f);
+		position.z=state.getHeight(position);
+		return position;
+	}
+
+	enum maxNumPosts=12;
+	int numSpawned=0,numDespawned=0;
+	static struct Post{
+		float scale;
+		float t;
+		Vector3f position;
+		int frame=0;
+		int cooldownLeft=0;
+		int cooldownRight=0;
+		float charge=0.0f;
+	}
+	Post[maxNumPosts] posts;
+
+	int vanishFrame=-1;
+
+	enum postMaxHeight=5.5f;
+	enum postMinHeight=2.5f;
+	enum postFrequency=1.0f/(3.6f*updateFPS);
+
+	enum wallThickness=5.0f;
+	enum growthTime=updateFPS/2;
+	enum vanishTime=updateFPS;
+	enum growSpeed=1.0f/growthTime;
+	enum shrinkSpeed=1.0f/vanishTime;
+
+	enum breakdownRate=0.3f/((maxNumPosts-1)*updateFPS);
+	enum dischargeRate=0.3f/((maxNumPosts-1)*updateFPS);
+}
+
 struct PlagueCasting(B){
 	ManaDrain!B manaDrain;
 	Plague!B plague;
@@ -5165,6 +5218,22 @@ struct Effects(B){
 	void removeWallOfSpikes(int i){
 		if(i+1<wallOfSpikess.length) wallOfSpikess[i]=move(wallOfSpikess[$-1]);
 		wallOfSpikess.length=wallOfSpikess.length-1;
+	}
+	Array!(FenceCasting!B) fenceCastings;
+	void addEffect(FenceCasting!B fenceCasting){
+		fenceCastings~=move(fenceCasting);
+	}
+	void removeFenceCasting(int i){
+		if(i+1<fenceCastings.length) fenceCastings[i]=move(fenceCastings[$-1]);
+		fenceCastings.length=fenceCastings.length-1;
+	}
+	Array!(Fence!B) fences;
+	void addEffect(Fence!B fence){
+		fences~=move(fence);
+	}
+	void removeFence(int i){
+		if(i+1<fences.length) fences[i]=move(fences[$-1]);
+		fences.length=fences.length-1;
 	}
 	Array!(PlagueCasting!B) plagueCastings;
 	void addEffect(PlagueCasting!B PlagueCasting){
@@ -8506,6 +8575,9 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 				case SpellTag.bombardment:
 					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
 					return stun(castBombardment(side,target.position,manaDrain,spell,state));
+				case SpellTag.fence:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					return stun(castFence(side,target.position,manaDrain,spell,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -9614,6 +9686,25 @@ bool castWallOfSpikes(B)(int side,Vector3f position,ManaDrain!B manaDrain,SacSpe
 }
 bool wallOfSpikes(B)(WallOfSpikes!B wallOfSpikes,ObjectState!B state){
 	state.addEffect(wallOfSpikes);
+	return true;
+}
+
+bool castFence(B)(int side,Vector3f position,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	auto duration=cast(int)ceil(updateFPS*spell.duration);
+	auto casterPositionFacing=state.movingObjectById!((ref obj)=>tuple(obj.position,obj.creatureState.facing),()=>Tuple!(Vector3f,float).init)(manaDrain.wizard);
+	auto casterPosition=casterPositionFacing[0],casterFacing=casterPositionFacing[1];
+	if(isNaN(casterPosition.x)) return false;
+	position.z=state.getGroundHeight(position)+Fence!B.postMinHeight;
+	auto casterDirection=position.xy-casterPosition.xy;
+	auto direction=Vector2f(-casterDirection.y,casterDirection.x);
+	if(direction.lengthsqr>0.001^^2) direction=direction.normalized;
+	else direction=rotate(facingQuaternion(casterFacing),Vector3f(0.0f,1.0f,0.0f));
+	playSpellSoundTypeAt(SoundType.lightning,position,state,fenceGain);
+	state.addEffect(FenceCasting!B(manaDrain,Fence!B(manaDrain.wizard,side,position,direction,spell)));
+	return true;
+}
+bool fence(B)(Fence!B fence,ObjectState!B state){
+	state.addEffect(fence);
 	return true;
 }
 
@@ -13997,7 +14088,7 @@ bool updateLightning(B)(ref Lightning!B lightning,ObjectState!B state){
 	lightning.end.position=lightning.end.center(state);
 	if(lightning.frame==lightning.travelDelay){
 		auto hitbox=lightning.end.hitbox(state);
-		sparkAnimation(hitbox,state);
+		if(lightning.end.type!=TargetType.none) sparkAnimation(hitbox,state);
 		// TODO: scar
 		auto target=lightning.end.id;
 		if(state.isValidTarget(target)){
@@ -18168,6 +18259,211 @@ bool updateWallOfSpikes(B)(ref WallOfSpikes!B wallOfSpikes,ObjectState!B state,b
 		if(vanishFrame==-1&&++frame>=WallOfSpikesCasting!B.castingLimit+spell.duration*updateFPS){
 			playSoundAtRange("dkps",get(left,state),get(right,state),state,wallOfSpikesGain);
 			status=WallOfSpikesStatus.shrinking;
+		}
+		return true;
+	}
+}
+
+void animateFenceCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	auto castParticle=SacParticle!B.get(ParticleType.lightningCasting);
+	wizard.animateCasting(castParticle,state); // TODO: improve
+}
+
+void fenceCastingEffect(B)(Vector3f start,Vector3f end,ObjectState!B state){
+	auto effect=ChainLightningCastingEffect!B(start,end);
+	effect.bolt.changeShape!(0.5f)(state);
+	state.addEffect(effect);
+}
+
+bool updateFenceCasting(B)(ref FenceCasting!B fenceCast,ObjectState!B state){
+	with(fenceCast){
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				if(!state.movingObjectById!((ref obj,state){
+					if(!state.uniform(2)){
+						auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
+						Vector3f[2] nhbox=scaleBox(hbox,2.0f);
+						nhbox[1].z=nhbox[0].z+1.25f*0.5f*(nhbox[1].z-nhbox[0].z);
+						auto start=obj.position+rotate(obj.rotation,state.uniform(nhbox));
+						auto end=start;
+						end.z+=state.uniform(1.5f,3.25f);
+						fenceCastingEffect(start,end,state);
+					}
+					obj.animateFenceCasting(state);
+					return true;
+				},()=>false)(manaDrain.wizard,state))
+					return false;
+				return true;
+			case CastingStatus.interrupted:
+				fence.status=FenceStatus.shrinking;
+				.fence(move(fence),state);
+				return false;
+			case CastingStatus.finished:
+				.fence(move(fence),state);
+				return false;
+		}
+	}
+}
+
+Tuple!(float,Vector3f) fencePostSpawnPosition(B)(ref Fence!B fence,bool left,ObjectState!B state){
+	if(left&&fence.leftStopped) return tuple(float.init,Vector3f.init);
+	if(!left&&fence.rightStopped) return tuple(float.init,Vector3f.init);
+	auto t=left?fence.left:fence.right;
+	auto direction=Vector3f(fence.direction.x,fence.direction.y,0.0f);
+	auto orthogonal=Vector3f(direction.y,-direction.x,0.0f);
+	auto position=fence.get(t,state);
+	position.z=state.getHeight(position)+Fence!B.postMinHeight;
+	return tuple(t,position);
+}
+
+void lightningEffect(B)(int wizard,int side,Vector3f startp,Vector3f endp,SacSpell!B spell,ObjectState!B state){
+	auto start=OrderTarget(TargetType.none,0,startp);
+	auto end=OrderTarget(TargetType.none,0,endp);
+	lightning(wizard,side,start,end,spell,state,false);
+}
+
+Fence!B.Post makeFencePost(B)(ref Fence!B fence,bool left,ObjectState!B state){
+	auto tposition=fencePostSpawnPosition(fence,left,state);
+	auto t=tposition[0],position=tposition[1];
+	if(isNaN(t)) return typeof(return).init;
+	enum minNumLighnings=3,maxNumLightnings=5;
+	auto numLightnings=state.uniform!"[]"(minNumLighnings,maxNumLightnings);
+	foreach(_;0..numLightnings){
+		auto direction=state.uniformDirection();
+		direction.z*=0.75f;
+		direction.z+=0.25f;
+		auto sposition=position+10.0f*direction;
+		sposition.z=max(sposition.z,state.getHeight(sposition));
+		lightningEffect(fence.wizard,fence.side,sposition,position,fence.spell,state);
+	}
+	return Fence!B.Post(0.0f,t,position);
+}
+
+void updateFencePost(B)(ref Fence!B.Post post,ObjectState!B state){
+	with(post){
+		float loc=0.5f*(1-cos(2.0f*pi!float*Fence!B.postFrequency*frame));
+		position.z=state.getHeight(position)+loc*Fence!B.postMinHeight+(1.0f-loc)*Fence!B.postMaxHeight;;
+		++frame;
+	}
+}
+
+enum fenceGain=3.0f;
+bool updateFence(B)(ref Fence!B fence,ObjectState!B state){
+	with(fence){
+		final switch(status){
+			case FenceStatus.growing:
+				auto expansionSpeed=(spell.effectRange-5.0f)/FenceCasting!B.castingLimit;
+				static assert(FenceCasting!B.castingLimit%(maxNumPosts/2-1)==0);
+				enum mod=FenceCasting!B.castingLimit/(maxNumPosts/2-1);
+				if(!(frame%mod)){
+					auto oldNumSpawned=numSpawned;
+					foreach(left;0..2){
+						posts[numSpawned++]=fence.makeFencePost(!!left,state);
+						if(isNaN(posts[numSpawned-1].position.x))
+							posts[numSpawned-1]=posts[numDespawned++];
+					}
+					if(oldNumSpawned<numSpawned) sort!"a.t<b.t"(posts[]);
+					//writeln(posts[].map!(x=>x.t));
+				}
+				foreach(i,ref post;posts[numDespawned..numSpawned]){
+					posts[numDespawned+i].scale=min(1.0f,posts[numDespawned+i].scale+1.0f/float(growthTime));
+				}
+				bool check(Vector3f position){
+					if((position-center).lengthsqr>(spell.effectRange+1.0f)^^2) return false;
+					static void handleCollision(ProximityEntry entry,bool* found,ObjectState!B state){
+						if(state.isValidTarget(entry.id,TargetType.building))
+							*found=true;
+					}
+					Vector3f[2] hitbox=[position,position];
+					bool found=false;
+					state.proximity.collide!handleCollision(hitbox,&found,state);
+					return !found&&state.isOnGround(position);
+				}
+				if(!leftStopped){
+					auto cand=left-expansionSpeed;
+					if(check(get(cand,state))) left=cand;
+					else leftStopped=true;
+				}
+				if(!rightStopped){
+					auto cand=right+expansionSpeed;
+					if(check(get(cand,state))) right=cand;
+					else rightStopped=true;
+				}
+				if(leftStopped&&rightStopped){
+					status=FenceStatus.stationary;
+					foreach(i,ref post;posts[numDespawned..numSpawned]){
+						if(posts[numDespawned+i].scale!=1.0f) status=FenceStatus.growing;
+					}
+				}
+				break;
+			case FenceStatus.stationary:
+				break;
+			case FenceStatus.shrinking:
+				if(vanishFrame==-1) vanishFrame=frame;
+				foreach(i,ref post;posts[numDespawned..numSpawned]){
+					posts[numDespawned+i].scale=max(0.0f,posts[numDespawned+i].scale-1.0f/float(vanishTime));
+				}
+				while(numDespawned<posts.length&&posts[numDespawned].scale==0.0f)
+					++numDespawned;
+				if(numDespawned==numSpawned) return false;
+				break;
+		}
+		foreach(i,ref post;posts[numDespawned..numSpawned]) updateFencePost(post,state);
+		if(status!=FenceStatus.shrinking){
+			float excess=0.0f;
+			foreach(i;numDespawned..numSpawned){
+				float curCharge=posts[i].charge;
+				if(0<i&&--posts[i].cooldownLeft<=0){
+					posts[i].cooldownLeft=max(posts[i].cooldownLeft,0);
+					if(state.uniform(0.0f,1.0f)<Fence!B.breakdownRate+curCharge-posts[i-1].charge){
+						lightningEffect(fence.wizard,fence.side,posts[i].position,posts[i-1].position,fence.spell,state);
+						auto transfer=state.uniform(0.01f,0.02f);;
+						posts[i].charge-=transfer;
+						posts[i-1].charge+=transfer;
+						posts[i].cooldownLeft=state.uniform(updateFPS,2*updateFPS);
+						posts[i-1].cooldownRight=state.uniform(updateFPS,2*updateFPS);
+					}
+				}
+				if(i+1<numSpawned&&--posts[i].cooldownRight<=0){
+					posts[i].cooldownRight=max(posts[i].cooldownRight,0);
+					if(state.uniform(0.0f,1.0f)<Fence!B.breakdownRate+curCharge-posts[i+1].charge){
+						lightningEffect(fence.wizard,fence.side,posts[i].position,posts[i+1].position,fence.spell,state);
+						auto transfer=state.uniform(0.01f,0.02f);;
+						posts[i].charge-=transfer;
+						posts[i+1].charge+=transfer;
+						posts[i].cooldownRight=state.uniform(updateFPS,2*updateFPS);
+						posts[i+1].cooldownLeft=state.uniform(updateFPS,2*updateFPS);
+					}
+				}
+				if(state.uniform(0.0f,1.0f)<Fence!B.dischargeRate+0.1f*abs(curCharge)){
+					posts[i].charge=0.0f;
+					if(state.uniform!"[]"(0,1)){
+						posts[state.uniform!"[)"(numDespawned,numSpawned)].charge+=curCharge;
+					}else{
+						excess+=curCharge;
+					}
+					auto xy=state.uniformDirection!(float,2)();
+					auto position=posts[i].position+state.uniform(5f,15f)*Vector3f(xy.x,xy.y,0.0f);
+					position.z=state.getHeight(position);
+					auto start=OrderTarget(TargetType.terrain,0,posts[i].position);
+					auto end=OrderTarget(TargetType.terrain,0,position);
+					lightning(fence.wizard,fence.side,start,end,fence.spell,state);
+				}
+			}
+			foreach(i;numDespawned..numSpawned){
+				static import std.math;
+				enum dampFactor=std.math.exp(std.math.log(0.5f)/updateFPS);
+				excess+=posts[i].charge*(1.0f-dampFactor);
+				posts[i].charge*=dampFactor;
+			}
+			excess/=(numSpawned-numDespawned);
+			foreach(i;numDespawned..numSpawned){
+				posts[i].charge+=excess;
+			}
+		}
+		if(vanishFrame==-1&&++frame>=FenceCasting!B.castingLimit+spell.duration*updateFPS){
+			// playSoundAtRange("dcle",get(left,state),get(right,state),state,fenceGain);
+			status=FenceStatus.shrinking;
 		}
 		return true;
 	}
@@ -22571,6 +22867,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.wallOfSpikess.length;){
 		if(!updateWallOfSpikes(effects.wallOfSpikess[i],state)){
 			effects.removeWallOfSpikes(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.fenceCastings.length;){
+		if(!updateFenceCasting(effects.fenceCastings[i],state)){
+			effects.removeFenceCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.fences.length;){
+		if(!updateFence(effects.fences[i],state)){
+			effects.removeFence(i);
 			continue;
 		}
 		i++;

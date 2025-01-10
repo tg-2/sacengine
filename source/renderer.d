@@ -513,7 +513,6 @@ struct Renderer(B){
 		return SacFirewall!B(texture,mat,frames);
 	}
 	SacFirewall!B firewall;
-	SacWailingWallSpirit!B wailingWallSpirit;
 	SacWailingWallSpirit!B createWailingWallSpirit(){
 		auto texture=typeof(return).loadTexture();
 		auto mat=B.makeMaterial(B.shadelessBoneMaterialBackend);
@@ -524,6 +523,7 @@ struct Renderer(B){
 		auto frames=typeof(return).createMeshes();
 		return SacWailingWallSpirit!B(texture,mat,frames);
 	}
+	SacWailingWallSpirit!B wailingWallSpirit;
 	SacWailingWall!B createWailingWall(){
 		auto texture=typeof(return).loadTexture();
 		auto mat=B.makeMaterial(B.shadelessBoneMaterialBackend);
@@ -536,6 +536,22 @@ struct Renderer(B){
 		return SacWailingWall!B(texture,mat,frames);
 	}
 	SacWailingWall!B wailingWall;
+	SacFence!B createFence(){
+		auto textures=typeof(return).loadTextures();
+		auto mat0=B.makeMaterial(B.shadelessMaterialBackend);
+		mat0.depthWrite=false;
+		mat0.blending=B.Blending.Transparent;
+		mat0.energy=1.0f;
+		mat0.diffuse=textures[0];
+		auto mat1=B.makeMaterial(B.shadelessMaterialBackend);
+		mat1.depthWrite=false;
+		mat1.blending=B.Blending.Additive;
+		mat1.energy=5.0f;
+		mat1.diffuse=textures[1];
+		auto frames=typeof(return).createMeshes();
+		return SacFence!B(textures,[mat0,mat1],frames);
+	}
+	SacFence!B fence;
 	SacBrainiacEffect!B brainiacEffect;
 	SacBrainiacEffect!B createBrainiacEffect(){
 		auto texture=typeof(return).loadTexture();
@@ -858,6 +874,7 @@ struct Renderer(B){
 		firewall=createFirewall();
 		wailingWallSpirit=createWailingWallSpirit();
 		wailingWall=createWailingWall();
+		fence=createFence();
 		brainiacEffect=createBrainiacEffect();
 		shrikeEffect=createShrikeEffect();
 		arrow=createArrow();
@@ -2369,6 +2386,21 @@ struct Renderer(B){
 						renderWailingWall(objects.wailingWallCastings[j].wailingWall);
 					foreach(j;0..objects.wailingWalls.length)
 						renderWailingWall(objects.wailingWalls[j]);
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.fences.length){
+					static foreach(phase;0..2){{
+						auto material=self.fence.materials[phase];
+						material.bind(rc);
+						scope(success) material.unbind(rc);
+						foreach(ref fence;objects.fences.data){
+							foreach(ref post;fence.posts[fence.numDespawned..fence.numSpawned]){
+								auto scale=post.scale*self.fence.size;
+								material.backend.setSpriteTransformationScaled(post.position,scale,rc);
+								static if(phase==0) self.quad.render(rc);
+								else self.fence.getFrame(post.frame%self.fence.numFrames).render(rc);
+							}
+						}
+					}}
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.brainiacEffects.length){
 					auto material=self.brainiacEffect.material;

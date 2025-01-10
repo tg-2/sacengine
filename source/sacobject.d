@@ -2903,6 +2903,23 @@ struct SacWailingWall(B){
 	}
 }
 
+struct SacFence(B){
+	B.Texture[2] textures; // [bubble, sparks]
+	static B.Texture[2] loadTextures(){
+		return [B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/scri.TXTR")),
+		        B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/cst0.TXTR"))];
+	}
+	B.Material[2] materials;
+	B.Mesh[] frames;
+	enum animationDelay=2;
+	enum numFrames=16*updateAnimFactor*animationDelay;
+	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
+	enum size=3.0f;
+	static B.Mesh[] createMeshes(){
+		return makeSpriteMeshes!B(4,4,1.0f,1.0f); // To be scaled by `size`
+	}
+}
+
 struct SacBrainiacEffect(B){
 	B.Texture texture;
 	static B.Texture loadTexture(){

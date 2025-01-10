@@ -586,6 +586,15 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Wal
 void serialize(alias sink,B)(ref WallOfSpikes!B wallOfSpikes){ serializeStruct!sink(wallOfSpikes); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==WallOfSpikes!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref FenceCasting!B fenceCasting){ serializeStruct!sink(fenceCasting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==FenceCasting!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref Fence!B.Post target){ serializeStruct!sink(target); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Fence!B.Post)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref Fence!B fence){ serializeStruct!sink(fence); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Fence!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref PlagueCasting!B plagueCasting){ serializeStruct!sink(plagueCasting); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==PlagueCasting!B)){ deserializeStruct(result,state,data); }
 
