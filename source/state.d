@@ -3527,7 +3527,7 @@ struct Fence(B){
 
 	enum breakdownRate=0.3f/((maxNumPosts-1)*updateFPS);
 	enum dischargeRate=0.3f/((maxNumPosts-1)*updateFPS);
-	enum attackRate=0.85f/updateFPS;
+	enum attackRate=1.5f/updateFPS;
 	enum attackRange=10.0f;
 }
 
@@ -8987,7 +8987,7 @@ bool lightning(B)(int wizard,int side,OrderTarget start,OrderTarget end,SacSpell
 	if(updateTargets){
 		auto startCenter=start.center(state),endCenter=end.center(state);
 		static bool filter(ref ProximityEntry entry,int id,ObjectState!B state){ return entry.id!=id&&state.isValidTarget(entry.id); }
-		auto newEnd=state.collideRay!filter(startCenter,endCenter-startCenter,1.0f,wizard,state);
+		auto newEnd=state.collideRay!filter(startCenter,endCenter-startCenter,end.type==TargetType.none?float.infinity:1.0f,wizard,state);
 		if(newEnd.type!=TargetType.none){
 			end=newEnd;
 			endCenter=end.center(state);
@@ -18419,7 +18419,7 @@ bool updateFence(B)(ref Fence!B fence,ObjectState!B state){
 					posts[i].cooldownLeft=max(posts[i].cooldownLeft,0);
 					if(state.uniform(0.0f,1.0f)<Fence!B.breakdownRate+curCharge-posts[i-1].charge){
 						lightningEffect(fence.wizard,fence.side,posts[i].position,posts[i-1].position,fence.spell,state);
-						auto transfer=state.uniform(0.01f,0.02f);;
+						auto transfer=state.uniform(0.01f,0.02f);
 						posts[i].charge-=transfer;
 						posts[i-1].charge+=transfer;
 						posts[i].cooldownLeft=state.uniform(updateFPS,2*updateFPS);
@@ -18430,7 +18430,7 @@ bool updateFence(B)(ref Fence!B fence,ObjectState!B state){
 					posts[i].cooldownRight=max(posts[i].cooldownRight,0);
 					if(state.uniform(0.0f,1.0f)<Fence!B.breakdownRate+curCharge-posts[i+1].charge){
 						lightningEffect(fence.wizard,fence.side,posts[i].position,posts[i+1].position,fence.spell,state);
-						auto transfer=state.uniform(0.01f,0.02f);;
+						auto transfer=state.uniform(0.01f,0.02f);
 						posts[i].charge-=transfer;
 						posts[i+1].charge+=transfer;
 						posts[i].cooldownRight=state.uniform(updateFPS,2*updateFPS);
@@ -18451,20 +18451,22 @@ bool updateFence(B)(ref Fence!B fence,ObjectState!B state){
 					auto end=OrderTarget(TargetType.terrain,0,position);
 					lightning(fence.wizard,fence.side,start,end,fence.spell,state);
 				}
-				static bool callback(int target,Vector3f position,int wizard,int side,SacSpell!B spell,ObjectState!B state){
+				static bool callback(int target,Vector3f position,int wizard,int side,SacSpell!B spell,ObjectState!B state,size_t i,Fence!B* fence,float* excess){
 					if(state.uniform(0.0f,1.0f)>=Fence!B.attackRate) return false;
-					if(!state.isValidTarget(target,TargetType.creature)) return false;
+					if(!state.movingObjectById!((ref obj)=>obj.creatureState.mode.canBeAffectedByWall,()=>false)(target)) return false;
 					auto start=OrderTarget(TargetType.terrain,0,position);
 					auto end=centerTarget(target,state);
 					if(target==wizard){
 						end.type=TargetType.none;
 						end.id=0;
-						end.position+=10.0f*(end.position-start.position); // TODO: ok?
 					}
 					lightning(wizard,side,start,end,spell,state);
+					auto transfer=state.uniform(0.01f,0.02f);
+					fence.posts[i].charge-=transfer;
+					*excess+=transfer;
 					return false;
 				}
-				dealSplashSpellDamageAt!callback(0,fence.spell,Fence!B.attackRange,fence.wizard,fence.side,posts[i].position,DamageMod.none,state,posts[i].position,fence.wizard,fence.side,fence.spell,state);
+				dealSplashSpellDamageAt!callback(0,fence.spell,Fence!B.attackRange,fence.wizard,fence.side,posts[i].position,DamageMod.none,state,posts[i].position,fence.wizard,fence.side,fence.spell,state,i,&fence,&excess);
 			}
 			foreach(i;numDespawned..numSpawned){
 				static import std.math;
