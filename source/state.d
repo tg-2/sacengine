@@ -3527,6 +3527,8 @@ struct Fence(B){
 
 	enum breakdownRate=0.3f/((maxNumPosts-1)*updateFPS);
 	enum dischargeRate=0.3f/((maxNumPosts-1)*updateFPS);
+	enum attackRate=0.85f/updateFPS;
+	enum attackRange=10.0f;
 }
 
 struct PlagueCasting(B){
@@ -18449,6 +18451,20 @@ bool updateFence(B)(ref Fence!B fence,ObjectState!B state){
 					auto end=OrderTarget(TargetType.terrain,0,position);
 					lightning(fence.wizard,fence.side,start,end,fence.spell,state);
 				}
+				static bool callback(int target,Vector3f position,int wizard,int side,SacSpell!B spell,ObjectState!B state){
+					if(state.uniform(0.0f,1.0f)>=Fence!B.attackRate) return false;
+					if(!state.isValidTarget(target,TargetType.creature)) return false;
+					auto start=OrderTarget(TargetType.terrain,0,position);
+					auto end=centerTarget(target,state);
+					if(target==wizard){
+						end.type=TargetType.none;
+						end.id=0;
+						end.position+=10.0f*(end.position-start.position); // TODO: ok?
+					}
+					lightning(wizard,side,start,end,spell,state);
+					return false;
+				}
+				dealSplashSpellDamageAt!callback(0,fence.spell,Fence!B.attackRange,fence.wizard,fence.side,posts[i].position,DamageMod.none,state,posts[i].position,fence.wizard,fence.side,fence.spell,state);
 			}
 			foreach(i;numDespawned..numSpawned){
 				static import std.math;
