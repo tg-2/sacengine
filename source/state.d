@@ -1897,6 +1897,10 @@ struct WizardInfo(B){
 	int closestEnemyAltar=0;
 
 	int lastDamageFrame=-1;
+
+	SacSpell!B queuedSpell;
+	OrderTarget queuedTarget;
+
 	mixin Assign;
 
 	void addSpell(int level,SacSpell!B spell){
@@ -8423,7 +8427,7 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 		int numFrames=getCastingNumFrames(object,spell,wizard,state);
 		return object.startCasting(numFrames,spell.stationary,state)?numFrames:-1;
 	},()=>-1)(caster,spell,wizard,state);
-	if(numFrames==-1) return false;
+	if(numFrames==-1) return (*wizard).queueSpell(spell,target,state);
 	auto drainSpeed=spell.isBuilding?125.0f:500.0f;
 	auto numManaDrainFrames=min(numFrames,cast(int)ceil(spell.manaCost*(updateFPS/drainSpeed)));
 	auto manaCostPerFrame=spell.manaCost/numManaDrainFrames;
@@ -12602,9 +12606,12 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 	auto height=state.getHeight(newPosition);
 	if(!onGround&&newPosition.z<height-gibDepth){
 		auto tpId=0;
-		if(object.isWizard)
-			if(auto wiz=state.getWizard(object.id))
+		if(object.isWizard){
+			if(auto wiz=state.getWizard(object.id)){
+				(*wiz).cancelSpellQueue(state);
 				tpId=wiz.closestAltar;
+			}
+		}
 		if(tpId!=0){
 			auto targetPosition=getTeleportPosition(newPosition,tpId,wizardAltarDistance,state);
 			if(isNaN(targetPosition.x)) tpId=0;
@@ -23863,6 +23870,57 @@ void updateWizard(B)(ref WizardInfo!B wizard,ObjectState!B state){
 			state.movingObjectById!(levelUpEffect,()=>false)(wizard.id,state);
 		}
 	}
+	if(wizard.queuedSpell){
+		static enum Result{
+			wait,
+			castSpell,
+			cancelQueue,
+		}
+		final switch(state.movingObjectById!((ref obj,wizard,state){
+			if(obj.creatureState.movementDirection!=MovementDirection.none)
+				return Result.cancelQueue;
+			if(obj.creatureState.rotationDirection!=RotationDirection.none)
+				return Result.cancelQueue;
+			if(!obj.canQueueSpell(state))
+				return Result.cancelQueue;
+			if(obj.canCast(state))
+				return Result.castSpell;
+			return Result.wait;
+		},()=>Result.cancelQueue)(wizard.id,&wizard,state)){
+			case Result.wait: break;
+			case Result.castSpell:
+				startCasting(wizard.id,wizard.queuedSpell,wizard.queuedTarget,state);
+				goto case;
+			case Result.cancelQueue:
+				cancelSpellQueue(wizard,state);
+				break;
+		}
+	}
+}
+
+bool canQueueSpell(CreatureMode mode){
+	final switch(mode) with(CreatureMode){
+		case idle,moving,ghostToIdle,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,rockForm,firewalk,casting,stationaryCasting,castingMoving,shooting,usingAbility: return true;
+		case dying,dead,dissolving,preSpawning,reviving,fastReviving,pretendingToDie,playingDead,pretendingToRevive,convertReviving,thrashing: return false;
+		case deadToGhost,idleGhost,movingGhost: return false;
+		case pulling,pumping,torturing: return false;
+	}
+}
+
+bool canQueueSpell(B)(ref MovingObject!B obj,ObjectState!B state){
+	return canQueueSpell(obj.creatureState.mode);
+}
+
+bool queueSpell(B)(ref WizardInfo!B wizard,SacSpell!B spell,OrderTarget target,ObjectState!B state){
+	if(!state.movingObjectById!(canQueueSpell,()=>false)(wizard.id,state)) return false;
+	wizard.queuedSpell=spell;
+	wizard.queuedTarget=target;
+	return true;
+}
+
+void cancelSpellQueue(B)(ref WizardInfo!B wizard,ObjectState!B state){
+	wizard.queuedSpell=null;
+	wizard.queuedTarget=OrderTarget.init;
 }
 
 bool manahoarAbilityEnabled(CreatureMode mode){
