@@ -12293,7 +12293,7 @@ Vector3f positionAfterCollision(B)(ref MovingObject!B object, Vector3f newPositi
 	Vector3f[2] hitbox=[relativeHitbox[0]+newPosition,relativeHitbox[1]+newPosition];
 	bool posChanged=false, needsFixup=false, isColliding=false;
 	auto fixupDirection=Vector3f(0.0f,0.0f,0.0f);
-	void handleCollision(bool fixup)(ProximityEntry entry,ObjectState!B state){
+	void handleCollision(bool fixup)(ProximityEntry entry,ObjectState!B state,Vector3f[2] hitbox){
 		if(!entry.isObstacle) return;
 		if(entry.id==object.id) return;
 		if(!state.isValidTarget(entry.id)) return;
@@ -12378,10 +12378,15 @@ Vector3f positionAfterCollision(B)(ref MovingObject!B object, Vector3f newPositi
 		else needsFixup=true;
 	}
 	if(!object.creatureState.mode.among(CreatureMode.dead,CreatureMode.dissolving,CreatureMode.convertReviving,CreatureMode.thrashing,CreatureMode.firewalk)){ // dead/firewalking creatures do not participate in collision handling
-		proximity.collide!(handleCollision!false)(hitbox,state);
+		enum blockSlack=0.2f;
+		Vector3f[2] blockHitbox=[hitbox[0]+0.5f*blockSlack,hitbox[1]-0.5f*blockSlack];
+		if(blockHitbox[1].x<blockHitbox[0].x) blockHitbox[0].x=blockHitbox[1].x=0.5f*(blockHitbox[0].x+0.5f*blockHitbox[1].x);
+		if(blockHitbox[1].y<blockHitbox[0].y) blockHitbox[0].y=blockHitbox[1].y=0.5f*(blockHitbox[0].y+0.5f*blockHitbox[1].y);
+		if(blockHitbox[1].z<blockHitbox[0].z) blockHitbox[0].z=blockHitbox[1].z=0.5f*(blockHitbox[0].z+0.5f*blockHitbox[1].z);
+		proximity.collide!(handleCollision!false)(blockHitbox,state,blockHitbox);
 		object.creatureAI.isColliding=isColliding;
-		hitbox=[relativeHitbox[0]+newPosition,relativeHitbox[1]+newPosition];
-		proximity.collide!(handleCollision!true)(hitbox,state);
+		hitbox=[relativeHitbox[0]+newPosition-0.5f*blockSlack,relativeHitbox[1]+newPosition+0.5f*blockSlack];
+		proximity.collide!(handleCollision!true)(hitbox,state,hitbox);
 		if(needsFixup){
 			auto fixupSpeed=object.creatureStats.collisionFixupSpeed/updateFPS;
 			if(fixupDirection.length>fixupSpeed)
