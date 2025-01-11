@@ -8419,10 +8419,14 @@ int getCastingTime(B)(ref MovingObject!B object,SacSpell!B spell,bool stationary
 
 enum manaEpsilon=1e-2f;
 enum summonSoundGain=2.0f;
-bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!B state){
+bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!B state,bool isQueued=false){
 	auto wizard=state.getWizard(caster);
 	if(!wizard) return false;
-	if(state.spellStatus!false(wizard,spell,target)!=SpellStatus.ready) return false;
+	auto spellStatus=state.spellStatus!false(wizard,spell,target);
+	if(spellStatus!=SpellStatus.ready){
+		if(!isQueued) return false;
+		if(!canRunSpellQueueForSpellStatus(spellStatus)) return false;
+	}
 	int numFrames=state.movingObjectById!((ref object,spell,wizard,state){
 		int numFrames=getCastingNumFrames(object,spell,wizard,state);
 		return object.startCasting(numFrames,spell.stationary,state)?numFrames:-1;
@@ -23889,7 +23893,7 @@ void updateWizard(B)(ref WizardInfo!B wizard,ObjectState!B state){
 		},()=>Result.cancelQueue)(wizard.id,&wizard,state)){
 			case Result.wait: break;
 			case Result.castSpell:
-				startCasting(wizard.id,wizard.queuedSpell,wizard.queuedTarget,state);
+				startCasting(wizard.id,wizard.queuedSpell,wizard.queuedTarget,state,true);
 				goto case;
 			case Result.cancelQueue:
 				cancelSpellQueue(wizard,state);
@@ -23916,6 +23920,22 @@ bool queueSpell(B)(ref WizardInfo!B wizard,SacSpell!B spell,OrderTarget target,O
 	wizard.queuedSpell=spell;
 	wizard.queuedTarget=target;
 	return true;
+}
+
+bool canRunSpellQueueForSpellStatus(SpellStatus status){
+	final switch(status)with(SpellStatus){
+		case inexistent: return false;
+		case disabled: return false;
+		case invalidTarget: return false;
+		case lowOnMana: return false;
+		case mustBeNearBuilding: return true;
+		case mustBeNearEnemyAltar: return true;
+		case mustBeConnectedToConversion: return false;
+		case needMoreSouls: return false;
+		case outOfRange: return true;
+		case notReady: return false;
+		case ready: return true;
+	}
 }
 
 void cancelSpellQueue(B)(ref WizardInfo!B wizard,ObjectState!B state){
