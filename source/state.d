@@ -7787,15 +7787,14 @@ float meleeDistanceSqr(Vector3f[2] objectHitbox,Vector3f[2] attackerHitbox){
 	return boxBoxDistanceSqr(objectHitbox,attackerHitbox);
 }
 float meleeDistanceSqr(B)(Vector3f[2] objectHitbox,ref MovingObject!B attacker){
-	auto center=boxCenter(objectHitbox);
-	if(attacker.sacObject.nttTag!=SpellTag.dragon){
+	/+if(attacker.sacObject.nttTag!=SpellTag.dragon){
 		auto distSqr=float.infinity;
 		auto hands=attacker.hands;
 		foreach(ref hand;hands)
-			if(!isNaN(hand.x)) distSqr=min(distSqr,(center-hand).lengthsqr);
+			if(!isNaN(hand.x)) distSqr=min(distSqr,boxPointDistanceSqr(objectHitbox,hand));
 		if(distSqr<float.infinity)
 			return distSqr;
-	}
+	}+/
 	return meleeDistanceSqr(objectHitbox,attacker.defaultMeleeHitbox);
 }
 
@@ -10769,7 +10768,7 @@ bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,Obj
 bool meleeAttackIsDownward(B)(ref MovingObject!B object,Vector3f target,ObjectState!B state){
 	bool isFlying=object.creatureState.movement!=CreatureMovement.onGround;
 	if(isFlying) return false;
-	static immutable attackCandidatesOnGround=[AnimationState.attack0,AnimationState.attack1,AnimationState.attack2];
+	/+static immutable attackCandidatesOnGround=[AnimationState.attack0,AnimationState.attack1,AnimationState.attack2];
 	float distSqr=float.infinity;
 	AnimationState best=AnimationState.attack0;
 	auto sacObject=object.sacObject;
@@ -10791,7 +10790,9 @@ bool meleeAttackIsDownward(B)(ref MovingObject!B object,Vector3f target,ObjectSt
 		enum downwardThreshold=0.25f;
 		return target.z+downwardThreshold<object.center.z;
 	}
-	return best==AnimationState.attack2;
+	return best==AnimationState.attack2;+/
+	enum downwardThreshold=0.25f;
+	return target.z+downwardThreshold<object.center.z;
 }
 
 bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
