@@ -3484,7 +3484,7 @@ struct FenceCasting(B){
 	ManaDrain!B manaDrain;
 	Fence!B fence;
 
-	enum castingLimit=5*32*60/updateFPS;
+	enum castingLimit=5*32*60/updateFPS+16*60/updateFPS;
 }
 enum FenceStatus{ growing, stationary, shrinking, }
 struct Fence(B){
@@ -3493,7 +3493,7 @@ struct Fence(B){
 	Vector3f center;
 	Vector2f direction;
 	SacSpell!B spell;
-	float left=-5.0f,right=5.0f;
+	float left=0.0f,right=0.0f;
 	bool leftStopped=false, rightStopped=false;
 	int frame=0;
 	FenceStatus status;
@@ -3531,7 +3531,7 @@ struct Fence(B){
 
 	enum breakdownRate=0.3f/((maxNumPosts-1)*updateFPS);
 	enum dischargeRate=0.3f/((maxNumPosts-1)*updateFPS);
-	enum attackRate=1.5f/updateFPS;
+	enum attackRate=0.9f/updateFPS;
 	enum attackRange=10.0f;
 }
 
@@ -18369,21 +18369,11 @@ void updateFencePost(B)(ref Fence!B.Post post,ObjectState!B state){
 enum fenceGain=3.0f;
 bool updateFence(B)(ref Fence!B fence,ObjectState!B state){
 	with(fence){
+		++frame;
 		final switch(status){
 			case FenceStatus.growing:
-				auto expansionSpeed=(spell.effectRange-5.0f)/FenceCasting!B.castingLimit;
-				static assert(FenceCasting!B.castingLimit%(maxNumPosts/2-1)==0);
-				enum mod=FenceCasting!B.castingLimit/(maxNumPosts/2-1);
-				if(!(frame%mod)){
-					auto oldNumSpawned=numSpawned;
-					foreach(left;0..2){
-						posts[numSpawned++]=fence.makeFencePost(!!left,state);
-						if(isNaN(posts[numSpawned-1].position.x))
-							posts[numSpawned-1]=posts[numDespawned++];
-					}
-					if(oldNumSpawned<numSpawned) sort!"a.t<b.t"(posts[]);
-					//writeln(posts[].map!(x=>x.t));
-				}
+				auto expansionSpeed=spell.effectRange/FenceCasting!B.castingLimit;
+				static assert(FenceCasting!B.castingLimit%(maxNumPosts-1)==0);
 				foreach(i,ref post;posts[numDespawned..numSpawned]){
 					posts[numDespawned+i].scale=min(1.0f,posts[numDespawned+i].scale+1.0f/float(growthTime));
 				}
@@ -18407,6 +18397,20 @@ bool updateFence(B)(ref Fence!B fence,ObjectState!B state){
 					auto cand=right+expansionSpeed;
 					if(check(get(cand,state))) right=cand;
 					else rightStopped=true;
+				}
+				enum mod=32*60/updateFPS;
+				static assert(mod%2==0);
+				if(frame%mod==mod/2){
+					auto oldNumSpawned=numSpawned;
+					foreach(left;0..2){
+						if((!!left)&&leftStopped||!left&&rightStopped)
+							continue;
+						posts[numSpawned++]=fence.makeFencePost(!!left,state);
+						if(isNaN(posts[numSpawned-1].position.x))
+							posts[numSpawned-1]=posts[numDespawned++];
+					}
+					if(oldNumSpawned<numSpawned) sort!"a.t<b.t"(posts[]);
+					//writeln(posts[].map!(x=>x.t));
 				}
 				if(leftStopped&&rightStopped){
 					status=FenceStatus.stationary;
@@ -18483,7 +18487,8 @@ bool updateFence(B)(ref Fence!B fence,ObjectState!B state){
 					*excess+=transfer;
 					return false;
 				}
-				dealSplashSpellDamageAt!callback(0,fence.spell,Fence!B.attackRange,fence.wizard,fence.side,posts[i].position,DamageMod.none,state,posts[i].position,fence.wizard,fence.side,fence.spell,state,i,&fence,&excess);
+				if(posts[i].scale==1.0f)
+					dealSplashSpellDamageAt!callback(0,fence.spell,Fence!B.attackRange,fence.wizard,fence.side,posts[i].position,DamageMod.none,state,posts[i].position,fence.wizard,fence.side,fence.spell,state,i,&fence,&excess);
 			}
 			foreach(i;numDespawned..numSpawned){
 				static import std.math;
@@ -18496,7 +18501,7 @@ bool updateFence(B)(ref Fence!B fence,ObjectState!B state){
 				posts[i].charge+=excess;
 			}
 		}
-		if(vanishFrame==-1&&++frame>=FenceCasting!B.castingLimit+spell.duration*updateFPS){
+		if(vanishFrame==-1&&frame>=FenceCasting!B.castingLimit+spell.duration*updateFPS){
 			// playSoundAtRange("dcle",get(left,state),get(right,state),state,fenceGain);
 			status=FenceStatus.shrinking;
 		}
