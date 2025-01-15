@@ -701,6 +701,7 @@ final class SacObject(B){
 		if(isSacDoctor){
 			animations[AnimationState.death0]=animations[cast(AnimationState)SacDoctorAnimationState.dance];
 		}
+		//if(isWizard) printWizardStats(this,false);
 	}
 	static SacObject!B[char[4]] objects;
 	static void resetStateIndex(){
@@ -895,6 +896,7 @@ final class SacObject(B){
 
 void printWizardStats(B)(SacObject!B wizard,bool fasterStandupTimes){
 	import animations;
+	writeln(wizard.name);
 	writeln("casting:");
 	foreach(stationary;[true,false]){
 		writeln(stationary?"stationary:":"walking:");
