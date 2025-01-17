@@ -8344,6 +8344,9 @@ int getCastingNumFrames(B)(ref MovingObject!B object,SacSpell!B spell,WizardInfo
 		case marduk:
 			switch(spell.tag)with(SpellTag){
 				default: break;
+				case manalith:
+					if(5<=wizard.level) return cycles(3);
+					break;
 				case guardian:
 					if(5<=wizard.level) return cycles(0);
 					break;
@@ -8357,11 +8360,18 @@ int getCastingNumFrames(B)(ref MovingObject!B object,SacSpell!B spell,WizardInfo
 					if(!stationary){
 						if(5<=wizard.level) return cycles(0);
 					}else{
-						if(7<=wizard.level) return cycles(0);
+						if(4<=wizard.level) return cycles(0);
 					}
 					break;
 				case dragonfire,chainLightning:
 					if(5<=wizard.level) return cycles(0);
+					break;
+				case erupt:
+					if(!stationary){
+						if(5<=wizard.level) return cycles(0);
+					}else{
+						if(4<=wizard.level) return cycles(0);
+					}
 					break;
 				case explosion,demonicRift,haloOfEarth,rainOfFrogs:
 					if(6<=wizard.level) return cycles(0);
@@ -8397,7 +8407,7 @@ int getCastingNumFrames(B)(ref MovingObject!B object,SacSpell!B spell,WizardInfo
 					if(6<=wizard.level) return cycles(0);
 					break;
 			}
-
+			break;
 	}
 	return result;
 }
