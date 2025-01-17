@@ -1,0 +1,6 @@
+maps/(8) EM-Two Farms v2.scp
+maps/(8) EM-Greed.scp
+maps/(8) Rockdale.scp
+maps/(8) Hamburger Hill2.scp
+maps/(8) Snow White v3.scp
+maps/(8) XM-Snow-White.scp
