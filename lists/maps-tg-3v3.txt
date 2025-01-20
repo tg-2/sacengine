@@ -48,3 +48,4 @@ maps/(6) TM-Blast Pit.scp
 maps/(6) XM-Snow-White.scp
 maps/(6) Exe.scp
 maps/(6) Gladiator EXE.scp
+maps/(6) EM-Stratos's Kingdom.scp
