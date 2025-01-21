@@ -1948,12 +1948,13 @@ struct WizardInfo(B){
 	int lastWizardDamageFrame=int.max;
 	int lastCreatureDamageFrame=int.max;
 	int lastBuildingDamageFrame=int.max;
+	int lastDamageFrame(){ return max(lastWizardDamageFrame,lastCreatureDamageFrame,lastBuildingDamageFrame); }
 	//int lastWizardKilledFrame=int.max;
 	int lastCreatureKilledFrame=int.max;
 	int lastBuildingDestroyedFrame=int.max;
-	int lastDamageFrame(){
-		return max(lastWizardDamageFrame,lastCreatureDamageFrame,lastBuildingDamageFrame);
-	}
+
+	int lastAltarApproachFrame=int.max;
+	int lastAltarDesecratedFrame=int.max;
 
 	SacSpell!B queuedSpell;
 	OrderTarget queuedTarget;
@@ -13720,6 +13721,10 @@ bool updateRitual(B)(ref Ritual!B ritual,ObjectState!B state){
 					foreach(ref bolt;desecrateBolts) bolt.changeShape(state);
 			}
 		}
+		if(type==RitualType.desecrate&&targetWizard&&frame<updateFPS/2){
+			if(auto wizard=state.getWizard(targetWizard))
+				wizard.lastAltarDesecratedFrame=state.frame;
+		}
 		if(ritual.stopped){
 			if(!targetWizard||!targetDead) vortex.scale=max(0.0f,vortex.scale-1.0f/vortex.numFramesToDisappear);
 			return vortex.scale>0.0f;
@@ -23809,7 +23814,7 @@ void animateManahoar(B)(Vector3f location, int side, float rate, ObjectState!B s
 }
 
 
-int[4] findClosestBuildings(B)(int side,Vector3f position,ObjectState!B state){ // TODO: do a single pass for all wizards?
+int[4] findClosestBuildings(B)(int side,Vector3f position,ObjectState!B state,bool updateAltarApproach=false){ // TODO: do a single pass for all wizards?
 	// [building for guardian,shrine for convert,own altar for teleport from void,enemy altar for desecrate]
 	enum RType{
 		building,
@@ -23821,7 +23826,7 @@ int[4] findClosestBuildings(B)(int side,Vector3f position,ObjectState!B state){ 
 		int[4] currentIds=0;
 		float[4] currentDistances=float.infinity;
 	}
-	static void find(T)(ref T objects,int side,Vector3f position,int componentId,ObjectState!B state,Result* result){
+	static void find(T)(ref T objects,int side,Vector3f position,int componentId,ObjectState!B state,bool updateAltarApproach,Result* result){
 		static if(is(T==StaticObjects!(B,renderMode),RenderMode renderMode)){
 			bool altar=objects.sacObject.isAltar;
 			bool shrine=objects.sacObject.isShrine;
@@ -23845,6 +23850,11 @@ int[4] findClosestBuildings(B)(int side,Vector3f position,ObjectState!B state){ 
 						auto candidateDistance=(position-objects.positions[j]).xy.lengthsqr;
 						if(k==RType.building && candidateDistance>50.0f^^2) mixin(text(`goto Lnext`,k,`;`));
 						if(k==RType.enemyAltar && candidateDistance>75.0f^^2) mixin(text(`goto Lnext`,k,`;`));
+						if(updateAltarApproach&&k==RType.enemyAltar){
+							auto altarSide=sideFromBuildingId(objects.buildingIds[j],state);
+							if(auto altarWizard=state.getWizardForSide(altarSide))
+								altarWizard.lastAltarApproachFrame=state.frame;
+						}
 						if(candidateDistance<result.currentDistances[k] && (k.among(RType.building,RType.altar)||componentId==state.pathFinder.getComponentId(objects.positions[j],state))){ // TODO: is it really possible to guard over the void?
 							result.currentIds[k]=objects.ids[j];
 							result.currentDistances[k]=candidateDistance;
@@ -23856,7 +23866,7 @@ int[4] findClosestBuildings(B)(int side,Vector3f position,ObjectState!B state){ 
 	}
 	auto componentId=state.pathFinder.getComponentId(position,state);
 	Result result;
-	state.eachByType!(find,EachByTypeFlags.none)(side,position,componentId,state,&result);
+	state.eachByType!(find,EachByTypeFlags.none)(side,position,componentId,state,updateAltarApproach,&result);
 	return result.currentIds;
 }
 
@@ -23880,7 +23890,7 @@ void playSpellbookSound(B)(int side,SpellbookSoundFlags flags,char[4] tag,Object
 void updateWizard(B)(ref WizardInfo!B wizard,ObjectState!B state){
 	auto sidePosition=state.movingObjectById!((ref obj)=>tuple(obj.side,obj.position),()=>tuple(-1,Vector3f.init))(wizard.id);
 	auto side=sidePosition[0], position=sidePosition[1];
-	auto ids=side==-1?(int[4]).init:findClosestBuildings(side,position,state);
+	auto ids=side==-1?(int[4]).init:findClosestBuildings(side,position,state,true);
 	wizard.closestBuilding=ids[0];
 	wizard.closestShrine=ids[1];
 	wizard.closestAltar=ids[2];
@@ -26279,6 +26289,7 @@ enum DialogPriority{
 	command,
 	advisorAnnoy,
 	advisorImportant,
+	advisorCrucial,
 }
 enum DialogPolicy{
 	queue,

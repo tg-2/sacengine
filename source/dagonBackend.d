@@ -1620,6 +1620,63 @@ final class SacScene: Scene{
 		updateHUD(dt);
 		updateMouseSparkles();
 		if(!state) mouse.frame+=1;
+
+		if(state&&camera.target){
+			if(auto wizard=state.current.getWizard(camera.target))
+				stateAdvisorHelpSpeech(wizard);
+		}
+	}
+
+	struct AdvisorCooldowns{
+		enum buildingUnderAttackCooldownFrames=5*updateFPS;
+		int buildingUnderAttackCooldown=-1;
+		enum buildingInRuinCooldownFrames=1*updateFPS;
+		int buildingInRuinCooldown=-1;
+		// TODO: allManalithsDestroyed
+		enum creaturesUnderAttackCooldownFrames=15*updateFPS;
+		int creaturesUnderAttackCooldown=-1;
+		enum wizardUnderAttackCooldownFrames=15*updateFPS;
+		int wizardUnderAttackCooldown=-1;
+		enum creaturesAreDyingCooldownFrames=5*updateFPS;
+		int creaturesAreDyingCooldown=-1;
+		enum enemyWizardApproachingAltarCooldownFrames=15*updateFPS;
+		int enemyWizardApproachingAltarCooldown=-1;
+		static assert(updateFPS%2==0);
+		enum altarBeingDesecratedCooldownFrames=updateFPS/2;
+		int altarBeingDesecratedCooldown=-1;
+	}
+	AdvisorCooldowns advisorCooldowns;
+
+	private void stateAdvisorHelpSpeechImpl(AdvisorHelpSound sound,DialogPriority priority,ref int cooldown,int cooldownFrames,int trigger){
+		if(trigger<=int.max-cooldownFrames&&trigger+cooldownFrames>=state.current.frame){
+			if(cooldown<state.current.frame){
+				if(audio) audio.queueDialogSound(sound,priority);
+			}
+			cooldown=state.current.frame+cooldownFrames;
+		}
+	}
+
+	void stateAdvisorHelpSpeech(B)(WizardInfo!B* wizard){
+		if(!options.advisorHelpSpeech) return;
+		with(AdvisorHelpSound) with(DialogPriority) with(advisorCooldowns){
+			stateAdvisorHelpSpeechImpl(buildingUnderAttack,advisorCrucial,buildingUnderAttackCooldown,buildingUnderAttackCooldownFrames,wizard.lastBuildingDamageFrame);
+			stateAdvisorHelpSpeechImpl(buildingInRuin,advisorImportant,buildingInRuinCooldown,buildingInRuinCooldownFrames,wizard.lastBuildingDestroyedFrame);
+			// TODO: allManalithsDestroyed
+			stateAdvisorHelpSpeechImpl(creaturesUnderAttack,advisorImportant,creaturesUnderAttackCooldown,creaturesUnderAttackCooldownFrames,wizard.lastCreatureDamageFrame);
+			stateAdvisorHelpSpeechImpl(wizardUnderAttack,advisorImportant,wizardUnderAttackCooldown,wizardUnderAttackCooldownFrames,wizard.lastWizardDamageFrame);
+			// TODO: lowOnHealth
+			// TODO?: lowOnMana
+			stateAdvisorHelpSpeechImpl(creaturesAreDying,advisorImportant,creaturesAreDyingCooldown,creaturesAreDyingCooldownFrames,wizard.lastCreatureKilledFrame);
+			// TODO: allManahoarsSlaughtered
+			// TODO?: armyHasBeenSlaughtered
+			// TODO: enemySighted
+			// TODO? enemiesFallBeforeUs
+			// TODO?: sacrificeComplete
+			// TODO?: someoneSeeksAnAudience
+			stateAdvisorHelpSpeechImpl(enemyWizardApproachingAltar,advisorCrucial,enemyWizardApproachingAltarCooldown,enemyWizardApproachingAltarCooldownFrames,wizard.lastAltarApproachFrame);
+			stateAdvisorHelpSpeechImpl(altarBeingDesecrated,advisorCrucial,altarBeingDesecratedCooldown,altarBeingDesecratedCooldownFrames,wizard.lastAltarDesecratedFrame);
+			// TODO?: desecrationInterrupted
+		}
 	}
 
 	bool gameEnded=false;
