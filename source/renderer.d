@@ -3046,7 +3046,8 @@ struct Renderer(B){
 			if(info.renderSide!=obj.side&&(!obj.creatureState.mode.isVisibleToAI||obj.creatureStats.effects.stealth)) return;
 			auto backend=B.shadelessMaterialBackend;
 			backend.bindDiffuse(self.sacHud.statusArrows);
-			backend.setColor(state.sides.sideColor(obj.side));
+			auto isBlinking=obj.side==info.renderSide&&obj.notificationState.isBlinking(state);
+			backend.setColor(isBlinking?Color4f(1.0f,0.0f,0.0f,1.0f):state.sides.sideColor(obj.side));
 			// TODO: how is this actually supposed to work?
 			import animations;
 			auto hitbox0=obj.sacObject.hitbox(obj.rotation,AnimationState.stance1,0);
