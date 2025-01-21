@@ -3788,9 +3788,10 @@ struct Renderer(B){
 						static if(isMoving){
 							auto side=objects.sides[j];
 							auto flags=objects.creatureStatss[j].flags;
+							auto isBlinking=side==info.renderSide&&objects.notificationStates[j].isBlinking(state);
 						}else{
-							auto sideFlags=state.buildingById!((ref b)=>tuple(b.side,b.flags),function Tuple!(int,int)(){ assert(0); })(objects.buildingIds[j]);
-							auto side=sideFlags[0],flags=sideFlags[1];
+							auto sideFlagsIsBlinking=state.buildingById!((ref b,state)=>tuple(b.side,b.flags,b.notificationState.isBlinking(state)),function Tuple!(int,int,bool)(){ assert(0); })(objects.buildingIds[j],state);
+							auto side=sideFlagsIsBlinking[0],flags=sideFlagsIsBlinking[1],isBlinking=side==info.renderSide&&sideFlagsIsBlinking[2];
 						}
 						import ntts: Flags;
 						if(flags&Flags.notOnMinimap) continue;
@@ -3810,10 +3811,13 @@ struct Renderer(B){
 					auto iconOffset=rotate(mapRotation,minimapFactor*Vector3f(position.x,-position.y,0));
 					if(iconOffset.lengthsqr<=clipradiusSq){
 						auto iconCenter=mapCenter+iconOffset;
-						B.minimapMaterialBackend.setTransformationScaled(iconCenter-0.5f*iconScaling,Quaternionf.identity(),iconScaling,rc);
+						static if(is(typeof(isBlinking))){
+							auto blinkScale=isBlinking?1.25f:1.0f;
+							B.minimapMaterialBackend.setTransformationScaled(iconCenter-0.5f*iconScaling*blinkScale,Quaternionf.identity(),iconScaling*blinkScale,rc);
+						}else B.minimapMaterialBackend.setTransformationScaled(iconCenter-0.5f*iconScaling,Quaternionf.identity(),iconScaling,rc);
 						static if(is(typeof(objects.sacObject))){
 							if(!isManafount){
-								auto color=state.sides.sideColor(side);
+								auto color=isBlinking?Color4f(1.0f,0.0f,0.0f,1.0f):state.sides.sideColor(side);
 								B.minimapMaterialBackend.setColor(color);
 							}
 						}else static if(is(T==Souls!B)){
@@ -3851,7 +3855,7 @@ struct Renderer(B){
 			}else static assert(0);
 		}
 		state.eachByType!(render,EachByTypeFlags.movingFirst|EachByTypeFlags.wizardsLast)(minimapFactor,minimapCenter,mapCenter,radius,mapRotation,&this,state,&info,rc);
-		static void renderArrow(T)(T object,float minimapFactor,Vector3f minimapCenter,Vector3f mapCenter,float radius,Quaternionf mapRotation,Renderer!B* self,ObjectState!B state,RenderInfo!B* info,B.RenderContext rc){ // TODO: why does this need to be static? DMD bug?
+		static void renderArrow(T)(ref T object,float minimapFactor,Vector3f minimapCenter,Vector3f mapCenter,float radius,Quaternionf mapRotation,Renderer!B* self,ObjectState!B state,RenderInfo!B* info,B.RenderContext rc){ // TODO: why does this need to be static? DMD bug?
 			static if(is(typeof(object.sacObject))&&!is(T==FixedObjects!B)){
 				auto sacObject=object.sacObject;
 				enum isMoving=is(T==MovingObject!B);
@@ -3863,9 +3867,14 @@ struct Renderer(B){
 				auto iconCenter=mapCenter+offset;
 				auto rotation=rotationQuaternion(Axis.z,pi!float/2+atan2(iconOffset.y,iconOffset.x));
 				B.minimapMaterialBackend.setTransformationScaled(iconCenter-rotate(rotation,0.5f*arrowScaling),rotation,arrowScaling,rc);
-				static if(isMoving) auto side=object.side;
-				else auto side=sideFromBuildingId(object.buildingId,state);
-				auto color=state.sides.sideColor(side);
+				static if(isMoving){
+					auto side=object.side;
+					auto isBlinking=side==info.renderSide&&object.notificationState.isBlinking(state);
+				}else{
+					auto sideIsBlinking=state.buildingById!((ref b,state)=>tuple(b.side,b.notificationState.isBlinking(state)),function Tuple!(int,bool)(){ assert(0); })(object.buildingId,state);
+					auto side=sideIsBlinking[0],isBlinking=side==info.renderSide&&sideIsBlinking[1];
+				}
+				auto color=isBlinking?Color4f(1.0f,0.0f,0.0f,1.0f):state.sides.sideColor(side);
 				B.minimapMaterialBackend.setColor(color);
 				arrowQuad.render(rc);
 				if(info.mouse.onMinimap){

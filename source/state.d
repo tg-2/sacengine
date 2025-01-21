@@ -810,6 +810,47 @@ struct CreatureStatistics{
 	int buildingsDestroyed=0;
 }
 
+struct NotificationState{
+	int lastNotificationFrame=int.max;
+	static assert(updateFPS%4==0);
+	enum blinkFrames=updateFPS/4;
+	enum blinkDuration=19*2*blinkFrames; // TODO: ok?
+	int blinkStartFrame=0;
+	private void startNotify(B)(ObjectState!B state){
+		if(!isNotifying(state)) blinkStartFrame=state.frame;
+		lastNotificationFrame=state.frame;
+	}
+	void attack(B)(ref MovingObject!B object,ObjectState!B state){
+		startNotify(state);
+		if(auto wizard=state.getWizardForSide(object.side))
+			(object.isWizard?wizard.lastWizardDamageFrame:wizard.lastCreatureDamageFrame)=state.frame;
+	}
+	void attack(B)(ref Building!B building,ObjectState!B state){
+		startNotify(state);
+		if(auto wizard=state.getWizardForSide(building.side))
+			wizard.lastBuildingDamageFrame=state.frame;
+	}
+	void kill(B)(ref MovingObject!B object,ObjectState!B state){
+		startNotify(state);
+		if(auto wizard=state.getWizardForSide(object.side))
+			wizard.lastCreatureKilledFrame=state.frame;
+	}
+	void destroy(B)(ref Building!B building,ObjectState!B state){
+		startNotify(state);
+		if(auto wizard=state.getWizardForSide(building.side))
+			wizard.lastBuildingDestroyedFrame=state.frame;
+	}
+	bool isNotifying(B)(ObjectState!B state){
+		if(state.frame<lastNotificationFrame) return false;
+		if(lastNotificationFrame+blinkDuration<state.frame) return false;
+		return true;
+	}
+	bool isBlinking(B)(ObjectState!B state){
+		if(!isNotifying(state)) return false;
+		return (state.frame-blinkStartFrame)%(2*blinkFrames)<blinkFrames;
+	}
+}
+
 struct MovingObject(B){
 	SacObject!B sacObject;
 	int id=0;
@@ -821,11 +862,12 @@ struct MovingObject(B){
 	CreatureState creatureState;
 	CreatureStats creatureStats;
 	CreatureStatistics creatureStatistics;
+	NotificationState notificationState;
 	int side=0;
 	int soulId=0;
 	mixin Assign;
 
-	this(SacObject!B sacObject,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame,CreatureState creatureState,CreatureStats creatureStats,CreatureStatistics creatureStatistics,int side){
+	this(SacObject!B sacObject,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame,CreatureState creatureState,CreatureStats creatureStats,CreatureStatistics creatureStatistics,NotificationState notificationState,int side){
 		this.sacObject=sacObject;
 		this.position=position;
 		this.rotation=rotation;
@@ -834,16 +876,17 @@ struct MovingObject(B){
 		this.creatureState=creatureState;
 		this.creatureStats=creatureStats;
 		this.creatureStatistics=creatureStatistics;
+		this.notificationState=notificationState;
 		this.side=side;
 	}
-	this(SacObject!B sacObject,int id,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame,CreatureState creatureState,CreatureStats creatureStats,CreatureStatistics creatureStatistics,int side){
+	this(SacObject!B sacObject,int id,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame,CreatureState creatureState,CreatureStats creatureStats,CreatureStatistics creatureStatistics,NotificationState notificationState,int side){
 		this.id=id;
-		this(sacObject,position,rotation,animationState,frame,creatureState,creatureStats,creatureStatistics,side);
+		this(sacObject,position,rotation,animationState,frame,creatureState,creatureStats,creatureStatistics,notificationState,side);
 	}
-	this(SacObject!B sacObject,int id,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame,CreatureAI creatureAI,CreatureState creatureState,CreatureStats creatureStats,CreatureStatistics creatureStatistics,int side,int soulId){
+	this(SacObject!B sacObject,int id,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame,CreatureAI creatureAI,CreatureState creatureState,CreatureStats creatureStats,CreatureStatistics creatureStatistics,NotificationState notificationState,int side,int soulId){
 		this.creatureAI=move(creatureAI);
 		this.soulId=soulId;
-		this(sacObject,id,position,rotation,animationState,frame,creatureState,creatureStats,creatureStatistics,side);
+		this(sacObject,id,position,rotation,animationState,frame,creatureState,creatureStats,creatureStatistics,notificationState,side);
 	}
 }
 int side(B)(ref MovingObject!B object,ObjectState!B state){
@@ -1341,6 +1384,7 @@ struct Building(B){
 	enum directRangedResistance=1.0f;
 	enum splashRangedResistance=1.0f;
 	Array!int guardianIds;
+	NotificationState notificationState;
 	mixin Assign;
 	this(SacBuilding!B sacBuilding,int side,int flags,float facing){
 		this.sacBuilding=sacBuilding;
@@ -1483,6 +1527,7 @@ struct MovingObjects(B,RenderMode mode){
 	Array!CreatureState creatureStates;
 	Array!CreatureStats creatureStatss;
 	Array!CreatureStatistics creatureStatisticss;
+	Array!NotificationState notificationStates;
 	Array!int sides;
 	Array!int soulIds;
 	static if(mode==RenderMode.transparent){
@@ -1502,6 +1547,7 @@ struct MovingObjects(B,RenderMode mode){
 		creatureStates.length=l;
 		creatureStatss.length=l;
 		creatureStatisticss.length=l;
+		notificationStates.length=l;
 		sides.length=l;
 		soulIds.length=l;
 		static if(mode==RenderMode.transparent){
@@ -1520,6 +1566,7 @@ struct MovingObjects(B,RenderMode mode){
 		creatureStates.reserve(reserveSize);
 		creatureStatss.reserve(reserveSize);
 		creatureStatisticss.reserve(reserveSize);
+		notificationStates.reserve(reserveSize);
 		sides.reserve(reserveSize);
 		soulIds.reserve(reserveSize);
 		static if(mode==RenderMode.transparent){
@@ -1542,6 +1589,7 @@ struct MovingObjects(B,RenderMode mode){
 		creatureStates~=object.creatureState;
 		creatureStatss~=object.creatureStats;
 		creatureStatisticss~=object.creatureStatistics;
+		notificationStates~=object.notificationState;
 		sides~=object.side;
 		soulIds~=object.soulId;
 		static if(mode==RenderMode.transparent){
@@ -1560,7 +1608,7 @@ struct MovingObjects(B,RenderMode mode){
 		length=length-1;
 	}
 	MovingObject!B fetch(int i){
-		return MovingObject!B(sacObject,ids[i],positions[i],rotations[i],animationStates[i],frames[i],move(creatureAIs[i]),creatureStates[i],creatureStatss[i],creatureStatisticss[i],sides[i],soulIds[i]);
+		return MovingObject!B(sacObject,ids[i],positions[i],rotations[i],animationStates[i],frames[i],move(creatureAIs[i]),creatureStates[i],creatureStatss[i],creatureStatisticss[i],notificationStates[i],sides[i],soulIds[i]);
 	}
 	void opIndexAssign(MovingObject!B obj,int i)in{
 		assert(obj.sacObject is sacObject);
@@ -1574,6 +1622,7 @@ struct MovingObjects(B,RenderMode mode){
 		creatureStates[i]=obj.creatureState;
 		creatureStatss[i]=obj.creatureStats; // TODO: this might be a bit wasteful
 		creatureStatisticss[i]=obj.creatureStatistics; // TODO: this might be a bit wasteful
+		notificationStates[i]=obj.notificationState;
 		sides[i]=obj.side;
 		soulIds[i]=obj.soulId;
 	}
@@ -1896,7 +1945,15 @@ struct WizardInfo(B){
 	int closestAltar=0;
 	int closestEnemyAltar=0;
 
-	int lastDamageFrame=-1;
+	int lastWizardDamageFrame=int.max;
+	int lastCreatureDamageFrame=int.max;
+	int lastBuildingDamageFrame=int.max;
+	//int lastWizardKilledFrame=int.max;
+	int lastCreatureKilledFrame=int.max;
+	int lastBuildingDestroyedFrame=int.max;
+	int lastDamageFrame(){
+		return max(lastWizardDamageFrame,lastCreatureDamageFrame,lastBuildingDamageFrame);
+	}
 
 	SacSpell!B queuedSpell;
 	OrderTarget queuedTarget;
@@ -1965,7 +2022,7 @@ int placeCreature(B)(ObjectState!B state,SacObject!B sacObject,int flags,int sid
 	auto creatureState=CreatureState(mode, movement, facing);
 	import animations;
 	auto rotation=facingQuaternion(facing);
-	auto obj=MovingObject!B(sacObject,position,rotation,AnimationState.stance1,0,creatureState,sacObject.creatureStats(flags),CreatureStatistics(),side);
+	auto obj=MovingObject!B(sacObject,position,rotation,AnimationState.stance1,0,creatureState,sacObject.creatureStats(flags),CreatureStatistics(),NotificationState(),side);
 	obj.setCreatureState(state);
 	obj.updateCreaturePosition(state);
 	return state.addObject(obj);
@@ -7106,7 +7163,7 @@ int spawn(T=Creature,B)(int wizard,char[4] tag,int flags,ObjectState!B state,boo
 	position.z=state.getHeight(position);
 	auto creatureState=CreatureState(mode, movement, facing);
 	auto rotation=facingQuaternion(facing);
-	auto obj=MovingObject!B(curObj,position,rotation,AnimationState.disoriented,0,creatureState,curObj.creatureStats(flags),CreatureStatistics(),side);
+	auto obj=MovingObject!B(curObj,position,rotation,AnimationState.disoriented,0,creatureState,curObj.creatureStats(flags),CreatureStatistics(),NotificationState(),side);
 	obj.setCreatureState(state);
 	obj.updateCreaturePosition(state);
 	auto ord=Order(CommandType.retreat,OrderTarget(TargetType.creature,wizard,position));
@@ -7567,14 +7624,14 @@ float dealDamage(B)(ref MovingObject!B object,float damage,int attackingSide,Dam
 
 void recordDamage(B)(ref MovingObject!B object,int attackingSide,float damage,ObjectState!B state){
 	if(state.sides.getStance(attackingSide,object.side)==Stance.enemy){
+		object.notificationState.attack(object,state);
 		giveXPToSide(attackingSide,damage,state);
-		if(auto wizard=state.getWizardForSide(object.side))
-			wizard.lastDamageFrame=state.frame;
 	}
 }
 
 void recordKill(B)(ref MovingObject!B object,int attackingSide,ObjectState!B state){
 	if(state.sides.getStance(attackingSide,object.side)==Stance.enemy){
+		object.notificationState.kill(object,state);
 		giveXPToSide(attackingSide,object.xpOnKill,state);
 		if(auto wizard=state.getWizardForSide(attackingSide))
 			wizard.wizardStatistics.foesKilled+=1;
@@ -7721,8 +7778,14 @@ float damageGuardians(B)(ref Building!B building,float damage,ref MovingObject!B
 	return float.nan;
 }
 
+void recordDamage(B)(ref Building!B building,int attackingSide,float damage,ObjectState!B state){
+	building.notificationState.attack(building,state);
+	giveXPToSide(attackingSide,damage,state);
+}
+
 void recordDestruction(B)(ref Building!B building,int attackingSide,ObjectState!B state){
 	if(state.sides.getStance(attackingSide,building.side)==Stance.enemy){
+		building.notificationState.destroy(building,state);
 		giveXPToSide(attackingSide,building.xpOnDestruction,state);
 		auto wizard=state.getWizardForSide(attackingSide);
 		if(!wizard) return;
@@ -7746,7 +7809,7 @@ float dealDamageIgnoreGuardians(B)(ref Building!B building,float damage,int atta
 	if(building.flags&Flags.cannotDestroyKill)
 		building.health=max(building.health,1.0f);
 	if(state.sides.getStance(attackingSide,building.side)==Stance.enemy)
-		giveXPToSide(attackingSide,actualDamage,state);
+		recordDamage(building,attackingSide,actualDamage,state);
 	if(building.health==0.0f){
 		recordDestruction(building,attackingSide,state);
 		building.destroy(state);
@@ -13254,7 +13317,7 @@ int spawnSacDoctor(B)(int side,Vector3f position,Vector3f landingPosition,Object
 	enum jumpVelocity=10.0f;
 	creatureState.fallingVelocity=getFallingVelocity(direction,jumpVelocity,state);
 	auto rotation=facingQuaternion(facing);
-	auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState,curObj.creatureStats(Flags.cannotDamage),CreatureStatistics(),side);
+	auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState,curObj.creatureStats(Flags.cannotDamage),CreatureStatistics(),NotificationState(),side);
 	obj.setCreatureState(state);
 	obj.updateCreaturePosition(state);
 	obj.animationState=cast(AnimationState)SacDoctorAnimationState.expelled;
@@ -13593,7 +13656,7 @@ int spawnRitualSacDoctor(B)(int side,Vector3f position,float facing,ObjectState!
 	auto movement=state.isOnGround(position)?CreatureMovement.onGround:curObj.canFly?CreatureMovement.flying:CreatureMovement.tumbling;
 	auto creatureState=CreatureState(mode, movement, facing);
 	auto rotation=facingQuaternion(facing);
-	auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState,curObj.creatureStats(0),CreatureStatistics(),side);
+	auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState,curObj.creatureStats(0),CreatureStatistics(),NotificationState(),side);
 	obj.setCreatureState(state);
 	obj.updateCreaturePosition(state);
 	obj.animationState=cast(AnimationState)SacDoctorAnimationState.dance;
@@ -26556,7 +26619,7 @@ void placeNTT(B,T)(ObjectState!B state,ref T ntt) if(is(T==Creature)||is(T==Wiza
 		movement=curObj.canFly?CreatureMovement.flying:CreatureMovement.tumbling;
 	if(mode==CreatureMode.dead) movement=onGround?CreatureMovement.onGround:CreatureMovement.tumbling;
 	auto creatureState=CreatureState(mode, movement, ntt.facing);
-	auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState,curObj.creatureStats(ntt.flags),CreatureStatistics(),ntt.side);
+	auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState,curObj.creatureStats(ntt.flags),CreatureStatistics(),NotificationState(),ntt.side);
 	obj.setCreatureState(state);
 	obj.updateCreaturePosition(state);
 	/+do{

@@ -188,6 +188,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Cre
 void serialize(alias sink)(ref CreatureStatistics creatureStatistics){ serializeStruct!sink(creatureStatistics); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==CreatureStatistics)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink)(ref NotificationState notificationState){ serializeStruct!sink(notificationState); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==NotificationState)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B,RenderMode mode)(ref MovingObjects!(B,mode) objects){ serializeStruct!sink(objects); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==MovingObjects!(B,mode),RenderMode mode)){ deserializeStruct(result,state,data); }
 

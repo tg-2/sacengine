@@ -1671,7 +1671,7 @@ final class SacScene: Scene{
 							audio.switchTheme(theme);
 							audio.setNextTheme(theme);
 						}else{
-							if(!sacrificeTheme&&wizard&&wizard.lastDamageFrame!=-1&&state.current.frame<=wizard.lastDamageFrame+120*updateFPS){
+							if(!sacrificeTheme&&wizard&&wizard.lastDamageFrame<=state.currentFrame&&state.current.frame<wizard.lastDamageFrame+120*updateFPS){
 								import std.random;
 								if(!audio.nextTheme.among(Theme.battle1,Theme.battle2,Theme.battle3,Theme.battle4,Theme.battle5))
 									audio.switchTheme(uniform!"[]"(Theme.battle1,Theme.battle5));
