@@ -8430,7 +8430,7 @@ int getCastingNumFrames(B)(ref MovingObject!B object,SacSpell!B spell,WizardInfo
 					break;
 			}
 			break;
-		case marduk:
+		/+case marduk:
 			switch(spell.tag)with(SpellTag){
 				default: break;
 				case manalith:
@@ -8496,7 +8496,7 @@ int getCastingNumFrames(B)(ref MovingObject!B object,SacSpell!B spell,WizardInfo
 					if(6<=wizard.level) return cycles(0);
 					break;
 			}
-			break;
+			break;+/
 	}
 	return result;
 }
