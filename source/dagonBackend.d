@@ -61,7 +61,10 @@ final class SacScene: Scene{
 			case SpellStatus.inexistent: return;
 			case SpellStatus.disabled: return;
 			case SpellStatus.invalidTarget: tag=invalidTarget; break;
-			case SpellStatus.lowOnMana: tag=lowOnMana; break;
+			case SpellStatus.lowOnMana:
+				advisorCooldowns.lowOnManaCooldown=state.current.frame+advisorCooldowns.lowOnManaCooldownFrames;
+				tag=lowOnMana;
+				break;
 			case SpellStatus.mustBeNearBuilding: return; // (missing)
 			case SpellStatus.mustBeNearEnemyAltar: tag=mustBeNearEnemyAltar; break;
 			case SpellStatus.mustBeConnectedToConversion: return; // (missing)
@@ -1634,11 +1637,14 @@ final class SacScene: Scene{
 		int buildingInRuinCooldown=-1;
 		enum allManalithsDestroyedCooldownFrames=1*updateFPS;
 		int allManalithsDestroyedCooldown=-1;
-		// TODO: allManalithsDestroyed
 		enum creaturesUnderAttackCooldownFrames=15*updateFPS;
 		int creaturesUnderAttackCooldown=-1;
 		enum wizardUnderAttackCooldownFrames=15*updateFPS;
 		int wizardUnderAttackCooldown=-1;
+		enum lowOnHealthCooldownFrames=5*updateFPS;
+		int lowOnHealthCooldown=-1;
+		enum lowOnManaCooldownFrames=5*updateFPS;
+		int lowOnManaCooldown=-1;
 		enum creaturesAreDyingCooldownFrames=5*updateFPS;
 		int creaturesAreDyingCooldown=-1;
 		enum allManahoarsSlaughteredCooldownFrames=5*updateFPS;
@@ -1650,7 +1656,6 @@ final class SacScene: Scene{
 		int altarBeingDesecratedCooldown=-1;
 	}
 	AdvisorCooldowns advisorCooldowns;
-
 
 	private void manalithDestroyedImpl(B)(WizardInfo!B* wizard){
 		auto trigger=wizard.lastManalithDestroyedFrame;
@@ -1715,8 +1720,8 @@ final class SacScene: Scene{
 			stateAdvisorHelpSpeechImpl(buildingInRuin,advisorImportant,buildingInRuinCooldown,buildingInRuinCooldownFrames,wizard.lastBuildingDestroyedFrame);
 			stateAdvisorHelpSpeechImpl(creaturesUnderAttack,advisorImportant,creaturesUnderAttackCooldown,creaturesUnderAttackCooldownFrames,wizard.lastCreatureDamageFrame);
 			stateAdvisorHelpSpeechImpl(wizardUnderAttack,advisorImportant,wizardUnderAttackCooldown,wizardUnderAttackCooldownFrames,wizard.lastWizardDamageFrame);
-			// TODO: lowOnHealth
-			// TODO: lowOnMana
+			stateAdvisorHelpSpeechImpl(lowOnHealth,advisorCrucial,lowOnHealthCooldown,lowOnHealthCooldownFrames,wizard.lastLowOnHealthFrame);
+			stateAdvisorHelpSpeechImpl(lowOnMana,advisorImportant,lowOnManaCooldown,lowOnManaCooldownFrames,wizard.lastLowOnManaFrame);
 			manahoarSlaughteredImpl(wizard);
 			stateAdvisorHelpSpeechImpl(creaturesAreDying,advisorImportant,creaturesAreDyingCooldown,creaturesAreDyingCooldownFrames,wizard.lastCreatureKilledFrame);
 			// TODO?: armyHasBeenSlaughtered

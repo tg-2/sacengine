@@ -834,6 +834,7 @@ struct NotificationState{
 		startNotify(state);
 		if(auto wizard=state.getWizardForSide(object.side)){
 			if(object.sacObject.isManahoar) wizard.lastManahoarKilledFrame=state.frame;
+			else if(wizard.id==object.id) wizard.lastWizardKilledFrame=state.frame;
 			else wizard.lastCreatureKilledFrame=state.frame;
 		}
 	}
@@ -1965,7 +1966,11 @@ struct WizardInfo(B){
 	int lastCreatureDamageFrame=int.max;
 	int lastBuildingDamageFrame=int.max;
 	int lastDamageFrame(){ return max(lastWizardDamageFrame,lastCreatureDamageFrame,lastBuildingDamageFrame); }
-	//int lastWizardKilledFrame=int.max;
+
+	int lastLowOnHealthFrame=int.max;
+	int lastLowOnManaFrame=int.max;
+
+	int lastWizardKilledFrame=int.max;
 	int lastCreatureKilledFrame=int.max;
 	int lastManahoarKilledFrame=int.max;
 
@@ -23905,8 +23910,15 @@ void playSpellbookSound(B)(int side,SpellbookSoundFlags flags,char[4] tag,Object
 	static if(B.hasAudio) if(playAudio) B.playSpellbookSound(side,flags,tag,gain);
 }
 void updateWizard(B)(ref WizardInfo!B wizard,ObjectState!B state){
-	auto sidePosition=state.movingObjectById!((ref obj)=>tuple(obj.side,obj.position),()=>tuple(-1,Vector3f.init))(wizard.id);
-	auto side=sidePosition[0], position=sidePosition[1];
+	auto sidePositionRelHealthRelMana=state.movingObjectById!((ref wizard){
+		float relativeHealth=wizard.creatureStats.health/wizard.creatureStats.maxHealth;
+		float relativeMana=wizard.creatureStats.mana/wizard.creatureStats.maxMana;
+		return tuple(wizard.side,wizard.position,relativeHealth,relativeMana);
+	},()=>tuple(-1,Vector3f.init,float.init,float.init))(wizard.id);
+	auto side=sidePositionRelHealthRelMana[0], position=sidePositionRelHealthRelMana[1];
+	auto relativeHealth=sidePositionRelHealthRelMana[2], relativeMana=sidePositionRelHealthRelMana[3];
+	if(relativeHealth<0.25f) wizard.lastLowOnHealthFrame=state.frame;
+	if(relativeMana<0.25f) wizard.lastLowOnManaFrame=state.frame;
 	auto ids=side==-1?(int[4]).init:findClosestBuildings(side,position,state,true);
 	wizard.closestBuilding=ids[0];
 	wizard.closestShrine=ids[1];
