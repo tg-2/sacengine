@@ -857,13 +857,13 @@ struct NotificationState{
 	}
 	bool isNotifying(B)(ObjectState!B state){
 		if(state.frame<lastNotificationFrame) return false;
-		if(lastNotificationFrame+1<state.frame&&blinkStartFrame+blinkDuration<state.frame)
+		if(lastNotificationFrame+1<state.frame&&blinkStartFrame+blinkDuration<=state.frame)
 			return false;
 		return true;
 	}
 	bool isBlinking(B)(ObjectState!B state){
 		if(!isNotifying(state)) return false;
-		if(blinkStartFrame+blinkDuration<state.frame) return false;
+		if(blinkStartFrame+blinkDuration<=state.frame) return false;
 		return (state.frame-blinkStartFrame)%(2*blinkFrames)<blinkFrames;
 	}
 }
