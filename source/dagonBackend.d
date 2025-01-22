@@ -1639,6 +1639,8 @@ final class SacScene: Scene{
 		int wizardUnderAttackCooldown=-1;
 		enum creaturesAreDyingCooldownFrames=5*updateFPS;
 		int creaturesAreDyingCooldown=-1;
+		enum allManahoarsSlaughteredCooldownFrames=5*updateFPS;
+		int allManahoarsSlaughteredCooldown=-1;
 		enum enemyWizardApproachingAltarCooldownFrames=15*updateFPS;
 		int enemyWizardApproachingAltarCooldown=-1;
 		static assert(updateFPS%2==0);
@@ -1646,6 +1648,30 @@ final class SacScene: Scene{
 		int altarBeingDesecratedCooldown=-1;
 	}
 	AdvisorCooldowns advisorCooldowns;
+
+
+	private void allManahoarsSlaughteredImpl(B)(WizardInfo!B* wizard){
+		auto trigger=wizard.lastManahoarKilledFrame;
+		int cooldown=advisorCooldowns.allManahoarsSlaughteredCooldown;
+		scope(exit) advisorCooldowns.allManahoarsSlaughteredCooldown=cooldown;
+		auto cooldownFrames=advisorCooldowns.allManahoarsSlaughteredCooldownFrames;
+		if(trigger<=int.max-cooldownFrames&&trigger+cooldownFrames>=state.current.frame){
+			if(cooldown<state.current.frame){
+				bool hasManahoar=false;
+				state.current.eachMovingOf!((ref obj,state,renderSide,hasManahoar){
+					if(obj.side!=renderSide) return;
+					if(obj.isAlive) *hasManahoar=true;
+				})(SacObject!B.get(SpellTag.manahoar),state,renderSide,&hasManahoar);
+				if(hasManahoar){
+					with(AdvisorHelpSound) with(DialogPriority) with(advisorCooldowns)
+						stateAdvisorHelpSpeechImpl(creaturesAreDying,advisorImportant,creaturesAreDyingCooldown,creaturesAreDyingCooldownFrames,wizard.lastManahoarKilledFrame);
+					return;
+				}
+				if(audio) audio.queueDialogSound(AdvisorHelpSound.allManahoarsSlaughtered,DialogPriority.advisorCrucial);
+			}
+			cooldown=state.current.frame+cooldownFrames;
+		}
+	}
 
 	private void stateAdvisorHelpSpeechImpl(AdvisorHelpSound sound,DialogPriority priority,ref int cooldown,int cooldownFrames,int trigger){
 		if(trigger<=int.max-cooldownFrames&&trigger+cooldownFrames>=state.current.frame){
@@ -1666,8 +1692,8 @@ final class SacScene: Scene{
 			stateAdvisorHelpSpeechImpl(wizardUnderAttack,advisorImportant,wizardUnderAttackCooldown,wizardUnderAttackCooldownFrames,wizard.lastWizardDamageFrame);
 			// TODO: lowOnHealth
 			// TODO?: lowOnMana
+			allManahoarsSlaughteredImpl(wizard);
 			stateAdvisorHelpSpeechImpl(creaturesAreDying,advisorImportant,creaturesAreDyingCooldown,creaturesAreDyingCooldownFrames,wizard.lastCreatureKilledFrame);
-			// TODO: allManahoarsSlaughtered
 			// TODO?: armyHasBeenSlaughtered
 			// TODO: enemySighted
 			// TODO? enemiesFallBeforeUs

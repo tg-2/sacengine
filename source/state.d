@@ -832,8 +832,10 @@ struct NotificationState{
 	}
 	void kill(B)(ref MovingObject!B object,ObjectState!B state){
 		startNotify(state);
-		if(auto wizard=state.getWizardForSide(object.side))
-			wizard.lastCreatureKilledFrame=state.frame;
+		if(auto wizard=state.getWizardForSide(object.side)){
+			if(object.sacObject.isManahoar) wizard.lastManahoarKilledFrame=state.frame;
+			else wizard.lastCreatureKilledFrame=state.frame;
+		}
 	}
 	void destroy(B)(ref Building!B building,ObjectState!B state){
 		startNotify(state);
@@ -1963,6 +1965,7 @@ struct WizardInfo(B){
 	int lastDamageFrame(){ return max(lastWizardDamageFrame,lastCreatureDamageFrame,lastBuildingDamageFrame); }
 	//int lastWizardKilledFrame=int.max;
 	int lastCreatureKilledFrame=int.max;
+	int lastManahoarKilledFrame=int.max;
 	int lastBuildingDestroyedFrame=int.max;
 
 	int lastAltarApproachFrame=int.max;
@@ -7643,8 +7646,8 @@ void recordDamage(B)(ref MovingObject!B object,int attackingSide,float damage,Ob
 }
 
 void recordKill(B)(ref MovingObject!B object,int attackingSide,ObjectState!B state){
+	object.notificationState.kill(object,state);
 	if(state.sides.getStance(attackingSide,object.side)==Stance.enemy){
-		object.notificationState.kill(object,state);
 		giveXPToSide(attackingSide,object.xpOnKill,state);
 		if(auto wizard=state.getWizardForSide(attackingSide))
 			wizard.wizardStatistics.foesKilled+=1;
