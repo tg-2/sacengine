@@ -1632,6 +1632,8 @@ final class SacScene: Scene{
 		int buildingUnderAttackCooldown=-1;
 		enum buildingInRuinCooldownFrames=1*updateFPS;
 		int buildingInRuinCooldown=-1;
+		enum allManalithsDestroyedCooldownFrames=1*updateFPS;
+		int allManalithsDestroyedCooldown=-1;
 		// TODO: allManalithsDestroyed
 		enum creaturesUnderAttackCooldownFrames=15*updateFPS;
 		int creaturesUnderAttackCooldown=-1;
@@ -1650,7 +1652,30 @@ final class SacScene: Scene{
 	AdvisorCooldowns advisorCooldowns;
 
 
-	private void allManahoarsSlaughteredImpl(B)(WizardInfo!B* wizard){
+	private void manalithDestroyedImpl(B)(WizardInfo!B* wizard){
+		auto trigger=wizard.lastManalithDestroyedFrame;
+		int cooldown=advisorCooldowns.allManalithsDestroyedCooldown;
+		scope(exit) advisorCooldowns.allManalithsDestroyedCooldown=cooldown;
+		auto cooldownFrames=advisorCooldowns.allManalithsDestroyedCooldownFrames;
+		if(trigger<=int.max-cooldownFrames&&trigger+cooldownFrames>=state.current.frame){
+			if(cooldown<state.current.frame){
+				bool hasManalith=false;
+				state.current.eachBuilding!((ref bldg,state,renderSide,hasManalith){
+					if(bldg.side!=renderSide) return;
+					if(bldg.isManalith) *hasManalith=true;
+				})(state,renderSide,&hasManalith);
+				if(hasManalith){
+					with(AdvisorHelpSound) with(DialogPriority) with(advisorCooldowns)
+						stateAdvisorHelpSpeechImpl(buildingInRuin,advisorImportant,buildingInRuinCooldown,buildingInRuinCooldownFrames,wizard.lastManalithDestroyedFrame);
+					return;
+				}
+				if(audio) audio.queueDialogSound(AdvisorHelpSound.allManalithsDestroyed,DialogPriority.advisorCrucial);
+			}
+			cooldown=state.current.frame+cooldownFrames;
+		}
+	}
+
+	private void manahoarSlaughteredImpl(B)(WizardInfo!B* wizard){
 		auto trigger=wizard.lastManahoarKilledFrame;
 		int cooldown=advisorCooldowns.allManahoarsSlaughteredCooldown;
 		scope(exit) advisorCooldowns.allManahoarsSlaughteredCooldown=cooldown;
@@ -1686,13 +1711,13 @@ final class SacScene: Scene{
 		if(!options.advisorHelpSpeech) return;
 		with(AdvisorHelpSound) with(DialogPriority) with(advisorCooldowns){
 			stateAdvisorHelpSpeechImpl(buildingUnderAttack,advisorCrucial,buildingUnderAttackCooldown,buildingUnderAttackCooldownFrames,wizard.lastBuildingDamageFrame);
+			manalithDestroyedImpl(wizard);
 			stateAdvisorHelpSpeechImpl(buildingInRuin,advisorImportant,buildingInRuinCooldown,buildingInRuinCooldownFrames,wizard.lastBuildingDestroyedFrame);
-			// TODO: allManalithsDestroyed
 			stateAdvisorHelpSpeechImpl(creaturesUnderAttack,advisorImportant,creaturesUnderAttackCooldown,creaturesUnderAttackCooldownFrames,wizard.lastCreatureDamageFrame);
 			stateAdvisorHelpSpeechImpl(wizardUnderAttack,advisorImportant,wizardUnderAttackCooldown,wizardUnderAttackCooldownFrames,wizard.lastWizardDamageFrame);
 			// TODO: lowOnHealth
-			// TODO?: lowOnMana
-			allManahoarsSlaughteredImpl(wizard);
+			// TODO: lowOnMana
+			manahoarSlaughteredImpl(wizard);
 			stateAdvisorHelpSpeechImpl(creaturesAreDying,advisorImportant,creaturesAreDyingCooldown,creaturesAreDyingCooldownFrames,wizard.lastCreatureKilledFrame);
 			// TODO?: armyHasBeenSlaughtered
 			// TODO: enemySighted
