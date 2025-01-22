@@ -831,6 +831,7 @@ struct NotificationState{
 			wizard.lastBuildingDamageFrame=state.frame;
 	}
 	void kill(B)(ref MovingObject!B object,ObjectState!B state){
+		if(object.isSacDoctor) return attack(object,state);
 		startNotify(state);
 		if(auto wizard=state.getWizardForSide(object.side)){
 			if(object.sacObject.isManahoar) wizard.lastManahoarKilledFrame=state.frame;
