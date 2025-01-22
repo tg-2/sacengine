@@ -1901,6 +1901,8 @@ final class SacScene: Scene{
 		auto targetValid=mouseTargetValid(target);
 		static immutable importantTargets=[TargetType.creature,TargetType.soul];
 		if(mouse.cachedTarget.id!=0&&!state.current.isValidTarget(mouse.cachedTarget.id,mouse.cachedTarget.type)) mouse.cachedTarget=Target.init;
+		if((mouse.cachedTarget.location==TargetLocation.minimap)!=(target.location==TargetLocation.minimap)) mouse.cachedTarget=Target.init;
+		if((mouse.cachedTarget.location==TargetLocation.scene)!=(target.location==TargetLocation.scene)) mouse.cachedTarget=Target.init;
 		if(target.location.among(TargetLocation.scene,TargetLocation.minimap)){
 			if((!targetValid||!importantTargets.canFind(target.type))&&!(target.location==TargetLocation.minimap&&target.type==TargetType.building)){
 				auto delta=mouse.cachedTarget.location!=TargetLocation.minimap?mouse.targetCacheDelta:mouse.minimapTargetCacheDelta;
