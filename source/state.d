@@ -840,13 +840,25 @@ struct NotificationState{
 		if(auto wizard=state.getWizardForSide(building.side))
 			wizard.lastBuildingDestroyedFrame=state.frame;
 	}
+	void approachAltar(B)(ref MovingObject!B targetWizard,ObjectState!B state){
+		startNotify(state);
+		if(auto wizard=state.getWizard(targetWizard.id))
+			wizard.lastAltarApproachFrame=state.frame;
+	}
+	void desecrate(B)(ref MovingObject!B targetWizard,ObjectState!B state){
+		startNotify(state);
+		if(auto wizard=state.getWizard(targetWizard.id))
+			wizard.lastAltarDesecratedFrame=state.frame;
+	}
 	bool isNotifying(B)(ObjectState!B state){
 		if(state.frame<lastNotificationFrame) return false;
-		if(lastNotificationFrame+blinkDuration<state.frame) return false;
+		if(lastNotificationFrame+1<state.frame&&blinkStartFrame+blinkDuration<state.frame)
+			return false;
 		return true;
 	}
 	bool isBlinking(B)(ObjectState!B state){
 		if(!isNotifying(state)) return false;
+		if(blinkStartFrame+blinkDuration<state.frame) return false;
 		return (state.frame-blinkStartFrame)%(2*blinkFrames)<blinkFrames;
 	}
 }
@@ -13721,10 +13733,8 @@ bool updateRitual(B)(ref Ritual!B ritual,ObjectState!B state){
 					foreach(ref bolt;desecrateBolts) bolt.changeShape(state);
 			}
 		}
-		if(type==RitualType.desecrate&&targetWizard&&frame<updateFPS/2){
-			if(auto wizard=state.getWizard(targetWizard))
-				wizard.lastAltarDesecratedFrame=state.frame;
-		}
+		if(type==RitualType.desecrate&&targetWizard&&frame<updateFPS/2)
+			state.movingObjectById!((ref obj,state)=>obj.notificationState.desecrate(obj,state),(){})(targetWizard,state);
 		if(ritual.stopped){
 			if(!targetWizard||!targetDead) vortex.scale=max(0.0f,vortex.scale-1.0f/vortex.numFramesToDisappear);
 			return vortex.scale>0.0f;
@@ -23853,7 +23863,7 @@ int[4] findClosestBuildings(B)(int side,Vector3f position,ObjectState!B state,bo
 						if(updateAltarApproach&&k==RType.enemyAltar){
 							auto altarSide=sideFromBuildingId(objects.buildingIds[j],state);
 							if(auto altarWizard=state.getWizardForSide(altarSide))
-								altarWizard.lastAltarApproachFrame=state.frame;
+								state.movingObjectById!((ref obj,state)=>obj.notificationState.approachAltar(obj,state),(){})(altarWizard.id,state);
 						}
 						if(candidateDistance<result.currentDistances[k] && (k.among(RType.building,RType.altar)||componentId==state.pathFinder.getComponentId(objects.positions[j],state))){ // TODO: is it really possible to guard over the void?
 							result.currentIds[k]=objects.ids[j];
