@@ -39,6 +39,7 @@ maps/(2) TM-Sunhair.scp
 maps/(2) TM-Urknall.scp
 maps/(2) TM-A Lesser Fate.scp
 maps/(2) TM-Sulphur.scp
+maps/(2) TM-Fairytale.scp
 maps/(2) Tourney - Guerrilla.scp
 maps/(2) Tourney - I scream.scp
 maps/(2) Tourney - The Isle.scp
