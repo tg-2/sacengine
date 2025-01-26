@@ -841,11 +841,11 @@ final class SacObject(B){
 					default: return false;
 					case hitFloor: return true;
 				}
-			case abraxus:
+			/+case abraxus:
 				switch(state)with(AnimationState){
 					default: return false;
 					case hitFloor,knocked2Floor: return true;
-				}
+				}+/
 		}
 	}
 	private AnimationState fixAnimation(AnimationState state){
@@ -856,11 +856,11 @@ final class SacObject(B){
 					default: return state;
 					case hitFloor: return knocked2Floor;
 				}
-			case abraxus:
+			/+case abraxus:
 				switch(state)with(AnimationState){
 					default: return state;
 					case hitFloor,knocked2Floor: return cast(AnimationState)(AnimationState.max+1);
-				}
+				}+/
 		}
 	}
 	final bool hasAnimationState(AnimationState state)in{
