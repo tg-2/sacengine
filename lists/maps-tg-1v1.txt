@@ -33,7 +33,7 @@ maps/(2) WM-Swap.scp
 maps/(2) WM-theDawnvalley.scp
 maps/(2) WM-theRift.scp
 maps/(2) WM-Wildland Pass.scp
-maps/(2) TM-Chain of Being.scp
+maps/(2) TM-Chain Of Being.scp
 maps/(2) TM-Glaciers.scp
 maps/(2) TM-Sunhair.scp
 maps/(2) TM-Urknall.scp
