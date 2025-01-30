@@ -23920,7 +23920,7 @@ void updateWizard(B)(ref WizardInfo!B wizard,ObjectState!B state){
 	auto side=sidePositionRelHealthRelManaUpdateAltarApproach[0], position=sidePositionRelHealthRelManaUpdateAltarApproach[1];
 	auto relativeHealth=sidePositionRelHealthRelManaUpdateAltarApproach[2], relativeMana=sidePositionRelHealthRelManaUpdateAltarApproach[3];
 	auto updateAltarApproach=sidePositionRelHealthRelManaUpdateAltarApproach[4];
-	if(relativeHealth<0.25f) wizard.lastLowOnHealthFrame=state.frame;
+	if(0.0f<relativeHealth&&relativeHealth<0.25f) wizard.lastLowOnHealthFrame=state.frame;
 	if(relativeMana<0.25f) wizard.lastLowOnManaFrame=state.frame;
 	auto ids=side==-1?(int[4]).init:findClosestBuildings(side,position,state,updateAltarApproach);
 	wizard.closestBuilding=ids[0];
