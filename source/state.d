@@ -68,9 +68,9 @@ bool isDying(CreatureMode mode){
 }
 bool isAlive(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
-		case idle,moving,idleGhost,movingGhost,ghostToIdle,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
+		case idle,moving,ghostToIdle,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
 			shooting,usingAbility,pulling,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm,firewalk: return true;
-		case dying,dead,deadToGhost,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
+		case dying,dead,deadToGhost,idleGhost,movingGhost,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
 	}
 }
 bool isCasting(CreatureMode mode){
@@ -23911,16 +23911,18 @@ void playSpellbookSound(B)(int side,SpellbookSoundFlags flags,char[4] tag,Object
 	static if(B.hasAudio) if(playAudio) B.playSpellbookSound(side,flags,tag,gain);
 }
 void updateWizard(B)(ref WizardInfo!B wizard,ObjectState!B state){
-	auto sidePositionRelHealthRelMana=state.movingObjectById!((ref wizard){
+	auto sidePositionRelHealthRelManaUpdateAltarApproach=state.movingObjectById!((ref wizard){
 		float relativeHealth=wizard.creatureStats.health/wizard.creatureStats.maxHealth;
 		float relativeMana=wizard.creatureStats.mana/wizard.creatureStats.maxMana;
-		return tuple(wizard.side,wizard.position,relativeHealth,relativeMana);
-	},()=>tuple(-1,Vector3f.init,float.init,float.init))(wizard.id);
-	auto side=sidePositionRelHealthRelMana[0], position=sidePositionRelHealthRelMana[1];
-	auto relativeHealth=sidePositionRelHealthRelMana[2], relativeMana=sidePositionRelHealthRelMana[3];
+		auto updateAltarApproach=wizard.isAlive;
+		return tuple(wizard.side,wizard.position,relativeHealth,relativeMana,updateAltarApproach);
+	},()=>tuple(-1,Vector3f.init,float.init,float.init,false))(wizard.id);
+	auto side=sidePositionRelHealthRelManaUpdateAltarApproach[0], position=sidePositionRelHealthRelManaUpdateAltarApproach[1];
+	auto relativeHealth=sidePositionRelHealthRelManaUpdateAltarApproach[2], relativeMana=sidePositionRelHealthRelManaUpdateAltarApproach[3];
+	auto updateAltarApproach=sidePositionRelHealthRelManaUpdateAltarApproach[4];
 	if(relativeHealth<0.25f) wizard.lastLowOnHealthFrame=state.frame;
 	if(relativeMana<0.25f) wizard.lastLowOnManaFrame=state.frame;
-	auto ids=side==-1?(int[4]).init:findClosestBuildings(side,position,state,true);
+	auto ids=side==-1?(int[4]).init:findClosestBuildings(side,position,state,updateAltarApproach);
 	wizard.closestBuilding=ids[0];
 	wizard.closestShrine=ids[1];
 	wizard.closestAltar=ids[2];
