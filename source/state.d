@@ -816,46 +816,6 @@ struct NotificationState{
 	enum blinkFrames=updateFPS/4;
 	enum blinkDuration=19*2*blinkFrames; // TODO: ok?
 	int blinkStartFrame=0;
-	private void startNotify(B)(ObjectState!B state){
-		if(!isNotifying(state)) blinkStartFrame=state.frame;
-		lastNotificationFrame=state.frame;
-	}
-	void attack(B)(ref MovingObject!B object,ObjectState!B state){
-		startNotify(state);
-		if(auto wizard=state.getWizardForSide(object.side))
-			(object.isWizard?wizard.lastWizardDamageFrame:wizard.lastCreatureDamageFrame)=state.frame;
-	}
-	void attack(B)(ref Building!B building,ObjectState!B state){
-		startNotify(state);
-		if(auto wizard=state.getWizardForSide(building.side))
-			wizard.lastBuildingDamageFrame=state.frame;
-	}
-	void kill(B)(ref MovingObject!B object,ObjectState!B state){
-		if(object.isSacDoctor) return attack(object,state);
-		startNotify(state);
-		if(auto wizard=state.getWizardForSide(object.side)){
-			if(object.sacObject.isManahoar) wizard.lastManahoarKilledFrame=state.frame;
-			else if(wizard.id==object.id) wizard.lastWizardKilledFrame=state.frame;
-			else wizard.lastCreatureKilledFrame=state.frame;
-		}
-	}
-	void destroy(B)(ref Building!B building,ObjectState!B state){
-		startNotify(state);
-		if(auto wizard=state.getWizardForSide(building.side)){
-			if(building.isManalith) wizard.lastManalithDestroyedFrame=state.frame;
-			else wizard.lastBuildingDestroyedFrame=state.frame;
-		}
-	}
-	void approachAltar(B)(ref MovingObject!B targetWizard,ObjectState!B state){
-		startNotify(state);
-		if(auto wizard=state.getWizard(targetWizard.id))
-			wizard.lastAltarApproachFrame=state.frame;
-	}
-	void desecrate(B)(ref MovingObject!B targetWizard,ObjectState!B state){
-		startNotify(state);
-		if(auto wizard=state.getWizard(targetWizard.id))
-			wizard.lastAltarDesecratedFrame=state.frame;
-	}
 	bool isNotifying(B)(ObjectState!B state){
 		if(state.frame<lastNotificationFrame) return false;
 		if(lastNotificationFrame+1<state.frame&&blinkStartFrame+blinkDuration<=state.frame)
@@ -866,6 +826,70 @@ struct NotificationState{
 		if(!isNotifying(state)) return false;
 		if(blinkStartFrame+blinkDuration<=state.frame) return false;
 		return (state.frame-blinkStartFrame)%(2*blinkFrames)<blinkFrames;
+	}
+	private void notifyOnce(B)(ObjectState!B state){
+		if(!isNotifying(state)) blinkStartFrame=state.frame;
+		lastNotificationFrame=state.frame;
+	}
+	private void keepNotifying(B)(ObjectState!B state){
+		if(!isNotifying(state)) return notifyOnce(state);
+		blinkStartFrame=blinkStartFrame+max(0,state.frame-blinkStartFrame)/(2*blinkFrames)*(2*blinkFrames);
+		lastNotificationFrame=state.frame;
+	}
+	void drainMana(B)(ref MovingObject!B object,ObjectState!B state){
+		if(auto wizard=state.getWizard(object.id)){
+			auto health=object.creatureStats.health;
+			auto relativeMana=object.creatureStats.mana/object.creatureStats.maxMana;
+			if(object.isAlive&&0.0f<health&&relativeMana<0.25f)
+				wizard.lastLowOnManaFrame=state.frame;
+		}
+	}
+	void attack(B)(ref MovingObject!B object,ObjectState!B state){
+		keepNotifying(state);
+		if(auto wizard=state.getWizardForSide(object.side)){
+			(object.isWizard?wizard.lastWizardDamageFrame:wizard.lastCreatureDamageFrame)=state.frame;
+			if(wizard.id==object.id){
+				auto relativeHealth=object.creatureStats.health/object.creatureStats.maxHealth;
+				if(object.isAlive&&0.0f<relativeHealth&&relativeHealth<0.25f)
+					wizard.lastLowOnHealthFrame=state.frame;
+			}
+		}
+	}
+	void attack(B)(ref Building!B building,ObjectState!B state){
+		keepNotifying(state);
+		if(auto wizard=state.getWizardForSide(building.side))
+			wizard.lastBuildingDamageFrame=state.frame;
+	}
+	void kill(B)(ref MovingObject!B object,ObjectState!B state){
+		if(object.isSacDoctor) return attack(object,state);
+		if(auto wizard=state.getWizardForSide(object.side)){
+			if(object.sacObject.isManahoar){
+				notifyOnce(state);
+				wizard.lastManahoarKilledFrame=state.frame;
+			}else if(wizard.id==object.id){
+				wizard.lastWizardKilledFrame=state.frame;
+			}else{
+				notifyOnce(state);
+				wizard.lastCreatureKilledFrame=state.frame;
+			}
+		}else notifyOnce(state);
+	}
+	void destroy(B)(ref Building!B building,ObjectState!B state){
+		notifyOnce(state);
+		if(auto wizard=state.getWizardForSide(building.side)){
+			if(building.isManalith) wizard.lastManalithDestroyedFrame=state.frame;
+			else wizard.lastBuildingDestroyedFrame=state.frame;
+		}
+	}
+	void approachAltar(B)(ref MovingObject!B targetWizard,ObjectState!B state){
+		notifyOnce(state);
+		if(auto wizard=state.getWizard(targetWizard.id))
+			wizard.lastAltarApproachFrame=state.frame;
+	}
+	void desecrate(B)(ref MovingObject!B targetWizard,ObjectState!B state){
+		notifyOnce(state);
+		if(auto wizard=state.getWizard(targetWizard.id))
+			wizard.lastAltarDesecratedFrame=state.frame;
 	}
 }
 
@@ -7526,6 +7550,7 @@ void heal(B)(ref Building!B building,float amount,ObjectState!B state){
 
 void drainMana(B)(ref MovingObject!B object,float amount,ObjectState!B state){
 	object.creatureStats.mana=max(0.0f,object.creatureStats.mana-amount);
+	object.notificationState.drainMana(object,state);
 }
 
 enum ghostHealthPerMana=4.2f;
@@ -12993,7 +13018,7 @@ CastingStatus castStatus(B)(ref MovingObject!B wizard,ObjectState!B state){
 CastingStatus update(B)(ref ManaDrain!B manaDrain,ObjectState!B state){
 	manaDrain.timer-=1;
 	return state.movingObjectById!((ref wizard,manaDrain,state){
-		if(manaDrain.timer>=0) wizard.creatureStats.mana=max(0.0f,wizard.creatureStats.mana-manaDrain.manaCostPerFrame);
+		if(manaDrain.timer>=0) wizard.drainMana(manaDrain.manaCostPerFrame,state);
 		return wizard.castStatus(state);
 	},function CastingStatus(){ return CastingStatus.interrupted; })(manaDrain.wizard,manaDrain,state);
 }
@@ -14821,7 +14846,7 @@ void swarmHit(B)(ref Swarm!B swarm,int target,ObjectState!B state){
 		dealSpellDamage(target,swarm.spell,swarm.wizard,swarm.side,swarm.velocity,DamageMod.splash,state);
 		static void hit(T)(ref T obj,Swarm!B *swarm,ObjectState!B state){
 			static if(is(T==MovingObject!B)){
-				obj.creatureStats.mana=max(0.0f,obj.creatureStats.mana-0.25f*obj.creatureStats.maxMana);
+				obj.drainMana(0.25f*obj.creatureStats.maxMana,state);
 			}
 			enum numParticles=128;
 			auto sacParticle=SacParticle!B.get(ParticleType.swarmHit);
@@ -23911,17 +23936,12 @@ void playSpellbookSound(B)(int side,SpellbookSoundFlags flags,char[4] tag,Object
 	static if(B.hasAudio) if(playAudio) B.playSpellbookSound(side,flags,tag,gain);
 }
 void updateWizard(B)(ref WizardInfo!B wizard,ObjectState!B state){
-	auto sidePositionRelHealthRelManaUpdateAltarApproach=state.movingObjectById!((ref wizard){
-		float relativeHealth=wizard.creatureStats.health/wizard.creatureStats.maxHealth;
-		float relativeMana=wizard.creatureStats.mana/wizard.creatureStats.maxMana;
-		auto updateAltarApproach=wizard.isAlive;
-		return tuple(wizard.side,wizard.position,relativeHealth,relativeMana,updateAltarApproach);
-	},()=>tuple(-1,Vector3f.init,float.init,float.init,false))(wizard.id);
-	auto side=sidePositionRelHealthRelManaUpdateAltarApproach[0], position=sidePositionRelHealthRelManaUpdateAltarApproach[1];
-	auto relativeHealth=sidePositionRelHealthRelManaUpdateAltarApproach[2], relativeMana=sidePositionRelHealthRelManaUpdateAltarApproach[3];
-	auto updateAltarApproach=sidePositionRelHealthRelManaUpdateAltarApproach[4];
-	if(0.0f<relativeHealth&&relativeHealth<0.25f) wizard.lastLowOnHealthFrame=state.frame;
-	if(relativeMana<0.25f) wizard.lastLowOnManaFrame=state.frame;
+	auto sidePositionIsAlive=state.movingObjectById!((ref wizard){
+		auto isAlive=wizard.isAlive;
+		return tuple(wizard.side,wizard.position,isAlive);
+	},()=>tuple(-1,Vector3f.init,false))(wizard.id);
+	auto side=sidePositionIsAlive[0], position=sidePositionIsAlive[1], isAlive=sidePositionIsAlive[2];
+	auto updateAltarApproach=isAlive;
 	auto ids=side==-1?(int[4]).init:findClosestBuildings(side,position,state,updateAltarApproach);
 	wizard.closestBuilding=ids[0];
 	wizard.closestShrine=ids[1];
