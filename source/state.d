@@ -8310,16 +8310,19 @@ int getCastingNumFrames(B)(ref MovingObject!B object,SacSpell!B spell,WizardInfo
 					}
 					break;
 				case chainLightning:
-					if(5<=wizard.level) return cycles(0);
+					if(4<=wizard.level&&wizard.level<=5) return cycles(1);
+					if(6<=wizard.level) return cycles(0);
 					break;
 				case dragonfire:
-					if(5<=wizard.level) return cycles(0);
+					if(4<=wizard.level&&wizard.level<=6) return cycles(1);
+					if(7<=wizard.level) return cycles(0);
 					break;
 				case explosion:
-					if(5<=wizard.level) return cycles(0);
+					if(5<=wizard.level&&wizard.level<=6) return cycles(1);
+					if(7<=wizard.level) return cycles(0);
 					break;
 				case demonicRift,haloOfEarth,rainOfFrogs:
-					if(7<=wizard.level) return cycles(0);
+					if(5<=wizard.level) return cycles(1);
 					break;
 				case frozenGround:
 					if(!stationary){
@@ -8360,7 +8363,6 @@ int getCastingNumFrames(B)(ref MovingObject!B object,SacSpell!B spell,WizardInfo
 					if(5<=wizard.level) return cycles(0);
 					break;
 			}
-
 			break;
 		case theRagman:
 			switch(spell.tag)with(SpellTag){
