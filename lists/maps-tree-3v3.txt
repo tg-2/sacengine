@@ -1,10 +1,10 @@
 maps/(6) After Life3.scp
 maps/(6) DD - Eternal Autumn.scp
 maps/(6) DD - Scar Trek.scp
-maps/(6) EM-Andes.scp
+maps/(6) EM-Andes.scp --souls=18 --min-level=7 --level=7
 maps/(6) EM-Arches's Fall.scp
 maps/(6) EM-Arena.scp
-maps/(6) EM-Conifer Forest.scp
+maps/(6) EM-Conifer Forest.scp --souls=18 --min-level=7 --level=7
 maps/(6) EM-Diablo's Shell.scp
 maps/(6) EM-Eden.scp
 maps/(6) EM-Ethereal Conflict.scp
