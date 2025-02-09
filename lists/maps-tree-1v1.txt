@@ -20,7 +20,6 @@ maps/(2) EM-Valley Of Fusion.scp
 maps/(2) EM-Wicked School v2.1.scp
 maps/(2) Hamburger Hill2.scp
 maps/(2) Recon.scp
-maps/(2) Ring.scp
 maps/(2) RM - Ferry Revival.scp
 maps/(2) SS Sanctuary.scp
 maps/(2) TM-A Lesser Fate.scp
