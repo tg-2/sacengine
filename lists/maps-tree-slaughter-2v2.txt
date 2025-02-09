@@ -1,0 +1,3 @@
+maps/(4) EM-Slaughter Only.scp
+maps/(4) EM-Slaughter.scp
+maps/(4) PAV - Somber Slaughter.scp

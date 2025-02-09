@@ -1,5 +1,4 @@
 maps/(2) 1 vs 1 twirl.scp
-maps/(2) 2 The Death.scp
 maps/(2) Desert Island.scp
 maps/(2) EM-Atta.scp
 maps/(2) EM-Desert Of Deception.scp
@@ -10,9 +9,7 @@ maps/(2) EM-Fish Food.scp
 maps/(2) EM-Gaymap.scp
 maps/(2) EM-Greed.scp
 maps/(2) EM-Hazy.scp
-maps/(2) EM-Heart Attack-crash.scp
 maps/(2) EM-Heart Attack.scp
-maps/(2) EM-Hearts.scp
 maps/(2) EM-Humanaptra.scp
 maps/(2) EM-Menace.scp
 maps/(2) EM-North Pole.scp
@@ -21,28 +18,23 @@ maps/(2) EM-Stinking Watercourse.scp
 maps/(2) EM-Twisted Fate.scp
 maps/(2) EM-Valley Of Fusion.scp
 maps/(2) EM-Wicked School v2.1.scp
-maps/(2) Ferry Revival 2.scp
-maps/(2) Gabe's Folly.scp
-maps/(2) Pure 1on1 1.scp
-maps/(2) Pure 1on1 2.scp
-maps/(2) Pure 1on1 3.scp
-maps/(2) Pure 1on1 4.scp
+maps/(2) Hamburger Hill2.scp
 maps/(2) Recon.scp
 maps/(2) Ring.scp
+maps/(2) RM - Ferry Revival.scp
 maps/(2) SS Sanctuary.scp
+maps/(2) TM-A Lesser Fate.scp
 maps/(2) TM-Chain Of Being.scp
+maps/(2) TM-Fairytale.scp
 maps/(2) TM-Glaciers.scp
 maps/(2) TM-Hourglass.scp
+maps/(2) TM-Lucifer's Fate.scp
 maps/(2) TM-Red Hot v1.scp
 maps/(2) TM-Red Hot v2.scp
+maps/(2) TM-Sulphur.scp
 maps/(2) TM-Sunhair.scp
 maps/(2) TM-Urknall.scp
-maps/(2) TM-A Lesser Fate.scp
-maps/(2) TM-Sulphur.scp
-maps/(2) TM-Fairytale.scp
-maps/(2) Tourney - Guerrilla.scp
 maps/(2) Tourney - I scream.scp
-maps/(2) Tourney - The Isle.scp
 maps/(2) Tropical Paradise.scp
 maps/(2) WM-Botany 1on1.scp
 maps/(2) WM-Cinder Twirl.scp

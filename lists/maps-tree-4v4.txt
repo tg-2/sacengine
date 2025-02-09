@@ -1,0 +1,7 @@
+maps/(8) EM-Greed.scp
+maps/(8) EM-Stratos's Kingdom.scp
+maps/(8) EM-Two Farms.scp
+maps/(8) Hamburger Hill2.scp
+maps/(8) Rockdale.scp
+maps/(8) TM-Sulphur.scp
+maps/(8) XM-Snow-White.scp

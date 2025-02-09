@@ -1,0 +1,46 @@
+maps/(6) After Life3.scp
+maps/(6) DD - Eternal Autumn.scp
+maps/(6) DD - Scar Trek.scp
+maps/(6) EM-Andes.scp
+maps/(6) EM-Arches's Fall.scp
+maps/(6) EM-Arena.scp
+maps/(6) EM-Conifer Forest.scp
+maps/(6) EM-Diablo's Shell.scp
+maps/(6) EM-Eden.scp
+maps/(6) EM-Ethereal Conflict.scp
+maps/(6) EM-Greed.scp
+maps/(6) EM-Humanaptra.scp
+maps/(6) EM-Majestic.scp
+maps/(6) EM-North Pole.scp
+maps/(6) EM-Salt Gulch.scp
+maps/(6) EM-Shadow & Light.scp
+maps/(6) EM-Stinking Watercourse.scp
+maps/(6) EM-Stratos's Kingdom.scp
+maps/(6) EM-Sunny Fields.scp
+maps/(6) EM-The Two Towers.scp
+maps/(6) EM-Two Farms.scp
+maps/(6) Exe.scp
+maps/(6) Gladiator EXE.scp
+maps/(6 -GS) Banzai.scp
+maps/(6 -GS) Hill 401K.scp
+maps/(6) Hamburger Hill2.scp
+maps/(6) Kirwan.scp
+maps/(6) Mesa.scp
+maps/(6) Poltergeist.scp
+maps/(6) Sacred Glade.scp
+maps/(6) TM-Blast Pit.scp
+maps/(6) TM-Cyberpunk.scp
+maps/(6) TM-Evening Tide.scp
+maps/(6) TM-Phoney War.scp
+maps/(6) TM-Red Hot v1.scp
+maps/(6) TM-Salley Gardens.scp
+maps/(6) TM-Sulphur.scp
+maps/(6) TM-Sunhair.scp
+maps/(6) TM-Urknall.scp
+maps/(6) Twirlish Dip.scp
+maps/(6) WM-Creeping Place.scp
+maps/(6) WM-Passage.scp
+maps/(6) XM-Burned Desire.scp
+maps/(6) XM-Snow-White.scp
+maps/(6) ZM - Final Run.scp
+maps/(6) ZM - Stream Line.scp
