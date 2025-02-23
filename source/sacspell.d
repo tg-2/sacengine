@@ -121,7 +121,7 @@ class SacSpell(B){
 		switch(tag){
 			case SpellTag.fallenShoot: return 10.0f;
 			case SpellTag.blightMites,SpellTag.stickyBomb,SpellTag.oil,SpellTag.bombardment: return 20.0f;
-			case SpellTag.frozenGround: return 60.0f;
+			case SpellTag.frozenGround: return 25.0f;
 			default: return 30.0f;
 		}
 	}

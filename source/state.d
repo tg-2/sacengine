@@ -3268,7 +3268,7 @@ struct FrozenGroundSnowball(B){
 	Quaternionf rotationUpdate;
 	Quaternionf rotation;
 
-	enum fallDuration=1.25f;
+	enum fallDuration=2.0f;
 }
 struct FrozenGround(B){
 	int wizard;
