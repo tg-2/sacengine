@@ -24470,7 +24470,7 @@ struct CenterProximity(B){
 }
 auto eachInRange(alias f,B,T...)(ref CenterProximity!B proximity,int version_,Vector3f position,float range,T args){
 	with(proximity){
-		auto offset=Vector3f(0.5f*range,0.5f*range,0.0f);
+		auto offset=Vector3f(range,range,0.0f);
 		auto lowTile=getTile(position-offset), highTile=getTile(position+offset);
 		float rate=0.0f;
 		if(lowTile.j+offMapSlack<0||lowTile.i+offMapSlack<0||highTile.j+offMapSlack>=size||highTile.i+offMapSlack>=size)
