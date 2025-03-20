@@ -1454,7 +1454,8 @@ final class SacScene: Scene{
 				if(keyDown[KEY_L]) hideMouse();
 				if(state) foreach(key;KEY_1..KEY_0+1){
 					foreach(_;0..keyDown[key]){
-						int slot=key==KEY_0?9:key-KEY_1;
+						int index=key==KEY_0?9:key-KEY_1;
+						int slot=state.canonicalSlotOrder(index);
 						int wizard=0<=slot&&slot<state.slots.length?state.slots[slot].wizard:0;
 						if(camera.target==wizard){
 							if(wizard==0) toggleMouse();

@@ -27302,6 +27302,18 @@ final class GameState(B){
 	void removeFuture(){ .removeFuture(states,commands); }
 	void replaceState(scope ubyte[] serialized){ .replaceState(states,commands,serialized); }
 
+	int canonicalSlotOrder(int index)@nogc{
+		if(index<0||index>=32) return index;
+		int[32] slotIndices=-1;
+		int numRelevant=0;
+		foreach(i;0..min(32,slots.length))
+			if(slots[i].controlledSide!=-1)
+				slotIndices[numRelevant++]=i;
+		if(index>=numRelevant) return index;
+		sort!((i,j)=>slots[i].controlledSide<slots[j].controlledSide)(slotIndices[0..numRelevant]);
+		return slotIndices[index];
+	}
+
 	void addCommand(int frame,Command!B command)in{
 		assert(command.id!=0);
 		assert(committedFrame<=frame);
