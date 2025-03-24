@@ -454,8 +454,8 @@ final class SacObject(B){
 		assert(isSaxs);
 	}do{
 		// TODO: do we even want this at all?
-		auto hbox=hitbox(rotation,animationState.stance1,0);
-		/+if(nttTag!=SpellTag.dragon){
+		/+auto hbox=hitbox(rotation,animationState.stance1,0);
+		if(nttTag!=SpellTag.dragon){
 			auto size=0.5f*boxSize(hbox).length;
 			Vector3f[6] fistLoc;
 			int nFistLoc=0;
