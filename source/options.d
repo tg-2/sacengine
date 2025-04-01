@@ -82,7 +82,7 @@ struct Options{
     int replicateCreatures=1;
     int protectManafounts=0;
     bool terrainSineWave=false;
-    bool randomCreatureScale=true;
+    bool randomCreatureScale=false;
     bool enableDropSoul=true;
     bool targetDroppedSouls=false;
     bool enableParticles=true;
