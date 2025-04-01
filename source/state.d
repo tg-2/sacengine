@@ -360,7 +360,7 @@ enum Formation{
 
 static getScale(T)(ref T obj){
 	static if(is(T==MovingObject!B,B)){
-		auto hitbox=obj.sacObject.largeHitbox(Quaternionf.identity(),AnimationState.stance1,0);
+		auto hitbox=obj.sacObject.largeHitbox(Quaternionf.identity(),obj.scale,AnimationState.stance1,0);
 		return 0.5f*(hitbox[1].xy-hitbox[0].xy);
 	}else static if(is(T==StaticObject!B,B)){
 		auto hitbox=obj.hitbox;
@@ -898,6 +898,7 @@ struct MovingObject(B){
 	int id=0;
 	Vector3f position;
 	Quaternionf rotation;
+	float scale;
 	AnimationState animationState;
 	int frame;
 	CreatureAI creatureAI;
@@ -909,10 +910,11 @@ struct MovingObject(B){
 	int soulId=0;
 	mixin Assign;
 
-	this(SacObject!B sacObject,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame,CreatureState creatureState,CreatureStats creatureStats,CreatureStatistics creatureStatistics,NotificationState notificationState,int side){
+	this(SacObject!B sacObject,Vector3f position,Quaternionf rotation,float scale,AnimationState animationState,int frame,CreatureState creatureState,CreatureStats creatureStats,CreatureStatistics creatureStatistics,NotificationState notificationState,int side){
 		this.sacObject=sacObject;
 		this.position=position;
 		this.rotation=rotation;
+		this.scale=scale;
 		this.animationState=animationState;
 		this.frame=frame;
 		this.creatureState=creatureState;
@@ -921,14 +923,14 @@ struct MovingObject(B){
 		this.notificationState=notificationState;
 		this.side=side;
 	}
-	this(SacObject!B sacObject,int id,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame,CreatureState creatureState,CreatureStats creatureStats,CreatureStatistics creatureStatistics,NotificationState notificationState,int side){
+	this(SacObject!B sacObject,int id,Vector3f position,Quaternionf rotation,float scale,AnimationState animationState,int frame,CreatureState creatureState,CreatureStats creatureStats,CreatureStatistics creatureStatistics,NotificationState notificationState,int side){
 		this.id=id;
-		this(sacObject,position,rotation,animationState,frame,creatureState,creatureStats,creatureStatistics,notificationState,side);
+		this(sacObject,position,rotation,scale,animationState,frame,creatureState,creatureStats,creatureStatistics,notificationState,side);
 	}
-	this(SacObject!B sacObject,int id,Vector3f position,Quaternionf rotation,AnimationState animationState,int frame,CreatureAI creatureAI,CreatureState creatureState,CreatureStats creatureStats,CreatureStatistics creatureStatistics,NotificationState notificationState,int side,int soulId){
+	this(SacObject!B sacObject,int id,Vector3f position,Quaternionf rotation,float scale,AnimationState animationState,int frame,CreatureAI creatureAI,CreatureState creatureState,CreatureStats creatureStats,CreatureStatistics creatureStatistics,NotificationState notificationState,int side,int soulId){
 		this.creatureAI=move(creatureAI);
 		this.soulId=soulId;
-		this(sacObject,id,position,rotation,animationState,frame,creatureState,creatureStats,creatureStatistics,notificationState,side);
+		this(sacObject,id,position,rotation,scale,animationState,frame,creatureState,creatureStats,creatureStatistics,notificationState,side);
 	}
 }
 int side(B)(ref MovingObject!B object,ObjectState!B state){
@@ -945,10 +947,10 @@ void health(B)(ref MovingObject!B object,float value){
 }
 enum ghostSpeedFactor=1.75f;
 float speedOnGround(B)(ref MovingObject!B object,ObjectState!B state){
-	return (object.isGhost?ghostSpeedFactor:1.0f)*object.creatureStats.movementSpeed(false);
+	return (object.isGhost?ghostSpeedFactor:1.0f)*object.creatureStats.movementSpeed(false)*object.scale;
 }
 float speedInAir(B)(ref MovingObject!B object,ObjectState!B state){
-	return object.creatureStats.movementSpeed(true);
+	return object.creatureStats.movementSpeed(true)*object.scale;
 }
 float speed(B)(ref MovingObject!B object,ObjectState!B state){
 	return object.creatureState.movement==CreatureMovement.flying?object.speedInAir(state):object.speedOnGround(state);
@@ -957,13 +959,13 @@ float takeoffTime(B)(ref MovingObject!B object,ObjectState!B state){
 	return object.sacObject.takeoffTime;
 }
 float accelerationOnGround(B)(ref MovingObject!B object,ObjectState!B state){
-	return object.creatureStats.movementAcceleration(false);
+	return object.creatureStats.movementAcceleration(false)*object.scale;
 }
 float accelerationInAir(B)(ref MovingObject!B object,ObjectState!B state){
-	return object.creatureStats.movementAcceleration(true);
+	return object.creatureStats.movementAcceleration(true)*object.scale;
 }
 float acceleration(B)(ref MovingObject!B object,ObjectState!B state){
-	return object.creatureState.movement==CreatureMovement.flying?object.accelerationInAir(state):object.accelerationOnGround(state);
+	return object.creatureState.movement==CreatureMovement.flying?object.accelerationInAir(state):object.accelerationOnGround(state)*object.scale;
 }
 
 bool isWizard(B)(ref MovingObject!B obj){ return obj.sacObject.isWizard; }
@@ -1020,7 +1022,7 @@ void removeFromGroups(B)(MovingObject!B obj,ObjectState!B state){
 	state.removeFromGroups(obj.side,obj.id);
 }
 Vector3f[2] relativeHitbox(B)(ref MovingObject!B object){
-	return object.sacObject.hitbox(object.rotation,object.animationState,object.frame/updateAnimFactor);
+	return object.sacObject.hitbox(object.rotation,object.scale,object.animationState,object.frame/updateAnimFactor);
 }
 Vector3f[2] hitbox(B)(ref MovingObject!B object){
 	auto hitbox=object.relativeHitbox;
@@ -1070,7 +1072,7 @@ Vector3f lowCenter(T)(ref T object){
 }
 Vector3f[2] relativeMeleeHitbox(B)(ref MovingObject!B object){
 	bool isFlying=object.creatureState.movement!=CreatureMovement.onGround;
-	return object.sacObject.meleeHitbox(isFlying,object.rotation,object.animationState,object.frame/updateAnimFactor);
+	return object.sacObject.meleeHitbox(isFlying,object.rotation,object.scale,object.animationState,object.frame/updateAnimFactor);
 }
 Vector3f[2] meleeHitbox(B)(ref MovingObject!B object){
 	auto hitbox=object.relativeMeleeHitbox;
@@ -1079,7 +1081,7 @@ Vector3f[2] meleeHitbox(B)(ref MovingObject!B object){
 	return hitbox;
 }
 Vector3f[2] relativeDefaultMeleeHitbox(B)(ref MovingObject!B object){
-	return object.sacObject.defaultMeleeHitbox(object.rotation,object.animationState,object.frame/updateAnimFactor);
+	return object.sacObject.defaultMeleeHitbox(object.rotation,object.scale,object.animationState,object.frame/updateAnimFactor);
 }
 Vector3f[2] defaultMeleeHitbox(B)(ref MovingObject!B object){
 	auto hitbox=object.relativeDefaultMeleeHitbox;
@@ -1097,13 +1099,13 @@ float meleeStrength(B)(ref MovingObject!B object){
 }
 
 Vector3f[2] hands(B)(ref MovingObject!B object){
-	auto hands=object.sacObject.hands(object.animationState,object.frame/updateAnimFactor);
+	auto hands=object.sacObject.hands(object.scale,object.animationState,object.frame/updateAnimFactor);
 	foreach(ref hand;hands) hand=object.position+rotate(object.rotation,hand);
 	return hands;
 }
 
 Vector3f[2] handsFromAnimation(B)(ref MovingObject!B object,AnimationState animationState){
-	auto hands=object.sacObject.handsFromAnimation(animationState,object.animationState,object.frame/updateAnimFactor);
+	auto hands=object.sacObject.handsFromAnimation(object.scale,animationState,object.animationState,object.frame/updateAnimFactor);
 	foreach(ref hand;hands) hand=object.position+rotate(object.rotation,hand);
 	return hands;
 }
@@ -1115,32 +1117,32 @@ Vector3f randomHand(B)(Vector3f[2] hands,ObjectState!B state){
 }
 
 Vector3f[2] needle(B)(ref MovingObject!B object){
-	auto needle=object.sacObject.needle(object.animationState,object.frame/updateAnimFactor);
+	auto needle=object.sacObject.needle(object.scale,object.animationState,object.frame/updateAnimFactor);
 	needle[0]=object.position+rotate(object.rotation,needle[0]);
 	needle[1]=rotate(object.rotation,needle[1]);
 	return needle;
 }
 
 SacObject!B.LoadedArrow loadedArrow(B)(ref MovingObject!B object){
-	auto result=object.sacObject.loadedArrow(object.animationState,object.frame/updateAnimFactor);
+	auto result=object.sacObject.loadedArrow(object.scale,object.animationState,object.frame/updateAnimFactor);
 	foreach(ref pos;result.tupleof) pos=object.position+rotate(object.rotation,pos);
 	return result;
 }
 
 Vector3f warmongerFlame(B)(ref MovingObject!B object){
-	auto result=object.sacObject.warmongerFlame(object.animationState,object.frame/updateAnimFactor);
+	auto result=object.sacObject.warmongerFlame(object.scale,object.animationState,object.frame/updateAnimFactor);
 	result=object.position+rotate(object.rotation,result);
 	return result;
 }
 
 Vector3f styxFlame(B)(ref MovingObject!B object){
-	auto result=object.sacObject.styxFlame(object.animationState,object.frame/updateAnimFactor);
+	auto result=object.sacObject.styxFlame(object.scale,object.animationState,object.frame/updateAnimFactor);
 	result=object.position+rotate(object.rotation,result);
 	return result;
 }
 
 Vector3f shotPosition(B)(ref MovingObject!B object,bool fix=false){
-	auto loc=object.sacObject.shotPosition(object.animationState,object.frame/updateAnimFactor,fix);
+	auto loc=object.sacObject.shotPosition(object.scale,object.animationState,object.frame/updateAnimFactor,fix);
 	return object.position+rotate(object.rotation,loc);
 }
 Vector3f[2] basiliskShotPositions(B)(ref MovingObject!B object){ return object.hands; }
@@ -1158,7 +1160,7 @@ AnimationState shootAnimation(B)(ref MovingObject!B object,bool useSecondShootAn
 	}
 }
 Vector3f firstShotPosition(B)(ref MovingObject!B object,bool isAbility){
-	auto loc=object.sacObject.firstShotPosition(object.shootAnimation(isAbility));
+	auto loc=object.sacObject.firstShotPosition(object.scale,object.shootAnimation(isAbility));
 	return object.position+rotate(object.rotation,loc);
 }
 
@@ -1281,10 +1283,10 @@ int side(B)(ref StaticObject!B object,ObjectState!B state){
 	return sideFromBuildingId(object.buildingId,state);
 }
 auto relativeHitboxes(B)(ref StaticObject!B object){
-	return object.sacObject.hitboxes(object.rotation);
+	return object.sacObject.hitboxes(object.rotation,object.scale);
 }
 auto hitboxes(B)(ref StaticObject!B object){
-	return object.sacObject.hitboxes(object.rotation).zip(repeat(object.position)).map!(function Vector3f[2](x)=>[x[0][0]+x[1],x[0][1]+x[1]]);
+	return object.sacObject.hitboxes(object.rotation,object.scale).zip(repeat(object.position)).map!(function Vector3f[2](x)=>[x[0][0]+x[1],x[0][1]+x[1]]);
 }
 
 Vector3f[2] relativeHitbox(B)(ref StaticObject!B object){
@@ -1563,6 +1565,7 @@ struct MovingObjects(B,RenderMode mode){
 	Array!int ids;
 	Array!Vector3f positions;
 	Array!Quaternionf rotations;
+	Array!float scales;
 	Array!AnimationState animationStates;
 	Array!int frames;
 	Array!CreatureAI creatureAIs;
@@ -1583,6 +1586,7 @@ struct MovingObjects(B,RenderMode mode){
 		ids.length=l;
 		positions.length=l;
 		rotations.length=l;
+		scales.length=l;
 		animationStates.length=l;
 		frames.length=l;
 		creatureAIs.length=l;
@@ -1602,6 +1606,7 @@ struct MovingObjects(B,RenderMode mode){
 		ids.reserve(reserveSize);
 		positions.reserve(reserveSize);
 		rotations.reserve(reserveSize);
+		scales.reserve(reserveSize);
 		animationStates.reserve(reserveSize);
 		frames.reserve(reserveSize);
 		creatureAIs.reserve(reserveSize);
@@ -1625,6 +1630,7 @@ struct MovingObjects(B,RenderMode mode){
 		ids~=object.id;
 		positions~=object.position;
 		rotations~=object.rotation;
+		scales~=object.scale;
 		animationStates~=object.animationState;
 		frames~=object.frame;
 		creatureAIs~=object.creatureAI;
@@ -1650,7 +1656,7 @@ struct MovingObjects(B,RenderMode mode){
 		length=length-1;
 	}
 	MovingObject!B fetch(int i){
-		return MovingObject!B(sacObject,ids[i],positions[i],rotations[i],animationStates[i],frames[i],move(creatureAIs[i]),creatureStates[i],creatureStatss[i],creatureStatisticss[i],notificationStates[i],sides[i],soulIds[i]);
+		return MovingObject!B(sacObject,ids[i],positions[i],rotations[i],scales[i],animationStates[i],frames[i],move(creatureAIs[i]),creatureStates[i],creatureStatss[i],creatureStatisticss[i],notificationStates[i],sides[i],soulIds[i]);
 	}
 	void opIndexAssign(MovingObject!B obj,int i)in{
 		assert(obj.sacObject is sacObject);
@@ -1658,6 +1664,7 @@ struct MovingObjects(B,RenderMode mode){
 		ids[i]=obj.id;
 		positions[i]=obj.position;
 		rotations[i]=obj.rotation;
+		scales[i]=obj.scale;
 		animationStates[i]=obj.animationState;
 		frames[i]=obj.frame;
 		creatureAIs[i]=move(obj.creatureAI);
@@ -2072,7 +2079,8 @@ int placeCreature(B)(ObjectState!B state,SacObject!B sacObject,int flags,int sid
 	auto creatureState=CreatureState(mode, movement, facing);
 	import animations;
 	auto rotation=facingQuaternion(facing);
-	auto obj=MovingObject!B(sacObject,position,rotation,AnimationState.stance1,0,creatureState,sacObject.creatureStats(flags),CreatureStatistics(),NotificationState(),side);
+	auto scale=state.randomCreatureScale?state.uniform(0.5f,1.5f):1.0f;
+	auto obj=MovingObject!B(sacObject,position,rotation,scale,AnimationState.stance1,0,creatureState,sacObject.creatureStats(flags),CreatureStatistics(),NotificationState(),side);
 	obj.setCreatureState(state);
 	obj.updateCreaturePosition(state);
 	return state.addObject(obj);
@@ -2484,6 +2492,7 @@ struct SpeedUpShadow(B){
 	int creature;
 	Vector3f position;
 	Quaternionf rotation;
+	float scale;
 	AnimationState animationState;
 	int frame;
 	int age=0;
@@ -7213,7 +7222,8 @@ int spawn(T=Creature,B)(int wizard,char[4] tag,int flags,ObjectState!B state,boo
 	position.z=state.getHeight(position);
 	auto creatureState=CreatureState(mode, movement, facing);
 	auto rotation=facingQuaternion(facing);
-	auto obj=MovingObject!B(curObj,position,rotation,AnimationState.disoriented,0,creatureState,curObj.creatureStats(flags),CreatureStatistics(),NotificationState(),side);
+	auto scale=state.randomCreatureScale?state.uniform(0.5f,1.5f):1.0f;
+	auto obj=MovingObject!B(curObj,position,rotation,scale,AnimationState.disoriented,0,creatureState,curObj.creatureStats(flags),CreatureStatistics(),NotificationState(),side);
 	obj.setCreatureState(state);
 	obj.updateCreaturePosition(state);
 	auto ord=Order(CommandType.retreat,OrderTarget(TargetType.creature,wizard,position));
@@ -9158,7 +9168,7 @@ Fireball!B makeFireball(B)(int wizard,int side,Vector3f position,OrderTarget tar
 	return Fireball!B(wizard,side,position,velocity,target,spell,rotationUpdate,Quaternionf.identity());
 }
 Vector3f fireballCastingPosition(B)(ref MovingObject!B obj,ObjectState!B state){
-	auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
+	auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),obj.scale,AnimationState.stance1,0);
 	return obj.position+rotate(obj.rotation,Vector3f(0.0f,hbox[1].y+0.75f,hbox[1].z+0.25f));
 }
 bool castFireball(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
@@ -9185,7 +9195,7 @@ Rock!B makeRock(B)(int wizard,int side,Vector3f position,OrderTarget target,SacS
 }
 enum rockBuryDepth=1.0f;
 Vector3f rockCastingPosition(B)(ref MovingObject!B obj,ObjectState!B state){
-	auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
+	auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),obj.scale,AnimationState.stance1,0);
 	auto position=obj.position+rotate(obj.rotation,Vector3f(0.0f,hbox[1].y+1.5f,0.0f));
 	position.z=state.getHeight(position)-rockBuryDepth;
 	return position;
@@ -9215,7 +9225,7 @@ Swarm!B makeSwarm(B)(int wizard,int side,Vector3f position,OrderTarget target,Sa
 	return Swarm!B(wizard,side,position,velocity,target,spell,frame);
 }
 Vector3f swarmCastingPosition(B)(ref MovingObject!B obj,ObjectState!B state){
-	auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
+	auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),obj.scale,AnimationState.stance1,0);
 	return obj.position+rotate(obj.rotation,Vector3f(0.0f,hbox[1].y+0.75f,hbox[1].z+1.75f));
 }
 bool castSwarm(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,ObjectState!B state){
@@ -9728,7 +9738,7 @@ FrozenGroundSnowball!B makeFrozenGroundSnowball(B)(int wizard,int side,Vector3f 
 	return FrozenGroundSnowball!B(wizard,side,position,velocity,spell,rotationUpdate,Quaternionf.identity());
 }
 Vector3f frozenGroundSnowballCastingPosition(B)(ref MovingObject!B obj,float progress,ObjectState!B state){
-	auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
+	auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),obj.scale,AnimationState.stance1,0);
 	auto position=obj.position+rotate(obj.rotation,Vector3f(0.0f,hbox[1].y+0.75f,0.0f));
 	position.z=state.getHeight(position)+progress*(hbox[1].z+0.5f);
 	return position;
@@ -11075,7 +11085,7 @@ bool rockForm(B)(ref MovingObject!B object,ObjectState!B state){
 	if(object.animationState==AnimationState.stance2)
 		object.animationState=AnimationState.stance1;
 	playSoundAt("tlep",object.id,state,2.0f);
-	auto hbox=object.sacObject.hitbox(Quaternionf.identity(),object.animationState,0);
+	auto hbox=object.sacObject.hitbox(Quaternionf.identity(),object.scale,object.animationState,0);
 	auto scale=0.55f*(object.hitbox[1]-object.hitbox[0]).length;
 	state.addEffect(RockForm!B(object.id,scale));
 	return true;
@@ -11851,7 +11861,7 @@ void animateCreature(B)(ref MovingObject!B object,ObjectState!B state){
 enum phoenixShieldParticleRate=3;
 void spawnPhoenixShieldParticles(B)(ref MovingObject!B object,int numParticles,ObjectState!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.fire);
-	auto hitbox=object.sacObject.hitbox(Quaternionf.identity(),object.animationState,object.frame/updateAnimFactor);
+	auto hitbox=object.sacObject.hitbox(Quaternionf.identity(),object.scale,object.animationState,object.frame/updateAnimFactor);
 	auto center=boxCenter(hitbox);
 	auto size=boxSize(hitbox);
 	size.x=size.y=0.85f*max(size.x,size.y);
@@ -13327,7 +13337,7 @@ bool updateSpeedUp(B)(ref SpeedUp!B speedUp,ObjectState!B state){
 				auto scale=1.0f; // TODO: does this differ for different creatures?
 				auto frame=state.uniform!"[)"(0,sacParticle.numFrames);
 				state.addParticle(Particle!B(sacParticle,state.uniform(hitbox),Vector3f(0.0f,0.0f,0.0f),scale,sacParticle.numFrames,frame));
-				state.addEffect(SpeedUpShadow!B(obj.id,obj.position,obj.rotation,obj.animationState,obj.frame));
+				state.addEffect(SpeedUpShadow!B(obj.id,obj.position,obj.rotation,obj.scale,obj.animationState,obj.frame));
 			}else remove();
 			return true;
 		},()=>false)(creature,framesLeft,state);
@@ -13370,7 +13380,8 @@ int spawnSacDoctor(B)(int side,Vector3f position,Vector3f landingPosition,Object
 	enum jumpVelocity=10.0f;
 	creatureState.fallingVelocity=getFallingVelocity(direction,jumpVelocity,state);
 	auto rotation=facingQuaternion(facing);
-	auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState,curObj.creatureStats(Flags.cannotDamage),CreatureStatistics(),NotificationState(),side);
+	auto scale=state.randomCreatureScale?state.uniform(0.5f,1.5f):1.0f;
+	auto obj=MovingObject!B(curObj,position,rotation,scale,AnimationState.stance1,0,creatureState,curObj.creatureStats(Flags.cannotDamage),CreatureStatistics(),NotificationState(),side);
 	obj.setCreatureState(state);
 	obj.updateCreaturePosition(state);
 	obj.animationState=cast(AnimationState)SacDoctorAnimationState.expelled;
@@ -13709,7 +13720,8 @@ int spawnRitualSacDoctor(B)(int side,Vector3f position,float facing,ObjectState!
 	auto movement=state.isOnGround(position)?CreatureMovement.onGround:curObj.canFly?CreatureMovement.flying:CreatureMovement.tumbling;
 	auto creatureState=CreatureState(mode, movement, facing);
 	auto rotation=facingQuaternion(facing);
-	auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState,curObj.creatureStats(0),CreatureStatistics(),NotificationState(),side);
+	auto scale=state.randomCreatureScale?state.uniform(0.5f,1.5f):1.0f;
+	auto obj=MovingObject!B(curObj,position,rotation,scale,AnimationState.stance1,0,creatureState,curObj.creatureStats(0),CreatureStatistics(),NotificationState(),side);
 	obj.setCreatureState(state);
 	obj.updateCreaturePosition(state);
 	obj.animationState=cast(AnimationState)SacDoctorAnimationState.dance;
@@ -13788,7 +13800,6 @@ bool updateRitual(B)(ref Ritual!B ritual,ObjectState!B state){
 				return ritual.stopRitual(state);
 		}
 		if(creature) state.movingObjectById!((ref obj,targetPosition,remainingTime,state){
-			auto hitbox=obj.sacObject.largeHitbox(Quaternionf.identity(),AnimationState.stance1,0);
 			obj.position=((remainingTime-1)*obj.position+targetPosition)/float(remainingTime);
 		},(){})(creature,shrinePosition+Vector3f(0.0f,0.0f,15.0f),max(1,ritual.setupTime-frame),state);
 		if(!isNaN(vortex.position.x)){
@@ -14181,7 +14192,7 @@ bool updateLightningCasting(B)(ref LightningCasting!B lightningCast,ObjectState!
 		target.position=target.center(state);
 		auto status=manaDrain.update(state);
 		return state.movingObjectById!((obj,status){
-			auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
+			auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),obj.scale,AnimationState.stance1,0);
 			auto offset=Vector3f(0.0f,hbox[1].y+0.75f,hbox[1].z+0.5f);
 			final switch(status){
 				case CastingStatus.underway:
@@ -14267,7 +14278,7 @@ bool updateWrathCasting(B)(ref WrathCasting!B wrathCast,ObjectState!B state){
 					auto hands=obj.hands;
 					Vector3f start=isNaN(hands[0].x)?hands[1]:isNaN(hands[1].x)?hands[0]:0.5f*(hands[0]+hands[1]);
 					if(isNaN(start.x)){
-						auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
+						auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),obj.scale,AnimationState.stance1,0);
 						auto offset=Vector3f(0.0f,hbox[1].y+0.75f,hbox[1].z+0.5f);
 						start=rotate(obj.rotation,offset)+obj.position;
 					}
@@ -14765,7 +14776,7 @@ Vector3f makeTargetPosition(B)(ref Swarm!B swarm,float radius,ObjectState!B stat
 Vector3f[2] swarmHands(B)(ref MovingObject!B wizard){
 	auto hands=wizard.hands;
 	if(isNaN(hands[0].x)&&isNaN(hands[1].x)){
-		auto hbox=wizard.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
+		auto hbox=wizard.sacObject.hitbox(Quaternionf.identity(),wizard.scale,AnimationState.stance1,0);
 		auto offset=Vector3f(0.0f,hbox[1].y,hbox[1].z);
 		hands[0]=rotate(wizard.rotation,offset)+wizard.position;
 	}
@@ -15067,7 +15078,7 @@ void animateFireformCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
 
 void spawnFireformParticles(B)(ref MovingObject!B wizard,int numParticles,ObjectState!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.fire);
-	auto hitbox=wizard.sacObject.hitbox(Quaternionf.identity(),wizard.animationState,wizard.frame/updateAnimFactor);
+	auto hitbox=wizard.sacObject.hitbox(Quaternionf.identity(),wizard.scale,wizard.animationState,wizard.frame/updateAnimFactor);
 	auto center=boxCenter(hitbox);
 	auto size=boxSize(hitbox);
 	size.x=size.y=max(size.x,size.y)+1.0f;
@@ -15177,7 +15188,7 @@ Vector3f protectiveBugNewPosition(B)(Vector3f position,ObjectState!B state){
 	return (position+2.5f*state.uniformDirection()).normalized;
 }
 Vector3f protectiveSwarmSize(B)(ref MovingObject!B wizard){
-	auto hitbox=wizard.sacObject.hitbox(Quaternionf.identity(),wizard.animationState,wizard.frame/updateAnimFactor);
+	auto hitbox=wizard.sacObject.hitbox(Quaternionf.identity(),wizard.scale,wizard.animationState,wizard.frame/updateAnimFactor);
 	auto center=boxCenter(hitbox);
 	auto size=boxSize(hitbox);
 	size.x=size.y=max(size.x,size.y)+2.0f;
@@ -15194,9 +15205,9 @@ void addBugs(B)(ref ProtectiveSwarm!B protectiveSwarm,ref MovingObject!B wizard,
 	Vector3f rescale(Vector3f p){ return 0.5f*p*size; }
 	enum totalBugs=150;
 	auto num=(totalBugs-protectiveSwarm.bugs.length+protectiveSwarm.castingTime-1)/protectiveSwarm.castingTime;
-	auto hands=wizard.sacObject.hands(wizard.animationState,wizard.frame/updateAnimFactor);
+	auto hands=wizard.sacObject.hands(wizard.scale,wizard.animationState,wizard.frame/updateAnimFactor);
 	if(isNaN(hands[0].x)&&isNaN(hands[1].x)){
-		auto hbox=wizard.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
+		auto hbox=wizard.sacObject.hitbox(Quaternionf.identity(),wizard.scale,AnimationState.stance1,0);
 		hands[0]=Vector3f(0.0f,hbox[1].y,hbox[1].z);
 	}
 	auto scale=0.25f*max(1.0f,cbrt(size.x*size.y*size.z));
@@ -15453,7 +15464,7 @@ bool updateFreeze(B)(ref Freeze!B freeze,ObjectState!B state){
 			state.movingObjectById!((ref obj,state){
 				playSpellSoundTypeAt(SoundType.breakingIce,creature,state,freezeGain);
 				dealSpellDamage(obj,spell,wizard,side,Vector3f(0.0f,0.0f,1.0f),DamageMod.none,state);
-				auto hitbox=obj.sacObject.largeHitbox(obj.rotation,obj.animationState,obj.frame/updateAnimFactor);
+				auto hitbox=obj.sacObject.largeHitbox(obj.rotation,obj.scale,obj.animationState,obj.frame/updateAnimFactor);
 				hitbox[0]+=obj.position;
 				hitbox[1]+=obj.position;
 				auto center=boxCenter(hitbox);
@@ -15524,7 +15535,7 @@ bool updateRingsOfFireCasting(B)(ref RingsOfFireCasting!B ringsOfFireCast,Object
 void animateRingsOfFire(bool relative=true,B)(ref MovingObject!B obj,ObjectState!B state){
 	enum numParticles=30;
 	auto sacParticle=SacParticle!B.get(ParticleType.firy);
-	auto hitbox=obj.sacObject.largeHitbox(obj.rotation,obj.animationState,obj.frame/updateAnimFactor);
+	auto hitbox=obj.sacObject.largeHitbox(obj.rotation,obj.scale,obj.animationState,obj.frame/updateAnimFactor);
 	auto height=state.uniform(0.4f,1.2f);
 	auto duration=state.uniform(0.8f,1.2f);
 	auto scale=state.uniform(1.2f,1.25f)*getScale(obj).length*height;
@@ -15608,7 +15619,7 @@ void animateSlimeTransition(B)(ref MovingObject!B obj,ObjectState!B state){
 void animateSlime(bool relative=true,B)(ref MovingObject!B obj,ObjectState!B state){
 	enum numParticles=4;
 	auto sacParticle=SacParticle!B.get(ParticleType.slime);
-	auto hitbox=obj.sacObject.largeHitbox(obj.rotation,obj.animationState,obj.frame/updateAnimFactor);
+	auto hitbox=obj.sacObject.largeHitbox(obj.rotation,obj.scale,obj.animationState,obj.frame/updateAnimFactor);
 	auto duration=state.uniform(0.8f,1.2f);
 	auto scale=0.25*state.uniform(0.75f,1.0f)*getScale(obj).length;
 	auto box=scaleBox(hitbox,0.8f);
@@ -15937,7 +15948,7 @@ bool updateRainbowCasting(B)(ref RainbowCasting!B rainbowCast,ObjectState!B stat
 				return false;
 			case CastingStatus.finished:
 				auto position=state.movingObjectById!((ref obj){
-					auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
+					auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),obj.scale,AnimationState.stance1,0);
 					auto offset=Vector3f(0.0f,hbox[1].y+0.75f,hbox[1].z+0.5f);
 					return obj.position+rotate(obj.rotation,offset);
 				},()=>Vector3f.init)(manaDrain.wizard);
@@ -16062,7 +16073,7 @@ bool updateChainLightningCasting(B)(ref ChainLightningCasting!B chainLightningCa
 		target.position=target.center(state);
 		auto status=manaDrain.update(state);
 		return state.movingObjectById!((obj,status){
-			auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
+			auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),obj.scale,AnimationState.stance1,0);
 			auto offset=Vector3f(0.0f,hbox[1].y+0.75f,hbox[1].z+0.5f);
 			final switch(status){
 				case CastingStatus.underway:
@@ -16174,7 +16185,7 @@ enum animateDeadGain=2.0f;
 void updateAnimateDeadCaster(B)(ref OrderTarget target,ObjectState!B state){
 	if(state.isValidTarget(target.id,TargetType.creature)){
 		auto cand=state.movingObjectById!((ref obj){
-			auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
+			auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),obj.scale,AnimationState.stance1,0);
 			auto offset=Vector3f(0.5f*(hbox[0].x+hbox[1].x),0.5f*(hbox[0].y+hbox[1].y),0.2f*hbox[0].z+0.8f*hbox[1].z);
 			return obj.position+rotate(obj.rotation,offset);
 		},()=>Vector3f.init)(target.id);
@@ -16438,7 +16449,7 @@ bool updateEruptDebris(B)(ref EruptDebris!B eruptDebris,ObjectState!B state){
 }
 
 Tuple!(Vector3f,Vector3f) dragonfireCastingPosition(B)(ref MovingObject!B obj,SacSpell!B spell,int frame,int castingTime,ObjectState!B state){
-	auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
+	auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),obj.scale,AnimationState.stance1,0);
 	auto castingHeight=hbox[1].z+4.0f;
 	auto radius=0.5f*float(castingTime)/updateFPS*spell.speed/(2.0f*pi!float)*(0.5f+0.5f*frame/castingTime);
 	auto φ=2.0f*pi!float*frame/castingTime;
@@ -16874,7 +16885,7 @@ Vector3f haloRockSpawnPosition(B)(ref MovingObject!B obj,ObjectState!B state,boo
 	return position;
 }
 Vector3f haloRockCenterPosition(B)(ref MovingObject!B obj,ObjectState!B state){
-	auto hitbox=moveBox(obj.sacObject.hitbox(obj.rotation,AnimationState.stance1,0),obj.position);
+	auto hitbox=moveBox(obj.sacObject.hitbox(obj.rotation,obj.scale,AnimationState.stance1,0),obj.position);
 	Vector2f[2] b2d=[Vector2f(hitbox[0].x,hitbox[0].y),Vector2f(hitbox[1].x,hitbox[1].y)];
 	auto cpos=boxCenter(b2d);
 	return Vector3f(cpos.x,cpos.y,hitbox[1].z+HaloRock!B.centerHeight);
@@ -18428,7 +18439,7 @@ bool updateFenceCasting(B)(ref FenceCasting!B fenceCast,ObjectState!B state){
 			case CastingStatus.underway:
 				if(!state.movingObjectById!((ref obj,state){
 					if(!state.uniform(2)){
-						auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
+						auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),obj.scale,AnimationState.stance1,0);
 						Vector3f[2] nhbox=scaleBox(hbox,2.0f);
 						nhbox[1].z=nhbox[0].z+1.25f*0.5f*(nhbox[1].z-nhbox[0].z);
 						auto start=obj.position+rotate(obj.rotation,state.uniform(nhbox));
@@ -21461,7 +21472,7 @@ bool updateDivineSight(B)(ref DivineSight!B divineSight,ObjectState!B state){
 			   target=state.proximity.closestEnemyInRange(side,position,ability.range,EnemyType.creature,state);
 		}else if(target!=-1&&state.isValidTarget(target,TargetType.creature)){
 			static getHitbox(B)(ref MovingObject!B obj){
-				auto hbox=obj.sacObject.hitbox(obj.rotation,AnimationState.stance1,0);
+				auto hbox=obj.sacObject.hitbox(obj.rotation,obj.scale,AnimationState.stance1,0);
 				hbox[0]+=obj.position;
 				hbox[1]+=obj.position;
 				return hbox;
@@ -24107,7 +24118,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 		foreach(j;0..objects.length){
 			bool isObstacle=objects.creatureStates[j].mode.isObstacle;
 			bool isVisibleToAI=objects.creatureStates[j].mode.isVisibleToAI&&!(objects.creatureStatss[j].flags&Flags.notOnMinimap)&&!objects.creatureStatss[j].effects.stealth;
-			auto hitbox=objects.sacObject.hitbox(objects.rotations[j],objects.animationStates[j],objects.frames[j]/updateAnimFactor);
+			auto hitbox=objects.sacObject.hitbox(objects.rotations[j],objects.scales[j],objects.animationStates[j],objects.frames[j]/updateAnimFactor);
 			auto position=objects.positions[j];
 			hitbox[0]+=position;
 			hitbox[1]+=position;
@@ -24129,7 +24140,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 		}
 	}else static if(isStatic){ // TODO: cache those?
 		foreach(j;0..objects.length){
-			foreach(hitbox;objects.sacObject.hitboxes(objects.rotations[j])){
+			foreach(hitbox;objects.sacObject.hitboxes(objects.rotations[j],objects.scales[j])){
 				auto position=objects.positions[j];
 				hitbox[0]+=position;
 				hitbox[1]+=position;
@@ -24171,7 +24182,7 @@ void addToProximitySingle(T,B)(ref T obj, ObjectState!B state){
 	static if(isMoving){
 		bool isObstacle=obj.creatureState.mode.isObstacle;
 		bool isVisibleToAI=obj.creatureState.mode.isVisibleToAI&&!(obj.creatureStats.flags&Flags.notOnMinimap)&&!obj.creatureStats.effects.stealth;
-		auto hitbox=obj.sacObject.hitbox(obj.rotation,obj.animationState,obj.frame/updateAnimFactor);
+		auto hitbox=obj.sacObject.hitbox(obj.rotation,obj.scale,obj.animationState,obj.frame/updateAnimFactor);
 		auto position=obj.position;
 		hitbox[0]+=position;
 		hitbox[1]+=position;
@@ -24830,7 +24841,7 @@ final class ObjectState(B){ // (update logic)
 				foreach(selectedId;state.getSelection(command.side).creatureIds){
 					if(!selectedId) break;
 					static get(ref MovingObject!B object,ObjectState!B state){
-						auto hitbox=object.sacObject.largeHitbox(Quaternionf.identity(),AnimationState.stance1,0);
+						auto hitbox=object.sacObject.largeHitbox(Quaternionf.identity(),object.scale,AnimationState.stance1,0);
 						auto scale=hitbox[1].xy-hitbox[0].xy;
 						return tuple(object.creatureAI.formation,scale);
 					}
@@ -25031,6 +25042,7 @@ final class ObjectState(B){ // (update logic)
 	struct Settings{
 		GameMode gameMode=GameMode.skirmish;
 		int gameModeParam=0;
+		bool randomCreatureScale=false;
 		bool enableDropSoul=true;
 		bool targetDroppedSouls=false;
 		bool enableParticles=true;
@@ -25039,12 +25051,14 @@ final class ObjectState(B){ // (update logic)
 		bool fasterCastingTimes=true;
 	}
 	Settings settings;
+	@property bool randomCreatureScale(){ return settings.randomCreatureScale; }
 	@property bool enableDropSoul(){ return settings.enableDropSoul; }
 	@property bool targetDroppedSouls(){ return settings.targetDroppedSouls; }
 	@property bool enableParticles(){ return settings.enableParticles; }
 	@property bool greenAllySouls(){ return settings.greenAllySouls; }
 	@property bool fasterStandupTimes(){ return settings.fasterStandupTimes; }
 	@property bool fasterCastingTimes(){ return settings.fasterCastingTimes; }
+	void enableRandomCreatureScale(){ settings.randomCreatureScale=true; }
 	void disableDropSoul(){ settings.enableDropSoul=false; }
 	void allowTargetingDroppedSouls(){ settings.targetDroppedSouls=true; }
 	void disableParticles(){ settings.enableParticles=false; }
@@ -26678,13 +26692,14 @@ void placeNTT(B,T)(ObjectState!B state,ref T ntt) if(is(T==Creature)||is(T==Wiza
 	if(onGround)
 		position.z=state.getGroundHeight(position);
 	auto rotation=facingQuaternion(ntt.facing);
+	auto scale=state.randomCreatureScale?state.uniform(0.5f,1.5f):1.0f;
 	auto mode=ntt.flags & Flags.corpse ? CreatureMode.dead : CreatureMode.idle;
 	auto movement=curObj.mustFly?CreatureMovement.flying:CreatureMovement.onGround;
 	if(movement==CreatureMovement.onGround && !onGround)
 		movement=curObj.canFly?CreatureMovement.flying:CreatureMovement.tumbling;
 	if(mode==CreatureMode.dead) movement=onGround?CreatureMovement.onGround:CreatureMovement.tumbling;
 	auto creatureState=CreatureState(mode, movement, ntt.facing);
-	auto obj=MovingObject!B(curObj,position,rotation,AnimationState.stance1,0,creatureState,curObj.creatureStats(ntt.flags),CreatureStatistics(),NotificationState(),ntt.side);
+	auto obj=MovingObject!B(curObj,position,rotation,scale,AnimationState.stance1,0,creatureState,curObj.creatureStats(ntt.flags),CreatureStatistics(),NotificationState(),ntt.side);
 	obj.setCreatureState(state);
 	obj.updateCreaturePosition(state);
 	/+do{
@@ -26756,6 +26771,7 @@ struct GameInit(B){
 	int replicateCreatures=1;
 	int protectManafounts=0;
 	bool terrainSineWave=false;
+	bool randomCreatureScale=false;
 	bool enableDropSoul=true;
 	bool targetDroppedSouls=false;
 	bool enableParticles=true;
@@ -26804,6 +26820,7 @@ void initGame(B)(ObjectState!B state,ref Array!SlotInfo slots,GameInit!B gameIni
 			})(state);
 	}
 	if(gameInit.terrainSineWave) state.addEffect(TestDisplacement());
+	if(gameInit.randomCreatureScale) state.enableRandomCreatureScale();
 	if(!gameInit.enableDropSoul) state.disableDropSoul();
 	if(gameInit.targetDroppedSouls) state.allowTargetingDroppedSouls();
 	if(!gameInit.enableParticles) state.disableParticles();

@@ -328,7 +328,7 @@ final class SacScene: Scene{
 		alias Tuple=std.typecons.Tuple;
 		auto size=state.current.movingObjectById!((obj){
 			import animations:AnimationState;
-			auto hitbox=obj.sacObject.hitbox(Quaternionf.identity(),AnimationState.stance1,0);
+			auto hitbox=obj.sacObject.hitbox(Quaternionf.identity(),obj.scale,AnimationState.stance1,0);
 			return hitbox[1]-hitbox[0];
 		},()=>Vector3f.init)(target);
 		if(isNaN(size.x)){ camera.target=0; return; }
@@ -2185,6 +2185,13 @@ static:
 	}
 
 	alias RenderContext=RenderingContext*;
+
+	Matrix4f getModelViewProjectionMatrix(Vector3f position,Quaternionf rotation,float scale){ // TODO: compute this in the renderer?
+		auto modelMatrix=translationMatrix(position)*rotation.toMatrix4x4*scaleMatrix(Vector3f(scale,scale,scale));
+		auto modelViewMatrix=scene.rc3d.viewMatrix*modelMatrix;
+		auto modelViewProjectionMatrix=scene.rc3d.projectionMatrix*modelViewMatrix;
+		return modelViewProjectionMatrix;
+	}
 
 	Matrix4f getModelViewProjectionMatrix(Vector3f position,Quaternionf rotation){ // TODO: compute this in the renderer?
 		auto modelMatrix=translationMatrix(position)*rotation.toMatrix4x4;

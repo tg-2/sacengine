@@ -1148,7 +1148,7 @@ struct Renderer(B){
 						auto mesh=sacObject.saxsi.meshes[i];
 						foreach(j;0..objects.length){ // TODO: use instanced rendering instead
 							if(rc.shadowMode&&objects.creatureStatss[j].effects.stealth) continue;
-							material.backend.setTransformation(objects.positions[j], objects.rotations[j], rc);
+							material.backend.setTransformationScaled(objects.positions[j], objects.rotations[j], objects.scales[j]*Vector3f(1.0f,1.0f,1.0f), rc);
 							auto id=objects.ids[j];
 							Vector4f information;
 							if(info.renderSide!=objects.sides[j]&&objects.creatureStates[j].mode.isGhost) continue;
@@ -1205,7 +1205,7 @@ struct Renderer(B){
 									auto position=objects.positions[j];
 									auto z=state.getHeight(preTeleportPosition)+position.z-state.getHeight(position);
 									position=preTeleportPosition+Vector3f(0.0f,0.0f,z);
-									material.backend.setTransformation(position, objects.rotations[j], rc);
+									material.backend.setTransformationScaled(position, objects.rotations[j], objects.scales[j]*Vector3f(1.0f,1.0f,1.0f), rc);
 									mesh.render(rc);
 									break;
 								}
@@ -1233,7 +1233,7 @@ struct Renderer(B){
 							}
 							auto position=objects.positions[j];
 							static if(isFixed) position.z=state.getGroundHeight(position);
-							static if(isStatic){
+							static if(isStatic||isMoving){
 								material.backend.setTransformationScaled(position, objects.rotations[j], objects.scales[j]*Vector3f(1.0f,1.0f,1.0f), rc);
 							}else material.backend.setTransformation(position, objects.rotations[j], rc);
 							static if(isStatic){
@@ -1533,7 +1533,7 @@ struct Renderer(B){
 							auto material=materials[i];
 							material.bind(rc);
 							scope(success) material.unbind(rc);
-							material.backend.setTransformation(objects.speedUpShadows[j].position,objects.speedUpShadows[j].rotation,rc);
+							material.backend.setTransformationScaled(objects.speedUpShadows[j].position,objects.speedUpShadows[j].rotation,objects.speedUpShadows[j].scale*Vector3f(1.0f,1.0f,1.0f),rc);
 							B.shadelessBoneMaterialBackend.setAlpha(0.3f);
 							B.shadelessBoneMaterialBackend.setEnergy(10.0f);
 							if(bulk!=1.0f) B.shadelessBoneMaterialBackend.setBulk(bulk);
@@ -1827,7 +1827,7 @@ struct Renderer(B){
 						B.enableTransparency();
 						B.disableDepthMask();
 						auto target=airShield.target;
-						auto positionRotationBoxSize=state.movingObjectById!((ref obj)=>tuple(center(obj),obj.position,obj.rotation,boxSize(obj.sacObject.largeHitbox(Quaternionf.identity(),obj.animationState,obj.frame/updateAnimFactor))), function Tuple!(Vector3f,Vector3f,Quaternionf,Vector3f)(){ return typeof(return).init; })(target);
+						auto positionRotationBoxSize=state.movingObjectById!((ref obj)=>tuple(center(obj),obj.position,obj.rotation,boxSize(obj.sacObject.largeHitbox(Quaternionf.identity(),obj.scale,obj.animationState,obj.frame/updateAnimFactor))), function Tuple!(Vector3f,Vector3f,Quaternionf,Vector3f)(){ return typeof(return).init; })(target);
 						auto position=positionRotationBoxSize[0], rawPosition=positionRotationBoxSize[1], rotation=positionRotationBoxSize[2], boxSize=positionRotationBoxSize[3];
 						if(isNaN(position.x)) return;
 						auto scale=airShield.scale+0.05f*(1.0f*sin(2.0f*pi!float*2.0f*airShield.frame/updateFPS));
@@ -1868,7 +1868,7 @@ struct Renderer(B){
 						auto scale=freeze.scale;
 						auto creature=freeze.creature;
 						auto hitbox=state.movingObjectById!((ref obj){
-							auto hitbox=obj.sacObject.largeHitbox(obj.rotation,obj.animationState,obj.frame/updateAnimFactor);
+							auto hitbox=obj.sacObject.largeHitbox(obj.rotation,obj.scale,obj.animationState,obj.frame/updateAnimFactor);
 							hitbox[0]+=obj.position;
 							hitbox[1]+=obj.position;
 							return hitbox;
@@ -1892,7 +1892,7 @@ struct Renderer(B){
 						auto creature=slime.creature;
 						import animations;
 						auto sizeCenter=state.movingObjectById!((ref obj){
-							auto hitbox=obj.sacObject.largeHitbox(Quaternionf.identity(),AnimationState.stance1,0);
+							auto hitbox=obj.sacObject.largeHitbox(Quaternionf.identity(),obj.scale,AnimationState.stance1,0);
 							hitbox[0]+=obj.position;
 							hitbox[1]+=obj.position;
 							return tuple(boxSize(hitbox).length,boxCenter(hitbox));
@@ -2237,7 +2237,7 @@ struct Renderer(B){
 					}
 					void renderHealingAura(ref HealingAura!B healingAura){
 						auto target=healingAura.target;
-						auto positionRotationBoxSize=state.movingObjectById!((ref obj)=>tuple(center(obj),obj.position,obj.rotation,boxSize(obj.sacObject.largeHitbox(Quaternionf.identity(),obj.animationState,obj.frame/updateAnimFactor))), function Tuple!(Vector3f,Vector3f,Quaternionf,Vector3f)(){ return typeof(return).init; })(target);
+						auto positionRotationBoxSize=state.movingObjectById!((ref obj)=>tuple(center(obj),obj.position,obj.rotation,boxSize(obj.sacObject.largeHitbox(Quaternionf.identity(),obj.scale,obj.animationState,obj.frame/updateAnimFactor))), function Tuple!(Vector3f,Vector3f,Quaternionf,Vector3f)(){ return typeof(return).init; })(target);
 						auto position=positionRotationBoxSize[0], rawPosition=positionRotationBoxSize[1], rotation=positionRotationBoxSize[2], boxSize=positionRotationBoxSize[3];
 						if(isNaN(position.x)) return;
 						auto scale=healingAura.scale;//+0.05f*(1.0f*sin(2.0f*pi!float*2.0f*healingAura.frame/updateFPS));
@@ -2804,7 +2804,7 @@ struct Renderer(B){
 					}
 					foreach(j;0..objects.lifeShields.length){
 						auto target=objects.lifeShields[j].target;
-						auto positionRotationBoxSize=state.movingObjectById!((ref obj)=>tuple(center(obj),obj.rotation,boxSize(obj.sacObject.largeHitbox(Quaternionf.identity(),obj.animationState,obj.frame/updateAnimFactor))), function Tuple!(Vector3f,Quaternionf,Vector3f)(){ return typeof(return).init; })(target);
+						auto positionRotationBoxSize=state.movingObjectById!((ref obj)=>tuple(center(obj),obj.rotation,boxSize(obj.sacObject.largeHitbox(Quaternionf.identity(),obj.scale,obj.animationState,obj.frame/updateAnimFactor))), function Tuple!(Vector3f,Quaternionf,Vector3f)(){ return typeof(return).init; })(target);
 						auto position=positionRotationBoxSize[0], rotation=positionRotationBoxSize[1], boxSize=positionRotationBoxSize[2];
 						if(isNaN(position.x)) continue;
 						auto scale=objects.lifeShields[j].scale;
@@ -2872,7 +2872,7 @@ struct Renderer(B){
 					mesh=self.web.mesh;
 					void renderWeb(int target,float scale){
 						if(!target) return;
-						auto positionRotationBoxSize=state.movingObjectById!((ref obj)=>tuple(center(obj),obj.rotation,boxSize(obj.sacObject.largeHitbox(Quaternionf.identity(),obj.animationState,obj.frame/updateAnimFactor))), function Tuple!(Vector3f,Quaternionf,Vector3f)(){ return typeof(return).init; })(target);
+						auto positionRotationBoxSize=state.movingObjectById!((ref obj)=>tuple(center(obj),obj.rotation,boxSize(obj.sacObject.largeHitbox(Quaternionf.identity(),obj.scale,obj.animationState,obj.frame/updateAnimFactor))), function Tuple!(Vector3f,Quaternionf,Vector3f)(){ return typeof(return).init; })(target);
 						auto position=positionRotationBoxSize[0], rotation=positionRotationBoxSize[1], boxSize=positionRotationBoxSize[2];
 						if(isNaN(position.x)) return;
 						material.backend.setTransformationScaled(position,rotation,scale*1.4f*boxSize,rc);
@@ -2889,7 +2889,7 @@ struct Renderer(B){
 					material.bind(rc);
 					void renderCage(int target,int frame,float scale){
 						if(!target) return;
-						auto positionRotationBoxSize=state.movingObjectById!((ref obj)=>tuple(center(obj),obj.rotation,boxSize(obj.sacObject.largeHitbox(Quaternionf.identity(),obj.animationState,obj.frame/updateAnimFactor))), function Tuple!(Vector3f,Quaternionf,Vector3f)(){ return typeof(return).init; })(target);
+						auto positionRotationBoxSize=state.movingObjectById!((ref obj)=>tuple(center(obj),obj.rotation,boxSize(obj.sacObject.largeHitbox(Quaternionf.identity(),obj.scale,obj.animationState,obj.frame/updateAnimFactor))), function Tuple!(Vector3f,Quaternionf,Vector3f)(){ return typeof(return).init; })(target);
 						auto position=positionRotationBoxSize[0], rotation=positionRotationBoxSize[1], boxSize=positionRotationBoxSize[2];
 						if(isNaN(position.x)) return;
 						material.backend.setTransformationScaled(position,rotation,scale*1.4f*boxSize,rc);
@@ -3050,8 +3050,8 @@ struct Renderer(B){
 			backend.setColor(isBlinking?Color4f(1.0f,0.0f,0.0f,1.0f):state.sides.sideColor(obj.side));
 			// TODO: how is this actually supposed to work?
 			import animations;
-			auto hitbox0=obj.sacObject.hitbox(obj.rotation,AnimationState.stance1,0);
-			auto hitbox=obj.sacObject.hitbox(obj.rotation,obj.animationState,obj.frame/updateAnimFactor);
+			auto hitbox0=obj.sacObject.hitbox(obj.rotation,obj.scale,AnimationState.stance1,0);
+			auto hitbox=obj.sacObject.hitbox(obj.rotation,obj.scale,obj.animationState,obj.frame/updateAnimFactor);
 			auto scaling=1.0f;
 			auto position=obj.position+Vector3f(0.5f*(hitbox[0].x+hitbox[1].x),0.5f*(hitbox[0].y+hitbox[1].y),0.5f*(hitbox[0].z+hitbox[1].z)+0.75f*(hitbox0[1].z-hitbox0[0].z)+0.5f*scaling);
 			backend.setSpriteTransformationScaled(position,scaling,rc);
@@ -3107,8 +3107,8 @@ struct Renderer(B){
 					if(self.isOnMinimap(iconCenter.xy,*info)&&self.isInRectangleSelect(iconCenter.xy,*info)&&canSelect(info.renderSide,obj.id,state))
 						self.rectangleSelection.addSorted(obj.id);
 				}else{
-					auto hitbox=obj.sacObject.hitbox(obj.rotation,obj.animationState,obj.frame/updateAnimFactor); // TODO: share computation with some other place?
-					auto center2d=transform(B.getModelViewProjectionMatrix(obj.position,obj.rotation),0.5f*(hitbox[0]+hitbox[1]));
+					auto hitbox=obj.sacObject.hitbox(obj.rotation,obj.scale,obj.animationState,obj.frame/updateAnimFactor); // TODO: share computation with some other place?
+					auto center2d=transform(B.getModelViewProjectionMatrix(obj.position,obj.rotation,obj.scale),0.5f*(hitbox[0]+hitbox[1]));
 					if(center2d.z>1.0f) return;
 					auto screenPosition=Vector2f(0.5f*(center2d.x+1.0f)*info.width,0.5f*(1.0f-center2d.y)*info.height);
 					if(self.isInRectangleSelect(screenPosition,*info)&&canSelect(info.renderSide,obj.id,state)) self.rectangleSelection.addSorted(obj.id);
@@ -3139,12 +3139,12 @@ struct Renderer(B){
 			static if(isMoving){
 				auto sacObject=objects.sacObject;
 				foreach(j;0..objects.length){
-					auto hitbox=sacObject.hitbox(objects.rotations[j],objects.animationStates[j],objects.frames[j]/updateAnimFactor);
+					auto hitbox=sacObject.hitbox(objects.rotations[j],objects.scales[j],objects.animationStates[j],objects.frames[j]/updateAnimFactor);
 					hitbox[0]+=objects.positions[j];
 					hitbox[1]+=objects.positions[j];
 					self.renderBox(hitbox,true,rc);
 					bool isFlying=objects.creatureStates[j].movement!=CreatureMovement.onGround;
-					auto meleeHitbox=sacObject.meleeHitbox(isFlying,objects.rotations[j],objects.animationStates[j],objects.frames[j]/updateAnimFactor);
+					auto meleeHitbox=sacObject.meleeHitbox(isFlying,objects.rotations[j],objects.scales[j],objects.animationStates[j],objects.frames[j]/updateAnimFactor);
 					meleeHitbox[0]+=objects.positions[j];
 					meleeHitbox[1]+=objects.positions[j];
 					self.renderBox(meleeHitbox,true,rc);
@@ -3184,7 +3184,7 @@ struct Renderer(B){
 			}else static if(isStatic){
 				auto sacObject=objects.sacObject;
 				foreach(j;0..objects.length){
-					foreach(hitbox;sacObject.hitboxes(objects.rotations[j])){
+					foreach(hitbox;sacObject.hitboxes(objects.rotations[j],objects.scales[j])){
 						hitbox[0]+=objects.positions[j];
 						hitbox[1]+=objects.positions[j];
 						self.renderBox(hitbox,true,rc);
@@ -3232,7 +3232,7 @@ struct Renderer(B){
 		if(info.mouse.target.id&&!state.isValidTarget(info.mouse.target.id,info.mouse.target.type)) info.mouse.target=Target.init;
 		if(info.mouse.target.type.among(TargetType.creature,TargetType.building)){
 			static void renderHitbox(T)(T obj,Renderer!B* self,ObjectState!B state,RenderInfo!B* info,B.RenderContext rc){
-				auto hitbox2d=obj.hitbox2d(B.getModelViewProjectionMatrix(obj.position,obj.rotation));
+				auto hitbox2d=obj.hitbox2d(B.getModelViewProjectionMatrix(obj.position,obj.rotation,obj.scale));
 				static if(is(T==MovingObject!B)) auto objSide=obj.side;
 				else auto objSide=sideFromBuildingId!B(obj.buildingId,state);
 				auto color=state.sides.sideColor(objSide);

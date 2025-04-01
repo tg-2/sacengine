@@ -256,7 +256,7 @@ final class SacObject(B){
 		return "\0\0\0\0";
 	}
 
-	Vector3f[2] smallHitbox(Quaternionf rotation,AnimationState animationState,int frame)@nogc in{
+	Vector3f[2] smallHitbox(Quaternionf rotation,float scale,AnimationState animationState,int frame)@nogc in{
 		assert(isSaxs);
 	}do{
 		auto transforms=animations[animationState].frames[frame].matrices;
@@ -265,10 +265,10 @@ final class SacObject(B){
 			.map!(v=>rotate(rotation,v)).bbox;+/
 		return saxsi.saxs.hitboxBones
 			.mapf(closure!((i,transforms)=>Vector3f(0,0,0)*transforms[i])(transforms))
-			.mapf(closure!((v,rotation)=>rotate(rotation,v))(rotation)).bbox;
+			.mapf(closure!((v,rotation)=>rotate(rotation,v))(rotation)).bbox.scaleBox(scale);
 	}
 
-	Vector3f[2] largeHitbox(Quaternionf rotation,AnimationState animationState,int frame)@nogc in{
+	Vector3f[2] largeHitbox(Quaternionf rotation,float scale,AnimationState animationState,int frame)@nogc in{
 		assert(isSaxs);
 	}do{
 		auto transforms=animations[animationState].frames[frame].matrices;
@@ -277,27 +277,27 @@ final class SacObject(B){
 			.joiner.map!(v=>rotate(rotation,v)).bbox;+/
 		return saxsi.saxs.hitboxBones
 			.mapf(closure!((i,saxsi,transforms)=>saxsi.saxs.bones[i].hitbox[].mapf(closure!((x,i,transforms)=>x*transforms[i])(i,transforms)))(saxsi,transforms))
-			.joiner.mapf(closure!((v,rotation)=>rotate(rotation,v))(rotation)).bbox;
+			.joiner.mapf(closure!((v,rotation)=>rotate(rotation,v))(rotation)).bbox.scaleBox(scale);
 	}
 
-	Vector3f[2] hitbox(Quaternionf rotation,AnimationState animationState,int frame)@nogc in{
+	Vector3f[2] hitbox(Quaternionf rotation,float scale,AnimationState animationState,int frame)@nogc in{
 		assert(isSaxs);
 	}do{
-		if(!data) return largeHitbox(rotation,animationState,frame);
+		if(!data) return largeHitbox(rotation,scale,animationState,frame);
 		final switch(data.hitboxType){
 			case HitboxType.small:
-				return smallHitbox(rotation,animationState,frame);
+				return smallHitbox(rotation,scale,animationState,frame);
 			case HitboxType.large:
-				return largeHitbox(rotation,animationState,frame);
+				return largeHitbox(rotation,scale,animationState,frame);
 			case HitboxType.largeZ:
-				auto sl=smallHitbox(rotation,animationState,frame);
-				auto sll=largeHitbox(rotation,animationState,frame);
+				auto sl=smallHitbox(rotation,scale,animationState,frame);
+				auto sll=largeHitbox(rotation,scale,animationState,frame);
 				sl[0][2]=sll[0][2];
 				sl[1][2]=sll[1][2];
 				return sl;
 			case HitboxType.largeZbot:
-				auto sl=smallHitbox(rotation,animationState,frame);
-				auto sll=largeHitbox(rotation,animationState,frame);
+				auto sl=smallHitbox(rotation,scale,animationState,frame);
+				auto sll=largeHitbox(rotation,scale,animationState,frame);
 				sl[0][2]=sll[0][2];
 				return sl;
 		}
@@ -324,29 +324,30 @@ final class SacObject(B){
 		}
 		/+return hitboxes(rotation).map!fix.map!(hbox=>cartesianProduct(only(0,1),only(0,1),only(0,1)).map!(x=>Vector3f(hbox[x[0]].x,hbox[x[1]].y,hbox[x[2]].z)))
 			.joiner.map!(v=>transform(modelViewProjectionMatrix,v)).bbox;+/
-		return hitboxes(rotation).map!fix.map!(hbox=>cartesianProduct(only(0,1),only(0,1),only(0,1)).mapf(closure!((x,hbox)=>Vector3f(hbox[x[0]].x,hbox[x[1]].y,hbox[x[2]].z))(hbox)))
+			float scale=1.0f;
+			return hitboxes(rotation,scale).map!fix.map!(hbox=>cartesianProduct(only(0,1),only(0,1),only(0,1)).mapf(closure!((x,hbox)=>Vector3f(hbox[x[0]].x,hbox[x[1]].y,hbox[x[2]].z))(hbox)))
 			.joiner.mapf(closure!((v,modelViewProjectionMatrix)=>transform(modelViewProjectionMatrix,v))(modelViewProjectionMatrix)).bbox;
 	}
 
-	Vector3f[2] handsFromAnimation(AnimationState from,AnimationState animationState,int frame)@nogc{
+	Vector3f[2] handsFromAnimation(float scale,AnimationState from,AnimationState animationState,int frame)@nogc{
 		Vector3f[2] result;
 		foreach(i;0..2){
 			auto hand=animations[from].hands[i];
 			if(hand.bone==0) continue;
-			result[i]=hand.position*animations[animationState].frames[frame].matrices[hand.bone];
+			result[i]=scale*(hand.position*animations[animationState].frames[frame].matrices[hand.bone]);
 		}
 		return result;
 	}
 
-	Vector3f[2] hands(AnimationState animationState,int frame){
-		return handsFromAnimation(animationState,animationState,frame);
+	Vector3f[2] hands(float scale,AnimationState animationState,int frame){
+		return handsFromAnimation(scale,animationState,animationState,frame);
 	}
-	Vector3f[2] needle(AnimationState animationState,int frame){
+	Vector3f[2] needle(float scale,AnimationState animationState,int frame){
 		Vector3f[2] result;
 		if(!isSacDoctor) return result;
 		auto hand=Hand(16,Vector3f(0.0f,0.0f,2.2f));
-		result[0]=hand.position*animations[animationState].frames[frame].matrices[hand.bone];
-		result[1]=animations[animationState].frames[frame].matrices[hand.bone].rotate(Vector3f(0.0f,0.0f,1.0f));
+		result[0]=scale*(hand.position*animations[animationState].frames[frame].matrices[hand.bone]);
+		result[1]=scale*(animations[animationState].frames[frame].matrices[hand.bone].rotate(Vector3f(0.0f,0.0f,1.0f)));
 		return result;
 	}
 	struct LoadedArrow{
@@ -355,7 +356,7 @@ final class SacObject(B){
 		Vector3f front;
 		Vector3f hand;
 	}
-	LoadedArrow loadedArrow(AnimationState animationState,int frame){
+	LoadedArrow loadedArrow(float scale,AnimationState animationState,int frame){
 		LoadedArrow result;
 		if(!(nttTag==SpellTag.sylph||nttTag==SpellTag.ranger)) return result;
 		auto front=animations[animationState].hands[0];
@@ -364,27 +365,27 @@ final class SacObject(B){
 		auto topBone=16;
 		auto bottomBone=17;
 		auto handBone=11;
-		result.top=Vector3f(0.0f,0.65f,0.0f)*matrices[topBone];
-		result.bottom=Vector3f(0.0f,-0.60f,0.0f)*matrices[bottomBone];
-		result.front=(front.position+Vector3f(-0.1f,0.4f,0.0f))*matrices[front.bone];
-		result.hand=Vector3f(0.0f,0.1f,0.05f)*matrices[handBone];
+		result.top=scale*(Vector3f(0.0f,0.65f,0.0f)*matrices[topBone]);
+		result.bottom=scale*(Vector3f(0.0f,-0.60f,0.0f)*matrices[bottomBone]);
+		result.front=scale*((front.position+Vector3f(-0.1f,0.4f,0.0f))*matrices[front.bone]);
+		result.hand=scale*(Vector3f(0.0f,0.1f,0.05f)*matrices[handBone]);
 		return result;
 	}
-	Vector3f warmongerFlame(AnimationState animationState,int frame){
+	Vector3f warmongerFlame(float scale,AnimationState animationState,int frame){
 		auto hand=Hand(6,Vector3f(-0.1f,1.35f,0.0f));
-		return hand.position*animations[animationState].frames[frame].matrices[hand.bone];
+		return scale*(hand.position*animations[animationState].frames[frame].matrices[hand.bone]);
 	}
-	Vector3f styxFlame(AnimationState animationState,int frame){
+	Vector3f styxFlame(float scale,AnimationState animationState,int frame){
 		auto hand=Hand(6,Vector3f(0.0f,1.1f,0.0f));
-		return hand.position*animations[animationState].frames[frame].matrices[hand.bone];
+		return scale*(hand.position*animations[animationState].frames[frame].matrices[hand.bone]);
 	}
-	Vector3f shotPosition(AnimationState animationState,int frame,bool fix=false){
+	Vector3f shotPosition(float scale,AnimationState animationState,int frame,bool fix=false){
 		auto hand=animations[fix?AnimationState.shoot0:animationState].hands[0];
 		if(hand.bone<0||hand.bone>=animations[animationState].frames[frame].matrices.length) return Vector3f(0.0f,0.0f,0.0f);
-		return hand.position*animations[animationState].frames[frame].matrices[hand.bone];
+		return scale*(hand.position*animations[animationState].frames[frame].matrices[hand.bone]);
 	}
-	Vector3f firstShotPosition(AnimationState animationState){
-		return shotPosition(animationState,firstShootTick(animationState));
+	Vector3f firstShotPosition(float scale,AnimationState animationState){
+		return shotPosition(scale,animationState,firstShootTick(animationState));
 	}
 	int castingTime(AnimationState animationState){
 		return max(0,min(numFrames(animationState)-1,animations[animationState].castingTime));
@@ -424,11 +425,11 @@ final class SacObject(B){
 
 	@property SacSpell!B ability(){ return isRanged?abilities[1]:abilities[0]; }
 
-	Vector3f[2] defaultMeleeHitbox(Quaternionf rotation,AnimationState animationState,int frame)in{
+	Vector3f[2] defaultMeleeHitbox(Quaternionf rotation,float scale,AnimationState animationState,int frame)in{
 		assert(isSaxs);
 	}do{
 		// TODO: this is a guess. what does the game actually do?
-		auto hbox=hitbox(rotation,animationState.stance1,0);
+		auto hbox=hitbox(rotation,scale,animationState.stance1,0);
 		auto center=0.5f*(hbox[0]+hbox[1]);
 		auto width=hbox[1].x-hbox[0].x;
 		auto depth=hbox[1].y-hbox[0].y;
@@ -450,7 +451,7 @@ final class SacObject(B){
 		return [hitboxCenter-0.5f*hitboxDimensions,hitboxCenter+0.5f*hitboxDimensions];
 	}
 
-	Vector3f[2] meleeHitbox(bool isFlying,Quaternionf rotation,AnimationState animationState,int frame)in{
+	Vector3f[2] meleeHitbox(bool isFlying,Quaternionf rotation,float scale,AnimationState animationState,int frame)in{
 		assert(isSaxs);
 	}do{
 		// TODO: do we even want this at all?
@@ -496,10 +497,10 @@ final class SacObject(B){
 				return hitbox;
 			}
 		}+/
-		return defaultMeleeHitbox(rotation,animationState,frame);
+		return defaultMeleeHitbox(rotation,scale,animationState,frame);
 	}
 
-	auto hitboxes(Quaternionf rotation)/+@nogc+/ in{
+	auto hitboxes(Quaternionf rotation,float scale)/+@nogc+/ in{
 		assert(!isSaxs);
 	}do{
 		auto len=rotation.xyz.length;
@@ -539,7 +540,12 @@ final class SacObject(B){
 					        Vector3f(hitbox[1].y,-hitbox[0].x,hitbox[1].z)];
 			}
 		}
-		return zip(hitboxRotation.repeat,hitboxes_).map!(x=>rotateHitbox(x.expand));
+		static Vector3f[2] scaleHitbox(float scale,Vector3f[2] hitbox){
+			hitbox[0]*=scale;
+			hitbox[1]*=scale;
+			return hitbox;
+		}
+		return zip(scale.repeat,zip(hitboxRotation.repeat,hitboxes_).map!(x=>rotateHitbox(x.expand))).map!(x=>scaleHitbox(x.expand));
 	}
 
 	struct MaterialConfig{
