@@ -443,6 +443,10 @@ final class SacObject(B){
 		else hitboxCenter*=1.3f;
 		hitboxCenter+=center;
 		auto hitboxDimensions=Vector3f(width,depth,height*1.5f);
+		if(nttTag==SpellTag.druid){
+			hitboxDimensions.x*=1.3f;
+			hitboxDimensions.y*=1.3f;
+		}
 		if(nttTag==SpellTag.phoenix){
 			hitboxCenter.z-=5.0f;
 			hitboxDimensions.z*=1.2f;
