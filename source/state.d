@@ -473,7 +473,7 @@ struct PositionPredictor{
 		assert(state.isValidTarget(targetId));
 	}do{
 		static handle(T)(ref T obj,float timeToImpact,ObjectState!B state,PositionPredictor* self){
-			auto hitboxCenter=boxCenter(obj.relativeHitbox);
+			auto hitboxCenter=relativeCenter(obj);
 			auto predictedPosition=self.predictAtTime(timeToImpact,obj.position);
 			return predictedPosition+hitboxCenter;
 		}
@@ -515,7 +515,7 @@ struct PositionPredictor{
 		assert(state.isValidTarget(targetId));
 	}do{
 		static handle(T)(ref T obj,Vector3f position,float projectileSpeed,int attackerSide,ObjectState!B state,PositionPredictor* self){
-			auto hitboxCenter=boxCenter(obj.relativeHitbox);
+			auto hitboxCenter=relativeCenter(obj);
 			auto predictedPosition=self.predict(position,projectileSpeed,obj.position);
 			static if(is(T==MovingObject!B))
 				hitboxCenter+=graspingVinesOffset(obj,attackerSide,state);
@@ -1037,11 +1037,6 @@ Vector3f[2] hitbox2d(B)(ref MovingObject!B object,Matrix4f modelViewProjectionMa
 	return object.sacObject.hitbox2d(object.animationState,object.frame/updateAnimFactor,modelViewProjectionMatrix);
 }
 
-Vector3f relativeCenter(T)(ref T object){
-	auto hbox=object.relativeHitbox;
-	return 0.5f*(hbox[0]+hbox[1]);
-}
-
 Vector3f graspingVinesOffset(B)(ref MovingObject!B object,int attackerSide,ObjectState!B state){
 	if(!object.creatureStats.effects.vined) return Vector3f(0.0f,0.0f,0.0f);
 	if(state.sides.getStance(attackerSide,object.side)==Stance.ally)
@@ -1060,8 +1055,13 @@ Vector3f graspingVinesOffset(B)(ref MovingObject!B object,int attackerSide,Objec
 
 Vector3f center(T)(ref T object){
 	static if(is(T==Soul!B,B)){
-		return object.position+0.5f*1.25f*object.scaling;
+		return object.position+Vector3f(0.0f,0.0f,0.5f*1.25f*object.scaling);
 	}else{
+		static if(is(T==StaticObject!B,B)){
+			if(object.sacObject.isShrine){
+				return lowestCenter(object);
+			}
+		}
 		auto hbox=object.hitbox;
 		return 0.5f*(hbox[0]+hbox[1]);
 	}
@@ -1069,6 +1069,31 @@ Vector3f center(T)(ref T object){
 Vector3f lowCenter(T)(ref T object){
 	auto hbox=object.hitbox;
 	return Vector3f(0.5f*(hbox[0].x+hbox[1].x),0.5f*(hbox[0].y+hbox[1].y),0.25f*(3.0f*hbox[0].z+hbox[1].z));
+}
+Vector3f lowestCenter(T)(ref T object){
+	auto hbox=object.hitbox;
+	return Vector3f(0.5f*(hbox[0].x+hbox[1].x),0.5f*(hbox[0].y+hbox[1].y),0.125f*(7.0f*hbox[0].z+hbox[1].z));
+}
+Vector3f relativeCenter(T)(ref T object){
+	static if(is(T==Soul!B,B)){
+		return Vector3f(0.0f,0.0f,0.5f*1.25f*object.scaling);
+	}else{
+		static if(is(T==StaticObject!B,B)){
+			if(object.sacObject.isShrine){
+				return relativeLowestCenter(object);
+			}
+		}
+		auto hbox=object.relativeHitbox;
+		return 0.5f*(hbox[0]+hbox[1]);
+	}
+}
+Vector3f relativeLowCenter(T)(ref T object){
+	auto hbox=object.relativeHitbox;
+	return Vector3f(0.5f*(hbox[0].x+hbox[1].x),0.5f*(hbox[0].y+hbox[1].y),0.25f*(3.0f*hbox[0].z+hbox[1].z));
+}
+Vector3f relativeLowestCenter(T)(ref T object){
+	auto hbox=object.relativeHitbox;
+	return Vector3f(0.5f*(hbox[0].x+hbox[1].x),0.5f*(hbox[0].y+hbox[1].y),0.125f*(7.0f*hbox[0].z+hbox[1].z));
 }
 Vector3f[2] relativeMeleeHitbox(B)(ref MovingObject!B object){
 	bool isFlying=object.creatureState.movement!=CreatureMovement.onGround;
