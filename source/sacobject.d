@@ -436,7 +436,6 @@ final class SacObject(B){
 		auto height=hbox[1].z-hbox[0].z;
 		auto size=0.25f*(width+depth);
 		auto hitboxCenter=size*rotate(rotation,Vector3f(0.0f,1.0f,0.0f));
-		if(nttTag==SpellTag.taurock) hitboxCenter*=3.0f;
 		if(nttTag==SpellTag.netherfiend) hitboxCenter*=3.0f;
 		else if(nttTag==SpellTag.boulderdash) hitboxCenter*=2.0f;
 		else if(nttTag==SpellTag.phoenix) hitboxCenter*=1.5f;
