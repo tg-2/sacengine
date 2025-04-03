@@ -3410,6 +3410,7 @@ struct Renderer(B){
 	B.SubQuad minimapQuad;
 	B.SubQuad minimapAltarRing,minimapManalith,minimapWizard,minimapManafount,minimapShrine;
 	B.SubQuad minimapCreatureArrow,minimapStructureArrow;
+	B.SubQuad[7] minimapHighlight;
 	B.Font[FontType.max+1] fonts;
 	static struct HudOpt{ bool freetypeFonts; }
 	void initializeHUD(HudOpt options){
@@ -3451,6 +3452,16 @@ struct Renderer(B){
 		minimapShrine=B.makeSubQuad(48.0f/64.0f,0.0/65.0f,60.0f/64.0f,12.0f/64.0f);
 		minimapCreatureArrow=B.makeSubQuad(0.0f/64.0f,13.0/65.0f,11.0f/64.0f,24.0f/64.0f);
 		minimapStructureArrow=B.makeSubQuad(12.0f/64.0f,13.0/65.0f,23.0f/64.0f,24.0f/64.0f);
+		minimapHighlight=[
+			B.makeSubQuad(24.0f/64.0f,13.0/65.0f,35.0f/64.0f,23.5f/64.0f),
+			B.makeSubQuad(36.0f/64.0f,13.0/65.0f,47.0f/64.0f,23.5f/64.0f),
+			B.makeSubQuad(48.0f/64.0f,13.0/65.0f,59.0f/64.0f,23.5f/64.0f),
+
+			B.makeSubQuad(0.0f/64.0f,24.0/64.0f,11.0f/64.0f,36.0f/64.0f),
+			B.makeSubQuad(12.0f/64.0f,24.0/64.0f,23.0f/64.0f,36.0f/64.0f),
+			B.makeSubQuad(24.0f/64.0f,24.0/64.0f,35.0f/64.0f,36.0f/64.0f),
+			B.makeSubQuad(36.0f/64.0f,24.0/64.0f,47.0f/64.0f,36.0f/64.0f),
+		];
 		// freetype fonts
 		if(options.freetypeFonts){
 			fonts[FontType.fn08]=null; // B.loadFont(8*fontScaleFactor,"fonts/verdana.ttf"); // TODO: fancy color gradient
@@ -3777,6 +3788,8 @@ struct Renderer(B){
 							iconScaling=info.hudScaling*Vector3f(12.0f,12.0f,0.0f);
 						}
 					}
+					//quad=self.minimapHighlight[state.frame/20%$];
+					//iconScaling=info.hudScaling*Vector3f(12.0f,12.0f,12.0f);
 				}else enum mayShowArrow=false;
 				enforce(objects.length<=uint.max);
 				foreach(j;0..cast(uint)objects.length){
