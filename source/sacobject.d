@@ -3506,7 +3506,7 @@ struct SacBombardProjectile(B){
 }
 
 
-B.Mesh makeCrystalMesh(B)(int numSpikes, float spikeWidth, float spikeLength){
+B.Mesh makeCrystalMesh(B)(int numSpikes, float spikeWidth, float spikeLength, int numVariants=1, bool randomizeLengths=false){
 	auto mesh=B.makeMesh(3*4*numSpikes, 3*2*numSpikes);
 	enum sqrt34=sqrt(0.75f);
 	immutable Vector3f[3] offsets=[spikeWidth*Vector3f(0.0f,-1.0f,0.0f),spikeWidth*Vector3f(sqrt34,0.5f,0.0f),spikeWidth*Vector3f(-sqrt34,0.5f,0.0f)];
@@ -3514,8 +3514,9 @@ B.Mesh makeCrystalMesh(B)(int numSpikes, float spikeWidth, float spikeLength){
 	void addFace(uint[3] face...){
 		mesh.indices[numFaces++]=face;
 	}
+	float curSpikeLength=spikeLength;
 	Vector3f getCenter(int i){
-		return Vector3f(0.0f,0.0f,spikeLength*i);
+		return Vector3f(0.0f,0.0f,curSpikeLength*i);
 	}
 	import std.random: MinstdRand0;
 	auto rng=MinstdRand0(1);
@@ -3532,13 +3533,28 @@ B.Mesh makeCrystalMesh(B)(int numSpikes, float spikeWidth, float spikeLength){
 	}
 	foreach(i;0..numSpikes){
 		auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),randomDirection());
+		int variant=0;
+		if(randomizeLengths){
+			import std.random: uniform;
+			curSpikeLength=spikeLength*uniform(0.75f,1.25f,rng);
+		}
 		foreach(j;0..3){
+			if(numVariants!=1){
+				import std.random: uniform;
+				variant=uniform!"[)"(0,numVariants,rng);
+			}
 			foreach(k;0..4){
 				int vertex=3*4*i+4*j+k;
 				auto center=((k==1||k==2)?1:0);
 				auto position=rotate(rotation, getCenter(center)+((k==2||k==3)?offsets[j]:Vector3f(0.0f,0.0f,0.0f)));
 				mesh.vertices[vertex]=position;
-				mesh.texcoords[vertex]=Vector2f((!(k==0||k==1)?1.0f-0.5f/64:0.5f/64),((k==1||k==2)?1.0f-0.5f/64:0.5f/64.0f));
+				if(numVariants==1){
+					mesh.texcoords[vertex]=Vector2f((!(k==0||k==1)?1.0f-0.5f/64:0.5f/64),((k==1||k==2)?1.0f-0.5f/64:0.5f/64.0f));
+				}else{
+					float minU=float(variant)/numVariants+0.5f/128;
+					float maxU=float(variant+1)/numVariants-0.5f/128;
+					mesh.texcoords[vertex]=Vector2f((!(k==0||k==1)?maxU:minU),((k==1||k==2)?1.0f-0.5f/128:0.5f/128.0f));
+				}
 			}
 			int b=3*4*i+4*j;
 			addFace([b+0,b+1,b+2]);
@@ -3669,6 +3685,18 @@ final class SacCommandCone(B){
 
 	float getAlpha(float lifetimeFraction){
 		return 1.0f-lifetimeFraction;
+	}
+}
+
+struct SacHighlightStar(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/rayz.TXTR"));
+	}
+	B.Material material;
+	B.Mesh mesh;
+	static B.Mesh createMesh(){
+		return makeCrystalMesh!B(24, 1.25f, 5.0f, 4, true);
 	}
 }
 

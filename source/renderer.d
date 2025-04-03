@@ -279,6 +279,17 @@ struct Renderer(B){
 	}
 	SacWrath!B wrath;
 	SacCommandCone!B sacCommandCone;
+	SacHighlightStar!B highlightStar;
+	SacHighlightStar!B createHighlightStar(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Additive;
+		mat.energy=20.0f;
+		mat.diffuse=texture;
+		auto mesh=typeof(return).createMesh();
+		return SacHighlightStar!B(texture,mat,mesh);
+	}
 	SacObject!B rock;
 	SacBug!B bug;
 	SacBug!B createBug(){
@@ -852,6 +863,7 @@ struct Renderer(B){
 		import std.traits:EnumMembers;
 		foreach(ptype;EnumMembers!ParticleType) SacParticle!B.get(ptype);
 		sacCommandCone=new SacCommandCone!B();
+		highlightStar=createHighlightStar();
 		sacDebris=new SacObject!B("extracted/models/MODL.WAD!/bold.MRMC/bold.MRMM");
 		enforce(sacDebris.meshes.length==1);
 		explosion=createExplosion();
