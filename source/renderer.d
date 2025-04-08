@@ -3032,6 +3032,8 @@ struct Renderer(B){
 						}
 					}
 				}
+			}else static if(is(T==Highlights!B)){
+				// TODO
 			}else static assert(0);
 		}
 		state.eachByType!(render,EachByTypeFlags.movingFirst|EachByTypeFlags.particlesBeforeEffects)(&this,options.enableWidgets,state,&info,rc);

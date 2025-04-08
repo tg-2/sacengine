@@ -6108,6 +6108,94 @@ struct CommandCones(B){
 	}
 }
 
+struct Highlight(B){
+	int side;
+	Vector3f position;
+	Vector3f targetPosition;
+	int target;
+	Quaternionf rotationUpdate;
+	Quaternionf rotation;
+	int frame=0;
+	float scale=0.0f;
+
+	enum flyingHeight=50.0f; // TODO: ok?
+	enum followDistance=5.0f;
+}
+
+struct Highlights(B){
+	Array!(Array!(Highlight!B)) highlights;
+	mixin Assign;
+	this(int numSides){
+		initialize(numSides);
+	}
+	void initialize(int numSides){
+		highlights.length=numSides;
+	}
+	void addHighlight(Highlight!B highlight){
+		highlights[highlight.side]~=highlight;
+	}
+	void removeHighlight(int side,int index){
+		if(index+1<highlights[side].length) highlights[side][index]=highlights[side][$-1];
+		highlights[side].length=highlights[side].length-1;
+	}
+}
+
+Highlight!B makeHighlight(B)(int side,Vector3f position,Vector3f targetPosition,int target,ObjectState!B state){
+	auto rotationSpeed=2*pi!float*0.6f/updateFPS;
+	auto rotationAxis=state.uniformDirection();
+	auto rotationUpdate=rotationQuaternion(rotationAxis,rotationSpeed);
+	return Highlight!B(side,position,targetPosition,target,rotationUpdate,Quaternionf.identity());
+}
+
+bool addHighlight(B)(int side,int target,ObjectState!B state){ // TODO: highlights
+	if(!target||!state.isValidTarget(target))
+		return false;
+	Vector3f[2] hitbox;
+	final switch(state.targetTypeFromId(target))with(TargetType){
+		case none: return false;
+		case creature,building:
+			hitbox=state.objectById!hitbox(target);
+			break;
+		case soul:
+			auto position=state.soulById!((ref soul)=>soul.position,()=>Vector3f.init)(target);
+			hitbox=cast(Vector3f[2])[position,position];
+			break;
+		default: return false;
+	}
+	hitbox[0].z=hitbox[1].z;
+	auto targetPosition=boxCenter(hitbox);
+	auto position=targetPosition;
+	position.z+=Highlight!B.flyingHeight;
+	state.addHighlight(makeHighlight(side,position,targetPosition,target,state));
+	state.movingObjectById((ref obj){
+		obj.creatureStats.effects.numHighlights+=1;
+	},(){})();
+	// TODO: highlights on buildings
+}
+
+bool removeHighlight(B)(int side,int target,ObjectState!B state){
+	if(!state.movingObjectById!((ref obj){
+		if(!obj.creatureStats.effects.numHighlights)
+			return false;
+		obj.creatureStats.effects.numHighlights-=1;
+		return true;
+	},()=>false)(target))
+		return false;
+	bool ok=false;
+	static void doIt(ref Highlights!B highlights,int side,int target,ObjectState!B state,bool* ok){
+		if(ok) return;
+		foreach(i;0..highlights.highlights[side].length){
+			if(highlights[i].target==target){
+				highlights.removeHighlights(side,i);
+				*ok=true;
+				return;
+			}
+		}
+	}
+	state.eachHighlights!doIt(side,target,state,&ok);
+	return ok;
+}
+
 enum ChatMessageType{
 	standard,
 	observer,
@@ -6238,6 +6326,7 @@ struct Objects(B,RenderMode mode){
 		Effects!B effects;
 		PermanentDisplacement!B permanentDisplacement;
 		CommandCones!B commandCones;
+		Highlights!B highlights;
 		ChatMessages!B chatMessages;
 	}
 	mixin Assign;
@@ -6394,6 +6483,10 @@ struct Objects(B,RenderMode mode){
 			if(!commandCones.cones.length) commandCones.initialize(32); // TODO: do this eagerly?
 			commandCones.addCommandCone(cone);
 		}
+		void addHighlight(Highlight!B highlight){
+			if(!highlights.highlights.length) highlights.initialize(32); // TODO: do this eagerly?
+			highlights.addHighlight(highlight);
+		}
 		void addChatMessage(B)(ChatMessage!B message){
 			chatMessages.addChatMessage(move(message));
 		}
@@ -6448,6 +6541,9 @@ auto eachParticles(alias f,B,T...)(ref Objects!(B,RenderMode.opaque) objects,T a
 }
 auto eachCommandCones(alias f,B,T...)(ref Objects!(B,RenderMode.opaque) objects,T args){
 	f(objects.commandCones,args);
+}
+auto eachHighlights(alias f,B,T...)(ref Objects!(B,RenderMode.opaque) objects,T args){
+	f(objects.highlights,args);
 }
 enum EachByTypeFlags{
 	none=0,
@@ -6626,6 +6722,9 @@ struct ObjectManager(B){
 	void addCommandCone(CommandCone!B cone){
 		opaqueObjects.addCommandCone(cone);
 	}
+	void addHighlight(Highlight!B cone){
+		opaqueObjects.addHighlight(cone);
+	}
 	void addChatMessage(ChatMessage!B message){
 		opaqueObjects.addChatMessage(move(message));
 	}
@@ -6665,6 +6764,9 @@ auto eachParticles(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
 }
 auto eachCommandCones(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
 	with(objectManager) opaqueObjects.eachCommandCones!f(args);
+}
+auto eachHighlights(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
+	with(objectManager) opaqueObjects.eachHighlights!f(args);
 }
 auto eachByType(alias f,EachByTypeFlags flags,bool particlesBeforeEffects=false,B,T...)(ref ObjectManager!B objectManager,T args){
 	with(objectManager){ // TODO: interleave opaque and transparent objects according to flags
@@ -23776,6 +23878,47 @@ void updateCommandCones(B)(ref CommandCones!B commandCones, ObjectState!B state)
 	}
 }
 
+void updateHighlights(B)(ref Highlights!B highlights, ObjectState!B state){
+	foreach(i;0..cast(int)highlights.highlights.length){
+		for(int j=0;j<highlights.highlights[i].length;){
+			with(highlights.highlights[i][j]){
+				if(target&&!state.isValidTarget(target)){
+					highlights.removeHighlight(i,j);
+					continue;
+				}
+				void follow(Vector3f[2] hitbox){
+					if(isNaN(hitbox[0].x)) return;
+					hitbox[0].z=hitbox[1].z;
+					targetPosition=boxCenter(hitbox);
+					auto distance=position.xy-targetPosition.xy;
+					auto lengthsqr=distance.lengthsqr;
+					if(lengthsqr>followDistance^^2){
+						distance=distance.normalized*followDistance;
+						position.x=targetPosition.x+distance.x;
+						position.y=targetPosition.y+distance.y;
+					}
+					position.z=targetPosition.z+flyingHeight;
+				}
+				switch(state.targetTypeFromId(target))with(TargetType){
+					case none,terrain: break;
+					case creature,building:
+						auto hitbox=state.objectById!hitbox(target);
+						follow(hitbox);
+						break;
+					case soul:
+						auto position=state.soulById!((ref soul)=>soul.position,()=>Vector3f.init)(target);
+						follow([position,position]);
+						break;
+					default: break;
+				}
+				scope(success) j++;
+				frame+=1;
+				scale=min(1.0f,scale+1.0f/updateFPS);
+			}
+		}
+	}
+}
+
 void animateManafount(B)(Vector3f location, ObjectState!B state){
 	if(!state.enableParticles) return;
 	auto sacParticle=SacParticle!B.get(ParticleType.manafount);
@@ -25038,6 +25181,7 @@ final class ObjectState(B){ // (update logic)
 		this.eachEffects!updateEffects(this);
 		this.eachParticles!updateParticles(this);
 		this.eachCommandCones!updateCommandCones(this);
+		this.eachHighlights!updateHighlights(this);
 		foreach(command;frameCommands)
 			applyCommand(command);
 		this.eachStatic!updateStructure(this);
@@ -25295,6 +25439,9 @@ final class ObjectState(B){ // (update logic)
 	void addCommandCone(CommandCone!B cone){
 		obj.addCommandCone(cone);
 	}
+	void addHighlight(Highlight!B cone){
+		obj.addHighlight(cone);
+	}
 	void addChatMessage(ChatMessage!B message){
 		obj.addChatMessage(move(message));
 	}
@@ -25509,6 +25656,9 @@ auto eachParticles(alias f,B,T...)(ObjectState!B objectState,T args){
 }
 auto eachCommandCones(alias f,B,T...)(ObjectState!B objectState,T args){
 	return objectState.obj.eachCommandCones!f(args);
+}
+auto eachHighlights(alias f,B,T...)(ObjectState!B objectState,T args){
+	return objectState.obj.eachHighlights!f(args);
 }
 auto eachByType(alias f,EachByTypeFlags flags,B,T...)(ObjectState!B objectState,T args){
 	return objectState.obj.eachByType!(f,flags)(args);

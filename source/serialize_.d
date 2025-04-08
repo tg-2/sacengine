@@ -904,6 +904,13 @@ void serialize(alias sink,B)(ref CommandCones!B commandCones){ serializeStruct!s
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==CommandCones!B)){ deserializeStruct(result,state,data); }
 
 
+void serialize(alias sink,B)(ref Highlight!B highlight){ serializeStruct!sink(highlight); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Highlight!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref Highlights!B highlights){ serializeStruct!sink(highlights); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Highlights!B)){ deserializeStruct(result,state,data); }
+
+
 void serialize(alias sink,B)(ref ChatMessageContent!B chatMessage){ serializeStruct!sink(chatMessage); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ChatMessageContent!B)){ deserializeStruct(result,state,data); }
 
