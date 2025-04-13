@@ -6108,6 +6108,7 @@ struct CommandCones(B){
 	}
 }
 
+enum HighlightStatus{ growing, stationary, shrinking, }
 struct Highlight(B){
 	int side;
 	Vector3f position;
@@ -6118,6 +6119,7 @@ struct Highlight(B){
 	Quaternionf rotation;
 	int frame=0;
 	float scale=0.0f;
+	HighlightStatus status;
 
 	enum flyingHeight=85.0f;
 	enum followDistance=5.0f;
@@ -6180,22 +6182,26 @@ bool removeHighlight(B)(int side,int target,ObjectState!B state){
 	if(!state.movingObjectById!((ref obj){
 		if(!obj.creatureStats.effects.numHighlights)
 			return false;
-		obj.creatureStats.effects.numHighlights-=1;
 		return true;
 	},()=>false)(target))
 		return false;
 	bool ok=false;
 	static void doIt(ref Highlights!B highlights,int side,int target,ObjectState!B state,bool* ok){
-		if(ok) return;
+		if(*ok) return;
 		foreach(i;0..highlights.highlights[side].length){
-			if(highlights[i].target==target){
-				highlights.removeHighlights(side,i);
+			if(highlights.highlights[side][i].target==target){
+				highlights.highlights[side][i].status=HighlightStatus.shrinking;
 				*ok=true;
 				return;
 			}
 		}
 	}
 	state.eachHighlights!doIt(side,target,state,&ok);
+	if(ok){
+		state.movingObjectById!((ref obj){
+			obj.creatureStats.effects.numHighlights-=1;
+		},(){})(target);
+	}
 	return ok;
 }
 
@@ -13837,7 +13843,10 @@ bool stopRitual(B)(ref Ritual!B ritual,ObjectState!B state,bool targetDead=false
 		altarBolts=typeof(altarBolts).init;
 		if(!targetDead) desecrateBolts=typeof(desecrateBolts).init;
 		setOccupied(shrine,false,state);
-		if(targetWizard) state.movingObjectById!((ref obj){ obj.creatureStats.effects.numDesecrations-=1; },(){})(targetWizard);
+		if(targetWizard&&frame>=ritual.setupTime){
+			state.movingObjectById!((ref obj){ obj.creatureStats.effects.numDesecrations-=1; },(){})(targetWizard);
+			removeHighlight(side,targetWizard,state);
+		}
 		return vortex.scale>0.0f;
 	}
 }
@@ -13907,6 +13916,9 @@ bool updateRitual(B)(ref Ritual!B ritual,ObjectState!B state){
 	with(ritual){
 		++frame;
 		if(!state.isValidTarget(targetWizard,TargetType.creature)) targetWizard=0;
+		if(type==RitualType.desecrate&&targetWizard&&frame==ritual.setupTime){
+			addHighlight(side,targetWizard,state);
+		}
 		bool targetDead=!targetWizard||state.movingObjectById!(isDead,()=>true)(targetWizard);
 		if(type==RitualType.desecrate&&targetWizard&&targetDead){
 			if(state.staticObjectById!(destroyAltar,()=>false)(shrine,state))
@@ -23886,7 +23898,7 @@ void updateHighlights(B)(ref Highlights!B highlights, ObjectState!B state){
 	foreach(i;0..cast(int)highlights.highlights.length){
 		for(int j=0;j<highlights.highlights[i].length;){
 			with(highlights.highlights[i][j]){
-				if(target&&!state.isValidTarget(target)){
+				if(target&&!state.isValidTarget(target)||status==HighlightStatus.shrinking&&scale==0.0f){
 					highlights.removeHighlight(i,j);
 					continue;
 				}
@@ -23918,7 +23930,17 @@ void updateHighlights(B)(ref Highlights!B highlights, ObjectState!B state){
 				scope(success) j++;
 				rotation=rotationUpdate*rotation;
 				frame+=1;
-				scale=min(1.0f,scale+1.0f/updateFPS);
+				final switch(status)with(HighlightStatus){
+					case growing:
+						scale=min(1.0f,scale+1.0f/updateFPS);
+						if(scale==1.0f) status=stationary;
+						break;
+					case stationary:
+						break;
+					case shrinking:
+						scale=max(0.0f,scale-1.0f/updateFPS);
+						break;
+				}
 			}
 		}
 	}

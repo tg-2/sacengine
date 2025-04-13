@@ -3812,14 +3812,26 @@ struct Renderer(B){
 		}
 		B.minimapMaterialBackend.bindDiffuse(sacHud.minimapIcons);
 		 // temporary scratch space. TODO: maybe share memory with other temporary scratch spaces
-		static Array!uint creatureArrowIndices;
-		static Array!uint structureArrowIndices;
+		static Array!int creatureArrowIndices;
+		static Array!int structureArrowIndices;
+		static Array!int highlightedIndices;
+		if(info.renderSide<state.obj.opaqueObjects.highlights.highlights.length){
+			foreach(ref highlight;state.obj.opaqueObjects.highlights.highlights[info.renderSide])
+				if(highlight.status!=HighlightStatus.shrinking&&highlight.target)
+					highlightedIndices~=highlight.target;
+		}
+		static bool isHighlighted(int id){ // TODO: can be slow if many highlights
+			foreach(hid;highlightedIndices.data)
+				if(id==hid)
+					return true;
+			return false;
+		}
 		static void render(T)(ref T objects,float minimapFactor,Vector3f minimapCenter,Vector3f mapCenter,float radius,Quaternionf mapRotation,Renderer!B* self,ObjectState!B state,RenderInfo!B* info,B.RenderContext rc){ // TODO: why does this need to be static? DMD bug?
 			enum isMoving=is(T==MovingObjects!(B, renderMode), RenderMode renderMode);
 			enum isStatic=is(T==StaticObjects!(B, renderMode), RenderMode renderMode);
 			static if((is(typeof(objects.sacObject))||is(T==Souls!(B)))&&!is(T==FixedObjects!B)){
-				auto quad=self.minimapQuad;
-				auto iconScaling=info.hudScaling*Vector3f(2.0f,2.0f,0.0f);
+				auto defaultQuad=self.minimapQuad;
+				auto defaultIconScaling=info.hudScaling*Vector3f(2.0f,2.0f,0.0f);
 				static if(is(typeof(objects.sacObject))){
 					auto sacObject=objects.sacObject;
 					bool isManafount=false;
@@ -3828,41 +3840,48 @@ struct Renderer(B){
 						bool isWizard=false;
 						if(sacObject.isWizard){
 							isWizard=true;
-							quad=self.minimapWizard;
-							iconScaling=info.hudScaling*Vector3f(11.0f,11.0f,0.0f);
+							defaultQuad=self.minimapWizard;
+							defaultIconScaling=info.hudScaling*Vector3f(11.0f,11.0f,0.0f);
 						}
 					}else{
 						bool mayShowArrow=false;
 						enum isWizard=false;
 						if(sacObject.isAltarRing){
 							mayShowArrow=true;
-							quad=self.minimapAltarRing;
-							iconScaling=info.hudScaling*Vector3f(10.0f,10.0f,0.0f);
+							defaultQuad=self.minimapAltarRing;
+							defaultIconScaling=info.hudScaling*Vector3f(10.0f,10.0f,0.0f);
 						}else if(sacObject.isManalith){
 							mayShowArrow=true;
-							quad=self.minimapManalith;
-							iconScaling=info.hudScaling*Vector3f(12.0f,12.0f,0.0f);
+							defaultQuad=self.minimapManalith;
+							defaultIconScaling=info.hudScaling*Vector3f(12.0f,12.0f,0.0f);
 						}else if(sacObject.isManafount){
 							isManafount=true;
-							quad=self.minimapManafount;
-							iconScaling=info.hudScaling*Vector3f(11.0f,11.0f,0.0f);
+							defaultQuad=self.minimapManafount;
+							defaultIconScaling=info.hudScaling*Vector3f(11.0f,11.0f,0.0f);
 							B.minimapMaterialBackend.setColor(Color4f(0.0f,160.0f/255.0f,219.0f/255.0f,1.0f));
 						}else if(sacObject.isShrine){
 							mayShowArrow=true;
-							quad=self.minimapShrine;
-							iconScaling=info.hudScaling*Vector3f(12.0f,12.0f,0.0f);
+							defaultQuad=self.minimapShrine;
+							defaultIconScaling=info.hudScaling*Vector3f(12.0f,12.0f,0.0f);
 						}
 					}
-					//quad=self.minimapHighlight[state.frame/20%$];
-					//iconScaling=info.hudScaling*Vector3f(12.0f,12.0f,12.0f);
 				}else enum mayShowArrow=false;
 				enforce(objects.length<=uint.max);
 				foreach(j;0..cast(uint)objects.length){
+					auto quad=defaultQuad,iconScaling=defaultIconScaling;
 					static if(is(typeof(objects.sacObject))){
 						static if(isMoving){
 							if(objects.creatureStates[j].mode.among(CreatureMode.dead,CreatureMode.dissolving)) continue;
 							if(info.renderSide!=objects.sides[j]&&(!objects.creatureStates[j].mode.isVisibleToOtherSides||objects.creatureStatss[j].effects.stealth))
 								continue;
+						}
+						static if(isMoving){
+							bool highlighted=objects.creatureStatss[j].effects.numHighlights>0&&isHighlighted(objects.ids[j]);
+						}else enum highlighted=false; // TODO
+						if(highlighted){
+							static assert(updateFPS%3==0);
+							quad=self.minimapHighlight[state.frame/(updateFPS/3)%$];
+							iconScaling=info.hudScaling*Vector3f(12.0f,12.0f,12.0f);
 						}
 						static if(isMoving){
 							auto side=objects.sides[j];
@@ -3875,7 +3894,7 @@ struct Renderer(B){
 						import ntts: Flags;
 						if(flags&Flags.notOnMinimap) continue;
 						auto showArrow=mayShowArrow&&
-							(side==info.renderSide||
+							(side==info.renderSide||highlighted||
 							 (!isMoving||isWizard) && state.sides.getStance(side,info.renderSide)==Stance.ally);
 					}else enum showArrow=false;
 					auto clipRadiusFactor=showArrow?0.92f:1.08f;
@@ -3896,7 +3915,10 @@ struct Renderer(B){
 						}else B.minimapMaterialBackend.setTransformationScaled(iconCenter-0.5f*iconScaling,Quaternionf.identity(),iconScaling,rc);
 						static if(is(typeof(objects.sacObject))){
 							if(!isManafount){
-								auto color=isBlinking?Color4f(1.0f,0.0f,0.0f,1.0f):state.sides.sideColor(side);
+								auto color=isBlinking?Color4f(1.0f,0.0f,0.0f,1.0f):
+									highlighted&&state.frame%(updateFPS/2)<updateFPS/4?
+									(state.sides.sideColor(side)==Color4f(1.0f,1.0f,1.0f,1.0f)?Color4f(0.5f,0.5f,0.5f,1.0f):Color4f(1.0f,1.0f,1.0f,1.0f))
+									:state.sides.sideColor(side);
 								B.minimapMaterialBackend.setColor(color);
 							}
 						}else static if(is(T==Souls!B)){
@@ -3940,6 +3962,9 @@ struct Renderer(B){
 			static if(is(typeof(object.sacObject))&&!is(T==FixedObjects!B)){
 				auto sacObject=object.sacObject;
 				enum isMoving=is(T==MovingObject!B);
+				static if(isMoving){
+					bool highlighted=object.creatureStats.effects.numHighlights>0&&isHighlighted(object.id);
+				}else enum highlighted=false; // TODO
 				auto arrowQuad=isMoving?self.minimapCreatureArrow:self.minimapStructureArrow;
 				auto arrowScaling=info.hudScaling*Vector3f(11.0f,11.0f,0.0f);
 				auto position=object.position-minimapCenter;
@@ -3955,7 +3980,10 @@ struct Renderer(B){
 					auto sideIsBlinking=state.buildingById!((ref b,state)=>tuple(b.side,b.notificationState.isBlinking(state)),function Tuple!(int,bool)(){ assert(0); })(object.buildingId,state);
 					auto side=sideIsBlinking[0],isBlinking=side==info.renderSide&&sideIsBlinking[1];
 				}
-				auto color=isBlinking?Color4f(1.0f,0.0f,0.0f,1.0f):state.sides.sideColor(side);
+				auto color=isBlinking?Color4f(1.0f,0.0f,0.0f,1.0f):
+					highlighted&&state.frame%(updateFPS/2)<updateFPS/4?
+					(state.sides.sideColor(side)==Color4f(1.0f,1.0f,1.0f,1.0f)?Color4f(0.5f,0.5f,0.5f,1.0f):Color4f(1.0f,1.0f,1.0f,1.0f))
+					:state.sides.sideColor(side);
 				B.minimapMaterialBackend.setColor(color);
 				arrowQuad.render(rc);
 				if(info.mouse.onMinimap){
@@ -3971,6 +3999,7 @@ struct Renderer(B){
 				state.objectById!renderArrow(id,minimapFactor,minimapCenter,mapCenter,radius,mapRotation,&this,state,&info,rc);
 		creatureArrowIndices.length=0;
 		structureArrowIndices.length=0;
+		highlightedIndices.length=0;
 		material.unbind(rc);
 		material=sacHud.frameMaterial;
 		material.bind(rc);
