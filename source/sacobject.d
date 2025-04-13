@@ -3696,7 +3696,7 @@ struct SacHighlightStar(B){
 	B.Material material;
 	B.Mesh mesh;
 	static B.Mesh createMesh(){
-		return makeCrystalMesh!B(24, 1.25f, 5.0f, 4, true);
+		return makeCrystalMesh!B(24, 4.0f, 16.0f, 4, true);
 	}
 }
 

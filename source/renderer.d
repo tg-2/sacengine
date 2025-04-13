@@ -3033,7 +3033,58 @@ struct Renderer(B){
 					}
 				}
 			}else static if(is(T==Highlights!B)){
-				// TODO
+				static if(mode==RenderMode.transparent){
+					if(rc.shadowMode) return;
+					if(objects.highlights.length<=info.renderSide) return;
+					//if(iota(CommandConeColor.max+1).all!(i=>objects.cones[info.renderSide][i].empty)) return;
+					if(objects.highlights[info.renderSide].length==0) return;
+					self.sacCommandCone.material.bind(rc);
+					B.disableCulling();
+					assert(self.sacCommandCone.material.backend is B.shadelessMaterialBackend);
+					B.shadelessMaterialBackend.setInformation(Vector4f(0.0f,0.0f,0.0f,0.0f));
+					B.shadelessMaterialBackend.setColor(Color4f(1.0f,0.75f,0.0f,1.0f));
+					B.shadelessMaterialBackend.setEnergy(1.0f);
+					enum maxLifetime=cast(int)(self.sacCommandCone.lifetime*updateFPS);
+					foreach(ref highlight;objects.highlights[info.renderSide]){
+						auto position=highlight.position,targetPosition=highlight.targetPosition;
+						auto frame=highlight.frame;
+						auto direction=(targetPosition-position);
+						auto dist=direction.length;
+						direction/=dist;
+						auto mainRotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),direction);
+						auto rotation=mainRotation*facingQuaternion(2.0f*pi!float*frame/(4*updateFPS));
+						auto fraction=1.0f; // TODO
+						//B.shadelessMaterialBackend.setAlpha(1.0f); // TODO
+						auto vertScaling=dist/sacCommandCone.height;
+						auto horzScaling=highlight.scale*highlight.width/(2.0f*sacCommandCone.radius);
+						auto scaling=Vector3f(horzScaling,horzScaling,0.98f*vertScaling);
+						B.shadelessMaterialBackend.bindDiffuse(self.sacCommandCone.texture);
+						B.shadelessMaterialBackend.setTransformationScaled(position, rotation, scaling, rc);
+						self.sacCommandCone.mesh.render(rc);
+						enum numShells=8;
+						enum scalingFactor=0.95f;
+						foreach(k;0..numShells){
+							horzScaling*=scalingFactor;
+							rotation=mainRotation*facingQuaternion((k&1?-1.0f:1.0f)*2.0f*pi!float*fraction*(k+1));
+							scaling=Vector3f(horzScaling,horzScaling,vertScaling*(0.98f+0.01f*sqrt(1.0f-(1.0f-(k+1.0f)/numShells)^^2)));
+							if(k+1==numShells) B.shadelessMaterialBackend.bindDiffuse(self.whiteTexture);
+							B.shadelessMaterialBackend.setTransformationScaled(position, rotation, scaling, rc);
+							self.sacCommandCone.mesh.render(rc);
+						}
+					}
+					self.sacCommandCone.material.unbind(rc);
+					auto material=self.highlightStar.material;
+					material.bind(rc);
+					foreach(ref highlight;objects.highlights[info.renderSide]){
+						auto position=highlight.position;
+						auto rotation=highlight.rotation;
+						auto mesh=self.highlightStar.mesh;
+						material.backend.setTransformation(position,rotation,rc);
+						mesh.render(rc);
+					}
+					B.enableCulling();
+					material.unbind(rc);
+				}
 			}else static assert(0);
 		}
 		state.eachByType!(render,EachByTypeFlags.movingFirst|EachByTypeFlags.particlesBeforeEffects)(&this,options.enableWidgets,state,&info,rc);
@@ -3879,6 +3930,8 @@ struct Renderer(B){
 			}else static if(is(T==Particles!(B,relative),bool relative)){
 				// do nothing
 			}else static if(is(T==CommandCones!B)){
+				// do nothing
+			}else static if(is(T==Highlights!B)){
 				// do nothing
 			}else static assert(0);
 		}

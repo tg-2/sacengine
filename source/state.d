@@ -6112,13 +6112,14 @@ struct Highlight(B){
 	int side;
 	Vector3f position;
 	Vector3f targetPosition;
+	float width;
 	int target;
 	Quaternionf rotationUpdate;
 	Quaternionf rotation;
 	int frame=0;
 	float scale=0.0f;
 
-	enum flyingHeight=50.0f; // TODO: ok?
+	enum flyingHeight=85.0f;
 	enum followDistance=5.0f;
 }
 
@@ -6140,21 +6141,21 @@ struct Highlights(B){
 	}
 }
 
-Highlight!B makeHighlight(B)(int side,Vector3f position,Vector3f targetPosition,int target,ObjectState!B state){
-	auto rotationSpeed=2*pi!float*0.6f/updateFPS;
+Highlight!B makeHighlight(B)(int side,Vector3f position,Vector3f targetPosition,float width,int target,ObjectState!B state){
+	auto rotationSpeed=2*pi!float*0.3f/updateFPS;
 	auto rotationAxis=state.uniformDirection();
 	auto rotationUpdate=rotationQuaternion(rotationAxis,rotationSpeed);
-	return Highlight!B(side,position,targetPosition,target,rotationUpdate,Quaternionf.identity());
+	return Highlight!B(side,position,targetPosition,width,target,rotationUpdate,Quaternionf.identity());
 }
 
 bool addHighlight(B)(int side,int target,ObjectState!B state){ // TODO: highlights
 	if(!target||!state.isValidTarget(target))
 		return false;
 	Vector3f[2] hitbox;
-	final switch(state.targetTypeFromId(target))with(TargetType){
+	switch(state.targetTypeFromId(target))with(TargetType){
 		case none: return false;
 		case creature,building:
-			hitbox=state.objectById!hitbox(target);
+			hitbox=state.objectById!(.hitbox)(target);
 			break;
 		case soul:
 			auto position=state.soulById!((ref soul)=>soul.position,()=>Vector3f.init)(target);
@@ -6166,11 +6167,13 @@ bool addHighlight(B)(int side,int target,ObjectState!B state){ // TODO: highligh
 	auto targetPosition=boxCenter(hitbox);
 	auto position=targetPosition;
 	position.z+=Highlight!B.flyingHeight;
-	state.addHighlight(makeHighlight(side,position,targetPosition,target,state));
-	state.movingObjectById((ref obj){
+	float width=0.75f*boxSize(hitbox).xy.length;
+	state.addHighlight(makeHighlight(side,position,targetPosition,width,target,state));
+	state.movingObjectById!((ref obj){
 		obj.creatureStats.effects.numHighlights+=1;
-	},(){})();
+	},(){})(target);
 	// TODO: highlights on buildings
+	return true;
 }
 
 bool removeHighlight(B)(int side,int target,ObjectState!B state){
@@ -6586,6 +6589,7 @@ auto eachByType(alias f,EachByTypeFlags flags,B,RenderMode mode,T...)(ref Object
 				f(particle,args);
 			static if(particlesBeforeEffects) f(effects,args);
 			f(commandCones,args);
+			f(highlights,args);
 		}
 		static if(!movingFirst) mixin(processMoving);
 	}
@@ -23912,6 +23916,7 @@ void updateHighlights(B)(ref Highlights!B highlights, ObjectState!B state){
 					default: break;
 				}
 				scope(success) j++;
+				rotation=rotationUpdate*rotation;
 				frame+=1;
 				scale=min(1.0f,scale+1.0f/updateFPS);
 			}
@@ -24338,7 +24343,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 				if(!(flagsFromBuildingId(objects.buildingIds[j],state)&AdditionalBuildingFlags.inactive))
 					proximity.addAltar(sideFromBuildingId(objects.buildingIds[j],state),objects.positions[j]);
 		}
-	}else static if(is(T==Souls!B)||is(T==Buildings!B)||is(T==FixedObjects!B)||is(T==Effects!B)||is(T==Particles!(B,relative),bool relative)||is(T==CommandCones!B)){
+	}else static if(is(T==Souls!B)||is(T==Buildings!B)||is(T==FixedObjects!B)||is(T==Effects!B)||is(T==Particles!(B,relative),bool relative)||is(T==CommandCones!B)||is(T==Highlights!B)){
 		// do nothing
 	}else static assert(0);
 }
