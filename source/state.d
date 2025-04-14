@@ -13843,9 +13843,9 @@ bool stopRitual(B)(ref Ritual!B ritual,ObjectState!B state,bool targetDead=false
 		altarBolts=typeof(altarBolts).init;
 		if(!targetDead) desecrateBolts=typeof(desecrateBolts).init;
 		setOccupied(shrine,false,state);
-		if(targetWizard&&frame>=ritual.setupTime){
+		if(targetWizard){
 			state.movingObjectById!((ref obj){ obj.creatureStats.effects.numDesecrations-=1; },(){})(targetWizard);
-			removeHighlight(side,targetWizard,state);
+			if(frame>=ritual.setupTime) removeHighlight(side,targetWizard,state);
 		}
 		return vortex.scale>0.0f;
 	}
