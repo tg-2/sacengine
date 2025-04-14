@@ -3910,7 +3910,7 @@ struct Renderer(B){
 					if(iconOffset.lengthsqr<=clipradiusSq){
 						auto iconCenter=mapCenter+iconOffset;
 						static if(is(typeof(isBlinking))){
-							auto blinkScale=isBlinking?1.25f:1.0f;
+							auto blinkScale=isBlinking||highlighted&&state.frame%(updateFPS/2)<updateFPS/4?(isMoving&&!highlighted&&!isWizard?3.0f:1.35f):1.0f;
 							B.minimapMaterialBackend.setTransformationScaled(iconCenter-0.5f*iconScaling*blinkScale,Quaternionf.identity(),iconScaling*blinkScale,rc);
 						}else B.minimapMaterialBackend.setTransformationScaled(iconCenter-0.5f*iconScaling,Quaternionf.identity(),iconScaling,rc);
 						static if(is(typeof(objects.sacObject))){
@@ -3972,7 +3972,6 @@ struct Renderer(B){
 				auto offset=iconOffset.normalized*(0.92f*radius-info.hudScaling*6.0f);
 				auto iconCenter=mapCenter+offset;
 				auto rotation=rotationQuaternion(Axis.z,pi!float/2+atan2(iconOffset.y,iconOffset.x));
-				B.minimapMaterialBackend.setTransformationScaled(iconCenter-rotate(rotation,0.5f*arrowScaling),rotation,arrowScaling,rc);
 				static if(isMoving){
 					auto side=object.side;
 					auto isBlinking=side==info.renderSide&&object.notificationState.isBlinking(state);
@@ -3980,6 +3979,8 @@ struct Renderer(B){
 					auto sideIsBlinking=state.buildingById!((ref b,state)=>tuple(b.side,b.notificationState.isBlinking(state)),function Tuple!(int,bool)(){ assert(0); })(object.buildingId,state);
 					auto side=sideIsBlinking[0],isBlinking=side==info.renderSide&&sideIsBlinking[1];
 				}
+				auto blinkScale=isBlinking||highlighted&&state.frame%(updateFPS/2)<updateFPS/4?1.35f:1.0f;
+				B.minimapMaterialBackend.setTransformationScaled(iconCenter-rotate(rotation,0.5f*arrowScaling*blinkScale),rotation,arrowScaling*blinkScale,rc);
 				auto color=isBlinking?Color4f(1.0f,0.0f,0.0f,1.0f):
 					highlighted&&state.frame%(updateFPS/2)<updateFPS/4?
 					(state.sides.sideColor(side)==Color4f(1.0f,1.0f,1.0f,1.0f)?Color4f(0.5f,0.5f,0.5f,1.0f):Color4f(1.0f,1.0f,1.0f,1.0f))
