@@ -8345,7 +8345,7 @@ bool dropSoul(B)(int wizard,ObjectState!B state){
 
 bool canCast(B)(ref MovingObject!B object,ObjectState!B state){
 	if(!object.isWizard) return false;
-	if(!object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving)&&object.castStatus(state)!=CastingStatus.finished)
+	if(!object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving)&&object.castStatus(false,state)!=CastingStatus.finished)
 		return false;
 	return true;
 }
@@ -13156,10 +13156,10 @@ enum CastingStatus{
 	interrupted,
 	finished,
 }
-CastingStatus castStatus(B)(ref MovingObject!B wizard,ObjectState!B state){
+CastingStatus castStatus(B)(ref MovingObject!B wizard,bool oldCast,ObjectState!B state){
 	with(wizard){
 		if(!creatureState.mode.isCasting) return CastingStatus.interrupted;
-		if(animationState.among(AnimationState.spellcastEnd,AnimationState.runSpellcastEnd)&&frame+1>=sacObject.castingTime(wizard.animationState)*updateAnimFactor)
+		if(animationState.among(AnimationState.spellcastEnd,AnimationState.runSpellcastEnd)&&frame+updateAnimFactor-1>=sacObject.castingTime(wizard.animationState)*updateAnimFactor+!oldCast)
 			return CastingStatus.finished;
 		return CastingStatus.underway;
 	}
@@ -13168,7 +13168,7 @@ CastingStatus update(B)(ref ManaDrain!B manaDrain,ObjectState!B state){
 	manaDrain.timer-=1;
 	return state.movingObjectById!((ref wizard,manaDrain,state){
 		if(manaDrain.timer>=0) wizard.drainMana(manaDrain.manaCostPerFrame,state);
-		return wizard.castStatus(state);
+		return wizard.castStatus(true,state);
 	},function CastingStatus(){ return CastingStatus.interrupted; })(manaDrain.wizard,manaDrain,state);
 }
 bool updateManaDrain(B)(ref ManaDrain!B manaDrain,ObjectState!B state){
