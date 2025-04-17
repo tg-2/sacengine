@@ -13916,9 +13916,6 @@ bool updateRitual(B)(ref Ritual!B ritual,ObjectState!B state){
 	with(ritual){
 		++frame;
 		if(!state.isValidTarget(targetWizard,TargetType.creature)) targetWizard=0;
-		if(type==RitualType.desecrate&&targetWizard&&frame==ritual.setupTime){
-			addHighlight(side,targetWizard,state);
-		}
 		bool targetDead=!targetWizard||state.movingObjectById!(isDead,()=>true)(targetWizard);
 		if(type==RitualType.desecrate&&targetWizard&&targetDead){
 			if(state.staticObjectById!(destroyAltar,()=>false)(shrine,state))
@@ -13933,6 +13930,9 @@ bool updateRitual(B)(ref Ritual!B ritual,ObjectState!B state){
 		if(ritual.stopped){
 			if(!targetWizard||!targetDead) vortex.scale=max(0.0f,vortex.scale-1.0f/vortex.numFramesToDisappear);
 			return vortex.scale>0.0f;
+		}
+		if(type==RitualType.desecrate&&targetWizard&&frame==ritual.setupTime){
+			addHighlight(side,targetWizard,state);
 		}
 		auto shrinePositionIsAltar=state.staticObjectById!((ref obj)=>tuple(obj.position,obj.sacObject.isAltar),()=>tuple(Vector3f.init,false))(shrine);
 		if(type==RitualType.convert||!targetDead||!isNaN(shrinePositionIsAltar[0].x)) shrinePosition=shrinePositionIsAltar[0];
