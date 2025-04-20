@@ -10723,7 +10723,7 @@ bool hasClearShot(B)(ref MovingObject!B object,bool isAbility,Vector3f targetPos
 		state.hasLineOfSightTo(object.firstShotPosition(isAbility),adjustedTarget,object.id,target.id);+/
 }
 float shootRange(B)(ref MovingObject!B object,ObjectState!B state){
-	if(auto ra=object.rangedAttack) return 0.8f*ra.range;
+	if(auto ra=object.rangedAttack) return max(0.8f*ra.range,ra.range-30.0f);
 	return 0.0f;
 }
 float useAbilityDistance(B)(ref MovingObject!B object,ObjectState!B state){

@@ -87,8 +87,7 @@ final class SacObject(B){
 		return aggressiveRange()+25.0f; // ok?
 	}
 	@property float guardRange(){
-		enum guardDistance=60.0f; // ok?
-		if(auto ra=rangedAttack) return max(guardDistance,0.75f*ra.range); // TODO: ok?
+		enum guardDistance=42.0f; // ok?
 		return guardDistance;
 	}
 	@property bool canRun(){
