@@ -6919,7 +6919,8 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 						object.animationState=AnimationState.hover;
 					break;
 				case CreatureMovement.tumbling:
-					object.creatureState.mode=CreatureMode.stunned;
+					if(object.creatureState.mode!=CreatureMode.rockForm)
+						object.creatureState.mode=CreatureMode.stunned;
 					break;
 			}
 			if(object.creatureState.mode==CreatureMode.stunned)
@@ -7467,7 +7468,7 @@ void catapult(B)(ref MovingObject!B object, Vector3f velocity, ObjectState!B sta
 	if(!object.canCatapult) return;
 	if(object.creatureState.movement==CreatureMovement.flying) return;
 	if(object.creatureState.mode==CreatureMode.pumping) object.kill(state);
-	if(object.creatureState.mode!=CreatureMode.dying)
+	if(!object.creatureState.mode.among(CreatureMode.dying,CreatureMode.rockForm))
 		object.creatureState.mode=CreatureMode.stunned;
 	if(object.creatureState.movement!=CreatureMovement.tumbling){
 		object.creatureState.movement=CreatureMovement.tumbling;
