@@ -3894,8 +3894,8 @@ struct Renderer(B){
 						import ntts: Flags;
 						if(flags&Flags.notOnMinimap) continue;
 						auto showArrow=mayShowArrow&&
-							(side==info.renderSide||highlighted||
-							 (!isMoving||isWizard) && state.sides.getStance(side,info.renderSide)==Stance.ally);
+							(side==info.renderSide||highlighted||isWizard||
+							 !isMoving && state.sides.getStance(side,info.renderSide)==Stance.ally);
 					}else enum showArrow=false;
 					auto clipRadiusFactor=showArrow?0.92f:1.08f;
 					auto clipradiusSq=((clipRadiusFactor*radius+(showArrow?-1.0f:1.0f)*0.5f*iconScaling.x)*
