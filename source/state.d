@@ -25239,6 +25239,7 @@ final class ObjectState(B){ // (update logic)
 	struct Settings{
 		GameMode gameMode=GameMode.skirmish;
 		int gameModeParam=0;
+		bool alliedBeamVision=true;
 		bool randomCreatureScale=false;
 		bool enableDropSoul=true;
 		bool targetDroppedSouls=false;
@@ -25248,6 +25249,7 @@ final class ObjectState(B){ // (update logic)
 		bool fasterCastingTimes=true;
 	}
 	Settings settings;
+	@property bool alliedBeamVision(){ return settings.alliedBeamVision; }
 	@property bool randomCreatureScale(){ return settings.randomCreatureScale; }
 	@property bool enableDropSoul(){ return settings.enableDropSoul; }
 	@property bool targetDroppedSouls(){ return settings.targetDroppedSouls; }
@@ -25255,6 +25257,7 @@ final class ObjectState(B){ // (update logic)
 	@property bool greenAllySouls(){ return settings.greenAllySouls; }
 	@property bool fasterStandupTimes(){ return settings.fasterStandupTimes; }
 	@property bool fasterCastingTimes(){ return settings.fasterCastingTimes; }
+	void disableAlliedBeamVision(){ settings.alliedBeamVision=false; }
 	void enableRandomCreatureScale(){ settings.randomCreatureScale=true; }
 	void disableDropSoul(){ settings.enableDropSoul=false; }
 	void allowTargetingDroppedSouls(){ settings.targetDroppedSouls=true; }
@@ -26974,6 +26977,7 @@ struct GameInit(B){
 	int replicateCreatures=1;
 	int protectManafounts=0;
 	bool terrainSineWave=false;
+	bool alliedBeamVision=true;
 	bool randomCreatureScale=false;
 	bool enableDropSoul=true;
 	bool targetDroppedSouls=false;
@@ -27023,6 +27027,7 @@ void initGame(B)(ObjectState!B state,ref Array!SlotInfo slots,GameInit!B gameIni
 			})(state);
 	}
 	if(gameInit.terrainSineWave) state.addEffect(TestDisplacement());
+	if(!gameInit.alliedBeamVision) state.disableAlliedBeamVision();
 	if(gameInit.randomCreatureScale) state.enableRandomCreatureScale();
 	if(!gameInit.enableDropSoul) state.disableDropSoul();
 	if(gameInit.targetDroppedSouls) state.allowTargetingDroppedSouls();

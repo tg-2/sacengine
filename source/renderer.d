@@ -3035,55 +3035,62 @@ struct Renderer(B){
 			}else static if(is(T==Highlights!B)){
 				static if(mode==RenderMode.transparent){
 					if(rc.shadowMode) return;
-					if(objects.highlights.length<=info.renderSide) return;
-					//if(iota(CommandConeColor.max+1).all!(i=>objects.cones[info.renderSide][i].empty)) return;
-					if(objects.highlights[info.renderSide].length==0) return;
-					self.sacCommandCone.material.bind(rc);
-					B.disableCulling();
-					assert(self.sacCommandCone.material.backend is B.shadelessMaterialBackend);
-					B.shadelessMaterialBackend.setInformation(Vector4f(0.0f,0.0f,0.0f,0.0f));
-					B.shadelessMaterialBackend.setColor(Color4f(1.0f,0.75f,0.0f,1.0f));
-					B.shadelessMaterialBackend.setEnergy(1.0f);
-					enum maxLifetime=cast(int)(self.sacCommandCone.lifetime*updateFPS);
-					foreach(ref highlight;objects.highlights[info.renderSide]){
-						auto position=highlight.position,targetPosition=highlight.targetPosition;
-						auto frame=highlight.frame;
-						auto direction=(targetPosition-position);
-						auto dist=direction.length;
-						direction/=dist;
-						auto mainRotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),direction);
-						auto rotation=mainRotation*facingQuaternion(2.0f*pi!float*frame/(4*updateFPS));
-						auto fraction=1.0f; // TODO
-						//B.shadelessMaterialBackend.setAlpha(1.0f); // TODO
-						auto vertScaling=dist/sacCommandCone.height;
-						auto horzScaling=highlight.scale*highlight.width/(2.0f*sacCommandCone.radius);
-						auto scaling=Vector3f(horzScaling,horzScaling,0.98f*vertScaling);
-						B.shadelessMaterialBackend.bindDiffuse(self.sacCommandCone.texture);
-						B.shadelessMaterialBackend.setTransformationScaled(position, rotation, scaling, rc);
-						self.sacCommandCone.mesh.render(rc);
-						enum numShells=8;
-						enum scalingFactor=0.95f;
-						foreach(k;0..numShells){
-							horzScaling*=scalingFactor;
-							rotation=mainRotation*facingQuaternion((k&1?-1.0f:1.0f)*2.0f*pi!float*fraction*(k+1));
-							scaling=Vector3f(horzScaling,horzScaling,vertScaling*(0.98f+0.01f*sqrt(1.0f-(1.0f-(k+1.0f)/numShells)^^2)));
-							if(k+1==numShells) B.shadelessMaterialBackend.bindDiffuse(self.whiteTexture);
+					void renderHighlightsForSide(int highlightSide){
+						if(objects.highlights.length<=highlightSide) return;
+						//if(iota(CommandConeColor.max+1).all!(i=>objects.cones[highlightSide][i].empty)) return;
+						if(objects.highlights[highlightSide].length==0) return;
+						self.sacCommandCone.material.bind(rc);
+						B.disableCulling();
+						assert(self.sacCommandCone.material.backend is B.shadelessMaterialBackend);
+						B.shadelessMaterialBackend.setInformation(Vector4f(0.0f,0.0f,0.0f,0.0f));
+						B.shadelessMaterialBackend.setColor(Color4f(1.0f,0.75f,0.0f,1.0f));
+						B.shadelessMaterialBackend.setEnergy(1.0f);
+						enum maxLifetime=cast(int)(self.sacCommandCone.lifetime*updateFPS);
+						foreach(ref highlight;objects.highlights[highlightSide]){
+							auto position=highlight.position,targetPosition=highlight.targetPosition;
+							auto frame=highlight.frame;
+							auto direction=(targetPosition-position);
+							auto dist=direction.length;
+							direction/=dist;
+							auto mainRotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),direction);
+							auto rotation=mainRotation*facingQuaternion(2.0f*pi!float*frame/(4*updateFPS));
+							auto fraction=1.0f; // TODO
+							//B.shadelessMaterialBackend.setAlpha(1.0f); // TODO
+							auto vertScaling=dist/sacCommandCone.height;
+							auto horzScaling=highlight.scale*highlight.width/(2.0f*sacCommandCone.radius);
+							auto scaling=Vector3f(horzScaling,horzScaling,0.98f*vertScaling);
+							B.shadelessMaterialBackend.bindDiffuse(self.sacCommandCone.texture);
 							B.shadelessMaterialBackend.setTransformationScaled(position, rotation, scaling, rc);
 							self.sacCommandCone.mesh.render(rc);
+							enum numShells=8;
+							enum scalingFactor=0.95f;
+							foreach(k;0..numShells){
+								horzScaling*=scalingFactor;
+								rotation=mainRotation*facingQuaternion((k&1?-1.0f:1.0f)*2.0f*pi!float*fraction*(k+1));
+								scaling=Vector3f(horzScaling,horzScaling,vertScaling*(0.98f+0.01f*sqrt(1.0f-(1.0f-(k+1.0f)/numShells)^^2)));
+								if(k+1==numShells) B.shadelessMaterialBackend.bindDiffuse(self.whiteTexture);
+								B.shadelessMaterialBackend.setTransformationScaled(position, rotation, scaling, rc);
+								self.sacCommandCone.mesh.render(rc);
+							}
 						}
+						self.sacCommandCone.material.unbind(rc);
+						auto material=self.highlightStar.material;
+						material.bind(rc);
+						foreach(ref highlight;objects.highlights[highlightSide]){
+							auto position=highlight.position;
+							auto rotation=highlight.rotation;
+							auto mesh=self.highlightStar.mesh;
+							material.backend.setTransformation(position,rotation,rc);
+							mesh.render(rc);
+						}
+						B.enableCulling();
+						material.unbind(rc);
 					}
-					self.sacCommandCone.material.unbind(rc);
-					auto material=self.highlightStar.material;
-					material.bind(rc);
-					foreach(ref highlight;objects.highlights[info.renderSide]){
-						auto position=highlight.position;
-						auto rotation=highlight.rotation;
-						auto mesh=self.highlightStar.mesh;
-						material.backend.setTransformation(position,rotation,rc);
-						mesh.render(rc);
-					}
-					B.enableCulling();
-					material.unbind(rc);
+					if(state.alliedBeamVision){
+						foreach(side;0..to!int(objects.highlights.length))
+							if(state.sides.getStance(side,info.renderSide)==Stance.ally)
+								renderHighlightsForSide(side);
+					}else renderHighlightsForSide(info.renderSide);
 				}
 			}else static assert(0);
 		}
@@ -3815,11 +3822,18 @@ struct Renderer(B){
 		static Array!int creatureArrowIndices;
 		static Array!int structureArrowIndices;
 		static Array!int highlightedIndices;
-		if(info.renderSide<state.obj.opaqueObjects.highlights.highlights.length){
-			foreach(ref highlight;state.obj.opaqueObjects.highlights.highlights[info.renderSide])
+		void addHighlightsForSide(int highlightSide){
+			if(highlightSide>=state.obj.opaqueObjects.highlights.highlights.length)
+				return;
+			foreach(ref highlight;state.obj.opaqueObjects.highlights.highlights[highlightSide])
 				if(highlight.status!=HighlightStatus.shrinking&&highlight.target)
 					highlightedIndices~=highlight.target;
 		}
+		if(state.alliedBeamVision){
+			foreach(side;0..to!int(state.obj.opaqueObjects.highlights.highlights.length))
+				if(state.sides.getStance(side,info.renderSide)==Stance.ally)
+					addHighlightsForSide(side);
+		}else addHighlightsForSide(info.renderSide);
 		static bool isHighlighted(int id){ // TODO: can be slow if many highlights
 			foreach(hid;highlightedIndices.data)
 				if(id==hid)
