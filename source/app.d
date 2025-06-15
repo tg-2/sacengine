@@ -346,6 +346,14 @@ int applyLateSettings(B)(string[] args){
 			while(source.isPlaying()){ Thread.sleep(1.dur!"msecs"); }
 			continue;
 		}
+		if(args[i].endsWith(".zip")){
+			if(args[i].startsWith("load-texture-replacements-sloppy:")){
+				auto filename=args[i]["load-texture-replacements-sloppy:".length..$];
+				import assets;
+				loadTextureReplacements(filename);
+			}
+			continue;
+		}
 		string anim="";
 		if(i+1<args.length&&args[i+1].endsWith(".SXSK"))
 			anim=args[i+1];
@@ -449,7 +457,6 @@ int run(string[] args){
 		exportSpeech!B(options);
 		return 0;
 	}
-
 	if(options.zerotierNetwork&&(options.host||options.joinIP!="")){
 		import zerotier;
 		connectToZerotier(options.zerotierIdentity,options.zerotierNetwork);

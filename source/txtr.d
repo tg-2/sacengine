@@ -2,13 +2,17 @@
 // distributed under the terms of the gplv3 license
 // https://www.gnu.org/licenses/gpl-3.0.txt
 
-import util;
+import util,assets;
 import dlib.image,dlib.image.color;
-import std.stdio, std.string, std.algorithm, std.path, std.exception;
+import std.stdio, std.string, std.range, std.algorithm, std.path, std.exception;
 
 SuperImage loadTXTR(string filename){
 	enforce(filename.endsWith(".TXTR")||filename.endsWith(".ICON"));
 	auto base = filename[0..$-".TXTR".length];
+	char[4] tag;
+	import std.utf:byChar;
+	copy(base[$-4..$].byChar.retro,tag[].byChar);
+	if(tag in textureReplacements) return textureReplacements[tag];
 	auto txt=readFile(filename);
 	auto width=parseLE(txt[0..4]);
 	txt=txt[4..$];
