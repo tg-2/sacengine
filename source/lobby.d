@@ -398,10 +398,10 @@ class Lobby(B){
 		}+/
 		void initState(){
 			if(!gameState){
-				sides=new Sides!B(map.sids);
-				proximity=new Proximity!B();
-				pathFinder=new PathFinder!B(map);
-				triggers=new Triggers!B(map.trig);
+				if(!sides) sides=new Sides!B(map.sids);
+				if(!proximity) proximity=new Proximity!B();
+				if(!pathFinder) pathFinder=new PathFinder!B(map);
+				if(!triggers) triggers=new Triggers!B(map.trig);
 				auto supportRollback=network !is null;
 				gameState=new GameState!B(map,sides,proximity,pathFinder,triggers,supportRollback);
 				gameState.initMap();
@@ -457,6 +457,7 @@ class Lobby(B){
 			if(!recording) recording=new Recording!B(options.map,map,sides,proximity,pathFinder,triggers);
 			recording.gameInit=gameInit;
 			recording.logCore=options.logCore;
+			if(options.quickContinue) recording.logCore=max(recording.logCore,1);
 		}
 		gameState.rollback();
 		gameState.initGame(gameInit);
@@ -473,14 +474,31 @@ class Lobby(B){
 		if(toContinue||playback&&options.continueFrame){
 			playAudio=false;
 			gameState.commit();
-			while(gameState.current.frame<options.continueFrame){
-				gameState.step();
-				(toContinue?toContinue:playback).report(gameState);
+			auto recording=toContinue?toContinue:playback;
+			assert(!!recording);
+			if(options.quickContinue&&options.continueFrame>0){
+				ObjectState!B bestState=null;
+				foreach(state;recording.core.data[]){
+					if(state.frame>options.continueFrame) continue;
+					if(!bestState||bestState.frame<state.frame){
+						bestState=state;
+					}
+				}
+				if(bestState){
+					writeln("continue: keyframe found at frame ",bestState.frame);
+					gameState.replaceState(bestState);
+					gameState.rollback();
+				}else writeln("continue: replay does not contain a suitable key frame state, resimulating...");
+			}
+			bool afterStep(){
+				recording.report(gameState);
 				if(gameState.current.frame%1000==0){
 					writeln("continue: simulated ",gameState.current.frame," of ",gameState.commands.length-1," frames");
 				}
 				B.processEvents();
+				return false;
 			}
+			gameState.simulateCommittedTo!afterStep(options.continueFrame);
 			playAudio=true;
 			assert(options.continueFrame==-1||gameState.current.frame==options.continueFrame);
 			if(network){

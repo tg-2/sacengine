@@ -66,7 +66,7 @@ class Recording(B){
 			core~=copy;
 		}else{
 			coreIndex=coreIndex+1;
-			if(coreIndex>=core.length) coreIndex=1;
+			if(coreIndex>=core.length) coreIndex=0;
 			core[coreIndex].copyFrom(state);
 		}
 	}

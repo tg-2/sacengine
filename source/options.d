@@ -123,6 +123,7 @@ struct Options{
 	string playbackFilename="";
 	string continueFilename="";
 	int continueFrame=-1;
+	bool quickContinue=true;
 	// asset export
 	string exportFolder="sacengine-exports";
 	alias settings this;

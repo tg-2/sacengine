@@ -27293,12 +27293,7 @@ private struct StateHistory(B){
 		foreach(i;index+1..history.length)
 			history[i].numPending=-1;
 	}
-	void replaceState(ref Commands!B commands,scope ubyte[] serialized){
-		if(history[$-1].numPending!=-1)
-			history~=Entry(makeState(),-1);
-		auto newIndex=history.length-1;
-		.replaceState(history[newIndex].state,commands,serialized);
-		auto newFrame=history[newIndex].state.frame;
+	private void replaceStateImpl(size_t newIndex,int newFrame){
 		if(newFrame<committedFrame){
 			auto targetIndex=currentFrame+1-committedFrame;
 			if(targetIndex!=newIndex){
@@ -27329,6 +27324,22 @@ private struct StateHistory(B){
 		foreach(i;0..currentIndex)
 			if(history[i+1].numPending!=-1)
 				history[i+1].numPending+=1;
+	}
+	void replaceState(ref Commands!B commands,scope ubyte[] serialized){
+		if(history[$-1].numPending!=-1)
+			history~=Entry(makeState(),-1);
+		auto newIndex=history.length-1;
+		.replaceState(history[newIndex].state,commands,serialized);
+		auto newFrame=history[newIndex].state.frame;
+		replaceStateImpl(newIndex,newFrame);
+	}
+	void replaceState(ObjectState!B replacement){
+		if(history[$-1].numPending!=-1)
+			history~=Entry(makeState(),-1);
+		auto newIndex=history.length-1;
+		history[newIndex].state.copyFrom(replacement);
+		auto newFrame=history[newIndex].state.frame;
+		replaceStateImpl(newIndex,newFrame);
 	}
 
 	pragma(inline,true) ObjectState!B committed(){ return history[0].state; }
@@ -27469,6 +27480,13 @@ private void replaceState(B)(ref StateHistory!B states,ref Array!(Array!(Command
 	}
 }
 
+private void replaceState(B)(ref StateHistory!B states,ObjectState!B replacement){
+	with(states){
+		replaceState(replacement);
+		static if(B.hasAudio) B.updateAudioAfterRollback();
+	}
+}
+
 private void recordCommand(B)(ref StateHistory!B states,int frame){
 	with(states){
 		recordCommand(frame);
@@ -27526,6 +27544,7 @@ final class GameState(B){
 	void rollback(){ .rollback(states,commands); }
 	void removeFuture(){ .removeFuture(states,commands); }
 	void replaceState(scope ubyte[] serialized){ .replaceState(states,commands,serialized); }
+	void replaceState(ObjectState!B replacement){ .replaceState(states,replacement); }
 
 	int canonicalSlotOrder(int index)@nogc{
 		if(index<0||index>=32) return index;
