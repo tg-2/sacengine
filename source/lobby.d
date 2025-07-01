@@ -473,7 +473,6 @@ class Lobby(B){
 		}
 		if(toContinue||playback&&options.continueFrame){
 			playAudio=false;
-			gameState.commit();
 			auto recording=toContinue?toContinue:playback;
 			assert(!!recording);
 			if(options.quickContinue&&options.continueFrame>0){
