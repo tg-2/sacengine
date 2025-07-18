@@ -1361,7 +1361,7 @@ final class SynchQueue{
 		hashes[(end++)%$]=hash;
 	}
 	bool check(int frame,uint hash){
-		if(frame<start) return false; // too old. TODO: count this as a desynch?
+		if(frame<start) return true; // too old. ignore, can be caused by lag spike
 		if(frame>=end) return false; // impossibly recent
 		return hashes[frame%$]==hash;
 	}
@@ -1951,7 +1951,8 @@ final class Network(B){
 						stderr.writeln("expected hash ",synchQueue.hashes[p.synchFrame%$],", got ",p.synchHash);
 						stderr.flush();
 					}
-					if(!stutterOnDesynch&&players[sender].status==PlayerStatus.playing){
+					// (ignore `--no-stutter-on-desynch` for now as it is broken without compensation for race conditions on the command list)
+					/+if(!stutterOnDesynch&&players[sender].status==PlayerStatus.playing){
 						updateStatus(sender,PlayerStatus.playingBadSynch);
 						with(controller.state){
 							import serialize_;
@@ -1961,7 +1962,7 @@ final class Network(B){
 								});
 							});
 						}
-					}else updateStatus(sender,PlayerStatus.desynched);
+					}else+/ updateStatus(sender,PlayerStatus.desynched);
 				}//else confirmSynch(sender,p.synchFrame,p.synchHash);
 				return true;
 			case PacketType.logDesynch:
