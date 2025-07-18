@@ -1458,6 +1458,8 @@ final class Network(B){
 	bool dumpNetworkSettings=false;
 	bool checkDesynch=true;
 	bool stutterOnDesynch=false;
+	bool kickOnDesynch=false;
+	bool kickObserversOnDesynch=true;
 	bool nudgeTimers=true;
 	bool dropOnTimeout=true;
 	bool pauseOnDrop=false;
@@ -1472,6 +1474,8 @@ final class Network(B){
 		this.dumpNetworkSettings=options.dumpNetworkSettings;
 		this.checkDesynch=options.checkDesynch;
 		this.stutterOnDesynch=options.stutterOnDesynch;
+		this.kickOnDesynch=options.kickOnDesynch;
+		this.kickObserversOnDesynch=options.kickObserversOnDesynch;
 		this.logDesynch_=options.logDesynch;
 		this.nudgeTimers=options.nudgeTimers;
 		this.dropOnTimeout=options.dropOnTimeout;
@@ -1962,7 +1966,9 @@ final class Network(B){
 								});
 							});
 						}
-					}else+/ updateStatus(sender,PlayerStatus.desynched);
+						}else+/ if(kickOnDesynch||kickObserversOnDesynch&&!players[sender].allowedToControlState){
+						kickPlayer(sender,controller);
+					}else updateStatus(sender,PlayerStatus.desynched);
 				}//else confirmSynch(sender,p.synchFrame,p.synchHash);
 				return true;
 			case PacketType.logDesynch:
@@ -2388,6 +2394,7 @@ final class Network(B){
 		if(isHost) updateStatus(cast(int)i,PlayerStatus.disconnected);
 		players[i].connection.close();
 		players[i].connection=null;
+		players[i].drop();
 	}
 	void dropPlayer(int i,Controller!B controller){
 		if(!isHost&&i!=host) return;
@@ -2406,6 +2413,19 @@ final class Network(B){
 			players[i].status=PlayerStatus.dropped;
 			foreach(ref player;players.data) if(!players[i].connection) player.status=PlayerStatus.dropped;
 		}else updateStatus(cast(int)i,PlayerStatus.dropped);
+		players[i].connection.close();
+		players[i].connection=null;
+		players[i].drop();
+	}
+	void kickPlayer(int i,Controller!B controller)in{
+		assert(isHost);
+	}do{
+		report(cast(int)i,"was kicked");
+		if(controller){
+			auto message="has been kicked from the game.";
+			sidechannelChatMessage(ChatMessageType.network,players[i].settings.name,message,controller);
+		}
+		updateStatus(cast(int)i,PlayerStatus.dropped);
 		players[i].connection.close();
 		players[i].connection=null;
 		players[i].drop();

@@ -105,6 +105,8 @@ struct Options{
 	bool dumpNetworkSettings=false;
 	bool checkDesynch=true;
 	bool stutterOnDesynch=true; // TODO: disable this by default once that works
+	bool kickOnDesynch=false;
+	bool kickObserversOnDesynch=true;
 	bool logDesynch=true;
 	bool nudgeTimers=true;
 	bool dropOnTimeout=true;
