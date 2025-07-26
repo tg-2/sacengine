@@ -392,12 +392,36 @@ struct Queue(T){
 			swap(payload[i%$],payload[(i+1)%$]);
 		}
 	}
-	ref T front(){ return payload[first%$]; }
-	void popFront(){ ++first; }
-	T removeFront(){ return payload[first++%$]; }
-	ref T back(){ return payload[(last+$-1)%$]; }
-	void popBack(){ --last; }
-	T removeBack(){ return payload[--last%$]; }
+	ref T front()in{
+		assert(!empty);
+	}do{
+		return payload[first%$];
+	}
+	void popFront()in{
+		assert(!empty);
+	}do{
+		++first;
+	}
+	T removeFront()in{
+		assert(!empty);
+	}do{
+		return payload[first++%$];
+	}
+	ref T back()in{
+		assert(!empty);
+	}do{
+		return payload[(last+$-1)%$];
+	}
+	void popBack()in{
+		assert(!empty);
+	}do{
+		--last;
+	}
+	T removeBack()in{
+		assert(!empty);
+	}do{
+		return payload[--last%$];
+	}
 	bool empty(){ return first==last; }
 	this(this){ compactify(); }
 	void opAssign(ref Queue!T rhs){

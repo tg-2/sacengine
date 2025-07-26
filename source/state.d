@@ -25482,7 +25482,7 @@ final class ObjectState(B){ // (update logic)
 		return sid.aiQueue(side);
 	}
 	bool frontOfAIQueue(int side,int id){
-		if(auto q=aiQueue(side)) return q.front==id;
+		if(auto q=aiQueue(side)) return !q.empty&&q.front==id;
 		return false;
 	}
 	bool pushToAIQueue(int side,int id){
