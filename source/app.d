@@ -350,6 +350,11 @@ int applyLateSettings(B)(string[] args){
 			if(args[i].startsWith("load-texture-replacements-sloppy:")){
 				auto filename=args[i]["load-texture-replacements-sloppy:".length..$];
 				import assets;
+				loadTextureReplacements(filename,true);
+			}
+			if(args[i].startsWith("load-texture-replacements:")){
+				auto filename=args[i]["load-texture-replacements:".length..$];
+				import assets;
 				loadTextureReplacements(filename);
 			}
 			continue;

@@ -2,12 +2,14 @@
 // distributed under the terms of the gplv3 license
 // https://www.gnu.org/licenses/gpl-3.0.txt
 
-import util;
+import util,assets;
 import dlib.core.stream,dlib.image,dlib.image.color;
 import std.stdio, std.string, std.algorithm, std.path, std.exception;
 
 SuperImage loadSXTX(string filename,bool alpha){
 	enforce(filename.endsWith(".SXTX"));
+	auto base = filename[0..$-".SXTX".length];
+	if(replacementPath(base) in textureReplacements) return textureReplacements[replacementPath(base)];
 	/+ubyte[] txt;
 	foreach(ubyte[] chunk;chunks(File(filename,"rb"),4096)) txt~=chunk;
 	auto idLength=txt[0];

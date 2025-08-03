@@ -12,7 +12,8 @@ SuperImage loadTXTR(string filename){
 	char[4] tag;
 	import std.utf:byChar;
 	copy(base[$-4..$].byChar.retro,tag[].byChar);
-	if(tag in textureReplacements) return textureReplacements[tag];
+	if(tag in textureReplacementsSloppy) return textureReplacementsSloppy[tag];
+	if(replacementPath(base) in textureReplacements) return textureReplacements[replacementPath(base)];
 	auto txt=readFile(filename);
 	auto width=parseLE(txt[0..4]);
 	txt=txt[4..$];
