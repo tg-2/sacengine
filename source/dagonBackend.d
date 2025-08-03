@@ -272,6 +272,7 @@ final class SacScene: Scene{
 		view=fpview;
 		mouse.visible=false;
 		info.hudVisible=false;
+		info.minimapVisible=options.observerMinimap;
 		fpview.mouseFactor=0.25f;
 		//auto mat = createMaterial();
 		//mat.diffuse = Color4f(0.2, 0.2, 0.2, 0.2);
@@ -323,6 +324,7 @@ final class SacScene: Scene{
 				mouse.visible=false;
 			}else oldMouseVisible=false;
 			info.hudVisible=false;
+			info.minimapVisible=options.observerMinimap;
 			return;
 		}
 		alias Tuple=std.typecons.Tuple;
@@ -338,6 +340,7 @@ final class SacScene: Scene{
 			mouse.visible=true;
 		}else oldMouseVisible=true;
 		info.hudVisible=true;
+		info.minimapVisible=true;
 		import std.typecons;
 		auto width=size.x,depth=size.y,height=size.z;
 		height=max(height,1.5f);
@@ -1437,6 +1440,7 @@ final class SacScene: Scene{
 					fpview.active=false;
 					mouse.visible=true;
 					info.hudVisible=true;
+					info.minimapVisible=true;
 					//if(!state) SDL_ShowCursor(SDL_ENABLE);
 				}
 				void hideMouse(){
@@ -1444,6 +1448,7 @@ final class SacScene: Scene{
 					fpview.mouseFactor=0.25f;
 					mouse.visible=false;
 					info.hudVisible=false;
+					info.minimapVisible=options.observerMinimap;
 					//if(!state) SDL_ShowCursor(SDL_DISABLE);
 				}
 				void toggleMouse(){

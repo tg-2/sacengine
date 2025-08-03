@@ -145,6 +145,7 @@ struct Settings{
 	string name="";
 	bool observer=false;
 	bool observerChat=true;
+	bool observerMinimap=false;
 	int slot=-1;
 	int team=-1;
 	char[4] wizard="";

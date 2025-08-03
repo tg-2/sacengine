@@ -130,6 +130,7 @@ struct RenderInfo(B){
 	float hudScaling;
 	int hudSoulFrame=0;
 	bool hudVisible=true;
+	bool minimapVisible=true;
 	Mouse!B mouse;
 	struct MouseSparkle{
 		float x,y;
@@ -3761,6 +3762,7 @@ struct Renderer(B){
 	}
 	void renderMinimap(ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
 		if(info.mouse.onMinimap) minimapTarget=Target.init;
+		if(!info.minimapVisible) return;
 		auto map=state.map;
 		auto radius=minimapRadius(info);
 		auto left=cast(int)(info.width-2.0f*radius), top=cast(int)(info.height-2.0f*radius);
@@ -4235,6 +4237,7 @@ struct Renderer(B){
 	}
 	bool statsVisible(ObjectState!B state,ref RenderInfo!B info){
 		if(!info.camera.target) return false;
+		if(!info.hudVisible) return false;
 		return .statsVisible(info.camera.target,state);
 	}
 	bool spellbookVisible(ObjectState!B state,ref RenderInfo!B info){
@@ -4242,8 +4245,8 @@ struct Renderer(B){
 		return .spellbookVisible(info.camera.target,state);
 	}
 	void renderHUD(ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
-		if(!info.hudVisible) return;
 		renderMinimap(state,info,rc);
+		if(!info.hudVisible) return;
 		if(info.renderSide!=-1){
 			if(statsVisible(state,info)) renderStats(state,info,rc);
 			renderSelectionRoster(state,info,rc);
@@ -4929,8 +4932,11 @@ struct Renderer(B){
 			renderCursor(options.cursorSize,state,info,rc);
 			renderMouseoverBox(options.cursorSize,state,forms,info,rc);
 		}else{
+			if(state){
+				renderHUD(state,info,rc);
+				renderText(state,info,rc);
+			}
 			renderChatMessages(state,networkState,info,rc);
-			if(state) renderText(state,info,rc);
 		}
 	}
 }
