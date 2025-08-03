@@ -4,7 +4,7 @@
 
 module assets;
 
-import std.range,std.algorithm,std.exception,std.string;
+import std.stdio,std.range,std.algorithm,std.exception,std.string;
 
 import dlib.image:SuperImage;
 SuperImage[char[4]] textureReplacementsSloppy;
@@ -16,6 +16,7 @@ void loadTextureReplacements(string filename,bool sloppy=false){
 	foreach(name,am;zip.directory){
 		if(name.length<8) continue;
 		if(!name.endsWith(".png")) continue;
+		version(Windows) name=name.replace("/",`\`);
 		zip.expand(am);
 		import dlib.core.stream:ArrayStream;
 		auto input=new ArrayStream(am.expandedData);

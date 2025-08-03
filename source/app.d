@@ -84,14 +84,25 @@ string[] expandSettings(string[] settings){
 }
 
 bool isEarlySetting(string opt){
-	return opt.startsWith("--")||opt.endsWith(".scp")||opt.endsWith(".HMAP")||opt.startsWith("export-speech:")||opt.endsWith(".rcp");
+	return opt.startsWith("--")||opt.endsWith(".scp")||opt.endsWith(".HMAP")||opt.startsWith("export-speech:")||opt.endsWith(".rcp")||opt.endsWith(".zip");
 }
 
 int applySettings(string[] args,ref Options options){
 	foreach(opt;args){
 		if(!opt.startsWith("--")){
 			if(isEarlySetting(opt)){
-				if(opt.endsWith(".rcp")) options.playbackFilename=opt;
+				if(opt.endsWith(".zip")){
+					if(opt.startsWith("load-texture-replacements-sloppy:")){
+						auto filename=opt["load-texture-replacements-sloppy:".length..$];
+						import assets;
+						loadTextureReplacements(filename,true);
+					}
+					if(opt.startsWith("load-texture-replacements:")){
+						auto filename=opt["load-texture-replacements:".length..$];
+						import assets;
+						loadTextureReplacements(filename);
+					}
+				}else if(opt.endsWith(".rcp")) options.playbackFilename=opt;
 				else options.map=opt;
 			}
 			continue;
@@ -344,19 +355,6 @@ int applyLateSettings(B)(string[] args){
 			source.play();
 			import core.thread;
 			while(source.isPlaying()){ Thread.sleep(1.dur!"msecs"); }
-			continue;
-		}
-		if(args[i].endsWith(".zip")){
-			if(args[i].startsWith("load-texture-replacements-sloppy:")){
-				auto filename=args[i]["load-texture-replacements-sloppy:".length..$];
-				import assets;
-				loadTextureReplacements(filename,true);
-			}
-			if(args[i].startsWith("load-texture-replacements:")){
-				auto filename=args[i]["load-texture-replacements:".length..$];
-				import assets;
-				loadTextureReplacements(filename);
-			}
 			continue;
 		}
 		string anim="";
