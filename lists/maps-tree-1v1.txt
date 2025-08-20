@@ -33,6 +33,7 @@ maps/(2) TM-Red Hot v2.scp
 maps/(2) TM-Sulphur.scp
 maps/(2) TM-Sunhair.scp
 maps/(2) TM-Urknall.scp
+maps/(2) TM-Shady Glen.scp
 maps/(2) Tourney - I scream.scp
 maps/(2) Tropical Paradise.scp
 maps/(2) WM-Botany 1on1.scp
@@ -66,4 +67,4 @@ maps/(2) Stone's Throw.scp
 maps/(2) Trial.scp
 maps/(2) Valley of the Dead.scp
 maps/(2) Ring.scp
-maps/(2) Hamburger Hill2.scp
+maps/(2) Hamburger Hill2.sc
