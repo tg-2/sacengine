@@ -166,8 +166,10 @@ int applySettings(string[] args,ref Options options){
 			options.recordingFolder=opt["--record-folder=".length..$];
 		}else if(opt.startsWith("--play=")){
 			options.playbackFilename=opt["--play=".length..$];
+			if(options.continueFrame==int.min) options.continueFrame=0;
 		}else if(opt.startsWith("--continue=")){
 			options.continueFilename=opt["--continue=".length..$];
+			if(options.continueFrame==int.min) options.continueFrame=-1;
 		}else if(opt.startsWith("--continue-at=")){
 			options.continueFrame=to!int(opt["--continue-at=".length..$]);
 		}else if(opt.startsWith("--logCore")){

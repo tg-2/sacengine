@@ -211,7 +211,7 @@ class Lobby(B){
 	void initializePlayback(Recording!B recording,int frame,ref Options options)in{
 		assert(canPlayRecording);
 	}do{
-		if(frame<-1){
+		if(frame<0){
 			frame=max(0,to!int(recording.commands.length)+frame);
 			options.continueFrame=frame;
 		}
@@ -237,11 +237,11 @@ class Lobby(B){
 		assert(canContinue);
 	}do{
 		toContinue=recording;
-		if(frame<-1){
-			frame=max(0,to!int(toContinue.commands.length)+frame);
-			options.continueFrame=frame;
-		}
 		if(frame!=-1){
+			if(frame<0){
+				frame=max(0,to!int(toContinue.commands.length)+frame);
+				options.continueFrame=frame;
+			}
 			toContinue.commands.length=frame;
 			toContinue.commands~=Array!(Command!B)();
 		}else{

@@ -124,7 +124,7 @@ struct Options{
 	int logCore=0;
 	string playbackFilename="";
 	string continueFilename="";
-	int continueFrame=-1;
+	int continueFrame=int.min;
 	bool quickContinue=true;
 	// asset export
 	string exportFolder="sacengine-exports";
