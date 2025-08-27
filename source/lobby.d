@@ -211,6 +211,10 @@ class Lobby(B){
 	void initializePlayback(Recording!B recording,int frame,ref Options options)in{
 		assert(canPlayRecording);
 	}do{
+		if(frame<-1){
+			frame=max(0,to!int(recording.commands.length)+frame);
+			options.continueFrame=frame;
+		}
 		playback=recording;
 		enforce(playback.mapName.endsWith(".scp")||playback.mapName.endsWith(".HMAP"));
 		options.map=playback.mapName;
@@ -233,6 +237,10 @@ class Lobby(B){
 		assert(canContinue);
 	}do{
 		toContinue=recording;
+		if(frame<-1){
+			frame=max(0,to!int(toContinue.commands.length)+frame);
+			options.continueFrame=frame;
+		}
 		if(frame!=-1){
 			toContinue.commands.length=frame;
 			toContinue.commands~=Array!(Command!B)();
@@ -492,7 +500,7 @@ class Lobby(B){
 			bool afterStep(){
 				recording.report(gameState);
 				if(gameState.current.frame%1000==0){
-					writeln("continue: simulated ",gameState.current.frame," of ",gameState.commands.length-1," frames");
+					writeln("continue: simulated ",gameState.current.frame," of ",options.continueFrame," frames");
 				}
 				B.processEvents();
 				return false;
