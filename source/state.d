@@ -18644,7 +18644,7 @@ Fence!B.Post makeFencePost(B)(ref Fence!B fence,bool left,ObjectState!B state){
 void updateFencePost(B)(ref Fence!B.Post post,ObjectState!B state){
 	with(post){
 		float loc=0.5f*(1-cos(2.0f*pi!float*Fence!B.postFrequency*frame));
-		position.z=state.getHeight(position)+loc*Fence!B.postMinHeight+(1.0f-loc)*Fence!B.postMaxHeight;;
+		position.z=state.getHeight(position)+loc*Fence!B.postMinHeight+(1.0f-loc)*Fence!B.postMaxHeight;
 		++frame;
 	}
 }
