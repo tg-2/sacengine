@@ -146,6 +146,7 @@ maps/(4) TM-Urknall v1.scp
 maps/(4) TM-Urknall v2.scp
 maps/(4) TM-Urknall v3.scp
 maps/(4) TM-Abaddon's Bolero.scp
+maps/(4) TM-Megalodon.scp
 maps/(4) Twirlish Dip.scp
 maps/(4) Twirl v1.2.scp
 maps/(4) Twirl ]x[.scp

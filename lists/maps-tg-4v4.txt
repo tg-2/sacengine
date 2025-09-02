@@ -6,3 +6,4 @@ maps/(8) Hamburger Hill2.scp
 maps/(8) Snow White v3.scp
 maps/(8) XM-Snow-White.scp
 maps/(8) EM-Stratos's Kingdom.scp
+maps/(8) TM-Megalodon.scp
