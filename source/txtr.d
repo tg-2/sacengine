@@ -7,6 +7,7 @@ import dlib.image,dlib.image.color;
 import std.stdio, std.string, std.range, std.algorithm, std.path, std.exception;
 
 SuperImage loadTXTR(string filename){
+	filename=fixPath(filename);
 	enforce(filename.endsWith(".TXTR")||filename.endsWith(".ICON"));
 	auto base = filename[0..$-".TXTR".length];
 	char[4] tag;
