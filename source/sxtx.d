@@ -7,6 +7,7 @@ import dlib.core.stream,dlib.image,dlib.image.color;
 import std.stdio, std.string, std.algorithm, std.path, std.exception;
 
 SuperImage loadSXTX(string filename,bool alpha){
+	filename=fixPath(filename);
 	enforce(filename.endsWith(".SXTX"));
 	auto base = filename[0..$-".SXTX".length];
 	if(replacementPath(base) in textureReplacements) return textureReplacements[replacementPath(base)];
