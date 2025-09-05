@@ -1446,7 +1446,7 @@ struct Building(B){
 	int top=0;
 	int base=0;
 	float health=0.0f;
-	enum regeneration=75.0f;
+	float regeneration=75.0f;
 	enum meleeResistance=1.0f;
 	enum directSpellResistance=1.0f;
 	enum splashSpellResistance=1.0f;
@@ -1461,6 +1461,7 @@ struct Building(B){
 		this.flags=flags;
 		this.facing=facing;
 		this.health=sacBuilding.maxHealth;
+		this.regeneration=sacBuilding.regeneration;
 	}
 }
 int maxHealth(B)(ref Building!B building,ObjectState!B state){

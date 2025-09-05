@@ -942,6 +942,7 @@ final class SacBuilding(B){
 	immutable(Bldg)* bldg;
 	@property int flags(){ return bldg.flags; }
 	@property int maxHealth(){ return bldg.maxHealth; }
+	int regeneration;
 	@property immutable(BldgComponent)[] components(){ return bldg.components; }
 	@property ref immutable(ubyte[8][8]) ground(){ return bldg.ground; }
 	// TODO: some of the following functionality is duplicated in SacObject
@@ -985,6 +986,20 @@ final class SacBuilding(B){
 			icon=B.makeTexture(loadTXTR(icons["anam"])); // SacEngine extension: original does not have manalith icons
 		}else if(isManafount){
 			name=texts.get("tnof","Mana Fountain");
+		}else switch(tag){
+			case pyrodraulicDynamoTag:
+				name=texts.get(tag,"Pyrodraulic Dynamo");
+				break;
+			case pyrosMagnifryerTag:
+				name=texts.get(tag,"Pyro's Magnyfryer");
+				break;
+			default: break;
+		}
+		switch(tag){
+			case pyrodraulicDynamoTag: regeneration=0; break;
+			case pyrosMagnifryerTag: regeneration=0; break;
+			// TODO
+			default: regeneration=75; break;
 		}
 	}
 }

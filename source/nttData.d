@@ -31,6 +31,8 @@ immutable char[4][] altarRingTags=["r_ae","otla","gnrj","raac","gryp","gras",
                                           "raup","2uaj","rauc","2uyp","2uts"];
 immutable char[4][] altarBaseTags=["b_ae","abla","tipj","baac","tpyp","tprc",
                                           "caup",       "bauc",             ];
+enum char[4] pyrodraulicDynamoTag="onyd";
+enum char[4] pyrosMagnifryerTag="gamp";
 
 auto makeFileIndex(bool multi=false,bool lowerCase=false)(bool readFromWads,const string[] folders,char[4] extension,bool noDup=true){
 	static if(multi) string[][char[4]] result;
