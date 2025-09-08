@@ -998,6 +998,7 @@ Lswitch: switch(name){
 			}
 		}
 		case "Buta","buta": return tagFromCreatureName("Ambassador Buta");
+		case "Ragman","ragman": return tagFromCreatureName("The Ragman");
 		default: return (char[4]).init;
 	}
 }
