@@ -164,6 +164,8 @@ int applySettings(string[] args,ref Options options){
 			options.recordingFilename=opt["--record=".length..$];
 		}else if(opt.startsWith("--record-folder=")){
 			options.recordingFolder=opt["--record-folder=".length..$];
+			import std.file:mkdirRecurse;
+			mkdirRecurse(options.recordingFolder);
 		}else if(opt.startsWith("--play=")){
 			options.playbackFilename=opt["--play=".length..$];
 			if(options.continueFrame==int.min) options.continueFrame=0;
@@ -176,6 +178,8 @@ int applySettings(string[] args,ref Options options){
 			if(opt.startsWith("--logCore=")){
 			   options.logCore=to!int(opt["--logCore=".length..$]);
 			}else options.logCore=120;
+		}else if(opt.startsWith("--export-frame=")){
+			options.exportFrame=to!int(opt["--export-frame=".length..$]);
 		}else if(opt.startsWith("--export-folder=")){
 			options.exportFolder=opt["--export-folder=".length..$];
 		}else if(opt=="--observer"){
@@ -338,7 +342,7 @@ int finalizeSettings(ref Options options){
 	return 0;
 }
 
-int applyLateSettings(B)(string[] args){
+int applyLateSettings(B)(string[] args,ref Options options){
 	for(int i=1;i<args.length;i++){
 		if(args[i].startsWith("--")) continue;
 		if(args[i].endsWith(".SAMP")){
@@ -373,7 +377,11 @@ int applyLateSettings(B)(string[] args){
 				if(args[i+1].startsWith("export:")){
 					import sxsk,saxs2obj;
 					auto filename=args[i+1]["export:".length..$];
-					int frame=0; // TODO: make configurable
+					int frame=options.exportFrame; // TODO: make configurable
+					if(anim&&(frame<0||frame>=sac.animations[0].frames.length)){
+						stderr.writeln("warning: export animation frame is out of range 0..",sac.animations[0].frames.length);
+						frame%=sac.animations[0].frames.length;
+					}
 					if(sac.isSaxs) saveObj!B(filename,sac.saxsi.saxs,anim?sac.animations[0].frames[frame]:Pose.init);
 					else saveObj!B(filename,sac.meshes[frame]);
 					i+=1;
@@ -403,6 +411,25 @@ int applyLateSettings(B)(string[] args){
 					else stderr.writeln("no bones");
 					i+=1;
 				}
+			}else if(args[i+1].startsWith("export-all-frames:")){
+				import sxsk,saxs2obj;
+				auto path=args[i+1]["export-all-frames:".length..$];
+				enforce(anim,"need animation to export all frames");
+				import std.file:mkdirRecurse;
+				mkdirRecurse(path);
+				import std.path:buildPath;
+				if(sac.isSaxs){
+					foreach(frame;0..sac.animations[0].frames.length){
+						auto filename=buildPath(path,text(frame,".obj"));
+						saveObj!B(filename,sac.saxsi.saxs,sac.animations[0].frames[frame]);
+					}
+				}else{
+					foreach(frame;0..sac.meshes.length){
+						auto filename=buildPath(path,text(frame,".obj"));
+						saveObj!B(filename,sac.meshes[frame]);
+					}
+				}
+				i+=1;
 			}
 			B.addObject(sac,position,facingQuaternion(0));
 		}
@@ -472,7 +499,7 @@ int run(string[] args){
 		B.addLogicCallback(()=>!updateLobby(lobby,options));
 	}else B.scene.fpview.active=true;
 
-	if(auto r=applyLateSettings!B(args)) return r;
+	if(auto r=applyLateSettings!B(args,options)) return r;
 
 	if(!B.network||B.network.isHost){
 		auto delay=options.delayStart;

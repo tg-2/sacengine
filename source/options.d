@@ -127,6 +127,7 @@ struct Options{
 	int continueFrame=int.min;
 	bool quickContinue=true;
 	// asset export
+	int exportFrame=0;
 	string exportFolder="sacengine-exports";
 	alias settings this;
 	// compatibility options / testing
