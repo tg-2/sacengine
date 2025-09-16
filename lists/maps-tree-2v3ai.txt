@@ -2,5 +2,6 @@ maps/(5) Persephone Champions.scp
 maps/(5) SS James Champions(AI slot3,4,5).scp
 maps/(5) Stratos Champions (AI slot 3,4,5).scp
 maps/(5) TM-Pyros Champions.scp
+maps/(5) TM-Charnel's Champions.scp
 maps/(2v3) EM-Persephone's Fairy Tale.scp
 maps/(2v3) EM-Training Ground.scp
