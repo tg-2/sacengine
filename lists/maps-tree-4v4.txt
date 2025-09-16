@@ -6,3 +6,4 @@ maps/(8) Rockdale.scp
 maps/(8) TM-Sulphur.scp
 maps/(8) XM-Snow-White.scp
 maps/(8) TM-Megalodon.scp
+maps/(8) EM-Teleport My Friend.scp
