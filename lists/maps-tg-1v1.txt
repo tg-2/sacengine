@@ -40,6 +40,7 @@ maps/(2) TM-Urknall.scp
 maps/(2) TM-A Lesser Fate.scp
 maps/(2) TM-Sulphur.scp
 maps/(2) TM-Fairytale.scp
+maps/(2) TM-Lucifer's Fate.scp
 maps/(2) TM-Shady Glen.scp
 maps/(2) TM-Abaddon's Bolero.scp
 maps/(2) Ferry.scp
