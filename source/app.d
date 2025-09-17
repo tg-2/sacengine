@@ -378,7 +378,7 @@ int applyLateSettings(B)(string[] args,ref Options options){
 					import sxsk,saxs2obj;
 					auto filename=args[i+1]["export:".length..$];
 					int frame=options.exportFrame; // TODO: make configurable
-					if(anim&&(frame<0||frame>=sac.animations[0].frames.length)){
+					if(anim.length&&sac.animations.length&&(frame<0||frame>=sac.animations[0].frames.length)){
 						stderr.writeln("warning: export animation frame is out of range 0..",sac.animations[0].frames.length);
 						frame%=sac.animations[0].frames.length;
 					}
