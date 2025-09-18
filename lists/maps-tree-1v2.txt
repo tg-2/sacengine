@@ -1,1 +1,1 @@
-(1v2) TM-Showdown.scp
+maps/(1v2) TM-Showdown.scp
