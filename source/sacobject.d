@@ -997,13 +997,13 @@ final class SacBuilding(B){
 				break;
 			default: break;
 		}
-		switch(tag){
-			case pyrodraulicDynamoTag: regeneration=0; break;
-			case pyrosMagnifryerTag: regeneration=0; break;
-			// TODO
-			default: regeneration=75; break;
+		// regeneration
+		if(isManalith||isShrine){
+			regeneration=75;
+		}else{
+			regeneration=0;
 		}
-
+		// canBurn
 		switch(tag){
 			case "ertp", "1tcp", "2tcp", "4tcp", "5tcp", "6tcp", "7tcp", "8tcp", "9tcp", "olis", "1tuh", "2hcp", "3hcp", "mwcp", "3ram", "wpcp": // persephone
 			case "1typ", "2typ", "3typ", "4typ", "5typ", "6typ", "4ram", "1mlp", "2mlp", "3mlp": // pyro
