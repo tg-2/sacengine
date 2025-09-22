@@ -1452,6 +1452,7 @@ struct Building(B){
 	enum splashSpellResistance=1.0f;
 	enum directRangedResistance=1.0f;
 	enum splashRangedResistance=1.0f;
+	int burnFrames=0;
 	Array!int guardianIds;
 	NotificationState notificationState;
 	mixin Assign;
@@ -8014,6 +8015,8 @@ float dealDamageIgnoreGuardians(B)(ref Building!B building,float damage,int atta
 		recordDestruction(building,attackingSide,state);
 		building.destroy(state);
 		destroyed=true;
+	}else if(damageMod&DamageMod.ignite){
+		igniteBuilding(building,cast(int)damage+1,state);
 	}
 	return actualDamage;
 }
@@ -10321,8 +10324,10 @@ bool warmongerShootSingle(B)(int attacker,int side,int intendedTarget,float accu
 	auto end=state.collideRay!filter(position,direction,rangedAttack.range,attacker,state);
 	if(end.type==TargetType.none) end.position=position+rangedAttack.range*direction;
 	if(end.type==TargetType.creature||end.type==TargetType.building){
-		if(end.id==intendedTarget||state.objectById!(.side)(end.id,state)!=side)
+		if(end.id==intendedTarget||state.objectById!(.side)(end.id,state)!=side){
 			dealRangedDamage(end.id,rangedAttack,attacker,side,direction,DamageMod.none,state);
+			igniteBuilding(end.id,int.max,state);
+		}
 	}
 	animateWarmongerHit(end.position,rangedAttack,state);
 	return true;
@@ -13127,7 +13132,7 @@ void spawnFireParticles(B,T)(ref T object,int numParticles,ObjectState!B state){
 	else auto hitbox=object.hitbox;
 	auto dim=hitbox[1]-hitbox[0];
 	auto volume=dim.x*dim.y*dim.z;
-	auto scale=2.0f*max(1.0f,cbrt(volume));
+	auto scale=max(1.0f,cbrt(volume));
 	auto sacParticle=SacParticle!B.get(ParticleType.fire);
 	foreach(i;0..numParticles){
 		auto position=state.uniform(scaleBox(hitbox,1.1f));
@@ -23887,7 +23892,23 @@ void setAblaze(B)(int target,int lifetime,bool ranged,float damage,int attacker,
 	state.addEffect(Fire!B(target,lifetime,ranged?damage/lifetime:0.0f,!ranged?damage/lifetime:0.0f,0.0f,attacker,side,damageMod));
 }
 void setAblazeWithManaDrain(B)(int target,int lifetime,float damage,float manaDrain,int attacker,int side,DamageMod damageMod,ObjectState!B state){
+	igniteBuilding(target,cast(int)damage+1,state);
 	state.addEffect(Fire!B(target,lifetime,damage/lifetime,0.0f,manaDrain/lifetime,attacker,side,damageMod));
+}
+
+bool igniteBuilding(B)(ref Building!B bldg,int lifetime,ObjectState!B state){
+	if(!bldg.canDamage(state)||!bldg.sacBuilding.canBurn)
+		return false;
+	if(bldg.burnFrames>=typeof(bldg.burnFrames).max-lifetime)
+		bldg.burnFrames=typeof(bldg.burnFrames).max;
+	else bldg.burnFrames+=lifetime;
+	return true;
+}
+
+bool igniteBuilding(B)(int target,int lifetime,ObjectState!B state){ // target: id of static object
+	auto building=state.staticObjectById!((obj)=>obj.buildingId,()=>0)(target);
+	if(!building) return false;
+	return state.buildingById!(igniteBuilding,()=>false)(building,lifetime,state);
 }
 
 void updateCommandCones(B)(ref CommandCones!B commandCones, ObjectState!B state){
@@ -24049,6 +24070,15 @@ void updateBuilding(B)(ref Building!B building, ObjectState!B state){
 			if(building.isEtherealAltar) position.z+=95.0f;
 			animateShrine(!!(building.flags&AdditionalBuildingFlags.occupied),position,building.side,state);
 		}
+	}
+	if(building.burnFrames>0){
+		--building.burnFrames;
+		foreach(id;building.componentIds.data){
+			enum numParticles=3;
+			state.staticObjectById!(spawnFireParticles,(){})(id,numParticles,state);
+		}
+		bool destroyed=false;
+		dealDamage(building,25.0f/updateFPS,-1,DamageMod.none,destroyed,state);
 	}
 }
 

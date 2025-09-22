@@ -968,6 +968,8 @@ final class SacBuilding(B){
 		return !!(bldg.header.flags&BldgFlags.shelter)||isAltar;
 	}
 
+	bool canBurn;
+
 	float xpOnDestruction(){ return 5000.0f; } // TODO: ok?
 
 	static SacBuilding!B[char[4]] buildings;
@@ -1000,6 +1002,19 @@ final class SacBuilding(B){
 			case pyrosMagnifryerTag: regeneration=0; break;
 			// TODO
 			default: regeneration=75; break;
+		}
+
+		switch(tag){
+			case "ertp", "1tcp", "2tcp", "4tcp", "5tcp", "6tcp", "7tcp", "8tcp", "9tcp", "olis", "1tuh", "2hcp", "3hcp", "mwcp", "3ram", "wpcp": // persephone
+			case "1typ", "2typ", "3typ", "4typ", "5typ", "6typ", "4ram", "1mlp", "2mlp", "3mlp": // pyro
+			case "1ccj", "2ccj", "3ccj", "4ccj", "tuhj", "2ram", "qrmj", "1gwj": // james
+			case "tsts", "1gis", "5ram", "1ths": // stratos
+			case "1ram", "1wpc", "_fmc", "_u2e", "1tac", "2tac", "3tac", "4tac", "5tac", "6tac", "7tac", "8tac", "2sam", "_ctc", "1thc", "2thc", "suam": // charnel
+				canBurn=true;
+				break;
+			default:
+				canBurn=false;
+				break;
 		}
 	}
 }
