@@ -13142,14 +13142,20 @@ void spawnFireParticles(B,T)(ref T object,int numParticles,ObjectState!B state){
 
 bool updateFire(B)(ref Fire!B fire,ObjectState!B state){
 	with(fire){
-		if(!state.targetTypeFromId(target).among(TargetType.creature,TargetType.building))
+		auto targetType=state.targetTypeFromId(target);
+		if(!targetType.among(TargetType.creature,TargetType.building))
 			return false;
-		if(rangedDamagePerFrame>0.0f||spellDamagePerFrame>0.0f)
+		if(rangedDamagePerFrame>0.0f||spellDamagePerFrame>0.0f){
 			state.objectById!dealFireDamage(target,rangedDamagePerFrame,spellDamagePerFrame,attacker,side,damageMod,state);
+		}else if(targetType==TargetType.building){
+			return false;
+		}
 		if(manaDrainPerFrame>0.0f) state.movingObjectById!(drainMana,(){})(target,manaDrainPerFrame,state);
 		static assert(updateFPS==60);
-		enum numParticles=3;
-		state.objectById!spawnFireParticles(target,numParticles,state);
+		if(targetType!=TargetType.building){
+			enum numParticles=3;
+			state.objectById!spawnFireParticles(target,numParticles,state);
+		}
 		return lifetime-->0;
 	}
 }
@@ -19676,19 +19682,22 @@ void flameEffect(B)(Vector3f position,ObjectState!B state,float scale=1.0f){
 	enum numParticles4=30;
 	auto sacParticle4=SacParticle!B.get(ParticleType.fire);
 	foreach(i;0..numParticles4){
-		auto direction=state.uniformDirection();
-		auto pposition=position+scale*0.25f*direction;
-		auto velocity=scale*Vector3f(0.0f,0.0f,1.0f); // TODO: original uses vibrating particles
+		// TODO: original uses vibrating particles
+		auto displacementAngle=state.uniform(-pi!float,pi!float);
+		auto displacementMagnitude=0.2f*state.uniform(0.0f,1.0f)^^2;
+		auto displacement=displacementMagnitude*Vector3f(cos(displacementAngle),sin(displacementAngle),0.0f);
+		auto pposition=position+displacement;
+		auto velocity=scale*(1.25f+state.uniform(-0.35f,0.35f))*Vector3f(0.0f,0.0f,state.uniform(2.0f,4.0f)).normalized;
 		auto frame=state.uniform(2)?0:state.uniform(24);
-		auto lifetime=63-frame;
-		state.addParticle(Particle!B(sacParticle4,pposition,velocity,scale,lifetime,frame));
+		auto lifetime=min(63-frame,cast(int)(0.15f*(sacParticle4.numFrames*5.0f-0.7*sacParticle4.numFrames*displacementMagnitude*state.uniform(0.0f,1.0f)^^2)));
+		auto pscale=state.uniform(0.5f,1.25f)*scale;
+		state.addParticle(Particle!B(sacParticle4,pposition,velocity,pscale,lifetime,frame));
 	}
 }
 
 void flameMinionProjectileExplosion(B)(ref FlameMinionProjectile!B flameMinionProjectile,int target,ObjectState!B state){
 	if(state.isValidTarget(target)){
 		dealRangedDamage(target,flameMinionProjectile.rangedAttack,flameMinionProjectile.attacker,flameMinionProjectile.side,flameMinionProjectile.velocity,DamageMod.ignite,state);
-		with(flameMinionProjectile) setAblaze(target,updateFPS/4,true,0.0f,attacker,side,DamageMod.none,state);
 	}
 	flameEffect(flameMinionProjectile.position,state);
 }
@@ -20219,6 +20228,7 @@ bool updateTickfernoProjectile(B)(ref TickfernoProjectile!B tickfernoProjectile,
 		if(remainingDistance>0.0f){
 			void terminate(){
 				playSoundAt("malf",position,state,tickfernoProjectileHitGain);
+				flameEffect(position,state,2.0f);
 				remainingDistance=0.0f;
 				hitframe=frame;
 			}
@@ -20238,7 +20248,6 @@ bool updateTickfernoProjectile(B)(ref TickfernoProjectile!B tickfernoProjectile,
 			float manaDrain=0.0f;
 			switch(target.type){
 				case TargetType.terrain:
-					flameEffect(position,state,2.0f);
 					terminate();
 					break;
 				case TargetType.creature:
@@ -20651,6 +20660,7 @@ bool updatePhoenixProjectile(B)(ref PhoenixProjectile!B phoenixProjectile,Object
 		if(remainingDistance>0.0f){
 			void terminate(){
 				playSoundAt("3fno",position,state,phoenixProjectileHitGain);
+				flameEffect(position,state,2.0f);
 				remainingDistance=0.0f;
 				hitframe=frame;
 			}
@@ -20670,7 +20680,6 @@ bool updatePhoenixProjectile(B)(ref PhoenixProjectile!B phoenixProjectile,Object
 			float manaDrain=0.0f;
 			switch(target.type){
 				case TargetType.terrain:
-					flameEffect(position,state,2.0f);
 					terminate();
 					break;
 				case TargetType.creature:
@@ -20744,12 +20753,12 @@ bool updatePyromaniacRocket(B)(ref PyromaniacRocket!B pyromaniacRocket,ObjectSta
 		}
 		bool terminate(){
 			playSpellSoundTypeAt(SoundType.pyromaniacHit,position,state,pyromaniacRocketHitGain);
+			flameEffect(position,state,2.0f);
 			return false;
 		}
 		if(remainingDistance<=0.0f) return terminate();
 		switch(target.type){
 			case TargetType.terrain:
-				flameEffect(position,state,2.0f);
 				return terminate();
 			case TargetType.creature:
 				goto case;
