@@ -988,14 +988,17 @@ final class SacBuilding(B){
 			icon=B.makeTexture(loadTXTR(icons["anam"])); // SacEngine extension: original does not have manalith icons
 		}else if(isManafount){
 			name=texts.get("tnof","Mana Fountain");
-		}else switch(tag){
+		}else switch(tag){ // TODO: get rid of this
 			case pyrodraulicDynamoTag:
 				name=texts.get(tag,"Pyrodraulic Dynamo");
 				break;
 			case pyrosMagnifryerTag:
 				name=texts.get(tag,"Pyro's Magnyfryer");
 				break;
-			default: break;
+			default:
+				if(tag in texts) // TODO: ok?
+					name=texts[tag];
+				break;
 		}
 		// regeneration
 		if(isManalith||isShrine){
