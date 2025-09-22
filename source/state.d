@@ -8011,13 +8011,13 @@ float dealDamageIgnoreGuardians(B)(ref Building!B building,float damage,int atta
 		building.health=max(building.health,1.0f);
 	if(state.sides.getStance(attackingSide,building.side)==Stance.enemy)
 		recordDamage(building,attackingSide,actualDamage,state);
+	if(damageMod&DamageMod.ignite)
+		igniteBuilding(building,cast(int)damage+1,state);
 	if(building.health==0.0f){
 		recordDestruction(building,attackingSide,state);
 		building.destroy(state);
 		destroyed=true;
-	}else if(damageMod&DamageMod.ignite){
-		igniteBuilding(building,cast(int)damage+1,state);
-	}
+	} 
 	return actualDamage;
 }
 
@@ -13209,6 +13209,7 @@ bool updateBuildingDestruction(B)(ref BuildingDestruction buildingDestruction,Ob
 		}
 		building.componentIds.length=newLength;
 		if(building.base) state.buildingById!(freeManafount,(){})(building.base,state);
+		building.burnFrames=min(building.burnFrames,10*updateFPS);
 		return newLength==0;
 	},()=>false)(buildingDestruction.id,state)){
 		state.removeObject(buildingDestruction.id);
