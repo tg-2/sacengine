@@ -35,6 +35,7 @@ maps/(2) TM-Sunhair.scp
 maps/(2) TM-Urknall.scp
 maps/(2) TM-Shady Glen.scp
 maps/(2) TM-Abaddon's Bolero.scp
+maps/(2) TM-Pyromania.scp
 maps/(2) Tourney - I scream.scp
 maps/(2) Tropical Paradise.scp
 maps/(2) WM-Botany 1on1.scp
