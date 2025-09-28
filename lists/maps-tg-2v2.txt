@@ -152,6 +152,7 @@ maps/(4) TM-Fairytale.scp
 maps/(4) TM-Lucifer's Fate.scp
 maps/(4) TM-Abaddon's Bolero.scp
 maps/(4) TM-Megalodon.scp
+maps/(4) TM-The Booty Express.scp
 maps/(4) Ferry.scp
 maps/(4) Arctic Realm 2v2.scp
 maps/(4) Aztec.scp
