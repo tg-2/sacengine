@@ -10203,8 +10203,12 @@ bool squallShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vect
 	return true;
 }
 
-bool pushback(B)(int creature, Vector3f direction,SacSpell!B rangedAttack,ObjectState!B state){
+bool pushback(B)(int creature,Vector3f direction,int attackingSide,SacSpell!B rangedAttack,ObjectState!B state){
 	if(!state.isValidTarget(creature,TargetType.creature)) return false;
+	state.movingObjectById!((ref obj,attackingSide){
+		if(obj.creatureState.movement==CreatureMovement.tumbling)
+			obj.creatureState.tumbleAttackerSide=attackingSide;
+	},(){})(creature,attackingSide);
 	state.addEffect(Pushback!B(creature,direction,rangedAttack));
 	return true;
 }
@@ -20497,7 +20501,7 @@ bool updateSquallProjectile(B)(ref SquallProjectile!B squallProjectile,ObjectSta
 			case TargetType.terrain:
 				return terminate();
 			case TargetType.creature:
-				pushback(target.id,direction,rangedAttack,state);
+				pushback(target.id,direction,side,rangedAttack,state);
 				goto case;
 			case TargetType.building:
 				dealRangedDamage(target.id,rangedAttack,attacker,side,direction,DamageMod.none,state);
