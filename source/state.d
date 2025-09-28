@@ -283,6 +283,7 @@ struct CreatureState{
 	auto pitchingSpeedLimit=float.infinity; // _in radians _per frame_
 	int timer; // used for: constraining revive time to be at least 5s, time until casting finished
 	int timer2; // used for: time until incantation finished
+	int tumbleAttackerSide=-1; // side that caused tumbling state
 }
 
 struct OrderTarget{
@@ -2001,6 +2002,8 @@ struct WizardStatistics{
 	int buildingsDestroyed=0;
 	int buildingsCreated=0;
 	// extensions:
+	int foesDipped=0;
+	int soulsDipped=0;
 	float damageDealt=0.0f;
 	float amountHealed=0.0f;
 }
@@ -4008,6 +4011,7 @@ struct VortickEffect{
 }
 
 struct VortexEffect(B){
+	int side;
 	Vector3f position;
 	SacSpell!B rangedAttack;
 	int frame=0;
@@ -4387,6 +4391,7 @@ enum PullType{
 }
 struct Pull(PullType which,B){
 	int creature;
+	int side;
 	int target;
 	SacSpell!B ability;
 	enum numShootFrames=20;
@@ -7246,6 +7251,8 @@ bool kill(B,bool pretending=false)(ref MovingObject!B object, ObjectState!B stat
 		with(CreatureMode) if(object.creatureState.mode.among(stunned,pretendingToDie,playingDead)) return false;
 		object.creatureState.mode=CreatureMode.pretendingToDie;
 	}
+	if(object.creatureState.movement!=CreatureMovement.tumbling)
+		object.creatureState.tumbleAttackerSide=-1;
 	object.setCreatureState(state);
 	return true;
 }
@@ -7471,7 +7478,7 @@ bool damageStun(B)(ref MovingObject!B object, Vector3f attackDirection, ObjectSt
 bool canCatapult(B)(ref MovingObject!B object){
 	return object.creatureState.mode.canCatapult;
 }
-void catapult(B)(ref MovingObject!B object, Vector3f velocity, ObjectState!B state){
+void catapult(B)(ref MovingObject!B object, int attackerSide, Vector3f velocity, ObjectState!B state){
 	if(!object.canCatapult) return;
 	if(object.creatureState.movement==CreatureMovement.flying) return;
 	if(object.creatureState.mode==CreatureMode.pumping) object.kill(state);
@@ -7479,11 +7486,14 @@ void catapult(B)(ref MovingObject!B object, Vector3f velocity, ObjectState!B sta
 		object.creatureState.mode=CreatureMode.stunned;
 	if(object.creatureState.movement!=CreatureMovement.tumbling){
 		object.creatureState.movement=CreatureMovement.tumbling;
+		object.creatureState.tumbleAttackerSide=attackerSide;
 		if(!object.creatureStats.effects.fixed)
 			object.creatureState.fallingVelocity=velocity;
 		object.setCreatureState(state);
-	}else if(!object.creatureStats.effects.fixed)
+	}else if(!object.creatureStats.effects.fixed){
 		object.creatureState.fallingVelocity+=velocity;
+		object.creatureState.tumbleAttackerSide=attackerSide;
+	}
 }
 
 bool canPush(B)(ref MovingObject!B object){
@@ -7599,11 +7609,12 @@ void land(B)(ref MovingObject!B object,ObjectState!B state){
 	object.setCreatureState(state);
 }
 
-void startTumbling(B)(ref MovingObject!B object,ObjectState!B state){
+void startTumbling(B)(ref MovingObject!B object,int attackerSide,ObjectState!B state){
 	if(object.creatureState.movement!=CreatureMovement.flying) return;
 	auto direction=rotate(object.rotation,Vector3f(0.0f,1.0f,0.0f));
 	object.creatureState.fallingVelocity=object.creatureState.speed*direction; // TODO: have consistent "velocity" instead?
 	object.creatureState.movement=CreatureMovement.tumbling;
+	object.creatureState.tumbleAttackerSide=attackerSide;
 }
 
 void startMeleeAttacking(B)(ref MovingObject!B object,bool downward,ObjectState!B state){
@@ -7732,6 +7743,12 @@ void recordHealForSide(B)(int side,float amount,ObjectState!B state){
 	auto wizard=state.getWizardForSide(side);
 	if(!wizard) return;
 	wizard.wizardStatistics.amountHealed+=amount;
+}
+void recordDipForSide(B)(int side,int souls,ObjectState!B state){
+	auto wizard=state.getWizardForSide(side);
+	if(!wizard) return;
+	wizard.wizardStatistics.foesDipped+=1;
+	wizard.wizardStatistics.soulsDipped+=souls;
 }
 
 void giveXPToSide(B)(int side,float xp,ObjectState!B state){
@@ -7896,6 +7913,7 @@ float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,
 	if(object.health==0.0f){
 		recordKill(object,attackingSide,state);
 		object.kill(state);
+		object.creatureState.tumbleAttackerSide=attackingSide;
 		killed=true;
 	}
 	return actualDamage;
@@ -8968,6 +8986,7 @@ bool freeCreature(B)(ref MovingObject!B object,Vector3f landingPosition,ObjectSt
 	if(object.creatureState.mode!=CreatureMode.thrashing) return false;
 	object.creatureState.mode=CreatureMode.stunned;
 	object.creatureState.movement=CreatureMovement.tumbling;
+	object.creatureState.tumbleAttackerSide=-1; // TODO?
 	if(isNaN(landingPosition.x)) object.creatureState.fallingVelocity=Vector3f(0.0f,0.0f,0.0f);
 	else object.creatureState.fallingVelocity=getFallingVelocity(landingPosition-object.position,5.0f,state);
 	object.setCreatureState(state);
@@ -9512,7 +9531,7 @@ bool freeze(B)(int wizard,int side,int target,SacSpell!B spell,ObjectState!B sta
 		assert(!obj.creatureStats.effects.frozen);
 		obj.creatureStats.effects.frozen=true;
 		obj.creatureState.mode=CreatureMode.stunned;
-		obj.startTumbling(state);
+		obj.startTumbling(side,state);
 		auto duration=(obj.isWizard?.25f:1000.0f/obj.creatureStats.maxHealth)*spell.duration;
 		return cast(int)ceil(updateFPS*duration);
 	},()=>-1)(target);
@@ -9790,7 +9809,7 @@ bool explosion(B,size_t n)(int attacker,int side,ref ExplosionEffect[n] effects,
 		}
 		dealSplashSpellDamageAt!callback(0,spell,spell.damageRange,attacker,side,effect.position,DamageMod.ignite,state,attacker,side,state);
 	}
-	static bool catapultCallback(int id,ExplosionEffect[n]* effects,SacSpell!B spell,ObjectState!B state){
+	static bool catapultCallback(int id,ExplosionEffect[n]* effects,int side,SacSpell!B spell,ObjectState!B state){
 		state.movingObjectById!((ref obj,effects,state){
 			float best=float.infinity;
 			Vector3f position;
@@ -9807,11 +9826,11 @@ bool explosion(B,size_t n)(int attacker,int side,ref ExplosionEffect[n] effects,
 			best=sqrt(best);
 			auto direction=(obj.position-(position+Vector3f(0.0f,0.0f,-5.0f))).normalized;
 			auto strength=min(20.0f,5.0f+17.5f*(1.0f-best/spell.damageRange));
-			obj.catapult(direction*strength,state);
+			obj.catapult(side,direction*strength,state);
 		},(){})(id,effects,state);
 		return false;
 	}
-	dealDamageAt!catapultCallback(0,0.0f,spell.effectRange+spell.damageRange,attacker,side,effects[0].position,DamageMod.none,state,&effects,spell,state);
+	dealDamageAt!catapultCallback(0,0.0f,spell.effectRange+spell.damageRange,attacker,side,effects[0].position,DamageMod.none,state,&effects,side,spell,state);
 	return true;
 }
 
@@ -10138,21 +10157,21 @@ bool basiliskShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Ve
 	return true;
 }
 
-bool petrify(B)(ref MovingObject!B obj,int lifetime,Vector3f attackDirection,ObjectState!B state){
+bool petrify(B)(ref MovingObject!B obj,int lifetime,int attackingSide,Vector3f attackDirection,ObjectState!B state){
 	if(obj.creatureStats.effects.ccProtected) return false;
 	assert(!obj.creatureStats.effects.petrified);
 	if(!obj.creatureState.mode.canBePetrified) return false;
 	obj.creatureStats.effects.petrified=true;
 	obj.creatureState.mode=CreatureMode.stunned;
-	obj.startTumbling(state);
+	obj.startTumbling(attackingSide,state);
 	state.addEffect(Petrification(obj.id,lifetime,attackDirection));
 	return true;
 }
 
-bool petrify(B)(ref MovingObject!B obj,SacSpell!B rangedAttack,Vector3f attackDirection,ObjectState!B state){
+bool petrify(B)(ref MovingObject!B obj,int attackingSide,SacSpell!B rangedAttack,Vector3f attackDirection,ObjectState!B state){
 	auto duration=obj.isWizard?2.5f:min(10.0f,10000.0f/obj.creatureStats.maxHealth);
 	auto lifetime=cast(int)(duration*updateFPS);
-	return petrify(obj,lifetime,attackDirection,state);
+	return petrify(obj,lifetime,attackingSide,attackDirection,state);
 }
 
 bool tickfernoShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
@@ -10170,9 +10189,9 @@ bool vortickShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vec
 }
 
 enum vortexGain=4.0f;
-bool spawnVortex(B)(Vector3f position,SacSpell!B rangedAttack,ObjectState!B state){
+bool spawnVortex(B)(int side,Vector3f position,SacSpell!B rangedAttack,ObjectState!B state){
 	playSoundAt("gxtv",position,state,vortexGain);
-	state.addEffect(VortexEffect!B(position,rangedAttack));
+	state.addEffect(VortexEffect!B(side,position,rangedAttack));
 	return true;
 }
 
@@ -11358,7 +11377,7 @@ bool pull(PullType type,B)(ref MovingObject!B object,int target,SacSpell!B abili
 	auto newTarget=state.collideRay!filter(startPos,endPos-startPos,1.0f,object.id,state);
 	if(newTarget.type!=TargetType.none) target=newTarget.id;
 	object.startPulling(state);
-	state.addEffect(Pull!(type,B)(object.id,target,ability));
+	state.addEffect(Pull!(type,B)(object.id,object.side,target,ability));
 	return true;
 }
 bool webPull(B)(ref MovingObject!B object,int target,SacSpell!B ability,ObjectState!B state){ return pull!(PullType.webPull)(object,target,ability,state); }
@@ -12190,6 +12209,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 			if(!state.isOnGround(object.position)||state.getGroundHeight(object.position)<object.position.z){
 				if(object.creatureState.movement!=CreatureMovement.flying){
 					object.creatureState.movement=CreatureMovement.tumbling;
+					object.creatureState.tumbleAttackerSide=-1;
 					object.frame=0;
 					object.startIdling(state);
 					break;
@@ -12261,6 +12281,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 				}
 				if(sacObject.canFly) object.creatureState.targetFlyingHeight=0.0f;
 				object.creatureState.movement=CreatureMovement.tumbling;
+				object.creatureState.tumbleAttackerSide=-1;
 				object.creatureState.fallingVelocity=Vector3f(0.0f,0.0f,0.0f);
 				object.startIdling(state);
 				state.newCreatureAddToSelection(object.side,object.id);
@@ -12820,7 +12841,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			break;
 		case CreatureMovement.flying:
 			if(object.creatureStats.effects.immobilized){
-				object.startTumbling(state);
+				object.startTumbling(-1,state);
 				goto case CreatureMovement.tumbling;
 			}
 			if(object.creatureStats.effects.fixed) break;
@@ -12926,7 +12947,12 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			object.teleport(targetPosition,state,true);
 			newPosition=object.position;
 		}
-		if(tpId==0) object.gib(state,-2);
+		if(tpId==0){
+			auto attackingSide=object.creatureState.tumbleAttackerSide;
+			if(state.sides.getStance(attackingSide,object.side)==Stance.enemy)
+				recordDipForSide(attackingSide,object.sacObject.numSouls,state);
+			object.gib(state,-2);
+		}
 	}
 	// TODO: improve? original engine does this, but it can cause ultrafast ascending for flying creatures
 	if(object.creatureState.movement!=CreatureMovement.onGround||onGround){
@@ -12945,6 +12971,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 		if(object.position.z>height && object.creatureState.movement==CreatureMovement.onGround){
 			object.creatureState.fallingVelocity=Vector3f(0.0f,0.0f,0.0f);
 			object.creatureState.movement=CreatureMovement.tumbling;
+			object.creatureState.tumbleAttackerSide=-1;
 			object.setCreatureState(state);
 		}
 	}
@@ -16502,7 +16529,7 @@ void eruptExplosion(B)(ref Erupt!B erupt,ObjectState!B state){
 			static if(is(typeof(obj)==MovingObject!B,B)){
 				if(difflen<erupt.throwRange){
 					auto strength=20.0f*(1.0f-difflen/erupt.throwRange);
-					obj.catapult(direction*strength,state);
+					obj.catapult(erupt.side,direction*strength,state);
 					dealDamage();
 				}
 			}else dealDamage();
@@ -20187,7 +20214,7 @@ bool updateBasiliskProjectile(B)(ref BasiliskProjectile!B basiliskProjectile,Obj
 		switch(target.type){
 			case TargetType.terrain: return terminate();
 			case TargetType.creature:
-				state.movingObjectById!(petrify,()=>false)(target.id,rangedAttack,direction,state);
+				state.movingObjectById!(petrify,()=>false)(target.id,side,rangedAttack,direction,state);
 				return terminate();
 			case TargetType.building: return terminate();
 			default: break;
@@ -20328,7 +20355,7 @@ bool updateVortickProjectile(B)(ref VortickProjectile!B vortickProjectile,Object
 			target=state.lineOfSightWithoutSide(oldPosition,position,side,intendedTarget);
 		}
 		bool terminate(){
-			spawnVortex(oldPosition,rangedAttack,state);
+			spawnVortex(side,oldPosition,rangedAttack,state);
 			return false;
 		}
 		if(remainingDistance<=0.0f) return terminate();
@@ -20419,7 +20446,7 @@ bool updateVortexEffect(B)(ref VortexEffect!B vortex,ObjectState!B state){
 					auto direction=(vortex.position.xy-obj.center.xy).normalized*1.5f;
 					//obj.catapult(Vector3f(1.5f*direction.x,1.5f*direction.y,2.5f),state);
 					//obj.catapult(Vector3f(1.5f*direction.y,-1.5f*direction.x,2.5f),state);
-					obj.catapult(Vector3f(direction.y,-direction.x,2.5f),state);
+					obj.catapult(vortex.side,Vector3f(direction.y,-direction.x,2.5f),state);
 				}
 				if(obj.creatureState.movement==CreatureMovement.tumbling){
 					auto acceleration=vortexForceField(obj.center-vortex.position,radius,height);
@@ -21131,7 +21158,7 @@ bool updateFlurryImplosion(B)(ref FlurryImplosion!B flurryImplosion,ObjectState!
 								obj.position=newPosition;
 							}
 						}else obj.position=newPosition;
-					}else obj.catapult(tumblingVelocity,state);
+					}else obj.catapult(implosion.side,tumblingVelocity,state);
 				}
 				if(obj.creatureState.movement==CreatureMovement.tumbling){
 					obj.position+=tumblingVelocity;
@@ -21945,7 +21972,7 @@ bool updatePull(PullType type,B)(ref Pull!(type,B) pull,ObjectState!B state){
 					//velocity.z+=0.7f*thread.length/pullSpeed*tobj.creatureStats.fallingAcceleration;
 					//if(velocity.lengthsqr>pullSpeed^^2) velocity=pullSpeed*velocity.normalized;
 					tobj.stunWithCooldown(stunCooldownFrames,state);
-					tobj.catapult(velocity,state);
+					tobj.catapult(side,velocity,state);
 					pullFrames=numPullFrames;
 					static if(type==PullType.cagePull){
 						boltScale=0.0f;
@@ -22298,7 +22325,7 @@ bool updateFirewalk(B)(ref Firewalk!B firewalk,ObjectState!B state){
 				obj.startIdling(state);
 				obj.animateFirewalk(state);
 				if(!state.isOnGround(obj.position))
-					obj.catapult(Vector3f(0.0f,0.0f,0.0f),state);
+					obj.catapult(-1,Vector3f(0.0f,0.0f,0.0f),state);
 				return false;
 			}
 			return true;

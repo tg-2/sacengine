@@ -1508,7 +1508,7 @@ final class SacScene: Scene{
 				import std.random;
 				auto velocity=Vector3f(uniform!"[]"(-10.0f,10.0f), uniform!"[]"(-10.0f,10.0f), uniform!"[]"(10.0f,25.0f));
 				//auto velocity=Vector3f(0.0f,0.0f,25.0f);
-				object.catapult(velocity,state);
+				object.catapult(-1,velocity,state);
 			}
 			foreach(_;0..keyDown[KEY_RSHIFT]){ applyToMoving!catapultRandomly(ostate,camera,mouse.target); resimulate(); }
 			foreach(_;0..keyDown[KEY_RETURN]){ applyToMoving!immediateRevive(ostate,camera,mouse.target); resimulate(); }

@@ -4322,6 +4322,10 @@ struct Renderer(B){
 					bool dead=false;
 					int foesKilled=-1;
 					int foesGibbed=-1;
+					int foesDipped=-1;
+					int soulsDipped=-1;
+					float damageDealt=0.0f;
+					float amountHealed=0.0f;
 					int level=-1;
 					float relativeXP;
 				}
@@ -4337,12 +4341,20 @@ struct Renderer(B){
 							bool dead=obj.isDead;
 							auto foesKilled=-1;
 							auto foesGibbed=-1;
+							auto foesDipped=-1;
+							auto soulsDipped=-1;
+							float damageDealt=float.nan;
+							float amountHealed=float.nan;
 							if(auto wiz=obj.isWizard?state.getWizard(obj.id):null){
 								if(wiz.name.length) name=wiz.name;
 								sideName=null;
 								if(obj.side==renderSide){
 									foesKilled=wiz.wizardStatistics.foesKilled;
 									foesGibbed=wiz.wizardStatistics.foesGibbed;
+									foesDipped=wiz.wizardStatistics.foesDipped;
+									soulsDipped=wiz.wizardStatistics.soulsDipped;
+									damageDealt=wiz.wizardStatistics.damageDealt;
+									amountHealed=wiz.wizardStatistics.amountHealed;
 									enforce(globalMinLevel<=wiz.level&&wiz.level<=globalMaxLevel);
 									relativeXP=max(0.0f,min(wiz.experience/xpForLevel[wiz.level+1],1.0f));
 								}
@@ -4354,7 +4366,7 @@ struct Renderer(B){
 									foesGibbed=obj.creatureStatistics.foesGibbed;
 								}
 							}
-							return NTTInfo(true,icon,name,sideName,relativeHealth,dead,foesKilled,foesGibbed,level,relativeXP);
+							return NTTInfo(true,icon,name,sideName,relativeHealth,dead,foesKilled,foesGibbed,foesDipped,soulsDipped,damageDealt,amountHealed,level,relativeXP);
 						},()=>NTTInfo.init)(id,info.renderSide);
 					}else if(target.type==TargetType.building){
 						return state.staticObjectById!((ref obj,state){
@@ -4412,6 +4424,10 @@ struct Renderer(B){
 				if(nttInfo.level!=-1) buf.formattedWrite!"\nLevel %d"(nttInfo.level);
 				if(nttInfo.foesKilled!=-1) buf.formattedWrite!"\nFoes killed: %d"(nttInfo.foesKilled);
 				if(nttInfo.foesGibbed!=-1) buf.formattedWrite!"\nFoes gibbed: %d"(nttInfo.foesGibbed);
+				//if(nttInfo.foesDipped!=-1) buf.formattedWrite!"\nFoes dipped: %d"(nttInfo.foesDipped);
+				//if(nttInfo.foesDipped!=-1) buf.formattedWrite!"\nSouls dipped: %d"(nttInfo.soulsDipped);
+				//if(!isNaN(nttInfo.damageDealt)) buf.formattedWrite!"\nDamage dealt: %d"(cast(int)nttInfo.damageDealt);
+				//if(!isNaN(nttInfo.amountHealed)) buf.formattedWrite!"\nAmount healed: %d"(cast(int)nttInfo.amountHealed);
 				auto text=buffer[0..buf.ptr-buffer.ptr];
 				FormatSettings settings = {flowType:FlowType.left, scale:hudScaling};
 				auto infoPos=upperLeft+Vector3f((3.0f+32.0f+4.0f)*hudScaling,2.0f*hudScaling,0.0f);
