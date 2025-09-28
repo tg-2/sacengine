@@ -2000,6 +2000,9 @@ struct WizardStatistics{
 	int foesGibbed=0;
 	int buildingsDestroyed=0;
 	int buildingsCreated=0;
+	// extensions:
+	float damageDealt=0.0f;
+	float amountHealed=0.0f;
 }
 
 struct WizardInfo(B){
@@ -2527,9 +2530,11 @@ struct SpeedUpShadow(B){
 struct HealCasting(B){
 	ManaDrain!B manaDrain;
 	SacSpell!B spell;
+	int side;
 	int creature;
 }
 struct Heal(B){
+	int side;
 	int creature;
 }
 struct LightningCasting(B){
@@ -7718,6 +7723,17 @@ void healFromDrain(B)(int attacker,float actualDamage,ObjectState!B state){
 		return state.movingObjectById!(healFromDrain,(){})(attacker,actualDamage,state);
 }
 
+void recordDamageForSide(B)(int side,float damage,ObjectState!B state){
+	auto wizard=state.getWizardForSide(side);
+	if(!wizard) return;
+	wizard.wizardStatistics.damageDealt+=damage;
+}
+void recordHealForSide(B)(int side,float amount,ObjectState!B state){
+	auto wizard=state.getWizardForSide(side);
+	if(!wizard) return;
+	wizard.wizardStatistics.amountHealed+=amount;
+}
+
 void giveXPToSide(B)(int side,float xp,ObjectState!B state){
 	auto wizard=state.getWizardForSide(side);
 	if(!wizard) return;
@@ -7827,6 +7843,7 @@ void recordDamage(B)(ref MovingObject!B object,int attackingSide,float damage,Ob
 	if(state.sides.getStance(attackingSide,object.side)==Stance.enemy){
 		object.notificationState.attack(object,state);
 		giveXPToSide(attackingSide,damage,state);
+		recordDamageForSide(attackingSide,damage,state);
 	}
 }
 
@@ -8751,7 +8768,8 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 					ok=speedUp(target.id,spell,state);
 					goto default;
 				case SpellTag.heal:
-					return stun(castHeal(target.id,manaDrain,spell,state));
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					return stun(castHeal(target.id,manaDrain,side,spell,state));
 				case SpellTag.lightning:
 					return stun(castLightning(target.id,manaDrain,spell,state));
 				case SpellTag.wrath:
@@ -9232,13 +9250,13 @@ bool speedUp(B)(int creature,SacSpell!B spell,ObjectState!B state){
 	return state.movingObjectById!(speedUp,()=>false)(creature,spell,state);
 }
 
-bool castHeal(B)(int creature,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+bool castHeal(B)(int creature,ManaDrain!B manaDrain,int side,SacSpell!B spell,ObjectState!B state){
 	if(!state.isValidTarget(creature,TargetType.creature)) return false;
-	state.addEffect(HealCasting!B(manaDrain,spell,creature));
+	state.addEffect(HealCasting!B(manaDrain,spell,side,creature));
 	return true;
 }
 enum healSpeed=240.0f;
-bool heal(B)(ref MovingObject!B object,SacSpell!B spell,ObjectState!B state){
+bool heal(B)(ref MovingObject!B object,int side,SacSpell!B spell,ObjectState!B state){
 	if(!object.canHeal(state)) return false;
 	playSoundAt("laeh",object.id,state,2.0f);
 	auto amount=spell.amount==float.infinity?object.creatureStats.maxHealth:spell.amount;
@@ -9247,15 +9265,15 @@ bool heal(B)(ref MovingObject!B object,SacSpell!B spell,ObjectState!B state){
 	if(object.creatureStats.effects.healTimer<0){
 		object.creatureStats.effects.healTimer=duration;
 		object.creatureStats.effects.healPerFrame=healthRegenerationPerFrame;
-		state.addEffect(Heal!B(object.id));
+		state.addEffect(Heal!B(side,object.id));
 	}else{
 		object.creatureStats.effects.healTimer=satAdd(object.creatureStats.effects.healTimer,duration);
 		object.creatureStats.effects.healPerFrame=max(object.creatureStats.effects.healPerFrame,healthRegenerationPerFrame);
 	}
 	return true;
 }
-bool heal(B)(int creature,SacSpell!B spell,ObjectState!B state){
-	return state.movingObjectById!(heal,()=>false)(creature,spell,state);
+bool heal(B)(int creature,int side,SacSpell!B spell,ObjectState!B state){
+	return state.movingObjectById!(heal,()=>false)(creature,side,spell,state);
 }
 
 bool castLightning(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
@@ -11328,7 +11346,7 @@ bool devourSoul(B)(ref MovingObject!B object,int soulId,SacSpell!B ability,Objec
 			obj.creatureStats.splashRangedResistance*=0.9f;
 			obj.creatureStats.effects.numBulks+=1;
 		}
-		heal(obj.id,rbow,state);
+		heal(obj.id,obj.side,rbow,state);
 		return true;
 	},()=>false)(soulId,&object,state);
 }
@@ -14299,7 +14317,7 @@ bool updateHealCasting(B)(ref HealCasting!B healCast,ObjectState!B state){
 				return true;
 			case CastingStatus.interrupted: return false;
 			case CastingStatus.finished:
-				heal(creature,spell,state);
+				heal(creature,side,spell,state);
 				return false;
 		}
 	}
@@ -14323,7 +14341,7 @@ void animateHeal(B)(ref MovingObject!B obj,ObjectState!B state){
 }
 
 bool updateHeal(B)(ref Heal!B heal,ObjectState!B state){
-	return state.movingObjectById!((ref obj,heal,state){
+	return state.movingObjectById!((ref obj,side,state){
 		bool end(){
 			obj.creatureStats.effects.healPerFrame=0.0f;
 			obj.creatureStats.effects.healTimer=-updateFPS/2;
@@ -14332,12 +14350,14 @@ bool updateHeal(B)(ref Heal!B heal,ObjectState!B state){
 		if(!obj.canHeal(state)) return end();
 		obj.creatureStats.effects.healTimer-=1;
 		if(obj.creatureStats.effects.healTimer<0) return end();
-		obj.heal(obj.creatureStats.effects.healPerFrame,state);
+		float amount=obj.creatureStats.effects.healPerFrame;
+		obj.heal(amount,state);
+		recordHealForSide(side,amount,state);
 		if(obj.health(state)==obj.creatureStats.maxHealth)
 			return end();
 		obj.animateHeal(state);
 		return true;
-	},function bool(){ return false; })(heal.creature,heal,state);
+	},function bool(){ return false; })(heal.creature,heal.side,state);
 }
 
 void animateLightningCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
@@ -16164,7 +16184,7 @@ bool updateRainbow(B)(ref Rainbow!B rainbow,ObjectState!B state){
 		if(++frame==travelFrames){
 			if(current.id){
 				state.movingObjectById!(animateRainbowHit,(){})(current.id,state);
-				heal(current.id,spell,state);
+				heal(current.id,side,spell,state);
 				addTarget(current.id);
 			}
 			if(++numTargets>=totTargets)
@@ -17602,7 +17622,7 @@ bool updateHealingAura(B)(ref HealingAura!B healingAura,ObjectState!B state){
 				status=HealingAuraStatus.shrinking;
 			auto hitboxSide=state.movingObjectById!((ref obj)=>tuple(obj.hitbox,obj.side),()=>tuple((Vector3f[2]).init,-1))(healingAura.target);
 			auto hitbox=hitboxSide[0], side=hitboxSide[1];
-			static void doHeal(ref MovingObject!B obj,ObjectState!B state){
+			static void doHeal(ref MovingObject!B obj,int side,ObjectState!B state){
 				if(!obj.canHeal(state)) return;
 				static assert(updateFPS==60);
 				enum duration=256*updateFPS/60;
@@ -17612,22 +17632,21 @@ bool updateHealingAura(B)(ref HealingAura!B healingAura,ObjectState!B state){
 						playSoundAt("laeh",obj.id,state,1.0f);
 					obj.creatureStats.effects.healTimer=duration;
 					obj.creatureStats.effects.healPerFrame=healthRegenerationPerFrame;
-					state.addEffect(Heal!B(obj.id));
+					state.addEffect(Heal!B(side,obj.id));
 				}else{
 					obj.creatureStats.effects.healTimer=max(obj.creatureStats.effects.healTimer,duration);
 					obj.creatureStats.effects.healPerFrame=max(obj.creatureStats.effects.healPerFrame,healthRegenerationPerFrame);
 				}
 			}
-			state.movingObjectById!(doHeal,(){})(target,state);
+			state.movingObjectById!(doHeal,(){})(target,side,state);
 			static bool doHealEntry(int target,int side,ObjectState!B state){
 				if(!state.isValidTarget(target,TargetType.creature)) return false;
 				state.movingObjectById!((ref obj,side,state){
 					if(obj.side!=side) return;
-					doHeal(obj,state);
+					doHeal(obj,side,state);
 				},(){})(target,side,state);
 				return false;
 			}
-			state.movingObjectById!(doHeal,(){})(target,state);
 			auto position=state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(target);
 			dealDamageAt!doHealEntry(target,0.0f,spell.effectRange,target,side,position,DamageMod.none,state,side,state);
 		}
@@ -20073,7 +20092,7 @@ void scarabProjectileHit(B)(ref ScarabProjectile!B scarabProjectile,int target,O
 	}
 	static bool callback(int target,int side,SacSpell!B rangedAttack,ObjectState!B state){
 		if(state.movingObjectById!((ref obj)=>obj.side,()=>-1)(target)==side)
-			heal(target,rangedAttack,state);
+			heal(target,side,rangedAttack,state);
 		return false;
 	}
 	with(scarabProjectile) dealSplashSpellDamageAt!callback(-1,rangedAttack,rangedAttack.effectRange,attacker,side,position,DamageMod.none,state,side,rangedAttack,state);
@@ -22116,7 +22135,7 @@ bool updateHealingShower(B)(ref HealingShower!B healingShower,ObjectState!B stat
 	with(healingShower){
 		static bool callback(int target,int side,SacSpell!B ability,ObjectState!B state){
 			if(state.movingObjectById!((ref obj)=>obj.side,()=>-1)(target)==side)
-				heal(target,ability,state);
+				heal(target,side,ability,state);
 			return false;
 		}
 		dealSplashSpellDamageAt!callback(0,ability,ability.effectRange,id,side,boxCenter(hitbox),DamageMod.none,state,side,ability,state);
