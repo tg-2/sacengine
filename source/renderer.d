@@ -503,6 +503,7 @@ struct Renderer(B){
 		auto meshes=typeof(return).createMeshes;
 		return SacHealingAura!B(texture,mat,meshes);
 	}
+	SacSpike!B spike;
 	SacSpike!B createSpike(){
 		auto texture=typeof(return).loadTexture();
 		auto mat=B.makeMaterial(B.defaultMaterialBackend);
@@ -513,7 +514,7 @@ struct Renderer(B){
 		auto mesh=typeof(return).createMesh();
 		return SacSpike!B(texture,mat,mesh);
 	}
-	SacSpike!B spike;
+	SacFirewall!B firewall;
 	SacFirewall!B createFirewall(){
 		auto texture=typeof(return).loadTexture();
 		auto mat=B.makeMaterial(B.shadelessBoneMaterialBackend);
@@ -524,7 +525,7 @@ struct Renderer(B){
 		auto frames=typeof(return).createMeshes();
 		return SacFirewall!B(texture,mat,frames);
 	}
-	SacFirewall!B firewall;
+	SacWailingWallSpirit!B wailingWallSpirit;
 	SacWailingWallSpirit!B createWailingWallSpirit(){
 		auto texture=typeof(return).loadTexture();
 		auto mat=B.makeMaterial(B.shadelessBoneMaterialBackend);
@@ -535,7 +536,7 @@ struct Renderer(B){
 		auto frames=typeof(return).createMeshes();
 		return SacWailingWallSpirit!B(texture,mat,frames);
 	}
-	SacWailingWallSpirit!B wailingWallSpirit;
+	SacWailingWall!B wailingWall;
 	SacWailingWall!B createWailingWall(){
 		auto texture=typeof(return).loadTexture();
 		auto mat=B.makeMaterial(B.shadelessBoneMaterialBackend);
@@ -547,7 +548,7 @@ struct Renderer(B){
 		auto frames=typeof(return).createMeshes();
 		return SacWailingWall!B(texture,mat,frames);
 	}
-	SacWailingWall!B wailingWall;
+	SacFence!B fence;
 	SacFence!B createFence(){
 		auto textures=typeof(return).loadTextures();
 		auto mat0=B.makeMaterial(B.shadelessMaterialBackend);
@@ -563,7 +564,29 @@ struct Renderer(B){
 		auto frames=typeof(return).createMeshes();
 		return SacFence!B(textures,[mat0,mat1],frames);
 	}
-	SacFence!B fence;
+	SacIntestinalVaporization!B intestinalVaporization;
+	SacIntestinalVaporization!B createIntestinalVaporization(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Transparent;
+		mat.energy=3.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacIntestinalVaporization!B(texture,mat,frames);
+	}
+	SacIntestinalVaporizationEffect!B intestinalVaporizationEffect;
+	SacIntestinalVaporizationEffect!B createIntestinalVaporizationEffect(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Transparent;
+		mat.energy=3.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacIntestinalVaporizationEffect!B(texture,mat,frames);
+	}
+
 	SacBrainiacEffect!B brainiacEffect;
 	SacBrainiacEffect!B createBrainiacEffect(){
 		auto texture=typeof(return).loadTexture();
@@ -888,6 +911,8 @@ struct Renderer(B){
 		wailingWallSpirit=createWailingWallSpirit();
 		wailingWall=createWailingWall();
 		fence=createFence();
+		intestinalVaporization=createIntestinalVaporization();
+		intestinalVaporizationEffect=createIntestinalVaporizationEffect();
 		brainiacEffect=createBrainiacEffect();
 		shrikeEffect=createShrikeEffect();
 		arrow=createArrow();
@@ -2414,6 +2439,38 @@ struct Renderer(B){
 							}
 						}
 					}}
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.intestinalVaporizations.length||objects.intestinalVaporizationCastings.length)){
+					auto material=self.intestinalVaporization.material;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
+					void renderIntestinalVaporization(ref IntestinalVaporization!B intestinalVaporization){
+						if(intestinalVaporization.status!=IntestinalVaporizationStatus.flying) return;
+						auto position=intestinalVaporization.position;
+						auto frame=intestinalVaporization.frame;
+						auto mesh=self.intestinalVaporization.getFrame(frame%self.intestinalVaporization.numFrames);
+						material.backend.setSpriteTransformation(position,rc);
+						mesh.render(rc);
+					}
+					foreach(j;0..objects.intestinalVaporizationCastings.length)
+						renderIntestinalVaporization(objects.intestinalVaporizationCastings[j].intestinalVaporization);
+					foreach(j;0..objects.intestinalVaporizations.length)
+						renderIntestinalVaporization(objects.intestinalVaporizations[j]);
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.intestinalVaporizationEffects.length){
+					auto material=self.intestinalVaporizationEffect.material;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
+					void renderIntestinalVaporizationEffect(ref IntestinalVaporizationEffect!B intestinalVaporizationEffect){
+						auto scale=max(0.75f,min(intestinalVaporizationEffect.scale,3.0f));
+						auto position=intestinalVaporizationEffect.position;
+						auto frame=intestinalVaporizationEffect.frame;
+						auto mesh=self.intestinalVaporizationEffect.getFrame(frame%self.intestinalVaporization.numFrames);
+						material.backend.setSpriteTransformationScaled(position,scale,rc);
+						mesh.render(rc);
+					}
+					foreach(j;0..objects.intestinalVaporizationEffects.length)
+						renderIntestinalVaporizationEffect(objects.intestinalVaporizationEffects[j]);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.brainiacEffects.length){
 					auto material=self.brainiacEffect.material;

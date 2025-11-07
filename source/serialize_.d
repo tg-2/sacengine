@@ -625,6 +625,15 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Bom
 void serialize(alias sink,B)(ref BombardmentDrop!B bombardmentDrop){ serializeStruct!sink(bombardmentDrop); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BombardmentDrop!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref IntestinalVaporizationCasting!B intestinalVaporizationCasting){ serializeStruct!sink(intestinalVaporizationCasting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==IntestinalVaporizationCasting!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref IntestinalVaporization!B intestinalVaporization){ serializeStruct!sink(intestinalVaporization); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==IntestinalVaporization!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref IntestinalVaporizationEffect!B intestinalVaporizationEffect){ serializeStruct!sink(intestinalVaporizationEffect); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==IntestinalVaporizationEffect!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref BrainiacProjectile!B brainiacProjectile){ serializeStruct!sink(brainiacProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BrainiacProjectile!B)){ deserializeStruct(result,state,data); }
 

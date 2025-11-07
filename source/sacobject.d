@@ -2963,6 +2963,36 @@ struct SacFence(B){
 	}
 }
 
+struct SacIntestinalVaporization(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Char.FLDR/tex_ZERO_.FLDR/gut1.TXTR"));
+	}
+	B.Material material;
+	B.Mesh[] frames;
+	enum animationDelay=2;
+	enum numFrames=16*updateAnimFactor*animationDelay;
+	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
+	static B.Mesh[] createMeshes(){
+		return makeSpriteMeshes!B(4,4,1.75f,1.75f);
+	}
+}
+struct SacIntestinalVaporizationEffect(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Char.FLDR/tex_ZERO_.FLDR/gut2.TXTR"));
+	}
+	B.Material material;
+	B.Mesh[] frames;
+	enum animationDelay=2;
+	enum numFrames=16*updateAnimFactor*animationDelay;
+	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
+	static B.Mesh[] createMeshes(){
+		return makeSpriteMeshes!B(4,4,1.25f,1.25f);
+	}
+}
+
+
 struct SacBrainiacEffect(B){
 	B.Texture texture;
 	static B.Texture loadTexture(){
@@ -3491,7 +3521,6 @@ struct SacGnomeEffect(B){
 	}
 }
 
-
 struct SacMutantProjectile(B){
 	B.Texture texture;
 	static B.Texture loadTexture(){
@@ -3536,7 +3565,6 @@ struct SacBombardProjectile(B){
 		return makeSpriteMeshes!B(4,4,2.75f,2.75f);
 	}
 }
-
 
 B.Mesh makeCrystalMesh(B)(int numSpikes, float spikeWidth, float spikeLength, int numVariants=1, bool randomizeLengths=false){
 	auto mesh=B.makeMesh(3*4*numSpikes, 3*2*numSpikes);

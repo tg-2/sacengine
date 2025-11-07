@@ -245,7 +245,13 @@ bool canPush(CreatureMode mode){
 		case ghostToIdle,dead,deadToGhost,idleGhost,movingGhost,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing,firewalk: return false;
 	}
 }
-
+bool canIntestinallyVaporize(CreatureMode mode){
+	final switch(mode) with(CreatureMode){
+			case idle,moving,dying,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
+				shooting,usingAbility,pulling,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm,firewalk: return true;
+			case ghostToIdle,dead,deadToGhost,idleGhost,movingGhost,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
+	}
+}
 
 enum CreatureMovement{
 	onGround,
@@ -3778,6 +3784,32 @@ struct BombardmentDrop(B){
 	}
 }
 
+struct IntestinalVaporizationCasting(B){
+	ManaDrain!B manaDrain;
+	IntestinalVaporization!B intestinalVaporization;
+}
+enum IntestinalVaporizationStatus{ flying, vaporizing }
+struct IntestinalVaporization(B){
+	int wizard;
+	int side;
+	Vector3f position;
+	OrderTarget target;
+	SacSpell!B spell;
+	PositionPredictor predictor;
+	int frame=0;
+	IntestinalVaporizationStatus status;
+	enum maxBulk=2.5f;
+	enum numEffects=7;
+}
+struct IntestinalVaporizationEffect(B){
+	float scale;
+	Vector3f position;
+	OrderTarget target;
+	Vector3f[2] lastPosition,nextPosition;
+	float progress=0.0f;
+	int frame=0;
+}
+
 
 struct BrainiacProjectile(B){
 	int attacker;
@@ -5466,6 +5498,30 @@ struct Effects(B){
 		if(i+1<bombardmentDrops.length) bombardmentDrops[i]=move(bombardmentDrops[$-1]);
 		bombardmentDrops.length=bombardmentDrops.length-1;
 	}
+	Array!(IntestinalVaporizationCasting!B) intestinalVaporizationCastings;
+	void addEffect(IntestinalVaporizationCasting!B IntestinalVaporizationCasting){
+		intestinalVaporizationCastings~=move(IntestinalVaporizationCasting);
+	}
+	void removeIntestinalVaporizationCasting(int i){
+		if(i+1<intestinalVaporizationCastings.length) intestinalVaporizationCastings[i]=move(intestinalVaporizationCastings[$-1]);
+		intestinalVaporizationCastings.length=intestinalVaporizationCastings.length-1;
+	}
+	Array!(IntestinalVaporization!B) intestinalVaporizations;
+	void addEffect(IntestinalVaporization!B IntestinalVaporization){
+		intestinalVaporizations~=move(IntestinalVaporization);
+	}
+	void removeIntestinalVaporization(int i){
+		if(i+1<intestinalVaporizations.length) intestinalVaporizations[i]=move(intestinalVaporizations[$-1]);
+		intestinalVaporizations.length=intestinalVaporizations.length-1;
+	}
+	Array!(IntestinalVaporizationEffect!B) intestinalVaporizationEffects;
+	void addEffect(IntestinalVaporizationEffect!B intestinalVaporizationEffect){
+		intestinalVaporizationEffects~=move(intestinalVaporizationEffect);
+	}
+	void removeIntestinalVaporizationEffect(int i){
+		if(i+1<intestinalVaporizationEffects.length) intestinalVaporizationEffects[i]=move(intestinalVaporizationEffects[$-1]);
+		intestinalVaporizationEffects.length=intestinalVaporizationEffects.length-1;
+	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
 	void addEffect(BrainiacProjectile!B brainiacProjectile){
@@ -6655,6 +6711,7 @@ struct ObjectManager(B){
 		assert(0<id && id<=ids.length);
 	}do{
 		auto tid=ids[id-1];
+		if(tid==Id.init) return; // deleted
 		enforce(tid.mode==RenderMode.transparent);
 		transparentObjects.setAlpha(tid.type,tid.index,alpha,energy);
 	}
@@ -6662,11 +6719,13 @@ struct ObjectManager(B){
 		assert(0<id && id<=ids.length);
 	}do{
 		auto tid=ids[id-1];
+		if(tid==Id.init) return; // deleted
 		enforce(tid.mode==RenderMode.transparent);
 		transparentObjects.setThresholdZ(tid.type,tid.index,thresholdZ);
 	}
 	void setRenderMode(T,RenderMode mode)(int id)if(is(T==MovingObject!B)||is(T==StaticObject!B)){
 		auto tid=ids[id-1];
+		if(tid==Id.init) return; // deleted
 		if(tid.mode==mode) return;
 		static if(mode==RenderMode.opaque){
 			alias old=transparentObjects;
@@ -8901,6 +8960,8 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 				case SpellTag.fence:
 					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
 					return stun(castFence(side,target.position,manaDrain,spell,state));
+				case SpellTag.intestinalVaporization:
+					return stun(castIntestinalVaporization(target.id,manaDrain,spell,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -10031,6 +10092,25 @@ bool fence(B)(Fence!B fence,ObjectState!B state){
 	state.addEffect(fence);
 	return true;
 }
+
+Vector3f intestinalVaporizationCastingPosition(B)(ref MovingObject!B obj,ObjectState!B state){
+	auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),obj.scale,AnimationState.stance1,0);
+	return obj.position+rotate(obj.rotation,Vector3f(0.0f,hbox[1].y+1.25f,hbox[1].z+0.5f));
+}
+bool castIntestinalVaporization(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	if(!state.isValidTarget(target)) return false;
+	auto positionSide=state.movingObjectById!((obj,state)=>tuple(obj.intestinalVaporizationCastingPosition(state),obj.side),function Tuple!(Vector3f,int){ assert(0); })(manaDrain.wizard,state);
+	auto position=positionSide[0],side=positionSide[1];
+	auto intestinalVaporization=IntestinalVaporization!B(manaDrain.wizard,side,position,centerTarget(target,state),spell);
+	state.addEffect(IntestinalVaporizationCasting!B(manaDrain,intestinalVaporization));
+	return true;
+}
+
+bool intestinalVaporization(B)(IntestinalVaporization!B intestinalVaporization,ObjectState!B state){
+	state.addEffect(intestinalVaporization);
+	return true;
+}
+
 
 Vector3f getShotDirection(B)(float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
 	auto φ=2.0f*pi!float*accuracy*state.normal(); // TODO: ok?
@@ -14665,21 +14745,21 @@ bool updateWrath(B)(ref Wrath!B wrath,ObjectState!B state){
 bool updateFireballCasting(B)(ref FireballCasting!B fireballCast,ObjectState!B state){
 	with(fireballCast){
 		fireball.target.position=fireball.target.center(state);
-			final switch(manaDrain.update(state)){
-				case CastingStatus.underway:
-					return state.movingObjectById!((obj){
-						fireball.position=obj.fireballCastingPosition(state);
-						fireball.rotation=fireball.rotationUpdate*fireball.rotation;
-						obj.animatePyroCasting(state);
-						frame+=1;
-						return true;
-					},()=>false)(manaDrain.wizard);
-				case CastingStatus.interrupted:
-					return false;
-				case CastingStatus.finished:
-					.fireball(fireball,state);
-					return false;
-			}
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				return state.movingObjectById!((obj){
+					fireball.position=obj.fireballCastingPosition(state);
+					fireball.rotation=fireball.rotationUpdate*fireball.rotation;
+					obj.animatePyroCasting(state);
+					frame+=1;
+					return true;
+				},()=>false)(manaDrain.wizard);
+			case CastingStatus.interrupted:
+				return false;
+			case CastingStatus.finished:
+				.fireball(fireball,state);
+				return false;
+		}
 	}
 }
 void animateFireball(B)(ref Fireball!B fireball,Vector3f oldPosition,ObjectState!B state){
@@ -19381,6 +19461,97 @@ bool updateBombardmentDrop(B)(ref BombardmentDrop!B bombardmentDrop,ObjectState!
 	}
 }
 
+bool updateIntestinalVaporizationCasting(B)(ref IntestinalVaporizationCasting!B intestinalVaporizationCast,ObjectState!B state){
+	with(intestinalVaporizationCast){
+		intestinalVaporization.target.position=intestinalVaporization.target.center(state);
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				return state.movingObjectById!((obj){
+					intestinalVaporization.position=obj.intestinalVaporizationCastingPosition(state);
+					intestinalVaporization.frame+=1;
+					auto castParticle=SacParticle!B.get(ParticleType.castCharnel2);
+					obj.animateCasting(castParticle,state);
+					return true;
+				},()=>false)(manaDrain.wizard);
+			case CastingStatus.interrupted:
+				return false;
+			case CastingStatus.finished:
+				.intestinalVaporization(intestinalVaporization,state);
+				return false;
+		}
+	}
+}
+enum intestinalVaporizationGain=3.0f;
+bool updateIntestinalVaporization(B)(ref IntestinalVaporization!B intestinalVaporization,ObjectState!B state){
+	with(intestinalVaporization){
+		if(!state.isValidTarget(target.id)) return false;
+		final switch(status){
+			case IntestinalVaporizationStatus.flying:
+				auto targetCenter=target.center(state);
+				target.position=targetCenter;
+				auto predictedCenter=predictor.predictCenter(position,spell.speed,target,side,state);
+				auto direction=predictedCenter-position;
+				auto length=direction.length;
+				if(length>0.25f+state.movingObjectById!((ref obj)=>0.5f*obj.getScale.length,()=>0.0f)(target.id)){
+					auto velocity=min(length,spell.speed/updateFPS)/length*direction;
+					position+=velocity;
+					frame+=1;
+				}else{
+					playSoundAt("hpvi",target.id,state,intestinalVaporizationGain);
+					if(!state.movingObjectById!((ref obj)=>obj.creatureState.mode.canIntestinallyVaporize,()=>false)(target.id))
+						return false;
+					frame=0;
+					status=IntestinalVaporizationStatus.vaporizing;
+					float scale=state.movingObjectById!((ref obj)=>obj.getScale.length,()=>1.0f)(target.id);
+					foreach(i;0..numEffects){
+						state.addEffect(IntestinalVaporizationEffect!B(scale,targetCenter,target));
+					}
+					goto case IntestinalVaporizationStatus.vaporizing;
+				}
+				return true;
+			case IntestinalVaporizationStatus.vaporizing:
+				auto progress=float(frame)/(spell.duration*updateFPS);
+				if(progress<=1.0f){
+					state.movingObjectById!((ref obj,frame,spell,progress,state){
+						if(obj.stunWithCooldown(3*updateFPS,state))
+							obj.damageAnimation(Vector3f(0.0f,0.0f,-1.0f),state,false);
+						obj.creatureStats.effects.bulk=(1.0f-progress)+maxBulk*progress;
+					},(){})(target.id,frame,spell,progress,state);
+					frame+=1;
+					return true;
+				}else{
+					playSoundAt("xpvi",target.center(state),state,intestinalVaporizationGain);
+					state.movingObjectById!(gib,()=>false)(target.id,state);
+					return false;
+				}
+		}
+	}
+}
+bool updateIntestinalVaporizationEffect(B)(ref IntestinalVaporizationEffect!B intestinalVaporizationEffect,ObjectState!B state){
+	with(intestinalVaporizationEffect){
+		if(!state.movingObjectById!((ref obj)=>obj.creatureState.mode.canIntestinallyVaporize,()=>false)(target.id))
+			return false;
+		auto targetCenter=target.center(state);
+		auto radius=2.0f*scale;
+		auto speedRadius=3.0f*scale;
+		auto interpolationSpeed=1.0f;
+		target.position=targetCenter;
+		if(isNaN(lastPosition[0].x)){
+			nextPosition=[position-targetCenter,Vector3f(0.0f,0.0f,0.0f)];
+			progress=1.0f;
+		}
+		if(progress>=1.0f){
+			progress-=1.0f;
+			lastPosition=nextPosition;
+			nextPosition[0]=state.uniformDisk(Vector3f(0.0f,0.0f,0.0f),radius);
+			nextPosition[1]=state.uniformDirection()*speedRadius;
+		}
+		progress+=interpolationSpeed/updateFPS;
+		position=cintp2([lastPosition,nextPosition],progress)[0]+targetCenter;
+		frame+=1;
+		return true;
+	}
+}
 
 enum brainiacProjectileHitGain=4.0f;
 enum brainiacProjectileSize=0.45f; // TODO: ok?
@@ -23333,6 +23504,27 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.bombardmentDrops.length;){
 		if(!updateBombardmentDrop(effects.bombardmentDrops[i],state)){
 			effects.removeBombardmentDrop(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.intestinalVaporizationCastings.length;){
+		if(!updateIntestinalVaporizationCasting(effects.intestinalVaporizationCastings[i],state)){
+			effects.removeIntestinalVaporizationCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.intestinalVaporizations.length;){
+		if(!updateIntestinalVaporization(effects.intestinalVaporizations[i],state)){
+			effects.removeIntestinalVaporization(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.intestinalVaporizationEffects.length;){
+		if(!updateIntestinalVaporizationEffect(effects.intestinalVaporizationEffects[i],state)){
+			effects.removeIntestinalVaporizationEffect(i);
 			continue;
 		}
 		i++;

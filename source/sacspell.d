@@ -201,6 +201,7 @@ class SacSpell(B){
 			duration=spel.duration;
 			if(tag==SpellTag.heal) duration=4.5f;
 			if(tag==SpellTag.frozenGround) duration=15.0f;
+			if(tag==SpellTag.intestinalVaporization) duration=8.5f;
 			effectRange=spel.effectRange;
 			damageRange=spel.damageRange;
 			speed=60.0f*spel.speed;
