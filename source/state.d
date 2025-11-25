@@ -247,9 +247,9 @@ bool canPush(CreatureMode mode){
 }
 bool canIntestinallyVaporize(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
-			case idle,moving,dying,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
-				shooting,usingAbility,pulling,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm,firewalk: return true;
-			case ghostToIdle,dead,deadToGhost,idleGhost,movingGhost,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
+		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
+			shooting,usingAbility,pulling,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm,firewalk: return true;
+		case ghostToIdle,dying,dead,deadToGhost,idleGhost,movingGhost,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
 	}
 }
 
@@ -12186,7 +12186,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.creatureStats.effects.healTimer<-1) ++object.creatureStats.effects.healTimer;
 	animateCreature(object,state);
 	runPassive(object,state);
-	if(object.creatureStats.effects.numBulks!=0){
+	if(object.creatureStats.effects.numBulks!=0||object.creatureStats.effects.bulk!=1.0f){
 		float targetBulk=2.0f-0.75f^^object.creatureStats.effects.numBulks;
 		static import std.math;
 		static immutable float factor=1.0f-std.math.exp(std.math.log(0.1f)/updateFPS);
@@ -19497,9 +19497,9 @@ bool updateIntestinalVaporization(B)(ref IntestinalVaporization!B intestinalVapo
 					position+=velocity;
 					frame+=1;
 				}else{
-					playSoundAt("hpvi",target.id,state,intestinalVaporizationGain);
-					if(!state.movingObjectById!((ref obj)=>obj.creatureState.mode.canIntestinallyVaporize,()=>false)(target.id))
+					if(!state.movingObjectById!((ref obj)=>obj.creatureState.mode.canIntestinallyVaporize||obj.creatureState.mode==CreatureMode.dying,()=>false)(target.id))
 						return false;
+					playSoundAt("hpvi",target.id,state,intestinalVaporizationGain);
 					frame=0;
 					status=IntestinalVaporizationStatus.vaporizing;
 					float scale=state.movingObjectById!((ref obj)=>obj.getScale.length,()=>1.0f)(target.id);
@@ -19510,12 +19510,15 @@ bool updateIntestinalVaporization(B)(ref IntestinalVaporization!B intestinalVapo
 				}
 				return true;
 			case IntestinalVaporizationStatus.vaporizing:
+				if(!state.movingObjectById!((ref obj)=>obj.creatureState.mode.canIntestinallyVaporize,()=>false)(target.id))
+					return false;
 				auto progress=float(frame)/(spell.duration*updateFPS);
 				if(progress<=1.0f){
 					state.movingObjectById!((ref obj,frame,spell,progress,state){
 						if(obj.stunWithCooldown(3*updateFPS,state))
 							obj.damageAnimation(Vector3f(0.0f,0.0f,-1.0f),state,false);
-						obj.creatureStats.effects.bulk=(1.0f-progress)+maxBulk*progress;
+						float targetBulk=2.0f-0.75f^^obj.creatureStats.effects.numBulks;
+						obj.creatureStats.effects.bulk=targetBulk*(1.0f-progress)+(maxBulk+(targetBulk-1.0f))*progress;
 					},(){})(target.id,frame,spell,progress,state);
 					frame+=1;
 					return true;
@@ -19529,7 +19532,7 @@ bool updateIntestinalVaporization(B)(ref IntestinalVaporization!B intestinalVapo
 }
 bool updateIntestinalVaporizationEffect(B)(ref IntestinalVaporizationEffect!B intestinalVaporizationEffect,ObjectState!B state){
 	with(intestinalVaporizationEffect){
-		if(!state.movingObjectById!((ref obj)=>obj.creatureState.mode.canIntestinallyVaporize,()=>false)(target.id))
+		if(!state.movingObjectById!((ref obj)=>obj.creatureState.mode.canIntestinallyVaporize||obj.creatureState.mode==CreatureMode.dying,()=>false)(target.id))
 			return false;
 		auto targetCenter=target.center(state);
 		auto radius=2.0f*scale;
