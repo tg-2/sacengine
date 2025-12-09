@@ -1338,7 +1338,7 @@ final class SacScene: Scene{
 					if(fpview.active){
 						fpview.active=false;
 						fpview.mouseFactor=1.0f;
-						eventManager.setMouse(cast(int)(mouse.x*screenScaling),cast(int)(mouse.y*screenScaling));
+						eventManager.setMouse(info.xOffset+cast(int)(mouse.x*screenScaling),info.yOffset+cast(int)(mouse.y*screenScaling));
 					}
 				}else{
 					SDL_SetRelativeMouseMode(SDL_FALSE);
