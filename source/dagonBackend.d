@@ -207,10 +207,7 @@ final class SacScene: Scene{
 	}
 	override void renderEntities2D(RenderingContext* rc){
 		super.renderEntities2D(rc);
-		mouse.x=eventManager.mouseX/screenScaling;
-		mouse.y=eventManager.mouseY/screenScaling;
-		mouse.x=max(0,min(mouse.x,width-1));
-		mouse.y=max(0,min(mouse.y,height-1));
+		updateMouse();
 		typeof(renderer).R2DOpt r2dopt={cursorSize: options.cursorSize};
 		auto networkState=controller&&controller.network?controller.network.networkState:null;
 		renderer.renderEntities2D(r2dopt,state?state.current:null,networkState,forms.data,info,rc);
@@ -299,6 +296,15 @@ final class SacScene: Scene{
 	}
 
 	void initialize(Options options){
+		camera.width=width;
+		camera.height=height;
+		eventManager.update();
+		info.windowWidth=eventManager.windowWidth;
+		info.windowHeight=eventManager.windowHeight;
+		centerViewport=options.centerViewport;
+		info.centerViewport=centerViewport;
+		info.hudScaling=info.height/480.0f;
+		if(options.scaleToFit) screenScaling=super.screenScaling=min(float(eventManager.windowWidth)/width,float(eventManager.windowHeight)/height);
 		initializeMouse();
 		Renderer!DagonBackend.InitOpt initOpt={
 			freetypeFonts: options.freetypeFonts,
@@ -362,7 +368,10 @@ final class SacScene: Scene{
 	void positionFPCamera(){
 		camera.width=width;
 		camera.height=height;
+		info.windowWidth=eventManager.windowWidth;
 		info.windowHeight=eventManager.windowHeight;
+		centerViewport=options.centerViewport;
+		info.centerViewport=centerViewport;
 		info.hudScaling=info.height/480.0f;
 		fpview.camera.position=camera.position;
 		fpview.camera.eyePosition=Vector3f(0.0f,0.0f,1.0f)+getCameraDisplacement(camera.position);
@@ -1321,8 +1330,8 @@ final class SacScene: Scene{
 				}
 				mouse.x+=eventManager.mouseRelX/screenScaling;
 				mouse.y+=eventManager.mouseRelY/screenScaling;
-				mouse.x=max(0,min(mouse.x,width-1));
-				mouse.y=max(0,min(mouse.y,height-1));
+				mouse.x=max(0,min(mouse.x,width));
+				mouse.y=max(0,min(mouse.y,height));
 			}else{
 				mouse.dragging=false;
 				if(!mouse.onMinimap){
@@ -1342,11 +1351,11 @@ final class SacScene: Scene{
 			bool relative=false,cancelRelative=false;
 			mouse.x+=eventManager.mouseRelX/screenScaling;
 			mouse.y+=eventManager.mouseRelY/screenScaling;
-			mouse.x=max(0,min(mouse.x,width-1));
-			mouse.y=max(0,min(mouse.y,height-1));
+			mouse.x=max(0,min(mouse.x,width));
+			mouse.y=max(0,min(mouse.y,height));
 			if(options.windowScrollX){
 				if(mouse.x==0){
-					if(B.isMouseCaptured||B.globalMousePosition[0]<=border){
+					if(B.isMouseCaptured||B.isFullscreen||B.globalMousePosition[0]<=border){
 						auto speed=radtodeg(camera.slowRotationSpeed)*(dt.total!"hnsecs"*1e-7);
 						auto xspeed=62.0f/float(height)*options.aspectDistortion*options.windowScrollXFactor;
 						camera.turn-=speed-min(0.0f,eventManager.mouseRelX/screenScaling)*xspeed;
@@ -1354,7 +1363,7 @@ final class SacScene: Scene{
 					}else cancelRelative=true;
 				}
 				if(mouse.x+max(1.0f,1.05f/screenScaling)>=width){
-					if(B.isMouseCaptured||B.globalMousePosition[0]+border>=B.screenResolution[0]){
+					if(B.isMouseCaptured||B.isFullscreen||B.globalMousePosition[0]+border>=B.screenResolution[0]){
 						auto speed=radtodeg(camera.slowRotationSpeed)*(dt.total!"hnsecs"*1e-7);
 						auto xspeed=62.0f/float(height)*options.aspectDistortion*options.windowScrollXFactor;
 						camera.turn+=speed+max(0.0f,eventManager.mouseRelX/screenScaling)*xspeed;
@@ -1854,11 +1863,25 @@ final class SacScene: Scene{
 	}
 	void initializeMouse(){
 		DagonBackend.hideMouse();
-		mouse.x=width/2;
-		mouse.y=height/2;
+		mouse.x=info.width/2;
+		mouse.y=info.height/2;
 		fpview.oldMouseX=cast(int)mouse.x;
 		fpview.oldMouseY=cast(int)mouse.y;
-		eventManager.setMouse(cast(int)mouse.x, cast(int)mouse.y);
+		eventManager.setMouse(info.xOffset+cast(int)(mouse.x*screenScaling), info.yOffset+cast(int)(mouse.y*screenScaling));
+	}
+	void updateMouse(){
+		bool resetMouse=false;
+		if(options.captureMouse||DagonBackend.isFullscreen){
+			if(eventManager.mouseX<info.xOffset) resetMouse=true;
+			if(eventManager.mouseX>info.xOffset+cast(int)(width*screenScaling)) resetMouse=true;
+			if(eventManager.mouseY<0) resetMouse=true;
+			if(eventManager.mouseY>info.yOffset+cast(int)(height*screenScaling)) resetMouse=true;
+		}
+		mouse.x=(eventManager.mouseX-info.xOffset)/screenScaling;
+		mouse.y=(eventManager.mouseY-info.yOffset)/screenScaling;
+		mouse.x=max(0,min(mouse.x,width));
+		mouse.y=max(0,min(mouse.y,height));
+		if(resetMouse) eventManager.setMouse(info.xOffset+cast(int)(mouse.x*screenScaling), info.yOffset+cast(int)(mouse.y*screenScaling));
 	}
 	Target computeMouseTarget(){
 		if(mouse.menuMode) return renderer.formTarget;
@@ -2015,10 +2038,7 @@ final class SacScene: Scene{
 		if(mouse.onMinimap) return;
 		static int i=0;
 		if(options.printFps && ((++i)%=2)==0) writeln(eventManager.fps);
-		mouse.x=eventManager.mouseX/screenScaling;
-		mouse.y=eventManager.mouseY/screenScaling;
-		mouse.x=max(0,min(mouse.x,width-1));
-		mouse.y=max(0,min(mouse.y,height-1));
+		updateMouse();
 		auto x=cast(int)(mouse.x+0.5f), y=cast(int)(height-1-mouse.y+0.5f);
 		x=max(0,min(x,width-1));
 		y=max(0,min(y,height-1));
@@ -2172,6 +2192,10 @@ static:
 	void clearSidechannelMessages(){ if(app.scene) app.scene.info.activeChatMessages.clearSidechannelMessages(); }
 	~this(){ Delete(app); }
 
+	bool isFullscreen(){
+		if(!app||!app.window) return false;
+		return !!(SDL_GetWindowFlags(app.window) & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_FULLSCREEN_DESKTOP));
+	}
 	void grabFocus(){ SDL_RaiseWindow(app.window); }
 	void captureMouse(){ SDL_SetWindowGrab(app.window, SDL_TRUE); }
 	bool isMouseCaptured(){ return !!SDL_GetWindowGrab(app.window); }

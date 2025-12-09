@@ -23,6 +23,7 @@ struct Options{
 	bool focusOnStart=false;
 	float scale=1.0f;
 	bool scaleToFit=true;
+	bool centerViewport=true;
 	float aspectDistortion=1.2f;
 	float sunFactor=1.0f;
 	float ambientFactor=1.0f;

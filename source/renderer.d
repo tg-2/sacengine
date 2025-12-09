@@ -138,9 +138,13 @@ struct RenderInfo(B){
 	}
 	Array!MouseSparkle mouseSparkles;
 	Camera camera;
+	int windowWidth;
 	int windowHeight;
+	bool centerViewport=true;
 	@property int width(){ return camera.width; }
 	@property int height(){ return camera.height; }
+	@property int xOffset(){ return centerViewport ? (windowWidth-cast(int)(width*screenScaling))/2 : 0; }
+	@property int yOffset(){ return centerViewport ? (windowHeight-cast(int)(height*screenScaling))/2 : 0; }
 	float screenScaling;
 	auto spellbookTab=SpellType.creature;
 	ActiveChatMessages activeChatMessages;
@@ -3823,8 +3827,9 @@ struct Renderer(B){
 		auto map=state.map;
 		auto radius=minimapRadius(info);
 		auto left=cast(int)(info.width-2.0f*radius), top=cast(int)(info.height-2.0f*radius);
-		auto yOffset=info.windowHeight-cast(int)(info.height*info.screenScaling);
-		B.scissor(cast(int)(left*info.screenScaling),0+yOffset,cast(int)((info.width-left)*info.screenScaling),cast(int)((info.height-top)*info.screenScaling));
+		int xOffset=0+info.xOffset;
+		int yOffset=info.windowHeight-cast(int)(info.height*info.screenScaling)-info.yOffset;
+		B.scissor(xOffset+cast(int)(left*info.screenScaling),0+yOffset,cast(int)((info.width-left)*info.screenScaling),cast(int)((info.height-top)*info.screenScaling));
 		auto hudScaling=info.hudScaling;
 		auto scaling=Vector3f(2.0f*radius,2.0f*radius,0f);
 		auto position=Vector3f(info.width-scaling.x,info.height-scaling.y,0);
@@ -4082,7 +4087,7 @@ struct Renderer(B){
 		auto compassScaling=0.8f*info.hudScaling*Vector3f(21.0f,21.0f,0.0f);
 		auto compassPosition=mapCenter+rotate(mapRotation,Vector3f(0.0f,radius-3.0f*info.hudScaling,0.0f)-0.5f*compassScaling);
 		material.backend.setTransformationScaled(compassPosition, mapRotation, compassScaling, rc);
-		B.scissor(0,0+yOffset,cast(int)(info.width*info.screenScaling),cast(int)(info.height*info.screenScaling));
+		B.scissor(0+xOffset,0+yOffset,cast(int)(info.width*info.screenScaling),cast(int)(info.height*info.screenScaling));
 		minimapCompass.render(rc);
 		material.unbind(rc);
 	}
