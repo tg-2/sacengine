@@ -1,5 +1,5 @@
 maps/(5) DD - Vampire Planet.scp
-maps/(5) Diablo.scp
+maps/(5) XM-Diablo.scp
 maps/(5) Fire of Hate.scp
 maps/(5) Flower Power.scp
 maps/(5) New Neo Twirl.scp
