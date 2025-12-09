@@ -2695,7 +2695,8 @@ final class Network(B){
 		}
 	}
 	void load(int i)in{
-		assert(isHost&&isReadyToLoadStatus(players[i].status));
+		auto status=players[i].status;
+		assert(isHost&&(isReadyToLoadStatus(status)||isReadyStatus(status)));
 	}do{
 		updateStatus(i,PlayerStatus.pendingLoad);
 		players[i].send(Packet.loadGame);

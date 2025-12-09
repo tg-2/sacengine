@@ -412,7 +412,8 @@ final class Controller(B){
 						stderr.writeln("warning: local desynch (",state.committed.hash,"!=",state.current.hash,")");
 						state.current.copyFrom(state.committed);
 					}
-					network.load();
+					if(network.readyToLoad())
+						network.load();
 				}
 				return true; // ignore passed time in next frame
 			}
