@@ -265,7 +265,11 @@ class Lobby(B){
 				int committedFrame;
 			}
 			SlotData toSlotData(int i){
-				return SlotData(i,toContinue.gameInit.wizards[toContinue.gameInit.slots[i].wizardIndex].name,frame);
+				auto wizardIndex=toContinue.gameInit.slots[i].wizardIndex;
+				string name=null;
+				if(0<=wizardIndex&&wizardIndex<toContinue.gameInit.wizards.length)
+					name=toContinue.gameInit.wizards[wizardIndex].name;
+				return SlotData(i,name,frame);
 			}
 			assert(network.players.length==1);
 			network.players[network.me].committedFrame=frame;
