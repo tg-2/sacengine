@@ -1296,9 +1296,17 @@ struct Player{
 	bool initialized=false;
 	bool lost=false,won=false;
 	int committedFrame=0;
-	MonoTime pingTime;
+	Queue!MonoTime* pingTimes;
+	@property MonoTime pingTime(){
+		if(!pingTimes||pingTimes.empty) return MonoTime.zero;
+		return pingTimes.back;
+	}
 	MonoTime packetTime;
 	Duration ping=-1.seconds;
+	@property MonoTime oldestPingTime(){
+		if(!pingTimes||pingTimes.empty) return MonoTime.zero;
+		return pingTimes.front;
+	}
 
 	void drop()in{
 		assert(!connection);
@@ -1773,10 +1781,25 @@ final class Network(B){
 				return true;
 			case PacketType.ping: players[sender].send(Packet.ack(p.pingId)); return true;
 			case PacketType.ack:
+				auto pingTime=p.pingId.hnsecs;
+				bool found=false;
+				while(players[sender].pingTimes&&!players[sender].pingTimes.empty&&(players[sender].pingTimes.front-MonoTime.zero)<=pingTime){
+					found=(players[sender].pingTimes.front-MonoTime.zero)==pingTime;
+					players[sender].pingTimes.popFront();
+					if(found) break;
+				}
+				if(!found){
+					static int numPingWarnings=0;
+					if(++numPingWarnings<100){
+						stderr.writeln("warning: ack from player ",sender," has no matching ping: ",p);
+					}else if(numPingWarnings==100){
+						stderr.writeln("warning: suppressing further warnings about bad ack packets");
+					}
+				}
 				final switch(ackHandler) with(AckHandler){
 					case none: return true;
 					case measurePing:
-						players[sender].ping=(B.time()-MonoTime.zero)-p.pingId.hnsecs; // TODO: use a median over some window
+						players[sender].ping=(B.time()-MonoTime.zero)-pingTime; // TODO: use a median over some window
 						return true;
 				}
 			// host message:
@@ -2166,11 +2189,15 @@ final class Network(B){
 				//if(controller) controller.updateCommitted();
 				if(isHost&&nudgeTimers){
 					ping(p.commitPlayer);
-					auto frameTime=1.seconds/updateFPS;
-					auto deltaFrames=players[p.commitPlayer].committedFrame-players[host].committedFrame;
-					auto drift=deltaFrames*frameTime+players[p.commitPlayer].ping/2;
-					auto correction=-drift/60;
-					nudgeTimer(p.commitPlayer,correction);
+					auto ping=players[p.commitPlayer].ping;
+					auto lag=players[p.commitPlayer].oldestPingTime-B.time();
+					if(ping>=lag){
+						auto frameTime=1.seconds/updateFPS;
+						auto deltaFrames=players[p.commitPlayer].committedFrame-players[host].committedFrame;
+						auto drift=deltaFrames*frameTime+ping/2;
+						auto correction=-drift/60;
+						nudgeTimer(p.commitPlayer,correction);
+					}
 				}
 				return true;
 			case PacketType.jsonCommand:
@@ -2443,7 +2470,8 @@ final class Network(B){
 		if(sinceLastPing<pingDelay)
 			return;
 		players[i].send(Packet.ping((time-MonoTime.zero).total!"hnsecs"));
-		players[i].pingTime=time;
+		if(!players[i].pingTimes) players[i].pingTimes=new Queue!MonoTime();
+		players[i].pingTimes.push(time);
 	}
 	void nop(int i){
 		auto time=B.time();
@@ -2451,7 +2479,6 @@ final class Network(B){
 		if(sinceLastPing<pingDelay)
 			return;
 		players[i].send(Packet.nop);
-		players[i].pingTime=time;
 	}
 	void confirmConnectivity(int i){
 		players[i].packetTime=B.time();
