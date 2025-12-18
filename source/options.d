@@ -161,4 +161,6 @@ struct Settings{
 
 	bool pauseOnDrop=true;
 	bool refuseGreenSouls=false;
+	// (remember to update Network!B.initSlots)
+	// TODO: automate
 }

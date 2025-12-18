@@ -2612,11 +2612,15 @@ final class Network(B){
 					auto hostMap=hostSettings.map;
 					auto hostMapHash=hostSettings.mapHash;
 					auto hostName=hostSettings.name;
+					auto hostPauseOnDrop=hostSettings.pauseOnDrop;
+					auto hostRefuseGreenSouls=hostSettings.refuseGreenSouls;
 					swap(hostSettings,p.settings);
 					hostSettings.commit=hostCommit;
 					hostSettings.map=hostMap;
 					hostSettings.mapHash=hostMapHash;
 					hostSettings.name=hostName;
+					hostSettings.pauseOnDrop=hostPauseOnDrop;
+					hostSettings.refuseGreenSouls=hostRefuseGreenSouls;
 					swap(players[host].slot,p.slot);
 					swap(p,players[$-1]);
 					players.length=players.length-1;
