@@ -590,6 +590,22 @@ struct Renderer(B){
 		auto frames=typeof(return).createMeshes();
 		return SacIntestinalVaporizationEffect!B(texture,mat,frames);
 	}
+	SacBlindRage!B blindRage;
+	SacBlindRage!B createBlindRage(){
+		auto obj=typeof(return).create();
+		return SacBlindRage!B(obj);
+	}
+	SacBlindRageExplosion!B createBlindRageExplosion(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Additive;
+		mat.energy=10.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacBlindRageExplosion!B(texture,mat,frames);
+	}
+	SacBlindRageExplosion!B blindRageExplosion;
 
 	SacBrainiacEffect!B brainiacEffect;
 	SacBrainiacEffect!B createBrainiacEffect(){
@@ -917,6 +933,8 @@ struct Renderer(B){
 		fence=createFence();
 		intestinalVaporization=createIntestinalVaporization();
 		intestinalVaporizationEffect=createIntestinalVaporizationEffect();
+		blindRage=createBlindRage();
+		blindRageExplosion=createBlindRageExplosion();
 		brainiacEffect=createBrainiacEffect();
 		shrikeEffect=createShrikeEffect();
 		arrow=createArrow();
@@ -2475,6 +2493,58 @@ struct Renderer(B){
 					}
 					foreach(j;0..objects.intestinalVaporizationEffects.length)
 						renderIntestinalVaporizationEffect(objects.intestinalVaporizationEffects[j]);
+				}
+				static if(mode==RenderMode.opaque) if(objects.blindRageCastings.length||objects.blindRages.length){
+					foreach(i,mat;self.blindRage.obj.materials){
+						B.morphMaterialBackend.bind(mat,rc);
+						scope(success) B.morphMaterialBackend.unbind(mat,rc);
+						void renderBlindRage(Vector3f position,Vector3f direction,BlindRageStatus status,int frame,float scale){
+							final switch(status) with(BlindRageStatus){
+								case casting: frame=self.blindRage.castFrame(frame); break;
+								case flying: frame=self.blindRage.flyFrame(frame); break;
+								case formingFist: frame=self.blindRage.fistFrame(frame); break;
+								case exploding: return;
+							}
+							auto mesh1Mesh2Progress=self.blindRage.getFrame(frame%self.blindRage.numFrames);
+							auto mesh1=mesh1Mesh2Progress[0], mesh2=mesh1Mesh2Progress[1], progress=mesh1Mesh2Progress[2];
+							assert(mesh1.length==mesh2.length&&mesh1.length==self.blindRage.obj.materials.length);
+							auto intermediate=Vector3f(direction.x,direction.y,0.0f).normalized;
+							auto rotation=rotationBetween(intermediate,direction)*rotationBetween(Vector3f(0.0f,1.0f,0.0f),intermediate);
+							B.morphMaterialBackend.setTransformationScaled(position,rotation,scale*Vector3f(1.0f,1.0f,1.0f),rc);
+							B.morphMaterialBackend.setMorphProgress(progress);
+							mesh1[i].morph(mesh2[i],rc);
+						}
+						foreach(ref blindRageCasting;objects.blindRageCastings) with(blindRageCasting) renderBlindRage(blindRage.position,blindRage.direction,blindRage.status,blindRage.frame,blindRage.scale);
+						foreach(ref blindRage;objects.blindRages) renderBlindRage(blindRage.position,blindRage.direction,blindRage.status,blindRage.frame,blindRage.scale);
+					}
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.blindRages.length){
+					auto material=self.blindRageExplosion.material;
+					material.bind(rc);
+					B.disableCulling();
+					scope(success){
+						B.enableCulling();
+						material.unbind(rc);
+					}
+					void renderBlindRageExplosion(int frame,Vector3f position,float scale_=1.0f){
+						auto mesh=self.blindRageExplosion.getFrame(frame);
+						auto scale=scale_*self.blindRageExplosion.maxScale/self.blindRageExplosion.numFrames*frame;
+						B.shadelessMaterialBackend.setTransformationScaled(position,Quaternionf.identity(),Vector3f(scale,scale,1.0f),rc);
+						mesh.render(rc);
+					}
+					foreach(j;0..objects.blindRages.length){
+						if(objects.blindRages[j].status!=BlindRageStatus.exploding) continue;
+						auto frame=objects.blindRages[j].frame;
+						auto position=objects.blindRages[j].position+Vector3f(0.0f,0.0f,self.blindRageExplosion.maxOffset/self.blindRageExplosion.numFrames*objects.blindRages[j].frame);
+						renderBlindRageExplosion(frame,position);
+					}
+					foreach(j;0..objects.altarDestructions.length){
+						enum delay=AltarDestruction.disappearDuration+AltarDestruction.floatDuration;
+						if(objects.altarDestructions[j].frame<delay) continue;
+						auto frame=(objects.altarDestructions[j].frame-delay)*(self.blindRageExplosion.numFrames-1)/AltarDestruction.explodeDuration;
+						auto position=objects.altarDestructions[j].position;
+						renderBlindRageExplosion(frame,position,20.0f);
+					}
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.brainiacEffects.length){
 					auto material=self.brainiacEffect.material;

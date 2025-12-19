@@ -3810,6 +3810,41 @@ struct IntestinalVaporizationEffect(B){
 	int frame=0;
 }
 
+struct BlindRageCasting(B){
+	ManaDrain!B manaDrain;
+	BlindRage!B blindRage;
+}
+enum BlindRageStatus{
+	casting,
+	flying,
+	formingFist,
+	exploding,
+}
+struct BlindRage(B){
+	int wizard;
+	int side;
+	Vector3f position;
+	Vector3f direction;
+	OrderTarget target;
+	SacSpell!B spell;
+	auto status=BlindRageStatus.casting;
+	int frame=0;
+	float scale=1.0f;
+	PositionPredictor predictor;
+
+	enum rotationSpeed=pi!float;
+	enum targetFlyingHeight=4.0f;
+	enum numTransitionFrames=10*updateFPS/46;
+	enum minNumFlyingFrames=4*numTransitionFrames;
+	enum numFistFormingFrames=4*numTransitionFrames;
+	enum numHitFrames=updateFPS/2;
+	enum maxExplosionHeight=5.0f;
+}
+struct BlindRageEffect(B){
+	int creature;
+	SacSpell!B spell;
+	int frame=0;
+}
 
 struct BrainiacProjectile(B){
 	int attacker;
@@ -5521,6 +5556,30 @@ struct Effects(B){
 	void removeIntestinalVaporizationEffect(int i){
 		if(i+1<intestinalVaporizationEffects.length) intestinalVaporizationEffects[i]=move(intestinalVaporizationEffects[$-1]);
 		intestinalVaporizationEffects.length=intestinalVaporizationEffects.length-1;
+	}
+	Array!(BlindRageCasting!B) blindRageCastings;
+	void addEffect(BlindRageCasting!B BlindRageCasting){
+		blindRageCastings~=move(BlindRageCasting);
+	}
+	void removeBlindRageCasting(int i){
+		if(i+1<blindRageCastings.length) blindRageCastings[i]=move(blindRageCastings[$-1]);
+		blindRageCastings.length=blindRageCastings.length-1;
+	}
+	Array!(BlindRage!B) blindRages;
+	void addEffect(BlindRage!B BlindRage){
+		blindRages~=move(BlindRage);
+	}
+	void removeBlindRage(int i){
+		if(i+1<blindRages.length) blindRages[i]=move(blindRages[$-1]);
+		blindRages.length=blindRages.length-1;
+	}
+	Array!(BlindRageEffect!B) blindRageEffects;
+	void addEffect(BlindRageEffect!B blindRageEffect){
+		blindRageEffects~=move(blindRageEffect);
+	}
+	void removeBlindRageEffect(int i){
+		if(i+1<blindRageEffects.length) blindRageEffects[i]=move(blindRageEffects[$-1]);
+		blindRageEffects.length=blindRageEffects.length-1;
 	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
@@ -8962,6 +9021,8 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 					return stun(castFence(side,target.position,manaDrain,spell,state));
 				case SpellTag.intestinalVaporization:
 					return stun(castIntestinalVaporization(target.id,manaDrain,spell,state));
+				case SpellTag.blindRage:
+					return stun(castBlindRage(target.id,manaDrain,spell,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -10108,6 +10169,31 @@ bool castIntestinalVaporization(B)(int target,ManaDrain!B manaDrain,SacSpell!B s
 
 bool intestinalVaporization(B)(IntestinalVaporization!B intestinalVaporization,ObjectState!B state){
 	state.addEffect(intestinalVaporization);
+	return true;
+}
+
+Vector3f blindRageCastingPosition(B)(ref MovingObject!B obj,ObjectState!B state){
+	auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),obj.scale,AnimationState.stance1,0);
+	return obj.position+rotate(obj.rotation,Vector3f(0.0f,hbox[1].y+1.25f,hbox[1].z+0.5f));
+}
+bool castBlindRage(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	if(!state.isValidTarget(target)) return false;
+	auto positionDirectionSide=state.movingObjectById!((obj,state)=>tuple(obj.blindRageCastingPosition(state),rotate(obj.rotation,Vector3f(0.0f,1.0f,0.0f)),obj.side),function Tuple!(Vector3f,Vector3f,int){ assert(0); })(manaDrain.wizard,state);
+	auto position=positionDirectionSide[0],direction=positionDirectionSide[1],side=positionDirectionSide[2];
+	if(direction.z<0.99f){
+		direction.z=0.0f;
+		direction=direction.normalized;
+	}
+	auto blindRage=BlindRage!B(manaDrain.wizard,side,position,direction,centerTarget(target,state),spell);
+	state.addEffect(BlindRageCasting!B(manaDrain,blindRage));
+	return true;
+}
+
+bool blindRage(B)(BlindRage!B blindRage,ObjectState!B state){
+	playSoundAt("dnhr",blindRage.position,state,blindRageGain);
+	blindRage.status=BlindRageStatus.flying;
+	blindRage.frame=0;
+	state.addEffect(blindRage);
 	return true;
 }
 
@@ -19492,7 +19578,7 @@ bool updateIntestinalVaporization(B)(ref IntestinalVaporization!B intestinalVapo
 				auto predictedCenter=predictor.predictCenter(position,spell.speed,target,side,state);
 				auto direction=predictedCenter-position;
 				auto length=direction.length;
-				if(length>0.25f+state.movingObjectById!((ref obj)=>0.5f*obj.getScale.length,()=>0.0f)(target.id)){
+				if(length>0.25f+state.movingObjectById!((ref obj)=>0.5f*obj.getScale.length,()=>float.nan)(target.id)){
 					auto velocity=min(length,spell.speed/updateFPS)/length*direction;
 					position+=velocity;
 					frame+=1;
@@ -19555,6 +19641,79 @@ bool updateIntestinalVaporizationEffect(B)(ref IntestinalVaporizationEffect!B in
 		return true;
 	}
 }
+
+bool updateBlindRageCasting(B)(ref BlindRageCasting!B blindRageCast,ObjectState!B state){
+	with(blindRageCast){
+		blindRage.target.position=blindRage.target.center(state);
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				return state.movingObjectById!((obj){
+					blindRage.position=obj.blindRageCastingPosition(state);
+					updateBlindRage(blindRage,state);
+					auto castParticle=SacParticle!B.get(ParticleType.castPyro2);
+					obj.animateCasting(castParticle,state);
+					return true;
+				},()=>false)(manaDrain.wizard);
+			case CastingStatus.interrupted:
+				return false;
+			case CastingStatus.finished:
+				.blindRage(blindRage,state);
+				return false;
+		}
+	}
+}
+enum blindRageGain=3.0f;
+bool updateBlindRage(B)(ref BlindRage!B blindRage,ObjectState!B state){
+	with(blindRage){
+		if(!state.isValidTarget(target.id)) return false;
+		final switch(status){
+			case BlindRageStatus.casting:
+				frame+=1;
+				return true;
+			case BlindRageStatus.flying,BlindRageStatus.formingFist:
+				frame+=1;
+				auto targetCenter=target.center(state);
+				target.position=targetCenter;
+				auto flyingHeight=targetFlyingHeight*(status==BlindRageStatus.formingFist?1.0f-float(max(0,frame-numFistFormingFrames))/numHitFrames:1.0f);
+				target.position.z=state.getHeight(target.position)+flyingHeight; // TODO: ok?
+				if(status==BlindRageStatus.formingFist){
+					position=target.position;
+					if(frame>=numFistFormingFrames+numHitFrames){
+						playSoundAt("tsfr",position,state,blindRageGain);
+						status=BlindRageStatus.exploding;
+						frame=0;
+					}
+					return true;
+				}
+				auto predictedCenter=predictor.predict(position,spell.speed,target.position);
+				auto targetDirection=predictedCenter-position; // TODO: slower direction update
+				auto length=targetDirection.length;
+				if(targetDirection.xy.lengthsqr>0.01f){
+					direction=targetDirection;
+					direction.z=0.0f;
+					direction=direction.normalized;
+				}
+				if(length>0.25f+state.movingObjectById!((ref obj)=>0.5f*obj.getScale.length,()=>float.nan)(target.id)){
+					auto velocity=min(length,spell.speed/updateFPS)/length*targetDirection;
+					position+=velocity;
+				}else{
+					if(frame<minNumFlyingFrames||status==BlindRageStatus.formingFist)
+						return true;
+					frame=0;
+					status=BlindRageStatus.formingFist;
+					// TODO: make blind rage effects
+				}
+				return true;
+			case BlindRageStatus.exploding:
+				position.z+=maxExplosionHeight/64;
+				return ++frame<64;
+		}
+	}
+}
+bool updateBlindRageEffect(B)(ref BlindRageEffect!B blindRageEffect,ObjectState!B state){
+	return false; // TODO
+}
+
 
 enum brainiacProjectileHitGain=4.0f;
 enum brainiacProjectileSize=0.45f; // TODO: ok?
@@ -23528,6 +23687,27 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.intestinalVaporizationEffects.length;){
 		if(!updateIntestinalVaporizationEffect(effects.intestinalVaporizationEffects[i],state)){
 			effects.removeIntestinalVaporizationEffect(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.blindRageCastings.length;){
+		if(!updateBlindRageCasting(effects.blindRageCastings[i],state)){
+			effects.removeBlindRageCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.blindRages.length;){
+		if(!updateBlindRage(effects.blindRages[i],state)){
+			effects.removeBlindRage(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.blindRageEffects.length;){
+		if(!updateBlindRageEffect(effects.blindRageEffects[i],state)){
+			effects.removeBlindRageEffect(i);
 			continue;
 		}
 		i++;

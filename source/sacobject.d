@@ -1236,6 +1236,7 @@ enum ParticleType{
 	castPersephone,
 	castPersephone2,
 	castPyro,
+	castPyro2,
 	castJames,
 	castStratos,
 	castCharnel,
@@ -1300,7 +1301,7 @@ final class SacParticle(B){
 				return false;
 			case redVortexDroplet,blueVortexDroplet:
 				return true;
-			case castPersephone,castPersephone2,castPyro,castJames,castStratos,castCharnel,castCharnel2:
+			case castPersephone,castPersephone2,castPyro,castPyro2,castJames,castStratos,castCharnel,castCharnel2:
 				return false;
 			case breathOfLife,wrathCasting,wrathExplosion1,wrathExplosion2,rainOfFrogsCasting,steam:
 				return false;
@@ -1340,7 +1341,7 @@ final class SacParticle(B){
 				return true;
 			case redVortexDroplet,blueVortexDroplet:
 				return false;
-			case castPersephone,castPersephone2,castPyro,castJames,castStratos,castCharnel,castCharnel2:
+			case castPersephone,castPersephone2,castPyro,castPyro2,castJames,castStratos,castCharnel,castCharnel2:
 				return false;
 			case breathOfLife,wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,rainbowParticle,rainOfFrogsCasting,frogExplosion,gnomeHit,warmongerHit,ashParticle,steam,smoke,dirt,dust,splat,rock,bombardmentCasting,webDebris,oil,poison,swarmHit,slime:
 				return false;
@@ -1519,6 +1520,12 @@ final class SacParticle(B){
 				width=height=1.0f;
 				this.energy=15.0f;
 				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pyro.FLDR/txtr.FLDR/cstp.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
+			case castPyro2:
+				width=height=1.0f;
+				this.energy=15.0f;
+				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pyro.FLDR/txtr.FLDR/swrl.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
 			case castJames:
@@ -1771,7 +1778,7 @@ final class SacParticle(B){
 				return 0.5f;
 			case redVortexDroplet,blueVortexDroplet:
 				return min(1.0f,(lifetime/(0.75f*numFrames))^^2);
-			case castPersephone,castPersephone2,castPyro,castJames,castStratos,castCharnel,castCharnel2:
+			case castPersephone,castPersephone2,castPyro,castPyro2,castJames,castStratos,castCharnel,castCharnel2:
 				return 1.0f;
 			case breathOfLife:
 				return min(1.0f,lifetime/(1.5f*numFrames));
@@ -1828,7 +1835,7 @@ final class SacParticle(B){
 				return 1.0f;
 			case redVortexDroplet,blueVortexDroplet:
 				return min(1.0f,(lifetime/(0.75f*numFrames)));
-			case castPersephone,castPersephone2,castPyro,castJames,castStratos,castCharnel,castCharnel2:
+			case castPersephone,castPersephone2,castPyro,castPyro2,castJames,castStratos,castCharnel,castCharnel2:
 				return 1.0f;
 			case breathOfLife:
 				return min(1.0f,0.4f+0.6f*lifetime/(1.5f*numFrames));
@@ -2992,6 +2999,94 @@ struct SacIntestinalVaporizationEffect(B){
 	}
 }
 
+struct SacBlindRage(B){
+	SacObject!B obj;
+	static SacObject!B create(){
+		auto rage=new SacObject!B("extracted/models/MODL.WAD!/rage.MRMC/rage.MRMM");
+		assert(rage.meshes.length==12);
+		return rage;
+	}
+	enum numTransitionFrames=10*updateFPS/46;
+	enum numFrames=12*numTransitionFrames;
+	int castFrame(int frame){
+		auto castingAnimationFrames=6*numTransitionFrames;
+		auto cframe=frame%castingAnimationFrames;
+		if(cframe<castingAnimationFrames/2) return cframe;
+		return castingAnimationFrames-cframe;
+	}
+	int flyFrame(int frame){
+		return 3*numTransitionFrames+min(frame,4*numTransitionFrames);
+	}
+	int fistFrame(int frame){
+		return 7*numTransitionFrames+min(frame,4*numTransitionFrames);
+	}
+	Tuple!(B.Mesh[],B.Mesh[],float) getFrame(int frame){
+		auto meshes=obj.meshes;
+		auto indices=iota(0,meshes.length);
+		auto numIndices=indices.length;
+		auto i=min(frame*numIndices/numFrames,numIndices-1), j=min(i+1,numIndices-1);
+		float progress=float(frame*numIndices%numFrames)/numFrames;
+		return tuple(obj.meshes[i],obj.meshes[j],progress);
+	}
+}
+
+struct SacBlindRageExplosion(B){
+	B.Texture texture;
+	B.Material material;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pyro.FLDR/txtr.FLDR/per2.TXTR"));
+	}
+	B.Mesh[] frames;
+	enum numFrames=16*2*updateAnimFactor;
+	enum maxScale=30.0f;
+	enum maxOffset=4.0f;
+	auto getFrame(int i){ return frames[i/(2*updateAnimFactor)]; }
+	static B.Mesh[] createMeshes(){
+		enum nU=4,nV=4;
+		auto meshes=new B.Mesh[](nU*nV);
+		foreach(t,ref mesh;meshes){
+			enum resolution=32;
+			enum numSegments=16*resolution;
+			enum textureMultiplier=1.0f/resolution;
+			auto numVertices=3*numSegments,numFaces=2*2*numSegments;
+			mesh=B.makeMesh(numVertices,numFaces);
+			int u=cast(int)t%nU,v=cast(int)t/nU;
+			int curNumFaces=0;
+			void addFace(uint[3] face...){
+				mesh.indices[curNumFaces++]=face;
+			}
+			enum height=0.4f, depth=0.75f;
+			foreach(i;0..numSegments){
+				auto top=3*i,outer=3*i+1,bottom=3*i+2;
+				auto alpha=2*pi!float*i/numSegments;
+				auto direction=Vector2f(cos(alpha),sin(alpha));
+				mesh.vertices[top]=Vector3f((1.0f-depth)*direction.x,(1.0f-depth)*direction.y,0.5f*height);
+				mesh.vertices[bottom]=mesh.vertices[top];
+				mesh.vertices[bottom].z*=-1.0f;
+				mesh.vertices[outer]=Vector3f(direction.x,direction.y,0.0f);
+				float zigzag(float x,float a,float b){
+					auto α=fmod(x,1);
+					if(cast(int)x&1) α=1-α;
+					return (1-α)*a+α*b;
+				}
+				enum offset=1.0f/64.0f;
+				auto x=zigzag(i*textureMultiplier,1.0f/nU*(u+offset),1.0f/nU*(u+1.0f-offset));
+				mesh.texcoords[top]=Vector2f(x,1.0f/nV*(v+offset));
+				mesh.texcoords[bottom]=mesh.texcoords[top];
+				mesh.texcoords[outer]=Vector2f(x,1.0f/nV*(v+1.0f-offset));
+				int next(int id){ return (id+3)%numVertices; }
+				addFace(top,outer,next(top));
+				addFace(next(top),outer,next(outer));
+				addFace(bottom,next(bottom),outer);
+				addFace(next(bottom),next(outer),outer);
+			}
+			assert(numFaces==2*2*numSegments);
+			mesh.normals[]=Vector3f(0.0f, 0.0f, 0.0f);
+			B.finalizeMesh(mesh);
+		}
+		return meshes;
+	}
+}
 
 struct SacBrainiacEffect(B){
 	B.Texture texture;
