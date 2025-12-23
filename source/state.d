@@ -12055,9 +12055,6 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 			}
 		}
 		return;
-	}else if(object.isManahoar&&object.creatureStats.effects.numBlindRages>0){
-		object.clearOrderQueue(state);
-		return;
 	}
 	switch(object.creatureAI.order.command){
 		case CommandType.retreat:
@@ -19751,6 +19748,7 @@ bool updateBlindRage(B)(ref BlindRage!B blindRage,ObjectState!B state){
 							state.movingObjectById!((ref obj,blindRage,state){
 								if(!isValidBlindRageTarget(obj,state))
 									return;
+								obj.clearOrderQueue(state);
 								obj.creatureStats.effects.numBlindRages+=1;
 								state.addEffect(BlindRageEffect!B(obj.id,blindRage.spell));
 							},(){})(target,blindRage,state);
