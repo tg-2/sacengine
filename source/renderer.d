@@ -2546,6 +2546,29 @@ struct Renderer(B){
 						renderBlindRageExplosion(frame,position,20.0f);
 					}
 				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.blindRageEffects.length){
+					auto sacParticle=SacParticle!B.get(ParticleType.castPyro2);
+					auto mat=sacParticle.material;
+					mat.bind(rc);
+					scope(success) mat.unbind(rc);
+					void renderBlindRageEffect(ref BlindRageEffect!B blindRageEffect){
+						auto target=blindRageEffect.target;
+						auto positionRotation=state.movingObjectById!((ref obj)=>tuple(obj.position,obj.rotation), function Tuple!(Vector3f,Quaternionf)(){ return typeof(return).init; })(target);
+						auto position=positionRotation[0], rotation=positionRotation[1];
+						if(isNaN(position.x)) return;
+						foreach(ref particle;blindRageEffect.particles){
+							auto location=Vector3f(particle.radius*cos(particle.θ),particle.radius*sin(particle.θ),particle.height);
+							auto pposition=position+rotate(rotation,location);
+							auto frame=particle.frame;
+							auto scale=0.5f;
+							B.shadelessMaterialBackend.setSpriteTransformationScaled(pposition,scale,rc);
+							auto pmesh=sacParticle.getMesh(frame);
+							pmesh.render(rc);
+						}
+					}
+					foreach(j;0..objects.blindRageEffects.length)
+						renderBlindRageEffect(objects.blindRageEffects[j]);
+				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.brainiacEffects.length){
 					auto material=self.brainiacEffect.material;
 					material.bind(rc);

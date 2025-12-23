@@ -976,6 +976,7 @@ float acceleration(B)(ref MovingObject!B object,ObjectState!B state){
 }
 
 bool isWizard(B)(ref MovingObject!B obj){ return obj.sacObject.isWizard; }
+bool isManahoar(B)(ref MovingObject!B obj){ return obj.sacObject.isManahoar; }
 bool isPeasant(B)(ref MovingObject!B obj){ return obj.sacObject.isPeasant; }
 bool isSacDoctor(B)(ref MovingObject!B obj){ return obj.sacObject.isSacDoctor; }
 bool isHero(B)(ref MovingObject!B obj){ return obj.sacObject.isHero; }
@@ -995,22 +996,29 @@ bool canSelect(B)(int side,int id,ObjectState!B state){
 bool canOrder(B)(ref MovingObject!B obj,int side,ObjectState!B state){
 	return (side==-1||obj.side==side&&!obj.isSacDoctor)&&!obj.creatureState.mode.among(CreatureMode.dead,CreatureMode.dissolving);
 }
+bool isBlindlyRaging(B)(ref MovingObject!B obj,ObjectState!B state){
+	if(obj.creatureStats.effects.numBlindRages==0) return false;
+	if(obj.isManahoar||obj.isSacDoctor) return false;
+	return true;
+}
 bool isPacifist(B)(ref MovingObject!B obj,ObjectState!B state){
+	if(isBlindlyRaging(obj,state)) return false;
 	return obj.sacObject.isPacifist;
 }
 bool isAggressive(B)(ref MovingObject!B obj,ObjectState!B state){
+	if(isBlindlyRaging(obj,state)) return true;
 	if(obj.isPacifist(state)) return false;
 	if(obj.creatureStats.effects.stealth) return false;
 	return true;
 }
 float aggressiveRange(B)(ref MovingObject!B obj,ObjectState!B state){
-	return obj.sacObject.aggressiveRange;
+	return obj.sacObject.aggressiveRange(isBlindlyRaging(obj,state));
 }
 float guardAggressiveRange(B)(ref MovingObject!B obj,ObjectState!B state){
-	return obj.sacObject.guardAggressiveRange;
+	return obj.sacObject.guardAggressiveRange(isBlindlyRaging(obj,state));
 }
 float advanceAggressiveRange(B)(ref MovingObject!B obj,ObjectState!B state){
-	return obj.sacObject.advanceAggressiveRange;
+	return obj.sacObject.advanceAggressiveRange(isBlindlyRaging(obj,state));
 }
 float guardRange(B)(ref MovingObject!B obj,ObjectState!B state){
 	return obj.sacObject.guardRange;
@@ -1213,7 +1221,11 @@ bool hasAttackTick(B)(ref MovingObject!B object,ObjectState!B state){
 	return object.frame%updateAnimFactor==0 && object.sacObject.hasAttackTick(object.animationState,object.frame/updateAnimFactor);
 }
 
-SacSpell!B rangedAttack(B)(ref MovingObject!B object){ return object.sacObject.rangedAttack; }
+SacSpell!B rangedAttack(B)(ref MovingObject!B object){
+	if(object.creatureStats.effects.numBlindRages>0)
+		return null;
+	return object.sacObject.rangedAttack;
+}
 
 bool hasLoadTick(B)(ref MovingObject!B object,ObjectState!B state){
 	if(state.frame%object.slowdownFactor) return false;
@@ -3841,9 +3853,16 @@ struct BlindRage(B){
 	enum maxExplosionHeight=5.0f;
 }
 struct BlindRageEffect(B){
-	int creature;
+	int target;
 	SacSpell!B spell;
 	int frame=0;
+	struct Particle{
+		float height;
+		float radius;
+		float θ;
+		int frame=0;
+	}
+	Array!Particle particles;
 }
 
 struct BrainiacProjectile(B){
@@ -10174,7 +10193,7 @@ bool intestinalVaporization(B)(IntestinalVaporization!B intestinalVaporization,O
 
 Vector3f blindRageCastingPosition(B)(ref MovingObject!B obj,ObjectState!B state){
 	auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),obj.scale,AnimationState.stance1,0);
-	return obj.position+rotate(obj.rotation,Vector3f(0.0f,hbox[1].y+1.25f,hbox[1].z+0.5f));
+	return obj.position+rotate(obj.rotation,Vector3f(0.0f,hbox[1].y+0.6f,hbox[1].z));
 }
 bool castBlindRage(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
 	if(!state.isValidTarget(target)) return false;
@@ -10185,6 +10204,7 @@ bool castBlindRage(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectSt
 		direction=direction.normalized;
 	}
 	auto blindRage=BlindRage!B(manaDrain.wizard,side,position,direction,centerTarget(target,state),spell);
+	blindRage.scale=0.0f;
 	state.addEffect(BlindRageCasting!B(manaDrain,blindRage));
 	return true;
 }
@@ -11358,7 +11378,10 @@ int updateTarget(bool advance=false,B,T...)(ref MovingObject!B object,Vector3f p
 	auto newPosition=position;
 	newPosition.z=state.getHeight(newPosition)+object.position.z-state.getHeight(object.position);
 	if(state.frontOfAIQueue(object.side,object.id)){
-		if(object.rangedAttack&&object.rangedAttack.tag==SpellTag.scarabShoot){
+		if(isBlindlyRaging(object,state)){
+			float maxHeight=object.maxTargetHeight(state);
+			object.creatureAI.targetId=state.proximity.closestCreatureInRangeExcept(newPosition,range,object.id,state,maxHeight);
+		}else if(object.rangedAttack&&object.rangedAttack.tag==SpellTag.scarabShoot){
 			static bool filter(ref CenterProximityEntry entry,ObjectState!B state){
 				if(!entry.isVisibleToAI) return false;
 				if(state.movingObjectById!((ref obj)=>obj.creatureStats.health==obj.creatureStats.maxHealth,()=>true)(entry.id))
@@ -12019,6 +12042,22 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 			return object.pretendToRevive(state);
 		if(object.creatureState.mode==CreatureMode.rockForm)
 			object.startIdling(state);
+	}
+	if(isBlindlyRaging(object,state)){
+		object.creatureAI.orderQueue.clear();
+		object.creatureAI.order=Order.init;
+		if(!object.patrol(state)){
+			object.stopMovement(state);
+			object.stopTurning(state);
+			if(object.creatureState.movement==CreatureMovement.flying){
+				object.creatureState.targetFlyingHeight=float.nan;
+				object.pitch(0.0f,state);
+			}
+		}
+		return;
+	}else if(object.isManahoar&&object.creatureStats.effects.numBlindRages>0){
+		object.clearOrderQueue(state);
+		return;
 	}
 	switch(object.creatureAI.order.command){
 		case CommandType.retreat:
@@ -19662,15 +19701,41 @@ bool updateBlindRageCasting(B)(ref BlindRageCasting!B blindRageCast,ObjectState!
 		}
 	}
 }
+bool isValidBlindRageTarget(B)(ref MovingObject!B obj,ObjectState!B state){
+	if(obj.isWizard) return false;
+	if(!obj.creatureState.mode.canCC) return false;
+	return true;
+}
+void animateBlindRage(B)(ref BlindRage!B blindRage,Vector3f oldPosition,ObjectState!B state){
+	with(blindRage){
+		enum numParticles=3;
+		auto sacParticle=SacParticle!B.get(ParticleType.castPyro2);
+		auto lifetime=31;
+		auto scale=1.5f;
+		auto frame=0;
+		foreach(i;0..numParticles){
+			auto position=oldPosition*((cast(float)numParticles-1-i)/numParticles)+position*(cast(float)(i+1)/numParticles);
+			auto factor=state.uniform!"[]"(1.0f,2.0f);
+			auto direction=state.uniformDirection();
+			position+=0.3f*factor*direction;
+			auto plifetime=cast(int)(lifetime/factor);
+			auto pvelocity=-direction*updateFPS/float(plifetime);
+			state.addParticle(Particle!B(sacParticle,position,pvelocity,scale,plifetime,frame));
+		}
+	}
+}
 enum blindRageGain=3.0f;
 bool updateBlindRage(B)(ref BlindRage!B blindRage,ObjectState!B state){
 	with(blindRage){
 		if(!state.isValidTarget(target.id)) return false;
+		blindRage.scale=min(1.2f,blindRage.scale+1.2f/spell.castingTime(9)/updateFPS);
 		final switch(status){
 			case BlindRageStatus.casting:
 				frame+=1;
 				return true;
 			case BlindRageStatus.flying,BlindRageStatus.formingFist:
+				auto oldPosition=position;
+				scope(success) animateBlindRage(blindRage,oldPosition,state);
 				frame+=1;
 				auto targetCenter=target.center(state);
 				target.position=targetCenter;
@@ -19682,6 +19747,16 @@ bool updateBlindRage(B)(ref BlindRage!B blindRage,ObjectState!B state){
 						playSoundAt("tsfr",position,state,blindRageGain);
 						status=BlindRageStatus.exploding;
 						frame=0;
+						static bool callback(int target,BlindRage!B* blindRage,ObjectState!B state){
+							state.movingObjectById!((ref obj,blindRage,state){
+								if(!isValidBlindRageTarget(obj,state))
+									return;
+								obj.creatureStats.effects.numBlindRages+=1;
+								state.addEffect(BlindRageEffect!B(obj.id,blindRage.spell));
+							},(){})(target,blindRage,state);
+							return false;
+						}
+						dealSplashSpellDamageAt!callback(0,spell,spell.effectRange,wizard,side,position,DamageMod.none,state,&blindRage,state);
 					}
 					return true;
 				}
@@ -19701,7 +19776,6 @@ bool updateBlindRage(B)(ref BlindRage!B blindRage,ObjectState!B state){
 						return true;
 					frame=0;
 					status=BlindRageStatus.formingFist;
-					// TODO: make blind rage effects
 				}
 				return true;
 			case BlindRageStatus.exploding:
@@ -19711,7 +19785,46 @@ bool updateBlindRage(B)(ref BlindRage!B blindRage,ObjectState!B state){
 	}
 }
 bool updateBlindRageEffect(B)(ref BlindRageEffect!B blindRageEffect,ObjectState!B state){
-	return false; // TODO
+	with(blindRageEffect){
+		bool done=frame>=spell.duration*updateFPS||!state.movingObjectById!(isValidBlindRageTarget,()=>false)(target,state);
+		enum T=0.75f;
+		for(int i=0;i<particles.length;i++){
+			with(particles[i]){
+				θ+=2*pi!float/(T*updateFPS*(0.1f+radius));
+				frame+=1;
+				if(frame>=16*updateAnimFactor){
+					if(i+1<particles.length)
+						swap(particles[i],particles[$-1]);
+					particles.length=particles.length-1;
+				}
+			}
+		}
+		if(!done){
+			auto relHitbox=state.movingObjectById!((ref obj)=>obj.sacObject.hitbox(Quaternionf.identity(),obj.scale,AnimationState.stance1,0),()=>(Vector3f[2]).init)(target);
+			auto boxSize=.boxSize(relHitbox);
+			auto boxCenter=.boxCenter(relHitbox);
+			boxSize.x=boxSize.y=sqrt(0.5f*(boxSize.x^^2+boxSize.y^^2));
+			auto dimensions=Vector3f(2.0f,2.0f,1.5f)*boxSize;
+			auto numParticles=!state.uniform(2)+!state.uniform(2);
+			foreach(i;0..numParticles){
+				float height=state.uniform(-1.0f,1.0f);
+				float radius=sqrt(1-height^^2)*state.uniform(0.05f,1.25f);
+				float θ=state.uniform(-pi!float,pi!float);
+				radius*=0.5f*dimensions.x;
+				height=boxCenter.z+height*0.5f*dimensions.z;
+				particles~=BlindRageEffect!B.Particle(height,radius,θ);
+			}
+		}
+		++frame;
+		bool keep=!done||particles.length;
+		if(!keep){
+			state.movingObjectById!((ref obj){
+				obj.creatureStats.effects.numBlindRages-=1;
+				obj.stop(state);
+			},(){})(target);
+		}
+		return keep;
+	}
 }
 
 
@@ -25250,6 +25363,14 @@ final class Proximity(B){
 	}
 	int closestCreatureInRange(Vector3f position,float range,ObjectState!B state,float maxHeight=float.infinity){
 		return centers.closestInRange!isOfType(version_,position,range,EnemyType.creature,state,maxHeight).id;
+	}
+	int closestCreatureInRangeExcept(Vector3f position,float range,int except,ObjectState!B state,float maxHeight=float.infinity){
+		static bool isValid(T...)(ref CenterProximityEntry entry,int except,ObjectState!B state,float maxHeight=float.infinity,T args=T.init){
+			if(!isOfType(entry,EnemyType.creature,state,maxHeight,args)) return false;
+			if(entry.id==except) return false;
+			return true;
+		}
+		return centers.closestInRange!isValid(version_,position,range,except,state,maxHeight).id;
 	}
 	private static bool isEnemy(alias filter=None,T...)(ref CenterProximityEntry entry,int side,EnemyType type,ObjectState!B state,float maxHeight=float.infinity,T args=T.init){
 		if(!isOfType(entry,type,state,maxHeight,args)) return false;

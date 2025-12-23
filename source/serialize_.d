@@ -640,6 +640,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Bli
 void serialize(alias sink,B)(ref BlindRage!B blindRage){ serializeStruct!sink(blindRage); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BlindRage!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref BlindRageEffect!B.Particle particle){ serializeStruct!sink(particle); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BlindRageEffect!B.Particle)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref BlindRageEffect!B blindRageEffect){ serializeStruct!sink(blindRageEffect); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BlindRageEffect!B)){ deserializeStruct(result,state,data); }
 

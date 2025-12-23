@@ -71,6 +71,7 @@ struct Effects{
 	int numRainFrogs=0;
 	bool wailingWall=false;
 	bool wallOfSpikes=false;
+	int numBlindRages=0;
 	int numHighlights=0;
 	@property bool slimed(){ return numSlimes!=0; }
 	@property bool vined(){ return numVines!=0; }

@@ -75,16 +75,18 @@ final class SacObject(B){
 	@property bool isPacifist(){
 		return !cre8||cre8.aggressiveness==0||isSacDoctor||isFamiliar;
 	}
-	@property float aggressiveRange(){
-		if(auto ra=rangedAttack) return ra.range; // TODO: ok?
+	@property float aggressiveRange(bool blindRage){
+		if(!blindRage){
+			if(auto ra=rangedAttack) return ra.range; // TODO: ok?
+		}
 		enum aggressiveDistance=65.0f; // ok?
 		return aggressiveDistance;
 	}
-	@property float guardAggressiveRange(){
-		return aggressiveRange()+10.0f; // ok?
+	@property float guardAggressiveRange(bool blindRage){
+		return aggressiveRange(blindRage)+10.0f; // ok?
 	}
-	@property float advanceAggressiveRange(){
-		return aggressiveRange()+25.0f; // ok?
+	@property float advanceAggressiveRange(bool blindRage){
+		return aggressiveRange(blindRage)+25.0f; // ok?
 	}
 	@property float guardRange(){
 		enum guardDistance=42.0f; // ok?
@@ -445,6 +447,10 @@ final class SacObject(B){
 		if(nttTag==SpellTag.druid){
 			hitboxDimensions.x*=1.3f;
 			hitboxDimensions.y*=1.3f;
+		}
+		if(isPeasant){
+			hitboxDimensions.x*=1.6f;
+			hitboxDimensions.y*=1.6f;
 		}
 		if(nttTag==SpellTag.phoenix){
 			hitboxCenter.z-=5.0f;
