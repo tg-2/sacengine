@@ -10210,7 +10210,7 @@ bool castBlindRage(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectSt
 }
 
 bool blindRage(B)(BlindRage!B blindRage,ObjectState!B state){
-	playSoundAt("dnhr",blindRage.position,state,blindRageGain);
+	//playSoundAt("dnhr",blindRage.position,state,blindRageGain);
 	blindRage.status=BlindRageStatus.flying;
 	blindRage.frame=0;
 	state.addEffect(blindRage);
