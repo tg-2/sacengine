@@ -19717,9 +19717,9 @@ void animateBlindRage(B)(ref BlindRage!B blindRage,Vector3f oldPosition,ObjectSt
 			auto position=oldPosition*((cast(float)numParticles-1-i)/numParticles)+position*(cast(float)(i+1)/numParticles);
 			auto factor=state.uniform!"[]"(1.0f,2.0f);
 			auto direction=state.uniformDirection();
-			position+=0.3f*factor*direction;
+			position+=0.4f*factor*direction;
 			auto plifetime=cast(int)(lifetime/factor);
-			auto pvelocity=-direction*updateFPS/float(plifetime);
+			auto pvelocity=-state.uniform(0.1f,0.5f)*factor*direction*updateFPS/float(plifetime);
 			state.addParticle(Particle!B(sacParticle,position,pvelocity,scale,plifetime,frame));
 		}
 	}
