@@ -646,6 +646,12 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Bli
 void serialize(alias sink,B)(ref BlindRageEffect!B blindRageEffect){ serializeStruct!sink(blindRageEffect); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BlindRageEffect!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref BovineInterventionCasting!B bovineInterventionCasting){ serializeStruct!sink(bovineInterventionCasting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BovineInterventionCasting!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref BovineIntervention!B bovineIntervention){ serializeStruct!sink(bovineIntervention); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BovineIntervention!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref BrainiacProjectile!B brainiacProjectile){ serializeStruct!sink(brainiacProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BrainiacProjectile!B)){ deserializeStruct(result,state,data); }
 

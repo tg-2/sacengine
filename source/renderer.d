@@ -606,6 +606,11 @@ struct Renderer(B){
 		return SacBlindRageExplosion!B(texture,mat,frames);
 	}
 	SacBlindRageExplosion!B blindRageExplosion;
+	SacCow!B cow;
+	SacCow!B createCow(){
+		auto obj=typeof(return).create();
+		return SacCow!B(obj);
+	}
 
 	SacBrainiacEffect!B brainiacEffect;
 	SacBrainiacEffect!B createBrainiacEffect(){
@@ -935,6 +940,7 @@ struct Renderer(B){
 		intestinalVaporizationEffect=createIntestinalVaporizationEffect();
 		blindRage=createBlindRage();
 		blindRageExplosion=createBlindRageExplosion();
+		cow=createCow();
 		brainiacEffect=createBrainiacEffect();
 		shrikeEffect=createShrikeEffect();
 		arrow=createArrow();
@@ -2516,6 +2522,21 @@ struct Renderer(B){
 						}
 						foreach(ref blindRageCasting;objects.blindRageCastings) with(blindRageCasting) renderBlindRage(blindRage.position,blindRage.direction,blindRage.status,blindRage.frame,blindRage.scale);
 						foreach(ref blindRage;objects.blindRages) renderBlindRage(blindRage.position,blindRage.direction,blindRage.status,blindRage.frame,blindRage.scale);
+					}
+				}
+				static if(mode==RenderMode.opaque) if(objects.bovineInterventions.length){
+					foreach(i,mat;self.cow.obj.materials){
+						B.morphMaterialBackend.bind(mat,rc);
+						scope(success) B.morphMaterialBackend.unbind(mat,rc);
+						void renderCow(Vector3f position,Quaternionf rotation,int frame){
+							auto mesh1Mesh2Progress=self.cow.getFrame(frame);
+							auto mesh1=mesh1Mesh2Progress[0], mesh2=mesh1Mesh2Progress[1], progress=mesh1Mesh2Progress[2];
+							assert(mesh1.length==mesh2.length&&mesh1.length==self.cow.obj.materials.length);
+							B.morphMaterialBackend.setTransformationScaled(position,rotation,4.0f*Vector3f(1.0f,1.0f,1.0f),rc);
+							B.morphMaterialBackend.setMorphProgress(progress);
+							mesh1[i].morph(mesh2[i],rc);
+						}
+						foreach(ref cow;objects.bovineInterventions) renderCow(cow.position,cow.rotation,cow.frame);
 					}
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.blindRages.length){

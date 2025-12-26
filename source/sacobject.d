@@ -1244,6 +1244,7 @@ enum ParticleType{
 	castPyro,
 	castPyro2,
 	castJames,
+	castJames2,
 	castStratos,
 	castCharnel,
 	castCharnel2,
@@ -1260,6 +1261,7 @@ enum ParticleType{
 	ashParticle,
 	dirt,
 	dust,
+	slowDust,
 	splat,
 	rock,
 	bombardmentCasting,
@@ -1307,13 +1309,13 @@ final class SacParticle(B){
 				return false;
 			case redVortexDroplet,blueVortexDroplet:
 				return true;
-			case castPersephone,castPersephone2,castPyro,castPyro2,castJames,castStratos,castCharnel,castCharnel2:
+			case castPersephone,castPersephone2,castPyro,castPyro2,castJames,castJames2,castStratos,castCharnel,castCharnel2:
 				return false;
 			case breathOfLife,wrathCasting,wrathExplosion1,wrathExplosion2,rainOfFrogsCasting,steam:
 				return false;
 			case wrathParticle,rainbowParticle,frogExplosion,gnomeHit,warmongerHit,ashParticle:
 				return true;
-			case smoke,dirt,dust,splat:
+			case smoke,dirt,dust,slowDust,splat:
 				return false;
 			case rock:
 				return true;
@@ -1347,9 +1349,9 @@ final class SacParticle(B){
 				return true;
 			case redVortexDroplet,blueVortexDroplet:
 				return false;
-			case castPersephone,castPersephone2,castPyro,castPyro2,castJames,castStratos,castCharnel,castCharnel2:
+			case castPersephone,castPersephone2,castPyro,castPyro2,castJames,castJames2,castStratos,castCharnel,castCharnel2:
 				return false;
-			case breathOfLife,wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,rainbowParticle,rainOfFrogsCasting,frogExplosion,gnomeHit,warmongerHit,ashParticle,steam,smoke,dirt,dust,splat,rock,bombardmentCasting,webDebris,oil,poison,swarmHit,slime:
+			case breathOfLife,wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,rainbowParticle,rainOfFrogsCasting,frogExplosion,gnomeHit,warmongerHit,ashParticle,steam,smoke,dirt,dust,slowDust,splat,rock,bombardmentCasting,webDebris,oil,poison,swarmHit,slime:
 				return false;
 			case relativePoison:
 				return true;
@@ -1540,6 +1542,12 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Jame.FLDR/tex_ZERO_.FLDR/cstj.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
+			case castJames2:
+				width=height=1.0f;
+				this.energy=1.0f;
+				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/dirt.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
 			case castStratos:
 				width=height=1.0f;
 				this.energy=2.0f;
@@ -1643,6 +1651,12 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/shawn/shwn.WAD!/jams.FLDR/text.FLDR/dust.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
+			case slowDust:
+				width=height=1.0f;
+				this.energy=1.0f;
+				texture=B.makeTexture(loadTXTR("extracted/shawn/shwn.WAD!/jams.FLDR/text.FLDR/dust.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
 			case splat:
 				width=height=1.0f;
 				this.energy=1.0f;
@@ -1741,7 +1755,9 @@ final class SacParticle(B){
 			case smoke: return 4;
 			case fire: return 2;
 			case cold: return 2;
-			case dirt,splat: return 2;
+			case dirt: return 2;
+			case slowDust: return 4;
+			case splat: return 2;
 			case poison, relativePoison: return 2;
 			case scarabHit: return 2;
 			case swarmHit: return 2;
@@ -1784,7 +1800,7 @@ final class SacParticle(B){
 				return 0.5f;
 			case redVortexDroplet,blueVortexDroplet:
 				return min(1.0f,(lifetime/(0.75f*numFrames))^^2);
-			case castPersephone,castPersephone2,castPyro,castPyro2,castJames,castStratos,castCharnel,castCharnel2:
+			case castPersephone,castPersephone2,castPyro,castPyro2,castJames,castJames2,castStratos,castCharnel,castCharnel2:
 				return 1.0f;
 			case breathOfLife:
 				return min(1.0f,lifetime/(1.5f*numFrames));
@@ -1805,7 +1821,7 @@ final class SacParticle(B){
 				return 1.0f;
 			case dirt,splat:
 				return min(1.0f,(lifetime/(0.25f*numFrames)));
-			case dust:
+			case dust,slowDust:
 				return 1.0f;
 			case poison:
 				return min(1.0f,(lifetime/(0.5f*numFrames)));
@@ -1841,7 +1857,7 @@ final class SacParticle(B){
 				return 1.0f;
 			case redVortexDroplet,blueVortexDroplet:
 				return min(1.0f,(lifetime/(0.75f*numFrames)));
-			case castPersephone,castPersephone2,castPyro,castPyro2,castJames,castStratos,castCharnel,castCharnel2:
+			case castPersephone,castPersephone2,castPyro,castPyro2,castJames,castJames2,castStratos,castCharnel,castCharnel2:
 				return 1.0f;
 			case breathOfLife:
 				return min(1.0f,0.4f+0.6f*lifetime/(1.5f*numFrames));
@@ -1863,7 +1879,7 @@ final class SacParticle(B){
 				return min(1.0f,lifetime/(3.0f*numFrames));
 			case oil:
 				return min(1.0f,lifetime/(3.0f*numFrames));
-			case dirt,dust,splat:
+			case dirt,dust,slowDust,splat:
 				return 1.0f;
 			case poison,relativePoison:
 				return 1.0f;
@@ -3093,6 +3109,35 @@ struct SacBlindRageExplosion(B){
 		return meshes;
 	}
 }
+
+struct SacCow(B){
+	SacObject!B obj;
+	static SacObject!B create(){
+		auto cow=new SacObject!B("extracted/models/MODL.WAD!/bovi.MRMC/bovi.MRMM");
+		assert(cow.meshes.length==65);
+		return cow;
+	}
+	enum numTransitionFrames=updateFPS/10;
+	enum numInitialRepetitions=4;
+	enum saltoStart=43,saltoEnd=51;
+	enum numSaltos=3;
+	Tuple!(B.Mesh[],B.Mesh[],float) getFrame(int frame){
+		enum saltoStartFrame=(numInitialRepetitions*10+(saltoStart-10))*numTransitionFrames;
+		if(frame>=saltoStartFrame) frame+=min(frame-saltoStartFrame,numSaltos*(saltoEnd-saltoStart)*numTransitionFrames);
+		auto meshes=obj.meshes;
+		auto indices=chain(
+			iota(10).cycle.take(numInitialRepetitions*10),
+			iota(10,saltoStart),
+			iota(saltoStart,saltoEnd).cycle.take(numSaltos*(saltoEnd-saltoStart)),
+			iota(saltoEnd,meshes.length-10),
+			iota(meshes.length-10,meshes.length).cycle
+		);
+		auto i=indices[frame/numTransitionFrames],j=indices[frame/numTransitionFrames+1];
+		float progress=float(frame%numTransitionFrames)/numTransitionFrames;
+		return tuple(obj.meshes[i],obj.meshes[j],progress);
+	}
+}
+
 
 struct SacBrainiacEffect(B){
 	B.Texture texture;

@@ -3865,6 +3865,27 @@ struct BlindRageEffect(B){
 	Array!Particle particles;
 }
 
+struct BovineInterventionCasting(B){
+	ManaDrain!B manaDrain;
+	SacSpell!B spell;
+	Vector3f position;
+	int target;
+	int frame=0;
+}
+struct BovineIntervention(B){
+	int wizard;
+	int side;
+	Vector3f position;
+	Quaternionf rotation;
+	OrderTarget target;
+	SacSpell!B spell;
+	int frame=0;
+	float startZ;
+	enum buryDepth=4.0f;
+	enum travelTime=12*updateFPS;
+	enum maxHeight=200.0f; // TODO
+}
+
 struct BrainiacProjectile(B){
 	int attacker;
 	int side;
@@ -5599,6 +5620,22 @@ struct Effects(B){
 	void removeBlindRageEffect(int i){
 		if(i+1<blindRageEffects.length) blindRageEffects[i]=move(blindRageEffects[$-1]);
 		blindRageEffects.length=blindRageEffects.length-1;
+	}
+	Array!(BovineInterventionCasting!B) bovineInterventionCastings;
+	void addEffect(BovineInterventionCasting!B BovineInterventionCasting){
+		bovineInterventionCastings~=move(BovineInterventionCasting);
+	}
+	void removeBovineInterventionCasting(int i){
+		if(i+1<bovineInterventionCastings.length) bovineInterventionCastings[i]=move(bovineInterventionCastings[$-1]);
+		bovineInterventionCastings.length=bovineInterventionCastings.length-1;
+	}
+	Array!(BovineIntervention!B) bovineInterventions;
+	void addEffect(BovineIntervention!B BovineIntervention){
+		bovineInterventions~=move(BovineIntervention);
+	}
+	void removeBovineIntervention(int i){
+		if(i+1<bovineInterventions.length) bovineInterventions[i]=move(bovineInterventions[$-1]);
+		bovineInterventions.length=bovineInterventions.length-1;
 	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
@@ -9042,6 +9079,8 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 					return stun(castIntestinalVaporization(target.id,manaDrain,spell,state));
 				case SpellTag.blindRage:
 					return stun(castBlindRage(target.id,manaDrain,spell,state));
+				case SpellTag.bovineIntervention:
+					return stun(castBovineIntervention(target.id,manaDrain,spell,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -10214,6 +10253,37 @@ bool blindRage(B)(BlindRage!B blindRage,ObjectState!B state){
 	blindRage.status=BlindRageStatus.flying;
 	blindRage.frame=0;
 	state.addEffect(blindRage);
+	return true;
+}
+
+Vector3f bovineInterventionCastingPosition(B)(ref MovingObject!B obj,ObjectState!B state){
+	auto position=obj.position+rotate(facingQuaternion(obj.creatureState.facing),Vector3f(0.0f,15.0f,0.0f));
+	position.z=state.getHeight(position);
+	// TODO: avoid casting in void
+	return position;
+}
+bool castBovineIntervention(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	if(!state.isValidTarget(target)) return false;
+	auto position=state.movingObjectById!(bovineInterventionCastingPosition,()=>Vector3f.init)(manaDrain.wizard,state);
+	if(isNaN(position.x)) return false;
+	state.addEffect(BovineInterventionCasting!B(manaDrain,spell,position,target));
+	return true;
+}
+
+bool bovineIntervention(B)(int wizard,Vector3f position,int target,SacSpell!B spell,ObjectState!B state){
+	auto targetPosition=state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(target);
+	if(isNaN(targetPosition.x)) return false;
+	auto side=state.movingObjectById!(.side,()=>-1)(wizard,state);
+	if(side==-1) return false;
+	if(!state.isValidTarget(target)) return false;
+	auto orderTarget=centerTarget(target,state);
+	if(isNaN(orderTarget.position.x)) return false;
+	auto direction=orderTarget.position-position;
+	auto facing=atan2(-direction.x,direction.y);
+	if(isNaN(facing)) facing=0.0f;
+	auto rotation=facingQuaternion(facing);
+	position.z=state.getHeight(position)-BovineIntervention!B.buryDepth;
+	state.addEffect(BovineIntervention!B(wizard,side,position,rotation,orderTarget,spell,0,position.z));
 	return true;
 }
 
@@ -19825,6 +19895,154 @@ bool updateBlindRageEffect(B)(ref BlindRageEffect!B blindRageEffect,ObjectState!
 	}
 }
 
+void animateGroundForCow(B)(Vector3f position,int frame,ObjectState!B state){
+	if(!state.enableParticles) return;
+	enum range=3.0f;
+	enum numParticles=3;
+	auto sacParticle=SacParticle!B.get(ParticleType.dirt);
+	foreach(i;0..numParticles){
+		auto dir=state.uniformDirection!(float,2)();
+		auto dist=state.uniform(4)?range*(1.0f-state.uniform(0.0f,1.0f)*state.uniform(0.0f,1.0f)):range*state.uniform(0.0f,1.0f);
+		auto pposition=position+dist*Vector3f(dir.x,dir.y,0.0f);
+		auto velocity=Vector3f(0.0f,0.0f,1.0f)+0.6f*state.uniformDirection();
+		auto lifetime=31;
+		auto scale=2.0f;
+		auto pframe=0;
+		pposition.z=state.getHeight(pposition)+0.5f;
+		pposition+=0.3f*state.uniformDirection();
+		state.addParticle(Particle!B(sacParticle,pposition,velocity,scale,lifetime,pframe));
+	}
+	if(frame%(updateFPS/10)==0) state.addEffect(ScreenShake(position,updateFPS/10,0.2f*float(frame+updateFPS/6)/updateFPS,60.0f));
+}
+
+bool updateBovineInterventionCasting(B)(ref BovineInterventionCasting!B bovineInterventionCast,ObjectState!B state){
+	with(bovineInterventionCast){
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				return state.movingObjectById!((obj){
+					auto castParticle=SacParticle!B.get(ParticleType.castJames2);
+					obj.animateCasting!false(castParticle,state);
+					animateGroundForCow(position,frame,state);
+					frame+=1;
+					return true;
+				},()=>false)(manaDrain.wizard);
+			case CastingStatus.interrupted:
+				return false;
+			case CastingStatus.finished:
+				bovineIntervention(manaDrain.wizard,position,target,spell,state);
+				return false;
+		}
+	}
+}
+
+
+void animateEmergingCow(B)(ref BovineIntervention!B bovineIntervention,ObjectState!B state){
+	auto position=bovineIntervention.position;
+	position.z=state.getHeight(position);
+	playSoundAt("_woc",position,state,4.0f);
+	screenShake(position,updateFPS/2,2.5f,60.0f,state);
+	enum bovineInterventionSize=4.0f;
+	enum numParticles=64;
+	auto sacParticle=SacParticle!B.get(ParticleType.rock);
+	foreach(i;0..numParticles){
+		auto direction=state.uniformDirection();
+		auto velocity=state.uniform(2.0f,4.0f)*bovineInterventionSize/2.0f*direction;
+		velocity.z*=2.5f;
+		auto scale=2.0f*state.uniform(0.25f,0.75f);
+		auto lifetime=159;
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+	}
+	enum numParticles4=16;
+	auto sacParticle4=SacParticle!B.get(ParticleType.slowDust);
+	foreach(i;0..numParticles4){
+		auto direction=state.uniformDirection();
+		auto pposition=position+0.75f*bovineInterventionSize/2.0f*direction;
+		auto velocity=0.6f*direction;
+		auto scale=3.0f*bovineInterventionSize/2.0f;
+		auto frame=0;
+		auto lifetime=127;
+		state.addParticle(Particle!B(sacParticle4,pposition,velocity,scale,lifetime,frame));
+	}
+	enum numParticles5=24;
+	auto sacParticle5=SacParticle!B.get(ParticleType.dirt);
+	auto sizeScale=1.5f*bovineInterventionSize;
+	auto departureDirection=Vector3f(0.0f,0.0f,1.0f);
+	foreach(i;0..numParticles5){
+		auto direction=state.uniformDirection();
+		auto pposition=position+sizeScale*0.25f*direction-sizeScale*Vector3f(0.0f,0.0f,state.uniform(0.0f,1.0f));
+		auto velocity=2.0f*sizeScale*departureDirection+0.75f*sizeScale*direction*state.uniform(0.5f,1.25f);
+		auto frame=state.uniform(2)?0:state.uniform(24);
+		auto lifetime=63-frame;
+		auto scale=sizeScale*state.uniform(0.5f,1.0f);
+		state.addParticle(Particle!B(sacParticle5,pposition,velocity,sizeScale,lifetime,frame));
+	}
+	// TODO: scar
+}
+
+void cowExplosion(B)(ref BovineIntervention!B bovineIntervention,ObjectState!B state){
+	auto position=bovineIntervention.position;
+	position.z=state.getHeight(position);
+	enum numDebris=16;
+	foreach(i;0..numDebris){
+		auto angle=state.uniform(-pi!float,pi!float);
+		auto velocity=(20.0f+state.uniform(-7.5f,7.5f))*Vector3f(cos(angle),sin(angle),state.uniform(1.0f,2.0f)).normalized;
+		auto rotationSpeed=2*pi!float*state.uniform(0.5f,2.0f)/updateFPS;
+		auto rotationAxis=state.uniformDirection();
+		auto rotationUpdate=rotationQuaternion(rotationAxis,rotationSpeed);
+		auto debris=EruptDebris!B(position,velocity,rotationUpdate,Quaternionf.identity());
+		state.addEffect(debris);
+	}
+	if(!state.enableParticles) return;
+	enum numParticles3=100;
+	auto sacParticle3=SacParticle!B.get(ParticleType.rock);
+	foreach(i;0..numParticles3){
+		auto pdirection=(state.uniformDirection()+Vector3f(0.0f,0.0f,0.5f)).normalized;
+		auto pvelocity=2.0f*state.uniform(7.5f,15.0f)*pdirection;
+		auto scale=state.uniform(1.0f,2.5f);
+		auto lifetime=127;
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle3,position,pvelocity,scale,lifetime,frame));
+	}
+	enum numParticles4=24;
+	auto sacParticle4=SacParticle!B.get(ParticleType.slowDust);
+	foreach(i;0..numParticles3){
+		auto pdirection=(state.uniformDirection()+Vector3f(0.0f,0.0f,0.5f)).normalized;
+		auto pvelocity=1.5f*pdirection*(1.0f-state.uniform(0.0f,1.0f)^^2);
+		auto scale=state.uniform(1.0f,2.5f);
+		auto lifetime=127;
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle4,position,pvelocity,scale,lifetime,frame));
+	}
+	with(bovineIntervention) quake(wizard,side,bovineIntervention.position,spell,state);
+	// TODO: scar
+}
+
+bool updateBovineIntervention(B)(ref BovineIntervention!B bovineIntervention,ObjectState!B state){
+	with(bovineIntervention){
+		if(frame==0) animateEmergingCow(bovineIntervention,state);
+		frame+=1;
+		target.position=target.center(state);
+		auto timeRemaining=travelTime-frame;
+		auto relProgress=1.0f-float(timeRemaining)/travelTime;
+		position.z=startZ*relProgress+target.position.z*(1.0f-relProgress)+4.0f*maxHeight*relProgress*(1.0f-relProgress);
+		if(timeRemaining>0){
+			auto diff=(target.position.xy-position.xy)/timeRemaining;
+			if(timeRemaining>=2) diff*=2.0f;
+			position.x+=diff.x;
+			position.y+=diff.y;
+		}else if(timeRemaining==0){
+			position=target.position;
+			playSoundAt("hwoc",target.center(state),state,3.0f);
+			state.movingObjectById!(gib,()=>false)(target.id,state);
+		}else if(position.z<state.getHeight(position)){
+			cowExplosion(bovineIntervention,state);
+			return false;
+		}
+		return true;
+	}
+}
+
 
 enum brainiacProjectileHitGain=4.0f;
 enum brainiacProjectileSize=0.45f; // TODO: ok?
@@ -22674,7 +22892,9 @@ bool updateQuake(B)(ref Quake!B quake,ObjectState!B state){
 		enum quakeFrame=1;
 		if(++frame==quakeFrame) quakeExplosion(quake,state);
 		auto waveLoc=waveRange*(float(frame)/updateFPS)/waveDur;
-		if(stunMinRange<waveLoc&&waveLoc<stunMaxRange){
+		auto maxRange=stunMaxRange;
+		if(ability.tag==SpellTag.bovineIntervention) maxRange=25.0f; // TODO: ok?
+		if(stunMinRange<waveLoc&&waveLoc<maxRange){
 			// TODO: more efficient method to query creatures currently on the ring
 			static bool callback2(int target,Quake!B* quake,float waveLoc,ObjectState!B state){
 				state.movingObjectById!((ref obj,quake,waveLoc,state){
@@ -23819,6 +24039,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.blindRageEffects.length;){
 		if(!updateBlindRageEffect(effects.blindRageEffects[i],state)){
 			effects.removeBlindRageEffect(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.bovineInterventionCastings.length;){
+		if(!updateBovineInterventionCasting(effects.bovineInterventionCastings[i],state)){
+			effects.removeBovineInterventionCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.bovineInterventions.length;){
+		if(!updateBovineIntervention(effects.bovineInterventions[i],state)){
+			effects.removeBovineIntervention(i);
 			continue;
 		}
 		i++;
