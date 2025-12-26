@@ -411,7 +411,7 @@ int applyLateSettings(B)(string[] args,ref Options options){
 					else stderr.writeln("no bones");
 					i+=1;
 				}
-			}else if(args[i+1].startsWith("export-all-frames:")){
+			}else if(i+1<args.length&&args[i+1].startsWith("export-all-frames:")){
 				import sxsk,saxs2obj;
 				auto path=args[i+1]["export-all-frames:".length..$];
 				enforce(anim,"need animation to export all frames");
