@@ -3059,10 +3059,10 @@ struct SacBlindRageExplosion(B){
 		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pyro.FLDR/txtr.FLDR/per2.TXTR"));
 	}
 	B.Mesh[] frames;
-	enum numFrames=16*2*updateAnimFactor;
+	enum numFrames=16*4*updateAnimFactor;
 	enum maxScale=30.0f;
 	enum maxOffset=4.0f;
-	auto getFrame(int i){ return frames[i/(2*updateAnimFactor)]; }
+	auto getFrame(int i){ return frames[i/(4*updateAnimFactor)]; }
 	static B.Mesh[] createMeshes(){
 		enum nU=4,nV=4;
 		auto meshes=new B.Mesh[](nU*nV);
@@ -3077,7 +3077,7 @@ struct SacBlindRageExplosion(B){
 			void addFace(uint[3] face...){
 				mesh.indices[curNumFaces++]=face;
 			}
-			enum height=0.4f, depth=0.75f;
+			enum height=0.4f, depth=0.4f;
 			foreach(i;0..numSegments){
 				auto top=3*i,outer=3*i+1,bottom=3*i+2;
 				auto alpha=2*pi!float*i/numSegments;

@@ -3857,7 +3857,7 @@ struct BlindRage(B){
 	enum minNumFlyingFrames=4*numTransitionFrames;
 	enum numFistFormingFrames=4*numTransitionFrames;
 	enum numHitFrames=updateFPS/2;
-	enum maxExplosionHeight=5.0f;
+	enum maxExplosionHeight=3.0f;
 }
 struct BlindRageEffect(B){
 	int target;
@@ -19802,7 +19802,7 @@ enum blindRageGain=3.0f;
 bool updateBlindRage(B)(ref BlindRage!B blindRage,ObjectState!B state){
 	with(blindRage){
 		if(!state.isValidTarget(target.id)) return false;
-		blindRage.scale=min(1.2f,blindRage.scale+1.2f/spell.castingTime(9)/updateFPS);
+		blindRage.scale=min(1.5f,blindRage.scale+1.5f/spell.castingTime(9)/updateFPS);
 		final switch(status){
 			case BlindRageStatus.casting:
 				frame+=1;
@@ -19854,8 +19854,8 @@ bool updateBlindRage(B)(ref BlindRage!B blindRage,ObjectState!B state){
 				}
 				return true;
 			case BlindRageStatus.exploding:
-				position.z+=maxExplosionHeight/64;
-				return ++frame<64;
+				position.z+=maxExplosionHeight/128;
+				return ++frame<128;
 		}
 	}
 }
