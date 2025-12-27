@@ -595,6 +595,7 @@ struct Renderer(B){
 		auto obj=typeof(return).create();
 		return SacBlindRage!B(obj);
 	}
+	SacBlindRageExplosion!B blindRageExplosion;
 	SacBlindRageExplosion!B createBlindRageExplosion(){
 		auto texture=typeof(return).loadTexture();
 		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
@@ -605,11 +606,21 @@ struct Renderer(B){
 		auto frames=typeof(return).createMeshes();
 		return SacBlindRageExplosion!B(texture,mat,frames);
 	}
-	SacBlindRageExplosion!B blindRageExplosion;
 	SacCow!B cow;
 	SacCow!B createCow(){
 		auto obj=typeof(return).create();
 		return SacCow!B(obj);
+	}
+	SacCharmHeart!B charmHeart;
+	SacCharmHeart!B createCharmHeart(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Additive;
+		mat.energy=24.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacCharmHeart!B(texture,mat,frames);
 	}
 
 	SacBrainiacEffect!B brainiacEffect;
@@ -941,6 +952,7 @@ struct Renderer(B){
 		blindRage=createBlindRage();
 		blindRageExplosion=createBlindRageExplosion();
 		cow=createCow();
+		charmHeart=createCharmHeart();
 		brainiacEffect=createBrainiacEffect();
 		shrikeEffect=createShrikeEffect();
 		arrow=createArrow();
@@ -2228,7 +2240,7 @@ struct Renderer(B){
 						mesh.render(rc);
 					}
 				}
-				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.demonicRifts.length){
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.demonicRifts.length||objects.charmCastings.length||objects.charms.length)){
 					auto material=self.demonicRiftSpirit.material;
 					material.bind(rc);
 					B.disableCulling();
@@ -2246,7 +2258,6 @@ struct Renderer(B){
 							auto curve=demonicRiftSpirit.get(progress);
 							x=Transformation(rotationBetween(Vector3f(0.0f,0.0f,1.0f),curve[1].normalized),curve[0]).getMatrix4f;
 							foreach(k;0..3) foreach(l;0..3) x.arrayof[k*4+l]*=scale;
-							// TODO: scale
 						}
 						auto mesh=self.demonicRiftSpirit.getFrame(frame%self.demonicRiftSpirit.numFrames);
 						B.shadelessBoneMaterialBackend.setPose(pose);
@@ -2255,6 +2266,26 @@ struct Renderer(B){
 					foreach(ref demonicRift;objects.demonicRifts)
 						foreach(ref spirit;demonicRift.spirits[demonicRift.numDespawned..demonicRift.numSpawned])
 							renderDemonicRiftSpirit(spirit);
+					void renderCharmSpirit(ref CharmSpirit!B charmSpirit){
+						auto scale=0.5f;
+						auto frame=charmSpirit.frame;
+						Matrix4x4f[self.demonicRiftSpirit.numSegments+1] pose;
+						foreach(i,ref x;pose){
+							auto progress=float(i)/self.demonicRiftSpirit.numSegments;
+							auto curve=charmSpirit.get(progress);
+							x=Transformation(rotationBetween(Vector3f(0.0f,0.0f,1.0f),curve[1].normalized),curve[0]).getMatrix4f;
+							foreach(k;0..3) foreach(l;0..3) x.arrayof[k*4+l]*=scale;
+						}
+						auto mesh=self.demonicRiftSpirit.getFrame(frame%self.demonicRiftSpirit.numFrames);
+						B.shadelessBoneMaterialBackend.setPose(pose);
+						mesh.render(rc);
+					}
+					foreach(ref charmCasting;objects.charmCastings)
+						foreach(ref spirit;charmCasting.charm.spirits)
+							renderCharmSpirit(spirit);
+					foreach(ref charm;objects.charms)
+						foreach(ref spirit;charm.spirits)
+							renderCharmSpirit(spirit);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.demonicRifts.length||objects.demonicRiftCastings.length)){
 					auto material=self.demonicRiftBorder.material;
@@ -2524,21 +2555,6 @@ struct Renderer(B){
 						foreach(ref blindRage;objects.blindRages) renderBlindRage(blindRage.position,blindRage.direction,blindRage.status,blindRage.frame,blindRage.scale);
 					}
 				}
-				static if(mode==RenderMode.opaque) if(objects.bovineInterventions.length){
-					foreach(i,mat;self.cow.obj.materials){
-						B.morphMaterialBackend.bind(mat,rc);
-						scope(success) B.morphMaterialBackend.unbind(mat,rc);
-						void renderCow(Vector3f position,Quaternionf rotation,int frame){
-							auto mesh1Mesh2Progress=self.cow.getFrame(frame);
-							auto mesh1=mesh1Mesh2Progress[0], mesh2=mesh1Mesh2Progress[1], progress=mesh1Mesh2Progress[2];
-							assert(mesh1.length==mesh2.length&&mesh1.length==self.cow.obj.materials.length);
-							B.morphMaterialBackend.setTransformationScaled(position,rotation,4.0f*Vector3f(1.0f,1.0f,1.0f),rc);
-							B.morphMaterialBackend.setMorphProgress(progress);
-							mesh1[i].morph(mesh2[i],rc);
-						}
-						foreach(ref cow;objects.bovineInterventions) renderCow(cow.position,cow.rotation,cow.frame);
-					}
-				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.blindRages.length){
 					auto material=self.blindRageExplosion.material;
 					material.bind(rc);
@@ -2589,6 +2605,39 @@ struct Renderer(B){
 					}
 					foreach(j;0..objects.blindRageEffects.length)
 						renderBlindRageEffect(objects.blindRageEffects[j]);
+				}
+				static if(mode==RenderMode.opaque) if(objects.bovineInterventions.length){
+					foreach(i,mat;self.cow.obj.materials){
+						B.morphMaterialBackend.bind(mat,rc);
+						scope(success) B.morphMaterialBackend.unbind(mat,rc);
+						void renderCow(Vector3f position,Quaternionf rotation,int frame){
+							auto mesh1Mesh2Progress=self.cow.getFrame(frame);
+							auto mesh1=mesh1Mesh2Progress[0], mesh2=mesh1Mesh2Progress[1], progress=mesh1Mesh2Progress[2];
+							assert(mesh1.length==mesh2.length&&mesh1.length==self.cow.obj.materials.length);
+							B.morphMaterialBackend.setTransformationScaled(position,rotation,4.0f*Vector3f(1.0f,1.0f,1.0f),rc);
+							B.morphMaterialBackend.setMorphProgress(progress);
+							mesh1[i].morph(mesh2[i],rc);
+						}
+						foreach(ref cow;objects.bovineInterventions) renderCow(cow.position,cow.rotation,cow.frame);
+					}
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.charmHearts.length){
+					auto material=self.charmHeart.material;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
+					foreach(j;0..objects.charmHearts.length){
+						auto position=state.movingObjectById!((ref obj,scale){
+							auto hitbox=obj.hitbox;
+							return 0.5f*(hitbox[1]+hitbox[0])+Vector3f(0.0f,0.0f,0.75f*scale*(hitbox[1].z-hitbox[0].z));
+						},()=>Vector3f.init)(objects.charmHearts[j].target,objects.charmHearts[j].scale);
+						if(isNaN(position.x)) continue;
+						auto frame=objects.charmHearts[j].frame;
+						auto mesh=self.charmHeart.getFrame(frame%self.charmHeart.numFrames);
+						auto scale=1.5f*objects.charmHearts[j].scale*objects.charmHearts[j].creatureScale;
+						position.z+=0.4f*scale;
+						material.backend.setSpriteTransformationScaled(position,scale,rc);
+						mesh.render(rc);
+					}
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.brainiacEffects.length){
 					auto material=self.brainiacEffect.material;

@@ -652,6 +652,18 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Bov
 void serialize(alias sink,B)(ref BovineIntervention!B bovineIntervention){ serializeStruct!sink(bovineIntervention); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BovineIntervention!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref CharmCasting!B charmCasting){ serializeStruct!sink(charmCasting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==CharmCasting!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref CharmSpirit!B charmSpirit){ serializeStruct!sink(charmSpirit); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==CharmSpirit!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref Charm!B charm){ serializeStruct!sink(charm); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Charm!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink)(ref CharmHeart charm){ serializeStruct!sink(charm); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==CharmHeart)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref BrainiacProjectile!B brainiacProjectile){ serializeStruct!sink(brainiacProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BrainiacProjectile!B)){ deserializeStruct(result,state,data); }
 

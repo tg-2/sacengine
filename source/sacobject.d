@@ -1277,6 +1277,8 @@ enum ParticleType{
 	blood,
 	locustBlood,
 	locustDebris,
+	heart,
+	bouncingHeart
 }
 
 final class SacParticle(B){
@@ -1333,6 +1335,10 @@ final class SacParticle(B){
 				return true;
 			case locustBlood,locustDebris:
 				return false;
+			case heart:
+				return false;
+			case bouncingHeart:
+				return true;
 		}
 	}
 	@property bool relative(){
@@ -1357,11 +1363,13 @@ final class SacParticle(B){
 				return true;
 			case hoverBlood,blood,locustBlood,locustDebris:
 				return false;
+			case heart,bouncingHeart:
+				return false;
 		}
 	}
 	@property bool bumpOffGround(){
 		switch(type) with(ParticleType){
-			case scarabHit,ghostTransition,wrathParticle,rainbowParticle,gnomeHit,warmongerHit,ashParticle,rock,webDebris,oil,swarmHit,slime,needle,redVortexDroplet,blueVortexDroplet,spark,styxSpark,rend: return true;
+			case scarabHit,ghostTransition,wrathParticle,rainbowParticle,gnomeHit,warmongerHit,ashParticle,rock,webDebris,oil,swarmHit,slime,needle,redVortexDroplet,blueVortexDroplet,spark,styxSpark,rend,bouncingHeart: return true;
 			default: return false;
 		}
 	}
@@ -1723,6 +1731,12 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/firy.TXTR"));
 				meshes=makeSpriteMeshes!(B,false,true)(4,4,width,height);
 				break;
+			case heart,bouncingHeart:
+				width=height=1.0f;
+				this.energy=20.0f;
+				texture=B.makeTexture(loadTXTR("extracted/shawn/shwn.WAD!/pers.FLDR/text.FLDR/hrot.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
 		}
 		material=B.createMaterial(this);
 	}
@@ -1765,6 +1779,7 @@ final class SacParticle(B){
 			case hoverBlood: return 2;
 			case blood: return 4;
 			case locustBlood, locustDebris: return 1;
+			case heart,bouncingHeart: return 2;
 			default: return 1;
 		}
 	}
@@ -1833,6 +1848,8 @@ final class SacParticle(B){
 				return 1.0f;
 			case locustBlood,locustDebris:
 				return min(1.0f,(lifetime/(0.5f*numFrames)));
+			case heart,bouncingHeart:
+				return min(1.0f,(lifetime/(0.5f*numFrames))^^2);
 		}
 	}
 	float getScale(int lifetime){
@@ -1887,6 +1904,8 @@ final class SacParticle(B){
 				return min(1.0f,(lifetime/(0.75f*numFrames)));
 			case hoverBlood,blood,locustBlood,locustDebris:
 				return 1.0f;
+			case heart,bouncingHeart:
+				return min(1.0f,(lifetime/(0.75f*numFrames)));
 		}
 	}
 }
@@ -3135,6 +3154,21 @@ struct SacCow(B){
 		auto i=indices[frame/numTransitionFrames],j=indices[frame/numTransitionFrames+1];
 		float progress=float(frame%numTransitionFrames)/numTransitionFrames;
 		return tuple(obj.meshes[i],obj.meshes[j],progress);
+	}
+}
+
+struct SacCharmHeart(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/shawn/shwn.WAD!/pers.FLDR/text.FLDR/hart.TXTR"));
+	}
+	B.Material material;
+	B.Mesh[] frames;
+	enum animationDelay=4;
+	enum numFrames=16*updateAnimFactor*animationDelay;
+	auto getFrame(int i){ return frames[i/(animationDelay*updateAnimFactor)]; }
+	static B.Mesh[] createMeshes(){
+		return makeSpriteMeshes!B(4,4,1.0f,1.0f);
 	}
 }
 

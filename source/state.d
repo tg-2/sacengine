@@ -259,6 +259,13 @@ bool canBovinelyIntervene(CreatureMode mode){
 		case ghostToIdle,dead,deadToGhost,idleGhost,movingGhost,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
 	}
 }
+bool canCharm(CreatureMode mode){
+	final switch(mode) with(CreatureMode){
+		case idle,moving,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
+			shooting,usingAbility,pulling,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm,firewalk: return true;
+		case ghostToIdle,dying,dead,deadToGhost,idleGhost,movingGhost,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
+	}
+}
 
 enum CreatureMovement{
 	onGround,
@@ -3893,6 +3900,59 @@ struct BovineIntervention(B){
 	enum maxHeight=200.0f; // TODO
 }
 
+struct CharmCasting(B){
+	ManaDrain!B manaDrain;
+	Charm!B charm;
+}
+enum CharmStatus{
+	casting,
+	flying,
+	charming,
+	charmed,
+}
+struct CharmSpirit(B){
+	Vector3f targetPosition;
+	float targetScale=0.0f;
+	SacSpell!B spell;
+	Vector3f[2] lastPosition, nextPosition;
+	float progress=0.0f;
+	enum minHeightOffset=1.0f;
+	enum minHeightFactor=0.2f;
+	enum additionalRadius=1.0f;
+	enum speedRadiusFactor=3.0f;
+	enum interpolationSpeed=1.5f;
+	enum numSpiritFrames=60;
+	Vector3f[numSpiritFrames] locations;
+	Vector3f[2] get(float t){ return cintp(locations[].stride(3),t); }
+	int frame=0;
+	int hitframe=-1;
+	int endframe=-1;
+}
+struct Charm(B){
+	int wizard;
+	int side;
+	Vector3f position;
+	OrderTarget target;
+	SacSpell!B spell;
+	PositionPredictor predictor;
+	CharmStatus status;
+	int frame=0;
+	CharmSpirit!B[3] spirits;
+
+	enum charmDuration=5*updateFPS;
+	enum beamLifetimeAfter=4*updateFPS;
+}
+struct CharmHeart{
+	int target;
+	float creatureScale;
+	int frame=0;
+	float scale=0.0f;
+	enum growTime=updateFPS*2/3;
+	enum shrinkTime=updateFPS*2/3;
+	enum lifetime=10*updateFPS;
+}
+
+
 struct BrainiacProjectile(B){
 	int attacker;
 	int side;
@@ -5643,6 +5703,30 @@ struct Effects(B){
 	void removeBovineIntervention(int i){
 		if(i+1<bovineInterventions.length) bovineInterventions[i]=move(bovineInterventions[$-1]);
 		bovineInterventions.length=bovineInterventions.length-1;
+	}
+	Array!(CharmCasting!B) charmCastings;
+	void addEffect(CharmCasting!B CharmCasting){
+		charmCastings~=move(CharmCasting);
+	}
+	void removeCharmCasting(int i){
+		if(i+1<charmCastings.length) charmCastings[i]=move(charmCastings[$-1]);
+		charmCastings.length=charmCastings.length-1;
+	}
+	Array!(Charm!B) charms;
+	void addEffect(Charm!B charm){
+		charms~=move(charm);
+	}
+	void removeCharm(int i){
+		if(i+1<charms.length) charms[i]=move(charms[$-1]);
+		charms.length=charms.length-1;
+	}
+	Array!(CharmHeart) charmHearts;
+	void addEffect(CharmHeart charmHeart){
+		charmHearts~=move(charmHeart);
+	}
+	void removeCharmHeart(int i){
+		if(i+1<charmHearts.length) charmHearts[i]=move(charmHearts[$-1]);
+		charmHearts.length=charmHearts.length-1;
 	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
@@ -9088,6 +9172,8 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 					return stun(castBlindRage(target.id,manaDrain,spell,state));
 				case SpellTag.bovineIntervention:
 					return stun(castBovineIntervention(target.id,manaDrain,spell,state));
+				case SpellTag.charm:
+					return stun(castCharm(target.id,manaDrain,spell,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -10291,6 +10377,34 @@ bool bovineIntervention(B)(int wizard,Vector3f position,int target,SacSpell!B sp
 	auto rotation=facingQuaternion(facing);
 	position.z=state.getHeight(position)-BovineIntervention!B.buryDepth;
 	state.addEffect(BovineIntervention!B(wizard,side,position,rotation,orderTarget,spell,0,position.z));
+	return true;
+}
+
+CharmSpirit!B makeCharmSpirit(B)(ref Charm!B charm,ObjectState!B state){
+	auto result=CharmSpirit!B(charm.position,0.0f,charm.spell);
+	result.locations[]=charm.position;
+	return result;
+}
+
+Charm!B makeCharm(B)(int wizard,OrderTarget target,SacSpell!B spell,ObjectState!B state){
+	auto positionSide=state.movingObjectById!((obj,state)=>tuple(obj.center,obj.side),function Tuple!(Vector3f,int){ assert(0); })(wizard,state);
+	auto position=positionSide[0],side=positionSide[1];
+	auto charm=Charm!B(wizard,side,position,target,spell);
+	foreach(ref spirit;charm.spirits)
+		spirit=makeCharmSpirit(charm,state);
+	return charm;
+}
+bool castCharm(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	if(!state.isValidTarget(target)) return false;
+	state.addEffect(CharmCasting!B(manaDrain,makeCharm(manaDrain.wizard,centerTarget(target,state),spell,state)));
+	return true;
+}
+
+bool charm(B)(Charm!B charm,ObjectState!B state){
+	if(!charm.target.id||!state.isValidTarget(charm.target.id)) return false;
+	charm.frame=0;
+	charm.status=CharmStatus.flying;
+	state.addEffect(move(charm));
 	return true;
 }
 
@@ -19942,7 +20056,6 @@ bool updateBovineInterventionCasting(B)(ref BovineInterventionCasting!B bovineIn
 	}
 }
 
-
 void animateEmergingCow(B)(ref BovineIntervention!B bovineIntervention,ObjectState!B state){
 	auto position=bovineIntervention.position;
 	position.z=state.getHeight(position);
@@ -20051,6 +20164,215 @@ bool updateBovineIntervention(B)(ref BovineIntervention!B bovineIntervention,Obj
 			return false;
 		}
 		return true;
+	}
+}
+
+bool updateCharmCasting(B)(ref CharmCasting!B charmCast,ObjectState!B state){
+	with(charmCast){
+		charm.target.position=charm.target.center(state);
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				return state.movingObjectById!((obj,charm){
+					charm.position=obj.center;
+					updateCharm(*charm,state);
+					return true;
+				},()=>false)(manaDrain.wizard,&charm);
+			case CastingStatus.interrupted:
+				return false;
+			case CastingStatus.finished:
+				.charm(charm,state);
+				return false;
+		}
+	}
+}
+
+bool updateCharmSpirit(B)(ref CharmSpirit!B spirit,Vector3f newPosition,ObjectState!B state){
+	with(spirit){
+		frame+=1;
+		auto oldPosition=locations[0];
+		auto sacParticle=SacParticle!B.get(ParticleType.heart);
+		enum numParticles=1;
+		foreach(i;0..numParticles){
+			auto progress=state.uniform!"[]"(0.0f,1.0f);
+			auto position=newPosition*progress+oldPosition*(1.0f-progress)+0.3f*state.uniformDirection();
+			auto velocity=Vector3f(0.0f,0.0f,0.0f);
+			auto scale=0.5f;
+			auto frame=0;
+			auto lifetime=63; // TODO: ok?
+			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+		}
+		foreach_reverse(i;1..numSpiritFrames) locations[i]=locations[i-1];
+		locations[0]=newPosition;
+		if(endframe!=-1&&frame+numSpiritFrames>endframe)
+			locations[endframe-frame+1..$]=locations[endframe-frame];
+	}
+	return true;
+}
+
+bool updateTargetedCharmSpirit(B)(ref CharmSpirit!B spirit,OrderTarget target,ObjectState!B state){
+	with(spirit){
+		if(target.id&&state.isValidTarget(target.id)){
+			state.objectById!(
+				(ref obj,tPos,tScale){
+					*tPos=obj.center;
+					*tScale=0.5f*boxSize(obj.hitbox).length;
+				})(target.id,&targetPosition,&targetScale);
+		}else targetPosition=target.position;
+		if(endframe!=-1&&frame>=endframe)
+			return false;
+		auto position=locations[0];
+		if(endframe==-1||frame+numSpiritFrames<endframe){
+			auto radius=additionalRadius+1.1f*targetScale;
+			if(isNaN(lastPosition[0].x)){
+				nextPosition=[position-targetPosition,state.uniformDirection()*speedRadiusFactor*radius];
+				progress=1.0f;
+			}
+			if(progress>=1.0f){
+				progress-=1.0f;
+				lastPosition=nextPosition;
+				nextPosition[0]=state.uniformDisk(Vector3f(0.0f,0.0f,0.0f),radius);
+				nextPosition[1]=state.uniformDirection()*speedRadiusFactor*radius;
+			}
+			auto absoluteNext=nextPosition[0]+targetPosition;
+			auto minHeight=minHeightFactor*radius+minHeightOffset+state.getHeight(absoluteNext);
+			nextPosition[0].z=max(minHeight,absoluteNext.z)-targetPosition.z;
+			progress+=interpolationSpeed/updateFPS;
+		}else if(progress<1.0f){
+			progress+=interpolationSpeed/updateFPS;
+		}
+		position=cintp2([lastPosition,nextPosition],progress)[0]+targetPosition;
+		return updateCharmSpirit(spirit,position,state);
+	}
+}
+
+bool updateFlyingCharmSpirit(B)(ref CharmSpirit!B spirit,Vector3f position,Vector3f targetPosition_,ObjectState!B state){
+	with(spirit){
+		auto oldPosition=locations[0];
+		auto direction=targetPosition_-oldPosition;
+		auto length=direction.length;
+		auto velocity=min(length,spell.speed/updateFPS)/length*direction;
+		if((targetPosition_-oldPosition).lengthsqr>(targetPosition_-position).lengthsqr){
+			velocity*=1.05f;
+		}else{
+			velocity*=0.95f;
+		}
+		auto newPosition=oldPosition+velocity;
+		return updateCharmSpirit(spirit,newPosition,state);
+	}
+}
+
+bool charm(B)(int target,int wizard,int side,ObjectState!B state){
+	int wizardSide=state.movingObjectById!((ref obj)=>obj.side,()=>-1)(wizard);
+	if(side==-1) side=wizardSide;
+	if(side==-1||side!=wizardSide) return false;
+	Vector3f[2] hitbox;
+	if(!state.movingObjectById!((ref obj,wizard,side,state,hitbox){
+		obj.clearOrderQueue(state);
+		obj.side=side;
+		auto ord=Order(CommandType.retreat,OrderTarget(TargetType.creature,wizard,obj.position));
+		obj.order(ord,state,side);
+		*hitbox=obj.hitbox;
+		return true;
+	},()=>false)(target,wizard,side,state,&hitbox))
+		return false;
+	state.newCreatureAddToSelection(side,target);
+	auto creatureScale=max(0.9f,0.5f*(hitbox[1].xy-hitbox[0].xy).length);
+	auto center=boxCenter(hitbox);
+	enum numParticles=128;
+	auto sacParticle=SacParticle!B.get(ParticleType.bouncingHeart);
+	foreach(i;0..numParticles){
+		auto position=state.uniform(scaleBox(hitbox,0.9f));
+		auto velocity=2.5f*state.uniform(0.5f,2.0f)*Vector3f(position.x-center.x,position.y-center.y,position.z-hitbox[0].z).normalized*creatureScale;
+		auto scale=state.uniform(0.5f,1.5f)*creatureScale;
+		int lifetime=95;
+		int frame=0;
+		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+	}
+	state.addEffect(CharmHeart(target,creatureScale));
+	return true;
+}
+
+enum charmGain=3.0f;
+bool updateCharm(B)(ref Charm!B charm,ObjectState!B state){
+	with(charm){
+		if(!state.isValidTarget(target.id)) return false;
+		final switch(status){
+			case CharmStatus.casting:
+				if(!state.isValidTarget(wizard)) return false;
+				frame+=1;
+				auto orderTarget=centerTarget(wizard,state);
+				foreach(ref spirit;spirits){
+					updateTargetedCharmSpirit(spirit,orderTarget,state);
+				}
+				return true;
+			case CharmStatus.flying:
+				auto targetCenter=target.center(state);
+				target.position=targetCenter;
+				auto predictedCenter=predictor.predictCenter(position,spell.speed,target,side,state);
+				auto direction=predictedCenter-position;
+				auto length=direction.length;
+				if(length>0.25f+state.movingObjectById!((ref obj)=>0.5f*obj.getScale.length,()=>float.nan)(target.id)){
+					auto velocity=min(length,spell.speed/updateFPS)/length*direction;
+					position+=velocity;
+					frame+=1;
+				}else{
+					frame=0;
+					if(!state.movingObjectById!((ref obj)=>obj.creatureState.mode.canCharm,()=>false)(target.id)){
+						status=CharmStatus.charmed;
+						goto case CharmStatus.charmed;
+					}
+					status=CharmStatus.charming;
+					goto case CharmStatus.charming;
+				}
+				direction=direction.normalized;
+				auto rotation=rotationBetween(Vector3f(0.0f,1.0f,0.0f),direction);
+				foreach(i,ref spirit;spirits){
+					auto θ=2.0f*pi!float/3*i;
+					auto targetPosition=target.position+rotate(rotation,0.2f*Vector3f(sin(θ),0.0f,cos(θ)));
+					updateFlyingCharmSpirit(spirit,position,targetPosition,state);
+				}
+				return true;
+			case CharmStatus.charming:
+				if(!state.movingObjectById!((ref obj)=>obj.creatureState.mode.canCharm,()=>false)(target.id)){
+					frame=0;
+					status=CharmStatus.charmed;
+					goto case CharmStatus.charmed;
+				}
+				auto progress=float(frame)/(spell.duration*updateFPS);
+				if(progress<=1.0f){
+					frame+=1;
+					foreach(ref spirit;spirits){
+						updateTargetedCharmSpirit(spirit,target,state);
+					}
+				}else{
+					//playSoundAt("mhch",target.center(state),state,charmGain);
+					.charm(target.id,wizard,side,state);
+					frame=0;
+					status=CharmStatus.charmed;
+					foreach(ref spirit;spirits){
+						spirit.endframe=spirit.frame+beamLifetimeAfter;
+					}
+					goto case CharmStatus.charmed;
+				}
+				return true;
+			case CharmStatus.charmed:
+				frame+=1;
+				foreach(ref spirit;spirits){
+					updateTargetedCharmSpirit(spirit,target,state);
+				}
+				return frame<beamLifetimeAfter;
+		}
+	}
+}
+
+bool updateCharmHeart(B)(ref CharmHeart heart,ObjectState!B state){
+	with(heart){
+		if(frame<heart.lifetime){
+			scale=min(1.0f,scale+1.0f/growTime);
+		}else{
+			scale=max(0.0f,scale-1.0f/shrinkTime);
+		}
+		return ++frame<=heart.lifetime||scale!=0.0f;
 	}
 }
 
@@ -24064,6 +24386,27 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.bovineInterventions.length;){
 		if(!updateBovineIntervention(effects.bovineInterventions[i],state)){
 			effects.removeBovineIntervention(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.charmCastings.length;){
+		if(!updateCharmCasting(effects.charmCastings[i],state)){
+			effects.removeCharmCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.charms.length;){
+		if(!updateCharm(effects.charms[i],state)){
+			effects.removeCharm(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.charmHearts.length;){
+		if(!updateCharmHeart(effects.charmHearts[i],state)){
+			effects.removeCharmHeart(i);
 			continue;
 		}
 		i++;
