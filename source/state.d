@@ -20268,6 +20268,8 @@ bool charm(B)(int target,int wizard,int side,ObjectState!B state){
 	Vector3f[2] hitbox;
 	if(!state.movingObjectById!((ref obj,wizard,side,state,hitbox){
 		obj.clearOrderQueue(state);
+		obj.unselect(state);
+		obj.removeFromGroups(state);
 		obj.side=side;
 		auto ord=Order(CommandType.retreat,OrderTarget(TargetType.creature,wizard,obj.position));
 		obj.order(ord,state,side);
@@ -26416,6 +26418,7 @@ final class ObjectState(B){ // (update logic)
 		bool randomCreatureScale=false;
 		bool enableDropSoul=true;
 		bool targetDroppedSouls=false;
+		bool charmNeutralCreatures=false;
 		bool enableParticles=true;
 		bool greenAllySouls=false;
 		bool fasterStandupTimes=true;
@@ -26426,6 +26429,7 @@ final class ObjectState(B){ // (update logic)
 	@property bool randomCreatureScale(){ return settings.randomCreatureScale; }
 	@property bool enableDropSoul(){ return settings.enableDropSoul; }
 	@property bool targetDroppedSouls(){ return settings.targetDroppedSouls; }
+	@property bool charmNeutralCreatures(){ return settings.charmNeutralCreatures; }
 	@property bool enableParticles(){ return settings.enableParticles; }
 	@property bool greenAllySouls(){ return settings.greenAllySouls; }
 	@property bool fasterStandupTimes(){ return settings.fasterStandupTimes; }
@@ -26434,6 +26438,7 @@ final class ObjectState(B){ // (update logic)
 	void enableRandomCreatureScale(){ settings.randomCreatureScale=true; }
 	void disableDropSoul(){ settings.enableDropSoul=false; }
 	void allowTargetingDroppedSouls(){ settings.targetDroppedSouls=true; }
+	void allowCharmingNeutralCreatures(){ settings.charmNeutralCreatures=true; }
 	void disableParticles(){ settings.enableParticles=false; }
 	void enableGreenAllySouls(){ settings.greenAllySouls=true; }
 	void disableFasterStandupTimes(){ settings.fasterStandupTimes=false; }
@@ -26566,6 +26571,12 @@ final class ObjectState(B){ // (update logic)
 				if(spell.tag==SpellTag.guardian) if(!wizard.closestBuilding) return SpellStatus.mustBeNearBuilding;
 				if(spell.tag==SpellTag.desecrate) if(!wizard.closestEnemyAltar) return SpellStatus.mustBeNearEnemyAltar;
 				if(spell.tag==SpellTag.convert) if(!wizard.closestShrine) return SpellStatus.mustBeConnectedToConversion;
+				static if(!selectOnly){
+					if(spell.tag==SpellTag.charm&&!charmNeutralCreatures){
+						if(!target[0].id||!isValidTarget(target[0].id)||!this.movingObjectById!((ref obj,state)=>!!state.getWizardForSide(obj.side),()=>false)(target[0].id,this))
+							return SpellStatus.invalidTarget;
+					}
+				}
 			}
 			if(entry.cooldown>0.0f) return SpellStatus.notReady;
 			return status;
@@ -28154,6 +28165,7 @@ struct GameInit(B){
 	bool randomCreatureScale=false;
 	bool enableDropSoul=true;
 	bool targetDroppedSouls=false;
+	bool charmNeutralCreatures=false;
 	bool enableParticles=true;
 	bool greenAllySouls=false;
 	bool fasterStandupTimes=true;
@@ -28204,6 +28216,7 @@ void initGame(B)(ObjectState!B state,ref Array!SlotInfo slots,GameInit!B gameIni
 	if(gameInit.randomCreatureScale) state.enableRandomCreatureScale();
 	if(!gameInit.enableDropSoul) state.disableDropSoul();
 	if(gameInit.targetDroppedSouls) state.allowTargetingDroppedSouls();
+	if(gameInit.charmNeutralCreatures) state.allowCharmingNeutralCreatures();
 	if(!gameInit.enableParticles) state.disableParticles();
 	if(gameInit.greenAllySouls) state.enableGreenAllySouls();
 	if(!gameInit.fasterStandupTimes) state.disableFasterStandupTimes();

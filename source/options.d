@@ -86,6 +86,7 @@ struct Options{
 	bool randomCreatureScale=false;
 	bool enableDropSoul=true;
 	bool targetDroppedSouls=false;
+	bool charmNeutralCreatures=false;
 	bool enableParticles=true;
 	bool greenAllySouls=false;
 	bool fasterStandupTimes=true;

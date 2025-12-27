@@ -123,6 +123,7 @@ GameInit!B gameInit(B,R)(Sides!B sides_,R playerSettings,ref Options options){
 	gameInit.randomCreatureScale=options.randomCreatureScale;
 	gameInit.enableDropSoul=options.enableDropSoul;
 	gameInit.targetDroppedSouls=options.targetDroppedSouls;
+	gameInit.charmNeutralCreatures=options.charmNeutralCreatures;
 	gameInit.enableParticles=options.enableParticles;
 	gameInit.greenAllySouls=options.greenAllySouls;
 	gameInit.fasterStandupTimes=options.fasterStandupTimes;
