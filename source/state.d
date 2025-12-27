@@ -10394,8 +10394,20 @@ Charm!B makeCharm(B)(int wizard,OrderTarget target,SacSpell!B spell,ObjectState!
 		spirit=makeCharmSpirit(charm,state);
 	return charm;
 }
+
+bool canCharm(B)(ref MovingObject!B obj,int side,ObjectState!B state){
+	if(obj.side==side) return false;
+	if(!obj.creatureState.mode.canCharm) return false;
+	if(!state.charmNeutralCreatures){
+		if(!state.getWizardForSide(obj.side))
+			return false;
+	}
+	return true;
+}
 bool castCharm(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
-	if(!state.isValidTarget(target)) return false;
+	auto side=state.movingObjectById!(.side,()=>-1)(manaDrain.wizard,state);
+	if(side==-1) return false;
+	if(!state.isValidTarget(target)||!state.movingObjectById!(canCharm,()=>false)(target,side,state)) return false;
 	state.addEffect(CharmCasting!B(manaDrain,makeCharm(manaDrain.wizard,centerTarget(target,state),spell,state)));
 	return true;
 }
@@ -20262,6 +20274,8 @@ bool updateFlyingCharmSpirit(B)(ref CharmSpirit!B spirit,Vector3f position,Vecto
 }
 
 bool charm(B)(int target,int wizard,int side,ObjectState!B state){
+	if(!state.movingObjectById!(canCharm,()=>false)(target,side,state))
+		return false;
 	int wizardSide=state.movingObjectById!((ref obj)=>obj.side,()=>-1)(wizard);
 	if(side==-1) side=wizardSide;
 	if(side==-1||side!=wizardSide) return false;
@@ -20335,7 +20349,7 @@ bool updateCharm(B)(ref Charm!B charm,ObjectState!B state){
 				}
 				return true;
 			case CharmStatus.charming:
-				if(!state.movingObjectById!((ref obj)=>obj.creatureState.mode.canCharm,()=>false)(target.id)){
+				if(!state.movingObjectById!(canCharm,()=>false)(target.id,side,state)){
 					frame=0;
 					status=CharmStatus.charmed;
 					goto case CharmStatus.charmed;
