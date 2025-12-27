@@ -20369,6 +20369,7 @@ bool updateCharm(B)(ref Charm!B charm,ObjectState!B state){
 
 bool updateCharmHeart(B)(ref CharmHeart heart,ObjectState!B state){
 	with(heart){
+		if(!state.isValidTarget(target)) return false;
 		if(frame<heart.lifetime){
 			scale=min(1.0f,scale+1.0f/growTime);
 		}else{
