@@ -252,6 +252,13 @@ bool canIntestinallyVaporize(CreatureMode mode){
 		case ghostToIdle,dying,dead,deadToGhost,idleGhost,movingGhost,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
 	}
 }
+bool canBovinelyIntervene(CreatureMode mode){
+	final switch(mode) with(CreatureMode){
+		case idle,moving,dying,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
+			shooting,usingAbility,pulling,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm,firewalk: return true;
+		case ghostToIdle,dead,deadToGhost,idleGhost,movingGhost,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
+	}
+}
 
 enum CreatureMovement{
 	onGround,
@@ -8226,7 +8233,7 @@ float dealDamageIgnoreGuardians(B)(ref Building!B building,float damage,int atta
 		recordDestruction(building,attackingSide,state);
 		building.destroy(state);
 		destroyed=true;
-	} 
+	}
 	return actualDamage;
 }
 
@@ -19983,6 +19990,7 @@ void animateEmergingCow(B)(ref BovineIntervention!B bovineIntervention,ObjectSta
 void cowExplosion(B)(ref BovineIntervention!B bovineIntervention,ObjectState!B state){
 	auto position=bovineIntervention.position;
 	position.z=state.getHeight(position);
+	gibAnimation(position,state);
 	enum numDebris=16;
 	foreach(i;0..numDebris){
 		auto angle=state.uniform(-pi!float,pi!float);
@@ -20033,8 +20041,11 @@ bool updateBovineIntervention(B)(ref BovineIntervention!B bovineIntervention,Obj
 			position.y+=diff.y;
 		}else if(timeRemaining==0){
 			position=target.position;
-			playSoundAt("hwoc",target.center(state),state,3.0f);
-			state.movingObjectById!(gib,()=>false)(target.id,state);
+			state.movingObjectById!((ref obj,state){
+				playSoundAt("hwoc",target.center(state),state,3.0f);
+				if(obj.creatureState.mode.canBovinelyIntervene)
+					gib(obj,state);
+			},(){})(target.id,state);
 		}else if(position.z<state.getHeight(position)){
 			cowExplosion(bovineIntervention,state);
 			return false;
