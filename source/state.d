@@ -10397,6 +10397,7 @@ Charm!B makeCharm(B)(int wizard,OrderTarget target,SacSpell!B spell,ObjectState!
 
 bool canCharm(B)(ref MovingObject!B obj,int side,ObjectState!B state){
 	if(obj.side==side) return false;
+	if(obj.isWizard) return false;
 	if(!obj.creatureState.mode.canCharm) return false;
 	if(!state.charmNeutralCreatures){
 		if(!state.getWizardForSide(obj.side))
