@@ -19713,13 +19713,13 @@ enum bombardmentGain=1.0f;
 void bombardmentDropExplosion(B)(ref BombardmentDrop!B bombardmentDrop,int target,ObjectState!B state){
 	playSpellSoundTypeAt(SoundType.bombardmentHit,bombardmentDrop.position,state,3.0f);
 	if(state.isValidTarget(target)){
-		dealSpellDamage(target,bombardmentDrop.spell,bombardmentDrop.wizard,bombardmentDrop.side,bombardmentDrop.velocity,DamageMod.ignite|DamageMod.splash,state);
+		dealSpellDamage(target,bombardmentDrop.spell,bombardmentDrop.wizard,bombardmentDrop.side,bombardmentDrop.velocity,DamageMod.splash,state);
 	}else target=0;
 	static bool callback(int target,int wizard,int side,ObjectState!B state){
 		state.movingObjectById!(stunWithCooldown,()=>false)(target,stunCooldownFrames,state);
 		return true;
 	}
-	dealSplashSpellDamageAt!callback(target,bombardmentDrop.spell,bombardmentDrop.spell.damageRange,bombardmentDrop.wizard,bombardmentDrop.side,bombardmentDrop.position,DamageMod.ignite,state,bombardmentDrop.wizard,bombardmentDrop.side,state);
+	dealSplashSpellDamageAt!callback(target,bombardmentDrop.spell,bombardmentDrop.spell.damageRange,bombardmentDrop.wizard,bombardmentDrop.side,bombardmentDrop.position,DamageMod.none,state,bombardmentDrop.wizard,bombardmentDrop.side,state);
 	enum numParticles3=100;
 	auto sacParticle3=SacParticle!B.get(ParticleType.rock);
 	foreach(i;0..numParticles3){
