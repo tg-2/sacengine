@@ -20161,7 +20161,7 @@ bool updateBovineIntervention(B)(ref BovineIntervention!B bovineIntervention,Obj
 		target.position=target.center(state);
 		auto timeRemaining=travelTime-frame;
 		auto relProgress=1.0f-float(timeRemaining)/travelTime;
-		position.z=startZ*relProgress+target.position.z*(1.0f-relProgress)+4.0f*maxHeight*relProgress*(1.0f-relProgress);
+		position.z=target.position.z*relProgress+startZ*(1.0f-relProgress)+4.0f*maxHeight*relProgress*(1.0f-relProgress);
 		if(timeRemaining>0){
 			auto diff=(target.position.xy-position.xy)/timeRemaining;
 			if(timeRemaining>=2) diff*=2.0f;
