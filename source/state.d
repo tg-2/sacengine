@@ -10387,6 +10387,7 @@ CharmSpirit!B makeCharmSpirit(B)(ref Charm!B charm,ObjectState!B state){
 }
 
 Charm!B makeCharm(B)(int wizard,OrderTarget target,SacSpell!B spell,ObjectState!B state){
+	//playSoundAt("mhcc",target.center(state),state,charmGain);
 	auto positionSide=state.movingObjectById!((obj,state)=>tuple(obj.center,obj.side),function Tuple!(Vector3f,int){ assert(0); })(wizard,state);
 	auto position=positionSide[0],side=positionSide[1];
 	auto charm=Charm!B(wizard,side,position,target,spell);
@@ -10416,6 +10417,7 @@ bool castCharm(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!
 bool charm(B)(Charm!B charm,ObjectState!B state){
 	if(!charm.target.id||!state.isValidTarget(charm.target.id)) return false;
 	charm.frame=0;
+	//playSoundAt("mhcs",charm.position,state,charmGain);
 	charm.status=CharmStatus.flying;
 	state.addEffect(move(charm));
 	return true;
@@ -20300,6 +20302,7 @@ bool charm(B)(int target,int wizard,int side,ObjectState!B state){
 	state.newCreatureAddToSelection(side,target);
 	auto creatureScale=max(0.9f,0.5f*(hitbox[1].xy-hitbox[0].xy).length);
 	auto center=boxCenter(hitbox);
+	//playSoundAt("mhch",center,state,charmGain);
 	enum numParticles=128;
 	auto sacParticle=SacParticle!B.get(ParticleType.bouncingHeart);
 	foreach(i;0..numParticles){
@@ -20367,7 +20370,6 @@ bool updateCharm(B)(ref Charm!B charm,ObjectState!B state){
 						updateTargetedCharmSpirit(spirit,target,state);
 					}
 				}else{
-					//playSoundAt("mhch",target.center(state),state,charmGain);
 					.charm(target.id,wizard,side,state);
 					frame=0;
 					status=CharmStatus.charmed;
