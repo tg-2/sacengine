@@ -11197,7 +11197,7 @@ Vector3f predictShotTargetPosition(B)(ref MovingObject!B object,SacSpell!B range
 	switch(target.type){
 		case TargetType.terrain: return target.position;
 		case TargetType.creature,TargetType.building:
-			return rangedAttack.needsPrediction?
+			return rangedAttack&&rangedAttack.needsPrediction?
 				object.creatureAI.predictor.predictCenter(object.firstShotPosition(isAbility),rangedAttack.speed,target.id,object.side,state) : // TODO: use closest hitbox?
 				state.objectById!center(target.id);
 		case TargetType.soul: return state.soulById!((ref soul)=>soul.center,()=>Vector3f.init)(target.id); // TODO: predict?
@@ -11462,7 +11462,7 @@ bool shootOnTick(bool ability=false,B)(ref MovingObject!B object,OrderTarget tar
 
 bool shoot(B)(ref MovingObject!B object,SacSpell!B rangedAttack,int targetId,ObjectState!B state){
 	if(!isValidAttackTarget(targetId,state)&&(object.creatureState.mode!=CreatureMode.shooting||!state.isValidTarget(targetId))) return false;
-	if(object.rangedAttack !is rangedAttack) return false; // TODO: multiple ranged attacks?
+	if(object.rangedAttack !is rangedAttack||!rangedAttack) return false; // TODO: multiple ranged attacks?
 	auto target=OrderTarget(state.targetTypeFromId(targetId),targetId,Vector3f.init);
 	auto predicted=object.predictShotTargetPosition(rangedAttack,false,target,state);
 	if(isNaN(predicted.x)) return false;
