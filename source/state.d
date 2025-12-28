@@ -20222,7 +20222,7 @@ bool updateCharmSpirit(B)(ref CharmSpirit!B spirit,Vector3f newPosition,ObjectSt
 	return true;
 }
 
-bool updateTargetedCharmSpirit(B)(ref CharmSpirit!B spirit,OrderTarget target,ObjectState!B state){
+bool updateTargetedCharmSpirit(B)(ref CharmSpirit!B spirit,OrderTarget target,ObjectState!B state,bool swirlLess=false){
 	with(spirit){
 		if(target.id&&state.isValidTarget(target.id)){
 			state.objectById!(
@@ -20235,7 +20235,7 @@ bool updateTargetedCharmSpirit(B)(ref CharmSpirit!B spirit,OrderTarget target,Ob
 			return false;
 		auto position=locations[0];
 		if(endframe==-1||frame+numSpiritFrames<endframe){
-			auto radius=additionalRadius+1.1f*targetScale;
+			auto radius=swirlLess?0.95f*targetScale:additionalRadius+1.1f*targetScale;
 			if(isNaN(lastPosition[0].x)){
 				nextPosition=[position-targetPosition,state.uniformDirection()*speedRadiusFactor*radius];
 				progress=1.0f;
@@ -20319,7 +20319,7 @@ bool updateCharm(B)(ref Charm!B charm,ObjectState!B state){
 				frame+=1;
 				auto orderTarget=centerTarget(wizard,state);
 				foreach(ref spirit;spirits){
-					updateTargetedCharmSpirit(spirit,orderTarget,state);
+					updateTargetedCharmSpirit(spirit,orderTarget,state,true);
 				}
 				return true;
 			case CharmStatus.flying:
