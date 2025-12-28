@@ -20172,8 +20172,13 @@ bool updateBovineIntervention(B)(ref BovineIntervention!B bovineIntervention,Obj
 				if(obj.creatureState.mode.canBovinelyIntervene)
 					gib(obj,state);
 			},(){})(target.id,state);
-		}else if(position.z<state.getHeight(position)){
-			cowExplosion(bovineIntervention,state);
+		}else if(state.isOnGround(position)){
+			if(position.z<state.getGroundHeight(position)){
+				cowExplosion(bovineIntervention,state);
+				return false;
+			}
+		}else if(position.z<state.getHeight(position)-gibDepth){
+			gibAnimation(position,state);
 			return false;
 		}
 		return true;
