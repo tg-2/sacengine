@@ -101,6 +101,14 @@ bool isVisibleToOtherSides(CreatureMode mode){
 		case dead,deadToGhost,idleGhost,movingGhost,ghostToIdle,dissolving,preSpawning,pretendingToDie,playingDead,rockForm,firewalk: return false;
 	}
 }
+bool isReactingToObstacles(CreatureMode mode){
+	final switch(mode) with(CreatureMode){
+		case idle,moving,dying,spawning,reviving,fastReviving,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
+			shooting,usingAbility,pulling,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm: return true;
+		case dead,dissolving,convertReviving,thrashing,preSpawning,firewalk: return false;
+		case deadToGhost,idleGhost,movingGhost,ghostToIdle: return true; // ghost has interacting hitbox in original
+	}
+}
 bool isObstacle(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,dying,spawning,reviving,fastReviving,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
@@ -7665,19 +7673,61 @@ void createSoul(B)(ref MovingObject!B object, ObjectState!B state){
 	object.soulId=state.addObject(Soul!B(object.id,object.side,object.sacObject.numSouls,object.soulPosition,SoulState.normal));
 }
 
+bool isValidSpawnPosition(B)(SacObject!B sacObject,Vector3f position,Quaternionf rotation,float scale,ObjectState!B state){
+	if(!state.isOnGround(position)) return false;
+	auto proximity=state.proximity;
+	bool collides=false;
+	static void handleCollision(ProximityEntry entry,ObjectState!B state,bool* collides){
+		*collides=true;
+	}
+	Vector3f[2] hbox=[position-Vector3f(1.0f,1.0f,10.0f),position+Vector3f(1.0f,1.0f,10.0f)];
+	proximity.collide!handleCollision(hbox,state,&collides);
+	if(collides) return false;
+	static void handleCollision2(ProximityEntry entry,ObjectState!B state,bool* collides){
+		if(state.isValidTarget(entry.id,TargetType.building)) *collides=true;
+	}
+	proximity.collide!handleCollision2(sacObject.hitbox(rotation,scale,AnimationState.disoriented,0),state,&collides);
+	if(collides) return false;
+	return true;
+}
+
+Vector3f spawnPosition(B)(SacObject!B sacObject,Vector3f wizardPosition,float facing,float scale,ObjectState!B state){
+	auto rotation=facingQuaternion(facing);
+	auto newPosition=wizardPosition+rotate(rotation,Vector3f(0.0f,6.0f,0.0f));
+	newPosition.z=state.getHeight(newPosition);
+	if(isValidSpawnPosition(sacObject,newPosition,rotation,scale,state)) return newPosition;
+	static immutable offsets=[
+		Vector3f(-3.0f,6.0f,0.0f),Vector3f(3.0f,6.0f,0.0f),
+		Vector3f(-2.0f,3.0f,0.0f),Vector3f(2.0f,3.0f,0.0f),Vector3f(-5.0f,3.0f,0.0f),Vector3f(5.0f,3.0f,0.0f),
+		Vector3f(-2.0f,9.0f,0.0f),Vector3f(2.0f,9.0f,0.0f),Vector3f(5.0f,9.0f,0.0f),Vector3f(-5.0f,9.0f,0.0f),
+		Vector3f(-8.0f,12.0f,0.0f),Vector3f(-5.0f,12.0f,0.0f),Vector3f(-2.0f,12.0f,0.0f),Vector3f(2.0f,12.0f,0.0f),Vector3f(5.0f,12.0f,0.0f),Vector3f(8.0f,12.0f,0.0f),
+		Vector3f(-11.0f,15.0f,0.0f),Vector3f(-8.0f,15.0f,0.0f),Vector3f(-5.0f,15.0f,0.0f),Vector3f(-2.0f,15.0f,0.0f),Vector3f(2.0f,15.0f,0.0f),Vector3f(5.0f,15.0f,0.0f),Vector3f(8.0f,15.0f,0.0f),Vector3f(11.0f,15.0f,0.0f),
+	];
+	foreach(offset;offsets){
+		auto position=wizardPosition+rotate(rotation,offset);
+		position.z=state.getHeight(position);
+		if(isValidSpawnPosition(sacObject,position,rotation,scale,state)) return position;
+	}
+	foreach(i;0..24){
+		auto position=wizardPosition+15.0f*state.uniformDirection();
+		position.z=state.getHeight(position);
+		if(isValidSpawnPosition(sacObject,position,rotation,scale,state)) return position;
+	}
+	if(!state.isOnGround(wizardPosition)) return newPosition;
+	return wizardPosition;
+}
+
 int spawn(T=Creature,B)(int wizard,char[4] tag,int flags,ObjectState!B state,bool pre=true){
 	auto positionFacingSide=state.movingObjectById!((ref caster)=>tuple(caster.position,caster.creatureState.facing,caster.side),()=>tuple(Vector3f.init,float.init,-1))(wizard);
-	auto position=positionFacingSide[0],facing=positionFacingSide[1],side=positionFacingSide[2];
+	auto wizardPosition=positionFacingSide[0],facing=positionFacingSide[1],side=positionFacingSide[2];
 	if(side==-1) return 0;
 	auto curObj=SacObject!B.getSAXS!T(tag);
 	auto mode=pre?CreatureMode.preSpawning:CreatureMode.spawning;
-	auto newPosition=position+rotate(facingQuaternion(facing),Vector3f(0.0f,6.0f,0.0f));
-	if(state.isOnGround(newPosition)||!state.isOnGround(position)) position=newPosition; // TODO: find closest ground to newPosition instead
-	auto movement=state.isOnGround(position)?CreatureMovement.onGround:curObj.canFly?CreatureMovement.flying:CreatureMovement.tumbling;
-	position.z=state.getHeight(position);
-	auto creatureState=CreatureState(mode, movement, facing);
 	auto rotation=facingQuaternion(facing);
 	auto scale=state.randomCreatureScale?state.uniform(0.5f,1.5f):1.0f;
+	auto position=spawnPosition(curObj,wizardPosition,facing,scale,state);
+	auto movement=state.isOnGround(position)?CreatureMovement.onGround:curObj.canFly?CreatureMovement.flying:CreatureMovement.tumbling;
+	auto creatureState=CreatureState(mode, movement, facing);
 	auto obj=MovingObject!B(curObj,position,rotation,scale,AnimationState.disoriented,0,creatureState,curObj.creatureStats(flags),CreatureStatistics(),NotificationState(),side);
 	obj.setCreatureState(state);
 	obj.updateCreaturePosition(state);
@@ -13159,7 +13209,7 @@ Vector3f positionAfterCollision(B)(ref MovingObject!B object, Vector3f newPositi
 		static if(!fixup) posChanged=true;
 		else needsFixup=true;
 	}
-	if(!object.creatureState.mode.among(CreatureMode.dead,CreatureMode.dissolving,CreatureMode.convertReviving,CreatureMode.thrashing,CreatureMode.firewalk)){ // dead/firewalking creatures do not participate in collision handling
+	if(object.creatureState.mode.isReactingToObstacles){ // spawning/dead/firewalking creatures do not participate in collision handling
 		enum blockSlack=0.2f;
 		Vector3f[2] blockHitbox=[hitbox[0]+0.5f*blockSlack,hitbox[1]-0.5f*blockSlack];
 		if(blockHitbox[1].x<blockHitbox[0].x) blockHitbox[0].x=blockHitbox[1].x=0.5f*(blockHitbox[0].x+0.5f*blockHitbox[1].x);
