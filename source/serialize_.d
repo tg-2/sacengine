@@ -664,6 +664,12 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Cha
 void serialize(alias sink)(ref CharmHeart charm){ serializeStruct!sink(charm); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==CharmHeart)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref CloudkillCasting!B cloudkillCasting){ serializeStruct!sink(cloudkillCasting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==CloudkillCasting!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref Cloudkill!B cloudkill){ serializeStruct!sink(cloudkill); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Cloudkill!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref BrainiacProjectile!B brainiacProjectile){ serializeStruct!sink(brainiacProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BrainiacProjectile!B)){ deserializeStruct(result,state,data); }
 

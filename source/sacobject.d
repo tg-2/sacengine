@@ -2718,6 +2718,31 @@ struct SacCloud(B){
 	}
 }
 
+struct SacCloud2(B){
+	B.Material blueMaterial;
+	static B.Texture loadBlueTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Stra.FLDR/txtr.FLDR/clou.TXTR"));
+	}
+	B.Mesh[][] meshes;
+	static B.Mesh[][] createMeshes(){
+		return makeNoisySphereMeshes!B(24,25,nU,nV,1.0f/1.48f,0.48f/1.48f,numDistortions,2.0f,2.0f);
+	}
+	enum animationDelay=4;
+	enum nU=4,nV=4;
+	enum numTextureFrames=nU*nV*updateAnimFactor*animationDelay;
+	enum numDistortions=20;
+	enum numFrames=8*updateFPS*numDistortions;
+	Tuple!(B.Mesh,B.Mesh,float) getFrame(int frame,int texture){
+		auto textureFrame=(texture/(animationDelay*updateAnimFactor))%(nU*nV);
+		auto indices=iota(0,meshes.length);
+		auto numIndices=indices.length;
+		auto i=frame*numIndices/numFrames, j=i+1;
+		float progress=float(frame*numIndices%numFrames)/numFrames;
+		auto all=cycle(indices);
+		return tuple(meshes[all[i]][textureFrame],meshes[all[j]][textureFrame],progress);
+	}
+}
+
 struct SacRainFrog(B){
 	B.Texture texture;
 	static B.Texture loadTexture(){

@@ -3952,6 +3952,28 @@ struct CharmHeart{
 	enum lifetime=10*updateFPS;
 }
 
+struct CloudkillCasting(B){
+	ManaDrain!B manaDrain;
+	Cloudkill!B cloudkill;
+	bool interrupted=false;
+}
+struct Cloudkill(B){
+	int wizard;
+	int side;
+	Vector3f position;
+	OrderTarget target;
+	SacSpell!B spell;
+	float cloudScale=0.0f;
+	int cloudFrame=0;
+	int frame=0;
+	enum cloudRadius=5.0f;
+	enum cloudHeight=25.0f;
+	enum cloudGrowSpeed=1.0f/4.3f;
+	enum cloudShrinkSpeed=1.0f;
+	enum lightningRate=3;
+	enum jumpRange=65.0f, shortJumpRange=25.0f; // TODO: correct?
+}
+
 
 struct BrainiacProjectile(B){
 	int attacker;
@@ -5727,6 +5749,22 @@ struct Effects(B){
 	void removeCharmHeart(int i){
 		if(i+1<charmHearts.length) charmHearts[i]=move(charmHearts[$-1]);
 		charmHearts.length=charmHearts.length-1;
+	}
+	Array!(CloudkillCasting!B) cloudkillCastings;
+	void addEffect(CloudkillCasting!B CloudkillCasting){
+		cloudkillCastings~=move(CloudkillCasting);
+	}
+	void removeCloudkillCasting(int i){
+		if(i+1<cloudkillCastings.length) cloudkillCastings[i]=move(cloudkillCastings[$-1]);
+		cloudkillCastings.length=cloudkillCastings.length-1;
+	}
+	Array!(Cloudkill!B) cloudkills;
+	void addEffect(Cloudkill!B Cloudkill){
+		cloudkills~=move(Cloudkill);
+	}
+	void removeCloudkill(int i){
+		if(i+1<cloudkills.length) cloudkills[i]=move(cloudkills[$-1]);
+		cloudkills.length=cloudkills.length-1;
 	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
@@ -9174,6 +9212,9 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 					return stun(castBovineIntervention(target.id,manaDrain,spell,state));
 				case SpellTag.charm:
 					return stun(castCharm(target.id,manaDrain,spell,state));
+				case SpellTag.cloudkill:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					return stun(castCloudkill(side,target,manaDrain,spell,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -10420,6 +10461,16 @@ bool charm(B)(Charm!B charm,ObjectState!B state){
 	//playSoundAt("mhcs",charm.position,state,charmGain);
 	charm.status=CharmStatus.flying;
 	state.addEffect(move(charm));
+	return true;
+}
+
+bool castCloudkill(B)(int side,OrderTarget target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	auto position=target.center(state)+Vector3f(0.0f,0.0f,Cloudkill!B.cloudHeight);
+	state.addEffect(CloudkillCasting!B(manaDrain,Cloudkill!B(manaDrain.wizard,side,position,target,spell)));
+	return true;
+}
+bool cloudkill(B)(Cloudkill!B cloudkill,ObjectState!B state){
+	state.addEffect(cloudkill);
 	return true;
 }
 
@@ -20401,6 +20452,81 @@ bool updateCharmHeart(B)(ref CharmHeart heart,ObjectState!B state){
 	}
 }
 
+bool updateCloudkillCasting(B)(ref CloudkillCasting!B cloudkillCast,ObjectState!B state){
+	with(cloudkillCast){
+		++cloudkill.cloudFrame;
+		if(!interrupted) final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				if(!state.movingObjectById!((obj,state){
+					auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),obj.scale,AnimationState.stance1,0);
+					if(!state.uniform(2)){
+						Vector3f[2] nhbox=scaleBox(hbox,1.5f);
+						auto start=obj.position+rotate(obj.rotation,state.uniform(nhbox));
+						auto end=start;
+						end.z+=state.uniform(1.5f,3.25f);
+						chainLightningCastingEffect(start,end,state);
+					}
+					if(!state.uniform(30)){
+						playSpellSoundTypeAt(SoundType.lightning,cloudkill.position,state,4.0f);
+					}
+					obj.animateChainLightningCasting(state);
+					return true;
+				},()=>false)(manaDrain.wizard,state))
+					interrupted=true;
+				break;
+			case CastingStatus.interrupted:
+				interrupted=true;
+				break;
+			case CastingStatus.finished:
+				.cloudkill(cloudkill,state);
+				return false;
+		}
+		if(interrupted){
+			cloudkill.cloudScale=max(0.0f,cloudkill.cloudScale-cloudkill.cloudShrinkSpeed/updateFPS);
+			return cloudkill.cloudScale!=0.0f;
+		}else{
+			cloudkill.cloudScale=min(1.0f,cloudkill.cloudScale+cloudkill.cloudGrowSpeed/updateFPS);
+			return true;
+		}
+	}
+}
+bool updateCloudkill(B)(ref Cloudkill!B cloudkill,ObjectState!B state){
+	with(cloudkill){
+		++frame;
+		++cloudFrame;
+		if(frame<=spell.duration*updateFPS){
+			cloudkill.cloudScale=min(1.0f,cloudkill.cloudScale+cloudkill.cloudGrowSpeed/updateFPS);
+			target.position=target.center(state);
+			auto direction=target.position+Vector3f(0.0f,0.0f,cloudHeight)-position;
+			auto length=direction.length;
+			auto velocity=(length!=0.0f?min(length,spell.speed/updateFPS)/length:0.0f)*direction;
+			position+=velocity;
+			auto gposition=position;
+			gposition.z=state.getHeight(gposition);
+			foreach(_;0..lightningRate/updateFPS+(state.uniform!"[)"(0,updateFPS)<lightningRate%updateFPS)){
+				auto offset=state.uniformDisk!(float,2)(Vector2f(0.0f,0.0f),spell.effectRange);
+				auto fposition=gposition+Vector3f(offset.x,offset.y,0.0f);
+				fposition.z=state.getHeight(fposition);
+				auto start=OrderTarget(TargetType.terrain,0,position);
+				auto end=OrderTarget(TargetType.terrain,0,fposition);
+				// TODO: the following might be unnecessarily inefficient
+				if(auto target=state.proximity.anyInRangeAndClosestTo(gposition,spell.effectRange,fposition,0,state)){
+					auto jumped=target?centerTarget(target,state):OrderTarget.init;
+					auto jdistsqr=(fposition.xy-jumped.position.xy).lengthsqr;
+					if(jdistsqr<shortJumpRange^^2||jdistsqr<jumpRange^^2&&state.uniform(2)!=0){
+						end=jumped;
+					}
+				}
+				lightning(wizard,side,start,end,spell,state);
+			}
+			return true;
+		}else{
+			cloudScale=max(0.0f,cloudScale-cloudShrinkSpeed/updateFPS);
+			return cloudScale!=0.0f;
+		}
+	}
+}
+
 
 enum brainiacProjectileHitGain=4.0f;
 enum brainiacProjectileSize=0.45f; // TODO: ok?
@@ -24436,6 +24562,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 		}
 		i++;
 	}
+	for(int i=0;i<effects.cloudkillCastings.length;){
+		if(!updateCloudkillCasting(effects.cloudkillCastings[i],state)){
+			effects.removeCloudkillCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.cloudkills.length;){
+		if(!updateCloudkill(effects.cloudkills[i],state)){
+			effects.removeCloudkill(i);
+			continue;
+		}
+		i++;
+	}
 	for(int i=0;i<effects.brainiacProjectiles.length;){
 		if(!updateBrainiacProjectile(effects.brainiacProjectiles[i],state)){
 			effects.removeBrainiacProjectile(i);
@@ -25513,7 +25653,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 			int attackTargetId=0;
 			if(objects.creatureAIs[j].order.command==CommandType.attack)
 				attackTargetId=objects.creatureAIs[j].order.target.id;
-			proximity.insertCenter(CenterProximityEntry(false,isVisibleToAI,objects.ids[j],objects.sides[j],boxCenter(hitbox),hitbox[0].z,attackTargetId));
+			proximity.insertCenter(CenterProximityEntry(false,isVisibleToAI,objects.ids[j],objects.sides[j],boxCenter(hitbox),hitbox[0].z,attackTargetId,objects.creatureStatss[j].health==0.0f));
 		}
 		if(objects.sacObject.isManahoar){
 			foreach(j;0..objects.length){
@@ -25825,7 +25965,7 @@ struct CenterProximityEntry{
 	Vector3f position;
 	float height;
 	int attackTargetId=0;
-	bool zeroHealth; // this information only computed for buildings at the moment
+	bool zeroHealth;
 }
 
 struct CenterProximityEntries{
@@ -26032,10 +26172,10 @@ final class Proximity(B){
 		return centers.inRangeAndClosestTo!(isEnemy,advancePriority)(version_,position,range,targetPosition,side,type,state,maxHeight,id).id;
 	}
 	int anyInRangeAndClosestTo(Vector3f position,float range,Vector3f targetPosition,int ignoredId,ObjectState!B state){
-		return centers.inRangeAndClosestTo!((ref entry,int ignoredId,state)=>entry.id!=ignoredId&&state.isValidTarget(entry.id))(version_,position,range,targetPosition,ignoredId,state).id;
+		return centers.inRangeAndClosestTo!((ref entry,int ignoredId,state)=>!entry.zeroHealth&&entry.id!=ignoredId&&state.isValidTarget(entry.id))(version_,position,range,targetPosition,ignoredId,state).id;
 	}
 	int creatureInRangeAndClosestTo(Vector3f position,float range,Vector3f targetPosition,int ignoredId,ObjectState!B state){
-		return centers.inRangeAndClosestTo!((ref entry,int ignoredId,state)=>!entry.isStatic&&entry.id!=ignoredId&&state.isValidTarget(entry.id))(version_,position,range,targetPosition,ignoredId,state).id;
+		return centers.inRangeAndClosestTo!((ref entry,int ignoredId,state)=>!entry.zeroHealth&&!entry.isStatic&&entry.id!=ignoredId&&state.isValidTarget(entry.id))(version_,position,range,targetPosition,ignoredId,state).id;
 	}
 }
 auto collide(alias f,B,T...)(Proximity!B proximity,Vector3f[2] hitbox,T args){

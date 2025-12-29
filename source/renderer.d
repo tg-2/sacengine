@@ -450,6 +450,18 @@ struct Renderer(B){
 		auto meshes=typeof(return).createMeshes;
 		return SacCloud!B(mat,meshes);
 	}
+	SacCloud2!B cloud2;
+	SacCloud2!B createCloud2(){
+		auto blueMat=B.makeMaterial(B.shadelessMaterialBackend);
+		blueMat.depthWrite=false;
+		blueMat.blending=B.Blending.Transparent;
+		auto blueTex=typeof(return).loadBlueTexture();
+		blueMat.diffuse=blueTex;
+		blueMat.energy=20.0f;
+		blueMat.transparency=0.15f;
+		auto meshes=typeof(return).createMeshes;
+		return SacCloud2!B(blueMat,meshes);
+	}
 	SacRainFrog!B rainFrog;
 	SacRainFrog!B createRainFrog(){
 		auto texture=typeof(return).loadTexture();
@@ -982,6 +994,7 @@ struct Renderer(B){
 		soulWind=createSoulWind();
 		explosionEffect=createExplosionEffect();
 		cloud=createCloud();
+		cloud2=createCloud2();
 		rainFrog=createRainFrog();
 		demonicRiftSpirit=createDemonicRiftSpirit();
 		demonicRiftBorder=createDemonicRiftBorder();
@@ -1633,6 +1646,35 @@ struct Renderer(B){
 							mesh.render(rc);
 						}
 					}
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&& // TODO: cloud shadows?
+				                                           (objects.cloudkillCastings.length||
+				                                            objects.cloudkills.length)
+				){
+					B.disableDepthMask();
+					B.enableCulling();
+					scope(success){
+						B.enableCulling();
+						B.enableDepthMask();
+					}
+					auto material=self.cloud2.blueMaterial;
+					B.shadelessMorphMaterialBackend.bind(material,rc);
+					B.enableTransparency();
+					scope(success) B.shadelessMorphMaterialBackend.unbind(material,rc);
+					void renderCloud2(Vector3f position,float radius,float scale,int frame){
+						B.shadelessMorphMaterialBackend.setAlpha(0.15f*scale);
+						foreach(v;0..20){
+							auto mesh1Mesh2Progress=self.cloud2.getFrame(frame+4*updateFPS*v,frame);
+							auto mesh1=mesh1Mesh2Progress[0], mesh2=mesh1Mesh2Progress[1], progress=mesh1Mesh2Progress[2];
+							B.shadelessMorphMaterialBackend.setTransformationScaled(position,Quaternionf.identity(),radius*(0.5f+0.5f*scale)*(1.0f-0.3f/20*v)*Vector3f(1.3f,1.3f,0.5f),rc);
+							B.shadelessMorphMaterialBackend.setMorphProgress(progress);
+							mesh1.morph(mesh2,rc);
+						}
+					}
+					foreach(ref cloudkillCasting;objects.cloudkillCastings)
+						with(cloudkillCasting.cloudkill) renderCloud2(position,Cloudkill!B.cloudRadius,cloudScale,cloudFrame);
+					foreach(ref cloudkill;objects.cloudkills)
+						with(cloudkill) renderCloud2(position,Cloudkill!B.cloudRadius,cloudScale,cloudFrame);
 				}
 				static if(mode==RenderMode.transparent)
 					if(!rc.shadowMode&&
