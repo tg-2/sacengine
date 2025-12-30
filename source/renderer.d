@@ -634,6 +634,22 @@ struct Renderer(B){
 		auto frames=typeof(return).createMeshes();
 		return SacCharmHeart!B(texture,mat,frames);
 	}
+	SacDeath!B death;
+	SacDeath!B createDeath(){
+		auto obj=typeof(return).create();
+		return SacDeath!B(obj);
+	}
+	SacDeathAura!B deathAura;
+	SacDeathAura!B createDeathAura(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Additive;
+		mat.energy=-0.25f/3.0f;
+		mat.diffuse=texture;
+		auto meshes=typeof(return).createMeshes;
+		return SacDeathAura!B(texture,mat,meshes);
+	}
 
 	SacBrainiacEffect!B brainiacEffect;
 	SacBrainiacEffect!B createBrainiacEffect(){
@@ -965,6 +981,8 @@ struct Renderer(B){
 		blindRageExplosion=createBlindRageExplosion();
 		cow=createCow();
 		charmHeart=createCharmHeart();
+		death=createDeath();
+		deathAura=createDeathAura();
 		brainiacEffect=createBrainiacEffect();
 		shrikeEffect=createShrikeEffect();
 		arrow=createArrow();
@@ -1683,7 +1701,8 @@ struct Renderer(B){
 					    objects.soulWindEffects.length||
 					    objects.cagePulls.length||
 					    objects.rituals.length||
-					    objects.styxBolts.length)
+					    objects.styxBolts.length||
+					    objects.deathEffects.length)
 				){
 					auto material=self.lightning.material;
 					material.bind(rc);
@@ -1783,6 +1802,21 @@ struct Renderer(B){
 						enum totalFrames=StyxBolt!B.totalFrames;
 						auto bolts=(&objects.styxBolts[j].bolt)[0..1];
 						renderBolts!(totalFrames,1.5f,true)(bolts,start,end,frame,0.0f,1.0f);
+					}
+					foreach(ref deathEffect;objects.deathEffects){
+						auto start=deathEffect.start;
+						auto end=deathEffect.end;
+						auto frame=deathEffect.frame;
+						enum totalFrames=DeathEffect.totalFrames;
+						enum travelDelay=DeathEffect.travelDelay;
+						auto α=0.0f,β=1.0f;
+						if(frame<travelDelay){
+							β=frame/float(travelDelay);
+						}else if(frame>totalFrames-travelDelay){
+							α=(frame-(totalFrames-travelDelay))/float(travelDelay);
+						}
+						auto bolts=(&deathEffect.bolt)[0..1];
+						renderBolts!(totalFrames,0.75f,true)(bolts,start,end,frame,α,β);
 					}
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.wraths.length||objects.altarDestructions.length)){
@@ -2680,6 +2714,89 @@ struct Renderer(B){
 						material.backend.setSpriteTransformationScaled(position,scale,rc);
 						mesh.render(rc);
 					}
+				}
+				if(objects.deathCastings.length&&(mode==RenderMode.opaque||!rc.shadowMode)){
+					foreach(i,mat;self.death.obj.materials){
+						auto originalBackend=mat.backend;
+						scope(success) mat.backend=originalBackend;
+						static if(mode==RenderMode.opaque){
+							mat.backend=B.buildingSummonMaterialBackend1;
+							B.buildingSummonMaterialBackend1.bind(mat,rc);
+							scope(success) B.buildingSummonMaterialBackend1.unbind(mat,rc);
+						}else{
+							mat.backend=B.buildingSummonMaterialBackend2;
+							B.buildingSummonMaterialBackend2.bind(mat,rc);
+							scope(success) B.buildingSummonMaterialBackend2.unbind(mat,rc);
+						}
+						void renderDeath(Vector3f position,float facing,DeathStatus status,int frame){
+							if(status!=DeathStatus.emerging) return;
+							auto progress=float(frame)/Death!B.numEmergingFrames;
+							auto thresholdZ=-Death!B.castingGradientSize+(Death!B.height+Death!B.castingGradientSize)*progress;
+							auto mesh=self.death.obj.meshes[0];
+							assert(mesh.length==self.death.obj.materials.length);
+							auto rotation=facingQuaternion(facing);
+							mat.backend.setTransformation(position+Vector3f(0.0f,0.0f,Death!B.hoverHeight),rotation,rc);
+							static if(mode==RenderMode.opaque){
+								B.buildingSummonMaterialBackend1.setThresholdZ(thresholdZ);
+							}else static if(mode==RenderMode.transparent){
+								B.buildingSummonMaterialBackend2.setThresholdZ(thresholdZ,thresholdZ+Death!B.castingGradientSize);
+							}else static assert(0);
+							mesh[i].render(rc);
+						}
+						foreach(ref deathCasting;objects.deathCastings) with(deathCasting) renderDeath(death.position,death.facing,death.status,death.frame);
+						//foreach(ref death;objects.deaths) renderDeath(death.position,death.facing,death.status,death.frame);
+					}
+				}
+				static if(mode==RenderMode.opaque) if(objects.deathCastings.length||objects.deaths.length){
+					foreach(i,mat;self.death.obj.materials){
+						B.morphMaterialBackend.bind(mat,rc);
+						scope(success) B.morphMaterialBackend.unbind(mat,rc);
+						void renderDeath(Vector3f position,float facing,DeathStatus status,int frame){
+							if(status==DeathStatus.emerging) return;
+							final switch(status) with(DeathStatus){
+								case emerging: frame=self.death.emergingFrame(frame); break;
+								case spawning: frame=self.death.spawningFrame(frame); break;
+								case casting,walking: frame=self.death.walkingFrame(frame); break;
+								case attacking: frame=self.death.attackingFrame(frame); break;
+								case despawning: frame=self.death.despawningFrame(frame); break;
+							}
+							auto mesh1Mesh2Progress=self.death.getFrame(frame%self.death.numFrames);
+							auto mesh1=mesh1Mesh2Progress[0], mesh2=mesh1Mesh2Progress[1], progress=mesh1Mesh2Progress[2];
+							assert(mesh1.length==mesh2.length&&mesh1.length==self.death.obj.materials.length);
+							auto rotation=facingQuaternion(facing);
+							B.morphMaterialBackend.setTransformation(position+Vector3f(0.0f,0.0f,Death!B.hoverHeight),rotation,rc);
+							B.morphMaterialBackend.setMorphProgress(progress);
+							mesh1[i].morph(mesh2[i],rc);
+						}
+						foreach(ref deathCasting;objects.deathCastings) with(deathCasting) renderDeath(death.position,death.facing,death.status,death.frame);
+						foreach(ref death;objects.deaths) renderDeath(death.position,death.facing,death.status,death.frame);
+					}
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.deathCastings.length||objects.deaths.length)){
+					B.disableDepthMask();
+					B.enableCulling();
+					auto material=self.deathAura.material;
+					B.shadelessMorphMaterialBackend.bind(material,rc);
+					B.enableAdditive();
+					scope(success){
+						B.enableDepthMask();
+						B.shadelessMorphMaterialBackend.unbind(material,rc);
+					}
+					void renderDeathAura(ref Death!B death){
+						auto position=death.position+Vector3f(0.0f,0.0f,0.5f*death.height);
+						auto scale=float(death.auraFrame%death.numAuraFrames)/death.numAuraFrames;
+						auto dimensions=Vector3f(2.4f,2.4f,1.9f)*death.height;
+						B.shadelessMorphMaterialBackend.setTransformationScaled(position,Quaternionf.identity(),-scale*dimensions,rc);
+						B.shadelessMorphMaterialBackend.setEnergy(-0.25f/3.0f*(1.0f-scale)^^2);
+						foreach(v;0..3){
+							auto mesh1Mesh2Progress=self.deathAura.getFrame(death.auraFrame+20*v,death.auraFrame);
+							auto mesh1=mesh1Mesh2Progress[0], mesh2=mesh1Mesh2Progress[1], progress=mesh1Mesh2Progress[2];
+							B.shadelessMorphMaterialBackend.setMorphProgress(progress);
+							mesh1.morph(mesh2,rc);
+						}
+					}
+					foreach(ref deathCasting;objects.deathCastings) renderDeathAura(deathCasting.death);
+					foreach(ref death;objects.deaths) renderDeathAura(death);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.brainiacEffects.length){
 					auto material=self.brainiacEffect.material;

@@ -3197,6 +3197,69 @@ struct SacCharmHeart(B){
 	}
 }
 
+struct SacDeath(B){
+	SacObject!B obj;
+	static SacObject!B create(){
+		auto death=new SacObject!B("extracted/charlie/Bloo.WAD!/Char.FLDR/modl.FLDR/deth.MRMC/deth.MRMM");
+		assert(death.meshes.length==27);
+		return death;
+	}
+	enum numTransitionFrames=updateFPS/5;
+	enum spawnStart=0,spawnEnd=5;
+	enum walkStart=5,walkEnd=10;
+	enum attackStart=10,attackEnd=27;
+	enum numFrames=((spawnEnd-spawnStart)+2*(walkEnd-walkStart)+(attackEnd-attackStart)+(walkEnd-walkStart)+(spawnEnd-spawnStart))*numTransitionFrames;
+
+	int emergingFrame(int frame){ return 0; }
+	int spawningFrame(int frame){ return frame; }
+	int walkingFrame(int frame){ return walkStart*numTransitionFrames+frame%((walkEnd-walkStart)*numTransitionFrames); }
+	int attackingFrame(int frame){ return ((spawnEnd-spawnStart)+2*(walkEnd-walkStart))*numTransitionFrames+frame%((attackEnd-attackStart)*numTransitionFrames); }
+	int despawningFrame(int frame){ return ((spawnEnd-spawnStart)+2*(walkEnd-walkStart)+(attackEnd-attackStart)+(walkEnd-walkStart))*numTransitionFrames+frame; }
+
+	Tuple!(B.Mesh[],B.Mesh[],float) getFrame(int frame){
+		auto meshes=obj.meshes;
+		auto indices=chain(
+			iota(spawnStart,spawnEnd),
+			iota(walkStart,walkEnd),iota(walkStart,walkEnd),
+			iota(attackStart,attackEnd),
+			iota(walkStart,walkEnd),
+			retro(iota(spawnStart,spawnEnd)),
+		).cycle;
+		auto i=indices[frame/numTransitionFrames],j=indices[frame/numTransitionFrames+1];
+		float progress=float(frame%numTransitionFrames)/numTransitionFrames;
+		return tuple(obj.meshes[i],obj.meshes[j],progress);
+	}
+}
+
+struct SacDeathAura(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		auto img=loadTXTR("extracted/Daniel/DanC.WAD!/char.FLDR/dth2.TXTR");
+		foreach(i;0..img.data.length/4){
+			img.data[4*i..4*i+3]=ubyte.max-img.data[4*i..4*i+3];
+		}
+		return B.makeTexture(img);
+	}
+	B.Material material;
+	B.Mesh[][] meshes;
+	static B.Mesh[][] createMeshes(){
+		return makeNoisySphereMeshes!B(24,25,nU,nV,0.5f,0.06f,numDistortions);
+	}
+	enum animationDelay=2;
+	enum nU=4,nV=4;
+	enum numTextureFrames=nU*nV*updateAnimFactor*animationDelay;
+	enum numDistortions=16;
+	enum numFrames=updateFPS*numDistortions/2;
+	Tuple!(B.Mesh,B.Mesh,float) getFrame(int frame,int texture){
+		auto textureFrame=(texture/(animationDelay*updateAnimFactor))%(nU*nV);
+		auto indices=iota(0,meshes.length);
+		auto numIndices=indices.length;
+		auto i=frame*numIndices/numFrames, j=i+1;
+		float progress=float(frame*numIndices%numFrames)/numFrames;
+		auto all=cycle(indices);
+		return tuple(meshes[all[i]][textureFrame],meshes[all[j]][textureFrame],progress);
+	}
+}
 
 struct SacBrainiacEffect(B){
 	B.Texture texture;

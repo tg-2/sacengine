@@ -3982,6 +3982,63 @@ struct Cloudkill(B){
 	enum jumpRange=65.0f, shortJumpRange=25.0f; // TODO: correct?
 }
 
+struct DeathCasting(B){
+	ManaDrain!B manaDrain;
+	Death!B death;
+}
+enum DeathStatus{
+	emerging,
+	spawning,
+	casting,
+	walking,
+	attacking,
+	despawning,
+}
+struct Death(B){
+	int wizard;
+	int side;
+	Vector3f position;
+	float facing;
+	SacSpell!B spell;
+	auto status=DeathStatus.emerging;
+	int frame=0;
+
+	enum hoverHeight=1.0f;
+	enum height=12.0f;
+	enum castingGradientSize=1.2f;
+	enum soundHeight=10.0f;
+
+	enum moveRadius=2.0f;
+	enum attackRadius=4.0f;
+	enum hitRadius=6.0f;
+	enum rotationSpeed=pi!float;
+
+	enum numEmergingFrames=2*updateFPS;
+	enum numTransitionFrames=updateFPS/5;
+	enum spawnStart=0,spawnEnd=5*numTransitionFrames;
+	enum numSpawningFrames=spawnEnd-spawnStart;
+	enum walkStart=5*numTransitionFrames;
+	enum walkEnd=10*numTransitionFrames;
+	enum numWalkFrames=walkEnd-walkStart;
+	enum attackStart=10*numTransitionFrames,attackEnd=27*numTransitionFrames;
+	enum numAttackFrames=attackEnd-attackStart;
+
+	enum attackFrame=numAttackFrames*7/10;
+
+	enum numAuraFrames=2*updateFPS;
+	int auraFrame=0;
+	int numTargets=0;
+	enum maxNumTargets=8;
+	bool pausing=false;
+}
+struct DeathEffect{
+	Vector3f start,end;
+	int frame=0;
+	LightningBolt bolt;
+	enum totalFrames=32;
+	enum travelDelay=12;
+}
+
 
 struct BrainiacProjectile(B){
 	int attacker;
@@ -5773,6 +5830,30 @@ struct Effects(B){
 	void removeCloudkill(int i){
 		if(i+1<cloudkills.length) cloudkills[i]=move(cloudkills[$-1]);
 		cloudkills.length=cloudkills.length-1;
+	}
+	Array!(DeathCasting!B) deathCastings;
+	void addEffect(DeathCasting!B deathCasting){
+		deathCastings~=move(deathCasting);
+	}
+	void removeDeathCasting(int i){
+		if(i+1<deathCastings.length) deathCastings[i]=move(deathCastings[$-1]);
+		deathCastings.length=deathCastings.length-1;
+	}
+	Array!(Death!B) deaths;
+	void addEffect(Death!B death){
+		deaths~=move(death);
+	}
+	void removeDeath(int i){
+		if(i+1<deaths.length) deaths[i]=move(deaths[$-1]);
+		deaths.length=deaths.length-1;
+	}
+	Array!DeathEffect deathEffects;
+	void addEffect(DeathEffect deathEffect){
+		deathEffects~=move(deathEffect);
+	}
+	void removeDeathEffect(int i){
+		if(i+1<deaths.length) deathEffects[i]=move(deathEffects[$-1]);
+		deathEffects.length=deathEffects.length-1;
 	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
@@ -9265,6 +9346,8 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 				case SpellTag.cloudkill:
 					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
 					return stun(castCloudkill(side,target,manaDrain,spell,state));
+				case SpellTag.death:
+					return stun(castDeath(target,manaDrain,spell,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -10521,6 +10604,29 @@ bool castCloudkill(B)(int side,OrderTarget target,ManaDrain!B manaDrain,SacSpell
 }
 bool cloudkill(B)(Cloudkill!B cloudkill,ObjectState!B state){
 	state.addEffect(cloudkill);
+	return true;
+}
+
+Tuple!(Vector3f,float) deathCastingPosition(B)(ref MovingObject!B obj,OrderTarget target,ObjectState!B state){
+	auto position=target.position;
+	auto facing=obj.creatureState.facing;
+	if(target.id) position+=rotate(facingQuaternion(facing),Vector3f(0.0f,10.0f,0.0f));
+	return tuple(position,facing);
+}
+bool castDeath(B)(OrderTarget target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	auto positionFacingSide=state.movingObjectById!((obj,target,state)=>tuple(obj.deathCastingPosition(target,state).expand,obj.side),function Tuple!(Vector3f,float,int){ assert(0); })(manaDrain.wizard,target,state);
+	auto position=positionFacingSide[0],facing=positionFacingSide[1],side=positionFacingSide[2];
+	auto death=Death!B(manaDrain.wizard,side,position,facing,spell);
+	playSoundAt("hted",position+Vector3f(0.0f,0.0f,Death!B.soundHeight),state,deathGain);
+	state.addEffect(DeathCasting!B(manaDrain,death));
+	return true;
+}
+
+bool death(B)(Death!B death,ObjectState!B state){
+	//playSoundAt("dnhr",death.position,state,deathGain);
+	death.status=DeathStatus.walking;
+	death.frame=death.frame%death.numWalkFrames;
+	state.addEffect(death);
 	return true;
 }
 
@@ -20577,6 +20683,198 @@ bool updateCloudkill(B)(ref Cloudkill!B cloudkill,ObjectState!B state){
 	}
 }
 
+bool updateDeathCasting(B)(ref DeathCasting!B deathCast,ObjectState!B state){
+	with(deathCast){
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				updateDeath(death,state);
+				return state.movingObjectById!((ref obj,state){
+					auto castParticle=SacParticle!B.get(ParticleType.castCharnel2);
+					obj.animateCasting(castParticle,state);
+					return true;
+				},()=>false)(manaDrain.wizard,state);
+			case CastingStatus.interrupted:
+				return false;
+			case CastingStatus.finished:
+				.death(death,state);
+				return false;
+		}
+	}
+}
+bool isValidDeathTarget(B)(ref MovingObject!B obj,ObjectState!B state){
+	if(obj.isWizard) return false;
+	if(!obj.creatureState.mode.canCC) return false;
+	return true;
+}
+void animateDeath(B)(ref Death!B death,Vector3f oldPosition,ObjectState!B state){
+	with(death){
+		enum numParticles=3;
+		auto sacParticle=SacParticle!B.get(ParticleType.castPyro2);
+		auto lifetime=31;
+		auto scale=1.5f;
+		auto frame=0;
+		foreach(i;0..numParticles){
+			auto position=oldPosition*((cast(float)numParticles-1-i)/numParticles)+position*(cast(float)(i+1)/numParticles);
+			auto factor=state.uniform!"[]"(1.0f,2.0f);
+			auto direction=state.uniformDirection();
+			position+=0.4f*factor*direction;
+			auto plifetime=cast(int)(lifetime/factor);
+			auto pvelocity=-state.uniform(0.1f,0.5f)*factor*direction*updateFPS/float(plifetime);
+			state.addParticle(Particle!B(sacParticle,position,pvelocity,scale,plifetime,frame));
+		}
+	}
+}
+enum deathGain=4.0f;
+bool updateDeath(B)(ref Death!B death,ObjectState!B state){
+	with(death){
+		auraFrame+=1;
+		int target=0;
+		bool readyToAttack=false;
+		bool ableToHit=false;
+		if(status==DeathStatus.walking||status==DeathStatus.attacking){
+			target=state.proximity.closestCreatureIgnoringWizards(position+Vector3f(0.0f,0.0f,0.5f*height),state);
+			if(target){
+				auto targetScale=state.movingObjectById!((ref obj)=>obj.getScale.length,()=>0.0f)(target);
+				auto targetPosition=centerTarget(target,state).position;
+				auto direction=targetPosition-position;
+				auto targetFacing=atan2(-direction.x,direction.y);
+				if(isNaN(targetFacing)) targetFacing=0.0f;
+				auto angle=targetFacing-facing;
+				while(angle<-pi!float) angle+=2*pi!float;
+				while(angle>pi!float) angle-=2*pi!float;
+				auto stationary=status==DeathStatus.attacking&&frame>=attackFrame;
+				if(!stationary){
+					if(angle>defaultFaceThreshold) facing+=min(abs(angle),rotationSpeed/updateFPS);
+					else if(angle<-defaultFaceThreshold) facing-=min(abs(angle),rotationSpeed/updateFPS);
+					if(pausing&&abs(angle)<2*pi!float/16) pausing=false;
+				}
+				auto forward=Vector2f(-sin(facing),cos(facing));
+				/+bool moveForward(){
+					if(dot(direction,forward)<0.0f) return false;
+					auto r=spell.speed/rotationSpeed,distsqr=direction.lengthsqr;
+					if(distsqr>=2.2f*r^^2) return true;
+					if(abs(angle)<acos(1.0f-distsqr/(2.2f*r^^2))) return true;
+					auto limit=rotationSpeedLimitFactor*abs(angle);
+					return limit<1e-3;
+				}+/
+				if(direction.length<targetScale+attackRadius&&abs(angle)<=rotationSpeed*float(attackFrame)/(2*updateFPS)){
+					readyToAttack=true;
+					pausing=false;
+				}
+				if(direction.length<targetScale+hitRadius){
+					ableToHit=true;
+				}
+				if(direction.length>=targetScale+moveRadius&&!stationary&&!pausing){
+					/+auto flatVelocity=spell.speed*forward;
+					auto velocity=Vector3f(flatVelocity.x,flatVelocity.y,0.0f);
+					auto newPosition=position.xy+flatVelocity/updateFPS;
+					auto distanceBefore=(targetPosition.xy-position.xy).length;
+					auto distanceAfter=(targetPosition.xy-newPosition.xy).length;
+					if(distanceAfter<distanceBefore){
+						velocity.z=(targetPosition.z-(position.z+0.25f*height))*(distanceBefore-distanceAfter)/distanceBefore*updateFPS;
+					}+/
+					auto velocity=spell.speed*direction.normalized;
+					position=position+velocity/updateFPS;
+					if(state.isOnGround(position))
+						position.z=max(position.z,state.getGroundHeight(position));
+				}
+			}
+		}
+		void attack(){
+			if(!target) return;
+			frame=0;
+			status=DeathStatus.attacking;
+			playSoundAt("hted",position+Vector3f(0.0f,0.0f,Death!B.soundHeight),state,deathGain);
+		}
+		final switch(status){
+			case DeathStatus.emerging:
+				frame+=1;
+				if(frame>=numEmergingFrames){
+					frame=0;
+					status=DeathStatus.spawning;
+				}
+				return true;
+			case DeathStatus.spawning:
+				frame+=1;
+				if(frame>=numSpawningFrames){
+					frame=0;
+					status=DeathStatus.casting;
+				}
+				return true;
+			case DeathStatus.walking:
+				frame+=1;
+				if(frame>=numWalkFrames){
+					frame=0;
+					if(auraFrame>=(spell.duration+spell.castingTime(9))*updateFPS||numTargets>=maxNumTargets)
+						status=DeathStatus.despawning;
+				}
+				if(readyToAttack) attack();
+				return true;
+			case DeathStatus.attacking:
+				foreach(i;0..2){
+					frame+=1;
+					if(frame==attackFrame){
+						if(target&&ableToHit){
+							if(state.movingObjectById!((ref obj,death,state){
+								deathEffects(obj,*death,state);
+								kill(obj,state);
+								playSpellSoundTypeAt(SoundType.blade,obj.id,state,deathGain);
+								return true;
+							},()=>false)(target,&death,state)){
+								numTargets+=1;
+								pausing=true;
+							}
+						}
+					}
+				}
+				if(frame>=numAttackFrames){
+					frame=0;
+					if(auraFrame>=(spell.duration+spell.castingTime(9))*updateFPS||numTargets>=maxNumTargets)
+						status=DeathStatus.despawning;
+					else if(readyToAttack) attack();
+					else status=DeathStatus.walking;
+				}
+				return true;
+			case DeathStatus.casting:
+				frame+=1;
+				return true;
+			case DeathStatus.despawning:
+				frame+=1;
+				if(frame>=numSpawningFrames){
+					return false;
+				}
+				return true;
+		}
+	}
+}
+
+void deathEffects(B)(ref MovingObject!B obj,ref Death!B death,ObjectState!B state){
+	enum numEffects=3;
+	auto targetHitbox=obj.hitbox;
+	auto targetCenter=boxCenter(targetHitbox);
+	auto targetSize=boxSize(targetHitbox);
+	auto scale=max(6.0f,1.5f*cbrt(targetSize.x*targetSize.y*targetSize.z));
+	auto deathCenter=death.position+Vector3f(0.0f,0.0f,0.5f*death.height);
+	auto direction=(targetCenter-deathCenter).normalized;
+	auto deathRotation=facingQuaternion(death.facing);
+	auto rotation=deathRotation*rotationBetween(Vector3f(0.0f,1.0f,0.0f),rotate(deathRotation.conj(),direction));
+	foreach(i;0..numEffects){
+		auto effectDir2d=scale*state.uniformDirection!(float,2)();
+		auto effectDir=rotate(rotation,Vector3f(effectDir2d.x,0.0f,effectDir2d.y));
+		auto start=targetCenter-effectDir,end=targetCenter+effectDir;
+		if(start.z>end.z) swap(start,end);
+		auto effect=DeathEffect(start,end);
+		foreach(k,ref disp;effect.bolt.displacement) disp=Vector3f(0.0f,0.0f,10.0f*k/numLightningSegments);
+		state.addEffect(move(effect));
+	}
+}
+
+bool updateDeathEffect(B)(ref DeathEffect deathEffect,ObjectState!B state){
+	with(deathEffect){
+		return ++frame<=totalFrames;
+	}
+}
+
 
 enum brainiacProjectileHitGain=4.0f;
 enum brainiacProjectileSize=0.45f; // TODO: ok?
@@ -24626,6 +24924,27 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 		}
 		i++;
 	}
+	for(int i=0;i<effects.deathCastings.length;){
+		if(!updateDeathCasting(effects.deathCastings[i],state)){
+			effects.removeDeathCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.deaths.length;){
+		if(!updateDeath(effects.deaths[i],state)){
+			effects.removeDeath(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.deathEffects.length;){
+		if(!updateDeathEffect(effects.deathEffects[i],state)){
+			effects.removeDeathEffect(i);
+			continue;
+		}
+		i++;
+	}
 	for(int i=0;i<effects.brainiacProjectiles.length;){
 		if(!updateBrainiacProjectile(effects.brainiacProjectiles[i],state)){
 			effects.removeBrainiacProjectile(i);
@@ -26164,6 +26483,21 @@ final class Proximity(B){
 	}
 	int closestCreatureInRange(Vector3f position,float range,ObjectState!B state,float maxHeight=float.infinity){
 		return centers.closestInRange!isOfType(version_,position,range,EnemyType.creature,state,maxHeight).id;
+	}
+	int closestCreatureIgnoringWizards(Vector3f position,ObjectState!B state,float maxHeight=float.infinity){
+		float range=10.0f;
+		int result;
+		do{
+			result=centers.closestInRange!((ref entry,type,state,maxHeight){
+				if(!isOfType(entry,type,state,maxHeight))
+					return false;
+				if(state.movingObjectById!(isWizard,()=>true)(entry.id))
+					return false;
+				return true;
+			})(version_,position,range,EnemyType.creature,state,maxHeight).id;
+			range=2.0f*range;
+		}while(!result&&range<2560.0f);
+		return result;
 	}
 	int closestCreatureInRangeExcept(Vector3f position,float range,int except,ObjectState!B state,float maxHeight=float.infinity){
 		static bool isValid(T...)(ref CenterProximityEntry entry,int except,ObjectState!B state,float maxHeight=float.infinity,T args=T.init){
