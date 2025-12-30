@@ -19604,7 +19604,7 @@ void animatePlagueDrop(B)(ref PlagueDrop!B plagueDrop,ObjectState!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.blood);
 	foreach(i;0..numParticles){
 		auto dist=state.uniform(0.0f,1.0f);
-		auto scale=(1.5f-dist)*tscale;
+		auto scale=0.5f*(1.5f-dist)*tscale;
 		auto position=state.uniformDisk(plagueDrop.position,0.25*scale)-5.0f*dist*plagueDrop.velocity.normalized;
 		auto velocity=plagueDrop.velocity;
 		auto lifetime=sacParticle.numFrames-1;
