@@ -3978,8 +3978,8 @@ struct Cloudkill(B){
 	enum cloudHeight=25.0f;
 	enum cloudGrowSpeed=1.0f/4.3f;
 	enum cloudShrinkSpeed=1.0f;
-	enum lightningRate=3;
-	enum jumpRange=65.0f, shortJumpRange=25.0f; // TODO: correct?
+	enum lightningRateNumerator=5,lightningRateDenominator=3;
+	enum jumpRange=50.0f, shortJumpRange=15.0f; // TODO: correct?
 }
 
 struct DeathCasting(B){
@@ -20660,8 +20660,8 @@ bool updateCloudkill(B)(ref Cloudkill!B cloudkill,ObjectState!B state){
 			position+=velocity;
 			auto gposition=position;
 			gposition.z=state.getHeight(gposition);
-			foreach(_;0..lightningRate/updateFPS+(state.uniform!"[)"(0,updateFPS)<lightningRate%updateFPS)){
-				auto offset=state.uniformDisk!(float,2)(Vector2f(0.0f,0.0f),spell.effectRange);
+			foreach(_;0..lightningRateNumerator/(lightningRateDenominator*updateFPS)+(state.uniform!"[)"(0,lightningRateDenominator*updateFPS)<lightningRateNumerator%(lightningRateDenominator*updateFPS))){
+				auto offset=state.uniformDisk!(float,2)(Vector2f(0.0f,0.0f),0.95f*spell.effectRange);
 				auto fposition=gposition+Vector3f(offset.x,offset.y,0.0f);
 				fposition.z=state.getHeight(fposition);
 				auto start=OrderTarget(TargetType.terrain,0,position);
