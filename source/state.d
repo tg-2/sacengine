@@ -8406,14 +8406,14 @@ float damageGuardians(B)(ref Building!B building,float damage,int attackingSide,
 		auto attachPosition=building.guardianAttachPosition(state);
 		bool ok=false;
 		foreach(id;building.guardianIds.data){
-			actualDamage+=state.movingObjectById!((ref obj,splitDamage,attackingSide,attachPosition,damageMod,state,ok){
-				if(!obj.isValidGuard(state)) return 0.0f;
+			actualDamage+=state.movingObjectById!((ref obj,splitDamage,attackingSide,attachPosition,damageMod,buildingSide,state,ok){
+				if(!obj.isValidGuard(buildingSide,state)) return 0.0f;
 				auto attackDirection=obj.center-attachPosition;
 				obj.damageAnimation(attackDirection,state,false);
 				*ok=true;
 				bool dummy=false; // attacker does not exist anymore
 				return dealDamage(obj,splitDamage,attackingSide,damageMod,dummy,state);
-			},()=>0.0f)(id,splitDamage,attackingSide,attachPosition,damageMod,state,&ok);
+			},()=>0.0f)(id,splitDamage,attackingSide,attachPosition,damageMod,building.side,state,&ok);
 		}
 		if(ok) return actualDamage;
 	}
@@ -8428,19 +8428,19 @@ float damageGuardians(B)(ref Building!B building,float damage,ref MovingObject!B
 		bool ok=false;
 		foreach(id;building.guardianIds.data){
 			if(id==attacker.id){
-				if(!attacker.isValidGuard(state))
+				if(!attacker.isValidGuard(building.side,state))
 					continue;
 				auto attackDirection=attacker.center-attachPosition;
 				attacker.damageAnimation(attackDirection,state,false);
 				actualDamage+=attacker.dealDamage(splitDamage,attacker,damageMod,state);
 				ok=true;
 			}else{
-				actualDamage+=state.movingObjectById!((ref obj,splitDamage,attacker,attachPosition,damageMod,state,ok){
-					if(!obj.isValidGuard(state)) return 0.0f;
+				actualDamage+=state.movingObjectById!((ref obj,splitDamage,attacker,attachPosition,damageMod,buildingSide,state,ok){
+					if(!obj.isValidGuard(buildingSide,state)) return 0.0f;
 					auto attackDirection=obj.center-attachPosition;
 					*ok=true;
 					return dealDamage(obj,splitDamage,*attacker,attackDirection,damageMod,state,false);
-				},()=>0.0f)(id,splitDamage,&attacker,attachPosition,damageMod,state,&ok);
+				},()=>0.0f)(id,splitDamage,&attacker,attachPosition,damageMod,building.side,state,&ok);
 			}
 		}
 		if(ok) return actualDamage;
@@ -10583,7 +10583,7 @@ bool canCharm(B)(ref MovingObject!B obj,int side,ObjectState!B state){
 bool castCharm(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
 	auto side=state.movingObjectById!(.side,()=>-1)(manaDrain.wizard,state);
 	if(side==-1) return false;
-	if(!state.isValidTarget(target)||!state.movingObjectById!(canCharm,()=>false)(target,side,state)) return false;
+	if(!state.isValidTarget(target)) return false;
 	state.addEffect(CharmCasting!B(manaDrain,makeCharm(manaDrain.wizard,centerTarget(target,state),spell,state)));
 	return true;
 }
@@ -14049,7 +14049,8 @@ Vector3f guardianAttachPosition(B)(ref Building!B building,ObjectState!B state){
 	return state.staticObjectById!((ref obj)=>obj.position+Vector3f(0.0f,0.0f,shrineGuardHeight),()=>Vector3f.init)(building.componentIds[0]);
 }
 
-bool isValidGuard(B)(ref MovingObject!B obj,ObjectState!B state){
+bool isValidGuard(B)(ref MovingObject!B obj,int side,ObjectState!B state){
+	if(obj.side!=side) return false;
 	return !obj.isDying&&!obj.isDead&&obj.creatureState.mode!=CreatureMode.thrashing;
 }
 
@@ -14058,7 +14059,6 @@ bool updateGuardian(B)(ref Guardian guardian,ObjectState!B state){
 		if(!updateGuardianShape(guardian,state)) return false;
 		auto creaturePosition=state.movingObjectById!(center,()=>Vector3f.init)(creature);
 		auto buildingPosition=state.buildingById!(guardianAttachPosition,()=>Vector3f.init)(building,state);
-
 		if(isNaN(creaturePosition.x)||isNaN(buildingPosition.x)){
 			unguardian(guardian,state);
 			return false;
@@ -14079,7 +14079,8 @@ bool updateGuardian(B)(ref Guardian guardian,ObjectState!B state){
 			unguardian(guardian,state);
 			return false;
 		}
-		if(state.movingObjectById!((ref obj,state)=>!obj.isValidGuard(state),()=>true)(creature,state)){
+		auto buildingSide=state.buildingById!((ref bldg)=>bldg.side,()=>-1)(building);
+		if(state.movingObjectById!((ref obj,buildingSide,state)=>!obj.isValidGuard(buildingSide,state),()=>true)(creature,buildingSide,state)){
 			switch(status) with(GuardianStatus){
 				case appearing:
 					unguardian(guardian,state);
