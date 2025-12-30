@@ -331,6 +331,14 @@ Vector3f center(B)(ref OrderTarget target,ObjectState!B state){
 	if(target.type==TargetType.terrain||!state.isValidTarget(target.id)) return target.position;
 	return state.objectById!((ref obj,state)=>obj.center)(target.id,state);
 }
+Vector3f stableCenter(B)(ref OrderTarget target,ObjectState!B state){
+	if(target.type==TargetType.terrain||!state.isValidTarget(target.id)) return target.position;
+	return state.objectById!((ref obj,state){
+		static if(is(typeof(obj)==MovingObject!B)){
+			return obj.position+boxCenter(obj.sacObject.hitbox(Quaternionf.identity(),obj.scale,obj.animationState,0));
+		}else return obj.center;
+	})(target.id,state);
+}
 Vector3f lowCenter(B)(ref OrderTarget target,ObjectState!B state){
 	if(target.type==TargetType.terrain||!state.isValidTarget(target.id)) return target.position;
 	return state.objectById!((ref obj,state)=>obj.lowCenter)(target.id,state);
@@ -20653,7 +20661,7 @@ bool updateCloudkill(B)(ref Cloudkill!B cloudkill,ObjectState!B state){
 		++cloudFrame;
 		if(frame<=spell.duration*updateFPS){
 			cloudkill.cloudScale=min(1.0f,cloudkill.cloudScale+cloudkill.cloudGrowSpeed/updateFPS);
-			target.position=target.center(state);
+			target.position=target.stableCenter(state);
 			auto direction=target.position+Vector3f(0.0f,0.0f,cloudHeight)-position;
 			auto length=direction.length;
 			auto velocity=(length!=0.0f?min(length,spell.speed/updateFPS)/length:0.0f)*direction;
