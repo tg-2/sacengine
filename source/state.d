@@ -9760,7 +9760,7 @@ bool castLightning(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectSt
 	return true;
 }
 
-bool lightning(B)(int wizard,int side,OrderTarget start,OrderTarget end,SacSpell!B spell,ObjectState!B state,bool updateTargets=true,DamageMod damageMod=DamageMod.lightning){
+bool lightning(B)(int wizard,int side,OrderTarget start,OrderTarget end,SacSpell!B spell,ObjectState!B state,bool updateTargets=true,DamageMod damageMod=DamageMod.lightning,bool swarmSound=false){
 	if(updateTargets){
 		auto startCenter=start.center(state),endCenter=end.center(state);
 		static bool filter(ref ProximityEntry entry,int id,ObjectState!B state){ return entry.id!=id&&state.isValidTarget(entry.id); }
@@ -9772,8 +9772,12 @@ bool lightning(B)(int wizard,int side,OrderTarget start,OrderTarget end,SacSpell
 		end.position=endCenter;
 	}
 	//playSpellSoundTypeAt(SoundType.lightning,0.5f*(start.position+end.position),state,4.0f);
-	playSoundAt("sxts",start.position,state,1.0f);
-	playSoundAt("hxts",end.position,state,4.0f);
+	if(swarmSound){
+		playSoundAt("htim",end.position,state,2.0f); // TODO: move with projectile
+	}else{
+		playSoundAt("sxts",start.position,state,1.0f);
+		playSoundAt("hxts",end.position,state,4.0f);
+	}
 	auto lightning=Lightning!B(wizard,side,start,end,spell,damageMod,0);
 	foreach(ref bolt;lightning.bolts)
 		bolt.changeShape(state);
@@ -15058,7 +15062,7 @@ bool updateLightningCasting(B)(ref LightningCasting!B lightningCast,ObjectState!
 	}
 }
 void sparkAnimation(int numSparks=192,B)(Vector3f[2] hitbox,ObjectState!B state){
-	auto sacParticle=SacParticle!B.get(ParticleType.spark);
+	auto sacParticle=SacParticle!B.get(ParticleType.swarmHit);
 	if(hitbox[0]==hitbox[1]){
 		hitbox[0]-=0.5;
 		hitbox[1]+=0.5f;
@@ -23387,7 +23391,7 @@ bool updateLightningCharge(B)(ref LightningCharge!B lightningCharge,ObjectState!
 				if(jdistsqr<shortJumpRange^^2||jdistsqr<jumpRange^^2&&state.uniform(3)!=0)
 					end=jumped;
 			}
-			lightning(creature,side,start,end,spell,state,true,DamageMod.none);
+			lightning(creature,side,start,end,spell,state,true,DamageMod.none,true);
 		}
 		return state.movingObjectById!((ref obj)=>--obj.creatureStats.effects.lightningChargeFrames>0,()=>false)(creature);
 	}

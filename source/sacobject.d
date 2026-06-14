@@ -406,7 +406,10 @@ final class SacObject(B){
 
 	@property bool isRanged(){ return data && data.ranged; }
 	@property SacSpell!B rangedAttack(){ return isRanged?abilities[0]:null; }
-	@property SacSpell!B passiveOnDamage(){ return abilities[2]; } // TODO: rename (e.g., has phoenix shield)
+	@property SacSpell!B passiveOnDamage(){
+		if(nttTag==SpellTag.netherfiend) return SacSpell!B.get(SpellTag.lightningCharge);
+		return abilities[2];
+	} // TODO: rename (e.g., has phoenix shield)
 
 	bool hasLoadTick(AnimationState animationState,int frame){
 		return animations[animationState].frames[frame].event==AnimEvent.load;
@@ -424,7 +427,10 @@ final class SacObject(B){
 		return animations[animationState].frames[frame].event==AnimEvent.shoot;
 	}
 
-	@property SacSpell!B ability(){ return isRanged?abilities[1]:abilities[0]; }
+	@property SacSpell!B ability(){
+		if(nttTag==SpellTag.netherfiend) return SacSpell!B.get(SpellTag.callLightning);
+		return isRanged?abilities[1]:abilities[0];
+	}
 
 	Vector3f[2] defaultMeleeHitbox(Quaternionf rotation,float scale,AnimationState animationState,int frame)in{
 		assert(isSaxs);
