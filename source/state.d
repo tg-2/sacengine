@@ -9771,7 +9771,9 @@ bool lightning(B)(int wizard,int side,OrderTarget start,OrderTarget end,SacSpell
 		}
 		end.position=endCenter;
 	}
-	playSpellSoundTypeAt(SoundType.lightning,0.5f*(start.position+end.position),state,4.0f);
+	//playSpellSoundTypeAt(SoundType.lightning,0.5f*(start.position+end.position),state,4.0f);
+	playSoundAt("sxts",start.position,state,1.0f);
+	playSoundAt("hxts",end.position,state,4.0f);
 	auto lightning=Lightning!B(wizard,side,start,end,spell,damageMod,0);
 	foreach(ref bolt;lightning.bolts)
 		bolt.changeShape(state);
@@ -10133,7 +10135,9 @@ bool rainbow(B)(int side,OrderTarget origin,OrderTarget target,SacSpell!B spell,
 bool castChainLightning(B)(int side,int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
 	if(!state.isValidTarget(target)) return false;
 	auto orderTarget=state.objectById!((ref obj){
-		playSpellSoundTypeAt(SoundType.lightning,obj.center,state,4.0f);
+		//playSpellSoundTypeAt(SoundType.lightning,obj.center,state,4.0f);
+		//playSoundAt("sxts",position,state,1.0f);
+		playSoundAt("hxts",obj.center,state,4.0f);
 		enum type=is(typeof(obj)==MovingObject!B)?TargetType.creature:TargetType.building;
 		return OrderTarget(type,obj.id,obj.center);
 	})(target);
@@ -10478,7 +10482,9 @@ bool castFence(B)(int side,Vector3f position,ManaDrain!B manaDrain,SacSpell!B sp
 	auto direction=Vector2f(-casterDirection.y,casterDirection.x);
 	if(direction.lengthsqr>0.001^^2) direction=direction.normalized;
 	else direction=rotate(facingQuaternion(casterFacing),Vector3f(0.0f,1.0f,0.0f));
-	playSpellSoundTypeAt(SoundType.lightning,position,state,fenceGain);
+	//playSpellSoundTypeAt(SoundType.lightning,position,state,fenceGain);
+	//playSoundAt("sxts",position,state,1.0f);
+	playSoundAt("hxts",position,state,4.0f);
 	state.addEffect(FenceCasting!B(manaDrain,Fence!B(manaDrain.wizard,side,position,direction,spell)));
 	return true;
 }
@@ -13542,8 +13548,8 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			break;
 		case CreatureMovement.tumbling:
 			static import std.math;
-			enum dampFactorXY=std.math.exp(std.math.log(0.7f)/updateFPS);
-			enum dampFactorZ=std.math.exp(std.math.log(0.85f)/updateFPS);
+			enum dampFactorXY=std.math.exp(std.math.log(0.728f)/updateFPS);
+			enum dampFactorZ=std.math.exp(std.math.log(0.884f)/updateFPS);
 			if(object.creatureStats.effects.antiGravityTime<state.frame)
 				object.creatureState.fallingVelocity.z-=object.creatureStats.fallingAcceleration/updateFPS;
 			/+enum speedCap=20.0f; // TODO: figure out constant
@@ -16894,7 +16900,11 @@ void animateChainLightningCasting(B)(ref MovingObject!B wizard,ObjectState!B sta
 }
 
 void chainLightningCastingEffect(B)(Vector3f start,Vector3f end,ObjectState!B state){
-	if(!state.uniform(4)) playSpellSoundTypeAt(SoundType.lightning,0.5f*(start+end),state,4.0f);
+	if(!state.uniform(4)){
+		//playSpellSoundTypeAt(SoundType.lightning,0.5f*(start+end),state,4.0f);
+		playSoundAt("sxts",start,state,1.0f);
+		playSoundAt("hxts",end,state,4.0f);
+	}
 	auto effect=ChainLightningCastingEffect!B(start,end);
 	effect.bolt.changeShape!(0.5f)(state);
 	state.addEffect(effect);
@@ -17573,7 +17583,9 @@ bool updateSoulWindPosition(B)(ref SoulWind!B soulWind,ObjectState!B state){
 }
 
 bool soulWindEffect(B)(OrderTarget start,OrderTarget end,ObjectState!B state){
-	playSpellSoundTypeAt(SoundType.lightning,0.5f*(start.position+end.position),state,4.0f);
+	//playSpellSoundTypeAt(SoundType.lightning,0.5f*(start.position+end.position),state,4.0f);
+	playSoundAt("sxts",start.position,state,1.0f);
+	playSoundAt("hxts",end.position,state,4.0f);
 	auto soulWindEffect=SoulWindEffect(start,end,0);
 	foreach(ref bolt;soulWindEffect.bolts)
 		bolt.changeShape(state);
@@ -20632,7 +20644,9 @@ bool updateCloudkillCasting(B)(ref CloudkillCasting!B cloudkillCast,ObjectState!
 						chainLightningCastingEffect(start,end,state);
 					}
 					if(!state.uniform(30)){
-						playSpellSoundTypeAt(SoundType.lightning,cloudkill.position,state,4.0f);
+						//playSpellSoundTypeAt(SoundType.lightning,cloudkill.position,state,4.0f);
+						playSoundAt("sxts",cloudkill.position,state,4.0f);
+						//playSoundAt("hxts",end.position,state,4.0f);
 					}
 					obj.animateChainLightningCasting(state);
 					return true;

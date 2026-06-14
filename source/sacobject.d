@@ -1502,13 +1502,13 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/cst0.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
-			case spark:
+			case spark/+:
 				width=height=2.0f;
 				this.energy=15.0f;
 				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Stra.FLDR/txtr.FLDR/sprk.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
-			case styxSpark:
+				case +/,styxSpark:
 				width=height=1.0f;
 				this.energy=15.0f;
 				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Char.FLDR/tex_ZERO_.FLDR/styx.TXTR"));

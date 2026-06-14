@@ -1711,7 +1711,7 @@ struct Renderer(B){
 						B.enableCulling();
 						material.unbind(rc);
 					}
-					void renderBolts(int totalFrames,float scale=1.0f,bool negativeEnergy=false)(LightningBolt[] bolts,Vector3f start,Vector3f end,int frame,float α,float β){
+					void renderBolts(int totalFrames,float scale=1.0f,bool negativeEnergy=true)(LightningBolt[] bolts,Vector3f start,Vector3f end,int frame,float α,float β){
 						auto diff=end-start;
 						auto len=diff.length;
 						auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),diff/len);
