@@ -15072,11 +15072,33 @@ void sparkAnimation(int numSparks=192,B)(Vector3f[2] hitbox,ObjectState!B state)
 		auto position=state.uniform(scaleBox(hitbox,1.2f));
 		auto velocity=Vector3f(position.x-center.x,position.y-center.y,0.0f).normalized;
 		velocity.z=state.uniform(2.0f,6.0f);
-		auto scale=state.uniform(0.5f,1.5f);
+		auto scale=0.5f*state.uniform(0.5f,1.5f);
 		int lifetime=63;
 		int frame=0;
 		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
 	}
+}
+void swarmHitAnimation(B)(Vector3f[2] hitbox,ObjectState!B state){
+	auto rangedAttack=SacSpell!B.get("dkba");
+	auto fallenProjectile=FallenProjectile!B(0,0,0,boxCenter(hitbox),Vector3f(0.0f,0.0f,-1.0f),rangedAttack,0,SwarmStatus.dispersing);
+	fallenProjectile.addBugs(state);
+	playSoundAt("2tim",fallenProjectile.position,state,4.0f);
+	playSpellSoundTypeAt(SoundType.swarm,fallenProjectile.position,state,2.0f);
+	/+if(state.isValidTarget(target))
+		dealRangedDamage(target,fallenProjectile.rangedAttack,fallenProjectile.attacker,fallenProjectile.side,fallenProjectile.velocity,DamageMod.none,state);+/
+	enum numParticles=32;
+	auto sacParticle=SacParticle!B.get(ParticleType.swarmHit);
+	fallenProjectile.velocity=Vector3f(0.0f,0.0f,0.0f);
+	foreach(i;0..numParticles){
+		auto position=fallenProjectile.position;
+		auto velocity=state.uniformDirection();
+		velocity.z+=3.0f;
+		auto scale=0.5f;
+		int lifetime=63;
+		int frame=0;
+		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+	}
+	state.addEffect(move(fallenProjectile));
 }
 bool updateLightning(B)(ref Lightning!B lightning,ObjectState!B state){
 	lightning.frame+=1;
@@ -15088,7 +15110,8 @@ bool updateLightning(B)(ref Lightning!B lightning,ObjectState!B state){
 	lightning.end.position=lightning.end.center(state);
 	if(lightning.frame==lightning.travelDelay){
 		auto hitbox=lightning.end.hitbox(state);
-		if(lightning.end.type!=TargetType.none) sparkAnimation(hitbox,state);
+		//if(lightning.end.type!=TargetType.none) sparkAnimation(hitbox,state);
+		if(lightning.end.type!=TargetType.none) swarmHitAnimation(hitbox,state);
 		// TODO: scar
 		auto target=lightning.end.id;
 		if(state.isValidTarget(target)){
