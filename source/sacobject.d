@@ -4,7 +4,7 @@
 
 import dlib.math, dlib.image.color;
 import util;
-import mrmm, _3dsm, txtr, saxs, sxsk, widg;
+import mrmm, _3dsm, txtr, saxs, sxsk, widg, data_;
 import animations, ntts, nttData, spells, sacspell, bldg, sset;
 import stats;
 import std.typecons: Tuple, tuple;
@@ -3260,6 +3260,19 @@ struct SacDeathAura(B){
 		return tuple(meshes[all[i]][textureFrame],meshes[all[j]][textureFrame],progress);
 	}
 }
+
+struct SacVolcano(B){
+	static ubyte[33][33] volc_;
+	static bool volcInitialized=false;
+	@property static ref const(ubyte[33][33]) volc(){
+		if(!volcInitialized){
+			auto data=loadDATA("extracted/xmenu/XMNU.WAD!/volc.DATA");
+			(*cast(ubyte[33*33]*)&volc_)[]=data[];
+		}
+		return volc_;
+	}
+}
+
 
 struct SacBrainiacEffect(B){
 	B.Texture texture;

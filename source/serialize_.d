@@ -679,6 +679,12 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Dea
 void serialize(alias sink)(ref DeathEffect deathEffect){ serializeStruct!sink(deathEffect); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==DeathEffect)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref VolcanoCasting!B volcanoCasting){ serializeStruct!sink(volcanoCasting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==VolcanoCasting!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref Volcano!B volcano){ serializeStruct!sink(volcano); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Volcano!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref BrainiacProjectile!B brainiacProjectile){ serializeStruct!sink(brainiacProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BrainiacProjectile!B)){ deserializeStruct(result,state,data); }
 

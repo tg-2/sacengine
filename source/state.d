@@ -4047,6 +4047,71 @@ struct DeathEffect{
 	enum travelDelay=12;
 }
 
+struct VolcanoCasting(B){
+	ManaDrain!B manaDrain;
+	Volcano!B volcano;
+}
+struct Volcano(B){
+	int wizard;
+	int side;
+	Vector3f position;
+	SacSpell!B spell;
+	int volcanoFrame;
+	int frame=0;
+
+	// int soundTimer0=0,soundTimer1=0; // TODO
+
+	enum int dmapSize=33, dmapCenter=dmapSize/2;
+	enum float cellSize=10.0f;
+	enum float flatInner=80.0f, flatOuter=164.0f;
+	enum float residual=0.25f;
+	float[dmapSize][dmapSize] dmap=0.0f;
+	int dmapPosX=0, dmapPosY=0;
+	float progress=0.0f;
+
+	static float flatFalloff(float d){
+		if(d<=flatInner) return 0.0f;
+		if(d>=flatOuter) return 1.0f;
+		return (d-flatInner)/(flatOuter-flatInner);
+	}
+
+	void computeDisplacement(ObjectState!B state){
+		position.x=cellSize*floor((position.x+0.5f*cellSize)/cellSize);
+		position.y=cellSize*floor((position.y+0.5f*cellSize)/cellSize);
+		dmapPosX=cast(int)floor(position.x/cellSize)-dmapCenter;
+		dmapPosY=cast(int)floor(position.y/cellSize)-dmapCenter;
+		float target=state.getHeight(Vector3f(position.x,position.y,0.0f));
+		auto numX=cast(int)state.obj.opaqueObjects.permanentDisplacement.displacement[0].length;
+		auto numY=cast(int)state.obj.opaqueObjects.permanentDisplacement.displacement.length;
+		foreach(j;0..dmapSize){
+			float fz=flatFalloff(cellSize*abs(j-dmapCenter));
+			foreach(i;0..dmapSize){
+				int vi=dmapPosX+i, vj=dmapPosY+j;
+				if(vi<0||vi>=numX||vj<0||vj>=numY){
+					dmap[j][i]=0.0f;
+					continue;
+				}
+				float f=max(fz,flatFalloff(cellSize*abs(i-dmapCenter)));
+				float cur=state.getHeight(Vector3f(cellSize*vi,cellSize*vj,0.0f));
+				float flatten=(target-cur)*(1.0f-f);
+				dmap[j][i]=flatten+0.2f*SacVolcano!B.volc[j][i];
+			}
+		}
+	}
+	void applyDMapDelta(ObjectState!B state,float from,float to){
+		if(from==to) return;
+		float scale=to-from;
+		foreach(j;0..dmapSize){
+			foreach(i;0..dmapSize){
+				if(dmap[j][i]==0.0f) continue;
+				state.obj.opaqueObjects.permanentDisplacement.add(dmapPosX+i,dmapPosY+j,scale*dmap[j][i]);
+			}
+		}
+		state.obj.opaqueObjects.permanentDisplacement.recomputeHash();
+		progress=to;
+	}
+}
+
 
 struct BrainiacProjectile(B){
 	int attacker;
@@ -5863,6 +5928,22 @@ struct Effects(B){
 		if(i+1<deaths.length) deathEffects[i]=move(deathEffects[$-1]);
 		deathEffects.length=deathEffects.length-1;
 	}
+	Array!(VolcanoCasting!B) volcanoCastings;
+	void addEffect(VolcanoCasting!B volcanoCasting){
+		volcanoCastings~=move(volcanoCasting);
+	}
+	void removeVolcanoCasting(int i){
+		if(i+1<volcanoCastings.length) volcanoCastings[i]=move(volcanoCastings[$-1]);
+		volcanoCastings.length=volcanoCastings.length-1;
+	}
+	Array!(Volcano!B) volcanos;
+	void addEffect(Volcano!B volcano){
+		volcanos~=move(volcano);
+	}
+	void removeVolcano(int i){
+		if(i+1<volcanos.length) volcanos[i]=move(volcanos[$-1]);
+		volcanos.length=volcanos.length-1;
+	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
 	void addEffect(BrainiacProjectile!B brainiacProjectile){
@@ -6718,6 +6799,26 @@ struct PermanentDisplacement(B){
 		foreach(j;minY..maxY+1){
 			foreach(i;minX..maxX+1){
 				displacement[j][i]+=BombardmentDrop!B.dentDisplacement(x,y,10.0f*i,10.0f*j);
+			}
+		}
+		recomputeHash();
+	}
+
+	void add(int i,int j,float amount){
+		if(j<0||j>=displacement.length) return;
+		if(i<0||i>=displacement[j].length) return;
+		displacement[j][i]+=amount;
+	}
+
+	void volcanoDent(float x,float y){
+		enum radius=25.0f, depth=10.0f;
+		auto minY=cast(int)max(0.0f,ceil((y-radius)/10.0f)), maxY=cast(int)min(displacement.length-1,floor((y+radius)/10.0f));
+		auto minX=cast(int)max(0.0f,ceil((x-radius)/10.0f)), maxX=cast(int)min(displacement[0].length-1,floor((x+radius)/10.0f));
+		foreach(j;minY..maxY+1){
+			foreach(i;minX..maxX+1){
+				auto dx=10.0f*i-x, dy=10.0f*j-y;
+				auto d2=dx*dx+dy*dy;
+				if(d2<radius*radius) displacement[j][i]+=(d2/(radius*radius)-1.0f)*depth;
 			}
 		}
 		recomputeHash();
@@ -9356,6 +9457,10 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 					return stun(castCloudkill(side,target,manaDrain,spell,state));
 				case SpellTag.death:
 					return stun(castDeath(target,manaDrain,spell,state));
+				case SpellTag.volcano:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					return stun(castVolcano(side,target.position,manaDrain,spell,castingTime,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -10635,6 +10740,18 @@ bool death(B)(Death!B death,ObjectState!B state){
 	death.status=DeathStatus.walking;
 	death.frame=death.frame%death.numWalkFrames;
 	state.addEffect(death);
+	return true;
+}
+
+bool castVolcano(B)(int side,Vector3f position,ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,ObjectState!B state){
+	auto volcano=Volcano!B(manaDrain.wizard,side,position,spell);
+	volcano.volcanoFrame=castingTime;
+	volcano.computeDisplacement(state);
+	state.addEffect(VolcanoCasting!B(manaDrain,move(volcano)));
+	return true;
+}
+bool volcano(B)(Volcano!B volcano,ObjectState!B state){
+	state.addEffect(volcano);
 	return true;
 }
 
@@ -20884,6 +21001,51 @@ bool updateDeathEffect(B)(ref DeathEffect deathEffect,ObjectState!B state){
 	}
 }
 
+void animateVolcanoCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	// TODO
+}
+bool updateVolcanoCasting(B)(ref VolcanoCasting!B volcanoCast,ObjectState!B state){
+	with(volcanoCast){
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				state.movingObjectById!(animateVolcanoCasting,(){})(manaDrain.wizard,state);
+				volcano.frame=min(volcano.frame,volcano.volcanoFrame-2);
+				volcano.updateVolcano(state);
+				return true;
+			case CastingStatus.interrupted:
+				volcano.applyDMapDelta(state,volcano.progress,0.0f); // undo the partially grown cone
+				return false;
+			case CastingStatus.finished:
+				.volcano(volcano,state);
+				return false;
+		}
+	}
+}
+
+enum volcanoGain0=2.0f, volcanoGain1=4.0f, volcanoGain2=8.0f;
+bool updateVolcano(B)(ref Volcano!B volcano,ObjectState!B state){
+	with(volcano){
+		//if(--soundTimer0<=0) soundTimer0=playSpellSoundTypeAt!true(SoundType.convertRevive,position,state,volcanoGain0); // TODO: stop sound // TODO
+		//if(--soundTimer1<=0) soundTimer1=playSpellSoundTypeAt!true(SoundType.bore,position,state,volcanoGain1); // TODO: stop sound // TODO
+		auto oldProgress=progress;
+		++frame;
+		if(frame<volcanoFrame){
+			progress=cast(float)frame/volcanoFrame;
+			if(frame%(updateFPS/10)==0) state.addEffect(ScreenShake(position,updateFPS/10,1.5f,200.0f));
+		}else if(frame==volcanoFrame){
+			progress=1.0f;
+			state.obj.opaqueObjects.permanentDisplacement.volcanoDent(position.x,position.y);
+			// TODO: deal damage, spawn debris
+		}else{
+			// decay from full strength to the permanent residual over spell.duration seconds
+			progress=max(residual,progress-(1.0f-residual)/(spell.duration*updateFPS));
+			// TODO: deal damage, spawn debris
+		}
+		applyDMapDelta(state,oldProgress,progress);
+		return frame<=volcanoFrame||progress>residual;
+	}
+}
+
 
 enum brainiacProjectileHitGain=4.0f;
 enum brainiacProjectileSize=0.45f; // TODO: ok?
@@ -24950,6 +25112,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.deathEffects.length;){
 		if(!updateDeathEffect(effects.deathEffects[i],state)){
 			effects.removeDeathEffect(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.volcanoCastings.length;){
+		if(!updateVolcanoCasting(effects.volcanoCastings[i],state)){
+			effects.removeVolcanoCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.volcanos.length;){
+		if(!updateVolcano(effects.volcanos[i],state)){
+			effects.removeVolcano(i);
 			continue;
 		}
 		i++;
