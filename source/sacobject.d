@@ -3273,6 +3273,220 @@ struct SacVolcano(B){
 	}
 }
 
+B.Mesh[][] makeVolcanoLavaMeshes(B)(Vector3f[4] knots,float[4] radii,int numGeometryFrames,bool extend,
+                                      int nU,int nV,int uRepeat,int numRings=24,int numSegments=24){
+	auto meshes=new B.Mesh[][](numGeometryFrames,nU*nV);
+	assert(uRepeat>=2&&uRepeat%2==0&&numSegments%uRepeat==0);
+	auto mirrorPeriod=numSegments/uRepeat;
+	foreach(f,ref geometry;meshes){
+		auto t0=extend?1.0f-cast(float)f/(numGeometryFrames-1):0.0f;
+		foreach(textureFrame,ref mesh;geometry){
+			auto frameU=cast(int)textureFrame%nU, frameV=cast(int)textureFrame/nU;
+			auto uTexel=0.5f/(256.0f/nU), vTexel=0.5f/(256.0f/nV);
+			auto u0=cast(float)frameU/nU+uTexel, v0=cast(float)frameV/nV+vTexel;
+			auto u1=cast(float)(frameU+1)/nU-uTexel, v1=cast(float)(frameV+1)/nV-vTexel;
+			auto uw=u1-u0, vh=v1-v0;
+			mesh=B.makeMesh((numRings+1)*(numSegments+1),2*numRings*numSegments);
+			int numFaces=0;
+			void addFace(uint[3] face...){
+				mesh.indices[numFaces++]=face;
+			}
+			int idx(int i,int j){
+				return (numSegments+1)*i+j;
+			}
+			foreach(i;0..numRings+1){
+				auto s=cast(float)i/numRings;
+				auto t=t0+(1.0f-t0)*s;
+				auto b=1.0f-t;
+				auto p=b*b*b*knots[0]+3.0f*b*b*t*knots[1]+3.0f*b*t*t*knots[2]+t*t*t*knots[3];
+				auto r=b*b*b*radii[0]+3.0f*b*b*t*radii[1]+3.0f*b*t*t*radii[2]+t*t*t*radii[3];
+				auto v=v0+vh*s;
+				foreach(j;0..numSegments+1){
+					auto φ=0.5f*pi!float+2.0f*pi!float*j/numSegments;
+					auto repetition=j/mirrorPeriod;
+					auto m=j%mirrorPeriod;
+					if((repetition&1)!=0) m=mirrorPeriod-m;
+					auto u_=u0+uw*(cast(float)m/mirrorPeriod);
+					mesh.vertices[idx(i,j)]=p+r*Vector3f(cos(φ),sin(φ),0.0f);
+					mesh.texcoords[idx(i,j)]=Vector2f(u_,v);
+					if(i!=0&&j!=numSegments){
+						addFace([idx(i,j),idx(i,j+1),idx(i-1,j)]);
+						addFace([idx(i,j+1),idx(i-1,j+1),idx(i-1,j)]);
+					}
+				}
+			}
+			assert(numFaces==2*numRings*numSegments);
+			mesh.generateNormals();
+			B.finalizeMesh(mesh);
+		}
+	}
+	return meshes;
+}
+
+struct SacVolcanoLava(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/sprt.TXTR"));
+	}
+	B.Material material;
+	B.Mesh[][] frames;
+	static immutable Vector3f[4] knots=[Vector3f(0.0f,0.0f,310.0f),Vector3f(0.0f,0.0f,262.0f),
+	                                    Vector3f(0.0f,0.0f,265.0f),Vector3f(0.0f,0.0f,-5.0f)];
+	static immutable float[4] radii=[140.0f,2.0f,20.0f,10.0f];
+	enum numExtendFrames=16;
+	enum nU=4,nV=2;
+	enum uRepeat=2;
+	enum numRings=48;
+	enum numSegments=64;
+	static assert(numSegments%uRepeat==0);
+	enum numTextureFrames=nU*nV;
+	enum textureFrameDelay=4;
+	static B.Mesh[][] createMeshes(){
+		return makeVolcanoLavaMeshes!B(knots,radii,numExtendFrames,true,nU,nV,uRepeat,numRings,numSegments);
+	}
+	B.Mesh getFrame(int eruptFrame,float remaining){
+		int geometry;
+		if(remaining<updateFPS)
+			geometry=cast(int)((numExtendFrames-1)*max(0.0f,remaining)/updateFPS);
+		else if(eruptFrame<updateFPS)
+			geometry=eruptFrame*(numExtendFrames-1)/updateFPS;
+		else geometry=numExtendFrames-1;
+		if(geometry<0) geometry=0;
+		if(geometry>=numExtendFrames) geometry=numExtendFrames-1;
+		auto textureFrame=(eruptFrame/textureFrameDelay)%numTextureFrames;
+		return frames[geometry][textureFrame];
+	}
+}
+
+struct SacVolcanoCloud(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pyro.FLDR/txtr.FLDR/vsmk.TXTR"));
+	}
+	B.Material material;
+	B.Mesh[] frames;
+	static immutable Vector3f[4] knots=[Vector3f(0.0f,0.0f,318.0f),Vector3f(0.0f,0.0f,293.0f),
+	                                    Vector3f(0.0f,0.0f,325.0f),Vector3f(0.0f,0.0f,268.0f)];
+	static immutable float[4] radii=[246.0f,190.0f,137.0f,52.0f];
+	enum nU=4,nV=4;
+	enum uRepeat=4;
+	enum numRings=24;
+	enum numSegments=64;
+	static assert(numSegments%uRepeat==0);
+	enum numTextureFrames=nU*nV;
+	enum textureCycleTicks=120;
+	static B.Mesh[] createMeshes(){
+		return makeVolcanoLavaMeshes!B(knots,radii,1,false,nU,nV,uRepeat,numRings,numSegments)[0];
+	}
+	B.Mesh getFrame(int frame){
+		auto m=frame%textureCycleTicks;
+		return frames[cast(int)(m*(2.0f/15.0f))];
+	}
+}
+
+struct SacVolcanoSpatter(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pyro.FLDR/txtr.FLDR/sptr.TXTR"));
+	}
+	B.Material material;
+	B.Mesh[] frames;
+	enum numRings=24;
+	enum numSegments=64;
+	enum uRepeat=8;
+	static assert(numSegments%uRepeat==0);
+	enum pulseTicks=90;
+	enum nU=4,nV=4;
+	enum numTextureFrames=nU*nV;
+	static float bezier(float t,float c0,float c1,float c2,float c3){
+		auto u=1.0f-t;
+		return u*u*u*c0+3.0f*u*u*t*c1+3.0f*u*t*t*c2+t*t*t*c3;
+	}
+	static float time(float p){
+		return bezier(p,0.0f,0.6f,1.0f,1.0f);
+	}
+	static float knotRadius(int knot,float q){
+		switch(knot){
+			case 0: return bezier(q,9.0f,9.0f,9.0f,9.0f);
+			case 1: return bezier(q,10.0f,13.0f,17.0f,14.0f);
+			case 2: return bezier(q,12.0f,14.0f,18.0f,18.0f);
+			case 3: return bezier(q,13.0f,17.0f,20.0f,23.0f);
+			default: return 0.0f;
+		}
+	}
+	static float knotLift(int knot,float q){
+		switch(knot){
+			case 0: return bezier(q,0.0f,0.0f,0.0f,0.0f);
+			case 1: return bezier(q,4.0f,0.0f,0.0f,0.0f);
+			case 2: return bezier(q,4.0f,10.0f,6.0f,0.0f);
+			case 3: return bezier(q,0.0f,0.0f,0.0f,0.0f);
+			default: return 0.0f;
+		}
+	}
+	static void profile(float p,float s,out float radius,out float lift){
+		auto q=time(p);
+		radius=bezier(s,knotRadius(0,q),knotRadius(1,q),knotRadius(2,q),knotRadius(3,q))*1.1f;
+		lift=bezier(s,knotLift(0,q),knotLift(1,q),knotLift(2,q),knotLift(3,q))*1.1f+0.25f;
+	}
+	static int textureFrame(int eruptFrame){
+		auto p=cast(float)(eruptFrame%pulseTicks)/pulseTicks;
+		return min(numTextureFrames-1,cast(int)(numTextureFrames*p));
+	}
+	static B.Mesh[] createMeshes(){
+		auto frames=new B.Mesh[](numTextureFrames);
+		auto mirrorPeriod=numSegments/uRepeat;
+		foreach(textureFrame,ref mesh;frames){
+			auto frameU=textureFrame%nU, frameV=textureFrame/nU;
+			auto uTexel=0.5f/(256.0f/nU), vTexel=0.5f/(256.0f/nV);
+			auto u0=cast(float)frameU/nU+uTexel, v0=cast(float)frameV/nV+vTexel;
+			auto u1=cast(float)(frameU+1)/nU-uTexel, v1=cast(float)(frameV+1)/nV-vTexel;
+			auto uw=u1-u0, vh=v1-v0;
+			mesh=B.makeMesh(numRings*(numSegments+1),2*(numRings-1)*numSegments);
+			int numFaces=0;
+			int idx(int i,int j){ return (numSegments+1)*i+j; }
+			foreach(i;0..numRings){
+				auto s=cast(float)i/(numRings-1);
+				auto v=v0+vh*(1.0f-s);
+				foreach(j;0..numSegments+1){
+					mesh.vertices[idx(i,j)]=Vector3f(0.0f,0.0f,0.0f);
+					auto repetition=j/mirrorPeriod;
+					auto m=j%mirrorPeriod;
+					if((repetition&1)!=0) m=mirrorPeriod-m;
+					auto u=u0+uw*(cast(float)m/mirrorPeriod);
+					mesh.texcoords[idx(i,j)]=Vector2f(u,v);
+					if(i!=0&&j!=numSegments){
+						mesh.indices[numFaces++]=[idx(i,j),idx(i,j+1),idx(i-1,j)];
+						mesh.indices[numFaces++]=[idx(i,j+1),idx(i-1,j+1),idx(i-1,j)];
+					}
+				}
+			}
+			assert(numFaces==2*(numRings-1)*numSegments);
+			mesh.generateNormals();
+			B.finalizeMesh(mesh);
+		}
+		return frames;
+	}
+	B.Mesh prepare(TState)(Vector3f position,int eruptFrame,TState state){
+		auto mesh=frames[textureFrame(eruptFrame)];
+		auto p=cast(float)(eruptFrame%pulseTicks)/pulseTicks;
+		foreach(i;0..numRings){
+			auto s=cast(float)i/(numRings-1);
+			float radius,lift;
+			profile(p,s,radius,lift);
+			foreach(j;0..numSegments+1){
+				auto φ=0.5f*pi!float+2.0f*pi!float*j/numSegments;
+				auto local=Vector3f(radius*cos(φ),radius*sin(φ),0.0f);
+				auto world=Vector3f(position.x+local.x,position.y+local.y,0.0f);
+				local.z=state.getHeight(world)-position.z+lift;
+				mesh.vertices[(numSegments+1)*i+j]=local;
+			}
+		}
+		mesh.generateNormals();
+		B.finalizeMesh(mesh);
+		return mesh;
+	}
+}
+
 
 struct SacBrainiacEffect(B){
 	B.Texture texture;

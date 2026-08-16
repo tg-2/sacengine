@@ -462,6 +462,36 @@ struct Renderer(B){
 		auto meshes=typeof(return).createMeshes;
 		return SacCloud2!B(blueMat,meshes);
 	}
+	SacVolcanoLava!B volcanoErupt;
+	SacVolcanoLava!B createVolcanoLava(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.blending=B.Blending.Transparent;
+		mat.energy=10.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacVolcanoLava!B(texture,mat,frames);
+	}
+	SacVolcanoCloud!B volcanoCloud;
+	SacVolcanoCloud!B createVolcanoCloud(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.blending=B.Blending.Transparent;
+		mat.energy=1.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacVolcanoCloud!B(texture,mat,frames);
+	}
+	SacVolcanoSpatter!B volcanoSpatter;
+	SacVolcanoSpatter!B createVolcanoSpatter(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.blending=B.Blending.Transparent;
+		mat.energy=10.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacVolcanoSpatter!B(texture,mat,frames);
+	}
 	SacRainFrog!B rainFrog;
 	SacRainFrog!B createRainFrog(){
 		auto texture=typeof(return).loadTexture();
@@ -1013,6 +1043,9 @@ struct Renderer(B){
 		explosionEffect=createExplosionEffect();
 		cloud=createCloud();
 		cloud2=createCloud2();
+		volcanoErupt=createVolcanoLava();
+		volcanoCloud=createVolcanoCloud();
+		volcanoSpatter=createVolcanoSpatter();
 		rainFrog=createRainFrog();
 		demonicRiftSpirit=createDemonicRiftSpirit();
 		demonicRiftBorder=createDemonicRiftBorder();
@@ -3174,6 +3207,43 @@ struct Renderer(B){
 						auto curRadius=frozenGround.curRadius;
 						mesh.prepare(frozenGround.center,minRadius,curRadius,maxRadius,state,0.5f);
 						mesh.render(rc);
+					}
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.volcanos.length){
+					B.disableCulling();
+					scope(success) B.enableCulling();
+					foreach(ref volcano;objects.volcanos){
+						if(volcano.frame<volcano.volcanoFrame) continue;
+						auto eruptFrame=volcano.frame-volcano.volcanoFrame;
+						auto remaining=(volcano.progress-Volcano!B.residual)/(1.0f-Volcano!B.residual)*volcano.spell.duration*updateFPS;
+						auto position=Vector3f(volcano.position.x,volcano.position.y,0.0f);
+						position.z=state.getHeight(position);
+						{
+							auto mat=self.volcanoSpatter.material;
+							mat.bind(rc);
+							scope(success) mat.unbind(rc);
+							mat.backend.setTransformation(position,Quaternionf.identity(),rc);
+							auto mesh=self.volcanoSpatter.prepare(position,eruptFrame,state);
+							mesh.render(rc);
+						}
+						{
+							auto mat=self.volcanoErupt.material;
+							mat.bind(rc);
+							scope(success) mat.unbind(rc);
+							auto mesh=self.volcanoErupt.getFrame(eruptFrame,remaining);
+							mat.backend.setTransformation(position,Quaternionf.identity(),rc);
+							mesh.render(rc);
+						}
+						{
+							auto alpha=min(1.0f,1.1f*eruptFrame/self.volcanoErupt.numExtendFrames)*min(1.0f,max(0.0f,remaining)/updateFPS);
+							auto mat=self.volcanoCloud.material;
+							mat.bind(rc);
+							scope(success) mat.unbind(rc);
+							mat.backend.setAlpha(alpha);
+							auto mesh=self.volcanoCloud.getFrame(eruptFrame);
+							mat.backend.setTransformation(position,Quaternionf.identity(),rc);
+							mesh.render(rc);
+						}
 					}
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.silverbackEffects.length){
