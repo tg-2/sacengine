@@ -462,7 +462,7 @@ struct Renderer(B){
 		auto meshes=typeof(return).createMeshes;
 		return SacCloud2!B(blueMat,meshes);
 	}
-	SacVolcanoLava!B volcanoErupt;
+	SacVolcanoLava!B volcanoLava;
 	SacVolcanoLava!B createVolcanoLava(){
 		auto texture=typeof(return).loadTexture();
 		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
@@ -1044,7 +1044,7 @@ struct Renderer(B){
 		explosionEffect=createExplosionEffect();
 		cloud=createCloud();
 		cloud2=createCloud2();
-		volcanoErupt=createVolcanoLava();
+		volcanoLava=createVolcanoLava();
 		volcanoCloud=createVolcanoCloud();
 		volcanoSpatter=createVolcanoSpatter();
 		rainFrog=createRainFrog();
@@ -3211,8 +3211,6 @@ struct Renderer(B){
 					}
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.volcanos.length){
-					B.disableCulling();
-					scope(success) B.enableCulling();
 					foreach(ref volcano;objects.volcanos){
 						if(volcano.frame<volcano.volcanoFrame) continue;
 						auto eruptFrame=volcano.frame-volcano.volcanoFrame;
@@ -3220,15 +3218,15 @@ struct Renderer(B){
 						auto position=Vector3f(volcano.position.x,volcano.position.y,0.0f);
 						position.z=state.getHeight(position);
 						{
-							auto mat=self.volcanoErupt.material;
+							auto mat=self.volcanoLava.material;
 							mat.bind(rc);
 							scope(success) mat.unbind(rc);
-							auto mesh=self.volcanoErupt.getFrame(eruptFrame,remaining);
+							auto mesh=self.volcanoLava.getFrame(eruptFrame,remaining);
 							mat.backend.setTransformation(position,Quaternionf.identity(),rc);
 							mesh.render(rc);
 						}
 						{
-							auto alpha=min(1.0f,1.1f*eruptFrame/self.volcanoErupt.numExtendFrames)*min(1.0f,max(0.0f,remaining)/updateFPS);
+							auto alpha=min(1.0f,1.1f*eruptFrame/self.volcanoLava.numExtendFrames)*min(1.0f,max(0.0f,remaining)/updateFPS);
 							auto mat=self.volcanoCloud.material;
 							mat.bind(rc);
 							scope(success) mat.unbind(rc);
