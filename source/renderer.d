@@ -486,6 +486,7 @@ struct Renderer(B){
 	SacVolcanoSpatter!B createVolcanoSpatter(){
 		auto texture=typeof(return).loadTexture();
 		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
 		mat.blending=B.Blending.Transparent;
 		mat.energy=10.0f;
 		mat.diffuse=texture;
@@ -3219,14 +3220,6 @@ struct Renderer(B){
 						auto position=Vector3f(volcano.position.x,volcano.position.y,0.0f);
 						position.z=state.getHeight(position);
 						{
-							auto mat=self.volcanoSpatter.material;
-							mat.bind(rc);
-							scope(success) mat.unbind(rc);
-							mat.backend.setTransformation(position,Quaternionf.identity(),rc);
-							auto mesh=self.volcanoSpatter.prepare(position,eruptFrame,state);
-							mesh.render(rc);
-						}
-						{
 							auto mat=self.volcanoErupt.material;
 							mat.bind(rc);
 							scope(success) mat.unbind(rc);
@@ -3242,6 +3235,18 @@ struct Renderer(B){
 							mat.backend.setAlpha(alpha);
 							auto mesh=self.volcanoCloud.getFrame(eruptFrame);
 							mat.backend.setTransformation(position,Quaternionf.identity(),rc);
+							mesh.render(rc);
+						}
+						{
+							auto mat=self.volcanoSpatter.material;
+							mat.bind(rc);
+							B.disableCulling();
+							scope(success){
+								B.enableCulling();
+								mat.unbind(rc);
+							}
+							mat.backend.setTransformation(position,Quaternionf.identity(),rc);
+							auto mesh=self.volcanoSpatter.prepare(position,eruptFrame,state);
 							mesh.render(rc);
 						}
 					}
