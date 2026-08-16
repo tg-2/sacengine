@@ -685,6 +685,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Vol
 void serialize(alias sink,B)(ref Volcano!B volcano){ serializeStruct!sink(volcano); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Volcano!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref VolcanoLavaBall!B volcanoLavaBall){ serializeStruct!sink(volcanoLavaBall); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==VolcanoLavaBall!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref BrainiacProjectile!B brainiacProjectile){ serializeStruct!sink(brainiacProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BrainiacProjectile!B)){ deserializeStruct(result,state,data); }
 

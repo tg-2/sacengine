@@ -4059,7 +4059,7 @@ struct Volcano(B){
 	int volcanoFrame;
 	int frame=0;
 
-	// int soundTimer0=0,soundTimer1=0; // TODO
+	int soundTimer;
 
 	enum int dmapSize=33, dmapCenter=dmapSize/2;
 	enum float cellSize=10.0f;
@@ -4110,6 +4110,24 @@ struct Volcano(B){
 		state.obj.opaqueObjects.permanentDisplacement.recomputeHash();
 		progress=to;
 	}
+}
+
+struct VolcanoLavaBall(B){
+	int wizard;
+	int side;
+	Vector3f position;
+	Vector3f velocity;
+	SacSpell!B spell;
+	Quaternionf rotationUpdate;
+	Quaternionf rotation;
+	float scale;
+	int frame=0;
+	static assert(updateFPS==60);
+	enum lifetime=1200;
+	enum size=2.0f;
+	enum minTargetRange=30.0f, maxTargetRange=200.0f;
+	enum pickRadius=200.0f;
+	enum accuracy=0.005f;
 }
 
 
@@ -5943,6 +5961,14 @@ struct Effects(B){
 	void removeVolcano(int i){
 		if(i+1<volcanos.length) volcanos[i]=move(volcanos[$-1]);
 		volcanos.length=volcanos.length-1;
+	}
+	Array!(VolcanoLavaBall!B) volcanoLavaBalls;
+	void addEffect(VolcanoLavaBall!B volcanoLavaBall){
+		volcanoLavaBalls~=move(volcanoLavaBall);
+	}
+	void removeVolcanoLavaBall(int i){
+		if(i+1<volcanoLavaBalls.length) volcanoLavaBalls[i]=move(volcanoLavaBalls[$-1]);
+		volcanoLavaBalls.length=volcanoLavaBalls.length-1;
 	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
@@ -21001,9 +21027,12 @@ bool updateDeathEffect(B)(ref DeathEffect deathEffect,ObjectState!B state){
 	}
 }
 
+
 void animateVolcanoCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
-	// TODO
+	auto castParticle=SacParticle!B.get(ParticleType.firy);
+	wizard.animateCasting!false(castParticle,state);
 }
+
 bool updateVolcanoCasting(B)(ref VolcanoCasting!B volcanoCast,ObjectState!B state){
 	with(volcanoCast){
 		final switch(manaDrain.update(state)){
@@ -21013,7 +21042,7 @@ bool updateVolcanoCasting(B)(ref VolcanoCasting!B volcanoCast,ObjectState!B stat
 				volcano.updateVolcano(state);
 				return true;
 			case CastingStatus.interrupted:
-				volcano.applyDMapDelta(state,volcano.progress,0.0f); // undo the partially grown cone
+				volcano.applyDMapDelta(state,volcano.progress,0.0f);
 				return false;
 			case CastingStatus.finished:
 				.volcano(volcano,state);
@@ -21023,6 +21052,9 @@ bool updateVolcanoCasting(B)(ref VolcanoCasting!B volcanoCast,ObjectState!B stat
 }
 
 enum volcanoGain0=2.0f, volcanoGain1=4.0f, volcanoGain2=8.0f;
+enum volcanoBurnRadius=50.0f, volcanoBurnFullDamageRadius=20.0f;
+enum volcanoGroundZeroRadius=50.0f;
+enum volcanoGain=6.0f;
 bool updateVolcano(B)(ref Volcano!B volcano,ObjectState!B state){
 	with(volcano){
 		//if(--soundTimer0<=0) soundTimer0=playSpellSoundTypeAt!true(SoundType.convertRevive,position,state,volcanoGain0); // TODO: stop sound // TODO
@@ -21031,18 +21063,147 @@ bool updateVolcano(B)(ref Volcano!B volcano,ObjectState!B state){
 		++frame;
 		if(frame<volcanoFrame){
 			progress=cast(float)frame/volcanoFrame;
-			if(frame%(updateFPS/10)==0) state.addEffect(ScreenShake(position,updateFPS/10,1.5f,200.0f));
+			if(--soundTimer<=0) soundTimer=playSpellSoundTypeAt!true(SoundType.bore,position,state,volcanoGain);
 		}else if(frame==volcanoFrame){
 			progress=1.0f;
 			state.obj.opaqueObjects.permanentDisplacement.volcanoDent(position.x,position.y);
-			// TODO: deal damage, spawn debris
+			// TODO: weather, widgets
+			playSoundAt("tpre",position,state,volcanoGain);
+			dealSplashSpellDamageAt(0,spell,volcanoGroundZeroRadius,wizard,side,position,DamageMod.none,state);
+			playSpellSoundTypeAt(SoundType.bore,position,state,volcanoGain);
+			// TODO: stop bore sound
+			soundTimer=playSoundAt!true("3avl",position,state,volcanoGain);
 		}else{
-			// decay from full strength to the permanent residual over spell.duration seconds
 			progress=max(residual,progress-(1.0f-residual)/(spell.duration*updateFPS));
-			// TODO: deal damage, spawn debris
+			if(--soundTimer<=0) soundTimer=playSoundAt!true("3avl",position,state,volcanoGain);
+			volcanoBurn(volcano,state);
+			pushAll(position,10.0f,50.0f,1.0f/3,state);
+			if(!state.uniform(32)) state.addEffect(makeVolcanoLavaBall(volcano,state));
 		}
+		if(frame%(updateFPS/10)==0) state.addEffect(ScreenShake(position,updateFPS/10,sqrt(progress)*1.5f,300.0f));
 		applyDMapDelta(state,oldProgress,progress);
-		return frame<=volcanoFrame||progress>residual;
+		bool active=frame<=volcanoFrame||progress>residual;
+		if(!active) playSoundAt("dclv",position,state,volcanoGain);
+		return active;
+	}
+}
+
+void volcanoBurn(B)(ref Volcano!B volcano,ObjectState!B state){
+	with(volcano){
+		static void burn(ref ProximityEntry entry,ObjectState!B state,Volcano!B* volcano){
+			auto targetType=state.targetTypeFromId(entry.id);
+			if(!targetType.among(TargetType.creature,TargetType.building)) return;
+			auto targetPosition=state.objectById!((obj)=>obj.position)(entry.id);
+			auto diff=targetPosition.xy-volcano.position.xy;
+			auto distance=diff.length;
+			if(distance>=volcanoBurnRadius) return;
+			auto falloff=1.0f-max(0.0f,distance-volcanoBurnFullDamageRadius)/(volcanoBurnRadius-volcanoBurnFullDamageRadius);
+			auto direction=distance==0.0f?Vector3f(0.0f,0.0f,1.0f):Vector3f(diff.x/distance,diff.y/distance,0.0f);
+			auto damageRate=volcano.spell.amount*falloff/updateFPS;
+			state.objectById!dealSpellDamage(entry.id,damageRate,volcano.wizard,volcano.side,direction,DamageMod.none,state);
+			if(targetType==TargetType.creature){
+				state.movingObjectById!((ref obj,direction,falloff,attacker,side,state){
+					obj.push(updateFPS*(falloff/12.0f)*direction,state);
+					obj.ignite(0.0f,attacker,side,state);
+				},(){})(entry.id,direction,falloff,volcano.wizard,volcano.side,state);
+			}
+		}
+		auto offset=Vector3f(volcanoBurnRadius,volcanoBurnRadius,volcanoBurnRadius);
+		Vector3f[2] hitbox=[position-offset,position+offset];
+		collisionTargets!(burn,None,true)(hitbox,state,&volcano);
+	}
+}
+
+VolcanoLavaBall!B makeVolcanoLavaBall(B)(ref Volcano!B volcano,ObjectState!B state){
+	with(volcano){
+		static void gather(ref ProximityEntry entry,ObjectState!B state,Array!int* targets,Vector3f center){
+			if(state.targetTypeFromId(entry.id)!=TargetType.creature) return;
+			auto targetPosition=state.objectById!((obj)=>obj.position)(entry.id);
+			if((targetPosition-center).lengthsqr>=VolcanoLavaBall!B.pickRadius^^2) return;
+			*targets~=entry.id;
+		}
+		auto pickOffset=VolcanoLavaBall!B.pickRadius*Vector3f(1.0f,1.0f,1.0f);
+		Vector3f[2] pickHitbox=[position-pickOffset,position+pickOffset];
+		auto pickCenter=position;
+		pickCenter.z=state.getHeight(pickCenter);
+		Array!int targets;
+		collisionTargets!(gather,None,true)(pickHitbox,state,&targets,pickCenter);
+		Vector3f target;
+		if(targets.length&&state.uniform(cast(int)targets.length+4)<cast(int)targets.length)
+			target=centerTarget(targets[state.uniform(cast(int)targets.length)],state).position;
+		else{
+			auto distance=state.uniform!"[)"(VolcanoLavaBall!B.minTargetRange,VolcanoLavaBall!B.maxTargetRange);
+			auto angle=state.uniform(-pi!float,pi!float);
+			target=position+distance*Vector3f(cos(angle),sin(angle),0.0f);
+			target.z=state.getHeight(target);
+		}
+		auto spawnPosition=position;
+		spawnPosition.z=state.getHeight(spawnPosition)+state.uniform!"[)"(0.0f,120.0f);
+		auto direction=getShotDirectionWithGravity(VolcanoLavaBall!B.accuracy,spawnPosition,target,spell,state);
+		auto velocity=spell.speed*direction;
+		auto rotationUpdate=rotationQuaternion(state.uniformDirection(),2*pi!float*state.uniform(-1.0f,1.0f)/updateFPS);
+		auto scale=0.9f+0.2f*state.uniform!"[)"(0.0f,1.0f);
+		return VolcanoLavaBall!B(wizard,side,spawnPosition,velocity,spell,rotationUpdate,Quaternionf.identity(),scale);
+	}
+}
+
+void animateVolcanoLavaBall(B)(ref VolcanoLavaBall!B lavaBall,Vector3f oldPosition,ObjectState!B state){
+	with(lavaBall){
+		enum numParticles=8;
+		auto sacParticle1=SacParticle!B.get(ParticleType.firy);
+		auto sacParticle2=SacParticle!B.get(ParticleType.fireball);
+		auto velocity=Vector3f(0.0f,0.0f,0.0f);
+		auto lifetime=31;
+		auto scale=6.0f*lavaBall.scale;
+		auto frame=0;
+		foreach(i;0..numParticles){
+			auto sacParticle=i!=0?sacParticle1:sacParticle2;
+			auto position=oldPosition*((cast(float)numParticles-1-i)/numParticles)+position*(cast(float)(i+1)/numParticles);
+			position+=0.6f*lavaBall.scale*state.uniformDirection();
+			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+		}
+	}
+}
+int volcanoLavaBallCollisionTarget(B)(int side,Vector3f position,ObjectState!B state){
+	static immutable Vector3f[2] volcanoLavaBallHitbox=[-0.5f*VolcanoLavaBall!B.size*Vector3f(1.0f,1.0f,1.0f),0.5f*VolcanoLavaBall!B.size*Vector3f(1.0f,1.0f,1.0f)];
+	static bool filter(ProximityEntry entry,ObjectState!B state,int side){
+		return entry.isProjectileObstacle&&state.objectById!(.side)(entry.id,state)!=side;
+	}
+	return collisionTarget!(volcanoLavaBallHitbox,filter)(side,position,state,side);
+}
+enum volcanoLavaBallGain=8.0f;
+void volcanoLavaBallExplosion(B)(ref VolcanoLavaBall!B lavaBall,int target,ObjectState!B state){
+	playSpellSoundTypeAt(SoundType.explodingFireball,lavaBall.position,state,volcanoLavaBallGain);
+	if(state.isValidTarget(target)){
+		dealSpellDamage(target,lavaBall.spell,lavaBall.wizard,lavaBall.side,lavaBall.velocity,DamageMod.ignite|DamageMod.splash,state);
+		setAblaze(target,updateFPS,false,0.0f,lavaBall.wizard,lavaBall.side,DamageMod.ignite,state);
+	}else target=0;
+	static bool callback(int target,int wizard,int side,ObjectState!B state){
+		setAblaze(target,updateFPS,false,0.0f,wizard,side,DamageMod.none,state);
+		return true;
+	}
+	dealSplashSpellDamageAt!callback(target,lavaBall.spell,lavaBall.spell.damageRange,lavaBall.wizard,lavaBall.side,lavaBall.position,DamageMod.ignite,state,lavaBall.wizard,lavaBall.side,state);
+	animateFireballExplosion(lavaBall.position,state,2.0f);
+}
+bool updateVolcanoLavaBall(B)(ref VolcanoLavaBall!B lavaBall,ObjectState!B state){
+	with(lavaBall){
+		auto oldPosition=position;
+		position+=velocity/updateFPS;
+		velocity.z-=spell.fallingAcceleration/updateFPS;
+		rotation=rotationUpdate*rotation;
+		lavaBall.animateVolcanoLavaBall(oldPosition,state);
+		if(auto target=volcanoLavaBallCollisionTarget(side,position,state)){
+			volcanoLavaBallExplosion(lavaBall,target,state);
+			return false;
+		}
+		if(state.isOnGround(position)){
+			if(position.z<state.getGroundHeight(position)){
+				volcanoLavaBallExplosion(lavaBall,0,state);
+				return false;
+			}
+		}else if(position.z<state.getHeight(position)-spell.fallLimit)
+			return false; // TODO: explode instead?
+		return ++frame<=lifetime;
 	}
 }
 
@@ -25126,6 +25287,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.volcanos.length;){
 		if(!updateVolcano(effects.volcanos[i],state)){
 			effects.removeVolcano(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.volcanoLavaBalls.length;){
+		if(!updateVolcanoLavaBall(effects.volcanoLavaBalls[i],state)){
+			effects.removeVolcanoLavaBall(i);
 			continue;
 		}
 		i++;

@@ -1440,7 +1440,7 @@ struct Renderer(B){
 			}else static if(is(T==Buildings!B)){
 				// do nothing
 			}else static if(is(T==Effects!B)){
-				static if(mode==RenderMode.opaque) if(objects.debris.length||objects.fireballCastings.length||objects.fireballs.length){
+				static if(mode==RenderMode.opaque) if(objects.debris.length||objects.fireballCastings.length||objects.fireballs.length||objects.volcanoLavaBalls.length){
 					auto materials=self.sacDebris.materials;
 					foreach(i;0..materials.length){
 						auto material=materials[i];
@@ -1458,6 +1458,10 @@ struct Renderer(B){
 						}
 						foreach(j;0..objects.fireballs.length){
 							material.backend.setTransformationScaled(objects.fireballs[j].position,objects.fireballs[j].rotation,0.25f*Vector3f(1.0f,1.0f,1.0f),rc);
+							mesh.render(rc);
+						}
+						foreach(j;0..objects.volcanoLavaBalls.length){
+							material.backend.setTransformationScaled(objects.volcanoLavaBalls[j].position,objects.volcanoLavaBalls[j].rotation,objects.volcanoLavaBalls[j].scale*Vector3f(1.0f,1.0f,1.0f),rc);
 							mesh.render(rc);
 						}
 					}
@@ -3551,7 +3555,7 @@ struct Renderer(B){
 				}
 			}else static assert(0);
 		}
-		state.eachByType!(render,EachByTypeFlags.movingFirst|EachByTypeFlags.particlesBeforeEffects)(&this,options.enableWidgets,state,&info,rc);
+		state.eachByType!(render,EachByTypeFlags.movingFirst)(&this,options.enableWidgets,state,&info,rc);
 	}
 
 	bool selectionUpdated=false;
