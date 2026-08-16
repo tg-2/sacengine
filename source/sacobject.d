@@ -1259,6 +1259,7 @@ enum ParticleType{
 	gnomeHit,
 	warmongerHit,
 	ashParticle,
+	volcanoAsh,
 	dirt,
 	dust,
 	slowDust,
@@ -1315,7 +1316,7 @@ final class SacParticle(B){
 				return false;
 			case breathOfLife,wrathCasting,wrathExplosion1,wrathExplosion2,rainOfFrogsCasting,steam:
 				return false;
-			case wrathParticle,rainbowParticle,frogExplosion,gnomeHit,warmongerHit,ashParticle:
+			case wrathParticle,rainbowParticle,frogExplosion,gnomeHit,warmongerHit,ashParticle,volcanoAsh:
 				return true;
 			case smoke,dirt,dust,slowDust,splat:
 				return false;
@@ -1357,7 +1358,7 @@ final class SacParticle(B){
 				return false;
 			case castPersephone,castPersephone2,castPyro,castPyro2,castJames,castJames2,castStratos,castCharnel,castCharnel2:
 				return false;
-			case breathOfLife,wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,rainbowParticle,rainOfFrogsCasting,frogExplosion,gnomeHit,warmongerHit,ashParticle,steam,smoke,dirt,dust,slowDust,splat,rock,bombardmentCasting,webDebris,oil,poison,swarmHit,slime:
+			case breathOfLife,wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,rainbowParticle,rainOfFrogsCasting,frogExplosion,gnomeHit,warmongerHit,ashParticle,volcanoAsh,steam,smoke,dirt,dust,slowDust,splat,rock,bombardmentCasting,webDebris,oil,poison,swarmHit,slime:
 				return false;
 			case relativePoison:
 				return true;
@@ -1369,7 +1370,7 @@ final class SacParticle(B){
 	}
 	@property bool bumpOffGround(){
 		switch(type) with(ParticleType){
-			case scarabHit,ghostTransition,wrathParticle,rainbowParticle,gnomeHit,warmongerHit,ashParticle,rock,webDebris,oil,swarmHit,slime,needle,redVortexDroplet,blueVortexDroplet,spark,styxSpark,rend,bouncingHeart: return true;
+			case scarabHit,ghostTransition,wrathParticle,rainbowParticle,gnomeHit,warmongerHit,ashParticle,volcanoAsh,rock,webDebris,oil,swarmHit,slime,needle,redVortexDroplet,blueVortexDroplet,spark,styxSpark,rend,bouncingHeart: return true;
 			default: return false;
 		}
 	}
@@ -1635,7 +1636,7 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/stem.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
-			case ashParticle:
+			case ashParticle,volcanoAsh:
 				width=height=0.3f;
 				this.energy=10.0f;
 				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pyro.FLDR/txtr.FLDR/frck.TXTR"));
@@ -1766,6 +1767,7 @@ final class SacParticle(B){
 			case gnomeHit: return 2;
 			case warmongerHit: return 1;
 			case ashParticle: return 3;
+			case volcanoAsh: return 1;
 			case smoke: return 4;
 			case fire: return 2;
 			case cold: return 2;
@@ -1802,6 +1804,8 @@ final class SacParticle(B){
 			case speedUp,ghost,wrathParticle,rainbowParticle,frogExplosion,gnomeHit,warmongerHit:
 				return min(1.0f,(lifetime/(0.5f*numFrames))^^2);
 			case ashParticle:
+				return 1.0f;
+			case volcanoAsh:
 				return 1.0f;
 			case heal,relativeHeal,ghostTransition:
 				return min(1.0f,(lifetime/(0.75f*numFrames))^^2);
@@ -1888,6 +1892,8 @@ final class SacParticle(B){
 				return 1.0f;
 			case ashParticle:
 				return 1.0f;
+			case volcanoAsh:
+				return min(1.0f,0.4f+0.6f*lifetime/(1.5f*numFrames));
 			case smoke:
 				return 1.0f/(lifetime/float(numFrames)+0.2f);
 			case rock,bombardmentCasting:

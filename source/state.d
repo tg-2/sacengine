@@ -21055,10 +21055,23 @@ enum volcanoGain0=2.0f, volcanoGain1=4.0f, volcanoGain2=8.0f;
 enum volcanoBurnRadius=50.0f, volcanoBurnFullDamageRadius=20.0f;
 enum volcanoGroundZeroRadius=50.0f;
 enum volcanoGain=6.0f;
+void animateVolcanoAsh(B)(Vector3f position,int numParticles,ObjectState!B state){
+	auto sacParticle=SacParticle!B.get(ParticleType.volcanoAsh);
+	foreach(i;0..numParticles){
+		auto angle=state.uniform!"[)"(0.0f,2*pi!float);
+		auto direction=Vector3f(cos(angle),sin(angle),0.0f);
+		auto scale=5.0f*state.uniform!"[)"(0.5f,1.0f);
+		auto ashPosition=position+9.0f*direction;
+		ashPosition.z=state.getHeight(ashPosition)+scale;
+		auto velocity=updateFPS*state.uniform!"[)"(0.2f,0.3f)*direction;
+		velocity.z=updateFPS*state.uniform!"[)"(0.1f,0.2f);
+		auto lifetime=90+state.uniform(90);
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle,ashPosition,velocity,scale,lifetime,frame));
+	}
+}
 bool updateVolcano(B)(ref Volcano!B volcano,ObjectState!B state){
 	with(volcano){
-		//if(--soundTimer0<=0) soundTimer0=playSpellSoundTypeAt!true(SoundType.convertRevive,position,state,volcanoGain0); // TODO: stop sound // TODO
-		//if(--soundTimer1<=0) soundTimer1=playSpellSoundTypeAt!true(SoundType.bore,position,state,volcanoGain1); // TODO: stop sound // TODO
 		auto oldProgress=progress;
 		++frame;
 		if(frame<volcanoFrame){
@@ -21073,12 +21086,14 @@ bool updateVolcano(B)(ref Volcano!B volcano,ObjectState!B state){
 			playSpellSoundTypeAt(SoundType.bore,position,state,volcanoGain);
 			// TODO: stop bore sound
 			soundTimer=playSoundAt!true("3avl",position,state,volcanoGain);
+			animateVolcanoAsh(position,64,state);
 		}else{
 			progress=max(residual,progress-(1.0f-residual)/(spell.duration*updateFPS));
 			if(--soundTimer<=0) soundTimer=playSoundAt!true("3avl",position,state,volcanoGain);
 			volcanoBurn(volcano,state);
 			pushAll(position,10.0f,50.0f,1.0f/3,state);
 			if(!state.uniform(32)) state.addEffect(makeVolcanoLavaBall(volcano,state));
+			if((frame-volcanoFrame)%90==0) animateVolcanoAsh(position,32,state);
 		}
 		if(frame%(updateFPS/10)==0) state.addEffect(ScreenShake(position,updateFPS/10,sqrt(progress)*1.5f,300.0f));
 		applyDMapDelta(state,oldProgress,progress);
