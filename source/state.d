@@ -4183,6 +4183,61 @@ struct Meanstalks(B){
 	}
 }
 
+struct TornadoCasting(B){
+	ManaDrain!B manaDrain;
+	Tornado!B tornado;
+	int castingTime;
+	float progress=0.0f;
+}
+enum TornadoMode:int{
+	casting,
+	active,
+	dissipating,
+}
+struct Tornado(B){
+	int wizard;
+	int side;
+	SacSpell!B spell;
+	Vector3f position=Vector3f(0.0f,0.0f,0.0f);
+	Vector3f top=Vector3f(0.0f,0.0f,0.0f);
+	Vector3f home=Vector3f(0.0f,0.0f,0.0f);
+	Vector3f target=Vector3f(0.0f,0.0f,0.0f);
+	Vector3f velocity=Vector3f(0.0f,0.0f,0.0f);
+	float scale=0.0f;
+	float scaleTarget=0.0f;
+	float spinPhase=0.0f;
+	float[4] wobblePhases=0.0f;
+	Vector3f[7] axisPoints=Vector3f(0.0f,0.0f,0.0f);
+	float[7] radii=0.0f;
+	int timer=0;
+	int soundTimer=0;
+	TornadoMode mode=TornadoMode.casting;
+
+	void updateCurve(){
+		auto bottom=top+scale*(position-top);
+		auto d=(bottom-top)/6.0f;
+		auto p2=top+1.5f*d, p4=top+4.5f*d;
+		auto amplitude=(bottom.z-top.z)*0.3f;
+		p2.x+=amplitude*sin(wobblePhases[0]);
+		p2.y+=amplitude*sin(wobblePhases[1]);
+		p4.x+=amplitude*sin(wobblePhases[2]);
+		p4.y+=amplitude*sin(wobblePhases[3]);
+		axisPoints=[top,top+d,p2,0.5f*(p2+p4),p4,top+5.0f*d,bottom];
+		enum w=100.0f, b=1.5f;
+		radii=[3.0f*w,w+(b-w)*0.6f,w+(b-w)*0.6f,w+(b-w)*0.675f,w+(b-w)*0.75f,w+(b-w)*0.95f,b];
+	}
+	float getCentre(Vector3f pos,out Vector3f point,out float radius){
+		// auto t=(pos.z-axisPoints[0].z)/(axisPoints[6].z-axisPoints[0].z); // tornado bug
+		auto t=(axisPoints[0].z-pos.z)/(axisPoints[0].z-axisPoints[6].z);
+		t=min(1.0f,max(0.0f,t));
+		auto i=t<=0.5f?0:3;
+		auto u=t<=0.5f?2.0f*t:2.0f*(t-0.5f), v=1.0f-u;
+		point=v*v*v*axisPoints[i]+3.0f*v*v*u*axisPoints[i+1]+3.0f*v*u*u*axisPoints[i+2]+u*u*u*axisPoints[i+3];
+		radius=v*v*v*radii[i]+3.0f*v*v*u*radii[i+1]+3.0f*v*u*u*radii[i+2]+u*u*u*radii[i+3];
+		return t;
+	}
+}
+
 
 struct BrainiacProjectile(B){
 	int attacker;
@@ -6039,6 +6094,22 @@ struct Effects(B){
 		if(i+1<meanstalkss.length) meanstalkss[i]=move(meanstalkss[$-1]);
 		meanstalkss.length=meanstalkss.length-1;
 	}
+	Array!(TornadoCasting!B) tornadoCastings;
+	void addEffect(TornadoCasting!B tornadoCasting){
+		tornadoCastings~=move(tornadoCasting);
+	}
+	void removeTornadoCasting(int i){
+		if(i+1<tornadoCastings.length) tornadoCastings[i]=move(tornadoCastings[$-1]);
+		tornadoCastings.length=tornadoCastings.length-1;
+	}
+	Array!(Tornado!B) tornados;
+	void addEffect(Tornado!B tornado){
+		tornados~=move(tornado);
+	}
+	void removeTornado(int i){
+		if(i+1<tornados.length) tornados[i]=move(tornados[$-1]);
+		tornados.length=tornados.length-1;
+	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
 	void addEffect(BrainiacProjectile!B brainiacProjectile){
@@ -7162,14 +7233,16 @@ auto eachHighlights(alias f,B,T...)(ref Objects!(B,RenderMode.opaque) objects,T 
 enum EachByTypeFlags{
 	none=0,
 	movingFirst=1,
-	particlesBeforeEffects=2,
-	wizardsLast=4,
+	wizardsLast=2,
+	particlesBeforeEffects=4,
+	opaqueEffectsBeforeParticles=8,
 }
 auto eachByType(alias f,EachByTypeFlags flags,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T args){
 	with(objects){
 		enum movingFirst=!!(flags&EachByTypeFlags.movingFirst);
-		enum particlesBeforeEffects=!!(flags&EachByTypeFlags.particlesBeforeEffects);
 		enum wizardsLast=!!(flags&EachByTypeFlags.wizardsLast);
+		enum particlesBeforeEffects=!!(flags&EachByTypeFlags.particlesBeforeEffects);
+		enum opaqueEffectsBeforeParticles=!!(flags&EachByTypeFlags.opaqueEffectsBeforeParticles);
 		enum processMoving=q{
 			static if(wizardsLast){
 				foreach(ref movingObject;movingObjects)
@@ -7191,14 +7264,16 @@ auto eachByType(alias f,EachByTypeFlags flags,B,RenderMode mode,T...)(ref Object
 				f(fixedObject,args);
 			f(souls,args);
 			f(buildings,args);
-			static if(!particlesBeforeEffects) f(effects,args);
+			static if(opaqueEffectsBeforeParticles) f(effects,args,true);
+			else static if(!particlesBeforeEffects) f(effects,args);
 			foreach(ref particle;particles)
 				f(particle,args);
 			foreach(ref particle;relativeParticles)
 				f(particle,args);
 			foreach(ref particle;filteredParticles)
 				f(particle,args);
-			static if(particlesBeforeEffects) f(effects,args);
+			static if(opaqueEffectsBeforeParticles) f(effects,args,false);
+			else static if(particlesBeforeEffects) f(effects,args);
 			f(commandCones,args);
 			f(highlights,args);
 		}
@@ -9561,6 +9636,11 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
 					if(castingTime==-1) return false;
 					return stun(castMeanstalks(side,target.position,manaDrain,spell,castingTime,state));
+				case SpellTag.tornado:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					if(castingTime==-1) return false;
+					return stun(castTornado(side,target.position,manaDrain,spell,castingTime,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -10949,6 +11029,26 @@ bool castMeanstalks(B)(int side,Vector3f center,ManaDrain!B manaDrain,SacSpell!B
 }
 bool meanstalks(B)(Meanstalks!B meanstalks,ObjectState!B state){
 	state.addEffect(meanstalks);
+	return true;
+}
+
+bool castTornado(B)(int side,Vector3f position,ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,ObjectState!B state){
+	auto tornado=Tornado!B(manaDrain.wizard,side,spell);
+	position.z=state.getHeight(position);
+	tornado.position=position;
+	tornado.top=position+Vector3f(0.0f,0.0f,500.0f);
+	tornado.home=position;
+	tornado.target=position;
+	foreach(ref phase;tornado.wobblePhases) phase=state.uniform!"[)"(-pi!float,pi!float);
+	tornado.timer=cast(int)(spell.duration*updateFPS);
+	tornado.updateCurve();
+	playSoundAt("snrt",position,state,tornadoGain);
+	tornado.soundTimer=playSoundAt!true("nrot",position,state,tornadoGain);
+	state.addEffect(TornadoCasting!B(manaDrain,move(tornado),castingTime));
+	return true;
+}
+bool tornado(B)(Tornado!B tornado,ObjectState!B state){
+	state.addEffect(tornado);
 	return true;
 }
 
@@ -13856,12 +13956,13 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			break;
 		case CreatureMovement.tumbling:
 			static import std.math;
-			enum dampFactorXY=std.math.exp(std.math.log(0.7f)/updateFPS);
-			enum dampFactorZ=std.math.exp(std.math.log(0.85f)/updateFPS);
-			if(object.creatureStats.effects.antiGravityTime<state.frame)
+			enum dampFactorXY=std.math.exp(60*std.math.log(0.99f)/updateFPS);
+			enum dampFactorZ=std.math.exp(60*std.math.log(0.998f)/updateFPS);
+			if(state.isOnGround(object.position)&&object.position.z<=state.getGroundHeight(object.position)){
+				if(object.creatureState.fallingVelocity.z<0.0f) object.creatureState.fallingVelocity.z=0.0f;
+			}else if(object.creatureStats.effects.antiGravityTime<state.frame){
 				object.creatureState.fallingVelocity.z-=object.creatureStats.fallingAcceleration/updateFPS;
-			/+enum speedCap=20.0f; // TODO: figure out constant
-			if(object.creatureState.fallingVelocity.lengthsqr>speedCap^^2) object.creatureState.fallingVelocity=object.creatureState.fallingVelocity.normalized*speedCap;+/
+			}
 			object.creatureState.fallingVelocity.x*=dampFactorXY;
 			object.creatureState.fallingVelocity.y*=dampFactorXY;
 			object.creatureState.fallingVelocity.z*=dampFactorZ;
@@ -21393,6 +21494,29 @@ bool updateVolcanoLavaBall(B)(ref VolcanoLavaBall!B lavaBall,ObjectState!B state
 	}
 }
 
+bool updateMeanstalksCasting(B)(ref MeanstalksCasting!B meanstalksCast,ObjectState!B state){
+	with(meanstalksCast){
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				progress=min(1.0f,progress+1.0f/castingTime);
+				foreach(ref vine;meanstalks.vines[0..meanstalks.numVines])
+					if(vine.mode==MeanstalkMode.casting) vine.scaleTarget=progress;
+				updateMeanstalks(meanstalks,state);
+				return true;
+			case CastingStatus.interrupted:
+				foreach(ref vine;meanstalks.vines[0..meanstalks.numVines])
+					if(vine.mode.among(MeanstalkMode.casting,MeanstalkMode.growing)) vine.mode=MeanstalkMode.shrinking;
+				.meanstalks(move(meanstalks),state);
+				return false;
+			case CastingStatus.finished:
+				foreach(ref vine;meanstalks.vines[0..meanstalks.numVines])
+					if(vine.mode==MeanstalkMode.casting) vine.mode=MeanstalkMode.growing;
+				.meanstalks(move(meanstalks),state);
+				return false;
+		}
+	}
+}
+
 Vector3f meanstalkRandomPos(B)(Vector3f position,ObjectState!B state){
 	auto a1=state.uniform!"[)"(-pi!float/4,pi!float/4);
 	auto a2=state.uniform!"[)"(0.0f,2.0f*pi!float);
@@ -21573,26 +21697,118 @@ bool updateMeanstalks(B)(ref Meanstalks!B meanstalks,ObjectState!B state){
 	}
 	return meanstalks.numVines>0;
 }
-bool updateMeanstalksCasting(B)(ref MeanstalksCasting!B meanstalksCast,ObjectState!B state){
-	with(meanstalksCast){
+
+bool updateTornadoCasting(B)(ref TornadoCasting!B tornadoCast,ObjectState!B state){
+	with(tornadoCast){
 		final switch(manaDrain.update(state)){
 			case CastingStatus.underway:
+				// TODO: casting animation
 				progress=min(1.0f,progress+1.0f/castingTime);
-				foreach(ref vine;meanstalks.vines[0..meanstalks.numVines])
-					if(vine.mode==MeanstalkMode.casting) vine.scaleTarget=progress;
-				updateMeanstalks(meanstalks,state);
+				tornado.scaleTarget=0.8f*progress;
+				updateTornado(tornado,state);
 				return true;
 			case CastingStatus.interrupted:
-				foreach(ref vine;meanstalks.vines[0..meanstalks.numVines])
-					if(vine.mode.among(MeanstalkMode.casting,MeanstalkMode.growing)) vine.mode=MeanstalkMode.shrinking;
-				.meanstalks(move(meanstalks),state);
+				tornado.mode=TornadoMode.dissipating;
+				.tornado(move(tornado),state);
 				return false;
 			case CastingStatus.finished:
-				foreach(ref vine;meanstalks.vines[0..meanstalks.numVines])
-					if(vine.mode==MeanstalkMode.casting) vine.mode=MeanstalkMode.growing;
-				.meanstalks(move(meanstalks),state);
+				tornado.mode=TornadoMode.active;
+				.tornado(move(tornado),state);
 				return false;
 		}
+	}
+}
+float tornadoWanderOffset(B)(float range,ObjectState!B state){
+	auto offset=state.uniform!"[)"(0.0f,1.0f)^^2*range;
+	return state.uniform(2)?offset:-offset;
+}
+void tornadoLift(B)(ref Tornado!B tornado,ObjectState!B state){
+	with(tornado){
+		static void lift(ref ProximityEntry entry,ObjectState!B state,Tornado!B* tornado){
+			if(state.targetTypeFromId(entry.id)!=TargetType.creature) return;
+			state.movingObjectById!((ref obj,tornado,state){
+				if(obj.creatureState.movement==CreatureMovement.flying) return;
+				auto axisPoint=Vector3f(0.0f,0.0f,0.0f);
+				auto radius=0.0f;
+				tornado.getCentre(obj.position,axisPoint,radius);
+				auto dx=axisPoint.x-obj.position.x, dy=axisPoint.y-obj.position.y;
+				auto r=sqrt(dx*dx+dy*dy);
+				if(r>radius+30.0f) return;
+				if(r!=0.0f){
+					auto f=(radius+15.0f)/r;
+					dx*=f;
+					dy*=f;
+				}
+				enum θ=5.0f*360.0f/(2.0f*pi!float);
+				enum c=cos(θ), s=sin(θ);
+				auto target=Vector3f(axisPoint.x+c*dx-s*dy,axisPoint.y+s*dx+c*dy,obj.position.z+2.0f);
+				if(obj.creatureStats.effects.fixed) return;
+				auto delta=target-obj.position;
+				auto len=delta.length;
+				enum maxDelta=3.0f/updateFPS;
+				if(len>maxDelta) delta*=maxDelta/len;
+				auto impulse=updateFPS*delta;
+				enum maxSpeed=30.0f;
+				if(obj.creatureState.movement==CreatureMovement.tumbling){
+					auto velocity=obj.creatureState.fallingVelocity+impulse;
+					if(velocity.length>maxSpeed) velocity*=maxSpeed/velocity.length;
+					obj.creatureState.fallingVelocity=velocity;
+				}else{
+					if(impulse.length>maxSpeed) impulse*=maxSpeed/impulse.length;
+					obj.catapult(tornado.side,impulse,state);
+				}
+				obj.creatureStats.effects.antiGravityTime=state.frame;
+			},(){})(entry.id,tornado,state);
+		}
+		Vector3f[2] hitbox=[Vector3f(home.x-350.0f,home.y-350.0f,position.z-10.0f),Vector3f(home.x+350.0f,home.y+350.0f,top.z+10.0f)];
+		collisionTargets!(lift,None,true)(hitbox,state,&tornado);
+	}
+}
+
+enum tornadoGain=6.0f;
+bool updateTornado(B)(ref Tornado!B tornado,ObjectState!B state){
+	with(tornado){
+		final switch(mode){
+			case TornadoMode.casting:
+				break;
+			case TornadoMode.active:
+				if(state.isOnGround(position)){
+					scaleTarget=1.0f;
+					position.z=state.getGroundHeight(position);
+				}else scaleTarget=0.0f;
+				target.z=state.getHeight(target);
+				auto diff=position.xy-target.xy;
+				if(!state.isOnGround(target)||diff.lengthsqr<=2.0f){
+					target.x=home.x+tornadoWanderOffset(spell.effectRange,state);
+					target.y=home.y+tornadoWanderOffset(spell.effectRange,state);
+				}
+				auto delta=target-position;
+				delta.z=0.0f;
+				auto len=delta.length;
+				auto maxDelta=spell.acceleration/updateFPS;
+				if(len>maxDelta) delta*=maxDelta/len;
+				velocity+=updateFPS*delta;
+				if(velocity.length>spell.speed) velocity*=spell.speed/velocity.length;
+				position+=velocity/updateFPS;
+				if(--timer<=0) mode=TornadoMode.dissipating;
+				tornadoLift(tornado,state);
+				break;
+			case TornadoMode.dissipating:
+				scaleTarget=0.0f;
+				if(scale<=0.0f) return false;
+				break;
+		}
+		if(mode!=TornadoMode.dissipating&&--soundTimer<=0)
+			soundTimer=playSoundAt!true("nrot",position,state,tornadoGain);
+		if(scale<scaleTarget) scale=min(scaleTarget,scale+0.6f/updateFPS);
+		else if(scale>scaleTarget) scale=max(scaleTarget,scale-0.6f/updateFPS);
+		spinPhase+=2.0f*pi!float/updateFPS;
+		wobblePhases[0]+=0.6f/updateFPS;
+		wobblePhases[1]-=0.48f/updateFPS;
+		wobblePhases[2]-=0.78f/updateFPS;
+		wobblePhases[3]+=0.36f/updateFPS;
+		updateCurve();
+		return true;
 	}
 }
 
@@ -25697,6 +25913,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.meanstalkss.length;){
 		if(!updateMeanstalks(effects.meanstalkss[i],state)){
 			effects.removeMeanstalks(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.tornadoCastings.length;){
+		if(!updateTornadoCasting(effects.tornadoCastings[i],state)){
+			effects.removeTornadoCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.tornados.length;){
+		if(!updateTornado(effects.tornados[i],state)){
+			effects.removeTornado(i);
 			continue;
 		}
 		i++;

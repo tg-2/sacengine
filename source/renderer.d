@@ -504,6 +504,17 @@ struct Renderer(B){
 		auto frames=typeof(return).createMeshes();
 		return SacVolcanoSpatter!B(texture,mat,frames);
 	}
+	SacTornado!B tornado;
+	SacTornado!B createTornado(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.blending=B.Blending.Transparent;
+		mat.energy=10.0f;
+		mat.transparency=0.9f;
+		mat.diffuse=texture;
+		auto mesh=typeof(return).createMesh();
+		return SacTornado!B(texture,mat,mesh);
+	}
 	SacRainFrog!B rainFrog;
 	SacRainFrog!B createRainFrog(){
 		auto texture=typeof(return).loadTexture();
@@ -1059,6 +1070,7 @@ struct Renderer(B){
 		volcanoLava=createVolcanoLava();
 		volcanoCloud=createVolcanoCloud();
 		volcanoSpatter=createVolcanoSpatter();
+		tornado=createTornado();
 		rainFrog=createRainFrog();
 		demonicRiftSpirit=createDemonicRiftSpirit();
 		demonicRiftBorder=createDemonicRiftBorder();
@@ -1261,7 +1273,7 @@ struct Renderer(B){
 	}
 
 	void renderNTTs(RenderMode mode)(R3DOpt options,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
-		static void render(T)(ref T objects,Renderer!B* self,bool enableWidgets,ObjectState!B state,RenderInfo!B* info,B.RenderContext rc){ // TODO: why does this need to be static? DMD bug?
+		static void render(T)(ref T objects,Renderer!B* self,bool enableWidgets,ObjectState!B state,RenderInfo!B* info,B.RenderContext rc,bool onlyOpaqueEffects=false){ // TODO: why does this need to be static? DMD bug?
 			static if(is(typeof(objects.sacObject))){
 				auto sacObject=objects.sacObject;
 				enum isMoving=is(T==MovingObjects!(B, renderMode), RenderMode renderMode);
@@ -1452,6 +1464,7 @@ struct Renderer(B){
 			}else static if(is(T==Buildings!B)){
 				// do nothing
 			}else static if(is(T==Effects!B)){
+				if(!onlyOpaqueEffects){
 				static if(mode==RenderMode.opaque) if(objects.debris.length||objects.fireballCastings.length||objects.fireballs.length||objects.volcanoLavaBalls.length){
 					auto materials=self.sacDebris.materials;
 					foreach(i;0..materials.length){
@@ -3253,6 +3266,7 @@ struct Renderer(B){
 						mesh.render(rc);
 					}
 				}
+				}else{
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.volcanos.length){
 					foreach(ref volcano;objects.volcanos){
 						if(volcano.frame<volcano.volcanoFrame) continue;
@@ -3292,6 +3306,27 @@ struct Renderer(B){
 						}
 					}
 				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.tornadoCastings.length||objects.tornados.length)){
+					auto mat=self.tornado.material;
+					mat.bind(rc);
+					B.disableCulling();
+					scope(success){
+						B.enableCulling();
+						mat.unbind(rc);
+					}
+					void renderTornado(ref Tornado!B tornado){
+						mat.backend.setAlpha(sqrt(sqrt(min(1.0f,1.5f*tornado.scale))));
+						mat.backend.setTransformation(tornado.top,Quaternionf.identity(),rc);
+						auto mesh=self.tornado.prepare(tornado.axisPoints,tornado.radii,tornado.spinPhase);
+						mesh.render(rc);
+					}
+					foreach(ref tornadoCasting;objects.tornadoCastings)
+						renderTornado(tornadoCasting.tornado);
+					foreach(ref tornado;objects.tornados)
+						renderTornado(tornado);
+				}
+				} // onlyOpaqueEffects
+				if(!onlyOpaqueEffects){
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.silverbackEffects.length){
 					auto cold=SacParticle!B.get(ParticleType.cold);
 					auto material=cold.material;
@@ -3465,6 +3500,7 @@ struct Renderer(B){
 						}
 					}
 				}
+				} // onlyVolcano
 			}else static if(is(T==Particles!(B,relative,sideFiltered),bool relative,bool sideFiltered)){
 				static if(mode==RenderMode.transparent){
 					if(rc.shadowMode) return; // TODO: particle shadows?
@@ -3594,7 +3630,8 @@ struct Renderer(B){
 				}
 			}else static assert(0);
 		}
-		state.eachByType!(render,EachByTypeFlags.movingFirst)(&this,options.enableWidgets,state,&info,rc);
+		with(EachByTypeFlags)
+			state.eachByType!(render,movingFirst|particlesBeforeEffects|opaqueEffectsBeforeParticles)(&this,options.enableWidgets,state,&info,rc);
 	}
 
 	bool selectionUpdated=false;

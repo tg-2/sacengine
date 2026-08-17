@@ -3538,6 +3538,63 @@ struct SacVolcanoSpatter(B){
 }
 
 
+struct SacTornado(B){
+	B.Texture texture;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Stra.FLDR/txtr.FLDR/trn1.TXTR"));
+	}
+	B.Material material;
+	B.Mesh mesh;
+	enum numRings=128;
+	enum numSegments=128;
+	enum uRepeat=4;
+	static assert(numSegments%uRepeat==0);
+	static B.Mesh createMesh(){
+		auto mesh=B.makeMesh(numRings*(numSegments+1),2*(numRings-1)*numSegments);
+		int numFaces=0;
+		int idx(int i,int j){ return (numSegments+1)*i+j; }
+		auto mirrorPeriod=numSegments/uRepeat;
+		foreach(i;0..numRings){
+			enum topRate=1.0f,bottomRate=6.0f;
+			auto progress=1.0f-cast(float)i/(numRings-1);
+			auto v=1.0f-topRate/(progress+1.0f/bottomRate);
+			foreach(j;0..numSegments+1){
+				mesh.vertices[idx(i,j)]=Vector3f(0.0f,0.0f,0.0f);
+				auto repetition=j/mirrorPeriod;
+				auto m=j%mirrorPeriod;
+				if((repetition&1)!=0) m=mirrorPeriod-m;
+				auto u=cast(float)m/mirrorPeriod;
+				mesh.texcoords[idx(i,j)]=Vector2f(u,v);
+				if(i!=0&&j!=numSegments){
+					mesh.indices[numFaces++]=[idx(i,j),idx(i,j+1),idx(i-1,j)];
+					mesh.indices[numFaces++]=[idx(i,j+1),idx(i-1,j+1),idx(i-1,j)];
+				}
+			}
+		}
+		assert(numFaces==2*(numRings-1)*numSegments);
+		mesh.generateNormals();
+		B.finalizeMesh(mesh);
+		return mesh;
+	}
+	B.Mesh prepare(Vector3f[7] axisPoints,float[7] radii,float spinPhase){
+		foreach(i;0..numRings){
+			auto t=cast(float)i/(numRings-1);
+			auto k=t<=0.5f?0:3;
+			auto u=t<=0.5f?2.0f*t:2.0f*(t-0.5f), v=1.0f-u;
+			auto center=v*v*v*axisPoints[k]+3.0f*v*v*u*axisPoints[k+1]+3.0f*v*u*u*axisPoints[k+2]+u*u*u*axisPoints[k+3];
+			auto radius=v*v*v*radii[k]+3.0f*v*v*u*radii[k+1]+3.0f*v*u*u*radii[k+2]+u*u*u*radii[k+3];
+			foreach(j;0..numSegments+1){
+				auto φ=spinPhase+2.0f*pi!float*j/numSegments;
+				mesh.vertices[(numSegments+1)*i+j]=center+radius*Vector3f(cos(φ),sin(φ),0.0f)-axisPoints[0];
+			}
+		}
+		mesh.generateNormals();
+		B.finalizeMesh(mesh);
+		return mesh;
+	}
+}
+
+
 struct SacBrainiacEffect(B){
 	B.Texture texture;
 	static B.Texture loadTexture(){

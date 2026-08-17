@@ -697,6 +697,12 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Mea
 void serialize(alias sink,B)(ref MeanstalksCasting!B meanstalksCasting){ serializeStruct!sink(meanstalksCasting); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==MeanstalksCasting!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref Tornado!B tornado){ serializeStruct!sink(tornado); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Tornado!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref TornadoCasting!B tornadoCasting){ serializeStruct!sink(tornadoCasting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==TornadoCasting!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref BrainiacProjectile!B brainiacProjectile){ serializeStruct!sink(brainiacProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BrainiacProjectile!B)){ deserializeStruct(result,state,data); }
 
