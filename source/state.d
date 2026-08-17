@@ -21599,7 +21599,7 @@ bool updateMeanstalk(B)(ref Meanstalks!B meanstalks,ref Meanstalk vine,ObjectSta
 				else if(distance<3.0f) goal=meanstalkRandomPos(position,state);
 				break;
 			case MeanstalkMode.approachInit:
-				playSoundAt("pkts",position,state,meanstalksGain);
+				// playSoundAt("pkts",position,state,meanstalksGain);
 				rate=meanstalks.spell.speed;
 				accel=meanstalks.spell.acceleration;
 				distance=50.0f;
