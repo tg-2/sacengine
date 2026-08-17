@@ -21494,6 +21494,11 @@ bool updateVolcanoLavaBall(B)(ref VolcanoLavaBall!B lavaBall,ObjectState!B state
 	}
 }
 
+void animateMeanstalksCasting(B)(ref MovingObject!B wizard,ObjectState!B state){
+	auto castParticle=SacParticle!B.get(ParticleType.heal);
+	wizard.animateCasting!false(castParticle,state);
+}
+
 bool updateMeanstalksCasting(B)(ref MeanstalksCasting!B meanstalksCast,ObjectState!B state){
 	with(meanstalksCast){
 		final switch(manaDrain.update(state)){
@@ -21502,6 +21507,7 @@ bool updateMeanstalksCasting(B)(ref MeanstalksCasting!B meanstalksCast,ObjectSta
 				foreach(ref vine;meanstalks.vines[0..meanstalks.numVines])
 					if(vine.mode==MeanstalkMode.casting) vine.scaleTarget=progress;
 				updateMeanstalks(meanstalks,state);
+				state.movingObjectById!(animateMeanstalksCasting,(){})(manaDrain.wizard,state);
 				return true;
 			case CastingStatus.interrupted:
 				foreach(ref vine;meanstalks.vines[0..meanstalks.numVines])
