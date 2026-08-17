@@ -375,6 +375,17 @@ struct Renderer(B){
 		auto mesh=typeof(return).createMesh();
 		return SacVine!B(texture,mat,mesh);
 	}
+	SacVine!B meanstalk;
+	SacVine!B createMeanstalk(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.boneMaterialBackend);
+		mat.specular=Color4f(1,1,1,1);
+		mat.roughness=1.0f;
+		mat.metallic=0.5f;
+		mat.diffuse=texture;
+		auto mesh=typeof(return).createMeanstalkMesh();
+		return SacVine!B(texture,mat,mesh);
+	}
 	SacRainbow!B rainbow;
 	SacRainbow!B createRainbow(){
 		auto texture=typeof(return).loadTexture();
@@ -1036,6 +1047,7 @@ struct Renderer(B){
 		oil=createOil();
 		slime=createSlime();
 		vine=createVine();
+		meanstalk=createMeanstalk();
 		rainbow=createRainbow();
 		animateDead=createAnimateDead();
 		hellmouthProjectile=createHellmouthProjectile();
@@ -2123,6 +2135,33 @@ struct Renderer(B){
 					foreach(ref vinewall;objects.vinewalls)
 						foreach(i,ref vine;vinewall.vines[vinewall.numDespawned..vinewall.numSpawned])
 							renderVine(vine,vinewall.lengthFactors[vinewall.numDespawned+i]);
+				}
+				static if(mode==RenderMode.opaque) if(objects.meanstalksCastings.length||objects.meanstalkss.length){
+					auto material=self.meanstalk.material; // TODO: shadowMaterial?
+					auto mesh=self.meanstalk.mesh;
+					material.bind(rc);
+					void renderMeanstalk(ref Meanstalk vine){
+						Matrix4x4f[self.meanstalk.numSegments+1] pose;
+						foreach(i,ref x;pose){
+							auto t=i/float(pose.length-1);
+							auto curve=t<=0.5f?vine.curve0:vine.curve1;
+							auto u=t<=0.5f?2.0f*t:2.0f*t-1.0f;
+							auto v=1.0f-u;
+							auto position=v*v*v*curve[0]+3.0f*v*v*u*curve[1]+3.0f*v*u*u*curve[2]+u*u*u*curve[3];
+							auto tangent=3.0f*v*v*(curve[1]-curve[0])+6.0f*v*u*(curve[2]-curve[1])+3.0f*u*u*(curve[3]-curve[2]);
+							auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),tangent.normalized);
+							x=Transformation(rotation,position).getMatrix4f;
+						}
+						B.boneMaterialBackend.setTransformationScaled(Vector3f(0.0f,0.0f,0.0f),Quaternionf.identity(),Vector3f(1.0f,1.0f,1.0f),rc);
+						B.boneMaterialBackend.setPose(pose);
+						mesh.render(rc);
+					}
+					foreach(ref meanstalksCasting;objects.meanstalksCastings)
+						foreach(ref vine;meanstalksCasting.meanstalks.vines[0..meanstalksCasting.meanstalks.numVines])
+							renderMeanstalk(vine);
+					foreach(ref meanstalks;objects.meanstalkss)
+						foreach(ref vine;meanstalks.vines[0..meanstalks.numVines])
+							renderMeanstalk(vine);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.rainbowEffects.length){
 					auto material=self.rainbow.material;

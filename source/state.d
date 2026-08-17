@@ -4111,7 +4111,6 @@ struct Volcano(B){
 		progress=to;
 	}
 }
-
 struct VolcanoLavaBall(B){
 	int wizard;
 	int side;
@@ -4128,6 +4127,60 @@ struct VolcanoLavaBall(B){
 	enum minTargetRange=30.0f, maxTargetRange=200.0f;
 	enum pickRadius=200.0f;
 	enum accuracy=0.005f;
+}
+
+struct MeanstalksCasting(B){
+	ManaDrain!B manaDrain;
+	Meanstalks!B meanstalks;
+	int castingTime;
+	float progress=0.0f;
+}
+enum MeanstalkMode:int{
+	casting,
+	growing,
+	searchInit,
+	searching,
+	approachInit,
+	approaching,
+	grabbing,
+	holding,
+	throwing,
+	shrinking,
+	dying,
+}
+struct Meanstalk{
+	Vector3f position=Vector3f(0.0f,0.0f,0.0f);
+	Vector3f goal=Vector3f(0.0f,0.0f,0.0f);
+	Vector3f tip=Vector3f(0.0f,0.0f,0.0f);
+	Vector3f tipVelocity=Vector3f(0.0f,0.0f,0.0f);
+	Vector3f framevec=Vector3f(1.0f,1.0f,1.0f);
+	float scale=0.0f;
+	float scaleTarget=0.0f;
+	float distance=0.0f;
+	float rate=6.0f;
+	float accel=0.6f;
+	int timer=0;
+	int frame=0;
+	MeanstalkMode mode=MeanstalkMode.casting;
+	int target=0;
+	int grabbedTarget=0;
+	Vector3f[4] curve0,curve1;
+}
+struct Meanstalks(B){
+	int wizard;
+	int side;
+	SacSpell!B spell;
+	enum maxVines=4;
+	int numVines=0;
+	Meanstalk[maxVines] vines;
+
+	SmallArray!(int,24) targets;
+	bool hasTarget(int id){ return id&&targets[].canFind(id); }
+	bool addTarget(int id){
+		if(!id||hasTarget(id)) return false;
+		targets~=id;
+		return true;
+	}
 }
 
 
@@ -5969,6 +6022,22 @@ struct Effects(B){
 	void removeVolcanoLavaBall(int i){
 		if(i+1<volcanoLavaBalls.length) volcanoLavaBalls[i]=move(volcanoLavaBalls[$-1]);
 		volcanoLavaBalls.length=volcanoLavaBalls.length-1;
+	}
+	Array!(MeanstalksCasting!B) meanstalksCastings;
+	void addEffect(MeanstalksCasting!B meanstalksCasting){
+		meanstalksCastings~=move(meanstalksCasting);
+	}
+	void removeMeanstalksCasting(int i){
+		if(i+1<meanstalksCastings.length) meanstalksCastings[i]=move(meanstalksCastings[$-1]);
+		meanstalksCastings.length=meanstalksCastings.length-1;
+	}
+	Array!(Meanstalks!B) meanstalkss;
+	void addEffect(Meanstalks!B meanstalks){
+		meanstalkss~=move(meanstalks);
+	}
+	void removeMeanstalks(int i){
+		if(i+1<meanstalkss.length) meanstalkss[i]=move(meanstalkss[$-1]);
+		meanstalkss.length=meanstalkss.length-1;
 	}
 	// projectiles
 	Array!(BrainiacProjectile!B) brainiacProjectiles;
@@ -9487,6 +9556,11 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
 					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
 					return stun(castVolcano(side,target.position,manaDrain,spell,castingTime,state));
+				case SpellTag.meanstalks:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					if(castingTime==-1) return false;
+					return stun(castMeanstalks(side,target.position,manaDrain,spell,castingTime,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -10778,6 +10852,103 @@ bool castVolcano(B)(int side,Vector3f position,ManaDrain!B manaDrain,SacSpell!B 
 }
 bool volcano(B)(Volcano!B volcano,ObjectState!B state){
 	state.addEffect(volcano);
+	return true;
+}
+
+enum meanstalksGain=4.0f;
+// BATTLE::GroundPositionOK: ground above water level, and not inside a creature/wizard/building
+bool meanstalkGroundPositionOK(B)(ref Vector3f position,ObjectState!B state){
+	position.z=state.getHeight(position); // the binary also writes the ground height into the position
+	static void block(ref ProximityEntry entry,ObjectState!B state,Vector3f* position,bool* blocked){
+		if(!state.targetTypeFromId(entry.id).among(TargetType.creature,TargetType.building)) return; // mask 0x15: wizards are creatures
+		// NTT::IsBlocked: point-in-collision-AABB test, xy exact, z padded by 1.0 on both sides
+		if(position.x<entry.hitbox[0].x||entry.hitbox[1].x<position.x) return;
+		if(position.y<entry.hitbox[0].y||entry.hitbox[1].y<position.y) return;
+		if(position.z<entry.hitbox[0].z-1.0f||entry.hitbox[1].z+1.0f<position.z) return;
+		*blocked=true;
+	}
+	bool blocked=false;
+	Vector3f[2] probe=[position,position];
+	collisionTargets!(block,None,true)(probe,state,&position,&blocked);
+	return !blocked;
+}
+// BATTLE::GetValidGroundPos: exact spot, else up to 32 random retries within radius 18
+bool getMeanstalkGroundPos(B)(ref Vector3f position,ObjectState!B state){
+	if(meanstalkGroundPositionOK(position,state)) return true;
+	auto original=position;
+	foreach(i;0..32){
+		auto angle=state.uniform!"[)"(0.0f,2.0f*pi!float);
+		auto radius=state.uniform!"[)"(0.0f,18.0f);
+		position=original+radius*Vector3f(sin(angle),cos(angle),0.0f);
+		if(meanstalkGroundPositionOK(position,state)) return true;
+	}
+	position=original;
+	return false;
+}
+void animateMeanstalkSpawn(B)(Vector3f position,ObjectState!B state){
+	enum numParticles=64;
+	auto sacParticle=SacParticle!B.get(ParticleType.dirt);
+	foreach(i;0..numParticles){
+		auto angle=state.uniform!"[)"(0.0f,2.0f*pi!float);
+		auto radius=5.0f/1.5f*state.uniform!"[)"(0.0f,1.0f);
+		auto particlePosition=position+radius*Vector3f(sin(angle),cos(angle),0.0f);
+		particlePosition.z=state.getHeight(particlePosition);
+		auto velocity=Vector3f(0.0f,0.0f,0.0f);
+		auto scale=0.75f*5.0f;
+		auto lifetime=96+state.uniform(32);
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle,particlePosition,velocity,scale,lifetime,frame));
+	}
+}
+
+void meanstalkCurveSetup(ref Meanstalk vine){
+	auto delta=vine.tip-vine.position;
+	auto len=delta.length;
+	auto half=0.5f*delta;
+	float bulge=0.0f;
+	if(len<60.0f){
+		auto t=900.0f-0.25f*len*len;
+		bulge=0.5f*(sqrt(t)+sqrt(sqrt(t)));
+	}
+	auto direction=len==0.0f?Vector3f(0.0f,0.0f,1.0f):delta/len;
+	auto d=dot(direction,vine.framevec);
+	auto k=d*d>0.75f?4.0f*(d*d-0.75f):0.0f;
+	auto up=vine.framevec+k*k*(Vector3f(0.0f,1.0f,0.0f)-vine.framevec);
+	auto right=cross(direction,up).normalized;
+	auto out_=cross(right,direction);
+	auto bend=half+bulge*out_;
+	vine.framevec=out_+0.2f*(Vector3f(0.0f,0.0f,1.0f)-out_);
+	auto p1=bend+10.0f*direction;
+	auto p2=Vector3f(delta.x+0.3f*(p1.x-delta.x),delta.y+0.3f*(p1.y-delta.y),delta.z+0.7f*(p1.z-delta.z));
+	vine.curve0=[vine.position,vine.position+Vector3f(0.0f,0.0f,10.0f),vine.position+bend-10.0f*direction,vine.position+bend];
+	vine.curve1=[vine.position+bend,vine.position+p1,vine.position+p2,vine.tip];
+}
+bool castMeanstalks(B)(int side,Vector3f center,ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,ObjectState!B state){
+	auto meanstalks=Meanstalks!B(manaDrain.wizard,side,spell);
+	auto step=2.0f*pi!float/Meanstalks!B.maxVines;
+	auto angle=0.5f*step;
+	foreach(i;0..Meanstalks!B.maxVines){
+		scope(exit) angle+=step;
+		auto a=angle+state.uniform!"[)"(-pi!float/8,pi!float/8);
+		auto radius=21.6f-12.6f*state.uniform!"[)"(0.0f,1.0f);
+		auto position=center+radius*Vector3f(sin(a),cos(a),0.0f);
+		if(!getMeanstalkGroundPos(position,state)) continue;
+		Meanstalk vine;
+		vine.position=Vector3f(position.x,position.y,position.z-60.0f);
+		vine.goal=vine.position+Vector3f(0.0f,0.0f,60.0f);
+		vine.tip=vine.goal;
+		vine.timer=cast(int)(spell.duration*updateFPS);
+		meanstalkCurveSetup(vine);
+		meanstalks.vines[meanstalks.numVines++]=vine;
+		playSoundAt("akts",position,state,meanstalksGain);
+		animateMeanstalkSpawn(position,state);
+		// TODO: scar
+	}
+	state.addEffect(MeanstalksCasting!B(manaDrain,move(meanstalks),castingTime));
+	return true;
+}
+bool meanstalks(B)(Meanstalks!B meanstalks,ObjectState!B state){
+	state.addEffect(meanstalks);
 	return true;
 }
 
@@ -21222,6 +21393,209 @@ bool updateVolcanoLavaBall(B)(ref VolcanoLavaBall!B lavaBall,ObjectState!B state
 	}
 }
 
+Vector3f meanstalkRandomPos(B)(Vector3f position,ObjectState!B state){
+	auto a1=state.uniform!"[)"(-pi!float/4,pi!float/4);
+	auto a2=state.uniform!"[)"(0.0f,2.0f*pi!float);
+	return position+Vector3f(30.0f*sin(a1)*sin(a2),30.0f*sin(a1)*cos(a2),60.0f*cos(a1));
+}
+float meanstalkAccelerate(ref Meanstalk vine){
+	auto delta=vine.goal-vine.tip;
+	auto dist=delta.length;
+	auto maxspeed=vine.rate;
+	if(dist<3.0f) maxspeed=vine.rate*dist/3.0f;
+	auto maxDelta=vine.accel/updateFPS;
+	if(dist>maxDelta) delta*=maxDelta/dist;
+	vine.tipVelocity+=updateFPS*delta;
+	if(vine.tipVelocity.length>maxspeed) vine.tipVelocity*=maxspeed/vine.tipVelocity.length;
+	vine.tip+=vine.tipVelocity/updateFPS;
+	return dist;
+}
+bool meanstalkCheckTarget(B)(ref Meanstalk vine,Vector3f position,int target,ref Meanstalks!B meanstalks,ObjectState!B state){
+	if(target){
+		if(!state.isValidTarget(target)) return false;
+		if(state.movingObjectById!((ref obj)=>!obj.creatureState.mode.canCC,()=>true)(target)) return false;
+		if(meanstalks.hasTarget(target)) return false;
+	}
+	auto delta=vine.position-position;
+	delta.z*=0.5f;
+	auto dist=delta.length;
+	return 10.0f<=dist&&dist<=45.0f;
+}
+int findMeanstalkTarget(B)(ref Meanstalk vine,ref Meanstalks!B meanstalks,ObjectState!B state){
+	static void scan(ref ProximityEntry entry,ObjectState!B state,Meanstalk* vine,Meanstalks!B* meanstalks,int* target,float* bestDistanceSqr){
+		if(state.targetTypeFromId(entry.id)!=TargetType.creature) return;
+		auto position=state.objectById!((obj)=>obj.position)(entry.id);
+		if((position-vine.position).lengthsqr>=60.0f^^2) return;
+		if(!meanstalkCheckTarget(*vine,position,entry.id,*meanstalks,state)) return;
+		auto distanceSqr=(position-vine.position).lengthsqr;
+		if(distanceSqr<=*bestDistanceSqr){
+			*target=entry.id;
+			*bestDistanceSqr=distanceSqr;
+		}
+	}
+	auto offset=60.0f*Vector3f(1.0f,1.0f,1.0f);
+	Vector3f[2] hitbox=[vine.position-offset,vine.position+offset];
+	int target=0;
+	auto bestDistanceSqr=float.infinity;
+	collisionTargets!(scan,None,true)(hitbox,state,&vine,&meanstalks,&target,&bestDistanceSqr);
+	return target;
+}
+bool updateMeanstalk(B)(ref Meanstalks!B meanstalks,ref Meanstalk vine,ObjectState!B state){
+	with(vine){
+		++frame;
+		int validatedTarget=target&&state.isValidTarget(target)?target:0;
+		int approachTarget=0;
+		bool holdingNow=false;
+		final switch(mode){
+			case MeanstalkMode.casting:
+				goto case;
+			case MeanstalkMode.growing:
+				if(mode==MeanstalkMode.growing) scaleTarget=1.0f;
+				goal=position+Vector3f(0.0f,0.0f,60.0f);
+				tip=goal;
+				if(mode==MeanstalkMode.growing&&scale>=1.0f) mode=MeanstalkMode.searchInit;
+				break;
+			case MeanstalkMode.searchInit:
+				target=0;
+				scale=1.0f;
+				distance=0.0f;
+				rate=6.0f;
+				accel=0.6f;
+				mode=MeanstalkMode.searching;
+				goto case;
+			case MeanstalkMode.searching:
+				target=findMeanstalkTarget(vine,meanstalks,state);
+				if(target) mode=MeanstalkMode.approachInit;
+				else if(distance<3.0f) goal=meanstalkRandomPos(position,state);
+				break;
+			case MeanstalkMode.approachInit:
+				playSoundAt("pkts",position,state,meanstalksGain);
+				rate=meanstalks.spell.speed;
+				accel=meanstalks.spell.acceleration;
+				distance=50.0f;
+				mode=MeanstalkMode.approaching;
+				goto case;
+			case MeanstalkMode.approaching:
+				approachTarget=target;
+				if(validatedTarget) goal=state.objectById!((ref obj,state)=>obj.center)(validatedTarget,state);
+				if(!meanstalkCheckTarget(vine,goal,validatedTarget,meanstalks,state)){
+					mode=MeanstalkMode.searchInit;
+					break;
+				}
+				if(distance<0.1f) mode=MeanstalkMode.grabbing;
+				break;
+			case MeanstalkMode.grabbing:
+				playSoundAt("hkts",position,state,meanstalksGain);
+				dealSpellDamage(target,meanstalks.spell,meanstalks.wizard,meanstalks.side,Vector3f(0.0f,0.0f,1.0f),DamageMod.none,state);
+				rate=42.0f;
+				accel=4.2f;
+				if(validatedTarget){
+					tipVelocity.z=max(tipVelocity.z,0.0f);
+					state.movingObjectById!((ref obj,side,velocity,state){
+						velocity.z+=+obj.creatureStats.fallingAcceleration/updateFPS;
+						obj.catapult(side,velocity,state);
+					},(){})(validatedTarget,meanstalks.side,tipVelocity,state);
+					meanstalks.addTarget(validatedTarget);
+					grabbedTarget=validatedTarget;
+				}
+				goal=position+Vector3f(0.0f,0.0f,60.0f);
+				mode=MeanstalkMode.holding;
+				distance=50.0f;
+				goto case;
+			case MeanstalkMode.holding:
+				if(!validatedTarget||state.movingObjectById!((ref obj)=>!obj.creatureState.mode.canCC,()=>true)(validatedTarget)){
+					mode=MeanstalkMode.searchInit;
+					break;
+				}
+				holdingNow=true;
+				if(distance<7.0f) mode=MeanstalkMode.throwing;
+				break;
+			case MeanstalkMode.throwing:
+				if(validatedTarget){
+					state.movingObjectById!((ref obj,side,velocity,state){
+						velocity.z+=obj.creatureStats.fallingAcceleration/updateFPS;
+						obj.catapult(side,Vector3f(0.0f,0.0f,0.0f),state);
+						obj.creatureState.fallingVelocity=velocity;
+					},(){})(validatedTarget,meanstalks.side,tipVelocity,state);
+				}
+				mode=MeanstalkMode.searchInit;
+				break;
+			case MeanstalkMode.shrinking:
+				playSoundAt("fkts",position,state,meanstalksGain);
+				mode=MeanstalkMode.dying;
+				scaleTarget=0.0f;
+				target=0;
+				goto case;
+			case MeanstalkMode.dying:
+				if(scale<=0.0f) return false;
+				break;
+		}
+		auto oldZ=position.z;
+		position.z=state.getHeight(position);
+		if(scale==scaleTarget&&scale==1.0f){
+			if(--timer<=0) mode=MeanstalkMode.shrinking;
+		}else{
+			if(frame%(updateFPS/10)==0) state.addEffect(ScreenShake(position,updateFPS/10,1.0f,50.0f));
+			if(scale<scaleTarget) scale=min(scaleTarget,scale+1.0f/180.0f);
+			else if(scale>scaleTarget) scale=max(scaleTarget,scale-1.0f/180.0f);
+			position.z-=(1.0f-scale)*60.0f;
+			target=0;
+			goal=position+Vector3f(0.0f,0.0f,60.0f);
+		}
+		tip.z+=position.z-oldZ;
+		distance=meanstalkAccelerate(vine);
+		if(approachTarget&&state.isValidTarget(approachTarget)){
+			auto targetHitbox=state.objectById!((obj)=>obj.hitbox)(approachTarget);
+			distance=min(101.0f,sqrt(boxPointDistanceSqr(targetHitbox,tip)));
+		}
+		if(holdingNow){
+			state.movingObjectById!((ref obj,tip,tipVelocity,state){
+				auto aim=obj.center;
+				obj.position=obj.position-aim+tip;
+				obj.creatureState.fallingVelocity=tipVelocity;
+			},(){})(validatedTarget,tip,tipVelocity,state);
+		}
+		if(MeanstalkMode.searchInit<mode&&mode<MeanstalkMode.shrinking)
+			if(--timer<=0) mode=MeanstalkMode.shrinking;
+		meanstalkCurveSetup(vine);
+		// TODO: affect AI
+		return true;
+	}
+}
+bool updateMeanstalks(B)(ref Meanstalks!B meanstalks,ObjectState!B state){
+	for(int i=0;i<meanstalks.numVines;){
+		if(!updateMeanstalk(meanstalks,meanstalks.vines[i],state)){
+			if(i+1<meanstalks.numVines) meanstalks.vines[i]=move(meanstalks.vines[meanstalks.numVines-1]);
+			meanstalks.numVines--;
+			continue;
+		}
+		i++;
+	}
+	return meanstalks.numVines>0;
+}
+bool updateMeanstalksCasting(B)(ref MeanstalksCasting!B meanstalksCast,ObjectState!B state){
+	with(meanstalksCast){
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				progress=min(1.0f,progress+1.0f/castingTime);
+				foreach(ref vine;meanstalks.vines[0..meanstalks.numVines])
+					if(vine.mode==MeanstalkMode.casting) vine.scaleTarget=progress;
+				updateMeanstalks(meanstalks,state);
+				return true;
+			case CastingStatus.interrupted:
+				foreach(ref vine;meanstalks.vines[0..meanstalks.numVines])
+					if(vine.mode.among(MeanstalkMode.casting,MeanstalkMode.growing)) vine.mode=MeanstalkMode.shrinking;
+				.meanstalks(move(meanstalks),state);
+				return false;
+			case CastingStatus.finished:
+				foreach(ref vine;meanstalks.vines[0..meanstalks.numVines])
+					if(vine.mode==MeanstalkMode.casting) vine.mode=MeanstalkMode.growing;
+				.meanstalks(move(meanstalks),state);
+				return false;
+		}
+	}
+}
+
 
 enum brainiacProjectileHitGain=4.0f;
 enum brainiacProjectileSize=0.45f; // TODO: ok?
@@ -25309,6 +25683,20 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.volcanoLavaBalls.length;){
 		if(!updateVolcanoLavaBall(effects.volcanoLavaBalls[i],state)){
 			effects.removeVolcanoLavaBall(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.meanstalksCastings.length;){
+		if(!updateMeanstalksCasting(effects.meanstalksCastings[i],state)){
+			effects.removeMeanstalksCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.meanstalkss.length;){
+		if(!updateMeanstalks(effects.meanstalkss[i],state)){
+			effects.removeMeanstalks(i);
 			continue;
 		}
 		i++;

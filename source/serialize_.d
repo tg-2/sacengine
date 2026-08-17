@@ -688,6 +688,15 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Vol
 void serialize(alias sink,B)(ref VolcanoLavaBall!B volcanoLavaBall){ serializeStruct!sink(volcanoLavaBall); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==VolcanoLavaBall!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink)(ref Meanstalk meanstalk){ serializeStruct!sink(meanstalk); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Meanstalk)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref Meanstalks!B meanstalks){ serializeStruct!sink(meanstalks); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Meanstalks!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref MeanstalksCasting!B meanstalksCasting){ serializeStruct!sink(meanstalksCasting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==MeanstalksCasting!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref BrainiacProjectile!B brainiacProjectile){ serializeStruct!sink(brainiacProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BrainiacProjectile!B)){ deserializeStruct(result,state,data); }
 
