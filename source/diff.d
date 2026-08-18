@@ -15,7 +15,7 @@ bool diffData(string[] noserialize=[],T)(ref T a,ref T b,lazy string path)if(is(
 			}
 		}
 	}
-	static if(is(T==Particles!(B,relative),B,bool relative)){
+	static if(is(T==Particles!(B,kind),B,ParticleKind kind)){
 		if(r){
 			writeln(a.sacParticle.type," ",a.sacParticle.side);
 		}
@@ -77,7 +77,7 @@ bool diffData(T)(Array!T a,Array!T b,lazy string path){
 	bool r=false;
 	r|=diffData(a.length,b.length,text(path,".length"));
 	if(a.length==b.length) foreach(i;0..a.length) r|=diffData(a[i],b[i],text(path,"[",i,"]"));
-	else static if(is(T==Particles!(B,relative),B,bool relative)){
+	else static if(is(T==Particles!(B,kind),B,ParticleKind kind)){
 		writeln("a",path[1..$],":");
 		foreach(ref x;a) writeln(x.sacParticle.type," ",x.sacParticle.side);
 		writeln("b",path[1..$],":");

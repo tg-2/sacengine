@@ -1600,19 +1600,24 @@ void deactivate(B)(ref Building!B building,ObjectState!B state){
 	building.stopSounds(state);
 }
 
-struct Particle(B,bool relative=false,bool sideFiltered=false){ // TODO: some particles don't need some fields. Optimize?
+struct Particle(B,ParticleKind kind=ParticleKind.standard,bool sideFiltered=false){ // TODO: some particles don't need some fields. Optimize?
 	SacParticle!B sacParticle;
-	static if(relative){
+	static if(kind==ParticleKind.relative){
 		int baseId;
 		bool rotate;
-	}
+	}else static if(kind==ParticleKind.relativeTwirl){
+		int baseId;
+		float angle;
+		float angleIncrement;
+		float acceleration;
+	}else static assert(kind==ParticleKind.standard);
 	Vector3f position;
 	Vector3f velocity;
 	float scale;
 	int lifetime;
 	int frame;
 	static if(sideFiltered) int sideFilter; // TODO: spread into one array per side?
-	static if(relative){
+	static if(kind==ParticleKind.relative){
 		this(SacParticle!B sacParticle,int baseId,bool rotate,Vector3f position,Vector3f velocity,float scale,int lifetime,int frame){
 			this.sacParticle=sacParticle;
 			this.baseId=baseId;
@@ -1623,7 +1628,20 @@ struct Particle(B,bool relative=false,bool sideFiltered=false){ // TODO: some pa
 			this.lifetime=lifetime;
 			this.frame=frame;
 		}
-	}else{
+	}else static if(kind==ParticleKind.relativeTwirl){
+		this(SacParticle!B sacParticle,int baseId,float angle,float angleIncrement,float acceleration,Vector3f position,Vector3f velocity,float scale,int lifetime,int frame){
+			this.sacParticle=sacParticle;
+			this.baseId=baseId;
+			this.angle=angle;
+			this.angleIncrement=angleIncrement;
+			this.acceleration=acceleration;
+			this.position=position;
+			this.velocity=velocity;
+			this.scale=scale;
+			this.lifetime=lifetime;
+			this.frame=frame;
+		}
+	}else static if(kind==ParticleKind.standard){
 		this(SacParticle!B sacParticle,Vector3f position,Vector3f velocity,float scale,int lifetime,int frame){
 			this.sacParticle=sacParticle;
 			this.position=position;
@@ -1632,7 +1650,7 @@ struct Particle(B,bool relative=false,bool sideFiltered=false){ // TODO: some pa
 			this.lifetime=lifetime;
 			this.frame=frame;
 		}
-	}
+	}else static assert(0);
 }
 
 struct MovingObjects(B,RenderMode mode){
@@ -2279,13 +2297,18 @@ auto each(alias f,B,T...)(ref WizardInfos!B wizards,T args){
 		f(wizards[i],args);
 }
 
-struct Particles(B,bool relative,bool sideFiltered=false){
+struct Particles(B,ParticleKind kind,bool sideFiltered=false){
 	SacParticle!B sacParticle;
-	static if(relative){
+	static if(kind==ParticleKind.relative){
 		Array!int baseIds;
 		//Array!bool rotates; // TODO: support Array!bool serialization?
 		Array!ubyte rotates; // TODO: store as a bit in baseId?
-	}
+	}else static if(kind==ParticleKind.relativeTwirl){
+		Array!int baseIds;
+		Array!float angles;
+		Array!float angleIncrements;
+		Array!float accelerations;
+	}else static assert(kind==ParticleKind.standard);
 	Array!Vector3f positions;
 	Array!Vector3f velocities;
 	Array!float scales;
@@ -2295,10 +2318,15 @@ struct Particles(B,bool relative,bool sideFiltered=false){
 	mixin Assign;
 	@property int length(){ assert(positions.length<=int.max); return cast(int)positions.length; }
 	@property void length(int l){
-		static if(relative){
+		static if(kind==ParticleKind.relative){
 			baseIds.length=l;
 			rotates.length=l;
-		}
+		}else static if(kind==ParticleKind.relativeTwirl){
+			baseIds.length=l;
+			angles.length=l;
+			angleIncrements.length=l;
+			accelerations.length=l;
+		}else static assert(kind==ParticleKind.standard);
 		positions.length=l;
 		velocities.length=l;
 		scales.length=l;
@@ -2307,10 +2335,15 @@ struct Particles(B,bool relative,bool sideFiltered=false){
 		static if(sideFiltered) sideFilters.length=l;
 	}
 	void reserve(int reserveSize){
-		static if(relative){
+		static if(kind==ParticleKind.relative){
 			baseIds.reserve(reserveSize);
 			rotates.reserve(reserveSize);
-		}
+		}else static if(kind==ParticleKind.relativeTwirl){
+			baseIds.reserve(reserveSize);
+			angles.reserve(reserveSize);
+			angleIncrements.reserve(reserveSize);
+			accelerations.reserve(reserveSize);
+		}else static assert(kind==ParticleKind.standard);
 		positions.reserve(reserveSize);
 		velocities.reserve(reserveSize);
 		scales.reserve(reserveSize);
@@ -2318,13 +2351,18 @@ struct Particles(B,bool relative,bool sideFiltered=false){
 		frames.reserve(reserveSize);
 		static if(sideFiltered) sideFilters.reserve(reserveSize);
 	}
-	void addParticle(Particle!(B,relative,sideFiltered) particle){
-		assert(sacParticle is null && particle.sacParticle.relative==relative || sacParticle is particle.sacParticle);
+	void addParticle(Particle!(B,kind,sideFiltered) particle){
+		assert(sacParticle is null && particle.sacParticle.kind==kind || sacParticle is particle.sacParticle);
 		sacParticle=particle.sacParticle; // TODO: get rid of this?
-		static if(relative){
+		static if(kind==ParticleKind.relative){
 			baseIds~=particle.baseId;
 			rotates~=particle.rotate;
-		}
+		}else static if(kind==ParticleKind.relativeTwirl){
+			baseIds~=particle.baseId;
+			angles~=particle.angle;
+			angleIncrements~=particle.angleIncrement;
+			accelerations~=particle.acceleration;
+		}else static assert(kind==ParticleKind.standard);
 		positions~=particle.position;
 		velocities~=particle.velocity;
 		scales~=particle.scale;
@@ -2336,21 +2374,28 @@ struct Particles(B,bool relative,bool sideFiltered=false){
 		if(index+1<length) this[index]=this[length-1];
 		length=length-1;
 	}
-	Particle!(B,relative,sideFiltered) opIndex(int i){
+	Particle!(B,kind,sideFiltered) opIndex(int i){
 		static if(sideFiltered){
-			static if(relative) return Particle!(B,true,true)(sacParticle,baseIds[i],!!rotates[i],positions[i],velocities[i],scales[i],lifetimes[i],frames[i],sideFilters[i]);
-			else{ auto r=Particle!(B,false,true)(sacParticle,positions[i],velocities[i],scales[i],lifetimes[i],frames[i]); r.sideFilter=sideFilters[i]; return r; }
+			static assert(kind==ParticleKind.standard);
+			auto r=Particle!(B,ParticleKind.standard,true)(sacParticle,positions[i],velocities[i],scales[i],lifetimes[i],frames[i]); r.sideFilter=sideFilters[i]; return r;
 		}else{
-			static if(relative) return Particle!(B,true)(sacParticle,baseIds[i],!!rotates[i],positions[i],velocities[i],scales[i],lifetimes[i],frames[i]);
-			else return Particle!(B,false)(sacParticle,positions[i],velocities[i],scales[i],lifetimes[i],frames[i]);
+			static if(kind==ParticleKind.relative) return Particle!(B,kind)(sacParticle,baseIds[i],!!rotates[i],positions[i],velocities[i],scales[i],lifetimes[i],frames[i]);
+			else static if(kind==ParticleKind.relativeTwirl) return Particle!(B,kind)(sacParticle,baseIds[i],angles[i],angleIncrements[i],accelerations[i],positions[i],velocities[i],scales[i],lifetimes[i],frames[i]);
+			else static if(kind==ParticleKind.standard) return Particle!(B,kind)(sacParticle,positions[i],velocities[i],scales[i],lifetimes[i],frames[i]);
+			else static assert(0);
 		}
 	}
-	void opIndexAssign(Particle!(B,relative,sideFiltered) particle,int i){
+	void opIndexAssign(Particle!(B,kind,sideFiltered) particle,int i){
 		assert(particle.sacParticle is sacParticle);
-		static if(relative){
+		static if(kind==ParticleKind.relative){
 			baseIds[i]=particle.baseId;
 			rotates[i]=particle.rotate;
-		}
+		}else static if(kind==ParticleKind.relativeTwirl){
+			baseIds[i]=particle.baseId;
+			angles[i]=particle.angle;
+			angleIncrements[i]=particle.angleIncrement;
+			accelerations[i]=particle.acceleration;
+		}else static assert(kind==ParticleKind.standard);
 		positions[i]=particle.position;
 		velocities[i]=particle.velocity;
 		scales[i]=particle.scale;
@@ -4188,6 +4233,7 @@ struct TornadoCasting(B){
 	Tornado!B tornado;
 	int castingTime;
 	float progress=0.0f;
+	float castingAnimationPhase=0.0f;
 }
 enum TornadoMode:int{
 	casting,
@@ -7006,9 +7052,10 @@ struct Objects(B,RenderMode mode){
 		Souls!B souls;
 		Buildings!B buildings;
 		WizardInfos!B wizards;
-		Array!(Particles!(B,false)) particles;
-		Array!(Particles!(B,true)) relativeParticles;
-		Array!(Particles!(B,false,true)) filteredParticles;
+		Array!(Particles!(B,ParticleKind.standard)) particles;
+		Array!(Particles!(B,ParticleKind.relative)) relativeParticles;
+		Array!(Particles!(B,ParticleKind.relativeTwirl)) relativeTwirlParticles;
+		Array!(Particles!(B,ParticleKind.standard,true)) filteredParticles;
 		Effects!B effects;
 		PermanentDisplacement!B permanentDisplacement;
 		CommandCones!B commandCones;
@@ -7136,11 +7183,13 @@ struct Objects(B,RenderMode mode){
 		void addEffect(T)(T proj){
 			effects.addEffect(move(proj));
 		}
-		int getIndexParticle(bool relative,bool sideFiltered)(SacParticle!B sacParticle,bool insert){
+		int getIndexParticle(ParticleKind kind,bool sideFiltered)(SacParticle!B sacParticle,bool insert){
 			static if(sideFiltered){
-				static assert(!relative);
+				static assert(kind==ParticleKind.standard);
 				alias particles=filteredParticles;
-			}else static if(relative) alias particles=relativeParticles;
+			}else static if(kind==ParticleKind.relative) alias particles=relativeParticles;
+			else static if(kind==ParticleKind.relativeTwirl) alias particles=relativeTwirlParticles;
+			else static assert(kind==ParticleKind.standard);
 			// cache, does not change semantics
 			auto cand=sacParticle.stateIndex;
 			if(0<=cand&&cand<particles.length)
@@ -7156,12 +7205,14 @@ struct Objects(B,RenderMode mode){
 			}
 			return sacParticle.stateIndex=-1;
 		}
-		void addParticle(bool relative,bool sideFiltered)(Particle!(B,relative,sideFiltered) particle){
-			auto index=getIndexParticle!(relative,sideFiltered)(particle.sacParticle,true);
+		void addParticle(ParticleKind kind,bool sideFiltered)(Particle!(B,kind,sideFiltered) particle){
+			auto index=getIndexParticle!(kind,sideFiltered)(particle.sacParticle,true);
 			static if(sideFiltered){
-				static assert(!relative);
+				static assert(kind==ParticleKind.standard);
 				alias particles=filteredParticles;
-			}else static if(relative) alias particles=relativeParticles;
+			}else static if(kind==ParticleKind.relative) alias particles=relativeParticles;
+			else static if(kind==ParticleKind.relativeTwirl) alias particles=relativeTwirlParticles;
+			else static assert(kind==ParticleKind.standard);
 			enforce(0<=index && index<particles.length);
 			particles[index].addParticle(particle);
 		}
@@ -7221,6 +7272,8 @@ auto eachParticles(alias f,B,T...)(ref Objects!(B,RenderMode.opaque) objects,T a
 			f(particle,args);
 		foreach(ref particle;relativeParticles)
 			f(particle,args);
+		foreach(ref particle;relativeTwirlParticles)
+			f(particle,args);
 		foreach(ref particle;filteredParticles)
 			f(particle,args);
 	}
@@ -7270,6 +7323,8 @@ auto eachByType(alias f,EachByTypeFlags flags,B,RenderMode mode,T...)(ref Object
 			foreach(ref particle;particles)
 				f(particle,args);
 			foreach(ref particle;relativeParticles)
+				f(particle,args);
+			foreach(ref particle;relativeTwirlParticles)
 				f(particle,args);
 			foreach(ref particle;filteredParticles)
 				f(particle,args);
@@ -7410,7 +7465,7 @@ struct ObjectManager(B){
 	void addEffect(T)(T proj){
 		opaqueObjects.addEffect(proj);
 	}
-	void addParticle(bool relative,bool sideFiltered)(Particle!(B,relative,sideFiltered) particle){
+	void addParticle(ParticleKind kind,bool sideFiltered)(Particle!(B,kind,sideFiltered) particle){
 		opaqueObjects.addParticle(particle);
 	}
 	void addCommandCone(CommandCone!B cone){
@@ -13002,7 +13057,7 @@ void animateGhost(bool sideFiltered=true,B)(ref MovingObject!B wizard,ObjectStat
 	auto sacParticle=SacParticle!B.get(ParticleType.ghost);
 	auto scale=1.0f; // TODO: does this differ for different creatures?
 	auto frame=state.uniform!"[)"(0,sacParticle.numFrames);
-	auto particle=Particle!(B,false,sideFiltered)(sacParticle,state.uniform(hitbox),Vector3f(0.0f,0.0f,0.0f),scale,sacParticle.numFrames,frame);
+	auto particle=Particle!(B,ParticleKind.standard,sideFiltered)(sacParticle,state.uniform(hitbox),Vector3f(0.0f,0.0f,0.0f),scale,sacParticle.numFrames,frame);
 	static if(sideFiltered) particle.sideFilter=wizard.side;
 	state.addParticle(particle);
 }
@@ -13093,7 +13148,7 @@ void spawnPhoenixShieldParticles(B)(ref MovingObject!B object,int numParticles,O
 		auto pvelocity=Vector3f(0.0f,0.0f,0.0f);
 		auto lifetime=31;
 		auto frame=0;
-		state.addParticle(Particle!(B,true)(sacParticle,object.id,true,pposition,pvelocity,scale,lifetime,frame));
+		state.addParticle(Particle!(B,ParticleKind.relative)(sacParticle,object.id,true,pposition,pvelocity,scale,lifetime,frame));
 	}
 }
 
@@ -14139,7 +14194,7 @@ void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 	}
 }
 
-void updateParticles(B,bool relative,bool sideFiltered)(ref Particles!(B,relative,sideFiltered) particles, ObjectState!B state){
+void updateParticles(B,ParticleKind kind,bool sideFiltered)(ref Particles!(B,kind,sideFiltered) particles, ObjectState!B state){
 	if(!particles.sacParticle) return;
 	auto sacParticle=particles.sacParticle;
 	auto gravity=sacParticle.gravity;
@@ -14154,8 +14209,16 @@ void updateParticles(B,bool relative,bool sideFiltered)(ref Particles!(B,relativ
 		if(particles.frames[j]>=sacParticle.numFrames){
 			particles.frames[j]=0;
 		}
-		particles.positions[j]+=particles.velocities[j]/updateFPS;
-		if(gravity) particles.velocities[j].z-=15.0f/updateFPS;
+		static if(kind==ParticleKind.relativeTwirl){
+			particles.angles[j]+=particles.angleIncrements[j];
+			auto acceleration=Vector3f(0.0f,0.0f,particles.accelerations[j]);
+			particles.positions[j]+=particles.velocities[j]/updateFPS+0.5f*acceleration/(updateFPS*updateFPS);
+			particles.velocities[j]+=acceleration/updateFPS;
+		}else{
+			static assert(kind==ParticleKind.standard||kind==ParticleKind.relative);
+			particles.positions[j]+=particles.velocities[j]/updateFPS;
+			if(gravity) particles.velocities[j].z-=15.0f/updateFPS;
+		}
 	}
 	if(sacParticle.bumpOffGround){
 		enum eps=1e-3f;
@@ -14225,7 +14288,7 @@ void spawnFireParticles(B,T)(ref T object,int numParticles,ObjectState!B state){
 		auto fullLifetime=sacParticle.numFrames/float(updateFPS);
 		auto lifetime=cast(int)(sacParticle.numFrames*state.uniform(0.0f,1.0f));
 		auto velocity=Vector3f(0.0f,0.0f,distance/fullLifetime);
-		static if(isMoving) state.addParticle(Particle!(B,true)(sacParticle,object.id,true,position,velocity,scale,lifetime,0));
+		static if(isMoving) state.addParticle(Particle!(B,ParticleKind.relative)(sacParticle,object.id,true,position,velocity,scale,lifetime,0));
 		else state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,0));
 	}
 }
@@ -15366,7 +15429,7 @@ bool updateHealCasting(B)(ref HealCasting!B healCast,ObjectState!B state){
 						auto lifetime=sacParticle.numFrames/60.0f;
 						auto velocity=(center-position)/lifetime;
 						auto scale=1.0f;
-						state.addParticle(Particle!(B,true)(sacParticle,obj.id,false,position,velocity,scale,sacParticle.numFrames,0));
+						state.addParticle(Particle!(B,ParticleKind.relative)(sacParticle,obj.id,false,position,velocity,scale,sacParticle.numFrames,0));
 					},(){})(creature,sacParticle,state);
 					state.movingObjectById!((obj,sacParticle,state){
 						auto hitbox=obj.relativeHitbox;
@@ -15378,7 +15441,7 @@ bool updateHealCasting(B)(ref HealCasting!B healCast,ObjectState!B state){
 						auto lifetime=sacParticle.numFrames/60.0f;
 						auto velocity=(position-center)/lifetime;
 						auto scale=1.0f;
-						state.addParticle(Particle!(B,true)(sacParticle,obj.id,false,center,velocity,scale,sacParticle.numFrames,0));
+						state.addParticle(Particle!(B,ParticleKind.relative)(sacParticle,obj.id,false,center,velocity,scale,sacParticle.numFrames,0));
 					},(){})(manaDrain.wizard,sacParticle,state);
 				}
 				state.movingObjectById!(animateHealCasting,(){})(manaDrain.wizard,state);
@@ -15404,7 +15467,7 @@ void animateHeal(B)(ref MovingObject!B obj,ObjectState!B state){
 		auto distance=(state.uniform(3)?state.uniform(0.3f,0.6f):state.uniform(1.5f,2.5f))*(hitbox[1].z-hitbox[0].z);
 		auto fullLifetime=sacParticle.numFrames/float(updateFPS);
 		auto lifetime=cast(int)(sacParticle.numFrames*state.uniform(0.0f,1.0f));
-		state.addParticle(Particle!(B,true)(sacParticle,obj.id,false,Vector3f(position.x,position.y,0.0f),Vector3f(0.0f,0.0f,distance/fullLifetime),scale,lifetime,0));
+		state.addParticle(Particle!(B,ParticleKind.relative)(sacParticle,obj.id,false,Vector3f(position.x,position.y,0.0f),Vector3f(0.0f,0.0f,distance/fullLifetime),scale,lifetime,0));
 	}
 }
 
@@ -15450,7 +15513,7 @@ bool updateLightningCasting(B)(ref LightningCasting!B lightningCast,ObjectState!
 						auto lifetime=sacParticle.numFrames/60.0f;
 						auto velocity=Vector3f(0.0f,0.0f,0.0f);
 						auto scale=1.0f;
-						state.addParticle(Particle!(B,true)(sacParticle,obj.id,true,position,velocity,scale,sacParticle.numFrames,0));
+						state.addParticle(Particle!(B,ParticleKind.relative)(sacParticle,obj.id,true,position,velocity,scale,sacParticle.numFrames,0));
 					}
 					obj.animateLightningCasting(state);
 					return true;
@@ -16335,7 +16398,7 @@ void spawnFireformParticles(B)(ref MovingObject!B wizard,int numParticles,Object
 		auto pvelocity=Vector3f(0.0f,0.0f,0.0f);
 		auto lifetime=31;
 		auto frame=0;
-		state.addParticle(Particle!(B,true)(sacParticle,wizard.id,true,pposition,pvelocity,scale,lifetime,frame));
+		state.addParticle(Particle!(B,ParticleKind.relative)(sacParticle,wizard.id,true,pposition,pvelocity,scale,lifetime,frame));
 	}
 }
 
@@ -16656,7 +16719,7 @@ void animateFreezeCastingTarget(B)(ref MovingObject!B obj,ObjectState!B state){
 		auto lifetime=sacParticle.numFrames/60.0f;
 		auto velocity=(center-position)/lifetime;
 		auto scale=1.0f;
-		state.addParticle(Particle!(B,true)(sacParticle,obj.id,false,position,velocity,scale,sacParticle.numFrames,0));
+		state.addParticle(Particle!(B,ParticleKind.relative)(sacParticle,obj.id,false,position,velocity,scale,sacParticle.numFrames,0));
 	}
 }
 
@@ -16680,7 +16743,7 @@ bool updateFreezeCasting(B)(ref FreezeCasting!B freezeCast,ObjectState!B state){
 						auto lifetime=sacParticle.numFrames/60.0f;
 						auto velocity=(position-center)/lifetime;
 						auto scale=1.0f;
-						state.addParticle(Particle!(B,true)(sacParticle,obj.id,false,center,velocity,scale,sacParticle.numFrames,0));
+						state.addParticle(Particle!(B,ParticleKind.relative)(sacParticle,obj.id,false,center,velocity,scale,sacParticle.numFrames,0));
 					}
 				},(){})(manaDrain.wizard,sacParticle,state);
 				return true;
@@ -16748,7 +16811,7 @@ void animateRingsOfFireCastingTarget(B)(ref MovingObject!B obj,ObjectState!B sta
 		position+=center;
 		auto lifetime=sacParticle.numFrames/60.0f;
 		auto velocity=(center-position)/lifetime;
-		state.addParticle(Particle!(B,true)(sacParticle,obj.id,false,position,velocity,scale,sacParticle.numFrames,0));
+		state.addParticle(Particle!(B,ParticleKind.relative)(sacParticle,obj.id,false,position,velocity,scale,sacParticle.numFrames,0));
 	}
 }
 
@@ -16790,7 +16853,7 @@ void animateRingsOfFire(bool relative=true,B)(ref MovingObject!B obj,ObjectState
 		auto velocity=-offset/duration;
 		auto lifetime=cast(int)ceil(updateFPS*duration);
 		auto frame=0;
-		static if(relative) state.addParticle(Particle!(B,true)(sacParticle,obj.id,true,offset,velocity,scale,lifetime,frame));
+		static if(relative) state.addParticle(Particle!(B,ParticleKind.relative)(sacParticle,obj.id,true,offset,velocity,scale,lifetime,frame));
 		else state.addParticle(Particle!B(sacParticle,obj.position+offset,velocity,scale,lifetime,frame));
 	}
 }
@@ -16876,7 +16939,7 @@ void animateSlime(bool relative=true,B)(ref MovingObject!B obj,ObjectState!B sta
 		auto velocity=Vector3f(0.0f,0.0f,0.0f,-height/duration);
 		auto lifetime=cast(int)ceil(updateFPS*duration);
 		auto frame=0;
-		static if(relative) state.addParticle(Particle!(B,true)(sacParticle,obj.id,true,offset,velocity,scale,lifetime,frame));
+		static if(relative) state.addParticle(Particle!(B,ParticleKind.relative)(sacParticle,obj.id,true,offset,velocity,scale,lifetime,frame));
 		else state.addParticle(Particle!B(sacParticle,obj.position+offset,velocity,scale,lifetime,frame));
 	}
 }
@@ -17331,7 +17394,7 @@ bool updateChainLightningCasting(B)(ref ChainLightningCasting!B chainLightningCa
 						auto lifetime=sacParticle.numFrames/60.0f;
 						auto velocity=Vector3f(0.0f,0.0f,0.0f);
 						auto scale=1.0f;
-						state.addParticle(Particle!(B,true)(sacParticle,obj.id,true,position,velocity,scale,sacParticle.numFrames,0));
+						state.addParticle(Particle!(B,ParticleKind.relative)(sacParticle,obj.id,true,position,velocity,scale,sacParticle.numFrames,0));
 					}
 					if(!state.uniform(2)){
 						Vector3f[2] nhbox=scaleBox(hbox,1.5f);
@@ -21702,11 +21765,39 @@ bool updateMeanstalks(B)(ref Meanstalks!B meanstalks,ObjectState!B state){
 	return meanstalks.numVines>0;
 }
 
+void animateTornadoCasting(B)(ref TornadoCasting!B tornadoCast,ObjectState!B state){
+	with(tornadoCast){
+		state.movingObjectById!((ref obj,state){
+			auto k=progress;
+			auto radius=2.5f*(1.0f+k);
+			auto theta=state.uniform!"[)"(0.0f,2.0f*pi!float);
+			auto offset=Vector3f(state.uniform!"[)"(-radius,radius)*sin(theta),state.uniform!"[)"(-radius,radius)*cos(theta),0.0f);
+			enum lifetime=cast(int)(1.125f*updateFPS);
+			auto velocity=Vector3f(-offset.x*updateFPS/lifetime,-offset.y*updateFPS/lifetime,0.5f);
+			auto angleIncrement=k*(pi!float/updateFPS);
+			auto acceleration=state.uniform!"[)"(0.95f,1.0f)*(2.0f*(3.0f*k+2.0f)/8100.0f)*(updateFPS*updateFPS);
+			auto scale=state.uniform!"[)"(0.35f,0.7f);
+			auto frame=0;
+			auto sacParticle=SacParticle!B.get(ParticleType.tornadoCasting);
+			state.addParticle(Particle!(B,ParticleKind.relativeTwirl)(sacParticle,obj.id,castingAnimationPhase,angleIncrement,acceleration,offset,velocity,scale,lifetime,frame));
+			if(!state.uniform(2)){
+				auto hbox=obj.relativeHitbox;
+				Vector3f[2] nhbox=scaleBox(hbox,1.5f);
+				auto start=obj.position+rotate(obj.rotation,state.uniform(nhbox));
+				auto end=start;
+				end.z+=state.uniform(1.5f,3.25f);
+				chainLightningCastingEffect(start,end,state);
+			}
+			obj.animateStratosCasting(state);
+		},(){})(manaDrain.wizard,state);
+	}
+}
 bool updateTornadoCasting(B)(ref TornadoCasting!B tornadoCast,ObjectState!B state){
 	with(tornadoCast){
 		final switch(manaDrain.update(state)){
 			case CastingStatus.underway:
-				// TODO: casting animation
+				animateTornadoCasting(tornadoCast,state);
+				castingAnimationPhase+=progress*(pi!float/updateFPS);
 				progress=min(1.0f,progress+1.0f/castingTime);
 				tornado.scaleTarget=0.8f*progress;
 				updateTornado(tornado,state);
@@ -21768,6 +21859,28 @@ void tornadoLift(B)(ref Tornado!B tornado,ObjectState!B state){
 		collisionTargets!(lift,None,true)(hitbox,state,&tornado);
 	}
 }
+void animateTornadoDirt(B)(ref Tornado!B tornado,ObjectState!B state){
+	with(tornado){
+		auto h=state.getHeight(position);
+		if(h<=0.0f) return;
+		auto rate=min(2.0f,max(0.0f,0.4f*(5.0f-(axisPoints[6].z-h))));
+		if(rate<=0.0f) return;
+		int numParticles=cast(int)rate;
+		if(state.uniform!"[)"(0.0f,1.0f)<rate-numParticles) numParticles+=1;
+		if(!numParticles) return;
+		auto sacParticle=SacParticle!B.get(ParticleType.tornadoDirt);
+		foreach(i;0..numParticles){
+			auto theta=state.uniform!"[)"(0.0f,2.0f*pi!float);
+			auto offset=Vector3f(state.uniform!"[)"(-15.0f,15.0f)*sin(theta),state.uniform!"[)"(-15.0f,15.0f)*cos(theta),state.uniform!"[)"(0.0f,5.0f));
+			auto particlePosition=Vector3f(position.x,position.y,h)+offset;
+			auto velocity=Vector3f(0.0f,0.0f,0.0f);
+			auto scale=state.uniform!"[)"(1.4f,2.8f);
+			enum lifetime=cast(int)(1.125f*updateFPS);
+			auto frame=0;
+			state.addParticle(Particle!B(sacParticle,particlePosition,velocity,scale,lifetime,frame));
+		}
+	}
+}
 
 enum tornadoGain=6.0f;
 bool updateTornado(B)(ref Tornado!B tornado,ObjectState!B state){
@@ -21814,6 +21927,7 @@ bool updateTornado(B)(ref Tornado!B tornado,ObjectState!B state){
 		wobblePhases[2]-=0.78f/updateFPS;
 		wobblePhases[3]+=0.36f/updateFPS;
 		updateCurve();
+		animateTornadoDirt(tornado,state);
 		return true;
 	}
 }
@@ -22519,7 +22633,7 @@ bool updatePoison(B)(ref Poison poison,ObjectState!B state){
 				auto position=1.1f*state.uniform(hitbox);
 				auto velocity=Vector3f(0.0f,0.0f,0.0f);
 				auto lifetime=min(poison.lifetime-poison.frame,cast(int)(sacParticle.numFrames*state.uniform(0.0f,1.0f)));
-				state.addParticle(Particle!(B,true)(sacParticle,obj.id,false,position,velocity,scale,lifetime,0));
+				state.addParticle(Particle!(B,ParticleKind.relative)(sacParticle,obj.id,false,position,velocity,scale,lifetime,0));
 			}
 		}
 		with(*poison){
@@ -24863,7 +24977,7 @@ bool animateBreathOfLifeReviving(B)(ref MovingObject!B obj,ObjectState!B state){
 		auto distance=(state.uniform(3)?state.uniform(0.6f,1.2f):state.uniform(1.5f,2.5f))*(hitbox[1].z-hitbox[0].z);
 		auto fullLifetime=sacParticle.numFrames/float(updateFPS);
 		auto lifetime=cast(int)(sacParticle.numFrames*state.uniform(0.0f,1.0f));
-		state.addParticle(Particle!(B,true)(sacParticle,obj.id,false,position,Vector3f(0.0f,0.0f,-distance/fullLifetime),scale,lifetime,0));
+		state.addParticle(Particle!(B,ParticleKind.relative)(sacParticle,obj.id,false,position,Vector3f(0.0f,0.0f,-distance/fullLifetime),scale,lifetime,0));
 	}
 	return true;
 }
@@ -27057,7 +27171,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 				if(!(flagsFromBuildingId(objects.buildingIds[j],state)&AdditionalBuildingFlags.inactive))
 					proximity.addAltar(sideFromBuildingId(objects.buildingIds[j],state),objects.positions[j]);
 		}
-	}else static if(is(T==Souls!B)||is(T==Buildings!B)||is(T==FixedObjects!B)||is(T==Effects!B)||is(T==Particles!(B,relative),bool relative)||is(T==CommandCones!B)||is(T==Highlights!B)){
+	}else static if(is(T==Souls!B)||is(T==Buildings!B)||is(T==FixedObjects!B)||is(T==Effects!B)||is(T==Particles!(B,kind),ParticleKind kind)||is(T==CommandCones!B)||is(T==Highlights!B)){
 		// do nothing
 	}else static assert(0);
 }
@@ -27089,7 +27203,7 @@ void addToProximitySingle(T,B)(ref T obj, ObjectState!B state){
 		}
 	}else static if(isStatic){ // TODO: cache those?
 		static assert(0,"TODO");
-	}else static if(is(T==Souls!B)||is(T==Buildings!B)||is(T==FixedObj!B)||is(T==Effects!B)||is(T==Particles!(B,relative),bool relative)||is(T==CommandCones!B)){
+	}else static if(is(T==Souls!B)||is(T==Buildings!B)||is(T==FixedObj!B)||is(T==Effects!B)||is(T==Particles!(B,kind),ParticleKind kind)||is(T==CommandCones!B)){
 		// do nothing
 	}else static assert(0);
 }
@@ -28187,7 +28301,7 @@ final class ObjectState(B){ // (update logic)
 	void addEffect(T)(T proj){
 		obj.addEffect(proj);
 	}
-	void addParticle(bool relative,bool sideFiltered)(Particle!(B,relative,sideFiltered) particle){
+	void addParticle(ParticleKind kind,bool sideFiltered)(Particle!(B,kind,sideFiltered) particle){
 		obj.addParticle(particle);
 	}
 	void addCommandCone(CommandCone!B cone){

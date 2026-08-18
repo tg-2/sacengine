@@ -1279,7 +1279,15 @@ enum ParticleType{
 	locustBlood,
 	locustDebris,
 	heart,
-	bouncingHeart
+	bouncingHeart,
+	tornadoDirt,
+	tornadoCasting
+}
+
+enum ParticleKind{
+	standard,
+	relative,
+	relativeTwirl,
 }
 
 final class SacParticle(B){
@@ -1340,32 +1348,38 @@ final class SacParticle(B){
 				return false;
 			case bouncingHeart:
 				return true;
+			case tornadoDirt,tornadoCasting:
+				return false;
 		}
 	}
-	@property bool relative(){
+	@property ParticleKind kind(){
 		final switch(type) with(ParticleType){
 			case manafount,manalith,shrine,manahoar,firy,fire,fireball,firewall,cold,explosion,explosion2,speedUp,ghost,heal,scarabHit,ghostTransition,spark,styxSpark,rend:
-				return false;
+				return ParticleKind.standard;
 			case relativeHeal,lightningCasting:
-				return true;
+				return ParticleKind.relative;
 			case chainLightningCasting:
-				return false;
+				return ParticleKind.standard;
 			case needle,etherealFormSpark,shard,snowballShard,flurryShard:
-				return false;
+				return ParticleKind.standard;
 			case freeze:
-				return true;
+				return ParticleKind.relative;
 			case redVortexDroplet,blueVortexDroplet:
-				return false;
+				return ParticleKind.standard;
 			case castPersephone,castPersephone2,castPyro,castPyro2,castJames,castJames2,castStratos,castCharnel,castCharnel2:
-				return false;
+				return ParticleKind.standard;
 			case breathOfLife,wrathCasting,wrathExplosion1,wrathExplosion2,wrathParticle,rainbowParticle,rainOfFrogsCasting,frogExplosion,gnomeHit,warmongerHit,ashParticle,volcanoAsh,steam,smoke,dirt,dust,slowDust,splat,rock,bombardmentCasting,webDebris,oil,poison,swarmHit,slime:
-				return false;
+				return ParticleKind.standard;
 			case relativePoison:
-				return true;
+				return ParticleKind.relative;
 			case hoverBlood,blood,locustBlood,locustDebris:
-				return false;
+				return ParticleKind.standard;
 			case heart,bouncingHeart:
-				return false;
+				return ParticleKind.standard;
+			case tornadoDirt:
+				return ParticleKind.standard;
+			case tornadoCasting:
+				return ParticleKind.relativeTwirl;
 		}
 	}
 	@property bool bumpOffGround(){
@@ -1738,6 +1752,18 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/shawn/shwn.WAD!/pers.FLDR/text.FLDR/hrot.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
+			case tornadoDirt:
+				width=height=2.0f;
+				this.energy=1.0f;
+				texture=B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Stra.FLDR/txtr.FLDR/tdst.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
+			case tornadoCasting:
+				width=height=2.0f;
+				this.energy=3.0f;
+				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/cst0.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
 		}
 		material=B.createMaterial(this);
 	}
@@ -1782,6 +1808,7 @@ final class SacParticle(B){
 			case blood: return 4;
 			case locustBlood, locustDebris: return 1;
 			case heart,bouncingHeart: return 2;
+			case tornadoDirt,tornadoCasting: return 2;
 			default: return 1;
 		}
 	}
@@ -1854,6 +1881,8 @@ final class SacParticle(B){
 				return min(1.0f,(lifetime/(0.5f*numFrames)));
 			case heart,bouncingHeart:
 				return min(1.0f,(lifetime/(0.5f*numFrames))^^2);
+			case tornadoDirt,tornadoCasting:
+				return min(1.0f,lifetime/(1.125f*updateFPS));
 		}
 	}
 	float getScale(int lifetime){
@@ -1912,6 +1941,8 @@ final class SacParticle(B){
 				return 1.0f;
 			case heart,bouncingHeart:
 				return min(1.0f,(lifetime/(0.75f*numFrames)));
+			case tornadoDirt,tornadoCasting:
+				return 0.375f+0.625f*min(1.0f,lifetime/(1.125f*updateFPS));
 		}
 	}
 }

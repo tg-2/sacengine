@@ -3523,7 +3523,7 @@ struct Renderer(B){
 					}
 				}
 				} // onlyVolcano
-			}else static if(is(T==Particles!(B,relative,sideFiltered),bool relative,bool sideFiltered)){
+			}else static if(is(T==Particles!(B,kind,sideFiltered),ParticleKind kind,bool sideFiltered)){
 				static if(mode==RenderMode.transparent){
 					if(rc.shadowMode) return; // TODO: particle shadows?
 					auto sacParticle=objects.sacParticle;
@@ -3538,11 +3538,18 @@ struct Renderer(B){
 								continue;
 						}
 						auto mesh=sacParticle.getMesh(objects.frames[j]); // TODO: do in shader?
-						static if(relative){
+						static if(kind==ParticleKind.relative){
 							auto position=objects.rotates[j]?state.movingObjectById!((obj,particlePosition)=>rotate(obj.rotation,particlePosition)+obj.position,()=>Vector3f(0.0f,0.0f,0.0f))(objects.baseIds[j],objects.positions[j])
 								: objects.positions[j]+state.movingObjectById!((obj)=>obj.position,()=>Vector3f(0.0f,0.0f,0.0f))(objects.baseIds[j]);
+						}else static if(kind==ParticleKind.relativeTwirl){
+							auto basePosition=state.movingObjectById!((obj)=>obj.position,()=>Vector3f(0.0f,0.0f,0.0f))(objects.baseIds[j]);
+							auto relativePosition=objects.positions[j];
+							auto c=cos(objects.angles[j]), s=sin(objects.angles[j]);
+							auto position=basePosition+Vector3f(c*relativePosition.x+s*relativePosition.y,c*relativePosition.y-s*relativePosition.x,relativePosition.z);
+						}else{
+							static assert(kind==ParticleKind.standard);
+							auto position=objects.positions[j];
 						}
-						else auto position=objects.positions[j];
 						material.backend.setSpriteTransformationScaled(position,objects.scales[j]*sacParticle.getScale(objects.lifetimes[j]),rc);
 						material.backend.setAlpha(sacParticle.getAlpha(objects.lifetimes[j]));
 						mesh.render(rc);
@@ -4524,7 +4531,7 @@ struct Renderer(B){
 				// do nothing
 			}else static if(is(T==Effects!B)){
 				// do nothing
-			}else static if(is(T==Particles!(B,relative),bool relative)){
+			}else static if(is(T==Particles!(B,kind),ParticleKind kind)){
 				// do nothing
 			}else static if(is(T==CommandCones!B)){
 				// do nothing

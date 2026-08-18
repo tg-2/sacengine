@@ -255,8 +255,8 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Sac
 	}else result=T.get(type);
 }
 
-void serialize(alias sink,B,bool relative,bool sideFiltered)(ref Particles!(B,relative,sideFiltered) particles){ serializeStruct!sink(particles); }
-void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Particles!(B,relative,sideFiltered),bool relative,bool sideFiltered)){ deserializeStruct(result,state,data); }
+void serialize(alias sink,B,ParticleKind kind,bool sideFiltered)(ref Particles!(B,kind,sideFiltered) particles){ serializeStruct!sink(particles); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Particles!(B,kind,sideFiltered),ParticleKind kind,bool sideFiltered)){ deserializeStruct(result,state,data); }
 
 void serialize(alias sink,B)(ref Debris!B debris){ serializeStruct!sink(debris); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Debris!B)){ deserializeStruct(result,state,data); }
