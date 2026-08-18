@@ -4206,6 +4206,7 @@ struct Tornado(B){
 	float scale=0.0f;
 	float scaleTarget=0.0f;
 	float spinPhase=0.0f;
+	float animPhase=0.0f;
 	float[4] wobblePhases=0.0f;
 	Vector3f[7] axisPoints=Vector3f(0.0f,0.0f,0.0f);
 	float[7] radii=0.0f;
@@ -21809,6 +21810,8 @@ bool updateTornado(B)(ref Tornado!B tornado,ObjectState!B state){
 		if(scale<scaleTarget) scale=min(scaleTarget,scale+0.6f/updateFPS);
 		else if(scale>scaleTarget) scale=max(scaleTarget,scale-0.6f/updateFPS);
 		spinPhase+=2.0f*pi!float/updateFPS;
+		animPhase+=15.0f/updateFPS;
+		if(cast(int)animPhase>=4) animPhase=0.0f;
 		wobblePhases[0]+=0.6f/updateFPS;
 		wobblePhases[1]-=0.48f/updateFPS;
 		wobblePhases[2]-=0.78f/updateFPS;

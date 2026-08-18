@@ -3543,54 +3543,115 @@ struct SacTornado(B){
 	static B.Texture loadTexture(){
 		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Stra.FLDR/txtr.FLDR/trn1.TXTR"));
 	}
-	B.Material material;
-	B.Mesh mesh;
-	enum numRings=128;
-	enum numSegments=128;
-	enum uRepeat=4;
-	static assert(numSegments%uRepeat==0);
-	static B.Mesh createMesh(){
-		auto mesh=B.makeMesh(numRings*(numSegments+1),2*(numRings-1)*numSegments);
-		int numFaces=0;
-		int idx(int i,int j){ return (numSegments+1)*i+j; }
-		auto mirrorPeriod=numSegments/uRepeat;
-		foreach(i;0..numRings){
-			enum topRate=1.0f,bottomRate=6.0f;
-			auto progress=1.0f-cast(float)i/(numRings-1);
-			auto v=1.0f-topRate/(progress+1.0f/bottomRate);
-			foreach(j;0..numSegments+1){
-				mesh.vertices[idx(i,j)]=Vector3f(0.0f,0.0f,0.0f);
-				auto repetition=j/mirrorPeriod;
-				auto m=j%mirrorPeriod;
-				if((repetition&1)!=0) m=mirrorPeriod-m;
-				auto u=cast(float)m/mirrorPeriod;
-				mesh.texcoords[idx(i,j)]=Vector2f(u,v);
-				if(i!=0&&j!=numSegments){
-					mesh.indices[numFaces++]=[idx(i,j),idx(i,j+1),idx(i-1,j)];
-					mesh.indices[numFaces++]=[idx(i,j+1),idx(i-1,j+1),idx(i-1,j)];
-				}
-			}
-		}
-		assert(numFaces==2*(numRings-1)*numSegments);
-		mesh.generateNormals();
-		B.finalizeMesh(mesh);
-		return mesh;
+	B.Texture texture2;
+	static B.Texture loadTexture2(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Stra.FLDR/txtr.FLDR/trn2.TXTR"));
 	}
-	B.Mesh prepare(Vector3f[7] axisPoints,float[7] radii,float spinPhase){
-		foreach(i;0..numRings){
-			auto t=cast(float)i/(numRings-1);
-			auto k=t<=0.5f?0:3;
-			auto u=t<=0.5f?2.0f*t:2.0f*(t-0.5f), v=1.0f-u;
-			auto center=v*v*v*axisPoints[k]+3.0f*v*v*u*axisPoints[k+1]+3.0f*v*u*u*axisPoints[k+2]+u*u*u*axisPoints[k+3];
-			auto radius=v*v*v*radii[k]+3.0f*v*v*u*radii[k+1]+3.0f*v*u*u*radii[k+2]+u*u*u*radii[k+3];
-			foreach(j;0..numSegments+1){
-				auto φ=spinPhase+2.0f*pi!float*j/numSegments;
-				mesh.vertices[(numSegments+1)*i+j]=center+radius*Vector3f(cos(φ),sin(φ),0.0f)-axisPoints[0];
+	B.Texture texture3;
+	static B.Texture loadTexture3(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Stra.FLDR/txtr.FLDR/edge.TXTR"));
+	}
+	B.Material material, material2, material3;
+	B.Mesh mesh, mesh2, mesh3;
+	int numSegments=0, numRings=0;
+	float[] sinTable, cosTable;
+	void ensureMeshes(int newNumSegments,int newNumRings){
+		if(newNumSegments==numSegments&&newNumRings==numRings) return;
+		numSegments=newNumSegments;
+		numRings=newNumRings;
+		mesh=B.makeColorMesh(numRings*numSegments,2*(numRings-1)*(numSegments-1));
+		mesh2=B.makeColorMesh(numRings*numSegments,2*(numRings-1)*(numSegments-1));
+		mesh3=B.makeColorMesh(4*(numRings-2),4*(numRings-3));
+		sinTable.length=numSegments;
+		cosTable.length=numSegments;
+		int idx(int r,int k){ return numSegments*r+k; }
+		int numFaces=0;
+		foreach(r;0..numRings-1){
+			foreach(k;0..numSegments-1){
+				mesh.indices[numFaces]=[idx(r+1,k),idx(r,k),idx(r+1,k+1)];
+				mesh.indices[numFaces+1]=[idx(r,k),idx(r+1,k+1),idx(r,k+1)];
+				mesh2.indices[numFaces]=mesh.indices[numFaces];
+				mesh2.indices[numFaces+1]=mesh.indices[numFaces+1];
+				numFaces+=2;
 			}
 		}
+		numFaces=0;
+		foreach(i;0..numRings-3){
+			auto a=4*i;
+			mesh3.indices[numFaces++]=[a,a+1,a+4];
+			mesh3.indices[numFaces++]=[a+1,a+5,a+4];
+			mesh3.indices[numFaces++]=[a+2,a+3,a+6];
+			mesh3.indices[numFaces++]=[a+3,a+7,a+6];
+		}
+		foreach(r;0..numRings){
+			auto t=cast(float)r/(numRings-1);
+			auto alpha=t*(3.0f-t)^^2/4.0f;
+			foreach(k;0..numSegments){
+				auto u=cast(float)k/(numSegments-1);
+				mesh.texcoords[idx(r,k)]=Vector2f(u,t);
+				mesh2.texcoords[idx(r,k)]=Vector2f(u,1.0f-t);
+				mesh.colors[idx(r,k)]=Color4f(1.0f,1.0f,1.0f,alpha);
+				mesh2.colors[idx(r,k)]=Color4f(1.0f,1.0f,1.0f,1.0f);
+			}
+		}
+		foreach(i;0..numRings-2){
+			auto color=Color4f(1.0f,1.0f,1.0f,i==0?0.0f:1.0f);
+			mesh3.colors[4*i+0]=color;
+			mesh3.colors[4*i+1]=color;
+			mesh3.colors[4*i+2]=color;
+			mesh3.colors[4*i+3]=color;
+		}
+	}
+	void prepare(Vector3f[7] axisPoints,float[7] radii,float spinPhase,int newNumSegments,int newNumRings,int edgeFrame,Vector3f cameraPosition,Vector2f cameraRight){
+		ensureMeshes(newNumSegments,newNumRings);
+		auto origin=axisPoints[0];
+		auto spin2=spinPhase+2.0f*pi!float;
+		auto step=(spinPhase-spin2)/(numSegments-1);
+		auto theta=spinPhase;
+		foreach(k;0..numSegments){
+			sinTable[k]=sin(theta);
+			cosTable[k]=cos(theta);
+			theta+=step;
+		}
+		foreach(r;0..2*numRings-1){
+			auto i=r<=numRings-1?0:3;
+			auto t=float(r<=numRings-1?r:r-(numRings-1))/(numRings-1);
+			auto u=t,w=1.0f-t;
+			auto center=w*w*w*axisPoints[i]+3.0f*w*w*u*axisPoints[i+1]+3.0f*w*u*u*axisPoints[i+2]+u*u*u*axisPoints[i+3];
+			auto radius=w*w*w*radii[i]+3.0f*w*w*u*radii[i+1]+3.0f*w*u*u*radii[i+2]+u*u*u*radii[i+3];
+			void fill(ref B.Mesh m,int rr){
+				foreach(k;0..numSegments)
+					m.vertices[numSegments*rr+k]=center+radius*Vector3f(sinTable[k],cosTable[k],0.0f)-origin;
+			}
+			if(r<=numRings-1) fill(mesh,r);
+			if(r>=numRings-1) fill(mesh2,r-(numRings-1));
+		}
+		auto u0=(edgeFrame+0.5f/64.0f)/4.0f, u1=(edgeFrame+1.0f-0.5f/64.0f)/4.0f;
+		auto cn=cameraRight.normalized;
+		foreach(i;0..numRings-2){
+			auto t=float(i+2)/(numRings-1);
+			auto u=t, w=1.0f-t;
+			auto center=w*w*w*axisPoints[3]+3.0f*w*w*u*axisPoints[4]+3.0f*w*u*u*axisPoints[5]+u*u*u*axisPoints[6];
+			auto radius=w*w*w*radii[3]+3.0f*w*w*u*radii[4]+3.0f*w*u*u*radii[5]+u*u*u*radii[6];
+			auto v=1.0f-t;
+			mesh3.texcoords[4*i+0]=Vector2f(u0,v);
+			mesh3.texcoords[4*i+1]=Vector2f(u1,v);
+			mesh3.texcoords[4*i+2]=Vector2f(u1,v);
+			mesh3.texcoords[4*i+3]=Vector2f(u0,v);
+			auto nd=Vector2f(center.x-cameraPosition.x,center.y-cameraPosition.y).normalized;
+			auto f=Vector2f(0.5f*(nd.y+cn.x),0.5f*(-nd.x+cn.y));
+			auto rel=center-origin;
+			mesh3.vertices[4*i+0]=rel+0.9f*radius*Vector3f(f.x,f.y,0.0f);
+			mesh3.vertices[4*i+1]=rel+2.0f*radius*Vector3f(f.x,f.y,0.0f);
+			mesh3.vertices[4*i+2]=rel-2.0f*radius*Vector3f(f.x,f.y,0.0f);
+			mesh3.vertices[4*i+3]=rel-0.9f*radius*Vector3f(f.x,f.y,0.0f);
+		}
 		mesh.generateNormals();
+		mesh2.generateNormals();
+		mesh3.generateNormals();
 		B.finalizeMesh(mesh);
-		return mesh;
+		B.finalizeMesh(mesh2);
+		B.finalizeMesh(mesh3);
 	}
 }
 

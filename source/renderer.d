@@ -507,13 +507,25 @@ struct Renderer(B){
 	SacTornado!B tornado;
 	SacTornado!B createTornado(){
 		auto texture=typeof(return).loadTexture();
-		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		auto texture2=typeof(return).loadTexture2();
+		auto texture3=typeof(return).loadTexture3();
+		auto mat=B.makeMaterial(B.shadelessColorMaterialBackend);
 		mat.blending=B.Blending.Transparent;
 		mat.energy=10.0f;
 		mat.transparency=0.9f;
 		mat.diffuse=texture;
-		auto mesh=typeof(return).createMesh();
-		return SacTornado!B(texture,mat,mesh);
+		auto mat2=B.makeMaterial(B.shadelessColorMaterialBackend);
+		mat2.blending=B.Blending.Transparent;
+		mat2.energy=10.0f;
+		mat2.transparency=0.9f;
+		mat2.diffuse=texture2;
+		auto mat3=B.makeMaterial(B.shadelessColorMaterialBackend);
+		mat3.depthWrite=false;
+		mat3.blending=B.Blending.Transparent;
+		mat3.energy=8.0f;
+		mat3.transparency=0.9f;
+		mat3.diffuse=texture3;
+		return SacTornado!B(texture,texture2,texture3,mat,mat2,mat3);
 	}
 	SacRainFrog!B rainFrog;
 	SacRainFrog!B createRainFrog(){
@@ -3307,18 +3319,28 @@ struct Renderer(B){
 					}
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.tornadoCastings.length||objects.tornados.length)){
-					auto mat=self.tornado.material;
-					mat.bind(rc);
-					B.disableCulling();
-					scope(success){
-						B.enableCulling();
-						mat.unbind(rc);
-					}
 					void renderTornado(ref Tornado!B tornado){
-						mat.backend.setAlpha(sqrt(sqrt(min(1.0f,1.5f*tornado.scale))));
-						mat.backend.setTransformation(tornado.top,Quaternionf.identity(),rc);
-						auto mesh=self.tornado.prepare(tornado.axisPoints,tornado.radii,tornado.spinPhase);
-						mesh.render(rc);
+						auto alpha=sqrt(sqrt(min(1.0f,1.5f*tornado.scale)));
+						auto home=tornado.home;
+						auto depth=-(Vector4f(home.x,home.y,home.z,1.0f)*rc.viewMatrix).z;
+						auto lod=depth<=10.0f?1.0f:cast(float)min(1.0,0.5^^(cast(double)(depth-10.0f)/10.0));
+						enum numSegments=128,numRings=128;
+						auto camRight=rotate(facingQuaternion(-degtorad(info.camera.turn)),Vector3f(1.0f,0.0f,0.0f));
+						self.tornado.prepare(tornado.axisPoints,tornado.radii,tornado.spinPhase,numSegments,numRings,cast(int)tornado.animPhase,info.camera.position,Vector2f(camRight.x,camRight.y));
+						void renderPart(ref B.Material mat,B.Mesh mesh){
+							mat.bind(rc);
+							B.disableCulling();
+							scope(exit){
+								B.enableCulling();
+								mat.unbind(rc);
+							}
+							mat.backend.setAlpha(alpha);
+							mat.backend.setTransformation(tornado.top,Quaternionf.identity(),rc);
+							mesh.render(rc);
+						}
+						renderPart(self.tornado.material,self.tornado.mesh);
+						renderPart(self.tornado.material3,self.tornado.mesh3);
+						renderPart(self.tornado.material2,self.tornado.mesh2);
 					}
 					foreach(ref tornadoCasting;objects.tornadoCastings)
 						renderTornado(tornadoCasting.tornado);

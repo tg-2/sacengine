@@ -2260,6 +2260,12 @@ static:
 		m.indices=New!(uint[3][])(numFaces);
 		return m;
 	}
+	Mesh makeColorMesh(size_t numVertices,size_t numFaces){
+		auto m=makeMesh(numVertices,numFaces);
+		m.colors=New!(Color4f[])(numVertices);
+		m.colors[]=Color4f(1.0f,1.0f,1.0f,1.0f);
+		return m;
+	}
 	void finalizeMesh(Mesh mesh){
 		mesh.dataReady=true;
 		mesh.prepareVAO();
@@ -2346,6 +2352,7 @@ static:
 	@property GeometryPassBackend defaultMaterialBackend(){ return scene.defaultMaterialBackend; }
 	@property MorphBackend morphMaterialBackend(){ return scene.morphMaterialBackend; } // TODO
 	@property ShadelessBackend shadelessMaterialBackend(){ return scene.shadelessMaterialBackend; }
+	@property ShadelessColorBackend shadelessColorMaterialBackend(){ return scene.shadelessColorMaterialBackend; }
 	@property ShadelessMorphBackend shadelessMorphMaterialBackend(){ return scene.shadelessMorphMaterialBackend; }
 
 	@property BoneBackend boneMaterialBackend(){ return scene.boneMaterialBackend; }
