@@ -10937,12 +10937,10 @@ bool volcano(B)(Volcano!B volcano,ObjectState!B state){
 }
 
 enum meanstalksGain=4.0f;
-// BATTLE::GroundPositionOK: ground above water level, and not inside a creature/wizard/building
 bool meanstalkGroundPositionOK(B)(ref Vector3f position,ObjectState!B state){
-	position.z=state.getHeight(position); // the binary also writes the ground height into the position
+	position.z=state.getHeight(position);
 	static void block(ref ProximityEntry entry,ObjectState!B state,Vector3f* position,bool* blocked){
-		if(!state.targetTypeFromId(entry.id).among(TargetType.creature,TargetType.building)) return; // mask 0x15: wizards are creatures
-		// NTT::IsBlocked: point-in-collision-AABB test, xy exact, z padded by 1.0 on both sides
+		if(!state.targetTypeFromId(entry.id).among(TargetType.creature,TargetType.building)) return;
 		if(position.x<entry.hitbox[0].x||entry.hitbox[1].x<position.x) return;
 		if(position.y<entry.hitbox[0].y||entry.hitbox[1].y<position.y) return;
 		if(position.z<entry.hitbox[0].z-1.0f||entry.hitbox[1].z+1.0f<position.z) return;
@@ -10953,7 +10951,6 @@ bool meanstalkGroundPositionOK(B)(ref Vector3f position,ObjectState!B state){
 	collisionTargets!(block,None,true)(probe,state,&position,&blocked);
 	return !blocked;
 }
-// BATTLE::GetValidGroundPos: exact spot, else up to 32 random retries within radius 18
 bool getMeanstalkGroundPos(B)(ref Vector3f position,ObjectState!B state){
 	if(meanstalkGroundPositionOK(position,state)) return true;
 	auto original=position;
@@ -10976,7 +10973,7 @@ void animateMeanstalkSpawn(B)(Vector3f position,ObjectState!B state){
 		particlePosition.z=state.getHeight(particlePosition);
 		auto velocity=Vector3f(0.0f,0.0f,0.0f);
 		auto scale=0.75f*5.0f;
-		auto lifetime=96+state.uniform(32);
+		auto lifetime=128+state.uniform(32);
 		auto frame=0;
 		state.addParticle(Particle!B(sacParticle,particlePosition,velocity,scale,lifetime,frame));
 	}

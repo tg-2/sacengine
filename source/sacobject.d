@@ -2622,14 +2622,15 @@ struct SacVine(B){
 		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/vine.TXTR"));
 	}
 	B.BoneMesh mesh;
-	enum numSegments=19;
+	enum numVineSegments=19;
 	static B.BoneMesh createMesh(){
 		enum numVertices=25;
-		return makeVineMesh!B(numSegments,numVertices,0.0f,0.1f);
+		return makeVineMesh!B(numVineSegments,numVertices,0.0f,0.1f);
 	}
+	enum numMeanstalkSegments=31; // TODO: handle more segments in bone material backend?
 	static B.BoneMesh createMeanstalkMesh(){
-		enum numVertices=25;
-		return makeMeanstalkMesh!B(numSegments,numVertices);
+		enum numVertices=64;
+		return makeMeanstalkMesh!B(numMeanstalkSegments,numVertices);
 	}
 }
 

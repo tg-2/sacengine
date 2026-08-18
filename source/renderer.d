@@ -2139,7 +2139,7 @@ struct Renderer(B){
 					material.bind(rc);
 					void renderVine(ref Vine vine,float lengthFactor){
 						if(isNaN(vine.locations[0].x)) return;
-						Matrix4x4f[self.vine.numSegments+1] pose;
+						Matrix4x4f[self.vine.numVineSegments+1] pose;
 						foreach(i,ref x;pose){
 							auto curve = vine.get(i/float(pose.length-1));
 							auto rotation=rotationBetween(Vector3f(0.0f,0.0f,1.0f),curve[1].normalized);
@@ -2166,7 +2166,7 @@ struct Renderer(B){
 					auto mesh=self.meanstalk.mesh;
 					material.bind(rc);
 					void renderMeanstalk(ref Meanstalk vine){
-						Matrix4x4f[self.meanstalk.numSegments+1] pose;
+						Matrix4x4f[self.meanstalk.numMeanstalkSegments+1] pose;
 						foreach(i,ref x;pose){
 							auto t=i/float(pose.length-1);
 							auto curve=t<=0.5f?vine.curve0:vine.curve1;
