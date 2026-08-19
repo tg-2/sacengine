@@ -17896,7 +17896,7 @@ bool updateEruptDebris(B)(ref EruptDebris!B eruptDebris,ObjectState!B state){
 }
 
 bool boreGetPos(B)(ref Vector3f position,ref float angle,Vector3f target,SacSpell!B spell,float speed,ObjectState!B state){
-	immutable double maxAngle=(spell.effectRange-5.0f)*2.0f*pi!float;
+	immutable double maxAngle=(spell.effectRange-5.0f)*0.2f*pi!float;
 	bool arrived=false;
 	if(!(maxAngle>angle)){
 		angle=maxAngle;
