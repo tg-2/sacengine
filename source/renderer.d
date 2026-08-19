@@ -1990,7 +1990,8 @@ struct Renderer(B){
 				}
 				static if(mode==RenderMode.opaque) if(objects.rockCastings.length||objects.rocks.length||
 				                                      objects.soulMoleCastings.length||objects.soulMoles.length||
-													  objects.haloOfEarthCastings.length||objects.haloOfEarths.length||
+				                                      objects.boreCastings.length||objects.bores.length||
+				                                      objects.haloOfEarthCastings.length||objects.haloOfEarths.length||
 				                                      objects.eruptDebris.length||
 				                                      objects.earthflingProjectiles.length||objects.flummoxProjectiles.length||objects.boulderdashProjectiles.length||
 				                                      objects.bombardmentDrops.length||
@@ -2017,6 +2018,14 @@ struct Renderer(B){
 						}
 						foreach(j;0..objects.soulMoles.length){
 							material.backend.setTransformationScaled(objects.soulMoles[j].position,Quaternionf.identity(),Vector3f(1.0f,1.0f,1.0f),rc);
+							mesh.render(rc);
+						}
+						foreach(j;0..objects.boreCastings.length){
+							material.backend.setTransformationScaled(objects.boreCastings[j].bore.position,Quaternionf.identity(),Vector3f(1.0f,1.0f,1.0f),rc);
+							mesh.render(rc);
+						}
+						foreach(j;0..objects.bores.length){
+							material.backend.setTransformationScaled(objects.bores[j].position,Quaternionf.identity(),Vector3f(1.0f,1.0f,1.0f),rc);
 							mesh.render(rc);
 						}
 						foreach(j;0..objects.haloOfEarthCastings.length){

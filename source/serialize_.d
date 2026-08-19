@@ -481,6 +481,18 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Eru
 void serialize(alias sink,B)(ref EruptDebris!B eruptDebris){ serializeStruct!sink(eruptDebris); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==EruptDebris!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink)(ref BoreHoleRecord boreHoleRecord){ serializeStruct!sink(boreHoleRecord); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BoreHoleRecord)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref BoreCasting!B boreCasting){ serializeStruct!sink(boreCasting); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BoreCasting!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref Bore!B bore){ serializeStruct!sink(bore); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Bore!B)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink,B)(ref BoreHole!B boreHole){ serializeStruct!sink(boreHole); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BoreHole!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref DragonfireCasting!B dragonfireCasting){ serializeStruct!sink(dragonfireCasting); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==DragonfireCasting!B)){ deserializeStruct(result,state,data); }
 

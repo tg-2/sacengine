@@ -3128,6 +3128,44 @@ struct EruptDebris(B){
 	int frame=0;
 }
 
+struct BoreCasting(B){
+	ManaDrain!B manaDrain;
+	Bore!B bore;
+}
+struct Bore(B){
+	int wizard;
+	int side;
+	Vector3f target;
+	SacSpell!B spell;
+
+	Vector3f position;
+	float angle=0.0f;
+	int frame=0;
+	bool holeSpawned=false;
+	int soundTimer=0;
+
+	enum holeSpawnTimer=10*updateFPS;
+	enum scribeSpeed=0.9f;
+}
+struct BoreHoleRecord{ int i,j; }
+struct BoreHole(B){
+	int wizard;
+	int side;
+	Vector3f target;
+	SacSpell!B spell;
+
+	Vector3f position;
+	float angle=0.0f;
+	enum Phase{ remove, wait, restore, done }
+	Phase phase=Phase.remove;
+	int countdown=0;
+	Array!BoreHoleRecord records;
+
+	enum scribeSpeed=1.0f;
+	enum restoreDelay=3*updateFPS+updateFPS/30;
+	enum restorePeriod=updateFPS/2;
+}
+
 struct DragonfireCasting(B){
 	int castingTime;
 	ManaDrain!B manaDrain;
@@ -5667,6 +5705,30 @@ struct Effects(B){
 	void removeEruptDebris(int i){
 		if(i+1<eruptDebris.length) eruptDebris[i]=move(eruptDebris[$-1]);
 		eruptDebris.length=eruptDebris.length-1;
+	}
+	Array!(BoreCasting!B) boreCastings;
+	void addEffect(BoreCasting!B boreCasting){
+		boreCastings~=move(boreCasting);
+	}
+	void removeBoreCasting(int i){
+		if(i+1<boreCastings.length) boreCastings[i]=move(boreCastings[$-1]);
+		boreCastings.length=boreCastings.length-1;
+	}
+	Array!(Bore!B) bores;
+	void addEffect(Bore!B bore){
+		bores~=move(bore);
+	}
+	void removeBore(int i){
+		if(i+1<bores.length) bores[i]=move(bores[$-1]);
+		bores.length=bores.length-1;
+	}
+	Array!(BoreHole!B) boreHoles;
+	void addEffect(BoreHole!B boreHole){
+		boreHoles~=move(boreHole);
+	}
+	void removeBoreHole(int i){
+		if(i+1<boreHoles.length) boreHoles[i]=move(boreHoles[$-1]);
+		boreHoles.length=boreHoles.length-1;
 	}
 	Array!(DragonfireCasting!B) dragonfireCastings;
 	void addEffect(DragonfireCasting!B dragonfireCasting){
@@ -9759,6 +9821,9 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
 					if(castingTime==-1) return false;
 					return stun(castTornado(side,target.position,manaDrain,spell,castingTime,state));
+				case SpellTag.bore:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					return stun(castBore(side,target.position,manaDrain,spell,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
 					return stun(ok);
@@ -10600,6 +10665,18 @@ bool castErupt(B)(int side,Vector3f position,ManaDrain!B manaDrain,SacSpell!B sp
 }
 bool erupt(B)(Erupt!B erupt,ObjectState!B state){
 	state.addEffect(erupt);
+	return true;
+}
+
+bool castBore(B)(int side,Vector3f position,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
+	if(isNaN(position.x)||isNaN(position.y)) return false;
+	auto bore=Bore!B(manaDrain.wizard,side,position,spell);
+	bore.position=position;
+	state.addEffect(BoreCasting!B(manaDrain,bore));
+	return true;
+}
+bool bore(B)(Bore!B bore,ObjectState!B state){
+	state.addEffect(bore);
 	return true;
 }
 
@@ -17816,6 +17893,126 @@ bool updateEruptDebris(B)(ref EruptDebris!B eruptDebris,ObjectState!B state){
 		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
 	}
 	return true;
+}
+
+bool boreGetPos(B)(ref Vector3f position,ref float angle,Vector3f target,SacSpell!B spell,float speed,ObjectState!B state){
+	immutable double maxAngle=(spell.effectRange-5.0f)*2.0f*pi!float;
+	bool arrived=false;
+	if(!(maxAngle>angle)){
+		angle=maxAngle;
+		arrived=true;
+	}
+	auto ratio=angle/maxAngle;
+	auto radius=(spell.effectRange-5.0f)*ratio+5.0f;
+	position=target+radius*Vector3f(sin(angle),cos(angle),0.0f);
+	position.z=state.getHeight(position);
+	angle+=speed*(spell.speed/updateFPS)/radius;
+	return arrived;
+}
+
+void animateBore(B)(ref Bore!B bore,ObjectState!B state){
+	if(!state.enableParticles) return;
+	enum numParticles=2;
+	auto sacParticle=SacParticle!B.get(ParticleType.dirt);
+	foreach(i;0..numParticles){
+		auto position=bore.position+0.5f*state.uniformDirection();
+		auto velocity=Vector3f(0.0f,0.0f,0.0f);
+		auto lifetime=31;
+		auto scale=2.0f;
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+	}
+	enum numParticles2=2;
+	auto sacParticle2=SacParticle!B.get(ParticleType.rock);
+	foreach(i;0..numParticles2){
+		auto position=bore.position;
+		auto direction=state.uniformDirection();
+		auto velocity=state.uniform(5.0f,10.0f)*direction;
+		auto scale=state.uniform(0.5f,2.0f);
+		auto lifetime=63;
+		auto frame=0;
+		state.addParticle(Particle!B(sacParticle2,position,velocity,scale,lifetime,frame));
+	}
+}
+
+bool updateBoreCasting(B)(ref BoreCasting!B boreCast,ObjectState!B state){
+	with(boreCast){
+		final switch(manaDrain.update(state)){
+			case CastingStatus.underway:
+				updateBore(bore,state);
+				return state.movingObjectById!((ref obj){
+					obj.animateRockCasting(state);
+					return true;
+				},()=>false)(manaDrain.wizard);
+			case CastingStatus.interrupted:
+				return false;
+			case CastingStatus.finished:
+				.bore(bore,state);
+				return false;
+		}
+	}
+}
+
+bool updateBore(B)(ref Bore!B bore,ObjectState!B state){
+	with(bore){
+		frame+=1;
+		bool arrived=boreGetPos(position,angle,target,spell,scribeSpeed,state);
+		if(!holeSpawned&&frame>holeSpawnTimer){
+			holeSpawned=true;
+			auto boreHole=BoreHole!B(wizard,side,target,spell);
+			boreHole.position=target;
+			state.addEffect(boreHole);
+		}
+		if(frame%(updateFPS/10)==0) state.addEffect(ScreenShake(position,updateFPS/10,1.0f,100.0f));
+		if(--soundTimer<=0) soundTimer=playSpellSoundTypeAt!true(SoundType.bore,position,state,soulMoleGain); // TODO: sound should follow boulder
+		animateBore(bore,state);
+		return !arrived;
+	}
+}
+
+bool updateBoreHole(B)(ref BoreHole!B boreHole,ObjectState!B state){
+	with(boreHole){
+		final switch(phase){
+			case Phase.remove:
+				bool arrived=boreGetPos(position,angle,target,spell,scribeSpeed,state);
+				auto vi=cast(int)floor((position.x+5.0f)*1.0f/10.0f);
+				auto vj=cast(int)floor((position.y+5.0f)*1.0f/10.0f);
+				if(state.removeLandVertex(vi,vj,wizard,side))
+					records~=BoreHoleRecord(vi,vj);
+				if(arrived){
+					phase=Phase.wait;
+					countdown=restoreDelay;
+				}
+				return true;
+			case Phase.wait,Phase.restore:
+				if(countdown>0){
+					countdown-=1;
+					return true;
+				}
+				bool restored=false;
+				while(records.length!=0){
+					auto record=records[$-1];
+					records.removeBack();
+					if(state.restoreLandVertex(record.i,record.j)){
+						restored=true;
+						auto restoredPosition=Vector3f(10.0f*record.i,10.0f*record.j,0.0f);
+						restoredPosition.z=state.getHeight(restoredPosition);
+						playSpellSoundTypeAt!true(SoundType.boreRepair,restoredPosition,state);
+						state.addEffect(ScreenShake(restoredPosition,updateFPS/10,1.0f,75.0f));
+						break;
+					}
+				}
+				if(!restored){
+					phase=Phase.done;
+					return false;
+				}
+				countdown=restorePeriod;
+				phase=Phase.restore;
+				return true;
+			case Phase.done:
+				return false;
+		}
+	}
 }
 
 Tuple!(Vector3f,Vector3f) dragonfireCastingPosition(B)(ref MovingObject!B obj,SacSpell!B spell,int frame,int castingTime,ObjectState!B state){
@@ -25670,6 +25867,27 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.eruptDebris.length;){
 		if(!updateEruptDebris(effects.eruptDebris[i],state)){
 			effects.removeEruptDebris(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.boreCastings.length;){
+		if(!updateBoreCasting(effects.boreCastings[i],state)){
+			effects.removeBoreCasting(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.bores.length;){
+		if(!updateBore(effects.bores[i],state)){
+			effects.removeBore(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.boreHoles.length;){
+		if(!updateBoreHole(effects.boreHoles[i],state)){
+			effects.removeBoreHole(i);
 			continue;
 		}
 		i++;
