@@ -1226,6 +1226,8 @@ struct Renderer(B){
 
 	void renderMap(ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
 		auto map=state.map;
+		state.applyEdgeChanges();
+		map.updateEdgeMeshes(state.obj.opaqueObjects.edgeChanges);
 		rc.layer=1;
 		rc.modelMatrix=Matrix4x4f.identity();
 		rc.invModelMatrix=Matrix4x4f.identity();
@@ -1251,6 +1253,70 @@ struct Renderer(B){
 				B.terrainMaterialBackend.bindEmission(map.textures[i]);
 			}
 			mesh.render(rc);
+		}
+		if(map.dynamicEdgeMesh){
+			if(!rc.shadowMode){
+				B.terrainMaterialBackend.bindDiffuse(map.textures[edgeIndex]);
+				B.terrainMaterialBackend.bindDetail(null);
+				B.terrainMaterialBackend.bindEmission(map.textures[edgeIndex]);
+			}
+			map.dynamicEdgeMesh.render(rc);
+		}
+		auto fallingLandChunks=&state.obj.opaqueObjects.effects.fallingLandChunks;
+		map.updateFallingLandChunkMeshes(*fallingLandChunks);
+		if(map.fallingLandChunkMeshes.length){
+			if(!rc.shadowMode) B.bindZeroTerrainDisplacement();
+			else B.bindZeroTerrainShadowDisplacement();
+			foreach(ref chunk;*fallingLandChunks){
+				typeof(map.fallingLandChunkMeshes[0])* cached=null;
+				foreach(ref c;map.fallingLandChunkMeshes){
+					if(c.vertexI==chunk.vertexI&&c.vertexJ==chunk.vertexJ&&c.spawnFrame==chunk.spawnFrame){
+						cached=&c;
+						break;
+					}
+				}
+				if(!cached) continue;
+				static immutable int[2][4] quadrantTileOffsets=[[-1,-1],[0,-1],[-1,0],[0,0]];
+				if(!rc.shadowMode){
+					B.setTerrainTransformation(chunk.position,Quaternionf.identity(),rc);
+					foreach(q;0..4){
+						auto topMesh=cached.topMeshes[q];
+						if(!topMesh) continue;
+						auto texture=map.tiles[chunk.vertexJ+quadrantTileOffsets[q][1]][chunk.vertexI+quadrantTileOffsets[q][0]];
+						B.terrainMaterialBackend.bindDiffuse(map.textures[texture]);
+						if(texture<map.dti.length) B.terrainMaterialBackend.bindDetail(map.details[map.dti[texture]]);
+						else B.terrainMaterialBackend.bindDetail(null);
+						B.terrainMaterialBackend.bindEmission(map.textures[texture]);
+						topMesh.render(rc);
+					}
+					foreach(q;0..4){
+						auto bottomMesh=cached.bottomMeshes[q];
+						if(!bottomMesh) continue;
+						B.terrainMaterialBackend.bindDiffuse(map.textures[bottomIndex]);
+						B.terrainMaterialBackend.bindDetail(null);
+						B.terrainMaterialBackend.bindEmission(map.textures[bottomIndex]);
+						bottomMesh.render(rc);
+					}
+					if(cached.edgeMesh){
+						B.terrainMaterialBackend.bindDiffuse(map.textures[edgeIndex]);
+						B.terrainMaterialBackend.bindDetail(null);
+						B.terrainMaterialBackend.bindEmission(map.textures[edgeIndex]);
+						cached.edgeMesh.render(rc);
+					}
+				}else{
+					B.setTerrainShadowTransformation(chunk.position,Quaternionf.identity(),rc);
+					foreach(q;0..4) if(cached.topMeshes[q]) cached.topMeshes[q].render(rc);
+					foreach(q;0..4) if(cached.bottomMeshes[q]) cached.bottomMeshes[q].render(rc);
+					if(cached.edgeMesh) cached.edgeMesh.render(rc);
+				}
+			}
+			if(!rc.shadowMode){
+				B.resetTerrainTransformation(rc);
+				B.unbindZeroTerrainDisplacement();
+			}else{
+				B.resetTerrainShadowTransformation(rc);
+				B.unbindZeroTerrainShadowDisplacement();
+			}
 		}
 		//mat.unbind(rc); // TODO: needed?
 		/+auto pathFinder=state.pathFinder;

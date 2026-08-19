@@ -1545,6 +1545,16 @@ final class SacScene: Scene{
 				resimulate();
 			}
 		}
+		if(!isNaN(mouse.target.position.x)){
+			foreach(_;0..keyDown[KEY_T]){
+				auto tile=ostate.map.getTile(mouse.target.position+5.0f);
+				ostate.removeLandVertex(tile.i,tile.j);
+			}
+			foreach(_;0..keyDown[KEY_Y]){
+				auto tile=ostate.map.getTile(mouse.target.position+5.0f);
+				ostate.restoreLandVertex(tile.i,tile.j);
+			}
+		}
 		// TODO: enabling the following destroys ESDF controls. Template-related compiler bug?
 		/+if(eventManager.keyPressed[KEY_UP] && !eventManager.keyPressed[KEY_DOWN]){
 			applyToMoving!startMovingForward(ostate,camera,mouse.target);
@@ -2301,6 +2311,20 @@ static:
 		mesh.dataReady=true;
 		mesh.prepareVAO();
 	}
+	void updateTerrainMeshIndices(TerrainMesh mesh,size_t faceOffset,uint[3][] faces){
+		if(!mesh||!mesh.canRender) return;
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,mesh.eao);
+		glBufferSubData(GL_ELEMENT_ARRAY_BUFFER,faceOffset*uint.sizeof*3,faces.length*uint.sizeof*3,faces.ptr);
+	}
+	void updateTerrainMeshNormals(TerrainMesh mesh,size_t vertexOffset,Vector3f[] normals){
+		if(!mesh||!mesh.canRender) return;
+		glBindBuffer(GL_ARRAY_BUFFER,mesh.nbo);
+		glBufferSubData(GL_ARRAY_BUFFER,vertexOffset*float.sizeof*3,normals.length*float.sizeof*3,normals.ptr);
+	}
+	void destroyTerrainMesh(ref TerrainMesh mesh){
+		if(mesh) Delete(mesh);
+		mesh=null;
+	}
 	Mesh2D makeMesh2D(size_t numVertices,size_t numFaces){
 		auto m=New!MinimapMesh(scene.assetManager);
 		m.vertices=New!(Vector2f[])(numVertices);
@@ -2317,6 +2341,11 @@ static:
 	}
 	void finalizeMinimapMesh(MinimapMesh mesh){
 		return finalizeMesh2D(mesh);
+	}
+	void updateMinimapMeshIndices(MinimapMesh mesh,size_t faceOffset,uint[3][] faces){
+		if(!mesh||!mesh.canRender) return;
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,mesh.eao);
+		glBufferSubData(GL_ELEMENT_ARRAY_BUFFER,faceOffset*uint.sizeof*3,faces.length*uint.sizeof*3,faces.ptr);
 	}
 	GroundPatch makeGroundPatch(int u,int v,int tu,int tv){
 		return New!GroundPatch(u,v,tu,tv,scene.assetManager);
@@ -2361,6 +2390,31 @@ static:
 
 	@property TerrainBackend2 terrainMaterialBackend(){ return scene.terrainMaterialBackend; }
 	@property TerrainShadowBackend terrainShadowBackend(){ return scene.shadowMap.tsb; }
+
+	void setTerrainTransformation(Vector3f position,Quaternionf rotation,RenderContext rc){
+		terrainMaterialBackend.setModelTransformation(position,rotation,rc);
+	}
+	void resetTerrainTransformation(RenderContext rc){
+		terrainMaterialBackend.resetModelTransformation(rc);
+	}
+	void bindZeroTerrainDisplacement(){
+		terrainMaterialBackend.bindZeroDisplacement();
+	}
+	void unbindZeroTerrainDisplacement(){
+		terrainMaterialBackend.unbindZeroDisplacement();
+	}
+	void setTerrainShadowTransformation(Vector3f position,Quaternionf rotation,RenderContext rc){
+		terrainShadowBackend.setModelViewMatrix(rc.viewMatrix*(translationMatrix(position)*rotation.toMatrix4x4));
+	}
+	void resetTerrainShadowTransformation(RenderContext rc){
+		setTerrainShadowTransformation(Vector3f(0.0f,0.0f,0.0f),Quaternionf.identity(),rc);
+	}
+	void bindZeroTerrainShadowDisplacement(){
+		terrainShadowBackend.bindZeroDisplacement();
+	}
+	void unbindZeroTerrainShadowDisplacement(){
+		terrainShadowBackend.unbindZeroDisplacement();
+	}
 
 	@property BuildingSummonBackend1 buildingSummonMaterialBackend1(){ return scene.buildingSummonMaterialBackend1; }
 	@property BuildingSummonBackend2 buildingSummonMaterialBackend2(){ return scene.buildingSummonMaterialBackend2; }

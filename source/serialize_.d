@@ -934,6 +934,22 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Scr
 void serialize(alias sink)(ref TestDisplacement testDisplacement){ serializeStruct!sink(testDisplacement); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==TestDisplacement)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink)(ref EdgeChanges edgeChanges){
+	auto hasChanges=!edgeChanges.empty;
+	serialize!sink(hasChanges);
+	if(hasChanges) serialize!sink(edgeChanges.changes);
+}
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==EdgeChanges)){
+	bool hasChanges;
+	deserialize(hasChanges,state,data);
+	result.changes[]=0;
+	if(hasChanges) deserialize(result.changes,state,data);
+	result.recomputeHash();
+}
+
+void serialize(alias sink)(ref FallingLandChunk fallingLandChunk){ serializeStruct!sink(fallingLandChunk); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==FallingLandChunk)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref PermanentDisplacement!B permanentDisplacement){
 	enum dlen=permanentDisplacement.displacement.length*permanentDisplacement.displacement[0].length;
 	auto data=cast(uint[])(*cast(float[dlen]*)&permanentDisplacement.displacement)[];

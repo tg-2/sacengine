@@ -602,6 +602,7 @@ struct Path{
 }
 class PathFinder(B){
 	bool[512][512] free;
+	uint edgeChangesHash=uint.max;
 	private static bool isFree(int x,int y,bool[][] edges){
 		if(x<=0||y<=0||x+1>=xlen||y+1>=ylen) return false;
 		int nx=x/2, ny=y/2;
@@ -623,6 +624,7 @@ class PathFinder(B){
 	int[512][512] componentIds;
 
 	void determineComponents(){
+		numComponents=0;
 		foreach(ref c;componentIds) c[]=-1;
 		static struct Entry{ short x,y; }
 		Queue!Entry q;
@@ -652,20 +654,25 @@ class PathFinder(B){
 		}
 	}
 
-	this(SacMap!B map){
-		auto edges=map.edges;
+	void updateEdges(SacMap!B map,uint hash){
+		if(edgeChangesHash==hash) return;
+		edgeChangesHash=hash;
 		foreach(x;0..xlen){
 			foreach(y;0..ylen){
-				free[x][y]=isFree(x,y,edges);
+				free[x][y]=isFree(x,y,map.edges);
 			}
 		}
+		determineComponents();
+	}
+
+	this(SacMap!B map){
+		updateEdges(map,EdgeChanges.emptyHash);
 		enum scale=directWalkDistance;
 		foreach(y;0..ylen){
 			foreach(x;0..xlen){
 				heights[y][x]=map.getHeight(Vector3f(scale*x,scale*y,0.0f),ZeroDisplacement());
 			}
 		}
-		determineComponents();
 	}
 
 	int getComponentId(Vector3f position,ObjectState!B state){
@@ -5104,6 +5111,22 @@ struct TestDisplacement{
 	}
 }
 
+enum fallingLandChunkAcceleration=30.0f;
+
+struct FallingLandChunk{
+	int wizard=-1;
+	int side=-1;
+	int vertexI,vertexJ; // grid vertex that was removed
+	uint presentMask; // bits 0..7: ring neighbors present (not holes) at spawn time
+	float[9] heights; // baked 3x3 neighborhood heights including displacement at spawn time
+	Vector3f[9] normals; // baked vertex normals at spawn time
+	Vector3f position; // spawn position is Vector3f(10*vertexI,10*vertexJ,heights[8])
+	Vector3f velocity;
+	float killZ;
+	int spawnFrame=0;
+	int frame=0;
+}
+
 struct Effects(B){
 	// misc
 	Array!(Debris!B) debris;
@@ -6776,6 +6799,14 @@ struct Effects(B){
 		if(i+1<testDisplacements.length) testDisplacements[i]=move(testDisplacements[$-1]);
 		testDisplacements.length=testDisplacements.length-1;
 	}
+	Array!FallingLandChunk fallingLandChunks;
+	void addEffect(FallingLandChunk fallingLandChunk){
+		fallingLandChunks~=fallingLandChunk;
+	}
+	void removeFallingLandChunk(int i){
+		if(i+1<fallingLandChunks.length) fallingLandChunks[i]=move(fallingLandChunks[$-1]);
+		fallingLandChunks.length=fallingLandChunks.length-1;
+	}
 	mixin Assign;
 }
 
@@ -6994,6 +7025,35 @@ class NetworkState(B){
 	ChatMessages!B chatMessages;
 }
 
+struct EdgeChanges{
+	enum emptyHash=edgeChangesEmptyHash;
+	uint hash=emptyHash;
+	uint[2048] changes=0;
+
+	bool get(int i,int j)const @nogc{
+		if(j<0||j>=256) return false;
+		if(i<0||i>=256) return false;
+		auto index=j*256+i;
+		return !!((changes[index/32]>>(index%32))&1);
+	}
+	bool toggle(int i,int j){
+		if(j<0||j>=256) return false;
+		if(i<0||i>=256) return false;
+		auto index=j*256+i;
+		changes[index/32]^=1u<<(index%32);
+		recomputeHash();
+		return true;
+	}
+	bool empty()const @nogc{
+		foreach(word;changes) if(word) return false;
+		return true;
+	}
+	void recomputeHash(){
+		import serialize_;
+		hash=changes.crc32;
+	}
+}
+
 struct PermanentDisplacement(B){
 	enum emptyHash = 0xe20eea22; // crc32 hash of 4*256*256 zero bytes
 	uint hash = emptyHash;
@@ -7058,6 +7118,7 @@ struct Objects(B,RenderMode mode){
 		Array!(Particles!(B,ParticleKind.standard,true)) filteredParticles;
 		Effects!B effects;
 		PermanentDisplacement!B permanentDisplacement;
+		EdgeChanges edgeChanges;
 		CommandCones!B commandCones;
 		Highlights!B highlights;
 		ChatMessages!B chatMessages;
@@ -8247,11 +8308,11 @@ bool damageStun(B)(ref MovingObject!B object, Vector3f attackDirection, ObjectSt
 bool canCatapult(B)(ref MovingObject!B object){
 	return object.creatureState.mode.canCatapult;
 }
-void catapult(B)(ref MovingObject!B object, int attackerSide, Vector3f velocity, ObjectState!B state){
-	if(!object.canCatapult) return;
+void catapult(B)(ref MovingObject!B object, int attackerSide, Vector3f velocity, ObjectState!B state,bool force=false){
+	if(!object.canCatapult&&!force) return;
 	if(object.creatureState.movement==CreatureMovement.flying) return;
-	if(object.creatureState.mode==CreatureMode.pumping) object.kill(state);
-	if(!object.creatureState.mode.among(CreatureMode.dying,CreatureMode.rockForm))
+	if(object.creatureState.mode.among(CreatureMode.pumping,CreatureMode.convertReviving)) object.kill(state);
+	if(!object.creatureState.mode.among(CreatureMode.dying,CreatureMode.dead,CreatureMode.rockForm))
 		object.creatureState.mode=CreatureMode.stunned;
 	if(object.creatureState.movement!=CreatureMovement.tumbling){
 		object.creatureState.movement=CreatureMovement.tumbling;
@@ -8264,6 +8325,7 @@ void catapult(B)(ref MovingObject!B object, int attackerSide, Vector3f velocity,
 		object.creatureState.tumbleAttackerSide=attackerSide;
 	}
 }
+
 
 bool canPush(B)(ref MovingObject!B object){
 	return object.creatureState.mode.canPush;
@@ -25133,6 +25195,15 @@ bool updateTestDisplacement(B)(ref TestDisplacement testDisplacement,ObjectState
 	}
 }
 
+bool updateFallingLandChunk(B)(ref FallingLandChunk chunk,ObjectState!B state){
+	with(chunk){
+		position+=velocity/updateFPS;
+		velocity.z-=fallingLandChunkAcceleration/updateFPS;
+		++frame;
+		return position.z>=killZ;
+	}
+}
+
 void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.debris.length;){
 		if(!updateDebris(effects.debris[i],state)){
@@ -26592,6 +26663,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 		}
 		i++;
 	}
+	for(int i=0;i<effects.fallingLandChunks.length;){
+		if(!updateFallingLandChunk(effects.fallingLandChunks[i],state)){
+			effects.removeFallingLandChunk(i);
+			continue;
+		}
+		i++;
+	}
 }
 
 void explosionParticles(B)(Vector3f position,ObjectState!B state){
@@ -26878,6 +26956,7 @@ void animateManahoar(B)(Vector3f location, int side, float rate, ObjectState!B s
 
 int[4] findClosestBuildings(B)(int side,Vector3f position,ObjectState!B state,bool updateAltarApproach=false){ // TODO: do a single pass for all wizards?
 	// [building for guardian,shrine for convert,own altar for teleport from void,enemy altar for desecrate]
+	state.applyEdgeChanges();
 	enum RType{
 		building,
 		shrine,
@@ -27733,18 +27812,23 @@ final class ObjectState(B){ // (update logic)
 		}
 	}
 	bool isOnGround(Vector3f position){
+		applyEdgeChanges();
 		return map.isOnGround(position);
 	}
 	Vector3f moveOnGround(Vector3f position,Vector3f direction){
+		applyEdgeChanges();
 		return map.moveOnGround(position,direction,Displacement(this));
 	}
 	float getGroundHeight(Vector3f position){
+		applyEdgeChanges();
 		return map.getGroundHeight(position,Displacement(this));
 	}
 	float getHeight(Vector3f position){
+		applyEdgeChanges();
 		return map.getHeight(position,Displacement(this));
 	}
 	float getGroundHeightDerivative(Vector3f position,Vector3f direction){
+		applyEdgeChanges();
 		return map.getGroundHeightDerivative(position,direction,Displacement(this));
 	}
 	OrderTarget collideRay(alias filter=None,T...)(Vector3f start,Vector3f direction,float limit,T args){
@@ -27785,7 +27869,64 @@ final class ObjectState(B){ // (update logic)
 		}
 		return hasLineOfSight;
 	}
+	bool canRemoveLandVertex(int i,int j){
+		if(j<0||j+1>=map.n||i<0||i+1>=map.m) return false;
+		applyEdgeChanges();
+		if(map.edges[j][i]) return false;
+		auto position=Vector3f(10.0f*i,10.0f*j,map.heights[j][i]);
+		static bool check(ref StaticObject!B object,Vector3f position,bool* blocked){
+			if(!object.buildingId) return true;
+			auto hitbox=object.hitbox;
+			if(hitbox[1].z<position.z-mapDepth||position.z+mapDepth<hitbox[0].z) return true;
+			if((object.position.xy-position.xy).lengthsqr<11.0f^^2) *blocked=true;
+			return !*blocked;
+		}
+		bool blocked=false;
+		this.eachStatic!check(position,&blocked);
+		return !blocked;
+	}
+	bool removeLandVertex(int i,int j,int wizard=-1,int side=-1){
+		if(!canRemoveLandVertex(i,j)) return false;
+		FallingLandChunk chunk;
+		chunk.wizard=wizard;
+		chunk.side=side;
+		chunk.vertexI=i;
+		chunk.vertexJ=j;
+		float minHeight=float.infinity,maxHeight=-float.infinity;
+		foreach(k;0..9){
+			auto ci=i+fallingLandChunkNeighborOffsets[k][0],cj=j+fallingLandChunkNeighborOffsets[k][1];
+			if(cj<0||cj+1>=map.n||ci<0||ci+1>=map.m) continue;
+			if(k<8&&!map.edges[cj][ci]) chunk.presentMask|=1<<k;
+			chunk.heights[k]=map.heights[cj][ci]+Displacement(this)(ci,cj);
+			chunk.normals[k]=computeVertexNormal(map.n,map.m,map.edges,map.heights,cj,ci);
+			minHeight=min(minHeight,chunk.heights[k]);
+			maxHeight=max(maxHeight,chunk.heights[k]);
+		}
+		chunk.position=Vector3f(10.0f*i,10.0f*j,chunk.heights[8]);
+		chunk.velocity=Vector3f(0.0f,0.0f,0.0f);
+		chunk.killZ=minHeight-2.0f*mapDepth;
+		chunk.spawnFrame=frame;
+		chunk.frame=0;
+		obj.opaqueObjects.edgeChanges.toggle(i,j);
+		applyEdgeChanges();
+		obj.opaqueObjects.effects.addEffect(chunk);
+		static void fling(ref MovingObject!B obj,ObjectState!B state,int side){
+			if(state.isOnGround(obj.position)) return;
+			if(obj.creatureState.movement!=CreatureMovement.onGround) return;
+			obj.catapult(side,Vector3f(0.0f,0.0f,0.0f),state,true);
+		}
+		this.eachMoving!fling(this,side); // TODO: only loop over nearby creatures?
+		return true;
+	}
+	bool restoreLandVertex(int i,int j){
+		if(j<0||j>=map.n||i<0||i>=map.m) return false;
+		if(!obj.opaqueObjects.edgeChanges.get(i,j)) return false;
+		obj.opaqueObjects.edgeChanges.toggle(i,j);
+		applyEdgeChanges();
+		return true;
+	}
 	bool findPath(ref Array!Vector3f path,Vector3f start,Vector3f target,float radius){
+		applyEdgeChanges();
 		return pathFinder.findPath(path,start,target,radius,this);
 	}
 	int frame=0;
@@ -27834,6 +27975,11 @@ final class ObjectState(B){ // (update logic)
 		do r=uniform!("[]")(box);
 		while((r-position).lengthsqr>radius^^2);
 		return r;
+	}
+	void applyEdgeChanges(){
+		auto edgeChanges=&obj.opaqueObjects.edgeChanges;
+		map.applyEdgeChanges(edgeChanges.hash,edgeChanges.changes[]);
+		pathFinder.updateEdges(map,edgeChanges.hash);
 	}
 	void copyFrom(ObjectState!B rhs){
 		frame=rhs.frame;
