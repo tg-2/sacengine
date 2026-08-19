@@ -2591,47 +2591,7 @@ B.BoneMesh makeVineMesh(B)(int numSegments,int numVertices,float length,float si
 				mesh.boneIndices[vertex][l]=i;
 			}
 			mesh.weights[vertex]=Vector3f(1.0f,0.0f,0.0f);
-			mesh.texcoords[vertex]=Vector2f(float(j)/(numVertices-1),float(numSegments-i)/numSegments);
-			if(i&&j){
-				int du=1, dv=numVertices;
-				addFace([vertex-du-dv,vertex-dv,vertex]);
-				addFace([vertex,vertex-du,vertex-du-dv]);
-			}
-		}
-	}
-	assert(numFaces==2*(numVertices-1)*numSegments);
-	Matrix4x4f[32] pose=Matrix4f.identity();
-	mesh.generateNormals(pose); // TODO: this will create a seam at the texture boundary
-	B.finalizeBoneMesh(mesh);
-	return mesh;
-}
-
-B.BoneMesh makeMeanstalkMesh(B)(int numSegments,int numVertices){
-	static float cubicBezier(float p0,float p1,float p2,float p3,float u){
-		auto v=1.0f-u;
-		return v*v*v*p0+3.0f*v*v*u*p1+3.0f*v*u*u*p2+u*u*u*p3;
-	}
-	static float radius(float t){
-		if(t<=0.5f) return cubicBezier(2.0f,2.0f,2.0f,1.8f,2.0f*t);
-		return cubicBezier(1.8f,1.6f,1.0f,0.0f,2.0f*t-1.0f);
-	}
-	auto mesh=B.makeBoneMesh(numVertices*(numSegments+1),2*(numVertices-1)*numSegments);
-	int numFaces=0;
-	void addFace(uint[3] face...){
-		mesh.indices[numFaces++]=face;
-	}
-	foreach(i;0..numSegments+1){
-		float r=radius(float(i)/numSegments);
-		foreach(j;0..numVertices){
-			auto φ=2.0f*pi!float*j/(numVertices-1);
-			auto position=r*Vector3f(cos(φ),sin(φ),0.0f);
-			int vertex=numVertices*i+j;
-			foreach(l;0..3){
-				mesh.vertices[l][vertex]=position;
-				mesh.boneIndices[vertex][l]=i;
-			}
-			mesh.weights[vertex]=Vector3f(1.0f,0.0f,0.0f);
-			mesh.texcoords[vertex]=Vector2f(float(j)/(numVertices-1),float(numSegments-i)/numSegments);
+			mesh.texcoords[vertex]=Vector2f(float(j)/(numVertices-1),1.0f-float(numSegments-i)/numSegments);
 			if(i&&j){
 				int du=1, dv=numVertices;
 				addFace([vertex-du-dv,vertex-dv,vertex]);
@@ -2653,15 +2613,10 @@ struct SacVine(B){
 		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/vine.TXTR"));
 	}
 	B.BoneMesh mesh;
-	enum numVineSegments=19;
+	enum numSegments=19;
 	static B.BoneMesh createMesh(){
 		enum numVertices=25;
-		return makeVineMesh!B(numVineSegments,numVertices,0.0f,0.1f);
-	}
-	enum numMeanstalkSegments=31; // TODO: handle more segments in bone material backend?
-	static B.BoneMesh createMeanstalkMesh(){
-		enum numVertices=64;
-		return makeMeanstalkMesh!B(numMeanstalkSegments,numVertices);
+		return makeVineMesh!B(numSegments,numVertices,0.0f,0.1f);
 	}
 }
 
@@ -3566,6 +3521,61 @@ struct SacVolcanoSpatter(B){
 		mesh.generateNormals();
 		B.finalizeMesh(mesh);
 		return mesh;
+	}
+}
+
+
+B.BoneMesh makeMeanstalkMesh(B)(int numSegments,int numVertices){
+	static float cubicBezier(float p0,float p1,float p2,float p3,float u){
+		auto v=1.0f-u;
+		return v*v*v*p0+3.0f*v*v*u*p1+3.0f*v*u*u*p2+u*u*u*p3;
+	}
+	static float radius(float t){
+		if(t<=0.5f) return cubicBezier(2.0f,2.0f,2.0f,1.8f,2.0f*t);
+		return cubicBezier(1.8f,1.6f,1.0f,0.0f,2.0f*t-1.0f);
+	}
+	auto mesh=B.makeBoneMesh(numVertices*(numSegments+1),2*(numVertices-1)*numSegments);
+	int numFaces=0;
+	void addFace(uint[3] face...){
+		mesh.indices[numFaces++]=face;
+	}
+	foreach(i;0..numSegments+1){
+		float r=radius(float(i)/numSegments);
+		foreach(j;0..numVertices){
+			auto φ=2.0f*pi!float*j/(numVertices-1);
+			auto position=r*Vector3f(cos(φ),sin(φ),0.0f);
+			int vertex=numVertices*i+j;
+			foreach(l;0..3){
+				mesh.vertices[l][vertex]=position;
+				mesh.boneIndices[vertex][l]=i;
+			}
+			mesh.weights[vertex]=Vector3f(1.0f,0.0f,0.0f);
+			mesh.texcoords[vertex]=Vector2f(float(j)/(numVertices-1),1.0f-float(numSegments-i)/numSegments);
+			if(i&&j){
+				int du=1, dv=numVertices;
+				addFace([vertex-du-dv,vertex-dv,vertex]);
+				addFace([vertex,vertex-du,vertex-du-dv]);
+			}
+		}
+	}
+	assert(numFaces==2*(numVertices-1)*numSegments);
+	Matrix4x4f[32] pose=Matrix4f.identity();
+	mesh.generateNormals(pose); // TODO: this will create a seam at the texture boundary
+	B.finalizeBoneMesh(mesh);
+	return mesh;
+}
+
+struct SacMeanstalk(B){
+	B.Texture texture;
+	B.Material material;
+	static B.Texture loadTexture(){
+		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Pers.FLDR/tex_ZERO_.FLDR/vine.TXTR"));
+	}
+	B.BoneMesh mesh;
+	enum numSegments=31; // TODO: handle more segments in bone material backend?
+	static B.BoneMesh createMeanstalkMesh(){
+		enum numVertices=64;
+		return makeMeanstalkMesh!B(numSegments,numVertices);
 	}
 }
 
