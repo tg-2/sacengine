@@ -27,9 +27,9 @@ struct Cre8{
 	ushort castingTime;
 	ushort spellOrder;
 	ushort unknown9; // unused?
-	ushort obedience0;// if 0, creatures ignore attack orders, unclear what it does exactly
-	ushort obedience1;// ?
-	ushort aggressiveness;// if 0, creatures don't attack automatically, unclear what else it does
+	ushort unknown10; // stat block index 0, mutated by spells (e.g. slime).
+	ushort unknown11; // stat block index 1.
+	ushort aggressiveness;// if 0, creatures don't attack automatically
 	ushort runningSpeed;
 	ushort flyingSpeed;
 	ushort health;
@@ -43,8 +43,8 @@ struct Cre8{
 	ushort splashRangedResistance;
 	ushort unknown15; // seems to be 0 for everything but flying melee
 	ushort unknown16; // some multiplier?
-	ushort unknown17; // some multiplier?
-	ushort unknown18; // some multiplier?
+	ushort sightRange; // sight radius = sightRange*0.1
+	ushort sightFov; // field of view half-angle = pi/4*sqrt(sightFov/1000).
 	ushort god;
 	ushort souls;
 	ushort unknown20; // some multiplier?
@@ -94,9 +94,9 @@ struct Wizd{
 	char[4] icon;
 	uint[6] unknown0; // unused?
 	uint unknown1; // differs by wizard, some number above 100
-	ushort unknown2=1250;
-	ushort unknown3=1250;
-	ushort unknown4=1000;
+	ushort unknown2=1250; // stat block index 0
+	ushort unknown3=1250; // stat block index 1
+	ushort unknown4=1000; // stat block index 2
 	ushort runningSpeed=1000;
 	ushort flyingSpeed=0;
 	ushort health=1500;

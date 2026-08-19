@@ -75,21 +75,23 @@ final class SacObject(B){
 	@property bool isPacifist(){
 		return !cre8||cre8.aggressiveness==0||isSacDoctor||isFamiliar;
 	}
-	@property float aggressiveRange(bool blindRage){
-		if(!blindRage){
-			if(auto ra=rangedAttack) return ra.range; // TODO: ok?
+	@property float sightRange(){
+		if(cre8) return 1.0f/10.0f*cre8.sightRange;
+		if(wizd) return 200.0f;
+		if(strc) return 75.0f;
+		return 0.0f;
+	}
+	@property float sightFov(){
+		static float fov(ushort sightFov){
+			return max(0.1f,min(sqrt(sightFov*(1.0f/1000.0f))*2.0f*pi!float/8.0f,pi!float));
 		}
-		enum aggressiveDistance=65.0f; // ok?
-		return aggressiveDistance;
-	}
-	@property float guardAggressiveRange(bool blindRage){
-		return aggressiveRange(blindRage)+10.0f; // ok?
-	}
-	@property float advanceAggressiveRange(bool blindRage){
-		return aggressiveRange(blindRage)+25.0f; // ok?
+		if(cre8) return fov(cre8.sightFov);
+		if(wizd) return fov(2000);
+		if(strc) return fov(16000);
+		return fov(0);
 	}
 	@property float guardRange(){
-		enum guardDistance=42.0f; // ok?
+		enum guardDistance=50.0f;
 		return guardDistance;
 	}
 	@property bool canRun(){
