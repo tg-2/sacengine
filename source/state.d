@@ -28781,13 +28781,35 @@ final class ObjectState(B){ // (update logic)
 	}
 	void markAsVisible(int side,int id){
 		if(id<=0) return;
-		auto permanent=targetTypeFromId(id)==TargetType.building||targetTypeFromId(id)==TargetType.soul;
-		sid.mark(side,id,permanent?frame+1000000:frame);
+		auto type=targetTypeFromId(id);
+		sid.mark(side,id,type==TargetType.building||type==TargetType.soul?frame+1000000:frame);
+		if(type!=TargetType.creature||!(0<=side&&side<sid.sides.length)) return;
+		auto enemyData=this.movingObjectById!((ref obj)=>tuple(obj.side,obj.isWizard||0.0f<obj.meleeStrength),()=>tuple(-1,false))(id);
+		auto enemySide=enemyData[0],enemyDangerous=enemyData[1];
+		if(!(0<=enemySide&&enemySide<32)||enemySide==side) return;
+		if(sides.getStance(side,enemySide)!=Stance.enemy) return;
+		auto data=&sid.sides[side];
+		auto liveMark=frame<data.enemyCreatureMarkFrames[enemySide];
+		data.enemyCreatureMarkFrames[enemySide]=frame+128*updateFPS/3;
+		if(liveMark) return;
+		if(!enemyDangerous) return;
+		if(5*updateFPS<=frame-data.enemyAlertEventFrame){
+			data.lastEnemyAlertFrame=frame;
+			sid.setMinimapAlert(side,id,frame+10*updateFPS);
+		}
+		data.enemyAlertEventFrame=frame;
 	}
 	bool isVisibleToSide(int side,int id,int objectSide){
 		if(objectSide==side) return true;
 		auto tick=sid.lastSeenTick(side,id);
-		return 0<=tick&&frame-tick<12;
+		return 0<=tick&&frame-tick<32*updateFPS/5;
+	}
+	bool minimapAlertBlinking(int side,int id){
+		return frame<sid.minimapAlertFrame(side,id)&&frame%(updateFPS/2)<updateFPS/4;
+	}
+	int lastEnemyAlertFrame(int side){
+		if(!(0<=side&&side<sid.sides.length)) return int.max;
+		return sid.sides[side].lastEnemyAlertFrame;
 	}
 	bool frontOfAIQueue(int side,int id){
 		if(auto q=aiQueue(side)) return !q.empty&&q.front==id;
@@ -29264,6 +29286,10 @@ struct SideData(B){
 	int selectionMultiplicity=0;
 	Queue!int aiQueue;
 	Array!int lastSeenTick; // object id -> time last seen (-1: never seen, frame+1000000: permanent mark)
+	int[32] enemyCreatureMarkFrames;
+	int enemyAlertEventFrame;
+	int lastEnemyAlertFrame=int.max;
+	Array!int minimapAlertFrames; // object id -> alert blink end frame
 	SideState state;
 	mixin Assign;
 	void updateLastSelected(int id){
@@ -29348,6 +29374,20 @@ struct SideManager(B){
 		if(!(0<=side&&side<sides.length&&0<id)) return -1;
 		if(id>=sides[side].lastSeenTick.length) return -1;
 		return sides[side].lastSeenTick[id];
+	}
+	void setMinimapAlert(int side,int id,int expiry){
+		if(!(0<=side&&side<sides.length&&0<id)) return;
+		if(sides[side].minimapAlertFrames.length<=id){
+			auto oldLength=sides[side].minimapAlertFrames.length;
+			sides[side].minimapAlertFrames.length=id+1;
+			foreach(i;oldLength..sides[side].minimapAlertFrames.length) sides[side].minimapAlertFrames[i]=0;
+		}
+		sides[side].minimapAlertFrames[id]=expiry;
+	}
+	int minimapAlertFrame(int side,int id){
+		if(!(0<=side&&side<sides.length&&0<id)) return 0;
+		if(id>=sides[side].minimapAlertFrames.length) return 0;
+		return sides[side].minimapAlertFrames[id];
 	}
 	void clearSelection(int side){
 		if(!(0<=side&&side<sides.length)) return;

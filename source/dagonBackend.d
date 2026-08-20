@@ -1676,6 +1676,8 @@ final class SacScene: Scene{
 		int allManahoarsSlaughteredCooldown=-1;
 		enum enemyWizardApproachingAltarCooldownFrames=15*updateFPS;
 		int enemyWizardApproachingAltarCooldown=-1;
+		enum enemySightedCooldownFrames=10*updateFPS;
+		int enemySightedCooldown=-1;
 		static assert(updateFPS%2==0);
 		enum altarBeingDesecratedCooldownFrames=updateFPS/2;
 		int altarBeingDesecratedCooldown=-1;
@@ -1750,7 +1752,7 @@ final class SacScene: Scene{
 			manahoarSlaughteredImpl(wizard);
 			stateAdvisorHelpSpeechImpl(creaturesAreDying,advisorImportant,creaturesAreDyingCooldown,creaturesAreDyingCooldownFrames,wizard.lastCreatureKilledFrame);
 			// TODO?: armyHasBeenSlaughtered
-			// TODO: enemySighted
+			stateAdvisorHelpSpeechImpl(enemySighted,advisorImportant,enemySightedCooldown,enemySightedCooldownFrames,state.current.lastEnemyAlertFrame(renderSide));
 			// TODO? enemiesFallBeforeUs
 			// TODO?: sacrificeComplete
 			// TODO?: someoneSeeksAnAudience

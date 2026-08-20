@@ -4543,7 +4543,8 @@ struct Renderer(B){
 						static if(isMoving){
 							auto side=objects.sides[j];
 							auto flags=objects.creatureStatss[j].flags;
-							auto isBlinking=side==info.renderSide&&objects.notificationStates[j].isBlinking(state);
+							auto isBlinking=(side==info.renderSide&&objects.notificationStates[j].isBlinking(state))||
+								state.minimapAlertBlinking(info.renderSide,objects.ids[j]);
 						}else{
 							auto sideFlagsIsBlinking=state.buildingById!((ref b,state)=>tuple(b.side,b.flags,b.notificationState.isBlinking(state)),function Tuple!(int,int,bool)(){ assert(0); })(objects.buildingIds[j],state);
 							auto side=sideFlagsIsBlinking[0],flags=sideFlagsIsBlinking[1],isBlinking=side==info.renderSide&&sideFlagsIsBlinking[2];
