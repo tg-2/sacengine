@@ -600,6 +600,68 @@ struct Path{
 		return newTarget;
 	}
 }
+final class DangerGrid{
+	enum int size=256;
+	ubyte[size][size] cells;
+	void start(){
+		foreach(ref row;cells) row[]=0;
+	}
+	static int coord(float x){
+		return max(0,min(size-1,cast(int)(0.1f*(x+5.0f))));
+	}
+	int danger(Vector3f position){
+		return cells[coord(position.y)][coord(position.x)];
+	}
+	float dangerFactor(Vector3f position){
+		auto cell=danger(position);
+		return 9<=cell?1.0f-cell*1.0f/160.0f:1.0f;
+	}
+	void paintDisc(Vector3f center,float inner,float outer,ubyte value){
+		auto ri=cast(int)(0.1f*inner),ro=cast(int)(0.1f*outer);
+		if(ro<=0) return;
+		auto cx=coord(center.x),cy=coord(center.y);
+		auto ri2=ri*ri,ro2=ro*ro;
+		foreach(dy;-ro..ro+1){
+			auto y=cy+dy;
+			if(!(0<=y&&y<size)) continue;
+			foreach(dx;-ro..ro+1){
+				auto x=cx+dx;
+				if(!(0<=x&&x<size)) continue;
+				auto d2=dx*dx+dy*dy;
+				if(ro2<d2) continue;
+				auto v=ri2<ro2&&ri2<d2?cast(int)((ro2-d2)*(value/cast(float)(ro2-ri2))):value;
+				if(cells[y][x]<v) cells[y][x]=cast(ubyte)v;
+			}
+		}
+	}
+	void paintCapsule(Vector3f start,Vector3f end,float w,ubyte value){
+		auto r=min(15,cast(int)(0.1f*w+0.5f));
+		if(r<=0) return;
+		auto diameter=2*r+1,r2=r*r;
+		int[31*31] kernel;
+		foreach(dy;-r..r+1) foreach(dx;-r..r+1){
+			auto d2=dx*dx+dy*dy;
+			kernel[(dy+r)*diameter+(dx+r)]=d2<r2?(256-(d2<<8)/r2)*value>>8:0;
+		}
+		auto sx=end.x-start.x,sy=end.y-start.y;
+		auto len=sqrt(sx*sx+sy*sy);
+		auto steps=len>0.0f?cast(int)((len+5.0f)*0.1f):0;
+		foreach(i;0..steps+1){
+			auto t=len>0.0f?10.0f*i/len:0.0f;
+			auto cx=coord(start.x+t*sx),cy=coord(start.y+t*sy);
+			foreach(dy;-r..r+1){
+				auto y=cy+dy;
+				if(!(0<=y&&y<size)) continue;
+				foreach(dx;-r..r+1){
+					auto x=cx+dx;
+					if(!(0<=x&&x<size)) continue;
+					auto v=kernel[(dy+r)*diameter+(dx+r)];
+					if(cells[y][x]<v) cells[y][x]=cast(ubyte)v;
+				}
+			}
+		}
+	}
+}
 class PathFinder(B){
 	bool[512][512] free;
 	uint edgeChangesHash=uint.max;
@@ -4255,6 +4317,7 @@ struct Meanstalk{
 struct Meanstalks(B){
 	int wizard;
 	int side;
+	Vector3f center;
 	SacSpell!B spell;
 	enum maxVines=4;
 	int numVines=0;
@@ -11198,7 +11261,7 @@ void meanstalkCurveSetup(ref Meanstalk vine){
 	vine.curve1=[vine.position+bend,vine.position+p1,vine.position+p2,vine.tip];
 }
 bool castMeanstalks(B)(int side,Vector3f center,ManaDrain!B manaDrain,SacSpell!B spell,int castingTime,ObjectState!B state){
-	auto meanstalks=Meanstalks!B(manaDrain.wizard,side,spell);
+	auto meanstalks=Meanstalks!B(manaDrain.wizard,side,center,spell);
 	auto step=2.0f*pi!float/Meanstalks!B.maxVines;
 	auto angle=0.5f*step;
 	foreach(i;0..Meanstalks!B.maxVines){
@@ -12447,6 +12510,7 @@ int updateTarget(bool advance=false,B,T...)(ref MovingObject!B object,Vector3f p
 		auto distance=sqrt((entry.position-referencePosition).lengthsqr);
 		auto score=distance<refRange?1.0f-0.75f*(distance/refRange):0.25f*(refRange/distance);
 		score*=score;
+		score*=state.dangerGrid.dangerFactor(entry.position);
 		if(state.targetTypeFromId(entry.id)==TargetType.building) return score;
 		score*=1.25f;
 		if(entry.id==lastAttackerId) score*=1.2f;
@@ -27497,6 +27561,21 @@ bool manahoarAbilityEnabled(CreatureMode mode){
 	}
 }
 
+void paintDangerGrid(B)(ref Effects!B effects,ObjectState!B state){
+	auto grid=state.dangerGrid;
+	foreach(ref tornado;effects.tornados) grid.paintDisc(tornado.position,10.0f,50.0f,128);
+	foreach(ref frozenGround;effects.frozenGrounds) grid.paintDisc(frozenGround.center,0.75f*frozenGround.spell.effectRange,1.5f*frozenGround.spell.effectRange,32);
+	foreach(ref volcano;effects.volcanos) grid.paintDisc(volcano.position,30.0f,100.0f,128);
+	foreach(ref erupt;effects.erupts) grid.paintDisc(erupt.position,5.0f,max(5.0f,1.5f*erupt.spell.effectRange),32);
+	foreach(ref death;effects.deaths) if(death.status==DeathStatus.walking) grid.paintDisc(death.position,15.0f,30.0f,64);
+	foreach(ref meanstalks;effects.meanstalkss) grid.paintDisc(meanstalks.center,10.0f,50.0f,48);
+	foreach(ref explosionCasting;effects.explosionCastings) grid.paintDisc(explosionCasting.effects[0].position,5.0f,max(5.0f,1.5f*explosionCasting.spell.effectRange),32);
+	foreach(ref wallOfSpikes;effects.wallOfSpikess) if(wallOfSpikes.status!=WallOfSpikesStatus.shrinking&&(wallOfSpikes.left!=0.0f||wallOfSpikes.right!=0.0f)) grid.paintCapsule(wallOfSpikes.get(wallOfSpikes.left,state),wallOfSpikes.get(wallOfSpikes.right,state),20.0f,128);
+	foreach(ref firewall;effects.firewalls) if(firewall.status!=FirewallStatus.shrinking&&(firewall.left!=0.0f||firewall.right!=0.0f)) grid.paintCapsule(firewall.get(firewall.left,state),firewall.get(firewall.right,state),20.0f,128);
+	foreach(ref wailingWall;effects.wailingWalls) if(wailingWall.status!=WailingWallStatus.shrinking&&(wailingWall.left!=0.0f||wailingWall.right!=0.0f)) grid.paintCapsule(wailingWall.get(wailingWall.left,state),wailingWall.get(wailingWall.right,state),20.0f,128);
+	foreach(ref vinewall;effects.vinewalls) if(vinewall.status!=VinewallStatus.shrinking&&(vinewall.left!=0.0f||vinewall.right!=0.0f)) grid.paintCapsule(vinewall.get(vinewall.left,state),vinewall.get(vinewall.right,state),20.0f,8);
+	// fence: not avoided
+}
 void addToProximity(T,B)(ref T objects, ObjectState!B state){
 	auto proximity=state.proximity;
 	enum isMoving=is(T==MovingObjects!(B, renderMode), RenderMode renderMode);
@@ -28074,6 +28153,7 @@ final class ObjectState(B){ // (update logic)
 	Sides!B sides;
 	Proximity!B proximity;
 	PathFinder!B pathFinder;
+	DangerGrid dangerGrid;
 	Triggers!B triggers;
 	float manaRegenAt(int side,Vector3f position){
 		return proximity.manaRegenAt(side,position,this);
@@ -28092,6 +28172,7 @@ final class ObjectState(B){ // (update logic)
 		this.sides=sides;
 		this.proximity=proximity;
 		this.pathFinder=pathFinder;
+		dangerGrid=new DangerGrid();
 		this.triggers=triggers;
 		sid=SideManager!B(32);
 		// trig=TriggerState!B();
@@ -28492,6 +28573,8 @@ final class ObjectState(B){ // (update logic)
 		frame+=1;
 		proximity.start();
 		pathFinder.updateBlocked(this);
+		dangerGrid.start();
+		this.eachEffects!paintDangerGrid(this);
 		trig.beginTriggers(this);
 		this.eachByType!(addToProximity,EachByTypeFlags.none)(this);
 		addVinesToProximity(this);
