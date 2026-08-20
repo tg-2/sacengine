@@ -8681,6 +8681,7 @@ float dealDamage(T,B)(ref T object,float damage,int attacker,int attackingSide,V
 }
 
 float dealDamage(T,B)(ref T object,float damage,int attacker,int attackingSide,DamageMod damageMod,ObjectState!B state)if(is(T==MovingObject!B)||is(T==Building!B)){
+	if(attacker&&object.id!=attacker) state.markAsVisible(object.side,attacker);
 	auto actualDamage=damage;
 	static if(is(T==MovingObject!B)) if(object.id==attacker) actualDamage*=object.attackDamageFactor(true,damageMod,state);
 	if(object.id!=attacker&&state.isValidTarget(attacker,TargetType.creature))
@@ -12396,22 +12397,38 @@ float maxTargetHeight(B)(ref MovingObject!B object,ObjectState!B state){
 	return object.relativeMeleeHitbox[1].z;
 }
 
-bool canSee(Vector3f observerPosition,float observerFacing,float alertness,float sightRange,float sightFov,Vector3f targetPosition){ // TODO: fog of war
+bool canSee(B)(ObjectState!B state,Vector3f observerPosition,float observerFacing,float alertness,float sightRange,float sightFov,Vector3f targetPosition){
 	auto relative=targetPosition.xy-observerPosition.xy;
 	auto distancesqr=relative.lengthsqr;
 	if(distancesqr>sightRange^^2) return false;
 	auto distance=sqrt(distancesqr);
-	if(distance==0.0f) return true;
-	auto cosine=(-sin(observerFacing)*relative.x+cos(observerFacing)*relative.y)/distance;
-	auto angle=acos(min(1.0f,max(-1.0f,cosine)));
-	if(angle<=sightFov) return true;
-	auto factor=alertness==1.0f?sightFov/angle:1.0f+alertness*(1.0f-sightFov/angle);
-	return distancesqr<=(factor*sightRange)^^2;
+	if(distance!=0.0f){
+		auto cosine=(-sin(observerFacing)*relative.x+cos(observerFacing)*relative.y)/distance;
+		auto angle=acos(min(1.0f,max(-1.0f,cosine)));
+		if(angle>sightFov){
+			auto factor=alertness==1.0f?sightFov/angle:1.0f+alertness*(1.0f-sightFov/angle);
+			if(distancesqr>(factor*sightRange)^^2) return false;
+		}
+	}
+	enum eyeHeight=2.0f; // TODO: fix
+	return state.terrainLineOfSight(observerPosition+Vector3f(0.0f,0.0f,eyeHeight),targetPosition+Vector3f(0.0f,0.0f,eyeHeight));
+}
+
+void markVisibleEnemies(B)(int side,Vector3f observerPosition,float observerFacing,float alertness,float sightRange,float sightFov,ObjectState!B state){
+	if(sightRange==0.0f) return;
+	static void mark(ref CenterProximityEntry entry,int side,Vector3f observerPosition,float observerFacing,float alertness,float sightRange,float sightFov,ObjectState!B state){
+		if(entry.side==side||entry.side<0) return;
+		if(!entry.isVisibleToAI||entry.zeroHealth) return;
+		if(!state.isValidTarget(entry.id)) return;
+		if(!canSee(state,observerPosition,observerFacing,alertness,sightRange,sightFov,entry.position)) return;
+		state.markAsVisible(side,entry.id);
+	}
+	state.proximity.eachInRange!mark(observerPosition,sightRange,side,observerPosition,observerFacing,alertness,sightRange,sightFov,state);
 }
 
 int updateTarget(bool advance=false,B,T...)(ref MovingObject!B object,Vector3f position,float range,ObjectState!B state,float refRange=100.0f,float threshold=0.25f){
-	static bool canSeeFilter(ref CenterProximityEntry entry,Vector3f observerPosition,float observerFacing,float alertness,float sightRange,float sightFov,Vector3f referencePosition,float refRange,float threshold){
-		if(!canSee(observerPosition,observerFacing,alertness,sightRange,sightFov,entry.position)) return false;
+	static bool visibleFilter(ref CenterProximityEntry entry,int side,ObjectState!B state,Vector3f referencePosition,float refRange,float threshold){
+		if(!state.isVisibleToSide(side,entry.id,entry.side)) return false;
 		auto distance=sqrt((entry.position-referencePosition).lengthsqr);
 		auto score=distance<refRange?1.0f-0.75f*(distance/refRange):0.25f*(refRange/distance);
 		return score*score>threshold;
@@ -12434,13 +12451,19 @@ int updateTarget(bool advance=false,B,T...)(ref MovingObject!B object,Vector3f p
 			object.creatureAI.targetId=targetId;
 		}else{
 			float maxHeight=object.maxTargetHeight(state);
-			auto sightRange=object.sacObject.sightRange, sightFov=object.sacObject.sightFov;
+			auto sqrtThreshold=sqrt(threshold);
+			auto scoreCutoff=0.25f<sqrtThreshold?refRange*(1.0f-sqrtThreshold)/0.75f:0.25f*refRange/sqrtThreshold;
+			enum maxDist=5120.0f;
 			static if(advance){
 				auto toDest=position-object.position;
 				auto referencePosition=object.position+min(1.0f,15.0f/toDest.length)*toDest;
-				object.creatureAI.targetId=state.proximity.enemyInRangeAndClosestToPreferringAttackersOf!canSeeFilter(object.side,object.position,sightRange,referencePosition,object.id,EnemyType.all,state,maxHeight,object.position,object.creatureState.facing,object.creatureAI.alertness,sightRange,sightFov,referencePosition,refRange,threshold);
+				auto queryRadius=min(maxDist,(referencePosition-object.position).length+scoreCutoff);
+				object.creatureAI.targetId=state.proximity.enemyInRangeAndClosestToPreferringAttackersOf!visibleFilter(object.side,object.position,queryRadius,referencePosition,object.id,EnemyType.all,state,maxHeight,object.side,state,referencePosition,refRange,threshold);
 			}
-			else object.creatureAI.targetId=state.proximity.closestEnemyInRange!canSeeFilter(object.side,object.position,sightRange,EnemyType.all,state,maxHeight,object.position,object.creatureState.facing,object.creatureAI.alertness,sightRange,sightFov,position,refRange,threshold);
+			else{
+				auto queryRadius=min(maxDist,(position-object.position).length+scoreCutoff);
+				object.creatureAI.targetId=state.proximity.closestEnemyInRange!visibleFilter(object.side,object.position,queryRadius,EnemyType.all,state,maxHeight,object.side,state,position,refRange,threshold);
+			}
 		}
 	}
 	if(!state.isValidTarget(object.creatureAI.targetId)) object.creatureAI.targetId=0;
@@ -13082,6 +13105,8 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 	if(!requiresAI(object.creatureState.mode)) return;
 	if(object.creatureStats.effects.oiled) return;
 	if(!object.creatureAI.isOnAIQueue) object.creatureAI.isOnAIQueue=state.pushToAIQueue(object.side,object.id);
+	if(state.frontOfAIQueue(object.side,object.id))
+		markVisibleEnemies(object.side,object.position,object.creatureState.facing,object.creatureAI.alertness,object.sacObject.sightRange,object.sacObject.sightFov,state);
 	if(object.creatureState.mode.isShooting){
 		if(!object.shoot(object.rangedAttack,object.creatureAI.targetId,state))
 			object.creatureAI.targetId=0;
@@ -27177,6 +27202,10 @@ void updateBuilding(B)(ref Building!B building, ObjectState!B state){
 void updateStructure(B)(ref StaticObject!B structure, ObjectState!B state){
 	if(!(structure.flags&StaticObjectFlags.hovering))
 		structure.position.z=state.getGroundHeight(structure.position);
+	if(structure.buildingId!=0&&(structure.id+state.frame)%16==0){
+		auto side=side(structure,state);
+		if(0<=side) markVisibleEnemies(side,structure.position,0.0f,1.0f,structure.sacObject.sightRange,structure.sacObject.sightFov,state);
+	}
 }
 
 void animateManahoar(B)(Vector3f location, int side, float rate, ObjectState!B state){
@@ -28084,6 +28113,7 @@ final class ObjectState(B){ // (update logic)
 		return map.getGroundHeightDerivative(position,direction,Displacement(this));
 	}
 	OrderTarget collideRay(alias filter=None,T...)(Vector3f start,Vector3f direction,float limit,T args){
+		applyEdgeChanges();
 		auto landscape=map.rayIntersection(start,direction,Displacement(this),limit);
 		auto tEntry=proximity.collideRay!filter(start,direction,min(limit,landscape),args);
 		if(landscape<tEntry[0]) return OrderTarget(TargetType.terrain,0,start+landscape*direction);
@@ -28120,6 +28150,10 @@ final class ObjectState(B){ // (update logic)
 			}
 		}
 		return hasLineOfSight;
+	}
+	bool terrainLineOfSight(Vector3f start,Vector3f target){
+		applyEdgeChanges();
+		return map.rayIntersection(start,target-start,Displacement(this),1.0f)>1.0f;
 	}
 	bool canRemoveLandVertex(int i,int j){
 		if(j<0||j+1>=map.n||i<0||i+1>=map.m) return false;
@@ -28716,6 +28750,16 @@ final class ObjectState(B){ // (update logic)
 	Queue!int* aiQueue(int side){
 		return sid.aiQueue(side);
 	}
+	void markAsVisible(int side,int id){
+		if(id<=0) return;
+		auto permanent=targetTypeFromId(id)==TargetType.building||this.movingObjectById!((ref obj)=>obj.isWizard,()=>false)(id);
+		sid.mark(side,id,permanent?frame+1000000:frame);
+	}
+	bool isVisibleToSide(int side,int id,int objectSide){
+		if(objectSide==side) return true;
+		auto tick=sid.lastSeenTick(side,id);
+		return 0<=tick&&frame-tick<12;
+	}
 	bool frontOfAIQueue(int side,int id){
 		if(auto q=aiQueue(side)) return !q.empty&&q.front==id;
 		return false;
@@ -29190,6 +29234,7 @@ struct SideData(B){
 	int lastSelected=0;
 	int selectionMultiplicity=0;
 	Queue!int aiQueue;
+	Array!int lastSeenTick; // object id -> time last seen (-1: never seen, frame+1000000: permanent mark)
 	SideState state;
 	mixin Assign;
 	void updateLastSelected(int id){
@@ -29260,6 +29305,20 @@ struct SideManager(B){
 	Queue!int* aiQueue(int side){
 		if(!(0<=side&&side<sides.length)) return null;
 		return &sides[side].aiQueue;
+	}
+	void mark(int side,int id,int tick){
+		if(!(0<=side&&side<sides.length&&0<id)) return;
+		if(sides[side].lastSeenTick.length<=id){
+			auto oldLength=sides[side].lastSeenTick.length;
+			sides[side].lastSeenTick.length=id+1;
+			foreach(i;oldLength..sides[side].lastSeenTick.length) sides[side].lastSeenTick[i]=-1;
+		}
+		sides[side].lastSeenTick[id]=tick;
+	}
+	int lastSeenTick(int side,int id){
+		if(!(0<=side&&side<sides.length&&0<id)) return -1;
+		if(id>=sides[side].lastSeenTick.length) return -1;
+		return sides[side].lastSeenTick[id];
 	}
 	void clearSelection(int side){
 		if(!(0<=side&&side<sides.length)) return;
