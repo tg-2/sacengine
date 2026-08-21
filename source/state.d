@@ -856,15 +856,23 @@ class PathFinder(B){
 		auto x=nstart.x,y=nstart.y;
 		dist[x][y]=0.0f;
 		enum limit=11000;
+		bool found=false;
+		auto bx=x,by=y;
+		float besth=float.infinity;
 		for(int i=0;!heap.empty()&&i<limit;){
 			auto cur=heap.pop();
 			if(pred[cur.x][cur.y]&(1<<7)) continue;
 			i++;
 			pred[cur.x][cur.y]|=(1<<7);
 			x=cur.x,y=cur.y;
-			if(cur.x==nend.x&&cur.y==nend.y) break;
+			auto h=cur.heuristic-cur.distance;
+			if(h<besth){
+				besth=h;
+				bx=x,by=y;
+			}
+			if(cur.x==nend.x&&cur.y==nend.y){ found=true; break; }
 			auto pos=position(cur.x,cur.y,state);
-			if(radius!=0.0f&&(pos-endpos).lengthsqr<radius^^2) break;
+			if(radius!=0.0f&&(pos-endpos).lengthsqr<radius^^2){ found=true; break; }
 			foreach(nx;max(cast(short)0,cast(short)(cur.x-1))..min(cast(short)(cur.x+2),cast(short)xlen)){
 				foreach(ny;max(cast(short)0,cast(short)(cur.y-1))..min(cast(short)(cur.y+2),cast(short)ylen)){
 					if(cur.x==nx&&cur.y==ny) continue;
@@ -882,6 +890,7 @@ class PathFinder(B){
 				}
 			}
 		}
+		if(!found){ x=bx; y=by; }
 		heap.clear();
 		path.length=0;
 		for(;;){
