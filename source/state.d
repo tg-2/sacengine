@@ -855,7 +855,8 @@ class PathFinder(B){
 		pred[nstart.x][nstart.y]=0x7f;
 		auto x=nstart.x,y=nstart.y;
 		dist[x][y]=0.0f;
-		enum limit=11000;
+		auto startId=getComponentId(start,state),endId=getComponentId(end,state);
+		auto limit=startId==endId&&startId!=-1?4*8160:4*1024;
 		bool found=false;
 		auto bx=x,by=y;
 		float besth=float.infinity;
