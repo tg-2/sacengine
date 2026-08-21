@@ -12563,6 +12563,27 @@ int updateTarget(bool advance=false,B,T...)(ref MovingObject!B object,Vector3f p
 	return object.creatureAI.targetId;
 }
 
+bool retreatFromDanger(B)(ref MovingObject!B object,ObjectState!B state){
+	auto currentDanger=state.dangerGrid.danger(object.position);
+	if(currentDanger<9) return false;
+	static immutable Vector2f[8] offsets=[Vector2f(0.0f,25.0f),Vector2f(25.0f,0.0f),Vector2f(0.0f,-25.0f),Vector2f(-25.0f,0.0f),Vector2f(0.0f,50.0f),Vector2f(50.0f,0.0f),Vector2f(0.0f,-50.0f),Vector2f(-50.0f,0.0f)];
+	float bestScore=0.0f;
+	auto bestPosition=Vector3f.init;
+	foreach(offset;offsets){
+		auto candidate=object.position+Vector3f(offset.x,offset.y,0.0f);
+		if(!state.pathFinder.unblocked(candidate,state)) continue;
+		auto danger=state.dangerGrid.danger(candidate);
+		if(danger>currentDanger) continue;
+		auto score=cast(float)(currentDanger-danger)/currentDanger;
+		if(score>bestScore){
+			bestScore=score;
+			bestPosition=candidate;
+		}
+	}
+	if(bestScore==0.0f) return false;
+	return object.moveTo(bestPosition,object.creatureState.facing,state);
+}
+
 bool patrolAround(B)(ref MovingObject!B object,Vector3f position,ObjectState!B state){
 	if(!object.isAggressive(state)) return false;
 	auto guardRange=object.guardRange(state);
@@ -12570,7 +12591,7 @@ bool patrolAround(B)(ref MovingObject!B object,Vector3f position,ObjectState!B s
 	auto range=object.sightRange(state);
 	auto threshold=min(100.0f,(object.position-position).length)*0.01f;
 	if(auto targetId=object.updateTarget(position,range,state,100.0f,threshold))
-		if(object.attack(targetId,state))
+		if(object.retreatFromDanger(state)||object.attack(targetId,state))
 			return true;
 	return false;
 }
@@ -12594,7 +12615,7 @@ bool patrol(B)(ref MovingObject!B object,ObjectState!B state){
 	auto position=object.position;
 	auto range=object.sightRange(state);
 	if(auto targetId=object.updateTarget(position,range,state))
-		if(object.attack(targetId,state))
+		if(object.retreatFromDanger(state)||object.attack(targetId,state))
 			return true;
 	return false;
 }
@@ -12603,7 +12624,7 @@ bool advance(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectState!B 
 	if(object.isPacifist(state)) return false;
 	auto range=object.sightRange(state);
 	if(auto targetId=object.updateTarget!true(targetPosition,range,state,150.0f,0.25f))
-		if(object.attack(object.creatureAI.targetId,state))
+		if(object.retreatFromDanger(state)||object.attack(object.creatureAI.targetId,state))
 			return true;
 	return false;
 }
