@@ -872,7 +872,7 @@ class PathFinder(B){
 					if(!unblocked(nx,ny,state)) continue;
 					auto npos=position(nx,ny,state);
 					//if(!unblocked(npos,state)) continue;
-					auto distance=cur.distance+(pos-npos).length;
+					auto distance=cur.distance+(pos-npos).length+5.0f*state.dangerGrid.danger(npos);
 					//auto distance=cur.heuristic-max(0.0f,(endpos-pos).length-radius)+(pos-npos).length;
 					auto heuristic=distance+max(0.0f,(endpos-npos).length-radius);
 					if(heuristic>=dist[nx][ny]) continue;
