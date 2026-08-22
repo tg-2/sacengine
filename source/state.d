@@ -28513,15 +28513,27 @@ final class ObjectState(B){ // (update logic)
 		applyEdgeChanges();
 		if(map.edges[j][i]) return false;
 		auto position=Vector3f(10.0f*i,10.0f*j,map.heights[j][i]);
-		static bool check(ref StaticObject!B object,Vector3f position,bool* blocked){
-			if(!object.buildingId) return true;
+		static void check(ref StaticObject!B object,Vector3f position,bool* blocked){
+			if(!object.buildingId) return;
 			auto hitbox=object.hitbox;
-			if(hitbox[1].z<position.z-mapDepth||position.z+mapDepth<hitbox[0].z) return true;
+			if(hitbox[1].z<position.z-mapDepth||position.z+mapDepth<hitbox[0].z) return;
 			if((object.position.xy-position.xy).lengthsqr<11.0f^^2) *blocked=true;
-			return !*blocked;
 		}
 		bool blocked=false;
 		this.eachStatic!check(position,&blocked);
+		static void checkGround(ref Building!B building,int i,int j,bool* blocked,ObjectState!B state){
+			import bldg;
+			if(!(building.sacBuilding.flags&BldgFlags.ground)) return;
+			if(building.componentIds.length==0) return;
+			auto bposition=building.position(state);
+			auto ci=cast(int)(bposition.x/10+0.5), cj=cast(int)(bposition.y/10+0.5);
+			auto ground=building.sacBuilding.ground;
+			foreach(tj;j-1..j+1) foreach(ti;i-1..i+1){
+				auto dj=tj-(cj-4), di=ti-(ci-4);
+				if(0<=dj&&dj<8&&0<=di&&di<8&&ground[dj][di]) *blocked=true;
+			}
+		}
+		if(!blocked) this.eachBuilding!checkGround(i,j,&blocked,this);
 		return !blocked;
 	}
 	bool removeLandVertex(int i,int j,int wizard=-1,int side=-1){
@@ -30680,24 +30692,24 @@ void placeStructure(B)(ObjectState!B state,ref Structure ntt){
 		}
 	}
 	state.buildingById!((ref Building!B building){
-			if(ntt.flags&Flags.damaged) building.health/=10.0f;
-			if(ntt.flags&Flags.destroyed) building.health=0.0f;
-			foreach(ref component;sacBuilding.components){
-				auto curObj=SacObject!B.getBLDG(ntt.flags&Flags.destroyed&&component.destroyed!="\0\0\0\0"?component.destroyed:component.tag);
-				auto offset=Vector3f(component.x,component.y,component.z);
-				offset=rotate(facingQuaternion(building.facing), offset);
-				auto cposition=position+offset;
-				if(!state.isOnGround(cposition)) continue;
-				cposition.z=state.getGroundHeight(cposition);
-				auto rotation=facingQuaternion(2*pi!float/360.0f*(ntt.facing+component.facing));
-				building.componentIds~=state.addObject(StaticObject!B(curObj,building.id,cposition,rotation,1.0f,0));
-			}
-			if(ntt.base){
-				enforce(ntt.base in state.triggers.objectIds);
-				state.buildingById!((ref manafount,state){ putOnManafount(building,manafount,state); },(){})(state.triggers.objectIds[ntt.base],state);
-			}
-			building.loopingSoundSetup(state);
-		},(){ assert(0); })(buildingId);
+		if(ntt.flags&Flags.damaged) building.health/=10.0f;
+		if(ntt.flags&Flags.destroyed) building.health=0.0f;
+		foreach(ref component;sacBuilding.components){
+			auto curObj=SacObject!B.getBLDG(ntt.flags&Flags.destroyed&&component.destroyed!="\0\0\0\0"?component.destroyed:component.tag);
+			auto offset=Vector3f(component.x,component.y,component.z);
+			offset=rotate(facingQuaternion(building.facing), offset);
+			auto cposition=position+offset;
+			if(!state.isOnGround(cposition)) continue;
+			cposition.z=state.getGroundHeight(cposition);
+			auto rotation=facingQuaternion(2*pi!float/360.0f*(ntt.facing+component.facing));
+			building.componentIds~=state.addObject(StaticObject!B(curObj,building.id,cposition,rotation,1.0f,0));
+		}
+		if(ntt.base){
+			enforce(ntt.base in state.triggers.objectIds);
+			state.buildingById!((ref manafount,state){ putOnManafount(building,manafount,state); },(){})(state.triggers.objectIds[ntt.base],state);
+		}
+		building.loopingSoundSetup(state);
+	},(){ assert(0); })(buildingId);
 }
 
 void placeNTT(B,T)(ObjectState!B state,ref T ntt) if(is(T==Creature)||is(T==Wizard)){
