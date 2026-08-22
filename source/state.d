@@ -301,7 +301,7 @@ enum PitchingDirection:ubyte{
 struct CreatureState{
 	auto mode=CreatureMode.idle;
 	auto movement=CreatureMovement.onGround;
-	float facing=0.0f, targetFlyingHeight=float.nan, flyingPitch=0.0f;
+	float facing=0.0f, targetFlyingHeight=float.nan, flyingPitch=0.0f, flyingRoll=0.0f;
 	auto movementDirection=MovementDirection.none;
 	auto rotationDirection=RotationDirection.none;
 	auto pitchingDirection=PitchingDirection.none;
@@ -14390,7 +14390,11 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 					newRotation=newRotation*rotationQuaternion(Axis.y,-atan(state.getGroundHeightDerivative(object.position, rotate(facing, Vector3f(1.0f,0.0f,0.0f)))));
 					break;
 			}
-		}else newRotation=newRotation*pitchQuaternion(object.creatureState.flyingPitch);
+		}else{
+			auto speedFraction=object.creatureState.speed/(object.creatureStats.flyingSpeed*object.scale);
+			object.creatureState.flyingRoll=(31.0f*object.creatureState.flyingRoll+15.0f*object.creatureState.rotationSpeedCurrent*speedFraction)/32.0f;
+			newRotation=newRotation*pitchQuaternion(object.creatureState.flyingPitch)*rotationQuaternion(Axis.y,-object.creatureState.flyingRoll);
+		}
 		if(isRotating||object.creatureState.mode!=CreatureMode.idle||
 		   object.creatureState.movement==CreatureMovement.flying||
 		   object.creatureState.movement==CreatureMovement.tumbling){
