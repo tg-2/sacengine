@@ -307,7 +307,9 @@ struct CreatureState{
 	auto pitchingDirection=PitchingDirection.none;
 	auto fallingVelocity=Vector3f(0.0f,0.0f,0.0f);
 	auto speed=0.0f;
+	auto speedLimit=float.infinity; // in units _per second_
 	auto rotationSpeedLimit=float.infinity; // for xy-plane only, in radians _per frame_
+	auto rotationSpeedCurrent=0.0f; // signed, in radians _per frame_
 	auto pitchingSpeedLimit=float.infinity; // _in radians _per frame_
 	int timer; // used for: constraining revive time to be at least 5s, time until casting finished
 	int timer2; // used for: time until incantation finished
@@ -1079,11 +1081,20 @@ float takeoffTime(B)(ref MovingObject!B object,ObjectState!B state){
 float accelerationOnGround(B)(ref MovingObject!B object,ObjectState!B state){
 	return object.creatureStats.movementAcceleration(false)*object.scale;
 }
+float decelerationOnGround(B)(ref MovingObject!B object,ObjectState!B state){
+	return object.creatureStats.movementDeceleration(false)*object.scale;
+}
 float accelerationInAir(B)(ref MovingObject!B object,ObjectState!B state){
 	return object.creatureStats.movementAcceleration(true)*object.scale;
 }
+float decelerationInAir(B)(ref MovingObject!B object,ObjectState!B state){
+	return object.creatureStats.movementDeceleration(true)*object.scale;
+}
 float acceleration(B)(ref MovingObject!B object,ObjectState!B state){
 	return object.creatureState.movement==CreatureMovement.flying?object.accelerationInAir(state):object.accelerationOnGround(state)*object.scale;
+}
+float deceleration(B)(ref MovingObject!B object,ObjectState!B state){
+	return object.creatureState.movement==CreatureMovement.flying?object.decelerationInAir(state):object.decelerationOnGround(state)*object.scale;
 }
 
 bool isWizard(B)(ref MovingObject!B obj){ return obj.sacObject.isWizard; }
@@ -9288,9 +9299,11 @@ void setMovement(B)(ref MovingObject!B object,MovementDirection direction,Object
 		object.setCreatureState(state);
 }
 void stopMovement(B)(ref MovingObject!B object,ObjectState!B state,int side=-1){
+	object.creatureState.speedLimit=float.infinity;
 	object.setMovement(MovementDirection.none,state,side);
 }
 void startMovingForward(B)(ref MovingObject!B object,ObjectState!B state,int side=-1){
+	object.creatureState.speedLimit=float.infinity;
 	object.setMovement(MovementDirection.forward,state,side);
 }
 void startMovingBackward(B)(ref MovingObject!B object,ObjectState!B state,int side=-1){
@@ -11707,7 +11720,8 @@ bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state,float th
 	auto angle=facing-object.creatureState.facing;
 	while(angle<-pi!float) angle+=2*pi!float;
 	while(angle>pi!float) angle-=2*pi!float;
-	object.creatureState.rotationSpeedLimit=rotationSpeedLimitFactor*abs(angle);
+	auto turnGain=(6.0f/pi!float)*object.creatureStats.rotationSpeed(object.creatureState.movement==CreatureMovement.flying);
+	object.creatureState.rotationSpeedLimit=rotationSpeedLimitFactor*abs(angle)*(turnGain/updateFPS);
 	if(angle>threshold) object.startTurningLeft(state);
 	else if(angle<-threshold) object.startTurningRight(state);
 	else{
@@ -11749,7 +11763,7 @@ bool pitch(B)(ref MovingObject!B object,float pitch_,ObjectState!B state){
 	while(angle<-pi!float) angle+=2*pi!float;
 	while(angle>pi!float) angle-=2*pi!float;
 	enum threshold=1e-3;
-	object.creatureState.pitchingSpeedLimit=rotationSpeedLimitFactor*abs(angle);
+	object.creatureState.pitchingSpeedLimit=rotationSpeedLimitFactor*abs(angle)*(pi!float/updateFPS);
 	if(angle>threshold) object.startPitchingUp(state);
 	else if(angle<-threshold) object.startPitchingDown(state);
 	else{
@@ -11881,7 +11895,7 @@ void unqueueOrder(B)(ref MovingObject!B object,ObjectState!B state){
 }
 
 
-bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPosition,out bool evading,ObjectState!B state,float threshold=defaultFaceThreshold,bool aggressive=false,int targetId=0){
+bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPosition,out bool evading,ObjectState!B state,float threshold=defaultFaceThreshold,bool aggressive=false,int targetId=0,bool nearPathEnd=false,bool* blockedAtDestination=null){
 	auto hitbox=object.hitbox;
 	auto rotation=facingQuaternion(object.creatureState.facing);
 	auto distance=0.05f*((hitbox[1].x-hitbox[0].x)+(hitbox[1].y-hitbox[0].y)); // TODO: improve
@@ -11933,6 +11947,136 @@ bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPositi
 	}
 	return result;
 }
+/+bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPosition,out bool evading,ObjectState!B state,float threshold=defaultFaceThreshold,bool aggressive=false,int targetId=0,bool nearPathEnd=false,bool* blockedAtDestination=null){ // TODO: revisit
+	auto facing=object.creatureState.facing;
+	auto isFlying=object.creatureState.movement==CreatureMovement.flying;
+	auto lookahead=isFlying?30.0f:15.0f;
+	auto velocity=object.creatureState.speed*Vector2f(-sin(facing),cos(facing));
+	static bool whiskerFilter(ref ProximityEntry entry,int ownId,int targetId,bool aggressive,int side,Vector2f velocity,ObjectState!B state){
+		if(!entry.isObstacle) return false;
+		if(entry.id==ownId) return false;
+		if(!state.isValidTarget(entry.id)) return false;
+		if(entry.id==targetId) return false;
+		if(aggressive&&state.objectById!isValidEnemyAttackTarget(entry.id,side,state)) return false;
+		static bool movingAlong(ref MovingObject!B obj,Vector2f velocity,ObjectState!B state){
+			auto facing=obj.creatureState.facing;
+			return dot(velocity,obj.creatureState.speed*Vector2f(-sin(facing),cos(facing)))>0.9f*velocity.lengthsqr;
+		}
+		if(velocity.lengthsqr>0.0f&&state.movingObjectById!(movingAlong,()=>false)(entry.id,velocity,state)) return false;
+		return true;
+	}
+	auto hitbox=object.hitbox;
+	Vector3f[2] expansion=[object.position-hitbox[1],object.position-hitbox[0]];
+	static void handleSweep(ProximityEntry entry,Vector3f start,Vector3f direction,Vector3f[2] expansion,int* blocker,float* minFraction,Vector3f[2]* blockerHitbox,int ownId,int targetId,bool aggressive,int side,Vector2f velocity,ObjectState!B state){
+		if(!whiskerFilter(entry,ownId,targetId,aggressive,side,velocity,state)) return;
+		Vector3f[2] expanded=[entry.hitbox[0]+expansion[0],entry.hitbox[1]+expansion[1]];
+		if(expanded[0].x<start.x&&start.x<expanded[1].x&&
+		   expanded[0].y<start.y&&start.y<expanded[1].y&&
+		   expanded[0].z<start.z&&start.z<expanded[1].z)
+			return;
+		auto fraction=rayBoxIntersect(start,direction,expanded,1.0f);
+		if(fraction<*minFraction){
+			*minFraction=fraction;
+			*blocker=entry.id;
+			if(blockerHitbox) *blockerHitbox=entry.hitbox;
+		}
+	}
+	int whiskerBlocked(float angle,float elevation=0.0f,Vector3f[2]* blockerHitbox=null){
+		auto offset=lookahead*Vector3f(-sin(angle),cos(angle),0.0f);
+		if(elevation!=0.0f){
+			offset*=cos(elevation);
+			offset.z=lookahead*sin(elevation);
+		}
+		if(!isFlying&&!state.pathFinder.unblocked(object.position+offset,state)) return -1;
+		auto queryBox=hitbox;
+		foreach(k;0..3){
+			if(offset[k]<0.0f) queryBox[0][k]+=offset[k];
+			else queryBox[1][k]+=offset[k];
+		}
+		int blocker=0;
+		auto minFraction=1.0f;
+		state.proximity.collide!handleSweep(queryBox,object.position,offset,expansion,&blocker,&minFraction,blockerHitbox,object.id,targetId,aggressive,object.side,velocity,state);
+		return blocker;
+	}
+	Vector3f[2] blockerHitbox;
+	if(auto blocker=whiskerBlocked(facing,0.0f,&blockerHitbox)){
+		static bool covers(Vector3f[2] box,Vector3f position){
+			return box[0].x<=position.x&&position.x<=box[1].x&&
+			       box[0].y<=position.y&&position.y<=box[1].y&&
+			       box[0].z-1.0f<=position.z&&position.z<=box[1].z+2.0f;
+		}
+		static bool isCreature(int id,ObjectState!B state){
+			return state.movingObjectById!((ref obj,state)=>true,()=>false)(id,state);
+		}
+		static void bumpCheck(ProximityEntry entry,int ownId,int excludeId,bool* covered,ObjectState!B state){
+			if(*covered||entry.id==ownId||entry.id==excludeId) return;
+			if(isCreature(entry.id,state)) *covered=true;
+		}
+		auto destinationCovered=blocker!=-1&&covers(blockerHitbox,targetPosition);
+		if(!destinationCovered&&blocker!=-1&&isCreature(blocker,state)&&
+		   (object.position.xy-targetPosition.xy).lengthsqr<225.0f){
+			bool covered=false;
+			Vector3f[2] targetBox=[targetPosition+Vector3f(0.0f,0.0f,-2.0f),targetPosition+Vector3f(0.0f,0.0f,1.0f)];
+			state.proximity.collide!bumpCheck(targetBox,object.id,targetId,&covered,state);
+			destinationCovered=covered;
+		}
+		if(nearPathEnd&&destinationCovered){
+			if(blockedAtDestination) *blockedAtDestination=true;
+			object.turnToFaceTowards(targetPosition,state,threshold);
+			object.startMovingForward(state);
+			evading=true;
+			return true;
+		}
+		if(isFlying&&!whiskerBlocked(facing,0.75f)){
+			object.creatureState.pitchingSpeedLimit=float.infinity;
+			object.startPitchingUp(state);
+			object.stopTurning(state);
+			object.startMovingForward(state);
+			evading=true;
+			return true;
+		}
+		static immutable float[5] whiskerOffsets=[0.5f,1.0f,1.5f,2.0f,2.5f];
+		foreach(offset;whiskerOffsets){
+			if(!whiskerBlocked(facing+offset)){
+				object.creatureState.rotationSpeedLimit=float.infinity;
+				object.setTurning(RotationDirection.left,state);
+				object.startMovingForward(state);
+				evading=true;
+				return true;
+			}
+			if(!whiskerBlocked(facing-offset)){
+				object.creatureState.rotationSpeedLimit=float.infinity;
+				object.setTurning(RotationDirection.right,state);
+				object.startMovingForward(state);
+				evading=true;
+				return true;
+			}
+			if(isFlying&&!whiskerBlocked(facing+offset,0.75f)){ // turn left and climb
+				object.creatureState.rotationSpeedLimit=float.infinity;
+				object.setTurning(RotationDirection.left,state);
+				object.creatureState.pitchingSpeedLimit=float.infinity;
+				object.startPitchingUp(state);
+				object.startMovingForward(state);
+				evading=true;
+				return true;
+			}
+			if(isFlying&&!whiskerBlocked(facing-offset,0.75f)){ // turn right and climb
+				object.creatureState.rotationSpeedLimit=float.infinity;
+				object.setTurning(RotationDirection.right,state);
+				object.creatureState.pitchingSpeedLimit=float.infinity;
+				object.startPitchingUp(state);
+				object.startMovingForward(state);
+				evading=true;
+				return true;
+			}
+		}
+		object.stopTurning(state);
+		object.startMovingForward(state);
+		evading=true;
+		return true;
+	}
+	return object.turnToFaceTowards(targetPosition,state,threshold);
+}+/
 
 bool stop(B)(ref MovingObject!B object,float targetFacing,ObjectState!B state,float threshold=defaultFaceThreshold){
 	object.stopMovement(state);
@@ -11950,14 +12094,14 @@ bool stopAndFaceTowards(B)(ref MovingObject!B object,Vector3f position,ObjectSta
 	return object.stop(object.facingTowards(position,state),state);
 }
 
-void moveTowards(B)(ref MovingObject!B object,Vector3f ultimateTargetPosition,float acceptableRadius,ObjectState!B state,bool evade=true,bool maintainHeight=false,bool stayAboveGround=true,int targetId=0,bool disablePathfinding=false){
+bool moveTowards(B)(ref MovingObject!B object,Vector3f ultimateTargetPosition,float acceptableRadius,ObjectState!B state,bool evade=true,bool maintainHeight=false,bool stayAboveGround=true,int targetId=0,bool disablePathfinding=false){
 	auto distancesqr=(object.position.xy-ultimateTargetPosition.xy).lengthsqr;
 	auto isFlying=object.creatureState.movement==CreatureMovement.flying;
 	Vector3f targetPosition=ultimateTargetPosition;
 	if(isFlying||disablePathfinding) object.creatureAI.path.reset();
 	else targetPosition=object.creatureAI.path.nextTarget(object.position,object.relativeHitbox,ultimateTargetPosition,acceptableRadius,state.frontOfAIQueue(object.side,object.id),state);
 	if(isFlying){
-		if(distancesqr>(0.1f*object.speed(state))^^2){
+		if(distancesqr>(0.1f*object.speed(state))^^2){ // TODO: replace with something in the style of the code below?
 			auto flyingHeight=object.position.z-state.getHeight(object.position);
 			auto minimumFlyingHeight=stayAboveGround?object.creatureStats.flyingHeight:0.0f;
 			if(flyingHeight<minimumFlyingHeight) object.creatureState.targetFlyingHeight=minimumFlyingHeight;
@@ -11971,27 +12115,74 @@ void moveTowards(B)(ref MovingObject!B object,Vector3f ultimateTargetPosition,fl
 			object.pitch(0.0f,state);
 			object.creatureState.targetFlyingHeight=0.0f;
 		}
+		/+// TODO: revisit
+		enum cruiseAGL=5.0f,maxAGL=200.0f;
+		auto distance=sqrt(distancesqr);
+		auto targetAGL=targetPosition.z-state.getHeight(targetPosition);
+		auto climbDelta=targetAGL-cruiseAGL;
+		auto climbRange=3.0f*abs(climbDelta);
+		auto desired=distance>=climbRange?cruiseAGL:cruiseAGL+climbDelta*(climbRange-distance)/climbRange;
+		auto dropDelta=targetAGL-maxAGL;
+		auto dropRange=3.0f*abs(dropDelta);
+		auto ceiling=distance>=dropRange?maxAGL:maxAGL+(dropRange-distance)*dropDelta/dropRange;
+		auto facing=object.creatureState.facing;
+		auto probe=object.position.xy+(40.0f*object.creatureState.speed/updateFPS)*Vector2f(-sin(facing),cos(facing));
+		auto myAGL=object.position.z-state.getHeight(Vector3f(probe.x,probe.y,object.position.z));
+		auto reference=myAGL;
+		if(myAGL<desired) reference=desired;
+		else if(!maintainHeight&&myAGL>ceiling) reference=ceiling;
+		object.pitch(max(-0.5f,min(0.5f,0.1f*(reference-myAGL))),state);
+		object.creatureState.targetFlyingHeight=float.nan;+/
 	}else if(object.creatureState.mode!=CreatureMode.takeoff&&object.sacObject.canFly){
 		auto distance=sqrt(distancesqr);
 		auto walkingSpeed=object.speedOnGround(state),flyingSpeed=object.speedInAir(state);
 		if(object.takeoffTime(state)+distance/flyingSpeed<distance/walkingSpeed)
 			object.startFlying(state);
 	}
+	bool evading;
 	if(evade){
-		bool evading;
-		object.turnToFaceTowardsEvading(targetPosition,evading,state,defaultFaceThreshold,targetId!=0,targetId);
-		if(evading) return;
+		bool blockedAtDestination;
+		auto nearPathEnd=(targetPosition.xy-ultimateTargetPosition.xy).lengthsqr<100.0f;
+		auto excludeId=targetId!=0?targetId:object.creatureAI.order.target.id;
+		object.turnToFaceTowardsEvading(targetPosition,evading,state,defaultFaceThreshold,targetId!=0,excludeId,nearPathEnd,&blockedAtDestination);
+		if(blockedAtDestination) return true;
+		if(evading&&!isFlying) return false;
 	}else object.turnToFaceTowards(targetPosition,state);
-	if(object.movingForwardGetsCloserTo(targetPosition,object.creatureState.speed,object.creatureStats.movementAcceleration(isFlying),state)){
+	auto direction=targetPosition.xy-object.position.xy;
+	auto angle=atan2(-direction.x,direction.y);
+	auto R=0.0f;
+	if(!isNaN(angle)){
+		angle-=object.creatureState.facing;
+		while(angle<-pi!float) angle+=2.0f*pi!float;
+		while(angle>pi!float) angle-=2.0f*pi!float;
+		R=abs(angle);
+	}
+	if(isFlying){
+		auto throttle=min(1.0f,0.1f*distancesqr);
+		if(!evading&&R>=0.78f) throttle*=R<=1.57f?(1.57f-R)*0.6369427f+0.5f:0.5f;
 		object.startMovingForward(state);
-	}else object.stopMovement(state);
+		object.creatureState.speedLimit=throttle*object.speed(state);
+	}else{
+		auto throttle=1.0f-max(0.0f,min(1.0f,(R-0.1745328f)*0.4583666f));
+		throttle*=throttle;
+		if(R>0.0f){
+			auto brakeSqr=20.0f*1.5136226f*R*R;
+			brakeSqr*=brakeSqr;
+			if(distancesqr<brakeSqr) throttle*=distancesqr/brakeSqr;
+		}
+		if(throttle<=0.0f) object.stopMovement(state);
+		else{
+			object.startMovingForward(state);
+			object.creatureState.speedLimit=throttle*object.speed(state);
+		}
+	}
+	return false;
 }
 
 bool moveTo(B)(ref MovingObject!B object,Vector3f targetPosition,float targetFacing,ObjectState!B state,bool evade=true,bool maintainHeight=false,bool stayAboveGround=true,int targetId=0,bool disablePathfinding=false){
-	auto speed=object.speed(state)/updateFPS;
 	auto distancesqr=(object.position.xy-targetPosition.xy).lengthsqr;
-	if(distancesqr>(2.0f*speed)^^2){
-		object.moveTowards(targetPosition,0.0f,state,evade,maintainHeight,stayAboveGround,targetId,disablePathfinding);
+	if(distancesqr>0.25f){
+		if(object.moveTowards(targetPosition,0.0f,state,evade,maintainHeight,stayAboveGround,targetId,disablePathfinding)) return false;
 		return true;
 	}
 	return object.stop(targetFacing,state);
@@ -12136,8 +12327,7 @@ bool aim(bool isAbility=false,bool visibilityRequired=true,B)(ref MovingObject!B
 	bool stop(){
 		object.creatureState.timer=updateFPS; // TODO: this is a bit hacky
 		object.stopMovement(state);
-		bool evading;
-		object.turnToFaceTowardsEvading(predicted,evading,state);
+		object.turnToFaceTowards(predicted,state);
 		if(isFlying){
 			object.pitch(0.0f,state);
 			object.creatureState.targetFlyingHeight=targetFlyingHeight;
@@ -12153,8 +12343,7 @@ bool aim(bool isAbility=false,bool visibilityRequired=true,B)(ref MovingObject!B
 		}
 		if(stop()){
 			auto rotationThreshold=4.0f*object.creatureStats.rotationSpeed(object.creatureState.movement==CreatureMovement.flying)/updateFPS;
-			bool evading;
-			auto facing=!object.turnToFaceTowardsEvading(predicted,evading,state,rotationThreshold);
+			auto facing=!object.turnToFaceTowards(predicted,state,rotationThreshold);
 			static if(isAbility) auto cooldown=object.creatureStats.effects.abilityCooldown;
 			else auto cooldown=object.creatureStats.effects.rangedCooldown;
 			if(facing&&cooldown==0&&object.creatureStats.mana>=rangedAttack.manaCost){
@@ -12462,7 +12651,7 @@ bool attack(B)(ref MovingObject!B object,int targetId,ObjectState!B state){
 		bool downward=object.meleeAttackIsDownward(targetPosition,state);
 		object.startMeleeAttacking(downward,state);
 		object.creatureState.targetFlyingHeight=float.nan;
-	}else if(!object.rangedAttack){
+	}else if(!object.rangedAttack){ // TODO: revisit, probably this should be removed
 		if(object.creatureState.movement==CreatureMovement.flying){
 			auto minFlyingHeight=object.creatureStats.flyingHeight*min(1.0f,0.1f*targetDistance-0.5f);
 			object.creatureState.targetFlyingHeight=max(minFlyingHeight,movementPosition.z-max(state.getHeight(movementPosition),state.getHeight(object.position)));
@@ -14149,19 +14338,26 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 		if(object.creatureState.mode.among(idle,moving,idleGhost,movingGhost,meleeMoving,casting,castingMoving,torturing)&&
 		   object.creatureState.movement!=CreatureMovement.tumbling&&!object.creatureStats.effects.immobilized&&!object.creatureStats.effects.fixed
 		){
+			auto rotationTarget=0.0f;
 			final switch(object.creatureState.rotationDirection){
 				case RotationDirection.none:
 					break;
 				case RotationDirection.left:
 					isRotating=true;
-					object.creatureState.facing+=min(rotationSpeed,object.creatureState.rotationSpeedLimit);
-					while(object.creatureState.facing>pi!float) object.creatureState.facing-=2*pi!float;
+					rotationTarget=min(rotationSpeed,object.creatureState.rotationSpeedLimit);
 					break;
 				case RotationDirection.right:
 					isRotating=true;
-					object.creatureState.facing-=min(rotationSpeed,object.creatureState.rotationSpeedLimit);
-					while(object.creatureState.facing<pi!float) object.creatureState.facing+=2*pi!float;
+					rotationTarget=-min(rotationSpeed,object.creatureState.rotationSpeedLimit);
 				break;
+			}
+			auto rotationRamp=object.creatureStats.rotationAcceleration(object.creatureState.movement==CreatureMovement.flying)/(updateFPS*updateFPS);
+			auto rotationDiff=rotationTarget-object.creatureState.rotationSpeedCurrent;
+			object.creatureState.rotationSpeedCurrent+=min(rotationRamp,max(-rotationRamp,rotationDiff));
+			if(object.creatureState.rotationSpeedCurrent!=0.0f){
+				object.creatureState.facing+=object.creatureState.rotationSpeedCurrent;
+				while(object.creatureState.facing>pi!float) object.creatureState.facing-=2*pi!float;
+				while(object.creatureState.facing<pi!float) object.creatureState.facing+=2*pi!float;
 			}
 			final switch(object.creatureState.pitchingDirection){
 				case PitchingDirection.none:
@@ -14220,6 +14416,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			}
 			auto groundSpeed=object.speedOnGround(state);
 			auto groundAcceleration=object.accelerationOnGround(state);
+			auto groundDeceleration=object.decelerationOnGround(state);
 			if(object.creatureState.mode==CreatureMode.meleeMoving){
 				groundSpeed*=0.5f;
 				groundAcceleration*=0.5f;
@@ -14228,10 +14425,13 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			if(object.creatureState.speed>groundSpeed||object.creatureState.speed<-groundSpeed) movementDirection=MovementDirection.none;
 			final switch(movementDirection){
 				case MovementDirection.none:
-					object.creatureState.speed=sign(object.creatureState.speed)*(max(0.0f,abs(object.creatureState.speed)-groundAcceleration/updateFPS));
+					object.creatureState.speed=sign(object.creatureState.speed)*(max(0.0f,abs(object.creatureState.speed)-groundDeceleration/updateFPS));
 					break;
 				case MovementDirection.forward:
-					object.creatureState.speed=min(groundSpeed,object.creatureState.speed+groundAcceleration/updateFPS);
+					auto targetSpeed=min(groundSpeed,object.creatureState.speedLimit);
+					if(object.creatureState.speed>targetSpeed)
+						object.creatureState.speed=max(targetSpeed,object.creatureState.speed-groundDeceleration/updateFPS);
+					else object.creatureState.speed=min(targetSpeed,object.creatureState.speed+groundAcceleration/updateFPS);
 					break;
 				case MovementDirection.backward:
 					object.creatureState.speed=max(-groundSpeed,object.creatureState.speed-groundAcceleration/updateFPS);
@@ -14280,6 +14480,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			}
 			auto airSpeed=object.speedInAir(state);
 			auto airAcceleration=object.accelerationInAir(state);
+			auto airDeceleration=object.decelerationInAir(state);
 			if(object.creatureState.mode==CreatureMode.meleeMoving){
 				airSpeed*=0.5f;
 				airAcceleration*=0.5f;
@@ -14288,14 +14489,18 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			if(object.creatureState.speed>airSpeed||object.creatureState.speed<-airSpeed) movementDirection=MovementDirection.none;
 			final switch(object.creatureState.mode.isMoving?object.creatureState.movementDirection:MovementDirection.none){
 				case MovementDirection.none:
-					object.creatureState.speed=sign(object.creatureState.speed)*(max(0.0f,abs(object.creatureState.speed)-airAcceleration/updateFPS));
+					auto decay=object.creatureState.speed>0.0f?airDeceleration:airAcceleration;
+					object.creatureState.speed=sign(object.creatureState.speed)*(max(0.0f,abs(object.creatureState.speed)-decay/updateFPS));
 					break;
 				case MovementDirection.forward:
-					object.creatureState.speed=min(airSpeed,object.creatureState.speed+airAcceleration/updateFPS);
+					auto targetSpeed=min(airSpeed,object.creatureState.speedLimit);
+					if(object.creatureState.speed>targetSpeed)
+						object.creatureState.speed=max(targetSpeed,object.creatureState.speed-airDeceleration);
+					else object.creatureState.speed=min(targetSpeed,object.creatureState.speed+airAcceleration/updateFPS);
 					break;
 				case MovementDirection.backward:
 					assert(object.sacObject.canFlyBackward);
-					object.creatureState.speed=max(-airSpeed,object.creatureState.speed-airAcceleration/updateFPS);
+					object.creatureState.speed=max(-airSpeed,object.creatureState.speed-airDeceleration/updateFPS);
 					break;
 			}
 			auto direction=rotate(object.rotation,Vector3f(0.0f,1.0f,0.0f));

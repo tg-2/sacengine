@@ -97,25 +97,33 @@ struct Effects{
 }
 import dlib.math.portable: pi;
 @property float rotationSpeed(ref CreatureStats stats,bool isFlying){ // in radians per second
-	if(isFlying) return 0.5f*pi!float;
+	if(isFlying) return 127.0f*pi!float/192.0f;
 	return pi!float;
 }
+@property float rotationAcceleration(ref CreatureStats stats,bool isFlying){ // in radians per second squared
+	if(isFlying) return 3.0f*pi!float;
+	return 6.0f*pi!float;
+}
 @property float pitchingSpeed(ref CreatureStats stats){ // in radians per second
-	return 0.125f*pi!float;
+	return 127.0f*pi!float/256.0f;
 }
 @property float pitchLowerLimit(ref CreatureStats stats){
-	return -0.25f*pi!float;
+	return -0.75f;
 }
 @property float pitchUpperLimit(ref CreatureStats stats){
-	return 0.25f*pi!float;
+	return 0.75f;
 }
 @property float movementSpeed(ref CreatureStats stats,bool isFlying){ // in meters per second
 	auto effectFactor=stats.effects.speedUp*(isFlying?1.0f:0.25f^^stats.effects.numSlimes)*0.8f^^stats.effects.numBlightMites*0.75f^^stats.effects.numStickyBombs*0.6f^^stats.effects.numRainFrogs*(stats.effects.lightningCharged?4.0f/3.0f:1.0f)*(stats.effects.wailingWall?0.75f:1.0f)*(stats.effects.wallOfSpikes?0.5f:1.0f); // TODO: probably slowdowns should be interpolated too
 	return (isFlying?stats.flyingSpeed:stats.runningSpeed)*effectFactor;
 }
 @property float movementAcceleration(ref CreatureStats stats,bool isFlying){
-	auto effectFactor=stats.effects.speedUp;
-	return (isFlying?20.0f:50.0f)*effectFactor;
+	if(isFlying) return 0.45f*60.0f; // TODO: ok?
+	return 3.0f*stats.movementSpeed(false);
+}
+@property float movementDeceleration(ref CreatureStats stats,bool isFlying){
+	if(isFlying) return 0.6f*60.0f; // TODO: ok?
+	return 6.0f*stats.movementSpeed(false);
 }
 @property float maxDownwardSpeedFactor(ref CreatureStats stats){
 	return 2.0f;
