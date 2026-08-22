@@ -2264,6 +2264,12 @@ static:
 		return texture;
 	}
 
+	void updateTexture(Texture texture){
+		glBindTexture(GL_TEXTURE_2D,texture.tex);
+		glTexSubImage2D(GL_TEXTURE_2D,0,0,0,texture.width,texture.height,texture.format,texture.type,cast(void*)texture.image.data.ptr);
+		glBindTexture(GL_TEXTURE_2D,0);
+	}
+
 	Mesh makeMesh(size_t numVertices,size_t numFaces){
 		auto m=New!Mesh(scene.assetManager);
 		m.vertices=New!(Vector3f[])(numVertices);

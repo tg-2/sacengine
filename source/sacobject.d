@@ -75,10 +75,11 @@ final class SacObject(B){
 	@property bool isPacifist(){
 		return !cre8||cre8.aggressiveness==0||isSacDoctor||isFamiliar;
 	}
+	bool isBuilding;
 	@property float sightRange(){
 		if(cre8) return 1.0f/10.0f*cre8.sightRange;
 		if(wizd) return 200.0f;
-		if(strc) return 75.0f;
+		if(strc||isBuilding) return 75.0f;
 		return 0.0f;
 	}
 	@property float sightFov(){
@@ -87,7 +88,7 @@ final class SacObject(B){
 		}
 		if(cre8) return fov(cre8.sightFov);
 		if(wizd) return fov(2000);
-		if(strc) return fov(16000);
+		if(strc||isBuilding) return fov(16000);
 		return fov(0);
 	}
 	@property float guardRange(){
@@ -572,6 +573,7 @@ final class SacObject(B){
 		cre8=nttTag in cre8s;
 		wizd=nttTag in wizds;
 		strc=nttTag in strcs;
+		isBuilding=!!(tag in bldgModls); // TODO: better way to detect this?
 		if(cre8){
 			sset=cre8.creatureSSET in ssets;
 			meleeSset=cre8.meleeSSET in ssets;

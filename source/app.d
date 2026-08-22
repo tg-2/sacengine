@@ -285,6 +285,8 @@ int applySettings(string[] args,ref Options options){
 						break LoptSwitch;
 				}
 			}
+			case "--fog-of-war-3d": options.fogOfWar3d=true; break LoptSwitch;
+			case "--no-fog-of-war-3d": options.fogOfWar3d=false; break LoptSwitch;
 			case "--ignore-settings": break;
 			case "--redirect-output": break;
 			case "--no-join": options.joinIP=""; break;

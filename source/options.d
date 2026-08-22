@@ -84,6 +84,10 @@ struct Options{
 	bool terrainSineWave=false;
 	bool alliedVision=true;
 	bool alliedBeamVision=true;
+	bool fogOfWar=true;
+	bool fogOfWar3d=false;
+	bool revealBlueSouls=true;
+	bool dimUnexplored=false;
 	bool randomCreatureScale=false;
 	bool enableDropSoul=true;
 	bool targetDroppedSouls=false;

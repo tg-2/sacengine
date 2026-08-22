@@ -1397,6 +1397,7 @@ struct Renderer(B){
 							auto id=objects.ids[j];
 							Vector4f information;
 							if(info.renderSide!=objects.sides[j]&&objects.creatureStates[j].mode.isGhost) continue;
+							if(state.fogOfWar3d&&info.renderSide!=objects.sides[j]&&!state.positionVisibleToSide(info.renderSide,objects.positions[j])) continue;
 							if(info.renderSide!=objects.sides[j]
 							   &&(!objects.creatureStates[j].mode.isVisibleToOtherSides||objects.creatureStatss[j].effects.stealth)
 							   &&objects.creatureStates[j].mode!=CreatureMode.dead // TODO: dead creatures should not hide their own souls
@@ -1478,6 +1479,12 @@ struct Renderer(B){
 							}
 							auto position=objects.positions[j];
 							static if(isFixed) position.z=state.getGroundHeight(position);
+							static if(isStatic){
+								if(state.fogOfWar3d){
+									auto fogSide=state.buildingById!((ref b)=>b.side,()=>-1)(objects.buildingIds[j]);
+									if(fogSide!=info.renderSide&&!state.positionExploredBySide(info.renderSide,position)) continue;
+								}
+							}
 							static if(isStatic||isMoving){
 								material.backend.setTransformationScaled(position, objects.rotations[j], objects.scales[j]*Vector3f(1.0f,1.0f,1.0f), rc);
 							}else material.backend.setTransformation(position, objects.rotations[j], rc);
@@ -1496,6 +1503,7 @@ struct Renderer(B){
 						auto material=sacSoul.material;
 						foreach(j;0..objects.length){
 							auto soul=objects[j];
+							if(state.fogOfWar3d&&!state.positionExploredBySide(info.renderSide,soul.position)) continue;
 							auto color=soul.color(info.renderSide,state);
 							static if(filterGreen){
 								bool isGreen=color==SoulColor.green;
@@ -3757,6 +3765,7 @@ struct Renderer(B){
 		static void renderCreatureStat(B)(ref MovingObject!B obj,Renderer!B* self,bool healthAndMana,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
 			if(obj.creatureState.mode.among(CreatureMode.dying,CreatureMode.dead,CreatureMode.dissolving,CreatureMode.firewalk)) return;
 			if(info.renderSide!=obj.side&&(!obj.creatureState.mode.isVisibleToAI||obj.creatureStats.effects.stealth)) return;
+			if(state.fogOfWar3d&&info.renderSide!=obj.side&&!state.positionVisibleToSide(info.renderSide,obj.position)) return;
 			auto backend=B.shadelessMaterialBackend;
 			backend.bindDiffuse(self.sacHud.statusArrows);
 			auto isBlinking=obj.side==info.renderSide&&obj.notificationState.isBlinking(state);
@@ -4120,6 +4129,8 @@ struct Renderer(B){
 	B.SubQuad spellbookFrame1,spellbookFrame2;
 	B.Material hudSoulMaterial;
 	B.Material minimapMaterial;
+	B.Texture minimapFogTexture;
+	B.MinimapMesh minimapFogQuad;
 	B.SubQuad minimapQuad;
 	B.SubQuad minimapAltarRing,minimapManalith,minimapWizard,minimapManafount,minimapShrine;
 	B.SubQuad minimapCreatureArrow,minimapStructureArrow;
@@ -4157,6 +4168,24 @@ struct Renderer(B){
 		minimapMaterial=B.makeMaterial(B.minimapMaterialBackend);
 		minimapMaterial.diffuse=Color4f(1.0f,1.0f,1.0f,1.0f);
 		minimapMaterial.blending=B.Blending.Transparent;
+		import dlib.image.unmanaged: UnmanagedImageRGBA8;
+		import dlib.core.memory: New;
+		auto img=New!UnmanagedImageRGBA8(visionGridSize,visionGridSize);
+		img.data[]=0;
+		minimapFogTexture=B.makeTexture(img);
+		minimapFogTexture.useMipmapFiltering=false;
+		minimapFogQuad=B.makeMinimapMesh(4,2);
+		minimapFogQuad.vertices[0]=Vector2f(0.0f,0.0f);
+		minimapFogQuad.vertices[1]=Vector2f(2560.0f,0.0f);
+		minimapFogQuad.vertices[2]=Vector2f(0.0f,2560.0f);
+		minimapFogQuad.vertices[3]=Vector2f(2560.0f,2560.0f);
+		minimapFogQuad.texcoords[0]=Vector2f(0.0f,0.0f);
+		minimapFogQuad.texcoords[1]=Vector2f(1.0f,0.0f);
+		minimapFogQuad.texcoords[2]=Vector2f(0.0f,1.0f);
+		minimapFogQuad.texcoords[3]=Vector2f(1.0f,1.0f);
+		minimapFogQuad.indices[0]=[0,1,2];
+		minimapFogQuad.indices[1]=[1,3,2];
+		B.finalizeMinimapMesh(minimapFogQuad);
 		minimapQuad=B.makeSubQuad(16.5f/64.0f,4.5f/65.0f,16.5f/64.0f,4.5f/64.0f);
 		minimapAltarRing=B.makeSubQuad(1.0f/64.0f,1.0/65.0f,11.0f/64.0f,11.0f/64.0f);
 		minimapManalith=B.makeSubQuad(12.0f/64.0f,0.0/65.0f,24.0f/64.0f,12.0f/64.0f);
@@ -4434,6 +4463,13 @@ struct Renderer(B){
 			B.minimapMaterialBackend.bindDiffuse(map.textures[i]);
 			mesh.render(rc);
 		}
+		if(state.fogOfWar&&0<=info.renderSide&&info.renderSide<state.sid.sides.length){
+			state.updateFogTexture(info.renderSide,minimapFogTexture.image.data);
+			B.updateTexture(minimapFogTexture);
+			B.minimapMaterialBackend.bindDiffuse(minimapFogTexture);
+			B.minimapMaterialBackend.setColor(Color4f(1.0f,1.0f,1.0f,1.0f));
+			minimapFogQuad.render(rc);
+		}
 		if(!state.isValidTarget(info.camera.target,TargetType.creature)) info.camera.target=0;
 		if(info.camera.target){
 			import std.typecons: Tuple,tuple;
@@ -4561,6 +4597,15 @@ struct Renderer(B){
 					static if(isStatic){
 						if(state.buildingById!((ref bldg,isManafount)=>!isManafount&&!bldg.isAltar&&bldg.health==0.0f||bldg.top,()=>true)(objects.buildingIds[j],isManafount)) // TODO: merge with side lookup!
 							continue;
+					}
+					static if(is(typeof(objects.sacObject))){
+						static if(isMoving){
+							if(objects.sides[j]!=info.renderSide&&!state.minimapVisibleToSide(info.renderSide,objects.ids[j],objects.sides[j])) continue;
+						}else{
+							if(side!=info.renderSide&&!(0<=side?state.minimapVisibleToSide(info.renderSide,objects.ids[j],side):state.positionExploredBySide(info.renderSide,objects.positions[j]))) continue;
+						}
+					}else static if(is(T==Souls!B)){
+						if(!state.soulVisibleOnMinimap(info.renderSide,objects[j])) continue;
 					}
 					static if(is(T==Souls!B)) auto position=objects[j].position-minimapCenter;
 					else auto position=objects.positions[j]-minimapCenter;

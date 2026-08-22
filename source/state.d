@@ -12681,7 +12681,7 @@ bool canSee(B)(ObjectState!B state,Vector3f observerPosition,float eyeHeight,flo
 	return state.terrainLineOfSight(observerPosition+Vector3f(0.0f,0.0f,eyeHeight),targetPosition+aimOffset);
 }
 
-void markVisibleEnemies(B)(int side,Vector3f observerPosition,float eyeHeight,float observerFacing,float alertness,float sightRange,float sightFov,ObjectState!B state){
+void markVisibleNTTs(B)(int side,Vector3f observerPosition,float eyeHeight,float observerFacing,float alertness,float sightRange,float sightFov,ObjectState!B state){
 	if(sightRange==0.0f) return;
 	static Vector3f[2] fallbackHitbox(){
 		Vector3f[2] result;
@@ -12695,8 +12695,8 @@ void markVisibleEnemies(B)(int side,Vector3f observerPosition,float eyeHeight,fl
 		return Vector3f(hitbox[corner&1].x,hitbox[(corner>>1)&1].y,hitbox[1].z);
 	}
 	static void mark(ref CenterProximityEntry entry,int side,Vector3f observerPosition,float eyeHeight,float observerFacing,float alertness,float sightRange,float sightFov,ObjectState!B state){
-		if(entry.side==side||entry.side<0) return;
-		if(!entry.isVisibleToAI||entry.zeroHealth) return;
+		if(entry.side==side) return;
+		if(!entry.isVisibleToAI) return;
 		if(!state.isValidTarget(entry.id)) return;
 		if(!canSee(state,observerPosition,eyeHeight,observerFacing,alertness,sightRange,sightFov,entry.position,aimOffset(entry,state))) return;
 		state.markAsVisible(side,entry.id);
@@ -13419,7 +13419,7 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 	if(object.creatureStats.effects.oiled) return;
 	if(!object.creatureAI.isOnAIQueue) object.creatureAI.isOnAIQueue=state.pushToAIQueue(object.side,object.id);
 	if(state.frontOfAIQueue(object.side,object.id))
-		markVisibleEnemies(object.side,object.position,object.relativeHitbox[1].z,object.creatureState.facing,object.creatureAI.alertness,object.sacObject.sightRange,object.sacObject.sightFov,state);
+		markVisibleNTTs(object.side,object.position,object.relativeHitbox[1].z,object.creatureState.facing,object.creatureAI.alertness,object.sacObject.sightRange,object.sacObject.sightFov,state);
 	if(object.creatureState.mode.isShooting){
 		if(!object.shoot(object.rangedAttack,object.creatureAI.targetId,state))
 			object.creatureAI.targetId=0;
@@ -27496,6 +27496,11 @@ void animateShrine(B)(bool active,Vector3f location, int side, ObjectState!B sta
 
 void updateBuilding(B)(ref Building!B building, ObjectState!B state){
 	if(building.componentIds.length==0) return;
+	state.staticObjectById!((ref structure,ObjectState!B state){
+		state.updateVision(building.side,structure.id,structure.position,structure.sacObject.sightRange,structure.relativeHitbox[1].z,0.0f,false);
+		if((building.id+state.frame)%16==0&&0<=building.side)
+			markVisibleNTTs(building.side,structure.position,structure.relativeHitbox[1].z,0.0f,1.0f,structure.sacObject.sightRange,pi!float,state);
+	},(){})(building.componentIds[0],state);
 	if(building.health!=0.0f) building.heal(building.regeneration/updateFPS,state);
 	if(!(building.flags&AdditionalBuildingFlags.inactive)){
 		if(building.isManafount){
@@ -27535,10 +27540,6 @@ void updateBuilding(B)(ref Building!B building, ObjectState!B state){
 void updateStructure(B)(ref StaticObject!B structure, ObjectState!B state){
 	if(!(structure.flags&StaticObjectFlags.hovering))
 		structure.position.z=state.getGroundHeight(structure.position);
-	if(structure.buildingId!=0&&(structure.id+state.frame)%16==0){
-		auto side=side(structure,state);
-		if(0<=side) markVisibleEnemies(side,structure.position,structure.relativeHitbox[1].z,0.0f,1.0f,structure.sacObject.sightRange,structure.sacObject.sightFov,state);
-	}
 }
 
 void animateManahoar(B)(Vector3f location, int side, float rate, ObjectState!B state){
@@ -27834,6 +27835,8 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 			if(objects.creatureAIs[j].order.command==CommandType.attack)
 				attackTargetId=objects.creatureAIs[j].order.target.id;
 			proximity.insertCenter(CenterProximityEntry(false,isVisibleToAI,objects.ids[j],objects.sides[j],boxCenter(hitbox),hitbox[0].z,attackTargetId,objects.creatureStatss[j].health==0.0f));
+			if(!objects.creatureStates[j].mode.among(CreatureMode.dead,CreatureMode.dissolving))
+				state.updateVision(objects.sides[j],objects.ids[j],objects.positions[j],objects.sacObject.sightRange,hitbox[1].z-position.z,objects.creatureStates[j].facing,true);
 		}
 		if(objects.sacObject.isManahoar){
 			foreach(j;0..objects.length){
@@ -28812,6 +28815,7 @@ final class ObjectState(B){ // (update logic)
 		}+/
 		frame+=1;
 		proximity.start();
+		sid.startVision();
 		pathFinder.updateBlocked(this);
 		dangerGrid.start();
 		this.eachEffects!paintDangerGrid(this);
@@ -28853,6 +28857,10 @@ final class ObjectState(B){ // (update logic)
 		int gameModeParam=0;
 		bool alliedVision=true;
 		bool alliedBeamVision=true;
+		bool fogOfWar=true;
+		bool fogOfWar3d=false;
+		bool revealBlueSouls=true;
+		bool dimUnexplored=false;
 		bool randomCreatureScale=false;
 		bool enableDropSoul=true;
 		bool targetDroppedSouls=false;
@@ -28865,6 +28873,10 @@ final class ObjectState(B){ // (update logic)
 	Settings settings;
 	@property bool alliedVision(){ return settings.alliedVision; }
 	@property bool alliedBeamVision(){ return settings.alliedBeamVision; }
+	@property bool fogOfWar(){ return settings.fogOfWar; }
+	@property bool fogOfWar3d(){ return settings.fogOfWar3d; }
+	@property bool revealBlueSouls(){ return settings.revealBlueSouls; }
+	@property bool dimUnexplored(){ return settings.dimUnexplored; }
 	@property bool randomCreatureScale(){ return settings.randomCreatureScale; }
 	@property bool enableDropSoul(){ return settings.enableDropSoul; }
 	@property bool targetDroppedSouls(){ return settings.targetDroppedSouls; }
@@ -28875,6 +28887,10 @@ final class ObjectState(B){ // (update logic)
 	@property bool fasterCastingTimes(){ return settings.fasterCastingTimes; }
 	void disableAlliedVision(){ settings.alliedVision=false; }
 	void disableAlliedBeamVision(){ settings.alliedBeamVision=false; }
+	void disableFogOfWar(){ settings.fogOfWar=false; }
+	void enableFogOfWar3d(){ settings.fogOfWar3d=true; }
+	void disableRevealBlueSouls(){ settings.revealBlueSouls=false; }
+	void enableDimUnexplored(){ settings.dimUnexplored=true; }
 	void enableRandomCreatureScale(){ settings.randomCreatureScale=true; }
 	void disableDropSoul(){ settings.enableDropSoul=false; }
 	void allowTargetingDroppedSouls(){ settings.targetDroppedSouls=true; }
@@ -29138,6 +29154,82 @@ final class ObjectState(B){ // (update logic)
 		if(objectSide==side) return true;
 		auto tick=sid.lastSeenTick(side,id);
 		return 0<=tick&&frame-tick<32*updateFPS/5;
+	}
+	bool minimapVisibleToSide(int renderSide,int id,int objectSide){
+		if(!fogOfWar||!(0<=renderSide&&renderSide<sid.sides.length)) return true;
+		if(alliedVision&&sides.getStance(renderSide,objectSide)==Stance.ally) return true;
+		return isVisibleToSide(renderSide,id,objectSide);
+	}
+	void updateVision(int side,int id,Vector3f position,float sightRange,float eyeHeight,float facing,bool directional){
+		if(!fogOfWar) return;
+		if(!(0<=side&&side<sid.sides.length)||sightRange<=0.0f) return;
+		static assert(updateFPS%2==0);
+		enum refresh=updateFPS/2;
+		if((id+frame)%refresh!=0) return;
+		auto mask=alliedVision?sides.sides[side].allies:(1u<<side);
+		auto cx=DangerGrid.coord(position.x), cy=DangerGrid.coord(position.y);
+		auto r=max(1,cast(int)(0.1f*sightRange));
+		auto sr2=sightRange^^2;
+		applyEdgeChanges();
+		auto eye=position+Vector3f(0.0f,0.0f,eyeHeight);
+		foreach(s;0..cast(int)sid.sides.length){
+			if(!(mask&(1u<<s))) continue;
+			auto counters=sid.sides[s].visionCounters.data;
+			auto explored=sid.sides[s].exploredTerrain.data;
+			sid.sides[s].visionActive=true;
+			foreach(dy;-r..r+1){
+				auto y=cy+dy;
+				if(!(0<=y&&y<visionGridSize)) continue;
+				foreach(dx;-r..r+1){
+					auto x=cx+dx;
+					if(!(0<=x&&x<visionGridSize)) continue;
+					auto offx=10.0f*x-position.x, offy=10.0f*y-position.y;
+					auto d2=offx*offx+offy*offy;
+					if(d2>sr2) continue;
+					if(directional&&d2>0.25f*sr2){
+						auto a=acos(max(-1.0f,min(1.0f,cos(atan2(-offx,offy)-facing))));
+						if(a>=0.5f*pi!float){ continue; }
+						else if(a>0.25f*pi!float){
+							auto range=(0.5f+2.0f/pi!float*(0.5f*pi!float-a))*sightRange;
+							if(d2>range*range) continue;
+						}
+					}
+					if(d2>=1.0f){
+						auto target=Vector3f(10.0f*x,10.0f*y,0.0f);
+						target.z=map.getHeight(target,Displacement(this))+eyeHeight;
+						if(map.rayIntersection(eye,target-eye,Displacement(this),1.0f)<=1.0f) continue;
+					}
+					auto index=y*visionGridSize+x;
+					if(counters[index]<refresh) counters[index]=refresh;
+					explored[index>>5]|=1u<<(index&31);
+				}
+			}
+		}
+	}
+	bool positionVisibleToSide(int side,Vector3f position){ // TODO: move to renderer
+		if(!fogOfWar||!(0<=side&&side<sid.sides.length)) return true;
+		auto index=DangerGrid.coord(position.y)*visionGridSize+DangerGrid.coord(position.x);
+		return sid.sides[side].visionCounters[index]>0;
+	}
+	bool positionExploredBySide(int side,Vector3f position){
+		if(!fogOfWar||!(0<=side&&side<sid.sides.length)) return true;
+		auto index=DangerGrid.coord(position.y)*visionGridSize+DangerGrid.coord(position.x);
+		return (sid.sides[side].exploredTerrain[index>>5]&(1u<<(index&31)))!=0;
+	}
+	void updateFogTexture(int side,ubyte[] data){ // TODO: move to renderer
+		if(!fogOfWar||!(0<=side&&side<sid.sides.length)) return;
+		auto counters=sid.sides[side].visionCounters.data, explored=sid.sides[side].exploredTerrain.data;
+		foreach(index;0..visionGridSize*visionGridSize){
+			auto bit=1u<<(index&31);
+			data[4*index+3]=counters[index]>0?0:explored[index>>5]&bit?110:dimUnexplored?200:255;
+		}
+	}
+	bool soulVisibleOnMinimap(int renderSide,ref Soul!B soul){
+		if(!fogOfWar||!(0<=renderSide&&renderSide<sid.sides.length)) return true;
+		auto soulSide=soul.side(this);
+		if(soulSide==renderSide) return true; // own souls are always shown
+		if(soulSide==-1&&revealBlueSouls) return true; // map souls
+		return positionExploredBySide(renderSide,soul.position);
 	}
 	bool minimapAlertBlinking(int side,int id){
 		return frame<sid.minimapAlertFrame(side,id)&&frame%(updateFPS/2)<updateFPS/4;
@@ -29614,6 +29706,9 @@ enum SideState{
 	victorious,
 }
 
+enum visionGridSize=256;
+enum visionGridWords=visionGridSize*visionGridSize/32;
+
 struct SideData(B){
 	CreatureGroup selection;
 	CreatureGroup[10] groups;
@@ -29621,6 +29716,10 @@ struct SideData(B){
 	int selectionMultiplicity=0;
 	Queue!int aiQueue;
 	Array!int lastSeenTick; // object id -> time last seen (-1: never seen, frame+1000000: permanent mark)
+	Array!uint exploredTerrain; // fog of war: area seen at some point (sticky)
+	Array!ubyte visionCounters; // fog of war: frames of remaining sight per cell (refreshed periodically, not serialized)
+	                            // TODO: move to renderer instead
+	bool visionActive;
 	int[32] enemyCreatureMarkFrames;
 	int enemyAlertEventFrame;
 	int lastEnemyAlertFrame=int.max;
@@ -29691,6 +29790,18 @@ struct SideManager(B){
 	mixin Assign;
 	this(int numSides){
 		sides.length=numSides;
+		foreach(ref side;sides.data){
+			side.exploredTerrain.length=visionGridWords;
+			side.exploredTerrain.data[]=0;
+			side.visionCounters.length=visionGridSize*visionGridSize; // TODO: move to renderer instead
+			side.visionCounters.data[]=0;
+		}
+	}
+	void startVision(){
+		foreach(ref side;sides.data){
+			if(!side.visionActive) continue;
+			foreach(ref c;side.visionCounters.data) if(c>0) --c;
+		}
 	}
 	Queue!int* aiQueue(int side){
 		if(!(0<=side&&side<sides.length)) return null;
@@ -30677,6 +30788,10 @@ struct GameInit(B){
 	bool terrainSineWave=false;
 	bool alliedVision=true;
 	bool alliedBeamVision=true;
+	bool fogOfWar=true;
+	bool fogOfWar3d=false;
+	bool revealBlueSouls=true;
+	bool dimUnexplored=false;
 	bool randomCreatureScale=false;
 	bool enableDropSoul=true;
 	bool targetDroppedSouls=false;
@@ -30728,6 +30843,10 @@ void initGame(B)(ObjectState!B state,ref Array!SlotInfo slots,GameInit!B gameIni
 	}
 	if(gameInit.terrainSineWave) state.addEffect(TestDisplacement());
 	if(!gameInit.alliedVision) state.disableAlliedVision();
+	if(!gameInit.fogOfWar) state.disableFogOfWar();
+	if(gameInit.fogOfWar3d) state.enableFogOfWar3d();
+	if(!gameInit.revealBlueSouls) state.disableRevealBlueSouls();
+	if(gameInit.dimUnexplored) state.enableDimUnexplored();
 	if(!gameInit.alliedBeamVision) state.disableAlliedBeamVision();
 	if(gameInit.randomCreatureScale) state.enableRandomCreatureScale();
 	if(!gameInit.enableDropSoul) state.disableDropSoul();

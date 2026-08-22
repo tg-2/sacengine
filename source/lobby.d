@@ -121,6 +121,10 @@ GameInit!B gameInit(B,R)(Sides!B sides_,R playerSettings,ref Options options){
 	gameInit.terrainSineWave=options.terrainSineWave;
 	gameInit.alliedVision=options.alliedVision;
 	gameInit.alliedBeamVision=options.alliedBeamVision;
+	gameInit.fogOfWar=options.fogOfWar;
+	gameInit.fogOfWar3d=options.fogOfWar3d;
+	gameInit.revealBlueSouls=options.revealBlueSouls;
+	gameInit.dimUnexplored=options.dimUnexplored;
 	gameInit.randomCreatureScale=options.randomCreatureScale;
 	gameInit.enableDropSoul=options.enableDropSoul;
 	gameInit.targetDroppedSouls=options.targetDroppedSouls;

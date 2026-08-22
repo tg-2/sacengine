@@ -1038,8 +1038,12 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Obj
 void serialize(alias sink)(ref CreatureGroup creatures){ serializeStruct!sink(creatures); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==CreatureGroup)){ deserializeStruct(result,state,data); }
 
-void serialize(alias sink,B)(ref SideData!B side){ serializeStruct!sink(side); }
-void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SideData!B)){ deserializeStruct(result,state,data); }
+void serialize(alias sink,B)(ref SideData!B side){ serializeStruct!(sink,["visionCounters"])(side); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SideData!B)){
+	deserializeStruct!(["visionCounters"])(result,state,data);
+	result.visionCounters.length=visionGridSize*visionGridSize;
+	result.visionCounters.data[]=0;
+}
 
 void serialize(alias sink,B)(ref SideManager!B sides){ serializeStruct!sink(sides); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SideManager!B)){ deserializeStruct(result,state,data); }
