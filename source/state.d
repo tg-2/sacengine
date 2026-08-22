@@ -28851,6 +28851,7 @@ final class ObjectState(B){ // (update logic)
 	struct Settings{
 		GameMode gameMode=GameMode.skirmish;
 		int gameModeParam=0;
+		bool alliedVision=true;
 		bool alliedBeamVision=true;
 		bool randomCreatureScale=false;
 		bool enableDropSoul=true;
@@ -28862,6 +28863,7 @@ final class ObjectState(B){ // (update logic)
 		bool fasterCastingTimes=true;
 	}
 	Settings settings;
+	@property bool alliedVision(){ return settings.alliedVision; }
 	@property bool alliedBeamVision(){ return settings.alliedBeamVision; }
 	@property bool randomCreatureScale(){ return settings.randomCreatureScale; }
 	@property bool enableDropSoul(){ return settings.enableDropSoul; }
@@ -28871,6 +28873,7 @@ final class ObjectState(B){ // (update logic)
 	@property bool greenAllySouls(){ return settings.greenAllySouls; }
 	@property bool fasterStandupTimes(){ return settings.fasterStandupTimes; }
 	@property bool fasterCastingTimes(){ return settings.fasterCastingTimes; }
+	void disableAlliedVision(){ settings.alliedVision=false; }
 	void disableAlliedBeamVision(){ settings.alliedBeamVision=false; }
 	void enableRandomCreatureScale(){ settings.randomCreatureScale=true; }
 	void disableDropSoul(){ settings.enableDropSoul=false; }
@@ -29103,6 +29106,15 @@ final class ObjectState(B){ // (update logic)
 		return sid.aiQueue(side);
 	}
 	void markAsVisible(int side,int id){
+		if(!(0<=side&&side<sid.sides.length)) return;
+		if(alliedVision){
+			foreach(otherSide;0..cast(int)sid.sides.length)
+				if(otherSide==side||sides.getStance(side,otherSide)==Stance.ally)
+					markAsVisibleImpl(otherSide,id);
+		}else markAsVisibleImpl(side,id);
+	}
+	void markAsVisibleImpl(int side,int id){
+		if(!(0<=side&&side<sid.sides.length)) return;
 		if(id<=0) return;
 		auto type=targetTypeFromId(id);
 		sid.mark(side,id,type==TargetType.building||type==TargetType.soul?frame+1000000:frame);
@@ -30663,6 +30675,7 @@ struct GameInit(B){
 	int replicateCreatures=1;
 	int protectManafounts=0;
 	bool terrainSineWave=false;
+	bool alliedVision=true;
 	bool alliedBeamVision=true;
 	bool randomCreatureScale=false;
 	bool enableDropSoul=true;
@@ -30714,6 +30727,7 @@ void initGame(B)(ObjectState!B state,ref Array!SlotInfo slots,GameInit!B gameIni
 			})(state);
 	}
 	if(gameInit.terrainSineWave) state.addEffect(TestDisplacement());
+	if(!gameInit.alliedVision) state.disableAlliedVision();
 	if(!gameInit.alliedBeamVision) state.disableAlliedBeamVision();
 	if(gameInit.randomCreatureScale) state.enableRandomCreatureScale();
 	if(!gameInit.enableDropSoul) state.disableDropSoul();

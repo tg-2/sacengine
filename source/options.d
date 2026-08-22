@@ -82,6 +82,7 @@ struct Options{
 	int replicateCreatures=1;
 	int protectManafounts=0;
 	bool terrainSineWave=false;
+	bool alliedVision=true;
 	bool alliedBeamVision=true;
 	bool randomCreatureScale=false;
 	bool enableDropSoul=true;
