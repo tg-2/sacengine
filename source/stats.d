@@ -101,8 +101,8 @@ import dlib.math.portable: pi;
 	return pi!float;
 }
 @property float rotationAcceleration(ref CreatureStats stats,bool isFlying){ // in radians per second squared
-	if(isFlying) return 3.0f*2.0f*pi!float;
-	return 6.0f*2.0f*pi!float;
+	if(isFlying) return 3.0f*pi!float;
+	return 6.0f*pi!float; // (not used)
 }
 @property float pitchingSpeed(ref CreatureStats stats){ // in radians per second
 	return 127.0f*pi!float/256.0f;

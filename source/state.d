@@ -11720,8 +11720,11 @@ bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state,float th
 	auto angle=facing-object.creatureState.facing;
 	while(angle<-pi!float) angle+=2*pi!float;
 	while(angle>pi!float) angle-=2*pi!float;
-	auto turnGain=(6.0f/pi!float)*object.creatureStats.rotationSpeed(object.creatureState.movement==CreatureMovement.flying);
-	object.creatureState.rotationSpeedLimit=rotationSpeedLimitFactor*abs(angle)*(turnGain/updateFPS);
+	bool isFlying=object.creatureState.movement==CreatureMovement.flying;
+	if(isFlying){
+		auto turnGain=(6.0f/pi!float)*object.creatureStats.rotationSpeed(isFlying);
+		object.creatureState.rotationSpeedLimit=rotationSpeedLimitFactor*abs(angle)*(turnGain/updateFPS);
+	}else object.creatureState.rotationSpeedLimit=rotationSpeedLimitFactor*abs(angle);
 	if(angle>threshold) object.startTurningLeft(state);
 	else if(angle<-threshold) object.startTurningRight(state);
 	else{
@@ -14351,9 +14354,14 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 					rotationTarget=-min(rotationSpeed,object.creatureState.rotationSpeedLimit);
 				break;
 			}
-			auto rotationRamp=object.creatureStats.rotationAcceleration(object.creatureState.movement==CreatureMovement.flying)/(updateFPS*updateFPS);
-			auto rotationDiff=rotationTarget-object.creatureState.rotationSpeedCurrent;
-			object.creatureState.rotationSpeedCurrent+=min(rotationRamp,max(-rotationRamp,rotationDiff));
+			bool isFlying=object.creatureState.movement==CreatureMovement.flying;
+			if(isFlying){
+				auto rotationRamp=object.creatureStats.rotationAcceleration(isFlying)/(updateFPS*updateFPS);
+				auto rotationDiff=rotationTarget-object.creatureState.rotationSpeedCurrent;
+				object.creatureState.rotationSpeedCurrent+=min(rotationRamp,max(-rotationRamp,rotationDiff));
+			}else{
+				object.creatureState.rotationSpeedCurrent=rotationTarget;
+			}
 			if(object.creatureState.rotationSpeedCurrent!=0.0f){
 				object.creatureState.facing+=object.creatureState.rotationSpeedCurrent;
 				while(object.creatureState.facing>pi!float) object.creatureState.facing-=2*pi!float;
