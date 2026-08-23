@@ -3830,9 +3830,11 @@ struct Renderer(B){
 						self.rectangleSelection.addSorted(obj.id);
 				}else{
 					auto hitbox=obj.sacObject.hitbox(obj.rotation,obj.scale,obj.animationState,obj.frame/updateAnimFactor); // TODO: share computation with some other place?
-					auto center2d=transform(B.getModelViewProjectionMatrix(obj.position,obj.rotation,obj.scale),0.5f*(hitbox[0]+hitbox[1]));
+					auto center=0.5f*(hitbox[0]+hitbox[1]);
+					auto center2d=transform(B.getModelViewProjectionMatrix(obj.position,obj.rotation,obj.scale),center);
 					if(center2d.z>1.0f) return;
 					auto screenPosition=Vector2f(0.5f*(center2d.x+1.0f)*info.width,0.5f*(1.0f-center2d.y)*info.height);
+					if(!state.terrainLineOfSight(info.camera.position,obj.position+rotate(obj.rotation,obj.scale*center))) return;
 					if(self.isInRectangleSelect(screenPosition,*info)&&canSelect(info.renderSide,obj.id,state)) self.rectangleSelection.addSorted(obj.id);
 				}
 			}
