@@ -102,10 +102,12 @@ int zts_node_start(){ mixin(load); return sym(); }
 int zts_node_stop(){ mixin(load); return sym(); }
 int zts_node_is_online(){ mixin(load); return sym(); }
 ulong zts_node_get_id(){ mixin(load); return sym(); }
+
 int zts_net_join(ulong net_id){ mixin(load); return sym(net_id); }
 int zts_net_leave(ulong net_id){ mixin(load); return sym(net_id); }
 int zts_net_transport_is_ready(ulong net_id){ mixin(load); return sym(net_id); }
 int zts_net_get_broadcast(ulong net_id){ mixin(load); return sym(net_id); }
+int zts_net_get_mtu(ulong net_id){ mixin(load); return sym(net_id); }
 
 int zts_addr_is_assigned(ulong net_id,uint family){ mixin(load); return sym(net_id,family); }
 int zts_addr_get(ulong net_id,uint family,zts_sockaddr_storage* addr){ mixin(load); return sym(net_id,family,addr); }
@@ -245,6 +247,7 @@ void connectToZerotier(string identity_folder,ulong net_id){
 		Thread.sleep(50.dur!"msecs");
 	}
 	writeln("joined");
+	//writeln("mtu: ",zts_net_get_mtu(net_id));
 	while(!zts_addr_is_assigned(net_id, zts_af_inet)){
 		//zts_util_delay(50);
 		Thread.sleep(50.dur!"msecs");
