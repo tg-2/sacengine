@@ -465,8 +465,14 @@ class Lobby(B){
 					options.maxLevel=to!int(map.levl.multiMaxLevel);
 					options.souls=to!int(map.levl.multiSouls);
 				}
+				auto aiSettings0=options.settings;
+				aiSettings0.slot=0;
+				auto aiSettings1=options.settings;
+				aiSettings1.slot=1;
+				options.observer=true;
+				slot=options.slot=-1;
 				if(toContinue) gameInit=toContinue.gameInit;
-				else gameInit=.gameInit!B(sides,only(options.settings),options);
+				else gameInit=.gameInit!B(sides,only(options.settings,aiSettings0,aiSettings1),options);
 			}
 		}else gameInit=playback.gameInit;
 		if(options.refuseGreenSouls)
