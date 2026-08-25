@@ -10,6 +10,7 @@ import util, options: GameMode, SpellSpec;
 import sids, trig, ntts, nttData, bldg, sset;
 import sacmap, sacobject, animations, sacspell;
 import stats;
+import bots.shiny;
 enum int updateFPS=60;
 static assert(updateFPS%animFPS==0);
 enum updateAnimFactor=updateFPS/animFPS;
@@ -28426,6 +28427,10 @@ final class ObjectState(B){ // (update logic)
 		dangerGrid=new DangerGrid();
 		this.triggers=triggers;
 		sid=SideManager!B(32);
+		foreach(i,ref side;sides){
+			// sid.sides[i].sideType=side.assignment&PlayerAssignment.aiSide?SideType.shinyBot:SideType.human;
+			sid.sides[i].sideType=SideType.shinyBot;
+		}
 		// trig=TriggerState!B();
 	}
 	static struct Displacement{
@@ -28848,6 +28853,7 @@ final class ObjectState(B){ // (update logic)
 		this.eachHighlights!updateHighlights(this);
 		foreach(command;frameCommands)
 			applyCommand(command);
+		updateBots(this);
 		this.eachStatic!updateStructure(this);
 		this.eachMoving!((ref obj,state){
 			obj.updateCreature(state);
@@ -29745,6 +29751,8 @@ struct SideData(B){
 	int lastEnemyAlertFrame=int.max;
 	Array!int minimapAlertFrames; // object id -> alert blink end frame
 	SideState state;
+	SideType sideType;
+	ShinyAI!B shinyAI;
 	mixin Assign;
 	void updateLastSelected(int id){
 		if(lastSelected!=id){
