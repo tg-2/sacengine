@@ -76,10 +76,10 @@ struct AINode(B){
 	uint status=0;            // status flags
 	int age=0;                // ticks tracked
 	int ageSeen=0;            // age at last seen
-	Vector3f curPos;
-	Vector3f extrapPos;
-	Vector3f prevPos;
-	Vector3f velocity;
+	Vector3f curPos=Vector3f(0.0f,0.0f,0.0f);     // thaum zero-inits (C++), D defaults to NaN
+	Vector3f extrapPos=Vector3f(0.0f,0.0f,0.0f);
+	Vector3f prevPos=Vector3f(0.0f,0.0f,0.0f);
+	Vector3f velocity=Vector3f(0.0f,0.0f,0.0f);
 	// intrusive list links (node indices, 0 = none)
 	int idxP=0, idxN=0;       // all-nodes index list
 	int catP=0, catN=0;       // slot0 category sublist
@@ -116,17 +116,17 @@ struct AINode(B){
 	// last issued order (thaum caches the ntt's live order for 0x4878c0)
 	int ordState=0;
 	int ordTarget=0;          // target node index
-	Vector3f ordPos;
+	Vector3f ordPos=Vector3f(0.0f,0.0f,0.0f);
 }
 
 struct AIGroup{
 	int prio=0;               // K value {1,2,0,4}
 	uint statusOR=0;
-	Vector3f center;
-	Vector3f predicted;
-	Vector3f prevCenter;
-	Vector3f avgVel;
-	Vector3f stddev;
+	Vector3f center=Vector3f(0.0f,0.0f,0.0f); // thaum zero-inits (C++), D defaults to NaN
+	Vector3f predicted=Vector3f(0.0f,0.0f,0.0f);
+	Vector3f prevCenter=Vector3f(0.0f,0.0f,0.0f);
+	Vector3f avgVel=Vector3f(0.0f,0.0f,0.0f);
+	Vector3f stddev=Vector3f(0.0f,0.0f,0.0f);
 	int count=0;
 	int memberHead=0, memberTail=0; // node links (grpP/grpN or cgrpP/cgrpN)
 	// slot4 aggregates
@@ -149,17 +149,17 @@ struct AIRecord(B){
 	int leader=0;             // leader node
 	uint flags=0;             // bit1: proximity trigger
 	uint reqStatus=0;         // required-status mask (1/3/9)
-	Vector3f anchor;          // target pos snapshot
+	Vector3f anchor=Vector3f(0.0f,0.0f,0.0f); // target pos snapshot; thaum zero-inits (C++), D defaults to NaN
 	RaterAcc targetAcc;
 	// embedded member list
 	int memberHead=0, memberTail=0; // node links recP/recN
 	int count=0;
 	uint statusOR=0;
-	Vector3f center;
-	Vector3f predicted;
-	Vector3f prevCenter;
-	Vector3f velAcc;
-	Vector3f stddev;
+	Vector3f center=Vector3f(0.0f,0.0f,0.0f);
+	Vector3f predicted=Vector3f(0.0f,0.0f,0.0f);
+	Vector3f prevCenter=Vector3f(0.0f,0.0f,0.0f);
+	Vector3f velAcc=Vector3f(0.0f,0.0f,0.0f);
+	Vector3f stddev=Vector3f(0.0f,0.0f,0.0f);
 	RaterAcc membersAcc;
 	// task list links (claimed and free lists share them, like thaum's +0xb0/+0xb4)
 	int claimedP=0, claimedN=0;
@@ -586,7 +586,7 @@ void setupBase(B)(ref ShinyAI!B ai,ObjectState!B state,int n,NodeKind kind,int i
 	node.curPos=p;
 	node.prevPos=p;
 	node.extrapPos=p;
-	node.velocity=Vector3f.init;
+	node.velocity=Vector3f(0.0f,0.0f,0.0f);
 }
 void setupCre(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int id,uint flags){ // 0x486f50
 	setupBase(ai,state,n,NodeKind.cre,id,flags|0x8);
@@ -1204,10 +1204,10 @@ void groupSetup5(B)(ref ShinyAI!B ai,ObjectState!B state,int g,int prio){ // 0x4
 
 void groupRefresh4(B)(ref ShinyAI!B ai,ObjectState!B state,int g){ // slot4 group vtbl[7] 0x487e90
 	auto grp=&ai.groups4[g];
-	grp.avgVel=Vector3f.init;
+	grp.avgVel=Vector3f(0.0f,0.0f,0.0f); // accumulators: thaum zeroes (C++); Vector3f.init is NaN
 	grp.prevCenter=grp.center;
-	grp.center=Vector3f.init;
-	auto sumSq=Vector3f.init;
+	grp.center=Vector3f(0.0f,0.0f,0.0f);
+	auto sumSq=Vector3f(0.0f,0.0f,0.0f);
 	double countF=0.0;
 	grp.count=0;
 	grp.statusOR=0;
@@ -1258,10 +1258,10 @@ void groupRefresh4(B)(ref ShinyAI!B ai,ObjectState!B state,int g){ // slot4 grou
 }
 void groupRefresh5(B)(ref ShinyAI!B ai,ObjectState!B state,int g){ // slot5 group vtbl[7] 0x4865d0 (aggregate only)
 	auto grp=&ai.groups5[g];
-	grp.avgVel=Vector3f.init;
+	grp.avgVel=Vector3f(0.0f,0.0f,0.0f); // accumulators: thaum zeroes (C++); Vector3f.init is NaN
 	grp.prevCenter=grp.center;
-	grp.center=Vector3f.init;
-	auto sumSq=Vector3f.init;
+	grp.center=Vector3f(0.0f,0.0f,0.0f);
+	auto sumSq=Vector3f(0.0f,0.0f,0.0f);
 	double countF=0.0;
 	grp.count=0;
 	grp.statusOR=0;
@@ -1491,10 +1491,10 @@ bool recContains(B)(ref ShinyAI!B ai,int ri,int n){ // 0x48bd50
 }
 void recordRefresh(B)(ref ShinyAI!B ai,ObjectState!B state,int ri){ // 0x48be10 (aggregate only, no rater tail)
 	auto rec=&ai.records[ri];
-	rec.velAcc=Vector3f.init;
+	rec.velAcc=Vector3f(0.0f,0.0f,0.0f); // accumulators: thaum zeroes (C++); Vector3f.init is NaN
 	rec.prevCenter=rec.center;
-	rec.center=Vector3f.init;
-	auto sumSq=Vector3f.init;
+	rec.center=Vector3f(0.0f,0.0f,0.0f);
+	auto sumSq=Vector3f(0.0f,0.0f,0.0f);
 	double countF=0.0;
 	rec.count=0;
 	rec.statusOR=0;
@@ -1534,7 +1534,7 @@ void recordSetup(B)(ref ShinyAI!B ai,ObjectState!B state,int ri,int target,uint 
 	recordRelease(ai,ri);
 	auto rec=&ai.records[ri];
 	// thaum copies 13 dwords node+0x4..+0x38 (positions/velocity); only the anchor is ever read
-	rec.anchor=target?ai.nodes[target].curPos:Vector3f.init;
+	rec.anchor=target?ai.nodes[target].curPos:Vector3f(0.0f,0.0f,0.0f);
 	rec.target=target;
 	rec.score=0.0f;
 	rec.flags=flags;
@@ -1576,7 +1576,7 @@ int claim(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task,int ri,ref i
 	combine(rec.membersAcc,1.0f,node.acc,1.0f);
 	recAddMember(ai,ri,n);
 	node.record=ri;
-	if(node.status&0x20000&&rec.leader==0) rec.leader=n; // dead: 0x20000 is never set anywhere in thaum
+	if(node.status&0x20000&&rec.leader==0) rec.leader=n; // wizards: thaum setupWiz 0x48c800 sets status 0x2000e (incl. 0x20000)
 	auto p=soulsPair21(ai,state,n);
 	return p[0]+p[1];
 }
