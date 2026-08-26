@@ -453,12 +453,23 @@ Vector3f entPos(B)(ObjectState!B state,NodeKind kind,int id){
 	}
 }
 bool entExists(B)(ObjectState!B state,NodeKind kind,int id){
-	if(!id||!state.isValidTarget(id)) return false;
+	// no blanket isValidTarget: sacengine building ids fail it (ObjectType.building>=numMoving+numStatic); the per-kind lookups validate
+	if(!id) return false;
 	final switch(kind) with(NodeKind){
 		case wiz,maho,t4o: return state.movingObjectById!((ref o,state)=>true,()=>false)(id,state);
 		case cre: return state.soulById!((ref s,state)=>true,()=>false)(id,state);
 		case str: return state.buildingById!((ref b,state)=>true,()=>false)(id,state);
 		case none: return false;
+	}
+}
+// thaum targets the ntt directly; sacengine needs a TargetType-specific OrderTarget:
+// buildings are targeted via their static component (cf. mouse picking), souls with the raised center (cf. state.d:13032)
+OrderTarget entOrderTarget(B)(ObjectState!B state,NodeKind kind,int id){
+	final switch(kind) with(NodeKind){
+		case wiz,maho,t4o: return state.movingObjectById!((ref o)=>OrderTarget(TargetType.creature,o.id,o.center),()=>OrderTarget.init)(id);
+		case str: return state.buildingById!((ref b,ObjectState!B state)=>b.componentIds.length?centerTarget(b.componentIds[0],state):OrderTarget.init,()=>OrderTarget.init)(id,state);
+		case cre: return state.soulById!((ref s)=>OrderTarget(TargetType.soul,s.id,s.position+Vector3f(0.0f,0.0f,0.75f*SacSoul!B.soulHeight)),()=>OrderTarget.init)(id);
+		case none: return OrderTarget.init;
 	}
 }
 // thaum ntt.vtbl[14] for moving objects: [stateRec+0x30]&0x4000
@@ -999,8 +1010,7 @@ void updateReplan(B)(ref ShinyAI!B ai,ObjectState!B state,int dTicks){ // 0x4841
 	claimPass(ai,state);    // 0x484c70
 	ai.handledFlags|=1;
 }
-void discoverScan(B)(ref ShinyAI!B ai,ObjectState!B state,NodeKind kind,int id,bool own){
-	if(!own&&!state.positionVisibleToSide(ai.side,entPos!B(state,kind,id))) return;
+void discoverScan(B)(ref ShinyAI!B ai,ObjectState!B state,NodeKind kind,int id){
 	if(!shouldTrack(ai,state,kind,id)) return;
 	auto n=findNode(ai,kind,id);
 	if(!n) n=addNode(ai,state,kind,id);
@@ -1010,20 +1020,20 @@ void discoverScan(B)(ref ShinyAI!B ai,ObjectState!B state,NodeKind kind,int id,b
 	}
 }
 void discover(B)(ref ShinyAI!B ai,ObjectState!B state){ // 0x484b30
-	// phase 1: thaum walks the side's vision list; approximation: own entities always, others if visible
+	// phase 1: thaum walks the global entity list ([ai+0xf8]+0xc); no visibility/per-side gate on add, shouldTrack (0x487cd0) only
 	state.eachMoving!((ref MovingObject!B o,ObjectState!B state,ShinyAI!B* ai){
 		if(o.isWizard){
-			discoverScan(*ai,state,NodeKind.wiz,o.id,o.side==ai.side);
+			discoverScan(*ai,state,NodeKind.wiz,o.id);
 		}else{
 			auto k=o.sacObject.isManahoar?NodeKind.maho:NodeKind.t4o;
-			discoverScan(*ai,state,k,o.id,o.side==ai.side);
+			discoverScan(*ai,state,k,o.id);
 		}
 	})(state,&ai);
 	state.eachBuilding!((ref Building!B b,ObjectState!B state,ShinyAI!B* ai){
-		discoverScan(*ai,state,NodeKind.str,b.id,b.side==ai.side);
+		discoverScan(*ai,state,NodeKind.str,b.id);
 	})(state,&ai);
 	state.eachSoul!((ref Soul!B s,ObjectState!B state,ShinyAI!B* ai){
-		discoverScan(*ai,state,NodeKind.cre,s.id,s.preferredSide==ai.side);
+		discoverScan(*ai,state,NodeKind.cre,s.id);
 	})(state,&ai);
 	// phase 2: remove eliminated wizards and stale unseen nodes
 	for(int n=ai.idxHead;n;){
@@ -1851,7 +1861,8 @@ void issueOrder(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int ostate,int tar
 		if(target){
 			auto tnode=&ai.nodes[target];
 			if(!entExists!B(state,tnode.kind,tnode.id)) return; // thaum always has a live target ntt
-			ord.target=centerTarget(tnode.id,state);
+			ord.target=entOrderTarget!B(state,tnode.kind,tnode.id);
+			if(ord.target.type==TargetType.none) return;
 		}else if(pos) ord.target=positionTarget(*pos,state);
 		else return;
 		switch(ostate){
@@ -2318,7 +2329,7 @@ bool desecrationOngoing(B)(ObjectState!B state,int id){ // 0x466950(ntt,0,0)=='s
 	}
 	return false;
 }
-uint convertMask(B)(ObjectState!B state,int id){ // ntt+0x434 approximation: bitmask of sides with an active convert ritual on the structure
+uint convertMask(B)(ObjectState!B state,int id){ // ntt+0x434 approximation: bitmask of sides with an active convert ritual on the soul
 	uint mask=0;
 	foreach(i;0..state.obj.opaqueObjects.effects.sacDocCastings.length){
 		auto c=&state.obj.opaqueObjects.effects.sacDocCastings[i];
@@ -2326,10 +2337,10 @@ uint convertMask(B)(ObjectState!B state,int id){ // ntt+0x434 approximation: bit
 	}
 	return mask;
 }
-int findBestNear(B)(ref ShinyAI!B ai,ObjectState!B state,Vector3f* pos,float radius,int enemyFlag){ // 0x485490 GetNearestPickup: walks slot2 cat2 (neutral structures), chain +0x6c
+int findBestNear(B)(ref ShinyAI!B ai,ObjectState!B state,Vector3f* pos,float radius,int enemyFlag){ // 0x485490 GetNearestPickup: walks fam C cat2 (neutral souls), head ai+0x7c, chain node+0x6c
 	float best=0.0f;
 	int bestNode=0;
-	for(int m=ai.fam2Head[2];m;m=ai.nodes[m].famN){
+	for(int m=ai.fam3Head[2];m;m=ai.nodes[m].famN){
 		auto t=&ai.nodes[m];
 		auto mask=convertMask!B(state,t.id);
 		// enemyFlag: require ntt+0x434 & own side mask; else: skip if our bit set or a 'ccas' attachment exists (0x46a840) - both reduce to mask!=0 here (documented)
@@ -2520,7 +2531,7 @@ int executeBestCast(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int checkOnly)
 		}
 		// can-cast check (thaum ntt vtbl[64] on the spell tag; spellStatus approximation, documented)
 		OrderTarget ot;
-		if(e.target&&state.isValidTarget(ai.nodes[e.target].id)) ot=centerTarget(ai.nodes[e.target].id,state);
+		if(e.target) ot=entOrderTarget!B(state,ai.nodes[e.target].kind,ai.nodes[e.target].id);
 		bool canCast=false;
 		if(auto wizard=state.getWizard(node.id)) canCast=state.spellStatus!false(wizard,e.provider,ot)==SpellStatus.ready;
 		if(!canCast){
@@ -2568,7 +2579,7 @@ int enqueueForcedExecute(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int targe
 int castCachedInRange(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int t){ // 0x48dce0
 	auto node=&ai.nodes[n];
 	if(node.shrineSpell is null) return 0;
-	if(cast(double)node.threat<0.6) return 0; // fcomp 0.6d, CF only
+	if(cast(double)node.threat>=0.6) return 0; // fcomp 0.6d: test ah,1;jne -> CF (threat<0.6 or unordered) proceeds
 	auto sq=distSq3(node.curPos,ai.nodes[t].curPos);
 	auto r=cast(double)node.shrineSpell.range;
 	r=r*r;
