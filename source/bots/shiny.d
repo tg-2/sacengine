@@ -2079,7 +2079,8 @@ void wizSpellRebuild(B)(ref ShinyAI!B ai,ObjectState!B state,int n){ // 0x48c8d0
 				if(s.tag=="oham") node.manahoarSpell=s; // 0x48ca50 cached spells
 				if(s.tag=="ccas") node.convertSpell=s;
 				if(s.tag=="ucas") node.desecrateSpell=s;
-				if(node.shrineSpell is null&&s.type==SpellType.structure&&(s.flags&0x400)&&(s.flags&0x4000)) node.shrineSpell=s; // 0x48cc30: first match wins
+				// 0x48cc30: first match wins; thaum tests bits 0x400|0x4000 of [provider+0x48] (not strc.flags, no spell has them there), on real data the match is always the manalith = first structure spell with onlyManafounts
+				if(node.shrineSpell is null&&s.type==SpellType.structure&&(s.flags&SpelFlags.onlyManafounts)) node.shrineSpell=s;
 			}
 		}
 	},(){})(node.id,state);
