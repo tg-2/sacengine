@@ -815,15 +815,15 @@ void updateStr(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int dt){ // 0x486e1
 		node.statusTick=node.age+8;
 		state.buildingById!((ref b){
 			auto bfl=cast(uint)b.sacBuilding.flags;
-			// ntt+0x440 = base building, ntt+0x474 = building on top
-			if(b.base==0&&(bfl&0x10)){
+			// ntt+0x440==0 always holds here: thaum sets +0x440 only on sub-component entities of multi-component structures (altar tops), which sacengine folds into one Building; the fount association is one-directional (fount ntt+0x474 = building on top, sacengine top/base)
+			if(bfl&0x10){
 				if(b.top==0) node.status|=0x8000; else node.status&=~0x8000;
 			}
 			// ntt+0x43c = construction progress, always 1.0f in sacengine (documented gap)
-			if(b.top==0&&b.base==0&&(bfl&0xc00)&&ftol(cast(double)b.sacBuilding.bldg.unknown1[3]*36408.88888888889)!=0)
+			if(b.top==0&&(bfl&0xc00)&&ftol(cast(double)b.sacBuilding.bldg.unknown1[3]*36408.88888888889)!=0)
 				node.status|=0x1000;
 			else node.status&=~0x1000;
-			if(b.base==0&&(bfl&0x4000)) node.status|=0x4000; else node.status&=~0x4000;
+			if(bfl&0x4000) node.status|=0x4000; else node.status&=~0x4000;
 			if(bfl&2) node.status|=0x40000; else node.status&=~0x40000;
 		},(){})(node.id);
 	}
@@ -1994,8 +1994,8 @@ bool findBestCaptureTarget(B)(ref ShinyAI!B ai,ObjectState!B state,Vector3f* pos
 		if(node.flags&0x20){ // structure: ready unbuilt manafount, weight by souls (ntt+0x49c)
 			w*=state.buildingById!((ref b,state){
 				auto bfl=cast(uint)b.sacBuilding.flags;
-				// ntt+0x474==0 && ntt+0x440==0 && ntt+0x43c==1.0 (progress always 1.0f in sacengine) && ntt+0x47c&0xc00
-				if(b.base==0&&b.top==0&&(bfl&0xc00)!=0) return cast(float)ftol(cast(double)b.sacBuilding.bldg.unknown1[3]*36408.88888888889);
+				// ntt+0x474==0 && ntt+0x440==0 (always true, see updateStr) && ntt+0x43c==1.0 (progress always 1.0f in sacengine) && ntt+0x47c&0xc00
+				if(b.top==0&&(bfl&0xc00)!=0) return cast(float)ftol(cast(double)b.sacBuilding.bldg.unknown1[3]*36408.88888888889);
 				return 0.0f;
 			},()=>0.0f)(node.id,state);
 		}else w*=1000.0f; // active manahoar (maho status 0x1000)
@@ -2234,13 +2234,13 @@ float rateSpellAcc(B)(ref ShinyAI!B ai,ObjectState!B state,ref SpellAcc!B acc,in
 			return state.movingObjectById!((ref o,state){
 				auto order=&o.creatureAI.order;
 				double base;
-				// thaum reads the target's live order cmd (0x46e1d0): 0x22 (engage) -> base 60, 7 (advance) -> base 40, else 0
-				if(tnode.ordState==34&&order.command.among(CommandType.guard,CommandType.guardArea)){ // 0x22
+				// thaum reads the target's live order cmd (0x46e1d0): 7 (advance) -> wizards excluded, empty spellbook required, base 60; 0x22 (engage) -> base 40, no gates; else 0
+				if(tnode.ordState==7&&order.command==CommandType.advance){ // 7
 					if(tnode.kind==NodeKind.wiz) return 0.0f;
 					auto ors=spellbookOR(state,tnode.id);
 					if(ors[0]||ors[1]) return 0.0f;
 					base=60.0;
-				}else if(tnode.ordState==7&&order.command==CommandType.advance) base=40.0;
+				}else if(tnode.ordState==34&&order.command.among(CommandType.guard,CommandType.guardArea,CommandType.move)) base=40.0; // 0x22 (move: soul-pickup engage maps to move)
 				else return 0.0f;
 				auto p=order.target.id&&order.target.type!=TargetType.terrain&&state.isValidTarget(order.target.id)?
 					state.movingObjectById!((ref t,state)=>t.position,()=>order.target.position)(order.target.id,state):order.target.position;
