@@ -427,8 +427,8 @@ void setup(B)(ref ShinyAI!B ai,ObjectState!B state,int side){
 	ai.forceFlags=0xf;
 	ai.aggression=1.0f;
 	ai.nodes.length=1; // dummy
-	ai.groups4.length=1;
-	ai.groups5.length=1;
+	ai.groups4.length=1; // dummy
+	ai.groups5.length=1; // dummy
 	ai.records.length=1; // dummy
 	foreach(i,kind;[TaskKind.capture,TaskKind.guard,TaskKind.idle])
 		ai.tasks[i].kind=kind;
@@ -1872,7 +1872,8 @@ void issueOrder(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int ostate,int tar
 			case 5: ord.command=CommandType.move; break; // thaum capture/interact; no capture mechanic in sacengine (documented gap)
 			case 6: ord.command=CommandType.attack; break;
 			case 7: ord.command=CommandType.advance; break;
-			case 34: ord.command=target?CommandType.guard:CommandType.guardArea; break; // 0x22: brain-driven engage; guard approximation (documented gap)
+			case 34: // 0x22: brain-driven engage; guard approximation for creatures (documented gap), move for soul targets (thaum touch-collects by walking onto the soul; sacengine collects by proximity)
+				ord.command=target?(ai.nodes[target].kind==NodeKind.cre?CommandType.move:CommandType.guard):CommandType.guardArea; break;
 			default: return;
 		}
 		//import std.stdio;writeln("ORDERING: ",ai.side,": ",o.id," ",o.position," ",ord);
@@ -2190,7 +2191,7 @@ float rateSpellAcc(B)(ref ShinyAI!B ai,ObjectState!B state,ref SpellAcc!B acc,in
 			auto amountI=cast(int)(cast(uint)spel.amount|cast(uint)spel.unknown14<<16);
 			foreach(cat;0..4){
 				if(cat==2) continue; // cats 0,1,3 only
-				for(auto g=ai.grp4Head[cat];g!=-1;g=ai.groups4[g].gN){
+				for(auto g=ai.grp4Head[cat];g;g=ai.groups4[g].gN){
 					auto grp=&ai.groups4[g];
 					auto d2=cast(float)distSq3(grp.center,tnode.curPos);
 					if(cast(double)d2>cast(double)r2) continue;
@@ -2233,12 +2234,13 @@ float rateSpellAcc(B)(ref ShinyAI!B ai,ObjectState!B state,ref SpellAcc!B acc,in
 			return state.movingObjectById!((ref o,state){
 				auto order=&o.creatureAI.order;
 				double base;
-				if(order.command==CommandType.attack){
+				// thaum reads the target's live order cmd (0x46e1d0): 0x22 (engage) -> base 60, 7 (advance) -> base 40, else 0
+				if(tnode.ordState==34&&order.command.among(CommandType.guard,CommandType.guardArea)){ // 0x22
 					if(tnode.kind==NodeKind.wiz) return 0.0f;
 					auto ors=spellbookOR(state,tnode.id);
 					if(ors[0]||ors[1]) return 0.0f;
 					base=60.0;
-				}else if(order.command==CommandType.move) base=40.0;
+				}else if(tnode.ordState==7&&order.command==CommandType.advance) base=40.0;
 				else return 0.0f;
 				auto p=order.target.id&&order.target.type!=TargetType.terrain&&state.isValidTarget(order.target.id)?
 					state.movingObjectById!((ref t,state)=>t.position,()=>order.target.position)(order.target.id,state):order.target.position;
@@ -2256,7 +2258,7 @@ float rateSpellAcc(B)(ref ShinyAI!B ai,ObjectState!B state,ref SpellAcc!B acc,in
 			if(anode.kind!=NodeKind.str) return 0.0f; // anchor.vtbl[14]!=0: structure nodes only
 			auto r2=cast(float)(cast(double)spel.effectRange*spel.effectRange*4.0f);
 			auto total=0.0f;
-			for(auto g=ai.grp4Head[0];g!=-1;g=ai.groups4[g].gN){
+			for(auto g=ai.grp4Head[0];g;g=ai.groups4[g].gN){
 				auto grp=&ai.groups4[g];
 				auto d2=cast(float)distSq3(grp.center,tnode.curPos);
 				if(cast(double)d2<=cast(double)r2) total=cast(float)(cast(double)total+rate(grp.acc));
@@ -2330,7 +2332,11 @@ bool desecrationOngoing(B)(ObjectState!B state,int id){ // 0x466950(ntt,0,0)=='s
 	}
 	return false;
 }
-uint convertMask(B)(ObjectState!B state,int id){ // ntt+0x434 approximation: bitmask of sides with an active convert ritual on the soul
+uint pickupMask(B)(ObjectState!B state,int id){ // thaum soul+0x434: static touch-collect side mask, from the soul record or 0xffffffff (0x4753e0/0x475abf); approximation via soulSide: creatureId==0 souls (e.g. gibs) are touch-collectible by everyone regardless of preferredSide
+	auto s=soulSide(id,state);
+	return s<0?0xffffffffu:1u<<s;
+}
+uint convertMask(B)(ObjectState!B state,int id){ // 'ccas' attachment check (0x46a840) approximation: bitmask of sides with an active convert ritual on the soul
 	uint mask=0;
 	foreach(i;0..state.obj.opaqueObjects.effects.sacDocCastings.length){
 		auto c=&state.obj.opaqueObjects.effects.sacDocCastings[i];
@@ -2343,10 +2349,9 @@ int findBestNear(B)(ref ShinyAI!B ai,ObjectState!B state,Vector3f* pos,float rad
 	int bestNode=0;
 	for(int m=ai.fam3Head[2];m;m=ai.nodes[m].famN){
 		auto t=&ai.nodes[m];
-		auto mask=convertMask!B(state,t.id);
-		// enemyFlag: require ntt+0x434 & own side mask; else: skip if our bit set or a 'ccas' attachment exists (0x46a840) - both reduce to mask!=0 here (documented)
-		if(enemyFlag){ if(!(mask&(1u<<ai.side))) continue; }
-		else if(mask) continue;
+		auto mask=pickupMask!B(state,t.id); // ntt+0x434
+		if(enemyFlag){ if(!(mask&(1u<<ai.side))) continue; } // pickups: only souls we may touch-collect
+		else if((mask&(1u<<ai.side))||convertMask!B(state,t.id)) continue; // convert targets: souls we may not touch-collect, without an active convert ritual ('ccas' attachment)
 		if(!sameRegionPos!B(state,t.curPos,*pos)) continue; // 0x470700 region check (node+0x4)
 		immutable dx=cast(double)t.extrapPos.x-pos.x, dy=cast(double)t.extrapPos.y-pos.y, dz=cast(double)t.extrapPos.z-pos.z; // node+0x10
 		auto d=cast(float)sqrt(cast(float)(dx*dx+dy*dy+dz*dz));
