@@ -503,7 +503,8 @@ bool shouldTrack(B)(ref ShinyAI!B ai,ObjectState!B state,NodeKind kind,int id){
 		if(rb<0||ra!=rb) return false;
 	}
 	final switch(kind) with(NodeKind){
-		case str: return state.buildingById!((ref b,state)=>b.base==0&&(cast(uint)b.sacBuilding.flags&0xc17)!=0,()=>false)(id,state);
+		// thaum rejects sub-components of multi-component structures (ntt+0x440=primary component, set by the map loader); sacengine folds those into one Building, so no case remains: fount-placed buildings keep ntt+0x440==0 in thaum and are tracked
+		case str: return state.buildingById!((ref b,state)=>(cast(uint)b.sacBuilding.flags&0xc17)!=0,()=>false)(id,state);
 		case wiz,t4o,maho: return !entDead!B(state,id);
 		case cre: return true;
 		case none: return false;
