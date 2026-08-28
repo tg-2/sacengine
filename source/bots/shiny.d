@@ -439,7 +439,7 @@ void setup(B)(ref ShinyAI!B ai,ObjectState!B state,int side){
 int entSide(B)(ObjectState!B state,NodeKind kind,int id){
 	final switch(kind) with(NodeKind){
 		case wiz,maho,t4o: return state.movingObjectById!((ref o,state)=>o.side,()=>-1)(id,state);
-		case cre: return state.soulById!((ref s,state)=>s.preferredSide<0?neutralSide:s.preferredSide,()=>-1)(id,state);
+		case cre: return state.soulById!((ref s,state)=>neutralSide,()=>-1)(id,state); // thaum assigns soul ntts the neutral side record at spawn (0x459df9: vtbl[0x58](ds:0x4d7c68)); the owner side lives only in the +0x434 touch-collect mask (pickupMask)
 		case str: return state.buildingById!((ref b,state)=>b.side,()=>-1)(id,state);
 		case none: return -1;
 	}
@@ -1868,9 +1868,9 @@ void issueOrder(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int ostate,int tar
 		else return;
 		switch(ostate){
 			case 2: ord.command=CommandType.move; break;
-			case 3: ord.command=target?CommandType.guard:CommandType.guardArea; break;
+			case 3: ord.command=target?CommandType.retreat:CommandType.guardArea; break; // thaum cmd 3/5 share handler 0x46e60a: move to live target pos, arrive at targetRadius+10; engine retreat = moveWithinRange 9.0 (the follow-with-gap spawn() uses)
 			case 4: ord.command=CommandType.move; break;
-			case 5: ord.command=CommandType.move; break; // thaum capture/interact; no capture mechanic in sacengine (documented gap)
+			case 5: ord.command=target?CommandType.retreat:CommandType.move; break; // thaum capture/interact; no capture mechanic in sacengine (documented gap)
 			case 6: ord.command=CommandType.attack; break;
 			case 7: ord.command=CommandType.advance; break;
 			case 34: // 0x22: brain-driven engage; guard approximation for creatures (documented gap), move for soul targets (thaum touch-collects by walking onto the soul; sacengine collects by proximity)
@@ -1882,9 +1882,10 @@ void issueOrder(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int ostate,int tar
 	},(){})(node.id,state);
 }
 void orderIfChanged(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int ostate,int target,Vector3f* pos){ // 0x4878c0
-	// thaum compares against the ntt's live order; we compare against our last-issued cache (documented approximation)
+	// thaum compares against the ntt's live order (0x4878c0: 0x46e0f0 reads it), so completed orders get re-issued; match that by also re-issuing once the engine order has popped
 	auto node=&ai.nodes[n];
-	if(node.ordState==ostate&&(target==0||node.ordTarget==target)&&(pos is null||node.ordPos==*pos)) return;
+	if(node.ordState==ostate&&(target==0||node.ordTarget==target)&&(pos is null||node.ordPos==*pos)&&
+	   state.movingObjectById!((ref o,state)=>o.creatureAI.order.command!=CommandType.none,()=>true)(node.id,state)) return;
 	issueOrder(ai,state,n,ostate,target,pos);
 	node.ordState=ostate;
 	node.ordTarget=target;
@@ -2509,6 +2510,29 @@ void wizSacrifice(B)(ref ShinyAI!B ai,ObjectState!B state,int n,float[3]* w3,int
 
 // ---- wizard: cast execution ----
 
+bool canCastSpell(B)(ref ShinyAI!B ai,ObjectState!B state,int n,SacSpell!B provider){ // thaum wizard vtbl[0x100] 0x481580
+	auto wizard=state.getWizard(ai.nodes[n].id);
+	if(wizard is null) return false;
+	bool found=false;
+	foreach(entry;(*wizard).getSpells()) if(entry.spell is provider){ // vtbl[0xf8] spellbook lookup by tag
+		found=true;
+		if(entry.cooldown>0.0f) return false; // 'nerd'
+		break;
+	}
+	if(!found) return false; // '_XP_'
+	// entry+0x8&2 disabled -> '_XP_': no sacengine equivalent (documented gap)
+	if(provider.type==SpellType.creature){ // [spell+0xc]==2
+		if((*wizard).souls<provider.soulCost) return false; // 'spir'
+	}else if(provider.type==SpellType.spell){ // [spell+0xc]==4
+		if(provider.connectedToConversion&&(*wizard).closestShrine==0) return false; // flags2 0x400 -> +0xb80 'obld'
+		if(provider.nearEnemyAltar&&(*wizard).closestEnemyAltar==0) return false; // flags2 0x200 -> +0xb7c 'ealt'
+		if(provider.nearBuilding&&(*wizard).closestBuilding==0) return false; // flags2 0x100 -> +0xb84 'obld'
+	}
+	auto mana=state.movingObjectById!((ref o,state)=>ftol(o.creatureStats.mana),()=>0)(ai.nodes[n].id,state);
+	if(ftol(provider.manaCost)>mana) return false; // 'mana' (thaum compares int mana fields)
+	return true;
+}
+
 int executeBestCast(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int checkOnly){ // 0x48d0b0
 	auto node=&ai.nodes[n];
 	size_t i=0;
@@ -2536,11 +2560,10 @@ int executeBestCast(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int checkOnly)
 				goto exit;
 			}
 		}
-		// can-cast check (thaum ntt vtbl[64] on the spell tag; spellStatus approximation, documented)
+		// can-cast check (thaum wizard vtbl[0x100] 0x481580: no range/target-validity checks — the entire thaum cast path has none)
 		OrderTarget ot;
 		if(e.target) ot=entOrderTarget!B(state,ai.nodes[e.target].kind,ai.nodes[e.target].id);
-		bool canCast=false;
-		if(auto wizard=state.getWizard(node.id)) canCast=state.spellStatus!false(wizard,e.provider,ot)==SpellStatus.ready;
+		bool canCast=canCastSpell!B(ai,state,n,e.provider);
 		if(!canCast){
 			if(!(e.flag&1)) goto exit;
 			if(!e.obj) return 0;
@@ -2569,7 +2592,8 @@ int executeBestCast(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int checkOnly)
 				goto exit;
 			}
 		}
-		startCasting(node.id,e.provider,ot,state); // 0x45daa0 EXECUTE (thaum ignores the result)
+		startCasting(node.id,e.provider,ot,state,false,true); // 0x45daa0 EXECUTE (light can-cast only; thaum ignores the result)
+		// wizard busy -> engine queueSpell: approximation of thaum's persistent entity order (documented)
 		for(size_t j=i;j+1<node.castQueue.length;j++) node.castQueue[j]=node.castQueue[j+1]; // unlink (spent-pool relink is memory management only)
 		node.castQueue.length=node.castQueue.length-1;
 		return 1;
