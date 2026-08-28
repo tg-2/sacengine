@@ -9713,13 +9713,15 @@ int getCastingTime(B)(ref MovingObject!B object,SacSpell!B spell,bool stationary
 
 enum manaEpsilon=1e-2f;
 enum summonSoundGain=2.0f;
-bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!B state,bool isQueued=false){
+bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!B state,bool isQueued=false,bool force=false){
 	auto wizard=state.getWizard(caster);
 	if(!wizard) return false;
-	auto spellStatus=state.spellStatus!false(wizard,spell,target);
-	if(spellStatus!=SpellStatus.ready){
-		if(!isQueued) return false;
-		if(!canRunSpellQueueForSpellStatus(spellStatus)) return false;
+	if(!force){ // TODO: get rid of this
+		auto spellStatus=state.spellStatus!false(wizard,spell,target);
+		if(spellStatus!=SpellStatus.ready){
+			if(!isQueued) return false;
+			if(!canRunSpellQueueForSpellStatus(spellStatus)) return false;
+		}
 	}
 	int numFrames=state.movingObjectById!((ref object,spell,wizard,state){
 		int numFrames=getCastingNumFrames(object,spell,wizard,state);
@@ -13462,6 +13464,8 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 				targetId=object.creatureAI.order.target.id=0;
 			Vector3f targetPosition;
 			if(targetId) targetPosition=state.movingObjectById!((obj)=>obj.position,()=>Vector3f.init)(targetId);
+			if(targetId&&targetPosition is Vector3f.init)
+				targetPosition=state.buildingById!((ref b,state)=>b.position(state),()=>Vector3f.init)(targetId,state);
 			if(targetPosition !is Vector3f.init){
 				if(!object.retreatTowards(targetPosition,state))
 					object.unqueueOrder(state);
