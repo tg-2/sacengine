@@ -1111,7 +1111,7 @@ Tuple!(int,int) soulsPair21(B)(ref ShinyAI!B ai,ObjectState!B state,int n){ // n
 	auto node=&ai.nodes[n];
 	final switch(node.kind) with(NodeKind){
 		case t4o,maho:
-			return tuple(state.movingObjectById!((ref o,state)=>o.creatureStats.effects.carrying,()=>0)(node.id,state),0);
+			return tuple(state.movingObjectById!((ref o,state)=>o.sacObject.numSouls,()=>0)(node.id,state),0); // thaum reads ntt+0xb30 (soul worth); effects.carrying is SacDoc-only
 		case wiz: return tuple(node.manaSnap,node.soulsSnap); // manaSnap is never updated by thaum (stays 0)
 		case str,cre,none: return tuple(0,0);
 	}
@@ -2012,7 +2012,7 @@ int autoCapture(B)(ref ShinyAI!B ai,ObjectState!B state,int n){ // 0x487600
 	if(p[1]==0) return 0;
 	if(p[0]>nodeSlot22(ai,state,n)&&!nodeIsRespawning(ai,state,n)) return 0;
 	int bn=0; float br=0.0f;
-	if(!findBestCaptureTarget(ai,state,&node.curPos,2592.0f,&bn,&br)) return 0;
+	if(!findBestCaptureTarget(ai,state,&node.curPos,2580.0f,&bn,&br)) return 0; // thaum passes 0x45624000
 	if(br*br<distSq3(node.curPos,ai.nodes[bn].curPos)) orderIfChanged(ai,state,n,5,bn,null);
 	return 1;
 }
@@ -2378,7 +2378,7 @@ int pickGuardCreature(B)(ref ShinyAI!B ai,ObjectState!B state,int t){ // 0x48570
 		double w;
 		if(d<=10.0f) w=1.0f;
 		else if(d<3620.0f) w=cast(double)(3620.0f-d)*0.0002770083083305508f;
-		else w=0.0f;
+		else w=1.0f; // thaum 0x485700 far-band quirk: d>=3620 falls through to w=1.0f
 		auto v=w*p[0]; // fimul souls
 		if(cast(double)best<v){ best=cast(float)v; bestNode=m; } // strict argmax
 	}
@@ -2450,7 +2450,8 @@ void wizRetreat(B)(ref ShinyAI!B ai,ObjectState!B state,int n,float[3]* w3){ // 
 	if(!t) return;
 	// thaum then reads an uninitialized stack local in the Q=0.5f*(r1/r2)*(d2^2+garbage^2) retreat-abort
 	// test and compares against f32(r1); it effectively never aborts deterministically (documented), fall through
-	enqueueCast(ai,n,cast(float)((1.0-cast(double)node.threat)*(*w3)[2]*0.8999999761581421),t,node.convertSpell,node.convertSpell.range,0,0);
+	// thaum passes obj=0 (no approach: its cast path has no range check); sacengine's spellStatus gates range, so approach the soul (obj=t) or convert would never fire
+	enqueueCast(ai,n,cast(float)((1.0-cast(double)node.threat)*(*w3)[2]*0.8999999761581421),t,node.convertSpell,node.convertSpell.range,t,0);
 }
 void wizSacrifice(B)(ref ShinyAI!B ai,ObjectState!B state,int n,float[3]* w3,int ri){ // 0x48d8b0
 	auto node=&ai.nodes[n];
@@ -2510,29 +2511,6 @@ void wizSacrifice(B)(ref ShinyAI!B ai,ObjectState!B state,int n,float[3]* w3,int
 
 // ---- wizard: cast execution ----
 
-bool canCastSpell(B)(ref ShinyAI!B ai,ObjectState!B state,int n,SacSpell!B provider){ // thaum wizard vtbl[0x100] 0x481580
-	auto wizard=state.getWizard(ai.nodes[n].id);
-	if(wizard is null) return false;
-	bool found=false;
-	foreach(entry;(*wizard).getSpells()) if(entry.spell is provider){ // vtbl[0xf8] spellbook lookup by tag
-		found=true;
-		if(entry.cooldown>0.0f) return false; // 'nerd'
-		break;
-	}
-	if(!found) return false; // '_XP_'
-	// entry+0x8&2 disabled -> '_XP_': no sacengine equivalent (documented gap)
-	if(provider.type==SpellType.creature){ // [spell+0xc]==2
-		if((*wizard).souls<provider.soulCost) return false; // 'spir'
-	}else if(provider.type==SpellType.spell){ // [spell+0xc]==4
-		if(provider.connectedToConversion&&(*wizard).closestShrine==0) return false; // flags2 0x400 -> +0xb80 'obld'
-		if(provider.nearEnemyAltar&&(*wizard).closestEnemyAltar==0) return false; // flags2 0x200 -> +0xb7c 'ealt'
-		if(provider.nearBuilding&&(*wizard).closestBuilding==0) return false; // flags2 0x100 -> +0xb84 'obld'
-	}
-	auto mana=state.movingObjectById!((ref o,state)=>ftol(o.creatureStats.mana),()=>0)(ai.nodes[n].id,state);
-	if(ftol(provider.manaCost)>mana) return false; // 'mana' (thaum compares int mana fields)
-	return true;
-}
-
 int executeBestCast(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int checkOnly){ // 0x48d0b0
 	auto node=&ai.nodes[n];
 	size_t i=0;
@@ -2560,10 +2538,11 @@ int executeBestCast(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int checkOnly)
 				goto exit;
 			}
 		}
-		// can-cast check (thaum wizard vtbl[0x100] 0x481580: no range/target-validity checks — the entire thaum cast path has none)
+		// the engine's own precise legality check (thaum's light can-cast 0x481580 has no range/target-validity checks; sacengine's spellStatus does, so bots only queue casts the engine will actually perform)
 		OrderTarget ot;
 		if(e.target) ot=entOrderTarget!B(state,ai.nodes[e.target].kind,ai.nodes[e.target].id);
-		bool canCast=canCastSpell!B(ai,state,n,e.provider);
+		bool canCast=false;
+		if(auto wizard=state.getWizard(node.id)) canCast=state.spellStatus!false(wizard,e.provider,ot)==SpellStatus.ready;
 		if(!canCast){
 			if(!(e.flag&1)) goto exit;
 			if(!e.obj) return 0;
@@ -2592,7 +2571,7 @@ int executeBestCast(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int checkOnly)
 				goto exit;
 			}
 		}
-		startCasting(node.id,e.provider,ot,state,false,true); // 0x45daa0 EXECUTE (light can-cast only; thaum ignores the result)
+		startCasting(node.id,e.provider,ot,state); // 0x45daa0 EXECUTE (thaum ignores the result)
 		// wizard busy -> engine queueSpell: approximation of thaum's persistent entity order (documented)
 		for(size_t j=i;j+1<node.castQueue.length;j++) node.castQueue[j]=node.castQueue[j+1]; // unlink (spent-pool relink is memory management only)
 		node.castQueue.length=node.castQueue.length-1;
@@ -2624,7 +2603,26 @@ int castCachedInRange(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int t){ // 0
 
 int wizBrain(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int cmd,int ri){
 	auto node=&ai.nodes[n];
-	if(nodeIsRespawning(ai,state,n)) return t4oBrain(ai,state,n,cmd,ri); // ntt+0x5ec.+0x30&0x40000
+	if(nodeIsRespawning(ai,state,n)){ // ntt+0x5ec.+0x30&0x40000
+		// thaum gives ghosts record orders only (idle cmd -> stub 0x486cd0, no order): the ghost stands where it died and own manahoars converge on it (max mana deficit, x2 wizard bonus, mahoBrain 0x487ae0) and channel it back (giveMana heals ghosts 4.2x)
+		bool mahoNear=false;
+		for(int m=ai.catHead[0];m;m=ai.nodes[m].catN)
+			if(ai.nodes[m].kind==NodeKind.maho&&distSq3(node.curPos,ai.nodes[m].curPos)<=256.0f*256.0f){ mahoNear=true; break; } // 256.0f = mahoBrain seek cutoff (ds:0x4bc108)
+		if(!mahoNear){
+			// DELIBERATE DEVIATION (not thaum): with no own manahoar nearby to revive it, the ghost seeks the nearest own mana structure (altar/manalith/shrine; engine mana zone radius 50) instead of standing still indefinitely
+			int bs=0;
+			float bd=float.infinity;
+			for(int m=ai.catHead[0];m;m=ai.nodes[m].catN){
+				auto t=&ai.nodes[m];
+				if(t.kind!=NodeKind.str) continue;
+				if(!state.buildingById!((ref b,state)=>b.sacBuilding.isManalith||b.sacBuilding.isShrine||b.sacBuilding.isAltar,()=>false)(t.id,state)) continue;
+				auto d=distSq3(node.curPos,t.curPos);
+				if(d<bd){ bd=d; bs=m; }
+			}
+			if(bs){ orderIfChanged(ai,state,n,3,bs,null); return 1; } // ostate 3 -> retreat -> moveWithinRange 9.0: inside the mana zone
+		}
+		return t4oBrain(ai,state,n,cmd,ri);
+	}
 	if(node.age>=node.nextReplan){ // +0xb0
 		node.nextReplan=node.age+16; // ds:0x4cfbc0
 		node.nextOrderReissue=node.age-1; // +0xb4

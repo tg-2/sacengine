@@ -9713,15 +9713,13 @@ int getCastingTime(B)(ref MovingObject!B object,SacSpell!B spell,bool stationary
 
 enum manaEpsilon=1e-2f;
 enum summonSoundGain=2.0f;
-bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!B state,bool isQueued=false,bool force=false){
+bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!B state,bool isQueued=false){
 	auto wizard=state.getWizard(caster);
 	if(!wizard) return false;
-	if(!force){ // TODO: get rid of this
-		auto spellStatus=state.spellStatus!false(wizard,spell,target);
-		if(spellStatus!=SpellStatus.ready){
-			if(!isQueued) return false;
-			if(!canRunSpellQueueForSpellStatus(spellStatus)) return false;
-		}
+	auto spellStatus=state.spellStatus!false(wizard,spell,target);
+	if(spellStatus!=SpellStatus.ready){
+		if(!isQueued) return false;
+		if(!canRunSpellQueueForSpellStatus(spellStatus)) return false;
 	}
 	int numFrames=state.movingObjectById!((ref object,spell,wizard,state){
 		int numFrames=getCastingNumFrames(object,spell,wizard,state);
