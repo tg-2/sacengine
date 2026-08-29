@@ -29020,17 +29020,17 @@ final class ObjectState(B){ // (update logic)
 	}
 	private static alias spellStatusArgs(bool selectOnly:true)=Seq!();
 	private static alias spellStatusArgs(bool selectOnly:false)=Seq!OrderTarget;
-	SpellStatus spellStatus(bool selectOnly=false)(int id,SacSpell!B spell,spellStatusArgs!selectOnly target){ // DMD bug: default argument does not work
+	SpellStatus spellStatus(bool selectOnly=false)(int id,SacSpell!B spell,spellStatusArgs!selectOnly target,bool checkRange=true,float cooldownBonus=0.0f){ // DMD bug: default argument does not work
 		auto wizard=getWizard(id);
 		if(!wizard) return SpellStatus.inexistent;
-		return spellStatus!selectOnly(wizard,spell,target);
+		return spellStatus!selectOnly(wizard,spell,target,checkRange,cooldownBonus);
 	}
-	SpellStatus spellStatus(bool selectOnly=false)(WizardInfo!B* wizard,SacSpell!B spell,spellStatusArgs!selectOnly target){ // DMD bug: default argument does not work
+	SpellStatus spellStatus(bool selectOnly=false)(WizardInfo!B* wizard,SacSpell!B spell,spellStatusArgs!selectOnly target,bool checkRange=true,float cooldownBonus=0.0f){ // DMD bug: default argument does not work
 		foreach(entry;wizard.getSpells()){
 			if(entry.spell!is spell) continue;
 			if(entry.level>wizard.level) return SpellStatus.inexistent;
 			if(spell.soulCost>wizard.souls) return SpellStatus.needMoreSouls;
-			auto status=this.movingObjectById!((ref obj,spell,state,spellStatusArgs!selectOnly target){
+			auto status=this.movingObjectById!((ref obj,spell,state,spellStatusArgs!selectOnly target,bool checkRange){
 				if(spell.manaCost>obj.creatureStats.mana+manaEpsilon) return SpellStatus.lowOnMana; // TODO: store mana as exact integer?
 				static if(!selectOnly){
 					if(spell.requiresTarget){
@@ -29043,14 +29043,14 @@ final class ObjectState(B){ // (update logic)
 								if(!(convertSideMask&(1u<<side))) return SpellStatus.invalidTarget;
 							}
 						}
-						if((obj.position-target[0].position).lengthsqr>spell.range^^2) return SpellStatus.outOfRange;
+						if(checkRange&&(obj.position-target[0].position).lengthsqr>spell.range^^2) return SpellStatus.outOfRange;
 					}
 				}
 				import spells:SpelFlags1;
 				if(obj.creatureStats.effects.shieldBlocked && spell.isShield)
 					return SpellStatus.disabled;
 				return SpellStatus.ready;
-			},function()=>SpellStatus.inexistent)(wizard.id,spell,this,target);
+			},function()=>SpellStatus.inexistent)(wizard.id,spell,this,target,checkRange);
 			if(status==SpellStatus.ready){
 				if(spell.tag==SpellTag.guardian) if(!wizard.closestBuilding) return SpellStatus.mustBeNearBuilding;
 				if(spell.tag==SpellTag.desecrate) if(!wizard.closestEnemyAltar) return SpellStatus.mustBeNearEnemyAltar;
@@ -29062,7 +29062,7 @@ final class ObjectState(B){ // (update logic)
 					}
 				}
 			}
-			if(entry.cooldown>0.0f) return SpellStatus.notReady;
+			if(entry.cooldown>cooldownBonus) return SpellStatus.notReady;
 			return status;
 		}
 		return SpellStatus.inexistent;

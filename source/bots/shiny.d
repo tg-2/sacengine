@@ -2532,6 +2532,16 @@ int executeBestCast(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int checkOnly)
 			sq=distSq3(node.curPos,ai.nodes[e.obj].curPos);
 			if(cast(double)sq>cast(double)e.range*e.range){ // out of range
 				if(!checkOnly){
+					// approach only if the cast would be legal once in range (deliberate; thaum has no validity checks at all): convert on a soul already being converted -> convertSideMask bit cleared -> invalidTarget, so walking over would be pointless. The cooldown is credited with the approach time (cooldownBonus).
+					bool legal=false;
+					if(auto wizard=state.getWizard(node.id)){
+						OrderTarget ot;
+						if(e.target) ot=entOrderTarget!B(state,ai.nodes[e.target].kind,ai.nodes[e.target].id);
+						auto wspeed=state.movingObjectById!((ref o,state)=>o.speedOnGround(state),()=>0.0f)(node.id,state);
+						auto approachTime=wspeed>0.0f?cast(float)((sqrt(cast(double)sq)-cast(double)e.range)/cast(double)wspeed):0.0f;
+						legal=state.spellStatus!false(wizard,e.provider,ot,false,approachTime)==SpellStatus.ready;
+					}
+					if(!legal) goto exit;
 					orderPosRadius(ai,state,n,2,&ai.nodes[e.obj].curPos,e.range); // 0x4874e0(node,2,obj+0x4,range)
 					return 1;
 				}
