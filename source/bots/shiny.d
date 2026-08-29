@@ -385,6 +385,11 @@ RaterAcc* tagAcc(B)(ref ShinyAI!B ai,char[4] tag){
 	return acc;
 }
 
+// ---- debug logging (temporary, for behavioral debugging) ----
+
+private enum shinyAILog=false;
+private void ailog(Args...)(Args args){ import std.stdio:writeln; writeln(args); }
+
 void updateBots(B)(ObjectState!B state){
 	foreach(side;0..cast(int)state.sid.sides.length){
 		auto data=&state.sid.sides[side];
@@ -402,11 +407,15 @@ void run(B)(ref ShinyAI!B ai,ObjectState!B state,int side,int dTicks){
 	static immutable uint[6] masks=[0xe,0xf,1,1,0x1f,1];
 	static foreach(k;0..6){
 		if(ai.nextRun[k]<=ai.schedTime){
+			static if(shinyAILog) ailog("SLOT ",ai.side," t",ai.schedTime," k",k," scheduled forceFlags=",ai.forceFlags);
 			ai.scheduler!k(state,dTicks);
 			ai.nextRun[k]+=periods[k];
-		}else if(ai.forceFlags&masks[k])
+		}else if(ai.forceFlags&masks[k]){
+			static if(shinyAILog) ailog("SLOT ",ai.side," t",ai.schedTime," k",k," forced forceFlags=",ai.forceFlags);
 			ai.scheduler!k(state,dTicks);
+		}
 	}
+	static if(shinyAILog) if(ai.handledFlags) ailog("SLOT ",ai.side," t",ai.schedTime," handled=",ai.handledFlags," force->",cast(int)(ai.forceFlags&~ai.handledFlags));
 	ai.forceFlags&=~ai.handledFlags;
 	ai.schedTime+=dTicks;
 }
@@ -660,6 +669,7 @@ void setupStr(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int id,uint flags){ 
 		fillStrAcc!B(node,b);
 		if(cast(uint)b.sacBuilding.flags&1) node.flags|=0x300;
 		if(cast(uint)b.sacBuilding.flags&0xc17) node.flags|=0x100;
+		static if(shinyAILog) ailog("BLD ",ai.side," tag ",b.sacBuilding.tag[]," id ",id," bflags ",b.flags," base ",b.base," top ",b.top," mf ",b.sacBuilding.isManafount?1:0," altar ",b.sacBuilding.isAltar?1:0);
 	},(){})(id);
 }
 
@@ -1058,6 +1068,7 @@ void updateTasks(B)(ref ShinyAI!B ai,ObjectState!B state,int dTicks){ // 0x48402
 		auto cmd=taskCmd(task.kind);
 		for(int r=task.claimedHead;r;){
 			auto rn=ai.records[r].claimedN;
+			static if(shinyAILog) ailog("TASK ",ai.side," t",ai.schedTime," kind ",task.kind," cmd ",cmd," r",r," score ",ai.records[r].score," tgt ",ai.records[r].target," count ",ai.records[r].count," flags ",ai.records[r].flags);
 			recordUpdate(ai,state,r,cmd);
 			r=rn;
 		}
@@ -1549,6 +1560,7 @@ void recordSetup(B)(ref ShinyAI!B ai,ObjectState!B state,int ri,int target,uint 
 	rec.target=target;
 	rec.score=0.0f;
 	rec.flags=flags;
+	static if(shinyAILog) ailog("RECSETUP ",ai.side," t",ai.schedTime," r",ri," tgt ",target," flags ",flags," anchor ",rec.anchor);
 	rec.targetAcc.clear();
 	rec.membersAcc.clear();
 	recordRefresh(ai,state,ri); // embedded reset
@@ -1588,6 +1600,7 @@ int claim(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task,int ri,ref i
 	recAddMember(ai,ri,n);
 	node.record=ri;
 	if(node.status&0x20000&&rec.leader==0) rec.leader=n; // wizards: thaum setupWiz 0x48c800 sets status 0x2000e (incl. 0x20000)
+	static if(shinyAILog) ailog("CLAIM ",ai.side," t",ai.schedTime," n",n,"(",node.kind," id ",node.id,") -> r",ri," task ",task.kind," tgt ",rec.target);
 	auto p=soulsPair21(ai,state,n);
 	return p[0]+p[1];
 }
@@ -1854,16 +1867,25 @@ float claimIdle(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task,ref in
 
 float distSq3(Vector3f a,Vector3f b){ auto x=a.x-b.x, y=a.y-b.y, z=a.z-b.z; return x*x+y*y+z*z; }
 
-void issueOrder(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int ostate,int target,Vector3f* pos){ // thaum setOrder
+void issueOrder(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int ostate,int target,Vector3f* pos,size_t line=__LINE__){ // thaum setOrder
 	auto node=&ai.nodes[n];
-	if(node.kind==NodeKind.cre||node.kind==NodeKind.str||node.kind==NodeKind.none) return; // node vtbl[13]==0
+	if(node.kind==NodeKind.cre||node.kind==NodeKind.str||node.kind==NodeKind.none){ // node vtbl[13]==0
+		static if(shinyAILog) ailog("ORDFAIL ",ai.side," t",ai.schedTime," n",n,"(",node.kind,") @",line," ostate ",ostate,": inert kind");
+		return;
+	}
 	state.movingObjectById!((ref o,ObjectState!B state){
 		Order ord;
 		if(target){
 			auto tnode=&ai.nodes[target];
-			if(!entExists!B(state,tnode.kind,tnode.id)) return; // thaum always has a live target ntt
+			if(!entExists!B(state,tnode.kind,tnode.id)){ // thaum always has a live target ntt
+				static if(shinyAILog) ailog("ORDFAIL ",ai.side," t",ai.schedTime," n",n," @",line," ostate ",ostate,": target ",target," (",tnode.kind," id ",tnode.id,") dead");
+				return;
+			}
 			ord.target=entOrderTarget!B(state,tnode.kind,tnode.id);
-			if(ord.target.type==TargetType.none) return;
+			if(ord.target.type==TargetType.none){
+				static if(shinyAILog) ailog("ORDFAIL ",ai.side," t",ai.schedTime," n",n," @",line," ostate ",ostate,": target ",target," (",tnode.kind," id ",tnode.id,") no ordertarget");
+				return;
+			}
 		}else if(pos) ord.target=positionTarget(*pos,state);
 		else return;
 		switch(ostate){
@@ -1877,16 +1899,24 @@ void issueOrder(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int ostate,int tar
 				ord.command=target?(ai.nodes[target].kind==NodeKind.cre?CommandType.move:CommandType.guard):CommandType.guardArea; break;
 			default: return;
 		}
-		//import std.stdio;writeln("ORDERING: ",ai.side,": ",o.id," ",o.position," ",ord);
-		order(o,ord,state,ai.side);
-	},(){})(node.id,state);
+		static if(shinyAILog){
+			auto ok=order(o,ord,state,ai.side);
+			ailog("ORDISS ",ai.side," t",ai.schedTime," n",n,"(",node.kind," id ",node.id,") @",line," ostate ",ostate," tgt ",target," pos ",pos is null?Vector3f.init:*pos," -> ",ord," accepted=",ok);
+		}else order(o,ord,state,ai.side);
+	},(){
+		static if(shinyAILog) ailog("ORDFAIL ",ai.side," t",ai.schedTime," n",n," id ",node.id," @",line," ostate ",ostate,": entity gone");
+	})(node.id,state);
 }
-void orderIfChanged(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int ostate,int target,Vector3f* pos){ // 0x4878c0
+void orderIfChanged(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int ostate,int target,Vector3f* pos,size_t line=__LINE__){ // 0x4878c0
 	// thaum compares against the ntt's live order (0x4878c0: 0x46e0f0 reads it), so completed orders get re-issued; match that by also re-issuing once the engine order has popped
 	auto node=&ai.nodes[n];
+	static if(shinyAILog){
+		auto live=state.movingObjectById!((ref o,state)=>o.creatureAI.order,()=>Order.init)(node.id,state);
+		ailog("ORDCHK ",ai.side," t",ai.schedTime," n",n,"(",node.kind," id ",node.id,") @",line," req(",ostate,",",target,",",pos is null?Vector3f.init:*pos,") cached(",node.ordState,",",node.ordTarget,",",node.ordPos,") live(",live.command,",",live.target,")");
+	}
 	if(node.ordState==ostate&&(target==0||node.ordTarget==target)&&(pos is null||node.ordPos==*pos)&&
 	   state.movingObjectById!((ref o,state)=>o.creatureAI.order.command!=CommandType.none,()=>true)(node.id,state)) return;
-	issueOrder(ai,state,n,ostate,target,pos);
+	issueOrder(ai,state,n,ostate,target,pos,line);
 	node.ordState=ostate;
 	node.ordTarget=target;
 	if(pos) node.ordPos=*pos;
@@ -1900,47 +1930,53 @@ void orderIfChanged(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int ostate,int
 		}else node.status&=~0x10000;
 	}else node.status&=~0x10000;
 }
-int orderTargetRadius(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int ostate,int target,float radius){ // 0x487450
+int orderTargetRadius(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int ostate,int target,float radius,size_t line=__LINE__){ // 0x487450
 	auto node=&ai.nodes[n];
 	if(radius>0.0f&&!(radius*radius<distSq3(node.curPos,ai.nodes[target].curPos))){ // within radius: hold current position
-		orderIfChanged(ai,state,n,ostate,0,&node.curPos);
+		static if(shinyAILog) ailog("ORDRADIUS ",ai.side," t",ai.schedTime," n",n," @",line," tgt ",target," radius ",radius,": in range -> hold");
+		orderIfChanged(ai,state,n,ostate,0,&node.curPos,line);
 		return 1;
 	}
-	orderIfChanged(ai,state,n,ostate,target,null); // radius<=0 or out of range: chase target
+	static if(shinyAILog) ailog("ORDRADIUS ",ai.side," t",ai.schedTime," n",n," @",line," tgt ",target," radius ",radius,": chase");
+	orderIfChanged(ai,state,n,ostate,target,null,line); // radius<=0 or out of range: chase target
 	return 0;
 }
-int orderPosRadius(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int ostate,Vector3f* pos,float radius){ // 0x4874e0
+int orderPosRadius(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int ostate,Vector3f* pos,float radius,size_t line=__LINE__){ // 0x4874e0
 	auto node=&ai.nodes[n];
 	if(radius*radius<distSq3(node.curPos,*pos)){
-		orderIfChanged(ai,state,n,ostate,0,pos);
+		static if(shinyAILog) ailog("ORDRADIUS ",ai.side," t",ai.schedTime," n",n," @",line," pos ",*pos," radius ",radius,": out of range -> move");
+		orderIfChanged(ai,state,n,ostate,0,pos,line);
 		return 0;
 	}
-	orderIfChanged(ai,state,n,ostate,0,&node.curPos); // in range: hold current position
+	static if(shinyAILog) ailog("ORDRADIUS ",ai.side," t",ai.schedTime," n",n," @",line," pos ",*pos," radius ",radius,": in range -> hold");
+	orderIfChanged(ai,state,n,ostate,0,&node.curPos,line); // in range: hold current position
 	return 1;
 }
-int orderInteract(B)(ref ShinyAI!B ai,ObjectState!B state,int n,Vector3f* pos,int target,float radius){ // 0x487550
+int orderInteract(B)(ref ShinyAI!B ai,ObjectState!B state,int n,Vector3f* pos,int target,float radius,size_t line=__LINE__){ // 0x487550
 	auto node=&ai.nodes[n];
 	if(radius*radius<distSq3(node.curPos,*pos)){ // too far: move to position first
-		orderIfChanged(ai,state,n,4,0,pos);
+		static if(shinyAILog) ailog("ORDINTERACT ",ai.side," t",ai.schedTime," n",n," @",line," pos ",*pos," tgt ",target," radius ",radius,": far -> move");
+		orderIfChanged(ai,state,n,4,0,pos,line);
 		return 0;
 	}
 	if(target&&ai.nodes[target].kind==NodeKind.str){ // thaum: targetNode+0x3c&0x20
 		auto tnode=&ai.nodes[target];
 		auto bflags=state.buildingById!((ref b,state)=>cast(uint)b.sacBuilding.flags,()=>0u)(tnode.id,state);
-		if(!(bflags&0x80)) orderIfChanged(ai,state,n,5,target,null);
+		if(!(bflags&0x80)) orderIfChanged(ai,state,n,5,target,null,line);
 		else{
 			// thaum ntt+0x448 = guardian count; approximation: building guardianIds
 			auto numGuardians=state.buildingById!((ref b,state)=>cast(int)b.guardianIds.length,()=>0)(tnode.id,state);
-			if(numGuardians<=1) orderIfChanged(ai,state,n,6,target,pos);
-			else orderIfChanged(ai,state,n,7,0,pos);
+			if(numGuardians<=1) orderIfChanged(ai,state,n,6,target,pos,line);
+			else orderIfChanged(ai,state,n,7,0,pos,line);
 		}
-	}else orderIfChanged(ai,state,n,7,0,pos);
+	}else orderIfChanged(ai,state,n,7,0,pos,line);
 	return 1;
 }
 void nodeSlot19(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int cmd,int ri,Vector3f* pos){ // node vtbl[19] 0x4873b0
 	final switch(ai.nodes[n].kind) with(NodeKind){
 		case wiz,maho,t4o:
 			auto cs=ai.nodes[n].ordState; // case table 0x487420: states 2,3,6,34 -> brain
+			static if(shinyAILog) ailog("SLOT19 ",ai.side," t",ai.schedTime," n",n,"(",ai.nodes[n].kind," id ",ai.nodes[n].id,") cmd ",cmd," ri ",ri," cachedOrdState ",cs,cs==2||cs==3||cs==6||cs==34?" -> brain":" -> move-to-center");
 			if(cs==2||cs==3||cs==6||cs==34) nodeBrain(ai,state,n,cmd,ri);
 			else orderPosRadius(ai,state,n,2,pos,5.0f);
 			break;
@@ -2013,10 +2049,12 @@ int autoCapture(B)(ref ShinyAI!B ai,ObjectState!B state,int n){ // 0x487600
 	if(p[0]>nodeSlot22(ai,state,n)&&!nodeIsRespawning(ai,state,n)) return 0;
 	int bn=0; float br=0.0f;
 	if(!findBestCaptureTarget(ai,state,&node.curPos,2580.0f,&bn,&br)) return 0; // thaum passes 0x45624000
+	static if(shinyAILog) ailog("AUTOCAP ",ai.side," t",ai.schedTime," n",n," bn ",bn," br ",br," outOfRange ",br*br<distSq3(node.curPos,ai.nodes[bn].curPos));
 	if(br*br<distSq3(node.curPos,ai.nodes[bn].curPos)) orderIfChanged(ai,state,n,5,bn,null);
 	return 1;
 }
 int t4oBrain(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int cmd,int ri){ // 0x4876d0
+	static if(shinyAILog) ailog("T4OBRAIN ",ai.side," t",ai.schedTime," n",n,"(",ai.nodes[n].kind," id ",ai.nodes[n].id,") cmd ",cmd," ri ",ri);
 	if(autoCapture(ai,state,n)!=0) return 1;
 	if(ri==0) return 0;
 	auto rec=&ai.records[ri];
@@ -2076,6 +2114,7 @@ void wizSpellRebuild(B)(ref ShinyAI!B ai,ObjectState!B state,int n){ // 0x48c8d0
 			foreach(entry;wiz.getSpells()){
 				auto s=entry.spell;
 				if(s is null) continue;
+				static if(shinyAILog) ailog("WIZSPELL ",ai.side," n",n," tag ",s.tag[]," type ",cast(int)s.type," flags ",cast(uint)s.flags," range ",s.range," mana ",s.manaCost," souls ",s.soulCost," lvl ",entry.level);
 				if(s.type==SpellType.creature&&s.tag!="oham") // 0x48c8d0: creature spells except the manahoar
 					if(auto acc=tagAcc(ai,s.tag)) node.summons~=SummonEntry!B(s.tag,*acc,s);
 				if(wantsSpellAcc!B(s)) node.spellAccs~=SpellAcc!B(s,ratingFn!B(s)); // 0x48cb80
@@ -2087,6 +2126,7 @@ void wizSpellRebuild(B)(ref ShinyAI!B ai,ObjectState!B state,int n){ // 0x48c8d0
 			}
 		}
 	},(){})(node.id,state);
+	static if(shinyAILog) ailog("WIZCACHED ",ai.side," n",n," maho ",node.manahoarSpell is null?"null":node.manahoarSpell.tag[]," shrine ",node.shrineSpell is null?"null":node.shrineSpell.tag[]," convert ",node.convertSpell is null?"null":node.convertSpell.tag[]," desecrate ",node.desecrateSpell is null?"null":node.desecrateSpell.tag[]);
 }
 
 // ---- wizard: cast queue (thaum 0x48cd40..0x48d080) ----
@@ -2108,6 +2148,7 @@ int enqueueCast(B)(ref ShinyAI!B ai,int n,float score,int target,SacSpell!B prov
 		if(qF!=nF){ if(nF) break; }
 		else if(q.score<=ce.score) break;
 	}
+	static if(shinyAILog) ailog("ENQ ",ai.side," t",ai.schedTime," n",n," score ",score," flag ",flag," tgt ",target," obj ",ce.obj," range ",range," spell ",provider is null?"null":to!string(provider.tag)," at ",j,"/",node.castQueue.length);
 	node.castQueue~=CastEntry!B.init;
 	for(size_t k=node.castQueue.length-1;k>j;k--) node.castQueue[k]=node.castQueue[k-1];
 	node.castQueue[j]=ce;
@@ -2517,11 +2558,13 @@ int executeBestCast(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int checkOnly)
 	while(i<node.castQueue.length){
 	entry: {
 		auto e=&node.castQueue[i];
+		static if(shinyAILog) ailog("CASTQ ",ai.side," t",ai.schedTime," n",n," [",i,"] checkOnly ",checkOnly," flag ",e.flag," tgt ",e.target," obj ",e.obj," range ",e.range," spell ",e.provider is null?"null":to!string(e.provider.tag));
 		if(e.provider is null) goto exit;
 		if((e.flag&1)&&e.target&&checkOnly) goto exit;
 		if(si(ai.stanceRecs[0],5)==0){ // no manaliths: only affordable casts
 			auto mana=state.movingObjectById!((ref o,state)=>ftol(o.creatureStats.mana),()=>0)(node.id,state);
 			if(ftol(e.provider.manaCost)>mana){ // thaum reads the int mana fields
+				static if(shinyAILog) ailog("CASTQ ",ai.side," t",ai.schedTime," n",n," [",i,"]: mana ",ftol(e.provider.manaCost),">",mana,e.flag&1?" -> ret 0":" -> skip");
 				if(e.flag&1) return 0;
 				goto exit;
 			}
@@ -2531,16 +2574,19 @@ int executeBestCast(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int checkOnly)
 			if(e.target&&ai.nodes[e.target].kind==NodeKind.wiz&&nodeIsRespawning(ai,state,e.target)) goto exit; // target wizard respawning (0x486aa0 debug skipped)
 			sq=distSq3(node.curPos,ai.nodes[e.obj].curPos);
 			if(cast(double)sq>cast(double)e.range*e.range){ // out of range
+				static if(shinyAILog) ailog("CASTQ ",ai.side," t",ai.schedTime," n",n," [",i,"]: obj ",e.obj," at ",ai.nodes[e.obj].curPos," dist^2 ",sq," > range^2 ",e.range*e.range,checkOnly?" -> skip":" -> approach?");
 				if(!checkOnly){
 					// approach only if the cast would be legal once in range (deliberate; thaum has no validity checks at all): convert on a soul already being converted -> convertSideMask bit cleared -> invalidTarget, so walking over would be pointless. The cooldown is credited with the approach time (cooldownBonus).
 					bool legal=false;
+					float approachTime=0.0f;
 					if(auto wizard=state.getWizard(node.id)){
 						OrderTarget ot;
 						if(e.target) ot=entOrderTarget!B(state,ai.nodes[e.target].kind,ai.nodes[e.target].id);
 						auto wspeed=state.movingObjectById!((ref o,state)=>o.speedOnGround(state),()=>0.0f)(node.id,state);
-						auto approachTime=wspeed>0.0f?cast(float)((sqrt(cast(double)sq)-cast(double)e.range)/cast(double)wspeed):0.0f;
+						approachTime=wspeed>0.0f?cast(float)((sqrt(cast(double)sq)-cast(double)e.range)/cast(double)wspeed):0.0f;
 						legal=state.spellStatus!false(wizard,e.provider,ot,false,approachTime)==SpellStatus.ready;
 					}
+					static if(shinyAILog) ailog("CASTQ ",ai.side," t",ai.schedTime," n",n," [",i,"]: legal-in-range ",legal," approachTime ",approachTime,legal?" -> approach":" -> skip");
 					if(!legal) goto exit;
 					orderPosRadius(ai,state,n,2,&ai.nodes[e.obj].curPos,e.range); // 0x4874e0(node,2,obj+0x4,range)
 					return 1;
@@ -2553,6 +2599,7 @@ int executeBestCast(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int checkOnly)
 		if(e.target) ot=entOrderTarget!B(state,ai.nodes[e.target].kind,ai.nodes[e.target].id);
 		bool canCast=false;
 		if(auto wizard=state.getWizard(node.id)) canCast=state.spellStatus!false(wizard,e.provider,ot)==SpellStatus.ready;
+		static if(shinyAILog) ailog("CASTQ ",ai.side," t",ai.schedTime," n",n," [",i,"]: spell ",e.provider.tag[]," tgtNode ",e.target," ot(",ot.type,",",ot.id,") canCast ",canCast," flag ",e.flag);
 		if(!canCast){
 			if(!(e.flag&1)) goto exit;
 			if(!e.obj) return 0;
@@ -2573,6 +2620,7 @@ int executeBestCast(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int checkOnly)
 				half=rel==3&&!state.terrainLineOfSight(node.curPos,ai.nodes[e.obj].curPos); // enemy both-ways, different sides, 0x4878a0(node,obj)==0
 			}
 			if(half){
+				static if(shinyAILog) ailog("CASTQ ",ai.side," t",ai.schedTime," n",n," [",i,"]: no LOS",checkOnly?" -> skip":" -> half-range chase");
 				if(!checkOnly){
 					auto hr=cast(float)(sqrt(cast(double)sq)*0.5); // fsqrt; fmul 0.5d
 					orderTargetRadius(ai,state,n,3,e.obj,hr);
@@ -2581,7 +2629,8 @@ int executeBestCast(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int checkOnly)
 				goto exit;
 			}
 		}
-		startCasting(node.id,e.provider,ot,state); // 0x45daa0 EXECUTE (thaum ignores the result)
+		static if(shinyAILog) ailog("CASTQ ",ai.side," t",ai.schedTime," n",n," [",i,"]: EXECUTE");
+		static if(shinyAILog){ auto castOk=startCasting(node.id,e.provider,ot,state); ailog("CASTGO ",ai.side," t",ai.schedTime," n",n," spell ",e.provider.tag[]," ok ",castOk); }else startCasting(node.id,e.provider,ot,state); // 0x45daa0 EXECUTE (thaum ignores the result)
 		// wizard busy -> engine queueSpell: approximation of thaum's persistent entity order (documented)
 		for(size_t j=i;j+1<node.castQueue.length;j++) node.castQueue[j]=node.castQueue[j+1]; // unlink (spent-pool relink is memory management only)
 		node.castQueue.length=node.castQueue.length-1;
@@ -2598,6 +2647,7 @@ int enqueueForcedExecute(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int targe
 }
 int castCachedInRange(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int t){ // 0x48dce0
 	auto node=&ai.nodes[n];
+	static if(shinyAILog) ailog("CCIR ",ai.side," t",ai.schedTime," n",n," tgt ",t," shrineSpell ",node.shrineSpell is null?"null":node.shrineSpell.tag[]," threat ",node.threat);
 	if(node.shrineSpell is null) return 0;
 	if(cast(double)node.threat>=0.6) return 0; // fcomp 0.6d: test ah,1;jne -> CF (threat<0.6 or unordered) proceeds
 	auto sq=distSq3(node.curPos,ai.nodes[t].curPos);
@@ -2605,6 +2655,7 @@ int castCachedInRange(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int t){ // 0
 	r=r*r;
 	r*=1.399999976158142;
 	r*=25.0;
+	static if(shinyAILog) ailog("CCIR ",ai.side," t",ai.schedTime," n",n," tgt ",t," dist^2 ",sq," vs ",r,cast(double)sq>r?" -> out of range":" -> in range, enqueue");
 	if(cast(double)sq>r) return 0;
 	return enqueueForcedExecute(ai,state,n,t,node.shrineSpell,node.shrineSpell.range,0);
 }
@@ -2613,6 +2664,7 @@ int castCachedInRange(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int t){ // 0
 
 int wizBrain(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int cmd,int ri){
 	auto node=&ai.nodes[n];
+	static if(shinyAILog) ailog("WIZBRAIN ",ai.side," t",ai.schedTime," n",n," id ",node.id," cmd ",cmd," ri ",ri," age ",node.age," nextReplan ",node.nextReplan," nextReissue ",node.nextOrderReissue," threat ",node.threat," pos ",node.curPos);
 	if(nodeIsRespawning(ai,state,n)){ // ntt+0x5ec.+0x30&0x40000
 		// thaum gives ghosts record orders only (idle cmd -> stub 0x486cd0, no order): the ghost stands where it died and own manahoars converge on it (max mana deficit, x2 wizard bonus, mahoBrain 0x487ae0) and channel it back (giveMana heals ghosts 4.2x)
 		bool mahoNear=false;
@@ -2629,6 +2681,7 @@ int wizBrain(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int cmd,int ri){
 				auto d=distSq3(node.curPos,t.curPos);
 				if(d<bd){ bd=d; bs=m; }
 			}
+			static if(shinyAILog) ailog("GHOST ",ai.side," t",ai.schedTime," n",n," no manahoar within 256, nearest mana str node ",bs);
 			if(bs){ orderIfChanged(ai,state,n,3,bs,null); return 1; } // ostate 3 -> retreat -> moveWithinRange 9.0: inside the mana zone
 		}
 		return t4oBrain(ai,state,n,cmd,ri);
@@ -2638,6 +2691,7 @@ int wizBrain(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int cmd,int ri){
 		node.nextOrderReissue=node.age-1; // +0xb4
 		float[3] w3;
 		weightTriple(ai,cmd,&w3);
+		static if(shinyAILog) ailog("WIZBRAIN ",ai.side," t",ai.schedTime," n",n," replan w3 ",w3[]);
 		node.castQueue.length=0; // 0x48cd40 queue reset
 		wizAttack(ai,state,n,&w3);
 		wizSupport(ai,state,n,&w3);
@@ -2646,6 +2700,7 @@ int wizBrain(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int cmd,int ri){
 	}
 	auto f=cast(float)((1.0-cast(double)node.threat)*80.0+60.0); // fsubr 1.0d; fmul 80.0d; fadd 60.0d; f32
 	auto t=findBestNear(ai,state,&node.curPos,f,1);
+	static if(shinyAILog) ailog("WIZBRAIN ",ai.side," t",ai.schedTime," n",n," findBestNear f ",f," -> ",t,t?ai.nodes[t].curPos:Vector3f.init);
 	if(t){
 		if(executeBestCast(ai,state,n,1)!=0) return 1;
 		// 0x486aa0 debug output skipped (documented)
@@ -2654,6 +2709,10 @@ int wizBrain(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int cmd,int ri){
 	}
 	if(ri&&cmd==2){
 		auto tn=ai.records[ri].target; // edi = rec+0x8
+		static if(shinyAILog){
+			ailog("WIZBRAIN ",ai.side," t",ai.schedTime," n",n," cmd2-block tn ",tn," age>=reissue ",node.age>=node.nextOrderReissue);
+			if(tn) ailog("WIZBRAIN ",ai.side," t",ai.schedTime," n",n," cmd2-block tgt(",ai.nodes[tn].kind," id ",ai.nodes[tn].id,") flags ",ai.nodes[tn].flags," status ",ai.nodes[tn].status);
+		}
 		if(tn&&node.age>=node.nextOrderReissue){
 			node.nextOrderReissue=node.age+8; // ds:0x4cfbcc
 			auto tgt=&ai.nodes[tn];
@@ -2682,6 +2741,7 @@ int wizBrain(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int cmd,int ri){
 		}
 	}
 	if(executeBestCast(ai,state,n,0)!=0) return 1;
+	static if(shinyAILog) ailog("WIZBRAIN ",ai.side," t",ai.schedTime," n",n," -> t4oBrain");
 	return t4oBrain(ai,state,n,cmd,ri);
 }
 
@@ -2694,6 +2754,7 @@ bool proximityTrigger(B)(ref ShinyAI!B ai,ObjectState!B state,int ri,uint cmd){ 
 	auto r=cast(double)rec.count*0.1+1.0;
 	if(!(r<1.7999999523162842)) r=1.7999999523162842;
 	r*=30.0;
+	static if(shinyAILog) ailog("PROX ",ai.side," t",ai.schedTime," r",ri," count ",rec.count," s ",s," r^2 ",r*r,cast(double)s<r*r?" -> clustered (brain)":" -> spread (slot19)");
 	if(cast(double)s<r*r) return false;
 	auto r4=cast(float)(r*4.0f);
 	if(!(r<=cast(double)r4*r4)) return false; // never true
@@ -2709,6 +2770,7 @@ void recordUpdate(B)(ref ShinyAI!B ai,ObjectState!B state,int ri,uint cmd){ // 0
 	auto rec=&ai.records[ri];
 	if(rec.count==0) return;
 	recordRefresh(ai,state,ri); // entry refresh
+	static if(shinyAILog) ailog("RECUPD ",ai.side," t",ai.schedTime," r",ri," cmd ",cmd," count ",rec.count," flags ",rec.flags," tgt ",rec.target," anchor ",rec.anchor," center ",rec.center," leader ",rec.leader);
 	if(rec.leader){
 		for(int m=rec.memberHead;m;){
 			auto node=&ai.nodes[m];
@@ -2728,11 +2790,13 @@ void recordUpdate(B)(ref ShinyAI!B ai,ObjectState!B state,int ri,uint cmd){ // 0
 	}
 	if(rec.flags&2){
 		auto dx=rec.anchor.x-rec.center.x, dy=rec.anchor.y-rec.center.y; // 2D
+		static if(shinyAILog) ailog("RECUPD ",ai.side," t",ai.schedTime," r",ri," anchor-center d2 ",dx*dx+dy*dy,dx*dx+dy*dy<=10000.0f?" (<=100^2, proximity path)":" (>100^2, member brains)");
 		if(dx*dx+dy*dy<=10000.0f&&proximityTrigger(ai,state,ri,cmd)) return;
 	}
 	for(int m=rec.memberHead;m;){
 		auto node=&ai.nodes[m];
 		if(node.status==0){ m=node.recN; continue; }
+		static if(shinyAILog) ailog("RECUPD ",ai.side," t",ai.schedTime," r",ri," member ",m,"(",node.kind," id ",node.id,") -> brain");
 		nodeBrain(ai,state,m,cmd,ri);
 		m=node.recN;
 	}
