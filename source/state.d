@@ -13463,6 +13463,8 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 			Vector3f targetPosition;
 			if(targetId) targetPosition=state.movingObjectById!((obj)=>obj.position,()=>Vector3f.init)(targetId);
 			if(targetId&&targetPosition is Vector3f.init)
+				targetPosition=state.staticObjectById!((ref obj,state)=>obj.center,()=>Vector3f.init)(targetId,state);
+			if(targetId&&targetPosition is Vector3f.init)
 				targetPosition=state.buildingById!((ref b,state)=>b.position(state),()=>Vector3f.init)(targetId,state);
 			if(targetPosition !is Vector3f.init){
 				if(!object.retreatTowards(targetPosition,state))
