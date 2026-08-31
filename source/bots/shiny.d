@@ -485,6 +485,10 @@ OrderTarget entOrderTarget(B)(ObjectState!B state,NodeKind kind,int id){
 bool entDead(B)(ObjectState!B state,int id){
 	return state.movingObjectById!((ref o,state)=>!!o.creatureState.mode.among(CreatureMode.dying,CreatureMode.dead,CreatureMode.deadToGhost,CreatureMode.dissolving),()=>false)(id,state);
 }
+// CREATURE::IsRespawning entity-side: [stateRec+0x30]&0x40000
+bool entGhost(B)(ObjectState!B state,int id){
+	return state.movingObjectById!((ref o,state)=>!!o.creatureState.mode.among(CreatureMode.idleGhost,CreatureMode.movingGhost),()=>false)(id,state);
+}
 
 // thaum relation 0x486c60: 0=own, 1=ally, 2=neutral, 3=enemy
 int relation(B)(ObjectState!B state,int mySide,int entSide){
@@ -514,7 +518,9 @@ bool shouldTrack(B)(ref ShinyAI!B ai,ObjectState!B state,NodeKind kind,int id){
 	final switch(kind) with(NodeKind){
 		// thaum rejects sub-components of multi-component structures (ntt+0x440=primary component, set by the map loader); sacengine folds those into one Building, so no case remains: fount-placed buildings keep ntt+0x440==0 in thaum and are tracked
 		case str: return state.buildingById!((ref b,state)=>(cast(uint)b.sacBuilding.flags&0xc17)!=0,()=>false)(id,state);
-		case wiz,t4o,maho: return !entDead!B(state,id);
+		// DELIBERATE DEVIATION (not thaum, per user): opposing wizards in ghost form are completely invisible to the AI; thaum tracks them (vtbl[14] rejects only dead-not-ghost)
+		case wiz: return !entDead!B(state,id)&&!(relation!B(state,ai.side,entSide!B(state,kind,id))==3&&entGhost!B(state,id));
+		case t4o,maho: return !entDead!B(state,id);
 		case cre: return true;
 		case none: return false;
 	}
@@ -1055,6 +1061,7 @@ void discover(B)(ref ShinyAI!B ai,ObjectState!B state){ // 0x484b30
 			if(node.kind==NodeKind.wiz){
 				auto ws=entSide!B(state,node.kind,node.id);
 				if(ws>=0&&state.sid.sides[ws].state!=SideState.playing) remove=true;
+				if(!remove&&ws>=0&&relation!B(state,ai.side,ws)==3&&entGhost!B(state,node.id)) remove=true; // opposing ghost wizards became untrackable (shouldTrack); thaum keeps them
 			}
 			// !(ntt+0x238&0x10): no sacengine equivalent (documented gap)
 			if(!remove&&(node.flags&0x80)&&cast(uint)node.ageSeen<cast(uint)node.age) remove=true;
@@ -1994,8 +2001,7 @@ void nodeBrain(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int cmd,int ri){ //
 bool nodeIsRespawning(B)(ref ShinyAI!B ai,ObjectState!B state,int n){ // CREATURE::IsRespawning: ntt+0x5ec.+0x30&0x40000
 	auto node=&ai.nodes[n];
 	final switch(node.kind) with(NodeKind){
-		case wiz,t4o,maho,cre:
-			return state.movingObjectById!((ref o,state)=>!!o.creatureState.mode.among(CreatureMode.idleGhost,CreatureMode.movingGhost),()=>false)(node.id,state);
+		case wiz,t4o,maho,cre: return entGhost!B(state,node.id);
 		case str,none: return false;
 	}
 }
