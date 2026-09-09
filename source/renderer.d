@@ -1301,10 +1301,10 @@ struct Renderer(B){
 								}
 							}
 							// TODO: interpolate animations to get 60 FPS?
-							auto pose=sacObject.getFrame(objects.animationStates[j],objects.frames[j]/updateAnimFactor,fasterStandupTimes);
-							if(material.backend is B.boneMaterialBackend) B.boneMaterialBackend.setPose(pose);
-							if(material.backend is B.shadelessBoneMaterialBackend) B.shadelessBoneMaterialBackend.setPose(pose);
-							if(material.backend is B.boneShadowBackend) B.boneShadowBackend.setPose(pose);
+							auto pose=sacObject.getRenderFrame(objects.animationStates[j],objects.frames[j]/updateAnimFactor,fasterStandupTimes);
+							if(material.backend is B.boneMaterialBackend) B.boneMaterialBackend.setPose(pose.skinMatrices,pose.renderOffset,mesh.retailSourceNormals);
+							if(material.backend is B.shadelessBoneMaterialBackend) B.shadelessBoneMaterialBackend.setPose(pose.skinMatrices,pose.renderOffset);
+							if(material.backend is B.boneShadowBackend) B.boneShadowBackend.setPose(pose.skinMatrices,pose.renderOffset);
 							mesh.render(rc);
 							if(objects.creatureStatss[j].effects.vined){ // TODO: this is a bit hacky
 								foreach(ref vines;state.obj.opaqueObjects.effects.graspingViness.data){
@@ -1659,8 +1659,8 @@ struct Renderer(B){
 							scope(success){
 								if(slimed && idiffuse.texture) B.boneMaterialBackend.bindDiffuse(idiffuse.texture);
 							}
-							auto pose=sacObject.getFrame(objects.speedUpShadows[j].animationState,objects.speedUpShadows[j].frame/updateAnimFactor,fasterStandupTimes);
-							B.shadelessBoneMaterialBackend.setPose(pose);
+							auto pose=sacObject.getRenderFrame(objects.speedUpShadows[j].animationState,objects.speedUpShadows[j].frame/updateAnimFactor,fasterStandupTimes);
+							B.shadelessBoneMaterialBackend.setPose(pose.skinMatrices,pose.renderOffset);
 							mesh.render(rc);
 						}
 					}

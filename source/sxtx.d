@@ -6,7 +6,9 @@ import util,assets;
 import dlib.core.stream,dlib.image,dlib.image.color;
 import std.stdio, std.string, std.algorithm, std.path, std.exception;
 
-SuperImage loadSXTX(string filename,bool alpha){
+SuperImage loadSXTX(string filename,int chromaKey=-1){ 
+//consider changing this back to alpha for the new engine
+// chroma is how retail sac does it picks a color and all the pixels of that color become transparent look at saxs_.d 
 	filename=fixPath(filename);
 	enforce(filename.endsWith(".SXTX"));
 	auto base = filename[0..$-".SXTX".length];
@@ -25,12 +27,14 @@ SuperImage loadSXTX(string filename,bool alpha){
 	writeln(imageSpec);
 	assert(0);+/ // TODO?
 	auto img=loadTGA(new ArrayStream(readFile(filename)));
-	if(!alpha) return img;
+	if(chromaKey<0) return img;
 	auto nimg=image(img.width,img.height,4); // TODO: process data only once
 	auto data=img.data,ndata=nimg.data;
+	auto key=cast(uint)chromaKey&0xffffff;
 	foreach(i;0..nimg.data.length/4){
 		ndata[4*i..4*i+3]=data[3*i..3*i+3];
-		ndata[4*i+3]=data[3*i]==0&&data[3*i+1]==0&&data[3*i+2]==0?0:255;
+		auto rgb=(cast(uint)data[3*i]<<16)|(cast(uint)data[3*i+1]<<8)|data[3*i+2];
+		ndata[4*i+3]=rgb==key?0:255;
 	}
 	img.free();
 	return nimg;
