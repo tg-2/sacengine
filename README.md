@@ -33,3 +33,7 @@ On Windows, you may need the following additional DLLs:
 * https://mpg123.org/download/win64/1.29.2/
 * https://www.libsdl.org/download-2.0.php
 * https://github.com/ubawurinna/freetype-windows-binaries
+
+
+=========
+This branch is focused on decompiling the original engine and researching how it functions so it can be used to improve sacengine.
