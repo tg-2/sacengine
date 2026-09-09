@@ -10,11 +10,24 @@ import skel;
 enum maxNumBones=32;
 enum gpuSkinning=true;
 
+float[3] retailFrameOffset(float[3] decoded, float modelHeight,
+		float animationHeight, float modelScale) {
+	float ratio = modelHeight / animationHeight;
+	float[3] motion;
+	foreach (i; 0..3) motion[i] = decoded[i] * ratio;
+	return [motion[0] * modelScale * -10.0f,
+			motion[2] * modelScale * -10.0f,
+			motion[1] * modelScale * 10.0f];
+}
+
 struct Pose{
 	Vector3f displacement;
 	AnimEvent event;
 	Quaternionf[] rotations;
 	Matrix4f[] matrices;
+	Matrix4f[] skinMatrices;
+	Vector3f renderOffset;
+	float[3] decodedDisplacement=[0.0f,0.0f,0.0f];
 }
 private struct FrameHeader{
 	short unknown;
@@ -47,12 +60,13 @@ struct Animation{
 	int castingTime=int.max;
 	Hand[2] hands;
 	Pose[] frames;
+	float referenceHeight=1.0f;
 }
 
 Animation parseSXSK(ubyte[] data,float scaling){
 	auto numFrames=*cast(ushort*)data[2..4].ptr;
-	double offsetY=*cast(float*)data[4..8].ptr;
-	auto numBones=*data[8..12].ptr;
+	float referenceHeight=*cast(float*)data[4..8].ptr;
+	auto numBones=*cast(ushort*)data[8..10].ptr;
 	enforce(numBones<=maxNumBones);
 	auto frameHeaders=cast(FrameHeader[])data[12..12+numFrames*FrameHeader.sizeof];
 	Pose[] frames;
@@ -62,8 +76,9 @@ Animation parseSXSK(ubyte[] data,float scaling){
 		auto displacement=fromSXMD(Vector3f(frameHeader.disp[0],frameHeader.disp[1],frameHeader.disp[2]))*scaling;
 		auto rotations=anim.map!(x=>Quaternionf(Vector3f(fromSXMD([x[0],x[1],x[2]])),x[3]).normalized()).array;
 		frames~=Pose(displacement,AnimEvent.none,rotations);
+		foreach(c;0..3) frames[$-1].decodedDisplacement[c]=frameHeader.disp[c]*0.1f;
 	}
-	return Animation(0,int.max,0,int.max,int.max,(Hand[2]).init,frames);
+	return Animation(0,int.max,0,int.max,int.max,(Hand[2]).init,frames,referenceHeight);
 }
 
 AnimEvent translateAnimEvent(char[4] tag){
@@ -126,8 +141,12 @@ bool compile(B)(ref Animation anim, ref Saxs!B saxs){
 		transform[0]=Transformation(Quaternionf.identity,Vector3f(0,0,0));
 		foreach(j,ref bone;saxs.bones)
 			transform[j]=transform[bone.parent]*Transformation(frame.rotations[j],bone.position);
-		auto displacement=frame.displacement;
-		displacement.z*=saxs.zfactor;
+		frame.skinMatrices=new Matrix4f[](saxs.bones.length);
+		foreach(j;0..saxs.bones.length)
+			frame.skinMatrices[j]=transform[j].getMatrix4f();
+		auto displacement=Vector3f(retailFrameOffset(frame.decodedDisplacement,
+			saxs.zfactor,anim.referenceHeight,saxs.scaling));
+		frame.renderOffset=displacement;
 		foreach(j;0..saxs.bones.length)
 			transform[j].offset+=displacement;
 		auto matrices=new Matrix4f[](saxs.bones.length);

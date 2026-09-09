@@ -625,28 +625,6 @@ final class SacObject(B){
 		if(!transparentMaterials.length) transparentMaterials=B.createTransparentMaterials(this);
 		if(!shadowMaterials.length) shadowMaterials=B.createShadowMaterials(this);
 	}
-	final int alphaFlags(char[4] tag){
-		switch(tag){
-			case "zidd","enab","2nab": return 1<<5;
-			case "kacd": return 1<<5;
-			case "mmag": return 1<<6;
-			case "kacf": return 1<<7;
-			//case "lbog": return 8; // TODO: looks bad, why?
-			case "rmAF": return 1<<3;
-			case "tbhe": return 1<<6;
-			case "tbhf","tbsh","tbhl": return 1<<5;
-			case "bobs","aras": return 1<<2;
-			case "mwas": return 1<<6;
-			case "grps","lrps": return 1<<4|1<<5;
-			case "grda","nmdd": return 1<<9;
-			case "gard","ybab","cris": return 1<<8;
-			case "grdf": return 1<<5;
-			case "oreh": return 1<<6;
-			case "tkhs": return 1<<10;
-			case "lgir","ziwx": return 1<<7;
-			default: return 0;
-		}
-	}
 	static SacObject!B[char[4]] overrides;
 	void setOverride(){ // (uses GC)
 		overrides[tag]=this;
@@ -674,7 +652,7 @@ final class SacObject(B){
 		}
 		else static assert(0);
 		auto model=saxsModls[dat2.saxsModel];
-		saxsi=SaxsInstance!B(loadSaxs!B(model,alphaFlags(dat2.saxsModel)));
+		saxsi=SaxsInstance!B(loadSaxs!B(model));
 		if(!isNaN(data.zfactorOverride)) saxsi.saxs.zfactor=data.zfactorOverride;
 		auto anims=&dat2.animations;
 		auto animIDs=dat2.animations.animations[];
@@ -788,7 +766,7 @@ final class SacObject(B){
 				break;
 			case "SXMD":
 				isSaxs=true;
-				saxsi=SaxsInstance!B(loadSaxs!B(filename,alphaFlags(tag)));
+				saxsi=SaxsInstance!B(loadSaxs!B(filename));
 				if(!isNaN(zfactorOverride)) saxsi.saxs.zfactor=zfactorOverride;
 				import std.range, std.array;
 				if(animation.length)
@@ -902,13 +880,13 @@ final class SacObject(B){
 		return cast(int)animations[fixAnimation(state)].frames.length;
 	}
 
-	Matrix4x4f[] getFrame(AnimationState state,size_t frame,bool fasterStandupTimes)in{
+	Pose getRenderFrame(AnimationState state,size_t frame,bool fasterStandupTimes)in{
 		if(!needsAnimationFix(state,fasterStandupTimes)) assert(frame<numFrames(state,fasterStandupTimes),text(tag," ",state," ",frame," ",numFrames(state)));
 		else assert(frame<numFrames(fixAnimation(state),fasterStandupTimes));
 	}do{
 		// enforce(saxsi.saxs.bodyParts.length==meshes.length); // TODO: why can this fail?
-		if(!needsAnimationFix(state,fasterStandupTimes)) return animations[state].frames[frame].matrices;
-		return animations[fixAnimation(state)].frames[frame].matrices;
+		if(!needsAnimationFix(state,fasterStandupTimes)) return animations[state].frames[frame];
+		return animations[fixAnimation(state)].frames[frame];
 	}
 }
 

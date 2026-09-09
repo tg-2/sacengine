@@ -12,12 +12,15 @@ import core.time: Duration, seconds, MonoTime;
 import lobby;
 import sacobject, sacspell, mrmm, nttData, sacmap, levl, state, form, sacform, controller, network;
 import sxsk : gpuSkinning;
-import renderer,audioBackend;
+import renderer,audioBackend,sacrificeBoneRendering;
 
 final class SacScene: Scene{
 	//OBJAsset aOBJ;
 	//Texture txta;
 	Options options;
+	SacrificeBoneBackend sacrificeBoneMaterialBackend;
+	SacrificeShadelessBoneBackend sacrificeShadelessBoneMaterialBackend;
+	SacrificeBoneShadowBackend sacrificeBoneShadowBackend;
 	this(SceneManager smngr, Options options){
 		super(max(1,options.width), max(1,options.height), options.scale, options.aspectDistortion, smngr);
 		this.shadowMapResolution=options.shadowMapResolution;
@@ -256,6 +259,9 @@ final class SacScene: Scene{
 
 	override void onAllocate(){
 		super.onAllocate();
+		sacrificeBoneMaterialBackend=New!SacrificeBoneBackend(assetManager);
+		sacrificeShadelessBoneMaterialBackend=New!SacrificeShadelessBoneBackend(assetManager);
+		sacrificeBoneShadowBackend=New!SacrificeBoneShadowBackend(assetManager);
 
 		ssao.enabled=options.enableSSAO;
 		glow.enabled=options.enableGlow;
@@ -880,6 +886,12 @@ final class SacScene: Scene{
 	int lastSelectedId=0,lastSelectedFrame=0;
 	float lastSelectedX,lastSelectedY;
 	void gameControl(Duration dt){
+		if(keyDown[KEY_F10] && eventManager.keyPressed[KEY_LCTRL]
+				&& eventManager.keyPressed[KEY_LSHIFT]){
+			SacrificeBoneMesh.hideSxmdSeams=!SacrificeBoneMesh.hideSxmdSeams;
+			writeln("SXMD seam triangles: ",SacrificeBoneMesh.hideSxmdSeams ? "HIDDEN" : "VISIBLE");
+			keyDown[KEY_F10]=0;
+		}
 		auto oldMouseStatus=mouse.status;
 		if(mouse.status.among(MouseStatus.standard,MouseStatus.icon)&&!mouse.dragging){
 			if(renderer.isOnSpellbook(Vector2f(mouse.x,mouse.y),info)) mouse.loc=MouseLocation.spellbook;
@@ -2251,7 +2263,7 @@ static:
 	alias MaterialBackend=.GenericMaterialBackend;
 	alias Mesh=.Mesh;
 	alias Mesh2D=.Mesh2D;
-	alias BoneMesh=.BoneMesh;
+	alias BoneMesh=SacrificeBoneMesh;
 	alias TerrainMesh=.TerrainMesh;
 	alias MinimapMesh=.Mesh2D;
 	alias GroundPatch=.GroundPatch;
@@ -2392,9 +2404,9 @@ static:
 	@property ShadelessColorBackend shadelessColorMaterialBackend(){ return scene.shadelessColorMaterialBackend; }
 	@property ShadelessMorphBackend shadelessMorphMaterialBackend(){ return scene.shadelessMorphMaterialBackend; }
 
-	@property BoneBackend boneMaterialBackend(){ return scene.boneMaterialBackend; }
-	@property ShadelessBoneBackend shadelessBoneMaterialBackend(){ return scene.shadelessBoneMaterialBackend; }
-	@property BoneShadowBackend boneShadowBackend(){ return scene.shadowMap.bsb; }
+	@property SacrificeBoneBackend boneMaterialBackend(){ return scene.sacrificeBoneMaterialBackend; }
+	@property SacrificeShadelessBoneBackend shadelessBoneMaterialBackend(){ return scene.sacrificeShadelessBoneMaterialBackend; }
+	@property SacrificeBoneShadowBackend boneShadowBackend(){ return scene.sacrificeBoneShadowBackend; }
 
 	@property TerrainBackend2 terrainMaterialBackend(){ return scene.terrainMaterialBackend; }
 	@property TerrainShadowBackend terrainShadowBackend(){ return scene.shadowMap.tsb; }
@@ -2498,23 +2510,23 @@ static:
 		foreach(i;0..sobj.numParts){
 			GenericMaterial mat;
 			if(i==config.sunBeamPart){
-				mat=makeMaterial(gpuSkinning&&sobj.isSaxs?scene.shadelessBoneMaterialBackend:scene.shadelessMaterialBackend);
+				mat=makeMaterial(gpuSkinning&&sobj.isSaxs?scene.sacrificeShadelessBoneMaterialBackend:scene.shadelessMaterialBackend);
 				mat.depthWrite=false;
 				mat.blending=Additive;
 				mat.energy=4.0f;
 			}else if(i==config.locustWingPart){
-				mat=makeMaterial(gpuSkinning&&sobj.isSaxs?scene.shadelessBoneMaterialBackend:scene.shadelessMaterialBackend);
+				mat=makeMaterial(gpuSkinning&&sobj.isSaxs?scene.sacrificeShadelessBoneMaterialBackend:scene.shadelessMaterialBackend);
 				mat.depthWrite=false;
 				mat.blending=Additive;
 				mat.energy=20.0f;
 			}else if((config.transparentShinyParts>>i)&1){
-				mat=makeMaterial(gpuSkinning&&sobj.isSaxs?scene.shadelessBoneMaterialBackend:scene.shadelessMaterialBackend);
+				mat=makeMaterial(gpuSkinning&&sobj.isSaxs?scene.sacrificeShadelessBoneMaterialBackend:scene.shadelessMaterialBackend);
 				mat.depthWrite=false;
 				mat.blending=Transparent;
 				mat.transparency=0.5f;
 				mat.energy=20.0f;
 			}else{
-				mat=makeMaterial(gpuSkinning&&sobj.isSaxs?scene.boneMaterialBackend:scene.defaultMaterialBackend);
+				mat=makeMaterial(gpuSkinning&&sobj.isSaxs?scene.sacrificeBoneMaterialBackend:scene.defaultMaterialBackend);
 			}
 			auto diffuse=sobj.isSaxs?sobj.saxsi.saxs.bodyParts[i].texture:sobj.textures[i];
 			if(diffuse !is null) mat.diffuse=diffuse;
@@ -2537,7 +2549,7 @@ static:
 				materials[i]=sobj.materials[i];
 				continue;
 			}
-			auto mat=makeMaterial(gpuSkinning&&sobj.isSaxs?scene.shadelessBoneMaterialBackend:scene.shadelessMaterialBackend);
+			auto mat=makeMaterial(gpuSkinning&&sobj.isSaxs?scene.sacrificeShadelessBoneMaterialBackend:scene.shadelessMaterialBackend);
 			mat.depthWrite=false;
 			mat.blending=Transparent;
 			auto diffuse=sobj.isSaxs?sobj.saxsi.saxs.bodyParts[i].texture:sobj.textures[i];
@@ -2556,7 +2568,7 @@ static:
 		foreach(i,mat;sobj.materials){
 			auto blending=("blending" in mat.inputs).asInteger;
 			if(blending!=Additive){
-				auto shadowMat=makeMaterial(gpuSkinning&&sobj.isSaxs?scene.shadowMap.bsb:scene.shadowMap.sb); // TODO: use shadowMap.sm if no alpha channel
+				auto shadowMat=makeMaterial(gpuSkinning&&sobj.isSaxs?scene.sacrificeBoneShadowBackend:scene.shadowMap.sb); // TODO: use shadowMap.sm if no alpha channel
 				if(auto diffuse="diffuse" in mat.inputs)
 					if(diffuse.texture)
 						shadowMat.diffuse=diffuse.texture;
