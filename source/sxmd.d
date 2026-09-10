@@ -75,7 +75,7 @@ static struct SeamEntry{
 	ushort bodyPart;
 	ushort ring;
 	ushort vertex;
-	ubyte textureU; 
+	ubyte textureU;
 	ubyte textureV;
 }
 static assert(SeamEntry.sizeof==8);

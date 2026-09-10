@@ -6,9 +6,7 @@ import util,assets;
 import dlib.core.stream,dlib.image,dlib.image.color;
 import std.stdio, std.string, std.algorithm, std.path, std.exception;
 
-SuperImage loadSXTX(string filename,int chromaKey=-1){ 
-//consider changing this back to alpha for the new engine
-// chroma is how retail sac does it picks a color and all the pixels of that color become transparent look at saxs_.d 
+SuperImage loadSXTX(string filename,int chromaKey=-1){
 	filename=fixPath(filename);
 	enforce(filename.endsWith(".SXTX"));
 	auto base = filename[0..$-".SXTX".length];

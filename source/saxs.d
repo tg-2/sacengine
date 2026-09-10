@@ -10,7 +10,7 @@ import sxmd,sxsk,sxtx;
 import std.stdio, std.path, std.string, std.exception, std.algorithm, std.range, std.conv;
 
 struct Bone{
-	Vector3f position; 
+	Vector3f position;
 	size_t parent; // parent index (parent must have a smaller index than its children)
 	Vector3f[8] hitbox;
 }
@@ -29,7 +29,7 @@ struct Vertex{
 		indices_[]=-1;
 		size_t count;
 		foreach(index;indices){
-			enforce(count<indices_.length,"SXMD vertex has more than three source references"); 
+			enforce(count<indices_.length,"SXMD vertex has more than three source references");
 			// I added a bunch of these in case we have any memory/disk corruptions, remove  if we dont need them
 			indices_[count++]=index;
 		}
@@ -89,7 +89,7 @@ Saxs!B loadSaxs(B)(string filename){
 	auto bones=chain(only(Bone(Vector3f(0,0,0),0)),model.bones.map!(bone=>Bone(Vector3f(fromSXMD(bone.pos))*scaling,bone.parent,translateHitbox(bone.hitbox)))).array;
 	enforce(iota(1,bones.length).all!(i=>bones[i].parent<i));
 	auto hitboxBones=iota(cast(int)bones.length).filter!(i=>saxs.hitboxBones[i]).array;
-	//enforce(saxs.hitboxBones[bones.length..$].all!(x=>!x)); // TODO: why does this not hold? 
+	//enforce(saxs.hitboxBones[bones.length..$].all!(x=>!x)); // TODO: why does this not hold?
 	//Because SAXS leaves entries beyond the active bone count uninitialized (and that goes up to 40 bones btw).
 	auto convertPosition(ref sxmd.Position position){
 		return Position(
