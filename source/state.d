@@ -12681,6 +12681,7 @@ bool canSee(B)(ObjectState!B state,Vector3f observerPosition,float eyeHeight,flo
 			if(distancesqr>(factor*sightRange)^^2) return false;
 		}
 	}
+	if(!state.fogOfWar) return true;
 	return state.terrainLineOfSight(observerPosition+Vector3f(0.0f,0.0f,eyeHeight),targetPosition+aimOffset);
 }
 
