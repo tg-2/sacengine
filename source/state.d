@@ -12151,7 +12151,7 @@ bool moveTowards(B)(ref MovingObject!B object,Vector3f ultimateTargetPosition,fl
 		if(blockedAtDestination) return true;
 		if(evading&&!isFlying) return false;
 	}else object.turnToFaceTowards(targetPosition,state);
-	auto direction=targetPosition.xy-object.position.xy;
+	/+auto direction=targetPosition.xy-object.position.xy; // TODO: revisit
 	auto angle=atan2(-direction.x,direction.y);
 	auto R=0.0f;
 	if(!isNaN(angle)){
@@ -12178,7 +12178,10 @@ bool moveTowards(B)(ref MovingObject!B object,Vector3f ultimateTargetPosition,fl
 			object.startMovingForward(state);
 			object.creatureState.speedLimit=throttle*object.speed(state);
 		}
-	}
+	}+/
+	if(object.movingForwardGetsCloserTo(targetPosition,object.creatureState.speed,object.creatureStats.movementAcceleration(isFlying),state)){
+		object.startMovingForward(state);
+	}else object.stopMovement(state);
 	return false;
 }
 
