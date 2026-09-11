@@ -14,8 +14,7 @@ struct Pose{
 	Vector3f displacement;
 	AnimEvent event;
 	Quaternionf[] rotations;
-	Matrix4f[] matrices,skinMatrices; // TODO: unify?
-	Vector3f renderOffset;
+	Matrix4f[] matrices;
 	Vector3f decodedDisplacement=Vector3f(0.0f,0.0f,0.0f);
 }
 private struct FrameHeader{
@@ -135,11 +134,7 @@ bool compile(B)(ref Animation anim, ref Saxs!B saxs){
 		transform[0]=Transformation(Quaternionf.identity,Vector3f(0,0,0));
 		foreach(j,ref bone;saxs.bones)
 			transform[j]=transform[bone.parent]*Transformation(frame.rotations[j],bone.position);
-		frame.skinMatrices=new Matrix4f[](saxs.bones.length);
-		foreach(j;0..saxs.bones.length)
-			frame.skinMatrices[j]=transform[j].getMatrix4f();
 		auto displacement=frameOffset(frame.decodedDisplacement,saxs.zfactor,anim.referenceHeight,saxs.scaling);
-		frame.renderOffset=displacement;
 		foreach(j;0..saxs.bones.length)
 			transform[j].offset+=displacement;
 		auto matrices=new Matrix4f[](saxs.bones.length);
