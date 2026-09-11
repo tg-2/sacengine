@@ -1439,7 +1439,7 @@ struct Renderer(B){
 							}
 							// TODO: interpolate animations to get 60 FPS?
 							auto pose=sacObject.getRenderFrame(objects.animationStates[j],objects.frames[j]/updateAnimFactor,fasterStandupTimes);
-							if(material.backend is B.boneMaterialBackend) B.boneMaterialBackend.setPose(pose.skinMatrices,pose.renderOffset,mesh.retailSourceNormals);
+							if(material.backend is B.boneMaterialBackend) B.boneMaterialBackend.setPose(pose.skinMatrices,pose.renderOffset);
 							if(material.backend is B.shadelessBoneMaterialBackend) B.shadelessBoneMaterialBackend.setPose(pose.skinMatrices,pose.renderOffset);
 							if(material.backend is B.boneShadowBackend) B.boneShadowBackend.setPose(pose.skinMatrices,pose.renderOffset);
 							mesh.render(rc);

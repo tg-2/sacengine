@@ -6,30 +6,30 @@ module saxs_;
 import util;
 import std.string, std.exception;
 
-struct SAXSReferencePoint { // 4 optional attachment points that follow animated bones
-							// hand position, weapon attachment, or spell origin etc
-	short boneIndex; // which bone has that point.
-	ushort flags; // I dont know what they do yet but it seems the first flag is if the offset will be enabled or not
-	float[3] offset; // [0.0f ,0.0f, 0.0f] Vector 3 float for the offset from the bone.
+struct SAXSReferencePoint { // optional attachment points that follow animated bones,
+							// e.g. hand position, weapon attachment, or spell origin
+	short boneIndex; // index of the bone this point is attached to
+	ushort flags; // TODO: semantics not fully known; the first flag appears to enable the offset
+	float[3] offset; // offset from the bone
 }
-struct SAXSLimbRecord { //Rendering settings for each limb if it will be transparent or not etc
+struct SAXSLimbRecord { // per-limb rendering settings (transparency etc.)
 align(1):
-	ubyte flags; // here the first bit means if it will use trans or not. TODO: there are 2 more bits but im not sure what they do yet
-	ubyte zero; // nothing it leaves space but it puts a 0 there.
-	uint chromaKey; // 0x040404 the color used for transparency (if you make this pink all the pink pixels will be trans) like quake does it.
+	ubyte flags; // bit 0: use transparency. TODO: meaning of the remaining bits unknown
+	ubyte zero; // padding, always zero
+	uint chromaKey; // color key used for transparency (e.g. 0x040404); pixels of this color become transparent, Quake-style
 }
 struct SAXS{
-	float scaling; // contols the scale of the model 1.0 is 100% size
-	float rootAdjustUnscaled; // TODO: rootAdjustUnscaled * scaling i think this is used to offset the height of where the model is placed but im not sure
+	float scaling; // controls the scale of the model; 1.0 is 100% size
+	float rootAdjustUnscaled; // TODO: unconfirmed; rootAdjustUnscaled * scaling appears to offset the height where the model is placed
 
-	float vertexQuality; // these two are for LOD as i understand, The higher the value, the fewer vertices and rings the model uses. 1.0 2.0 3.0 and so on...
-	float ringQuality; //  and for both of these -1.0 means full model no LOD. thats how sacrifice uses them.
+	float vertexQuality; // LOD control: higher values use fewer vertices and rings (1.0, 2.0, 3.0, ...)
+	float ringQuality; // for both quality values, -1.0 means full model with no LOD; this is how retail Sacrifice uses them
 
-	ubyte[8] unwritten; // dont know what these bytes are, they dont do anything and the dll does not use them, possibly they just leave space in between.
+	ubyte[8] unwritten; // unknown; unused by the retail DLL, possibly reserved padding
 
 	SAXSReferencePoint[4] referencePoints; // up to 4 of these points
-	SAXSLimbRecord[16] limbs; // and up to 16 of these effects
-	bool[40] hitboxBones; // what bones will contribute to frustrum culling but im not sure if they are for spell collisions etc
+	SAXSLimbRecord[16] limbs; // and up to 16 of these records
+	bool[40] hitboxBones; // which bones contribute to frustum culling; possibly also used for spell collisions
 }
 static assert(SAXSReferencePoint.sizeof == 16);
 static assert(SAXSReferencePoint.offset.offsetof == 4);

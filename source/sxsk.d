@@ -10,24 +10,13 @@ import skel;
 enum maxNumBones=32;
 enum gpuSkinning=true;
 
-float[3] retailFrameOffset(float[3] decoded, float modelHeight,
-		float animationHeight, float modelScale) {
-	float ratio = modelHeight / animationHeight;
-	float[3] motion;
-	foreach (i; 0..3) motion[i] = decoded[i] * ratio;
-	return [motion[0] * modelScale * -10.0f,
-			motion[2] * modelScale * -10.0f,
-			motion[1] * modelScale * 10.0f];
-}
-
 struct Pose{
 	Vector3f displacement;
 	AnimEvent event;
 	Quaternionf[] rotations;
-	Matrix4f[] matrices;
-	Matrix4f[] skinMatrices;
+	Matrix4f[] matrices,skinMatrices; // TODO: unify?
 	Vector3f renderOffset;
-	float[3] decodedDisplacement=[0.0f,0.0f,0.0f];
+	Vector3f decodedDisplacement=Vector3f(0.0f,0.0f,0.0f);
 }
 private struct FrameHeader{
 	short unknown;
@@ -131,6 +120,11 @@ Animation loadSXSK(string filename,float scaling){
 }
 
 import saxs;
+Vector3f frameOffset(Vector3f decoded,float modelHeight,float animationHeight,float modelScale){
+	float ratio=modelHeight/animationHeight;
+	auto motion=decoded*ratio;
+	return 10.0f*modelScale*fromSXMD(motion);
+}
 bool compile(B)(ref Animation anim, ref Saxs!B saxs){
 	enforce(saxs.bones.length<=maxNumBones);
 	bool ok=true;
@@ -144,8 +138,7 @@ bool compile(B)(ref Animation anim, ref Saxs!B saxs){
 		frame.skinMatrices=new Matrix4f[](saxs.bones.length);
 		foreach(j;0..saxs.bones.length)
 			frame.skinMatrices[j]=transform[j].getMatrix4f();
-		auto displacement=Vector3f(retailFrameOffset(frame.decodedDisplacement,
-			saxs.zfactor,anim.referenceHeight,saxs.scaling));
+		auto displacement=frameOffset(frame.decodedDisplacement,saxs.zfactor,anim.referenceHeight,saxs.scaling);
 		frame.renderOffset=displacement;
 		foreach(j;0..saxs.bones.length)
 			transform[j].offset+=displacement;

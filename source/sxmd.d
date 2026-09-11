@@ -149,15 +149,14 @@ Model parseSXMD(ubyte[] data){
 	auto remainingDataOffset=vertexOffset+Position.sizeof*numPositions;
 	return Model(zfactor,bones,bodyParts,positions);
 }
-// when I refer to something as RETAIL I mean how the original engine does it or has it.
-struct RetailRingVertex {
+struct RingVertex {
 	ushort flags;
 	ubyte u;
 	bool active;
 }
 
-uint[3][] buildRetailRingFaces(const RetailRingVertex[] oldRing,
-		const RetailRingVertex[] newRing, ushort oldPostFlags = 0,
+uint[3][] buildRingFaces(const RingVertex[] oldRing,
+		const RingVertex[] newRing, ushort oldPostFlags = 0,
 		ushort newPostFlags = 0) {
 	import std.algorithm : count;
 	auto oldActiveCount = oldRing.count!(v => v.active);
@@ -291,7 +290,7 @@ void prepareSeam(ref SeamBody body, size_t owner) {
 	}
 }
 
-int advanceRetailRing(uint actorFlags, int lodStep, ref SeamBody body,
+int advanceRing(uint actorFlags, int lodStep, ref SeamBody body,
 		int selector, int boundarySelector) {
 	if (actorFlags & 0x100) return selector + lodStep;
 	int result = selector + lodStep;
@@ -310,14 +309,14 @@ int advanceRetailRing(uint actorFlags, int lodStep, ref SeamBody body,
 	return result;
 }
 
-int[] selectRetailRings(ref SeamBody body, uint actorFlags = 0x1410,
+int[] selectRings(ref SeamBody body, uint actorFlags = 0x1410,
 		int lodStep = 0x10000) {
 	int ringCount = cast(int)body.rings.length;
 	int boundarySelector = ringCount << 16;
 	int selector;
 	if ((body.flags & 0x80) && (actorFlags & 0x1400) == 0x1400) {
 		if (body.flags & 0x100) {
-			selector = advanceRetailRing(actorFlags, lodStep, body, 0,
+			selector = advanceRing(actorFlags, lodStep, body, 0,
 				boundarySelector);
 		} else if (body.flags & 0x200) {
 			int candidate = boundarySelector - lodStep;
@@ -333,13 +332,13 @@ int[] selectRetailRings(ref SeamBody body, uint actorFlags = 0x1410,
 			selector = (ringCount - 1) << 16;
 		}
 		result ~= selector >> 16;
-		selector = advanceRetailRing(actorFlags, lodStep, body, selector,
+		selector = advanceRing(actorFlags, lodStep, body, selector,
 			boundarySelector);
 	}
 	return result;
 }
 
-SeamMesh buildRetailSeam(SeamBody[] bodies, size_t owner, int firstRing,
+SeamMesh buildSeam(SeamBody[] bodies, size_t owner, int firstRing,
 		int lastRing) {
 	auto body = bodies[owner];
 	auto records = body.records;
@@ -421,7 +420,7 @@ private ubyte retailInteger(real value) {
 	return cast(ubyte)cast(uint)value;
 }
 
-void prepareRetailUVs(ref Model model, const uint[] textureWidths,
+void prepareUVs(ref Model model, const uint[] textureWidths,
 		const uint[] textureHeights) {
 	assert(textureWidths.length == model.bodyParts.length);
 	assert(textureHeights.length == model.bodyParts.length);
@@ -471,7 +470,7 @@ void prepareRetailUVs(ref Model model, const uint[] textureWidths,
 	}
 }
 
-uint[3][] buildRetailCap(uint actorFlags, uint bodyFlags, bool first,
+uint[3][] buildCap(uint actorFlags, uint bodyFlags, bool first,
 		uint base, uint emittedCount) {
 	uint[3][] faces;
 	if (!(actorFlags & 0x402) || !(actorFlags & 0x800) ||
@@ -483,7 +482,7 @@ uint[3][] buildRetailCap(uint actorFlags, uint bodyFlags, bool first,
 	return faces;
 }
 
-uint[] selectRetailVertices(ref ushort[] flags, int vertexStep,
+uint[] selectVertices(ref ushort[] flags, int vertexStep,
 		bool hasExplicitFaces, uint actorFlags = 0x1c10) {
 	assert(vertexStep > 0);
 	int end = cast(int)flags.length << 16;

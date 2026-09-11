@@ -30,7 +30,6 @@ struct Vertex{
 		size_t count;
 		foreach(index;indices){
 			enforce(count<indices_.length,"SXMD vertex has more than three source references");
-			// I added a bunch of these in case we have any memory/disk corruptions, remove  if we dont need them
 			indices_[count++]=index;
 		}
 		this.uv=uv;
@@ -80,7 +79,7 @@ Saxs!B loadSaxs(B)(string filename){
 		textureHeights~=cast(uint)image.height;
 		textureImages~=image;
 	}
-	prepareRetailUVs(model,textureWidths,textureHeights);
+	prepareUVs(model,textureWidths,textureHeights);
 	Vector3f[8] translateHitbox(float[3][8] hitbox){
 		Vector3f[8] result;
 		foreach(i;0..8) result[i]=Vector3f(fromSXMD(hitbox[i]))*scaling;
@@ -90,7 +89,7 @@ Saxs!B loadSaxs(B)(string filename){
 	enforce(iota(1,bones.length).all!(i=>bones[i].parent<i));
 	auto hitboxBones=iota(cast(int)bones.length).filter!(i=>saxs.hitboxBones[i]).array;
 	//enforce(saxs.hitboxBones[bones.length..$].all!(x=>!x)); // TODO: why does this not hold?
-	//Because SAXS leaves entries beyond the active bone count uninitialized (and that goes up to 40 bones btw).
+	// because SAXS leaves entries beyond the active bone count uninitialized (up to 40 bones).
 	auto convertPosition(ref sxmd.Position position){
 		return Position(
 			position.bone,
@@ -119,7 +118,7 @@ Saxs!B loadSaxs(B)(string filename){
 		foreach(ring;bodyPart.rings)
 			selectorRings~=SeamRing(null,true,ring.header.unknown);
 		seamBodies[i].rings=selectorRings;
-		selectedRings[i]=selectRetailRings(seamBodies[i],0x1c10,ringStep);
+		selectedRings[i]=selectRings(seamBodies[i],0x1c10,ringStep);
 	}
 	uint[][][] selectedVertices=new uint[][][](model.bodyParts.length);
 	bool[size_t] emittedSeamEntries;
@@ -131,7 +130,7 @@ Saxs!B loadSaxs(B)(string filename){
 		foreach(selectedRing;selectedRings[i]){
 			auto entries=bodyPart.rings[selectedRing].entries;
 			ushort[] flags=entries.map!(entry=>cast(ushort)(entry.unknown1 & 0xfeff)).array;
-			auto selection=selectRetailVertices(flags,vertexStep,
+			auto selection=selectVertices(flags,vertexStep,
 				bodyPart.numExplicitFaces!=0,0x1c10);
 			selectedVertices[i][selectedRing]=selection;
 			foreach(k;selection)
@@ -198,13 +197,13 @@ Saxs!B loadSaxs(B)(string filename){
 			auto newEntries=bodyPart.rings[next].entries;
 			auto oldSelected=selectedVertices[i][j];
 			auto newSelected=selectedVertices[i][next];
-			auto oldRing=oldEntries.map!(entry=>RetailRingVertex(entry.unknown1,entry.textureU,false)).array;
-			auto newRing=newEntries.map!(entry=>RetailRingVertex(entry.unknown1,entry.textureU,false)).array;
+			auto oldRing=oldEntries.map!(entry=>RingVertex(entry.unknown1,entry.textureU,false)).array;
+			auto newRing=newEntries.map!(entry=>RingVertex(entry.unknown1,entry.textureU,false)).array;
 			foreach(n;oldSelected) oldRing[n].active=true;
 			foreach(n;newSelected) newRing[n].active=true;
 			ushort oldPost=(oldEntries.ptr+oldEntries.length).unknown1;
 			ushort newPost=(newEntries.ptr+newEntries.length).unknown1;
-			auto ringFaces=buildRetailRingFaces(oldRing,newRing,oldPost,newPost);
+			auto ringFaces=buildRingFaces(oldRing,newRing,oldPost,newPost);
 			uint base=vrt[i][j][0];
 			foreach(face;ringFaces) faces~=[face[0]+base,face[2]+base,face[1]+base];
 		}
@@ -212,7 +211,7 @@ Saxs!B loadSaxs(B)(string filename){
 			auto j=first ? selectedRings[i][0] : selectedRings[i][$-1];
 			if(first ? j!=0 : j!=bodyPart.rings.length-1) continue;
 			uint count=cast(uint)selectedVertices[i][j].length+(first ? 0u : 1u);
-			foreach(face; buildRetailCap(0x1c10,bodyPart.flags,first,vrt[i][j][0],count))
+			foreach(face; buildCap(0x1c10,bodyPart.flags,first,vrt[i][j][0],count))
 				faces~=[face[0],face[2],face[1]];
 		}
 		if(bodyPart.explicitFaces.length){
@@ -229,7 +228,7 @@ Saxs!B loadSaxs(B)(string filename){
 		if(!seamBody.records.length) continue;
 		int firstRing=selectedRings[i][0];
 		int lastRing=selectedRings[i][$-1];
-		auto seam=buildRetailSeam(seamBodies,i,firstRing,lastRing);
+		auto seam=buildSeam(seamBodies,i,firstRing,lastRing);
 		bodyParts[i].seamFaceStart=bodyParts[i].faces.length;
 		bodyParts[i].seamFaceCount=seam.faces.length;
 		uint base=cast(uint)bodyParts[i].vertices.length;
@@ -275,7 +274,6 @@ B.BoneMesh[] createBoneMeshes(B)(Saxs!B saxs,Pose normalPose){
 	auto meshes=new B.BoneMesh[](saxs.bodyParts.length);
 	foreach(i,ref bodyPart;saxs.bodyParts){
 		meshes[i]=B.makeBoneMesh(bodyPart.vertices.length,bodyPart.faces.length);
-		meshes[i].retailSourceNormals=true;
 		meshes[i].seamFaceStart=bodyPart.seamFaceStart;
 		meshes[i].seamFaceCount=bodyPart.seamFaceCount;
 		foreach(j,ref vertex;bodyPart.vertices){
