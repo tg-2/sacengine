@@ -14423,9 +14423,12 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 					newRotation=newRotation*rotationQuaternion(Axis.y,-atan(state.getGroundHeightDerivative(object.position, rotate(facing, Vector3f(1.0f,0.0f,0.0f)))));
 					break;
 			}
-		}else{
-			auto speedFraction=object.creatureState.speed/(object.creatureStats.flyingSpeed*object.scale);
-			object.creatureState.flyingRoll=(31.0f*object.creatureState.flyingRoll+15.0f*object.creatureState.rotationSpeedCurrent*speedFraction)/32.0f;
+		}else if(object.creatureState.movement==CreatureMovement.flying){
+			auto maxFlyingSpeed=object.creatureStats.flyingSpeed*object.scale;
+			if(maxFlyingSpeed>0.0f){
+				auto speedFraction=object.creatureState.speed/maxFlyingSpeed;;
+				object.creatureState.flyingRoll=(31.0f*object.creatureState.flyingRoll+15.0f*object.creatureState.rotationSpeedCurrent*speedFraction)/32.0f;
+			}
 			newRotation=newRotation*pitchQuaternion(object.creatureState.flyingPitch)*rotationQuaternion(Axis.y,-object.creatureState.flyingRoll);
 		}
 		if(isRotating||object.creatureState.mode!=CreatureMode.idle||

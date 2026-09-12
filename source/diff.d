@@ -23,6 +23,12 @@ bool diffData(string[] noserialize=[],T)(ref T a,ref T b,lazy string path)if(is(
 	return r;
 }
 bool diffData(string[] noserialize=[],T)(T a,T b,lazy string path)if(is(T==class)&&!is(T==SacObject!B,B)&&!is(T==SacBuilding!B,B)&&!is(T==SacSpell!B,B)&&!is(T==SacParticle!B,B)){
+	if(!(a&&b)){
+		if(!!a!=!!b){
+			writeln(path, "differs: ",!!a?"is not null":"is null",", but ",!!b?"is not null":"is null");
+			return true;
+		}else return false;
+	}
 	bool r=false;
 	static foreach(member;__traits(allMembers,T)){
 		static if(is(typeof(__traits(getMember,a,member).offsetof))){
