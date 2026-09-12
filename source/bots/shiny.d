@@ -444,7 +444,7 @@ enum BotEvent{ // thaum event ids
 	death=6,              // FSMEnterState, 0x4000 rising (entered death state)
 	revive=9,             // 0x4000 falling (revive/convert-revive/unghost)
 	sacrifice=10,         // LANDITEM::Sacrifice (victim owned, != altar owner)
-	enemyNearBuilding=11, // LANDITEM::Run + nearbywizardcallback 0x466d00 (enemy within 100.0f)
+	enemyNearBuilding=11, // LANDITEM::Run + nearbywizardcallback 0x466d00 (enemy wizard within 100.0f)
 	buildingDamaged=12,   // LANDITEM::Damage (damage>0)
 	buildingDestroyed=13, // LANDITEM::Destroy (fully-built only)
 	addedToSide=15,       // SIDE::AddToSide
@@ -530,11 +530,11 @@ void botScanBuilding(B)(ref Building!B b,ObjectState!B state){ // thaum LANDITEM
 	if((b.id+state.frame)%32!=0) return; // thaum's +0x4ec countdown fires every 32 ticks phased by creation tick, here phased by building id
 	if(!(cast(uint)b.sacBuilding.flags&1)) return; // bldg data flags +0x47c&1
 	if(!(0<=b.side&&b.side!=neutralSide&&b.health!=0.0f)) return; // owner wizard (+0x1c4); Run stops at Destroy
-	// nearbywizardcallback 0x466d00: first enemy creature/wizard (NTT::IsEnemy)
+	// nearbywizardcallback 0x466d00: first enemy wizard (NTT::IsEnemy); EnumerateType 0x48fb80 walks list[1]+mask 1 = wizard ntts only (ntt types: 1=wiz, 2=soul, 4=creature, 0x10=building)
 	auto position=state.staticObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(b.componentIds[0]);
 	bool found=false;
 	state.eachMoving!((ref MovingObject!B o,ObjectState!B state,Vector3f position,int side,bool* found){
-		if(*found) return;
+		if(*found||!o.isWizard) return;
 		if(state.sides.getStance(side,o.side)!=Stance.enemy&&state.sides.getStance(o.side,side)!=Stance.enemy) return; // thaum additionally counts ntt+0x234&0x2000 (provoked flag, no sacengine equivalent)
 		if((o.position-position).lengthsqr<100.0f*100.0f) *found=true;
 	})(state,position,b.side,&found);
