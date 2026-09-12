@@ -327,7 +327,7 @@ RatingFn ratingFn(B)(SacSpell!B s){
 	return RatingFn.none;
 }
 
-struct ShinyAI(B){
+final class ShinyAI(B){
 	bool initialized=false;
 	int side=-1;
 	uint config=0;
@@ -371,6 +371,9 @@ struct ShinyAI(B){
 	char[4][numTagAccs] tagAccKeys;
 	int tagAccCount=0;
 	ShinyRand rng;
+	void copyFrom(ShinyAI rhs){
+		foreach(i,ref x;this.tupleof) x=rhs.tupleof[i];
+	}
 }
 
 RaterAcc* tagAcc(B)(ref ShinyAI!B ai,char[4] tag){

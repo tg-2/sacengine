@@ -29756,8 +29756,23 @@ struct SideData(B){
 	Array!int minimapAlertFrames; // object id -> alert blink end frame
 	SideState state;
 	SideType sideType;
-	ShinyAI!B shinyAI;
-	mixin Assign;
+	ShinyAI!B shinyAI; // null unless sideType==SideType.shinyBot
+	void setSideType(SideType type){
+		sideType=type;
+		if(type==SideType.shinyBot){ if(shinyAI is null) shinyAI=new ShinyAI!B; }
+		else shinyAI=null;
+	}
+	void opAssign(ref SideData rhs){
+		auto ai=shinyAI;
+		foreach(i,ref x;this.tupleof) x=rhs.tupleof[i];
+		if(rhs.shinyAI !is null){
+			shinyAI=ai is null?new ShinyAI!B:ai;
+			shinyAI.copyFrom(rhs.shinyAI);
+		}else shinyAI=null;
+	}
+	void opAssign(SideData rhs){
+		foreach(i,ref x;this.tupleof) x=move(rhs.tupleof[i]);
+	}
 	void updateLastSelected(int id){
 		if(lastSelected!=id){
 			lastSelected=id;
@@ -30892,7 +30907,7 @@ void initGame(B)(ObjectState!B state,ref Array!SlotInfo slots,GameInit!B gameIni
 	if(!gameInit.fasterCastingTimes) state.disableFasterCastingTimes();
 	if(gameInit.aiSides){
 		foreach(i,ref side;state.sides)
-			state.sid.sides[i].sideType=side.assignment&PlayerAssignment.aiSide?SideType.shinyBot:SideType.neutral;
+			state.sid.sides[i].setSideType(side.assignment&PlayerAssignment.aiSide?SideType.shinyBot:SideType.neutral);
 	}
 	slots.length=gameInit.slots.length;
 	slots.data[]=SlotInfo.init;
@@ -30912,7 +30927,7 @@ void initGame(B)(ObjectState!B state,ref Array!SlotInfo slots,GameInit!B gameIni
 			slots[slot].controlledSide=wiz.side;
 			slots[slot].wizard=wizId;
 			if(0<=wiz.side&&wiz.side<32) // TODO: support?
-				state.sid.sides[wiz.side].sideType=gameInit.slots[slot].sideType;
+				state.sid.sides[wiz.side].setSideType(gameInit.slots[slot].sideType);
 		}
 		if(0<=wiz.side&&wiz.side<32) // TODO: support?
 			altarSides|=1<<wiz.side;

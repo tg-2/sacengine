@@ -114,6 +114,16 @@ struct JSONBuilder{
 		}else value("");
 		put("}");
 	}
+	void value(T)(T val)if(is(T==class)&&!is(T==SacSpell!B,B)&&!is(T==SacObject!B,B)&&!is(T==SacBuilding!B,B)){
+		put("{");
+		enum members=__traits(allMembers,T);
+		static foreach(i,alias member;T.tupleof){
+			if(i) put(",");
+			field(__traits(identifier,member));
+			value(__traits(getMember,val,__traits(identifier,member)));
+		}
+		put("}");
+	}
 }
 
 enum JSONCommandType{

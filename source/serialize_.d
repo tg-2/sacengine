@@ -35,7 +35,7 @@ void serializeClass(alias sink,string[] noserialize=[],T)(T t)if(is(T==class)){
 		}
 	}
 }
-void deserializeClass(string[] noserialize,T,R,B)(T object,ObjectState!B state,ref R data)if(is(T==class)){
+void deserializeClass(string[] noserialize=[],T,R,B)(T object,ObjectState!B state,ref R data)if(is(T==class)){
 	static foreach(member;__traits(allMembers,T)){
 		static if(is(typeof(__traits(getMember,object,member).offsetof))){
 			static if(!noserialize.canFind(member)){
@@ -1066,8 +1066,18 @@ void serialize(alias sink,B)(ref AITask!B task){ serializeStruct!sink(task); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==AITask!B)){ deserializeStruct(result,state,data); }
 void serialize(alias sink,B)(ref AIRecord!B record){ serializeStruct!sink(record); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==AIRecord!B)){ deserializeStruct(result,state,data); }
-void serialize(alias sink,B)(ref ShinyAI!B ai){ serializeStruct!sink(ai); }
-void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ShinyAI!B)){ deserializeStruct(result,state,data); }
+void serialize(alias sink,B)(ShinyAI!B ai){
+	serialize!sink(ai !is null);
+	if(ai !is null) serializeClass!sink(ai);
+}
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ShinyAI!B)){
+	bool nonNull=false;
+	deserialize(nonNull,state,data);
+	if(nonNull){
+		if(result is null) result=new ShinyAI!B;
+		deserializeClass(result,state,data);
+	}else result=null;
+}
 
 void serialize(alias sink,B)(ref SideManager!B sides){ serializeStruct!sink(sides); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SideManager!B)){ deserializeStruct(result,state,data); }
