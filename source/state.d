@@ -8184,6 +8184,7 @@ bool kill(B,bool pretending=false)(ref MovingObject!B object, ObjectState!B stat
 		object.unselect(state);
 		object.removeFromGroups(state);
 		if(!object.isSacDoctor) object.health=0.0f;
+		state.botDeath(object);
 	}else{
 		with(CreatureMode) if(object.creatureState.mode.among(stunned,pretendingToDie,playingDead)) return false;
 		object.creatureState.mode=CreatureMode.pretendingToDie;
@@ -8258,6 +8259,7 @@ bool gib(B)(ref MovingObject!B object, ObjectState!B state,int giveSoulsTo=-1){ 
 			object.soulId=0;
 		}
 	}
+	state.botDeath(object);
 	state.removeLater(object.id);
 	return true;
 }
@@ -8390,6 +8392,7 @@ int makeBuilding(B)(ref MovingObject!B caster,char[4] tag,int flags,int base,Obj
 		}
 		if(base) state.buildingById!((ref manafount,state){ putOnManafount(building,manafount,state); },(){})(base,state);
 	},(){ assert(0); })(buildingId);
+	state.botBuilt(caster.side,buildingId);
 	return buildingId;
 }
 int makeBuilding(B)(int casterId,char[4] tag,int flags,int base,ObjectState!B state)in{
@@ -8418,6 +8421,7 @@ int makeBuilding(B)(int side,char[4] tag,Vector3f position,int flags,ObjectState
 			building.componentIds~=state.addObject(StaticObject!B(curObj,building.id,cposition,rotation,1.0f,0));
 		}
 	},(){ assert(0); })(buildingId);
+	state.botBuilt(side,buildingId);
 	return buildingId;
 }
 
@@ -8519,6 +8523,7 @@ void immediateRevive(B)(ref MovingObject!B object,ObjectState!B state){
 	object.health=object.creatureStats.maxHealth;
 	object.creatureState.mode=CreatureMode.idle;
 	object.setCreatureState(state);
+	state.botRevive(object);
 }
 
 void fastRevive(B)(ref MovingObject!B object,ObjectState!B state){
@@ -8539,6 +8544,7 @@ void revive(B)(ref MovingObject!B object,ObjectState!B state,bool fast=false){
 	object.health=object.creatureStats.maxHealth;
 	object.creatureState.mode=fast?CreatureMode.fastReviving:CreatureMode.reviving;
 	object.setCreatureState(state);
+	state.botRevive(object);
 }
 
 bool convertRevive(B)(ref MovingObject!B object,ObjectState!B state){
@@ -8555,6 +8561,7 @@ bool convertRevive(B)(ref MovingObject!B object,ObjectState!B state){
 	object.health=min(max(400.0f,0.5f*object.creatureStats.maxHealth),object.creatureStats.maxHealth); // TODO: ok?
 	object.creatureState.mode=CreatureMode.convertReviving;
 	object.setCreatureState(state);
+	state.botRevive(object);
 	return true;
 }
 
@@ -9030,12 +9037,14 @@ float dealDamageIgnoreGuardians(B)(ref Building!B building,float damage,int atta
 	building.health-=actualDamage;
 	if(building.flags&Flags.cannotDestroyKill)
 		building.health=max(building.health,1.0f);
+	state.botDamaged(building,actualDamage);
 	if(state.sides.getStance(attackingSide,building.side)==Stance.enemy)
 		recordDamage(building,attackingSide,actualDamage,state);
 	if(damageMod&DamageMod.ignite)
 		igniteBuilding(building,cast(int)damage+1,state);
 	if(building.health==0.0f){
 		recordDestruction(building,attackingSide,state);
+		state.botDestroyed(building);
 		building.destroy(state);
 		destroyed=true;
 	}
@@ -13591,6 +13600,7 @@ bool unghost(B)(ref MovingObject!B wizard,ObjectState!B state){
 	wizard.creatureState.mode=CreatureMode.ghostToIdle;
 	wizard.setCreatureState(state);
 	wizard.animateGhostTransition(state);
+	state.botRevive(wizard);
 	return true;
 }
 
@@ -15756,14 +15766,15 @@ bool updateRitual(B)(ref Ritual!B ritual,ObjectState!B state){
 					bool finish=false;
 					final switch(type){
 						case RitualType.convert:
-							if(!creature||state.movingObjectById!((ref obj,nRounds,caster,state){
+							if(!creature||state.movingObjectById!((ref obj,nRounds,caster,side,state){
 								auto targetRounds=cast(int)obj.creatureStats.maxHealth/550;
 								if(nRounds==targetRounds){
+									state.botSacrificed(side,obj.side);
 									obj.gib(state,caster);
 									return true;
 								}
 								return false;
-							},()=>true)(creature,nRounds,caster,state))
+							},()=>true)(creature,nRounds,caster,side,state))
 								return ritual.stopRitual(state);
 							break;
 						case RitualType.desecrate:
@@ -27524,6 +27535,7 @@ void updateBuilding(B)(ref Building!B building, ObjectState!B state){
 		if((building.id+state.frame)%16==0&&0<=building.side)
 			markVisibleNTTs(building.side,structure.position,structure.relativeHitbox[1].z,0.0f,1.0f,structure.sacObject.sightRange,pi!float,state);
 	},(){})(building.componentIds[0],state);
+	building.botScanBuilding(state);
 	if(building.health!=0.0f) building.heal(building.regeneration/updateFPS,state);
 	if(!(building.flags&AdditionalBuildingFlags.inactive)){
 		if(building.isManafount){
@@ -27718,6 +27730,7 @@ void updateWizard(B)(ref WizardInfo!B wizard,ObjectState!B state){
 			if(wizard.experience>=xpForLevel[wizard.level+1])
 				wizard.experience=xpForLevel[wizard.level+1]-1e-3f;
 			state.movingObjectById!(levelDownEffect,()=>false)(wizard.id,state);
+			state.botSpellListUpdated(side,wizard.id);
 		}
 	}
 	if(wizard.experience>=xpForLevel[wizard.level+1]){
@@ -27746,6 +27759,7 @@ void updateWizard(B)(ref WizardInfo!B wizard,ObjectState!B state){
 			if(wizard.experience<0.0f)
 				wizard.experience=0.0f;
 			state.movingObjectById!(levelUpEffect,()=>false)(wizard.id,state);
+			state.botSpellListUpdated(side,wizard.id);
 		}
 	}
 	if(wizard.queuedSpell){
@@ -28936,7 +28950,9 @@ final class ObjectState(B){ // (update logic)
 	void disableFasterStandupTimes(){ settings.fasterStandupTimes=false; }
 	void disableFasterCastingTimes(){ settings.fasterCastingTimes=false; }
 	int addObject(T)(T object) if(is(T==MovingObject!B)||is(T==StaticObject!B)||is(T==Soul!B)||is(T==Building!B)){
-		return obj.addObject(move(object));
+		auto id=obj.addObject(move(object));
+		static if(is(T==MovingObject!B)) this.botSpawned(id);
+		return id;
 	}
 	void removeObject(int id)in{
 		assert(id!=0);
@@ -29170,6 +29186,7 @@ final class ObjectState(B){ // (update logic)
 		if(id<=0) return;
 		auto type=targetTypeFromId(id);
 		sid.mark(side,id,type==TargetType.building||type==TargetType.soul?frame+1000000:frame);
+		this.botFirstContact(side,id);
 		if(type!=TargetType.creature||!(0<=side&&side<sid.sides.length)) return;
 		auto enemyData=this.movingObjectById!((ref obj)=>tuple(obj.side,obj.isWizard||0.0f<obj.meleeStrength),()=>tuple(-1,false))(id);
 		auto enemySide=enemyData[0],enemyDangerous=enemyData[1];
@@ -30938,8 +30955,10 @@ void initGame(B)(ObjectState!B state,ref Array!SlotInfo slots,GameInit!B gameIni
 		if(0<=wiz.side&&wiz.side<32) // TODO: support?
 			altarSides|=1<<wiz.side;
 	}
-	foreach(ref stanceSetting;gameInit.stanceSettings)
+	foreach(ref stanceSetting;gameInit.stanceSettings){
 		state.sides.setStance(stanceSetting.from,stanceSetting.towards,stanceSetting.stance);
+		state.botRelationsChanged(stanceSetting.from);
+	}
 	//state.sid.altarSides=getAltarSides(state);
 	state.sid.altarSides=altarSides;
 
