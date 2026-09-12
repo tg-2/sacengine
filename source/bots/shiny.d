@@ -2676,9 +2676,13 @@ bool lightCanCast(B)(ObjectState!B state,int wizardId,SacSpell!B spell){ // thau
 		if(wiz is null||wiz.id!=wizardId) return false;
 		// (thaum looks the spell up by tag: queued entries always hold a spellbook spell; item+0x8&2 disabled flag has no sacengine equivalent - documented gap)
 		if(spell.type==SpellType.creature&&wiz.souls<spell.soulCost) return false; // 'spir'
-		// s_spell_building+0x64: bit 0x400 (onlyManafounts) -> wiz+0xb80 (closestBuilding); bits 0x200/0x100 (shrine/altar) have no sacengine flag
-		// equivalent (documented gap - the only structure spells bots cast are onlyManafounts)
-		if(spell.type==SpellType.structure&&(spell.flags&SpelFlags.onlyManafounts)&&wiz.closestBuilding==0) return false;
+		// s_spell+0x64 = SpelFlags2 (slots filled by FindWizardStructures 0x481930): connectedToConversion -> wiz+0xb80 (closest own
+		// shrine), nearEnemyAltar -> wiz+0xb7c (closest enemy altar), nearBuilding -> wiz+0xb84 (closest own shrine-or-altar)
+		if(spell.type==SpellType.structure){
+			if(spell.connectedToConversion&&wiz.closestShrine==0) return false;
+			if(spell.nearEnemyAltar&&wiz.closestEnemyAltar==0) return false;
+			if(spell.nearBuilding&&wiz.closestShrine==0&&wiz.closestAltar==0) return false;
+		}
 		foreach(entry;wiz.getSpells())
 			if(entry.spell is spell&&entry.cooldown>0.0f) return false; // 'dern'
 		return ftol(spell.manaCost)<=ftol(o.creatureStats.mana); // 'mana' (thaum CalculateCost = max(fileManaCost,1), sacengine applies it at load)
