@@ -2239,7 +2239,7 @@ void wizSpellRebuild(B)(ref ShinyAI!B ai,ObjectState!B state,int n){ // 0x48c8d0
 				if(s.tag=="oham") node.manahoarSpell=s; // 0x48ca50 cached spells
 				if(s.tag=="ccas") node.convertSpell=s;
 				if(s.tag=="ucas") node.desecrateSpell=s;
-				// 0x48cc30: first match wins; thaum tests bits 0x400|0x4000 of [provider+0x48] (not strc.flags, no spell has them there), on real data the match is always the manalith = first structure spell with onlyManafounts
+				// FindManalithSpell 0x48cc30: first match wins; thaum tests BldgHeader.flags bits 0x400|0x4000 of the god-0 BLDG def ([s_spell_building+0x48]) (not strc.flags, no spell has them there), on real data the match is always the manalith = first structure spell with onlyManafounts
 				if(node.shrineSpell is null&&s.type==SpellType.structure&&(s.flags&SpelFlags.onlyManafounts)) node.shrineSpell=s;
 			}
 		}
@@ -2670,6 +2670,21 @@ void wizSacrifice(B)(ref ShinyAI!B ai,ObjectState!B state,int n,float[3]* w3,int
 
 // ---- wizard: cast execution ----
 
+bool lightCanCast(B)(ObjectState!B state,int wizardId,SacSpell!B spell){ // thaum WIZARD::CantCastSpell 0x481580 (returns 0 = can cast)
+	return state.movingObjectById!((ref o,ObjectState!B state){
+		auto wiz=state.getWizardForSide(o.side);
+		if(wiz is null||wiz.id!=wizardId) return false;
+		// (thaum looks the spell up by tag: queued entries always hold a spellbook spell; item+0x8&2 disabled flag has no sacengine equivalent - documented gap)
+		if(spell.type==SpellType.creature&&wiz.souls<spell.soulCost) return false; // 'spir'
+		// s_spell_building+0x64: bit 0x400 (onlyManafounts) -> wiz+0xb80 (closestBuilding); bits 0x200/0x100 (shrine/altar) have no sacengine flag
+		// equivalent (documented gap - the only structure spells bots cast are onlyManafounts)
+		if(spell.type==SpellType.structure&&(spell.flags&SpelFlags.onlyManafounts)&&wiz.closestBuilding==0) return false;
+		foreach(entry;wiz.getSpells())
+			if(entry.spell is spell&&entry.cooldown>0.0f) return false; // 'dern'
+		return ftol(spell.manaCost)<=ftol(o.creatureStats.mana); // 'mana' (thaum CalculateCost = max(fileManaCost,1), sacengine applies it at load)
+	},()=>false)(wizardId,state);
+}
+
 int executeBestCast(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int checkOnly){ // 0x48d0b0
 	auto node=&ai.nodes[n];
 	size_t i=0;
@@ -2700,11 +2715,11 @@ int executeBestCast(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int checkOnly)
 				goto exit;
 			}
 		}
-		// the engine's own precise legality check (thaum's light can-cast 0x481580 has no range/target-validity checks; sacengine's spellStatus does, so bots only queue casts the engine will actually perform)
+		// thaum's light can-cast (WIZARD::CantCastSpell 0x481580, no range/target-validity checks): invalid targets are fired at
+		// anyway, the engine rejects them without side effects, and the entry is consumed either way (thaum ignores the 0x45daa0 result)
 		OrderTarget ot;
 		if(e.target) ot=entOrderTarget!B(state,ai.nodes[e.target].kind,ai.nodes[e.target].id);
-		bool canCast=false;
-		if(auto wizard=state.getWizard(node.id)) canCast=state.spellStatus!false(wizard,e.provider,ot)==SpellStatus.ready;
+		auto canCast=lightCanCast!B(state,node.id,e.provider);
 		static if(shinyAILog) ailog("CASTQ ",ai.side," t",ai.schedTime," n",n," [",i,"]: spell ",e.provider.tag[]," tgtNode ",e.target," ot(",ot.type,",",ot.id,") canCast ",canCast," flag ",e.flag);
 		if(!canCast){
 			if(!(e.flag&1)) goto exit;
