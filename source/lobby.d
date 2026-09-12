@@ -639,6 +639,7 @@ class Lobby(B){
 				auto occupiedSlots=network.numReadyPlayers;
 				if(network.players[network.host].wantsToControlState)
 					occupiedSlots+=1;
+				occupiedSlots+=gameInit.slots.count!(slot=>slot.sideType==SideType.shinyBot);
 				if(occupiedSlots>=options.numSlots&&network.clientsReadyToLoad()){
 					network.acceptingNewConnections=false;
 					//network.stopListening();
