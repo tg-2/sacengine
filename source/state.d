@@ -24934,7 +24934,7 @@ bool updateDivineSight(B)(ref DivineSight!B divineSight,ObjectState!B state){
 			newPosition=position+nvel/updateFPS;
 		}
 		position=newPosition;
-		// TODO: clear fog of war
+		state.updateVision(side,creature,position,ability.effectRange,1.0f,0.0f,false);
 		return frame<lifetime;
 	}
 }
