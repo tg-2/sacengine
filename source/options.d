@@ -13,6 +13,8 @@ enum GameMode{
 	soulHarvest,
 }
 
+enum God randomGod=cast(God)-1; // god option value: pick a random god
+
 struct Options{
 	// graphics options
 	int width=1280, height=720;
@@ -76,6 +78,12 @@ struct Options{
 	bool shuffleSlots=false;
 	bool randomWizards=false;
 	bool randomSpellbooks=false;
+	// host game setup
+	int[] sides;
+	int[] botSlots;
+	God[] gods;
+	God[] botGods;
+	string[] botNames;
 	// global game mode settings:
 	GameMode gameMode=GameMode.skirmish;
 	int gameModeParam;
@@ -96,6 +104,7 @@ struct Options{
 	bool greenAllySouls=false;
 	bool fasterStandupTimes=true;
 	bool fasterCastingTimes=true;
+	bool aiSides=true;
 	int delayStart=0;
 	// zerotier
 	string zerotierIdentity="zerotier-identity";

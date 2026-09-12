@@ -279,6 +279,17 @@ immutable(string)[char[4]] makeTextByTag(bool readFromWads){
 	return makeByTag!loadText(readFromWads,textFolders,"TEXT",false);
 }
 
+string randomWizardName(){ // random wizard names are in wnam.FLDR/rw00-49.TEXT
+	import std.random: uniform;
+	import std.string: stripRight;
+	char[4] tag="rw00";
+	auto i=uniform!"[)"(0,50);
+	tag[2]=cast(char)('0'+i/10), tag[3]=cast(char)('0'+i%10);
+	reverse(tag[]);
+	if(auto name=tag in texts) return (*name).stripRight;
+	return "";
+}
+
 immutable string[] formTextFolders=["extracted/local/lang_english/LANG.WAD!/ENGL.LANG/menu.FLDR",
                                     "extracted/local/langp3_english/LNG+.WAD!/addl.LANG"].fixPaths;
 immutable(string)[char[4]] formTexts;

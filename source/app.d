@@ -65,6 +65,16 @@ string stripComment(string s){
 	if(i==-1) return s;
 	return s[0..i].strip;
 }
+string[] parseList(string s){
+	s=s.strip;
+	if(s.length>=2&&s[0]=='['&&s[$-1]==']') s=s[1..$-1];
+	if(!s.length) return null;
+	return s.split(',').map!(x=>x.strip).array;
+}
+God parseGod(string s){
+	s=toLower(s);
+	return s=="random"?randomGod:to!God(s);
+}
 string[] importSettings(R)(R settings){
 	return expandSettings(settings.map!stripComment.map!strip.filter!(l=>l.length!=0).array);
 }
@@ -220,6 +230,40 @@ int applySettings(string[] args,ref Options options){
 				stderr.writefln!"error: unknown god '%s'"(opt["--god=".length..$]);
 				return 1;
 			}
+		}else if(opt.startsWith("--sides=")){
+			try{
+				options.sides=parseList(opt["--sides=".length..$]).map!(to!int).array;
+			}catch(Exception e){
+				stderr.writefln!"error: invalid side list '%s'"(opt["--sides=".length..$]);
+				return 1;
+			}
+			foreach(side;options.sides) if(side<0||32<=side){
+				stderr.writefln!"error: invalid side '%s'"(side);
+				return 1;
+			}
+		}else if(opt.startsWith("--bot-slots=")){
+			try{
+				options.botSlots=parseList(opt["--bot-slots=".length..$]).map!(to!int).array;
+			}catch(Exception e){
+				stderr.writefln!"error: invalid slot list '%s'"(opt["--bot-slots=".length..$]);
+				return 1;
+			}
+		}else if(opt.startsWith("--gods=")){
+			try{
+				options.gods=parseList(opt["--gods=".length..$]).map!parseGod.array;
+			}catch(Exception e){
+				stderr.writefln!"error: unknown god in '%s'"(opt["--gods=".length..$]);
+				return 1;
+			}
+		}else if(opt.startsWith("--bot-gods=")){
+			try{
+				options.botGods=parseList(opt["--bot-gods=".length..$]).map!parseGod.array;
+			}catch(Exception e){
+				stderr.writefln!"error: unknown god in '%s'"(opt["--bot-gods=".length..$]);
+				return 1;
+			}
+		}else if(opt.startsWith("--bot-names=")){
+			options.botNames=parseList(opt["--bot-names=".length..$]);
 		}else if(opt.startsWith("--level=")){
 			options.level=to!int(opt["--level=".length..$]);
 		}else if(opt.startsWith("--souls=")){
@@ -319,6 +363,14 @@ int pickMap(string[] candidates,ref Options options){
 int finalizeSettings(ref Options options){
 	if(options.teamSizes.length)
 		options.numSlots=max(options.numSlots,std.algorithm.sum(options.teamSizes));
+	foreach(slot;options.botSlots) if(slot<0||options.numSlots<=slot){
+		stderr.writefln!"error: bot slot %s out of range"(slot);
+		return 1;
+	}
+	if(options.numSlots<options.sides.length){
+		stderr.writefln!"error: %s sides specified for %s slots"(options.sides.length,options.numSlots);
+		return 1;
+	}
 	if(options.wizard=="\0\0\0\0"||options.randomWizards){
 		import std.random: uniform;
 		import nttData:wizards;

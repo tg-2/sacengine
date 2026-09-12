@@ -1,5 +1,7 @@
-import options:GameMode,Options,Settings;
+import options:GameMode,Options,Settings,randomGod;
 import sids, sacmap, state, controller, network, recording_;
+import ntts:God;
+import bots.shiny:SideType;
 import util;
 import std.string, std.range, std.algorithm, std.stdio;
 import std.exception, std.conv;
@@ -42,7 +44,9 @@ GameInit!B gameInit(B,R)(Sides!B sides_,R playerSettings,ref Options options){
 		import std.random: randomShuffle;
 		randomShuffle(zip(sides,teams));
 	}
-	void placeWizard(ref Settings settings){
+	foreach(i,side;options.sides)
+		if(i<sides.length) sides[i]=options.gameMode==GameMode.scenario?sides_.scenarioSide(side):sides_.multiplayerSide(side);
+	void placeWizard(ref Settings settings,God god=God.none){
 		if(settings.observer) return;
 		import std.random: uniform;
 		int slot=settings.slot;
@@ -64,6 +68,8 @@ GameInit!B gameInit(B,R)(Sides!B sides_,R playerSettings,ref Options options){
 		auto spells=settings.spellbook;
 		if(options.randomGods) spells=defaultSpells[uniform!"[]"(1,5)];
 		if(options.randomSpellbooks) spells=randomSpells();
+		if(god==God.none&&settings.slot<options.gods.length) god=options.gods[settings.slot];
+		if(god!=God.none) spells=defaultSpells[god==randomGod?cast(God)uniform!"[]"(1,5):god];
 		auto spellbook=getSpellbook!B(spells);
 		import nttData:WizardTag;
 		assert(gameInit.slots[slot]==GameInit!B.Slot(-1));
@@ -72,6 +78,21 @@ GameInit!B gameInit(B,R)(Sides!B sides_,R playerSettings,ref Options options){
 		gameInit.wizards~=GameInit!B.Wizard(to!WizardTag(tag),name,side,level,souls,experience,minLevel,maxLevel,xpRate,spellbook);
 	}
 	foreach(ref settings;playerSettings) placeWizard(settings);
+	foreach(k,botSlot;options.botSlots){
+		if(botSlot<0||botSlot>=numSlots||gameInit.slots[botSlot].wizardIndex!=-1) continue;
+		import std.random: uniform;
+		import nttData: wizards, randomWizardName;
+		auto botSettings=options.settings;
+		botSettings.slot=botSlot;
+		botSettings.observer=false;
+		botSettings.name=k<options.botNames.length&&options.botNames[k].length?options.botNames[k]:randomWizardName();
+		botSettings.wizard=cast(char[4])wizards[uniform!"[)"(0,$)];
+		auto god=k<options.botGods.length?options.botGods[k]:God.none;
+		if(god==God.none&&botSlot<options.gods.length) god=options.gods[botSlot];
+		if(god==God.none) god=randomGod;
+		placeWizard(botSettings,god);
+		if(gameInit.slots[botSlot].wizardIndex!=-1) gameInit.slots[botSlot].sideType=SideType.shinyBot;
+	}
 	if(options.shuffleSlots){
 		import std.random: randomShuffle;
 		randomShuffle(zip(gameInit.slots,teams));
@@ -133,6 +154,7 @@ GameInit!B gameInit(B,R)(Sides!B sides_,R playerSettings,ref Options options){
 	gameInit.greenAllySouls=options.greenAllySouls;
 	gameInit.fasterStandupTimes=options.fasterStandupTimes;
 	gameInit.fasterCastingTimes=options.fasterCastingTimes;
+	gameInit.aiSides=options.aiSides;
 	if(gameInit.greenAllySouls){
 		foreach(ref settings;playerSettings)
 			if(settings.slot!=-1&&settings.refuseGreenSouls)
@@ -304,6 +326,8 @@ class Lobby(B){
 			else pslot=-1;
 			network.updateSlot(cast(int)i,pslot);
 		}
+		foreach(botSlot;options.botSlots)
+			if(0<=botSlot&&botSlot<numSlots) slotTaken[botSlot]=true;
 		auto freeSlots=iota(numSlots).filter!(i=>!slotTaken[i]);
 		foreach(i,ref player;network.players.data){
 			if(player.settings.observer) continue;
@@ -465,16 +489,22 @@ class Lobby(B){
 					options.maxLevel=to!int(map.levl.multiMaxLevel);
 					options.souls=to!int(map.levl.multiSouls);
 				}
-				auto aiSettings0=options.settings;
-				aiSettings0.slot=0;
-				auto aiSettings1=options.settings;
-				aiSettings1.slot=1;
-				options.observer=true;
-				slot=options.slot=-1;
 				if(toContinue) gameInit=toContinue.gameInit;
-				else gameInit=.gameInit!B(sides,only(options.settings,aiSettings0,aiSettings1),options);
+				else gameInit=.gameInit!B(sides,only(options.settings),options);
 			}
 		}else gameInit=playback.gameInit;
+		if(!playback&&!toContinue&&options.gameMode!=GameMode.scenario){ // state.placeWizard silently skips wizards whose side has no altar
+			import sacobject: SacBuilding;
+			foreach(ref wiz;gameInit.wizards){
+				bool hasAltar=false;
+				foreach(ref structure;map.ntts.structures){
+					auto side=structure.side;
+					if(side<0||side>=32) side=31;
+					if(side==wiz.side&&SacBuilding!B.get(structure.tag).isAltar){ hasAltar=true; break; }
+				}
+				enforce(hasAltar,text("map '",options.map,"' has no altar for side ",wiz.side));
+			}
+		}
 		if(options.refuseGreenSouls)
 			enforce(!gameInit.greenAllySouls||options.slot==-1,"attempted to initialize a game with green souls");
 		if((!playback||network)&&options.recordingFilename.length){

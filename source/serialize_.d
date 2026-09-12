@@ -3,6 +3,7 @@
 // https://www.gnu.org/licenses/gpl-3.0.txt
 
 import nttData,bldg,sacmap,sacobject,sacspell,stats,state,util;
+import bots.shiny;
 import dlib.math;
 import std.algorithm, std.range, std.traits, std.exception, std.conv, std.stdio, std.typecons: Tuple;
 import std.random;
@@ -1038,12 +1039,35 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Obj
 void serialize(alias sink)(ref CreatureGroup creatures){ serializeStruct!sink(creatures); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==CreatureGroup)){ deserializeStruct(result,state,data); }
 
-void serialize(alias sink,B)(ref SideData!B side){ serializeStruct!(sink,["visionCounters","shinyAI"])(side); }
+void serialize(alias sink,B)(ref SideData!B side){ serializeStruct!(sink,["visionCounters"])(side); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SideData!B)){
-	deserializeStruct!(["visionCounters","shinyAI"])(result,state,data);
+	deserializeStruct!(["visionCounters"])(result,state,data);
 	result.visionCounters.length=visionGridSize*visionGridSize;
 	result.visionCounters.data[]=0;
 }
+
+void serialize(alias sink)(ref RaterAcc acc){ serializeStruct!sink(acc); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==RaterAcc)){ deserializeStruct(result,state,data); }
+void serialize(alias sink)(ref StanceRec stanceRec){ serializeStruct!sink(stanceRec); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==StanceRec)){ deserializeStruct(result,state,data); }
+void serialize(alias sink)(ref ShinyRand rng){ serializeStruct!sink(rng); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ShinyRand)){ deserializeStruct(result,state,data); }
+void serialize(alias sink,B)(ref SummonEntry!B entry){ serializeStruct!sink(entry); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SummonEntry!B)){ deserializeStruct(result,state,data); }
+void serialize(alias sink,B)(ref SpellAcc!B acc){ serializeStruct!sink(acc); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SpellAcc!B)){ deserializeStruct(result,state,data); }
+void serialize(alias sink,B)(ref CastEntry!B entry){ serializeStruct!sink(entry); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==CastEntry!B)){ deserializeStruct(result,state,data); }
+void serialize(alias sink,B)(ref AINode!B node){ serializeStruct!sink(node); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==AINode!B)){ deserializeStruct(result,state,data); }
+void serialize(alias sink)(ref AIGroup group){ serializeStruct!sink(group); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==AIGroup)){ deserializeStruct(result,state,data); }
+void serialize(alias sink,B)(ref AITask!B task){ serializeStruct!sink(task); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==AITask!B)){ deserializeStruct(result,state,data); }
+void serialize(alias sink,B)(ref AIRecord!B record){ serializeStruct!sink(record); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==AIRecord!B)){ deserializeStruct(result,state,data); }
+void serialize(alias sink,B)(ref ShinyAI!B ai){ serializeStruct!sink(ai); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ShinyAI!B)){ deserializeStruct(result,state,data); }
 
 void serialize(alias sink,B)(ref SideManager!B sides){ serializeStruct!sink(sides); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SideManager!B)){ deserializeStruct(result,state,data); }

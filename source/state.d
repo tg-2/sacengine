@@ -28435,10 +28435,6 @@ final class ObjectState(B){ // (update logic)
 		dangerGrid=new DangerGrid();
 		this.triggers=triggers;
 		sid=SideManager!B(32);
-		foreach(i,ref side;sides){
-			// sid.sides[i].sideType=side.assignment&PlayerAssignment.aiSide?SideType.shinyBot:SideType.human;
-			sid.sides[i].sideType=SideType.shinyBot;
-		}
 		// trig=TriggerState!B();
 	}
 	static struct Displacement{
@@ -30797,6 +30793,7 @@ void initMap(B)(ObjectState!B state){
 struct GameInit(B){
 	struct Slot{
 		int wizardIndex=-1;
+		SideType sideType;
 	}
 	Slot[] slots;
 	struct Wizard{
@@ -30836,6 +30833,7 @@ struct GameInit(B){
 	bool greenAllySouls=false;
 	bool fasterStandupTimes=true;
 	bool fasterCastingTimes=true;
+	bool aiSides=true;
 }
 
 struct SlotInfo{
@@ -30892,6 +30890,10 @@ void initGame(B)(ObjectState!B state,ref Array!SlotInfo slots,GameInit!B gameIni
 	if(gameInit.greenAllySouls) state.enableGreenAllySouls();
 	if(!gameInit.fasterStandupTimes) state.disableFasterStandupTimes();
 	if(!gameInit.fasterCastingTimes) state.disableFasterCastingTimes();
+	if(gameInit.aiSides){
+		foreach(i,ref side;state.sides)
+			state.sid.sides[i].sideType=side.assignment&PlayerAssignment.aiSide?SideType.shinyBot:SideType.neutral;
+	}
 	slots.length=gameInit.slots.length;
 	slots.data[]=SlotInfo.init;
 	Array!int slotForWiz;
@@ -30909,6 +30911,8 @@ void initGame(B)(ObjectState!B state,ref Array!SlotInfo slots,GameInit!B gameIni
 		if(slot!=-1){
 			slots[slot].controlledSide=wiz.side;
 			slots[slot].wizard=wizId;
+			if(0<=wiz.side&&wiz.side<32) // TODO: support?
+				state.sid.sides[wiz.side].sideType=gameInit.slots[slot].sideType;
 		}
 		if(0<=wiz.side&&wiz.side<32) // TODO: support?
 			altarSides|=1<<wiz.side;

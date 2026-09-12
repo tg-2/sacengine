@@ -13,6 +13,7 @@ import std.conv:to;
 private alias SpellType=sacspell.SpellType; // (conflicts with spells.SpellType)
 
 enum SideType{
+	neutral,
 	human,
 	shinyBot,
 }
