@@ -653,7 +653,6 @@ final class SacObject(B){
 		else static assert(0);
 		auto model=saxsModls[dat2.saxsModel];
 		saxsi=SaxsInstance!B(loadSaxs!B(model));
-		if(!isNaN(data.zfactorOverride)) saxsi.saxs.zfactor=data.zfactorOverride;
 		auto anims=&dat2.animations;
 		auto animIDs=dat2.animations.animations[];
 		isPeasant_=peasantTags.canFind(tag);

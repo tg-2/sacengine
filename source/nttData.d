@@ -392,7 +392,6 @@ immutable struct CreatureData{
 	string name; // TODO: internationalization
 	string model;
 	string stance;
-	float zfactorOverride=float.nan;
 	auto rotateOnGround=RotateOnGround.no;
 	auto hitboxType=HitboxType.large;
 	auto stunnedBehavior=StunnedBehavior.normal;
@@ -551,7 +550,6 @@ CreatureData flurry={
 CreatureData frostwolf={ // TODO: this is screwed up, why?
 	tag: "lbog",
 	name: "Frostwolf",
-	zfactorOverride: 1.0f,
 };
 
 CreatureData gammel={
@@ -728,7 +726,6 @@ CreatureData shrike={
 CreatureData silverback={
 	tag: "grdb",
 	name: "Silverback",
-	zfactorOverride: 1.0,
 	rotateOnGround: RotateOnGround.completely,
 	soulDisplacement: Vector3f(0.0f,0.0f,2.0f),
 	ranged: RangedType.ranged,
@@ -788,7 +785,6 @@ CreatureData sylph={
 CreatureData taurock={
 	tag: "raeb",
 	name: "Taurock",
-	zfactorOverride: 0.8,
 	rotateOnGround: RotateOnGround.completely,
 };
 
