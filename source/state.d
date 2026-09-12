@@ -102,6 +102,12 @@ bool isVisibleToOtherSides(CreatureMode mode){
 		case dead,deadToGhost,idleGhost,movingGhost,ghostToIdle,dissolving,preSpawning,pretendingToDie,playingDead,rockForm,firewalk: return false;
 	}
 }
+bool hasVision(CreatureMode mode){
+	final switch(mode) with(CreatureMode){
+		case idle,moving,dying,deadToGhost,idleGhost,movingGhost,ghostToIdle,spawning,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,shooting,usingAbility,pulling,pumping,torturing,pretendingToDie,playingDead,pretendingToRevive,rockForm,firewalk: return true;
+		case dead,dissolving,preSpawning,reviving,fastReviving,convertReviving,thrashing: return false;
+	}
+}
 bool isReactingToObstacles(CreatureMode mode){
 	final switch(mode) with(CreatureMode){
 		case idle,moving,dying,spawning,reviving,fastReviving,takeoff,landing,meleeMoving,meleeAttacking,stunned,cower,casting,stationaryCasting,castingMoving,
@@ -27852,7 +27858,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 			if(objects.creatureAIs[j].order.command==CommandType.attack)
 				attackTargetId=objects.creatureAIs[j].order.target.id;
 			proximity.insertCenter(CenterProximityEntry(false,isVisibleToAI,objects.ids[j],objects.sides[j],boxCenter(hitbox),hitbox[0].z,attackTargetId,objects.creatureStatss[j].health==0.0f));
-			if(!objects.creatureStates[j].mode.among(CreatureMode.dead,CreatureMode.dissolving))
+			if(objects.creatureStates[j].mode.hasVision)
 				state.updateVision(objects.sides[j],objects.ids[j],objects.positions[j],objects.sacObject.sightRange,hitbox[1].z-position.z,objects.creatureStates[j].facing,true);
 		}
 		if(objects.sacObject.isManahoar){
