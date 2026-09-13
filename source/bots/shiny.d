@@ -593,6 +593,25 @@ OrderTarget entOrderTarget(B)(ObjectState!B state,NodeKind kind,int id){
 		case none: return OrderTarget.init;
 	}
 }
+Vector3f entAimPos(B)(ObjectState!B state,NodeKind kind,int id){ // SIF_GetAimPos 0x44f330: live average of hitbox midpoints
+	return entOrderTarget!B(state,kind,id).position;
+}
+// NTT::CanSee 0x48c050==1: target IsVisible (vtbl[0x10]; CREATURE 0x46c260 tests current-state flag 0x10000, base NTT always visible),
+// then game3d land LOS between the live aim positions (NOT the cached curPos)
+bool entCanSee(B)(ObjectState!B state,NodeKind kind,int id,Vector3f spos,Vector3f tpos){
+	if(isNaN(spos.x)||isNaN(tpos.x)) return false; // entity gone (thaum always has a live ntt)
+	if(kind==NodeKind.wiz||kind==NodeKind.maho||kind==NodeKind.t4o){
+		auto visible=state.movingObjectById!((ref o,state)=>o.creatureState.mode.isVisibleToAI&&!o.creatureStats.effects.stealth,()=>false)(id,state); // state-flag 0x10000 approximation
+		if(!visible) return false;
+	}
+	return state.terrainLineOfSight(spos,tpos);
+}
+// NTT::CanHit 0x48c160==4: no blocking ntt on the shot line (zone crawl between the live aim positions, terrain NOT checked)
+bool entCanHit(B)(ObjectState!B state,int sid,Vector3f spos,int tid,Vector3f tpos){
+	if(isNaN(spos.x)||isNaN(tpos.x)) return true; // entity gone (thaum always has a live ntt)
+	static bool filter(ref ProximityEntry entry,int sid,int tid){ return entry.isObstacle&&entry.isProjectileObstacle&&entry.id!=sid&&entry.id!=tid; }
+	return state.proximity.collideRay!filter(spos,tpos-spos,1.0f,sid,tid)[0]==float.infinity;
+}
 // thaum ntt.vtbl[14] for moving objects: [stateRec+0x30]&0x4000
 bool entDead(B)(ObjectState!B state,int id){
 	return state.movingObjectById!((ref o,state)=>!!o.creatureState.mode.among(CreatureMode.dying,CreatureMode.dead,CreatureMode.deadToGhost,CreatureMode.dissolving),()=>false)(id,state);
@@ -2811,11 +2830,12 @@ int executeBestCast(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int checkOnly)
 		// neither has a sacengine equivalent (documented gap): flags approximated as 0, progress as 1.0f
 		if(e.obj){
 			bool half;
+			auto waim=entAimPos!B(state,node.kind,node.id), oaim=entAimPos!B(state,ai.nodes[e.obj].kind,ai.nodes[e.obj].id); // live ntt aim positions (thaum passes ntts)
 			if(e.provider.type==SpellType.spell&&(e.provider.flags&0x30000)){ // provider+0xc==4 (spell) ? provider+0x60 : 0
-				half=!state.terrainLineOfSight(node.curPos,ai.nodes[e.obj].curPos); // 0x48c160(ntt,objNtt)!=4 approximation
+				half=!entCanHit!B(state,node.id,waim,ai.nodes[e.obj].id,oaim); // CanHit(wizNtt,objNtt)!=4
 			}else{
 				auto rel=relation!B(state,ai.side,entSide!B(state,ai.nodes[e.target].kind,ai.nodes[e.target].id));
-				half=rel==3&&!state.terrainLineOfSight(node.curPos,ai.nodes[e.obj].curPos); // enemy both-ways, different sides, 0x4878a0(node,obj)==0
+				half=rel==3&&!entCanSee!B(state,ai.nodes[e.obj].kind,ai.nodes[e.obj].id,waim,oaim); // enemy both-ways, different sides, HaveLOS 0x4878a0(node,obj)==0
 			}
 			if(half){
 				static if(shinyAILog) ailog("CASTQ ",ai.side," t",ai.schedTime," n",n," [",i,"]: no LOS",checkOnly?" -> skip":" -> half-range chase");
