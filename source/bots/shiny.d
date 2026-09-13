@@ -649,8 +649,8 @@ bool shouldTrack(B)(ref ShinyAI!B ai,ObjectState!B state,NodeKind kind,int id){
 	final switch(kind) with(NodeKind){
 		// thaum rejects sub-components of multi-component structures (ntt+0x440=primary component, set by the map loader); sacengine folds those into one Building, so no case remains: fount-placed buildings keep ntt+0x440==0 in thaum and are tracked
 		case str: return state.buildingById!((ref b,state)=>(cast(uint)b.sacBuilding.flags&0xc17)!=0,()=>false)(id,state);
-		// DELIBERATE DEVIATION (not thaum, per user): opposing wizards in ghost form are completely invisible to the AI; thaum tracks them (vtbl[14] rejects only dead-not-ghost)
-		case wiz: return !entDead!B(state,id)&&!(relation!B(state,ai.side,entSide!B(state,kind,id))==3&&entGhost!B(state,id));
+		// 0x487cd0: wizard gate is IsDead (vtbl[0x38]=0x46c0f0, state flags&0x4000) only; ghosts (0x40000) pass here and are dropped by discover phase-2 (0x484c22)
+		case wiz: return !entDead!B(state,id);
 		case t4o,maho: return !entDead!B(state,id);
 		case cre: return true;
 		case none: return false;
@@ -1183,7 +1183,7 @@ void discover(B)(ref ShinyAI!B ai,ObjectState!B state){ // 0x484b30
 	state.eachSoul!((ref Soul!B s,ObjectState!B state,ShinyAI!B ai){
 		discoverScan(ai,state,NodeKind.cre,s.id);
 	})(state,ai);
-	// phase 2: remove eliminated wizards and stale unseen nodes
+	// phase 2 (0x484bfd): non-own nodes only (node+0x3c&1 = own relation flag, test at 0x484c14); remove ghost wizards, eliminated wizards, stale unseen nodes
 	for(int n=ai.idxHead;n;){
 		auto nn=ai.nodes[n].idxN;
 		auto node=&ai.nodes[n];
@@ -1192,7 +1192,7 @@ void discover(B)(ref ShinyAI!B ai,ObjectState!B state){ // 0x484b30
 			if(node.kind==NodeKind.wiz){
 				auto ws=entSide!B(state,node.kind,node.id);
 				if(ws>=0&&state.sid.sides[ws].state!=SideState.playing) remove=true;
-				if(!remove&&ws>=0&&relation!B(state,ai.side,ws)==3&&entGhost!B(state,node.id)) remove=true; // opposing ghost wizards became untrackable (shouldTrack); thaum keeps them
+				if(!remove&&entGhost!B(state,node.id)) remove=true; // 0x484c22: wiz ntt (ntt+0x4==1) with stateFlags&0x40000 -> removeNode 0x483970, no side test beyond the own-node skip
 			}
 			// !(ntt+0x238&0x10): no sacengine equivalent (documented gap)
 			if(!remove&&(node.flags&0x80)&&cast(uint)node.ageSeen<cast(uint)node.age) remove=true;
