@@ -2026,7 +2026,10 @@ void issueOrder(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int ostate,int tar
 			}
 		}else if(pos) ord.target=positionTarget(*pos,state);
 		else return;
-		switch(ostate){
+		if(node.kind==NodeKind.wiz&&ostate==6){ // thaum 0x46e6e3: wizard ostate-6 orders are converted to ostate 7 in place (0x46e1a0); ostate-7 handler 0x46e539 is a plain move to the order's fixed position
+			ord.target=positionTarget(pos?*pos:ai.nodes[target].curPos,state);
+			ord.command=CommandType.move;
+		}else switch(ostate){
 			case 2: ord.command=CommandType.move; break;
 			case 3: ord.command=target?CommandType.retreat:CommandType.guardArea; break; // thaum cmd 3/5 share handler 0x46e60a: move to live target pos, arrive at target ntt+0x2e4 + 10.0 (engine retreat matches)
 			case 4: ord.command=CommandType.move; break;
@@ -2046,18 +2049,32 @@ void issueOrder(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int ostate,int tar
 	})(node.id,state);
 }
 void orderIfChanged(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int ostate,int target,Vector3f* pos,size_t line=__LINE__){ // 0x4878c0
-	// thaum compares against the ntt's live order (0x4878c0: 0x46e0f0 reads it), so completed orders get re-issued; match that by also re-issuing once the engine order has popped
+	// thaum compares against the ntt's live order (0x4878c0: 0x46e0f0 reads it); completed orders are retained
+	// (see below), so re-issue only when the engine order popped and thaum would not have retained it
 	auto node=&ai.nodes[n];
 	static if(shinyAILog){
 		auto live=state.movingObjectById!((ref o,state)=>o.creatureAI.order,()=>Order.init)(node.id,state);
 		ailog("ORDCHK ",ai.side," t",ai.schedTime," n",n,"(",node.kind," id ",node.id,") @",line," req(",ostate,",",target,",",pos is null?Vector3f.init:*pos,") cached(",node.ordState,",",node.ordTarget,",",node.ordPos,") live(",live.command,",",live.target,")");
 	}
-	if(node.ordState==ostate&&(target==0||node.ordTarget==target)&&(pos is null||node.ordPos==*pos)&&
-	   state.movingObjectById!((ref o,state)=>o.creatureAI.order.command!=CommandType.none,()=>true)(node.id,state)) return;
+	if(node.ordState==ostate&&(target==0||node.ordTarget==target)&&(pos is null||node.ordPos==*pos)){
+		// thaum retains completed orders (0x46ded0(queue,0) no-ops when order+0x24==0), so the live-order
+		// compare in 0x4878c0 still matches after arrival and fixed-pos orders (ostates 4/7, handler
+		// 0x46e539, arrival radius 0.5) are not re-issued while the requested pos equals the retained one;
+		// ostates 2/0x22 force-pop (0x46ded0(queue,1)) and live-target orders (3/5) re-engage on target
+		// movement, so those keep re-issuing once the engine order pops
+		if((ostate==4||ostate==7)&&distSq3(node.curPos,node.ordPos)<=0.25f) return;
+		if(state.movingObjectById!((ref o,state)=>o.creatureAI.order.command!=CommandType.none,()=>true)(node.id,state)) return;
+	}
 	issueOrder(ai,state,n,ostate,target,pos,line);
-	node.ordState=ostate;
-	node.ordTarget=target;
-	if(pos) node.ordPos=*pos;
+	if(node.kind==NodeKind.wiz&&ostate==6){ // the converted order lives as ostate 7 (0x46e1a0), so 0x4878c0's compare and slot19's case table (0x487420) see 7, not the requested 6
+		node.ordState=7;
+		node.ordTarget=target; // 0x46e1a0 keeps the order's target ntt
+		node.ordPos=pos?*pos:ai.nodes[target].curPos;
+	}else{
+		node.ordState=ostate;
+		node.ordTarget=target;
+		if(pos) node.ordPos=*pos;
+	}
 	// status 0x10000 maintenance: set iff state-5 order with capturable target structure (ntt vtbl[25]);
 	// thaum clears it on every other issued order (or broken record->target chain)
 	if(ostate==5&&node.record){
@@ -2578,10 +2595,13 @@ bool isSacDoctorEnt(B)(ObjectState!B state,NodeKind kind,int id){ // thaum: ntt+
 		case str,none: return false;
 	}
 }
-bool desecrationOngoing(B)(ObjectState!B state,int id){ // 0x466950(ntt,0,0)=='sacu' approximation: a desecrate ritual targets the building
+int buildingIdOf(B)(ObjectState!B state,int objectId){ // engine structure lookups (findClosestBuildings) return component object ids; AI str nodes track Building ids
+	return state.staticObjectById!((ref o,state)=>o.buildingId,()=>0)(objectId,state);
+}
+bool desecrationOngoing(B)(ObjectState!B state,int buildingId){ // 0x466950(ntt,0,0)=='sacu' approximation: a desecrate ritual targets the building (SacDocCasting.targetShrine holds its component object id)
 	foreach(i;0..state.obj.opaqueObjects.effects.sacDocCastings.length){
 		auto c=&state.obj.opaqueObjects.effects.sacDocCastings[i];
-		if(c.type==RitualType.desecrate&&c.target==id) return true;
+		if(c.type==RitualType.desecrate&&buildingIdOf!B(state,c.targetShrine)==buildingId) return true;
 	}
 	return false;
 }
@@ -2689,7 +2709,7 @@ void wizRetreat(B)(ref ShinyAI!B ai,ObjectState!B state,int n,float[3]* w3){ // 
 	if(wiz is null||wiz.closestShrine==0) return;
 	if(node.convertSpell is null) return;
 	// ntt+0xb80==ntt+0xb88 && attachment(ntt+0xb88)=='sacu': home altar being desecrated (documented approximation)
-	if(desecrationOngoing!B(state,wiz.closestShrine)) return;
+	if(desecrationOngoing!B(state,buildingIdOf!B(state,wiz.closestShrine))) return;
 	auto v=cast(float)((1.0-cast(double)sf(ai.stanceRecs[3],7))*(1.0-cast(double)node.threat)*cast(double)ai.aggression*500.0);
 	if(v<=10.0f) return; // fcomp 10.0d
 	auto t=findBestNear(ai,state,&node.curPos,v,0);
@@ -2937,7 +2957,7 @@ int wizBrain(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int cmd,int ri){
 					if(g
 					&&!state.movingObjectById!((ref o,state)=>o.creatureState.mode.among(CreatureMode.convertReviving,CreatureMode.thrashing),()=>false)(ai.nodes[g].id,state) // 0x46a840(g.ntt,'ucas') approximation
 					&&state.movingObjectById!((ref o,ObjectState!B state){
-						if(auto wiz=state.getWizardForSide(o.side)) return wiz.closestEnemyAltar==tgt.id; // ntt+0xb7c==edi.ntt
+						if(auto wiz=state.getWizardForSide(o.side)) return buildingIdOf!B(state,wiz.closestEnemyAltar)==tgt.id; // ntt+0xb7c==edi.ntt
 						return false;
 					},()=>false)(node.id,state)){
 						auto r=cast(float)(cast(double)node.desecrateSpell.range*0.9); // fld range; fmul 0.9d; f32
