@@ -2028,7 +2028,7 @@ void issueOrder(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int ostate,int tar
 		else return;
 		switch(ostate){
 			case 2: ord.command=CommandType.move; break;
-			case 3: ord.command=target?CommandType.retreat:CommandType.guardArea; break; // thaum cmd 3/5 share handler 0x46e60a: move to live target pos, arrive at targetRadius+10; engine retreat = moveWithinRange 9.0 (the follow-with-gap spawn() uses)
+			case 3: ord.command=target?CommandType.retreat:CommandType.guardArea; break; // thaum cmd 3/5 share handler 0x46e60a: move to live target pos, arrive at target ntt+0x2e4 + 10.0 (engine retreat matches)
 			case 4: ord.command=CommandType.move; break;
 			case 5: ord.command=target?CommandType.retreat:CommandType.move; break; // thaum capture/interact; no capture mechanic in sacengine (documented gap)
 			case 6: ord.command=CommandType.attack; break;

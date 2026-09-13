@@ -1467,6 +1467,25 @@ Vector3f[2] relativeHitbox(B)(ref StaticObject!B object){
 	if(result[1].z>=0) result[0].z=max(result[0].z,0.0f);
 	return result;
 }
+float boundingRadius(Vector3f[2] relativeHitbox){
+	auto x=max(relativeHitbox[0].x^^2,relativeHitbox[1].x^^2);
+	auto y=max(relativeHitbox[0].y^^2,relativeHitbox[1].y^^2);
+	auto z=max(relativeHitbox[0].z^^2,relativeHitbox[1].z^^2);
+	return sqrt(x+y+z);
+}
+float boundingRadius(B)(ref MovingObject!B object){
+	return boundingRadius(object.relativeHitbox);
+}
+float boundingRadius(B)(ref StaticObject!B object){
+	return boundingRadius(object.relativeHitbox);
+}
+float boundingRadius(B)(ref Building!B building,ObjectState!B state){
+	float radius=0.0f;
+	auto center=building.position(state);
+	foreach(cid;building.componentIds)
+		state.staticObjectById!((ref obj,state){ radius=max(radius,sqrt((obj.position-center).lengthsqr)+obj.boundingRadius); },(){})(cid,state);
+	return radius;
+}
 Vector3f[2] closestHitbox(B)(ref StaticObject!B object,Vector3f position){
 	Vector3f[2] result;
 	auto resultDistSqr=float.infinity;
@@ -12228,9 +12247,8 @@ bool moveWithinRange2D(B)(ref MovingObject!B object,Vector3f targetPosition,floa
 	return true;
 }
 
-bool retreatTowards(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectState!B state){
-	return object.patrolAround(targetPosition,state) ||
-		object.moveWithinRange(targetPosition,retreatDistance,state) ||
+bool retreatTowards(B)(ref MovingObject!B object,Vector3f targetPosition,float range,ObjectState!B state){
+	return object.moveWithinRange(targetPosition,range,state) ||
 		object.stop(float.init,state);
 }
 
@@ -13411,7 +13429,7 @@ bool healingShower(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B
 	return true;
 }
 
-enum retreatDistance=9.0f;
+enum retreatDistance=10.0f;
 enum attackDistance=100.0f; // ok?
 enum shelterDistance=50.0f;
 enum scareDistance=50.0f;
@@ -13480,13 +13498,14 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 			if(!state.isValidTarget(targetId)||!isValidGuardTarget(targetId,state))
 				targetId=object.creatureAI.order.target.id=0;
 			Vector3f targetPosition;
-			if(targetId) targetPosition=state.movingObjectById!((obj)=>obj.position,()=>Vector3f.init)(targetId);
+			float targetRadius=0.0f;
+			if(targetId) state.movingObjectById!((ref obj,state){ targetPosition=obj.position; targetRadius=obj.boundingRadius; },(){})(targetId,state);
 			if(targetId&&targetPosition is Vector3f.init)
-				targetPosition=state.staticObjectById!((ref obj,state)=>obj.center,()=>Vector3f.init)(targetId,state);
+				state.staticObjectById!((ref obj,state){ targetPosition=obj.center; targetRadius=obj.boundingRadius; },(){})(targetId,state);
 			if(targetId&&targetPosition is Vector3f.init)
-				targetPosition=state.buildingById!((ref b,state)=>b.position(state),()=>Vector3f.init)(targetId,state);
+				state.buildingById!((ref b,state){ targetPosition=b.position(state); targetRadius=b.boundingRadius(state); },(){})(targetId,state);
 			if(targetPosition !is Vector3f.init){
-				if(!object.retreatTowards(targetPosition,state))
+				if(!object.retreatTowards(targetPosition,targetRadius+retreatDistance,state))
 					object.unqueueOrder(state);
 			}else object.clearOrder(state);
 			break;
