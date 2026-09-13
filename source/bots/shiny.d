@@ -612,9 +612,9 @@ bool entCanHit(B)(ObjectState!B state,int sid,Vector3f spos,int tid,Vector3f tpo
 	static bool filter(ref ProximityEntry entry,int sid,int tid){ return entry.isObstacle&&entry.isProjectileObstacle&&entry.id!=sid&&entry.id!=tid; }
 	return state.proximity.collideRay!filter(spos,tpos-spos,1.0f,sid,tid)[0]==float.infinity;
 }
-// thaum ntt.vtbl[14] for moving objects: [stateRec+0x30]&0x4000
+// thaum ntt.vtbl[14] (IsDead@CREATURE 0x46c0f0): [stateRec+0x30]&0x4000; states with 0x4000 in norm.FSMC/ofly.FSMC: all death states, vivify rise/float, all sac doctor carry states
 bool entDead(B)(ObjectState!B state,int id){
-	return state.movingObjectById!((ref o,state)=>!!o.creatureState.mode.among(CreatureMode.dying,CreatureMode.dead,CreatureMode.deadToGhost,CreatureMode.dissolving),()=>false)(id,state);
+	return state.movingObjectById!((ref o,state)=>!!o.creatureState.mode.among(CreatureMode.dying,CreatureMode.dead,CreatureMode.deadToGhost,CreatureMode.dissolving,CreatureMode.reviving,CreatureMode.fastReviving,CreatureMode.convertReviving,CreatureMode.thrashing),()=>false)(id,state);
 }
 // CREATURE::IsRespawning entity-side: [stateRec+0x30]&0x40000
 bool entGhost(B)(ObjectState!B state,int id){
@@ -2589,13 +2589,8 @@ uint pickupMask(B)(ObjectState!B state,int id){ // thaum soul+0x434: static touc
 	auto s=soulSide(id,state);
 	return s<0?0xffffffffu:1u<<s;
 }
-uint convertMask(B)(ObjectState!B state,int id){ // 'ccas' attachment check (0x46a840) approximation: bitmask of sides with an active convert ritual on the soul
-	uint mask=0;
-	foreach(i;0..state.obj.opaqueObjects.effects.sacDocCastings.length){
-		auto c=&state.obj.opaqueObjects.effects.sacDocCastings[i];
-		if(c.type==RitualType.convert&&c.target==id) mask|=1u<<c.side;
-	}
-	return mask;
+uint convertMask(B)(ObjectState!B state,int id){ // 'ccas' attachment check (0x46a840): convertSideMask bits are cleared at cast start and restored only when the ritual aborts, so ~mask also covers the carry phase
+	return ~state.soulById!((ref soul)=>soul.convertSideMask,()=>-1u)(id);
 }
 int findBestNear(B)(ref ShinyAI!B ai,ObjectState!B state,Vector3f* pos,float radius,int enemyFlag){ // 0x485490 GetNearestPickup: walks fam C cat2 (neutral souls), head ai+0x7c, chain node+0x6c
 	float best=0.0f;
