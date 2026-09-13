@@ -2314,13 +2314,86 @@ bool hasActiveProtect(B)(ObjectState!B state,int id){ // 0x46a840(ntt,'TORP') ap
 	foreach(i;0..state.obj.opaqueObjects.effects.protectors.length) if(state.obj.opaqueObjects.effects.protectors[i].id==id) return true;
 	return false;
 }
+// NTT::QuerySpellEffect 0x46a840 approximation (thaum keeps a per-ntt (tag,ntt) table at +0x370; sacengine tracks effects in typed lists): known tags only
+bool querySpellEffect(B)(ObjectState!B state,int id,char[4] tag){
+	if(tag[]=="LAEH") return hasActiveHeal!B(state,id);
+	if(tag[]=="TORP") return hasActiveProtect!B(state,id);
+	if(tag[]=="sacu") return desecrationOngoing!B(state,id);
+	if(tag[]=="ccas") return convertMask!B(state,id)!=0;
+	return false; // unknown tags: no sacengine effect table to query (documented gap)
+}
+// CREATURE::IsFriendly 0x45e9d0 (caster = node n): base NTT::IsFriendly 0x46c550 = own side or either-direction ally
+// (thaum additionally vetoes on target animosity (+0x234&0x2000) and the caster charm override (+0xb24&0x4000 && +0xb3c hostile mask) - no sacengine equivalents, documented gaps)
+bool ccFriendly(B)(ObjectState!B state,int cside,NodeKind tkind,int tid){
+	if(cside<0) return false; // caster entity gone between scan and rating (thaum always has a live ntt)
+	auto rel=relation!B(state,cside,entSide!B(state,tkind,tid));
+	return rel==0||rel==1;
+}
+// GRIMOIRE::CanCastSpellOn 0x4517b0 (CheckSpellValid 0x48c330 calls it only with non-null caster/target; caster = node n)
+bool canCastSpellOn(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int target,SacSpell!B spell){
+	auto tnode=&ai.nodes[target];
+	auto spel=spell.spel;
+	auto flags=cast(uint)spel.flags;
+	if(flags==0) return true;
+	// (thaum's internal type-mask gate 0x4517e4 can never reject here: CheckSpellValid's 0x781f mask check already passed and ntt types only have bits 0x17)
+	if(flags&0x1f){ // 0x4517de: without target-type bits every ntt gate below is skipped
+		if(spell.type==SpellType.spell){ // s_spell+0xc==4: 4 exclusion tags at Spel+0x2c..0x3b, first zero slot ends the scan
+			char[4][4] tags=void;
+			tags[0]=spel.unknown10; tags[1]=spel.unknown11;
+			tags[2]=*cast(char[4]*)&spel.unknown12[0]; tags[3]=*cast(char[4]*)&spel.unknown12[1];
+			foreach(tag;tags){
+				if(*cast(uint*)&tag==0) break;
+				if(querySpellEffect!B(state,tnode.id,tag)) return false;
+			}
+		}
+		if(flags&SpelFlags.onlyManafounts){ // primary unoccupied manafount (thaum also tests ntt+0x440==0; sacengine folds sub-components, see shouldTrack)
+			if(tnode.kind!=NodeKind.str) return false;
+			if(!state.buildingById!((ref b)=>(cast(uint)b.sacBuilding.flags&0x10)!=0&&b.top==0,()=>false)(tnode.id)) return false;
+		}
+		if(flags&SpelFlags.disallowFlying){ // reject targets >2.0 above terrain (thaum escapes grounded ntts (+0x234&2, set by ApplyMovement's terrain clamp); post-clamp altitude is ~0 for those, so the altitude test alone is equivalent on live data)
+			if(tnode.kind.among(NodeKind.wiz,NodeKind.t4o,NodeKind.maho))
+				if(state.movingObjectById!((ref o,state)=>o.position.z-state.getHeight(o.position)>2.0f,()=>false)(tnode.id,state)) return false;
+		}
+		if(flags&SpelFlags.disallowHero){ // +0xb24&0x40 hero bit, tested on types 1|4; wizards included (testing type 1 would be dead code otherwise)
+			if(tnode.kind.among(NodeKind.wiz,NodeKind.t4o,NodeKind.maho))
+				if(state.movingObjectById!((ref o,state)=>o.isWizard||isHero!B(o),()=>false)(tnode.id,state)) return false;
+		}
+		if(flags&SpelFlags.onlyCreatures){ // target NTT::CanSelect vtbl[0x48]: only CREATURE overrides nonzero (!statsFlags&0x100 && !stateFlags&0x2000), NTT/WIZARD/souls/buildings are always 0
+			if(!tnode.kind.among(NodeKind.t4o,NodeKind.maho)||entDead!B(state,tnode.id)) return false; // (+0xb24&0x100 cannotSelect template flag: no sacengine equivalent, documented gap; dead nodes are untracked anyway)
+		}
+		auto cside=entSide!B(state,ai.nodes[n].kind,ai.nodes[n].id);
+		if(flags&(SpelFlags.onlyOwned|SpelFlags.onlyAlly)){ // 0x81000
+			if(tnode.kind==NodeKind.cre){ // soul: touch-collectible by the caster's side (+0x430&0xc0000000 = being collected/reabsorbed rejects)
+				if(state.soulById!((ref s,state)=>s.state.among(SoulState.collecting,SoulState.reviving),()=>false)(tnode.id,state)) return false;
+				if(cside<0||!(pickupMask!B(state,tnode.id)&(1u<<cside))) return false; // thaum rejects on null caster side here
+			}else if(flags&SpelFlags.onlyOwned){ // same side record
+				if(cside<0||entSide!B(state,tnode.kind,tnode.id)!=cside) return false;
+			}else{ // onlyAlly: CREATURE::IsFriendly
+				if(!ccFriendly!B(state,cside,tnode.kind,tnode.id)) return false;
+			}
+			if(tnode.kind==NodeKind.str&&!state.buildingById!((ref b)=>(cast(uint)b.sacBuilding.flags&0x55a7)!=0,()=>false)(tnode.id)) return false; // real structures only (founts excluded)
+		}
+		if(flags&SpelFlags.disallowAlly){ // 0x2000: inverted, and the soul mask inverts too
+			if(tnode.kind==NodeKind.cre){
+				if(state.soulById!((ref s,state)=>s.state.among(SoulState.collecting,SoulState.reviving),()=>false)(tnode.id,state)) return false;
+				if(cside>=0&&(pickupMask!B(state,tnode.id)&(1u<<cside))) return false; // thaum passes on null caster side here
+			}else{
+				if(ccFriendly!B(state,cside,tnode.kind,tnode.id)) return false;
+				if(tnode.kind==NodeKind.str&&!state.buildingById!((ref b)=>(cast(uint)b.sacBuilding.flags&0x55a7)!=0,()=>false)(tnode.id)) return false;
+			}
+		}
+	}
+	// (flags&0x20000: LAND::GetAnchorMap(pos)>=0x60 "open ground" - sacengine has no anchor map; approximated as pass, documented)
+	return true;
+}
 float rateSpellAcc(B)(ref ShinyAI!B ai,ObjectState!B state,ref SpellAcc!B acc,int n,int target,uint category,float distScaled){ // rater2 vtbl[1] 0x489630
-	// validity 0x48c330: 0x4517b0 engine target check approximated as pass; LOS helpers 0x48c050/0x48c160 never run for categories 0x85/5 (documented)
+	// validity 0x48c330: LOS helpers 0x48c050/0x48c160 never run for categories 0x85/5 (documented)
 	auto node=&ai.nodes[n], tnode=&ai.nodes[target];
 	auto spel=acc.spell.spel;
 	auto mask=cast(uint)spel.flags&0x781f;
 	if(mask&&!(nttTypeBits(tnode.kind)&mask)) return 0.0f;
 	if((cast(uint)spel.flags1&0x10)&&n!=target) return 0.0f; // shield: self-cast only
+	if(!canCastSpellOn!B(ai,state,n,target,acc.spell)) return 0.0f; // 0x48c411: GRIMOIRE::CanCastSpellOn
 	if(!(category&0x80)){ category|=0x80; distScaled=cast(float)distSq3(node.curPos,tnode.curPos); }
 	if(!(category&0x200)&&cast(double)distScaled>cast(double)spel.range*spel.range) return 0.0f;
 	if((cast(uint)spel.flags1&3)&&(category&0x3a)) return 0.0f;
