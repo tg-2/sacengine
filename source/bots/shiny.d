@@ -2596,9 +2596,11 @@ bool isSacDoctorEnt(B)(ObjectState!B state,NodeKind kind,int id){ // thaum: ntt+
 	}
 }
 int buildingIdOf(B)(ObjectState!B state,int objectId){ // engine structure lookups (findClosestBuildings) return component object ids; AI str nodes track Building ids
+	if(objectId<=0) return 0; // no altar/shrine in scan range (e.g. WizardInfo.closestEnemyAltar==0)
 	return state.staticObjectById!((ref o,state)=>o.buildingId,()=>0)(objectId,state);
 }
 bool desecrationOngoing(B)(ObjectState!B state,int buildingId){ // 0x466950(ntt,0,0)=='sacu' approximation: a desecrate ritual targets the building (SacDocCasting.targetShrine holds its component object id)
+	if(buildingId==0) return false;
 	foreach(i;0..state.obj.opaqueObjects.effects.sacDocCastings.length){
 		auto c=&state.obj.opaqueObjects.effects.sacDocCastings[i];
 		if(c.type==RitualType.desecrate&&buildingIdOf!B(state,c.targetShrine)==buildingId) return true;
