@@ -1845,18 +1845,22 @@ void replanCapture(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task){ /
 				s1=cast(float)(cast(double)nodeValueScore(ai,state,f2>f1?f2:f1,n)*0.99)*ai.aggression;
 				s2=cast(float)((1.0-cast(double)ai.aggression)*0.9+0.1);
 			}else if(edi==3&&(node.flags&0x10)&&(node.status&0x08)){
-				// thaum: 'sacu' attach -> s1=1.0f; 'sacu' attachments never exist in sacengine (documented gap)
-				s1=probOr(ai,state,node.curPos,0,0x20,10.0f,180.0f,n)*ai.aggression;
+				s1=(desecrationOngoing!B(state,node.id)?1.0f:probOr(ai,state,node.curPos,0,0x20,10.0f,180.0f,n))*ai.aggression; // 0x48b185: 'ucas' attach overwrites s1 with 1.0f before the aggression scale
 				flags=3;
 				s2=cast(float)((1.0-cast(double)ai.aggression)*0.8+0.2);
 			}else if(node.flags&0x200){
-				// thaum 'sacu' branch never taken in sacengine (documented gap)
-				auto t=2.0f*(sf(ai.stanceRecs[3],7)-0.3f);
-				if(t<0.0f) t=0.0f;
-				flags=9;
-				auto m=1.0-cast(double)ai.aggression;
-				s2=cast(float)(m<0.4?0.4:m); // max(1-ag, 0.4d)
-				s1=ai.aggression*ai.aggression*t;
+				if(desecrationOngoing!B(state,node.id)){ // 0x48b1b8: 'ucas' attach -> s1=0.4f (0x4bba30), s2=1.0f-ag (fsub f32), flags=1
+					s1=0.4f;
+					s2=1.0f-ai.aggression;
+					flags=1;
+				}else{
+					auto t=2.0f*(sf(ai.stanceRecs[3],7)-0.3f);
+					if(t<0.0f) t=0.0f;
+					flags=9;
+					auto m=1.0-cast(double)ai.aggression;
+					s2=cast(float)(m<0.4?0.4:m); // max(1-ag, 0.4d)
+					s1=ai.aggression*ai.aggression*t;
+				}
 			}else continue;
 			auto ri=allocRecord(ai,task);
 			recordSetup(ai,state,ri,n,2);
@@ -1879,10 +1883,14 @@ void replanGuard(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task){ // 
 			score=nodeValue6c(ai,n)*ai.aggression*0.6f+0.4f;
 		}else{
 			if(!(node.flags&0x20)||!(node.status&0x1000)) continue;
-			if(node.flags&0x200) continue; // thaum 'sacu' branch (score=1.0f) never taken in sacengine (documented gap)
-			auto s=lerp(0.4f,0.5f,probOr(ai,state,node.curPos,0,0x200,10.0f,2592.0f,n));
-			total=lerp(s,0.2f,probOr(ai,state,node.curPos,3,0x200,10.0f,2592.0f,n)); // thaum quirk: overwrites the accumulator mid-loop
-			score=lerp(s,0.2f,densityGroups(ai,state,node.curPos,10.0f,160.0f));
+			if(node.flags&0x200){ // 0x48a94b: altar with 'ucas' attach -> guard score 1.0f; quiet altar -> no record
+				if(!desecrationOngoing!B(state,node.id)) continue;
+				score=1.0f;
+			}else{
+				auto s=lerp(0.4f,0.5f,probOr(ai,state,node.curPos,0,0x200,10.0f,2592.0f,n));
+				total=lerp(s,0.2f,probOr(ai,state,node.curPos,3,0x200,10.0f,2592.0f,n)); // thaum quirk: overwrites the accumulator mid-loop
+				score=lerp(s,0.2f,densityGroups(ai,state,node.curPos,10.0f,160.0f));
+			}
 		}
 		auto ri=allocRecord(ai,task);
 		recordSetup(ai,state,ri,n,0);
@@ -1927,7 +1935,10 @@ void claimPass(B)(ref ShinyAI!B ai,ObjectState!B state){ // 0x484c70
 	// thaum debug-asserts the temp list is empty here
 }
 float claimCapture(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task,ref int tempHead,ref int tempTail){ // 0x48b450
-	// thaum: wizard 'sacu' attach -> ret 0.0f; never in sacengine (documented gap)
+	foreach(i;0..state.obj.opaqueObjects.effects.sacDocCastings.length){ // 0x48b4a8: own wizard has a 'ucas' attach (ntt+0xb88) -> freeze capture claiming
+		auto c=&state.obj.opaqueObjects.effects.sacDocCastings[i];
+		if(c.type==RitualType.desecrate&&c.side==ai.side) return 0.0f;
+	}
 	auto threshold=cast(float)si(ai.stanceRecs[0],2)*sf(ai.stanceRecs[3],7)*0.9f*ai.aggression;
 	RaterAcc acc; acc.clear();
 	uint statusOR=0; int count=0;
@@ -1946,8 +1957,7 @@ float claimCapture(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task,ref
 	for(int n=tempHead;n;){
 		auto nn=ai.nodes[n].recN; // preloaded: claim unlinks
 		if(total>threshold) break;
-		// ntt+0x5b4==0 (not attached to a structure): no sacengine equivalent, always true (documented gap)
-		if(ai.nodes[n].status&9) total+=cast(float)claim(ai,state,task,found,tempHead,tempTail,n);
+		if(!isGuardianEnt!B(state,ai.nodes[n].id)&&ai.nodes[n].status&9) total+=cast(float)claim(ai,state,task,found,tempHead,tempTail,n); // thaum skips ntt+0x5b4!=0 (guardian-spell bound)
 		n=nn;
 	}
 	return total;
@@ -1958,9 +1968,18 @@ float claimGuard(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task,ref i
 	for(int r=task.claimedHead;r;r=ai.records[r].claimedN){
 		auto rec=&ai.records[r];
 		float claimedThis=0.0f;
-		// pass 1 claims creatures attached to the target structure (ntt+0x5b4); no sacengine
-		// equivalent (no capture mechanic), so pass 1 never fires and the double-counting
-		// of its amounts in total is dead as well (documented gap)
+		// pass 1: pre-claim creatures guardian-bound to the target structure (ntt+0x5b4==structure ntt); amounts go to BOTH claimedThis and total (thaum double-count quirk)
+		if(rec.target&&ai.nodes[rec.target].kind==NodeKind.str){ // rec+0x8.vtbl[14]() (GetStructure) non-null
+			auto tb=ai.nodes[rec.target].id;
+			for(int n=tempHead;n;){
+				auto nn=ai.nodes[n].recN; // preloaded: claim unlinks
+				if(state.buildingById!((ref b,ObjectState!B state,int id){ foreach(j;0..b.guardianIds.length) if(b.guardianIds[j]==id) return true; return false; },()=>false)(tb,state,ai.nodes[n].id)){
+					auto v=cast(float)claim(ai,state,task,r,tempHead,tempTail,n);
+					claimedThis+=v; total+=v;
+				}
+				n=nn;
+			}
+		}
 		if(total>threshold) return total;
 		while(claimedThis+0.5f<=rec.score*threshold){
 			int best=0; float bestVal=0.0f;
@@ -2607,6 +2626,9 @@ bool desecrationOngoing(B)(ObjectState!B state,int buildingId){ // 0x466950(ntt,
 	}
 	return false;
 }
+bool isGuardianEnt(B)(ObjectState!B state,int creatureId){ // ntt+0x5b4!=0: creature bound to a building by the guardian spell (setGuardian 0x460200, guardian spell only)
+	return state.movingObjectById!((ref o,state)=>o.creatureStats.effects.isGuardian,()=>false)(creatureId,state);
+}
 uint pickupMask(B)(ObjectState!B state,int id){ // thaum soul+0x434: static touch-collect side mask, from the soul record or 0xffffffff (0x4753e0/0x475abf); approximation via soulSide: creatureId==0 souls (e.g. gibs) are touch-collectible by everyone regardless of preferredSide
 	auto s=soulSide(id,state);
 	return s<0?0xffffffffu:1u<<s;
@@ -2639,7 +2661,7 @@ int pickGuardCreature(B)(ref ShinyAI!B ai,ObjectState!B state,int t){ // 0x48570
 	for(int m=ai.catHead[0];m;m=ai.nodes[m].catN){
 		auto c=&ai.nodes[m];
 		if(c.kind==NodeKind.wiz) continue; // ntt+0x4&1
-		// thaum also skips creatures with ntt+0x5b4!=0 (capturing a manafount); no sacengine equivalent (documented gap)
+		if(isGuardianEnt!B(state,c.id)) continue; // ntt+0x5b4!=0 (guardian-spell bound, setGuardian 0x460200)
 		auto p=soulsPair21(ai,state,m); // node vtbl[21] (non-creatures yield 0 souls and lose the strict argmax)
 		immutable dx=cast(double)c.extrapPos.x-ai.nodes[t].curPos.x, dy=cast(double)c.extrapPos.y-ai.nodes[t].curPos.y, dz=cast(double)c.extrapPos.z-ai.nodes[t].curPos.z;
 		auto d=cast(float)sqrt(cast(float)(dx*dx+dy*dy+dz*dz));
