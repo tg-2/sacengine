@@ -2221,7 +2221,7 @@ int autoCapture(B)(ref ShinyAI!B ai,ObjectState!B state,int n){ // 0x487600
 	if(p[1]==0) return 0;
 	if(p[0]>nodeSlot22(ai,state,n)&&!nodeIsRespawning(ai,state,n)) return 0;
 	int bn=0; float br=0.0f;
-	if(!findBestCaptureTarget(ai,state,&node.curPos,2580.0f,&bn,&br)) return 0; // thaum passes 0x45624000
+	if(!findBestCaptureTarget(ai,state,&node.curPos,3620.0f,&bn,&br)) return 0; // 0x487642: thaum passes 0x45624000 = 3620.0f
 	static if(shinyAILog) ailog("AUTOCAP ",ai.side," t",ai.schedTime," n",n," bn ",bn," br ",br," outOfRange ",br*br<distSq3(node.curPos,ai.nodes[bn].curPos));
 	if(br*br<distSq3(node.curPos,ai.nodes[bn].curPos)) orderIfChanged(ai,state,n,5,bn,null);
 	return 1;
@@ -2378,7 +2378,9 @@ bool querySpellEffect(B)(ObjectState!B state,int id,char[4] tag){
 	return false; // unknown tags: no sacengine effect table to query (documented gap)
 }
 // CREATURE::IsFriendly 0x45e9d0 (caster = node n): base NTT::IsFriendly 0x46c550 = own side or either-direction ally
-// (thaum additionally vetoes on target animosity (+0x234&0x2000) and the caster charm override (+0xb24&0x4000 && +0xb3c hostile mask) - no sacengine equivalents, documented gaps)
+// (thaum additionally vetoes on: target +0x234&0x2000 = target counts as hostile regardless of sides (suspected blind rage 'egar'; setter is data-driven via the
+// attachment system, not statically confirmed); caster +0xb24&0x4000 = consult the caster's personal side mask +0xb3c (accumulates event-source sides at 0x47252e, shared
+// between nearby creatures at 0x455228 - a personal disposition system, cf. charmNeutralCreatures; sacengine charm just changes side, state.d:21691) - no sacengine equivalents, documented gaps)
 bool ccFriendly(B)(ObjectState!B state,int cside,NodeKind tkind,int tid){
 	if(cside<0) return false; // caster entity gone between scan and rating (thaum always has a live ntt)
 	auto rel=relation!B(state,cside,entSide!B(state,tkind,tid));
@@ -2805,9 +2807,9 @@ bool lightCanCast(B)(ObjectState!B state,int wizardId,SacSpell!B spell){ // thau
 		if(wiz is null||wiz.id!=wizardId) return false;
 		// (thaum looks the spell up by tag: queued entries always hold a spellbook spell; item+0x8&2 disabled flag has no sacengine equivalent - documented gap)
 		if(spell.type==SpellType.creature&&wiz.souls<spell.soulCost) return false; // 'spir'
-		// s_spell+0x64 = SpelFlags2 (slots filled by FindWizardStructures 0x481930): connectedToConversion -> wiz+0xb80 (closest own
-		// shrine), nearEnemyAltar -> wiz+0xb7c (closest enemy altar), nearBuilding -> wiz+0xb84 (closest own shrine-or-altar)
-		if(spell.type==SpellType.structure){
+		// CantCastSpell 0x481580: s_spell+0xc==4 (SPEL records - convert/desecrate/guardian) tests flags2 (runtime +0x64 = file +0x5c): connectedToConversion -> wiz+0xb80 (closest own
+		// shrine), nearEnemyAltar -> wiz+0xb7c (closest enemy altar), nearBuilding -> wiz+0xb84 (closest own shrine-or-altar); STRC records have no flags2 (the old SpellType.structure gate was dead code)
+		if(spell.type==SpellType.spell){
 			if(spell.connectedToConversion&&wiz.closestShrine==0) return false;
 			if(spell.nearEnemyAltar&&wiz.closestEnemyAltar==0) return false;
 			if(spell.nearBuilding&&wiz.closestShrine==0&&wiz.closestAltar==0) return false;
@@ -2863,16 +2865,18 @@ int executeBestCast(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int checkOnly)
 			}
 			goto exit;
 		}
-		// thaum step 6: target structure with ntt+0x430&0xc0000000 or construction ntt+0x444<1.0 -> move into range.
-		// neither has a sacengine equivalent (documented gap): flags approximated as 0, progress as 1.0f
+		// thaum step 6 (0x48d212): cast target (entry+0x8) is a building ntt (type 2) && (ntt+0x430&0xc0000000 || rise anim ntt+0x444<1.0) -> orderPosRadius toward e.obj with e.range instead of casting.
+		// building ntts init +0x444=0 (0x4663dd) and rise to 1.0 (updater 0x4754c0); fount ntts persist (occupier at fount+0x440) while the shrine/manalith ntts rise on top,
+		// so for bot structure casts (target = fount, never rising) step 6 could only fire via the unresolved +0x430 top bits; sacengine has no building-rise state
+		// and occupancy already rejects casting a second structure on a fount - documented gap, deferred
 		if(e.obj){
-			bool half;
+			bool half=false;
 			auto waim=entAimPos!B(state,node.kind,node.id), oaim=entAimPos!B(state,ai.nodes[e.obj].kind,ai.nodes[e.obj].id); // live ntt aim positions (thaum passes ntts)
-			if(e.provider.type==SpellType.spell&&(e.provider.flags&0x30000)){ // provider+0xc==4 (spell) ? provider+0x60 : 0
-				half=!entCanHit!B(state,node.id,waim,ai.nodes[e.obj].id,oaim); // CanHit(wizNtt,objNtt)!=4
-			}else{
+			if(e.provider.type==SpellType.spell&&(cast(uint)e.provider.flags1&0x3)) // 0x48d259: s_spell+0xc==4 (SPEL) && runtime +0x60&0x30000; runtime+0x60 = file+0x58 = unknown16|(flags1<<16), i.e. flags1&0x3 (basicAttackSpell|unknown1)
+				half=!entCanHit!B(state,node.id,waim,ai.nodes[e.obj].id,oaim); // CanHit(wizNtt,objNtt)!=4; ==4 FALLS THROUGH to the LoS check below
+			if(!half){
 				auto rel=relation!B(state,ai.side,entSide!B(state,ai.nodes[e.target].kind,ai.nodes[e.target].id));
-				half=rel==3&&!entCanSee!B(state,ai.nodes[e.obj].kind,ai.nodes[e.obj].id,waim,oaim); // enemy both-ways, different sides, HaveLOS 0x4878a0(node,obj)==0
+				half=rel==3&&!entCanSee!B(state,ai.nodes[e.obj].kind,ai.nodes[e.obj].id,waim,oaim); // enemy either-way, different sides, HaveLOS 0x4878a0(node,obj)==0
 			}
 			if(half){
 				static if(shinyAILog) ailog("CASTQ ",ai.side," t",ai.schedTime," n",n," [",i,"]: no LOS",checkOnly?" -> skip":" -> half-range chase");
