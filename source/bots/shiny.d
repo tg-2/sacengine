@@ -222,7 +222,7 @@ struct TypeStats{
 // thaum's wizd loader forces these defaults over the file values
 enum wizardTypeStats=TypeStats(1250,1250,1000,0,1500,1000,0,0,1000,1000,120,1000);
 TypeStats typeStats(immutable(Cre8)* c,immutable(Wizd)* w){
-	if(c) return TypeStats(c.unknown10,c.unknown11,c.runningSpeed,c.flyingSpeed,c.health,c.regeneration,c.drain,c.rangedAccuracy,c.meleeResistance,c.directRangedResistance,c.meleeStrength,c.mana);
+	if(c) return TypeStats(c.meleeAccuracy,c.meleeEvasion,c.runningSpeed,c.flyingSpeed,c.health,c.regeneration,c.drain,c.rangedAccuracy,c.meleeResistance,c.directRangedResistance,c.meleeStrength,c.mana);
 	return wizardTypeStats;
 }
 TypeStats typeStats(B)(SacObject!B so){ return typeStats(so.cre8,so.wizd); }

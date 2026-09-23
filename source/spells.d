@@ -23,12 +23,12 @@ struct Cre8{
 	uint manaCost;
 	float range; // unused
 	uint unknown5; // unused. but it seems spell fails to cast if unknown5>5.
-	ushort unknown6; // larger for bigger creatures
+	ushort minCastingTime; // casting time floor from level scaling: castFrames=castingTime+(minCastingTime-castingTime)*0.2*clamp(level-spellLevel,0,5). equals castingTime/2 in all data.
 	ushort castingTime;
 	ushort spellOrder;
 	ushort unknown9; // unused?
-	ushort unknown10; // stat block index 0, mutated by spells (e.g. slime).
-	ushort unknown11; // stat block index 1.
+	ushort meleeAccuracy; // attacker weight in the melee hit roll: P(full hit)=meleeAccuracy/(meleeAccuracy+defender's meleeEvasion/facing), facing=1.5+0.5*dot(facing directions). mutated by spells (e.g. slime).
+	ushort meleeEvasion; // defender weight in the melee hit roll, effectively halved when attacked from behind.
 	ushort aggressiveness;// if 0, creatures don't attack automatically
 	ushort runningSpeed;
 	ushort flyingSpeed;
@@ -92,9 +92,9 @@ struct Wizd{
 	char[4] icon;
 	uint[6] unknown0; // unused?
 	uint unknown1; // differs by wizard, some number above 100
-	ushort unknown2=1250; // stat block index 0
-	ushort unknown3=1250; // stat block index 1
-	ushort unknown4=1000; // stat block index 2
+	ushort meleeAccuracy=1250; // wizard stat block, file values overwritten by loader defaults (thaum)
+	ushort meleeEvasion=1250; // see Cre8.meleeAccuracy/meleeEvasion for the melee hit roll
+	ushort aggressiveness=1000; // if 0, creatures don't attack automatically
 	ushort runningSpeed=1000;
 	ushort flyingSpeed=0;
 	ushort health=1500;
@@ -215,7 +215,7 @@ struct Spel{
 	uint manaCost;
 	float range;
 	SpelFlags flags;
-	ushort unknown6; // ?
+	ushort minCastingTime; // casting time floor from level scaling: castFrames=castingTime+(minCastingTime-castingTime)*0.2*clamp(level-spellLevel,0,5)
 	ushort castingTime;
 	ushort spellOrder;
 	ushort unknown9; // ?
@@ -274,7 +274,7 @@ struct Strc{
 	uint manaCost;
 	float range;
 	SpelFlags flags;
-	ushort unknown6; // ?
+	ushort minCastingTime; // casting time floor from level scaling: castFrames=castingTime+(minCastingTime-castingTime)*0.2*clamp(level-spellLevel,0,5)
 	ushort castingTime;
 	ushort spellOrder;
 	ushort unknown9; // ?
