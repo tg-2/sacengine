@@ -59,9 +59,7 @@ struct Cre8{
 	uint unknown26; // unused?
 	char[4] creatureType;
 	char[4] saxsModel;
-	ubyte unknown27; // unused?
-	ubyte unknown28;
-	ushort unknown29; // unused?
+	uint behaviorFlags; // bit 6: hero. bit 8: villagers. bit 13: troll, sac doctor, familiar, mentor. bit 14: has personal-disposition grudge mask. bit 15: alarm broadcast to same-side within 100.0
 	uint numSSETs;
 	char[4] meleeSSET; // refers to SSET files
 	char[4] creatureSSET;
@@ -126,9 +124,7 @@ struct Wizd{
 	uint unknown26; // unused?
 	char[4] creatureType;
 	char[4] saxsModel;
-	ubyte unknown27; // unused?
-	ubyte unknown28;
-	ushort unknown29; // unused?
+	uint behaviorFlags;
 	uint unknown30;
 	char[4] wizardSSET; // refers to SSET files
 	char[4] meleeSSET1;
@@ -223,9 +219,7 @@ struct Spel{
 	ushort castingTime;
 	ushort spellOrder;
 	ushort unknown9; // ?
-	char[4] unknown10;
-	char[4] unknown11;
-	uint[2] unknown12; // unused?
+	char[4][4] exclusionTags; // target is rejected if it has an active spell effect with any of these tags
 	float damageRange;
 	uint unknown13; // unused?
 	ushort amount; // e.g. damage or amount of healed hitpoints

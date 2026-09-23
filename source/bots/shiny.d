@@ -2393,9 +2393,7 @@ bool canCastSpellOn(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int target,Sac
 	// (thaum's internal type-mask gate 0x4517e4 can never reject here: CheckSpellValid's 0x781f mask check already passed and ntt types only have bits 0x17)
 	if(flags&0x1f){ // 0x4517de: without target-type bits every ntt gate below is skipped
 		if(spell.type==SpellType.spell){ // s_spell+0xc==4: 4 exclusion tags at Spel+0x2c..0x3b, first zero slot ends the scan
-			char[4][4] tags=void;
-			tags[0]=spel.unknown10; tags[1]=spel.unknown11;
-			tags[2]=*cast(char[4]*)&spel.unknown12[0]; tags[3]=*cast(char[4]*)&spel.unknown12[1];
+			auto tags=spel.exclusionTags;
 			foreach(tag;tags){
 				if(*cast(uint*)&tag==0) break;
 				if(querySpellEffect!B(state,tnode.id,tag)) return false;
