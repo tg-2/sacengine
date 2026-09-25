@@ -57,6 +57,15 @@ final class SacObject(B){
 	@property bool isPeasant(){
 		return isPeasant_;
 	}
+	@property bool hasPeasantFSM(){
+		return cre8&&cre8.behaviorFSM=="saep";
+	}
+	@property uint behaviorFlags(){
+		return cre8?cre8.behaviorFlags:wizd?wizd.behaviorFlags:0;
+	}
+	@property uint manaCost(){
+		return cre8?cre8.manaCost:0;
+	}
 	@property bool isSacDoctor(){
 		return nttTag==SpellTag.sacDoctor;
 	}

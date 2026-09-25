@@ -56,7 +56,7 @@ struct Cre8{
 	uint unknown23;
 	uint meleeStrength; // moderately small number
 	uint mana; // "
-	uint unknown26; // unused?
+	char[4] behaviorFSM; // behavior FSM tag: thaum attaches PEASANTFSM at spawn iff this is "saep" (CreateBFSM 0x455620; set in peas/apez/dpez/epez/fpez/ghst)
 	char[4] creatureType;
 	char[4] saxsModel;
 	uint behaviorFlags; // bit 6: hero. bit 8: villagers. bit 13: troll, sac doctor, familiar, mentor. bit 14: has personal-disposition grudge mask. bit 15: alarm broadcast to same-side within 100.0
@@ -121,7 +121,7 @@ struct Wizd{
 	uint unknown23;
 	uint unknown24; // moderately small number
 	uint mana;
-	uint unknown26; // unused?
+	char[4] behaviorFSM; // behavior FSM tag
 	char[4] creatureType;
 	char[4] saxsModel;
 	uint behaviorFlags;

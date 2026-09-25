@@ -924,6 +924,8 @@ struct CreatureAI{
 	int evasionTimer=0;
 	int targetId=0;
 	int lastAttackerId=0;
+	uint behaviorFlags=0;
+	uint grudgeMask=0; // bitmask of sides personally treated as enemies if behaviorFlags bit 14 is set
 	PositionPredictor predictor;
 	bool isOnAIQueue=false;
 	Path path;
@@ -1059,6 +1061,10 @@ struct MovingObject(B){
 		this.soulId=soulId;
 		this(sacObject,id,position,rotation,scale,animationState,frame,creatureState,creatureStats,creatureStatistics,notificationState,side);
 	}
+}
+void initBehaviorFlags(B)(ref MovingObject!B object){
+	object.creatureAI.behaviorFlags=object.sacObject.behaviorFlags;
+	if(object.sacObject.hasPeasantFSM) object.creatureAI.behaviorFlags|=0xc000;
 }
 int side(B)(ref MovingObject!B object,ObjectState!B state){
 	return object.side;
@@ -2292,6 +2298,7 @@ int placeCreature(B)(ObjectState!B state,SacObject!B sacObject,int flags,int sid
 	auto rotation=facingQuaternion(facing);
 	auto scale=state.randomCreatureScale?state.uniform(0.5f,1.5f):1.0f;
 	auto obj=MovingObject!B(sacObject,position,rotation,scale,AnimationState.stance1,0,creatureState,sacObject.creatureStats(flags),CreatureStatistics(),NotificationState(),side);
+	obj.initBehaviorFlags();
 	obj.setCreatureState(state);
 	obj.updateCreaturePosition(state);
 	return state.addObject(obj);
@@ -8376,6 +8383,7 @@ int spawn(T=Creature,B)(int wizard,char[4] tag,int flags,ObjectState!B state,boo
 	auto movement=state.isOnGround(position)?CreatureMovement.onGround:curObj.canFly?CreatureMovement.flying:CreatureMovement.tumbling;
 	auto creatureState=CreatureState(mode, movement, facing);
 	auto obj=MovingObject!B(curObj,position,rotation,scale,AnimationState.disoriented,0,creatureState,curObj.creatureStats(flags),CreatureStatistics(),NotificationState(),side);
+	obj.initBehaviorFlags();
 	obj.setCreatureState(state);
 	obj.updateCreaturePosition(state);
 	auto ord=Order(CommandType.retreat,OrderTarget(TargetType.creature,wizard,position));
@@ -8831,6 +8839,9 @@ float dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B at
 }
 
 float dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B attacker,DamageMod damageMod,ObjectState!B state,bool checkIdle=true){
+	if(object.id!=attacker.id&&object.creatureStats.health==object.creatureStats.maxHealth
+	   &&!(object.side==neutralSide&&object.creatureState.mode.among(CreatureMode.thrashing,CreatureMode.convertReviving)))
+		object.creatureAI.grudgeMask|=1u<<attacker.side;
 	auto actualDamage=damage*attacker.attackDamageFactor(true,damageMod,state);
 	bool killed=0;
 	actualDamage=dealDamage(object,actualDamage,attacker.side,damageMod,killed,state);
@@ -12263,6 +12274,11 @@ bool isValidAttackTarget(B,T)(ref T obj,ObjectState!B state)if(is(T==MovingObjec
 bool isValidAttackTarget(B)(int targetId,ObjectState!B state){
 	with(TargetType) return state.targetTypeFromId(targetId).among(creature,building)&&state.objectById!(.isValidAttackTarget)(targetId,state);
 }
+Stance getStance(B)(ref MovingObject!B object,int side,ObjectState!B state){
+	if(side>=0&&(object.creatureAI.behaviorFlags&(1<<14))&&(object.creatureAI.grudgeMask&(1u<<side)))
+		return Stance.enemy;
+	return state.sides.getStance(object.side,side);
+}
 bool isValidEnemyAttackTarget(B,T)(ref T obj,int side,ObjectState!B state)if(is(T==MovingObject!B)||is(T==StaticObject!B)){
 	if(!obj.isValidAttackTarget(state)) return false;
 	return state.sides.getStance(side,.side(obj,state))==Stance.enemy;
@@ -13455,6 +13471,19 @@ void updateAlertness(B)(ref MovingObject!B object,ObjectState!B state){
 	}
 }
 
+void absorbHerdGrudges(B)(ref MovingObject!B object,ObjectState!B state){
+	enum range=80.0f;
+	static void absorb(ref CenterProximityEntry entry,MovingObject!B* object,ObjectState!B state){
+		if(entry.isStatic||entry.id==object.id||entry.side!=object.side) return;
+		state.movingObjectById!((ref member,object){
+			if(member.isWizard) return;
+			if(member.sacObject.manaCost!=object.sacObject.manaCost) return;
+			object.creatureAI.grudgeMask|=member.creatureAI.grudgeMask;
+		},(){})(entry.id,object);
+	}
+	state.proximity.centers.eachInRange!absorb(state.proximity.version_,object.position,range,&object,state);
+}
+
 void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 	if(!requiresAI(object.creatureState.mode)) return;
 	if(object.creatureStats.effects.oiled) return;
@@ -13540,6 +13569,7 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 					object.unqueueOrder(state);
 			break;
 		case CommandType.none:
+			if(object.sacObject.hasPeasantFSM) object.absorbHerdGrudges(state);
 			if(object.isPeasant){
 				if(auto shelter=state.proximity.closestPeasantShelterInRange(object.side,object.position,shelterDistance,state)){
 					if(object.creatureState.mode==CreatureMode.cower){
@@ -13547,7 +13577,7 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 						object.startIdling(state);
 					}
 					if(state.frontOfAIQueue(object.side,object.id))
-						object.creatureAI.targetId=state.proximity.closestEnemyInRange(object.side,object.position,scareDistance,EnemyType.creature,state);
+						object.creatureAI.targetId=state.proximity.closestEnemyInRange(object.side,object.creatureAI.behaviorFlags&(1<<14)?object.creatureAI.grudgeMask:0u,object.position,scareDistance,EnemyType.creature,state);
 					if(!state.isValidTarget(object.creatureAI.targetId,TargetType.creature)) object.creatureAI.targetId=0;
 					if(auto enemy=object.creatureAI.targetId){
 						auto enemyPosition=state.movingObjectById!((obj)=>obj.position,function Vector3f(){ assert(0); })(enemy);
@@ -15265,6 +15295,7 @@ int spawnSacDoctor(B)(int side,Vector3f position,Vector3f landingPosition,Object
 	auto rotation=facingQuaternion(facing);
 	auto scale=state.randomCreatureScale?state.uniform(0.5f,1.5f):1.0f;
 	auto obj=MovingObject!B(curObj,position,rotation,scale,AnimationState.stance1,0,creatureState,curObj.creatureStats(Flags.cannotDamage),CreatureStatistics(),NotificationState(),side);
+	obj.initBehaviorFlags();
 	obj.setCreatureState(state);
 	obj.updateCreaturePosition(state);
 	obj.animationState=cast(AnimationState)SacDoctorAnimationState.expelled;
@@ -15608,6 +15639,7 @@ int spawnRitualSacDoctor(B)(int side,Vector3f position,float facing,ObjectState!
 	auto rotation=facingQuaternion(facing);
 	auto scale=state.randomCreatureScale?state.uniform(0.5f,1.5f):1.0f;
 	auto obj=MovingObject!B(curObj,position,rotation,scale,AnimationState.stance1,0,creatureState,curObj.creatureStats(0),CreatureStatistics(),NotificationState(),side);
+	obj.initBehaviorFlags();
 	obj.setCreatureState(state);
 	obj.updateCreaturePosition(state);
 	obj.animationState=cast(AnimationState)SacDoctorAnimationState.dance;
@@ -28388,6 +28420,14 @@ final class Proximity(B){
 	int closestEnemyInRange(alias filter=None,alias priority=None,T...)(int side,Vector3f position,float range,EnemyType type,ObjectState!B state,float maxHeight=float.infinity,T args=T.init){
 		return centers.closestInRange!(isEnemy!(filter,T),priority)(version_,position,range,side,type,state,maxHeight,args).id;
 	}
+	private static bool isEnemyWithGrudges(alias filter=None,T...)(ref CenterProximityEntry entry,int side,uint grudgeMask,EnemyType type,ObjectState!B state,float maxHeight=float.infinity,T args=T.init){
+		if(!isOfType(entry,type,state,maxHeight,args)) return false;
+		static if(!is(filter==None)) if(!filter(entry,args)) return false;
+		return entry.side>=0&&(grudgeMask&(1u<<entry.side))||state.sides.getStance(side,entry.side)==Stance.enemy;
+	}
+	int closestEnemyInRange(alias filter=None,alias priority=None,T...)(int side,uint grudgeMask,Vector3f position,float range,EnemyType type,ObjectState!B state,float maxHeight=float.infinity,T args=T.init){
+		return centers.closestInRange!(isEnemyWithGrudges!(filter,T),priority)(version_,position,range,side,grudgeMask,type,state,maxHeight,args).id;
+	}
 	private static bool isNonAlly(alias filter=None,T...)(ref CenterProximityEntry entry,int side,EnemyType type,ObjectState!B state,float maxHeight=float.infinity,T args=T.init){
 		if(!isOfType(entry,type,state,maxHeight,args)) return false;
 		static if(!is(filter==None)) if(!filter(entry,args)) return false;
@@ -30312,8 +30352,9 @@ TargetFlags summarize(bool simplified=false,B)(ref OrderTarget target,int side,O
 					if(!buildingInteresting) result|=TargetFlags.untargetable; // TODO: there might be a flag for this
 					if(isManafount&&!top) result|=TargetFlags.manafount;
 				}
-				if(objSide!=side){
-					auto stance=state.sides.getStance(side,objSide);
+				static if(isMoving) auto stance=getStance(obj,side,state);
+				else auto stance=state.sides.getStance(side,objSide);
+				if(objSide!=side||stance==Stance.enemy){
 					final switch(stance){
 						case Stance.neutral: break;
 						case Stance.ally: result|=TargetFlags.ally; break;
@@ -30807,6 +30848,7 @@ void placeNTT(B,T)(ObjectState!B state,ref T ntt) if(is(T==Creature)||is(T==Wiza
 	if(mode==CreatureMode.dead) movement=onGround?CreatureMovement.onGround:CreatureMovement.tumbling;
 	auto creatureState=CreatureState(mode, movement, ntt.facing);
 	auto obj=MovingObject!B(curObj,position,rotation,scale,AnimationState.stance1,0,creatureState,curObj.creatureStats(ntt.flags),CreatureStatistics(),NotificationState(),ntt.side);
+	obj.initBehaviorFlags();
 	obj.setCreatureState(state);
 	obj.updateCreaturePosition(state);
 	/+do{
