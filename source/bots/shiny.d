@@ -604,6 +604,7 @@ bool entCanSee(B)(ObjectState!B state,NodeKind kind,int id,Vector3f spos,Vector3
 		auto visible=state.movingObjectById!((ref o,state)=>o.creatureState.mode.isVisibleToAI&&!o.creatureStats.effects.stealth,()=>false)(id,state); // state-flag 0x10000 approximation
 		if(!visible) return false;
 	}
+	if(!state.fogOfWar) return true;
 	return state.terrainLineOfSight(spos,tpos);
 }
 // NTT::CanHit 0x48c160==4: no blocking ntt on the shot line (zone crawl between the live aim positions, terrain NOT checked)
