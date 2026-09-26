@@ -12259,7 +12259,8 @@ bool moveWithinRange2D(B)(ref MovingObject!B object,Vector3f targetPosition,floa
 }
 
 bool retreatTowards(B)(ref MovingObject!B object,Vector3f targetPosition,float range,ObjectState!B state){
-	return object.moveWithinRange(targetPosition,range,state) ||
+	return object.patrolAround(targetPosition,state) ||
+		object.moveWithinRange(targetPosition,range,state) ||
 		object.stop(float.init,state);
 }
 
