@@ -14684,7 +14684,39 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 	}
 }
 
+float rescueRadius(B)(ref MovingObject!B object){
+	return boundingRadius(object.sacObject.hitbox(Quaternionf.identity(),object.scale,AnimationState.stance1,0));
+}
+void rescuedBy(B)(ref MovingObject!B object,int side,ObjectState!B state){
+	object.clearOrderQueue(state);
+	object.unselect(state);
+	object.removeFromGroups(state);
+	object.side=side;
+	object.creatureStats.flags&=~Flags.rescuable;
+}
+bool updateRescue(B)(ref MovingObject!B object,ObjectState!B state){
+	if(!(object.creatureStats.flags&Flags.rescuable)) return false;
+	if(object.creatureState.mode.among(CreatureMode.dead,CreatureMode.dissolving,CreatureMode.convertReviving,CreatureMode.thrashing)) return false;
+	static bool scan(ref MovingObject!B candidate,MovingObject!B* object,ObjectState!B state){
+		if(candidate.side==object.side) return false;
+		if(state.sides.getStance(object.side,candidate.side)!=Stance.ally&&state.sides.getStance(candidate.side,object.side)!=Stance.ally) return false;
+		// TODO: also reject candidates with the animosity flag
+		if((object.creatureAI.behaviorFlags&(1<<14))&&(object.creatureAI.grudgeMask&(1u<<candidate.side))) return false;
+		enum rescueDistance=10.0f;
+		auto distance=candidate.rescueRadius+(*object).rescueRadius+rescueDistance;
+		if((candidate.position-object.position).lengthsqr>=distance*distance) return false;
+		rescuedBy(*object,candidate.side,state);
+		return true;
+	}
+	bool rescued=false;
+	state.eachMoving!((ref candidate,object,state,rescued){
+		if(!*rescued&&scan(candidate,object,state)) *rescued=true;
+	})(&object,state,&rescued);
+	return rescued;
+}
+
 void updateCreature(B)(ref MovingObject!B object, ObjectState!B state){
+	if(object.updateRescue(state)) return;
 	object.updateAlertness(state);
 	object.updateCreatureAI(state);
 	object.updateCreatureState(state);
