@@ -29289,9 +29289,9 @@ final class ObjectState(B){ // (update logic)
 		auto eye=position+Vector3f(0.0f,0.0f,eyeHeight);
 		foreach(s;0..cast(int)sid.sides.length){
 			if(!(mask&(1u<<s))) continue;
+			sid.sides[s].activateVision();
 			auto counters=sid.sides[s].visionCounters.data;
 			auto explored=sid.sides[s].exploredTerrain.data;
-			sid.sides[s].visionActive=true;
 			foreach(dy;-r..r+1){
 				auto y=cy+dy;
 				if(!(0<=y&&y<visionGridSize)) continue;
@@ -29323,16 +29323,23 @@ final class ObjectState(B){ // (update logic)
 	}
 	bool positionVisibleToSide(int side,Vector3f position){ // TODO: move to renderer
 		if(!fogOfWar||!(0<=side&&side<sid.sides.length)) return true;
+		if(!sid.sides[side].visionActive) return false;
 		auto index=DangerGrid.coord(position.y)*visionGridSize+DangerGrid.coord(position.x);
 		return sid.sides[side].visionCounters[index]>0;
 	}
 	bool positionExploredBySide(int side,Vector3f position){
 		if(!fogOfWar||!(0<=side&&side<sid.sides.length)) return true;
+		if(!sid.sides[side].visionActive) return false;
 		auto index=DangerGrid.coord(position.y)*visionGridSize+DangerGrid.coord(position.x);
 		return (sid.sides[side].exploredTerrain[index>>5]&(1u<<(index&31)))!=0;
 	}
 	void updateFogTexture(int side,ubyte[] data){ // TODO: move to renderer
 		if(!fogOfWar||!(0<=side&&side<sid.sides.length)) return;
+		if(!sid.sides[side].visionActive){
+			foreach(index;0..visionGridSize*visionGridSize)
+				data[4*index+3]=255;
+			return;
+		}
 		auto counters=sid.sides[side].visionCounters.data, explored=sid.sides[side].exploredTerrain.data;
 		foreach(index;0..visionGridSize*visionGridSize){
 			auto bit=1u<<(index&31);
@@ -29915,6 +29922,19 @@ struct SideData(B){
 	void resetSelectionCount(){
 		selectionMultiplicity=0;
 	}
+
+	void activateVision(){
+		if(visionActive) return;
+		visionActive=true;
+		exploredTerrain.length=visionGridWords;
+		exploredTerrain.data[]=0;
+		visionCounters.length=visionGridSize*visionGridSize; // TODO: move to renderer instead
+		visionCounters.data[]=0;
+	}
+	void startVision(){
+		if(!visionActive) return;
+		foreach(ref c;visionCounters.data) if(c>0) --c;
+	}
 }
 
 struct SideManager(B){
@@ -29923,17 +29943,10 @@ struct SideManager(B){
 	this(int numSides){
 		sides.length=numSides;
 		foreach(ref side;sides.data){
-			side.exploredTerrain.length=visionGridWords;
-			side.exploredTerrain.data[]=0;
-			side.visionCounters.length=visionGridSize*visionGridSize; // TODO: move to renderer instead
-			side.visionCounters.data[]=0;
 		}
 	}
 	void startVision(){
-		foreach(ref side;sides.data){
-			if(!side.visionActive) continue;
-			foreach(ref c;side.visionCounters.data) if(c>0) --c;
-		}
+		foreach(ref side;sides.data) side.startVision();
 	}
 	Queue!int* aiQueue(int side){
 		if(!(0<=side&&side<sides.length)) return null;
