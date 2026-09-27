@@ -14704,21 +14704,25 @@ void rescuedBy(B)(ref MovingObject!B object,int side,ObjectState!B state){
 bool updateRescue(B)(ref MovingObject!B object,ObjectState!B state){
 	if(!(object.creatureStats.flags&Flags.rescuable)) return false;
 	if(object.creatureState.mode.among(CreatureMode.dead,CreatureMode.dissolving,CreatureMode.convertReviving,CreatureMode.thrashing)) return false;
+	enum rescueDistance=10.0f;
 	static bool scan(ref MovingObject!B candidate,MovingObject!B* object,ObjectState!B state){
 		if(candidate.side==object.side) return false;
 		if(state.sides.getStance(object.side,candidate.side)!=Stance.ally&&state.sides.getStance(candidate.side,object.side)!=Stance.ally) return false;
 		// TODO: also reject candidates with the animosity flag
 		if((object.creatureAI.behaviorFlags&(1<<14))&&(object.creatureAI.grudgeMask&(1u<<candidate.side))) return false;
-		enum rescueDistance=10.0f;
 		auto distance=candidate.rescueRadius+(*object).rescueRadius+rescueDistance;
 		if((candidate.position-object.position).lengthsqr>=distance*distance) return false;
 		rescuedBy(*object,candidate.side,state);
 		return true;
 	}
 	bool rescued=false;
-	state.eachMoving!((ref candidate,object,state,rescued){
-		if(!*rescued&&scan(candidate,object,state)) *rescued=true;
-	})(&object,state,&rescued);
+	auto radius=object.rescueRadius+rescueDistance+5.0f; // TODO: ok?
+	Vector3f[2] hitbox=[object.position-radius,object.position+radius];
+	static void handle(ProximityEntry target,ObjectState!B state,MovingObject!B* object,bool *rescued){
+		if(!*rescued&&state.movingObjectById!(scan,()=>false)(target.id,object,state))
+			*rescued=true;
+	}
+	collisionTargets!handle(hitbox,state,&object,&rescued);
 	return rescued;
 }
 
