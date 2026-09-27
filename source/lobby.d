@@ -154,6 +154,7 @@ GameInit!B gameInit(B,R)(Sides!B sides_,R playerSettings,ref Options options){
 	gameInit.greenAllySouls=options.greenAllySouls;
 	gameInit.fasterStandupTimes=options.fasterStandupTimes;
 	gameInit.fasterCastingTimes=options.fasterCastingTimes;
+	gameInit.betaPatchBots=options.betaPatchBots;
 	gameInit.aiSides=options.aiSides;
 	if(gameInit.greenAllySouls){
 		foreach(ref settings;playerSettings)

@@ -104,6 +104,7 @@ struct Options{
 	bool greenAllySouls=false;
 	bool fasterStandupTimes=true;
 	bool fasterCastingTimes=true;
+	bool betaPatchBots=false;
 	bool aiSides=true;
 	int delayStart=0;
 	// zerotier

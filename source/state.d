@@ -29014,6 +29014,7 @@ final class ObjectState(B){ // (update logic)
 		bool greenAllySouls=false;
 		bool fasterStandupTimes=true;
 		bool fasterCastingTimes=true;
+		bool betaPatchBots=false;
 	}
 	Settings settings;
 	@property bool alliedVision(){ return settings.alliedVision; }
@@ -29882,10 +29883,12 @@ struct SideData(B){
 	SideState state;
 	SideType sideType;
 	ShinyAI!B shinyAI; // null unless sideType==SideType.shinyBot
-	void setSideType(SideType type){
+	void setSideType(SideType type,bool betaPatchBots=false){
 		sideType=type;
-		if(type==SideType.shinyBot){ if(shinyAI is null) shinyAI=new ShinyAI!B; }
-		else shinyAI=null;
+		if(type==SideType.shinyBot){
+			if(shinyAI is null) shinyAI=new ShinyAI!B;
+			shinyAI.setBetaPatchBots(betaPatchBots);
+		}else shinyAI=null;
 	}
 	void opAssign(ref SideData rhs){
 		auto ai=shinyAI;
@@ -30979,6 +30982,7 @@ struct GameInit(B){
 	bool greenAllySouls=false;
 	bool fasterStandupTimes=true;
 	bool fasterCastingTimes=true;
+	bool betaPatchBots=false;
 	bool aiSides=true;
 }
 
@@ -30990,6 +30994,7 @@ struct SlotInfo{
 void initGame(B)(ObjectState!B state,ref Array!SlotInfo slots,GameInit!B gameInit){ // returns id of controlled wizard
 	state.settings.gameMode=gameInit.gameMode;
 	state.settings.gameModeParam=gameInit.gameModeParam;
+	state.settings.betaPatchBots=gameInit.betaPatchBots;
 	foreach(ref structure;state.map.ntts.structures)
 		state.placeStructure(structure);
 	foreach(ref wizard;state.map.ntts.wizards)
@@ -31038,7 +31043,7 @@ void initGame(B)(ObjectState!B state,ref Array!SlotInfo slots,GameInit!B gameIni
 	if(!gameInit.fasterCastingTimes) state.disableFasterCastingTimes();
 	if(gameInit.aiSides){
 		foreach(i,ref side;state.sides)
-			state.sid.sides[i].setSideType(side.assignment&PlayerAssignment.aiSide?SideType.shinyBot:SideType.neutral);
+			state.sid.sides[i].setSideType(side.assignment&PlayerAssignment.aiSide?SideType.shinyBot:SideType.neutral,gameInit.betaPatchBots);
 	}
 	slots.length=gameInit.slots.length;
 	slots.data[]=SlotInfo.init;
@@ -31058,7 +31063,7 @@ void initGame(B)(ObjectState!B state,ref Array!SlotInfo slots,GameInit!B gameIni
 			slots[slot].controlledSide=wiz.side;
 			slots[slot].wizard=wizId;
 			if(0<=wiz.side&&wiz.side<32) // TODO: support?
-				state.sid.sides[wiz.side].setSideType(gameInit.slots[slot].sideType);
+				state.sid.sides[wiz.side].setSideType(gameInit.slots[slot].sideType,gameInit.betaPatchBots);
 		}
 		if(0<=wiz.side&&wiz.side<32) // TODO: support?
 			altarSides|=1<<wiz.side;

@@ -47,8 +47,8 @@ enum rateMelee=0, rateAbility=1, rateHealthMelee=2, rateHealthRanged=3, rateSpee
 
 enum NodeKind{ none, wiz, cre, maho, t4o, str }
 
-// rater2 rating functions (thaum addresses)
-enum RatingFn{ none, f489700, f489780, f489860, f489a20, f489af0, f489ae0, f489bc0, f489c40, f489d70, f489e70 }
+// rater2 rating functions (thaum addresses; f48cbd0 is retail-only)
+enum RatingFn{ none, f489700, f489780, f489860, f489a20, f489af0, f489ae0, f489bc0, f489c40, f489d70, f489e70, f48cbd0 }
 
 struct SpellAcc(B){           // rater2 spell accumulator
 	SacSpell!B spell;         // spinfo
@@ -310,21 +310,26 @@ bool findRecord(B)(char[4] tag,ref immutable(Cre8)* c8,ref immutable(Wizd)* wz){
 bool wantsSpellAcc(B)(SacSpell!B s){
 	return s.type==SpellType.spell&&s.spel&&(cast(uint)s.spel.flags1&0xfc00)!=0;
 }
-// rating function selection 0x489540 (tag table ds:0x4cfa68, compares the SPEL name field s_spell+0x10)
-RatingFn ratingFn(B)(SacSpell!B s){
-	auto name=s.spel.name[];
-	if(name=="omna") return RatingFn.f489700;
-	if(name=="ndrg") return RatingFn.f489a20;
-	if(name=="laeh") return RatingFn.f489af0;
-	if(name=="pups") return RatingFn.f489c40;
-	if(name=="elet") return RatingFn.f489d70;
-	if(name=="ccas") return RatingFn.f489ae0;
+// flags1 fallback chain of the rating function selection 0x489540
+RatingFn ratingFnFlags(B)(SacSpell!B s){
 	auto f1=cast(uint)s.spel.flags1;
 	if(f1&0x4000) return (f1&0x40)&&s.spel.effectRange>0.0f?RatingFn.f489860:RatingFn.f489780;
 	if(f1&0x8000) return RatingFn.f489af0;
 	if(f1&0x800) return RatingFn.f489e70;
 	if(f1&0x400) return RatingFn.f489bc0;
 	return RatingFn.none;
+}
+// rating function selection 0x489540 (tag table ds:0x4cfa68, compares the SPEL name field s_spell+0x10)
+RatingFn ratingFn(B)(SacSpell!B s){
+	auto name=s.spel.name[];
+	if(name=="taed") return RatingFn.f48cbd0; // retail-only table entry (retail 0x48cbd0); thaum.exe lacks it and falls to the flags1 chain
+	if(name=="omna") return RatingFn.f489700;
+	if(name=="ndrg") return RatingFn.f489a20;
+	if(name=="laeh") return RatingFn.f489af0;
+	if(name=="pups") return RatingFn.f489c40;
+	if(name=="elet") return RatingFn.f489d70;
+	if(name=="ccas") return RatingFn.f489ae0;
+	return ratingFnFlags!B(s);
 }
 
 final class ShinyAI(B){
@@ -366,6 +371,29 @@ final class ShinyAI(B){
 	int neutralManafounts=0;
 	int livingSides=0;
 	int allianceTeams=0;
+	// per-instance behavior switches: false = Sacrifice.exe (retail), true = thaum.exe (beta); --beta-patch-bots initializes all to true
+	bool betaMinManaSacu=false;         // retail GetMinimumMana@AIWIZARDNODE 0x490ac0: 'sacu' gate on the queue-head boost (thaum 0x48df30 has none)
+	bool betaManahoarRadius=false;      // mahoBrain seek radius: retail 0x48a8f0 3620.0 vs thaum 0x487ae0 256.0
+	bool betaAttackCoeff=false;         // CheckAttack coeff: retail 0x4901a0 280.0 vs thaum 0x48d640 180.0
+	bool betaCastBuildingThreshold=false; // castCachedInRange threat gate: retail 0x490850 0.9 vs thaum 0x48dce0 0.6
+	bool betaWizardOrderScore=false;    // Order@AIWIZARDNODE score: retail 0x490b20 100/80 vs thaum 0x48df70 80/60
+	bool betaDeathEvaluator=false;      // 'taed' spell evaluator: retail 0x48cbd0 (thaum has no table entry, flags1 fallback)
+	bool betaSummonAccounting=false;    // summon accounting: retail counts own+ally manaliths, ready cap /2 (thaum own only, /4)
+	bool betaManaSourceOwnOnly=false;   // GetManaSource 0x485a40: retail walks own+ally lists (thaum own only)
+	bool betaPickupNeutralOnly=false;   // GetNearestPickup 0x485490: retail list sets {0,2}/{2,3} (thaum neutral slot 2 only)
+	bool betaCaptureTerritory=false;    // CAPTURE::Replan 0x48dbf0: territorial gates 0x488d70 + own+ally f1/f2 divisor
+	void setBetaPatchBots(bool beta){
+		betaMinManaSacu=beta;
+		betaManahoarRadius=beta;
+		betaAttackCoeff=beta;
+		betaCastBuildingThreshold=beta;
+		betaWizardOrderScore=beta;
+		betaDeathEvaluator=beta;
+		betaSummonAccounting=beta;
+		betaManaSourceOwnOnly=beta;
+		betaPickupNeutralOnly=beta;
+		betaCaptureTerritory=beta;
+	}
 	// rater1 by-tag acc cache
 	enum numTagAccs=96;
 	RaterAcc[numTagAccs] tagAccs;
@@ -1758,6 +1786,25 @@ float probOr(B)(ref ShinyAI!B ai,ObjectState!B state,Vector3f pos,int slot,uint 
 	}
 	return acc;
 }
+float territorialScore(B)(ref ShinyAI!B ai,ObjectState!B state,Vector3f pos,int exclude){ // retail 0x488d70 (no thaum twin): own+ally structure proximity score
+	float acc=0.0f;
+	foreach(k;0..4){ // k loop with (1<<k)&3 -> own+ally structure lists only (accessors 0x488f80/0x488fa0)
+		if(!((1<<k)&3)) continue;
+		for(int n=ai.fam2Head[k];n;n=ai.nodes[n].famN){
+			if(n==exclude) continue; // node==arg rec
+			auto node=&ai.nodes[n];
+			auto r=node.status&0x4000?1000.0f:50.0f; // node+0x40&0x4000
+			immutable dx=cast(float)(pos.x-node.curPos.x), dy=cast(float)(pos.y-node.curPos.y), dz=cast(float)(pos.z-node.curPos.z); // f32 subs
+			auto d=cast(float)sqrt(cast(double)dz*dz+(cast(double)dy*dy+cast(double)dx*dx)); // dz^2+(dy^2+dx^2) 80-bit, _CIsqrt, f32 store
+			float s;
+			if(d<=10.0f) s=1.0f; // test ah,0x41
+			else if(d<r) s=cast(float)((cast(double)r-d)/(cast(double)r-10.0f)); // test ah,1: strictly below r
+			else s=0.0f;
+			acc=cast(float)(cast(double)s*s*(1.0-cast(double)acc)+cast(double)acc); // 80-bit chain, f32 store each iter
+		}
+	}
+	return acc;
+}
 float densityGroups(B)(ref ShinyAI!B ai,ObjectState!B state,Vector3f pos,float near,float far){ // 0x485e00
 	float acc=0.0f;
 	static immutable int[2] cats=[2,3];
@@ -1820,7 +1867,8 @@ void replanTasks(B)(ref ShinyAI!B ai,ObjectState!B state){ // 0x485260
 }
 void replanCapture(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task){ // 0x48afa0
 	clearClaimed(ai,task);
-	auto A=si(ai.stanceRecs[0],5), Bv=si(ai.stanceRecs[3],5), E=ai.neutralManafounts;
+	// retail 0x48dc04: divisor A = own+ally manaliths ([statArray+0x40]+[+0x14]); thaum 0x48afb4: own only
+	auto A=si(ai.stanceRecs[0],5)+(ai.betaCaptureTerritory?0:si(ai.stanceRecs[1],5)), Bv=si(ai.stanceRecs[3],5), E=ai.neutralManafounts;
 	float f1, f2;
 	if(A!=0&&cast(float)(cast(double)(Bv+1)/cast(double)A)>=1.0f){
 		f1=1.0f;
@@ -1842,6 +1890,8 @@ void replanCapture(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task){ /
 				s1=nodeValueScore(ai,state,f1,n);
 				s2=cast(float)((1.0-cast(double)ai.aggression)*0.8+0.2);
 			}else if(edi==3&&(node.flags&0x20)&&(node.status&0x4000||((node.status&0x40000)&&!(node.flags&0x200)))){
+				// retail 0x48dd43: no own/ally structure support (0x488d70 score 0) -> reject while own+ally manaliths exist (jg on A), else proceed anyway
+				if(!ai.betaCaptureTerritory&&territorialScore!B(ai,state,node.curPos,n)==0.0f&&A>0) continue;
 				flags=1;
 				s1=cast(float)(cast(double)nodeValueScore(ai,state,f2>f1?f2:f1,n)*0.99)*ai.aggression;
 				s2=cast(float)((1.0-cast(double)ai.aggression)*0.9+0.1);
@@ -1850,6 +1900,8 @@ void replanCapture(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task){ /
 				flags=3;
 				s2=cast(float)((1.0-cast(double)ai.aggression)*0.8+0.2);
 			}else if(node.flags&0x200){
+				// retail 0x48de5d: no own/ally structure support (0x488d70 score 0) -> reject unconditionally, before the 'sacu' check
+				if(!ai.betaCaptureTerritory&&territorialScore!B(ai,state,node.curPos,n)==0.0f) continue;
 				if(desecrationOngoing!B(state,node.id)){ // 0x48b1b8: 'ucas' attach -> s1=0.4f (0x4bba30), s2=1.0f-ag (fsub f32), flags=1
 					s1=0.4f;
 					s2=1.0f-ai.aggression;
@@ -2176,6 +2228,8 @@ bool nodeIsRespawning(B)(ref ShinyAI!B ai,ObjectState!B state,int n){ // CREATUR
 int nodeSlot22(B)(ref ShinyAI!B ai,ObjectState!B state,int n){ // node vtbl[22]: t4o/maho 0x4871e0; wiz 0x48df30; cre/str 0x486bd0 (=0, minManaCost stays 0)
 	auto node=&ai.nodes[n];
 	if(node.kind==NodeKind.wiz&&node.castQueue.length){
+		// retail 0x490ac0: GetTag(ntt+0xb9c,0,0)=='sacu' -> skip to the base implementation (no queue-head boost while sacrificing); thaum 0x48df30 has no gate
+		if(!ai.betaMinManaSacu&&wizardSacrificing!B(ai,state,node.id)) return ftol(node.minManaCost);
 		auto e=&node.castQueue[0];
 		if(e.provider&&e.provider.type==SpellType.creature){ // queue head provider+0xc==2 (creature spell)
 			auto souls=state.movingObjectById!((ref o,ObjectState!B state){
@@ -2194,7 +2248,10 @@ bool sameRegionPos(B)(ObjectState!B state,Vector3f a,Vector3f b){ // 0x470700 re
 bool findBestCaptureTarget(B)(ref ShinyAI!B ai,ObjectState!B state,Vector3f* pos,float radius,int* outNode,float* outRadius){ // 0x485a40 ("Mana")
 	*outNode=0;
 	float best=0.0f, br=0.0f; // br only read when *outNode!=0 (thaum leaves it uninitialized)
-	for(int m=ai.catHead[0];m;m=ai.nodes[m].catN){ // slot0 cat0 (own), chain node+0x50
+	// retail 0x485a40 walks own+ally mana lists (cat0+cat1); thaum walks own only (cat0)
+	static immutable int[2] capSlots=[0,1];
+	foreach(capSlot;ai.betaManaSourceOwnOnly?capSlots[0..1]:capSlots[0..2])
+	for(int m=ai.catHead[capSlot];m;m=ai.nodes[m].catN){ // chain node+0x50
 		auto node=&ai.nodes[m];
 		if(!(node.status&0x1000)) continue;
 		if(!sameRegionPos!B(state,*pos,node.curPos)) continue;
@@ -2251,10 +2308,12 @@ int mahoBrain(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int cmd,int ri){ // 
 		auto v=cast(float)(2*grp.maxManaSum-grp.manaSum);
 		if(grp.statusOR&8) v+=v;
 		auto d=sqrt(distSq3(node.extrapPos,grp.predicted));
+		// retail 0x48a8f0: cutoff 3620.0f, scale 0.00027700831f; thaum 0x487ae0: 256.0f, 0.0040650405f
+		immutable mcut=ai.betaManahoarRadius?256.0f:3620.0f, mscale=ai.betaManahoarRadius?0.0040650405f:0.00027700831f;
 		float w;
 		if(d<=10.0f) w=1.0f;
-		else if(!(d<256.0f)) w=0.0f;
-		else w=(256.0f-d)*0.0040650405f;
+		else if(!(d<mcut)) w=0.0f;
+		else w=(mcut-d)*mscale;
 		v*=w;
 		if(grp.readyCount>1) v/=cast(float)grp.readyCount;
 		if(bestV<v){ bestV=v; bestG=g; }
@@ -2442,6 +2501,30 @@ bool canCastSpellOn(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int target,Sac
 	// (flags&0x20000: LAND::GetAnchorMap(pos)>=0x60 "open ground" - sacengine has no anchor map; approximated as pass, documented)
 	return true;
 }
+// shared AoE base of 0x489860 (retail Eval_Death 0x48cbd0 calls the same body via its helper 0x48c540)
+float aoeSpellBase(B)(ref ShinyAI!B ai,ObjectState!B state,ref SpellAcc!B acc,int target,float r2){
+	auto spel=acc.spell.spel;
+	auto tnode=&ai.nodes[target];
+	auto inv=cast(float)(1.0/cast(double)r2);
+	auto base=hasAcc(ai,target)?rate(tnode.acc):0.0f;
+	if(spel.name[]=="sacd") base=cast(float)(cast(double)base*1000.0f);
+	auto amountI=cast(int)(cast(uint)spel.amount|cast(uint)spel.unknown14<<16);
+	foreach(cat;0..4){
+		if(cat==2) continue; // cats 0,1,3 only
+		for(auto g=ai.grp4Head[cat];g;g=ai.groups4[g].gN){
+			auto grp=&ai.groups4[g];
+			auto d2=cast(float)distSq3(grp.center,tnode.curPos);
+			if(cast(double)d2>cast(double)r2) continue;
+			auto grpRate=cast(double)rate(grp.acc); // kept on the FPU stack in thaum
+			auto Ad=(cast(double)r2-d2)*amountI*inv; // extended, no f32 stores
+			auto Bd=cast(double)cast(float)grp.count;
+			auto C=ftol(Ad<Bd?Ad:Bd);
+			auto E=cast(float)(cast(double)C/cast(double)grp.healthSum2*grpRate);
+			base=cat==3?cast(float)(cast(double)E+base):cast(float)(cast(double)base-E);
+		}
+	}
+	return base;
+}
 float rateSpellAcc(B)(ref ShinyAI!B ai,ObjectState!B state,ref SpellAcc!B acc,int n,int target,uint category,float distScaled){ // rater2 vtbl[1] 0x489630
 	// validity 0x48c330: LOS helpers 0x48c050/0x48c160 never run for categories 0x85/5 (documented)
 	auto node=&ai.nodes[n], tnode=&ai.nodes[target];
@@ -2453,7 +2536,9 @@ float rateSpellAcc(B)(ref ShinyAI!B ai,ObjectState!B state,ref SpellAcc!B acc,in
 	if(!(category&0x80)){ category|=0x80; distScaled=cast(float)distSq3(node.curPos,tnode.curPos); }
 	if(!(category&0x200)&&cast(double)distScaled>cast(double)spel.range*spel.range) return 0.0f;
 	if((cast(uint)spel.flags1&3)&&(category&0x3a)) return 0.0f;
-	switch(acc.ratingFn) with(RatingFn){
+	auto rfn=acc.ratingFn;
+	if(rfn==RatingFn.f48cbd0&&ai.betaDeathEvaluator) rfn=ratingFnFlags!B(acc.spell); // thaum.exe has no 'taed' table entry: it falls to the flags1 chain
+	switch(rfn) with(RatingFn){
 		case f489700: // omna
 			if(!(tnode.flags&0x10)) return 0.0f;
 			auto run=state.movingObjectById!((ref o,state)=>typeStats!B(o.sacObject).run,()=>0.0f)(tnode.id,state);
@@ -2475,25 +2560,24 @@ float rateSpellAcc(B)(ref ShinyAI!B ai,ObjectState!B state,ref SpellAcc!B acc,in
 			auto er=cast(double)spel.effectRange, dr=cast(double)spel.damageRange;
 			auto rr=dr>er?dr:er;
 			auto r2=cast(float)(rr*rr);
-			auto inv=cast(float)(1.0/cast(double)r2);
-			auto base=hasAcc(ai,target)?rate(tnode.acc):0.0f;
-			if(spel.name[]=="sacd") base=cast(float)(cast(double)base*1000.0f);
-			auto amountI=cast(int)(cast(uint)spel.amount|cast(uint)spel.unknown14<<16);
-			foreach(cat;0..4){
-				if(cat==2) continue; // cats 0,1,3 only
-				for(auto g=ai.grp4Head[cat];g;g=ai.groups4[g].gN){
-					auto grp=&ai.groups4[g];
-					auto d2=cast(float)distSq3(grp.center,tnode.curPos);
-					if(cast(double)d2>cast(double)r2) continue;
-					auto grpRate=cast(double)rate(grp.acc); // kept on the FPU stack in thaum
-					auto Ad=(cast(double)r2-d2)*amountI*inv; // extended, no f32 stores
-					auto Bd=cast(double)cast(float)grp.count;
-					auto C=ftol(Ad<Bd?Ad:Bd);
-					auto E=cast(float)(cast(double)C/cast(double)grp.healthSum2*grpRate);
-					base=cat==3?cast(float)(cast(double)E+base):cast(float)(cast(double)base-E);
-				}
+			return aoeSpellBase!B(ai,state,acc,target,r2);
+		case f48cbd0: // taed, retail 0x48cbd0: f489860 base (helper 0x48c540), then subtract nearby enemy wizards
+			auto erD=cast(double)spel.effectRange, drD=cast(double)spel.damageRange;
+			auto rrD=drD>erD?drD:erD; // ties -> damageRange
+			auto r2D=cast(float)(rrD*rrD);
+			auto baseD=aoeSpellBase!B(ai,state,acc,target,r2D);
+			if(baseD==0.0f) return 0.0f; // fcomp 0.0, test ah,0x40
+			auto score=baseD;
+			if(hasAcc(ai,target)&&(nttTypeBits(tnode.kind)&1)) // target node has a rating handle (vt+0x2c!=0) and is a wizard (ntt+0x4&1)
+				score=cast(float)(cast(double)score-rate(tnode.acc));
+			for(int e=ai.fam1Head[3];e;e=ai.nodes[e].famN){ // enemy fam1 list (GetFirstCreature(AI,3) 0x488f40), wizards only
+				auto wn=&ai.nodes[e];
+				if(wn.kind!=NodeKind.wiz) continue;
+				auto d2=cast(float)distSq3(wn.curPos,tnode.curPos); // (dz^2+dy^2)+dx^2 from f32 subs
+				if(cast(double)d2<=cast(double)r2D) // test ah,0x41
+					score=cast(float)(cast(double)score-rate(wn.acc));
 			}
-			return base;
+			return score;
 		case f489a20: // ndrg
 			if(!(nttTypeBits(tnode.kind)&0x4)) return 0.0f;
 			if(!(tnode.status&0x10000)) return 0.0f;
@@ -2569,7 +2653,8 @@ int spellAccAnchor(B)(ref ShinyAI!B ai,ObjectState!B state,ref SpellAcc!B acc,in
 
 float findBestSpell(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int target,uint mask,SacSpell!B* outSpell,float* outRange,int* outObj){ // 0x48d4d0
 	auto node=&ai.nodes[n];
-	auto pool=cast(float)(state.movingObjectById!((ref o,state)=>ftol(o.creatureStats.maxMana),()=>0)(node.id,state)*si(ai.stanceRecs[0],5)); // fild(maxMana*manaliths)
+	// retail 0x490020: fild(maxMana * (own+ally manaliths)); thaum 0x48d4d0: own only
+	auto pool=cast(float)(state.movingObjectById!((ref o,state)=>ftol(o.creatureStats.maxMana),()=>0)(node.id,state)*(si(ai.stanceRecs[0],5)+(ai.betaSummonAccounting?0:si(ai.stanceRecs[1],5))));
 	auto category=5u;
 	float distScaled=0.0f;
 	if(target){
@@ -2627,6 +2712,15 @@ bool desecrationOngoing(B)(ObjectState!B state,int buildingId){ // 0x466950(ntt,
 	}
 	return false;
 }
+bool wizardSacrificing(B)(ref ShinyAI!B ai,ObjectState!B state,int wizardId){ // retail 0x490ac0: GetTag(ntt+0xb9c,0,0)=='sacu' approximation: the wizard's side has a desecrate ritual underway
+	return state.movingObjectById!((ref o,ObjectState!B state){
+		foreach(i;0..state.obj.opaqueObjects.effects.sacDocCastings.length){
+			auto c=&state.obj.opaqueObjects.effects.sacDocCastings[i];
+			if(c.type==RitualType.desecrate&&c.side==o.side) return true;
+		}
+		return false;
+	},()=>false)(wizardId,state);
+}
 bool isGuardianEnt(B)(ObjectState!B state,int creatureId){ // ntt+0x5b4!=0: creature bound to a building by the guardian spell (setGuardian 0x460200, guardian spell only)
 	return state.movingObjectById!((ref o,state)=>o.creatureStats.effects.isGuardian,()=>false)(creatureId,state);
 }
@@ -2637,10 +2731,12 @@ uint pickupMask(B)(ObjectState!B state,int id){ // thaum soul+0x434: static touc
 uint convertMask(B)(ObjectState!B state,int id){ // 'ccas' attachment check (0x46a840): convertSideMask bits are cleared at cast start and restored only when the ritual aborts, so ~mask also covers the carry phase
 	return ~state.soulById!((ref soul)=>soul.convertSideMask,()=>-1u)(id);
 }
-int findBestNear(B)(ref ShinyAI!B ai,ObjectState!B state,Vector3f* pos,float radius,int enemyFlag){ // 0x485490 GetNearestPickup: walks fam C cat2 (neutral souls), head ai+0x7c, chain node+0x6c
+int findBestNear(B)(ref ShinyAI!B ai,ObjectState!B state,Vector3f* pos,float radius,int enemyFlag){ // 0x485490 GetNearestPickup: thaum walks fam C cat2 (neutral souls) only, head ai+0x7c, chain node+0x6c; retail list masks 5 (pickups: slots 0+2) / 0xc (convert targets: slots 2+3)
 	float best=0.0f;
 	int bestNode=0;
-	for(int m=ai.fam3Head[2];m;m=ai.nodes[m].famN){
+	static immutable int[2] pickupSlots=[0,2], convertSlots=[2,3];
+	foreach(slot;ai.betaPickupNeutralOnly?pickupSlots[1..2]:(enemyFlag?pickupSlots[0..2]:convertSlots[0..2]))
+	for(int m=ai.fam3Head[slot];m;m=ai.nodes[m].famN){
 		auto t=&ai.nodes[m];
 		auto mask=pickupMask!B(state,t.id); // ntt+0x434
 		if(enemyFlag){ if(!(mask&(1u<<ai.side))) continue; } // pickups: only souls we may touch-collect
@@ -2687,7 +2783,8 @@ void wizAttack(B)(ref ShinyAI!B ai,ObjectState!B state,int n,float[3]* w3){ // 0
 	// thaum leaves best/total uninitialized (stack garbage); DEFEND zeroes total only, so we zero-init (documented)
 	float best=0.0f, total=0.0f;
 	int bestNode=0;
-	auto thr=cast(float)((1.0-cast(double)node.threat)*180.0); // fsubr 1.0d; fmul 180.0d; f32 store, hoisted before the loop
+	// retail 0x4901a0: fmul 280.0d; thaum 0x48d640: fmul 180.0d (fsubr 1.0d; fmul; f32 store, hoisted before the loop)
+	auto thr=cast(float)((1.0-cast(double)node.threat)*(ai.betaAttackCoeff?180.0:280.0));
 	for(int m=ai.fam1Head[3];m;m=ai.nodes[m].famN){ // slot1 cat3 (enemy creatures), GetFirstCreature/GetNextCreature 0x486020/0x486030
 		auto t=&ai.nodes[m];
 		immutable dx=cast(double)node.extrapPos.x-t.extrapPos.x, dy=cast(double)node.extrapPos.y-t.extrapPos.y, dz=cast(double)node.extrapPos.z-t.extrapPos.z;
@@ -2755,11 +2852,12 @@ void wizSacrifice(B)(ref ShinyAI!B ai,ObjectState!B state,int n,float[3]* w3,int
 	auto randv=cast(double)ai.rng.rand()*3.0518509447574615e-05f; // fild(rand)*f32, stays extended
 	auto threatv=cast(float)(cast(double)node.threat*1.2999999523162842f); // fstp f32
 	if(cast(double)randv>cast(double)threatv){ // BLOCK1: emergency manahoar
-		if(si(ai.stanceRecs[0],5)>0&&node.manahoarSpell !is null){
+		auto mcount=si(ai.stanceRecs[0],5)+(ai.betaSummonAccounting?0:si(ai.stanceRecs[1],5)); // retail: own+ally manaliths; thaum: own only
+		if(mcount>0&&node.manahoarSpell !is null){
 			int ready=0;
 			for(int g=ai.grp4Head[0];g;g=ai.groups4[g].gN) ready+=ai.groups4[g].readyCount; // slot4 cat0 groups, +0x70
-			if(ready<si(ai.stanceRecs[0],4)/4){ // sdiv4
-				if(ready==0||cast(double)(2*si(ai.stanceRecs[0],1)-si(ai.stanceRecs[0],0))/cast(double)(si(ai.stanceRecs[0],5)*ready)>1400.0){
+			if(ready<si(ai.stanceRecs[0],4)/(ai.betaSummonAccounting?4:2)){ // sdiv4 thaum / sdiv2 retail
+				if(ready==0||cast(double)(2*si(ai.stanceRecs[0],1)-si(ai.stanceRecs[0],0))/cast(double)(mcount*ready)>1400.0){
 					enqueueCast(ai,n,0.0f,0,node.manahoarSpell,0.0f,0,1); // 0x48d050 forced manahoar
 					return; // only the enqueue returns; all other BLOCK1 exits fall through to BLOCK2
 				}
@@ -2768,7 +2866,7 @@ void wizSacrifice(B)(ref ShinyAI!B ai,ObjectState!B state,int n,float[3]* w3,int
 	}
 	// BLOCK2: summon the best creature
 	if(!(cast(double)node.threat<0.6)) return; // fcomp 0.6d, CF only
-	auto pool=maxMana*si(ai.stanceRecs[0],5);
+	auto pool=maxMana*(si(ai.stanceRecs[0],5)+(ai.betaSummonAccounting?0:si(ai.stanceRecs[1],5))); // retail: own+ally manaliths; thaum: own only
 	if(pool==0||node.summons.length==0) return;
 	float bestScore=0.0f;
 	SacSpell!B bestSpell=null;
@@ -2830,7 +2928,7 @@ int executeBestCast(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int checkOnly)
 		static if(shinyAILog) ailog("CASTQ ",ai.side," t",ai.schedTime," n",n," [",i,"] checkOnly ",checkOnly," flag ",e.flag," tgt ",e.target," obj ",e.obj," range ",e.range," spell ",e.provider is null?"null":to!string(e.provider.tag));
 		if(e.provider is null) goto exit;
 		if((e.flag&1)&&e.target&&checkOnly) goto exit;
-		if(si(ai.stanceRecs[0],5)==0){ // no manaliths: only affordable casts
+		if(si(ai.stanceRecs[0],5)+(ai.betaSummonAccounting?0:si(ai.stanceRecs[1],5))==0){ // no manaliths (retail: own+ally; thaum: own): only affordable casts
 			auto mana=state.movingObjectById!((ref o,state)=>ftol(o.creatureStats.mana),()=>0)(node.id,state);
 			if(ftol(e.provider.manaCost)>mana){ // thaum reads the int mana fields
 				static if(shinyAILog) ailog("CASTQ ",ai.side," t",ai.schedTime," n",n," [",i,"]: mana ",ftol(e.provider.manaCost),">",mana,e.flag&1?" -> ret 0":" -> skip");
@@ -2909,7 +3007,8 @@ int castCachedInRange(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int t){ // 0
 	auto node=&ai.nodes[n];
 	static if(shinyAILog) ailog("CCIR ",ai.side," t",ai.schedTime," n",n," tgt ",t," shrineSpell ",node.shrineSpell is null?"null":node.shrineSpell.tag[]," threat ",node.threat);
 	if(node.shrineSpell is null) return 0;
-	if(cast(double)node.threat>=0.6) return 0; // fcomp 0.6d: test ah,1;jne -> CF (threat<0.6 or unordered) proceeds
+	// fcomp: test ah,1;jne -> CF (threat below the bound or unordered) proceeds; retail 0x490850 0.9d, thaum 0x48dce0 0.6d
+	if(cast(double)node.threat>=(ai.betaCastBuildingThreshold?0.6:0.9)) return 0;
 	auto sq=distSq3(node.curPos,ai.nodes[t].curPos);
 	auto r=cast(double)node.shrineSpell.range;
 	r=r*r;
@@ -2958,7 +3057,8 @@ int wizBrain(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int cmd,int ri){
 		wizRetreat(ai,state,n,&w3);
 		wizSacrifice(ai,state,n,&w3,cmd==2?ri:0);
 	}
-	auto f=cast(float)((1.0-cast(double)node.threat)*80.0+60.0); // fsubr 1.0d; fmul 80.0d; fadd 60.0d; f32
+	// retail 0x490b20: fmul 100.0d fadd 80.0d; thaum 0x48df70: fmul 80.0d fadd 60.0d (fsubr 1.0d; f32)
+	auto f=cast(float)((1.0-cast(double)node.threat)*(ai.betaWizardOrderScore?80.0:100.0)+(ai.betaWizardOrderScore?60.0:80.0));
 	auto t=findBestNear(ai,state,&node.curPos,f,1);
 	static if(shinyAILog) ailog("WIZBRAIN ",ai.side," t",ai.schedTime," n",n," findBestNear f ",f," -> ",t,t?ai.nodes[t].curPos:Vector3f.init);
 	if(t){
