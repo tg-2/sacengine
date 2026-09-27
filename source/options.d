@@ -90,6 +90,9 @@ struct Options{
 	int replicateCreatures=1;
 	int protectManafounts=0;
 	bool terrainSineWave=false;
+	bool mapWizards=false;
+	bool mapCreatures=true;
+	bool mapSouls=true;
 	bool alliedVision=true;
 	bool alliedBeamVision=true;
 	bool fogOfWar=false;

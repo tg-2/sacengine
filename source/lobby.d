@@ -140,6 +140,9 @@ GameInit!B gameInit(B,R)(Sides!B sides_,R playerSettings,ref Options options){
 	gameInit.replicateCreatures=options.replicateCreatures;
 	gameInit.protectManafounts=options.protectManafounts;
 	gameInit.terrainSineWave=options.terrainSineWave;
+	gameInit.mapWizards=options.mapWizards;
+	gameInit.mapCreatures=options.mapCreatures;
+	gameInit.mapSouls=options.mapSouls;
 	gameInit.alliedVision=options.alliedVision;
 	gameInit.alliedBeamVision=options.alliedBeamVision;
 	gameInit.fogOfWar=options.fogOfWar;

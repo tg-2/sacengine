@@ -30974,6 +30974,9 @@ struct GameInit(B){
 	int replicateCreatures=1;
 	int protectManafounts=0;
 	bool terrainSineWave=false;
+	bool mapWizards=false;
+	bool mapCreatures=true;
+	bool mapSouls=true;
 	bool alliedVision=true;
 	bool alliedBeamVision=true;
 	bool fogOfWar=true;
@@ -31003,13 +31006,19 @@ void initGame(B)(ObjectState!B state,ref Array!SlotInfo slots,GameInit!B gameIni
 	state.settings.betaPatchBots=gameInit.betaPatchBots;
 	foreach(ref structure;state.map.ntts.structures)
 		state.placeStructure(structure);
-	foreach(ref wizard;state.map.ntts.wizards)
-		state.placeNTT(wizard);
-	foreach(ref spirit;state.map.ntts.spirits)
-		state.placeSpirit(spirit);
-	foreach(ref creature;state.map.ntts.creatures)
-		foreach(_;0..gameInit.replicateCreatures)
-			state.placeNTT(creature);
+	if(gameInit.gameMode==GameMode.scenario||gameInit.mapWizards){
+		foreach(ref wizard;state.map.ntts.wizards)
+			state.placeNTT(wizard);
+	}
+	if(gameInit.mapSouls){
+		foreach(ref spirit;state.map.ntts.spirits)
+			state.placeSpirit(spirit);
+	}
+	if(gameInit.mapCreatures){
+		foreach(ref creature;state.map.ntts.creatures)
+			foreach(_;0..gameInit.replicateCreatures)
+				state.placeNTT(creature);
+	}
 	state.eachMoving!((ref MovingObject!B object, ObjectState!B state){
 		if(object.creatureState.mode==CreatureMode.dead) object.createSoul(state);
 	})(state);
