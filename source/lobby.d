@@ -143,10 +143,13 @@ GameInit!B gameInit(B,R)(Sides!B sides_,R playerSettings,ref Options options){
 	gameInit.mapWizards=options.mapWizards;
 	gameInit.mapCreatures=options.mapCreatures;
 	gameInit.mapSouls=options.mapSouls;
-	gameInit.alliedVision=options.alliedVision;
-	gameInit.alliedBeamVision=options.alliedBeamVision;
 	gameInit.fogOfWar=options.fogOfWar;
 	gameInit.fogOfWar3d=options.fogOfWar3d;
+	gameInit.alliedVision=options.alliedVision;
+	gameInit.alliedBeamVision=options.alliedBeamVision;
+	gameInit.collectAlliedSouls=options.collectAlliedSouls;
+	gameInit.friendlyFire=options.friendlyFire;
+	gameInit.alwaysGib=options.alwaysGib;
 	gameInit.revealBlueSouls=options.revealBlueSouls;
 	gameInit.dimUnexplored=options.dimUnexplored;
 	gameInit.randomCreatureScale=options.randomCreatureScale;

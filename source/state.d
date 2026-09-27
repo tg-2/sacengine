@@ -1003,6 +1003,9 @@ struct NotificationState{
 			}
 		}else notifyOnce(state);
 	}
+	void gib(B)(ref MovingObject!B object,ObjectState!B state){
+		return kill(object,state);
+	}
 	void destroy(B)(ref Building!B building,ObjectState!B state){
 		notifyOnce(state);
 		if(auto wizard=state.getWizardForSide(building.side)){
@@ -1582,9 +1585,9 @@ bool isDroppedSoul(B)(int id,ObjectState!B state){
 SoulColor color(B)(ref Soul!B soul,int side,ObjectState!B state){
 	auto soulSide=soul.side(state);
 	if(soulSide==-1||soulSide==side) return SoulColor.blue;
-	if(state.greenAllySouls){
+	if(state.greenAllySouls||state.collectAlliedSouls){
 		if(state.sides.getStance(side,soul.side(state))==Stance.ally)
-			return SoulColor.green;
+			return state.collectAlliedSouls?SoulColor.blue:SoulColor.green;
 	}
 	return SoulColor.red;
 }
@@ -8865,6 +8868,7 @@ float dealDamage(B)(ref MovingObject!B object,float damage,int attackingSide,Dam
 	}
 	if(!(damageMod&DamageMod.fall)){
 		if(!object.canDamage(state)){ object.unfreeze(state); return 0.0f; }
+		if(!state.friendlyFire&&state.sides.getStance(attackingSide,object.side)==Stance.ally) return 0.0f;
 		if(!(damageMod&DamageMod.peirceShield)){
 			if(object.creatureStats.effects.lifeShield) damageMultiplier*=0.5f;
 			if(object.creatureState.mode==CreatureMode.rockForm) damageMultiplier*=0.05f;
@@ -8893,6 +8897,15 @@ void recordKill(B)(ref MovingObject!B object,int attackingSide,ObjectState!B sta
 		giveXPToSide(attackingSide,object.xpOnKill,state);
 		if(auto wizard=state.getWizardForSide(attackingSide))
 			wizard.wizardStatistics.foesKilled+=1;
+	}
+}
+
+void recordGib(B)(ref MovingObject!B object,int attackingSide,ObjectState!B state){
+	object.notificationState.gib(object,state);
+	if(state.sides.getStance(attackingSide,object.side)==Stance.enemy){
+		giveXPToSide(attackingSide,object.xpOnKill,state);
+		if(auto wizard=state.getWizardForSide(attackingSide))
+			wizard.wizardStatistics.foesGibbed+=1;
 	}
 }
 
@@ -8934,8 +8947,13 @@ float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,
 		object.creatureStats.health=max(object.health,1.0f);
 	recordDamage(object,attackingSide,actualDamage,state);
 	if(object.health==0.0f){
-		recordKill(object,attackingSide,state);
-		object.kill(state);
+		if(!state.alwaysGib||object.isWizard){
+			recordKill(object,attackingSide,state);
+			object.kill(state);
+		}else{
+			recordGib(object,attackingSide,state);
+			object.gib(state);
+		}
 		object.creatureState.tumbleAttackerSide=attackingSide;
 		killed=true;
 	}
@@ -9054,6 +9072,7 @@ void recordDestruction(B)(ref Building!B building,int attackingSide,ObjectState!
 
 float dealDamageIgnoreGuardians(B)(ref Building!B building,float damage,int attackingSide,DamageMod damageMod,ref bool destroyed,ObjectState!B state){
 	if(!building.canDamage(state)) return 0.0f;
+	if(!state.friendlyFire&&state.sides.getStance(attackingSide,building.side)==Stance.ally) return 0.0f;
 	auto damageMultiplier=1.0f;
 	if(damageMod&DamageMod.melee) damageMultiplier*=building.meleeResistance;
 	else if(damageMod&DamageMod.ranged){
@@ -14788,7 +14807,7 @@ void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 				auto stance=CollectStance.neutral;
 				if(soul.preferredSide!=-1){
 					if(side!=soul.preferredSide){
-						if(soul.creatureId) return;
+						if(soul.creatureId&&.color(*soul,side,state)!=SoulColor.blue) return;
 						final switch(state.sides.getStance(soul.preferredSide,side)){
 							case Stance.neutral: stance=CollectStance.neutral; break;
 							case Stance.ally: stance=CollectStance.ally; break;
@@ -29010,10 +29029,13 @@ final class ObjectState(B){ // (update logic)
 	struct Settings{
 		GameMode gameMode=GameMode.skirmish;
 		int gameModeParam=0;
-		bool alliedVision=true;
-		bool alliedBeamVision=true;
 		bool fogOfWar=true;
 		bool fogOfWar3d=false;
+		bool alliedVision=true;
+		bool alliedBeamVision=true;
+		bool collectAlliedSouls=false;
+		bool friendlyFire=true;
+		bool alwaysGib=false;
 		bool revealBlueSouls=true;
 		bool dimUnexplored=false;
 		bool randomCreatureScale=false;
@@ -29027,10 +29049,13 @@ final class ObjectState(B){ // (update logic)
 		bool betaPatchBots=false;
 	}
 	Settings settings;
-	@property bool alliedVision(){ return settings.alliedVision; }
-	@property bool alliedBeamVision(){ return settings.alliedBeamVision; }
 	@property bool fogOfWar(){ return settings.fogOfWar; }
 	@property bool fogOfWar3d(){ return settings.fogOfWar3d; }
+	@property bool alliedVision(){ return settings.alliedVision; }
+	@property bool alliedBeamVision(){ return settings.alliedBeamVision; }
+	@property bool collectAlliedSouls(){ return settings.collectAlliedSouls; }
+	@property bool friendlyFire(){ return settings.friendlyFire; }
+	@property bool alwaysGib(){ return settings.alwaysGib; }
 	@property bool revealBlueSouls(){ return settings.revealBlueSouls; }
 	@property bool dimUnexplored(){ return settings.dimUnexplored; }
 	@property bool randomCreatureScale(){ return settings.randomCreatureScale; }
@@ -29041,10 +29066,13 @@ final class ObjectState(B){ // (update logic)
 	@property bool greenAllySouls(){ return settings.greenAllySouls; }
 	@property bool fasterStandupTimes(){ return settings.fasterStandupTimes; }
 	@property bool fasterCastingTimes(){ return settings.fasterCastingTimes; }
-	void disableAlliedVision(){ settings.alliedVision=false; }
-	void disableAlliedBeamVision(){ settings.alliedBeamVision=false; }
 	void disableFogOfWar(){ settings.fogOfWar=false; }
 	void enableFogOfWar3d(){ settings.fogOfWar3d=true; }
+	void disableAlliedVision(){ settings.alliedVision=false; }
+	void disableAlliedBeamVision(){ settings.alliedBeamVision=false; }
+	void enableCollectAlliedSouls(){ settings.collectAlliedSouls=true; }
+	void disableFriendlyFire(){ settings.friendlyFire=false; }
+	void enableAlwaysGib(){ settings.alwaysGib=true; }
 	void disableRevealBlueSouls(){ settings.revealBlueSouls=false; }
 	void enableDimUnexplored(){ settings.dimUnexplored=true; }
 	void enableRandomCreatureScale(){ settings.randomCreatureScale=true; }
@@ -30441,8 +30469,8 @@ TargetFlags summarize(bool simplified=false,B)(ref OrderTarget target,int side,O
 			return state.objectById!handle(target.id,side,state);
 		case soul:
 			auto result=isDroppedSoul(target.id,state)?TargetFlags.droppedSoul:TargetFlags.soul;
-			auto objSide=soulSide(target.id,state);
-			if(objSide==-1||objSide==side) result|=TargetFlags.owned|TargetFlags.ally; // TODO: ok? (not exactly what is going on with free souls.)
+			auto color=.color(target.id,side,state);
+			if(color==SoulColor.blue) result|=TargetFlags.owned|TargetFlags.ally; // TODO: ok? (not exactly what is going on with free souls.)
 			else result|=TargetFlags.enemy;
 			return result;
 	}
@@ -30978,13 +31006,16 @@ struct GameInit(B){
 	int replicateCreatures=1;
 	int protectManafounts=0;
 	bool terrainSineWave=false;
+	bool fogOfWar=true;
+	bool fogOfWar3d=false;
+	bool alliedVision=true;
+	bool alliedBeamVision=true;
+	bool collectAlliedSouls=false;
+	bool friendlyFire=true;
+	bool alwaysGib=false;
 	bool mapWizards=false;
 	bool mapCreatures=true;
 	bool mapSouls=true;
-	bool alliedVision=true;
-	bool alliedBeamVision=true;
-	bool fogOfWar=true;
-	bool fogOfWar3d=false;
 	bool revealBlueSouls=true;
 	bool dimUnexplored=false;
 	bool randomCreatureScale=false;
@@ -31046,12 +31077,15 @@ void initGame(B)(ObjectState!B state,ref Array!SlotInfo slots,GameInit!B gameIni
 			})(state);
 	}
 	if(gameInit.terrainSineWave) state.addEffect(TestDisplacement());
-	if(!gameInit.alliedVision) state.disableAlliedVision();
 	if(!gameInit.fogOfWar) state.disableFogOfWar();
 	if(gameInit.fogOfWar3d) state.enableFogOfWar3d();
+	if(!gameInit.alliedVision) state.disableAlliedVision();
+	if(!gameInit.alliedBeamVision) state.disableAlliedBeamVision();
+	if(gameInit.collectAlliedSouls) state.enableCollectAlliedSouls();
+	if(!gameInit.friendlyFire) state.disableFriendlyFire();
+	if(gameInit.alwaysGib) state.enableAlwaysGib();
 	if(!gameInit.revealBlueSouls) state.disableRevealBlueSouls();
 	if(gameInit.dimUnexplored) state.enableDimUnexplored();
-	if(!gameInit.alliedBeamVision) state.disableAlliedBeamVision();
 	if(gameInit.randomCreatureScale) state.enableRandomCreatureScale();
 	if(!gameInit.enableDropSoul) state.disableDropSoul();
 	if(gameInit.targetDroppedSouls) state.allowTargetingDroppedSouls();
