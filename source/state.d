@@ -29975,8 +29975,6 @@ struct SideManager(B){
 	mixin Assign;
 	this(int numSides){
 		sides.length=numSides;
-		foreach(ref side;sides.data){
-		}
 	}
 	void startVision(){
 		foreach(ref side;sides.data) side.startVision();
