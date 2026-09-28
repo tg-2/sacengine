@@ -12781,15 +12781,11 @@ void markVisibleNTTs(B)(int side,Vector3f observerPosition,float eyeHeight,float
 	state.proximity.eachInRange!mark(observerPosition,sightRange,side,observerPosition,eyeHeight,observerFacing,alertness,sightRange,sightFov,state);
 }
 
-int updateTarget(bool advance=false,bool idle=false,B,T...)(ref MovingObject!B object,Vector3f position,float range,ObjectState!B state,float refRange=100.0f,float threshold=0.25f){
+int updateTarget(bool advance=false,B,T...)(ref MovingObject!B object,Vector3f position,float range,ObjectState!B state,float refRange=100.0f,float threshold=0.25f){
 	static float targetScore(ref CenterProximityEntry entry,Vector3f referencePosition,float refRange,int lastAttackerId,int currentTargetId,ObjectState!B state){
 		auto distance=sqrt((entry.position-referencePosition).lengthsqr);
-		static if(idle){
-			auto score=distance<refRange?1.0f-0.5f*(distance/refRange)^^2:0.0f;
-		}else{
-			auto score=distance<refRange?1.0f-0.75f*(distance/refRange):0.25f*(refRange/distance);
-			score*=score;
-		}
+		auto score=distance<refRange?1.0f-0.75f*(distance/refRange):0.25f*(refRange/distance);
+		score*=score;
 		score*=state.dangerGrid.dangerFactor(entry.position);
 		if(state.targetTypeFromId(entry.id)==TargetType.building) return score;
 		score*=1.25f;
@@ -12832,10 +12828,8 @@ int updateTarget(bool advance=false,bool idle=false,B,T...)(ref MovingObject!B o
 				auto referencePosition=object.position+min(1.0f,15.0f/toDest.length)*toDest;
 				auto queryRadius=min(maxDist,(referencePosition-object.position).length+scoreCutoff);
 				object.creatureAI.targetId=state.proximity.enemyInRangeAndClosestToPreferringAttackersOf!(visibleFilter,scorePriority)(object.side,object.position,queryRadius,referencePosition,object.id,EnemyType.all,state,maxHeight,object.side,state,referencePosition,refRange,threshold,lastAttackerId,currentTargetId);
-			}else static if(idle){
-				auto queryRadius=min(maxDist,range);
-				object.creatureAI.targetId=state.proximity.closestEnemyInRange!(visibleFilter,scorePriority)(object.side,object.position,queryRadius,EnemyType.all,state,maxHeight,object.side,state,position,range,threshold,lastAttackerId,currentTargetId);
-			}else{
+			}
+			else{
 				auto queryRadius=min(maxDist,(position-object.position).length+scoreCutoff);
 				object.creatureAI.targetId=state.proximity.closestEnemyInRange!(visibleFilter,scorePriority)(object.side,object.position,queryRadius,EnemyType.all,state,maxHeight,object.side,state,position,refRange,threshold,lastAttackerId,currentTargetId);
 			}
@@ -12896,7 +12890,7 @@ bool patrol(B)(ref MovingObject!B object,ObjectState!B state){
 	if(!object.isAggressive(state)) return false;
 	auto position=object.position;
 	auto range=object.sightRange(state);
-	if(auto targetId=object.updateTarget!(false,true)(position,range,state))
+	if(auto targetId=object.updateTarget(position,range,state))
 		if(object.retreatFromDanger(state)||object.attack(targetId,state))
 			return true;
 	return false;
