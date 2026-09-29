@@ -5044,13 +5044,9 @@ struct LightningCharge(B){
 	int creature;
 	int side;
 	SacSpell!B spell;
+	float ramp=0.0f;
 
-	enum totalFrames=12*updateFPS; // TODO: correct?
 	enum sparkRate=2.0f;
-	enum lightningRate=0.65f;
-	enum range=25.0f; // TODO: correct?
-	enum shortJumpRange=10.0f;
-	enum jumpRange=15.0f; // TODO: correct?
 }
 
 enum PullType{
@@ -8927,7 +8923,8 @@ float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,
 					break;
 				case SpellTag.lightningCharge:
 					if(damageMod&DamageMod.lightning){
-						object.lightningCharge(cast(int)((1.0f/30.0f)*actualDamage*updateFPS),passive,state); // TODO: duration ok?
+						auto factor=state.sides.getStance(attackingSide,object.side)==Stance.ally?4.0f:2.0f;
+						object.lightningCharge(cast(int)(factor/60.0f*actualDamage*updateFPS),passive,state);
 						actualDamage*=0.25f;
 					}
 					break;
@@ -25190,32 +25187,46 @@ bool updateLightningCharge(B)(ref LightningCharge!B lightningCharge,ObjectState!
 	with(lightningCharge){
 		static import std.math;
 		enum sparkProb=(1.0f-std.math.exp(-sparkRate/updateFPS));
-		enum lightningProb=(1.0f-std.math.exp(-lightningRate/updateFPS));
 		auto hitbox=state.movingObjectById!(hitbox,()=>(Vector3f[2]).init)(creature);
 		if(isNaN(hitbox[0].x)) return false;
 		auto center=boxCenter(hitbox);
+		auto frames=state.movingObjectById!((ref obj)=>--obj.creatureStats.effects.lightningChargeFrames,()=>0)(creature);
+		if(frames<=0) return false;
+		ramp=min(ramp+1.0f/updateFPS,1.0f);
+		if(frames>=spell.amount&&state.uniform(0.0f,1.0f)<ramp/updateFPS){
+			static struct Candidates{ int count; int[256] ids; }
+			static void collect(ref CenterProximityEntry entry,Candidates* candidates){
+				if(entry.isStatic||entry.zeroHealth) return;
+				if(candidates.count==candidates.ids.length) return;
+				candidates.ids[candidates.count++]=entry.id;
+			}
+			Candidates candidates;
+			state.proximity.eachInRange!collect(center,spell.range,&candidates);
+			int target=0;
+			auto pick=state.uniform(candidates.count+4);
+			if(pick<candidates.count){
+				auto id=candidates.ids[pick];
+				if(state.isValidTarget(id)) target=id;
+			}
+			if(target!=creature){
+				OrderTarget end;
+				if(target==0){
+					auto direction=state.uniformDirection!(float,2)();
+					auto distance=state.uniform(5.0f,spell.range);
+					auto offset=direction*distance;
+					auto position=center+Vector3f(offset.x,offset.y,0.0f);
+					position.z=state.getHeight(position);
+					end=OrderTarget(TargetType.terrain,0,position);
+				}else end=centerTarget(target,state);
+				state.movingObjectById!((ref obj,int amount){ obj.creatureStats.effects.lightningChargeFrames-=amount>>1; },(){})(creature,cast(int)spell.amount);
+				ramp=0.0f;
+				auto start=OrderTarget(TargetType.creature,creature,center);
+				lightning(creature,side,start,end,spell,state,false);
+			}
+		}
 		if(state.uniform(0.0f,1.0f)<=sparkProb)
 			sparkAnimation!48(hitbox,state);
-		if(state.uniform(0.0f,1.0f)<=lightningProb){
-			auto start=OrderTarget(TargetType.creature,creature,center);
-			OrderTarget end;
-			if(end.type==TargetType.none){
-				auto direction=state.uniformDirection!(float,2)();
-				auto distance=state.uniform(range/5.0f,range);
-				auto offset=direction*distance;
-				auto position=center+Vector3f(offset.x,offset.y,0.0f);
-				position.z=state.getHeight(position);
-				end=OrderTarget(TargetType.terrain,0,position);
-			}
-			if(auto target=state.proximity.anyInRangeAndClosestTo(start.position,range,end.position,creature,state)){
-				auto jumped=target?centerTarget(target,state):OrderTarget.init;
-				auto jdistsqr=(end.position-jumped.position).lengthsqr;
-				if(jdistsqr<shortJumpRange^^2||jdistsqr<jumpRange^^2&&state.uniform(3)!=0)
-					end=jumped;
-			}
-			lightning(creature,side,start,end,spell,state,true,DamageMod.none);
-		}
-		return state.movingObjectById!((ref obj)=>--obj.creatureStats.effects.lightningChargeFrames>0,()=>false)(creature);
+		return true;
 	}
 }
 
