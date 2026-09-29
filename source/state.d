@@ -25194,18 +25194,17 @@ bool updateLightningCharge(B)(ref LightningCharge!B lightningCharge,ObjectState!
 		if(frames<=0) return false;
 		ramp=min(ramp+1.0f/updateFPS,1.0f);
 		if(frames>=spell.amount&&state.uniform(0.0f,1.0f)<ramp/updateFPS){
-			static struct Candidates{ int count; int[256] ids; }
-			static void collect(ref CenterProximityEntry entry,Candidates* candidates){
+			static void collect(ref CenterProximityEntry entry,SmallArray!(int,24)* candidates){
 				if(entry.isStatic||entry.zeroHealth) return;
-				if(candidates.count==candidates.ids.length) return;
-				candidates.ids[candidates.count++]=entry.id;
+				if(candidates.length==256) return;
+				*candidates~=entry.id;
 			}
-			Candidates candidates;
+			SmallArray!(int,24) candidates;
 			state.proximity.eachInRange!collect(center,spell.range,&candidates);
 			int target=0;
-			auto pick=state.uniform(candidates.count+4);
-			if(pick<candidates.count){
-				auto id=candidates.ids[pick];
+			auto pick=state.uniform(cast(int)candidates.length+4);
+			if(pick<candidates.length){
+				auto id=candidates[pick];
 				if(state.isValidTarget(id)) target=id;
 			}
 			if(target!=creature){
