@@ -14,6 +14,8 @@ struct CreatureStats{
 	float runningSpeed;
 	float flyingSpeed;
 	float rangedAccuracy;
+	int meleeAccuracy;
+	int meleeEvasion;
 	float meleeResistance;
 	float directSpellResistance;
 	float splashSpellResistance;

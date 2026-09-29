@@ -1344,6 +1344,10 @@ int numAnimationFrames(B)(ref MovingObject!B object){
 	return object.sacObject.numFrames(object.animationState)*updateAnimFactor;
 }
 
+int animationFramerate(B)(ref MovingObject!B object){
+	return object.sacObject.animationFramerate(object.animationState);
+}
+
 int slowdownFactor(B)(ref MovingObject!B object){
 	return 4^^min(10,object.creatureStats.effects.numSlimes);
 }
@@ -8790,6 +8794,7 @@ enum DamageMod{
 float attackDamageFactor(B)(ref MovingObject!B attacker,bool targetIsCreature,DamageMod damageMod,ObjectState!B state){
 	float result=1.0f;
 	if(attacker.isGuardian) result*=1.5f;
+	if(damageMod&DamageMod.melee&&attacker.creatureStats.effects.lightningCharged) result*=1.5f;
 	if(auto passive=attacker.sacObject.passiveOnDamage){
 		if(passive.tag==SpellTag.firefistPassive&&damageMod&DamageMod.melee){
 			auto relativeHP=attacker.creatureStats.health/attacker.creatureStats.maxHealth;
@@ -9120,11 +9125,6 @@ float dealDamage(B)(ref Building!B building,float damage,int attackingSide,Damag
 }
 
 
-float meleeDamageModifier(B)(ref MovingObject!B attacker){
-	float result=1.0f;
-	if(attacker.creatureStats.effects.lightningCharged) result*=1.5f;
-	return result;
-}
 float meleeDistanceSqr(Vector3f[2] objectHitbox,Vector3f[2] attackerHitbox){
 	return boxBoxDistanceSqr(objectHitbox,attackerHitbox);
 }
@@ -9141,20 +9141,21 @@ float meleeDistanceSqr(B)(Vector3f[2] objectHitbox,ref MovingObject!B attacker){
 }
 
 float dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,DamageMod damageMod,ObjectState!B state){
-	auto damage=meleeDamageModifier(attacker)*attacker.meleeStrength*attacker.numAnimationFrames/(attacker.numAttackTicks*updateFPS);
-	auto objectHitbox=object.hitbox, attackerHitbox=attacker.hitbox, attackerSizeSqr=0.25f*boxSize(attackerHitbox).lengthsqr;
-	//auto distanceSqr=meleeDistanceSqr(objectHitbox,attackerMeleeHitbox);
-	auto distanceSqr=meleeDistanceSqr(objectHitbox,attacker);
-	//auto damageMultiplier=max(0.0f,1.0f-max(0.0f,sqrt(distanceSqr/attackerSizeSqr)));
-	//auto damageMultiplier=max(0.0f,1.0f-max(0.0f,(sqrt(distanceSqr)+state.uniform(0.5f,1.0f))/sqrt(attackerSizeSqr)));
-	auto damageMultiplier=state.uniform(0.0f,1.0f)*max(0.0f,1.0f-max(0.0f,(sqrt(distanceSqr)+state.uniform(0.5f,1.0f))/sqrt(attackerSizeSqr))); // TODO: figure this out
-	auto attackDirection=object.center-attacker.center; // TODO: good?
-	auto direction=getDamageDirection(object,attackDirection,state);
-	bool fromSide=!!direction.among(DamageDirection.left,DamageDirection.right);
-	if(fromSide) damage*=1.5f;
-	bool fromBehind=direction==DamageDirection.back;
-	if(fromBehind) damage*=2.0f;
+	auto pendingDamage=cast(float)attacker.sacObject.numFrames(attacker.animationState)/(attacker.animationFramerate*attacker.numAttackTicks);
+	auto attackerFacing=rotate(attacker.rotation,Vector3f(0.0f,1.0f,0.0f));
+	auto objectFacing=rotate(object.rotation,Vector3f(0.0f,1.0f,0.0f));
+	auto facing=1.5f+0.5f*(attackerFacing.x*objectFacing.x+attackerFacing.y*objectFacing.y+attackerFacing.z*objectFacing.z);
+	auto damage=facing*pendingDamage;
+	auto accuracy=attacker.creatureStats.meleeAccuracy*(attacker.creatureStats.effects.lightningCharged?1.5f:1.0f);
+	auto total=accuracy+cast(float)object.creatureStats.meleeEvasion/facing;
+	if(!(total>0.0f)) return 0.0f;
+	auto hitProbability=accuracy/total;
+	auto roll=state.uniform(0.0f,1.0f);
+	if(roll>=hitProbability) damage*=(1.0f-roll)/(1.0f-hitProbability);
+	damage*=attacker.meleeStrength;
+	if(!(damage>0.0f)) return 0.0f;
 	auto actualDamage=object.dealDamage(damage,attacker,damageMod|DamageMod.melee,state);
+	auto attackDirection=object.center-attacker.center; // TODO: good?
 	bool stunned;
 	final switch(object.stunnedBehavior){
 		case StunnedBehavior.normal:
@@ -9181,7 +9182,9 @@ float dealMeleeDamage(B)(ref StaticObject!B object,ref MovingObject!B attacker,D
 }
 
 float dealMeleeDamage(B)(ref Building!B building,ref MovingObject!B attacker,DamageMod damageMod,ObjectState!B state){
-	auto damage=meleeDamageModifier(attacker)*attacker.meleeStrength*attacker.numAnimationFrames/(attacker.numAttackTicks*updateFPS);
+	auto pendingDamage=cast(float)attacker.sacObject.numFrames(attacker.animationState)/(attacker.animationFramerate*attacker.numAttackTicks);
+	auto damage=pendingDamage*attacker.meleeStrength;
+	if(!(damage>0.0f)) return 0.0f;
 	auto actualDamage=building.dealDamage(damage,attacker,damageMod|DamageMod.melee,state);
 	if(actualDamage>0.0f) playSoundTypeAt(attacker.sacObject,attacker.id,SoundType.hitWall,state);
 	return actualDamage;

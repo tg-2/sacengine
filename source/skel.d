@@ -16,8 +16,8 @@ struct SkelHand{
 	float[3] offset;
 }
 struct Skel{
-	uint unknown0; // unused?
-	uint unknown1;
+	uint unknown0;
+	uint framerate;
 	uint numEvents;
 	SkelEvent[8] events;
 	SkelHand[2] hands;

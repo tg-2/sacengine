@@ -49,6 +49,7 @@ struct Animation{
 	Hand[2] hands;
 	Pose[] frames;
 	float referenceHeight=1.0f;
+	int framerate=30;
 }
 
 Animation parseSXSK(ubyte[] data,float scaling){
@@ -110,6 +111,7 @@ Animation loadSXSK(string filename,float scaling){
 	enforce(filename.endsWith(".SXSK"), filename);
 	auto anim=parseSXSK(readFile(filename),scaling);
 	auto skel=loadSkel(filename[0..$-5]~".SKEL");
+	anim.framerate=cast(int)skel.framerate;
 	anim.setAnimEvents(skel,filename);
 	foreach(i;0..2){
 		anim.hands[i]=Hand(skel.hands[i].bone,Vector3f(skel.hands[i].offset));

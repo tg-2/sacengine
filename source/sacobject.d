@@ -138,6 +138,7 @@ final class SacObject(B){
 		int souls;
 		float maxHealth=0.0f,regeneration=0.0f,drain=0.0f,maxMana=0.0f;
 		float runningSpeed=0.0f,flyingSpeed=0.0f,rangedAccuracy=0.0f,meleeResistance=0.0f;
+		int meleeAccuracy=0,meleeEvasion=0;
 		float directSpellResistance=0.0f,splashSpellResistance=0.0f;
 		float directRangedResistance=0.0f,splashRangedResistance=0.0f;
 		static foreach(name;["cre8","wizd"]){{
@@ -151,6 +152,8 @@ final class SacObject(B){
 				flyingSpeed=ntt.flyingSpeed*1e-2f;
 				rangedAccuracy=ntt.rangedAccuracy*(1.0f/ushort.max);
 				if(nttTag==SpellTag.tickferno) rangedAccuracy/=1.6f; // TODO: make configurable
+				meleeAccuracy=cast(short)ntt.meleeAccuracy;
+				meleeEvasion=cast(short)ntt.meleeEvasion;
 				meleeResistance=ntt.meleeResistance*1e-3f;
 				splashSpellResistance=ntt.splashSpellResistance*1e-3f;
 				directSpellResistance=ntt.directSpellResistance*1e-3f;
@@ -164,7 +167,7 @@ final class SacObject(B){
 		else if(flags & Flags.damaged) health/=10.0f;
 		flags&=~Flags.corpse&~Flags.damaged;
 		return CreatureStats(flags,health,mana,souls,maxHealth,regeneration,drain,maxMana,
-		                     runningSpeed,flyingSpeed,rangedAccuracy,meleeResistance,
+		                     runningSpeed,flyingSpeed,rangedAccuracy,meleeAccuracy,meleeEvasion,meleeResistance,
 		                     directSpellResistance,splashSpellResistance,
 		                     directRangedResistance,splashRangedResistance);
 	}
@@ -406,6 +409,9 @@ final class SacObject(B){
 
 	int numAttackTicks(AnimationState animationState){
 		return max(1,animations[animationState].numAttackTicks);
+	}
+	int animationFramerate(AnimationState animationState){
+		return animations[animationState].framerate;
 	}
 	int firstAttackTick(AnimationState animationState){
 		return max(0,min(numFrames(animationState)-1,animations[animationState].firstAttackTick));
