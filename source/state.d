@@ -9147,7 +9147,7 @@ float dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,D
 	auto facing=1.5f+0.5f*(attackerFacing.x*objectFacing.x+attackerFacing.y*objectFacing.y+attackerFacing.z*objectFacing.z);
 	auto damage=facing*pendingDamage;
 	auto accuracy=attacker.creatureStats.meleeAccuracy*(attacker.creatureStats.effects.lightningCharged?1.5f:1.0f);
-	auto total=accuracy+cast(float)object.creatureStats.meleeEvasion/facing;
+	auto total=accuracy+object.creatureStats.meleeEvasion/facing;
 	if(!(total>0.0f)) return 0.0f;
 	auto hitProbability=accuracy/total;
 	auto roll=state.uniform(0.0f,1.0f);
@@ -11398,15 +11398,26 @@ bool tornado(B)(Tornado!B tornado,ObjectState!B state){
 }
 
 
+Vector3f applyRangedAccuracy(B)(float accuracy,Vector3f direction,ObjectState!B state){
+	auto angle=atan(accuracy*0.001f*0.14f+0.03f);
+	auto azimuthRoll=state.uniform(-1.0f,1.0f);
+	auto elevationRoll=state.uniform(-1.0f,1.0f);
+	auto azimuth=angle*azimuthRoll*azimuthRoll*azimuthRoll;
+	auto elevation=0.1f*angle*elevationRoll*elevationRoll*elevationRoll;
+	return rotate(rotationQuaternion(Axis.z,azimuth),rotate(rotationQuaternion(Axis.x,elevation),direction));
+}
+
 Vector3f getShotDirection(B)(float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
-	auto φ=2.0f*pi!float*accuracy*state.normal(); // TODO: ok?
-	return rotate(facingQuaternion(φ),(target-position+Vector3f(0.0f,0.0f,5.0f*accuracy*state.normal())).normalized); // TODO: ok?
+	auto offset=target-position;
+	auto direction=offset.length==0.0f?offset:offset.normalized;
+	return applyRangedAccuracy(accuracy,direction,state);
 }
 
 Vector3f getShotDirectionWithGravity(B)(float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
-	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
-	direction.z+=0.5f*rangedAttack.fallingAcceleration*(target-position).length/rangedAttack.speed^^2;
-	return direction;
+	auto offset=target-position;
+	auto direction=offset.length==0.0f?offset:offset.normalized;
+	direction.z+=0.5f*rangedAttack.fallingAcceleration*offset.length/rangedAttack.speed^^2;
+	return applyRangedAccuracy(accuracy,direction,state);
 }
 
 bool brainiacShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
