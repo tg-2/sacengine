@@ -2248,7 +2248,7 @@ bool sameRegionPos(B)(ObjectState!B state,Vector3f a,Vector3f b){ // 0x470700 re
 bool findBestCaptureTarget(B)(ref ShinyAI!B ai,ObjectState!B state,Vector3f* pos,float radius,int* outNode,float* outRadius){ // 0x485a40 ("Mana")
 	*outNode=0;
 	float best=0.0f, br=0.0f; // br only read when *outNode!=0 (thaum leaves it uninitialized)
-	// retail 0x485a40 walks own+ally mana lists (cat0+cat1); thaum walks own only (cat0)
+	// retail 0x4885e0 walks own+ally mana lists (mask 3: slots 0+1); thaum walks own only (slot 0)
 	static immutable int[2] capSlots=[0,1];
 	foreach(capSlot;ai.betaManaSourceOwnOnly?capSlots[0..1]:capSlots[0..2])
 	for(int m=ai.catHead[capSlot];m;m=ai.nodes[m].catN){ // chain node+0x50
@@ -2507,7 +2507,7 @@ float aoeSpellBase(B)(ref ShinyAI!B ai,ObjectState!B state,ref SpellAcc!B acc,in
 	auto tnode=&ai.nodes[target];
 	auto inv=cast(float)(1.0/cast(double)r2);
 	auto base=hasAcc(ai,target)?rate(tnode.acc):0.0f;
-	if(spel.name[]=="sacd") base=cast(float)(cast(double)base*1000.0f);
+	if(isSacDoctorEnt!B(state,tnode.kind,tnode.id)) base=cast(float)(cast(double)base*1000.0f); // thaum 0x4898fc / retail 0x48c5df: TARGET's summon-spell tag (ntt+0x414/0x41c -> +0x10)=="dcas" (sac doctor)
 	auto amountI=cast(int)(cast(uint)spel.amount|cast(uint)spel.unknown14<<16);
 	foreach(cat;0..4){
 		if(cat==2) continue; // cats 0,1,3 only
@@ -2554,7 +2554,7 @@ float rateSpellAcc(B)(ref ShinyAI!B ai,ObjectState!B state,ref SpellAcc!B acc,in
 			auto m=cast(int)spel.amount2<hp[0]?cast(int)spel.amount2:hp[0];
 			auto ratio=cast(float)(cast(double)cast(float)m/cast(double)hp[1]);
 			auto r=cast(float)(cast(double)sortKey(ai,target)*ratio);
-			if(spel.name[]=="sacd") r=cast(float)(cast(double)r*1000.0f);
+			if(isSacDoctorEnt!B(state,tnode.kind,tnode.id)) r=cast(float)(cast(double)r*1000.0f); // thaum 0x48983e / retail 0x48c527: target is a sac doctor (summon tag "dcas")
 			return r;
 		case f489860: // AoE
 			auto er=cast(double)spel.effectRange, dr=cast(double)spel.damageRange;
@@ -2694,7 +2694,7 @@ void weightTriple(B)(ref ShinyAI!B ai,int cmd,float[3]* w3){ // 0x48cc70
 
 // ---- wizard: target scans ----
 
-bool isSacDoctorEnt(B)(ObjectState!B state,NodeKind kind,int id){ // thaum: ntt+0x414 record tag == 'sacd'
+bool isSacDoctorEnt(B)(ObjectState!B state,NodeKind kind,int id){ // thaum: ntt+0x414 (retail +0x41c) provider tag == "dcas" (SpellTag.sacDoctor; filename 'sacd' is the reversed fourcc)
 	final switch(kind) with(NodeKind){
 		case wiz,t4o,maho,cre: return state.movingObjectById!((ref o,state)=>o.sacObject.isSacDoctor,()=>false)(id,state);
 		case str,none: return false;
@@ -2798,7 +2798,7 @@ void wizAttack(B)(ref ShinyAI!B ai,ObjectState!B state,int n,float[3]* w3){ // 0
 		}
 		if(!(t.status&0x6)) w*=0.5f;
 		if(!(t.status&0x1800)) w*=0.3333333432674408f;
-		if(isSacDoctorEnt!B(state,t.kind,t.id)) w*=10.0f; // ntt+0x414.+0x10=='sacd'
+		if(isSacDoctorEnt!B(state,t.kind,t.id)) w*=10.0f; // ntt+0x414.+0x10=="dcas" (sac doctor; thaum 0x48d710, retail 0x490270)
 		if(cast(double)best<w){ best=cast(float)w; bestNode=m; } // strict argmax
 		total=cast(float)(cast(double)total+w); // f32 store per add
 	}
