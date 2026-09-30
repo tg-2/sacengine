@@ -2347,6 +2347,7 @@ void wizSpellRebuild(B)(ref ShinyAI!B ai,ObjectState!B state,int n){ // 0x48c8d0
 			foreach(entry;wiz.getSpells()){
 				auto s=entry.spell;
 				if(s is null) continue;
+				if(entry.level>wiz.level) continue; // thaum spellbook only holds spells granted for reached levels (WIZDEF_GiveSpellsForLevel 0x450f50: per level-up, word[s_spell+0x30]/25==level; NTT book synced by WIZARD::AddSpell 0x4811e0/ExperienceChanged 0x4829c0); sacengine books hold the whole loadout, so filter to entry.level<=wiz.level
 				static if(shinyAILog) ailog("WIZSPELL ",ai.side," n",n," tag ",s.tag[]," type ",cast(int)s.type," flags ",cast(uint)s.flags," range ",s.range," mana ",s.manaCost," souls ",s.soulCost," lvl ",entry.level);
 				if(s.type==SpellType.creature&&s.tag!="oham") // 0x48c8d0: creature spells except the manahoar
 					if(auto acc=tagAcc(ai,s.tag)) node.summons~=SummonEntry!B(s.tag,*acc,s);
@@ -2390,7 +2391,7 @@ int enqueueCast(B)(ref ShinyAI!B ai,int n,float score,int target,SacSpell!B prov
 
 // rater2 per-spell-acc virtuals
 bool spellAccAccepts(B)(ref SpellAcc!B acc,uint mask){ // rater2 vtbl[0] 0x489600
-	// thaum also rejects when the spellbook item's +0x8&2 (disabled) is set; no sacengine equivalent (documented gap)
+	// thaum also rejects when the spellbook item's +0x8&2 (disabled) is set; sacengine equivalent: wizSpellRebuild only builds accs for entry.level<=wiz.level spells (same predicate, applied at rebuild time)
 	auto spel=acc.spell.spel;
 	return ((cast(uint)spel.unknown16|cast(uint)spel.flags1<<16)&mask)!=0;
 }
@@ -2904,7 +2905,8 @@ bool lightCanCast(B)(ObjectState!B state,int wizardId,SacSpell!B spell){ // thau
 	return state.movingObjectById!((ref o,ObjectState!B state){
 		auto wiz=state.getWizardForSide(o.side);
 		if(wiz is null||wiz.id!=wizardId) return false;
-		// (thaum looks the spell up by tag: queued entries always hold a spellbook spell; item+0x8&2 disabled flag has no sacengine equivalent - documented gap)
+		// thaum looks the spell up by tag (vtbl+0xf8): missing item, or item+0x8&2 set (level-locked by GRIMOIRE::UpdateSpellList 0x4514f0 after a de-level) -> "_XP_" reject;
+		// sacengine book entries carry the spell level, entry.level>wiz.level is the same predicate
 		if(spell.type==SpellType.creature&&wiz.souls<spell.soulCost) return false; // 'spir'
 		// CantCastSpell 0x481580: s_spell+0xc==4 (SPEL records - convert/desecrate/guardian) tests flags2 (runtime +0x64 = file +0x5c): connectedToConversion -> wiz+0xb80 (closest own
 		// shrine), nearEnemyAltar -> wiz+0xb7c (closest enemy altar), nearBuilding -> wiz+0xb84 (closest own shrine-or-altar); STRC records have no flags2 (the old SpellType.structure gate was dead code)
@@ -2913,8 +2915,15 @@ bool lightCanCast(B)(ObjectState!B state,int wizardId,SacSpell!B spell){ // thau
 			if(spell.nearEnemyAltar&&wiz.closestEnemyAltar==0) return false;
 			if(spell.nearBuilding&&wiz.closestShrine==0&&wiz.closestAltar==0) return false;
 		}
+		bool found=false;
 		foreach(entry;wiz.getSpells())
-			if(entry.spell is spell&&entry.cooldown>0.0f) return false; // 'dern'
+			if(entry.spell is spell){
+				if(entry.level>wiz.level) return false; // "_XP_"
+				if(entry.cooldown>0.0f) return false; // 'dern' (item+0x14 pending)
+				found=true;
+				break;
+			}
+		if(!found) return false; // "_XP_" (spell not in spellbook)
 		return ftol(spell.manaCost)<=ftol(o.creatureStats.mana); // 'mana' (thaum CalculateCost = max(fileManaCost,1), sacengine applies it at load)
 	},()=>false)(wizardId,state);
 }
