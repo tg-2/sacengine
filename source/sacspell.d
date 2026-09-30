@@ -128,6 +128,17 @@ class SacSpell(B){
 	enum fallLimit=1000.0f;
 	int soulCost;
 
+	int spellArgInt(char[4] tag,int defaultValue){
+		reverse(tag[]);
+		if(spel) foreach(ref arg;spel.args) if(arg.type==tag) return *cast(const(int)*)arg.what.ptr;
+		return defaultValue;
+	}
+	float spellArgFloat(char[4] tag,float defaultValue){
+		reverse(tag[]);
+		if(spel) foreach(ref arg;spel.args) if(arg.type==tag) return *cast(const(float)*)arg.what.ptr;
+		return defaultValue;
+	}
+
 	int flags;
 	int flags1;
 	int flags2;

@@ -4613,6 +4613,9 @@ struct Poison{
 	int attacker;
 	int attackerSide;
 	DamageMod damageMod;
+	int resistanceDebuff=0;
+	float regenerationFactor=1.0f;
+	int accuracyDebuff=0;
 	int frame=0;
 	enum manaBlockDelay=2*updateFPS;
 }
@@ -8859,14 +8862,14 @@ float dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B at
 }
 float dealDamage(B)(ref MovingObject!B object,float damage,int attackingSide,DamageMod damageMod,ref bool killed,ObjectState!B state){
 	auto damageMultiplier=1.0f;
-	auto slimeResistanceBonus=0.2f*object.creatureStats.effects.numSlimes;
-	if(damageMod&DamageMod.melee) damageMultiplier*=0.4f*max(0.0f,object.creatureStats.meleeResistance+slimeResistanceBonus);
+	auto resistanceBonus=0.2f*object.creatureStats.effects.numSlimes+1e-3f*object.creatureStats.effects.poisonResistance;
+	if(damageMod&DamageMod.melee) damageMultiplier*=0.4f*max(0.0f,object.creatureStats.meleeResistance+resistanceBonus);
 	else if(damageMod&DamageMod.ranged){
-		if(damageMod&DamageMod.splash) damageMultiplier*=max(0.0f,object.creatureStats.splashRangedResistance+slimeResistanceBonus);
-		else damageMultiplier*=max(0.0f,object.creatureStats.directRangedResistance+slimeResistanceBonus);
+		if(damageMod&DamageMod.splash) damageMultiplier*=max(0.0f,object.creatureStats.splashRangedResistance+resistanceBonus);
+		else damageMultiplier*=max(0.0f,object.creatureStats.directRangedResistance+resistanceBonus);
 	}else if(damageMod&DamageMod.spell){
-		if(damageMod&DamageMod.splash) damageMultiplier*=max(0.0f,object.creatureStats.splashSpellResistance+slimeResistanceBonus);
-		else damageMultiplier*=max(0.0f,object.creatureStats.directSpellResistance+slimeResistanceBonus);
+		if(damageMod&DamageMod.splash) damageMultiplier*=max(0.0f,object.creatureStats.splashSpellResistance+resistanceBonus);
+		else damageMultiplier*=max(0.0f,object.creatureStats.directSpellResistance+resistanceBonus);
 	}
 	if(!(damageMod&DamageMod.fall)){
 		if(!object.canDamage(state)){ object.unfreeze(state); return 0.0f; }
@@ -11508,15 +11511,19 @@ bool necrylShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vect
 	return true;
 }
 
-bool poison(B)(ref MovingObject!B obj,float poisonDamage,int lifetime,bool infectuous,int attacker,int attackerSide,DamageMod damageMod,ObjectState!B state){
+bool poison(B)(ref MovingObject!B obj,float poisonDamage,int lifetime,bool infectuous,int attacker,int attackerSide,DamageMod damageMod,int resistanceDebuff,float regenerationFactor,int accuracyDebuff,ObjectState!B state){
 	obj.creatureStats.effects.poisonDamage+=cast(int)poisonDamage;
-	state.addEffect(Poison(obj.id,poisonDamage,lifetime,infectuous,attacker,attackerSide,damageMod));
+	obj.creatureStats.effects.poisonResistance+=resistanceDebuff;
+	obj.creatureStats.effects.poisonRegeneration*=regenerationFactor;
+	obj.creatureStats.effects.poisonAccuracy+=accuracyDebuff;
+	state.addEffect(Poison(obj.id,poisonDamage,lifetime,infectuous,attacker,attackerSide,damageMod,resistanceDebuff,regenerationFactor,accuracyDebuff));
 	return true;
 }
 
 enum poisonNerfFactor=1.3f;
 bool poison(B)(ref MovingObject!B obj,SacSpell!B rangedAttack,bool infectuous,int attacker,int attackerSide,DamageMod damageMod,ObjectState!B state){
-	return poison(obj,rangedAttack.amount/rangedAttack.duration/poisonNerfFactor,cast(int)(rangedAttack.duration*updateFPS),infectuous,attacker,attackerSide,damageMod,state);
+	return poison(obj,rangedAttack.amount/rangedAttack.duration/poisonNerfFactor,cast(int)(rangedAttack.duration*updateFPS),infectuous,attacker,attackerSide,damageMod,
+	              rangedAttack.spellArgInt("ires",0),rangedAttack.spellArgFloat("freg",1.0f),rangedAttack.spellArgInt("iacc",0),state);
 }
 
 bool scarabShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
@@ -12504,7 +12511,7 @@ bool shootOnTick(bool ability=false,B)(ref MovingObject!B object,OrderTarget tar
 		if(!ability) if(object.shootAbilityBug(state)) return true;
 		auto drainedMana=rangedAttack.manaCost/object.numShootTicks;
 		if(object.creatureStats.mana>=drainedMana){
-			auto accuracy=object.creatureStats.rangedAccuracy;
+			auto accuracy=object.creatureStats.rangedAccuracy+object.creatureStats.effects.poisonAccuracy;
 			switch(rangedAttack.tag){
 				case SpellTag.brainiacShoot:
 					brainiacShoot(object.id,object.side,target.id,accuracy,object.shotPosition,shotTarget,rangedAttack,state);
@@ -14271,7 +14278,7 @@ int meleeAttackTarget(B)(ref MovingObject!B object,ObjectState!B state){
 void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
 	if(object.isRegenerating) with(object.creatureStats){
 		auto factor=maxMana==0.0f?1.0f:mana/maxMana;
-		object.heal(factor*regeneration/updateFPS,state);
+		object.heal(factor*max(0.0f,regeneration*effects.poisonRegeneration)/updateFPS,state);
 	}
 	if(object.creatureState.mode==CreatureMode.playingDead)
 		object.heal(30.0f/updateFPS,state); // TODO: ok?
@@ -20848,7 +20855,7 @@ void plagueDropExplosion(B)(ref PlagueDrop!B plagueDrop,int target,ObjectState!B
 		if(target&&state.isValidTarget(target)){
 			state.movingObjectById!((ref obj,hitbox,position,spell,attacker,side,state){
 				playSoundAt("hsid",obj.id,state,plagueGain);
-				obj.poison(0.1f*spell.amount,10*updateFPS,true,attacker,side,DamageMod.spell|DamageMod.splash,state);
+				obj.poison(0.1f*spell.amount,10*updateFPS,true,attacker,side,DamageMod.spell|DamageMod.splash,0,1.0f,0,state);
 				*hitbox=obj.hitbox;
 				*position=boxCenter(*hitbox);
 			},(){})(target,&hitbox,&position,spell,wizard,side,state);
@@ -20857,7 +20864,7 @@ void plagueDropExplosion(B)(ref PlagueDrop!B plagueDrop,int target,ObjectState!B
 			if(target.id==directTarget) return;
 			auto distance=boxPointDistance(target.hitbox,position);
 			if(distance>radius) return;
-			state.movingObjectById!(poison,()=>false)(target.id,0.1f*spell.amount*0.1f*(1.0f-distance/radius),10*updateFPS,true,attacker,attackerSide,DamageMod.spell|DamageMod.splash,state);
+			state.movingObjectById!(poison,()=>false)(target.id,0.1f*spell.amount*0.1f*(1.0f-distance/radius),10*updateFPS,true,attacker,attackerSide,DamageMod.spell|DamageMod.splash,0,1.0f,0,state);
 		}
 		auto radius=spell.damageRange;
 		auto offset=Vector3f(radius,radius,radius);
@@ -23403,15 +23410,15 @@ bool updatePoison(B)(ref Poison poison,ObjectState!B state){
 			auto hitbox=obj.hitbox;
 			hitbox[0]-=2.0f, hitbox[1]+=2.0f;
 			auto poisonDamage=obj.creatureStats.effects.poisonDamage;
-			static void infect(ProximityEntry target,ObjectState!B state,int creature,float poisonDamage,int lifetime,int attacker,int attackerSide,DamageMod damageMod){
+			static void infect(ProximityEntry target,ObjectState!B state,int creature,float poisonDamage,int lifetime,int attacker,int attackerSide,DamageMod damageMod,int resistanceDebuff,float regenerationFactor,int accuracyDebuff){
 				if(target.id==creature) return;
-				state.movingObjectById!((ref next,creature,poisonDamage,lifetime,attacker,attackerSide,damageMod,state){
+				state.movingObjectById!((ref next,creature,poisonDamage,lifetime,attacker,attackerSide,damageMod,resistanceDebuff,regenerationFactor,accuracyDebuff,state){
 					if(next.creatureStats.effects.infectionCooldown) return;
-					next.poison(poisonDamage,lifetime,true,attacker,attackerSide,damageMod,state);
+					next.poison(poisonDamage,lifetime,true,attacker,attackerSide,damageMod,resistanceDebuff,regenerationFactor,accuracyDebuff,state);
 					next.creatureStats.effects.infectionCooldown=lifetime+3*updateFPS;
-				},(){})(target.id,creature,poisonDamage,lifetime,attacker,attackerSide,damageMod,state);
+				},(){})(target.id,creature,poisonDamage,lifetime,attacker,attackerSide,damageMod,resistanceDebuff,regenerationFactor,accuracyDebuff,state);
 			}
-			collisionTargets!infect(hitbox,state,obj.id,poisonDamage,poison.lifetime-poison.frame,poison.attacker,poison.attackerSide,poison.damageMod);
+			collisionTargets!infect(hitbox,state,obj.id,poisonDamage,poison.lifetime-poison.frame,poison.attacker,poison.attackerSide,poison.damageMod,poison.resistanceDebuff,poison.regenerationFactor,poison.accuracyDebuff);
 		},(){})(poison.creature,&poison,state);
 	}
 	return state.movingObjectById!((ref obj,poison,state){
@@ -23419,6 +23426,10 @@ bool updatePoison(B)(ref Poison poison,ObjectState!B state){
 		bool removePoison(){
 			if(poison.frame>=Poison.manaBlockDelay) obj.creatureStats.effects.numManaBlocks-=1;
 			obj.creatureStats.effects.poisonDamage-=cast(int)poison.poisonDamage;
+			obj.creatureStats.effects.poisonResistance-=poison.resistanceDebuff;
+			obj.creatureStats.effects.poisonAccuracy-=poison.accuracyDebuff;
+			obj.creatureStats.effects.poisonRegeneration/=poison.regenerationFactor;
+			if(obj.creatureStats.effects.poisonDamage==0) obj.creatureStats.effects.poisonRegeneration=1.0f;
 			return false;
 		}
 		if(!obj.creatureState.mode.canBePoisoned)

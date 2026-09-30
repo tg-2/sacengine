@@ -48,6 +48,9 @@ struct Effects{
 	int numDesecrations=0;
 	bool isGuardian=false;
 	int poisonDamage=0;
+	int poisonResistance=0;
+	int poisonAccuracy=0;
+	float poisonRegeneration=1.0f;
 	int infectionCooldown=0;
 	int numManaBlocks=0;
 	bool petrified=false;
@@ -77,7 +80,7 @@ struct Effects{
 	int numHighlights=0;
 	@property bool slimed(){ return numSlimes!=0; }
 	@property bool vined(){ return numVines!=0; }
-	@property bool regenerationBlocked(){ return poisonDamage!=0||immobilized||ringsOfFire||slimed||vined; }
+	@property bool regenerationBlocked(){ return immobilized||ringsOfFire||slimed||vined; }
 	@property bool manaBlocked(){ return numManaBlocks!=0; }
 	@property bool shielded(){
 		return lifeShield||skinOfStone||etherealForm||fireform||protectiveSwarm||airShield;
