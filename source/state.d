@@ -1349,7 +1349,7 @@ int animationFramerate(B)(ref MovingObject!B object){
 }
 
 int slowdownFactor(B)(ref MovingObject!B object){
-	return 4^^min(10,object.creatureStats.effects.numSlimes);
+	return 5^^min(10,object.creatureStats.effects.numSlimes);
 }
 
 bool hasAttackTick(B)(ref MovingObject!B object,ObjectState!B state){
@@ -8859,13 +8859,14 @@ float dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B at
 }
 float dealDamage(B)(ref MovingObject!B object,float damage,int attackingSide,DamageMod damageMod,ref bool killed,ObjectState!B state){
 	auto damageMultiplier=1.0f;
-	if(damageMod&DamageMod.melee) damageMultiplier*=0.4f*object.creatureStats.meleeResistance;
+	auto slimeResistanceBonus=0.2f*object.creatureStats.effects.numSlimes;
+	if(damageMod&DamageMod.melee) damageMultiplier*=0.4f*max(0.0f,object.creatureStats.meleeResistance+slimeResistanceBonus);
 	else if(damageMod&DamageMod.ranged){
-		if(damageMod&DamageMod.splash) damageMultiplier*=object.creatureStats.splashRangedResistance;
-		else damageMultiplier*=object.creatureStats.directRangedResistance;
+		if(damageMod&DamageMod.splash) damageMultiplier*=max(0.0f,object.creatureStats.splashRangedResistance+slimeResistanceBonus);
+		else damageMultiplier*=max(0.0f,object.creatureStats.directRangedResistance+slimeResistanceBonus);
 	}else if(damageMod&DamageMod.spell){
-		if(damageMod&DamageMod.splash) damageMultiplier*=object.creatureStats.splashSpellResistance;
-		else damageMultiplier*=object.creatureStats.directSpellResistance;
+		if(damageMod&DamageMod.splash) damageMultiplier*=max(0.0f,object.creatureStats.splashSpellResistance+slimeResistanceBonus);
+		else damageMultiplier*=max(0.0f,object.creatureStats.directSpellResistance+slimeResistanceBonus);
 	}
 	if(!(damageMod&DamageMod.fall)){
 		if(!object.canDamage(state)){ object.unfreeze(state); return 0.0f; }
@@ -8878,7 +8879,6 @@ float dealDamage(B)(ref MovingObject!B object,float damage,int attackingSide,Dam
 			if(object.creatureStats.effects.airShield) damageMultiplier*=0.5f;
 			if(object.creatureStats.effects.protectiveSwarm) damageMultiplier*=0.75f;
 		}
-		damageMultiplier*=1.2f^^object.creatureStats.effects.numSlimes;
 	}
 	// TODO: bleed, in case of petrification, bleed rocks instead
 	return dealRawDamage(object,damage*damageMultiplier,attackingSide,damageMod,killed,state);
@@ -9146,8 +9146,8 @@ float dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,D
 	auto objectFacing=rotate(object.rotation,Vector3f(0.0f,1.0f,0.0f));
 	auto facing=1.5f+0.5f*(attackerFacing.x*objectFacing.x+attackerFacing.y*objectFacing.y+attackerFacing.z*objectFacing.z);
 	auto damage=facing*pendingDamage;
-	auto accuracy=attacker.creatureStats.meleeAccuracy*(attacker.creatureStats.effects.lightningCharged?1.5f:1.0f);
-	auto total=accuracy+object.creatureStats.meleeEvasion/facing;
+	auto accuracy=attacker.creatureStats.meleeAccuracy*(attacker.creatureStats.effects.lightningCharged?1.5f:1.0f)*0.2f^^attacker.creatureStats.effects.numSlimes;
+	auto total=accuracy+object.creatureStats.meleeEvasion*0.2f^^object.creatureStats.effects.numSlimes/facing;
 	if(!(total>0.0f)) return 0.0f;
 	auto hitProbability=accuracy/total;
 	auto roll=state.uniform(0.0f,1.0f);
@@ -14439,8 +14439,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 	auto newPosition=object.position;
 	with(CreatureMode) if(object.creatureState.mode.among(idle,moving,idleGhost,movingGhost,stunned,landing,dying,meleeMoving,casting,castingMoving,shooting,usingAbility)){
 		auto rotationSpeed=object.creatureStats.rotationSpeed(object.creatureState.movement==CreatureMovement.flying)/updateFPS;
-		if(object.creatureStats.effects.slimed && object.creatureState.movementDirection!=MovementDirection.none)
-			rotationSpeed*=0.25f^^object.creatureStats.effects.numSlimes;
+		// TODO: should slime do anything to rotation speed?
 		auto pitchingSpeed=object.creatureStats.pitchingSpeed/updateFPS;
 		bool isRotating=false;
 		if(object.creatureState.mode.among(idle,moving,idleGhost,movingGhost,meleeMoving,casting,castingMoving,torturing)&&

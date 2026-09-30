@@ -116,7 +116,7 @@ import dlib.math.portable: pi;
 	return 0.75f;
 }
 @property float movementSpeed(ref CreatureStats stats,bool isFlying){ // in meters per second
-	auto effectFactor=stats.effects.speedUp*(isFlying?1.0f:0.25f^^stats.effects.numSlimes)*0.8f^^stats.effects.numBlightMites*0.75f^^stats.effects.numStickyBombs*0.6f^^stats.effects.numRainFrogs*(stats.effects.lightningCharged?1.5f:1.0f)*(stats.effects.wailingWall?0.75f:1.0f)*(stats.effects.wallOfSpikes?0.5f:1.0f); // TODO: probably slowdowns should be interpolated too
+	auto effectFactor=stats.effects.speedUp*(isFlying?1.0f:0.2f^^stats.effects.numSlimes)*0.8f^^stats.effects.numBlightMites*0.75f^^stats.effects.numStickyBombs*0.6f^^stats.effects.numRainFrogs*(stats.effects.lightningCharged?1.5f:1.0f)*(stats.effects.wailingWall?0.75f:1.0f)*(stats.effects.wallOfSpikes?0.5f:1.0f); // TODO: probably slowdowns should be interpolated too
 	return (isFlying?stats.flyingSpeed:stats.runningSpeed)*effectFactor;
 }
 @property float movementAcceleration(ref CreatureStats stats,bool isFlying){
