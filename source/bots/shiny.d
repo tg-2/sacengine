@@ -2033,12 +2033,12 @@ float claimGuard(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task,ref i
 				n=nn;
 			}
 		}
-		if(total>threshold) return total;
+		if(total>threshold) continue; // thaum 0x48acc0: total>threshold skips the while-loop AND the total+=claimedThis below, but keeps processing the remaining records
 		while(claimedThis+0.5f<=rec.score*threshold){
 			int best=0; float bestVal=0.0f;
 			for(int n=tempHead;n;n=ai.nodes[n].recN){
 				if(n==rec.target||!(ai.nodes[n].status&1)) continue;
-				// ntt+0x5b4!=0 skip: always passes (documented gap)
+				if(isGuardianEnt!B(state,ai.nodes[n].id)) continue; // thaum 0x48ad2e: skips ntt+0x5b4!=0 (guardian-spell bound)
 				auto d=ai.nodes[n].extrapPos-rec.anchor;
 				auto dist=sqrt(d.x*d.x+d.y*d.y+d.z*d.z);
 				float w;
@@ -2765,7 +2765,7 @@ int pickGuardCreature(B)(ref ShinyAI!B ai,ObjectState!B state,int t){ // 0x48570
 		double w;
 		if(d<=10.0f) w=1.0f;
 		else if(d<3620.0f) w=cast(double)(3620.0f-d)*0.0002770083083305508f;
-		else w=1.0f; // thaum 0x485700 far-band quirk: d>=3620 falls through to w=1.0f
+		else w=0.0f; // thaum 0x4857ad: d>=3620 loads f32 0.0 (0x4bb5e0), so far creatures weigh 0 and are never picked (v=0 never beats best=0)
 		auto v=w*p[0]; // fimul souls
 		if(cast(double)best<v){ best=cast(float)v; bestNode=m; } // strict argmax
 	}
@@ -2851,7 +2851,7 @@ void wizSacrifice(B)(ref ShinyAI!B ai,ObjectState!B state,int n,float[3]* w3,int
 	if(maxMana==0||souls==0) return; // ntt+0xb10/0xb30 gates
 	auto randv=cast(double)ai.rng.rand()*3.0518509447574615e-05f; // fild(rand)*f32, stays extended
 	auto threatv=cast(float)(cast(double)node.threat*1.2999999523162842f); // fstp f32
-	if(cast(double)randv>cast(double)threatv){ // BLOCK1: emergency manahoar
+	if(cast(double)randv>=cast(double)threatv){ // BLOCK1: emergency manahoar; thaum 0x48d900 fcompp+test 0x41 takes the tie too (randv>=threatv)
 		auto mcount=si(ai.stanceRecs[0],5)+(ai.betaSummonAccounting?0:si(ai.stanceRecs[1],5)); // retail: own+ally manaliths; thaum: own only
 		if(mcount>0&&node.manahoarSpell !is null){
 			int ready=0;
@@ -3114,10 +3114,10 @@ bool proximityTrigger(B)(ref ShinyAI!B ai,ObjectState!B state,int ri,uint cmd){ 
 	auto r=cast(double)rec.count*0.1+1.0;
 	if(!(r<1.7999999523162842)) r=1.7999999523162842;
 	r*=30.0;
-	static if(shinyAILog) ailog("PROX ",ai.side," t",ai.schedTime," r",ri," count ",rec.count," s ",s," r^2 ",r*r,cast(double)s<r*r?" -> clustered (brain)":" -> spread (slot19)");
+	static if(shinyAILog) ailog("PROX ",ai.side," t",ai.schedTime," r",ri," count ",rec.count," s ",s," r^2 ",r*r,cast(double)s<r*r?" -> clustered (brain)":" -> spread");
 	if(cast(double)s<r*r) return false;
 	auto r4=cast(float)(r*4.0f);
-	if(!(r<=cast(double)r4*r4)) return false; // never true
+	if(cast(double)s>cast(double)r4*r4) return false; // thaum 0x48a2b1: very spread (s>(4r)^2) -> member brains, no slot19
 	for(int m=rec.memberHead;m;){
 		auto node=&ai.nodes[m];
 		if(node.status==0){ m=node.recN; continue; }
