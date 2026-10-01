@@ -568,13 +568,19 @@ void botScanBuilding(B)(ref Building!B b,ObjectState!B state){ // thaum LANDITEM
 	if(!(0<=b.side&&b.side!=neutralSide&&b.health!=0.0f)) return; // owner wizard (+0x1c4); Run stops at Destroy
 	// nearbywizardcallback 0x466d00: first enemy wizard (NTT::IsEnemy); EnumerateType 0x48fb80 walks list[1]+mask 1 = wizard ntts only (ntt types: 1=wiz, 2=soul, 4=creature, 0x10=building)
 	auto position=state.staticObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(b.componentIds[0]);
-	bool found=false;
+	enum range=100.0f;
+	static bool isWizardFilter(T...)(ref CenterProximityEntry entry,ObjectState!B state){
+		return entry.id&&state.movingObjectById!((ref obj)=>obj.isWizard,()=>false)(entry.id);
+	}
+	if(state.proximity.closestEnemyInRange!isWizardFilter(b.side,position,100.0f,EnemyType.creature,state,float.infinity,state))
+		state.botEvent(b.side,BotEvent.enemyNearBuilding);
+	/+bool found=false;
 	state.eachMoving!((ref MovingObject!B o,ObjectState!B state,Vector3f position,int side,bool* found){
 		if(*found||!o.isWizard) return;
 		if(state.sides.getStance(side,o.side)!=Stance.enemy&&state.sides.getStance(o.side,side)!=Stance.enemy) return; // thaum additionally counts ntt+0x234&0x2000 (provoked flag, no sacengine equivalent)
-		if((o.position-position).lengthsqr<100.0f*100.0f) *found=true;
+		if((o.position-position).lengthsqr<range*range) *found=true;
 	})(state,position,b.side,&found);
-	if(found) state.botEvent(b.side,BotEvent.enemyNearBuilding);
+	if(found) state.botEvent(b.side,BotEvent.enemyNearBuilding);+/
 }
 
 void setup(B)(ref ShinyAI!B ai,ObjectState!B state,int side){
