@@ -382,6 +382,10 @@ final class ShinyAI(B){
 	bool betaManaSourceOwnOnly=false;   // GetManaSource 0x485a40: retail walks own+ally lists (thaum own only)
 	bool betaPickupNeutralOnly=false;   // GetNearestPickup 0x485490: retail list sets {0,2}/{2,3} (thaum neutral slot 2 only)
 	bool betaCaptureTerritory=false;    // CAPTURE::Replan 0x48dbf0: territorial gates 0x488d70 + own+ally f1/f2 divisor
+	bool betaRateManasourceWeights=false; // RateManasource@AITASKCAPTURENODE (port nodeValueScore) lerp weights: thaum 0x48aee0 = 0.4/0.35 vs retail 0x48db30 = 0.45/0.3
+	bool betaUnbuiltCaptureReq=false;   // CAPTURE::Replan status&0x8000 branch reqStatus: thaum 0x48b0a4 = 3 vs retail 0x48dcf7 = 2 (patch3 lets the wizard's status bit1 satisfy it)
+	bool betaGuardWizardExclude=false;  // GUARD::Assign member mask: thaum 0x48ad24 = status&1 (wizard 0x2000e excluded) vs retail 0x48d994 = status&3 (wizard joins guard records; claim 0x48a740/0x48d490 makes it the record leader via status&0x20000, recordUpdate members follow leader.extrapPos)
+	bool betaCaptureAggGuardians=false; // CAPTURE::Assign aggregate pass: thaum 0x48b50a aggregates ALL members; retail 0x48e21b skips guardian-bound ([ntt+0x5c8]!=0)
 	void setBetaPatchBots(bool beta){
 		betaMinManaSacu=beta;
 		betaManahoarRadius=beta;
@@ -393,6 +397,10 @@ final class ShinyAI(B){
 		betaManaSourceOwnOnly=beta;
 		betaPickupNeutralOnly=beta;
 		betaCaptureTerritory=beta;
+		betaRateManasourceWeights=beta;
+		betaUnbuiltCaptureReq=beta;
+		betaGuardWizardExclude=beta;
+		betaCaptureAggGuardians=beta;
 	}
 	// rater1 by-tag acc cache
 	enum numTagAccs=96;
@@ -1846,11 +1854,14 @@ float influenceGroups(B)(ref ShinyAI!B ai,ObjectState!B state,int slot,Vector3f 
 	// divisor is fild of the never-reset u[4] accumulator (thaum quirk)
 	return soulsW/cast(float)si(ai.stanceRecs[slot],4);
 }
-float nodeValueScore(B)(ref ShinyAI!B ai,ObjectState!B state,float f,int n){ // 0x48aee0
+float nodeValueScore(B)(ref ShinyAI!B ai,ObjectState!B state,float f,int n){ // 0x48aee0 / retail twin 0x48db30
 	auto node=&ai.nodes[n];
-	auto r=lerp(f,0.4f,densityGroups(ai,state,node.curPos,10.0f,280.0f));
-	r=lerp(r,0.35f,probOr(ai,state,node.curPos,3,0x200,10.0f,2592.0f,n));
-	r=lerp(r,0.5f,probOr(ai,state,node.curPos,0,0x200,10.0f,2592.0f,n));
+	auto w1=ai.betaRateManasourceWeights?0.4f:0.45f; // thaum 0x48af0c vs retail 0x48db5c
+	auto w2=ai.betaRateManasourceWeights?0.35f:0.3f; // thaum 0x48af46 vs retail 0x48db96
+	auto r=lerp(f,w1,densityGroups(ai,state,node.curPos,10.0f,280.0f));
+	// probOr far band is 3620.0f in BOTH binaries (0x45624000 @ 0x48af22/0x48af5c and 0x48db72/0x48dbac); 2592.0f occurs in neither
+	r=lerp(r,w2,probOr(ai,state,node.curPos,3,0x200,10.0f,3620.0f,n));
+	r=lerp(r,0.5f,probOr(ai,state,node.curPos,0,0x200,10.0f,3620.0f,n));
 	return r;
 }
 
@@ -1886,7 +1897,7 @@ void replanCapture(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task){ /
 			if(!(node.flags&0x100)) continue;
 			uint flags; float s1; float s2;
 			if(node.status&0x8000){
-				flags=3;
+				flags=ai.betaUnbuiltCaptureReq?3:2; // thaum 0x48b0a4 = 3; retail 0x48dcf7 = 2 (wizard status bit1 alone satisfies -> wizard-only capture claims when no aggressive creature is claimable)
 				s1=nodeValueScore(ai,state,f1,n);
 				s2=cast(float)((1.0-cast(double)ai.aggression)*0.8+0.2);
 			}else if(edi==3&&(node.flags&0x20)&&(node.status&0x4000||((node.status&0x40000)&&!(node.flags&0x200)))){
@@ -1940,14 +1951,14 @@ void replanGuard(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task){ // 
 				if(!desecrationOngoing!B(state,node.id)) continue;
 				score=1.0f;
 			}else{
-				auto s=lerp(0.4f,0.5f,probOr(ai,state,node.curPos,0,0x200,10.0f,2592.0f,n));
-				total=lerp(s,0.2f,probOr(ai,state,node.curPos,3,0x200,10.0f,2592.0f,n)); // thaum quirk: overwrites the accumulator mid-loop
+				auto s=lerp(0.4f,0.5f,probOr(ai,state,node.curPos,0,0x200,10.0f,3620.0f,n)); // 0x48a967/0x48d5d7: 0x45624000 (2592.0f occurs in neither binary)
+				total=lerp(s,0.2f,probOr(ai,state,node.curPos,3,0x200,10.0f,3620.0f,n)); // 0x48a9a4/0x48d614: 0x45624000; thaum quirk: overwrites the accumulator mid-loop
 				score=lerp(s,0.2f,densityGroups(ai,state,node.curPos,10.0f,160.0f));
 			}
 		}
 		auto ri=allocRecord(ai,task);
 		recordSetup(ai,state,ri,n,0);
-		auto s3=influenceGroups(ai,state,3,ai.records[ri].anchor,10.0f,2592.0f,&ai.records[ri].targetAcc);
+		auto s3=influenceGroups(ai,state,3,ai.records[ri].anchor,10.0f,3620.0f,&ai.records[ri].targetAcc); // 0x48ab07/0x48d777: 0x45624000
 		auto fin=lerp(score,0.6f,s3);
 		if(fin==0.0f){ recordRelease(ai,ri); freePush(ai,task,ri); }
 		else{
@@ -1996,6 +2007,7 @@ float claimCapture(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task,ref
 	RaterAcc acc; acc.clear();
 	uint statusOR=0; int count=0;
 	for(int n=tempHead;n;n=ai.nodes[n].recN){
+		if(!ai.betaCaptureAggGuardians&&isGuardianEnt!B(state,ai.nodes[n].id)) continue; // retail 0x48e21b: guardian-bound ([ntt+0x5c8]!=0) excluded from statusOR/count/membersAcc (thaum 0x48b50a aggregates all)
 		statusOR|=ai.nodes[n].status;
 		count++;
 		combine(acc,cast(float)count,ai.nodes[n].acc,1.0f); // exploding-weight quirk
@@ -2037,7 +2049,7 @@ float claimGuard(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task,ref i
 		while(claimedThis+0.5f<=rec.score*threshold){
 			int best=0; float bestVal=0.0f;
 			for(int n=tempHead;n;n=ai.nodes[n].recN){
-				if(n==rec.target||!(ai.nodes[n].status&1)) continue;
+				if(n==rec.target||!(ai.nodes[n].status&(ai.betaGuardWizardExclude?0x1u:0x3u))) continue; // GUARD::Assign member mask: thaum 0x48ad24 = 1 (wizard excluded) vs retail 0x48d994 = 3 (wizard 0x2000e joins, becomes leader, members follow)
 				if(isGuardianEnt!B(state,ai.nodes[n].id)) continue; // thaum 0x48ad2e: skips ntt+0x5b4!=0 (guardian-spell bound)
 				auto d=ai.nodes[n].extrapPos-rec.anchor;
 				auto dist=sqrt(d.x*d.x+d.y*d.y+d.z*d.z);
