@@ -31091,21 +31091,21 @@ void initGame(B)(ObjectState!B state,ref Array!SlotInfo slots,GameInit!B gameIni
 	if(gameInit.protectManafounts){
 		foreach(i;0..gameInit.protectManafounts) state.uniform(2);
 		state.eachBuilding!((bldg,state){
-				if(bldg.componentIds.length==0||!bldg.isManafount) return;
-				auto bpos=bldg.position(state);
-				import nttData;
-				static immutable lv1Creatures=[persephoneCreatures[0..3],pyroCreatures[0..3],jamesCreatures[0..3],stratosCreatures[0..3],charnelCreatures[0..3]];
-				auto tags=lv1Creatures[state.uniform(cast(int)$)];
-				foreach(i;0..10){
-					auto tag=tags[state.uniform(cast(int)$)];
-					int flags=0;
-					int side=1;
-					auto position=bpos+10.0f*state.uniformDirection();
-					import dlib.math.portable;
-					auto facing=state.uniform(-pi!float,pi!float);
-					state.placeCreature(tag,flags,side,position,facing);
-				}
-			})(state);
+			if(bldg.componentIds.length==0||!bldg.isManafount) return;
+			auto bpos=bldg.position(state);
+			import nttData;
+			static immutable lv1Creatures=[persephoneCreatures[0..3],pyroCreatures[0..3],jamesCreatures[0..3],stratosCreatures[0..3],charnelCreatures[0..3]];
+			auto tags=lv1Creatures[state.uniform(cast(int)$)];
+			foreach(i;0..10){
+				auto tag=tags[state.uniform(cast(int)$)];
+				int flags=0;
+				int side=1;
+				auto position=bpos+10.0f*state.uniformDirection();
+				import dlib.math.portable;
+				auto facing=state.uniform(-pi!float,pi!float);
+				state.placeCreature(tag,flags,side,position,facing);
+			}
+		})(state);
 	}
 	if(gameInit.terrainSineWave) state.addEffect(TestDisplacement());
 	if(!gameInit.fogOfWar) state.disableFogOfWar();
