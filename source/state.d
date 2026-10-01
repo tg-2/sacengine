@@ -29077,7 +29077,7 @@ final class ObjectState(B){ // (update logic)
 		bool greenAllySouls=false;
 		bool fasterStandupTimes=true;
 		bool fasterCastingTimes=true;
-		bool betaPatchBots=false;
+		bool alwaysOnMinimap=false;
 	}
 	Settings settings;
 	@property bool fogOfWar(){ return settings.fogOfWar; }
@@ -29097,6 +29097,7 @@ final class ObjectState(B){ // (update logic)
 	@property bool greenAllySouls(){ return settings.greenAllySouls; }
 	@property bool fasterStandupTimes(){ return settings.fasterStandupTimes; }
 	@property bool fasterCastingTimes(){ return settings.fasterCastingTimes; }
+	@property bool alwaysOnMinimap(){ return settings.alwaysOnMinimap; }
 	void disableFogOfWar(){ settings.fogOfWar=false; }
 	void enableFogOfWar3d(){ settings.fogOfWar3d=true; }
 	void disableAlliedVision(){ settings.alliedVision=false; }
@@ -29114,6 +29115,7 @@ final class ObjectState(B){ // (update logic)
 	void enableGreenAllySouls(){ settings.greenAllySouls=true; }
 	void disableFasterStandupTimes(){ settings.fasterStandupTimes=false; }
 	void disableFasterCastingTimes(){ settings.fasterCastingTimes=false; }
+	void enableAlwaysOnMinimap(){ settings.alwaysOnMinimap=true; }
 	int addObject(T)(T object) if(is(T==MovingObject!B)||is(T==StaticObject!B)||is(T==Soul!B)||is(T==Building!B)){
 		auto id=obj.addObject(move(object));
 		static if(is(T==MovingObject!B)) this.botSpawned(id);
@@ -30905,7 +30907,8 @@ void placeStructure(B)(ObjectState!B state,ref Structure ntt){
 	auto sacBuilding=SacBuilding!B.get(ntt.tag);
 	enforce(!!sacBuilding);
 	enforce(!sacBuilding.isAltar||sacBuilding.components.length<=10);
-	auto flags=ntt.flags&~Flags.damaged&~ntt.flags.destroyed;
+	auto flags=ntt.flags&~Flags.damaged&~Flags.destroyed;
+	if(state.alwaysOnMinimap) flags&=~Flags.notOnMinimap;
 	auto facing=2*pi!float/360.0f*ntt.facing;
 	auto side=ntt.side;
 	if(side<0||side>=32) side=31; // TODO: investigate. e.g. EM-Volcano Teamplay has side 117114099.
@@ -30951,19 +30954,22 @@ void placeStructure(B)(ObjectState!B state,ref Structure ntt){
 
 void placeNTT(B,T)(ObjectState!B state,ref T ntt) if(is(T==Creature)||is(T==Wizard)){
 	auto curObj=SacObject!B.getSAXS!T(ntt.tag);
+	auto flags=ntt.flags;
+	if(state.alwaysOnMinimap) flags&=~Flags.notOnMinimap;
 	auto position=Vector3f(ntt.x,ntt.y,ntt.z);
 	bool onGround=state.isOnGround(position);
 	if(onGround)
 		position.z=state.getGroundHeight(position);
 	auto rotation=facingQuaternion(ntt.facing);
 	auto scale=state.randomCreatureScale?state.uniform(0.5f,1.5f):1.0f;
-	auto mode=ntt.flags & Flags.corpse ? CreatureMode.dead : CreatureMode.idle;
+	auto mode=flags & Flags.corpse ? CreatureMode.dead : CreatureMode.idle;
+	flags&=~Flags.corpse;
 	auto movement=curObj.mustFly?CreatureMovement.flying:CreatureMovement.onGround;
 	if(movement==CreatureMovement.onGround && !onGround)
 		movement=curObj.canFly?CreatureMovement.flying:CreatureMovement.tumbling;
 	if(mode==CreatureMode.dead) movement=onGround?CreatureMovement.onGround:CreatureMovement.tumbling;
 	auto creatureState=CreatureState(mode, movement, ntt.facing);
-	auto obj=MovingObject!B(curObj,position,rotation,scale,AnimationState.stance1,0,creatureState,curObj.creatureStats(ntt.flags),CreatureStatistics(),NotificationState(),ntt.side);
+	auto obj=MovingObject!B(curObj,position,rotation,scale,AnimationState.stance1,0,creatureState,curObj.creatureStats(flags),CreatureStatistics(),NotificationState(),ntt.side);
 	obj.initBehaviorFlags();
 	obj.setCreatureState(state);
 	obj.updateCreaturePosition(state);
@@ -31057,6 +31063,7 @@ struct GameInit(B){
 	bool greenAllySouls=false;
 	bool fasterStandupTimes=true;
 	bool fasterCastingTimes=true;
+	bool alwaysOnMinimap=false;
 	bool betaPatchBots=false;
 	bool aiSides=true;
 }
@@ -31069,7 +31076,7 @@ struct SlotInfo{
 void initGame(B)(ObjectState!B state,ref Array!SlotInfo slots,GameInit!B gameInit){ // returns id of controlled wizard
 	state.settings.gameMode=gameInit.gameMode;
 	state.settings.gameModeParam=gameInit.gameModeParam;
-	state.settings.betaPatchBots=gameInit.betaPatchBots;
+	if(gameInit.alwaysOnMinimap) state.enableAlwaysOnMinimap();
 	foreach(ref structure;state.map.ntts.structures)
 		state.placeStructure(structure);
 	if(gameInit.gameMode==GameMode.scenario||gameInit.mapWizards){

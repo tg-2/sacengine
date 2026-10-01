@@ -110,6 +110,7 @@ struct Options{
 	bool greenAllySouls=false;
 	bool fasterStandupTimes=true;
 	bool fasterCastingTimes=true;
+	bool alwaysOnMinimap=false;
 	bool betaPatchBots=false;
 	bool aiSides=true;
 	int delayStart=0;
