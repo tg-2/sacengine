@@ -766,6 +766,18 @@ struct Renderer(B){
 		auto frames=typeof(return).createMeshes();
 		return SacLaser!B(texture,mat,frames);
 	}
+	SacBeam!B magnifryerBeam;
+	SacBeam!B createMagnifryerBeam(){
+		int nU,nV;
+		auto texture=typeof(return).loadTexture(nU,nV);
+		auto mat=B.makeMaterial(B.shadelessBoneMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Additive;
+		mat.energy=15.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes(nU,nV);
+		return SacBeam!B(texture,mat,frames,nU*nV*updateAnimFactor);
+	}
 	SacBasiliskEffect!B basiliskEffect;
 	SacBasiliskEffect!B createBasiliskEffect(){
 		auto texture=typeof(return).loadTexture();
@@ -1052,6 +1064,7 @@ struct Renderer(B){
 		shrikeEffect=createShrikeEffect();
 		arrow=createArrow();
 		laser=createLaser();
+		magnifryerBeam=createMagnifryerBeam();
 		basiliskEffect=createBasiliskEffect();
 		tube=createTube();
 		vortexEffect=createVortexEffect();
@@ -3114,6 +3127,42 @@ struct Renderer(B){
 					}
 					foreach(ref projectile;objects.tickfernoProjectiles) renderLaser(2.0f/3.0f,projectile.frame,projectile.startPosition,projectile.position);
 					foreach(ref projectile;objects.phoenixProjectiles) renderLaser(2.0f/3.0f,projectile.frame,projectile.startPosition,projectile.position);
+				}
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.magnifryers.length){
+					auto material=self.magnifryerBeam.material;
+					material.bind(rc);
+					B.disableCulling();
+					scope(success){
+						B.enableCulling();
+						material.unbind(rc);
+					}
+					foreach(ref magnifryer;objects.magnifryers.data){
+						if(magnifryer.beamFade==0.0f) continue;
+						auto start=state.buildingById!((ref building,gun,state)=>magnifryerMuzzle(gun,building,state),()=>Vector3f.init)(magnifryer.building,magnifryer.gun,state);
+						if(isNaN(start.x)) continue;
+						auto end=magnifryer.beamEnd;
+						auto diff=end-start;
+						auto len=diff.length;
+						if(len==0.0f) continue;
+						auto dir=diff/len;
+						auto up=dir.z<0.99f&&dir.z>-0.99f?Vector3f(0.0f,0.0f,1.0f):Vector3f(1.0f,0.0f,0.0f);
+						auto p2=cross(dir,up).normalized;
+						auto p1=cross(p2,dir);
+						auto rotation=Quaternionf.fromMatrix(Matrix4x4f([
+							p2.x,p2.y,p2.z,0.0f,
+							-p1.x,-p1.y,-p1.z,0.0f,
+							dir.x,dir.y,dir.z,0.0f,
+							0.0f,0.0f,0.0f,1.0f]));
+						auto width=3.0f*magnifryer.beamFade;
+						B.shadelessBoneMaterialBackend.setTransformationScaled(start,rotation,Vector3f(width,width,len),rc);
+						auto mesh=self.magnifryerBeam.getFrame(cast(int)(magnifryer.beamPhase*self.magnifryerBeam.numFrames));
+						Matrix4x4f[self.magnifryerBeam.numSegments+1] pose;
+						pose[]=Matrix4f.identity();
+						pose[0]=scaleMatrix(Vector3f(0.25f,0.25f,1.0f));
+						pose[$-1]=pose[0];
+						B.shadelessBoneMaterialBackend.setPose(pose);
+						mesh.render(rc);
+					}
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.tickfernoEffects.length||objects.vortickEffects.length||objects.phoenixEffects.length)){
 					auto material=self.tube.material;

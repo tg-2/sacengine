@@ -2552,6 +2552,21 @@ struct Fire(B){
 	int side=-1;
 	DamageMod damageMod;
 }
+struct Magnifryer(B){
+	int building=0;
+	int gun=0;
+	SacSpell!B attack=null;
+	int target=0;
+	float aimAzimuth=0.0f;
+	float aimElevation=0.0f;
+	int beamFrames=0;
+	int cooldown=0;
+	Vector3f beamEnd=Vector3f(0.0f,0.0f,0.0f);
+	int bracket=0;
+	float beamFade=0.0f;
+	float beamPhase=0.0f;
+	int beamSoundTimer=0;
+}
 struct ManaDrain(B){
 	int wizard;
 	float manaCostPerFrame;
@@ -5309,6 +5324,14 @@ struct Effects(B){
 	void removeFire(int i){
 		if(i+1<fires.length) fires[i]=move(fires[$-1]);
 		fires.length=fires.length-1;
+	}
+	Array!(Magnifryer!B) magnifryers;
+	void addEffect(Magnifryer!B magnifryer){
+		magnifryers~=magnifryer;
+	}
+	void removeMagnifryer(int i){
+		if(i+1<magnifryers.length) magnifryers[i]=move(magnifryers[$-1]);
+		magnifryers.length=magnifryers.length-1;
 	}
 	Array!(ManaDrain!B) manaDrains;
 	void addEffect(ManaDrain!B manaDrain){
@@ -8412,16 +8435,24 @@ int makeBuilding(B)(ref MovingObject!B caster,char[4] tag,int flags,int base,Obj
 	state.buildingById!((ref Building!B building){
 		if(flags&Flags.damaged) building.health/=10.0f;
 		if(flags&Flags.destroyed) building.health=0.0f;
+		int bracket=0; // (for magnifryer)
 		foreach(ref component;sacBuilding.components){
 			auto curObj=SacObject!B.getBLDG(flags&Flags.destroyed&&component.destroyed!="\0\0\0\0"?component.destroyed:component.tag);
 			auto offset=Vector3f(component.x,component.y,component.z);
 			offset=rotate(facingQuaternion(building.facing), offset);
 			auto cposition=position+offset;
 			if(!state.isOnGround(cposition)) continue;
-			cposition.z=state.getGroundHeight(cposition);
+			cposition.z=state.getGroundHeight(cposition)+component.z;
 			float facing=0.0f; // TODO: ok?
 			auto rotation=facingQuaternion(2*pi!float/360.0f*(facing+component.facing));
-			building.componentIds~=state.addObject(StaticObject!B(curObj,building.id,cposition,rotation,1.0f,0));
+			auto componentId=state.addObject(StaticObject!B(curObj,building.id,cposition,rotation,1.0f,component.z==0.0f?0:StaticObjectFlags.hovering));
+			if(component.spell=="brfm") bracket=componentId; // (for magnifryer)
+			if(component.spell=="yrfm"&&"yrfm"in spels){ // (magnifryer gun)
+				auto magnifryer=Magnifryer!B(building.id,componentId,SacSpell!B.get("yrfm"),0,building.facing+2*pi!float/360.0f*component.facing);
+				magnifryer.bracket=bracket;
+				state.addEffect(magnifryer);
+			}
+			building.componentIds~=componentId;
 		}
 		if(base) state.buildingById!((ref manafount,state){ putOnManafount(building,manafount,state); },(){})(base,state);
 	},(){ assert(0); })(buildingId);
@@ -8442,16 +8473,24 @@ int makeBuilding(B)(int side,char[4] tag,Vector3f position,int flags,ObjectState
 	state.buildingById!((ref Building!B building){
 		if(flags&Flags.damaged) building.health/=10.0f;
 		if(flags&Flags.destroyed) building.health=0.0f;
+		int bracket=0; // (for magnifryer)
 		foreach(ref component;sacBuilding.components){
 			auto curObj=SacObject!B.getBLDG(flags&Flags.destroyed&&component.destroyed!="\0\0\0\0"?component.destroyed:component.tag);
 			auto offset=Vector3f(component.x,component.y,component.z);
 			offset=rotate(facingQuaternion(building.facing), offset);
 			auto cposition=position+offset;
 			if(!state.isOnGround(cposition)) continue;
-			cposition.z=state.getGroundHeight(cposition);
+			cposition.z=state.getGroundHeight(cposition)+component.z;
 			float facing=0.0f; // TODO: ok?
 			auto rotation=facingQuaternion(2*pi!float/360.0f*(facing+component.facing));
-			building.componentIds~=state.addObject(StaticObject!B(curObj,building.id,cposition,rotation,1.0f,0));
+			auto componentId=state.addObject(StaticObject!B(curObj,building.id,cposition,rotation,1.0f,component.z==0.0f?0:StaticObjectFlags.hovering));
+			if(component.spell=="brfm") bracket=componentId; // (for magnifryer)
+			if(component.spell=="yrfm"&&"yrfm"in spels){ // (magnifryer gun)
+				auto magnifryer=Magnifryer!B(building.id,componentId,SacSpell!B.get("yrfm"),0,building.facing+2*pi!float/360.0f*component.facing);
+				magnifryer.bracket=bracket;
+				state.addEffect(magnifryer);
+			}
+			building.componentIds~=componentId;
 		}
 	},(){ assert(0); })(buildingId);
 	state.botBuilt(side,buildingId);
@@ -25993,6 +26032,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 		}
 		i++;
 	}
+	for(int i=0;i<effects.magnifryers.length;){
+		if(!updateMagnifryer(effects.magnifryers[i],state)){
+			effects.removeMagnifryer(i);
+			continue;
+		}
+		i++;
+	}
 	for(int i=0;i<effects.manaDrains.length;){
 		if(!updateManaDrain(effects.manaDrains[i],state)){
 			effects.removeManaDrain(i);
@@ -27526,6 +27572,15 @@ void setAblazeWithManaDrain(B)(int target,int lifetime,float damage,float manaDr
 	igniteBuilding(target,cast(int)damage+1,state);
 	state.addEffect(Fire!B(target,lifetime,damage/lifetime,0.0f,manaDrain/lifetime,attacker,side,damageMod));
 }
+void refreshAblaze(B)(int target,int lifetime,bool ranged,int side,DamageMod damageMod,ObjectState!B state){
+	foreach(ref fire;state.obj.opaqueObjects.effects.fires.data){ // TODO: make more efficient?
+		if(fire.target==target){
+			fire.lifetime=max(fire.lifetime,lifetime);
+			return;
+		}
+	}
+	setAblaze(target,lifetime,ranged,0.0f,0,side,damageMod,state);
+}
 
 bool igniteBuilding(B)(ref Building!B bldg,int lifetime,ObjectState!B state){
 	if(!bldg.canDamage(state)||!bldg.sacBuilding.canBurn)
@@ -27673,6 +27728,145 @@ void animateShrine(B)(bool active,Vector3f location, int side, ObjectState!B sta
 		auto frame=0;
 		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
 	}
+}
+
+enum magnifryerSlewStep=0.0261799167f;
+enum magnifryerMinElevation=-pi!float/4.0f;
+enum magnifryerAimThreshold=0.1f;
+
+float magnifryerSlew(B)(ref Magnifryer!B magnifryer,float targetAzimuth,float targetElevation){
+	static float wrapAngle(float angle){
+		angle=fmod(angle,2*pi!float);
+		if(angle>pi!float) angle-=2*pi!float;
+		if(angle<-pi!float) angle+=2*pi!float;
+		return angle;
+	}
+	auto azimuthError=wrapAngle(targetAzimuth-magnifryer.aimAzimuth);
+	auto elevationError=targetElevation-magnifryer.aimElevation;
+	magnifryer.aimAzimuth=wrapAngle(magnifryer.aimAzimuth+clamp(azimuthError,-magnifryerSlewStep,magnifryerSlewStep));
+	magnifryer.aimElevation=max(magnifryerMinElevation,magnifryer.aimElevation+clamp(elevationError,-magnifryerSlewStep,magnifryerSlewStep));
+	return abs(wrapAngle(targetAzimuth-magnifryer.aimAzimuth))+abs(targetElevation-magnifryer.aimElevation);
+}
+
+Vector3f magnifryerMuzzle(B)(int gun,ref Building!B building,ObjectState!B state){
+	return state.staticObjectById!((ref obj)=>obj.position,()=>building.position(state))(gun);
+}
+
+int magnifryerTargetValid(B)(int target,Vector3f muzzle,float range,int side,bool checkLineOfSight,ObjectState!B state){
+	return state.movingObjectById!((ref obj,target,muzzle,range,side,checkLineOfSight,state){
+		if(!obj.isValidAttackTarget(state)) return 0;
+		if(state.sides.getStance(side,obj.side)!=Stance.enemy) return 0;
+		auto displacement=obj.position-muzzle;
+		if(displacement.lengthsqr>range^^2) return 0;
+		if(displacement.z<-displacement.xy.length) return 0;
+		if(checkLineOfSight){
+			auto hit=state.lineOfSightWithoutSide(muzzle,obj.position,side,target);
+			if(hit.type!=TargetType.none&&!(hit.type.among(TargetType.creature,TargetType.building)&&hit.id==target)) return -1;
+		}
+		return 1;
+	},()=>0)(target,target,muzzle,range,side,checkLineOfSight,state);
+}
+
+bool magnifryerCandidateValid(B)(ref CenterProximityEntry entry,Vector3f muzzle,float range,int side,ObjectState!B state){
+	if(entry.isStatic||entry.zeroHealth) return false;
+	if(!isValidAttackTarget(entry.id,state)) return false;
+	auto feet=Vector3f(entry.position.x,entry.position.y,entry.height);
+	auto displacement=feet-muzzle;
+	if(displacement.lengthsqr>range^^2) return false;
+	if(displacement.z<-displacement.xy.length) return false;
+	auto hit=state.lineOfSightWithoutSide(muzzle,feet,side,entry.id);
+	return hit.type==TargetType.none||hit.type.among(TargetType.creature,TargetType.building)&&hit.id==entry.id;
+}
+
+bool updateMagnifryer(B)(ref Magnifryer!B magnifryer,ObjectState!B state){
+	if(magnifryer.attack is null) return false;
+	return state.buildingById!((ref building,magnifryer,state){
+		if(building.health==0.0f) return false;
+		if(building.flags&AdditionalBuildingFlags.inactive) return true;
+		auto attack=magnifryer.attack;
+		auto range=attack.range;
+		auto muzzle=magnifryerMuzzle(magnifryer.gun,building,state);
+		if(magnifryer.cooldown>0) --magnifryer.cooldown;
+		state.updateVision(building.side,magnifryer.gun,muzzle,1.2f*range,0.0f,magnifryer.aimAzimuth,false);
+		if(magnifryer.beamFrames>0){
+			--magnifryer.beamFrames;
+			if(magnifryerTargetValid(magnifryer.target,muzzle,range,building.side,false,state)==0){
+				magnifryer.target=0;
+				magnifryer.beamFrames=0;
+				magnifryer.cooldown=cast(int)(attack.cooldown*updateFPS);
+				playSoundAt("malf",magnifryer.beamEnd,state,2.0f);
+			}else{
+				if(--magnifryer.beamSoundTimer==0) magnifryer.beamSoundTimer=playSoundAt!true("2sal",magnifryer.beamEnd,state,2.0f);
+				auto targetCenter=state.movingObjectById!((ref obj)=>obj.center,()=>muzzle)(magnifryer.target);
+				auto displacement=targetCenter-muzzle;
+				auto targetAzimuth=atan2(-displacement.x,displacement.y);
+				if(isNaN(targetAzimuth)) targetAzimuth=magnifryer.aimAzimuth;
+				auto targetElevation=atan2(displacement.z,displacement.xy.length);
+				if(isNaN(targetElevation)) targetElevation=0.0f;
+				magnifryerSlew(*magnifryer,targetAzimuth,targetElevation);
+				auto damage=attack.amount/attack.duration/updateFPS;
+				state.movingObjectById!((ref obj,side,damage,state){
+					bool killed=false;
+					dealDamage(obj,damage,side,DamageMod.spell,killed,state);
+				},(){})(magnifryer.target,building.side,damage,state);
+				refreshAblaze(magnifryer.target,updateFPS,false,building.side,DamageMod.ignite,state);
+				auto hit=state.lineOfSightWithoutSide(muzzle,targetCenter,building.side,magnifryer.target);
+				magnifryer.beamEnd=hit.type==TargetType.none?targetCenter:hit.position;
+				auto sacParticle=SacParticle!B.get(ParticleType.firy);
+				enum numParticles=2;
+				foreach(i;0..numParticles){
+					auto position=magnifryer.beamEnd+Vector3f(state.uniform(-1.0f,1.0f),state.uniform(-1.0f,1.0f),state.uniform(0.0f,1.0f));
+					auto velocity=Vector3f(0.0f,0.0f,0.0f);
+					auto scale=1.0f;
+					auto lifetime=sacParticle.numFrames;
+					auto frame=0;
+					state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
+				}
+				if(magnifryer.beamFrames==0){
+					magnifryer.cooldown=cast(int)(attack.cooldown*updateFPS);
+					playSoundAt("malf",magnifryer.beamEnd,state,2.0f);
+				}
+			}
+		}else if(magnifryer.target!=0){
+			auto targetValid=magnifryerTargetValid(magnifryer.target,muzzle,range,building.side,true,state);
+			if(targetValid==0){
+				magnifryer.target=0;
+			}else{
+				auto targetCenter=state.movingObjectById!((ref obj)=>obj.center,()=>muzzle)(magnifryer.target);
+				auto displacement=targetCenter-muzzle;
+				auto targetAzimuth=atan2(-displacement.x,displacement.y);
+				if(isNaN(targetAzimuth)) targetAzimuth=magnifryer.aimAzimuth;
+				auto targetElevation=atan2(displacement.z,displacement.xy.length);
+				if(isNaN(targetElevation)) targetElevation=0.0f;
+				auto aimError=magnifryerSlew(*magnifryer,targetAzimuth,targetElevation);
+				if(targetValid==1&&aimError<=magnifryerAimThreshold&&magnifryer.cooldown<=0){
+					magnifryer.beamFrames=cast(int)(attack.duration*updateFPS);
+					magnifryer.beamEnd=targetCenter;
+					playSoundAt("4abf",magnifryer.beamEnd,state,2.0f);
+					magnifryer.beamSoundTimer=playSoundAt!true("2sal",magnifryer.beamEnd,state,2.0f);
+				}
+			}
+		}else{
+			magnifryerSlew(*magnifryer,magnifryer.aimAzimuth+magnifryerSlewStep,0.0f);
+			magnifryer.target=state.proximity.closestEnemyInRange!magnifryerCandidateValid(building.side,muzzle,range,EnemyType.creature,state,float.infinity,muzzle,range,building.side,state);
+		}
+		state.staticObjectById!((ref obj,azimuth,elevation){
+			obj.rotation=facingQuaternion(azimuth)*pitchQuaternion(elevation);
+		},(){})(magnifryer.gun,magnifryer.aimAzimuth,magnifryer.aimElevation);
+		if(magnifryer.bracket!=0)
+			state.staticObjectById!((ref obj,azimuth,elevation){
+				obj.rotation=facingQuaternion(azimuth)*pitchQuaternion(elevation);
+			},(){})(magnifryer.bracket,magnifryer.aimAzimuth,magnifryer.aimElevation);
+		if(magnifryer.beamFrames>0)
+			magnifryer.beamFade=min(magnifryer.beamFade+1.0f/15.0f,1.0f);
+		else if(magnifryer.beamFade>0.0f)
+			magnifryer.beamFade=max(magnifryer.beamFade-1.0f/15.0f,0.0f);
+		if(magnifryer.beamFade>0.0f){
+			magnifryer.beamPhase+=0.5f/16.0f;
+			if(magnifryer.beamPhase>=1.0f) magnifryer.beamPhase=0.0f;
+		}
+		return true;
+	},()=>false)(magnifryer.building,&magnifryer,state);
 }
 
 void updateBuilding(B)(ref Building!B building, ObjectState!B state){
@@ -30934,15 +31128,23 @@ void placeStructure(B)(ObjectState!B state,ref Structure ntt){
 	state.buildingById!((ref Building!B building){
 		if(ntt.flags&Flags.damaged) building.health/=10.0f;
 		if(ntt.flags&Flags.destroyed) building.health=0.0f;
+		int bracket=0; // magnifryer fork, mfrb.SPEL
 		foreach(ref component;sacBuilding.components){
 			auto curObj=SacObject!B.getBLDG(ntt.flags&Flags.destroyed&&component.destroyed!="\0\0\0\0"?component.destroyed:component.tag);
 			auto offset=Vector3f(component.x,component.y,component.z);
 			offset=rotate(facingQuaternion(building.facing), offset);
 			auto cposition=position+offset;
 			if(!state.isOnGround(cposition)) continue;
-			cposition.z=state.getGroundHeight(cposition);
+			cposition.z=state.getGroundHeight(cposition)+component.z;
 			auto rotation=facingQuaternion(2*pi!float/360.0f*(ntt.facing+component.facing));
-			building.componentIds~=state.addObject(StaticObject!B(curObj,building.id,cposition,rotation,1.0f,0));
+			auto componentId=state.addObject(StaticObject!B(curObj,building.id,cposition,rotation,1.0f,component.z==0.0f?0:StaticObjectFlags.hovering));
+			if(component.spell=="brfm") bracket=componentId;
+			if(component.spell=="yrfm"&&"yrfm"in spels){ // magnifryer gun, mfry.SPEL
+				auto magnifryer=Magnifryer!B(building.id,componentId,SacSpell!B.get("yrfm"),0,building.facing+2*pi!float/360.0f*component.facing);
+				magnifryer.bracket=bracket;
+				state.addEffect(magnifryer);
+			}
+			building.componentIds~=componentId;
 		}
 		if(ntt.base){
 			enforce(ntt.base in state.triggers.objectIds);

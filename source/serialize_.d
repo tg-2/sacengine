@@ -268,6 +268,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Exp
 void serialize(alias sink,B)(ref Fire!B fire){ serializeStruct!sink(fire); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Fire!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref Magnifryer!B fire){ serializeStruct!sink(fire); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Magnifryer!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref ManaDrain!B manaDrain){ serializeStruct!sink(manaDrain); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ManaDrain!B)){ deserializeStruct(result,state,data); }
 

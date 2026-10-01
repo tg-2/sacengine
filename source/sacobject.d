@@ -2235,6 +2235,49 @@ B.BoneMesh[] makeLineMeshes(B)(int numSegments,int nU,int nV,float length,float 
 	return meshes;
 }
 
+B.BoneMesh makeBeamMesh(B)(int numSegments,float length,float size,bool flip=true,int nU=1,int nV=1,int u=0,int v=0){
+	auto mesh=B.makeBoneMesh(4*(numSegments+1),3*2*numSegments);
+	enum sqrt34=sqrt(0.75f);
+	immutable Vector3f[3] offsets=[size*Vector3f(0.0f,-1.0f,0.0f),size*Vector3f(-sqrt34,0.5f,0.0f),size*Vector3f(sqrt34,0.5f,0.0f)];
+	int numFaces=0;
+	void addFace(uint[3] face...){
+		mesh.indices[numFaces++]=face;
+	}
+	foreach(i;0..numSegments+1){
+		auto center=Vector3f(0.0f,0.0f,length*float(i)/numSegments);
+		foreach(k;0..4){
+			int vertex=4*i+k;
+			auto position=k==0?center:center+offsets[k-1];
+			foreach(l;0..3){
+				mesh.vertices[l][vertex]=position;
+				mesh.boneIndices[vertex][l]=i;
+			}
+			mesh.weights[vertex]=Vector3f(1.0f,0.0f,0.0f);
+			mesh.texcoords[vertex]=Vector2f(1.0f/nU*(u+((flip?i&1:0)?1.0f-0.5f/(256/nU):0.5f/(256/nU))),1.0f/nV*(v+(k==0?1.0f-0.5f/(256/nV):0.5f/(256/nV))));
+		}
+	}
+	foreach(i;0..numSegments){
+		foreach(j;0..3){
+			int c0=4*i,r0=c0+j+1,c1=4*(i+1),r1=c1+j+1;
+			addFace([c0,r0,c1]);
+			addFace([r0,r1,c1]);
+		}
+	}
+	assert(numFaces==2*3*numSegments);
+	mesh.normals[]=Vector3f(0.0f, 0.0f, 0.0f);
+	B.finalizeBoneMesh(mesh);
+	return mesh;
+}
+
+B.BoneMesh[] makeBeamMeshes(B)(int numSegments,int nU,int nV,float length,float size,bool flip=true){
+	auto meshes=new B.BoneMesh[](nU*nV);
+	foreach(t,ref mesh;meshes){
+		int u=cast(int)t%nU,v=cast(int)t/nU;
+		mesh=makeBeamMesh!B(numSegments,length,size,flip,nU,nV,u,v);
+	}
+	return meshes;
+}
+
 struct SacLightning(B){
 	B.Texture texture;
 	B.Material material;
@@ -3945,6 +3988,25 @@ struct SacLaser(B){
 	static B.BoneMesh[] createMeshes(){
 		enum nU=4,nV=4;
 		return makeLineMeshes!B(numSegments,nU,nV,1.0f,1.0f,true);
+	}
+}
+
+struct SacBeam(B){
+	B.Texture texture;
+	B.Material material;
+	B.BoneMesh[] frames;
+	int numFrames;
+	auto getFrame(int i){ return frames[i/updateAnimFactor]; }
+	enum numSegments=16;
+	static B.Texture loadTexture(out int nU,out int nV){
+		int nf,fw,fh;
+		auto img=loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/vtx1.TXTR",nf,fw,fh);
+		nU=nf>1&&fw>0?cast(int)(img.width/fw):4;
+		nV=nf>1&&fh>0?cast(int)(img.height/fh):4;
+		return B.makeTexture(img);
+	}
+	static B.BoneMesh[] createMeshes(int nU,int nV){
+		return makeBeamMeshes!B(numSegments,nU,nV,1.0f,1.0f);
 	}
 }
 

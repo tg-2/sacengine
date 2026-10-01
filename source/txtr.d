@@ -7,6 +7,11 @@ import dlib.image,dlib.image.color;
 import std.stdio, std.string, std.range, std.algorithm, std.path, std.exception;
 
 SuperImage loadTXTR(string filename){
+	int numFrames,frameWidth,frameHeight;
+	return loadTXTR(filename,numFrames,frameWidth,frameHeight);
+}
+
+SuperImage loadTXTR(string filename,out int numFrames,out int frameWidth,out int frameHeight){
 	filename=fixPath(filename);
 	enforce(filename.endsWith(".TXTR")||filename.endsWith(".ICON"));
 	auto base = filename[0..$-".TXTR".length];
@@ -29,7 +34,10 @@ SuperImage loadTXTR(string filename){
 	auto hasExplicitAlpha=!!(txt[2]&1);
 	ubyte[3] alphaColor=[txt[6],txt[5],txt[4]];
 	txt=txt[8..$];
-	txt=txt[16..$]; // remove further header bytes (TODO: figure out what they mean)
+	numFrames=cast(int)parseLE(txt[0..4]);
+	frameWidth=cast(int)parseLE(txt[4..8]);
+	frameHeight=cast(int)parseLE(txt[8..12]);
+	txt=txt[16..$]; // TODO: what is txt[12..16] ?
 	ubyte[] alphaChannel;
 	if(hasExplicitAlpha){
 		enforce(txt.length==2*width*height);
