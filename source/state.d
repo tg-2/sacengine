@@ -14724,12 +14724,15 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 float rescueRadius(B)(ref MovingObject!B object){
 	return boundingRadius(object.sacObject.hitbox(Quaternionf.identity(),object.scale,AnimationState.stance1,0));
 }
-void rescuedBy(B)(ref MovingObject!B object,int side,ObjectState!B state){
+bool rescuedBy(B)(ref MovingObject!B object,int side,ObjectState!B state){
+	if(!object.creatureStats.flags&Flags.rescuable) return false;
 	object.clearOrderQueue(state);
 	object.unselect(state);
 	object.removeFromGroups(state);
 	object.side=side;
 	object.creatureStats.flags&=~Flags.rescuable;
+	playSoundTypeAt(object.sacObject,object.id,SoundType.rescued,state);
+	return true;
 }
 bool updateRescue(B)(ref MovingObject!B object,ObjectState!B state){
 	if(!(object.creatureStats.flags&Flags.rescuable)) return false;
@@ -30706,7 +30709,7 @@ auto playSoundTypeAt(bool getDuration=false,B,T...)(SacObject!B sacObject,int id
 		auto sounds=sset.getSounds(soundType);
 		if(sounds.length){
 			auto sound=sounds[state.uniform(cast(int)$)];
-			auto gain=sset.name=="wasb"?2.0f:soundType==SoundType.incantation?1.5f:1.0f;
+			auto gain=sset.name=="wasb"?2.0f:soundType.among(SoundType.incantation,SoundType.rescued)?1.5f:1.0f;
 			static if(getDuration){
 				auto soundDuration=getSoundDuration(sound,state);
 				static if(limit.length) if(soundDuration>limit[0]) return;
