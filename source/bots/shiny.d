@@ -1936,7 +1936,7 @@ void replanCapture(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task){ /
 					s2=1.0f-ai.aggression;
 					flags=1;
 				}else{
-					auto t=2.0f*(sf(ai.stanceRecs[3],7)-0.3f);
+					auto t=2.0f*(sf(ai.stanceRecs[3],6)-0.3f);
 					if(t<0.0f) t=0.0f;
 					flags=9;
 					auto m=1.0-cast(double)ai.aggression;
@@ -2021,7 +2021,7 @@ float claimCapture(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task,ref
 		auto c=&state.obj.opaqueObjects.effects.sacDocCastings[i];
 		if(c.type==RitualType.desecrate&&c.side==ai.side) return 0.0f;
 	}
-	auto threshold=cast(float)si(ai.stanceRecs[0],2)*sf(ai.stanceRecs[3],7)*0.9f*ai.aggression;
+	auto threshold=cast(float)si(ai.stanceRecs[0],2)*sf(ai.stanceRecs[3],6)*0.9f*ai.aggression; // thaum 0x48b4c9: fild rec0+0x8 * [rec0+0xa0]=rec3+0x1c (u[0], p0-souls ratio, AI+0x25c) * 0.9f * aggression
 	RaterAcc acc; acc.clear();
 	uint statusOR=0; int count=0;
 	for(int n=tempHead;n;n=ai.nodes[n].recN){
@@ -2711,7 +2711,7 @@ float findBestSpell(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int target,uin
 }
 
 void weightTriple(B)(ref ShinyAI!B ai,int cmd,float[3]* w3){ // 0x48cc70
-	auto m=1.0-cast(double)sf(ai.stanceRecs[3],7); // fld 1.0f; fsub f32 (exact)
+	auto m=1.0-cast(double)sf(ai.stanceRecs[3],6); // fld 1.0f; fsub f32 (exact)
 	auto ag=cast(double)ai.aggression;
 	float o0,o1; // thaum stores these two as f32 and reloads them
 	double o2e;    // o2 stays on the fpu stack (extended)
@@ -2863,7 +2863,7 @@ void wizRetreat(B)(ref ShinyAI!B ai,ObjectState!B state,int n,float[3]* w3){ // 
 	if(node.convertSpell is null) return;
 	// ntt+0xb80==ntt+0xb88 && attachment(ntt+0xb88)=='sacu': home altar being desecrated (documented approximation)
 	if(desecrationOngoing!B(state,buildingIdOf!B(state,wiz.closestShrine))) return;
-	auto v=cast(float)((1.0-cast(double)sf(ai.stanceRecs[3],7))*(1.0-cast(double)node.threat)*cast(double)ai.aggression*500.0);
+	auto v=cast(float)((1.0-cast(double)sf(ai.stanceRecs[3],6))*(1.0-cast(double)node.threat)*cast(double)ai.aggression*500.0);
 	if(v<=10.0f) return; // fcomp 10.0d
 	auto t=findBestNear(ai,state,&node.curPos,v,0);
 	if(!t) return;
@@ -2915,7 +2915,7 @@ void wizSacrifice(B)(ref ShinyAI!B ai,ObjectState!B state,int n,float[3]* w3,int
 			if(recPath) combine(ctx,1.0f,ai.records[ri].targetAcc,1.0f); // rec+0x4c (targetAcc approximation)
 		}
 		if(!recPath){
-			auto m=sf(ai.stanceRecs[3],7);
+			auto m=sf(ai.stanceRecs[3],6);
 			combine(ctx,1.0f,ai.acc1,m);
 			combine(ctx,1.0f,ai.acc2,cast(float)(1.0f-m)); // fld 1.0f; fsub f32
 		}
