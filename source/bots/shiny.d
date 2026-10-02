@@ -1051,7 +1051,8 @@ void updateStatus(B)(ref ShinyAI!B ai,ObjectState!B state,int dTicks){ // 0x4840
 		scanOwn(ai,state);
 		ai.handledFlags|=4;
 	}
-	if(ai.forceFlags&8){ // thaum: global spawn scan gated by config&0x10 (never set)
+	if(ai.forceFlags&8){ // thaum: global spawn scan gated by config&0x10, but config is 0x10 at all three AI-creation call sites (0x404c66, 0x457e08, 0x4a25d5), so it runs once at setup (forceFlags=0xf; no event re-sets bit 8)
+		scanGlobal(ai,state);
 		ai.handledFlags|=8;
 	}
 	if(ai.forceFlags&2){ // stats 0x484540
@@ -1072,6 +1073,15 @@ void scanOwn(B)(ref ShinyAI!B ai,ObjectState!B state){
 	state.eachBuilding!((ref Building!B b,ObjectState!B state,ShinyAI!B ai){
 		if(b.side!=ai.side) return;
 		if(!findNode(ai,NodeKind.str,b.id)) addNode(ai,state,NodeKind.str,b.id);
+	})(state,ai);
+}
+void scanGlobal(B)(ref ShinyAI!B ai,ObjectState!B state){ // thaum ForEachNTT(0x15, cb 0x484190): add-if-unknown all structures and wizards map-wide
+	state.eachBuilding!((ref Building!B b,ObjectState!B state,ShinyAI!B ai){
+		if(!findNode(ai,NodeKind.str,b.id)) addNode(ai,state,NodeKind.str,b.id);
+	})(state,ai);
+	state.eachMoving!((ref MovingObject!B o,ObjectState!B state,ShinyAI!B ai){
+		if(o.isWizard&&!findNode(ai,NodeKind.wiz,o.id)) addNode(ai,state,NodeKind.wiz,o.id);
+		// thaum also adds creatures with ntt+0x238&0x10 (creature XP bit 4, i.e. leveled veterans): no creature XP in sacengine (documented gap)
 	})(state,ai);
 }
 void updateStats(B)(ref ShinyAI!B ai,ObjectState!B state){ // 0x484540
@@ -1211,8 +1221,9 @@ void discoverScan(B)(ref ShinyAI!B ai,ObjectState!B state,NodeKind kind,int id){
 	}
 }
 void discover(B)(ref ShinyAI!B ai,ObjectState!B state){ // 0x484b30
-	// phase 1: thaum walks the global entity list ([ai+0xf8]+0xc); no visibility/per-side gate on add, shouldTrack (0x487cd0) only
+	// phase 1: thaum walks the side's seen-ntt list ([side+0xc], records written by SIDE::MarkAsVisible 0x4723e0; lookup 0x490f20 chains [side+0xc] matching rec+0x8==ntt), so only foreign entities the side has seen are added; own entities are always known
 	state.eachMoving!((ref MovingObject!B o,ObjectState!B state,ShinyAI!B ai){
+		if(o.side!=ai.side&&state.sid.lastSeenTick(ai.side,o.id)<0) return;
 		if(o.isWizard){
 			discoverScan(ai,state,NodeKind.wiz,o.id);
 		}else{
@@ -1221,10 +1232,11 @@ void discover(B)(ref ShinyAI!B ai,ObjectState!B state){ // 0x484b30
 		}
 	})(state,ai);
 	state.eachBuilding!((ref Building!B b,ObjectState!B state,ShinyAI!B ai){
+		if(b.side!=ai.side&&state.sid.lastSeenTick(ai.side,b.id)<0) return;
 		discoverScan(ai,state,NodeKind.str,b.id);
 	})(state,ai);
 	state.eachSoul!((ref Soul!B s,ObjectState!B state,ShinyAI!B ai){
-		discoverScan(ai,state,NodeKind.cre,s.id);
+		discoverScan(ai,state,NodeKind.cre,s.id); // sacengine does not vision-track souls (no proximity entries), left ungated
 	})(state,ai);
 	// phase 2 (0x484bfd): non-own nodes only (node+0x3c&1 = own relation flag, test at 0x484c14); remove ghost wizards, eliminated wizards, stale unseen nodes
 	for(int n=ai.idxHead;n;){
