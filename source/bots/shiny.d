@@ -1075,13 +1075,17 @@ void scanOwn(B)(ref ShinyAI!B ai,ObjectState!B state){
 		if(!findNode(ai,NodeKind.str,b.id)) addNode(ai,state,NodeKind.str,b.id);
 	})(state,ai);
 }
-void scanGlobal(B)(ref ShinyAI!B ai,ObjectState!B state){ // thaum ForEachNTT(0x15, cb 0x484190): add-if-unknown all structures and wizards map-wide
+void scanGlobal(B)(ref ShinyAI!B ai,ObjectState!B state){ // thaum ForEachNTT(0x15, cb 0x484190): add-if-unknown all structures, wizards and creatures map-wide
 	state.eachBuilding!((ref Building!B b,ObjectState!B state,ShinyAI!B ai){
 		if(!findNode(ai,NodeKind.str,b.id)) addNode(ai,state,NodeKind.str,b.id);
 	})(state,ai);
 	state.eachMoving!((ref MovingObject!B o,ObjectState!B state,ShinyAI!B ai){
-		if(o.isWizard&&!findNode(ai,NodeKind.wiz,o.id)) addNode(ai,state,NodeKind.wiz,o.id);
-		// thaum also adds creatures with ntt+0x238&0x10 (creature XP bit 4, i.e. leveled veterans): no creature XP in sacengine (documented gap)
+		if(o.isWizard){
+			if(!findNode(ai,NodeKind.wiz,o.id)) addNode(ai,state,NodeKind.wiz,o.id);
+		}else{ // thaum gates creatures on ntt+0x238&0x10 (0x4841a1), which is set at every creature spawn (0x459ce1): all creatures pass
+			auto k=o.sacObject.isManahoar?NodeKind.maho:NodeKind.t4o;
+			if(!findNode(ai,k,o.id)) addNode(ai,state,k,o.id);
+		}
 	})(state,ai);
 }
 void updateStats(B)(ref ShinyAI!B ai,ObjectState!B state){ // 0x484540
@@ -1249,8 +1253,7 @@ void discover(B)(ref ShinyAI!B ai,ObjectState!B state){ // 0x484b30
 				if(ws>=0&&state.sid.sides[ws].state!=SideState.playing) remove=true;
 				if(!remove&&entGhost!B(state,node.id)) remove=true; // 0x484c22: wiz ntt (ntt+0x4==1) with stateFlags&0x40000 -> removeNode 0x483970, no side test beyond the own-node skip
 			}
-			// !(ntt+0x238&0x10): no sacengine equivalent (documented gap)
-			if(!remove&&(node.flags&0x80)&&cast(uint)node.ageSeen<cast(uint)node.age) remove=true;
+			if(!remove&&(node.flags&0x80)&&cast(uint)node.ageSeen<cast(uint)node.age&&node.kind!=NodeKind.t4o&&node.kind!=NodeKind.maho) remove=true; // thaum 0x484c3d, retail 0x48721e: creatures (ntt+0x238&0x10) are exempt from the stale-seen removal
 			if(remove) removeNode(ai,state,n);
 		}
 		n=nn;
