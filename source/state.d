@@ -930,6 +930,7 @@ struct CreatureAI{
 	bool isOnAIQueue=false;
 	Path path;
 	float alertness=1.0f;
+	Vector3f blockedDestination=Vector3f.init;
 	mixin Assign;
 }
 
@@ -11938,6 +11939,7 @@ bool order(B)(ref MovingObject!B object,Order order,ObjectState!B state,int side
 		previousOrder=object.creatureAI.order;
 	object.clearOrderQueue(state);
 	object.creatureAI.order=order;
+	object.creatureAI.blockedDestination=Vector3f.init;
 	if(previousOrder.command!=CommandType.none){
 		if(object.hasOrders(state)) object.creatureAI.orderQueue.pushFront(object.creatureAI.order);
 		object.prequeueOrder(previousOrder,state);
@@ -11965,6 +11967,7 @@ bool prequeueOrder(B)(ref MovingObject!B object,Order order,ObjectState!B state,
 				object.creatureAI.orderQueue.pushFront(object.creatureAI.order);
 		}
 		object.creatureAI.order=order;
+		object.creatureAI.blockedDestination=Vector3f.init;
 	}
 	return true;
 }
@@ -11994,6 +11997,7 @@ void clearOrder(B)(ref MovingObject!B object,ObjectState!B state){
 		object.creatureAI.order=object.creatureAI.orderQueue.front;
 		object.creatureAI.orderQueue.popFront();
 	}else object.creatureAI.order=Order.init;
+	object.creatureAI.blockedDestination=Vector3f.init;
 }
 
 void clearOrderQueue(B)(ref MovingObject!B object,ObjectState!B state){
@@ -12035,6 +12039,29 @@ bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPositi
 	}
 	if(frontObstacle&&!doNotEvade(frontObstacle)){
 		auto frontObstacleHitbox=frontObstacleFrontObstacleHitbox[1];
+		auto destinationCovered=isInside(targetPosition,frontObstacleHitbox);
+		if(!destinationCovered&&(object.position.xy-targetPosition.xy).lengthsqr<225.0f){
+			static bool isCreature(int id,ObjectState!B state){
+				return state.movingObjectById!((ref obj,state)=>true,()=>false)(id,state);
+			}
+			static void bumpCheck(ProximityEntry entry,int ownId,int excludeId,bool* covered,ObjectState!B state){
+				if(*covered||entry.id==ownId||entry.id==excludeId) return;
+				if(isCreature(entry.id,state)) *covered=true;
+			}
+			if(isCreature(frontObstacle,state)){
+				bool covered=false;
+				Vector3f[2] targetBox=[targetPosition+Vector3f(0.0f,0.0f,-2.0f),targetPosition+Vector3f(0.0f,0.0f,1.0f)];
+				state.proximity.collide!bumpCheck(targetBox,object.id,targetId,&covered,state);
+				destinationCovered=covered;
+			}
+		}
+		if(nearPathEnd&&destinationCovered){
+			if(blockedAtDestination) *blockedAtDestination=true;
+			object.turnToFaceTowards(targetPosition,state,threshold);
+			object.stopMovement(state);
+			evading=true;
+			return true;
+		}
 		Vector2f[2] frontObstacleHitbox2d=[frontObstacleHitbox[0].xy,frontObstacleHitbox[1].xy];
 		auto frontObstacleDirection=-closestBoxFaceNormal(frontObstacleHitbox2d,object.position.xy);
 		auto facing=object.creatureState.facing;
@@ -12310,7 +12337,16 @@ bool moveTowards(B)(ref MovingObject!B object,Vector3f ultimateTargetPosition,fl
 bool moveTo(B)(ref MovingObject!B object,Vector3f targetPosition,float targetFacing,ObjectState!B state,bool evade=true,bool maintainHeight=false,bool stayAboveGround=true,int targetId=0,bool disablePathfinding=false){
 	auto distancesqr=(object.position.xy-targetPosition.xy).lengthsqr;
 	if(distancesqr>0.25f){
-		if(object.moveTowards(targetPosition,0.0f,state,evade,maintainHeight,stayAboveGround,targetId,disablePathfinding)) return false;
+		if(object.creatureAI.blockedDestination==targetPosition){
+			object.turnToFaceTowards(targetPosition,state);
+			object.stopMovement(state);
+			return false;
+		}
+		if(object.moveTowards(targetPosition,0.0f,state,evade,maintainHeight,stayAboveGround,targetId,disablePathfinding)){
+			object.creatureAI.blockedDestination=targetPosition;
+			return false;
+		}
+		object.creatureAI.blockedDestination=Vector3f.init;
 		return true;
 	}
 	return object.stop(targetFacing,state);
