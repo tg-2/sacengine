@@ -31161,17 +31161,31 @@ void placeStructure(B)(ObjectState!B state,ref Structure ntt){
 			}
 		}
 	}
-	state.buildingById!((ref Building!B building){
+	if(!state.buildingById!((ref Building!B building){
 		if(ntt.flags&Flags.damaged) building.health/=10.0f;
 		if(ntt.flags&Flags.destroyed) building.health=0.0f;
 		int bracket=0; // magnifryer fork, mfrb.SPEL
-		foreach(ref component;sacBuilding.components){
+		foreach(i,ref component;sacBuilding.components){
 			auto curObj=SacObject!B.getBLDG(ntt.flags&Flags.destroyed&&component.destroyed!="\0\0\0\0"?component.destroyed:component.tag);
 			auto offset=Vector3f(component.x,component.y,component.z);
 			offset=rotate(facingQuaternion(building.facing), offset);
 			auto cposition=position+offset;
-			if(!state.isOnGround(cposition)) continue;
-			cposition.z=state.getGroundHeight(cposition)+component.z;
+			if(!state.isOnGround(cposition)){
+				enum eps=1e-3f;
+				bool ok=false;
+				foreach(k;0..8){
+					auto dx=(k==0)-(k==1)+(k==4)+(k==5)-(k==6)-(k==7);
+					auto dy=(k==2)-(k==3)+(k==4)-(k==5)+(k==6)-(k==7);
+					auto ncposition=cposition+Vector3f(dx*eps,dy*eps,0.0f);
+					if(state.isOnGround(ncposition)){
+						cposition=ncposition;
+						ok=true;
+						break;
+					}
+				}
+				if(!ok) continue;
+			}
+			cposition.z=state.getHeight(cposition)+component.z;
 			auto rotation=facingQuaternion(2*pi!float/360.0f*(ntt.facing+component.facing));
 			auto componentId=state.addObject(StaticObject!B(curObj,building.id,cposition,rotation,1.0f,component.z==0.0f?0:StaticObjectFlags.hovering));
 			if(component.spell=="brfm") bracket=componentId;
@@ -31182,12 +31196,18 @@ void placeStructure(B)(ObjectState!B state,ref Structure ntt){
 			}
 			building.componentIds~=componentId;
 		}
+		if(!building.componentIds.length)
+			return false;
 		if(ntt.base){
 			enforce(ntt.base in state.triggers.objectIds);
 			state.buildingById!((ref manafount,state){ putOnManafount(building,manafount,state); },(){})(state.triggers.objectIds[ntt.base],state);
 		}
 		building.loopingSoundSetup(state);
-	},(){ assert(0); })(buildingId);
+		return true;
+	},()=>false)(buildingId)){
+		state.removeObject(buildingId);
+		buildingId=0;
+	}
 }
 
 void placeNTT(B,T)(ObjectState!B state,ref T ntt) if(is(T==Creature)||is(T==Wizard)){
