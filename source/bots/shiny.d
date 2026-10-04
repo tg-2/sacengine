@@ -1236,7 +1236,12 @@ void discover(B)(ref ShinyAI!B ai,ObjectState!B state){ // 0x484b30
 		}
 	})(state,ai);
 	state.eachBuilding!((ref Building!B b,ObjectState!B state,ShinyAI!B ai){
-		if(b.side!=ai.side&&state.sid.lastSeenTick(ai.side,b.id)<0) return;
+		if(b.side!=ai.side){
+			// thaum marks the structure ntt itself visible; sacengine marks the building's component static objects
+			bool seen=false;
+			foreach(cid;b.componentIds) if(state.sid.lastSeenTick(ai.side,cid)>=0){ seen=true; break; }
+			if(!seen) return;
+		}
 		discoverScan(ai,state,NodeKind.str,b.id);
 	})(state,ai);
 	state.eachSoul!((ref Soul!B s,ObjectState!B state,ShinyAI!B ai){
