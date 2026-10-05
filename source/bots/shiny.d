@@ -1962,6 +1962,15 @@ void replanCapture(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task){ /
 			else{ ai.records[ri].score=score; sortedInsert(ai,task,ri); }
 		}
 	}
+	// 0x48b3e0/0x48e0cb tail: decay claimed scores by sorted position (0.5^i), then normalize by the decayed sum (rec.score feeds 'ndrg' target scoring 0x489a20)
+	double capF=1.0, capSum=0.0; // f/sum stay on the fpu stack in the binaries; 0.5^i exact
+	for(int r=task.claimedHead;r;r=ai.records[r].claimedN){
+		auto rec=&ai.records[r];
+		rec.score=cast(float)(cast(double)rec.score*capF); // fmul st(2) (extended); f32 store (exact power-of-two scale)
+		capF*=0.5; // fmul dbl(0.5)
+		capSum+=cast(double)rec.score; // fadd the STORED f32 value, extended accumulation
+	}
+	normalizeScores(ai,task,cast(float)capSum); // fstp f32; 0x48a6f0/0x48d440
 }
 void replanGuard(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task){ // 0x48a8f0
 	clearClaimed(ai,task);
