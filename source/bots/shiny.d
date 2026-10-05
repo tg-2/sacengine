@@ -386,6 +386,7 @@ final class ShinyAI(B){
 	bool betaUnbuiltCaptureReq=false;   // CAPTURE::Replan status&0x8000 branch reqStatus: thaum 0x48b0a4 = 3 vs retail 0x48dcf7 = 2 (patch3 lets the wizard's status bit1 satisfy it)
 	bool betaGuardWizardExclude=false;  // GUARD::Assign member mask: thaum 0x48ad24 = status&1 (wizard 0x2000e excluded) vs retail 0x48d994 = status&3 (wizard joins guard records; claim 0x48a740/0x48d490 makes it the record leader via status&0x20000, recordUpdate members follow leader.extrapPos)
 	bool betaCaptureAggGuardians=false; // CAPTURE::Assign aggregate pass: thaum 0x48b50a aggregates ALL members; retail 0x48e21b skips guardian-bound ([ntt+0x5c8]!=0)
+	bool betaStanceU4Quirk=false;       // stance u[4] (influenceGroups divisor 0x485cfa, summon gate 0x48d941): thaum reset 0x484700 never clears it (grows forever, influence decays to 0); retail reset 0x48677e clears to 1 per updateStance
 	void setBetaPatchBots(bool beta){
 		betaMinManaSacu=beta;
 		betaManahoarRadius=beta;
@@ -401,6 +402,7 @@ final class ShinyAI(B){
 		betaUnbuiltCaptureReq=beta;
 		betaGuardWizardExclude=beta;
 		betaCaptureAggGuardians=beta;
+		betaStanceU4Quirk=beta;
 	}
 	// rater1 by-tag acc cache
 	enum numTagAccs=96;
@@ -1125,11 +1127,12 @@ void updateStats(B)(ref ShinyAI!B ai,ObjectState!B state){ // 0x484540
 	ai.allianceTeams=n;
 }
 void updateStance(B)(ref ShinyAI!B ai,ObjectState!B state,int dTicks){ // rec1 0x4847f0
-	// reset 0x484700: u[4],u[7..9] intentionally not reset (thaum quirk; u[4] accumulates forever)
+	// reset 0x484700/0x486660: u[7..9] not reset in either binary; u[4] thaum never resets (quirk), retail 0x48677e resets to 1
 	foreach(k;0..4){
 		auto rec=&ai.stanceRecs[k];
 		rec.acc.clear();
 		setI(*rec,0,0); setI(*rec,1,0); setI(*rec,2,1); setI(*rec,3,1); setI(*rec,5,0); setI(*rec,6,0);
+		if(!ai.betaStanceU4Quirk) setI(*rec,4,1); // retail 0x48677e
 	}
 	ai.enemyCount=0;
 	foreach(i,ref s;state.sides){ // both-direction enemy stances against living wizard sides
@@ -1877,7 +1880,7 @@ float influenceGroups(B)(ref ShinyAI!B ai,ObjectState!B state,int slot,Vector3f 
 		combine(*acc,1.0f,grp.acc,w);
 		soulsW+=w*cast(float)grp.soulsSum;
 	}
-	// divisor is fild of the never-reset u[4] accumulator (thaum quirk)
+	// divisor is fild of u[4] (0x485cfa/0x488a09): never reset in thaum (grows forever), reset to 1 per cycle in retail
 	return soulsW/cast(float)si(ai.stanceRecs[slot],4);
 }
 float nodeValueScore(B)(ref ShinyAI!B ai,ObjectState!B state,float f,int n){ // 0x48aee0 / retail twin 0x48db30
