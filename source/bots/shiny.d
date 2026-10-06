@@ -1686,16 +1686,43 @@ void formGroups4(B)(ref ShinyAI!B ai,ObjectState!B state,int k,int prio){ // 0x4
 }
 void fillGroup4(B)(ref ShinyAI!B ai,ObjectState!B state,int g,ref int head,ref int tail){ // 0x484f80
 	groupRefresh4(ai,state,g); // entry refresh
+	auto grp=&ai.groups4[g];
+	// incremental refresh state: while filling, members are only ever tail-appended, so the running
+	// sums below are bit-identical to re-running groupRefresh4's accumulation loop after each add
+	// (same member order, same float operations); avgVel/stddev/aggregates are not read by canAccept
+	// and are recomputed by the full refresh in formGroups4 once the group is complete
+	Vector3f centerSum=Vector3f(0.0f,0.0f,0.0f);
+	double countF=0.0;
+	for(int n=grp.memberHead;n;n=ai.nodes[n].grpN){
+		auto node=&ai.nodes[n];
+		if(node.status&1){ countF+=1.0; centerSum+=node.curPos; }
+	}
 	for(int n=head;n;){
-		if(!canAccept(ai,state,ai.groups4[g].count,ai.groups4[g].center,n)){ n=ai.nodes[n].grpN; continue; }
+		if(!canAccept(ai,state,grp.count,grp.center,n)){ n=ai.nodes[n].grpN; continue; }
 		auto node=&ai.nodes[n];
 		if(node.grpP) ai.nodes[node.grpP].grpN=node.grpN; else head=node.grpN;
 		if(node.grpN) ai.nodes[node.grpN].grpP=node.grpP; else tail=node.grpP;
 		node.grpP=node.grpN=0;
 		groupAddMember4(ai,g,n);
 		node.group=g;
-		fillGroup4(ai,state,g,head,tail); // recurse (re-refreshes, rescans from the head)
-		n=head;
+		if(nodeIsAlive(ai,state,n)){ // usual case: fold the new member into the refresh sums
+			grp.statusOR|=node.status;
+			if(node.status&1){
+				countF+=1.0;
+				centerSum+=node.curPos;
+				auto inv=1.0/countF;
+				grp.center=centerSum*cast(float)inv;
+			}
+		}else{ // rare: the recursive refresh would have pruned the dead member; replicate it exactly
+			groupRefresh4(ai,state,g);
+			centerSum=Vector3f(0.0f,0.0f,0.0f);
+			countF=0.0;
+			for(int m=grp.memberHead;m;m=ai.nodes[m].grpN){
+				auto mnode=&ai.nodes[m];
+				if(mnode.status&1){ countF+=1.0; centerSum+=mnode.curPos; }
+			}
+		}
+		n=head; // rescan from the head (same accept order as the recursion)
 	}
 }
 void formGroups5(B)(ref ShinyAI!B ai,ObjectState!B state,int k,int prio){ // 0x485020
@@ -1723,17 +1750,46 @@ void formGroups5(B)(ref ShinyAI!B ai,ObjectState!B state,int k,int prio){ // 0x4
 	}
 }
 void fillGroup5(B)(ref ShinyAI!B ai,ObjectState!B state,int g,ref int head,ref int tail){ // 0x4851e0 (no entry refresh)
+	auto grp=&ai.groups5[g];
+	// incremental refresh state, same argument as fillGroup4; no entry refresh here (thaum quirk):
+	// the first canAccept round still sees the group exactly as groupSetup5 left it (center (0,0,0))
+	Vector3f centerSum=Vector3f(0.0f,0.0f,0.0f);
+	double countF=0.0;
+	uint statusORSum=0; // shadow accumulator: grp.statusOR itself is only written on an accept
+	for(int n=grp.memberHead;n;n=ai.nodes[n].cgrpN){
+		auto node=&ai.nodes[n];
+		statusORSum|=node.status;
+		if(node.status&1){ countF+=1.0; centerSum+=node.curPos; }
+	}
 	for(int n=head;n;){
-		if(!canAccept(ai,state,ai.groups5[g].count,ai.groups5[g].center,n)){ n=ai.nodes[n].cgrpN; continue; }
+		if(!canAccept(ai,state,grp.count,grp.center,n)){ n=ai.nodes[n].cgrpN; continue; }
 		auto node=&ai.nodes[n];
 		if(node.cgrpP) ai.nodes[node.cgrpP].cgrpN=node.cgrpN; else head=node.cgrpN;
 		if(node.cgrpN) ai.nodes[node.cgrpN].cgrpP=node.cgrpP; else tail=node.cgrpP;
 		node.cgrpP=node.cgrpN=0;
 		creGroupAddMember5(ai,g,n);
 		node.cgroup=g;
-		groupRefresh5(ai,state,g); // refresh after each addMember
-		fillGroup5(ai,state,g,head,tail); // recurse, rescan from the head
-		n=head;
+		if(nodeIsAlive(ai,state,n)){ // usual case: fold the new member into the refresh sums
+			statusORSum|=node.status;
+			grp.statusOR=statusORSum;
+			if(node.status&1){
+				countF+=1.0;
+				centerSum+=node.curPos;
+				auto inv=1.0/countF;
+				grp.center=centerSum*cast(float)inv;
+			}
+		}else{ // rare: the refresh after each addMember would have pruned the dead member; replicate it
+			groupRefresh5(ai,state,g);
+			centerSum=Vector3f(0.0f,0.0f,0.0f);
+			countF=0.0;
+			statusORSum=0;
+			for(int m=grp.memberHead;m;m=ai.nodes[m].cgrpN){
+				auto mnode=&ai.nodes[m];
+				statusORSum|=mnode.status;
+				if(mnode.status&1){ countF+=1.0; centerSum+=mnode.curPos; }
+			}
+		}
+		n=head; // rescan from the head (same accept order as the recursion)
 	}
 }
 
