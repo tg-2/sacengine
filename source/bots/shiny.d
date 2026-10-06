@@ -344,6 +344,8 @@ final class ShinyAI(B){
 	// nodes ([0] = dummy)
 	Array!(AINode!B) nodes;
 	int nodeFree=0;
+	Array!int nodeById; // entity id -> node index, 0 = untracked (object ids are unique and never reused: ObjectManager.addObject); derived cache, excluded from serialization
+	int lastWizComponent=-1; // wizard pathfinder component; a change arms the one-shot discovery scan (forceFlags 0x20)
 	int idxHead=0, idxTail=0;
 	int[4] catHead, catTail;
 	int[4] fam1Head, fam1Tail;
@@ -447,7 +449,7 @@ void run(B)(ref ShinyAI!B ai,ObjectState!B state,int side,int dTicks){
 	if(ai.config&8) return;
 	ai.handledFlags=0;
 	static immutable int[6] periods=[12,60,6,6,60,12];
-	static immutable uint[6] masks=[0xe,0xf,1,1,0x1f,1];
+	static immutable uint[6] masks=[0xe,0xf,1,1,0x3f,1]; // k=4 mask includes 0x20: an armed discovery scan runs updateReplan early
 	static foreach(k;0..6){
 		if(ai.nextRun[k]<=ai.schedTime){
 			static if(shinyAILog) ailog("SLOT ",ai.side," t",ai.schedTime," k",k," scheduled forceFlags=",ai.forceFlags);
@@ -488,18 +490,34 @@ enum BotEvent{ // thaum event ids
 	addedToSide=15,       // SIDE::AddToSide
 	relationsChanged=16,  // side relations changed
 	spellListUpdated=19,  // WIZARD::UpdateSpellLists (level up/down)
+	sideChanged=20,       // sacengine extension: charm/rescue changed object.side (thaum has no event here; its SIDE bookkeeping covers it)
 }
 
 void notifyEvent(B)(ref ShinyAI!B ai,ObjectState!B state,NodeKind kind1,int id1,NodeKind kind2,int id2,int event){
 	switch(event) with(BotEvent){
 		case firstContactAlly,firstContactEnemy: ai.forceFlags|=3; break;
 		case death: removeNodeByEnt(ai,state,kind2,id2); break;
-		case revive:
-			if(entSide!B(state,kind2,id2)==ai.side&&shouldTrack(ai,state,kind1,id1)) ai.forceFlags|=7;
+		case revive: // broadcast to all AIs (thaum notifies the owner side only; foreign re-adds came from its seen-list walk, our ever-seen gate)
+			if(entSide!B(state,kind2,id2)==ai.side||state.sid.lastSeenTick(ai.side,id2)>=0)
+				addNode(ai,state,kind2,id2); // no-op if already tracked or untrackable
+			ai.forceFlags|=3; // was |=7: bit 4 (scanOwn) is obsolete, the entity is added directly
 			break;
 		case sacrifice,enemyNearBuilding,buildingDamaged: ai.forceFlags|=1; break;
 		case buildingDestroyed: ai.forceFlags|=3; break;
-		case addedToSide: if(shouldTrack(ai,state,kind1,id1)) ai.forceFlags|=7; break;
+		case addedToSide:
+			addNode(ai,state,kind1,id1); // direct add (was |=7: bit 4 prompted a full own-side rescan)
+			ai.forceFlags|=3;
+			break;
+		case sideChanged:
+			if(auto n=findNode(ai,kind1,id1)){
+				if(liveRelation(ai,state,n)!=categoryFromFlags(ai.nodes[n].flags)){
+					removeNode(ai,state,n);
+					addNode(ai,state,kind1,id1); // re-add under the new relation (shouldTrack-gated)
+				}
+			}else if(entSide!B(state,kind1,id1)==ai.side||state.sid.lastSeenTick(ai.side,id1)>=0)
+				addNode(ai,state,kind1,id1); // own acquisition, or foreign but ever-seen
+			ai.forceFlags|=3;
+			break;
 		case relationsChanged: ai.forceFlags|=0x13; break;
 		case spellListUpdated: if(auto n=findNode(ai,NodeKind.wiz,id1)) ai.nodes[n].spellDirty|=1; break;
 		default: break; // 3,4,5,7,8,14,17,18: thaum nops (damage pings, wizard run)
@@ -525,8 +543,13 @@ void botDeath(B)(ObjectState!B state,ref MovingObject!B o){ // thaum FSMEnterSta
 	foreach(side;0..cast(int)state.sid.sides.length)
 		if(auto ai=botFor!B(state,side)) notifyEvent(ai,state,NodeKind.none,0,botNodeKind(o),o.id,BotEvent.death);
 }
-void botRevive(B)(ObjectState!B state,ref MovingObject!B o){ // thaum 0x4000 falling (revive/convert-revive/unghost)
-	state.botEvent(o.side,BotEvent.revive,botNodeKind(o),o.id,botNodeKind(o),o.id);
+void botRevive(B)(ObjectState!B state,ref MovingObject!B o){ // thaum 0x4000 falling (revive/convert-revive/unghost); broadcast so ever-seen foreign AIs re-track without a scan
+	foreach(side;0..cast(int)state.sid.sides.length)
+		if(auto ai=botFor!B(state,side)) notifyEvent(ai,state,botNodeKind(o),o.id,botNodeKind(o),o.id,BotEvent.revive);
+}
+void botSideChanged(B)(ObjectState!B state,ref MovingObject!B o){ // charm/rescue: object.side changed (state.d wires the assignment sites)
+	foreach(side;0..cast(int)state.sid.sides.length)
+		if(auto ai=botFor!B(state,side)) notifyEvent(ai,state,botNodeKind(o),o.id,NodeKind.none,0,BotEvent.sideChanged);
 }
 void botSpawned(B)(ObjectState!B state,int id){ // thaum SIDE::AddToSide: MovingObject creation (souls excluded: thaum assigns soul ntts the neutral side record)
 	if(id<=0) return;
@@ -535,6 +558,10 @@ void botSpawned(B)(ObjectState!B state,int id){ // thaum SIDE::AddToSide: Moving
 }
 void botBuilt(B)(ObjectState!B state,int side,int id){ // thaum SIDE::AddToSide: building creation (wired in makeBuilding, after components are added)
 	state.botEvent(side,BotEvent.addedToSide,NodeKind.str,id);
+}
+void botSoulSpawned(B)(ObjectState!B state,int id){ // soul creation (ObjectState.addObject funnel): discover tracks souls ungated (no vision tracking), so notify every AI directly
+	foreach(side;0..cast(int)state.sid.sides.length)
+		if(auto ai=botFor!B(state,side)) notifyEvent(ai,state,NodeKind.cre,id,NodeKind.cre,id,BotEvent.addedToSide);
 }
 void botDamaged(B)(ObjectState!B state,ref Building!B b,float actualDamage){ // thaum LANDITEM::Damage (cond: damage>0)
 	if(actualDamage>0.0f) state.botEvent(b.side,BotEvent.buildingDamaged);
@@ -563,6 +590,26 @@ void botFirstContact(B)(ObjectState!B state,int side,int id){ // thaum SIDE::Mar
 		case Stance.ally: notifyEvent(ai,state,NodeKind.none,0,NodeKind.none,0,BotEvent.firstContactAlly); break;
 		case Stance.enemy: notifyEvent(ai,state,NodeKind.none,0,NodeKind.none,0,BotEvent.firstContactEnemy); break;
 		case Stance.neutral: break; // thaum sets the bit without firing an event
+	}
+}
+void botSeen(B)(ObjectState!B state,int side,int id,TargetType type){ // markAsVisibleImpl hook: a sighting adds the node directly (was discover's periodic ever-seen pickup)
+	auto ai=botFor!B(state,side);
+	if(ai is null) return;
+	if(0<id&&id<ai.nodeById.length&&ai.nodeById[id]) return; // already tracked: O(1) early-out (hot path)
+	switch(type) with(TargetType){
+		case creature:
+			auto sideKind=state.movingObjectById!((ref o)=>tuple(o.side,botNodeKind!B(o)),()=>tuple(-1,NodeKind.none))(id);
+			if(sideKind[0]<0||sideKind[0]==side) return; // own entities are tracked via spawn/side-change events
+			addNode(ai,state,sideKind[1],id);
+			break;
+		case building:
+			auto buildingId=state.staticObjectById!((ref o)=>o.buildingId,()=>0)(id); // marked ids are static components
+			if(buildingId==0&&state.buildingById!((ref b)=>true,()=>false)(id)) buildingId=id; // defensive: building id directly
+			if(buildingId==0) return;
+			if(state.buildingById!((ref b)=>b.side,()=>-1)(buildingId)==side) return;
+			addNode(ai,state,NodeKind.str,buildingId);
+			break;
+		default: break; // souls are not vision-tracked; added at spawn
 	}
 }
 void botScanBuilding(B)(ref Building!B b,ObjectState!B state){ // thaum LANDITEM::Run 0x466d60 event-11 scan: enemy within 100.0f (3D)
@@ -769,10 +816,19 @@ void freeNode(B)(ref ShinyAI!B ai,int n){
 	node.summons.length=0; node.spellAccs.length=0; node.castQueue.length=0;
 	node.idxN=ai.nodeFree; ai.nodeFree=n;
 }
-int findNode(B)(ref ShinyAI!B ai,NodeKind kind,int id){ // 0x483160
-	for(int n=ai.idxHead;n;n=ai.nodes[n].idxN)
-		if(ai.nodes[n].kind==kind&&ai.nodes[n].id==id) return n;
-	return 0;
+int findNode(B)(ref ShinyAI!B ai,NodeKind kind,int id){ // 0x483160; O(1) via the flat id->node map (object ids are unique and never reused)
+	if(id<=0||id>=ai.nodeById.length) return 0;
+	auto n=ai.nodeById[id];
+	return n&&ai.nodes[n].kind==kind?n:0;
+}
+void rebuildNodeById(B)(ref ShinyAI!B ai){ // after deserialization (the map is excluded from the stream)
+	ai.nodeById.length=0;
+	for(int n=ai.idxHead;n;n=ai.nodes[n].idxN){
+		auto id=ai.nodes[n].id;
+		if(id<=0) continue;
+		if(ai.nodeById.length<=id) ai.nodeById.length=id+1;
+		ai.nodeById[id]=n;
+	}
 }
 
 // ---- node setup (thaum vtbl[2]) ----
@@ -859,6 +915,8 @@ void setupStr(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int id,uint flags){ 
 // ---- add/remove ----
 
 int addNode(B)(ref ShinyAI!B ai,ObjectState!B state,NodeKind kind,int id){ // 0x483480
+	if(id<=0) return 0;
+	if(auto n=findNode(ai,kind,id)) return n; // already tracked (O(1))
 	if(!shouldTrack(ai,state,kind,id)) return 0;
 	auto n=allocNode(ai);
 	final switch(kind) with(NodeKind){
@@ -869,6 +927,8 @@ int addNode(B)(ref ShinyAI!B ai,ObjectState!B state,NodeKind kind,int id){ // 0x
 		case str: setupStr(ai,state,n,id,0); break;
 		case none: return 0;
 	}
+	if(ai.nodeById.length<=id) ai.nodeById.length=id+1;
+	ai.nodeById[id]=n;
 	final switch(kind) with(NodeKind){
 		case wiz,maho,t4o: famAppend(ai,ai.fam1Head,ai.fam1Tail,n); break;
 		case str: famAppend(ai,ai.fam2Head,ai.fam2Tail,n); break;
@@ -928,6 +988,7 @@ void removeNode(B)(ref ShinyAI!B ai,ObjectState!B state,int n){ // 0x483970
 	}
 	catUnlink(ai,n);
 	idxUnlink(ai,n);
+	if(node.id>0&&node.id<ai.nodeById.length&&ai.nodeById[node.id]==n) ai.nodeById[node.id]=0;
 	freeNode(ai,n);
 }
 void removeNodeByEnt(B)(ref ShinyAI!B ai,ObjectState!B state,NodeKind kind,int id){ // 0x483ad0
@@ -1041,16 +1102,29 @@ int liveRelation(B)(ref ShinyAI!B ai,ObjectState!B state,int n){ // 0x486c60
 }
 
 void updateStatus(B)(ref ShinyAI!B ai,ObjectState!B state,int dTicks){ // 0x484050
+	// shouldTrack gates on the wizard's pathfinder component; a component change (teleport/respawn) arms a one-shot
+	// discovery scan (0x20, consumed by discover) so out-of-region entities become trackable without a periodic scan
+	int wizComponent=-1;
+	if(auto wiz=state.getWizardForSide(ai.side))
+		wizComponent=state.pathFinder.getComponentId(entPos!B(state,NodeKind.wiz,wiz.id),state);
+	if(wizComponent!=ai.lastWizComponent){
+		ai.lastWizComponent=wizComponent;
+		ai.forceFlags|=0x20;
+	}
 	if(ai.forceFlags&0x10){ // recategorize: relations changed (thaum event 16, wired at setStance)
 		foreach(k;1..4)
 			for(int n=ai.catHead[k];n;){
 				auto nn=ai.nodes[n].catN;
-				if(liveRelation(ai,state,n)!=k) removeNode(ai,state,n);
+				if(liveRelation(ai,state,n)!=k){
+					auto kind=ai.nodes[n].kind, id=ai.nodes[n].id;
+					removeNode(ai,state,n);
+					addNode(ai,state,kind,id); // re-add under the new relation (was: periodic scan pickup)
+				}
 				n=nn;
 			}
 		ai.handledFlags|=0x10;
 	}
-	if(ai.forceFlags&4){ // own-side scan (thaum side buckets 4,1,0x10 via 0x48f490, cb 0x484160)
+	if(ai.forceFlags&4){ // own-side scan (thaum side buckets 4,1,0x10 via 0x48f490, cb 0x484160): setup only, bit 4 is never re-armed (spawn/revive/side-change events add directly)
 		scanOwn(ai,state);
 		ai.handledFlags|=4;
 	}
@@ -1066,29 +1140,20 @@ void updateStatus(B)(ref ShinyAI!B ai,ObjectState!B state,int dTicks){ // 0x4840
 void scanOwn(B)(ref ShinyAI!B ai,ObjectState!B state){
 	state.eachMoving!((ref MovingObject!B o,ObjectState!B state,ShinyAI!B ai){
 		if(o.side!=ai.side) return;
-		if(o.isWizard){
-			if(!findNode(ai,NodeKind.wiz,o.id)) addNode(ai,state,NodeKind.wiz,o.id);
-		}else{
-			auto k=o.sacObject.isManahoar?NodeKind.maho:NodeKind.t4o;
-			if(!findNode(ai,k,o.id)) addNode(ai,state,k,o.id);
-		}
+		addNode(ai,state,o.isWizard?NodeKind.wiz:o.sacObject.isManahoar?NodeKind.maho:NodeKind.t4o,o.id);
 	})(state,ai);
 	state.eachBuilding!((ref Building!B b,ObjectState!B state,ShinyAI!B ai){
 		if(b.side!=ai.side) return;
-		if(!findNode(ai,NodeKind.str,b.id)) addNode(ai,state,NodeKind.str,b.id);
+		addNode(ai,state,NodeKind.str,b.id);
 	})(state,ai);
 }
 void scanGlobal(B)(ref ShinyAI!B ai,ObjectState!B state){ // thaum ForEachNTT(0x15, cb 0x484190): add-if-unknown all structures, wizards and creatures map-wide
 	state.eachBuilding!((ref Building!B b,ObjectState!B state,ShinyAI!B ai){
-		if(!findNode(ai,NodeKind.str,b.id)) addNode(ai,state,NodeKind.str,b.id);
+		addNode(ai,state,NodeKind.str,b.id);
 	})(state,ai);
 	state.eachMoving!((ref MovingObject!B o,ObjectState!B state,ShinyAI!B ai){
-		if(o.isWizard){
-			if(!findNode(ai,NodeKind.wiz,o.id)) addNode(ai,state,NodeKind.wiz,o.id);
-		}else{ // thaum gates creatures on ntt+0x238&0x10 (0x4841a1), which is set at every creature spawn (0x459ce1): all creatures pass
-			auto k=o.sacObject.isManahoar?NodeKind.maho:NodeKind.t4o;
-			if(!findNode(ai,k,o.id)) addNode(ai,state,k,o.id);
-		}
+		// thaum gates creatures on ntt+0x238&0x10 (0x4841a1), which is set at every creature spawn (0x459ce1): all creatures pass
+		addNode(ai,state,o.isWizard?NodeKind.wiz:o.sacObject.isManahoar?NodeKind.maho:NodeKind.t4o,o.id);
 	})(state,ai);
 }
 void updateStats(B)(ref ShinyAI!B ai,ObjectState!B state){ // 0x484540
@@ -1220,16 +1285,14 @@ void updateReplan(B)(ref ShinyAI!B ai,ObjectState!B state,int dTicks){ // 0x4841
 	ai.handledFlags|=1;
 }
 void discoverScan(B)(ref ShinyAI!B ai,ObjectState!B state,NodeKind kind,int id){
-	if(!shouldTrack(ai,state,kind,id)) return;
-	auto n=findNode(ai,kind,id);
-	if(!n) n=addNode(ai,state,kind,id);
+	auto n=addNode(ai,state,kind,id); // idempotent, shouldTrack-gated
 	if(n){
 		ai.nodes[n].flags|=0x80;
 		ai.nodes[n].ageSeen=ai.nodes[n].age;
 	}
 }
-void discover(B)(ref ShinyAI!B ai,ObjectState!B state){ // 0x484b30
-	// phase 1: thaum walks the side's seen-ntt list ([side+0xc], records written by SIDE::MarkAsVisible 0x4723e0; lookup 0x490f20 chains [side+0xc] matching rec+0x8==ntt), so only foreign entities the side has seen are added; own entities are always known
+void discoverScanAll(B)(ref ShinyAI!B ai,ObjectState!B state){ // armed pickup scan (forceFlags 0x20): runs at setup and on wizard region changes only; was discover's phase 1, ran every 60 ticks
+	// thaum walks the side's seen-ntt list ([side+0xc], records written by SIDE::MarkAsVisible 0x4723e0; lookup 0x490f20 chains [side+0xc] matching rec+0x8==ntt), so only foreign entities the side has seen are added; own entities are always known
 	state.eachMoving!((ref MovingObject!B o,ObjectState!B state,ShinyAI!B ai){
 		if(o.side!=ai.side&&state.sid.lastSeenTick(ai.side,o.id)<0) return;
 		if(o.isWizard){
@@ -1251,7 +1314,25 @@ void discover(B)(ref ShinyAI!B ai,ObjectState!B state){ // 0x484b30
 	state.eachSoul!((ref Soul!B s,ObjectState!B state,ShinyAI!B ai){
 		discoverScan(ai,state,NodeKind.cre,s.id); // sacengine does not vision-track souls (no proximity entries), left ungated
 	})(state,ai);
+}
+bool nodeSeen(B)(ref ShinyAI!B ai,ObjectState!B state,NodeKind kind,int id){ // the phase-1 ever-seen filter, applied per tracked node
+	final switch(kind) with(NodeKind){
+		case wiz,t4o,maho: return state.sid.lastSeenTick(ai.side,id)>=0;
+		case str: return state.buildingById!((ref b,int side,ObjectState!B state){
+				foreach(cid;b.componentIds) if(state.sid.lastSeenTick(side,cid)>=0) return true;
+				return false;
+			},()=>false)(id,ai.side,state);
+		case cre: return true; // souls are not vision-tracked (no proximity entries), left ungated
+		case none: return false;
+	}
+}
+void discover(B)(ref ShinyAI!B ai,ObjectState!B state){ // 0x484b30
+	if(ai.forceFlags&0x20){ // one-shot pickup scan: setup / wizard region change (entities are otherwise added by events)
+		discoverScanAll(ai,state);
+		ai.handledFlags|=0x20;
+	}
 	// phase 2 (0x484bfd): non-own nodes only (node+0x3c&1 = own relation flag, test at 0x484c14); remove ghost wizards, eliminated wizards, stale unseen nodes
+	// the phase-1 ageSeen refresh for already-tracked nodes is folded into this sweep
 	for(int n=ai.idxHead;n;){
 		auto nn=ai.nodes[n].idxN;
 		auto node=&ai.nodes[n];
@@ -1262,7 +1343,13 @@ void discover(B)(ref ShinyAI!B ai,ObjectState!B state){ // 0x484b30
 				if(ws>=0&&state.sid.sides[ws].state!=SideState.playing) remove=true;
 				if(!remove&&entGhost!B(state,node.id)) remove=true; // 0x484c22: wiz ntt (ntt+0x4==1) with stateFlags&0x40000 -> removeNode 0x483970, no side test beyond the own-node skip
 			}
-			if(!remove&&(node.flags&0x80)&&cast(uint)node.ageSeen<cast(uint)node.age&&node.kind!=NodeKind.t4o&&node.kind!=NodeKind.maho) remove=true; // thaum 0x484c3d, retail 0x48721e: creatures (ntt+0x238&0x10) are exempt from the stale-seen removal
+			if(!remove){
+				if(nodeSeen(ai,state,node.kind,node.id)&&shouldTrack(ai,state,node.kind,node.id)){
+					node.flags|=0x80;
+					node.ageSeen=node.age;
+				}else if((node.flags&0x80)&&cast(uint)node.ageSeen<cast(uint)node.age&&node.kind!=NodeKind.t4o&&node.kind!=NodeKind.maho)
+					remove=true; // thaum 0x484c3d, retail 0x48721e: creatures (ntt+0x238&0x10) are exempt from the stale-seen removal
+			}
 			if(remove) removeNode(ai,state,n);
 		}
 		n=nn;

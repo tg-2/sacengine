@@ -14808,6 +14808,7 @@ bool rescuedBy(B)(ref MovingObject!B object,int side,ObjectState!B state){
 	object.removeFromGroups(state);
 	object.side=side;
 	object.creatureStats.flags&=~Flags.rescuable;
+	state.botSideChanged(object);
 	playSoundTypeAt(object.sacObject,object.id,SoundType.rescued,state);
 	return true;
 }
@@ -21877,6 +21878,7 @@ bool charm(B)(int target,int wizard,int side,ObjectState!B state){
 		auto ord=Order(CommandType.retreat,OrderTarget(TargetType.creature,wizard,obj.position));
 		obj.order(ord,state,side);
 		*hitbox=obj.hitbox;
+		state.botSideChanged(obj);
 		return true;
 	},()=>false)(target,wizard,side,state,&hitbox))
 		return false;
@@ -29351,6 +29353,7 @@ final class ObjectState(B){ // (update logic)
 	int addObject(T)(T object) if(is(T==MovingObject!B)||is(T==StaticObject!B)||is(T==Soul!B)||is(T==Building!B)){
 		auto id=obj.addObject(move(object));
 		static if(is(T==MovingObject!B)) this.botSpawned(id);
+		static if(is(T==Soul!B)) this.botSoulSpawned(id);
 		return id;
 	}
 	void removeObject(int id)in{
@@ -29586,6 +29589,7 @@ final class ObjectState(B){ // (update logic)
 		auto type=targetTypeFromId(id);
 		sid.mark(side,id,type==TargetType.building||type==TargetType.soul?frame+1000000:frame);
 		this.botFirstContact(side,id);
+		this.botSeen(side,id,type);
 		if(type!=TargetType.creature||!(0<=side&&side<sid.sides.length)) return;
 		auto enemyData=this.movingObjectById!((ref obj)=>tuple(obj.side,obj.isWizard||0.0f<obj.meleeStrength),()=>tuple(-1,false))(id);
 		auto enemySide=enemyData[0],enemyDangerous=enemyData[1];

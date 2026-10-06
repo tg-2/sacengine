@@ -1071,14 +1071,16 @@ void serialize(alias sink,B)(ref AIRecord!B record){ serializeStruct!sink(record
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==AIRecord!B)){ deserializeStruct(result,state,data); }
 void serialize(alias sink,B)(ShinyAI!B ai){
 	serialize!sink(ai !is null);
-	if(ai !is null) serializeClass!sink(ai);
+	if(ai !is null) serializeClass!(sink,["nodeById","lastWizComponent"])(ai); // nodeById is a derived cache (rebuilt on load), lastWizComponent re-arms on its own
 }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ShinyAI!B)){
 	bool nonNull=false;
 	deserialize(nonNull,state,data);
 	if(nonNull){
 		if(result is null) result=new ShinyAI!B;
-		deserializeClass(result,state,data);
+		deserializeClass!(["nodeById","lastWizComponent"])(result,state,data);
+		rebuildNodeById(result);
+		result.lastWizComponent=-1; // arm a one-shot discovery scan after load
 	}else result=null;
 }
 
