@@ -23510,7 +23510,8 @@ bool updatePoison(B)(ref Poison poison,ObjectState!B state){
 			obj.creatureStats.effects.poisonDamage-=cast(int)poison.poisonDamage;
 			obj.creatureStats.effects.poisonResistance-=poison.resistanceDebuff;
 			obj.creatureStats.effects.poisonAccuracy-=poison.accuracyDebuff;
-			obj.creatureStats.effects.poisonRegeneration/=poison.regenerationFactor;
+			if(poison.regenerationFactor!=0.0f) // (updateEffects rebuilds the product; TODO: this is a bit hacky)
+				obj.creatureStats.effects.poisonRegeneration/=poison.regenerationFactor;
 			if(obj.creatureStats.effects.poisonDamage==0) obj.creatureStats.effects.poisonRegeneration=1.0f;
 			return false;
 		}
@@ -26050,6 +26051,17 @@ bool updateFallingLandChunk(B)(ref FallingLandChunk chunk,ObjectState!B state){
 	}
 }
 
+void restorePoisonRegeneration(B)(ref Effects!B effects,int removed,int creature,ObjectState!B state){
+	float regeneration=1.0f;
+	foreach(i;0..effects.poisons.length){ // TODO: make faster?
+		if(cast(int)i==removed) continue;
+		auto poison=&effects.poisons[i];
+		if(poison.creature!=creature) continue;
+		regeneration*=poison.regenerationFactor;
+	}
+	state.movingObjectById!((ref obj,regeneration,state){ obj.creatureStats.effects.poisonRegeneration=regeneration; },(){})(creature,regeneration,state);
+}
+
 void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.debris.length;){
 		if(!updateDebris(effects.debris[i],state)){
@@ -27125,6 +27137,7 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.poisons.length;){
 		auto poison=effects.poisons[i];
 		if(!updatePoison(poison,state)){ // careful: may append to poisons
+			if(poison.regenerationFactor==0.0f) restorePoisonRegeneration(effects,i,poison.creature,state);
 			effects.removePoison(i);
 			continue;
 		}else effects.poisons[i]=poison;
