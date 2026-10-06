@@ -479,8 +479,8 @@ void scheduler(int k,B)(ref ShinyAI!B ai,ObjectState!B state,int dTicks){
 enum BotEvent{ // thaum event ids
 	firstContactAlly=1,   // SIDE::MarkAsVisible: ally-owned creature/wizard revealed (one-shot per owner side)
 	firstContactEnemy=2,  // SIDE::MarkAsVisible: enemy-owned creature/wizard revealed (one-shot per owner side)
-	death=6,              // FSMEnterState, 0x4000 rising (entered death state)
-	revive=9,             // 0x4000 falling (revive/convert-revive/unghost)
+	death=6,              // FSMEnterState, 0x4000 rising (entered death or SDOC carry state); broadcast to all AIs
+	revive=9,             // 0x4000 falling (revive/convert-revive/unghost/thrash drop)
 	sacrifice=10,         // LANDITEM::Sacrifice (victim owned, != altar owner)
 	enemyNearBuilding=11, // LANDITEM::Run + nearbywizardcallback 0x466d00 (enemy wizard within 100.0f)
 	buildingDamaged=12,   // LANDITEM::Damage (damage>0)
@@ -521,8 +521,9 @@ void botEvent(B)(ObjectState!B state,int side,int event,NodeKind kind1=NodeKind.
 
 // ---- event call sites: state.d wires each thaum event source with a single call ----
 
-void botDeath(B)(ObjectState!B state,ref MovingObject!B o){ // thaum FSMEnterState, 0x4000 rising (kill/gib)
-	state.botEvent(o.side,BotEvent.death,NodeKind.none,0,botNodeKind(o),o.id);
+void botDeath(B)(ObjectState!B state,ref MovingObject!B o){ // thaum FSMEnterState, 0x4000 rising (death/SDOC carry states): CREATURE::NotifyEvent event 6 to own side plus 0x453b20 (retail 0x4529e0) broadcast flags=0xf -> AI::DeleteNTT vt[0x10] (0x483ad0/0x4852d0) on EVERY side's AI
+	foreach(side;0..cast(int)state.sid.sides.length)
+		if(auto ai=botFor!B(state,side)) notifyEvent(ai,state,NodeKind.none,0,botNodeKind(o),o.id,BotEvent.death);
 }
 void botRevive(B)(ObjectState!B state,ref MovingObject!B o){ // thaum 0x4000 falling (revive/convert-revive/unghost)
 	state.botEvent(o.side,BotEvent.revive,botNodeKind(o),o.id,botNodeKind(o),o.id);

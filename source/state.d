@@ -10095,6 +10095,7 @@ bool startThrashing(B)(ref MovingObject!B object,ObjectState!B state){
 	object.setCreatureState(state);
 	object.unselect(state);
 	object.removeFromGroups(state);
+	state.botDeath(object);
 	return true;
 }
 bool freeCreature(B)(ref MovingObject!B object,Vector3f landingPosition,ObjectState!B state){
@@ -10109,6 +10110,7 @@ bool freeCreature(B)(ref MovingObject!B object,Vector3f landingPosition,ObjectSt
 	if(isNaN(landingPosition.x)) object.creatureState.fallingVelocity=Vector3f(0.0f,0.0f,0.0f);
 	else object.creatureState.fallingVelocity=getFallingVelocity(landingPosition-object.position,5.0f,state);
 	object.setCreatureState(state);
+	state.botRevive(object);
 	return true;
 }
 
