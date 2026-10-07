@@ -7,6 +7,7 @@ import std.datetime.stopwatch, std.conv;
 import core.time;
 import util: Array;
 import state, network, recording_;
+import frameprof;
 
 struct GameTimer{
 	Duration offset;
@@ -468,6 +469,7 @@ final class Controller(B){
 		}
 		playAudio=oldPlayAudio;
 		int numSteps=0;
+		auto fpSw=frameprof.timer();
 		while(state.currentFrame<currentFrame){
 			state.step();
 			if(playback){
@@ -479,6 +481,7 @@ final class Controller(B){
 			}
 			numSteps+=1;
 		}
+		frameprof.reportCatchUp(state.currentFrame,numSteps,fpSw.peek);
 		if(network){
 			playAudio=false;
 			updateCommitted(1+2*numSteps);

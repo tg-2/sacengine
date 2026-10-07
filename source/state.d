@@ -7,6 +7,7 @@ import std.exception, std.stdio, std.conv;
 import dlib.math, dlib.math.portable, dlib.image.color;
 import std.typecons;
 import util, options: GameMode, SpellSpec;
+import frameprof;
 import sids, trig, ntts, nttData, bldg, sset;
 import sacmap, sacobject, animations, sacspell;
 import stats;
@@ -728,6 +729,8 @@ class PathFinder(B){
 	void updateEdges(SacMap!B map,uint hash){
 		if(edgeChangesHash==hash) return;
 		edgeChangesHash=hash;
+		auto sw=frameprof.timer();
+		scope(exit) frameprof.countEdgeUpdate(sw.peek);
 		foreach(x;0..xlen){
 			foreach(y;0..ylen){
 				free[x][y]=isFree(x,y,map.edges);
@@ -828,6 +831,8 @@ class PathFinder(B){
 	}
 	Heap!Entry heap;
 	bool findPath(ref Array!Vector3f path,Vector3f start,Vector3f end,float radius,ObjectState!B state){
+		auto fpSw=frameprof.timer();
+		scope(exit) frameprof.countFindPath(fpSw.peek);
 		if(path.length){ // check validity of existing path
 			if((path.back-start).lengthsqr<8.0f*directWalkDistance^^2){
 				bool ok=true;
@@ -29265,22 +29270,34 @@ final class ObjectState(B){ // (update logic)
 			//cachedState=null;
 		}+/
 		frame+=1;
+		frameprof.beginStep();
 		proximity.start();
 		sid.startVision();
+		frameprof.mark("visionSweep");
 		pathFinder.updateBlocked(this);
+		frameprof.mark("updateBlocked");
 		dangerGrid.start();
 		this.eachEffects!paintDangerGrid(this);
+		frameprof.mark("dangerGrid");
 		trig.beginTriggers(this);
+		frameprof.mark("beginTriggers");
 		this.eachByType!(addToProximity,EachByTypeFlags.none)(this);
 		addVinesToProximity(this);
+		frameprof.mark("proximity+vision");
 		this.eachEffects!updateEffects(this);
+		frameprof.mark("effects");
 		this.eachParticles!updateParticles(this);
+		frameprof.mark("particles");
 		this.eachCommandCones!updateCommandCones(this);
 		this.eachHighlights!updateHighlights(this);
+		frameprof.mark("cones+highlights");
 		foreach(command;frameCommands)
 			applyCommand(command);
+		frameprof.mark("commands");
 		updateBots(this);
+		frameprof.mark("bots");
 		this.eachStatic!updateStructure(this);
+		frameprof.mark("structures");
 		this.eachMoving!((ref obj,state){
 			obj.updateCreature(state);
 			obj.countNTT(state);
@@ -29289,19 +29306,25 @@ final class ObjectState(B){ // (update logic)
 			this.movingObjectById!((ref obj){ obj.creatureAI.isOnAIQueue=false; },(){})(q.front);
 			q.popFront();
 		}
+		frameprof.mark("creatures");
 		this.eachSoul!updateSoul(this);
+		frameprof.mark("souls");
 		this.eachBuilding!((ref obj,state){
 			obj.updateBuilding(state);
 			obj.countNTT(state);
 		})(this);
+		frameprof.mark("buildings");
 		this.eachWizard!((ref wiz,state){
 			wiz.updateWizard(state);
 			wiz.countWizard(state);
 		})(this);
+		frameprof.mark("wizards");
 		this.performRenderModeUpdates();
 		this.performRemovals();
+		frameprof.mark("removals");
 		trig.endTriggers(this);
 		proximity.end();
+		frameprof.endStep(frame);
 	}
 	ObjectManager!B obj;
 	struct Settings{

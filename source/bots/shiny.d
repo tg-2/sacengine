@@ -457,7 +457,12 @@ void updateBots(B)(ObjectState!B state){
 }
 
 void run(B)(ref ShinyAI!B ai,ObjectState!B state,int side,int dTicks){
-	if(!ai.initialized) ai.setup(state,side);
+	import frameprof;
+	if(!ai.initialized){
+		frameprof.beginBotSlot();
+		ai.setup(state,side);
+		frameprof.endBotSlot(side,-1);
+	}
 	if(ai.config&8) return;
 	ai.handledFlags=0;
 	static immutable int[6] periods=[12,60,6,6,60,12];
@@ -465,11 +470,15 @@ void run(B)(ref ShinyAI!B ai,ObjectState!B state,int side,int dTicks){
 	static foreach(k;0..6){
 		if(ai.nextRun[k]<=ai.schedTime){
 			static if(shinyAILog) ailog("SLOT ",ai.side," t",ai.schedTime," k",k," scheduled forceFlags=",ai.forceFlags);
+			frameprof.beginBotSlot();
 			ai.scheduler!k(state,dTicks);
+			frameprof.endBotSlot(side,k);
 			ai.nextRun[k]+=periods[k];
 		}else if(ai.forceFlags&masks[k]){
 			static if(shinyAILog) ailog("SLOT ",ai.side," t",ai.schedTime," k",k," forced forceFlags=",ai.forceFlags);
+			frameprof.beginBotSlot();
 			ai.scheduler!k(state,dTicks);
+			frameprof.endBotSlot(side,k);
 		}
 	}
 	static if(shinyAILog) if(ai.handledFlags) ailog("SLOT ",ai.side," t",ai.schedTime," handled=",ai.handledFlags," force->",cast(int)(ai.forceFlags&~ai.handledFlags));
@@ -1294,16 +1303,29 @@ void updateGroups(B)(ref ShinyAI!B ai,ObjectState!B state,int dTicks){ // 0x483f
 			groupRefresh4(ai,state,g);
 }
 void updateReplan(B)(ref ShinyAI!B ai,ObjectState!B state,int dTicks){ // 0x4841c0
+	import frameprof;
+	frameprof.beginReplanPhase("discover");
 	discover(ai,state); // 0x484b30
+	frameprof.endReplanPhase("discover");
+	frameprof.beginReplanPhase("recycle");
 	recycleGroups(ai);  // 0x4830a0
+	frameprof.endReplanPhase("recycle");
 	static immutable int[4] prio=[1,2,0,4];
 	foreach(k;0..4){
+		frameprof.beginReplanPhase("sort");
 		sortFam1(ai,k);
+		frameprof.endReplanPhase("sort");
+		frameprof.beginReplanPhase("form4");
 		formGroups4(ai,state,k,prio[k]); // 0x484d60
+		frameprof.endReplanPhase("form4");
+		frameprof.beginReplanPhase("form5");
 		formGroups5(ai,state,k,prio[k]); // 0x485020
+		frameprof.endReplanPhase("form5");
 	}
 	replanTasks(ai,state);  // 0x485260
+	frameprof.beginReplanPhase("claim");
 	claimPass(ai,state);    // 0x484c70
+	frameprof.endReplanPhase("claim");
 	ai.handledFlags|=1;
 }
 void discoverScan(B)(ref ShinyAI!B ai,ObjectState!B state,NodeKind kind,int id){
@@ -2063,15 +2085,29 @@ float nodeValueScore(B)(ref ShinyAI!B ai,ObjectState!B state,float f,int n){ // 
 // ---- task replans ----
 
 void replanTasks(B)(ref ShinyAI!B ai,ObjectState!B state){ // 0x485260
+	import frameprof;
 	foreach(ref task; ai.tasks){
 		final switch(cast(TaskKind)task.kind) with(TaskKind){
-			case capture: replanCapture(ai,state,task); break;
-			case guard: replanGuard(ai,state,task); break;
-			case idle: replanIdle(ai,state,task); break;
+			case capture:
+				frameprof.beginReplanPhase("capture");
+				replanCapture(ai,state,task);
+				frameprof.endReplanPhase("capture");
+				break;
+			case guard:
+				frameprof.beginReplanPhase("guard");
+				replanGuard(ai,state,task);
+				frameprof.endReplanPhase("guard");
+				break;
+			case idle:
+				frameprof.beginReplanPhase("idle");
+				replanIdle(ai,state,task);
+				frameprof.endReplanPhase("idle");
+				break;
 		}
 	}
 }
 void replanCapture(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task){ // 0x48afa0
+	import frameprof;
 	clearClaimed(ai,task);
 	// retail 0x48dc04: divisor A = own+ally manaliths ([statArray+0x40]+[+0x14]); thaum 0x48afb4: own only
 	auto A=si(ai.stanceRecs[0],5)+(ai.betaCaptureTerritory?0:si(ai.stanceRecs[1],5)), Bv=si(ai.stanceRecs[3],5), E=ai.neutralManafounts;
@@ -2093,13 +2129,17 @@ void replanCapture(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task){ /
 			uint flags; float s1; float s2;
 			if(node.status&0x8000){
 				flags=ai.betaUnbuiltCaptureReq?3:2; // thaum 0x48b0a4 = 3; retail 0x48dcf7 = 2 (wizard status bit1 alone satisfies -> wizard-only capture claims when no aggressive creature is claimable)
+				frameprof.beginReplanPhase("nvs");
 				s1=nodeValueScore(ai,state,f1,n);
+				frameprof.endReplanPhase("nvs");
 				s2=cast(float)((1.0-cast(double)ai.aggression)*0.8+0.2);
 			}else if(edi==3&&(node.flags&0x20)&&(node.status&0x4000||((node.status&0x40000)&&!(node.flags&0x200)))){
 				// retail 0x48dd43: no own/ally structure support (0x488d70 score 0) -> reject while own+ally manaliths exist (jg on A), else proceed anyway
 				if(!ai.betaCaptureTerritory&&territorialScore!B(ai,state,node.curPos,n)==0.0f&&A>0) continue;
 				flags=1;
+				frameprof.beginReplanPhase("nvs");
 				s1=cast(float)(cast(double)nodeValueScore(ai,state,f2>f1?f2:f1,n)*0.99)*ai.aggression;
+				frameprof.endReplanPhase("nvs");
 				s2=cast(float)((1.0-cast(double)ai.aggression)*0.9+0.1);
 			}else if(edi==3&&(node.flags&0x10)&&(node.status&0x08)){
 				s1=(desecrationOngoing!B(state,node.id)?1.0f:probOr(ai,state,node.curPos,0,0x20,10.0f,180.0f,n))*ai.aggression; // 0x48b185: 'ucas' attach overwrites s1 with 1.0f before the aggression scale
@@ -2125,7 +2165,9 @@ void replanCapture(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task){ /
 			recordSetup(ai,state,ri,n,2);
 			ai.records[ri].reqStatus=flags;
 			if(hasAcc(ai,n)) combine(ai.records[ri].targetAcc,1.0f,node.acc,1.0f);
+			frameprof.beginReplanPhase("infl");
 			auto s3=1.0f-influenceGroups(ai,state,3,ai.records[ri].anchor,10.0f,140.0f,&ai.records[ri].targetAcc);
+			frameprof.endReplanPhase("infl");
 			auto score=lerp(s1,s2,s3);
 			if(score==0.0f){ recordRelease(ai,ri); freePush(ai,task,ri); }
 			else{ ai.records[ri].score=score; sortedInsert(ai,task,ri); }
@@ -2142,6 +2184,7 @@ void replanCapture(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task){ /
 	normalizeScores(ai,task,cast(float)capSum); // fstp f32; 0x48a6f0/0x48d440
 }
 void replanGuard(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task){ // 0x48a8f0
+	import frameprof;
 	clearClaimed(ai,task);
 	float total=0.0f;
 	for(int n=ai.catHead[0];n;n=ai.nodes[n].catN){
@@ -2162,7 +2205,9 @@ void replanGuard(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task){ // 
 		}
 		auto ri=allocRecord(ai,task);
 		recordSetup(ai,state,ri,n,0);
+		frameprof.beginReplanPhase("infl");
 		auto s3=influenceGroups(ai,state,3,ai.records[ri].anchor,10.0f,3620.0f,&ai.records[ri].targetAcc); // 0x48ab07/0x48d777: 0x45624000
+		frameprof.endReplanPhase("infl");
 		auto fin=lerp(score,0.6f,s3);
 		if(fin==0.0f){ recordRelease(ai,ri); freePush(ai,task,ri); }
 		else{

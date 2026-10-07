@@ -13,6 +13,7 @@ import lobby;
 import sacobject, sacspell, mrmm, nttData, sacmap, levl, state, form, sacform, controller, network;
 import sxsk : gpuSkinning;
 import renderer,audioBackend;
+import frameprof;
 
 final class SacScene: Scene{
 	//OBJAsset aOBJ;
@@ -179,6 +180,7 @@ final class SacScene: Scene{
 
 
 	override void renderShadowCastingEntities3D(RenderingContext* rc){
+		scope(exit) frameprof.markRender("shadow");
 		super.renderShadowCastingEntities3D(rc);
 		if(!state) return;
 		typeof(renderer).R3DOpt r3dopt={enableWidgets: options.enableWidgets};
@@ -186,6 +188,7 @@ final class SacScene: Scene{
 	}
 
 	override void renderOpaqueEntities3D(RenderingContext* rc){
+		scope(exit) frameprof.markRender("opaque");
 		if(options.testRenderDelay){
 			static bool delayed=false;
 			if(!delayed){
@@ -200,12 +203,14 @@ final class SacScene: Scene{
 		renderer.renderOpaqueEntities3D(r3dopt,state.current,info,rc);
 	}
 	override void renderTransparentEntities3D(RenderingContext* rc){
+		scope(exit) frameprof.markRender("transparent");
 		super.renderTransparentEntities3D(rc);
 		if(!state) return;
 		typeof(renderer).R3DOpt r3dopt={enableWidgets: options.enableWidgets};
 		renderer.renderTransparentEntities3D(r3dopt,state.current,info,rc);
 	}
 	override void renderEntities2D(RenderingContext* rc){
+		scope(exit) frameprof.markRender("hud");
 		super.renderEntities2D(rc);
 		updateMouse();
 		typeof(renderer).R2DOpt r2dopt={cursorSize: options.cursorSize};
@@ -1770,6 +1775,8 @@ final class SacScene: Scene{
 
 	bool gameEnded=false;
 	override void onUpdate(Duration dt){
+		auto fpSw=frameprof.timer();
+		scope(exit) frameprof.reportRenderedFrame(dt,fpSw.peek);
 		//writeln(DagonBackend.getTotalGPUMemory()," ",DagonBackend.getAvailableGPUMemory());
 		//writeln(eventManager.fps);
 		if(!mouse.menuMode){
@@ -2143,7 +2150,13 @@ class SacApplication: SceneApplication{
 		scene.update(dt);
 	}
 	override void onRender(){
+		frameprof.beginRenderFrame();
+		scope(exit) frameprof.markRender("scene");
 		scene.render();
+	}
+	override void endRender(){
+		scope(exit) frameprof.markRender("swap");
+		super.endRender();
 	}
 }
 

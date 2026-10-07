@@ -188,6 +188,15 @@ int applySettings(string[] args,ref Options options){
 			if(opt.startsWith("--logCore=")){
 			   options.logCore=to!int(opt["--logCore=".length..$]);
 			}else options.logCore=120;
+		}else if(opt.startsWith("--log-frame-spikes")){
+			import frameprof;
+			if(opt.startsWith("--log-frame-spikes=")){
+				try frameprof.enable(to!double(opt["--log-frame-spikes=".length..$]));
+				catch(Exception e){
+					stderr.writefln!"error: invalid frame spike threshold '%s'"(opt["--log-frame-spikes=".length..$]);
+					return 1;
+				}
+			}else frameprof.enable();
 		}else if(opt.startsWith("--export-frame=")){
 			options.exportFrame=to!int(opt["--export-frame=".length..$]);
 		}else if(opt.startsWith("--export-folder=")){
