@@ -192,12 +192,24 @@ void clear(ref RaterAcc acc){
 	acc.rating[]=0;
 	acc.cachedRate=0.0f;
 }
+// network determinism: invalid float divisions (0.0/0.0, inf/inf) produce a NaN whose bit pattern
+// depends on the architecture (x86 0xffc00000, arm 0x7fc00000) and desynchs network games.
+// safediv canonicalizes a NaN result to the portable float.init/double.init pattern;
+// every non-NaN result (including infinities) is bit-identical to a plain division.
+float safediv(float a,float b){
+	auto r=a/b;
+	return r!=r?float.init:r;
+}
+double safediv(double a,double b){
+	auto r=a/b;
+	return r!=r?double.init:r;
+}
 void combine(ref RaterAcc a,float wA,ref RaterAcc b,float wB){ // 0x4891e0
 	foreach(i;0..5) a.rating[i]=cast(float)(cast(double)wB*b.rating[i]+cast(double)wA*a.rating[i]);
 }
 void divide(ref RaterAcc acc,float w){ // elements 0..3 only
 	if(w==0.0f) return;
-	foreach(i;0..4) acc.rating[i]=cast(float)(acc.rating[i]/cast(double)w);
+	foreach(i;0..4) acc.rating[i]=cast(float)safediv(cast(double)acc.rating[i],cast(double)w);
 }
 float rate(ref RaterAcc acc){ // 0x488a60
 	double r=(cast(double)acc.rating[3]+acc.rating[2])*0.5f;
@@ -231,7 +243,7 @@ TypeStats typeStats(B)(SacObject!B so){ return typeStats(so.cre8,so.wizd); }
 void abilityAcc(ref RaterAcc acc,immutable(Spel)* spel,double unk10f,double rangedAccf,double manaf,double flyf){
 	double t1=unk10f*kMilli*spel.amount2;
 	double k=rangedAccf*(flyf!=0.0f?kInvFly:kMilli)*spel.range;
-	double f=manaf>cast(double)spel.manaCost?spel.manaCost/manaf:1.0f;
+	double f=manaf>cast(double)spel.manaCost?safediv(cast(double)spel.manaCost,manaf):1.0f;
 	acc.rating[1]=cast(float)(acc.rating[1]+t1*(k*(1.0-f))*kAbi);
 }
 
@@ -241,10 +253,10 @@ void fillStats(ref RaterAcc acc,TypeStats ts){
 	float unk11K=cast(float)(ts.unk11*kMilli);
 	double p1=cast(double)unk11K*ts.health*((ts.regen+2.0*ts.drain)*kMilli);
 	float p1f=cast(float)p1;
-	double r2=1000.0/(ts.meleeRes==0?1.0:cast(double)ts.meleeRes)*p1f;
+	double r2=safediv(1000.0,ts.meleeRes==0?1.0:cast(double)ts.meleeRes)*p1f;
 	if(ts.fly>0) r2*=4.0;
 	acc.rating[2]=cast(float)r2;
-	acc.rating[3]=cast(float)(1000.0/(ts.dRangedRes==0?1.0:cast(double)ts.dRangedRes)*p1f);
+	acc.rating[3]=cast(float)(safediv(1000.0,ts.dRangedRes==0?1.0:cast(double)ts.dRangedRes)*p1f);
 	float runF=ts.run, flyF=ts.fly;
 	acc.rating[4]=cast(float)(cast(double)(runF<flyF?flyF:runF)*kMilli);
 }
@@ -289,7 +301,7 @@ void fillFromObject(B)(ref RaterAcc acc,SacObject!B so,int curMana,Spellbook!B* 
 		auto spel=s.spel;
 		if(!(cast(uint)spel.flags1&0xfc00)) continue;
 		double t=cast(double)spel.amount2*spel.range;
-		double f=manaF>cast(double)spel.manaCost?spel.manaCost/manaF:1.0f;
+		double f=manaF>cast(double)spel.manaCost?safediv(cast(float)spel.manaCost,manaF):1.0f;
 		t*=(1.0-f);
 		t*=kAbi;
 		acc.rating[1]=cast(float)(acc.rating[1]+t);
@@ -1007,7 +1019,11 @@ void updateBase(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int dt){ // 0x486b
 	auto p=entPos!B(state,node.kind,node.id);
 	node.curPos=p;
 	node.velocity=p-node.prevPos;
-	if(dt!=0) node.velocity=node.velocity/cast(float)dt;
+	if(dt!=0){
+		node.velocity.x=safediv(node.velocity.x,cast(float)dt);
+		node.velocity.y=safediv(node.velocity.y,cast(float)dt);
+		node.velocity.z=safediv(node.velocity.z,cast(float)dt);
+	}
 	node.prevPos=p;
 	node.extrapPos=p;
 	node.extrapPos+=node.velocity;
@@ -1045,7 +1061,7 @@ void updateWiz(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int dt){ // 0x48dd7
 		influenceGroups(ai,state,1,node.extrapPos,10.0f,280.0f,&acc1);
 		influenceGroups(ai,state,3,node.extrapPos,10.0f,280.0f,&acc3);
 		node.threat=rate(acc3);
-		if(node.threat!=0.0f) node.threat=cast(float)(cast(double)node.threat/(cast(double)node.threat+rate(acc0)+rate(acc1)));
+		if(node.threat!=0.0f) node.threat=cast(float)safediv(cast(double)node.threat,cast(double)node.threat+rate(acc0)+rate(acc1));
 	}
 	if(node.spellDirty&1){
 		wizSpellRebuild(ai,state,n);
@@ -1229,8 +1245,12 @@ void updateStance(B)(ref ShinyAI!B ai,ObjectState!B state,int dTicks){ // rec1 0
 		setI(*rec,5,c);
 		if(k>0){
 			auto rec0=&ai.stanceRecs[0];
-			foreach(j;0..3)
-				setF(*rec,6+j,cast(float)(cast(double)si(*rec0,2+j)/cast(double)(si(*rec,2+j)+si(*rec0,2+j))));
+			foreach(j;0..3){
+				auto num=si(*rec0,2+j), den=si(*rec,2+j)+num;
+				// guard 0/0: its NaN bit pattern differs between x86 and arm and desynchs network games
+				// (only reachable for j==2 with the thaum u[4] quirk: u[4] is never reset and starts at 0)
+				setF(*rec,6+j,den?cast(float)safediv(cast(double)num,cast(double)den):1.0f);
+			}
 		}else{
 			setF(*rec,6,1.0f); setF(*rec,7,1.0f); setF(*rec,8,1.0f);
 		}
@@ -1245,7 +1265,9 @@ void updateStance(B)(ref ShinyAI!B ai,ObjectState!B state,int dTicks){ // rec1 0
 		if(ai.nodes[n].flags&0x100) edx++;
 		if(ai.nodes[n].flags&0x80) edi++;
 	}
-	ai.strengthRatio=cast(float)(cast(double)(edi+ebp)/cast(double)(edx+ebx));
+	// guard 0/0 as above (x86 and arm produce different NaN bit patterns); a nonzero numerator with a
+	// zero denominator still yields +infinity, which has the same bit pattern on both architectures
+	ai.strengthRatio=edi+ebp==0&&edx+ebx==0?1.0f:cast(float)safediv(cast(double)(edi+ebp),cast(double)(edx+ebx));
 	// acc1/acc2; the divide divisor is fild of the int sum of the u[6] float bits (thaum quirk)
 	ai.acc1.clear(); ai.acc1Valid=true;
 	combine(ai.acc1,1.0f,ai.stanceRecs[0].acc,1.0f);
@@ -1542,7 +1564,7 @@ void groupRefresh4(B)(ref ShinyAI!B ai,ObjectState!B state,int g){ // slot4 grou
 		n=nn;
 	}
 	if(countF!=0.0){
-		auto inv=1.0/countF;
+		auto inv=safediv(1.0,countF);
 		grp.avgVel*=cast(float)inv;
 		grp.center*=cast(float)inv;
 		grp.stddev.x=cast(float)sqrt(fabs(cast(double)sumSq.x*inv-cast(double)grp.center.x*grp.center.x));
@@ -1596,7 +1618,7 @@ void groupRefresh5(B)(ref ShinyAI!B ai,ObjectState!B state,int g){ // slot5 grou
 		n=nn;
 	}
 	if(countF!=0.0){
-		auto inv=1.0/countF;
+		auto inv=safediv(1.0,countF);
 		grp.avgVel*=cast(float)inv;
 		grp.center*=cast(float)inv;
 		grp.stddev.x=cast(float)sqrt(fabs(cast(double)sumSq.x*inv-cast(double)grp.center.x*grp.center.x));
@@ -1710,7 +1732,7 @@ void fillGroup4(B)(ref ShinyAI!B ai,ObjectState!B state,int g,ref int head,ref i
 			if(node.status&1){
 				countF+=1.0;
 				centerSum+=node.curPos;
-				auto inv=1.0/countF;
+				auto inv=safediv(1.0,countF);
 				grp.center=centerSum*cast(float)inv;
 			}
 		}else{ // rare: the recursive refresh would have pruned the dead member; replicate it exactly
@@ -1775,7 +1797,7 @@ void fillGroup5(B)(ref ShinyAI!B ai,ObjectState!B state,int g,ref int head,ref i
 			if(node.status&1){
 				countF+=1.0;
 				centerSum+=node.curPos;
-				auto inv=1.0/countF;
+				auto inv=safediv(1.0,countF);
 				grp.center=centerSum*cast(float)inv;
 			}
 		}else{ // rare: the refresh after each addMember would have pruned the dead member; replicate it
@@ -1835,7 +1857,7 @@ void sortedInsert(B)(ref ShinyAI!B ai,ref AITask!B task,int r){ // 0x48a660: des
 void normalizeScores(B)(ref ShinyAI!B ai,ref AITask!B task,float total){ // 0x48a6f0
 	if(cast(double)total==0.0) return;
 	for(int r=task.claimedHead;r;r=ai.records[r].claimedN)
-		ai.records[r].score/=total;
+		ai.records[r].score=safediv(ai.records[r].score,total);
 }
 
 void recAddMember(B)(ref ShinyAI!B ai,int ri,int n){ // 0x48bc90 tail-append
@@ -1885,7 +1907,7 @@ void recordRefresh(B)(ref ShinyAI!B ai,ObjectState!B state,int ri){ // 0x48be10 
 		n=nn;
 	}
 	if(countF!=0.0){
-		auto inv=1.0/countF;
+		auto inv=safediv(1.0,countF);
 		rec.velAcc*=cast(float)inv;
 		rec.center*=cast(float)inv;
 		rec.stddev.x=cast(float)sqrt(fabs(cast(double)sumSq.x*inv-cast(double)rec.center.x*rec.center.x));
@@ -1962,7 +1984,7 @@ float probOr(B)(ref ShinyAI!B ai,ObjectState!B state,Vector3f pos,int slot,uint 
 		if(n==exclude||!(ai.nodes[n].flags&mask)) continue;
 		auto d=pos-ai.nodes[n].curPos;
 		auto dist=sqrt(d.x*d.x+d.y*d.y+d.z*d.z);
-		auto w=dist<=near?1.0f:dist>=far?0.0f:(far-dist)/(far-near);
+		auto w=dist<=near?1.0f:dist>=far?0.0f:safediv(far-dist,far-near);
 		acc+=w*w*(1.0f-acc);
 	}
 	return acc;
@@ -1979,7 +2001,7 @@ float territorialScore(B)(ref ShinyAI!B ai,ObjectState!B state,Vector3f pos,int 
 			auto d=cast(float)sqrt(cast(double)dz*dz+(cast(double)dy*dy+cast(double)dx*dx)); // dz^2+(dy^2+dx^2) 80-bit, _CIsqrt, f32 store
 			float s;
 			if(d<=10.0f) s=1.0f; // test ah,0x41
-			else if(d<r) s=cast(float)((cast(double)r-d)/(cast(double)r-10.0f)); // test ah,1: strictly below r
+			else if(d<r) s=cast(float)safediv(cast(double)r-d,cast(double)r-10.0f); // test ah,1: strictly below r
 			else s=0.0f;
 			acc=cast(float)(cast(double)s*s*(1.0-cast(double)acc)+cast(double)acc); // 80-bit chain, f32 store each iter
 		}
@@ -1994,7 +2016,7 @@ float densityGroups(B)(ref ShinyAI!B ai,ObjectState!B state,Vector3f pos,float n
 			auto grp=&ai.groups5[g];
 			auto d=pos-grp.center;
 			auto dist=sqrt(d.x*d.x+d.y*d.y+d.z*d.z);
-			auto w=dist<=near?1.0f:dist>=far?0.0f:(far-dist)/(far-near);
+			auto w=dist<=near?1.0f:dist>=far?0.0f:safediv(far-dist,far-near);
 			acc+=w*cast(float)grp.count;
 		}
 		for(int g=ai.grp4Head[k];g;g=ai.groups4[g].gN){
@@ -2002,11 +2024,11 @@ float densityGroups(B)(ref ShinyAI!B ai,ObjectState!B state,Vector3f pos,float n
 			if(grp.soulsSum==0) continue;
 			auto d=pos-grp.center;
 			auto dist=sqrt(d.x*d.x+d.y*d.y+d.z*d.z);
-			auto w=dist<=near?1.0f:dist>=far?0.0f:(far-dist)/(far-near);
+			auto w=dist<=near?1.0f:dist>=far?0.0f:safediv(far-dist,far-near);
 			acc+=w*cast(float)grp.soulsSum;
 		}
 	}
-	return acc/cast(float)ai.maxSoulsSeen;
+	return safediv(acc,cast(float)ai.maxSoulsSeen);
 }
 float influenceGroups(B)(ref ShinyAI!B ai,ObjectState!B state,int slot,Vector3f pos,float near,float far,RaterAcc* acc){ // 0x485be0
 	RaterAcc tmp;
@@ -2020,12 +2042,12 @@ float influenceGroups(B)(ref ShinyAI!B ai,ObjectState!B state,int slot,Vector3f 
 		float w;
 		if(dist<=near) w=1.0f;
 		else if(!(dist<far)) continue;
-		else w=(far-dist)/(far-near); // thaum also has a w==0->skip guard here, dead code (w>0 always)
+		else w=safediv(far-dist,far-near); // thaum also has a w==0->skip guard here, dead code (w>0 always)
 		combine(*acc,1.0f,grp.acc,w);
 		soulsW+=w*cast(float)grp.soulsSum;
 	}
 	// divisor is fild of u[4] (0x485cfa/0x488a09): never reset in thaum (grows forever), reset to 1 per cycle in retail
-	return soulsW/cast(float)si(ai.stanceRecs[slot],4);
+	return safediv(soulsW,cast(float)si(ai.stanceRecs[slot],4));
 }
 float nodeValueScore(B)(ref ShinyAI!B ai,ObjectState!B state,float f,int n){ // 0x48aee0 / retail twin 0x48db30
 	auto node=&ai.nodes[n];
@@ -2054,14 +2076,14 @@ void replanCapture(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task){ /
 	// retail 0x48dc04: divisor A = own+ally manaliths ([statArray+0x40]+[+0x14]); thaum 0x48afb4: own only
 	auto A=si(ai.stanceRecs[0],5)+(ai.betaCaptureTerritory?0:si(ai.stanceRecs[1],5)), Bv=si(ai.stanceRecs[3],5), E=ai.neutralManafounts;
 	float f1, f2;
-	if(A!=0&&cast(float)(cast(double)(Bv+1)/cast(double)A)>=1.0f){
+	if(A!=0&&cast(float)safediv(cast(double)(Bv+1),cast(double)A)>=1.0f){
 		f1=1.0f;
-		f2=cast(float)(cast(double)Bv/cast(double)E); // fidiv: E==0 -> inf
+		f2=cast(float)safediv(cast(double)Bv,cast(double)E); // fidiv: E==0 -> inf
 	}else if(E==0){
 		f1=1.0f; f2=0.0f;
 	}else{
-		f1=cast(float)(1.0-cast(double)A/cast(double)E); // fsubr
-		f2=cast(float)(cast(double)Bv/cast(double)(Bv+A));
+		f1=cast(float)(1.0-safediv(cast(double)A,cast(double)E)); // fsubr
+		f2=cast(float)safediv(cast(double)Bv,cast(double)(Bv+A));
 	}
 	static immutable int[2] cats=[2,3];
 	foreach(edi;cats){
@@ -2244,7 +2266,7 @@ float claimGuard(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task,ref i
 				}
 				auto w2=w*w;
 				auto val=rateWithBase(ai.nodes[n].acc,rec.targetAcc);
-				if(val<=0.0f) val=val/w2; else val=val*w2;
+				if(val<=0.0f) val=safediv(val,w2); else val=val*w2;
 				if(best==0||bestVal<val){ bestVal=val; best=n; }
 			}
 			if(best==0) break;
@@ -2453,7 +2475,7 @@ bool findBestCaptureTarget(B)(ref ShinyAI!B ai,ObjectState!B state,Vector3f* pos
 		float w;
 		if(d<=1.0f) w=1.0f;
 		else if(!(d<radius)) w=0.0f;
-		else w=(radius-d)/(radius-1.0f);
+		else w=safediv(radius-d,radius-1.0f);
 		if(node.flags&0x20){ // structure: ready unbuilt manafount, weight by souls (ntt+0x49c)
 			w*=state.buildingById!((ref b,state){
 				auto bfl=cast(uint)b.sacBuilding.flags;
@@ -2509,7 +2531,7 @@ int mahoBrain(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int cmd,int ri){ // 
 		else if(!(d<mcut)) w=0.0f;
 		else w=(mcut-d)*mscale;
 		v*=w;
-		if(grp.readyCount>1) v/=cast(float)grp.readyCount;
+		if(grp.readyCount>1) v=safediv(v,cast(float)grp.readyCount);
 		if(bestV<v){ bestV=v; bestG=g; }
 	}
 	if(bestG){
@@ -2700,7 +2722,7 @@ bool canCastSpellOn(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int target,Sac
 float aoeSpellBase(B)(ref ShinyAI!B ai,ObjectState!B state,ref SpellAcc!B acc,int target,float r2){
 	auto spel=acc.spell.spel;
 	auto tnode=&ai.nodes[target];
-	auto inv=cast(float)(1.0/cast(double)r2);
+	auto inv=cast(float)safediv(1.0,cast(double)r2);
 	auto base=hasAcc(ai,target)?rate(tnode.acc):0.0f;
 	if(isSacDoctorEnt!B(state,tnode.kind,tnode.id)) base=cast(float)(cast(double)base*1000.0f); // thaum 0x4898fc / retail 0x48c5df: TARGET's summon-spell tag (ntt+0x414/0x41c -> +0x10)=="dcas" (sac doctor)
 	auto amountI=cast(int)(cast(uint)spel.amount|cast(uint)spel.unknown14<<16);
@@ -2714,7 +2736,7 @@ float aoeSpellBase(B)(ref ShinyAI!B ai,ObjectState!B state,ref SpellAcc!B acc,in
 			auto Ad=(cast(double)r2-d2)*amountI*inv; // extended, no f32 stores
 			auto Bd=cast(double)cast(float)grp.count;
 			auto C=ftol(Ad<Bd?Ad:Bd);
-			auto E=cast(float)(cast(double)C/cast(double)grp.healthSum2*grpRate);
+			auto E=cast(float)(safediv(cast(double)C,cast(double)grp.healthSum2)*grpRate);
 			base=cat==3?cast(float)(cast(double)E+base):cast(float)(cast(double)base-E);
 		}
 	}
@@ -2747,7 +2769,7 @@ float rateSpellAcc(B)(ref ShinyAI!B ai,ObjectState!B state,ref SpellAcc!B acc,in
 			if(!(tnode.flags&0x4)) return 0.0f; // enemy-either-way & different sides (setupBase 0x486a04)
 			auto hp=healthPair(state,tnode.kind,tnode.id);
 			auto m=cast(int)spel.amount2<hp[0]?cast(int)spel.amount2:hp[0];
-			auto ratio=cast(float)(cast(double)cast(float)m/cast(double)hp[1]);
+			auto ratio=cast(float)safediv(cast(double)cast(float)m,cast(double)hp[1]);
 			auto r=cast(float)(cast(double)sortKey(ai,target)*ratio);
 			if(isSacDoctorEnt!B(state,tnode.kind,tnode.id)) r=cast(float)(cast(double)r*1000.0f); // thaum 0x48983e / retail 0x48c527: target is a sac doctor (summon tag "dcas")
 			return r;
@@ -2790,7 +2812,7 @@ float rateSpellAcc(B)(ref ShinyAI!B ai,ObjectState!B state,ref SpellAcc!B acc,in
 			auto amountI=cast(int)(cast(uint)spel.amount|cast(uint)spel.unknown14<<16);
 			auto missing=hp[1]-hp[0];
 			auto healed=amountI<missing?amountI:missing;
-			return cast(float)(cast(double)sortKey(ai,target)*(cast(double)healed/cast(double)hp[1]));
+			return cast(float)(cast(double)sortKey(ai,target)*safediv(cast(double)healed,cast(double)hp[1]));
 		case f489bc0: // protect
 			if(!(nttTypeBits(tnode.kind)&0x5)) return 0.0f;
 			if(target!=n) return 0.0f; // self
@@ -2815,7 +2837,7 @@ float rateSpellAcc(B)(ref ShinyAI!B ai,ObjectState!B state,ref SpellAcc!B acc,in
 					state.movingObjectById!((ref t,state)=>t.position,()=>order.target.position)(order.target.id,state):order.target.position;
 				auto d2=cast(float)distSq3(tnode.curPos,p);
 				if(d2<100.0f) return 0.0f;
-				return cast(float)(cast(double)sortKey(ai,target)*(cast(double)d2/(base*base)));
+				return cast(float)(cast(double)sortKey(ai,target)*safediv(cast(double)d2,base*base));
 			},()=>0.0f)(tnode.id,state);
 		case f489d70: // elet
 			if(!(nttTypeBits(tnode.kind)&0x1)) return 0.0f;
@@ -2864,7 +2886,7 @@ float findBestSpell(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int target,uin
 		auto acc=&node.spellAccs[i];
 		if(!spellAccAccepts!B(*acc,mask)) continue;
 		auto s=cast(double)rateSpellAcc!B(ai,state,*acc,n,target,category,distScaled);
-		if(pool>0.0f) s=(1.0-cast(double)ftol(acc.spell.manaCost)/pool)*s; // fild(cost)/pool; fsubr 1.0d; fmul s
+		if(pool>0.0f) s=(1.0-safediv(cast(double)ftol(acc.spell.manaCost),cast(double)pool))*s; // fild(cost)/pool; fsubr 1.0d; fmul s
 		if(s>cast(double)best){ best=cast(float)s; bestAcc=acc; } // strict argmax, best starts at 0.0f
 	}
 	if(bestAcc is null) return 0.0f;
@@ -2884,7 +2906,7 @@ void weightTriple(B)(ref ShinyAI!B ai,int cmd,float[3]* w3){ // 0x48cc70
 	else{ o0=o1=0.0f; o2e=0.0; } // thaum reads uninitialized locals here (documented); zeroes take the default branch
 	auto total=(o2e+o1)+o0; // f32 adds in thaum; o1/o0 are the rounded values
 	if(total<=0.0){ (*w3)[0]=(*w3)[1]=(*w3)[2]=0.333299994468689f; } // ds:0x3eaaa64c x3
-	else{ (*w3)[0]=cast(float)(o0/total); (*w3)[1]=cast(float)(o1/total); (*w3)[2]=cast(float)(o2e/total); }
+	else{ (*w3)[0]=cast(float)safediv(cast(double)o0,total); (*w3)[1]=cast(float)safediv(cast(double)o1,total); (*w3)[2]=cast(float)safediv(o2e,total); }
 }
 
 // ---- wizard: target scans ----
@@ -2941,7 +2963,7 @@ int findBestNear(B)(ref ShinyAI!B ai,ObjectState!B state,Vector3f* pos,float rad
 		auto d=cast(float)sqrt(cast(float)(dx*dx+dy*dy+dz*dz));
 		double w;
 		if(d<=0.0f) w=1.0f;
-		else if(d<radius) w=cast(double)(radius-d)/radius;
+		else if(d<radius) w=safediv(cast(double)(radius-d),cast(double)radius);
 		else w=0.0f;
 		if(cast(double)best<w){ best=cast(float)w; bestNode=m; } // strict argmax
 	}
@@ -2988,7 +3010,7 @@ void wizAttack(B)(ref ShinyAI!B ai,ObjectState!B state,int n,float[3]* w3){ // 0
 		if(d<=10.0f) w=1.0f;
 		else if(!(d<thr)) continue;
 		else{
-			w=cast(double)(thr-d)/(thr-10.0f);
+			w=safediv(cast(double)(thr-d),cast(double)(thr-10.0f));
 			if(w==0.0f) continue; // dead-code guard in thaum (w>0 always here)
 		}
 		if(!(t.status&0x6)) w*=0.5f;
@@ -3001,7 +3023,7 @@ void wizAttack(B)(ref ShinyAI!B ai,ObjectState!B state,int n,float[3]* w3){ // 0
 	SacSpell!B sp; float range; int obj;
 	auto s=findBestSpell(ai,state,n,bestNode,0x58000000,&sp,&range,&obj);
 	if(s<=0.0f) return;
-	enqueueCast(ai,n,cast(float)(cast(double)best*(*w3)[0]/total),bestNode,sp,range,obj,0);
+	enqueueCast(ai,n,cast(float)safediv(cast(double)best*(*w3)[0],cast(double)total),bestNode,sp,range,obj,0);
 }
 void wizSupport(B)(ref ShinyAI!B ai,ObjectState!B state,int n,float[3]* w3){ // 0x48d7c0
 	auto node=&ai.nodes[n];
@@ -3017,7 +3039,7 @@ void wizSupport(B)(ref ShinyAI!B ai,ObjectState!B state,int n,float[3]* w3){ // 
 		total=cast(float)(cast(double)total+s); // total accumulates even when best is not updated
 	}
 	if(total==0.0f||best==0.0f||!bestNode) return; // thaum compares best against 0.0d
-	enqueueCast(ai,n,cast(float)(cast(double)best*(*w3)[1]/total),bestNode,bo2,bo1,bo0,0);
+	enqueueCast(ai,n,cast(float)safediv(cast(double)best*(*w3)[1],cast(double)total),bestNode,bo2,bo1,bo0,0);
 }
 void wizRetreat(B)(ref ShinyAI!B ai,ObjectState!B state,int n,float[3]* w3){ // 0x48db60
 	auto node=&ai.nodes[n];
@@ -3052,7 +3074,7 @@ void wizSacrifice(B)(ref ShinyAI!B ai,ObjectState!B state,int n,float[3]* w3,int
 			int ready=0;
 			for(int g=ai.grp4Head[0];g;g=ai.groups4[g].gN) ready+=ai.groups4[g].readyCount; // slot4 cat0 groups, +0x70
 			if(ready<si(ai.stanceRecs[0],4)/(ai.betaSummonAccounting?4:2)){ // sdiv4 thaum / sdiv2 retail
-				if(ready==0||cast(double)(2*si(ai.stanceRecs[0],1)-si(ai.stanceRecs[0],0))/cast(double)(mcount*ready)>1400.0){
+				if(ready==0||safediv(cast(double)(2*si(ai.stanceRecs[0],1)-si(ai.stanceRecs[0],0)),cast(double)(mcount*ready))>1400.0){
 					enqueueCast(ai,n,0.0f,0,node.manahoarSpell,0.0f,0,1); // 0x48d050 forced manahoar
 					return; // only the enqueue returns; all other BLOCK1 exits fall through to BLOCK2
 				}
@@ -3084,7 +3106,7 @@ void wizSacrifice(B)(ref ShinyAI!B ai,ObjectState!B state,int n,float[3]* w3,int
 			combine(ctx,1.0f,ai.acc2,cast(float)(1.0f-m)); // fld 1.0f; fsub f32
 		}
 		auto s=rateWithBase(e.acc,ctx); // rater2 vtbl[11] 0x4892b0
-		auto cost=cast(double)ftol(e.spell.manaCost)/cast(double)pool; // fild(cost)/fild(pool)
+		auto cost=safediv(cast(double)ftol(e.spell.manaCost),cast(double)pool); // fild(cost)/fild(pool)
 		double sd=s;
 		if(s>0.0f) sd=(1.0-cost)*sd; // fsubr 1.0d
 		else sd=cost*sd;
