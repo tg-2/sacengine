@@ -339,24 +339,20 @@ struct OrderTarget{
 }
 Vector3f center(B)(ref OrderTarget target,ObjectState!B state){
 	if(target.type==TargetType.terrain||!state.isValidTarget(target.id)) return target.position;
-	return state.objectById!((ref obj,state)=>obj.center)(target.id,state); // TODO: make faster
+	return state.objectReadById!(.center)(target.id);
 }
 Vector3f stableCenter(B)(ref OrderTarget target,ObjectState!B state){
 	if(target.type==TargetType.terrain||!state.isValidTarget(target.id)) return target.position;
-	return state.objectById!((ref obj,state){ // TODO: make faster
-		static if(is(typeof(obj)==MovingObject!B)){
-			return obj.position+boxCenter(obj.sacObject.hitbox(Quaternionf.identity(),obj.scale,obj.animationState,0));
-		}else return obj.center;
-	})(target.id,state);
+	return state.objectReadById!(.stableCenter)(target.id);
 }
 Vector3f lowCenter(B)(ref OrderTarget target,ObjectState!B state){
 	if(target.type==TargetType.terrain||!state.isValidTarget(target.id)) return target.position;
-	return state.objectById!((ref obj,state)=>obj.lowCenter)(target.id,state); // TODO: make faster
+	return state.objectReadById!(.lowCenter)(target.id);
 }
 OrderTarget centerTarget(B)(int id,ObjectState!B state)in{
 	assert(state.isValidTarget(id));
 }do{
-	auto position=state.objectById!((ref obj,state)=>obj.center)(id,state); // TODO: make faster
+	auto position=state.objectReadById!(.center)(id);
 	return OrderTarget(state.targetTypeFromId(id),id,position);
 }
 OrderTarget positionTarget(B)(Vector3f position,ObjectState!B state){
@@ -365,7 +361,7 @@ OrderTarget positionTarget(B)(Vector3f position,ObjectState!B state){
 
 Vector3f[2] hitbox(B)(ref OrderTarget target,ObjectState!B state){
 	if(target.type==TargetType.terrain||!state.isValidTarget(target.id)) return [target.position,target.position];
-	return state.movingObjectReadById!((ref objects,i)=>objects.hitbox(i),()=>state.objectById!((obj)=>obj.hitbox)(target.id))(target.id);
+	return state.objectReadById!(.hitbox)(target.id);
 }
 
 struct Order{
@@ -413,6 +409,14 @@ static getScale(T)(ref T obj){
 		auto hitbox=obj.hitbox;
 		return 0.5f*(hitbox[1].xy-hitbox[0].xy);
 	}else return 0.0f;
+}
+static Vector2f getScale(B,RenderMode mode)(ref MovingObjects!(B,mode) objects,int index){
+	auto hitbox=objects.sacObject.largeHitbox(Quaternionf.identity(),objects.scales[index],AnimationState.stance1,0);
+	return 0.5f*(hitbox[1].xy-hitbox[0].xy);
+}
+static Vector2f getScale(B,RenderMode mode)(ref StaticObjects!(B,mode) objects,int index){
+	auto hitbox=objects.hitbox(index);
+	return 0.5f*(hitbox[1].xy-hitbox[0].xy);
 }
 Vector2f[numCreaturesInGroup] getFormationOffsets(R)(scope R ids,CommandType commandType,Formation formation,Vector2f formationScale,Vector2f targetScale){
 	auto unitDistance=1.25f*max(formationScale.x,formationScale.y)+0.85f;
@@ -1078,6 +1082,9 @@ void initBehaviorFlags(B)(ref MovingObject!B object){
 int side(B)(ref MovingObject!B object,ObjectState!B state){
 	return object.side;
 }
+int side(B,RenderMode mode)(ref MovingObjects!(B,mode) objects,int index,ObjectState!B state){
+	return objects.sides[index];
+}
 float health(B)(ref MovingObject!B object){
 	return object.creatureStats.health;
 }
@@ -1247,6 +1254,22 @@ Vector3f stableCenter(B,RenderMode mode)(ref MovingObjects!(B,mode) objects,int 
 Vector3f lowCenter(B,RenderMode mode)(ref MovingObjects!(B,mode) objects,int index){
 	auto hbox=objects.hitbox(index);
 	return Vector3f(0.5f*(hbox[0].x+hbox[1].x),0.5f*(hbox[0].y+hbox[1].y),0.25f*(3.0f*hbox[0].z+hbox[1].z));
+}
+
+Vector3f center(B,RenderMode mode)(ref StaticObjects!(B,mode) objects,int index){
+	if(objects.sacObject.isShrine) return objects.lowestCenter(index);
+	return boxCenter(objects.hitbox(index));
+}
+Vector3f stableCenter(B,RenderMode mode)(ref StaticObjects!(B,mode) objects,int index){
+	return objects.center(index);
+}
+Vector3f lowCenter(B,RenderMode mode)(ref StaticObjects!(B,mode) objects,int index){
+	auto hbox=objects.hitbox(index);
+	return Vector3f(0.5f*(hbox[0].x+hbox[1].x),0.5f*(hbox[0].y+hbox[1].y),0.25f*(3.0f*hbox[0].z+hbox[1].z));
+}
+Vector3f lowestCenter(B,RenderMode mode)(ref StaticObjects!(B,mode) objects,int index){
+	auto hbox=objects.hitbox(index);
+	return Vector3f(0.5f*(hbox[0].x+hbox[1].x),0.5f*(hbox[0].y+hbox[1].y),0.125f*(7.0f*hbox[0].z+hbox[1].z));
 }
 Vector3f relativeCenter(T)(ref T object){
 	static if(is(T==Soul!B,B)){
@@ -1492,6 +1515,9 @@ bool isActive(B)(ref StaticObject!B object,ObjectState!B state){
 int side(B)(ref StaticObject!B object,ObjectState!B state){
 	return sideFromBuildingId(object.buildingId,state);
 }
+int side(B,RenderMode mode)(ref StaticObjects!(B,mode) objects,int index,ObjectState!B state){
+	return sideFromBuildingId(objects.buildingIds[index],state);
+}
 auto relativeHitboxes(B)(ref StaticObject!B object){
 	return object.sacObject.hitboxes(object.rotation,object.scale);
 }
@@ -1502,6 +1528,17 @@ auto hitboxes(B)(ref StaticObject!B object){
 Vector3f[2] relativeHitbox(B)(ref StaticObject!B object){
 	Vector3f[2] result=[Vector3f(float.max,float.max,float.max),Vector3f(-float.max,-float.max,-float.max)];
 	foreach(hitbox;object.relativeHitboxes){
+		foreach(i;0..3){
+			result[0][i]=min(result[0][i],hitbox[0][i]);
+			result[1][i]=max(result[1][i],hitbox[1][i]);
+		}
+	}
+	if(result[1].z>=0) result[0].z=max(result[0].z,0.0f);
+	return result;
+}
+Vector3f[2] relativeHitbox(B,RenderMode mode)(ref StaticObjects!(B,mode) objects,int index){
+	Vector3f[2] result=[Vector3f(float.max,float.max,float.max),Vector3f(-float.max,-float.max,-float.max)];
+	foreach(hitbox;objects.sacObject.hitboxes(objects.rotations[index],objects.scales[index])){
 		foreach(i;0..3){
 			result[0][i]=min(result[0][i],hitbox[0][i]);
 			result[1][i]=max(result[1][i],hitbox[1][i]);
@@ -1525,11 +1562,14 @@ float boundingRadius(B)(ref StaticObject!B object){
 float boundingRadius(B,RenderMode mode)(ref MovingObjects!(B,mode) objects,int index){
 	return boundingRadius(objects.relativeHitbox(index));
 }
+float boundingRadius(B,RenderMode mode)(ref StaticObjects!(B,mode) objects,int index){
+	return boundingRadius(objects.relativeHitbox(index));
+}
 float boundingRadius(B)(ref Building!B building,ObjectState!B state){
 	float radius=0.0f;
 	auto center=building.position(state);
 	foreach(cid;building.componentIds)
-		state.staticObjectById!((ref obj,state){ radius=max(radius,sqrt((obj.position-center).lengthsqr)+obj.boundingRadius); },(){})(cid,state);
+		state.staticObjectReadById!((ref objects,i,state){ radius=max(radius,sqrt((objects.positions[i]-center).lengthsqr)+objects.boundingRadius(i)); },(){})(cid,state);
 	return radius;
 }
 Vector3f[2] closestHitbox(B)(ref StaticObject!B object,Vector3f position){
@@ -1549,6 +1589,12 @@ Vector3f[2] hitbox(B)(ref StaticObject!B object){
 	auto hitbox=object.relativeHitbox;
 	hitbox[0]+=object.position;
 	hitbox[1]+=object.position;
+	return hitbox;
+}
+Vector3f[2] hitbox(B,RenderMode mode)(ref StaticObjects!(B,mode) objects,int index){
+	auto hitbox=objects.relativeHitbox(index);
+	hitbox[0]+=objects.positions[index];
+	hitbox[1]+=objects.positions[index];
 	return hitbox;
 }
 Vector3f[2] hitbox2d(B)(ref StaticObject!B object,Matrix4f modelViewProjectionMatrix){
@@ -1679,14 +1725,14 @@ float xpOnDestruction(B)(ref Building!B building){
 	return building.sacBuilding.xpOnDestruction;
 }
 Vector3f position(B)(ref Building!B building,ObjectState!B state){
-	return state.staticObjectById!((obj)=>obj.position,()=>Vector3f.init)(building.componentIds[0]);
+	return state.staticObjectReadById!((ref objects,i)=>objects.positions[i],()=>Vector3f.init)(building.componentIds[0]);
 }
 float height(B)(ref Building!B building,ObjectState!B state){
 	float maxZ=0.0f;
 	foreach(cid;building.componentIds){
-		state.staticObjectById!((obj,state){
-			auto hitbox=obj.hitbox;
-			maxZ=max(maxZ,hitbox[1].z-obj.position.z);
+		state.staticObjectReadById!((ref objects,i,state){
+			auto hitbox=objects.hitbox(i);
+			maxZ=max(maxZ,hitbox[1].z-objects.positions[i].z);
 		},(){})(cid,state);
 	}
 	return maxZ;
@@ -7128,7 +7174,7 @@ bool addHighlight(B)(int side,int target,ObjectState!B state){ // TODO: highligh
 	switch(state.targetTypeFromId(target))with(TargetType){
 		case none: return false;
 		case creature,building:
-			hitbox=state.objectById!(.hitbox)(target);
+			hitbox=state.objectReadById!(.hitbox)(target);
 			break;
 		case soul:
 			auto position=state.soulById!((ref soul)=>soul.position,()=>Vector3f.init)(target);
@@ -7894,6 +7940,28 @@ auto ref movingObjectReadById(alias f,alias nonMoving,B,T...)(ref ObjectManager!
 		}
 	}else return nonMoving();
 }
+auto ref objectReadById(alias f,B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
+	assert(id>0);
+}do{
+	auto nid=objectManager.ids[id-1];
+	assert(nid!=Id.init);
+	if(nid.type<numMoving){
+		final switch(nid.mode){ // TODO: get rid of code duplication
+			case RenderMode.opaque:
+				return f(objectManager.opaqueObjects.movingObjects.data[nid.type],nid.index,args);
+			case RenderMode.transparent:
+				return f(objectManager.transparentObjects.movingObjects.data[nid.type],nid.index,args);
+		}
+	}else{
+		enforce(nid.type<numMoving+numStatic,text(nid.type));
+		final switch(nid.mode){
+			case RenderMode.opaque:
+				return f(objectManager.opaqueObjects.staticObjects.data[nid.type-numMoving],nid.index,args);
+			case RenderMode.transparent:
+				return f(objectManager.transparentObjects.staticObjects.data[nid.type-numMoving],nid.index,args);
+		}
+	}
+}
 auto ref staticObjectById(alias f,alias nonStatic,B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
 	assert(id>0);
 }do{
@@ -7914,6 +7982,20 @@ auto ref staticObjectById(alias f,alias nonStatic,B,T...)(ref ObjectManager!B ob
 					scope(success) objectManager.transparentObjects.staticObjects[nid.type-numMoving][nid.index]=obj;
 					return f(obj,args);
 				}else return f(objectManager.transparentObjects.staticObjects[nid.type-numMoving][nid.index],args);
+		}
+	}else return nonStatic();
+}
+auto ref staticObjectReadById(alias f,alias nonStatic,B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
+	assert(id>0);
+}do{
+	auto nid=objectManager.ids[id-1];
+	if(nid.type<numMoving||nid.index==-1) return nonStatic();
+	else if(nid.type<numMoving+numStatic){
+		final switch(nid.mode){ // TODO: get rid of code duplication
+			case RenderMode.opaque:
+				return f(objectManager.opaqueObjects.staticObjects.data[nid.type-numMoving],nid.index,args);
+			case RenderMode.transparent:
+				return f(objectManager.transparentObjects.staticObjects.data[nid.type-numMoving],nid.index,args);
 		}
 	}else return nonStatic();
 }
@@ -9077,7 +9159,7 @@ float dealDamageAt(alias callback=(id)=>true,B,T...)(int directTarget,float amou
 		if(target.id==directTarget) return;
 		auto distance=boxPointDistance(target.hitbox,position);
 		if(distance>radius) return;
-		auto attackDirection=state.objectById!center(target.id)-position;
+		auto attackDirection=state.objectReadById!(.center)(target.id)-position;
 		if(callback(target.id,args))
 			*sum+=dealDamage(target.id,amount,radius,attacker,attackerSide,attackDirection,distance,damageMod,state);
 	}
@@ -10071,7 +10153,7 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 			}
 		case SpellType.structure:
 			if(!spell.isBuilding) goto case SpellType.spell;
-			auto base=state.staticObjectById!((obj)=>obj.buildingId,()=>0)(target.id);
+			auto base=state.staticObjectReadById!((ref objects,i)=>objects.buildingIds[i],()=>0)(target.id);
 			if(base){ // TODO: stun both wizards on simultaneous lith cast
 				auto god=state.getCurrentGod(wizard);
 				if(god==God.none) god=God.persephone;
@@ -10214,7 +10296,7 @@ bool castDesecrate(B)(int side,ManaDrain!B manaDrain,SacSpell!B spell,Vector3f c
 
 Vector3f getTeleportPosition(B)(Vector3f startPosition,int target,float radius,ObjectState!B state){
 	if(!state.isValidTarget(target)) return Vector3f.init;
-	auto targetPositionTargetScale=state.objectById!((ref obj)=>tuple(obj.position,obj.getScale))(target);
+	auto targetPositionTargetScale=state.objectReadById!((ref objects,i)=>tuple(objects.positions[i],objects.getScale(i)))(target);
 	auto targetPosition=targetPositionTargetScale[0], targetScale=targetPositionTargetScale[1];
 	auto teleportPosition=targetPosition+(startPosition-targetPosition).normalized*radius;
 	if(!state.isOnGround(teleportPosition)){
@@ -10402,7 +10484,7 @@ bool guardian(B)(int side,SacSpell!B spell,int target,ObjectState!B state){
 		if(obj.creatureStats.effects.isGuardian) return false;
 		int structure=findClosestBuilding(side,obj.position,state);
 		if(!structure) return false;
-		int buildingId=state.staticObjectById!((ref obj)=>obj.buildingId,()=>0)(structure);
+		int buildingId=state.staticObjectReadById!((ref objects,i)=>objects.buildingIds[i],()=>0)(structure);
 		if(!buildingId) return false;
 		if(!state.buildingById!((ref bldg,int id){ bldg.guardianIds~=id; return true; },()=>false)(buildingId,obj.id))
 			return false;
@@ -10463,10 +10545,7 @@ bool heal(B)(int creature,int side,SacSpell!B spell,ObjectState!B state){
 
 bool castLightning(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
 	if(!state.isValidTarget(target)) return false;
-	auto orderTarget=state.objectById!((obj){
-		enum type=is(typeof(obj)==MovingObject!B)?TargetType.creature:TargetType.building;
-		return OrderTarget(type,obj.id,obj.center);
-	})(target);
+	auto orderTarget=OrderTarget(state.targetTypeFromId(target),target,state.objectReadById!(.center)(target));
 	state.addEffect(LightningCasting!B(manaDrain,spell,orderTarget));
 	return true;
 }
@@ -10843,11 +10922,9 @@ bool rainbow(B)(int side,OrderTarget origin,OrderTarget target,SacSpell!B spell,
 
 bool castChainLightning(B)(int side,int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState!B state){
 	if(!state.isValidTarget(target)) return false;
-	auto orderTarget=state.objectById!((ref obj){
-		playSpellSoundTypeAt(SoundType.lightning,obj.center,state,4.0f);
-		enum type=is(typeof(obj)==MovingObject!B)?TargetType.creature:TargetType.building;
-		return OrderTarget(type,obj.id,obj.center);
-	})(target);
+	auto center=state.objectReadById!(.center)(target);
+	playSpellSoundTypeAt(SoundType.lightning,center,state,4.0f);
+	auto orderTarget=OrderTarget(state.targetTypeFromId(target),target,center);
 	state.addEffect(ChainLightningCasting!B(side,orderTarget,manaDrain,spell));
 	return true;
 }
@@ -12502,7 +12579,7 @@ Vector3f predictShotTargetPosition(B)(ref MovingObject!B object,SacSpell!B range
 		case TargetType.creature,TargetType.building:
 			return rangedAttack&&rangedAttack.needsPrediction?
 				object.creatureAI.predictor.predictCenter(object.firstShotPosition(isAbility),rangedAttack.speed,target.id,object.side,state) : // TODO: use closest hitbox?
-				state.objectById!center(target.id);
+				state.objectReadById!(.center)(target.id);
 		case TargetType.soul: return state.soulById!((ref soul)=>soul.center,()=>Vector3f.init)(target.id); // TODO: predict?
 		default: return Vector3f.init;
 	}
@@ -27738,7 +27815,7 @@ void updateHighlights(B)(ref Highlights!B highlights, ObjectState!B state){
 				switch(state.targetTypeFromId(target))with(TargetType){
 					case none,terrain: break;
 					case creature,building:
-						auto hitbox=state.objectById!hitbox(target);
+						auto hitbox=state.objectReadById!(.hitbox)(target);
 						follow(hitbox);
 						break;
 					case soul:
@@ -30014,8 +30091,14 @@ auto ref movingObjectById(alias f,alias nonMoving,B,T...)(ObjectState!B objectSt
 auto ref movingObjectReadById(alias f,alias nonMoving,B,T...)(ObjectState!B objectState,int id,T args){
 	return objectState.obj.movingObjectReadById!(f,nonMoving)(id,args);
 }
+auto ref objectReadById(alias f,B,T...)(ObjectState!B objectState,int id,T args){
+	return objectState.obj.objectReadById!f(id,args);
+}
 auto ref staticObjectById(alias f,alias nonStatic,B,T...)(ObjectState!B objectState,int id,T args){
 	return objectState.obj.staticObjectById!(f,nonStatic)(id,args);
+}
+auto ref staticObjectReadById(alias f,alias nonStatic,B,T...)(ObjectState!B objectState,int id,T args){
+	return objectState.obj.staticObjectReadById!(f,nonStatic)(id,args);
 }
 auto ref soulById(alias f,alias noSoul,B,T...)(ObjectState!B objectState,int id,T args){
 	return objectState.obj.soulById!(f,noSoul)(id,args);

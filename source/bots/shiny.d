@@ -601,7 +601,7 @@ void botRelationsChanged(B)(ObjectState!B state,int side){ // thaum NETSetupSide
 }
 void botFirstContact(B)(ObjectState!B state,int side,int id){ // thaum SIDE::MarkAsVisible 0x4723e0: one-shot AI wake per owner side (side+0x50, never reset); creature/wizard ntts only
 	if(state.targetTypeFromId(id)!=TargetType.creature) return;
-	auto ownerSide=state.objectById!(.side)(id,state);
+	auto ownerSide=state.objectReadById!(.side)(id,state);
 	if(!(0<=ownerSide&&ownerSide<32)||ownerSide==side) return; // thaum own-side additionally requires ntt+0x234&0x2000 (unknown flag); own additions wake via BotEvent.addedToSide
 	auto ai=botFor!B(state,side);
 	if(ai is null) return;
@@ -624,7 +624,7 @@ void botSeen(B)(ObjectState!B state,int side,int id,TargetType type){ // markAsV
 			addNode(ai,state,sideKind[1],id);
 			break;
 		case building:
-			auto buildingId=state.staticObjectById!((ref o)=>o.buildingId,()=>0)(id); // marked ids are static components
+			auto buildingId=state.staticObjectReadById!((ref objects,i)=>objects.buildingIds[i],()=>0)(id); // marked ids are static components
 			if(buildingId==0&&state.buildingById!((ref b)=>true,()=>false)(id)) buildingId=id; // defensive: building id directly
 			if(buildingId==0) return;
 			if(state.buildingById!((ref b)=>b.side,()=>-1)(buildingId)==side) return;
@@ -638,7 +638,7 @@ void botScanBuilding(B)(ref Building!B b,ObjectState!B state){ // thaum LANDITEM
 	if(!(cast(uint)b.sacBuilding.flags&1)) return; // bldg data flags +0x47c&1
 	if(!(0<=b.side&&b.side!=neutralSide&&b.health!=0.0f)) return; // owner wizard (+0x1c4); Run stops at Destroy
 	// nearbywizardcallback 0x466d00: first enemy wizard (NTT::IsEnemy); EnumerateType 0x48fb80 walks list[1]+mask 1 = wizard ntts only (ntt types: 1=wiz, 2=soul, 4=creature, 0x10=building)
-	auto position=state.staticObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(b.componentIds[0]);
+	auto position=state.staticObjectReadById!((ref objects,i)=>objects.positions[i],()=>Vector3f.init)(b.componentIds[0]);
 	enum range=100.0f;
 	static bool isWizardFilter(T...)(ref CenterProximityEntry entry,ObjectState!B state){
 		return entry.id&&state.movingObjectReadById!((ref cols,i)=>cols.sacObject.isWizard,()=>false)(entry.id);
@@ -2969,7 +2969,7 @@ bool isSacDoctorEnt(B)(ObjectState!B state,NodeKind kind,int id){ // thaum: ntt+
 }
 int buildingIdOf(B)(ObjectState!B state,int objectId){ // engine structure lookups (findClosestBuildings) return component object ids; AI str nodes track Building ids
 	if(objectId<=0) return 0; // no altar/shrine in scan range (e.g. WizardInfo.closestEnemyAltar==0)
-	return state.staticObjectById!((ref o,state)=>o.buildingId,()=>0)(objectId,state);
+	return state.staticObjectReadById!((ref objects,i,state)=>objects.buildingIds[i],()=>0)(objectId,state);
 }
 bool desecrationOngoing(B)(ObjectState!B state,int buildingId){ // 0x466950(ntt,0,0)=='sacu' approximation: a desecrate ritual targets the building (SacDocCasting.targetShrine holds its component object id)
 	if(buildingId==0) return false;
