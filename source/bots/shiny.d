@@ -1254,12 +1254,10 @@ void updateStance(B)(ref ShinyAI!B ai,ObjectState!B state,int dTicks){ // rec1 0
 		setI(*rec,5,c);
 		if(k>0){
 			auto rec0=&ai.stanceRecs[0];
-			foreach(j;0..3){
-				auto num=si(*rec0,2+j), den=si(*rec,2+j)+num;
-				// guard 0/0: its NaN bit pattern differs between x86 and arm and desynchs network games
-				// (only reachable for j==2 with the thaum u[4] quirk: u[4] is never reset and starts at 0)
-				setF(*rec,6+j,den?cast(float)safediv(cast(double)num,cast(double)den):1.0f);
-			}
+			// safediv keeps the retail 0/0 NaN (branch-identical: every NaN comparison is false)
+			// but canonicalizes its bit pattern so network games stay in sync across architectures
+			foreach(j;0..3)
+				setF(*rec,6+j,cast(float)safediv(cast(double)si(*rec0,2+j),cast(double)(si(*rec,2+j)+si(*rec0,2+j))));
 		}else{
 			setF(*rec,6,1.0f); setF(*rec,7,1.0f); setF(*rec,8,1.0f);
 		}
@@ -1274,9 +1272,7 @@ void updateStance(B)(ref ShinyAI!B ai,ObjectState!B state,int dTicks){ // rec1 0
 		if(ai.nodes[n].flags&0x100) edx++;
 		if(ai.nodes[n].flags&0x80) edi++;
 	}
-	// guard 0/0 as above (x86 and arm produce different NaN bit patterns); a nonzero numerator with a
-	// zero denominator still yields +infinity, which has the same bit pattern on both architectures
-	ai.strengthRatio=edi+ebp==0&&edx+ebx==0?1.0f:cast(float)safediv(cast(double)(edi+ebp),cast(double)(edx+ebx));
+	ai.strengthRatio=cast(float)safediv(cast(double)(edi+ebp),cast(double)(edx+ebx)); // safediv: canonical NaN on 0/0, see above
 	// acc1/acc2; the divide divisor is fild of the int sum of the u[6] float bits (thaum quirk)
 	ai.acc1.clear(); ai.acc1Valid=true;
 	combine(ai.acc1,1.0f,ai.stanceRecs[0].acc,1.0f);
