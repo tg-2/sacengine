@@ -14821,6 +14821,7 @@ float rescueRadius(B)(ref MovingObject!B object){
 }
 bool rescuedBy(B)(ref MovingObject!B object,int side,ObjectState!B state){
 	if(!object.creatureStats.flags&Flags.rescuable) return false;
+	if(!object.creatureState.mode.canCharm) return false;
 	object.clearOrderQueue(state);
 	object.unselect(state);
 	object.removeFromGroups(state);
@@ -14832,7 +14833,7 @@ bool rescuedBy(B)(ref MovingObject!B object,int side,ObjectState!B state){
 }
 bool updateRescue(B)(ref MovingObject!B object,ObjectState!B state){
 	if(!(object.creatureStats.flags&Flags.rescuable)) return false;
-	if(object.creatureState.mode.among(CreatureMode.dead,CreatureMode.dissolving,CreatureMode.convertReviving,CreatureMode.thrashing)) return false;
+	if(!object.creatureState.mode.canCharm) return false;
 	enum rescueDistance=10.0f;
 	static bool scan(ref MovingObject!B candidate,MovingObject!B* object,ObjectState!B state){
 		if(candidate.side==object.side) return false;
