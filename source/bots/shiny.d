@@ -1693,11 +1693,16 @@ void sortFam1(B)(ref ShinyAI!B ai,int k){ // 0x4841c0 inline sort: stable descen
 	}
 }
 
-bool canAccept(B)(ref ShinyAI!B ai,ObjectState!B state,int count,Vector3f center,int n){ // group vtbl[6] 0x4868b0/0x486550
+// formGroups scratch: canAccept needs the live entity pos (thaum reads ntt+0x1b8, not the cached curPos),
+// but positions cannot change during a single formGroups4/5 call (group setup/fill/refresh only touch ai
+// structures), and the sacengine movingObjectById lookup copies the whole object out and back on every
+// call, which dominated the replan cost (form4 was ~3-5ms per side per replan tick). Cache one entPos
+// lookup per node while copying the scratch list instead; accept/reject decisions are bit-identical.
+Vector3f[] formPosCache; // TLS, indexed by node index; valid for the current formGroups4/5 call only
+bool canAccept(int count,Vector3f center,Vector3f p){ // group vtbl[6] 0x4868b0/0x486550; p = cached live entPos
 	auto r=cast(double)count*0.1+1.0;
 	if(!(r<1.7999999523162842)) r=1.7999999523162842; // fcom keep-smaller
 	r*=30.0;
-	auto p=entPos!B(state,ai.nodes[n].kind,ai.nodes[n].id); // live entity pos (ntt+0x1b8), not the cached curPos
 	auto d=p-center;
 	auto d2=d.x*d.x+d.y*d.y+d.z*d.z; // float ops
 	return !(r*r<cast(double)d2);
@@ -1705,8 +1710,10 @@ bool canAccept(B)(ref ShinyAI!B ai,ObjectState!B state,int count,Vector3f center
 
 void formGroups4(B)(ref ShinyAI!B ai,ObjectState!B state,int k,int prio){ // 0x484d60
 	int head=0, tail=0;
+	if(formPosCache.length<ai.nodes.length) formPosCache.length=ai.nodes.length;
 	for(int n=ai.fam1Head[k];n;n=ai.nodes[n].famN){ // copy sublist to scratch (grpP/grpN links)
 		auto node=&ai.nodes[n];
+		formPosCache[n]=entPos!B(state,node.kind,node.id);
 		node.grpN=0;
 		if(tail) ai.nodes[tail].grpN=n; else head=n;
 		node.grpP=tail;
@@ -1742,7 +1749,7 @@ void fillGroup4(B)(ref ShinyAI!B ai,ObjectState!B state,int g,ref int head,ref i
 		if(node.status&1){ countF+=1.0; centerSum+=node.curPos; }
 	}
 	for(int n=head;n;){
-		if(!canAccept(ai,state,grp.count,grp.center,n)){ n=ai.nodes[n].grpN; continue; }
+		if(!canAccept(grp.count,grp.center,formPosCache[n])){ n=ai.nodes[n].grpN; continue; }
 		auto node=&ai.nodes[n];
 		if(node.grpP) ai.nodes[node.grpP].grpN=node.grpN; else head=node.grpN;
 		if(node.grpN) ai.nodes[node.grpN].grpP=node.grpP; else tail=node.grpP;
@@ -1771,8 +1778,10 @@ void fillGroup4(B)(ref ShinyAI!B ai,ObjectState!B state,int g,ref int head,ref i
 }
 void formGroups5(B)(ref ShinyAI!B ai,ObjectState!B state,int k,int prio){ // 0x485020
 	int head=0, tail=0;
+	if(formPosCache.length<ai.nodes.length) formPosCache.length=ai.nodes.length;
 	for(int n=ai.fam3Head[k];n;n=ai.nodes[n].famN){ // copy sublist to scratch (cgrpP/cgrpN links)
 		auto node=&ai.nodes[n];
+		formPosCache[n]=entPos!B(state,node.kind,node.id);
 		node.cgrpN=0;
 		if(tail) ai.nodes[tail].cgrpN=n; else head=n;
 		node.cgrpP=tail;
@@ -1806,7 +1815,7 @@ void fillGroup5(B)(ref ShinyAI!B ai,ObjectState!B state,int g,ref int head,ref i
 		if(node.status&1){ countF+=1.0; centerSum+=node.curPos; }
 	}
 	for(int n=head;n;){
-		if(!canAccept(ai,state,grp.count,grp.center,n)){ n=ai.nodes[n].cgrpN; continue; }
+		if(!canAccept(grp.count,grp.center,formPosCache[n])){ n=ai.nodes[n].cgrpN; continue; }
 		auto node=&ai.nodes[n];
 		if(node.cgrpP) ai.nodes[node.cgrpP].cgrpN=node.cgrpN; else head=node.cgrpN;
 		if(node.cgrpN) ai.nodes[node.cgrpN].cgrpP=node.cgrpP; else tail=node.cgrpP;
