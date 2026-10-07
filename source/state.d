@@ -7854,6 +7854,19 @@ auto ref movingObjectById(alias f,alias nonMoving,B,T...)(ref ObjectManager!B ob
 		}
 	}else return nonMoving();
 }
+auto ref movingObjectReadById(alias f,alias nonMoving,B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
+	assert(id>0);
+}do{
+	auto nid=objectManager.ids[id-1];
+	if(nid.type<numMoving&&nid.index!=-1){
+		final switch(nid.mode){
+			case RenderMode.opaque:
+				return f(objectManager.opaqueObjects.movingObjects[nid.type],nid.index,args);
+			case RenderMode.transparent:
+				return f(objectManager.transparentObjects.movingObjects[nid.type],nid.index,args);
+		}
+	}else return nonMoving();
+}
 auto ref staticObjectById(alias f,alias nonStatic,B,T...)(ref ObjectManager!B objectManager,int id,T args)in{
 	assert(id>0);
 }do{
@@ -29966,6 +29979,9 @@ auto ref objectById(alias f,B,T...)(ObjectState!B objectState,int id,T args){
 }
 auto ref movingObjectById(alias f,alias nonMoving,B,T...)(ObjectState!B objectState,int id,T args){
 	return objectState.obj.movingObjectById!(f,nonMoving)(id,args);
+}
+auto ref movingObjectReadById(alias f,alias nonMoving,B,T...)(ObjectState!B objectState,int id,T args){
+	return objectState.obj.movingObjectReadById!(f,nonMoving)(id,args);
 }
 auto ref staticObjectById(alias f,alias nonStatic,B,T...)(ObjectState!B objectState,int id,T args){
 	return objectState.obj.staticObjectById!(f,nonStatic)(id,args);

@@ -574,7 +574,7 @@ void botSideChanged(B)(ObjectState!B state,ref MovingObject!B o){ // charm/rescu
 }
 void botSpawned(B)(ObjectState!B state,int id){ // thaum SIDE::AddToSide: MovingObject creation (souls excluded: thaum assigns soul ntts the neutral side record)
 	if(id<=0) return;
-	auto sideKind=state.movingObjectById!((ref o)=>tuple(o.side,botNodeKind(o)),()=>tuple(-1,NodeKind.none))(id);
+	auto sideKind=state.movingObjectReadById!((ref cols,i)=>tuple(cols.sides[i],cols.sacObject.isWizard?NodeKind.wiz:cols.sacObject.isManahoar?NodeKind.maho:NodeKind.t4o),()=>tuple(-1,NodeKind.none))(id);
 	if(sideKind[0]>=0) state.botEvent(sideKind[0],BotEvent.addedToSide,sideKind[1],id);
 }
 void botBuilt(B)(ObjectState!B state,int side,int id){ // thaum SIDE::AddToSide: building creation (wired in makeBuilding, after components are added)
@@ -619,7 +619,7 @@ void botSeen(B)(ObjectState!B state,int side,int id,TargetType type){ // markAsV
 	if(0<id&&id<ai.nodeById.length&&ai.nodeById[id]) return; // already tracked: O(1) early-out (hot path)
 	switch(type) with(TargetType){
 		case creature:
-			auto sideKind=state.movingObjectById!((ref o)=>tuple(o.side,botNodeKind!B(o)),()=>tuple(-1,NodeKind.none))(id);
+			auto sideKind=state.movingObjectReadById!((ref cols,i)=>tuple(cols.sides[i],cols.sacObject.isWizard?NodeKind.wiz:cols.sacObject.isManahoar?NodeKind.maho:NodeKind.t4o),()=>tuple(-1,NodeKind.none))(id);
 			if(sideKind[0]<0||sideKind[0]==side) return; // own entities are tracked via spawn/side-change events
 			addNode(ai,state,sideKind[1],id);
 			break;
@@ -641,7 +641,7 @@ void botScanBuilding(B)(ref Building!B b,ObjectState!B state){ // thaum LANDITEM
 	auto position=state.staticObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(b.componentIds[0]);
 	enum range=100.0f;
 	static bool isWizardFilter(T...)(ref CenterProximityEntry entry,ObjectState!B state){
-		return entry.id&&state.movingObjectById!((ref obj)=>obj.isWizard,()=>false)(entry.id);
+		return entry.id&&state.movingObjectReadById!((ref cols,i)=>cols.sacObject.isWizard,()=>false)(entry.id);
 	}
 	if(state.proximity.closestEnemyInRange!isWizardFilter(b.side,position,100.0f,EnemyType.creature,state,float.infinity,state))
 		state.botEvent(b.side,BotEvent.enemyNearBuilding);
@@ -672,7 +672,7 @@ void setup(B)(ref ShinyAI!B ai,ObjectState!B state,int side){
 
 int entSide(B)(ObjectState!B state,NodeKind kind,int id){
 	final switch(kind) with(NodeKind){
-		case wiz,maho,t4o: return state.movingObjectById!((ref o,state)=>o.side,()=>-1)(id,state);
+		case wiz,maho,t4o: return state.movingObjectReadById!((ref cols,i,state)=>cols.sides[i],()=>-1)(id,state);
 		case cre: return state.soulById!((ref s,state)=>neutralSide,()=>-1)(id,state); // thaum assigns soul ntts the neutral side record at spawn (0x459df9: vtbl[0x58](ds:0x4d7c68)); the owner side lives only in the +0x434 touch-collect mask (pickupMask)
 		case str: return state.buildingById!((ref b,state)=>b.side,()=>-1)(id,state);
 		case none: return -1;
@@ -680,7 +680,7 @@ int entSide(B)(ObjectState!B state,NodeKind kind,int id){
 }
 Vector3f entPos(B)(ObjectState!B state,NodeKind kind,int id){
 	final switch(kind) with(NodeKind){
-		case wiz,maho,t4o: return state.movingObjectById!((ref o,state)=>o.position,()=>Vector3f.init)(id,state);
+		case wiz,maho,t4o: return state.movingObjectReadById!((ref cols,i,state)=>cols.positions[i],()=>Vector3f.init)(id,state);
 		case cre: return state.soulById!((ref s,state)=>s.position,()=>Vector3f.init)(id,state);
 		case str: return state.buildingById!((ref b,ObjectState!B state)=>b.position(state),()=>Vector3f.init)(id,state);
 		case none: return Vector3f.init;
@@ -690,7 +690,7 @@ bool entExists(B)(ObjectState!B state,NodeKind kind,int id){
 	// no blanket isValidTarget: sacengine building ids fail it (ObjectType.building>=numMoving+numStatic); the per-kind lookups validate
 	if(!id) return false;
 	final switch(kind) with(NodeKind){
-		case wiz,maho,t4o: return state.movingObjectById!((ref o,state)=>true,()=>false)(id,state);
+		case wiz,maho,t4o: return state.movingObjectReadById!((ref cols,i,state)=>true,()=>false)(id,state);
 		case cre: return state.soulById!((ref s,state)=>true,()=>false)(id,state);
 		case str: return state.buildingById!((ref b,state)=>true,()=>false)(id,state);
 		case none: return false;
@@ -714,7 +714,7 @@ Vector3f entAimPos(B)(ObjectState!B state,NodeKind kind,int id){ // SIF_GetAimPo
 bool entCanSee(B)(ObjectState!B state,NodeKind kind,int id,Vector3f spos,Vector3f tpos){
 	if(isNaN(spos.x)||isNaN(tpos.x)) return false; // entity gone (thaum always has a live ntt)
 	if(kind==NodeKind.wiz||kind==NodeKind.maho||kind==NodeKind.t4o){
-		auto visible=state.movingObjectById!((ref o,state)=>o.creatureState.mode.isVisibleToAI&&!o.creatureStats.effects.stealth,()=>false)(id,state); // state-flag 0x10000 approximation
+		auto visible=state.movingObjectReadById!((ref cols,i,state)=>cols.creatureStates[i].mode.isVisibleToAI&&!cols.creatureStatss[i].effects.stealth,()=>false)(id,state); // state-flag 0x10000 approximation
 		if(!visible) return false;
 	}
 	if(!state.fogOfWar) return true;
@@ -728,11 +728,11 @@ bool entCanHit(B)(ObjectState!B state,int sid,Vector3f spos,int tid,Vector3f tpo
 }
 // thaum ntt.vtbl[14] (IsDead@CREATURE 0x46c0f0): [stateRec+0x30]&0x4000; states with 0x4000 in norm.FSMC/ofly.FSMC: all death states, vivify rise/float, all sac doctor carry states
 bool entDead(B)(ObjectState!B state,int id){
-	return state.movingObjectById!((ref o,state)=>!!o.creatureState.mode.among(CreatureMode.dying,CreatureMode.dead,CreatureMode.deadToGhost,CreatureMode.dissolving,CreatureMode.reviving,CreatureMode.fastReviving,CreatureMode.convertReviving,CreatureMode.thrashing),()=>false)(id,state);
+	return state.movingObjectReadById!((ref cols,i,state)=>!!cols.creatureStates[i].mode.among(CreatureMode.dying,CreatureMode.dead,CreatureMode.deadToGhost,CreatureMode.dissolving,CreatureMode.reviving,CreatureMode.fastReviving,CreatureMode.convertReviving,CreatureMode.thrashing),()=>false)(id,state);
 }
 // CREATURE::IsRespawning entity-side: [stateRec+0x30]&0x40000
 bool entGhost(B)(ObjectState!B state,int id){
-	return state.movingObjectById!((ref o,state)=>!!o.creatureState.mode.among(CreatureMode.idleGhost,CreatureMode.movingGhost),()=>false)(id,state);
+	return state.movingObjectReadById!((ref cols,i,state)=>!!cols.creatureStates[i].mode.among(CreatureMode.idleGhost,CreatureMode.movingGhost),()=>false)(id,state);
 }
 
 // thaum relation 0x486c60: 0=own, 1=ally, 2=neutral, 3=enemy
@@ -753,7 +753,7 @@ int categoryFromFlags(uint flags){ // 0x486c30
 // 0x487cd0
 bool shouldTrack(B)(ref ShinyAI!B ai,ObjectState!B state,NodeKind kind,int id){
 	if(auto wiz=state.getWizardForSide(ai.side)){
-		auto wizPos=state.movingObjectById!((ref o,state)=>o.position,()=>Vector3f.init)(wiz.id,state);
+		auto wizPos=state.movingObjectReadById!((ref cols,i,state)=>cols.positions[i],()=>Vector3f.init)(wiz.id,state);
 		// thaum sameRegion 0x470700; closest match is pathfinder component equality
 		auto ra=state.pathFinder.getComponentId(entPos!B(state,kind,id),state);
 		if(ra<0) return false;
@@ -873,23 +873,23 @@ void setupCre(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int id,uint flags){ 
 	setupBase(ai,state,n,NodeKind.cre,id,flags|0x8);
 }
 void fillNodeAcc(B)(ref ShinyAI!B ai,ObjectState!B state,AINode!B* node){ // rater1 getOrCreateAccForNode/fillFromObject 0x488ab0
-	state.movingObjectById!((ref o,ObjectState!B state){
-		auto wiz=node.kind==NodeKind.wiz?state.getWizardForSide(o.side):null;
-		fillFromObject!B(node.acc,o.sacObject,ftol(o.creatureStats.mana),wiz?&wiz.spellbook:null);
+	state.movingObjectReadById!((ref cols,i,ObjectState!B state){
+		auto wiz=node.kind==NodeKind.wiz?state.getWizardForSide(cols.sides[i]):null;
+		fillFromObject!B(node.acc,cols.sacObject,ftol(cols.creatureStatss[i].mana),wiz?&wiz.spellbook:null);
 	},(){})(node.id,state);
 }
 void setupT4oBody(B)(ref ShinyAI!B ai,ObjectState!B state,int n,NodeKind kind,int id,uint flags){ // 0x487090
 	setupBase(ai,state,n,kind,id,flags|0x10);
 	auto node=&ai.nodes[n];
 	node.flags|=0x40;
-	state.movingObjectById!((ref o,ObjectState!B state){
-		auto so=o.sacObject;
+	state.movingObjectReadById!((ref cols,i,ObjectState!B state){
+		auto so=cols.sacObject;
 		int numAbil=0;
 		foreach(ab;so.abilities) if(ab !is null) numAbil++;
 		// thaum: base stat word[2] (aggressiveness; wizards have 1000) or ability count
 		if(numAbil||(so.cre8?so.cre8.aggressiveness:1000)!=0) node.status|=1;
 		// ntt+0xb24&0x200 -> status|=0x2000: no sacengine equivalent (documented gap)
-		node.minManaCost=numAbil?cast(float)ftol(o.creatureStats.maxMana):0.0f; // thaum: float(ntt+0xb10)
+		node.minManaCost=numAbil?cast(float)ftol(cols.creatureStatss[i].maxMana):0.0f; // thaum: float(ntt+0xb10)
 		foreach(ab;so.abilities){
 			if(ab is null) continue;
 			auto spel=ab.spel;
@@ -912,7 +912,7 @@ void setupWiz(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int id,uint flags){ 
 	auto node=&ai.nodes[n];
 	node.status|=0x2000e;
 	node.flags|=0x100;
-	state.movingObjectById!((ref o,state){ node.minManaCost=cast(float)(ftol(o.creatureStats.maxMana)/4); },(){})(id,state); // thaum 0x48c800: fild(ntt+0xb10)/4
+	state.movingObjectReadById!((ref cols,i,state){ node.minManaCost=cast(float)(ftol(cols.creatureStatss[i].maxMana)/4); },(){})(id,state); // thaum 0x48c800: fild(ntt+0xb10)/4
 	node.spellDirty=1;
 	// own: thaum marks ntt+0xb24|=0x8000; no consumer in sacengine
 }
@@ -1052,8 +1052,8 @@ void updateMaho(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int dt){ // 0x487a
 	if(node.age>=node.statusTick){
 		node.statusTick=node.age+8;
 		// thaum: tag-property 'anam' on the ntt; closest match is the ability-enabled predicate
-		state.movingObjectById!((ref o,state){
-			if(manahoarAbilityEnabled(o.creatureState.mode)) node.status|=0x1000;
+		state.movingObjectReadById!((ref cols,i,state){
+			if(manahoarAbilityEnabled(cols.creatureStates[i].mode)) node.status|=0x1000;
 			else node.status&=~0x1000;
 		},(){})(node.id,state);
 	}
@@ -1078,8 +1078,8 @@ void updateWiz(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int dt){ // 0x48dd7
 	}
 	if(node.age>=node.soulsSnapTick){
 		node.soulsSnapTick=node.age+32;
-		state.movingObjectById!((ref o,ObjectState!B state){
-			if(auto wiz=state.getWizardForSide(o.side)) node.soulsSnap=wiz.souls;
+		state.movingObjectReadById!((ref cols,i,ObjectState!B state){
+			if(auto wiz=state.getWizardForSide(cols.sides[i])) node.soulsSnap=wiz.souls;
 		},(){})(node.id,state);
 	}
 }
@@ -1188,7 +1188,7 @@ void updateStats(B)(ref ShinyAI!B ai,ObjectState!B state){ // 0x484540
 		for(int n=ai.fam1Head[k];n;n=ai.nodes[n].famN){ // soul pair, vtbl[21]
 			auto node=&ai.nodes[n];
 			if(node.kind==NodeKind.wiz) soulsSeen+=node.manaSnap+node.soulsSnap; // 0x48e390
-			else soulsSeen+=state.movingObjectById!((ref o,state)=>o.creatureStats.effects.carrying,()=>0)(node.id,state); // 0x4879a0
+			else soulsSeen+=state.movingObjectReadById!((ref cols,i,state)=>cols.creatureStatss[i].effects.carrying,()=>0)(node.id,state); // 0x4879a0
 		}
 	}
 	if(soulsSeen>ai.maxSoulsSeen) ai.maxSoulsSeen=soulsSeen;
@@ -1450,7 +1450,7 @@ Tuple!(int,int) outPair5(B)(ref ShinyAI!B ai,ObjectState!B state,int n){ // node
 	auto node=&ai.nodes[n];
 	final switch(node.kind) with(NodeKind){
 		case t4o,wiz:
-			return state.movingObjectById!((ref o,state)=>tuple(ftol(o.creatureStats.mana),ftol(o.creatureStats.maxMana)),()=>tuple(0,0))(node.id,state);
+			return state.movingObjectReadById!((ref cols,i,state)=>tuple(ftol(cols.creatureStatss[i].mana),ftol(cols.creatureStatss[i].maxMana)),()=>tuple(0,0))(node.id,state);
 		case maho,str,cre,none: return tuple(0,0);
 	}
 }
@@ -1458,14 +1458,14 @@ Tuple!(int,int) soulsPair21(B)(ref ShinyAI!B ai,ObjectState!B state,int n){ // n
 	auto node=&ai.nodes[n];
 	final switch(node.kind) with(NodeKind){
 		case t4o,maho:
-			return tuple(state.movingObjectById!((ref o,state)=>o.sacObject.numSouls,()=>0)(node.id,state),0); // thaum reads ntt+0xb30 (soul worth); effects.carrying is SacDoc-only
+			return tuple(state.movingObjectReadById!((ref cols,i,state)=>cols.sacObject.numSouls,()=>0)(node.id,state),0); // thaum reads ntt+0xb30 (soul worth); effects.carrying is SacDoc-only
 		case wiz: return tuple(node.manaSnap,node.soulsSnap); // manaSnap is never updated by thaum (stays 0)
 		case str,cre,none: return tuple(0,0);
 	}
 }
 bool claimable(B)(ref ShinyAI!B ai,ObjectState!B state,int n){ // ntt vtbl[19] 0x46c320
 	// ntt+0xb24&0x100 check has no sacengine equivalent (documented gap)
-	return state.movingObjectById!((ref o,state)=>!o.sacObject.isSacDoctor&&!o.creatureState.mode.among(CreatureMode.dying,CreatureMode.dead,CreatureMode.deadToGhost,CreatureMode.dissolving),()=>false)(ai.nodes[n].id,state);
+	return state.movingObjectReadById!((ref cols,i,state)=>!cols.sacObject.isSacDoctor&&!cols.creatureStates[i].mode.among(CreatureMode.dying,CreatureMode.dead,CreatureMode.deadToGhost,CreatureMode.dissolving),()=>false)(ai.nodes[n].id,state);
 }
 
 // ---- groups ----
@@ -1604,9 +1604,9 @@ void groupRefresh4(B)(ref ShinyAI!B ai,ObjectState!B state,int g){ // slot4 grou
 		if(node.status==0) continue; // thaum tests the whole status dword, not the active bit
 		auto p5=outPair5(ai,state,n);
 		grp.manaSum+=p5[0]; grp.maxManaSum+=p5[1];
-		state.movingObjectById!((ref o,ObjectState!B state){
-			grp.healthSum+=typeStats!B(o.sacObject).health; // ntt stat word[3]
-			grp.healthSum2+=ftol(o.creatureStats.health);   // ntt word +0x8ea
+		state.movingObjectReadById!((ref cols,i,ObjectState!B state){
+			grp.healthSum+=typeStats!B(cols.sacObject).health; // ntt stat word[3]
+			grp.healthSum2+=ftol(cols.creatureStatss[i].health);   // ntt word +0x8ea
 		},(){})(node.id,state);
 		if(hasAcc(ai,n)) combine(grp.acc,1.0f,node.acc,1.0f);
 		if(node.status&0x1000) grp.readyCount++;
@@ -2395,7 +2395,7 @@ void orderIfChanged(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int ostate,int
 	// (see below), so re-issue only when the engine order popped and thaum would not have retained it
 	auto node=&ai.nodes[n];
 	static if(shinyAILog){
-		auto live=state.movingObjectById!((ref o,state)=>o.creatureAI.order,()=>Order.init)(node.id,state);
+		auto live=state.movingObjectReadById!((ref cols,i,state)=>cols.creatureAIs[i].order,()=>Order.init)(node.id,state);
 		ailog("ORDCHK ",ai.side," t",ai.schedTime," n",n,"(",node.kind," id ",node.id,") @",line," req(",ostate,",",target,",",pos is null?Vector3f.init:*pos,") cached(",node.ordState,",",node.ordTarget,",",node.ordPos,") live(",live.command,",",live.target,")");
 	}
 	if(node.ordState==ostate&&(target==0||node.ordTarget==target)&&(pos is null||node.ordPos==*pos)){
@@ -2405,7 +2405,7 @@ void orderIfChanged(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int ostate,int
 		// ostates 2/0x22 force-pop (0x46ded0(queue,1)) and live-target orders (3/5) re-engage on target
 		// movement, so those keep re-issuing once the engine order pops
 		if((ostate==4||ostate==7)&&distSq3(node.curPos,node.ordPos)<=0.25f) return;
-		if(state.movingObjectById!((ref o,state)=>o.creatureAI.order.command!=CommandType.none,()=>true)(node.id,state)) return;
+		if(state.movingObjectReadById!((ref cols,i,state)=>cols.creatureAIs[i].order.command!=CommandType.none,()=>true)(node.id,state)) return;
 	}
 	issueOrder(ai,state,n,ostate,target,pos,line);
 	if(node.kind==NodeKind.wiz&&ostate==6){ // the converted order lives as ostate 7 (0x46e1a0), so 0x4878c0's compare and slot19's case table (0x487420) see 7, not the requested 6
@@ -2502,8 +2502,8 @@ int nodeSlot22(B)(ref ShinyAI!B ai,ObjectState!B state,int n){ // node vtbl[22]:
 		if(!ai.betaMinManaSacu&&wizardSacrificing!B(ai,state,node.id)) return ftol(node.minManaCost);
 		auto e=&node.castQueue[0];
 		if(e.provider&&e.provider.type==SpellType.creature){ // queue head provider+0xc==2 (creature spell)
-			auto souls=state.movingObjectById!((ref o,ObjectState!B state){
-				if(auto wiz=state.getWizardForSide(o.side)) return wiz.souls;
+			auto souls=state.movingObjectReadById!((ref cols,i,ObjectState!B state){
+				if(auto wiz=state.getWizardForSide(cols.sides[i])) return wiz.souls;
 				return 0;
 			},()=>0)(node.id,state);
 			if(souls>e.provider.soulCost) return 5*ftol(e.provider.manaCost)/4; // strict >; lea*5 + sdiv4
@@ -2612,8 +2612,8 @@ void wizSpellRebuild(B)(ref ShinyAI!B ai,ObjectState!B state,int n){ // 0x48c8d0
 	node.summons.length=0;
 	node.spellAccs.length=0;
 	node.manahoarSpell=null; node.shrineSpell=null; node.convertSpell=null; node.desecrateSpell=null;
-	state.movingObjectById!((ref o,ObjectState!B state){
-		if(auto wiz=state.getWizardForSide(o.side)){
+	state.movingObjectReadById!((ref cols,i,ObjectState!B state){
+		if(auto wiz=state.getWizardForSide(cols.sides[i])){
 			foreach(entry;wiz.getSpells()){
 				auto s=entry.spell;
 				if(s is null) continue;
@@ -2676,15 +2676,15 @@ uint nttTypeBits(NodeKind kind){ // ntt+0x4 type bits
 }
 Tuple!(int,int) healthPair(B)(ObjectState!B state,NodeKind kind,int id){ // ntt words +0x8ba (cur), +0x8ea (max)
 	final switch(kind) with(NodeKind){
-		case t4o,maho,wiz: return state.movingObjectById!((ref o,state)=>tuple(ftol(o.creatureStats.health),ftol(o.creatureStats.maxHealth)),()=>tuple(0,0))(id,state);
+		case t4o,maho,wiz: return state.movingObjectReadById!((ref cols,i,state)=>tuple(ftol(cols.creatureStatss[i].health),ftol(cols.creatureStatss[i].maxHealth)),()=>tuple(0,0))(id,state);
 		case str: return state.buildingById!((ref b)=>tuple(ftol(b.health),b.sacBuilding.maxHealth),()=>tuple(0,0))(id);
 		case cre,none: return tuple(0,0);
 	}
 }
 Tuple!(uint,uint) spellbookOR(B)(ObjectState!B state,int id){ // 0x487250: OR of s_spell+0x60/+0x28 over the creature spellbook
-	return state.movingObjectById!((ref o,state){
+	return state.movingObjectReadById!((ref cols,i,state){
 		uint out1=0,out2=0;
-		foreach(ab;o.sacObject.abilities){
+		foreach(ab;cols.sacObject.abilities){
 			if(ab is null||!ab.spel) continue;
 			out1|=cast(uint)ab.spel.unknown16|cast(uint)ab.spel.flags1<<16;
 			out2|=cast(uint)ab.spel.flags;
@@ -2738,11 +2738,11 @@ bool canCastSpellOn(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int target,Sac
 		}
 		if(flags&SpelFlags.disallowFlying){ // reject targets >2.0 above terrain (thaum escapes grounded ntts (+0x234&2, set by ApplyMovement's terrain clamp); post-clamp altitude is ~0 for those, so the altitude test alone is equivalent on live data)
 			if(tnode.kind.among(NodeKind.wiz,NodeKind.t4o,NodeKind.maho))
-				if(state.movingObjectById!((ref o,state)=>o.position.z-state.getHeight(o.position)>2.0f,()=>false)(tnode.id,state)) return false;
+				if(state.movingObjectReadById!((ref cols,i,state)=>cols.positions[i].z-state.getHeight(cols.positions[i])>2.0f,()=>false)(tnode.id,state)) return false;
 		}
 		if(flags&SpelFlags.disallowHero){ // +0xb24&0x40 hero bit, tested on types 1|4; wizards included (testing type 1 would be dead code otherwise)
 			if(tnode.kind.among(NodeKind.wiz,NodeKind.t4o,NodeKind.maho))
-				if(state.movingObjectById!((ref o,state)=>o.isWizard||isHero!B(o),()=>false)(tnode.id,state)) return false;
+				if(state.movingObjectReadById!((ref cols,i,state)=>cols.sacObject.isWizard||cols.sacObject.isHero,()=>false)(tnode.id,state)) return false;
 		}
 		if(flags&SpelFlags.onlyCreatures){ // target NTT::CanSelect vtbl[0x48]: only CREATURE overrides nonzero (!statsFlags&0x100 && !stateFlags&0x2000), NTT/WIZARD/souls/buildings are always 0
 			if(!tnode.kind.among(NodeKind.t4o,NodeKind.maho)||entDead!B(state,tnode.id)) return false; // (+0xb24&0x100 cannotSelect template flag: no sacengine equivalent, documented gap; dead nodes are untracked anyway)
@@ -2812,7 +2812,7 @@ float rateSpellAcc(B)(ref ShinyAI!B ai,ObjectState!B state,ref SpellAcc!B acc,in
 	switch(rfn) with(RatingFn){
 		case f489700: // omna
 			if(!(tnode.flags&0x10)) return 0.0f;
-			auto run=state.movingObjectById!((ref o,state)=>typeStats!B(o.sacObject).run,()=>0.0f)(tnode.id,state);
+			auto run=state.movingObjectReadById!((ref cols,i,state)=>typeStats!B(cols.sacObject).run,()=>0.0f)(tnode.id,state);
 			auto val=cast(float)(cast(double)run*spel.duration*0.00016818028927009755);
 			auto rg=influenceGroups(ai,state,3,tnode.curPos,0.0f,val,null);
 			auto r=cast(float)(cast(double)rg-sortKey(ai,target));
@@ -2876,8 +2876,8 @@ float rateSpellAcc(B)(ref ShinyAI!B ai,ObjectState!B state,ref SpellAcc!B acc,in
 			return cast(float)(cast(double)sortKey(ai,target)*nodeValue6c(ai,target));
 		case f489c40: // pups
 			if(!(nttTypeBits(tnode.kind)&0x5)) return 0.0f;
-			return state.movingObjectById!((ref o,state){
-				auto order=&o.creatureAI.order;
+			return state.movingObjectReadById!((ref cols,i,state){
+				auto order=&cols.creatureAIs[i].order;
 				double base;
 				// thaum reads the target's live order cmd (0x46e1d0): 7 (advance) -> wizards excluded, empty spellbook required, base 60; 0x22 (engage) -> base 40, no gates; else 0
 				if(tnode.ordState==7&&order.command==CommandType.advance){ // 7
@@ -2888,7 +2888,7 @@ float rateSpellAcc(B)(ref ShinyAI!B ai,ObjectState!B state,ref SpellAcc!B acc,in
 				}else if(tnode.ordState==34&&order.command.among(CommandType.guard,CommandType.guardArea,CommandType.move)) base=40.0; // 0x22 (move: soul-pickup engage maps to move)
 				else return 0.0f;
 				auto p=order.target.id&&order.target.type!=TargetType.terrain&&state.isValidTarget(order.target.id)?
-					state.movingObjectById!((ref t,state)=>t.position,()=>order.target.position)(order.target.id,state):order.target.position;
+					state.movingObjectReadById!((ref tcols,ti,state)=>tcols.positions[ti],()=>order.target.position)(order.target.id,state):order.target.position;
 				auto d2=cast(float)distSq3(tnode.curPos,p);
 				if(d2<100.0f) return 0.0f;
 				return cast(float)(cast(double)sortKey(ai,target)*safediv(cast(double)d2,base*base));
@@ -2925,7 +2925,7 @@ int spellAccAnchor(B)(ref ShinyAI!B ai,ObjectState!B state,ref SpellAcc!B acc,in
 float findBestSpell(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int target,uint mask,SacSpell!B* outSpell,float* outRange,int* outObj){ // 0x48d4d0
 	auto node=&ai.nodes[n];
 	// retail 0x490020: fild(maxMana * (own+ally manaliths)); thaum 0x48d4d0: own only
-	auto pool=cast(float)(state.movingObjectById!((ref o,state)=>ftol(o.creatureStats.maxMana),()=>0)(node.id,state)*(si(ai.stanceRecs[0],5)+(ai.betaSummonAccounting?0:si(ai.stanceRecs[1],5))));
+	auto pool=cast(float)(state.movingObjectReadById!((ref cols,i,state)=>ftol(cols.creatureStatss[i].maxMana),()=>0)(node.id,state)*(si(ai.stanceRecs[0],5)+(ai.betaSummonAccounting?0:si(ai.stanceRecs[1],5))));
 	auto category=5u;
 	float distScaled=0.0f;
 	if(target){
@@ -2967,7 +2967,7 @@ void weightTriple(B)(ref ShinyAI!B ai,int cmd,float[3]* w3){ // 0x48cc70
 
 bool isSacDoctorEnt(B)(ObjectState!B state,NodeKind kind,int id){ // thaum: ntt+0x414 (retail +0x41c) provider tag == "dcas" (SpellTag.sacDoctor; filename 'sacd' is the reversed fourcc)
 	final switch(kind) with(NodeKind){
-		case wiz,t4o,maho,cre: return state.movingObjectById!((ref o,state)=>o.sacObject.isSacDoctor,()=>false)(id,state);
+		case wiz,t4o,maho,cre: return state.movingObjectReadById!((ref cols,i,state)=>cols.sacObject.isSacDoctor,()=>false)(id,state);
 		case str,none: return false;
 	}
 }
@@ -2984,16 +2984,16 @@ bool desecrationOngoing(B)(ObjectState!B state,int buildingId){ // 0x466950(ntt,
 	return false;
 }
 bool wizardSacrificing(B)(ref ShinyAI!B ai,ObjectState!B state,int wizardId){ // retail 0x490ac0: GetTag(ntt+0xb9c,0,0)=='sacu' approximation: the wizard's side has a desecrate ritual underway
-	return state.movingObjectById!((ref o,ObjectState!B state){
+	return state.movingObjectReadById!((ref cols,ci,ObjectState!B state){
 		foreach(i;0..state.obj.opaqueObjects.effects.sacDocCastings.length){
 			auto c=&state.obj.opaqueObjects.effects.sacDocCastings[i];
-			if(c.type==RitualType.desecrate&&c.side==o.side) return true;
+			if(c.type==RitualType.desecrate&&c.side==cols.sides[ci]) return true;
 		}
 		return false;
 	},()=>false)(wizardId,state);
 }
 bool isGuardianEnt(B)(ObjectState!B state,int creatureId){ // ntt+0x5b4!=0: creature bound to a building by the guardian spell (setGuardian 0x460200, guardian spell only)
-	return state.movingObjectById!((ref o,state)=>o.creatureStats.effects.isGuardian,()=>false)(creatureId,state);
+	return state.movingObjectReadById!((ref cols,i,state)=>cols.creatureStatss[i].effects.isGuardian,()=>false)(creatureId,state);
 }
 uint pickupMask(B)(ObjectState!B state,int id){ // thaum soul+0x434: static touch-collect side mask, from the soul record or 0xffffffff (0x4753e0/0x475abf); approximation via soulSide: creatureId==0 souls (e.g. gibs) are touch-collectible by everyone regardless of preferredSide
 	auto s=soulSide(id,state);
@@ -3115,9 +3115,9 @@ void wizRetreat(B)(ref ShinyAI!B ai,ObjectState!B state,int n,float[3]* w3){ // 
 void wizSacrifice(B)(ref ShinyAI!B ai,ObjectState!B state,int n,float[3]* w3,int ri){ // 0x48d8b0
 	auto node=&ai.nodes[n];
 	int maxMana=0, souls=0;
-	state.movingObjectById!((ref o,ObjectState!B state){
-		maxMana=ftol(o.creatureStats.maxMana);
-		if(auto wiz=state.getWizardForSide(o.side)) souls=wiz.souls;
+	state.movingObjectReadById!((ref cols,i,ObjectState!B state){
+		maxMana=ftol(cols.creatureStatss[i].maxMana);
+		if(auto wiz=state.getWizardForSide(cols.sides[i])) souls=wiz.souls;
 	},(){})(node.id,state);
 	if(maxMana==0||souls==0) return; // ntt+0xb10/0xb30 gates
 	auto randv=cast(double)ai.rng.rand()*3.0518509447574615e-05f; // fild(rand)*f32, stays extended
@@ -3172,8 +3172,8 @@ void wizSacrifice(B)(ref ShinyAI!B ai,ObjectState!B state,int n,float[3]* w3,int
 // ---- wizard: cast execution ----
 
 bool lightCanCast(B)(ObjectState!B state,int wizardId,SacSpell!B spell){ // thaum WIZARD::CantCastSpell 0x481580 (returns 0 = can cast)
-	return state.movingObjectById!((ref o,ObjectState!B state){
-		auto wiz=state.getWizardForSide(o.side);
+	return state.movingObjectReadById!((ref cols,i,ObjectState!B state){
+		auto wiz=state.getWizardForSide(cols.sides[i]);
 		if(wiz is null||wiz.id!=wizardId) return false;
 		// thaum looks the spell up by tag (vtbl+0xf8): missing item, or item+0x8&2 set (level-locked by GRIMOIRE::UpdateSpellList 0x4514f0 after a de-level) -> "_XP_" reject;
 		// sacengine book entries carry the spell level, entry.level>wiz.level is the same predicate
@@ -3194,7 +3194,7 @@ bool lightCanCast(B)(ObjectState!B state,int wizardId,SacSpell!B spell){ // thau
 				break;
 			}
 		if(!found) return false; // "_XP_" (spell not in spellbook)
-		return ftol(spell.manaCost)<=ftol(o.creatureStats.mana); // 'mana' (thaum CalculateCost = max(fileManaCost,1), sacengine applies it at load)
+		return ftol(spell.manaCost)<=ftol(cols.creatureStatss[i].mana); // 'mana' (thaum CalculateCost = max(fileManaCost,1), sacengine applies it at load)
 	},()=>false)(wizardId,state);
 }
 
@@ -3208,7 +3208,7 @@ int executeBestCast(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int checkOnly)
 		if(e.provider is null) goto exit;
 		if((e.flag&1)&&e.target&&checkOnly) goto exit;
 		if(si(ai.stanceRecs[0],5)+(ai.betaSummonAccounting?0:si(ai.stanceRecs[1],5))==0){ // no manaliths (retail: own+ally; thaum: own): only affordable casts
-			auto mana=state.movingObjectById!((ref o,state)=>ftol(o.creatureStats.mana),()=>0)(node.id,state);
+			auto mana=state.movingObjectReadById!((ref cols,i,state)=>ftol(cols.creatureStatss[i].mana),()=>0)(node.id,state);
 			if(ftol(e.provider.manaCost)>mana){ // thaum reads the int mana fields
 				static if(shinyAILog) ailog("CASTQ ",ai.side," t",ai.schedTime," n",n," [",i,"]: mana ",ftol(e.provider.manaCost),">",mana,e.flag&1?" -> ret 0":" -> skip");
 				if(e.flag&1) return 0;
@@ -3361,9 +3361,9 @@ int wizBrain(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int cmd,int ri){
 				&&!desecrationOngoing!B(state,tgt.id)){ // 0x466950(edi.ntt,0,0)=='sacu' approximation
 					auto g=pickGuardCreature(ai,state,tn);
 					if(g
-					&&!state.movingObjectById!((ref o,state)=>o.creatureState.mode.among(CreatureMode.convertReviving,CreatureMode.thrashing),()=>false)(ai.nodes[g].id,state) // 0x46a840(g.ntt,'ucas') approximation
-					&&state.movingObjectById!((ref o,ObjectState!B state){
-						if(auto wiz=state.getWizardForSide(o.side)) return buildingIdOf!B(state,wiz.closestEnemyAltar)==tgt.id; // ntt+0xb7c==edi.ntt
+					&&!state.movingObjectReadById!((ref cols,i,state)=>cols.creatureStates[i].mode.among(CreatureMode.convertReviving,CreatureMode.thrashing),()=>false)(ai.nodes[g].id,state) // 0x46a840(g.ntt,'ucas') approximation
+					&&state.movingObjectReadById!((ref cols,i,ObjectState!B state){
+						if(auto wiz=state.getWizardForSide(cols.sides[i])) return buildingIdOf!B(state,wiz.closestEnemyAltar)==tgt.id; // ntt+0xb7c==edi.ntt
 						return false;
 					},()=>false)(node.id,state)){
 						auto r=cast(float)(cast(double)node.desecrateSpell.range*0.9); // fld range; fmul 0.9d; f32
