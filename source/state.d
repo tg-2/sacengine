@@ -31244,9 +31244,9 @@ void placeStructure(B)(ObjectState!B state,ref Structure ntt){
 				}
 				if(!ok) continue;
 			}
-			cposition.z=state.getHeight(cposition)+component.z;
+			cposition.z=state.getHeight(cposition)+max(component.z,0.0f); // TODO: ok?
 			auto rotation=facingQuaternion(2*pi!float/360.0f*(ntt.facing+component.facing));
-			auto componentId=state.addObject(StaticObject!B(curObj,building.id,cposition,rotation,1.0f,component.z==0.0f?0:StaticObjectFlags.hovering));
+			auto componentId=state.addObject(StaticObject!B(curObj,building.id,cposition,rotation,1.0f,component.z<=0.0f?0:StaticObjectFlags.hovering));
 			if(component.spell=="brfm") bracket=componentId;
 			if(component.spell=="yrfm"&&"yrfm"in spels){ // magnifryer gun, mfry.SPEL
 				auto magnifryer=Magnifryer!B(building.id,componentId,SacSpell!B.get("yrfm"),0,building.facing+2*pi!float/360.0f*component.facing);
