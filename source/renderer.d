@@ -1638,7 +1638,7 @@ struct Renderer(B){
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.sacDocCarries.length){
 					auto getPositionAndScaleForId(int id,float scale){
 						alias H=Vector3f[2];
-						auto hitbox=state.movingObjectById!((ref obj)=>obj.hitbox,()=>H.init)(id);
+						auto hitbox=state.movingObjectReadById!((ref objects,i)=>objects.hitbox(i),()=>H.init)(id);
 						auto size=boxSize(hitbox);
 						return tuple(boxCenter(hitbox),scale*0.65f*Vector3f(1.1f*size.length,0.9f*size.length,0.0f)); // TODO
 					}
@@ -1795,7 +1795,7 @@ struct Renderer(B){
 						if((objects.speedUpShadows[j].age+1)%speedUpShadowSpacing!=0) continue;
 						auto id=objects.speedUpShadows[j].creature;
 						if(!state.isValidTarget(id,TargetType.creature)) continue;
-						auto sacObjectPetrifiedSlimedBulk=state.movingObjectById!((obj)=>tuple(obj.sacObject,obj.creatureStats.effects.stoneEffect,obj.creatureStats.effects.slimed,obj.creatureStats.effects.bulk),()=>tuple(SacObject!B.init,false,false,1.0f))(id); // TODO: store within SpeedUpShadow?
+						auto sacObjectPetrifiedSlimedBulk=state.movingObjectReadById!((ref objects,i)=>tuple(objects.sacObject,objects.creatureStatss[i].effects.stoneEffect,objects.creatureStatss[i].effects.slimed,objects.creatureStatss[i].effects.bulk),()=>tuple(SacObject!B.init,false,false,1.0f))(id); // TODO: store within SpeedUpShadow?
 						auto sacObject=sacObjectPetrifiedSlimedBulk[0], petrified=sacObjectPetrifiedSlimedBulk[1], slimed=sacObjectPetrifiedSlimedBulk[2], bulk=sacObjectPetrifiedSlimedBulk[3];
 						if(!sacObject) continue;
 						auto materials=sacObject.transparentMaterials;
@@ -1930,11 +1930,11 @@ struct Renderer(B){
 					}
 					foreach(j;0..objects.cagePulls.length){
 						auto creature=objects.cagePulls[j].creature;
-						auto start=state.movingObjectById!((ref obj)=>obj.shotPosition,()=>Vector3f.init)(creature);
+						auto start=state.movingObjectReadById!(.shotPosition,()=>Vector3f.init)(creature);
 						if(isNaN(start.x)) continue;
 						auto target=objects.cagePulls[j].target;
 						if(!target) continue;
-						auto end=state.movingObjectById!((ref obj)=>obj.center,()=>Vector3f.init)(target);
+						auto end=state.movingObjectReadById!(.center,()=>Vector3f.init)(target);
 						if(isNaN(end.x)) continue;
 						auto frame=objects.cagePulls[j].frame;
 						enum totalFrames=typeof(objects.cagePulls[j]).totalFrames;
@@ -1947,13 +1947,13 @@ struct Renderer(B){
 					foreach(j;0..objects.rituals.length){
 						auto frame=objects.rituals[j].frame;
 						if(!isNaN(objects.rituals[j].altarBolts[0].displacement[0].x)){
-							auto start=state.staticObjectById!((ref obj)=>obj.position+Vector3f(0.0f,0.0f,60.0f),()=>Vector3f.init)(objects.rituals[j].shrine);
-							auto end=state.movingObjectById!(center,()=>Vector3f.init)(objects.rituals[j].creature);
+							auto start=state.staticObjectReadById!((ref objects,i)=>objects.positions[i]+Vector3f(0.0f,0.0f,60.0f),()=>Vector3f.init)(objects.rituals[j].shrine);
+							auto end=state.movingObjectReadById!(.center,()=>Vector3f.init)(objects.rituals[j].creature);
 							if(!isNaN(end.x)&&!isNaN(start.x)) renderBolts!(Lightning!B.totalFrames)(objects.rituals[j].altarBolts[],start,end,frame,0.0f,1.0f);
 						}
 						if(objects.rituals[j].targetWizard){
 							auto start=objects.rituals[j].vortex.position;
-							auto end=state.movingObjectById!(center,()=>Vector3f.init)(objects.rituals[j].targetWizard);
+							auto end=state.movingObjectReadById!(.center,()=>Vector3f.init)(objects.rituals[j].targetWizard);
 							if(!isNaN(end.x)&&!isNaN(start.x)) renderBolts!(Lightning!B.totalFrames)(objects.rituals[j].desecrateBolts[],start,end,frame,0.0f,1.0f);
 						}
 					}
@@ -2083,7 +2083,7 @@ struct Renderer(B){
 						}
 						foreach(j;0..objects.rockForms.length){
 							auto target=objects.rockForms[j].target;
-							auto positionRotation=state.movingObjectById!((ref obj)=>tuple(center(obj),obj.rotation), function Tuple!(Vector3f,Quaternionf)(){ return typeof(return).init; })(target);
+							auto positionRotation=state.movingObjectReadById!((ref objects,i)=>tuple(objects.center(i),objects.rotations[i]), function Tuple!(Vector3f,Quaternionf)(){ return typeof(return).init; })(target);
 							auto position=positionRotation[0], rotation=positionRotation[1];
 							if(isNaN(position.x)) continue;
 							auto scale=objects.rockForms[j].scale*objects.rockForms[j].relativeScale;
@@ -2132,7 +2132,7 @@ struct Renderer(B){
 					}
 					void renderProtectiveSwarm(ref ProtectiveSwarm!B protectiveSwarm){
 						material.backend.setAlpha(ProtectiveBug!B.alpha*protectiveSwarm.alpha);
-						auto positionRotation=state.movingObjectById!((ref object)=>tuple(object.center,object.rotation),()=>Tuple!(Vector3f,Quaternionf).init)(protectiveSwarm.target);
+						auto positionRotation=state.movingObjectReadById!((ref objects,i)=>tuple(objects.center(i),objects.rotations[i]),()=>Tuple!(Vector3f,Quaternionf).init)(protectiveSwarm.target);
 						auto position=positionRotation[0],rotation=positionRotation[1];
 						if(isNaN(position.x)) return;
 						foreach(k;0..protectiveSwarm.bugs.length)
@@ -2152,7 +2152,7 @@ struct Renderer(B){
 						B.enableTransparency();
 						B.disableDepthMask();
 						auto target=airShield.target;
-						auto positionRotationBoxSize=state.movingObjectById!((ref obj)=>tuple(center(obj),obj.position,obj.rotation,boxSize(obj.sacObject.largeHitbox(Quaternionf.identity(),obj.scale,obj.animationState,obj.frame/updateAnimFactor))), function Tuple!(Vector3f,Vector3f,Quaternionf,Vector3f)(){ return typeof(return).init; })(target);
+						auto positionRotationBoxSize=state.movingObjectReadById!((ref objects,i)=>tuple(objects.center(i),objects.positions[i],objects.rotations[i],boxSize(objects.sacObject.largeHitbox(Quaternionf.identity(),objects.scales[i],objects.animationStates[i],objects.frames[i]/updateAnimFactor))), function Tuple!(Vector3f,Vector3f,Quaternionf,Vector3f)(){ return typeof(return).init; })(target);
 						auto position=positionRotationBoxSize[0], rawPosition=positionRotationBoxSize[1], rotation=positionRotationBoxSize[2], boxSize=positionRotationBoxSize[3];
 						if(isNaN(position.x)) return;
 						auto scale=airShield.scale+0.05f*(1.0f*sin(2.0f*pi!float*2.0f*airShield.frame/updateFPS));
@@ -2192,10 +2192,10 @@ struct Renderer(B){
 					void renderFreeze(ref Freeze!B freeze){
 						auto scale=freeze.scale;
 						auto creature=freeze.creature;
-						auto hitbox=state.movingObjectById!((ref obj){
-							auto hitbox=obj.sacObject.largeHitbox(obj.rotation,obj.scale,obj.animationState,obj.frame/updateAnimFactor);
-							hitbox[0]+=obj.position;
-							hitbox[1]+=obj.position;
+						auto hitbox=state.movingObjectReadById!((ref objects,i){
+							auto hitbox=objects.sacObject.largeHitbox(objects.rotations[i],objects.scales[i],objects.animationStates[i],objects.frames[i]/updateAnimFactor);
+							hitbox[0]+=objects.positions[i];
+							hitbox[1]+=objects.positions[i];
 							return hitbox;
 						}, ()=>(Vector3f[2]).init)(creature);
 						auto center=boxCenter(hitbox), size=boxSize(hitbox);
@@ -2216,10 +2216,10 @@ struct Renderer(B){
 						auto offset=Vector3f(0.0f,0.0f,position*slime.heightOffset);
 						auto creature=slime.creature;
 						import animations;
-						auto sizeCenter=state.movingObjectById!((ref obj){
-							auto hitbox=obj.sacObject.largeHitbox(Quaternionf.identity(),obj.scale,AnimationState.stance1,0);
-							hitbox[0]+=obj.position;
-							hitbox[1]+=obj.position;
+						auto sizeCenter=state.movingObjectReadById!((ref objects,i){
+							auto hitbox=objects.sacObject.largeHitbox(Quaternionf.identity(),objects.scales[i],AnimationState.stance1,0);
+							hitbox[0]+=objects.positions[i];
+							hitbox[1]+=objects.positions[i];
 							return tuple(boxSize(hitbox).length,boxCenter(hitbox));
 						},()=>tuple(float.nan,Vector3f.init))(creature);
 						auto size=sizeCenter[0],center=sizeCenter[1];
@@ -2504,7 +2504,7 @@ struct Renderer(B){
 					foreach(j;0..objects.rainFrogs.length){
 						auto position=objects.rainFrogs[j].position+Vector3f(0.0f,0.0f,0.5f*self.rainFrog.size);
 						if(auto target=objects.rainFrogs[j].target){
-							auto targetPositionTargetRotation=state.movingObjectById!((ref obj)=>tuple(obj.position,obj.rotation),()=>Tuple!(Vector3f,Quaternionf).init)(target);
+							auto targetPositionTargetRotation=state.movingObjectReadById!((ref objects,i)=>tuple(objects.positions[i],objects.rotations[i]),()=>Tuple!(Vector3f,Quaternionf).init)(target);
 							auto targetPosition=targetPositionTargetRotation[0], targetRotation=targetPositionTargetRotation[1];
 							position=targetPosition+rotate(targetRotation,position);
 						}
@@ -2608,7 +2608,7 @@ struct Renderer(B){
 					}
 					void renderHealingAura(ref HealingAura!B healingAura){
 						auto target=healingAura.target;
-						auto positionRotationBoxSize=state.movingObjectById!((ref obj)=>tuple(center(obj),obj.position,obj.rotation,boxSize(obj.sacObject.largeHitbox(Quaternionf.identity(),obj.scale,obj.animationState,obj.frame/updateAnimFactor))), function Tuple!(Vector3f,Vector3f,Quaternionf,Vector3f)(){ return typeof(return).init; })(target);
+						auto positionRotationBoxSize=state.movingObjectReadById!((ref objects,i)=>tuple(objects.center(i),objects.positions[i],objects.rotations[i],boxSize(objects.sacObject.largeHitbox(Quaternionf.identity(),objects.scales[i],objects.animationStates[i],objects.frames[i]/updateAnimFactor))), function Tuple!(Vector3f,Vector3f,Quaternionf,Vector3f)(){ return typeof(return).init; })(target);
 						auto position=positionRotationBoxSize[0], rawPosition=positionRotationBoxSize[1], rotation=positionRotationBoxSize[2], boxSize=positionRotationBoxSize[3];
 						if(isNaN(position.x)) return;
 						auto scale=healingAura.scale;//+0.05f*(1.0f*sin(2.0f*pi!float*2.0f*healingAura.frame/updateFPS));
@@ -2864,7 +2864,7 @@ struct Renderer(B){
 					scope(success) mat.unbind(rc);
 					void renderBlindRageEffect(ref BlindRageEffect!B blindRageEffect){
 						auto target=blindRageEffect.target;
-						auto positionRotation=state.movingObjectById!((ref obj)=>tuple(obj.position,obj.rotation), function Tuple!(Vector3f,Quaternionf)(){ return typeof(return).init; })(target);
+						auto positionRotation=state.movingObjectReadById!((ref objects,i)=>tuple(objects.positions[i],objects.rotations[i]), function Tuple!(Vector3f,Quaternionf)(){ return typeof(return).init; })(target);
 						auto position=positionRotation[0], rotation=positionRotation[1];
 						if(isNaN(position.x)) return;
 						foreach(ref particle;blindRageEffect.particles){
@@ -2900,8 +2900,8 @@ struct Renderer(B){
 					material.bind(rc);
 					scope(success) material.unbind(rc);
 					foreach(j;0..objects.charmHearts.length){
-						auto position=state.movingObjectById!((ref obj,scale){
-							auto hitbox=obj.hitbox;
+						auto position=state.movingObjectReadById!((ref objects,i,scale){
+							auto hitbox=objects.hitbox(i);
 							return 0.5f*(hitbox[1]+hitbox[0])+Vector3f(0.0f,0.0f,0.75f*scale*(hitbox[1].z-hitbox[0].z));
 						},()=>Vector3f.init)(objects.charmHearts[j].target,objects.charmHearts[j].scale);
 						if(isNaN(position.x)) continue;
@@ -3505,7 +3505,7 @@ struct Renderer(B){
 					}
 					foreach(j;0..objects.lifeShields.length){
 						auto target=objects.lifeShields[j].target;
-						auto positionRotationBoxSize=state.movingObjectById!((ref obj)=>tuple(center(obj),obj.rotation,boxSize(obj.sacObject.largeHitbox(Quaternionf.identity(),obj.scale,obj.animationState,obj.frame/updateAnimFactor))), function Tuple!(Vector3f,Quaternionf,Vector3f)(){ return typeof(return).init; })(target);
+						auto positionRotationBoxSize=state.movingObjectReadById!((ref objects,i)=>tuple(objects.center(i),objects.rotations[i],boxSize(objects.sacObject.largeHitbox(Quaternionf.identity(),objects.scales[i],objects.animationStates[i],objects.frames[i]/updateAnimFactor))), function Tuple!(Vector3f,Quaternionf,Vector3f)(){ return typeof(return).init; })(target);
 						auto position=positionRotationBoxSize[0], rotation=positionRotationBoxSize[1], boxSize=positionRotationBoxSize[2];
 						if(isNaN(position.x)) continue;
 						auto scale=objects.lifeShields[j].scale;
@@ -3536,7 +3536,7 @@ struct Renderer(B){
 					foreach(j;0..objects.blightMites.length){
 						auto position=objects.blightMites[j].position;
 						if(auto target=objects.blightMites[j].target){
-							auto targetPositionTargetRotation=state.movingObjectById!((ref obj)=>tuple(obj.position,obj.rotation),()=>Tuple!(Vector3f,Quaternionf).init)(target);
+							auto targetPositionTargetRotation=state.movingObjectReadById!((ref objects,i)=>tuple(objects.positions[i],objects.rotations[i]),()=>Tuple!(Vector3f,Quaternionf).init)(target);
 							auto targetPosition=targetPositionTargetRotation[0], targetRotation=targetPositionTargetRotation[1];
 							position=targetPosition+rotate(targetRotation,position);
 						}
@@ -3561,8 +3561,8 @@ struct Renderer(B){
 					}
 					foreach(ref webPull;objects.webPulls){
 						if(!webPull.target) continue;
-						auto start=state.movingObjectById!((ref obj)=>obj.shotPosition,()=>Vector3f.init)(webPull.creature);
-						auto end=state.movingObjectById!((ref obj)=>obj.center,()=>Vector3f.init)(webPull.target);
+						auto start=state.movingObjectReadById!(.shotPosition,()=>Vector3f.init)(webPull.creature);
+						auto end=state.movingObjectReadById!(.center,()=>Vector3f.init)(webPull.target);
 						if(isNaN(end.x)) continue;
 						auto α=min(1.0f,float(webPull.frame)/webPull.numShootFrames);
 						renderCord(start,(1-α)*start+α*end);
@@ -3573,7 +3573,7 @@ struct Renderer(B){
 					mesh=self.web.mesh;
 					void renderWeb(int target,float scale){
 						if(!target) return;
-						auto positionRotationBoxSize=state.movingObjectById!((ref obj)=>tuple(center(obj),obj.rotation,boxSize(obj.sacObject.largeHitbox(Quaternionf.identity(),obj.scale,obj.animationState,obj.frame/updateAnimFactor))), function Tuple!(Vector3f,Quaternionf,Vector3f)(){ return typeof(return).init; })(target);
+						auto positionRotationBoxSize=state.movingObjectReadById!((ref objects,i)=>tuple(objects.center(i),objects.rotations[i],boxSize(objects.sacObject.largeHitbox(Quaternionf.identity(),objects.scales[i],objects.animationStates[i],objects.frames[i]/updateAnimFactor))), function Tuple!(Vector3f,Quaternionf,Vector3f)(){ return typeof(return).init; })(target);
 						auto position=positionRotationBoxSize[0], rotation=positionRotationBoxSize[1], boxSize=positionRotationBoxSize[2];
 						if(isNaN(position.x)) return;
 						material.backend.setTransformationScaled(position,rotation,scale*1.4f*boxSize,rc);
@@ -3590,7 +3590,7 @@ struct Renderer(B){
 					material.bind(rc);
 					void renderCage(int target,int frame,float scale){
 						if(!target) return;
-						auto positionRotationBoxSize=state.movingObjectById!((ref obj)=>tuple(center(obj),obj.rotation,boxSize(obj.sacObject.largeHitbox(Quaternionf.identity(),obj.scale,obj.animationState,obj.frame/updateAnimFactor))), function Tuple!(Vector3f,Quaternionf,Vector3f)(){ return typeof(return).init; })(target);
+						auto positionRotationBoxSize=state.movingObjectReadById!((ref objects,i)=>tuple(objects.center(i),objects.rotations[i],boxSize(objects.sacObject.largeHitbox(Quaternionf.identity(),objects.scales[i],objects.animationStates[i],objects.frames[i]/updateAnimFactor))), function Tuple!(Vector3f,Quaternionf,Vector3f)(){ return typeof(return).init; })(target);
 						auto position=positionRotationBoxSize[0], rotation=positionRotationBoxSize[1], boxSize=positionRotationBoxSize[2];
 						if(isNaN(position.x)) return;
 						material.backend.setTransformationScaled(position,rotation,scale*1.4f*boxSize,rc);
@@ -3610,7 +3610,7 @@ struct Renderer(B){
 					foreach(j;0..objects.stickyBombs.length){
 						auto position=objects.stickyBombs[j].position;
 						if(auto target=objects.stickyBombs[j].target){
-							auto targetPositionTargetRotation=state.movingObjectById!((ref obj)=>tuple(obj.position,obj.rotation),()=>Tuple!(Vector3f,Quaternionf).init)(target);
+							auto targetPositionTargetRotation=state.movingObjectReadById!((ref objects,i)=>tuple(objects.positions[i],objects.rotations[i]),()=>Tuple!(Vector3f,Quaternionf).init)(target);
 							auto targetPosition=targetPositionTargetRotation[0], targetRotation=targetPositionTargetRotation[1];
 							position=targetPosition+rotate(targetRotation,position);
 						}
@@ -3640,7 +3640,7 @@ struct Renderer(B){
 						auto creature=objects.oils[j].creature;
 						auto alpha=objects.oils[j].alpha;
 						auto frame=objects.oils[j].frame;
-						auto hitboxScale=state.movingObjectById!((ref obj)=>tuple(obj.hitbox,obj.getScale.length),()=>Tuple!(Vector3f[2],float).init)(creature);
+						auto hitboxScale=state.movingObjectReadById!((ref objects,i)=>tuple(objects.hitbox(i),objects.getScale(i).length),()=>Tuple!(Vector3f[2],float).init)(creature);
 						auto hitbox=hitboxScale[0], scale=hitboxScale[1];
 						if(isNaN(hitbox[0].x)) continue;
 						enum numParticles=10;
@@ -3671,10 +3671,10 @@ struct Renderer(B){
 						}
 						auto mesh=sacParticle.getMesh(objects.frames[j]); // TODO: do in shader?
 						static if(kind==ParticleKind.relative){
-							auto position=objects.rotates[j]?state.movingObjectById!((obj,particlePosition)=>rotate(obj.rotation,particlePosition)+obj.position,()=>Vector3f(0.0f,0.0f,0.0f))(objects.baseIds[j],objects.positions[j])
-								: objects.positions[j]+state.movingObjectById!((obj)=>obj.position,()=>Vector3f(0.0f,0.0f,0.0f))(objects.baseIds[j]);
+							auto position=objects.rotates[j]?state.movingObjectReadById!((ref objects,i,particlePosition)=>rotate(objects.rotations[i],particlePosition)+objects.positions[i],()=>Vector3f(0.0f,0.0f,0.0f))(objects.baseIds[j],objects.positions[j])
+								: objects.positions[j]+state.movingObjectReadById!((ref objects,i)=>objects.positions[i],()=>Vector3f(0.0f,0.0f,0.0f))(objects.baseIds[j]);
 						}else static if(kind==ParticleKind.relativeTwirl){
-							auto basePosition=state.movingObjectById!((obj)=>obj.position,()=>Vector3f(0.0f,0.0f,0.0f))(objects.baseIds[j]);
+							auto basePosition=state.movingObjectReadById!((ref objects,i)=>objects.positions[i],()=>Vector3f(0.0f,0.0f,0.0f))(objects.baseIds[j]);
 							auto relativePosition=objects.positions[j];
 							auto c=cos(objects.angles[j]), s=sin(objects.angles[j]);
 							auto position=basePosition+Vector3f(c*relativePosition.x+s*relativePosition.y,c*relativePosition.y-s*relativePosition.x,relativePosition.z);
@@ -4004,14 +4004,12 @@ struct Renderer(B){
 		if(!info.mouse.showFrame) return;
 		if(info.mouse.target.id&&!state.isValidTarget(info.mouse.target.id,info.mouse.target.type)) info.mouse.target=Target.init;
 		if(info.mouse.target.type.among(TargetType.creature,TargetType.building)){
-			static void renderHitbox(T)(T obj,Renderer!B* self,ObjectState!B state,RenderInfo!B* info,B.RenderContext rc){
-				auto hitbox2d=obj.hitbox2d(B.getModelViewProjectionMatrix(obj.position,obj.rotation,obj.scale));
-				static if(is(T==MovingObject!B)) auto objSide=obj.side;
-				else auto objSide=sideFromBuildingId!B(obj.buildingId,state);
+			state.objectReadById!((ref objects,i,self,state,info,rc){
+				auto hitbox2d=objects.hitbox2d(i,B.getModelViewProjectionMatrix(objects.positions[i],objects.rotations[i],objects.scales[i]));
+				auto objSide=objects.side(i,state);
 				auto color=state.sides.sideColor(objSide);
 				self.renderFrame(hitbox2d,color,state,*info,rc);
-			}
-			state.objectById!renderHitbox(info.mouse.target.id,&this,state,&info,rc);
+			})(info.mouse.target.id,&this,state,&info,rc);
 		}else if(info.mouse.target.type==TargetType.soul){
 			static void renderHitbox(B)(Soul!B soul,Renderer!B* self,ObjectState!B state,RenderInfo!B* info,B.RenderContext rc){
 				auto hitbox2d=soul.hitbox2d(B.getSpriteModelViewProjectionMatrix(soul.position+soul.scaling*Vector3f(0.0f,0.0f,1.25f*sacSoul.soulHeight)));
@@ -4524,7 +4522,7 @@ struct Renderer(B){
 		if(!state.isValidTarget(info.camera.target,TargetType.creature)) info.camera.target=0;
 		if(info.camera.target){
 			import std.typecons: Tuple,tuple;
-			auto facingPosition=state.movingObjectById!((obj)=>tuple(obj.creatureState.facing,obj.position), function Tuple!(float,Vector3f)(){ assert(0); })(info.camera.target);
+			auto facingPosition=state.movingObjectReadById!((ref objects,i)=>tuple(objects.creatureStates[i].facing,objects.positions[i]), function Tuple!(float,Vector3f)(){ assert(0); })(info.camera.target);
 			auto facing=facingPosition[0],targetPosition=facingPosition[1];
 			auto relativePosition=targetPosition-minimapCenter;
 			auto iconOffset=rotate(mapRotation,minimapFactor*Vector3f(relativePosition.x,-relativePosition.y,0));
@@ -4798,13 +4796,13 @@ struct Renderer(B){
 		material.unbind(rc);
 		if(!state.isValidTarget(info.camera.target,TargetType.creature)) info.camera.target=0;
 		if(info.camera.target){
-			static float getRelativeMana(B)(MovingObject!B obj){
-				if(obj.creatureStats.maxMana==0.0f) return 0.0f;
-				return obj.creatureStats.mana/obj.creatureStats.maxMana;
+			static float getRelativeMana(B,RenderMode mode)(ref MovingObjects!(B,mode) objects,int i){
+				if(objects.creatureStatss[i].maxMana==0.0f) return 0.0f;
+				return objects.creatureStatss[i].mana/objects.creatureStatss[i].maxMana;
 			}
-			static float getRelativeHealth(B)(MovingObject!B obj){
-				if(obj.creatureStats.maxHealth==0.0f) return 0.0f;
-				return obj.creatureStats.health/obj.creatureStats.maxHealth;
+			static float getRelativeHealth(B,RenderMode mode)(ref MovingObjects!(B,mode) objects,int i){
+				if(objects.creatureStatss[i].maxHealth==0.0f) return 0.0f;
+				return objects.creatureStatss[i].health/objects.creatureStatss[i].maxHealth;
 			}
 			void renderStatBar(Vector3f origin,float relativeSize,B.Material top,B.Material mid,B.Material bot){
 				auto maxScaling=info.hudScaling*Vector3f(32.0f,68.0f,0.0f);
@@ -4825,7 +4823,7 @@ struct Renderer(B){
 					materials[i].unbind(rc);
 				}
 			}
-			auto relativeStats=state.movingObjectById!((obj)=>tuple(getRelativeMana(obj),getRelativeHealth(obj)),()=>tuple(0.0f,0.0f))(info.camera.target);
+			auto relativeStats=state.movingObjectReadById!((ref objects,i)=>tuple(getRelativeMana(objects,i),getRelativeHealth(objects,i)),()=>tuple(0.0f,0.0f))(info.camera.target);
 			auto relativeMana=relativeStats[0];
 			renderStatBar(position1,relativeMana,sacHud.manaTopMaterial,sacHud.manaMaterial,sacHud.manaBottomMaterial);
 			auto relativeHealth=relativeStats[1];
@@ -4916,7 +4914,7 @@ struct Renderer(B){
 			B.hudMaterialBackend.setTransformationScaled(pagePosition,Quaternionf.identity(),pageScaling,rc);
 			page.render(rc);
 		}
-		auto mana=info.camera.target?state.movingObjectById!((obj)=>obj.creatureStats.mana,function float()=>0.0f)(info.camera.target):0.0f;
+		auto mana=info.camera.target?state.movingObjectReadById!((ref objects,i)=>objects.creatureStatss[i].mana,function float()=>0.0f)(info.camera.target):0.0f;
 		auto souls=wizard?wizard.souls:0;
 		foreach(i,entry;enumerate(spells)){
 			auto factor=min(1.0f,mana/entry.spell.manaCost);
@@ -5069,24 +5067,24 @@ struct Renderer(B){
 				}
 				auto getNTTInfo(int id){
 					if(target.type==TargetType.creature){
-						return state.movingObjectById!((ref obj,renderSide){
-							auto icon=obj.sacObject.icon;
-							auto name=obj.sacObject.name;
+						return state.movingObjectReadById!((ref objects,i,renderSide){
+							auto icon=objects.sacObject.icon;
+							auto name=objects.sacObject.name;
 							string sideName=null;
 							int level=-1;
-							float relativeHealth=obj.health/obj.creatureStats.maxHealth;
+							float relativeHealth=objects.health(i)/objects.creatureStatss[i].maxHealth;
 							auto relativeXP=float.init;
-							bool dead=obj.isDead;
+							bool dead=objects.isDead(i);
 							auto foesKilled=-1;
 							auto foesGibbed=-1;
 							auto foesDipped=-1;
 							auto soulsDipped=-1;
 							float damageDealt=float.nan;
 							float amountHealed=float.nan;
-							if(auto wiz=obj.isWizard?state.getWizard(obj.id):null){
+							if(auto wiz=objects.isWizard(i)?state.getWizard(objects.ids[i]):null){
 								if(wiz.name.length) name=wiz.name;
 								sideName=null;
-								if(obj.side==renderSide){
+								if(objects.sides[i]==renderSide){
 									foesKilled=wiz.wizardStatistics.foesKilled;
 									foesGibbed=wiz.wizardStatistics.foesGibbed;
 									foesDipped=wiz.wizardStatistics.foesDipped;
@@ -5098,16 +5096,16 @@ struct Renderer(B){
 								}
 								level=wiz.level;
 							}else{
-								sideName=getSideName(obj.side,state);
-								if(obj.side==renderSide){
-									foesKilled=obj.creatureStatistics.foesKilled;
-									foesGibbed=obj.creatureStatistics.foesGibbed;
+								sideName=getSideName(objects.sides[i],state);
+								if(objects.sides[i]==renderSide){
+									foesKilled=objects.creatureStatisticss[i].foesKilled;
+									foesGibbed=objects.creatureStatisticss[i].foesGibbed;
 								}
 							}
 							return NTTInfo(true,icon,name,sideName,relativeHealth,dead,foesKilled,foesGibbed,foesDipped,soulsDipped,damageDealt,amountHealed,level,relativeXP);
 						},()=>NTTInfo.init)(id,info.renderSide);
 					}else if(target.type==TargetType.building){
-						return state.staticObjectById!((ref obj,state){
+						return state.staticObjectReadById!((ref objects,i,state){
 							return state.buildingById!((ref bldg,sacObject,state){
 								auto icon=sacObject.icon;
 								auto name=sacObject.name;
@@ -5118,7 +5116,7 @@ struct Renderer(B){
 								if(isNaN(relativeHealth) && !name.length)
 									return NTTInfo.init;
 								return NTTInfo(true,icon,name,sideName,relativeHealth);
-							},()=>NTTInfo.init)(obj.buildingId,obj.sacObject,state);
+							},()=>NTTInfo.init)(objects.buildingIds[i],objects.sacObject,state);
 						},()=>NTTInfo.init)(id,state);
 					}else assert(0);
 				}
@@ -5255,7 +5253,7 @@ struct Renderer(B){
 				if(!state) break;
 				auto wizard=state.getWizard(info.camera.target);
 				if(!wizard) break;
-				auto availableMana=state.movingObjectById!((ref obj)=>obj.creatureStats.mana,()=>float.init)(info.camera.target);
+				auto availableMana=state.movingObjectReadById!((ref objects,i)=>objects.creatureStatss[i].mana,()=>float.init)(info.camera.target);
 				if(isNaN(availableMana)) break;
 				auto availableSouls=wizard.souls;
 				auto targetSpell=info.mouse.targetSpell;

@@ -1088,6 +1088,9 @@ int side(B,RenderMode mode)(ref MovingObjects!(B,mode) objects,int index,ObjectS
 float health(B)(ref MovingObject!B object){
 	return object.creatureStats.health;
 }
+float health(B,RenderMode mode)(ref MovingObjects!(B,mode) objects,int index){
+	return objects.creatureStatss[index].health;
+}
 float health(B)(ref MovingObject!B object,ObjectState!B state){
 	return object.health;
 }
@@ -1127,6 +1130,7 @@ float deceleration(B)(ref MovingObject!B object,ObjectState!B state){
 }
 
 bool isWizard(B)(ref MovingObject!B obj){ return obj.sacObject.isWizard; }
+bool isWizard(B,RenderMode mode)(ref MovingObjects!(B,mode) objects,int index){ return objects.sacObject.isWizard; }
 bool isManahoar(B)(ref MovingObject!B obj){ return obj.sacObject.isManahoar; }
 bool isPeasant(B)(ref MovingObject!B obj){ return obj.sacObject.isPeasant; }
 bool isSacDoctor(B)(ref MovingObject!B obj){ return obj.sacObject.isSacDoctor; }
@@ -1195,6 +1199,9 @@ Vector3f[2] closestHitbox(B)(ref MovingObject!B object,Vector3f position){
 }
 Vector3f[2] hitbox2d(B)(ref MovingObject!B object,Matrix4f modelViewProjectionMatrix){
 	return object.sacObject.hitbox2d(object.animationState,object.frame/updateAnimFactor,modelViewProjectionMatrix);
+}
+Vector3f[2] hitbox2d(B,RenderMode mode)(ref MovingObjects!(B,mode) objects,int index,Matrix4f modelViewProjectionMatrix){
+	return objects.sacObject.hitbox2d(objects.animationStates[index],objects.frames[index]/updateAnimFactor,modelViewProjectionMatrix);
 }
 
 Vector3f[2] relativeHitbox(B,RenderMode mode)(ref MovingObjects!(B,mode) objects,int index){
@@ -1369,6 +1376,10 @@ Vector3f styxFlame(B)(ref MovingObject!B object){
 Vector3f shotPosition(B)(ref MovingObject!B object,bool fix=false){
 	auto loc=object.sacObject.shotPosition(object.scale,object.animationState,object.frame/updateAnimFactor,fix);
 	return object.position+rotate(object.rotation,loc);
+}
+Vector3f shotPosition(B,RenderMode mode)(ref MovingObjects!(B,mode) objects,int index,bool fix=false){
+	auto loc=objects.sacObject.shotPosition(objects.scales[index],objects.animationStates[index],objects.frames[index]/updateAnimFactor,fix);
+	return objects.positions[index]+rotate(objects.rotations[index],loc);
 }
 Vector3f[2] basiliskShotPositions(B)(ref MovingObject!B object){ return object.hands; }
 
@@ -1599,6 +1610,9 @@ Vector3f[2] hitbox(B,RenderMode mode)(ref StaticObjects!(B,mode) objects,int ind
 }
 Vector3f[2] hitbox2d(B)(ref StaticObject!B object,Matrix4f modelViewProjectionMatrix){
 	return object.sacObject.hitbox2d(object.rotation,modelViewProjectionMatrix);
+}
+Vector3f[2] hitbox2d(B,RenderMode mode)(ref StaticObjects!(B,mode) objects,int index,Matrix4f modelViewProjectionMatrix){
+	return objects.sacObject.hitbox2d(objects.rotations[index],modelViewProjectionMatrix);
 }
 
 struct FixedObject(B){
@@ -7882,12 +7896,12 @@ auto ref objectById(alias f,B,T...)(ref ObjectManager!B objectManager,int id,T a
 		enum byRef=!is(typeof(f(MovingObject!B.init,args))); // TODO: find a better way to check whether argument taken by reference!
 		final switch(nid.mode){
 			case RenderMode.opaque:
-				auto obj=objectManager.opaqueObjects.movingObjects[nid.type].fetch(nid.index);
-				scope(success) objectManager.opaqueObjects.movingObjects[nid.type][nid.index]=move(obj);
+				auto obj=objectManager.opaqueObjects.movingObjects.data[nid.type].fetch(nid.index);
+				scope(success) objectManager.opaqueObjects.movingObjects.data[nid.type][nid.index]=move(obj);
 				return f(obj,args);
 			case RenderMode.transparent:
-				auto obj=objectManager.transparentObjects.movingObjects[nid.type].fetch(nid.index);
-				scope(success) objectManager.transparentObjects.movingObjects[nid.type][nid.index]=move(obj);
+				auto obj=objectManager.transparentObjects.movingObjects.data[nid.type].fetch(nid.index);
+				scope(success) objectManager.transparentObjects.movingObjects.data[nid.type][nid.index]=move(obj);
 				return f(obj,args);
 		}
 	}else{
@@ -7896,16 +7910,16 @@ auto ref objectById(alias f,B,T...)(ref ObjectManager!B objectManager,int id,T a
 		final switch(nid.mode){
 			case RenderMode.opaque:
 				static if(byRef){
-					auto obj=objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index];
-					scope(success) objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index]=obj;
+					auto obj=objectManager.opaqueObjects.staticObjects.data[nid.type-numMoving][nid.index];
+					scope(success) objectManager.opaqueObjects.staticObjects.data[nid.type-numMoving][nid.index]=obj;
 					return f(obj,args);
-				}else return f(objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index],args);
+				}else return f(objectManager.opaqueObjects.staticObjects.data[nid.type-numMoving][nid.index],args);
 			case RenderMode.transparent:
 				static if(byRef){
-					auto obj=objectManager.transparentObjects.staticObjects[nid.type-numMoving][nid.index];
-					scope(success) objectManager.transparentObjects.staticObjects[nid.type-numMoving][nid.index]=obj;
+					auto obj=objectManager.transparentObjects.staticObjects.data[nid.type-numMoving][nid.index];
+					scope(success) objectManager.transparentObjects.staticObjects.data[nid.type-numMoving][nid.index]=obj;
 					return f(obj,args);
-				}else return f(objectManager.transparentObjects.staticObjects[nid.type-numMoving][nid.index],args);
+				}else return f(objectManager.transparentObjects.staticObjects.data[nid.type-numMoving][nid.index],args);
 		}
 	}
 }
@@ -7917,12 +7931,12 @@ auto ref movingObjectById(alias f,alias nonMoving,B,T...)(ref ObjectManager!B ob
 	if(nid.type<numMoving&&nid.index!=-1){
 		final switch(nid.mode){ // TODO: get rid of code duplication
 			case RenderMode.opaque:
-				auto obj=objectManager.opaqueObjects.movingObjects[nid.type].fetch(nid.index);
-				scope(success) objectManager.opaqueObjects.movingObjects[nid.type][nid.index]=move(obj);
+				auto obj=objectManager.opaqueObjects.movingObjects.data[nid.type].fetch(nid.index);
+				scope(success) objectManager.opaqueObjects.movingObjects.data[nid.type][nid.index]=move(obj);
 				return f(obj,args);
 			case RenderMode.transparent:
-				auto obj=objectManager.transparentObjects.movingObjects[nid.type].fetch(nid.index);
-				scope(success) objectManager.transparentObjects.movingObjects[nid.type][nid.index]=move(obj);
+				auto obj=objectManager.transparentObjects.movingObjects.data[nid.type].fetch(nid.index);
+				scope(success) objectManager.transparentObjects.movingObjects.data[nid.type][nid.index]=move(obj);
 				return f(obj,args);
 		}
 	}else return nonMoving();
@@ -7934,9 +7948,9 @@ auto ref movingObjectReadById(alias f,alias nonMoving,B,T...)(ref ObjectManager!
 	if(nid.type<numMoving&&nid.index!=-1){
 		final switch(nid.mode){
 			case RenderMode.opaque:
-				return f(objectManager.opaqueObjects.movingObjects[nid.type],nid.index,args);
+				return f(objectManager.opaqueObjects.movingObjects.data[nid.type],nid.index,args);
 			case RenderMode.transparent:
-				return f(objectManager.transparentObjects.movingObjects[nid.type],nid.index,args);
+				return f(objectManager.transparentObjects.movingObjects.data[nid.type],nid.index,args);
 		}
 	}else return nonMoving();
 }
@@ -7972,16 +7986,16 @@ auto ref staticObjectById(alias f,alias nonStatic,B,T...)(ref ObjectManager!B ob
 		final switch(nid.mode){
 			case RenderMode.opaque:
 				static if(byRef){
-					auto obj=objectManager.opaqueObjects.staticObjects[nid.type-numMoving].fetch(nid.index);
-					scope(success) objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index]=obj;
+					auto obj=objectManager.opaqueObjects.staticObjects.data[nid.type-numMoving].fetch(nid.index);
+					scope(success) objectManager.opaqueObjects.staticObjects.data[nid.type-numMoving][nid.index]=obj;
 					return f(obj,args);
-				}else return f(objectManager.opaqueObjects.staticObjects[nid.type-numMoving][nid.index],args);
+				}else return f(objectManager.opaqueObjects.staticObjects.data[nid.type-numMoving][nid.index],args);
 			case RenderMode.transparent:
 				static if(byRef){
-					auto obj=objectManager.transparentObjects.staticObjects[nid.type-numMoving].fetch(nid.index);
-					scope(success) objectManager.transparentObjects.staticObjects[nid.type-numMoving][nid.index]=obj;
+					auto obj=objectManager.transparentObjects.staticObjects.data[nid.type-numMoving].fetch(nid.index);
+					scope(success) objectManager.transparentObjects.staticObjects.data[nid.type-numMoving][nid.index]=obj;
 					return f(obj,args);
-				}else return f(objectManager.transparentObjects.staticObjects[nid.type-numMoving][nid.index],args);
+				}else return f(objectManager.transparentObjects.staticObjects.data[nid.type-numMoving][nid.index],args);
 		}
 	}else return nonStatic();
 }
@@ -9575,6 +9589,9 @@ bool isDying(B)(ref MovingObject!B object){
 }
 bool isDead(B)(ref MovingObject!B object){
 	return object.creatureState.mode==CreatureMode.dead;
+}
+bool isDead(B,RenderMode mode)(ref MovingObjects!(B,mode) objects,int index){
+	return objects.creatureStates[index].mode==CreatureMode.dead;
 }
 bool isAlive(B)(ref MovingObject!B object){
 	return object.creatureState.mode.isAlive;
