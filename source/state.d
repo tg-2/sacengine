@@ -339,11 +339,11 @@ struct OrderTarget{
 }
 Vector3f center(B)(ref OrderTarget target,ObjectState!B state){
 	if(target.type==TargetType.terrain||!state.isValidTarget(target.id)) return target.position;
-	return state.objectById!((ref obj,state)=>obj.center)(target.id,state);
+	return state.objectById!((ref obj,state)=>obj.center)(target.id,state); // TODO: make faster
 }
 Vector3f stableCenter(B)(ref OrderTarget target,ObjectState!B state){
 	if(target.type==TargetType.terrain||!state.isValidTarget(target.id)) return target.position;
-	return state.objectById!((ref obj,state){
+	return state.objectById!((ref obj,state){ // TODO: make faster
 		static if(is(typeof(obj)==MovingObject!B)){
 			return obj.position+boxCenter(obj.sacObject.hitbox(Quaternionf.identity(),obj.scale,obj.animationState,0));
 		}else return obj.center;
@@ -351,12 +351,12 @@ Vector3f stableCenter(B)(ref OrderTarget target,ObjectState!B state){
 }
 Vector3f lowCenter(B)(ref OrderTarget target,ObjectState!B state){
 	if(target.type==TargetType.terrain||!state.isValidTarget(target.id)) return target.position;
-	return state.objectById!((ref obj,state)=>obj.lowCenter)(target.id,state);
+	return state.objectById!((ref obj,state)=>obj.lowCenter)(target.id,state); // TODO: make faster
 }
 OrderTarget centerTarget(B)(int id,ObjectState!B state)in{
 	assert(state.isValidTarget(id));
 }do{
-	auto position=state.objectById!((ref obj,state)=>obj.center)(id,state);
+	auto position=state.objectById!((ref obj,state)=>obj.center)(id,state); // TODO: make faster
 	return OrderTarget(state.targetTypeFromId(id),id,position);
 }
 OrderTarget positionTarget(B)(Vector3f position,ObjectState!B state){
@@ -365,7 +365,7 @@ OrderTarget positionTarget(B)(Vector3f position,ObjectState!B state){
 
 Vector3f[2] hitbox(B)(ref OrderTarget target,ObjectState!B state){
 	if(target.type==TargetType.terrain||!state.isValidTarget(target.id)) return [target.position,target.position];
-	return state.objectById!((obj)=>obj.hitbox)(target.id);
+	return state.movingObjectReadById!((ref objects,i)=>objects.hitbox(i),()=>state.objectById!((obj)=>obj.hitbox)(target.id))(target.id);
 }
 
 struct Order{
@@ -1190,6 +1190,16 @@ Vector3f[2] hitbox2d(B)(ref MovingObject!B object,Matrix4f modelViewProjectionMa
 	return object.sacObject.hitbox2d(object.animationState,object.frame/updateAnimFactor,modelViewProjectionMatrix);
 }
 
+Vector3f[2] relativeHitbox(B,RenderMode mode)(ref MovingObjects!(B,mode) objects,int index){
+	return objects.sacObject.hitbox(objects.rotations[index],objects.scales[index],objects.animationStates[index],objects.frames[index]/updateAnimFactor);
+}
+Vector3f[2] hitbox(B,RenderMode mode)(ref MovingObjects!(B,mode) objects,int index){
+	auto hitbox=objects.relativeHitbox(index);
+	hitbox[0]+=objects.positions[index];
+	hitbox[1]+=objects.positions[index];
+	return hitbox;
+}
+
 Vector3f graspingVinesOffset(B)(ref MovingObject!B object,int attackerSide,ObjectState!B state){
 	if(!object.creatureStats.effects.vined) return Vector3f(0.0f,0.0f,0.0f);
 	if(state.sides.getStance(attackerSide,object.side)==Stance.ally)
@@ -1226,6 +1236,17 @@ Vector3f lowCenter(T)(ref T object){
 Vector3f lowestCenter(T)(ref T object){
 	auto hbox=object.hitbox;
 	return Vector3f(0.5f*(hbox[0].x+hbox[1].x),0.5f*(hbox[0].y+hbox[1].y),0.125f*(7.0f*hbox[0].z+hbox[1].z));
+}
+
+Vector3f center(B,RenderMode mode)(ref MovingObjects!(B,mode) objects,int index){
+	return boxCenter(objects.hitbox(index));
+}
+Vector3f stableCenter(B,RenderMode mode)(ref MovingObjects!(B,mode) objects,int index){
+	return objects.positions[index]+boxCenter(objects.sacObject.hitbox(Quaternionf.identity(),objects.scales[index],objects.animationStates[index],0));
+}
+Vector3f lowCenter(B,RenderMode mode)(ref MovingObjects!(B,mode) objects,int index){
+	auto hbox=objects.hitbox(index);
+	return Vector3f(0.5f*(hbox[0].x+hbox[1].x),0.5f*(hbox[0].y+hbox[1].y),0.25f*(3.0f*hbox[0].z+hbox[1].z));
 }
 Vector3f relativeCenter(T)(ref T object){
 	static if(is(T==Soul!B,B)){
@@ -1270,6 +1291,9 @@ Vector3f[2] defaultMeleeHitbox(B)(ref MovingObject!B object){
 
 Vector3f soulPosition(B)(ref MovingObject!B object){
 	return object.center+rotate(object.rotation,object.sacObject.soulDisplacement);
+}
+Vector3f soulPosition(B,RenderMode mode)(ref MovingObjects!(B,mode) objects,int index){
+	return objects.center(index)+rotate(objects.rotations[index],objects.sacObject.soulDisplacement);
 }
 
 float meleeStrength(B)(ref MovingObject!B object){
@@ -1497,6 +1521,9 @@ float boundingRadius(B)(ref MovingObject!B object){
 }
 float boundingRadius(B)(ref StaticObject!B object){
 	return boundingRadius(object.relativeHitbox);
+}
+float boundingRadius(B,RenderMode mode)(ref MovingObjects!(B,mode) objects,int index){
+	return boundingRadius(objects.relativeHitbox(index));
 }
 float boundingRadius(B)(ref Building!B building,ObjectState!B state){
 	float radius=0.0f;
@@ -12062,7 +12089,7 @@ bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPositi
 		auto destinationCovered=isInside(targetPosition,frontObstacleHitbox);
 		if(!destinationCovered&&(object.position.xy-targetPosition.xy).lengthsqr<225.0f){
 			static bool isCreature(int id,ObjectState!B state){
-				return state.movingObjectById!((ref obj,state)=>true,()=>false)(id,state);
+				return state.movingObjectReadById!((ref objects,i)=>true,()=>false)(id);
 			}
 			static void bumpCheck(ProximityEntry entry,int ownId,int excludeId,bool* covered,ObjectState!B state){
 				if(*covered||entry.id==ownId||entry.id==excludeId) return;
@@ -12089,10 +12116,10 @@ bool turnToFaceTowardsEvading(B)(ref MovingObject!B object,Vector3f targetPositi
 		if(object.creatureAI.evasionTimer<=0){
 			evasion=RotationDirection.none;
 			if(state.isValidTarget(frontObstacle,TargetType.creature)){
-				static RotationDirection adaptiveEvasion(ref MovingObject!B obj,ObjectState!B state){
-					return obj.creatureAI.evasion!=RotationDirection.none?state.uniform(2)?RotationDirection.right:RotationDirection.left:RotationDirection.none; // TODO: ok?
+				static RotationDirection adaptiveEvasion(RenderMode mode)(ref MovingObjects!(B,mode) objects,int index,ObjectState!B state){
+					return objects.creatureAIs[index].evasion!=RotationDirection.none?state.uniform(2)?RotationDirection.right:RotationDirection.left:RotationDirection.none; // TODO: ok?
 				}
-				evasion=object.creatureAI.evasion=state.movingObjectById!(adaptiveEvasion,()=>RotationDirection.none)(frontObstacle,state);
+				evasion=object.creatureAI.evasion=state.movingObjectReadById!(adaptiveEvasion,()=>RotationDirection.none)(frontObstacle,state);
 			}
 			if(evasion==RotationDirection.none)
 				evasion=object.creatureAI.evasion=dot(Vector2f(cos(facing),sin(facing)),frontObstacleDirection)<=0.0f?RotationDirection.right:RotationDirection.left;
@@ -13661,7 +13688,7 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 				targetId=object.creatureAI.order.target.id=0;
 			Vector3f targetPosition;
 			float targetRadius=0.0f;
-			if(targetId) state.movingObjectById!((ref obj,state){ targetPosition=obj.position; targetRadius=obj.boundingRadius; },(){})(targetId,state);
+			if(targetId) state.movingObjectReadById!((ref objects,i){ targetPosition=objects.positions[i]; targetRadius=objects.boundingRadius(i); },(){})(targetId);
 			if(targetId&&targetPosition is Vector3f.init)
 				state.staticObjectById!((ref obj,state){ targetPosition=obj.center; targetRadius=obj.boundingRadius; },(){})(targetId,state);
 			if(targetId&&targetPosition is Vector3f.init)
@@ -13713,7 +13740,7 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 						object.creatureAI.targetId=state.proximity.closestEnemyInRange(object.side,object.creatureAI.behaviorFlags&(1<<14)?object.creatureAI.grudgeMask:0u,object.position,scareDistance,EnemyType.creature,state);
 					if(!state.isValidTarget(object.creatureAI.targetId,TargetType.creature)) object.creatureAI.targetId=0;
 					if(auto enemy=object.creatureAI.targetId){
-						auto enemyPosition=state.movingObjectById!((obj)=>obj.position,function Vector3f(){ assert(0); })(enemy);
+						auto enemyPosition=state.movingObjectReadById!((ref objects,i)=>objects.positions[i],function Vector3f(){ assert(0); })(enemy);
 						// TODO: figure out the original rule for this
 						if(object.creatureState.mode==CreatureMode.idle&&object.creatureState.timer>=updateFPS
 						   &&!object.creatureStats.effects.immobilized
@@ -14868,6 +14895,9 @@ void updateCreature(B)(ref MovingObject!B object, ObjectState!B state){
 bool canCollectSouls(B)(ref MovingObject!B object){
 	return object.isWizard&&object.creatureState.mode.canCollectSouls&&object.health!=0.0f;
 }
+bool canCollectSouls(B,RenderMode mode)(ref MovingObjects!(B,mode) objects,int index){
+	return objects.sacObject.isWizard&&objects.creatureStates[index].mode.canCollectSouls&&objects.creatureStatss[index].health!=0.0f;
+}
 
 enum soulVanishDepth=mapDepth;
 enum soulFallSpeed=1.0f;
@@ -14889,7 +14919,7 @@ void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 				}
 				soul.position.z-=soulFallSpeed/updateFPS;
 			}else soul.position.z=height;
-		}else soul.position=state.movingObjectById!(soulPosition,()=>Vector3f(float.nan,float.nan,float.nan))(soul.creatureId);
+		}else soul.position=state.movingObjectReadById!((ref objects,i)=>objects.soulPosition(i),()=>Vector3f(float.nan,float.nan,float.nan))(soul.creatureId);
 	}
 	final switch(soul.state){
 		case SoulState.normal:
@@ -14909,7 +14939,7 @@ void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 			enum collectDistance=5.0f;
 
 			static void process(B)(ref WizardInfo!B wizard,Soul!B* soul,State* pstate,ObjectState!B state){ // TODO: use proximity data structure?
-				auto sidePositionValid=state.movingObjectById!((obj)=>tuple(obj.side,obj.center,obj.canCollectSouls),()=>Tuple!(int,Vector3f,bool).init)(wizard.id);
+				auto sidePositionValid=state.movingObjectReadById!((ref objects,i)=>tuple(objects.sides[i],objects.center(i),objects.canCollectSouls(i)),()=>Tuple!(int,Vector3f,bool).init)(wizard.id);
 				auto side=sidePositionValid[0],position=sidePositionValid[1],valid=sidePositionValid[2];
 				if(!valid) return;
 				if((soul.position.xy-position.xy).lengthsqr>collectDistance^^2) return;
@@ -17428,7 +17458,7 @@ bool updateAirShieldCasting(B)(ref AirShieldCasting!B airShieldCast,ObjectState!
 bool updateAirShield(B)(ref AirShield!B airShield,ObjectState!B state,int scaleFrames=15,bool casting=false){
 	with(airShield){
 		if(!state.isValidTarget(target,TargetType.creature)) return false;
-		auto relHitbox=state.movingObjectById!(relativeHitbox,()=>(Vector3f[2]).init)(airShield.target);
+		auto relHitbox=state.movingObjectReadById!((ref objects,i)=>objects.relativeHitbox(i),()=>(Vector3f[2]).init)(airShield.target);
 		auto boxSize=.boxSize(relHitbox);
 		auto boxCenter=.boxCenter(relHitbox);
 		boxSize.x=boxSize.y=sqrt(0.5f*(boxSize.x^^2+boxSize.y^^2));
@@ -17456,16 +17486,16 @@ bool updateAirShield(B)(ref AirShield!B airShield,ObjectState!B state,int scaleF
 		}
 		++frame;
 		if(!casting&&!status.among(AirShieldStatus.growing,AirShieldStatus.shrinking)){
-			static bool check(ref MovingObject!B obj){
-				assert(obj.creatureStats.effects.airShield);
-				return obj.creatureState.mode.canShield;
+			static bool check(RenderMode mode)(ref MovingObjects!(B,mode) objects,int index){
+				assert(objects.creatureStatss[index].effects.airShield);
+				return objects.creatureStates[index].mode.canShield;
 			}
-			if(!state.movingObjectById!(check,()=>false)(target)||frame+scaleFrames>=spell.duration*updateFPS)
+			if(!state.movingObjectReadById!(check,()=>false)(target)||frame+scaleFrames>=spell.duration*updateFPS)
 				status=AirShieldStatus.shrinking;
-			auto hitboxSide=state.movingObjectById!((ref obj)=>tuple(obj.hitbox,obj.side),()=>tuple((Vector3f[2]).init,-1))(airShield.target);
+			auto hitboxSide=state.movingObjectReadById!((ref objects,i)=>tuple(objects.hitbox(i),objects.sides[i]),()=>tuple((Vector3f[2]).init,-1))(airShield.target);
 			auto hitbox=hitboxSide[0], side=hitboxSide[1];
 			static bool filter(ref ProximityEntry entry,ObjectState!B state,int side){
-				return state.movingObjectById!((ref obj,side)=>obj.side!=side&&obj.canPush,()=>false)(entry.id,side);
+				return state.movingObjectReadById!((ref objects,i,side)=>objects.sides[i]!=side&&objects.creatureStates[i].mode.canPush,()=>false)(entry.id,side);
 			}
 
 			pushAll!filter(.boxCenter(hitbox),0.5f*(hitbox[1].xy-hitbox[0].xy).length,0.5f*spell.effectRange,20.0f,state,side);
@@ -19410,7 +19440,7 @@ bool updateRainFrog(B)(ref RainFrog!B rainFrog,ObjectState!B state){
 		}
 		if(target){
 			auto keep=++infectionTime<=infectTime;
-			if(!keep||state.movingObjectById!((ref obj)=>!obj.creatureState.mode.canBeInfectedByMites,()=>true)(target)){
+			if(!keep||state.movingObjectReadById!((ref objects,i)=>!objects.creatureStates[i].mode.canBeInfectedByMites,()=>true)(target)){
 				keep=false;
 			}
 			if(!keep) return explode();
@@ -19439,7 +19469,7 @@ bool updateRainFrog(B)(ref RainFrog!B rainFrog,ObjectState!B state){
 							velocity=Vector3f(0.0f,0.0f,0.0f);
 						}else{
 							if(auto closeCreature=state.proximity.closestCreatureInRange(position,spell.effectRange,state,10.0f)){
-								auto creaturePosition=state.movingObjectById!((ref obj)=>obj.center,()=>Vector3f.init)(closeCreature);
+								auto creaturePosition=state.movingObjectReadById!((ref objects,i)=>objects.center(i),()=>Vector3f.init)(closeCreature);
 								if(!isNaN(creaturePosition.x)){
 									auto direction=creaturePosition-position;
 									velocity=4.5f*direction.normalized+0.5f*state.uniformDirection();
@@ -19655,12 +19685,12 @@ bool updateHealingAura(B)(ref HealingAura!B healingAura,ObjectState!B state){
 		if(--soundTimer==0) soundTimer=playSoundAt!true("arua",target,state,healingAuraGain);
 		enum scaleFrames=30;
 		if(!status.among(HealingAuraStatus.growing,HealingAuraStatus.shrinking)){
-			static bool check(ref MovingObject!B obj){
-				return obj.creatureState.mode.canCarryHealingAura;
+			static bool check(RenderMode mode)(ref MovingObjects!(B,mode) objects,int index){
+				return objects.creatureStates[index].mode.canCarryHealingAura;
 			}
-			if(!state.movingObjectById!(check,()=>false)(target)||frame+scaleFrames>=spell.duration*updateFPS)
+			if(!state.movingObjectReadById!(check,()=>false)(target)||frame+scaleFrames>=spell.duration*updateFPS)
 				status=HealingAuraStatus.shrinking;
-			auto hitboxSide=state.movingObjectById!((ref obj)=>tuple(obj.hitbox,obj.side),()=>tuple((Vector3f[2]).init,-1))(healingAura.target);
+			auto hitboxSide=state.movingObjectReadById!((ref objects,i)=>tuple(objects.hitbox(i),objects.sides[i]),()=>tuple((Vector3f[2]).init,-1))(healingAura.target);
 			auto hitbox=hitboxSide[0], side=hitboxSide[1];
 			static void doHeal(ref MovingObject!B obj,int side,ObjectState!B state){
 				if(!obj.canHeal(state)) return;
@@ -19687,7 +19717,7 @@ bool updateHealingAura(B)(ref HealingAura!B healingAura,ObjectState!B state){
 				},(){})(target,side,state);
 				return false;
 			}
-			auto position=state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(target);
+			auto position=state.movingObjectReadById!((ref objects,i)=>objects.positions[i],()=>Vector3f.init)(target);
 			dealDamageAt!doHealEntry(target,0.0f,spell.effectRange,target,side,position,DamageMod.none,state,side,state);
 		}
 		final switch(status){
@@ -25249,7 +25279,7 @@ bool updateBlightMite(B)(ref BlightMite!B blightMite,ObjectState!B state){
 		}
 		if(target){
 			auto keep=++infectionTime<=updateFPS*ability.duration;
-			if(!keep||state.movingObjectById!((ref obj)=>!obj.creatureState.mode.canBeInfectedByMites,()=>true)(target)){
+			if(!keep||state.movingObjectReadById!((ref objects,i)=>!objects.creatureStates[i].mode.canBeInfectedByMites,()=>true)(target)){
 				keep=false;
 				if(alpha==1.0f) state.movingObjectById!((ref obj){ obj.creatureStats.effects.numBlightMites-=1; },(){})(target);
 			}
@@ -25269,9 +25299,9 @@ bool updateBlightMite(B)(ref BlightMite!B blightMite,ObjectState!B state){
 						velocity=Vector3f(0.0f,0.0f,0.0f);
 					}else{
 						if(auto closeCreature=state.proximity.closestCreatureInRange(position,ability.effectRange,state,10.0f)){
-							auto creaturePosition=state.movingObjectById!((ref obj)=>obj.center,()=>Vector3f.init)(closeCreature);
+							auto creaturePosition=state.movingObjectReadById!((ref objects,i)=>objects.center(i),()=>Vector3f.init)(closeCreature);
 							if(intendedTarget&&closeCreature!=intendedTarget){
-								auto intendedPosition=state.movingObjectById!((ref obj)=>obj.center,()=>Vector3f.init)(intendedTarget);
+								auto intendedPosition=state.movingObjectReadById!((ref objects,i)=>objects.center(i),()=>Vector3f.init)(intendedTarget);
 								if(!isNaN(intendedPosition.x)&&(intendedPosition-position).lengthsqr<=ability.effectRange^^2){
 									closeCreature=intendedTarget;
 									creaturePosition=intendedPosition;
@@ -25313,7 +25343,7 @@ bool updateLightningCharge(B)(ref LightningCharge!B lightningCharge,ObjectState!
 	with(lightningCharge){
 		static import std.math;
 		enum sparkProb=(1.0f-std.math.exp(-sparkRate/updateFPS));
-		auto hitbox=state.movingObjectById!(hitbox,()=>(Vector3f[2]).init)(creature);
+		auto hitbox=state.movingObjectReadById!((ref objects,i)=>objects.hitbox(i),()=>(Vector3f[2]).init)(creature);
 		if(isNaN(hitbox[0].x)) return false;
 		auto center=boxCenter(hitbox);
 		auto frames=state.movingObjectById!((ref obj)=>--obj.creatureStats.effects.lightningChargeFrames,()=>0)(creature);
@@ -28089,9 +28119,9 @@ void playSpellbookSound(B)(int side,SpellbookSoundFlags flags,char[4] tag,Object
 	static if(B.hasAudio) if(playAudio) B.playSpellbookSound(side,flags,tag,gain);
 }
 void updateWizard(B)(ref WizardInfo!B wizard,ObjectState!B state){
-	auto sidePositionIsAlive=state.movingObjectById!((ref wizard){
-		auto isAlive=wizard.isAlive;
-		return tuple(wizard.side,wizard.position,isAlive);
+	auto sidePositionIsAlive=state.movingObjectReadById!((ref objects,i){
+		auto isAlive=objects.creatureStates[i].mode.isAlive;
+		return tuple(objects.sides[i],objects.positions[i],isAlive);
 	},()=>tuple(-1,Vector3f.init,false))(wizard.id);
 	auto side=sidePositionIsAlive[0], position=sidePositionIsAlive[1], isAlive=sidePositionIsAlive[2];
 	auto updateAltarApproach=isAlive;
