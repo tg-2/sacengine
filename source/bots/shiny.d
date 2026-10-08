@@ -211,10 +211,10 @@ void divide(ref RaterAcc acc,float w){ // elements 0..3 only
 	if(w==0.0f) return;
 	foreach(i;0..4) acc.rating[i]=cast(float)safediv(cast(double)acc.rating[i],cast(double)w);
 }
-float rate(ref RaterAcc acc){ // 0x488a60
+float rate(ref RaterAcc acc){ // 0x488a60 (retail 0x48bf90): both binaries do the doubling as fadd st,st (exact, single add)
 	double r=(cast(double)acc.rating[3]+acc.rating[2])*0.5f;
 	double s=cast(double)acc.rating[1]+acc.rating[0];
-	r+=s+s;
+	r+=2.0*s;
 	acc.cachedRate=cast(float)r;
 	return acc.cachedRate;
 }
@@ -247,26 +247,33 @@ void abilityAcc(ref RaterAcc acc,immutable(Spel)* spel,double unk10f,double rang
 	acc.rating[1]=cast(float)(acc.rating[1]+t1*(k*(1.0-f))*kAbi);
 }
 
-// shared ratings 0,2,3,4 (tail of 0x488de0)
-void fillStats(ref RaterAcc acc,TypeStats ts){
-	acc.rating[0]=cast(float)(cast(double)ts.meleeStrength*(ts.unk10*kMilli));
-	float unk11K=cast(float)(ts.unk11*kMilli);
-	double p1=cast(double)unk11K*ts.health*((ts.regen+2.0*ts.drain)*kMilli);
-	float p1f=cast(float)p1;
-	double r2=safediv(1000.0,ts.meleeRes==0?1.0:cast(double)ts.meleeRes)*p1f;
+// shared ratings 0,2,3,4 (tail of 0x488de0; retail from-record core 0x48bd80)
+// NOTE: the from-OBJECT rater (thaum 0x488ab0 = retail 0x48b7e0) uses the thaum formula in BOTH binaries;
+// only the from-RECORD (by-tag) rater diverges, so `retail` is true solely on the fillByTag path
+void fillStats(ref RaterAcc acc,TypeStats ts,bool retail){
+	double p1;
+	if(retail){ // retail 0x48bd80: evasion->rating[0], accuracy->P1, (2*regen+drain), P1 kept extended
+		acc.rating[0]=cast(float)((ts.unk11*kMilli)*cast(double)ts.meleeStrength);
+		p1=((2.0*ts.regen+ts.drain)*kMilli)*((ts.unk10*kMilli)*ts.health);
+	}else{ // thaum 0x488de0: accuracy->rating[0], f32(evasion)->P1, (regen+2*drain), P1 rounded to f32
+		acc.rating[0]=cast(float)(cast(double)ts.meleeStrength*(ts.unk10*kMilli));
+		float unk11K=cast(float)(ts.unk11*kMilli);
+		p1=cast(float)(cast(double)unk11K*ts.health*((ts.regen+2.0*ts.drain)*kMilli));
+	}
+	double r2=safediv(1000.0,ts.meleeRes==0?1.0:cast(double)ts.meleeRes)*p1;
 	if(ts.fly>0) r2*=4.0;
 	acc.rating[2]=cast(float)r2;
-	acc.rating[3]=cast(float)(safediv(1000.0,ts.dRangedRes==0?1.0:cast(double)ts.dRangedRes)*p1f);
+	acc.rating[3]=cast(float)(safediv(1000.0,ts.dRangedRes==0?1.0:cast(double)ts.dRangedRes)*p1);
 	float runF=ts.run, flyF=ts.fly;
 	acc.rating[4]=cast(float)(cast(double)(runF<flyF?flyF:runF)*kMilli);
 }
 
-// by-tag fill 0x488de0: type mana, unfiltered ability loop over record+0x5c[8]
-void fillByTag(B)(ref RaterAcc acc,char[4] tag,immutable(Cre8)* c8,immutable(Wizd)* wz){
+// by-tag fill 0x488de0 (retail 0x48bd80 via wrapper 0x48bad0): type mana, unfiltered ability loop over record+0x5c[8]
+void fillByTag(B)(ref RaterAcc acc,char[4] tag,immutable(Cre8)* c8,immutable(Wizd)* wz,bool retail){
 	acc.clear();
 	acc.key=cast(ubyte)tag[0]|cast(ubyte)tag[1]<<8|cast(ubyte)tag[2]<<16|cast(ubyte)tag[3]<<24;
 	auto ts=typeStats(c8,wz);
-	fillStats(acc,ts);
+	fillStats(acc,ts,retail);
 	acc.rating[1]=0.0f;
 	auto rec=c8?cast(immutable(uint)*)c8:cast(immutable(uint)*)wz;
 	foreach(i;0..8){
@@ -283,7 +290,7 @@ void fillByTag(B)(ref RaterAcc acc,char[4] tag,immutable(Cre8)* c8,immutable(Wiz
 void fillFromObject(B)(ref RaterAcc acc,SacObject!B so,int curMana,Spellbook!B* spellbook){
 	acc.clear();
 	auto ts=typeStats!B(so);
-	fillStats(acc,ts);
+	fillStats(acc,ts,false); // retail from-object rater 0x48b7e0 uses the thaum formula too
 	acc.rating[1]=0.0f;
 	float manaF=curMana;
 	foreach(ab;so.abilities){
@@ -401,6 +408,9 @@ final class ShinyAI(B){
 	bool betaGuardWizardExclude=false;  // GUARD::Assign member mask: thaum 0x48ad24 = status&1 (wizard 0x2000e excluded) vs retail 0x48d994 = status&3 (wizard joins guard records; claim 0x48a740/0x48d490 makes it the record leader via status&0x20000, recordUpdate members follow leader.extrapPos)
 	bool betaCaptureAggGuardians=false; // CAPTURE::Assign aggregate pass: thaum 0x48b50a aggregates ALL members; retail 0x48e21b skips guardian-bound ([ntt+0x5c8]!=0)
 	bool betaStanceU4Quirk=false;       // stance u[4] (influenceGroups divisor 0x485cfa, summon gate 0x48d941): thaum reset 0x484700 never clears it (grows forever, influence decays to 0); retail reset 0x48677e clears to 1 per updateStance
+	bool betaSummonTypeRatings=false;   // from-record (by-tag) creature ratings: thaum 0x488de0 accuracy->rating[0], P1=f32(evasion)*health*(regen+2*drain) rounded to f32 vs retail 0x48bd80 evasion->rating[0], P1=accuracy*health*(2*regen+drain) kept extended (the from-object rater 0x488ab0/0x48b7e0 uses the thaum formula in BOTH binaries)
+	bool betaPupsThreatGate=false;      // 'pups' cmd-7 branch: retail 0x48c96d requires the casting wizard's node threat (+0x6c)!=0; thaum 0x489c40 has no gate
+	bool betaInfluenceWizardExclude=false; // influenceGroups group filter: thaum 0x485c14 statusOR&1 (wizard-only slot4 groups skipped) vs retail 0x4888ed statusOR&3 (same change as betaGuardWizardExclude)
 	void setBetaPatchBots(bool beta){
 		betaMinManaSacu=beta;
 		betaManahoarRadius=beta;
@@ -417,6 +427,9 @@ final class ShinyAI(B){
 		betaGuardWizardExclude=beta;
 		betaCaptureAggGuardians=beta;
 		betaStanceU4Quirk=beta;
+		betaSummonTypeRatings=beta;
+		betaPupsThreatGate=beta;
+		betaInfluenceWizardExclude=beta;
 	}
 	// rater1 by-tag acc cache
 	enum numTagAccs=96;
@@ -436,7 +449,7 @@ RaterAcc* tagAcc(B)(ref ShinyAI!B ai,char[4] tag){
 	immutable(Cre8)* c8; immutable(Wizd)* wz;
 	if(!findRecord!B(tag,c8,wz)) return null;
 	auto acc=&ai.tagAccs[ai.tagAccCount];
-	fillByTag!B(*acc,tag,c8,wz);
+	fillByTag!B(*acc,tag,c8,wz,!ai.betaSummonTypeRatings);
 	ai.tagAccKeys[ai.tagAccCount]=tag;
 	ai.tagAccCount++;
 	return acc;
@@ -2063,7 +2076,8 @@ float influenceGroups(B)(ref ShinyAI!B ai,ObjectState!B state,int slot,Vector3f 
 	float soulsW=0.0f;
 	for(int g=ai.grp4Head[slot];g;g=ai.groups4[g].gN){
 		auto grp=&ai.groups4[g];
-		if(!(grp.statusOR&1)) continue;
+		// thaum 0x485c14: statusOR&1 (wizard-only slot4 groups skipped); retail 0x4888ed: statusOR&3 (same change as betaGuardWizardExclude)
+		if(!(grp.statusOR&(ai.betaInfluenceWizardExclude?1:3))) continue;
 		auto d=pos-grp.center;
 		auto dist=sqrt(d.x*d.x+d.y*d.y+d.z*d.z);
 		float w;
@@ -2878,6 +2892,8 @@ float rateSpellAcc(B)(ref ShinyAI!B ai,ObjectState!B state,ref SpellAcc!B acc,in
 				// thaum reads the target's live order cmd (0x46e1d0): 7 (advance) -> wizards excluded, empty spellbook required, base 60; 0x22 (engage) -> base 40, no gates; else 0
 				if(tnode.ordState==7&&order.command==CommandType.advance){ // 7
 					if(tnode.kind==NodeKind.wiz) return 0.0f;
+					// retail 0x48c96d: the CASTING wizard's node threat (+0x6c) must be nonzero; thaum 0x489c40 has no such gate
+					if(!ai.betaPupsThreatGate&&node.threat==0.0f) return 0.0f;
 					auto ors=spellbookOR(state,tnode.id);
 					if(ors[0]||ors[1]) return 0.0f;
 					base=60.0;
