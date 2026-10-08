@@ -1579,7 +1579,7 @@ float boundingRadius(B,RenderMode mode)(ref StaticObjects!(B,mode) objects,int i
 float boundingRadius(B)(ref Building!B building,ObjectState!B state){
 	float radius=0.0f;
 	auto center=building.position(state);
-	foreach(cid;building.componentIds)
+	foreach(cid;building.componentIds.data)
 		state.staticObjectReadById!((ref objects,i,state){ radius=max(radius,sqrt((objects.positions[i]-center).lengthsqr)+objects.boundingRadius(i)); },(){})(cid,state);
 	return radius;
 }
@@ -1743,7 +1743,7 @@ Vector3f position(B)(ref Building!B building,ObjectState!B state){
 }
 float height(B)(ref Building!B building,ObjectState!B state){
 	float maxZ=0.0f;
-	foreach(cid;building.componentIds){
+	foreach(cid;building.componentIds.data){
 		state.staticObjectReadById!((ref objects,i,state){
 			auto hitbox=objects.hitbox(i);
 			maxZ=max(maxZ,hitbox[1].z-objects.positions[i].z);
@@ -1794,7 +1794,7 @@ void loopingSoundSetup(B)(ref Building!B building,ObjectState!B state){
 	static if(B.hasAudio){
 		if(building.flags&AdditionalBuildingFlags.inactive) return;
 		if(playAudio){
-			foreach(cid;building.componentIds)
+			foreach(cid;building.componentIds.data)
 				state.staticObjectById!(B.loopingSoundSetup,(){})(cid);
 		}
 	}
@@ -1802,7 +1802,7 @@ void loopingSoundSetup(B)(ref Building!B building,ObjectState!B state){
 void stopSounds(B)(ref Building!B building,ObjectState!B state){
 	static if(B.hasAudio){
 		if(playAudio){
-			foreach(cid;building.componentIds)
+			foreach(cid;building.componentIds.data)
 				stopSoundsAt(cid,state);
 		}
 	}
@@ -3304,7 +3304,7 @@ struct Erupt(B){
 
 	enum totalFrames=cast(int)((growDur+waveDur)*updateFPS+0.5f);
 
-	float displacement(float x,float y)@nogc{
+	float displacement(float x,float y){
 		enum pi=pi!float;
 		auto time=float(frame)/updateFPS;
 		auto epos=position.xy, pos=Vector2f(x,y);
@@ -5261,7 +5261,7 @@ struct Quake(B){
 
 	enum stunMinRange=0.5f,stunMaxRange=10.0f; // TODO: correct?
 
-	float displacement(float x,float y)@nogc{
+	float displacement(float x,float y){
 		enum pi=pi!float;
 		auto time=float(frame)/updateFPS;
 		auto epos=position.xy, pos=Vector2f(x,y);
@@ -5370,7 +5370,7 @@ struct ScreenShake{
 
 struct TestDisplacement{
 	int frame=0;
-	float displacement(float x,float y)@nogc{
+	float displacement(float x,float y){
 		float time=float(frame)/updateFPS;
 		return 2.5f*(sin(0.1f*x+time)+sin(0.1f*y+time));
 	}
@@ -7327,7 +7327,7 @@ struct EdgeChanges{
 	uint hash=emptyHash;
 	uint[2048] changes=0;
 
-	bool get(int i,int j)const @nogc{
+	bool get(int i,int j)const {
 		if(j<0||j>=256) return false;
 		if(i<0||i>=256) return false;
 		auto index=j*256+i;
@@ -7341,7 +7341,7 @@ struct EdgeChanges{
 		recomputeHash();
 		return true;
 	}
-	bool empty()const @nogc{
+	bool empty()const {
 		foreach(word;changes) if(word) return false;
 		return true;
 	}
@@ -7602,13 +7602,13 @@ auto each(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T args){
 }
 auto eachMoving(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T args){
 	with(objects){
-		foreach(ref movingObject;movingObjects)
+		foreach(ref movingObject;movingObjects.data)
 			movingObject.each!f(args);
 	}
 }
 auto eachStatic(alias f,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T args){
 	with(objects){
-		foreach(ref staticObject;staticObjects)
+		foreach(ref staticObject;staticObjects.data)
 			staticObject.each!f(args);
 	}
 }
@@ -7626,13 +7626,13 @@ auto eachEffects(alias f,B,T...)(ref Objects!(B,RenderMode.opaque) objects,T arg
 }
 auto eachParticles(alias f,B,T...)(ref Objects!(B,RenderMode.opaque) objects,T args){
 	with(objects){
-		foreach(ref particle;particles)
+		foreach(ref particle;particles.data)
 			f(particle,args);
-		foreach(ref particle;relativeParticles)
+		foreach(ref particle;relativeParticles.data)
 			f(particle,args);
-		foreach(ref particle;relativeTwirlParticles)
+		foreach(ref particle;relativeTwirlParticles.data)
 			f(particle,args);
-		foreach(ref particle;filteredParticles)
+		foreach(ref particle;filteredParticles.data)
 			f(particle,args);
 	}
 }
@@ -7657,19 +7657,19 @@ auto eachByType(alias f,EachByTypeFlags flags,B,RenderMode mode,T...)(ref Object
 		enum opaqueEffectsBeforeParticles=!!(flags&EachByTypeFlags.opaqueEffectsBeforeParticles);
 		enum processMoving=q{
 			static if(wizardsLast){
-				foreach(ref movingObject;movingObjects)
+				foreach(ref movingObject;movingObjects.data)
 					if(!movingObject.sacObject.isWizard)
 						f(movingObject,args);
-				foreach(ref movingObject;movingObjects)
+				foreach(ref movingObject;movingObjects.data)
 					if(movingObject.sacObject.isWizard)
 						f(movingObject,args);
 			}else{
-				foreach(ref movingObject;movingObjects)
+				foreach(ref movingObject;movingObjects.data)
 					f(movingObject,args);
 			}
 		};
 		static if(movingFirst) mixin(processMoving);
-		foreach(ref staticObject;staticObjects)
+		foreach(ref staticObject;staticObjects.data)
 			f(staticObject,args);
 		static if(mode == RenderMode.opaque){
 			foreach(ref fixedObject;fixedObjects)
@@ -7678,13 +7678,13 @@ auto eachByType(alias f,EachByTypeFlags flags,B,RenderMode mode,T...)(ref Object
 			f(buildings,args);
 			static if(opaqueEffectsBeforeParticles) f(effects,args,true);
 			else static if(!particlesBeforeEffects) f(effects,args);
-			foreach(ref particle;particles)
+			foreach(ref particle;particles.data)
 				f(particle,args);
-			foreach(ref particle;relativeParticles)
+			foreach(ref particle;relativeParticles.data)
 				f(particle,args);
-			foreach(ref particle;relativeTwirlParticles)
+			foreach(ref particle;relativeTwirlParticles.data)
 				f(particle,args);
-			foreach(ref particle;filteredParticles)
+			foreach(ref particle;filteredParticles.data)
 				f(particle,args);
 			static if(opaqueEffectsBeforeParticles) f(effects,args,false);
 			else static if(particlesBeforeEffects) f(effects,args);
@@ -13441,7 +13441,7 @@ bool destroyAltar(B)(ref StaticObject!B shrine,ObjectState!B state){
 	static AltarIds getAltarIds(ref Building!B building,StaticObject!B* shrine,ObjectState!B state){
 		auto tags=getAltarTags(building,shrine,state);
 		AltarIds r;
-		foreach(id;building.componentIds){
+		foreach(id;building.componentIds.data){
 			auto tag=state.staticObjectById!((ref obj)=>obj.sacObject.tag,()=>cast(char[4])("\0\0\0\0"))(id);
 			if(tag=="\0\0\0\0") continue;
 			if(tag==tags.shrine && r.shrine==0){
@@ -15324,7 +15324,7 @@ void animateStructureCasting(B)(ref StructureCasting!B structureCast,ObjectState
 	with(structureCast){
 		auto thresholdZ=-structureCastingGradientSize+(buildingHeight+structureCastingGradientSize)*currentFrame/castingTime;
 		state.buildingById!((ref bldg,thresholdZ,state){
-			foreach(cid;bldg.componentIds){
+			foreach(cid;bldg.componentIds.data){
 				state.setThresholdZ(cid,thresholdZ);
 				if(currentFrame+0.5f*updateFPS<castingTime){
 					auto pos=state.staticObjectById!((obj)=>obj.position,function Vector3f(){ assert(0); })(cid);
@@ -17445,7 +17445,7 @@ void addBugs(B)(ref ProtectiveSwarm!B protectiveSwarm,ref MovingObject!B wizard,
 void updateBugs(B)(ref ProtectiveSwarm!B protectiveSwarm,ref MovingObject!B wizard,ObjectState!B state){
 	auto size=wizard.protectiveSwarmSize;
 	Vector3f rescale(Vector3f p){ return 0.5f*p*size; }
-	foreach(ref bug;protectiveSwarm.bugs){
+	foreach(ref bug;protectiveSwarm.bugs.data){
 		bug.progress+=3.0f/updateFPS;
 		if(bug.progress>=1.0f){
 			bug.startPosition=bug.targetPosition;
@@ -28378,17 +28378,17 @@ bool manahoarAbilityEnabled(CreatureMode mode){
 
 void paintDangerGrid(B)(ref Effects!B effects,ObjectState!B state){
 	auto grid=state.dangerGrid;
-	foreach(ref tornado;effects.tornados) grid.paintDisc(tornado.position,10.0f,50.0f,128);
-	foreach(ref frozenGround;effects.frozenGrounds) grid.paintDisc(frozenGround.center,0.75f*frozenGround.spell.effectRange,1.5f*frozenGround.spell.effectRange,32);
-	foreach(ref volcano;effects.volcanos) grid.paintDisc(volcano.position,30.0f,100.0f,128);
-	foreach(ref erupt;effects.erupts) grid.paintDisc(erupt.position,5.0f,max(5.0f,1.5f*erupt.spell.effectRange),32);
-	foreach(ref death;effects.deaths) if(death.status==DeathStatus.walking) grid.paintDisc(death.position,15.0f,30.0f,64);
-	foreach(ref meanstalks;effects.meanstalkss) grid.paintDisc(meanstalks.center,10.0f,50.0f,48);
-	foreach(ref explosionCasting;effects.explosionCastings) grid.paintDisc(explosionCasting.effects[0].position,5.0f,max(5.0f,1.5f*explosionCasting.spell.effectRange),32);
-	foreach(ref wallOfSpikes;effects.wallOfSpikess) if(wallOfSpikes.status!=WallOfSpikesStatus.shrinking&&(wallOfSpikes.left!=0.0f||wallOfSpikes.right!=0.0f)) grid.paintCapsule(wallOfSpikes.get(wallOfSpikes.left,state),wallOfSpikes.get(wallOfSpikes.right,state),20.0f,128);
-	foreach(ref firewall;effects.firewalls) if(firewall.status!=FirewallStatus.shrinking&&(firewall.left!=0.0f||firewall.right!=0.0f)) grid.paintCapsule(firewall.get(firewall.left,state),firewall.get(firewall.right,state),20.0f,128);
-	foreach(ref wailingWall;effects.wailingWalls) if(wailingWall.status!=WailingWallStatus.shrinking&&(wailingWall.left!=0.0f||wailingWall.right!=0.0f)) grid.paintCapsule(wailingWall.get(wailingWall.left,state),wailingWall.get(wailingWall.right,state),20.0f,128);
-	foreach(ref vinewall;effects.vinewalls) if(vinewall.status!=VinewallStatus.shrinking&&(vinewall.left!=0.0f||vinewall.right!=0.0f)) grid.paintCapsule(vinewall.get(vinewall.left,state),vinewall.get(vinewall.right,state),20.0f,8);
+	foreach(ref tornado;effects.tornados.data) grid.paintDisc(tornado.position,10.0f,50.0f,128);
+	foreach(ref frozenGround;effects.frozenGrounds.data) grid.paintDisc(frozenGround.center,0.75f*frozenGround.spell.effectRange,1.5f*frozenGround.spell.effectRange,32);
+	foreach(ref volcano;effects.volcanos.data) grid.paintDisc(volcano.position,30.0f,100.0f,128);
+	foreach(ref erupt;effects.erupts.data) grid.paintDisc(erupt.position,5.0f,max(5.0f,1.5f*erupt.spell.effectRange),32);
+	foreach(ref death;effects.deaths.data) if(death.status==DeathStatus.walking) grid.paintDisc(death.position,15.0f,30.0f,64);
+	foreach(ref meanstalks;effects.meanstalkss.data) grid.paintDisc(meanstalks.center,10.0f,50.0f,48);
+	foreach(ref explosionCasting;effects.explosionCastings.data) grid.paintDisc(explosionCasting.effects[0].position,5.0f,max(5.0f,1.5f*explosionCasting.spell.effectRange),32);
+	foreach(ref wallOfSpikes;effects.wallOfSpikess.data) if(wallOfSpikes.status!=WallOfSpikesStatus.shrinking&&(wallOfSpikes.left!=0.0f||wallOfSpikes.right!=0.0f)) grid.paintCapsule(wallOfSpikes.get(wallOfSpikes.left,state),wallOfSpikes.get(wallOfSpikes.right,state),20.0f,128);
+	foreach(ref firewall;effects.firewalls.data) if(firewall.status!=FirewallStatus.shrinking&&(firewall.left!=0.0f||firewall.right!=0.0f)) grid.paintCapsule(firewall.get(firewall.left,state),firewall.get(firewall.right,state),20.0f,128);
+	foreach(ref wailingWall;effects.wailingWalls.data) if(wailingWall.status!=WailingWallStatus.shrinking&&(wailingWall.left!=0.0f||wailingWall.right!=0.0f)) grid.paintCapsule(wailingWall.get(wailingWall.left,state),wailingWall.get(wailingWall.right,state),20.0f,128);
+	foreach(ref vinewall;effects.vinewalls.data) if(vinewall.status!=VinewallStatus.shrinking&&(vinewall.left!=0.0f||vinewall.right!=0.0f)) grid.paintCapsule(vinewall.get(vinewall.left,state),vinewall.get(vinewall.right,state),20.0f,8);
 	// fence: not avoided
 }
 void addToProximity(T,B)(ref T objects, ObjectState!B state){
@@ -28637,7 +28637,7 @@ struct ManaEntries{
 		}
 		auto sides=state.sides;
 		float rate=0.0f;
-		foreach(ref entry;entries){
+		foreach(ref entry;entries.data){
 			auto distance=(position-entry.position).length;
 			if(distance>=entry.radius) continue;
 			if(entry.side!=-1&&(!entry.allies?entry.side!=side:sides.getStance(entry.side,side)!=Stance.ally)) continue;
@@ -28693,7 +28693,7 @@ struct ManaProximity(B){
 		}
 		float rate=0.0f;
 		auto sides=state.sides;
-		foreach(ref manalith;manaliths){
+		foreach(ref manalith;manaliths.data){
 			if(sides.getStance(manalith.side,side)!=Stance.ally) continue;
 			auto distance=(position-manalith.position).length;
 			rate+=max(0.0f,min((20.0f/50.0f)*distance,(20.0f/(1000.0f-50.0f))*(1000.0f-distance)));
@@ -28741,7 +28741,7 @@ auto eachInRange(alias f,T...)(ref CenterProximityEntries proximity,int version_
 		proximity.entries.length=0;
 		proximity.version_=version_;
 	}
-	foreach(ref entry;proximity.entries){
+	foreach(ref entry;proximity.entries.data){
 		if((entry.position-position).lengthsqr>range^^2) continue;
 		f(entry,args);
 	}
@@ -29004,24 +29004,24 @@ final class ObjectState(B){ // (update logic)
 	}
 	static struct Displacement{
 		ObjectState!B state;
-		static Displacement opCall(ObjectState!B state)@nogc{
+		static Displacement opCall(ObjectState!B state){
 			Displacement r;
 			r.state=state;
 			return r;
 		}
-		float opCall(int i,int j)@nogc{
+		float opCall(int i,int j){
 			float result=state.obj.opaqueObjects.permanentDisplacement.get(i,j);
 			float x=10*i,y=10*j;
-			foreach(ref td;state.obj.opaqueObjects.effects.testDisplacements){
+			foreach(ref td;state.obj.opaqueObjects.effects.testDisplacements.data){
 				result+=td.displacement(x,y);
 			}
-			foreach(ref ec;state.obj.opaqueObjects.effects.eruptCastings){
+			foreach(ref ec;state.obj.opaqueObjects.effects.eruptCastings.data){
 				result+=ec.erupt.displacement(x,y);
 			}
-			foreach(ref e;state.obj.opaqueObjects.effects.erupts){
+			foreach(ref e;state.obj.opaqueObjects.effects.erupts.data){
 				result+=e.displacement(x,y);
 			}
-			foreach(ref e;state.obj.opaqueObjects.effects.quakes){
+			foreach(ref e;state.obj.opaqueObjects.effects.quakes.data){
 				result+=e.displacement(x,y);
 			}
 			return result;
@@ -29554,13 +29554,13 @@ final class ObjectState(B){ // (update logic)
 		assert(id!=0);
 	}do{
 		this.buildingById!((ref bldg,state){
-			foreach(cid;bldg.componentIds)
+			foreach(cid;bldg.componentIds.data)
 				state.setRenderMode!(StaticObject!B,mode)(cid);
 		},(){})(id,this);
 	}
 	void setupStructureCasting(int buildingId){
 		this.buildingById!((ref bldg,state){
-			foreach(cid;bldg.componentIds){
+			foreach(cid;bldg.componentIds.data){
 				state.setRenderMode!(StaticObject!B,RenderMode.transparent)(cid);
 				state.setThresholdZ(cid,-structureCastingGradientSize);
 			}
@@ -29952,7 +29952,7 @@ final class ObjectState(B){ // (update logic)
 
 
 	int buildingIdForGuardian(int creature){
-		foreach(ref guardian;obj.opaqueObjects.effects.guardians){
+		foreach(ref guardian;obj.opaqueObjects.effects.guardians.data){
 			if(guardian.creature==creature)
 				return guardian.building;
 		}
@@ -29985,7 +29985,7 @@ final class ObjectState(B){ // (update logic)
 			if(obj.isGuardian){
 				if(auto building=state.buildingIdForGuardian(obj.id)){
 					state.buildingById!((ref bldg,side,mobj,selection,state){
-						foreach(id;bldg.guardianIds)
+						foreach(id;bldg.guardianIds.data)
 							state.movingObjectById!(process,(){})(id,true,side,mobj,selection,state);
 					},(){})(building,side,mobj,&selection,state);
 				}
@@ -32098,7 +32098,7 @@ final class GameState(B){
 	void replaceState(scope ubyte[] serialized){ .replaceState(states,commands,serialized); }
 	void replaceState(ObjectState!B replacement){ .replaceState(states,replacement); }
 
-	int canonicalSlotOrder(int index)@nogc{
+	int canonicalSlotOrder(int index){
 		if(index<0||index>=32) return index;
 		int[32] slotIndices=-1;
 		int numRelevant=0;

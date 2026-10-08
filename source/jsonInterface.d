@@ -9,7 +9,7 @@ struct JSONBuilder{
 
 	Array!char message;
 	void put(scope const(char)[] data){
-		message~=data.byChar; // TODO: probably this is quite slow
+		message~=cast(char[])data;
 	}
 	void put(T...)(T args)if(T.length!=1){
 		foreach(arg;args) put(arg);
@@ -356,7 +356,7 @@ void runJSONCommand(B)(JSONCommand command,Controller!B controller,scope void de
 			if(!gameState||!gameState.current||!gameState.current.map) return respond("{}");
 			auto recording=emplace!(Recording!B)(recData.data,gameState);
 			Array!ubyte recordingData;
-			recording.save((scope const(ubyte)[] data){ recordingData~=data; });
+			recording.save((scope const(ubyte)[] data){ recordingData~=cast(ubyte[])data; });
 			import std.base64;
 			respond(`{"base64":"`);
 			scope(exit){

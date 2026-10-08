@@ -85,9 +85,9 @@ bool diffData(T)(Array!T a,Array!T b,lazy string path){
 	if(a.length==b.length) foreach(i;0..a.length) r|=diffData(a[i],b[i],text(path,"[",i,"]"));
 	else static if(is(T==Particles!(B,kind),B,ParticleKind kind)){
 		writeln("a",path[1..$],":");
-		foreach(ref x;a) writeln(x.sacParticle.type," ",x.sacParticle.side);
+		foreach(ref x;a.data) writeln(x.sacParticle.type," ",x.sacParticle.side);
 		writeln("b",path[1..$],":");
-		foreach(ref y;b) writeln(y.sacParticle.type," ",y.sacParticle.side);
+		foreach(ref y;b.data) writeln(y.sacParticle.type," ",y.sacParticle.side);
 	}
 	return r;
 }

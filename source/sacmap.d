@@ -480,7 +480,7 @@ final class SacMap(B){
 	void updateFallingLandChunkMeshes(T)(T chunks){
 		for(int k=0;k<fallingLandChunkMeshes.length;){
 			bool found=false;
-			foreach(ref chunk;chunks){
+			foreach(ref chunk;chunks.data){
 				if(chunk.vertexI==fallingLandChunkMeshes[k].vertexI&&chunk.vertexJ==fallingLandChunkMeshes[k].vertexJ&&chunk.spawnFrame==fallingLandChunkMeshes[k].spawnFrame){
 					found=true;
 					break;
@@ -496,9 +496,9 @@ final class SacMap(B){
 			if(k+1<fallingLandChunkMeshes.length) fallingLandChunkMeshes[k]=fallingLandChunkMeshes[$-1];
 			fallingLandChunkMeshes.length=fallingLandChunkMeshes.length-1;
 		}
-		foreach(ref chunk;chunks){
+		foreach(ref chunk;chunks.data){
 			bool found=false;
-			foreach(ref cached;fallingLandChunkMeshes){
+			foreach(ref cached;fallingLandChunkMeshes.data){
 				if(cached.vertexI==chunk.vertexI&&cached.vertexJ==chunk.vertexJ&&cached.spawnFrame==chunk.spawnFrame){
 					found=true;
 					break;
@@ -512,7 +512,7 @@ final class SacMap(B){
 	Tuple!(int,"j",int,"i") getTile(Vector3f pos)@nogc{
 		return tuple!("j","i")(cast(int)(pos.y/10),cast(int)(pos.x/10));
 	}
-	Vector3f getVertex(T)(int j,int i,T displacement)@nogc{
+	Vector3f getVertex(T)(int j,int i,T displacement){
 		return Vector3f(10.0f*i,10.0f*j,heights[max(0,min(j,cast(int)$-1))][max(0,min(i,cast(int)$-1))]+displacement(i,j));
 	}
 	Tuple!(Tuple!(int,"j",int,"i")[3][2],"tri",int,"nt") getTriangles(bool invert=false)(int j,int i)@nogc{
@@ -546,7 +546,7 @@ final class SacMap(B){
 		}
 		return tuple!("tri","nt")(tri,nt);
 	}
-	Plane getPlane(T)(Tuple!(int,"j",int,"i")[3] tri,T displacement)@nogc{
+	Plane getPlane(T)(Tuple!(int,"j",int,"i")[3] tri,T displacement){
 		static foreach(i;0..3)
 			mixin(text(`auto p`,i,`=getVertex(tri[`,i,`].expand,displacement);`));
 		Plane plane;
@@ -584,21 +584,21 @@ final class SacMap(B){
 		auto triangle=getTriangle(pos);
 		return triangle[0]!=triangle[1];
 	}
-	private float getHeightImpl(T)(Tuple!(int,"j",int,"i")[3] triangle,Vector3f pos,T displacement)@nogc{
+	private float getHeightImpl(T)(Tuple!(int,"j",int,"i")[3] triangle,Vector3f pos,T displacement){
 		auto plane=getPlane(triangle,displacement);
 		return -(plane.a*pos.x+plane.b*pos.y+plane.d)/plane.c;
 	}
-	float getHeight(T)(Vector3f pos,T displacement)@nogc{
+	float getHeight(T)(Vector3f pos,T displacement){
 		auto triangle=getTriangle(pos);
 		if(triangle[0]==triangle[1]) triangle=getTriangle!true(pos);
 		if(triangle[0]==triangle[1]) return 0.0f;
 		return getHeightImpl(triangle,pos,displacement);
 	}
-	float getGroundHeight(T)(Vector3f pos,T displacement)@nogc{
+	float getGroundHeight(T)(Vector3f pos,T displacement){
 		auto triangle=getTriangle(pos);
 		return getHeightImpl(triangle,pos,displacement);
 	}
-	float getGroundHeightDerivative(T)(Vector3f pos,Vector3f direction,T displacement)@nogc{
+	float getGroundHeightDerivative(T)(Vector3f pos,Vector3f direction,T displacement){
 		auto triangle=getTriangle(pos);
 		static foreach(i;0..3)
 			mixin(text(`auto p`,i,`=getVertex(triangle[`,i,`].expand,displacement);`));
@@ -606,7 +606,7 @@ final class SacMap(B){
 		plane.fromPoints(p0,p1,p2); // wtf.
 		return -(plane.a*direction.x+plane.b*direction.y)/plane.c;
 	}
-	Vector3f moveOnGround(T)(Vector3f position,Vector3f direction,T displacement)@nogc in{
+	Vector3f moveOnGround(T)(Vector3f position,Vector3f direction,T displacement)in{
 		assert(isOnGround(position));
 	}do{
 		auto newPosition=position+direction;
@@ -631,7 +631,7 @@ final class SacMap(B){
 		bestNewPosition.z=getGroundHeight(bestNewPosition,displacement);
 		return bestNewPosition;
 	}
-	float rayIntersection(T)(Vector3f start,Vector3f direction,T displacement,float limit=float.infinity)@nogc{
+	float rayIntersection(T)(Vector3f start,Vector3f direction,T displacement,float limit=float.infinity){
 		float result=float.infinity;
 		auto tile=getTile(start);
 		int dj=direction.y<0?-1:1, di=direction.x<0?-1:1;

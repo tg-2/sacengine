@@ -284,17 +284,100 @@ float rayBoxIntersect(Vector3f start,Vector3f direction,Vector3f[2] box,float li
 	return result;
 }
 
-static import std.container.array;
+T[] rawData(T)(imported!"std.container.array".Array!T data){
+	// std.container.array should just provide this functionality...
+	auto implPtr=data.tupleof[0]._refCounted.tupleof[0];
+	if(!implPtr) return [];
+	return implPtr._payload._payload;
+}
+
 struct Array(T){
-	std.container.array.Array!T payload;
-	alias payload this;
-	static if(!is(T==bool)){
-		T[] data(){
-			// std.container.array should just provide this functionality...
-			auto implPtr=payload.tupleof[0]._refCounted.tupleof[0];
-			if(!implPtr) return [];
-			return implPtr._payload._payload;
-		}
+	private T* ptr;
+	private size_t _length;
+	private size_t _capacity;
+	T[] data()pure nothrow @nogc{ return ptr[0.._length]; }
+	@property size_t length()const pure nothrow @nogc{ return _length; }
+	alias opDollar=length;
+	@property size_t length(size_t newLength){
+		import std.traits: hasElaborateDestructor;
+		if(newLength>_length){
+			ensureCapacity(newLength);
+			static if(hasElaborateDestructor!T){
+				import core.internal.lifetime: emplaceInitializer;
+				foreach(i;_length..newLength) emplaceInitializer(ptr[i]);
+			}else ptr[_length..newLength]=T.init;
+		}else static if(hasElaborateDestructor!T)
+			foreach(ref e;ptr[newLength.._length]) destroy(e);
+		_length=newLength;
+		return newLength;
+	}
+	@property size_t capacity()const pure nothrow @nogc{ return _capacity; }
+	void reserve(size_t n){ if(n>_capacity) growExact(n); }
+	private void ensureCapacity(size_t n){
+		if(n>_capacity) growExact(_capacity?max(n,2*_capacity):max(n,4));
+	}
+	private void growExact(size_t newCapacity){
+		import std.traits: hasIndirections;
+		import core.stdc.stdlib: malloc, realloc, free;
+		import core.stdc.string: memcpy;
+		import core.memory: GC;
+		auto size=newCapacity*T.sizeof;
+		static if(hasIndirections!T){
+			// cannot realloc: the GC needs to learn about the new location before the old one is freed
+			auto newPtr=cast(T*)enforce(malloc(size),"out of memory");
+			GC.addRange(newPtr,size);
+			memcpy(newPtr,ptr,_length*T.sizeof);
+			if(ptr) GC.removeRange(ptr);
+			free(ptr);
+			ptr=newPtr;
+		}else ptr=cast(T*)enforce(realloc(ptr,size),"out of memory");
+		_capacity=newCapacity;
+	}
+	private void freeBuffer(){
+		import std.traits: hasIndirections, hasElaborateDestructor;
+		import core.stdc.stdlib: free;
+		import core.memory: GC;
+		static if(hasElaborateDestructor!T)
+			foreach(ref e;ptr[0.._length]) destroy(e);
+		static if(hasIndirections!T) if(ptr) GC.removeRange(ptr);
+		free(ptr);
+		ptr=null;
+		_length=0;
+		_capacity=0;
+	}
+	~this(){ freeBuffer(); }
+	bool empty()const pure nothrow @nogc{ return _length==0; }
+	ref inout(T) opIndex(size_t i)inout pure nothrow @nogc{ assert(i<_length); return ptr[i]; }
+	ref inout(T) front()inout pure nothrow @nogc{ assert(_length); return ptr[0]; }
+	ref inout(T) back()inout pure nothrow @nogc{ assert(_length); return ptr[_length-1]; }
+	void opOpAssign(string op:"~")(T elem){
+		import core.lifetime: moveEmplace;
+		ensureCapacity(_length+1);
+		moveEmplace(elem,ptr[_length]);
+		_length+=1;
+	}
+	void opOpAssign(string op:"~")(T[] elems){
+		import core.lifetime: copyEmplace;
+		auto oldLength=_length;
+		ensureCapacity(_length+elems.length);
+		foreach(i,e;elems) copyEmplace(e,ptr[oldLength+i]); // do not destroy the stale slots
+		_length=oldLength+elems.length;
+	}
+	size_t insertBack(T elem){ import core.lifetime: move; this~=move(elem); return 1; }
+	size_t insertBack(T[] elems){ this~=elems; return elems.length; }
+	void removeBack()in{ assert(_length); }do{ length=_length-1; }
+	size_t removeBack(size_t howMany){
+		auto removed=min(howMany,_length);
+		length=_length-removed;
+		return removed;
+	}
+	void clear(){ length=0; }
+	bool opEquals()(auto ref Array!T rhs){ return data==rhs.data; }
+	this(T[] values){
+		import core.lifetime: copyEmplace;
+		ensureCapacity(values.length);
+		foreach(i,e;values) copyEmplace(e,ptr[i]); // do not destroy the stale slots
+		_length=values.length;
 	}
 	void opAssign(ref Array!T rhs){
 		this.length=rhs.length;
@@ -302,11 +385,31 @@ struct Array(T){
 			this[i]=rhs[i];
 	}
 	void opAssign(Array!T rhs){
-		payload=move(rhs.payload);
+		import core.lifetime: move;
+		move(rhs,this); // destroys the current store, then steals rhs's
 	}
-	this(this){ payload=payload.dup; }
+	this(this){
+		import std.traits: hasIndirections, hasElaborateDestructor, hasElaborateCopyConstructor;
+		import core.stdc.stdlib: malloc;
+		import core.stdc.string: memcpy;
+		import core.memory: GC;
+		import core.lifetime: copyEmplace;
+		if(!_length){
+			ptr=null;
+			_capacity=0;
+			return;
+		}
+		auto oldPtr=ptr;
+		auto size=_length*T.sizeof;
+		ptr=cast(T*)enforce(malloc(size),"out of memory");
+		static if(hasIndirections!T) GC.addRange(ptr,size);
+		static if(hasElaborateDestructor!T||hasElaborateCopyConstructor!T)
+			foreach(i;0.._length) copyEmplace(oldPtr[i],ptr[i]);
+		else memcpy(ptr,oldPtr,size);
+		_capacity=_length;
+	}
 
-	static if(!is(T==bool)) string toString()(){ import std.conv; return text(data); }
+	string toString()(){ import std.conv; return text(data); }
 }
 
 mixin template Assign(){
@@ -376,7 +479,7 @@ struct Queue(T){
 		if(payload.length==last-first){
 			if(payload.length>1){
 				import std.algorithm: bringToFront;
-				bringToFront(payload[0..first%$],payload[first%$..$]);
+				bringToFront(payload.data[0..first%$],payload.data[first%$..$]);
 			}
 			last=last-first;
 			first=0;

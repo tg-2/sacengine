@@ -877,7 +877,7 @@ class DelayedConnection(B): ConnectionImpl{
 		auto msg=WithDelay(B.time()+delay);
 		if(!toSend.empty) msg.time=max(msg.time,toSend.back.time+msg.data.length*50.msecs); // limit bandwidth
 		msg.data.length=data.length;
-		Array!ubyte(msg.data).data[]=data[];
+		msg.data.rawData!ubyte[]=data[];
 		toSend.push(move(msg));
 		updateSent();
 		return data.length;
@@ -885,14 +885,14 @@ class DelayedConnection(B): ConnectionImpl{
 	private void updateSent(){
 		auto time=B.time();
 		while(!toSend.empty&&toSend.front.time<=time){
-			base.send(Array!ubyte(toSend.front.data).data);
+			base.send(toSend.front.data.rawData!ubyte);
 			toSend.popFront();
 		}
 	}
 	override void closeImpl(){
 		if(!alive) return;
 		while(!toSend.empty){
-			base.send(Array!ubyte(toSend.front.data).data);
+			base.send(toSend.front.data.rawData!ubyte);
 			toSend.popFront();
 		}
 		return base.closeImpl();
@@ -1081,7 +1081,7 @@ struct Broadcaster{
 			stderr.writeln("warning: unable to broadcast");
 			stderr.flush();
 		}
-		foreach(broadcastIP;broadcastIPs){
+		foreach(broadcastIP;broadcastIPs.data){
 			if(useZerotier){
 				zts_sockaddr_in send_addr;
 				uint addrlen=send_addr.sizeof;
@@ -2628,7 +2628,7 @@ final class Network(B){
 				}
 			}
 		}
-		sort!"a.slot<b.slot"(players[1..$]);
+		sort!"a.slot<b.slot"(players.data[1..$]);
 		hostSettings.slot=players[host].slot;
 		foreach(ref p;players.data[1..$]) p.settings.commit=hostSettings.commit;
 	}

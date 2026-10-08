@@ -364,7 +364,7 @@ final class SacScene: Scene{
 
 	Vector3f getCameraDisplacement(Vector3f position){
 		Vector3f result=Vector3f(0.0f,0.0f,0.0f);
-		if(state) foreach(ref screenShake;state.current.obj.opaqueObjects.effects.screenShakes){
+		if(state) foreach(ref screenShake;state.current.obj.opaqueObjects.effects.screenShakes.data){
 			result+=screenShake.getDisplacement(position);
 		}
 		return result;
@@ -1631,7 +1631,7 @@ final class SacScene: Scene{
 		logicCallbacks~=dg;
 	}
 	void updateLogicCallbacks(){
-		foreach(ref dg;logicCallbacks){
+		foreach(ref dg;logicCallbacks.data){
 			if(dg && !dg())
 				dg=null;
 		}
@@ -1806,7 +1806,7 @@ final class SacScene: Scene{
 						int smallestRitualFrame=int.max;
 						bool victory=false;
 						bool sacrificeTheme=false;
-						foreach(ref ritual;state.current.obj.opaqueObjects.effects.rituals){
+						foreach(ref ritual;state.current.obj.opaqueObjects.effects.rituals.data){
 							if(ritual.frame<ritual.setupTime) continue;
 							auto ritualPosition=state.current.staticObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(ritual.shrine);
 							sacrificeTheme|=(ritualPosition-camera.position).lengthsqr<70.0f^^2;
@@ -2090,7 +2090,7 @@ final class SacScene: Scene{
 		unbindPermanentDisplacement();
 		if(state.current.obj.opaqueObjects.effects.testDisplacements.length){
 			bindTestDisplacement();
-			foreach(ref td;state.current.obj.opaqueObjects.effects.testDisplacements){
+			foreach(ref td;state.current.obj.opaqueObjects.effects.testDisplacements.data){
 				float time=float(td.frame)/updateFPS;
 				testDisplacement(time);
 			}
@@ -2099,11 +2099,11 @@ final class SacScene: Scene{
 		if(state.current.obj.opaqueObjects.effects.eruptCastings.length||
 		   state.current.obj.opaqueObjects.effects.erupts.length){
 			bindEruptDisplacement();
-			foreach(ref ec;state.current.obj.opaqueObjects.effects.eruptCastings){
+			foreach(ref ec;state.current.obj.opaqueObjects.effects.eruptCastings.data){
 				float time=float(ec.erupt.frame)/updateFPS;
 				eruptDisplacement(ec.erupt.position.x,ec.erupt.position.y,time);
 			}
-			foreach(ref e;state.current.obj.opaqueObjects.effects.erupts){
+			foreach(ref e;state.current.obj.opaqueObjects.effects.erupts.data){
 				float time=float(e.frame)/updateFPS;
 				eruptDisplacement(e.position.x,e.position.y,time);
 			}
@@ -2111,7 +2111,7 @@ final class SacScene: Scene{
 		}
 		if(state.current.obj.opaqueObjects.effects.quakes.length){
 			bindQuakeDisplacement();
-			foreach(ref e;state.current.obj.opaqueObjects.effects.quakes){
+			foreach(ref e;state.current.obj.opaqueObjects.effects.quakes.data){
 				float time=float(e.frame)/updateFPS;
 				quakeDisplacement(e.position.x,e.position.y,time);
 			}

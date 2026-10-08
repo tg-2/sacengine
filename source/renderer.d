@@ -1280,9 +1280,9 @@ struct Renderer(B){
 		if(map.fallingLandChunkMeshes.length){
 			if(!rc.shadowMode) B.bindZeroTerrainDisplacement();
 			else B.bindZeroTerrainShadowDisplacement();
-			foreach(ref chunk;*fallingLandChunks){
+			foreach(ref chunk;fallingLandChunks.data){
 				typeof(map.fallingLandChunkMeshes[0])* cached=null;
-				foreach(ref c;map.fallingLandChunkMeshes){
+				foreach(ref c;map.fallingLandChunkMeshes.data){
 					if(c.vertexI==chunk.vertexI&&c.vertexJ==chunk.vertexJ&&c.spawnFrame==chunk.spawnFrame){
 						cached=&c;
 						break;
@@ -1728,7 +1728,7 @@ struct Renderer(B){
 							mesh.render(rc);
 						}
 					}
-					foreach(ref guardian;objects.guardians) renderGuardianTether(guardian);
+					foreach(ref guardian;objects.guardians.data) renderGuardianTether(guardian);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.blueRings.length||objects.teleportRings.length)){
 					auto material=self.blueRing.material;
@@ -1851,9 +1851,9 @@ struct Renderer(B){
 							mesh1.morph(mesh2,rc);
 						}
 					}
-					foreach(ref cloudkillCasting;objects.cloudkillCastings)
+					foreach(ref cloudkillCasting;objects.cloudkillCastings.data)
 						with(cloudkillCasting.cloudkill) renderCloud2(position,Cloudkill!B.cloudRadius,cloudScale,cloudFrame);
-					foreach(ref cloudkill;objects.cloudkills)
+					foreach(ref cloudkill;objects.cloudkills.data)
 						with(cloudkill) renderCloud2(position,Cloudkill!B.cloudRadius,cloudScale,cloudFrame);
 				}
 				static if(mode==RenderMode.transparent)
@@ -1965,7 +1965,7 @@ struct Renderer(B){
 						auto bolts=(&objects.styxBolts[j].bolt)[0..1];
 						renderBolts!(totalFrames,1.5f,true)(bolts,start,end,frame,0.0f,1.0f);
 					}
-					foreach(ref deathEffect;objects.deathEffects){
+					foreach(ref deathEffect;objects.deathEffects.data){
 						auto start=deathEffect.start;
 						auto end=deathEffect.end;
 						auto frame=deathEffect.frame;
@@ -2167,7 +2167,7 @@ struct Renderer(B){
 						}
 						B.shadelessMorphMaterialBackend.unbind(material,rc);
 						effectMaterial.bind(rc);
-						foreach(ref particle;airShield.particles){
+						foreach(ref particle;airShield.particles.data){
 							auto location=Vector3f(particle.radius*cos(particle.θ),particle.radius*sin(particle.θ),particle.height)*airShield.scale;
 							auto pposition=rawPosition+rotate(rotation,location);
 							auto frame=particle.frame;
@@ -2177,8 +2177,8 @@ struct Renderer(B){
 						}
 						effectMaterial.unbind(rc);
 					}
-					foreach(ref airShieldCasting;objects.airShieldCastings) renderAirShield(airShieldCasting.airShield);
-					foreach(ref airShield;objects.airShields) renderAirShield(airShield);
+					foreach(ref airShieldCasting;objects.airShieldCastings.data) renderAirShield(airShieldCasting.airShield);
+					foreach(ref airShield;objects.airShields.data) renderAirShield(airShield);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.freezes.length){
 					auto material=self.freeze.material;
@@ -2203,7 +2203,7 @@ struct Renderer(B){
 						material.backend.setTransformationScaled(center,Quaternionf.identity(),scale*size,rc);
 						mesh.render(rc);
 					}
-					foreach(ref freeze;objects.freezes) renderFreeze(freeze);
+					foreach(ref freeze;objects.freezes.data) renderFreeze(freeze);
 				}
 				static if(mode==RenderMode.opaque) if(objects.slimeCastings.length){
 					auto material=self.slime.material;
@@ -2227,7 +2227,7 @@ struct Renderer(B){
 						material.backend.setTransformationScaled(center+offset,Quaternionf.identity(),scale*size*Vector3f(1.0f,1.0f,1.0f),rc);
 						mesh.render(rc);
 					}
-					foreach(ref slime;objects.slimeCastings) renderSlime(slime);
+					foreach(ref slime;objects.slimeCastings.data) renderSlime(slime);
 				}
 				static if(mode==RenderMode.opaque) if(objects.graspingViness.length||objects.vinewallCastings.length||objects.vinewalls.length){
 					auto material=self.vine.material; // TODO: shadowMaterial?
@@ -2247,13 +2247,13 @@ struct Renderer(B){
 						B.boneMaterialBackend.setPose(pose);
 						mesh.render(rc);
 					}
-					foreach(ref graspingVines;objects.graspingViness)
+					foreach(ref graspingVines;objects.graspingViness.data)
 						foreach(ref vine;graspingVines.vines)
 							renderVine(vine,graspingVines.lengthFactor);
-					foreach(ref vinewallCasting;objects.vinewallCastings)
+					foreach(ref vinewallCasting;objects.vinewallCastings.data)
 						foreach(i,ref vine;vinewallCasting.vinewall.vines[vinewallCasting.vinewall.numDespawned..vinewallCasting.vinewall.numSpawned])
 							renderVine(vine,vinewallCasting.vinewall.lengthFactors[vinewallCasting.vinewall.numDespawned+i]);
-					foreach(ref vinewall;objects.vinewalls)
+					foreach(ref vinewall;objects.vinewalls.data)
 						foreach(i,ref vine;vinewall.vines[vinewall.numDespawned..vinewall.numSpawned])
 							renderVine(vine,vinewall.lengthFactors[vinewall.numDespawned+i]);
 				}
@@ -2277,10 +2277,10 @@ struct Renderer(B){
 						B.boneMaterialBackend.setPose(pose);
 						mesh.render(rc);
 					}
-					foreach(ref meanstalksCasting;objects.meanstalksCastings)
+					foreach(ref meanstalksCasting;objects.meanstalksCastings.data)
 						foreach(ref vine;meanstalksCasting.meanstalks.vines[0..meanstalksCasting.meanstalks.numVines])
 							renderMeanstalk(vine);
-					foreach(ref meanstalks;objects.meanstalkss)
+					foreach(ref meanstalks;objects.meanstalkss.data)
 						foreach(ref vine;meanstalks.vines[0..meanstalks.numVines])
 							renderMeanstalk(vine);
 				}
@@ -2402,8 +2402,8 @@ struct Renderer(B){
 							B.shadelessMorphMaterialBackend.setMorphProgress(progress);
 							mesh1[i].morph(mesh2[i],rc);
 						}
-						foreach(ref dragonfireCasting;objects.dragonfireCastings) with(dragonfireCasting) renderDragonfire(dragonfire.position,dragonfire.direction,dragonfire.frame,scale);
-						foreach(ref dragonfire;objects.dragonfires) renderDragonfire(dragonfire.position,dragonfire.direction,dragonfire.frame,dragonfire.scale);
+						foreach(ref dragonfireCasting;objects.dragonfireCastings.data) with(dragonfireCasting) renderDragonfire(dragonfire.position,dragonfire.direction,dragonfire.frame,scale);
+						foreach(ref dragonfire;objects.dragonfires.data) renderDragonfire(dragonfire.position,dragonfire.direction,dragonfire.frame,dragonfire.scale);
 					}
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.soulWindCastings.length||objects.soulWinds.length)){
@@ -2422,9 +2422,9 @@ struct Renderer(B){
 						auto mesh=self.soulWind.getFrame(frame%self.soulWind.numFrames);
 						mesh.render(rc);
 					}
-					foreach(ref soulWindCasting;objects.soulWindCastings)
+					foreach(ref soulWindCasting;objects.soulWindCastings.data)
 						renderSoulWind(soulWindCasting.soulWind);
-					foreach(ref soulWind;objects.soulWinds)
+					foreach(ref soulWind;objects.soulWinds.data)
 						renderSoulWind(soulWind);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.explosionCastings.length){
@@ -2452,7 +2452,7 @@ struct Renderer(B){
 							mesh1.morph(mesh2,rc);
 						}
 					}
-					foreach(ref explosionCasting;objects.explosionCastings)
+					foreach(ref explosionCasting;objects.explosionCastings.data)
 						foreach(ref effect;explosionCasting.effects)
 							renderExplosionEffect(effect);
 				}
@@ -2484,17 +2484,17 @@ struct Renderer(B){
 							mesh1.morph(mesh2,rc);
 						}
 					}
-					foreach(ref rainOfFrogsCasting;objects.rainOfFrogsCastings)
+					foreach(ref rainOfFrogsCasting;objects.rainOfFrogsCastings.data)
 						with(rainOfFrogsCasting.rainOfFrogs) renderCloud(position,spell.effectRange,cloudScale,cloudFrame);
-					foreach(ref rainOfFrogs;objects.rainOfFrogss)
+					foreach(ref rainOfFrogs;objects.rainOfFrogss.data)
 						with(rainOfFrogs) renderCloud(position,spell.effectRange,cloudScale,cloudFrame);
-					foreach(ref plagueCasting;objects.plagueCastings)
+					foreach(ref plagueCasting;objects.plagueCastings.data)
 						with(plagueCasting.plague) renderCloud(position,spell.effectRange,cloudScale,cloudFrame);
-					foreach(ref plague;objects.plagues)
+					foreach(ref plague;objects.plagues.data)
 						with(plague) renderCloud(position,spell.effectRange,cloudScale,cloudFrame);
-					foreach(ref rainOfFireCasting;objects.rainOfFireCastings)
+					foreach(ref rainOfFireCasting;objects.rainOfFireCastings.data)
 						with(rainOfFireCasting.rainOfFire) renderCloud(position,0.5f*spell.effectRange,cloudScale,cloudFrame);
-					foreach(ref rainOfFire;objects.rainOfFires)
+					foreach(ref rainOfFire;objects.rainOfFires.data)
 						with(rainOfFire) renderCloud(position,0.5f*spell.effectRange,cloudScale,cloudFrame);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.rainFrogs.length){
@@ -2537,7 +2537,7 @@ struct Renderer(B){
 						B.shadelessBoneMaterialBackend.setPose(pose);
 						mesh.render(rc);
 					}
-					foreach(ref demonicRift;objects.demonicRifts)
+					foreach(ref demonicRift;objects.demonicRifts.data)
 						foreach(ref spirit;demonicRift.spirits[demonicRift.numDespawned..demonicRift.numSpawned])
 							renderDemonicRiftSpirit(spirit);
 					void renderCharmSpirit(ref CharmSpirit!B charmSpirit){
@@ -2554,10 +2554,10 @@ struct Renderer(B){
 						B.shadelessBoneMaterialBackend.setPose(pose);
 						mesh.render(rc);
 					}
-					foreach(ref charmCasting;objects.charmCastings)
+					foreach(ref charmCasting;objects.charmCastings.data)
 						foreach(ref spirit;charmCasting.charm.spirits)
 							renderCharmSpirit(spirit);
-					foreach(ref charm;objects.charms)
+					foreach(ref charm;objects.charms.data)
 						foreach(ref spirit;charm.spirits)
 							renderCharmSpirit(spirit);
 				}
@@ -2622,7 +2622,7 @@ struct Renderer(B){
 							mesh1.morph(mesh2,rc);
 						}
 					}
-					foreach(ref healingAura;objects.healingAuras) renderHealingAura(healingAura);
+					foreach(ref healingAura;objects.healingAuras.data) renderHealingAura(healingAura);
 				}
 				static if(mode==RenderMode.opaque) if(objects.spikes.length||objects.wallOfSpikesCastings.length||objects.wallOfSpikess.length){
 					auto material=self.spike.material;
@@ -2635,8 +2635,8 @@ struct Renderer(B){
 						auto mesh=self.spike.mesh;
 						mesh.render(rc);
 					}
-					foreach(ref spike;objects.spikes) renderSpike(spike.currentScale,spike.position,spike.direction);
-					foreach(ref wallOfSpikesCasting;objects.wallOfSpikesCastings){
+					foreach(ref spike;objects.spikes.data) renderSpike(spike.currentScale,spike.position,spike.direction);
+					foreach(ref wallOfSpikesCasting;objects.wallOfSpikesCastings.data){
 						foreach(i,ref spike;wallOfSpikesCasting.wallOfSpikes.spikes[wallOfSpikesCasting.wallOfSpikes.numDespawned..wallOfSpikesCasting.wallOfSpikes.numSpawned]){
 							renderSpike(
 								spike.scale*wallOfSpikesCasting.wallOfSpikes.spikeScale,
@@ -2645,7 +2645,7 @@ struct Renderer(B){
 							);
 						}
 					}
-					foreach(ref wallOfSpikes;objects.wallOfSpikess){
+					foreach(ref wallOfSpikes;objects.wallOfSpikess.data){
 						foreach(i,ref spike;wallOfSpikes.spikes[wallOfSpikes.numDespawned..wallOfSpikes.numSpawned]){
 							renderSpike(
 								spike.scale*wallOfSpikes.spikeScale,
@@ -2720,7 +2720,7 @@ struct Renderer(B){
 						foreach(ref spirit;wailingWall.spirits[wailingWall.numDespawned..wailingWall.numSpawned])
 							renderWailingWallSpirit(spirit);
 					}
-					foreach(ref wailingWall;objects.wailingWalls)
+					foreach(ref wailingWall;objects.wailingWalls.data)
 						foreach(ref spirit;wailingWall.spirits[wailingWall.numDespawned..wailingWall.numSpawned])
 							renderWailingWallSpirit(spirit);
 				}
@@ -2825,8 +2825,8 @@ struct Renderer(B){
 							B.morphMaterialBackend.setMorphProgress(progress);
 							mesh1[i].morph(mesh2[i],rc);
 						}
-						foreach(ref blindRageCasting;objects.blindRageCastings) with(blindRageCasting) renderBlindRage(blindRage.position,blindRage.direction,blindRage.status,blindRage.frame,blindRage.scale);
-						foreach(ref blindRage;objects.blindRages) renderBlindRage(blindRage.position,blindRage.direction,blindRage.status,blindRage.frame,blindRage.scale);
+						foreach(ref blindRageCasting;objects.blindRageCastings.data) with(blindRageCasting) renderBlindRage(blindRage.position,blindRage.direction,blindRage.status,blindRage.frame,blindRage.scale);
+						foreach(ref blindRage;objects.blindRages.data) renderBlindRage(blindRage.position,blindRage.direction,blindRage.status,blindRage.frame,blindRage.scale);
 					}
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.blindRages.length){
@@ -2867,7 +2867,7 @@ struct Renderer(B){
 						auto positionRotation=state.movingObjectReadById!((ref objects,i)=>tuple(objects.positions[i],objects.rotations[i]), function Tuple!(Vector3f,Quaternionf)(){ return typeof(return).init; })(target);
 						auto position=positionRotation[0], rotation=positionRotation[1];
 						if(isNaN(position.x)) return;
-						foreach(ref particle;blindRageEffect.particles){
+						foreach(ref particle;blindRageEffect.particles.data){
 							auto location=Vector3f(particle.radius*cos(particle.θ),particle.radius*sin(particle.θ),particle.height);
 							auto pposition=position+rotate(rotation,location);
 							auto frame=particle.frame;
@@ -2892,7 +2892,7 @@ struct Renderer(B){
 							B.morphMaterialBackend.setMorphProgress(progress);
 							mesh1[i].morph(mesh2[i],rc);
 						}
-						foreach(ref cow;objects.bovineInterventions) renderCow(cow.position,cow.rotation,cow.frame);
+						foreach(ref cow;objects.bovineInterventions.data) renderCow(cow.position,cow.rotation,cow.frame);
 					}
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.charmHearts.length){
@@ -2941,7 +2941,7 @@ struct Renderer(B){
 							}else static assert(0);
 							mesh[i].render(rc);
 						}
-						foreach(ref deathCasting;objects.deathCastings) with(deathCasting) renderDeath(death.position,death.facing,death.status,death.frame);
+						foreach(ref deathCasting;objects.deathCastings.data) with(deathCasting) renderDeath(death.position,death.facing,death.status,death.frame);
 						//foreach(ref death;objects.deaths) renderDeath(death.position,death.facing,death.status,death.frame);
 					}
 				}
@@ -2966,8 +2966,8 @@ struct Renderer(B){
 							B.morphMaterialBackend.setMorphProgress(progress);
 							mesh1[i].morph(mesh2[i],rc);
 						}
-						foreach(ref deathCasting;objects.deathCastings) with(deathCasting) renderDeath(death.position,death.facing,death.status,death.frame);
-						foreach(ref death;objects.deaths) renderDeath(death.position,death.facing,death.status,death.frame);
+						foreach(ref deathCasting;objects.deathCastings.data) with(deathCasting) renderDeath(death.position,death.facing,death.status,death.frame);
+						foreach(ref death;objects.deaths.data) renderDeath(death.position,death.facing,death.status,death.frame);
 					}
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.deathCastings.length||objects.deaths.length)){
@@ -2993,8 +2993,8 @@ struct Renderer(B){
 							mesh1.morph(mesh2,rc);
 						}
 					}
-					foreach(ref deathCasting;objects.deathCastings) renderDeathAura(deathCasting.death);
-					foreach(ref death;objects.deaths) renderDeathAura(death);
+					foreach(ref deathCasting;objects.deathCastings.data) renderDeathAura(deathCasting.death);
+					foreach(ref death;objects.deaths.data) renderDeathAura(death);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.brainiacEffects.length){
 					auto material=self.brainiacEffect.material;
@@ -3125,8 +3125,8 @@ struct Renderer(B){
 						B.shadelessBoneMaterialBackend.setPose(pose);
 						mesh.render(rc);
 					}
-					foreach(ref projectile;objects.tickfernoProjectiles) renderLaser(2.0f/3.0f,projectile.frame,projectile.startPosition,projectile.position);
-					foreach(ref projectile;objects.phoenixProjectiles) renderLaser(2.0f/3.0f,projectile.frame,projectile.startPosition,projectile.position);
+					foreach(ref projectile;objects.tickfernoProjectiles.data) renderLaser(2.0f/3.0f,projectile.frame,projectile.startPosition,projectile.position);
+					foreach(ref projectile;objects.phoenixProjectiles.data) renderLaser(2.0f/3.0f,projectile.frame,projectile.startPosition,projectile.position);
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.magnifryers.length){
 					auto material=self.magnifryerBeam.material;
@@ -3387,11 +3387,11 @@ struct Renderer(B){
 							B.shadelessMaterialBackend.setTransformationScaled(snowball.position,snowball.rotation,scale*Vector3f(1.0f,1.0f,1.0f),rc);
 							mesh.render(rc);
 						}
-						foreach(ref frozenGroundCasting;objects.frozenGroundCastings){
+						foreach(ref frozenGroundCasting;objects.frozenGroundCastings.data){
 							auto scale=frozenGroundCasting.scale;
 							renderSnowball(frozenGroundCasting.snowball,scale);
 						}
-						foreach(ref frozenGroundSnowball;objects.frozenGroundSnowballs){
+						foreach(ref frozenGroundSnowball;objects.frozenGroundSnowballs.data){
 							renderSnowball(frozenGroundSnowball,1.0f);
 						}
 					}
@@ -3402,7 +3402,7 @@ struct Renderer(B){
 					mat.backend.setTransformation(Vector3f(0.0f,0.0f,0.0f),Quaternionf.identity(),rc); // TODO: don't create rotation matrix
 					scope(success) mat.unbind(rc);
 					auto mesh=self.frozenGround.mesh;
-					foreach(ref frozenGround;objects.frozenGrounds){
+					foreach(ref frozenGround;objects.frozenGrounds.data){
 						auto maxRadius=frozenGround.maxRadius;
 						auto minRadius=frozenGround.minRadius;
 						auto curRadius=frozenGround.curRadius;
@@ -3412,7 +3412,7 @@ struct Renderer(B){
 				}
 				}else{
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.volcanos.length){
-					foreach(ref volcano;objects.volcanos){
+					foreach(ref volcano;objects.volcanos.data){
 						if(volcano.frame<volcano.volcanoFrame) continue;
 						auto eruptFrame=volcano.frame-volcano.volcanoFrame;
 						auto remaining=(volcano.progress-Volcano!B.residual)/(1.0f-Volcano!B.residual)*volcano.spell.duration*updateFPS;
@@ -3474,9 +3474,9 @@ struct Renderer(B){
 						renderPart(self.tornado.material3,self.tornado.mesh3);
 						renderPart(self.tornado.material2,self.tornado.mesh2);
 					}
-					foreach(ref tornadoCasting;objects.tornadoCastings)
+					foreach(ref tornadoCasting;objects.tornadoCastings.data)
 						renderTornado(tornadoCasting.tornado);
-					foreach(ref tornado;objects.tornados)
+					foreach(ref tornado;objects.tornados.data)
 						renderTornado(tornado);
 				}
 				} // onlyOpaqueEffects
@@ -3559,7 +3559,7 @@ struct Renderer(B){
 						B.shadelessMaterialBackend.setTransformationScaled(start,rotation,Vector3f(scale,scale,len),rc);
 						mesh.render(rc);
 					}
-					foreach(ref webPull;objects.webPulls){
+					foreach(ref webPull;objects.webPulls.data){
 						if(!webPull.target) continue;
 						auto start=state.movingObjectReadById!(.shotPosition,()=>Vector3f.init)(webPull.creature);
 						auto end=state.movingObjectReadById!(.center,()=>Vector3f.init)(webPull.target);
@@ -3579,7 +3579,7 @@ struct Renderer(B){
 						material.backend.setTransformationScaled(position,rotation,scale*1.4f*boxSize,rc);
 						mesh.render(rc);
 					}
-					foreach(ref webPull;objects.webPulls){
+					foreach(ref webPull;objects.webPulls.data){
 						auto scale=max(0.0f,min(1.0f,float(webPull.frame-webPull.numShootFrames)/webPull.numGrowFrames));
 						renderWeb(webPull.target,scale);
 					}
@@ -3597,7 +3597,7 @@ struct Renderer(B){
 						auto mesh=self.cage.getFrame(frame%self.cage.numFrames);
 						mesh.render(rc);
 					}
-					foreach(ref cagePull;objects.cagePulls){
+					foreach(ref cagePull;objects.cagePulls.data){
 						auto scale=max(0.0f,min(1.0f,float(cagePull.frame-cagePull.numShootFrames)/cagePull.numGrowFrames));
 						renderCage(cagePull.target,cagePull.frame,scale);
 					}
@@ -3743,7 +3743,7 @@ struct Renderer(B){
 						B.shadelessMaterialBackend.setColor(Color4f(1.0f,0.75f,0.0f,1.0f));
 						B.shadelessMaterialBackend.setEnergy(1.0f);
 						enum maxLifetime=cast(int)(self.sacCommandCone.lifetime*updateFPS);
-						foreach(ref highlight;objects.highlights[highlightSide]){
+						foreach(ref highlight;objects.highlights[highlightSide].data){
 							auto position=highlight.position,targetPosition=highlight.targetPosition;
 							auto frame=highlight.frame;
 							auto direction=(targetPosition-position);
@@ -3773,7 +3773,7 @@ struct Renderer(B){
 						self.sacCommandCone.material.unbind(rc);
 						auto material=self.highlightStar.material;
 						material.bind(rc);
-						foreach(ref highlight;objects.highlights[highlightSide]){
+						foreach(ref highlight;objects.highlights[highlightSide].data){
 							auto position=highlight.position;
 							auto rotation=highlight.rotation;
 							auto mesh=self.highlightStar.mesh;
@@ -4553,7 +4553,7 @@ struct Renderer(B){
 		void addHighlightsForSide(int highlightSide){
 			if(highlightSide>=state.obj.opaqueObjects.highlights.highlights.length)
 				return;
-			foreach(ref highlight;state.obj.opaqueObjects.highlights.highlights[highlightSide])
+			foreach(ref highlight;state.obj.opaqueObjects.highlights.highlights[highlightSide].data)
 				if(highlight.status!=HighlightStatus.shrinking&&highlight.target)
 					highlightedIndices~=highlight.target;
 		}

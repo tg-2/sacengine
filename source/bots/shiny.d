@@ -1346,7 +1346,7 @@ void discoverScanAll(B)(ref ShinyAI!B ai,ObjectState!B state){ // armed pickup s
 		if(b.side!=ai.side){
 			// thaum marks the structure ntt itself visible; sacengine marks the building's component static objects
 			bool seen=false;
-			foreach(cid;b.componentIds) if(state.sid.lastSeenTick(ai.side,cid)>=0){ seen=true; break; }
+			foreach(cid;b.componentIds.data) if(state.sid.lastSeenTick(ai.side,cid)>=0){ seen=true; break; }
 			if(!seen) return;
 		}
 		discoverScan(ai,state,NodeKind.str,b.id);
@@ -1359,7 +1359,7 @@ bool nodeSeen(B)(ref ShinyAI!B ai,ObjectState!B state,NodeKind kind,int id){ // 
 	final switch(kind) with(NodeKind){
 		case wiz,t4o,maho: return state.sid.lastSeenTick(ai.side,id)>=0;
 		case str: return state.buildingById!((ref b,int side,ObjectState!B state){
-				foreach(cid;b.componentIds) if(state.sid.lastSeenTick(side,cid)>=0) return true;
+				foreach(cid;b.componentIds.data) if(state.sid.lastSeenTick(side,cid)>=0) return true;
 				return false;
 			},()=>false)(id,ai.side,state);
 		case cre: return true; // souls are not vision-tracked (no proximity entries), left ungated
