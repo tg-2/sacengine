@@ -81,23 +81,17 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==S[n
 	data.take(n).copy(bytes);
 	data.popFrontN(n);
 }
-void serialize(alias sink,T)(ref Array!T values)if(!is(T==bool)){
+void serialize(alias sink,T)(ref Array!T values){
 	static assert(is(size_t:ulong));
 	serialize!sink(cast(ulong)values.length);
 	foreach(ref v;values.data) serialize!sink(v);
 }
-void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Array!S,S)&&!is(S==bool)){
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Array!S,S)){
 	ulong len;
 	deserialize(len,state,data);
 	enforce(len<=data.length,"not enough data");
 	result.length=cast(size_t)len;
 	foreach(ref v;result.data) deserialize(v,state,data);
-}
-void serialize(alias sink,T)(ref Array!bool values){
-	static assert(0,"TODO?");
-}
-void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Array!S,S)&&is(S==bool)){
-	static assert(0,"TODO?");
 }
 
 void serialize(alias sink,T)(T[] values){
@@ -129,7 +123,7 @@ void deserialize(T,R,B)(ref T rotation,ObjectState!B state,ref R data)if(is(T==Q
 	foreach(ref x;rotation.tupleof) deserialize(x,state,data);
 }
 
-void serialize(alias sink,T,size_t n)(ref SmallArray!(T,n) values)if(!is(T==bool)){ return serializeStruct!sink(values); }
+void serialize(alias sink,T,size_t n)(ref SmallArray!(T,n) values){ return serializeStruct!sink(values); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==SmallArray!(S,n),S,size_t n)){
 	deserializeStruct(result,state,data);
 }

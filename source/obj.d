@@ -83,8 +83,8 @@ B.Mesh[] loadObj(B)(string filename){
 			tfaces~=tface;
 		}
 		auto mesh=B.makeMesh(vertices.length,tfaces.length);
-		copy(vertices[].map!((ref v)=>v.position),mesh.vertices[]);
-		copy(vertices[].map!((ref v)=>v.texcoord),mesh.texcoords[]);
+		copy(vertices.data[].map!((ref v)=>v.position),mesh.vertices[]);
+		copy(vertices.data[].map!((ref v)=>v.texcoord),mesh.texcoords[]);
 		copy(tfaces.data[],mesh.indices[]);
 		mesh.generateNormals();
 		B.finalizeMesh(mesh);
