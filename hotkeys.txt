@@ -1,18 +1,18 @@
 # Control Keys
-Move Forward:    e
-Move Backward:   d
-Turn Left:       s
-Turn Right:      f
+Move Forward:    w
+Move Backward:   s
+Turn Left:       a
+Turn Right:      d
 Camera zoom in:  Keypad-+ or =
 Camera zoom out: Keypad-- or -
 # Command Bindings
 ## Orders
-Attack:               Ctrl-r
-Guard:                Ctrl-a
+Attack:               r
+Guard:                f
 Retreat!:             Ctrl-Space
 Go to:                Ctrl-t
-Use Creature Ability: Ctrl-q or Shift-b
-Drop Soul:            p or Ctrl-p
+Use Creature Ability: Ctrl-q or b
+Drop Soul:            \
 ## Miscellanneous
 Options Menu:
 Skip Speech:
@@ -20,8 +20,8 @@ Open Next Spell Tab: Tab
 Open Creation spells:
 Open Spells:
 Open Structure spells:
-Quick Save: F1
-Quick Load: F2
+Quick Save: F5
+Quick Load: F9
 Pause:
 Change camera:
 Send Chat Message: Return
@@ -31,7 +31,7 @@ Screen Shot: F11
 ## Formations
 Semicircle Formation: Ctrl-u
 Circle Formation: Ctrl-o
-Phalanx Formation: Ctrl-x
+Phalanx Formation: Ctrl-p
 Wedge Formation: Ctrl-w
 Skirmish Formation: Ctrl-y
 Line Formation: Ctrl-l
@@ -44,7 +44,7 @@ Taunt #2: Keypad-2
 Taunt #3: Keypad-3
 Taunt #4: Keypad-4
 ## Cast creation spell #
-Cast creation spell #1: q
+Cast creation spell #1: n
 Cast creation spell #2: Shift-q
 Cast creation spell #3: Shift-w
 Cast creation spell #4: Shift-r
@@ -56,23 +56,23 @@ Cast creation spell #9: Shift-c
 Cast creation spell #10: Shift-v
 Cast creation spell #11: Shift-Space
 ## Cast spell #
-Cast spell #1: x
-Cast spell #2: r
-Cast spell #3: c
-Cast spell #4: Alt
-Cast spell #5: w
-Cast spell #6: t
-Cast spell #7: Space
-Cast spell #8: v
-Cast spell #9: z
-Cast spell #10: y
-Cast spell #11: h
+Cast spell #1: z
+Cast spell #2: q
+Cast spell #3: h
+Cast spell #4: e
+Cast spell #5: v
+Cast spell #6: 
+Cast spell #7: 
+Cast spell #8: 
+Cast spell #9: 
+Cast spell #10: 
+Cast spell #11: 
 ## Cast Neutral Spell
-Cast Manalith: Ctrl-Alt
-Cast Guardian: Ctrl-g
-Cast Convert: Ctrl-c
-Cast Desecrate: Shift-g
-Cast Teleport: g
+Cast Manalith: m
+Cast Guardian: g
+Cast Convert: c
+Cast Desecrate: x
+Cast Teleport: t
 Cast Shrine: Shift-Alt
 ## SacEngine extensions
 Move Up:
