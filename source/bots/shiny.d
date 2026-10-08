@@ -50,6 +50,109 @@ enum NodeKind{ none, wiz, cre, maho, t4o, str }
 // rater2 rating functions (thaum addresses; f48cbd0 is retail-only)
 enum RatingFn{ none, f489700, f489780, f489860, f489a20, f489af0, f489ae0, f489bc0, f489c40, f489d70, f489e70, f48cbd0 }
 
+// ---- AI flag enumerations ----
+// Each value below was verified against BOTH thaum.exe and Sacrifice.exe at the noted sites
+// (thaum address first, retail second); unless noted otherwise the two binaries use the same
+// value. The only renumbering found between the binaries is the building "real structure"
+// target mask (BuildingFlagsAI.realStructureThaum/realStructureRetail).
+
+// node+0x3c: relation bits (setupBase 0x4869b0/0x489830) + kind bits (setupCre 0x486f50/0x489db0,
+// setupT4oBody 0x487090/0x489ef0, setupMaho 0x4879f0/0x48a7f0, setupStr 0x486d70/0x489bd0,
+// setupWiz 0x48c800/0x48f390) + tracking state
+enum AINodeFlags:uint{
+	own=0x1,          // relation: same side
+	ally=0x2,         // relation: allied either way
+	enemy=0x4,        // relation: enemy either way
+	soul=0x8,         // NodeKind.cre
+	creature=0x10,    // NodeKind.t4o/maho (wizards too, via setupT4oBody)
+	structure=0x20,   // NodeKind.str
+	body=0x40,        // embodied t4o/maho (setupT4oBody/setupMaho)
+	seen=0x80,        // currently visible: updateBase position tracking gates on own|seen (0x486b10); staleness removal 0x484c3d/0x48721e spares creatures
+	claimTarget=0x100,// claimable: wizards (setupWiz) and primary structures (setupStr, BuildingFlagsAI.primaryMask); capture/convert paths
+	altar=0x200,      // altar (setupStr: BuildingFlagsAI.altar -> claimTarget|altar); desecration path
+}
+
+// node+0x40: status bits
+enum AINodeStatus:uint{
+	aggressive=0x1,   // setupT4oBody 0x4870d2/0x489f32: ability count!=0 || aggressiveness!=0
+	wizard=0x2,       // setupWiz wizardInit composite only
+	unknown2=0x4,     // setupWiz wizardInit only; consumers: wizAttack threat weight &0x6, replanGuard &0xc (0x48a8f0)
+	unknown3=0x8,     // setupWiz wizardInit only; consumers: f489700 rater doubling, capture 'ucas' branch (0x48b185), claimGuard weight &9
+	ready=0x1000,     // updateMaho: manahoar ability active; updateStr: generating (bflags&generating && unknown1[3] rate)
+	unknown13=0x2000, // thaum setupT4oBody: ntt+0xb24&0x200 -> status|=0x2000; no sacengine equivalent (documented gap, never written)
+	openFount=0x8000, // updateStr: manafount && top==0 (unoccupied fount)
+	unknown14=0x4000, // updateStr: from BuildingFlagsAI.unknown14; per-category count 0x484af0, probOr radius 1000 vs 50, capture-attack branch (0x48dd43)
+	unknown18=0x40000,// updateStr: from BuildingFlagsAI.unknown1; capture-attack branch for non-altars (0x48dd43)
+	capturable=0x10000,   // order-issue marks an enemy-manafount capture target (orderIfChanged); required by the f489d70 (ndrg) rater
+	leader=0x20000,       // setupWiz wizardInit composite; guard-record leader eligibility (claim 0x48a740/0x48d490)
+	wizardInit=0x2000e,   // leader|unknown3|unknown2|wizard, written by setupWiz (thaum 0x48c827 / retail 0x48f3ba)
+}
+
+// sacBuilding.flags word (STRC record; thaum ntt+0x47c / retail +0x484), as read by the AI
+enum BuildingFlagsAI:uint{
+	altar=0x1,        // -> node flags claimTarget|altar (setupStr)
+	unknown1=0x2,     // -> node status unknown18 (updateStr)
+	manafount=0x10,   // open-fount gate (updateStr), neutralManafounts filter; retail adds this bit to the real-structure target mask
+	built=0x80,       // built-upon (fillStrAcc rating[3]=maxHealth*10; capture-order gates)
+	generating=0xc00, // bits 10|11: with unknown1[3]*36408.88888888889 != 0 -> node status ready (updateStr 0x486e90/0x489cf0)
+	unknown14=0x4000, // -> node status unknown14 (updateStr)
+	primaryMask=0xc17,          // "real primary structure" (shouldTrack 0x487cd0; setupStr -> claimTarget); same value in both binaries
+	realStructureThaum=0x55a7,  // "real structure" target-validity mask, thaum (0x4518f7, 0x462ef0, 0x464b77, 0x46e5ba, 0x46e6d8, 0x46e9ef)
+	realStructureRetail=0x55b7, // retail twins (0x4504f8, 0x4616f6, 0x46383b, 0x46df86, 0x46e091, 0x46e3bf): adds manafount to the mask
+}
+
+// AI-internal order-state codes (node ordState): orderState getter 0x46e0f0/0x46dad0, slot19 case table
+// 0x487420/0x48a280 (byte-identical between the binaries), 'pups' cmd branches 0x489c40/0x48c920.
+// NOT CommandType values (state.d): AI advance=7 here vs CommandType.advance=25 there.
+enum AIOrderState:int{
+	gotoPos=2,        // approach a position (cast queue, slot19 fallback); force-popped on reissue
+	guard=3,          // follow/guard a live target node; re-engaged on target movement
+	move=4,           // fixed-position move (orderInteract approach); retained after arrival (radius 0.5)
+	capture=5,        // capture a live target structure
+	guardedAdvance=6, // advance with <=1 guardians (target retained); wizard orders converted to advance (0x46e1a0)
+	advance=7,        // fixed-position attack-move (handler 0x46e539)
+	engage=0x22,      // 34: guard/guardArea/move engine orders
+}
+
+// ShinyAI.forceFlags/handledFlags brain force-bits (thaum event feed 0x48f490)
+enum ForceFlags:uint{
+	replan=0x1,       // task replan; forces scheduler slots 1..5
+	nodeSet=0x2,      // tracked set changed; the only bit forcing scheduler slot 0
+	ownScan=0x4,      // one-shot own-side scan (setup only, never re-armed)
+	globalScan=0x8,   // one-shot global spawn scan (setup only, never re-armed)
+	recategorize=0x10,// relations changed -> re-bucket category lists (thaum event 16, wired at setStance)
+	discovery=0x20,   // one-shot discovery scan (setup / wizard region change, AI::UpdateStatus 0x484050)
+}
+
+// rater2 category word (CheckSpellValid 0x48c330/0x48ef50, findBestSpell 0x48d4d0/0x490020)
+enum RatingCategory:uint{
+	untargeted=0x5,
+	distValid=0x80,   // distScaled slot already filled
+	targeted=0x85,    // untargeted|distValid
+	ignoreRange=0x200, // skip the spell-range reject
+	noBasicAttack=0x3a, // under these category bits, flags1&(basicAttackSpell|unknown1) spells are rejected
+}
+
+// ntt+0x4 entity type word
+enum NttTypeFlags:uint{
+	wizard=0x1,
+	soul=0x2,
+	creature=0x4,
+	structure=0x10,
+}
+
+// findBestSpell spell-class masks, matched against (unknown16|flags1<<16) by spellAccAccepts
+enum SpellClassMask:uint{
+	attack=cast(uint)(SpelFlags1.unknown14|SpelFlags1.unknown12|SpelFlags1.crowdControl)<<16, // 0x58000000 (wizAttack 0x48d775/0x4902d5)
+	support=cast(uint)(SpelFlags1.unknown15|SpelFlags1.unknown13|SpelFlags1.unknown10)<<16,   // 0xa4000000 (wizSupport 0x48d80d/0x49036d)
+}
+
+// flags1 bits 10..15: the ability qualifies for a SpellAcc (wantsSpellAcc 0x4894d0/0x489540)
+enum spelFlags1AiMask=cast(uint)(SpelFlags1.unknown10|SpelFlags1.crowdControl|SpelFlags1.unknown12|SpelFlags1.unknown13|SpelFlags1.unknown14|SpelFlags1.unknown15);
+// spel.flags target/restriction bits (rateSpellAcc 0x488a10) and plain target-type bits (CanCastSpellOn 0x4517de)
+enum targetFlagsMask=cast(uint)(SpelFlags.targetWizards|SpelFlags.targetSouls|SpelFlags.targetCreatures|SpelFlags.targetCorpses|SpelFlags.targetStructures|SpelFlags.onlyManafounts|SpelFlags.onlyAlly|SpelFlags.disallowAlly|SpelFlags.targetGround); // 0x781f
+enum targetTypeMask=cast(uint)(SpelFlags.targetWizards|SpelFlags.targetSouls|SpelFlags.targetCreatures|SpelFlags.targetCorpses|SpelFlags.targetStructures); // 0x1f
+
 struct SpellAcc(B){           // rater2 spell accumulator
 	SacSpell!B spell;         // spinfo
 	RatingFn ratingFn;
@@ -298,7 +401,7 @@ void fillFromObject(B)(ref RaterAcc acc,SacObject!B so,int curMana,Spellbook!B* 
 		auto spel=ab.spel;
 		if(!spel) continue;
 		if(ab.type!=SpellType.spell) continue;
-		if(!(cast(uint)spel.flags1&0x4000)) continue;
+		if(!(cast(uint)spel.flags1&SpelFlags1.unknown14)) continue;
 		if((spel.flags&SpelFlags.targetCreatures)==0) continue;
 		abilityAcc(acc,spel,ts.unk10,ts.rangedAcc,manaF,ts.fly);
 	}
@@ -306,7 +409,7 @@ void fillFromObject(B)(ref RaterAcc acc,SacObject!B so,int curMana,Spellbook!B* 
 		auto s=info.spell;
 		if(s.type!=SpellType.spell||!s.spel) continue;
 		auto spel=s.spel;
-		if(!(cast(uint)spel.flags1&0xfc00)) continue;
+		if(!(cast(uint)spel.flags1&spelFlags1AiMask)) continue;
 		double t=cast(double)spel.amount2*spel.range;
 		double f=manaF>cast(double)spel.manaCost?safediv(cast(float)spel.manaCost,manaF):1.0f;
 		t*=(1.0-f);
@@ -327,15 +430,15 @@ bool findRecord(B)(char[4] tag,ref immutable(Cre8)* c8,ref immutable(Wizd)* wz){
 
 // rater2 spell-acc creation 0x4894d0
 bool wantsSpellAcc(B)(SacSpell!B s){
-	return s.type==SpellType.spell&&s.spel&&(cast(uint)s.spel.flags1&0xfc00)!=0;
+	return s.type==SpellType.spell&&s.spel&&(cast(uint)s.spel.flags1&spelFlags1AiMask)!=0;
 }
 // flags1 fallback chain of the rating function selection 0x489540
 RatingFn ratingFnFlags(B)(SacSpell!B s){
 	auto f1=cast(uint)s.spel.flags1;
-	if(f1&0x4000) return (f1&0x40)&&s.spel.effectRange>0.0f?RatingFn.f489860:RatingFn.f489780;
-	if(f1&0x8000) return RatingFn.f489af0;
-	if(f1&0x800) return RatingFn.f489e70;
-	if(f1&0x400) return RatingFn.f489bc0;
+	if(f1&SpelFlags1.unknown14) return (f1&SpelFlags1.unknown6)&&s.spel.effectRange>0.0f?RatingFn.f489860:RatingFn.f489780;
+	if(f1&SpelFlags1.unknown15) return RatingFn.f489af0;
+	if(f1&SpelFlags1.crowdControl) return RatingFn.f489e70;
+	if(f1&SpelFlags1.unknown10) return RatingFn.f489bc0;
 	return RatingFn.none;
 }
 // rating function selection 0x489540 (tag table ds:0x4cfa68, compares the SPEL name field s_spell+0x10)
@@ -356,7 +459,7 @@ final class ShinyAI(B){
 	int side=-1;
 	uint config=0;
 	int schedTime=0;
-	uint forceFlags=0xf;
+	uint forceFlags=ForceFlags.replan|ForceFlags.nodeSet|ForceFlags.ownScan|ForceFlags.globalScan;
 	uint handledFlags=0;
 	uint contactedSides=0; // thaum side+0x50: first-contact mask per owner side (set once, never reset)
 	int[6] nextRun=0;
@@ -404,13 +507,15 @@ final class ShinyAI(B){
 	bool betaPickupNeutralOnly=false;   // GetNearestPickup 0x485490: retail list sets {0,2}/{2,3} (thaum neutral slot 2 only)
 	bool betaCaptureTerritory=false;    // CAPTURE::Replan 0x48dbf0: territorial gates 0x488d70 + own+ally f1/f2 divisor
 	bool betaRateManasourceWeights=false; // RateManasource@AITASKCAPTURENODE (port nodeValueScore) lerp weights: thaum 0x48aee0 = 0.4/0.35 vs retail 0x48db30 = 0.45/0.3
-	bool betaUnbuiltCaptureReq=false;   // CAPTURE::Replan status&0x8000 branch reqStatus: thaum 0x48b0a4 = 3 vs retail 0x48dcf7 = 2 (patch3 lets the wizard's status bit1 satisfy it)
-	bool betaGuardWizardExclude=false;  // GUARD::Assign member mask: thaum 0x48ad24 = status&1 (wizard 0x2000e excluded) vs retail 0x48d994 = status&3 (wizard joins guard records; claim 0x48a740/0x48d490 makes it the record leader via status&0x20000, recordUpdate members follow leader.extrapPos)
+	bool betaUnbuiltCaptureReq=false;   // CAPTURE::Replan status&AINodeStatus.openFount branch reqStatus: thaum 0x48b0a4 = 3 vs retail 0x48dcf7 = 2 (patch3 lets the wizard's status bit1 satisfy it)
+	bool betaGuardWizardExclude=false;  // GUARD::Assign member mask: thaum 0x48ad24 = status&1 (wizard status 0x2000f passes via the aggressive bit) vs retail 0x48d994 = status&3 (wizard status 0x2000e passes via the wizard bit; claim 0x48a740/0x48d490 makes it the record leader via status&leader, recordUpdate members follow leader.extrapPos)
 	bool betaCaptureAggGuardians=false; // CAPTURE::Assign aggregate pass: thaum 0x48b50a aggregates ALL members; retail 0x48e21b skips guardian-bound ([ntt+0x5c8]!=0)
 	bool betaStanceU4Quirk=false;       // stance u[4] (influenceGroups divisor 0x485cfa, summon gate 0x48d941): thaum reset 0x484700 never clears it (grows forever, influence decays to 0); retail reset 0x48677e clears to 1 per updateStance
 	bool betaSummonTypeRatings=false;   // from-record (by-tag) creature ratings: thaum 0x488de0 accuracy->rating[0], P1=f32(evasion)*health*(regen+2*drain) rounded to f32 vs retail 0x48bd80 evasion->rating[0], P1=accuracy*health*(2*regen+drain) kept extended (the from-object rater 0x488ab0/0x48b7e0 uses the thaum formula in BOTH binaries)
 	bool betaPupsThreatGate=false;      // 'pups' cmd-7 branch: retail 0x48c96d requires the casting wizard's node threat (+0x6c)!=0; thaum 0x489c40 has no gate
-	bool betaInfluenceWizardExclude=false; // influenceGroups group filter: thaum 0x485c14 statusOR&1 (wizard-only slot4 groups skipped) vs retail 0x4888ed statusOR&3 (same change as betaGuardWizardExclude)
+	bool betaInfluenceWizardExclude=false; // influenceGroups group filter: thaum 0x485c14 statusOR&1 (wizard-only groups pass via the wizard aggressive bit) vs retail 0x4888ed statusOR&3 (same change as betaGuardWizardExclude)
+	bool betaWizardAggressive=false;    // setupWiz wizard status: thaum 0x48c827 only ORs wizardInit, keeping setupT4oBody's aggressive bit (status 0x2000f) vs retail 0x48f3ba clears it first (and al,0xfe -> status 0x2000e); retail compensates via betaGuardWizardExclude/betaInfluenceWizardExclude
+	bool betaRealStructureMask=false;   // "real structure" target mask (CanCastSpellOn onlyOwned/onlyAlly/disallowAlly structure branches): thaum 0x55a7 (0x4518f7, 0x462ef0, 0x464b77, 0x46e5ba, 0x46e6d8, 0x46e9ef) vs retail 0x55b7 (0x4504f8, 0x4616f6, 0x46383b, 0x46df86, 0x46e091, 0x46e3bf; adds manafount)
 	void setBetaPatchBots(bool beta){
 		betaMinManaSacu=beta;
 		betaManahoarRadius=beta;
@@ -430,6 +535,8 @@ final class ShinyAI(B){
 		betaSummonTypeRatings=beta;
 		betaPupsThreatGate=beta;
 		betaInfluenceWizardExclude=beta;
+		betaWizardAggressive=beta;
+		betaRealStructureMask=beta;
 	}
 	// rater1 by-tag acc cache
 	enum numTagAccs=96;
@@ -479,7 +586,14 @@ void run(B)(ref ShinyAI!B ai,ObjectState!B state,int side,int dTicks){
 	if(ai.config&8) return;
 	ai.handledFlags=0;
 	static immutable int[6] periods=[12,60,6,6,60,12];
-	static immutable uint[6] masks=[0xe,0xf,1,1,0x3f,1]; // k=4 mask includes 0x20: an armed discovery scan runs updateReplan early
+	static immutable uint[6] masks=[ // k=4 mask includes discovery: an armed discovery scan runs updateReplan early
+		ForceFlags.nodeSet|ForceFlags.ownScan|ForceFlags.globalScan,
+		ForceFlags.replan|ForceFlags.nodeSet|ForceFlags.ownScan|ForceFlags.globalScan,
+		ForceFlags.replan,
+		ForceFlags.replan,
+		ForceFlags.replan|ForceFlags.nodeSet|ForceFlags.ownScan|ForceFlags.globalScan|ForceFlags.recategorize|ForceFlags.discovery,
+		ForceFlags.replan,
+	];
 	static foreach(k;0..6){
 		if(ai.nextRun[k]<=ai.schedTime){
 			static if(shinyAILog) ailog("SLOT ",ai.side," t",ai.schedTime," k",k," scheduled forceFlags=",ai.forceFlags);
@@ -529,18 +643,18 @@ enum BotEvent{ // thaum event ids
 
 void notifyEvent(B)(ref ShinyAI!B ai,ObjectState!B state,NodeKind kind1,int id1,NodeKind kind2,int id2,int event){
 	switch(event) with(BotEvent){
-		case firstContactAlly,firstContactEnemy: ai.forceFlags|=3; break;
+		case firstContactAlly,firstContactEnemy: ai.forceFlags|=ForceFlags.replan|ForceFlags.nodeSet; break;
 		case death: removeNodeByEnt(ai,state,kind2,id2); break;
 		case revive: // broadcast to all AIs (thaum notifies the owner side only; foreign re-adds came from its seen-list walk, our ever-seen gate)
 			if(entSide!B(state,kind2,id2)==ai.side||state.sid.lastSeenTick(ai.side,id2)>=0)
 				addNode(ai,state,kind2,id2); // no-op if already tracked or untrackable
-			ai.forceFlags|=3; // was |=7: bit 4 (scanOwn) is obsolete, the entity is added directly
+			ai.forceFlags|=ForceFlags.replan|ForceFlags.nodeSet; // was |=7: bit 4 (scanOwn) is obsolete, the entity is added directly
 			break;
-		case sacrifice,enemyNearBuilding,buildingDamaged: ai.forceFlags|=1; break;
-		case buildingDestroyed: ai.forceFlags|=3; break;
+		case sacrifice,enemyNearBuilding,buildingDamaged: ai.forceFlags|=ForceFlags.replan; break;
+		case buildingDestroyed: ai.forceFlags|=ForceFlags.replan|ForceFlags.nodeSet; break;
 		case addedToSide:
 			addNode(ai,state,kind1,id1); // direct add (was |=7: bit 4 prompted a full own-side rescan)
-			ai.forceFlags|=3;
+			ai.forceFlags|=ForceFlags.replan|ForceFlags.nodeSet;
 			break;
 		case sideChanged:
 			if(auto n=findNode(ai,kind1,id1)){
@@ -550,9 +664,9 @@ void notifyEvent(B)(ref ShinyAI!B ai,ObjectState!B state,NodeKind kind1,int id1,
 				}
 			}else if(entSide!B(state,kind1,id1)==ai.side||state.sid.lastSeenTick(ai.side,id1)>=0)
 				addNode(ai,state,kind1,id1); // own acquisition, or foreign but ever-seen
-			ai.forceFlags|=3;
+			ai.forceFlags|=ForceFlags.replan|ForceFlags.nodeSet;
 			break;
-		case relationsChanged: ai.forceFlags|=0x13; break;
+		case relationsChanged: ai.forceFlags|=ForceFlags.replan|ForceFlags.nodeSet|ForceFlags.recategorize; break;
 		case spellListUpdated: if(auto n=findNode(ai,NodeKind.wiz,id1)) ai.nodes[n].spellDirty|=1; break;
 		default: break; // 3,4,5,7,8,14,17,18: thaum nops (damage pings, wizard run)
 	}
@@ -648,7 +762,7 @@ void botSeen(B)(ObjectState!B state,int side,int id,TargetType type){ // markAsV
 }
 void botScanBuilding(B)(ref Building!B b,ObjectState!B state){ // thaum LANDITEM::Run 0x466d60 event-11 scan: enemy within 100.0f (3D)
 	if((b.id+state.frame)%32!=0) return; // thaum's +0x4ec countdown fires every 32 ticks phased by creation tick, here phased by building id
-	if(!(cast(uint)b.sacBuilding.flags&1)) return; // bldg data flags +0x47c&1
+	if(!(cast(uint)b.sacBuilding.flags&BuildingFlagsAI.altar)) return; // bldg data flags +0x47c&1
 	if(!(0<=b.side&&b.side!=neutralSide&&b.health!=0.0f)) return; // owner wizard (+0x1c4); Run stops at Destroy
 	// nearbywizardcallback 0x466d00: first enemy wizard (NTT::IsEnemy); EnumerateType 0x48fb80 walks list[1]+mask 1 = wizard ntts only (ntt types: 1=wiz, 2=soul, 4=creature, 0x10=building)
 	auto position=state.staticObjectReadById!((ref objects,i)=>objects.positions[i],()=>Vector3f.init)(b.componentIds[0]);
@@ -671,7 +785,7 @@ void setup(B)(ref ShinyAI!B ai,ObjectState!B state,int side){
 	ai.initialized=true;
 	ai.side=side;
 	ai.schedTime=0;
-	ai.forceFlags=0xf;
+	ai.forceFlags=ForceFlags.replan|ForceFlags.nodeSet|ForceFlags.ownScan|ForceFlags.globalScan;
 	ai.aggression=1.0f;
 	ai.nodes.length=1; // dummy
 	ai.groups4.length=1; // dummy
@@ -756,11 +870,11 @@ int relation(B)(ObjectState!B state,int mySide,int entSide){
 	if(state.sides.getStance(mySide,entSide)==Stance.enemy||state.sides.getStance(entSide,mySide)==Stance.enemy) return 3;
 	return 2;
 }
-enum uint[4] relationFlag=[1,2,0,4];
+enum uint[4] relationFlag=[AINodeFlags.own,AINodeFlags.ally,0,AINodeFlags.enemy];
 int categoryFromFlags(uint flags){ // 0x486c30
-	if(flags&1) return 0;
-	if(flags&2) return 1;
-	return ((flags&4)|8)>>2;
+	if(flags&AINodeFlags.own) return 0;
+	if(flags&AINodeFlags.ally) return 1;
+	return ((flags&AINodeFlags.enemy)|8)>>2;
 }
 
 // 0x487cd0
@@ -775,7 +889,7 @@ bool shouldTrack(B)(ref ShinyAI!B ai,ObjectState!B state,NodeKind kind,int id){
 	}
 	final switch(kind) with(NodeKind){
 		// thaum rejects sub-components of multi-component structures (ntt+0x440=primary component, set by the map loader); sacengine folds those into one Building, so no case remains: fount-placed buildings keep ntt+0x440==0 in thaum and are tracked
-		case str: return state.buildingById!((ref b,state)=>(cast(uint)b.sacBuilding.flags&0xc17)!=0,()=>false)(id,state);
+		case str: return state.buildingById!((ref b,state)=>(cast(uint)b.sacBuilding.flags&BuildingFlagsAI.primaryMask)!=0,()=>false)(id,state);
 		// 0x487cd0: wizard gate is IsDead (vtbl[0x38]=0x46c0f0, state flags&0x4000) only; ghosts (0x40000) pass here and are dropped by discover phase-2 (0x484c22)
 		case wiz: return !entDead!B(state,id);
 		case t4o,maho: return !entDead!B(state,id);
@@ -883,7 +997,7 @@ void setupBase(B)(ref ShinyAI!B ai,ObjectState!B state,int n,NodeKind kind,int i
 	node.velocity=Vector3f(0.0f,0.0f,0.0f);
 }
 void setupCre(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int id,uint flags){ // 0x486f50
-	setupBase(ai,state,n,NodeKind.cre,id,flags|0x8);
+	setupBase(ai,state,n,NodeKind.cre,id,flags|AINodeFlags.soul);
 }
 void fillNodeAcc(B)(ref ShinyAI!B ai,ObjectState!B state,AINode!B* node){ // rater1 getOrCreateAccForNode/fillFromObject 0x488ab0
 	state.movingObjectReadById!((ref cols,i,ObjectState!B state){
@@ -892,21 +1006,21 @@ void fillNodeAcc(B)(ref ShinyAI!B ai,ObjectState!B state,AINode!B* node){ // rat
 	},(){})(node.id,state);
 }
 void setupT4oBody(B)(ref ShinyAI!B ai,ObjectState!B state,int n,NodeKind kind,int id,uint flags){ // 0x487090
-	setupBase(ai,state,n,kind,id,flags|0x10);
+	setupBase(ai,state,n,kind,id,flags|AINodeFlags.creature);
 	auto node=&ai.nodes[n];
-	node.flags|=0x40;
+	node.flags|=AINodeFlags.body;
 	state.movingObjectReadById!((ref cols,i,ObjectState!B state){
 		auto so=cols.sacObject;
 		int numAbil=0;
 		foreach(ab;so.abilities) if(ab !is null) numAbil++;
 		// thaum: base stat word[2] (aggressiveness; wizards have 1000) or ability count
-		if(numAbil||(so.cre8?so.cre8.aggressiveness:1000)!=0) node.status|=1;
+		if(numAbil||(so.cre8?so.cre8.aggressiveness:1000)!=0) node.status|=AINodeStatus.aggressive;
 		// ntt+0xb24&0x200 -> status|=0x2000: no sacengine equivalent (documented gap)
 		node.minManaCost=numAbil?cast(float)ftol(cols.creatureStatss[i].maxMana):0.0f; // thaum: float(ntt+0xb10)
 		foreach(ab;so.abilities){
 			if(ab is null) continue;
 			auto spel=ab.spel;
-			if(ab.type==SpellType.spell&&spel&&(cast(uint)spel.flags2&0x800000)&&wantsSpellAcc!B(ab))
+			if(ab.type==SpellType.spell&&spel&&(cast(uint)spel.flags2&SpelFlags2.aiCastable)&&wantsSpellAcc!B(ab)) // gates AI spell-accumulator creation (thaum setupT4oBody 0x487125 / retail 0x489f85)
 				node.spellAccs~=SpellAcc!B(ab,ratingFn!B(ab));
 			auto mc=cast(float)ab.manaCost; // 0x487191: min over ALL ability entries (gate-skip lands here)
 			if(mc<node.minManaCost) node.minManaCost=mc;
@@ -915,33 +1029,36 @@ void setupT4oBody(B)(ref ShinyAI!B ai,ObjectState!B state,int n,NodeKind kind,in
 	fillNodeAcc(ai,state,node);
 }
 void setupMaho(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int id,uint flags){ // 0x4879f0
-	setupBase(ai,state,n,NodeKind.maho,id,flags|0x10);
+	setupBase(ai,state,n,NodeKind.maho,id,flags|AINodeFlags.creature);
 	auto node=&ai.nodes[n];
-	node.flags|=0x40;
+	node.flags|=AINodeFlags.body;
 	fillNodeAcc(ai,state,node);
 }
 void setupWiz(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int id,uint flags){ // 0x48c800
-	setupT4oBody(ai,state,n,NodeKind.wiz,id,flags|0x100);
+	setupT4oBody(ai,state,n,NodeKind.wiz,id,flags|AINodeFlags.claimTarget);
 	auto node=&ai.nodes[n];
-	node.status|=0x2000e;
-	node.flags|=0x100;
+	// retail 0x48f3ba clears setupT4oBody's aggressive bit first (and al,0xfe; or eax,0x2000e -> wizard status 0x2000e);
+	// thaum 0x48c827 only ORs, keeping it (wizard status 0x2000f) - see betaGuardWizardExclude/betaInfluenceWizardExclude
+	if(!ai.betaWizardAggressive) node.status&=~AINodeStatus.aggressive;
+	node.status|=AINodeStatus.wizardInit;
+	node.flags|=AINodeFlags.claimTarget;
 	state.movingObjectReadById!((ref cols,i,state){ node.minManaCost=cast(float)(ftol(cols.creatureStatss[i].maxMana)/4); },(){})(id,state); // thaum 0x48c800: fild(ntt+0xb10)/4
 	node.spellDirty=1;
 	// own: thaum marks ntt+0xb24|=0x8000; no consumer in sacengine
 }
 void fillStrAcc(B)(AINode!B* node,ref Building!B b){ // 0x4888e0 (no clear; idempotent)
-	if(cast(uint)b.sacBuilding.flags&0x80){
+	if(cast(uint)b.sacBuilding.flags&BuildingFlagsAI.built){
 		node.acc.rating[2]=0.0f;
 		node.acc.rating[3]=cast(float)(cast(double)b.sacBuilding.maxHealth*10.0);
 	}
 }
 void setupStr(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int id,uint flags){ // 0x486d70
-	setupBase(ai,state,n,NodeKind.str,id,flags|0x20);
+	setupBase(ai,state,n,NodeKind.str,id,flags|AINodeFlags.structure);
 	auto node=&ai.nodes[n];
 	state.buildingById!((ref b){
 		fillStrAcc!B(node,b);
-		if(cast(uint)b.sacBuilding.flags&1) node.flags|=0x300;
-		if(cast(uint)b.sacBuilding.flags&0xc17) node.flags|=0x100;
+		if(cast(uint)b.sacBuilding.flags&BuildingFlagsAI.altar) node.flags|=AINodeFlags.claimTarget|AINodeFlags.altar;
+		if(cast(uint)b.sacBuilding.flags&BuildingFlagsAI.primaryMask) node.flags|=AINodeFlags.claimTarget;
 		static if(shinyAILog) ailog("BLD ",ai.side," tag ",b.sacBuilding.tag[]," id ",id," bflags ",b.flags," base ",b.base," top ",b.top," mf ",b.sacBuilding.isManafount?1:0," altar ",b.sacBuilding.isAltar?1:0);
 	},(){})(id);
 }
@@ -972,7 +1089,7 @@ int addNode(B)(ref ShinyAI!B ai,ObjectState!B state,NodeKind kind,int id){ // 0x
 	catAppend(ai,n);
 	idxAppend(ai,n);
 	updateNode(ai,state,n,0);
-	ai.forceFlags|=1;
+	ai.forceFlags|=ForceFlags.replan;
 	return n;
 }
 void groupRemoveMember(B)(ref ShinyAI!B ai,int g,int n){ // slot4 group vtbl[4] 0x486800
@@ -1028,7 +1145,7 @@ void removeNode(B)(ref ShinyAI!B ai,ObjectState!B state,int n){ // 0x483970
 void removeNodeByEnt(B)(ref ShinyAI!B ai,ObjectState!B state,NodeKind kind,int id){ // 0x483ad0
 	if(auto n=findNode(ai,kind,id)){
 		removeNode(ai,state,n);
-		ai.forceFlags|=1;
+		ai.forceFlags|=ForceFlags.replan;
 	}
 }
 
@@ -1036,7 +1153,7 @@ void removeNodeByEnt(B)(ref ShinyAI!B ai,ObjectState!B state,NodeKind kind,int i
 
 void updateBase(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int dt){ // 0x486b10
 	auto node=&ai.nodes[n];
-	if(!(node.flags&0x81)) return;
+	if(!(node.flags&(AINodeFlags.own|AINodeFlags.seen))) return;
 	node.age+=dt;
 	auto p=entPos!B(state,node.kind,node.id);
 	node.curPos=p;
@@ -1066,8 +1183,8 @@ void updateMaho(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int dt){ // 0x487a
 		node.statusTick=node.age+8;
 		// thaum: tag-property 'anam' on the ntt; closest match is the ability-enabled predicate
 		state.movingObjectReadById!((ref cols,i,state){
-			if(manahoarAbilityEnabled(cols.creatureStates[i].mode)) node.status|=0x1000;
-			else node.status&=~0x1000;
+			if(manahoarAbilityEnabled(cols.creatureStates[i].mode)) node.status|=AINodeStatus.ready;
+			else node.status&=~AINodeStatus.ready;
 		},(){})(node.id,state);
 	}
 }
@@ -1109,15 +1226,15 @@ void updateStr(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int dt){ // 0x486e1
 		state.buildingById!((ref b){
 			auto bfl=cast(uint)b.sacBuilding.flags;
 			// ntt+0x440==0 always holds here: thaum sets +0x440 only on sub-component entities of multi-component structures (altar tops), which sacengine folds into one Building; the fount association is one-directional (fount ntt+0x474 = building on top, sacengine top/base)
-			if(bfl&0x10){
-				if(b.top==0) node.status|=0x8000; else node.status&=~0x8000;
+			if(bfl&BuildingFlagsAI.manafount){
+				if(b.top==0) node.status|=AINodeStatus.openFount; else node.status&=~AINodeStatus.openFount;
 			}
 			// ntt+0x43c = construction progress, always 1.0f in sacengine (documented gap)
-			if(b.top==0&&(bfl&0xc00)&&ftol(cast(double)b.sacBuilding.bldg.unknown1[3]*36408.88888888889)!=0)
-				node.status|=0x1000;
-			else node.status&=~0x1000;
-			if(bfl&0x4000) node.status|=0x4000; else node.status&=~0x4000;
-			if(bfl&2) node.status|=0x40000; else node.status&=~0x40000;
+			if(b.top==0&&(bfl&BuildingFlagsAI.generating)&&ftol(cast(double)b.sacBuilding.bldg.unknown1[3]*36408.88888888889)!=0)
+				node.status|=AINodeStatus.ready;
+			else node.status&=~AINodeStatus.ready;
+			if(bfl&BuildingFlagsAI.unknown14) node.status|=AINodeStatus.unknown14; else node.status&=~AINodeStatus.unknown14;
+			if(bfl&BuildingFlagsAI.unknown1) node.status|=AINodeStatus.unknown18; else node.status&=~AINodeStatus.unknown18;
 		},(){})(node.id);
 	}
 }
@@ -1147,9 +1264,9 @@ void updateStatus(B)(ref ShinyAI!B ai,ObjectState!B state,int dTicks){ // 0x4840
 		wizComponent=state.pathFinder.getComponentId(entPos!B(state,NodeKind.wiz,wiz.id),state);
 	if(wizComponent!=ai.lastWizComponent){
 		ai.lastWizComponent=wizComponent;
-		ai.forceFlags|=0x20;
+		ai.forceFlags|=ForceFlags.discovery;
 	}
-	if(ai.forceFlags&0x10){ // recategorize: relations changed (thaum event 16, wired at setStance)
+	if(ai.forceFlags&ForceFlags.recategorize){ // relations changed (thaum event 16, wired at setStance)
 		foreach(k;1..4)
 			for(int n=ai.catHead[k];n;){
 				auto nn=ai.nodes[n].catN;
@@ -1160,19 +1277,19 @@ void updateStatus(B)(ref ShinyAI!B ai,ObjectState!B state,int dTicks){ // 0x4840
 				}
 				n=nn;
 			}
-		ai.handledFlags|=0x10;
+		ai.handledFlags|=ForceFlags.recategorize;
 	}
-	if(ai.forceFlags&4){ // own-side scan (thaum side buckets 4,1,0x10 via 0x48f490, cb 0x484160): setup only, bit 4 is never re-armed (spawn/revive/side-change events add directly)
+	if(ai.forceFlags&ForceFlags.ownScan){ // own-side scan (thaum side buckets 4,1,0x10 via 0x48f490, cb 0x484160): setup only, bit 4 is never re-armed (spawn/revive/side-change events add directly)
 		scanOwn(ai,state);
-		ai.handledFlags|=4;
+		ai.handledFlags|=ForceFlags.ownScan;
 	}
-	if(ai.forceFlags&8){ // thaum: global spawn scan gated by config&0x10, but config is 0x10 at all three AI-creation call sites (0x404c66, 0x457e08, 0x4a25d5), so it runs once at setup (forceFlags=0xf; no event re-sets bit 8)
+	if(ai.forceFlags&ForceFlags.globalScan){ // thaum: global spawn scan gated by config&0x10, but config is 0x10 at all three AI-creation call sites (0x404c66, 0x457e08, 0x4a25d5), so it runs once at setup (forceFlags=0xf; no event re-sets bit 8)
 		scanGlobal(ai,state);
-		ai.handledFlags|=8;
+		ai.handledFlags|=ForceFlags.globalScan;
 	}
-	if(ai.forceFlags&2){ // stats 0x484540
+	if(ai.forceFlags&ForceFlags.nodeSet){ // stats 0x484540
 		updateStats(ai,state);
-		ai.handledFlags|=2;
+		ai.handledFlags|=ForceFlags.nodeSet;
 	}
 }
 void scanOwn(B)(ref ShinyAI!B ai,ObjectState!B state){
@@ -1207,7 +1324,7 @@ void updateStats(B)(ref ShinyAI!B ai,ObjectState!B state){ // 0x484540
 	if(soulsSeen>ai.maxSoulsSeen) ai.maxSoulsSeen=soulsSeen;
 	ai.neutralManafounts=0;
 	for(int n=ai.fam2Head[2];n;n=ai.nodes[n].famN)
-		ai.neutralManafounts+=state.buildingById!((ref b,state)=>b.base==0&&(cast(uint)b.sacBuilding.flags&0x10)!=0,()=>false)(ai.nodes[n].id,state);
+		ai.neutralManafounts+=state.buildingById!((ref b,state)=>b.base==0&&(cast(uint)b.sacBuilding.flags&BuildingFlagsAI.manafount)!=0,()=>false)(ai.nodes[n].id,state);
 	// living sides + alliance teams; thaum walks its global side list, we approximate membership by assignment!=0
 	ai.livingSides=0;
 	uint[8] teamMasks=0;
@@ -1261,9 +1378,9 @@ void updateStance(B)(ref ShinyAI!B ai,ObjectState!B state,int dTicks){ // rec1 0
 			setI(*rec,3,si(*rec,3)+p[1]);
 			setI(*rec,4,si(*rec,4)+p[0]+p[1]);
 		}
-		int c=0; // 0x484af0: fam2[k] nodes with status&0x4000
+		int c=0; // 0x484af0: fam2[k] nodes with status&AINodeStatus.unknown14
 		for(int n=ai.fam2Head[k];n;n=ai.nodes[n].famN)
-			if(ai.nodes[n].status&0x4000) c++;
+			if(ai.nodes[n].status&AINodeStatus.unknown14) c++;
 		setI(*rec,5,c);
 		if(k>0){
 			auto rec0=&ai.stanceRecs[0];
@@ -1277,13 +1394,13 @@ void updateStance(B)(ref ShinyAI!B ai,ObjectState!B state,int dTicks){ // rec1 0
 	}
 	int ebx=0,ebp=0;
 	for(int n=ai.fam2Head[3];n;n=ai.nodes[n].famN){
-		if(ai.nodes[n].flags&0x200) ebx++;
-		if(ai.nodes[n].flags&0x80) ebp++;
+		if(ai.nodes[n].flags&AINodeFlags.altar) ebx++;
+		if(ai.nodes[n].flags&AINodeFlags.seen) ebp++;
 	}
 	int edx=0,edi=0;
 	for(int n=ai.fam2Head[2];n;n=ai.nodes[n].famN){
-		if(ai.nodes[n].flags&0x100) edx++;
-		if(ai.nodes[n].flags&0x80) edi++;
+		if(ai.nodes[n].flags&AINodeFlags.claimTarget) edx++;
+		if(ai.nodes[n].flags&AINodeFlags.seen) edi++;
 	}
 	ai.strengthRatio=cast(float)safediv(cast(double)(edi+ebp),cast(double)(edx+ebx)); // safediv: canonical NaN on 0/0, see above
 	// acc1/acc2; the divide divisor is fild of the int sum of the u[6] float bits (thaum quirk)
@@ -1301,7 +1418,7 @@ void updateNtts(B)(ref ShinyAI!B ai,ObjectState!B state,int dTicks){ // 0x483f90
 		if(!entExists!B(state,ai.nodes[n].kind,ai.nodes[n].id)){
 			// thaum removes via event 6 (wired at kill/gib); entExists is the fallback for unwitnessed removals
 			removeNode(ai,state,n);
-			ai.forceFlags|=1;
+			ai.forceFlags|=ForceFlags.replan;
 		}else updateNode(ai,state,n,dTicks);
 		n=nn;
 	}
@@ -1335,12 +1452,12 @@ void updateReplan(B)(ref ShinyAI!B ai,ObjectState!B state,int dTicks){ // 0x4841
 	frameprof.beginReplanPhase("claim");
 	claimPass(ai,state);    // 0x484c70
 	frameprof.endReplanPhase("claim");
-	ai.handledFlags|=1;
+	ai.handledFlags|=ForceFlags.replan;
 }
 void discoverScan(B)(ref ShinyAI!B ai,ObjectState!B state,NodeKind kind,int id){
 	auto n=addNode(ai,state,kind,id); // idempotent, shouldTrack-gated
 	if(n){
-		ai.nodes[n].flags|=0x80;
+		ai.nodes[n].flags|=AINodeFlags.seen;
 		ai.nodes[n].ageSeen=ai.nodes[n].age;
 	}
 }
@@ -1380,9 +1497,9 @@ bool nodeSeen(B)(ref ShinyAI!B ai,ObjectState!B state,NodeKind kind,int id){ // 
 	}
 }
 void discover(B)(ref ShinyAI!B ai,ObjectState!B state){ // 0x484b30
-	if(ai.forceFlags&0x20){ // one-shot pickup scan: setup / wizard region change (entities are otherwise added by events)
+	if(ai.forceFlags&ForceFlags.discovery){ // one-shot pickup scan: setup / wizard region change (entities are otherwise added by events)
 		discoverScanAll(ai,state);
-		ai.handledFlags|=0x20;
+		ai.handledFlags|=ForceFlags.discovery;
 	}
 	// phase 2 (0x484bfd): non-own nodes only (node+0x3c&1 = own relation flag, test at 0x484c14); remove ghost wizards, eliminated wizards, stale unseen nodes
 	// the phase-1 ageSeen refresh for already-tracked nodes is folded into this sweep
@@ -1398,9 +1515,9 @@ void discover(B)(ref ShinyAI!B ai,ObjectState!B state){ // 0x484b30
 			}
 			if(!remove){
 				if(nodeSeen(ai,state,node.kind,node.id)&&shouldTrack(ai,state,node.kind,node.id)){
-					node.flags|=0x80;
+					node.flags|=AINodeFlags.seen;
 					node.ageSeen=node.age;
-				}else if((node.flags&0x80)&&cast(uint)node.ageSeen<cast(uint)node.age&&node.kind!=NodeKind.t4o&&node.kind!=NodeKind.maho)
+				}else if((node.flags&AINodeFlags.seen)&&cast(uint)node.ageSeen<cast(uint)node.age&&node.kind!=NodeKind.t4o&&node.kind!=NodeKind.maho)
 					remove=true; // thaum 0x484c3d, retail 0x48721e: creatures (ntt+0x238&0x10) are exempt from the stale-seen removal
 			}
 			if(remove) removeNode(ai,state,n);
@@ -1618,7 +1735,7 @@ void groupRefresh4(B)(ref ShinyAI!B ai,ObjectState!B state,int g){ // slot4 grou
 			grp.healthSum2+=ftol(cols.creatureStatss[i].health);   // ntt word +0x8ea
 		},(){})(node.id,state);
 		if(hasAcc(ai,n)) combine(grp.acc,1.0f,node.acc,1.0f);
-		if(node.status&0x1000) grp.readyCount++;
+		if(node.status&AINodeStatus.ready) grp.readyCount++;
 		auto p21=soulsPair21(ai,state,n);
 		grp.soulsSum+=p21[0]+p21[1];
 	}
@@ -2009,7 +2126,7 @@ int claim(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task,int ri,ref i
 	combine(rec.membersAcc,1.0f,node.acc,1.0f);
 	recAddMember(ai,ri,n);
 	node.record=ri;
-	if(node.status&0x20000&&rec.leader==0) rec.leader=n; // wizards: thaum setupWiz 0x48c800 sets status 0x2000e (incl. 0x20000)
+	if(node.status&AINodeStatus.leader&&rec.leader==0) rec.leader=n; // wizards: thaum setupWiz 0x48c800 sets status 0x2000e (incl. 0x20000)
 	static if(shinyAILog) ailog("CLAIM ",ai.side," t",ai.schedTime," n",n,"(",node.kind," id ",node.id,") -> r",ri," task ",task.kind," tgt ",rec.target);
 	auto p=soulsPair21(ai,state,n);
 	return p[0]+p[1];
@@ -2036,7 +2153,7 @@ float territorialScore(B)(ref ShinyAI!B ai,ObjectState!B state,Vector3f pos,int 
 		for(int n=ai.fam2Head[k];n;n=ai.nodes[n].famN){
 			if(n==exclude) continue; // node==arg rec
 			auto node=&ai.nodes[n];
-			auto r=node.status&0x4000?1000.0f:50.0f; // node+0x40&0x4000
+			auto r=node.status&AINodeStatus.unknown14?1000.0f:50.0f; // node+0x40&0x4000
 			immutable dx=cast(float)(pos.x-node.curPos.x), dy=cast(float)(pos.y-node.curPos.y), dz=cast(float)(pos.z-node.curPos.z); // f32 subs
 			auto d=cast(float)sqrt(cast(double)dz*dz+(cast(double)dy*dy+cast(double)dx*dx)); // dz^2+(dy^2+dx^2) 80-bit, _CIsqrt, f32 store
 			float s;
@@ -2076,7 +2193,7 @@ float influenceGroups(B)(ref ShinyAI!B ai,ObjectState!B state,int slot,Vector3f 
 	float soulsW=0.0f;
 	for(int g=ai.grp4Head[slot];g;g=ai.groups4[g].gN){
 		auto grp=&ai.groups4[g];
-		// thaum 0x485c14: statusOR&1 (wizard-only slot4 groups skipped); retail 0x4888ed: statusOR&3 (same change as betaGuardWizardExclude)
+		// thaum 0x485c14: statusOR&1 (wizard-only groups pass via the wizard aggressive bit); retail 0x4888ed: statusOR&3 (same change as betaGuardWizardExclude)
 		if(!(grp.statusOR&(ai.betaInfluenceWizardExclude?1:3))) continue;
 		auto d=pos-grp.center;
 		auto dist=sqrt(d.x*d.x+d.y*d.y+d.z*d.z);
@@ -2096,8 +2213,8 @@ float nodeValueScore(B)(ref ShinyAI!B ai,ObjectState!B state,float f,int n){ // 
 	auto w2=ai.betaRateManasourceWeights?0.35f:0.3f; // thaum 0x48af46 vs retail 0x48db96
 	auto r=lerp(f,w1,densityGroups(ai,state,node.curPos,10.0f,280.0f));
 	// probOr far band is 3620.0f in BOTH binaries (0x45624000 @ 0x48af22/0x48af5c and 0x48db72/0x48dbac); 2592.0f occurs in neither
-	r=lerp(r,w2,probOr(ai,state,node.curPos,3,0x200,10.0f,3620.0f,n));
-	r=lerp(r,0.5f,probOr(ai,state,node.curPos,0,0x200,10.0f,3620.0f,n));
+	r=lerp(r,w2,probOr(ai,state,node.curPos,3,AINodeFlags.altar,10.0f,3620.0f,n));
+	r=lerp(r,0.5f,probOr(ai,state,node.curPos,0,AINodeFlags.altar,10.0f,3620.0f,n));
 	return r;
 }
 
@@ -2144,15 +2261,15 @@ void replanCapture(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task){ /
 	foreach(edi;cats){
 		for(int n=ai.catHead[edi];n;n=ai.nodes[n].catN){
 			auto node=&ai.nodes[n];
-			if(!(node.flags&0x100)) continue;
+			if(!(node.flags&AINodeFlags.claimTarget)) continue;
 			uint flags; float s1; float s2;
-			if(node.status&0x8000){
+			if(node.status&AINodeStatus.openFount){
 				flags=ai.betaUnbuiltCaptureReq?3:2; // thaum 0x48b0a4 = 3; retail 0x48dcf7 = 2 (wizard status bit1 alone satisfies -> wizard-only capture claims when no aggressive creature is claimable)
 				frameprof.beginReplanPhase("nvs");
 				s1=nodeValueScore(ai,state,f1,n);
 				frameprof.endReplanPhase("nvs");
 				s2=cast(float)((1.0-cast(double)ai.aggression)*0.8+0.2);
-			}else if(edi==3&&(node.flags&0x20)&&(node.status&0x4000||((node.status&0x40000)&&!(node.flags&0x200)))){
+			}else if(edi==3&&(node.flags&AINodeFlags.structure)&&(node.status&AINodeStatus.unknown14||((node.status&AINodeStatus.unknown18)&&!(node.flags&AINodeFlags.altar)))){
 				// retail 0x48dd43: no own/ally structure support (0x488d70 score 0) -> reject while own+ally manaliths exist (jg on A), else proceed anyway
 				if(!ai.betaCaptureTerritory&&territorialScore!B(ai,state,node.curPos,n)==0.0f&&A>0) continue;
 				flags=1;
@@ -2160,11 +2277,11 @@ void replanCapture(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task){ /
 				s1=cast(float)(cast(double)nodeValueScore(ai,state,f2>f1?f2:f1,n)*0.99)*ai.aggression;
 				frameprof.endReplanPhase("nvs");
 				s2=cast(float)((1.0-cast(double)ai.aggression)*0.9+0.1);
-			}else if(edi==3&&(node.flags&0x10)&&(node.status&0x08)){
-				s1=(desecrationOngoing!B(state,node.id)?1.0f:probOr(ai,state,node.curPos,0,0x20,10.0f,180.0f,n))*ai.aggression; // 0x48b185: 'ucas' attach overwrites s1 with 1.0f before the aggression scale
+			}else if(edi==3&&(node.flags&AINodeFlags.creature)&&(node.status&AINodeStatus.unknown3)){
+				s1=(desecrationOngoing!B(state,node.id)?1.0f:probOr(ai,state,node.curPos,0,AINodeFlags.structure,10.0f,180.0f,n))*ai.aggression; // 0x48b185: 'ucas' attach overwrites s1 with 1.0f before the aggression scale
 				flags=3;
 				s2=cast(float)((1.0-cast(double)ai.aggression)*0.8+0.2);
-			}else if(node.flags&0x200){
+			}else if(node.flags&AINodeFlags.altar){
 				// retail 0x48de5d: no own/ally structure support (0x488d70 score 0) -> reject unconditionally, before the 'sacu' check
 				if(!ai.betaCaptureTerritory&&territorialScore!B(ai,state,node.curPos,n)==0.0f) continue;
 				if(desecrationOngoing!B(state,node.id)){ // 0x48b1b8: 'ucas' attach -> s1=0.4f (0x4bba30), s2=1.0f-ag (fsub f32), flags=1
@@ -2209,16 +2326,16 @@ void replanGuard(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task){ // 
 	for(int n=ai.catHead[0];n;n=ai.nodes[n].catN){
 		auto node=&ai.nodes[n];
 		float score;
-		if(node.status&0xc){
+		if(node.status&(AINodeStatus.unknown2|AINodeStatus.unknown3)){
 			score=nodeValue6c(ai,n)*ai.aggression*0.6f+0.4f;
 		}else{
-			if(!(node.flags&0x20)||!(node.status&0x1000)) continue;
-			if(node.flags&0x200){ // 0x48a94b: altar with 'ucas' attach -> guard score 1.0f; quiet altar -> no record
+			if(!(node.flags&AINodeFlags.structure)||!(node.status&AINodeStatus.ready)) continue;
+			if(node.flags&AINodeFlags.altar){ // 0x48a94b: altar with 'ucas' attach -> guard score 1.0f; quiet altar -> no record
 				if(!desecrationOngoing!B(state,node.id)) continue;
 				score=1.0f;
 			}else{
-				auto s=lerp(0.4f,0.5f,probOr(ai,state,node.curPos,0,0x200,10.0f,3620.0f,n)); // 0x48a967/0x48d5d7: 0x45624000 (2592.0f occurs in neither binary)
-				total=lerp(s,0.2f,probOr(ai,state,node.curPos,3,0x200,10.0f,3620.0f,n)); // 0x48a9a4/0x48d614: 0x45624000; thaum quirk: overwrites the accumulator mid-loop
+				auto s=lerp(0.4f,0.5f,probOr(ai,state,node.curPos,0,AINodeFlags.altar,10.0f,3620.0f,n)); // 0x48a967/0x48d5d7: 0x45624000 (2592.0f occurs in neither binary)
+				total=lerp(s,0.2f,probOr(ai,state,node.curPos,3,AINodeFlags.altar,10.0f,3620.0f,n)); // 0x48a9a4/0x48d614: 0x45624000; thaum quirk: overwrites the accumulator mid-loop
 				score=lerp(s,0.2f,densityGroups(ai,state,node.curPos,10.0f,160.0f));
 			}
 		}
@@ -2290,7 +2407,7 @@ float claimCapture(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task,ref
 	for(int n=tempHead;n;){
 		auto nn=ai.nodes[n].recN; // preloaded: claim unlinks
 		if(total>threshold) break;
-		if(!isGuardianEnt!B(state,ai.nodes[n].id)&&ai.nodes[n].status&9) total+=cast(float)claim(ai,state,task,found,tempHead,tempTail,n); // thaum skips ntt+0x5b4!=0 (guardian-spell bound)
+		if(!isGuardianEnt!B(state,ai.nodes[n].id)&&ai.nodes[n].status&(AINodeStatus.aggressive|AINodeStatus.unknown3)) total+=cast(float)claim(ai,state,task,found,tempHead,tempTail,n); // thaum skips ntt+0x5b4!=0 (guardian-spell bound)
 		n=nn;
 	}
 	return total;
@@ -2317,7 +2434,7 @@ float claimGuard(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task,ref i
 		while(claimedThis+0.5f<=rec.score*threshold){
 			int best=0; float bestVal=0.0f;
 			for(int n=tempHead;n;n=ai.nodes[n].recN){
-				if(n==rec.target||!(ai.nodes[n].status&(ai.betaGuardWizardExclude?0x1u:0x3u))) continue; // GUARD::Assign member mask: thaum 0x48ad24 = 1 (wizard excluded) vs retail 0x48d994 = 3 (wizard 0x2000e joins, becomes leader, members follow)
+				if(n==rec.target||!(ai.nodes[n].status&(ai.betaGuardWizardExclude?cast(uint)AINodeStatus.aggressive:AINodeStatus.aggressive|AINodeStatus.wizard))) continue; // GUARD::Assign member mask: thaum 0x48ad24 = aggressive (wizard passes via its aggressive bit, status 0x2000f) vs retail 0x48d994 = aggressive|wizard (wizard status 0x2000e joins, becomes leader, members follow)
 				if(isGuardianEnt!B(state,ai.nodes[n].id)) continue; // thaum 0x48ad2e: skips ntt+0x5b4!=0 (guardian-spell bound)
 				auto d=ai.nodes[n].extrapPos-rec.anchor;
 				auto dist=sqrt(d.x*d.x+d.y*d.y+d.z*d.z);
@@ -2378,17 +2495,17 @@ void issueOrder(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int ostate,int tar
 			}
 		}else if(pos) ord.target=positionTarget(*pos,state);
 		else return;
-		if(node.kind==NodeKind.wiz&&ostate==6){ // thaum 0x46e6e3: wizard ostate-6 orders are converted to ostate 7 in place (0x46e1a0); ostate-7 handler 0x46e539 is a plain move to the order's fixed position
+		if(node.kind==NodeKind.wiz&&ostate==AIOrderState.guardedAdvance){ // thaum 0x46e6e3: wizard guardedAdvance orders are converted to advance in place (0x46e1a0); the advance handler 0x46e539 is a plain move to the order's fixed position
 			ord.target=positionTarget(pos?*pos:ai.nodes[target].curPos,state);
 			ord.command=CommandType.move;
 		}else switch(ostate){
-			case 2: ord.command=CommandType.move; break;
-			case 3: ord.command=target?CommandType.retreat:CommandType.guardArea; break; // thaum cmd 3/5 share handler 0x46e60a: move to live target pos, arrive at target ntt+0x2e4 + 10.0 (engine retreat matches)
-			case 4: ord.command=CommandType.move; break;
-			case 5: ord.command=target?CommandType.retreat:CommandType.move; break; // thaum capture/interact; no capture mechanic in sacengine (documented gap)
-			case 6: ord.command=CommandType.attack; break;
-			case 7: ord.command=CommandType.advance; break;
-			case 34: // 0x22: brain-driven engage; guard approximation for creatures (documented gap), move for soul targets (thaum touch-collects by walking onto the soul; sacengine collects by proximity)
+			case AIOrderState.gotoPos: ord.command=CommandType.move; break;
+			case AIOrderState.guard: ord.command=target?CommandType.retreat:CommandType.guardArea; break; // thaum guard/capture share handler 0x46e60a: move to live target pos, arrive at target ntt+0x2e4 + 10.0 (engine retreat matches)
+			case AIOrderState.move: ord.command=CommandType.move; break;
+			case AIOrderState.capture: ord.command=target?CommandType.retreat:CommandType.move; break; // thaum capture/interact; no capture mechanic in sacengine (documented gap)
+			case AIOrderState.guardedAdvance: ord.command=CommandType.attack; break;
+			case AIOrderState.advance: ord.command=CommandType.advance; break;
+			case AIOrderState.engage: // brain-driven engage; guard approximation for creatures (documented gap), move for soul targets (thaum touch-collects by walking onto the soul; sacengine collects by proximity)
 				ord.command=target?(ai.nodes[target].kind==NodeKind.cre?CommandType.move:CommandType.guard):CommandType.guardArea; break;
 			default: return;
 		}
@@ -2410,16 +2527,16 @@ void orderIfChanged(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int ostate,int
 	}
 	if(node.ordState==ostate&&(target==0||node.ordTarget==target)&&(pos is null||node.ordPos==*pos)){
 		// thaum retains completed orders (0x46ded0(queue,0) no-ops when order+0x24==0), so the live-order
-		// compare in 0x4878c0 still matches after arrival and fixed-pos orders (ostates 4/7, handler
+		// compare in 0x4878c0 still matches after arrival and fixed-pos orders (move/advance, handler
 		// 0x46e539, arrival radius 0.5) are not re-issued while the requested pos equals the retained one;
-		// ostates 2/0x22 force-pop (0x46ded0(queue,1)) and live-target orders (3/5) re-engage on target
+		// gotoPos/engage force-pop (0x46ded0(queue,1)) and live-target orders (guard/capture) re-engage on target
 		// movement, so those keep re-issuing once the engine order pops
-		if((ostate==4||ostate==7)&&distSq3(node.curPos,node.ordPos)<=0.25f) return;
+		if((ostate==AIOrderState.move||ostate==AIOrderState.advance)&&distSq3(node.curPos,node.ordPos)<=0.25f) return;
 		if(state.movingObjectReadById!((ref cols,i,state)=>cols.creatureAIs[i].order.command!=CommandType.none,()=>true)(node.id,state)) return;
 	}
 	issueOrder(ai,state,n,ostate,target,pos,line);
-	if(node.kind==NodeKind.wiz&&ostate==6){ // the converted order lives as ostate 7 (0x46e1a0), so 0x4878c0's compare and slot19's case table (0x487420) see 7, not the requested 6
-		node.ordState=7;
+	if(node.kind==NodeKind.wiz&&ostate==AIOrderState.guardedAdvance){ // the converted order lives as advance (0x46e1a0), so 0x4878c0's compare and slot19's case table (0x487420) see advance, not the requested guardedAdvance
+		node.ordState=AIOrderState.advance;
 		node.ordTarget=target; // 0x46e1a0 keeps the order's target ntt
 		node.ordPos=pos?*pos:ai.nodes[target].curPos;
 	}else{
@@ -2427,15 +2544,15 @@ void orderIfChanged(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int ostate,int
 		node.ordTarget=target;
 		if(pos) node.ordPos=*pos;
 	}
-	// status 0x10000 maintenance: set iff state-5 order with capturable target structure (ntt vtbl[25]);
+	// capturable-status maintenance: set iff capture-state order with capturable target structure (ntt vtbl[25]);
 	// thaum clears it on every other issued order (or broken record->target chain)
-	if(ostate==5&&node.record){
+	if(ostate==AIOrderState.capture&&node.record){
 		auto t=ai.records[node.record].target;
 		if(t&&ai.nodes[t].kind==NodeKind.str){ // thaum also tests target ntt+0x4&0x10 (str class bit)
 			auto capturable=state.buildingById!((ref b,state)=>b.sacBuilding.isManafount&&b.side!=ai.side,()=>false)(ai.nodes[t].id,state);
-			if(capturable) node.status|=0x10000; else node.status&=~0x10000;
-		}else node.status&=~0x10000;
-	}else node.status&=~0x10000;
+			if(capturable) node.status|=AINodeStatus.capturable; else node.status&=~AINodeStatus.capturable;
+		}else node.status&=~AINodeStatus.capturable;
+	}else node.status&=~AINodeStatus.capturable;
 }
 int orderTargetRadius(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int ostate,int target,float radius,size_t line=__LINE__){ // 0x487450
 	auto node=&ai.nodes[n];
@@ -2463,29 +2580,29 @@ int orderInteract(B)(ref ShinyAI!B ai,ObjectState!B state,int n,Vector3f* pos,in
 	auto node=&ai.nodes[n];
 	if(radius*radius<distSq3(node.curPos,*pos)){ // too far: move to position first
 		static if(shinyAILog) ailog("ORDINTERACT ",ai.side," t",ai.schedTime," n",n," @",line," pos ",*pos," tgt ",target," radius ",radius,": far -> move");
-		orderIfChanged(ai,state,n,4,0,pos,line);
+		orderIfChanged(ai,state,n,AIOrderState.move,0,pos,line);
 		return 0;
 	}
 	if(target&&ai.nodes[target].kind==NodeKind.str){ // thaum: targetNode+0x3c&0x20
 		auto tnode=&ai.nodes[target];
 		auto bflags=state.buildingById!((ref b,state)=>cast(uint)b.sacBuilding.flags,()=>0u)(tnode.id,state);
-		if(!(bflags&0x80)) orderIfChanged(ai,state,n,5,target,null,line);
+		if(!(bflags&BuildingFlagsAI.built)) orderIfChanged(ai,state,n,AIOrderState.capture,target,null,line);
 		else{
 			// thaum ntt+0x448 = guardian count; approximation: building guardianIds
 			auto numGuardians=state.buildingById!((ref b,state)=>cast(int)b.guardianIds.length,()=>0)(tnode.id,state);
-			if(numGuardians<=1) orderIfChanged(ai,state,n,6,target,pos,line);
-			else orderIfChanged(ai,state,n,7,0,pos,line);
+			if(numGuardians<=1) orderIfChanged(ai,state,n,AIOrderState.guardedAdvance,target,pos,line);
+			else orderIfChanged(ai,state,n,AIOrderState.advance,0,pos,line);
 		}
-	}else orderIfChanged(ai,state,n,7,0,pos,line);
+	}else orderIfChanged(ai,state,n,AIOrderState.advance,0,pos,line);
 	return 1;
 }
 void nodeSlot19(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int cmd,int ri,Vector3f* pos){ // node vtbl[19] 0x4873b0
 	final switch(ai.nodes[n].kind) with(NodeKind){
 		case wiz,maho,t4o:
-			auto cs=ai.nodes[n].ordState; // case table 0x487420: states 2,3,6,34 -> brain
-			static if(shinyAILog) ailog("SLOT19 ",ai.side," t",ai.schedTime," n",n,"(",ai.nodes[n].kind," id ",ai.nodes[n].id,") cmd ",cmd," ri ",ri," cachedOrdState ",cs,cs==2||cs==3||cs==6||cs==34?" -> brain":" -> move-to-center");
-			if(cs==2||cs==3||cs==6||cs==34) nodeBrain(ai,state,n,cmd,ri);
-			else orderPosRadius(ai,state,n,2,pos,5.0f);
+			auto cs=ai.nodes[n].ordState; // case table 0x487420/0x48a280 (byte-identical): gotoPos,guard,guardedAdvance,engage -> brain
+			static if(shinyAILog) ailog("SLOT19 ",ai.side," t",ai.schedTime," n",n,"(",ai.nodes[n].kind," id ",ai.nodes[n].id,") cmd ",cmd," ri ",ri," cachedOrdState ",cs,cs==AIOrderState.gotoPos||cs==AIOrderState.guard||cs==AIOrderState.guardedAdvance||cs==AIOrderState.engage?" -> brain":" -> move-to-center");
+			if(cs==AIOrderState.gotoPos||cs==AIOrderState.guard||cs==AIOrderState.guardedAdvance||cs==AIOrderState.engage) nodeBrain(ai,state,n,cmd,ri);
+			else orderPosRadius(ai,state,n,AIOrderState.gotoPos,pos,5.0f);
 			break;
 		case str,cre,none: break; // inert
 	}
@@ -2533,22 +2650,22 @@ bool findBestCaptureTarget(B)(ref ShinyAI!B ai,ObjectState!B state,Vector3f* pos
 	foreach(capSlot;ai.betaManaSourceOwnOnly?capSlots[0..1]:capSlots[0..2])
 	for(int m=ai.catHead[capSlot];m;m=ai.nodes[m].catN){ // chain node+0x50
 		auto node=&ai.nodes[m];
-		if(!(node.status&0x1000)) continue;
+		if(!(node.status&AINodeStatus.ready)) continue;
 		if(!sameRegionPos!B(state,*pos,node.curPos)) continue;
 		auto d=sqrt(distSq3(*pos,node.curPos));
 		float w;
 		if(d<=1.0f) w=1.0f;
 		else if(!(d<radius)) w=0.0f;
 		else w=safediv(radius-d,radius-1.0f);
-		if(node.flags&0x20){ // structure: ready unbuilt manafount, weight by souls (ntt+0x49c)
+		if(node.flags&AINodeFlags.structure){ // ready unbuilt manafount, weight by souls (ntt+0x49c)
 			w*=state.buildingById!((ref b,state){
 				auto bfl=cast(uint)b.sacBuilding.flags;
 				// ntt+0x474==0 && ntt+0x440==0 (always true, see updateStr) && ntt+0x43c==1.0 (progress always 1.0f in sacengine) && ntt+0x47c&0xc00
-				if(b.top==0&&(bfl&0xc00)!=0) return cast(float)ftol(cast(double)b.sacBuilding.bldg.unknown1[3]*36408.88888888889);
+				if(b.top==0&&(bfl&BuildingFlagsAI.generating)!=0) return cast(float)ftol(cast(double)b.sacBuilding.bldg.unknown1[3]*36408.88888888889);
 				return 0.0f;
 			},()=>0.0f)(node.id,state);
-		}else w*=1000.0f; // active manahoar (maho status 0x1000)
-		if(best<w){ best=w; *outNode=m; br=node.flags&0x20?50.0f:40.0f; }
+		}else w*=1000.0f; // active manahoar (maho status ready)
+		if(best<w){ best=w; *outNode=m; br=node.flags&AINodeFlags.structure?50.0f:40.0f; }
 	}
 	if(*outNode!=0&&outRadius) *outRadius=br;
 	return *outNode!=0;
@@ -2561,7 +2678,7 @@ int autoCapture(B)(ref ShinyAI!B ai,ObjectState!B state,int n){ // 0x487600
 	int bn=0; float br=0.0f;
 	if(!findBestCaptureTarget(ai,state,&node.curPos,3620.0f,&bn,&br)) return 0; // 0x487642: thaum passes 0x45624000 = 3620.0f
 	static if(shinyAILog) ailog("AUTOCAP ",ai.side," t",ai.schedTime," n",n," bn ",bn," br ",br," outOfRange ",br*br<distSq3(node.curPos,ai.nodes[bn].curPos));
-	if(br*br<distSq3(node.curPos,ai.nodes[bn].curPos)) orderIfChanged(ai,state,n,5,bn,null);
+	if(br*br<distSq3(node.curPos,ai.nodes[bn].curPos)) orderIfChanged(ai,state,n,AIOrderState.capture,bn,null);
 	return 1;
 }
 int t4oBrain(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int cmd,int ri){ // 0x4876d0
@@ -2571,7 +2688,7 @@ int t4oBrain(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int cmd,int ri){ // 0
 	auto rec=&ai.records[ri];
 	switch(cmd){
 		case 0: return 1;
-		case 1: orderTargetRadius(ai,state,n,5,rec.target,0.0f); return 1;
+		case 1: orderTargetRadius(ai,state,n,AIOrderState.capture,rec.target,0.0f); return 1;
 		case 2:
 			// thaum: flt((1.0-node+0x6c)*160.0); t4o node+0x6c is always 0.0f
 			orderInteract(ai,state,n,&rec.anchor,rec.target,cast(float)((1.0-nodeValue6c(ai,n))*160.0));
@@ -2608,7 +2725,7 @@ int mahoBrain(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int cmd,int ri){ // 
 			if(best2<v2){ best2=v2; bestM=m; }
 		}
 		if(bestM){
-			orderIfChanged(ai,state,n,3,bestM,null);
+			orderIfChanged(ai,state,n,AIOrderState.guard,bestM,null);
 			return 1;
 		}
 	}
@@ -2675,12 +2792,12 @@ bool spellAccAccepts(B)(ref SpellAcc!B acc,uint mask){ // rater2 vtbl[0] 0x48960
 	auto spel=acc.spell.spel;
 	return ((cast(uint)spel.unknown16|cast(uint)spel.flags1<<16)&mask)!=0;
 }
-uint nttTypeBits(NodeKind kind){ // ntt+0x4 type bits
+uint nttTypeBits(NodeKind kind){ // ntt+0x4 type word
 	final switch(kind) with(NodeKind){
-		case wiz: return 1;
-		case cre: return 2;
-		case t4o,maho: return 4;
-		case str: return 0x10;
+		case wiz: return NttTypeFlags.wizard;
+		case cre: return NttTypeFlags.soul;
+		case t4o,maho: return NttTypeFlags.creature;
+		case str: return NttTypeFlags.structure;
 		case none: return 0;
 	}
 }
@@ -2734,7 +2851,7 @@ bool canCastSpellOn(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int target,Sac
 	auto flags=cast(uint)spel.flags;
 	if(flags==0) return true;
 	// (thaum's internal type-mask gate 0x4517e4 can never reject here: CheckSpellValid's 0x781f mask check already passed and ntt types only have bits 0x17)
-	if(flags&0x1f){ // 0x4517de: without target-type bits every ntt gate below is skipped
+	if(flags&targetTypeMask){ // 0x4517de: without target-type bits every ntt gate below is skipped
 		if(spell.type==SpellType.spell){ // s_spell+0xc==4: 4 exclusion tags at Spel+0x2c..0x3b, first zero slot ends the scan
 			auto tags=spel.exclusionTags;
 			foreach(tag;tags){
@@ -2744,7 +2861,7 @@ bool canCastSpellOn(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int target,Sac
 		}
 		if(flags&SpelFlags.onlyManafounts){ // primary unoccupied manafount (thaum also tests ntt+0x440==0; sacengine folds sub-components, see shouldTrack)
 			if(tnode.kind!=NodeKind.str) return false;
-			if(!state.buildingById!((ref b)=>(cast(uint)b.sacBuilding.flags&0x10)!=0&&b.top==0,()=>false)(tnode.id)) return false;
+			if(!state.buildingById!((ref b)=>(cast(uint)b.sacBuilding.flags&BuildingFlagsAI.manafount)!=0&&b.top==0,()=>false)(tnode.id)) return false;
 		}
 		if(flags&SpelFlags.disallowFlying){ // reject targets >2.0 above terrain (thaum escapes grounded ntts (+0x234&2, set by ApplyMovement's terrain clamp); post-clamp altitude is ~0 for those, so the altitude test alone is equivalent on live data)
 			if(tnode.kind.among(NodeKind.wiz,NodeKind.t4o,NodeKind.maho))
@@ -2767,7 +2884,7 @@ bool canCastSpellOn(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int target,Sac
 			}else{ // onlyAlly: CREATURE::IsFriendly
 				if(!ccFriendly!B(state,cside,tnode.kind,tnode.id)) return false;
 			}
-			if(tnode.kind==NodeKind.str&&!state.buildingById!((ref b)=>(cast(uint)b.sacBuilding.flags&0x55a7)!=0,()=>false)(tnode.id)) return false; // real structures only (founts excluded)
+			if(tnode.kind==NodeKind.str&&!state.buildingById!((ref b)=>(cast(uint)b.sacBuilding.flags&(ai.betaRealStructureMask?BuildingFlagsAI.realStructureThaum:BuildingFlagsAI.realStructureRetail))!=0,()=>false)(tnode.id)) return false; // real structures only (retail adds manafount to the thaum mask)
 		}
 		if(flags&SpelFlags.disallowAlly){ // 0x2000: inverted, and the soul mask inverts too
 			if(tnode.kind==NodeKind.cre){
@@ -2775,7 +2892,7 @@ bool canCastSpellOn(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int target,Sac
 				if(cside>=0&&(pickupMask!B(state,tnode.id)&(1u<<cside))) return false; // thaum passes on null caster side here
 			}else{
 				if(ccFriendly!B(state,cside,tnode.kind,tnode.id)) return false;
-				if(tnode.kind==NodeKind.str&&!state.buildingById!((ref b)=>(cast(uint)b.sacBuilding.flags&0x55a7)!=0,()=>false)(tnode.id)) return false;
+				if(tnode.kind==NodeKind.str&&!state.buildingById!((ref b)=>(cast(uint)b.sacBuilding.flags&(ai.betaRealStructureMask?BuildingFlagsAI.realStructureThaum:BuildingFlagsAI.realStructureRetail))!=0,()=>false)(tnode.id)) return false;
 			}
 		}
 	}
@@ -2810,27 +2927,27 @@ float rateSpellAcc(B)(ref ShinyAI!B ai,ObjectState!B state,ref SpellAcc!B acc,in
 	// validity 0x48c330: LOS helpers 0x48c050/0x48c160 never run for categories 0x85/5 (documented)
 	auto node=&ai.nodes[n], tnode=&ai.nodes[target];
 	auto spel=acc.spell.spel;
-	auto mask=cast(uint)spel.flags&0x781f;
+	auto mask=cast(uint)spel.flags&targetFlagsMask;
 	if(mask&&!(nttTypeBits(tnode.kind)&mask)) return 0.0f;
-	if((cast(uint)spel.flags1&0x10)&&n!=target) return 0.0f; // shield: self-cast only
+	if((cast(uint)spel.flags1&SpelFlags1.shield)&&n!=target) return 0.0f; // shield: self-cast only
 	if(!canCastSpellOn!B(ai,state,n,target,acc.spell)) return 0.0f; // 0x48c411: GRIMOIRE::CanCastSpellOn
-	if(!(category&0x80)){ category|=0x80; distScaled=cast(float)distSq3(node.curPos,tnode.curPos); }
-	if(!(category&0x200)&&cast(double)distScaled>cast(double)spel.range*spel.range) return 0.0f;
-	if((cast(uint)spel.flags1&3)&&(category&0x3a)) return 0.0f;
+	if(!(category&RatingCategory.distValid)){ category|=RatingCategory.distValid; distScaled=cast(float)distSq3(node.curPos,tnode.curPos); }
+	if(!(category&RatingCategory.ignoreRange)&&cast(double)distScaled>cast(double)spel.range*spel.range) return 0.0f;
+	if((cast(uint)spel.flags1&(SpelFlags1.basicAttackSpell|SpelFlags1.unknown1))&&(category&RatingCategory.noBasicAttack)) return 0.0f;
 	auto rfn=acc.ratingFn;
 	if(rfn==RatingFn.f48cbd0&&ai.betaDeathEvaluator) rfn=ratingFnFlags!B(acc.spell); // thaum.exe has no 'taed' table entry: it falls to the flags1 chain
 	switch(rfn) with(RatingFn){
 		case f489700: // omna
-			if(!(tnode.flags&0x10)) return 0.0f;
+			if(!(tnode.flags&AINodeFlags.creature)) return 0.0f;
 			auto run=state.movingObjectReadById!((ref cols,i,state)=>typeStats!B(cols.sacObject).run,()=>0.0f)(tnode.id,state);
 			auto val=cast(float)(cast(double)run*spel.duration*0.00016818028927009755);
 			auto rg=influenceGroups(ai,state,3,tnode.curPos,0.0f,val,null);
 			auto r=cast(float)(cast(double)rg-sortKey(ai,target));
-			if(tnode.status&0x8) r+=r; // dead in thaum: node status bit 0x8 is never set
+			if(tnode.status&AINodeStatus.unknown3) r+=r; // dead in thaum: node status bit 0x8 is never set
 			return r;
 		case f489780:
-			if(!(nttTypeBits(tnode.kind)&0x15)) return 0.0f;
-			if(!(tnode.flags&0x4)) return 0.0f; // enemy-either-way & different sides (setupBase 0x486a04)
+			if(!(nttTypeBits(tnode.kind)&(NttTypeFlags.wizard|NttTypeFlags.creature|NttTypeFlags.structure))) return 0.0f;
+			if(!(tnode.flags&AINodeFlags.enemy)) return 0.0f; // enemy-either-way & different sides (setupBase 0x486a04)
 			auto hp=healthPair(state,tnode.kind,tnode.id);
 			auto m=cast(int)spel.amount2<hp[0]?cast(int)spel.amount2:hp[0];
 			auto ratio=cast(float)safediv(cast(double)cast(float)m,cast(double)hp[1]);
@@ -2860,17 +2977,17 @@ float rateSpellAcc(B)(ref ShinyAI!B ai,ObjectState!B state,ref SpellAcc!B acc,in
 			}
 			return score;
 		case f489a20: // ndrg
-			if(!(nttTypeBits(tnode.kind)&0x4)) return 0.0f;
-			if(!(tnode.status&0x10000)) return 0.0f;
+			if(!(nttTypeBits(tnode.kind)&NttTypeFlags.creature)) return 0.0f;
+			if(!(tnode.status&AINodeStatus.capturable)) return 0.0f;
 			auto ors=spellbookOR(state,tnode.id);
-			if(!(ors[0]&0x40000000)||!(ors[1]&0x4)) return 0.0f;
-			auto rec=&ai.records[tnode.record]; // non-null here: status&0x10000 implies a record
+			if(!(ors[0]&cast(uint)SpelFlags1.unknown14<<16)||!(ors[1]&SpelFlags.targetCreatures)) return 0.0f;
+			auto rec=&ai.records[tnode.record]; // non-null here: status&AINodeStatus.capturable implies a record
 			auto rg=influenceGroups(ai,state,3,rec.center,10.0f,280.0f,null);
 			return cast(float)(cast(double)sortKey(ai,target)*(cast(double)rec.score+1.0f)*(cast(double)rg+1.0f)*4.0f);
 		case f489ae0: return 0.0f; // ccas
 		case f489af0: // heal
 			final switch(tnode.kind) with(NodeKind){ case t4o,maho,wiz: break; case cre,str,none: return 0.0f; }
-			if(tnode.flags&0x4) return 0.0f; // not an enemy
+			if(tnode.flags&AINodeFlags.enemy) return 0.0f; // not an enemy
 			if(hasActiveHeal(state,tnode.id)) return 0.0f;
 			auto hp=healthPair(state,tnode.kind,tnode.id);
 			auto amountI=cast(int)(cast(uint)spel.amount|cast(uint)spel.unknown14<<16);
@@ -2878,26 +2995,26 @@ float rateSpellAcc(B)(ref ShinyAI!B ai,ObjectState!B state,ref SpellAcc!B acc,in
 			auto healed=amountI<missing?amountI:missing;
 			return cast(float)(cast(double)sortKey(ai,target)*safediv(cast(double)healed,cast(double)hp[1]));
 		case f489bc0: // protect
-			if(!(nttTypeBits(tnode.kind)&0x5)) return 0.0f;
+			if(!(nttTypeBits(tnode.kind)&(NttTypeFlags.wizard|NttTypeFlags.creature))) return 0.0f;
 			if(target!=n) return 0.0f; // self
 			if(hasActiveProtect(state,tnode.id)) return 0.0f;
 			auto hp=healthPair(state,tnode.kind,tnode.id);
 			if(hp[1]==0) return 0.0f;
 			return cast(float)(cast(double)sortKey(ai,target)*nodeValue6c(ai,target));
 		case f489c40: // pups
-			if(!(nttTypeBits(tnode.kind)&0x5)) return 0.0f;
+			if(!(nttTypeBits(tnode.kind)&(NttTypeFlags.wizard|NttTypeFlags.creature))) return 0.0f;
 			return state.movingObjectReadById!((ref cols,i,state){
 				auto order=&cols.creatureAIs[i].order;
 				double base;
 				// thaum reads the target's live order cmd (0x46e1d0): 7 (advance) -> wizards excluded, empty spellbook required, base 60; 0x22 (engage) -> base 40, no gates; else 0
-				if(tnode.ordState==7&&order.command==CommandType.advance){ // 7
+				if(tnode.ordState==AIOrderState.advance&&order.command==CommandType.advance){
 					if(tnode.kind==NodeKind.wiz) return 0.0f;
 					// retail 0x48c96d: the CASTING wizard's node threat (+0x6c) must be nonzero; thaum 0x489c40 has no such gate
 					if(!ai.betaPupsThreatGate&&node.threat==0.0f) return 0.0f;
 					auto ors=spellbookOR(state,tnode.id);
 					if(ors[0]||ors[1]) return 0.0f;
 					base=60.0;
-				}else if(tnode.ordState==34&&order.command.among(CommandType.guard,CommandType.guardArea,CommandType.move)) base=40.0; // 0x22 (move: soul-pickup engage maps to move)
+				}else if(tnode.ordState==AIOrderState.engage&&order.command.among(CommandType.guard,CommandType.guardArea,CommandType.move)) base=40.0; // move: soul-pickup engage maps to move
 				else return 0.0f;
 				auto p=order.target.id&&order.target.type!=TargetType.terrain&&state.isValidTarget(order.target.id)?
 					state.movingObjectReadById!((ref tcols,ti,state)=>tcols.positions[ti],()=>order.target.position)(order.target.id,state):order.target.position;
@@ -2906,7 +3023,7 @@ float rateSpellAcc(B)(ref ShinyAI!B ai,ObjectState!B state,ref SpellAcc!B acc,in
 				return cast(float)(cast(double)sortKey(ai,target)*safediv(cast(double)d2,base*base));
 			},()=>0.0f)(tnode.id,state);
 		case f489d70: // elet
-			if(!(nttTypeBits(tnode.kind)&0x1)) return 0.0f;
+			if(!(nttTypeBits(tnode.kind)&NttTypeFlags.wizard)) return 0.0f;
 			if(!tnode.record) return 0.0f;
 			auto anchor=ai.records[tnode.record].target; // record+0x8: the anchor node
 			if(!anchor) return 0.0f;
@@ -2922,15 +3039,15 @@ float rateSpellAcc(B)(ref ShinyAI!B ai,ObjectState!B state,ref SpellAcc!B acc,in
 			}
 			return total;
 		case f489e70:
-			if(!(nttTypeBits(tnode.kind)&0x5)) return 0.0f;
-			if(!(tnode.flags&0x4)) return 0.0f; // enemy required
+			if(!(nttTypeBits(tnode.kind)&(NttTypeFlags.wizard|NttTypeFlags.creature))) return 0.0f;
+			if(!(tnode.flags&AINodeFlags.enemy)) return 0.0f; // enemy required
 			return sortKey(ai,target);
 		case none: return 0.0f;
 		default: return 0.0f;
 	}
 }
 int spellAccAnchor(B)(ref ShinyAI!B ai,ObjectState!B state,ref SpellAcc!B acc,int n,int target){ // rater2 vtbl[4] 0x4896d0
-	if(acc.ratingFn==RatingFn.f489a20) return ai.records[ai.nodes[target].record].target; // node+0x70 non-null here (ndrg wins only with status&0x10000)
+	if(acc.ratingFn==RatingFn.f489a20) return ai.records[ai.nodes[target].record].target; // node+0x70 non-null here (ndrg wins only with status&AINodeStatus.capturable)
 	return 0;
 }
 
@@ -2938,10 +3055,10 @@ float findBestSpell(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int target,uin
 	auto node=&ai.nodes[n];
 	// retail 0x490020: fild(maxMana * (own+ally manaliths)); thaum 0x48d4d0: own only
 	auto pool=cast(float)(state.movingObjectReadById!((ref cols,i,state)=>ftol(cols.creatureStatss[i].maxMana),()=>0)(node.id,state)*(si(ai.stanceRecs[0],5)+(ai.betaSummonAccounting?0:si(ai.stanceRecs[1],5))));
-	auto category=5u;
+	uint category=RatingCategory.untargeted;
 	float distScaled=0.0f;
 	if(target){
-		category=0x85u;
+		category=RatingCategory.targeted;
 		auto dse=cast(double)distSq3(node.curPos,ai.nodes[target].curPos)*0.7142857313156128f;
 		distScaled=cast(float)dse;
 		if(dse<1600.0f) distScaled=0.0f; // thaum zeroes the slot when below 1600 (extended compare, f32 store)
@@ -3079,15 +3196,15 @@ void wizAttack(B)(ref ShinyAI!B ai,ObjectState!B state,int n,float[3]* w3){ // 0
 			w=safediv(cast(double)(thr-d),cast(double)(thr-10.0f));
 			if(w==0.0f) continue; // dead-code guard in thaum (w>0 always here)
 		}
-		if(!(t.status&0x6)) w*=0.5f;
-		if(!(t.status&0x1800)) w*=0.3333333432674408f;
+		if(!(t.status&(AINodeStatus.wizard|AINodeStatus.unknown2))) w*=0.5f;
+		if(!(t.status&(AINodeStatus.ready|AINodeStatus.openFount))) w*=0.3333333432674408f;
 		if(isSacDoctorEnt!B(state,t.kind,t.id)) w*=10.0f; // ntt+0x414.+0x10=="dcas" (sac doctor; thaum 0x48d710, retail 0x490270)
 		if(cast(double)best<w){ best=cast(float)w; bestNode=m; } // strict argmax
 		total=cast(float)(cast(double)total+w); // f32 store per add
 	}
 	if(total==0.0f||!bestNode) return;
 	SacSpell!B sp; float range; int obj;
-	auto s=findBestSpell(ai,state,n,bestNode,0x58000000,&sp,&range,&obj);
+	auto s=findBestSpell(ai,state,n,bestNode,SpellClassMask.attack,&sp,&range,&obj);
 	if(s<=0.0f) return;
 	enqueueCast(ai,n,cast(float)safediv(cast(double)best*(*w3)[0],cast(double)total),bestNode,sp,range,obj,0);
 }
@@ -3100,7 +3217,7 @@ void wizSupport(B)(ref ShinyAI!B ai,ObjectState!B state,int n,float[3]* w3){ // 
 	for(int m=ai.fam1Head[0];m;m=ai.nodes[m].famN){ // slot1 cat0 (own creatures), GetFirstCreature 0x486020
 		if(nodeIsRespawning(ai,state,m)) continue; // ntt+0x5ec.+0x30&0x40000
 		SacSpell!B sp; float range; int obj;
-		auto s=findBestSpell(ai,state,n,m,0xa4000000,&sp,&range,&obj);
+		auto s=findBestSpell(ai,state,n,m,SpellClassMask.support,&sp,&range,&obj);
 		if(best<s){ best=s; bestNode=m; bo0=obj; bo1=range; bo2=sp; } // strict argmax
 		total=cast(float)(cast(double)total+s); // total accumulates even when best is not updated
 	}
@@ -3163,7 +3280,7 @@ void wizSacrifice(B)(ref ShinyAI!B ai,ObjectState!B state,int n,float[3]* w3,int
 		if(ri&&ai.records[ri].target){ // thaum dereferences rec+0x8 unchecked; guarded here (documented)
 			auto tn=&ai.nodes[ai.records[ri].target];
 			// rec path iff !(target.flags&0x20) or the structure has ntt+0x47c&0x80 (built)
-			recPath=!(tn.flags&0x20)||state.buildingById!((ref b,state)=>(cast(uint)b.sacBuilding.flags&0x80)!=0,()=>false)(tn.id,state);
+			recPath=!(tn.flags&AINodeFlags.structure)||state.buildingById!((ref b,state)=>(cast(uint)b.sacBuilding.flags&BuildingFlagsAI.built)!=0,()=>false)(tn.id,state);
 			if(recPath) combine(ctx,1.0f,ai.records[ri].targetAcc,1.0f); // rec+0x4c (targetAcc approximation)
 		}
 		if(!recPath){
@@ -3234,7 +3351,7 @@ int executeBestCast(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int checkOnly)
 			if(cast(double)sq>cast(double)e.range*e.range){ // out of range
 				static if(shinyAILog) ailog("CASTQ ",ai.side," t",ai.schedTime," n",n," [",i,"]: obj ",e.obj," at ",ai.nodes[e.obj].curPos," dist^2 ",sq," > range^2 ",e.range*e.range,checkOnly?" -> skip":" -> approach");
 				if(!checkOnly){
-					orderPosRadius(ai,state,n,2,&ai.nodes[e.obj].curPos,e.range); // 0x4874e0(node,2,obj+0x4,range); thaum approaches unconditionally (no legality checks in its AI cast path)
+					orderPosRadius(ai,state,n,AIOrderState.gotoPos,&ai.nodes[e.obj].curPos,e.range); // 0x4874e0(node,2,obj+0x4,range); thaum approaches unconditionally (no legality checks in its AI cast path)
 					return 1;
 				}
 				goto exit;
@@ -3250,7 +3367,7 @@ int executeBestCast(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int checkOnly)
 			if(!(e.flag&1)) goto exit;
 			if(!e.obj) return 0;
 			if(!checkOnly){
-				orderTargetRadius(ai,state,n,3,e.obj,e.range); // 0x487450(node,3,obj,range)
+				orderTargetRadius(ai,state,n,AIOrderState.guard,e.obj,e.range); // 0x487450(node,3,obj,range)
 				return 1;
 			}
 			goto exit;
@@ -3262,7 +3379,7 @@ int executeBestCast(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int checkOnly)
 		if(e.obj){
 			bool half=false;
 			auto waim=entAimPos!B(state,node.kind,node.id), oaim=entAimPos!B(state,ai.nodes[e.obj].kind,ai.nodes[e.obj].id); // live ntt aim positions (thaum passes ntts)
-			if(e.provider.type==SpellType.spell&&(cast(uint)e.provider.flags1&0x3)) // 0x48d259: s_spell+0xc==4 (SPEL) && runtime +0x60&0x30000; runtime+0x60 = file+0x58 = unknown16|(flags1<<16), i.e. flags1&0x3 (basicAttackSpell|unknown1)
+			if(e.provider.type==SpellType.spell&&(cast(uint)e.provider.flags1&(SpelFlags1.basicAttackSpell|SpelFlags1.unknown1))) // 0x48d259: s_spell+0xc==4 (SPEL) && runtime +0x60&0x30000; runtime+0x60 = file+0x58 = unknown16|(flags1<<16), i.e. flags1&0x3 (basicAttackSpell|unknown1)
 				half=!entCanHit!B(state,node.id,waim,ai.nodes[e.obj].id,oaim); // CanHit(wizNtt,objNtt)!=4; ==4 FALLS THROUGH to the LoS check below
 			if(!half){
 				auto rel=relation!B(state,ai.side,entSide!B(state,ai.nodes[e.target].kind,ai.nodes[e.target].id));
@@ -3272,7 +3389,7 @@ int executeBestCast(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int checkOnly)
 				static if(shinyAILog) ailog("CASTQ ",ai.side," t",ai.schedTime," n",n," [",i,"]: no LOS",checkOnly?" -> skip":" -> half-range chase");
 				if(!checkOnly){
 					auto hr=cast(float)(sqrt(cast(double)sq)*0.5); // fsqrt; fmul 0.5d
-					orderTargetRadius(ai,state,n,3,e.obj,hr);
+					orderTargetRadius(ai,state,n,AIOrderState.guard,e.obj,hr);
 					return 1;
 				}
 				goto exit;
@@ -3332,7 +3449,7 @@ int wizBrain(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int cmd,int ri){
 				if(d<bd){ bd=d; bs=m; }
 			}
 			static if(shinyAILog) ailog("GHOST ",ai.side," t",ai.schedTime," n",n," no manahoar within 256, nearest mana str node ",bs);
-			if(bs){ orderIfChanged(ai,state,n,3,bs,null); return 1; } // ostate 3 -> retreat -> moveWithinRange 9.0: inside the mana zone
+			if(bs){ orderIfChanged(ai,state,n,AIOrderState.guard,bs,null); return 1; } // guard -> retreat -> moveWithinRange 9.0: inside the mana zone
 		}
 		return t4oBrain(ai,state,n,cmd,ri);
 	}
@@ -3355,7 +3472,7 @@ int wizBrain(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int cmd,int ri){
 	if(t){
 		if(executeBestCast(ai,state,n,1)!=0) return 1;
 		// 0x486aa0 debug output skipped (documented)
-		orderTargetRadius(ai,state,n,0x22,t,0.0f); // 0x487450(node,0x22,t,0)
+		orderTargetRadius(ai,state,n,AIOrderState.engage,t,0.0f); // 0x487450(node,0x22,t,0)
 		return 1;
 	}
 	if(ri&&cmd==2){
@@ -3367,7 +3484,7 @@ int wizBrain(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int cmd,int ri){
 		if(tn&&node.age>=node.nextOrderReissue){
 			node.nextOrderReissue=node.age+8; // ds:0x4cfbcc
 			auto tgt=&ai.nodes[tn];
-			if(tgt.flags&0x200){ // desecrate path
+			if(tgt.flags&AINodeFlags.altar){ // desecrate path
 				if(node.desecrateSpell !is null
 				&&relation!B(state,ai.side,entSide!B(state,tgt.kind,tgt.id))==3 // enemy either way, different sides (side-record masks)
 				&&!desecrationOngoing!B(state,tgt.id)){ // 0x466950(edi.ntt,0,0)=='sacu' approximation
@@ -3379,14 +3496,14 @@ int wizBrain(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int cmd,int ri){
 						return false;
 					},()=>false)(node.id,state)){
 						auto r=cast(float)(cast(double)node.desecrateSpell.range*0.9); // fld range; fmul 0.9d; f32
-						if(orderTargetRadius(ai,state,g,3,n,r)!=0) // 0x487450(g,3,node,r)
+						if(orderTargetRadius(ai,state,g,AIOrderState.guard,n,r)!=0) // 0x487450(g,3,node,r)
 							if(enqueueForcedExecute(ai,state,n,g,node.desecrateSpell,node.desecrateSpell.range,0)!=0){
 								node.nextOrderReissue+=7*8; // 7*ds:0x4cfbcc
 								return 2;
 							}
 					}
 				}
-			}else if((tgt.flags&0x100)&&(tgt.status&0x8000)){
+			}else if((tgt.flags&AINodeFlags.claimTarget)&&(tgt.status&AINodeStatus.openFount)){
 				if(castCachedInRange(ai,state,n,tn)!=0) return 2;
 			}
 		}
@@ -3433,7 +3550,7 @@ void recordUpdate(B)(ref ShinyAI!B ai,ObjectState!B state,int ri,uint cmd){ // 0
 			}else{
 				// thaum also calls 0x486aa0(member,&"Prot") here; its result is discarded
 				auto p=ai.nodes[rec.leader].extrapPos;
-				orderPosRadius(ai,state,m,7,&p,0.0f);
+				orderPosRadius(ai,state,m,AIOrderState.advance,&p,0.0f);
 			}
 			m=node.recN;
 		}

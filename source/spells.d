@@ -192,7 +192,7 @@ enum SpelFlags1:ushort{
 	unknown10=1<<10,
 	crowdControl=1<<11,
 	unknown12=1<<12,
-	unknown13=1<<5,
+	unknown13=1<<13,
 	unknown14=1<<14,
 	unknown15=1<<15,
 }
@@ -201,6 +201,7 @@ enum SpelFlags2:uint{
 	nearBuilding=1<<8,
 	nearEnemyAltar=1<<9,
 	connectedToConversion=1<<10,
+	aiCastable=1<<23,
 	stationaryCasting=1<<25,
 }
 
