@@ -2509,7 +2509,7 @@ void issueOrder(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int ostate,int tar
 			case AIOrderState.gotoPos: ord.command=CommandType.move; break;
 			case AIOrderState.guard: ord.command=target?CommandType.retreat:CommandType.guardArea; break; // thaum guard/capture share handler 0x46e60a: move to live target pos, arrive at target ntt+0x2e4 + 10.0 (engine retreat matches)
 			case AIOrderState.move: ord.command=CommandType.move; break;
-			case AIOrderState.capture: ord.command=target?CommandType.retreat:CommandType.move; break; // thaum capture/interact; no capture mechanic in sacengine (documented gap)
+			case AIOrderState.capture: ord.command=target?CommandType.capture:CommandType.move; break; // thaum order state 5: distinct from guard (3); on invalid target the engine degrades capture in place to a fixed move to the recorded position (0x46e1a0, 5->4)
 			case AIOrderState.guardedAdvance: ord.command=CommandType.attack; break;
 			case AIOrderState.advance: ord.command=CommandType.advance; break;
 			case AIOrderState.engage: // brain-driven engage; guard approximation for creatures (documented gap), move for soul targets (thaum touch-collects by walking onto the soul; sacengine collects by proximity)

@@ -10355,7 +10355,7 @@ void animateWizardVoidTeleport(B)(bool isOut,Vector3f[2] hitbox,ObjectState!B st
 }
 
 bool teleport(B)(ref MovingObject!B obj,Vector3f newPosition,ObjectState!B state,bool wizardVoid=false){
-	if(!obj.isWizard&&!obj.isSacDoctor&&!obj.creatureAI.order.command.among(CommandType.guard,CommandType.retreat))
+	if(!obj.isWizard&&!obj.isSacDoctor&&!obj.creatureAI.order.command.among(CommandType.guard,CommandType.retreat,CommandType.capture))
 		obj.clearOrderQueue(state);
 	auto oldHeight=obj.position.z-state.getHeight(obj.position);
 	newPosition.z=state.getHeight(newPosition)+max(0.0f,oldHeight);
@@ -13775,10 +13775,15 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 		return;
 	}
 	switch(object.creatureAI.order.command){
-		case CommandType.retreat:
+		case CommandType.retreat,CommandType.capture:
 			auto targetId=object.creatureAI.order.target.id;
 			if(!state.isValidTarget(targetId)||!isValidGuardTarget(targetId,state))
 				targetId=object.creatureAI.order.target.id=0;
+			if(targetId==0&&object.creatureAI.order.command==CommandType.capture){
+				object.creatureAI.order.command=CommandType.move;
+				object.creatureAI.order.target=positionTarget(object.creatureAI.order.target.position,state);
+				goto case CommandType.move;
+			}
 			Vector3f targetPosition;
 			float targetRadius=0.0f;
 			if(targetId) state.movingObjectReadById!((ref objects,i){ targetPosition=objects.positions[i]; targetRadius=objects.boundingRadius(i); },(){})(targetId);
@@ -29388,7 +29393,7 @@ final class ObjectState(B){ // (update logic)
 			case selectGroup: success=this.selectGroup(command.side,command.group); break Lswitch;
 			case automaticSelectGroup: goto case selectGroup;
 			case setFormation: success=applyOrder(command,this,true); break;
-			case retreat,move,guard,guardArea,attack,advance,useAbility: success=applyOrder(command,this); break;
+			case retreat,capture,move,guard,guardArea,attack,advance,useAbility: success=applyOrder(command,this); break;
 			case castSpell: success=startCasting(command.wizard,command.spell,OrderTarget(command.target),this); break;
 			case dropSoul: success=.dropSoul(command.wizard,this); break;
 			case surrender: success=.surrender(command.side,this); break;
@@ -30957,7 +30962,7 @@ Cursor cursor(B)(ref OrderTarget target,int renderSide,bool showIcon,ObjectState
 
 bool hasClickSound(CommandType type){
 	final switch(type) with(CommandType){
-		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,clearSelection,automaticToggleSelection,automaticSelectGroup,setFormation,retreat,dropSoul,surrender,chatMessage: return false;
+		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,clearSelection,automaticToggleSelection,automaticSelectGroup,setFormation,retreat,capture,dropSoul,surrender,chatMessage: return false;
 		case select,selectAll,automaticSelectAll,toggleSelection,addAllToSelection,automaticAddAllToSelection,defineGroup,addToGroup,selectGroup,move,guard,guardArea,attack,advance,castSpell,useAbility: return true;
 	}
 }
@@ -30986,7 +30991,7 @@ SoundType soundType(B)(Command!B command){
 				case wedge: return SoundType.wedgeFormation;
 				case skirmish: return SoundType.skirmishFormation;
 			}
-		case retreat: return SoundType.guardMe;
+		case retreat,capture: return SoundType.guardMe;
 		case move: return SoundType.move;
 		case guard: return command.target.type==TargetType.building?SoundType.guardBuilding:command.wizard==command.target.id?SoundType.guardMe:SoundType.guard;
 		case guardArea: return SoundType.defendArea;
@@ -31000,7 +31005,7 @@ SoundType soundType(B)(Command!B command){
 }
 SoundType responseSoundType(B)(Command!B command){
 	final switch(command.type) with(CommandType){
-			case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,setFormation,clearSelection,automaticSelectAll,automaticToggleSelection,automaticAddAllToSelection,defineGroup,addToGroup,automaticSelectGroup,retreat,castSpell,useAbility,dropSoul,surrender,chatMessage:
+			case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,setFormation,clearSelection,automaticSelectAll,automaticToggleSelection,automaticAddAllToSelection,defineGroup,addToGroup,automaticSelectGroup,retreat,capture,castSpell,useAbility,dropSoul,surrender,chatMessage:
 			return SoundType.none;
 		case select,selectAll,toggleSelection,addAllToSelection,selectGroup:
 			return SoundType.selected;
@@ -31175,6 +31180,7 @@ enum CommandType{
 	setFormation,
 
 	retreat,
+	capture,
 	move,
 	guard,
 	guardArea,
@@ -31218,6 +31224,9 @@ struct Command(B){
 				assert(0);
 			case retreat:
 				assert(target.type==TargetType.creature);
+				break;
+			case capture:
+				assert(target.type.among(TargetType.creature,TargetType.building));
 				break;
 			case guard,attack:
 				assert(target.type.among(TargetType.creature,TargetType.building));
