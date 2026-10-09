@@ -201,6 +201,7 @@ struct AINode(B){
 	int rerateTick=0;         // t4o-style (+0x74)
 	int rerateTick2=0;        // str (+0x64)
 	int statusTick=0;         // str (+0x68), maho (+0xa8)
+	float constructionProgress=1.0f; // str: thaum ntt+0x43c (engine-side there, tracked node-side here); 1.0 = fully built
 	// wizard extras
 	float threat=0.0f;        // threat ratio (+0x6c)
 	int threatTick=0;         // +0xac
@@ -708,6 +709,11 @@ void botSpawned(B)(ObjectState!B state,int id){ // thaum SIDE::AddToSide: Moving
 }
 void botBuilt(B)(ObjectState!B state,int side,int id){ // thaum SIDE::AddToSide: building creation (wired in makeBuilding, after components are added)
 	state.botEvent(side,BotEvent.addedToSide,NodeKind.str,id);
+}
+void botConstructionProgress(B)(ObjectState!B state,int id,float progress){ // thaum ntt+0x43c (engine-side there, node-side here); broadcast so every AI tracking the building sees it
+	foreach(side;0..cast(int)state.sid.sides.length)
+		if(auto ai=botFor!B(state,side))
+			if(auto n=findNode(ai,NodeKind.str,id)) ai.nodes[n].constructionProgress=progress;
 }
 void botSoulSpawned(B)(ObjectState!B state,int id){ // soul creation (ObjectState.addObject funnel): discover tracks souls ungated (no vision tracking), so notify every AI directly
 	foreach(side;0..cast(int)state.sid.sides.length)
@@ -1231,8 +1237,7 @@ void updateStr(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int dt){ // 0x486e1
 			if(bfl&BuildingFlagsAI.manafount){
 				if(b.top==0) node.status|=AINodeStatus.openFount; else node.status&=~AINodeStatus.openFount;
 			}
-			// ntt+0x43c = construction progress, always 1.0f in sacengine (documented gap)
-			if(b.top==0&&(bfl&BuildingFlagsAI.generating)&&ftol(cast(double)b.sacBuilding.bldg.unknown1[3]*36408.88888888889)!=0)
+			if(node.constructionProgress==1.0f&&b.top==0&&(bfl&BuildingFlagsAI.generating)&&ftol(cast(double)b.sacBuilding.bldg.unknown1[3]*36408.88888888889)!=0) // thaum: ntt+0x474==0 && +0x440==0 && +0x43c==1.0 && +0x47c&0xc00 && +0x49c!=0
 				node.status|=AINodeStatus.ready;
 			else node.status&=~AINodeStatus.ready;
 			if(bfl&BuildingFlagsAI.unknown14) node.status|=AINodeStatus.unknown14; else node.status&=~AINodeStatus.unknown14;
@@ -2662,8 +2667,8 @@ bool findBestCaptureTarget(B)(ref ShinyAI!B ai,ObjectState!B state,Vector3f* pos
 		if(node.flags&AINodeFlags.structure){ // ready unbuilt manafount, weight by souls (ntt+0x49c)
 			w*=state.buildingById!((ref b,state){
 				auto bfl=cast(uint)b.sacBuilding.flags;
-				// ntt+0x474==0 && ntt+0x440==0 (always true, see updateStr) && ntt+0x43c==1.0 (progress always 1.0f in sacengine) && ntt+0x47c&0xc00
-				if(b.top==0&&(bfl&BuildingFlagsAI.generating)!=0) return cast(float)ftol(cast(double)b.sacBuilding.bldg.unknown1[3]*36408.88888888889);
+				// ntt+0x474==0 && ntt+0x440==0 (always true, see updateStr) && ntt+0x43c==1.0 && ntt+0x47c&0xc00
+				if(node.constructionProgress==1.0f&&b.top==0&&(bfl&BuildingFlagsAI.generating)!=0) return cast(float)ftol(cast(double)b.sacBuilding.bldg.unknown1[3]*36408.88888888889);
 				return 0.0f;
 			},()=>0.0f)(node.id,state);
 		}else w*=1000.0f; // active manahoar (maho status ready)

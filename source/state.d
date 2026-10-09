@@ -10178,6 +10178,7 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 				auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
 				if(castingTime==-1) return false;
 				state.addEffect(StructureCasting!B(god,manaDrain,spell,building,buildingHeight,castingTime,0));
+				state.botConstructionProgress(building,0.0f);
 				return true;
 			}else return stun();
 	}
@@ -15349,6 +15350,7 @@ bool updateStructureCasting(B)(ref StructureCasting!B structureCast,ObjectState!
 		final switch(manaDrain.update(state)){
 			case CastingStatus.underway:
 				currentFrame+=1;
+				state.botConstructionProgress(building,cast(float)currentFrame/castingTime);
 				structureCast.animateStructureCasting(state);
 				auto position=state.buildingById!((ref bldg,state)=>state.staticObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(bldg.componentIds[0]),()=>Vector3f.init)(building,state);
 				if(!isNaN(position.x)) pushAll(position,5.0f,15.0f,5.0f,state);
@@ -15361,6 +15363,7 @@ bool updateStructureCasting(B)(ref StructureCasting!B structureCast,ObjectState!
 				auto wizard=state.getWizard(manaDrain.wizard);
 				if(!wizard||wizard.souls<spell.soulCost) goto case CastingStatus.interrupted;
 				wizard.souls-=spell.soulCost;
+				state.botConstructionProgress(building,1.0f);
 				state.buildingById!((ref building,state){
 					building.activate(state);
 					building.flags&=~Flags.cannotDamage;
