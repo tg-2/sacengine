@@ -118,7 +118,7 @@ enum AIOrderState:int{
 enum ForceFlags:uint{
 	replan=0x1,       // task replan; forces scheduler slots 1..5
 	nodeSet=0x2,      // tracked set changed; the only bit forcing scheduler slot 0
-	ownScan=0x4,      // one-shot own-side scan (setup only, never re-armed)
+	ownScan=0x4,      // one-shot own-side scan (setup, and re-armed by revive events)
 	globalScan=0x8,   // one-shot global spawn scan (setup only, never re-armed)
 	recategorize=0x10,// relations changed -> re-bucket category lists (thaum event 16, wired at setStance)
 	discovery=0x20,   // one-shot discovery scan (setup / wizard region change, AI::UpdateStatus 0x484050)
@@ -648,9 +648,11 @@ void notifyEvent(B)(ref ShinyAI!B ai,ObjectState!B state,NodeKind kind1,int id1,
 		case firstContactAlly,firstContactEnemy: ai.forceFlags|=ForceFlags.replan|ForceFlags.nodeSet; break;
 		case death: removeNodeByEnt(ai,state,kind2,id2); break;
 		case revive: // broadcast to all AIs (thaum notifies the owner side only; foreign re-adds came from its seen-list walk, our ever-seen gate)
-			if(entSide!B(state,kind2,id2)==ai.side||state.sid.lastSeenTick(ai.side,id2)>=0)
-				addNode(ai,state,kind2,id2); // no-op if already tracked or untrackable
-			ai.forceFlags|=ForceFlags.replan|ForceFlags.nodeSet; // was |=7: bit 4 (scanOwn) is obsolete, the entity is added directly
+			if(entSide!B(state,kind2,id2)==ai.side)
+				ai.forceFlags|=ForceFlags.ownScan; // defer to the own-side scan like thaum (|=7): at event time the columns still hold the pre-revive death state (movingObjectById writes back after the update delegate returns), so a direct addNode would always be rejected by IsDead
+			else if(state.sid.lastSeenTick(ai.side,id2)>=0)
+				addNode(ai,state,kind2,id2); // no-op if already tracked or untrackable (currently also stale-gated: the revived entity still reads dead in the columns until the update delegate returns)
+			ai.forceFlags|=ForceFlags.replan|ForceFlags.nodeSet;
 			break;
 		case sacrifice,enemyNearBuilding,buildingDamaged: ai.forceFlags|=ForceFlags.replan; break;
 		case buildingDestroyed: ai.forceFlags|=ForceFlags.replan|ForceFlags.nodeSet; break;
@@ -1281,7 +1283,7 @@ void updateStatus(B)(ref ShinyAI!B ai,ObjectState!B state,int dTicks){ // 0x4840
 			}
 		ai.handledFlags|=ForceFlags.recategorize;
 	}
-	if(ai.forceFlags&ForceFlags.ownScan){ // own-side scan (thaum side buckets 4,1,0x10 via 0x48f490, cb 0x484160): setup only, bit 4 is never re-armed (spawn/revive/side-change events add directly)
+	if(ai.forceFlags&ForceFlags.ownScan){ // own-side scan (thaum side buckets 4,1,0x10 via 0x48f490, cb 0x484160): setup and revive events (revive defers to the scan because the pre-revive death state is still in the columns at event time; spawn/side-change add directly)
 		scanOwn(ai,state);
 		ai.handledFlags|=ForceFlags.ownScan;
 	}
