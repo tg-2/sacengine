@@ -509,12 +509,13 @@ final class ShinyAI(B){
 	bool betaRateManasourceWeights=false; // RateManasource@AITASKCAPTURENODE (port nodeValueScore) lerp weights: thaum 0x48aee0 = 0.4/0.35 vs retail 0x48db30 = 0.45/0.3
 	bool betaUnbuiltCaptureReq=false;   // CAPTURE::Replan status&AINodeStatus.openFount branch reqStatus: thaum 0x48b0a4 = 3 vs retail 0x48dcf7 = 2 (patch3 lets the wizard's status bit1 satisfy it)
 	bool betaGuardWizardExclude=false;  // GUARD::Assign member mask: thaum 0x48ad24 = status&1 (wizard status 0x2000f passes via the aggressive bit) vs retail 0x48d994 = status&3 (wizard status 0x2000e passes via the wizard bit; claim 0x48a740/0x48d490 makes it the record leader via status&leader, recordUpdate members follow leader.extrapPos)
+	bool betaCenterWizardExclude=false; // group/record aggregate membership mask: thaum status&1 (groupRefresh5 0x4865d0@0x486655, groupRefresh4 0x487e90@0x487f12 + its duplicate 0x488280@0x488308, recordRefresh 0x48be10@0x48be98; wizard counts toward the center via its aggressive bit) vs retail status&3 (0x489555, 0x48ad32, 0x48b098, 0x48eab8; wizard counts via the wizard bit; same renumbering as betaGuardWizardExclude)
 	bool betaCaptureAggGuardians=false; // CAPTURE::Assign aggregate pass: thaum 0x48b50a aggregates ALL members; retail 0x48e21b skips guardian-bound ([ntt+0x5c8]!=0)
 	bool betaStanceU4Quirk=false;       // stance u[4] (influenceGroups divisor 0x485cfa, summon gate 0x48d941): thaum reset 0x484700 never clears it (grows forever, influence decays to 0); retail reset 0x48677e clears to 1 per updateStance
 	bool betaSummonTypeRatings=false;   // from-record (by-tag) creature ratings: thaum 0x488de0 accuracy->rating[0], P1=f32(evasion)*health*(regen+2*drain) rounded to f32 vs retail 0x48bd80 evasion->rating[0], P1=accuracy*health*(2*regen+drain) kept extended (the from-object rater 0x488ab0/0x48b7e0 uses the thaum formula in BOTH binaries)
 	bool betaPupsThreatGate=false;      // 'pups' cmd-7 branch: retail 0x48c96d requires the casting wizard's node threat (+0x6c)!=0; thaum 0x489c40 has no gate
 	bool betaInfluenceWizardExclude=false; // influenceGroups group filter: thaum 0x485c14 statusOR&1 (wizard-only groups pass via the wizard aggressive bit) vs retail 0x4888ed statusOR&3 (same change as betaGuardWizardExclude)
-	bool betaWizardAggressive=false;    // setupWiz wizard status: thaum 0x48c827 only ORs wizardInit, keeping setupT4oBody's aggressive bit (status 0x2000f) vs retail 0x48f3ba clears it first (and al,0xfe -> status 0x2000e); retail compensates via betaGuardWizardExclude/betaInfluenceWizardExclude
+	bool betaWizardAggressive=false;    // setupWiz wizard status: thaum 0x48c827 only ORs wizardInit, keeping setupT4oBody's aggressive bit (status 0x2000f) vs retail 0x48f3ba clears it first (and al,0xfe -> status 0x2000e); retail compensates via betaGuardWizardExclude/betaCenterWizardExclude/betaInfluenceWizardExclude
 	bool betaRealStructureMask=false;   // "real structure" target mask (CanCastSpellOn onlyOwned/onlyAlly/disallowAlly structure branches): thaum 0x55a7 (0x4518f7, 0x462ef0, 0x464b77, 0x46e5ba, 0x46e6d8, 0x46e9ef) vs retail 0x55b7 (0x4504f8, 0x4616f6, 0x46383b, 0x46df86, 0x46e091, 0x46e3bf; adds manafount)
 	void setBetaPatchBots(bool beta){
 		betaMinManaSacu=beta;
@@ -530,6 +531,7 @@ final class ShinyAI(B){
 		betaRateManasourceWeights=beta;
 		betaUnbuiltCaptureReq=beta;
 		betaGuardWizardExclude=beta;
+		betaCenterWizardExclude=beta;
 		betaCaptureAggGuardians=beta;
 		betaStanceU4Quirk=beta;
 		betaSummonTypeRatings=beta;
@@ -1038,7 +1040,7 @@ void setupWiz(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int id,uint flags){ 
 	setupT4oBody(ai,state,n,NodeKind.wiz,id,flags|AINodeFlags.claimTarget);
 	auto node=&ai.nodes[n];
 	// retail 0x48f3ba clears setupT4oBody's aggressive bit first (and al,0xfe; or eax,0x2000e -> wizard status 0x2000e);
-	// thaum 0x48c827 only ORs, keeping it (wizard status 0x2000f) - see betaGuardWizardExclude/betaInfluenceWizardExclude
+	// thaum 0x48c827 only ORs, keeping it (wizard status 0x2000f) - see betaGuardWizardExclude/betaCenterWizardExclude/betaInfluenceWizardExclude
 	if(!ai.betaWizardAggressive) node.status&=~AINodeStatus.aggressive;
 	node.status|=AINodeStatus.wizardInit;
 	node.flags|=AINodeFlags.claimTarget;
@@ -1701,7 +1703,7 @@ void groupRefresh4(B)(ref ShinyAI!B ai,ObjectState!B state,int g){ // slot4 grou
 		if(!nodeIsAlive(ai,state,n)){ groupRemoveMember(ai,g,n); n=nn; continue; }
 		grp.count++;
 		grp.statusOR|=node.status;
-		if(node.status&1){
+		if(node.status&(ai.betaCenterWizardExclude?cast(uint)AINodeStatus.aggressive:AINodeStatus.aggressive|AINodeStatus.wizard)){ // thaum 0x487f12 = status&1 vs retail 0x48ad32 = status&3
 			countF+=1.0;
 			grp.avgVel+=node.velocity;
 			grp.center+=node.curPos;
@@ -1755,7 +1757,7 @@ void groupRefresh5(B)(ref ShinyAI!B ai,ObjectState!B state,int g){ // slot5 grou
 		if(!nodeIsAlive(ai,state,n)){ creGroupRemoveMember(ai,g,n); n=nn; continue; } // cre isAlive always 1: never pruned
 		grp.count++;
 		grp.statusOR|=node.status;
-		if(node.status&1){
+		if(node.status&(ai.betaCenterWizardExclude?cast(uint)AINodeStatus.aggressive:AINodeStatus.aggressive|AINodeStatus.wizard)){ // thaum 0x486655 = status&1 vs retail 0x489555 = status&3
 			countF+=1.0;
 			grp.avgVel+=node.velocity;
 			grp.center+=node.curPos;
@@ -1872,7 +1874,7 @@ void fillGroup4(B)(ref ShinyAI!B ai,ObjectState!B state,int g,ref int head,ref i
 	double countF=0.0;
 	for(int n=grp.memberHead;n;n=ai.nodes[n].grpN){
 		auto node=&ai.nodes[n];
-		if(node.status&1){ countF+=1.0; centerSum+=node.curPos; }
+		if(node.status&(ai.betaCenterWizardExclude?cast(uint)AINodeStatus.aggressive:AINodeStatus.aggressive|AINodeStatus.wizard)){ countF+=1.0; centerSum+=node.curPos; } // same mask as groupRefresh4
 	}
 	for(int n=head;n;){
 		if(!canAccept(grp.count,grp.center,formPosCache[n])){ n=ai.nodes[n].grpN; continue; }
@@ -1884,7 +1886,7 @@ void fillGroup4(B)(ref ShinyAI!B ai,ObjectState!B state,int g,ref int head,ref i
 		node.group=g;
 		if(nodeIsAlive(ai,state,n)){ // usual case: fold the new member into the refresh sums
 			grp.statusOR|=node.status;
-			if(node.status&1){
+			if(node.status&(ai.betaCenterWizardExclude?cast(uint)AINodeStatus.aggressive:AINodeStatus.aggressive|AINodeStatus.wizard)){ // same mask as groupRefresh4
 				countF+=1.0;
 				centerSum+=node.curPos;
 				auto inv=safediv(1.0,countF);
@@ -1896,7 +1898,7 @@ void fillGroup4(B)(ref ShinyAI!B ai,ObjectState!B state,int g,ref int head,ref i
 			countF=0.0;
 			for(int m=grp.memberHead;m;m=ai.nodes[m].grpN){
 				auto mnode=&ai.nodes[m];
-				if(mnode.status&1){ countF+=1.0; centerSum+=mnode.curPos; }
+				if(mnode.status&(ai.betaCenterWizardExclude?cast(uint)AINodeStatus.aggressive:AINodeStatus.aggressive|AINodeStatus.wizard)){ countF+=1.0; centerSum+=mnode.curPos; } // same mask as groupRefresh4
 			}
 		}
 		n=head; // rescan from the head (same accept order as the recursion)
@@ -1938,7 +1940,7 @@ void fillGroup5(B)(ref ShinyAI!B ai,ObjectState!B state,int g,ref int head,ref i
 	for(int n=grp.memberHead;n;n=ai.nodes[n].cgrpN){
 		auto node=&ai.nodes[n];
 		statusORSum|=node.status;
-		if(node.status&1){ countF+=1.0; centerSum+=node.curPos; }
+		if(node.status&(ai.betaCenterWizardExclude?cast(uint)AINodeStatus.aggressive:AINodeStatus.aggressive|AINodeStatus.wizard)){ countF+=1.0; centerSum+=node.curPos; } // same mask as groupRefresh5
 	}
 	for(int n=head;n;){
 		if(!canAccept(grp.count,grp.center,formPosCache[n])){ n=ai.nodes[n].cgrpN; continue; }
@@ -1951,7 +1953,7 @@ void fillGroup5(B)(ref ShinyAI!B ai,ObjectState!B state,int g,ref int head,ref i
 		if(nodeIsAlive(ai,state,n)){ // usual case: fold the new member into the refresh sums
 			statusORSum|=node.status;
 			grp.statusOR=statusORSum;
-			if(node.status&1){
+			if(node.status&(ai.betaCenterWizardExclude?cast(uint)AINodeStatus.aggressive:AINodeStatus.aggressive|AINodeStatus.wizard)){ // same mask as groupRefresh5
 				countF+=1.0;
 				centerSum+=node.curPos;
 				auto inv=safediv(1.0,countF);
@@ -1965,7 +1967,7 @@ void fillGroup5(B)(ref ShinyAI!B ai,ObjectState!B state,int g,ref int head,ref i
 			for(int m=grp.memberHead;m;m=ai.nodes[m].cgrpN){
 				auto mnode=&ai.nodes[m];
 				statusORSum|=mnode.status;
-				if(mnode.status&1){ countF+=1.0; centerSum+=mnode.curPos; }
+				if(mnode.status&(ai.betaCenterWizardExclude?cast(uint)AINodeStatus.aggressive:AINodeStatus.aggressive|AINodeStatus.wizard)){ countF+=1.0; centerSum+=mnode.curPos; } // same mask as groupRefresh5
 			}
 		}
 		n=head; // rescan from the head (same accept order as the recursion)
@@ -2053,7 +2055,7 @@ void recordRefresh(B)(ref ShinyAI!B ai,ObjectState!B state,int ri){ // 0x48be10 
 		if(!nodeIsAlive(ai,state,n)){ recRemoveMember(ai,ri,n); n=nn; continue; }
 		rec.count++;
 		rec.statusOR|=node.status;
-		if(node.status&1){
+		if(node.status&(ai.betaCenterWizardExclude?cast(uint)AINodeStatus.aggressive:AINodeStatus.aggressive|AINodeStatus.wizard)){ // thaum 0x48be98 = status&1 vs retail 0x48eab8 = status&3 (wizard leader dropped from the center accumulation -> center stays 0 -> slot19 move-to-origin jitter)
 			countF+=1.0;
 			rec.velAcc+=node.velocity;
 			rec.center+=node.curPos;
