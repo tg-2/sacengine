@@ -4,9 +4,9 @@
 
 import dlib.math;
 import std.algorithm, std.range, std.traits, std.exception, std.conv, std.stdio;;
-import nttData,bldg,sacobject,sacspell,stats,state,util;
+import nttData,bldg,sacobject,sacspell,stats,state,util,bots.shiny;
 
-bool diffData(string[] noserialize=[],T)(ref T a,ref T b,lazy string path)if(is(T==struct)&&!is(T==Vector!(S,n),S,size_t n)&&!is(T==Array!S,S)&&!is(T==Queue!S,S)){
+bool diffData(string[] noserialize=[],T)(ref T a,ref T b,lazy string path)if(is(T==struct)&&!is(T==Vector!(S,n),S,size_t n)&&!is(T==Array!S,S)&&!is(T==Queue!S,S)&&!is(T==NodeArray!S,S)){
 	bool r=false;
 	static foreach(member;__traits(allMembers,T)){
 		static if(is(typeof(__traits(getMember,a,member).offsetof))){
@@ -89,6 +89,12 @@ bool diffData(T)(Array!T a,Array!T b,lazy string path){
 		writeln("b",path[1..$],":");
 		foreach(ref y;b.data) writeln(y.sacParticle.type," ",y.sacParticle.side);
 	}
+	return r;
+}
+bool diffData(B)(ref NodeArray!B a,ref NodeArray!B b,lazy string path){
+	bool r=false;
+	r|=diffData(a.length,b.length,text(path,".length"));
+	if(a.length==b.length) foreach(i;0..a.length) r|=diffData(a[i],b[i],text(path,"[",i,"]"));
 	return r;
 }
 bool diffData(T)(T[] a,T[] b,lazy string path)if(!is(Unqual!T==char)){

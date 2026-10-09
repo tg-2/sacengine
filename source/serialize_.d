@@ -1057,6 +1057,18 @@ void serialize(alias sink,B)(ref CastEntry!B entry){ serializeStruct!sink(entry)
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==CastEntry!B)){ deserializeStruct(result,state,data); }
 void serialize(alias sink,B)(ref AINode!B node){ serializeStruct!sink(node); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==AINode!B)){ deserializeStruct(result,state,data); }
+void serialize(alias sink,B)(ref NodeArray!B nodes){ // same wire format as Array!(AINode!B)
+	static assert(is(size_t:ulong));
+	serialize!sink(cast(ulong)nodes.length);
+	foreach(i;0..nodes.length) serialize!sink(nodes[i]);
+}
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==NodeArray!S,S)){
+	ulong len;
+	deserialize(len,state,data);
+	enforce(len<=data.length,"not enough data");
+	result.length=cast(size_t)len;
+	foreach(i;0..result.length) deserialize(result[i],state,data);
+}
 void serialize(alias sink)(ref AIGroup group){ serializeStruct!sink(group); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==AIGroup)){ deserializeStruct(result,state,data); }
 void serialize(alias sink,B)(ref AITask!B task){ serializeStruct!sink(task); }

@@ -224,6 +224,54 @@ struct AINode(B){
 	Vector3f ordPos=Vector3f(0.0f,0.0f,0.0f);
 }
 
+// chunked node storage: node addresses must be stable — brain code holds node pointers across engine
+// calls that can synchronously add nodes (e.g. a summon cast spawns via startCasting -> botSpawned ->
+// addNode), and a flat Array relocating mid-update leaves those pointers dangling
+struct NodeArray(B){
+	enum chunkShift=6, chunkSize=1<<chunkShift, chunkMask=chunkSize-1;
+	private Array!(AINode!B*) chunks;
+	private size_t _length;
+	@property size_t length()const pure nothrow @nogc{ return _length; }
+	alias opDollar=length;
+	@property size_t length(size_t newLength){
+		import core.stdc.stdlib: malloc;
+		import core.internal.lifetime: emplaceInitializer;
+		import core.memory: GC;
+		import std.exception: enforce;
+		while(chunks.length*chunkSize<newLength){
+			auto chunk=cast(AINode!B*)enforce(malloc(chunkSize*AINode!B.sizeof),"out of memory");
+			GC.addRange(chunk,chunkSize*AINode!B.sizeof); // nodes hold GC references (SacSpell!B)
+			foreach(i;0..chunkSize) emplaceInitializer(chunk[i]);
+			chunks~=chunk;
+		}
+		_length=newLength;
+		return newLength;
+	}
+	ref inout(AINode!B) opIndex(size_t i)inout{ assert(i<_length); return chunks[i>>chunkShift][i&chunkMask]; }
+	void opOpAssign(string op:"~")(AINode!B elem){
+		length=_length+1;
+		this[_length-1]=elem;
+	}
+	void opAssign(ref NodeArray rhs){ // deep copy, element-wise (matches util.Array opAssign)
+		this.length=rhs.length;
+		foreach(i;0.._length) this[i]=rhs[i];
+	}
+	void opAssign(NodeArray rhs){
+		import core.lifetime: move;
+		move(rhs,this); // destroys the current store, then steals rhs's
+	}
+	@disable this(this);
+	~this(){
+		import core.stdc.stdlib: free;
+		import core.memory: GC;
+		foreach(i;0.._length) destroy(chunks[i>>chunkShift][i&chunkMask]); // object.destroy (auto-imported)
+		foreach(chunk;chunks.data){
+			GC.removeRange(chunk);
+			free(chunk);
+		}
+	}
+}
+
 struct AIGroup{
 	int prio=0;               // K value {1,2,0,4}
 	uint statusOR=0;
@@ -465,7 +513,7 @@ final class ShinyAI(B){
 	uint contactedSides=0; // thaum side+0x50: first-contact mask per owner side (set once, never reset)
 	int[6] nextRun=0;
 	// nodes ([0] = dummy)
-	Array!(AINode!B) nodes;
+	NodeArray!B nodes;
 	int nodeFree=0;
 	Array!int nodeById; // entity id -> node index, 0 = untracked (object ids are unique and never reused: ObjectManager.addObject); derived cache, excluded from serialization
 	int lastWizComponent=-1; // wizard pathfinder component; a change arms the one-shot discovery scan (forceFlags 0x20)
