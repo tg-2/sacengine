@@ -8758,7 +8758,6 @@ void revive(B)(ref MovingObject!B object,ObjectState!B state,bool fast=false){
 	object.health=object.creatureStats.maxHealth;
 	object.creatureState.mode=fast?CreatureMode.fastReviving:CreatureMode.reviving;
 	object.setCreatureState(state);
-	state.botRevive(object);
 }
 
 bool convertRevive(B)(ref MovingObject!B object,ObjectState!B state){
@@ -8775,7 +8774,6 @@ bool convertRevive(B)(ref MovingObject!B object,ObjectState!B state){
 	object.health=min(max(400.0f,0.5f*object.creatureStats.maxHealth),object.creatureStats.maxHealth); // TODO: ok?
 	object.creatureState.mode=CreatureMode.convertReviving;
 	object.setCreatureState(state);
-	state.botRevive(object);
 	return true;
 }
 
@@ -13903,7 +13901,6 @@ bool unghost(B)(ref MovingObject!B wizard,ObjectState!B state){
 	wizard.creatureState.mode=CreatureMode.ghostToIdle;
 	wizard.setCreatureState(state);
 	wizard.animateGhostTransition(state);
-	state.botRevive(wizard);
 	return true;
 }
 
@@ -14180,6 +14177,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 				object.creatureState.mode=CreatureMode.idleGhost;
 				object.setCreatureState(state);
 				object.animateGhostTransition(state);
+				state.botRevive(object);
 			}
 			break;
 		case CreatureMode.ghostToIdle:
@@ -14216,6 +14214,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 				object.creatureState.tumbleAttackerSide=-1;
 				object.creatureState.fallingVelocity=Vector3f(0.0f,0.0f,0.0f);
 				object.startIdling(state);
+				state.botRevive(object);
 				state.newCreatureAddToSelection(object.side,object.id);
 			}else if(reviveSequence.canFind(object.animationState)){
 				object.frame+=1;

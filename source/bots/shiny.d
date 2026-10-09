@@ -630,7 +630,7 @@ enum BotEvent{ // thaum event ids
 	firstContactAlly=1,   // SIDE::MarkAsVisible: ally-owned creature/wizard revealed (one-shot per owner side)
 	firstContactEnemy=2,  // SIDE::MarkAsVisible: enemy-owned creature/wizard revealed (one-shot per owner side)
 	death=6,              // FSMEnterState, 0x4000 rising (entered death or SDOC carry state); broadcast to all AIs
-	revive=9,             // 0x4000 falling (revive/convert-revive/unghost/thrash drop)
+	revive=9,             // 0x4000 falling (revive completion, ghost activation (DETH/RESP strt -> RESP main/move), thrash drop)
 	sacrifice=10,         // LANDITEM::Sacrifice (victim owned, != altar owner)
 	enemyNearBuilding=11, // LANDITEM::Run + nearbywizardcallback 0x466d00 (enemy wizard within 100.0f)
 	buildingDamaged=12,   // LANDITEM::Damage (damage>0)
@@ -691,7 +691,7 @@ void botDeath(B)(ObjectState!B state,ref MovingObject!B o){ // thaum FSMEnterSta
 	foreach(side;0..cast(int)state.sid.sides.length)
 		if(auto ai=botFor!B(state,side)) notifyEvent(ai,state,NodeKind.none,0,botNodeKind(o),o.id,BotEvent.death);
 }
-void botRevive(B)(ObjectState!B state,ref MovingObject!B o){ // thaum 0x4000 falling (revive/convert-revive/unghost); broadcast so ever-seen foreign AIs re-track without a scan
+void botRevive(B)(ObjectState!B state,ref MovingObject!B o){ // thaum 0x4000 falling (revive completion/ghost activation/thrash drop; unghost is NOT an edge: ghost states carry 0x40000, not 0x4000); broadcast so ever-seen foreign AIs re-track without a scan
 	foreach(side;0..cast(int)state.sid.sides.length)
 		if(auto ai=botFor!B(state,side)) notifyEvent(ai,state,botNodeKind(o),o.id,botNodeKind(o),o.id,BotEvent.revive);
 }
