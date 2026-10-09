@@ -32064,6 +32064,7 @@ void replaceState(B)(ObjectState!B state,ref Array!(Array!(Command!B)) commands,
 	import serialize_;
 	deserialize(state,serialized);
 	deserialize(commands,state,serialized);
+	state.applyEdgeChanges();
 }
 
 bool playAudio=true;
