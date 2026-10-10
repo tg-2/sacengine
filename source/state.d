@@ -10270,7 +10270,7 @@ Vector3f[2] findSacDocPositions(B)(Vector3f targetPosition,Vector3f castPosition
 	float distance=RedVortex.convertDistance;
 	for(;;){
 		auto length=offset.length;
-		if(length>0.5f^^7) offset=(distance/length)*offset;
+		if(length!=0.0f) offset=(distance/length)*offset;
 		for(float angle=0.0f;angle<pi!float;angle+=pi!float/18){
 			foreach(sign;0..2){
 				auto c=cos(angle), s=sin(angle);
