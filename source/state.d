@@ -22358,6 +22358,7 @@ bool updateDeath(B)(ref Death!B death,ObjectState!B state){
 						if(target&&ableToHit){
 							if(state.movingObjectById!((ref obj,death,state){
 								deathEffects(obj,*death,state);
+								recordKill(obj,death.side,state);
 								kill(obj,state);
 								playSpellSoundTypeAt(SoundType.blade,obj.id,state,deathGain);
 								return true;
