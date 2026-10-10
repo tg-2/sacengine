@@ -29008,13 +29008,18 @@ final class ObjectState(B){ // (update logic)
 	float manaRegenAt(int side,Vector3f position){
 		return proximity.manaRegenAt(side,position,this);
 	}
+	float incomingDamageMultiplier(int side){
+		if(!(0<=side&&side<sid.sides.length)) return 1.0f;
+		return sid.sides[side].damageFactor;
+	}
 	float sideDamageMultiplier(int attackerSide,int defenderSide,DamageMod damageMod){
-		if(attackerSide==-1) return 1.0f;
+		auto r=incomingDamageMultiplier(defenderSide);
+		if(attackerSide==-1) return r;
 		switch(sides.getStance(attackerSide,defenderSide)){
 			case Stance.ally:
 				if(damageMod&DamageMod.ignoreFriendly) goto default;
-				return 0.5f; // TODO: option
-			default: return 1.0f;
+				return 0.5f*r; // TODO: option
+			default: return r;
 		}
 	}
 	this(SacMap!B map,Sides!B sides,Proximity!B proximity,PathFinder!B pathFinder,Triggers!B triggers){
@@ -30403,6 +30408,7 @@ struct SideData(B){
 	Array!int minimapAlertFrames; // object id -> alert blink end frame
 	SideState state;
 	SideType sideType;
+	float damageFactor=1.0f; // incoming damage scalar (retail: [side+0xdc]/1000)
 	ShinyAI!B shinyAI; // null unless sideType==SideType.shinyBot
 	void setSideType(SideType type,bool betaPatchBots=false){
 		sideType=type;
@@ -31531,6 +31537,9 @@ struct GameInit(B){
 	bool alliedBeamVision=true;
 	bool collectAlliedSouls=false;
 	bool friendlyFire=true;
+	float damageFactor=1.0f;
+	float botDamageFactor=1.0f;
+	float[] damageFactors;
 	bool alwaysGib=false;
 	bool mapWizards=false;
 	bool mapCreatures=true;
@@ -31640,6 +31649,16 @@ void initGame(B)(ObjectState!B state,ref Array!SlotInfo slots,GameInit!B gameIni
 		}
 		if(0<=wiz.side&&wiz.side<32) // TODO: support?
 			altarSides|=1<<wiz.side;
+	}
+	foreach(ref side;state.sid.sides.data){
+		side.damageFactor=gameInit.damageFactor;
+		if(side.sideType!=SideType.human) side.damageFactor*=gameInit.botDamageFactor;
+	}
+	foreach(i,ref slot;gameInit.slots){
+		if(slot.wizardIndex==-1||i>=gameInit.damageFactors.length) continue;
+		auto side=gameInit.wizards[slot.wizardIndex].side;
+		if(0<=side&&side<32) // TODO: support?
+			state.sid.sides[side].damageFactor*=gameInit.damageFactors[i];
 	}
 	foreach(ref stanceSetting;gameInit.stanceSettings){
 		state.sides.setStance(stanceSetting.from,stanceSetting.towards,stanceSetting.stance);

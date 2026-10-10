@@ -84,6 +84,10 @@ struct Options{
 	God[] gods;
 	God[] botGods;
 	string[] botNames;
+	float damageFactor=1.0f;
+	float[] damageFactors;
+	float botDamageFactor=1.0f;
+	float[] botDamageFactors;
 	// global game mode settings:
 	GameMode gameMode=GameMode.skirmish;
 	int gameModeParam;

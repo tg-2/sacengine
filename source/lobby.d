@@ -93,10 +93,19 @@ GameInit!B gameInit(B,R)(Sides!B sides_,R playerSettings,ref Options options){
 		placeWizard(botSettings,god);
 		if(gameInit.slots[botSlot].wizardIndex!=-1) gameInit.slots[botSlot].sideType=SideType.shinyBot;
 	}
+	auto damageFactors=1.0f.repeat(numSlots).array;
+	foreach(i,f;options.damageFactors)
+		if(i<numSlots) damageFactors[i]=f;
+	foreach(k,botSlot;options.botSlots){
+		if(botSlot<0||botSlot>=numSlots||gameInit.slots[botSlot].wizardIndex==-1) continue;
+		if(k<options.botDamageFactors.length)
+			damageFactors[botSlot]*=options.botDamageFactors[k];
+	}
 	if(options.shuffleSlots){
 		import std.random: randomShuffle;
-		randomShuffle(zip(gameInit.slots,teams));
+		randomShuffle(zip(gameInit.slots,teams,damageFactors));
 	}
+	gameInit.damageFactors=damageFactors;
 	if(options.gameMode!=GameMode.scenario){
 		foreach(i;0..numSlots){
 			foreach(j;i+1..numSlots){
@@ -149,6 +158,8 @@ GameInit!B gameInit(B,R)(Sides!B sides_,R playerSettings,ref Options options){
 	gameInit.alliedBeamVision=options.alliedBeamVision;
 	gameInit.collectAlliedSouls=options.collectAlliedSouls;
 	gameInit.friendlyFire=options.friendlyFire;
+	gameInit.damageFactor=options.damageFactor;
+	gameInit.botDamageFactor=options.botDamageFactor;
 	gameInit.alwaysGib=options.alwaysGib;
 	gameInit.revealBlueSouls=options.revealBlueSouls;
 	gameInit.dimUnexplored=options.dimUnexplored;

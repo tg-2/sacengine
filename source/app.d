@@ -273,6 +273,34 @@ int applySettings(string[] args,ref Options options){
 			}
 		}else if(opt.startsWith("--bot-names=")){
 			options.botNames=parseList(opt["--bot-names=".length..$]);
+		}else if(opt.startsWith("--damage-factor=")){
+			try{
+				options.damageFactor=to!float(opt["--damage-factor=".length..$]);
+			}catch(Exception e){
+				stderr.writefln!"error: invalid damage factor '%s'"(opt["--damage-factor=".length..$]);
+				return 1;
+			}
+		}else if(opt.startsWith("--damage-factors=")){
+			try{
+				options.damageFactors=parseList(opt["--damage-factors=".length..$]).map!(to!float).array;
+			}catch(Exception e){
+				stderr.writefln!"error: invalid damage factor list '%s'"(opt["--damage-factors=".length..$]);
+				return 1;
+			}
+		}else if(opt.startsWith("--bot-damage-factor=")){
+			try{
+				options.botDamageFactor=to!float(opt["--bot-damage-factor=".length..$]);
+			}catch(Exception e){
+				stderr.writefln!"error: invalid damage factor '%s'"(opt["--bot-damage-factor=".length..$]);
+				return 1;
+			}
+		}else if(opt.startsWith("--bot-damage-factors=")){
+			try{
+				options.botDamageFactors=parseList(opt["--bot-damage-factors=".length..$]).map!(to!float).array;
+			}catch(Exception e){
+				stderr.writefln!"error: invalid damage factor list '%s'"(opt["--bot-damage-factors=".length..$]);
+				return 1;
+			}
 		}else if(opt.startsWith("--level=")){
 			options.level=to!int(opt["--level=".length..$]);
 		}else if(opt.startsWith("--souls=")){
