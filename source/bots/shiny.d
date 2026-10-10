@@ -2874,21 +2874,39 @@ Tuple!(uint,uint) spellbookOR(B)(ObjectState!B state,int id){ // 0x487250: OR of
 		return tuple(out1,out2);
 	},()=>tuple(0u,0u))(id,state);
 }
+
+bool hasActiveSpellEffect(B)(ObjectState!B state,int id,char[4] tag){
+	// retail registers active spell effects in a per-ntt tag table (NTT::QuerySpellEffect); tags are reversed spell 4ccs, plus the family tags 'TORP' (protection) and 'ARAP' (paralysis)
+	// all tags are answered from per-entity flags/counters that are tracked incrementally when effects are added and removed, so no effect list is ever scanned
+	switch(tag[]){
+		case "TORP": // protection: lifeShield, airShield, skinOfStone, fireform, etherealForm, protectiveSwarm
+			return state.movingObjectReadById!((ref objects,i)=>objects.creatureStatss[i].effects.shielded,()=>false)(id);
+		case "ARAP": // paralysis: turned to stone (skinOfStone, basilisk petrification; the paralysis spell itself is not implemented)
+			return state.movingObjectReadById!((ref objects,i)=>objects.creatureStatss[i].effects.petrified||objects.creatureStatss[i].effects.skinOfStone,()=>false)(id);
+		case "DEPS": // speedUp
+			return state.movingObjectReadById!((ref objects,i)=>objects.creatureStatss[i].effects.numSpeedUps!=0,()=>false)(id);
+		case "ndrg": // guardian
+			return state.movingObjectReadById!((ref objects,i)=>objects.creatureStatss[i].effects.isGuardian,()=>false)(id);
+		case "LAEH": // heal: the heals list contains the creature exactly while healTimer>=0
+			return state.movingObjectReadById!((ref objects,i)=>objects.creatureStatss[i].effects.healTimer>=0,()=>false)(id);
+		case "mrhc": // charm
+			return state.movingObjectReadById!((ref objects,i)=>objects.creatureStatss[i].effects.numCharms!=0,()=>false)(id);
+		case "ccas": // convert ritual: tag is on the targeted soul while a sac doctor is dispatched to fetch it
+			return state.soulById!((ref soul)=>soul.numConverts!=0,()=>false)(id);
+		case "ucas": // desecrate ritual: tag is on the creature from sac doctor dispatch until it is freed from the altar (or gibbed)
+			return state.movingObjectReadById!((ref objects,i)=>objects.creatureStatss[i].effects.desecrateCarried||objects.creatureStatss[i].effects.desecrationVictim,()=>false)(id);
+		default: return false; // 'NCEB' (beacons not implemented) and 'filb' (never registered in retail) are always false, as are unknown tags
+	}
+}
 bool hasActiveHeal(B)(ObjectState!B state,int id){ // 0x46a840(ntt,'LAEH') approximation: an active heal effect
-	foreach(i;0..state.obj.opaqueObjects.effects.heals.length) if(state.obj.opaqueObjects.effects.heals[i].creature==id) return true;
-	return false;
+	return state.hasActiveSpellEffect(id,"LAEH");
 }
 bool hasActiveProtect(B)(ObjectState!B state,int id){ // 0x46a840(ntt,'TORP') approximation: an active protector
-	foreach(i;0..state.obj.opaqueObjects.effects.protectors.length) if(state.obj.opaqueObjects.effects.protectors[i].id==id) return true;
-	return false;
+	return state.hasActiveSpellEffect(id,"TORP");
 }
-// NTT::QuerySpellEffect 0x46a840 approximation (thaum keeps a per-ntt (tag,ntt) table at +0x370; sacengine tracks effects in typed lists): known tags only
+// NTT::QuerySpellEffect 0x46a840: answered engine-side from per-entity effect flags/counters (ObjectState.hasActiveSpellEffect)
 bool querySpellEffect(B)(ObjectState!B state,int id,char[4] tag){
-	if(tag[]=="LAEH") return hasActiveHeal!B(state,id);
-	if(tag[]=="TORP") return hasActiveProtect!B(state,id);
-	if(tag[]=="sacu") return desecrationOngoing!B(state,id);
-	if(tag[]=="ccas") return convertMask!B(state,id)!=0;
-	return false; // unknown tags: no sacengine effect table to query (documented gap)
+	return state.hasActiveSpellEffect(id,tag);
 }
 // CREATURE::IsFriendly 0x45e9d0 (caster = node n): base NTT::IsFriendly 0x46c550 = own side or either-direction ally
 // (thaum additionally vetoes on: target +0x234&0x2000 = target counts as hostile regardless of sides (suspected blind rage 'egar'; setter is data-driven via the

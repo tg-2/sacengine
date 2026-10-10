@@ -46,7 +46,10 @@ struct Effects{
 	bool stealth=false;
 	bool lifeShield=false;
 	int numDesecrations=0;
+	bool desecrateCarried=false;
+	bool desecrationVictim=false;
 	bool isGuardian=false;
+	int numCharms=0;
 	int poisonDamage=0;
 	int poisonResistance=0;
 	int poisonAccuracy=0;

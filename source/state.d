@@ -1646,6 +1646,7 @@ struct Soul(B){
 	Vector3f position;
 	SoulState state;
 	uint convertSideMask=-1;
+	int numConverts=0; // sac doctors currently dispatched to fetch this soul
 	int frame=0;
 	float facing=0.0f;
 	float scaling=1.0f;
@@ -10294,6 +10295,7 @@ bool castConvert(B)(int side,ManaDrain!B manaDrain,SacSpell!B spell,Vector3f cas
 	auto targetPosition=state.soulById!((ref soul,int side){
 		static assert(is(typeof(soul.convertSideMask)==uint));
 		if(0<=side&&side<32) soul.convertSideMask&=~(1u<<side);
+		// (numConverts is incremented once the sac doctor starts roaming)
 		return soul.position;
 	},function()=>Vector3f.init)(target,side);
 	if(isNaN(targetPosition.x)) return false;
@@ -11424,6 +11426,7 @@ bool charm(B)(Charm!B charm,ObjectState!B state){
 	charm.frame=0;
 	//playSoundAt("mhcs",charm.position,state,charmGain);
 	charm.status=CharmStatus.flying;
+	state.movingObjectById!((ref obj){ ++obj.creatureStats.effects.numCharms; },(){})(charm.target.id);
 	state.addEffect(move(charm));
 	return true;
 }
@@ -15644,9 +15647,11 @@ bool updateSacDocCasting(B)(ref SacDocCasting!B sacDocCast,ObjectState!B state){
 					if(!sacDoctor){ underway=false; interrupted=true; break; }
 					final switch(type){
 						case RitualType.convert:
+							state.soulById!((ref soul){ ++soul.numConverts; },(){})(target);
 							state.addEffect(SacDocCarry!B(type,side,spell,manaDrain.wizard,sacDoctor,target,0,targetShrine));
 							break;
 						case RitualType.desecrate:
+							state.movingObjectById!((ref obj){ obj.creatureStats.effects.desecrateCarried=true; },(){})(target);
 							state.addEffect(SacDocCarry!B(type,side,spell,manaDrain.wizard,sacDoctor,0,target,targetShrine));
 					}
 					break;
@@ -15725,6 +15730,7 @@ bool updateSacDocCarry(B)(ref SacDocCarry!B sacDocCarry,ObjectState!B state){
 		state.soulById!((ref soul,side){
 			static assert(is(typeof(soul.convertSideMask)==uint));
 			soul.convertSideMask|=(1u<<side);
+			--soul.numConverts;
 		},(){})(sacDocCarry.soul,sacDocCarry.side);
 	}
 	if(sacDocCarry.status==SacDocCarryStatus.shrinking){
@@ -15926,6 +15932,7 @@ bool stopRitual(B)(ref Ritual!B ritual,ObjectState!B state,bool targetDead=false
 	with(ritual){
 		stopped=true;
 		if(creature) state.movingObjectById!(freeCreature,()=>false)(creature,start,state);
+		if(type==RitualType.desecrate&&creature) state.movingObjectById!((ref obj){ obj.creatureStats.effects.desecrationVictim=false; },(){})(creature);
 		foreach(id;sacDoctors) state.movingObjectById!(kill,()=>false)(id,state);
 		tethers=typeof(tethers).init;
 		altarBolts=typeof(altarBolts).init;
@@ -15998,6 +16005,7 @@ bool startRitual(B)(RitualType type,int side,SacSpell!B spell,int caster,int shr
 	state.addEffect(Ritual!B(type,start,side,spell,caster,shrine,sacDoctors,creature,vortex,targetWizard));
 	setOccupied(shrine,true,state);
 	if(targetWizard) state.movingObjectById!((ref obj){ obj.creatureStats.effects.numDesecrations+=1; },(){})(targetWizard);
+	if(type==RitualType.desecrate&&creature) state.movingObjectById!((ref obj){ obj.creatureStats.effects.desecrationVictim=true; },(){})(creature);
 	return true;
 }
 
@@ -26299,6 +26307,8 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	}
 	for(int i=0;i<effects.sacDocCarries.length;){
 		if(!updateSacDocCarry(effects.sacDocCarries[i],state)){
+			if(effects.sacDocCarries[i].type==RitualType.desecrate)
+				state.movingObjectById!((ref obj){ obj.creatureStats.effects.desecrateCarried=false; },(){})(effects.sacDocCarries[i].creature);
 			effects.removeSacDocCarry(i);
 			continue;
 		}
@@ -27069,6 +27079,7 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	}
 	for(int i=0;i<effects.charms.length;){
 		if(!updateCharm(effects.charms[i],state)){
+			state.movingObjectById!((ref obj){ --obj.creatureStats.effects.numCharms; },(){})(effects.charms[i].target.id);
 			effects.removeCharm(i);
 			continue;
 		}
@@ -29655,6 +29666,12 @@ final class ObjectState(B){ // (update logic)
 								auto convertSideMask=state.soulById!((ref soul)=>soul.convertSideMask,()=>0u)(target[0].id);
 								static assert(is(typeof(convertSideMask)==uint));
 								if(!(convertSideMask&(1u<<side))) return SpellStatus.invalidTarget;
+							}
+						}
+						if(spell.spel&&spell.type==SpellType.spell){
+							foreach(tag;spell.spel.exclusionTags[]){
+								if(tag==(char[4]).init) break;
+								if(state.hasActiveSpellEffect(target[0].id,tag)) return SpellStatus.invalidTarget;
 							}
 						}
 						if((obj.position-target[0].position).lengthsqr>spell.range^^2) return SpellStatus.outOfRange;
