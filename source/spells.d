@@ -177,6 +177,7 @@ enum SpelFlags:uint{
 	disallowAlly=1<<13,
 	targetGround=1<<14,
 	disallowFlying=1<<16,
+	requiresLandAnchor=1<<17, // volcano only
 	onlyCreatures=1<<18, // redundant?
 	onlyOwned=1<<19,
 	disallowHero=1<<20,
@@ -185,23 +186,26 @@ enum SpelFlags:uint{
 enum SpelFlags1:ushort{
 	none=0,
 	basicAttackSpell=1<<0,
-	unknown1=1<<1,
+	basicAttackSpell2=1<<1,
 	shield=1<<4,
-	unknown5=1<<5,
-	unknown6=1<<6,
-	unknown10=1<<10,
+	unknown5=1<<5, // dead
+	areaDamage=1<<6, // modifier on damage
+	protect=1<<10,
 	crowdControl=1<<11,
-	unknown12=1<<12,
-	unknown13=1<<13,
-	unknown14=1<<14,
-	unknown15=1<<15,
+	attackAbility=1<<12, // damage|attackAbility|crowdControl
+	supportAbility=1<<13, // heal|supportAbility|protect
+	damage=1<<14,
+	heal=1<<15,
 }
 
 enum SpelFlags2:uint{
 	nearBuilding=1<<8,
 	nearEnemyAltar=1<<9,
 	connectedToConversion=1<<10,
+	castAnimation2=1<<18,
+	untargetedCast=1<<19,
 	aiCastable=1<<23,
+	innateAttack=1<<24,
 	stationaryCasting=1<<25,
 }
 

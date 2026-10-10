@@ -130,7 +130,7 @@ enum RatingCategory:uint{
 	distValid=0x80,   // distScaled slot already filled
 	targeted=0x85,    // untargeted|distValid
 	ignoreRange=0x200, // skip the spell-range reject
-	noBasicAttack=0x3a, // under these category bits, flags1&(basicAttackSpell|unknown1) spells are rejected
+	noBasicAttack=0x3a, // under these category bits, flags1&(basicAttackSpell|basicAttackSpell2) spells are rejected
 }
 
 // ntt+0x4 entity type word
@@ -143,12 +143,12 @@ enum NttTypeFlags:uint{
 
 // findBestSpell spell-class masks, matched against (unknown16|flags1<<16) by spellAccAccepts
 enum SpellClassMask:uint{
-	attack=cast(uint)(SpelFlags1.unknown14|SpelFlags1.unknown12|SpelFlags1.crowdControl)<<16, // 0x58000000 (wizAttack 0x48d775/0x4902d5)
-	support=cast(uint)(SpelFlags1.unknown15|SpelFlags1.unknown13|SpelFlags1.unknown10)<<16,   // 0xa4000000 (wizSupport 0x48d80d/0x49036d)
+	attack=cast(uint)(SpelFlags1.damage|SpelFlags1.attackAbility|SpelFlags1.crowdControl)<<16, // 0x58000000 (wizAttack 0x48d775/0x4902d5)
+	support=cast(uint)(SpelFlags1.heal|SpelFlags1.supportAbility|SpelFlags1.protect)<<16,   // 0xa4000000 (wizSupport 0x48d80d/0x49036d)
 }
 
 // flags1 bits 10..15: the ability qualifies for a SpellAcc (wantsSpellAcc 0x4894d0/0x489540)
-enum spelFlags1AiMask=cast(uint)(SpelFlags1.unknown10|SpelFlags1.crowdControl|SpelFlags1.unknown12|SpelFlags1.unknown13|SpelFlags1.unknown14|SpelFlags1.unknown15);
+enum spelFlags1AiMask=cast(uint)(SpelFlags1.protect|SpelFlags1.crowdControl|SpelFlags1.attackAbility|SpelFlags1.supportAbility|SpelFlags1.damage|SpelFlags1.heal);
 // spel.flags target/restriction bits (rateSpellAcc 0x488a10) and plain target-type bits (CanCastSpellOn 0x4517de)
 enum targetFlagsMask=cast(uint)(SpelFlags.targetWizards|SpelFlags.targetSouls|SpelFlags.targetCreatures|SpelFlags.targetCorpses|SpelFlags.targetStructures|SpelFlags.onlyManafounts|SpelFlags.onlyAlly|SpelFlags.disallowAlly|SpelFlags.targetGround); // 0x781f
 enum targetTypeMask=cast(uint)(SpelFlags.targetWizards|SpelFlags.targetSouls|SpelFlags.targetCreatures|SpelFlags.targetCorpses|SpelFlags.targetStructures); // 0x1f
@@ -450,7 +450,7 @@ void fillFromObject(B)(ref RaterAcc acc,SacObject!B so,int curMana,Spellbook!B* 
 		auto spel=ab.spel;
 		if(!spel) continue;
 		if(ab.type!=SpellType.spell) continue;
-		if(!(cast(uint)spel.flags1&SpelFlags1.unknown14)) continue;
+		if(!(cast(uint)spel.flags1&SpelFlags1.damage)) continue;
 		if((spel.flags&SpelFlags.targetCreatures)==0) continue;
 		abilityAcc(acc,spel,ts.unk10,ts.rangedAcc,manaF,ts.fly);
 	}
@@ -484,10 +484,10 @@ bool wantsSpellAcc(B)(SacSpell!B s){
 // flags1 fallback chain of the rating function selection 0x489540
 RatingFn ratingFnFlags(B)(SacSpell!B s){
 	auto f1=cast(uint)s.spel.flags1;
-	if(f1&SpelFlags1.unknown14) return (f1&SpelFlags1.unknown6)&&s.spel.effectRange>0.0f?RatingFn.f489860:RatingFn.f489780;
-	if(f1&SpelFlags1.unknown15) return RatingFn.f489af0;
+	if(f1&SpelFlags1.damage) return (f1&SpelFlags1.areaDamage)&&s.spel.effectRange>0.0f?RatingFn.f489860:RatingFn.f489780;
+	if(f1&SpelFlags1.heal) return RatingFn.f489af0;
 	if(f1&SpelFlags1.crowdControl) return RatingFn.f489e70;
-	if(f1&SpelFlags1.unknown10) return RatingFn.f489bc0;
+	if(f1&SpelFlags1.protect) return RatingFn.f489bc0;
 	return RatingFn.none;
 }
 // rating function selection 0x489540 (tag table ds:0x4cfa68, compares the SPEL name field s_spell+0x10)
@@ -2951,7 +2951,7 @@ bool canCastSpellOn(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int target,Sac
 			}
 		}
 	}
-	// (flags&0x20000: LAND::GetAnchorMap(pos)>=0x60 "open ground" - sacengine has no anchor map; approximated as pass, documented)
+	// (flags&SpelFlags.requiresLandAnchor (0x20000): LAND::GetAnchorMap(pos)>=0x60 "open ground" - sacengine has no anchor map; approximated as pass, documented)
 	return true;
 }
 // shared AoE base of 0x489860 (retail Eval_Death 0x48cbd0 calls the same body via its helper 0x48c540)
@@ -2988,7 +2988,7 @@ float rateSpellAcc(B)(ref ShinyAI!B ai,ObjectState!B state,ref SpellAcc!B acc,in
 	if(!canCastSpellOn!B(ai,state,n,target,acc.spell)) return 0.0f; // 0x48c411: GRIMOIRE::CanCastSpellOn
 	if(!(category&RatingCategory.distValid)){ category|=RatingCategory.distValid; distScaled=cast(float)distSq3(node.curPos,tnode.curPos); }
 	if(!(category&RatingCategory.ignoreRange)&&cast(double)distScaled>cast(double)spel.range*spel.range) return 0.0f;
-	if((cast(uint)spel.flags1&(SpelFlags1.basicAttackSpell|SpelFlags1.unknown1))&&(category&RatingCategory.noBasicAttack)) return 0.0f;
+	if((cast(uint)spel.flags1&(SpelFlags1.basicAttackSpell|SpelFlags1.basicAttackSpell2))&&(category&RatingCategory.noBasicAttack)) return 0.0f;
 	auto rfn=acc.ratingFn;
 	if(rfn==RatingFn.f48cbd0&&ai.betaDeathEvaluator) rfn=ratingFnFlags!B(acc.spell); // thaum.exe has no 'taed' table entry: it falls to the flags1 chain
 	switch(rfn) with(RatingFn){
@@ -3035,7 +3035,7 @@ float rateSpellAcc(B)(ref ShinyAI!B ai,ObjectState!B state,ref SpellAcc!B acc,in
 			if(!(nttTypeBits(tnode.kind)&NttTypeFlags.creature)) return 0.0f;
 			if(!(tnode.status&AINodeStatus.capturable)) return 0.0f;
 			auto ors=spellbookOR(state,tnode.id);
-			if(!(ors[0]&cast(uint)SpelFlags1.unknown14<<16)||!(ors[1]&SpelFlags.targetCreatures)) return 0.0f;
+			if(!(ors[0]&cast(uint)SpelFlags1.damage<<16)||!(ors[1]&SpelFlags.targetCreatures)) return 0.0f;
 			auto rec=&ai.records[tnode.record]; // non-null here: status&AINodeStatus.capturable implies a record
 			auto rg=influenceGroups(ai,state,3,rec.center,10.0f,280.0f,null);
 			return cast(float)(cast(double)sortKey(ai,target)*(cast(double)rec.score+1.0f)*(cast(double)rg+1.0f)*4.0f);
@@ -3434,7 +3434,7 @@ int executeBestCast(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int checkOnly)
 		if(e.obj){
 			bool half=false;
 			auto waim=entAimPos!B(state,node.kind,node.id), oaim=entAimPos!B(state,ai.nodes[e.obj].kind,ai.nodes[e.obj].id); // live ntt aim positions (thaum passes ntts)
-			if(e.provider.type==SpellType.spell&&(cast(uint)e.provider.flags1&(SpelFlags1.basicAttackSpell|SpelFlags1.unknown1))) // 0x48d259: s_spell+0xc==4 (SPEL) && runtime +0x60&0x30000; runtime+0x60 = file+0x58 = unknown16|(flags1<<16), i.e. flags1&0x3 (basicAttackSpell|unknown1)
+			if(e.provider.type==SpellType.spell&&(cast(uint)e.provider.flags1&(SpelFlags1.basicAttackSpell|SpelFlags1.basicAttackSpell2))) // 0x48d259: s_spell+0xc==4 (SPEL) && runtime +0x60&0x30000; runtime+0x60 = file+0x58 = unknown16|(flags1<<16), i.e. flags1&0x3 (basicAttackSpell|basicAttackSpell2)
 				half=!entCanHit!B(state,node.id,waim,ai.nodes[e.obj].id,oaim); // CanHit(wizNtt,objNtt)!=4; ==4 FALLS THROUGH to the LoS check below
 			if(!half){
 				auto rel=relation!B(state,ai.side,entSide!B(state,ai.nodes[e.target].kind,ai.nodes[e.target].id));
