@@ -276,6 +276,7 @@ int applySettings(string[] args,ref Options options){
 		}else if(opt.startsWith("--damage-factor=")){
 			try{
 				options.damageFactor=to!float(opt["--damage-factor=".length..$]);
+				enforce(options.damageFactor>=0.0f);
 			}catch(Exception e){
 				stderr.writefln!"error: invalid damage factor '%s'"(opt["--damage-factor=".length..$]);
 				return 1;
@@ -283,6 +284,7 @@ int applySettings(string[] args,ref Options options){
 		}else if(opt.startsWith("--damage-factors=")){
 			try{
 				options.damageFactors=parseList(opt["--damage-factors=".length..$]).map!(to!float).array;
+				enforce(options.damageFactors.all!(f=>f>=0.0f));
 			}catch(Exception e){
 				stderr.writefln!"error: invalid damage factor list '%s'"(opt["--damage-factors=".length..$]);
 				return 1;
@@ -290,6 +292,7 @@ int applySettings(string[] args,ref Options options){
 		}else if(opt.startsWith("--bot-damage-factor=")){
 			try{
 				options.botDamageFactor=to!float(opt["--bot-damage-factor=".length..$]);
+				enforce(options.botDamageFactor>=0.0f);
 			}catch(Exception e){
 				stderr.writefln!"error: invalid damage factor '%s'"(opt["--bot-damage-factor=".length..$]);
 				return 1;
@@ -297,6 +300,7 @@ int applySettings(string[] args,ref Options options){
 		}else if(opt.startsWith("--bot-damage-factors=")){
 			try{
 				options.botDamageFactors=parseList(opt["--bot-damage-factors=".length..$]).map!(to!float).array;
+				enforce(options.botDamageFactors.all!(f=>f>=0.0f));
 			}catch(Exception e){
 				stderr.writefln!"error: invalid damage factor list '%s'"(opt["--bot-damage-factors=".length..$]);
 				return 1;
