@@ -2697,7 +2697,7 @@ struct RedVortex{
 	enum numFrames=120;
 	enum numFramesToDisappear=60;
 	enum convertHeight=15.0f;
-	enum convertDistance=20.0f;
+	enum convertDistance=25.0f;
 	enum desecrateHeight=15.0f;
 	enum desecrateDistance=12.5f;
 }
@@ -10257,23 +10257,36 @@ bool freeCreature(B)(ref MovingObject!B object,Vector3f landingPosition,ObjectSt
 	return true;
 }
 
-Vector3f[2] findSacDocPositions(B)(Vector3f targetPosition,Vector3f preferredOffset,ObjectState!B state){
-	enum numSteps=5;
-	Vector3f[2] candidate(bool sign,int step){
-		auto angle=(sign?-1.0f:1.0f)*pi!float*step/(numSteps-1);
-		auto newOffset=rotate(rotationQuaternion(Axis.z,angle),preferredOffset);
-		auto position=targetPosition+newOffset;
-		auto landingPosition=0.5f*(position+targetPosition);
-		return [position,landingPosition];
+Vector3f[2] findSacDocPositions(B)(Vector3f targetPosition,Vector3f castPosition,ObjectState!B state){
+	static bool checkPosition(B)(Vector3f position,Vector3f targetPosition,ObjectState!B state){
+		// TODO: check pathfinding?
+		if(!state.isOnGround(position)) return false;
+		for(float t=0.25f;t<0.9f;t+=0.25f)
+			if(!state.isOnGround(position+t*(targetPosition-position))) return false;
+		return true;
 	}
-	foreach(step;0..numSteps){
-		foreach(sign;0..2-(step==0||step+1==numSteps)){
-			auto positions=candidate(!!sign,step);
-			if(state.isOnGround(positions[1]))
-				return positions;
+	auto offset=targetPosition-castPosition;
+	offset.z=0.0f;
+	float distance=RedVortex.convertDistance;
+	for(;;){
+		auto length=offset.length;
+		if(length>0.5f^^7) offset=(distance/length)*offset;
+		for(float angle=0.0f;angle<pi!float;angle+=pi!float/18){
+			foreach(sign;0..2){
+				auto c=cos(angle), s=sin(angle);
+				if(sign) s=-s;
+				auto position=targetPosition+Vector3f(offset.x*c+offset.y*s,offset.y*c-offset.x*s,0.0f);
+				if(checkPosition(position,targetPosition,state)){
+					auto landingPosition=0.5f*(position+targetPosition);
+					position.z=state.getHeight(position)+15.0f;
+					return [position,landingPosition];
+				}
+			}
 		}
+		distance-=7.5;
+		if(distance<=10.0f) break;
 	}
-	return [targetPosition+0.5f*preferredOffset,targetPosition];
+	return [targetPosition+Vector3f(0.0f,0.0f,15.0f),targetPosition];
 }
 
 bool castConvert(B)(int side,ManaDrain!B manaDrain,SacSpell!B spell,Vector3f castPosition,int target,int targetShrine,ObjectState!B state){
@@ -10284,11 +10297,8 @@ bool castConvert(B)(int side,ManaDrain!B manaDrain,SacSpell!B spell,Vector3f cas
 		return soul.position;
 	},function()=>Vector3f.init)(target,side);
 	if(isNaN(targetPosition.x)) return false;
-	auto direction=(targetPosition-castPosition).normalized;
-	auto preferredOffset=RedVortex.convertDistance*direction;
-	auto positions=findSacDocPositions(targetPosition,preferredOffset,state);
+	auto positions=findSacDocPositions(targetPosition,castPosition,state);
 	auto position=positions[0],landingPosition=positions[1];
-	position.z=state.getHeight(position)+RedVortex.convertHeight;
 	auto god=state.getCurrentGod(manaDrain.wizard);
 	if(god==God.none) god=God.persephone;
 	state.addEffect(SacDocCasting!B(RitualType.convert,god,side,manaDrain,spell,target,targetShrine,landingPosition,RedVortex(position)));
@@ -10299,11 +10309,8 @@ bool castDesecrate(B)(int side,ManaDrain!B manaDrain,SacSpell!B spell,Vector3f c
 	if(!targetShrine) return false;
 	auto targetPosition=state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(target);
 	if(isNaN(targetPosition.x)) return false;
-	auto direction=(targetPosition-castPosition).normalized;
-	auto preferredOffset=-20.0f*direction; // TODO: ok?
-	auto positions=findSacDocPositions(targetPosition,preferredOffset,state);
+	auto positions=findSacDocPositions(targetPosition,castPosition,state);
 	auto position=positions[0],landingPosition=positions[1];
-	position.z=state.getHeight(position)+RedVortex.desecrateHeight;
 	auto god=state.getCurrentGod(manaDrain.wizard);
 	if(god==God.none) god=God.persephone;
 	state.addEffect(SacDocCasting!B(RitualType.desecrate,god,side,manaDrain,spell,target,targetShrine,landingPosition,RedVortex(position)));
