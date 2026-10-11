@@ -29674,12 +29674,12 @@ final class ObjectState(B){ // (update logic)
 								if(!(convertSideMask&(1u<<side))) return SpellStatus.invalidTarget;
 							}
 						}
-						if(spell.spel&&spell.type==SpellType.spell){
+						/+if(spell.spel&&spell.type==SpellType.spell){ // TODO: revisit
 							foreach(tag;spell.spel.exclusionTags[]){
 								if(tag==(char[4]).init) break;
 								if(state.hasActiveSpellEffect(target[0].id,tag)) return SpellStatus.invalidTarget;
 							}
-						}
+						}+/
 						if((obj.position-target[0].position).lengthsqr>spell.range^^2) return SpellStatus.outOfRange;
 					}
 				}

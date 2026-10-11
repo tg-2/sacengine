@@ -2881,8 +2881,8 @@ bool hasActiveSpellEffect(B)(ObjectState!B state,int id,char[4] tag){
 	switch(tag[]){
 		case "TORP": // protection: lifeShield, airShield, skinOfStone, fireform, etherealForm, protectiveSwarm
 			return state.movingObjectReadById!((ref objects,i)=>objects.creatureStatss[i].effects.shielded,()=>false)(id);
-		case "ARAP": // paralysis: turned to stone (skinOfStone, basilisk petrification; the paralysis spell itself is not implemented)
-			return state.movingObjectReadById!((ref objects,i)=>objects.creatureStatss[i].effects.petrified||objects.creatureStatss[i].effects.skinOfStone,()=>false)(id);
+		case "ARAP": // paralysis: turned to stone (basilisk petrification; slime)
+			return state.movingObjectReadById!((ref objects,i)=>objects.creatureStatss[i].effects.petrified||objects.creatureStatss[i].effects.numSlimes,()=>false)(id);
 		case "DEPS": // speedUp
 			return state.movingObjectReadById!((ref objects,i)=>objects.creatureStatss[i].effects.numSpeedUps!=0,()=>false)(id);
 		case "ndrg": // guardian
