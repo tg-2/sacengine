@@ -79,7 +79,7 @@ enum AINodeStatus:uint{
 	unknown2=0x4,     // setupWiz wizardInit only; consumers: wizAttack threat weight &0x6, replanGuard &0xc (0x48a8f0)
 	unknown3=0x8,     // setupWiz wizardInit only; consumers: f489700 rater doubling, capture 'ucas' branch (0x48b185), claimGuard weight &9
 	ready=0x1000,     // updateMaho: manahoar ability active; updateStr: generating (bflags&generating && unknown1[3] rate)
-	unknown13=0x2000, // thaum setupT4oBody: ntt+0xb24&0x200 -> status|=0x2000; no sacengine equivalent (documented gap, never written)
+	canFly=0x2000,    // setupT4oBody 0x4870d6/0x489f36: from Cre8.behaviorFlags bit 9 via the creature flags word (thaum ntt+0xb24/retail +0xb38)&0x200; write-only upstream (no consumer in thaum or retail), so sacengine intentionally never writes it
 	openFount=0x8000, // updateStr: manafount && top==0 (unoccupied fount)
 	unknown14=0x4000, // updateStr: from BuildingFlagsAI.unknown14; per-category count 0x484af0, probOr radius 1000 vs 50, capture-attack branch (0x48dd43)
 	unknown18=0x40000,// updateStr: from BuildingFlagsAI.unknown1; capture-attack branch for non-altars (0x48dd43)

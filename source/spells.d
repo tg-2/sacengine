@@ -59,7 +59,7 @@ struct Cre8{
 	char[4] behaviorFSM; // behavior FSM tag
 	char[4] creatureType;
 	char[4] saxsModel;
-	uint behaviorFlags; // bit 6: hero. bit 8: villagers. bit 13: troll, sac doctor, familiar, mentor. bit 14: has personal-disposition grudge mask. bit 15: alarm broadcast to same-side within 100.0
+	uint behaviorFlags; // bit 6: hero. bit 8: villagers. bit 9: can fly. bit 13: troll, sac doctor, familiar, mentor. bit 14: has personal-disposition grudge mask. bit 15: alarm broadcast to same-side within 100.0
 	uint numSSETs;
 	char[4] meleeSSET; // refers to SSET files
 	char[4] creatureSSET;
