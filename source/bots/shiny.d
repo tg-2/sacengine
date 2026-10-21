@@ -2169,7 +2169,12 @@ void taskReleaseRecordsTargeting(B)(ref ShinyAI!B ai,ref AITask!B task,int n){ /
 void taskRemoveRecordMember(B)(ref ShinyAI!B ai,ref AITask!B task,int n){ // task vtbl[11] 0x48a4e0
 	for(int r=task.claimedHead;r;r=ai.records[r].claimedN){
 		if(recContains(ai,r,n)) recRemoveMember(ai,r,n);
-		else if(ai.records[r].leader==n) ai.records[r].leader=0;
+		// thaum clears rec+0xc only in the not-a-member branch (0x48a50a), so a removed leader-member
+		// leaves the leader pointer dangling — a use-after-free masked there because the freed AINTTREC
+		// keeps its contents (members advance to the dead wizard's last position, on land, until the
+		// record dies at the next replan). sacengine's LIFO node-slot reuse resolves the dangling index
+		// to a live unrelated node within ticks and would redirect the whole record to its position
+		if(ai.records[r].leader==n) ai.records[r].leader=0;
 	}
 }
 int claim(B)(ref ShinyAI!B ai,ObjectState!B state,ref AITask!B task,int ri,ref int tempHead,ref int tempTail,int n){ // 0x48a740
