@@ -10023,7 +10023,7 @@ bool startCastingValidated(B)(ref MovingObject!B object,WizardInfo!B* wizard,Sac
 				case SpellTag.guardian:
 					return stunOnFailedCast(object,state,castGuardian(manaDrain,spell,target.id,state));
 				case SpellTag.speedup:
-					ok=speedUp(target.id,spell,state);
+					ok=target.id==caster?speedUp(object,spell,state):speedUp(target.id,spell,state);
 					goto default;
 				case SpellTag.heal:
 					auto side=object.side;
@@ -13982,7 +13982,8 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 				}
 				target.position=target.center(state);
 			}
-			object.turnToFaceTowards(target.position,state);
+			if(!object.turnToFaceTowards(target.position,state))
+				object.clearOrder(state);
 			break;
 		case CommandType.none:
 			if(object.sacObject.hasPeasantFSM) object.absorbHerdGrudges(state);
@@ -30819,12 +30820,12 @@ final class Triggers(B){
 	string[] variableNames;
 	bool[] variablePerSide; // [SIDE] variables hold 32 values, one per side
 	int[] variableOffsets; // index into TriggerState.variableValues
-	char[4][] objectiveTags;
+	MissionObjective[] objectives;
 	TriggerMarker[] markers;
 	this(Trig trig,NTTs ntts){
 		this.trig=trig;
 		variableNames=trig.variableNames;
-		objectiveTags=trig.objectiveTags;
+		objectives=trig.objectives;
 		int offset=0;
 		foreach(name;variableNames){
 			auto perSide=name.startsWith("[SIDE]");
@@ -30980,7 +30981,7 @@ struct TriggerState(B){
 	int nextRunId=0;
 	int[] variableValues; // flat storage; offsets in Triggers.variableOffsets
 	ubyte[] variableDisplayFlags;
-	ubyte[] objectiveFlags; // bit0: enabled, bit1: complete
+	uint[] objectiveFlags; // MBOJ flags; bit0: enabled, bit1: complete
 	TriggerSpeech[] speeches;
 	int nextSpeechId=0;
 	TriggerAudioEvent[] audioEvents;
