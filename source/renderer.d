@@ -13,7 +13,7 @@ import std.conv: to;
 import std.format: format;
 import std.exception: enforce;
 import state,sacobject,sacspell,nttData,sacmap,levl,form,sacform,sacfont;
-import trig_state: genericSpeechText, triggerResourceFilename;
+import trig_state: genericTriggerText, triggerResourceFilename;
 import trig: godToString, narratorToString, TrigGod, TrigNarrator, TrigColor;
 import util;
 
@@ -4170,6 +4170,7 @@ struct Renderer(B){
 	SacXmenu!B sacXmenu;
 	B.Quad quad;
 	B.Texture whiteTexture;
+	B.Texture triggerContinueIcon;
 	B.CreatureFrame border;
 	SacHud!B sacHud;
 	B.SubQuad selectionRoster, minimapFrame, minimapCompass;
@@ -4190,10 +4191,12 @@ struct Renderer(B){
 	B.Font[FontType.max+1] fonts;
 	static struct HudOpt{ bool freetypeFonts; }
 	void initializeHUD(HudOpt options){
+		import txtr;
 		sacCursor=new SacCursor!B();
 		sacXmenu=new SacXmenu!B();
 		quad=B.makeQuad();
 		whiteTexture=B.makeTexture(makeOnePixelImage(Color4f(1.0f,1.0f,1.0f)));
+		triggerContinueIcon=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/icon.FLDR/Mnxt.ICON"));
 		border=B.makeCreatureFrame();
 		sacHud=new SacHud!B();
 		selectionRoster=B.makeSubQuad(-63.5f/128.0f,0.0f,63.5f/128.0f,2.0f);
@@ -5711,11 +5714,11 @@ struct Renderer(B){
 	}
 
 	static string[string] triggerTextCache;
-	string resolveTriggerText(char[4] tag,string mapFolder){
+	string resolveTriggerText(char[4] tag,string mapFolder,string resourceFolder="TRIG.FLDR"){
 		if(tag=="\0\0\0\0") return null;
-		auto key=mapFolder~"\n"~triggerResourceFilename(tag);
+		auto key=mapFolder~"\n"~resourceFolder~"\n"~triggerResourceFilename(tag);
 		if(auto cached=key in triggerTextCache) return *cached;
-		auto result=genericSpeechText(tag,mapFolder);
+		auto result=genericTriggerText(tag,mapFolder,resourceFolder);
 		triggerTextCache[key]=result;
 		return result;
 	}
@@ -5750,8 +5753,8 @@ struct Renderer(B){
 	}
 	void triggerAskPanelGeometry(ref RenderInfo!B info,out Vector2f position,out Vector2f size){
 		auto scale=info.hudScaling;
-		size=Vector2f(min(520.0f*scale,0.85f*info.width),190.0f*scale);
-		position=Vector2f(0.5f*(info.width-size.x),0.5f*(info.height-size.y));
+		size=Vector2f(ChatMessage!B.boxWidth*scale,190.0f*scale);
+		position=Vector2f(0.5f*(info.width-size.x),ChatMessage!B.topOffset*scale);
 	}
 	void triggerAskOptionGeometry(int choice,ref RenderInfo!B info,out Vector2f position,out Vector2f size){
 		Vector2f panelPosition,panelSize;
@@ -5787,8 +5790,9 @@ struct Renderer(B){
 		auto foreground=Color4f(1.0f,1.0f,1.0f,1.0f);
 		auto y=12.0f*scale;
 		foreach(i,flags;state.trig.objectiveFlags){
-			if(!(flags&1)||i>=state.triggers.objectiveTags.length) continue;
-			auto text=resolveTriggerText(state.triggers.objectiveTags[i],state.map.mapFolder);
+			if(!(flags&1)||i>=state.triggers.objectives.length) continue;
+			auto objective=state.triggers.objectives[i];
+			auto text=objective.text.length?objective.text:resolveTriggerText(objective.textTag,state.map.mapFolder,"MOBJ.FLDR");
 			text=(flags&2?"[complete] ":"[ ] ")~text;
 			y+=triggerTextPanel(text,Vector2f(12.0f*scale,y),min(360.0f*scale,0.45f*info.width),scale,background,foreground,info,rc)+4.0f*scale;
 		}
@@ -5816,23 +5820,54 @@ struct Renderer(B){
 			}
 		}
 	}
-	void renderTriggerSpeeches(ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
+	enum triggerContinueIconSize=64.0f;
+	enum triggerContinueExtraHeight=68.0f;
+	void triggerSpeechLayout(ref TriggerSpeech speech,ObjectState!B state,ref RenderInfo!B info,int yOffset,out Vector2f position,out Vector2f size,out string body,out int textWidth,out int textHeight){
 		auto scale=info.hudScaling;
 		auto font=SacFont!B.get(FontType.fn10);
-		auto width=ChatMessage!B.boxWidth*scale;
+		body=resolveTriggerText(speech.text,state.map.mapFolder);
+		auto measureSettings=FormatSettings(FlowType.left,1.0f,ChatMessage!B.maxWidth);
+		auto measuredSize=font.getSize(body,measureSettings);
+		textWidth=to!int(measuredSize.x),textHeight=to!int(measuredSize.y);
+		auto pixelHeight=ChatMessage!B.additionalBoxHeight+textHeight+(speech.pauseForInput?to!int(triggerContinueExtraHeight):0);
+		size=Vector2f(ChatMessage!B.boxWidth*scale,pixelHeight*scale);
+		position=Vector2f(0.5f*(info.width-size.x),yOffset*scale);
+	}
+	void triggerContinueGeometry(Vector2f panelPosition,Vector2f panelSize,float scale,out Vector2f position,out Vector2f size){
+		size=Vector2f(triggerContinueIconSize*scale,triggerContinueIconSize*scale);
+		position=Vector2f(panelPosition.x+0.5f*(panelSize.x-size.x),panelPosition.y+panelSize.y-(triggerContinueExtraHeight-2.0f)*scale);
+	}
+	bool isOnTriggerSpeechContinue(int speechId,ObjectState!B state,Vector2f center,ref RenderInfo!B info){
 		int yOffset=ChatMessage!B.topOffset;
 		foreach(ref speech;state.trig.speeches){
 			if(!triggerSideVisible(speech.side,info.renderSide)) continue;
-			auto body=resolveTriggerText(speech.text,state.map.mapFolder);
+			Vector2f panelPosition,panelSize;
+			string body;
+			int textWidth,textHeight;
+			triggerSpeechLayout(speech,state,info,yOffset,panelPosition,panelSize,body,textWidth,textHeight);
 			if(!body.length) continue;
-			if(speech.pauseForInput) body~="\n[click, Space or Enter to continue]";
-			auto measureSettings=FormatSettings(FlowType.left,1.0f,ChatMessage!B.maxWidth);
-			auto measuredSize=font.getSize(body,measureSettings);
-			int textWidth=to!int(measuredSize.x),textHeight=to!int(measuredSize.y);
-			auto pixelHeight=ChatMessage!B.additionalBoxHeight+textHeight;
-			auto height=pixelHeight*scale;
-			auto position=Vector2f(0.5f*(info.width-width),yOffset*scale);
-			triggerPanel(position,Vector2f(width,height),Color4f(0.0f,0.0f,0.0f,174.0f/255.0f),rc);
+			if(speech.id==speechId){
+				if(!speech.pauseForInput) return false;
+				Vector2f position,size;
+				triggerContinueGeometry(panelPosition,panelSize,info.hudScaling,position,size);
+				return position.x<=center.x&&center.x<=position.x+size.x&&position.y<=center.y&&center.y<=position.y+size.y;
+			}
+			yOffset+=to!int(panelSize.y/info.hudScaling)+ChatMessage!B.gapSize;
+		}
+		return false;
+	}
+	void renderTriggerSpeeches(ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
+		auto scale=info.hudScaling;
+		auto font=SacFont!B.get(FontType.fn10);
+		int yOffset=ChatMessage!B.topOffset;
+		foreach(ref speech;state.trig.speeches){
+			if(!triggerSideVisible(speech.side,info.renderSide)) continue;
+			Vector2f position,size;
+			string body;
+			int textWidth,textHeight;
+			triggerSpeechLayout(speech,state,info,yOffset,position,size,body,textWidth,textHeight);
+			if(!body.length) continue;
+			triggerPanel(position,size,Color4f(0.0f,0.0f,0.0f,174.0f/255.0f),rc);
 
 			auto speaker=triggerSpeakerName(speech,state,info);
 			auto titleFont=SacFont!B.get(FontType.fn12);
@@ -5844,7 +5879,18 @@ struct Renderer(B){
 			auto settings=FormatSettings(FlowType.left,scale,ChatMessage!B.maxWidth*scale);
 			auto textPosition=Vector2f(floor(0.5f*(info.width-textWidth*scale)),floor((yOffset+ChatMessage!B.messageOffset)*scale));
 			drawTriggerText(font,body,textPosition,settings,Color4f(1.0f,1.0f,1.0f,1.0f),info,rc);
-			yOffset+=pixelHeight+ChatMessage!B.gapSize;
+			if(speech.pauseForInput){
+				Vector2f continuePosition,continueSize;
+				triggerContinueGeometry(position,size,scale,continuePosition,continueSize);
+				B.hudMaterialBackend.bind(null,rc);
+				B.hudMaterialBackend.bindDiffuse(triggerContinueIcon);
+				B.hudMaterialBackend.setTransformationScaled(Vector3f(continuePosition.x,continuePosition.y,0.0f),Quaternionf.identity(),Vector3f(continueSize.x,continueSize.y,0.0f),rc);
+				B.hudMaterialBackend.setAlpha(1.0f);
+				B.enableTransparency();
+				quad.render(rc);
+				B.hudMaterialBackend.unbind(null,rc);
+			}
+			yOffset+=to!int(size.y/scale)+ChatMessage!B.gapSize;
 		}
 	}
 	void renderTriggerAsks(ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
@@ -5852,9 +5898,9 @@ struct Renderer(B){
 			if(!triggerSideVisible(ask.side,info.renderSide)) continue;
 			Vector2f position,size;
 			triggerAskPanelGeometry(info,position,size);
-			triggerPanel(position,size,Color4f(0.04f,0.04f,0.08f,0.94f),rc);
+			triggerPanel(position,size,Color4f(0.0f,0.0f,0.0f,174.0f/255.0f),rc);
 			auto scale=info.hudScaling;
-			auto font=SacFont!B.get(FontType.fnwt);
+			auto font=SacFont!B.get(FontType.fn10);
 			FormatSettings questionSettings={flowType:FlowType.left,scale:scale,maxWidth:size.x-24.0f*scale};
 			auto question=resolveTriggerText(ask.question,state.map.mapFolder);
 			drawTriggerText(font,question,position+Vector2f(12.0f*scale,12.0f*scale),questionSettings,Color4f(1.0f,1.0f,1.0f,1.0f),info,rc);
