@@ -622,7 +622,8 @@ final class SacScene: Scene{
 			return true;
 		}
 		if(speech!is null){
-			bool dismiss=mouseButtonDown[MB_LEFT]!=0||keyDown[KEY_SPACE]!=0||keyDown[KEY_RETURN]!=0||keyDown[KEY_ESCAPE]!=0;
+			bool continueClick=mouseButtonDown[MB_LEFT]!=0&&renderer.isOnTriggerSpeechContinue(speech.id,state.current,Vector2f(mouse.x,mouse.y),info);
+			bool dismiss=continueClick||keyDown[KEY_SPACE]!=0||keyDown[KEY_RETURN]!=0||keyDown[KEY_ESCAPE]!=0;
 			if(dismiss) submitTriggerResponse(speech.side,speech.runId!=0?speech.runId:-speech.id,0);
 			return true;
 		}

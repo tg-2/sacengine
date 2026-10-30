@@ -2326,8 +2326,8 @@ TrigSpeaks parseTrigSpeaks(ref ubyte[] data){
 enum TrigTimingType{
 	autoTimed=184,
 	sampleLengthMinusFrames=185,
-	pauseForInput=186,
-	persistent=187,
+	persistent=186,
+	pauseForInput=187,
 	forFrames=188,
 }
 TrigTiming parseTrigTiming(ref ubyte[] data){
@@ -2933,10 +2933,16 @@ Trigger parseTrigger(ref ubyte[] data){
 	return Trigger(flags,sides,conditions,actions);
 }
 
+struct MissionObjective{
+	char[4] textTag=0;
+	string text; // raw-string MBOJ format; otherwise resolved through textTag
+	uint flags=0;
+}
+
 struct Trig{
 	Trigger[] triggers;
 	string[] variableNames; // from .TVAR
-	char[4][] objectiveTags; // from .MBOJ
+	MissionObjective[] objectives; // from .MBOJ
 }
 
 Trig parseTRIG(ubyte[] data){
@@ -2974,14 +2980,23 @@ string[] loadTVAR(string filename){
 	return parseTVAR(readFile(filename));
 }
 
-char[4][] parseMBOJ(ubyte[] data){
+MissionObjective[] parseMBOJ(ubyte[] data){
 	auto numObjectives=parseUint(data);
-	char[4][] objectiveTags;
-	foreach(i;0..numObjectives) objectiveTags~=cast(char[4])data.eat(4)[0..4];
+	// Retail selects the format from the first entry: numeric TEXT tags have
+	// fixed-size entries, while the other format stores null-terminated text.
+	auto numericTags=numObjectives!=0&&data.length&&'0'<=data[0]&&data[0]<='9';
+	MissionObjective[] objectives;
+	foreach(i;0..numObjectives){
+		MissionObjective objective;
+		if(numericTags) objective.textTag=cast(char[4])data.eat(4)[0..4];
+		else objective.text=parseCString(data);
+		objective.flags=parseUint(data);
+		objectives~=objective;
+	}
 	enforce(data.length==0);
-	return objectiveTags;
+	return objectives;
 }
-char[4][] loadMBOJ(string filename){
+MissionObjective[] loadMBOJ(string filename){
 	return parseMBOJ(readFile(filename));
 }
 

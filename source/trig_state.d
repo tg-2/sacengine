@@ -174,8 +174,9 @@ void initializeTriggers(B)(ref TriggerState!B triggerState,ObjectState!B state){
 	foreach(i,perSide;triggers.variablePerSide)
 		triggerState.variableValues.length+=perSide?32:1;
 	triggerState.variableValues[]=0;
-	triggerState.objectiveFlags.length=triggers.objectiveTags.length;
-	triggerState.objectiveFlags[]=0;
+	triggerState.objectiveFlags.length=triggers.objectives.length;
+	foreach(i,objective;triggers.objectives)
+		triggerState.objectiveFlags[i]=objective.flags;
 	triggerState.variableDisplayFlags.length=triggers.variableOffsets.length;
 	triggerState.variableDisplayFlags[]=0;
 	foreach(ti,ref trigger;triggers.trig.triggers){
@@ -1038,10 +1039,13 @@ string triggerResourceFilename(char[4] tag){
 	reverse(name[]);
 	return normalizeFilename(name[].idup);
 }
-string genericSpeechText(char[4] tag,string mapFolder){
-	auto filename=buildPath(mapFolder,"ENGL.LANG","TRIG.FLDR",triggerResourceFilename(tag)~".TEXT");
+string genericTriggerText(char[4] tag,string mapFolder,string resourceFolder){
+	auto filename=buildPath(mapFolder,"ENGL.LANG",resourceFolder,triggerResourceFilename(tag)~".TEXT");
 	if(fileExists(filename)) return loadText(filename);
 	return texts.get(tag,"");
+}
+string genericSpeechText(char[4] tag,string mapFolder){
+	return genericTriggerText(tag,mapFolder,"TRIG.FLDR");
 }
 string genericSpeechSample(char[4] tag,string mapFolder){
 	auto filename=buildPath(mapFolder,"SAMP.FLDR",triggerResourceFilename(tag)~".SAMP");
@@ -1372,7 +1376,7 @@ bool runAction(B)(TrigAction action,ref TriggerRun run,ref TriggerState!B trigge
 		}else if(auto actor=cast(TrigActorGod)speechAction.actor){
 			speech.kind=TriggerSpeechKind.god;
 			speech.actor=cast(int)actor.god;
-			// Generic god speech is independent and does not freeze the run.
+			speech.runId=run.id;
 		}else{
 			runError(run,text("speech: unsupported actor ",typeid(speechAction.actor)));
 			return false;

@@ -54,7 +54,7 @@ SacMap!B loadSacMap(B)(string filename,ubyte[]* mapData=null){
 				auto content=data;
 				try (*tvarFolderNames)~=parseCString(content);
 				catch(Exception e) stderr.writeln("warning: failed to parse trigger variable name (",e.msg,")");
-			}else if(name.endsWith(".MBOJ")){
+			}else if(name.endsWith(".MOBJ")){
 				if(*mbojName) stderr.writeln("warning: multiple objective specifications in scp file");
 				else *mbojName=name;
 			}
@@ -87,7 +87,7 @@ SacMap!B loadSacMap(B)(string filename,ubyte[]* mapData=null){
 		nttsName=base~".NTTS";
 		trigName=base~".TRIG";
 		tvarName=base~".TVAR";
-		mbojName=base~".MBOJ";
+		mbojName=base~".MOBJ";
 		import file=std.file;
 		if(!file.exists(tvarName)){
 			auto tvarFolder=buildPath(dirName(base),"ENGL.LANG","TVAR.FLDR");
@@ -114,7 +114,7 @@ SacMap!B loadSacMap(B)(string filename,ubyte[]* mapData=null){
 	if(tvarName!="") try trig.variableNames=loadTVAR(tvarName);
 	catch(Exception e){ stderr.writeln("warning: failed to parse trigger variables (",e.msg,")"); }
 	if(trig.variableNames.length==0&&tvarFolderNames.length) trig.variableNames=tvarFolderNames;
-	if(mbojName!="") try trig.objectiveTags=loadMBOJ(mbojName);
+	if(mbojName!="") try trig.objectives=loadMBOJ(mbojName);
 	catch(Exception e){ stderr.writeln("warning: failed to parse mission objectives (",e.msg,")"); }
 	return new SacMap!B(filename,mapFolder,crc32,levl,envi,hmap,tmap,lmap,sids,ntts,trig);
 }
