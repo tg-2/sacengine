@@ -127,10 +127,15 @@ struct MP3{
 		source=makeSource();
 		int err;
 		handle=mpg123_new(null,&err);
+		if(!handle) return;
 		mpg123_format_none(handle);
 		mpg123_format(handle,44100,2,mpg123_enc_enum.MPG123_ENC_SIGNED_16);
 		import std.string:toStringz;
-		mpg123_open(handle,filename.toStringz);
+		if(mpg123_open(handle,filename.toStringz)!=MPG123_OK){ // e.g. missing file
+			mpg123_delete(handle);
+			handle=null;
+			return;
+		}
 		initialize();
 	}
 	private bool read(ALuint buffer,bool finish){
@@ -147,6 +152,7 @@ struct MP3{
 		alSourceQueueBuffers(source.id,buffer.length,buffer.ptr);
 	}
 	bool feed(bool finish=false){
+		if(!handle) return true; // no file loaded: behave as if finished
 		ALint processed;
 		alGetSourcei(source.id,AL_BUFFERS_PROCESSED,&processed);
 		foreach(_;0..processed){
@@ -169,6 +175,7 @@ struct MP3{
 		rewind();
 	}
 	void rewind(){
+		if(!handle) return; // no file loaded
 		mpg123_seek(handle,0,SEEK_SET);
 		ALint queued;
 		alGetSourcei(source.id,AL_BUFFERS_QUEUED,&queued);

@@ -273,6 +273,13 @@ immutable string[] textFolders=["extracted/local/lang_english/LANG.WAD!/ENGL.LAN
                                 "extracted/local/langp3_english/LNG+.WAD!/addl.LANG"].fixPaths;
 
 immutable(string)[char[4]] texts;
+immutable string[] tipFolders=["extracted/local/lang_english/LANG.WAD!/ENGL.LANG/spit.FLDR"].fixPaths;
+char[4][] tipTags;
+void makeTipIndex(bool readFromWads){
+	auto files=makeFileIndex(readFromWads,tipFolders,"TEXT",false);
+	tipTags=files.keys;
+	sort(tipTags);
+}
 immutable(string)[char[4]] makeTextByTag(bool readFromWads){
 	import text_;
 	// TODO: split into multiple tables to avoid duplicate tags
@@ -354,6 +361,7 @@ void initNTTData(bool readFromWads){
 	samps=makeSampByTag(readFromWads);
 
 	texts=makeTextByTag(readFromWads);
+	makeTipIndex(readFromWads);
 	formTexts=makeFormTextByTag(readFromWads);
 	mouseoverTexts=makeMouseoverTextByTag(readFromWads);
 	formIcons=makeFormIconByTag(readFromWads);

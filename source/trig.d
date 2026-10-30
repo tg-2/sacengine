@@ -2326,8 +2326,8 @@ TrigSpeaks parseTrigSpeaks(ref ubyte[] data){
 enum TrigTimingType{
 	autoTimed=184,
 	sampleLengthMinusFrames=185,
-	persistent=186,
-	pauseForInput=187,
+	pauseForInput=186,
+	persistent=187,
 	forFrames=188,
 }
 TrigTiming parseTrigTiming(ref ubyte[] data){
@@ -2935,6 +2935,8 @@ Trigger parseTrigger(ref ubyte[] data){
 
 struct Trig{
 	Trigger[] triggers;
+	string[] variableNames; // from .TVAR
+	char[4][] objectiveTags; // from .MBOJ
 }
 
 Trig parseTRIG(ubyte[] data){
@@ -2944,10 +2946,43 @@ Trig parseTRIG(ubyte[] data){
 		triggers~=parseTrigger(data);
 	}
 	enforce(data.length==0);
-	return Trig(triggers);
+	Trig trig;
+	trig.triggers=triggers;
+	return trig;
 }
 Trig loadTRIG(string filename){
 	return parseTRIG(readFile(filename));
+}
+
+string parseCString(ref ubyte[] data){
+	auto end=data.length;
+	foreach(i;0..data.length) if(data[i]==0){ end=i; break; }
+	enforce(end<data.length,"unterminated string in trigger data");
+	auto r=cast(string)data[0..end];
+	data=data[end+1..$];
+	return r;
+}
+
+string[] parseTVAR(ubyte[] data){
+	auto numVariables=parseUint(data);
+	string[] variableNames;
+	foreach(i;0..numVariables) variableNames~=parseCString(data);
+	enforce(data.length==0);
+	return variableNames;
+}
+string[] loadTVAR(string filename){
+	return parseTVAR(readFile(filename));
+}
+
+char[4][] parseMBOJ(ubyte[] data){
+	auto numObjectives=parseUint(data);
+	char[4][] objectiveTags;
+	foreach(i;0..numObjectives) objectiveTags~=cast(char[4])data.eat(4)[0..4];
+	enforce(data.length==0);
+	return objectiveTags;
+}
+char[4][] loadMBOJ(string filename){
+	return parseMBOJ(readFile(filename));
 }
 
 

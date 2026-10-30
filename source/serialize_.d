@@ -1095,6 +1095,26 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Sid
 void serialize(alias sink,B)(ref TriggerState!B sides){ serializeStruct!sink(sides); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==TriggerState!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink)(ref TriggerRun run){ serializeStruct!sink(run); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==TriggerRun)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink)(ref TriggerSpeech value){ serializeStruct!sink(value); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==TriggerSpeech)){ deserializeStruct(result,state,data); }
+void serialize(alias sink)(ref TriggerAudioEvent value){ serializeStruct!sink(value); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==TriggerAudioEvent)){ deserializeStruct(result,state,data); }
+void serialize(alias sink)(ref TriggerAsk value){ serializeStruct!sink(value); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==TriggerAsk)){ deserializeStruct(result,state,data); }
+void serialize(alias sink)(ref TriggerHistoryEntry value){ serializeStruct!sink(value); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==TriggerHistoryEntry)){ deserializeStruct(result,state,data); }
+void serialize(alias sink)(ref TriggerTip value){ serializeStruct!sink(value); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==TriggerTip)){ deserializeStruct(result,state,data); }
+void serialize(alias sink)(ref TriggerCamera value){ serializeStruct!sink(value); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==TriggerCamera)){ deserializeStruct(result,state,data); }
+void serialize(alias sink)(ref TriggerFade value){ serializeStruct!sink(value); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==TriggerFade)){ deserializeStruct(result,state,data); }
+void serialize(alias sink)(ref TriggerShake value){ serializeStruct!sink(value); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==TriggerShake)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref ObjectState!B.Settings settings){ serializeStruct!sink(settings); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ObjectState!B.Settings)){ deserializeStruct(result,state,data); }
 
@@ -1199,7 +1219,7 @@ void deserialize(T,R)(T recording,ref R data)if(is(T==Recording!B,B)){
 	auto sides=new Sides!B(map.sids);
 	auto proximity=new Proximity!B();
 	auto pathFinder=new PathFinder!B(map);
-	auto triggers=new Triggers!B(map.trig);
+	auto triggers=new Triggers!B(map.trig,map.ntts);
 	recording.map=map;
 	if(crc32!=map.crc32){
 		stderr.writeln("warning: recording was saved with map version:");
