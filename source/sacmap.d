@@ -16,11 +16,13 @@ SacMap!B loadSacMap(B)(string filename,ubyte[]* mapData=null){
 	string hmapName,tmapName,lmapName;
 	string sidsName,nttsName;
 	string trigName;
+	string tvarName,mbojName;
+	string[] tvarFolderNames;
 	uint crc32;
 	if(filename.endsWith(".scp")){
 		import wadmanager;
 		if(!wadManager) wadManager=new WadManager();
-		static void handle(ubyte[] data,string name,string* levlName,string* enviName,string* hmapName,string* tmapName,string* lmapName,string* sidsName,string* nttsName,string* trigName,uint* crc32,ubyte[]* mapData){
+		static void handle(ubyte[] data,string name,string* levlName,string* enviName,string* hmapName,string* tmapName,string* lmapName,string* sidsName,string* nttsName,string* trigName,string* tvarName,string* mbojName,string[]* tvarFolderNames,uint* crc32,ubyte[]* mapData){
 			if(name.endsWith(".LEVL")){
 				if(*levlName) stderr.writeln("warning: multiple level specifications in scp file");
 				else *levlName=name;
@@ -45,9 +47,19 @@ SacMap!B loadSacMap(B)(string filename,ubyte[]* mapData=null){
 			}else if(name.endsWith(".TRIG")){
 				if(*trigName) stderr.writeln("warning: multiple trigger specifications in scp file"); // TODO: just use all?
 				else *trigName=name;
+			}else if(name.endsWith(".TVAR")){
+				if(*tvarName) stderr.writeln("warning: multiple variable specifications in scp file");
+				else *tvarName=name;
+			}else if(name.endsWith(".TEXT")&&(name.canFind("/TVAR.FLDR/")||name.canFind(`\TVAR.FLDR\`))){
+				auto content=data;
+				try (*tvarFolderNames)~=parseCString(content);
+				catch(Exception e) stderr.writeln("warning: failed to parse trigger variable name (",e.msg,")");
+			}else if(name.endsWith(".MBOJ")){
+				if(*mbojName) stderr.writeln("warning: multiple objective specifications in scp file");
+				else *mbojName=name;
 			}
 		}
-		static void handleData(ubyte[] data,string* levlName,string* enviName,string* hmapName,string* tmapName,string* lmapName,string* sidsName,string* nttsName,string* trigName,uint* crc32,ubyte[]* mapData){
+		static void handleData(ubyte[] data,string* levlName,string* enviName,string* hmapName,string* tmapName,string* lmapName,string* sidsName,string* nttsName,string* trigName,string* tvarName,string* mbojName,string[]* tvarFolderNames,uint* crc32,ubyte[]* mapData){
 			import std.digest.crc;
 			auto result=digest!CRC32(data);
 			static assert(result.sizeof==uint.sizeof);
@@ -55,7 +67,7 @@ SacMap!B loadSacMap(B)(string filename,ubyte[]* mapData=null){
 			if(mapData) *mapData=data;
 		}
 		static int curMapNum=0; // TODO: needed?
-		wadManager.indexWAD!(handle,handleData,false)(filename,text("`_map",curMapNum++),&levlName,&enviName,&hmapName,&tmapName,&lmapName,&sidsName,&nttsName,&trigName,&crc32,mapData);
+		wadManager.indexWAD!(handle,handleData,false)(filename,text("`_map",curMapNum++),&levlName,&enviName,&hmapName,&tmapName,&lmapName,&sidsName,&nttsName,&trigName,&tvarName,&mbojName,&tvarFolderNames,&crc32,mapData);
 		enforce(levlName!="","No level specification in scp file");
 		enforce(enviName!="","No environment specification in scp file");
 		enforce(hmapName!="","No height map in scp file");
@@ -74,6 +86,19 @@ SacMap!B loadSacMap(B)(string filename,ubyte[]* mapData=null){
 		sidsName=base~".SIDS";
 		nttsName=base~".NTTS";
 		trigName=base~".TRIG";
+		tvarName=base~".TVAR";
+		mbojName=base~".MBOJ";
+		import file=std.file;
+		if(!file.exists(tvarName)){
+			auto tvarFolder=buildPath(dirName(base),"ENGL.LANG","TVAR.FLDR");
+			if(file.exists(tvarFolder)){
+				foreach(entry;file.dirEntries(tvarFolder,"*.TEXT",file.SpanMode.shallow).array.sort!((a,b)=>a.name<b.name)){
+					auto content=cast(ubyte[])file.read(entry.name);
+					try tvarFolderNames~=parseCString(content);
+					catch(Exception e) stderr.writeln("warning: failed to parse trigger variable name (",e.msg,")");
+				}
+			}
+		}
 	}
 	auto mapFolder=dirName(levlName);
 	auto levl=loadLevl(levlName);
@@ -86,6 +111,11 @@ SacMap!B loadSacMap(B)(string filename,ubyte[]* mapData=null){
 	Trig trig;
 	try trig=loadTRIG(trigName);
 	catch(Exception e){ stderr.writeln("warning: failed to parse triggers (",e.msg,")"); }
+	if(tvarName!="") try trig.variableNames=loadTVAR(tvarName);
+	catch(Exception e){ stderr.writeln("warning: failed to parse trigger variables (",e.msg,")"); }
+	if(trig.variableNames.length==0&&tvarFolderNames.length) trig.variableNames=tvarFolderNames;
+	if(mbojName!="") try trig.objectiveTags=loadMBOJ(mbojName);
+	catch(Exception e){ stderr.writeln("warning: failed to parse mission objectives (",e.msg,")"); }
 	return new SacMap!B(filename,mapFolder,crc32,levl,envi,hmap,tmap,lmap,sids,ntts,trig);
 }
 
@@ -182,7 +212,12 @@ final class SacMap(B){
 		m=to!int(edges[1].length);
 		auto minHeight=float.infinity;
 		foreach(j,h;hmap.heights) foreach(i,x;h) if(!edges[j][i]) minHeight=min(minHeight,x);
-		if(minHeight!=float.infinity) foreach(h;hmap.heights) foreach(ref x;h) x-=minHeight;
+		if(minHeight!=float.infinity){
+			foreach(h;hmap.heights) foreach(ref x;h) x-=minHeight;
+			// Marker heights use the same world origin as the normalized terrain.
+			// Keep authored elevation (and MarkerAtHeight offsets) relative to that origin.
+			foreach(ref marker;ntts.markers) marker.z-=minHeight;
+		}
 		enforce(heights.length==n);
 		enforce(edges.all!(x=>x.length==m));
 		enforce(heights.all!(x=>x.length==m));

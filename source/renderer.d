@@ -10,8 +10,11 @@ import std.algorithm: min, max, among, map, filter, all, splitter, swap;
 import std.range: iota, walkLength, enumerate;
 import std.typecons: tuple, Tuple;
 import std.conv: to;
+import std.format: format;
 import std.exception: enforce;
 import state,sacobject,sacspell,nttData,sacmap,levl,form,sacform,sacfont;
+import trig_state: genericSpeechText, triggerResourceFilename;
+import trig: godToString, narratorToString, TrigGod, TrigNarrator, TrigColor;
 import util;
 
 struct Camera{
@@ -4368,8 +4371,8 @@ struct Renderer(B){
 	auto minimapTarget=Target.init;
 	auto formTarget=Target.init;
 
-	bool isOnSelectionRoster(Vector2f center,ref RenderInfo!B info){
-		if(!info.hudVisible) return false;
+	bool isOnSelectionRoster(Vector2f center,ref RenderInfo!B info,uint hiddenInterfaceElements=0){
+		if(!info.hudVisible||(hiddenInterfaceElements&TriggerInterfaceBit.selectionList)) return false;
 		auto scaling=info.hudScaling*Vector3f(138.0f,256.0f-64.0f,1.0f);
 		auto position=Vector3f(-34.0f*info.hudScaling,0.5*(info.height-scaling.y),0);
 		auto topLeft=position;
@@ -4455,8 +4458,8 @@ struct Renderer(B){
 		}
 	}
 	float minimapRadius(ref RenderInfo!B info){ return info.hudScaling*80.0f; }
-	bool isOnMinimap(Vector2f position,ref RenderInfo!B info){
-		if(!info.hudVisible) return false;
+	bool isOnMinimap(Vector2f position,ref RenderInfo!B info,uint hiddenInterfaceElements=0){
+		if(!info.hudVisible||(hiddenInterfaceElements&TriggerInterfaceBit.minimap)) return false;
 		auto radius=minimapRadius(info);
 		auto center=Vector2f(info.width-radius,info.height-radius);
 		return (position-center).lengthsqr<=radius*radius;
@@ -4750,6 +4753,17 @@ struct Renderer(B){
 		static foreach(isMoving;[true,false])
 			foreach(id;isMoving?creatureArrowIndices.data:structureArrowIndices.data)
 				state.objectById!renderArrow(id,minimapFactor,minimapCenter,mapCenter,radius,mapRotation,&this,state,&info,rc);
+		if(0<=info.renderSide&&info.renderSide<32&&state.trig.beaconActive[info.renderSide]){
+			auto beaconPosition=state.trig.beaconPositions[info.renderSide]-minimapCenter;
+			auto beaconOffset=rotate(mapRotation,minimapFactor*Vector3f(beaconPosition.x,-beaconPosition.y,0));
+			if(beaconOffset.lengthsqr<=(0.92f*radius)^^2){
+				auto beaconScaling=info.hudScaling*Vector3f(10.0f,10.0f,0.0f);
+				B.minimapMaterialBackend.bindDiffuse(whiteTexture);
+				B.minimapMaterialBackend.setColor(Color4f(1.0f,0.8f,0.1f,1.0f));
+				B.minimapMaterialBackend.setTransformationScaled(mapCenter+beaconOffset-0.5f*beaconScaling,mapRotation*facingQuaternion(pi!float/4),beaconScaling,rc);
+				quad.render(rc);
+			}
+		}
 		creatureArrowIndices.length=0;
 		structureArrowIndices.length=0;
 		highlightedIndices.length=0;
@@ -4766,6 +4780,8 @@ struct Renderer(B){
 		material.unbind(rc);
 	}
 	void renderStats(ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
+		bool soulVisible=!(state.trig.hiddenInterfaceElements&TriggerInterfaceBit.soulCounter);
+		bool statusVisible=!(state.trig.hiddenInterfaceElements&TriggerInterfaceBit.statusBar);
 		auto material=sacHud.frameMaterial;
 		material.bind(rc);
 		auto hudScaling=info.hudScaling;
@@ -4776,26 +4792,32 @@ struct Renderer(B){
 		auto position0=Vector3f(info.width-2*scaling1.x-scaling0.x,0,0);
 		auto position1=Vector3f(info.width-2*scaling1.x,0,0);
 		auto position2=Vector3f(info.width-scaling1.x,0,0);
-		material.backend.setTransformationScaled(position0, Quaternionf.identity(), scaling0, rc);
-		statsFrame.render(rc);
-		material.backend.setTransformationScaled(position1, Quaternionf.identity(), scaling1, rc);
-		statsFrame.render(rc);
-		material.backend.setTransformationScaled(position2, Quaternionf.identity(), scaling1, rc);
-		statsFrame.render(rc);
+		if(soulVisible){
+			material.backend.setTransformationScaled(position0, Quaternionf.identity(), scaling0, rc);
+			statsFrame.render(rc);
+		}
+		if(statusVisible){
+			material.backend.setTransformationScaled(position1, Quaternionf.identity(), scaling1, rc);
+			statsFrame.render(rc);
+			material.backend.setTransformationScaled(position2, Quaternionf.identity(), scaling1, rc);
+			statsFrame.render(rc);
+		}
 		material.unbind(rc);
-		material=hudSoulMaterial;
-		material.bind(rc);
-		auto soulPosition=position0+0.5f*scaling0;
-		auto soulScaling=scaling0;
-		soulScaling.x/=sacSoul.soulWidth;
-		soulScaling.y/=sacSoul.soulHeight;
-		soulScaling.y*=-1;
-		soulScaling*=0.85f;
-		material.backend.setTransformationScaled(soulPosition, Quaternionf.identity(), soulScaling, rc);
-		sacSoul.getMesh(SoulColor.blue,info.hudSoulFrame/updateAnimFactor).render(rc);
-		material.unbind(rc);
+		if(soulVisible){
+			material=hudSoulMaterial;
+			material.bind(rc);
+			auto soulPosition=position0+0.5f*scaling0;
+			auto soulScaling=scaling0;
+			soulScaling.x/=sacSoul.soulWidth;
+			soulScaling.y/=sacSoul.soulHeight;
+			soulScaling.y*=-1;
+			soulScaling*=0.85f;
+			material.backend.setTransformationScaled(soulPosition, Quaternionf.identity(), soulScaling, rc);
+			sacSoul.getMesh(SoulColor.blue,info.hudSoulFrame/updateAnimFactor).render(rc);
+			material.unbind(rc);
+		}
 		if(!state.isValidTarget(info.camera.target,TargetType.creature)) info.camera.target=0;
-		if(info.camera.target){
+		if(statusVisible&&info.camera.target){
 			static float getRelativeMana(B,RenderMode mode)(ref MovingObjects!(B,mode) objects,int i){
 				if(objects.creatureStatss[i].maxMana==0.0f) return 0.0f;
 				return objects.creatureStatss[i].mana/objects.creatureStatss[i].maxMana;
@@ -4832,8 +4854,8 @@ struct Renderer(B){
 	}
 
 	int numSpells=0;
-	bool isOnSpellbook(Vector2f center,ref RenderInfo!B info){
-		if(!info.hudVisible) return false;
+	bool isOnSpellbook(Vector2f center,ref RenderInfo!B info,uint hiddenInterfaceElements=0){
+		if(!info.hudVisible||(hiddenInterfaceElements&TriggerInterfaceBit.spellList)) return false;
 		auto hudScaling=info.hudScaling;
 		auto tabScaling=hudScaling*Vector2f(3*48.0f,48.0f);
 		auto tabPosition=Vector2f(0.0f,info.height-hudScaling*80.0f);
@@ -4981,12 +5003,23 @@ struct Renderer(B){
 		return .spellbookVisible(info.camera.target,state);
 	}
 	void renderHUD(ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
-		renderMinimap(state,info,rc);
+		auto hidden=state.trig.hiddenInterfaceElements;
+		if(!(hidden&TriggerInterfaceBit.minimap)) renderMinimap(state,info,rc);
+		else minimapTarget=Target.init;
 		if(!info.hudVisible) return;
 		if(info.renderSide!=-1){
-			if(statsVisible(state,info)) renderStats(state,info,rc);
-			renderSelectionRoster(state,info,rc);
-			if(spellbookVisible(state,info)) renderSpellbook(state,info,rc);
+			if(statsVisible(state,info)&&(hidden&(TriggerInterfaceBit.statusBar|TriggerInterfaceBit.soulCounter))!=(TriggerInterfaceBit.statusBar|TriggerInterfaceBit.soulCounter))
+				renderStats(state,info,rc);
+			if(!(hidden&TriggerInterfaceBit.selectionList)) renderSelectionRoster(state,info,rc);
+			else{
+				selectionRosterTarget=Target.init;
+				selectionRosterTargetAbility=null;
+			}
+			if(!(hidden&TriggerInterfaceBit.spellList)&&spellbookVisible(state,info)) renderSpellbook(state,info,rc);
+			else{
+				spellbookTarget=Target.init;
+				spellbookTargetSpell=null;
+			}
 		}
 	}
 
@@ -5311,7 +5344,7 @@ struct Renderer(B){
 		/*FormatSettings testSettings = {flowType: FlowType.left, scale: 2.0f*info.hudScaling, maxWidth: 0.5f*info.width};
 		font.write!drawLetter("Test.",0.0f,0.0f,testSettings);*/
 		// number of souls
-		if(info.renderSide!=-1 && statsVisible(state,info)){
+		if(info.renderSide!=-1&&statsVisible(state,info)&&!(state.trig.hiddenInterfaceElements&TriggerInterfaceBit.soulCounter)){
 			if(auto wizard=state.getWizard(info.camera.target)){
 				auto font=SacFont!B.get(FontType.fn10);
 				char[32] buffer='\0';
@@ -5670,10 +5703,235 @@ struct Renderer(B){
 	}
 	static struct R2DOpt{
 		int cursorSize;
+		bool triggerHistoryVisible=false;
+		int triggerHistorySelection=-1;
+		int dismissedTipSide=-1;
+		int dismissedTipStartTick=-1;
+		char[4] dismissedTipText=0;
 	}
+
+	static string[string] triggerTextCache;
+	string resolveTriggerText(char[4] tag,string mapFolder){
+		if(tag=="\0\0\0\0") return null;
+		auto key=mapFolder~"\n"~triggerResourceFilename(tag);
+		if(auto cached=key in triggerTextCache) return *cached;
+		auto result=genericSpeechText(tag,mapFolder);
+		triggerTextCache[key]=result;
+		return result;
+	}
+	bool triggerSideVisible(int side,int renderSide){
+		// TODO?
+		return true;
+	}
+	void triggerPanel(Vector2f position,Vector2f size,Color4f color,B.RenderContext rc){
+		B.colorHUDMaterialBackend.bind(null,rc);
+		B.colorHUDMaterialBackend.bindDiffuse(whiteTexture);
+		B.colorHUDMaterialBackend.setColor(color);
+		B.colorHUDMaterialBackend.setTransformationScaled(Vector3f(position.x,position.y,0.0f),Quaternionf.identity(),Vector3f(size.x,size.y,0.0f),rc);
+		quad.render(rc);
+		B.colorHUDMaterialBackend.unbind(null,rc);
+	}
+	float triggerTextSize(SacFont!B font,string text,FormatSettings settings){
+		return font.getSize(text,settings).y;
+	}
+	void drawTriggerText(SacFont!B font,string text,Vector2f position,FormatSettings settings,Color4f color,ref RenderInfo!B info,B.RenderContext rc){
+		bindFont(font,rc);
+		setFontColor(font,color);
+		drawText(font,text,position.x,position.y,settings,info,rc);
+		unbindFont(font,rc);
+	}
+	float triggerTextPanel(string text,Vector2f position,float width,float scale,Color4f background,Color4f foreground,ref RenderInfo!B info,B.RenderContext rc){
+		auto font=SacFont!B.get(FontType.fnwt);
+		FormatSettings settings={flowType:FlowType.left,scale:scale,maxWidth:width-12.0f*scale};
+		auto height=triggerTextSize(font,text,settings)+10.0f*scale;
+		triggerPanel(position,Vector2f(width,height),background,rc);
+		drawTriggerText(font,text,position+Vector2f(6.0f*scale,4.0f*scale),settings,foreground,info,rc);
+		return height;
+	}
+	void triggerAskPanelGeometry(ref RenderInfo!B info,out Vector2f position,out Vector2f size){
+		auto scale=info.hudScaling;
+		size=Vector2f(min(520.0f*scale,0.85f*info.width),190.0f*scale);
+		position=Vector2f(0.5f*(info.width-size.x),0.5f*(info.height-size.y));
+	}
+	void triggerAskOptionGeometry(int choice,ref RenderInfo!B info,out Vector2f position,out Vector2f size){
+		Vector2f panelPosition,panelSize;
+		triggerAskPanelGeometry(info,panelPosition,panelSize);
+		auto scale=info.hudScaling;
+		auto gap=10.0f*scale;
+		size=Vector2f(0.5f*(panelSize.x-34.0f*scale-gap),38.0f*scale);
+		position=panelPosition+Vector2f(12.0f*scale+(choice==2?size.x+gap:0.0f),138.0f*scale);
+	}
+	bool isOnTriggerAskOption(int choice,Vector2f center,ref RenderInfo!B info){
+		Vector2f position,size;
+		triggerAskOptionGeometry(choice,info,position,size);
+		return position.x<=center.x&&center.x<=position.x+size.x&&position.y<=center.y&&center.y<=position.y+size.y;
+	}
+	string triggerSpeakerName(ref TriggerSpeech speech,ObjectState!B state,ref RenderInfo!B info){
+		final switch(speech.kind) with(TriggerSpeechKind){
+			case creature,sampleOnly:
+				if(speech.target&&state.isValidTarget(speech.target)) return getCreatureName(speech.target,state);
+				return null;
+			case named:
+				if(speech.actor==1) return getSideName(info.renderSide,state);
+				return resolveTriggerText(speech.speakerName,state.map.mapFolder);
+			case god:
+				return godToString(cast(TrigGod)speech.actor);
+			case narrator:
+				if(speech.actor==TrigNarrator.playerWizard) return getSideName(speech.side,state);
+				return narratorToString(cast(TrigNarrator)speech.actor);
+		}
+	}
+	void renderTriggerStatus(R2DOpt options,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
+		auto scale=info.hudScaling;
+		auto background=Color4f(0.0f,0.0f,0.0f,0.68f);
+		auto foreground=Color4f(1.0f,1.0f,1.0f,1.0f);
+		auto y=12.0f*scale;
+		foreach(i,flags;state.trig.objectiveFlags){
+			if(!(flags&1)||i>=state.triggers.objectiveTags.length) continue;
+			auto text=resolveTriggerText(state.triggers.objectiveTags[i],state.map.mapFolder);
+			text=(flags&2?"[complete] ":"[ ] ")~text;
+			y+=triggerTextPanel(text,Vector2f(12.0f*scale,y),min(360.0f*scale,0.45f*info.width),scale,background,foreground,info,rc)+4.0f*scale;
+		}
+		foreach(i,visible;state.trig.variableDisplayFlags){
+			if(!visible||i>=state.triggers.variableOffsets.length) continue;
+			int side=state.triggers.variablePerSide[i]&&0<=info.renderSide&&info.renderSide<32?info.renderSide:0;
+			auto offset=state.triggers.variableOffsets[i]+side;
+			if(offset>=state.trig.variableValues.length) continue;
+			auto text=format("%s: %d",state.triggers.variableNames[i],state.trig.variableValues[offset]);
+			y+=triggerTextPanel(text,Vector2f(12.0f*scale,y),min(360.0f*scale,0.45f*info.width),scale,background,foreground,info,rc)+4.0f*scale;
+		}
+		if(state.trig.gameTimerVisible){
+			auto seconds=(state.trig.gameTimer+updateFPS-1)/updateFPS;
+			auto text=format("%d:%02d",seconds/60,seconds%60);
+			auto width=110.0f*scale;
+			triggerTextPanel(text,Vector2f(0.5f*(info.width-width),12.0f*scale),width,scale,background,foreground,info,rc);
+		}
+		if(0<=info.renderSide&&info.renderSide<32){
+			auto tip=state.trig.tips[info.renderSide];
+			bool dismissed=options.dismissedTipSide==info.renderSide&&options.dismissedTipStartTick==tip.startTick&&options.dismissedTipText==tip.text;
+			if(tip.active&&!dismissed){
+				auto text=resolveTriggerText(tip.text,state.map.mapFolder)~"\n[Esc: dismiss]";
+				auto width=min(520.0f*scale,0.75f*info.width);
+				triggerTextPanel(text,Vector2f(0.5f*(info.width-width),64.0f*scale),width,scale,Color4f(0.08f,0.10f,0.16f,0.85f),foreground,info,rc);
+			}
+		}
+	}
+	void renderTriggerSpeeches(ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
+		auto scale=info.hudScaling;
+		auto font=SacFont!B.get(FontType.fn10);
+		auto width=ChatMessage!B.boxWidth*scale;
+		int yOffset=ChatMessage!B.topOffset;
+		foreach(ref speech;state.trig.speeches){
+			if(!triggerSideVisible(speech.side,info.renderSide)) continue;
+			auto body=resolveTriggerText(speech.text,state.map.mapFolder);
+			if(!body.length) continue;
+			if(speech.pauseForInput) body~="\n[click, Space or Enter to continue]";
+			auto measureSettings=FormatSettings(FlowType.left,1.0f,ChatMessage!B.maxWidth);
+			auto measuredSize=font.getSize(body,measureSettings);
+			int textWidth=to!int(measuredSize.x),textHeight=to!int(measuredSize.y);
+			auto pixelHeight=ChatMessage!B.additionalBoxHeight+textHeight;
+			auto height=pixelHeight*scale;
+			auto position=Vector2f(0.5f*(info.width-width),yOffset*scale);
+			triggerPanel(position,Vector2f(width,height),Color4f(0.0f,0.0f,0.0f,174.0f/255.0f),rc);
+
+			auto speaker=triggerSpeakerName(speech,state,info);
+			auto titleFont=SacFont!B.get(FontType.fn12);
+			auto titleSettings=FormatSettings(FlowType.left,scale);
+			auto titleSize=titleFont.getSize(speaker,titleSettings);
+			auto titlePosition=Vector2f(0.5f*(info.width-titleSize.x),(yOffset+ChatMessage!B.titleOffset)*scale);
+			drawTriggerText(titleFont,speaker,titlePosition,titleSettings,Color4f(0.0f,1.0f,1.0f,1.0f),info,rc);
+
+			auto settings=FormatSettings(FlowType.left,scale,ChatMessage!B.maxWidth*scale);
+			auto textPosition=Vector2f(floor(0.5f*(info.width-textWidth*scale)),floor((yOffset+ChatMessage!B.messageOffset)*scale));
+			drawTriggerText(font,body,textPosition,settings,Color4f(1.0f,1.0f,1.0f,1.0f),info,rc);
+			yOffset+=pixelHeight+ChatMessage!B.gapSize;
+		}
+	}
+	void renderTriggerAsks(ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
+		foreach(ref ask;state.trig.asks){
+			if(!triggerSideVisible(ask.side,info.renderSide)) continue;
+			Vector2f position,size;
+			triggerAskPanelGeometry(info,position,size);
+			triggerPanel(position,size,Color4f(0.04f,0.04f,0.08f,0.94f),rc);
+			auto scale=info.hudScaling;
+			auto font=SacFont!B.get(FontType.fnwt);
+			FormatSettings questionSettings={flowType:FlowType.left,scale:scale,maxWidth:size.x-24.0f*scale};
+			auto question=resolveTriggerText(ask.question,state.map.mapFolder);
+			drawTriggerText(font,question,position+Vector2f(12.0f*scale,12.0f*scale),questionSettings,Color4f(1.0f,1.0f,1.0f,1.0f),info,rc);
+			foreach(choice;1..3){
+				Vector2f optionPosition,optionSize;
+				triggerAskOptionGeometry(choice,info,optionPosition,optionSize);
+				triggerPanel(optionPosition,optionSize,Color4f(0.18f,0.22f,0.32f,1.0f),rc);
+				FormatSettings optionSettings={flowType:FlowType.left,scale:scale,maxWidth:optionSize.x-12.0f*scale};
+				auto option=format("%d. %s",choice,resolveTriggerText(choice==1?ask.optionA:ask.optionB,state.map.mapFolder));
+				drawTriggerText(font,option,optionPosition+Vector2f(6.0f*scale,8.0f*scale),optionSettings,Color4f(1.0f,1.0f,1.0f,1.0f),info,rc);
+			}
+			break;
+		}
+	}
+	void renderTriggerHistory(R2DOpt options,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
+		auto scale=info.hudScaling;
+		int count=0,selectedOrdinal=-1;
+		foreach(i,ref entry;state.trig.speechHistory){
+			if(!triggerSideVisible(entry.side,info.renderSide)) continue;
+			if(i==options.triggerHistorySelection) selectedOrdinal=count;
+			count++;
+		}
+		if(selectedOrdinal<0) selectedOrdinal=count-1;
+		int first=max(0,min(selectedOrdinal-3,count-8));
+		auto width=min(700.0f*scale,0.85f*info.width);
+		auto height=(60.0f+8*42.0f)*scale;
+		auto position=Vector2f(0.5f*(info.width-width),0.5f*(info.height-height));
+		triggerPanel(position,Vector2f(width,height),Color4f(0.03f,0.03f,0.06f,0.94f),rc);
+		auto font=SacFont!B.get(FontType.fnwt);
+		FormatSettings headingSettings={flowType:FlowType.left,scale:scale,maxWidth:width-20.0f*scale};
+		drawTriggerText(font,"Speech history — Up/Down: select, Enter: replay, F8/Esc: close",position+Vector2f(10.0f*scale,10.0f*scale),headingSettings,Color4f(1.0f,1.0f,1.0f,1.0f),info,rc);
+		int ordinal=0,row=0;
+		foreach(i,ref entry;state.trig.speechHistory){
+			if(!triggerSideVisible(entry.side,info.renderSide)) continue;
+			if(ordinal>=first&&ordinal<first+8){
+				auto rowPosition=position+Vector2f(8.0f*scale,(48.0f+42.0f*row)*scale);
+				bool selected=i==options.triggerHistorySelection||(options.triggerHistorySelection<0&&ordinal==selectedOrdinal);
+				if(selected) triggerPanel(rowPosition,Vector2f(width-16.0f*scale,38.0f*scale),Color4f(0.18f,0.22f,0.32f,1.0f),rc);
+				auto text=entry.intro?"(intro sample)":resolveTriggerText(entry.text,state.map.mapFolder);
+				FormatSettings settings={flowType:FlowType.left,scale:scale,maxWidth:width-32.0f*scale};
+				drawTriggerText(font,text,rowPosition+Vector2f(6.0f*scale,7.0f*scale),settings,Color4f(1.0f,1.0f,1.0f,1.0f),info,rc);
+				row++;
+			}
+			ordinal++;
+		}
+	}
+	void renderTriggerCinematics(ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
+		if(!state.trig.cinematics) return;
+		auto barHeight=info.height/8.0f;
+		auto black=Color4f(0.0f,0.0f,0.0f,1.0f);
+		triggerPanel(Vector2f(0.0f,0.0f),Vector2f(info.width,barHeight),black,rc);
+		triggerPanel(Vector2f(0.0f,info.height-barHeight),Vector2f(info.width,barHeight),black,rc);
+	}
+	void renderTriggerFade(ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
+		auto amount=state.trig.fade.amount;
+		if(amount<=0.0f) return;
+		amount=min(amount,1.0f);
+		Color4f color;
+		final switch(cast(TrigColor)state.trig.fade.color) with(TrigColor){
+			case black,clear: color=Color4f(0.0f,0.0f,0.0f,amount); break;
+			case white: color=Color4f(1.0f,1.0f,1.0f,amount); break;
+			case red: color=Color4f(1.0f,0.0f,0.0f,amount); break;
+		}
+		triggerPanel(Vector2f(0.0f,0.0f),Vector2f(info.width,info.height),color,rc);
+	}
+	void renderTriggerPresentation(R2DOpt options,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
+		renderTriggerCinematics(state,info,rc);
+		if(!state.trig.cinematics) renderTriggerStatus(options,state,info,rc);
+		renderTriggerSpeeches(state,info,rc);
+		if(options.triggerHistoryVisible) renderTriggerHistory(options,state,info,rc);
+		renderTriggerAsks(state,info,rc);
+		renderTriggerFade(state,info,rc);
+	}
+
 	void renderEntities2D(R2DOpt options,ObjectState!B state,NetworkState!B networkState,scope SacFormState!B[] forms,ref RenderInfo!B info,B.RenderContext rc){
 		if(info.mouse.visible){
-			if(state){
+			if(state&&!state.trig.cinematics){
 				renderTargetFrame(state,info,rc);
 				renderHUD(state,info,rc);
 				renderText(state,info,rc);
@@ -5681,14 +5939,16 @@ struct Renderer(B){
 			renderChatMessages(state,networkState,info,rc);
 			renderForms(forms,info,rc);
 			renderRectangleSelectFrame(info,rc);
+			if(state) renderTriggerPresentation(options,state,info,rc);
 			renderCursor(options.cursorSize,state,info,rc);
 			renderMouseoverBox(options.cursorSize,state,forms,info,rc);
 		}else{
-			if(state){
+			if(state&&!state.trig.cinematics){
 				renderHUD(state,info,rc);
 				renderText(state,info,rc);
 			}
 			renderChatMessages(state,networkState,info,rc);
+			if(state) renderTriggerPresentation(options,state,info,rc);
 		}
 	}
 }

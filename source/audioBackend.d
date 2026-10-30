@@ -6,6 +6,7 @@ import dlib.math;
 import std.algorithm: sort, swap, among;
 import core.time: Duration;
 import audio, samp, nttData, sacobject, levl, state;
+import trig_state: genericSpeechSample;
 import util;
 
 enum Theme{
@@ -155,18 +156,105 @@ final class AudioBackend(B){
 		alias buffer this;
 	}
 	static BufferWithDuration[char[4]] buffers;
+	static BufferWithDuration[string] fileBuffers;
 
 	static BufferWithDuration getBufferWithDuration(char[4] sound){
 		if(sound in buffers) return buffers[sound];
 		auto samp=loadSAMP(samps[sound]);
-		auto duration=cast(int)((samp.data.length*updateFPS+samp.header.byteRate-1)/samp.header.byteRate);
+		auto duration=sampDuration(samp,updateFPS);
 		return buffers[sound]=BufferWithDuration(makeBuffer(samp),duration);
+	}
+	static BufferWithDuration getBufferWithDuration(string filename){
+		if(auto buffer=filename in fileBuffers) return *buffer;
+		auto samp=loadSAMP(filename);
+		auto duration=sampDuration(samp,updateFPS);
+		return fileBuffers[filename]=BufferWithDuration(makeBuffer(samp),duration);
 	}
 	static Buffer getBuffer(char[4] sound){
 		return getBufferWithDuration(sound).buffer;
 	}
+	static Buffer getBuffer(string filename){
+		return getBufferWithDuration(filename).buffer;
+	}
 	static int getDuration(char[4] sound){
 		return getBufferWithDuration(sound).duration;
+	}
+
+
+	struct TriggerSound{
+		Source source;
+		int kind; // 0: speech, 1: standalone audio event
+		int id;
+		int side;
+		char[4] sample;
+		int startTick;
+		string mapFolder;
+	}
+	Array!TriggerSound triggerSounds;
+	static bool triggerSoundMatches(ref TriggerSound sound,int kind,int id,int side,char[4] sample,int startTick,string mapFolder){
+		return sound.kind==kind&&sound.id==id&&sound.side==side&&sound.sample==sample&&sound.startTick==startTick&&sound.mapFolder==mapFolder;
+	}
+	void startTriggerSound(int kind,int id,int side,char[4] sample,int startTick,string mapFolder){
+		auto filename=genericSpeechSample(sample,mapFolder);
+		if(!filename.length) return;
+		auto source=makeSource();
+		source.gain=soundGain;
+		source.buffer=getBuffer(filename);
+		source.play();
+		triggerSounds~=TriggerSound(source,kind,id,side,sample,startTick,mapFolder);
+	}
+	void reconcileTriggerSounds(ObjectState!B state,int renderSide){
+		for(int i=0;i<triggerSounds.length;){
+			bool keep=false;
+			foreach(ref speech;state.trig.speeches){
+				if(triggerSoundMatches(triggerSounds[i],0,speech.id,speech.side,speech.sample,speech.startTick,state.map.mapFolder)){
+					keep=true;
+					break;
+				}
+			}
+			if(!keep) foreach(ref event;state.trig.audioEvents){
+				if(triggerSoundMatches(triggerSounds[i],1,event.id,event.side,event.sample,event.startTick,state.map.mapFolder)){
+					keep=true;
+					break;
+				}
+			}
+			if(keep){
+				i++;
+				continue;
+			}
+			triggerSounds[i].source.release();
+			swap(triggerSounds[i],triggerSounds[$-1]);
+			triggerSounds.length=triggerSounds.length-1;
+		}
+		foreach(ref speech;state.trig.speeches){
+			bool found=false;
+			foreach(ref sound;triggerSounds.data){
+				if(triggerSoundMatches(sound,0,speech.id,speech.side,speech.sample,speech.startTick,state.map.mapFolder)){
+					found=true;
+					break;
+				}
+			}
+			if(!found) startTriggerSound(0,speech.id,speech.side,speech.sample,speech.startTick,state.map.mapFolder);
+		}
+		foreach(ref event;state.trig.audioEvents){
+			bool found=false;
+			foreach(ref sound;triggerSounds.data){
+				if(triggerSoundMatches(sound,1,event.id,event.side,event.sample,event.startTick,state.map.mapFolder)){
+					found=true;
+					break;
+				}
+			}
+			if(!found) startTriggerSound(1,event.id,event.side,event.sample,event.startTick,state.map.mapFolder);
+		}
+	}
+	void playTriggerSample(char[4] sample,string mapFolder){
+		auto filename=genericSpeechSample(sample,mapFolder);
+		if(!filename.length) return;
+		auto source=makeSource();
+		source.gain=soundGain;
+		source.buffer=getBuffer(filename);
+		source.play();
+		sounds0~=Sound0(source);
 	}
 
 	Source dialogSource;
@@ -280,7 +368,7 @@ final class AudioBackend(B){
 	}
 
 	Array!LoopSound oldSounds3;
-	void updateAudioAfterRollback(ObjectState!B state){
+	void updateAudioAfterRollback(ObjectState!B state,int renderSide){
 		oldSounds3.length=0;
 		swap(sounds3,oldSounds3);
 		sort!"a.id<b.id"(oldSounds3.data);
@@ -310,7 +398,8 @@ final class AudioBackend(B){
 				oldSounds3[i].source.release();
 	}
 
-	void updateSounds(Duration dt,Matrix4f viewMatrix,ObjectState!B state){
+	void updateSounds(Duration dt,Matrix4f viewMatrix,ObjectState!B state,int renderSide){
+		reconcileTriggerSounds(state,renderSide);
 		if(!dialogSource.isPlaying){
 			currentDialogSound=DialogSound.init;
 			if(!dialogQueue.empty){
@@ -371,9 +460,9 @@ final class AudioBackend(B){
 		}
 	}
 
-	void update(Duration dt,Matrix4f viewMatrix,ObjectState!B state){
+	void update(Duration dt,Matrix4f viewMatrix,ObjectState!B state,int renderSide){
 		updateTheme(dt);
-		updateSounds(dt,viewMatrix,state);
+		updateSounds(dt,viewMatrix,state,renderSide);
 	}
 	void release(){
 		foreach(ref theme;themes) theme.release();
@@ -386,7 +475,10 @@ final class AudioBackend(B){
 		sounds2.length=0;
 		foreach(i;0..sounds3.length) sounds3[i].source.release();
 		sounds3.length=0;
+		foreach(i;0..triggerSounds.length) triggerSounds[i].source.release();
+		triggerSounds.length=0;
 		foreach(k,v;buffers) v.release();
+		foreach(k,v;fileBuffers) v.release();
 
 		dialogSource.release();
 	}

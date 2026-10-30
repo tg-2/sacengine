@@ -462,7 +462,7 @@ class Lobby(B){
 				if(!sides) sides=new Sides!B(map.sids);
 				if(!proximity) proximity=new Proximity!B();
 				if(!pathFinder) pathFinder=new PathFinder!B(map);
-				if(!triggers) triggers=new Triggers!B(map.trig);
+				if(!triggers) triggers=new Triggers!B(map.trig,map.ntts);
 				auto supportRollback=network !is null;
 				gameState=new GameState!B(map,sides,proximity,pathFinder,triggers,supportRollback);
 				gameState.initMap();

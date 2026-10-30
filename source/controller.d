@@ -145,11 +145,12 @@ final class Controller(B){
 		}
 		if(!isControllingSide(command.side)){
 			bool observerChat=command.side==-1&&command.type==CommandType.chatMessage;
-			if(!observerChat) return;
-			if(network&&!network.isHost){
-				network.addCommand(-1,command);
-				return;
-			}
+			if(observerChat){
+				if(network&&!network.isHost){
+					network.addCommand(-1,command);
+					return;
+				}
+			}else if(network||command.type!=CommandType.triggerResponse) return;
 		}
 		command.id=++commandId;
 		auto frame=max(state.committedFrame,currentFrame); // TODO: why max needed?

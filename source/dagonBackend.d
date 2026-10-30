@@ -213,7 +213,12 @@ final class SacScene: Scene{
 		scope(exit) frameprof.markRender("hud");
 		super.renderEntities2D(rc);
 		updateMouse();
-		typeof(renderer).R2DOpt r2dopt={cursorSize: options.cursorSize};
+		typeof(renderer).R2DOpt r2dopt={cursorSize: options.cursorSize,
+			triggerHistoryVisible: triggerHistoryVisible,
+			triggerHistorySelection: triggerHistorySelection,
+			dismissedTipSide: triggerDismissedTipSide,
+			dismissedTipStartTick: triggerDismissedTipStartTick,
+			dismissedTipText: triggerDismissedTipText};
 		auto networkState=controller&&controller.network?controller.network.networkState:null;
 		renderer.renderEntities2D(r2dopt,state?state.current:null,networkState,forms.data,info,rc);
 	}
@@ -364,8 +369,9 @@ final class SacScene: Scene{
 
 	Vector3f getCameraDisplacement(Vector3f position){
 		Vector3f result=Vector3f(0.0f,0.0f,0.0f);
-		if(state) foreach(ref screenShake;state.current.obj.opaqueObjects.effects.screenShakes.data){
-			result+=screenShake.getDisplacement(position);
+		if(state){
+			foreach(ref screenShake;state.current.obj.opaqueObjects.effects.screenShakes.data)
+				result+=screenShake.getDisplacement(position);
 		}
 		return result;
 	}
@@ -418,6 +424,18 @@ final class SacScene: Scene{
 			focusCamera(0);
 	}
 
+	static float advanceCameraZoom(float zoom,float targetZoom){
+		enum step=0.03f;
+		auto delta=targetZoom-zoom;
+		if(delta>step) zoom+=step;
+		else if(delta< -step) zoom-=step;
+		else zoom=targetZoom;
+		return max(0.0f,min(zoom,1.0f));
+	}
+	void updateCameraZoom(){
+		camera.zoom=advanceCameraZoom(camera.zoom,camera.targetZoom);
+	}
+
 	void updateCameraPosition(Duration dt,bool center,bool uncenter){
 		if(center) camera.centering=true;
 		if(uncenter) camera.centering=false;
@@ -442,12 +460,7 @@ final class SacScene: Scene{
 				}else camera.turn+=sign(diff)*speed;
 			}
 		}
-		if(camera.targetZoom!=camera.zoom){
-			static import std.math;
-			static immutable float factor=std.math.exp(2.0f*std.math.log(0.01f)/updateFPS);
-			camera.zoom=(1-factor)*camera.targetZoom+factor*camera.zoom;
-			camera.zoom=max(0.0f,min(camera.zoom,1.0f));
-		}
+		updateCameraZoom();
 		positionCamera();
 	}
 	float speed = 100.0f;
@@ -456,6 +469,7 @@ final class SacScene: Scene{
 	int[255] mouseButtonDown,mouseButtonUp;
 
 	override void onTextInput(dchar d){
+		if(triggerInputCaptured()) return;
 		if(!mouse.menuMode) return;
 		auto formIndex=0;
 		ref form(){ return forms[formIndex]; }
@@ -508,10 +522,141 @@ final class SacScene: Scene{
 		}
 	}
 
+	bool triggerHistoryVisible=false;
+	int triggerHistorySelection=-1;
+	int triggerDismissedTipSide=-1;
+	int triggerDismissedTipStartTick=-1;
+	char[4] triggerDismissedTipText=0;
+	bool triggerModalMouseSaved=false;
+	bool triggerModalOldMouseVisible=false;
+	bool triggerModalOldFPActive=false;
+
+	TriggerAsk* currentTriggerAsk(){
+		if(!state) return null;
+		foreach(ref ask;state.current.trig.asks)
+			return &ask;
+		return null;
+	}
+	TriggerSpeech* currentTriggerInputSpeech(){
+		if(!state) return null;
+		foreach(ref speech;state.current.trig.speeches)
+			if(speech.pauseForInput) return &speech;
+		return null;
+	}
+	bool triggerCameraInputCaptured(){
+		return state&&(state.current.trig.cinematics||state.current.trig.camera.active);
+	}
+	bool triggerInputCaptured(){
+		return triggerHistoryVisible||currentTriggerAsk()!is null||currentTriggerInputSpeech()!is null||triggerCameraInputCaptured();
+	}
+	void updateTriggerModalMouse(bool modal){
+		if(modal){
+			if(triggerModalMouseSaved) return;
+			triggerModalMouseSaved=true;
+			triggerModalOldMouseVisible=mouse.visible;
+			triggerModalOldFPActive=fpview.active;
+			fpview.active=false;
+			mouse.visible=true;
+		}else if(triggerModalMouseSaved){
+			triggerModalMouseSaved=false;
+			mouse.visible=triggerModalOldMouseVisible;
+			fpview.active=triggerModalOldFPActive;
+		}
+	}
+	void submitTriggerResponse(int side,int triggerId,int choice){
+		if(!controller||side==-1) return;
+		controller.addCommand(Command!DagonBackend(side,triggerId,choice));
+	}
+	void openTriggerHistory(){
+		triggerHistoryVisible=true;
+		triggerHistorySelection=-1;
+		validateTriggerHistorySelection();
+	}
+	void validateTriggerHistorySelection(){
+		if(state&&0<=triggerHistorySelection&&triggerHistorySelection<state.current.trig.speechHistory.length)
+			return;
+		triggerHistorySelection=-1;
+		if(!state) return;
+		foreach(i,ref entry;state.current.trig.speechHistory)
+			triggerHistorySelection=cast(int)i;
+	}
+	void moveTriggerHistorySelection(int direction){
+		if(!state||!state.current.trig.speechHistory.length) return;
+		int count=cast(int)state.current.trig.speechHistory.length;
+		if(triggerHistorySelection<0||triggerHistorySelection>=count){
+			triggerHistorySelection=direction>0?0:count-1;
+			return;
+		}
+		triggerHistorySelection+=direction>0?1:-1;
+		if(triggerHistorySelection<0) triggerHistorySelection=count-1;
+		if(triggerHistorySelection>=count) triggerHistorySelection=0;
+	}
+	void replayTriggerHistory(){
+		if(!audio||!state||triggerHistorySelection<0||triggerHistorySelection>=state.current.trig.speechHistory.length) return;
+		auto entry=state.current.trig.speechHistory[triggerHistorySelection];
+		if(entry.sample!="\0\0\0\0") audio.playTriggerSample(entry.sample,state.current.map.mapFolder);
+	}
+	TriggerTip* currentTriggerTip(){
+		if(!state||renderSide<0||renderSide>=32) return null;
+		auto tip=&state.current.trig.tips[renderSide];
+		if(!tip.active) return null;
+		if(triggerDismissedTipSide==renderSide&&triggerDismissedTipStartTick==tip.startTick&&triggerDismissedTipText==tip.text) return null;
+		return tip;
+	}
+	bool triggerControl(Duration dt){
+		if(triggerHistoryVisible) validateTriggerHistorySelection();
+		auto ask=currentTriggerAsk();
+		auto speech=currentTriggerInputSpeech();
+		updateTriggerModalMouse(ask!is null||speech!is null||triggerHistoryVisible);
+		if(ask!is null){
+			if(mouseButtonDown[MB_LEFT]){
+				foreach(choice;1..3){
+					if(renderer.isOnTriggerAskOption(choice,Vector2f(mouse.x,mouse.y),info)){
+						submitTriggerResponse(ask.side,ask.runId,choice);
+						break;
+					}
+				}
+			}
+			foreach(_;0..keyDown[KEY_1]) submitTriggerResponse(ask.side,ask.runId,1);
+			foreach(_;0..keyDown[KEY_2]) submitTriggerResponse(ask.side,ask.runId,2);
+			return true;
+		}
+		if(speech!is null){
+			bool dismiss=mouseButtonDown[MB_LEFT]!=0||keyDown[KEY_SPACE]!=0||keyDown[KEY_RETURN]!=0||keyDown[KEY_ESCAPE]!=0;
+			if(dismiss) submitTriggerResponse(speech.side,speech.runId!=0?speech.runId:-speech.id,0);
+			return true;
+		}
+		if(triggerHistoryVisible){
+			if(keyDown[KEY_F8]||keyDown[KEY_ESCAPE]) triggerHistoryVisible=false;
+			else{
+				foreach(_;0..keyDown[KEY_UP]) moveTriggerHistorySelection(-1);
+				foreach(_;0..keyDown[KEY_DOWN]) moveTriggerHistorySelection(1);
+				foreach(_;0..keyDown[KEY_RETURN]) replayTriggerHistory();
+			}
+			return true;
+		}
+		if(keyDown[KEY_F8]&&!triggerCameraInputCaptured()){
+			openTriggerHistory();
+			return true;
+		}
+		if(auto tip=currentTriggerTip()){
+			if(keyDown[KEY_ESCAPE]){
+				triggerDismissedTipSide=renderSide;
+				triggerDismissedTipStartTick=tip.startTick;
+				triggerDismissedTipText=tip.text;
+				return true;
+			}
+		}
+		return false;
+	}
+
 	void control(Duration dt){
-		if(mouse.menuMode){
+		bool captured=triggerControl(dt);
+		if(captured){
+			// Modal trigger input and local history must not click through into game controls.
+		}else if(mouse.menuMode){
 			menuControl(dt);
-		}else{
+		}else if(!triggerCameraInputCaptured()){
 			gameControl(dt);
 		}
 		keyDown[]=0;
@@ -886,10 +1031,11 @@ final class SacScene: Scene{
 	float lastSelectedX,lastSelectedY;
 	void gameControl(Duration dt){
 		auto oldMouseStatus=mouse.status;
+		auto hiddenInterfaceElements=state?state.current.trig.hiddenInterfaceElements:0;
 		if(mouse.status.among(MouseStatus.standard,MouseStatus.icon)&&!mouse.dragging){
-			if(renderer.isOnSpellbook(Vector2f(mouse.x,mouse.y),info)) mouse.loc=MouseLocation.spellbook;
-			else if(renderer.isOnSelectionRoster(Vector2f(mouse.x,mouse.y),info)) mouse.loc=MouseLocation.selectionRoster;
-			else if(renderer.isOnMinimap(Vector2f(mouse.x,mouse.y),info)) mouse.loc=MouseLocation.minimap;
+			if(renderer.isOnSpellbook(Vector2f(mouse.x,mouse.y),info,hiddenInterfaceElements)) mouse.loc=MouseLocation.spellbook;
+			else if(renderer.isOnSelectionRoster(Vector2f(mouse.x,mouse.y),info,hiddenInterfaceElements)) mouse.loc=MouseLocation.selectionRoster;
+			else if(renderer.isOnMinimap(Vector2f(mouse.x,mouse.y),info,hiddenInterfaceElements)) mouse.loc=MouseLocation.minimap;
 			else mouse.loc=MouseLocation.scene;
 		}
 		updateCameraTarget();
@@ -1773,18 +1919,333 @@ final class SacScene: Scene{
 		}
 	}
 
+	struct TriggerCameraStart{
+		bool valid=false;
+		TriggerCamera record;
+		Vector3f origin=Vector3f(0.0f,0.0f,0.0f);
+		Vector3f focus=Vector3f(0.0f,0.0f,0.0f);
+	}
+	TriggerCameraStart[32] triggerCameraStarts;
+	int triggerCameraStartCursor=0;
+	bool triggerCameraLocalActive=false;
+	bool triggerCameraRevisionValid=false;
+	TriggerCamera triggerCameraLocalRecord;
+	Vector3f triggerCameraOriginStart=Vector3f(0.0f,0.0f,0.0f);
+	Vector3f triggerCameraFocusStart=Vector3f(0.0f,0.0f,0.0f);
+	Vector3f triggerCameraCurrentOrigin=Vector3f(0.0f,0.0f,0.0f);
+	Vector3f triggerCameraCurrentFocus=Vector3f(0.0f,0.0f,0.0f);
+	bool triggerCameraPoseValid=false;
+	Camera triggerCameraSaved;
+	bool triggerCameraSavedValid=false;
+	bool triggerCameraZoomRevisionValid=false;
+	uint triggerCameraSeenZoomRevision=0;
+	float triggerCameraSeenZoom=0.125f;
+	float triggerCameraSavedTargetZoom=0.125f;
+	bool triggerCameraSavedTargetZoomValid=false;
+
+	TriggerCameraStart* findTriggerCameraStart(TriggerCamera record){
+		foreach(ref entry;triggerCameraStarts)
+			if(entry.valid&&entry.record==record) return &entry;
+		return null;
+	}
+	TriggerCameraStart* storeTriggerCameraStart(TriggerCamera record,Vector3f origin,Vector3f focus){
+		if(auto old=findTriggerCameraStart(record)) return old;
+		auto entry=&triggerCameraStarts[triggerCameraStartCursor%triggerCameraStarts.length];
+		triggerCameraStartCursor=(triggerCameraStartCursor+1)%triggerCameraStarts.length;
+		*entry=TriggerCameraStart(true,record,origin,focus);
+		return entry;
+	}
+	static bool sameTriggerCameraOrigin(TriggerCamera lhs,TriggerCamera rhs){
+		return lhs.originValid==rhs.originValid&&lhs.originEnd==rhs.originEnd&&lhs.originTarget==rhs.originTarget&&
+			lhs.originStartTick==rhs.originStartTick&&lhs.originDuration==rhs.originDuration;
+	}
+	static bool sameTriggerCameraFocus(TriggerCamera lhs,TriggerCamera rhs){
+		return lhs.focusValid==rhs.focusValid&&lhs.focusEnd==rhs.focusEnd&&lhs.focusTarget==rhs.focusTarget&&
+			lhs.focusStartTick==rhs.focusStartTick&&lhs.focusDuration==rhs.focusDuration;
+	}
+	struct TriggerCameraTargetInfo{
+		Vector3f position=Vector3f(0.0f,0.0f,0.0f);
+		Vector3f focus=Vector3f(0.0f,0.0f,0.0f);
+		float radius=0.0f;
+		float height=0.0f;
+		float facing=0.0f;
+	}
+	static Vector3f triggerCameraMovingFocus(ref MovingObject!DagonBackend object){
+		import animations:AnimationState;
+		auto sacObject=object.sacObject;
+		if(sacObject.isSaxs&&sacObject.saxsi.saxs.hitboxBones.length){
+			Vector3f sum=Vector3f(0.0f,0.0f,0.0f);
+			int count=0;
+			foreach(boneIndex;sacObject.saxsi.saxs.hitboxBones){
+				auto lower=Vector3f(float.max,float.max,float.max);
+				auto upper=Vector3f(-float.max,-float.max,-float.max);
+				foreach(vertex;sacObject.saxsi.saxs.bones[boneIndex].hitbox){
+					foreach(i;0..3){
+						lower[i]=min(lower[i],vertex[i]);
+						upper[i]=max(upper[i],vertex[i]);
+					}
+				}
+				sum+=0.5f*(lower+upper);
+				++count;
+			}
+			return object.position+sum*(object.scale/count);
+		}
+		auto hitbox=sacObject.largeHitbox(Quaternionf.identity(),object.scale,AnimationState.stance1,0);
+		return object.position+0.5f*(hitbox[0]+hitbox[1]);
+	}
+	static TriggerCameraTargetInfo movingTriggerCameraTargetInfo(ref MovingObject!DagonBackend object){
+		import animations:AnimationState;
+		TriggerCameraTargetInfo result;
+		result.position=object.position;
+		result.focus=triggerCameraMovingFocus(object);
+		auto hitbox=object.sacObject.largeHitbox(Quaternionf.identity(),object.scale,AnimationState.stance1,0);
+		auto size=hitbox[1]-hitbox[0];
+		auto halfSize=0.5f*size;
+		result.radius=1.0f+sqrt(halfSize.x*halfSize.x+halfSize.y*halfSize.y);
+		result.height=0.9f*size.z;
+		result.facing=object.creatureState.facing;
+		return result;
+	}
+	static void accumulateTriggerCameraBuildingBounds(T)(ref T objects,int index,Vector3f center,float* radius,float* height){
+		auto hitbox=objects.relativeHitbox(index);
+		auto size=hitbox[1]-hitbox[0];
+		auto halfSize=0.5f*size;
+		auto offset=objects.positions[index]-center;
+		auto candidate=sqrt(offset.x*offset.x+offset.y*offset.y)+sqrt(halfSize.x*halfSize.x+halfSize.y*halfSize.y);
+		*radius=max(*radius,candidate);
+		*height=max(*height,hitbox[1].z);
+	}
+	static TriggerCameraTargetInfo buildingTriggerCameraTargetInfo(ref Building!DagonBackend building,ObjectState!DagonBackend state){
+		TriggerCameraTargetInfo result;
+		result.position=building.position(state);
+		foreach(cid;building.componentIds.data)
+			state.staticObjectReadById!(accumulateTriggerCameraBuildingBounds,function void(){ assert(0); })(cid,result.position,&result.radius,&result.height);
+		result.focus=result.position+Vector3f(0.0f,0.0f,0.5f*result.height);
+		result.facing=building.facing;
+		return result;
+	}
+	TriggerCameraTargetInfo getTriggerCameraTargetInfo(int target){
+		if(state.current.isValidBuilding(target))
+			return state.current.buildingById!(buildingTriggerCameraTargetInfo,function TriggerCameraTargetInfo(){ assert(0); })(target,state.current);
+		return state.current.movingObjectById!(movingTriggerCameraTargetInfo,function TriggerCameraTargetInfo(){ assert(0); })(target);
+	}
+	Vector3f resolveTriggerCameraFocusTarget(int target,Vector3f fallback){
+		if(target&&state.current.isValidTarget(target)) return getTriggerCameraTargetInfo(target).focus;
+		return fallback;
+	}
+	float triggerCameraTerrainClearance(Vector3f position){
+		return max(position.z,state.current.getHeight(position)+0.5f);
+	}
+	static float triggerCameraHorizontalCurve(float zoom){
+		return 1.0f+zoom*(3.0f+zoom*(3.0f+zoom));
+	}
+	static float triggerCameraVerticalCurve(float zoom){
+		return 0.9f+zoom*(0.75f+zoom*(1.8f-0.45f*zoom));
+	}
+	Vector3f resolveTriggerCameraOriginTarget(int target,Vector3f fallback){
+		if(!target||!state.current.isValidTarget(target)){
+			fallback.z=triggerCameraTerrainClearance(fallback);
+			return fallback;
+		}
+		auto info=getTriggerCameraTargetInfo(target);
+		auto zoom=camera.zoom;
+		auto horizontalCurve=triggerCameraHorizontalCurve(zoom);
+		auto verticalCurve=triggerCameraVerticalCurve(zoom);
+		auto distance=info.radius*horizontalCurve;
+		auto vertical=info.height*verticalCurve;
+		Vector3f origin=info.position+Vector3f(distance*sin(info.facing),-distance*cos(info.facing),vertical);
+		auto targetAbove=info.position.z-state.current.getHeight(info.position);
+		auto originAbove=origin.z-state.current.getHeight(origin);
+		auto relative=originAbove-targetAbove;
+		auto clamped=max(0.75f*vertical,min(relative,1.25f*vertical));
+		origin.z+=clamped-relative;
+		origin.z=triggerCameraTerrainClearance(origin);
+		return origin;
+	}
+	Vector3f inferTriggerCameraFocus(){
+		if(camera.target&&state.current.isValidTarget(camera.target,TargetType.creature)){
+			auto position=state.current.movingObjectById!((obj)=>obj.position,function Vector3f(){ assert(0); })(camera.target);
+			return position+Vector3f(0.0f,0.0f,camera.focusHeight);
+		}
+		return camera.position-10.0f*fpview.camera.worldTrans.forward;
+	}
+	static float triggerCameraTransitionFraction(int startTick,int duration,int tick){
+		if(tick<=startTick) return 0.0f;
+		if(duration<=0||tick>=startTick+duration) return 1.0f;
+		auto fraction=cast(float)(tick-startTick)/duration;
+		return fraction*(0.3f+fraction*(2.1f-1.4f*fraction));
+	}
+	static Vector3f interpolateTriggerCamera(Vector3f start,Vector3f end,int startTick,int duration,int tick){
+		auto fraction=triggerCameraTransitionFraction(startTick,duration,tick);
+		return start+fraction*(end-start);
+	}
+	void evaluateTriggerCamera(TriggerCamera record,Vector3f originStart,Vector3f focusStart,int tick,out Vector3f origin,out Vector3f focus){
+		origin=originStart;
+		focus=focusStart;
+		if(record.originValid){
+			auto end=resolveTriggerCameraOriginTarget(record.originTarget,record.originEnd);
+			origin=interpolateTriggerCamera(originStart,end,record.originStartTick,record.originDuration,tick);
+			origin.z=triggerCameraTerrainClearance(origin);
+		}
+		if(record.focusValid){
+			auto end=resolveTriggerCameraFocusTarget(record.focusTarget,record.focusEnd);
+			focus=interpolateTriggerCamera(focusStart,end,record.focusStartTick,record.focusDuration,tick);
+		}
+	}
+	void updateTriggerCameraZoomTarget(TriggerCamera record){
+		if(triggerCameraZoomRevisionValid&&triggerCameraSeenZoomRevision==record.zoomRevision&&triggerCameraSeenZoom==record.zoom) return;
+		if(record.zoomRevision==0){
+			if(triggerCameraSavedTargetZoomValid){
+				camera.targetZoom=triggerCameraSavedTargetZoom;
+				triggerCameraSavedTargetZoomValid=false;
+			}
+		}else{
+			if(!triggerCameraSavedTargetZoomValid){
+				triggerCameraSavedTargetZoom=camera.targetZoom;
+				triggerCameraSavedTargetZoomValid=true;
+			}
+			camera.targetZoom=record.zoom;
+		}
+		triggerCameraSeenZoomRevision=record.zoomRevision;
+		triggerCameraSeenZoom=record.zoom;
+		triggerCameraZoomRevisionValid=true;
+	}
+	bool updateTriggerCamera(){
+		if(!state) return false;
+		auto record=state.current.trig.camera;
+		updateTriggerCameraZoomTarget(record);
+		if(!record.active){
+			if(triggerCameraLocalActive){
+				auto zoom=camera.zoom;
+				auto targetZoom=camera.targetZoom;
+				if(triggerCameraSavedValid){
+					camera=triggerCameraSaved;
+					camera.zoom=zoom;
+					camera.targetZoom=targetZoom;
+					camera.width=width;
+					camera.height=height;
+				}
+				triggerCameraLocalActive=false;
+				triggerCameraSavedValid=false;
+				triggerCameraRevisionValid=false;
+				triggerCameraPoseValid=false;
+				positionCamera();
+			}
+			return false;
+		}
+		if(!triggerCameraLocalActive){
+			triggerCameraSaved=camera;
+			triggerCameraSavedValid=true;
+			triggerCameraLocalActive=true;
+			triggerCameraRevisionValid=false;
+			triggerCameraPoseValid=false;
+		}
+		updateCameraZoom();
+		if(!triggerCameraRevisionValid||triggerCameraLocalRecord!=record){
+			if(auto cached=findTriggerCameraStart(record)){
+				triggerCameraOriginStart=cached.origin;
+				triggerCameraFocusStart=cached.focus;
+			}else{
+				auto hadRecord=triggerCameraRevisionValid;
+				auto originChanged=!hadRecord||!sameTriggerCameraOrigin(triggerCameraLocalRecord,record);
+				auto focusChanged=!hadRecord||!sameTriggerCameraFocus(triggerCameraLocalRecord,record);
+				Vector3f oldOrigin,oldFocus;
+				if(hadRecord&&triggerCameraPoseValid){
+					evaluateTriggerCamera(triggerCameraLocalRecord,triggerCameraOriginStart,triggerCameraFocusStart,state.current.trig.tick,oldOrigin,oldFocus);
+				}else{
+					oldOrigin=camera.position;
+					oldFocus=inferTriggerCameraFocus();
+				}
+				if(originChanged) triggerCameraOriginStart=oldOrigin;
+				if(focusChanged) triggerCameraFocusStart=oldFocus;
+				storeTriggerCameraStart(record,triggerCameraOriginStart,triggerCameraFocusStart);
+			}
+			triggerCameraLocalRecord=record;
+			triggerCameraRevisionValid=true;
+		}
+		evaluateTriggerCamera(record,triggerCameraOriginStart,triggerCameraFocusStart,state.current.trig.tick,triggerCameraCurrentOrigin,triggerCameraCurrentFocus);
+		triggerCameraPoseValid=true;
+		camera.position=triggerCameraCurrentOrigin;
+		auto delta=triggerCameraCurrentFocus-triggerCameraCurrentOrigin;
+		camera.turn=radtodeg(atan2(delta.x,delta.y));
+		camera.pitch=-90.0f;
+		camera.pitchOffset=radtodeg(atan2(-delta.z,delta.xy.length));
+		camera.roll=0.0f;
+		positionFPCamera();
+		return true;
+	}
+
+	struct TriggerShakeLocal{
+		bool valid=false;
+		int id=0;
+		int side=-1;
+		int startTick=0;
+		Vector3f position=Vector3f(0.0f,0.0f,0.0f);
+		int intensity=0;
+	}
+	TriggerShakeLocal[64] triggerShakeLocals;
+	int triggerShakeLocalCursor=0;
+	int triggerShakeCandidate(ref TriggerShake event){
+		foreach(ref local;triggerShakeLocals)
+			if(local.valid&&local.id==event.id&&local.side==event.side&&local.startTick==event.startTick&&local.position==event.position)
+				return local.intensity;
+		auto distance=(event.position-camera.position).length;
+		int intensity=distance<140.0f?cast(int)(65536.0f*16.0f*(140.0f-distance)/140.0f):0;
+		auto local=&triggerShakeLocals[triggerShakeLocalCursor%triggerShakeLocals.length];
+		triggerShakeLocalCursor=(triggerShakeLocalCursor+1)%triggerShakeLocals.length;
+		*local=TriggerShakeLocal(true,event.id,event.side,event.startTick,event.position,intensity);
+		return intensity;
+	}
+	Vector2f getTriggerViewportDisplacement(){
+		if(!state) return Vector2f(0.0f,0.0f);
+		auto tick=state.current.trig.tick;
+		int intensity=0,previousTick=0;
+		bool haveEvent=false;
+		foreach(ref event;state.current.trig.shakes){
+			if(event.side!=-1&&event.side!=renderSide) continue;
+			if(event.startTick>tick) continue;
+			auto candidate=triggerShakeCandidate(event);
+			if(haveEvent) intensity=max(0,intensity-8738*max(0,event.startTick-previousTick));
+			intensity=max(intensity,candidate);
+			previousTick=event.startTick;
+			haveEvent=true;
+		}
+		if(haveEvent) intensity=max(0,intensity-8738*max(0,tick-previousTick));
+		auto amplitude=(intensity+0x8000)>>16;
+		if(amplitude==0) return Vector2f(0.0f,0.0f);
+		import std.random: uniform;
+		Vector2f result;
+		result.x=cast(float)((uniform(0,32768)-0x4000)*amplitude>>14);
+		result.y=cast(float)((uniform(0,32768)-0x4000)*amplitude>>14);
+		return result;
+	}
+	Matrix4f triggerUnshakenProjection;
+	bool triggerProjectionValid=false;
+	void updateTriggerProjection(){
+		if(!triggerProjectionValid){
+			triggerUnshakenProjection=rc3d.projectionMatrix;
+			triggerProjectionValid=true;
+		}
+		rc3d.projectionMatrix=triggerUnshakenProjection;
+		auto displacement=getTriggerViewportDisplacement();
+		if(displacement.x==0.0f&&displacement.y==0.0f) return;
+		auto offset=Vector3f(2.0f*displacement.x/width,-2.0f*displacement.y/height,0.0f);
+		rc3d.projectionMatrix=translationMatrix(offset)*triggerUnshakenProjection;
+	}
+
 	bool gameEnded=false;
 	override void onUpdate(Duration dt){
 		auto fpSw=frameprof.timer();
 		scope(exit) frameprof.reportRenderedFrame(dt,fpSw.peek);
 		//writeln(DagonBackend.getTotalGPUMemory()," ",DagonBackend.getAvailableGPUMemory());
 		//writeln(eventManager.fps);
-		if(!mouse.menuMode){
+		bool captured=triggerInputCaptured();
+		if(!mouse.menuMode&&!captured){
 			if(observing) observerControl(dt);
 			if(options.debugHotkeys&&state&&controller&&!controller.network&&options.playbackFilename=="") stateTestControl();
 		}
 		control(dt);
-		cameraControl(dt);
+		if(!captured) cameraControl(dt);
 		updateLogicCallbacks();
 		if(state){
 			if(controller&&controller.hasStarted){
@@ -1854,11 +2315,13 @@ final class SacScene: Scene{
 				}+/
 			}//else state.step();
 			// state.commit();
-			updateCameraTarget();
-			if(camera.target){
-				auto targetFacing=state.current.movingObjectById!((obj)=>obj.creatureState.facing, function float(){ assert(0); })(camera.target);
-				updateCameraPosition(dt,targetFacing!=camera.lastTargetFacing,mouse.dragging||mouse.rotating);
-				camera.lastTargetFacing=targetFacing;
+			if(!updateTriggerCamera()){
+				updateCameraTarget();
+				if(camera.target){
+					auto targetFacing=state.current.movingObjectById!((obj)=>obj.creatureState.facing, function float(){ assert(0); })(camera.target);
+					updateCameraPosition(dt,targetFacing!=camera.lastTargetFacing,mouse.dragging||mouse.rotating);
+					camera.lastTargetFacing=targetFacing;
+				}
 			}
 		}
 		foreach(sac;sacs.data){
@@ -1868,8 +2331,9 @@ final class SacScene: Scene{
 			import animations;
 			// if(sac.numFrames(cast(AnimationState)0)) sac.setFrame(cast(AnimationState)0,cast(size_t)(frame%sac.numFrames(cast(AnimationState)0))); // TODO: fix
 		}
-		if(audio&&state) audio.update(dt,fpview.viewMatrix,state.current);
+		if(audio&&state) audio.update(dt,fpview.viewMatrix,state.current,renderSide);
 		updateCursor(dt);
+		updateTriggerProjection();
 		super.onUpdate(dt);
 	}
 	bool mouseTargetValid(Target target){
@@ -2709,7 +3173,7 @@ static:
 		if(audio) audio.deleteLoopingSounds();
 	}
 	void updateAudioAfterRollback(){
-		if(audio&&scene.state) audio.updateAudioAfterRollback(scene.state.current);
+		if(audio&&scene.state) audio.updateAudioAfterRollback(scene.state.current,scene.renderSide);
 	}
 	void queueDialogSound(int side,char[4] sound,DialogPriority priority){
 		if(!audio||side!=-1&&side!=scene.renderSide) return;

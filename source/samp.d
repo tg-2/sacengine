@@ -115,6 +115,12 @@ Samp parseSAMP(ubyte[] data){
 	return Samp(header,data);
 }
 
+int sampDuration(Samp samp,int framesPerSecond){
+	auto byteRate=short.sizeof*samp.header.sampleRate;
+	if(!byteRate) return 0;
+	return cast(int)((samp.data.length*framesPerSecond+byteRate-1)/byteRate);
+}
+
 Samp loadSAMP(string filename){
 	enforce(filename.endsWith(".SAMP"));
 	return parseSAMP(readFile(filename));
