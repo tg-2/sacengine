@@ -12,6 +12,7 @@ import sids, trig, ntts, nttData, bldg, sset;
 import sacmap, sacobject, animations, sacspell;
 import stats;
 import bots.shiny;
+import trig_state;
 enum int updateFPS=60;
 static assert(updateFPS%animFPS==0);
 enum updateAnimFactor=updateFPS/animFPS;
@@ -369,6 +370,7 @@ struct Order{
 	OrderTarget target; // TODO: don't store TargetLocation in creature state
 	float targetFacing=0.0f;
 	auto formationOffset=Vector2f(0.0f,0.0f);
+	char[4] spellTag; // trigger-issued cast orders
 }
 
 Vector3f getTargetPosition(B)(ref Order order,ObjectState!B state){
@@ -385,7 +387,8 @@ Vector3f getTargetPosition(B)(ref Command!B command,Vector2f formationOffset,Obj
 }
 
 Vector3f getTargetPosition(B)(Vector3f targetPosition,float targetFacing,Vector2f formationOffset,ObjectState!B state){
-	targetPosition+=rotate(facingQuaternion(targetFacing), Vector3f(formationOffset.x,formationOffset.y,0.0f));
+	if(formationOffset.x!=0.0f||formationOffset.y!=0.0f)
+		targetPosition+=rotate(facingQuaternion(targetFacing), Vector3f(formationOffset.x,formationOffset.y,0.0f));
 	targetPosition.z=state.getHeight(targetPosition);
 	return targetPosition;
 }
@@ -935,6 +938,7 @@ struct CreatureAI{
 	int lastAttackerId=0;
 	uint behaviorFlags=0;
 	uint grudgeMask=0; // bitmask of sides personally treated as enemies if behaviorFlags bit 14 is set
+	uint attackedBySides=0; // sticky bitmask of sides that attacked this creature (retail: creature+0xb3c, for triggers)
 	PositionPredictor predictor;
 	bool isOnAIQueue=false;
 	Path path;
@@ -1722,6 +1726,7 @@ struct Building(B){
 	enum splashRangedResistance=1.0f;
 	int burnFrames=0;
 	Array!int guardianIds;
+	int activeValue=0; // set by triggers (retail: structure+0x4f4)
 	NotificationState notificationState;
 	mixin Assign;
 	this(SacBuilding!B sacBuilding,int side,int flags,float facing){
@@ -9064,7 +9069,15 @@ float dealDamage(B)(ref MovingObject!B object,float damage,int attackingSide,Dam
 		}
 	}
 	// TODO: bleed, in case of petrification, bleed rocks instead
-	return dealRawDamage(object,damage*damageMultiplier,attackingSide,damageMod,killed,state);
+	auto wasFullHealth=object.creatureStats.health==object.creatureStats.maxHealth;
+	auto actualDamage=dealRawDamage(object,damage*damageMultiplier,attackingSide,damageMod,killed,state);
+	if(actualDamage>0.0f&&0<=attackingSide&&attackingSide<32&&attackingSide!=object.side){
+		if(0<=object.side&&object.side<32)
+			state.trig.sideAttackedBySides[object.side]|=1u<<attackingSide;
+		if(wasFullHealth) // retail: creature attacked-by mask only set when attacked at full health
+			object.creatureAI.attackedBySides|=1u<<attackingSide;
+	}
+	return actualDamage;
 }
 
 void recordDamage(B)(ref MovingObject!B object,int attackingSide,float damage,ObjectState!B state){
@@ -9302,6 +9315,8 @@ float dealDamage(B)(ref Building!B building,float damage,ref MovingObject!B atta
 }
 
 float dealDamage(B)(ref Building!B building,float damage,int attackingSide,DamageMod damageMod,ref bool destroyed,ObjectState!B state){
+	if(damage>0.0f&&0<=attackingSide&&attackingSide<32&&attackingSide!=building.side&&0<=building.side&&building.side<32)
+		state.trig.sideAttackedBySides[building.side]|=1u<<attackingSide;
 	auto guardianDamage=damageGuardians(building,damage,attackingSide,damageMod,state);
 	if(!isNaN(guardianDamage)) return guardianDamage;
 	return dealDamageIgnoreGuardians(building,damage,attackingSide,damageMod,destroyed,state);
@@ -9963,28 +9978,21 @@ int getCastingTime(B)(ref MovingObject!B object,SacSpell!B spell,bool stationary
 
 enum manaEpsilon=1e-2f;
 enum summonSoundGain=2.0f;
-bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!B state,bool isQueued=false){
-	auto wizard=state.getWizard(caster);
-	if(!wizard) return false;
-	auto spellStatus=state.spellStatus!false(wizard,spell,target);
-	if(spellStatus!=SpellStatus.ready){
-		if(!isQueued) return false;
-		if(!canRunSpellQueueForSpellStatus(spellStatus)) return false;
-	}
-	int numFrames=state.movingObjectById!((ref object,spell,wizard,state){
-		int numFrames=getCastingNumFrames(object,spell,wizard,state);
-		return object.startCasting(numFrames,spell.stationary,state)?numFrames:-1;
-	},()=>-1)(caster,spell,wizard,state);
-	if(numFrames==-1) return (*wizard).queueSpell(spell,target,state);
+bool stunOnFailedCast(B)(ref MovingObject!B object,ObjectState!B state,bool ok=false){
+	if(!ok) object.damageStun(Vector3f(0.0f,0.0f,-1.0f),state);
+	return ok;
+}
+
+bool startCastingValidated(B)(ref MovingObject!B object,WizardInfo!B* wizard,SacSpell!B spell,OrderTarget target,ObjectState!B state,bool* castStarted=null){
+	auto caster=object.id;
+	int numFrames=getCastingNumFrames(object,spell,wizard,state);
+	if(!object.startCasting(numFrames,spell.stationary,state)) return false;
+	if(castStarted) *castStarted=true;
 	auto drainSpeed=spell.isBuilding?125.0f:500.0f;
 	auto numManaDrainFrames=min(numFrames,cast(int)ceil(spell.manaCost*(updateFPS/drainSpeed)));
 	auto manaCostPerFrame=spell.manaCost/numManaDrainFrames;
 	auto manaDrain=ManaDrain!B(caster,manaCostPerFrame,numManaDrainFrames);
 	(*wizard).applyCooldown(spell,state);
-	bool stun(bool ok=false){
-		if(!ok) state.movingObjectById!((ref object){ object.damageStun(Vector3f(0.0f,0.0f,-1.0f),state); },(){})(caster);
-		return ok;
-	}
 	final switch(spell.type){
 		case SpellType.creature:
 			assert(target is OrderTarget.init);
@@ -9999,173 +10007,173 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 			bool ok=false;
 			switch(spell.tag){
 				case SpellTag.convert:
-					auto sidePosition=state.movingObjectById!((ref object)=>tuple(object.side,object.position),()=>tuple(-1,Vector3f.init))(caster);
+					auto sidePosition=tuple(object.side,object.position);
 					auto side=sidePosition[0],position=sidePosition[1];
 					if(side==-1) return false;
-					return stun(castConvert(side,manaDrain,spell,position,target.id,wizard.closestShrine,state));
+					return stunOnFailedCast(object,state,castConvert(side,manaDrain,spell,position,target.id,wizard.closestShrine,state));
 				case SpellTag.desecrate:
-					auto sidePosition=state.movingObjectById!((ref object)=>tuple(object.side,object.position),()=>tuple(-1,Vector3f.init))(caster);
+					auto sidePosition=tuple(object.side,object.position);
 					auto side=sidePosition[0],position=sidePosition[1];
 					if(side==-1) return false;
-					return stun(castDesecrate(side,manaDrain,spell,position,target.id,wizard.closestEnemyAltar,state));
+					return stunOnFailedCast(object,state,castDesecrate(side,manaDrain,spell,position,target.id,wizard.closestEnemyAltar,state));
 				case SpellTag.teleport:
-					auto position=state.movingObjectById!((ref object)=>object.position,()=>Vector3f.init)(caster);
+					auto position=object.position;
 					if(isNaN(position.x)) return false;
-					return stun(castTeleport(manaDrain,spell,position,target.id,state));
+					return stunOnFailedCast(object,state,castTeleport(manaDrain,spell,position,target.id,state));
 				case SpellTag.guardian:
-					return stun(castGuardian(manaDrain,spell,target.id,state));
+					return stunOnFailedCast(object,state,castGuardian(manaDrain,spell,target.id,state));
 				case SpellTag.speedup:
 					ok=speedUp(target.id,spell,state);
 					goto default;
 				case SpellTag.heal:
-					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
-					return stun(castHeal(target.id,manaDrain,side,spell,state));
+					auto side=object.side;
+					return stunOnFailedCast(object,state,castHeal(target.id,manaDrain,side,spell,state));
 				case SpellTag.lightning:
-					return stun(castLightning(target.id,manaDrain,spell,state));
+					return stunOnFailedCast(object,state,castLightning(target.id,manaDrain,spell,state));
 				case SpellTag.wrath:
-					return stun(castWrath(target.id,manaDrain,spell,state));
+					return stunOnFailedCast(object,state,castWrath(target.id,manaDrain,spell,state));
 				case SpellTag.fireball:
-					return stun(castFireball(target.id,manaDrain,spell,state));
+					return stunOnFailedCast(object,state,castFireball(target.id,manaDrain,spell,state));
 				case SpellTag.rock:
-					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
 					if(castingTime==-1) return false;
-					return stun(castRock(caster,target.id,manaDrain,spell,castingTime,state));
+					return stunOnFailedCast(object,state,castRock(caster,target.id,manaDrain,spell,castingTime,state));
 				case SpellTag.insectSwarm:
-					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
 					if(castingTime==-1) return false;
-					return stun(castSwarm(target.id,manaDrain,spell,castingTime,state));
+					return stunOnFailedCast(object,state,castSwarm(target.id,manaDrain,spell,castingTime,state));
 				case SpellTag.skinOfStone:
-					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
 					if(castingTime==-1) return false;
-					return stun(castSkinOfStone(manaDrain,spell,castingTime,state));
+					return stunOnFailedCast(object,state,castSkinOfStone(manaDrain,spell,castingTime,state));
 				case SpellTag.etherealForm:
-					return stun(castEtherealForm(manaDrain,spell,state));
+					return stunOnFailedCast(object,state,castEtherealForm(manaDrain,spell,state));
 				case SpellTag.fireform:
-					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
 					if(castingTime==-1) return false;
-					return stun(castFireform(manaDrain,spell,castingTime,state));
+					return stunOnFailedCast(object,state,castFireform(manaDrain,spell,castingTime,state));
 				case SpellTag.protectiveSwarm:
-					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
 					if(castingTime==-1) return false;
-					return stun(castProtectiveSwarm(manaDrain,spell,castingTime,state));
+					return stunOnFailedCast(object,state,castProtectiveSwarm(manaDrain,spell,castingTime,state));
 				case SpellTag.airShield:
-					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
 					if(castingTime==-1) return false;
-					return stun(castAirShield(manaDrain,spell,castingTime,state));
+					return stunOnFailedCast(object,state,castAirShield(manaDrain,spell,castingTime,state));
 				case SpellTag.freeze:
-					return stun(castFreeze(target.id,manaDrain,spell,state));
+					return stunOnFailedCast(object,state,castFreeze(target.id,manaDrain,spell,state));
 				case SpellTag.ringsOfFire:
-					return stun(castRingsOfFire(target.id,manaDrain,spell,state));
+					return stunOnFailedCast(object,state,castRingsOfFire(target.id,manaDrain,spell,state));
 				case SpellTag.slime:
-					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
-					return stun(castSlime(target.id,manaDrain,spell,castingTime,state));
+					auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
+					return stunOnFailedCast(object,state,castSlime(target.id,manaDrain,spell,castingTime,state));
 				case SpellTag.graspingVines:
-					return stun(castGraspingVines(target.id,manaDrain,spell,state));
+					return stunOnFailedCast(object,state,castGraspingVines(target.id,manaDrain,spell,state));
 				case SpellTag.soulMole:
-					return stun(castSoulMole(target.id,manaDrain,spell,state));
+					return stunOnFailedCast(object,state,castSoulMole(target.id,manaDrain,spell,state));
 				case SpellTag.rainbow:
-					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					auto side=object.side;
 					if(side==-1) return false;
-					return stun(castRainbow(side,target.id,manaDrain,spell,state));
+					return stunOnFailedCast(object,state,castRainbow(side,target.id,manaDrain,spell,state));
 				case SpellTag.chainLightning:
-					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					auto side=object.side;
 					if(side==-1) return false;
-					return stun(castChainLightning(side,target.id,manaDrain,spell,state));
+					return stunOnFailedCast(object,state,castChainLightning(side,target.id,manaDrain,spell,state));
 				case SpellTag.animateDead:
-					return stun(castAnimateDead(target.id,manaDrain,spell,state));
+					return stunOnFailedCast(object,state,castAnimateDead(target.id,manaDrain,spell,state));
 				case SpellTag.erupt:
-					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
-					return stun(castErupt(side,target.position,manaDrain,spell,state));
+					auto side=object.side;
+					return stunOnFailedCast(object,state,castErupt(side,target.position,manaDrain,spell,state));
 				case SpellTag.dragonfire:
-					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
-					return stun(castDragonfire(target.id,manaDrain,spell,castingTime,state));
+					auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
+					return stunOnFailedCast(object,state,castDragonfire(target.id,manaDrain,spell,castingTime,state));
 				case SpellTag.soulWind:
-					return stun(castSoulWind(target.id,manaDrain,spell,state));
+					return stunOnFailedCast(object,state,castSoulWind(target.id,manaDrain,spell,state));
 				case SpellTag.explosion:
-					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
-					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					auto side=object.side;
+					auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
 					if(side==-1||castingTime==-1) return false;
 
 					auto position=target.type==TargetType.building?target.center(state):target.position;
-					return stun(castExplosion(side,position,manaDrain,spell,castingTime,state));
+					return stunOnFailedCast(object,state,castExplosion(side,position,manaDrain,spell,castingTime,state));
 				case SpellTag.haloOfEarth:
-					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
-					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					auto side=object.side;
+					auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
 					if(side==-1||castingTime==-1) return false;
-					return stun(castHaloOfEarth(caster,side,manaDrain,spell,castingTime,state));
+					return stunOnFailedCast(object,state,castHaloOfEarth(caster,side,manaDrain,spell,castingTime,state));
 				case SpellTag.rainOfFrogs:
-					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
-					return stun(castRainOfFrogs(side,target.position,manaDrain,spell,state));
+					auto side=object.side;
+					return stunOnFailedCast(object,state,castRainOfFrogs(side,target.position,manaDrain,spell,state));
 				case SpellTag.demonicRift:
-					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
-					auto position=state.movingObjectById!((ref object)=>object.position,()=>Vector3f.init)(caster);
+					auto side=object.side;
+					auto position=object.position;
 					if(isNaN(position.x)) return false;
-					return stun(castDemonicRift(side,position,target,manaDrain,spell,state));
+					return stunOnFailedCast(object,state,castDemonicRift(side,position,target,manaDrain,spell,state));
 				case SpellTag.healingAura:
-					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
-					return stun(castHealingAura(side,target.id,manaDrain,spell,state));
+					auto side=object.side;
+					return stunOnFailedCast(object,state,castHealingAura(side,target.id,manaDrain,spell,state));
 				case SpellTag.frozenGround:
-					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
-					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					auto side=object.side;
+					auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
 					if(side==-1||castingTime==-1) return false;
-					return stun(castFrozenGround(target.position,manaDrain,spell,castingTime,state));
+					return stunOnFailedCast(object,state,castFrozenGround(target.position,manaDrain,spell,castingTime,state));
 				case SpellTag.firewall:
-					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
-					return stun(castFirewall(side,target.position,manaDrain,spell,state));
+					auto side=object.side;
+					return stunOnFailedCast(object,state,castFirewall(side,target.position,manaDrain,spell,state));
 				case SpellTag.wailingWall:
-					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
-					return stun(castWailingWall(side,target.position,manaDrain,spell,state));
+					auto side=object.side;
+					return stunOnFailedCast(object,state,castWailingWall(side,target.position,manaDrain,spell,state));
 				case SpellTag.vinewall:
-					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
-					return stun(castVinewall(side,target.position,manaDrain,spell,state));
+					auto side=object.side;
+					return stunOnFailedCast(object,state,castVinewall(side,target.position,manaDrain,spell,state));
 				case SpellTag.wallOfSpikes:
-					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
-					return stun(castWallOfSpikes(side,target.position,manaDrain,spell,state));
+					auto side=object.side;
+					return stunOnFailedCast(object,state,castWallOfSpikes(side,target.position,manaDrain,spell,state));
 				case SpellTag.plague:
-					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
-					return stun(castPlague(side,target.position,manaDrain,spell,state));
+					auto side=object.side;
+					return stunOnFailedCast(object,state,castPlague(side,target.position,manaDrain,spell,state));
 				case SpellTag.rainOfFire:
-					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
-					return stun(castRainOfFire(side,target.position,manaDrain,spell,state));
+					auto side=object.side;
+					return stunOnFailedCast(object,state,castRainOfFire(side,target.position,manaDrain,spell,state));
 				case SpellTag.bombardment:
-					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
-					return stun(castBombardment(side,target.position,manaDrain,spell,state));
+					auto side=object.side;
+					return stunOnFailedCast(object,state,castBombardment(side,target.position,manaDrain,spell,state));
 				case SpellTag.fence:
-					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
-					return stun(castFence(side,target.position,manaDrain,spell,state));
+					auto side=object.side;
+					return stunOnFailedCast(object,state,castFence(side,target.position,manaDrain,spell,state));
 				case SpellTag.intestinalVaporization:
-					return stun(castIntestinalVaporization(target.id,manaDrain,spell,state));
+					return stunOnFailedCast(object,state,castIntestinalVaporization(target.id,manaDrain,spell,state));
 				case SpellTag.blindRage:
-					return stun(castBlindRage(target.id,manaDrain,spell,state));
+					return stunOnFailedCast(object,state,castBlindRage(target.id,manaDrain,spell,state));
 				case SpellTag.bovineIntervention:
-					return stun(castBovineIntervention(target.id,manaDrain,spell,state));
+					return stunOnFailedCast(object,state,castBovineIntervention(target.id,manaDrain,spell,state));
 				case SpellTag.charm:
-					return stun(castCharm(target.id,manaDrain,spell,state));
+					return stunOnFailedCast(object,state,castCharm(target.id,manaDrain,spell,state));
 				case SpellTag.cloudkill:
-					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
-					return stun(castCloudkill(side,target,manaDrain,spell,state));
+					auto side=object.side;
+					return stunOnFailedCast(object,state,castCloudkill(side,target,manaDrain,spell,state));
 				case SpellTag.death:
-					return stun(castDeath(target,manaDrain,spell,state));
+					return stunOnFailedCast(object,state,castDeath(target,manaDrain,spell,state));
 				case SpellTag.volcano:
-					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
-					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
-					return stun(castVolcano(side,target.position,manaDrain,spell,castingTime,state));
+					auto side=object.side;
+					auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
+					return stunOnFailedCast(object,state,castVolcano(side,target.position,manaDrain,spell,castingTime,state));
 				case SpellTag.meanstalks:
-					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
-					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					auto side=object.side;
+					auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
 					if(castingTime==-1) return false;
-					return stun(castMeanstalks(side,target.position,manaDrain,spell,castingTime,state));
+					return stunOnFailedCast(object,state,castMeanstalks(side,target.position,manaDrain,spell,castingTime,state));
 				case SpellTag.tornado:
-					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
-					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					auto side=object.side;
+					auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
 					if(castingTime==-1) return false;
-					return stun(castTornado(side,target.position,manaDrain,spell,castingTime,state));
+					return stunOnFailedCast(object,state,castTornado(side,target.position,manaDrain,spell,castingTime,state));
 				case SpellTag.bore:
-					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
-					return stun(castBore(side,target.position,manaDrain,spell,state));
+					auto side=object.side;
+					return stunOnFailedCast(object,state,castBore(side,target.position,manaDrain,spell,state));
 				default:
 					if(ok) state.addEffect(manaDrain);
-					return stun(ok);
+					return stunOnFailedCast(object,state,ok);
 			}
 		case SpellType.structure:
 			if(!spell.isBuilding) goto case SpellType.spell;
@@ -10176,13 +10184,30 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 				auto building=makeBuilding(caster,spell.buildingTag(god),AdditionalBuildingFlags.inactive|Flags.cannotDamage,base,state);
 				state.setupStructureCasting(building);
 				float buildingHeight=state.buildingById!((ref bldg,state)=>height(bldg,state),()=>0.0f)(building,state);
-				auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+				auto castingTime=object.getCastingTime(numFrames,spell.stationary,state);
 				if(castingTime==-1) return false;
 				state.addEffect(StructureCasting!B(god,manaDrain,spell,building,buildingHeight,castingTime,0));
 				state.botConstructionProgress(building,0.0f);
 				return true;
-			}else return stun();
+			}else return stunOnFailedCast(object,state);
 	}
+}
+
+
+bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!B state,bool isQueued=false){
+	auto wizard=state.getWizard(caster);
+	if(!wizard) return false;
+	auto spellStatus=state.spellStatus!false(wizard,spell,target);
+	if(spellStatus!=SpellStatus.ready){
+		if(!isQueued) return false;
+		if(!canRunSpellQueueForSpellStatus(spellStatus)) return false;
+	}
+	bool castStarted=false;
+	auto result=state.movingObjectById!((ref object,spell,target,wizard,state,castStarted){
+		return startCastingValidated(object,wizard,spell,target,state,castStarted);
+	},()=>false)(caster,spell,target,wizard,state,&castStarted);
+	if(!castStarted) return (*wizard).queueSpell(spell,target,state);
+	return result;
 }
 
 bool startShooting(B)(ref MovingObject!B object,ObjectState!B state){
@@ -11989,6 +12014,7 @@ bool rhinokShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vect
 
 
 enum defaultFaceThreshold=1e-3;
+enum orderFaceThreshold=0.0872663856f; // retail: 0x3db2b8b8 (five degrees)
 bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state,float threshold=defaultFaceThreshold){
 	auto angle=facing-object.creatureState.facing;
 	while(angle<-pi!float) angle+=2*pi!float;
@@ -12101,6 +12127,31 @@ bool queueOrder(B)(ref MovingObject!B object,Order order,ObjectState!B state,int
 	if(object.creatureAI.order.command==CommandType.none) return .order(object,order,state,side);
 	if(!object.canOrder(side,state)) return false;
 	object.creatureAI.orderQueue.push(order);
+	return true;
+}
+
+bool prequeueTriggerCastOrder(B)(ref MovingObject!B object,Order order,ObjectState!B state,int side=-1){
+	if(!object.canOrder(side,state)) return false;
+	auto spell=SacSpell!B.get(order.spellTag);
+	if(!spell) return false;
+	if(object.isWizard){
+		auto wizard=state.getWizard(object.id);
+		if(!wizard) return false;
+		// CREATURE::CastSpell (0x45c180) skips insertion when CantCastSpell returns 2.
+		// The wizard override (0x481e30) uses 2 for these checks at issuance.
+		final switch(state.spellStatus!true(wizard,spell)) with(SpellStatus){
+			case inexistent,disabled,lowOnMana,mustBeNearBuilding,mustBeNearEnemyAltar,mustBeConnectedToConversion,needMoreSouls,notReady:
+				return false;
+			case invalidTarget,outOfRange,ready:
+				break;
+		}
+	}else if(spell !is object.activeAbility) return false;
+	auto current=object.creatureAI.order;
+	if(current.command!=CommandType.none&&!current.command.among(CommandType.castSpell,CommandType.useAbility))
+		object.creatureAI.orderQueue.pushFront(current);
+	// Retail 0x46dc00 puts casts before preserved orders and reuses a current spell slot.
+	object.creatureAI.order=order;
+	object.creatureAI.blockedDestination=Vector3f.init;
 	return true;
 }
 
@@ -12499,7 +12550,7 @@ bool moveTo(B)(ref MovingObject!B object,Vector3f targetPosition,float targetFac
 		object.creatureAI.blockedDestination=Vector3f.init;
 		return true;
 	}
-	return object.stop(targetFacing,state);
+	return object.stop(targetFacing,state,orderFaceThreshold);
 }
 
 bool moveWithinRange(B)(ref MovingObject!B object,Vector3f targetPosition,float range,ObjectState!B state,bool evade=true,bool maintainHeight=false,bool stayAboveGround=true,int targetId=0,bool disablePathfinding=false){
@@ -13747,6 +13798,87 @@ void absorbHerdGrudges(B)(ref MovingObject!B object,ObjectState!B state){
 	state.proximity.centers.eachInRange!absorb(state.proximity.version_,object.position,range,&object,state);
 }
 
+void completeTriggerCastOrder(B)(ref MovingObject!B object){
+	if(!object.creatureAI.orderQueue.empty){
+		object.creatureAI.order=object.creatureAI.orderQueue.front;
+		object.creatureAI.orderQueue.popFront();
+	}else object.creatureAI.order=Order.init;
+	object.creatureAI.blockedDestination=Vector3f.init;
+}
+
+bool refreshTriggerCastTarget(B)(ref OrderTarget target,ObjectState!B state){
+	if(target.type.among(TargetType.none,TargetType.terrain)) return true;
+	if(!target.id||!state.isValidTarget(target.id,target.type)) return false;
+	if(target.type==TargetType.soul)
+		target.position=state.soulById!((ref soul)=>soul.center,()=>Vector3f.init)(target.id);
+	else if(target.type.among(TargetType.creature,TargetType.building))
+		target.position=target.center(state);
+	else return false;
+	return true;
+}
+
+void updateTriggerCastOrder(B)(ref MovingObject!B object,ObjectState!B state){
+	auto spell=SacSpell!B.get(object.creatureAI.order.spellTag);
+	if(!spell||!refreshTriggerCastTarget(object.creatureAI.order.target,state)){
+		object.completeTriggerCastOrder();
+		return;
+	}
+	auto target=object.creatureAI.order.target;
+	if(object.isWizard){
+		auto wizard=state.getWizard(object.id);
+		if(!wizard){
+			object.completeTriggerCastOrder();
+			return;
+		}
+		if(!object.canCast(state)) return;
+		final switch(state.spellStatus!false(wizard,spell,target)) with(SpellStatus){
+			case invalidTarget:
+				// The casting FSM rejects the target and pops the order.
+				object.completeTriggerCastOrder();
+				return;
+			case inexistent,disabled,lowOnMana,mustBeNearBuilding,mustBeNearEnemyAltar,mustBeConnectedToConversion,needMoreSouls,notReady:
+				// A nonzero CantCastSpell result leaves a wizard's existing cast order active.
+				return;
+			case outOfRange,ready:
+				// Trigger casts bypass only the ordinary UI range gate. The FSM still
+				// validates the target and starts the normal casting/effect path.
+				object.startCastingValidated(wizard,spell,target,state);
+				object.completeTriggerCastOrder();
+				return;
+		}
+	}
+	if(spell !is object.activeAbility){
+		object.completeTriggerCastOrder();
+		return;
+	}
+	// Retail creature cast orders approach to 75% of the ability range before
+	// turning and invoking the FSM. Keep the order active while approaching.
+	if(spell.requiresTarget&&target.id!=object.id){
+		auto castRange=0.75f*spell.range;
+		if((object.position-target.position).lengthsqr>castRange^^2){
+			object.moveTowards(target.position,0.5f,state);
+			return;
+		}
+	}
+	if(object.creatureState.mode.isUsingAbility){
+		if(!object.useAbility(spell,target,state)) object.completeTriggerCastOrder();
+		return;
+	}
+	final switch(state.abilityStatus!false(object,spell,target)) with(SpellStatus){
+		case inexistent,disabled,invalidTarget:
+			object.completeTriggerCastOrder();
+			return;
+		case lowOnMana,mustBeNearBuilding,mustBeNearEnemyAltar,mustBeConnectedToConversion,needMoreSouls,notReady:
+			return;
+		case outOfRange:
+			object.moveTowards(target.position,0.5f,state);
+			return;
+		case ready:
+			if(!object.useAbility(spell,target,state)) object.completeTriggerCastOrder();
+			return;
+	}
+}
+
 void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 	if(!requiresAI(object.creatureState.mode)) return;
 	if(object.creatureStats.effects.oiled) return;
@@ -13761,6 +13893,8 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 	if(object.creatureState.mode.isUsingAbility){
 		if(object.creatureAI.order.command==CommandType.useAbility) // TODO: fix
 			object.useAbility(object.ability,object.creatureAI.order.target,state);
+		else if(object.creatureAI.order.command==CommandType.castSpell)
+			object.updateTriggerCastOrder(state);
 		return;
 	}
 	if(object.isHidden){
@@ -13835,6 +13969,20 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 			if(!object.advance(targetPosition,state))
 				if(!object.moveTo(targetPosition,object.creatureAI.order.targetFacing,state))
 					object.unqueueOrder(state);
+			break;
+		case CommandType.castSpell:
+			object.updateTriggerCastOrder(state);
+			break;
+		case CommandType.turnToFace:
+			auto target=object.creatureAI.order.target;
+			if(target.type!=TargetType.terrain){
+				if(target.id==object.id||!state.isValidTarget(target.id)){
+					object.clearOrder(state);
+					break;
+				}
+				target.position=target.center(state);
+			}
+			object.turnToFaceTowards(target.position,state);
 			break;
 		case CommandType.none:
 			if(object.sacObject.hasPeasantFSM) object.absorbHerdGrudges(state);
@@ -14410,6 +14558,8 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 				object.startIdling(state);
 				if(object.creatureAI.order.command==CommandType.useAbility) // TODO: handle shooting the same way?
 					object.clearOrder(state);
+				else if(object.creatureAI.order.command==CommandType.castSpell)
+					object.completeTriggerCastOrder();
 			}
 			break;
 		case CreatureMode.pulling:
@@ -29250,7 +29400,7 @@ final class ObjectState(B){ // (update logic)
 		rng=rhs.rng;
 		obj=rhs.obj;
 		sid=rhs.sid;
-		trig=rhs.trig;
+		trig.copyFrom(rhs.trig);
 		settings=rhs.settings;
 		/+hashCached=rhs.hashCached;
 		cachedHash=rhs.cachedHash;+/
@@ -29417,11 +29567,12 @@ final class ObjectState(B){ // (update logic)
 			case selectGroup: success=this.selectGroup(command.side,command.group); break Lswitch;
 			case automaticSelectGroup: goto case selectGroup;
 			case setFormation: success=applyOrder(command,this,true); break;
-			case retreat,capture,move,guard,guardArea,attack,advance,useAbility: success=applyOrder(command,this); break;
+			case retreat,capture,move,guard,guardArea,attack,advance,useAbility,turnToFace: success=applyOrder(command,this); break;
 			case castSpell: success=startCasting(command.wizard,command.spell,OrderTarget(command.target),this); break;
 			case dropSoul: success=.dropSoul(command.wizard,this); break;
 			case surrender: success=.surrender(command.side,this); break;
 			case chatMessage: success=sendChatMessage(command.chatMessage,this); break;
+			case triggerResponse: success=applyTriggerResponse(command,this); break;
 		}
 	}
 	void update(Command!B[] frameCommands){
@@ -29491,6 +29642,7 @@ final class ObjectState(B){ // (update logic)
 		this.performRenderModeUpdates();
 		this.performRemovals();
 		frameprof.mark("removals");
+		trig.updateTriggers(this);
 		trig.endTriggers(this);
 		proximity.end();
 		frameprof.endStep(frame);
@@ -30643,6 +30795,16 @@ struct SideManager(B){
 	}
 }
 
+struct TriggerMarker{
+	int id;
+	Vector3f position;
+	float yawDegrees=0.0f;
+	uint kind=0; // 0x04000000: cylinder (radius), 0x08000000: oriented box (radius=half width, halfLength=half length)
+	int side=0;
+	float radius=0.0f;
+	float halfLength=0.0f;
+}
+
 final class Triggers(B){
 	int[int] objectIds;
 	void associateId(int triggerId,int objectId)in{ // (uses GC)
@@ -30654,12 +30816,201 @@ final class Triggers(B){
 		return objectIds.get(triggerId,0);
 	}
 	Trig trig;
-	this(Trig trig){ this.trig=trig; }
+	string[] variableNames;
+	bool[] variablePerSide; // [SIDE] variables hold 32 values, one per side
+	int[] variableOffsets; // index into TriggerState.variableValues
+	char[4][] objectiveTags;
+	TriggerMarker[] markers;
+	this(Trig trig,NTTs ntts){
+		this.trig=trig;
+		variableNames=trig.variableNames;
+		objectiveTags=trig.objectiveTags;
+		int offset=0;
+		foreach(name;variableNames){
+			auto perSide=name.startsWith("[SIDE]");
+			variablePerSide~=perSide;
+			variableOffsets~=offset;
+			offset+=perSide?32:1;
+		}
+		markers=new TriggerMarker[](ntts.markers.length);
+		foreach(i,ref m;ntts.markers){
+			markers[i].id=cast(int)m.unknown1[1];
+			markers[i].position=Vector3f(m.x,m.y,m.z);
+			markers[i].yawDegrees=*cast(float*)&m.unknown0[0];
+			markers[i].kind=m.unknown0[2]&0x0C000000;
+			markers[i].side=cast(int)m.side;
+			markers[i].radius=m.unknown2[0];
+			markers[i].halfLength=m.unknown2[1];
+		}
+	}
+	TriggerMarker* findMarker(int id)return{
+		foreach(ref m;markers) if(m.id==id) return &m;
+		return null;
+	}
+}
+
+enum TriggerRunFlags{
+	active=1, // cleared when an action errors (retail: run+0x4 bit0)
+	runOnce=2, // retail: run+0x4 bit1
+	frozen=0x40000000, // waiting for speech or external input (retail: ask dialog)
+	actionsPhase=0x80000000, // conditions passed, executing actions
+}
+
+enum TriggerRunWait: ubyte{
+	none,
+	speechInput,
+	speechPersistent,
+	ask,
+}
+
+struct TriggerRun{
+	int id=0;
+	int trigger=0;
+	int side=0;
+	uint flags=TriggerRunFlags.active;
+	int actionIndex=0;
+	int wakeTick=0;
+	int[8] locals;
+	TriggerRunWait waitKind=TriggerRunWait.none;
+	int waitId=0;
+}
+
+enum TriggerSpeechKind: ubyte{
+	creature,
+	named,
+	god,
+	narrator,
+	sampleOnly,
+}
+
+struct TriggerSpeech{
+	int id=0;
+	int side=-1;
+	int runId=0; // zero for independent generic god/unresolved-creature speech
+	int target=0;
+	char[4] text=0;
+	char[4] sample=0;
+	char[4] speakerName=0;
+	TriggerSpeechKind kind=TriggerSpeechKind.creature;
+	int actor=0; // TrigGod or TrigNarrator, depending on kind
+	int emotion=0;
+	int startTick=0;
+	int duration=-1; // negative for persistent/input-driven speech
+	bool pauseForInput=false;
+}
+
+struct TriggerAudioEvent{
+	int id=0;
+	int side=-1;
+	char[4] sample=0;
+	int startTick=0;
+	int duration=0;
+}
+
+struct TriggerAsk{
+	int runId=0;
+	int side=-1;
+	uint variable=0;
+	char[4] question=0;
+	char[4] optionA=0;
+	char[4] optionB=0;
+}
+
+struct TriggerHistoryEntry{
+	int side=-1;
+	char[4] text=0;
+	char[4] sample=0;
+	bool intro=false;
+}
+
+struct TriggerTip{
+	bool active=false;
+	char[4] text=0;
+	int startTick=0;
+	int duration=0;
+}
+
+enum TriggerInterfaceBit:uint{
+	selectionList=1,
+	spellList=2,
+	minimap=4,
+	statusBar=8,
+	soulCounter=16,
+}
+
+struct TriggerCamera{
+	bool active=false;
+	bool originValid=false;
+	bool focusValid=false;
+	Vector3f originEnd=Vector3f(0.0f,0.0f,0.0f);
+	Vector3f focusEnd=Vector3f(0.0f,0.0f,0.0f);
+	int originTarget=0;
+	int focusTarget=0;
+	int originStartTick=0;
+	int originDuration=0;
+	int focusStartTick=0;
+	int focusDuration=0;
+	float zoom=0.125f;
+	uint revision=0;
+	uint zoomRevision=0;
+}
+
+struct TriggerFade{
+	int color=195; // TrigColor.clear
+	float amount=0.0f;
+	float step=0.0f;
+}
+
+struct TriggerShake{
+	int id=0;
+	int side=-1;
+	Vector3f position=Vector3f(0.0f,0.0f,0.0f);
+	int startTick=0;
 }
 
 struct TriggerState(B){
 	int[32] numSouls;
 	int[32] numManaliths;
+	bool initialized=false;
+	int tick=0; // 60Hz trigger clock (retail: global tick, updated once per frame)
+	int gameTimer=0; // counts down when set (retail: mgr+0x630)
+	bool gameTimerVisible=false;
+	uint[32] sideAttackedBySides; // sticky attacked-by masks per side (retail: SIDE+0x4c)
+	TriggerRun[] runs;
+	int nextRunId=0;
+	int[] variableValues; // flat storage; offsets in Triggers.variableOffsets
+	ubyte[] variableDisplayFlags;
+	ubyte[] objectiveFlags; // bit0: enabled, bit1: complete
+	TriggerSpeech[] speeches;
+	int nextSpeechId=0;
+	TriggerAudioEvent[] audioEvents;
+	int nextAudioEventId=0;
+	TriggerAsk[] asks;
+	TriggerHistoryEntry[] speechHistory;
+	TriggerTip[32] tips;
+	bool tipboxSuppressed=false;
+	bool[32] beaconActive;
+	Vector3f[32] beaconPositions=Vector3f(0.0f,0.0f,0.0f);
+	bool cinematics=false;
+	uint hiddenInterfaceElements=0;
+	TriggerCamera camera;
+	TriggerFade fade;
+	TriggerShake[] shakes;
+	int nextShakeId=0;
+
+	void copyFrom(ref TriggerState rhs){
+		this=rhs;
+		// State snapshots must not share mutable trigger arrays.
+		runs=rhs.runs.dup;
+		variableValues=rhs.variableValues.dup;
+		variableDisplayFlags=rhs.variableDisplayFlags.dup;
+		objectiveFlags=rhs.objectiveFlags.dup;
+		speeches=rhs.speeches.dup;
+		audioEvents=rhs.audioEvents.dup;
+		asks=rhs.asks.dup;
+		speechHistory=rhs.speechHistory.dup;
+		shakes=rhs.shakes.dup;
+	}
 }
 
 void beginTriggers(B)(ref TriggerState!B triggerState,ObjectState!B state){
@@ -30993,7 +31344,7 @@ Cursor cursor(B)(ref OrderTarget target,int renderSide,bool showIcon,ObjectState
 
 bool hasClickSound(CommandType type){
 	final switch(type) with(CommandType){
-		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,clearSelection,automaticToggleSelection,automaticSelectGroup,setFormation,retreat,capture,dropSoul,surrender,chatMessage: return false;
+		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,clearSelection,automaticToggleSelection,automaticSelectGroup,setFormation,retreat,capture,dropSoul,surrender,chatMessage,turnToFace,triggerResponse: return false;
 		case select,selectAll,automaticSelectAll,toggleSelection,addAllToSelection,automaticAddAllToSelection,defineGroup,addToGroup,selectGroup,move,guard,guardArea,attack,advance,castSpell,useAbility: return true;
 	}
 }
@@ -31032,11 +31383,12 @@ SoundType soundType(B)(Command!B command){
 		case dropSoul: return SoundType.none;
 		case surrender: return SoundType.none;
 		case chatMessage: return SoundType.none;
+		case turnToFace,triggerResponse: return SoundType.none;
 	}
 }
 SoundType responseSoundType(B)(Command!B command){
 	final switch(command.type) with(CommandType){
-			case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,setFormation,clearSelection,automaticSelectAll,automaticToggleSelection,automaticAddAllToSelection,defineGroup,addToGroup,automaticSelectGroup,retreat,capture,castSpell,useAbility,dropSoul,surrender,chatMessage:
+			case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,setFormation,clearSelection,automaticSelectAll,automaticToggleSelection,automaticAddAllToSelection,defineGroup,addToGroup,automaticSelectGroup,retreat,capture,castSpell,useAbility,dropSoul,surrender,chatMessage,turnToFace,triggerResponse:
 			return SoundType.none;
 		case select,selectAll,toggleSelection,addAllToSelection,selectGroup:
 			return SoundType.selected;
@@ -31226,6 +31578,9 @@ enum CommandType{
 	surrender,
 
 	chatMessage,
+
+	turnToFace,
+	triggerResponse,
 }
 
 enum CommandQueueing{
@@ -31272,6 +31627,11 @@ struct Command(B){
 			case surrender:
 				assert(0);
 			case chatMessage:
+				assert(0);
+			case turnToFace:
+				assert(target.type.among(TargetType.terrain,TargetType.creature,TargetType.building));
+				break;
+			case triggerResponse:
 				assert(0);
 		}
 	}do{
@@ -31337,6 +31697,13 @@ struct Command(B){
 		this.chatMessage=move(chatMessage);
 	}
 
+	this(int side,int triggerId,int triggerChoice){
+		this.type=CommandType.triggerResponse;
+		this.side=side;
+		this.triggerId=triggerId;
+		this.triggerChoice=triggerChoice;
+	}
+
 	CommandType type;
 	int side;
 	int wizard;
@@ -31346,8 +31713,11 @@ struct Command(B){
 	float targetFacing;
 	Formation formation=Formation.init;
 	int group=-1;
+	int triggerId=0;
+	int triggerChoice=0;
 
 	bool isApplicable(B)(ObjectState!B state){
+		if(type==CommandType.triggerResponse) return triggerId!=0;
 		return (wizard==0||state.isValidTarget(wizard,TargetType.creature)) &&
 			(creature==0||state.isValidTarget(creature,TargetType.creature)) &&
 			(target.id==0&&target.type.among(TargetType.none,TargetType.terrain)||state.isValidTarget(target.id,target.type));
@@ -32131,7 +32501,7 @@ final class GameState(B){
 		auto sides=new Sides!B(map.sids);
 		auto proximity=new Proximity!B();
 		auto pathFinder=new PathFinder!B(map);
-		auto triggers=new Triggers!B(map.trig);
+		auto triggers=new Triggers!B(map.trig,map.ntts);
 		this(map,sides,proximity,pathFinder,triggers,supportRollback);
 	}
 	this(SacMap!B map,Sides!B sides,Proximity!B proximity,PathFinder!B pathFinder,Triggers!B triggers,bool supportRollback){
