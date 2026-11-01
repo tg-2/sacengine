@@ -619,6 +619,7 @@ private enum shinyAILog=false;
 private void ailog(Args...)(Args args){ import std.stdio:writeln; writeln(args); }
 
 void updateBots(B)(ObjectState!B state){
+	if(state.trig.cinematics) return;
 	foreach(side;0..cast(int)state.sid.sides.length){
 		auto data=&state.sid.sides[side];
 		if(data.sideType!=SideType.shinyBot) continue;
@@ -790,7 +791,7 @@ void botFirstContact(B)(ObjectState!B state,int side,int id){ // thaum SIDE::Mar
 	if(ai is null) return;
 	if(ai.contactedSides&(1u<<ownerSide)) return;
 	ai.contactedSides|=1u<<ownerSide;
-	final switch(state.sides.getStance(side,ownerSide)){
+	final switch(state.getStance(side,ownerSide)){
 		case Stance.ally: notifyEvent(ai,state,NodeKind.none,0,NodeKind.none,0,BotEvent.firstContactAlly); break;
 		case Stance.enemy: notifyEvent(ai,state,NodeKind.none,0,NodeKind.none,0,BotEvent.firstContactEnemy); break;
 		case Stance.neutral: break; // thaum sets the bit without firing an event
@@ -831,7 +832,7 @@ void botScanBuilding(B)(ref Building!B b,ObjectState!B state){ // thaum LANDITEM
 	/+bool found=false;
 	state.eachMoving!((ref MovingObject!B o,ObjectState!B state,Vector3f position,int side,bool* found){
 		if(*found||!o.isWizard) return;
-		if(state.sides.getStance(side,o.side)!=Stance.enemy&&state.sides.getStance(o.side,side)!=Stance.enemy) return; // thaum additionally counts ntt+0x234&0x2000 (provoked flag, no sacengine equivalent)
+		if(state.getStance(side,o.side)!=Stance.enemy&&state.getStance(o.side,side)!=Stance.enemy) return; // thaum additionally counts ntt+0x234&0x2000 (provoked flag, no sacengine equivalent)
 		if((o.position-position).lengthsqr<range*range) *found=true;
 	})(state,position,b.side,&found);
 	if(found) state.botEvent(b.side,BotEvent.enemyNearBuilding);+/
@@ -922,8 +923,8 @@ bool entGhost(B)(ObjectState!B state,int id){
 int relation(B)(ObjectState!B state,int mySide,int entSide){
 	if(entSide<0) return 2; // entity gone between scan and setup (thaum always has a live ntt)
 	if(entSide==mySide) return 0;
-	if(state.sides.getStance(mySide,entSide)==Stance.ally||state.sides.getStance(entSide,mySide)==Stance.ally) return 1;
-	if(state.sides.getStance(mySide,entSide)==Stance.enemy||state.sides.getStance(entSide,mySide)==Stance.enemy) return 3;
+	if(state.getStance(mySide,entSide)==Stance.ally||state.getStance(entSide,mySide)==Stance.ally) return 1;
+	if(state.getStance(mySide,entSide)==Stance.enemy||state.getStance(entSide,mySide)==Stance.enemy) return 3;
 	return 2;
 }
 enum uint[4] relationFlag=[AINodeFlags.own,AINodeFlags.ally,0,AINodeFlags.enemy];
@@ -1396,7 +1397,7 @@ void updateStats(B)(ref ShinyAI!B ai,ObjectState!B state){ // 0x484540
 		foreach(j,ref inner;state.sides){ // inner walk has no neutral skip
 			if(inner.assignment==0) continue;
 			auto imask=1u<<j;
-			if((inner.allies&mask)||(side.allies&imask)||imask==mask) teamMasks[n]|=imask;
+			if((state.sid.sides[j].alliedSides&mask)||(state.sid.sides[i].alliedSides&imask)||imask==mask) teamMasks[n]|=imask;
 		}
 		n++;
 	}
@@ -1413,7 +1414,7 @@ void updateStance(B)(ref ShinyAI!B ai,ObjectState!B state,int dTicks){ // rec1 0
 	ai.enemyCount=0;
 	foreach(i,ref s;state.sides){ // both-direction enemy stances against living wizard sides
 		if(i==ai.side||i==neutralSide||s.assignment==0) continue;
-		if(state.sides.getStance(ai.side,to!int(i))!=Stance.enemy&&state.sides.getStance(to!int(i),ai.side)!=Stance.enemy) continue;
+		if(state.getStance(ai.side,to!int(i))!=Stance.enemy&&state.getStance(to!int(i),ai.side)!=Stance.enemy) continue;
 		if(state.getWizardForSide(to!int(i)) is null) continue; // 0x472030
 		ai.enemyCount++;
 	}

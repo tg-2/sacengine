@@ -540,14 +540,14 @@ final class SacScene: Scene{
 	TriggerSpeech* currentTriggerInputSpeech(){
 		if(!state) return null;
 		foreach(ref speech;state.current.trig.speeches)
-			if(speech.pauseForInput) return &speech;
+			if(speech.startTick>=0&&speech.pauseForInput) return &speech;
 		return null;
 	}
 	bool triggerCameraInputCaptured(){
 		return state&&(state.current.trig.cinematics||state.current.trig.camera.active);
 	}
 	bool triggerInputCaptured(){
-		return triggerHistoryVisible||currentTriggerAsk()!is null||currentTriggerInputSpeech()!is null||triggerCameraInputCaptured();
+		return triggerHistoryVisible||currentTriggerAsk()!is null||triggerCameraInputCaptured();
 	}
 	void updateTriggerModalMouse(bool modal){
 		if(modal){
@@ -607,7 +607,7 @@ final class SacScene: Scene{
 		if(triggerHistoryVisible) validateTriggerHistorySelection();
 		auto ask=currentTriggerAsk();
 		auto speech=currentTriggerInputSpeech();
-		updateTriggerModalMouse(ask!is null||speech!is null||triggerHistoryVisible);
+		updateTriggerModalMouse(ask!is null||triggerHistoryVisible);
 		if(ask!is null){
 			if(mouseButtonDown[MB_LEFT]){
 				foreach(choice;1..3){
@@ -621,10 +621,8 @@ final class SacScene: Scene{
 			foreach(_;0..keyDown[KEY_2]) submitTriggerResponse(ask.side,ask.runId,2);
 			return true;
 		}
-		if(speech!is null){
-			bool continueClick=mouseButtonDown[MB_LEFT]!=0&&renderer.isOnTriggerSpeechContinue(speech.id,state.current,Vector2f(mouse.x,mouse.y),info);
-			bool dismiss=continueClick||keyDown[KEY_SPACE]!=0||keyDown[KEY_RETURN]!=0||keyDown[KEY_ESCAPE]!=0;
-			if(dismiss) submitTriggerResponse(speech.side,speech.runId!=0?speech.runId:-speech.id,0);
+		if(speech!is null&&mouseButtonDown[MB_LEFT]!=0&&renderer.isOnTriggerSpeechContinue(speech.id,state.current,Vector2f(mouse.x,mouse.y),info)){
+			submitTriggerResponse(speech.side,speech.runId!=0?speech.runId:-speech.id,0);
 			return true;
 		}
 		if(triggerHistoryVisible){
