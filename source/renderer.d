@@ -11,6 +11,7 @@ import std.range: iota, walkLength, enumerate;
 import std.typecons: tuple, Tuple;
 import std.conv: to;
 import std.format: format;
+import std.string: startsWith, replace;
 import std.exception: enforce;
 import state,sacobject,sacspell,nttData,sacmap,levl,form,sacform,sacfont;
 import trig_state: genericTriggerText, triggerResourceFilename;
@@ -3788,7 +3789,7 @@ struct Renderer(B){
 					}
 					if(state.alliedBeamVision){
 						foreach(side;0..to!int(objects.highlights.length))
-							if(state.sides.getStance(side,info.renderSide)==Stance.ally)
+							if(state.getStance(side,info.renderSide)==Stance.ally)
 								renderHighlightsForSide(side);
 					}else renderHighlightsForSide(info.renderSide);
 				}
@@ -4565,7 +4566,7 @@ struct Renderer(B){
 		}
 		if(state.alliedBeamVision){
 			foreach(side;0..to!int(state.obj.opaqueObjects.highlights.highlights.length))
-				if(state.sides.getStance(side,info.renderSide)==Stance.ally)
+				if(state.getStance(side,info.renderSide)==Stance.ally)
 					addHighlightsForSide(side);
 		}else addHighlightsForSide(info.renderSide);
 		static bool isHighlighted(int id){ // TODO: can be slow if many highlights
@@ -4644,7 +4645,7 @@ struct Renderer(B){
 						if(flags&Flags.notOnMinimap) continue;
 						auto showArrow=mayShowArrow&&
 							(side==info.renderSide||highlighted||isWizard||
-							 !isMoving && state.sides.getStance(side,info.renderSide)==Stance.ally);
+							 !isMoving && state.getStance(side,info.renderSide)==Stance.ally);
 					}else enum showArrow=false;
 					auto clipRadiusFactor=showArrow?0.92f:1.08f;
 					auto clipradiusSq=((clipRadiusFactor*radius+(showArrow?-1.0f:1.0f)*0.5f*iconScaling.x)*
@@ -5789,19 +5790,30 @@ struct Renderer(B){
 		auto background=Color4f(0.0f,0.0f,0.0f,0.68f);
 		auto foreground=Color4f(1.0f,1.0f,1.0f,1.0f);
 		auto y=12.0f*scale;
+		int numObjectives=0;
 		foreach(i,flags;state.trig.objectiveFlags){
 			if(!(flags&1)||i>=state.triggers.objectives.length) continue;
+			if(numObjectives>=6) break;
+			numObjectives++;
 			auto objective=state.triggers.objectives[i];
 			auto text=objective.text.length?objective.text:resolveTriggerText(objective.textTag,state.map.mapFolder,"MOBJ.FLDR");
-			text=(flags&2?"[complete] ":"[ ] ")~text;
-			y+=triggerTextPanel(text,Vector2f(12.0f*scale,y),min(360.0f*scale,0.45f*info.width),scale,background,foreground,info,rc)+4.0f*scale;
+			text="- "~text;
+			auto color=flags&2?Color4f(0.5f,0.5f,0.5f,1.0f):foreground;
+			y+=triggerTextPanel(text,Vector2f(12.0f*scale,y),min(360.0f*scale,0.45f*info.width),scale,background,color,info,rc)+4.0f*scale;
 		}
 		foreach(i,visible;state.trig.variableDisplayFlags){
 			if(!visible||i>=state.triggers.variableOffsets.length) continue;
 			int side=state.triggers.variablePerSide[i]&&0<=info.renderSide&&info.renderSide<32?info.renderSide:0;
 			auto offset=state.triggers.variableOffsets[i]+side;
 			if(offset>=state.trig.variableValues.length) continue;
-			auto text=format("%s: %d",state.triggers.variableNames[i],state.trig.variableValues[offset]);
+			auto text=state.triggers.variableNames[i];
+			if(text.startsWith("[SIDE]")) text=text[6..$];
+			else if(text.startsWith("[CAMPAIGN]")) text=text[10..$];
+			if(text.length==4){
+				auto localized=resolveTriggerText(cast(char[4])text[0..4],state.map.mapFolder,"TVAR.FLDR");
+				if(localized.length) text=localized;
+			}
+			text=text.replace("<n>",format("%d",state.trig.variableValues[offset]));
 			y+=triggerTextPanel(text,Vector2f(12.0f*scale,y),min(360.0f*scale,0.45f*info.width),scale,background,foreground,info,rc)+4.0f*scale;
 		}
 		if(state.trig.gameTimerVisible){
@@ -5820,8 +5832,8 @@ struct Renderer(B){
 			}
 		}
 	}
-	enum triggerContinueIconSize=64.0f;
-	enum triggerContinueExtraHeight=68.0f;
+	enum triggerContinueIconSize=32.0f;
+	enum triggerContinueExtraHeight=36.0f;
 	void triggerSpeechLayout(ref TriggerSpeech speech,ObjectState!B state,ref RenderInfo!B info,int yOffset,out Vector2f position,out Vector2f size,out string body,out int textWidth,out int textHeight){
 		auto scale=info.hudScaling;
 		auto font=SacFont!B.get(FontType.fn10);
@@ -5835,12 +5847,12 @@ struct Renderer(B){
 	}
 	void triggerContinueGeometry(Vector2f panelPosition,Vector2f panelSize,float scale,out Vector2f position,out Vector2f size){
 		size=Vector2f(triggerContinueIconSize*scale,triggerContinueIconSize*scale);
-		position=Vector2f(panelPosition.x+0.5f*(panelSize.x-size.x),panelPosition.y+panelSize.y-(triggerContinueExtraHeight-2.0f)*scale);
+		position=Vector2f(panelPosition.x+panelSize.x-34.0f*scale,panelPosition.y+panelSize.y-34.0f*scale);
 	}
 	bool isOnTriggerSpeechContinue(int speechId,ObjectState!B state,Vector2f center,ref RenderInfo!B info){
 		int yOffset=ChatMessage!B.topOffset;
 		foreach(ref speech;state.trig.speeches){
-			if(!triggerSideVisible(speech.side,info.renderSide)) continue;
+			if(speech.startTick<0||!triggerSideVisible(speech.side,info.renderSide)) continue;
 			Vector2f panelPosition,panelSize;
 			string body;
 			int textWidth,textHeight;
@@ -5861,7 +5873,7 @@ struct Renderer(B){
 		auto font=SacFont!B.get(FontType.fn10);
 		int yOffset=ChatMessage!B.topOffset;
 		foreach(ref speech;state.trig.speeches){
-			if(!triggerSideVisible(speech.side,info.renderSide)) continue;
+			if(speech.startTick<0||!triggerSideVisible(speech.side,info.renderSide)) continue;
 			Vector2f position,size;
 			string body;
 			int textWidth,textHeight;
@@ -5889,6 +5901,12 @@ struct Renderer(B){
 				B.enableTransparency();
 				quad.render(rc);
 				B.hudMaterialBackend.unbind(null,rc);
+				if(auto label="tpMS" in texts){ // SMpt.TEXT
+					auto labelSettings=FormatSettings(FlowType.left,scale);
+					auto labelSize=font.getSize(*label,labelSettings);
+					auto labelPosition=Vector2f(continuePosition.x-4.0f*scale-labelSize.x,continuePosition.y+16.0f*scale-0.5f*labelSize.y);
+					drawTriggerText(font,*label,labelPosition,labelSettings,Color4f(1.0f,1.0f,1.0f,1.0f),info,rc);
+				}
 			}
 			yOffset+=to!int(size.y/scale)+ChatMessage!B.gapSize;
 		}

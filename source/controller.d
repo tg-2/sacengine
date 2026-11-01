@@ -73,7 +73,7 @@ final class Controller(B){
 			int side=slot.controlledSide;
 			if(side==-1) continue;
 			slots&=~(1<<i);
-			final switch(state.current.sides.getStance(controlledSide,side)){
+			final switch(state.current.getStance(controlledSide,side)){
 				case Stance.ally:
 					if(allies) slots|=1<<i;
 					break;
