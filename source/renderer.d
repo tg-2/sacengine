@@ -3748,6 +3748,7 @@ struct Renderer(B){
 						B.shadelessMaterialBackend.setEnergy(1.0f);
 						enum maxLifetime=cast(int)(self.sacCommandCone.lifetime*updateFPS);
 						foreach(ref highlight;objects.highlights[highlightSide].data){
+							if(!highlight.triggerBeacon&&highlightSide!=info.renderSide&&(!state.alliedBeamVision||state.getStance(highlightSide,info.renderSide)!=Stance.ally)) continue;
 							auto position=highlight.position,targetPosition=highlight.targetPosition;
 							auto frame=highlight.frame;
 							auto direction=(targetPosition-position);
@@ -3778,6 +3779,7 @@ struct Renderer(B){
 						auto material=self.highlightStar.material;
 						material.bind(rc);
 						foreach(ref highlight;objects.highlights[highlightSide].data){
+							if(!highlight.triggerBeacon&&highlightSide!=info.renderSide&&(!state.alliedBeamVision||state.getStance(highlightSide,info.renderSide)!=Stance.ally)) continue;
 							auto position=highlight.position;
 							auto rotation=highlight.rotation;
 							auto mesh=self.highlightStar.mesh;
@@ -3787,11 +3789,8 @@ struct Renderer(B){
 						B.enableCulling();
 						material.unbind(rc);
 					}
-					if(state.alliedBeamVision){
-						foreach(side;0..to!int(objects.highlights.length))
-							if(state.getStance(side,info.renderSide)==Stance.ally)
-								renderHighlightsForSide(side);
-					}else renderHighlightsForSide(info.renderSide);
+					foreach(side;0..to!int(objects.highlights.length))
+						renderHighlightsForSide(side);
 				}
 			}else static assert(0);
 		}
@@ -4557,20 +4556,23 @@ struct Renderer(B){
 		static Array!int creatureArrowIndices;
 		static Array!int structureArrowIndices;
 		static Array!int highlightedIndices;
-		void addHighlightsForSide(int highlightSide){
-			if(highlightSide>=state.obj.opaqueObjects.highlights.highlights.length)
-				return;
-			foreach(ref highlight;state.obj.opaqueObjects.highlights.highlights[highlightSide].data)
-				if(highlight.status!=HighlightStatus.shrinking&&highlight.target)
-					highlightedIndices~=highlight.target;
+		static Array!int triggerBeaconIndices;
+		foreach(highlightSide;0..to!int(state.obj.opaqueObjects.highlights.highlights.length)){
+			foreach(ref highlight;state.obj.opaqueObjects.highlights.highlights[highlightSide].data){
+				if(highlight.status==HighlightStatus.shrinking||!highlight.target) continue;
+				if(!highlight.triggerBeacon&&highlightSide!=info.renderSide&&(!state.alliedBeamVision||state.getStance(highlightSide,info.renderSide)!=Stance.ally)) continue;
+				highlightedIndices~=highlight.target;
+				if(highlight.triggerBeacon) triggerBeaconIndices~=highlight.target;
+			}
 		}
-		if(state.alliedBeamVision){
-			foreach(side;0..to!int(state.obj.opaqueObjects.highlights.highlights.length))
-				if(state.getStance(side,info.renderSide)==Stance.ally)
-					addHighlightsForSide(side);
-		}else addHighlightsForSide(info.renderSide);
 		static bool isHighlighted(int id){ // TODO: can be slow if many highlights
 			foreach(hid;highlightedIndices.data)
+				if(id==hid)
+					return true;
+			return false;
+		}
+		static bool isTriggerBeacon(int id){
+			foreach(hid;triggerBeaconIndices.data)
 				if(id==hid)
 					return true;
 			return false;
@@ -4620,13 +4622,14 @@ struct Renderer(B){
 					auto quad=defaultQuad,iconScaling=defaultIconScaling;
 					static if(is(typeof(objects.sacObject))){
 						static if(isMoving){
-							if(objects.creatureStates[j].mode.among(CreatureMode.dead,CreatureMode.dissolving)) continue;
-							if(info.renderSide!=objects.sides[j]&&(!objects.creatureStates[j].mode.isVisibleToOtherSides||objects.creatureStatss[j].effects.stealth))
+							bool beacon=isTriggerBeacon(objects.ids[j]);
+							if(!beacon&&objects.creatureStates[j].mode.among(CreatureMode.dead,CreatureMode.dissolving)) continue;
+							if(!beacon&&info.renderSide!=objects.sides[j]&&(!objects.creatureStates[j].mode.isVisibleToOtherSides||objects.creatureStatss[j].effects.stealth))
 								continue;
-						}
+						}else bool beacon=isTriggerBeacon(objects.buildingIds[j]);
 						static if(isMoving){
 							bool highlighted=objects.creatureStatss[j].effects.numHighlights>0&&isHighlighted(objects.ids[j]);
-						}else enum highlighted=false; // TODO
+						}else bool highlighted=isHighlighted(objects.buildingIds[j]);
 						if(highlighted){
 							static assert(updateFPS%3==0);
 							quad=self.minimapHighlight[state.frame/(updateFPS/3)%$];
@@ -4642,7 +4645,7 @@ struct Renderer(B){
 							auto side=sideFlagsIsBlinking[0],flags=sideFlagsIsBlinking[1],isBlinking=side==info.renderSide&&sideFlagsIsBlinking[2];
 						}
 						import ntts: Flags;
-						if(flags&Flags.notOnMinimap) continue;
+						if(flags&Flags.notOnMinimap&&!beacon) continue;
 						auto showArrow=mayShowArrow&&
 							(side==info.renderSide||highlighted||isWizard||
 							 !isMoving && state.getStance(side,info.renderSide)==Stance.ally);
@@ -4656,9 +4659,9 @@ struct Renderer(B){
 					}
 					static if(is(typeof(objects.sacObject))){
 						static if(isMoving){
-							if(objects.sides[j]!=info.renderSide&&!state.minimapVisibleToSide(info.renderSide,objects.ids[j],objects.sides[j])) continue;
+							if(!beacon&&objects.sides[j]!=info.renderSide&&!state.minimapVisibleToSide(info.renderSide,objects.ids[j],objects.sides[j])) continue;
 						}else{
-							if(side!=info.renderSide&&!(0<=side?state.minimapVisibleToSide(info.renderSide,objects.ids[j],side):state.positionExploredBySide(info.renderSide,objects.positions[j]))) continue;
+							if(!beacon&&side!=info.renderSide&&!(0<=side?state.minimapVisibleToSide(info.renderSide,objects.ids[j],side):state.positionExploredBySide(info.renderSide,objects.positions[j]))) continue;
 						}
 					}else static if(is(T==Souls!B)){
 						if(!state.soulVisibleOnMinimap(info.renderSide,objects[j])) continue;
@@ -4723,7 +4726,7 @@ struct Renderer(B){
 				enum isMoving=is(T==MovingObject!B);
 				static if(isMoving){
 					bool highlighted=object.creatureStats.effects.numHighlights>0&&isHighlighted(object.id);
-				}else enum highlighted=false; // TODO
+				}else bool highlighted=isHighlighted(object.buildingId);
 				auto arrowQuad=isMoving?self.minimapCreatureArrow:self.minimapStructureArrow;
 				auto arrowScaling=info.hudScaling*Vector3f(11.0f,11.0f,0.0f);
 				auto position=object.position-minimapCenter;
@@ -4757,20 +4760,10 @@ struct Renderer(B){
 		static foreach(isMoving;[true,false])
 			foreach(id;isMoving?creatureArrowIndices.data:structureArrowIndices.data)
 				state.objectById!renderArrow(id,minimapFactor,minimapCenter,mapCenter,radius,mapRotation,&this,state,&info,rc);
-		if(0<=info.renderSide&&info.renderSide<32&&state.trig.beaconActive[info.renderSide]){
-			auto beaconPosition=state.trig.beaconPositions[info.renderSide]-minimapCenter;
-			auto beaconOffset=rotate(mapRotation,minimapFactor*Vector3f(beaconPosition.x,-beaconPosition.y,0));
-			if(beaconOffset.lengthsqr<=(0.92f*radius)^^2){
-				auto beaconScaling=info.hudScaling*Vector3f(10.0f,10.0f,0.0f);
-				B.minimapMaterialBackend.bindDiffuse(whiteTexture);
-				B.minimapMaterialBackend.setColor(Color4f(1.0f,0.8f,0.1f,1.0f));
-				B.minimapMaterialBackend.setTransformationScaled(mapCenter+beaconOffset-0.5f*beaconScaling,mapRotation*facingQuaternion(pi!float/4),beaconScaling,rc);
-				quad.render(rc);
-			}
-		}
 		creatureArrowIndices.length=0;
 		structureArrowIndices.length=0;
 		highlightedIndices.length=0;
+		triggerBeaconIndices.length=0;
 		material.unbind(rc);
 		material=sacHud.frameMaterial;
 		material.bind(rc);
@@ -5833,7 +5826,7 @@ struct Renderer(B){
 		}
 	}
 	enum triggerContinueIconSize=32.0f;
-	enum triggerContinueExtraHeight=36.0f;
+	enum triggerContinueExtraHeight=34.0f;
 	void triggerSpeechLayout(ref TriggerSpeech speech,ObjectState!B state,ref RenderInfo!B info,int yOffset,out Vector2f position,out Vector2f size,out string body,out int textWidth,out int textHeight){
 		auto scale=info.hudScaling;
 		auto font=SacFont!B.get(FontType.fn10);
@@ -5905,6 +5898,7 @@ struct Renderer(B){
 					auto labelSettings=FormatSettings(FlowType.left,scale);
 					auto labelSize=font.getSize(*label,labelSettings);
 					auto labelPosition=Vector2f(continuePosition.x-4.0f*scale-labelSize.x,continuePosition.y+16.0f*scale-0.5f*labelSize.y);
+					if(fonts[font.type]) labelPosition-=1.5f*scale*getFreetypeOffset(font);
 					drawTriggerText(font,*label,labelPosition,labelSettings,Color4f(1.0f,1.0f,1.0f,1.0f),info,rc);
 				}
 			}
