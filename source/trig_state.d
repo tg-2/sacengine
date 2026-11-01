@@ -612,7 +612,7 @@ int countCreatureType(B)(char[4] ctype,const(NttFilter)* filter,ObjectState!B st
 	if(maximum) *maximum=0;
 	bool corpses=ctype=="pctt";
 	state.obj.eachMoving!((ref obj,ctype,filter,corpses,state,count,maximum){
-		if(!corpses&&!obj.isAlive) return;
+		if(!corpses&&!obj.isAlive&&obj.creatureState.mode!=CreatureMode.dying) return;
 		if(filter.ownerSide>=0&&obj.side!=filter.ownerSide) return;
 		if(maximum) *maximum+=1;
 		if(!matchesCreatureType(ctype,obj)) return;
@@ -1474,7 +1474,7 @@ bool runAction(B)(TrigAction action,ref TriggerRun run,ref TriggerState!B trigge
 		Vector3f target;
 		if(id==0||state.isValidBuilding(id)) runError(run,text("teleport: cannot resolve creature ",teleport.creature.id));
 		else if(locationPosition(teleport.location,run.side,target,state))
-			state.movingObjectById!((ref obj,target,state){ .teleport(obj,target,state); },(){})(id,target,state);
+			state.movingObjectById!((ref obj,target,state){ .teleport(obj,target,state,false,false); },(){})(id,target,state);
 		return false;
 	}
 	if(cast(TrigTeleportCreatureAwayAction)action) return false; // see above
@@ -1487,15 +1487,9 @@ bool runAction(B)(TrigAction action,ref TriggerRun run,ref TriggerState!B trigge
 	// AI settings (pause/unpause/aggression) apply to the retail AI; the shiny bots do not consume them
 	if(cast(TrigSetAiSetting)action) return false;
 	if(auto beacon=cast(TrigTurnBeaconAtLocationAction)action){
-		if(!(0<=run.side&&run.side<32)) return false;
-		if(beacon.beaconSetting==TrigSwitch.off){
-			triggerState.beaconActive[run.side]=false;
-			return false;
-		}
-		Vector3f position;
-		if(locationPosition(beacon.location,run.side,position,state)){
-			triggerState.beaconActive[run.side]=true;
-			triggerState.beaconPositions[run.side]=position;
+		if(auto atNtt=cast(TrigAtNtt)beacon.location){
+			auto target=resolveNtt(atNtt.ntt,run.side,state);
+			if(target) setTriggerBeacon(run.side,target,beacon.beaconSetting==TrigSwitch.on,state);
 		}
 		return false;
 	}
@@ -1699,7 +1693,7 @@ void teleportAllOfType(B)(char[4] ctype,const(NttFilter)* filter,Vector3f target
 		if(!obj.isAlive) return;
 		if(!matchesCreatureType(ctype,obj)) return;
 		if(filter!is null&&!passesFilter(obj,filter,state)) return;
-		teleport(obj,target,state);
+		teleport(obj,target,state,false,false);
 	})(ctype,filter,target,state);
 }
 

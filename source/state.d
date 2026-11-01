@@ -2441,7 +2441,7 @@ int placeWizard(B)(ObjectState!B state,SacObject!B wizard,string name,int flags,
 		if(bldg.side==side && bldg.isAltar){
 			auto altar=state.staticObjectById!((obj)=>obj, function StaticObject!B(){ assert(0); })(bldg.componentIds[0]);
 			int closestManafount=0;
-			Vector3f manafountPosition;
+			auto manafountPosition=Vector3f(1280.0f,1280.0f,0.0f);
 			state.eachBuilding!((bldg,altarPos,closest,manaPos,state){
 				if(bldg.componentIds.length==0||!bldg.isManafount) return;
 				auto pos=bldg.position(state);
@@ -2451,18 +2451,10 @@ int placeWizard(B)(ObjectState!B state,SacObject!B wizard,string name,int flags,
 				}
 			})(altar.position,&closestManafount,&manafountPosition,state);
 			enum distance=wizardAltarDistance;
-			float facing;
-			Vector3f position;
-			if(closestManafount){
-				auto dir2d=(manafountPosition-altar.position).xy.normalized*distance;
-				if(dir2d.x==0.0f&&dir2d.y==0.0f) dir2d=Vector2f(0.0f,1.0f);
-				facing=atan2(-dir2d.x,dir2d.y);
-				position=altar.position+Vector3f(dir2d.x,dir2d.y,0.0f);
-			}else{
-				auto facingOffset=(bldg.isStratosAltar?pi!float/4.0f:0.0f)+pi!float;
-				facing=bldg.facing+facingOffset;
-				position=altar.position+rotate(facingQuaternion(facing),Vector3f(0.0f,distance,0.0f));
-			}
+			auto dir2d=(manafountPosition-altar.position).xy.normalized*distance;
+			if(dir2d.x==0.0f&&dir2d.y==0.0f) dir2d=Vector2f(0.0f,1.0f);
+			auto facing=atan2(-dir2d.x,dir2d.y);
+			auto position=altar.position+Vector3f(dir2d.x,dir2d.y,0.0f);
 			*id=state.placeWizard(wizard,name,flags,side,level,souls,experience,minLevel,maxLevel,xpRate,move(spellbook),position,facing);
 		}
 	})(state,&id,wizard,name,flags,side,level,souls,move(spellbook));
@@ -7167,6 +7159,7 @@ struct Highlight(B){
 	int frame=0;
 	float scale=0.0f;
 	HighlightStatus status;
+	bool triggerBeacon=false;
 
 	enum flyingHeight=85.0f;
 	enum followDistance=5.0f;
@@ -7197,32 +7190,77 @@ Highlight!B makeHighlight(B)(int side,Vector3f position,Vector3f targetPosition,
 	return Highlight!B(side,position,targetPosition,width,target,rotationUpdate,Quaternionf.identity());
 }
 
-bool addHighlight(B)(int side,int target,ObjectState!B state){ // TODO: highlights
-	if(!target||!state.isValidTarget(target))
-		return false;
-	Vector3f[2] hitbox;
+Vector3f[2] highlightTargetHitbox(B)(int target,ObjectState!B state){
+	if(state.isValidBuilding(target)){
+		return state.buildingById!((ref building,state){
+			auto center=building.position(state);
+			auto radius=building.boundingRadius(state);
+			auto height=building.height(state);
+			return cast(Vector3f[2])[center-Vector3f(radius,radius,0.0f),center+Vector3f(radius,radius,height)];
+		},()=>cast(Vector3f[2])[Vector3f.init,Vector3f.init])(target,state);
+	}
 	switch(state.targetTypeFromId(target))with(TargetType){
-		case none: return false;
 		case creature,building:
-			hitbox=state.objectReadById!(.hitbox)(target);
-			break;
+			return state.objectReadById!(.hitbox)(target);
 		case soul:
 			auto position=state.soulById!((ref soul)=>soul.position,()=>Vector3f.init)(target);
-			hitbox=cast(Vector3f[2])[position,position];
-			break;
-		default: return false;
+			return cast(Vector3f[2])[position,position];
+		default: return cast(Vector3f[2])[Vector3f.init,Vector3f.init];
 	}
+}
+
+bool addHighlight(B)(int side,int target,ObjectState!B state,bool triggerBeacon=false){
+	if(!target||!state.isValidTarget(target)&&!state.isValidBuilding(target))
+		return false;
+	auto hitbox=highlightTargetHitbox(target,state);
 	hitbox[0].z=hitbox[1].z;
 	auto targetPosition=boxCenter(hitbox);
 	auto position=targetPosition;
 	position.z+=Highlight!B.flyingHeight;
 	float width=0.75f*boxSize(hitbox).xy.length;
-	state.addHighlight(makeHighlight(side,position,targetPosition,width,target,state));
+	auto highlight=makeHighlight(side,position,targetPosition,width,target,state);
+	highlight.triggerBeacon=triggerBeacon;
+	state.addHighlight(highlight);
 	state.movingObjectById!((ref obj){
 		obj.creatureStats.effects.numHighlights+=1;
 	},(){})(target);
-	// TODO: highlights on buildings
 	return true;
+}
+
+bool setTriggerBeacon(B)(int side,int target,bool enabled,ObjectState!B state){
+	if(!target||!state.isValidTarget(target)&&!state.isValidBuilding(target))
+		return false;
+	bool found=false;
+	int counterDelta=0;
+	static void update(ref Highlights!B highlights,int target,bool enabled,bool* found,int* counterDelta){
+		foreach(ref highlightsForSide;highlights.highlights.data){
+			foreach(ref highlight;highlightsForSide.data){
+				if(!highlight.triggerBeacon||highlight.target!=target) continue;
+				*found=true;
+				if(enabled){
+					if(highlight.status==HighlightStatus.shrinking){
+						highlight.status=HighlightStatus.growing;
+						++*counterDelta;
+					}
+				}else if(highlight.status!=HighlightStatus.shrinking){
+					highlight.status=HighlightStatus.shrinking;
+					--*counterDelta;
+				}
+				return;
+			}
+		}
+	}
+	state.eachHighlights!update(target,enabled,&found,&counterDelta);
+	if(enabled&&!found){
+		if(!(0<=side&&side<32)) return false;
+		return addHighlight(side,target,state,true);
+	}
+	if(counterDelta){
+		state.movingObjectById!((ref obj,counterDelta){
+			obj.creatureStats.effects.numHighlights+=counterDelta;
+		},(){})(target,counterDelta);
+	}
+	return found;
 }
 
 bool removeHighlight(B)(int side,int target,ObjectState!B state){
@@ -7236,7 +7274,7 @@ bool removeHighlight(B)(int side,int target,ObjectState!B state){
 	static void doIt(ref Highlights!B highlights,int side,int target,ObjectState!B state,bool* ok){
 		if(*ok) return;
 		foreach(i;0..highlights.highlights[side].length){
-			if(highlights.highlights[side][i].target==target){
+			if(!highlights.highlights[side][i].triggerBeacon&&highlights.highlights[side][i].target==target){
 				highlights.highlights[side][i].status=HighlightStatus.shrinking;
 				*ok=true;
 				return;
@@ -10606,7 +10644,7 @@ void animateWizardVoidTeleport(B)(bool isOut,Vector3f[2] hitbox,ObjectState!B st
 	return animateTeleport(isOut,hitbox,state,false);
 }
 
-bool teleport(B)(ref MovingObject!B obj,Vector3f newPosition,ObjectState!B state,bool wizardVoid=false){
+bool teleport(B)(ref MovingObject!B obj,Vector3f newPosition,ObjectState!B state,bool wizardVoid=false,bool presentation=true){
 	if(!obj.isWizard&&!obj.isSacDoctor&&!obj.creatureAI.order.command.among(CommandType.guard,CommandType.retreat,CommandType.capture))
 		obj.clearOrderQueue(state);
 	auto oldHeight=obj.position.z-state.getHeight(obj.position);
@@ -10621,7 +10659,7 @@ bool teleport(B)(ref MovingObject!B obj,Vector3f newPosition,ObjectState!B state
 			obj.position.z=state.getGroundHeight(obj.position);
 			obj.creatureState.fallingVelocity=Vector3f(0.0f,0.0f,0.0f);
 		}
-	}else{
+	}else if(presentation){
 		animateTeleport(true,startHitbox,state);
 		animateTeleport(false,newHitbox,state);
 	}
@@ -28207,7 +28245,7 @@ void updateHighlights(B)(ref Highlights!B highlights, ObjectState!B state){
 	foreach(i;0..cast(int)highlights.highlights.length){
 		for(int j=0;j<highlights.highlights[i].length;){
 			with(highlights.highlights[i][j]){
-				if(target&&!state.isValidTarget(target)||status==HighlightStatus.shrinking&&scale==0.0f){
+				if(target&&!state.isValidTarget(target)&&!state.isValidBuilding(target)||status==HighlightStatus.shrinking&&scale==0.0f){
 					highlights.removeHighlight(i,j);
 					continue;
 				}
@@ -28224,7 +28262,9 @@ void updateHighlights(B)(ref Highlights!B highlights, ObjectState!B state){
 					}
 					position.z=targetPosition.z+flyingHeight;
 				}
-				switch(state.targetTypeFromId(target))with(TargetType){
+				if(state.isValidBuilding(target)){
+					follow(highlightTargetHitbox(target,state));
+				}else switch(state.targetTypeFromId(target))with(TargetType){
 					case none,terrain: break;
 					case creature,building:
 						auto hitbox=state.objectReadById!(.hitbox)(target);
@@ -31225,8 +31265,6 @@ struct TriggerState(B){
 	TriggerHistoryEntry[] speechHistory;
 	TriggerTip[32] tips;
 	bool tipboxSuppressed=false;
-	bool[32] beaconActive;
-	Vector3f[32] beaconPositions=Vector3f(0.0f,0.0f,0.0f);
 	bool cinematics=false;
 	uint hiddenInterfaceElements=0;
 	TriggerCamera camera;
