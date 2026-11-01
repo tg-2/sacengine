@@ -938,7 +938,7 @@ struct CreatureAI{
 	int lastAttackerId=0;
 	uint behaviorFlags=0;
 	uint grudgeMask=0; // bitmask of sides personally treated as enemies if behaviorFlags bit 14 is set
-	uint attackedBySides=0; // sticky bitmask of sides that attacked this creature (retail: creature+0xb3c, for triggers)
+	uint attackedBySides=0; // sticky bitmask of sides that attacked this creature
 	PositionPredictor predictor;
 	bool isOnAIQueue=false;
 	Path path;
@@ -1220,7 +1220,7 @@ Vector3f[2] hitbox(B,RenderMode mode)(ref MovingObjects!(B,mode) objects,int ind
 
 Vector3f graspingVinesOffset(B)(ref MovingObject!B object,int attackerSide,ObjectState!B state){
 	if(!object.creatureStats.effects.vined) return Vector3f(0.0f,0.0f,0.0f);
-	if(state.sides.getStance(attackerSide,object.side)==Stance.ally)
+	if(state.getStance(attackerSide,object.side)==Stance.ally)
 		return Vector3f(0.0f,0.0f,0.0f);
 	foreach(ref vines;state.obj.opaqueObjects.effects.graspingViness.data){
 		if(vines.creature!=object.id) continue;
@@ -1688,7 +1688,7 @@ SoulColor color(B)(ref Soul!B soul,int side,ObjectState!B state){
 	auto soulSide=soul.side(state);
 	if(soulSide==-1||soulSide==side) return SoulColor.blue;
 	if(state.greenAllySouls||state.collectAlliedSouls){
-		if(state.sides.getStance(side,soul.side(state))==Stance.ally)
+		if(state.getStance(side,soul.side(state))==Stance.ally)
 			return state.collectAlliedSouls?SoulColor.blue:SoulColor.green;
 	}
 	return SoulColor.red;
@@ -1726,7 +1726,7 @@ struct Building(B){
 	enum splashRangedResistance=1.0f;
 	int burnFrames=0;
 	Array!int guardianIds;
-	int activeValue=0; // set by triggers (retail: structure+0x4f4)
+	int activeValue=0; // set by triggers
 	NotificationState notificationState;
 	mixin Assign;
 	this(SacBuilding!B sacBuilding,int side,int flags,float facing){
@@ -2180,6 +2180,16 @@ struct Spellbook(B){
 		spells~=SpellInfo!B(spell,level,0.0f,0.0f);
 		if(spells.length>=2&&spells[$-1].spell.spellOrder<spells[$-2].spell.spellOrder) sort();
 	}
+	void grantSpell(int level,SacSpell!B spell){
+		bool found=false;
+		foreach(ref entry;spells.data){
+			if(entry.spell is spell){
+				if(level<entry.level) entry.level=level;
+				found=true;
+			}
+		}
+		if(!found) addSpell(level,spell);
+	}
 	void sort(){
 		.sort!"a.spell.spellOrder<b.spell.spellOrder"(spells.data);
 	}
@@ -2207,11 +2217,11 @@ immutable(SpellSpec)[][God.max+1] computeDefaultSpells(){ // (uses GC)
 	foreach(god;[EnumMembers!God]){
 		char[4] workaround(SpellTag tag){ return [tag[0],tag[1],tag[2],tag[3]]; } // ???
 		foreach(tag;neutralCreatures)
-			result[god]~=SpellSpec(0,workaround(tag));
+			result[god]~=SpellSpec(1,workaround(tag));
 		foreach(tag;neutralSpells)
-			result[god]~=SpellSpec(0,workaround(tag));
+			result[god]~=SpellSpec(1,workaround(tag));
 		foreach(tag;structureSpells[0..$-1])
-			result[god]~=SpellSpec(0,workaround(tag));
+			result[god]~=SpellSpec(1,workaround(tag));
 		if(god==God.none){
 			result[god]~=SpellSpec(3,workaround(structureSpells[$-1]));
 			continue;
@@ -2246,11 +2256,11 @@ immutable(SpellSpec)[] randomSpells(){ // (uses GC)
 	God god(){ return cast(God)uniform!"[]"(1,cast(int)God.max); }
 	typeof(return) result;
 	foreach(tag;neutralCreatures)
-		result~=SpellSpec(0,workaround(tag));
+		result~=SpellSpec(1,workaround(tag));
 	foreach(tag;neutralSpells)
-		result~=SpellSpec(0,workaround(tag));
+		result~=SpellSpec(1,workaround(tag));
 	foreach(tag;structureSpells[0..$-1])
-		result~=SpellSpec(0,workaround(tag));
+		result~=SpellSpec(1,workaround(tag));
 	enforce(creatureSpells[god].length==11);
 	enforce(normalSpells[god].length==11);
 	foreach(lv;1..9+1){
@@ -9039,7 +9049,7 @@ float dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B at
 	actualDamage=dealDamage(object,actualDamage,attacker.side,damageMod,killed,state);
 	attacker.healFromDrain(actualDamage,state);
 	if(killed){
-		if(state.sides.getStance(attacker.side,object.side)==Stance.enemy){
+		if(state.getStance(attacker.side,object.side)==Stance.enemy){
 			attacker.creatureStatistics.foesKilled+=1;
 		}
 	}
@@ -9058,7 +9068,7 @@ float dealDamage(B)(ref MovingObject!B object,float damage,int attackingSide,Dam
 	}
 	if(!(damageMod&DamageMod.fall)){
 		if(!object.canDamage(state)){ object.unfreeze(state); return 0.0f; }
-		if(!state.friendlyFire&&state.sides.getStance(attackingSide,object.side)==Stance.ally) return 0.0f;
+		if(!state.friendlyFire&&state.getStance(attackingSide,object.side)==Stance.ally) return 0.0f;
 		if(!(damageMod&DamageMod.peirceShield)){
 			if(object.creatureStats.effects.lifeShield) damageMultiplier*=0.5f;
 			if(object.creatureState.mode==CreatureMode.rockForm) damageMultiplier*=0.05f;
@@ -9074,14 +9084,14 @@ float dealDamage(B)(ref MovingObject!B object,float damage,int attackingSide,Dam
 	if(actualDamage>0.0f&&0<=attackingSide&&attackingSide<32&&attackingSide!=object.side){
 		if(0<=object.side&&object.side<32)
 			state.trig.sideAttackedBySides[object.side]|=1u<<attackingSide;
-		if(wasFullHealth) // retail: creature attacked-by mask only set when attacked at full health
+		if(wasFullHealth)
 			object.creatureAI.attackedBySides|=1u<<attackingSide;
 	}
 	return actualDamage;
 }
 
 void recordDamage(B)(ref MovingObject!B object,int attackingSide,float damage,ObjectState!B state){
-	if(state.sides.getStance(attackingSide,object.side)==Stance.enemy){
+	if(state.getStance(attackingSide,object.side)==Stance.enemy){
 		object.notificationState.attack(object,state);
 		giveXPToSide(attackingSide,damage,state);
 		recordDamageForSide(attackingSide,damage,state);
@@ -9090,7 +9100,7 @@ void recordDamage(B)(ref MovingObject!B object,int attackingSide,float damage,Ob
 
 void recordKill(B)(ref MovingObject!B object,int attackingSide,ObjectState!B state){
 	object.notificationState.kill(object,state);
-	if(state.sides.getStance(attackingSide,object.side)==Stance.enemy){
+	if(state.getStance(attackingSide,object.side)==Stance.enemy){
 		giveXPToSide(attackingSide,object.xpOnKill,state);
 		if(auto wizard=state.getWizardForSide(attackingSide))
 			wizard.wizardStatistics.foesKilled+=1;
@@ -9099,7 +9109,7 @@ void recordKill(B)(ref MovingObject!B object,int attackingSide,ObjectState!B sta
 
 void recordGib(B)(ref MovingObject!B object,int attackingSide,ObjectState!B state){
 	object.notificationState.gib(object,state);
-	if(state.sides.getStance(attackingSide,object.side)==Stance.enemy){
+	if(state.getStance(attackingSide,object.side)==Stance.enemy){
 		giveXPToSide(attackingSide,object.xpOnKill,state);
 		if(auto wizard=state.getWizardForSide(attackingSide))
 			wizard.wizardStatistics.foesGibbed+=1;
@@ -9124,7 +9134,7 @@ float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,
 					break;
 				case SpellTag.lightningCharge:
 					if(damageMod&DamageMod.lightning){
-						auto factor=state.sides.getStance(attackingSide,object.side)==Stance.ally?4.0f:2.0f;
+						auto factor=state.getStance(attackingSide,object.side)==Stance.ally?4.0f:2.0f;
 						object.lightningCharge(cast(int)(factor/60.0f*actualDamage*updateFPS),passive,state);
 						actualDamage*=0.25f;
 					}
@@ -9260,7 +9270,7 @@ void recordDamage(B)(ref Building!B building,int attackingSide,float damage,Obje
 
 void recordDestruction(B)(ref Building!B building,int attackingSide,ObjectState!B state){
 	building.notificationState.destroy(building,state);
-	if(state.sides.getStance(attackingSide,building.side)==Stance.enemy){
+	if(state.getStance(attackingSide,building.side)==Stance.enemy){
 		giveXPToSide(attackingSide,building.xpOnDestruction,state);
 		auto wizard=state.getWizardForSide(attackingSide);
 		if(!wizard) return;
@@ -9270,7 +9280,7 @@ void recordDestruction(B)(ref Building!B building,int attackingSide,ObjectState!
 
 float dealDamageIgnoreGuardians(B)(ref Building!B building,float damage,int attackingSide,DamageMod damageMod,ref bool destroyed,ObjectState!B state){
 	if(!building.canDamage(state)) return 0.0f;
-	if(!state.friendlyFire&&state.sides.getStance(attackingSide,building.side)==Stance.ally) return 0.0f;
+	if(!state.friendlyFire&&state.getStance(attackingSide,building.side)==Stance.ally) return 0.0f;
 	auto damageMultiplier=1.0f;
 	if(damageMod&DamageMod.melee) damageMultiplier*=building.meleeResistance;
 	else if(damageMod&DamageMod.ranged){
@@ -9285,7 +9295,7 @@ float dealDamageIgnoreGuardians(B)(ref Building!B building,float damage,int atta
 	if(building.flags&Flags.cannotDestroyKill)
 		building.health=max(building.health,1.0f);
 	state.botDamaged(building,actualDamage);
-	if(state.sides.getStance(attackingSide,building.side)==Stance.enemy)
+	if(state.getStance(attackingSide,building.side)==Stance.enemy)
 		recordDamage(building,attackingSide,actualDamage,state);
 	if(damageMod&DamageMod.ignite)
 		igniteBuilding(building,cast(int)damage+1,state);
@@ -9306,7 +9316,7 @@ float dealDamage(B)(ref Building!B building,float damage,ref MovingObject!B atta
 	bool destroyed=false;
 	auto actualDamage=dealDamageIgnoreGuardians(building,damage,attacker.side,damageMod,destroyed,state);
 	if(destroyed){
-		if(state.sides.getStance(attacker.side,building.side)==Stance.enemy){
+		if(state.getStance(attacker.side,building.side)==Stance.enemy){
 			attacker.creatureStatistics.buildingsDestroyed+=1;
 		}
 	}
@@ -9516,7 +9526,7 @@ float dealDesecrationDamage(B)(ref MovingObject!B object,float damage,int caster
 	bool killed=false;
 	auto actualDamage=dealRawDamage(object,damage,attackingSide,DamageMod.desecration,killed,state);
 	if(killed&&caster) state.movingObjectById!((ref attacker,side,state){
-		if(state.sides.getStance(attacker.side,side)==Stance.enemy)
+		if(state.getStance(attacker.side,side)==Stance.enemy)
 			attacker.creatureStatistics.foesKilled+=1;
 	},(){})(caster,object.side,state);
 	return actualDamage;
@@ -9575,6 +9585,8 @@ void startMovingBackward(B)(ref MovingObject!B object,ObjectState!B state,int si
 
 void setTurning(B)(ref MovingObject!B object,RotationDirection direction,ObjectState!B state,int side=-1){
 	if(!object.canOrder(side,state)) return;
+	if(side>=0&&direction!=RotationDirection.none&&object.creatureAI.order.command==CommandType.turnToFace)
+		object.clearOrderQueue(state);
 	object.creatureState.rotationDirection=direction;
 	if(direction==RotationDirection.none) object.creatureState.rotationSpeedLimit=float.infinity;
 }
@@ -9978,6 +9990,10 @@ int getCastingTime(B)(ref MovingObject!B object,SacSpell!B spell,bool stationary
 
 enum manaEpsilon=1e-2f;
 enum summonSoundGain=2.0f;
+bool stunOnFailedCast(B)(int caster,ObjectState!B state,bool ok=false){
+	if(!ok) state.movingObjectById!((ref object,state){ object.damageStun(Vector3f(0.0f,0.0f,-1.0f),state); },(){})(caster,state);
+	return ok;
+}
 bool stunOnFailedCast(B)(ref MovingObject!B object,ObjectState!B state,bool ok=false){
 	if(!ok) object.damageStun(Vector3f(0.0f,0.0f,-1.0f),state);
 	return ok;
@@ -10202,14 +10218,216 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 		if(!isQueued) return false;
 		if(!canRunSpellQueueForSpellStatus(spellStatus)) return false;
 	}
-	bool castStarted=false;
-	auto result=state.movingObjectById!((ref object,spell,target,wizard,state,castStarted){
-		return startCastingValidated(object,wizard,spell,target,state,castStarted);
-	},()=>false)(caster,spell,target,wizard,state,&castStarted);
-	if(!castStarted) return (*wizard).queueSpell(spell,target,state);
-	return result;
-}
+	int numFrames=state.movingObjectById!((ref object,spell,wizard,state){
+		int numFrames=getCastingNumFrames(object,spell,wizard,state);
+		return object.startCasting(numFrames,spell.stationary,state)?numFrames:-1;
+	},()=>-1)(caster,spell,wizard,state);
+	if(numFrames==-1) return (*wizard).queueSpell(spell,target,state);
+	auto drainSpeed=spell.isBuilding?125.0f:500.0f;
+	auto numManaDrainFrames=min(numFrames,cast(int)ceil(spell.manaCost*(updateFPS/drainSpeed)));
+	auto manaCostPerFrame=spell.manaCost/numManaDrainFrames;
+	auto manaDrain=ManaDrain!B(caster,manaCostPerFrame,numManaDrainFrames);
+	(*wizard).applyCooldown(spell,state);
 
+	final switch(spell.type){
+		case SpellType.creature:
+			assert(target is OrderTarget.init);
+			auto creature=spawn(caster,spell.tag,0,state);
+			if(!creature) return false;
+			state.setRenderMode!(MovingObject!B,RenderMode.transparent)(creature);
+			state.setAlpha(creature,0.36f,10.0f);
+			playSoundAt("NMUS",creature,state,summonSoundGain);
+			state.addEffect(CreatureCasting!B(manaDrain,spell,creature));
+			return true;
+		case SpellType.spell:
+			bool ok=false;
+			switch(spell.tag){
+				case SpellTag.convert:
+					auto sidePosition=state.movingObjectById!((ref object)=>tuple(object.side,object.position),()=>tuple(-1,Vector3f.init))(caster);
+					auto side=sidePosition[0],position=sidePosition[1];
+					if(side==-1) return false;
+					return stunOnFailedCast(caster,state,castConvert(side,manaDrain,spell,position,target.id,wizard.closestShrine,state));
+				case SpellTag.desecrate:
+					auto sidePosition=state.movingObjectById!((ref object)=>tuple(object.side,object.position),()=>tuple(-1,Vector3f.init))(caster);
+					auto side=sidePosition[0],position=sidePosition[1];
+					if(side==-1) return false;
+					return stunOnFailedCast(caster,state,castDesecrate(side,manaDrain,spell,position,target.id,wizard.closestEnemyAltar,state));
+				case SpellTag.teleport:
+					auto position=state.movingObjectById!((ref object)=>object.position,()=>Vector3f.init)(caster);
+					if(isNaN(position.x)) return false;
+					return stunOnFailedCast(caster,state,castTeleport(manaDrain,spell,position,target.id,state));
+				case SpellTag.guardian:
+					return stunOnFailedCast(caster,state,castGuardian(manaDrain,spell,target.id,state));
+				case SpellTag.speedup:
+					ok=speedUp(target.id,spell,state);
+					goto default;
+				case SpellTag.heal:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					return stunOnFailedCast(caster,state,castHeal(target.id,manaDrain,side,spell,state));
+				case SpellTag.lightning:
+					return stunOnFailedCast(caster,state,castLightning(target.id,manaDrain,spell,state));
+				case SpellTag.wrath:
+					return stunOnFailedCast(caster,state,castWrath(target.id,manaDrain,spell,state));
+				case SpellTag.fireball:
+					return stunOnFailedCast(caster,state,castFireball(target.id,manaDrain,spell,state));
+				case SpellTag.rock:
+					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					if(castingTime==-1) return false;
+					return stunOnFailedCast(caster,state,castRock(caster,target.id,manaDrain,spell,castingTime,state));
+				case SpellTag.insectSwarm:
+					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					if(castingTime==-1) return false;
+					return stunOnFailedCast(caster,state,castSwarm(target.id,manaDrain,spell,castingTime,state));
+				case SpellTag.skinOfStone:
+					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					if(castingTime==-1) return false;
+					return stunOnFailedCast(caster,state,castSkinOfStone(manaDrain,spell,castingTime,state));
+				case SpellTag.etherealForm:
+					return stunOnFailedCast(caster,state,castEtherealForm(manaDrain,spell,state));
+				case SpellTag.fireform:
+					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					if(castingTime==-1) return false;
+					return stunOnFailedCast(caster,state,castFireform(manaDrain,spell,castingTime,state));
+				case SpellTag.protectiveSwarm:
+					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					if(castingTime==-1) return false;
+					return stunOnFailedCast(caster,state,castProtectiveSwarm(manaDrain,spell,castingTime,state));
+				case SpellTag.airShield:
+					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					if(castingTime==-1) return false;
+					return stunOnFailedCast(caster,state,castAirShield(manaDrain,spell,castingTime,state));
+				case SpellTag.freeze:
+					return stunOnFailedCast(caster,state,castFreeze(target.id,manaDrain,spell,state));
+				case SpellTag.ringsOfFire:
+					return stunOnFailedCast(caster,state,castRingsOfFire(target.id,manaDrain,spell,state));
+				case SpellTag.slime:
+					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					return stunOnFailedCast(caster,state,castSlime(target.id,manaDrain,spell,castingTime,state));
+				case SpellTag.graspingVines:
+					return stunOnFailedCast(caster,state,castGraspingVines(target.id,manaDrain,spell,state));
+				case SpellTag.soulMole:
+					return stunOnFailedCast(caster,state,castSoulMole(target.id,manaDrain,spell,state));
+				case SpellTag.rainbow:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					if(side==-1) return false;
+					return stunOnFailedCast(caster,state,castRainbow(side,target.id,manaDrain,spell,state));
+				case SpellTag.chainLightning:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					if(side==-1) return false;
+					return stunOnFailedCast(caster,state,castChainLightning(side,target.id,manaDrain,spell,state));
+				case SpellTag.animateDead:
+					return stunOnFailedCast(caster,state,castAnimateDead(target.id,manaDrain,spell,state));
+				case SpellTag.erupt:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					return stunOnFailedCast(caster,state,castErupt(side,target.position,manaDrain,spell,state));
+				case SpellTag.dragonfire:
+					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					return stunOnFailedCast(caster,state,castDragonfire(target.id,manaDrain,spell,castingTime,state));
+				case SpellTag.soulWind:
+					return stunOnFailedCast(caster,state,castSoulWind(target.id,manaDrain,spell,state));
+				case SpellTag.explosion:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					if(side==-1||castingTime==-1) return false;
+
+					auto position=target.type==TargetType.building?target.center(state):target.position;
+					return stunOnFailedCast(caster,state,castExplosion(side,position,manaDrain,spell,castingTime,state));
+				case SpellTag.haloOfEarth:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					if(side==-1||castingTime==-1) return false;
+					return stunOnFailedCast(caster,state,castHaloOfEarth(caster,side,manaDrain,spell,castingTime,state));
+				case SpellTag.rainOfFrogs:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					return stunOnFailedCast(caster,state,castRainOfFrogs(side,target.position,manaDrain,spell,state));
+				case SpellTag.demonicRift:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					auto position=state.movingObjectById!((ref object)=>object.position,()=>Vector3f.init)(caster);
+					if(isNaN(position.x)) return false;
+					return stunOnFailedCast(caster,state,castDemonicRift(side,position,target,manaDrain,spell,state));
+				case SpellTag.healingAura:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					return stunOnFailedCast(caster,state,castHealingAura(side,target.id,manaDrain,spell,state));
+				case SpellTag.frozenGround:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					if(side==-1||castingTime==-1) return false;
+					return stunOnFailedCast(caster,state,castFrozenGround(target.position,manaDrain,spell,castingTime,state));
+				case SpellTag.firewall:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					return stunOnFailedCast(caster,state,castFirewall(side,target.position,manaDrain,spell,state));
+				case SpellTag.wailingWall:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					return stunOnFailedCast(caster,state,castWailingWall(side,target.position,manaDrain,spell,state));
+				case SpellTag.vinewall:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					return stunOnFailedCast(caster,state,castVinewall(side,target.position,manaDrain,spell,state));
+				case SpellTag.wallOfSpikes:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					return stunOnFailedCast(caster,state,castWallOfSpikes(side,target.position,manaDrain,spell,state));
+				case SpellTag.plague:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					return stunOnFailedCast(caster,state,castPlague(side,target.position,manaDrain,spell,state));
+				case SpellTag.rainOfFire:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					return stunOnFailedCast(caster,state,castRainOfFire(side,target.position,manaDrain,spell,state));
+				case SpellTag.bombardment:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					return stunOnFailedCast(caster,state,castBombardment(side,target.position,manaDrain,spell,state));
+				case SpellTag.fence:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					return stunOnFailedCast(caster,state,castFence(side,target.position,manaDrain,spell,state));
+				case SpellTag.intestinalVaporization:
+					return stunOnFailedCast(caster,state,castIntestinalVaporization(target.id,manaDrain,spell,state));
+				case SpellTag.blindRage:
+					return stunOnFailedCast(caster,state,castBlindRage(target.id,manaDrain,spell,state));
+				case SpellTag.bovineIntervention:
+					return stunOnFailedCast(caster,state,castBovineIntervention(target.id,manaDrain,spell,state));
+				case SpellTag.charm:
+					return stunOnFailedCast(caster,state,castCharm(target.id,manaDrain,spell,state));
+				case SpellTag.cloudkill:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					return stunOnFailedCast(caster,state,castCloudkill(side,target,manaDrain,spell,state));
+				case SpellTag.death:
+					return stunOnFailedCast(caster,state,castDeath(target,manaDrain,spell,state));
+				case SpellTag.volcano:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					return stunOnFailedCast(caster,state,castVolcano(side,target.position,manaDrain,spell,castingTime,state));
+				case SpellTag.meanstalks:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					if(castingTime==-1) return false;
+					return stunOnFailedCast(caster,state,castMeanstalks(side,target.position,manaDrain,spell,castingTime,state));
+				case SpellTag.tornado:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+					if(castingTime==-1) return false;
+					return stunOnFailedCast(caster,state,castTornado(side,target.position,manaDrain,spell,castingTime,state));
+				case SpellTag.bore:
+					auto side=state.movingObjectById!((ref object)=>object.side,()=>-1)(caster);
+					return stunOnFailedCast(caster,state,castBore(side,target.position,manaDrain,spell,state));
+				default:
+					if(ok) state.addEffect(manaDrain);
+					return stunOnFailedCast(caster,state,ok);
+			}
+		case SpellType.structure:
+			if(!spell.isBuilding) goto case SpellType.spell;
+			auto base=state.staticObjectReadById!((ref objects,i)=>objects.buildingIds[i],()=>0)(target.id);
+			if(base){ // TODO: stun both wizards on simultaneous lith cast
+				auto god=state.getCurrentGod(wizard);
+				if(god==God.none) god=God.persephone;
+				auto building=makeBuilding(caster,spell.buildingTag(god),AdditionalBuildingFlags.inactive|Flags.cannotDamage,base,state);
+				state.setupStructureCasting(building);
+				float buildingHeight=state.buildingById!((ref bldg,state)=>height(bldg,state),()=>0.0f)(building,state);
+				auto castingTime=state.movingObjectById!((ref object)=>object.getCastingTime(numFrames,spell.stationary,state),()=>-1)(caster);
+				if(castingTime==-1) return false;
+				state.addEffect(StructureCasting!B(god,manaDrain,spell,building,buildingHeight,castingTime,0));
+				state.botConstructionProgress(building,0.0f);
+				return true;
+			}else return stunOnFailedCast(caster,state);
+	}
+}
 bool startShooting(B)(ref MovingObject!B object,ObjectState!B state){
 	if(!object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving))
 		return false;
@@ -12014,7 +12232,7 @@ bool rhinokShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vect
 
 
 enum defaultFaceThreshold=1e-3;
-enum orderFaceThreshold=0.0872663856f; // retail: 0x3db2b8b8 (five degrees)
+enum orderFaceThreshold=5.0f/360.0f*2.0f*pi!float;
 bool face(B)(ref MovingObject!B object,float facing,ObjectState!B state,float threshold=defaultFaceThreshold){
 	auto angle=facing-object.creatureState.facing;
 	while(angle<-pi!float) angle+=2*pi!float;
@@ -12149,7 +12367,6 @@ bool prequeueTriggerCastOrder(B)(ref MovingObject!B object,Order order,ObjectSta
 	auto current=object.creatureAI.order;
 	if(current.command!=CommandType.none&&!current.command.among(CommandType.castSpell,CommandType.useAbility))
 		object.creatureAI.orderQueue.pushFront(current);
-	// Retail 0x46dc00 puts casts before preserved orders and reuses a current spell slot.
 	object.creatureAI.order=order;
 	object.creatureAI.blockedDestination=Vector3f.init;
 	return true;
@@ -12591,11 +12808,11 @@ bool isValidAttackTarget(B)(int targetId,ObjectState!B state){
 Stance getStance(B)(ref MovingObject!B object,int side,ObjectState!B state){
 	if(side>=0&&(object.creatureAI.behaviorFlags&(1<<14))&&(object.creatureAI.grudgeMask&(1u<<side)))
 		return Stance.enemy;
-	return state.sides.getStance(object.side,side);
+	return state.getStance(object.side,side);
 }
 bool isValidEnemyAttackTarget(B,T)(ref T obj,int side,ObjectState!B state)if(is(T==MovingObject!B)||is(T==StaticObject!B)){
 	if(!obj.isValidAttackTarget(state)) return false;
-	return state.sides.getStance(side,.side(obj,state))==Stance.enemy;
+	return state.getStance(side,.side(obj,state))==Stance.enemy;
 }
 bool isValidEnemyAttackTarget(B)(int targetId,int side,ObjectState!B state){
 	return state.isValidTarget(targetId)&&state.objectById!(.isValidEnemyAttackTarget)(targetId,side,state);
@@ -13155,7 +13372,7 @@ bool retreatFromDanger(B)(ref MovingObject!B object,ObjectState!B state){
 }
 
 bool patrolAround(B)(ref MovingObject!B object,Vector3f position,ObjectState!B state){
-	if(!object.isAggressive(state)) return false;
+	if(state.trig.cinematics||!object.isAggressive(state)) return false;
 	auto guardRange=object.guardRange(state);
 	if((object.position-position).lengthsqr>guardRange^^2) return false;
 	auto range=object.sightRange(state);
@@ -13181,7 +13398,7 @@ bool guard(B)(ref MovingObject!B object,int targetId,ref bool idle,ObjectState!B
 }
 
 bool patrol(B)(ref MovingObject!B object,ObjectState!B state){
-	if(!object.isAggressive(state)) return false;
+	if(state.trig.cinematics||!object.isAggressive(state)) return false;
 	auto position=object.position;
 	auto range=object.sightRange(state);
 	if(auto targetId=object.updateTarget(position,range,state))
@@ -13191,7 +13408,7 @@ bool patrol(B)(ref MovingObject!B object,ObjectState!B state){
 }
 
 bool advance(B)(ref MovingObject!B object,Vector3f targetPosition,ObjectState!B state){
-	if(object.isPacifist(state)) return false;
+	if(state.trig.cinematics||object.isPacifist(state)) return false;
 	auto range=object.sightRange(state);
 	if(auto targetId=object.updateTarget!true(targetPosition,range,state,150.0f,0.25f))
 		if(object.retreatFromDanger(state)||object.attack(object.creatureAI.targetId,state))
@@ -13851,8 +14068,6 @@ void updateTriggerCastOrder(B)(ref MovingObject!B object,ObjectState!B state){
 		object.completeTriggerCastOrder();
 		return;
 	}
-	// Retail creature cast orders approach to 75% of the ability range before
-	// turning and invoking the FSM. Keep the order active while approaching.
 	if(spell.requiresTarget&&target.id!=object.id){
 		auto castRange=0.75f*spell.range;
 		if((object.position-target.position).lengthsqr>castRange^^2){
@@ -13905,7 +14120,7 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 		if(object.creatureState.mode==CreatureMode.rockForm)
 			object.startIdling(state);
 	}
-	if(isBlindlyRaging(object,state)){
+	if(!state.trig.cinematics&&isBlindlyRaging(object,state)){
 		object.creatureAI.orderQueue.clear();
 		object.creatureAI.order=Order.init;
 		if(!object.patrol(state)){
@@ -13982,10 +14197,13 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 				}
 				target.position=target.center(state);
 			}
-			if(!object.turnToFaceTowards(target.position,state))
-				object.clearOrder(state);
+			object.turnToFaceTowards(target.position,state);
 			break;
 		case CommandType.none:
+			if(state.trig.cinematics){
+				object.stop(state);
+				break;
+			}
 			if(object.sacObject.hasPeasantFSM) object.absorbHerdGrudges(state);
 			if(object.isPeasant){
 				if(auto shelter=state.proximity.closestPeasantShelterInRange(object.side,object.position,shelterDistance,state)){
@@ -14159,7 +14377,7 @@ void runPhoenixPassive(B)(ref MovingObject!B object,SacSpell!B passive,ObjectSta
 	static void burn(ProximityEntry target,ObjectState!B state,SacSpell!B spell,int attacker,int side,bool* hasTarget){
 		if(target.id==attacker) return;
 		state.movingObjectById!((ref obj,damage,attacker,side,hasTarget,state){
-			if(state.sides.getStance(side,obj.side)!=Stance.ally){
+			if(state.getStance(side,obj.side)!=Stance.ally){
 				*hasTarget=true;
 				obj.ignite(damage,attacker,side,state);
 			}
@@ -14623,7 +14841,7 @@ auto collisionTargetImpl(bool projectileFilter,bool attackFilter=false,bool retu
 		if(entry.id==collisionState.ownId) return;
 		if(!state.isValidTarget(entry.id)) return;
 		static if(attackFilter){
-			auto validRank=state.objectById!((obj,state,side)=>tuple(obj.isValidAttackTarget(state),rank(state.sides.getStance(side,.side(obj,state)))))(entry.id,state,collisionState.side);
+			auto validRank=state.objectById!((obj,state,side)=>tuple(obj.isValidAttackTarget(state),rank(state.getStance(side,.side(obj,state)))))(entry.id,state,collisionState.side);
 			auto valid=validRank[0], rank=validRank[1];
 			if(!valid) return;
 		}
@@ -15075,7 +15293,7 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 		}
 		if(tpId==0){
 			auto attackingSide=object.creatureState.tumbleAttackerSide;
-			if(state.sides.getStance(attackingSide,object.side)==Stance.enemy)
+			if(state.getStance(attackingSide,object.side)==Stance.enemy)
 				recordDipForSide(attackingSide,object.sacObject.numSouls,state);
 			object.gib(state,-2);
 		}
@@ -15124,7 +15342,7 @@ bool updateRescue(B)(ref MovingObject!B object,ObjectState!B state){
 	enum rescueDistance=10.0f;
 	static bool scan(ref MovingObject!B candidate,MovingObject!B* object,ObjectState!B state){
 		if(candidate.side==object.side) return false;
-		if(state.sides.getStance(object.side,candidate.side)!=Stance.ally&&state.sides.getStance(candidate.side,object.side)!=Stance.ally) return false;
+		if(state.getStance(object.side,candidate.side)!=Stance.ally&&state.getStance(candidate.side,object.side)!=Stance.ally) return false;
 		// TODO: also reject candidates with the animosity flag
 		if((object.creatureAI.behaviorFlags&(1<<14))&&(object.creatureAI.grudgeMask&(1u<<candidate.side))) return false;
 		auto distance=candidate.rescueRadius+(*object).rescueRadius+rescueDistance;
@@ -15209,7 +15427,7 @@ void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 				if(soul.preferredSide!=-1){
 					if(side!=soul.preferredSide){
 						if(soul.creatureId&&.color(*soul,side,state)!=SoulColor.blue) return;
-						final switch(state.sides.getStance(soul.preferredSide,side)){
+						final switch(state.getStance(soul.preferredSide,side)){
 							case Stance.neutral: stance=CollectStance.neutral; break;
 							case Stance.ally: stance=CollectStance.ally; break;
 							case Stance.enemy: stance=CollectStance.enemy; break;
@@ -16706,7 +16924,7 @@ int collisionTarget(alias hitbox,alias filter=None,B,T...)(int side,Vector3f pos
 		if(!state.isValidTarget(entry.id)) return;
 		static if(!is(filter==None)) if(!filter(entry,state,args)) return;
 		auto distanceSqr=boxPointDistanceSqr(entry.hitbox,position);
-		auto validRank=state.objectById!((obj,state,side)=>tuple(obj.isValidAttackTarget(state),rank(state.sides.getStance(side,.side(obj,state)))))(entry.id,state,side);
+		auto validRank=state.objectById!((obj,state,side)=>tuple(obj.isValidAttackTarget(state),rank(state.getStance(side,.side(obj,state)))))(entry.id,state,side);
 		auto valid=validRank[0], rank=validRank[1];
 		if(!valid) rank+=3;
 		if(!collisionState.target||tuple(rank,distanceSqr)<tuple(collisionState.rank,collisionState.distanceSqr)){
@@ -17538,7 +17756,7 @@ bool updateFireform(B)(ref Fireform!B fireform,ObjectState!B state){
 			static void burn(ProximityEntry target,ObjectState!B state,SacSpell!B spell,int attacker,int side){
 				if(target.id==attacker) return;
 				state.movingObjectById!((ref obj,damage,attacker,side,state){
-					if(state.sides.getStance(side,obj.side)!=Stance.ally)
+					if(state.getStance(side,obj.side)!=Stance.ally)
 						obj.ignite(damage,attacker,side,state);
 				},(){})(target.id,spell.amount/updateFPS,attacker,side,state);
 			}
@@ -17655,7 +17873,7 @@ bool updateProtectiveSwarm(B)(ref ProtectiveSwarm!B protectiveSwarm,ObjectState!
 				static void damage(ProximityEntry target,ObjectState!B state,SacSpell!B spell,int attacker,int side,Vector3f center,float* totalDamage){
 					if(target.id==attacker) return;
 					state.movingObjectById!((ref obj,damage,attacker,side,state){
-						if(state.sides.getStance(side,obj.side)!=Stance.ally){
+						if(state.getStance(side,obj.side)!=Stance.ally){
 							// TODO: limit distance between hitboxes to 4?
 							*totalDamage+=obj.bugDamage(damage,attacker,side,obj.center-center,state);
 						}
@@ -18300,7 +18518,7 @@ bool updateSoulMole(B)(ref SoulMole!B soulMole,ObjectState!B state){
 	static bool callback(int target,int wizard,int side,ObjectState!B state){
 		state.movingObjectById!((ref obj,wizard,side,state){
 			if(obj.id==wizard) return;
-			//if(state.sides.getStance(side,obj.side)==Stance.ally) return;
+			//if(state.getStance(side,obj.side)==Stance.ally) return;
 			obj.stunWithCooldown(stunCooldownFrames,state);
 		},(){})(target,wizard,side,state);
 		return false;
@@ -19101,7 +19319,7 @@ bool updateDragonfirePosition(B)(ref Dragonfire!B dragonfire,ObjectState!B state
 		static void burn(ProximityEntry target,ObjectState!B state,SacSpell!B spell,int attacker,int side){
 			if(target.id==attacker) return;
 			state.movingObjectById!((ref obj,damage,attacker,side,state){
-				//if(state.sides.getStance(side,obj.side)!=Stance.ally)
+				//if(state.getStance(side,obj.side)!=Stance.ally)
 				obj.ignite(damage,attacker,side,state);
 			},(){})(target.id,0.25f*spell.amount/updateFPS,attacker,side,state);
 		}
@@ -19269,7 +19487,7 @@ bool updateSoulWind(B)(ref SoulWind!B soulWind,ObjectState!B state){
 	static bool callback(int target,SacSpell!B spell,int wizard,int side,SoulWind!B* soulWind,ObjectState!B state){
 		if(!soulWind.addTarget(target)) return false;
 		return state.movingObjectById!((ref obj,spell,wizard,side,state){
-			if(state.sides.getStance(side,obj.side)==Stance.ally) return false;
+			if(state.getStance(side,obj.side)==Stance.ally) return false;
 			obj.stunWithCooldown(stunCooldownFrames,state);
 			auto start=positionTarget(soulWind.position+Vector3f(0.0f,0.0f,1.0f),state);
 			auto end=centerTarget(target,state);
@@ -19566,7 +19784,7 @@ bool updateHaloOfEarth(B)(ref HaloOfEarth!B haloOfEarth,ObjectState!B state){
 					static bool filter(ref CenterProximityEntry entry,ObjectState!B state,HaloRock!B[] rocks,int i,bool isAbility){
 						if(rocks.any!((ref rock)=>rock.target.id==entry.id)) return false;
 						return state.movingObjectById!((ref obj,rocks,i,state,isAbility){
-							if(state.sides.getStance(rocks[i].side,obj.side)==Stance.ally) return false;
+							if(state.getStance(rocks[i].side,obj.side)==Stance.ally) return false;
 							if(!obj.isValidAttackTarget(state)) return false;
 							auto position=obj.center;
 							if(!state.hasHitboxLineOfSightTo(scaleBox(haloRockHitbox,1.25f),rocks[i].position,position,0,obj.id)) return false;
@@ -20654,7 +20872,7 @@ bool updateVinewall(B)(ref Vinewall!B vinewall,ObjectState!B state,bool active=t
 	with(vinewall){
 		static void grasp(ProximityEntry target,ObjectState!B state,SacSpell!B spell,int attacker,int side,Vinewall!B* vinewall){
 			state.movingObjectById!((ref obj,attacker,side,state,vinewall){
-				if(state.sides.getStance(side,obj.side)==Stance.ally) return;
+				if(state.getStance(side,obj.side)==Stance.ally) return;
 				if(vinewall.cooldown(obj.id,state)!=0){
 					if(obj.creatureStats.effects.vined) vinewall.applyCooldown(obj.id,state);
 					return;
@@ -25267,7 +25485,7 @@ bool updateRhinokProjectile(B)(ref RhinokProjectile!B rhinokProjectile,ObjectSta
 					if(distsqr>maxRange*maxRange) return false;
 					bool validTarget=!!state.targetTypeFromId(id).among(TargetType.creature,TargetType.building);
 					if(!validTarget) return false;
-					if(!(id==intendedTarget||state.sides.getStance(side,attackedSide)!=Stance.ally))
+					if(!(id==intendedTarget||state.getStance(side,attackedSide)!=Stance.ally))
 						return false;
 					dealRangedDamage(id,rangedAttack,attacker,side,attackDirection,DamageMod.splash,state);
 					return false;
@@ -28128,7 +28346,7 @@ Vector3f magnifryerMuzzle(B)(int gun,ref Building!B building,ObjectState!B state
 int magnifryerTargetValid(B)(int target,Vector3f muzzle,float range,int side,bool checkLineOfSight,ObjectState!B state){
 	return state.movingObjectById!((ref obj,target,muzzle,range,side,checkLineOfSight,state){
 		if(!obj.isValidAttackTarget(state)) return 0;
-		if(state.sides.getStance(side,obj.side)!=Stance.enemy) return 0;
+		if(state.getStance(side,obj.side)!=Stance.enemy) return 0;
 		auto displacement=obj.position-muzzle;
 		if(displacement.lengthsqr>range^^2) return 0;
 		if(displacement.z<-displacement.xy.length) return 0;
@@ -28346,7 +28564,7 @@ int[4] findClosestBuildings(B)(int side,Vector3f position,ObjectState!B state,bo
 							if(!altar||state.buildingById!((ref bldg,side)=>bldg.side!=side||bldg.flags&AdditionalBuildingFlags.inactive,()=>true)(objects.buildingIds[j],side))
 								mixin(text(`goto Lnext`,k,`;`));
 						}else{
-							if(!altar||componentId==-1||state.buildingById!((ref bldg,side,state)=>state.sides.getStance(side,bldg.side)!=Stance.enemy||bldg.flags&AdditionalBuildingFlags.inactive,()=>true)(objects.buildingIds[j],side,state))
+							if(!altar||componentId==-1||state.buildingById!((ref bldg,side,state)=>state.getStance(side,bldg.side)!=Stance.enemy||bldg.flags&AdditionalBuildingFlags.inactive,()=>true)(objects.buildingIds[j],side,state))
 								mixin(text(`goto Lnext`,k,`;`));
 						}
 						auto candidateDistance=(position-objects.positions[j]).xy.lengthsqr;
@@ -28812,12 +29030,11 @@ struct ManaEntries{
 			entries.length=0;
 			this.version_=version_;
 		}
-		auto sides=state.sides;
 		float rate=0.0f;
 		foreach(ref entry;entries.data){
 			auto distance=(position-entry.position).length;
 			if(distance>=entry.radius) continue;
-			if(entry.side!=-1&&(!entry.allies?entry.side!=side:sides.getStance(entry.side,side)!=Stance.ally)) continue;
+			if(entry.side!=-1&&(!entry.allies?entry.side!=side:state.getStance(entry.side,side)!=Stance.ally)) continue;
 			rate+=entry.rate;
 		}
 		return rate;
@@ -28869,9 +29086,8 @@ struct ManaProximity(B){
 			manalithVersion=version_;
 		}
 		float rate=0.0f;
-		auto sides=state.sides;
 		foreach(ref manalith;manaliths.data){
-			if(sides.getStance(manalith.side,side)!=Stance.ally) continue;
+			if(state.getStance(manalith.side,side)!=Stance.ally) continue;
 			auto distance=(position-manalith.position).length;
 			rate+=max(0.0f,min((20.0f/50.0f)*distance,(20.0f/(1000.0f-50.0f))*(1000.0f-distance)));
 		}
@@ -29075,7 +29291,7 @@ final class Proximity(B){
 	private static bool isEnemy(alias filter=None,T...)(ref CenterProximityEntry entry,int side,EnemyType type,ObjectState!B state,float maxHeight=float.infinity,T args=T.init){
 		if(!isOfType(entry,type,state,maxHeight,args)) return false;
 		static if(!is(filter==None)) if(!filter(entry,args)) return false;
-		return state.sides.getStance(side,entry.side)==Stance.enemy;
+		return state.getStance(side,entry.side)==Stance.enemy;
 	}
 	int closestEnemyInRange(alias filter=None,alias priority=None,T...)(int side,Vector3f position,float range,EnemyType type,ObjectState!B state,float maxHeight=float.infinity,T args=T.init){
 		return centers.closestInRange!(isEnemy!(filter,T),priority)(version_,position,range,side,type,state,maxHeight,args).id;
@@ -29083,7 +29299,7 @@ final class Proximity(B){
 	private static bool isEnemyWithGrudges(alias filter=None,T...)(ref CenterProximityEntry entry,int side,uint grudgeMask,EnemyType type,ObjectState!B state,float maxHeight=float.infinity,T args=T.init){
 		if(!isOfType(entry,type,state,maxHeight,args)) return false;
 		static if(!is(filter==None)) if(!filter(entry,args)) return false;
-		return entry.side>=0&&(grudgeMask&(1u<<entry.side))||state.sides.getStance(side,entry.side)==Stance.enemy;
+		return entry.side>=0&&(grudgeMask&(1u<<entry.side))||state.getStance(side,entry.side)==Stance.enemy;
 	}
 	int closestEnemyInRange(alias filter=None,alias priority=None,T...)(int side,uint grudgeMask,Vector3f position,float range,EnemyType type,ObjectState!B state,float maxHeight=float.infinity,T args=T.init){
 		return centers.closestInRange!(isEnemyWithGrudges!(filter,T),priority)(version_,position,range,side,grudgeMask,type,state,maxHeight,args).id;
@@ -29091,7 +29307,7 @@ final class Proximity(B){
 	private static bool isNonAlly(alias filter=None,T...)(ref CenterProximityEntry entry,int side,EnemyType type,ObjectState!B state,float maxHeight=float.infinity,T args=T.init){
 		if(!isOfType(entry,type,state,maxHeight,args)) return false;
 		static if(!is(filter==None)) if(!filter(entry,args)) return false;
-		return state.sides.getStance(side,entry.side)!=Stance.ally;
+		return state.getStance(side,entry.side)!=Stance.ally;
 	}
 	int closestNonAllyInRange(alias filter=None,T...)(int side,Vector3f position,float range,EnemyType type,ObjectState!B state,float maxHeight=float.infinity,T args=T.init){
 		return centers.closestInRange!(isNonAlly!(filter,T))(version_,position,range,side,type,state,maxHeight,args).id;
@@ -29114,7 +29330,7 @@ final class Proximity(B){
 	}
 	private static bool isPeasantShelter(ref CenterProximityEntry entry,int side,ObjectState!B state){
 		if(!entry.isStatic) return false;
-		if(state.sides.getStance(entry.side,side)==Stance.enemy) return false;
+		if(state.getStance(entry.side,side)==Stance.enemy) return false;
 		if(!state.isValidTarget(entry.id)) return false;
 		return state.staticObjectById!((obj,state)=>state.buildingById!((ref bldg)=>bldg.isPeasantShelter,()=>false)(obj.buildingId),()=>false)(entry.id,state);
 	}
@@ -29164,10 +29380,37 @@ final class ObjectState(B){ // (update logic)
 		if(!(0<=side&&side<sid.sides.length)) return 1.0f;
 		return sid.sides[side].damageFactor;
 	}
+	void setStance(int from,int towards,Stance stance){
+		if(from<0||from>=sid.sides.length||towards<0||towards>=sid.sides.length) return;
+		auto fromData=&sid.sides[from],towardsData=&sid.sides[towards];
+		auto towardsMask=1u<<towards,fromMask=1u<<from;
+		final switch(stance){
+			case Stance.ally:
+				fromData.alliedSides|=towardsMask; towardsData.alliedSides|=fromMask;
+				fromData.enemySides&=~towardsMask; towardsData.enemySides&=~fromMask;
+				break;
+			case Stance.enemy:
+				fromData.alliedSides&=~towardsMask; towardsData.alliedSides&=~fromMask;
+				fromData.enemySides|=towardsMask; towardsData.enemySides|=fromMask;
+				break;
+			case Stance.neutral:
+				fromData.alliedSides&=~towardsMask; towardsData.alliedSides&=~fromMask;
+				fromData.enemySides&=~towardsMask; towardsData.enemySides&=~fromMask;
+				break;
+		}
+		botRelationsChanged(this,from);
+		if(towards!=from) botRelationsChanged(this,towards);
+	}
+	Stance getStance(int from,int towards){
+		if(from<0||from>=sid.sides.length||towards<0||towards>=sid.sides.length) return Stance.neutral;
+		if(sid.sides[from].alliedSides&(1u<<towards)) return Stance.ally;
+		if(sid.sides[from].enemySides&(1u<<towards)) return Stance.enemy;
+		return Stance.neutral;
+	}
 	float sideDamageMultiplier(int attackerSide,int defenderSide,DamageMod damageMod){
 		auto r=incomingDamageMultiplier(defenderSide);
 		if(attackerSide==-1) return r;
-		switch(sides.getStance(attackerSide,defenderSide)){
+		switch(getStance(attackerSide,defenderSide)){
 			case Stance.ally:
 				if(damageMod&DamageMod.ignoreFriendly) goto default;
 				return 0.5f*r; // TODO: option
@@ -29177,11 +29420,15 @@ final class ObjectState(B){ // (update logic)
 	this(SacMap!B map,Sides!B sides,Proximity!B proximity,PathFinder!B pathFinder,Triggers!B triggers){
 		this.map=map;
 		this.sides=sides;
+		sid=SideManager!B(32);
+		foreach(i;0..sid.sides.length){
+			sid.sides[i].alliedSides=sides.sides[i].allies;
+			sid.sides[i].enemySides=sides.sides[i].enemies;
+		}
 		this.proximity=proximity;
 		this.pathFinder=pathFinder;
 		dangerGrid=new DangerGrid();
 		this.triggers=triggers;
-		sid=SideManager!B(32);
 		// trig=TriggerState!B();
 	}
 	static struct Displacement{
@@ -29521,7 +29768,7 @@ final class ObjectState(B){ // (update logic)
 				return state.movingObjectById!((ref obj,ord,ability,state,side,updateFormation,formation,position){
 					if(ord.command==CommandType.attack&&ord.target.type==TargetType.creature){
 						// TODO: check whether they stick to creatures of a specific side
-						if(state.movingObjectById!((obj,side,state)=>state.sides.getStance(side,obj.side)==Stance.enemy,()=>false)(ord.target.id,side,state)){
+						if(state.movingObjectById!((obj,side,state)=>state.getStance(side,obj.side)==Stance.enemy,()=>false)(ord.target.id,side,state)){
 							auto newPosition=position;
 							newPosition.z=state.getHeight(newPosition)+obj.position.z-state.getHeight(obj.position);
 							auto maxHeight=obj.maxTargetHeight(state);
@@ -29943,7 +30190,7 @@ final class ObjectState(B){ // (update logic)
 		if(!(0<=side&&side<sid.sides.length)) return;
 		if(alliedVision){
 			foreach(otherSide;0..cast(int)sid.sides.length)
-				if(otherSide==side||sides.getStance(side,otherSide)==Stance.ally)
+				if(otherSide==side||getStance(side,otherSide)==Stance.ally)
 					markAsVisibleImpl(otherSide,id);
 		}else markAsVisibleImpl(side,id);
 	}
@@ -29958,7 +30205,7 @@ final class ObjectState(B){ // (update logic)
 		auto enemyData=this.movingObjectById!((ref obj)=>tuple(obj.side,obj.isWizard||0.0f<obj.meleeStrength),()=>tuple(-1,false))(id);
 		auto enemySide=enemyData[0],enemyDangerous=enemyData[1];
 		if(!(0<=enemySide&&enemySide<32)||enemySide==side) return;
-		if(sides.getStance(side,enemySide)!=Stance.enemy) return;
+		if(getStance(side,enemySide)!=Stance.enemy) return;
 		auto data=&sid.sides[side];
 		auto liveMark=frame<data.enemyCreatureMarkFrames[enemySide];
 		data.enemyCreatureMarkFrames[enemySide]=frame+128*updateFPS/3;
@@ -29977,7 +30224,7 @@ final class ObjectState(B){ // (update logic)
 	}
 	bool minimapVisibleToSide(int renderSide,int id,int objectSide){
 		if(!fogOfWar||!(0<=renderSide&&renderSide<sid.sides.length)) return true;
-		if(alliedVision&&sides.getStance(renderSide,objectSide)==Stance.ally) return true;
+		if(alliedVision&&getStance(renderSide,objectSide)==Stance.ally) return true;
 		return isVisibleToSide(renderSide,id,objectSide);
 	}
 	void updateVision(int side,int id,Vector3f position,float sightRange,float eyeHeight,float facing,bool directional){
@@ -29986,7 +30233,7 @@ final class ObjectState(B){ // (update logic)
 		static assert(updateFPS%2==0);
 		enum refresh=updateFPS/2;
 		if((id+frame)%refresh!=0) return;
-		auto mask=alliedVision?sides.sides[side].allies:(1u<<side);
+		auto mask=alliedVision?sid.sides[side].alliedSides:(1u<<side);
 		auto cx=DangerGrid.coord(position.x), cy=DangerGrid.coord(position.y);
 		auto r=max(1,cast(int)(0.1f*sightRange));
 		auto sr2=sightRange^^2;
@@ -30413,20 +30660,6 @@ final class Sides(B){
 		if(!manahoarParticles[side]) manahoarParticles[side]=new SacParticle!B(ParticleType.manahoar, manaColor(side), manaEnergy(side), side);
 		return manahoarParticles[side];
 	}
-	void setStance(int from,int towards,Stance stance){
-		if(from<0||from>=sides.length||towards<0||towards>=sides.length) return;
-		final switch(stance){
-			case Stance.ally: sides[from].allies|=1<<towards; sides[from].enemies&=~(1<<towards); break;
-			case Stance.enemy: sides[from].allies&=~(1<<towards); sides[from].enemies|=1<<towards; break;
-			case Stance.neutral: sides[from].allies&=~(1<<towards); sides[from].enemies&=~(1<<towards); break;
-		}
-	}
-	Stance getStance(int from,int towards){
-		if(from<0||from>=sides.length||towards<0||towards>=sides.length) return Stance.neutral;
-		if(sides[from].allies&(1<<towards)) return Stance.ally;
-		if(sides[from].enemies&(1<<towards)) return Stance.enemy;
-		return Stance.neutral;
-	}
 }
 
 enum numCreatureGroups=10;
@@ -30546,6 +30779,8 @@ enum visionGridSize=256;
 enum visionGridWords=visionGridSize*visionGridSize/32;
 
 struct SideData(B){
+	uint alliedSides;
+	uint enemySides;
 	CreatureGroup selection;
 	CreatureGroup[10] groups;
 	int lastSelected=0;
@@ -30562,7 +30797,7 @@ struct SideData(B){
 	Array!int minimapAlertFrames; // object id -> alert blink end frame
 	SideState state;
 	SideType sideType;
-	float damageFactor=1.0f; // incoming damage scalar (retail: [side+0xdc]/1000)
+	float damageFactor=1.0f; // incoming damage scalar
 	ShinyAI!B shinyAI; // null unless sideType==SideType.shinyBot
 	void setSideType(SideType type,bool betaPatchBots=false){
 		sideType=type;
@@ -30777,7 +31012,7 @@ struct SideManager(B){
 			if(!(altarSides&(1<<side))) continue;
 			if((defeatedSides|victoriousSides)&(1<<side)) continue;
 			//writefln!"%d %b %b"(side,altarSides,defeatedSides);
-			if(!(state.sides.sides[side].enemies&altarSides&~defeatedSides))
+			if(!(state.sid.sides[side].enemySides&altarSides&~defeatedSides))
 				result|=1<<side;
 		}
 		return result;
@@ -30851,9 +31086,9 @@ final class Triggers(B){
 }
 
 enum TriggerRunFlags{
-	active=1, // cleared when an action errors (retail: run+0x4 bit0)
-	runOnce=2, // retail: run+0x4 bit1
-	frozen=0x40000000, // waiting for speech or external input (retail: ask dialog)
+	active=1, // cleared when an action errors
+	runOnce=2,
+	frozen=0x40000000, // waiting for speech or external input
 	actionsPhase=0x80000000, // conditions passed, executing actions
 }
 
@@ -30973,10 +31208,10 @@ struct TriggerState(B){
 	int[32] numSouls;
 	int[32] numManaliths;
 	bool initialized=false;
-	int tick=0; // 60Hz trigger clock (retail: global tick, updated once per frame)
-	int gameTimer=0; // counts down when set (retail: mgr+0x630)
+	int tick=0; // 60Hz trigger clock
+	int gameTimer=0; // counts down when set
 	bool gameTimerVisible=false;
-	uint[32] sideAttackedBySides; // sticky attacked-by masks per side (retail: SIDE+0x4c)
+	uint[32] sideAttackedBySides; // sticky attacked-by masks per side
 	TriggerRun[] runs;
 	int nextRunId=0;
 	int[] variableValues; // flat storage; offsets in Triggers.variableOffsets
@@ -31055,7 +31290,7 @@ Teams computeTeams(B)(ObjectState!B state){
 	foreach(i;0..to!int(state.sides.sides.length)){
 		if(!((altarSides>>i)&1)) continue;
 		if(((visited>>i)&1)) continue;
-		int team=state.sides.sides[i].allies&altarSides;
+		int team=state.sid.sides[i].alliedSides&altarSides;
 		r.teams[r.numTeams++]=team;
 		visited|=team;
 	}
@@ -31280,7 +31515,7 @@ TargetFlags summarize(bool simplified=false,B)(ref OrderTarget target,int side,O
 					if(isManafount&&!top) result|=TargetFlags.manafount;
 				}
 				static if(isMoving) auto stance=getStance(obj,side,state);
-				else auto stance=state.sides.getStance(side,objSide);
+				else auto stance=state.getStance(side,objSide);
 				if(objSide!=side||stance==Stance.enemy){
 					final switch(stance){
 						case Stance.neutral: break;
@@ -32033,8 +32268,7 @@ void initGame(B)(ObjectState!B state,ref Array!SlotInfo slots,GameInit!B gameIni
 			state.sid.sides[side].damageFactor*=gameInit.damageFactors[i];
 	}
 	foreach(ref stanceSetting;gameInit.stanceSettings){
-		state.sides.setStance(stanceSetting.from,stanceSetting.towards,stanceSetting.stance);
-		state.botRelationsChanged(stanceSetting.from);
+		state.setStance(stanceSetting.from,stanceSetting.towards,stanceSetting.stance);
 	}
 	//state.sid.altarSides=getAltarSides(state);
 	state.sid.altarSides=altarSides;

@@ -207,7 +207,7 @@ final class AudioBackend(B){
 		for(int i=0;i<triggerSounds.length;){
 			bool keep=false;
 			foreach(ref speech;state.trig.speeches){
-				if(triggerSoundMatches(triggerSounds[i],0,speech.id,speech.side,speech.sample,speech.startTick,state.map.mapFolder)){
+				if(speech.startTick>=0&&triggerSoundMatches(triggerSounds[i],0,speech.id,speech.side,speech.sample,speech.startTick,state.map.mapFolder)){
 					keep=true;
 					break;
 				}
@@ -227,6 +227,7 @@ final class AudioBackend(B){
 			triggerSounds.length=triggerSounds.length-1;
 		}
 		foreach(ref speech;state.trig.speeches){
+			if(speech.startTick<0) continue;
 			bool found=false;
 			foreach(ref sound;triggerSounds.data){
 				if(triggerSoundMatches(sound,0,speech.id,speech.side,speech.sample,speech.startTick,state.map.mapFolder)){

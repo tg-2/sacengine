@@ -60,24 +60,26 @@ void clearTriggerSpeeches(B)(ref TriggerState!B triggerState){
 	while(triggerState.speeches.length) eraseTriggerSpeech(triggerState,0);
 }
 
+void startTriggerSpeech(B)(ref TriggerState!B triggerState,ref TriggerSpeech speech){
+	speech.startTick=triggerState.tick;
+	if(speech.runId==0||speech.pauseForInput||speech.duration<0) return;
+	auto run=findTriggerRun(triggerState,speech.runId);
+	if(run!is null&&run.waitId==speech.id) setTimer(*run,triggerState,speech.duration);
+}
+
 int addTriggerSpeech(B)(ref TriggerRun run,ref TriggerState!B triggerState,TriggerSpeech speech){
 	speech.id=++triggerState.nextSpeechId;
-	speech.startTick=triggerState.tick;
+	speech.startTick=-1; // queued behind the current retail speech, if any
 	triggerState.speeches~=speech;
 	if(speech.runId!=0){
 		run.flags|=TriggerRunFlags.frozen;
 		run.waitId=speech.id;
-		if(speech.pauseForInput){
-			run.waitKind=TriggerRunWait.speechInput;
-			run.wakeTick=int.max;
-		}else if(speech.duration<0){
-			run.waitKind=TriggerRunWait.speechPersistent;
-			run.wakeTick=int.max;
-		}else{
-			run.waitKind=TriggerRunWait.none;
-			setTimer(run,triggerState,speech.duration);
-		}
+		run.wakeTick=int.max;
+		if(speech.pauseForInput) run.waitKind=TriggerRunWait.speechInput;
+		else if(speech.duration<0) run.waitKind=TriggerRunWait.speechPersistent;
+		else run.waitKind=TriggerRunWait.none;
 	}
+	if(triggerState.speeches.length==1) startTriggerSpeech(triggerState,triggerState.speeches[0]);
 	return speech.id;
 }
 
@@ -92,11 +94,21 @@ void addTriggerAudioEvent(B)(ref TriggerState!B triggerState,int side,char[4] sa
 }
 
 void updateTriggerPresentation(B)(ref TriggerState!B triggerState){
+	bool canStart=true;
 	for(size_t i=0;i<triggerState.speeches.length;){
-		if(triggerState.speeches[i].duration>=0&&triggerState.tick-triggerState.speeches[i].startTick>=triggerState.speeches[i].duration){
+		auto speech=&triggerState.speeches[i];
+		if(speech.startTick<0){
+			if(!canStart){
+				++i;
+				continue;
+			}
+			startTriggerSpeech(triggerState,*speech);
+		}
+		if(speech.duration>=0&&triggerState.tick-speech.startTick>=speech.duration){
 			eraseTriggerSpeech(triggerState,i);
 			continue;
 		}
+		canStart=false;
 		++i;
 	}
 	for(size_t i=0;i<triggerState.audioEvents.length;){
@@ -134,7 +146,7 @@ bool applyTriggerResponseImpl(B)(int side,int triggerId,int triggerChoice,ref Tr
 		if(triggerChoice!=0||triggerId==int.min) return false;
 		auto speechId=-triggerId;
 		foreach(i,ref speech;triggerState.speeches){
-			if(speech.id!=speechId||speech.runId!=0||!speech.pauseForInput||speech.side!=side) continue;
+			if(speech.id!=speechId||speech.startTick<0||speech.runId!=0||!speech.pauseForInput||speech.side!=side) continue;
 			eraseTriggerSpeech(triggerState,i);
 			return true;
 		}
@@ -145,7 +157,7 @@ bool applyTriggerResponseImpl(B)(int side,int triggerId,int triggerChoice,ref Tr
 	if(run.waitKind==TriggerRunWait.speechInput){
 		if(triggerChoice!=0) return false;
 		foreach(i,ref speech;triggerState.speeches){
-			if(speech.id!=run.waitId||speech.runId!=run.id||!speech.pauseForInput) continue;
+			if(speech.id!=run.waitId||speech.startTick<0||speech.runId!=run.id||!speech.pauseForInput) continue;
 			eraseTriggerSpeech(triggerState,i);
 			return true;
 		}
@@ -337,7 +349,7 @@ bool checkConstraint(B)(TrigConstraint constraint,int current,int maxOr0,ref Tri
 	if(auto exactly=cast(TrigExactly)constraint)
 		return current==evalQuantity(exactly.quantity,run,triggerState,state);
 	if(cast(TrigAll)constraint) return current==maxOr0;
-	if(cast(TrigNone)constraint) return false;
+	if(cast(TrigNone)constraint) return current==0;
 	if(cast(TrigTrue)constraint) return current!=0;
 	if(cast(TrigFalse)constraint) return current==0;
 	runError(run,text("unsupported constraint ",typeid(constraint)));
@@ -547,8 +559,8 @@ uint sideSpecSides(B)(TrigSideSpec sideSpec,int side,ObjectState!B state){
 			if(friendly) mask|=1u<<other;
 			continue;
 		}
-		auto isEnemy=state.sides.getStance(side,other)==Stance.enemy||state.sides.getStance(other,side)==Stance.enemy;
-		auto isAlly=state.sides.getStance(side,other)==Stance.ally||state.sides.getStance(other,side)==Stance.ally;
+		auto isEnemy=state.getStance(side,other)==Stance.enemy||state.getStance(other,side)==Stance.enemy;
+		auto isAlly=state.getStance(side,other)==Stance.ally||state.getStance(other,side)==Stance.ally;
 		if(enemy&&isEnemy||friendly&&isAlly||!enemy&&!friendly&&!isEnemy&&!isAlly)
 			mask|=1u<<other;
 	}
@@ -595,30 +607,35 @@ bool passesFilter(B)(ref MovingObject!B obj,const(NttFilter)* filter,ObjectState
 	return true;
 }
 
-int countCreatureType(B)(char[4] ctype,const(NttFilter)* filter,ObjectState!B state){
+int countCreatureType(B)(char[4] ctype,const(NttFilter)* filter,ObjectState!B state,int* maximum=null){
 	int count=0;
+	if(maximum) *maximum=0;
 	bool corpses=ctype=="pctt";
-	state.obj.eachMoving!((ref obj,ctype,filter,corpses,state,count){
+	state.obj.eachMoving!((ref obj,ctype,filter,corpses,state,count,maximum){
 		if(!corpses&&!obj.isAlive) return;
+		if(filter.ownerSide>=0&&obj.side!=filter.ownerSide) return;
+		if(maximum) *maximum+=1;
 		if(!matchesCreatureType(ctype,obj)) return;
 		if(!passesFilter(obj,filter,state)) return;
 		*count+=1;
-	})(ctype,filter,corpses,state,&count);
+	})(ctype,filter,corpses,state,&count,maximum);
 	return count;
 }
 
-int countStructureType(B)(char[4] stype,const(NttFilter)* filter,ObjectState!B state){
+int countStructureType(B)(char[4] stype,const(NttFilter)* filter,ObjectState!B state,int* maximum=null){
 	int count=0;
-	state.obj.eachBuilding!((ref building,filter,stype,state,count){
-		if(!matchesStructureType(stype,building)) return;
+	if(maximum) *maximum=0;
+	state.obj.eachBuilding!((ref building,filter,stype,state,count,maximum){
 		if(filter.ownerSide>=0&&building.side!=filter.ownerSide) return;
+		if(maximum) *maximum+=1;
+		if(!matchesStructureType(stype,building)) return;
 		if(filter.location.type!=0){
 			if(!building.componentIds.length) return;
 			if(!isAtLocation(building.position(state),*cast(CheckLocation*)&filter.location,state)) return;
 		}
 		if(filter.viewerSide>=0&&!state.isVisibleToSide(filter.viewerSide,building.id,building.side)) return;
 		*count+=1;
-	})(filter,stype,state,&count);
+	})(filter,stype,state,&count,maximum);
 	return count;
 }
 
@@ -626,12 +643,14 @@ int countStructureType(B)(char[4] stype,const(NttFilter)* filter,ObjectState!B s
 // ownerSide<0: any owner. returns false (without error) for unresolvable specific ntts.
 bool checkNtts(B)(TrigNtts ntts,int ownerSide,const(NttFilter)* filter,ref TriggerRun run,ref TriggerState!B triggerState,ObjectState!B state){
 	if(auto quantity=cast(TrigQuantityCreatureType)ntts){
-		auto count=countCreatureType(quantity.ctype,filter,state);
-		return checkConstraint(quantity.constraint,count,0,run,triggerState,state);
+		int maximum;
+		auto count=countCreatureType(quantity.ctype,filter,state,&maximum);
+		return checkConstraint(quantity.constraint,count,maximum,run,triggerState,state);
 	}
 	if(auto quantity=cast(TrigQuantityStructureType)ntts){
-		auto count=countStructureType(quantity.stype,filter,state);
-		return checkConstraint(quantity.constraint,count,0,run,triggerState,state);
+		int maximum;
+		auto count=countStructureType(quantity.stype,filter,state,&maximum);
+		return checkConstraint(quantity.constraint,count,maximum,run,triggerState,state);
 	}
 	int id;
 	if(auto specific=cast(TrigNttsCreature)ntts) id=resolveNtt(specific.creature,run.side,state);
@@ -920,15 +939,23 @@ bool convertOrder(B)(TrigOrder trigOrder,int side,out Order order,ref TriggerRun
 	TrigLocation location;
 	if(auto goTo=cast(TrigOrderGoToLocation)trigOrder){ command=CommandType.move; location=goTo.location; }
 	else if(auto attackLocation=cast(TrigOrderAttackLocation)trigOrder){ command=CommandType.attack; location=attackLocation.location; }
-	else if(auto guardLocation=cast(TrigOrderGuardLocation)trigOrder){ command=CommandType.guard; location=guardLocation.location; }
+	else if(auto guardLocation=cast(TrigOrderGuardLocation)trigOrder){ command=CommandType.retreat; location=guardLocation.location; }
 	// formation orders: the formation is not represented per-order in sacengine, otherwise identical
 	else if(auto goTo=cast(TrigOrderGoToLocationInFormation)trigOrder){ command=CommandType.move; location=goTo.location; }
 	else if(auto attackLocation=cast(TrigOrderAttackLocationInFormation)trigOrder){ command=CommandType.attack; location=attackLocation.location; }
-	else if(auto guardLocation=cast(TrigOrderGuardLocationInFormation)trigOrder){ command=CommandType.guard; location=guardLocation.location; }
+	else if(auto guardLocation=cast(TrigOrderGuardLocationInFormation)trigOrder){ command=CommandType.retreat; location=guardLocation.location; }
 	else return false; // notify/passive notify orders: unsupported (see above)
 	Vector3f position;
 	if(!locationPosition(location,side,position,state)) return false;
-	order=Order(command,OrderTarget(TargetType.terrain,0,position));
+	if(auto atNtt=cast(TrigAtNtt)location){
+		auto id=resolveNtt(atNtt.ntt,side,state);
+		if(id==0) return false;
+		auto type=state.isValidBuilding(id)?TargetType.building:TargetType.creature;
+		order=Order(command,OrderTarget(type,id,position));
+	}else{
+		if(command==CommandType.retreat) command=CommandType.guardArea;
+		order=Order(command,OrderTarget(TargetType.terrain,0,position));
+	}
 	return true;
 }
 
@@ -1036,7 +1063,7 @@ int spawnCreature(B)(char[4] ctype,int side,Vector3f position,ObjectState!B stat
 
 string triggerResourceFilename(char[4] tag){
 	char[4] name=tag;
-	reverse(name[]);
+	reverse(cast(ubyte[])name[]);
 	return normalizeFilename(name[].idup);
 }
 string genericTriggerText(char[4] tag,string mapFolder,string resourceFolder){
@@ -1229,9 +1256,9 @@ bool runAction(B)(TrigAction action,ref TriggerRun run,ref TriggerState!B trigge
 	if(auto declare=cast(TrigDeclareStanceToSideAction)action){
 		if(declare.side<32&&0<=run.side&&run.side<state.sid.sides.length){
 			final switch(declare.stance) with(TrigStance){
-				case hostile: state.sides.setStance(run.side,cast(int)declare.side,Stance.enemy); break;
-				case friendly: state.sides.setStance(run.side,cast(int)declare.side,Stance.ally); break;
-				case neutral: state.sides.setStance(run.side,cast(int)declare.side,Stance.neutral); break;
+				case hostile: state.setStance(run.side,cast(int)declare.side,Stance.enemy); break;
+				case friendly: state.setStance(run.side,cast(int)declare.side,Stance.ally); break;
+				case neutral: state.setStance(run.side,cast(int)declare.side,Stance.neutral); break;
 			}
 		}
 		return false;
@@ -1532,7 +1559,7 @@ bool runAction(B)(TrigAction action,ref TriggerRun run,ref TriggerState!B trigge
 		auto id=resolveNtt(give.wizard,run.side,state);
 		if(id==0||state.isValidBuilding(id)) runError(run,text("give spell: cannot resolve wizard ",give.wizard.id));
 		else if(auto wiz=state.getWizard(id))
-			wiz.spellbook.addSpell(1,SacSpell!B.get(give.spell)); // retail adds at level 1
+			wiz.spellbook.grantSpell(0,SacSpell!B.get(give.spell));
 		return false;
 	}
 	// retail casts at the game level without a caster wizard (0x54780); sacengine spells need a caster
