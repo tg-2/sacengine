@@ -2085,6 +2085,8 @@ final class SacScene: Scene{
 			auto end=resolveTriggerCameraOriginTarget(record.originTarget,record.originEnd);
 			origin=interpolateTriggerCamera(originStart,end,record.originStartTick,record.originDuration,tick);
 			origin.z=triggerCameraTerrainClearance(origin);
+		}else{
+			origin=resolveTriggerCameraOriginTarget(camera.target,originStart);
 		}
 		if(record.focusValid){
 			auto end=resolveTriggerCameraFocusTarget(record.focusTarget,record.focusEnd);
