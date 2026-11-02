@@ -557,6 +557,8 @@ int run(string[] args){
 	Options options={ settings: { commit: commit } };
 	options.slot=int.min;
 	if(auto r=applySettings(args[1..$],options)) return r;
+	import assets : localChristmasHat;
+	localChristmasHat=options.localChristmasHat;
 	if(options.slot==int.min) options.slot=options.observer?-1:0;
 	if(auto r=finalizeSettings(options)) return r;
 	writeln("SacEngine build ",__DATE__," ",__TIME__,commit.length?text(", commit ",commit):"");
