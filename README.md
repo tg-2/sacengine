@@ -28,11 +28,6 @@ ldc2-1.41.0-windows-x64\bin\dub.exe build -b release-debug --compiler=./ldc2-1.4
 
 To run the engine, symlink your maps and data folder into the sacengine directory, check settings.txt for additional options. (Alternatively, put the executable in the Sacrifice directory.)
 
-Local Christmas hats
---------------------
-
-Use `--local-christmas-hat` on the command line or in `settings.txt` to add Santa hats to the original Charlotte, Eldred, Sorcha, Ambassador Buta and Hachimen models. The option is disabled by default; use `--no-local-christmas-hat` to disable it explicitly. The hats are rendered locally and do not change gameplay state or send a setting to other players. Hat placement is experimental, especially for Buta and Hachimen.
-
 On Windows, you may need the following additional DLLs:
 * https://openal.org/downloads/
 * https://mpg123.org/download/win64/1.29.2/
