@@ -3512,7 +3512,7 @@ int wizBrain(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int cmd,int ri){
 	auto node=&ai.nodes[n];
 	static if(shinyAILog) ailog("WIZBRAIN ",ai.side," t",ai.schedTime," n",n," id ",node.id," cmd ",cmd," ri ",ri," age ",node.age," nextReplan ",node.nextReplan," nextReissue ",node.nextOrderReissue," threat ",node.threat," pos ",node.curPos);
 	if(nodeIsRespawning(ai,state,n)){ // ntt+0x5ec.+0x30&0x40000
-		// thaum gives ghosts record orders only (idle cmd -> stub 0x486cd0, no order): the ghost stands where it died and own manahoars converge on it (max mana deficit, x2 wizard bonus, mahoBrain 0x487ae0) and channel it back (giveMana heals ghosts 4.2x)
+		// thaum gives ghosts record orders only (idle cmd -> stub 0x486cd0, no order): the ghost stands where it died and own manahoars converge on it (max mana deficit, x2 wizard bonus, mahoBrain 0x487ae0) and channel mana into its health-driven revival
 		bool mahoNear=false;
 		for(int m=ai.catHead[0];m;m=ai.nodes[m].catN)
 			if(ai.nodes[m].kind==NodeKind.maho&&distSq3(node.curPos,ai.nodes[m].curPos)<=256.0f*256.0f){ mahoNear=true; break; } // 256.0f = mahoBrain seek cutoff (ds:0x4bc108)

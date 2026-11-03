@@ -15,7 +15,9 @@ struct BldgHeader{
 	BldgFlags flags;
 	ubyte[8][8] ground;
 	uint maxHealth;
-	float[10] unknown1;
+	float[4] unknown1;
+	float[3] flamePosition;
+	float[3] victimPosition;
 	char[4] tileset;
 	char[4] unknown2;
 	uint numComponents;

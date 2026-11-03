@@ -968,6 +968,13 @@ final class SacBuilding(B){
 	bool isPeasantShelter(){
 		return !!(bldg.header.flags&BldgFlags.shelter)||isAltar;
 	}
+	bool hasPortal(){
+		return bldg.header.numComponents==1&&bldg.components[0].spell=="hcra";
+	}
+	Vector3f victimPosition(){
+		auto offset=bldg.victimPosition;
+		return Vector3f(offset[0],offset[1],offset[2]);
+	}
 
 	bool canBurn;
 
@@ -4106,6 +4113,49 @@ struct SacVortex(B){
 	}
 	enum numCenterFrames=16*updateAnimFactor;
 	B.Mesh getCenterFrame(int i){ return centerMeshes[i/updateAnimFactor]; }
+}
+
+struct SacBuildingPortal(B){
+	B.Texture texture;
+	B.Material material;
+	B.Mesh[] frames;
+	enum numFrames=8*updateFPS; // seamless for the representative phase rates below
+	enum fadeRadius=15.0f; // arch.SPEL overrides PortalRun's generic radius of 6.
+	static Vector3f fadeScale(float fade){
+		return Vector3f(fade,fade,1.0f); // PortalRun scales radii and XY offsets, but not Z.
+	}
+
+	static B.Texture loadTexture(){
+		enum filename="extracted/main/MAIN.WAD!/bits.FLDR/spud.TXTR";
+		enum fallback="extracted/main/MAIN.WAD!/bits.FLDR/vtx1.TXTR";
+		// arch.SPEL supplies spud to PortalRun. Do not fail on incomplete asset extractions.
+		return B.makeTexture(loadTXTR(fileExists(filename)?filename:fallback));
+	}
+	static B.Mesh createFrame(int frame){
+		enum numRings=24,numSegments=32,uRepeat=2;
+		static immutable float[4] initialPhases=[0.0f,0.5f*pi!float,pi!float,1.5f*pi!float];
+		static immutable float[4] phaseRates=[1.0f,-0.75f,0.5f,-0.25f]; // units of pi/updateFPS per update
+		float[4] phases;
+		foreach(i;0..phases.length)
+			phases[i]=initialPhases[i]+phaseRates[i]*pi!float*frame/updateFPS;
+		Vector3f[4] knots=[Vector3f(0.0f,0.0f,0.0f),Vector3f(0.0f,0.0f,-0.5f),
+		                   Vector3f(0.0f,0.0f,-1.0f),Vector3f(0.0f,0.0f,-1.5f)];
+		// PortalRun leaves fadeRadius*fade on the FPU stack and multiplies each offset by it.
+		knots[1].x=0.25f*fadeRadius*sin(phases[2]);
+		knots[1].y=0.25f*fadeRadius*sin(phases[3]);
+		knots[2].x=0.5f*fadeRadius*sin(phases[0]);
+		knots[2].y=0.5f*fadeRadius*sin(phases[1]);
+		knots[3].x=0.75f*fadeRadius*cos(phases[2]+phases[1]);
+		knots[3].y=0.75f*fadeRadius*cos(phases[0]+phases[3]);
+		float[4] radii=[fadeRadius,0.5f*fadeRadius,0.25f*fadeRadius,0.05f*fadeRadius];
+		return makeVolcanoLavaMeshes!B(knots,radii,1,false,1,1,uRepeat,numRings,numSegments)[0][0];
+	}
+	static B.Mesh[] createMeshes(){
+		auto result=new B.Mesh[](numFrames);
+		foreach(frame,ref mesh;result) mesh=createFrame(cast(int)frame);
+		return result;
+	}
+	B.Mesh getFrame(int frame){ return frames[frame%numFrames]; }
 }
 
 struct SacSquallEffect(B){

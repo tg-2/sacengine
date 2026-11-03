@@ -954,21 +954,29 @@ struct CreatureStatistics{
 }
 
 struct NotificationState{
+	bool passiveNotify=false;
+	bool passiveAlert=false;
 	int lastNotificationFrame=int.max;
 	static assert(updateFPS%4==0);
 	enum blinkFrames=updateFPS/4;
 	enum blinkDuration=19*2*blinkFrames; // TODO: ok?
+	enum passiveBlinkFrames=16*updateFPS/60;
 	int blinkStartFrame=0;
 	bool isNotifying(B)(ObjectState!B state){
+		if(passiveAlert) return true;
 		if(state.frame<lastNotificationFrame) return false;
 		if(lastNotificationFrame+1<state.frame&&blinkStartFrame+blinkDuration<=state.frame)
 			return false;
 		return true;
 	}
 	bool isBlinking(B)(ObjectState!B state){
+		if(passiveAlert) return state.frame%(2*passiveBlinkFrames)<passiveBlinkFrames;
 		if(!isNotifying(state)) return false;
 		if(blinkStartFrame+blinkDuration<=state.frame) return false;
 		return (state.frame-blinkStartFrame)%(2*blinkFrames)<blinkFrames;
+	}
+	bool isBlinkingForSide(B)(int side,int renderSide,ObjectState!B state){
+		return (passiveAlert||side==renderSide)&&isBlinking(state);
 	}
 	private void notifyOnce(B)(ObjectState!B state){
 		if(!isNotifying(state)) blinkStartFrame=state.frame;
@@ -1734,6 +1742,7 @@ struct Building(B){
 		this.side=side;
 		this.flags=flags;
 		this.facing=facing;
+		this.activeValue=(flags&Flags.initiallyInactive)?0:1;
 		this.health=sacBuilding.maxHealth;
 		this.regeneration=sacBuilding.regeneration;
 	}
@@ -2674,6 +2683,10 @@ struct ManaDrain(B){
 	int timer;
 }
 struct BuildingDestruction{ int id; }
+struct BuildingPortalEffect{
+	int building;
+	float fade=0.0f;
+}
 struct GhostKill{ int id; }
 struct CreatureCasting(B){
 	ManaDrain!B manaDrain;
@@ -5449,6 +5462,14 @@ struct Effects(B){
 	void removeBuildingDestruction(int i){
 		if(i+1<buildingDestructions.length) buildingDestructions[i]=move(buildingDestructions[$-1]);
 		buildingDestructions.length=buildingDestructions.length-1;
+	}
+	Array!BuildingPortalEffect buildingPortals;
+	void addEffect(BuildingPortalEffect buildingPortal){
+		buildingPortals~=buildingPortal;
+	}
+	void removeBuildingPortal(int i){
+		if(i+1<buildingPortals.length) buildingPortals[i]=move(buildingPortals[$-1]);
+		buildingPortals.length=buildingPortals.length-1;
 	}
 	Array!GhostKill ghostKills;
 	void addEffect(GhostKill ghostKill){
@@ -8972,11 +8993,9 @@ void drainMana(B)(ref MovingObject!B object,float amount,ObjectState!B state){
 	object.notificationState.drainMana(object,state);
 }
 
-enum ghostHealthPerMana=4.2f;
 void giveMana(B)(ref MovingObject!B object,float amount,ObjectState!B state){
 	if(object.creatureStats.effects.manaBlocked) return;
 	object.creatureStats.mana=min(object.creatureStats.mana+amount,object.creatureStats.maxMana);
-	if(object.isWizard&&object.isGhost) object.heal(ghostHealthPerMana*amount,state);
 }
 
 void healFromDrain(B)(ref MovingObject!B attacker,float actualDamage,ObjectState!B state){
@@ -12393,8 +12412,6 @@ bool prequeueTriggerCastOrder(B)(ref MovingObject!B object,Order order,ObjectSta
 	if(object.isWizard){
 		auto wizard=state.getWizard(object.id);
 		if(!wizard) return false;
-		// CREATURE::CastSpell (0x45c180) skips insertion when CantCastSpell returns 2.
-		// The wizard override (0x481e30) uses 2 for these checks at issuance.
 		final switch(state.spellStatus!true(wizard,spell)) with(SpellStatus){
 			case inexistent,disabled,lowOnMana,mustBeNearBuilding,mustBeNearEnemyAltar,mustBeConnectedToConversion,needMoreSouls,notReady:
 				return false;
@@ -14235,7 +14252,8 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 				}
 				target.position=target.center(state);
 			}
-			object.turnToFaceTowards(target.position,state);
+			if(!object.turnToFaceTowards(target.position,state))
+				object.clearOrder(state);
 			break;
 		case CommandType.none:
 			if(state.trig.cinematics){
@@ -14913,7 +14931,19 @@ int meleeAttackTarget(B)(ref MovingObject!B object,ObjectState!B state){
 	return meleeAttackTarget(object.id,object.side,hitbox,meleeHitbox,state);
 }
 
+void updateGhostHealth(B)(ref MovingObject!B object){
+	if(!object.isWizard||!object.isGhost) return;
+	auto mana=object.creatureStats.mana;
+	auto maxMana=object.creatureStats.maxMana;
+	if(4.0f*mana>=maxMana){
+		object.health=object.creatureStats.maxHealth;
+	}else{
+		object.health=4.0f*mana*object.creatureStats.maxHealth/maxMana;
+	}
+}
+
 void updateCreatureStats(B)(ref MovingObject!B object, ObjectState!B state){
+	object.updateGhostHealth();
 	if(object.isRegenerating) with(object.creatureStats){
 		auto factor=maxMana==0.0f?1.0f:mana/maxMana;
 		object.heal(factor*max(0.0f,regeneration*effects.poisonRegeneration)/updateFPS,state);
@@ -15695,6 +15725,18 @@ bool updateBuildingDestruction(B)(ref BuildingDestruction buildingDestruction,Ob
 		state.removeObject(buildingDestruction.id);
 	}
 	return false;
+}
+void updateBuildingPortalFade(B)(ref BuildingPortalEffect portal,ref Building!B building){
+	auto target=building.activeValue==1&&!(building.flags&(AdditionalBuildingFlags.inactive|Flags.destroyed))?1.0f:0.0f;
+	if(portal.fade<target) portal.fade=min(target,portal.fade+1.0f/updateFPS);
+	else if(portal.fade>target) portal.fade=max(target,portal.fade-1.0f/updateFPS);
+}
+bool updateBuildingPortalEffect(B)(ref BuildingPortalEffect portal,ObjectState!B state){
+	static bool update(ref Building!B building,BuildingPortalEffect* portal){
+		updateBuildingPortalFade(*portal,building);
+		return true;
+	}
+	return state.buildingById!(update,function bool(){ return false; })(portal.building,&portal);
 }
 bool updateGhostKill(B)(ref GhostKill ghostKill,ObjectState!B state){
 	return state.movingObjectById!((ref wizard,state){
@@ -26678,6 +26720,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 		}
 		i++;
 	}
+	for(int i=0;i<effects.buildingPortals.length;){
+		if(!updateBuildingPortalEffect(effects.buildingPortals[i],state)){
+			effects.removeBuildingPortal(i);
+			continue;
+		}
+		i++;
+	}
 	for(int i=0;i<effects.ghostKills.length;){
 		if(!updateGhostKill(effects.ghostKills[i],state)){
 			effects.removeGhostKill(i);
@@ -29996,7 +30045,9 @@ final class ObjectState(B){ // (update logic)
 	void disableFasterCastingTimes(){ settings.fasterCastingTimes=false; }
 	void enableAlwaysOnMinimap(){ settings.alwaysOnMinimap=true; }
 	int addObject(T)(T object) if(is(T==MovingObject!B)||is(T==StaticObject!B)||is(T==Soul!B)||is(T==Building!B)){
+		static if(is(T==Building!B)) auto hasPortal=object.sacBuilding.hasPortal;
 		auto id=obj.addObject(move(object));
+		static if(is(T==Building!B)) if(hasPortal) this.addEffect(BuildingPortalEffect(id));
 		static if(is(T==MovingObject!B)) this.botSpawned(id);
 		static if(is(T==Soul!B)) this.botSoulSpawned(id);
 		return id;
@@ -31259,6 +31310,8 @@ struct TriggerState(B){
 	uint[] objectiveFlags; // MBOJ flags; bit0: enabled, bit1: complete
 	TriggerSpeech[] speeches;
 	int nextSpeechId=0;
+	int skipSpeechId=0;
+	uint skipSpeechVotes=0;
 	TriggerAudioEvent[] audioEvents;
 	int nextAudioEventId=0;
 	TriggerAsk[] asks;
@@ -31601,7 +31654,11 @@ Cursor cursor(B)(ref OrderTarget target,int renderSide,bool showIcon,ObjectState
 		}
 		bool isNeutral=!(summary&enemy);
 		if(summary&creature){
-			if(isNeutral) return showIcon?iconNeutral:(summary&rescuable?rescuableUnit:neutralUnit);
+			if(isNeutral){
+				auto talking=target.type==TargetType.creature&&state.movingObjectReadById!((ref objects,i)=>objects.notificationStates[i].passiveNotify,()=>false)(target.id);
+				if(talking) return showIcon?iconNeutral:talkingUnit;
+				return showIcon?iconNeutral:(summary&rescuable?rescuableUnit:neutralUnit);
+			}
 			return showIcon?iconEnemy:enemyUnit;
 		}
 		if(summary&building){

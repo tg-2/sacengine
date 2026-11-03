@@ -75,6 +75,7 @@ GameInit!B gameInit(B,R)(Sides!B sides_,R playerSettings,ref Options options){
 		assert(gameInit.slots[slot]==GameInit!B.Slot(-1));
 		int wizardIndex=cast(int)gameInit.wizards.length;
 		gameInit.slots[slot]=GameInit!B.Slot(wizardIndex);
+		gameInit.slots[slot].sideType=SideType.human;
 		gameInit.wizards~=GameInit!B.Wizard(to!WizardTag(tag),name,side,level,souls,experience,minLevel,maxLevel,xpRate,spellbook);
 	}
 	foreach(ref settings;playerSettings) placeWizard(settings);
