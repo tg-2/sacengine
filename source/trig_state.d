@@ -50,6 +50,10 @@ void releaseTriggerSpeechRun(B)(ref TriggerState!B triggerState,ref TriggerSpeec
 
 void eraseTriggerSpeech(B)(ref TriggerState!B triggerState,size_t index){
 	releaseTriggerSpeechRun(triggerState,triggerState.speeches[index]);
+	if(triggerState.skipSpeechId==triggerState.speeches[index].id){
+		triggerState.skipSpeechId=0;
+		triggerState.skipSpeechVotes=0;
+	}
 	foreach(i;index+1..triggerState.speeches.length)
 		triggerState.speeches[i-1]=triggerState.speeches[i];
 	triggerState.speeches.length=triggerState.speeches.length-1;
@@ -176,7 +180,33 @@ bool applyTriggerResponseImpl(B)(int side,int triggerId,int triggerChoice,ref Tr
 	return false;
 }
 
+bool applyTriggerSkip(B)(int side,int triggerChoice,ObjectState!B state){
+	if(triggerChoice!=0||!(0<=side&&side<32)) return false;
+	uint requiredVotes=0;
+	foreach(voterSide;0..min(32,state.sid.sides.length)){
+		if(state.sid.sides[voterSide].sideType!=SideType.human||state.isDefeated(voterSide)) continue;
+		requiredVotes|=1u<<voterSide;
+	}
+	if(!(requiredVotes&(1u<<side))) return false; // AI sides and observers cannot vote.
+	foreach(i,ref speech;state.trig.speeches){
+		if(speech.startTick<0) continue;
+		if(state.trig.skipSpeechId!=speech.id){
+			state.trig.skipSpeechId=speech.id;
+			state.trig.skipSpeechVotes=0;
+		}
+		state.trig.skipSpeechVotes|=1u<<side;
+		if((state.trig.skipSpeechVotes&requiredVotes)==requiredVotes)
+			eraseTriggerSpeech(state.trig,i);
+		return true;
+	}
+	state.trig.skipSpeechId=0;
+	state.trig.skipSpeechVotes=0;
+	return false;
+}
+
 bool applyTriggerResponse(B)(Command!B command,ObjectState!B state){
+	// int.min is reserved for collective speech-skip attempts, not an ordinary response ID.
+	if(command.triggerId==int.min) return applyTriggerSkip(command.side,command.triggerChoice,state);
 	return applyTriggerResponseImpl(command.side,command.triggerId,command.triggerChoice,state.trig,state.triggers);
 }
 
@@ -959,9 +989,31 @@ bool convertOrder(B)(TrigOrder trigOrder,int side,out Order order,ref TriggerRun
 	return true;
 }
 
+void setPassiveNotify(B)(ref MovingObject!B obj){
+	obj.notificationState.passiveNotify=true;
+	// Familiars retain the talking cursor, but do not display the peasant-style red alert.
+	obj.notificationState.passiveAlert=!obj.isFamiliar;
+}
+
+void clearPassiveNotify(B)(ref MovingObject!B obj){
+	obj.notificationState.passiveNotify=false;
+	obj.notificationState.passiveAlert=false;
+}
+
 // issues a trigger order to a single creature. returns false if the order could not be converted.
 bool issueOrder(B)(ref MovingObject!B obj,TrigOrder trigOrder,ref TriggerRun run,ref TriggerState!B triggerState,ObjectState!B state){
+	if(cast(TrigOrderPassiveNotify)trigOrder){
+		obj.setPassiveNotify();
+		return true;
+	}
+	if(auto notify=cast(TrigOrderNotify)trigOrder){
+		auto id=resolveNtt(notify.creature,run.side,state);
+		if(id==0||state.isValidBuilding(id)) return false;
+		state.movingObjectById!((ref target){ target.setPassiveNotify(); },(){})(id);
+		return true;
+	}
 	if(cast(TrigOrderCancelOrders)trigOrder){
+		obj.clearPassiveNotify();
 		obj.clearOrderQueue(state);
 		return true;
 	}
@@ -1145,6 +1197,8 @@ bool startCreatureSpeech(B)(TrigCreature creature,char[4] text,char[4] sample,bo
 	speech.kind=kind;
 	speech.emotion=emotion;
 	speech.duration=automaticSpeechDuration(text,sample,state);
+	// Retail clears passive talk state when creature speech starts (Sacrifice.exe 0x479ee2).
+	state.movingObjectById!((ref target){ target.clearPassiveNotify(); },(){})(target);
 	addTriggerSpeech(run,triggerState,speech);
 	return true;
 }
@@ -1391,7 +1445,10 @@ bool runAction(B)(TrigAction action,ref TriggerRun run,ref TriggerState!B trigge
 			speech.target=resolveNtt(actor.creature,run.side,state);
 			if(state.isValidBuilding(speech.target)) speech.target=0;
 			// Retail falls back to independent speech when the creature cannot be resolved.
-			if(speech.target!=0) speech.runId=run.id;
+			if(speech.target!=0){
+				speech.runId=run.id;
+				state.movingObjectById!((ref target){ target.clearPassiveNotify(); },(){})(speech.target);
+			}
 		}else if(auto actor=cast(TrigActorNameText)speechAction.actor){
 			speech.kind=TriggerSpeechKind.named;
 			speech.runId=run.id;
@@ -1556,8 +1613,23 @@ bool runAction(B)(TrigAction action,ref TriggerRun run,ref TriggerState!B trigge
 			wiz.spellbook.grantSpell(0,SacSpell!B.get(give.spell));
 		return false;
 	}
-	// retail casts at the game level without a caster wizard (0x54780); sacengine spells need a caster
-	if(cast(TrigCastSpellAtLocationAction)action) return false; // TODO: best-effort cast
+	// Retail casts at the game level without a caster wizard (0x54780). The utility teleport-out
+	// spell is presentation-only; in particular, this neither moves the target nor queues a cast.
+	if(auto castAction=cast(TrigCastSpellAtLocationAction)action){
+		if(castAction.spell=="uot@"){
+			if(auto atNtt=cast(TrigAtNtt)castAction.location){
+				auto id=resolveNtt(atNtt.ntt,run.side,state);
+				if(id) state.movingObjectById!((ref obj,state){
+					animateTeleport(true,obj.hitbox,state,false);
+				},(){})(id,state);
+			}else{
+				Vector3f position;
+				if(locationPosition(castAction.location,run.side,position,state))
+					animateTeleport(true,[position,position],state,false);
+			}
+		}
+		return false; // other game-level spells still need a caster-independent spell path
+	}
 	if(auto setState=cast(TrigSetNttStateAction)action){
 		auto id=resolveNtt(setState.ntt,run.side,state);
 		if(id==0) runError(run,text("set ntt state: cannot resolve ntt"));
@@ -1664,7 +1736,11 @@ bool runAction(B)(TrigAction action,ref TriggerRun run,ref TriggerState!B trigge
 
 bool orderConvertible(B)(TrigOrder trigOrder,ref TriggerRun run,ref TriggerState!B triggerState,ObjectState!B state){
 	// orders that cannot be represented in sacengine fail conversion (retail: ConvertOrder returns 0)
-	if(cast(TrigOrderNotify)trigOrder||cast(TrigOrderPassiveNotify)trigOrder) return false;
+	if(cast(TrigOrderPassiveNotify)trigOrder) return true;
+	if(auto notify=cast(TrigOrderNotify)trigOrder){
+		auto id=resolveNtt(notify.creature,run.side,state);
+		return id!=0&&!state.isValidBuilding(id);
+	}
 	if(cast(TrigOrderCancelOrders)trigOrder||cast(TrigOrderDie)trigOrder||cast(TrigOrderTurnToFaceLocation)trigOrder) return true;
 	Order order;
 	return convertOrder(trigOrder,run.side,order,run,triggerState,state);

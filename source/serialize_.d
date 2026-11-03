@@ -271,6 +271,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Man
 void serialize(alias sink)(ref BuildingDestruction buildingDestruction){ serializeStruct!sink(buildingDestruction); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BuildingDestruction)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink)(ref BuildingPortalEffect buildingPortal){ serializeStruct!sink(buildingPortal); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BuildingPortalEffect)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink)(ref GhostKill ghostKill){ serializeStruct!sink(ghostKill); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==GhostKill)){ deserializeStruct(result,state,data); }
 
