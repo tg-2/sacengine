@@ -530,6 +530,7 @@ final class SacScene: Scene{
 	bool triggerModalMouseSaved=false;
 	bool triggerModalOldMouseVisible=false;
 	bool triggerModalOldFPActive=false;
+	bool triggerMouseReleaseCaptured=false;
 
 	TriggerAsk* currentTriggerAsk(){
 		if(!state) return null;
@@ -541,6 +542,12 @@ final class SacScene: Scene{
 		if(!state) return null;
 		foreach(ref speech;state.current.trig.speeches)
 			if(speech.startTick>=0&&speech.pauseForInput) return &speech;
+		return null;
+	}
+	TriggerSpeech* currentTriggerSpeech(){
+		if(!state) return null;
+		foreach(ref speech;state.current.trig.speeches)
+			if(speech.startTick>=0) return &speech;
 		return null;
 	}
 	bool triggerCameraInputCaptured(){
@@ -604,9 +611,16 @@ final class SacScene: Scene{
 		return tip;
 	}
 	bool triggerControl(Duration dt){
+		if(triggerMouseReleaseCaptured){
+			mouseButtonDown[MB_LEFT]=0;
+			mouseButtonUp[MB_LEFT]=0;
+			if(!eventManager.mouseButtonPressed[MB_LEFT]) triggerMouseReleaseCaptured=false;
+			return true;
+		}
 		if(triggerHistoryVisible) validateTriggerHistorySelection();
 		auto ask=currentTriggerAsk();
 		auto speech=currentTriggerInputSpeech();
+		auto activeSpeech=currentTriggerSpeech();
 		updateTriggerModalMouse(ask!is null||triggerHistoryVisible);
 		if(ask!is null){
 			if(mouseButtonDown[MB_LEFT]){
@@ -622,6 +636,7 @@ final class SacScene: Scene{
 			return true;
 		}
 		if(speech!is null&&mouseButtonDown[MB_LEFT]!=0&&renderer.isOnTriggerSpeechContinue(speech.id,state.current,Vector2f(mouse.x,mouse.y),info)){
+			triggerMouseReleaseCaptured=true;
 			submitTriggerResponse(speech.side,speech.runId!=0?speech.runId:-speech.id,0);
 			return true;
 		}
@@ -633,6 +648,21 @@ final class SacScene: Scene{
 				foreach(_;0..keyDown[KEY_RETURN]) replayTriggerHistory();
 			}
 			return true;
+		}
+		if(activeSpeech!is null&&!mouse.menuMode){
+			import hotkeys_;
+			Modifiers modifiers;
+			if(eventManager.keyPressed[KEY_LCTRL]||options.hotkeys.capsIsCtrl&&eventManager.keyPressed[KEY_CAPSLOCK]) modifiers|=Modifiers.ctrl;
+			if(eventManager.keyPressed[KEY_LSHIFT]) modifiers|=Modifiers.shift;
+			bool submitted=false;
+			foreach(ref hotkey;options.hotkeys[modifiers]){
+				if(hotkey.action!=Bindable.skipSpeech) continue;
+				foreach(_;0..keyDown[hotkey.keycode]){
+					submitTriggerResponse(renderSide,int.min,0);
+					submitted=true;
+				}
+			}
+			if(submitted) return true;
 		}
 		if(keyDown[KEY_F8]&&!triggerCameraInputCaptured()){
 			openTriggerHistory();
@@ -1194,7 +1224,8 @@ final class SacScene: Scene{
 					controller.addCommand(Command!DagonBackend(renderSide,camera.target));
 					break;
 				// miscellanneous
-				case optionsMenu,skipSpeech: unsupported(); break;
+				case optionsMenu: unsupported(); break;
+				case skipSpeech: break; // handled by triggerControl, including cinematic capture
 				case openNextSpellTab:
 					switchSpellbookTab(cast(SpellType)((spellbookTab+1)%(spellbookTab.max+1)));
 					break;
@@ -1967,7 +1998,6 @@ final class SacScene: Scene{
 		Vector3f focus=Vector3f(0.0f,0.0f,0.0f);
 		float radius=0.0f;
 		float height=0.0f;
-		float facing=0.0f;
 	}
 	static Vector3f triggerCameraMovingFocus(ref MovingObject!DagonBackend object){
 		import animations:AnimationState;
@@ -2002,7 +2032,6 @@ final class SacScene: Scene{
 		auto halfSize=0.5f*size;
 		result.radius=1.0f+sqrt(halfSize.x*halfSize.x+halfSize.y*halfSize.y);
 		result.height=0.9f*size.z;
-		result.facing=object.creatureState.facing;
 		return result;
 	}
 	static void accumulateTriggerCameraBuildingBounds(T)(ref T objects,int index,Vector3f center,float* radius,float* height){
@@ -2020,7 +2049,6 @@ final class SacScene: Scene{
 		foreach(cid;building.componentIds.data)
 			state.staticObjectReadById!(accumulateTriggerCameraBuildingBounds,function void(){ assert(0); })(cid,result.position,&result.radius,&result.height);
 		result.focus=result.position+Vector3f(0.0f,0.0f,0.5f*result.height);
-		result.facing=building.facing;
 		return result;
 	}
 	TriggerCameraTargetInfo getTriggerCameraTargetInfo(int target){
@@ -2041,7 +2069,13 @@ final class SacScene: Scene{
 	static float triggerCameraVerticalCurve(float zoom){
 		return 0.9f+zoom*(0.75f+zoom*(1.8f-0.45f*zoom));
 	}
-	Vector3f resolveTriggerCameraOriginTarget(int target,Vector3f fallback){
+	// Retail cinematic UpdateWindowPos supplies focus-derived angles, not target orientation.
+	static float triggerCameraOriginFacing(Vector3f referenceFocus,Vector3f targetPosition){
+		auto direction=referenceFocus-targetPosition;
+		if(direction.x==0.0f&&direction.y==0.0f) return 0.0f;
+		return atan2(-direction.x,direction.y);
+	}
+	Vector3f resolveTriggerCameraOriginTarget(int target,Vector3f fallback,Vector3f referenceFocus){
 		if(!target||!state.current.isValidTarget(target)){
 			fallback.z=triggerCameraTerrainClearance(fallback);
 			return fallback;
@@ -2052,25 +2086,27 @@ final class SacScene: Scene{
 		auto verticalCurve=triggerCameraVerticalCurve(zoom);
 		auto distance=info.radius*horizontalCurve;
 		auto vertical=info.height*verticalCurve;
-		Vector3f origin=info.position+Vector3f(distance*sin(info.facing),-distance*cos(info.facing),vertical);
+		auto facing=triggerCameraOriginFacing(referenceFocus,info.position);
+		Vector3f origin=info.position+Vector3f(distance*sin(facing),-distance*cos(facing),vertical);
 		auto targetAbove=info.position.z-state.current.getHeight(info.position);
 		auto originAbove=origin.z-state.current.getHeight(origin);
 		auto relative=originAbove-targetAbove;
 		auto clamped=max(0.75f*vertical,min(relative,1.25f*vertical));
 		origin.z+=clamped-relative;
-		origin.z=triggerCameraTerrainClearance(origin);
 		return origin;
 	}
 	Vector3f inferTriggerCameraFocus(){
-		if(camera.target&&state.current.isValidTarget(camera.target,TargetType.creature)){
-			auto position=state.current.movingObjectById!((obj)=>obj.position,function Vector3f(){ assert(0); })(camera.target);
-			return position+Vector3f(0.0f,0.0f,camera.focusHeight);
-		}
-		return camera.position-10.0f*fpview.camera.worldTrans.forward;
+		// Retail SetFocus(0,0,0) uses the ordinary camera position plus 50 forward units.
+		return camera.position-50.0f*fpview.camera.worldTrans.forward;
+	}
+	static Vector3f triggerCameraOriginTransitionStart(bool hadRecord,bool savedValid,Vector3f savedPosition,Vector3f evaluatedPosition){
+		// SetOrigin restarts from the ordinary camera position, not the interpolated origin.
+		return hadRecord&&savedValid?savedPosition:evaluatedPosition;
 	}
 	static float triggerCameraTransitionFraction(int startTick,int duration,int tick){
+		if(duration<=0) return tick<startTick?0.0f:1.0f;
 		if(tick<=startTick) return 0.0f;
-		if(duration<=0||tick>=startTick+duration) return 1.0f;
+		if(tick>=startTick+duration) return 1.0f;
 		auto fraction=cast(float)(tick-startTick)/duration;
 		return fraction*(0.3f+fraction*(2.1f-1.4f*fraction));
 	}
@@ -2081,17 +2117,22 @@ final class SacScene: Scene{
 	void evaluateTriggerCamera(TriggerCamera record,Vector3f originStart,Vector3f focusStart,int tick,out Vector3f origin,out Vector3f focus){
 		origin=originStart;
 		focus=focusStart;
-		if(record.originValid){
-			auto end=resolveTriggerCameraOriginTarget(record.originTarget,record.originEnd);
-			origin=interpolateTriggerCamera(originStart,end,record.originStartTick,record.originDuration,tick);
-			origin.z=triggerCameraTerrainClearance(origin);
-		}else{
-			origin=resolveTriggerCameraOriginTarget(camera.target,originStart);
-		}
+		auto referenceFocus=triggerCameraPoseValid?triggerCameraCurrentFocus:focusStart;
+		auto focusEnd=record.focusEnd;
 		if(record.focusValid){
-			auto end=resolveTriggerCameraFocusTarget(record.focusTarget,record.focusEnd);
-			focus=interpolateTriggerCamera(focusStart,end,record.focusStartTick,record.focusDuration,tick);
+			focusEnd=resolveTriggerCameraFocusTarget(record.focusTarget,record.focusEnd);
+			if(record.focusDuration<=0&&tick>=record.focusStartTick)
+				referenceFocus=focusEnd;
 		}
+		if(record.originValid){
+			auto end=resolveTriggerCameraOriginTarget(record.originTarget,record.originEnd,referenceFocus);
+			origin=interpolateTriggerCamera(originStart,end,record.originStartTick,record.originDuration,tick);
+		}else{
+			origin=resolveTriggerCameraOriginTarget(camera.target,originStart,referenceFocus);
+		}
+		origin.z=triggerCameraTerrainClearance(origin);
+		if(record.focusValid)
+			focus=interpolateTriggerCamera(focusStart,focusEnd,record.focusStartTick,record.focusDuration,tick);
 	}
 	void updateTriggerCameraZoomTarget(TriggerCamera record){
 		if(triggerCameraZoomRevisionValid&&triggerCameraSeenZoomRevision==record.zoomRevision&&triggerCameraSeenZoom==record.zoom) return;
@@ -2157,7 +2198,8 @@ final class SacScene: Scene{
 					oldOrigin=camera.position;
 					oldFocus=inferTriggerCameraFocus();
 				}
-				if(originChanged) triggerCameraOriginStart=oldOrigin;
+				if(originChanged)
+					triggerCameraOriginStart=triggerCameraOriginTransitionStart(hadRecord,triggerCameraSavedValid,triggerCameraSaved.position,oldOrigin);
 				if(focusChanged) triggerCameraFocusStart=oldFocus;
 				storeTriggerCameraStart(record,triggerCameraOriginStart,triggerCameraFocusStart);
 			}

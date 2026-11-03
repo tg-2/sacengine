@@ -243,6 +243,27 @@ struct Renderer(B){
 		return result;
 	}
 	SacVortex!B vortex;
+	SacBuildingPortal!B createBuildingPortal(){
+		auto texture=typeof(return).loadTexture();
+		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
+		mat.depthWrite=false;
+		mat.blending=B.Blending.Additive;
+		mat.energy=1.0f;
+		mat.diffuse=texture;
+		auto frames=typeof(return).createMeshes();
+		return SacBuildingPortal!B(texture,mat,frames);
+	}
+	SacBuildingPortal!B buildingPortal;
+	static void renderBuildingPortal(ref Building!B building,BuildingPortalEffect* portal,Renderer!B* self,ObjectState!B state,RenderInfo!B* info,B.RenderContext rc){
+		if(portal.fade<=0.0f||building.componentIds.length==0) return;
+		auto basePosition=building.position(state);
+		if(state.fogOfWar3d&&building.side!=info.renderSide&&!state.positionExploredBySide(info.renderSide,basePosition)) return;
+		auto facing=facingQuaternion(building.facing);
+		auto position=basePosition+rotate(facing,building.sacBuilding.victimPosition);
+		auto rotation=facing*pitchQuaternion(0.5f*pi!float);
+		self.buildingPortal.material.backend.setTransformationScaled(position,rotation,SacBuildingPortal!B.fadeScale(portal.fade),rc);
+		self.buildingPortal.getFrame(state.frame).render(rc);
+	}
 	SacTether!B createTether(){
 		auto texture=typeof(return).loadTexture();
 		auto mat=B.makeMaterial(B.shadelessBoneMaterialBackend);
@@ -1040,6 +1061,7 @@ struct Renderer(B){
 		levelUpRing=createLevelUpRing();
 		levelDownRing=createLevelDownRing();
 		vortex=createVortex();
+		buildingPortal=createBuildingPortal();
 		tether=createTether();
 		guardianTether=createGuardianTether();
 		lightning=createLightning();
@@ -1568,6 +1590,16 @@ struct Renderer(B){
 				// do nothing
 			}else static if(is(T==Effects!B)){
 				if(!onlyOpaqueEffects){
+				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.buildingPortals.length){
+					auto material=self.buildingPortal.material;
+					material.bind(rc);
+					scope(success) material.unbind(rc);
+					B.disableCulling();
+					scope(success) B.enableCulling();
+					material.backend.setInformation(Vector4f(0.0f,0.0f,0.0f,0.0f));
+					foreach(ref portal;objects.buildingPortals.data)
+						state.buildingById!(renderBuildingPortal,(){})(portal.building,&portal,self,state,info,rc);
+				}
 				static if(mode==RenderMode.opaque) if(objects.debris.length||objects.fireballCastings.length||objects.fireballs.length||objects.volcanoLavaBalls.length){
 					auto materials=self.sacDebris.materials;
 					foreach(i;0..materials.length){
@@ -3820,7 +3852,7 @@ struct Renderer(B){
 			if(state.fogOfWar3d&&info.renderSide!=obj.side&&!state.positionVisibleToSide(info.renderSide,obj.position)) return;
 			auto backend=B.shadelessMaterialBackend;
 			backend.bindDiffuse(self.sacHud.statusArrows);
-			auto isBlinking=obj.side==info.renderSide&&obj.notificationState.isBlinking(state);
+			auto isBlinking=obj.notificationState.isBlinkingForSide(obj.side,info.renderSide,state);
 			backend.setColor(isBlinking?Color4f(1.0f,0.0f,0.0f,1.0f):state.sides.sideColor(obj.side));
 			// TODO: how is this actually supposed to work?
 			import animations;
@@ -4638,7 +4670,7 @@ struct Renderer(B){
 						static if(isMoving){
 							auto side=objects.sides[j];
 							auto flags=objects.creatureStatss[j].flags;
-							auto isBlinking=(side==info.renderSide&&objects.notificationStates[j].isBlinking(state))||
+							auto isBlinking=objects.notificationStates[j].isBlinkingForSide(side,info.renderSide,state)||
 								state.minimapAlertBlinking(info.renderSide,objects.ids[j]);
 						}else{
 							auto sideFlagsIsBlinking=state.buildingById!((ref b,state)=>tuple(b.side,b.flags,b.notificationState.isBlinking(state)),function Tuple!(int,int,bool)(){ assert(0); })(objects.buildingIds[j],state);

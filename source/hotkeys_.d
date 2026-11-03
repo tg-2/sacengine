@@ -254,6 +254,7 @@ Hotkeys defaultHotkeys(){
 	result[Modifiers.none]~=Hotkey(KEY_F1,Bindable.quickSave);
 	result[Modifiers.none]~=Hotkey(KEY_F2,Bindable.quickLoad);
 	result[Modifiers.none]~=Hotkey(KEY_RETURN,Bindable.sendChatMessage);
+	result[Modifiers.none]~=Hotkey(KEY_ESCAPE,Bindable.skipSpeech);
 	result[Modifiers.shift]~=Hotkey(KEY_RIGHTBRACKET,Bindable.gammaCorrectionPlus);
 	result[Modifiers.shift]~=Hotkey(KEY_LEFTBRACKET,Bindable.gammaCorrectionMinus);
 	result[Modifiers.none]~=Hotkey(KEY_F11,Bindable.screenShot);

@@ -45,6 +45,7 @@ enum Flags:uint{
 	corpse=4,
 	damaged=8,
 	cannotGib=16,
+	initiallyInactive=262144,
 	destroyed=65536,
 	notOnMinimap=33554432,
 	cannotDamage=536870912,
