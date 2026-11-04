@@ -14,7 +14,7 @@ import util, options: GameMode;
 import trig, ntts;
 import sacobject, sacspell, stats;
 import bots.shiny: SideType, botSideChanged;
-import nttData: texts, samps, tipTags;
+import nttData: texts, samps, tipTags, spels;
 import text_, samp;
 import state;
 
@@ -364,7 +364,7 @@ int evalQuantity(B)(TrigQuantity quantity,ref TriggerRun run,ref TriggerState!B 
 			runError(run,text("quantity: cannot resolve creature ",stat.creature.id));
 			return 0;
 		}
-		return state.movingObjectById!((ref obj,stat)=>cast(int)creatureStat(obj,stat),()=>0)(id,stat.stat);
+		return state.movingObjectById!((ref obj,stat)=>creatureStat(obj,stat),()=>0)(id,stat.stat);
 	}
 	runError(run,text("unsupported quantity ",typeid(quantity)));
 	return 0;
@@ -387,37 +387,46 @@ bool checkConstraint(B)(TrigConstraint constraint,int current,int maxOr0,ref Tri
 }
 
 // creature stats accessible to triggers (retail: stat codes 219-232)
-float creatureStat(B)(ref MovingObject!B obj,TrigCreatureStat stat){
+// retail stores and transfers these stats as integers in raw data units (int16 for codes
+// 219-229, int32 for 230-232, see the stat reader at 0x476f70 and setter at 0x4770a0), so
+// convert between runtime units and raw units at this boundary; rounding recovers the raw
+// integer from the scaled runtime float
+int statToRetailUnits(float value,float factor){
+	auto scaled=value*factor;
+	return cast(int)(scaled+(scaled>=0.0f?0.5f:-0.5f));
+}
+int creatureStat(B)(ref MovingObject!B obj,TrigCreatureStat stat){
 	with(TrigCreatureStat) final switch(stat){
-		case speed: return obj.creatureStats.runningSpeed;
-		case flyingSpeed: return obj.creatureStats.flyingSpeed;
-		case maxHealth: return obj.creatureStats.maxHealth;
-		case regeneration: return obj.creatureStats.regeneration;
-		case drain: return obj.creatureStats.drain;
-		case rangedAccuracy: return obj.creatureStats.rangedAccuracy;
-		case resistanceToMelee: return obj.creatureStats.meleeResistance;
-		case resistanceToDirectSpell: return obj.creatureStats.directSpellResistance;
-		case resistanceToSplashSpell: return obj.creatureStats.splashSpellResistance;
-		case resistanceToDirectRanged: return obj.creatureStats.directRangedResistance;
-		case resistanceToSplashRanged: return obj.creatureStats.splashRangedResistance;
-		case maxMana: return obj.creatureStats.maxMana;
-		case kills,gibs: return 0.0f; // not tracked in sacengine
+		case speed: return statToRetailUnits(obj.creatureStats.runningSpeed,1e2f);
+		case flyingSpeed: return statToRetailUnits(obj.creatureStats.flyingSpeed,1e2f);
+		case maxHealth: return statToRetailUnits(obj.creatureStats.maxHealth,1.0f);
+		case regeneration: return statToRetailUnits(obj.creatureStats.regeneration,60.0f);
+		case drain: return statToRetailUnits(obj.creatureStats.drain,1e3f);
+		case rangedAccuracy: return statToRetailUnits(obj.creatureStats.rangedAccuracy,1.0f);
+		case resistanceToMelee: return statToRetailUnits(obj.creatureStats.meleeResistance,1e3f);
+		case resistanceToDirectSpell: return statToRetailUnits(obj.creatureStats.directSpellResistance,1e3f);
+		case resistanceToSplashSpell: return statToRetailUnits(obj.creatureStats.splashSpellResistance,1e3f);
+		case resistanceToDirectRanged: return statToRetailUnits(obj.creatureStats.directRangedResistance,1e3f);
+		case resistanceToSplashRanged: return statToRetailUnits(obj.creatureStats.splashRangedResistance,1e3f);
+		case maxMana: return statToRetailUnits(obj.creatureStats.maxMana,1.0f);
+		case kills,gibs: return 0; // not tracked in sacengine
 	}
 }
 
-void setCreatureStat(B)(ref MovingObject!B obj,TrigCreatureStat stat,float value){
+void setCreatureStat(B)(ref MovingObject!B obj,TrigCreatureStat stat,int value){
+	// retail: codes 219-229 store into int16 fields, codes 230-232 into int32 fields
 	with(TrigCreatureStat) final switch(stat){
-		case speed: obj.creatureStats.runningSpeed=value; break;
-		case flyingSpeed: obj.creatureStats.flyingSpeed=value; break;
-		case maxHealth: obj.creatureStats.maxHealth=value; break;
-		case regeneration: obj.creatureStats.regeneration=value; break;
-		case drain: obj.creatureStats.drain=value; break;
-		case rangedAccuracy: obj.creatureStats.rangedAccuracy=value; break;
-		case resistanceToMelee: obj.creatureStats.meleeResistance=value; break;
-		case resistanceToDirectSpell: obj.creatureStats.directSpellResistance=value; break;
-		case resistanceToSplashSpell: obj.creatureStats.splashSpellResistance=value; break;
-		case resistanceToDirectRanged: obj.creatureStats.directRangedResistance=value; break;
-		case resistanceToSplashRanged: obj.creatureStats.splashRangedResistance=value; break;
+		case speed: obj.creatureStats.runningSpeed=cast(short)value*1e-2f; break;
+		case flyingSpeed: obj.creatureStats.flyingSpeed=cast(short)value*1e-2f; break;
+		case maxHealth: obj.creatureStats.maxHealth=cast(short)value; break;
+		case regeneration: obj.creatureStats.regeneration=cast(short)value/60.0f; break;
+		case drain: obj.creatureStats.drain=cast(short)value*1e-3f; break;
+		case rangedAccuracy: obj.creatureStats.rangedAccuracy=cast(short)value; break;
+		case resistanceToMelee: obj.creatureStats.meleeResistance=cast(short)value*1e-3f; break;
+		case resistanceToDirectSpell: obj.creatureStats.directSpellResistance=cast(short)value*1e-3f; break;
+		case resistanceToSplashSpell: obj.creatureStats.splashSpellResistance=cast(short)value*1e-3f; break;
+		case resistanceToDirectRanged: obj.creatureStats.directRangedResistance=cast(short)value*1e-3f; break;
+		case resistanceToSplashRanged: obj.creatureStats.splashRangedResistance=cast(short)value*1e-3f; break;
 		case maxMana: obj.creatureStats.maxMana=value; break;
 		case kills,gibs: break; // not tracked in sacengine
 	}
@@ -1613,22 +1622,36 @@ bool runAction(B)(TrigAction action,ref TriggerRun run,ref TriggerState!B trigge
 			wiz.spellbook.grantSpell(0,SacSpell!B.get(give.spell));
 		return false;
 	}
-	// Retail casts at the game level without a caster wizard (0x54780). The utility teleport-out
-	// spell is presentation-only; in particular, this neither moves the target nor queues a cast.
+	// Retail casts at the game level without a caster wizard (Sacrifice.exe 0x453600): the spell
+	// instance targets the location's object and runs the spell's proc. The utility procs that
+	// appear in campaign triggers are emulated directly; all except LifeShieldRun only spawn
+	// presentation effects and do nothing without a target object (retail finishes the proc).
 	if(auto castAction=cast(TrigCastSpellAtLocationAction)action){
-		if(castAction.spell=="uot@"){
-			if(auto atNtt=cast(TrigAtNtt)castAction.location){
-				auto id=resolveNtt(atNtt.ntt,run.side,state);
-				if(id) state.movingObjectById!((ref obj,state){
-					animateTeleport(true,obj.hitbox,state,false);
-				},(){})(id,state);
-			}else{
-				Vector3f position;
-				if(locationPosition(castAction.location,run.side,position,state))
-					animateTeleport(true,[position,position],state,false);
-			}
+		if(auto spel=castAction.spell in spels){
+			auto procLength=spel.proc1[].countUntil('\0');
+			auto proc1=spel.proc1[0..procLength<0?spel.proc1.length:procLength];
+			auto id=0;
+			if(auto atNtt=cast(TrigAtNtt)castAction.location)
+				id=resolveNtt(atNtt.ntt,run.side,state);
+			if(id!=0) state.movingObjectById!((ref obj,proc1,spellTag,state){
+				switch(proc1){
+					case "LifeShieldRun":
+						obj.lifeShield(SacSpell!B.get(spellTag),state);
+						break;
+					case "TeleportOutProc":
+						animateTeleport(true,obj.hitbox,state,false);
+						break;
+					case "TeleportInProc":
+						animateTeleport(false,obj.hitbox,state,false);
+						break;
+					case "BoonRun": // TODO: render the actual boon beam for the spell duration
+						obj.levelUpEffect(state);
+						break;
+					default: break;
+				}
+			},(){})(id,proc1,castAction.spell,state);
 		}
-		return false; // other game-level spells still need a caster-independent spell path
+		return false;
 	}
 	if(auto setState=cast(TrigSetNttStateAction)action){
 		auto id=resolveNtt(setState.ntt,run.side,state);
@@ -1649,7 +1672,7 @@ bool runAction(B)(TrigAction action,ref TriggerRun run,ref TriggerState!B trigge
 	if(auto setStat=cast(TrigSetCreatureStatAction)action){
 		auto id=resolveNtt(setStat.creature,run.side,state);
 		if(id==0||state.isValidBuilding(id)) runError(run,text("set creature stat: cannot resolve creature ",setStat.creature.id));
-		else state.movingObjectById!((ref obj,stat,value){ .setCreatureStat(obj,stat,value); },(){})(id,setStat.creatureStat,cast(float)evalQuantity(setStat.quantity,run,triggerState,state));
+		else state.movingObjectById!((ref obj,stat,value){ .setCreatureStat(obj,stat,value); },(){})(id,setStat.creatureStat,evalQuantity(setStat.quantity,run,triggerState,state));
 		return false;
 	}
 	if(cast(TrigSetWeatherAction)action) return false; // no weather in sacengine

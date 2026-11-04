@@ -15,7 +15,7 @@ Use Creature Ability: Ctrl-q or Shift-b
 Drop Soul:            p or Ctrl-p
 ## Miscellanneous
 Options Menu:
-Skip Speech:
+Skip Speech: Escape
 Open Next Spell Tab: Tab
 Open Creation spells:
 Open Spells:
