@@ -12382,9 +12382,67 @@ bool movingForwardGetsCloserTo(B)(ref MovingObject!B object,Vector3f position,fl
 	return limit<1e-3;
 }
 
+Order cinematicIdleOrder(B)(ref MovingObject!B object){
+	return Order(CommandType.cinematicIdle,OrderTarget(TargetType.creature,object.id,object.position));
+}
+
+void removeOrdersBeforeCinematicIdle(B)(ref MovingObject!B object,bool removeIdle,ObjectState!B state){
+	object.stop(state);
+	while(object.creatureAI.order.command!=CommandType.cinematicIdle){
+		if(object.creatureAI.orderQueue.empty){
+			object.creatureAI.order=Order.init;
+			break;
+		}
+		object.creatureAI.order=object.creatureAI.orderQueue.front;
+		object.creatureAI.orderQueue.popFront();
+	}
+	if(removeIdle&&object.creatureAI.order.command==CommandType.cinematicIdle){
+		if(object.creatureAI.orderQueue.empty) object.creatureAI.order=Order.init;
+		else{
+			object.creatureAI.order=object.creatureAI.orderQueue.front;
+			object.creatureAI.orderQueue.popFront();
+		}
+	}
+	object.creatureAI.blockedDestination=Vector3f.init;
+}
+
+bool orderDuringCinematic(B)(ref MovingObject!B object,Order order,ObjectState!B state){
+	removeOrdersBeforeCinematicIdle(object,false,state);
+	auto idle=object.creatureAI.order.command==CommandType.cinematicIdle?object.creatureAI.order:object.cinematicIdleOrder;
+	object.creatureAI.orderQueue.pushFront(idle);
+	object.creatureAI.order=order;
+	object.creatureAI.blockedDestination=Vector3f.init;
+	return true;
+}
+
+void startCinematicOrder(B)(ref MovingObject!B object,ObjectState!B state){
+	object.stop(state);
+	object.creatureAI.orderQueue.clear();
+	object.creatureAI.order=object.cinematicIdleOrder;
+	object.creatureAI.blockedDestination=Vector3f.init;
+}
+
+void startCinematicOrderById(B)(int id,ObjectState!B state){
+	state.movingObjectById!((ref object,state){ object.startCinematicOrder(state); },(){})(id,state);
+}
+
+void endCinematicOrder(B)(ref MovingObject!B object,ObjectState!B state){
+	removeOrdersBeforeCinematicIdle(object,true,state);
+}
+
+void startCinematicOrders(B)(ObjectState!B state){
+	state.eachMoving!startCinematicOrder(state);
+}
+
+void endCinematicOrders(B)(ObjectState!B state){
+	state.eachMoving!endCinematicOrder(state);
+}
+
 bool order(B)(ref MovingObject!B object,Order order,ObjectState!B state,int side=-1){
 	if(!object.canOrder(side,state)) return false;
 	if(object.isPacifist(state)&&order.command.among(CommandType.attack,CommandType.advance)) return false;
+	if(state.trig.cinematics&&order.command!=CommandType.cinematicIdle)
+		return object.orderDuringCinematic(order,state);
 	Order previousOrder;
 	if(object.creatureState.mode==CreatureMode.usingAbility) // TODO: handle shooting the same way?
 		previousOrder=object.creatureAI.order;
@@ -12399,6 +12457,8 @@ bool order(B)(ref MovingObject!B object,Order order,ObjectState!B state,int side
 }
 
 bool queueOrder(B)(ref MovingObject!B object,Order order,ObjectState!B state,int side=-1){
+	if(state.trig.cinematics&&order.command!=CommandType.cinematicIdle)
+		return .order(object,order,state,side);
 	if(object.creatureAI.order.command==CommandType.none) return .order(object,order,state,side);
 	if(!object.canOrder(side,state)) return false;
 	object.creatureAI.orderQueue.push(order);
@@ -12419,6 +12479,7 @@ bool prequeueTriggerCastOrder(B)(ref MovingObject!B object,Order order,ObjectSta
 				break;
 		}
 	}else if(spell !is object.activeAbility) return false;
+	if(state.trig.cinematics) return object.orderDuringCinematic(order,state);
 	auto current=object.creatureAI.order;
 	if(current.command!=CommandType.none&&!current.command.among(CommandType.castSpell,CommandType.useAbility))
 		object.creatureAI.orderQueue.pushFront(current);
@@ -12428,6 +12489,8 @@ bool prequeueTriggerCastOrder(B)(ref MovingObject!B object,Order order,ObjectSta
 }
 
 bool prequeueOrder(B)(ref MovingObject!B object,Order order,ObjectState!B state,int side=-1){
+	if(state.trig.cinematics&&order.command!=CommandType.cinematicIdle)
+		return .order(object,order,state,side);
 	if(object.creatureAI.order.command==CommandType.none) return .order(object,order,state,side);
 	if(!object.canOrder(side,state)) return false;
 	if(object.creatureState.mode==CreatureMode.usingAbility && object.creatureAI.order.command==CommandType.useAbility){ // TODO: handle shooting the same way?
@@ -12474,6 +12537,10 @@ void clearOrder(B)(ref MovingObject!B object,ObjectState!B state){
 }
 
 void clearOrderQueue(B)(ref MovingObject!B object,ObjectState!B state){
+	if(state.trig.cinematics){
+		object.startCinematicOrder(state);
+		return;
+	}
 	object.creatureAI.orderQueue.clear();
 	object.clearOrder(state);
 }
@@ -14254,6 +14321,9 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 			}
 			if(!object.turnToFaceTowards(target.position,state))
 				object.clearOrder(state);
+			break;
+		case CommandType.cinematicIdle:
+			object.stop(state);
 			break;
 		case CommandType.none:
 			if(state.trig.cinematics){
@@ -29910,6 +29980,7 @@ final class ObjectState(B){ // (update logic)
 			case surrender: success=.surrender(command.side,this); break;
 			case chatMessage: success=sendChatMessage(command.chatMessage,this); break;
 			case triggerResponse: success=applyTriggerResponse(command,this); break;
+			case cinematicIdle: break;
 		}
 	}
 	void update(Command!B[] frameCommands){
@@ -30048,7 +30119,10 @@ final class ObjectState(B){ // (update logic)
 		static if(is(T==Building!B)) auto hasPortal=object.sacBuilding.hasPortal;
 		auto id=obj.addObject(move(object));
 		static if(is(T==Building!B)) if(hasPortal) this.addEffect(BuildingPortalEffect(id));
-		static if(is(T==MovingObject!B)) this.botSpawned(id);
+		static if(is(T==MovingObject!B)){
+			this.botSpawned(id);
+			if(trig.cinematics) startCinematicOrderById(id,this);
+		}
 		static if(is(T==Soul!B)) this.botSoulSpawned(id);
 		return id;
 	}
@@ -31675,7 +31749,7 @@ Cursor cursor(B)(ref OrderTarget target,int renderSide,bool showIcon,ObjectState
 
 bool hasClickSound(CommandType type){
 	final switch(type) with(CommandType){
-		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,clearSelection,automaticToggleSelection,automaticSelectGroup,setFormation,retreat,capture,dropSoul,surrender,chatMessage,turnToFace,triggerResponse: return false;
+		case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,clearSelection,automaticToggleSelection,automaticSelectGroup,setFormation,retreat,capture,dropSoul,surrender,chatMessage,turnToFace,triggerResponse,cinematicIdle: return false;
 		case select,selectAll,automaticSelectAll,toggleSelection,addAllToSelection,automaticAddAllToSelection,defineGroup,addToGroup,selectGroup,move,guard,guardArea,attack,advance,castSpell,useAbility: return true;
 	}
 }
@@ -31714,12 +31788,12 @@ SoundType soundType(B)(Command!B command){
 		case dropSoul: return SoundType.none;
 		case surrender: return SoundType.none;
 		case chatMessage: return SoundType.none;
-		case turnToFace,triggerResponse: return SoundType.none;
+		case turnToFace,triggerResponse,cinematicIdle: return SoundType.none;
 	}
 }
 SoundType responseSoundType(B)(Command!B command){
 	final switch(command.type) with(CommandType){
-			case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,setFormation,clearSelection,automaticSelectAll,automaticToggleSelection,automaticAddAllToSelection,defineGroup,addToGroup,automaticSelectGroup,retreat,capture,castSpell,useAbility,dropSoul,surrender,chatMessage,turnToFace,triggerResponse:
+			case none,moveForward,moveBackward,stopMoving,turnLeft,turnRight,stopTurning,setFormation,clearSelection,automaticSelectAll,automaticToggleSelection,automaticAddAllToSelection,defineGroup,addToGroup,automaticSelectGroup,retreat,capture,castSpell,useAbility,dropSoul,surrender,chatMessage,turnToFace,triggerResponse,cinematicIdle:
 			return SoundType.none;
 		case select,selectAll,toggleSelection,addAllToSelection,selectGroup:
 			return SoundType.selected;
@@ -31912,6 +31986,8 @@ enum CommandType{
 
 	turnToFace,
 	triggerResponse,
+
+	cinematicIdle,
 }
 
 enum CommandQueueing{
@@ -31953,7 +32029,7 @@ struct Command(B){
 				break;
 				case defineGroup,addToGroup,selectGroup,automaticSelectGroup:
 				assert(0);
-			case castSpell,useAbility,dropSoul:
+			case castSpell,useAbility,dropSoul,cinematicIdle:
 				assert(0);
 			case surrender:
 				assert(0);

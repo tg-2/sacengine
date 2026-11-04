@@ -731,7 +731,8 @@ bool checkCommands(B)(TrigSideSpec sideSpec,TrigNtts ntts,CheckLocation* locatio
 
 // retail: order comparison compares command type and target (fcomps for positions)
 bool ordersMatch(B)(ref Order order,ref Order trigOrder,ObjectState!B state){
-	if(order.command!=trigOrder.command) return false;
+	// Retail uses one command for player guard and trigger guard-at-NTT; sacengine splits them.
+	if(order.command!=trigOrder.command&&!(order.command==CommandType.guard&&trigOrder.command==CommandType.retreat)) return false;
 	if(order.command==CommandType.castSpell&&order.spellTag!=trigOrder.spellTag) return false;
 	if(order.target.type!=trigOrder.target.type) return false;
 	if(order.target.type==TargetType.terrain){
@@ -1562,6 +1563,7 @@ bool runAction(B)(TrigAction action,ref TriggerRun run,ref TriggerState!B trigge
 	if(cast(TrigCinematicsStartAction)action){
 		if(triggerState.cinematics) return true;
 		triggerState.cinematics=true;
+		startCinematicOrders(state);
 		triggerState.camera.active=true;
 		++triggerState.camera.revision;
 		return true;
@@ -1569,6 +1571,7 @@ bool runAction(B)(TrigAction action,ref TriggerRun run,ref TriggerState!B trigge
 	if(cast(TrigCinematicsEndAction)action){
 		if(!triggerState.cinematics) return true;
 		triggerState.cinematics=false;
+		endCinematicOrders(state);
 		triggerState.camera.active=false;
 		triggerState.camera.originValid=false;
 		triggerState.camera.focusValid=false;

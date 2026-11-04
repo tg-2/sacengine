@@ -578,7 +578,7 @@ final class SacScene: Scene{
 	}
 	void openTriggerAskForm(TriggerAsk* ask){
 		auto form=sacFormInstance!DagonBackend("chos");
-		foreach(ref e;form.elements){
+		foreach(ref e;form.elements.data){
 			char[4] textTag="\0\0\0\0";
 			if(e.id=="!ksa") textTag=ask.question; // question text
 			else if(e.id=="1ohc") textTag=ask.optionA; // option 1 button

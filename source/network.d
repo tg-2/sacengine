@@ -35,7 +35,7 @@ bool isCommandWithRaw(CommandType type)nothrow{
 		case clearSelection,select,selectAll,automaticSelectAll,toggleSelection,automaticToggleSelection,addAllToSelection,automaticAddAllToSelection: return false;
 		case defineGroup,addToGroup,selectGroup,automaticSelectGroup: return false;
 		case setFormation: return false;
-		case retreat,capture,move,guard,guardArea,attack,advance,turnToFace,triggerResponse: return false;
+		case retreat,capture,move,guard,guardArea,attack,advance,turnToFace,triggerResponse,cinematicIdle: return false;
 		case castSpell,useAbility: return false;
 		case dropSoul: return false;
 		case surrender: return false;
