@@ -5777,24 +5777,6 @@ struct Renderer(B){
 		drawTriggerText(font,text,position+Vector2f(6.0f*scale,4.0f*scale),settings,foreground,info,rc);
 		return height;
 	}
-	void triggerAskPanelGeometry(ref RenderInfo!B info,out Vector2f position,out Vector2f size){
-		auto scale=info.hudScaling;
-		size=Vector2f(ChatMessage!B.boxWidth*scale,190.0f*scale);
-		position=Vector2f(0.5f*(info.width-size.x),ChatMessage!B.topOffset*scale);
-	}
-	void triggerAskOptionGeometry(int choice,ref RenderInfo!B info,out Vector2f position,out Vector2f size){
-		Vector2f panelPosition,panelSize;
-		triggerAskPanelGeometry(info,panelPosition,panelSize);
-		auto scale=info.hudScaling;
-		auto gap=10.0f*scale;
-		size=Vector2f(0.5f*(panelSize.x-34.0f*scale-gap),38.0f*scale);
-		position=panelPosition+Vector2f(12.0f*scale+(choice==2?size.x+gap:0.0f),138.0f*scale);
-	}
-	bool isOnTriggerAskOption(int choice,Vector2f center,ref RenderInfo!B info){
-		Vector2f position,size;
-		triggerAskOptionGeometry(choice,info,position,size);
-		return position.x<=center.x&&center.x<=position.x+size.x&&position.y<=center.y&&center.y<=position.y+size.y;
-	}
 	string triggerSpeakerName(ref TriggerSpeech speech,ObjectState!B state,ref RenderInfo!B info){
 		final switch(speech.kind) with(TriggerSpeechKind){
 			case creature,sampleOnly:
@@ -5937,28 +5919,6 @@ struct Renderer(B){
 			yOffset+=to!int(size.y/scale)+ChatMessage!B.gapSize;
 		}
 	}
-	void renderTriggerAsks(ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
-		foreach(ref ask;state.trig.asks){
-			if(!triggerSideVisible(ask.side,info.renderSide)) continue;
-			Vector2f position,size;
-			triggerAskPanelGeometry(info,position,size);
-			triggerPanel(position,size,Color4f(0.0f,0.0f,0.0f,174.0f/255.0f),rc);
-			auto scale=info.hudScaling;
-			auto font=SacFont!B.get(FontType.fn10);
-			FormatSettings questionSettings={flowType:FlowType.left,scale:scale,maxWidth:size.x-24.0f*scale};
-			auto question=resolveTriggerText(ask.question,state.map.mapFolder);
-			drawTriggerText(font,question,position+Vector2f(12.0f*scale,12.0f*scale),questionSettings,Color4f(1.0f,1.0f,1.0f,1.0f),info,rc);
-			foreach(choice;1..3){
-				Vector2f optionPosition,optionSize;
-				triggerAskOptionGeometry(choice,info,optionPosition,optionSize);
-				triggerPanel(optionPosition,optionSize,Color4f(0.18f,0.22f,0.32f,1.0f),rc);
-				FormatSettings optionSettings={flowType:FlowType.left,scale:scale,maxWidth:optionSize.x-12.0f*scale};
-				auto option=format("%d. %s",choice,resolveTriggerText(choice==1?ask.optionA:ask.optionB,state.map.mapFolder));
-				drawTriggerText(font,option,optionPosition+Vector2f(6.0f*scale,8.0f*scale),optionSettings,Color4f(1.0f,1.0f,1.0f,1.0f),info,rc);
-			}
-			break;
-		}
-	}
 	void renderTriggerHistory(R2DOpt options,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
 		auto scale=info.hudScaling;
 		int count=0,selectedOrdinal=-1;
@@ -6015,7 +5975,6 @@ struct Renderer(B){
 		if(!state.trig.cinematics) renderTriggerStatus(options,state,info,rc);
 		renderTriggerSpeeches(state,info,rc);
 		if(options.triggerHistoryVisible) renderTriggerHistory(options,state,info,rc);
-		renderTriggerAsks(state,info,rc);
 		renderTriggerFade(state,info,rc);
 	}
 
