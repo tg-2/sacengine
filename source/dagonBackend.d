@@ -531,6 +531,8 @@ final class SacScene: Scene{
 	bool triggerModalOldMouseVisible=false;
 	bool triggerModalOldFPActive=false;
 	bool triggerMouseReleaseCaptured=false;
+	int triggerAskFormRunId=-1; // run id of the ask handled by the "chos" form (or already submitted), -1: none
+	bool triggerAskFormOpen=false;
 
 	TriggerAsk* currentTriggerAsk(){
 		if(!state) return null;
@@ -573,6 +575,32 @@ final class SacScene: Scene{
 	void submitTriggerResponse(int side,int triggerId,int choice){
 		if(!controller||side==-1) return;
 		controller.addCommand(Command!DagonBackend(side,triggerId,choice));
+	}
+	void openTriggerAskForm(TriggerAsk* ask){
+		auto form=sacFormInstance!DagonBackend("chos");
+		foreach(ref e;form.elements){
+			char[4] textTag="\0\0\0\0";
+			if(e.id=="!ksa") textTag=ask.question; // question text
+			else if(e.id=="1ohc") textTag=ask.optionA; // option 1 button
+			else if(e.id=="2ohc") textTag=ask.optionB; // option 2 button
+			else continue;
+			auto text=renderer.resolveTriggerText(textTag,state.current.map.mapFolder);
+			foreach(c;text) e.textInput~=c;
+			e.textStart=0;
+			e.textEnd=to!int(e.textInput.length);
+		}
+		forms~=.move(form);
+		triggerAskFormOpen=true;
+		enableMenu();
+	}
+	void closeTriggerAskForm(){
+		if(triggerAskFormOpen){
+			if(forms.length&&forms[$-1].sacForm.tag=="chos"){
+				forms.length=forms.length-1;
+				if(!forms.length) disableMenu();
+			}
+			triggerAskFormOpen=false;
+		}
 	}
 	void openTriggerHistory(){
 		triggerHistoryVisible=true;
@@ -619,21 +647,24 @@ final class SacScene: Scene{
 		}
 		if(triggerHistoryVisible) validateTriggerHistorySelection();
 		auto ask=currentTriggerAsk();
+		if(ask is null){
+			closeTriggerAskForm();
+			triggerAskFormRunId=-1;
+		}
 		auto speech=currentTriggerInputSpeech();
 		auto activeSpeech=currentTriggerSpeech();
 		updateTriggerModalMouse(ask!is null||triggerHistoryVisible);
 		if(ask!is null){
-			if(mouseButtonDown[MB_LEFT]){
-				foreach(choice;1..3){
-					if(renderer.isOnTriggerAskOption(choice,Vector2f(mouse.x,mouse.y),info)){
-						submitTriggerResponse(ask.side,ask.runId,choice);
-						break;
-					}
-				}
+			// standard choice form (retail: sohc.FORM); clicks are handled by menuControl
+			if(triggerAskFormRunId!=ask.runId){
+				openTriggerAskForm(ask);
+				triggerAskFormRunId=ask.runId;
 			}
-			foreach(_;0..keyDown[KEY_1]) submitTriggerResponse(ask.side,ask.runId,1);
-			foreach(_;0..keyDown[KEY_2]) submitTriggerResponse(ask.side,ask.runId,2);
-			return true;
+			bool submitted=false;
+			foreach(_;0..keyDown[KEY_1]){ submitTriggerResponse(ask.side,ask.runId,1); submitted=true; }
+			foreach(_;0..keyDown[KEY_2]){ submitTriggerResponse(ask.side,ask.runId,2); submitted=true; }
+			if(submitted) closeTriggerAskForm();
+			return submitted;
 		}
 		if(speech!is null&&mouseButtonDown[MB_LEFT]!=0&&renderer.isOnTriggerSpeechContinue(speech.id,state.current,Vector2f(mouse.x,mouse.y),info)){
 			triggerMouseReleaseCaptured=true;
@@ -706,6 +737,16 @@ final class SacScene: Scene{
 					chatOptions.checked[elementIndex-2]=forms[formIndex].elements[elementIndex].checked;
 					if(elementIndex==5) foreach(i;0..3) chatOptions.checked[i]=forms[formIndex].elements[2+i].checked=chatOptions.checked[$-1];
 					else forms[formIndex].elements[5].checked=chatOptions.checked[$-1]=all(chatOptions.checked[0..$-1]);
+				}
+				break;
+			case "chos": // trigger choice dialog
+				if(elementIndex<forms[formIndex].elements.length){
+					auto id=forms[formIndex].elements[elementIndex].id;
+					if(id=="1ohc"||id=="2ohc"){
+						if(auto ask=currentTriggerAsk())
+							submitTriggerResponse(ask.side,ask.runId,id=="1ohc"?1:2);
+						closeTriggerAskForm();
+					}
 				}
 				break;
 			default: break;
