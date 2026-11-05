@@ -1047,6 +1047,15 @@ bool issueOrder(B)(int id,TrigOrder trigOrder,ref TriggerRun run,ref TriggerStat
 	},()=>false)(id,trigOrder,&run,&triggerState,state);
 }
 
+void changeSideOfMovingObject(B)(ref MovingObject!B obj,int side,ObjectState!B state){
+	if(!(0<=side&&side<32)) return;
+	obj.clearOrderQueue(state);
+	obj.unselect(state);
+	obj.removeFromGroups(state);
+	obj.side=side;
+	state.botSideChanged(obj);
+}
+
 // retail: charm-style side change (clear orders, unselect, remove from groups)
 void changeSideOfObject(B)(int id,int side,ObjectState!B state){
 	if(!(0<=side&&side<32)) return;
@@ -1055,30 +1064,30 @@ void changeSideOfObject(B)(int id,int side,ObjectState!B state){
 		return;
 	}
 	state.movingObjectById!((ref obj,side,state){
-		obj.clearOrderQueue(state);
-		obj.unselect(state);
-		obj.removeFromGroups(state);
-		obj.side=side;
-		state.botSideChanged(obj);
+		changeSideOfMovingObject(obj,side,state);
 	},(){})(id,side,state);
+}
+
+void giveResourceToMovingObject(B)(ref MovingObject!B obj,TrigResource resource,int amount,ObjectState!B state){
+	final switch(resource) with(TrigResource){
+		case mana:
+			obj.creatureStats.mana=min(max(obj.creatureStats.mana+amount,0.0f),obj.creatureStats.maxMana);
+			break;
+		case health:
+			obj.creatureStats.health=min(max(obj.creatureStats.health+amount,0.0f),obj.creatureStats.maxHealth);
+			break;
+		case souls:
+			if(obj.isWizard){
+				if(auto wiz=state.getWizardForSide(obj.side)) wiz.souls=max(0,wiz.souls+amount);
+			}else obj.creatureStats.souls=max(0,obj.creatureStats.souls+amount);
+			break;
+	}
 }
 
 void giveResource(B)(TrigResource resource,int amount,int id,ObjectState!B state){
 	if(state.isValidBuilding(id)) return;
 	state.movingObjectById!((ref obj,resource,amount,state){
-		final switch(resource) with(TrigResource){
-			case mana:
-				obj.creatureStats.mana=min(max(obj.creatureStats.mana+amount,0.0f),obj.creatureStats.maxMana);
-				break;
-			case health:
-				obj.creatureStats.health=min(max(obj.creatureStats.health+amount,0.0f),obj.creatureStats.maxHealth);
-				break;
-			case souls:
-				if(obj.isWizard){
-					if(auto wiz=state.getWizardForSide(obj.side)) wiz.souls=max(0,wiz.souls+amount);
-				}else obj.creatureStats.souls=max(0,obj.creatureStats.souls+amount);
-				break;
-		}
+		giveResourceToMovingObject(obj,resource,amount,state);
 	},(){})(id,resource,amount,state);
 }
 
@@ -1097,6 +1106,13 @@ uint nttStateFlag(TrigNttState nttState){
 	}
 }
 
+void setNttStateOnMovingObject(B)(ref MovingObject!B obj,TrigNttState nttState,bool on){
+	auto flag=nttStateFlag(nttState);
+	if(flag==0) return;
+	if(on) obj.creatureStats.flags|=flag;
+	else obj.creatureStats.flags&=~flag;
+}
+
 void setNttStateOnObject(B)(int id,TrigNttState nttState,bool on,ObjectState!B state){
 	auto flag=nttStateFlag(nttState);
 	if(flag==0) return;
@@ -1107,10 +1123,9 @@ void setNttStateOnObject(B)(int id,TrigNttState nttState,bool on,ObjectState!B s
 		},(){})(id,flag,on);
 		return;
 	}
-	state.movingObjectById!((ref obj,flag,on){
-		if(on) obj.creatureStats.flags|=flag;
-		else obj.creatureStats.flags&=~flag;
-	},(){})(id,flag,on);
+	state.movingObjectById!((ref obj,nttState,on){
+		setNttStateOnMovingObject(obj,nttState,on);
+	},(){})(id,nttState,on);
 }
 
 // spawn a creature for the create actions, modeled on placeNTT
@@ -1193,11 +1208,11 @@ int automaticSpeechDuration(B)(char[4] text,char[4] sample,ObjectState!B state){
 	return 6*cast(int)(genericSpeechText(text,state.map.mapFolder).length+10);
 }
 
-bool startCreatureSpeech(B)(TrigCreature creature,char[4] text,char[4] sample,bool needsText,TriggerSpeechKind kind,int emotion,ref TriggerRun run,ref TriggerState!B triggerState,ObjectState!B state){
+void startCreatureSpeech(B)(TrigCreature creature,char[4] text,char[4] sample,bool needsText,TriggerSpeechKind kind,int emotion,ref TriggerRun run,ref TriggerState!B triggerState,ObjectState!B state){
 	auto target=resolveNtt(creature,run.side,state);
-	if(target==0||state.isValidBuilding(target)) return true; // unresolved creature: successful no-op
-	if(needsText&&!triggerTextAvailable(text,state.map.mapFolder)) return false;
-	if(!triggerSampleAvailable(sample,state.map.mapFolder)) return false;
+	if(target==0||state.isValidBuilding(target)) return;
+	if(needsText&&!triggerTextAvailable(text,state.map.mapFolder)) return;
+	if(!triggerSampleAvailable(sample,state.map.mapFolder)) return;
 	TriggerSpeech speech;
 	speech.side=run.side;
 	speech.runId=run.id;
@@ -1210,7 +1225,6 @@ bool startCreatureSpeech(B)(TrigCreature creature,char[4] text,char[4] sample,bo
 	// Retail clears passive talk state when creature speech starts (Sacrifice.exe 0x479ee2).
 	state.movingObjectById!((ref target){ target.clearPassiveNotify(); },(){})(target);
 	addTriggerSpeech(run,triggerState,speech);
-	return true;
 }
 
 bool startAttachedSpeech(B)(TriggerSpeech speech,char[4] text,char[4] sample,ref TriggerRun run,ref TriggerState!B triggerState,ObjectState!B state){
@@ -1483,12 +1497,19 @@ bool runAction(B)(TrigAction action,ref TriggerRun run,ref TriggerState!B trigge
 		startCreatureSpeech(speech.creature,noText,speech.sample,false,TriggerSpeechKind.sampleOnly,triggerSpeechEmotion(speech.speaks),run,triggerState,state);
 		return false;
 	}
-	if(auto speech=cast(TrigSpeechCreatureSaysTextWithSampleAction)action)
-		return startCreatureSpeech(speech.creature,speech.text,speech.sample,true,TriggerSpeechKind.creature,0,run,triggerState,state);
-	if(auto speech=cast(TrigSpeechCreatureAsksTextWithSampleAction)action)
-		return startCreatureSpeech(speech.creature,speech.text,speech.sample,true,TriggerSpeechKind.creature,0,run,triggerState,state);
-	if(auto speech=cast(TrigSpeechCreatureExclaimsTextWithSampleAction)action)
-		return startCreatureSpeech(speech.creature,speech.text,speech.sample,true,TriggerSpeechKind.creature,0,run,triggerState,state);
+	// Retail creature speech stops same-tick action chaining, including when it freezes the run (0x479f3e-0x479f52).
+	if(auto speech=cast(TrigSpeechCreatureSaysTextWithSampleAction)action){
+		startCreatureSpeech(speech.creature,speech.text,speech.sample,true,TriggerSpeechKind.creature,0,run,triggerState,state);
+		return false;
+	}
+	if(auto speech=cast(TrigSpeechCreatureAsksTextWithSampleAction)action){
+		startCreatureSpeech(speech.creature,speech.text,speech.sample,true,TriggerSpeechKind.creature,0,run,triggerState,state);
+		return false;
+	}
+	if(auto speech=cast(TrigSpeechCreatureExclaimsTextWithSampleAction)action){
+		startCreatureSpeech(speech.creature,speech.text,speech.sample,true,TriggerSpeechKind.creature,0,run,triggerState,state);
+		return false;
+	}
 	if(auto speechAction=cast(TrigSpeechGodSaysTextWithSampleAction)action){
 		TriggerSpeech speech;
 		speech.kind=TriggerSpeechKind.god;
@@ -1786,7 +1807,7 @@ void giveResourceAllOfType(B)(char[4] ctype,const(NttFilter)* filter,TrigResourc
 		if(!obj.isAlive) return;
 		if(!matchesCreatureType(ctype,obj)) return;
 		if(filter!is null&&!passesFilter(obj,filter,state)) return;
-		giveResource(resource,amount,obj.id,state);
+		giveResourceToMovingObject(obj,resource,amount,state);
 	})(ctype,filter,resource,amount,state);
 }
 
@@ -1804,7 +1825,7 @@ void changeSideAllOfType(B)(char[4] nttType,const(NttFilter)* filter,int side,Ob
 		if(!obj.isAlive) return;
 		if(!matchesCreatureType(nttType,obj)) return;
 		if(filter!is null&&!passesFilter(obj,filter,state)) return;
-		changeSideOfObject(obj.id,side,state);
+		changeSideOfMovingObject(obj,side,state);
 	})(nttType,filter,side,state);
 	state.obj.eachBuilding!((ref building,nttType,filter,side,state){
 		if(!matchesNttTypeStructure(nttType,building)) return;
@@ -1824,7 +1845,7 @@ void setStateAllOfType(B)(char[4] nttType,const(NttFilter)* filter,TrigNttState 
 		if(!obj.isAlive) return;
 		if(!matchesCreatureType(nttType,obj)) return;
 		if(filter!is null&&!passesFilter(obj,filter,state)) return;
-		setNttStateOnObject(obj.id,nttState,on,state);
+		setNttStateOnMovingObject(obj,nttState,on);
 	})(nttType,filter,nttState,on,state);
 	state.obj.eachBuilding!((ref building,nttType,filter,nttState,on,state){
 		if(!matchesNttTypeStructure(nttType,building)) return;
