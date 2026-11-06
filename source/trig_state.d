@@ -914,7 +914,7 @@ bool resourceOfNtt(B)(TrigResource resource,TrigNtt ntt,int side,out int value,o
 }
 
 // order conversion. retail: ConvertOrder (action 147 returns its result).
-// notification orders have no sacengine analog and fail conversion without erroring the run.
+// active notify is retail command 3: follow the target (sacengine retreat).
 bool convertOrder(B)(TrigOrder trigOrder,int side,out Order order,ref TriggerRun run,ref TriggerState!B triggerState,ObjectState!B state){
 	order=Order.init;
 	if(auto attack=cast(TrigOrderAttack)trigOrder){
@@ -924,6 +924,14 @@ bool convertOrder(B)(TrigOrder trigOrder,int side,out Order order,ref TriggerRun
 		objectPosition(id,position,state);
 		auto type=state.isValidBuilding(id)?TargetType.building:TargetType.creature;
 		order=Order(CommandType.attack,OrderTarget(type,id,position));
+		return true;
+	}
+	if(auto notify=cast(TrigOrderNotify)trigOrder){
+		auto id=resolveNtt(notify.creature,side,state);
+		if(id==0||state.isValidBuilding(id)) return false;
+		Vector3f position;
+		objectPosition(id,position,state);
+		order=Order(CommandType.retreat,OrderTarget(TargetType.creature,id,position));
 		return true;
 	}
 	if(auto castOrder=cast(TrigOrderCast)trigOrder){
@@ -984,7 +992,7 @@ bool convertOrder(B)(TrigOrder trigOrder,int side,out Order order,ref TriggerRun
 	else if(auto goTo=cast(TrigOrderGoToLocationInFormation)trigOrder){ command=CommandType.move; location=goTo.location; }
 	else if(auto attackLocation=cast(TrigOrderAttackLocationInFormation)trigOrder){ command=CommandType.attack; location=attackLocation.location; }
 	else if(auto guardLocation=cast(TrigOrderGuardLocationInFormation)trigOrder){ command=CommandType.retreat; location=guardLocation.location; }
-	else return false; // notify/passive notify orders: unsupported (see above)
+	else return false; // passive notify is state-only and handled at issuance
 	Vector3f position;
 	if(!locationPosition(location,side,position,state)) return false;
 	if(auto atNtt=cast(TrigAtNtt)location){
@@ -1014,12 +1022,6 @@ void clearPassiveNotify(B)(ref MovingObject!B obj){
 bool issueOrder(B)(ref MovingObject!B obj,TrigOrder trigOrder,ref TriggerRun run,ref TriggerState!B triggerState,ObjectState!B state){
 	if(cast(TrigOrderPassiveNotify)trigOrder){
 		obj.setPassiveNotify();
-		return true;
-	}
-	if(auto notify=cast(TrigOrderNotify)trigOrder){
-		auto id=resolveNtt(notify.creature,run.side,state);
-		if(id==0||state.isValidBuilding(id)) return false;
-		state.movingObjectById!((ref target){ target.setPassiveNotify(); },(){})(id);
 		return true;
 	}
 	if(cast(TrigOrderCancelOrders)trigOrder){
@@ -1784,10 +1786,6 @@ bool runAction(B)(TrigAction action,ref TriggerRun run,ref TriggerState!B trigge
 bool orderConvertible(B)(TrigOrder trigOrder,ref TriggerRun run,ref TriggerState!B triggerState,ObjectState!B state){
 	// orders that cannot be represented in sacengine fail conversion (retail: ConvertOrder returns 0)
 	if(cast(TrigOrderPassiveNotify)trigOrder) return true;
-	if(auto notify=cast(TrigOrderNotify)trigOrder){
-		auto id=resolveNtt(notify.creature,run.side,state);
-		return id!=0&&!state.isValidBuilding(id);
-	}
 	if(cast(TrigOrderCancelOrders)trigOrder||cast(TrigOrderDie)trigOrder||cast(TrigOrderTurnToFaceLocation)trigOrder) return true;
 	Order order;
 	return convertOrder(trigOrder,run.side,order,run,triggerState,state);
