@@ -12417,8 +12417,11 @@ bool orderDuringCinematic(B)(ref MovingObject!B object,Order order,ObjectState!B
 
 void startCinematicOrder(B)(ref MovingObject!B object,ObjectState!B state){
 	object.stop(state);
-	object.creatureAI.orderQueue.clear();
-	object.creatureAI.order=object.cinematicIdleOrder;
+	if(object.creatureAI.order.command!=CommandType.cinematicIdle){
+		if(object.creatureAI.order.command!=CommandType.none)
+			object.creatureAI.orderQueue.pushFront(object.creatureAI.order);
+		object.creatureAI.order=object.cinematicIdleOrder;
+	}
 	object.creatureAI.blockedDestination=Vector3f.init;
 }
 
@@ -12538,7 +12541,10 @@ void clearOrder(B)(ref MovingObject!B object,ObjectState!B state){
 
 void clearOrderQueue(B)(ref MovingObject!B object,ObjectState!B state){
 	if(state.trig.cinematics){
-		object.startCinematicOrder(state);
+		object.stop(state);
+		object.creatureAI.orderQueue.clear();
+		object.creatureAI.order=object.cinematicIdleOrder;
+		object.creatureAI.blockedDestination=Vector3f.init;
 		return;
 	}
 	object.creatureAI.orderQueue.clear();
