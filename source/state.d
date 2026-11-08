@@ -12087,7 +12087,7 @@ bool order(B)(ref MovingObject!B object,Order order,ObjectState!B state,int side
 	Order previousOrder;
 	if(object.creatureState.mode==CreatureMode.usingAbility) // TODO: handle shooting the same way?
 		previousOrder=object.creatureAI.order;
-	object.clearOrderQueue(state);
+	object.creatureAI.orderQueue.clear();
 	object.creatureAI.order=order;
 	object.creatureAI.blockedDestination=Vector3f.init;
 	if(previousOrder.command!=CommandType.none){
