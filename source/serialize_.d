@@ -168,6 +168,11 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Pos
 void serialize(alias sink)(ref Path path){ serializeStruct!sink(path); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Path)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink)(ref PeasantAI peasant){ serializeStruct!sink(peasant); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==PeasantAI)){
+	deserializeStruct(result,state,data);
+}
+
 void serialize(alias sink)(ref CreatureAI creatureAI){ serializeStruct!sink(creatureAI); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==CreatureAI)){ deserializeStruct(result,state,data); }
 
