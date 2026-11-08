@@ -476,6 +476,27 @@ bool objectPosition(B)(int id,out Vector3f position,ObjectState!B state){
 	return state.movingObjectById!((ref obj,pos){ *pos=obj.position; return true; },()=>false)(id,&position);
 }
 
+// World-space condition hitbox; sacengine buildings combine their static components.
+bool objectHitbox(B)(int id,out Vector3f[2] hitbox,ObjectState!B state){
+	if(state.isValidBuilding(id))
+		return state.buildingById!((ref building,hitbox,state){
+			bool found=false;
+			foreach(componentId;building.componentIds.data){
+				state.staticObjectById!((ref component,hitbox,found){
+					auto componentHitbox=component.hitbox;
+					if(!*found) *hitbox=componentHitbox;
+					else foreach(axis;0..3){
+						(*hitbox)[0][axis]=min((*hitbox)[0][axis],componentHitbox[0][axis]);
+						(*hitbox)[1][axis]=max((*hitbox)[1][axis],componentHitbox[1][axis]);
+					}
+					*found=true;
+				},(){})(componentId,hitbox,&found);
+			}
+			return found;
+		},()=>false)(id,&hitbox,state);
+	return state.movingObjectById!((ref obj,hitbox){ *hitbox=obj.hitbox; return true; },()=>false)(id,&hitbox);
+}
+
 // creature type tags (trig.d): rctt generic creature, zwtt wizard, cwtt wizard or creature,
 // lstt controllable creature, pctt corpse; anything else is an exact creature tag
 bool matchesCreatureType(B)(char[4] ctype,ref MovingObject!B obj){
@@ -538,15 +559,18 @@ bool setupLocation(B)(TrigLocation location,int side,out CheckLocation result,Ob
 	return true;
 }
 
-bool isAtLocation(B)(Vector3f position,ref CheckLocation location,ObjectState!B state){
+bool isAtLocation(B)(int objectId,ref CheckLocation location,ObjectState!B state){
 	if(location.type==0) return true;
 	if(location.type==1){
 		if(location.radius<0.0f) return true;
-		Vector3f center;
-		if(!objectPosition(location.objectId,center,state)) return false;
-		auto delta=position-center;
-		return delta.lengthsqr<=location.radius^^2; // retail: 3d distance
+		Vector3f[2] hitbox,targetHitbox;
+		if(!objectHitbox(objectId,hitbox,state)||!objectHitbox(location.objectId,targetHitbox,state)) return false;
+		Vector2f[2] hitbox2d=[hitbox[0].xy,hitbox[1].xy];
+		Vector2f[2] targetHitbox2d=[targetHitbox[0].xy,targetHitbox[1].xy];
+		return boxBoxDistanceSqr(hitbox2d,targetHitbox2d)<=location.radius^^2; // retail: 0x4028e0, 2d hitbox distance
 	}
+	Vector3f position;
+	if(!objectPosition(objectId,position,state)) return false;
 	auto marker=location.marker;
 	if(marker is null) return false;
 	if(marker.kind==0x04000000){ // cylinder
@@ -636,7 +660,7 @@ bool setupViewer(B)(ref NttFilter filter,int viewerId,ObjectState!B state){
 
 bool passesFilter(B)(ref MovingObject!B obj,const(NttFilter)* filter,ObjectState!B state){
 	if(filter.ownerSide>=0&&obj.side!=filter.ownerSide) return false;
-	if(filter.location.type!=0&&!isAtLocation(obj.position,*cast(CheckLocation*)&filter.location,state)) return false;
+	if(filter.location.type!=0&&!isAtLocation(obj.id,*cast(CheckLocation*)&filter.location,state)) return false;
 	if(filter.viewerSide>=0&&!state.isVisibleToSide(filter.viewerSide,obj.id,obj.side)) return false;
 	if(filter.hasViewer){
 		auto aimOffset=Vector3f(0.0f,0.0f,obj.relativeHitbox[1].z);
@@ -670,7 +694,7 @@ int countStructureType(B)(char[4] stype,const(NttFilter)* filter,ObjectState!B s
 		if(!matchesStructureType(stype,building)) return;
 		if(filter.location.type!=0){
 			if(!building.componentIds.length) return;
-			if(!isAtLocation(building.position(state),*cast(CheckLocation*)&filter.location,state)) return;
+			if(!isAtLocation(building.id,*cast(CheckLocation*)&filter.location,state)) return;
 		}
 		if(filter.viewerSide>=0&&!state.isVisibleToSide(filter.viewerSide,building.id,building.side)) return;
 		*count+=1;
@@ -701,7 +725,7 @@ bool checkNtts(B)(TrigNtts ntts,int ownerSide,const(NttFilter)* filter,ref Trigg
 			if(filter.ownerSide>=0&&building.side!=filter.ownerSide) return false;
 			if(filter.location.type!=0){
 				if(!building.componentIds.length) return false;
-				if(!isAtLocation(building.position(state),*cast(CheckLocation*)&filter.location,state)) return false;
+				if(!isAtLocation(building.id,*cast(CheckLocation*)&filter.location,state)) return false;
 			}
 			if(filter.viewerSide>=0&&!state.isVisibleToSide(filter.viewerSide,building.id,building.side)) return false;
 			return true;
@@ -1831,7 +1855,7 @@ void changeSideAllOfType(B)(char[4] nttType,const(NttFilter)* filter,int side,Ob
 			if(filter.ownerSide>=0&&building.side!=filter.ownerSide) return;
 			if(filter.location.type!=0){
 				if(!building.componentIds.length) return;
-				if(!isAtLocation(building.position(state),*cast(CheckLocation*)&filter.location,state)) return;
+				if(!isAtLocation(building.id,*cast(CheckLocation*)&filter.location,state)) return;
 			}
 		}
 		changeSideOfObject(building.id,side,state);
@@ -1851,7 +1875,7 @@ void setStateAllOfType(B)(char[4] nttType,const(NttFilter)* filter,TrigNttState 
 			if(filter.ownerSide>=0&&building.side!=filter.ownerSide) return;
 			if(filter.location.type!=0){
 				if(!building.componentIds.length) return;
-				if(!isAtLocation(building.position(state),*cast(CheckLocation*)&filter.location,state)) return;
+				if(!isAtLocation(building.id,*cast(CheckLocation*)&filter.location,state)) return;
 			}
 		}
 		setNttStateOnObject(building.id,nttState,on,state);
