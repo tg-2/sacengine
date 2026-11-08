@@ -927,9 +927,19 @@ class PathFinder(B){
 	}
 }
 
+struct PeasantAI{
+	Order autonomousOrder;
+	int friendlyTargetId=0;
+	int mode=2;
+	int updateTimer=0;
+	float alarm=0.0f;
+	mixin Assign;
+}
+
 struct CreatureAI{
 	Order order;
 	Queue!Order orderQueue;
+	PeasantAI peasant; // TODO: don't store this with every creature?
 	Formation formation;
 	bool isColliding=false;
 	RotationDirection evasion;
@@ -12386,7 +12396,14 @@ Order cinematicIdleOrder(B)(ref MovingObject!B object){
 	return Order(CommandType.cinematicIdle,OrderTarget(TargetType.creature,object.id,object.position));
 }
 
+void clearPeasantAutonomousOrder(B)(ref MovingObject!B object){
+	if(!object.sacObject.hasPeasantFSM) return;
+	object.creatureAI.peasant.autonomousOrder=Order.init;
+	object.creatureAI.blockedDestination=Vector3f.init;
+}
+
 void removeOrdersBeforeCinematicIdle(B)(ref MovingObject!B object,bool removeIdle,ObjectState!B state){
+	object.clearPeasantAutonomousOrder();
 	object.stop(state);
 	while(object.creatureAI.order.command!=CommandType.cinematicIdle){
 		if(object.creatureAI.orderQueue.empty){
@@ -12416,6 +12433,7 @@ bool orderDuringCinematic(B)(ref MovingObject!B object,Order order,ObjectState!B
 }
 
 void startCinematicOrder(B)(ref MovingObject!B object,ObjectState!B state){
+	object.clearPeasantAutonomousOrder();
 	object.stop(state);
 	if(object.creatureAI.order.command!=CommandType.cinematicIdle){
 		if(object.creatureAI.order.command!=CommandType.none)
@@ -12446,6 +12464,7 @@ bool order(B)(ref MovingObject!B object,Order order,ObjectState!B state,int side
 	if(object.isPacifist(state)&&order.command.among(CommandType.attack,CommandType.advance)) return false;
 	if(state.trig.cinematics&&order.command!=CommandType.cinematicIdle)
 		return object.orderDuringCinematic(order,state);
+	object.clearPeasantAutonomousOrder();
 	Order previousOrder;
 	if(object.creatureState.mode==CreatureMode.usingAbility) // TODO: handle shooting the same way?
 		previousOrder=object.creatureAI.order;
@@ -12483,6 +12502,7 @@ bool prequeueTriggerCastOrder(B)(ref MovingObject!B object,Order order,ObjectSta
 		}
 	}else if(spell !is object.activeAbility) return false;
 	if(state.trig.cinematics) return object.orderDuringCinematic(order,state);
+	object.clearPeasantAutonomousOrder();
 	auto current=object.creatureAI.order;
 	if(current.command!=CommandType.none&&!current.command.among(CommandType.castSpell,CommandType.useAbility))
 		object.creatureAI.orderQueue.pushFront(current);
@@ -12496,6 +12516,7 @@ bool prequeueOrder(B)(ref MovingObject!B object,Order order,ObjectState!B state,
 		return .order(object,order,state,side);
 	if(object.creatureAI.order.command==CommandType.none) return .order(object,order,state,side);
 	if(!object.canOrder(side,state)) return false;
+	object.clearPeasantAutonomousOrder();
 	if(object.creatureState.mode==CreatureMode.usingAbility && object.creatureAI.order.command==CommandType.useAbility){ // TODO: handle shooting the same way?
 		if(!object.creatureAI.orderQueue.empty && object.creatureAI.orderQueue.front.command==CommandType.useAbility)
 			object.creatureAI.orderQueue.front=order; // only one ability command can be queued at start
@@ -12531,6 +12552,7 @@ void stop(B)(ref MovingObject!B object,ObjectState!B state){
 
 void clearOrder(B)(ref MovingObject!B object,ObjectState!B state){
 	if(object.creatureState.mode==CreatureMode.usingAbility) return; // TODO: handle shooting the same way?
+	object.clearPeasantAutonomousOrder();
 	object.stop(state);
 	if(!object.creatureAI.orderQueue.empty){
 		object.creatureAI.order=object.creatureAI.orderQueue.front;
@@ -12540,6 +12562,7 @@ void clearOrder(B)(ref MovingObject!B object,ObjectState!B state){
 }
 
 void clearOrderQueue(B)(ref MovingObject!B object,ObjectState!B state){
+	object.clearPeasantAutonomousOrder();
 	if(state.trig.cinematics){
 		object.stop(state);
 		object.creatureAI.orderQueue.clear();
@@ -13511,18 +13534,22 @@ bool patrolAround(B)(ref MovingObject!B object,Vector3f position,ObjectState!B s
 	return false;
 }
 
-bool guard(B)(ref MovingObject!B object,int targetId,ref bool idle,ObjectState!B state){
+bool guard(B)(ref MovingObject!B object,int targetId,ref Order order,ref bool idle,ObjectState!B state){
 	if(!isValidGuardTarget(targetId,state)) return false;
-	auto targetPositionTargetFacingTargetSpeedTargetMode=state.movingObjectById!((obj,state)=>tuple(obj.position,obj.creatureState.facing,obj.speed(state)/updateFPS,obj.creatureState.mode), ()=>tuple(object.creatureAI.order.target.position,object.creatureAI.order.targetFacing,0.0f,CreatureMode.idle))(targetId,state);
+	auto targetPositionTargetFacingTargetSpeedTargetMode=state.movingObjectById!((obj,state)=>tuple(obj.position,obj.creatureState.facing,obj.speed(state)/updateFPS,obj.creatureState.mode), ()=>tuple(order.target.position,order.targetFacing,0.0f,CreatureMode.idle))(targetId,state);
 	auto targetPosition=targetPositionTargetFacingTargetSpeedTargetMode[0], targetFacing=targetPositionTargetFacingTargetSpeedTargetMode[1], targetSpeed=targetPositionTargetFacingTargetSpeedTargetMode[2],targetMode=targetPositionTargetFacingTargetSpeedTargetMode[3];
-	object.creatureAI.order.target.position=targetPosition;
-	object.creatureAI.order.targetFacing=targetFacing;
-	auto formationOffset=object.creatureAI.order.formationOffset;
+	order.target.position=targetPosition;
+	order.targetFacing=targetFacing;
+	auto formationOffset=order.formationOffset;
 	targetPosition=getTargetPosition(targetPosition,targetFacing,formationOffset,state);
 	if(!object.patrolAround(targetPosition,state)){ // TODO: prefer enemies that attack the guard target?
 		idle&=!object.moveTo(targetPosition,targetFacing,state);
 	}
 	return true;
+}
+
+bool guard(B)(ref MovingObject!B object,int targetId,ref bool idle,ObjectState!B state){
+	return object.guard(targetId,object.creatureAI.order,idle,state);
 }
 
 bool patrol(B)(ref MovingObject!B object,ObjectState!B state){
@@ -14143,6 +14170,145 @@ void absorbHerdGrudges(B)(ref MovingObject!B object,ObjectState!B state){
 	state.proximity.centers.eachInRange!absorb(state.proximity.version_,object.position,range,&object,state);
 }
 
+bool isFriendly(B)(ref MovingObject!B receiver,ref MovingObject!B argument,ObjectState!B state){
+	if(argument.creatureAI.behaviorFlags&(1<<13)) return false;
+	if(receiver.side!=argument.side&&
+	   state.getStance(receiver.side,argument.side)!=Stance.ally&&
+	   state.getStance(argument.side,receiver.side)!=Stance.ally)
+		return false;
+	return !(0<=argument.side&&(receiver.creatureAI.behaviorFlags&(1<<14))&&
+	         (receiver.creatureAI.grudgeMask&(1u<<argument.side)));
+}
+
+bool isEnemy(B)(ref MovingObject!B receiver,ref MovingObject!B argument,ObjectState!B state){
+	if(argument.creatureAI.behaviorFlags&(1<<13)) return true;
+	if(receiver.side!=argument.side&&
+	   (state.getStance(receiver.side,argument.side)==Stance.enemy||
+	    state.getStance(argument.side,receiver.side)==Stance.enemy))
+		return true;
+	return 0<=argument.side&&(receiver.creatureAI.behaviorFlags&(1<<14))&&
+		(receiver.creatureAI.grudgeMask&(1u<<argument.side));
+}
+
+struct PeasantWizardSearch{
+	int id=0;
+	float distancesqr=float.infinity;
+}
+
+int closestPeasantWizard(B)(ref MovingObject!B object,float range,ObjectState!B state){
+	static void consider(ref MovingObject!B candidate,MovingObject!B* object,float range,PeasantWizardSearch* search){
+		if(!candidate.isWizard||!candidate.isAlive||candidate.creatureStats.health==0.0f) return;
+		auto distancesqr=(candidate.position-object.position).lengthsqr;
+		if(!(distancesqr<range*range)||!(distancesqr<search.distancesqr)) return;
+		search.id=candidate.id;
+		search.distancesqr=distancesqr;
+	}
+	static void scan(ref CenterProximityEntry entry,MovingObject!B* object,ObjectState!B state,float range,PeasantWizardSearch* search){
+		if(entry.isStatic||entry.id==object.id) return;
+		state.movingObjectById!(consider,(){})(entry.id,object,range,search);
+	}
+	PeasantWizardSearch search;
+	state.proximity.centers.eachInRange!scan(state.proximity.version_,object.position,2.0f*range,&object,state,range,&search);
+	return search.id;
+}
+
+struct PeasantAlarmSums{
+	float enemy=0.0f;
+	float support=0.0f;
+}
+
+float peasantAlarm(B)(ref MovingObject!B object,ObjectState!B state){
+	if(!(object.creatureAI.behaviorFlags&(1<<15))) return 0.0f;
+	PeasantAlarmSums sums;
+	enum range=100.0f;
+	static void consider(ref MovingObject!B candidate,MovingObject!B* object,ObjectState!B state,PeasantAlarmSums* sums){
+		if(candidate.id==object.id||!candidate.isAlive||candidate.creatureStats.health==0.0f) return;
+		auto distance=(candidate.position-object.position).length;
+		if(!(distance<range)) return;
+		auto weight=(range-distance)/range;
+		auto contribution=weight*weight*(candidate.creatureStats.meleeAccuracy+candidate.creatureStats.meleeEvasion);
+		if(state.sid.lastSeenTick(object.side,candidate.id)>=0&&isEnemy(*object,candidate,state))
+			sums.enemy+=contribution;
+		auto aggressiveness=candidate.isWizard?1000:candidate.sacObject.cre8?candidate.sacObject.cre8.aggressiveness:0;
+		if(aggressiveness!=0&&isFriendly(*object,candidate,state)) sums.support+=contribution;
+	}
+	static void scan(ref CenterProximityEntry entry,MovingObject!B* object,ObjectState!B state,PeasantAlarmSums* sums){
+		if(entry.isStatic||entry.id==object.id) return;
+		state.movingObjectById!(consider,(){})(entry.id,object,state,sums);
+	}
+	state.proximity.centers.eachInRange!scan(state.proximity.version_,object.position,2.0f*range,&object,state,&sums);
+	auto threat=0.0005f*sums.enemy;
+	auto support=0.0005f*sums.support;
+	if(1.0f<=support) threat/=support;
+	if(object.creatureStats.effects.shielded) threat*=0.5f;
+	return threat;
+}
+
+void updatePeasant(B)(ref MovingObject!B object,ObjectState!B state){
+	auto peasant=&object.creatureAI.peasant;
+	peasant.alarm=object.peasantAlarm(state);
+	if(0<peasant.updateTimer){
+		--peasant.updateTimer;
+		if(0<peasant.updateTimer) return;
+	}
+	peasant.updateTimer=30;
+	if(peasant.alarm<0.2f) object.creatureAI.behaviorFlags&=~(1u<<21);
+	else object.creatureAI.behaviorFlags|=1u<<21;
+	if(peasant.alarm<0.5f){
+		auto range=peasant.friendlyTargetId==0?40.0f:80.0f;
+		auto targetId=object.closestPeasantWizard(range,state);
+		auto friendly=targetId!=0&&state.movingObjectById!((ref wizard,object,state)=>isFriendly(wizard,*object,state),()=>false)(targetId,&object,state);
+		if(friendly){
+			peasant.friendlyTargetId=targetId;
+			peasant.mode=1;
+			return;
+		}
+		peasant.friendlyTargetId=0;
+	}
+	peasant.mode=0;
+}
+
+bool updatePeasantBehavior(B)(ref MovingObject!B object,ObjectState!B state){
+	auto peasant=&object.creatureAI.peasant;
+	auto hadOrder=peasant.autonomousOrder.command!=CommandType.none;
+	auto previousTargetId=peasant.autonomousOrder.target.id;
+	peasant.autonomousOrder=Order.init;
+	object.updatePeasant(state);
+	auto scriptedCommand=object.creatureAI.order.command;
+	if(scriptedCommand!=CommandType.none&&scriptedCommand!=CommandType.cinematicIdle){
+		if(hadOrder) object.creatureAI.blockedDestination=Vector3f.init;
+		return false;
+	}
+	auto targetId=peasant.friendlyTargetId;
+	if(peasant.mode!=1||targetId==0){
+		if(hadOrder){
+			object.creatureAI.blockedDestination=Vector3f.init;
+			object.stop(state);
+		}
+		return false;
+	}
+	auto validTarget=state.movingObjectById!((ref target)=>target.isWizard&&target.isAlive&&target.creatureStats.health!=0.0f&&target.creatureState.mode.isValidGuardTarget,()=>false)(targetId);
+	if(!validTarget){
+		peasant.friendlyTargetId=0;
+		peasant.mode=0;
+		object.creatureAI.blockedDestination=Vector3f.init;
+		if(hadOrder) object.stop(state);
+		return false;
+	}
+	if(previousTargetId!=targetId) object.creatureAI.blockedDestination=Vector3f.init;
+	peasant.autonomousOrder=Order(CommandType.guard,OrderTarget(TargetType.creature,targetId,Vector3f.init));
+	bool idle=true;
+	if(!object.guard(targetId,peasant.autonomousOrder,idle,state)){
+		peasant.autonomousOrder=Order.init;
+		peasant.friendlyTargetId=0;
+		peasant.mode=0;
+		object.creatureAI.blockedDestination=Vector3f.init;
+		object.stop(state);
+		return false;
+	}
+	return true;
+}
+
 void completeTriggerCastOrder(B)(ref MovingObject!B object){
 	if(!object.creatureAI.orderQueue.empty){
 		object.creatureAI.order=object.creatureAI.orderQueue.front;
@@ -14261,6 +14427,7 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 		}
 		return;
 	}
+	if(object.sacObject.hasPeasantFSM&&object.updatePeasantBehavior(state)) return;
 	switch(object.creatureAI.order.command){
 		case CommandType.retreat,CommandType.capture:
 			auto targetId=object.creatureAI.order.target.id;
