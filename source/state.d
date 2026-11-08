@@ -12402,9 +12402,9 @@ void clearPeasantAutonomousOrder(B)(ref MovingObject!B object){
 	object.creatureAI.blockedDestination=Vector3f.init;
 }
 
-void removeOrdersBeforeCinematicIdle(B)(ref MovingObject!B object,bool removeIdle,ObjectState!B state){
+void removeOrdersBeforeCinematicIdle(B)(ref MovingObject!B object,bool removeIdle,ObjectState!B state,bool stopMovement=true){
 	object.clearPeasantAutonomousOrder();
-	object.stop(state);
+	if(stopMovement) object.stop(state);
 	while(object.creatureAI.order.command!=CommandType.cinematicIdle){
 		if(object.creatureAI.orderQueue.empty){
 			object.creatureAI.order=Order.init;
@@ -12424,7 +12424,7 @@ void removeOrdersBeforeCinematicIdle(B)(ref MovingObject!B object,bool removeIdl
 }
 
 bool orderDuringCinematic(B)(ref MovingObject!B object,Order order,ObjectState!B state){
-	removeOrdersBeforeCinematicIdle(object,false,state);
+	removeOrdersBeforeCinematicIdle(object,false,state,false);
 	auto idle=object.creatureAI.order.command==CommandType.cinematicIdle?object.creatureAI.order:object.cinematicIdleOrder;
 	object.creatureAI.orderQueue.pushFront(idle);
 	object.creatureAI.order=order;

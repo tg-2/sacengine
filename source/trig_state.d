@@ -1399,11 +1399,14 @@ bool runAction(B)(TrigAction action,ref TriggerRun run,ref TriggerState!B trigge
 		return convertible;
 	}
 	if(auto orderAll=cast(TrigOrderAllOfTypeAction)action){
-		orderAllOfType(orderAll.ctype,null,orderAll.order,run,triggerState,state);
+		NttFilter filter;
+		filter.ownerSide=run.side;
+		orderAllOfType(orderAll.ctype,&filter,orderAll.order,run,triggerState,state);
 		return false;
 	}
 	if(auto orderAll=cast(TrigOrderAllOfTypeAtLocationAction)action){
 		NttFilter filter;
+		filter.ownerSide=run.side;
 		if(setupLocation(orderAll.location,run.side,filter.location,state))
 			orderAllOfType(orderAll.ctype,&filter,orderAll.order,run,triggerState,state);
 		return false;
