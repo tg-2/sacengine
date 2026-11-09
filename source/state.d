@@ -14296,16 +14296,10 @@ bool updatePeasantBehavior(B)(ref MovingObject!B object,ObjectState!B state){
 		return false;
 	}
 	if(previousTargetId!=targetId) object.creatureAI.blockedDestination=Vector3f.init;
-	peasant.autonomousOrder=Order(CommandType.guard,OrderTarget(TargetType.creature,targetId,Vector3f.init));
-	bool idle=true;
-	if(!object.guard(targetId,peasant.autonomousOrder,idle,state)){
-		peasant.autonomousOrder=Order.init;
-		peasant.friendlyTargetId=0;
-		peasant.mode=0;
-		object.creatureAI.blockedDestination=Vector3f.init;
-		object.stop(state);
-		return false;
-	}
+	auto targetPositionTargetRadius=state.movingObjectReadById!((ref objects,i)=>tuple(objects.positions[i],objects.boundingRadius(i)),()=>tuple(Vector3f.init,0.0f))(targetId);
+	auto targetPosition=targetPositionTargetRadius[0],targetRadius=targetPositionTargetRadius[1];
+	peasant.autonomousOrder=Order(CommandType.retreat,OrderTarget(TargetType.creature,targetId,targetPosition));
+	object.retreatTowards(targetPosition,targetRadius+retreatDistance,state);
 	return true;
 }
 
