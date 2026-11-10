@@ -14134,6 +14134,7 @@ bool healingShower(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B
 enum retreatDistance=10.0f;
 enum attackDistance=100.0f; // ok?
 enum shelterDistance=50.0f;
+enum alarmedShelterDistance=40.0f;
 enum scareDistance=50.0f;
 enum speedLimitFactor=0.5f;
 enum rotationSpeedLimitFactor=1.0f;
@@ -14217,13 +14218,13 @@ struct PeasantAlarmSums{
 	float support=0.0f;
 }
 
-float peasantAlarm(B)(ref MovingObject!B object,ObjectState!B state){
+float peasantAlarmAt(B)(ref MovingObject!B object,Vector3f position,ObjectState!B state){
 	if(!(object.creatureAI.behaviorFlags&(1<<15))) return 0.0f;
 	PeasantAlarmSums sums;
 	enum range=100.0f;
-	static void consider(ref MovingObject!B candidate,MovingObject!B* object,ObjectState!B state,PeasantAlarmSums* sums){
+	static void consider(ref MovingObject!B candidate,MovingObject!B* object,ObjectState!B state,Vector3f position,PeasantAlarmSums* sums){
 		if(candidate.id==object.id||!candidate.isAlive||candidate.creatureStats.health==0.0f) return;
-		auto distance=(candidate.position-object.position).length;
+		auto distance=(candidate.position-position).length;
 		if(!(distance<range)) return;
 		auto weight=(range-distance)/range;
 		auto contribution=weight*weight*(candidate.creatureStats.meleeAccuracy+candidate.creatureStats.meleeEvasion);
@@ -14232,16 +14233,41 @@ float peasantAlarm(B)(ref MovingObject!B object,ObjectState!B state){
 		auto aggressiveness=candidate.isWizard?1000:candidate.sacObject.cre8?candidate.sacObject.cre8.aggressiveness:0;
 		if(aggressiveness!=0&&isFriendly(*object,candidate,state)) sums.support+=contribution;
 	}
-	static void scan(ref CenterProximityEntry entry,MovingObject!B* object,ObjectState!B state,PeasantAlarmSums* sums){
+	static void scan(ref CenterProximityEntry entry,MovingObject!B* object,ObjectState!B state,Vector3f position,PeasantAlarmSums* sums){
 		if(entry.isStatic||entry.id==object.id) return;
-		state.movingObjectById!(consider,(){})(entry.id,object,state,sums);
+		state.movingObjectById!(consider,(){})(entry.id,object,state,position,sums);
 	}
-	state.proximity.centers.eachInRange!scan(state.proximity.version_,object.position,2.0f*range,&object,state,&sums);
+	state.proximity.centers.eachInRange!scan(state.proximity.version_,position,2.0f*range,&object,state,position,&sums);
 	auto threat=0.0005f*sums.enemy;
 	auto support=0.0005f*sums.support;
 	if(1.0f<=support) threat/=support;
 	if(object.creatureStats.effects.shielded) threat*=0.5f;
 	return threat;
+}
+
+float peasantAlarm(B)(ref MovingObject!B object,ObjectState!B state){
+	return object.peasantAlarmAt(object.position,state);
+}
+
+bool peasantShelterDestination(B)(ref MovingObject!B object,int shelterId,out Vector3f destination,ObjectState!B state){
+	auto shelterPosition=state.staticObjectById!((ref object)=>object.position,()=>Vector3f.init)(shelterId);
+	static immutable Vector2f[8] offsets=[
+		Vector2f(0.0f,25.0f),Vector2f(25.0f,0.0f),Vector2f(0.0f,-25.0f),Vector2f(-25.0f,0.0f),
+		Vector2f(0.0f,50.0f),Vector2f(50.0f,0.0f),Vector2f(0.0f,-50.0f),Vector2f(-50.0f,0.0f),
+	];
+	float bestScore=0.0f;
+	foreach(offset;offsets){
+		auto candidate=shelterPosition+Vector3f(offset.x,offset.y,0.0f);
+		if(!state.isOnGround(candidate)) continue;
+		auto alarm=object.peasantAlarmAt(candidate,state);
+		if(!(alarm<object.creatureAI.peasant.alarm)) continue;
+		auto score=(object.creatureAI.peasant.alarm-alarm)/object.creatureAI.peasant.alarm;
+		if(bestScore<score){
+			bestScore=score;
+			destination=candidate;
+		}
+	}
+	return 0.0f<bestScore;
 }
 
 void updatePeasant(B)(ref MovingObject!B object,ObjectState!B state){
@@ -14271,12 +14297,32 @@ void updatePeasant(B)(ref MovingObject!B object,ObjectState!B state){
 bool updatePeasantBehavior(B)(ref MovingObject!B object,ObjectState!B state){
 	auto peasant=&object.creatureAI.peasant;
 	auto hadOrder=peasant.autonomousOrder.command!=CommandType.none;
+	auto previousCommand=peasant.autonomousOrder.command;
 	auto previousTargetId=peasant.autonomousOrder.target.id;
+	auto previousTargetPosition=peasant.autonomousOrder.target.position;
 	peasant.autonomousOrder=Order.init;
 	object.updatePeasant(state);
 	auto scriptedCommand=object.creatureAI.order.command;
 	if(scriptedCommand!=CommandType.none&&scriptedCommand!=CommandType.cinematicIdle){
+		if(peasant.mode==0&&(object.creatureAI.behaviorFlags&(1<<21))){
+			if(auto shelter=state.proximity.closestPeasantShelterInRange(object.side,object.position,alarmedShelterDistance,state)){
+				Vector3f destination;
+				if(object.peasantShelterDestination(shelter,destination,state)){
+					if(object.creatureState.mode==CreatureMode.cower) object.startIdling(state);
+					if(previousCommand!=CommandType.move||previousTargetPosition!=destination)
+						object.creatureAI.blockedDestination=Vector3f.init;
+					peasant.autonomousOrder=Order(CommandType.move,OrderTarget(TargetType.terrain,0,destination));
+					object.moveTo(destination,float.init,state);
+					return true;
+				}
+			}else{
+				if(hadOrder) object.creatureAI.blockedDestination=Vector3f.init;
+				if(object.creatureState.mode!=CreatureMode.cower) object.startCowering(state);
+				return true;
+			}
+		}
 		if(hadOrder) object.creatureAI.blockedDestination=Vector3f.init;
+		if(object.creatureState.mode==CreatureMode.cower) object.startIdling(state);
 		return false;
 	}
 	auto targetId=peasant.friendlyTargetId;
