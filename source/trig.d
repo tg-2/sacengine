@@ -2086,11 +2086,11 @@ TrigChangeSideAllOfTypeAction parseTrigChangeSideAllOfTypeAction(ref ubyte[] dat
 	auto side=parseTrigSideId(data);
 	return new TrigChangeSideAllOfTypeAction(ctype,side);
 }
-TrigChangeSideAllOfTypeAction parseTrigChangeSideAllOfTypeAtLocationAction(ref ubyte[] data){
+TrigAction parseTrigChangeSideAllOfTypeAtLocationAction(ref ubyte[] data){
 	auto ctype=parseTrigNttType(data);
 	auto location=parseTrigLocation(data);
 	auto side=parseTrigSideId(data);
-	return new TrigChangeSideAllOfTypeAction(ctype,side);
+	return new TrigChangeSideAllOfTypeAtLocationAction(ctype,location,side);
 }
 uint parseTrigVariable(ref ubyte[] data){
 	auto vtype=parseUint(data);
