@@ -13599,7 +13599,7 @@ bool rockForm(B)(ref MovingObject!B object,ObjectState!B state){
 void updateRenderMode(B)(int target,ObjectState!B state){
 	if(!state.isValidTarget(target,TargetType.creature)) return;
 	static RenderMode targetMode(ref MovingObject!B object,ObjectState!B state){
-		if(object.creatureStats.effects.stealth||object.creatureStats.effects.appearing||object.creatureStats.effects.disappearing||object.creatureStats.effects.etherealForm) return RenderMode.transparent;
+		if(object.sacObject.hasGhostAbility||object.creatureStats.effects.stealth||object.creatureStats.effects.appearing||object.creatureStats.effects.disappearing||object.creatureStats.effects.etherealForm) return RenderMode.transparent;
 		with(CreatureMode) if(object.creatureState.mode.among(deadToGhost,idleGhost,movingGhost,ghostToIdle)) return RenderMode.transparent;
 		return RenderMode.opaque;
 	}
@@ -14736,12 +14736,31 @@ void runPhoenixPassive(B)(ref MovingObject!B object,SacSpell!B passive,ObjectSta
 	}
 }
 
+void runGhostPassive(B)(ref MovingObject!B object,ObjectState!B state){
+	auto effects=&object.creatureStats.effects;
+	effects.ghostPhase+=2.0f*pi!float/(2*updateFPS);
+	auto target=0.75f+0.1f*sin(effects.ghostPhase);
+	if(effects.ghostValue<target) effects.ghostValue=min(target,effects.ghostValue+1.0f/updateFPS);
+	else effects.ghostValue=max(target,effects.ghostValue-1.0f/updateFPS);
+	if(state.obj.ids[object.id-1].mode==RenderMode.transparent){
+		auto otherAlpha=effects.stealth||effects.appearing||effects.disappearing||effects.etherealForm;
+		with(CreatureMode) otherAlpha=otherAlpha||object.creatureState.mode.among(deadToGhost,idleGhost,movingGhost,ghostToIdle);
+		if(!otherAlpha) state.setAlpha(object.id,1.0f-effects.ghostValue*effects.ghostValue,1.0f);
+	}else state.updateRenderModeLater(object.id);
+	auto numParticlesF=0.1f*target;
+	auto numParticles=cast(int)floor(numParticlesF)+(state.uniform(0.0f,1.0f)<=numParticlesF-floor(numParticlesF));
+	foreach(i;0..numParticles) object.animateGhost!false(state);
+}
+
 void runPassive(B)(ref MovingObject!B object,ObjectState!B state){
 	auto passive=object.sacObject.passiveOnDamage; // TODO: rename this
 	if(!passive) return;
 	switch(passive.tag){
 		case SpellTag.phoenixShield:
 			runPhoenixPassive(object,passive,state);
+			break;
+		case SpellTag.ghost:
+			runGhostPassive(object,state);
 			break;
 		default:
 			break;
@@ -30339,11 +30358,13 @@ final class ObjectState(B){ // (update logic)
 	void enableAlwaysOnMinimap(){ settings.alwaysOnMinimap=true; }
 	int addObject(T)(T object) if(is(T==MovingObject!B)||is(T==StaticObject!B)||is(T==Soul!B)||is(T==Building!B)){
 		static if(is(T==Building!B)) auto hasPortal=object.sacBuilding.hasPortal;
+		static if(is(T==MovingObject!B)) auto ghost=object.sacObject.hasGhostAbility;
 		auto id=obj.addObject(move(object));
 		static if(is(T==Building!B)) if(hasPortal) this.addEffect(BuildingPortalEffect(id));
 		static if(is(T==MovingObject!B)){
 			this.botSpawned(id);
 			if(trig.cinematics) startCinematicOrderById(id,this);
+			if(ghost) updateRenderMode(id,this);
 		}
 		static if(is(T==Soul!B)) this.botSoulSpawned(id);
 		return id;

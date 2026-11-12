@@ -81,6 +81,8 @@ struct Effects{
 	bool wallOfSpikes=false;
 	int numBlindRages=0;
 	int numHighlights=0;
+	float ghostPhase=0.0f;
+	float ghostValue=0.0f;
 	@property bool slimed(){ return numSlimes!=0; }
 	@property bool vined(){ return numVines!=0; }
 	@property bool regenerationBlocked(){ return immobilized||ringsOfFire||slimed||vined; }
