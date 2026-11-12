@@ -14179,7 +14179,6 @@ void absorbHerdGrudges(B)(ref MovingObject!B object,ObjectState!B state){
 }
 
 bool isFriendly(B)(ref MovingObject!B receiver,ref MovingObject!B argument,ObjectState!B state){
-	if(argument.creatureAI.behaviorFlags&(1<<13)) return false;
 	if(receiver.side!=argument.side&&
 	   state.getStance(receiver.side,argument.side)!=Stance.ally&&
 	   state.getStance(argument.side,receiver.side)!=Stance.ally)
@@ -14189,7 +14188,6 @@ bool isFriendly(B)(ref MovingObject!B receiver,ref MovingObject!B argument,Objec
 }
 
 bool isEnemy(B)(ref MovingObject!B receiver,ref MovingObject!B argument,ObjectState!B state){
-	if(argument.creatureAI.behaviorFlags&(1<<13)) return true;
 	if(receiver.side!=argument.side&&
 	   (state.getStance(receiver.side,argument.side)==Stance.enemy||
 	    state.getStance(argument.side,receiver.side)==Stance.enemy))
