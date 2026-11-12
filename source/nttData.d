@@ -1210,6 +1210,7 @@ enum SpellTag:char[4]{
 	lightningCharge="gcil",
 	healingShower="tum@",
 	phoenixShield="rifl",
+	ghost="tsg@",
 	// ranged attacks:
 	brainiacShoot="bsba",
 	shrikeShoot="absh",
