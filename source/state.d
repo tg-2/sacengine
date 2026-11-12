@@ -948,6 +948,7 @@ struct CreatureAI{
 	int lastAttackerId=0;
 	uint behaviorFlags=0;
 	uint grudgeMask=0; // bitmask of sides personally treated as enemies if behaviorFlags bit 14 is set
+	int grudgeTimer=0; // frames until grudgeMask is cleared (refreshed to 2*updateFPS on damage)
 	uint attackedBySides=0; // sticky bitmask of sides that attacked this creature
 	PositionPredictor predictor;
 	bool isOnAIQueue=false;
@@ -9107,10 +9108,14 @@ float dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B at
 
 }
 
+enum grudgeDuration=2*updateFPS;
+
 float dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B attacker,DamageMod damageMod,ObjectState!B state,bool checkIdle=true){
 	if(object.id!=attacker.id&&object.creatureStats.health==object.creatureStats.maxHealth
 	   &&!(object.side==neutralSide&&object.creatureState.mode.among(CreatureMode.thrashing,CreatureMode.convertReviving)))
 		object.creatureAI.grudgeMask|=1u<<attacker.side;
+	if(object.id!=attacker.id&&(object.creatureAI.grudgeMask&(1u<<attacker.side))!=0)
+		object.creatureAI.grudgeTimer=max(object.creatureAI.grudgeTimer,grudgeDuration);
 	auto actualDamage=damage*attacker.attackDamageFactor(true,damageMod,state);
 	bool killed=0;
 	actualDamage=dealDamage(object,actualDamage,attacker.side,damageMod,killed,state);
@@ -14165,7 +14170,9 @@ void absorbHerdGrudges(B)(ref MovingObject!B object,ObjectState!B state){
 		state.movingObjectById!((ref member,object){
 			if(member.isWizard) return;
 			if(member.sacObject.manaCost!=object.sacObject.manaCost) return;
+			if(member.creatureAI.grudgeMask==0) return;
 			object.creatureAI.grudgeMask|=member.creatureAI.grudgeMask;
+			object.creatureAI.grudgeTimer=max(object.creatureAI.grudgeTimer,member.creatureAI.grudgeTimer);
 		},(){})(entry.id,object);
 	}
 	state.proximity.centers.eachInRange!absorb(state.proximity.version_,object.position,range,&object,state);
@@ -15713,6 +15720,10 @@ bool updateRescue(B)(ref MovingObject!B object,ObjectState!B state){
 }
 
 void updateCreature(B)(ref MovingObject!B object, ObjectState!B state){
+	if(object.creatureAI.grudgeTimer>0){
+		--object.creatureAI.grudgeTimer;
+		if(object.creatureAI.grudgeTimer==0) object.creatureAI.grudgeMask=0;
+	}
 	if(object.updateRescue(state)) return;
 	object.updateAlertness(state);
 	object.updateCreatureAI(state);
