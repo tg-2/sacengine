@@ -1676,13 +1676,21 @@ bool runAction(B)(TrigAction action,ref TriggerRun run,ref TriggerState!B trigge
 		return false;
 	}
 	// Retail casts at the game level without a caster wizard (Sacrifice.exe 0x453600): the spell
-	// instance targets the location's object and runs the spell's proc. The utility procs that
-	// appear in campaign triggers are emulated directly; all except LifeShieldRun only spawn
-	// presentation effects and do nothing without a target object (retail finishes the proc).
+	// instance targets the location and runs the spell's proc. RemoveLandProc is location-centered;
+	// the object utility procs below require an NTT target (retail finishes them without one).
 	if(auto castAction=cast(TrigCastSpellAtLocationAction)action){
 		if(auto spel=castAction.spell in spels){
 			auto procLength=spel.proc1[].countUntil('\0');
 			auto proc1=spel.proc1[0..procLength<0?spel.proc1.length:procLength];
+			if(proc1=="RemoveLandProc"){
+				Vector3f position;
+				if(locationPosition(castAction.location,run.side,position,state)){
+					auto landRemoval=LandRemoval!B(-1,-1,position,SacSpell!B.get(castAction.spell));
+					// Initialization falls through to the first active update in retail.
+					if(updateLandRemoval(landRemoval,state)) state.addEffect(landRemoval);
+				}
+				return false;
+			}
 			auto id=0;
 			if(auto atNtt=cast(TrigAtNtt)castAction.location)
 				id=resolveNtt(atNtt.ntt,run.side,state);

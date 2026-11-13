@@ -3430,6 +3430,14 @@ struct BoreHole(B){
 	enum restorePeriod=updateFPS/2;
 }
 
+struct LandRemoval(B){
+	int wizard=-1;
+	int side=-1;
+	Vector3f position;
+	SacSpell!B spell;
+	float progress=0.0f;
+}
+
 struct DragonfireCasting(B){
 	int castingTime;
 	ManaDrain!B manaDrain;
@@ -6016,6 +6024,14 @@ struct Effects(B){
 	void removeBoreHole(int i){
 		if(i+1<boreHoles.length) boreHoles[i]=move(boreHoles[$-1]);
 		boreHoles.length=boreHoles.length-1;
+	}
+	Array!(LandRemoval!B) landRemovals;
+	void addEffect(LandRemoval!B landRemoval){
+		landRemovals~=move(landRemoval);
+	}
+	void removeLandRemoval(int i){
+		if(i+1<landRemovals.length) landRemovals[i]=move(landRemovals[$-1]);
+		landRemovals.length=landRemovals.length-1;
 	}
 	Array!(DragonfireCasting!B) dragonfireCastings;
 	void addEffect(DragonfireCasting!B dragonfireCasting){
@@ -19645,6 +19661,27 @@ bool updateBoreHole(B)(ref BoreHole!B boreHole,ObjectState!B state){
 	}
 }
 
+bool updateLandRemoval(B)(ref LandRemoval!B landRemoval,ObjectState!B state){
+	with(landRemoval){
+		auto range=spell.effectRange;
+		progress+=spell.speed/updateFPS;
+		bool finished=progress>=range;
+		if(finished) progress=range;
+		int n=cast(int)floor(progress*0.1f+1.0f);
+		foreach(y;-n..n+1) foreach(x;-n..n+1){
+			auto offset=Vector2f(10.0f*x,10.0f*y);
+			auto gridPosition=position+Vector3f(offset.x,offset.y,0.0f);
+			auto delta=Vector2f(gridPosition.x-position.x,gridPosition.y-position.y);
+			if(delta.lengthsqr>range*range) continue;
+			auto vi=cast(int)floor((gridPosition.x+5.0f)*1.0f/10.0f);
+			auto vj=cast(int)floor((gridPosition.y+5.0f)*1.0f/10.0f);
+			state.removeLandVertex(vi,vj,wizard,side);
+		}
+		state.addEffect(ScreenShake(position,updateFPS/10,1.0f,50.0f));
+		return !finished;
+	}
+}
+
 Tuple!(Vector3f,Vector3f) dragonfireCastingPosition(B)(ref MovingObject!B obj,SacSpell!B spell,int frame,int castingTime,ObjectState!B state){
 	auto hbox=obj.sacObject.hitbox(Quaternionf.identity(),obj.scale,AnimationState.stance1,0);
 	auto castingHeight=hbox[1].z+4.0f;
@@ -27578,6 +27615,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.boreHoles.length;){
 		if(!updateBoreHole(effects.boreHoles[i],state)){
 			effects.removeBoreHole(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.landRemovals.length;){
+		if(!updateLandRemoval(effects.landRemovals[i],state)){
+			effects.removeLandRemoval(i);
 			continue;
 		}
 		i++;

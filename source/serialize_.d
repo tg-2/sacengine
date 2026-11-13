@@ -499,6 +499,9 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Bor
 void serialize(alias sink,B)(ref BoreHole!B boreHole){ serializeStruct!sink(boreHole); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BoreHole!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink,B)(ref LandRemoval!B landRemoval){ serializeStruct!sink(landRemoval); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==LandRemoval!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref DragonfireCasting!B dragonfireCasting){ serializeStruct!sink(dragonfireCasting); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==DragonfireCasting!B)){ deserializeStruct(result,state,data); }
 
