@@ -4,6 +4,9 @@
 
 module assets;
 
+// Set once at startup from a local command-line/settings option.
+bool localChristmasHat=false;
+
 import std.stdio,std.range,std.algorithm,std.exception,std.string;
 
 import dlib.image:SuperImage;

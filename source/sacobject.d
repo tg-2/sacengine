@@ -666,6 +666,7 @@ final class SacObject(B){
 		}
 		else static assert(0);
 		auto model=saxsModls[dat2.saxsModel];
+		import assets : localChristmasHat;
 		saxsi=SaxsInstance!B(loadSaxs!B(model));
 		auto anims=&dat2.animations;
 		auto animIDs=dat2.animations.animations[];
@@ -705,7 +706,22 @@ final class SacObject(B){
 			this.materials=sac.materials;
 			this.transparentMaterials=sac.transparentMaterials;
 			this.shadowMaterials=sac.shadowMaterials;
-		}else saxsi.createMeshes(animations[AnimationState.stance1].frames[0]);
+		}else{
+			if(localChristmasHat){
+				import christmas_hat : addCharlotteHat, addEldredHat, addSorchaHat, addButaHat, addHachimenHats;
+				if(tag==WizardTag.charlotte && dat2.saxsModel=="rdps")
+					addCharlotteHat!B(saxsi.saxs);
+				else if(tag==WizardTag.eldred && dat2.saxsModel=="oreh")
+					addEldredHat!B(saxsi.saxs);
+				else if(tag==WizardTag.sorcha && dat2.saxsModel=="terg")
+					addSorchaHat!B(saxsi.saxs);
+				else if(tag==WizardTag.ambassadorButa && dat2.saxsModel=="atub")
+					addButaHat!B(saxsi.saxs);
+				else if(tag==WizardTag.hachimen && dat2.saxsModel=="dorb")
+					addHachimenHats!B(saxsi.saxs);
+			}
+			saxsi.createMeshes(animations[AnimationState.stance1].frames[0]);
+		}
 		initializeNTTData(dat2.saxsModel,tag);
 		if(isSacDoctor){
 			animations[AnimationState.death0]=animations[cast(AnimationState)SacDoctorAnimationState.dance];
