@@ -1441,7 +1441,7 @@ bool runAction(B)(TrigAction action,ref TriggerRun run,ref TriggerState!B trigge
 	if(auto create=cast(TrigCreateCreatureTypeAtLocationAction)action){
 		Vector3f position;
 		if(!locationPosition(create.location,run.side,position,state)) return false;
-		return spawnCreature(create.ctype,neutralSide,position,state)!=0;
+		return spawnCreature(create.ctype,run.side,position,state)!=0;
 	}
 	if(auto create=cast(TrigCreateCreatureTypeOnSideAtLocationAction)action){
 		Vector3f position;
