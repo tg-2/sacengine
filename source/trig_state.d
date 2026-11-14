@@ -1580,6 +1580,7 @@ bool runAction(B)(TrigAction action,ref TriggerRun run,ref TriggerState!B trigge
 	if(auto teleport=cast(TrigTeleportAllOfTypeAtLocationToLocationAction)action){
 		Vector3f target;
 		NttFilter filter;
+		filter.ownerSide=run.side;
 		if(locationPosition(teleport.location2,run.side,target,state)&&setupLocation(teleport.location1,run.side,filter.location,state))
 			teleportAllOfType(teleport.ctype,&filter,target,state);
 		return false;
