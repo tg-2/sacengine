@@ -1374,7 +1374,9 @@ bool runAction(B)(TrigAction action,ref TriggerRun run,ref TriggerState!B trigge
 		return false;
 	}
 	if(auto changeSide=cast(TrigChangeSideAllOfTypeAction)action){
-		changeSideAllOfType(changeSide.nttType,null,cast(int)changeSide.side,state);
+		NttFilter filter;
+		filter.ownerSide=run.side;
+		changeSideAllOfType(changeSide.nttType,&filter,cast(int)changeSide.side,state);
 		return false;
 	}
 	if(auto changeSide=cast(TrigChangeSideAllOfTypeAtLocationAction)action){
