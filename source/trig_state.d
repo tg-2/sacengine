@@ -1697,6 +1697,16 @@ bool runAction(B)(TrigAction action,ref TriggerRun run,ref TriggerState!B trigge
 			auto id=0;
 			if(auto atNtt=cast(TrigAtNtt)castAction.location)
 				id=resolveNtt(atNtt.ntt,run.side,state);
+			if(id==0&&proc1=="PyroExplosionRun"){
+				Vector3f position;
+				if(locationPosition(castAction.location,run.side,position,state)){
+					ExplosionEffect[5] effects;
+					effects[0].position=position;
+					effects[0].scale=1.0f;
+					state.addEffect(ExplosionCasting!B(run.side,ManaDrain!B(0,0.0f,0),SacSpell!B.get(castAction.spell),0,effects));
+				}
+				return false;
+			}
 			if(id!=0) state.movingObjectById!((ref obj,proc1,spellTag,state){
 				switch(proc1){
 					case "LifeShieldRun":

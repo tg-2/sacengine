@@ -16090,6 +16090,7 @@ CastingStatus castStatus(B)(ref MovingObject!B wizard,bool oldCast,ObjectState!B
 }
 CastingStatus update(B)(ref ManaDrain!B manaDrain,ObjectState!B state){
 	manaDrain.timer-=1;
+	if(manaDrain.wizard==0) return manaDrain.timer>=0?CastingStatus.underway:CastingStatus.finished;
 	return state.movingObjectById!((ref wizard,manaDrain,state){
 		if(manaDrain.timer>=0) wizard.drainMana(manaDrain.manaCostPerFrame,state);
 		return wizard.castStatus(true,state);
@@ -20040,7 +20041,7 @@ bool updateExplosionCasting(B)(ref ExplosionCasting!B explosionCast,ObjectState!
 			return true;
 		}else final switch(manaDrain.update(state)){
 			case CastingStatus.underway:
-				state.movingObjectById!(animateExplosionCasting,{})(manaDrain.wizard,state);
+				if(manaDrain.wizard) state.movingObjectById!(animateExplosionCasting,{})(manaDrain.wizard,state);
 				return true;
 			case CastingStatus.interrupted:
 				return false;
