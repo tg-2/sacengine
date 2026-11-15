@@ -1604,8 +1604,14 @@ bool runAction(B)(TrigAction action,ref TriggerRun run,ref TriggerState!B trigge
 	}
 	if(cast(TrigDisplayGameTimerAction)action){ triggerState.gameTimerVisible=true; return true; }
 	if(cast(TrigHideGameTimerAction)action){ triggerState.gameTimerVisible=false; return true; }
-	// AI settings (pause/unpause/aggression) apply to the retail AI; the shiny bots do not consume them
-	if(cast(TrigSetAiSetting)action) return false;
+	if(auto setAi=cast(TrigSetAiSetting)action){
+		// Retail Set AI paused/unpaused calls AI::SetFlag with mask 8.
+		if(auto ai=state.sid.sides[run.side].shinyAI){
+			if(cast(TrigAiPaused)setAi.aiSetting) ai.config|=8;
+			else if(cast(TrigAiUnpaused)setAi.aiSetting) ai.config&=~8u;
+		}
+		return false;
+	}
 	if(auto beacon=cast(TrigTurnBeaconAtLocationAction)action){
 		if(auto atNtt=cast(TrigAtNtt)beacon.location){
 			auto target=resolveNtt(atNtt.ntt,run.side,state);

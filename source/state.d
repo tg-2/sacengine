@@ -30465,8 +30465,6 @@ final class ObjectState(B){ // (update logic)
 		foreach(command;frameCommands)
 			applyCommand(command);
 		frameprof.mark("commands");
-		updateBots(this);
-		frameprof.mark("bots");
 		this.eachStatic!updateStructure(this);
 		frameprof.mark("structures");
 		this.eachMoving!((ref obj,state){
@@ -30494,6 +30492,8 @@ final class ObjectState(B){ // (update logic)
 		this.performRemovals();
 		frameprof.mark("removals");
 		trig.updateTriggers(this);
+		updateBots(this);
+		frameprof.mark("bots");
 		trig.endTriggers(this);
 		proximity.end();
 		frameprof.endStep(frame);
