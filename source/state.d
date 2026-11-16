@@ -14533,7 +14533,7 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 		return;
 	}
 	if(object.isHidden){
-		if(object.creatureAI.order.command==CommandType.none)
+		if(object.creatureAI.order.command.among(CommandType.none,CommandType.cinematicIdle))
 			return;
 		if(object.creatureState.mode==CreatureMode.playingDead)
 			return object.pretendToRevive(state);
@@ -14939,7 +14939,6 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 							assert(object.creatureState.mode==CreatureMode.pretendingToDie);
 							object.creatureState.mode=CreatureMode.playingDead;
 							object.clearOrderQueue(state);
-							object.creatureAI.order=Order.init;
 						}
 						break;
 					case CreatureMovement.flying:
