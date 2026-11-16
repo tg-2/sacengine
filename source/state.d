@@ -14939,6 +14939,7 @@ void updateCreatureState(B)(ref MovingObject!B object, ObjectState!B state){
 							assert(object.creatureState.mode==CreatureMode.pretendingToDie);
 							object.creatureState.mode=CreatureMode.playingDead;
 							object.clearOrderQueue(state);
+							object.creatureAI.order=Order.init;
 						}
 						break;
 					case CreatureMovement.flying:
