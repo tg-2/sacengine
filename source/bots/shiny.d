@@ -1123,6 +1123,8 @@ void setupStr(B)(ref ShinyAI!B ai,ObjectState!B state,int n,int id,uint flags){ 
 // ---- add/remove ----
 
 int addNode(B)(ref ShinyAI!B ai,ObjectState!B state,NodeKind kind,int id,bool revived=false){ // 0x483480
+	// Map-loading spawn/visibility events can precede setup; its forced own/global scans discover those objects.
+	if(!ai.initialized) return 0;
 	if(id<=0) return 0;
 	if(auto n=findNode(ai,kind,id)) return n; // already tracked (O(1))
 	if(!shouldTrack(ai,state,kind,id,revived)) return 0;
