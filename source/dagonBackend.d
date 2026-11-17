@@ -577,7 +577,7 @@ final class SacScene: Scene{
 		controller.addCommand(Command!DagonBackend(side,triggerId,choice));
 	}
 	void openTriggerAskForm(TriggerAsk* ask){
-		auto form=sacFormInstance!DagonBackend("chos");
+		auto form=sacFormInstance!DagonBackend("sohc");
 		foreach(ref e;form.elements.data){
 			char[4] textTag="\0\0\0\0";
 			if(e.id=="!ksa") textTag=ask.question; // question text
