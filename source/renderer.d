@@ -4678,7 +4678,7 @@ struct Renderer(B){
 						}
 						import ntts: Flags;
 						if(flags&Flags.notOnMinimap&&!beacon) continue;
-						auto showArrow=mayShowArrow&&
+						auto showArrow=(mayShowArrow||beacon)&&
 							(side==info.renderSide||highlighted||isWizard||
 							 !isMoving && state.getStance(side,info.renderSide)==Stance.ally);
 					}else enum showArrow=false;
@@ -4686,7 +4686,7 @@ struct Renderer(B){
 					auto clipradiusSq=((clipRadiusFactor*radius+(showArrow?-1.0f:1.0f)*0.5f*iconScaling.x)*
 					                   (clipRadiusFactor*radius+(showArrow?-1.0f:1.0f)*0.5f*iconScaling.y));
 					static if(isStatic){
-						if(state.buildingById!((ref bldg,isManafount)=>!isManafount&&!bldg.isAltar&&bldg.health==0.0f||bldg.top,()=>true)(objects.buildingIds[j],isManafount)) // TODO: merge with side lookup!
+						if(!beacon&&state.buildingById!((ref bldg,isManafount)=>!isManafount&&!bldg.isAltar&&bldg.health==0.0f||bldg.top,()=>true)(objects.buildingIds[j],isManafount)) // TODO: merge with side lookup!
 							continue;
 					}
 					static if(is(typeof(objects.sacObject))){
