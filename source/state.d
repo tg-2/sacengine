@@ -2783,6 +2783,7 @@ struct SacDocCarry(B){
 	int timer;
 	int frame=0;
 	float vortexScale=0.0f;
+	bool createdDuringCinematic;
 	static assert(updateFPS==60);
 	enum numFramesToEmerge=60;
 	enum numFramesToDisappear=45;
@@ -16467,6 +16468,12 @@ int spawnSacDoctor(B)(int side,Vector3f position,Vector3f landingPosition,Object
 	return state.addObject(obj);
 }
 
+SacDocCarry!B makeSacDocCarry(B)(RitualType type,int side,SacSpell!B spell,int caster,int sacDoctor,int soul,int creature,int targetShrine,ObjectState!B state){
+	auto result=SacDocCarry!B(type,side,spell,caster,sacDoctor,soul,creature,targetShrine);
+	result.createdDuringCinematic=state.trig.cinematics;
+	return result;
+}
+
 bool updateSacDocCasting(B)(ref SacDocCasting!B sacDocCast,ObjectState!B state){
 	with(sacDocCast){
 		vortex.updateRedVortex(state);
@@ -16499,11 +16506,11 @@ bool updateSacDocCasting(B)(ref SacDocCasting!B sacDocCast,ObjectState!B state){
 					final switch(type){
 						case RitualType.convert:
 							state.soulById!((ref soul){ ++soul.numConverts; },(){})(target);
-							state.addEffect(SacDocCarry!B(type,side,spell,manaDrain.wizard,sacDoctor,target,0,targetShrine));
+							state.addEffect(makeSacDocCarry(type,side,spell,manaDrain.wizard,sacDoctor,target,0,targetShrine,state));
 							break;
 						case RitualType.desecrate:
 							state.movingObjectById!((ref obj){ obj.creatureStats.effects.desecrateCarried=true; },(){})(target);
-							state.addEffect(SacDocCarry!B(type,side,spell,manaDrain.wizard,sacDoctor,0,target,targetShrine));
+							state.addEffect(makeSacDocCarry(type,side,spell,manaDrain.wizard,sacDoctor,0,target,targetShrine,state));
 					}
 					break;
 			}
@@ -16584,6 +16591,13 @@ bool updateSacDocCarry(B)(ref SacDocCarry!B sacDocCarry,ObjectState!B state){
 			--soul.numConverts;
 		},(){})(sacDocCarry.soul,sacDocCarry.side);
 	}
+	static bool pausedByCinematic(ref SacDocCarry!B sacDocCarry,ObjectState!B state){
+		return state.trig.cinematics&&!sacDocCarry.createdDuringCinematic;
+	}
+	static bool needsOrder(ref MovingObject!B sacDoc,ref SacDocCarry!B sacDocCarry,ObjectState!B state){
+		return !sacDoc.hasOrders(state)||
+			(state.trig.cinematics&&sacDocCarry.createdDuringCinematic&&sacDoc.creatureAI.order.command==CommandType.cinematicIdle);
+	}
 	if(sacDocCarry.status==SacDocCarryStatus.shrinking){
 		sacDocCarry.vortexScale=max(0.0f,sacDocCarry.vortexScale-1.0f/SacDocCarry!B.numFramesToDisappear);
 		return sacDocCarry.vortexScale>0.0f;
@@ -16642,6 +16656,7 @@ bool updateSacDocCarry(B)(ref SacDocCarry!B sacDocCarry,ObjectState!B state){
 					}
 					break;
 				case SacDocCarryStatus.walkToTarget:
+					if(pausedByCinematic(*sacDocCarry,state)) break;
 					final switch(type){
 						case RitualType.convert:
 							if(shrineDestroyed||!state.soulById!((ref soul)=>soul.state.among(SoulState.normal,SoulState.emerging)||!soul.creatureId,()=>false)(soul)){
@@ -16661,7 +16676,7 @@ bool updateSacDocCarry(B)(ref SacDocCarry!B sacDocCarry,ObjectState!B state){
 								sacDoc.startPumping(state);
 								timer=(soulNumber+1)*5*updateFPS;
 								sacDoc.creatureStats.effects.carrying=soulNumber;
-							}else if(!sacDoc.hasOrders(state)){
+							}else if(needsOrder(sacDoc,*sacDocCarry,state)){
 								auto ord=Order(CommandType.move,OrderTarget(TargetType.soul,soul,soulPosition));
 								sacDoc.order(ord,state);
 							}else{
@@ -16680,7 +16695,7 @@ bool updateSacDocCarry(B)(ref SacDocCarry!B sacDocCarry,ObjectState!B state){
 							if((sacDoc.position-creaturePosition).xy.lengthsqr<max((2.0f*scale+0.5f).lengthsqr,desecratePickUpDistance^^2)){
 								if(!startMoving(sacDoc,*sacDocCarry,state)) return false;
 								sacDoc.creatureStats.effects.carrying=numSouls;
-							}else if(!sacDoc.hasOrders(state)){
+							}else if(needsOrder(sacDoc,*sacDocCarry,state)){
 								auto ord=Order(CommandType.move,OrderTarget(TargetType.creature,creature,creaturePosition));
 								sacDoc.order(ord,state);
 							}else{
@@ -16717,6 +16732,7 @@ bool updateSacDocCarry(B)(ref SacDocCarry!B sacDocCarry,ObjectState!B state){
 					}
 					break;
 				case SacDocCarryStatus.move:
+					if(pausedByCinematic(*sacDocCarry,state)) break;
 					++frame;
 					vortexScale=min(1.0f,vortexScale+1.0f/SacDocCarry!B.numFramesToEmerge);
 					tether.updateSacDocTether(sacDoc,creature,state);
@@ -16746,7 +16762,7 @@ bool updateSacDocCarry(B)(ref SacDocCarry!B sacDocCarry,ObjectState!B state){
 						status=SacDocCarryStatus.shrinking;
 						tether=SacDocTether.init;
 						sacDoc.kill(state);
-					}else if(!sacDoc.hasOrders(state)){
+					}else if(needsOrder(sacDoc,*sacDocCarry,state)){
 						auto ord=Order(CommandType.move,OrderTarget(TargetType.building,targetShrine,shrinePosition));
 						sacDoc.order(ord,state);
 					}else{
