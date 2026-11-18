@@ -5640,7 +5640,15 @@ struct Renderer(B){
 					auto alpha=font.type==FontType.fn08?(target?1.0f:0.75f):1.0f;
 					setFontColor(font,Color4f(1.0f,1.0f,1.0f,alpha));
 					const(char)[] textInput=elements[elementIndex].textInput.data[elements[elementIndex].textStart..elements[elementIndex].textEnd];
-					drawText(font,textInput.length?textInput:text.text,offset.x+text.position.x*scale.x,offset.y+text.position.y*scale.y,settings,info,rc);
+					auto displayedText=textInput.length?textInput:text.text;
+					auto textPosition=text.position;
+					if(textInput.length&&(text.centerX||text.centerY)){
+						auto originalSize=font.getSize(text.text,FormatSettings());
+						auto displayedSize=font.getSize(displayedText,FormatSettings());
+						if(text.centerX) textPosition.x+=0.5f*(originalSize.x-displayedSize.x);
+						if(text.centerY) textPosition.y+=0.5f*(originalSize.y-displayedSize.y);
+					}
+					drawText(font,displayedText,offset.x+textPosition.x*scale.x,offset.y+textPosition.y*scale.y,settings,info,rc);
 					unbindFont(font,rc);
 				}
 				if(sacElement.type==ElementType.entrybox){

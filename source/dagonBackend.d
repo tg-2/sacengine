@@ -772,6 +772,7 @@ final class SacScene: Scene{
 					if(element.activate()){
 						playMenuActionSound();
 						updateForm(formIndex,form.activeIndex);
+						if(formIndex>=forms.length) return;
 					}
 				}
 			}
@@ -799,6 +800,7 @@ final class SacScene: Scene{
 			if(activeElement.activate()){
 				playMenuActionSound();
 				updateForm(formIndex,form.activeIndex);
+				if(formIndex>=forms.length) return;
 			}
 		}
 		foreach(_;0..keyDown[KEY_RETURN]){
@@ -806,12 +808,14 @@ final class SacScene: Scene{
 			if(activeElement.activate()){
 				playMenuActionSound();
 				updateForm(formIndex,form.activeIndex);
+				if(formIndex>=forms.length) return;
 			}
 		}
 		foreach(_;0..keyDown[KEY_ESCAPE]){
 			if(form.activeEscape()&&activeElement.activate()){
 				playMenuActionSound();
 				updateForm(formIndex,form.activeIndex);
+				if(formIndex>=forms.length) return;
 			}
 		}
 		if(keyDown[KEY_BACKSPACE]!=0||keyDown[KEY_DELETE]!=0||keyDown[KEY_LEFT]!=0||keyDown[KEY_RIGHT]!=0){

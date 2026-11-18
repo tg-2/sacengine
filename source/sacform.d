@@ -75,6 +75,7 @@ struct SacFormText{
 	string text;
 	Vector2f position;
 	FormFont font;
+	bool centerX,centerY;
 }
 
 string formTextFromTag(char[4] tag){
@@ -260,7 +261,7 @@ auto makeForm(B)(Vector2f offset,char[4] id,Vector2f size,string title,bool larg
 		auto settings=FormatSettings();
 		auto titleSize=font.getSize(title,settings);
 		auto position=titleOffset+Vector2f(0.5f*(size.x-titleSize.x),7);
-		texts~=SacFormText(title,position,titleFont(largeTitle));
+		texts~=SacFormText(title,position,titleFont(largeTitle),true);
 	}
 	string mouseoverText=null;
 	int formIndex=-1;
@@ -339,7 +340,7 @@ auto makeBasicElement(B)(ElementType type,Vector2f offset,char[4] id,Vector2f si
 		}else{
 			position=offset+Vector2f(cornerSize.x+checkSize.x+4.0f,1.0f);
 		}
-		texts~=SacFormText(text,position,titleFont(largeText));
+		texts~=SacFormText(text,position,titleFont(largeText),type!=ElementType.checkbox);
 	}
 	return SacFormElement!B(type,id,offset,size,parts,texts,mouseoverText,formIndex);
 }
@@ -503,7 +504,7 @@ auto makeTextbox(B)(Vector2f offset,char[4] id,Vector2f size,string title,bool l
 		auto settings=FormatSettings();
 		auto titleSize=font.getSize(title,settings);
 		auto position=titleOffset+Vector2f(0.5f*(size.x-titleSize.x),1);
-		texts~=SacFormText(title,position,titleFont(largeTitle));
+		texts~=SacFormText(title,position,titleFont(largeTitle),true);
 	}
 
 	return SacFormElement!B(ElementType.textbox,id,offset,size,parts,texts,mouseoverText,formIndex);
@@ -518,7 +519,7 @@ auto makeText(B)(Vector2f offset,char[4] id,Vector2f size,string text,FormFont f
 	auto textOffset=offset;
 	if(centerX) textOffset.x=offset.x+0.5f*(size.x-textSize.x);
 	if(centerY) textOffset.y=offset.y+0.5f*(size.y-textSize.y);
-	texts~=SacFormText(text,textOffset,formFont); // TODO: this offset is not fully accurate, but it is not so clear why
+	texts~=SacFormText(text,textOffset,formFont,centerX,centerY); // TODO: this offset is not fully accurate, but it is not so clear why
 	return SacFormElement!B(ElementType.text,id,offset,size,parts,texts,mouseoverText,formIndex);
 }
 
