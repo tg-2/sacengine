@@ -531,7 +531,7 @@ final class SacScene: Scene{
 	bool triggerModalOldMouseVisible=false;
 	bool triggerModalOldFPActive=false;
 	bool triggerMouseReleaseCaptured=false;
-	int triggerAskFormRunId=-1; // run id of the ask handled by the "chos" form (or already submitted), -1: none
+	int triggerAskFormRunId=-1; // run id of the ask handled by the "sohc" form (or already submitted), -1: none
 	bool triggerAskFormOpen=false;
 
 	TriggerAsk* currentTriggerAsk(){
@@ -595,7 +595,7 @@ final class SacScene: Scene{
 	}
 	void closeTriggerAskForm(){
 		if(triggerAskFormOpen){
-			if(forms.length&&forms[$-1].sacForm.tag=="chos"){
+			if(forms.length&&forms[$-1].sacForm.tag=="sohc"){
 				forms.length=forms.length-1;
 				if(!forms.length) disableMenu();
 			}
@@ -739,7 +739,7 @@ final class SacScene: Scene{
 					else forms[formIndex].elements[5].checked=chatOptions.checked[$-1]=all(chatOptions.checked[0..$-1]);
 				}
 				break;
-			case "chos": // trigger choice dialog
+			case "sohc": // trigger choice dialog
 				if(elementIndex<forms[formIndex].elements.length){
 					auto id=forms[formIndex].elements[elementIndex].id;
 					if(id=="1ohc"||id=="2ohc"){
