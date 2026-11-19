@@ -7660,15 +7660,26 @@ enum EachByTypeFlags{
 	wizardsLast=2,
 	particlesBeforeEffects=4,
 	opaqueEffectsBeforeParticles=8,
+	skipMoving=16,
+}
+auto eachMovingWizardOrNot(alias f,bool wantWizards,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T args){
+	with(objects){
+		foreach(ref movingObject;movingObjects.data)
+			if(!!movingObject.sacObject.isWizard==wantWizards)
+				f(movingObject,args);
+	}
 }
 auto eachByType(alias f,EachByTypeFlags flags,B,RenderMode mode,T...)(ref Objects!(B,mode) objects,T args){
 	with(objects){
 		enum movingFirst=!!(flags&EachByTypeFlags.movingFirst);
 		enum wizardsLast=!!(flags&EachByTypeFlags.wizardsLast);
+		enum skipMoving=!!(flags&EachByTypeFlags.skipMoving);
 		enum particlesBeforeEffects=!!(flags&EachByTypeFlags.particlesBeforeEffects);
 		enum opaqueEffectsBeforeParticles=!!(flags&EachByTypeFlags.opaqueEffectsBeforeParticles);
 		enum processMoving=q{
-			static if(wizardsLast){
+			static if(skipMoving){
+				// moving objects are handled by the caller
+			}else static if(wizardsLast){
 				foreach(ref movingObject;movingObjects.data)
 					if(!movingObject.sacObject.isWizard)
 						f(movingObject,args);
@@ -7889,8 +7900,24 @@ auto eachHighlights(alias f,B,T...)(ref ObjectManager!B objectManager,T args){
 }
 auto eachByType(alias f,EachByTypeFlags flags,bool particlesBeforeEffects=false,B,T...)(ref ObjectManager!B objectManager,T args){
 	with(objectManager){ // TODO: interleave opaque and transparent objects according to flags
-		opaqueObjects.eachByType!(f,flags)(args);
-		transparentObjects.eachByType!(f,flags)(args);
+		static if(flags&EachByTypeFlags.wizardsLast){
+			// wizards have to come after all other creatures, including transparent ones
+			// (e.g. stealthed, appearing/disappearing, ethereal, ghosts), so that they cover them on the minimap
+			enum restFlags=cast(EachByTypeFlags)(flags&~EachByTypeFlags.wizardsLast|EachByTypeFlags.skipMoving);
+			enum processMoving=q{
+				opaqueObjects.eachMovingWizardOrNot!(f,false)(args);
+				transparentObjects.eachMovingWizardOrNot!(f,false)(args);
+				opaqueObjects.eachMovingWizardOrNot!(f,true)(args);
+				transparentObjects.eachMovingWizardOrNot!(f,true)(args);
+			};
+			static if(flags&EachByTypeFlags.movingFirst) mixin(processMoving);
+			opaqueObjects.eachByType!(f,restFlags)(args);
+			transparentObjects.eachByType!(f,restFlags)(args);
+			static if(!(flags&EachByTypeFlags.movingFirst)) mixin(processMoving);
+		}else{
+			opaqueObjects.eachByType!(f,flags)(args);
+			transparentObjects.eachByType!(f,flags)(args);
+		}
 	}
 }
 auto eachMovingOf(alias f,B,T...)(ref ObjectManager!B objectManager,SacObject!B sacObject,T args){
