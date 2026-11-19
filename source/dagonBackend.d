@@ -7,7 +7,7 @@ import dlib.math.portable;
 import options,util;
 import std.stdio;
 import std.algorithm, std.range, std.exception, std.typecons, std.conv;
-import core.time: Duration, seconds, MonoTime;
+import core.time: Duration, seconds, msecs, MonoTime;
 
 import lobby;
 import sacobject, sacspell, mrmm, nttData, sacmap, levl, state, form, sacform, controller, network;
@@ -212,10 +212,28 @@ final class SacScene: Scene{
 	override void renderEntities2D(RenderingContext* rc){
 		scope(exit) frameprof.markRender("hud");
 		super.renderEntities2D(rc);
+		updateFPSCounter();
 		updateMouse();
 		typeof(renderer).R2DOpt r2dopt={cursorSize: options.cursorSize};
 		auto networkState=controller&&controller.network?controller.network.networkState:null;
 		renderer.renderEntities2D(r2dopt,state?state.current:null,networkState,forms.data,info,rc);
+	}
+
+	// FPS counter (shown with F8), averaged over ~0.5s windows of rendered frames
+	MonoTime fpsWindowStart;
+	int fpsWindowFrames=0;
+	void updateFPSCounter(){
+		auto now=MonoTime.currTime;
+		if(fpsWindowStart==MonoTime.init){ fpsWindowStart=now; return; }
+		++fpsWindowFrames;
+		auto elapsed=now-fpsWindowStart;
+		if(elapsed>=500.msecs){
+			auto elapsedSeconds=elapsed.total!"hnsecs"*1e-7;
+			info.fps=cast(float)(fpsWindowFrames/elapsedSeconds);
+			info.frameTimeMs=cast(float)(1000.0*elapsedSeconds/fpsWindowFrames);
+			fpsWindowFrames=0;
+			fpsWindowStart=now;
+		}
 	}
 
 	void setState(GameState!DagonBackend state)in{
@@ -509,6 +527,7 @@ final class SacScene: Scene{
 	}
 
 	void control(Duration dt){
+		foreach(_;0..keyDown[KEY_F8]) info.fpsVisible=!info.fpsVisible;
 		if(mouse.menuMode){
 			menuControl(dt);
 		}else{
