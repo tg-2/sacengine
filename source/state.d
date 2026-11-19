@@ -22699,21 +22699,31 @@ Vector3f meanstalkRandomPos(B)(Vector3f position,ObjectState!B state){
 	return position+Vector3f(30.0f*sin(a1)*sin(a2),30.0f*sin(a1)*cos(a2),60.0f*cos(a1));
 }
 float meanstalkAccelerate(ref Meanstalk vine){
+	// as in the original game: steer the tip velocity towards the desired velocity (straight at the goal at maximum
+	// speed, slowing down within 3 units of the goal); the change in velocity per frame is limited by the acceleration
 	auto delta=vine.goal-vine.tip;
 	auto dist=delta.length;
 	auto maxspeed=vine.rate;
 	if(dist<3.0f) maxspeed=vine.rate*dist/3.0f;
-	auto maxDelta=vine.accel/updateFPS;
-	if(dist>maxDelta) delta*=maxDelta/dist;
-	vine.tipVelocity+=updateFPS*delta;
-	if(vine.tipVelocity.length>maxspeed) vine.tipVelocity*=maxspeed/vine.tipVelocity.length;
+	auto desiredVelocity=updateFPS*delta;
+	if(dist>maxspeed/updateFPS) desiredVelocity=delta*(maxspeed/dist);
+	auto change=desiredVelocity-vine.tipVelocity;
+	auto changeLength=change.length;
+	if(changeLength>vine.accel) change*=vine.accel/changeLength;
+	vine.tipVelocity+=change;
+	auto speed=vine.tipVelocity.length;
+	if(speed>maxspeed) vine.tipVelocity*=maxspeed/speed;
 	vine.tip+=vine.tipVelocity/updateFPS;
 	return dist;
+}
+bool meanstalkCanGrab(B)(int target,ObjectState!B state){
+	// the original only grabs and holds living creatures
+	return state.movingObjectById!((ref obj)=>obj.creatureState.mode.canCC&&obj.creatureState.mode.isAlive,()=>false)(target);
 }
 bool meanstalkCheckTarget(B)(ref Meanstalk vine,Vector3f position,int target,ref Meanstalks!B meanstalks,ObjectState!B state){
 	if(target){
 		if(!state.isValidTarget(target)) return false;
-		if(state.movingObjectById!((ref obj)=>!obj.creatureState.mode.canCC,()=>true)(target)) return false;
+		if(!meanstalkCanGrab(target,state)) return false;
 		if(meanstalks.hasTarget(target)) return false;
 	}
 	auto delta=vine.position-position;
@@ -22769,7 +22779,7 @@ bool updateMeanstalk(B)(ref Meanstalks!B meanstalks,ref Meanstalk vine,ObjectSta
 				else if(distance<3.0f) goal=meanstalkRandomPos(position,state);
 				break;
 			case MeanstalkMode.approachInit:
-				// playSoundAt("pkts",position,state,meanstalksGain);
+				playSoundAt("pkts",position,state,meanstalksGain);
 				rate=meanstalks.spell.speed;
 				accel=meanstalks.spell.acceleration;
 				distance=50.0f;
@@ -22778,7 +22788,7 @@ bool updateMeanstalk(B)(ref Meanstalks!B meanstalks,ref Meanstalk vine,ObjectSta
 			case MeanstalkMode.approaching:
 				approachTarget=target;
 				if(validatedTarget) goal=state.objectById!((ref obj,state)=>obj.center)(validatedTarget,state);
-				if(!meanstalkCheckTarget(vine,goal,validatedTarget,meanstalks,state)){
+				if(!validatedTarget||!meanstalkCheckTarget(vine,goal,validatedTarget,meanstalks,state)){
 					mode=MeanstalkMode.searchInit;
 					break;
 				}
@@ -22790,20 +22800,22 @@ bool updateMeanstalk(B)(ref Meanstalks!B meanstalks,ref Meanstalk vine,ObjectSta
 				rate=42.0f;
 				accel=4.2f;
 				if(validatedTarget){
-					tipVelocity.z=max(tipVelocity.z,0.0f);
-					state.movingObjectById!((ref obj,side,velocity,state){
-						velocity.z+=+obj.creatureStats.fallingAcceleration/updateFPS;
-						obj.catapult(side,velocity,state);
-					},(){})(validatedTarget,meanstalks.side,tipVelocity,state);
 					meanstalks.addTarget(validatedTarget);
-					grabbedTarget=validatedTarget;
+					if(meanstalkCanGrab(validatedTarget,state)){
+						tipVelocity.z=max(tipVelocity.z,0.0f);
+						state.movingObjectById!((ref obj,side,velocity,state){
+							velocity.z+=+obj.creatureStats.fallingAcceleration/updateFPS;
+							obj.catapult(side,velocity,state);
+						},(){})(validatedTarget,meanstalks.side,tipVelocity,state);
+						grabbedTarget=validatedTarget;
+					}
 				}
 				goal=position+Vector3f(0.0f,0.0f,60.0f);
 				mode=MeanstalkMode.holding;
 				distance=50.0f;
 				goto case;
 			case MeanstalkMode.holding:
-				if(!validatedTarget||state.movingObjectById!((ref obj)=>!obj.creatureState.mode.canCC,()=>true)(validatedTarget)){
+				if(!validatedTarget||!meanstalkCanGrab(validatedTarget,state)){
 					mode=MeanstalkMode.searchInit;
 					break;
 				}
