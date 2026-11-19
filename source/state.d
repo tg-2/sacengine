@@ -9533,12 +9533,16 @@ float dealFireDamage(T,B)(ref T object,float rangedDamage,float spellDamage,int 
 }
 
 float dealFallDamage(B)(ref MovingObject!B object,ObjectState!B state){
-	enum fallDamageFactor=20.0f;
-	enum fallDamageLimit=3.0f;
-	//auto damage=sqrt(max(0.0f,-object.creatureState.fallingVelocity.z))*fallDamageFactor;
-	auto damage=max(0.0f,-object.creatureState.fallingVelocity.z-fallDamageLimit)*fallDamageFactor;
-	//enum fallDamageCap=1000.0f;
-	//auto damage=min(fallDamageCap,(max(0.0f,-object.creatureState.fallingVelocity.z-5.0f)*1.0f/15.0f)^^2*fallDamageCap); // TODO: correct?
+	// Original engine (see SacrificeModern, CreatureActor::update): on landing, if the downward speed per tick
+	// exceeds 0.08175 (= 30 ticks of free fall at 0.002725 per tick^2, i.e. 4.905 per second), the creature takes
+	// int(speed per tick*917.43121) untyped damage, i.e. 2.5 per tick (150 per second) of free fall.
+	// Below the threshold there is no damage at all.
+	static assert(updateFPS==60);
+	enum fallDamageThreshold=0.08175f; // per tick
+	enum fallDamageFactor=917.43121f; // per (speed per tick)
+	auto speedPerTick=-object.creatureState.fallingVelocity.z/updateFPS;
+	if(!(speedPerTick>fallDamageThreshold)) return 0.0f;
+	auto damage=floor(speedPerTick*fallDamageFactor);
 	bool killed=false;
 	return object.dealDamage(damage,-1,DamageMod.fall,killed,state); // TODO: properly attribute fall damage and kills to sides
 }
@@ -14618,9 +14622,14 @@ Vector3f positionAfterCollision(B)(ref MovingObject!B object, Vector3f newPositi
 				break;
 			case CreatureMovement.tumbling:
 				static if(!fixup){
-					cand=entry.hitbox[1].z-hitbox[0].z;
-					if(cand<minOverlap||cand==minOverlap&&state.uniform(2))
-						object.creatureState.fallingVelocity.z=0.0f;
+					// Like the original engine: if the creature was above the obstacle, the obstacle's top face stops it,
+					// but its falling velocity is kept (gravity keeps acting until it touches the terrain). Collision fixup
+					// then pushes it off sideways, and it takes fall damage when it lands on the ground.
+					auto previousBottom=hitbox[0].z-oldPosition.z+object.position.z;
+					if(previousBottom>=entry.hitbox[1].z-1e-3f){
+						minOverlap=entry.hitbox[1].z-hitbox[0].z;
+						collisionDirection=CollisionDirection.top;
+					}
 				}
 				object.creatureState.fallingVelocity.x=object.creatureState.fallingVelocity.y=0.0f;
 				break;
@@ -14648,7 +14657,11 @@ Vector3f positionAfterCollision(B)(ref MovingObject!B object, Vector3f newPositi
 				break;
 			case CollisionDirection.top:
 				static if(fixup) fixupDirection.z+=minOverlap;
-				else newPosition.z=max(newPosition.z,object.position.z);
+				else{
+					if(object.creatureState.movement==CreatureMovement.tumbling)
+						newPosition.z=max(newPosition.z,oldPosition.z+minOverlap); // rest exactly on the top face
+					else newPosition.z=max(newPosition.z,object.position.z);
+				}
 				break;
 		}
 		static if(!fixup) posChanged=true;
