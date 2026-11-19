@@ -94,7 +94,7 @@ struct Options{
 	int replicateCreatures=1;
 	int protectManafounts=0;
 	bool terrainSineWave=false;
-	bool fogOfWar=false;
+	bool fogOfWar=true;
 	bool fogOfWar3d=false;
 	bool alliedVision=true;
 	bool alliedBeamVision=true;
