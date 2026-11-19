@@ -3305,6 +3305,11 @@ struct Erupt(B){
 
 	enum totalFrames=cast(int)((growDur+waveDur)*updateFPS+0.5f);
 
+	// Bounds on displacement(x,y), used to skip terrain tiles in ray queries. Keep in sync with displacement.
+	// growth: shape<=1, scale<=1 (dist<range); wave: 0.4*height, dist<waveRange+0.8*range (overlap during fall)
+	enum displacementRadius=waveRange+0.8f*range+1.0f;
+	enum maxDisplacement=1.01f*(1.0f+0.4f)*height;
+
 	float displacement(float x,float y){
 		enum pi=pi!float;
 		auto time=float(frame)/updateFPS;
@@ -5262,6 +5267,11 @@ struct Quake(B){
 
 	enum stunMinRange=0.5f,stunMaxRange=10.0f; // TODO: correct?
 
+	// Bounds on displacement(x,y), used to skip terrain tiles in ray queries. Keep in sync with displacement.
+	// only the wave adds height: <=2*waveHeight, at dist<waveLoc+waveSize<=1.15*waveRange (radius has extra margin)
+	enum displacementRadius=1.8f*waveRange+1.0f;
+	enum maxDisplacement=1.01f*2.0f*waveHeight;
+
 	float displacement(float x,float y){
 		enum pi=pi!float;
 		auto time=float(frame)/updateFPS;
@@ -5371,6 +5381,7 @@ struct ScreenShake{
 
 struct TestDisplacement{
 	int frame=0;
+	enum maxDisplacement=1.01f*5.0f; // bound on displacement(x,y), see SacMap.rayIntersection
 	float displacement(float x,float y){
 		float time=float(frame)/updateFPS;
 		return 2.5f*(sin(0.1f*x+time)+sin(0.1f*y+time));
@@ -29057,6 +29068,76 @@ final class ObjectState(B){ // (update logic)
 			}
 			return result;
 		}
+		// interface used by SacMap.rayIntersection to skip tiles (see SacMap.canCullTiles)
+		static bool touches(Vector3f center,float radius,float minX,float minY,float maxX,float maxY){
+			auto dx=max(0.0f,minX-center.x,center.x-maxX), dy=max(0.0f,minY-center.y,center.y-maxY);
+			return dx*dx+dy*dy<=radius*radius;
+		}
+		uint permanentDisplacementKey(){
+			return state.obj.opaqueObjects.permanentDisplacement.hash;
+		}
+		float permanentDisplacementAt(int i,int j){
+			return state.obj.opaqueObjects.permanentDisplacement.get(i,j);
+		}
+		float transientDisplacementBound(float minX,float minY,float maxX,float maxY){
+			float result=0.0f;
+			auto effects=&state.obj.opaqueObjects.effects;
+			result+=effects.testDisplacements.length*TestDisplacement.maxDisplacement;
+			foreach(ref ec;effects.eruptCastings.data)
+				if(touches(ec.erupt.position,Erupt!B.displacementRadius,minX,minY,maxX,maxY))
+					result+=Erupt!B.maxDisplacement;
+			foreach(ref e;effects.erupts.data)
+				if(touches(e.position,Erupt!B.displacementRadius,minX,minY,maxX,maxY))
+					result+=Erupt!B.maxDisplacement;
+			foreach(ref e;effects.quakes.data)
+				if(touches(e.position,Quake!B.displacementRadius,minX,minY,maxX,maxY))
+					result+=Quake!B.maxDisplacement;
+			return result;
+		}
+		// Same values as opCall for vertices inside the rectangle, but only iterates the effects that can reach it.
+		// (Effects outside their displacementRadius contribute exactly 0.0f, summation order is preserved.)
+		RegionDisplacement restrictedTo(float minX,float minY,float maxX,float maxY){
+			RegionDisplacement r;
+			r.state=state;
+			auto effects=&state.obj.opaqueObjects.effects;
+			static void collect(T)(T[] list,ref ushort[RegionDisplacement.maxLocal] indices,ref int count,float radius,float minX,float minY,float maxX,float maxY){
+				count=0;
+				foreach(k,ref e;list){
+					static if(is(typeof(e.erupt))) auto position=e.erupt.position;
+					else auto position=e.position;
+					if(!touches(position,radius,minX,minY,maxX,maxY)) continue;
+					if(count==indices.length){ count=-1; return; } // too many: fall back to iterating all of them
+					indices[count++]=cast(ushort)k;
+				}
+			}
+			if(effects.eruptCastings.length<=ushort.max&&effects.erupts.length<=ushort.max&&effects.quakes.length<=ushort.max){
+				collect(effects.eruptCastings.data,r.eruptCastings,r.numEruptCastings,Erupt!B.displacementRadius,minX,minY,maxX,maxY);
+				collect(effects.erupts.data,r.erupts,r.numErupts,Erupt!B.displacementRadius,minX,minY,maxX,maxY);
+				collect(effects.quakes.data,r.quakes,r.numQuakes,Quake!B.displacementRadius,minX,minY,maxX,maxY);
+			}
+			return r;
+		}
+	}
+	static struct RegionDisplacement{
+		ObjectState!B state;
+		enum maxLocal=16;
+		int numEruptCastings=-1,numErupts=-1,numQuakes=-1; // -1: iterate all
+		ushort[maxLocal] eruptCastings,erupts,quakes;
+		float opCall(int i,int j){
+			auto effects=&state.obj.opaqueObjects.effects;
+			float result=state.obj.opaqueObjects.permanentDisplacement.get(i,j);
+			float x=10*i,y=10*j;
+			foreach(ref td;effects.testDisplacements.data){
+				result+=td.displacement(x,y);
+			}
+			if(numEruptCastings<0) foreach(ref ec;effects.eruptCastings.data) result+=ec.erupt.displacement(x,y);
+			else foreach(k;eruptCastings[0..numEruptCastings]) result+=effects.eruptCastings[k].erupt.displacement(x,y);
+			if(numErupts<0) foreach(ref e;effects.erupts.data) result+=e.displacement(x,y);
+			else foreach(k;erupts[0..numErupts]) result+=effects.erupts[k].displacement(x,y);
+			if(numQuakes<0) foreach(ref e;effects.quakes.data) result+=e.displacement(x,y);
+			else foreach(k;quakes[0..numQuakes]) result+=effects.quakes[k].displacement(x,y);
+			return result;
+		}
 	}
 	bool isOnGround(Vector3f position){
 		applyEdgeChanges();
@@ -29836,40 +29917,17 @@ final class ObjectState(B){ // (update logic)
 		auto mask=alliedVision?sides.sides[side].allies:(1u<<side);
 		auto cx=DangerGrid.coord(position.x), cy=DangerGrid.coord(position.y);
 		auto r=max(1,cast(int)(0.1f*sightRange));
-		auto sr2=sightRange^^2;
 		applyEdgeChanges();
-		auto eye=position+Vector3f(0.0f,0.0f,eyeHeight);
+		// computed once per observer (radial horizon sweep, see SacMap.visibleCells), then applied to all allied sides
+		auto visible=map.visibleCells(cx,cy,r,visionGridSize,position,sightRange,eyeHeight,facing,directional,Displacement(this));
 		foreach(s;0..cast(int)sid.sides.length){
 			if(!(mask&(1u<<s))) continue;
 			sid.sides[s].activateVision();
 			auto counters=sid.sides[s].visionCounters.data;
 			auto explored=sid.sides[s].exploredTerrain.data;
-			foreach(dy;-r..r+1){
-				auto y=cy+dy;
-				if(!(0<=y&&y<visionGridSize)) continue;
-				foreach(dx;-r..r+1){
-					auto x=cx+dx;
-					if(!(0<=x&&x<visionGridSize)) continue;
-					auto offx=10.0f*x-position.x, offy=10.0f*y-position.y;
-					auto d2=offx*offx+offy*offy;
-					if(d2>sr2) continue;
-					if(directional&&d2>0.25f*sr2){
-						auto a=acos(max(-1.0f,min(1.0f,cos(atan2(-offx,offy)-facing))));
-						if(a>=0.5f*pi!float){ continue; }
-						else if(a>0.25f*pi!float){
-							auto range=(0.5f+2.0f/pi!float*(0.5f*pi!float-a))*sightRange;
-							if(d2>range*range) continue;
-						}
-					}
-					if(d2>=1.0f){
-						auto target=Vector3f(10.0f*x,10.0f*y,0.0f);
-						target.z=map.getHeight(target,Displacement(this))+eyeHeight;
-						if(map.rayIntersection(eye,target-eye,Displacement(this),1.0f)<=1.0f) continue;
-					}
-					auto index=y*visionGridSize+x;
-					if(counters[index]<refresh) counters[index]=refresh;
-					explored[index>>5]|=1u<<(index&31);
-				}
+			foreach(index;visible){
+				if(counters[index]<refresh) counters[index]=refresh;
+				explored[index>>5]|=1u<<(index&31);
 			}
 		}
 	}

@@ -631,34 +631,245 @@ final class SacMap(B){
 		bestNewPosition.z=getGroundHeight(bestNewPosition,displacement);
 		return bestNewPosition;
 	}
+	// Fast ray queries.
+	// A displacement type can opt into tile culling by providing
+	//   uint permanentDisplacementKey()              (changes whenever the permanent displacement changes)
+	//   float permanentDisplacementAt(int i,int j)    (the permanent part of displacement(i,j))
+	//   float transientDisplacementBound(float minX,float minY,float maxX,float maxY)
+	//                                                 (upper bound on displacement(i,j)-permanentDisplacementAt(i,j)
+	//                                                  for vertices inside the given rectangle; must be >=0)
+	enum canCullTiles(T)=is(typeof((T d){ uint k=d.permanentDisplacementKey(); float p=d.permanentDisplacementAt(0,0); float b=d.transientDisplacementBound(0.0f,0.0f,0.0f,0.0f); }));
+	// Per tile: max over the tile's four corners of base height + permanent displacement.
+	// Cached by permanent displacement key. Two slots, as rollback switches between states
+	// whose permanent displacement can differ.
+	private static struct TileMaxCache{
+		bool valid=false;
+		uint key;
+		float[] data;
+	}
+	private TileMaxCache[2] tileMaxCaches;
+	private int nextTileMaxCache=0;
+	private float[] tileMaxHeights(T)(ref T displacement){
+		auto key=displacement.permanentDisplacementKey();
+		foreach(ref cache;tileMaxCaches)
+			if(cache.valid&&cache.key==key)
+				return cache.data;
+		auto cache=&tileMaxCaches[nextTileMaxCache];
+		nextTileMaxCache^=1;
+		cache.data.length=n*m;
+		foreach(j;0..n){
+			foreach(i;0..m){
+				float result=-float.infinity;
+				if(j+1<n&&i+1<m){
+					foreach(a;0..2) foreach(b;0..2)
+						result=max(result,heights[j+a][i+b]+displacement.permanentDisplacementAt(i+b,j+a));
+				}
+				cache.data[j*m+i]=result;
+			}
+		}
+		cache.key=key;
+		cache.valid=true;
+		return cache.data;
+	}
 	float rayIntersection(T)(Vector3f start,Vector3f direction,T displacement,float limit=float.infinity){
 		float result=float.infinity;
 		auto tile=getTile(start);
 		int dj=direction.y<0?-1:1, di=direction.x<0?-1:1;
 		float current=0.0f;
+		static if(canCullTiles!T){
+			// A tile can only contain an intersection if the ray gets below the highest corner of the
+			// tile (the triangles are flat). Tiles where the ray stays above that are skipped without
+			// evaluating displacement or planes. Margins absorb rounding in the exact test below
+			// (which may accept points slightly outside the tile), so results are unchanged.
+			auto tileMax=tileMaxHeights(displacement);
+			// bounding rectangle of all tile corners the loop below can evaluate
+			auto end=start+(limit<float.infinity?limit:0.0f)*direction;
+			float minX=min(start.x,end.x),maxX=max(start.x,end.x);
+			float minY=min(start.y,end.y),maxY=max(start.y,end.y);
+			if(!(limit<float.infinity)){
+				if(direction.x<0) minX=-float.infinity; else if(direction.x>0) maxX=float.infinity;
+				if(direction.y<0) minY=-float.infinity; else if(direction.y>0) maxY=float.infinity;
+			}
+			enum float slack=11.0f; // tile corners can be up to one tile away from the segment
+			minX-=slack; minY-=slack; maxX+=slack; maxY+=slack;
+			auto transientBound=displacement.transientDisplacementBound(minX,minY,maxX,maxY);
+			// optionally only evaluate displacement sources that can reach the ray
+			static if(is(typeof(displacement.restrictedTo(minX,minY,maxX,maxY))))
+				auto vertexDisplacement=displacement.restrictedTo(minX,minY,maxX,maxY);
+			else alias vertexDisplacement=displacement;
+			// rounding slack on the ray height, scaled for steep rays (xy errors become z errors)
+			auto horizontal=max(abs(direction.x),abs(direction.y));
+			auto zSlack=horizontal>0.0f?0.02f*abs(direction.z)/horizontal:float.infinity;
+		}else alias vertexDisplacement=displacement;
 		while(current<=limit&&current<result&&(dj<0?tile.j>=0:tile.j<n)&&(di<0?tile.i>=0:tile.i<m)){
-			auto trianglesNt=getTriangles(tile.expand),triangles=trianglesNt[0],nt=trianglesNt[1];
-			foreach(k;0..nt){
-				auto plane=getPlane(triangles[k],displacement);
-				auto t=-plane.distance(start)/plane.dot(direction);
-				if(0<=t&&t<=limit&&t<result){
-					auto intersectionPoint=start+t*direction;
-					if(isInside(triangles[k],intersectionPoint))
-						result=t;
+			// next grid line crossing (same arithmetic as getVertex(...).x/.y, without evaluating displacement)
+			auto tj=(10.0f*(tile.j+(dj==1))-start.y)/direction.y;
+			auto ti=(10.0f*(tile.i+(di==1))-start.x)/direction.x;
+			bool stepJ=isNaN(ti)||tj<ti;
+			auto next=stepJ?tj:ti;
+			bool test=true;
+			static if(canCullTiles!T){
+				if(0<=tile.j&&tile.j+1<n&&0<=tile.i&&tile.i+1<m){
+					auto t0=min(current,next), t1=max(current,next);
+					if(t1<float.infinity){
+						auto lowest=min(start.z+t0*direction.z,start.z+t1*direction.z)-zSlack;
+						auto top=tileMax[tile.j*m+tile.i]+transientBound;
+						if(lowest>top+0.01f+1e-5f*abs(top)) test=false;
+					}
 				}
 			}
-			auto next=getVertex(tile.j+(dj==1),tile.i+(di==1),displacement);
-			auto tj=(next.y-start.y)/direction.y;
-			auto ti=(next.x-start.x)/direction.x;
-			if(isNaN(ti)||tj<ti){
-				current=tj;
-				tile.j+=dj;
-			}else{
-				current=ti;
-				tile.i+=di;
+			if(test){
+				auto trianglesNt=getTriangles(tile.expand),triangles=trianglesNt[0],nt=trianglesNt[1];
+				if(nt){
+					// each displaced corner is evaluated once per tile (getPlane would evaluate shared corners twice)
+					Vector3f[2][2] corners;
+					bool[2][2] haveCorner=false;
+					Vector3f corner(int j,int i){
+						auto a=j-tile.j, b=i-tile.i;
+						if(!haveCorner[a][b]){
+							corners[a][b]=getVertex(j,i,vertexDisplacement);
+							haveCorner[a][b]=true;
+						}
+						return corners[a][b];
+					}
+					foreach(k;0..nt){
+						Plane plane;
+						plane.fromPoints(corner(triangles[k][0].expand),corner(triangles[k][1].expand),corner(triangles[k][2].expand));
+						auto t=-plane.distance(start)/plane.dot(direction);
+						if(0<=t&&t<=limit&&t<result){
+							auto intersectionPoint=start+t*direction;
+							if(isInside(triangles[k],intersectionPoint))
+								result=t;
+						}
+					}
+				}
 			}
+			current=next;
+			if(stepJ) tile.j+=dj;
+			else tile.i+=di;
 		}
 		return result;
+	}
+
+	// Fog of war vision: horizon sweep over the vertex grid (one cell per vertex, 10 units apart), in the
+	// style of the XDraw viewshed algorithm. Cells are visited ring by ring (square rings around the
+	// observer's cell). The line from the observer to a cell crosses the previous ring between two cells;
+	// the cell's horizon (steepest elevation slope of the terrain as seen from the eye, along the line) is
+	// the interpolated horizon of those two cells combined with the terrain at the crossing point. A cell is
+	// visible iff the target point above it is not below that horizon. This is O(1) per cell instead of a
+	// ray cast per cell; results can differ slightly from exact per-cell ray casts on sharp ridges.
+	private static struct SweepEntry{
+		short dx,dy;
+		int ring; // max(|dx|,|dy|)
+		int[2] parents; // indices into sweepTable of the two previous-ring cells around the crossing, -1 for ring<=1
+		float weight; // interpolation weight of parents[1]
+		float crossX,crossY; // crossing point relative to the observer's cell, in cells
+	}
+	private static SweepEntry[] sweepTable; // sorted by ring, so parents come before children
+	private static int sweepTableRadius=-1;
+	private static float[] sweepHorizon, sweepHeight;
+	private static int[] sweepVisible;
+	enum float noHorizon=-1e30f; // finite, so that interpolation never produces NaN
+	private static void prepareSweepTable(int radius){
+		if(radius<=sweepTableRadius) return;
+		radius=max(radius,2*sweepTableRadius,16);
+		SweepEntry[] entries;
+		foreach(dy;-radius..radius+1) foreach(dx;-radius..radius+1)
+			entries~=SweepEntry(cast(short)dx,cast(short)dy,max(abs(dx),abs(dy)),[-1,-1],0.0f,0.0f,0.0f);
+		sort!((a,b)=>a.ring<b.ring||a.ring==b.ring&&(a.dy<b.dy||a.dy==b.dy&&a.dx<b.dx))(entries);
+		int indexOf(int dx,int dy){ // position in the sorted table
+			auto ring=max(abs(dx),abs(dy));
+			auto lo=0, hi=cast(int)entries.length;
+			while(lo<hi){
+				auto mid=(lo+hi)/2;
+				auto e=&entries[mid];
+				if(e.ring<ring||e.ring==ring&&(e.dy<dy||e.dy==dy&&e.dx<dx)) lo=mid+1;
+				else hi=mid;
+			}
+			assert(entries[lo].dx==dx&&entries[lo].dy==dy);
+			return lo;
+		}
+		foreach(ref e;entries){
+			if(e.ring<=1) continue; // adjacent to the observer: nothing in between
+			double s=double(e.ring-1)/e.ring;
+			if(abs(int(e.dx))>=abs(int(e.dy))){
+				int x=e.dx>0?e.ring-1:-(e.ring-1);
+				double y=e.dy*s;
+				int y0=cast(int)floor(y);
+				e.parents=[indexOf(x,y0),indexOf(x,min(y0+1,e.ring-1))];
+				e.weight=cast(float)(y-y0);
+				e.crossX=x; e.crossY=cast(float)y;
+			}else{
+				int y=e.dy>0?e.ring-1:-(e.ring-1);
+				double x=e.dx*s;
+				int x0=cast(int)floor(x);
+				e.parents=[indexOf(x0,y),indexOf(min(x0+1,e.ring-1),y)];
+				e.weight=cast(float)(x-x0);
+				e.crossX=cast(float)x; e.crossY=y;
+			}
+		}
+		sweepTable=entries;
+		sweepTableRadius=radius;
+		sweepHorizon.length=entries.length;
+		sweepHeight.length=entries.length;
+	}
+	// Returns indices y*gridSize+x of the cells visible from an observer at `position` (eye at position.z+eyeHeight),
+	// whose own cell is (cx,cy), within sightRange and the r-square around (cx,cy). Same cell filter as the former
+	// per-cell ray casts in ObjectState.updateVision. The returned slice is reused by the next call.
+	int[] visibleCells(T)(int cx,int cy,int r,int gridSize,Vector3f position,float sightRange,float eyeHeight,float facing,bool directional,T displacement){
+		static if(is(typeof(displacement.restrictedTo(0.0f,0.0f,0.0f,0.0f)))){
+			auto extent=10.0f*(r+2);
+			auto localDisplacement=displacement.restrictedTo(position.x-extent,position.y-extent,position.x+extent,position.y+extent);
+		}else alias localDisplacement=displacement;
+		prepareSweepTable(r);
+		sweepVisible.length=0;
+		sweepVisible.assumeSafeAppend();
+		auto sr2=sightRange^^2;
+		auto eyeZ=position.z+eyeHeight;
+		auto numEntries=(2*r+1)*(2*r+1); // rings 0..r
+		foreach(k,ref e;sweepTable[0..numEntries]){
+			// horizon of the line of sight where it crosses the previous ring
+			float crossHorizon=noHorizon;
+			if(e.parents[0]>=0){
+				auto w=e.weight;
+				auto p0=e.parents[0], p1=e.parents[1];
+				crossHorizon=(1.0f-w)*sweepHorizon[p0]+w*sweepHorizon[p1];
+				auto h0=sweepHeight[p0], h1=sweepHeight[p1];
+				if(h0!=noHorizon&&h1!=noHorizon){
+					auto px=10.0f*(cx+e.crossX)-position.x, py=10.0f*(cy+e.crossY)-position.y;
+					auto d2=px*px+py*py;
+					if(d2>0.0f) crossHorizon=max(crossHorizon,((1.0f-w)*h0+w*h1-eyeZ)/sqrt(d2));
+				}
+			}
+			auto x=cx+e.dx, y=cy+e.dy;
+			if(!(0<=x&&x<gridSize&&0<=y&&y<gridSize&&y<n&&x<m)){
+				sweepHorizon[k]=crossHorizon;
+				sweepHeight[k]=noHorizon;
+				continue;
+			}
+			auto offx=10.0f*x-position.x, offy=10.0f*y-position.y;
+			auto d2=offx*offx+offy*offy;
+			auto distance=sqrt(d2);
+			// removed vertices (holes) do not block sight
+			auto height=edges[y][x]?noHorizon:heights[y][x]+localDisplacement(x,y);
+			sweepHeight[k]=height;
+			sweepHorizon[k]=d2>0.0f&&height!=noHorizon?max(crossHorizon,(height-eyeZ)/distance):crossHorizon;
+			if(d2>sr2) continue;
+			if(directional&&d2>0.25f*sr2){
+				auto a=acos(max(-1.0f,min(1.0f,cos(atan2(-offx,offy)-facing))));
+				if(a>=0.5f*pi!float){ continue; }
+				else if(a>0.25f*pi!float){
+					auto range=(0.5f+2.0f/pi!float*(0.5f*pi!float-a))*sightRange;
+					if(d2>range*range) continue;
+				}
+			}
+			if(d2>=1.0f){
+				auto targetHeight=edges[y][x]?getHeight(Vector3f(10.0f*x,10.0f*y,0.0f),localDisplacement):height;
+				if((targetHeight+eyeHeight-eyeZ)/distance<crossHorizon) continue;
+			}
+			sweepVisible~=y*gridSize+x;
+		}
+		return sweepVisible;
 	}
 }
 
