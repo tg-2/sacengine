@@ -31181,6 +31181,11 @@ void queueDialogSound(B)(int side,SacObject!B sacObject,SoundType soundType,Dial
 	if(auto sset=sacObject.meleeSset) playSset(sset);
 }
 int getSoundDuration(B)(char[4] sound,ObjectState!B state){
+	// localized samples (e.g. voices) differ in length between languages, so the
+	// game logic uses fixed reference durations for them to stay in sync
+	import sounddurations: referenceSoundDuration;
+	auto duration=referenceSoundDuration(sound);
+	if(duration!=-1) return duration;
 	return B.getSoundDuration(sound);
 }
 void playSound(B)(int side,char[4] sound,ObjectState!B state,float gain=1.0f){

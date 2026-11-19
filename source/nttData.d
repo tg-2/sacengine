@@ -261,9 +261,38 @@ immutable string[] sampFolders=["extracted/sounds/SFX_.WAD!",
 immutable char[4][] commandAppliedSoundTags=["1lcI","2lcI"];
 immutable char[4][] menuActionSoundTags=["1lcM","2lcM","3lcM","4lcM"];
 
+// folder in data/ whose sfx_english.wad provides the localized sounds (voices),
+// e.g. "Lokal" for the Polish dubbing. This only changes what the local player hears:
+// the game logic uses fixed reference durations for these sounds (see sounddurations.d).
+string voiceFolder="local";
+
+// returns the spelling of a folder as it appears among the indexed WAD files, ignoring case
+string resolveFolderCase(bool readFromWads,string folder){
+	if(!readFromWads||!wadManager) return folder;
+	static bool equalIgnoringCase(string a,string b){
+		import std.ascii: toLower;
+		if(a.length!=b.length) return false;
+		foreach(i;0..a.length) if(toLower(a[i])!=toLower(b[i])) return false;
+		return true;
+	}
+	foreach(file;wadManager.byExt.get("SAMP",[]))
+		if(file.length>=folder.length&&equalIgnoringCase(file[0..folder.length],folder))
+			return file[0..folder.length];
+	return folder;
+}
+
 string[char[4]] samps;
 string[char[4]] makeSampByTag(bool readFromWads){
 	auto r=makeFileIndex(readFromWads,sampFolders,"SAMP",false);
+	if(voiceFolder!="local"){
+		auto folder=resolveFolderCase(readFromWads,buildPath("extracted",voiceFolder,"sfx_english","SFXe.WAD!"));
+		import std.file: exists;
+		auto voices=readFromWads||exists(folder)?makeFileIndex(readFromWads,[folder],"SAMP",false):null;
+		if(voices.length){
+			foreach(tag,file;voices) r[tag]=file;
+			writeln("using voices from data/",voiceFolder," (",voices.length," samples)");
+		}else stderr.writeln("warning: no voices found in data/",voiceFolder,"/sfx_english.wad, using default voices");
+	}
 	// samp names flp1, flp2, flp3, flp4, flp5 appear in both pyro and comn. TODO: figure this out
 	r["5plf"]="extracted/sounds/SFX_.WAD!/comn.FLDR/flp5.SAMP";
 	return r;
