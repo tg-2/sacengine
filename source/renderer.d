@@ -128,6 +128,13 @@ struct ActiveChatMessages{
 	}
 }
 
+float advanceTriggerCinematics(float amount,bool active,float dt){
+	amount=max(0.0f,min(amount,1.0f));
+	auto target=active?1.0f:0.0f;
+	if(amount<target) return min(amount+dt,target);
+	return max(amount-dt,target);
+}
+
 struct RenderInfo(B){
 	int renderSlot=-1;
 	int renderSide=-1;
@@ -150,6 +157,7 @@ struct RenderInfo(B){
 	@property int xOffset(){ return centerViewport ? (windowWidth-cast(int)(width*screenScaling))/2 : 0; }
 	@property int yOffset(){ return centerViewport ? (windowHeight-cast(int)(height*screenScaling))/2 : 0; }
 	float screenScaling;
+	float triggerCinematicsAmount=0.0f;
 	auto spellbookTab=SpellType.creature;
 	ActiveChatMessages activeChatMessages;
 }
@@ -5960,8 +5968,9 @@ struct Renderer(B){
 		}
 	}
 	void renderTriggerCinematics(ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
-		if(!state.trig.cinematics) return;
-		auto barHeight=info.height/8.0f;
+		auto amount=max(0.0f,min(info.triggerCinematicsAmount,1.0f));
+		if(amount<=0.0f) return;
+		auto barHeight=amount*info.height/8.0f;
 		auto black=Color4f(0.0f,0.0f,0.0f,1.0f);
 		triggerPanel(Vector2f(0.0f,0.0f),Vector2f(info.width,barHeight),black,rc);
 		triggerPanel(Vector2f(0.0f,info.height-barHeight),Vector2f(info.width,barHeight),black,rc);

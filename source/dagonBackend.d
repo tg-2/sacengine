@@ -2144,6 +2144,10 @@ final class SacScene: Scene{
 		// Retail SetFocus(0,0,0) uses the ordinary camera position plus 50 forward units.
 		return camera.position-50.0f*fpview.camera.worldTrans.forward;
 	}
+	static bool triggerCameraUseOrdinaryView(bool poseValid,TriggerCamera record,int target){
+		// Before an authored pose, a target-relative origin-only command restates the entry view.
+		return !poseValid&&!record.focusValid&&(!record.originValid||(target!=0&&record.originTarget==target));
+	}
 	static Vector3f triggerCameraOriginTransitionStart(bool hadRecord,bool savedValid,Vector3f savedPosition,Vector3f evaluatedPosition){
 		// SetOrigin restarts from the ordinary camera position, not the interpolated origin.
 		return hadRecord&&savedValid?savedPosition:evaluatedPosition;
@@ -2228,6 +2232,10 @@ final class SacScene: Scene{
 			triggerCameraPoseValid=false;
 		}
 		updateCameraZoom();
+		if(triggerCameraUseOrdinaryView(triggerCameraPoseValid,record,camera.target)){
+			positionCamera();
+			return true;
+		}
 		if(!triggerCameraRevisionValid||triggerCameraLocalRecord!=record){
 			if(auto cached=findTriggerCameraStart(record)){
 				triggerCameraOriginStart=cached.origin;
@@ -2403,6 +2411,8 @@ final class SacScene: Scene{
 				}+/
 			}//else state.step();
 			// state.commit();
+			auto dtSeconds=cast(float)(dt.total!"hnsecs"*1e-7);
+			info.triggerCinematicsAmount=advanceTriggerCinematics(info.triggerCinematicsAmount,state.current.trig.cinematics,dtSeconds);
 			if(!updateTriggerCamera()){
 				updateCameraTarget();
 				if(camera.target){

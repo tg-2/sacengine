@@ -1622,6 +1622,7 @@ bool runAction(B)(TrigAction action,ref TriggerRun run,ref TriggerState!B trigge
 	if(cast(TrigCinematicsStartAction)action){
 		if(triggerState.cinematics) return true;
 		triggerState.cinematics=true;
+		clearTriggerSpeeches(triggerState);
 		startCinematicOrders(state);
 		triggerState.camera.active=true;
 		++triggerState.camera.revision;
