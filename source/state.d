@@ -3510,6 +3510,7 @@ struct HaloRock(B){
 	enum radius=2.0f;
 	enum speedRadius=3.0f;
 	enum interpolationSpeed=1.75f;
+	enum slowdownRadius=10.0f;
 	float progress=0.0f;
 	int frame=0;
 }
@@ -19371,14 +19372,15 @@ bool updateHaloRock(B)(ref HaloRock!B haloRock,Vector3f centerPosition,ObjectSta
 			auto targetCenter=target.center(state);
 			target.position=targetCenter;
 			auto distance=targetCenter-position;
-			auto acceleration=distance.normalized*spell.acceleration;
-			velocity+=acceleration;
-			Vector3f capVelocity(Vector3f velocity){
-				if(velocity.length>spell.speed) velocity=velocity.normalized*spell.speed; // TODO: why?
-				if(velocity.length>updateFPS*distance.length) velocity=velocity.normalized*distance.length*updateFPS;
-				return velocity;
-			}
-			velocity=capVelocity(velocity);
+			// steer velocity towards the desired velocity, the speed limit decreases linearly within slowdownRadius
+			auto distanceLength=distance.length;
+			auto maxSpeed=spell.speed;
+			if(distanceLength<slowdownRadius) maxSpeed*=distanceLength/slowdownRadius;
+			auto desiredVelocity=distanceLength*updateFPS>maxSpeed?distance*(maxSpeed/distanceLength):distance*updateFPS;
+			auto velocityChange=desiredVelocity-velocity;
+			if(velocityChange.length>spell.acceleration) velocityChange=velocityChange.normalized*spell.acceleration;
+			velocity+=velocityChange;
+			if(velocity.length>maxSpeed) velocity=velocity.normalized*maxSpeed;
 			auto newPosition=position+velocity/updateFPS;
 			position=newPosition;
 			if(distance.length<0.25f){
