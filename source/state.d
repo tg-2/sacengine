@@ -8083,6 +8083,10 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 			}
 			if(object.creatureState.mode==CreatureMode.stunned)
 				goto case CreatureMode.stunned;
+			if(object.frame==0&&object.canDoVictoryDance(state)){
+				object.animationState=victoryDanceAnimation(sacObject.nttTag);
+				break;
+			}
 			if(object.frame==0&&!state.uniform(5)){ // TODO: figure out the original rule for this
 				with(AnimationState) if(sacObject.mustFly){
 					if(isDamaged&&sacObject.hasAnimationState(idle2)){
@@ -8338,6 +8342,20 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 			object.clearOrderQueue(state);
 			break;
 	}
+}
+
+bool canDoVictoryDance(B)(ref MovingObject!B object,ObjectState!B state){
+	if(!object.isWizard) return false;
+	if(object.creatureState.mode!=CreatureMode.idle) return false;
+	if(object.creatureState.movement!=CreatureMovement.onGround) return false;
+	if(!state.isVictorious(object.side)) return false;
+	return object.sacObject.hasAnimationState(victoryDanceAnimation(object.sacObject.nttTag));
+}
+
+void startVictoryDance(B)(ref MovingObject!B object,ObjectState!B state){
+	if(!object.canDoVictoryDance(state)) return;
+	object.frame=0;
+	object.animationState=victoryDanceAnimation(object.sacObject.nttTag);
 }
 
 void pickRandomAnimation(B)(ref MovingObject!B object,immutable(AnimationState)[] candidates,ObjectState!B state){
@@ -30037,6 +30055,8 @@ final class ObjectState(B){ // (update logic)
 		if(isDefeated(side)||isVictorious(side))
 			return;
 		sid.victory(side);
+		if(auto wizard=getWizardForSide(side))
+			this.movingObjectById!(startVictoryDance,(){})(wizard.id,this);
 		if(systemMessagesEnabled){
 			auto message=makeChatMessage!B(-1,-1,ChatMessageType.system,getSideName(side,this),"is victorious!",frame);
 			sendChatMessage(move(message),this);
