@@ -10582,6 +10582,81 @@ bool startCasting(B)(int caster,SacSpell!B spell,OrderTarget target,ObjectState!
 			}else return stunOnFailedCast(caster,state);
 	}
 }
+
+bool startCastingWithoutWizard(B)(int side,SacSpell!B spell,OrderTarget target,ObjectState!B state){
+	auto manaDrain=ManaDrain!B(0,0.0f,0);
+	switch(spell.tag){
+		// case SpellTag.convert: // requires the caster position and closest shrine
+		// case SpellTag.desecrate: // requires the caster position and closest enemy altar
+		// case SpellTag.teleport: // requires the caster position and a wizard's teleport destination
+		case SpellTag.guardian:
+			return castGuardian(manaDrain,spell,target.id,state);
+		case SpellTag.speedup:
+			return speedUp(target.id,spell,state);
+		case SpellTag.heal:
+			return castHeal(target.id,manaDrain,side,spell,state);
+		// case SpellTag.lightning: // requires a caster object to originate the projectile
+		// case SpellTag.wrath: // requires a caster object to originate the projectile
+		// case SpellTag.fireball: // requires caster position, orientation, and side
+		// case SpellTag.rock: // requires caster position, orientation, and casting time
+		// case SpellTag.insectSwarm: // requires caster position, orientation, and casting time
+		// case SpellTag.skinOfStone: // self-targeted form bound to the casting wizard
+		// case SpellTag.etherealForm: // self-targeted form bound to the casting wizard
+		// case SpellTag.fireform: // self-targeted form bound to the casting wizard
+		// case SpellTag.protectiveSwarm: // self-targeted shield bound to the casting wizard
+		// case SpellTag.airShield: // self-targeted shield bound to the casting wizard
+		// case SpellTag.freeze: // completion currently derives attacker and side from the wizard
+		// case SpellTag.ringsOfFire: // completion currently derives attacker and side from the wizard
+		// case SpellTag.slime: // casting update requires a nonzero wizard casting time
+		case SpellTag.graspingVines:
+			return castGraspingVines(target.id,manaDrain,spell,state);
+		// case SpellTag.soulMole: // requires the caster position to recall a soul
+		// case SpellTag.rainbow: // requires a caster object to originate the effect
+		// case SpellTag.chainLightning: // requires a caster object to originate the effect
+		// case SpellTag.animateDead: // requires a wizard and a suitable dead target
+		case SpellTag.erupt:
+			return castErupt(side,target.position,manaDrain,spell,state);
+		// case SpellTag.dragonfire: // requires caster position, orientation, and casting time
+		// case SpellTag.soulWind: // requires the caster position to recall souls
+		// case SpellTag.explosion: // handled explicitly by the trigger path
+		// case SpellTag.haloOfEarth: // wizard-centered and requires a casting time
+		case SpellTag.rainOfFrogs:
+			return castRainOfFrogs(side,target.position,manaDrain,spell,state);
+		// case SpellTag.demonicRift: // requires a separate caster position
+		case SpellTag.healingAura:
+			return castHealingAura(side,target.id,manaDrain,spell,state);
+		// case SpellTag.frozenGround: // snowball originates at the casting wizard
+		// case SpellTag.firewall: // wall orientation depends on the caster position and facing
+		// case SpellTag.wailingWall: // wall orientation depends on the caster position and facing
+		// case SpellTag.vinewall: // wall orientation depends on the caster position and facing
+		// case SpellTag.wallOfSpikes: // wall orientation depends on the caster position and facing
+		case SpellTag.plague:
+			return castPlague(side,target.position,manaDrain,spell,state);
+		case SpellTag.rainOfFire:
+			return castRainOfFire(side,target.position,manaDrain,spell,state);
+		case SpellTag.bombardment:
+			return castBombardment(side,target.position,manaDrain,spell,state);
+		// case SpellTag.fence: // fence orientation depends on the caster position and facing
+		// case SpellTag.intestinalVaporization: // requires caster position, orientation, and side
+		// case SpellTag.blindRage: // requires caster position, orientation, and side
+		// case SpellTag.bovineIntervention: // requires a caster position and completion side
+		// case SpellTag.charm: // requires caster position, orientation, and side
+		case SpellTag.cloudkill:
+			return castCloudkill(side,target,manaDrain,spell,state);
+		// case SpellTag.death: // Death starts at the caster and uses its facing and side
+		case SpellTag.volcano:
+			return castVolcano(side,target.position,manaDrain,spell,0,state);
+		case SpellTag.meanstalks:
+			return castMeanstalks(side,target.position,manaDrain,spell,0,state);
+		case SpellTag.tornado:
+			return castTornado(side,target.position,manaDrain,spell,0,state);
+		case SpellTag.bore:
+			return castBore(side,target.position,manaDrain,spell,state);
+		default:
+			return false;
+	}
+}
+
 bool startShooting(B)(ref MovingObject!B object,ObjectState!B state){
 	if(!object.creatureState.mode.among(CreatureMode.idle,CreatureMode.moving))
 		return false;
@@ -14174,6 +14249,42 @@ bool useAbility(B)(ref MovingObject!B object,SacSpell!B ability,OrderTarget targ
 	}
 }
 
+bool useAbilityWithoutWizard(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
+	switch(ability.tag){
+		case SpellTag.runAway:
+			return object.runAway(ability,state);
+		case SpellTag.playDead:
+			return object.playDead(state);
+		case SpellTag.rockForm:
+			return object.rockForm(state);
+		case SpellTag.stealth:
+			return object.stealth(state);
+		case SpellTag.lifeShield:
+			return object.lifeShield(ability,state);
+		case SpellTag.divineSight:
+			return object.divineSight(ability,state);
+		// case SpellTag.blightMites: // ranged ability; requires a separate target
+		case SpellTag.callLightning:
+			return object.callLightning(ability,state);
+		// case SpellTag.devour: // ranged ability; requires a separate target
+		// case SpellTag.webPull,SpellTag.cagePull: // ranged abilities; require a separate target
+		// case SpellTag.stickyBomb: // ranged ability; requires a separate target
+		// case SpellTag.oil: // ranged ability; requires a separate target
+		case SpellTag.protector:
+			return object.protector(ability,state);
+		case SpellTag.quake:
+			quake(object.id,object.side,object.position,ability,state);
+			return true;
+		// case SpellTag.firewalk: // ranged ability; requires a separate target
+		// case SpellTag.rend: // ranged ability; requires a separate target
+		// case SpellTag.breathOfLife: // ranged ability; requires a separate target
+		case SpellTag.haloOfEarthAbility:
+			return object.haloOfEarth(ability,state);
+		default:
+			return false;
+	}
+}
+
 bool runAwayBug(B)(ref MovingObject!B object,ObjectState!B state){
 	auto ability=object.activeAbility;
 	if(!ability||ability.tag!=SpellTag.runAway) return false;
@@ -16261,7 +16372,8 @@ bool updateGuardianCasting(B)(ref GuardianCasting!B guardianCast,ObjectState!B s
 				return true;
 			case CastingStatus.interrupted: return false;
 			case CastingStatus.finished:
-				int side=state.movingObjectById!(.side,()=>-1)(manaDrain.wizard,state);
+				auto caster=manaDrain.wizard?manaDrain.wizard:creature;
+				int side=state.movingObjectById!(.side,()=>-1)(caster,state);
 				if(side!=-1) guardian(side,spell,creature,state);
 				return false;
 		}

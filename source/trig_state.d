@@ -14,7 +14,7 @@ import util, options: GameMode;
 import trig, ntts;
 import sacobject, sacspell, stats;
 import bots.shiny: SideType, botSideChanged;
-import nttData: texts, samps, tipTags, spels;
+import nttData: texts, samps, tipTags, spels, SpellTag;
 import text_, samp;
 import state;
 
@@ -1684,52 +1684,73 @@ bool runAction(B)(TrigAction action,ref TriggerRun run,ref TriggerState!B trigge
 			wiz.spellbook.grantSpell(0,SacSpell!B.get(give.spell));
 		return false;
 	}
-	// Retail casts at the game level without a caster wizard (Sacrifice.exe 0x453600): the spell
-	// instance targets the location and runs the spell's proc. RemoveLandProc is location-centered;
-	// the object utility procs below require an NTT target (retail finishes them without one).
+	// Retail casts at the game level without a caster wizard (Sacrifice.exe 0x453600).
+	// NTT-targeted casts use the target object as their source; marker casts use the run side.
 	if(auto castAction=cast(TrigCastSpellAtLocationAction)action){
-		if(auto spel=castAction.spell in spels){
-			auto procLength=spel.proc1[].countUntil('\0');
-			auto proc1=spel.proc1[0..procLength<0?spel.proc1.length:procLength];
-			if(proc1=="RemoveLandProc"){
-				Vector3f position;
-				if(locationPosition(castAction.location,run.side,position,state)){
-					auto landRemoval=LandRemoval!B(-1,-1,position,SacSpell!B.get(castAction.spell));
-					// Initialization falls through to the first active update in retail.
-					if(updateLandRemoval(landRemoval,state)) state.addEffect(landRemoval);
+		if(castAction.spell in spels){
+			auto spell=SacSpell!B.get(castAction.spell);
+			if(spell){
+				switch(spell.tag){
+					case "01R@", "02R@", "03R@":
+						Vector3f position;
+						if(locationPosition(castAction.location,run.side,position,state)){
+							auto landRemoval=LandRemoval!B(-1,-1,position,spell);
+							// Initialization falls through to the first active update in retail.
+							if(updateLandRemoval(landRemoval,state)) state.addEffect(landRemoval);
+						}
+						return false;
+					default:
+						break;
 				}
-				return false;
+				auto id=0;
+				if(auto atNtt=cast(TrigAtNtt)castAction.location)
+					id=resolveNtt(atNtt.ntt,run.side,state);
+				if(id==0){
+					Vector3f position;
+					if(locationPosition(castAction.location,run.side,position,state)){
+						if(spell.tag==SpellTag.explosion){
+							ExplosionEffect[5] effects;
+							effects[0].position=position;
+							effects[0].scale=1.0f;
+							state.addEffect(ExplosionCasting!B(run.side,ManaDrain!B(0,0.0f,0),spell,0,effects));
+						}else{
+							auto target=OrderTarget(TargetType.terrain,0,position);
+							startCastingWithoutWizard(run.side,spell,target,state);
+						}
+					}
+					return false;
+				}
+				switch(spell.tag){
+					case SpellTag.runAway, SpellTag.playDead, SpellTag.rockForm, SpellTag.stealth:
+					case SpellTag.lifeShield, SpellTag.divineSight, SpellTag.callLightning:
+					case SpellTag.protector, SpellTag.quake, SpellTag.haloOfEarthAbility:
+					case "uot@", "nit@":
+					case "anb@", "dnb@", "enb@", "fnb@", "lnb@", "mfx@":
+						state.movingObjectById!((ref obj,spell,state){
+							switch(spell.tag){
+								case "uot@":
+									animateTeleport(true,obj.hitbox,state,false);
+									break;
+								case "nit@":
+									animateTeleport(false,obj.hitbox,state,false);
+									break;
+								case "anb@", "dnb@", "enb@", "fnb@", "lnb@", "mfx@":
+									// TODO: render the actual boon beam for the spell duration
+									obj.levelUpEffect(state);
+									break;
+								default:
+									obj.useAbilityWithoutWizard(spell,state);
+									break;
+							}
+						},(){})(id,spell,state);
+						break;
+					default:
+						auto target=centerTarget(id,state);
+						auto side=state.objectById!((ref obj,state)=>.side(obj,state))(id,state);
+						startCastingWithoutWizard(side,spell,target,state);
+						break;
+				}
 			}
-			auto id=0;
-			if(auto atNtt=cast(TrigAtNtt)castAction.location)
-				id=resolveNtt(atNtt.ntt,run.side,state);
-			if(id==0&&proc1=="PyroExplosionRun"){
-				Vector3f position;
-				if(locationPosition(castAction.location,run.side,position,state)){
-					ExplosionEffect[5] effects;
-					effects[0].position=position;
-					effects[0].scale=1.0f;
-					state.addEffect(ExplosionCasting!B(run.side,ManaDrain!B(0,0.0f,0),SacSpell!B.get(castAction.spell),0,effects));
-				}
-				return false;
-			}
-			if(id!=0) state.movingObjectById!((ref obj,proc1,spellTag,state){
-				switch(proc1){
-					case "LifeShieldRun":
-						obj.lifeShield(SacSpell!B.get(spellTag),state);
-						break;
-					case "TeleportOutProc":
-						animateTeleport(true,obj.hitbox,state,false);
-						break;
-					case "TeleportInProc":
-						animateTeleport(false,obj.hitbox,state,false);
-						break;
-					case "BoonRun": // TODO: render the actual boon beam for the spell duration
-						obj.levelUpEffect(state);
-						break;
-					default: break;
-				}
-			},(){})(id,proc1,castAction.spell,state);
 		}
 		return false;
 	}
