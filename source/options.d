@@ -44,6 +44,7 @@ struct Options{
 	float volume=1.0f;
 	float musicVolume=1.0f;
 	float soundVolume=1.0f;
+	string voiceFolder="local"; // folder in data/ with the localized voices, e.g. "Lokal" (Polish)
 	bool advisorHelpSpeech=true;
 	// input options
 	string hotkeyFilename="";

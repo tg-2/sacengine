@@ -152,6 +152,8 @@ int applySettings(string[] args,ref Options options){
 			options.musicVolume=to!float(opt["--music-volume=".length..$]);
 		}else if(opt.startsWith("--sound-volume=")){
 			options.soundVolume=to!float(opt["--sound-volume=".length..$]);
+		}else if(opt.startsWith("--voice-folder=")){
+			options.voiceFolder=opt["--voice-folder=".length..$];
 		}else if(opt.startsWith("--hotkeys=")){
 			options.hotkeyFilename=opt["--hotkeys=".length..$];
 		}else if(opt.startsWith("--double-click-speed=")){
@@ -570,7 +572,8 @@ int run(string[] args){
 		wadManager=new WadManager;
 		wadManager.indexWADs("data");
 	}
-	import nttData:initNTTData;
+	import nttData:initNTTData,voiceFolder;
+	voiceFolder=options.voiceFolder;
 	initNTTData(options.enableReadFromWads);
 	import hotkeys_:initHotkeys,defaultHotkeys,loadHotkeys;
 	initHotkeys();
