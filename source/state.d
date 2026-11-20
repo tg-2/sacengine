@@ -19375,7 +19375,7 @@ bool updateChainLightning(B)(ref ChainLightning!B chainLightning,ObjectState!B s
 				if(state.movingObjectById!((ref obj,state)=>obj.health(state)==0.0f,()=>true)(entry.id,state)) return false;
 				return !chainLightning.hasTarget(entry.id);
 			}
-			int newTarget=state.proximity.closestNonAllyInRange!filter(side,current.position,spell.effectRange,EnemyType.creature,state,float.infinity,state,&chainLightning);
+			int newTarget=state.proximity.closestEnemyInRange!filter(side,current.position,spell.effectRange,EnemyType.creature,state,float.infinity,state,&chainLightning);
 			OrderTarget next;
 			if(newTarget) next=OrderTarget(TargetType.creature,newTarget,state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(newTarget));
 			if(isNaN(next.position.x)) next=newChainLightningTarget(last,current,spell,state);
