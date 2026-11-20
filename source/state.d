@@ -8083,11 +8083,9 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 			}
 			if(object.creatureState.mode==CreatureMode.stunned)
 				goto case CreatureMode.stunned;
-			if(object.frame==0&&object.canDoVictoryDance(state)){
-				object.animationState=victoryDanceAnimation(sacObject.nttTag);
-				break;
-			}
-			if(object.frame==0&&!state.uniform(5)){ // TODO: figure out the original rule for this
+			if(object.frame==0&&object.pickEndOfGameAnimation(state)){
+				// creatures of sides that have won or lost cheer or mourn instead of idling normally
+			}else if(object.frame==0&&!state.uniform(5)){ // TODO: figure out the original rule for this
 				with(AnimationState) if(sacObject.mustFly){
 					if(isDamaged&&sacObject.hasAnimationState(idle2)){
 						object.animationState=idle2;
@@ -8344,18 +8342,28 @@ void setCreatureState(B)(ref MovingObject!B object,ObjectState!B state){
 	}
 }
 
-bool canDoVictoryDance(B)(ref MovingObject!B object,ObjectState!B state){
-	if(!object.isWizard) return false;
-	if(object.creatureState.mode!=CreatureMode.idle) return false;
-	if(object.creatureState.movement!=CreatureMovement.onGround) return false;
-	if(!state.isVictorious(object.side)) return false;
-	return object.sacObject.hasAnimationState(victoryDanceAnimation(object.sacObject.nttTag));
-}
-
-void startVictoryDance(B)(ref MovingObject!B object,ObjectState!B state){
-	if(!object.canDoVictoryDance(state)) return;
-	object.frame=0;
-	object.animationState=victoryDanceAnimation(object.sacObject.nttTag);
+bool pickEndOfGameAnimation(B)(ref MovingObject!B object,ObjectState!B state){
+	// As in the original game (stance handlers CreatureChooseStance/CreatureChooseOFlyAnim, see SacrificeModern):
+	// idle creatures (including wizards) of a side that has won or lost pick their next stance from these tables.
+	// In norm.FSMC/ofly.FSMC (Fsm.wad), FSM events 37, 38, 39, 35, 34, 40 lead to the states bow!, laff, 2tak, sorr,
+	// ambi, disg, which play the animations bow, laugh, doubletake, sorrow, ambivalence, disgust; idl1, idl2, idl3
+	// play idle0, idle1, idle2. Only normal creatures standing on the ground and creatures that must fly do this.
+	if(object.isSacDoctor) return false;
+	auto sacObject=object.sacObject;
+	if(!sacObject.mustFly&&object.creatureState.movement!=CreatureMovement.onGround) return false;
+	with(AnimationState){
+		static immutable victoryAnimations=[idle1,idle1,idle1,idle1,idle1,laugh,laugh,laugh,bow,bow,idle0];
+		static immutable defeatAnimations=[disgust,disgust,disgust,sorrow,sorrow,sorrow,sorrow,sorrow,
+		                                   doubletake,doubletake,ambivalence,ambivalence,idle2,idle2,idle2,idle0];
+		immutable(AnimationState)[] candidates;
+		if(state.isVictorious(object.side)) candidates=victoryAnimations;
+		else if(state.isFullyDefeated(object.side)) candidates=defeatAnimations;
+		else return false;
+		auto animation=candidates[state.uniform(cast(int)candidates.length)];
+		if(!sacObject.hasAnimationState(animation)) return false;
+		object.animationState=animation;
+		return true;
+	}
 }
 
 void pickRandomAnimation(B)(ref MovingObject!B object,immutable(AnimationState)[] candidates,ObjectState!B state){
@@ -30055,8 +30063,6 @@ final class ObjectState(B){ // (update logic)
 		if(isDefeated(side)||isVictorious(side))
 			return;
 		sid.victory(side);
-		if(auto wizard=getWizardForSide(side))
-			this.movingObjectById!(startVictoryDance,(){})(wizard.id,this);
 		if(systemMessagesEnabled){
 			auto message=makeChatMessage!B(-1,-1,ChatMessageType.system,getSideName(side,this),"is victorious!",frame);
 			sendChatMessage(move(message),this);

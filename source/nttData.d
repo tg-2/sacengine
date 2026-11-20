@@ -1285,32 +1285,6 @@ God getSpellGod(char[4] tag){ // TODO: figure out where this is stored
 import std.traits:EnumMembers;
 static immutable wizards=[EnumMembers!WizardTag];
 
-import animations: AnimationState;
-// Animation a wizard loops while standing idle after its side has won.
-// Most wizards use idle3: their long, wizard-specific idle (the "..i4" SXSK file).
-// The Ragman and Grakkus share one generic idle animation (widl) in all idle slots,
-// so they laugh instead.
-AnimationState victoryDanceAnimation(char[4] tag){
-	switch(tag){
-		case WizardTag.abraxus: return AnimationState.idle3; // axi4, 141 frames
-		case WizardTag.acheron: return AnimationState.idle3; // qui4, 171 frames
-		case WizardTag.ambassadorButa: return AnimationState.idle3; // bui4, 141 frames
-		case WizardTag.charlotte: return AnimationState.idle3; // spi4, 156 frames
-		case WizardTag.eldred: return AnimationState.idle3; // hei4, 154 frames
-		case WizardTag.grakkus: return AnimationState.laugh; // wlaf
-		case WizardTag.hachimen: return AnimationState.idle3; // bri4, 148 frames
-		case WizardTag.jadugarr: return AnimationState.idle3; // jwi4, 187 frames
-		case WizardTag.marduk: return AnimationState.idle3; // mdi4, 241 frames
-		case WizardTag.mithras: return AnimationState.idle3; // sgi4, 101 frames
-		case WizardTag.seerix: return AnimationState.idle3; // sei4, 130 frames
-		case WizardTag.shakti: return AnimationState.idle3; // shi4, 227 frames
-		case WizardTag.sorcha: return AnimationState.idle3; // gri4, 161 frames
-		case WizardTag.theRagman: return AnimationState.laugh; // wlaf
-		case WizardTag.yogo: return AnimationState.idle3; // yoi4, 133 frames
-		default: return AnimationState.idle3;
-	}
-}
-
 //static immutable manalithCastingTimes=[15.0f,13.0f,12.0f,12.0f,10.0f,9.0f,8.5f,8.0f,8.0f,8.0f];
 //static immutable shrineCastingTimes=[15.0f,15.0f,15.0f,13.0f,12.0f,11.5f,10.0f,8.0f,8.0f,8.0f];
 
