@@ -7681,12 +7681,8 @@ auto eachByType(alias f,EachByTypeFlags flags,B,RenderMode mode,T...)(ref Object
 			static if(skipMoving){
 				// moving objects are handled by the caller
 			}else static if(wizardsLast){
-				foreach(ref movingObject;movingObjects.data)
-					if(!movingObject.sacObject.isWizard)
-						f(movingObject,args);
-				foreach(ref movingObject;movingObjects.data)
-					if(movingObject.sacObject.isWizard)
-						f(movingObject,args);
+				objects.eachMovingWizardOrNot!(f,false)(args);
+				objects.eachMovingWizardOrNot!(f,true)(args);
 			}else{
 				foreach(ref movingObject;movingObjects.data)
 					f(movingObject,args);
