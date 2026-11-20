@@ -9289,6 +9289,9 @@ float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,
 						actualDamage*=0.25f;
 					}
 					break;
+				case SpellTag.ghost:
+					actualDamage=0.0f;
+					break;
 				default:
 					break;
 			}
@@ -14940,9 +14943,6 @@ void runGhostPassive(B)(ref MovingObject!B object,ObjectState!B state){
 		with(CreatureMode) otherAlpha=otherAlpha||object.creatureState.mode.among(deadToGhost,idleGhost,movingGhost,ghostToIdle);
 		if(!otherAlpha) state.setAlpha(object.id,1.0f-effects.ghostValue*effects.ghostValue,1.0f);
 	}else state.updateRenderModeLater(object.id);
-	auto numParticlesF=0.1f*target;
-	auto numParticles=cast(int)floor(numParticlesF)+(state.uniform(0.0f,1.0f)<=numParticlesF-floor(numParticlesF));
-	foreach(i;0..numParticles) object.animateGhost!false(state);
 }
 
 void runPassive(B)(ref MovingObject!B object,ObjectState!B state){
