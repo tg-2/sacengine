@@ -1587,8 +1587,13 @@ bool runAction(B)(TrigAction action,ref TriggerRun run,ref TriggerState!B trigge
 			teleportAllOfType(teleport.ctype,&filter,target,state);
 		return false;
 	}
-	// teleport "away" has unclear semantics in retail (0x43a20/0x4ea80), ported as a no-op
-	if(cast(TrigTeleportAllOfTypeAtLocationAwayAction)action) return false;
+	if(auto teleport=cast(TrigTeleportAllOfTypeAtLocationAwayAction)action){
+		NttFilter filter;
+		filter.ownerSide=run.side;
+		if(setupLocation(teleport.location,run.side,filter.location,state))
+			teleportAllOfTypeAway(teleport.ctype,&filter,state);
+		return false;
+	}
 	if(auto teleport=cast(TrigTeleportCreatureToLocationAction)action){
 		auto id=resolveNtt(teleport.creature,run.side,state);
 		Vector3f target;
@@ -1597,7 +1602,12 @@ bool runAction(B)(TrigAction action,ref TriggerRun run,ref TriggerState!B trigge
 			state.movingObjectById!((ref obj,target,state){ .teleport(obj,target,state,false,false); },(){})(id,target,state);
 		return false;
 	}
-	if(cast(TrigTeleportCreatureAwayAction)action) return false; // see above
+	if(auto teleport=cast(TrigTeleportCreatureAwayAction)action){
+		auto id=resolveNtt(teleport.creature,run.side,state);
+		if(id==0||state.isValidBuilding(id)) runError(run,text("teleport: cannot resolve creature ",teleport.creature.id));
+		else teleportAway(id,state);
+		return false;
+	}
 	if(auto timer=cast(TrigSetGameTimerAction)action){
 		triggerState.gameTimer=evalQuantity(timer.quantity,run,triggerState,state);
 		return true;
@@ -1892,6 +1902,25 @@ void teleportAllOfType(B)(char[4] ctype,const(NttFilter)* filter,Vector3f target
 		if(filter!is null&&!passesFilter(obj,filter,state)) return;
 		teleport(obj,target,state,false,false);
 	})(ctype,filter,target,state);
+}
+
+void teleportAway(B)(int id,ObjectState!B state){
+	if(state.movingObjectById!((ref obj,state){
+		animateTeleport(true,obj.hitbox,state,false);
+		return true;
+	},()=>false)(id,state))
+		state.removeObject(id);
+}
+
+void teleportAllOfTypeAway(B)(char[4] ctype,const(NttFilter)* filter,ObjectState!B state){
+	Array!int targets;
+	state.obj.eachMoving!((ref obj,ctype,filter,targets,state){
+		if(!obj.isAlive) return;
+		if(!matchesCreatureType(ctype,obj)) return;
+		if(filter!is null&&!passesFilter(obj,filter,state)) return;
+		*targets~=obj.id;
+	})(ctype,filter,&targets,state);
+	foreach(target;targets.data) teleportAway(target,state);
 }
 
 void changeSideAllOfType(B)(char[4] nttType,const(NttFilter)* filter,int side,ObjectState!B state){
