@@ -2148,9 +2148,9 @@ final class SacScene: Scene{
 		// Before an authored pose, a target-relative origin-only command restates the entry view.
 		return !poseValid&&!record.focusValid&&(!record.originValid||(target!=0&&record.originTarget==target));
 	}
-	static Vector3f triggerCameraOriginTransitionStart(bool hadRecord,bool savedValid,Vector3f savedPosition,Vector3f evaluatedPosition){
-		// SetOrigin restarts from the ordinary camera position, not the interpolated origin.
-		return hadRecord&&savedValid?savedPosition:evaluatedPosition;
+	static Vector3f triggerCameraOriginTransitionStart(bool poseValid,Vector3f currentPosition,Vector3f evaluatedPosition){
+		// SetOrigin starts from the camera matrix's current translation, which look-at updates.
+		return poseValid?currentPosition:evaluatedPosition;
 	}
 	static float triggerCameraTransitionFraction(int startTick,int duration,int tick){
 		if(duration<=0) return tick<startTick?0.0f:1.0f;
@@ -2252,7 +2252,7 @@ final class SacScene: Scene{
 					oldFocus=inferTriggerCameraFocus();
 				}
 				if(originChanged)
-					triggerCameraOriginStart=triggerCameraOriginTransitionStart(hadRecord,triggerCameraSavedValid,triggerCameraSaved.position,oldOrigin);
+					triggerCameraOriginStart=triggerCameraOriginTransitionStart(triggerCameraPoseValid,triggerCameraCurrentOrigin,oldOrigin);
 				if(focusChanged) triggerCameraFocusStart=oldFocus;
 				storeTriggerCameraStart(record,triggerCameraOriginStart,triggerCameraFocusStart);
 			}
