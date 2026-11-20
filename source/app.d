@@ -572,9 +572,8 @@ int run(string[] args){
 		wadManager=new WadManager;
 		wadManager.indexWADs("data");
 	}
-	import nttData:initNTTData,voiceFolder;
-	voiceFolder=options.voiceFolder;
-	initNTTData(options.enableReadFromWads);
+	import nttData:initNTTData;
+	initNTTData(options.enableReadFromWads,options.voiceFolder);
 	import hotkeys_:initHotkeys,defaultHotkeys,loadHotkeys;
 	initHotkeys();
 	if(options.hotkeyFilename.length){

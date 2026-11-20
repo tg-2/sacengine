@@ -261,11 +261,6 @@ immutable string[] sampFolders=["extracted/sounds/SFX_.WAD!",
 immutable char[4][] commandAppliedSoundTags=["1lcI","2lcI"];
 immutable char[4][] menuActionSoundTags=["1lcM","2lcM","3lcM","4lcM"];
 
-// folder in data/ whose sfx_english.wad provides the localized sounds (voices),
-// e.g. "Lokal" for the Polish dubbing. This only changes what the local player hears:
-// the game logic uses fixed reference durations for these sounds (see sounddurations.d).
-string voiceFolder="local";
-
 // returns the spelling of a folder as it appears among the indexed WAD files, ignoring case
 string resolveFolderCase(bool readFromWads,string folder){
 	if(!readFromWads||!wadManager) return folder;
@@ -282,7 +277,10 @@ string resolveFolderCase(bool readFromWads,string folder){
 }
 
 string[char[4]] samps;
-string[char[4]] makeSampByTag(bool readFromWads){
+// voiceFolder: folder in data/ whose sfx_english.wad provides the localized sounds (voices),
+// e.g. "Lokal" for the Polish dubbing. This only changes what the local player hears:
+// the game logic uses fixed reference durations for these sounds (see sounddurations.d).
+string[char[4]] makeSampByTag(bool readFromWads,string voiceFolder="local"){
 	auto r=makeFileIndex(readFromWads,sampFolders,"SAMP",false);
 	if(voiceFolder!="local"){
 		auto folder=resolveFolderCase(readFromWads,buildPath("extracted",voiceFolder,"sfx_english","SFXe.WAD!"));
@@ -360,7 +358,7 @@ immutable(Form)[char[4]] makeFormByTag(bool readFromWads){
 }
 
 
-void initNTTData(bool readFromWads){
+void initNTTData(bool readFromWads,string voiceFolder="local"){
 	bldgs=makeBldgByTag(readFromWads);
 	bldgTags=makeBldgTags();
 	bldgModls=makeBldgModlByTag(readFromWads);
@@ -380,7 +378,7 @@ void initNTTData(bool readFromWads){
 	icons=makeIconByTag(readFromWads);
 
 	ssets=makeSsetByTag(readFromWads);
-	samps=makeSampByTag(readFromWads);
+	samps=makeSampByTag(readFromWads,voiceFolder);
 
 	texts=makeTextByTag(readFromWads);
 	formTexts=makeFormTextByTag(readFromWads);
