@@ -692,6 +692,8 @@ int countStructureType(B)(char[4] stype,const(NttFilter)* filter,ObjectState!B s
 		if(filter.ownerSide>=0&&building.side!=filter.ownerSide) return;
 		if(maximum) *maximum+=1;
 		if(!matchesStructureType(stype,building)) return;
+		// Retail's manalith category includes completed buildings only.
+		if(stype=="nmtt"&&(building.flags&AdditionalBuildingFlags.inactive)) return;
 		if(filter.location.type!=0){
 			if(!building.componentIds.length) return;
 			if(!isAtLocation(building.id,*cast(CheckLocation*)&filter.location,state)) return;
