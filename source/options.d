@@ -117,6 +117,8 @@ struct Options{
 	bool greenAllySouls=false;
 	bool fasterStandupTimes=true;
 	bool fasterCastingTimes=true;
+	bool terrainScars=true; // scars on the terrain in the game state (--no-terrain-scars disables them for everyone)
+	int maxScarTextures=256; // number of scarred terrain cells (original: 'mscr', 32 to 256, default 256)
 	bool alwaysOnMinimap=false;
 	bool betaPatchBots=false;
 	bool aiSides=true;

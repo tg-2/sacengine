@@ -183,7 +183,7 @@ final class SacScene: Scene{
 		scope(exit) frameprof.markRender("shadow");
 		super.renderShadowCastingEntities3D(rc);
 		if(!state) return;
-		typeof(renderer).R3DOpt r3dopt={enableWidgets: options.enableWidgets, enableBloodStains: options.enableBloodStains, enableScars: options.enableScars};
+		typeof(renderer).R3DOpt r3dopt={enableWidgets: options.enableWidgets, enableBloodStains: options.enableBloodStains, enableScars: options.enableScars, committedFrame: state.committedFrame};
 		renderer.renderShadowCastingEntities3D(r3dopt,state.current,info,rc);
 	}
 
@@ -199,14 +199,14 @@ final class SacScene: Scene{
 		}
 		super.renderOpaqueEntities3D(rc);
 		if(!state) return;
-		typeof(renderer).R3DOpt r3dopt={enableWidgets: options.enableWidgets, enableBloodStains: options.enableBloodStains, enableScars: options.enableScars};
+		typeof(renderer).R3DOpt r3dopt={enableWidgets: options.enableWidgets, enableBloodStains: options.enableBloodStains, enableScars: options.enableScars, committedFrame: state.committedFrame};
 		renderer.renderOpaqueEntities3D(r3dopt,state.current,info,rc);
 	}
 	override void renderTransparentEntities3D(RenderingContext* rc){
 		scope(exit) frameprof.markRender("transparent");
 		super.renderTransparentEntities3D(rc);
 		if(!state) return;
-		typeof(renderer).R3DOpt r3dopt={enableWidgets: options.enableWidgets, enableBloodStains: options.enableBloodStains, enableScars: options.enableScars};
+		typeof(renderer).R3DOpt r3dopt={enableWidgets: options.enableWidgets, enableBloodStains: options.enableBloodStains, enableScars: options.enableScars, committedFrame: state.committedFrame};
 		renderer.renderTransparentEntities3D(r3dopt,state.current,info,rc);
 	}
 	override void renderEntities2D(RenderingContext* rc){

@@ -146,6 +146,8 @@ int applySettings(string[] args,ref Options options){
 			options.protectManafounts=to!int(opt["--protect-manafounts=".length..$]);
 		}else if(opt.startsWith("--cursor-size=")){
 			options.cursorSize=to!int(opt["--cursor-size=".length..$]);
+		}else if(opt.startsWith("--max-scar-textures=")){
+			options.maxScarTextures=max(1,to!int(opt["--max-scar-textures=".length..$]));
 		}else if(opt.startsWith("--volume=")){
 			options.volume=to!float(opt["--volume=".length..$]);
 		}else if(opt.startsWith("--music-volume=")){

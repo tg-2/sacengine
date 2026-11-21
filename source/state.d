@@ -7475,25 +7475,6 @@ class NetworkState(B){
 	ChatMessages!B chatMessages;
 }
 
-// Scars on the terrain (original: Sacrifice.exe 0x44cb90). They only change the terrain textures,
-// so the renderer applies them (SacMap.updateScars). The most recent ones are kept in this ring buffer.
-struct ScarEvent{
-	char[4] tag; // SCAR resource
-	Vector3f position;
-	int width,height; // part of the SCAR image that is applied, 0 for all of it
-	ScarKind kind;
-	int frame;
-}
-struct ScarEvents{
-	enum capacity=256;
-	ulong count=0;
-	ScarEvent[capacity] events;
-	void addScar(ScarEvent event){
-		events[count%capacity]=event;
-		count++;
-	}
-}
-
 struct EdgeChanges{
 	enum emptyHash=edgeChangesEmptyHash;
 	uint hash=emptyHash;
@@ -7589,7 +7570,6 @@ struct Objects(B,RenderMode mode){
 		Effects!B effects;
 		PermanentDisplacement!B permanentDisplacement;
 		EdgeChanges edgeChanges;
-		ScarEvents scarEvents;
 		CommandCones!B commandCones;
 		Highlights!B highlights;
 		ChatMessages!B chatMessages;
@@ -8633,34 +8613,30 @@ bool playDead(B)(ref MovingObject!B object, ObjectState!B state){
 	return object.kill!(B,true)(state);
 }
 
-// SCAR resource named by a spell argument (original: 0x4502e0)
+// SCAR resource named by a spell argument (original: 0x4502e0); scar tags are reversed like other tags
 char[4] spellScar(B)(SacSpell!B spell,char[4] key,char[4] defaultScar){
-	char[4] value=defaultScar;
-	reverse(value[]);
-	int result=*cast(int*)value.ptr;
+	int result=*cast(int*)defaultScar.ptr;
 	if(spell) result=spell.spellArgInt(key,result);
-	value=*cast(char[4]*)&result;
-	reverse(value[]);
-	return value;
+	return *cast(char[4]*)&result;
 }
 void addSpellScar(B)(char[4] scar,Vector3f position,ObjectState!B state){
-	state.addScar(scar,position,ScarKind.spell);
+	state.addScar(scar,position);
 }
 // only close to the ground (original: 0x44cb50)
 void addSpellScarNearGround(B)(char[4] scar,Vector3f position,float maxDistance,ObjectState!B state){
-	if(abs(state.getHeight(position)-position.z)<maxDistance) state.addScar(scar,position,ScarKind.spell);
+	if(abs(state.getHeight(position)-position.z)<maxDistance) state.addScar(scar,position);
 }
 // scar of fireball explosions, only close to the ground (original: 0x43b280)
 void addFireballScar(B)(SacSpell!B spell,Vector3f position,ObjectState!B state){
-	if(position.z-state.getHeight(position)<10.0f) state.addScar(spellScar(spell,"tXsc","scar"),position,ScarKind.spell);
+	if(position.z-state.getHeight(position)<10.0f) state.addScar(spellScar(spell,"tXsc","racs"),position);
 }
 // thrown rocks hitting the ground (original: 0x439270)
 void addRockShatterScar(B)(SacSpell!B spell,Vector3f position,ObjectState!B state){
-	addSpellScarNearGround(spellScar(spell,"tRS4","gscr"),position,5.0f,state);
+	addSpellScarNearGround(spellScar(spell,"tRS4","rcsg"),position,5.0f,state);
 }
 // rocks and other things that come out of the ground (original: 0x4380f0)
 void addEmergingScar(B)(SacSpell!B spell,Vector3f position,ObjectState!B state){
-	addSpellScar(spellScar(spell,"tRE3","tscr"),position,state);
+	addSpellScar(spellScar(spell,"tRE3","rcst"),position,state);
 }
 
 // Blood (original: Sacrifice.exe 0x45ce10 with particle preset 133 of game3d.dll)
@@ -12180,7 +12156,7 @@ bool castMeanstalks(B)(int side,Vector3f center,ManaDrain!B manaDrain,SacSpell!B
 		meanstalks.vines[meanstalks.numVines++]=vine;
 		playSoundAt("akts",position,state,meanstalksGain);
 		animateMeanstalkSpawn(position,state);
-		addSpellScar(spellScar(spell,"tscr","ecrk"),position,state); // original: DivineRetributionStart
+		addSpellScar(spellScar(spell,"tscr","krce"),position,state); // original: DivineRetributionStart
 	}
 	state.addEffect(MeanstalksCasting!B(manaDrain,move(meanstalks),castingTime));
 	return true;
@@ -16271,7 +16247,7 @@ void updateParticles(B,ParticleKind kind,bool sideFiltered)(ref Particles!(B,kin
 				auto normal=Vector3f(-state.getGroundHeightDerivative(position,Vector3f(1.0f,0.0f,0.0f)),-state.getGroundHeightDerivative(position,Vector3f(0.0f,1.0f,0.0f)),1.0f).normalized;
 				if(dot(normal,particles.velocities[j])<0.0f){ // moving into the ground
 					hitGround=true;
-					if(particles.scars[j]) state.addScar("blud",particles.positions[j],ScarKind.blood,8,8);
+					if(particles.scars[j]) state.addScar("dulb",particles.positions[j]); // 8x8 blood stain
 				}
 			}
 		}
@@ -17647,7 +17623,7 @@ bool updateLightning(B)(ref Lightning!B lightning,ObjectState!B state){
 	if(lightning.frame==lightning.travelDelay){
 		auto hitbox=lightning.end.hitbox(state);
 		if(lightning.end.type!=TargetType.none) sparkAnimation(hitbox,state);
-		addSpellScarNearGround(spellScar(lightning.spell,"tscr","scar"),lightning.end.position,2.5f,state); // original: 0x435a60
+		addSpellScarNearGround(spellScar(lightning.spell,"tscr","racs"),lightning.end.position,2.5f,state); // original: 0x435a60
 		auto target=lightning.end.id;
 		if(state.isValidTarget(target)){
 			auto direction=lightning.end.position-lightning.start.position;
@@ -19762,7 +19738,7 @@ void eruptExplosion(B)(ref Erupt!B erupt,ObjectState!B state){
 		auto frame=0;
 		state.addParticle(Particle!B(sacParticle3,position,pvelocity,scale,lifetime,frame));
 	}
-	addSpellScar(spellScar(erupt.spell,"tscr","escr"),erupt.position,state); // original: EruptRun
+	addSpellScar(spellScar(erupt.spell,"tscr","rcse"),erupt.position,state); // original: EruptRun
 }
 
 enum eruptGain0=2.0f, eruptGain1=4.0f, eruptGain2=8.0f;
@@ -19922,7 +19898,7 @@ bool updateBore(B)(ref Bore!B bore,ObjectState!B state){
 		if(--soundTimer<=0) soundTimer=playSpellSoundTypeAt!true(SoundType.bore,position,state,soulMoleGain); // TODO: sound should follow boulder
 		if((position-lastScarPosition).lengthsqr>5.0f^^2){ // original: BoreRun
 			lastScarPosition=position;
-			addSpellScar(spellScar(spell,"tscr","quk1"),position,state);
+			addSpellScar(spellScar(spell,"tscr","1kuq"),position,state);
 		}
 		animateBore(bore,state);
 		return !arrived;
@@ -21375,7 +21351,7 @@ bool updateFirewall(B)(ref Firewall!B firewall,ObjectState!B state,bool active=t
 			// a scar at a random point of the wall, one in 15 frames (original: FireWallRun 0x4282b0)
 			auto halfWidth=0.5f*spell.spellArgFloat("fwid",10.0f)*min(1.0f,float(frame)/updateFPS);
 			auto position=center+state.uniform(left,right)*Vector3f(direction.x,direction.y,0.0f)+state.uniform(-halfWidth,halfWidth)*orthogonal;
-			addSpellScar(spellScar(spell,"tscr","quk1"),position,state);
+			addSpellScar(spellScar(spell,"tscr","1kuq"),position,state);
 		}
 		auto sacParticle=SacParticle!B.get(ParticleType.firewall);
 		auto numFrames=sacParticle.numFrames;
@@ -21840,7 +21816,7 @@ WallOfSpikes!B.Spike makeWallOfSpikesSpike(B)(ref WallOfSpikes!B wallOfSpikes,Ob
 	auto offset=wallOfSpikes.spikeScale*state.uniformDisk(Vector2f(0.0f,0.0f),2.0f);
 	auto direction=Vector3f(offset.x,offset.y,state.uniform(0.4f,1.6f)*wallOfSpikes.spikeHeight);
 	// auto maxScale=state.uniform(0.9f,1.1f);
-	addSpellScar(spellScar(wallOfSpikes.spell,"tscr","quk1"),base,state); // original: SpikeWallStart
+	addSpellScar(spellScar(wallOfSpikes.spell,"tscr","1kuq"),base,state); // original: SpikeWallStart
 	return WallOfSpikes!B.Spike(0.0f,base,direction);
 }
 
@@ -23090,7 +23066,7 @@ void cowExplosion(B)(ref BovineIntervention!B bovineIntervention,ObjectState!B s
 		state.addParticle(Particle!B(sacParticle4,position,pvelocity,scale,lifetime,frame));
 	}
 	with(bovineIntervention) quake(wizard,side,bovineIntervention.position,spell,state);
-	addSpellScar("bovs",bovineIntervention.position,state); // original: BovineInterventionStart
+	addSpellScar("svob",bovineIntervention.position,state); // original: BovineInterventionStart
 }
 
 bool updateBovineIntervention(B)(ref BovineIntervention!B bovineIntervention,ObjectState!B state){
@@ -23662,7 +23638,7 @@ bool updateVolcano(B)(ref Volcano!B volcano,ObjectState!B state){
 		}else if(frame==volcanoFrame){
 			progress=1.0f;
 			state.obj.opaqueObjects.permanentDisplacement.volcanoDent(position.x,position.y);
-			addSpellScar("volc",position,state); // original: VolcanoEruptRun
+			addSpellScar("clov",position,state); // original: VolcanoEruptRun
 			// TODO: weather, widgets
 			playSoundAt("tpre",position,state,volcanoGain);
 			dealSplashSpellDamageAt(0,spell,volcanoGroundZeroRadius,wizard,side,position,DamageMod.none,state);
@@ -25491,7 +25467,7 @@ bool updateStyxShoot(B)(ref StyxShoot!B shoot,ObjectState!B state){
 		auto direction=targetPosition-position;
 		if(state.isValidTarget(target)) dealRangedDamage(target,rangedAttack,attacker,side,direction,DamageMod.splash,state);
 		dealSplashRangedDamageAt(target,rangedAttack,rangedAttack.damageRange,attacker,side,targetPosition,DamageMod.none,state);
-		addSpellScarNearGround("scar",targetPosition,2.5f,state); // original: GunheadFuseRun
+		addSpellScarNearGround("racs",targetPosition,2.5f,state); // original: GunheadFuseRun
 		return false;
 	}
 }
@@ -26923,7 +26899,7 @@ void oilExplosion(B)(ref OilProjectile!B oilProjectile,ObjectState!B state){
 			return false;
 		}
 		dealDamageAt!callback(0,0.0f,ability.effectRange,creature,side,position,DamageMod.none,state,creature,side,ability,state);
-		addSpellScarNearGround(spellScar(ability,"tscr","scar"),position,10.0f,state); // original: ViscousOilRun
+		addSpellScarNearGround(spellScar(ability,"tscr","racs"),position,10.0f,state); // original: ViscousOilRun
 		enum numParticles3=100;
 		auto sacParticle3=SacParticle!B.get(ParticleType.oil);
 		foreach(i;0..numParticles3){
@@ -27136,7 +27112,7 @@ bool updateFirewalk(B)(ref Firewalk!B firewalk,ObjectState!B state){
 				if(obj.creatureState.mode!=CreatureMode.usingAbility)
 					return false;
 				startPosition=obj.position;
-				addSpellScar("tscr",startPosition,state); // original: FirewalkRun
+				addSpellScar("rcst",startPosition,state); // original: FirewalkRun
 				obj.creatureState.mode=CreatureMode.firewalk;
 				obj.setCreatureState(state);
 				obj.animateFirewalk(state);
@@ -27164,7 +27140,7 @@ bool updateFirewalk(B)(ref Firewalk!B firewalk,ObjectState!B state){
 			obj.position=newPosition;
 			if(frame>=numFrames){
 				obj.position=endPosition;
-				addSpellScar("tscr",endPosition,state); // original: FirewalkRun
+				addSpellScar("rcst",endPosition,state); // original: FirewalkRun
 				obj.startIdling(state);
 				obj.animateFirewalk(state);
 				if(!state.isOnGround(obj.position))
@@ -27213,7 +27189,7 @@ bool updateRendShoot(B)(ref RendShoot!B shoot,ObjectState!B state){
 		rendSparkAnimation(targetPosition,state);
 		auto direction=targetPosition-position;
 		dealSplashRangedDamageAt(0,rangedAttack,rangedAttack.damageRange,attacker,side,targetPosition,DamageMod.none,state);
-		addSpellScarNearGround("scar",targetPosition,2.5f,state); // original: GunheadFuseRun
+		addSpellScarNearGround("racs",targetPosition,2.5f,state); // original: GunheadFuseRun
 		return false;
 	}
 }
@@ -30532,6 +30508,8 @@ final class ObjectState(B){ // (update logic)
 		//cachedState.copyFrom(this);
 		hashCached=true;+/
 		import serialize_;
+		serializeScarsForHash=true; // O(1) for scars
+		scope(exit) serializeScarsForHash=false;
 		//return cachedHash=this.crc32;
 		return this.crc32;
 	}
@@ -30567,8 +30545,10 @@ final class ObjectState(B){ // (update logic)
 		while((r-position).lengthsqr>radius^^2);
 		return r;
 	}
-	void addScar(char[4] tag,Vector3f position,ScarKind kind,int width=0,int height=0){
-		obj.opaqueObjects.scarEvents.addScar(ScarEvent(tag,position,width,height,kind,frame));
+	// a scar on the terrain (original: 0x44cb90), the tag is reversed like other tags
+	void addScar(char[4] tag,Vector3f position){
+		if(!settings.terrainScars) return;
+		scars.add(frame,ScarEntry(tag,scarTexelCoordinate(position.x),scarTexelCoordinate(position.y)));
 	}
 	void applyEdgeChanges(){
 		auto edgeChanges=&obj.opaqueObjects.edgeChanges;
@@ -30579,6 +30559,7 @@ final class ObjectState(B){ // (update logic)
 		frame=rhs.frame;
 		rng=rhs.rng;
 		obj=rhs.obj;
+		scars=rhs.scars;
 		sid=rhs.sid;
 		trig.copyFrom(rhs.trig);
 		settings=rhs.settings;
@@ -30850,8 +30831,11 @@ final class ObjectState(B){ // (update logic)
 		bool fasterStandupTimes=true;
 		bool fasterCastingTimes=true;
 		bool alwaysOnMinimap=false;
+		bool terrainScars=true;
+		int maxScarTextures=256;
 	}
 	Settings settings;
+	ScarLog scars; // scars on the terrain, see sacmap.ScarLog
 	@property bool fogOfWar(){ return settings.fogOfWar; }
 	@property bool fogOfWar3d(){ return settings.fogOfWar3d; }
 	@property bool alliedVision(){ return settings.alliedVision; }
@@ -30887,6 +30871,8 @@ final class ObjectState(B){ // (update logic)
 	void enableGreenAllySouls(){ settings.greenAllySouls=true; }
 	void disableFasterStandupTimes(){ settings.fasterStandupTimes=false; }
 	void disableFasterCastingTimes(){ settings.fasterCastingTimes=false; }
+	void disableTerrainScars(){ settings.terrainScars=false; }
+	void setMaxScarTextures(int maxScarTextures){ settings.maxScarTextures=max(1,maxScarTextures); }
 	void enableAlwaysOnMinimap(){ settings.alwaysOnMinimap=true; }
 	int addObject(T)(T object) if(is(T==MovingObject!B)||is(T==StaticObject!B)||is(T==Soul!B)||is(T==Building!B)){
 		static if(is(T==Building!B)) auto hasPortal=object.sacBuilding.hasPortal;
@@ -33090,6 +33076,8 @@ struct GameInit(B){
 	bool fasterStandupTimes=true;
 	bool fasterCastingTimes=true;
 	bool alwaysOnMinimap=false;
+	bool terrainScars=true;
+	int maxScarTextures=256;
 	bool betaPatchBots=false;
 	bool aiSides=true;
 }
@@ -33158,6 +33146,8 @@ void initGame(B)(ObjectState!B state,ref Array!SlotInfo slots,GameInit!B gameIni
 	if(gameInit.greenAllySouls) state.enableGreenAllySouls();
 	if(!gameInit.fasterStandupTimes) state.disableFasterStandupTimes();
 	if(!gameInit.fasterCastingTimes) state.disableFasterCastingTimes();
+	if(!gameInit.terrainScars) state.disableTerrainScars();
+	state.setMaxScarTextures(gameInit.maxScarTextures);
 	if(gameInit.aiSides){
 		foreach(i,ref side;state.sides)
 			state.sid.sides[i].setSideType(side.assignment&PlayerAssignment.aiSide?SideType.shinyBot:SideType.neutral,gameInit.betaPatchBots);

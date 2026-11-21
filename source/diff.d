@@ -79,6 +79,12 @@ bool diffData(T,size_t n)(ref T[n] a, ref T[n] b,lazy string path)if(!is(T==char
 	foreach(i;0..n) r|=diffData(a[i],b[i],text(path,"[",i,"]"));
 	return r;
 }
+bool diffData(ref imported!"sacmap".ScarLog a,ref imported!"sacmap".ScarLog b,lazy string path){
+	bool r=false;
+	r|=diffData(a.count,b.count,text(path,".count"));
+	r|=diffData(a.hash,b.hash,text(path,".hash"));
+	return r;
+}
 bool diffData(T)(Array!T a,Array!T b,lazy string path){
 	bool r=false;
 	r|=diffData(a.length,b.length,text(path,".length"));
