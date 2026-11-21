@@ -2805,6 +2805,8 @@ struct Ritual(B){
 	LightningBolt[3] desecrateBolts;
 	enum setupTime=5*updateFPS;
 	int frame=0;
+	int roundFrame=0; // frame within the current round, stays at the last walking frame until all sac doctors arrived
+	int numRounds=0;
 	bool stopped=false;
 	Vector3f shrinePosition;
 }
@@ -8828,6 +8830,8 @@ bool stunWithCooldown(B)(ref MovingObject!B object, int cooldownFrames, ObjectSt
 }
 enum damageStunCooldownFrames=4*updateFPS; // TODO
 bool damageStun(B)(ref MovingObject!B object, Vector3f attackDirection, ObjectState!B state){
+	// original: a heavy hit is FSM event 7, which makes sac doctors abort in every state of sacd.FSMC (Fsm.wad)
+	if(object.isSacDoctor) return object.kill(state);
 	if(!object.canStun(state)) return false;
 	object.creatureState.mode=CreatureMode.stunned;
 	object.setCreatureState(state);
@@ -11270,6 +11274,12 @@ bool castFreeze(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectState
 }
 enum freezeGain=4.0f;
 bool freeze(B)(int wizard,int side,int target,SacSpell!B spell,ObjectState!B state){
+	// original: sac doctors in a ritual reject paralysis (FSM event 24), so the ice shatters at once
+	// (FreezeSpellRun 0x4217c0 with 0x421630). updateFreeze shatters it on the next frame.
+	if(isRitualSacDoctor(target,state)){
+		state.addEffect(Freeze!B(target,spell,wizard,side,0));
+		return true;
+	}
 	auto duration=state.movingObjectById!((ref obj){
 		if(obj.creatureStats.effects.frozen) return -1;
 		if(!obj.creatureState.mode.canBeFrozen) return -1;
@@ -12207,6 +12217,10 @@ bool basiliskShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Ve
 }
 
 bool petrify(B)(ref MovingObject!B obj,int lifetime,int attackingSide,Vector3f attackDirection,ObjectState!B state){
+	// original: sac doctors in a ritual reject paralysis, so Turn to Stone ends at once and sends FSM events 25 and 7,
+	// and event 7 makes the sac doctor abort (TurnToStoneRun 0x4478b0). Other sac doctors abort when the stone
+	// breaks (damageStun in updatePetrification).
+	if(obj.isSacDoctor&&isRitualSacDoctor(obj.id,state)) return obj.kill(state);
 	if(obj.creatureStats.effects.ccProtected) return false;
 	assert(!obj.creatureStats.effects.petrified);
 	if(!obj.creatureState.mode.canBePetrified) return false;
@@ -16945,6 +16959,23 @@ int spawnRitualSacDoctor(B)(int side,Vector3f position,float facing,ObjectState!
 	return id;
 }
 
+bool isRitualSacDoctor(B)(int id,ObjectState!B state){
+	if(!id) return false;
+	foreach(ref ritual;state.obj.opaqueObjects.effects.rituals.data)
+		if(!ritual.stopped&&ritual.sacDoctors[].canFind(id)) return true;
+	return false;
+}
+
+enum ritualArrivalDistance=2.0f;
+bool ritualSacDoctorsArrived(B)(ref int[4] sacDoctors,ref Tuple!(Vector3f,float)[4] positions,ObjectState!B state){
+	foreach(k,id;sacDoctors){
+		auto position=state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(id);
+		if(isNaN(position.x)) continue;
+		if((position.xy-positions[k][0].xy).lengthsqr>ritualArrivalDistance^^2) return false;
+	}
+	return true;
+}
+
 Tuple!(Vector3f,float)[4] ritualPositions(B)(Vector3f shrinePosition,ObjectState!B state,float progress=0.0f){
 	typeof(return) result;
 	foreach(k;0..4){
@@ -17038,14 +17069,16 @@ bool updateRitual(B)(ref Ritual!B ritual,ObjectState!B state){
 			vortex.updateRedVortex(state,vortex.desecrateHeight);
 		}
 		if(frame>=ritual.setupTime){
-			auto time=frame-ritual.setupTime;
 			static assert(updateFPS==60);
 			enum walkTime=4*updateFPS+updateFPS/2;
 			enum shootTime=4*updateFPS+updateFPS/2;
 			enum waitTime=4*updateFPS+updateFPS/2;
 			enum roundTime=walkTime+shootTime+waitTime;
-			auto nRounds=time/roundTime;
-			auto progress=time%roundTime;
+			auto nRounds=ritual.numRounds;
+			auto progress=ritual.roundFrame;
+			// original: the ritual waits until all sac doctors have reached their positions (Sacrifice.exe altar
+			// process, stages 64/65), so vines and slime on a sac doctor delay it
+			bool advance=true;
 			if(progress<walkTime){
 				auto positions=ritualPositions(shrinePosition,state,float(progress)/walkTime);
 				foreach(k,id;sacDoctors){
@@ -17062,6 +17095,7 @@ bool updateRitual(B)(ref Ritual!B ritual,ObjectState!B state){
 						}
 					},(){})(id,positions[k][0],state);
 				}
+				if(progress==walkTime-1) advance=ritualSacDoctorsArrived(sacDoctors,positions,state);
 			}else{
 				if(progress==walkTime){
 					foreach_reverse(k;1..sacDoctors.length)
@@ -17138,6 +17172,10 @@ bool updateRitual(B)(ref Ritual!B ritual,ObjectState!B state){
 							break;
 					}
 				}
+			}
+			if(advance&&++ritual.roundFrame==roundTime){
+				ritual.roundFrame=0;
+				++ritual.numRounds;
 			}
 		}
 		static bool filter(ref ProximityEntry entry,ObjectState!B state,int[4] sacDoctors,int creature){
