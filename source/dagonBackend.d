@@ -213,6 +213,7 @@ final class SacScene: Scene{
 		scope(exit) frameprof.markRender("hud");
 		super.renderEntities2D(rc);
 		updateMouse();
+		info.fps=eventManager.fps;
 		typeof(renderer).R2DOpt r2dopt={cursorSize: options.cursorSize,
 			triggerHistoryVisible: triggerHistoryVisible,
 			triggerHistorySelection: triggerHistorySelection,
@@ -672,7 +673,7 @@ final class SacScene: Scene{
 			return true;
 		}
 		if(triggerHistoryVisible){
-			if(keyDown[KEY_F8]||keyDown[KEY_ESCAPE]) triggerHistoryVisible=false;
+			if(keyDown[KEY_ESCAPE]) triggerHistoryVisible=false;
 			else{
 				foreach(_;0..keyDown[KEY_UP]) moveTriggerHistorySelection(-1);
 				foreach(_;0..keyDown[KEY_DOWN]) moveTriggerHistorySelection(1);
@@ -695,10 +696,6 @@ final class SacScene: Scene{
 			}
 			if(submitted) return true;
 		}
-		if(keyDown[KEY_F8]&&!triggerCameraInputCaptured()){
-			openTriggerHistory();
-			return true;
-		}
 		if(auto tip=currentTriggerTip()){
 			if(keyDown[KEY_ESCAPE]){
 				triggerDismissedTipSide=renderSide;
@@ -711,6 +708,7 @@ final class SacScene: Scene{
 	}
 
 	void control(Duration dt){
+		foreach(_;0..keyDown[KEY_F8]) info.fpsVisible=!info.fpsVisible;
 		bool captured=triggerControl(dt);
 		if(captured){
 			// Modal trigger input and local history must not click through into game controls.

@@ -160,6 +160,8 @@ struct RenderInfo(B){
 	float triggerCinematicsAmount=0.0f;
 	auto spellbookTab=SpellType.creature;
 	ActiveChatMessages activeChatMessages;
+	bool fpsVisible=false; // toggled with F8
+	int fps=0;
 }
 
 struct Renderer(B){
@@ -5101,6 +5103,29 @@ struct Renderer(B){
 		unbindFont(font,rc);
 	}
 
+	void renderFPS(ref RenderInfo!B info,B.RenderContext rc){
+		if(!info.fpsVisible) return;
+		import std.format: sformat;
+		char[32] buffer;
+		auto text=sformat(buffer[],"FPS: %s",info.fps);
+		auto font=SacFont!B.get(FontType.fnwt);
+		auto hudScaling=info.hudScaling;
+		FormatSettings settings={flowType:FlowType.left, scale:hudScaling};
+		auto size=font.getSize(text,settings)+Vector2f((3.0f+3.0f)*hudScaling,(2.0f+4.0f)*hudScaling);
+		auto upperLeft=Vector3f(4.0f*hudScaling,4.0f*hudScaling,0.0f);
+		B.colorHUDMaterialBackend.bind(null,rc);
+		B.colorHUDMaterialBackend.bindDiffuse(whiteTexture);
+		B.colorHUDMaterialBackend.setColor(Color4f(0.0f,0.0f,0.0f,0.68f));
+		B.colorHUDMaterialBackend.setTransformationScaled(upperLeft,Quaternionf.identity(),Vector3f(size.x,size.y,0.0f),rc);
+		quad.render(rc);
+		B.colorHUDMaterialBackend.unbind(null,rc);
+		auto textPos=upperLeft+Vector3f(3.0f*hudScaling,2.0f*hudScaling,0.0f);
+		bindFont(font,rc);
+		setFontColor(font,Color4f(1.0f,1.0f,1.0f,1.0f));
+		drawText(font,text,textPos.x,textPos.y,settings,info,rc);
+		unbindFont(font,rc);
+	}
+
 	void renderMouseoverBox(int cursorSize,ObjectState!B state,scope SacFormState!B[] forms,ref RenderInfo!B info,B.RenderContext rc){
 		auto target=info.mouse.target;
 		static bool requiresDelay(TargetType type){
@@ -6003,6 +6028,7 @@ struct Renderer(B){
 				renderText(state,info,rc);
 			}
 			renderChatMessages(state,networkState,info,rc);
+			renderFPS(info,rc);
 			renderForms(forms,info,rc);
 			renderRectangleSelectFrame(info,rc);
 			if(state) renderTriggerPresentation(options,state,info,rc);
@@ -6014,6 +6040,7 @@ struct Renderer(B){
 				renderText(state,info,rc);
 			}
 			renderChatMessages(state,networkState,info,rc);
+			renderFPS(info,rc);
 			if(state) renderTriggerPresentation(options,state,info,rc);
 		}
 	}
