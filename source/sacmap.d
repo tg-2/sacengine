@@ -551,6 +551,84 @@ void writeScarSnapshot(ScarTerrain* terrain,Scar[] mapScars,ref ScarLog scars,in
 	pool.writeSnapshot(data);
 }
 
+// What the terrain textures show: applies the scar log of the game state incrementally. After a rollback, only the
+// blocks that are not in the game state anymore are undone (using a journal of their changes).
+struct ScarView{
+	ScarPool pool;
+	bool initialized=false;
+	ScarLog applied; // the scars that the pool shows
+	static struct AppliedBlock{
+		ScarBlock* block;
+		ScarJournal journal;
+	}
+	Array!AppliedBlock journals; // for the applied blocks that may still be rolled back, oldest first
+	Array!(ScarBlock*) blocksToApply;
+	enum maxJournals=1024; // in case the committed frame is unknown
+
+	private void reset(ScarTerrain* terrain,Scar[] mapScars,ref ScarLog scars,int limit){
+		journals.length=0;
+		pool.initialize(terrain,limit);
+		initialized=true;
+		auto root=scars.root;
+		if(root&&root.snapshot.length){ // joined a running game
+			pool.readSnapshot(root.snapshot.data);
+			applied=ScarLog.retain(root);
+		}else{
+			pool.applyMapScars(mapScars);
+			applied=ScarLog.init;
+		}
+	}
+	// returns whether the pool was reset (then all slots may have changed)
+	bool update(ScarTerrain* terrain,Scar[] mapScars,ref ScarLog scars,int limit,int committedFrame,bool enableBloodStains,bool enableScars){
+		bool wasReset=false;
+		if(!initialized||pool.limit!=max(1,limit)){
+			reset(terrain,mapScars,scars,limit);
+			wasReset=true;
+		}
+		foreach(attempt;0..2){
+			auto target=scars.last,current=applied.last;
+			blocksToApply.length=0;
+			bool rebuild=false;
+			while(current!=target){
+				if(target&&(!current||target.depth>current.depth)){
+					if(target.snapshot.length){ rebuild=true; break; } // the state was replaced (late join): start from its snapshot
+					blocksToApply~=target;
+					target=target.previous;
+					continue;
+				}
+				if(!journals.length||journals[$-1].block!=current){ rebuild=true; break; }
+				pool.undo(journals[$-1].journal);
+				journals.length=journals.length-1;
+				current=current.previous;
+			}
+			if(rebuild&&attempt==0){ // new snapshot, or the undo information is gone: start over
+				reset(terrain,mapScars,scars,limit);
+				wasReset=true;
+				continue;
+			}
+			foreach_reverse(block;blocksToApply.data){
+				if(block.snapshot.length) continue;
+				journals.length=journals.length+1;
+				pool.beginJournal(&journals[$-1].journal);
+				journals[$-1].block=block;
+				pool.applyScars(block,enableBloodStains,enableScars);
+				pool.journal=null;
+			}
+			break;
+		}
+		applied=scars;
+		// blocks up to the committed frame cannot be rolled back anymore
+		size_t numCommitted=0;
+		while(numCommitted<journals.length&&(journals[numCommitted].block.frame<=committedFrame||journals.length-numCommitted>maxJournals))
+			numCommitted++;
+		if(numCommitted){
+			foreach(k;0..journals.length-numCommitted) swap(journals[k],journals[k+numCommitted]);
+			journals.length=journals.length-numCommitted;
+		}
+		return wasReset;
+	}
+}
+
 final class SacMap(B){
 	string path;
 	string mapFolder;
@@ -592,15 +670,8 @@ final class SacMap(B){
 
 	// terrain scars (see ScarPool)
 	ScarTerrain scarTerrain;
-	ScarPool scarPool;
-	bool scarPoolInitialized=false;
-	ScarLog appliedScars; // the scars that the textures show
-	static struct AppliedScarBlock{
-		ScarBlock* block;
-		ScarJournal journal;
-	}
-	Array!AppliedScarBlock scarJournals; // undo information for the applied blocks that may still be rolled back
-	Array!(ScarBlock*) scarBlocksToApply;
+	ScarView scarView;
+	@property ref ScarPool scarPool(){ return scarView.pool; }
 	Array!(B.Texture) scarTextures; // for each slot of the pool
 	Array!(B.TerrainMesh) scarMeshes; // the cell of the slot, drawn with its texture instead of the tile texture
 	Array!int scarMeshCells;
@@ -667,7 +738,7 @@ final class SacMap(B){
 		return updated;
 	}
 	private int cellScarSlot(int j,int i){
-		if(!scarPoolInitialized||j<0||j>=256||i<0||i>=256) return -1;
+		if(!scarView.initialized||j<0||j>=256||i<0||i>=256) return -1;
 		auto slot=scarPool.cellSlots[256*j+i]-1;
 		if(slot<0||slot>=scarMeshCells.length||scarMeshCells[slot]!=256*j+i) return -1;
 		return slot;
@@ -726,28 +797,6 @@ final class SacMap(B){
 		}
 		B.destroyTerrainMesh(scarMeshes[slot]);
 	}
-	private void resetScars(ref ScarLog scars,int maxScarTextures){
-		foreach(slot;0..cast(int)scarMeshCells.length) if(scarMeshCells[slot]!=-1) detachScarMesh(slot);
-		scarJournals.length=0;
-		scarPool.initialize(&scarTerrain,maxScarTextures);
-		scarPoolInitialized=true;
-		auto oldLength=scarTextures.length;
-		scarTextures.length=scarPool.limit;
-		scarMeshes.length=scarPool.limit;
-		scarMeshCells.length=scarPool.limit;
-		scarMeshCells.data[]=-1;
-		auto root=scars.root;
-		if(root&&root.snapshot.length){ // joined a running game
-			scarPool.readSnapshot(root.snapshot.data);
-			appliedScars=ScarLog.retain(root);
-		}else{
-			scarPool.applyMapScars(ntts.scars);
-			appliedScars=ScarLog.init;
-		}
-		foreach(slot;0..scarPool.limit) scarPool.slotChanged[slot]=0;
-		scarPool.changedSlots.length=0;
-		foreach(slot;0..scarPool.limit) syncScarSlot(slot);
-	}
 	private void syncScarSlot(int slot){
 		auto cell=scarPool.slots[slot].cell;
 		if(scarMeshCells[slot]!=cell){
@@ -764,46 +813,18 @@ final class SacMap(B){
 		}
 		B.updateTexture(scarTextures[slot],true);
 	}
-	// shows the scars of the game state; only blocks that were rolled back are undone (original: 0x44cb90)
+	// shows the scars of the game state (original: 0x44cb90)
 	void updateScars(ref ScarLog scars,int maxScarTextures,int committedFrame,bool enableBloodStains,bool enableScars){
-		if(!scarPoolInitialized||scarPool.limit!=max(1,maxScarTextures)) resetScars(scars,maxScarTextures);
-		foreach(attempt;0..2){
-			auto target=scars.last,applied=appliedScars.last;
-			scarBlocksToApply.length=0;
-			bool rebuild=false;
-			while(applied!=target){
-				if(target&&(!applied||target.depth>applied.depth)){
-					scarBlocksToApply~=target;
-					target=target.previous;
-					continue;
-				}
-				if(!scarJournals.length||scarJournals[$-1].block!=applied){ rebuild=true; break; }
-				scarPool.undo(scarJournals[$-1].journal);
-				scarJournals.length=scarJournals.length-1;
-				applied=applied.previous;
-			}
-			if(rebuild&&attempt==0){ // undo information is gone (should not happen), start over
-				resetScars(scars,maxScarTextures);
-				continue;
-			}
-			foreach_reverse(block;scarBlocksToApply.data){
-				if(block.snapshot.length) continue;
-				scarJournals.length=scarJournals.length+1;
-				scarPool.beginJournal(&scarJournals[$-1].journal);
-				scarJournals[$-1].block=block;
-				scarPool.applyScars(block,enableBloodStains,enableScars);
-				scarPool.journal=null;
-			}
-			break;
-		}
-		appliedScars=scars;
-		// blocks up to the committed frame cannot be rolled back anymore
-		size_t numCommitted=0;
-		while(numCommitted<scarJournals.length&&(scarJournals[numCommitted].block.frame<=committedFrame||scarJournals.length-numCommitted>maxScarJournals))
-			numCommitted++;
-		if(numCommitted){
-			foreach(k;0..scarJournals.length-numCommitted) swap(scarJournals[k],scarJournals[k+numCommitted]);
-			scarJournals.length=scarJournals.length-numCommitted;
+		if(scarView.update(&scarTerrain,ntts.scars,scars,maxScarTextures,committedFrame,enableBloodStains,enableScars)){
+			foreach(slot;0..cast(int)scarMeshCells.length) if(scarMeshCells[slot]!=-1) detachScarMesh(slot);
+			scarTextures.length=scarPool.limit;
+			scarMeshes.length=scarPool.limit;
+			scarMeshCells.length=scarPool.limit;
+			scarMeshCells.data[]=-1;
+			foreach(slot;0..scarPool.limit) scarPool.slotChanged[slot]=0;
+			scarPool.changedSlots.length=0;
+			foreach(slot;0..scarPool.limit) syncScarSlot(slot);
+			return;
 		}
 		foreach(slot;scarPool.changedSlots.data){
 			scarPool.slotChanged[slot]=0;
@@ -811,7 +832,6 @@ final class SacMap(B){
 		}
 		scarPool.changedSlots.length=0;
 	}
-	enum maxScarJournals=1024; // in case the committed frame is unknown
 
 	void makeMeshes(bool enableMapBottom){
 		this.enableMapBottom=enableMapBottom;
