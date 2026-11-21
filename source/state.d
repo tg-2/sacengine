@@ -14918,8 +14918,8 @@ void runPhoenixPassive(B)(ref MovingObject!B object,SacSpell!B passive,ObjectSta
 		if(target.id==attacker) return;
 		state.movingObjectById!((ref obj,damage,attacker,side,hasTarget,state){
 			if(state.getStance(side,obj.side)!=Stance.ally){
-				*hasTarget=true;
-				obj.ignite(damage,attacker,side,state);
+				if(obj.ignite(damage,attacker,side,state))
+					*hasTarget=true;
 			}
 		},(){})(target.id,spell.amount/updateFPS,attacker,side,hasTarget,state);
 	}
@@ -18346,13 +18346,15 @@ bool updateFireformCasting(B)(ref FireformCasting!B fireformCast,ObjectState!B s
 	}
 }
 
-void ignite(B)(ref MovingObject!B obj,float damage,int attacker,int side,ObjectState!B state){
+bool ignite(B)(ref MovingObject!B obj,float damage,int attacker,int side,ObjectState!B state){
+	if(!obj.canDamage(state)) return false; // e.g., wizards in ghost form do not burn
 	enum numParticles=3;
 	obj.dealFireDamage(0.0f,damage,attacker,side,DamageMod.peirceShield,state);
 	obj.spawnFireParticles(numParticles,state);
 	if(obj.creatureStats.effects.ignitionTime+updateFPS/3<state.frame)
 		playSoundAt("1ngi",obj.id,state,2.0f);
 	obj.creatureStats.effects.ignitionTime=state.frame;
+	return true;
 }
 
 bool updateFireform(B)(ref Fireform!B fireform,ObjectState!B state){
