@@ -32,6 +32,8 @@ struct Options{
 	int shadowMapResolution=1024;
 	bool enableWidgets=true;
 	bool enableMapBottom=true;
+	bool enableBloodStains=true; // blood on the ground (--no-blood-stains)
+	bool enableScars=true; // scorch marks, cracks, ... of spells on the ground (--no-scars)
 	bool enableFog=false;
 	bool enableSSAO=false;
 	bool enableGlow=true;

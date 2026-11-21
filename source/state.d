@@ -1854,6 +1854,10 @@ struct Particle(B,ParticleKind kind=ParticleKind.standard,bool sideFiltered=fals
 		float angle;
 		float angleIncrement;
 		float acceleration;
+	}else static if(kind==ParticleKind.decaying){
+		float scaleRate; // change of scale per frame
+		int totalLifetime;
+		bool scars; // leaves a scar on the terrain where it hits the ground
 	}else static assert(kind==ParticleKind.standard);
 	Vector3f position;
 	Vector3f velocity;
@@ -1879,6 +1883,18 @@ struct Particle(B,ParticleKind kind=ParticleKind.standard,bool sideFiltered=fals
 			this.angle=angle;
 			this.angleIncrement=angleIncrement;
 			this.acceleration=acceleration;
+			this.position=position;
+			this.velocity=velocity;
+			this.scale=scale;
+			this.lifetime=lifetime;
+			this.frame=frame;
+		}
+	}else static if(kind==ParticleKind.decaying){
+		this(SacParticle!B sacParticle,float scaleRate,int totalLifetime,bool scars,Vector3f position,Vector3f velocity,float scale,int lifetime,int frame){
+			this.sacParticle=sacParticle;
+			this.scaleRate=scaleRate;
+			this.totalLifetime=totalLifetime;
+			this.scars=scars;
 			this.position=position;
 			this.velocity=velocity;
 			this.scale=scale;
@@ -2555,6 +2571,10 @@ struct Particles(B,ParticleKind kind,bool sideFiltered=false){
 		Array!float angles;
 		Array!float angleIncrements;
 		Array!float accelerations;
+	}else static if(kind==ParticleKind.decaying){
+		Array!float scaleRates;
+		Array!int totalLifetimes;
+		Array!ubyte scars; // TODO: support Array!bool serialization?
 	}else static assert(kind==ParticleKind.standard);
 	Array!Vector3f positions;
 	Array!Vector3f velocities;
@@ -2573,6 +2593,10 @@ struct Particles(B,ParticleKind kind,bool sideFiltered=false){
 			angles.length=l;
 			angleIncrements.length=l;
 			accelerations.length=l;
+		}else static if(kind==ParticleKind.decaying){
+			scaleRates.length=l;
+			totalLifetimes.length=l;
+			scars.length=l;
 		}else static assert(kind==ParticleKind.standard);
 		positions.length=l;
 		velocities.length=l;
@@ -2590,6 +2614,10 @@ struct Particles(B,ParticleKind kind,bool sideFiltered=false){
 			angles.reserve(reserveSize);
 			angleIncrements.reserve(reserveSize);
 			accelerations.reserve(reserveSize);
+		}else static if(kind==ParticleKind.decaying){
+			scaleRates.reserve(reserveSize);
+			totalLifetimes.reserve(reserveSize);
+			scars.reserve(reserveSize);
 		}else static assert(kind==ParticleKind.standard);
 		positions.reserve(reserveSize);
 		velocities.reserve(reserveSize);
@@ -2609,6 +2637,10 @@ struct Particles(B,ParticleKind kind,bool sideFiltered=false){
 			angles~=particle.angle;
 			angleIncrements~=particle.angleIncrement;
 			accelerations~=particle.acceleration;
+		}else static if(kind==ParticleKind.decaying){
+			scaleRates~=particle.scaleRate;
+			totalLifetimes~=particle.totalLifetime;
+			scars~=particle.scars;
 		}else static assert(kind==ParticleKind.standard);
 		positions~=particle.position;
 		velocities~=particle.velocity;
@@ -2628,6 +2660,7 @@ struct Particles(B,ParticleKind kind,bool sideFiltered=false){
 		}else{
 			static if(kind==ParticleKind.relative) return Particle!(B,kind)(sacParticle,baseIds[i],!!rotates[i],positions[i],velocities[i],scales[i],lifetimes[i],frames[i]);
 			else static if(kind==ParticleKind.relativeTwirl) return Particle!(B,kind)(sacParticle,baseIds[i],angles[i],angleIncrements[i],accelerations[i],positions[i],velocities[i],scales[i],lifetimes[i],frames[i]);
+			else static if(kind==ParticleKind.decaying) return Particle!(B,kind)(sacParticle,scaleRates[i],totalLifetimes[i],!!scars[i],positions[i],velocities[i],scales[i],lifetimes[i],frames[i]);
 			else static if(kind==ParticleKind.standard) return Particle!(B,kind)(sacParticle,positions[i],velocities[i],scales[i],lifetimes[i],frames[i]);
 			else static assert(0);
 		}
@@ -2642,6 +2675,10 @@ struct Particles(B,ParticleKind kind,bool sideFiltered=false){
 			angles[i]=particle.angle;
 			angleIncrements[i]=particle.angleIncrement;
 			accelerations[i]=particle.acceleration;
+		}else static if(kind==ParticleKind.decaying){
+			scaleRates[i]=particle.scaleRate;
+			totalLifetimes[i]=particle.totalLifetime;
+			scars[i]=particle.scars;
 		}else static assert(kind==ParticleKind.standard);
 		positions[i]=particle.position;
 		velocities[i]=particle.velocity;
@@ -3408,6 +3445,7 @@ struct Bore(B){
 	int frame=0;
 	bool holeSpawned=false;
 	int soundTimer=0;
+	Vector3f lastScarPosition=Vector3f(0.0f,0.0f,0.0f);
 
 	enum holeSpawnTimer=10*updateFPS;
 	enum scribeSpeed=0.9f;
@@ -7437,6 +7475,25 @@ class NetworkState(B){
 	ChatMessages!B chatMessages;
 }
 
+// Scars on the terrain (original: Sacrifice.exe 0x44cb90). They only change the terrain textures,
+// so the renderer applies them (SacMap.updateScars). The most recent ones are kept in this ring buffer.
+struct ScarEvent{
+	char[4] tag; // SCAR resource
+	Vector3f position;
+	int width,height; // part of the SCAR image that is applied, 0 for all of it
+	ScarKind kind;
+	int frame;
+}
+struct ScarEvents{
+	enum capacity=256;
+	ulong count=0;
+	ScarEvent[capacity] events;
+	void addScar(ScarEvent event){
+		events[count%capacity]=event;
+		count++;
+	}
+}
+
 struct EdgeChanges{
 	enum emptyHash=edgeChangesEmptyHash;
 	uint hash=emptyHash;
@@ -7527,10 +7584,12 @@ struct Objects(B,RenderMode mode){
 		Array!(Particles!(B,ParticleKind.standard)) particles;
 		Array!(Particles!(B,ParticleKind.relative)) relativeParticles;
 		Array!(Particles!(B,ParticleKind.relativeTwirl)) relativeTwirlParticles;
+		Array!(Particles!(B,ParticleKind.decaying)) decayingParticles;
 		Array!(Particles!(B,ParticleKind.standard,true)) filteredParticles;
 		Effects!B effects;
 		PermanentDisplacement!B permanentDisplacement;
 		EdgeChanges edgeChanges;
+		ScarEvents scarEvents;
 		CommandCones!B commandCones;
 		Highlights!B highlights;
 		ChatMessages!B chatMessages;
@@ -7662,6 +7721,7 @@ struct Objects(B,RenderMode mode){
 				alias particles=filteredParticles;
 			}else static if(kind==ParticleKind.relative) alias particles=relativeParticles;
 			else static if(kind==ParticleKind.relativeTwirl) alias particles=relativeTwirlParticles;
+			else static if(kind==ParticleKind.decaying) alias particles=decayingParticles;
 			else static assert(kind==ParticleKind.standard);
 			// cache, does not change semantics
 			auto cand=sacParticle.stateIndex;
@@ -7685,6 +7745,7 @@ struct Objects(B,RenderMode mode){
 				alias particles=filteredParticles;
 			}else static if(kind==ParticleKind.relative) alias particles=relativeParticles;
 			else static if(kind==ParticleKind.relativeTwirl) alias particles=relativeTwirlParticles;
+			else static if(kind==ParticleKind.decaying) alias particles=decayingParticles;
 			else static assert(kind==ParticleKind.standard);
 			enforce(0<=index && index<particles.length);
 			particles[index].addParticle(particle);
@@ -7747,6 +7808,8 @@ auto eachParticles(alias f,B,T...)(ref Objects!(B,RenderMode.opaque) objects,T a
 			f(particle,args);
 		foreach(ref particle;relativeTwirlParticles.data)
 			f(particle,args);
+		foreach(ref particle;decayingParticles.data)
+			f(particle,args);
 		foreach(ref particle;filteredParticles.data)
 			f(particle,args);
 	}
@@ -7805,6 +7868,8 @@ auto eachByType(alias f,EachByTypeFlags flags,B,RenderMode mode,T...)(ref Object
 			foreach(ref particle;relativeParticles.data)
 				f(particle,args);
 			foreach(ref particle;relativeTwirlParticles.data)
+				f(particle,args);
+			foreach(ref particle;decayingParticles.data)
 				f(particle,args);
 			foreach(ref particle;filteredParticles.data)
 				f(particle,args);
@@ -8530,6 +8595,7 @@ bool kill(B,bool pretending=false)(ref MovingObject!B object, ObjectState!B stat
 		if(object.creatureState.mode!=CreatureMode.convertReviving){
 			object.creatureState.mode=CreatureMode.dying;
 			playSoundTypeAt(object.sacObject,object.id,SoundType.death,state);
+			object.bleedFromDeath(state);
 			foreach(ability;only(object.passiveAbility,object.passiveAbility2)){
 				if(ability) switch(ability.tag){
 					case SpellTag.steamCloud: object.steamCloud(ability,state); break;
@@ -8565,6 +8631,78 @@ void killAll(B)(int side, ObjectState!B state){
 
 bool playDead(B)(ref MovingObject!B object, ObjectState!B state){
 	return object.kill!(B,true)(state);
+}
+
+// SCAR resource named by a spell argument (original: 0x4502e0)
+char[4] spellScar(B)(SacSpell!B spell,char[4] key,char[4] defaultScar){
+	char[4] value=defaultScar;
+	reverse(value[]);
+	int result=*cast(int*)value.ptr;
+	if(spell) result=spell.spellArgInt(key,result);
+	value=*cast(char[4]*)&result;
+	reverse(value[]);
+	return value;
+}
+void addSpellScar(B)(char[4] scar,Vector3f position,ObjectState!B state){
+	state.addScar(scar,position,ScarKind.spell);
+}
+// only close to the ground (original: 0x44cb50)
+void addSpellScarNearGround(B)(char[4] scar,Vector3f position,float maxDistance,ObjectState!B state){
+	if(abs(state.getHeight(position)-position.z)<maxDistance) state.addScar(scar,position,ScarKind.spell);
+}
+// scar of fireball explosions, only close to the ground (original: 0x43b280)
+void addFireballScar(B)(SacSpell!B spell,Vector3f position,ObjectState!B state){
+	if(position.z-state.getHeight(position)<10.0f) state.addScar(spellScar(spell,"tXsc","scar"),position,ScarKind.spell);
+}
+// thrown rocks hitting the ground (original: 0x439270)
+void addRockShatterScar(B)(SacSpell!B spell,Vector3f position,ObjectState!B state){
+	addSpellScarNearGround(spellScar(spell,"tRS4","gscr"),position,5.0f,state);
+}
+// rocks and other things that come out of the ground (original: 0x4380f0)
+void addEmergingScar(B)(SacSpell!B spell,Vector3f position,ObjectState!B state){
+	addSpellScar(spellScar(spell,"tRE3","tscr"),position,state);
+}
+
+// Blood (original: Sacrifice.exe 0x45ce10 with particle preset 133 of game3d.dll)
+// The drops start at the position of the creature and fly away from the attacker. A drop that hits the ground
+// disappears and leaves a blood stain.
+enum bloodDropScale=0.25f;
+enum bloodDropAcceleration=0.002725f*updateFPS*updateFPS; // 0.002725 per frame^2
+void bleed(B)(ref MovingObject!B object,int numDrops,float speed,Vector3f direction,ObjectState!B state){
+	if(numDrops<=0||!state.enableParticles) return;
+	auto sacParticle=SacParticle!B.get(ParticleType.bloodDrop);
+	enum halfBoxSize=0.2f*bloodDropScale;
+	foreach(i;0..numDrops){
+		auto lifetime=cast(int)(state.uniform(1.5f,2.5f)*updateFPS);
+		auto size=2.0f*state.uniform(0.7f*bloodDropScale,1.4f*bloodDropScale);
+		auto endFactor=state.uniform(0.25f,0.5f);
+		auto offset=Vector3f(state.uniform(-halfBoxSize,halfBoxSize),state.uniform(-halfBoxSize,halfBoxSize),state.uniform(-halfBoxSize,halfBoxSize));
+		auto angle1=state.uniform(0.0f,2.0f*pi!float),angle2=state.uniform(0.0f,2.0f*pi!float);
+		offset.x*=sin(angle1);
+		offset.y*=cos(angle1);
+		auto s2=sin(angle2);
+		offset=Vector3f(s2*offset.x,s2*offset.y,cos(angle2)*offset.z);
+		auto velocity=speed*Vector3f(state.uniform(direction.x-0.5f,direction.x+0.5f),state.uniform(direction.y-0.5f,direction.y+0.5f),state.uniform(direction.z,direction.z+1.0f));
+		auto scaleRate=(endFactor-1.0f)*size/lifetime;
+		state.addParticle(Particle!(B,ParticleKind.decaying)(sacParticle,scaleRate,lifetime,true,object.position+offset,velocity,size,lifetime,0));
+	}
+}
+Vector3f bloodDirection(Vector3f attackDirection){
+	auto length=attackDirection.length;
+	if(!(length>0.0f)) return Vector3f(0.0f,0.0f,0.0f);
+	return attackDirection/length;
+}
+// original: CreatureDamage 0x459950, when the damage is not lethal
+void bleedFromDamage(B)(ref MovingObject!B object,float damage,Vector3f attackDirection,ObjectState!B state){
+	if(!(object.creatureStats.health>0.0f)) return; // dying creatures bleed in kill
+	auto maxHealth=cast(int)object.creatureStats.maxHealth;
+	if(maxHealth<=0) return;
+	auto numDrops=4+(32*cast(int)damage+state.uniform(32))/maxHealth;
+	object.bleed(numDrops,5.0f,bloodDirection(attackDirection),state);
+}
+// original: 0x453820, when the death animation starts
+void bleedFromDeath(B)(ref MovingObject!B object,ObjectState!B state){
+	object.bleed(16+state.uniform(32),10.0f,Vector3f(0.0f,0.0f,0.0f),state);
 }
 
 void gibAnimation(B)(Vector3f position,ObjectState!B state,float gain=4.0f){
@@ -9133,6 +9271,7 @@ enum DamageMod{
 	desecration=1<<7,
 	peirceShield=1<<8,
 	ignoreFriendly=1<<9,
+	continuous=1<<10, // damage over time, does not bleed
 }
 
 float attackDamageFactor(B)(ref MovingObject!B attacker,bool targetIsCreature,DamageMod damageMod,ObjectState!B state){
@@ -9151,6 +9290,7 @@ float attackDamageFactor(B)(ref MovingObject!B attacker,bool targetIsCreature,Da
 float dealDamage(T,B)(ref T object,float damage,int attacker,int attackingSide,Vector3f attackDirection,DamageMod damageMod,ObjectState!B state,bool checkIdle=true)if(is(T==MovingObject!B)||is(T==Building!B)){
 	auto actualDamage=dealDamage(object,damage,attacker,attackingSide,damageMod,state);
 	static if(is(T==MovingObject!B)) if(actualDamage>0.0f) object.damageAnimation(attackDirection,state,checkIdle);
+	static if(is(T==MovingObject!B)) if(actualDamage>0.0f&&!(damageMod&DamageMod.continuous)) object.bleedFromDamage(actualDamage,attackDirection,state);
 	return actualDamage;
 }
 
@@ -9182,6 +9322,7 @@ bool canDamage(B)(ref MovingObject!B object,ObjectState!B state){
 float dealDamage(B)(ref MovingObject!B object,float damage,ref MovingObject!B attacker,Vector3f attackDirection,DamageMod damageMod,ObjectState!B state,bool checkIdle=true){
 	auto actualDamage=dealDamage(object,damage,attacker,damageMod,state,checkIdle);
 	if(actualDamage>0.0f) object.damageAnimation(attackDirection,state,checkIdle);
+	if(actualDamage>0.0f&&!(damageMod&DamageMod.continuous)) object.bleedFromDamage(actualDamage,attackDirection,state);
 	return actualDamage;
 
 }
@@ -9533,6 +9674,7 @@ float dealMeleeDamage(B)(ref MovingObject!B object,ref MovingObject!B attacker,D
 		playSoundTypeAt(attacker.sacObject,attacker.id,SoundType.hit,state);
 		object.damageAnimation(attackDirection,state);
 	}
+	if(actualDamage>0.0f) object.bleedFromDamage(actualDamage,object.position-attacker.position,state);
 	return actualDamage;
 }
 
@@ -9711,7 +9853,9 @@ float dealFallDamage(B)(ref MovingObject!B object,ObjectState!B state){
 	if(!(speedPerTick>fallDamageThreshold)) return 0.0f;
 	auto damage=floor(speedPerTick*fallDamageFactor);
 	bool killed=false;
-	return object.dealDamage(damage,-1,DamageMod.fall,killed,state); // TODO: properly attribute fall damage and kills to sides
+	auto actualDamage=object.dealDamage(damage,-1,DamageMod.fall,killed,state); // TODO: properly attribute fall damage and kills to sides
+	if(actualDamage>0.0f&&!killed) object.bleedFromDamage(actualDamage,Vector3f(0.0f,0.0f,0.0f),state); // the original bleeds from any damage
+	return actualDamage;
 }
 
 
@@ -11136,6 +11280,7 @@ bool castRock(B)(int wizard,int target,ManaDrain!B manaDrain,SacSpell!B spell,in
 bool rock(B)(Rock!B rock,ObjectState!B state){
 	playSoundAt("tlep",rock.position,state,4.0f);
 	animateEmergingRock(rock,state);
+	addEmergingScar(rock.spell,rock.position,state); // original: RockRun
 	state.addEffect(rock);
 	return true;
 }
@@ -12035,7 +12180,7 @@ bool castMeanstalks(B)(int side,Vector3f center,ManaDrain!B manaDrain,SacSpell!B
 		meanstalks.vines[meanstalks.numVines++]=vine;
 		playSoundAt("akts",position,state,meanstalksGain);
 		animateMeanstalkSpawn(position,state);
-		// TODO: scar
+		addSpellScar(spellScar(spell,"tscr","ecrk"),position,state); // original: DivineRetributionStart
 	}
 	state.addEffect(MeanstalksCasting!B(manaDrain,move(meanstalks),castingTime));
 	return true;
@@ -16069,7 +16214,7 @@ void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 	}
 }
 
-void updateParticles(B,ParticleKind kind,bool sideFiltered)(ref Particles!(B,kind,sideFiltered) particles, ObjectState!B state){
+void updateParticles(B,ParticleKind kind,bool sideFiltered)(ref Particles!(B,kind,sideFiltered) particles, ObjectState!B state)if(kind!=ParticleKind.decaying){
 	if(!particles.sacParticle) return;
 	auto sacParticle=particles.sacParticle;
 	auto gravity=sacParticle.gravity;
@@ -16106,6 +16251,37 @@ void updateParticles(B,ParticleKind kind,bool sideFiltered)(ref Particles!(B,kin
 				}
 			}
 		}
+	}
+}
+
+void updateParticles(B,ParticleKind kind,bool sideFiltered)(ref Particles!(B,kind,sideFiltered) particles, ObjectState!B state)if(kind==ParticleKind.decaying){
+	// original: RunParticles 0x1601fb40 in game3d.dll
+	if(!particles.sacParticle) return;
+	auto acceleration=Vector3f(0.0f,0.0f,-bloodDropAcceleration);
+	for(int j=0;j<particles.length;){
+		particles.positions[j]+=particles.velocities[j]/updateFPS+0.5f*acceleration/(updateFPS*updateFPS);
+		particles.velocities[j]+=acceleration/updateFPS;
+		auto position=particles.positions[j];
+		bool hitGround=false;
+		if(state.isOnGround(position)){
+			auto groundHeight=state.getGroundHeight(position);
+			auto floor=groundHeight+0.25f*particles.scales[j]; // half of the radius
+			if(floor>position.z){
+				particles.positions[j].z=floor;
+				auto normal=Vector3f(-state.getGroundHeightDerivative(position,Vector3f(1.0f,0.0f,0.0f)),-state.getGroundHeightDerivative(position,Vector3f(0.0f,1.0f,0.0f)),1.0f).normalized;
+				if(dot(normal,particles.velocities[j])<0.0f){ // moving into the ground
+					hitGround=true;
+					if(particles.scars[j]) state.addScar("blud",particles.positions[j],ScarKind.blood,8,8);
+				}
+			}
+		}
+		particles.scales[j]+=particles.scaleRates[j];
+		particles.lifetimes[j]-=1;
+		if(hitGround||particles.lifetimes[j]<0){
+			particles.removeParticle(j);
+			continue;
+		}
+		j++;
 	}
 }
 
@@ -17093,6 +17269,8 @@ bool updateRitual(B)(ref Ritual!B ritual,ObjectState!B state){
 					enum tortureFrames=tortureEnd-tortureStart;
 					auto maxHealth=creature?state.movingObjectById!((ref obj)=>obj.creatureStats.maxHealth,()=>0.0f)(creature):0.0f;
 					giveXPToSide(side,maxHealth/tortureFrames,state);
+					// the victim bleeds while it is tortured (original: 0x448190)
+					if(creature) state.movingObjectById!((ref obj,state){ obj.bleed(1,2.0f,Vector3f(0.0f,0.0f,0.0f),state); },(){})(creature,state);
 					if(progress==walkTime+boltDelay+tortureStart||frame%changeShapeDelay==0){
 						foreach(ref bolt;altarBolts) bolt.changeShape(state);
 					}
@@ -17469,7 +17647,7 @@ bool updateLightning(B)(ref Lightning!B lightning,ObjectState!B state){
 	if(lightning.frame==lightning.travelDelay){
 		auto hitbox=lightning.end.hitbox(state);
 		if(lightning.end.type!=TargetType.none) sparkAnimation(hitbox,state);
-		// TODO: scar
+		addSpellScarNearGround(spellScar(lightning.spell,"tscr","scar"),lightning.end.position,2.5f,state); // original: 0x435a60
 		auto target=lightning.end.id;
 		if(state.isValidTarget(target)){
 			auto direction=lightning.end.position-lightning.start.position;
@@ -17761,6 +17939,7 @@ void animateFireballExplosion(int reduceParticles=1,B)(Vector3f position,ObjectS
 
 void fireballExplosion(B)(ref Fireball!B fireball,int target,ObjectState!B state){
 	playSpellSoundTypeAt(SoundType.explodingFireball,fireball.position,state,8.0f);
+	addFireballScar(fireball.spell,fireball.position,state);
 	if(state.isValidTarget(target)){
 		dealSpellDamage(target,fireball.spell,fireball.wizard,fireball.side,fireball.velocity,DamageMod.ignite|DamageMod.splash,state);
 		setAblaze(target,updateFPS,false,0.0f,fireball.wizard,fireball.side,DamageMod.ignite,state);
@@ -17879,6 +18058,7 @@ int rockCollisionTarget(B)(int immuneId,int side,Vector3f position,ObjectState!B
 void rockExplosion(B)(ref Rock!B rock,int target,ObjectState!B state){
 	playSpellSoundTypeAt(SoundType.explodingRock,rock.position,state,8.0f);
 	if(state.isValidTarget(target)) dealSpellDamage(target,rock.spell,rock.wizard,rock.side,rock.velocity,DamageMod.none,state);
+	addRockShatterScar(rock.spell,rock.position,state);
 	enum numParticles3=100;
 	auto sacParticle3=SacParticle!B.get(ParticleType.rock);
 	foreach(i;0..numParticles3){
@@ -18459,7 +18639,7 @@ void updateBugs(B)(ref ProtectiveSwarm!B protectiveSwarm,ref MovingObject!B wiza
 }
 
 float bugDamage(B)(ref MovingObject!B obj,float damage,int attacker,int side,Vector3f attackDirection,ObjectState!B state){
-	auto actualDamage=obj.dealSpellDamage(damage,attacker,side,attackDirection,DamageMod.none,state);
+	auto actualDamage=obj.dealSpellDamage(damage,attacker,side,attackDirection,DamageMod.continuous,state);
 	if(actualDamage){
 		if(obj.creatureStats.effects.buzzTime+updateFPS/3<state.frame)
 			playSpellSoundTypeAt(SoundType.swarm,obj.id,state,protectiveSwarmGain);
@@ -19527,7 +19707,7 @@ void animateErupt(B)(ref Erupt!B erupt,ObjectState!B state){
 				auto frame=0;
 				state.addParticle(Particle!B(sacParticle3,position,pvelocity,scale,lifetime,frame));
 			}
-			// TODO: scar
+			addEmergingScar(erupt.spell,position,state);
 		}
 	}
 }
@@ -19582,7 +19762,7 @@ void eruptExplosion(B)(ref Erupt!B erupt,ObjectState!B state){
 		auto frame=0;
 		state.addParticle(Particle!B(sacParticle3,position,pvelocity,scale,lifetime,frame));
 	}
-	// TODO: scar
+	addSpellScar(spellScar(erupt.spell,"tscr","escr"),erupt.position,state); // original: EruptRun
 }
 
 enum eruptGain0=2.0f, eruptGain1=4.0f, eruptGain2=8.0f;
@@ -19740,6 +19920,10 @@ bool updateBore(B)(ref Bore!B bore,ObjectState!B state){
 		}
 		if(frame%(updateFPS/10)==0) state.addEffect(ScreenShake(position,updateFPS/10,1.0f,100.0f));
 		if(--soundTimer<=0) soundTimer=playSpellSoundTypeAt!true(SoundType.bore,position,state,soulMoleGain); // TODO: sound should follow boulder
+		if((position-lastScarPosition).lengthsqr>5.0f^^2){ // original: BoreRun
+			lastScarPosition=position;
+			addSpellScar(spellScar(spell,"tscr","quk1"),position,state);
+		}
 		animateBore(bore,state);
 		return !arrived;
 	}
@@ -20192,6 +20376,7 @@ int haloRockCollisionTarget(B)(int side,Vector3f position,ObjectState!B state){
 void haloRockExplosion(B)(ref HaloRock!B haloRock,int target,ObjectState!B state,bool isAbility){
 	playSpellSoundTypeAt(isAbility?SoundType.bombardmentHit:SoundType.explodingRock,haloRock.position,state,2.0f);
 	if(state.isValidTarget(target)) dealSpellDamage(target,haloRock.spell,haloRock.wizard,haloRock.side,haloRock.velocity,DamageMod.none,state);
+	addRockShatterScar(haloRock.spell,haloRock.position,state);
 	enum numParticles3=50;
 	auto sacParticle3=SacParticle!B.get(ParticleType.rock);
 	foreach(i;0..numParticles3){
@@ -20299,7 +20484,7 @@ void animateEmergingHaloRock(B)(ref HaloRock!B haloRock,ObjectState!B state){
 		auto scale=sizeScale*state.uniform(0.5f,1.0f);
 		state.addParticle(Particle!B(sacParticle5,pposition,velocity,sizeScale,lifetime,frame));
 	}
-	// TODO: scar
+	addEmergingScar(haloRock.spell,haloRock.position,state);
 }
 
 void spawnHaloRock(B)(ref HaloOfEarth!B haloOfEarth,ObjectState!B state){
@@ -21159,7 +21344,6 @@ bool updateFirewall(B)(ref Firewall!B firewall,ObjectState!B state,bool active=t
 					auto scale=3.5f*(state.uniform(0,3)?state.uniform(1.5f,2.5f):state.uniform(1.8f,3.75f));
 					auto lifetime=2*numFrames;
 					state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,0));
-					// TODO: scar
 				}
 				if(!leftStopped){
 					auto cand=left-expansionSpeed;
@@ -21186,6 +21370,12 @@ bool updateFirewall(B)(ref Firewall!B firewall,ObjectState!B state,bool active=t
 				top=max(top-shrinkSpeed,0.0f);
 				if(top==0.0f) return false;
 				break;
+		}
+		if(status!=FirewallStatus.shrinking&&!state.uniform(15)){
+			// a scar at a random point of the wall, one in 15 frames (original: FireWallRun 0x4282b0)
+			auto halfWidth=0.5f*spell.spellArgFloat("fwid",10.0f)*min(1.0f,float(frame)/updateFPS);
+			auto position=center+state.uniform(left,right)*Vector3f(direction.x,direction.y,0.0f)+state.uniform(-halfWidth,halfWidth)*orthogonal;
+			addSpellScar(spellScar(spell,"tscr","quk1"),position,state);
 		}
 		auto sacParticle=SacParticle!B.get(ParticleType.firewall);
 		auto numFrames=sacParticle.numFrames;
@@ -21650,7 +21840,7 @@ WallOfSpikes!B.Spike makeWallOfSpikesSpike(B)(ref WallOfSpikes!B wallOfSpikes,Ob
 	auto offset=wallOfSpikes.spikeScale*state.uniformDisk(Vector2f(0.0f,0.0f),2.0f);
 	auto direction=Vector3f(offset.x,offset.y,state.uniform(0.4f,1.6f)*wallOfSpikes.spikeHeight);
 	// auto maxScale=state.uniform(0.9f,1.1f);
-	// TODO: scar
+	addSpellScar(spellScar(wallOfSpikes.spell,"tscr","quk1"),base,state); // original: SpikeWallStart
 	return WallOfSpikes!B.Spike(0.0f,base,direction);
 }
 
@@ -22258,6 +22448,7 @@ int rainOfFireDropCollisionTarget(B)(Vector3f position,ObjectState!B state){
 enum rainOfFireGain=1.0f;
 void rainOfFireDropExplosion(B)(ref RainOfFireDrop!B rainOfFireDrop,int target,ObjectState!B state){
 	playSpellSoundTypeAt(SoundType.explodingFireball,rainOfFireDrop.position,state,3.0f);
+	addFireballScar(rainOfFireDrop.spell,rainOfFireDrop.position,state);
 	if(state.isValidTarget(target)){
 		dealSpellDamage(target,rainOfFireDrop.spell,rainOfFireDrop.wizard,rainOfFireDrop.side,rainOfFireDrop.velocity,DamageMod.ignite|DamageMod.splash,state);
 		setAblaze(target,updateFPS,false,0.0f,rainOfFireDrop.wizard,rainOfFireDrop.side,DamageMod.ignite,state);
@@ -22411,7 +22602,7 @@ void animateEmergingBombardmentDrop(B)(ref BombardmentDrop!B bombardmentDrop,Obj
 		auto scale=sizeScale*state.uniform(0.5f,1.0f);
 		state.addParticle(Particle!B(sacParticle5,pposition,velocity,sizeScale,lifetime,frame));
 	}
-	// TODO: scar
+	addEmergingScar(bombardmentDrop.spell,bombardmentDrop.position,state); // original: MeteorShowerRun
 }
 
 bool updateBombardment(B)(ref Bombardment!B bombardment,ObjectState!B state){
@@ -22490,7 +22681,7 @@ void bombardmentDropExplosion(B)(ref BombardmentDrop!B bombardmentDrop,int targe
 		state.addParticle(Particle!B(sacParticle4,position,velocity,scale,lifetime,frame));
 	}
 	screenShake(bombardmentDrop.position,60,0.75f,250.0f,state);
-	// TODO: add scar
+	addRockShatterScar(bombardmentDrop.spell,bombardmentDrop.position,state);
 	if(!target||state.movingObjectById!((ref obj)=>obj.creatureState.movement==CreatureMovement.onGround,()=>true)(target))
 		state.obj.opaqueObjects.permanentDisplacement.bombardmentDent(bombardmentDrop.position.x,bombardmentDrop.position.y);
 }
@@ -22860,7 +23051,7 @@ void animateEmergingCow(B)(ref BovineIntervention!B bovineIntervention,ObjectSta
 		auto scale=sizeScale*state.uniform(0.5f,1.0f);
 		state.addParticle(Particle!B(sacParticle5,pposition,velocity,sizeScale,lifetime,frame));
 	}
-	// TODO: scar
+	addEmergingScar(bovineIntervention.spell,position,state); // original: BovineInterventionStart
 }
 
 void cowExplosion(B)(ref BovineIntervention!B bovineIntervention,ObjectState!B state){
@@ -22899,7 +23090,7 @@ void cowExplosion(B)(ref BovineIntervention!B bovineIntervention,ObjectState!B s
 		state.addParticle(Particle!B(sacParticle4,position,pvelocity,scale,lifetime,frame));
 	}
 	with(bovineIntervention) quake(wizard,side,bovineIntervention.position,spell,state);
-	// TODO: scar
+	addSpellScar("bovs",bovineIntervention.position,state); // original: BovineInterventionStart
 }
 
 bool updateBovineIntervention(B)(ref BovineIntervention!B bovineIntervention,ObjectState!B state){
@@ -23471,6 +23662,7 @@ bool updateVolcano(B)(ref Volcano!B volcano,ObjectState!B state){
 		}else if(frame==volcanoFrame){
 			progress=1.0f;
 			state.obj.opaqueObjects.permanentDisplacement.volcanoDent(position.x,position.y);
+			addSpellScar("volc",position,state); // original: VolcanoEruptRun
 			// TODO: weather, widgets
 			playSoundAt("tpre",position,state,volcanoGain);
 			dealSplashSpellDamageAt(0,spell,volcanoGroundZeroRadius,wizard,side,position,DamageMod.none,state);
@@ -23506,7 +23698,7 @@ void volcanoBurn(B)(ref Volcano!B volcano,ObjectState!B state){
 			auto falloff=1.0f-max(0.0f,distance-volcanoBurnFullDamageRadius)/(volcanoBurnRadius-volcanoBurnFullDamageRadius);
 			auto direction=distance==0.0f?Vector3f(0.0f,0.0f,1.0f):Vector3f(diff.x/distance,diff.y/distance,0.0f);
 			auto damageRate=volcano.spell.amount*falloff/updateFPS;
-			state.objectById!dealSpellDamage(entry.id,damageRate,volcano.wizard,volcano.side,direction,DamageMod.none,state);
+			state.objectById!dealSpellDamage(entry.id,damageRate,volcano.wizard,volcano.side,direction,DamageMod.continuous,state);
 			if(targetType==TargetType.creature){
 				state.movingObjectById!((ref obj,direction,falloff,attacker,side,state){
 					obj.push(updateFPS*(falloff/12.0f)*direction,state);
@@ -23580,6 +23772,7 @@ int volcanoLavaBallCollisionTarget(B)(int side,Vector3f position,ObjectState!B s
 enum volcanoLavaBallGain=8.0f;
 void volcanoLavaBallExplosion(B)(ref VolcanoLavaBall!B lavaBall,int target,ObjectState!B state){
 	playSpellSoundTypeAt(SoundType.explodingFireball,lavaBall.position,state,volcanoLavaBallGain);
+	addFireballScar(lavaBall.spell,lavaBall.position,state);
 	if(state.isValidTarget(target)){
 		dealSpellDamage(target,lavaBall.spell,lavaBall.wizard,lavaBall.side,lavaBall.velocity,DamageMod.ignite|DamageMod.splash,state);
 		setAblaze(target,updateFPS,false,0.0f,lavaBall.wizard,lavaBall.side,DamageMod.ignite,state);
@@ -24282,6 +24475,7 @@ int earthflingProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f 
 void earthflingProjectileExplosion(B)(ref EarthflingProjectile!B earthflingProjectile,int target,ObjectState!B state){
 	playSoundAt("pmir",earthflingProjectile.position,state,2.0f);
 	if(state.isValidTarget(target)) dealRangedDamage(target,earthflingProjectile.rangedAttack,earthflingProjectile.attacker,earthflingProjectile.side,earthflingProjectile.velocity,DamageMod.none,state);
+	addRockShatterScar(earthflingProjectile.rangedAttack,earthflingProjectile.position,state); // original: KlapponRun
 	enum numParticles3=20;
 	auto sacParticle3=SacParticle!B.get(ParticleType.rock);
 	foreach(i;0..numParticles3){
@@ -25216,7 +25410,7 @@ void flummoxProjectileExplosion(B)(ref FlummoxProjectile!B flummoxProjectile,Obj
 		state.addParticle(Particle!B(sacParticle4,position,velocity,scale,lifetime,frame));
 	}
 	screenShake(flummoxProjectile.position,60,0.5f,100.0f,state);
-	// TODO: add scar
+	addRockShatterScar(flummoxProjectile.rangedAttack,flummoxProjectile.position,state); // original: RockClawpultStart
 }
 
 bool updateFlummoxProjectile(B)(ref FlummoxProjectile!B flummoxProjectile,ObjectState!B state){
@@ -25297,6 +25491,7 @@ bool updateStyxShoot(B)(ref StyxShoot!B shoot,ObjectState!B state){
 		auto direction=targetPosition-position;
 		if(state.isValidTarget(target)) dealRangedDamage(target,rangedAttack,attacker,side,direction,DamageMod.splash,state);
 		dealSplashRangedDamageAt(target,rangedAttack,rangedAttack.damageRange,attacker,side,targetPosition,DamageMod.none,state);
+		addSpellScarNearGround("scar",targetPosition,2.5f,state); // original: GunheadFuseRun
 		return false;
 	}
 }
@@ -25833,6 +26028,7 @@ int boulderdashProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f
 void boulderdashProjectileExplosion(B)(ref BoulderdashProjectile!B boulderdashProjectile,int target,ObjectState!B state){
 	playSoundAt("pmir",boulderdashProjectile.position,state,2.0f);
 	if(state.isValidTarget(target)) dealRangedDamage(target,boulderdashProjectile.rangedAttack,boulderdashProjectile.attacker,boulderdashProjectile.side,boulderdashProjectile.velocity,DamageMod.none,state);
+	addRockShatterScar(boulderdashProjectile.rangedAttack,boulderdashProjectile.position,state); // original: KlapponRun
 	enum numParticles3=50;
 	auto sacParticle3=SacParticle!B.get(ParticleType.rock);
 	foreach(i;0..numParticles3){
@@ -26727,7 +26923,7 @@ void oilExplosion(B)(ref OilProjectile!B oilProjectile,ObjectState!B state){
 			return false;
 		}
 		dealDamageAt!callback(0,0.0f,ability.effectRange,creature,side,position,DamageMod.none,state,creature,side,ability,state);
-		// TODO: scar
+		addSpellScarNearGround(spellScar(ability,"tscr","scar"),position,10.0f,state); // original: ViscousOilRun
 		enum numParticles3=100;
 		auto sacParticle3=SacParticle!B.get(ParticleType.oil);
 		foreach(i;0..numParticles3){
@@ -26940,6 +27136,7 @@ bool updateFirewalk(B)(ref Firewalk!B firewalk,ObjectState!B state){
 				if(obj.creatureState.mode!=CreatureMode.usingAbility)
 					return false;
 				startPosition=obj.position;
+				addSpellScar("tscr",startPosition,state); // original: FirewalkRun
 				obj.creatureState.mode=CreatureMode.firewalk;
 				obj.setCreatureState(state);
 				obj.animateFirewalk(state);
@@ -26967,6 +27164,7 @@ bool updateFirewalk(B)(ref Firewalk!B firewalk,ObjectState!B state){
 			obj.position=newPosition;
 			if(frame>=numFrames){
 				obj.position=endPosition;
+				addSpellScar("tscr",endPosition,state); // original: FirewalkRun
 				obj.startIdling(state);
 				obj.animateFirewalk(state);
 				if(!state.isOnGround(obj.position))
@@ -27015,6 +27213,7 @@ bool updateRendShoot(B)(ref RendShoot!B shoot,ObjectState!B state){
 		rendSparkAnimation(targetPosition,state);
 		auto direction=targetPosition-position;
 		dealSplashRangedDamageAt(0,rangedAttack,rangedAttack.damageRange,attacker,side,targetPosition,DamageMod.none,state);
+		addSpellScarNearGround("scar",targetPosition,2.5f,state); // original: GunheadFuseRun
 		return false;
 	}
 }
@@ -30367,6 +30566,9 @@ final class ObjectState(B){ // (update logic)
 		do r=uniform!("[]")(box);
 		while((r-position).lengthsqr>radius^^2);
 		return r;
+	}
+	void addScar(char[4] tag,Vector3f position,ScarKind kind,int width=0,int height=0){
+		obj.opaqueObjects.scarEvents.addScar(ScarEvent(tag,position,width,height,kind,frame));
 	}
 	void applyEdgeChanges(){
 		auto edgeChanges=&obj.opaqueObjects.edgeChanges;

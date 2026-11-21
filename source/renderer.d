@@ -1273,10 +1273,11 @@ struct Renderer(B){
 		sacSky.sky.render(rc);
 	}
 
-	void renderMap(ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
+	void renderMap(R3DOpt options,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
 		auto map=state.map;
 		state.applyEdgeChanges();
 		map.updateEdgeMeshes(state.obj.opaqueObjects.edgeChanges);
+		map.updateScars(state.obj.opaqueObjects.scarEvents,options.enableBloodStains,options.enableScars);
 		rc.layer=1;
 		rc.modelMatrix=Matrix4x4f.identity();
 		rc.invModelMatrix=Matrix4x4f.identity();
@@ -1302,6 +1303,16 @@ struct Renderer(B){
 				B.terrainMaterialBackend.bindEmission(map.textures[i]);
 			}
 			mesh.render(rc);
+		}
+		foreach(ref scar;map.scarTextures){ // scarred cells
+			if(!scar.mesh||!scar.texture) continue;
+			if(!rc.shadowMode){
+				B.terrainMaterialBackend.bindDiffuse(scar.texture);
+				if(scar.baseTile<map.dti.length) B.terrainMaterialBackend.bindDetail(map.details[map.dti[scar.baseTile]]);
+				else B.terrainMaterialBackend.bindDetail(null);
+				B.terrainMaterialBackend.bindEmission(scar.texture);
+			}
+			scar.mesh.render(rc);
 		}
 		if(map.dynamicEdgeMesh){
 			if(!rc.shadowMode){
@@ -1331,11 +1342,13 @@ struct Renderer(B){
 					foreach(q;0..4){
 						auto topMesh=cached.topMeshes[q];
 						if(!topMesh) continue;
-						auto texture=map.tiles[chunk.vertexJ+quadrantTileOffsets[q][1]][chunk.vertexI+quadrantTileOffsets[q][0]];
-						B.terrainMaterialBackend.bindDiffuse(map.textures[texture]);
+						auto tileJ=chunk.vertexJ+quadrantTileOffsets[q][1],tileI=chunk.vertexI+quadrantTileOffsets[q][0];
+						auto texture=map.tiles[tileJ][tileI];
+						auto diffuse=map.cellTexture(tileJ,tileI); // scarred cells keep their scars
+						B.terrainMaterialBackend.bindDiffuse(diffuse);
 						if(texture<map.dti.length) B.terrainMaterialBackend.bindDetail(map.details[map.dti[texture]]);
 						else B.terrainMaterialBackend.bindDetail(null);
-						B.terrainMaterialBackend.bindEmission(map.textures[texture]);
+						B.terrainMaterialBackend.bindEmission(diffuse);
 						topMesh.render(rc);
 					}
 					foreach(q;0..4){
@@ -1397,6 +1410,8 @@ struct Renderer(B){
 
 	struct R3DOpt{
 		bool enableWidgets;
+		bool enableBloodStains=true;
+		bool enableScars=true;
 	}
 
 	void renderNTTs(RenderMode mode)(R3DOpt options,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
@@ -3715,7 +3730,12 @@ struct Renderer(B){
 							if(objects.sideFilters[j]!=info.renderSide)
 								continue;
 						}
-						auto mesh=sacParticle.getMesh(objects.frames[j]); // TODO: do in shader?
+						static if(kind==ParticleKind.decaying){
+							// one animation cycle and a linear fade out over the lifetime
+							auto totalLifetime=max(1,objects.totalLifetimes[j]);
+							auto age=max(0,totalLifetime-objects.lifetimes[j]);
+							auto mesh=sacParticle.meshes[min(age*cast(int)sacParticle.meshes.length/totalLifetime,cast(int)sacParticle.meshes.length-1)];
+						}else auto mesh=sacParticle.getMesh(objects.frames[j]); // TODO: do in shader?
 						static if(kind==ParticleKind.relative){
 							auto position=objects.rotates[j]?state.movingObjectReadById!((ref objects,i,particlePosition)=>rotate(objects.rotations[i],particlePosition)+objects.positions[i],()=>Vector3f(0.0f,0.0f,0.0f))(objects.baseIds[j],objects.positions[j])
 								: objects.positions[j]+state.movingObjectReadById!((ref objects,i)=>objects.positions[i],()=>Vector3f(0.0f,0.0f,0.0f))(objects.baseIds[j]);
@@ -3725,11 +3745,12 @@ struct Renderer(B){
 							auto c=cos(objects.angles[j]), s=sin(objects.angles[j]);
 							auto position=basePosition+Vector3f(c*relativePosition.x+s*relativePosition.y,c*relativePosition.y-s*relativePosition.x,relativePosition.z);
 						}else{
-							static assert(kind==ParticleKind.standard);
+							static assert(kind==ParticleKind.standard||kind==ParticleKind.decaying);
 							auto position=objects.positions[j];
 						}
 						material.backend.setSpriteTransformationScaled(position,objects.scales[j]*sacParticle.getScale(objects.lifetimes[j]),rc);
-						material.backend.setAlpha(sacParticle.getAlpha(objects.lifetimes[j]));
+						static if(kind==ParticleKind.decaying) material.backend.setAlpha(max(0.0f,float(objects.lifetimes[j])/totalLifetime));
+						else material.backend.setAlpha(sacParticle.getAlpha(objects.lifetimes[j]));
 						mesh.render(rc);
 					}
 				}
@@ -5759,12 +5780,12 @@ struct Renderer(B){
 	}
 
 	void renderShadowCastingEntities3D(R3DOpt options,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
-		renderMap(state,info,rc);
+		renderMap(options,state,info,rc);
 		renderNTTs!(RenderMode.opaque)(options,state,info,rc);
 	}
 
 	void renderOpaqueEntities3D(R3DOpt options,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
-		renderMap(state,info,rc);
+		renderMap(options,state,info,rc);
 		renderNTTs!(RenderMode.opaque)(options,state,info,rc);
 		if(showHitboxes) renderHitboxes(state,info,rc);
 	}

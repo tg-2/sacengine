@@ -968,6 +968,21 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Edg
 	result.recomputeHash();
 }
 
+void serialize(alias sink)(ref ScarEvent scarEvent){ serializeStruct!sink(scarEvent); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ScarEvent)){ deserializeStruct(result,state,data); }
+
+void serialize(alias sink)(ref ScarEvents scarEvents){
+	serialize!sink(scarEvents.count);
+	auto start=scarEvents.count>scarEvents.capacity?scarEvents.count-scarEvents.capacity:0;
+	foreach(k;start..scarEvents.count) serialize!sink(scarEvents.events[k%scarEvents.capacity]);
+}
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ScarEvents)){
+	result=ScarEvents.init;
+	deserialize(result.count,state,data);
+	auto start=result.count>result.capacity?result.count-result.capacity:0;
+	foreach(k;start..result.count) deserialize(result.events[k%result.capacity],state,data);
+}
+
 void serialize(alias sink)(ref FallingLandChunk fallingLandChunk){ serializeStruct!sink(fallingLandChunk); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==FallingLandChunk)){ deserializeStruct(result,state,data); }
 
