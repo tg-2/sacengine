@@ -19771,6 +19771,7 @@ void eruptExplosion(B)(ref Erupt!B erupt,ObjectState!B state){
 		auto debris=EruptDebris!B(position,velocity,rotationUpdate,Quaternionf.identity());
 		state.addEffect(debris);
 	}
+	addSpellScar(spellScar(erupt.spell,"tscr","rcse"),erupt.position,state); // original: EruptRun
 	if(!state.enableParticles) return;
 	enum numParticles3=200;
 	auto sacParticle3=SacParticle!B.get(ParticleType.rock);
@@ -19782,7 +19783,6 @@ void eruptExplosion(B)(ref Erupt!B erupt,ObjectState!B state){
 		auto frame=0;
 		state.addParticle(Particle!B(sacParticle3,position,pvelocity,scale,lifetime,frame));
 	}
-	addSpellScar(spellScar(erupt.spell,"tscr","rcse"),erupt.position,state); // original: EruptRun
 }
 
 enum eruptGain0=2.0f, eruptGain1=4.0f, eruptGain2=8.0f;
