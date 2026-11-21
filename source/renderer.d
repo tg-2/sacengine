@@ -1277,7 +1277,7 @@ struct Renderer(B){
 		auto map=state.map;
 		state.applyEdgeChanges();
 		map.updateEdgeMeshes(state.obj.opaqueObjects.edgeChanges);
-		map.updateScars(state.obj.opaqueObjects.scarEvents,options.enableBloodStains,options.enableScars);
+		map.updateScars(state.scars,state.settings.maxScarTextures,options.committedFrame,options.enableBloodStains,options.enableScars);
 		rc.layer=1;
 		rc.modelMatrix=Matrix4x4f.identity();
 		rc.invModelMatrix=Matrix4x4f.identity();
@@ -1304,15 +1304,17 @@ struct Renderer(B){
 			}
 			mesh.render(rc);
 		}
-		foreach(ref scar;map.scarTextures){ // scarred cells
-			if(!scar.mesh||!scar.texture) continue;
+		foreach(slot;0..map.scarMeshes.length){ // scarred cells
+			auto mesh=map.scarMeshes[slot],texture=map.scarTextures[slot];
+			if(!mesh||!texture) continue;
 			if(!rc.shadowMode){
-				B.terrainMaterialBackend.bindDiffuse(scar.texture);
-				if(scar.baseTile<map.dti.length) B.terrainMaterialBackend.bindDetail(map.details[map.dti[scar.baseTile]]);
+				auto baseTile=map.scarPool.slots[slot].baseTile;
+				B.terrainMaterialBackend.bindDiffuse(texture);
+				if(baseTile<map.dti.length) B.terrainMaterialBackend.bindDetail(map.details[map.dti[baseTile]]);
 				else B.terrainMaterialBackend.bindDetail(null);
-				B.terrainMaterialBackend.bindEmission(scar.texture);
+				B.terrainMaterialBackend.bindEmission(texture);
 			}
-			scar.mesh.render(rc);
+			mesh.render(rc);
 		}
 		if(map.dynamicEdgeMesh){
 			if(!rc.shadowMode){
@@ -1412,6 +1414,7 @@ struct Renderer(B){
 		bool enableWidgets;
 		bool enableBloodStains=true;
 		bool enableScars=true;
+		int committedFrame=-1; // scars of later frames may still be rolled back
 	}
 
 	void renderNTTs(RenderMode mode)(R3DOpt options,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){

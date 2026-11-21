@@ -10,6 +10,7 @@ import std.stdio, std.path;
 import std.typecons: tuple,Tuple;
 
 import sacobject;
+import nttData: scarImages, ScarImage;
 
 SacMap!B loadSacMap(B)(string filename,ubyte[]* mapData=null){
 	string levlName,enviName;
@@ -159,6 +160,397 @@ struct ZeroDisplacement{
 	float opCall(float x,float y)@nogc{ return 0.0f; }
 }
 
+// Terrain scars: blood stains, scorch marks, cracks, ... (original: LAND::ApplyScarring, LAND::GetFreeScarTexture,
+// LAND::ReleaseScarTexture and LAND::MakeScarLUT in game3d.dll)
+
+// Scars in the game state: an immutable linked list of blocks, one block per frame that added scars. A game state only
+// points to its newest block, so copying a state copies one pointer, and after a rollback the state points to an older
+// block again. Blocks are reference counted and recycled.
+struct ScarEntry{
+	char[4] tag; // SCAR resource (reversed, like other tags)
+	short x,y; // texel coordinates of the center (64 texels per cell)
+}
+enum scarTexelsPerUnit=6.4;
+short scarTexelCoordinate(float x){ return cast(short)clamp(cast(long)(x*scarTexelsPerUnit),short.min,short.max); }
+bool isBloodStain(char[4] tag){ return tag=="dulb"; }
+
+struct ScarBlock{
+	ScarBlock* previous;
+	int refCount;
+	int frame;
+	uint depth; // number of previous blocks
+	ulong count; // number of scars up to and including this block
+	import std.digest.crc: CRC32;
+	CRC32 crc; // of the hash of the previous block, the frame and the entries
+	Array!ScarEntry entries;
+	// a block that was received when joining a game stands for all scars before it, with the result in a snapshot
+	Array!ubyte snapshot;
+	uint snapshotHash;
+	uint hash(){
+		if(snapshot.length) return snapshotHash;
+		auto c=crc;
+		auto result=c.finish();
+		return *cast(uint*)&result;
+	}
+}
+__gshared Array!(ScarBlock*) freeScarBlocks;
+ScarBlock* allocateScarBlock(){
+	if(freeScarBlocks.length){
+		auto block=freeScarBlocks[$-1];
+		freeScarBlocks.length=freeScarBlocks.length-1;
+		block.refCount=1;
+		return block;
+	}
+	import core.stdc.stdlib: malloc;
+	import core.lifetime: emplace;
+	auto block=cast(ScarBlock*)enforce(malloc(ScarBlock.sizeof),"out of memory");
+	emplace(block);
+	block.refCount=1;
+	return block;
+}
+void releaseScarBlock(ScarBlock* block){
+	while(block){
+		if(--block.refCount>0) return;
+		auto previous=block.previous;
+		block.previous=null;
+		block.entries.length=0;
+		block.snapshot.length=0;
+		freeScarBlocks~=block;
+		block=previous;
+	}
+}
+struct ScarLog{
+	ScarBlock* last;
+	this(this){ if(last) ++last.refCount; }
+	~this(){ releaseScarBlock(last); last=null; }
+	static ScarLog retain(ScarBlock* block){
+		ScarLog result;
+		result.last=block;
+		if(block) ++block.refCount;
+		return result;
+	}
+	@property ulong count(){ return last?last.count:0; }
+	@property uint hash(){ return last?last.hash:0; }
+	ScarBlock* root(){
+		auto block=last;
+		while(block&&block.previous) block=block.previous;
+		return block;
+	}
+	void add(int frame,ScarEntry entry){
+		if(!last||last.refCount>1||last.frame!=frame||last.snapshot.length){
+			auto block=allocateScarBlock();
+			block.previous=last; // takes over the reference
+			block.frame=frame;
+			block.depth=last?last.depth+1:0;
+			block.count=last?last.count:0;
+			block.crc.start();
+			uint previousHash=last?last.hash:0;
+			block.crc.put((cast(ubyte*)&previousHash)[0..previousHash.sizeof]);
+			block.crc.put((cast(ubyte*)&frame)[0..frame.sizeof]);
+			last=block;
+		}
+		last.entries~=entry;
+		last.count+=1;
+		last.crc.put((cast(ubyte*)&entry)[0..entry.sizeof]);
+	}
+	void setSnapshot(ulong count,uint hash,const(ubyte)[] snapshot){
+		releaseScarBlock(last);
+		last=allocateScarBlock();
+		last.count=count;
+		last.snapshotHash=hash;
+		last.snapshot.length=snapshot.length;
+		last.snapshot.data[]=snapshot[];
+	}
+}
+
+// Data of the tileset that is needed to apply scars
+struct ScarTerrain{
+	ubyte[3][256] palette;
+	ubyte[] tilePixels; // palette indices of the 256 MAPT tiles, 64*64 each
+	bool[256] hasTile;
+	bool[256] cannotScar; // tiles with property flag 2
+	ubyte[] lut; // RGB555 -> nearest color of the land palette (LAND::MakeScarLUT)
+	ubyte[][] tiles; // tile of each cell
+}
+struct ScarSlot{
+	int cell=-1; // 256*j+i
+	ubyte baseTile;
+	short priority; // map scars: 1, others: 0
+	uint lastUse; // frame
+	ubyte[64*64] pixels; // palette indices
+}
+// changes of a ScarPool, so that they can be undone after a rollback
+struct ScarJournal{
+	Array!int slots;
+	Array!ScarSlot slotStates; // before the first change
+	Array!(int[2]) cells; // cell, previous slot
+	bool savedLists;
+	Array!int free,used;
+	uint time;
+}
+// the scarred copies of tile textures, with the replacement rule of the original game
+struct ScarPool{
+	ScarTerrain* terrain;
+	int limit;
+	Array!ScarSlot slots;
+	Array!int cellSlots; // 1+slot for each of the 256*256 cells, 0 if the cell is not scarred
+	Array!int free; // stack of unused slots
+	Array!int used; // most recent allocation first
+	uint time;
+	ScarJournal* journal;
+	Array!int changedSlots; // for the renderer
+	Array!ubyte slotChanged;
+
+	void initialize(ScarTerrain* terrain,int limit){
+		this.terrain=terrain;
+		this.limit=max(1,limit);
+		slots.length=0;
+		slots.length=this.limit;
+		cellSlots.length=0;
+		cellSlots.length=256*256;
+		free.length=0;
+		foreach_reverse(slot;0..this.limit) free~=slot;
+		used.length=0;
+		time=0;
+		journal=null;
+		changedSlots.length=0;
+		slotChanged.length=0;
+		slotChanged.length=this.limit;
+	}
+	void beginJournal(ScarJournal* journal){
+		journal.slots.length=0;
+		journal.slotStates.length=0;
+		journal.cells.length=0;
+		journal.savedLists=false;
+		journal.time=time;
+		this.journal=journal;
+	}
+	void undo(ref ScarJournal journal){
+		assert(this.journal is null);
+		foreach_reverse(change;journal.cells.data) cellSlots[change[0]]=change[1];
+		foreach(k,slot;journal.slots.data){
+			slots[slot]=journal.slotStates[k];
+			markChanged(slot);
+		}
+		if(journal.savedLists){
+			free=journal.free;
+			used=journal.used;
+		}
+		time=journal.time;
+	}
+	private void markChanged(int slot){
+		if(slotChanged[slot]) return;
+		slotChanged[slot]=1;
+		changedSlots~=slot;
+	}
+	private void touch(int slot){
+		if(journal&&!journal.slots.data.canFind(slot)){
+			journal.slots~=slot;
+			journal.slotStates~=slots[slot];
+		}
+		markChanged(slot);
+	}
+	private void saveLists(){
+		if(!journal||journal.savedLists) return;
+		journal.savedLists=true;
+		journal.free=free;
+		journal.used=used;
+	}
+	private void setCell(int cell,int value){
+		if(journal) journal.cells~=[cell,cellSlots[cell]];
+		cellSlots[cell]=value;
+	}
+	private void release(int cell){ // LAND::ReleaseScarTexture
+		auto slot=cellSlots[cell]-1;
+		if(slot<0) return;
+		saveLists();
+		touch(slot);
+		auto position=used.data.countUntil(slot);
+		enforce(position!=-1);
+		foreach(k;position..used.length-1) used[k]=used[k+1];
+		used.length=used.length-1;
+		free~=slot;
+		setCell(cell,0);
+		slots[slot].cell=-1;
+	}
+	private int getSlot(int cell,short priority){ // LAND::GetFreeScarTexture
+		auto baseTile=terrain.tiles[cell/256][cell%256];
+		if(terrain.cannotScar[baseTile]||!terrain.hasTile[baseTile]) return -1;
+		if(auto index=cellSlots[cell]){
+			auto slot=index-1;
+			touch(slot);
+			slots[slot].priority=max(slots[slot].priority,priority);
+			slots[slot].lastUse=time;
+			return slot;
+		}
+		if(!free.length){
+			// lowest priority first, then least recently used. ties keep the most recent allocation
+			int victim=-1;
+			short lowest=short.max;
+			int oldest=cast(int)time;
+			foreach(slot;used.data){
+				if(slots[slot].priority<lowest||slots[slot].priority==lowest&&cast(int)slots[slot].lastUse<oldest){
+					victim=slot;
+					lowest=slots[slot].priority;
+					oldest=cast(int)slots[slot].lastUse;
+				}
+			}
+			if(victim==-1) return -1;
+			release(slots[victim].cell);
+		}
+		saveLists();
+		auto slot=free[$-1];
+		free.length=free.length-1;
+		used~=slot;
+		foreach_reverse(k;1..used.length) used[k]=used[k-1];
+		used[0]=slot;
+		touch(slot);
+		slots[slot].cell=cell;
+		slots[slot].baseTile=baseTile;
+		slots[slot].priority=priority;
+		slots[slot].lastUse=time;
+		slots[slot].pixels[]=terrain.tilePixels[64*64*baseTile..64*64*(baseTile+1)];
+		setCell(cell,slot+1);
+		return slot;
+	}
+	// blends the scar centered at the texel (x,y) into the textures of all cells it touches (LAND::ApplyScarring)
+	// width and height select the top left part of the scar image, 0 means everything
+	void apply(ref const ScarImage scar,int x,int y,int width,int height,short priority){
+		if(!width) width=scar.width;
+		if(!height) height=scar.height;
+		width=min(width,scar.width);
+		height=min(height,scar.height);
+		long x0=x-(width>>1),y0=y-(height>>1);
+		long xend=x0+width,yend=y0+height;
+		for(long cy=max(y0>>6,0);cy<=(yend-1)>>6&&cy<256;cy++){
+			for(long cx=max(x0>>6,0);cx<=(xend-1)>>6&&cx<256;cx++){
+				auto slot=getSlot(cast(int)(256*cy+cx),priority);
+				if(slot==-1) continue;
+				auto pixels=slots[slot].pixels[];
+				foreach(gy;max(y0,64*cy)..min(yend,64*(cy+1))){
+					foreach(gx;max(x0,64*cx)..min(xend,64*(cx+1))){
+						auto texel=scar.texels[(gy-y0)*scar.width+(gx-x0)];
+						uint alpha=texel[1];
+						if(!alpha) continue;
+						auto color=scar.palette[texel[0]];
+						auto pixel=&pixels[(gy&63)*64+(gx&63)];
+						auto tile=terrain.palette[*pixel];
+						uint key=0;
+						foreach(c;0..3) key|=((((tile[c]*(8-alpha))>>3)+((color[c]*alpha)>>3))>>3)<<(10-5*c);
+						*pixel=terrain.lut[key];
+					}
+				}
+			}
+		}
+	}
+	void applyMapScars(Scar[] scars){
+		foreach(ref scar;scars){
+			char[4] tag=scar.tag; // reversed like other tags
+			auto image=tag in scarImages;
+			if(!image) continue;
+			apply(*image,cast(int)(scar.x*scarTexelsPerUnit),cast(int)(scar.y*scarTexelsPerUnit),scar.width,scar.height,1);
+		}
+	}
+	void applyScars(ScarBlock* block,bool enableBloodStains=true,bool enableScars=true){
+		time=block.frame;
+		foreach(entry;block.entries.data){
+			bool blood=isBloodStain(entry.tag);
+			if(blood?!enableBloodStains:!enableScars) continue;
+			auto image=entry.tag in scarImages;
+			if(!image) continue;
+			apply(*image,entry.x,entry.y,blood?8:0,blood?8:0,0);
+		}
+	}
+
+	// Snapshot: the state of the pool, with the pixels as differences to the tiles. Its size depends on the number of
+	// scar textures, but not on the number of scars.
+	void writeSnapshot(ref Array!ubyte data){
+		void put(T)(T value){ data~=(cast(ubyte*)&value)[0..T.sizeof]; }
+		put(limit);
+		put(time);
+		put(cast(int)used.length);
+		foreach(slot;used.data){
+			auto s=&slots[slot];
+			put(slot);
+			put(s.cell);
+			put(s.baseTile);
+			put(s.priority);
+			put(s.lastUse);
+			auto base=terrain.tilePixels[64*64*s.baseTile..64*64*(s.baseTile+1)];
+			int numRuns=0;
+			for(int k=0;k<64*64;){
+				if(s.pixels[k]==base[k]){ k++; continue; }
+				int start=k;
+				while(k<64*64&&s.pixels[k]!=base[k]) k++;
+				numRuns++;
+			}
+			put(cast(ushort)numRuns);
+			for(int k=0;k<64*64;){
+				if(s.pixels[k]==base[k]){ k++; continue; }
+				int start=k;
+				while(k<64*64&&s.pixels[k]!=base[k]) k++;
+				put(cast(ushort)start);
+				put(cast(ushort)(k-start));
+				data~=s.pixels[start..k];
+			}
+		}
+		put(cast(int)free.length);
+		foreach(slot;free.data) put(slot);
+	}
+	void readSnapshot(const(ubyte)[] data){
+		T get(T)(){
+			enforce(data.length>=T.sizeof,"bad scar snapshot");
+			T value=*cast(T*)data.ptr;
+			data=data[T.sizeof..$];
+			return value;
+		}
+		initialize(terrain,get!int);
+		time=get!uint;
+		auto numUsed=get!int;
+		enforce(0<=numUsed&&numUsed<=limit,"bad scar snapshot");
+		free.length=0;
+		foreach(i;0..numUsed){
+			auto slot=get!int;
+			enforce(0<=slot&&slot<limit,"bad scar snapshot");
+			auto s=&slots[slot];
+			s.cell=get!int;
+			enforce(0<=s.cell&&s.cell<256*256,"bad scar snapshot");
+			s.baseTile=get!ubyte;
+			s.priority=get!short;
+			s.lastUse=get!uint;
+			s.pixels[]=terrain.tilePixels[64*64*s.baseTile..64*64*(s.baseTile+1)];
+			auto numRuns=get!ushort;
+			foreach(r;0..numRuns){
+				int start=get!ushort,length=get!ushort;
+				enforce(start+length<=64*64&&length<=data.length,"bad scar snapshot");
+				s.pixels[start..start+length]=data[0..length];
+				data=data[length..$];
+			}
+			used~=slot;
+			cellSlots[s.cell]=slot+1;
+			markChanged(slot);
+		}
+		auto numFree=get!int;
+		enforce(numFree+numUsed==limit,"bad scar snapshot");
+		foreach(i;0..numFree) free~=get!int;
+		enforce(data.length==0,"bad scar snapshot");
+	}
+}
+// the snapshot of all scars in the log (for players that join a running game)
+void writeScarSnapshot(ScarTerrain* terrain,Scar[] mapScars,ref ScarLog scars,int limit,ref Array!ubyte data){
+	ScarPool pool;
+	Array!(ScarBlock*) blocks;
+	for(auto block=scars.last;block;block=block.previous) blocks~=block;
+	pool.terrain=terrain;
+	if(blocks.length&&blocks[$-1].snapshot.length) pool.readSnapshot(blocks[$-1].snapshot.data);
+	else{
+		pool.initialize(terrain,limit);
+		pool.applyMapScars(mapScars);
+	}
+	foreach_reverse(block;blocks.data) if(!block.snapshot.length) pool.applyScars(block);
+	pool.writeSnapshot(data);
+}
+
 final class SacMap(B){
 	string path;
 	string mapFolder;
@@ -198,30 +590,20 @@ final class SacMap(B){
 	NTTs ntts;
 	Trig trig;
 
-	// Terrain scars: blood stains, scorch marks, cracks, ...
-	// (original: LAND::ApplyScarring, LAND::GetFreeScarTexture and LAND::MakeScarLUT in game3d.dll)
-	// A scarred cell gets a private copy of its tile texture, which the scars are blended into.
-	SuperImage[] tileImages; // MAPT images
-	ubyte[3][256] landPalette;
-	bool[256] tileCannotScar;
-	ubyte[] scarLUT; // RGB555 -> nearest color of the land palette
-	enum maxScarTextures=256; // 'mscr' option of the original (32 to 256, default 256)
-	static struct ScarTexture{
-		int cell=-1; // 256*j+i
-		ubyte baseTile;
-		short priority; // map scars: 1, others: 0
-		uint lastUse; // frame
-		SuperImage image;
-		B.Texture texture;
-		B.TerrainMesh mesh; // the cell, drawn with this texture instead of the tile texture
-		bool dirty;
+	// terrain scars (see ScarPool)
+	ScarTerrain scarTerrain;
+	ScarPool scarPool;
+	bool scarPoolInitialized=false;
+	ScarLog appliedScars; // the scars that the textures show
+	static struct AppliedScarBlock{
+		ScarBlock* block;
+		ScarJournal journal;
 	}
-	ScarTexture[] scarTextures;
-	int[] cellScarTextures; // 1+index into scarTextures, 0 if the cell is not scarred
-	int[] freeScarTextures; // stack
-	int[] usedScarTextures; // most recent allocation first
-	uint scarTime;
-	ulong appliedScarEvents;
+	Array!AppliedScarBlock scarJournals; // undo information for the applied blocks that may still be rolled back
+	Array!(ScarBlock*) scarBlocksToApply;
+	Array!(B.Texture) scarTextures; // for each slot of the pool
+	Array!(B.TerrainMesh) scarMeshes; // the cell of the slot, drawn with its texture instead of the tile texture
+	Array!int scarMeshCells;
 
 	this(LMap)(string path,string mapFolder,uint crc32,Levl levl,Envi envi,HMap hmap,TMap tmap,LMap lmap,Side[] sids,NTTs ntts,Trig trig){
 		this.path=path;
@@ -251,9 +633,7 @@ final class SacMap(B){
 		auto land=landFolders[tileset];
 		dti=loadDTIndex(land).dts;
 		auto mapts=loadMAPTs(land);
-		tileImages=mapts;
-		landPalette=loadLandPalette(land);
-		tileCannotScar=loadTilesThatCannotScar(land);
+		scarTerrain=loadScarTerrain(land,tiles);
 		auto bumps=loadDTs(land);
 		auto edge=loadTXTR(buildPath(land,chain(retro(envi.edge[]),".TXTR").to!string));
 		//auto sky_=loadTXTR(buildPath(land,chain(retro(envi.sky_[]),".TXTR").to!string)); // TODO: smk files
@@ -270,7 +650,6 @@ final class SacMap(B){
 		this.sids=sids;
 		this.ntts=ntts;
 		this.trig=trig;
-		applyMapScars();
 	}
 	bool applyEdgeChanges(uint hash,scope const(uint)[] changes){
 		if(appliedEdgeChangesHash==hash) return false;
@@ -287,25 +666,27 @@ final class SacMap(B){
 		appliedEdgeChangesHash=hash;
 		return updated;
 	}
+	private int cellScarSlot(int j,int i){
+		if(!scarPoolInitialized||j<0||j>=256||i<0||i>=256) return -1;
+		auto slot=scarPool.cellSlots[256*j+i]-1;
+		if(slot<0||slot>=scarMeshCells.length||scarMeshCells[slot]!=256*j+i) return -1;
+		return slot;
+	}
 	B.Texture cellTexture(int j,int i){
-		if(cellScarTextures.length){
-			if(auto index=cellScarTextures[256*j+i]){
-				auto texture=scarTextures[index-1].texture;
-				if(texture) return texture;
-			}
-		}
+		auto slot=cellScarSlot(j,i);
+		if(slot!=-1&&scarTextures[slot]) return scarTextures[slot];
 		return textures[tiles[j][i]];
 	}
 	private B.TerrainMesh cellScarMesh(int j,int i){
-		if(!cellScarTextures.length) return null;
-		if(auto index=cellScarTextures[256*j+i]) return scarTextures[index-1].mesh;
-		return null;
+		auto slot=cellScarSlot(j,i);
+		return slot!=-1?scarMeshes[slot]:null;
 	}
-	// moves the faces of the cell from the mesh of its tile to the mesh of the scar texture
-	private void attachScarMesh(int index){
-		auto scar=&scarTextures[index];
-		if(scar.mesh||!meshes.length) return;
-		int j=scar.cell/256,i=scar.cell%256;
+	// moves the faces of the cell from the mesh of its tile to the mesh of the slot
+	private void attachScarMesh(int slot){
+		auto cell=scarPool.slots[slot].cell;
+		scarMeshCells[slot]=cell;
+		if(cell==-1||!meshes.length) return;
+		int j=cell/256,i=cell%256;
 		if(j>=n-1||i>=m-1) return;
 		auto info=terrainTileMeshInfos[j*(m-1)+i];
 		if(!info.numFaces) return;
@@ -326,167 +707,111 @@ final class SacMap(B){
 		}
 		B.finalizeTerrainMesh(scarMesh);
 		B.updateTerrainMeshIndices(mesh,info.faceOffset,mesh.indices[info.faceOffset..info.faceOffset+info.numFaces]);
-		scar.mesh=scarMesh;
+		scarMeshes[slot]=scarMesh;
 	}
-	private void detachScarMesh(int index){
-		auto scar=&scarTextures[index];
-		if(!scar.mesh) return;
-		int j=scar.cell/256,i=scar.cell%256;
+	// moves the faces back to the mesh of the tile
+	private void detachScarMesh(int slot){
+		auto cell=scarMeshCells[slot];
+		scarMeshCells[slot]=-1;
+		if(!scarMeshes[slot]) return;
+		int j=cell/256,i=cell%256;
 		auto info=terrainTileMeshInfos[j*(m-1)+i];
 		if(auto mesh=meshes[tiles[j][i]]){
 			foreach(k;0..info.numFaces){
-				auto face=scar.mesh.indices[k];
+				auto face=scarMeshes[slot].indices[k];
 				foreach(ref x;face) x+=info.vertexOffset;
 				mesh.indices[info.faceOffset+k]=face;
 			}
 			B.updateTerrainMeshIndices(mesh,info.faceOffset,mesh.indices[info.faceOffset..info.faceOffset+info.numFaces]);
 		}
-		B.destroyTerrainMesh(scar.mesh);
+		B.destroyTerrainMesh(scarMeshes[slot]);
 	}
-	private void releaseScarTexture(int cell){ // LAND::ReleaseScarTexture
-		auto index=cellScarTextures[cell]-1;
-		if(index<0) return;
-		detachScarMesh(index);
-		auto position=usedScarTextures.countUntil(index);
-		enforce(position!=-1);
-		usedScarTextures=usedScarTextures.remove(position);
-		freeScarTextures~=index;
-		cellScarTextures[cell]=0;
-		scarTextures[index].cell=-1;
+	private void resetScars(ref ScarLog scars,int maxScarTextures){
+		foreach(slot;0..cast(int)scarMeshCells.length) if(scarMeshCells[slot]!=-1) detachScarMesh(slot);
+		scarJournals.length=0;
+		scarPool.initialize(&scarTerrain,maxScarTextures);
+		scarPoolInitialized=true;
+		auto oldLength=scarTextures.length;
+		scarTextures.length=scarPool.limit;
+		scarMeshes.length=scarPool.limit;
+		scarMeshCells.length=scarPool.limit;
+		scarMeshCells.data[]=-1;
+		auto root=scars.root;
+		if(root&&root.snapshot.length){ // joined a running game
+			scarPool.readSnapshot(root.snapshot.data);
+			appliedScars=ScarLog.retain(root);
+		}else{
+			scarPool.applyMapScars(ntts.scars);
+			appliedScars=ScarLog.init;
+		}
+		foreach(slot;0..scarPool.limit) scarPool.slotChanged[slot]=0;
+		scarPool.changedSlots.length=0;
+		foreach(slot;0..scarPool.limit) syncScarSlot(slot);
 	}
-	private int getScarTexture(int cell,short priority){ // LAND::GetFreeScarTexture
-		auto baseTile=tiles[cell/256][cell%256];
-		if(tileCannotScar[baseTile]) return -1;
-		if(baseTile>=tileImages.length||tileImages[baseTile].data.length!=3*64*64) return -1;
-		if(!scarTextures.length){
-			scarTextures=new ScarTexture[](maxScarTextures);
-			cellScarTextures=new int[](256*256);
-			foreach_reverse(index;0..maxScarTextures) freeScarTextures~=index;
+	private void syncScarSlot(int slot){
+		auto cell=scarPool.slots[slot].cell;
+		if(scarMeshCells[slot]!=cell){
+			if(scarMeshCells[slot]!=-1) detachScarMesh(slot);
+			attachScarMesh(slot);
 		}
-		if(auto index=cellScarTextures[cell]){
-			auto scar=&scarTextures[index-1];
-			scar.priority=max(scar.priority,priority);
-			scar.lastUse=scarTime;
-			return index-1;
+		if(cell==-1) return;
+		import dagon: New, UnmanagedImageRGBA8;
+		if(!scarTextures[slot]) scarTextures[slot]=B.makeTexture(New!UnmanagedImageRGBA8(64,64));
+		auto data=scarTextures[slot].image.data;
+		foreach(k,index;scarPool.slots[slot].pixels){
+			data[4*k..4*k+3]=scarTerrain.palette[index][];
+			data[4*k+3]=255;
 		}
-		if(!freeScarTextures.length){
-			// lowest priority first, then least recently used. ties keep the most recent allocation
-			int victim=-1;
-			short lowest=short.max;
-			int oldest=cast(int)scarTime;
-			foreach(index;usedScarTextures){
-				auto scar=&scarTextures[index];
-				if(scar.priority<lowest||scar.priority==lowest&&cast(int)scar.lastUse<oldest){
-					victim=index;
-					lowest=scar.priority;
-					oldest=cast(int)scar.lastUse;
+		B.updateTexture(scarTextures[slot],true);
+	}
+	// shows the scars of the game state; only blocks that were rolled back are undone (original: 0x44cb90)
+	void updateScars(ref ScarLog scars,int maxScarTextures,int committedFrame,bool enableBloodStains,bool enableScars){
+		if(!scarPoolInitialized||scarPool.limit!=max(1,maxScarTextures)) resetScars(scars,maxScarTextures);
+		foreach(attempt;0..2){
+			auto target=scars.last,applied=appliedScars.last;
+			scarBlocksToApply.length=0;
+			bool rebuild=false;
+			while(applied!=target){
+				if(target&&(!applied||target.depth>applied.depth)){
+					scarBlocksToApply~=target;
+					target=target.previous;
+					continue;
 				}
+				if(!scarJournals.length||scarJournals[$-1].block!=applied){ rebuild=true; break; }
+				scarPool.undo(scarJournals[$-1].journal);
+				scarJournals.length=scarJournals.length-1;
+				applied=applied.previous;
 			}
-			if(victim==-1) return -1;
-			releaseScarTexture(scarTextures[victim].cell);
-		}
-		auto index=freeScarTextures[$-1];
-		freeScarTextures.length=freeScarTextures.length-1;
-		freeScarTextures.assumeSafeAppend();
-		usedScarTextures=index~usedScarTextures;
-		auto scar=&scarTextures[index];
-		scar.cell=cell;
-		scar.baseTile=baseTile;
-		scar.priority=priority;
-		scar.lastUse=scarTime;
-		if(!scar.image) scar.image=image(64,64);
-		enforce(scar.image.data.length==tileImages[baseTile].data.length);
-		scar.image.data[]=tileImages[baseTile].data[];
-		scar.dirty=true;
-		cellScarTextures[cell]=index+1;
-		attachScarMesh(index);
-		return index;
-	}
-	private void makeScarLUT(){ // LAND::MakeScarLUT
-		scarLUT=new ubyte[](32768);
-		foreach(key;0..32768){
-			int red=(key>>10)*8,green=((key>>5)&31)*8,blue=(key&31)*8;
-			int best=0x100000;
-			foreach(k;0..256){
-				int dr=landPalette[k][0]-red,dg=landPalette[k][1]-green,db=landPalette[k][2]-blue;
-				if(dr*dr+dg*dg+db*db<best){
-					best=dr*dr+dg*dg+db*db;
-					scarLUT[key]=cast(ubyte)k;
-				}
+			if(rebuild&&attempt==0){ // undo information is gone (should not happen), start over
+				resetScars(scars,maxScarTextures);
+				continue;
 			}
-		}
-	}
-	// blends the scar centered at position into the textures of all cells it touches (LAND::ApplyScarring)
-	// width and height select the top left part of the scar image, 0 means everything
-	bool applyScar(ref const ScarImage scar,Vector3f position,int width,int height,short priority){
-		if(!width) width=scar.width;
-		if(!height) height=scar.height;
-		width=min(width,scar.width);
-		height=min(height,scar.height);
-		if(!scarLUT.length) makeScarLUT();
-		long x0=cast(long)(position.x*6.4)-(width>>1),y0=cast(long)(position.y*6.4)-(height>>1); // 64 texels per cell
-		long xend=x0+width,yend=y0+height;
-		bool changed=false;
-		for(long cy=max(y0>>6,0);cy<=(yend-1)>>6&&cy<256;cy++){
-			for(long cx=max(x0>>6,0);cx<=(xend-1)>>6&&cx<256;cx++){
-				auto index=getScarTexture(cast(int)(256*cy+cx),priority);
-				if(index==-1) continue;
-				auto scarTexture=&scarTextures[index];
-				auto data=scarTexture.image.data;
-				foreach(gy;max(y0,64*cy)..min(yend,64*(cy+1))){
-					foreach(gx;max(x0,64*cx)..min(xend,64*(cx+1))){
-						auto texel=scar.texels[(gy-y0)*scar.width+(gx-x0)];
-						uint alpha=texel[1];
-						if(!alpha) continue;
-						auto color=scar.palette[texel[0]];
-						auto offset=3*((gy&63)*64+(gx&63));
-						uint key=0;
-						foreach(c;0..3) key|=((((data[offset+c]*(8-alpha))>>3)+((color[c]*alpha)>>3))>>3)<<(10-5*c);
-						data[offset..offset+3]=landPalette[scarLUT[key]][];
-						scarTexture.dirty=true;
-						changed=true;
-					}
-				}
+			foreach_reverse(block;scarBlocksToApply.data){
+				if(block.snapshot.length) continue;
+				scarJournals.length=scarJournals.length+1;
+				scarPool.beginJournal(&scarJournals[$-1].journal);
+				scarJournals[$-1].block=block;
+				scarPool.applyScars(block,enableBloodStains,enableScars);
+				scarPool.journal=null;
 			}
+			break;
 		}
-		return changed;
+		appliedScars=scars;
+		// blocks up to the committed frame cannot be rolled back anymore
+		size_t numCommitted=0;
+		while(numCommitted<scarJournals.length&&(scarJournals[numCommitted].block.frame<=committedFrame||scarJournals.length-numCommitted>maxScarJournals))
+			numCommitted++;
+		if(numCommitted){
+			foreach(k;0..scarJournals.length-numCommitted) swap(scarJournals[k],scarJournals[k+numCommitted]);
+			scarJournals.length=scarJournals.length-numCommitted;
+		}
+		foreach(slot;scarPool.changedSlots.data){
+			scarPool.slotChanged[slot]=0;
+			syncScarSlot(slot);
+		}
+		scarPool.changedSlots.length=0;
 	}
-	private void uploadScarTextures(){
-		foreach(ref scar;scarTextures){
-			if(!scar.dirty||scar.cell==-1) continue;
-			if(!scar.texture) scar.texture=B.makeTexture(scar.image);
-			else B.updateTexture(scar.texture,true);
-			scar.dirty=false;
-		}
-	}
-	private void applyMapScars(){
-		foreach(ref scar;ntts.scars){
-			char[4] tag=scar.tag;
-			reverse(tag[]);
-			auto image=getScarImage(tag);
-			if(!image) continue;
-			applyScar(*image,Vector3f(scar.x,scar.y,scar.z),scar.width,scar.height,1);
-		}
-		uploadScarTextures();
-	}
-	// applies the scars that were added to the game state since the last call
-	void updateScars(T)(ref T scarEvents,bool enableBloodStains,bool enableScars){
-		if(scarEvents.count<appliedScarEvents){ // rollback, the events will be added again
-			if(appliedScarEvents-scarEvents.count>scarEvents.capacity) appliedScarEvents=scarEvents.count; // new game
-			return;
-		}
-		auto start=max(appliedScarEvents,scarEvents.count>scarEvents.capacity?scarEvents.count-scarEvents.capacity:0);
-		foreach(k;start..scarEvents.count){
-			auto event=scarEvents.events[k%scarEvents.capacity];
-			if(event.kind==ScarKind.blood?!enableBloodStains:!enableScars) continue;
-			auto image=getScarImage(event.tag);
-			if(!image) continue;
-			scarTime=event.frame;
-			applyScar(*image,event.position,event.width,event.height,0);
-		}
-		appliedScarEvents=scarEvents.count;
-		uploadScarTextures();
-	}
+	enum maxScarJournals=1024; // in case the committed frame is unknown
 
 	void makeMeshes(bool enableMapBottom){
 		this.enableMapBottom=enableMapBottom;
@@ -494,10 +819,11 @@ final class SacMap(B){
 		minimapMeshes=createMinimapMeshes!B(baseEdges,tiles,minimapTileMeshInfos);
 		renderedEdgeChangesHash=edgeChangesEmptyHash;
 		renderedEdgeChanges[]=0;
-		foreach(index;0..cast(int)scarTextures.length){
-			if(scarTextures[index].cell==-1) continue;
-			if(scarTextures[index].mesh) B.destroyTerrainMesh(scarTextures[index].mesh); // belongs to the old meshes
-			attachScarMesh(index);
+		foreach(slot;0..cast(int)scarMeshCells.length){ // the old meshes are gone
+			if(scarMeshCells[slot]==-1) continue;
+			if(scarMeshes[slot]) B.destroyTerrainMesh(scarMeshes[slot]);
+			scarMeshCells[slot]=-1;
+			attachScarMesh(slot);
 		}
 	}
 	void updateEdgeMeshes(T)(ref T edgeChanges){
@@ -537,7 +863,7 @@ final class SacMap(B){
 			collectedNumFaces=0;
 			getFaces(edges,j,i,CollectFaces());
 			auto texture=tiles[j][i];
-			if(auto scarMesh=cellScarMesh(j,i)){
+			if(auto scarMesh=cellScarMesh(j,i)){ // the faces are in the mesh of the scarred cell
 				foreach(k;0..info.numFaces){
 					if(k<collectedNumFaces) scarMesh.indices[k]=collectedFaces[k];
 					else scarMesh.indices[k]=[0,0,0];
@@ -1153,78 +1479,22 @@ final class SacMap(B){
 	}
 }
 
-enum ScarKind:ubyte{
-	blood, // blood stains (--no-blood-stains disables them)
-	spell, // scars left by spells and abilities (--no-scars disables them)
-}
-
-struct ScarImage{ // SCAR resource
-	int width,height;
-	ubyte[3][256] palette;
-	ubyte[2][] texels; // palette index, alpha (0 to 8)
-}
-
-ScarImage* getScarImage(char[4] tag){
-	static ScarImage*[char[4]] cache;
-	static string[char[4]] files;
-	static bool indexed=false;
-	if(auto r=tag in cache) return *r;
-	if(!indexed){
-		indexed=true;
-		string[] names;
-		if(wadManager){
-			char[4] ext="SCAR";
-			if(auto r=ext in wadManager.byExt) names=*r;
-		}else{
-			import std.file: exists,isDir,dirEntries,SpanMode;
-			if(exists("extracted")&&isDir("extracted"))
-				foreach(string name;dirEntries("extracted","*.SCAR",SpanMode.depth)) names~=name;
-		}
-		foreach(name;names){
-			auto base=baseName(name);
-			if(base.length!=4+".SCAR".length) continue;
-			char[4] key=base[0..4];
-			if(key !in files) files[key]=name;
-		}
-	}
-	ScarImage* result=null;
-	if(auto name=tag in files){
-		try{
-			auto data=readFile(*name);
-			enforce(data.length>=16+1024);
-			result=new ScarImage;
-			result.width=cast(int)parseLE(data[8..12]);
-			result.height=cast(int)parseLE(data[12..16]);
-			enforce(0<result.width&&result.width<=1024&&0<result.height&&result.height<=1024);
-			enforce(data.length==16+1024+2*result.width*result.height);
-			foreach(k;0..256) result.palette[k]=[data[16+4*k+2],data[16+4*k+1],data[16+4*k]]; // stored as BGRX
-			result.texels=cast(ubyte[2][])data[16+1024..$].dup;
-			foreach(texel;result.texels) enforce(texel[1]<=8);
-		}catch(Exception e){
-			stderr.writeln("warning: failed to load scar '",tag,"' (",e.msg,")");
-			result=null;
-		}
-	}
-	cache[tag]=result;
-	return result;
-}
-
-ubyte[3][256] loadLandPalette(string directory){
-	ubyte[3][256] result;
+ScarTerrain loadScarTerrain(string directory,ubyte[][] tiles){
+	ScarTerrain result;
+	result.tiles=tiles;
 	auto palt=readFile(buildPath(directory,"LAND.PALT"));
 	enforce(palt.length>=8+3*256);
-	foreach(k;0..256) result[k]=palt[8+3*k..8+3*(k+1)][0..3];
-	return result;
-}
-
-// tiles with property flag 2 do not get scars (LAND::GetFreeScarTexture)
-bool[256] loadTilesThatCannotScar(string directory){
+	foreach(k;0..256) result.palette[k]=palt[8+3*k..8+3*(k+1)][0..3];
+	result.tilePixels=new ubyte[](256*64*64);
 	ubyte[256] flags=0;
 	foreach(k;0..256){
 		auto maptFile=buildPath(directory,format("%04d.MAPT",k));
 		if(!fileExists(maptFile)) continue;
 		auto data=readFile(maptFile);
-		if(data.length==5476) flags[k]=data[5464]; // properties after 7 mipmap levels
+		if(data.length<64*64) continue;
+		result.tilePixels[64*64*k..64*64*(k+1)]=data[0..64*64];
+		result.hasTile[k]=true;
+		if(data.length==5476) flags[k]=data[5464]; // properties after the 7 mipmap levels
 	}
 	// map groups add their flags to their tiles (LAND::SetMapGroup)
 	ubyte[][] groups;
@@ -1241,8 +1511,19 @@ bool[256] loadTilesThatCannotScar(string directory){
 		}
 		foreach(tile;group[34..34+min(group[33],14)]) flags[tile]|=groupFlags;
 	}
-	bool[256] result;
-	foreach(k;0..256) result[k]=!!(flags[k]&2);
+	foreach(k;0..256) result.cannotScar[k]=!!(flags[k]&2);
+	result.lut=new ubyte[](32768); // LAND::MakeScarLUT
+	foreach(key;0..32768){
+		int red=(key>>10)*8,green=((key>>5)&31)*8,blue=(key&31)*8;
+		int best=0x100000;
+		foreach(k;0..256){
+			int dr=result.palette[k][0]-red,dg=result.palette[k][1]-green,db=result.palette[k][2]-blue;
+			if(dr*dr+dg*dg+db*db<best){
+				best=dr*dr+dg*dg+db*db;
+				result.lut[key]=cast(ubyte)k;
+			}
+		}
+	}
 	return result;
 }
 

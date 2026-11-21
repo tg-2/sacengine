@@ -968,21 +968,6 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Edg
 	result.recomputeHash();
 }
 
-void serialize(alias sink)(ref ScarEvent scarEvent){ serializeStruct!sink(scarEvent); }
-void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ScarEvent)){ deserializeStruct(result,state,data); }
-
-void serialize(alias sink)(ref ScarEvents scarEvents){
-	serialize!sink(scarEvents.count);
-	auto start=scarEvents.count>scarEvents.capacity?scarEvents.count-scarEvents.capacity:0;
-	foreach(k;start..scarEvents.count) serialize!sink(scarEvents.events[k%scarEvents.capacity]);
-}
-void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ScarEvents)){
-	result=ScarEvents.init;
-	deserialize(result.count,state,data);
-	auto start=result.count>result.capacity?result.count-result.capacity:0;
-	foreach(k;start..result.count) deserialize(result.events[k%result.capacity],state,data);
-}
-
 void serialize(alias sink)(ref FallingLandChunk fallingLandChunk){ serializeStruct!sink(fallingLandChunk); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==FallingLandChunk)){ deserializeStruct(result,state,data); }
 
@@ -1144,17 +1129,46 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Tri
 void serialize(alias sink,B)(ref ObjectState!B.Settings settings){ serializeStruct!sink(settings); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ObjectState!B.Settings)){ deserializeStruct(result,state,data); }
 
+// Scars: state hashes only use the hash of the newest block of the scar log. Otherwise, the scars are sent as a
+// snapshot of the scarred terrain textures (see sacmap.ScarPool), whose size does not grow with the length of the game.
+bool serializeScarsForHash=false;
+void serializeScars(alias sink,B)(ObjectState!B state){
+	serialize!sink(state.scars.count);
+	serialize!sink(state.scars.hash);
+	if(serializeScarsForHash) return;
+	bool hasScars=state.scars.last !is null;
+	serialize!sink(hasScars);
+	if(!hasScars) return;
+	Array!ubyte snapshot;
+	writeScarSnapshot(&state.map.scarTerrain,state.map.ntts.scars,state.scars,state.settings.maxScarTextures,snapshot);
+	serialize!sink(snapshot);
+}
+void deserializeScars(R,B)(ObjectState!B state,ref R data){
+	ulong count;
+	uint hash;
+	bool hasScars;
+	deserialize(count,state,data);
+	deserialize(hash,state,data);
+	deserialize(hasScars,state,data);
+	state.scars=ScarLog.init;
+	if(!hasScars) return;
+	Array!ubyte snapshot;
+	deserialize(snapshot,state,data);
+	state.scars.setSnapshot(count,hash,snapshot.data);
+}
 void serialize(alias sink,B)(ObjectState!B state){
-	enum noserialize=["map","sides","proximity","pathFinder","dangerGrid","triggers","toRemove",/+"cachedState","cachedHash","hashCached"+/];
+	enum noserialize=["map","sides","proximity","pathFinder","dangerGrid","triggers","toRemove","scars",/+"cachedState","cachedHash","hashCached"+/];
 	if(state.proximity.active) stderr.writeln("warning: serialize: proximity active");
 	if(state.toRemove.length!=0) stderr.writeln("warning: serialize: toRemove not empty");
 	serializeClass!(sink,noserialize)(state);
+	serializeScars!sink(state);
 }
 void deserialize(T,R)(T state,ref R data)if(is(T==ObjectState!B,B)){
-	enum noserialize=["map","sides","proximity","pathFinder","dangerGrid","triggers","toRemove",/+"cachedState","cachedHash","hashCached"+/];
+	enum noserialize=["map","sides","proximity","pathFinder","dangerGrid","triggers","toRemove","scars",/+"cachedState","cachedHash","hashCached"+/];
 	if(state.proximity.active) stderr.writeln("warning: deserialize: proximity active");
 	if(state.toRemove.length!=0) stderr.writeln("warning: deserialize: toRemove not empty");
 	deserializeClass!noserialize(state,state,data);
+	deserializeScars(state,data);
 }
 ObjectState!B deserializeObjectState(B,R)(SacMap!B map,Sides!B sides,Proximity!B proximity,PathFinder!B pathFinder,Triggers!B triggers,ref R data){
 	auto state=new ObjectState!B(map,sides,proximity,pathFinder,triggers);

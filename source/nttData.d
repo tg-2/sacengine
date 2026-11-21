@@ -299,6 +299,27 @@ string[char[4]] makeSampByTag(bool readFromWads,string voiceFolder="local"){
 immutable string[] textFolders=["extracted/local/lang_english/LANG.WAD!/ENGL.LANG",
                                 "extracted/local/langp3_english/LNG+.WAD!/addl.LANG"].fixPaths;
 
+// SCAR resources: images that are blended into the terrain textures (blood stains, scorch marks, cracks, ...)
+struct ScarImage{
+	int width,height;
+	ubyte[3][256] palette;
+	ubyte[2][] texels; // palette index, alpha (0 to 8)
+}
+ScarImage loadScar(string filename){
+	auto data=readFile(filename);
+	enforce(data.length>=16+1024,"bad SCAR file");
+	ScarImage result;
+	result.width=cast(int)parseLE(data[8..12]);
+	result.height=cast(int)parseLE(data[12..16]);
+	enforce(0<result.width&&result.width<=1024&&0<result.height&&result.height<=1024,"bad SCAR size");
+	enforce(data.length==16+1024+2*result.width*result.height,"bad SCAR size");
+	foreach(k;0..256) result.palette[k]=[data[16+4*k+2],data[16+4*k+1],data[16+4*k]]; // stored as BGRX
+	result.texels=cast(ubyte[2][])data[16+1024..$].dup;
+	foreach(texel;result.texels) enforce(texel[1]<=8,"bad SCAR alpha");
+	return result;
+}
+immutable(ScarImage)[char[4]] scarImages;
+
 immutable(string)[char[4]] texts;
 immutable string[] tipFolders=["extracted/local/lang_english/LANG.WAD!/ENGL.LANG/spit.FLDR"].fixPaths;
 char[4][] tipTags;
@@ -388,6 +409,7 @@ void initNTTData(bool readFromWads,string voiceFolder="local"){
 	samps=makeSampByTag(readFromWads,voiceFolder);
 
 	texts=makeTextByTag(readFromWads);
+	scarImages=makeByTag!loadScar(readFromWads,["extracted"],"SCAR",false);
 	makeTipIndex(readFromWads);
 	formTexts=makeFormTextByTag(readFromWads);
 	mouseoverTexts=makeMouseoverTextByTag(readFromWads);
