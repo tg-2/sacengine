@@ -12341,7 +12341,7 @@ bool petrify(B)(ref MovingObject!B obj,int lifetime,int attackingSide,Vector3f a
 	// original: sac doctors in a ritual reject paralysis, so Turn to Stone ends at once and sends FSM events 25 and 7,
 	// and event 7 makes the sac doctor abort (TurnToStoneRun 0x4478b0). Other sac doctors abort when the stone
 	// breaks (damageStun in updatePetrification).
-	if(obj.isSacDoctor&&isRitualSacDoctor(obj.id,state)) return obj.kill(state);
+	if(isRitualSacDoctor(obj,state)) return obj.kill(state);
 	if(obj.creatureStats.effects.ccProtected) return false;
 	assert(!obj.creatureStats.effects.petrified);
 	if(!obj.creatureState.mode.canBePetrified) return false;
@@ -17113,8 +17113,12 @@ int spawnRitualSacDoctor(B)(int side,Vector3f position,float facing,ObjectState!
 
 bool isRitualSacDoctor(B)(int id,ObjectState!B state){
 	if(!id) return false;
-	foreach(ref ritual;state.obj.opaqueObjects.effects.rituals.data)
-		if(!ritual.stopped&&ritual.sacDoctors[].canFind(id)) return true;
+	return state.movingObjectById!(isRitualSacDoctor,()=>false)(id,state);
+}
+bool isRitualSacDoctor(B)(ref MovingObject!B obj,ObjectState!B state){
+	if(!obj.isSacDoctor) return false;
+	foreach(ref ritual;state.obj.opaqueObjects.effects.rituals.data) // TODO: store a flag in creature stats instead?
+		if(!ritual.stopped&&ritual.sacDoctors[].canFind(obj.id)) return true;
 	return false;
 }
 
