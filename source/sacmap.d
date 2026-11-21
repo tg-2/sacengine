@@ -198,6 +198,31 @@ final class SacMap(B){
 	NTTs ntts;
 	Trig trig;
 
+	// Terrain scars: blood stains, scorch marks, cracks, ...
+	// (original: LAND::ApplyScarring, LAND::GetFreeScarTexture and LAND::MakeScarLUT in game3d.dll)
+	// A scarred cell gets a private copy of its tile texture, which the scars are blended into.
+	SuperImage[] tileImages; // MAPT images
+	ubyte[3][256] landPalette;
+	bool[256] tileCannotScar;
+	ubyte[] scarLUT; // RGB555 -> nearest color of the land palette
+	enum maxScarTextures=256; // 'mscr' option of the original (32 to 256, default 256)
+	static struct ScarTexture{
+		int cell=-1; // 256*j+i
+		ubyte baseTile;
+		short priority; // map scars: 1, others: 0
+		uint lastUse; // frame
+		SuperImage image;
+		B.Texture texture;
+		B.TerrainMesh mesh; // the cell, drawn with this texture instead of the tile texture
+		bool dirty;
+	}
+	ScarTexture[] scarTextures;
+	int[] cellScarTextures; // 1+index into scarTextures, 0 if the cell is not scarred
+	int[] freeScarTextures; // stack
+	int[] usedScarTextures; // most recent allocation first
+	uint scarTime;
+	ulong appliedScarEvents;
+
 	this(LMap)(string path,string mapFolder,uint crc32,Levl levl,Envi envi,HMap hmap,TMap tmap,LMap lmap,Side[] sids,NTTs ntts,Trig trig){
 		this.path=path;
 		this.mapFolder=mapFolder;
@@ -226,6 +251,9 @@ final class SacMap(B){
 		auto land=landFolders[tileset];
 		dti=loadDTIndex(land).dts;
 		auto mapts=loadMAPTs(land);
+		tileImages=mapts;
+		landPalette=loadLandPalette(land);
+		tileCannotScar=loadTilesThatCannotScar(land);
 		auto bumps=loadDTs(land);
 		auto edge=loadTXTR(buildPath(land,chain(retro(envi.edge[]),".TXTR").to!string));
 		//auto sky_=loadTXTR(buildPath(land,chain(retro(envi.sky_[]),".TXTR").to!string)); // TODO: smk files
@@ -242,6 +270,7 @@ final class SacMap(B){
 		this.sids=sids;
 		this.ntts=ntts;
 		this.trig=trig;
+		applyMapScars();
 	}
 	bool applyEdgeChanges(uint hash,scope const(uint)[] changes){
 		if(appliedEdgeChangesHash==hash) return false;
@@ -258,12 +287,218 @@ final class SacMap(B){
 		appliedEdgeChangesHash=hash;
 		return updated;
 	}
+	B.Texture cellTexture(int j,int i){
+		if(cellScarTextures.length){
+			if(auto index=cellScarTextures[256*j+i]){
+				auto texture=scarTextures[index-1].texture;
+				if(texture) return texture;
+			}
+		}
+		return textures[tiles[j][i]];
+	}
+	private B.TerrainMesh cellScarMesh(int j,int i){
+		if(!cellScarTextures.length) return null;
+		if(auto index=cellScarTextures[256*j+i]) return scarTextures[index-1].mesh;
+		return null;
+	}
+	// moves the faces of the cell from the mesh of its tile to the mesh of the scar texture
+	private void attachScarMesh(int index){
+		auto scar=&scarTextures[index];
+		if(scar.mesh||!meshes.length) return;
+		int j=scar.cell/256,i=scar.cell%256;
+		if(j>=n-1||i>=m-1) return;
+		auto info=terrainTileMeshInfos[j*(m-1)+i];
+		if(!info.numFaces) return;
+		auto mesh=meshes[tiles[j][i]];
+		if(!mesh) return;
+		auto scarMesh=B.makeTerrainMesh(4,info.numFaces);
+		foreach(k;0..4){
+			scarMesh.vertices[k]=mesh.vertices[info.vertexOffset+k];
+			scarMesh.normals[k]=mesh.normals[info.vertexOffset+k];
+			scarMesh.coords[k]=mesh.coords[info.vertexOffset+k];
+			scarMesh.texcoords[k]=mesh.texcoords[info.vertexOffset+k];
+		}
+		foreach(k;0..info.numFaces){
+			auto face=mesh.indices[info.faceOffset+k];
+			foreach(ref x;face) x-=info.vertexOffset;
+			scarMesh.indices[k]=face;
+			mesh.indices[info.faceOffset+k]=[info.vertexOffset,info.vertexOffset,info.vertexOffset];
+		}
+		B.finalizeTerrainMesh(scarMesh);
+		B.updateTerrainMeshIndices(mesh,info.faceOffset,mesh.indices[info.faceOffset..info.faceOffset+info.numFaces]);
+		scar.mesh=scarMesh;
+	}
+	private void detachScarMesh(int index){
+		auto scar=&scarTextures[index];
+		if(!scar.mesh) return;
+		int j=scar.cell/256,i=scar.cell%256;
+		auto info=terrainTileMeshInfos[j*(m-1)+i];
+		if(auto mesh=meshes[tiles[j][i]]){
+			foreach(k;0..info.numFaces){
+				auto face=scar.mesh.indices[k];
+				foreach(ref x;face) x+=info.vertexOffset;
+				mesh.indices[info.faceOffset+k]=face;
+			}
+			B.updateTerrainMeshIndices(mesh,info.faceOffset,mesh.indices[info.faceOffset..info.faceOffset+info.numFaces]);
+		}
+		B.destroyTerrainMesh(scar.mesh);
+	}
+	private void releaseScarTexture(int cell){ // LAND::ReleaseScarTexture
+		auto index=cellScarTextures[cell]-1;
+		if(index<0) return;
+		detachScarMesh(index);
+		auto position=usedScarTextures.countUntil(index);
+		enforce(position!=-1);
+		usedScarTextures=usedScarTextures.remove(position);
+		freeScarTextures~=index;
+		cellScarTextures[cell]=0;
+		scarTextures[index].cell=-1;
+	}
+	private int getScarTexture(int cell,short priority){ // LAND::GetFreeScarTexture
+		auto baseTile=tiles[cell/256][cell%256];
+		if(tileCannotScar[baseTile]) return -1;
+		if(baseTile>=tileImages.length||tileImages[baseTile].data.length!=3*64*64) return -1;
+		if(!scarTextures.length){
+			scarTextures=new ScarTexture[](maxScarTextures);
+			cellScarTextures=new int[](256*256);
+			foreach_reverse(index;0..maxScarTextures) freeScarTextures~=index;
+		}
+		if(auto index=cellScarTextures[cell]){
+			auto scar=&scarTextures[index-1];
+			scar.priority=max(scar.priority,priority);
+			scar.lastUse=scarTime;
+			return index-1;
+		}
+		if(!freeScarTextures.length){
+			// lowest priority first, then least recently used. ties keep the most recent allocation
+			int victim=-1;
+			short lowest=short.max;
+			int oldest=cast(int)scarTime;
+			foreach(index;usedScarTextures){
+				auto scar=&scarTextures[index];
+				if(scar.priority<lowest||scar.priority==lowest&&cast(int)scar.lastUse<oldest){
+					victim=index;
+					lowest=scar.priority;
+					oldest=cast(int)scar.lastUse;
+				}
+			}
+			if(victim==-1) return -1;
+			releaseScarTexture(scarTextures[victim].cell);
+		}
+		auto index=freeScarTextures[$-1];
+		freeScarTextures.length=freeScarTextures.length-1;
+		freeScarTextures.assumeSafeAppend();
+		usedScarTextures=index~usedScarTextures;
+		auto scar=&scarTextures[index];
+		scar.cell=cell;
+		scar.baseTile=baseTile;
+		scar.priority=priority;
+		scar.lastUse=scarTime;
+		if(!scar.image) scar.image=image(64,64);
+		enforce(scar.image.data.length==tileImages[baseTile].data.length);
+		scar.image.data[]=tileImages[baseTile].data[];
+		scar.dirty=true;
+		cellScarTextures[cell]=index+1;
+		attachScarMesh(index);
+		return index;
+	}
+	private void makeScarLUT(){ // LAND::MakeScarLUT
+		scarLUT=new ubyte[](32768);
+		foreach(key;0..32768){
+			int red=(key>>10)*8,green=((key>>5)&31)*8,blue=(key&31)*8;
+			int best=0x100000;
+			foreach(k;0..256){
+				int dr=landPalette[k][0]-red,dg=landPalette[k][1]-green,db=landPalette[k][2]-blue;
+				if(dr*dr+dg*dg+db*db<best){
+					best=dr*dr+dg*dg+db*db;
+					scarLUT[key]=cast(ubyte)k;
+				}
+			}
+		}
+	}
+	// blends the scar centered at position into the textures of all cells it touches (LAND::ApplyScarring)
+	// width and height select the top left part of the scar image, 0 means everything
+	bool applyScar(ref const ScarImage scar,Vector3f position,int width,int height,short priority){
+		if(!width) width=scar.width;
+		if(!height) height=scar.height;
+		width=min(width,scar.width);
+		height=min(height,scar.height);
+		if(!scarLUT.length) makeScarLUT();
+		long x0=cast(long)(position.x*6.4)-(width>>1),y0=cast(long)(position.y*6.4)-(height>>1); // 64 texels per cell
+		long xend=x0+width,yend=y0+height;
+		bool changed=false;
+		for(long cy=max(y0>>6,0);cy<=(yend-1)>>6&&cy<256;cy++){
+			for(long cx=max(x0>>6,0);cx<=(xend-1)>>6&&cx<256;cx++){
+				auto index=getScarTexture(cast(int)(256*cy+cx),priority);
+				if(index==-1) continue;
+				auto scarTexture=&scarTextures[index];
+				auto data=scarTexture.image.data;
+				foreach(gy;max(y0,64*cy)..min(yend,64*(cy+1))){
+					foreach(gx;max(x0,64*cx)..min(xend,64*(cx+1))){
+						auto texel=scar.texels[(gy-y0)*scar.width+(gx-x0)];
+						uint alpha=texel[1];
+						if(!alpha) continue;
+						auto color=scar.palette[texel[0]];
+						auto offset=3*((gy&63)*64+(gx&63));
+						uint key=0;
+						foreach(c;0..3) key|=((((data[offset+c]*(8-alpha))>>3)+((color[c]*alpha)>>3))>>3)<<(10-5*c);
+						data[offset..offset+3]=landPalette[scarLUT[key]][];
+						scarTexture.dirty=true;
+						changed=true;
+					}
+				}
+			}
+		}
+		return changed;
+	}
+	private void uploadScarTextures(){
+		foreach(ref scar;scarTextures){
+			if(!scar.dirty||scar.cell==-1) continue;
+			if(!scar.texture) scar.texture=B.makeTexture(scar.image);
+			else B.updateTexture(scar.texture,true);
+			scar.dirty=false;
+		}
+	}
+	private void applyMapScars(){
+		foreach(ref scar;ntts.scars){
+			char[4] tag=scar.tag;
+			reverse(tag[]);
+			auto image=getScarImage(tag);
+			if(!image) continue;
+			applyScar(*image,Vector3f(scar.x,scar.y,scar.z),scar.width,scar.height,1);
+		}
+		uploadScarTextures();
+	}
+	// applies the scars that were added to the game state since the last call
+	void updateScars(T)(ref T scarEvents,bool enableBloodStains,bool enableScars){
+		if(scarEvents.count<appliedScarEvents){ // rollback, the events will be added again
+			if(appliedScarEvents-scarEvents.count>scarEvents.capacity) appliedScarEvents=scarEvents.count; // new game
+			return;
+		}
+		auto start=max(appliedScarEvents,scarEvents.count>scarEvents.capacity?scarEvents.count-scarEvents.capacity:0);
+		foreach(k;start..scarEvents.count){
+			auto event=scarEvents.events[k%scarEvents.capacity];
+			if(event.kind==ScarKind.blood?!enableBloodStains:!enableScars) continue;
+			auto image=getScarImage(event.tag);
+			if(!image) continue;
+			scarTime=event.frame;
+			applyScar(*image,event.position,event.width,event.height,0);
+		}
+		appliedScarEvents=scarEvents.count;
+		uploadScarTextures();
+	}
+
 	void makeMeshes(bool enableMapBottom){
 		this.enableMapBottom=enableMapBottom;
 		meshes=createMeshes!B(baseEdges,heights,tiles,enableMapBottom,terrainTileMeshInfos,edgeWallSlots); // TODO: allow dynamic retexturing
 		minimapMeshes=createMinimapMeshes!B(baseEdges,tiles,minimapTileMeshInfos);
 		renderedEdgeChangesHash=edgeChangesEmptyHash;
 		renderedEdgeChanges[]=0;
+		foreach(index;0..cast(int)scarTextures.length){
+			if(scarTextures[index].cell==-1) continue;
+			if(scarTextures[index].mesh) B.destroyTerrainMesh(scarTextures[index].mesh); // belongs to the old meshes
+			attachScarMesh(index);
+		}
 	}
 	void updateEdgeMeshes(T)(ref T edgeChanges){
 		if(!meshes.length||renderedEdgeChangesHash==edgeChanges.hash) return;
@@ -302,7 +537,13 @@ final class SacMap(B){
 			collectedNumFaces=0;
 			getFaces(edges,j,i,CollectFaces());
 			auto texture=tiles[j][i];
-			if(auto mesh=meshes[texture]){
+			if(auto scarMesh=cellScarMesh(j,i)){
+				foreach(k;0..info.numFaces){
+					if(k<collectedNumFaces) scarMesh.indices[k]=collectedFaces[k];
+					else scarMesh.indices[k]=[0,0,0];
+				}
+				B.updateTerrainMeshIndices(scarMesh,0,scarMesh.indices[0..info.numFaces]);
+			}else if(auto mesh=meshes[texture]){
 				foreach(k;0..info.numFaces){
 					auto offset=info.faceOffset+k;
 					if(k<collectedNumFaces){
@@ -346,6 +587,10 @@ final class SacMap(B){
 			if(auto mesh=meshes[tiles[j][i]]){
 				foreach(k;0..4) mesh.normals[info.vertexOffset+k]=tileNormals[k];
 				B.updateTerrainMeshNormals(mesh,info.vertexOffset,mesh.normals[info.vertexOffset..info.vertexOffset+4]);
+			}
+			if(auto scarMesh=cellScarMesh(j,i)){
+				scarMesh.normals[0..4]=tileNormals[];
+				B.updateTerrainMeshNormals(scarMesh,0,scarMesh.normals[0..4]);
 			}
 			if(info.bottomVertexOffset!=uint.max){
 				if(auto mesh=meshes[bottomIndex]){
@@ -906,6 +1151,99 @@ final class SacMap(B){
 		}
 		return sweepVisible;
 	}
+}
+
+enum ScarKind:ubyte{
+	blood, // blood stains (--no-blood-stains disables them)
+	spell, // scars left by spells and abilities (--no-scars disables them)
+}
+
+struct ScarImage{ // SCAR resource
+	int width,height;
+	ubyte[3][256] palette;
+	ubyte[2][] texels; // palette index, alpha (0 to 8)
+}
+
+ScarImage* getScarImage(char[4] tag){
+	static ScarImage*[char[4]] cache;
+	static string[char[4]] files;
+	static bool indexed=false;
+	if(auto r=tag in cache) return *r;
+	if(!indexed){
+		indexed=true;
+		string[] names;
+		if(wadManager){
+			char[4] ext="SCAR";
+			if(auto r=ext in wadManager.byExt) names=*r;
+		}else{
+			import std.file: exists,isDir,dirEntries,SpanMode;
+			if(exists("extracted")&&isDir("extracted"))
+				foreach(string name;dirEntries("extracted","*.SCAR",SpanMode.depth)) names~=name;
+		}
+		foreach(name;names){
+			auto base=baseName(name);
+			if(base.length!=4+".SCAR".length) continue;
+			char[4] key=base[0..4];
+			if(key !in files) files[key]=name;
+		}
+	}
+	ScarImage* result=null;
+	if(auto name=tag in files){
+		try{
+			auto data=readFile(*name);
+			enforce(data.length>=16+1024);
+			result=new ScarImage;
+			result.width=cast(int)parseLE(data[8..12]);
+			result.height=cast(int)parseLE(data[12..16]);
+			enforce(0<result.width&&result.width<=1024&&0<result.height&&result.height<=1024);
+			enforce(data.length==16+1024+2*result.width*result.height);
+			foreach(k;0..256) result.palette[k]=[data[16+4*k+2],data[16+4*k+1],data[16+4*k]]; // stored as BGRX
+			result.texels=cast(ubyte[2][])data[16+1024..$].dup;
+			foreach(texel;result.texels) enforce(texel[1]<=8);
+		}catch(Exception e){
+			stderr.writeln("warning: failed to load scar '",tag,"' (",e.msg,")");
+			result=null;
+		}
+	}
+	cache[tag]=result;
+	return result;
+}
+
+ubyte[3][256] loadLandPalette(string directory){
+	ubyte[3][256] result;
+	auto palt=readFile(buildPath(directory,"LAND.PALT"));
+	enforce(palt.length>=8+3*256);
+	foreach(k;0..256) result[k]=palt[8+3*k..8+3*(k+1)][0..3];
+	return result;
+}
+
+// tiles with property flag 2 do not get scars (LAND::GetFreeScarTexture)
+bool[256] loadTilesThatCannotScar(string directory){
+	ubyte[256] flags=0;
+	foreach(k;0..256){
+		auto maptFile=buildPath(directory,format("%04d.MAPT",k));
+		if(!fileExists(maptFile)) continue;
+		auto data=readFile(maptFile);
+		if(data.length==5476) flags[k]=data[5464]; // properties after 7 mipmap levels
+	}
+	// map groups add their flags to their tiles (LAND::SetMapGroup)
+	ubyte[][] groups;
+	for(int k=0;fileExists(buildPath(directory,format("MG%02d.MAPG",k)));k++){
+		auto data=readFile(buildPath(directory,format("MG%02d.MAPG",k)));
+		groups~=data.length==60?data:null;
+	}
+	foreach(group;groups){
+		if(!group) continue;
+		ubyte groupFlags=group[48];
+		if(group[32]==1){ // joins two other groups
+			auto a=parseLE(group[0..4]),b=parseLE(group[4..8]);
+			groupFlags=cast(ubyte)((a<groups.length&&groups[a]?groups[a][48]:0)|(b<groups.length&&groups[b]?groups[b][48]:0));
+		}
+		foreach(tile;group[34..34+min(group[33],14)]) flags[tile]|=groupFlags;
+	}
+	bool[256] result;
+	foreach(k;0..256) result[k]=!!(flags[k]&2);
+	return result;
 }
 
 SuperImage loadLMap(string filename){

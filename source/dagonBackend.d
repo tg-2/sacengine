@@ -183,7 +183,7 @@ final class SacScene: Scene{
 		scope(exit) frameprof.markRender("shadow");
 		super.renderShadowCastingEntities3D(rc);
 		if(!state) return;
-		typeof(renderer).R3DOpt r3dopt={enableWidgets: options.enableWidgets};
+		typeof(renderer).R3DOpt r3dopt={enableWidgets: options.enableWidgets, enableBloodStains: options.enableBloodStains, enableScars: options.enableScars};
 		renderer.renderShadowCastingEntities3D(r3dopt,state.current,info,rc);
 	}
 
@@ -199,14 +199,14 @@ final class SacScene: Scene{
 		}
 		super.renderOpaqueEntities3D(rc);
 		if(!state) return;
-		typeof(renderer).R3DOpt r3dopt={enableWidgets: options.enableWidgets};
+		typeof(renderer).R3DOpt r3dopt={enableWidgets: options.enableWidgets, enableBloodStains: options.enableBloodStains, enableScars: options.enableScars};
 		renderer.renderOpaqueEntities3D(r3dopt,state.current,info,rc);
 	}
 	override void renderTransparentEntities3D(RenderingContext* rc){
 		scope(exit) frameprof.markRender("transparent");
 		super.renderTransparentEntities3D(rc);
 		if(!state) return;
-		typeof(renderer).R3DOpt r3dopt={enableWidgets: options.enableWidgets};
+		typeof(renderer).R3DOpt r3dopt={enableWidgets: options.enableWidgets, enableBloodStains: options.enableBloodStains, enableScars: options.enableScars};
 		renderer.renderTransparentEntities3D(r3dopt,state.current,info,rc);
 	}
 	override void renderEntities2D(RenderingContext* rc){
@@ -2843,9 +2843,10 @@ static:
 		return texture;
 	}
 
-	void updateTexture(Texture texture){
+	void updateTexture(Texture texture,bool updateMipmaps=false){
 		glBindTexture(GL_TEXTURE_2D,texture.tex);
 		glTexSubImage2D(GL_TEXTURE_2D,0,0,0,texture.width,texture.height,texture.format,texture.type,cast(void*)texture.image.data.ptr);
+		if(updateMipmaps) glGenerateMipmap(GL_TEXTURE_2D);
 		glBindTexture(GL_TEXTURE_2D,0);
 	}
 
@@ -3176,10 +3177,10 @@ static:
 
 	Material createMaterial(SacParticle!DagonBackend particle){
 		final switch(particle.type) with(ParticleType){
-			case manafount, manalith, manahoar, shrine, firy, fire, fireball, firewall, cold, explosion, explosion2, speedUp, heal, scarabHit, relativeHeal, ghostTransition, ghost, lightningCasting, chainLightningCasting, needle, freeze, etherealFormSpark, shard, snowballShard, flurryShard, redVortexDroplet, blueVortexDroplet, spark, styxSpark, rend, castPersephone, castPersephone2, castPyro, castPyro2, castJames, castJames2, castStratos, castCharnel, castCharnel2, breathOfLife, wrathCasting, wrathExplosion1, wrathExplosion2, wrathParticle, rainbowParticle, rainOfFrogsCasting, frogExplosion, gnomeHit, warmongerHit, steam, ashParticle, volcanoAsh, smoke, dirt, dust, slowDust, splat, rock, bombardmentCasting, webDebris, oil, poison, relativePoison, swarmHit, slime, hoverBlood, blood, locustBlood, locustDebris, heart, bouncingHeart, tornadoDirt, tornadoCasting:
+			case manafount, manalith, manahoar, shrine, firy, fire, fireball, firewall, cold, explosion, explosion2, speedUp, heal, scarabHit, relativeHeal, ghostTransition, ghost, lightningCasting, chainLightningCasting, needle, freeze, etherealFormSpark, shard, snowballShard, flurryShard, redVortexDroplet, blueVortexDroplet, spark, styxSpark, rend, castPersephone, castPersephone2, castPyro, castPyro2, castJames, castJames2, castStratos, castCharnel, castCharnel2, breathOfLife, wrathCasting, wrathExplosion1, wrathExplosion2, wrathParticle, rainbowParticle, rainOfFrogsCasting, frogExplosion, gnomeHit, warmongerHit, steam, ashParticle, volcanoAsh, smoke, dirt, dust, slowDust, splat, rock, bombardmentCasting, webDebris, oil, poison, relativePoison, swarmHit, slime, hoverBlood, blood, locustBlood, locustDebris, heart, bouncingHeart, tornadoDirt, tornadoCasting, bloodDrop:
 				auto mat=makeMaterial(scene.shadelessMaterialBackend);
 				mat.depthWrite=false;
-				mat.blending=particle.type.among(styxSpark,rend,castJames2,ashParticle,smoke,dirt,dust,splat,rock,bombardmentCasting,oil,poison,relativePoison,swarmHit,slime,hoverBlood,blood,locustBlood,tornadoDirt)?Transparent:Additive;
+				mat.blending=particle.type.among(styxSpark,rend,castJames2,ashParticle,smoke,dirt,dust,splat,rock,bombardmentCasting,oil,poison,relativePoison,swarmHit,slime,hoverBlood,blood,locustBlood,tornadoDirt,bloodDrop)?Transparent:Additive;
 				if(particle.type==dust) mat.alpha=0.25f;
 				mat.energy=particle.energy;
 				mat.diffuse=particle.texture;

@@ -1284,13 +1284,15 @@ enum ParticleType{
 	heart,
 	bouncingHeart,
 	tornadoDirt,
-	tornadoCasting
+	tornadoCasting,
+	bloodDrop,
 }
 
 enum ParticleKind{
 	standard,
 	relative,
 	relativeTwirl,
+	decaying, // shrink, fade out and animate once over the lifetime (original PARTICLESYSTEM style)
 }
 
 final class SacParticle(B){
@@ -1345,6 +1347,8 @@ final class SacParticle(B){
 				return false;
 			case blood:
 				return true;
+			case bloodDrop:
+				return false; // has its own acceleration, see updateParticles
 			case locustBlood,locustDebris:
 				return false;
 			case heart:
@@ -1377,6 +1381,8 @@ final class SacParticle(B){
 				return ParticleKind.relative;
 			case hoverBlood,blood,locustBlood,locustDebris:
 				return ParticleKind.standard;
+			case bloodDrop:
+				return ParticleKind.decaying;
 			case heart,bouncingHeart:
 				return ParticleKind.standard;
 			case tornadoDirt:
@@ -1743,6 +1749,12 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/blud.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
+			case bloodDrop:
+				width=height=1.0f; // particle scale is the full width of the sprite
+				this.energy=8.0f;
+				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/blud.TXTR"));
+				meshes=makeSpriteMeshes!B(4,4,width,height);
+				break;
 			case locustDebris:
 				width=height=0.4f;
 				this.energy=20.0f;
@@ -1882,6 +1894,8 @@ final class SacParticle(B){
 				return 1.0f;
 			case locustBlood,locustDebris:
 				return min(1.0f,(lifetime/(0.5f*numFrames)));
+			case bloodDrop:
+				return 1.0f; // decaying particles fade with their lifetime, see renderer
 			case heart,bouncingHeart:
 				return min(1.0f,(lifetime/(0.5f*numFrames))^^2);
 			case tornadoDirt,tornadoCasting:
@@ -1940,7 +1954,7 @@ final class SacParticle(B){
 				return 1.0f;
 			case swarmHit,scarabHit,slime:
 				return min(1.0f,(lifetime/(0.75f*numFrames)));
-			case hoverBlood,blood,locustBlood,locustDebris:
+			case hoverBlood,blood,locustBlood,locustDebris,bloodDrop:
 				return 1.0f;
 			case heart,bouncingHeart:
 				return min(1.0f,(lifetime/(0.75f*numFrames)));

@@ -92,8 +92,10 @@ static assert(Creature.sizeof==48);
 struct Scar{
 	Type type=Type.scar;
 	uint size=36;
-	float x,y;
-	uint[5] unknown;
+	float x,y,z;
+	uint unknown;
+	char[4] tag; // SCAR resource (reversed)
+	uint width,height; // part of the SCAR image that is applied, 0 for all of it
 }
 static assert(Scar.sizeof==36);
 
