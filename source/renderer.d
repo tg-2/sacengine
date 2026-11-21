@@ -5107,11 +5107,13 @@ struct Renderer(B){
 		if(!info.fpsVisible) return;
 		import std.format: sformat;
 		char[32] buffer;
-		auto text=sformat(buffer[],"FPS: %s",info.fps);
-		auto font=SacFont!B.get(FontType.fnwt);
+		auto text=sformat(buffer[],"%s fps",info.fps);
+		auto font=SacFont!B.get(FontType.fndb);
 		auto hudScaling=info.hudScaling;
 		FormatSettings settings={flowType:FlowType.left, scale:hudScaling};
-		auto size=font.getSize(text,settings)+Vector2f((3.0f+3.0f)*hudScaling,(2.0f+4.0f)*hudScaling);
+		auto textSize=font.getSize(text,settings);
+		enum borderSize=16.0f;
+		auto size=Vector2f((48.0f+2.0f*borderSize)*hudScaling,12.0f*hudScaling);
 		auto upperLeft=Vector3f(4.0f*hudScaling,4.0f*hudScaling,0.0f);
 		B.colorHUDMaterialBackend.bind(null,rc);
 		B.colorHUDMaterialBackend.bindDiffuse(whiteTexture);
@@ -5119,7 +5121,7 @@ struct Renderer(B){
 		B.colorHUDMaterialBackend.setTransformationScaled(upperLeft,Quaternionf.identity(),Vector3f(size.x,size.y,0.0f),rc);
 		quad.render(rc);
 		B.colorHUDMaterialBackend.unbind(null,rc);
-		auto textPos=upperLeft+Vector3f(3.0f*hudScaling,2.0f*hudScaling,0.0f);
+		auto textPos=upperLeft+Vector3f((-4.0f-borderSize)*hudScaling+size.x-textSize.x,2.0f*hudScaling,0.0f);
 		bindFont(font,rc);
 		setFontColor(font,Color4f(1.0f,1.0f,1.0f,1.0f));
 		drawText(font,text,textPos.x,textPos.y,settings,info,rc);
