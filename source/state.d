@@ -18746,7 +18746,7 @@ bool updateAirShield(B)(ref AirShield!B airShield,ObjectState!B state,int scaleF
 			auto hitboxSide=state.movingObjectReadById!((ref objects,i)=>tuple(objects.hitbox(i),objects.sides[i]),()=>tuple((Vector3f[2]).init,-1))(airShield.target);
 			auto hitbox=hitboxSide[0], side=hitboxSide[1];
 			static bool filter(ref ProximityEntry entry,ObjectState!B state,int side){
-				return state.movingObjectReadById!((ref objects,i,side)=>objects.sides[i]!=side&&objects.creatureStates[i].mode.canPush,()=>false)(entry.id,side);
+				return state.movingObjectReadById!((ref objects,i,side,state)=>objects.sides[i]!=side&&state.getStance(side,objects.sides[i])!=Stance.ally&&objects.creatureStates[i].mode.canPush,()=>false)(entry.id,side,state);
 			}
 
 			pushAll!filter(.boxCenter(hitbox),0.5f*(hitbox[1].xy-hitbox[0].xy).length,0.5f*spell.effectRange,20.0f,state,side);
