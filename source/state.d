@@ -15062,7 +15062,7 @@ void runPhoenixPassive(B)(ref MovingObject!B object,SacSpell!B passive,ObjectSta
 	bool hasTarget=false;
 	collisionTargets!burn(hitbox,state,fireform,object.id,object.side,&hasTarget);
 	if(hasTarget){
-		object.drainMana(passive.manaCost,state);
+		// object.drainMana(passive.manaCost,state);
 		spawnPhoenixShieldParticles(object,phoenixShieldParticleRate,state);
 	}
 }
