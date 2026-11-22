@@ -3897,8 +3897,8 @@ struct Erupt(B){
 
 	enum range=50.0f, height=15.0f, growDur=4.2f, fallDur=0.15f;
 	enum waveRange=90.0f, waveDur=1.0f, reboundHeight=2.0f;
-	//enum throwRange=30.0f, fallRange=45.0f;
-	enum throwRange=42.5f;
+	// launch at explosion (original: exclusion field 0x44d9a0 called from EruptRun 0x444b70)
+	enum launchDepth=20.0f, launchInnerRange=20.0f, launchOuterRange=40.0f, launchSpeed=20.0f;
 	enum stunMinRange=50.0f,stunMaxRange=75.0f;
 	// TODO: immunity ranges
 
@@ -10359,7 +10359,13 @@ float dealFallDamage(B)(ref MovingObject!B object,ObjectState!B state){
 	static assert(updateFPS==60);
 	enum fallDamageThreshold=0.08175f; // per tick
 	enum fallDamageFactor=917.43121f; // per (speed per tick)
-	auto speedPerTick=-object.creatureState.fallingVelocity.z/updateFPS;
+	// on landing, the original first damps the velocity by 0.02 per tick (ObjectMotion::advance, motion_damp),
+	// the creature update reads it on the next tick
+	enum landingDamping=0.02f; // per tick
+	auto velocityPerTick=object.creatureState.fallingVelocity/updateFPS;
+	auto speed=velocityPerTick.length;
+	if(!(speed>landingDamping)) return 0.0f;
+	auto speedPerTick=-velocityPerTick.z*(1.0f-landingDamping/speed);
 	if(!(speedPerTick>fallDamageThreshold)) return 0.0f;
 	auto damage=floor(speedPerTick*fallDamageFactor);
 	bool killed=false;
@@ -20271,18 +20277,34 @@ void eruptExplosion(B)(ref Erupt!B erupt,ObjectState!B state){
 					dealSplashSpellDamage(obj,erupt.spell,erupt.wizard,erupt.side,direction,difflen,DamageMod.none,state);
 			}
 			static if(is(typeof(obj)==MovingObject!B,B)){
-				if(difflen<erupt.throwRange){
-					auto strength=20.0f*(1.0f-difflen/erupt.throwRange);
-					obj.catapult(erupt.side,direction*strength,state);
-					dealDamage();
+				// original: exclusion field 0x44d9a0 (called from EruptRun 0x444b70), centered 20 below the peak,
+				// measured to the creature's center, velocity+=(target-velocity)*weight^4
+				auto launchCenter=erupt.position;
+				launchCenter.z=state.getHeight(launchCenter)-erupt.launchDepth;
+				auto offset=obj.center-launchCenter;
+				auto distanceSqr=offset.lengthsqr;
+				if(distanceSqr<erupt.launchOuterRange^^2){
+					auto weight=distanceSqr<=erupt.launchInnerRange^^2?1.0f:
+						(erupt.launchOuterRange^^2-distanceSqr)/(erupt.launchOuterRange^^2-erupt.launchInnerRange^^2);
+					auto factor=(weight*weight)*(weight*weight);
+					auto targetVelocity=distanceSqr>0.0f?(erupt.launchSpeed/sqrt(distanceSqr))*offset:Vector3f(0.0f,0.0f,0.0f);
+					auto tumbling=obj.creatureState.movement==CreatureMovement.tumbling;
+					auto currentVelocity=tumbling?obj.creatureState.fallingVelocity:Vector3f(0.0f,0.0f,0.0f);
+					auto velocityChange=factor*(targetVelocity-currentVelocity);
+					// a creature on the ground only falls (and gets knocked over) in the original if it stays airborne
+					// for more than 15 ticks (CreatureActor::update, event 8)
+					enum minLaunchSpeed=0.5f*9.81f*15.0f/60.0f;
+					if(tumbling||velocityChange.z>minLaunchSpeed)
+						obj.catapult(erupt.side,velocityChange,state);
 				}
+				dealDamage();
 			}else dealDamage();
 		})(target,erupt,state);
 		return false;
 	}
 	with(erupt){
 		playSoundAt("tpre",position,state,eruptGain2);
-		dealSplashSpellDamageAt!callback(0,spell,spell.effectRange,wizard,side,position,DamageMod.none,state,&erupt,state);
+		dealSplashSpellDamageAt!callback(0,spell,max(spell.effectRange,launchOuterRange+launchDepth),wizard,side,position,DamageMod.none,state,&erupt,state);
 		state.addEffect(ScreenShake(position,updateFPS/3,4.0f,100.0f));
 	}
 	auto position=erupt.position;
