@@ -3368,16 +3368,19 @@ struct Renderer(B){
 					}
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&objects.abominationDroplets.length){
-					auto sacParticle=SacParticle!B.get(ParticleType.blood);
-					auto frame=10; // TODO: ok?
+					// drawn like the other blood drops (decaying particles)
+					auto sacParticle=SacParticle!B.get(ParticleType.bloodDrop);
 					auto material=sacParticle.material;
 					material.bind(rc);
-					B.shadelessMaterialBackend.setEnergy(10.0f);
+					material.backend.setInformation(Vector4f(0.0f,0.0f,0.0f,0.0f));
 					scope(success) material.unbind(rc);
-					auto mesh=sacParticle.getMesh(frame);
 					foreach(j;0..objects.abominationDroplets.length){
-						auto position=objects.abominationDroplets[j].position;
-						material.backend.setSpriteTransformation(position,rc);
+						auto droplet=&objects.abominationDroplets[j];
+						auto totalLifetime=max(1,droplet.totalLifetime);
+						auto age=max(0,totalLifetime-droplet.drop.lifetime);
+						auto mesh=sacParticle.meshes[min(age*cast(int)sacParticle.meshes.length/totalLifetime,cast(int)sacParticle.meshes.length-1)];
+						material.backend.setSpriteTransformationScaled(droplet.drop.position,droplet.drop.scale,rc);
+						material.backend.setAlpha(max(0.0f,float(droplet.drop.lifetime)/totalLifetime));
 						mesh.render(rc);
 					}
 				}
