@@ -19185,6 +19185,7 @@ void updateBugs(B)(ref ProtectiveSwarm!B protectiveSwarm,ref MovingObject!B wiza
 	setPositions(protectiveSwarm.bugs.data);
 }
 
+static assert(updateFPS==60);
 enum protectiveSwarmStingFrames=64;
 enum protectiveSwarmStingSlack=50.0f;
 float bugDamage(B)(ref MovingObject!B obj,float damage,int attacker,int side,Vector3f attackDirection,ObjectState!B state){
