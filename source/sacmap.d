@@ -826,6 +826,11 @@ final class SacMap(B){
 			foreach(slot;0..scarPool.limit) syncScarSlot(slot);
 			return;
 		}
+		// A cell can move to another slot in one update (rollbacks, full pool). Give back the faces of all cells that
+		// leave their slot first, otherwise a slot could copy the faces of a cell that are still in its old slot and
+		// a later detach would leave a hole in the terrain.
+		foreach(slot;scarPool.changedSlots.data)
+			if(scarMeshCells[slot]!=-1&&scarMeshCells[slot]!=scarPool.slots[slot].cell) detachScarMesh(slot);
 		foreach(slot;scarPool.changedSlots.data){
 			scarPool.slotChanged[slot]=0;
 			syncScarSlot(slot);
