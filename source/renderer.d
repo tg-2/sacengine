@@ -186,7 +186,7 @@ struct Renderer(B){
 		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
 		mat.depthWrite=false;
 		mat.blending=B.Blending.Additive;
-		mat.energy=10.0f;
+		mat.energy=2.0f;
 		mat.diffuse=texture;
 		auto frames=typeof(return).createMeshes();
 		return SacExplosion!B(texture,mat,frames);
