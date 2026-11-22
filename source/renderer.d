@@ -478,7 +478,7 @@ struct Renderer(B){
 		mat.depthWrite=false;
 		mat.blending=B.Blending.Additive;
 		mat.energy=8.0f;
-		mat.transparency=0.5f;
+		mat.transparency=SacExplosionEffect!B.alpha;
 		mat.diffuse=texture;
 		auto meshes=typeof(return).createMeshes;
 		return SacExplosionEffect!B(texture,mat,meshes);
@@ -2500,16 +2500,18 @@ struct Renderer(B){
 					}
 					auto material=self.explosionEffect.material;
 					B.shadelessMorphMaterialBackend.bind(material,rc);
-					B.enableTransparency();
+					B.enableAdditive(); // original: material flags 0x12012008 (src alpha, one), 0x426760
 					scope(success) B.shadelessMorphMaterialBackend.unbind(material,rc);
 					void renderExplosionEffect(ref ExplosionEffect effect){
 						auto frame=effect.frame;
+						// original: alpha min(512·sqrt(size),255), so the ball fades in while it is small (PyroExplosionRun 0x426c99)
+						B.shadelessMorphMaterialBackend.setAlpha(SacExplosionEffect!B.alpha*min(1.0f,sqrt(effect.scale)*512.0f/255.0f));
 						auto rotation=facingQuaternion(effect.rotationSpeed*frame/updateFPS);
 						auto scale=effect.scale;
 						auto radius=scale*effect.maxRadius;
 						auto position=effect.position+Vector3f(0.0f,0.0f,radius);
 						B.shadelessMorphMaterialBackend.setTransformationScaled(position,rotation,radius*Vector3f(1.1f,1.1f,0.9f),rc);
-						foreach(v;0..3){ // TODO
+						foreach(v;0..SacExplosionEffect!B.numLayers){ // TODO
 							auto mesh1Mesh2Progress=self.explosionEffect.getFrame(frame+20*v,frame);
 							auto mesh1=mesh1Mesh2Progress[0], mesh2=mesh1Mesh2Progress[1], progress=mesh1Mesh2Progress[2];
 							B.shadelessMorphMaterialBackend.setMorphProgress(progress);
