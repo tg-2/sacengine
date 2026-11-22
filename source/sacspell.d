@@ -122,7 +122,6 @@ class SacSpell(B){
 			case SpellTag.fallenShoot: return 10.0f;
 			case SpellTag.blightMites,SpellTag.stickyBomb,SpellTag.oil,SpellTag.bombardment: return 20.0f;
 			case SpellTag.frozenGround: return 25.0f;
-			case SpellTag.abominationShoot: return 0.002725f*60.0f*60.0f; // original: 0.002725 per tick^2
 			default: return 30.0f;
 		}
 	}

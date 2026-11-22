@@ -12749,27 +12749,6 @@ Vector3f getShotDirectionWithGravity(B)(float accuracy,Vector3f position,Vector3
 	return applyRangedAccuracy(accuracy,direction,state);
 }
 
-Vector3f getShotDirectionLowArc(B)(float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
-	// Original: GetFiringAngle in Game3d.dll (exact ballistic solution, angle measured from the vertical),
-	// the shooter uses the flatter of the two solutions; 45° if there is none (0x44d120).
-	auto offset=target-position;
-	auto horizontal=Vector3f(offset.x,offset.y,0.0f);
-	auto d=horizontal.length;
-	if(d==0.0f) return applyRangedAccuracy(accuracy,Vector3f(0.0f,0.0f,offset.z<0.0f?-1.0f:1.0f),state);
-	auto g=rangedAttack.fallingAcceleration, v=rangedAttack.speed;
-	auto a=0.5f*g*d*d/(v*v);
-	auto c=offset.z+a;
-	auto discriminant=d*d-4.0f*a*c;
-	float angle=0.25f*pi!float;
-	if(c!=0.0f&&discriminant>=0.0f){
-		angle=atan((d+sqrt(discriminant))/(2.0f*c));
-		if(angle<0.0f) angle+=pi!float;
-	}
-	auto direction=sin(angle)/d*horizontal;
-	direction.z=cos(angle);
-	return applyRangedAccuracy(accuracy,direction,state);
-}
-
 bool brainiacShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
 	playSoundAt("snrb",position,state,4.0f); // TODO: move sound with projectile
 	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
@@ -13022,7 +13001,7 @@ void abominationLoad(B)(int attacker,ObjectState!B state){
 }
 bool abominationShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
 	playSoundAt("tugt",position,state,abominationShootGain); // TODO: move sound with projectile
-	auto direction=getShotDirectionLowArc(accuracy,position,target,rangedAttack,state);
+	auto direction=getShotDirectionWithGravity(accuracy,position,target,rangedAttack,state);
 	state.addEffect(AbominationProjectile!B(attacker,side,intendedTarget,position,direction*rangedAttack.speed,rangedAttack));
 	return true;
 }
@@ -26375,7 +26354,7 @@ int abominationDropletCollisionTarget(B)(int side,Vector3f position,ObjectState!
 bool updateAbominationDroplet(B)(ref AbominationDroplet!B abominationDroplet,ObjectState!B state){
 	with(abominationDroplet){
 		position+=velocity/updateFPS;
-		velocity.z-=0.002725f*updateFPS; // original: 0.002725 per tick^2
+		velocity.z-=9.81f/updateFPS; // original: 0.002725 per tick^2 (= 9.81 per s^2)
 		auto target=abominationDropletCollisionTarget(side,position,state);
 		if(state.isValidTarget(target)){
 			dealRangedDamage(target,amount,attacker,side,velocity,DamageMod.none,state);
