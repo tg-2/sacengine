@@ -235,15 +235,38 @@ class Lobby(B){
 		network=new Network!B(options);
 	}
 
-	import core.time: MonoTime, msecs;
+	import core.time: MonoTime, msecs, seconds;
 	MonoTime nextJoinAttempt; // (MonoTime.init: attempt immediately)
 	enum joinRetryInterval=200.msecs;
 
-	// does not block between attempts, can be called each frame until it returns true
+	import zerotier: ZerotierConnector;
+	ZerotierConnector zerotier;
+
+	// --delay-start (for easier recording): count down once per second before connecting
+	int delayStartLeft=-1; // (-1: not initialized yet)
+	MonoTime nextDelayStartTick;
+	bool waitDelayStart(ref Options options){
+		if(delayStartLeft==-1) delayStartLeft=max(0,options.delayStart);
+		auto now=MonoTime.currTime;
+		if(now<nextDelayStartTick) return true;
+		if(!delayStartLeft) return false;
+		writeln(delayStartLeft);
+		delayStartLeft--;
+		nextDelayStartTick=now+1.seconds;
+		return true;
+	}
+
+	// does not block, can be called each frame until it returns true
 	bool tryConnect(ref Options options)in{
 		assert(state==LobbyState.initialized);
 	}do{
 		bool useZerotier=!!options.zerotierNetwork;
+		if(useZerotier&&(options.host||options.joinIP!="")&&!zerotier.ready){
+			zerotier.identityFolder=options.zerotierIdentity;
+			zerotier.netId=options.zerotierNetwork;
+			if(!zerotier.step()) return false;
+		}
+		if(waitDelayStart(options)) return false;
 		if(options.host){
 			if(!network) createNetwork(options);
 			if(options.continueFilename!=""||options.playbackFilename!=""&&options.continueFrame)
