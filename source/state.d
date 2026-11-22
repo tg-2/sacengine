@@ -4988,7 +4988,7 @@ struct AbominationDroplet(B){
 	Vector3f position;
 	Vector3f velocity;
 	SacSpell!B rangedAttack;
-	enum amount=50.0f; // TODO: ok?
+	enum amount=100.0f; // original: 100 per drop (0x4194c0)
 }
 
 struct BombardProjectile(B){
@@ -12219,6 +12219,27 @@ Vector3f getShotDirectionWithGravity(B)(float accuracy,Vector3f position,Vector3
 	return applyRangedAccuracy(accuracy,direction,state);
 }
 
+Vector3f getShotDirectionLowArc(B)(float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
+	// Original: GetFiringAngle in Game3d.dll (exact ballistic solution, angle measured from the vertical),
+	// the shooter uses the flatter of the two solutions; 45° if there is none (0x44d120).
+	auto offset=target-position;
+	auto horizontal=Vector3f(offset.x,offset.y,0.0f);
+	auto d=horizontal.length;
+	if(d==0.0f) return applyRangedAccuracy(accuracy,Vector3f(0.0f,0.0f,offset.z<0.0f?-1.0f:1.0f),state);
+	auto g=rangedAttack.fallingAcceleration, v=rangedAttack.speed;
+	auto a=0.5f*g*d*d/(v*v);
+	auto c=offset.z+a;
+	auto discriminant=d*d-4.0f*a*c;
+	float angle=0.25f*pi!float;
+	if(c!=0.0f&&discriminant>=0.0f){
+		angle=atan((d+sqrt(discriminant))/(2.0f*c));
+		if(angle<0.0f) angle+=pi!float;
+	}
+	auto direction=sin(angle)/d*horizontal;
+	direction.z=cos(angle);
+	return applyRangedAccuracy(accuracy,direction,state);
+}
+
 bool brainiacShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
 	playSoundAt("snrb",position,state,4.0f); // TODO: move sound with projectile
 	auto direction=getShotDirection(accuracy,position,target,rangedAttack,state);
@@ -12471,7 +12492,7 @@ void abominationLoad(B)(int attacker,ObjectState!B state){
 }
 bool abominationShoot(B)(int attacker,int side,int intendedTarget,float accuracy,Vector3f position,Vector3f target,SacSpell!B rangedAttack,ObjectState!B state){
 	playSoundAt("tugt",position,state,abominationShootGain); // TODO: move sound with projectile
-	auto direction=getShotDirectionWithGravity(accuracy,position,target,rangedAttack,state);
+	auto direction=getShotDirectionLowArc(accuracy,position,target,rangedAttack,state);
 	state.addEffect(AbominationProjectile!B(attacker,side,intendedTarget,position,direction*rangedAttack.speed,rangedAttack));
 	return true;
 }
@@ -25787,7 +25808,7 @@ void abominationProjectileExplosion(B)(ref AbominationProjectile!B abominationPr
 void animateAbominationProjectile(B)(ref AbominationProjectile!B abominationProjectile,Vector3f oldPosition,ObjectState!B state){
 	with(abominationProjectile){
 		static assert(updateFPS==60);
-		auto numParticles=!!state.uniform(4);
+		auto numParticles=state.uniform(2); // original: 0.5 drops per tick (GutChuckDripStart)
 		auto velocity=Vector3f(0.0f,0.0f,0.0f);
 		foreach(i;0..numParticles){
 			auto position=oldPosition*((cast(float)numParticles-1-i)/numParticles)+position*(cast(float)(i+1)/numParticles);
@@ -25824,16 +25845,20 @@ bool updateAbominationProjectile(B)(ref AbominationProjectile!B abominationProje
 enum abominationDropletSize=0.25f; // TODO: ok?
 static immutable Vector3f[2] abominationDropletHitbox=[-0.5f*abominationDropletSize*Vector3f(1.0f,1.0f,1.0f),0.5f*abominationDropletSize*Vector3f(1.0f,1.0f,1.0f)];
 int abominationDropletCollisionTarget(B)(int side,Vector3f position,ObjectState!B state){
-	static bool filter(ProximityEntry entry,ObjectState!B state){
-		return entry.isProjectileObstacle;
+	// original (0x4194c0): only wizards and creatures that are not friendly (0x46afa0); drops pass through friendly ones
+	static bool filter(ProximityEntry entry,ObjectState!B state,int side){
+		if(!entry.isProjectileObstacle) return false;
+		if(!state.isValidTarget(entry.id,TargetType.creature)) return false;
+		auto targetSide=state.objectById!(.side)(entry.id,state);
+		return targetSide!=side&&state.getStance(side,targetSide)!=Stance.ally&&state.getStance(targetSide,side)!=Stance.ally;
 	}
-	return collisionTarget!(abominationDropletHitbox,filter)(side,position,state);
+	return collisionTarget!(abominationDropletHitbox,filter)(side,position,state,side);
 }
 
 bool updateAbominationDroplet(B)(ref AbominationDroplet!B abominationDroplet,ObjectState!B state){
 	with(abominationDroplet){
 		position+=velocity/updateFPS;
-		velocity.z-=10.0f/updateFPS;
+		velocity.z-=0.002725f*updateFPS; // original: 0.002725 per tick^2
 		auto target=abominationDropletCollisionTarget(side,position,state);
 		if(state.isValidTarget(target)){
 			dealRangedDamage(target,amount,attacker,side,velocity,DamageMod.none,state);
