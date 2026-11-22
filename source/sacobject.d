@@ -2786,6 +2786,8 @@ struct SacExplosionEffect(B){
 	enum numTextureFrames=nU*nV*updateAnimFactor*animationDelay;
 	enum numDistortions=16;
 	enum numFrames=updateFPS*numDistortions/2;
+	enum numLayers=3;
+	enum alpha=1.0f/numLayers; // the original draws a single additive sphere at full alpha
 	Tuple!(B.Mesh,B.Mesh,float) getFrame(int frame,int texture){
 		auto textureFrame=(texture/(animationDelay*updateAnimFactor))%(nU*nV);
 		auto indices=iota(0,meshes.length);
