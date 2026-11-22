@@ -5510,17 +5510,27 @@ struct AbominationProjectile(B){
 	SacSpell!B rangedAttack;
 	int frame=0;
 }
-struct GibTrail{
+struct GibTrail{ // a piece of a gibbed body
 	Vector3f position;
 	Vector3f velocity; // per frame
+	Vector3f emitterPosition; // where the last drops started
 	float rate; // blood drops per frame
+	enum Stage{ flying, landed }
+	Stage stage;
+	bool grounded;
 }
-struct AbominationDroplet(B){
+struct GibCloud{
+	Vector3f position;
+	Vector3f[2] box;
+	float sizeScale;
+	float rate; // particles per frame
+}
+struct AbominationDroplet(B){ // a drop of the gut chuck drip (original: GutChuckDripStart 0x4196c0)
 	int attacker;
 	int side;
-	Vector3f position;
-	Vector3f velocity;
 	SacSpell!B rangedAttack;
+	BloodDrop drop;
+	int totalLifetime;
 	enum amount=100.0f; // original: 100 per drop (0x4194c0)
 }
 
@@ -7416,6 +7426,14 @@ struct Effects(B){
 		if(i+1<abominationProjectiles.length) swap(abominationProjectiles[i],abominationProjectiles[$-1]);
 		abominationProjectiles.length=abominationProjectiles.length-1; // TODO: reuse memory?
 	}
+	Array!GibCloud gibClouds;
+	void addEffect(GibCloud gibCloud){
+		gibClouds~=gibCloud;
+	}
+	void removeGibCloud(int i){
+		if(i+1<gibClouds.length) swap(gibClouds[i],gibClouds[$-1]);
+		gibClouds.length=gibClouds.length-1;
+	}
 	Array!GibTrail gibTrails;
 	void addEffect(GibTrail gibTrail){
 		gibTrails~=gibTrail;
@@ -9188,24 +9206,60 @@ void addEmergingScar(B)(SacSpell!B spell,Vector3f position,ObjectState!B state){
 // Blood (original: Sacrifice.exe 0x45ce10 with particle preset 133 of game3d.dll)
 // The drops start at the position of the creature and fly away from the attacker. A drop that hits the ground
 // disappears and leaves a blood stain.
-enum bloodDropScale=0.25f;
+enum bloodDropScale=0.25f; // the size parameter of most blood emitters (0x40cbf0)
 enum bloodDropAcceleration=0.002725f*updateFPS*updateFPS; // 0.002725 per frame^2
-// one drop, with a velocity from the given box (per second)
-void addBloodDrop(B)(Vector3f position,Vector3f[2] velocityBox,ObjectState!B state){
-	auto sacParticle=SacParticle!B.get(ParticleType.bloodDrop);
-	enum halfBoxSize=0.2f*bloodDropScale;
-	auto lifetime=cast(int)(state.uniform(1.5f,2.5f)*updateFPS);
-	auto size=2.0f*state.uniform(0.7f*bloodDropScale,1.4f*bloodDropScale);
-	auto endFactor=state.uniform(0.25f,0.5f);
-	auto offset=Vector3f(state.uniform(-halfBoxSize,halfBoxSize),state.uniform(-halfBoxSize,halfBoxSize),state.uniform(-halfBoxSize,halfBoxSize));
+struct BloodDrop{
+	Vector3f position,velocity; // velocity per second
+	float scale,scaleRate; // full width of the sprite, change per frame
+	int lifetime;
+}
+// offset in a box, pulled towards its middle like particle flags 0x600000 do (NewParticle 0x160205c0)
+Vector3f particleBoxOffset(B)(Vector3f[2] box,ObjectState!B state){
+	auto middle=0.5f*(box[0]+box[1]);
+	auto offset=state.uniform(box)-middle;
 	auto angle1=state.uniform(0.0f,2.0f*pi!float),angle2=state.uniform(0.0f,2.0f*pi!float);
 	offset.x*=sin(angle1);
 	offset.y*=cos(angle1);
 	auto s2=sin(angle2);
-	offset=Vector3f(s2*offset.x,s2*offset.y,cos(angle2)*offset.z);
-	auto velocity=state.uniform(velocityBox);
-	auto scaleRate=(endFactor-1.0f)*size/lifetime;
-	state.addParticle(Particle!(B,ParticleKind.decaying)(sacParticle,scaleRate,lifetime,true,position+offset,velocity,size,lifetime,0));
+	return middle+Vector3f(s2*offset.x,s2*offset.y,cos(angle2)*offset.z);
+}
+// a new particle of preset 133, with a velocity from the given box (per second). sizeScale is the first preset parameter.
+BloodDrop makeBloodDrop(B)(Vector3f position,Vector3f[2] velocityBox,float sizeScale,ObjectState!B state){
+	BloodDrop drop;
+	drop.lifetime=cast(int)(state.uniform(1.5f,2.5f)*updateFPS);
+	drop.scale=2.0f*state.uniform(0.7f*sizeScale,1.4f*sizeScale);
+	auto endFactor=state.uniform(0.25f,0.5f);
+	auto half=0.2f*sizeScale*Vector3f(1.0f,1.0f,1.0f);
+	drop.position=position+particleBoxOffset([-half,half],state);
+	drop.velocity=state.uniform(velocityBox);
+	drop.scaleRate=(endFactor-1.0f)*drop.scale/drop.lifetime;
+	return drop;
+}
+void addBloodDrop(B)(Vector3f position,Vector3f[2] velocityBox,ObjectState!B state,float sizeScale=bloodDropScale){
+	auto drop=makeBloodDrop(position,velocityBox,sizeScale,state);
+	auto sacParticle=SacParticle!B.get(ParticleType.bloodDrop);
+	state.addParticle(Particle!(B,ParticleKind.decaying)(sacParticle,drop.scaleRate,drop.lifetime,true,drop.position,drop.velocity,drop.scale,drop.lifetime,0));
+}
+// one frame of a falling drop, false when it is gone (RunParticles 0x1601fb40, flags 0x73002b)
+bool moveBloodDrop(B)(ref Vector3f position,ref Vector3f velocity,ref float scale,float scaleRate,ref int lifetime,bool scars,ObjectState!B state){
+	auto acceleration=Vector3f(0.0f,0.0f,-bloodDropAcceleration);
+	position+=velocity/updateFPS+0.5f*acceleration/(updateFPS*updateFPS);
+	velocity+=acceleration/updateFPS;
+	if(state.isOnGround(position)){
+		auto groundHeight=state.getGroundHeight(position);
+		auto floor=groundHeight+0.25f*scale; // half of the radius
+		if(floor>position.z){
+			position.z=floor;
+			auto normal=Vector3f(-state.getGroundHeightDerivative(position,Vector3f(1.0f,0.0f,0.0f)),-state.getGroundHeightDerivative(position,Vector3f(0.0f,1.0f,0.0f)),1.0f).normalized;
+			if(dot(normal,velocity)<0.0f){ // moving into the ground
+				if(scars) state.addScar("dulb",position); // 8x8 blood stain
+				return false;
+			}
+		}
+	}
+	scale+=scaleRate;
+	lifetime-=1;
+	return lifetime>=0;
 }
 void bleed(B)(ref MovingObject!B object,int numDrops,float speed,Vector3f direction,ObjectState!B state){
 	if(numDrops<=0||!state.enableParticles) return;
@@ -9230,85 +9284,117 @@ void bleedFromDeath(B)(ref MovingObject!B object,ObjectState!B state){
 	object.bleed(16+state.uniform(32),10.0f,Vector3f(0.0f,0.0f,0.0f),state);
 }
 
-// The original throws pieces of the body that trail blood (0x439d00, GibProc 0x440d90). sacengine does not show the
-// pieces, but their blood drops are simulated because they leave blood stains.
-enum numGibTrails=8;
-enum gibTrailAcceleration=0.002725f; // per frame^2, the gravity the original uses for thrown objects (0x44d140)
-void spawnGibTrails(B)(Vector3f position,ObjectState!B state){
-	if(!state.enableParticles) return;
-	foreach(i;0..numGibTrails){
-		// original: GibTrailRun 0x4398a0, velocity per frame
-		auto velocity=Vector3f((state.uniform(32768)-0x4000)*1.516622179082747e-05f,(state.uniform(32768)-0x4000)*1.516622179082747e-05f,state.uniform(32768)*4.57763671875e-06f);
-		state.addEffect(GibTrail(position,velocity,1.0f));
+// Particles of a continuous emitter in one frame (PARTICLESYSTEM::SetParams 0x1601e490): rate per frame on average.
+// They start along the path of the emitter in this frame.
+void emitContinuously(alias f,B,T...)(float rate,Vector3f previous,Vector3f current,ObjectState!B state,T args){
+	int total=cast(int)(rate*32768.0f);
+	for(int remaining=total;remaining>0;remaining-=0x8000){
+		int value=remaining;
+		if(remaining<0x8000){
+			auto draw=state.uniform(32768);
+			if(draw>remaining) break;
+			value=draw;
+		}
+		auto fraction=float(value)/total;
+		f((previous-current)*fraction+current,state,args);
 	}
 }
-bool updateGibTrail(B)(ref GibTrail gibTrail,ObjectState!B state){
-	with(gibTrail){
-		auto oldPosition=position;
-		position+=velocity;
-		position.z-=0.5f*gibTrailAcceleration;
-		velocity.z-=gibTrailAcceleration;
-		auto height=state.getHeight(position);
-		bool landed=position.z<=height;
-		if(landed) position.z=height;
-		rate=max(0.0f,rate-0.01f);
-		// rate drops per frame on average, along the path (original: PARTICLESYSTEM::SetParams in game3d.dll)
-		Vector3f[2] trailVelocityBox=[Vector3f(-0.01f,-0.01f,-0.01f)*updateFPS,Vector3f(0.01f,0.01f,0.01f)*updateFPS];
-		int count=cast(int)(rate*32768.0f);
-		int numDrops=0;
-		for(int left=count;left>0;left-=0x8000){
-			if(left<0x8000&&state.uniform(32768)>left) break;
-			numDrops++;
-		}
-		foreach(k;0..numDrops){
-			auto t=float(k+1)/numDrops;
-			addBloodDrop((1.0f-t)*oldPosition+t*position,trailVelocityBox,state);
-		}
-		if(landed){
-			if(rate>0.25f){
-				Vector3f[2] landingVelocityBox=[Vector3f(-0.05f,-0.05f,0.0f)*updateFPS,Vector3f(0.05f,0.05f,0.05f)*updateFPS];
-				foreach(k;0..cast(int)(rate*32.0f)) addBloodDrop(position,landingVelocityBox,state);
-			}
-			return false;
-		}
+
+// Gibs (original: 0x439d00 and GibProc 0x440d90): a cloud of blood where the body bursts and eight pieces that fly
+// away and trail blood. The pieces themselves are not drawn in the original either.
+enum numGibTrails=8;
+enum gibTrailAcceleration=0.002725f; // per frame^2, gravity of thrown objects (flag 4 of the object motion)
+// the cloud (GibCloudRun 0x439ad0): particle preset 129 with the blood texture
+void addGibCloudParticle(B)(Vector3f position,ObjectState!B state,Vector3f[2] box,float sizeScale){
+	auto sacParticle=SacParticle!B.get(ParticleType.gibCloud);
+	auto lifetime=cast(int)(state.uniform(1.5f,3.0f)*updateFPS);
+	auto scale=2.0f*state.uniform(0.7f*sizeScale,1.4f*sizeScale);
+	auto endFactor=state.uniform(0.25f,0.5f);
+	position+=particleBoxOffset(box,state);
+	Vector3f[2] velocityBox=[Vector3f(-0.0005f,-0.0005f,-0.001f)*updateFPS,Vector3f(0.0005f,0.0005f,0.0f)*updateFPS];
+	auto velocity=state.uniform(velocityBox);
+	auto scaleRate=(endFactor-1.0f)*scale/lifetime;
+	state.addParticle(Particle!(B,ParticleKind.decaying)(sacParticle,scaleRate,lifetime,false,position,velocity,scale,lifetime,0));
+}
+void spawnGibCloud(B)(Vector3f position,Vector3f[2] box,ObjectState!B state){
+	auto size=box[1]-box[0];
+	auto extent=(size.x+size.y+size.z)*0.3333f;
+	auto sizeScale=max(0.5f,0.3f*extent);
+	foreach(i;0..cast(int)(max(extent,5.0f)*10.0f)) addGibCloudParticle(position,state,box,sizeScale);
+	state.addEffect(GibCloud(position,box,sizeScale,0.1f));
+}
+bool updateGibCloud(B)(ref GibCloud gibCloud,ObjectState!B state){
+	with(gibCloud){
+		rate=max(0.0f,rate-0.005f);
+		emitContinuously!addGibCloudParticle(rate,position,position,state,box,sizeScale);
 		return rate>0.0f;
 	}
 }
-
-void gibAnimation(B)(Vector3f position,ObjectState!B state,float gain=4.0f){
-	playSpellSoundTypeAt(SoundType.gib,position,state,gain);
-	spawnGibTrails(position,state);
-	enum numParticles4=40;
-	auto sacParticle4=SacParticle!B.get(ParticleType.hoverBlood);
-	foreach(i;0..numParticles4){
-		auto pposition=position;
-		if(i) pposition+=state.uniformDisk(Vector3f(0.0f,0.0f,0.0f),1.25f);
-		auto velocity=Vector3f(0.0f,0.0f,0.0f);
-		auto scale=1.25f;
-		auto frame=0;
-		auto lifetime=63;
-		state.addParticle(Particle!B(sacParticle4,pposition,velocity,scale,lifetime,frame));
+// the pieces (GibTrailRun 0x4398a0), they move like objects with motion flags 0x10805
+void spawnGibTrails(B)(Vector3f position,ObjectState!B state){
+	foreach(i;0..numGibTrails){
+		auto velocity=Vector3f((state.uniform(32768)-0x4000)*1.516622179082747e-05f,(state.uniform(32768)-0x4000)*1.516622179082747e-05f,state.uniform(32768)*4.57763671875e-06f);
+		state.addEffect(GibTrail(position,velocity,position,1.0f));
 	}
-	enum numSprays=20;
-	auto sacParticle5=SacParticle!B.get(ParticleType.blood);
-	foreach(k;0..numSprays){
-		auto direction=state.uniformDirection();
-		enum numParticles=10;
-		enum maxSpeed=15.0f;
-		foreach(i;0..numParticles){
-			auto pposition=position;
-			auto velocity=(i+1)*maxSpeed/numParticles*direction;
-			velocity.z+=(0.05f+0.25f*float(numParticles-i)/numParticles)*maxSpeed;
-			auto scale=1.0f;
-			auto frame=0;
-			auto lifetime=127; // TODO: infinite lifetime
-			state.addParticle(Particle!B(sacParticle5,pposition,velocity,scale,lifetime,frame));
+}
+void addGibTrailDrop(B)(Vector3f position,ObjectState!B state){
+	Vector3f[2] velocityBox=[Vector3f(-0.01f,-0.01f,-0.01f)*updateFPS,Vector3f(0.01f,0.01f,0.01f)*updateFPS];
+	addBloodDrop(position,velocityBox,state);
+}
+bool updateGibTrail(B)(ref GibTrail gibTrail,ObjectState!B state){
+	with(gibTrail){
+		if(stage==GibTrail.Stage.flying&&grounded) stage=GibTrail.Stage.landed;
+		else if(stage==GibTrail.Stage.landed){
+			if(rate>0.25f){ // the piece splatters
+				Vector3f[2] velocityBox=[Vector3f(-0.05f,-0.05f,0.0f)*updateFPS,Vector3f(0.05f,0.05f,0.05f)*updateFPS];
+				foreach(k;0..cast(int)(rate*32.0f)) addBloodDrop(position,velocityBox,state);
+			}
+			rate=0.0f;
 		}
+		rate=max(0.0f,rate-0.01f);
+		emitContinuously!addGibTrailDrop(rate,emitterPosition,position,state);
+		emitterPosition=position;
+		if(rate<=0.0f) return false; // no more blood
+		// object motion: gravity in the air, the ground stops the fall, sliding pieces slow down by 0.02 per frame
+		auto gravity=-gibTrailAcceleration;
+		if(grounded){
+			velocity.z=max(velocity.z,0.0f);
+			gravity=0.0f;
+		}
+		auto wasGrounded=grounded;
+		grounded=false;
+		position+=velocity+Vector3f(0.0f,0.0f,0.5f*gravity);
+		velocity.z+=gravity;
+		if(state.isOnGround(position)){
+			auto height=state.getGroundHeight(position);
+			if(position.z<height||velocity.z<=0.0f&&wasGrounded){
+				position.z=height;
+				grounded=true;
+			}
+		}else if(state.getHeight(position)-position.z>25.0f) return false; // fell through a hole
+		if(grounded){
+			auto speed=velocity.length;
+			velocity=speed<0.02f?Vector3f(0.0f,0.0f,0.0f):(1.0f-0.02f/speed)*velocity;
+		}
+		return true;
 	}
 }
 
+// pieces start at center, the cloud fills box (relative to position)
+void gibAnimation(B)(Vector3f center,Vector3f position,Vector3f[2] box,ObjectState!B state,float gain=4.0f){
+	playSpellSoundTypeAt(SoundType.gib,position,state,gain);
+	if(!state.enableParticles) return;
+	spawnGibTrails(center,state);
+	spawnGibCloud(position,box,state);
+}
+// for things without a body
+void gibAnimation(B)(Vector3f position,ObjectState!B state,float gain=4.0f){
+	static immutable Vector3f[2] box=[Vector3f(-2.0f,-2.0f,-2.0f),Vector3f(2.0f,2.0f,2.0f)];
+	gibAnimation(position,position,box,state,gain);
+}
+
 bool gib(B)(ref MovingObject!B object, ObjectState!B state,int giveSoulsTo=-1){ // giveSoulsTo=-2: don't spawn soul
-	gibAnimation(object.center,state);
+	gibAnimation(object.center,object.position,object.relativeHitbox,state);
 	object.unselect(state);
 	object.removeFromGroups(state);
 	int numSouls=object.sacObject.numSouls;
@@ -16847,27 +16933,17 @@ void updateParticles(B,ParticleKind kind,bool sideFiltered)(ref Particles!(B,kin
 void updateParticles(B,ParticleKind kind,bool sideFiltered)(ref Particles!(B,kind,sideFiltered) particles, ObjectState!B state)if(kind==ParticleKind.decaying){
 	// original: RunParticles 0x1601fb40 in game3d.dll
 	if(!particles.sacParticle) return;
-	auto acceleration=Vector3f(0.0f,0.0f,-bloodDropAcceleration);
+	bool blood=particles.sacParticle.type==ParticleType.bloodDrop; // otherwise the gib cloud: no gravity, no collisions
 	for(int j=0;j<particles.length;){
-		particles.positions[j]+=particles.velocities[j]/updateFPS+0.5f*acceleration/(updateFPS*updateFPS);
-		particles.velocities[j]+=acceleration/updateFPS;
-		auto position=particles.positions[j];
-		bool hitGround=false;
-		if(state.isOnGround(position)){
-			auto groundHeight=state.getGroundHeight(position);
-			auto floor=groundHeight+0.25f*particles.scales[j]; // half of the radius
-			if(floor>position.z){
-				particles.positions[j].z=floor;
-				auto normal=Vector3f(-state.getGroundHeightDerivative(position,Vector3f(1.0f,0.0f,0.0f)),-state.getGroundHeightDerivative(position,Vector3f(0.0f,1.0f,0.0f)),1.0f).normalized;
-				if(dot(normal,particles.velocities[j])<0.0f){ // moving into the ground
-					hitGround=true;
-					if(particles.scars[j]) state.addScar("dulb",particles.positions[j]); // 8x8 blood stain
-				}
-			}
+		bool alive;
+		if(blood) alive=moveBloodDrop(particles.positions[j],particles.velocities[j],particles.scales[j],particles.scaleRates[j],particles.lifetimes[j],!!particles.scars[j],state);
+		else{
+			particles.positions[j]+=particles.velocities[j]/updateFPS;
+			particles.scales[j]+=particles.scaleRates[j];
+			particles.lifetimes[j]-=1;
+			alive=particles.lifetimes[j]>=0;
 		}
-		particles.scales[j]+=particles.scaleRates[j];
-		particles.lifetimes[j]-=1;
-		if(hitGround||particles.lifetimes[j]<0){
+		if(!alive){
 			particles.removeParticle(j);
 			continue;
 		}
@@ -26382,7 +26458,7 @@ int abominationProjectileCollisionTarget(B)(int side,int intendedTarget,Vector3f
 
 void abominationProjectileExplosion(B)(ref AbominationProjectile!B abominationProjectile,int target,ObjectState!B state){
 	//playSpellSoundTypeAt(SoundType.gib,abominationProjectile.position,state,abominationShootGain);
-	gibAnimation(abominationProjectile.position,state,abominationShootGain);
+	gibAnimation(abominationProjectile.position,state,abominationShootGain); // original: 0x439d00 with 8 pieces
 	//playSoundAt("hbab",abominationProjectile.position,state,abominationShootGain);
 	with(abominationProjectile){
 		if(state.isValidTarget(target)) dealRangedDamage(target,rangedAttack,attacker,side,velocity,DamageMod.splash,state);
@@ -26390,17 +26466,14 @@ void abominationProjectileExplosion(B)(ref AbominationProjectile!B abominationPr
 	}
 }
 
+// the drip (GutChuckDripStart 0x4196c0): particle preset 133 with size parameter 0.35, half a drop per frame
+void addAbominationDroplet(B)(Vector3f position,ObjectState!B state,int attacker,int side,SacSpell!B rangedAttack){
+	Vector3f[2] velocityBox=[Vector3f(0.0f,0.0f,0.0f),Vector3f(0.0f,0.0f,0.0f)];
+	auto drop=makeBloodDrop(position,velocityBox,0.35f,state);
+	state.addEffect(AbominationDroplet!B(attacker,side,rangedAttack,drop,drop.lifetime));
+}
 void animateAbominationProjectile(B)(ref AbominationProjectile!B abominationProjectile,Vector3f oldPosition,ObjectState!B state){
-	with(abominationProjectile){
-		static assert(updateFPS==60);
-		auto numParticles=state.uniform(2); // original: 0.5 drops per tick (GutChuckDripStart)
-		auto velocity=Vector3f(0.0f,0.0f,0.0f);
-		foreach(i;0..numParticles){
-			auto position=oldPosition*((cast(float)numParticles-1-i)/numParticles)+position*(cast(float)(i+1)/numParticles);
-			//position+=0.3f*state.uniformDirection();
-			state.addEffect(AbominationDroplet!B(attacker,side,position,velocity));
-		}
-	}
+	with(abominationProjectile) emitContinuously!addAbominationDroplet(0.5f,oldPosition,position,state,attacker,side,rangedAttack);
 }
 
 bool updateAbominationProjectile(B)(ref AbominationProjectile!B abominationProjectile,ObjectState!B state){
@@ -26427,35 +26500,30 @@ bool updateAbominationProjectile(B)(ref AbominationProjectile!B abominationProje
 }
 
 
-enum abominationDropletSize=0.25f; // TODO: ok?
-static immutable Vector3f[2] abominationDropletHitbox=[-0.5f*abominationDropletSize*Vector3f(1.0f,1.0f,1.0f),0.5f*abominationDropletSize*Vector3f(1.0f,1.0f,1.0f)];
-int abominationDropletCollisionTarget(B)(int side,Vector3f position,ObjectState!B state){
+// a creature that a drop touches; the hitbox of the creature is grown by half the size of the drop (original: 0x4194c0)
+int abominationDropletCollisionTarget(B)(int side,Vector3f position,float radius,ObjectState!B state){
 	// original (0x4194c0): only wizards and creatures that are not friendly (0x46afa0); drops pass through friendly ones
-	static bool filter(ProximityEntry entry,ObjectState!B state,int side){
-		if(!entry.isProjectileObstacle) return false;
-		if(!state.isValidTarget(entry.id,TargetType.creature)) return false;
+	static void handle(ProximityEntry entry,int side,int* target,ObjectState!B state){
+		if(*target||!entry.isProjectileObstacle) return;
+		if(!state.isValidTarget(entry.id,TargetType.creature)) return;
 		auto targetSide=state.objectById!(.side)(entry.id,state);
-		return targetSide!=side&&state.getStance(side,targetSide)!=Stance.ally&&state.getStance(targetSide,side)!=Stance.ally;
+		if(targetSide!=side&&state.getStance(side,targetSide)!=Stance.ally&&state.getStance(targetSide,side)!=Stance.ally)
+			*target=entry.id;
 	}
-	return collisionTarget!(abominationDropletHitbox,filter)(side,position,state,side);
+	int target=0;
+	auto size=radius*Vector3f(1.0f,1.0f,1.0f);
+	state.proximity.collide!handle([position-size,position+size],side,&target,state);
+	return target;
 }
 
 bool updateAbominationDroplet(B)(ref AbominationDroplet!B abominationDroplet,ObjectState!B state){
 	with(abominationDroplet){
-		position+=velocity/updateFPS;
-		velocity.z-=9.81f/updateFPS; // original: 0.002725 per tick^2 (= 9.81 per s^2)
-		auto target=abominationDropletCollisionTarget(side,position,state);
-		if(state.isValidTarget(target)){
-			dealRangedDamage(target,amount,attacker,side,velocity,DamageMod.none,state);
+		if(!moveBloodDrop(drop.position,drop.velocity,drop.scale,drop.scaleRate,drop.lifetime,true,state)) return false;
+		auto target=abominationDropletCollisionTarget(side,drop.position,0.5f*drop.scale,state);
+		if(target){
+			dealRangedDamage(target,amount,attacker,side,drop.velocity,DamageMod.none,state);
 			return false;
 		}
-		if(state.isOnGround(position)){
-			if(position.z<state.getGroundHeight(position)){
-				state.addScar("dulb",position); // blood stain of a drop of the gut chuck drip (original: GutChuckDripStart)
-				return false;
-			}
-		}else if(position.z<state.getHeight(position)-rangedAttack.fallLimit)
-			return false;
 		return true;
 	}
 }
@@ -29282,6 +29350,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.abominationProjectiles.length;){
 		if(!updateAbominationProjectile(effects.abominationProjectiles[i],state)){
 			effects.removeAbominationProjectile(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.gibClouds.length;){
+		if(!updateGibCloud(effects.gibClouds[i],state)){
+			effects.removeGibCloud(i);
 			continue;
 		}
 		i++;

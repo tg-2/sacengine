@@ -888,8 +888,12 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Mut
 void serialize(alias sink,B)(ref AbominationProjectile!B abominationProjectile){ serializeStruct!sink(abominationProjectile); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==AbominationProjectile!B)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink)(ref GibCloud gibCloud){ serializeStruct!sink(gibCloud); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==GibCloud)){ deserializeStruct(result,state,data); }
 void serialize(alias sink)(ref GibTrail gibTrail){ serializeStruct!sink(gibTrail); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==GibTrail)){ deserializeStruct(result,state,data); }
+void serialize(alias sink)(ref BloodDrop bloodDrop){ serializeStruct!sink(bloodDrop); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==BloodDrop)){ deserializeStruct(result,state,data); }
 void serialize(alias sink,B)(ref AbominationDroplet!B abominationDroplet){ serializeStruct!sink(abominationDroplet); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==AbominationDroplet!B)){ deserializeStruct(result,state,data); }
 

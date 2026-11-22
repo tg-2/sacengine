@@ -1286,6 +1286,7 @@ enum ParticleType{
 	tornadoDirt,
 	tornadoCasting,
 	bloodDrop,
+	gibCloud,
 }
 
 enum ParticleKind{
@@ -1347,8 +1348,8 @@ final class SacParticle(B){
 				return false;
 			case blood:
 				return true;
-			case bloodDrop:
-				return false; // has its own acceleration, see updateParticles
+			case bloodDrop,gibCloud:
+				return false; // has its own motion, see updateParticles
 			case locustBlood,locustDebris:
 				return false;
 			case heart:
@@ -1381,7 +1382,7 @@ final class SacParticle(B){
 				return ParticleKind.relative;
 			case hoverBlood,blood,locustBlood,locustDebris:
 				return ParticleKind.standard;
-			case bloodDrop:
+			case bloodDrop,gibCloud:
 				return ParticleKind.decaying;
 			case heart,bouncingHeart:
 				return ParticleKind.standard;
@@ -1749,7 +1750,7 @@ final class SacParticle(B){
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/blud.TXTR"));
 				meshes=makeSpriteMeshes!B(4,4,width,height);
 				break;
-			case bloodDrop:
+			case bloodDrop,gibCloud:
 				width=height=1.0f; // particle scale is the full width of the sprite
 				this.energy=8.0f;
 				texture=B.makeTexture(loadTXTR("extracted/main/MAIN.WAD!/bits.FLDR/blud.TXTR"));
@@ -1894,7 +1895,7 @@ final class SacParticle(B){
 				return 1.0f;
 			case locustBlood,locustDebris:
 				return min(1.0f,(lifetime/(0.5f*numFrames)));
-			case bloodDrop:
+			case bloodDrop,gibCloud:
 				return 1.0f; // decaying particles fade with their lifetime, see renderer
 			case heart,bouncingHeart:
 				return min(1.0f,(lifetime/(0.5f*numFrames))^^2);
@@ -1954,7 +1955,7 @@ final class SacParticle(B){
 				return 1.0f;
 			case swarmHit,scarabHit,slime:
 				return min(1.0f,(lifetime/(0.75f*numFrames)));
-			case hoverBlood,blood,locustBlood,locustDebris,bloodDrop:
+			case hoverBlood,blood,locustBlood,locustDebris,bloodDrop,gibCloud:
 				return 1.0f;
 			case heart,bouncingHeart:
 				return min(1.0f,(lifetime/(0.75f*numFrames)));
