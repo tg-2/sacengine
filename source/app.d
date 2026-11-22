@@ -22,14 +22,20 @@ void wait(B)(int msecs=1){
 }
 
 Lobby!B makeLobby(B)(ref Options options)out(lobby){
-	assert(lobby.state.among(LobbyState.offline,LobbyState.connected));
+	assert(lobby.state==LobbyState.initialized);
 }do{
 	auto lobby=new Lobby!B();
 	auto slot=options.observer?-1:options.slot;
 	lobby.initialize(slot,options);
+	return lobby;
+}
+
+// returns false if not connected yet, does not block
+bool connectLobby(B)(Lobby!B lobby,ref Options options)in{
 	assert(lobby.state==LobbyState.initialized);
-	while(!lobby.tryConnect(options))
-		wait!B(200); // TODO: loop externally
+}do{
+	if(!lobby.tryConnect(options))
+		return false;
 	assert(lobby.state.among(LobbyState.offline,LobbyState.connected));
 	if(lobby.canPlayRecording&&options.playbackFilename.length){
 		auto recording=loadRecording!B(options.playbackFilename);
@@ -39,10 +45,15 @@ Lobby!B makeLobby(B)(ref Options options)out(lobby){
 		auto recording=loadRecording!B(options.continueFilename);
 		lobby.continueGame(recording,options.continueFrame,options);
 	}
-	return lobby;
+	return true;
 }
 
+// one step of the lobby, returns true once the lobby is done (game started or incompatible version)
 bool updateLobby(B)(Lobby!B lobby,ref Options options){
+	if(lobby.state==LobbyState.initialized){
+		if(!connectLobby(lobby,options))
+			return false;
+	}
 	if(lobby.state==LobbyState.incompatibleVersion)
 		return true;
 	if(!lobby.update(options))
@@ -592,9 +603,10 @@ int run(string[] args){
 		import zerotier;
 		connectToZerotier(options.zerotierIdentity,options.zerotierNetwork);
 	}
+	Lobby!B lobby=null;
 	if(!options.noMap||options.host||options.joinIP!=""){
 		// loadGame!B(options);
-		auto lobby=makeLobby!B(options);
+		lobby=makeLobby!B(options); // connects and loads from the main loop
 		B.addLogicCallback(()=>!updateLobby(lobby,options));
 	}else B.scene.fpview.active=true;
 
@@ -615,7 +627,7 @@ int run(string[] args){
 			stdout.flush();
 		}
 	}+/
-	scope(exit) if(B.network) B.network.shutdown();
+	scope(exit) if(lobby&&lobby.network) lobby.network.shutdown(); // (also if the game has not started yet)
 	if(options.recordingFolder.length){
 		if(!options.recordingFilename.length){
 			auto recordingFolder=options.recordingFolder;

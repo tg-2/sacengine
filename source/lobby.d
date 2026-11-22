@@ -235,6 +235,11 @@ class Lobby(B){
 		network=new Network!B(options);
 	}
 
+	import core.time: MonoTime, msecs;
+	MonoTime nextJoinAttempt; // (MonoTime.init: attempt immediately)
+	enum joinRetryInterval=200.msecs;
+
+	// does not block between attempts, can be called each frame until it returns true
 	bool tryConnect(ref Options options)in{
 		assert(state==LobbyState.initialized);
 	}do{
@@ -248,6 +253,9 @@ class Lobby(B){
 			return true;
 		}
 		if(options.joinIP!=""){
+			auto now=MonoTime.currTime;
+			if(now<nextJoinAttempt) return false;
+			nextJoinAttempt=now+joinRetryInterval;
 			if(!network) createNetwork(options);
 			auto result=network.joinGame(options.joinIP,listeningPort,options.settings,useZerotier);
 			if(result) state=LobbyState.connected;
