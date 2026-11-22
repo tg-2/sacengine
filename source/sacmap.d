@@ -826,6 +826,11 @@ final class SacMap(B){
 			foreach(slot;0..scarPool.limit) syncScarSlot(slot);
 			return;
 		}
+		// A cell can move to another slot in one update (rollbacks, full pool). Give back the faces of all cells that
+		// leave their slot first, otherwise a slot could copy the faces of a cell that are still in its old slot and
+		// a later detach would leave a hole in the terrain.
+		foreach(slot;scarPool.changedSlots.data)
+			if(scarMeshCells[slot]!=-1&&scarMeshCells[slot]!=scarPool.slots[slot].cell) detachScarMesh(slot);
 		foreach(slot;scarPool.changedSlots.data){
 			scarPool.slotChanged[slot]=0;
 			syncScarSlot(slot);
@@ -1141,7 +1146,17 @@ final class SacMap(B){
 	Vector3f getVertex(T)(int j,int i,T displacement){
 		return Vector3f(10.0f*i,10.0f*j,heights[max(0,min(j,cast(int)$-1))][max(0,min(i,cast(int)$-1))]+displacement(i,j));
 	}
+	// edges of the map as they are now
+	static struct MapEdges{
+		bool[][] edges;
+		static MapEdges opCall(bool[][] edges)@nogc{ MapEdges r; r.edges=edges; return r; }
+		bool opCall(int j,int i)@nogc{ return edges[j][i]; }
+	}
 	Tuple!(Tuple!(int,"j",int,"i")[3][2],"tri",int,"nt") getTriangles(bool invert=false)(int j,int i)@nogc{
+		return getTrianglesWith!invert(j,i,MapEdges(edges));
+	}
+	// edge(j,i) is true if vertex (i,j) is an edge (used to look at the terrain as it was at an earlier frame)
+	Tuple!(Tuple!(int,"j",int,"i")[3][2],"tri",int,"nt") getTrianglesWith(bool invert=false,E)(int j,int i,E edge)@nogc{
 		if(i<0||i+1>=n||j<0||j+1>=m) return typeof(return).init;
 		Tuple!(int,"j",int,"i")[3][2] tri;
 		int nt=0;
@@ -1152,19 +1167,19 @@ final class SacMap(B){
 			}
 		}
 		static if(!invert){
-			if(!edges[j][i]){
-				if(!edges[j+1][i+1]&&!edges[j][i+1]) makeTri!([0,1,2]);
-			}else if(!edges[j][i+1]&&!edges[j+1][i+1]&&!edges[j+1][i]) makeTri!([1,2,3]);
-			if(!edges[j+1][i+1]){
-				if(!edges[j][i]&&!edges[j+1][i]) makeTri!([2,3,0]);
-			}else if(!edges[j][i]&&!edges[j][i+1]&&!edges[j+1][i]) makeTri!([0,1,3]);
+			if(!edge(j,i)){
+				if(!edge(j+1,i+1)&&!edge(j,i+1)) makeTri!([0,1,2]);
+			}else if(!edge(j,i+1)&&!edge(j+1,i+1)&&!edge(j+1,i)) makeTri!([1,2,3]);
+			if(!edge(j+1,i+1)){
+				if(!edge(j,i)&&!edge(j+1,i)) makeTri!([2,3,0]);
+			}else if(!edge(j,i)&&!edge(j,i+1)&&!edge(j+1,i)) makeTri!([0,1,3]);
 		}else{
-			if(edges[j][i]){
-				if(!edges[j+1][i+1]&&!edges[j][i+1]) makeTri!([2,3,0]);
-			}else if(!edges[j][i+1]&&!edges[j+1][i+1]&&!edges[j+1][i]) makeTri!([0,1,3]);
-			if(!edges[j+1][i+1]){
-				if(!edges[j][i]&&!edges[j+1][i]) makeTri!([0,1,2]);
-			}else if(!edges[j][i]&&!edges[j][i+1]&&!edges[j+1][i]) makeTri!([1,2,3]);
+			if(edge(j,i)){
+				if(!edge(j+1,i+1)&&!edge(j,i+1)) makeTri!([2,3,0]);
+			}else if(!edge(j,i+1)&&!edge(j+1,i+1)&&!edge(j+1,i)) makeTri!([0,1,3]);
+			if(!edge(j+1,i+1)){
+				if(!edge(j,i)&&!edge(j+1,i)) makeTri!([0,1,2]);
+			}else if(!edge(j,i)&&!edge(j,i+1)&&!edge(j+1,i)) makeTri!([1,2,3]);
 			if(nt==0){
 				makeTri!([0,1,2]);
 				makeTri!([2,3,0]);
@@ -1192,9 +1207,12 @@ final class SacMap(B){
 		return true;
 	}
 	Tuple!(int,"j",int,"i")[3] getTriangle(bool invert=false)(Vector3f pos)@nogc{
+		return getTriangleWith!invert(pos,MapEdges(edges));
+	}
+	Tuple!(int,"j",int,"i")[3] getTriangleWith(bool invert=false,E)(Vector3f pos,E edge)@nogc{
 		auto tile=getTile(pos);
 		int i=tile.i,j=tile.j;
-		auto triNt=getTriangles!invert(j,i),tri=triNt[0],nt=triNt[1];
+		auto triNt=getTrianglesWith!invert(j,i,edge),tri=triNt[0],nt=triNt[1];
 		if(nt==0) return typeof(return).init;
 		if(!invert){
 			if(isInside(tri[0],pos)) return tri[0]; // TODO: fix precision issues, by using fixed-point and splitting at line
@@ -1222,6 +1240,15 @@ final class SacMap(B){
 	}
 	float getGroundHeight(T)(Vector3f pos,T displacement){
 		auto triangle=getTriangle(pos);
+		return getHeightImpl(triangle,pos,displacement);
+	}
+	// isOnGround and getGroundHeight for given edges and displacement (e.g., the terrain at an earlier frame)
+	bool isOnGroundWith(E)(Vector3f pos,E edge)@nogc{
+		auto triangle=getTriangleWith(pos,edge);
+		return triangle[0]!=triangle[1];
+	}
+	float getGroundHeightWith(T,E)(Vector3f pos,T displacement,E edge){
+		auto triangle=getTriangleWith(pos,edge);
 		return getHeightImpl(triangle,pos,displacement);
 	}
 	float getGroundHeightDerivative(T)(Vector3f pos,Vector3f direction,T displacement){

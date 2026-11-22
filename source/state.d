@@ -1747,6 +1747,7 @@ struct Building(B){
 	Array!int guardianIds;
 	int activeValue=0; // set by triggers
 	NotificationState notificationState;
+	int particleEmitter=0; // manafount, manalith and shrine particles
 	mixin Assign;
 	this(SacBuilding!B sacBuilding,int side,int flags,float facing){
 		this.sacBuilding=sacBuilding;
@@ -2689,6 +2690,532 @@ struct Particles(B,ParticleKind kind,bool sideFiltered=false){
 	}
 }
 
+// Particle emitters: instead of the particles, the game state stores the history of the emitter (a seed, the
+// run-length encoded emissions and, for particles that bump off the ground, a run-length encoded history of the
+// terrain that they can reach). The renderer recomputes the particles deterministically from this.
+// Histories are erased once no live particle can depend on them anymore.
+enum ParticleEmitterType{
+	manafount, // box[0]: location
+	manalith, // box[0]: location
+	shrine, // box[0]: location, value: 1 if occupied
+	spark, // box: hitbox, value: number of sparks
+	styxSpark, // box: hitbox, value: number of sparks
+	rendSpark, // box[0]: target position, value: number of sparks
+}
+
+// random numbers for the particles of an emission (not part of the game state)
+struct ParticleRng{
+	uint state;
+	static uint mix(uint x)@nogc{
+		x^=x>>16; x*=0x7feb352d;
+		x^=x>>15; x*=0x846ca68b;
+		x^=x>>16;
+		return x;
+	}
+	this(uint seed,uint serial,uint index)@nogc{
+		state=mix(seed^mix(serial^mix(index+0x9e3779b9u)));
+		if(!state) state=1;
+	}
+	uint next()@nogc{
+		state^=state<<13;
+		state^=state>>17;
+		state^=state<<5;
+		return state;
+	}
+	float uniform01()@nogc{ return (next()>>8)*(1.0f/16777216.0f); } // [0,1)
+	float uniform(float a,float b)@nogc{ return a+(b-a)*uniform01(); }
+	int uniform(string bounds="[]")(int a,int b)@nogc{
+		static if(bounds=="[]") return a+cast(int)(next()%cast(uint)(b-a+1));
+		else{
+			static assert(bounds=="[)");
+			return a+cast(int)(next()%cast(uint)(b-a));
+		}
+	}
+	Vector3f uniform(Vector3f[2] box)@nogc{
+		Vector3f r;
+		foreach(i,ref x;r) x=uniform(box[0][i],box[1][i]);
+		return r;
+	}
+}
+
+struct EmissionParams{
+	Vector3f[2] box; // meaning depends on the emitter type
+	float value=0.0f;
+}
+struct EmissionRun{
+	int serial; // salt for the random numbers, unique within the emitter
+	int birth; // the particles of the emission at frame birth+phase were updated state.frame-birth times
+	int count; // one emission per frame for count frames
+	EmissionParams params;
+}
+struct TerrainRun{
+	int frame; // first frame at which the terrain looked like this
+	int offset; // into terrainDisplacements and terrainEdges
+}
+
+struct ParticleEmitter(B){
+	int id=0;
+	ParticleEmitterType type;
+	SacParticle!B sacParticle;
+	uint seed;
+	int phase=0; // 1 if the particles are emitted before the particle update of the frame, 0 otherwise
+	int maxLifetime=0;
+	int numSerials=0;
+	Array!EmissionRun emissions;
+	// terrain history, only for particles that bump off the ground: vertices [terrainI,terrainI+terrainWidth)×[terrainJ,terrainJ+terrainHeight)
+	int terrainI=0,terrainJ=0,terrainWidth=0,terrainHeight=0;
+	uint terrainKey=0;
+	Array!TerrainRun terrainRuns;
+	Array!float terrainDisplacements;
+	Array!ubyte terrainEdges;
+	mixin Assign;
+	@property bool tracksTerrain(){ return terrainWidth>0&&terrainHeight>0; }
+	@property int lastBirth(){ return emissions.length?emissions[$-1].birth+emissions[$-1].count-1:int.min; }
+}
+
+struct ParticleEmitters(B){
+	Array!(ParticleEmitter!B) emitters; // sorted by id
+	int nextId=1;
+	int updateFrame=-1; // last frame at which the particles were updated
+	mixin Assign;
+	int find(int id){
+		int l=0,r=cast(int)emitters.length;
+		while(l<r){
+			auto m=(l+r)/2;
+			if(emitters[m].id<id) l=m+1;
+			else r=m;
+		}
+		if(l<emitters.length&&emitters[l].id==id) return l;
+		return -1;
+	}
+}
+
+int particleEmitterMaxLifetime(B)(ParticleEmitterType type,SacParticle!B sacParticle){
+	final switch(type) with(ParticleEmitterType){
+		case manafount,manalith: return 5*sacParticle.numFrames;
+		case shrine: return 10*sacParticle.numFrames;
+		case spark: return 63;
+		case styxSpark,rendSpark: return 95;
+	}
+}
+
+// bound on the horizontal distance from the emission box that the particles can travel
+float particleEmitterMaxTravel(ParticleEmitterType type,int maxLifetime){
+	final switch(type) with(ParticleEmitterType){
+		case manafount: return 25.0f*maxLifetime/updateFPS;
+		case manalith,shrine: return 0.0f;
+		case spark: return 1.0f*maxLifetime/updateFPS;
+		case styxSpark: return 5.0f*maxLifetime/updateFPS;
+		case rendSpark: return 15.0f*maxLifetime/updateFPS;
+	}
+}
+
+// box in which the particles of an emission start
+Vector3f[2] particleEmitterSpawnBox(ParticleEmitterType type,EmissionParams params){
+	final switch(type) with(ParticleEmitterType){
+		case manafount: return [params.box[0]-Vector3f(0.75f,0.75f,0.0f),params.box[0]+Vector3f(0.75f,0.75f,0.0f)];
+		case manalith: return [params.box[0]-Vector3f(4.0f,4.0f,0.0f),params.box[0]+Vector3f(4.0f,4.0f,0.0f)];
+		case shrine: return [params.box[0]-Vector3f(1.1f,1.1f,0.0f),params.box[0]+Vector3f(1.1f,1.1f,0.0f)];
+		case spark,styxSpark: return scaleBox(params.box,1.2f);
+		case rendSpark: return scaleBox([params.box[0]-0.5f,params.box[0]+0.5f],1.2f);
+	}
+}
+
+// emit particles (once per frame and emitter). id: emitter that emitted at the previous frame, or 0. returns the id of the emitter
+int emitParticles(B)(ParticleEmitterType type,int id,SacParticle!B sacParticle,EmissionParams params,ObjectState!B state){
+	auto emitters=&state.obj.opaqueObjects.particleEmitters;
+	bool updated=emitters.updateFrame==state.frame;
+	auto birth=updated?state.frame:state.frame-1;
+	auto index=id?emitters.find(id):-1;
+	if(index!=-1){
+		auto emitter=&emitters.emitters[index];
+		if(emitter.type!=type||emitter.sacParticle !is sacParticle||emitter.phase!=(updated?0:1)) index=-1;
+	}
+	if(index==-1){
+		ParticleEmitter!B emitter;
+		emitter.id=emitters.nextId++;
+		emitter.type=type;
+		emitter.sacParticle=sacParticle;
+		emitter.seed=cast(uint)state.uniform(int.max);
+		emitter.phase=updated?0:1;
+		emitter.maxLifetime=particleEmitterMaxLifetime(type,sacParticle);
+		if(sacParticle.bumpOffGround){
+			auto box=particleEmitterSpawnBox(type,params);
+			auto travel=particleEmitterMaxTravel(type,emitter.maxLifetime);
+			auto edges=state.map.edges;
+			int clampJ(int j){ return max(0,min(j,cast(int)edges.length-1)); }
+			int clampI(int i){ return max(0,min(i,cast(int)edges[0].length-1)); }
+			auto i0=clampI(cast(int)floor((box[0].x-travel)/10.0f)), i1=clampI(cast(int)floor((box[1].x+travel)/10.0f)+1);
+			auto j0=clampJ(cast(int)floor((box[0].y-travel)/10.0f)), j1=clampJ(cast(int)floor((box[1].y+travel)/10.0f)+1);
+			emitter.terrainI=i0;
+			emitter.terrainJ=j0;
+			emitter.terrainWidth=i1-i0+1;
+			emitter.terrainHeight=j1-j0+1;
+		}
+		emitters.emitters~=move(emitter);
+		index=cast(int)emitters.emitters.length-1;
+	}
+	auto emitter=&emitters.emitters[index];
+	if(emitter.emissions.length){
+		auto last=&emitter.emissions[$-1];
+		if(last.birth+last.count==birth&&last.params==params){
+			last.count+=1;
+			return emitter.id;
+		}
+	}
+	emitter.emissions~=EmissionRun(emitter.numSerials++,birth,1,params);
+	return emitter.id; // the terrain is recorded when the particles are updated
+
+}
+
+// record the terrain at the current frame if it changed
+void recordTerrain(B)(ref ParticleEmitter!B emitter,ObjectState!B state){
+	auto objects=&state.obj.opaqueObjects;
+	auto effects=&objects.effects;
+	bool transient=effects.testDisplacements.length||effects.eruptCastings.length||effects.erupts.length||effects.quakes.length;
+	uint key=objects.permanentDisplacement.hash^(objects.edgeChanges.hash*0x9e3779b9u);
+	if(emitter.terrainRuns.length&&!transient&&key==emitter.terrainKey) return;
+	emitter.terrainKey=key;
+	state.applyEdgeChanges();
+	auto displacement=ObjectState!B.Displacement(state);
+	auto edges=state.map.edges;
+	auto offset=cast(int)emitter.terrainDisplacements.length;
+	foreach(j;emitter.terrainJ..emitter.terrainJ+emitter.terrainHeight){
+		foreach(i;emitter.terrainI..emitter.terrainI+emitter.terrainWidth){
+			emitter.terrainDisplacements~=displacement(i,j);
+			emitter.terrainEdges~=cast(ubyte)edges[j][i];
+		}
+	}
+	if(emitter.terrainRuns.length){
+		auto previous=emitter.terrainRuns[$-1].offset;
+		auto size=emitter.terrainWidth*emitter.terrainHeight;
+		if(emitter.terrainDisplacements.data[previous..previous+size]==emitter.terrainDisplacements.data[offset..offset+size]
+		   &&emitter.terrainEdges.data[previous..previous+size]==emitter.terrainEdges.data[offset..offset+size]){
+			emitter.terrainDisplacements.length=offset;
+			emitter.terrainEdges.length=offset;
+			return;
+		}
+	}
+	emitter.terrainRuns~=TerrainRun(state.frame,offset);
+}
+
+// erase the parts of the history that no live particle depends on. returns false if the emitter can be removed
+bool trimParticleEmitter(B)(ref ParticleEmitter!B emitter,ObjectState!B state){
+	auto oldestBirth=state.frame-emitter.maxLifetime; // particles born earlier are dead
+	int k=0;
+	while(k<emitter.emissions.length&&emitter.emissions[k].birth+emitter.emissions[k].count-1<oldestBirth) k++;
+	if(k==emitter.emissions.length){
+		emitter.emissions.length=0;
+		return false;
+	}
+	if(k){
+		foreach(l;k..emitter.emissions.length) emitter.emissions[l-k]=emitter.emissions[l];
+		emitter.emissions.length=emitter.emissions.length-k;
+	}
+	if(emitter.terrainRuns.length>1){
+		// the particles born at oldestBirth are next updated at frame oldestBirth+1
+		k=0;
+		while(k+1<emitter.terrainRuns.length&&emitter.terrainRuns[k+1].frame<=oldestBirth+1) k++;
+		if(k){
+			auto shift=emitter.terrainRuns[k].offset;
+			auto size=emitter.terrainDisplacements.length-shift;
+			foreach(l;0..size){
+				emitter.terrainDisplacements[l]=emitter.terrainDisplacements[shift+l];
+				emitter.terrainEdges[l]=emitter.terrainEdges[shift+l];
+			}
+			emitter.terrainDisplacements.length=size;
+			emitter.terrainEdges.length=size;
+			foreach(l;k..emitter.terrainRuns.length){
+				emitter.terrainRuns[l-k]=emitter.terrainRuns[l];
+				emitter.terrainRuns[l-k].offset-=shift;
+			}
+			emitter.terrainRuns.length=emitter.terrainRuns.length-k;
+		}
+	}
+	return true;
+}
+
+// called at the point where the particles are updated
+void updateParticleEmitters(B)(ref ParticleEmitters!B emitters,ObjectState!B state){
+	emitters.updateFrame=state.frame;
+	size_t w=0;
+	foreach(r;0..emitters.emitters.length){
+		if(!trimParticleEmitter(emitters.emitters[r],state)) continue;
+		if(emitters.emitters[r].tracksTerrain) recordTerrain(emitters.emitters[r],state);
+		if(w!=r) emitters.emitters[w]=move(emitters.emitters[r]);
+		w++;
+	}
+	emitters.emitters.length=w;
+}
+
+// the particles of an emission as they are emitted (renderer side, uses only the random numbers of the emission)
+void generateEmission(alias sink,B,T...)(ref ParticleEmitter!B emitter,ref EmissionRun run,int birth,T args){
+	auto rng=ParticleRng(emitter.seed,run.serial,birth-run.birth);
+	auto sacParticle=emitter.sacParticle;
+	auto frame=birth+emitter.phase; // value of state.frame at the emission
+	auto params=run.params;
+	final switch(emitter.type) with(ParticleEmitterType){
+		case manafount:{ // original: animateManafount
+			auto location=params.box[0];
+			auto globalAngle=1.5f*2*pi!float/updateFPS*(frame+1000*location.x+location.y);
+			auto globalMagnitude=0.25f;
+			auto globalDisplacement=globalMagnitude*Vector3f(cos(globalAngle),sin(globalAngle),0.0f);
+			auto center=location+globalDisplacement;
+			foreach(j;0..2){
+				auto displacementAngle=rng.uniform(-pi!float,pi!float);
+				auto displacementMagnitude=rng.uniform(0.0f,0.5f);
+				auto displacement=displacementMagnitude*Vector3f(cos(displacementAngle),sin(displacementAngle),0.0f);
+				foreach(k;0..2){
+					auto position=center+displacement;
+					auto angle=rng.uniform(-pi!float,pi!float);
+					auto velocity=(20.0f+rng.uniform(-5.0f,5.0f))*Vector3f(cos(angle),sin(angle),rng.uniform(2.0f,4.0f)).normalized;
+					auto lifetime=cast(int)(sqrt(sacParticle.numFrames*5.0f)*rng.uniform(0.0f,1.0f))^^2;
+					sink(position,velocity,1.0f,lifetime,0,args);
+				}
+			}
+			break;
+		}
+		case manalith:{ // original: animateManalith
+			auto location=params.box[0];
+			auto globalAngle=2*pi!float/updateFPS*(frame+1000*location.x+location.y);
+			auto globalMagnitude=0.5f;
+			auto globalDisplacement=globalMagnitude*Vector3f(cos(globalAngle),sin(globalAngle),0.0f);
+			auto center=location+globalDisplacement;
+			foreach(j;0..4){
+				auto displacementAngle=rng.uniform(-pi!float,pi!float);
+				auto displacementMagnitude=3.5f*rng.uniform(0.0f,1.0f)^^2;
+				auto displacement=displacementMagnitude*Vector3f(cos(displacementAngle),sin(displacementAngle),0.0f);
+				auto position=center+displacement;
+				auto velocity=(15.0f+rng.uniform(-5.0f,5.0f))*Vector3f(0.0f,0.0f,rng.uniform(2.0f,4.0f)).normalized;
+				auto lifetime=cast(int)(sacParticle.numFrames*5.0f-0.7*sacParticle.numFrames*displacementMagnitude*rng.uniform(0.0f,1.0f)^^2);
+				sink(position,velocity,1.0f,lifetime,0,args);
+			}
+			break;
+		}
+		case shrine:{ // original: animateShrine
+			auto location=params.box[0];
+			bool active=params.value!=0.0f;
+			auto globalAngle=2*pi!float/updateFPS*(frame+1000*location.x+location.y);
+			auto globalMagnitude=0.1f;
+			auto globalDisplacement=globalMagnitude*Vector3f(cos(globalAngle),sin(globalAngle),0.0f);
+			auto center=location+globalDisplacement;
+			foreach(j;0..2){
+				auto displacementAngle=rng.uniform(-pi!float,pi!float);
+				auto displacementMagnitude=1.0f*rng.uniform(0.0f,1.0f)^^2;
+				auto displacement=displacementMagnitude*Vector3f(cos(displacementAngle),sin(displacementAngle),0.0f);
+				auto position=center+displacement;
+				auto velocity=(active?2.5f:1.0f)*(1.5f+rng.uniform(-0.5f,0.5f))*Vector3f(0.0f,0.0f,rng.uniform(2.0f,4.0f)).normalized;
+				auto lifetime=cast(int)((sacParticle.numFrames*5.0f)*(1.0f+rng.uniform(0.0f,1.0f)^^10));
+				sink(position,velocity,1.0f,lifetime,0,args);
+			}
+			break;
+		}
+		case spark:{ // original: sparkAnimation
+			auto hitbox=params.box;
+			auto center=boxCenter(hitbox);
+			foreach(i;0..cast(int)params.value){
+				auto position=rng.uniform(scaleBox(hitbox,1.2f));
+				auto velocity=Vector3f(position.x-center.x,position.y-center.y,0.0f).normalized;
+				velocity.z=rng.uniform(2.0f,6.0f);
+				auto scale=rng.uniform(0.5f,1.5f);
+				sink(position,velocity,scale,63,0,args);
+			}
+			break;
+		}
+		case styxSpark:{ // original: styxSparkAnimation
+			auto hitbox=params.box;
+			auto center=boxCenter(hitbox);
+			foreach(i;0..cast(int)params.value){
+				auto position=rng.uniform(scaleBox(hitbox,1.2f));
+				auto velocity=Vector3f(position.x-center.x,position.y-center.y,0.0f).normalized*5.0f;
+				velocity.z+=rng.uniform(0.0f,8.0f);
+				auto scale=rng.uniform(0.5f,1.5f);
+				int lifetime=rng.uniform!"[]"(15,95);
+				sink(position,velocity,scale,lifetime,0,args);
+			}
+			break;
+		}
+		case rendSpark:{ // original: rendSparkAnimation
+			auto targetPosition=params.box[0];
+			Vector3f[2] hitbox=[targetPosition-0.5f,targetPosition+0.5];
+			auto center=boxCenter(hitbox);
+			foreach(i;0..cast(int)params.value){
+				auto position=rng.uniform(scaleBox(hitbox,1.2f));
+				auto velocity=(position-center).normalized*15.0f;
+				velocity.z+=rng.uniform(0.0f,8.0f);
+				auto scale=rng.uniform(0.5f,1.5f);
+				int lifetime=rng.uniform!"[]"(15,95);
+				sink(position,velocity,scale,lifetime,0,args);
+			}
+			break;
+		}
+	}
+}
+
+// the terrain of an emitter as it was at a given frame
+struct EmitterTerrain(B){
+	ParticleEmitter!B* emitter;
+	bool[][] edges; // the map's current edges, used outside of the recorded vertices
+	int offset;
+	static EmitterTerrain opCall(ParticleEmitter!B* emitter,bool[][] edges){
+		EmitterTerrain r;
+		r.emitter=emitter;
+		r.edges=edges;
+		return r;
+	}
+	float opCall(int i,int j){ // displacement
+		i-=emitter.terrainI; j-=emitter.terrainJ;
+		if(i<0||i>=emitter.terrainWidth||j<0||j>=emitter.terrainHeight) return 0.0f;
+		return emitter.terrainDisplacements[offset+emitter.terrainWidth*j+i];
+	}
+	static struct Edges{
+		EmitterTerrain!B* terrain;
+		static Edges opCall(EmitterTerrain!B* terrain)@nogc{ Edges r; r.terrain=terrain; return r; }
+		bool opCall(int j,int i)@nogc{
+			auto emitter=terrain.emitter;
+			auto li=i-emitter.terrainI, lj=j-emitter.terrainJ;
+			if(li<0||li>=emitter.terrainWidth||lj<0||lj>=emitter.terrainHeight) return terrain.edges[j][i];
+			return !!emitter.terrainEdges[terrain.offset+emitter.terrainWidth*lj+li];
+		}
+	}
+	bool set(int frame){ // false if no terrain was recorded
+		auto runs=emitter.terrainRuns.data;
+		if(!runs.length) return false;
+		int k=0;
+		while(k+1<runs.length&&runs[k+1].frame<=frame) k++;
+		offset=runs[k].offset;
+		return true;
+	}
+}
+
+// f(sacParticle,position,scale,lifetime,frame,args) for each live particle of the emitter at the current frame (renderer side)
+void eachEmitterParticle(alias f,B,T...)(ref ParticleEmitter!B emitter,ObjectState!B state,T args){
+	auto now=state.frame;
+	auto sacParticle=emitter.sacParticle;
+	auto numFrames=sacParticle.numFrames;
+	bool bounce=sacParticle.bumpOffGround&&emitter.tracksTerrain&&emitter.terrainRuns.length;
+	enum F=double(updateFPS);
+	immutable double gz=sacParticle.gravity?15.0/updateFPS:0.0; // change of velocity.z per step
+	auto terrain=EmitterTerrain!B(&emitter,state.map.edges);
+	auto edges=EmitterTerrain!B.Edges(&terrain);
+	double maxGround=-double.infinity; // particles above this cannot hit the ground
+	if(bounce){
+		auto heights=state.map.heights;
+		foreach(k;0..emitter.terrainRuns.length){
+			auto offset=emitter.terrainRuns[k].offset;
+			foreach(j;0..emitter.terrainHeight){
+				foreach(i;0..emitter.terrainWidth){
+					auto height=heights[emitter.terrainJ+j][emitter.terrainI+i]+emitter.terrainDisplacements[offset+emitter.terrainWidth*j+i];
+					maxGround=max(maxGround,height);
+				}
+			}
+		}
+	}
+	// position n steps after (p,v), without bumping off the ground (same steps as updateParticles)
+	static Vector3f stepped(Vector3f p,Vector3f v,int n,double gz){
+		return Vector3f(p.x+n*v.x/F,p.y+n*v.y/F,p.z+n*v.z/F-gz/F*(0.5*n*(n-1)));
+	}
+	// first step n in [n0,n1] after (p,v) at which the particle is on the ground and below it (the condition of
+	// updateParticles), int.max if there is none. z(n)-height(n) is quadratic in n on each triangle that the particle
+	// passes, so there is one analytical computation for each triangle.
+	int firstHit(Vector3f p,Vector3f v,int n0,int n1){
+		auto dx=v.x/F, dy=v.y/F;
+		auto A=-0.5*gz/F, Bz=v.z/F+0.5*gz/F;
+		int searchTriangle(Tuple!(int,"j",int,"i")[3] tri,int ka,int kb){
+			// clip [ka,kb] to the steps inside the triangle (same test as SacMap.isInside)
+			double lo=ka,hi=kb;
+			foreach(k;0..3){
+				auto a=state.map.getVertex(tri[k].j,tri[k].i,ZeroDisplacement()), b=state.map.getVertex(tri[(k+1)%3].j,tri[(k+1)%3].i,ZeroDisplacement());
+				double side(double n){
+					auto x=p.x+n*dx, y=p.y+n*dy;
+					return (a.x-x)*(b.y-y)-(a.y-y)*(b.x-x);
+				}
+				auto c0=side(0.0), c1=side(1.0)-c0;
+				if(c1==0.0){ if(c0<0.0) return int.max; }
+				else if(c1>0.0) lo=max(lo,-c0/c1);
+				else hi=min(hi,-c0/c1);
+			}
+			auto na=max(ka,cast(int)ceil(lo-1e-6)), nb=min(kb,cast(int)floor(hi+1e-6));
+			if(na>nb) return int.max;
+			// q(n)=z(n)-height(n)
+			auto plane=state.map.getPlane(tri,terrain);
+			double height(double n){ return -(plane.a*(p.x+n*dx)+plane.b*(p.y+n*dy)+plane.d)/plane.c; }
+			auto h0=height(0.0), h1=height(1.0)-h0;
+			auto C=p.z-h0, B1=Bz-h1;
+			double q(int n){ return C+B1*n+A*n*n; }
+			int n;
+			if(q(na)<0.0) return na;
+			if(A==0.0){
+				if(B1>=0.0) return int.max;
+				n=cast(int)floor(-C/B1)+1;
+			}else{ // A<0 and q(na)>=0: the next negative value is after the larger root
+				auto disc=B1*B1-4*A*C;
+				if(disc<0.0) disc=0.0;
+				n=cast(int)floor((-B1-sqrt(disc))/(2*A))+1;
+			}
+			n=max(n,na);
+			if(n-1>na&&q(n-1)<0.0) n--;
+			if(n<=nb&&!(q(n)<0.0)) n++;
+			if(n>nb||!(q(n)<0.0)) return int.max;
+			return n;
+		}
+		// walk the grid cells along the horizontal path, in order
+		double t=n0;
+		int i=cast(int)floor((p.x+t*dx)/10.0f), j=cast(int)floor((p.y+t*dy)/10.0f);
+		for(int guard=0;guard<1000;guard++){
+			auto tx=dx>0?(10.0*(i+1)-p.x)/dx:dx<0?(10.0*i-p.x)/dx:double.infinity;
+			auto ty=dy>0?(10.0*(j+1)-p.y)/dy:dy<0?(10.0*j-p.y)/dy:double.infinity;
+			auto tEnd=min(tx,ty,double(n1));
+			auto ka=max(n0,cast(int)ceil(t)), kb=min(n1,cast(int)floor(tEnd));
+			if(ka<=kb){
+				auto trianglesNt=state.map.getTrianglesWith(j,i,edges);
+				int hit=int.max;
+				foreach(k;0..trianglesNt.nt) hit=min(hit,searchTriangle(trianglesNt.tri[k],ka,kb));
+				if(hit!=int.max) return hit;
+			}
+			if(tEnd>=n1) break;
+			if(tx<=ty) i+=dx>0?1:-1;
+			if(ty<=tx) j+=dy>0?1:-1;
+			t=tEnd;
+		}
+		return int.max;
+	}
+	void particle(Vector3f position,Vector3f velocity,float scale,int lifetime,int frame,int birth){
+		auto age=now-birth;
+		if(age>lifetime) return;
+		int s=0; // steps until (position,velocity)
+		while(bounce&&s<age){
+			auto n1=age-s;
+			if(stepped(position,velocity,1,gz).z>=maxGround&&stepped(position,velocity,n1,gz).z>=maxGround) break; // z is concave in n
+			// one interval of steps for each recorded terrain
+			int hit=int.max;
+			auto runs=emitter.terrainRuns.data;
+			foreach(k;0..runs.length){
+				auto lo=k==0?1:max(1,runs[k].frame-birth-s);
+				auto hi=k+1<runs.length?min(n1,runs[k+1].frame-1-birth-s):n1;
+				if(lo>hi) continue;
+				terrain.offset=runs[k].offset;
+				hit=firstHit(position,velocity,lo,hi);
+				if(hit!=int.max) break;
+			}
+			if(hit==int.max) break;
+			position=stepped(position,velocity,hit,gz);
+			velocity.z-=hit*gz;
+			auto height=state.map.getGroundHeightWith(position,terrain,edges);
+			position.z=2.0f*height-position.z;
+			velocity.z*=-1.0f;
+			s+=hit;
+		}
+		position=stepped(position,velocity,age-s,gz);
+		f(sacParticle,position,scale,lifetime-age,(frame+age)%numFrames,args);
+	}
+	foreach(ref run;emitter.emissions.data){
+		auto first=max(run.birth,now-emitter.maxLifetime), last=min(run.birth+run.count-1,now);
+		foreach(birth;first..last+1)
+			generateEmission!particle(emitter,run,birth,birth);
+	}
+}
+
 struct Debris(B){
 	Vector3f position; // TODO: better representation?
 	Vector3f velocity;
@@ -3135,6 +3662,7 @@ struct ProtectiveSwarm(B){
 	int castingTime;
 	int soundTimer;
 	int frame=0;
+	int stingTimer=0;
 	float alpha=1.0f;
 	auto status=ProtectiveSwarmStatus.casting;
 	Array!(ProtectiveBug!B) bugs; // TODO: pull out bugs into separate array?
@@ -7569,6 +8097,7 @@ struct Objects(B,RenderMode mode){
 		Array!(Particles!(B,ParticleKind.relativeTwirl)) relativeTwirlParticles;
 		Array!(Particles!(B,ParticleKind.decaying)) decayingParticles;
 		Array!(Particles!(B,ParticleKind.standard,true)) filteredParticles;
+		ParticleEmitters!B particleEmitters;
 		Effects!B effects;
 		PermanentDisplacement!B permanentDisplacement;
 		EdgeChanges edgeChanges;
@@ -7855,6 +8384,7 @@ auto eachByType(alias f,EachByTypeFlags flags,B,RenderMode mode,T...)(ref Object
 				f(particle,args);
 			foreach(ref particle;filteredParticles.data)
 				f(particle,args);
+			f(particleEmitters,args);
 			static if(opaqueEffectsBeforeParticles) f(effects,args,false);
 			else static if(particlesBeforeEffects) f(effects,args);
 			f(commandCones,args);
@@ -17664,16 +18194,7 @@ void sparkAnimation(int numSparks=192,B)(Vector3f[2] hitbox,ObjectState!B state)
 		hitbox[0]-=0.5;
 		hitbox[1]+=0.5f;
 	}
-	auto center=boxCenter(hitbox);
-	foreach(i;0..numSparks){
-		auto position=state.uniform(scaleBox(hitbox,1.2f));
-		auto velocity=Vector3f(position.x-center.x,position.y-center.y,0.0f).normalized;
-		velocity.z=state.uniform(2.0f,6.0f);
-		auto scale=state.uniform(0.5f,1.5f);
-		int lifetime=63;
-		int frame=0;
-		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
-	}
+	emitParticles(ParticleEmitterType.spark,0,sacParticle,EmissionParams(hitbox,numSparks),state);
 }
 bool updateLightning(B)(ref Lightning!B lightning,ObjectState!B state){
 	lightning.frame+=1;
@@ -18679,8 +19200,10 @@ void updateBugs(B)(ref ProtectiveSwarm!B protectiveSwarm,ref MovingObject!B wiza
 	setPositions(protectiveSwarm.bugs.data);
 }
 
+enum protectiveSwarmStingFrames=64;
+enum protectiveSwarmStingSlack=50.0f;
 float bugDamage(B)(ref MovingObject!B obj,float damage,int attacker,int side,Vector3f attackDirection,ObjectState!B state){
-	auto actualDamage=obj.dealSpellDamage(damage,attacker,side,attackDirection,DamageMod.continuous,state);
+	auto actualDamage=obj.dealSpellDamage(damage,attacker,side,attackDirection,DamageMod.none,state);
 	if(actualDamage){
 		if(obj.creatureStats.effects.buzzTime+updateFPS/3<state.frame)
 			playSpellSoundTypeAt(SoundType.swarm,obj.id,state,protectiveSwarmGain);
@@ -18695,23 +19218,26 @@ bool updateProtectiveSwarm(B)(ref ProtectiveSwarm!B protectiveSwarm,ObjectState!
 		if(protectiveSwarm.status!=ProtectiveSwarmStatus.dispersing){
 			if(--soundTimer==0) soundTimer=playSoundAt!true("3rws",target,state,protectiveSwarmGain);
 		}
-		frame+=1;
+		// original: the duration counts down only once casting has finished (ProtectiveSwarmRun stage 2)
+		if(status==ProtectiveSwarmStatus.steady) frame+=1;
 		static bool check(ref MovingObject!B obj,ProtectiveSwarm!B* protectiveSwarm,ObjectState!B state){
-			if(protectiveSwarm.status==ProtectiveSwarmStatus.steady){
-				auto hitbox=obj.hitbox;
-				hitbox[0]-=Vector3f(4.0f,4.0f,2.0f), hitbox[1]+=Vector3f(4.0f,4.0f,2.0f);
-				float totalDamage=0.0f;
-				static void damage(ProximityEntry target,ObjectState!B state,SacSpell!B spell,int attacker,int side,Vector3f center,float* totalDamage){
-					if(target.id==attacker) return;
-					state.movingObjectById!((ref obj,damage,attacker,side,state){
-						if(state.getStance(side,obj.side)!=Stance.ally){
-							// TODO: limit distance between hitboxes to 4?
-							*totalDamage+=obj.bugDamage(damage,attacker,side,obj.center-center,state);
-						}
-					},(){})(target.id,spell.amount/updateFPS,attacker,side,state);
+			// original (ProtectiveSwarmRun 0x433120): every 64 frames the swarm stings each enemy
+			// creature or wizard whose position lies within effectRange (3D) of the swarm, which sits at
+			// the center of the caster's box (0x44e020). Each sting (0x4330d0) is one direct spell hit
+			// of amount via 0x44d7e0; the caster is not healed.
+			if(protectiveSwarm.status==ProtectiveSwarmStatus.steady&&++protectiveSwarm.stingTimer>=protectiveSwarmStingFrames){
+				protectiveSwarm.stingTimer=0;
+				static void sting(ref CenterProximityEntry entry,ObjectState!B state,SacSpell!B spell,int attacker,int side,Vector3f center){
+					if(entry.isStatic||entry.id==attacker) return;
+					state.movingObjectById!((ref obj,spell,attacker,side,center,state){
+						if((obj.position-center).lengthsqr>spell.effectRange^^2) return;
+						// original enemy test (0x45d010/0x46b000): either side hostile, or the creature's grudge
+						if(obj.getStance(side,state)!=Stance.enemy&&state.getStance(side,obj.side)!=Stance.enemy) return;
+						obj.bugDamage(spell.amount,attacker,side,obj.center-center,state);
+					},(){})(entry.id,spell,attacker,side,center,state);
 				}
-				collisionTargets!damage(hitbox,state,protectiveSwarm.spell,obj.id,obj.side,obj.center,&totalDamage);
-				if(totalDamage) obj.heal(0.5f*totalDamage,state);
+				// proximity stores box centers, so query with slack and test the position exactly in sting
+				state.proximity.eachInRange!sting(obj.center,protectiveSwarm.spell.effectRange+protectiveSwarmStingSlack,state,protectiveSwarm.spell,obj.id,obj.side,obj.center);
 			}
 			(*protectiveSwarm).updateBugs(obj,state);
 			if(protectiveSwarm.status==ProtectiveSwarmStatus.casting){
@@ -25505,16 +26031,7 @@ void styxSparkAnimation(int numSparks=192,B)(Vector3f[2] hitbox,ObjectState!B st
 		hitbox[0]-=0.5;
 		hitbox[1]+=0.5f;
 	}
-	auto center=boxCenter(hitbox);
-	foreach(i;0..numSparks){
-		auto position=state.uniform(scaleBox(hitbox,1.2f));
-		auto velocity=Vector3f(position.x-center.x,position.y-center.y,0.0f).normalized*5.0f;
-		velocity.z+=state.uniform(0.0f,8.0f);
-		auto scale=state.uniform(0.5f,1.5f);
-		int lifetime=state.uniform!"[]"(15,95);
-		int frame=0;
-		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
-	}
+	emitParticles(ParticleEmitterType.styxSpark,0,sacParticle,EmissionParams(hitbox,numSparks),state);
 }
 bool updateStyxShoot(B)(ref StyxShoot!B shoot,ObjectState!B state){
 	with(shoot){
@@ -27225,17 +27742,7 @@ bool updateFirewalk(B)(ref Firewalk!B firewalk,ObjectState!B state){
 
 void rendSparkAnimation(int numSparks=192,B)(Vector3f targetPosition,ObjectState!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.rend);
-	Vector3f[2] hitbox=[targetPosition-0.5f,targetPosition+0.5];
-	auto center=boxCenter(hitbox);
-	foreach(i;0..numSparks){
-		auto position=state.uniform(scaleBox(hitbox,1.2f));
-		auto velocity=(position-center).normalized*15.0f;
-		velocity.z+=state.uniform(0.0f,8.0f);
-		auto scale=state.uniform(0.5f,1.5f);
-		int lifetime=state.uniform!"[]"(15,95);
-		int frame=0;
-		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
-	}
+	emitParticles(ParticleEmitterType.rendSpark,0,sacParticle,EmissionParams([targetPosition,targetPosition],numSparks),state);
 }
 bool updateRendShoot(B)(ref RendShoot!B shoot,ObjectState!B state){
 	with(shoot){
@@ -29159,70 +29666,25 @@ void updateHighlights(B)(ref Highlights!B highlights, ObjectState!B state){
 	}
 }
 
-void animateManafount(B)(Vector3f location, ObjectState!B state){
+void animateManafount(B)(Vector3f location, ref int emitter, ObjectState!B state){
 	if(!state.enableParticles) return;
 	auto sacParticle=SacParticle!B.get(ParticleType.manafount);
-	auto globalAngle=1.5f*2*pi!float/updateFPS*(state.frame+1000*location.x+location.y);
-	auto globalMagnitude=0.25f;
-	auto globalDisplacement=globalMagnitude*Vector3f(cos(globalAngle),sin(globalAngle),0.0f);
-	auto center=location+globalDisplacement;
 	static assert(updateFPS==60); // TODO: fix
-	foreach(j;0..2){
-		auto displacementAngle=state.uniform(-pi!float,pi!float);
-		auto displacementMagnitude=state.uniform(0.0f,0.5f);
-		auto displacement=displacementMagnitude*Vector3f(cos(displacementAngle),sin(displacementAngle),0.0f);
-		foreach(k;0..2){
-			auto position=center+displacement;
-			auto angle=state.uniform(-pi!float,pi!float);
-			auto velocity=(20.0f+state.uniform(-5.0f,5.0f))*Vector3f(cos(angle),sin(angle),state.uniform(2.0f,4.0f)).normalized;
-			auto lifetime=cast(int)(sqrt(sacParticle.numFrames*5.0f)*state.uniform(0.0f,1.0f))^^2;
-			auto scale=1.0f;
-			auto frame=0;
-			state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
-		}
-	}
+	emitter=emitParticles(ParticleEmitterType.manafount,emitter,sacParticle,EmissionParams([location,location]),state);
 }
 
-void animateManalith(B)(Vector3f location, int side, ObjectState!B state){
+void animateManalith(B)(Vector3f location, int side, ref int emitter, ObjectState!B state){
 	if(!state.enableParticles) return;
 	auto sacParticle=state.sides.manaParticle(side);
-	auto globalAngle=2*pi!float/updateFPS*(state.frame+1000*location.x+location.y);
-	auto globalMagnitude=0.5f;
-	auto globalDisplacement=globalMagnitude*Vector3f(cos(globalAngle),sin(globalAngle),0.0f);
-	auto center=location+globalDisplacement;
 	static assert(updateFPS==60); // TODO: fix
-	foreach(j;0..4){
-		auto displacementAngle=state.uniform(-pi!float,pi!float);
-		auto displacementMagnitude=3.5f*state.uniform(0.0f,1.0f)^^2;
-		auto displacement=displacementMagnitude*Vector3f(cos(displacementAngle),sin(displacementAngle),0.0f);
-		auto position=center+displacement;
-		auto velocity=(15.0f+state.uniform(-5.0f,5.0f))*Vector3f(0.0f,0.0f,state.uniform(2.0f,4.0f)).normalized;
-		auto scale=1.0f;
-		auto lifetime=cast(int)(sacParticle.numFrames*5.0f-0.7*sacParticle.numFrames*displacementMagnitude*state.uniform(0.0f,1.0f)^^2);
-		auto frame=0;
-		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
-	}
+	emitter=emitParticles(ParticleEmitterType.manalith,emitter,sacParticle,EmissionParams([location,location]),state);
 }
 
-void animateShrine(B)(bool active,Vector3f location, int side, ObjectState!B state){
+void animateShrine(B)(bool active,Vector3f location, int side, ref int emitter, ObjectState!B state){
 	if(!state.enableParticles) return;
 	auto sacParticle=state.sides.shrineParticle(side);
-	auto globalAngle=2*pi!float/updateFPS*(state.frame+1000*location.x+location.y);
-	auto globalMagnitude=0.1f;
-	auto globalDisplacement=globalMagnitude*Vector3f(cos(globalAngle),sin(globalAngle),0.0f);
-	auto center=location+globalDisplacement;
 	static assert(updateFPS==60); // TODO: fix
-	foreach(j;0..2){
-		auto displacementAngle=state.uniform(-pi!float,pi!float);
-		auto displacementMagnitude=1.0f*state.uniform(0.0f,1.0f)^^2;
-		auto displacement=displacementMagnitude*Vector3f(cos(displacementAngle),sin(displacementAngle),0.0f);
-		auto position=center+displacement;
-		auto velocity=(active?2.5f:1.0f)*(1.5f+state.uniform(-0.5f,0.5f))*Vector3f(0.0f,0.0f,state.uniform(2.0f,4.0f)).normalized;
-		auto scale=1.0f;
-		auto lifetime=cast(int)((sacParticle.numFrames*5.0f)*(1.0f+state.uniform(0.0f,1.0f)^^10));
-		auto frame=0;
-		state.addParticle(Particle!B(sacParticle,position,velocity,scale,lifetime,frame));
-	}
+	emitter=emitParticles(ParticleEmitterType.shrine,emitter,sacParticle,EmissionParams([location,location],active?1.0f:0.0f),state);
 }
 
 enum magnifryerSlewStep=0.0261799167f;
@@ -29381,20 +29843,20 @@ void updateBuilding(B)(ref Building!B building, ObjectState!B state){
 				return center+Vector3f(0.0f,0.0f,0.75f);
 			}
 			auto position=state.staticObjectById!(getManafountTop,function Vector3f(){ assert(0); })(building.componentIds[0]);
-			animateManafount(position,state);
+			animateManafount(position,building.particleEmitter,state);
 		}else if(building.isManalith){
 			Vector3f getCenter(StaticObject!B obj){
 				return obj.position+Vector3f(0.0f,0.0f,15.0f);
 			}
 			auto position=state.staticObjectById!(getCenter,function Vector3f(){ assert(0); })(building.componentIds[0]);
-			animateManalith(position,building.side,state);
+			animateManalith(position,building.side,building.particleEmitter,state);
 		}else if(building.isShrine||building.isAltar){
 			Vector3f getShrineTop(StaticObject!B obj){
 				return obj.position+Vector3f(0.0f,0.0f,3.0f);
 			}
 			auto position=state.staticObjectById!(getShrineTop,function Vector3f(){ assert(0); })(building.componentIds[0]);
 			if(building.isEtherealAltar) position.z+=95.0f;
-			animateShrine(!!(building.flags&AdditionalBuildingFlags.occupied),position,building.side,state);
+			animateShrine(!!(building.flags&AdditionalBuildingFlags.occupied),position,building.side,building.particleEmitter,state);
 		}
 	}
 	if(building.burnFrames>0){
@@ -29752,7 +30214,7 @@ void addToProximity(T,B)(ref T objects, ObjectState!B state){
 				if(!(flagsFromBuildingId(objects.buildingIds[j],state)&AdditionalBuildingFlags.inactive))
 					proximity.addAltar(sideFromBuildingId(objects.buildingIds[j],state),objects.positions[j]);
 		}
-	}else static if(is(T==Souls!B)||is(T==Buildings!B)||is(T==FixedObjects!B)||is(T==Effects!B)||is(T==Particles!(B,kind),ParticleKind kind)||is(T==CommandCones!B)||is(T==Highlights!B)){
+	}else static if(is(T==Souls!B)||is(T==Buildings!B)||is(T==FixedObjects!B)||is(T==Effects!B)||is(T==Particles!(B,kind),ParticleKind kind)||is(T==ParticleEmitters!B)||is(T==CommandCones!B)||is(T==Highlights!B)){
 		// do nothing
 	}else static assert(0);
 }
@@ -29784,7 +30246,7 @@ void addToProximitySingle(T,B)(ref T obj, ObjectState!B state){
 		}
 	}else static if(isStatic){ // TODO: cache those?
 		static assert(0,"TODO");
-	}else static if(is(T==Souls!B)||is(T==Buildings!B)||is(T==FixedObj!B)||is(T==Effects!B)||is(T==Particles!(B,kind),ParticleKind kind)||is(T==CommandCones!B)){
+	}else static if(is(T==Souls!B)||is(T==Buildings!B)||is(T==FixedObj!B)||is(T==Effects!B)||is(T==Particles!(B,kind),ParticleKind kind)||is(T==ParticleEmitters!B)||is(T==CommandCones!B)){
 		// do nothing
 	}else static assert(0);
 }
@@ -30838,6 +31300,7 @@ final class ObjectState(B){ // (update logic)
 		this.eachEffects!updateEffects(this);
 		frameprof.mark("effects");
 		this.eachParticles!updateParticles(this);
+		updateParticleEmitters(obj.opaqueObjects.particleEmitters,this);
 		frameprof.mark("particles");
 		this.eachCommandCones!updateCommandCones(this);
 		this.eachHighlights!updateHighlights(this);
