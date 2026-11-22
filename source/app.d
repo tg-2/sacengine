@@ -599,28 +599,15 @@ int run(string[] args){
 		exportSpeech!B(options);
 		return 0;
 	}
-	if(options.zerotierNetwork&&(options.host||options.joinIP!="")){
-		import zerotier;
-		connectToZerotier(options.zerotierIdentity,options.zerotierNetwork);
-	}
 	Lobby!B lobby=null;
 	if(!options.noMap||options.host||options.joinIP!=""){
 		// loadGame!B(options);
-		lobby=makeLobby!B(options); // connects and loads from the main loop
+		lobby=makeLobby!B(options); // connects (incl. zerotier and --delay-start) and loads from the main loop
 		B.addLogicCallback(()=>!updateLobby(lobby,options));
 	}else B.scene.fpview.active=true;
 
 	if(auto r=applyLateSettings!B(args,options)) return r;
 
-	if(!B.network||B.network.isHost){
-		auto delay=options.delayStart;
-		while(delay){
-			writeln(delay);
-			delay--;
-			import core.thread;
-			Thread.sleep(1.dur!"seconds");
-		}
-	}
 	/+scope(exit){
 		foreach(frame,ref inFrame;B.state.commands.data){
 			writeln(frame,": ", inFrame.data.map!((ref c)=>text("(",c.side,",",c.id,",",c.type,")")).joiner(","));

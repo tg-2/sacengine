@@ -157,13 +157,29 @@ ssize_t zts_bsd_recvfrom(int fd,void* buf,size_t len,int flags,zts_sockaddr_in* 
 
 
 
-int zts_bsd_getsockopt(int fd,int level,int optname,void* optval,uint optlen){
+int zts_bsd_getsockopt(int fd,int level,int optname,void* optval,uint* optlen){
 	mixin(load);
 	return sym(fd,level,optname,optval,optlen);
 }
 int zts_bsd_setsockopt(int fd, int level, int optname, const void* optval, uint optlen){
 	mixin(load);
 	return sym(fd,level,optname,optval,optlen);
+}
+
+// (ZeroTierSockets.h)
+enum zts_pollin=0x001;
+enum zts_pollout=0x002;
+enum zts_pollerr=0x004;
+enum zts_pollnval=0x008;
+enum zts_pollhup=0x200;
+struct zts_pollfd{
+	int fd;
+	short events;
+	short revents;
+}
+int zts_bsd_poll(zts_pollfd* fds,uint nfds,int timeout){
+	mixin(load);
+	return sym(fds,nfds,timeout);
 }
 
 int zts_bsd_close(int fd){
@@ -222,40 +238,61 @@ version(Windows){
 	}
 }	 
 
-void connectToZerotier(string identity_folder,ulong net_id){
-	import std.stdio,core.thread;
-	int err=zts_err_ok;
-	err=zts_init_from_storage(identity_folder.toStringz);
-	enforce(err==zts_err_ok, "failed to initialize zerotier");
-	writeln("zerotier initialized");
-	err=zts_node_start();
-	enforce(err==zts_err_ok, "failed to start node");
-	while(!zts_node_is_online()) {
-		//zts_util_delay(50);
-		Thread.sleep(50.dur!"msecs");
+// connects to a zerotier network without blocking: call step() (e.g. once per frame) until it returns true
+struct ZerotierConnector{
+	string identityFolder;
+	ulong netId;
+	enum Stage{
+		start,
+		waitingForNode,
+		waitingForTransport,
+		waitingForAddress,
+		done,
 	}
-	ulong node_id=zts_node_get_id();
-	writefln("node id: %x", node_id);
-	writeln("online");
-	writefln("joining net %x", net_id);
-	if(zts_net_join(net_id)!=zts_err_ok){
-		writeln("unable to join zerotier network");
-		return;
-	}
-	while(!zts_net_transport_is_ready(net_id)) {
-		//zts_util_delay(50);
-		Thread.sleep(50.dur!"msecs");
-	}
-	writeln("joined");
-	//writeln("mtu: ",zts_net_get_mtu(net_id));
-	while(!zts_addr_is_assigned(net_id, zts_af_inet)){
-		//zts_util_delay(50);
-		Thread.sleep(50.dur!"msecs");
-	}
-	char[zts_max_ip_str_len] ipstr = 0;
-	zts_addr_get_str(net_id,zts_af_inet,ipstr.ptr,zts_max_ip_str_len);
+	Stage stage=Stage.start;
+	bool ready(){ return stage==Stage.done; }
 
-	import std.algorithm;
-	writeln("ip address: ",ipstr[].until(0));
-	// writeln("broadcast enabled: ",zts_net_get_broadcast(net_id));
+	bool step(){
+		import std.stdio;
+		final switch(stage) with(Stage){
+			case start:
+				int err=zts_init_from_storage(identityFolder.toStringz);
+				enforce(err==zts_err_ok, "failed to initialize zerotier");
+				writeln("zerotier initialized");
+				err=zts_node_start();
+				enforce(err==zts_err_ok, "failed to start node");
+				stage=waitingForNode;
+				goto case;
+			case waitingForNode:
+				if(!zts_node_is_online()) return false;
+				ulong node_id=zts_node_get_id();
+				writefln("node id: %x", node_id);
+				writeln("online");
+				writefln("joining net %x", netId);
+				if(zts_net_join(netId)!=zts_err_ok){
+					writeln("unable to join zerotier network");
+					stage=done;
+					return true;
+				}
+				stage=waitingForTransport;
+				goto case;
+			case waitingForTransport:
+				if(!zts_net_transport_is_ready(netId)) return false;
+				writeln("joined");
+				//writeln("mtu: ",zts_net_get_mtu(netId));
+				stage=waitingForAddress;
+				goto case;
+			case waitingForAddress:
+				if(!zts_addr_is_assigned(netId, zts_af_inet)) return false;
+				char[zts_max_ip_str_len] ipstr = 0;
+				zts_addr_get_str(netId,zts_af_inet,ipstr.ptr,zts_max_ip_str_len);
+				import std.algorithm;
+				writeln("ip address: ",ipstr[].until(0));
+				// writeln("broadcast enabled: ",zts_net_get_broadcast(netId));
+				stage=done;
+				goto case;
+			case done:
+				return true;
+		}
+	}
 }

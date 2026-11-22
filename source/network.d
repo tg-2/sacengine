@@ -902,22 +902,45 @@ class DelayedConnection(B): ConnectionImpl{
 }
 
 struct Joiner{
+	// non-blocking like tryJoin (lwIP: failure sets POLLERR and SO_ERROR, success sets POLLOUT)
+	int joinFdZerotier=-1;
+	private void abortJoinZerotier(){
+		zts_bsd_close(joinFdZerotier);
+		joinFdZerotier=-1;
+	}
 	Connection tryJoinZerotier(string hostIP, ushort port){
-		int fd=zts_bsd_socket(zts_af_inet, zts_sock_stream, zts_ipproto_tcp);
-		enforce(fd!=zts_err_arg,"bad arguments");
-		enforce(fd!=zts_err_service,"failed to make socket");
-		enforce(fd!=zts_err_socket,"failed to make socket");
+		if(joinFdZerotier==-1){
+			int fd=zts_bsd_socket(zts_af_inet, zts_sock_stream, zts_ipproto_tcp);
+			enforce(fd!=zts_err_arg,"bad arguments");
+			enforce(fd!=zts_err_service,"failed to make socket");
+			enforce(fd!=zts_err_socket,"failed to make socket");
+			scope(exit) if(fd!=-1) zts_bsd_close(fd);
+			zts_sockaddr_in saddr;
+			uint addrlen=saddr.sizeof;
+			int err=zts_util_ipstr_to_saddr(hostIP.toStringz,port,&saddr,&addrlen);
+			enforce(err==zts_err_ok,"bad address");
+			err=zts_set_blocking(fd,false);
+			enforce(err==zts_err_ok,"failed to set blocking mode");
+			err=zts_bsd_connect(fd,&saddr,addrlen); // (zts_err_socket with zts_errno=ZTS_EINPROGRESS while connecting)
+			if(err!=zts_err_ok&&err!=zts_err_socket) return null;
+			joinFdZerotier=fd;
+			fd=-1;
+			joinDeadline=MonoTime.currTime+joinTimeout;
+		}
+		auto pollfd=zts_pollfd(joinFdZerotier,zts_pollout,0);
+		int ready=zts_bsd_poll(&pollfd,1,0);
+		if(ready<0){ abortJoinZerotier(); return null; }
+		enum failure=zts_pollerr|zts_pollhup|zts_pollnval;
+		if(!(pollfd.revents&(zts_pollout|failure))){
+			if(MonoTime.currTime>=joinDeadline) abortJoinZerotier();
+			return null;
+		}
+		if(pollfd.revents&failure||zts_get_last_socket_error(joinFdZerotier)!=0){ abortJoinZerotier(); return null; }
+		int fd=joinFdZerotier;
+		joinFdZerotier=-1;
 		scope(exit) if(fd!=-1) zts_bsd_close(fd);
-		zts_sockaddr_in saddr;
-		uint addrlen=saddr.sizeof;
-		int err=zts_util_ipstr_to_saddr(hostIP.toStringz,port,&saddr,&addrlen);
-		enforce(err==zts_err_ok,"bad address");
-		err=zts_bsd_connect(fd,&saddr,addrlen);
-		if(err!=zts_err_ok) return null;
-		err=zts_set_blocking(fd,false);
-		enforce(err==zts_err_ok,"failed to set blocking mode");
 		int idletime=5;
-		err=zts_bsd_setsockopt(fd,zts_ipproto_tcp,zts_tcp_keepidle,&idletime,int.sizeof);
+		int err=zts_bsd_setsockopt(fd,zts_ipproto_tcp,zts_tcp_keepidle,&idletime,int.sizeof);
 		enforce(err==zts_err_ok,"failed to set socket option");
 		int idleintvl=1;
 		err=zts_bsd_setsockopt(fd,zts_ipproto_tcp,zts_tcp_keepintvl,&idleintvl,int.sizeof);
@@ -929,14 +952,40 @@ struct Joiner{
 		fd=-1;
 		return connection;
 	}
+	// non-blocking: the first call starts connecting, later calls check whether the connection is established
 	Socket joinSocket=null;
+	MonoTime joinDeadline;
+	enum joinTimeout=5.seconds; // give up on unanswered attempts (e.g. unreachable address) and start a new one
+	SocketSet joinWriteSet=null, joinErrorSet=null;
+	private void abortJoin(){
+		joinSocket.close();
+		joinSocket=null;
+	}
 	Connection tryJoin(string hostIP, ushort port,bool useZerotier){
 		if(useZerotier) return tryJoinZerotier(hostIP, port);
-		auto hostAddress = new InternetAddress(hostIP, port);
-		if(!joinSocket) joinSocket=new Socket(AddressFamily.INET,SocketType.STREAM);
-		try joinSocket.connect(hostAddress);
-		catch(Exception){ return null; }
-		joinSocket.blocking=false;
+		if(!joinSocket){
+			auto hostAddress = new InternetAddress(hostIP, port);
+			joinSocket=new Socket(AddressFamily.INET,SocketType.STREAM);
+			joinSocket.blocking=false;
+			try joinSocket.connect(hostAddress); // (returns immediately if the connection is in progress)
+			catch(Exception){ abortJoin(); return null; }
+			joinDeadline=MonoTime.currTime+joinTimeout;
+		}
+		if(!joinWriteSet) joinWriteSet=new SocketSet(1);
+		if(!joinErrorSet) joinErrorSet=new SocketSet(1);
+		joinWriteSet.reset(); joinWriteSet.add(joinSocket);
+		joinErrorSet.reset(); joinErrorSet.add(joinSocket); // (failed connections are reported here on Windows)
+		int ready;
+		try ready=Socket.select(null,joinWriteSet,joinErrorSet,Duration.zero);
+		catch(Exception){ abortJoin(); return null; }
+		if(ready<=0){
+			if(MonoTime.currTime>=joinDeadline) abortJoin();
+			return null;
+		}
+		int error=0;
+		try joinSocket.getOption(SocketOptionLevel.SOCKET,SocketOption.ERROR,error);
+		catch(Exception){ error=-1; }
+		if(error!=0||joinErrorSet.isSet(joinSocket)){ abortJoin(); return null; }
 		joinSocket.setKeepAlive(5,1);
 		auto connection=new TCPConnection(joinSocket);
 		joinSocket=null;
