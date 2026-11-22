@@ -3662,6 +3662,7 @@ struct ProtectiveSwarm(B){
 	int castingTime;
 	int soundTimer;
 	int frame=0;
+	int stingTimer=0;
 	float alpha=1.0f;
 	auto status=ProtectiveSwarmStatus.casting;
 	Array!(ProtectiveBug!B) bugs; // TODO: pull out bugs into separate array?
@@ -19178,8 +19179,10 @@ void updateBugs(B)(ref ProtectiveSwarm!B protectiveSwarm,ref MovingObject!B wiza
 	setPositions(protectiveSwarm.bugs.data);
 }
 
+enum protectiveSwarmStingFrames=64;
+enum protectiveSwarmStingSlack=50.0f;
 float bugDamage(B)(ref MovingObject!B obj,float damage,int attacker,int side,Vector3f attackDirection,ObjectState!B state){
-	auto actualDamage=obj.dealSpellDamage(damage,attacker,side,attackDirection,DamageMod.continuous,state);
+	auto actualDamage=obj.dealSpellDamage(damage,attacker,side,attackDirection,DamageMod.none,state);
 	if(actualDamage){
 		if(obj.creatureStats.effects.buzzTime+updateFPS/3<state.frame)
 			playSpellSoundTypeAt(SoundType.swarm,obj.id,state,protectiveSwarmGain);
@@ -19194,23 +19197,26 @@ bool updateProtectiveSwarm(B)(ref ProtectiveSwarm!B protectiveSwarm,ObjectState!
 		if(protectiveSwarm.status!=ProtectiveSwarmStatus.dispersing){
 			if(--soundTimer==0) soundTimer=playSoundAt!true("3rws",target,state,protectiveSwarmGain);
 		}
-		frame+=1;
+		// original: the duration counts down only once casting has finished (ProtectiveSwarmRun stage 2)
+		if(status==ProtectiveSwarmStatus.steady) frame+=1;
 		static bool check(ref MovingObject!B obj,ProtectiveSwarm!B* protectiveSwarm,ObjectState!B state){
-			if(protectiveSwarm.status==ProtectiveSwarmStatus.steady){
-				auto hitbox=obj.hitbox;
-				hitbox[0]-=Vector3f(4.0f,4.0f,2.0f), hitbox[1]+=Vector3f(4.0f,4.0f,2.0f);
-				float totalDamage=0.0f;
-				static void damage(ProximityEntry target,ObjectState!B state,SacSpell!B spell,int attacker,int side,Vector3f center,float* totalDamage){
-					if(target.id==attacker) return;
-					state.movingObjectById!((ref obj,damage,attacker,side,state){
-						if(state.getStance(side,obj.side)!=Stance.ally){
-							// TODO: limit distance between hitboxes to 4?
-							*totalDamage+=obj.bugDamage(damage,attacker,side,obj.center-center,state);
-						}
-					},(){})(target.id,spell.amount/updateFPS,attacker,side,state);
+			// original (ProtectiveSwarmRun 0x433120): every 64 frames the swarm stings each enemy
+			// creature or wizard whose position lies within effectRange (3D) of the swarm, which sits at
+			// the center of the caster's box (0x44e020). Each sting (0x4330d0) is one direct spell hit
+			// of amount via 0x44d7e0; the caster is not healed.
+			if(protectiveSwarm.status==ProtectiveSwarmStatus.steady&&++protectiveSwarm.stingTimer>=protectiveSwarmStingFrames){
+				protectiveSwarm.stingTimer=0;
+				static void sting(ref CenterProximityEntry entry,ObjectState!B state,SacSpell!B spell,int attacker,int side,Vector3f center){
+					if(entry.isStatic||entry.id==attacker) return;
+					state.movingObjectById!((ref obj,spell,attacker,side,center,state){
+						if((obj.position-center).lengthsqr>spell.effectRange^^2) return;
+						// original enemy test (0x45d010/0x46b000): either side hostile, or the creature's grudge
+						if(obj.getStance(side,state)!=Stance.enemy&&state.getStance(side,obj.side)!=Stance.enemy) return;
+						obj.bugDamage(spell.amount,attacker,side,obj.center-center,state);
+					},(){})(entry.id,spell,attacker,side,center,state);
 				}
-				collisionTargets!damage(hitbox,state,protectiveSwarm.spell,obj.id,obj.side,obj.center,&totalDamage);
-				if(totalDamage) obj.heal(0.5f*totalDamage,state);
+				// proximity stores box centers, so query with slack and test the position exactly in sting
+				state.proximity.eachInRange!sting(obj.center,protectiveSwarm.spell.effectRange+protectiveSwarmStingSlack,state,protectiveSwarm.spell,obj.id,obj.side,obj.center);
 			}
 			(*protectiveSwarm).updateBugs(obj,state);
 			if(protectiveSwarm.status==ProtectiveSwarmStatus.casting){
