@@ -5510,6 +5510,11 @@ struct AbominationProjectile(B){
 	SacSpell!B rangedAttack;
 	int frame=0;
 }
+struct GibTrail{
+	Vector3f position;
+	Vector3f velocity; // per frame
+	float rate; // blood drops per frame
+}
 struct AbominationDroplet(B){
 	int attacker;
 	int side;
@@ -7411,6 +7416,14 @@ struct Effects(B){
 		if(i+1<abominationProjectiles.length) swap(abominationProjectiles[i],abominationProjectiles[$-1]);
 		abominationProjectiles.length=abominationProjectiles.length-1; // TODO: reuse memory?
 	}
+	Array!GibTrail gibTrails;
+	void addEffect(GibTrail gibTrail){
+		gibTrails~=gibTrail;
+	}
+	void removeGibTrail(int i){
+		if(i+1<gibTrails.length) swap(gibTrails[i],gibTrails[$-1]);
+		gibTrails.length=gibTrails.length-1;
+	}
 	Array!(AbominationDroplet!B) abominationDroplets;
 	void addEffect(AbominationDroplet!B abominationDroplet){
 		abominationDroplets~=abominationDroplet;
@@ -9158,8 +9171,9 @@ void addSpellScar(B)(char[4] scar,Vector3f position,ObjectState!B state){
 void addSpellScarNearGround(B)(char[4] scar,Vector3f position,float maxDistance,ObjectState!B state){
 	if(abs(state.getHeight(position)-position.z)<maxDistance) state.addScar(scar,position);
 }
-// scar of fireball explosions, only close to the ground (original: 0x43b280)
-void addFireballScar(B)(SacSpell!B spell,Vector3f position,ObjectState!B state){
+// scar of an explosion object (fireballs, Explosion, destroyed huts and manaliths), only close to the ground
+// (original: INERT_StartExplosion 0x43b280, created by 0x43afe0)
+void addExplosionScar(B)(SacSpell!B spell,Vector3f position,ObjectState!B state){
 	if(position.z-state.getHeight(position)<10.0f) state.addScar(spellScar(spell,"tXsc","racs"),position);
 }
 // thrown rocks hitting the ground (original: 0x439270)
@@ -9176,24 +9190,27 @@ void addEmergingScar(B)(SacSpell!B spell,Vector3f position,ObjectState!B state){
 // disappears and leaves a blood stain.
 enum bloodDropScale=0.25f;
 enum bloodDropAcceleration=0.002725f*updateFPS*updateFPS; // 0.002725 per frame^2
-void bleed(B)(ref MovingObject!B object,int numDrops,float speed,Vector3f direction,ObjectState!B state){
-	if(numDrops<=0||!state.enableParticles) return;
+// one drop, with a velocity from the given box (per second)
+void addBloodDrop(B)(Vector3f position,Vector3f[2] velocityBox,ObjectState!B state){
 	auto sacParticle=SacParticle!B.get(ParticleType.bloodDrop);
 	enum halfBoxSize=0.2f*bloodDropScale;
-	foreach(i;0..numDrops){
-		auto lifetime=cast(int)(state.uniform(1.5f,2.5f)*updateFPS);
-		auto size=2.0f*state.uniform(0.7f*bloodDropScale,1.4f*bloodDropScale);
-		auto endFactor=state.uniform(0.25f,0.5f);
-		auto offset=Vector3f(state.uniform(-halfBoxSize,halfBoxSize),state.uniform(-halfBoxSize,halfBoxSize),state.uniform(-halfBoxSize,halfBoxSize));
-		auto angle1=state.uniform(0.0f,2.0f*pi!float),angle2=state.uniform(0.0f,2.0f*pi!float);
-		offset.x*=sin(angle1);
-		offset.y*=cos(angle1);
-		auto s2=sin(angle2);
-		offset=Vector3f(s2*offset.x,s2*offset.y,cos(angle2)*offset.z);
-		auto velocity=speed*Vector3f(state.uniform(direction.x-0.5f,direction.x+0.5f),state.uniform(direction.y-0.5f,direction.y+0.5f),state.uniform(direction.z,direction.z+1.0f));
-		auto scaleRate=(endFactor-1.0f)*size/lifetime;
-		state.addParticle(Particle!(B,ParticleKind.decaying)(sacParticle,scaleRate,lifetime,true,object.position+offset,velocity,size,lifetime,0));
-	}
+	auto lifetime=cast(int)(state.uniform(1.5f,2.5f)*updateFPS);
+	auto size=2.0f*state.uniform(0.7f*bloodDropScale,1.4f*bloodDropScale);
+	auto endFactor=state.uniform(0.25f,0.5f);
+	auto offset=Vector3f(state.uniform(-halfBoxSize,halfBoxSize),state.uniform(-halfBoxSize,halfBoxSize),state.uniform(-halfBoxSize,halfBoxSize));
+	auto angle1=state.uniform(0.0f,2.0f*pi!float),angle2=state.uniform(0.0f,2.0f*pi!float);
+	offset.x*=sin(angle1);
+	offset.y*=cos(angle1);
+	auto s2=sin(angle2);
+	offset=Vector3f(s2*offset.x,s2*offset.y,cos(angle2)*offset.z);
+	auto velocity=state.uniform(velocityBox);
+	auto scaleRate=(endFactor-1.0f)*size/lifetime;
+	state.addParticle(Particle!(B,ParticleKind.decaying)(sacParticle,scaleRate,lifetime,true,position+offset,velocity,size,lifetime,0));
+}
+void bleed(B)(ref MovingObject!B object,int numDrops,float speed,Vector3f direction,ObjectState!B state){
+	if(numDrops<=0||!state.enableParticles) return;
+	Vector3f[2] velocityBox=[speed*Vector3f(direction.x-0.5f,direction.y-0.5f,direction.z),speed*Vector3f(direction.x+0.5f,direction.y+0.5f,direction.z+1.0f)];
+	foreach(i;0..numDrops) addBloodDrop(object.position,velocityBox,state);
 }
 Vector3f bloodDirection(Vector3f attackDirection){
 	auto length=attackDirection.length;
@@ -9213,8 +9230,54 @@ void bleedFromDeath(B)(ref MovingObject!B object,ObjectState!B state){
 	object.bleed(16+state.uniform(32),10.0f,Vector3f(0.0f,0.0f,0.0f),state);
 }
 
+// The original throws pieces of the body that trail blood (0x439d00, GibProc 0x440d90). sacengine does not show the
+// pieces, but their blood drops are simulated because they leave blood stains.
+enum numGibTrails=8;
+enum gibTrailAcceleration=0.002725f; // per frame^2, the gravity the original uses for thrown objects (0x44d140)
+void spawnGibTrails(B)(Vector3f position,ObjectState!B state){
+	if(!state.enableParticles) return;
+	foreach(i;0..numGibTrails){
+		// original: GibTrailRun 0x4398a0, velocity per frame
+		auto velocity=Vector3f((state.uniform(32768)-0x4000)*1.516622179082747e-05f,(state.uniform(32768)-0x4000)*1.516622179082747e-05f,state.uniform(32768)*4.57763671875e-06f);
+		state.addEffect(GibTrail(position,velocity,1.0f));
+	}
+}
+bool updateGibTrail(B)(ref GibTrail gibTrail,ObjectState!B state){
+	with(gibTrail){
+		auto oldPosition=position;
+		position+=velocity;
+		position.z-=0.5f*gibTrailAcceleration;
+		velocity.z-=gibTrailAcceleration;
+		auto height=state.getHeight(position);
+		bool landed=position.z<=height;
+		if(landed) position.z=height;
+		rate=max(0.0f,rate-0.01f);
+		// rate drops per frame on average, along the path (original: PARTICLESYSTEM::SetParams in game3d.dll)
+		Vector3f[2] trailVelocityBox=[Vector3f(-0.01f,-0.01f,-0.01f)*updateFPS,Vector3f(0.01f,0.01f,0.01f)*updateFPS];
+		int count=cast(int)(rate*32768.0f);
+		int numDrops=0;
+		for(int left=count;left>0;left-=0x8000){
+			if(left<0x8000&&state.uniform(32768)>left) break;
+			numDrops++;
+		}
+		foreach(k;0..numDrops){
+			auto t=float(k+1)/numDrops;
+			addBloodDrop((1.0f-t)*oldPosition+t*position,trailVelocityBox,state);
+		}
+		if(landed){
+			if(rate>0.25f){
+				Vector3f[2] landingVelocityBox=[Vector3f(-0.05f,-0.05f,0.0f)*updateFPS,Vector3f(0.05f,0.05f,0.05f)*updateFPS];
+				foreach(k;0..cast(int)(rate*32.0f)) addBloodDrop(position,landingVelocityBox,state);
+			}
+			return false;
+		}
+		return rate>0.0f;
+	}
+}
+
 void gibAnimation(B)(Vector3f position,ObjectState!B state,float gain=4.0f){
 	playSpellSoundTypeAt(SoundType.gib,position,state,gain);
+	spawnGibTrails(position,state);
 	enum numParticles4=40;
 	auto sacParticle4=SacParticle!B.get(ParticleType.hoverBlood);
 	foreach(i;0..numParticles4){
@@ -12225,6 +12288,7 @@ bool explosion(B,size_t n)(int attacker,int side,ref ExplosionEffect[n] effects,
 		animateDebris(effect.position,state,15);
 		explosionAnimation(effect.position+Vector3f(0.0f,0.0f,effect.maxRadius),state,1.75f);
 		animateFireballExplosion!10(effect.position,state,2.0f);
+		addExplosionScar(spell,effect.position,state); // original: PyroExplosionRun
 		static bool callback(int target,int attacker,int side,ObjectState!B state){
 			setAblaze(target,updateFPS,false,0.0f,attacker,side,DamageMod.none,state);
 			return true;
@@ -16931,6 +16995,7 @@ bool updateBuildingDestruction(B)(ref BuildingDestruction buildingDestruction,Ob
 			state.staticObjectById!((ref StaticObject!B object,state){
 				auto destruction=building.sacBuilding.components[i].destruction;
 				destructionAnimation(destruction,object.center,state);
+				if(destruction!="\0\0\0\0") addExplosionScar(SacSpell!B.init,object.center,state); // original: DestroyHut, DestroyManalith
 			},(){})(id,state);
 		}
 		building.componentIds.length=newLength;
@@ -18484,7 +18549,7 @@ void animateFireballExplosion(int reduceParticles=1,B)(Vector3f position,ObjectS
 
 void fireballExplosion(B)(ref Fireball!B fireball,int target,ObjectState!B state){
 	playSpellSoundTypeAt(SoundType.explodingFireball,fireball.position,state,8.0f);
-	addFireballScar(fireball.spell,fireball.position,state);
+	addExplosionScar(fireball.spell,fireball.position,state);
 	if(state.isValidTarget(target)){
 		dealSpellDamage(target,fireball.spell,fireball.wizard,fireball.side,fireball.velocity,DamageMod.ignite|DamageMod.splash,state);
 		setAblaze(target,updateFPS,false,0.0f,fireball.wizard,fireball.side,DamageMod.ignite,state);
@@ -22445,6 +22510,7 @@ bool wallOfSpikesSpike(B)(ref MovingObject!B obj,ref WallOfSpikes!B wallOfSpikes
 	auto scale=1.0f;
 	playSoundAt("skps",obj.position,state,wallOfSpikesGain); // TODO: ok?
 	state.addEffect(Spike!B(spikePosition,direction,scale));
+	if(spikePosition.z>0.0f) addSpellScar(spellScar(spell,"tscr","1kuq"),spikePosition,state); // original: 0x447600 (SpikeWallHitNTT)
 	obj.dealSpellDamage(spell,wallOfSpikes.wizard,wallOfSpikes.side,direction,DamageMod.none,state);
 	auto sacParticle=SacParticle!B.get(ParticleType.dirt);
 	enum numParticles=25;
@@ -23017,7 +23083,7 @@ int rainOfFireDropCollisionTarget(B)(Vector3f position,ObjectState!B state){
 enum rainOfFireGain=1.0f;
 void rainOfFireDropExplosion(B)(ref RainOfFireDrop!B rainOfFireDrop,int target,ObjectState!B state){
 	playSpellSoundTypeAt(SoundType.explodingFireball,rainOfFireDrop.position,state,3.0f);
-	addFireballScar(rainOfFireDrop.spell,rainOfFireDrop.position,state);
+	addExplosionScar(rainOfFireDrop.spell,rainOfFireDrop.position,state);
 	if(state.isValidTarget(target)){
 		dealSpellDamage(target,rainOfFireDrop.spell,rainOfFireDrop.wizard,rainOfFireDrop.side,rainOfFireDrop.velocity,DamageMod.ignite|DamageMod.splash,state);
 		setAblaze(target,updateFPS,false,0.0f,rainOfFireDrop.wizard,rainOfFireDrop.side,DamageMod.ignite,state);
@@ -24341,7 +24407,7 @@ int volcanoLavaBallCollisionTarget(B)(int side,Vector3f position,ObjectState!B s
 enum volcanoLavaBallGain=8.0f;
 void volcanoLavaBallExplosion(B)(ref VolcanoLavaBall!B lavaBall,int target,ObjectState!B state){
 	playSpellSoundTypeAt(SoundType.explodingFireball,lavaBall.position,state,volcanoLavaBallGain);
-	addFireballScar(lavaBall.spell,lavaBall.position,state);
+	addExplosionScar(lavaBall.spell,lavaBall.position,state);
 	if(state.isValidTarget(target)){
 		dealSpellDamage(target,lavaBall.spell,lavaBall.wizard,lavaBall.side,lavaBall.velocity,DamageMod.ignite|DamageMod.splash,state);
 		setAblaze(target,updateFPS,false,0.0f,lavaBall.wizard,lavaBall.side,DamageMod.ignite,state);
@@ -26384,8 +26450,10 @@ bool updateAbominationDroplet(B)(ref AbominationDroplet!B abominationDroplet,Obj
 			return false;
 		}
 		if(state.isOnGround(position)){
-			if(position.z<state.getGroundHeight(position))
-				return false; // TODO: scar
+			if(position.z<state.getGroundHeight(position)){
+				state.addScar("dulb",position); // blood stain of a drop of the gut chuck drip (original: GutChuckDripStart)
+				return false;
+			}
 		}else if(position.z<state.getHeight(position)-rangedAttack.fallLimit)
 			return false;
 		return true;
@@ -29214,6 +29282,13 @@ void updateEffects(B)(ref Effects!B effects,ObjectState!B state){
 	for(int i=0;i<effects.abominationProjectiles.length;){
 		if(!updateAbominationProjectile(effects.abominationProjectiles[i],state)){
 			effects.removeAbominationProjectile(i);
+			continue;
+		}
+		i++;
+	}
+	for(int i=0;i<effects.gibTrails.length;){
+		if(!updateGibTrail(effects.gibTrails[i],state)){
+			effects.removeGibTrail(i);
 			continue;
 		}
 		i++;
