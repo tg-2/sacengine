@@ -440,8 +440,9 @@ final class Controller(B){
 				updateNetworkGameState();
 				network.updateStatus(PlayerStatus.readyToStart);
 				if(network.isHost&&network.readyToStart()){
-					network.start(this);
+					network.start(this); // (does not block, measures pings and schedules the start)
 				}
+				network.updateStart(this);
 				return true; // ignore passed time in next frame
 			}
 			network.acceptingNewConnections=true;

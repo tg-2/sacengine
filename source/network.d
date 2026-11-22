@@ -1940,9 +1940,7 @@ final class Network(B){
 					stderr.flush();
 					return false;
 				}
-				Thread.sleep(p.startDelay.hnsecs);
-				updateStatus(PlayerStatus.playing);
-				B.unpause();
+				scheduleStart(p.startDelay.hnsecs,false);
 				return true;
 			case PacketType.setFrame:
 				if(sender!=host){
@@ -2794,16 +2792,36 @@ final class Network(B){
 				load(cast(int)i);
 		}
 	}
+	// synchronized start without blocking: the host calls start each frame while everyone is ready,
+	// all players call updateStart each frame until they are playing
+	bool measuringStartPings=false;
+	bool startScheduled=false;
+	bool focusCameraOnStart=false;
+	MonoTime startTime;
+	void scheduleStart(Duration delay,bool focusCamera){
+		startTime=B.time()+delay;
+		startScheduled=true;
+		focusCameraOnStart=focusCamera;
+	}
+	void cancelStart(){
+		measuringStartPings=false;
+		startScheduled=false;
+	}
 	void start(Controller!B controller)in{
 		assert(isHost&&readyToStart);
 	}do{
-		ackHandler=AckHandler.measurePing;
-		players[me].ping=Duration.zero;
-		while(requiredOrActivePlayers.any!((ref p)=>p.status!=PlayerStatus.desynched&&p.ping==-1.seconds)){
+		if(startScheduled) return;
+		if(!measuringStartPings){
+			ackHandler=AckHandler.measurePing;
+			players[me].ping=Duration.zero;
+			measuringStartPings=true;
+		}
+		if(requiredOrActivePlayers.any!((ref p)=>p.status!=PlayerStatus.desynched&&p.ping==-1.seconds)){
 			foreach(i,ref player;players.data)
 				ping(cast(int)i);
-			update(controller);
+			return;
 		}
+		measuringStartPings=false;
 		auto maxPing=initializedPlayers.map!((ref p)=>p.ping).reduce!max;
 		writeln("pings: ",players.data.map!((ref p)=>p.ping.total!"msecs").map!(p=>p<0?-1:p));
 		stdout.flush();
@@ -2814,14 +2832,20 @@ final class Network(B){
 			auto delay=(maxPing-players[i].ping)/2;
 			players[i].send(Packet.startGame(delay.total!"hnsecs"));
 		}
-		Thread.sleep(maxPing/2);
+		scheduleStart(maxPing/2,true);
+	}
+	// returns true once this player has started playing
+	bool updateStart(Controller!B controller){
+		if(!startScheduled||B.time()<startTime) return false;
+		startScheduled=false;
 		updateStatus(PlayerStatus.playing);
-		if(controller.state){
+		if(focusCameraOnStart&&controller&&controller.state){
 			bool hasSlot=0<=slot&&slot<controller.state.slots.length;
 			auto wizId=hasSlot?controller.state.slots[slot].wizard:0;
 			if(wizId) B.focusCamera(wizId);
 		}
 		B.unpause();
+		return true;
 	}
 	void setFrame(int player,int frame){
 		players[player].send(Packet.setFrame(frame));
@@ -2838,6 +2862,7 @@ final class Network(B){
 		assert(isHost);
 		assert(isPausedStatus(status));
 	}do{
+		cancelStart(); // (unpause sets the status to playing)
 		updateStatus(status);
 	}
 	void unpause()in{
