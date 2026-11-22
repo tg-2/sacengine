@@ -3757,6 +3757,23 @@ struct Renderer(B){
 						mesh.render(rc);
 					}
 				}
+			}else static if(is(T==ParticleEmitters!B)){
+				static if(mode==RenderMode.transparent){
+					if(rc.shadowMode) return; // TODO: particle shadows?
+					static void renderParticle(SacParticle!B sacParticle,Vector3f position,float scale,int lifetime,int frame,B.RenderContext rc){
+						auto material=sacParticle.material;
+						material.backend.setSpriteTransformationScaled(position,scale*sacParticle.getScale(lifetime),rc);
+						material.backend.setAlpha(sacParticle.getAlpha(lifetime));
+						sacParticle.getMesh(frame).render(rc);
+					}
+					foreach(ref emitter;objects.emitters.data){
+						auto material=emitter.sacParticle.material;
+						material.bind(rc);
+						material.backend.setInformation(Vector4f(0.0f,0.0f,0.0f,0.0f));
+						scope(success) material.unbind(rc);
+						emitter.eachEmitterParticle!renderParticle(state,rc);
+					}
+				}
 			}else static if(is(T==CommandCones!B)) with(self){
 				static if(mode==RenderMode.transparent){
 					if(rc.shadowMode) return;
@@ -4778,6 +4795,8 @@ struct Renderer(B){
 			}else static if(is(T==Effects!B)){
 				// do nothing
 			}else static if(is(T==Particles!(B,kind),ParticleKind kind)){
+				// do nothing
+			}else static if(is(T==ParticleEmitters!B)){
 				// do nothing
 			}else static if(is(T==CommandCones!B)){
 				// do nothing

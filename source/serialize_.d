@@ -258,6 +258,17 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Sac
 void serialize(alias sink,B,ParticleKind kind,bool sideFiltered)(ref Particles!(B,kind,sideFiltered) particles){ serializeStruct!sink(particles); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Particles!(B,kind,sideFiltered),ParticleKind kind,bool sideFiltered)){ deserializeStruct(result,state,data); }
 
+void serialize(alias sink)(ref EmissionParams params){ serializeStruct!sink(params); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==EmissionParams)){ deserializeStruct(result,state,data); }
+void serialize(alias sink)(ref EmissionRun run){ serializeStruct!sink(run); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==EmissionRun)){ deserializeStruct(result,state,data); }
+void serialize(alias sink)(ref TerrainRun run){ serializeStruct!sink(run); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==TerrainRun)){ deserializeStruct(result,state,data); }
+void serialize(alias sink,B)(ref ParticleEmitter!B emitter){ serializeStruct!sink(emitter); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ParticleEmitter!B)){ deserializeStruct(result,state,data); }
+void serialize(alias sink,B)(ref ParticleEmitters!B emitters){ serializeStruct!sink(emitters); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==ParticleEmitters!B)){ deserializeStruct(result,state,data); }
+
 void serialize(alias sink,B)(ref Debris!B debris){ serializeStruct!sink(debris); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Debris!B)){ deserializeStruct(result,state,data); }
 
