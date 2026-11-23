@@ -258,6 +258,28 @@ final class AudioBackend(B){
 		sounds0~=Sound0(source);
 	}
 
+	// sample of the loading screen (the loading screen stays while it plays, unless skipped)
+	Source loadingSampleSource;
+	bool hasLoadingSample=false;
+	void playLoadingSample(string filename){
+		stopLoadingSample();
+		if(!device) return;
+		loadingSampleSource=makeSource();
+		loadingSampleSource.gain=soundGain;
+		loadingSampleSource.buffer=getBuffer(filename);
+		loadingSampleSource.play();
+		hasLoadingSample=true;
+	}
+	bool loadingSamplePlaying(){
+		return hasLoadingSample&&loadingSampleSource.isPlaying;
+	}
+	void stopLoadingSample(){
+		if(!hasLoadingSample) return;
+		loadingSampleSource.stop();
+		loadingSampleSource.release();
+		hasLoadingSample=false;
+	}
+
 	Source dialogSource;
 	struct DialogSound{
 		char[4] sound;
@@ -482,6 +504,7 @@ final class AudioBackend(B){
 		foreach(k,v;fileBuffers) v.release();
 
 		dialogSource.release();
+		stopLoadingSample();
 	}
 	~this(){ release(); }
 }

@@ -163,6 +163,14 @@ struct RenderInfo(B){
 	bool fpsVisible=false; // toggled with F8
 	int fps=0;
 	float startCountdownProgress=float.nan; // loading bar before the synchronized game start (NaN: hidden)
+	bool loadingScreenVisible=false;
+	float loadingProgress=0.0f;
+	string loadingMapFolder=null;
+	static struct SynchronizationRow{
+		string name=null; // null: player not known yet
+		float progress=0.0f;
+	}
+	Array!SynchronizationRow synchronizationRows; // one per slot, empty: synchronization form hidden
 }
 
 struct Renderer(B){
@@ -5180,6 +5188,116 @@ struct Renderer(B){
 		unbindFont(font,rc);
 	}
 
+	// loading screen as in the original (form igam): map picture, map description and loading progress
+	SacFormState!B loadingScreenForm;
+	bool loadingScreenFormLoaded=false;
+	string loadingScreenContentsFolder=null; // (map folder the picture and text below were loaded for)
+	B.Texture loadingScreenPicture;
+	string loadingScreenDescription;
+	void updateLoadingScreenContents(string mapFolder){
+		if(loadingScreenFormLoaded&&loadingScreenContentsFolder==mapFolder) return;
+		import loading;
+		if(!loadingScreenFormLoaded){
+			loadingScreenForm=sacFormInstance!B("magi");
+			loadingScreenFormLoaded=true;
+			foreach(ref element;loadingScreenForm.elements.data){
+				// picture and description are drawn below, players' progress is not available
+				if(element.type.among(ElementType.picture,ElementType.text)||element.type==ElementType.progressbar&&element.id!="gorp")
+					element.visible=false;
+			}
+		}
+		loadingScreenContentsFolder=mapFolder;
+		loadingScreenPicture=null;
+		loadingScreenDescription=null;
+		try{
+			if(auto rgb=loadingScreenPictureRGB(mapFolder)){
+				import dlib.image: image;
+				auto picture=image(loadingScreenPictureSize,loadingScreenPictureSize,3);
+				picture.data[]=rgb[];
+				loadingScreenPicture=B.makeTexture(picture,false);
+			}else if(auto filename=defaultLoadingScreenPicture()){
+				import dlib.image.io.tga: loadTGA;
+				loadingScreenPicture=B.makeTexture(loadTGA(filename),false);
+			}
+		}catch(Exception e){
+			stderr.writeln("warning: failed to load loading screen picture (",e.msg,")");
+		}
+		try loadingScreenDescription=loadingScreenText(mapFolder);
+		catch(Exception e){}
+	}
+	void renderLoadingScreen(ref RenderInfo!B info,B.RenderContext rc){
+		if(!info.loadingScreenVisible) return;
+		updateLoadingScreenContents(info.loadingMapFolder);
+		foreach(ref element;loadingScreenForm.elements.data)
+			if(element.type==ElementType.progressbar) element.progress=info.loadingProgress;
+		auto hudScaling=info.hudScaling;
+		auto sacForm=loadingScreenForm.sacForm;
+		auto offset=Vector3f(0.5f*(info.width-hudScaling*sacForm.width),0.5f*(info.height-hudScaling*sacForm.height),0.0f);
+		B.colorHUDMaterialBackend.bind(null,rc);
+		B.colorHUDMaterialBackend.bindDiffuse(whiteTexture);
+		B.colorHUDMaterialBackend.setColor(Color4f(0.0f,0.0f,0.0f,1.0f));
+		B.colorHUDMaterialBackend.setTransformationScaled(Vector3f(0.0f,0.0f,0.0f),Quaternionf.identity(),Vector3f(info.width,info.height,0.0f),rc);
+		quad.render(rc);
+		B.colorHUDMaterialBackend.setColor(Color4f(1.0f,1.0f,1.0f,1.0f));
+		if(loadingScreenPicture){ // (elements 1gmi-4gmi: 384x384 at (16,16))
+			B.colorHUDMaterialBackend.bindDiffuse(loadingScreenPicture);
+			B.colorHUDMaterialBackend.setTransformationScaled(offset+hudScaling*Vector3f(16.0f,16.0f,0.0f),Quaternionf.identity(),Vector3f(384.0f*hudScaling,384.0f*hudScaling,0.0f),rc);
+			quad.render(rc);
+		}
+		renderForm(loadingScreenForm,0,info,rc,false);
+		B.colorHUDMaterialBackend.unbind(null,rc);
+		if(loadingScreenDescription.length){ // (element rtni: 224 wide at (408,16))
+			auto font=formSacFont!B(FormFont.standard);
+			FormatSettings settings={flowType:FlowType.left,scale:hudScaling,maxWidth:224.0f*hudScaling};
+			bindFont(font,rc);
+			setFontColor(font,Color4f(1.0f,1.0f,1.0f,1.0f));
+			drawText(font,loadingScreenDescription,offset.x+408.0f*hudScaling,offset.y+16.0f*hudScaling,settings,info,rc);
+			unbindFont(font,rc);
+		}
+	}
+
+	// players' loading progress before the game starts (form cnys: title, four rows of name and progress bar)
+	// more than four players: further copies of the form below, without the title
+	SacFormState!B[] synchronizationForms;
+	void renderSynchronizationForm(ref RenderInfo!B info,B.RenderContext rc){
+		auto rows=info.synchronizationRows.data;
+		if(!rows.length) return;
+		enum rowsPerForm=4;
+		auto numForms=(rows.length+rowsPerForm-1)/rowsPerForm;
+		while(synchronizationForms.length<numForms) synchronizationForms~=sacFormInstance!B("cnys");
+		B.colorHUDMaterialBackend.bind(null,rc);
+		B.colorHUDMaterialBackend.setColor(Color4f(1.0f,1.0f,1.0f,1.0f));
+		foreach(f;0..numForms){
+			auto form=&synchronizationForms[f];
+			foreach(ref element;form.elements.data){
+				if(element.type==ElementType.text&&element.id=="cnys"){
+					element.visible=f==0;
+					continue;
+				}
+				if(!('1'<=element.id[0]&&element.id[0]<='4')) continue;
+				auto index=f*rowsPerForm+(element.id[0]-'1');
+				bool hasRow=index<rows.length;
+				if(element.type==ElementType.text&&element.id[1..4]=="man"){
+					element.visible=hasRow;
+					auto name=hasRow?rows[index].name:null;
+					if(element.textInput.data!=name){
+						element.textInput.length=0;
+						foreach(char c;name) element.textInput~=c;
+						element.textStart=0;
+						element.textEnd=to!int(element.textInput.length);
+					}
+				}else if(element.type==ElementType.progressbar){
+					element.visible=hasRow;
+					element.progress=hasRow?rows[index].progress:0.0f;
+				}
+			}
+			auto height=info.hudScaling*form.sacForm.height;
+			auto shift=Vector3f(0.0f,(f-0.5f*(numForms-1))*height,0.0f);
+			renderForm(*form,0,info,rc,false,shift);
+		}
+		B.colorHUDMaterialBackend.unbind(null,rc);
+	}
+
 	// countdown before the synchronized game start: standard loading form (title "Loading", one progress bar)
 	SacFormState!B startCountdownForm;
 	bool startCountdownFormLoaded=false;
@@ -5702,7 +5820,7 @@ struct Renderer(B){
 		}
 	}
 
-	void renderForm(ref SacFormState!B form,ushort formIndex,ref RenderInfo!B info,B.RenderContext rc,bool interactive=true){
+	void renderForm(ref SacFormState!B form,ushort formIndex,ref RenderInfo!B info,B.RenderContext rc,bool interactive=true,Vector3f shift=Vector3f(0.0f,0.0f,0.0f)){
 		SacFont!B[FormFont.max+1] fonts;
 		import std.traits: EnumMembers;
 		foreach(formFont;EnumMembers!FormFont)
@@ -5726,12 +5844,14 @@ struct Renderer(B){
 				// active=state.frame/60%2==1;
 				if(sacElement.type==ElementType.progressbar){
 					auto progress=min(max(elements[elementIndex].progress,0.0f),1.0f);
-					if(progress>0.0f){
-						setProgressbarMesh!B(sacElement,progress);
-						foreach(ref part;sacElement.parts){
-							B.colorHUDMaterialBackend.bindDiffuse(part.texture);
-							part.mesh[0].render(rc);
+					auto hasFill=sacElement.hasProgressbarFill;
+					foreach(i,ref part;sacElement.parts){
+						if(hasFill&&i+1==sacElement.parts.length){ // fill
+							if(progress<=0.0f) continue;
+							setProgressbarMesh!B(sacElement,progress);
 						}
+						B.colorHUDMaterialBackend.bindDiffuse(part.texture);
+						part.mesh[0].render(rc);
 					}
 				}else foreach(i,ref part;sacElement.parts){
 					B.colorHUDMaterialBackend.bindDiffuse(part.texture);
@@ -5803,7 +5923,7 @@ struct Renderer(B){
 			}
 		}
 		auto sacForm=form.sacForm;
-		auto offset=Vector3f(0.5f*(info.width-info.hudScaling*sacForm.width),0.5f*(info.height-info.hudScaling*sacForm.height),0.0f);
+		auto offset=Vector3f(0.5f*(info.width-info.hudScaling*sacForm.width),0.5f*(info.height-info.hudScaling*sacForm.height),0.0f)+shift;
 		auto rotation=Quaternionf.identity();
 		auto scale=Vector3f(info.hudScaling,info.hudScaling,0.0f);
 		auto elementIndex=-1;
@@ -6109,6 +6229,8 @@ struct Renderer(B){
 				renderHUD(state,info,rc);
 				renderText(state,info,rc);
 			}
+			renderLoadingScreen(info,rc);
+			renderSynchronizationForm(info,rc);
 			renderChatMessages(state,networkState,info,rc);
 			renderFPS(info,rc);
 			renderStartCountdown(info,rc);
@@ -6122,6 +6244,8 @@ struct Renderer(B){
 				renderHUD(state,info,rc);
 				renderText(state,info,rc);
 			}
+			renderLoadingScreen(info,rc);
+			renderSynchronizationForm(info,rc);
 			renderChatMessages(state,networkState,info,rc);
 			renderFPS(info,rc);
 			renderStartCountdown(info,rc);

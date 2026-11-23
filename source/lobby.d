@@ -3,6 +3,7 @@ import sids, sacmap, state, controller, network, recording_;
 import ntts:God;
 import bots.shiny:SideType;
 import util;
+import loading: loadingPhase, loadingStep;
 import std.string, std.range, std.algorithm, std.stdio;
 import std.exception, std.conv;
 
@@ -441,6 +442,7 @@ class Lobby(B){
 					version(Windows){}else mapName=mapName.replace("\\","/"); // hack
 					import std.file: exists;
 					if(exists(mapName)){
+						loadingPhase(0.0f,0.4f);
 						map=loadSacMap!B(mapName); // TODO: compute hash without loading map?
 						options.mapHash=map.crc32;
 					}
@@ -456,6 +458,7 @@ class Lobby(B){
 		//writeln(40);
 		void loadMap(string mapName){
 			options.map=mapName;
+			loadingPhase(0.0f,0.4f);
 			map=loadSacMap!B(mapName);
 			options.mapHash=map.crc32;
 			auto hash=network.hostSettings.mapHash;
@@ -476,7 +479,10 @@ class Lobby(B){
 	}
 
 	void loadMap(ref Options options){
-		if(!map) map=loadSacMap!B(options.map,&mapData); // TODO: compute hash without loading map?
+		if(!map){
+			loadingPhase(0.0f,0.4f);
+			map=loadSacMap!B(options.map,&mapData); // TODO: compute hash without loading map?
+		}
 		options.mapHash=map.crc32; // TODO: store this somewhere else?
 		if(state==LobbyState.offline) state=LobbyState.readyToLoad;
 	}
@@ -493,13 +499,17 @@ class Lobby(B){
 		}+/
 		void initState(){
 			if(!gameState){
+				loadingPhase(0.4f,0.5f);
 				if(!sides) sides=new Sides!B(map.sids);
 				if(!proximity) proximity=new Proximity!B();
 				if(!pathFinder) pathFinder=new PathFinder!B(map);
+				loadingStep(1,3);
 				if(!triggers) triggers=new Triggers!B(map.trig,map.ntts);
 				auto supportRollback=network !is null;
 				gameState=new GameState!B(map,sides,proximity,pathFinder,triggers,supportRollback);
+				loadingStep(2,3);
 				gameState.initMap();
+				loadingStep(3,3);
 			}
 		}
 		if(!playback||network){
@@ -567,13 +577,16 @@ class Lobby(B){
 			if(options.quickContinue) recording.logCore=max(recording.logCore,1);
 		}
 		gameState.rollback();
+		loadingPhase(0.5f,0.95f);
 		gameState.initGame(gameInit);
 		hasSlot=0<=slot&&slot<gameState.slots.length;
 		wizId=hasSlot?gameState.slots[slot].wizard:0;
 		initController(options);
 		// TODO: if game init can place additional buildings this would need to be reflected here:
+		loadingPhase(0.95f,1.0f);
 		if(!gameState.current.map.meshes.length)
 			gameState.current.map.makeMeshes(options.enableMapBottom);
+		loadingStep(1,1);
 		if(toContinue){
 			gameState.commands=toContinue.commands;
 			assert(options.continueFrame+1==gameState.commands.length);

@@ -150,6 +150,8 @@ enum PacketType{
 	commit,
 	jsonCommand,
 	jsonResponse,
+	// broadcast
+	updateLoadingProgress,
 }
 
 enum arrayLengthLimit=4096;
@@ -159,7 +161,7 @@ PacketPurpose purposeFromType(PacketType type){
 		case nop,disconnect,ping,ack: return peerToPeer;
 		case updatePlayerId,updateSlot,sendMap,sendState,initGame,loadGame,startGame,setFrame,nudgeTimer,resetCommitted,requestStatusUpdate,confirmSynch,jsonResponse: return hostMessage;
 		case join,checkSynch,logDesynch,jsonCommand: return hostQuery;
-		case updateSetting,clearArraySetting,appendArraySetting,confirmArraySetting,setMap,appendMap,confirmMap,updateStatus,command,commandRaw,commit: return broadcast;
+		case updateSetting,clearArraySetting,appendArraySetting,confirmArraySetting,setMap,appendMap,confirmMap,updateStatus,command,commandRaw,commit,updateLoadingProgress: return broadcast;
 	}
 }
 
@@ -179,6 +181,7 @@ bool isHeaderType(PacketType type){
 		case commandRaw: return true;
 		case commit: return false;
 		case jsonCommand,jsonResponse: return true;
+		case updateLoadingProgress: return false;
 	}
 }
 
@@ -253,6 +256,7 @@ struct Packet{
 			case commit: return text("Packet.commit(",commitPlayer,",",commitFrame,")");
 			case jsonCommand: return text("Packet.jsonCommand(",rawDataSize,"...)");
 			case jsonResponse: return text("Packet.jsonResponse(",rawDataSize,"...)");
+			case updateLoadingProgress: return text("Packet.updateLoadingProgress(",player,",",loadingProgress,")");
 		}
 	}
 	int size=0;
@@ -288,6 +292,9 @@ struct Packet{
 				}
 				struct{
 					PlayerStatus newStatus;
+				}
+				struct{ // updateLoadingProgress
+					float loadingProgress;
 				}
 			}
 		}
@@ -575,6 +582,14 @@ struct Packet{
 		p.type=PacketType.jsonCommand;
 		p.rawDataSize=rawDataSize;
 		p.size=memberSize!(type,rawDataSize);
+		return p;
+	}
+	static Packet updateLoadingProgress(int player,float loadingProgress){
+		Packet p;
+		p.type=PacketType.updateLoadingProgress;
+		p.player=player;
+		p.loadingProgress=loadingProgress;
+		p.size=memberSize!(type,player,loadingProgress);
 		return p;
 	}
 	static Packet jsonResponse(ulong rawDataSize){
@@ -1319,6 +1334,7 @@ struct Player{
 	int slot=-1;
 
 	Connection connection;
+	float loadingProgress=0.0f; // in [0,1], for the players' loading progress before the game starts
 	bool alive(){ return connection&&connection.alive; }
 	void send(Packet p){
 		if(alive)
@@ -2275,7 +2291,30 @@ final class Network(B){
 			case PacketType.jsonResponse:
 				report!true(sender,"sent an unsolicited json response");
 				return false;
+			case PacketType.updateLoadingProgress:
+				if(p.player<0||p.player>=playerLimit){
+					stderr.writeln("player id out of range: ",p);
+					stderr.flush();
+					return false;
+				}
+				if(sender!=host&&sender!=p.player){
+					report!true(sender,"tried to update the loading progress of player ",p.player);
+					return false;
+				}
+				if(p.player>=players.length) players.length=p.player+1;
+				import std.math: isNaN;
+				players[p.player].loadingProgress=isNaN(p.loadingProgress)?0.0f:clamp(p.loadingProgress,0.0f,1.0f);
+				return true;
 		}
+	}
+	// broadcasts this player's loading progress (in steps of 1%)
+	void updateLoadingProgress(float progress){
+		if(me==-1||me>=players.length) return;
+		import std.math: floor;
+		progress=floor(clamp(progress,0.0f,1.0f)*100.0f)/100.0f;
+		if(players[me].loadingProgress==progress) return;
+		players[me].loadingProgress=progress;
+		broadcast(Packet.updateLoadingProgress(me,progress),[]);
 	}
 	void forwardPacket(int sender,Packet p,scope ubyte[] rawData,Controller!B controller){
 		if(!isHost) return;
@@ -2325,6 +2364,7 @@ final class Network(B){
 			connection.send(Packet.updateSetting!status(player,mixin(`players[player].`~status)));
 		if(players[player].committedFrame!=0) connection.send(Packet.commit(player,players[player].committedFrame)); // for late joins
 		connection.send(Packet.updateStatus(player,players[player].status));
+		connection.send(Packet.updateLoadingProgress(player,players[player].loadingProgress));
 		// TODO: send address to attempt to establish peer to peer connection
 	}
 	void updatePlayerId(int newId)in{
