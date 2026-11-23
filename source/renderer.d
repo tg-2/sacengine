@@ -162,6 +162,7 @@ struct RenderInfo(B){
 	ActiveChatMessages activeChatMessages;
 	bool fpsVisible=false; // toggled with F8
 	int fps=0;
+	float startCountdownProgress=float.nan; // loading bar before the synchronized game start (NaN: hidden)
 }
 
 struct Renderer(B){
@@ -5176,6 +5177,25 @@ struct Renderer(B){
 		unbindFont(font,rc);
 	}
 
+	// countdown before the synchronized game start: standard loading form (title "Loading", one progress bar)
+	SacFormState!B startCountdownForm;
+	bool startCountdownFormLoaded=false;
+	void renderStartCountdown(ref RenderInfo!B info,B.RenderContext rc){
+		import std.math: isNaN;
+		auto progress=info.startCountdownProgress;
+		if(isNaN(progress)) return;
+		if(!startCountdownFormLoaded){
+			startCountdownForm=sacFormInstance!B("grpl");
+			startCountdownFormLoaded=true;
+		}
+		foreach(ref element;startCountdownForm.elements.data)
+			if(element.type==ElementType.progressbar) element.progress=progress;
+		B.colorHUDMaterialBackend.bind(null,rc);
+		B.colorHUDMaterialBackend.setColor(Color4f(1.0f,1.0f,1.0f,1.0f));
+		renderForm(startCountdownForm,0,info,rc,false);
+		B.colorHUDMaterialBackend.unbind(null,rc);
+	}
+
 	void renderMouseoverBox(int cursorSize,ObjectState!B state,scope SacFormState!B[] forms,ref RenderInfo!B info,B.RenderContext rc){
 		auto target=info.mouse.target;
 		static bool requiresDelay(TargetType type){
@@ -5679,7 +5699,7 @@ struct Renderer(B){
 		}
 	}
 
-	void renderForm(ref SacFormState!B form,ushort formIndex,ref RenderInfo!B info,B.RenderContext rc){
+	void renderForm(ref SacFormState!B form,ushort formIndex,ref RenderInfo!B info,B.RenderContext rc,bool interactive=true){
 		SacFont!B[FormFont.max+1] fonts;
 		import std.traits: EnumMembers;
 		foreach(formFont;EnumMembers!FormFont)
@@ -5699,9 +5719,19 @@ struct Renderer(B){
 				assert(elementTarget.formIndex==formIndex&&elementTarget.elementIndex==elementIndex);
 				auto scaledOffset=Vector2f(sacElement.offset.x*scale.x,sacElement.offset.y*scale.y);
 				auto scaledSize=Vector2f(sacElement.size.x*scale.x,sacElement.size.y*scale.y);
-				updateFormTarget(elementTarget,Vector2f(offset.x,offset.y)+scaledOffset,scaledSize,info);
+				if(interactive) updateFormTarget(elementTarget,Vector2f(offset.x,offset.y)+scaledOffset,scaledSize,info);
 				// active=state.frame/60%2==1;
-				foreach(i,ref part;sacElement.parts){
+				if(sacElement.type==ElementType.progressbar){
+					auto progress=min(max(elements[elementIndex].progress,0.0f),1.0f);
+					if(progress>0.0f){
+						B.colorHUDMaterialBackend.setTransformationScaled(offset+Vector3f(scaledOffset.x,scaledOffset.y,0.0f),rotation,Vector3f(scale.x*progress,scale.y,scale.z),rc);
+						foreach(ref part;sacElement.parts){
+							B.colorHUDMaterialBackend.bindDiffuse(part.texture);
+							part.mesh[0].render(rc);
+						}
+						B.colorHUDMaterialBackend.setTransformationScaled(offset,rotation,scale,rc);
+					}
+				}else foreach(i,ref part;sacElement.parts){
 					B.colorHUDMaterialBackend.bindDiffuse(part.texture);
 					if(i==0&&sacElement.type==ElementType.canvas){
 						B.colorHUDMaterialBackend.setColor(Color4f(0.0f,0.0f,0.0f,1.0f));
@@ -6079,6 +6109,7 @@ struct Renderer(B){
 			}
 			renderChatMessages(state,networkState,info,rc);
 			renderFPS(info,rc);
+			renderStartCountdown(info,rc);
 			renderForms(forms,info,rc);
 			renderRectangleSelectFrame(info,rc);
 			if(state) renderTriggerPresentation(options,state,info,rc);
@@ -6091,6 +6122,7 @@ struct Renderer(B){
 			}
 			renderChatMessages(state,networkState,info,rc);
 			renderFPS(info,rc);
+			renderStartCountdown(info,rc);
 			if(state) renderTriggerPresentation(options,state,info,rc);
 		}
 	}

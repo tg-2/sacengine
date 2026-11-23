@@ -348,6 +348,8 @@ int applySettings(string[] args,ref Options options){
 			options.gameModeParam=to!int(opt["--soul-harvest=".length..$]);
 		}else if(opt.startsWith("--delay-start=")){
 			options.delayStart=to!int(opt["--delay-start=".length..$]);
+		}else if(opt.startsWith("--start-countdown=")){
+			options.startCountdown=max(0.0f,to!float(opt["--start-countdown=".length..$]));
 		}else if(opt.startsWith("--zerotier-network=")){
 			options.zerotierNetwork=to!ulong(opt["--zerotier-network=".length..$],0x10);
 		}else if(opt.startsWith("--zerotier-identity=")){

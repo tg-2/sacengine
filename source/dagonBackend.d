@@ -214,6 +214,7 @@ final class SacScene: Scene{
 		super.renderEntities2D(rc);
 		updateMouse();
 		info.fps=eventManager.fps;
+		info.startCountdownProgress=controller&&controller.network?controller.network.startCountdownProgress():float.nan;
 		typeof(renderer).R2DOpt r2dopt={cursorSize: options.cursorSize,
 			triggerHistoryVisible: triggerHistoryVisible,
 			triggerHistorySelection: triggerHistorySelection,

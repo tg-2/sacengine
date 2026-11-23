@@ -510,6 +510,15 @@ auto makeTextbox(B)(Vector2f offset,char[4] id,Vector2f size,string title,bool l
 	return SacFormElement!B(ElementType.textbox,id,offset,size,parts,texts,mouseoverText,formIndex);
 }
 
+// the mesh starts at the origin, so that the renderer can scale it with the progress
+auto makeProgressbar(B)(Vector2f offset,char[4] id,Vector2f size,string mouseoverText,int formIndex){
+	SacFormPart!B[] parts;
+	auto bar=makeQuad!B(Vector2f(0.0f,0.0f),size,Vector2f(0.0f,0.0f),(1.0f/32.0f)*size,false,false); // (texture repeats along the bar)
+	parts~=SacFormPart!B(bar,FormTexture.progressbar);
+	SacFormText[] texts;
+	return SacFormElement!B(ElementType.progressbar,id,offset,size,parts,texts,mouseoverText,formIndex);
+}
+
 auto makeText(B)(Vector2f offset,char[4] id,Vector2f size,string text,FormFont formFont,bool centerX,bool centerY,string mouseoverText,int formIndex){
 	SacFormPart!B[] parts;
 	SacFormText[] texts;
@@ -630,7 +639,11 @@ auto makeSacFormElement(B)(Vector2f globalOffset,Vector2f backgroundSize,Element
 			canvas.type=ElementType.canvas;
 			return canvas;
 		case progressbar:
-			break;
+			auto offset=globalOffset+Vector2f(element.left,element.top);
+			auto size=Vector2f(element.width,element.height);
+			mixin(center);
+			auto mouseoverText=mouseoverTextFromTag(element.mouseover);
+			return makeProgressbar!B(offset,element.id,size,mouseoverText,formIndex);
 		default:
 			enforce(0, "TODO");
 			assert(0);
@@ -721,6 +734,7 @@ struct ElementState{
 	int textCursor;
 	int textStart=0;
 	int textEnd=0;
+	float progress=0.0f; // progressbar, in [0,1]
 }
 
 bool activate(ref ElementState element){
