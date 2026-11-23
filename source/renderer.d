@@ -5247,7 +5247,7 @@ struct Renderer(B){
 		renderForm(loadingScreenForm,0,info,rc,false);
 		B.colorHUDMaterialBackend.unbind(null,rc);
 		if(loadingScreenDescription.length){ // (element rtni: 224 wide at (408,16))
-			auto font=formSacFont!B(FormFont.standard);
+			auto font=formSacFont!B(FormFont.largeTitle); // (element rtni has ElementFlags.largeText, fn12 as in the original)
 			FormatSettings settings={flowType:FlowType.left,scale:hudScaling,maxWidth:224.0f*hudScaling};
 			bindFont(font,rc);
 			setFontColor(font,Color4f(1.0f,1.0f,1.0f,1.0f));

@@ -48,6 +48,7 @@ enum FormFont{
 	standard,
 	smallTitle,
 	largeTitle,
+	largerText, // (text elements with ElementFlags.largerText, e.g. player names in the loading and synchronization forms)
 }
 
 FormFont titleFont(bool isLarge){
@@ -58,6 +59,7 @@ FontType formFontType(FormFont which){
 		case standard: return FontType.fnwt;
 		case smallTitle: return FontType.fn08;
 		case largeTitle: return FontType.fn12;
+		case largerText: return FontType.ft12; // (the fourth form font; 0x800 is fn12 for the map description in the original)
 	}
 }
 FontType titleFontType(bool isLarge){
@@ -632,9 +634,8 @@ auto makeSacFormElement(B)(Vector2f globalOffset,Vector2f backgroundSize,Element
 			auto text=formTextFromTag(element.text);
 			//auto whiteText=!!(element.flags&ElementFlags.whiteText); // TODO: does this do anything for basic text?
 			auto largerText=!!(element.flags&ElementFlags.largerText);
-			enforce(!largerText,"TODO");
 			auto largeText=!!(element.flags&ElementFlags.largeText);
-			auto font=largeText?FormFont.largeTitle:FormFont.standard;
+			auto font=largeText?FormFont.largeTitle:largerText?FormFont.largerText:FormFont.standard;
 			auto mouseoverText=mouseoverTextFromTag(element.mouseover);
 			return makeText!B(offset,element.id,size,text,font,true,true,mouseoverText,formIndex);
 		case dropdown:
