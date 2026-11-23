@@ -195,7 +195,7 @@ struct Packet{
 			case sendState: return text("Packet.sendState(",rawDataSize,",...)");
 			case initGame: return text("Packet.initGame(",rawDataSize,",...)");
 			case loadGame: return text("Packet.loadGame()");
-			case startGame: return text("Packet.startGame(",startDelay,")");
+			case startGame: return text("Packet.startGame(",startDelay,",",startCountdown,")");
 			case setFrame: return text("Packet.setFrame(",newFrame,")");
 			case nudgeTimer: return text("Packet.nudgeTimer(",timerAdjustHnsecs,")");
 			case resetCommitted: return text("Packet.commit(",commitPlayer,",",commitFrame,")");
@@ -262,7 +262,7 @@ struct Packet{
 		struct{}// disconnect
 		struct{ int id; }// updatePlayerId
 		struct{}// loadGame
-		struct{ long startDelay; } // startGame
+		struct{ long startDelay; long startCountdown; } // startGame
 		struct{ int newFrame; } // setFrame
 		struct{ long timerAdjustHnsecs; } // nudgeTimer
 		struct{ // checkSynch, confirmSynch
@@ -378,11 +378,12 @@ struct Packet{
 		p.size=memberSize!type;
 		return p;
 	}
-	static Packet startGame(long startDelay){
+	static Packet startGame(long startDelay,long startCountdown){
 		Packet p;
 		p.type=PacketType.startGame;
 		p.startDelay=startDelay;
-		p.size=memberSize!(type,startDelay);
+		p.startCountdown=startCountdown;
+		p.size=memberSize!(type,startDelay,startCountdown);
 		return p;
 	}
 	static Packet setFrame(int frame){
@@ -1525,6 +1526,8 @@ final class Network(B){
 	bool pauseOnDropOnce=false;
 	bool resetOnRejoin=true;
 	bool testLag=false;
+	Duration startCountdown=Duration.zero; // (host) added to all start delays at game start
+	bool countdownOnStart=true; // (host) the next synchronized start is the game start
 	this(ref Options options){
 		this.zerotier_net_id=options.zerotierNetwork;
 		this.advertiseGame=options.advertiseGame;
@@ -1541,6 +1544,7 @@ final class Network(B){
 		this.pauseOnDrop=options.pauseOnDrop;
 		this.resetOnRejoin=options.resetOnRejoin;
 		this.testLag=options.testLag;
+		this.startCountdown=(cast(long)(options.startCountdown*1000.0f)).msecs;
 		this();
 	}
 
@@ -1940,7 +1944,7 @@ final class Network(B){
 					stderr.flush();
 					return false;
 				}
-				scheduleStart(p.startDelay.hnsecs,false);
+				scheduleStart(p.startDelay.hnsecs,p.startCountdown.hnsecs,false);
 				return true;
 			case PacketType.setFrame:
 				if(sender!=host){
@@ -2798,10 +2802,18 @@ final class Network(B){
 	bool startScheduled=false;
 	bool focusCameraOnStart=false;
 	MonoTime startTime;
-	void scheduleStart(Duration delay,bool focusCamera){
+	Duration scheduledCountdown;
+	void scheduleStart(Duration delay,Duration countdown,bool focusCamera){
 		startTime=B.time()+delay;
+		scheduledCountdown=countdown;
 		startScheduled=true;
 		focusCameraOnStart=focusCamera;
+	}
+	// progress of the start countdown in [0,1] (reaches 1 at the same time for everyone), NaN if there is none
+	float startCountdownProgress(){
+		if(!startScheduled||scheduledCountdown<=Duration.zero) return float.nan;
+		auto remaining=startTime-B.time();
+		return clamp(1.0f-cast(float)remaining.total!"hnsecs"/scheduledCountdown.total!"hnsecs",0.0f,1.0f);
 	}
 	void cancelStart(){
 		measuringStartPings=false;
@@ -2822,6 +2834,8 @@ final class Network(B){
 			return;
 		}
 		measuringStartPings=false;
+		auto countdown=countdownOnStart?startCountdown:Duration.zero;
+		countdownOnStart=false;
 		auto maxPing=initializedPlayers.map!((ref p)=>p.ping).reduce!max;
 		writeln("pings: ",players.data.map!((ref p)=>p.ping.total!"msecs").map!(p=>p<0?-1:p));
 		stdout.flush();
@@ -2829,10 +2843,10 @@ final class Network(B){
 			if(players[i].ping==-1.seconds) continue;
 			if(players[i].status!=PlayerStatus.readyToStart) continue;
 			updateStatus(cast(int)i,PlayerStatus.pendingStart);
-			auto delay=(maxPing-players[i].ping)/2;
-			players[i].send(Packet.startGame(delay.total!"hnsecs"));
+			auto delay=(maxPing-players[i].ping)/2+countdown;
+			players[i].send(Packet.startGame(delay.total!"hnsecs",countdown.total!"hnsecs"));
 		}
-		scheduleStart(maxPing/2,true);
+		scheduleStart(maxPing/2+countdown,countdown,true);
 	}
 	// returns true once this player has started playing
 	bool updateStart(Controller!B controller){

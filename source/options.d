@@ -123,6 +123,7 @@ struct Options{
 	bool betaPatchBots=false;
 	bool aiSides=true;
 	int delayStart=0;
+	float startCountdown=3.0f; // seconds added uniformly to the synchronized start delays at game start, shown with a loading bar (host setting, 0 disables)
 	// zerotier
 	string zerotierIdentity="zerotier-identity";
 	ulong zerotierNetwork=0;
