@@ -5190,15 +5190,9 @@ struct Renderer(B){
 	}
 
 	// text split into lines at \n and between words to fit into width (form units), each line centered
-	void drawCenteredText(SacFont!B font,const(char)[] text,float left,float top,float width,float scale,ref RenderInfo!B info,B.RenderContext rc){
-		FormatSettings settings={flowType:FlowType.left,scale:scale};
-		auto y=top;
-		void drawLine(const(char)[] line){
-			while(line.length&&line[$-1]==' ') line=line[0..$-1];
-			auto lineWidth=font.getTextWidth(line);
-			drawText(font,line,left+0.5f*scale*(width-lineWidth),y,settings,info,rc);
-			y+=scale*font.lineHeight;
-		}
+	// text broken into lines at '\n' and between words to fit into width, each line centered horizontally, and the lines centered vertically within height (as the original does for the loading screen description)
+	void drawCenteredText(SacFont!B font,const(char)[] text,float left,float top,float width,float height,float scale,ref RenderInfo!B info,B.RenderContext rc){
+		const(char)[][] lines;
 		foreach(paragraph;text.splitter('\n')){
 			size_t lineStart=0,lineEnd=size_t.max;
 			for(size_t wordStart=0;;){
@@ -5206,16 +5200,24 @@ struct Renderer(B){
 				auto wordEnd=wordStart;
 				while(wordEnd<paragraph.length&&paragraph[wordEnd]!=' ') wordEnd++;
 				if(lineEnd!=size_t.max&&font.getTextWidth(paragraph[lineStart..wordEnd])>width){
-					drawLine(paragraph[lineStart..lineEnd]);
+					lines~=paragraph[lineStart..lineEnd];
 					lineStart=wordStart;
 				}
 				lineEnd=wordEnd;
 				if(wordEnd>=paragraph.length){
-					drawLine(paragraph[lineStart..$]);
+					lines~=paragraph[lineStart..$];
 					break;
 				}
 				wordStart=wordEnd;
 			}
+		}
+		FormatSettings settings={flowType:FlowType.left,scale:scale};
+		auto y=top+0.5f*scale*max(0.0f,height-lines.length*font.lineHeight);
+		foreach(line;lines){
+			while(line.length&&line[$-1]==' ') line=line[0..$-1];
+			auto lineWidth=font.getTextWidth(line);
+			drawText(font,line,left+0.5f*scale*(width-lineWidth),y,settings,info,rc);
+			y+=scale*font.lineHeight;
 		}
 	}
 
@@ -5296,11 +5298,11 @@ struct Renderer(B){
 		}
 		renderForm(loadingScreenForm,0,info,rc,false,Vector3f(0.0f,0.0f,0.0f),scaling);
 		B.colorHUDMaterialBackend.unbind(null,rc);
-		if(loadingScreenDescription.length){ // (element rtni: 224x180 at (408,16), ElementFlags.largeText: fn12)
+		if(loadingScreenDescription.length){ // (element rtni: 224x180 at (408,16), ElementFlags.largeText: fn12, text centered in the box)
 			auto font=formSacFont!B(FormFont.largeTitle);
 			bindFont(font,rc);
 			setFontColor(font,Color4f(1.0f,1.0f,1.0f,1.0f));
-			drawCenteredText(font,loadingScreenDescription,offset.x+scaling*(408.0f+dx),offset.y+scaling*16.0f,224.0f,scaling,info,rc);
+			drawCenteredText(font,loadingScreenDescription,offset.x+scaling*(408.0f+dx),offset.y+scaling*16.0f,224.0f,180.0f,scaling,info,rc);
 			unbindFont(font,rc);
 		}
 	}
