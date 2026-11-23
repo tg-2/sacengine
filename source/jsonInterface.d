@@ -234,12 +234,13 @@ void runJSONCommand(B)(JSONCommand command,Controller!B controller,scope void de
 		case nop:
 			return;
 		case getState:
-			auto gameState=controller.state;
-			enforce(!!gameState,"no game state");
-			auto state=gameState.current;
-			enforce(!!state,"no game state");
 			JSONBuilder json;
 			json.begin();
+			if(!controller) return json.end(respond);
+			auto gameState=controller.state;
+			if(!gameState) return json.end(respond);
+			auto state=gameState.current;
+			if(!state) return json.end(respond);
 			auto flags=stateFlags;
 			json.numSouls=flags.numSouls;
 			bool needComma=false;
