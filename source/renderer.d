@@ -5188,36 +5188,61 @@ struct Renderer(B){
 		unbindFont(font,rc);
 	}
 
+	// text split into lines at \n and between words to fit into width (form units), each line centered
+	void drawCenteredText(SacFont!B font,const(char)[] text,float left,float top,float width,float scale,ref RenderInfo!B info,B.RenderContext rc){
+		FormatSettings settings={flowType:FlowType.left,scale:scale};
+		auto y=top;
+		void drawLine(const(char)[] line){
+			while(line.length&&line[$-1]==' ') line=line[0..$-1];
+			auto lineWidth=font.getTextWidth(line);
+			drawText(font,line,left+0.5f*scale*(width-lineWidth),y,settings,info,rc);
+			y+=scale*font.lineHeight;
+		}
+		foreach(paragraph;text.splitter('\n')){
+			size_t lineStart=0,lineEnd=size_t.max;
+			for(size_t wordStart=0;;){
+				while(wordStart<paragraph.length&&paragraph[wordStart]==' ') wordStart++;
+				auto wordEnd=wordStart;
+				while(wordEnd<paragraph.length&&paragraph[wordEnd]!=' ') wordEnd++;
+				if(lineEnd!=size_t.max&&font.getTextWidth(paragraph[lineStart..wordEnd])>width){
+					drawLine(paragraph[lineStart..lineEnd]);
+					lineStart=wordStart;
+				}
+				lineEnd=wordEnd;
+				if(wordEnd>=paragraph.length){
+					drawLine(paragraph[lineStart..$]);
+					break;
+				}
+				wordStart=wordEnd;
+			}
+		}
+	}
+
 	// loading screen as in the original (form igam): map picture, map description and loading progress
+	// scaled to the screen height (as the original at 640x480); the form is widened so that the main bar spans the screen
+	enum loadingScreenFormHeight=480, loadingScreenFormWidth=640;
 	SacFormState!B loadingScreenForm;
-	bool loadingScreenFormLoaded=false;
+	int loadingScreenFormWidth_=0; // (width the form instance was made for)
 	string loadingScreenContentsFolder=null; // (map folder the picture and text below were loaded for)
+	bool loadingScreenContentsLoaded=false;
 	B.Texture loadingScreenPicture;
 	string loadingScreenDescription;
 	void updateLoadingScreenContents(string mapFolder){
-		if(loadingScreenFormLoaded&&loadingScreenContentsFolder==mapFolder) return;
+		if(loadingScreenContentsLoaded&&loadingScreenContentsFolder==mapFolder) return;
 		import loading;
-		if(!loadingScreenFormLoaded){
-			loadingScreenForm=sacFormInstance!B("magi");
-			loadingScreenFormLoaded=true;
-			foreach(ref element;loadingScreenForm.elements.data){
-				// picture and description are drawn below, players' progress is not available
-				if(element.type.among(ElementType.picture,ElementType.text)||element.type==ElementType.progressbar&&element.id!="gorp")
-					element.visible=false;
-			}
-		}
+		loadingScreenContentsLoaded=true;
 		loadingScreenContentsFolder=mapFolder;
 		loadingScreenPicture=null;
 		loadingScreenDescription=null;
 		try{
-			if(auto rgb=loadingScreenPictureRGB(mapFolder)){
-				import dlib.image: image;
-				auto picture=image(loadingScreenPictureSize,loadingScreenPictureSize,3);
+			import dlib.image: image;
+			int width=loadingScreenPictureSize,height=loadingScreenPictureSize;
+			auto rgb=loadingScreenPictureRGB(mapFolder);
+			if(!rgb) if(auto filename=defaultLoadingScreenPicture()) rgb=loadTGARGB(filename,width,height);
+			if(rgb){
+				auto picture=image(width,height,3);
 				picture.data[]=rgb[];
 				loadingScreenPicture=B.makeTexture(picture,false);
-			}else if(auto filename=defaultLoadingScreenPicture()){
-				import dlib.image.io.tga: loadTGA;
-				loadingScreenPicture=B.makeTexture(loadTGA(filename),false);
 			}
 		}catch(Exception e){
 			stderr.writeln("warning: failed to load loading screen picture (",e.msg,")");
@@ -5228,11 +5253,21 @@ struct Renderer(B){
 	void renderLoadingScreen(ref RenderInfo!B info,B.RenderContext rc){
 		if(!info.loadingScreenVisible) return;
 		updateLoadingScreenContents(info.loadingMapFolder);
+		auto scaling=min(cast(float)info.height/loadingScreenFormHeight,cast(float)info.width/loadingScreenFormWidth);
+		auto formWidth=max(loadingScreenFormWidth,cast(int)(info.width/scaling));
+		if(loadingScreenFormWidth_!=formWidth){
+			loadingScreenForm=sacFormInstance!B(SacForm!B.loadingScreen(formWidth));
+			loadingScreenFormWidth_=formWidth;
+			foreach(ref element;loadingScreenForm.elements.data){
+				// picture and description are drawn below, players' progress is shown in the synchronization form
+				if(element.type.among(ElementType.picture,ElementType.text)||element.type==ElementType.progressbar&&element.id!="gorp")
+					element.visible=false;
+			}
+		}
 		foreach(ref element;loadingScreenForm.elements.data)
 			if(element.type==ElementType.progressbar) element.progress=info.loadingProgress;
-		auto hudScaling=info.hudScaling;
-		auto sacForm=loadingScreenForm.sacForm;
-		auto offset=Vector3f(0.5f*(info.width-hudScaling*sacForm.width),0.5f*(info.height-hudScaling*sacForm.height),0.0f);
+		auto offset=Vector3f(0.5f*(info.width-scaling*formWidth),0.5f*(info.height-scaling*loadingScreenFormHeight),0.0f);
+		auto dx=(formWidth-loadingScreenFormWidth)/2; // (picture and description stay centered)
 		B.colorHUDMaterialBackend.bind(null,rc);
 		B.colorHUDMaterialBackend.bindDiffuse(whiteTexture);
 		B.colorHUDMaterialBackend.setColor(Color4f(0.0f,0.0f,0.0f,1.0f));
@@ -5241,60 +5276,52 @@ struct Renderer(B){
 		B.colorHUDMaterialBackend.setColor(Color4f(1.0f,1.0f,1.0f,1.0f));
 		if(loadingScreenPicture){ // (elements 1gmi-4gmi: 384x384 at (16,16))
 			B.colorHUDMaterialBackend.bindDiffuse(loadingScreenPicture);
-			B.colorHUDMaterialBackend.setTransformationScaled(offset+hudScaling*Vector3f(16.0f,16.0f,0.0f),Quaternionf.identity(),Vector3f(384.0f*hudScaling,384.0f*hudScaling,0.0f),rc);
+			B.colorHUDMaterialBackend.setTransformationScaled(offset+scaling*Vector3f(16.0f+dx,16.0f,0.0f),Quaternionf.identity(),Vector3f(384.0f*scaling,384.0f*scaling,0.0f),rc);
 			quad.render(rc);
 		}
-		renderForm(loadingScreenForm,0,info,rc,false);
+		renderForm(loadingScreenForm,0,info,rc,false,Vector3f(0.0f,0.0f,0.0f),scaling);
 		B.colorHUDMaterialBackend.unbind(null,rc);
-		if(loadingScreenDescription.length){ // (element rtni: 224 wide at (408,16))
-			auto font=formSacFont!B(FormFont.largeTitle); // (element rtni has ElementFlags.largeText, fn12 as in the original)
-			FormatSettings settings={flowType:FlowType.left,scale:hudScaling,maxWidth:224.0f*hudScaling};
+		if(loadingScreenDescription.length){ // (element rtni: 224x180 at (408,16), ElementFlags.largeText: fn12)
+			auto font=formSacFont!B(FormFont.largeTitle);
 			bindFont(font,rc);
 			setFontColor(font,Color4f(1.0f,1.0f,1.0f,1.0f));
-			drawText(font,loadingScreenDescription,offset.x+408.0f*hudScaling,offset.y+16.0f*hudScaling,settings,info,rc);
+			drawCenteredText(font,loadingScreenDescription,offset.x+scaling*(408.0f+dx),offset.y+scaling*16.0f,224.0f,scaling,info,rc);
 			unbindFont(font,rc);
 		}
 	}
 
-	// players' loading progress before the game starts (form cnys: title, four rows of name and progress bar)
-	// more than four players: further copies of the form below, without the title
-	SacFormState!B[] synchronizationForms;
+	// players' loading progress before the game starts (form cnys, enlarged to one row of name and bar per slot)
+	SacFormState!B synchronizationForm;
+	int synchronizationFormRows=-1;
 	void renderSynchronizationForm(ref RenderInfo!B info,B.RenderContext rc){
 		auto rows=info.synchronizationRows.data;
 		if(!rows.length) return;
-		enum rowsPerForm=4;
-		auto numForms=(rows.length+rowsPerForm-1)/rowsPerForm;
-		while(synchronizationForms.length<numForms) synchronizationForms~=sacFormInstance!B("cnys");
+		auto sacForm=SacForm!B.synchronization(to!int(rows.length));
+		if(synchronizationFormRows!=rows.length){
+			synchronizationForm=sacFormInstance!B(sacForm);
+			synchronizationFormRows=to!int(rows.length);
+		}
+		foreach(ref element;synchronizationForm.elements.data){
+			auto index=SacForm!B.synchronizationRowIndex(element.id[0]);
+			if(index<0||element.id=="cnys") continue;
+			bool hasRow=index<rows.length;
+			if(element.type==ElementType.text&&element.id[1..4]=="man"){
+				element.visible=hasRow;
+				auto name=hasRow?rows[index].name:null;
+				if(element.textInput.data!=name){
+					element.textInput.length=0;
+					foreach(char c;name) element.textInput~=c;
+					element.textStart=0;
+					element.textEnd=to!int(element.textInput.length);
+				}
+			}else if(element.type==ElementType.progressbar){
+				element.visible=hasRow;
+				element.progress=hasRow?rows[index].progress:0.0f;
+			}
+		}
 		B.colorHUDMaterialBackend.bind(null,rc);
 		B.colorHUDMaterialBackend.setColor(Color4f(1.0f,1.0f,1.0f,1.0f));
-		foreach(f;0..numForms){
-			auto form=&synchronizationForms[f];
-			foreach(ref element;form.elements.data){
-				if(element.type==ElementType.text&&element.id=="cnys"){
-					element.visible=f==0;
-					continue;
-				}
-				if(!('1'<=element.id[0]&&element.id[0]<='4')) continue;
-				auto index=f*rowsPerForm+(element.id[0]-'1');
-				bool hasRow=index<rows.length;
-				if(element.type==ElementType.text&&element.id[1..4]=="man"){
-					element.visible=hasRow;
-					auto name=hasRow?rows[index].name:null;
-					if(element.textInput.data!=name){
-						element.textInput.length=0;
-						foreach(char c;name) element.textInput~=c;
-						element.textStart=0;
-						element.textEnd=to!int(element.textInput.length);
-					}
-				}else if(element.type==ElementType.progressbar){
-					element.visible=hasRow;
-					element.progress=hasRow?rows[index].progress:0.0f;
-				}
-			}
-			auto height=info.hudScaling*form.sacForm.height;
-			auto shift=Vector3f(0.0f,(f-0.5f*(numForms-1))*height,0.0f);
-			renderForm(*form,0,info,rc,false,shift);
-		}
+		renderForm(synchronizationForm,0,info,rc,false);
 		B.colorHUDMaterialBackend.unbind(null,rc);
 	}
 
@@ -5820,7 +5847,7 @@ struct Renderer(B){
 		}
 	}
 
-	void renderForm(ref SacFormState!B form,ushort formIndex,ref RenderInfo!B info,B.RenderContext rc,bool interactive=true,Vector3f shift=Vector3f(0.0f,0.0f,0.0f)){
+	void renderForm(ref SacFormState!B form,ushort formIndex,ref RenderInfo!B info,B.RenderContext rc,bool interactive=true,Vector3f shift=Vector3f(0.0f,0.0f,0.0f),float scaling=float.nan){
 		SacFont!B[FormFont.max+1] fonts;
 		import std.traits: EnumMembers;
 		foreach(formFont;EnumMembers!FormFont)
@@ -5923,9 +5950,11 @@ struct Renderer(B){
 			}
 		}
 		auto sacForm=form.sacForm;
-		auto offset=Vector3f(0.5f*(info.width-info.hudScaling*sacForm.width),0.5f*(info.height-info.hudScaling*sacForm.height),0.0f)+shift;
+		import std.math: isNaN;
+		auto formScaling=isNaN(scaling)?info.hudScaling:scaling;
+		auto offset=Vector3f(0.5f*(info.width-formScaling*sacForm.width),0.5f*(info.height-formScaling*sacForm.height),0.0f)+shift;
 		auto rotation=Quaternionf.identity();
-		auto scale=Vector3f(info.hudScaling,info.hudScaling,0.0f);
+		auto scale=Vector3f(formScaling,formScaling,0.0f);
 		auto elementIndex=-1;
 		if(info.mouse.target.type==TargetType.formElement&&info.mouse.target.formIndex==formIndex)
 			elementIndex=info.mouse.target.elementIndex;
