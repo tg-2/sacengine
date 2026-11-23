@@ -3,7 +3,7 @@ import sids, sacmap, state, controller, network, recording_;
 import ntts:God;
 import bots.shiny:SideType;
 import util;
-import loading: loadingPhase, loadingStep;
+import loading: loadingPhase, loadingStep, loadingStatus;
 import std.string, std.range, std.algorithm, std.stdio;
 import std.exception, std.conv;
 
@@ -576,6 +576,8 @@ class Lobby(B){
 			recording.logCore=options.logCore;
 			if(options.quickContinue) recording.logCore=max(recording.logCore,1);
 		}
+		loadingStatus.initializingGame=true; // (the game screen is blacked out while the state is rebuilt)
+		scope(exit) loadingStatus.initializingGame=false;
 		gameState.rollback();
 		loadingPhase(0.5f,0.95f);
 		gameState.initGame(gameInit);

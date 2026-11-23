@@ -164,6 +164,7 @@ struct RenderInfo(B){
 	int fps=0;
 	float startCountdownProgress=float.nan; // loading bar before the synchronized game start (NaN: hidden)
 	bool loadingScreenVisible=false;
+	bool gameBlackedOut=false; // the game state is being built, only forms are drawn
 	float loadingProgress=0.0f;
 	string loadingMapFolder=null;
 	static struct SynchronizationRow{
@@ -5250,6 +5251,17 @@ struct Renderer(B){
 		try loadingScreenDescription=loadingScreenText(mapFolder);
 		catch(Exception e){}
 	}
+	// covers the game screen while the game state is built (forms are still drawn on top)
+	void renderGameBlackout(ref RenderInfo!B info,B.RenderContext rc){
+		if(!info.gameBlackedOut||info.loadingScreenVisible) return;
+		B.colorHUDMaterialBackend.bind(null,rc);
+		B.colorHUDMaterialBackend.bindDiffuse(whiteTexture);
+		B.colorHUDMaterialBackend.setColor(Color4f(0.0f,0.0f,0.0f,1.0f));
+		B.colorHUDMaterialBackend.setTransformationScaled(Vector3f(0.0f,0.0f,0.0f),Quaternionf.identity(),Vector3f(info.width,info.height,0.0f),rc);
+		quad.render(rc);
+		B.colorHUDMaterialBackend.setColor(Color4f(1.0f,1.0f,1.0f,1.0f));
+		B.colorHUDMaterialBackend.unbind(null,rc);
+	}
 	void renderLoadingScreen(ref RenderInfo!B info,B.RenderContext rc){
 		if(!info.loadingScreenVisible) return;
 		updateLoadingScreenContents(info.loadingMapFolder);
@@ -6256,6 +6268,7 @@ struct Renderer(B){
 				renderHUD(state,info,rc);
 				renderText(state,info,rc);
 			}
+			renderGameBlackout(info,rc);
 			renderLoadingScreen(info,rc);
 			renderSynchronizationForm(info,rc);
 			renderChatMessages(state,networkState,info,rc);
@@ -6271,6 +6284,7 @@ struct Renderer(B){
 				renderHUD(state,info,rc);
 				renderText(state,info,rc);
 			}
+			renderGameBlackout(info,rc);
 			renderLoadingScreen(info,rc);
 			renderSynchronizationForm(info,rc);
 			renderChatMessages(state,networkState,info,rc);
