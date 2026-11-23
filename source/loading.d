@@ -32,11 +32,12 @@ void loadingStep(size_t done,size_t total){
 	loadingYield();
 }
 
-void loadingYield(){
+// returns to the main loop if enough time has passed (always if force is set)
+void loadingYield(bool force=false){
 	auto task=LoadingTask.current;
 	if(!task||!task.yielding) return;
 	auto now=MonoTime.currTime;
-	if(now-task.lastYield<LoadingTask.yieldInterval) return;
+	if(!force&&now-task.lastYield<LoadingTask.yieldInterval) return;
 	import core.thread: Fiber;
 	Fiber.yield();
 	task.lastYield=MonoTime.currTime;
