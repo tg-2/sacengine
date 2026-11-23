@@ -33775,20 +33775,32 @@ void initGame(B)(ObjectState!B state,ref Array!SlotInfo slots,GameInit!B gameIni
 	state.settings.gameMode=gameInit.gameMode;
 	state.settings.gameModeParam=gameInit.gameModeParam;
 	if(gameInit.alwaysOnMinimap) state.enableAlwaysOnMinimap();
-	foreach(ref structure;state.map.ntts.structures)
+	// (placing entities loads their models, report progress to the loading screen)
+	import loading: loadingStep;
+	size_t numPlaced=0,numToPlace=state.map.ntts.structures.length+state.map.ntts.wizards.length+state.map.ntts.spirits.length+state.map.ntts.creatures.length*max(1,gameInit.replicateCreatures);
+	void placed(){ loadingStep(++numPlaced,numToPlace); }
+	foreach(ref structure;state.map.ntts.structures){
 		state.placeStructure(structure);
+		placed();
+	}
 	if(gameInit.gameMode==GameMode.scenario||gameInit.mapWizards){
-		foreach(ref wizard;state.map.ntts.wizards)
+		foreach(ref wizard;state.map.ntts.wizards){
 			state.placeNTT(wizard);
+			placed();
+		}
 	}
 	if(gameInit.mapSouls){
-		foreach(ref spirit;state.map.ntts.spirits)
+		foreach(ref spirit;state.map.ntts.spirits){
 			state.placeSpirit(spirit);
+			placed();
+		}
 	}
 	if(gameInit.mapCreatures){
 		foreach(ref creature;state.map.ntts.creatures)
-			foreach(_;0..gameInit.replicateCreatures)
+			foreach(_;0..gameInit.replicateCreatures){
 				state.placeNTT(creature);
+				placed();
+			}
 	}
 	state.eachMoving!((ref MovingObject!B object, ObjectState!B state){
 		if(object.creatureState.mode==CreatureMode.dead) object.createSoul(state);

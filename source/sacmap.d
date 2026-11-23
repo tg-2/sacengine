@@ -11,6 +11,7 @@ import std.typecons: tuple,Tuple;
 
 import sacobject;
 import nttData: scarImages, ScarImage;
+import loading: loadingStatus, loadingStep;
 
 SacMap!B loadSacMap(B)(string filename,ubyte[]* mapData=null){
 	string levlName,enviName;
@@ -102,6 +103,8 @@ SacMap!B loadSacMap(B)(string filename,ubyte[]* mapData=null){
 		}
 	}
 	auto mapFolder=dirName(levlName);
+	loadingStatus.mapFolder=mapFolder; // (loading screen picture, description and sample)
+	loadingStep(1,4);
 	auto levl=loadLevl(levlName);
 	auto envi=loadEnvi(enviName);
 	auto hmap=loadHMap(hmapName);
@@ -117,7 +120,10 @@ SacMap!B loadSacMap(B)(string filename,ubyte[]* mapData=null){
 	if(trig.variableNames.length==0&&tvarFolderNames.length) trig.variableNames=tvarFolderNames;
 	if(mbojName!="") try trig.objectives=loadMBOJ(mbojName);
 	catch(Exception e){ stderr.writeln("warning: failed to parse mission objectives (",e.msg,")"); }
-	return new SacMap!B(filename,mapFolder,crc32,levl,envi,hmap,tmap,lmap,sids,ntts,trig);
+	loadingStep(2,4);
+	auto map=new SacMap!B(filename,mapFolder,crc32,levl,envi,hmap,tmap,lmap,sids,ntts,trig);
+	loadingStep(4,4);
+	return map;
 }
 
 enum{
@@ -706,6 +712,7 @@ final class SacMap(B){
 		auto mapts=loadMAPTs(land);
 		scarTerrain=loadScarTerrain(land,tiles);
 		auto bumps=loadDTs(land);
+		loadingStep(3,4);
 		auto edge=loadTXTR(buildPath(land,chain(retro(envi.edge[]),".TXTR").to!string));
 		//auto sky_=loadTXTR(buildPath(land,chain(retro(envi.sky_[]),".TXTR").to!string)); // TODO: smk files
 		auto sky_=loadTXTR(buildPath(land,"SKY_.TXTR"));

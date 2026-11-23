@@ -14,6 +14,8 @@ import sacobject, sacspell, mrmm, nttData, sacmap, levl, state, form, sacform, c
 import sxsk : gpuSkinning;
 import renderer,audioBackend;
 import frameprof;
+import loading: loadingStatus, loadingScreenSample;
+import bots.shiny: SideType;
 
 final class SacScene: Scene{
 	//OBJAsset aOBJ;
@@ -214,6 +216,10 @@ final class SacScene: Scene{
 		super.renderEntities2D(rc);
 		updateMouse();
 		info.fps=eventManager.fps;
+		info.loadingScreenVisible=loadingScreenVisible();
+		info.loadingProgress=loadingStatus.progress;
+		info.loadingMapFolder=loadingStatus.mapFolder;
+		updateSynchronizationRows();
 		info.startCountdownProgress=controller&&controller.network?controller.network.startCountdownProgress():float.nan;
 		typeof(renderer).R2DOpt r2dopt={cursorSize: options.cursorSize,
 			triggerHistoryVisible: triggerHistoryVisible,
@@ -708,8 +714,82 @@ final class SacScene: Scene{
 		return false;
 	}
 
+	// loading screen (form igam): shown while the map loads, until this player is ready (sample finished or skipped)
+	// then, in a network game, the synchronization form (cnys) shows the players' loading progress until the start
+	// neither is shown again once the game is playing
+	bool loadingScreenDone=false;
+	bool loadingSampleStarted=false;
+	bool loadingDone(){
+		if(loadingScreenDone) return true;
+		if(controller&&controller.hasStarted&&(!controller.network||controller.network.playing)){
+			loadingScreenDone=true;
+			if(audio) audio.stopLoadingSample();
+		}
+		return loadingScreenDone;
+	}
+	bool loadingScreenVisible(){
+		if(loadingDone()||loadingStatus.mapFolder is null) return false;
+		return !(controller&&controller.hasStarted);
+	}
+	bool synchronizationFormVisible(){
+		if(loadingDone()||!controller||!controller.hasStarted||!controller.network) return false;
+		return !controller.network.startScheduled; // (start countdown is shown instead)
+	}
+	void updateSynchronizationRows(){
+		info.synchronizationRows.length=0;
+		if(!synchronizationFormVisible()) return;
+		auto network=controller.network;
+		auto numSlots=state?to!int(state.slots.length):0;
+		foreach(slot;0..numSlots){
+			typeof(info.synchronizationRows[0]) row;
+			bool found=false;
+			foreach(ref player;network.players.data){
+				if(player.slot!=slot||player.settings.observer||!isConnectedStatus(player.status)) continue;
+				row.name=player.settings.name;
+				row.progress=player.loadingProgress;
+				found=true;
+				break;
+			}
+			if(!found&&slot<state.gameInit.slots.length){ // bots are ready
+				auto wizardIndex=state.gameInit.slots[slot].wizardIndex;
+				if(state.gameInit.slots[slot].sideType!=SideType.human&&0<=wizardIndex&&wizardIndex<state.gameInit.wizards.length){
+					row.name=state.gameInit.wizards[wizardIndex].name;
+					row.progress=1.0f;
+				}
+			}
+			info.synchronizationRows~=row; // (missing players: no name, empty bar)
+		}
+	}
+	void updateLoadingScreen(){
+		if(loadingSampleStarted||!loadingScreenVisible()) return;
+		loadingSampleStarted=true;
+		if(!audio) return;
+		auto filename=loadingScreenSample(loadingStatus.mapFolder);
+		if(filename.length) audio.playLoadingSample(filename);
+	}
+	bool loadingScreenHoldsStart(){
+		updateLoadingScreen();
+		return audio&&audio.loadingSamplePlaying();
+	}
+	bool loadingScreenControl(){
+		if(!audio||!audio.loadingSamplePlaying()||!loadingScreenVisible()) return false;
+		if(loadingStatus.progress<1.0f) return false; // (the sample can only be skipped once loading has completed)
+		if(keyDown[KEY_ESCAPE]||keyDown[KEY_SPACE]||keyDown[KEY_RETURN]||mouseButtonDown[MB_LEFT]){
+			audio.stopLoadingSample(); // skip
+			return true;
+		}
+		return false;
+	}
+
 	void control(Duration dt){
 		foreach(_;0..keyDown[KEY_F8]) info.fpsVisible=!info.fpsVisible;
+		if(loadingScreenControl()){
+			keyDown[]=0;
+			keyUp[]=0;
+			mouseButtonDown[]=0;
+			mouseButtonUp[]=0;
+			return;
+		}
 		bool captured=triggerControl(dt);
 		if(captured){
 			// Modal trigger input and local history must not click through into game controls.
@@ -2341,6 +2421,7 @@ final class SacScene: Scene{
 		}
 		control(dt);
 		if(!captured) cameraControl(dt);
+		updateLoadingScreen();
 		updateLogicCallbacks();
 		if(state){
 			if(controller&&controller.hasStarted){
@@ -2781,6 +2862,7 @@ static:
 	}
 	void pause(){ if(app&&app.scene) app.scene.pause(); }
 	void unpause(){ if(app&&app.scene) app.scene.unpause(); }
+	bool loadingScreenHoldsStart(){ return app&&app.scene&&app.scene.loadingScreenHoldsStart(); }
 	void clearSidechannelMessages(){ if(app.scene) app.scene.info.activeChatMessages.clearSidechannelMessages(); }
 	~this(){ Delete(app); }
 

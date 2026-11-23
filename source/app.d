@@ -56,9 +56,15 @@ bool updateLobby(B)(Lobby!B lobby,ref Options options){
 	}
 	if(lobby.state==LobbyState.incompatibleVersion)
 		return true;
-	if(!lobby.update(options))
-		return false;
+	if(lobby.state!=LobbyState.readyToStart){
+		if(!lobby.update(options))
+			return false;
+	}
 	assert(lobby.state==LobbyState.readyToStart);
+	if(B.loadingScreenHoldsStart()){ // the loading screen stays while its sample plays, unless skipped
+		if(lobby.network) lobby.network.update(lobby.controller);
+		return false;
+	}
 	lobby.start(options);
 	return true;
 }
@@ -605,7 +611,15 @@ int run(string[] args){
 	if(!options.noMap||options.host||options.joinIP!=""){
 		// loadGame!B(options);
 		lobby=makeLobby!B(options); // connects (incl. zerotier and --delay-start) and loads from the main loop
-		B.addLogicCallback(()=>!updateLobby(lobby,options));
+		import loading: LoadingTask;
+		auto loadingTask=new LoadingTask(options.yieldWhileLoading); // (loading the map can return to the main loop in between)
+		B.addLogicCallback((){
+			bool done;
+			auto finished=loadingTask.step(()=>updateLobby(lobby,options),done)&&done;
+			import loading: loadingStatus;
+			if(lobby.network) lobby.network.updateLoadingProgress(loadingStatus.progress); // (for the other players' synchronization form)
+			return !finished;
+		});
 	}else B.scene.fpview.active=true;
 
 	if(auto r=applyLateSettings!B(args,options)) return r;

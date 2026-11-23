@@ -123,6 +123,7 @@ struct Options{
 	bool betaPatchBots=false;
 	bool aiSides=true;
 	int delayStart=0;
+	bool yieldWhileLoading=true; // map and game loading return to the main loop in between (using a Fiber), so the loading screen is drawn (--no-yield-while-loading: load at once)
 	float startCountdown=3.0f; // seconds added uniformly to the synchronized start delays at game start, shown with a loading bar (host setting, 0 disables)
 	// zerotier
 	string zerotierIdentity="zerotier-identity";
