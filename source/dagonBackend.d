@@ -714,9 +714,9 @@ final class SacScene: Scene{
 		return false;
 	}
 
-	// loading screen (form igam): shown while the map loads, until this player is ready (sample finished or skipped)
-	// then, in a network game, the synchronization form (cnys) shows the players' loading progress until the start
-	// neither is shown again once the game is playing
+	// loading screen (form igam): shown while this player is loading, and afterwards while its sample plays (unless skipped)
+	// then, in a network game, the synchronization form (cnys) over the game screen shows the players' loading progress
+	// until the start (also while the host waits for players to join); neither is shown again once the game is playing
 	bool loadingScreenDone=false;
 	bool loadingSampleStarted=false;
 	bool loadingDone(){
@@ -729,10 +729,12 @@ final class SacScene: Scene{
 	}
 	bool loadingScreenVisible(){
 		if(loadingDone()||loadingStatus.mapFolder is null) return false;
-		return !(controller&&controller.hasStarted);
+		if(controller&&controller.hasStarted) return false;
+		return loadingStatus.progress<1.0f||audio&&audio.loadingSamplePlaying();
 	}
 	bool synchronizationFormVisible(){
-		if(loadingDone()||!controller||!controller.hasStarted||!controller.network) return false;
+		if(loadingDone()||!state||!controller||!controller.network) return false;
+		if(loadingScreenVisible()) return false;
 		return !controller.network.startScheduled; // (start countdown is shown instead)
 	}
 	void updateSynchronizationRows(){
@@ -761,7 +763,8 @@ final class SacScene: Scene{
 		}
 	}
 	void updateLoadingScreen(){
-		if(loadingSampleStarted||!loadingScreenVisible()) return;
+		// (started as soon as the map is known, also if loading completes within one frame without yielding)
+		if(loadingSampleStarted||loadingDone()||loadingStatus.mapFolder is null||controller&&controller.hasStarted) return;
 		loadingSampleStarted=true;
 		if(!audio) return;
 		auto filename=loadingScreenSample(loadingStatus.mapFolder);

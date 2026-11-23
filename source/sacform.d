@@ -717,8 +717,11 @@ final class SacForm(B){
 	bool isChatForm(){ return tag=="thci"||tag=="thco"; }
 
 	private this(char[4] tag){
+		this(tag,tag in forms);
+	}
+	private this(char[4] tag,immutable(Form)* form){
 		this.tag=tag;
-		form=tag in forms;
+		this.form=form;
 		enforce(!!form);
 		auto title=!!(form.flags&FormFlags.title)?formTextFromTag(form.title):null;
 		auto background=!!(form.flags&FormFlags.background1);
@@ -738,6 +741,59 @@ final class SacForm(B){
 	static SacForm!B get(char[4] tag){
 		if(auto r=tag in sacForms) return *r;
 		return sacForms[tag]=new SacForm!B(tag);
+	}
+
+	// copy of a form with a modified header and elements
+	private static SacForm!B derived(char[4] tag,scope void delegate(ref FormHeader header,ref Element[] elements) modify){
+		auto original=tag in forms;
+		enforce(!!original,"form not found");
+		auto header=new FormHeader;
+		*header=*original.header;
+		auto elements=original.elements.dup;
+		modify(*header,elements);
+		header.numElements=to!ubyte(elements.length);
+		auto form=cast(immutable(Form)*)new Form(header,elements);
+		return new SacForm!B(tag,form);
+	}
+
+	// synchronization form (cnys) with room for numRows players: the original has four (two per line),
+	// further lines are copies of the second line, and the form grows accordingly
+	enum synchronizationRowsPerLine=2, synchronizationLineHeight=48;
+	static char synchronizationRowDigit(int row){ return cast(char)(row<9?'1'+row:'A'+(row-9)); } // (first character of the element ids, e.g. "1man", "1grp")
+	static int synchronizationRowIndex(char digit){ return '1'<=digit&&digit<='9'?digit-'1':'A'<=digit&&digit<='Z'?9+(digit-'A'):-1; }
+	private static SacForm!B[int] synchronizationForms;
+	static SacForm!B synchronization(int numRows){
+		auto lines=max(2,(numRows+synchronizationRowsPerLine-1)/synchronizationRowsPerLine);
+		if(auto r=lines in synchronizationForms) return *r;
+		return synchronizationForms[lines]=derived("cnys",(ref FormHeader header,ref Element[] elements){
+			auto original=elements.length;
+			foreach(line;2..lines){
+				foreach(i;0..original){
+					auto row=synchronizationRowIndex(elements[i].id[0]);
+					if(row/synchronizationRowsPerLine!=1) continue;
+					auto copy=elements[i];
+					copy.top+=(line-1)*synchronizationLineHeight;
+					copy.id[0]=synchronizationRowDigit(line*synchronizationRowsPerLine+row%synchronizationRowsPerLine);
+					elements~=copy;
+				}
+			}
+			header.height+=(lines-2)*synchronizationLineHeight;
+		});
+	}
+
+	// loading screen (igam) widened to width (at least 640): the main bar spans the whole width, the rest stays centered
+	private static SacForm!B[int] loadingScreenForms;
+	static SacForm!B loadingScreen(int width){
+		width=max(640,width);
+		if(auto r=width in loadingScreenForms) return *r;
+		return loadingScreenForms[width]=derived("magi",(ref FormHeader header,ref Element[] elements){
+			auto dx=(width-header.width)/2;
+			foreach(ref e;elements){
+				if(e.id=="gorp") e.width=width-2*e.left;
+				else e.left+=dx;
+			}
+			header.width=width;
+		});
 	}
 }
 

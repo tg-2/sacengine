@@ -130,6 +130,44 @@ string defaultLoadingScreenPicture(){
 		if(exists(name)) return name;
 	return null;
 }
+// TGA as used by the original (defaultmap.tga: 8 bit color map, rows from the bottom), also true color; returns RGB, rows from the top
+ubyte[] loadTGARGB(string filename,out int width,out int height){
+	import std.file: read;
+	import std.exception: enforce;
+	auto data=cast(ubyte[])read(filename);
+	enforce(data.length>=18,"invalid TGA");
+	int idLength=data[0],colorMapType=data[1],imageType=data[2];
+	int colorMapFirst=data[3]|data[4]<<8,colorMapLength=data[5]|data[6]<<8,colorMapBytes=data[7]/8;
+	width=data[12]|data[13]<<8;
+	height=data[14]|data[15]<<8;
+	int pixelBytes=data[16]/8;
+	bool topDown=!!(data[17]&0x20);
+	size_t offset=18+idLength;
+	ubyte[] palette;
+	if(colorMapType==1){
+		enforce(colorMapBytes==3||colorMapBytes==4,"unsupported TGA color map");
+		palette=data[offset..offset+colorMapLength*colorMapBytes];
+		offset+=palette.length;
+	}
+	enforce(imageType==1&&colorMapType==1&&pixelBytes==1||imageType==2&&(pixelBytes==3||pixelBytes==4),"unsupported TGA type");
+	enforce(data.length>=offset+cast(size_t)width*height*pixelBytes,"truncated TGA");
+	auto rgb=new ubyte[](3*width*height);
+	foreach(y;0..height){
+		auto row=topDown?y:height-1-y;
+		foreach(x;0..width){
+			auto p=offset+(cast(size_t)row*width+x)*pixelBytes;
+			const(ubyte)[] bgr;
+			if(imageType==1){
+				auto index=data[p]-colorMapFirst;
+				enforce(0<=index&&index<colorMapLength,"invalid TGA color index");
+				bgr=palette[index*colorMapBytes..index*colorMapBytes+3];
+			}else bgr=data[p..p+3];
+			auto q=3*(cast(size_t)y*width+x);
+			rgb[q]=bgr[2]; rgb[q+1]=bgr[1]; rgb[q+2]=bgr[0];
+		}
+	}
+	return rgb;
+}
 // DESC.TEXT: the map description is shown next to the picture
 string loadingScreenText(string mapFolder){
 	import std.path: buildPath;
