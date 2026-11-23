@@ -217,7 +217,7 @@ final class SacScene: Scene{
 		updateMouse();
 		info.fps=eventManager.fps;
 		info.loadingScreenVisible=loadingScreenVisible();
-		info.gameBlackedOut=loadingStatus.initializingGame;
+		info.gameBlackedOut=loadingStatus.initializingGame||!state&&lobbyNetwork; // (also while waiting for the game start)
 		info.loadingProgress=loadingStatus.progress;
 		info.loadingMapFolder=loadingStatus.mapFolder;
 		updateSynchronizationRows();
@@ -733,16 +733,31 @@ final class SacScene: Scene{
 		if(controller&&controller.hasStarted) return false;
 		return loadingStatus.progress<1.0f||audio&&audio.loadingSamplePlaying();
 	}
+	// network of a game that has not been initialized yet (players wait for the start), with the number of slots (-1: unknown)
+	Network!DagonBackend lobbyNetwork=null;
+	int lobbyNumSlots=-1;
+	Network!DagonBackend synchronizationNetwork(){
+		if(controller&&controller.network) return controller.network;
+		return lobbyNetwork;
+	}
 	bool synchronizationFormVisible(){
-		if(loadingDone()||!state||!controller||!controller.network) return false;
+		if(loadingDone()) return false;
+		auto network=synchronizationNetwork();
+		if(!network) return false;
 		if(loadingScreenVisible()) return false;
-		return !controller.network.startScheduled; // (start countdown is shown instead)
+		return !network.startScheduled; // (start countdown is shown instead)
 	}
 	void updateSynchronizationRows(){
 		info.synchronizationRows.length=0;
 		if(!synchronizationFormVisible()) return;
-		auto network=controller.network;
-		auto numSlots=state?to!int(state.slots.length):0;
+		auto network=synchronizationNetwork();
+		int numSlots=state?to!int(state.slots.length):lobbyNumSlots;
+		if(numSlots==-1){ // (only known to the host before the game is initialized)
+			numSlots=0;
+			foreach(ref player;network.players.data)
+				if(!player.settings.observer&&isConnectedStatus(player.status))
+					numSlots=max(numSlots,player.slot+1);
+		}
 		foreach(slot;0..numSlots){
 			typeof(info.synchronizationRows[0]) row;
 			bool found=false;
@@ -753,7 +768,7 @@ final class SacScene: Scene{
 				found=true;
 				break;
 			}
-			if(!found&&slot<state.gameInit.slots.length){ // bots are ready
+			if(!found&&state&&slot<state.gameInit.slots.length){ // bots are ready
 				auto wizardIndex=state.gameInit.slots[slot].wizardIndex;
 				if(state.gameInit.slots[slot].sideType!=SideType.human&&0<=wizardIndex&&wizardIndex<state.gameInit.wizards.length){
 					row.name=state.gameInit.wizards[wizardIndex].name;
@@ -2843,6 +2858,10 @@ static:
 	}
 	void setSlot(int slot){
 		scene.renderSlot=slot;
+	}
+	void setLobbyNetwork(Network!DagonBackend network,int numSlots){
+		scene.lobbyNetwork=network;
+		scene.lobbyNumSlots=numSlots;
 	}
 	void focusCamera(int id,bool reset=true){
 		scene.focusCamera(id,reset);

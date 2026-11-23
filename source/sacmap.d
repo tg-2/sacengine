@@ -13,6 +13,18 @@ import sacobject;
 import nttData: scarImages, ScarImage;
 import loading: loadingStatus, loadingStep, loadingYield;
 
+// hash used to synchronize a map (CRC32 of the .scp file, as SacMap.crc32), without loading the map
+int mapFileHash(string filename,ubyte[]* mapData=null){
+	if(!filename.endsWith(".scp")) return 0; // (loadSacMap does not compute a hash for other maps)
+	import std.file: read;
+	import std.digest.crc;
+	auto data=cast(ubyte[])read(filename);
+	auto result=digest!CRC32(data);
+	static assert(result.sizeof==int.sizeof);
+	if(mapData) *mapData=data;
+	return *cast(int*)&result;
+}
+
 SacMap!B loadSacMap(B)(string filename,ubyte[]* mapData=null){
 	string levlName,enviName;
 	string hmapName,tmapName,lmapName;
