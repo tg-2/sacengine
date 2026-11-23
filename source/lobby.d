@@ -411,7 +411,7 @@ class Lobby(B){
 	}do{
 		//writeln(10);
 		if(state<LobbyState.commitHashReady){
-			if(isHost) loadMap(options);
+			if(isHost) hashMap(options);
 			network.updateSetting!"mapHash"(options.mapHash);
 			network.updateStatus(PlayerStatus.commitHashReady);
 			state=LobbyState.commitHashReady;
@@ -442,9 +442,8 @@ class Lobby(B){
 					version(Windows){}else mapName=mapName.replace("\\","/"); // hack
 					import std.file: exists;
 					if(exists(mapName)){
-						loadingPhase(0.0f,0.4f);
-						map=loadSacMap!B(mapName); // TODO: compute hash without loading map?
-						options.mapHash=map.crc32;
+						options.map=mapName; // (loaded when the game starts)
+						options.mapHash=mapFileHash(mapName);
 					}
 					network.updateSetting!"mapHash"(options.mapHash);
 					network.updateStatus(PlayerStatus.mapHashed);
@@ -456,11 +455,9 @@ class Lobby(B){
 			}
 		}
 		//writeln(40);
-		void loadMap(string mapName){
-			options.map=mapName;
-			loadingPhase(0.0f,0.4f);
-			map=loadSacMap!B(mapName);
-			options.mapHash=map.crc32;
+		void loadMap(string mapName){ // (downloaded map, its hash was already checked)
+			options.map=mapName; // (loaded when the game starts)
+			options.mapHash=mapFileHash(mapName);
 			auto hash=network.hostSettings.mapHash;
 			enforce(options.mapHash==hash,"map hash mismatch");
 			network.updateSetting!"mapHash"(options.mapHash);
@@ -476,6 +473,12 @@ class Lobby(B){
 		slot=network.slot;
 		if(!isHost) network.updateStatus(PlayerStatus.pendingGameInit); // TODO: tie this to thumbs up
 		return true;
+	}
+
+	// network game: the host only reads the map file (for its hash and to send it to other players), the map is loaded when the game starts
+	void hashMap(ref Options options){
+		if(map) options.mapHash=map.crc32; // (continued game)
+		else options.mapHash=mapFileHash(options.map,&mapData);
 	}
 
 	void loadMap(ref Options options){
@@ -654,8 +657,10 @@ class Lobby(B){
 					return false;
 			}
 		}else loadMap(options);
-		assert(!!map);
+		assert(!!map||network); // (network game: map loaded when the game starts)
 		//writeln(3);
+		if(network&&!toContinue&&!playback&&state.among(LobbyState.readyToLoad,LobbyState.waitingForClients))
+			return waitForGameStart(options);
 		if(state==LobbyState.readyToLoad||state==LobbyState.waitingForClients){
 			if(state==LobbyState.readyToLoad||network){
 				bool reinitialize=!gameState||!network||network.pendingGameInit;
@@ -722,6 +727,76 @@ class Lobby(B){
 			}
 		}
 		return state==LobbyState.readyToStart;
+	}
+
+	// network game: players wait until the host starts the game, only then the map is loaded and the game initialized
+	// the host sets its own status to pendingGameInit when the game starts: the other players load the map meanwhile,
+	// then the host sends them the game initialization and marks them ready to load (as before, in this order)
+	bool gameStarting=false, gameInitialized=false;
+	bool waitForGameStart(ref Options options)in{
+		assert(network&&!toContinue&&!playback);
+	}do{
+		state=LobbyState.waitingForClients;
+		B.setLobbyNetwork(network,isHost?options.numSlots:-1); // (players are shown while waiting)
+		network.update(controller); // (may be null)
+		bool lateJoining=false;
+		if(isHost){
+			if(!gameStarting){
+				if(!canStartGame(options)) return false;
+				network.acceptingNewConnections=false;
+				network.updateStatus(PlayerStatus.pendingGameInit); // (the other players start loading the map)
+				gameStarting=true;
+			}
+		}else{
+			lateJoining=network.lateJoining||network.pendingResynch;
+			auto hostStatus=network.players[network.host].status;
+			if(!lateJoining&&!(isConnectedStatus(hostStatus)&&hostStatus>=PlayerStatus.pendingGameInit))
+				return false; // (game not started yet)
+			gameStarting=true;
+		}
+		if(!map){
+			loadingPhase(0.0f,0.4f);
+			map=loadSacMap!B(options.map);
+			enforce(cast(int)map.crc32==options.mapHash,"map file changed");
+		}
+		if(!gameInitialized){
+			if(!loadGame(true,options)) // (host: sends the game initialization to the other players)
+				return false; // (waiting for the game initialization from the host)
+			gameInitialized=true;
+		}
+		if(isHost){
+			foreach(i,ref player;network.players.data)
+				if(i!=network.me&&player.status==PlayerStatus.pendingGameInit)
+					network.updateStatus(to!int(i),PlayerStatus.readyToLoad);
+			network.updateStatus(PlayerStatus.readyToLoad);
+		}else if(lateJoining){
+			initController(options);
+			controller.lateJoining=true;
+		}else if(!isReadyToLoadStatus(network.players[network.me].status))
+			return false; // (the host marks this player ready to load right after sending the game initialization)
+		B.setState(gameState);
+		if(hasSlot) B.setSlot(slot);
+		if(wizId) B.focusCamera(wizId,false);
+		else if(!B.scene.mouse.visible&&!B.scene.fpview.active) B.scene.fpview.active=true;
+		state=LobbyState.readyToStart;
+		return true;
+	}
+	// for now as before: once all slots are occupied and all players wait for the game start
+	bool canStartGame(ref Options options)in{
+		assert(network&&isHost);
+	}do{
+		int occupiedSlots=network.players[network.host].wantsToControlState?1:0;
+		foreach(i,ref player;network.players.data){
+			if(i==network.host||!isConnectedStatus(player.status)) continue;
+			bool waiting=player.status==PlayerStatus.pendingGameInit;
+			if(player.wantsToControlState&&waiting) occupiedSlots++;
+			if(player.requiredToControlState&&!waiting) return false; // (still connecting or downloading the map)
+		}
+		bool[int] botSlots;
+		foreach(botSlot;options.botSlots)
+			if(0<=botSlot&&botSlot<options.numSlots) botSlots[botSlot]=true;
+		occupiedSlots+=to!int(botSlots.length);
+		return occupiedSlots>=options.numSlots;
 	}
 
 	void initController(ref Options options)in{
