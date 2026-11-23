@@ -5724,12 +5724,11 @@ struct Renderer(B){
 				if(sacElement.type==ElementType.progressbar){
 					auto progress=min(max(elements[elementIndex].progress,0.0f),1.0f);
 					if(progress>0.0f){
-						B.colorHUDMaterialBackend.setTransformationScaled(offset+Vector3f(scaledOffset.x,scaledOffset.y,0.0f),rotation,Vector3f(scale.x*progress,scale.y,scale.z),rc);
+						setProgressbarMesh!B(sacElement,progress);
 						foreach(ref part;sacElement.parts){
 							B.colorHUDMaterialBackend.bindDiffuse(part.texture);
 							part.mesh[0].render(rc);
 						}
-						B.colorHUDMaterialBackend.setTransformationScaled(offset,rotation,scale,rc);
 					}
 				}else foreach(i,ref part;sacElement.parts){
 					B.colorHUDMaterialBackend.bindDiffuse(part.texture);

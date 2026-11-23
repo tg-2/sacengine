@@ -510,13 +510,25 @@ auto makeTextbox(B)(Vector2f offset,char[4] id,Vector2f size,string title,bool l
 	return SacFormElement!B(ElementType.textbox,id,offset,size,parts,texts,mouseoverText,formIndex);
 }
 
-// the mesh starts at the origin, so that the renderer can scale it with the progress
 auto makeProgressbar(B)(Vector2f offset,char[4] id,Vector2f size,string mouseoverText,int formIndex){
 	SacFormPart!B[] parts;
-	auto bar=makeQuad!B(Vector2f(0.0f,0.0f),size,Vector2f(0.0f,0.0f),(1.0f/32.0f)*size,false,false); // (texture repeats along the bar)
+	auto bar=makeQuad!B(offset,size,Vector2f(0.0f,0.0f),(1.0f/32.0f)*size,false,false); // (texture repeats along the bar)
 	parts~=SacFormPart!B(bar,FormTexture.progressbar);
 	SacFormText[] texts;
 	return SacFormElement!B(ElementType.progressbar,id,offset,size,parts,texts,mouseoverText,formIndex);
+}
+// reveals the given fraction of the bar: moves the right edge of the quad and its texture coordinates, so the texture does not stretch
+void setProgressbarMesh(B)(ref SacFormElement!B element,float progress)in{
+	assert(element.type==ElementType.progressbar);
+}do{
+	auto width=progress*element.size.x;
+	foreach(ref part;element.parts){
+		auto mesh=part.mesh[0];
+		if(mesh.vertices[2].x==element.offset.x+width) continue;
+		mesh.vertices[2].x=mesh.vertices[3].x=element.offset.x+width;
+		mesh.texcoords[2].x=mesh.texcoords[3].x=width/32.0f;
+		B.finalizeMesh2D(mesh); // (uploads the four vertices again into the same buffers)
+	}
 }
 
 auto makeText(B)(Vector2f offset,char[4] id,Vector2f size,string text,FormFont formFont,bool centerX,bool centerY,string mouseoverText,int formIndex){
