@@ -462,15 +462,20 @@ struct Renderer(B){
 	}
 	SacSoulWind!B soulWind;
 	SacSoulWind!B createSoulWind(){
-		auto texture=typeof(return).loadTexture();
-		auto mat=B.makeMaterial(B.shadelessMaterialBackend);
-		mat.depthWrite=false;
-		mat.blending=B.Blending.Transparent;
-		mat.energy=5.0f;
-		mat.transparency=0.75f;
-		mat.diffuse=texture;
+		Vector2f uvScale;
+		auto textures=typeof(return).loadTextures(uvScale);
+		B.Material[2] materials;
+		foreach(i;0..2){
+			auto mat=B.makeMaterial(B.shadelessColorMaterialBackend);
+			mat.depthWrite=false;
+			mat.blending=B.Blending.Transparent;
+			mat.energy=5.0f;
+			mat.transparency=1.0f;
+			mat.diffuse=textures[i];
+			materials[i]=mat;
+		}
 		auto meshes=typeof(return).createMeshes;
-		return SacSoulWind!B(texture,mat,meshes);
+		return SacSoulWind!B(textures,uvScale,materials,meshes);
 	}
 	SacExplosionEffect!B explosionEffect;
 	SacExplosionEffect!B createExplosionEffect(){
@@ -2472,20 +2477,18 @@ struct Renderer(B){
 					}
 				}
 				static if(mode==RenderMode.transparent) if(!rc.shadowMode&&(objects.soulWindCastings.length||objects.soulWinds.length)){
-					auto material=self.soulWind.material;
-					material.bind(rc);
 					B.disableCulling();
-					scope(success){
-						B.enableCulling();
-						material.unbind(rc);
-					}
+					scope(success) B.enableCulling();
 					void renderSoulWind(ref SoulWind!B soulWind){
-						auto frame=soulWind.frame;
 						auto position=soulWind.position;
-						auto rotation=facingQuaternion(2*pi!float*frame/(4*updateFPS));
-						B.shadelessMaterialBackend.setTransformation(position,rotation,rc);
-						auto mesh=self.soulWind.getFrame(frame%self.soulWind.numFrames);
-						mesh.render(rc);
+						self.soulWind.prepare(soulWind.frame,position,info.camera.position);
+						foreach(layer;0..2){
+							auto material=self.soulWind.materials[layer];
+							material.bind(rc);
+							scope(exit) material.unbind(rc);
+							B.shadelessColorMaterialBackend.setTransformation(position,Quaternionf.identity(),rc);
+							self.soulWind.meshes[layer].render(rc);
+						}
 					}
 					foreach(ref soulWindCasting;objects.soulWindCastings.data)
 						renderSoulWind(soulWindCasting.soulWind);

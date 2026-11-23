@@ -2732,44 +2732,100 @@ struct SacDragonfire(B){
 }
 
 struct SacSoulWind(B){
-	B.Texture texture;
-	static B.Texture loadTexture(){
-		return B.makeTexture(loadTXTR("extracted/charlie/Bloo.WAD!/Stra.FLDR/txtr.FLDR/swnd.TXTR"),false);
+	B.Texture[2] textures;
+	Vector2f uvScale;
+	static B.Texture[2] loadTextures(out Vector2f uvScale){
+		auto path="extracted/charlie/Bloo.WAD!/Stra.FLDR/txtr.FLDR/swnd.TXTR";
+		int numFrames,frameWidth,frameHeight;
+		auto image=loadTXTR(path,numFrames,frameWidth,frameHeight);
+		uvScale=Vector2f(max(1.0f,float(frameWidth))/max(1.0f,float(image.width)),max(1.0f,float(frameHeight))/max(1.0f,float(image.height)));
+		auto texture=B.makeTexture(image,false);
+		return [texture,texture];
 	}
-	B.Material material;
-	B.Mesh[] frames; // TODO: do in shader instead
-	enum numFrames=32;
-	auto getFrame(int i){ return frames[i]; }
-	enum numFaces=32;
-	enum numSegments=32;
-	enum height=3.0f;
-	enum radius=1.5f;
-	enum texrep=2.0f;
-	static B.Mesh[] createMeshes(){
-		auto meshes=new B.Mesh[](numFrames);
-		foreach(frame,ref mesh;meshes){
-			mesh=B.makeMesh((numFaces+1)*(numSegments+1),2*numFaces*numSegments);
-			foreach(i;0..numSegments+1){
-				foreach(j;0..numFaces+1){
-					auto wradius=radius*(float(i)/numSegments+0.05f*sin(2.0f*pi!float*i/numSegments));
-					auto cradius=wradius+0.5f*radius*(float(i)/numSegments)^^4;
-					auto φ=2.0f*pi!float*j/numFaces;
-					auto θ=pi!float*i/numSegments;
-					mesh.vertices[i*(numFaces+1)+j]=Vector3f(cradius*cos(φ),cradius*sin(φ),height*i/numSegments)+0.5f*wradius*Vector3f(cos(θ),sin(θ),0.0f);
-					mesh.texcoords[i*(numFaces+1)+j]=Vector2f(texrep*float(j)/numFaces,-texrep*(float(i)/numSegments-0.5f*float(frame)/numFrames));
+	B.Material[2] materials;
+	B.Mesh[2] meshes;
+	enum columns=16;
+	enum surfaceRows=32;
+	static B.Mesh[2] createMeshes(){
+		B.Mesh[2] result;
+		foreach(layer;0..2){
+			result[layer]=B.makeColorMesh(surfaceRows*(columns+1),2*(surfaceRows-1)*columns);
+			auto rows=surfaceRows;
+			auto mesh=result[layer];
+			foreach(row;0..rows-1){
+				foreach(column;0..columns){
+					auto a=row*(columns+1)+column;
+					auto b=a+columns+1;
+					auto face=row*columns+column;
+					mesh.indices[2*face]=[a,b,a+1];
+					mesh.indices[2*face+1]=[a+1,b,b+1];
 				}
 			}
-			foreach(i;0..numSegments){
-				foreach(j;0..numFaces){
-					mesh.indices[2*(i*numFaces+j)]=[i*(numFaces+1)+j,(i+1)*(numFaces+1)+j+1,(i+1)*(numFaces+1)+j];
-					mesh.indices[2*(i*numFaces+j)+1]=[i*(numFaces+1)+j,i*(numFaces+1)+j+1,(i+1)*(numFaces+1)+j+1];
-				}
-			}
-			mesh.generateNormals(); // (doesn't actually need normals)
-			B.finalizeMesh(mesh);
 		}
-		return meshes;
+		return result;
 	}
+
+	void prepare(int frame,Vector3f position,Vector3f cameraPosition){
+		float cubic(float a,float b,float c,float d,float t){
+			auto q=1.0f-t;
+			return q*q*q*a+3.0f*q*q*t*b+3.0f*q*t*t*c+t*t*t*d;
+		}
+		auto mesh=meshes[0];
+		auto time=frame*0.045f;
+		foreach(row;0..surfaceRows){
+			auto t=float(row)/(surfaceRows-1);
+			auto height=cubic(0.10f,0.35f,1.10f,1.50f,t);
+			auto radius=cubic(0.15f,0.18f,0.80f,1.00f,t);
+			auto v=0.5f*t;
+			auto cx=cubic(0.0f,
+			                0.85f*sin(time*0.72f+0.3f),
+			               -1.25f*sin(time*0.72f+0.9f),
+			                0.80f*sin(time*0.72f+1.8f),v);
+			auto cy=cubic(0.0f,
+			                0.85f*cos(time*0.64f+0.3f),
+			               -1.25f*cos(time*0.64f+0.9f),
+			                0.80f*cos(time*0.64f+1.8f),v);
+			foreach(column;0..columns+1){
+				auto u=float(column)/columns;
+				// Twist each horizontal ring independently, not as a rigid cone.
+				auto angle=2.0f*pi!float*u+time*6.0f+2.2f*t;
+				auto idx=row*(columns+1)+column;
+				mesh.vertices[idx]=Vector3f(cx+sin(angle)*radius,cy+cos(angle)*radius,height);
+				mesh.texcoords[idx]=Vector2f(u*uvScale.x,t*uvScale.y);
+				mesh.colors[idx]=Color4f(0.73f,0.74f,0.75f,0.90f);
+			}
+		}
+		mesh.generateNormals();
+		B.finalizeMesh(mesh);
+
+		auto upper=meshes[1];
+		foreach(row;0..surfaceRows){
+			auto t=float(row)/(surfaceRows-1);
+			auto height=cubic(1.50f,1.95f,2.55f,3.00f,t);
+			auto radius=cubic(1.00f,1.18f,1.65f,2.00f,t);
+			auto v=0.5f+0.5f*t;
+			auto cx=cubic(0.0f,
+			                0.85f*sin(time*0.72f+0.3f),
+			               -1.25f*sin(time*0.72f+0.9f),
+			                0.80f*sin(time*0.72f+1.8f),v);
+			auto cy=cubic(0.0f,
+			                0.85f*cos(time*0.64f+0.3f),
+			               -1.25f*cos(time*0.64f+0.9f),
+			                0.80f*cos(time*0.64f+1.8f),v);
+			auto fade=1.0f-t*t*(3.0f-2.0f*t);
+			foreach(column;0..columns+1){
+				auto u=float(column)/columns;
+				auto angle=2.0f*pi!float*u+time*6.0f+2.2f*(1.0f+t);
+				auto idx=row*(columns+1)+column;
+				upper.vertices[idx]=Vector3f(cx+sin(angle)*radius,cy+cos(angle)*radius,height);
+				upper.texcoords[idx]=Vector2f(u*uvScale.x,t*uvScale.y);
+				upper.colors[idx]=Color4f(0.73f,0.74f,0.75f,0.90f*fade);
+			}
+		}
+		upper.generateNormals();
+		B.finalizeMesh(upper);
+	}
+
 }
 
 struct SacExplosionEffect(B){
