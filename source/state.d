@@ -20630,7 +20630,7 @@ bool updateBore(B)(ref Bore!B bore,ObjectState!B state){
 		}
 		if(frame%(updateFPS/10)==0) state.addEffect(ScreenShake(position,updateFPS/10,1.0f,100.0f));
 		if(--soundTimer<=0) soundTimer=playSpellSoundTypeAt!true(SoundType.bore,position,state,soulMoleGain); // TODO: sound should follow boulder
-		if((position-lastScarPosition).lengthsqr>5.0f^^2){ // original: BoreRun
+		if((position-lastScarPosition).lengthsqr>0.25f^^2){ // original: BoreRun
 			lastScarPosition=position;
 			addSpellScar(spellScar(spell,"tscr","1kuq"),position,state);
 		}
