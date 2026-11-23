@@ -5238,7 +5238,10 @@ struct Renderer(B){
 			import dlib.image: image;
 			int width=loadingScreenPictureSize,height=loadingScreenPictureSize;
 			auto rgb=loadingScreenPictureRGB(mapFolder);
-			if(!rgb) if(auto filename=defaultLoadingScreenPicture()) rgb=loadTGARGB(filename,width,height);
+			if(!rgb){
+				if(auto filename=defaultLoadingScreenPicture()) rgb=loadTGARGB(filename,width,height);
+				else stderr.writeln("warning: no loading screen picture (map has no LIMG and data/defaultmap.tga was not found)");
+			}
 			if(rgb){
 				auto picture=image(width,height,3);
 				picture.data[]=rgb[];
@@ -5926,9 +5929,7 @@ struct Renderer(B){
 				}
 				B.colorHUDMaterialBackend.bind(null,rc);
 				B.colorHUDMaterialBackend.setColor(Color4f(1.0f,1.0f,1.0f,1.0f));
-				if(sacElement.texts.length||sacElement.type==ElementType.entrybox){
-					B.colorHUDMaterialBackend.setTransformationScaled(offset,rotation,scale,rc);
-				}
+				B.colorHUDMaterialBackend.setTransformationScaled(offset,rotation,scale,rc); // (bind resets the transformation, e.g. for forms without a title)
 			}
 			renderElement(sacForm.sacElements[0],to!ushort(s),true,targetElement!=-1); // render form itself
 			for(int i=s+1;i<e;i++){
