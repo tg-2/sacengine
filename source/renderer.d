@@ -478,7 +478,7 @@ struct Renderer(B){
 			auto mat=B.makeMaterial(B.shadelessColorMaterialBackend);
 			mat.depthWrite=false;
 			mat.blending=B.Blending.Transparent;
-			mat.energy=5.0f;
+			mat.energy=6.0f;
 			mat.transparency=1.0f;
 			mat.diffuse=textures[i];
 			materials[i]=mat;
