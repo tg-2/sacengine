@@ -217,6 +217,7 @@ final class SacScene: Scene{
 		updateMouse();
 		info.fps=eventManager.fps;
 		info.loadingScreenVisible=loadingScreenVisible();
+		info.gameBlackedOut=loadingStatus.initializingGame;
 		info.loadingProgress=loadingStatus.progress;
 		info.loadingMapFolder=loadingStatus.mapFolder;
 		updateSynchronizationRows();

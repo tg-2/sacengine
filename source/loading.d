@@ -13,6 +13,7 @@ struct LoadingStatus{
 	string mapFolder=null; // folder of the map being loaded (map files such as LIMG, DESC and LOAD), null until known
 	float progress=0.0f; // in [0,1]
 	float phaseStart=0.0f, phaseEnd=1.0f;
+	bool initializingGame=false; // game state is being built (also again later, e.g. when a player joins): the game screen is blacked out
 }
 LoadingStatus loadingStatus;
 
