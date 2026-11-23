@@ -127,7 +127,7 @@ ubyte[] loadingScreenPictureRGB(string mapFolder){
 }
 string defaultLoadingScreenPicture(){
 	import std.file: exists;
-	foreach(name;["data/defaultmap.tga","data/Defaultmap.TGA","data/DefaultMap.tga","data/DEFAULTMAP.TGA"])
+	foreach(name;["data/defaultmap.TGA","data/defaultmap.tga","data/Defaultmap.TGA","data/DefaultMap.tga","data/DEFAULTMAP.TGA"])
 		if(exists(name)) return name;
 	return null;
 }
