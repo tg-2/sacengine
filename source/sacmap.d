@@ -11,7 +11,7 @@ import std.typecons: tuple,Tuple;
 
 import sacobject;
 import nttData: scarImages, ScarImage;
-import loading: loadingStatus, loadingStep;
+import loading: loadingStatus, loadingStep, loadingYield;
 
 SacMap!B loadSacMap(B)(string filename,ubyte[]* mapData=null){
 	string levlName,enviName;
@@ -104,6 +104,7 @@ SacMap!B loadSacMap(B)(string filename,ubyte[]* mapData=null){
 	}
 	auto mapFolder=dirName(levlName);
 	loadingStatus.mapFolder=mapFolder; // (loading screen picture, description and sample)
+	loadingYield(true); // (draw the loading screen with the empty bar once before loading the map)
 	loadingStep(1,4);
 	auto levl=loadLevl(levlName);
 	auto envi=loadEnvi(enviName);
