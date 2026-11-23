@@ -29,21 +29,14 @@ ubyte[] parseWAV(ubyte[] data){
 		char[4] dataID;
 		uint dataSize;
 	}
+	enforce(data.length>=Header.sizeof);
 	Header header;
 	(cast(ubyte*)&header)[0..Header.sizeof]=data[0..Header.sizeof];
 	auto blockAlign=header.blockAlign;
 	auto buffer=data[Header.sizeof..$];
-	enforce(header.channels==1);
-	uint cur=0;
-	ubyte get_nibble(){
-		ubyte result;
-		if(cur&1){
-			result=buffer[0]>>4;
-			buffer=buffer[1..$];
-		}else result=buffer[0]&0x0f;
-		cur+=1;
-		return result;
-	}
+	auto channels=header.channels;
+	enforce(channels==1||channels==2);
+	enforce(blockAlign>=4*channels);
 	immutable short[16] ima_index_table = [-1, -1, -1, -1, 2, 4, 6, 8,-1, -1, -1, -1, 2, 4, 6, 8];
 	immutable short[89] ima_step_table = [7, 8, 9, 10, 11, 12, 13, 14, 16, 17,
 	                                      19, 21, 23, 25, 28, 31, 34, 37, 41, 45,
@@ -59,32 +52,61 @@ ubyte[] parseWAV(ubyte[] data){
 		if(x>=short.max) return short.max;
 		return cast(short)x;
 	}
-	int predictor,step_index,step;
-	short[] result;
-	auto numBlocks=(buffer.length+blockAlign-1)/blockAlign;
-	result.length=numBlocks+2*(buffer.length-4*numBlocks);
-	// decode ima adpcm
-	auto origBuffer=buffer;
-	foreach(i,ref x;result){
-		if((buffer.ptr-origBuffer.ptr)%blockAlign==0){
-			predictor=x=cast(short)(buffer[1]<<8|buffer[0]);
-			step_index=buffer[2];
-			buffer=buffer[4..$];
-		}else{
-			auto nibble=get_nibble();
-			if(step_index<0) step_index=0;
-			if(step_index>88) step_index=88;
-			step=ima_step_table[step_index];
-			auto sign=nibble&8;
-			auto delta=nibble&7;
-			auto diff=((2*delta+1)*step)>>3;
-			if(sign) predictor-=diff;
-			else predictor+=diff;
-			predictor=x=clampToShort(predictor);
-			step_index+=ima_index_table[nibble];
-		}
+	size_t numSamples;
+	for(auto remaining=buffer;remaining.length;){
+		auto blockSize=remaining.length<blockAlign?remaining.length:blockAlign;
+		enforce(blockSize>=4*channels);
+		auto compressedSize=blockSize-4*channels;
+		// stereo blocks contain four compressed bytes per channel in turn.
+		enforce(channels==1||compressedSize%(4*channels)==0);
+		numSamples+=channels+2*compressedSize;
+		remaining=remaining[blockSize..$];
 	}
-	enforce(buffer.length==0);
+	short[] result;
+	// decode ima adpcm
+	result.length=numSamples;
+	size_t outputOffset;
+	while(buffer.length){
+		auto blockSize=buffer.length<blockAlign?buffer.length:blockAlign;
+		auto block=buffer[0..blockSize];
+		buffer=buffer[blockSize..$];
+		int[2] predictors,stepIndices;
+		foreach(channel;0..channels){
+			auto offset=4*channel;
+			auto predictor=cast(short)(block[offset+1]<<8|block[offset]);
+			predictors[channel]=predictor;
+			stepIndices[channel]=block[offset+2];
+			result[outputOffset+channel]=predictor;
+		}
+		size_t frame=1;
+		auto offset=4*channels;
+		while(offset<block.length){
+			foreach(channel;0..channels){
+				foreach(i;0..4){
+					if(offset>=block.length) break; // a final mono block may have a short group.
+					auto packed=block[offset++];
+					foreach(nibbleIndex;0..2){
+						auto nibble=nibbleIndex==0?packed&0x0f:packed>>4;
+						if(stepIndices[channel]<0) stepIndices[channel]=0;
+						if(stepIndices[channel]>88) stepIndices[channel]=88;
+						auto step=ima_step_table[stepIndices[channel]];
+						auto sign=nibble&8;
+						auto delta=nibble&7;
+						auto diff=((2*delta+1)*step)>>3;
+						if(sign) predictors[channel]-=diff;
+						else predictors[channel]+=diff;
+						auto predictor=clampToShort(predictors[channel]);
+						predictors[channel]=predictor;
+						stepIndices[channel]+=ima_index_table[nibble];
+						result[outputOffset+(frame+2*i+nibbleIndex)*channels+channel]=predictor;
+					}
+				}
+			}
+			frame+=8;
+		}
+		outputOffset+=channels+2*(block.length-4*channels);
+	}
+	enforce(outputOffset==result.length);
 	return cast(ubyte[])result;
 }
 
@@ -93,12 +115,12 @@ struct SampHeader{
 	ubyte[4] unknown1;
 	ubyte[4] unknown2;
 	uint size;
-	ushort unknown3=16; // bits per sample?
-	ushort unknown4=16; // bits per sample?
+	ushort audioFormat=1;
+	ushort channels=1;
 	uint sampleRate=22050;
 	uint byteRate=44100;
 	ushort unknown5=32;
-	ushort unknown6=1; // channels?
+	ushort bitsPerSample=16;
 }
 struct Samp{
 	SampHeader* header;
@@ -116,7 +138,7 @@ Samp parseSAMP(ubyte[] data){
 }
 
 int sampDuration(Samp samp,int framesPerSecond){
-	auto byteRate=short.sizeof*samp.header.sampleRate;
+	auto byteRate=short.sizeof*samp.header.channels*samp.header.sampleRate;
 	if(!byteRate) return 0;
 	return cast(int)((samp.data.length*framesPerSecond+byteRate-1)/byteRate);
 }
@@ -129,10 +151,11 @@ Samp loadSAMP(string filename){
 Samp sliceSAMP(Samp orig,float lfrac,float rfrac){
 	auto header=new SampHeader;
 	*header=*orig.header;
-	auto byteRate=2;
-	enforce(orig.data.length%byteRate==0);
-	auto l=cast(uint)(orig.data.length*lfrac)/byteRate*byteRate;
-	auto r=cast(uint)(orig.data.length*rfrac+byteRate-1)/byteRate*byteRate;
+	auto frameSize=cast(uint)(short.sizeof*orig.header.channels);
+	enforce(frameSize!=0);
+	enforce(orig.data.length%frameSize==0);
+	auto l=cast(uint)(orig.data.length*lfrac)/frameSize*frameSize;
+	auto r=cast(uint)(orig.data.length*rfrac+frameSize-1)/frameSize*frameSize;
 	header.size=r-l;
 	return Samp(header,orig.data[l..r]);
 }

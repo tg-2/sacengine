@@ -67,10 +67,12 @@ struct Buffer{
 Buffer makeBuffer(Samp samp){
 	Buffer buffer;
 	if(!device) return buffer;
+	enforce(samp.header.channels==1||samp.header.channels==2);
+	auto format=samp.header.channels==1?AL_FORMAT_MONO16:AL_FORMAT_STEREO16;
 	alGenBuffers(1,&buffer.id);
 	alGetError();
 	if(alGetError()==AL_NO_ERROR)
-		alBufferData(buffer.id,AL_FORMAT_MONO16,samp.data.ptr,cast(int)samp.data.length,samp.header.sampleRate);
+		alBufferData(buffer.id,format,samp.data.ptr,cast(int)samp.data.length,samp.header.sampleRate);
 	return buffer;
 }
 
