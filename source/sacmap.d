@@ -1267,6 +1267,12 @@ final class SacMap(B){
 		auto triangle=getTriangleWith(pos,edge);
 		return triangle[0]!=triangle[1];
 	}
+	float getHeightWith(T,E)(Vector3f pos,T displacement,E edge){
+		auto triangle=getTriangleWith(pos,edge);
+		if(triangle[0]==triangle[1]) triangle=getTriangleWith!true(pos,edge);
+		if(triangle[0]==triangle[1]) return 0.0f;
+		return getHeightImpl(triangle,pos,displacement);
+	}
 	float getGroundHeightWith(T,E)(Vector3f pos,T displacement,E edge){
 		auto triangle=getTriangleWith(pos,edge);
 		return getHeightImpl(triangle,pos,displacement);
