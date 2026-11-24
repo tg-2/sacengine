@@ -2974,6 +2974,14 @@ static:
 		mesh.dataReady=true;
 		mesh.prepareVAO();
 	}
+	void updateMesh(Mesh mesh){ // re-upload vertices and texcoords of a finalized mesh (same sizes)
+		if(!mesh||!mesh.canRender) return;
+		glBindBuffer(GL_ARRAY_BUFFER,mesh.vbo);
+		glBufferSubData(GL_ARRAY_BUFFER,0,mesh.vertices.length*float.sizeof*3,mesh.vertices.ptr);
+		glBindBuffer(GL_ARRAY_BUFFER,mesh.tbo);
+		glBufferSubData(GL_ARRAY_BUFFER,0,mesh.texcoords.length*float.sizeof*2,mesh.texcoords.ptr);
+		glBindBuffer(GL_ARRAY_BUFFER,0);
+	}
 	BoneMesh makeBoneMesh(size_t numVertices, size_t numFaces){
 		auto m=New!BoneMesh(scene.assetManager);
 		foreach(j;0..3){
