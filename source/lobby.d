@@ -391,6 +391,9 @@ class Lobby(B){
 				freeSlots.popFront();
 			}
 		}
+		network.updateSetting!"gameSlots"(options.numSlots); // (shown in the lobby)
+		if(!gameBotSlots) gameBotSlots=options.botSlots.filter!(slot=>0<=slot&&slot<numSlots).array~(-1); // (computed once, -1: end)
+		network.updateSetting!"gameBotSlots"(cast(int[])gameBotSlots[0..$-1]);
 		if(options.synchronizeObserverChat) network.synchronizeSetting!"observerChat"();
 
 		if(options.synchronizeLevel) network.synchronizeSetting!"level"();
@@ -404,6 +407,8 @@ class Lobby(B){
 
 		network.synchronizeSetting!"pauseOnDrop"();
 	}
+
+	int[] gameBotSlots=null;
 
 	bool synchronizeSettings(ref Options options)in{
 		assert(!!network);
@@ -740,9 +745,14 @@ class Lobby(B){
 		B.setLobbyNetwork(network,isHost?options.numSlots:-1); // (players are shown while waiting)
 		network.update(controller); // (may be null)
 		bool lateJoining=false;
+		bool canStart=isHost&&!gameStarting&&allPlayersWaiting();
+		B.updateLobby(network,options.map,isHost,canStart,!gameStarting&&!network.lateJoining&&!network.pendingResynch); // (lobby screen)
 		if(isHost){
 			if(!gameStarting){
-				if(!canStartGame(options)) return false;
+				bool requested=B.takeLobbyStartRequest(); // (Start button)
+				bool start=canStart&&(requested||options.autoStart&&canStartGame(options));
+				if(!start) return false;
+				B.updateLobby(network,options.map,isHost,false,false);
 				network.acceptingNewConnections=false;
 				network.updateStatus(PlayerStatus.pendingGameInit); // (the other players start loading the map)
 				gameStarting=true;
@@ -753,6 +763,7 @@ class Lobby(B){
 			if(!lateJoining&&!(isConnectedStatus(hostStatus)&&hostStatus>=PlayerStatus.pendingGameInit))
 				return false; // (game not started yet)
 			gameStarting=true;
+			B.updateLobby(network,options.map,isHost,false,false);
 		}
 		if(!map){
 			loadingPhase(0.0f,0.4f);
@@ -781,16 +792,25 @@ class Lobby(B){
 		state=LobbyState.readyToStart;
 		return true;
 	}
-	// for now as before: once all slots are occupied and all players wait for the game start
+	// the host can start the game once no player in a slot is still connecting or downloading the map
+	bool allPlayersWaiting()in{
+		assert(network&&isHost);
+	}do{
+		foreach(i,ref player;network.players.data){
+			if(i==network.host||!isConnectedStatus(player.status)) continue;
+			if(player.requiredToControlState&&player.status!=PlayerStatus.pendingGameInit) return false;
+		}
+		return true;
+	}
+	// --auto-start: the host starts the game once all slots are occupied (and all players wait for the start)
 	bool canStartGame(ref Options options)in{
 		assert(network&&isHost);
 	}do{
+		if(!allPlayersWaiting()) return false;
 		int occupiedSlots=network.players[network.host].wantsToControlState?1:0;
 		foreach(i,ref player;network.players.data){
 			if(i==network.host||!isConnectedStatus(player.status)) continue;
-			bool waiting=player.status==PlayerStatus.pendingGameInit;
-			if(player.wantsToControlState&&waiting) occupiedSlots++;
-			if(player.requiredToControlState&&!waiting) return false; // (still connecting or downloading the map)
+			if(player.wantsToControlState&&player.status==PlayerStatus.pendingGameInit) occupiedSlots++;
 		}
 		bool[int] botSlots;
 		foreach(botSlot;options.botSlots)

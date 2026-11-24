@@ -7,7 +7,7 @@
 // With yielding disabled (e.g. WebAssembly, where Fibers are not available) everything runs to completion at once.
 
 import core.time: MonoTime, Duration, msecs;
-import std.algorithm: max, min;
+import std.algorithm: max, min, endsWith;
 
 struct LoadingStatus{
 	string mapFolder=null; // folder of the map being loaded (map files such as LIMG, DESC and LOAD), null until known
@@ -167,6 +167,28 @@ ubyte[] loadTGARGB(string filename,out int width,out int height){
 			auto q=3*(cast(size_t)y*width+x);
 			rgb[q]=bgr[2]; rgb[q+1]=bgr[1]; rgb[q+2]=bgr[0];
 		}
+	}
+	return rgb;
+}
+// .PREV of a .scp map: 128x128 preview (RGB565) shown in the lobby, read without loading the map; returns RGB, null if there is none
+enum mapPreviewSize=128;
+ubyte[] mapPreviewRGB(string filename){
+	if(!filename.endsWith(".scp")) return null;
+	import wadmanager: WadManager;
+	static void handle(ubyte[] data,string name,ubyte[]* preview){
+		if(name.endsWith(".PREV")&&!*preview) *preview=data;
+	}
+	ubyte[] preview;
+	auto wads=new WadManager; // (only used to read the index, the map's files are not registered)
+	wads.indexWAD!(handle,0,false)(filename,"`_preview",&preview);
+	enum n=mapPreviewSize*mapPreviewSize;
+	if(preview.length!=2*n) return null;
+	auto rgb=new ubyte[](3*n);
+	foreach(i;0..n){
+		uint v=preview[2*i]|preview[2*i+1]<<8;
+		rgb[3*i]=cast(ubyte)(((v>>11)&31)*255/31);
+		rgb[3*i+1]=cast(ubyte)(((v>>5)&63)*255/63);
+		rgb[3*i+2]=cast(ubyte)((v&31)*255/31);
 	}
 	return rgb;
 }

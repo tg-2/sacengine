@@ -781,6 +781,38 @@ final class SacForm(B){
 		});
 	}
 
+	// lobby (ybol) with numSlots slots: the original has room for five slots (stls), further slots are added below
+	// and everything below the slots moves down accordingly
+	enum lobbySlotsInOriginal=5, lobbySlotSpacing=58;
+	static char lobbySlotDigit(int slot){ return synchronizationRowDigit(slot); } // (first character of the slot form ids, e.g. "1#PN")
+	private static SacForm!B[int] lobbyForms;
+	static SacForm!B lobby(int numSlots){
+		numSlots=max(lobbySlotsInOriginal,min(numSlots,35));
+		if(auto r=numSlots in lobbyForms) return *r;
+		auto delta=(numSlots-lobbySlotsInOriginal)*lobbySlotSpacing;
+		char[4] slotsTag=['\x01','s','t',cast(char)numSlots]; // (derived forms are registered under tags that do not occur in the game files)
+		auto slots=derived("stls",(ref FormHeader header,ref Element[] elements){
+			auto original=elements.length;
+			foreach(slot;lobbySlotsInOriginal..numSlots){
+				auto copy=elements[original-1];
+				copy.top+=(slot-(lobbySlotsInOriginal-1))*lobbySlotSpacing;
+				copy.id[0]=lobbySlotDigit(slot);
+				elements~=copy;
+			}
+			header.height+=delta;
+		});
+		sacForms[slotsTag]=slots;
+		return lobbyForms[numSlots]=derived("ybol",(ref FormHeader header,ref Element[] elements){
+			foreach(ref e;elements){
+				if(e.id=="stls"){
+					e.pictureOrForm=slotsTag;
+					e.height+=delta;
+				}else if(e.id!="iPAM") e.top+=delta; // (chat and buttons)
+			}
+			header.height+=delta;
+		});
+	}
+
 	// loading screen (igam) widened to width (at least 640): the main bar spans the whole width, the rest stays centered
 	private static SacForm!B[int] loadingScreenForms;
 	static SacForm!B loadingScreen(int width){
@@ -814,6 +846,7 @@ struct ElementState{
 	int textStart=0;
 	int textEnd=0;
 	float progress=0.0f; // progressbar, in [0,1]
+	char[4] picture=0; // picture: icon shown instead of the default one (tag as in the form files), 0: default
 }
 
 bool activate(ref ElementState element){

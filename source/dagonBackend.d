@@ -220,6 +220,7 @@ final class SacScene: Scene{
 		info.gameBlackedOut=loadingStatus.initializingGame||!state&&lobbyNetwork; // (also while waiting for the game start)
 		info.loadingProgress=loadingStatus.progress;
 		info.loadingMapFolder=loadingStatus.mapFolder;
+		updateLobbyForm();
 		updateSynchronizationRows();
 		info.startCountdownProgress=controller&&controller.network?controller.network.startCountdownProgress():float.nan;
 		typeof(renderer).R2DOpt r2dopt={cursorSize: options.cursorSize,
@@ -741,17 +742,131 @@ final class SacScene: Scene{
 		return lobbyNetwork;
 	}
 	bool synchronizationFormVisible(){
-		if(loadingDone()) return false;
+		if(loadingDone()||lobbyFormOpen) return false;
 		auto network=synchronizationNetwork();
 		if(!network) return false;
 		if(loadingScreenVisible()) return false;
 		return !network.startScheduled; // (start countdown is shown instead)
 	}
+	// lobby screen (form ybol, enlarged for more than five slots): shown while the players of a network game wait for the start
+	bool lobbyVisible=false; // (set by the lobby)
+	string lobbyMapFilename=null;
+	bool lobbyIsHost=false, lobbyCanStart=false, lobbyStartRequested=false;
+	bool lobbyFormOpen=false;
+	int lobbyFormSlots=-1;
+	void updateLobby(Network!DagonBackend network,string mapFilename,bool isHost,bool canStart,bool visible){
+		lobbyNetwork=network;
+		lobbyMapFilename=mapFilename;
+		lobbyIsHost=isHost;
+		lobbyCanStart=canStart;
+		lobbyVisible=visible;
+		if(!visible) lobbyStartRequested=false;
+	}
+	void closeLobbyForm(){
+		if(!lobbyFormOpen) return;
+		lobbyFormOpen=false;
+		forms.length=0;
+		disableMenu();
+	}
+	static string godName(immutable(SpellSpec)[] spellbook){
+		import ntts: God;
+		static immutable names=["","Persephone","Pyro","James","Stratos","Charnel"];
+		foreach(god;[God.persephone,God.pyro,God.james,God.stratos,God.charnel])
+			if(spellbook==defaultSpells[god]) return names[god];
+		return spellbook.length?"?":null; // (custom spellbook)
+	}
+	void updateLobbyForm(){
+		info.lobbyMapFilename=lobbyMapFilename;
+		info.lobbyChatMessages=lobbyFormOpen&&lobbyNetwork?lobbyNetwork.lobbyChatMessages.data:null;
+		auto network=lobbyNetwork;
+		if(!lobbyVisible||state||!network||network.me==-1){
+			closeLobbyForm();
+			return;
+		}
+		auto numSlots=lobbyIsHost?lobbyNumSlots:network.hostSettings.gameSlots;
+		auto formSlots=SacForm!DagonBackend.lobby(numSlots).height; // (the form only changes for more than five slots)
+		if(!lobbyFormOpen||lobbyFormSlots!=formSlots){
+			closeLobbyForm();
+			forms.length=0;
+			forms~=sacFormInstance!DagonBackend(SacForm!DagonBackend.lobby(numSlots));
+			lobbyFormOpen=true;
+			lobbyFormSlots=formSlots;
+			enableMenu();
+		}
+		auto elements=forms[0].elements.data;
+		void setText(ref ElementState element,const(char)[] text){
+			if(element.textInput.data==text) return;
+			element.textInput.length=0;
+			foreach(char c;text) element.textInput~=c;
+			element.textStart=0;
+			element.textEnd=to!int(element.textInput.length);
+		}
+		auto botSlots=network.hostSettings.gameBotSlots;
+		int slot=-1;
+		char[4] parentId=0; // (form containing the current element: "tols" for a slot, "iPAM" for the map)
+		size_t parentEnd=0;
+		foreach(i,ref element;elements){
+			if(i>=parentEnd) parentId=0;
+			if(element.type==.form.ElementType.form){
+				if(element.id.among("tols","iPAM")){
+					if(element.id=="tols") slot++; // (slot forms in order)
+					parentId=element.id;
+					parentEnd=i+1+element.numChildren;
+				}
+				continue;
+			}
+			if(parentId=="iPAM"){ // map
+				if(element.id=="pam_") element.picture=lobbyMapFilename.length?"PREV":"\0\0\0\0";
+				else if(element.id=="eman"){
+					import std.path: baseName, stripExtension;
+					setText(element,lobbyMapFilename.length?stripExtension(baseName(lobbyMapFilename)):"");
+				}
+				continue;
+			}
+			if(parentId=="tols"){ // slot
+				bool used=slot<numSlots;
+				Player* player=null;
+				bool isHost=false;
+				foreach(j,ref p;network.players.data)
+					if(p.slot==slot&&!p.settings.observer&&isConnectedStatus(p.status)){ player=&p; isHost=j==network.host; break; }
+				bool bot=!player&&botSlots.canFind(slot);
+				static char[4] numbered(string tag,int i){ char[4] r=tag[0..4]; r[0]=cast(char)('1'+i); return r; }
+				element.visible=used;
+				switch(element.id){
+					case "munp": element.picture=(player||bot)&&slot<4?numbered("1lsl",slot):"olsl"; break; // (slot number, open slot)
+					case "epyt": element.picture=player?"alpl":bot?"vlpl":"xlpl"; break; // (human, computer, none)
+					case "maet":
+						auto team=player?player.settings.team:-1;
+						element.picture=0<=team&&team<3?numbered("1mtl",team):"xmtl";
+						break;
+					case "yder":
+						bool ready=bot||player&&(isHost||player.status>=PlayerStatus.pendingGameInit);
+						element.picture=player||bot?(ready?"uhtl":"dhtl"):"dhtl";
+						break;
+					case "eman":
+						element.enabled=false;
+						setText(element,player?player.settings.name:bot?"Computer":"");
+						break;
+					case "_dog":
+						element.enabled=false;
+						setText(element,player?godName(player.settings.spellbook):"");
+						break;
+					default: break;
+				}
+				continue;
+			}
+			switch(element.id){
+				case "trts": element.visible=lobbyIsHost; element.enabled=lobbyIsHost&&lobbyCanStart; break; // start (host)
+				case "tesg": element.enabled=false; break; // game settings (later)
+				default: break;
+			}
+		}
+	}
 	void updateSynchronizationRows(){
 		info.synchronizationRows.length=0;
 		if(!synchronizationFormVisible()) return;
 		auto network=synchronizationNetwork();
-		int numSlots=state?to!int(state.slots.length):lobbyNumSlots;
+		int numSlots=state?to!int(state.slots.length):lobbyNumSlots!=-1?lobbyNumSlots:network.hostSettings.gameSlots;
 		if(numSlots==-1){ // (only known to the host before the game is initialized)
 			numSlots=0;
 			foreach(ref player;network.players.data)
@@ -837,6 +952,13 @@ final class SacScene: Scene{
 					else forms[formIndex].elements[5].checked=chatOptions.checked[$-1]=all(chatOptions.checked[0..$-1]);
 				}
 				break;
+			case "ybol": // lobby
+				if(elementIndex<forms[formIndex].elements.length){
+					auto id=forms[formIndex].elements[elementIndex].id;
+					if(id=="trts") lobbyStartRequested=true;
+					else if(id=="lcnc") DagonBackend.app.exit(); // (cancel: quit)
+				}
+				break;
 			case "sohc": // trigger choice dialog
 				if(elementIndex<forms[formIndex].elements.length){
 					auto id=forms[formIndex].elements[elementIndex].id;
@@ -900,6 +1022,17 @@ final class SacScene: Scene{
 				updateForm(formIndex,form.activeIndex);
 				if(formIndex>=forms.length) return;
 			}
+		}
+		if(keyDown[KEY_RETURN]&&lobbyFormOpen&&form.sacForm.tag=="ybol"&&lobbyNetwork){ // lobby chat
+			foreach(ref element;form.elements.data){
+				if(element.type!=.form.ElementType.entrybox||element.id!="txtc") continue;
+				if(element.textInput.length){
+					lobbyNetwork.sendLobbyChatMessage(element.textInput.data);
+					element.textInput.length=0;
+					element.textStart=element.textEnd=element.textCursor=0;
+				}
+			}
+			keyDown[KEY_RETURN]=0;
 		}
 		foreach(_;0..keyDown[KEY_RETURN]){
 			if(form.returnIsOk&&form.activeIndex!=form.escapeIndex) form.activeOk();
@@ -2862,6 +2995,15 @@ static:
 	void setLobbyNetwork(Network!DagonBackend network,int numSlots){
 		scene.lobbyNetwork=network;
 		scene.lobbyNumSlots=numSlots;
+	}
+	// lobby screen while waiting for the start of a network game
+	void updateLobby(Network!DagonBackend network,string mapFilename,bool isHost,bool canStart,bool visible){
+		scene.updateLobby(network,mapFilename,isHost,canStart,visible);
+	}
+	bool takeLobbyStartRequest(){
+		auto r=scene.lobbyStartRequested;
+		scene.lobbyStartRequested=false;
+		return r;
 	}
 	void focusCamera(int id,bool reset=true){
 		scene.focusCamera(id,reset);

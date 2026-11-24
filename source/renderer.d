@@ -165,6 +165,8 @@ struct RenderInfo(B){
 	float startCountdownProgress=float.nan; // loading bar before the synchronized game start (NaN: hidden)
 	bool loadingScreenVisible=false;
 	bool gameBlackedOut=false; // the game state is being built, only forms are drawn
+	string lobbyMapFilename=null; // map shown in the lobby (preview picture)
+	const(string)[] lobbyChatMessages; // shown in the lobby ("name: message")
 	float loadingProgress=0.0f;
 	string loadingMapFolder=null;
 	static struct SynchronizationRow{
@@ -5192,7 +5194,21 @@ struct Renderer(B){
 	// text split into lines at \n and between words to fit into width (form units), each line centered
 	// text broken into lines at '\n' and between words to fit into width, each line centered horizontally, and the lines centered vertically within height (as the original does for the loading screen description)
 	void drawCenteredText(SacFont!B font,const(char)[] text,float left,float top,float width,float height,float scale,ref RenderInfo!B info,B.RenderContext rc){
-		const(char)[][] lines;
+		auto numLines=countLines(font,text,width);
+		FormatSettings settings={flowType:FlowType.left,scale:scale};
+		auto y=top+0.5f*scale*max(0.0f,height-numLines*font.lineHeight);
+		wrapLines(font,text,width,(const(char)[] line){
+			auto lineWidth=font.getTextWidth(line);
+			drawText(font,line,left+0.5f*scale*(width-lineWidth),y,settings,info,rc);
+			y+=scale*font.lineHeight;
+		});
+	}
+	// text broken into lines at '\n' and between words to fit into width (a single word that is too long stays on its own line)
+	static void wrapLines(SacFont!B font,const(char)[] text,float width,scope void delegate(const(char)[] line) sink){
+		void line(const(char)[] l){
+			while(l.length&&l[$-1]==' ') l=l[0..$-1];
+			sink(l);
+		}
 		foreach(paragraph;text.splitter('\n')){
 			size_t lineStart=0,lineEnd=size_t.max;
 			for(size_t wordStart=0;;){
@@ -5200,25 +5216,22 @@ struct Renderer(B){
 				auto wordEnd=wordStart;
 				while(wordEnd<paragraph.length&&paragraph[wordEnd]!=' ') wordEnd++;
 				if(lineEnd!=size_t.max&&font.getTextWidth(paragraph[lineStart..wordEnd])>width){
-					lines~=paragraph[lineStart..lineEnd];
+					line(paragraph[lineStart..lineEnd]);
 					lineStart=wordStart;
 				}
 				lineEnd=wordEnd;
 				if(wordEnd>=paragraph.length){
-					lines~=paragraph[lineStart..$];
+					line(paragraph[lineStart..$]);
 					break;
 				}
 				wordStart=wordEnd;
 			}
 		}
-		FormatSettings settings={flowType:FlowType.left,scale:scale};
-		auto y=top+0.5f*scale*max(0.0f,height-lines.length*font.lineHeight);
-		foreach(line;lines){
-			while(line.length&&line[$-1]==' ') line=line[0..$-1];
-			auto lineWidth=font.getTextWidth(line);
-			drawText(font,line,left+0.5f*scale*(width-lineWidth),y,settings,info,rc);
-			y+=scale*font.lineHeight;
-		}
+	}
+	static int countLines(SacFont!B font,const(char)[] text,float width){
+		int n=0;
+		wrapLines(font,text,width,(const(char)[] line){ n++; });
+		return n;
 	}
 
 	// loading screen as in the original (form igam): map picture, map description and loading progress
@@ -5267,6 +5280,40 @@ struct Renderer(B){
 		B.colorHUDMaterialBackend.setColor(Color4f(1.0f,1.0f,1.0f,1.0f));
 		B.colorHUDMaterialBackend.unbind(null,rc);
 	}
+	// pictures that form elements show instead of their default one (ElementState.picture): icons from the game files,
+	// and the lobby's map preview (tag "PREV")
+	B.Texture[char[4]] formPictures;
+	string lobbyMapPreviewFilename=null;
+	B.Texture lobbyMapPreview;
+	B.Texture formPicture(char[4] tag,ref RenderInfo!B info){
+		if(tag=="PREV"){
+			if(lobbyMapPreviewFilename!=info.lobbyMapFilename){
+				lobbyMapPreviewFilename=info.lobbyMapFilename;
+				lobbyMapPreview=null;
+				if(info.lobbyMapFilename.length){
+					try{
+						import loading: mapPreviewRGB, mapPreviewSize;
+						if(auto rgb=mapPreviewRGB(info.lobbyMapFilename)){
+							import dlib.image: image;
+							auto picture=image(mapPreviewSize,mapPreviewSize,3);
+							picture.data[]=rgb[];
+							lobbyMapPreview=B.makeTexture(picture,false);
+						}
+					}catch(Exception e){
+						stderr.writeln("warning: failed to load map preview (",e.msg,")");
+					}
+				}
+			}
+			return lobbyMapPreview;
+		}
+		if(auto r=tag in formPictures) return *r;
+		B.Texture texture=null;
+		import nttData: formIcons;
+		import txtr: loadTXTR;
+		if(auto filename=tag in formIcons) texture=B.makeTexture(loadTXTR(*filename));
+		return formPictures[tag]=texture;
+	}
+
 	void renderLoadingScreen(ref RenderInfo!B info,B.RenderContext rc){
 		if(!info.loadingScreenVisible) return;
 		updateLoadingScreenContents(info.loadingMapFolder);
@@ -5898,7 +5945,10 @@ struct Renderer(B){
 						part.mesh[0].render(rc);
 					}
 				}else foreach(i,ref part;sacElement.parts){
-					B.colorHUDMaterialBackend.bindDiffuse(part.texture);
+					auto texture=part.texture;
+					if(sacElement.type==ElementType.picture&&elements[elementIndex].picture!="\0\0\0\0")
+						if(auto picture=formPicture(elements[elementIndex].picture,info)) texture=picture;
+					B.colorHUDMaterialBackend.bindDiffuse(texture);
 					if(i==0&&sacElement.type==ElementType.canvas){
 						B.colorHUDMaterialBackend.setColor(Color4f(0.0f,0.0f,0.0f,1.0f));
 						part.mesh[active].render(rc); // TODO: actually get correct canvas contents
@@ -5966,7 +6016,7 @@ struct Renderer(B){
 		}
 		auto sacForm=form.sacForm;
 		import std.math: isNaN;
-		auto formScaling=isNaN(scaling)?info.hudScaling:scaling;
+		auto formScaling=isNaN(scaling)?defaultFormScaling(sacForm,info):scaling;
 		auto offset=Vector3f(0.5f*(info.width-formScaling*sacForm.width),0.5f*(info.height-formScaling*sacForm.height),0.0f)+shift;
 		auto rotation=Quaternionf.identity();
 		auto scale=Vector3f(formScaling,formScaling,0.0f);
@@ -5974,6 +6024,46 @@ struct Renderer(B){
 		if(info.mouse.target.type==TargetType.formElement&&info.mouse.target.formIndex==formIndex)
 			elementIndex=info.mouse.target.elementIndex;
 		renderFormElements(sacForm,form.elements.data,0,to!int(form.elements.data.length),form.activeIndex,elementIndex,offset,rotation,scale);
+	}
+
+	float defaultFormScaling(SacForm!B sacForm,ref RenderInfo!B info){
+		auto scaling=info.hudScaling;
+		if(sacForm.height>loadingScreenFormHeight) // (e.g., lobby with many slots: fits the screen)
+			scaling=min(scaling,cast(float)info.height/sacForm.height,cast(float)info.width/sacForm.width);
+		return scaling;
+	}
+	// lobby chat (form ybol, element tahc): the most recent messages, at the bottom
+	void renderLobbyChat(ref SacFormState!B form,ref RenderInfo!B info,B.RenderContext rc){
+		auto sacForm=form.sacForm;
+		if(sacForm.tag!="ybol"||!info.lobbyChatMessages.length) return;
+		auto scaling=defaultFormScaling(sacForm,info);
+		auto offset=Vector2f(0.5f*(info.width-scaling*sacForm.width),0.5f*(info.height-scaling*sacForm.height));
+		foreach(ref sacElement;sacForm.sacElements){
+			if(sacElement.id!="tahc") continue;
+			enum border=8.0f, scrollbarWidth=16.0f;
+			auto left=sacElement.offset.x+border, top=sacElement.offset.y+border;
+			auto width=sacElement.size.x-2.0f*border-scrollbarWidth, height=sacElement.size.y-2.0f*border;
+			auto font=formSacFont!B(FormFont.standard);
+			int maxLines=cast(int)(height/font.lineHeight);
+			auto messages=info.lobbyChatMessages;
+			size_t first=messages.length;
+			int numLines=0;
+			while(first>0&&numLines<maxLines) numLines+=countLines(font,messages[--first],width);
+			int skip=max(0,numLines-maxLines); // (lines of the oldest shown message that do not fit)
+			FormatSettings settings={flowType:FlowType.left,scale:scaling};
+			bindFont(font,rc);
+			setFontColor(font,Color4f(1.0f,1.0f,1.0f,1.0f));
+			auto y=offset.y+scaling*top;
+			foreach(message;messages[first..$]){
+				wrapLines(font,message,width,(const(char)[] line){
+					if(skip>0){ skip--; return; }
+					drawText(font,line,offset.x+scaling*left,y,settings,info,rc);
+					y+=scaling*font.lineHeight;
+				});
+			}
+			unbindFont(font,rc);
+			break;
+		}
 	}
 
 	void renderForms(scope SacFormState!B[] forms,ref RenderInfo!B info,B.RenderContext rc){
@@ -6000,6 +6090,7 @@ struct Renderer(B){
 			renderForm(form,to!ushort(i),info,rc);
 		}
 		B.colorHUDMaterialBackend.unbind(null,rc);
+		foreach(ref form;forms) renderLobbyChat(form,info,rc);
 	}
 
 	void renderShadowCastingEntities3D(R3DOpt options,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
