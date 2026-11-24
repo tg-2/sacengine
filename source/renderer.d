@@ -177,7 +177,18 @@ struct RenderInfo(B){
 	Array!SynchronizationRow synchronizationRows; // one per slot, empty: synchronization form hidden
 }
 
+struct ParticleInstance(B){
+	Vector3f position;
+	float size;
+	float alpha;
+	B.Mesh mesh;
+}
+struct ParticleBucket(B){
+	SacParticle!B sacParticle;
+	Array!(ParticleInstance!B) instances;
+}
 struct Renderer(B){
+	Array!(ParticleBucket!B) particleBuckets; // particles of the emitters, by particle type
 	SacSky!B sacSky;
 	void createSky(){
 		sacSky=new SacSky!B();
@@ -3787,18 +3798,37 @@ struct Renderer(B){
 			}else static if(is(T==ParticleEmitters!B)){
 				static if(mode==RenderMode.transparent){
 					if(rc.shadowMode) return; // TODO: particle shadows?
-					static void renderParticle(SacParticle!B sacParticle,Vector3f position,float scale,int lifetime,int frame,B.RenderContext rc){
-						auto material=sacParticle.material;
-						material.backend.setSpriteTransformationScaled(position,scale*sacParticle.getScale(lifetime),rc);
-						material.backend.setAlpha(sacParticle.getAlpha(lifetime));
-						sacParticle.getMesh(frame).render(rc);
+					// collect the particles of all emitters by particle type, then draw each type at once
+					static void collect(SacParticle!B sacParticle,Vector3f position,float size,float alpha,B.Mesh mesh,int sideFilter,Renderer!B* self,int renderSide){
+						if(sideFilter!=int.min&&sideFilter!=renderSide) return;
+						auto buckets=&self.particleBuckets;
+						auto k=sacParticle.renderBucket;
+						if(k<0||k>=buckets.length||(*buckets)[k].sacParticle !is sacParticle){
+							k=-1;
+							foreach(l;0..buckets.length) if((*buckets)[l].sacParticle is sacParticle){ k=cast(int)l; break; }
+							if(k==-1){
+								buckets.length=buckets.length+1;
+								k=cast(int)buckets.length-1;
+								(*buckets)[k].sacParticle=sacParticle;
+							}
+							sacParticle.renderBucket=k;
+						}
+						(*buckets)[k].instances~=ParticleInstance!B(position,size,alpha,mesh);
 					}
-					foreach(ref emitter;objects.emitters.data){
-						auto material=emitter.sacParticle.material;
+					foreach(ref emitter;objects.emitters.data)
+						emitter.eachEmitterParticle!collect(state,self,info.renderSide);
+					foreach(ref bucket;self.particleBuckets.data){
+						if(!bucket.instances.length) continue;
+						auto material=bucket.sacParticle.material;
 						material.bind(rc);
 						material.backend.setInformation(Vector4f(0.0f,0.0f,0.0f,0.0f));
-						scope(success) material.unbind(rc);
-						emitter.eachEmitterParticle!renderParticle(state,rc);
+						foreach(ref instance;bucket.instances.data){
+							material.backend.setSpriteTransformationScaled(instance.position,instance.size,rc);
+							material.backend.setAlpha(instance.alpha);
+							instance.mesh.render(rc);
+						}
+						material.unbind(rc);
+						bucket.instances.length=0;
 					}
 				}
 			}else static if(is(T==CommandCones!B)) with(self){

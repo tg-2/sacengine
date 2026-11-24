@@ -2881,8 +2881,8 @@ final class SacScene: Scene{
 	void animateTarget(Target target){
 		switch(target.type){
 			case TargetType.none: return;
-			case TargetType.terrain:{ int emitter=0; animateManalith(target.position, renderSide, emitter, state.current); break; }
-			case TargetType.creature, TargetType.building:{ int emitter=0; animateManafount(target.position, emitter, state.current); break; }
+			case TargetType.terrain: animateManalith(target.position, renderSide, state.current); break;
+			case TargetType.creature, TargetType.building: animateManafount(target.position, state.current); break;
 			case TargetType.soul: animateManahoar(target.position, renderSide, 30.0f, state.current); break;
 			default: assert(target.location!=TargetLocation.scene); break;
 		}

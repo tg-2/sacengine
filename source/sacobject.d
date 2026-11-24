@@ -1373,6 +1373,7 @@ enum ParticleKind{
 
 final class SacParticle(B){
 	int stateIndex=-1;
+	int renderBucket=-1; // index into Renderer.particleBuckets
 	B.Mesh[] meshes;
 	B.Texture texture;
 	B.Material material;
