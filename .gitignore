@@ -27,6 +27,7 @@ maps
 data-orig
 maps-orig
 fonts
+icons
 
 # ignore binaries
 *.exe

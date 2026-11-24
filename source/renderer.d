@@ -5290,6 +5290,7 @@ struct Renderer(B){
 	// pictures that form elements show instead of their default one (ElementState.picture): icons from the game files,
 	// and the lobby's map preview (tag "PREV")
 	B.Texture[char[4]] formPictures;
+	bool[9] lobbySlotIcons=[true,true,true,true,false,false,false,false,false]; // (slot number icons that exist)
 	string lobbyMapPreviewFilename=null;
 	B.Texture lobbyMapPreview;
 	B.Texture formPicture(char[4] tag,ref RenderInfo!B info){
@@ -5319,6 +5320,15 @@ struct Renderer(B){
 		import nttData: formIcons;
 		import txtr: loadTXTR;
 		if(auto filename=tag in formIcons) texture=B.makeTexture(loadTXTR(*filename));
+		else if(tag[1..4]=="lsl"&&'5'<=tag[0]&&tag[0]<='9'){ // lobby slot numbers after 4 (not in the game files): icons/lsl5.png etc., if present
+			import std.file: exists;
+			import dlib.image.io.png: loadPNG;
+			auto filename="icons/lsl"~tag[0]~".png";
+			try if(exists(filename)) texture=B.makeTexture(loadPNG(filename));
+			catch(Exception e) stderr.writeln("warning: failed to load '",filename,"' (",e.msg,")");
+			if(!texture) texture=formPicture("\x01non",info); // (number drawn as text instead)
+			else lobbySlotIcons[tag[0]-'1']=true;
+		}
 		return formPictures[tag]=texture;
 	}
 
@@ -6089,7 +6099,7 @@ struct Renderer(B){
 			foreach(ref slotElement;slots.subForms[0].form.sacElements){
 				if(slotElement.type!=ElementType.form||slotElement.subForms.length!=1) continue;
 				scope(exit) slot++;
-				if(slot<4||slot>=info.lobbyNumSlots) continue;
+				if(slot>=info.lobbyNumSlots||slot<lobbySlotIcons.length&&lobbySlotIcons[slot]) continue;
 				foreach(ref number;slotElement.subForms[0].form.sacElements){
 					if(number.id!="munp") continue;
 					import std.format: sformat;
