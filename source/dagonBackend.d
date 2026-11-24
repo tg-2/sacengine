@@ -889,7 +889,7 @@ final class SacScene: Scene{
 				static char[4] numbered(string tag,int i){ char[4] r=tag[0..4]; r[0]=cast(char)('1'+i); return r; }
 				element.visible=used;
 				switch(element.id){
-					case "munp": element.picture=slot<4?numbered("1lsl",slot):"\x01non"; break; // (slot number; the original only has icons for 1-4, further numbers are drawn as text)
+					case "munp": element.picture=slot<9?numbered("1lsl",slot):"\x01non"; break; // (slot number; the original only has icons for 1-4, icons/lsl5.png etc. if present, otherwise numbers are drawn as text)
 					case "epyt": element.picture=player?"alpl":bot?"vlpl":"olsl"; break; // (type: human, computer, open)
 					case "maet":
 						auto team=player?player.settings.team:-1;
