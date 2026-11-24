@@ -1583,6 +1583,7 @@ struct Renderer(B){
 					if(rc.shadowMode) return;
 					void renderSouls(bool filterGreen,T)(T sacSoul){
 						auto material=sacSoul.material;
+						sacSoul.flagMeshes.reset();
 						foreach(j;0..objects.length){
 							auto soul=objects[j];
 							if(state.fogOfWar3d&&!state.positionExploredBySide(info.renderSide,soul.position)) continue;
@@ -1595,10 +1596,12 @@ struct Renderer(B){
 									if(!isGreen) continue;
 								}
 							}
-							auto mesh=sacSoul.getMesh(color,soul.frame/updateAnimFactor); // TODO: do in shader?
+							auto animFrame=soul.frame/updateAnimFactor;
 							auto id=soul.id;
 							material.backend.setInformation(Vector4f(3.0f,id>>16,id&((1<<16)-1),1.0f));
 							if(objects[j].number==1){
+								auto phases=soulWavePhases(id,state.frame);
+								auto mesh=sacSoul.getFlagMesh(color,animFrame,phases[0],phases[1]); // TODO: do in shader?
 								material.backend.setSpriteTransformationScaled(soul.position+soul.scaling*Vector3f(0.0f,0.0f,1.25f*sacSoul.soulHeight),soul.scaling,rc);
 								mesh.render(rc);
 							}else{
@@ -1607,7 +1610,10 @@ struct Renderer(B){
 								auto radius=soul.scaling*sacSoul.soulRadius;
 								if(number<=3) radius*=0.3*number;
 								foreach(k;0..number){
-									auto position=soul.position+rotate(facingQuaternion(objects[j].facing+2*pi!float*k/number), Vector3f(0.0f,radius,0.0f));
+									auto angle=objects[j].facing+2*pi!float*k/number;
+									auto phases=soulWavePhases(id,state.frame,angle);
+									auto mesh=sacSoul.getFlagMesh(color,animFrame,phases[0],phases[1]);
+									auto position=soul.position+rotate(facingQuaternion(angle), Vector3f(0.0f,radius,0.0f));
 									material.backend.setSpriteTransformationScaled(position+soul.scaling*Vector3f(0.0f,0.0f,1.25f*sacSoul.soulHeight),soul.scaling*soulScaling,rc);
 									mesh.render(rc);
 								}
