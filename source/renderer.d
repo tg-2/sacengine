@@ -167,6 +167,7 @@ struct RenderInfo(B){
 	bool gameBlackedOut=false; // the game state is being built, only forms are drawn
 	string lobbyMapFilename=null; // map shown in the lobby (preview picture)
 	const(string)[] lobbyChatMessages; // shown in the lobby ("name: message")
+	int lobbyNumSlots=0;
 	float loadingProgress=0.0f;
 	string loadingMapFolder=null;
 	static struct SynchronizationRow{
@@ -5314,6 +5315,7 @@ struct Renderer(B){
 		}
 		if(auto r=tag in formPictures) return *r;
 		B.Texture texture=null;
+		if(tag=="\x01non") return formPictures[tag]=B.makeTexture(makeOnePixelImage(Color4f(0.0f,0.0f,0.0f,0.0f))); // (nothing)
 		import nttData: formIcons;
 		import txtr: loadTXTR;
 		if(auto filename=tag in formIcons) texture=B.makeTexture(loadTXTR(*filename));
@@ -6072,6 +6074,41 @@ struct Renderer(B){
 		}
 	}
 
+	// lobby: numbers of slots after the fourth (the original only has icons for 1-4), centered on the slot number element
+	void renderLobbySlotNumbers(ref SacFormState!B form,ref RenderInfo!B info,B.RenderContext rc){
+		auto sacForm=form.sacForm;
+		if(sacForm.tag!="ybol") return;
+		auto scaling=defaultFormScaling(sacForm,info);
+		auto offset=Vector2f(0.5f*(info.width-scaling*sacForm.width),0.5f*(info.height-scaling*sacForm.height));
+		auto font=formSacFont!B(FormFont.largeTitle);
+		bool bound=false;
+		scope(exit) if(bound) unbindFont(font,rc);
+		foreach(ref slots;sacForm.sacElements){
+			if(slots.id!="stls"||slots.subForms.length!=1) continue;
+			int slot=0;
+			foreach(ref slotElement;slots.subForms[0].form.sacElements){
+				if(slotElement.type!=ElementType.form||slotElement.subForms.length!=1) continue;
+				scope(exit) slot++;
+				if(slot<4||slot>=info.lobbyNumSlots) continue;
+				foreach(ref number;slotElement.subForms[0].form.sacElements){
+					if(number.id!="munp") continue;
+					import std.format: sformat;
+					char[8] buffer;
+					auto text=sformat(buffer[],"%d",slot+1);
+					auto position=slots.subForms[0].offset+slotElement.subForms[0].offset+number.offset;
+					auto size=font.getSize(text,FormatSettings());
+					if(!bound){
+						bindFont(font,rc);
+						setFontColor(font,Color4f(1.0f,1.0f,1.0f,1.0f));
+						bound=true;
+					}
+					FormatSettings settings={flowType:FlowType.left,scale:scaling};
+					drawText(font,text,offset.x+scaling*(position.x+0.5f*(number.size.x-size.x)),offset.y+scaling*(position.y+0.5f*(number.size.y-size.y)),settings,info,rc);
+				}
+			}
+		}
+	}
+
 	void renderForms(scope SacFormState!B[] forms,ref RenderInfo!B info,B.RenderContext rc){
 		if(info.mouse.menuMode) formTarget=Target.init;
 		B.colorHUDMaterialBackend.bind(null,rc);
@@ -6096,7 +6133,10 @@ struct Renderer(B){
 			renderForm(form,to!ushort(i),info,rc);
 		}
 		B.colorHUDMaterialBackend.unbind(null,rc);
-		foreach(ref form;forms) renderLobbyChat(form,info,rc);
+		foreach(ref form;forms){
+			renderLobbyChat(form,info,rc);
+			renderLobbySlotNumbers(form,info,rc);
+		}
 	}
 
 	void renderShadowCastingEntities3D(R3DOpt options,ObjectState!B state,ref RenderInfo!B info,B.RenderContext rc){
