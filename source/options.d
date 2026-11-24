@@ -196,6 +196,7 @@ struct Settings{
 
 	bool pauseOnDrop=true;
 	bool refuseGreenSouls=false;
+	bool randomGod=false; // god chosen at random when the game starts (network games)
 	// host only, shown in the lobby:
 	int gameSlots=0; // number of slots
 	int[] gameBotSlots; // slots of bots

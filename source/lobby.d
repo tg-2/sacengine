@@ -67,7 +67,7 @@ GameInit!B gameInit(B,R)(Sides!B sides_,R playerSettings,ref Options options){
 		auto maxLevel=settings.maxLevel;
 		auto xpRate=settings.xpRate;
 		auto spells=settings.spellbook;
-		if(options.randomGods) spells=defaultSpells[uniform!"[]"(1,5)];
+		if(settings.randomGod||options.randomGods) spells=defaultSpells[uniform!"[]"(1,5)];
 		if(options.randomSpellbooks) spells=randomSpells();
 		if(god==God.none&&settings.slot<options.gods.length) god=options.gods[settings.slot];
 		if(god!=God.none) spells=defaultSpells[god==randomGod?cast(God)uniform!"[]"(1,5):god];
@@ -757,6 +757,12 @@ class Lobby(B){
 		B.updateLobby(network,options.map,isHost,canStart,!gameStarting&&!network.lateJoining&&!network.pendingResynch); // (lobby screen)
 		if(isHost){
 			if(!gameStarting){
+				auto botToggle=B.takeLobbyBotToggle(); // (host adds or removes a computer player in a free slot)
+				if(botToggle!=-1){
+					if(options.botSlots.canFind(botToggle)) options.botSlots=options.botSlots.filter!(slot=>slot!=botToggle).array;
+					else options.botSlots~=botToggle;
+					gameBotSlots=null; // (sent again)
+				}
 				bool requested=B.takeLobbyStartRequest(); // (Start button)
 				bool start=canStart&&(requested||options.autoStart&&canStartGame(options));
 				if(!start) return false;

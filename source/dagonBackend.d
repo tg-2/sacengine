@@ -16,6 +16,7 @@ import renderer,audioBackend;
 import frameprof;
 import loading: loadingStatus, loadingScreenSample;
 import bots.shiny: SideType;
+import ntts: God;
 
 final class SacScene: Scene{
 	//OBJAsset aOBJ;
@@ -761,12 +762,73 @@ final class SacScene: Scene{
 		forms.length=0;
 		disableMenu();
 	}
-	static string godName(immutable(SpellSpec)[] spellbook){
-		import ntts: God;
-		static immutable names=["","Persephone","Pyro","James","Stratos","Charnel"];
+	static immutable lobbyGodNames=["Random","Persephone","Pyro","James","Stratos","Charnel"];
+	static God lobbyGod(ref Settings settings){ // (God.none: random or custom spellbook)
+		if(settings.randomGod) return God.none;
 		foreach(god;[God.persephone,God.pyro,God.james,God.stratos,God.charnel])
-			if(spellbook==defaultSpells[god]) return names[god];
-		return spellbook.length?"?":null; // (custom spellbook)
+			if(settings.spellbook==defaultSpells[god]) return god;
+		return God.none;
+	}
+	static string godName(ref Settings settings){
+		if(settings.randomGod) return lobbyGodNames[0];
+		auto god=lobbyGod(settings);
+		if(god!=God.none) return lobbyGodNames[god];
+		return settings.spellbook.length?"?":null; // (custom spellbook)
+	}
+	// slot of a slot form element in the lobby form (-1: none), and the element's id
+	int lobbySlotOfElement(int elementIndex){
+		if(!lobbyFormOpen) return -1;
+		auto elements=forms[0].elements.data;
+		int slot=-1;
+		foreach(i,ref element;elements){
+			if(element.type==.form.ElementType.form&&element.id=="tols"){
+				slot++;
+				if(i<elementIndex&&elementIndex<=i+element.numChildren) return slot;
+			}
+		}
+		return -1;
+	}
+	// lobby: own god (button) and team (icon), moving to a free slot (its number icon), host: computer players (type icon of a free slot)
+	int lobbyToggleBotSlot=-1; // (requested by the host, applied by the lobby)
+	bool lobbyElementClicked(int elementIndex){
+		auto network=lobbyNetwork;
+		if(!lobbyFormOpen||!network||network.me==-1) return false;
+		auto slot=lobbySlotOfElement(elementIndex);
+		if(slot==-1) return false;
+		auto id=forms[0].elements[elementIndex].id;
+		auto me=&network.players[network.me];
+		if(me.status>=PlayerStatus.readyToLoad) return false; // (game is starting)
+		int occupant=-1;
+		foreach(j,ref p;network.players.data)
+			if(p.slot==slot&&!p.settings.observer&&isConnectedStatus(p.status)){ occupant=to!int(j); break; }
+		bool bot=occupant==-1&&network.hostSettings.gameBotSlots.canFind(slot);
+		if(occupant==network.me){
+			if(id=="_dog"){ // next god, then random
+				auto god=lobbyGod(me.settings);
+				auto next=me.settings.randomGod?God.persephone:god==God.charnel?God.none:cast(God)(god+1);
+				if(next==God.none) network.updateSetting!"randomGod"(true);
+				else{
+					network.updateSetting!"spellbook"(defaultSpells[next]);
+					network.updateSetting!"randomGod"(false);
+				}
+				return true;
+			}
+			if(id=="maet"){ // next team, then none
+				auto team=me.settings.team;
+				network.updateSetting!"team"(team<0?0:team>=2?-1:team+1);
+				return true;
+			}
+			return false;
+		}
+		if(occupant==-1&&!bot&&id=="munp"&&!me.settings.observer){ // move to this free slot
+			network.updateSetting!"slot"(slot);
+			return true;
+		}
+		if(occupant==-1&&network.isHost&&id=="epyt"){ // add or remove a computer player
+			lobbyToggleBotSlot=slot;
+			return true;
+		}
+		return false;
 	}
 	void updateLobbyForm(){
 		info.lobbyMapFilename=lobbyMapFilename;
@@ -777,6 +839,7 @@ final class SacScene: Scene{
 			return;
 		}
 		auto numSlots=lobbyIsHost?lobbyNumSlots:network.hostSettings.gameSlots;
+		info.lobbyNumSlots=numSlots;
 		auto formSlots=SacForm!DagonBackend.lobby(numSlots).height; // (the form only changes for more than five slots)
 		if(!lobbyFormOpen||lobbyFormSlots!=formSlots){
 			closeLobbyForm();
@@ -826,8 +889,8 @@ final class SacScene: Scene{
 				static char[4] numbered(string tag,int i){ char[4] r=tag[0..4]; r[0]=cast(char)('1'+i); return r; }
 				element.visible=used;
 				switch(element.id){
-					case "munp": element.picture=(player||bot)&&slot<4?numbered("1lsl",slot):"olsl"; break; // (slot number, open slot)
-					case "epyt": element.picture=player?"alpl":bot?"vlpl":"xlpl"; break; // (human, computer, none)
+					case "munp": element.picture=slot<4?numbered("1lsl",slot):"\x01non"; break; // (slot number; the original only has icons for 1-4, further numbers are drawn as text)
+					case "epyt": element.picture=player?"alpl":bot?"vlpl":"olsl"; break; // (type: human, computer, open)
 					case "maet":
 						auto team=player?player.settings.team:-1;
 						element.picture=0<=team&&team<3?numbered("1mtl",team):"xmtl";
@@ -841,8 +904,8 @@ final class SacScene: Scene{
 						setText(element,player?player.settings.name:bot?"Computer":"");
 						break;
 					case "_dog":
-						element.enabled=false;
-						setText(element,player?godName(player.settings.spellbook):"");
+						element.enabled=player&&player is &network.players[network.me]; // (own god)
+						setText(element,player?godName(player.settings):"");
 						break;
 					default: break;
 				}
@@ -950,6 +1013,7 @@ final class SacScene: Scene{
 					auto id=forms[formIndex].elements[elementIndex].id;
 					if(id=="trts") lobbyStartRequested=true;
 					else if(id=="lcnc") DagonBackend.app.exit(); // (cancel: quit)
+					else lobbyElementClicked(elementIndex);
 				}
 				break;
 			case "sohc": // trigger choice dialog
@@ -986,6 +1050,8 @@ final class SacScene: Scene{
 						playMenuActionSound();
 						updateForm(formIndex,form.activeIndex);
 						if(formIndex>=forms.length) return;
+					}else if(element.type==.form.ElementType.picture&&form.sacForm.tag=="ybol"){
+						if(lobbyElementClicked(elementIndex)) playMenuActionSound(); // (slot icons)
 					}
 				}
 			}
@@ -2999,6 +3065,11 @@ static:
 	// lobby screen while waiting for the start of a network game
 	void updateLobby(Network!DagonBackend network,string mapFilename,bool isHost,bool canStart,bool visible){
 		scene.updateLobby(network,mapFilename,isHost,canStart,visible);
+	}
+	int takeLobbyBotToggle(){ // (slot, -1: none)
+		auto r=scene.lobbyToggleBotSlot;
+		scene.lobbyToggleBotSlot=-1;
+		return r;
 	}
 	bool takeLobbyStartRequest(){
 		auto r=scene.lobbyStartRequested;
