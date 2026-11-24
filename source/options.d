@@ -131,6 +131,7 @@ struct Options{
 	// multiplayer
 	bool host=false;
 	int numSlots=1;
+	bool autoStart=false; // host: start once all slots are occupied (otherwise with the Start button in the lobby)
 	string joinIP="";
 	bool testLag=false;
 	bool testRenderDelay=false;
@@ -195,6 +196,9 @@ struct Settings{
 
 	bool pauseOnDrop=true;
 	bool refuseGreenSouls=false;
+	// host only, shown in the lobby:
+	int gameSlots=0; // number of slots
+	int[] gameBotSlots; // slots of bots
 	// (remember to update Network!B.initSlots)
 	// TODO: automate
 }
