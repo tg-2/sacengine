@@ -83,8 +83,9 @@ struct Options{
 	bool randomSpellbooks=false;
 	// host game setup
 	int[] sides;
-	int[] botSlots;
 	God[] gods;
+	int[] botSlots;
+	int[] botTeams;
 	God[] botGods;
 	string[] botNames;
 	float damageFactor=1.0f;
@@ -197,9 +198,11 @@ struct Settings{
 	bool pauseOnDrop=true;
 	bool refuseGreenSouls=false;
 	bool randomGod=false; // god chosen at random when the game starts (network games)
-	// host only, shown in the lobby:
-	int gameSlots=0; // number of slots
-	int[] gameBotSlots; // slots of bots
+	// host only, shown in the lobby (TODO: this is a bit hacky):
+	int gameSlots=0;
+	immutable(int)[] gameBotSlots;
+	immutable(int)[] gameBotTeams;
+	immutable(God)[] gameBotGods;
 	// (remember to update Network!B.initSlots)
 	// TODO: automate
 }

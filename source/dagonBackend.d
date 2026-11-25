@@ -770,6 +770,7 @@ final class SacScene: Scene{
 		return God.none;
 	}
 	static string godName(ref Settings settings){
+		if(settings.observer) return "Observer";
 		if(settings.randomGod) return lobbyGodNames[0];
 		auto god=lobbyGod(settings);
 		if(god!=God.none) return lobbyGodNames[god];
@@ -790,6 +791,8 @@ final class SacScene: Scene{
 	}
 	// lobby: own god (button) and team (icon), moving to a free slot (its number icon), host: computer players (type icon of a free slot)
 	int lobbyToggleBotSlot=-1; // (requested by the host, applied by the lobby)
+	int lobbyToggleBotGod=-1; // (requested by the host, applied by the lobby)
+	int lobbyToggleBotTeam=-1; // (requested by the host, applied by the lobby)
 	bool lobbyElementClicked(int elementIndex){
 		auto network=lobbyNetwork;
 		if(!lobbyFormOpen||!network||network.me==-1) return false;
@@ -800,14 +803,22 @@ final class SacScene: Scene{
 		if(me.status>=PlayerStatus.readyToLoad) return false; // (game is starting)
 		int occupant=-1;
 		foreach(j,ref p;network.players.data)
-			if(p.slot==slot&&!p.settings.observer&&isConnectedStatus(p.status)){ occupant=to!int(j); break; }
-		bool bot=occupant==-1&&network.hostSettings.gameBotSlots.canFind(slot);
+			if(p.slot==slot&&isConnectedStatus(p.status)){ occupant=to!int(j); break; }
+		auto botSlots=network.hostSettings.gameBotSlots;
+		auto botIndex=occupant!=-1?botSlots.length:botSlots.countUntil(slot);
+		bool bot=botIndex<botSlots.length;
 		if(occupant==network.me){
 			if(id=="_dog"){ // next god, then random
 				auto god=lobbyGod(me.settings);
 				auto next=me.settings.randomGod?God.persephone:god==God.charnel?God.none:cast(God)(god+1);
-				if(next==God.none) network.updateSetting!"randomGod"(true);
-				else{
+				if(next==God.none){
+					if(network.settings.observer){
+						network.updateSetting!"observer"(false);
+						network.updateSetting!"randomGod"(true);
+					}else{
+						network.updateSetting!"observer"(true);
+					}
+				}else{
 					network.updateSetting!"spellbook"(defaultSpells[next]);
 					network.updateSetting!"randomGod"(false);
 				}
@@ -819,6 +830,15 @@ final class SacScene: Scene{
 				return true;
 			}
 			return false;
+		}else if(bot&&network.isHost){
+			if(id=="_dog"){
+				lobbyToggleBotGod=slot;
+				return true;
+			}
+			if(id=="maet"){
+				lobbyToggleBotTeam=slot;
+				return true;
+			}
 		}
 		if(occupant==-1&&!bot&&id=="munp"&&!me.settings.observer){ // move to this free slot
 			network.updateSetting!"slot"(slot);
@@ -884,35 +904,41 @@ final class SacScene: Scene{
 				Player* player=null;
 				bool isHost=false;
 				foreach(j,ref p;network.players.data)
-					if(p.slot==slot&&!p.settings.observer&&isConnectedStatus(p.status)){ player=&p; isHost=j==network.host; break; }
-				bool bot=!player&&botSlots.canFind(slot);
+					if(p.slot==slot&&isConnectedStatus(p.status)){ player=&p; isHost=j==network.host; break; }
+				auto botIndex=player?botSlots.length:botSlots.countUntil(slot);
+				bool bot=botIndex<botSlots.length;;
 				static char[4] numbered(string tag,int i){ char[4] r=tag[0..4]; r[0]=cast(char)('1'+i); return r; }
 				element.visible=used;
 				switch(element.id){
 					case "munp": element.picture=slot<9?numbered("1lsl",slot):"\x01non"; break; // (slot number; the original only has icons for 1-4, icons/lsl5.png etc. if present, otherwise numbers are drawn as text)
-					case "epyt": element.picture=player?"alpl":bot?"vlpl":"olsl"; break; // (type: human, computer, open)
+					case "epyt": element.picture=player?"vlpl":bot?"alpl":"olsl"; break; // (type: human, computer, open)
 					case "maet":
-						auto team=player?player.settings.team:-1;
+						element.visible=player||bot;
+						element.enabled=player&&player is &network.players[network.me]||bot&&network.isHost; // (own team)
+						auto team=player?player.settings.team:bot?network.hostSettings.gameBotTeams[botIndex]:-1;
 						element.picture=0<=team&&team<3?numbered("1mtl",team):"xmtl";
 						break;
 					case "yder":
+						element.visible=player||bot;
 						bool ready=bot||player&&(isHost||player.status>=PlayerStatus.pendingGameInit);
 						element.picture=player||bot?(ready?"uhtl":"dhtl"):"dhtl";
 						break;
 					case "eman":
-						element.enabled=false;
-						setText(element,player?player.settings.name:bot?"Computer":"");
+						element.visible=player||bot;
+						element.enabled=true;
+						setText(element,player?player.settings.name!=""?player.settings.name:"Anonymous":bot?"Computer":"");
 						break;
 					case "_dog":
-						element.enabled=player&&player is &network.players[network.me]; // (own god)
-						setText(element,player?godName(player.settings):"");
+						element.visible=player||bot;
+						element.enabled=player&&player is &network.players[network.me]||bot&&network.isHost; // (own god)
+						setText(element,player?godName(player.settings):bot?lobbyGodNames[network.hostSettings.gameBotGods[botIndex]]:"");
 						break;
 					default: break;
 				}
 				continue;
 			}
 			switch(element.id){
-				case "trts": element.visible=lobbyIsHost; element.enabled=lobbyIsHost&&lobbyCanStart; break; // start (host)
+				case "trts": element.enabled=lobbyIsHost&&lobbyCanStart; break; // start (host)
 				case "tesg": element.enabled=false; break; // game settings (later)
 				default: break;
 			}
@@ -926,7 +952,7 @@ final class SacScene: Scene{
 		if(numSlots==-1){ // (only known to the host before the game is initialized)
 			numSlots=0;
 			foreach(ref player;network.players.data)
-				if(!player.settings.observer&&isConnectedStatus(player.status))
+				if(isConnectedStatus(player.status))
 					numSlots=max(numSlots,player.slot+1);
 		}
 		foreach(slot;0..numSlots){
@@ -3069,6 +3095,16 @@ static:
 	int takeLobbyBotToggle(){ // (slot, -1: none)
 		auto r=scene.lobbyToggleBotSlot;
 		scene.lobbyToggleBotSlot=-1;
+		return r;
+	}
+	int takeLobbyBotTeamToggle(){ // (slot, -1: none)
+		auto r=scene.lobbyToggleBotTeam;
+		scene.lobbyToggleBotTeam=-1;
+		return r;
+	}
+	int takeLobbyBotGodToggle(){ // (slot, -1: none)
+		auto r=scene.lobbyToggleBotGod;
+		scene.lobbyToggleBotGod=-1;
 		return r;
 	}
 	bool takeLobbyStartRequest(){
