@@ -445,8 +445,10 @@ class Lobby(B){
 			foreach(i,ref player;network.players.data){
 				if(!(0<=player.slot&&player.slot<teams.length)) continue;
 				auto team=teams[player.slot];
-				if(0<=player.slot&&player.slot<teams.length)
+				if(0<=player.slot&&player.slot<teams.length){
 					network.updateSetting!"team"(to!int(i),team);
+					if(i==network.me) options.team=network.settings.team;
+				}
 			}
 			foreach(i,slot;options.botSlots) options.botTeams[i]=0<=slot&&slot<teams.length?teams[slot]:-1;
 		}
