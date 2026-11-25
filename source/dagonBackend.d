@@ -774,7 +774,7 @@ final class SacScene: Scene{
 		if(settings.randomGod) return lobbyGodNames[0];
 		auto god=lobbyGod(settings);
 		if(god!=God.none) return lobbyGodNames[god];
-		return settings.spellbook.length?"?":null; // (custom spellbook)
+		return settings.spellbook.length?"Custom":null; // (custom spellbook)
 	}
 	// slot of a slot form element in the lobby form (-1: none), and the element's id
 	int lobbySlotOfElement(int elementIndex){

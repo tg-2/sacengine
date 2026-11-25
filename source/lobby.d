@@ -421,6 +421,20 @@ class Lobby(B){
 		if(gameBotSlots!=options.botSlots) gameBotSlots=options.botSlots.dup;
 		network.updateSetting!"gameBotSlots"(gameBotSlots);
 		while(options.botGods.length<options.botSlots.length) options.botGods~=God.none;
+		if(options.gods){
+			foreach(i,ref player;network.players.data){
+				if(player.settings.observer) continue;
+				auto slot=player.settings.slot;
+				if(0<=slot&&slot<options.gods.length){
+					network.updateSetting!"spellbook"(to!int(i),defaultSpells[options.gods[slot]]);
+					if(i==network.me) options.spellbook=network.settings.spellbook;
+				}
+			}
+			foreach(k,slot;gameBotSlots){
+				if(0<=slot&&slot<options.gods.length)
+					options.botGods[k]=options.gods[slot];
+			}
+		}
 		if(gameBotGods!=options.botGods) gameBotGods=options.botGods.dup;
 		network.updateSetting!"gameBotGods"(gameBotGods);
 		while(options.botTeams.length<options.botSlots.length) options.botTeams~=-1;
@@ -799,6 +813,7 @@ class Lobby(B){
 						options.botGods=options.botGods.remove(botIndex);
 						options.botTeams=options.botTeams.remove(botIndex);
 						options.teamSizes=[];
+						options.gods=[];
 					}else{
 						options.botSlots~=botToggle;
 						options.botGods~=God.none;
@@ -821,6 +836,7 @@ class Lobby(B){
 						auto god=options.botGods[botIndex];
 						auto next=god==God.charnel?God.none:cast(God)(god+1);
 						options.botGods[botIndex]=next;
+						options.gods=[];
 					}
 				}
 				bool requested=B.takeLobbyStartRequest(); // (Start button)
