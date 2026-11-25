@@ -387,13 +387,6 @@ final class SacScene: Scene{
 	}
 
 	void positionFPCamera(){
-		camera.width=width;
-		camera.height=height;
-		info.windowWidth=eventManager.windowWidth;
-		info.windowHeight=eventManager.windowHeight;
-		centerViewport=options.centerViewport;
-		info.centerViewport=centerViewport;
-		info.hudScaling=info.height/480.0f;
 		fpview.camera.position=camera.position;
 		fpview.camera.eyePosition=Vector3f(0.0f,0.0f,1.0f)+getCameraDisplacement(camera.position);
 		fpview.camera.turn=camera.turn;
@@ -2063,7 +2056,14 @@ final class SacScene: Scene{
 	}
 
 	override void onViewUpdate(Duration dt){
-		if(options.scaleToFit) screenScaling=super.screenScaling=min(float(eventManager.windowWidth)/width,float(eventManager.windowHeight)/height);
+		camera.width=width;
+		camera.height=height;
+		info.windowWidth=eventManager.windowWidth;
+		info.windowHeight=eventManager.windowHeight;
+		centerViewport=options.centerViewport;
+		info.centerViewport=centerViewport;
+		info.hudScaling=info.height/480.0f;
+		if(options.scaleToFit) screenScaling=super.screenScaling=min(float(info.windowWidth)/width,float(info.windowHeight)/height);
 		else screenScaling=options.scale;
 		super.onViewUpdate(dt);
 	}
