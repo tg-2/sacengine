@@ -459,12 +459,13 @@ struct Packet{
 		return p;
 	}
 	template valueMember(T){
-		static if(is(T==int)) alias valueMember=intValue;
+		static if(is(Unqual!T==int)) alias valueMember=intValue;
 		else static if(is(T==bool)) alias valueMember=boolValue;
 		else static if(is(T==float)) alias valueMember=floatValue;
 		else static if(is(Unqual!T==char)) alias valueMember=charValue;
 		else static if(is(T==char[4])) alias valueMember=char4Value;
 		else static if(is(Unqual!T==SpellSpec)) alias valueMember=spellSpecValue;
+		else static if(is(Unqual!T==God)) alias valueMember=godValue;
 		else static assert(0,T.stringof);
 	}
 	void setValue(T)(T value){ valueMember!T=value; }
@@ -2761,6 +2762,8 @@ final class Network(B){
 					auto hostRefuseGreenSouls=hostSettings.refuseGreenSouls;
 					auto hostGameSlots=hostSettings.gameSlots;
 					auto hostGameBotSlots=hostSettings.gameBotSlots;
+					auto hostGameBotTeams=hostSettings.gameBotTeams;
+					auto hostGameBotGods=hostSettings.gameBotGods;
 					swap(hostSettings,p.settings);
 					hostSettings.commit=hostCommit;
 					hostSettings.map=hostMap;
@@ -2770,6 +2773,8 @@ final class Network(B){
 					hostSettings.refuseGreenSouls=hostRefuseGreenSouls;
 					hostSettings.gameSlots=hostGameSlots;
 					hostSettings.gameBotSlots=hostGameBotSlots;
+					hostSettings.gameBotTeams=hostGameBotTeams;
+					hostSettings.gameBotGods=hostGameBotGods;
 					swap(players[host].slot,p.slot);
 					swap(p,players[$-1]);
 					players.length=players.length-1;
@@ -2930,7 +2935,8 @@ final class Network(B){
 			return;
 		}
 		measuringStartPings=false;
-		auto countdown=countdownOnStart?startCountdown:Duration.zero;
+		bool hasOtherPlayers=players.data.any!((ref p)=>p.requiredToControlState&&p.alive);
+		auto countdown=countdownOnStart&&hasOtherPlayers?startCountdown:Duration.zero;
 		countdownOnStart=false;
 		auto maxPing=initializedPlayers.map!((ref p)=>p.ping).reduce!max;
 		writeln("pings: ",players.data.map!((ref p)=>p.ping.total!"msecs").map!(p=>p<0?-1:p));

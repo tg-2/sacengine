@@ -7,6 +7,16 @@ import loading: loadingPhase, loadingStep, loadingStatus;
 import std.string, std.range, std.algorithm, std.stdio;
 import std.exception, std.conv;
 
+auto teamSizesToTeams(int[] teamSizes){
+	int sumSiz=sum(teamSizes);
+	return zip(zip(iota(to!int(teamSizes.length)),teamSizes)
+	    .map!(tn=>tn[0].repeat(tn[1]))
+	    .joiner.repeat.joiner,
+	    recurrence!((a,n)=>a[n-1]+teamSizes.length)(0)
+	    .map!(i=>i.repeat(sumSiz)).joiner
+	).map!(x=>x[0]+x[1]);
+}
+
 GameInit!B gameInit(B,R)(Sides!B sides_,R playerSettings,ref Options options){
 	GameInit!B gameInit;
 	auto numSlots=options.numSlots;
@@ -18,13 +28,7 @@ GameInit!B gameInit(B,R)(Sides!B sides_,R playerSettings,ref Options options){
 	auto teams=(-1).repeat(numSlots).array;
 	if(options.gameMode!=GameMode.scenario){
 		if(options.teamSizes.length){
-			int sumSiz=sum(options.teamSizes);
-			zip(zip(iota(to!int(options.teamSizes.length)),options.teamSizes)
-			    .map!(tn=>tn[0].repeat(tn[1]))
-			    .joiner.repeat.joiner,
-			    recurrence!((a,n)=>a[n-1]+options.teamSizes.length)(0)
-			    .map!(i=>i.repeat(sumSiz)).joiner
-			).map!(x=>x[0]+x[1])
+			teamSizesToTeams(options.teamSizes)
 				.take(teams.length)
 				.copy(teams);
 		}else{
@@ -94,6 +98,7 @@ GameInit!B gameInit(B,R)(Sides!B sides_,R playerSettings,ref Options options){
 		if(god==God.none) god=randomGod;
 		placeWizard(botSettings,god);
 		if(gameInit.slots[botSlot].wizardIndex!=-1) gameInit.slots[botSlot].sideType=SideType.shinyBot;
+		if(k<options.botTeams.length) teams[botSlot]=options.botTeams[k];
 	}
 	auto damageFactors=1.0f.repeat(numSlots).array;
 	foreach(i,f;options.damageFactors)
@@ -391,9 +396,6 @@ class Lobby(B){
 				freeSlots.popFront();
 			}
 		}
-		network.updateSetting!"gameSlots"(options.numSlots); // (shown in the lobby)
-		if(!gameBotSlots) gameBotSlots=options.botSlots.filter!(slot=>0<=slot&&slot<numSlots).array~(-1); // (computed once, -1: end)
-		network.updateSetting!"gameBotSlots"(cast(int[])gameBotSlots[0..$-1]);
 		if(options.synchronizeObserverChat) network.synchronizeSetting!"observerChat"();
 
 		if(options.synchronizeLevel) network.synchronizeSetting!"level"();
@@ -406,9 +408,41 @@ class Lobby(B){
 		if(options.synchronizeXpRate) network.synchronizeSetting!"xpRate"();
 
 		network.synchronizeSetting!"pauseOnDrop"();
+
+		network.updateSetting!"gameSlots"(options.numSlots); // (shown in the lobby)
+		if(options.botSlots.length){
+			auto valid=options.botSlots.filter!(slot=>0<=slot&&slot<numSlots);
+			auto numValid=valid.walkLength;
+			if(numValid<options.botSlots.length){
+				copy(valid,options.botSlots[0..numValid]);
+				options.botSlots=options.botSlots[0..numValid];
+			}
+		}
+		if(gameBotSlots!=options.botSlots) gameBotSlots=options.botSlots.dup;
+		network.updateSetting!"gameBotSlots"(gameBotSlots);
+		while(options.botGods.length<options.botSlots.length) options.botGods~=God.none;
+		if(gameBotGods!=options.botGods) gameBotGods=options.botGods.dup;
+		network.updateSetting!"gameBotGods"(gameBotGods);
+		while(options.botTeams.length<options.botSlots.length) options.botTeams~=-1;
+		if(options.teamSizes){ // (for correct display in lobby)
+			SmallArray!(int,32) teams;
+			teams.length=numSlots;
+			teamSizesToTeams(options.teamSizes).take(numSlots).copy(teams[]);
+			foreach(i,ref player;network.players.data){
+				if(!(0<=player.slot&&player.slot<teams.length)) continue;
+				auto team=teams[player.slot];
+				if(0<=player.slot&&player.slot<teams.length)
+					network.updateSetting!"team"(to!int(i),team);
+			}
+			foreach(i,slot;options.botSlots) options.botTeams[i]=0<=slot&&slot<teams.length?teams[slot]:-1;
+		}
+		if(gameBotTeams!=options.botTeams) gameBotTeams=options.botTeams.dup;
+		network.updateSetting!"gameBotTeams"(gameBotTeams);
 	}
 
-	int[] gameBotSlots=null;
+	immutable(int)[] gameBotSlots=null;
+	immutable(God)[] gameBotGods=null;
+	immutable(int)[] gameBotTeams=null;
 
 	bool synchronizeSettings(ref Options options)in{
 		assert(!!network);
@@ -759,9 +793,35 @@ class Lobby(B){
 			if(!gameStarting){
 				auto botToggle=B.takeLobbyBotToggle(); // (host adds or removes a computer player in a free slot)
 				if(botToggle!=-1){
-					if(options.botSlots.canFind(botToggle)) options.botSlots=options.botSlots.filter!(slot=>slot!=botToggle).array;
-					else options.botSlots~=botToggle;
-					gameBotSlots=null; // (sent again)
+					auto botIndex=options.botSlots.countUntil(botToggle);
+					if(botIndex<options.botSlots.length){
+						options.botSlots=options.botSlots.remove(botIndex);
+						options.botGods=options.botGods.remove(botIndex);
+						options.botTeams=options.botTeams.remove(botIndex);
+						options.teamSizes=[];
+					}else{
+						options.botSlots~=botToggle;
+						options.botGods~=God.none;
+						options.botTeams~=-1;
+					}
+				}
+				auto botTeamToggle=B.takeLobbyBotTeamToggle();
+				if(botTeamToggle!=-1){
+					auto botIndex=options.botSlots.countUntil(botTeamToggle);
+					if(botIndex<options.botTeams.length){
+						auto team=options.botTeams[botIndex];
+						options.botTeams[botIndex]=team<0?0:team>=2?-1:team+1;
+						options.teamSizes=[];
+					}
+				}
+				auto botGodToggle=B.takeLobbyBotGodToggle();
+				if(botGodToggle!=-1){
+					auto botIndex=options.botSlots.countUntil(botGodToggle);
+					if(botIndex<options.botGods.length){
+						auto god=options.botGods[botIndex];
+						auto next=god==God.charnel?God.none:cast(God)(god+1);
+						options.botGods[botIndex]=next;
+					}
 				}
 				bool requested=B.takeLobbyStartRequest(); // (Start button)
 				bool start=canStart&&(requested||options.autoStart&&canStartGame(options));
