@@ -469,7 +469,15 @@ class Lobby(B){
 		//writeln(50);
 		if(options.refuseGreenSouls)
 			enforce(network.settings.refuseGreenSouls,"host attempted to override --refuse-green-souls");
+		auto localMapName=options.map;
 		options.settings=network.settings;
+		version(Windows){
+			if(localMapName!=options.map) localMapName=options.map;
+		}else{
+			auto networkMapName=options.map.replace("\\","/");
+			if(localMapName.replace("\\","/")!=networkMapName) localMapName=networkMapName;
+		}
+		options.map=localMapName;
 		slot=network.slot;
 		if(!isHost) network.updateStatus(PlayerStatus.pendingGameInit); // TODO: tie this to thumbs up
 		return true;
