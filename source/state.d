@@ -4019,10 +4019,12 @@ struct SoulMole(B){
 	Vector3f position;
 	Vector3f startPosition;
 	Vector3f targetVelocity;
-	PositionPredictor positionPredictor;
-	//Vector3f velocity=Vector3f(0.0f,0.0f,0.0f);
-	int frame=0;
-	enum roundtripTime=9*updateFPS;
+	int castFrames=1;
+	// original (DecomposeStart 0x444060): age 0..1 out to the soul, 1..2 back to the caster.
+	// After the cast is released each leg takes 240 ticks; while casting, the mole moves at (cast progress) of that speed.
+	float age=0.0f;
+	bool carrying=false;
+	enum legTime=4*updateFPS;
 	int soundTimer;
 	int particleEmitter=0; // particle emitter handle (soulMoleParticles)
 }
@@ -12518,7 +12520,7 @@ bool castSoulMole(B)(int target,ManaDrain!B manaDrain,SacSpell!B spell,ObjectSta
 	auto direction=cross(Vector3f(0.0f,0.0f,1.0f),soulPosition-position).normalized;
 	auto targetVelocity=0.75f*(soulPosition-position).length*direction;
 	//auto targetVelocity=Vector3f(0.0f,0.0f,0.0f);
-	auto soulMole=SoulMole!B(target,manaDrain.wizard,spell,position,position,targetVelocity);
+	auto soulMole=SoulMole!B(target,manaDrain.wizard,spell,position,position,targetVelocity,max(1,manaDrain.timer));
 	state.addEffect(SoulMoleCasting!B(manaDrain,soulMole));
 	return true;
 }
@@ -17903,7 +17905,9 @@ bool updateSacDocCarry(B)(ref SacDocCarry!B sacDocCarry,ObjectState!B state){
 					if(pausedByCinematic(*sacDocCarry,state)) break;
 					final switch(type){
 						case RitualType.convert:
-							if(shrineDestroyed||!state.soulById!((ref soul)=>soul.state.among(SoulState.normal,SoulState.emerging)||!soul.creatureId,()=>false)(soul)){
+							// original (SACDOC_MoveTowardsCorpse 0x449d30, validity check 0x4494e0): the doctor walks to the soul's
+							// corpse and aborts once the corpse is gone, e.g. when a Soul Mole takes the soul away
+							if(shrineDestroyed||!state.soulById!((ref soul)=>soul.creatureId&&soul.state.among(SoulState.normal,SoulState.emerging),()=>false)(soul)){
 								sacDoc.kill(state);
 								freeSoul();
 								return false;
@@ -20193,7 +20197,8 @@ bool updateSoulMoleCasting(B)(ref SoulMoleCasting!B soulMoleCast,ObjectState!B s
 	with(soulMoleCast){
 		final switch(manaDrain.update(state)){
 			case CastingStatus.underway:
-				if(!soulMole.updateSoulMolePosition(state))
+				auto castProgress=clamp(1.0f-float(manaDrain.timer)/soulMole.castFrames,0.0f,1.0f);
+				if(!soulMole.updateSoulMolePosition(state,castProgress,true))
 					return false;
 				return state.movingObjectById!((ref obj){
 					obj.animateRockCasting(state);
@@ -20252,96 +20257,57 @@ void severSoul(B)(ref Soul!B soul,ObjectState!B state){
 }
 
 enum soulMoleGain=5.0f;
-bool updateSoulMolePosition(B)(ref SoulMole!B soulMole,ObjectState!B state){
-	static assert(soulMole.roundtripTime%4==0);
-	enum soulFrame=soulMole.roundtripTime/2;
-	enum backFrame=soulMole.roundtripTime;
-	enum MolePhase{
-		toSoul,
-		back,
-	}
-	static MolePhase molePhase(int frame){
-		if(frame<=soulFrame) return MolePhase.toSoul;
-		return MolePhase.back;
-	}
-	static int nextTransitionFrame(int frame){
-		final switch(molePhase(frame)){
-			case MolePhase.toSoul: return soulFrame;
-			case MolePhase.back: return backFrame;
-		}
-	}
-	static int framesLeft(int frame){ return nextTransitionFrame(frame)-frame; }
-	static float relativeProgress(int frame){
-		if(frame<=soulFrame) return float(frame)/soulFrame;
-		return float(frame-soulFrame)/(backFrame-soulFrame);
-	}
+bool updateSoulMolePosition(B)(ref SoulMole!B soulMole,ObjectState!B state,float speed=1.0f,bool casting=false){
 	if(--soulMole.soundTimer<=0) soulMole.soundTimer=playSpellSoundTypeAt!true(SoundType.bore,soulMole.position,state,soulMoleGain); // TODO: sound should follow mole
-	auto prevTargetPosition=soulMole.positionPredictor.lastPosition;
 	auto oldPosition=soulMole.position;
-	soulMole.frame+=1;
-	auto soulPosition=state.soulById!((ref soul)=>soul.state.among(SoulState.normal,SoulState.emerging)?soul.position:Vector3f.init,()=>Vector3f.init)(soulMole.soul);
+	auto soulPositionFree=state.soulById!((ref soul)=>tuple(soul.position,!!soul.state.among(SoulState.normal,SoulState.emerging)),()=>tuple(Vector3f.init,false))(soulMole.soul);
+	auto soulPosition=soulPositionFree[0];
+	bool soulFree=soulPositionFree[1];
+	// original (0x444060): the mole ends as soon as its soul is gone
 	if(isNaN(soulPosition.x)) return false;
-	auto wizardPosition=state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(soulMole.wizard);
-	Vector3f[2] moleOrigin(int frame){
-		final switch(molePhase(frame)){
-			case MolePhase.toSoul: return [soulMole.startPosition,Vector3f(0.0f,0.0f,0.0f)];
-			case MolePhase.back: return [soulMole.startPosition,soulMole.targetVelocity];
+	if(!soulMole.carrying){
+		soulMole.age=min(1.0f,soulMole.age+speed/soulMole.legTime);
+		if(soulMole.age>=1.0f&&!casting){
+			// original (stage 32, 0x44428f): while the soul is being collected or put back into a corpse
+			// (e.g. by a sac doctor pumping it), the mole waits next to it instead of taking it
+			if(!soulFree){
+				soulMole.animateSoulMole(oldPosition,state);
+				return true;
+			}
+			playSoundAt("ltss",oldPosition,state,soulMoleGain); // TODO: sound should follow mole
+			auto side=state.movingObjectById!((ref obj)=>obj.side,()=>-1)(soulMole.wizard);
+			state.soulById!((ref soul,side,state){
+				soul.severSoul(state);
+				soul.preferredSide=side;
+			},(){})(soulMole.soul,side,state);
+			soulMole.startPosition=oldPosition;
+			soulMole.carrying=true;
 		}
+	}else soulMole.age=min(2.0f,soulMole.age+1.0f/soulMole.legTime);
+	Vector3f[2] origin,target;
+	float progress;
+	if(!soulMole.carrying){
+		origin=[soulMole.startPosition,Vector3f(0.0f,0.0f,0.0f)];
+		target=[soulPosition,soulMole.targetVelocity];
+		progress=soulMole.age;
+	}else{
+		auto wizardPosition=state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(soulMole.wizard);
+		if(isNaN(wizardPosition.x)) return false;
+		origin=[soulMole.startPosition,soulMole.targetVelocity];
+		target=[wizardPosition,0.75f*(wizardPosition-soulMole.startPosition)];
+		progress=soulMole.age-1.0f;
 	}
-	Vector3f[2] moleTarget(int frame){
-		final switch(molePhase(frame)){
-			case MolePhase.toSoul: return [soulPosition,soulMole.targetVelocity];
-			case MolePhase.back: return [wizardPosition,0.75f*(wizardPosition-soulMole.startPosition)];
-		}
-	}
-	auto targetLocation=moleTarget(soulMole.frame);
-	auto targetPosition=targetLocation[0],targetVelocity=targetLocation[1];
-	/*enum minSoulMoleSpeed=5.0f;
-	if(molePhase(soulMole.frame)<MolePhase.back&&(oldPosition-targetPosition).xy.lengthsqr<(minSoulMoleSpeed/updateFPS)^^2){
-		soulMole.frame=nextTransitionFrame(soulMole.frame);
-		targetLocation=moleTarget(soulMole.frame);
-		targetPosition=targetLocation[0], targetVelocity=targetLocation[1];
-	}*/
-	if(isNaN(targetPosition.x)) return false;
-	if(soulMole.frame==soulFrame+1){
-		playSoundAt("ltss",oldPosition,state,soulMoleGain); // TODO: sound should follow mole
-		auto side=state.movingObjectById!((ref obj)=>obj.side,()=>-1)(soulMole.wizard);
-		if(!state.soulById!((ref soul,side,state){
-			if(!soul.state.among(SoulState.normal,SoulState.emerging))
-				return false;
-			soul.severSoul(state);
-			soul.preferredSide=side;
-			return true;
-		},()=>false)(soulMole.soul,side,state))
-			return false;
-		soulMole.startPosition=oldPosition;
-		soulMole.positionPredictor.lastPosition=targetPosition;
-	}
-	auto curFramesLeft=framesLeft(soulMole.frame);
-	auto predictedTargetPosition=soulMole.positionPredictor.predictAtTime(float(curFramesLeft)/updateFPS,targetPosition);
-	auto relativePosition=1.0f/(curFramesLeft+1);
-	//auto newPosition=(1.0f-relativePosition)*oldPosition+relativePosition*predictedTargetPosition;
-	/*Vector3f[2][2] locations=[[oldPosition,soulMole.velocity],
-	                          [predictedTargetPosition,targetVelocity]];
-	Vector3f[2] newLocation=cintp2(locations,relativePosition);*/
-	Vector3f[2] newLocation=cintp2([moleOrigin(soulMole.frame),moleTarget(soulMole.frame)],relativeProgress(soulMole.frame));
-	auto newPosition=newLocation[0], newVelocity=newLocation[1];
+	Vector3f[2] newLocation=cintp2([origin,target],progress);
+	auto newPosition=newLocation[0];
 	newPosition.z=state.getHeight(newPosition);
-	/*auto speed=updateFPS*((targetPosition-oldPosition).length-(targetPosition-newPosition).length);
-	if(speed<minSoulMoleSpeed){
-		auto dist=max(0.0f,(targetPosition-oldPosition).length-minSoulMoleSpeed/updateFPS);
-		newPosition=targetPosition+(newPosition-targetPosition).normalized*dist;
-		newPosition.z=state.getHeight(newPosition);
-	}*/
-	if(molePhase(soulMole.frame)>MolePhase.toSoul){
+	if(soulMole.carrying){
 		state.soulById!((ref soul,molePosition){
 			if(!soul.collectorId) soul.position=molePosition;
 		},(){})(soulMole.soul,newPosition);
 	}
 	soulMole.position=newPosition;
-	//soulMole.velocity=newVelocity;
 	soulMole.animateSoulMole(oldPosition,state);
-	return soulMole.frame<backFrame;
+	return !(soulMole.carrying&&soulMole.age>=2.0f);
 }
 
 bool updateSoulMole(B)(ref SoulMole!B soulMole,ObjectState!B state){
