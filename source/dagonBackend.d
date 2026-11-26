@@ -735,7 +735,7 @@ final class SacScene: Scene{
 		return lobbyNetwork;
 	}
 	bool synchronizationFormVisible(){
-		if(loadingDone()||lobbyFormOpen) return false;
+		if(loadingDone()||lobbyFormOpen||hostQuitFormOpen) return false;
 		auto network=synchronizationNetwork();
 		if(!network) return false;
 		if(loadingScreenVisible()) return false;
@@ -768,6 +768,16 @@ final class SacScene: Scene{
 		forms.length=0;
 		disableMenu();
 	}
+	// the host left before the game started: window of the original (form hqut), its button quits
+	bool hostQuitFormOpen=false;
+	void showHostQuit(){
+		if(hostQuitFormOpen) return;
+		closeLobbyForm();
+		forms.length=0;
+		forms~=sacFormInstance!DagonBackend("tuqh");
+		hostQuitFormOpen=true;
+		enableMenu();
+	}
 	static string lobbyGodName(ref const LobbySlot slot){
 		static immutable godNames=["Custom","Persephone","Pyro","James","Stratos","Charnel"];
 		if(slot.type==LobbySlotType.human&&slot.observer) return "Observer";
@@ -786,11 +796,12 @@ final class SacScene: Scene{
 		}
 		return -1;
 	}
-	// slot elements: god (button), team (icon), taking the slot (its number icon), computer players (type icon)
+	// slot elements: god (button), team (icon), ready or not (icon), taking the slot (its number icon), computer players (type icon)
 	static bool lobbySlotAction(char[4] id,int slot,out LobbyAction action){
 		switch(id){
 			case "_dog": action=LobbyAction(LobbyActionType.nextGod,slot); return true;
 			case "maet": action=LobbyAction(LobbyActionType.nextTeam,slot); return true;
+			case "yder": action=LobbyAction(LobbyActionType.toggleReady,slot); return true;
 			case "munp": action=LobbyAction(LobbyActionType.takeSlot,slot); return true;
 			case "epyt": action=LobbyAction(LobbyActionType.toggleComputer,slot); return true;
 			default: return false;
@@ -811,7 +822,7 @@ final class SacScene: Scene{
 			return;
 		}
 		auto numSlots=to!int(data.slots.length);
-		info.lobbyNumSlots=numSlots;
+		info.lobbyNumSlots=min(numSlots,data.gameSlots); // (numbered slots)
 		auto formSlots=SacForm!DagonBackend.lobby(numSlots).height; // (the form only changes for more than five slots)
 		if(!lobbyFormOpen||lobbyFormSlots!=formSlots){
 			closeLobbyForm();
@@ -862,7 +873,7 @@ final class SacScene: Scene{
 				if(element.id.among("maet","_dog")&&lobbySlotAction(element.id,slot,action))
 					element.enabled=lobbyView.allowed(action); // (own team and god, host: also of computer players)
 				switch(element.id){
-					case "munp": element.picture=SacForm!DagonBackend.lobbySlotNumber(slot); break;
+					case "munp": element.picture=slot<data.gameSlots?SacForm!DagonBackend.lobbySlotNumber(slot):"\x01non"; break; // (observer slots are not numbered)
 					case "epyt": element.picture=human?"vlpl":computer?"alpl":"olsl"; break; // (type: human, computer, open)
 					case "maet":
 						element.visible=human||computer;
@@ -990,6 +1001,10 @@ final class SacScene: Scene{
 					else if(id=="lcnc") DagonBackend.app.exit(); // (cancel: quit)
 					else lobbyElementClicked(elementIndex);
 				}
+				break;
+			case "tuqh": // host has quit
+				if(elementIndex<forms[formIndex].elements.length&&forms[formIndex].elements[elementIndex].id=="tuqh")
+					DagonBackend.app.exit();
 				break;
 			case "sohc": // trigger choice dialog
 				if(elementIndex<forms[formIndex].elements.length){
@@ -3040,6 +3055,7 @@ static:
 	// lobby screen: shows the lobby and collects the actions of this player for it
 	void showLobby(LobbyView view){ scene.showLobby(view); }
 	void hideLobby(){ scene.hideLobby(); }
+	void showHostQuit(){ scene.showHostQuit(); }
 	ref lobbyActions(){ return scene.lobbyActions; }
 	void focusCamera(int id,bool reset=true){
 		scene.focusCamera(id,reset);
