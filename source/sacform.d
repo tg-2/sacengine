@@ -781,6 +781,45 @@ final class SacForm(B){
 		});
 	}
 
+	// lobby (ybol) with numSlots slots: the original has room for five slots (stls), further slots are added below
+	// and everything below the slots moves down accordingly
+	enum lobbySlotsInOriginal=5, lobbySlotSpacing=58;
+	static char lobbySlotDigit(int slot){ return synchronizationRowDigit(slot); } // (first character of the slot form ids, e.g. "1#PN")
+	// picture with the number of a lobby slot ("\x01non": there is none, the number is drawn as text)
+	static char[4] lobbySlotNumber(int slot){
+		char[4] tag="1lsl";
+		tag[0]=cast(char)('1'+slot);
+		if(slot<0||slot>=9||!SacFormPicture!B.get(tag)) tag="\x01non";
+		return tag;
+	}
+	private static SacForm!B[int] lobbyForms;
+	static SacForm!B lobby(int numSlots){
+		numSlots=max(lobbySlotsInOriginal,min(numSlots,35));
+		if(auto r=numSlots in lobbyForms) return *r;
+		auto delta=(numSlots-lobbySlotsInOriginal)*lobbySlotSpacing;
+		char[4] slotsTag=['\x01','s','t',cast(char)numSlots]; // (derived forms are registered under tags that do not occur in the game files)
+		auto slots=derived("stls",(ref FormHeader header,ref Element[] elements){
+			auto original=elements.length;
+			foreach(slot;lobbySlotsInOriginal..numSlots){
+				auto copy=elements[original-1];
+				copy.top+=(slot-(lobbySlotsInOriginal-1))*lobbySlotSpacing;
+				copy.id[0]=lobbySlotDigit(slot);
+				elements~=copy;
+			}
+			header.height+=delta;
+		});
+		sacForms[slotsTag]=slots;
+		return lobbyForms[numSlots]=derived("ybol",(ref FormHeader header,ref Element[] elements){
+			foreach(ref e;elements){
+				if(e.id=="stls"){
+					e.pictureOrForm=slotsTag;
+					e.height+=delta;
+				}else if(e.id!="iPAM") e.top+=delta; // (chat and buttons)
+			}
+			header.height+=delta;
+		});
+	}
+
 	// loading screen (igam) widened to width (at least 640): the main bar spans the whole width, the rest stays centered
 	private static SacForm!B[int] loadingScreenForms;
 	static SacForm!B loadingScreen(int width){
@@ -794,6 +833,47 @@ final class SacForm(B){
 			}
 			header.width=width;
 		});
+	}
+}
+
+// pictures that form elements can show instead of their default one (ElementState.picture), loaded when they are first used:
+// icons from the game files, optional icons from the folder "icons" (slot numbers after 4 for the lobby, not in the game files:
+// icons/lsl5.png etc.), "\x01non" (nothing), and previews of maps
+final class SacFormPicture(B){
+	static B.Texture[char[4]] pictures;
+	static B.Texture get(char[4] tag){ // (null: there is no such picture)
+		if(auto r=tag in pictures) return *r;
+		B.Texture texture=null;
+		import dlib.image.color: Color4f;
+		if(tag=="\x01non") texture=B.makeTexture(makeOnePixelImage(Color4f(0.0f,0.0f,0.0f,0.0f)));
+		else if(auto filename=tag in formIcons) texture=B.makeTexture(loadTXTR(*filename));
+		else{
+			import std.file: exists;
+			import std.stdio: stderr;
+			import dlib.image.io.png: loadPNG;
+			string filename="icons/"~[tag[3],tag[2],tag[1],tag[0]]~".png";
+			try if(exists(filename)) texture=B.makeTexture(loadPNG(filename));
+			catch(Exception e) stderr.writeln("warning: failed to load '",filename,"' (",e.msg,")");
+		}
+		return pictures[tag]=texture;
+	}
+	static B.Texture[string] mapPreviews;
+	static B.Texture mapPreview(string filename){ // (null: the map has no preview)
+		if(auto r=filename in mapPreviews) return *r;
+		B.Texture texture=null;
+		try{
+			import loading: mapPreviewRGB, mapPreviewSize;
+			if(auto rgb=mapPreviewRGB(filename)){
+				import dlib.image: image;
+				auto picture=image(mapPreviewSize,mapPreviewSize,3);
+				picture.data[]=rgb[];
+				texture=B.makeTexture(picture,false);
+			}
+		}catch(Exception e){
+			import std.stdio: stderr;
+			stderr.writeln("warning: failed to load map preview (",e.msg,")");
+		}
+		return mapPreviews[filename]=texture;
 	}
 }
 
@@ -814,6 +894,7 @@ struct ElementState{
 	int textStart=0;
 	int textEnd=0;
 	float progress=0.0f; // progressbar, in [0,1]
+	char[4] picture=0; // picture: shown instead of the default one (see SacFormPicture, "PREV": preview of the map), 0: default
 }
 
 bool activate(ref ElementState element){

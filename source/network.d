@@ -152,6 +152,11 @@ enum PacketType{
 	jsonResponse,
 	// broadcast
 	updateLoadingProgress,
+	// host message
+	lobbyState,
+	lobbyMessage,
+	// host query
+	lobbyAction,
 }
 
 enum arrayLengthLimit=4096;
@@ -159,8 +164,8 @@ enum arrayLengthLimit=4096;
 PacketPurpose purposeFromType(PacketType type){
 	final switch(type) with(PacketType) with(PacketPurpose){
 		case nop,disconnect,ping,ack: return peerToPeer;
-		case updatePlayerId,updateSlot,sendMap,sendState,initGame,loadGame,startGame,setFrame,nudgeTimer,resetCommitted,requestStatusUpdate,confirmSynch,jsonResponse: return hostMessage;
-		case join,checkSynch,logDesynch,jsonCommand: return hostQuery;
+		case updatePlayerId,updateSlot,sendMap,sendState,initGame,loadGame,startGame,setFrame,nudgeTimer,resetCommitted,requestStatusUpdate,confirmSynch,jsonResponse,lobbyState,lobbyMessage: return hostMessage;
+		case join,checkSynch,logDesynch,jsonCommand,lobbyAction: return hostQuery;
 		case updateSetting,clearArraySetting,appendArraySetting,confirmArraySetting,setMap,appendMap,confirmMap,updateStatus,command,commandRaw,commit,updateLoadingProgress: return broadcast;
 	}
 }
@@ -182,6 +187,7 @@ bool isHeaderType(PacketType type){
 		case commit: return false;
 		case jsonCommand,jsonResponse: return true;
 		case updateLoadingProgress: return false;
+		case lobbyState,lobbyMessage,lobbyAction: return true;
 	}
 }
 
@@ -257,6 +263,9 @@ struct Packet{
 			case jsonCommand: return text("Packet.jsonCommand(",rawDataSize,"...)");
 			case jsonResponse: return text("Packet.jsonResponse(",rawDataSize,"...)");
 			case updateLoadingProgress: return text("Packet.updateLoadingProgress(",player,",",loadingProgress,")");
+			case lobbyState: return text("Packet.lobbyState(",rawDataSize,"...)");
+			case lobbyMessage: return text("Packet.lobbyMessage(",rawDataSize,"...)");
+			case lobbyAction: return text("Packet.lobbyAction(",rawDataSize,"...)");
 		}
 	}
 	int size=0;
@@ -300,7 +309,7 @@ struct Packet{
 		}
 		struct{ int mapPlayer; char[32] mapName; } // setMap, appendMap, confirmMap
 		struct{ // command, commandRaw. sendMap, sendState, initGame, join, logDesynch, jsonCommand, jsonResponse
-			ulong rawDataSize; // commandRaw, sendMap, sendState, initGame, join, logDesynch, jsonCommand, jsonResponse
+			ulong rawDataSize; // commandRaw, sendMap, sendState, initGame, join, logDesynch, jsonCommand, jsonResponse, lobbyState, lobbyMessage, lobbyAction
 			int frame; // command, commandRaw
 			NetworkCommand networkCommand; // command, commandRaw
 		}
@@ -453,12 +462,13 @@ struct Packet{
 		return p;
 	}
 	template valueMember(T){
-		static if(is(T==int)) alias valueMember=intValue;
+		static if(is(Unqual!T==int)) alias valueMember=intValue;
 		else static if(is(T==bool)) alias valueMember=boolValue;
 		else static if(is(T==float)) alias valueMember=floatValue;
 		else static if(is(Unqual!T==char)) alias valueMember=charValue;
 		else static if(is(T==char[4])) alias valueMember=char4Value;
 		else static if(is(Unqual!T==SpellSpec)) alias valueMember=spellSpecValue;
+		else static if(is(Unqual!T==God)) alias valueMember=godValue;
 		else static assert(0,T.stringof);
 	}
 	void setValue(T)(T value){ valueMember!T=value; }
@@ -595,6 +605,27 @@ struct Packet{
 	static Packet jsonResponse(ulong rawDataSize){
 		Packet p;
 		p.type=PacketType.jsonResponse;
+		p.rawDataSize=rawDataSize;
+		p.size=memberSize!(type,rawDataSize);
+		return p;
+	}
+	static Packet lobbyState(ulong rawDataSize){
+		Packet p;
+		p.type=PacketType.lobbyState;
+		p.rawDataSize=rawDataSize;
+		p.size=memberSize!(type,rawDataSize);
+		return p;
+	}
+	static Packet lobbyMessage(ulong rawDataSize){
+		Packet p;
+		p.type=PacketType.lobbyMessage;
+		p.rawDataSize=rawDataSize;
+		p.size=memberSize!(type,rawDataSize);
+		return p;
+	}
+	static Packet lobbyAction(ulong rawDataSize){
+		Packet p;
+		p.type=PacketType.lobbyAction;
 		p.rawDataSize=rawDataSize;
 		p.size=memberSize!(type,rawDataSize);
 		return p;
@@ -2305,7 +2336,62 @@ final class Network(B){
 				import std.math: isNaN;
 				players[p.player].loadingProgress=isNaN(p.loadingProgress)?0.0f:clamp(p.loadingProgress,0.0f,1.0f);
 				return true;
+			case PacketType.lobbyState,PacketType.lobbyMessage:
+				if(sender!=host){
+					stderr.writeln("non-host player ",sender," attempted to update the lobby: ",p);
+					stderr.flush();
+					return false;
+				}
+				if(p.type==PacketType.lobbyState){
+					lobbyState.length=rawData.length;
+					lobbyState.data[]=rawData[];
+					lobbyStateReceived=true;
+				}else if(lobbyMessages.length<lobbyQueueLimit) lobbyMessages~=LobbyPacket(sender,rawData.dup);
+				return true;
+			case PacketType.lobbyAction:
+				if(!isHost){
+					stderr.writeln("lobbyAction packet sent to non-host player ",me,": ",p);
+					stderr.flush();
+					return false;
+				}
+				if(rawData.length>lobbyActionLimit||lobbyActions.length>=lobbyQueueLimit){
+					report!true(sender,"sent too many or too large lobby actions");
+					return false;
+				}
+				lobbyActions~=LobbyPacket(sender,rawData.dup);
+				return true;
 		}
+	}
+	// lobby (before the game is initialized): the host replicates the lobby state and sends messages to the other players,
+	// who send their actions to the host (the lobby takes them from here, their contents are up to the lobby)
+	enum lobbyActionLimit=1024, lobbyQueueLimit=256;
+	static struct LobbyPacket{
+		int sender;
+		ubyte[] data;
+	}
+	Array!ubyte lobbyState; // (host: as replicated, other players: as received)
+	bool lobbyStateReceived=false;
+	Array!LobbyPacket lobbyMessages; // (received from the host)
+	Array!LobbyPacket lobbyActions; // (host: received from the other players)
+	void replicateLobbyState(scope ubyte[] data)in{
+		assert(isHost);
+	}do{
+		if(lobbyState.data==data) return;
+		lobbyState.length=data.length;
+		lobbyState.data[]=data[];
+		foreach(i,ref player;players.data)
+			if(i!=me) player.send(Packet.lobbyState(data.length),data);
+	}
+	void sendLobbyMessage(scope ubyte[] data)in{
+		assert(isHost);
+	}do{
+		foreach(i,ref player;players.data)
+			if(i!=me) player.send(Packet.lobbyMessage(data.length),data);
+	}
+	void sendLobbyAction(scope ubyte[] data)in{
+		assert(!isHost&&data.length<=lobbyActionLimit);
+	}do{
+		players[host].send(Packet.lobbyAction(data.length),data);
 	}
 	// broadcasts this player's loading progress (in steps of 1%)
 	void updateLoadingProgress(float progress){
@@ -2433,6 +2519,7 @@ final class Network(B){
 			sendPlayerData(players[other].connection,newId);
 		foreach(other;0..cast(int)players.length)
 			sendPlayerData(players[newId].connection,other);
+		if(lobbyState.length) players[newId].send(Packet.lobbyState(lobbyState.length),lobbyState.data);
 		updatePlayerId(newId);
 		return newId;
 	}
@@ -2874,7 +2961,8 @@ final class Network(B){
 			return;
 		}
 		measuringStartPings=false;
-		auto countdown=countdownOnStart?startCountdown:Duration.zero;
+		bool hasOtherPlayers=players.data.any!((ref p)=>p.requiredToControlState&&p.alive);
+		auto countdown=countdownOnStart&&hasOtherPlayers?startCountdown:Duration.zero;
 		countdownOnStart=false;
 		auto maxPing=initializedPlayers.map!((ref p)=>p.ping).reduce!max;
 		writeln("pings: ",players.data.map!((ref p)=>p.ping.total!"msecs").map!(p=>p<0?-1:p));

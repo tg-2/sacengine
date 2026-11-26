@@ -217,9 +217,10 @@ final class SacScene: Scene{
 		updateMouse();
 		info.fps=eventManager.fps;
 		info.loadingScreenVisible=loadingScreenVisible();
-		info.gameBlackedOut=loadingStatus.initializingGame||!state&&lobbyNetwork; // (also while waiting for the game start)
+		info.gameBlackedOut=loadingStatus.initializingGame||!state&&(lobbyNetwork||lobbyVisible); // (also while waiting for the game start)
 		info.loadingProgress=loadingStatus.progress;
 		info.loadingMapFolder=loadingStatus.mapFolder;
+		updateLobbyForm();
 		updateSynchronizationRows();
 		info.startCountdownProgress=controller&&controller.network?controller.network.startCountdownProgress():float.nan;
 		typeof(renderer).R2DOpt r2dopt={cursorSize: options.cursorSize,
@@ -386,13 +387,6 @@ final class SacScene: Scene{
 	}
 
 	void positionFPCamera(){
-		camera.width=width;
-		camera.height=height;
-		info.windowWidth=eventManager.windowWidth;
-		info.windowHeight=eventManager.windowHeight;
-		centerViewport=options.centerViewport;
-		info.centerViewport=centerViewport;
-		info.hudScaling=info.height/480.0f;
 		fpview.camera.position=camera.position;
 		fpview.camera.eyePosition=Vector3f(0.0f,0.0f,1.0f)+getCameraDisplacement(camera.position);
 		fpview.camera.turn=camera.turn;
@@ -741,21 +735,184 @@ final class SacScene: Scene{
 		return lobbyNetwork;
 	}
 	bool synchronizationFormVisible(){
-		if(loadingDone()) return false;
+		if(loadingDone()||lobbyFormOpen||hostQuitFormOpen) return false;
 		auto network=synchronizationNetwork();
 		if(!network) return false;
 		if(loadingScreenVisible()) return false;
 		return !network.startScheduled; // (start countdown is shown instead)
+	}
+	// lobby screen (form ybol, enlarged for more than five slots): shows the lobby while the players set up the game,
+	// and turns clicks and chat input into actions for the lobby (see lobby.d)
+	LobbyView lobbyView;
+	bool lobbyVisible=false; // (set by the lobby)
+	util.Array!LobbyAction lobbyActions; // (taken by the lobby)
+	bool lobbyFormOpen=false;
+	int lobbyFormSlots=-1;
+	void showLobby(LobbyView view){
+		lobbyView=view;
+		lobbyVisible=true;
+	}
+	void hideLobby(){
+		lobbyView=LobbyView.init;
+		lobbyVisible=false;
+		lobbyActions.length=0;
+	}
+	bool lobbyAction(LobbyAction action){
+		if(!lobbyFormOpen||!lobbyView.allowed(action)) return false;
+		lobbyActions~=action;
+		return true;
+	}
+	void closeLobbyForm(){
+		if(!lobbyFormOpen) return;
+		lobbyFormOpen=false;
+		forms.length=0;
+		disableMenu();
+	}
+	// the host left before the game started: window of the original (form hqut), its button quits
+	bool hostQuitFormOpen=false;
+	void showHostQuit(){
+		if(hostQuitFormOpen) return;
+		closeLobbyForm();
+		forms.length=0;
+		forms~=sacFormInstance!DagonBackend("tuqh");
+		hostQuitFormOpen=true;
+		enableMenu();
+	}
+	static string lobbyGodName(ref const LobbySlot slot){
+		static immutable godNames=["Custom","Persephone","Pyro","James","Stratos","Charnel"];
+		if(slot.type==LobbySlotType.human&&slot.observer) return "Observer";
+		return slot.god==randomGod?"Random":slot.god<godNames.length?godNames[slot.god]:null;
+	}
+	// slot of a slot form element in the lobby form (-1: none)
+	int lobbySlotOfElement(int elementIndex){
+		if(!lobbyFormOpen) return -1;
+		auto elements=forms[0].elements.data;
+		int slot=-1;
+		foreach(i,ref element;elements){
+			if(element.type==.form.ElementType.form&&element.id=="tols"){
+				slot++;
+				if(i<elementIndex&&elementIndex<=i+element.numChildren) return slot;
+			}
+		}
+		return -1;
+	}
+	// slot elements: god (button), team (icon), ready or not (icon), taking the slot (its number icon), computer players (type icon)
+	static bool lobbySlotAction(char[4] id,int slot,out LobbyAction action){
+		switch(id){
+			case "_dog": action=LobbyAction(LobbyActionType.nextGod,slot); return true;
+			case "maet": action=LobbyAction(LobbyActionType.nextTeam,slot); return true;
+			case "yder": action=LobbyAction(LobbyActionType.toggleReady,slot); return true;
+			case "munp": action=LobbyAction(LobbyActionType.takeSlot,slot); return true;
+			case "epyt": action=LobbyAction(LobbyActionType.toggleComputer,slot); return true;
+			default: return false;
+		}
+	}
+	bool lobbyElementClicked(int elementIndex){
+		auto slot=lobbySlotOfElement(elementIndex);
+		LobbyAction action;
+		if(slot==-1||!lobbySlotAction(forms[0].elements[elementIndex].id,slot,action)) return false;
+		return lobbyAction(action);
+	}
+	void updateLobbyForm(){
+		auto data=lobbyView.data;
+		info.lobbyMapFilename=lobbyView.mapFilename;
+		info.lobbyChatMessages=lobbyFormOpen?lobbyView.chat:null;
+		if(!lobbyVisible||state||!data||!data.slots.length){
+			closeLobbyForm();
+			return;
+		}
+		auto numSlots=to!int(data.slots.length);
+		info.lobbyNumSlots=min(numSlots,data.gameSlots); // (numbered slots)
+		auto formSlots=SacForm!DagonBackend.lobby(numSlots).height; // (the form only changes for more than five slots)
+		if(!lobbyFormOpen||lobbyFormSlots!=formSlots){
+			closeLobbyForm();
+			forms.length=0;
+			forms~=sacFormInstance!DagonBackend(SacForm!DagonBackend.lobby(numSlots));
+			lobbyFormOpen=true;
+			lobbyFormSlots=formSlots;
+			enableMenu();
+		}
+		auto elements=forms[0].elements.data;
+		void setText(ref ElementState element,const(char)[] text){
+			if(element.textInput.data==text) return;
+			element.textInput.length=0;
+			foreach(char c;text) element.textInput~=c;
+			element.textStart=0;
+			element.textEnd=to!int(element.textInput.length);
+		}
+		int slot=-1;
+		char[4] parentId=0; // (form containing the current element: "tols" for a slot, "iPAM" for the map)
+		size_t parentEnd=0;
+		foreach(i,ref element;elements){
+			if(i>=parentEnd) parentId=0;
+			if(element.type==.form.ElementType.form){
+				if(element.id.among("tols","iPAM")){
+					if(element.id=="tols") slot++; // (slot forms in order)
+					parentId=element.id;
+					parentEnd=i+1+element.numChildren;
+				}
+				continue;
+			}
+			if(parentId=="iPAM"){ // map
+				if(element.id=="pam_") element.picture=lobbyView.mapFilename.length?"PREV":"\0\0\0\0";
+				else if(element.id=="eman"){
+					const(char)[] name=data.map;
+					foreach_reverse(k,char c;name) if(c=='/'||c=='\\'){ name=name[k+1..$]; break; }
+					foreach_reverse(k,char c;name) if(c=='.'){ name=name[0..k]; break; }
+					setText(element,name);
+				}
+				continue;
+			}
+			if(parentId=="tols"){ // slot
+				bool used=slot<numSlots;
+				auto lobbySlot=used?data.slots[slot]:LobbySlot.init;
+				bool human=lobbySlot.type==LobbySlotType.human, computer=lobbySlot.type==LobbySlotType.computer;
+				static char[4] numbered(string tag,int i){ char[4] r=tag[0..4]; r[0]=cast(char)('1'+i); return r; }
+				element.visible=used;
+				LobbyAction action;
+				if(element.id.among("maet","_dog")&&lobbySlotAction(element.id,slot,action))
+					element.enabled=lobbyView.allowed(action); // (own team and god, host: also of computer players)
+				switch(element.id){
+					case "munp": element.picture=slot<data.gameSlots?SacForm!DagonBackend.lobbySlotNumber(slot):"\x01non"; break; // (observer slots are not numbered)
+					case "epyt": element.picture=human?"vlpl":computer?"alpl":"olsl"; break; // (type: human, computer, open)
+					case "maet":
+						element.visible=human||computer;
+						auto team=lobbySlot.team;
+						element.picture=0<=team&&team<3?numbered("1mtl",team):"xmtl";
+						break;
+					case "yder":
+						element.visible=human||computer;
+						element.picture=computer||lobbySlot.ready?"uhtl":"dhtl";
+						break;
+					case "eman":
+						element.visible=human||computer;
+						element.enabled=true;
+						setText(element,lobbySlot.name.length?lobbySlot.name:human?"Anonymous":computer?"Computer":"");
+						break;
+					case "_dog":
+						element.visible=human||computer;
+						setText(element,human||computer?lobbyGodName(lobbySlot):"");
+						break;
+					default: break;
+				}
+				continue;
+			}
+			switch(element.id){
+				case "trts": element.enabled=lobbyView.isHost&&lobbyView.canStart; break; // start (host)
+				case "tesg": element.enabled=false; break; // game settings (later)
+				default: break;
+			}
+		}
 	}
 	void updateSynchronizationRows(){
 		info.synchronizationRows.length=0;
 		if(!synchronizationFormVisible()) return;
 		auto network=synchronizationNetwork();
 		int numSlots=state?to!int(state.slots.length):lobbyNumSlots;
-		if(numSlots==-1){ // (only known to the host before the game is initialized)
+		if(numSlots==-1){ // (not known yet)
 			numSlots=0;
 			foreach(ref player;network.players.data)
-				if(!player.settings.observer&&isConnectedStatus(player.status))
+				if(isConnectedStatus(player.status))
 					numSlots=max(numSlots,player.slot+1);
 		}
 		foreach(slot;0..numSlots){
@@ -837,6 +994,18 @@ final class SacScene: Scene{
 					else forms[formIndex].elements[5].checked=chatOptions.checked[$-1]=all(chatOptions.checked[0..$-1]);
 				}
 				break;
+			case "ybol": // lobby
+				if(elementIndex<forms[formIndex].elements.length){
+					auto id=forms[formIndex].elements[elementIndex].id;
+					if(id=="trts") lobbyAction(LobbyAction(LobbyActionType.start));
+					else if(id=="lcnc") DagonBackend.app.exit(); // (cancel: quit)
+					else lobbyElementClicked(elementIndex);
+				}
+				break;
+			case "tuqh": // host has quit
+				if(elementIndex<forms[formIndex].elements.length&&forms[formIndex].elements[elementIndex].id=="tuqh")
+					DagonBackend.app.exit();
+				break;
 			case "sohc": // trigger choice dialog
 				if(elementIndex<forms[formIndex].elements.length){
 					auto id=forms[formIndex].elements[elementIndex].id;
@@ -871,6 +1040,8 @@ final class SacScene: Scene{
 						playMenuActionSound();
 						updateForm(formIndex,form.activeIndex);
 						if(formIndex>=forms.length) return;
+					}else if(element.type==.form.ElementType.picture&&form.sacForm.tag=="ybol"){
+						if(lobbyElementClicked(elementIndex)) playMenuActionSound(); // (slot icons)
 					}
 				}
 			}
@@ -900,6 +1071,17 @@ final class SacScene: Scene{
 				updateForm(formIndex,form.activeIndex);
 				if(formIndex>=forms.length) return;
 			}
+		}
+		if(keyDown[KEY_RETURN]&&lobbyFormOpen&&form.sacForm.tag=="ybol"){ // lobby chat
+			foreach(ref element;form.elements.data){
+				if(element.type!=.form.ElementType.entrybox||element.id!="txtc") continue;
+				if(element.textInput.length){
+					lobbyAction(LobbyAction(LobbyActionType.chat,-1,element.textInput.data.idup));
+					element.textInput.length=0;
+					element.textStart=element.textEnd=element.textCursor=0;
+				}
+			}
+			keyDown[KEY_RETURN]=0;
 		}
 		foreach(_;0..keyDown[KEY_RETURN]){
 			if(form.returnIsOk&&form.activeIndex!=form.escapeIndex) form.activeOk();
@@ -1930,7 +2112,14 @@ final class SacScene: Scene{
 	}
 
 	override void onViewUpdate(Duration dt){
-		if(options.scaleToFit) screenScaling=super.screenScaling=min(float(eventManager.windowWidth)/width,float(eventManager.windowHeight)/height);
+		camera.width=width;
+		camera.height=height;
+		info.windowWidth=eventManager.windowWidth;
+		info.windowHeight=eventManager.windowHeight;
+		centerViewport=options.centerViewport;
+		info.centerViewport=centerViewport;
+		info.hudScaling=info.height/480.0f;
+		if(options.scaleToFit) screenScaling=super.screenScaling=min(float(info.windowWidth)/width,float(info.windowHeight)/height);
 		else screenScaling=options.scale;
 		super.onViewUpdate(dt);
 	}
@@ -2863,6 +3052,11 @@ static:
 		scene.lobbyNetwork=network;
 		scene.lobbyNumSlots=numSlots;
 	}
+	// lobby screen: shows the lobby and collects the actions of this player for it
+	void showLobby(LobbyView view){ scene.showLobby(view); }
+	void hideLobby(){ scene.hideLobby(); }
+	void showHostQuit(){ scene.showHostQuit(); }
+	ref lobbyActions(){ return scene.lobbyActions; }
 	void focusCamera(int id,bool reset=true){
 		scene.focusCamera(id,reset);
 	}
@@ -2973,6 +3167,14 @@ static:
 	void finalizeMesh(Mesh mesh){
 		mesh.dataReady=true;
 		mesh.prepareVAO();
+	}
+	void updateMesh(Mesh mesh){ // re-upload vertices and texcoords of a finalized mesh (same sizes)
+		if(!mesh||!mesh.canRender) return;
+		glBindBuffer(GL_ARRAY_BUFFER,mesh.vbo);
+		glBufferSubData(GL_ARRAY_BUFFER,0,mesh.vertices.length*float.sizeof*3,mesh.vertices.ptr);
+		glBindBuffer(GL_ARRAY_BUFFER,mesh.tbo);
+		glBufferSubData(GL_ARRAY_BUFFER,0,mesh.texcoords.length*float.sizeof*2,mesh.texcoords.ptr);
+		glBindBuffer(GL_ARRAY_BUFFER,0);
 	}
 	BoneMesh makeBoneMesh(size_t numVertices, size_t numFaces){
 		auto m=New!BoneMesh(scene.assetManager);

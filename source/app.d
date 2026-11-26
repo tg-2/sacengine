@@ -440,6 +440,7 @@ int finalizeSettings(ref Options options){
 		import nttData:wizards;
 		options.wizard=cast(char[4])wizards[uniform!"[)"(0,$)];
 	}
+	if(options.god==God.none&&(options.host||options.joinIP!=""||options.lobby)) options.randomGod=true; // (lobby: chosen when the game starts)
 	if(options.god==God.none||options.randomGods){
 		import std.random: uniform;
 		options.god=cast(God)uniform!"[]"(1,5);

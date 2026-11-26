@@ -1163,10 +1163,72 @@ Color4f[3] soulMinimapColor=[
 auto healthColor=Color4f(192.0f/255.0f,0.0f,0.0f);
 auto manaColor=Color4f(0.0f,96.0f/255.0f,192.0f);
 
+// "Dancing" soul: the original draws free souls as a waving FLAG grid, not a flat sprite.
+// Per tick update 0x475ee0 (SacrificeModern soul_actor.cpp / scene.cpp soul_mesh): the two wave phases start at
+// rand()/16384 and advance 0.015 and 0.01 rad per tick; FLAG::Draw bends the grid with the formula below.
+// Souls in a bundle add their orbit angle to both phases, so they wave out of step.
+enum soulWavePhaseSpeedX=0.015f, soulWavePhaseSpeedY=0.01f;
+float[2] soulWavePhases(int id,int frame,float angleOffset=0.0f){
+	import std.math: fmod, PI;
+	// deterministic per-soul start in [0,2), like rand()/16384, without touching the game rng
+	uint h=cast(uint)id*2654435761u;
+	h^=h>>15; h*=0x2c1b3c6du; h^=h>>12;
+	auto startX=((h>>1)&0x7fff)/16384.0, startY=((h>>17)&0x7fff)/16384.0;
+	auto px=fmod(startX+soulWavePhaseSpeedX*cast(double)frame,2*PI)+angleOffset;
+	auto py=fmod(startY+soulWavePhaseSpeedY*cast(double)frame,2*PI)+angleOffset;
+	return [cast(float)px,cast(float)py];
+}
+
+struct SoulFlagMeshes(B){
+	enum rows=8, columns=6; // FLAG::Draw close-up grid (up to 8 cells per side)
+	enum stride=columns+1;
+	B.Mesh[] meshes; // one mesh per soul drawn in the current pass, so each vertex buffer is written once per frame
+	int used=0;
+	void reset(){ used=0; }
+	B.Mesh get(int atlasIndex,int atlasColumns,int atlasRows,float width,float height,float phaseX,float phaseY){
+		import std.math: sin;
+		if(used==meshes.length){
+			auto mesh=B.makeMesh(stride*(rows+1),2*rows*columns);
+			foreach(r;0..rows) foreach(c;0..columns){
+				uint q=r*stride+c;
+				// counter-clockwise as seen by the viewer (rows run from the top down)
+				mesh.indices[2*(r*columns+c)]=[q,q+stride,q+1];
+				mesh.indices[2*(r*columns+c)+1]=[q+1,q+stride,q+stride+1];
+			}
+			mesh.normals[]=Vector3f(0.0f,0.0f,1.0f);
+			mesh.vertices[]=Vector3f(0.0f,0.0f,0.0f);
+			mesh.texcoords[]=Vector2f(0.0f,0.0f);
+			B.finalizeMesh(mesh);
+			meshes~=mesh;
+		}
+		auto mesh=meshes[used++];
+		float su=1.0f/atlasColumns, sv=1.0f/atlasRows;
+		float u0=su*(atlasIndex%atlasColumns), v0=sv*(atlasIndex/atlasColumns);
+		// wave (0x475ee0 / FLAG::Draw); local x right, y up, z towards the viewer (original depth points away)
+		double hx=0.5*width, hz=0.5*height;
+		double a=sin(phaseX+0.785), b=sin(phaseY+0.785);
+		double x0=-hx-hx*b*0.4, depth0=a*-hx*b, z0=hz-a*hz*0.4;
+		foreach(r;0..rows+1){
+			double s=sin(r*(1.57/rows)+phaseY);
+			foreach(c;0..columns+1){
+				double t=sin(c*(1.57/columns)+phaseX);
+				double x=hx*s*0.4+x0+c*(width/columns);
+				double depth=t*hx*s+depth0;
+				double z=t*hz*0.4+z0-r*(height/rows);
+				mesh.vertices[r*stride+c]=Vector3f(cast(float)x,cast(float)z,cast(float)-depth);
+				mesh.texcoords[r*stride+c]=Vector2f(u0+su*c/columns,v0+sv*r/rows);
+			}
+		}
+		B.updateMesh(mesh);
+		return mesh;
+	}
+}
+
 final class SacSoul(B){
 	B.Mesh[] meshes;
 	B.Texture texture;
 	B.Material material;
+	SoulFlagMeshes!B flagMeshes;
 
 	enum soulWidth=1.0f;
 	enum soulHeight=1.6f*soulWidth;
@@ -1179,8 +1241,14 @@ final class SacSoul(B){
 		material=B.createMaterial(this);
 	}
 	enum numFrames=16;
+	int atlasIndex(SoulColor color,int frame){
+		return (color==SoulColor.blue?0:8)+frame/2;
+	}
 	B.Mesh getMesh(SoulColor color,int frame){
-		return meshes[(color==SoulColor.blue?0:8)+frame/2];
+		return meshes[atlasIndex(color,frame)];
+	}
+	B.Mesh getFlagMesh(SoulColor color,int frame,float phaseX,float phaseY){
+		return flagMeshes.get(atlasIndex(color,frame),4,4,soulWidth,soulHeight,phaseX,phaseY);
 	}
 }
 
@@ -1205,9 +1273,16 @@ final class SacGreenSoul(B){
 		texture=B.makeTexture(img);
 		material=B.createMaterial(this);
 	}
+	SoulFlagMeshes!B flagMeshes;
 	enum numFrames=16;
+	int atlasIndex(SoulColor color,int frame){
+		return (color==SoulColor.green?8:0)+frame/2;
+	}
 	B.Mesh getMesh(SoulColor color,int frame){
-		return meshes[(color==SoulColor.green?8:0)+frame/2];
+		return meshes[atlasIndex(color,frame)];
+	}
+	B.Mesh getFlagMesh(SoulColor color,int frame,float phaseX,float phaseY){
+		return flagMeshes.get(atlasIndex(color,frame),4,4,soulWidth,soulHeight,phaseX,phaseY);
 	}
 }
 
