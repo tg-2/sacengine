@@ -260,6 +260,8 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Par
 
 void serialize(alias sink)(ref EmissionRun run){ serializeStruct!sink(run); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==EmissionRun)){ deserializeStruct(result,state,data); }
+void serialize(alias sink)(ref EmissionRuns runs){ serializeStruct!sink(runs); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==EmissionRuns)){ deserializeStruct(result,state,data); }
 void serialize(alias sink)(ref TerrainRun run){ serializeStruct!sink(run); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==TerrainRun)){ deserializeStruct(result,state,data); }
 void serialize(alias sink,B)(ref ParticleEmitter!B emitter){ serializeStruct!sink(emitter); }
