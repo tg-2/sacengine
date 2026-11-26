@@ -3,6 +3,7 @@
 // https://www.gnu.org/licenses/gpl-3.0.txt
 
 import dagon;
+import dynamiclighting : DynamicLighting;
 import dlib.math.portable;
 import options,util;
 import std.stdio;
@@ -51,6 +52,7 @@ final class SacScene: Scene{
 	@property ref float screenScaling(){ return info.screenScaling; }
 	@property ref SpellType spellbookTab(){ return info.spellbookTab; }
 	Renderer!DagonBackend renderer;
+	DynamicLighting dynamicLighting;
 	void switchSpellbookTab(SpellType newTab){
 		if(spellbookTab==newTab) return;
 		if(audio) audio.playSound("okub");
@@ -281,6 +283,7 @@ final class SacScene: Scene{
 		super.onAllocate();
 
 		ssao.enabled=options.enableSSAO;
+		deferredEnvPass.enableNttLighting=options.enableNttLighting;
 		glow.enabled=options.enableGlow;
 		glow.brightness=options.glowBrightness;
 		antiAliasing.enabled=options.enableAntialiasing;
@@ -2140,6 +2143,8 @@ final class SacScene: Scene{
 		info.hudScaling=info.height/480.0f;
 		if(options.scaleToFit) screenScaling=super.screenScaling=min(float(info.windowWidth)/width,float(info.windowHeight)/height);
 		else screenScaling=options.scale;
+		// NTT mode takes priority if both modes are requested.
+		if(options.enableLights) dynamicLighting.update!DagonBackend(this);
 		super.onViewUpdate(dt);
 	}
 

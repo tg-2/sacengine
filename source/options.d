@@ -36,7 +36,9 @@ struct Options{
 	bool enableScars=true; // scorch marks, cracks, ... of spells on the ground (--no-scars)
 	bool enableFog=false;
 	bool enableSSAO=false;
+	bool enableNttLighting=false;
 	bool enableGlow=true;
+	bool enableLights=false; // dynamic entity and effect lighting
 	float glowBrightness=0.5;
 	bool enableAntialiasing=true;
 	int cursorSize=-1;
