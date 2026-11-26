@@ -762,7 +762,10 @@ final class SacScene: Scene{
 	}
 	void hideLobby(){
 		lobbyView=LobbyView.init;
-		if(lobbyVisible&&audio) audio.switchTheme(Theme.none); // (fades out, the game's music starts with the game)
+		if(lobbyVisible&&audio){
+			audio.stopTheme();
+			audio.switchTheme(Theme.none);
+		}
 		lobbyVisible=false;
 		lobbyActions.length=0;
 	}
