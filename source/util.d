@@ -467,10 +467,10 @@ struct HashMap(K,V){
 }
 
 struct HashSet(K){
-	private HashMap!(K,bool) map;
+	private HashMap!(K,void[0]) map;
 	@property size_t length()const pure nothrow @nogc{ return map.length; }
 	bool opBinaryRight(string op:"in")(K key)nothrow @nogc{ return !!(key in map); }
-	void insert(K key){ map[key]=true; }
+	void insert(K key){ map[key]=[]; }
 	void clear()nothrow @nogc{ map.clear(); }
 }
 
