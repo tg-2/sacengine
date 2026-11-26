@@ -242,7 +242,10 @@ final class SacScene: Scene{
 			                                     ambientFactor: options.ambientFactor,
 			                                     enableFog: options.enableFog};
 			renderer.setupEnvironment(envOpt,state.current.map);
-			if(audio) audio.setTileset(state.current.map.tileset);
+			if(audio){
+				audio.setTileset(state.current.map.tileset);
+				if(audio.nextTheme==Theme.none) audio.switchTheme(Theme.normal); // (after the lobby music)
+			}
 		}
 	}
 
@@ -751,10 +754,12 @@ final class SacScene: Scene{
 	int lobbyFormSlots=-1;
 	void showLobby(LobbyView view){
 		lobbyView=view;
+		if(!lobbyVisible&&audio&&options.lobbyMusic) audio.switchTheme(Theme.menu); // (music of the original's menus)
 		lobbyVisible=true;
 	}
 	void hideLobby(){
 		lobbyView=LobbyView.init;
+		if(lobbyVisible&&audio) audio.switchTheme(Theme.none); // (fades out, the game's music starts with the game)
 		lobbyVisible=false;
 		lobbyActions.length=0;
 	}
@@ -1089,7 +1094,8 @@ final class SacScene: Scene{
 			foreach(ref element;form.elements.data){
 				if(element.type!=.form.ElementType.entrybox||element.id!="txtc") continue;
 				if(element.textInput.length){
-					lobbyAction(LobbyAction(LobbyActionType.chat,-1,element.textInput.data.idup));
+					if(lobbyAction(LobbyAction(LobbyActionType.chat,-1,element.textInput.data.idup)))
+						playMenuActionSound(); // (as the original: click sound when a message is sent)
 					element.textInput.length=0;
 					element.textStart=element.textEnd=element.textCursor=0;
 				}
@@ -2731,6 +2737,7 @@ final class SacScene: Scene{
 			// if(sac.numFrames(cast(AnimationState)0)) sac.setFrame(cast(AnimationState)0,cast(size_t)(frame%sac.numFrames(cast(AnimationState)0))); // TODO: fix
 		}
 		if(audio&&state) audio.update(dt,fpview.viewMatrix,state.current,renderSide);
+		else if(audio&&(lobbyVisible||audio.currentTheme==Theme.menu)) audio.updateTheme(dt); // (lobby music, until it has faded out)
 		updateCursor(dt);
 		updateTriggerProjection();
 		super.onUpdate(dt);
