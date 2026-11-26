@@ -12,9 +12,10 @@ import dlib.math.quaternion;
 import std.algorithm : min, max;
 import sacobject, state;
 import ntts : God, Flags;
+import util;
 
 struct DynamicLighting {
-    private LightSource[] pool;
+    private util.Array!LightSource pool;
     enum maxLights = 72;
     enum float energyMultiplier = 10.0f;
     enum float fadeStart = 100.0f;
@@ -40,48 +41,48 @@ struct DynamicLighting {
     private FadeRecord[maxLights] history;
     private size_t historyCount;
 
+	// Use the distance to the light volume, not just its center.
+	// Squared distances avoid a square root for every candidate.
+	float distanceFade(SceneType)(Vector3f pos, float radius, SceneType scene) {
+		auto cameraPos = scene.camera.position;
+		auto d = pos - cameraPos;
+		float d2 = d.x*d.x + d.y*d.y + d.z*d.z;
+		float near = fadeStart + radius;
+		float far = fadeEnd + radius;
+		if (d2 >= far*far) return 0.0f;
+		if (d2 <= near*near) return 1.0f;
+		float t = (d2-near*near)/(far*far-near*near);
+		return 1.0f-t*t*(3.0f-2.0f*t);
+	}
+
+
+	bool emit(SceneType,StateType)(Vector3f pos, Vector3f color, float energy, float radius, SceneType scene, StateType st) {
+		if (used >= maxLights || energy <= 0.0f) return false;
+		energy *= distanceFade(pos, radius, scene);
+		if (energy <= 0.0f) return false;
+		if (used == pool.length)
+			pool ~= scene.createLight(Vector3f(0,0,0), Color4f(0,0,0,1), 0.0f, 0.01f);
+		auto light = pool[used++];
+		light.position = pos;
+		light.color = color;
+		light.energy = energy * energyMultiplier;
+		light.radius = radius;
+		return true;
+	}
+
     void update(B, SceneType)(SceneType scene) {
         used = 0;
-        if (!scene.lightManager) { historyCount = 0; return; }
         scope(exit) {
-            foreach (light; pool[used .. $]) {
+            foreach (light; pool.data[used .. pool.length]) {
                 light.energy = 0.0f;
                 light.radius = 0.01f;
             }
         }
+        if (!scene.lightManager) { historyCount = 0; return; }
         if (!scene.state || !scene.state.current) { historyCount = 0; return; }
-        auto st = scene.state.current;
+		auto st = scene.state.current;
         auto objects = &st.obj.opaqueObjects;
-        auto effects = &objects.effects;
-
-        // Use the distance to the light volume, not just its center.
-        // Squared distances avoid a square root for every candidate.
-        auto cameraPos = scene.camera.position;
-        float distanceFade(Vector3f pos, float radius) {
-            auto d = pos - cameraPos;
-            float d2 = d.x*d.x + d.y*d.y + d.z*d.z;
-            float near = fadeStart + radius;
-            float far = fadeEnd + radius;
-            if (d2 >= far*far) return 0.0f;
-            if (d2 <= near*near) return 1.0f;
-            float t = (d2-near*near)/(far*far-near*near);
-            return 1.0f-t*t*(3.0f-2.0f*t);
-        }
-
-        bool emit(Vector3f pos, Vector3f color, float energy, float radius) {
-            if (used >= maxLights || energy <= 0.0f) return false;
-            energy *= distanceFade(pos, radius);
-            if (energy <= 0.0f) return false;
-            if (used == pool.length)
-                pool ~= scene.createLight(Vector3f(0,0,0), Color4f(0,0,0,1), 0.0f, 0.01f);
-            auto light = pool[used++];
-            light.position = pos;
-            light.color = color;
-            light.energy = energy * energyMultiplier;
-            light.radius = radius;
-            return true;
-        }
-
+		auto effects = &objects.effects;
         auto now = MonoTime.currTime;
         FadeRecord[maxLights] nextHistory;
         size_t nextCount = 0;
@@ -111,9 +112,9 @@ struct DynamicLighting {
                 if (!old.fading) level = min(1.0f, level + dt/inTime);
                 break;
             }
-            if (used >= maxLights || nextCount >= maxLights || distanceFade(pos,radius) <= 0.0f) return;
+            if (used >= maxLights || nextCount >= maxLights || distanceFade(pos,radius,scene) <= 0.0f) return;
             float gain = smooth(level);
-            if (gain > 0.0f && !emit(pos,color,energy*gain,radius)) return;
+            if (gain > 0.0f && !emit(pos,color,energy*gain,radius,scene,st)) return;
             FadeRecord record;
             record.key = key;
             record.pos = pos;
@@ -125,20 +126,20 @@ struct DynamicLighting {
             record.lastSeen = now;
             nextHistory[nextCount++] = record;
         }
-        auto orange = Vector3f(1,0.5f,0);
-        auto yellow = Vector3f(1,1,0);
-        auto purple = Vector3f(0.8f,0.15f,0.8f);
-        auto white = Vector3f(1,1,1);
-        auto green = Vector3f(0,1,0);
-        auto blue = Vector3f(0,0.75f,1);
-        auto lift = Vector3f(0,0,1.5f);
+        enum orange = Vector3f(1,0.5f,0);
+        enum yellow = Vector3f(1,1,0);
+        enum purple = Vector3f(0.8f,0.15f,0.8f);
+        enum white = Vector3f(1,1,1);
+        enum green = Vector3f(0,1,0);
+        enum blue = Vector3f(0,0.75f,1);
+        enum lift = Vector3f(0,0,1.5f);
         void attached(int id, Vector3f color, float energy, float radius) {
             if (!st.isValidTarget(id,TargetType.creature)) return;
             auto pos = st.movingObjectReadById!((ref o,j) => o.positions[j], () => Vector3f.init)(id);
-            emit(pos+lift,color,energy,radius);
+            emit(pos+lift,color,energy,radius,scene,st);
         }
         void beam(Vector3f a, Vector3f b, Vector3f color, float energy, float radius) {
-            foreach (i; 0..3) emit(a+(b-a)*(i/2.0f), color, energy, radius);
+	        foreach (i; 0..3) emit(a+(b-a)*(i/2.0f), color, energy, radius, scene, st);
         }
 
         // Explicit effect lights: independent of particle generation.
@@ -151,9 +152,9 @@ struct DynamicLighting {
         foreach (ref e; effects.chainLightnings.data)
             beam(e.last.center(st),e.current.center(st),white,4,35);
         foreach (ref e; effects.wraths.data)
-            emit(e.position+lift,orange,8,40);
+	        emit(e.position+lift,orange,8,40,scene,st);
         foreach (ref e; effects.fireballs.data)
-            emit(e.position,Vector3f(1,0.34f,0.08f),5,25);
+	        emit(e.position,Vector3f(1,0.34f,0.08f),5,25,scene,st);
         foreach (ref e; effects.fireforms.data) attached(e.target,orange,4,25);
         foreach (ref e; effects.etherealForms.data) attached(e.target,yellow,3*max(0.0f,min(1.0f,e.progress)),50);
         foreach (ref e; effects.airShields.data) attached(e.target,blue,2*max(0.0f,min(1.0f,e.scale)),25);
@@ -161,7 +162,7 @@ struct DynamicLighting {
         foreach (ref e; effects.speedUps.data) attached(e.creature,green,3,25);
         foreach (ref e; effects.healingAuras.data) attached(e.target,yellow,4*max(0.0f,min(1.0f,e.scale)),50);
         foreach (ref e; effects.heals.data) attached(e.creature,yellow,3,25);
-        foreach (ref e; effects.demonicRifts.data) emit(e.position+lift,purple,5*max(0.0f,min(1.0f,e.heightScale)),40);
+        foreach (ref e; effects.demonicRifts.data) emit(e.position+lift,purple,5*max(0.0f,min(1.0f,e.heightScale)),40,scene,st);
         // Heal has a separate casting phase before the active healing effect.
         foreach (ref e; effects.healCastings.data) attached(e.creature,yellow,3,25);
         // Breath of Life is the explicit ranged revival effect. No Animate Dead light.
@@ -211,20 +212,20 @@ struct DynamicLighting {
                      (st.fogOfWar3d && !st.positionVisibleToSide(scene.renderSide,g.positions[i])))) continue;
                 if (g.sacObject.isManahoar && mode.isAlive && g.creatureStatss[i].health > 0.0f) {
                     auto c = st.sides.manaColor(g.sides[i]);
-                    emit(g.positions[i]+lift,Vector3f(c.r,c.g,c.b),2,18);
+                    emit(g.positions[i]+lift,Vector3f(c.r,c.g,c.b),2,18,scene,st);
                 }
                 if (g.sacObject.isWizard && mode.isCasting && id !in excludedCasters) {
                     auto god = id in castingGods;
                     auto actualGod = god ? *god : God.none;
                     if (actualGod == God.none) actualGod = st.getCurrentGod(id);
-                    emit(g.positions[i]+lift,castingColor(actualGod),2,16);
+                    emit(g.positions[i]+lift,castingColor(actualGod),2,16,scene,st);
                 }
                 switch (mode) with (CreatureMode) {
                     case deadToGhost, idleGhost, movingGhost, ghostToIdle:
-                        emit(g.positions[i]+lift,blue,2,18); break;
+	                    emit(g.positions[i]+lift,blue,2,18,scene,st); break;
                     case reviving, fastReviving, convertReviving:
                         if (id !in animateDeadTargets && id !in revivalTargets)
-                            emit(g.positions[i]+lift,yellow,3,25);
+	                        emit(g.positions[i]+lift,yellow,3,25,scene,st);
                         break;
                     default: break;
                 }
@@ -235,10 +236,10 @@ struct DynamicLighting {
 
         // Preserve the strong red soul profile from the reference patch.
         foreach (ref soul; objects.souls.souls.data) {
-            auto color = soul.color(scene.renderSide,st);
+	        auto color = soul.color(scene.renderSide,st);
             auto pos = soul.position + soul.scaling*Vector3f(0,0,1.25f*SacSoul!B.soulHeight);
-            if (color == SoulColor.red) emit(pos,Vector3f(1,0,0),7,40);
-            else if (color == SoulColor.blue) emit(pos,blue,7,40);
+            if (color == SoulColor.red) emit(pos,Vector3f(1,0,0),7,40,scene,st);
+            else if (color == SoulColor.blue) emit(pos,blue,7,40,scene,st);
         }
 
         // Live buildings, not emitters. Match the original emitter anchor heights.
@@ -268,30 +269,30 @@ struct DynamicLighting {
         // Only lightning casting particles remain eligible for particle lighting.
         // Limit particle lights to one per spatial cell and particle type.
         // This avoids hundreds of overlapping lights from a single cast.
-        bool[long[4]] occupied;
+        bool[long[4]] occupied; // TODO: this causes a memory leak
         // The state no longer stores the particles, only their emitters (blood
         // drops, the remaining stored particles, produce no light). Replay the
         // emitters like the renderer does to get the world positions of the
         // live particles at the current frame.
-        void particle(SacParticle!B p,Vector3f pos,float size,float alpha,B.Mesh mesh,int sideFilter) {
+        static void particle(StateType)(SacParticle!B p,Vector3f pos,float size,float alpha,B.Mesh mesh,int sideFilter, DynamicLighting* self, SceneType scene, StateType st, bool[long[4]]* occupied) {
             Vector3f color;
             float energy, radius;
             switch (p.type) with (ParticleType) {
                 case lightningCasting, chainLightningCasting: color=white; energy=3; radius=20; break;
                 default: return;
             }
-            if (used >= maxLights) return;
+            if (self.used >= maxLights) return;
             if (sideFilter != int.min && sideFilter != scene.renderSide) return;
-            if (distanceFade(pos+lift, radius) <= 0.0f) return;
+            if (self.distanceFade(pos+lift, radius, scene) <= 0.0f) return;
             long[4] key=[cast(long)p.type,cast(long)(pos.x/5),cast(long)(pos.y/5),cast(long)(pos.z/5)];
-            if (key in occupied) return;
+            if (key in *occupied) return;
             if (alpha<=0) return;
-            occupied[key]=true;
+            (*occupied)[key]=true;
             float actualEnergy = energy*min(1.0f,alpha*4);
-            emit(pos+lift,color,actualEnergy,radius);
+            self.emit(pos+lift,color,actualEnergy,radius,scene,st);
         }
         foreach (ref emitter; objects.particleEmitters.emitters.data)
-            emitter.eachEmitterParticle!particle(st);
+	        emitter.eachEmitterParticle!particle(st,&this,scene,st,&occupied);
 
         // Live sources always get first claim on the pool. A fading light
         // is discarded if it is too far away or the live lights fill the pool.
@@ -302,7 +303,7 @@ struct DynamicLighting {
                 record.lastSeen = now;
             }
             float level = record.level*max(0.0f,1.0f-secondsSince(record.lastSeen)/record.duration);
-            if (emit(record.pos,record.color,record.energy*smooth(level),record.radius))
+            if (emit(record.pos,record.color,record.energy*smooth(level),record.radius,scene,st))
                 nextHistory[nextCount++] = record;
         }
         history[0 .. nextCount] = nextHistory[0 .. nextCount];
