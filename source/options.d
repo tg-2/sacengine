@@ -45,6 +45,7 @@ struct Options{
 	// audio options
 	float volume=1.0f;
 	float musicVolume=1.0f;
+	bool lobbyMusic=true; // music of the original's menus in the lobby (--no-lobby-music)
 	float soundVolume=1.0f;
 	string voiceFolder="local"; // folder in data/ with the localized voices, e.g. "Lokal" (Polish)
 	bool advisorHelpSpeech=true;
