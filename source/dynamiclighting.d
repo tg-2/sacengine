@@ -41,6 +41,13 @@ struct DynamicLighting {
     private FadeRecord[maxLights] history;
     private size_t historyCount;
 
+    // Per-frame lookup tables. They are cleared every frame but keep their
+    // storage, so update does not allocate on the GC heap (the GC is disabled
+    // while the game runs, built-in associative arrays would leak).
+    private HashSet!int revivalTargets, animateDeadTargets, excludedCasters;
+    private HashMap!(int,God) castingGods;
+    private HashSet!(long[4]) occupied;
+
 	// Use the distance to the light volume, not just its center.
 	// Squared distances avoid a square root for every candidate.
 	float distanceFade(SceneType)(Vector3f pos, float radius, SceneType scene) {
@@ -166,22 +173,22 @@ struct DynamicLighting {
         // Heal has a separate casting phase before the active healing effect.
         foreach (ref e; effects.healCastings.data) attached(e.creature,yellow,3,25);
         // Breath of Life is the explicit ranged revival effect. No Animate Dead light.
-        bool[int] revivalTargets;
+        revivalTargets.clear();
         foreach (ref e; effects.breathOfLifes.data) {
             attached(e.creature,yellow,3,25);
             if (e.target.id !in revivalTargets) {
                 attached(e.target.id,yellow,3,25);
-                revivalTargets[e.target.id] = true;
+                revivalTargets.insert(e.target.id);
             }
         }
-        bool[int] animateDeadTargets;
-        foreach (ref e; effects.animateDeads.data) animateDeadTargets[e.creature.id] = true;
-        bool[int] excludedCasters;
-        foreach (ref e; effects.animateDeadCastings.data) excludedCasters[e.manaDrain.wizard] = true;
-        foreach (ref e; effects.lightningCastings.data) excludedCasters[e.manaDrain.wizard] = true;
-        foreach (ref e; effects.chainLightningCastings.data) excludedCasters[e.manaDrain.wizard] = true;
+        animateDeadTargets.clear();
+        foreach (ref e; effects.animateDeads.data) animateDeadTargets.insert(e.creature.id);
+        excludedCasters.clear();
+        foreach (ref e; effects.animateDeadCastings.data) excludedCasters.insert(e.manaDrain.wizard);
+        foreach (ref e; effects.lightningCastings.data) excludedCasters.insert(e.manaDrain.wizard);
+        foreach (ref e; effects.chainLightningCastings.data) excludedCasters.insert(e.manaDrain.wizard);
         // Prefer the actual spell god when the casting record exposes it.
-        God[int] castingGods;
+        castingGods.clear();
         foreach (ref e; effects.creatureCasts.data) castingGods[e.manaDrain.wizard] = e.spell.god;
         foreach (ref e; effects.structureCasts.data) castingGods[e.manaDrain.wizard] = e.god;
         foreach (ref e; effects.fireballCastings.data) castingGods[e.manaDrain.wizard] = God.pyro;
@@ -269,12 +276,12 @@ struct DynamicLighting {
         // Only lightning casting particles remain eligible for particle lighting.
         // Limit particle lights to one per spatial cell and particle type.
         // This avoids hundreds of overlapping lights from a single cast.
-        bool[long[4]] occupied; // TODO: this causes a memory leak
+        occupied.clear();
         // The state no longer stores the particles, only their emitters (blood
         // drops, the remaining stored particles, produce no light). Replay the
         // emitters like the renderer does to get the world positions of the
         // live particles at the current frame.
-        static void particle(StateType)(SacParticle!B p,Vector3f pos,float size,float alpha,B.Mesh mesh,int sideFilter, DynamicLighting* self, SceneType scene, StateType st, bool[long[4]]* occupied) {
+        static void particle(StateType)(SacParticle!B p,Vector3f pos,float size,float alpha,B.Mesh mesh,int sideFilter, DynamicLighting* self, SceneType scene, StateType st) {
             Vector3f color;
             float energy, radius;
             switch (p.type) with (ParticleType) {
@@ -285,14 +292,14 @@ struct DynamicLighting {
             if (sideFilter != int.min && sideFilter != scene.renderSide) return;
             if (self.distanceFade(pos+lift, radius, scene) <= 0.0f) return;
             long[4] key=[cast(long)p.type,cast(long)(pos.x/5),cast(long)(pos.y/5),cast(long)(pos.z/5)];
-            if (key in *occupied) return;
+            if (key in self.occupied) return;
             if (alpha<=0) return;
-            (*occupied)[key]=true;
+            self.occupied.insert(key);
             float actualEnergy = energy*min(1.0f,alpha*4);
             self.emit(pos+lift,color,actualEnergy,radius,scene,st);
         }
         foreach (ref emitter; objects.particleEmitters.emitters.data)
-	        emitter.eachEmitterParticle!particle(st,&this,scene,st,&occupied);
+	        emitter.eachEmitterParticle!particle(st,&this,scene,st);
 
         // Live sources always get first claim on the pool. A fading light
         // is discarded if it is too far away or the live lights fill the pool.

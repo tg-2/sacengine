@@ -412,6 +412,68 @@ struct Array(T){
 	string toString()(){ import std.conv; return text(data); }
 }
 
+// Open-addressing hash map on top of Array: no GC allocations.
+// clear() is O(1) and keeps the storage, for maps that are rebuilt every frame.
+struct HashMap(K,V){
+	private static struct Slot{ K key; V value; uint gen; } // occupied iff gen==this.gen
+	private Array!Slot slots; // length is zero or a power of two
+	private size_t _length;
+	private uint gen=1;
+	@property size_t length()const pure nothrow @nogc{ return _length; }
+	private size_t start(ref K key)nothrow @nogc{
+		import core.bitop: bsr;
+		ulong h=hashOf(key)*0x9E3779B97F4A7C15UL; // Fibonacci hashing: use the high bits
+		return cast(size_t)(h>>(64-bsr(slots.length)));
+	}
+	private Slot* find(K key)nothrow @nogc{
+		if(!slots.length) return null;
+		auto mask=slots.length-1;
+		for(auto i=start(key);;i=(i+1)&mask){
+			auto slot=&slots.data[i];
+			if(slot.gen!=gen) return null;
+			if(slot.key==key) return slot;
+		}
+	}
+	V* opBinaryRight(string op:"in")(K key)nothrow @nogc{
+		auto slot=find(key);
+		return slot?&slot.value:null;
+	}
+	ref V opIndexAssign(V value,K key){
+		if(auto slot=find(key)) return slot.value=value;
+		if(2*(_length+1)>slots.length) grow();
+		auto mask=slots.length-1;
+		auto i=start(key);
+		while(slots.data[i].gen==gen) i=(i+1)&mask;
+		slots.data[i]=Slot(key,value,gen);
+		++_length;
+		return slots.data[i].value;
+	}
+	private void grow(){
+		import core.lifetime: move;
+		auto old=move(slots);
+		auto oldGen=gen;
+		slots.length=old.length?2*old.length:16;
+		gen=1;
+		_length=0;
+		foreach(ref slot;old.data) if(slot.gen==oldGen) this[slot.key]=slot.value;
+	}
+	void clear()nothrow @nogc{
+		_length=0;
+		if(++gen==0){ // wrapped around: invalidate all slots explicitly
+			foreach(ref slot;slots.data) slot.gen=0;
+			gen=1;
+		}
+	}
+}
+
+struct HashSet(K){
+	private HashMap!(K,bool) map;
+	@property size_t length()const pure nothrow @nogc{ return map.length; }
+	bool opBinaryRight(string op:"in")(K key)nothrow @nogc{ return !!(key in map); }
+	void insert(K key){ map[key]=true; }
+	void clear()nothrow @nogc{ map.clear(); }
+}
+
 mixin template Assign(){
 	void opAssign(ref typeof(this) rhs){
 		foreach(i,ref x;this.tupleof)
