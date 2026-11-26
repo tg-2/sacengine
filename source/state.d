@@ -14876,9 +14876,14 @@ bool stealth(B)(ref MovingObject!B object,ObjectState!B state){
 	return true;
 }
 
+bool lifeShieldBlocked(B)(ref MovingObject!B object){
+	// original: absh.SPEL exclusion tags 'PROT' (any protection) and 'PARA' (paralysis: freeze, lethargy, vines, turn to stone; slime), checked by 0x450390
+	// rings of fire are kept from shieldBlocked (not checked against the original)
+	with(object.creatureStats.effects) return shielded||petrified||frozen||vined||slimed||ringsOfFire;
+}
+
 bool lifeShield(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
-	if(object.creatureStats.effects.lifeShield) return false;
-	if(object.creatureStats.effects.shieldBlocked) return false;
+	if(object.lifeShieldBlocked) return false;
 	object.creatureStats.effects.lifeShield=true;
 	auto duration=20;
 	playSoundAt!true("ahsl",object.id,state,2.0f);
@@ -14981,7 +14986,7 @@ bool oilShoot(B)(int creature,int side,float accuracy,Vector3f position,Vector3f
 }
 
 bool protector(B)(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
-	if(object.creatureStats.effects.lifeShield) return false;
+	if(object.creatureStats.effects.shielded) return false; // original: abSH.SPEL exclusion tag 'PROT'
 	auto lifeShield=SacSpell!B.get(SpellTag.lifeShield);
 	object.lifeShield(lifeShield,state);
 	state.addEffect(Protector!B(object.id,ability));
@@ -15725,6 +15730,27 @@ void updateTriggerCastOrder(B)(ref MovingObject!B object,ObjectState!B state){
 	}
 }
 
+// original: creature target selection (0x493b70) scores self abilities with the SPEL evaluator.
+// absh (Life Shield) uses EvaluatePanicSpell 0x411b00: r=health/maxHealth, cast when 0.2<=r²<=0.4 (about 44.7%..63.2%)
+// and the last attacker, if any, is within 60 (2D). Not during move/attack-target orders or cinematics.
+// abSH (Protector) uses EvalSpell_Protect 0x4420a0, which is 0 for non-wizards, so it is never used automatically.
+bool usePanicAbility(B)(ref MovingObject!B object,ObjectState!B state){
+	if(state.trig.cinematics) return false;
+	auto ability=object.ability;
+	if(!ability||ability.tag!=SpellTag.lifeShield) return false;
+	if(!object.creatureAI.order.command.among(CommandType.none,CommandType.guard,CommandType.guardArea,CommandType.advance)) return false;
+	with(CreatureMode) if(!object.creatureState.mode.among(idle,moving,meleeMoving,meleeAttacking)) return false;
+	if(object.creatureStats.maxHealth<=0.0f) return false;
+	auto ratio=object.creatureStats.health/object.creatureStats.maxHealth;
+	if(ratio^^2<0.2f||ratio^^2>0.4f) return false;
+	if(auto attacker=object.creatureAI.lastAttackerId){
+		auto attackerPosition=state.movingObjectById!((ref obj)=>obj.position,()=>Vector3f.init)(attacker);
+		if(attackerPosition !is Vector3f.init&&(attackerPosition.xy-object.position.xy).lengthsqr>60.0f^^2) return false;
+	}
+	if(state.abilityStatus!true(object,ability)!=SpellStatus.ready) return false;
+	return object.useAbility(ability,OrderTarget(TargetType.creature,object.id,object.position),state);
+}
+
 void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 	if(!requiresAI(object.creatureState.mode)) return;
 	if(object.creatureStats.effects.oiled) return;
@@ -15765,6 +15791,7 @@ void updateCreatureAI(B)(ref MovingObject!B object,ObjectState!B state){
 		return;
 	}
 	if(object.sacObject.hasPeasantFSM&&object.updatePeasantBehavior(state)) return;
+	if(state.frontOfAIQueue(object.side,object.id)) object.usePanicAbility(state);
 	switch(object.creatureAI.order.command){
 		case CommandType.retreat,CommandType.capture:
 			auto targetId=object.creatureAI.order.target.id;
@@ -27893,15 +27920,18 @@ bool updateProtector(B)(ref Protector!B protector,ObjectState!B state){
 	if(!state.isValidTarget(protector.id,TargetType.creature)) return false;
 	static void applyProtector(ref MovingObject!B object,SacSpell!B ability,ObjectState!B state){
 		auto lifeShield=SacSpell!B.get(SpellTag.lifeShield);
-		static void applyShield(ref CenterProximityEntry entry,int id,int side,SacSpell!B lifeShield,ObjectState!B state){
+		// original: ProtectorRun 0x41e180 -> 0x492300: creatures of the caster's side whose feet are within effectRange (3D, d²<r²) of the caster's feet
+		static void applyShield(ref CenterProximityEntry entry,int id,int side,Vector3f casterPosition,float range,SacSpell!B lifeShield,ObjectState!B state){
 			if(entry.isStatic||side!=entry.side||id==entry.id||!state.isValidTarget(entry.id,TargetType.creature)) return;
-			static void doIt(ref MovingObject!B object,SacSpell!B lifeShield,ObjectState!B state){
+			static void doIt(ref MovingObject!B object,Vector3f casterPosition,float range,SacSpell!B lifeShield,ObjectState!B state){
 				if(object.isWizard) return;
+				if((object.position-casterPosition).lengthsqr>=range^^2) return;
 				object.lifeShield(lifeShield,state);
 			}
-			state.movingObjectById!(doIt,(){})(entry.id,lifeShield,state);
+			state.movingObjectById!(doIt,(){})(entry.id,casterPosition,range,lifeShield,state);
 		}
-		state.proximity.eachInRange!applyShield(object.center,ability.effectRange,object.id,object.side,lifeShield,state);
+		enum protectorSlack=50.0f; // proximity stores hitbox centers
+		state.proximity.eachInRange!applyShield(object.center,ability.effectRange+protectorSlack,object.id,object.side,object.position,ability.effectRange,lifeShield,state);
 	}
 	state.movingObjectById!(applyProtector,(){})(protector.id,protector.ability,state);
 	return false;
@@ -32017,7 +32047,11 @@ final class ObjectState(B){ // (update logic)
 					return SpellStatus.invalidTarget;
 				return SpellStatus.ready;
 			case SpellTag.lifeShield:
-				if(obj.creatureStats.effects.lifeShield)
+				if(obj.lifeShieldBlocked)
+					return SpellStatus.invalidTarget;
+				return SpellStatus.ready;
+			case SpellTag.protector:
+				if(obj.creatureStats.effects.shielded)
 					return SpellStatus.invalidTarget;
 				return SpellStatus.ready;
 			default: return SpellStatus.ready;
