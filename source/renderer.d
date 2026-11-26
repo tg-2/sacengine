@@ -5287,51 +5287,6 @@ struct Renderer(B){
 		B.colorHUDMaterialBackend.setColor(Color4f(1.0f,1.0f,1.0f,1.0f));
 		B.colorHUDMaterialBackend.unbind(null,rc);
 	}
-	// pictures that form elements show instead of their default one (ElementState.picture): icons from the game files,
-	// and the lobby's map preview (tag "PREV")
-	B.Texture[char[4]] formPictures;
-	bool[9] lobbySlotIcons=[true,true,true,true,false,false,false,false,false]; // (slot number icons that exist)
-	string lobbyMapPreviewFilename=null;
-	B.Texture lobbyMapPreview;
-	B.Texture formPicture(char[4] tag,ref RenderInfo!B info){
-		if(tag=="PREV"){
-			if(lobbyMapPreviewFilename!=info.lobbyMapFilename){
-				lobbyMapPreviewFilename=info.lobbyMapFilename;
-				lobbyMapPreview=null;
-				if(info.lobbyMapFilename.length){
-					try{
-						import loading: mapPreviewRGB, mapPreviewSize;
-						if(auto rgb=mapPreviewRGB(info.lobbyMapFilename)){
-							import dlib.image: image;
-							auto picture=image(mapPreviewSize,mapPreviewSize,3);
-							picture.data[]=rgb[];
-							lobbyMapPreview=B.makeTexture(picture,false);
-						}
-					}catch(Exception e){
-						stderr.writeln("warning: failed to load map preview (",e.msg,")");
-					}
-				}
-			}
-			return lobbyMapPreview;
-		}
-		if(auto r=tag in formPictures) return *r;
-		B.Texture texture=null;
-		if(tag=="\x01non") return formPictures[tag]=B.makeTexture(makeOnePixelImage(Color4f(0.0f,0.0f,0.0f,0.0f))); // (nothing)
-		import nttData: formIcons;
-		import txtr: loadTXTR;
-		if(auto filename=tag in formIcons) texture=B.makeTexture(loadTXTR(*filename));
-		else if(tag[1..4]=="lsl"&&'5'<=tag[0]&&tag[0]<='9'){ // lobby slot numbers after 4 (not in the game files): icons/lsl5.png etc., if present
-			import std.file: exists;
-			import dlib.image.io.png: loadPNG;
-			auto filename="icons/lsl"~tag[0]~".png";
-			try if(exists(filename)) texture=B.makeTexture(loadPNG(filename));
-			catch(Exception e) stderr.writeln("warning: failed to load '",filename,"' (",e.msg,")");
-			if(!texture) texture=formPicture("\x01non",info); // (number drawn as text instead)
-			else lobbySlotIcons[tag[0]-'1']=true;
-		}
-		return formPictures[tag]=texture;
-	}
-
 	void renderLoadingScreen(ref RenderInfo!B info,B.RenderContext rc){
 		if(!info.loadingScreenVisible) return;
 		updateLoadingScreenContents(info.loadingMapFolder);
@@ -5964,8 +5919,11 @@ struct Renderer(B){
 					}
 				}else foreach(i,ref part;sacElement.parts){
 					auto texture=part.texture;
-					if(sacElement.type==ElementType.picture&&elements[elementIndex].picture!="\0\0\0\0")
-						if(auto picture=formPicture(elements[elementIndex].picture,info)) texture=picture;
+					if(sacElement.type==ElementType.picture&&elements[elementIndex].picture!="\0\0\0\0"){
+						auto tag=elements[elementIndex].picture;
+						if(auto picture=tag=="PREV"?SacFormPicture!B.mapPreview(info.lobbyMapFilename):SacFormPicture!B.get(tag))
+							texture=picture;
+					}
 					B.colorHUDMaterialBackend.bindDiffuse(texture);
 					if(i==0&&sacElement.type==ElementType.canvas){
 						B.colorHUDMaterialBackend.setColor(Color4f(0.0f,0.0f,0.0f,1.0f));
@@ -6099,7 +6057,7 @@ struct Renderer(B){
 			foreach(ref slotElement;slots.subForms[0].form.sacElements){
 				if(slotElement.type!=ElementType.form||slotElement.subForms.length!=1) continue;
 				scope(exit) slot++;
-				if(slot>=info.lobbyNumSlots||slot<lobbySlotIcons.length&&lobbySlotIcons[slot]) continue;
+				if(slot>=info.lobbyNumSlots||SacForm!B.lobbySlotNumber(slot)!="\x01non") continue;
 				foreach(ref number;slotElement.subForms[0].form.sacElements){
 					if(number.id!="munp") continue;
 					import std.format: sformat;

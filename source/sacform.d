@@ -785,6 +785,13 @@ final class SacForm(B){
 	// and everything below the slots moves down accordingly
 	enum lobbySlotsInOriginal=5, lobbySlotSpacing=58;
 	static char lobbySlotDigit(int slot){ return synchronizationRowDigit(slot); } // (first character of the slot form ids, e.g. "1#PN")
+	// picture with the number of a lobby slot ("\x01non": there is none, the number is drawn as text)
+	static char[4] lobbySlotNumber(int slot){
+		char[4] tag="1lsl";
+		tag[0]=cast(char)('1'+slot);
+		if(slot<0||slot>=9||!SacFormPicture!B.get(tag)) tag="\x01non";
+		return tag;
+	}
 	private static SacForm!B[int] lobbyForms;
 	static SacForm!B lobby(int numSlots){
 		numSlots=max(lobbySlotsInOriginal,min(numSlots,35));
@@ -829,6 +836,47 @@ final class SacForm(B){
 	}
 }
 
+// pictures that form elements can show instead of their default one (ElementState.picture), loaded when they are first used:
+// icons from the game files, optional icons from the folder "icons" (slot numbers after 4 for the lobby, not in the game files:
+// icons/lsl5.png etc.), "\x01non" (nothing), and previews of maps
+final class SacFormPicture(B){
+	static B.Texture[char[4]] pictures;
+	static B.Texture get(char[4] tag){ // (null: there is no such picture)
+		if(auto r=tag in pictures) return *r;
+		B.Texture texture=null;
+		import dlib.image.color: Color4f;
+		if(tag=="\x01non") texture=B.makeTexture(makeOnePixelImage(Color4f(0.0f,0.0f,0.0f,0.0f)));
+		else if(auto filename=tag in formIcons) texture=B.makeTexture(loadTXTR(*filename));
+		else{
+			import std.file: exists;
+			import std.stdio: stderr;
+			import dlib.image.io.png: loadPNG;
+			string filename="icons/"~[tag[3],tag[2],tag[1],tag[0]]~".png";
+			try if(exists(filename)) texture=B.makeTexture(loadPNG(filename));
+			catch(Exception e) stderr.writeln("warning: failed to load '",filename,"' (",e.msg,")");
+		}
+		return pictures[tag]=texture;
+	}
+	static B.Texture[string] mapPreviews;
+	static B.Texture mapPreview(string filename){ // (null: the map has no preview)
+		if(auto r=filename in mapPreviews) return *r;
+		B.Texture texture=null;
+		try{
+			import loading: mapPreviewRGB, mapPreviewSize;
+			if(auto rgb=mapPreviewRGB(filename)){
+				import dlib.image: image;
+				auto picture=image(mapPreviewSize,mapPreviewSize,3);
+				picture.data[]=rgb[];
+				texture=B.makeTexture(picture,false);
+			}
+		}catch(Exception e){
+			import std.stdio: stderr;
+			stderr.writeln("warning: failed to load map preview (",e.msg,")");
+		}
+		return mapPreviews[filename]=texture;
+	}
+}
+
 struct ElementState{
 	ElementType type;
 	char[4] id;
@@ -846,7 +894,7 @@ struct ElementState{
 	int textStart=0;
 	int textEnd=0;
 	float progress=0.0f; // progressbar, in [0,1]
-	char[4] picture=0; // picture: icon shown instead of the default one (tag as in the form files), 0: default
+	char[4] picture=0; // picture: shown instead of the default one (see SacFormPicture, "PREV": preview of the map), 0: default
 }
 
 bool activate(ref ElementState element){

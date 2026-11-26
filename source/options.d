@@ -133,6 +133,7 @@ struct Options{
 	bool host=false;
 	int numSlots=1;
 	bool autoStart=false; // host: start once all slots are occupied (otherwise with the Start button in the lobby)
+	bool lobby=false; // local game: set up the game in the lobby (otherwise it starts right away)
 	string joinIP="";
 	bool testLag=false;
 	bool testRenderDelay=false;
@@ -198,11 +199,6 @@ struct Settings{
 	bool pauseOnDrop=true;
 	bool refuseGreenSouls=false;
 	bool randomGod=false; // god chosen at random when the game starts (network games)
-	// host only, shown in the lobby (TODO: this is a bit hacky):
-	int gameSlots=0;
-	immutable(int)[] gameBotSlots;
-	immutable(int)[] gameBotTeams;
-	immutable(God)[] gameBotGods;
 	// (remember to update Network!B.initSlots)
 	// TODO: automate
 }

@@ -152,7 +152,11 @@ enum PacketType{
 	jsonResponse,
 	// broadcast
 	updateLoadingProgress,
-	lobbyChatMessage,
+	// host message
+	lobbyState,
+	lobbyMessage,
+	// host query
+	lobbyAction,
 }
 
 enum arrayLengthLimit=4096;
@@ -160,9 +164,9 @@ enum arrayLengthLimit=4096;
 PacketPurpose purposeFromType(PacketType type){
 	final switch(type) with(PacketType) with(PacketPurpose){
 		case nop,disconnect,ping,ack: return peerToPeer;
-		case updatePlayerId,updateSlot,sendMap,sendState,initGame,loadGame,startGame,setFrame,nudgeTimer,resetCommitted,requestStatusUpdate,confirmSynch,jsonResponse: return hostMessage;
-		case join,checkSynch,logDesynch,jsonCommand: return hostQuery;
-		case updateSetting,clearArraySetting,appendArraySetting,confirmArraySetting,setMap,appendMap,confirmMap,updateStatus,command,commandRaw,commit,updateLoadingProgress,lobbyChatMessage: return broadcast;
+		case updatePlayerId,updateSlot,sendMap,sendState,initGame,loadGame,startGame,setFrame,nudgeTimer,resetCommitted,requestStatusUpdate,confirmSynch,jsonResponse,lobbyState,lobbyMessage: return hostMessage;
+		case join,checkSynch,logDesynch,jsonCommand,lobbyAction: return hostQuery;
+		case updateSetting,clearArraySetting,appendArraySetting,confirmArraySetting,setMap,appendMap,confirmMap,updateStatus,command,commandRaw,commit,updateLoadingProgress: return broadcast;
 	}
 }
 
@@ -183,7 +187,7 @@ bool isHeaderType(PacketType type){
 		case commit: return false;
 		case jsonCommand,jsonResponse: return true;
 		case updateLoadingProgress: return false;
-		case lobbyChatMessage: return true;
+		case lobbyState,lobbyMessage,lobbyAction: return true;
 	}
 }
 
@@ -259,7 +263,9 @@ struct Packet{
 			case jsonCommand: return text("Packet.jsonCommand(",rawDataSize,"...)");
 			case jsonResponse: return text("Packet.jsonResponse(",rawDataSize,"...)");
 			case updateLoadingProgress: return text("Packet.updateLoadingProgress(",player,",",loadingProgress,")");
-			case lobbyChatMessage: return text("Packet.lobbyChatMessage(",chatPlayer,",",rawDataSize,",...)");
+			case lobbyState: return text("Packet.lobbyState(",rawDataSize,"...)");
+			case lobbyMessage: return text("Packet.lobbyMessage(",rawDataSize,"...)");
+			case lobbyAction: return text("Packet.lobbyAction(",rawDataSize,"...)");
 		}
 	}
 	int size=0;
@@ -303,11 +309,8 @@ struct Packet{
 		}
 		struct{ int mapPlayer; char[32] mapName; } // setMap, appendMap, confirmMap
 		struct{ // command, commandRaw. sendMap, sendState, initGame, join, logDesynch, jsonCommand, jsonResponse
-			ulong rawDataSize; // commandRaw, sendMap, sendState, initGame, join, logDesynch, jsonCommand, jsonResponse, lobbyChatMessage
-			union{
-				int frame; // command, commandRaw
-				int chatPlayer; // lobbyChatMessage
-			}
+			ulong rawDataSize; // commandRaw, sendMap, sendState, initGame, join, logDesynch, jsonCommand, jsonResponse, lobbyState, lobbyMessage, lobbyAction
+			int frame; // command, commandRaw
 			NetworkCommand networkCommand; // command, commandRaw
 		}
 		struct{ // commit, resetCommitted
@@ -591,14 +594,6 @@ struct Packet{
 		p.size=memberSize!(type,rawDataSize);
 		return p;
 	}
-	static Packet lobbyChatMessage(int player,ulong rawDataSize){
-		Packet p;
-		p.type=PacketType.lobbyChatMessage;
-		p.chatPlayer=player;
-		p.rawDataSize=rawDataSize;
-		p.size=memberSize!(type,rawDataSize,chatPlayer);
-		return p;
-	}
 	static Packet updateLoadingProgress(int player,float loadingProgress){
 		Packet p;
 		p.type=PacketType.updateLoadingProgress;
@@ -610,6 +605,27 @@ struct Packet{
 	static Packet jsonResponse(ulong rawDataSize){
 		Packet p;
 		p.type=PacketType.jsonResponse;
+		p.rawDataSize=rawDataSize;
+		p.size=memberSize!(type,rawDataSize);
+		return p;
+	}
+	static Packet lobbyState(ulong rawDataSize){
+		Packet p;
+		p.type=PacketType.lobbyState;
+		p.rawDataSize=rawDataSize;
+		p.size=memberSize!(type,rawDataSize);
+		return p;
+	}
+	static Packet lobbyMessage(ulong rawDataSize){
+		Packet p;
+		p.type=PacketType.lobbyMessage;
+		p.rawDataSize=rawDataSize;
+		p.size=memberSize!(type,rawDataSize);
+		return p;
+	}
+	static Packet lobbyAction(ulong rawDataSize){
+		Packet p;
+		p.type=PacketType.lobbyAction;
 		p.rawDataSize=rawDataSize;
 		p.size=memberSize!(type,rawDataSize);
 		return p;
@@ -2320,45 +2336,62 @@ final class Network(B){
 				import std.math: isNaN;
 				players[p.player].loadingProgress=isNaN(p.loadingProgress)?0.0f:clamp(p.loadingProgress,0.0f,1.0f);
 				return true;
-			case PacketType.lobbyChatMessage:
-				if(p.chatPlayer<0||p.chatPlayer>=players.length){
-					stderr.writeln("player id out of range: ",p);
+			case PacketType.lobbyState,PacketType.lobbyMessage:
+				if(sender!=host){
+					stderr.writeln("non-host player ",sender," attempted to update the lobby: ",p);
 					stderr.flush();
 					return false;
 				}
-				if(sender!=host&&sender!=p.chatPlayer){
-					report!true(sender,"tried to send a lobby chat message as player ",p.chatPlayer);
+				if(p.type==PacketType.lobbyState){
+					lobbyState.length=rawData.length;
+					lobbyState.data[]=rawData[];
+					lobbyStateReceived=true;
+				}else if(lobbyMessages.length<lobbyQueueLimit) lobbyMessages~=LobbyPacket(sender,rawData.dup);
+				return true;
+			case PacketType.lobbyAction:
+				if(!isHost){
+					stderr.writeln("lobbyAction packet sent to non-host player ",me,": ",p);
+					stderr.flush();
 					return false;
 				}
-				if(rawData.length>lobbyChatMessageLimit){
-					report!true(sender,"sent a lobby chat message that is too long");
+				if(rawData.length>lobbyActionLimit||lobbyActions.length>=lobbyQueueLimit){
+					report!true(sender,"sent too many or too large lobby actions");
 					return false;
 				}
-				addLobbyChatMessage(p.chatPlayer,cast(const(char)[])rawData);
+				lobbyActions~=LobbyPacket(sender,rawData.dup);
 				return true;
 		}
 	}
-	// chat before the game is initialized (lobby screen)
-	enum lobbyChatMessageLimit=512, lobbyChatHistoryLimit=128;
-	Array!string lobbyChatMessages; // ("name: message")
-	private void addLobbyChatMessage(int player,const(char)[] message){
-		import std.utf: validate;
-		string content=message.idup;
-		try validate(content);
-		catch(Exception){ content="?"; }
-		auto name=players[player].settings.name;
-		if(!name.length) name="Anonymous";
-		if(lobbyChatMessages.length>=lobbyChatHistoryLimit){
-			foreach(i;1..lobbyChatMessages.length) lobbyChatMessages[i-1]=lobbyChatMessages[i];
-			lobbyChatMessages.length=lobbyChatMessages.length-1;
-		}
-		lobbyChatMessages~=text(name,": ",content);
+	// lobby (before the game is initialized): the host replicates the lobby state and sends messages to the other players,
+	// who send their actions to the host (the lobby takes them from here, their contents are up to the lobby)
+	enum lobbyActionLimit=1024, lobbyQueueLimit=256;
+	static struct LobbyPacket{
+		int sender;
+		ubyte[] data;
 	}
-	void sendLobbyChatMessage(const(char)[] message){
-		if(me==-1||!message.length) return;
-		if(message.length>lobbyChatMessageLimit) message=message[0..lobbyChatMessageLimit];
-		broadcast(Packet.lobbyChatMessage(me,message.length),cast(ubyte[])message.dup);
-		addLobbyChatMessage(me,message);
+	Array!ubyte lobbyState; // (host: as replicated, other players: as received)
+	bool lobbyStateReceived=false;
+	Array!LobbyPacket lobbyMessages; // (received from the host)
+	Array!LobbyPacket lobbyActions; // (host: received from the other players)
+	void replicateLobbyState(scope ubyte[] data)in{
+		assert(isHost);
+	}do{
+		if(lobbyState.data==data) return;
+		lobbyState.length=data.length;
+		lobbyState.data[]=data[];
+		foreach(i,ref player;players.data)
+			if(i!=me) player.send(Packet.lobbyState(data.length),data);
+	}
+	void sendLobbyMessage(scope ubyte[] data)in{
+		assert(isHost);
+	}do{
+		foreach(i,ref player;players.data)
+			if(i!=me) player.send(Packet.lobbyMessage(data.length),data);
+	}
+	void sendLobbyAction(scope ubyte[] data)in{
+		assert(!isHost&&data.length<=lobbyActionLimit);
+	}do{
+		players[host].send(Packet.lobbyAction(data.length),data);
 	}
 	// broadcasts this player's loading progress (in steps of 1%)
 	void updateLoadingProgress(float progress){
@@ -2486,6 +2519,7 @@ final class Network(B){
 			sendPlayerData(players[other].connection,newId);
 		foreach(other;0..cast(int)players.length)
 			sendPlayerData(players[newId].connection,other);
+		if(lobbyState.length) players[newId].send(Packet.lobbyState(lobbyState.length),lobbyState.data);
 		updatePlayerId(newId);
 		return newId;
 	}
@@ -2760,10 +2794,6 @@ final class Network(B){
 					auto hostName=hostSettings.name;
 					auto hostPauseOnDrop=hostSettings.pauseOnDrop;
 					auto hostRefuseGreenSouls=hostSettings.refuseGreenSouls;
-					auto hostGameSlots=hostSettings.gameSlots;
-					auto hostGameBotSlots=hostSettings.gameBotSlots;
-					auto hostGameBotTeams=hostSettings.gameBotTeams;
-					auto hostGameBotGods=hostSettings.gameBotGods;
 					swap(hostSettings,p.settings);
 					hostSettings.commit=hostCommit;
 					hostSettings.map=hostMap;
@@ -2771,10 +2801,6 @@ final class Network(B){
 					hostSettings.name=hostName;
 					hostSettings.pauseOnDrop=hostPauseOnDrop;
 					hostSettings.refuseGreenSouls=hostRefuseGreenSouls;
-					hostSettings.gameSlots=hostGameSlots;
-					hostSettings.gameBotSlots=hostGameBotSlots;
-					hostSettings.gameBotTeams=hostGameBotTeams;
-					hostSettings.gameBotGods=hostGameBotGods;
 					swap(players[host].slot,p.slot);
 					swap(p,players[$-1]);
 					players.length=players.length-1;
