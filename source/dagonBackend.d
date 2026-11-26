@@ -16,7 +16,6 @@ import renderer,audioBackend;
 import frameprof;
 import loading: loadingStatus, loadingScreenSample;
 import bots.shiny: SideType;
-import ntts: God;
 
 final class SacScene: Scene{
 	//OBJAsset aOBJ;
@@ -218,7 +217,7 @@ final class SacScene: Scene{
 		updateMouse();
 		info.fps=eventManager.fps;
 		info.loadingScreenVisible=loadingScreenVisible();
-		info.gameBlackedOut=loadingStatus.initializingGame||!state&&lobbyNetwork; // (also while waiting for the game start)
+		info.gameBlackedOut=loadingStatus.initializingGame||!state&&(lobbyNetwork||lobbyVisible); // (also while waiting for the game start)
 		info.loadingProgress=loadingStatus.progress;
 		info.loadingMapFolder=loadingStatus.mapFolder;
 		updateLobbyForm();
@@ -742,19 +741,26 @@ final class SacScene: Scene{
 		if(loadingScreenVisible()) return false;
 		return !network.startScheduled; // (start countdown is shown instead)
 	}
-	// lobby screen (form ybol, enlarged for more than five slots): shown while the players of a network game wait for the start
+	// lobby screen (form ybol, enlarged for more than five slots): shows the lobby while the players set up the game,
+	// and turns clicks and chat input into actions for the lobby (see lobby.d)
+	LobbyView lobbyView;
 	bool lobbyVisible=false; // (set by the lobby)
-	string lobbyMapFilename=null;
-	bool lobbyIsHost=false, lobbyCanStart=false, lobbyStartRequested=false;
+	util.Array!LobbyAction lobbyActions; // (taken by the lobby)
 	bool lobbyFormOpen=false;
 	int lobbyFormSlots=-1;
-	void updateLobby(Network!DagonBackend network,string mapFilename,bool isHost,bool canStart,bool visible){
-		lobbyNetwork=network;
-		lobbyMapFilename=mapFilename;
-		lobbyIsHost=isHost;
-		lobbyCanStart=canStart;
-		lobbyVisible=visible;
-		if(!visible) lobbyStartRequested=false;
+	void showLobby(LobbyView view){
+		lobbyView=view;
+		lobbyVisible=true;
+	}
+	void hideLobby(){
+		lobbyView=LobbyView.init;
+		lobbyVisible=false;
+		lobbyActions.length=0;
+	}
+	bool lobbyAction(LobbyAction action){
+		if(!lobbyFormOpen||!lobbyView.allowed(action)) return false;
+		lobbyActions~=action;
+		return true;
 	}
 	void closeLobbyForm(){
 		if(!lobbyFormOpen) return;
@@ -762,21 +768,12 @@ final class SacScene: Scene{
 		forms.length=0;
 		disableMenu();
 	}
-	static immutable lobbyGodNames=["Random","Persephone","Pyro","James","Stratos","Charnel"];
-	static God lobbyGod(ref Settings settings){ // (God.none: random or custom spellbook)
-		if(settings.randomGod) return God.none;
-		foreach(god;[God.persephone,God.pyro,God.james,God.stratos,God.charnel])
-			if(settings.spellbook==defaultSpells[god]) return god;
-		return God.none;
+	static string lobbyGodName(ref const LobbySlot slot){
+		static immutable godNames=["Custom","Persephone","Pyro","James","Stratos","Charnel"];
+		if(slot.type==LobbySlotType.human&&slot.observer) return "Observer";
+		return slot.god==randomGod?"Random":slot.god<godNames.length?godNames[slot.god]:null;
 	}
-	static string godName(ref Settings settings){
-		if(settings.observer) return "Observer";
-		if(settings.randomGod) return lobbyGodNames[0];
-		auto god=lobbyGod(settings);
-		if(god!=God.none) return lobbyGodNames[god];
-		return settings.spellbook.length?"Custom":null; // (custom spellbook)
-	}
-	// slot of a slot form element in the lobby form (-1: none), and the element's id
+	// slot of a slot form element in the lobby form (-1: none)
 	int lobbySlotOfElement(int elementIndex){
 		if(!lobbyFormOpen) return -1;
 		auto elements=forms[0].elements.data;
@@ -789,76 +786,31 @@ final class SacScene: Scene{
 		}
 		return -1;
 	}
-	// lobby: own god (button) and team (icon), moving to a free slot (its number icon), host: computer players (type icon of a free slot)
-	int lobbyToggleBotSlot=-1; // (requested by the host, applied by the lobby)
-	int lobbyToggleBotGod=-1; // (requested by the host, applied by the lobby)
-	int lobbyToggleBotTeam=-1; // (requested by the host, applied by the lobby)
+	// slot elements: god (button), team (icon), taking the slot (its number icon), computer players (type icon)
+	static bool lobbySlotAction(char[4] id,int slot,out LobbyAction action){
+		switch(id){
+			case "_dog": action=LobbyAction(LobbyActionType.nextGod,slot); return true;
+			case "maet": action=LobbyAction(LobbyActionType.nextTeam,slot); return true;
+			case "munp": action=LobbyAction(LobbyActionType.takeSlot,slot); return true;
+			case "epyt": action=LobbyAction(LobbyActionType.toggleComputer,slot); return true;
+			default: return false;
+		}
+	}
 	bool lobbyElementClicked(int elementIndex){
-		auto network=lobbyNetwork;
-		if(!lobbyFormOpen||!network||network.me==-1) return false;
 		auto slot=lobbySlotOfElement(elementIndex);
-		if(slot==-1) return false;
-		auto id=forms[0].elements[elementIndex].id;
-		auto me=&network.players[network.me];
-		if(me.status>=PlayerStatus.readyToLoad) return false; // (game is starting)
-		int occupant=-1;
-		foreach(j,ref p;network.players.data)
-			if(p.slot==slot&&isConnectedStatus(p.status)){ occupant=to!int(j); break; }
-		auto botSlots=network.hostSettings.gameBotSlots;
-		auto botIndex=occupant!=-1?botSlots.length:botSlots.countUntil(slot);
-		bool bot=botIndex<botSlots.length;
-		if(occupant==network.me){
-			if(id=="_dog"){ // next god, then random
-				auto god=lobbyGod(me.settings);
-				auto next=me.settings.randomGod?God.persephone:god==God.charnel?God.none:cast(God)(god+1);
-				if(next==God.none){
-					if(network.settings.observer){
-						network.updateSetting!"observer"(false);
-						network.updateSetting!"randomGod"(true);
-					}else{
-						network.updateSetting!"observer"(true);
-					}
-				}else{
-					network.updateSetting!"spellbook"(defaultSpells[next]);
-					network.updateSetting!"randomGod"(false);
-				}
-				return true;
-			}
-			if(id=="maet"){ // next team, then none
-				auto team=me.settings.team;
-				network.updateSetting!"team"(team<0?0:team>=2?-1:team+1);
-				return true;
-			}
-			return false;
-		}else if(bot&&network.isHost){
-			if(id=="_dog"){
-				lobbyToggleBotGod=slot;
-				return true;
-			}
-			if(id=="maet"){
-				lobbyToggleBotTeam=slot;
-				return true;
-			}
-		}
-		if(occupant==-1&&!bot&&id=="munp"&&!me.settings.observer){ // move to this free slot
-			network.updateSetting!"slot"(slot);
-			return true;
-		}
-		if(occupant==-1&&network.isHost&&id=="epyt"){ // add or remove a computer player
-			lobbyToggleBotSlot=slot;
-			return true;
-		}
-		return false;
+		LobbyAction action;
+		if(slot==-1||!lobbySlotAction(forms[0].elements[elementIndex].id,slot,action)) return false;
+		return lobbyAction(action);
 	}
 	void updateLobbyForm(){
-		info.lobbyMapFilename=lobbyMapFilename;
-		info.lobbyChatMessages=lobbyFormOpen&&lobbyNetwork?lobbyNetwork.lobbyChatMessages.data:null;
-		auto network=lobbyNetwork;
-		if(!lobbyVisible||state||!network||network.me==-1){
+		auto data=lobbyView.data;
+		info.lobbyMapFilename=lobbyView.mapFilename;
+		info.lobbyChatMessages=lobbyFormOpen?lobbyView.chat:null;
+		if(!lobbyVisible||state||!data||!data.slots.length){
 			closeLobbyForm();
 			return;
 		}
-		auto numSlots=lobbyIsHost?lobbyNumSlots:network.hostSettings.gameSlots;
+		auto numSlots=to!int(data.slots.length);
 		info.lobbyNumSlots=numSlots;
 		auto formSlots=SacForm!DagonBackend.lobby(numSlots).height; // (the form only changes for more than five slots)
 		if(!lobbyFormOpen||lobbyFormSlots!=formSlots){
@@ -877,7 +829,6 @@ final class SacScene: Scene{
 			element.textStart=0;
 			element.textEnd=to!int(element.textInput.length);
 		}
-		auto botSlots=network.hostSettings.gameBotSlots;
 		int slot=-1;
 		char[4] parentId=0; // (form containing the current element: "tols" for a slot, "iPAM" for the map)
 		size_t parentEnd=0;
@@ -892,53 +843,51 @@ final class SacScene: Scene{
 				continue;
 			}
 			if(parentId=="iPAM"){ // map
-				if(element.id=="pam_") element.picture=lobbyMapFilename.length?"PREV":"\0\0\0\0";
+				if(element.id=="pam_") element.picture=lobbyView.mapFilename.length?"PREV":"\0\0\0\0";
 				else if(element.id=="eman"){
-					import std.path: baseName, stripExtension;
-					setText(element,lobbyMapFilename.length?stripExtension(baseName(lobbyMapFilename)):"");
+					const(char)[] name=data.map;
+					foreach_reverse(k,char c;name) if(c=='/'||c=='\\'){ name=name[k+1..$]; break; }
+					foreach_reverse(k,char c;name) if(c=='.'){ name=name[0..k]; break; }
+					setText(element,name);
 				}
 				continue;
 			}
 			if(parentId=="tols"){ // slot
 				bool used=slot<numSlots;
-				Player* player=null;
-				bool isHost=false;
-				foreach(j,ref p;network.players.data)
-					if(p.slot==slot&&isConnectedStatus(p.status)){ player=&p; isHost=j==network.host; break; }
-				auto botIndex=player?botSlots.length:botSlots.countUntil(slot);
-				bool bot=botIndex<botSlots.length;;
+				auto lobbySlot=used?data.slots[slot]:LobbySlot.init;
+				bool human=lobbySlot.type==LobbySlotType.human, computer=lobbySlot.type==LobbySlotType.computer;
 				static char[4] numbered(string tag,int i){ char[4] r=tag[0..4]; r[0]=cast(char)('1'+i); return r; }
 				element.visible=used;
+				LobbyAction action;
+				if(element.id.among("maet","_dog")&&lobbySlotAction(element.id,slot,action))
+					element.enabled=lobbyView.allowed(action); // (own team and god, host: also of computer players)
 				switch(element.id){
-					case "munp": element.picture=slot<9?numbered("1lsl",slot):"\x01non"; break; // (slot number; the original only has icons for 1-4, icons/lsl5.png etc. if present, otherwise numbers are drawn as text)
-					case "epyt": element.picture=player?"vlpl":bot?"alpl":"olsl"; break; // (type: human, computer, open)
+					case "munp": element.picture=SacForm!DagonBackend.lobbySlotNumber(slot); break;
+					case "epyt": element.picture=human?"vlpl":computer?"alpl":"olsl"; break; // (type: human, computer, open)
 					case "maet":
-						element.visible=player||bot;
-						element.enabled=player&&player is &network.players[network.me]||bot&&network.isHost; // (own team)
-						auto team=player?player.settings.team:bot?network.hostSettings.gameBotTeams[botIndex]:-1;
+						element.visible=human||computer;
+						auto team=lobbySlot.team;
 						element.picture=0<=team&&team<3?numbered("1mtl",team):"xmtl";
 						break;
 					case "yder":
-						element.visible=player||bot;
-						bool ready=bot||player&&(isHost||player.status>=PlayerStatus.pendingGameInit);
-						element.picture=player||bot?(ready?"uhtl":"dhtl"):"dhtl";
+						element.visible=human||computer;
+						element.picture=computer||lobbySlot.ready?"uhtl":"dhtl";
 						break;
 					case "eman":
-						element.visible=player||bot;
+						element.visible=human||computer;
 						element.enabled=true;
-						setText(element,player?player.settings.name!=""?player.settings.name:"Anonymous":bot?"Computer":"");
+						setText(element,lobbySlot.name.length?lobbySlot.name:human?"Anonymous":computer?"Computer":"");
 						break;
 					case "_dog":
-						element.visible=player||bot;
-						element.enabled=player&&player is &network.players[network.me]||bot&&network.isHost; // (own god)
-						setText(element,player?godName(player.settings):bot?lobbyGodNames[network.hostSettings.gameBotGods[botIndex]]:"");
+						element.visible=human||computer;
+						setText(element,human||computer?lobbyGodName(lobbySlot):"");
 						break;
 					default: break;
 				}
 				continue;
 			}
 			switch(element.id){
-				case "trts": element.enabled=lobbyIsHost&&lobbyCanStart; break; // start (host)
+				case "trts": element.enabled=lobbyView.isHost&&lobbyView.canStart; break; // start (host)
 				case "tesg": element.enabled=false; break; // game settings (later)
 				default: break;
 			}
@@ -948,8 +897,8 @@ final class SacScene: Scene{
 		info.synchronizationRows.length=0;
 		if(!synchronizationFormVisible()) return;
 		auto network=synchronizationNetwork();
-		int numSlots=state?to!int(state.slots.length):lobbyNumSlots!=-1?lobbyNumSlots:network.hostSettings.gameSlots;
-		if(numSlots==-1){ // (only known to the host before the game is initialized)
+		int numSlots=state?to!int(state.slots.length):lobbyNumSlots;
+		if(numSlots==-1){ // (not known yet)
 			numSlots=0;
 			foreach(ref player;network.players.data)
 				if(isConnectedStatus(player.status))
@@ -1037,7 +986,7 @@ final class SacScene: Scene{
 			case "ybol": // lobby
 				if(elementIndex<forms[formIndex].elements.length){
 					auto id=forms[formIndex].elements[elementIndex].id;
-					if(id=="trts") lobbyStartRequested=true;
+					if(id=="trts") lobbyAction(LobbyAction(LobbyActionType.start));
 					else if(id=="lcnc") DagonBackend.app.exit(); // (cancel: quit)
 					else lobbyElementClicked(elementIndex);
 				}
@@ -1108,11 +1057,11 @@ final class SacScene: Scene{
 				if(formIndex>=forms.length) return;
 			}
 		}
-		if(keyDown[KEY_RETURN]&&lobbyFormOpen&&form.sacForm.tag=="ybol"&&lobbyNetwork){ // lobby chat
+		if(keyDown[KEY_RETURN]&&lobbyFormOpen&&form.sacForm.tag=="ybol"){ // lobby chat
 			foreach(ref element;form.elements.data){
 				if(element.type!=.form.ElementType.entrybox||element.id!="txtc") continue;
 				if(element.textInput.length){
-					lobbyNetwork.sendLobbyChatMessage(element.textInput.data);
+					lobbyAction(LobbyAction(LobbyActionType.chat,-1,element.textInput.data.idup));
 					element.textInput.length=0;
 					element.textStart=element.textEnd=element.textCursor=0;
 				}
@@ -3088,30 +3037,10 @@ static:
 		scene.lobbyNetwork=network;
 		scene.lobbyNumSlots=numSlots;
 	}
-	// lobby screen while waiting for the start of a network game
-	void updateLobby(Network!DagonBackend network,string mapFilename,bool isHost,bool canStart,bool visible){
-		scene.updateLobby(network,mapFilename,isHost,canStart,visible);
-	}
-	int takeLobbyBotToggle(){ // (slot, -1: none)
-		auto r=scene.lobbyToggleBotSlot;
-		scene.lobbyToggleBotSlot=-1;
-		return r;
-	}
-	int takeLobbyBotTeamToggle(){ // (slot, -1: none)
-		auto r=scene.lobbyToggleBotTeam;
-		scene.lobbyToggleBotTeam=-1;
-		return r;
-	}
-	int takeLobbyBotGodToggle(){ // (slot, -1: none)
-		auto r=scene.lobbyToggleBotGod;
-		scene.lobbyToggleBotGod=-1;
-		return r;
-	}
-	bool takeLobbyStartRequest(){
-		auto r=scene.lobbyStartRequested;
-		scene.lobbyStartRequested=false;
-		return r;
-	}
+	// lobby screen: shows the lobby and collects the actions of this player for it
+	void showLobby(LobbyView view){ scene.showLobby(view); }
+	void hideLobby(){ scene.hideLobby(); }
+	ref lobbyActions(){ return scene.lobbyActions; }
 	void focusCamera(int id,bool reset=true){
 		scene.focusCamera(id,reset);
 	}

@@ -17,25 +17,170 @@ auto teamSizesToTeams(int[] teamSizes){
 	).map!(x=>x[0]+x[1]);
 }
 
-GameInit!B gameInit(B,R)(Sides!B sides_,R playerSettings,ref Options options){
+// lobby: the game setup that the players see and change before the game starts (shown by the lobby screen)
+// the state is owned by the host of a network game, or by the only player of a local game: the host applies the actions
+// of the players and replicates the state to the other players
+enum LobbySlotType{
+	open,
+	human,
+	computer,
+}
+struct LobbySlot{
+	LobbySlotType type;
+	int player=-1; // human: player id (as in the network, 0 in a local game)
+	string name;
+	God god=randomGod; // (God.none: the player's own spellbook)
+	int team=-1;
+	bool observer=false; // human: watches the game
+	bool ready=false; // human: ready for the game to start
+	float damageFactor=1.0f; // computer
+	bool playing()const{ return type==LobbySlotType.computer||type==LobbySlotType.human&&!observer; }
+}
+enum LobbyActionType{
+	nextGod,
+	nextTeam,
+	takeSlot, // move to an open slot, or swap slots with a computer player (host: also with another player)
+	toggleComputer, // add or remove a computer player
+	chat,
+	start,
+}
+struct LobbyAction{
+	LobbyActionType type;
+	int slot=-1;
+	string text; // chat
+}
+struct LobbyData{
+	LobbySlot[] slots;
+	int gameSlots=0; // slots of the game, players in the slots after them can only observe
+	int maxSlots=0; // (slots for observers are added up to this number, so that there is an open slot for whoever joins)
+	string map;
+	// chosen by the host for all slots (--gods, --NvN): the players cannot change theirs until the host changes one in the lobby
+	God[] gods; // (God.none: up to the player)
+	int[] teams;
+	enum chatMessageLimit=512;
+
+	int slotOf(int player)const{
+		foreach(i,ref slot;slots)
+			if(slot.type==LobbySlotType.human&&slot.player==player) return to!int(i);
+		return -1;
+	}
+	bool godFixed(size_t slot)const{ return slot<gods.length&&gods[slot]!=God.none; }
+	bool teamFixed(size_t slot)const{ return slot<teams.length; }
+	// what always holds: gods and teams fixed by the host, observers in the slots after those of the game, of which one is open if possible
+	void applyRules(){
+		foreach(i,ref slot;slots){
+			if(slot.type==LobbySlotType.open) continue;
+			if(godFixed(i)) slot.god=gods[i];
+			if(teamFixed(i)) slot.team=teams[i];
+			if(i>=gameSlots) slot.observer=true;
+		}
+		static bool open(ref LobbySlot slot){ return slot.type==LobbySlotType.open; }
+		while(slots.length>gameSlots&&open(slots[$-1])&&slots[gameSlots..$-1].any!open){
+			slots.length--;
+			slots.assumeSafeAppend();
+		}
+		if(slots.length<maxSlots&&!slots[gameSlots..$].any!open) slots~=LobbySlot.init;
+	}
+	// puts a player into the preferred slot if it is open, otherwise players get the first open slot and observers the last one (-1: none)
+	int addPlayer(int player,int preferredSlot,bool observer){
+		auto slot=preferredSlot;
+		if(slot<0||slot>=slots.length||slots[slot].type!=LobbySlotType.open){
+			slot=-1;
+			foreach(i,ref candidate;slots){
+				if(candidate.type!=LobbySlotType.open) continue;
+				slot=to!int(i);
+				if(!observer) break;
+			}
+		}
+		if(slot==-1) return -1;
+		slots[slot]=LobbySlot(LobbySlotType.human,player);
+		slots[slot].observer=observer;
+		return slot;
+	}
+	void removePlayer(int player){
+		auto slot=slotOf(player);
+		if(slot!=-1) slots[slot]=LobbySlot.init;
+	}
+	// what a player may do (host: this player is the host)
+	bool allowed(int player,bool host,ref const LobbyAction action)const{
+		if(action.type<LobbyActionType.min||action.type>LobbyActionType.max) return false;
+		auto own=slotOf(player);
+		final switch(action.type) with(LobbyActionType){
+			case nextGod,nextTeam,takeSlot,toggleComputer:
+				if(action.slot<0||action.slot>=slots.length) return false;
+				auto type=slots[action.slot].type;
+				bool computer=host&&type==LobbySlotType.computer;
+				if(action.type==nextGod) return action.slot==own&&own<gameSlots||computer; // (fixed god: observe or not)
+				if(action.type==nextTeam) return action.slot==own&&(host||!teamFixed(own))||computer;
+				if(action.type==toggleComputer) return host&&type!=LobbySlotType.human&&action.slot<gameSlots;
+				if(type==LobbySlotType.computer&&own>=gameSlots) return false; // (computer players do not observe)
+				return own!=-1&&action.slot!=own&&(host||type!=LobbySlotType.human);
+			case chat: return action.text.length&&action.text.length<=chatMessageLimit;
+			case start: return host;
+		}
+	}
+	void apply(int player,bool host,ref const LobbyAction action)in{
+		assert(allowed(player,host,action));
+	}do{
+		switch(action.type) with(LobbyActionType){
+			case nextGod: // gods in order, then random; human players observe after the last god
+				if(host) gods=[];
+				auto slot=&slots[action.slot];
+				bool human=slot.type==LobbySlotType.human;
+				if(human&&slot.observer){
+					slot.observer=false;
+					slot.god=randomGod;
+				}else if(human&&(godFixed(action.slot)||slot.god==God.max)) slot.observer=true;
+				else slot.god=slot.god==God.max?randomGod:slot.god==randomGod||slot.god==God.none?God.persephone:cast(God)(slot.god+1);
+				break;
+			case nextTeam: // teams in order, then none
+				if(host) teams=[];
+				auto slot=&slots[action.slot];
+				slot.team=slot.team<0?0:slot.team>=2?-1:slot.team+1;
+				break;
+			case takeSlot: swap(slots[slotOf(player)],slots[action.slot]); break;
+			case toggleComputer:
+				auto slot=&slots[action.slot];
+				*slot=slot.type==LobbySlotType.open?LobbySlot(LobbySlotType.computer):LobbySlot.init;
+				break;
+			default: break; // (not about the state)
+		}
+		applyRules();
+	}
+}
+// the lobby as shown to a player
+struct LobbyView{
+	const(LobbyData)* data;
+	int me=-1; // (player id)
+	bool isHost=false;
+	bool canStart=false;
+	const(string)[] chat; // ("name: message")
+	string mapFilename; // local file of the map, if any (for its preview)
+	bool allowed(ref const LobbyAction action)const{ return data&&data.allowed(me,isHost,action); }
+}
+
+// god of a spellbook, as shown in the lobby
+God lobbyGod(ref Settings settings){
+	if(settings.randomGod) return randomGod;
+	foreach(god;God.persephone..God.max+1)
+		if(settings.spellbook==defaultSpells[god]) return cast(God)god;
+	return God.none;
+}
+
+// game initialization from the lobby, playerSettings gives the settings of a human player
+// a slot only gets a wizard if the map has an altar for its side
+GameInit!B gameInit(B)(SacMap!B map,Sides!B sides_,ref const LobbyData lobby,scope Settings delegate(int player) playerSettings,ref Options options){
 	GameInit!B gameInit;
-	auto numSlots=options.numSlots;
-	enforce(numSlots>=sum(options.teamSizes));
+	auto numSlots=lobby.gameSlots;
+	auto slots=lobby.slots[0..numSlots];
 	gameInit.slots=new GameInit!B.Slot[](numSlots);
 	auto sides=options.gameMode==GameMode.scenario?
 		iota(numSlots).map!(i=>sides_.scenarioSide(i)).array:
 		iota(numSlots).map!(i=>sides_.multiplayerSide(i)).array;
 	auto teams=(-1).repeat(numSlots).array;
 	if(options.gameMode!=GameMode.scenario){
-		if(options.teamSizes.length){
-			teamSizesToTeams(options.teamSizes)
-				.take(teams.length)
-				.copy(teams);
-		}else{
-			foreach(ref settings;playerSettings)
-				if(settings.slot!=-1)
-					teams[settings.slot]=settings.team;
-		}
+		foreach(i,ref slot;slots)
+			teams[i]=slot.playing?slot.team:lobby.teamFixed(i)?lobby.teams[i]:-1;
 	}
 	if(options.shuffleAltars){
 		import std.random: randomShuffle;
@@ -51,19 +196,24 @@ GameInit!B gameInit(B,R)(Sides!B sides_,R playerSettings,ref Options options){
 	}
 	foreach(i,side;options.sides)
 		if(i<sides.length) sides[i]=options.gameMode==GameMode.scenario?sides_.scenarioSide(side):sides_.multiplayerSide(side);
-	void placeWizard(ref Settings settings,God god=God.none){
-		if(settings.observer) return;
+	int altarSides=0;
+	import sacobject: SacBuilding;
+	foreach(ref structure;map.ntts.structures){
+		auto side=structure.side;
+		if(side<0||side>=32) side=31;
+		if(SacBuilding!B.get(structure.tag).isAltar) altarSides|=1<<side;
+	}
+	void placeWizard(int slot,ref Settings settings,God god,bool computer){
 		import std.random: uniform;
-		int slot=settings.slot;
-		if(slot<0||slot>=numSlots||gameInit.slots[slot].wizardIndex!=-1)
-			return;
+		auto side=sides[slot];
+		if(options.gameMode!=GameMode.scenario&&!(0<=side&&side<32&&altarSides&1<<side))
+			return; // (state.placeWizard silently skips wizards whose side has no altar)
 		char[4] tag=settings.wizard[0..4];
 		if(options.randomWizards){
 			import nttData:wizards;
 			tag=cast(char[4])wizards[uniform!"[)"(0,$)];
 		}
 		auto name=settings.name;
-		auto side=sides[settings.slot];
 		auto level=settings.level;
 		auto souls=settings.souls;
 		float experience=0.0f;
@@ -71,43 +221,41 @@ GameInit!B gameInit(B,R)(Sides!B sides_,R playerSettings,ref Options options){
 		auto maxLevel=settings.maxLevel;
 		auto xpRate=settings.xpRate;
 		auto spells=settings.spellbook;
-		if(settings.randomGod||options.randomGods) spells=defaultSpells[uniform!"[]"(1,5)];
-		if(options.randomSpellbooks) spells=randomSpells();
-		if(god==God.none&&settings.slot<options.gods.length) god=options.gods[settings.slot];
+		if(!computer){
+			if(god==randomGod||options.randomGods) spells=defaultSpells[uniform!"[]"(1,5)];
+			else if(god!=God.none) spells=defaultSpells[god];
+			if(options.randomSpellbooks) spells=randomSpells();
+			god=God.none;
+		}
+		if(lobby.godFixed(slot)) god=lobby.gods[slot];
 		if(god!=God.none) spells=defaultSpells[god==randomGod?cast(God)uniform!"[]"(1,5):god];
 		auto spellbook=getSpellbook!B(spells);
 		import nttData:WizardTag;
 		assert(gameInit.slots[slot]==GameInit!B.Slot(-1));
 		int wizardIndex=cast(int)gameInit.wizards.length;
 		gameInit.slots[slot]=GameInit!B.Slot(wizardIndex);
-		gameInit.slots[slot].sideType=SideType.human;
+		gameInit.slots[slot].sideType=computer?SideType.shinyBot:SideType.human;
 		gameInit.wizards~=GameInit!B.Wizard(to!WizardTag(tag),name,side,level,souls,experience,minLevel,maxLevel,xpRate,spellbook);
 	}
-	foreach(ref settings;playerSettings) placeWizard(settings);
-	foreach(k,botSlot;options.botSlots){
-		if(botSlot<0||botSlot>=numSlots||gameInit.slots[botSlot].wizardIndex!=-1) continue;
-		import std.random: uniform;
-		import nttData: wizards, randomWizardName;
-		auto botSettings=options.settings;
-		botSettings.slot=botSlot;
-		botSettings.observer=false;
-		botSettings.name=k<options.botNames.length&&options.botNames[k].length?options.botNames[k]:randomWizardName();
-		botSettings.wizard=cast(char[4])wizards[uniform!"[)"(0,$)];
-		auto god=k<options.botGods.length?options.botGods[k]:God.none;
-		if(god==God.none&&botSlot<options.gods.length) god=options.gods[botSlot];
-		if(god==God.none) god=randomGod;
-		placeWizard(botSettings,god);
-		if(gameInit.slots[botSlot].wizardIndex!=-1) gameInit.slots[botSlot].sideType=SideType.shinyBot;
-		if(k<options.botTeams.length) teams[botSlot]=options.botTeams[k];
+	foreach(i,ref slot;slots){
+		if(!slot.playing) continue;
+		if(slot.type==LobbySlotType.human){
+			auto settings=playerSettings(slot.player);
+			placeWizard(to!int(i),settings,slot.god,false);
+		}else{
+			import std.random: uniform;
+			import nttData: wizards, randomWizardName;
+			auto botSettings=options.settings;
+			botSettings.name=slot.name.length?slot.name:randomWizardName();
+			botSettings.wizard=cast(char[4])wizards[uniform!"[)"(0,$)];
+			placeWizard(to!int(i),botSettings,slot.god==God.none?randomGod:slot.god,true);
+		}
 	}
 	auto damageFactors=1.0f.repeat(numSlots).array;
 	foreach(i,f;options.damageFactors)
 		if(i<numSlots) damageFactors[i]=f;
-	foreach(k,botSlot;options.botSlots){
-		if(botSlot<0||botSlot>=numSlots||gameInit.slots[botSlot].wizardIndex==-1) continue;
-		if(k<options.botDamageFactors.length)
-			damageFactors[botSlot]*=options.botDamageFactors[k];
-	}
+	foreach(i,ref slot;slots)
+		if(slot.type==LobbySlotType.computer) damageFactors[i]*=slot.damageFactor;
 	if(options.shuffleSlots){
 		import std.random: randomShuffle;
 		randomShuffle(zip(gameInit.slots,teams,damageFactors));
@@ -184,8 +332,8 @@ GameInit!B gameInit(B,R)(Sides!B sides_,R playerSettings,ref Options options){
 	gameInit.betaPatchBots=options.betaPatchBots;
 	gameInit.aiSides=options.aiSides;
 	if(gameInit.greenAllySouls){
-		foreach(ref settings;playerSettings)
-			if(settings.slot!=-1&&settings.refuseGreenSouls)
+		foreach(ref slot;slots)
+			if(slot.type==LobbySlotType.human&&!slot.observer&&playerSettings(slot.player).refuseGreenSouls)
 				gameInit.greenAllySouls=false;
 	}
 	return gameInit;
@@ -375,27 +523,6 @@ class Lobby(B){
 	void updateSettings(ref Options options)in{
 		assert(network&&isHost);
 	}do{
-		auto numSlots=options.numSlots;
-		auto slotTaken=new bool[](numSlots);
-		foreach(i,ref player;network.players.data){
-			if(player.settings.observer) continue;
-			auto pslot=player.settings.slot;
-			if(0<=pslot && pslot<options.numSlots && !slotTaken[pslot])
-				slotTaken[pslot]=true;
-			else pslot=-1;
-			network.updateSlot(cast(int)i,pslot);
-		}
-		foreach(botSlot;options.botSlots)
-			if(0<=botSlot&&botSlot<numSlots) slotTaken[botSlot]=true;
-		auto freeSlots=iota(numSlots).filter!(i=>!slotTaken[i]);
-		foreach(i,ref player;network.players.data){
-			if(player.settings.observer) continue;
-			if(freeSlots.empty) break;
-			if(player.slot==-1){
-				network.updateSlot(cast(int)i,freeSlots.front);
-				freeSlots.popFront();
-			}
-		}
 		if(options.synchronizeObserverChat) network.synchronizeSetting!"observerChat"();
 
 		if(options.synchronizeLevel) network.synchronizeSetting!"level"();
@@ -408,57 +535,7 @@ class Lobby(B){
 		if(options.synchronizeXpRate) network.synchronizeSetting!"xpRate"();
 
 		network.synchronizeSetting!"pauseOnDrop"();
-
-		network.updateSetting!"gameSlots"(options.numSlots); // (shown in the lobby)
-		if(options.botSlots.length){
-			auto valid=options.botSlots.filter!(slot=>0<=slot&&slot<numSlots);
-			auto numValid=valid.walkLength;
-			if(numValid<options.botSlots.length){
-				copy(valid,options.botSlots[0..numValid]);
-				options.botSlots=options.botSlots[0..numValid];
-			}
-		}
-		if(gameBotSlots!=options.botSlots) gameBotSlots=options.botSlots.dup;
-		network.updateSetting!"gameBotSlots"(gameBotSlots);
-		while(options.botGods.length<options.botSlots.length) options.botGods~=God.none;
-		if(options.gods){
-			foreach(i,ref player;network.players.data){
-				if(player.settings.observer) continue;
-				auto slot=player.settings.slot;
-				if(0<=slot&&slot<options.gods.length){
-					network.updateSetting!"spellbook"(to!int(i),defaultSpells[options.gods[slot]]);
-					if(i==network.me) options.spellbook=network.settings.spellbook;
-				}
-			}
-			foreach(k,slot;gameBotSlots){
-				if(0<=slot&&slot<options.gods.length)
-					options.botGods[k]=options.gods[slot];
-			}
-		}
-		if(gameBotGods!=options.botGods) gameBotGods=options.botGods.dup;
-		network.updateSetting!"gameBotGods"(gameBotGods);
-		while(options.botTeams.length<options.botSlots.length) options.botTeams~=-1;
-		if(options.teamSizes){ // (for correct display in lobby)
-			SmallArray!(int,32) teams;
-			teams.length=numSlots;
-			teamSizesToTeams(options.teamSizes).take(numSlots).copy(teams[]);
-			foreach(i,ref player;network.players.data){
-				if(!(0<=player.slot&&player.slot<teams.length)) continue;
-				auto team=teams[player.slot];
-				if(0<=player.slot&&player.slot<teams.length){
-					network.updateSetting!"team"(to!int(i),team);
-					if(i==network.me) options.team=network.settings.team;
-				}
-			}
-			foreach(i,slot;options.botSlots) options.botTeams[i]=0<=slot&&slot<teams.length?teams[slot]:-1;
-		}
-		if(gameBotTeams!=options.botTeams) gameBotTeams=options.botTeams.dup;
-		network.updateSetting!"gameBotTeams"(gameBotTeams);
 	}
-
-	immutable(int)[] gameBotSlots=null;
-	immutable(God)[] gameBotGods=null;
-	immutable(int)[] gameBotTeams=null;
 
 	bool synchronizeSettings(ref Options options)in{
 		assert(!!network);
@@ -584,12 +661,13 @@ class Lobby(B){
 				if(network.isHost){
 					initState();
 					if(toContinue) gameInit=toContinue.gameInit;
-					else gameInit=.gameInit!B(sides,network.players.data.map!(ref(return ref x)=>x.settings),options);
+					else initializeGame(options);
 					gameInit.serialized(&network.initGame);
 				}else{
 					network.update(controller); // (may be null)
 					if(!network.hasGameInitData())
 						return lastLoad?false:!!gameState;
+					slot=network.slot; // (the host decides it with the game initialization)
 					initState();
 					scope gameInitData=network.gameInitData.data;
 					deserialize(gameInit,gameState.current,gameInitData);
@@ -619,21 +697,9 @@ class Lobby(B){
 					options.souls=to!int(map.levl.multiSouls);
 				}
 				if(toContinue) gameInit=toContinue.gameInit;
-				else gameInit=.gameInit!B(sides,only(options.settings),options);
+				else initializeGame(options);
 			}
 		}else gameInit=playback.gameInit;
-		if(!playback&&!toContinue&&options.gameMode!=GameMode.scenario){ // state.placeWizard silently skips wizards whose side has no altar
-			import sacobject: SacBuilding;
-			foreach(ref wiz;gameInit.wizards){
-				bool hasAltar=false;
-				foreach(ref structure;map.ntts.structures){
-					auto side=structure.side;
-					if(side<0||side>=32) side=31;
-					if(side==wiz.side&&SacBuilding!B.get(structure.tag).isAltar){ hasAltar=true; break; }
-				}
-				enforce(hasAltar,text("map '",options.map,"' has no altar for side ",wiz.side));
-			}
-		}
 		if(options.refuseGreenSouls)
 			enforce(!gameInit.greenAllySouls||options.slot==-1,"attempted to initialize a game with green souls");
 		if((!playback||network)&&options.recordingFilename.length){
@@ -719,11 +785,12 @@ class Lobby(B){
 				if(!synchronizeSettings(options))
 					return false;
 			}
-		}else loadMap(options);
-		assert(!!map||network); // (network game: map loaded when the game starts)
+		}
 		//writeln(3);
-		if(network&&!toContinue&&!playback&&state.among(LobbyState.readyToLoad,LobbyState.waitingForClients))
+		if(!toContinue&&!playback&&state.among(LobbyState.offline,LobbyState.readyToLoad,LobbyState.waitingForClients))
 			return waitForGameStart(options);
+		if(!network) loadMap(options);
+		assert(!!map||network); // (network game: map loaded when the game starts)
 		if(state==LobbyState.readyToLoad||state==LobbyState.waitingForClients){
 			if(state==LobbyState.readyToLoad||network){
 				bool reinitialize=!gameState||!network||network.pendingGameInit;
@@ -792,72 +859,45 @@ class Lobby(B){
 		return state==LobbyState.readyToStart;
 	}
 
-	// network game: players wait until the host starts the game, only then the map is loaded and the game initialized
-	// the host sets its own status to pendingGameInit when the game starts: the other players load the map meanwhile,
+	// the lobby (see LobbyData): the players set up the game until the host starts it, only then the map is loaded and the game initialized
+	// network game: the host sets its own status to pendingGameInit when the game starts: the other players load the map meanwhile,
 	// then the host sends them the game initialization and marks them ready to load (as before, in this order)
+	LobbyData data;
+	Array!string chat; // ("name: message")
+	bool lobbyInitialized=false, startRequested=false;
 	bool gameStarting=false, gameInitialized=false;
+	int me(){ return network?network.me:0; }
 	bool waitForGameStart(ref Options options)in{
-		assert(network&&!toContinue&&!playback);
+		assert(!toContinue&&!playback);
 	}do{
-		state=LobbyState.waitingForClients;
-		B.setLobbyNetwork(network,isHost?options.numSlots:-1); // (players are shown while waiting)
-		network.update(controller); // (may be null)
+		if(network){
+			state=LobbyState.waitingForClients;
+			B.setLobbyNetwork(network,data.gameSlots?data.gameSlots:-1); // (players are shown while waiting)
+			network.update(controller); // (may be null)
+		}
 		bool lateJoining=false;
-		bool canStart=isHost&&!gameStarting&&allPlayersWaiting();
-		B.updateLobby(network,options.map,isHost,canStart,!gameStarting&&!network.lateJoining&&!network.pendingResynch); // (lobby screen)
 		if(isHost){
 			if(!gameStarting){
-				auto botToggle=B.takeLobbyBotToggle(); // (host adds or removes a computer player in a free slot)
-				if(botToggle!=-1){
-					auto botIndex=options.botSlots.countUntil(botToggle);
-					if(botIndex<options.botSlots.length){
-						options.botSlots=options.botSlots.remove(botIndex);
-						options.botGods=options.botGods.remove(botIndex);
-						options.botTeams=options.botTeams.remove(botIndex);
-						options.teamSizes=[];
-						options.gods=[];
-					}else{
-						options.botSlots~=botToggle;
-						options.botGods~=God.none;
-						options.botTeams~=-1;
-					}
+				if(!updateLobby(options)) return false;
+				B.hideLobby();
+				if(network){
+					network.acceptingNewConnections=false;
+					network.updateStatus(PlayerStatus.pendingGameInit); // (the other players start loading the map)
 				}
-				auto botTeamToggle=B.takeLobbyBotTeamToggle();
-				if(botTeamToggle!=-1){
-					auto botIndex=options.botSlots.countUntil(botTeamToggle);
-					if(botIndex<options.botTeams.length){
-						auto team=options.botTeams[botIndex];
-						options.botTeams[botIndex]=team<0?0:team>=2?-1:team+1;
-						options.teamSizes=[];
-					}
-				}
-				auto botGodToggle=B.takeLobbyBotGodToggle();
-				if(botGodToggle!=-1){
-					auto botIndex=options.botSlots.countUntil(botGodToggle);
-					if(botIndex<options.botGods.length){
-						auto god=options.botGods[botIndex];
-						auto next=god==God.charnel?God.none:cast(God)(god+1);
-						options.botGods[botIndex]=next;
-						options.gods=[];
-					}
-				}
-				bool requested=B.takeLobbyStartRequest(); // (Start button)
-				bool start=canStart&&(requested||options.autoStart&&canStartGame(options));
-				if(!start) return false;
-				B.updateLobby(network,options.map,isHost,false,false);
-				network.acceptingNewConnections=false;
-				network.updateStatus(PlayerStatus.pendingGameInit); // (the other players start loading the map)
 				gameStarting=true;
 			}
 		}else{
 			lateJoining=network.lateJoining||network.pendingResynch;
 			auto hostStatus=network.players[network.host].status;
-			if(!lateJoining&&!(isConnectedStatus(hostStatus)&&hostStatus>=PlayerStatus.pendingGameInit))
+			if(!lateJoining&&!(isConnectedStatus(hostStatus)&&hostStatus>=PlayerStatus.pendingGameInit)){
+				if(!gameStarting) followLobby(options);
 				return false; // (game not started yet)
+			}
+			B.hideLobby();
 			gameStarting=true;
-			B.updateLobby(network,options.map,isHost,false,false);
 		}
-		if(!map){
+		if(!network) loadMap(options);
+		else if(!map){
 			loadingPhase(0.0f,0.4f);
 			map=loadSacMap!B(options.map);
 			enforce(cast(int)map.crc32==options.mapHash,"map file changed");
@@ -867,22 +907,187 @@ class Lobby(B){
 				return false; // (waiting for the game initialization from the host)
 			gameInitialized=true;
 		}
-		if(isHost){
-			foreach(i,ref player;network.players.data)
-				if(i!=network.me&&player.status==PlayerStatus.pendingGameInit)
-					network.updateStatus(to!int(i),PlayerStatus.readyToLoad);
-			network.updateStatus(PlayerStatus.readyToLoad);
-		}else if(lateJoining){
-			initController(options);
-			controller.lateJoining=true;
-		}else if(!isReadyToLoadStatus(network.players[network.me].status))
-			return false; // (the host marks this player ready to load right after sending the game initialization)
+		if(network){
+			if(isHost){
+				foreach(i,ref player;network.players.data)
+					if(i!=network.me&&player.status==PlayerStatus.pendingGameInit)
+						network.updateStatus(to!int(i),PlayerStatus.readyToLoad);
+				network.updateStatus(PlayerStatus.readyToLoad);
+			}else if(lateJoining){
+				initController(options);
+				controller.lateJoining=true;
+			}else if(!isReadyToLoadStatus(network.players[network.me].status))
+				return false; // (the host marks this player ready to load right after sending the game initialization)
+		}
 		B.setState(gameState);
 		if(hasSlot) B.setSlot(slot);
 		if(wizId) B.focusCamera(wizId,false);
 		else if(!B.scene.mouse.visible&&!B.scene.fpview.active) B.scene.fpview.active=true;
 		state=LobbyState.readyToStart;
 		return true;
+	}
+	enum lobbySlotLimit=12; // (including the slots that are added for observers)
+	// the lobby screen is shown in network games, a local game only stops in the lobby with --lobby
+	bool lobbyShown(ref Options options){ return network||options.lobby; }
+	void initializeLobby(ref Options options)in{
+		assert(isHost&&!lobbyInitialized);
+	}do{
+		data.slots=new LobbySlot[](max(0,options.numSlots));
+		data.gameSlots=to!int(data.slots.length);
+		data.maxSlots=network?max(data.gameSlots,lobbySlotLimit):data.gameSlots; // (nobody joins a local game)
+		data.map=options.map;
+		data.gods=options.gods.dup;
+		if(options.gameMode!=GameMode.scenario&&options.teamSizes.length)
+			data.teams=teamSizesToTeams(options.teamSizes).take(data.slots.length).array;
+		data.applyRules();
+		updatePlayers(options); // (this player takes its slot before the computer players)
+		foreach(k,botSlot;options.botSlots){
+			if(botSlot<0||botSlot>=data.gameSlots||data.slots[botSlot].type!=LobbySlotType.open) continue;
+			auto slot=LobbySlot(LobbySlotType.computer);
+			if(k<options.botNames.length) slot.name=options.botNames[k];
+			if(k<options.botGods.length&&options.botGods[k]!=God.none) slot.god=options.botGods[k];
+			if(k<options.botTeams.length) slot.team=options.botTeams[k];
+			if(k<options.botDamageFactors.length) slot.damageFactor=options.botDamageFactors[k];
+			data.slots[botSlot]=slot;
+		}
+		data.applyRules();
+		lobbyInitialized=true;
+	}
+	// players get a slot when they arrive (as they prefer, if possible) and free it when they leave
+	Array!bool inLobby; // (by player id)
+	void updatePlayers(ref Options options)in{
+		assert(isHost);
+	}do{
+		void update(int player,ref Settings settings,bool present,bool ready){
+			if(inLobby.length<=player) inLobby.length=player+1;
+			if(inLobby[player]!=present){ // (messages of the original lobby)
+				import nttData: formTexts;
+				inLobby[player]=present;
+				if(player!=me) say(text(playerName(player,options)," ",present?formTexts.get("njlp","has joined the game."):formTexts.get("vllp","has left the game.")));
+			}
+			auto slot=data.slotOf(player);
+			if(!present){
+				data.removePlayer(player);
+				return;
+			}
+			if(slot==-1){
+				slot=data.addPlayer(player,settings.slot,settings.observer);
+				if(slot==-1) return; // (no open slot)
+				data.slots[slot].god=lobbyGod(settings);
+				data.slots[slot].team=settings.team;
+			}
+			data.slots[slot].name=settings.name;
+			data.slots[slot].ready=ready;
+		}
+		if(network){
+			foreach(i,ref player;network.players.data)
+				update(to!int(i),player.settings,isConnectedStatus(player.status),i==network.host||player.status>=PlayerStatus.pendingGameInit);
+		}else update(me,options.settings,true,true);
+		data.applyRules();
+	}
+	string playerName(int player,ref Options options){
+		auto name=network?network.players[player].settings.name:options.name;
+		return name.length?name:"Anonymous";
+	}
+	void say(string line)in{
+		assert(isHost);
+	}do{
+		import serialize_;
+		chat~=line;
+		if(network) line.serialized(&network.sendLobbyMessage);
+	}
+	void perform(int player,ref LobbyAction action,ref Options options)in{
+		assert(isHost);
+	}do{
+		bool host=player==me;
+		if(!data.allowed(player,host,action)) return;
+		switch(action.type){
+			case LobbyActionType.chat:
+				import std.utf: validate;
+				validate(action.text);
+				say(text(playerName(player,options),": ",action.text));
+				break;
+			case LobbyActionType.start: startRequested=true; break;
+			default: data.apply(player,host,action); break;
+		}
+	}
+	// network game: the players' slots and settings follow the lobby, and the lobby is replicated to the other players
+	void publish()in{
+		assert(isHost);
+	}do{
+		if(!network) return;
+		import serialize_;
+		int slotOf(int player){
+			auto slot=data.slotOf(player);
+			return slot!=-1&&!data.slots[slot].observer?slot:-1;
+		}
+		foreach(i,ref player;network.players.data) // (a slot is vacated before another player gets it)
+			if(player.slot!=-1&&player.slot!=slotOf(to!int(i))) network.updateSlot(to!int(i),-1);
+		foreach(i;0..to!int(network.players.length)) network.updateSlot(i,slotOf(i));
+		foreach(ref slot;data.slots){
+			if(slot.type!=LobbySlotType.human) continue;
+			network.updateSetting!"observer"(slot.player,slot.observer);
+			network.updateSetting!"team"(slot.player,slot.team);
+			network.updateSetting!"randomGod"(slot.player,slot.god==randomGod);
+			if(slot.god!=randomGod&&slot.god!=God.none) network.updateSetting!"spellbook"(slot.player,defaultSpells[slot.god]);
+		}
+		data.serialized(&network.replicateLobbyState);
+	}
+	// host (or local game): one step of the lobby, returns true once the game starts
+	bool updateLobby(ref Options options)in{
+		assert(isHost&&!gameStarting);
+	}do{
+		import serialize_;
+		if(!lobbyInitialized) initializeLobby(options);
+		updatePlayers(options);
+		foreach(ref action;B.lobbyActions.data){
+			try perform(me,action,options);
+			catch(Exception e){}
+		}
+		B.lobbyActions.length=0;
+		if(network){
+			foreach(ref packet;network.lobbyActions.data){
+				try{
+					LobbyAction action;
+					auto actionData=packet.data;
+					deserialize(action,ObjectState!B.init,actionData);
+					perform(packet.sender,action,options);
+				}catch(Exception e) network.report!true(packet.sender,"sent a lobby action with wrong encoding: ",e.msg);
+			}
+			network.lobbyActions.length=0;
+		}
+		publish();
+		bool canStart=!network||allPlayersWaiting();
+		bool start=canStart&&(startRequested||!lobbyShown(options)||options.autoStart&&enoughPlayers(options));
+		startRequested=false;
+		if(!start&&lobbyShown(options)) B.showLobby(LobbyView(&data,me,true,canStart,chat.data,options.map));
+		return start;
+	}
+	// other players of a network game: show the lobby of the host and send it the actions of this player
+	void followLobby(ref Options options)in{
+		assert(network&&!isHost&&!gameStarting);
+	}do{
+		import serialize_;
+		if(network.lobbyStateReceived){
+			network.lobbyStateReceived=false;
+			auto stateData=network.lobbyState.data;
+			deserialize(data,ObjectState!B.init,stateData);
+		}
+		foreach(ref packet;network.lobbyMessages.data){
+			try{
+				string line;
+				auto lineData=packet.data;
+				deserialize(line,ObjectState!B.init,lineData);
+				import std.utf: validate;
+				validate(line);
+				chat~=line;
+			}catch(Exception e){}
+		}
+		network.lobbyMessages.length=0;
+		foreach(ref action;B.lobbyActions.data)
+			if(data.allowed(me,false,action)) action.serialized(&network.sendLobbyAction);
+		B.lobbyActions.length=0;
+		if(data.slots.length) B.showLobby(LobbyView(&data,me,false,false,chat.data,options.map));
 	}
 	// the host can start the game once no player in a slot is still connecting or downloading the map
 	bool allPlayersWaiting()in{
@@ -894,21 +1099,24 @@ class Lobby(B){
 		}
 		return true;
 	}
-	// --auto-start: the host starts the game once all slots are occupied (and all players wait for the start)
-	bool canStartGame(ref Options options)in{
-		assert(network&&isHost);
+	// --auto-start: the host starts the game once enough players are ready to play
+	bool enoughPlayers(ref Options options){
+		return data.slots.count!((ref slot)=>slot.playing&&(slot.ready||slot.type==LobbySlotType.computer))>=options.numSlots;
+	}
+	// game initialization from the lobby: players whose slot does not get a wizard (the map has no altar for it) become observers
+	void initializeGame(ref Options options)in{
+		assert(isHost&&lobbyInitialized);
 	}do{
-		if(!allPlayersWaiting()) return false;
-		int occupiedSlots=network.players[network.host].wantsToControlState?1:0;
-		foreach(i,ref player;network.players.data){
-			if(i==network.host||!isConnectedStatus(player.status)) continue;
-			if(player.wantsToControlState&&player.status==PlayerStatus.pendingGameInit) occupiedSlots++;
+		Settings playerSettings(int player){ return network?network.players[player].settings:options.settings; }
+		gameInit=.gameInit!B(map,sides,data,&playerSettings,options);
+		foreach(i,ref lobbySlot;data.slots[0..data.gameSlots]){
+			if(gameInit.slots[i].wizardIndex!=-1) continue;
+			if(lobbySlot.type==LobbySlotType.human) lobbySlot.observer=true;
+			else lobbySlot=LobbySlot.init;
 		}
-		bool[int] botSlots;
-		foreach(botSlot;options.botSlots)
-			if(0<=botSlot&&botSlot<options.numSlots) botSlots[botSlot]=true;
-		occupiedSlots+=to!int(botSlots.length);
-		return occupiedSlots>=options.numSlots;
+		publish();
+		auto own=data.slotOf(me);
+		slot=own!=-1&&!data.slots[own].observer?own:-1;
 	}
 
 	void initController(ref Options options)in{

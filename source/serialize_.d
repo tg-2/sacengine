@@ -1227,6 +1227,14 @@ void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Spe
 void serialize(alias sink)(ref Settings settings){ serializeStruct!sink(settings); }
 void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==Settings)){ deserializeStruct(result,state,data); }
 
+import lobby: LobbySlot, LobbyData, LobbyAction;
+void serialize(alias sink)(ref LobbySlot slot){ serializeStruct!sink(slot); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==LobbySlot)){ deserializeStruct(result,state,data); }
+void serialize(alias sink)(ref LobbyData lobby){ serializeStruct!sink(lobby); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==LobbyData)){ deserializeStruct(result,state,data); }
+void serialize(alias sink)(ref LobbyAction action){ serializeStruct!sink(action); }
+void deserialize(T,R,B)(ref T result,ObjectState!B state,ref R data)if(is(T==LobbyAction)){ deserializeStruct(result,state,data); }
+
 import recording_;
 
 void serialize(alias sink,B)(Recording!B.Event event){ serializeStruct!sink(event); }
