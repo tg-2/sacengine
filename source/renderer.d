@@ -1613,21 +1613,23 @@ struct Renderer(B){
 							auto animFrame=soul.frame/updateAnimFactor;
 							auto id=soul.id;
 							material.backend.setInformation(Vector4f(3.0f,id>>16,id&((1<<16)-1),1.0f));
-							if(objects[j].number==1){
+							auto number=objects[j].number;
+							// original (SacrificeModern scene_match.cpp bind_soul_visual / create_souls): a bundle of 2..8 souls
+							// is drawn as that many figures circling at radius 0.3, each scaled by 1-0.1*(n-1); more than 8
+							// souls are drawn as a single figure
+							if(number<=1||number>8){
 								auto phases=soulWavePhases(id,state.frame);
 								auto mesh=sacSoul.getFlagMesh(color,animFrame,phases[0],phases[1]); // TODO: do in shader?
 								material.backend.setSpriteTransformationScaled(soul.position+soul.scaling*Vector3f(0.0f,0.0f,1.25f*sacSoul.soulHeight),soul.scaling,rc);
 								mesh.render(rc);
 							}else{
-								auto number=objects[j].number;
-								auto soulScaling=max(0.5f,1.0f-0.05f*number);
-								auto radius=soul.scaling*sacSoul.soulRadius;
-								if(number<=3) radius*=0.3*number;
+								auto soulScaling=1.0f-0.1f*(number-1);
+								auto radius=sacSoul.soulRadius;
 								foreach(k;0..number){
 									auto angle=objects[j].facing+2*pi!float*k/number;
 									auto phases=soulWavePhases(id,state.frame,angle);
 									auto mesh=sacSoul.getFlagMesh(color,animFrame,phases[0],phases[1]);
-									auto position=soul.position+rotate(facingQuaternion(angle), Vector3f(0.0f,radius,0.0f));
+									auto position=soul.position+radius*Vector3f(sin(angle),cos(angle),0.0f);
 									material.backend.setSpriteTransformationScaled(position+soul.scaling*Vector3f(0.0f,0.0f,1.25f*sacSoul.soulHeight),soul.scaling*soulScaling,rc);
 									mesh.render(rc);
 								}

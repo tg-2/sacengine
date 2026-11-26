@@ -17049,7 +17049,7 @@ enum soulVanishDepth=mapDepth;
 enum soulFallSpeed=1.0f;
 void updateSoul(B)(ref Soul!B soul, ObjectState!B state){
 	soul.frame+=1;
-	soul.facing+=2*pi!float/8.0f/updateFPS;
+	soul.facing+=2*pi!float/240.0f*(60.0f/updateFPS); // original: bundle angle 0.02618 rad (1.5°) per tick, one turn in 4 s
 	while(soul.facing>pi!float) soul.facing-=2*pi!float;
 	if(soul.frame==SacSoul!B.numFrames*updateAnimFactor)
 		soul.frame=0;
