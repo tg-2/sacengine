@@ -33,12 +33,14 @@ struct LobbySlot{
 	int team=-1;
 	bool observer=false; // human: watches the game
 	bool ready=false; // human: ready for the game to start
+	bool notReady=false; // human: the player switched to "not ready"
 	float damageFactor=1.0f; // computer
 	bool playing()const{ return type==LobbySlotType.computer||type==LobbySlotType.human&&!observer; }
 }
 enum LobbyActionType{
 	nextGod,
 	nextTeam,
+	toggleReady,
 	takeSlot, // move to an open slot, or swap slots with a computer player (host: also with another player)
 	toggleComputer, // add or remove a computer player
 	chat,
@@ -51,8 +53,8 @@ struct LobbyAction{
 }
 struct LobbyData{
 	LobbySlot[] slots;
-	int gameSlots=0; // slots of the game, players in the slots after them can only observe
-	int maxSlots=0; // (slots for observers are added up to this number, so that there is an open slot for whoever joins)
+	int gameSlots=0; // slots of the game, players who are in a slot after them when the game starts observe it
+	int maxSlots=0; // (slots are added after those of the game up to this number, so that there is an open slot for whoever joins)
 	string map;
 	// chosen by the host for all slots (--gods, --NvN): the players cannot change theirs until the host changes one in the lobby
 	God[] gods; // (God.none: up to the player)
@@ -66,20 +68,25 @@ struct LobbyData{
 	}
 	bool godFixed(size_t slot)const{ return slot<gods.length&&gods[slot]!=God.none; }
 	bool teamFixed(size_t slot)const{ return slot<teams.length; }
-	// what always holds: gods and teams fixed by the host, observers in the slots after those of the game, of which one is open if possible
+	// what always holds: gods and teams fixed by the host, and after the slots of the game come the occupied slots
+	// for observers, followed by one open slot (unless there are maxSlots slots already)
 	void applyRules(){
 		foreach(i,ref slot;slots){
 			if(slot.type==LobbySlotType.open) continue;
 			if(godFixed(i)) slot.god=gods[i];
 			if(teamFixed(i)) slot.team=teams[i];
-			if(i>=gameSlots) slot.observer=true;
 		}
-		static bool open(ref LobbySlot slot){ return slot.type==LobbySlotType.open; }
-		while(slots.length>gameSlots&&open(slots[$-1])&&slots[gameSlots..$-1].any!open){
-			slots.length--;
+		size_t numSlots=gameSlots;
+		foreach(i;gameSlots..slots.length){
+			if(slots[i].type==LobbySlotType.open) continue;
+			if(i!=numSlots) swap(slots[numSlots],slots[i]);
+			numSlots++;
+		}
+		if(numSlots<maxSlots) numSlots++;
+		if(slots.length!=numSlots){
+			slots.length=numSlots;
 			slots.assumeSafeAppend();
 		}
-		if(slots.length<maxSlots&&!slots[gameSlots..$].any!open) slots~=LobbySlot.init;
 	}
 	// puts a player into the preferred slot if it is open, otherwise players get the first open slot and observers the last one (-1: none)
 	int addPlayer(int player,int preferredSlot,bool observer){
@@ -106,11 +113,12 @@ struct LobbyData{
 		if(action.type<LobbyActionType.min||action.type>LobbyActionType.max) return false;
 		auto own=slotOf(player);
 		final switch(action.type) with(LobbyActionType){
-			case nextGod,nextTeam,takeSlot,toggleComputer:
+			case nextGod,nextTeam,toggleReady,takeSlot,toggleComputer:
 				if(action.slot<0||action.slot>=slots.length) return false;
 				auto type=slots[action.slot].type;
+				if(action.type==toggleReady) return action.slot==own;
 				bool computer=host&&type==LobbySlotType.computer;
-				if(action.type==nextGod) return action.slot==own&&own<gameSlots||computer; // (fixed god: observe or not)
+				if(action.type==nextGod) return action.slot==own||computer; // (fixed god: observe or not)
 				if(action.type==nextTeam) return action.slot==own&&(host||!teamFixed(own))||computer;
 				if(action.type==toggleComputer) return host&&type!=LobbySlotType.human&&action.slot<gameSlots;
 				if(type==LobbySlotType.computer&&own>=gameSlots) return false; // (computer players do not observe)
@@ -137,6 +145,11 @@ struct LobbyData{
 				if(host) teams=[];
 				auto slot=&slots[action.slot];
 				slot.team=slot.team<0?0:slot.team>=2?-1:slot.team+1;
+				break;
+			case toggleReady:
+				auto slot=&slots[action.slot];
+				slot.notReady=!slot.notReady;
+				if(slot.notReady) slot.ready=false;
 				break;
 			case takeSlot: swap(slots[slotOf(player)],slots[action.slot]); break;
 			case toggleComputer:
@@ -772,6 +785,11 @@ class Lobby(B){
 		assert(state.among(offline,connected,synched,commitHashReady,waitingForClients,readyToLoad));
 	}do{
 		//writeln(state," ",network.players.map!((ref p)=>p.status));
+		if(network&&!isHost&&network.hostDropped){ // (before the game has started)
+			B.hideLobby();
+			B.showHostQuit();
+			return false;
+		}
 		if(network){
 			//writeln(1);
 			if(state==LobbyState.connected){
@@ -977,11 +995,11 @@ class Lobby(B){
 				data.slots[slot].team=settings.team;
 			}
 			data.slots[slot].name=settings.name;
-			data.slots[slot].ready=ready;
+			data.slots[slot].ready=ready&&!data.slots[slot].notReady;
 		}
 		if(network){
 			foreach(i,ref player;network.players.data)
-				update(to!int(i),player.settings,isConnectedStatus(player.status),i==network.host||player.status>=PlayerStatus.pendingGameInit);
+				update(to!int(i),player.settings,isConnectedStatus(player.status),i==network.host||player.status==PlayerStatus.pendingGameInit);
 		}else update(me,options.settings,true,true);
 		data.applyRules();
 	}
@@ -1019,7 +1037,7 @@ class Lobby(B){
 		import serialize_;
 		int slotOf(int player){
 			auto slot=data.slotOf(player);
-			return slot!=-1&&!data.slots[slot].observer?slot:-1;
+			return slot!=-1&&slot<data.gameSlots&&!data.slots[slot].observer?slot:-1;
 		}
 		foreach(i,ref player;network.players.data) // (a slot is vacated before another player gets it)
 			if(player.slot!=-1&&player.slot!=slotOf(to!int(i))) network.updateSlot(to!int(i),-1);
@@ -1057,7 +1075,7 @@ class Lobby(B){
 			network.lobbyActions.length=0;
 		}
 		publish();
-		bool canStart=!network||allPlayersWaiting();
+		bool canStart=(!network||allPlayersWaiting())&&playersReady();
 		bool start=canStart&&(startRequested||!lobbyShown(options)||options.autoStart&&enoughPlayers(options));
 		startRequested=false;
 		if(!start&&lobbyShown(options)) B.showLobby(LobbyView(&data,me,true,canStart,chat.data,options.map));
@@ -1099,18 +1117,23 @@ class Lobby(B){
 		}
 		return true;
 	}
+	// the game only starts once the players in the slots of the game are ready (they can switch to "not ready")
+	bool playersReady(){
+		return data.slots[0..data.gameSlots].all!((ref slot)=>slot.type!=LobbySlotType.human||slot.observer||slot.ready);
+	}
 	// --auto-start: the host starts the game once enough players are ready to play
 	bool enoughPlayers(ref Options options){
-		return data.slots.count!((ref slot)=>slot.playing&&(slot.ready||slot.type==LobbySlotType.computer))>=options.numSlots;
+		return data.slots[0..data.gameSlots].count!((ref slot)=>slot.playing&&(slot.ready||slot.type==LobbySlotType.computer))>=options.numSlots;
 	}
-	// game initialization from the lobby: players whose slot does not get a wizard (the map has no altar for it) become observers
+	// game initialization from the lobby: only now the players whose slot does not get a wizard become observers
+	// (the map has no altar for it, or it is not a slot of the game), their choices in the lobby are not changed before
 	void initializeGame(ref Options options)in{
 		assert(isHost&&lobbyInitialized);
 	}do{
 		Settings playerSettings(int player){ return network?network.players[player].settings:options.settings; }
 		gameInit=.gameInit!B(map,sides,data,&playerSettings,options);
-		foreach(i,ref lobbySlot;data.slots[0..data.gameSlots]){
-			if(gameInit.slots[i].wizardIndex!=-1) continue;
+		foreach(i,ref lobbySlot;data.slots){
+			if(i<data.gameSlots&&gameInit.slots[i].wizardIndex!=-1) continue;
 			if(lobbySlot.type==LobbySlotType.human) lobbySlot.observer=true;
 			else lobbySlot=LobbySlot.init;
 		}
