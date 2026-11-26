@@ -477,6 +477,7 @@ final class SacScene: Scene{
 		auto formIndex=0;
 		ref form(){ return forms[formIndex]; }
 		ref activeElement(){ return form.activeElement; }
+		if(!formTargetValid()) mouse.target=Target.init;
 		if(mouse.target.type==TargetType.formElement){
 			formIndex=mouse.target.formIndex;
 		}else if(forms.length!=1) return; // TODO?
@@ -766,7 +767,17 @@ final class SacScene: Scene{
 		if(!lobbyFormOpen) return;
 		lobbyFormOpen=false;
 		forms.length=0;
+		formsReplaced();
 		disableMenu();
+	}
+	// forms were replaced (e.g. the lobby form is recreated for another number of slots): the mouse target refers to the old ones
+	void formsReplaced(){
+		if(mouse.target.type==TargetType.formElement) mouse.target=Target.init;
+		renderer.formTarget=Target.init;
+	}
+	// (the mouse target is computed when the forms are rendered, so it can be one frame older than the forms)
+	bool formTargetValid(){
+		return mouse.target.type!=TargetType.formElement||mouse.target.formIndex<forms.length&&mouse.target.elementIndex<forms[mouse.target.formIndex].elements.length;
 	}
 	// the host left before the game started: window of the original (form hqut), its button quits
 	bool hostQuitFormOpen=false;
@@ -827,6 +838,7 @@ final class SacScene: Scene{
 		if(!lobbyFormOpen||lobbyFormSlots!=formSlots){
 			closeLobbyForm();
 			forms.length=0;
+			formsReplaced();
 			forms~=sacFormInstance!DagonBackend(SacForm!DagonBackend.lobby(numSlots));
 			lobbyFormOpen=true;
 			lobbyFormSlots=formSlots;
@@ -1025,6 +1037,7 @@ final class SacScene: Scene{
 		auto formIndex=0;
 		ref form(){ return forms[formIndex]; }
 		ref activeElement(){ return form.activeElement; }
+		if(!formTargetValid()) mouse.target=Target.init;
 		if(mouse.target.type==TargetType.formElement){
 			formIndex=mouse.target.formIndex;
 			auto elementIndex=mouse.target.elementIndex;
