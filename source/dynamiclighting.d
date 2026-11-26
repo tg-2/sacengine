@@ -10,10 +10,8 @@ import core.time : MonoTime;
 import dlib.math.portable;
 import dlib.math.quaternion;
 import std.algorithm : min, max;
-import std.math : sin, cos;
 import sacobject, state;
 import ntts : God, Flags;
-import util : rotate;
 
 struct DynamicLighting {
     private LightSource[] pool;
@@ -271,50 +269,29 @@ struct DynamicLighting {
         // Limit particle lights to one per spatial cell and particle type.
         // This avoids hundreds of overlapping lights from a single cast.
         bool[long[4]] occupied;
-        void particles(T)(ref T groups) {
-            foreach (ref g; groups.data) {
-                auto p = g.sacParticle;
-                if (!p) continue;
-                Vector3f color;
-                float energy, radius;
-                switch (p.type) with (ParticleType) {
-                    case lightningCasting, chainLightningCasting: color=white; energy=3; radius=20; break;
-                    default: continue;
-                }
-                foreach (i; 0..g.length) {
-                    if (used >= maxLights) return;
-                    static if (__traits(hasMember, typeof(g), "sideFilters"))
-                        if (g.sideFilters[i] != scene.renderSide) continue;
-                    auto pos = g.positions[i];
-                    static if (__traits(hasMember, typeof(g), "baseIds")) {
-                        if (!st.isValidTarget(g.baseIds[i])) continue;
-                        static if (__traits(hasMember, typeof(g), "rotates")) {
-                            if (g.rotates[i]) pos = st.movingObjectReadById!((ref o,j,v)=>rotate(o.rotations[j],v)+o.positions[j],()=>Vector3f(0,0,0))(g.baseIds[i],pos);
-                            else pos += st.movingObjectReadById!((ref o,j)=>o.positions[j],()=>Vector3f(0,0,0))(g.baseIds[i]);
-                        } else {
-                            auto c=cos(g.angles[i]), t=sin(g.angles[i]);
-                            pos=Vector3f(c*pos.x+t*pos.y,c*pos.y-t*pos.x,pos.z);
-                            pos += st.movingObjectReadById!((ref o,j)=>o.positions[j],()=>Vector3f(0,0,0))(g.baseIds[i]);
-                        }
-                    }
-                    if (distanceFade(pos+lift, radius) <= 0.0f) continue;
-                    long[4] key=[cast(long)p.type,cast(long)(pos.x/5),cast(long)(pos.y/5),cast(long)(pos.z/5)];
-                    if (key in occupied) continue;
-                    float alpha=p.getAlpha(g.lifetimes[i]);
-                    static if (__traits(hasMember, typeof(g), "totalLifetimes"))
-                        alpha=max(0.0f,float(g.lifetimes[i])/max(1,g.totalLifetimes[i]));
-                    if (alpha<=0) continue;
-                    occupied[key]=true;
-                    float actualEnergy = energy*min(1.0f,alpha*4);
-                    emit(pos+lift,color,actualEnergy,radius);
-                }
+        // The state no longer stores the particles, only their emitters (blood
+        // drops, the remaining stored particles, produce no light). Replay the
+        // emitters like the renderer does to get the world positions of the
+        // live particles at the current frame.
+        void particle(SacParticle!B p,Vector3f pos,float size,float alpha,B.Mesh mesh,int sideFilter) {
+            Vector3f color;
+            float energy, radius;
+            switch (p.type) with (ParticleType) {
+                case lightningCasting, chainLightningCasting: color=white; energy=3; radius=20; break;
+                default: return;
             }
+            if (used >= maxLights) return;
+            if (sideFilter != int.min && sideFilter != scene.renderSide) return;
+            if (distanceFade(pos+lift, radius) <= 0.0f) return;
+            long[4] key=[cast(long)p.type,cast(long)(pos.x/5),cast(long)(pos.y/5),cast(long)(pos.z/5)];
+            if (key in occupied) return;
+            if (alpha<=0) return;
+            occupied[key]=true;
+            float actualEnergy = energy*min(1.0f,alpha*4);
+            emit(pos+lift,color,actualEnergy,radius);
         }
-        particles(objects.particles);
-        particles(objects.relativeParticles);
-        particles(objects.relativeTwirlParticles);
-        particles(objects.decayingParticles);
-        particles(objects.filteredParticles);
+        foreach (ref emitter; objects.particleEmitters.emitters.data)
+            emitter.eachEmitterParticle!particle(st);
 
         // Live sources always get first claim on the pool. A fading light
         // is discarded if it is too far away or the live lights fill the pool.
