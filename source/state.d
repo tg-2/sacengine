@@ -10377,7 +10377,9 @@ float dealRawDamage(B)(ref MovingObject!B object,float damage,int attackingSide,
 		}
 	}else actualDamage=damage;
 	actualDamage=min(object.health,actualDamage);
-	if(actualDamage>0.0f||!(damageMod&DamageMod.fall)) object.unfreeze(state);
+	// original: damage over time goes through the accumulated-damage path (vfunc +0x78 = 0x454810, applied by
+	// +0xf0 = 0x459830), which never fires damage watchers, so Freeze's watcher (0x4216e0) does not see it
+	if(!(damageMod&DamageMod.continuous)&&(actualDamage>0.0f||!(damageMod&DamageMod.fall))) object.unfreeze(state);
 	object.creatureStats.health-=actualDamage;
 	if(object.creatureStats.flags&Flags.cannotDestroyKill)
 		object.creatureStats.health=max(object.health,1.0f);
@@ -10753,7 +10755,7 @@ float dealSplashRangedDamageAt(alias callback=(id)=>true,B,T...)(int directTarge
 float dealDesecrationDamage(B)(ref MovingObject!B object,float damage,int caster,int attackingSide,ObjectState!B state){
 	if(!object.canDamage(state)){ object.unfreeze(state); return 0.0f; } // TODO: does it actually unfreeze?
 	bool killed=false;
-	auto actualDamage=dealRawDamage(object,damage,attackingSide,DamageMod.desecration,killed,state);
+	auto actualDamage=dealRawDamage(object,damage,attackingSide,DamageMod.desecration|DamageMod.continuous,killed,state); // original: accumulated damage (0x448217)
 	if(killed&&caster) state.movingObjectById!((ref attacker,side,state){
 		if(state.getStance(attacker.side,side)==Stance.enemy)
 			attacker.creatureStatistics.foesKilled+=1;
@@ -17297,7 +17299,7 @@ bool updateFire(B)(ref Fire!B fire,ObjectState!B state){
 		if(!targetType.among(TargetType.creature,TargetType.building))
 			return false;
 		if(rangedDamagePerFrame>0.0f||spellDamagePerFrame>0.0f){
-			state.objectById!dealFireDamage(target,rangedDamagePerFrame,spellDamagePerFrame,attacker,side,damageMod,state);
+			state.objectById!dealFireDamage(target,rangedDamagePerFrame,spellDamagePerFrame,attacker,side,damageMod|DamageMod.continuous,state); // original: accumulated damage (e.g. PyromaniacRocketShoot 0x415f8c)
 		}else if(targetType==TargetType.building){
 			return false;
 		}
@@ -25822,7 +25824,7 @@ bool updatePoison(B)(ref Poison poison,ObjectState!B state){
 		static assert(updateFPS==60);
 		if(state.frame%2==0) state.continueParticles!poisonParticles(poison.particleEmitter,obj.id,obj.relativeHitbox,poison.lifetime-poison.frame);
 		with(*poison){
-			obj.dealPoisonDamage(poisonDamage/updateFPS,attacker,attackerSide,damageMod,state);
+			obj.dealPoisonDamage(poisonDamage/updateFPS,attacker,attackerSide,damageMod|DamageMod.continuous,state); // original: accumulated damage (POIS 0x440402)
 			if(frame>=lifetime) return removePoison();
 			frame+=1;
 			return true;
