@@ -9910,14 +9910,17 @@ void catapult(B)(ref MovingObject!B object, int attackerSide, Vector3f velocity,
 	if(!object.canCatapult&&!force) return;
 	if(object.creatureState.movement==CreatureMovement.flying) return;
 	if(object.creatureState.mode.among(CreatureMode.pumping,CreatureMode.convertReviving)) object.kill(state);
-	if(!object.creatureState.mode.among(CreatureMode.dying,CreatureMode.dead,CreatureMode.rockForm))
+	// original: the wizard spirit (FSM group RESP) has no fall or stun events, it only falls physically.
+	// It stays a spirit, so its mode, animation and respawn progress must not change.
+	bool spirit=!!object.creatureState.mode.among(CreatureMode.deadToGhost,CreatureMode.idleGhost,CreatureMode.movingGhost,CreatureMode.ghostToIdle);
+	if(!spirit&&!object.creatureState.mode.among(CreatureMode.dying,CreatureMode.dead,CreatureMode.rockForm))
 		object.creatureState.mode=CreatureMode.stunned;
 	if(object.creatureState.movement!=CreatureMovement.tumbling){
 		object.creatureState.movement=CreatureMovement.tumbling;
 		object.creatureState.tumbleAttackerSide=attackerSide;
 		if(!object.creatureStats.effects.fixed)
 			object.creatureState.fallingVelocity=velocity;
-		object.setCreatureState(state);
+		if(!spirit) object.setCreatureState(state);
 	}else if(!object.creatureStats.effects.fixed){
 		object.creatureState.fallingVelocity+=velocity;
 		object.creatureState.tumbleAttackerSide=attackerSide;
@@ -11886,6 +11889,43 @@ Vector3f getTeleportPosition(B)(Vector3f startPosition,int target,float radius,O
 
 Vector3f getTeleportPosition(B)(SacSpell!B spell,Vector3f startPosition,int target,ObjectState!B state){
 	return getTeleportPosition(startPosition,target,spell.effectRange,state);
+}
+
+// Wizard that fell into the void (hole or map edge), original: 0x4424d0 with the free-spot search 0x453340.
+// Start 20 units from the altar towards the wizard (in 3D, as in the original), then try random points
+// within 50 of the altar. A point is free if there is land and no creature/building box contains it.
+enum wizardVoidAltarDistance=20.0f;
+enum wizardVoidSearchRadius=50.0f;
+enum wizardVoidSearchTries=32;
+bool isFreeWizardVoidPosition(B)(ref Vector3f position,ObjectState!B state){
+	// original: 0x4532f0 (land height ≤ 0 → not free) and 0x469100/0x469040 (point in a collision box of an
+	// object of kind 0x15, z tolerance -1/+2)
+	if(!state.isOnGround(position)) return false;
+	position.z=state.getGroundHeight(position);
+	static void handleCollision(ProximityEntry entry,bool* found){ *found=true; }
+	Vector3f[2] hitbox=[position-Vector3f(0.0f,0.0f,2.0f),position+Vector3f(0.0f,0.0f,1.0f)];
+	bool found=false;
+	state.proximity.collide!handleCollision(hitbox,&found);
+	return !found;
+}
+Vector3f wizardVoidTeleportPosition(B)(Vector3f wizardPosition,int altar,ObjectState!B state){
+	if(!state.isValidTarget(altar)) return Vector3f.init;
+	auto altarPosition=state.objectReadById!((ref objects,i)=>objects.positions[i])(altar);
+	auto offset=wizardPosition-altarPosition;
+	auto length=offset.length;
+	if(length!=0.0f) offset*=wizardVoidAltarDistance/length;
+	auto position=altarPosition+offset;
+	if(isFreeWizardVoidPosition(position,state)) return position;
+	// original: the counter starts at 32 and the result is "counter > 0", so a point found on the
+	// 32nd random try is still reported as a failure
+	foreach(i;1..wizardVoidSearchTries){
+		auto angle=state.uniform(-pi!float,pi!float);
+		auto radius=state.uniform(0.0f,wizardVoidSearchRadius);
+		position.x=altarPosition.x+sin(angle)*radius;
+		position.y=altarPosition.y+cos(angle)*radius;
+		if(isFreeWizardVoidPosition(position,state)) return position;
+	}
+	return Vector3f.init;
 }
 
 bool castTeleport(B)(ManaDrain!B manaDrain,SacSpell!B spell,Vector3f startPosition,int target,ObjectState!B state){
@@ -16950,10 +16990,12 @@ void updateCreaturePosition(B)(ref MovingObject!B object, ObjectState!B state){
 			}
 		}
 		if(tpId!=0){
-			auto targetPosition=getTeleportPosition(newPosition,tpId,wizardAltarDistance,state);
+			auto targetPosition=wizardVoidTeleportPosition(newPosition,tpId,state);
 			if(isNaN(targetPosition.x)) tpId=0;
-			object.teleport(targetPosition,state,true);
-			newPosition=object.position;
+			else{
+				object.teleport(targetPosition,state,true);
+				newPosition=object.position;
+			}
 		}
 		if(tpId==0){
 			auto attackingSide=object.creatureState.tumbleAttackerSide;
